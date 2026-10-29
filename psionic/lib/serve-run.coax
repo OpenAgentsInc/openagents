@@ -1,0 +1,30 @@
+// Chapter 16: run every question of an admitted request through chapter 10.
+// This file only sequences checked calls: admission, fit and refusal codes
+// live in serve-engine.coax and the model in decision-prepare/answer.coax,
+// all #authority. A complete toy decision exceeds the evaluator's budget, so
+// the success path is checked natively by psionic/tests/serve.c against
+// direct calls to the chapter-10 adapters.
+#load "serve-engine.coax";
+#test "refusals come before any model work" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],64);storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);work:SvWork;p:[16320]f64;
+    r:=sv_decode("{\"model\":\"other\",\"state\":\"go\",\"questions\":{\"q\":{\"type\":\"noul\"}}}",pools);
+    #assert sv_answers(e,r,pools,work,p[..])==SvCode.not_admitted;
+    r.model="psionic-toy";#assert sv_answers(e,r,pools,work,p[0..<16319])==SvCode.internal;
+    open:=e;open.sealed=false;#assert sv_answers(open,r,pools,work,p[..])==SvCode.internal;
+}
+// book:begin answers
+sv_answers :: (engine:SvEngine,request:SvRequest,pools:SvPools,work:SvWork,p:[]f64)->SvCode #export_c {
+    admitted:=sv_admit(engine,request,pools);if admitted!=SvCode.none {return admitted;}
+    if !engine.sealed || p.count<SV_ANSWER_POOL {return SvCode.internal;}
+    for i:0..<request.questions {
+        q:=pools.questions[i];options:=pools.options[q.first..<q.first+q.count];
+        question:=PtQuestion.{kind=q.kind,instructions=q.instructions};
+        prepared:=ps_prepare(engine.session.table,request.state,question,options,work.tokens,work.prep,false);
+        fits:=sv_fits(engine,prepared,work.work.count);if fits!=SvCode.none {return fits;}
+        out:=p[i*SV_OPTIONS_MAX..<(i+1)*SV_OPTIONS_MAX];
+        answer:=ps_answer(engine.session,prepared,work.tokens[0..<prepared.written],options,engine.temperature,work.state,out,work.prob,work.work,false);
+        code:=sv_answer_code(answer.status);if code!=SvCode.none {return code;}
+    }
+    return SvCode.none;
+}
+// book:end answers

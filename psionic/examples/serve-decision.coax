@@ -1,0 +1,39 @@
+#import "Basic";
+#load "../lib/serve-run.coax";
+
+// book:begin example
+ask :: "POST /v1/systemone HTTP/1.1\r\nContent-Length: 193\r\n\r\n{\"model\":\"psionic-toy\",\"state\":\"The kettle has boiled.\",\"questions\":{\"hot\":{\"type\":\"noul\",\"instructions\":\"Is the water hot?\"},\"drink\":{\"type\":\"choice\",\"criteria\":{\"tea\":null,\"soup\":\"a meal\"}}}}";
+
+main :: () {
+    toy:[1]SvToy;engine:=sv_test_toy(toy[..],400);
+    print("served: %@sha256:%\n",engine.name,engine.digest);
+    storage:[1]ExamplePools;pools:=example_pools(storage[..]);
+    limits:=SvLimits.{read_ms=10000,decide_ms=30000};
+    // The host accepted a connection at t=0 ms and has read every byte by t=3 ms.
+    slot:=sv_accept(SvSlot.{},limits,0).slot;
+    step:=sv_bytes(slot,limits,engine,pools,ask,3);
+    print("bytes: action %, % questions, deadline at % ms\n",step.action,step.request.questions,step.slot.deadline);
+    busy:=sv_accept(step.slot,limits,5);out:[4096]u8;
+    n:=sv_refusal(out[..],busy.code);print("second connection: %\n",cast(string)out[0..<n][0..<32]);
+    // The child process runs the decision and writes the response.
+    prep:[1]PrScratch;work:=sv_scratch(prep[..],engine);answers:[16320]f64;
+    code:=sv_answers(engine,step.request,pools,work,answers[..]);
+    span:=SvSpan.{to=sv_refusal(out[..],code)};
+    if code==SvCode.none {span=sv_render(engine,step.request,pools,answers[..],0,out[..]);}
+    print("decision: %\n%\n",ifx code==SvCode.none then "answered" else sv_code_name(code),cast(string)out[span.from..<span.to]);
+    // The parent hands the framed response back to the slot.
+    frame:[4096]u8;head:=sv_frame_put(frame[..],code,span.to-span.from);
+    for i:span.from..<span.to {frame[head+i-span.from]=out[i];}
+    done:=sv_done(step.slot,step.slot.epoch,true,cast(string)frame[0..<head+span.to-span.from],40);
+    print("done: action %, slot %\n",done.action,done.slot.phase);
+}
+// book:end example
+
+ExamplePools :: struct {questions:[64]SvQuestion;options:[16320]PtOption;raw:[16320]string;arena:[1024]u8;}
+example_pools :: (p:[]ExamplePools)->SvPools {return SvPools.{questions=p[0].questions[..],options=p[0].options[..],raw=p[0].raw[..],arena=p[0].arena[..]};}
+PrScratch :: struct {prompt:[4096]u8;render:[4096]u8;candidate:[2048]int;full:[2048]int;stage:[2048]int;normal:[8192]u8;scalars:[8192]int;symbols:[1024]int;tokens:[2048]int;state:[51230]f32;work:[583952]f32;prob:[510]f64;}
+sv_scratch :: (w:[]PrScratch,engine:SvEngine)->SvWork {
+    plan:=sv_plan(engine);
+    prep:=PrWorkspace.{prompt=w[0].prompt[..],render_work=w[0].render[..],candidate=w[0].candidate[..],full=w[0].full[..],token_stage=w[0].stage[..],normal=w[0].normal[..],scalars=w[0].scalars[..],symbols=w[0].symbols[..]};
+    return SvWork.{prep=prep,tokens=w[0].tokens[..],state=w[0].state[0..<plan.state],work=w[0].work[0..<plan.work],prob=w[0].prob[..]};
+}

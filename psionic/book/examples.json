@@ -320,6 +320,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/serve-decision.coax",
+      "chapter": "psionic/book/ch016-serve-systemone.md",
+      "stdout": "psionic/fixtures/serve-decision.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

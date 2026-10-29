@@ -1,0 +1,565 @@
+// Chapter 16: the request side of POST /v1/systemone. The host only moves
+// bytes; this unit decides whether received bytes are a complete HTTP/1.1
+// request, decodes its NIP-DEC body into typed text decisions, checks every
+// NIP-DEC bound before a model is consulted, and writes every response head
+// and refusal. Strings borrow the body or the caller's arena; nothing allocates.
+#load "../../coax/lib/nostr/json.coax";
+#load "text.coax";
+#authority;
+// book:begin codes
+SvCode :: enum u8 {none;malformed;invalid_request;too_many_questions;too_many_options;not_admitted;not_found;method_not_allowed;limit_exceeded;unsupported_input;request_timeout;busy;timeout;internal;}
+// book:end codes
+SvHeadStatus :: enum u8 {more;ready;refused;}
+SvHead :: struct {status:SvHeadStatus;code:SvCode;head:int;body:int;expect:bool;}
+SV_HEAD_MAX :: 8192;           // request line and headers, CRLF CRLF included
+SV_BODY_MAX :: 262144;         // NIP-DEC's 256 KiB payload bound
+SV_HEADERS_MAX :: 64;
+SV_ROUTE :: "/v1/systemone";
+SV_CONTINUE :: "HTTP/1.1 100 Continue\r\n\r\n";
+SV_RETRY_SECONDS :: 1;
+
+#test "every refusal code has the NIP-DEC or documented server status" {
+    #assert sv_status(SvCode.malformed)==400 && sv_status(SvCode.invalid_request)==400 && sv_status(SvCode.too_many_questions)==400 && sv_status(SvCode.too_many_options)==400;
+    #assert sv_status(SvCode.not_admitted)==403 && sv_status(SvCode.not_found)==404 && sv_status(SvCode.method_not_allowed)==405;
+    #assert sv_status(SvCode.request_timeout)==408 && sv_status(SvCode.limit_exceeded)==413 && sv_status(SvCode.unsupported_input)==422;
+    #assert sv_status(SvCode.internal)==500 && sv_status(SvCode.busy)==503 && sv_status(SvCode.timeout)==524 && sv_status(SvCode.none)==200;
+    #assert sv_code_name(SvCode.malformed)=="malformed" && sv_code_name(SvCode.invalid_request)=="invalid_request" && sv_code_name(SvCode.too_many_questions)=="too_many_questions";
+    #assert sv_code_name(SvCode.too_many_options)=="too_many_options" && sv_code_name(SvCode.not_admitted)=="not_admitted" && sv_code_name(SvCode.not_found)=="not_found";
+    #assert sv_code_name(SvCode.method_not_allowed)=="method_not_allowed" && sv_code_name(SvCode.limit_exceeded)=="limit_exceeded" && sv_code_name(SvCode.unsupported_input)=="unsupported_input";
+    #assert sv_code_name(SvCode.request_timeout)=="request_timeout" && sv_code_name(SvCode.busy)=="busy" && sv_code_name(SvCode.timeout)=="timeout" && sv_code_name(SvCode.internal)=="internal" && sv_code_name(SvCode.none)=="";
+    #assert sv_reason(200)=="OK" && sv_reason(400)=="Bad Request" && sv_reason(403)=="Forbidden" && sv_reason(404)=="Not Found" && sv_reason(405)=="Method Not Allowed";
+    #assert sv_reason(408)=="Request Timeout" && sv_reason(413)=="Content Too Large" && sv_reason(422)=="Unprocessable Content" && sv_reason(500)=="Internal Server Error";
+    #assert sv_reason(503)=="Service Unavailable" && sv_reason(524)=="A Timeout Occurred" && sv_reason(299)=="Error";
+    for c:0..<14 {code:=cast(SvCode)c;if code!=SvCode.none {#assert sv_message(code).count>0;}}
+    #assert sv_message(SvCode.none)=="";
+}
+#test "a complete head admits the route, its length and an expectation" {
+    h:=sv_head("POST /v1/systemone HTTP/1.1\r\nHost: x\r\nContent-Length: 12\r\n\r\n{\"a\"");
+    #assert h.status==SvHeadStatus.ready && h.code==SvCode.none && h.head==60 && h.body==12 && !h.expect;
+    h=sv_head("POST /v1/systemone?x=1 HTTP/1.0\r\ncontent-length:\t0 \r\nEXPECT: 100-Continue\r\n\r\n");
+    #assert h.status==SvHeadStatus.ready && h.body==0 && h.expect;
+    h=sv_head("POST /v1/systemone HTTP/1.1\r\nContent-Length: 5\r\ncontent-length: 5\r\n\r\n");
+    #assert h.status==SvHeadStatus.ready && h.body==5;
+    h=sv_head("POST /v1/systemone HTTP/1.1\r\nContent-Length: 262144\r\n\r\n");#assert h.status==SvHeadStatus.ready && h.body==262144;
+    #assert sv_head("POST /v1/systemone HTTP/1.1\r\nContent-Length: 1\r\n").status==SvHeadStatus.more;
+    #assert sv_head("").status==SvHeadStatus.more;
+}
+#test "malformed, oversized, unknown and unsupported heads are refused with stable codes" {
+    cases:=[20]string.[
+        "POST /v1/systemone HTTP/1.1\r\nContent-Length: 262145\r\n\r\n",
+        "GET /v1/systemone HTTP/1.1\r\n\r\n",
+        "POST /v1/other HTTP/1.1\r\nContent-Length: 1\r\n\r\n",
+        "POST /v1/systemone HTTP/2.0\r\nContent-Length: 1\r\n\r\n",
+        "POST /v1/systemone HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n",
+        "POST /v1/systemone HTTP/1.1\r\n\r\n",
+        "POST /v1/systemone HTTP/1.1\r\nContent-Length: 1x\r\n\r\n",
+        "POST /v1/systemone HTTP/1.1\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\n",
+        "POST /v1/systemone HTTP/1.1\r\nBad Header: 1\r\nContent-Length: 1\r\n\r\n",
+        "POST /v1/systemone HTTP/1.1\r\n folded\r\nContent-Length: 1\r\n\r\n",
+        "POST  /v1/systemone HTTP/1.1\r\nContent-Length: 1\r\n\r\n",
+        "POST v1/systemone HTTP/1.1\r\nContent-Length: 1\r\n\r\n",
+        "POST /v1/systemone HTTP/1.1\nContent-Length: 1\r\n\r\n",
+        "POST /v1/systemone HTTP/1.1\r\nExpect: something\r\nContent-Length: 1\r\n\r\n",
+        "POST /v1/systemone HTTP/1.1\r\nContent-Length: \r\n\r\n",
+        "POST /v1/systemone HTTP/1.1\r\nContent-Length: 12345678901\r\n\r\n",
+        "P@ST /v1/systemone HTTP/1.1\r\nContent-Length: 1\r\n\r\n",
+        "POST /v1/systemone HTTP/1.1\r\n: x\r\nContent-Length: 1\r\n\r\n",
+        "POST /v1/systemone HTTP/1.1\r\nNoColon\r\nContent-Length: 1\r\n\r\n",
+        "POST /v1/systemoneX HTTP/1.1\r\nContent-Length: 1\r\n\r\n"];
+    codes:=[20]SvCode.[SvCode.limit_exceeded,SvCode.method_not_allowed,SvCode.not_found,SvCode.malformed,SvCode.malformed,SvCode.malformed,SvCode.malformed,SvCode.malformed,SvCode.malformed,SvCode.malformed,
+        SvCode.malformed,SvCode.malformed,SvCode.malformed,SvCode.malformed,SvCode.malformed,SvCode.limit_exceeded,SvCode.malformed,SvCode.malformed,SvCode.malformed,SvCode.not_found];
+    for i:0..<20 {h:=sv_head(cases[i]);#assert h.status==SvHeadStatus.refused && h.code==codes[i] && h.head==0 && h.body==0;}
+    long:[8200]u8;start:="POST /v1/systemone HTTP/1.1\r\nContent-Length: 0\r\nX: ";for i:0..<start.count {long[i]=start[i];}for i:start.count..<8200 {long[i]='a';}
+    #assert sv_head(cast(string)long[0..<8191]).status==SvHeadStatus.more;
+    h:=sv_head(cast(string)long[0..<8192]);#assert h.status==SvHeadStatus.refused && h.code==SvCode.limit_exceeded;
+    end:="\r\n\r\n";for i:0..<4 {long[8188+i]=end[i];}#assert sv_head(cast(string)long[0..<8192]).status==SvHeadStatus.ready;
+    many:[4096]u8;at:=json_raw(many[..],0,"POST /v1/systemone HTTP/1.1\r\n");
+    for i:0..<64 {at=json_raw(many[..],at,"A: b\r\n");}
+    #assert sv_head(cast(string)many[0..<json_raw(many[..],at,"Content-Length: 1\r\n\r\n")]).code==SvCode.malformed;
+    at=json_raw(many[..],0,"POST /v1/systemone HTTP/1.1\r\n");for i:0..<63 {at=json_raw(many[..],at,"A: b\r\n");}
+    #assert sv_head(cast(string)many[0..<json_raw(many[..],at,"Content-Length: 1\r\n\r\n")]).status==SvHeadStatus.ready;
+}
+#test "header helpers have exact character and boundary rules" {
+    #assert sv_lower('A')=='a' && sv_lower('Z')=='z' && sv_lower('@')=='@' && sv_lower('[')=='[' && sv_lower('a')=='a';
+    #assert sv_same("AZ","az") && !sv_same("xb","ab") && !sv_same("ab","ac") && !sv_same("a","ab") && !sv_same("[","{");
+    good:="azAZ09!~`|";for c:good {#assert sv_tchar(c);}
+    bad:="{[:@/ \t\"";for c:bad {#assert !sv_tchar(c);}
+    #assert sv_token("POST") && !sv_token("") && !sv_token("a b") && !sv_token("a:");
+    #assert sv_find("aXa",0,"a")==0 && sv_find("aXa",1,"a")==2 && sv_find("ab",0,"b")==1 && sv_find("ab",0,"c")==-1 && sv_find("ab",0,"abc")==-1 && sv_find("xab",0,"ab")==1;
+    #assert sv_index("ab","a")==0 && sv_index("ba","a")==1;
+    #assert sv_trim("x")=="x" && sv_trim(" \tx\t ")=="x" && sv_trim("  ")=="" && sv_trim("")=="" && sv_trim("a b")=="a b";
+    #assert sv_digits("7") && sv_digits("0123456789") && !sv_digits("") && !sv_digits("a") && !sv_digits(":") && !sv_digits("1a") && !sv_digits("/");
+    #assert sv_length("9")==9 && sv_length("1234567890")==1234567890 && sv_length("0000000012")==12 && sv_length("00000000012")==262145 && sv_length(":")==-1 && sv_length("")==-1;
+    #assert sv_path("/a?b?c")=="/a" && sv_path("/a")=="/a" && sv_path("?")=="" && sv_path("")=="";
+    #assert sv_visible("/!~") && !sv_visible("/a b") && !sv_visible("/\t");
+    del:=[2]u8.['/',127];#assert !sv_visible(cast(string)del[..]);
+    #assert sv_body_start("a\r\n\r\nb")==5 && sv_body_start("\r\n\r\n")==4 && sv_body_start("x")==-1;
+}
+#test "edge heads: windows, tiny methods and targets, folded values and duplicates" {
+    lead:[9000]u8;lead[0]=13;lead[1]=10;lead[2]=13;lead[3]=10;#assert sv_head(cast(string)lead[..]).code==SvCode.malformed;
+    #assert sv_head("\r\n\r\n").code==SvCode.malformed && sv_head("\r\nPOST /v1/systemone HTTP/1.1\r\n\r\n").code==SvCode.malformed;
+    #assert sv_head("X /v1/systemone HTTP/1.1\r\n\r\n").code==SvCode.method_not_allowed && sv_head("POST / HTTP/1.1\r\nContent-Length: 0\r\n\r\n").code==SvCode.not_found;
+    #assert sv_head("POST /v1/systemone! HTTP/1.1\r\nContent-Length: 0\r\n\r\n").code==SvCode.not_found && sv_head("POST /~ HTTP/1.1\r\nContent-Length: 0\r\n\r\n").code==SvCode.not_found;
+    #assert sv_head("POST /v1/sys\ttemone HTTP/1.1\r\nContent-Length: 0\r\n\r\n").code==SvCode.malformed;
+    h:=sv_head("POST /v1/systemone HTTP/1.1\r\nContent-Length:12\r\n\r\n");#assert h.status==SvHeadStatus.ready && h.body==12;
+    #assert sv_head("POST /v1/systemone HTTP/1.1\r\nContent-Length: 0\r\nContent-Length: 5\r\n\r\n").code==SvCode.malformed;
+    #assert sv_head("POST /v1/systemone HTTP/1.1\r\nContent-Length: 5\r\nA: b\rc\r\n\r\n").code==SvCode.malformed;
+    #assert sv_head("POST /v1/systemone HTTP/1.1\r\nContent-Length: 5\r\nA: b\nc\r\n\r\n").code==SvCode.malformed;
+    #assert sv_head("POST /v1/systemone HTTP/1.1\r\nA:\r\nContent-Length: 1\r\n\r\n").status==SvHeadStatus.ready;
+    #assert sv_head("POST /v1/systemone HTTP/1.1\r\nContent-Length: 1\r\nA:\r\n\r\n").status==SvHeadStatus.ready;
+    #assert sv_head("POST /v1/systemone HTTP/1.1\r\nContent-Length: 00000000001\r\n\r\n").code==SvCode.limit_exceeded;
+    big:[9000]u8;start:="POST /v1/systemone HTTP/1.1\r\nContent-Length: 9000\r\n\r\n";for i:0..<start.count {big[i]=start[i];}for i:start.count..<9000 {big[i]='b';}
+    r:=sv_head(cast(string)big[..]);#assert r.status==SvHeadStatus.ready && r.head==start.count && r.body==9000;
+    for i:0..<9000 {big[i]='a';}late:="POST /v1/systemone HTTP/1.1\r\nX: ";for i:0..<late.count {big[i]=late[i];}
+    end:="\r\n\r\n";for i:0..<4 {big[8189+i]=end[i];}
+    r=sv_head(cast(string)big[..]);#assert r.status==SvHeadStatus.refused && r.code==SvCode.limit_exceeded;
+    for i:0..<4 {big[8189+i]='a';big[8188+i]=end[i];}
+    r=sv_head(cast(string)big[..]);#assert r.status==SvHeadStatus.refused && r.code==SvCode.malformed;
+}
+#test "response heads and refusal bodies are exact and never echo request bytes" {
+    out:[512]u8;n:=sv_refusal(out[..],SvCode.busy);
+    expected:="HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: 91\r\nConnection: close\r\nRetry-After: 1\r\n\r\n{\"error\":{\"code\":\"busy\",\"message\":\"the server is answering another decision; retry later\"}}";
+    #assert n==expected.count && cast(string)out[0..<n]==expected;
+    n=sv_response(out[..],200,"{}");#assert cast(string)out[0..<n]=="HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}";
+    n=sv_refusal(out[..],SvCode.timeout);#assert n>0 && cast(string)out[9..<12]=="524";
+    #assert sv_refusal(out[0..<100],SvCode.busy)==-1 && sv_response(out[0..<10],200,"{}")==-1 && sv_refusal(out[..],SvCode.none)==-1;
+    #assert sv_continue(out[..])==25 && cast(string)out[0..<25]==SV_CONTINUE && sv_continue(out[0..<24])==-1;
+    for c:1..<14 {
+        n=sv_refusal(out[..],cast(SvCode)c);#assert n>0;
+        body:=sv_body_start(cast(string)out[0..<n]);#assert body>0 && json_valid(cast(string)out[body..<n]);
+    }
+}
+
+sv_status :: (code:SvCode)->int #export_c {
+    if code==SvCode.none {return 200;}
+    if code==SvCode.not_admitted {return 403;}if code==SvCode.not_found {return 404;}if code==SvCode.method_not_allowed {return 405;}
+    if code==SvCode.request_timeout {return 408;}if code==SvCode.limit_exceeded {return 413;}if code==SvCode.unsupported_input {return 422;}
+    if code==SvCode.internal {return 500;}if code==SvCode.busy {return 503;}if code==SvCode.timeout {return 524;}
+    return 400;
+}
+sv_code_name :: (code:SvCode)->string #export_c {
+    names:=[14]string.["","malformed","invalid_request","too_many_questions","too_many_options","not_admitted","not_found","method_not_allowed","limit_exceeded","unsupported_input","request_timeout","busy","timeout","internal"];
+    return names[cast(int)code];
+}
+sv_message :: (code:SvCode)->string {
+    messages:=[14]string.["","the request is not HTTP/1.1 with a JSON body of declared length","the body is not a NIP-DEC decision request","a request has 1 to 64 questions","a choice has 1 to 255 options and a score 2 to 10 levels",
+        "this server does not serve that model","the only route is POST /v1/systemone","use POST","the request exceeds a size or token bound","the request is valid but outside this model's text profile",
+        "the request did not arrive in time","the server is answering another decision; retry later","the decision did not finish before its deadline","the decision failed"];
+    return messages[cast(int)code];
+}
+sv_reason :: (status:int)->string {
+    if status==200 {return "OK";}if status==400 {return "Bad Request";}if status==403 {return "Forbidden";}if status==404 {return "Not Found";}
+    if status==405 {return "Method Not Allowed";}if status==408 {return "Request Timeout";}if status==413 {return "Content Too Large";}
+    if status==422 {return "Unprocessable Content";}if status==500 {return "Internal Server Error";}if status==503 {return "Service Unavailable";}
+    if status==524 {return "A Timeout Occurred";}return "Error";
+}
+sv_lower :: (c:u8)->u8 {if c>='A' && c<='Z' {return c+32;}return c;}
+sv_same :: (a:string,b:string)->bool {
+    if a.count!=b.count {return false;}for i:0..<a.count {if sv_lower(a[i])!=sv_lower(b[i]) {return false;}}return true;
+}
+sv_tchar :: (c:u8)->bool {
+    if (c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') {return true;}
+    marks:="!#$%&'*+-.^_`|~";for m:marks {if c==m {return true;}}return false;
+}
+sv_token :: (s:string)->bool {if s.count==0 {return false;}for c:s {if !sv_tchar(c) {return false;}}return true;}
+sv_find :: (text:string,from:int,needle:string)->int {
+    i:=from;while i+needle.count<=text.count {if text[i..<i+needle.count]==needle {return i;}i+=1;}return -1;
+}
+sv_index :: (text:string,needle:string)->int {return sv_find(text,0,needle);}
+sv_trim :: (s:string)->string {
+    a:=0;b:=s.count;while a<b && (s[a]==' ' || s[a]==9) {a+=1;}while b>a && (s[b-1]==' ' || s[b-1]==9) {b-=1;}return s[a..<b];
+}
+sv_digits :: (s:string)->bool {if s.count==0 {return false;}for c:s {if c<'0' || c>'9' {return false;}}return true;}
+// A Content-Length value: -1 when it is not decimal digits; past ten digits it is over every bound.
+sv_length :: (s:string)->int {
+    if !sv_digits(s) {return -1;}if s.count>10 {return SV_BODY_MAX+1;}
+    v:=0;for c:s {v=v*10+cast(int)(c-'0');}return v;
+}
+// The request target's path, before any query.
+sv_path :: (target:string)->string {n:=0;while n<target.count && target[n]!='?' {n+=1;}return target[0..<n];}
+sv_visible :: (s:string)->bool {for c:s {if c<33 || c>126 {return false;}}return true;}
+sv_refuse :: (code:SvCode)->SvHead {return SvHead.{status=SvHeadStatus.refused,code=code};}
+// book:begin head
+sv_head :: (text:string)->SvHead #export_c {
+    end:=sv_index(text,"\r\n\r\n");
+    if end+4>SV_HEAD_MAX || (end<0 && text.count>=SV_HEAD_MAX) {return sv_refuse(SvCode.limit_exceeded);}
+    if end<0 {return SvHead.{};}
+    line:=sv_index(text,"\r\n");first:=text[0..<line];
+    a:=sv_index(first," ");if a<1 {return sv_refuse(SvCode.malformed);}
+    rest:=first[a+1..<first.count];b:=sv_index(rest," ");if b<1 {return sv_refuse(SvCode.malformed);}
+    method:=first[0..<a];target:=rest[0..<b];version:=rest[b+1..<rest.count];
+    if !sv_token(method) || target[0]!='/' || !sv_visible(target) || (version!="HTTP/1.1" && version!="HTTP/1.0") {return sv_refuse(SvCode.malformed);}
+    length:=-1;expect:=false;headers:=0;block:=text[line+2..<end+2];at:=0;
+    while at<block.count {
+        next:=sv_find(block,at,"\r\n");h:=block[at..<next];at=next+2;headers+=1;
+        if headers>SV_HEADERS_MAX {return sv_refuse(SvCode.malformed);}
+        colon:=sv_index(h,":");if colon<1 || !sv_token(h[0..<colon]) {return sv_refuse(SvCode.malformed);}
+        for c:h {if c=='\n' || c=='\r' {return sv_refuse(SvCode.malformed);}}
+        name:=h[0..<colon];value:=sv_trim(h[colon+1..<h.count]);
+        if sv_same(name,"content-length") {
+            v:=sv_length(value);if v<0 || (length>=0 && length!=v) {return sv_refuse(SvCode.malformed);}length=v;
+        }else if sv_same(name,"transfer-encoding") {return sv_refuse(SvCode.malformed);}
+        else if sv_same(name,"expect") {if !sv_same(value,"100-continue") {return sv_refuse(SvCode.malformed);}expect=true;}
+    }
+    if sv_path(target)!=SV_ROUTE {return sv_refuse(SvCode.not_found);}
+    if method!="POST" {return sv_refuse(SvCode.method_not_allowed);}
+    if length<0 {return sv_refuse(SvCode.malformed);}
+    if length>SV_BODY_MAX {return sv_refuse(SvCode.limit_exceeded);}
+    return SvHead.{status=SvHeadStatus.ready,head=end+4,body=length,expect=expect};
+}
+// book:end head
+sv_body_start :: (response:string)->int {at:=sv_index(response,"\r\n\r\n");if at<0 {return -1;}return at+4;}
+// A complete response: head and body, Connection: close. -1 when out is too small.
+sv_response_head :: (out:[]u8,status:int,length:int,retry:bool)->int {
+    at:=json_raw(out,0,"HTTP/1.1 ");at=json_write_int(out,at,status);at=json_raw(out,at," ");at=json_raw(out,at,sv_reason(status));
+    at=json_raw(out,at,"\r\nContent-Type: application/json\r\nContent-Length: ");at=json_write_int(out,at,length);at=json_raw(out,at,"\r\nConnection: close\r\n");
+    if retry {at=json_raw(out,at,"Retry-After: ");at=json_write_int(out,at,SV_RETRY_SECONDS);at=json_raw(out,at,"\r\n");}
+    return json_raw(out,at,"\r\n");
+}
+sv_response :: (out:[]u8,status:int,body:string)->int {
+    at:=sv_response_head(out,status,body.count,false);return json_raw(out,at,body);
+}
+sv_refusal :: (out:[]u8,code:SvCode)->int #export_c {
+    if code==SvCode.none {return -1;}
+    body:[256]u8;n:=json_raw(body[..],0,"{\"error\":{\"code\":\"");n=json_raw(body[..],n,sv_code_name(code));
+    n=json_raw(body[..],n,"\",\"message\":");n=json_write_string(body[..],n,sv_message(code));n=json_raw(body[..],n,"}}");
+    at:=sv_response_head(out,sv_status(code),n,code==SvCode.busy);return json_raw(out,at,cast(string)body[0..<n]);
+}
+sv_continue :: (out:[]u8)->int #export_c {return json_raw(out,0,SV_CONTINUE);}
+
+// ---- the NIP-DEC body
+// book:begin request
+SvQuestion :: struct {id:string;kind:PtQuestionKind;instructions:PtEntry;first:int;count:int;}
+SvPools :: struct {questions:[]SvQuestion;options:[]PtOption;raw:[]string;arena:[]u8;}
+SvRequest :: struct {code:SvCode;model:string;state:PtEntry;questions:int;options:int;}
+// book:end request
+SvDec :: struct {at:int;options:int;}
+SvText :: struct {ok:bool;value:string;}
+SvValue :: struct {code:SvCode;entry:PtEntry;raw:string;}
+// NIP-DEC's bounds. Tests decode with smaller byte bounds through the same code.
+SvBounds :: struct {model:int;state:int;questions:int;id:int;question:int;depth:int;options:int;option_id:int;levels_min:int;levels_max:int;}
+SV_QUESTIONS_MAX :: 64;
+SV_OPTIONS_MAX :: 255;
+SV_OPTION_POOL :: 16320;       // 64 questions of 255 options
+sv_nip :: ()->SvBounds {
+    return SvBounds.{model=128,state=131072,questions=SV_QUESTIONS_MAX,id=64,question=65536,depth=8,options=SV_OPTIONS_MAX,option_id=128,levels_min=2,levels_max=10};
+}
+
+SvTestPools :: struct {questions:[64]SvQuestion;options:[16320]PtOption;raw:[16320]string;arena:[262144]u8;}
+sv_test_pools :: (p:[]SvTestPools)->SvPools {return SvPools.{questions=p[0].questions[..],options=p[0].options[..],raw=p[0].raw[..],arena=p[0].arena[..]};}
+SV_Q :: "{\"model\":\"m\",\"state\":\"s\",\"questions\":";
+#test "NIP-DEC's bounds are the published values" {
+    b:=sv_nip();
+    #assert b.model==128 && b.state==131072 && b.questions==64 && b.id==64 && b.question==65536 && b.depth==8 && b.options==255 && b.option_id==128 && b.levels_min==2 && b.levels_max==10;
+}
+#test "a structured request decodes in order with borrowed and unescaped text" {
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);
+    body:="{\"v\":\"ignored\",\"model\":\"psionic-toy\",\"state\":{\"ticket\":[1,true,null]},\"questions\":{\"route\":{\"type\":\"choice\",\"instructions\":\"Which \\\"team\\\"?\",\"criteria\":{\"billing\":{\"what\":\"money\"},\"t\":null}},\"refund\":{\"criteria\":{\"false\":\"no\",\"true\":\"asks\"},\"type\":\"noul\"},\"urgency\":{\"type\":\"score\",\"criteria\":[\"low\",{\"summary\":\"high\"}],\"extra\":[1]}}}";
+    r:=sv_decode(body,pools);
+    #assert r.code==SvCode.none && r.model=="psionic-toy" && r.questions==3 && r.options==6;
+    #assert r.state.kind==PtEntryKind.json && r.state.value=="{\"ticket\":[1,true,null]}";
+    q:=pools.questions[0];#assert q.id=="route" && q.kind==PtQuestionKind.choice && q.instructions.kind==PtEntryKind.text && q.instructions.value=="Which \"team\"?" && q.first==0 && q.count==2;
+    #assert pools.options[0].name=="billing" && pools.options[0].description.kind==PtEntryKind.json && pools.options[0].description.value=="{\"what\":\"money\"}";
+    #assert pools.options[1].name=="t" && pools.options[1].description.kind==PtEntryKind.none && pools.raw[1]=="null" && pools.raw[0]=="{\"what\":\"money\"}";
+    q=pools.questions[1];#assert q.id=="refund" && q.kind==PtQuestionKind.noul && q.instructions.kind==PtEntryKind.none && q.first==2 && q.count==2;
+    #assert pools.options[2].description.value=="asks" && pools.options[3].description.value=="no";
+    q=pools.questions[2];#assert q.id=="urgency" && q.kind==PtQuestionKind.score && q.first==4 && q.count==2 && pools.raw[4]=="\"low\"" && pools.raw[5]=="{\"summary\":\"high\"}";
+    #assert pools.options[4].description.value=="low" && pools.options[5].description.kind==PtEntryKind.json;
+    text:=sv_decode("{\"model\":\"m\",\"state\":\"a\\nb\",\"questions\":{\"q\":{\"type\":\"noul\",\"criteria\":\"legacy\"},\"r\":{\"type\":\"noul\",\"criteria\":null},\"u\":{\"type\":\"noul\",\"criteria\":{}}}}",pools);
+    #assert text.code==SvCode.none && text.model=="m" && text.state.kind==PtEntryKind.text && text.state.value=="a\nb" && pools.questions[0].count==0 && pools.questions[1].count==0 && pools.questions[2].count==2;
+    #assert pools.questions[0].id=="q" && pools.questions[1].id=="r" && pools.options[0].description.kind==PtEntryKind.none;
+}
+#test "NIP-DEC shape violations refuse with stable codes" {
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);
+    cases:=[41]string.[
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\"}}",
+        "[1]",
+        "{\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\"}}}",
+        "{\"model\":\"\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\"}}}",
+        "{\"model\":7,\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\"}}}",
+        "{\"model\":\"m\",\"questions\":{\"q\":{\"type\":\"noul\"}}}",
+        "{\"model\":\"m\",\"state\":[1],\"questions\":{\"q\":{\"type\":\"noul\"}}}",
+        "{\"model\":\"m\",\"state\":3,\"questions\":{\"q\":{\"type\":\"noul\"}}}",
+        "{\"model\":\"m\",\"state\":\"s\"}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":[]}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"\":{\"type\":\"noul\"}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\"},\"q\":{\"type\":\"noul\"}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":3}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"instructions\":\"x\"}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"rank\"}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":5}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"choice\"}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"choice\",\"criteria\":{}}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"choice\",\"criteria\":{\"a\":1}}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"choice\",\"criteria\":{\"a\":null,\"a\":null}}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"choice\",\"criteria\":{\"\":null}}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"choice\",\"criteria\":[\"a\"]}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"score\",\"criteria\":[\"a\"]}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"score\",\"criteria\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\",\"k\"]}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"score\",\"criteria\":{\"a\":null}}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"score\",\"criteria\":[\"a\",false]}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\",\"criteria\":{\"maybe\":null}}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\",\"criteria\":[\"x\"]}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\",\"criteria\":{\"true\":null,\"true\":null}}}}",
+        "{\"model\":\"m\",\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\"}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\",\"type\":\"noul\"}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":3}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":[[[[[[[[[1]]]]]]]]]}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"state\":\"t\",\"questions\":{\"q\":{\"type\":\"noul\"}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\"}},\"questions\":{\"r\":{\"type\":\"noul\"}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":\"a\",\"instructions\":\"b\"}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"choice\",\"criteria\":{\"a\":null},\"criteria\":{\"b\":null}}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\",\"criteria\":{\"false\":null,\"false\":null}}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\",\"criteria\":1}}}",
+        "{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"choice\",\"type\":\"choice\",\"criteria\":{\"a\":null}}}}"];
+    for i:0..<41 {
+        r:=sv_decode(cases[i],pools);want:=SvCode.invalid_request;
+        if i==0 {want=SvCode.malformed;}if i==24 {want=SvCode.too_many_options;}
+        #assert r.code==want && r.questions==0 && r.model=="";
+    }
+    eight:="{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":[[[[[[[[1]]]]]]]]}}}";
+    #assert sv_decode(eight,pools).code==SvCode.none;
+    #assert sv_decode("{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\"}}} x",pools).code==SvCode.malformed;
+    #assert sv_decode("",pools).code==SvCode.malformed;
+    #assert sv_decode("{\"model\":\"\\ud800\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\"}}}",pools).code==SvCode.malformed;
+    #assert sv_decode("{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"choice\",\"criteria\":{\"a\":null}}}}",pools).code==SvCode.none;
+}
+#test "question, option and level counts sit exactly at NIP-DEC's limits" {
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);buffer:[8192]u8;
+    for n:63..<66 {
+        at:=json_raw(buffer[..],0,SV_Q);at=json_raw(buffer[..],at,"{");
+        for i:0..<n {if i>0 {at=json_raw(buffer[..],at,",");}at=json_raw(buffer[..],at,"\"q");at=json_write_int(buffer[..],at,i);at=json_raw(buffer[..],at,"\":{\"type\":\"noul\"}");}
+        r:=sv_decode(cast(string)buffer[0..<json_raw(buffer[..],at,"}}")],pools);
+        if n<=64 {#assert r.code==SvCode.none && r.questions==n;}else {#assert r.code==SvCode.too_many_questions;}
+    }
+    for n:254..<257 {
+        at:=json_raw(buffer[..],0,SV_Q);at=json_raw(buffer[..],at,"{\"s\":{\"type\":\"score\",\"criteria\":[null,null]},\"q\":{\"type\":\"choice\",\"criteria\":{");
+        for i:0..<n {if i>0 {at=json_raw(buffer[..],at,",");}at=json_raw(buffer[..],at,"\"o");at=json_write_int(buffer[..],at,i);at=json_raw(buffer[..],at,"\":null");}
+        r:=sv_decode(cast(string)buffer[0..<json_raw(buffer[..],at,"}}}}")],pools);
+        if n<=255 {#assert r.code==SvCode.none && r.options==n+2 && pools.questions[1].count==n;}else {#assert r.code==SvCode.too_many_options;}
+    }
+    for n:[5]int.[1,2,9,10,11] {
+        at:=json_raw(buffer[..],0,SV_Q);at=json_raw(buffer[..],at,"{\"c\":{\"type\":\"choice\",\"criteria\":{\"a\":null,\"b\":null,\"c\":null}},\"q\":{\"type\":\"score\",\"criteria\":[");
+        for i:0..<n {if i>0 {at=json_raw(buffer[..],at,",");}at=json_raw(buffer[..],at,"null");}
+        r:=sv_decode(cast(string)buffer[0..<json_raw(buffer[..],at,"]}}}")],pools);
+        if n==1 {#assert r.code==SvCode.invalid_request;}else if n<=10 {#assert r.code==SvCode.none && r.options==n+3;}else {#assert r.code==SvCode.too_many_options;}
+    }
+}
+#test "byte bounds sit exactly at their limits" {
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);buffer:[1024]u8;
+    small:=SvBounds.{model=4,state=6,questions=64,id=3,question=40,depth=2,options=255,option_id=2,levels_min=2,levels_max=10};
+    for size:[2]int.[4,5] {
+        at:=json_raw(buffer[..],0,"{\"model\":\"");for i:0..<size {buffer[at+i]='m';}at+=size;
+        r:=sv_decode_with(cast(string)buffer[0..<json_raw(buffer[..],at,"\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\"}}}")],pools,small);
+        #assert (r.code==SvCode.none)==(size<=4);
+    }
+    for size:[2]int.[3,4] {
+        at:=json_raw(buffer[..],0,"{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"");for i:0..<size {buffer[at+i]='q';}at+=size;
+        r:=sv_decode_with(cast(string)buffer[0..<json_raw(buffer[..],at,"\":{\"type\":\"noul\"}}}")],pools,small);
+        #assert (r.code==SvCode.none)==(size<=3);
+    }
+    for size:[3]int.[1,2,3] {
+        at:=json_raw(buffer[..],0,"{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"choice\",\"criteria\":{\"");for i:0..<size {buffer[at+i]='o';}at+=size;
+        r:=sv_decode_with(cast(string)buffer[0..<json_raw(buffer[..],at,"\":null}}}}")],pools,small);
+        #assert (r.code==SvCode.none)==(size<=2);
+    }
+    #assert sv_decode_with("{\"model\":\"m\",\"state\":\"abcd\",\"questions\":{\"q\":{\"type\":\"noul\"}}}",pools,small).code==SvCode.none;
+    #assert sv_decode_with("{\"model\":\"m\",\"state\":\"abcde\",\"questions\":{\"q\":{\"type\":\"noul\"}}}",pools,small).code==SvCode.invalid_request;
+    #assert sv_decode_with("{\"model\":\"m\",\"state\":{\"a\":1},\"questions\":{\"q\":{\"type\":\"noul\"}}}",pools,small).code==SvCode.invalid_request;
+    #assert sv_decode_with("{\"model\":\"m\",\"state\":{\"a\":\"\"},\"questions\":{\"q\":{\"type\":\"noul\"}}}",pools,small).code==SvCode.invalid_request;
+    #assert sv_decode_with("{\"model\":\"m\",\"state\":{\"\":1},\"questions\":{\"q\":{\"type\":\"noul\"}}}",pools,small).code==SvCode.none;
+    q:="{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":\"";
+    for size:[2]int.[7,8] {
+        at:=json_raw(buffer[..],0,q);for i:0..<size {buffer[at+i]='i';}at+=size;
+        r:=sv_decode_with(cast(string)buffer[0..<json_raw(buffer[..],at,"\"}}}")],pools,small);
+        #assert (r.code==SvCode.none)==(size<=7);
+    }
+    #assert sv_decode_with("{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":[[1]]}}}",pools,small).code==SvCode.none;
+    #assert sv_decode_with("{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":[[[1]]]}}}",pools,small).code==SvCode.invalid_request;
+    #assert sv_decode_with("{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":[[],[]]}}}",pools,small).code==SvCode.none;
+}
+#test "state depth past the parser, short pools and oversized bodies" {
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);buffer:[1024]u8;
+    for depth:14..<17 {
+        at:=json_raw(buffer[..],0,"{\"model\":\"m\",\"state\":");for i:0..<depth {at=json_raw(buffer[..],at,"{\"a\":");}at=json_raw(buffer[..],at,"1");for i:0..<depth {at=json_raw(buffer[..],at,"}");}
+        r:=sv_decode(cast(string)buffer[0..<json_raw(buffer[..],at,",\"questions\":{\"q\":{\"type\":\"noul\"}}}")],pools);
+        if depth<=15 {#assert r.code==SvCode.none;}else {#assert r.code==SvCode.unsupported_input;}
+    }
+    small:=pools;small.arena=small.arena[0..<10];
+    #assert sv_decode("{\"model\":\"m\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\"}}}",small).code==SvCode.internal;
+    small=pools;small.questions=small.questions[0..<63];#assert sv_decode("{}",small).code==SvCode.internal;
+    small=pools;small.options=small.options[0..<16319];#assert sv_decode("{}",small).code==SvCode.internal;
+    small=pools;small.raw=small.raw[0..<16319];#assert sv_decode("{}",small).code==SvCode.internal;
+    #assert sv_decode(cast(string)pools.arena[0..<262144],pools).code==SvCode.malformed;
+    big:[1]SvTestPools;over:=sv_test_pools(big[..]);#assert sv_decode(cast(string)big[0].arena[0..<262144],over).code==SvCode.malformed;
+}
+#test "a body past 256 KiB is refused before it is parsed" {
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);over:[262145]u8;
+    #assert sv_decode(cast(string)over[..],pools).code==SvCode.internal;
+    bigger:[262145]u8;pools.arena=bigger[..];#assert sv_decode(cast(string)over[..],pools).code==SvCode.limit_exceeded;
+}
+#test "decoding helpers read kinds, depths and whole documents" {
+    #assert sv_kind("noul")==1 && sv_kind("choice")==0 && sv_kind("score")==2 && sv_kind("rank")==-1 && sv_kind("n\\u006fu\\u006c")==1;
+    #assert sv_valid("{}")==SvCode.none && sv_valid("{")==SvCode.malformed && sv_valid("{} {}")==SvCode.malformed;
+    deep:[64]u8;at:=0;for i:0..<16 {at=json_raw(deep[..],at,"[");}#assert sv_valid(cast(string)deep[0..<at])==SvCode.unsupported_input;
+    at=0;for i:0..<15 {at=json_raw(deep[..],at,"[");}#assert sv_valid(cast(string)deep[0..<at])==SvCode.malformed;
+    j:[1]Json;json_start(j[..],"[[1],[[2]]]");t:=json_next(j[..]);#assert sv_within(j[..],3) && j[0].tok==JSON_ARRAY_END && j[0].depth==0;
+    json_start(j[..],"[[1],[[2]]]");t=json_next(j[..]);#assert !sv_within(j[..],2);
+    json_start(j[..],"{\"a\":[]}");t=json_next(j[..]);#assert sv_within(j[..],2) && t==JSON_OBJECT;
+    json_start(j[..],"[[]]");t=json_next(j[..]);#assert !sv_within(j[..],1);
+    json_start(j[..],"[]");t=json_next(j[..]);#assert sv_within(j[..],1);
+    arena:[8]u8;d:=[1]SvDec.[SvDec.{}];json_start(j[..],"[\"ab\",\"c\"]");t=json_next(j[..]);t=json_next(j[..]);
+    a:=sv_text(j[..],d[..],arena[..]);t=json_next(j[..]);c:=sv_text(j[..],d[..],arena[..]);
+    #assert a.ok && c.ok && a.value=="ab" && c.value=="c" && d[0].at==3;
+    t=json_next(j[..]);json_start(j[..],"[\"abcdefgh\"]");t=json_next(j[..]);t=json_next(j[..]);#assert !sv_text(j[..],d[..],arena[..]).ok;
+}
+
+// The whole body is one JSON value before any field is read. A document
+// that reaches the reader's depth is refused as unsupported, not malformed.
+sv_valid :: (text:string)->SvCode {
+    j:[1]Json;json_start_bounded(j[..],text,text.count,text.count);t:=json_next(j[..]);
+    while t!=JSON_END {if t==JSON_ERROR {if j[0].depth==JSON_DEPTH {return SvCode.unsupported_input;}return SvCode.malformed;}t=json_next(j[..]);}
+    return SvCode.none;
+}
+// The string token just read, unescaped into the arena.
+sv_text :: (j:[]Json,d:[]SvDec,arena:[]u8)->SvText {
+    n:=json_unescape(json_text(j),arena[d[0].at..<arena.count]);if n<0 {return SvText.{};}
+    value:=cast(string)arena[d[0].at..<d[0].at+n];d[0].at+=n;return SvText.{ok=true,value=value};
+}
+// Skip the container whose opening token was just read; false when it nests past limit.
+sv_within :: (j:[]Json,limit:int)->bool {
+    base:=j[0].depth-1;ok:=j[0].depth-base<=limit;
+    while j[0].depth>base {t:=json_next(j);if j[0].depth-base>limit {ok=false;}}
+    return ok;
+}
+sv_kind :: (raw:string)->int {
+    if json_is(raw,"choice") {return 0;}if json_is(raw,"noul") {return 1;}if json_is(raw,"score") {return 2;}return -1;
+}
+// An EntryType value whose first token was just read: a string, null, an object or an array.
+sv_entry :: (j:[]Json,d:[]SvDec,arena:[]u8,b:SvBounds)->SvValue {
+    t:=j[0].tok;start:=j[0].from;
+    if t==JSON_STRING {
+        raw:=j[0].text[start-1..<j[0].to+1];text:=sv_text(j,d,arena);if !text.ok {return SvValue.{code=SvCode.malformed};}
+        return SvValue.{entry=PtEntry.{kind=PtEntryKind.text,value=text.value},raw=raw};
+    }
+    if t==JSON_NULL {return SvValue.{raw=json_text(j)};}
+    if t!=JSON_OBJECT && t!=JSON_ARRAY {return SvValue.{code=SvCode.invalid_request};}
+    if !sv_within(j,b.depth) {return SvValue.{code=SvCode.invalid_request};}
+    raw:=j[0].text[start..<j[0].at];return SvValue.{entry=PtEntry.{kind=PtEntryKind.json,value=raw},raw=raw};
+}
+sv_option :: (pools:SvPools,d:[]SvDec,name:string,v:SvValue) {
+    pools.options[d[0].options]=PtOption.{name=name,description=v.entry};pools.raw[d[0].options]=v.raw;d[0].options+=1;
+}
+// The criteria of one question, re-read from their own bytes once the type is known.
+sv_criteria :: (kind:PtQuestionKind,criteria:string,pools:SvPools,d:[]SvDec,b:SvBounds)->SvCode {
+    j:[1]Json;
+    if criteria.count==0 {if kind==PtQuestionKind.noul {return SvCode.none;}return SvCode.invalid_request;}
+    json_start_bounded(j[..],criteria,criteria.count,criteria.count);t:=json_next(j[..]);first:=d[0].options;
+    if kind==PtQuestionKind.noul {
+        if t==JSON_NULL || t==JSON_STRING {return SvCode.none;}
+        if t!=JSON_OBJECT {return SvCode.invalid_request;}
+        sv_option(pools,d,"yes",SvValue.{raw="null"});sv_option(pools,d,"no",SvValue.{raw="null"});seen:=[2]bool.[false,false];
+        while true {
+            t=json_next(j[..]);if t==JSON_OBJECT_END {return SvCode.none;}
+            slot:=-1;if json_is(json_text(j[..]),"true") {slot=0;}else if json_is(json_text(j[..]),"false") {slot=1;}
+            if slot<0 || seen[slot] {return SvCode.invalid_request;}seen[slot]=true;
+            t=json_next(j[..]);v:=sv_entry(j[..],d,pools.arena,b);if v.code!=SvCode.none {return v.code;}
+            pools.options[first+slot].description=v.entry;
+        }
+    }
+    if kind==PtQuestionKind.choice {
+        if t!=JSON_OBJECT {return SvCode.invalid_request;}
+        while true {
+            t=json_next(j[..]);if t==JSON_OBJECT_END {break;}
+            if d[0].options-first==b.options {return SvCode.too_many_options;}
+            name:=sv_text(j[..],d,pools.arena);if !name.ok {return SvCode.malformed;}
+            if name.value.count<1 || name.value.count>b.option_id {return SvCode.invalid_request;}
+            for i:first..<d[0].options {if pools.options[i].name==name.value {return SvCode.invalid_request;}}
+            t=json_next(j[..]);v:=sv_entry(j[..],d,pools.arena,b);if v.code!=SvCode.none {return v.code;}
+            sv_option(pools,d,name.value,v);
+        }
+        if d[0].options==first {return SvCode.invalid_request;}
+        return SvCode.none;
+    }
+    if t!=JSON_ARRAY {return SvCode.invalid_request;}
+    while true {
+        t=json_next(j[..]);if t==JSON_ARRAY_END {break;}
+        if d[0].options-first==b.levels_max {return SvCode.too_many_options;}
+        v:=sv_entry(j[..],d,pools.arena,b);if v.code!=SvCode.none {return v.code;}
+        sv_option(pools,d,"",v);
+    }
+    if d[0].options-first<b.levels_min {return SvCode.invalid_request;}
+    return SvCode.none;
+}
+// One question object whose opening token was just read.
+sv_question :: (j:[]Json,d:[]SvDec,pools:SvPools,q:[]SvQuestion,b:SvBounds)->SvCode {
+    start:=j[0].from;kind:=-1;described:=false;criteried:=false;criteria:="";
+    while true {
+        t:=json_next(j);if t==JSON_OBJECT_END {break;}
+        key:=json_text(j);t=json_next(j);
+        if json_is(key,"type") {
+            if kind>=0 || t!=JSON_STRING {return SvCode.invalid_request;}
+            kind=sv_kind(json_text(j));if kind<0 {return SvCode.invalid_request;}
+        }else if json_is(key,"instructions") {
+            if described {return SvCode.invalid_request;}described=true;
+            v:=sv_entry(j,d,pools.arena,b);if v.code!=SvCode.none {return v.code;}q[0].instructions=v.entry;
+        }else if json_is(key,"criteria") {
+            if criteried {return SvCode.invalid_request;}criteried=true;
+            from:=j[0].from;if t==JSON_STRING {from-=1;}
+            ok:=json_skip(j);criteria=j[0].text[from..<j[0].at];
+        }else {ok:=json_skip(j);}
+    }
+    if j[0].at-start>b.question || kind<0 {return SvCode.invalid_request;}
+    q[0].kind=cast(PtQuestionKind)kind;q[0].first=d[0].options;code:=sv_criteria(q[0].kind,criteria,pools,d,b);q[0].count=d[0].options-q[0].first;
+    return code;
+}
+sv_decode_core :: (body:string,pools:SvPools,b:SvBounds,r:[]SvRequest)->SvCode {
+    if pools.questions.count<SV_QUESTIONS_MAX || pools.options.count<SV_OPTION_POOL || pools.raw.count<SV_OPTION_POOL || pools.arena.count<body.count {return SvCode.internal;}
+    if body.count>SV_BODY_MAX {return SvCode.limit_exceeded;}
+    valid:=sv_valid(body);if valid!=SvCode.none {return valid;}
+    j:[1]Json;d:=[1]SvDec.[SvDec.{}];json_start_bounded(j[..],body,body.count,body.count);
+    t:=json_next(j[..]);if t!=JSON_OBJECT {return SvCode.invalid_request;}
+    modeled:=false;stated:=false;asked:=false;
+    while true {
+        t=json_next(j[..]);if t==JSON_OBJECT_END {break;}
+        key:=json_text(j[..]);t=json_next(j[..]);
+        if json_is(key,"model") {
+            if modeled || t!=JSON_STRING {return SvCode.invalid_request;}modeled=true;
+            name:=sv_text(j[..],d[..],pools.arena);if !name.ok {return SvCode.malformed;}
+            if name.value.count<1 || name.value.count>b.model {return SvCode.invalid_request;}r[0].model=name.value;
+        }else if json_is(key,"state") {
+            if stated || (t!=JSON_STRING && t!=JSON_OBJECT) {return SvCode.invalid_request;}stated=true;
+            from:=j[0].from;
+            if t==JSON_STRING {
+                from-=1;text:=sv_text(j[..],d[..],pools.arena);if !text.ok {return SvCode.malformed;}
+                r[0].state=PtEntry.{kind=PtEntryKind.text,value=text.value};
+            }else {
+                ok:=json_skip(j[..]);r[0].state=PtEntry.{kind=PtEntryKind.json,value=j[0].text[from..<j[0].at]};
+            }
+            if j[0].at-from>b.state {return SvCode.invalid_request;}
+        }else if json_is(key,"questions") {
+            if asked || t!=JSON_OBJECT {return SvCode.invalid_request;}asked=true;
+            while true {
+                t=json_next(j[..]);if t==JSON_OBJECT_END {break;}
+                if r[0].questions==b.questions {return SvCode.too_many_questions;}
+                id:=sv_text(j[..],d[..],pools.arena);if !id.ok {return SvCode.malformed;}
+                if id.value.count<1 || id.value.count>b.id {return SvCode.invalid_request;}
+                for i:0..<r[0].questions {if pools.questions[i].id==id.value {return SvCode.invalid_request;}}
+                t=json_next(j[..]);if t!=JSON_OBJECT {return SvCode.invalid_request;}
+                q:=[1]SvQuestion.[SvQuestion.{id=id.value}];code:=sv_question(j[..],d[..],pools,q[..],b);if code!=SvCode.none {return code;}
+                pools.questions[r[0].questions]=q[0];r[0].questions+=1;
+            }
+        }else {ok:=json_skip(j[..]);}
+    }
+    if !modeled || !stated || r[0].questions==0 {return SvCode.invalid_request;}
+    r[0].options=d[0].options;return SvCode.none;
+}
+sv_decode_with :: (body:string,pools:SvPools,b:SvBounds)->SvRequest {
+    r:=[1]SvRequest.[SvRequest.{}];code:=sv_decode_core(body,pools,b,r[..]);
+    if code!=SvCode.none {return SvRequest.{code=code};}
+    return r[0];
+}
+// book:begin decode
+sv_decode :: (body:string,pools:SvPools)->SvRequest #export_c {return sv_decode_with(body,pools,sv_nip());}
+// book:end decode

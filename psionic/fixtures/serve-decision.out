@@ -1,0 +1,11 @@
+served: psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573
+bytes: action decide, 2 questions, deadline at 30003 ms
+second connection: HTTP/1.1 503 Service Unavailable
+decision: answered
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 381
+Connection: close
+
+{"model":"psionic-toy","answers":{"hot":{"type":"noul","noul":0.437308645},"drink":{"type":"choice","choice":"soup","confidence":0.562514618,"probabilities":{"tea":0.437485382,"soup":0.562514618}}},"usage":null,"service":{"door":"psionic","version":"psionic-serve-v1","identity":"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573"},"latency_ms":0}
+done: action answer, slot idle

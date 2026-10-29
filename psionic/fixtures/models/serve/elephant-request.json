@@ -1,0 +1,1 @@
+{"model":"elephant-1","state":"Water is wet.","questions":{"wet":{"type":"choice","instructions":"Is the water wet?","criteria":{"yes":null,"no":null}}}}

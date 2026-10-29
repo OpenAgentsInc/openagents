@@ -1,0 +1,6 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 339
+Connection: close
+
+{"model":"elephant-1","answers":{"wet":{"type":"choice","choice":"yes","confidence":0.757196285,"probabilities":{"yes":0.757196285,"no":0.242803715}}},"usage":null,"service":{"door":"psionic","version":"psionic-serve-v1","identity":"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba"},"latency_ms":2816952}

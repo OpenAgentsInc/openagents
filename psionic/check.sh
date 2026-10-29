@@ -99,7 +99,7 @@ python3 -I psionic/tests/elephant_reference_fixture.py
 python3 -I psionic/tests/elephant_reference_fixture.py --check-output psionic/fixtures/models/elephant/psionic-reference.txt
 python3 -I psionic/tests/session_fixture.py
 "$text_python" -I psionic/tests/prepare_oracle.py --header > "$out/prepare-golden.h"
-coax_units=(trace-machine exact-memory soft-memory relu-arith gate-graph compiler-harness harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality)
+coax_units=(trace-machine exact-memory soft-memory relu-arith gate-graph compiler-harness harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality serve-request serve-engine)
 native_units=(exact-memory soft-memory gate-graph compiler-harness harmony gptoss-attention moe mxfp4 learn tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout rank5 rank5-bundle access layer-map model-map decision-calibration decision-json decision-quality)
 native_source() {
     case "$1" in
@@ -272,6 +272,14 @@ if [[ $deepseek == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_router.sh --mutate --jobs "$jobs"
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_v2_math.sh --mutate --jobs "$jobs"
     phase "DeepSeek implemented units"
+fi
+# Chapter 16: the toy model, the serve-run loop and real loopback servers.
+if [[ ${#only[@]} -eq 0 || " ${selected_coax[*]-} " == *" serve-"* ]]; then
+    python3 -I psionic/tests/serve_fixture.py
+    "$coax" test psionic/lib/serve-run.coax
+    "$coax" test psionic/lib/serve-run.coax --release
+    COAX="$coax" COAX_CC="$cc" psionic/tests/serve.sh
+    phase "chapter 16 server"
 fi
 python3 -I psionic/tests/book.py --coax "$coax" --jobs "$jobs"
 phase book
