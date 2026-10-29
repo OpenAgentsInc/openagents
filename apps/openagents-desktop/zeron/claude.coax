@@ -29,6 +29,8 @@
 // install line when claude is missing. Based on Zeron by Wing, MIT.
 
 #load "transcript.coax";
+#load "picker.coax";
+#load "attachments.coax";
 #load "claude_fixture.coax";
 #load "../../../coax/lib/agent/claude/claude.coax";
 
@@ -510,15 +512,78 @@ s_drop_turn :: (s: [] Session, ui: [] SUi) -> bool {
 
 // ---------------------------------------------------------------- the engine
 
+// Zeron's access levels for Claude (its access picker): Full access answers
+// every permission prompt itself; Auto-accept edits runs in acceptEdits and
+// asks for the rest; Supervised asks for each call. Plan mode runs in plan.
+ACC_FULL :: 0; ACC_EDITS :: 1; ACC_SUPERVISED :: 2;
+ACCESS_NAMES :: [3] string.["Full access", "Auto-accept edits", "Supervised"];
+ACCESS_DESCS :: [3] string.["Run commands and edits without asking.", "Apply edits, ask before other actions.", "Ask before commands and file changes."];
+
+// Zeron's Claude catalog (its model cache: the CLI's models with their
+// effort ladders) and effort levels. The first row is the CLI's own
+// default (no --model). Ultracode runs at xhigh with ultracode on in the
+// settings; Ultrathink sends no --effort and opens the message with
+// "Ultrathink:" (harness/src/claude/effort.rs to_effort); X-High falls
+// back to Max on a model without it.
+// The Lab's router names three models and five efforts (lab.coax); a
+// decision lands on the catalog's model with that id (or its family) and on
+// the level of the same index.
 MODEL_IDS :: [3] string.["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
 MODEL_NAMES :: [3] string.["Opus 5.5", "Sonnet 5.5", "Haiku 5.5"];
 EFFORT_IDS :: [5] string.["low", "medium", "high", "xhigh", "max"];
 EFFORT_NAMES :: [5] string.["Low", "Medium", "High", "X-High", "Max"];
-// Zeron's access levels for Claude (its access picker): Full access answers
-// every permission prompt itself; Auto-accept edits runs in acceptEdits and
-// asks for the rest; Supervised asks for each call.
-ACC_FULL :: 0; ACC_EDITS :: 1; ACC_SUPERVISED :: 2;
-ACCESS_NAMES :: [3] string.["Full access", "Auto-accept edits", "Supervised"];
+CLAUDE_LEVEL_IDS :: [7] string.["low", "medium", "high", "xhigh", "max", "ultracode", "ultrathink"];
+CLAUDE_LEVEL_NAMES :: [7] string.["Low", "Medium", "High", "X-High", "Max", "Ultracode", "Ultrathink"];
+LV_XHIGH :: 3; LV_MAX :: 4; LV_ULTRACODE :: 5; LV_ULTRATHINK :: 6;
+LADDER_FULL :: 127; LADDER_NO_ULTRACODE :: 95; LADDER_CLASSIC :: 23;   // all; less Ultracode; low, medium, high, max
+CLAUDE_TINT :: Rgba.{r = 0.851, g = 0.467, b = 0.341, a = 1};          // #d97757, the mark's brand tone
+claude_catalog :: () -> PkCatalog {
+  c := PkCatalog.{provider = "Claude", icon = ICON_CLAUDE_14, tint = CLAUDE_TINT, levels = 7, default_level = 2,
+                  access = 3, full_access = 2, plan = true};
+  ids := [13] string.["", "claude-fable-5-1", "claude-fable-5", "claude-opus-5-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5",
+                      "claude-haiku-4-5", "opus", "claude-sonnet-5-5", "claude-opus-5", "claude-opus-4-6", "claude-sonnet-4-6"];
+  names := [13] string.["Default (recommended)", "Fable 5.1", "Fable 5", "Opus 5.5", "Opus 4.8", "Opus 4.7", "Sonnet 5",
+                        "Haiku 4.5", "Opus 5.5", "Sonnet 5.5", "Opus 5", "Opus 4.6", "Sonnet 4.6"];
+  descs := [13] string.["Haiku 5.5", "Most intelligent model for building agents", "Previous generation Fable", "Best for everyday, complex tasks",
+                        "Previous generation Opus", "Older generation Opus", "Balanced speed and intelligence", "Fastest model for everyday tasks",
+                        "", "Most efficient for simpler tasks", "Best for everyday, complex tasks", "", "Efficient for routine tasks"];
+  ladders := [13] int.[LADDER_FULL, LADDER_FULL, LADDER_FULL, LADDER_FULL, LADDER_FULL, LADDER_NO_ULTRACODE, LADDER_NO_ULTRACODE,
+                       0, LADDER_FULL, LADDER_FULL, LADDER_FULL, LADDER_CLASSIC, LADDER_CLASSIC];
+  c.n = 13;
+  for k: 0..<13 { c.id[k] = ids[k]; c.label[k] = names[k]; c.desc[k] = descs[k]; c.ladder[k] = ladders[k]; }
+  lids := CLAUDE_LEVEL_IDS; lnames := CLAUDE_LEVEL_NAMES;
+  for k: 0..<7 { c.level_id[k] = lids[k]; c.level_label[k] = lnames[k]; }
+  // the menu's order: Supervised, Auto-accept edits, Full access
+  names3 := ACCESS_NAMES; descs3 := ACCESS_DESCS;
+  order := [3] int.[ACC_SUPERVISED, ACC_EDITS, ACC_FULL];
+  for k: 0..<3 { c.access_label[k] = names3[order[k]]; c.access_desc[k] = descs3[order[k]]; c.access_value[k] = order[k]; }
+  return c;
+}
+// The catalog's model with this id, else the first of its family
+// ("claude-haiku-5-5" lands on Haiku 4.5 when there is no 5.5), else Default.
+claude_model_index :: (cat: [] PkCatalog, id: string) -> int {
+  for k: 0..<cat[0].n { if cat[0].id[k] == id { return k; } }
+  fam := 0; dashes := 0;
+  while fam < id.count && dashes < 2 { if id[fam] == '-' { dashes += 1; } fam += 1; }
+  if dashes == 2 {
+    for k: 0..<cat[0].n { m := cat[0].id[k]; if m.count >= fam && cast(string) m[0..<fam] == cast(string) id[0..<fam] { return k; } }
+  }
+  return 0;
+}
+// Whether a model takes --effort xhigh (supports_xhigh).
+claude_xhigh :: (id: string) -> bool {
+  pre := [6] string.["claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-opus-4-7", "claude-opus-4-8", "claude-opus-4-9"];
+  for p: pre { if id.count >= p.count && cast(string) id[0..<p.count] == p { return true; } }
+  return id == "opus";
+}
+// The --effort a level runs with on a model ("" for none) and whether ultracode is on.
+claude_effort :: (cat: [] PkCatalog, m: int, level: int) -> string {
+  lv := pk_level_for(cat, m, level);
+  if lv < 0 || lv == LV_ULTRATHINK { return ""; }
+  ids := CLAUDE_LEVEL_IDS;
+  if lv == LV_ULTRACODE || lv == LV_XHIGH { return ifx claude_xhigh(cat[0].id[m]) then "xhigh" else "max"; }
+  return ids[lv];
+}
 INSTALL_LINE :: "curl -fsSL https://claude.ai/install.sh | bash";
 
 E_PATH :: 4096; E_FILE :: 1024;
@@ -530,8 +595,14 @@ Engine :: struct {
   running: bool;                     // the CLI is up
   ready: bool;                       // it answered initialize
   pend: int;                         // a user part waiting for initialize, or -1
-  model: int; effort: int; access: int;            // chosen (indices)
-  run_effort: int;                   // what the running CLI was started with
+  model: int; effort: int; access: int;            // chosen (the catalog's model and level, ACC_*)
+  plan: bool;                        // plan mode
+  cat: [1] PkCatalog;                // claude_catalog
+  run_effort: [24] u8; run_n: int;   // what the running CLI was started with (its --effort, "+" for ultracode)
+  // the message owed to the CLI (its text for Claude, chips as labels) and
+  // the attachments whose images go with it
+  prompt: [] u8; prompt_n: int;      // (the screen's buffer)
+  att: [] Attachments;
   // the login shell's PATH and claude, probed once
   probe: int; probed: bool;
   probe_out: [E_PATH + 1024] u8; probe_n: int;
@@ -615,12 +686,14 @@ e_start :: (e: [] Engine, s: [] Session) -> bool {
   o: [1] ClOptions;
   o[0].persist_session = true; o[0].control_timeout_ms = 60000;
   if e[0].claude_n > 0 { o[0].program = e_str(e[0].claude[..], e[0].claude_n); }
-  models := MODEL_IDS; efforts := EFFORT_IDS;
-  o[0].model = models[e[0].model]; o[0].effort = efforts[e[0].effort];
+  cat := e[0].cat[..];
+  o[0].model = cat[0].id[e[0].model];
+  o[0].effort = claude_effort(cat, e[0].model, e[0].effort);
+  if pk_level_for(cat, e[0].model, e[0].effort) == LV_ULTRACODE { o[0].settings = "{\"ultracode\":true}"; }
   o[0].include_partial_messages = true;
   o[0].thinking_display = "summarized";
   o[0].permission_handler = true;
-  o[0].permission_mode = ifx e[0].access == ACC_EDITS then ClPermissionMode.accept_edits else ClPermissionMode.default;
+  o[0].permission_mode = e_mode(e);
   if e[0].cwd_n > 0 { o[0].cwd = e_str(e[0].cwd[..], e[0].cwd_n); }
   if e[0].path_n > 5 { cl_add_env(o[..], e_str(e[0].path_env[..], e[0].path_n)); }
   cl_remove_env(o[..], "ANTHROPIC_API_KEY");
@@ -635,25 +708,77 @@ e_start :: (e: [] Engine, s: [] Session) -> bool {
     s_turn_end(s, false, "");
     return false;
   }
-  e[0].running = true; e[0].ready = false; e[0].run_effort = e[0].effort;
+  e[0].running = true; e[0].ready = false; e[0].run_n = e_effort_key(e, e[0].run_effort[..]);
   return true;
 }
+e_mode :: (e: [] Engine) -> ClPermissionMode {
+  if e[0].plan { return ClPermissionMode.plan; }
+  return ifx e[0].access == ACC_EDITS then ClPermissionMode.accept_edits else ClPermissionMode.default;
+}
+// What the CLI must be started with for the chosen model and level (a new one restarts it).
+e_effort_key :: (e: [] Engine, out: [] u8) -> int {
+  k := e_set(out, 0, claude_effort(e[0].cat[..], e[0].model, e[0].effort));
+  if pk_level_for(e[0].cat[..], e[0].model, e[0].effort) == LV_ULTRACODE { k = e_set(out, k, "+"); }
+  return k;
+}
+e_restart_due :: (e: [] Engine) -> bool {
+  now: [24] u8;
+  n := e_effort_key(e, now[..]);
+  return e_str(now[..], n) != e_str(e[0].run_effort[..], e[0].run_n);
+}
+// The message to the CLI: Ultrathink's opener, the text, and (written in
+// place) the images attached to it before the text.
+e_deliver :: (e: [] Engine) {
+  q := e[0].q[..];
+  text := cast(string) e[0].prompt[0..<e[0].prompt_n];
+  images := 0;
+  if e[0].att.count > 0 { for j: 0..<e[0].att[0].sn { if at_media_of(e[0].att, j).count > 0 { images += 1; } } }
+  if images == 0 { cl_send_user(q, text); }
+  else {
+    o := q[0].out[..];
+    cl_user_open(o);
+    if e[0].att.count > 0 {
+      t := e[0].att;
+      for j: 0..<t[0].sn {
+        m := at_media_of(t, j);
+        if m.count > 0 { cl_image_block_bytes(o, m, at_bytes(t, t[0].files[j])); cl_put(o, ","); }
+      }
+    }
+    cl_text_block(o, text);
+    cl_user_close(o, cl_session_id(q), q[0].options.verbatim_prompts);
+  }
+  if e[0].att.count > 0 { at_delivered(e[0].att); }
+}
 
-// The user sent a message: it joins the transcript, then goes to the CLI
-// (started, or restarted for a new effort, first).
-e_send :: (e: [] Engine, s: [] Session, text: string) {
+// The user sent a message: it joins the transcript as shown (its
+// attachments' chips), then goes to the CLI as text (started, or restarted
+// for a new effort, first).
+e_send :: (e: [] Engine, s: [] Session, text: string) { e_send_as(e, s, text, text); }
+e_send_as :: (e: [] Engine, s: [] Session, shown: string, text: string) {
   was_live := s[0].live;
-  s_user(s, text);
-  e_forward(e, s, s[0].n - 1, was_live);
+  s_user(s, shown);
+  e_prompt(e, text);
+  e_go(e, s, s[0].n - 1, was_live);
 }
 // User part k goes to the CLI (the Lab sends it here once Elephant has routed it).
-e_forward :: (e: [] Engine, s: [] Session, k: int, was_live: bool) {
-  if !e[0].on { return; }
+e_forward :: (e: [] Engine, s: [] Session, k: int, was_live: bool) { e_prompt(e, s_text_of(s, k)); e_go(e, s, k, was_live); }
+// What the CLI reads: the text, Ultrathink opening it (to_effort).
+e_prompt :: (e: [] Engine, text: string) {
+  pre := ifx pk_level_for(e[0].cat[..], e[0].model, e[0].effort) == LV_ULTRATHINK then "Ultrathink:\n" else "";
+  if text.count + pre.count <= e[0].prompt.count {
+    for i: 0..<text.count { e[0].prompt[text.count - 1 - i + pre.count] = text[text.count - 1 - i]; }   // back to front: text may already sit in this buffer
+    for i: 0..<pre.count { e[0].prompt[i] = pre[i]; }
+    e[0].prompt_n = text.count + pre.count;
+  } else { e[0].prompt_n = e_set(e[0].prompt, 0, text); }
+}
+// The prompt goes (started, or restarted for a new effort, first).
+e_go :: (e: [] Engine, s: [] Session, k: int, was_live: bool) {
+  if !e[0].on { if e[0].att.count > 0 { at_delivered(e[0].att); } return; }
   if !e[0].probed { e[0].pend = k; return; }   // e_pump starts it once PATH is known
-  if e[0].running && e[0].run_effort != e[0].effort && e[0].ready && !was_live { e_close(e); }
+  if e[0].running && e_restart_due(e) && e[0].ready && !was_live { e_close(e); }
   if !e[0].running { e[0].pend = k; if !e_start(e, s) { e[0].pend = -1; } return; }
   if !e[0].ready { e[0].pend = k; return; }
-  cl_send_user(e[0].q[..], s_text_of(s, k));
+  e_deliver(e);
 }
 e_close :: (e: [] Engine) {
   if e[0].p[0].handle >= 0 { cl_close(e[0].p[..]); }
@@ -677,14 +802,21 @@ e_stop :: (e: [] Engine, s: [] Session) {
 // The chips: the model and access change the running CLI (set_model,
 // set_permission_mode); a new effort starts it again with the next message.
 e_set_model :: (e: [] Engine, m: int) {
+  if m < 0 || m >= e[0].cat[0].n { return; }
   e[0].model = m;
-  if e[0].on && e[0].running && e[0].ready { models := MODEL_IDS; r := cl_set_model(e[0].q[..], models[m]); }
+  if e[0].on && e[0].running && e[0].ready { r := cl_set_model(e[0].q[..], e[0].cat[0].id[m]); }
 }
 e_set_access :: (e: [] Engine, a: int) {
   e[0].access = a;
-  if e[0].on && e[0].running && e[0].ready {
-    r := cl_set_permission_mode(e[0].q[..], ifx a == ACC_EDITS then ClPermissionMode.accept_edits else ClPermissionMode.default);
-  }
+  if e[0].on && e[0].running && e[0].ready { r := cl_set_permission_mode(e[0].q[..], e_mode(e)); }
+}
+e_set_plan :: (e: [] Engine, on: bool) {
+  e[0].plan = on;
+  if e[0].on && e[0].running && e[0].ready { r := cl_set_permission_mode(e[0].q[..], e_mode(e)); }
+}
+// The engine before the host's buffers: its catalog, High.
+e_init :: (e: [] Engine) {
+  if e[0].cat[0].n == 0 { e[0].cat[0] = claude_catalog(); e[0].effort = 2; }
 }
 
 // An approval's answer (the chip's Allow or Deny).
@@ -730,7 +862,7 @@ e_pump :: (e: [] Engine, s: [] Session) {
     if ev.kind == ClEventKind.idle { return; }
     if ev.kind == ClEventKind.initialized {
       e[0].ready = true;
-      if e[0].pend >= 0 { cl_send_user(e[0].q[..], s_text_of(s, e[0].pend)); e[0].pend = -1; }
+      if e[0].pend >= 0 { e_deliver(e); e[0].pend = -1; }
       continue;
     }
     if ev.kind == ClEventKind.message {

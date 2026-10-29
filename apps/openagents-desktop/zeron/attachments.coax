@@ -1,0 +1,312 @@
+// Attachments the way Zeron stages them (crates/zeron/src/composer/
+// attachments.rs, chip.rs, prompt.rs; the Claude harness's user message).
+// The host stages each file (the paperclip's open panel, a drop, a paste)
+// into the app's uploads folder as Zeron does ({id8}-{name}, 24 MB at
+// most) and hands over the staged path, the file's name and, up to 5 MB,
+// its bytes. The draft gets an inline chip where the caret is: an image is
+// "Image N" (counted per draft) with the gallery mark, any other file its
+// name with the file theme's mark; the chip is one character (a code point
+// gpui.coax paints as the chip), so the caret steps over it and Backspace
+// takes it whole. On send the chips still in the text become their labels,
+// the message lists every attachment's path ("Attached images (local
+// files — open them to view):"), an empty message says "See the attached
+// image(s)." or "See the attached file(s).", and each image whose type is
+// known (png, jpeg, gif, webp by name or by its first bytes) and that fits
+// 5 MB goes to Claude as a base64 image block before the text (the SDK's
+// cl_image_block_bytes encodes it into the frame).
+//
+// An engine that reads text alone (Psionic's Responses API) takes
+// at_text_only: a text file's contents inline under its name; an image or
+// another binary file is refused with a message saying so.
+
+#load "composer.coax";
+
+AT_MAX :: 16;
+AT_PATH :: 256;
+AT_NAME :: 256;
+AT_INLINE_MAX :: 5242880;       // 5 MB: an image inlined (Claude's own limit)
+AT_STAGE_MAX_MB :: 24;          // what the host stages
+AT_TEXT_MAX :: 262144;          // a text file inlined for a text-only engine
+AT_FILE_TINT :: Rgba.{r = 0.796, g = 0.835, b = 0.882, a = 1};   // the file theme's dark tint, #CBD5E1
+
+AtFile :: struct {
+  chip: int;                    // its chip (gpui.coax's registry)
+  image: bool;
+  label: [64] u8; ln: int;
+  path: [AT_PATH] u8; pn: int;  // where it was staged
+  at: int; n: int;              // its bytes in the store (n 0: not kept)
+}
+Attachments :: struct {
+  store: [] u8; used: int;      // the bytes, the host's buffer
+  // the message last sent (until it is delivered), then the draft's
+  files: [AT_MAX] AtFile; sn: int; n: int;
+  images: int;                  // the draft's images so far (Image N)
+  next_chip: int;
+}
+
+at_lower_ext :: (name: string, out: [] u8) -> string {
+  dot := -1;
+  for i: 0..<name.count { if name[i] == '.' { dot = i; } if name[i] == '/' { dot = -1; } }
+  if dot < 0 { return ""; }
+  n := 0;
+  for i: dot + 1..<name.count { if n < out.count { c := name[i]; out[n] = ifx c >= 'A' && c <= 'Z' then c + 32 else c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+// is_image_path: what the chip calls an image.
+at_is_image_name :: (name: string) -> bool {
+  b: [8] u8;
+  e := at_lower_ext(name, b[..]);
+  return e == "png" || e == "jpg" || e == "jpeg" || e == "gif" || e == "webp" || e == "svg" || e == "bmp" || e == "tif" || e == "tiff";
+}
+// The media type Claude takes for an image block: by its name, else its first bytes; "" for none.
+at_media :: (name: string, bytes: [] u8) -> string {
+  b: [8] u8;
+  e := at_lower_ext(name, b[..]);
+  if e == "png" { return "image/png"; }
+  if e == "jpg" || e == "jpeg" { return "image/jpeg"; }
+  if e == "gif" { return "image/gif"; }
+  if e == "webp" { return "image/webp"; }
+  if bytes.count >= 8 && bytes[0] == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G' { return "image/png"; }
+  if bytes.count >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF { return "image/jpeg"; }
+  if bytes.count >= 6 && bytes[0] == 'G' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == '8' { return "image/gif"; }
+  if bytes.count >= 12 && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F' && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P' { return "image/webp"; }
+  return "";
+}
+at_base_name :: (path: string) -> string {
+  k := 0;
+  for i: 0..<path.count { if path[i] == '/' { k = i + 1; } }
+  return cast(string) path[k..<path.count];
+}
+at_label :: (fs: [] AtFile, j: int) -> string { return cast(string) fs[j].label[0..<fs[j].ln]; }
+at_path :: (fs: [] AtFile, j: int) -> string { return cast(string) fs[j].path[0..<fs[j].pn]; }
+at_bytes :: (t: [] Attachments, f: AtFile) -> [] u8 { return t[0].store[f.at..<f.at + f.n]; }
+
+// A staged file joins the draft: its chip is registered and its bytes kept
+// (when they fit the store). Writes the chip's character into out; returns
+// its byte count (0: the draft is full).
+at_add :: (t: [] Attachments, a: [] Atlas, path: string, name: string, bytes: [] u8, out: [] u8) -> int {
+  if t[0].n >= AT_MAX || out.count < 4 { return 0; }
+  // a new draft starts the store over once the last message was delivered
+  if t[0].n == 0 { t[0].used = 0; t[0].images = 0; }
+  f := AtFile.{};
+  shown := ifx name.count > 0 then name else at_base_name(path);
+  f.image = at_is_image_name(shown) || at_media(shown, bytes).count > 0;
+  if f.image {
+    t[0].images += 1;
+    buf: [32] u8;
+    k := e_copy(buf[..], 0, "Image ");
+    k = at_put_int(buf[..], k, t[0].images);
+    f.ln = e_copy(f.label[..], 0, cast(string) buf[0..<k]);
+  } else { f.ln = e_copy(f.label[..], 0, shown); }
+  f.pn = e_copy(f.path[..], 0, path);
+  if bytes.count > 0 && bytes.count <= AT_INLINE_MAX && t[0].used + bytes.count <= t[0].store.count {
+    f.at = t[0].used;
+    for i: 0..<bytes.count { t[0].store[t[0].used + i] = bytes[i]; }
+    f.n = bytes.count; t[0].used += bytes.count;
+  }
+  f.chip = t[0].next_chip;
+  t[0].next_chip = (t[0].next_chip + 1) % GP_CHIPS;
+  b: [8] u8;
+  e := at_lower_ext(shown, b[..]);
+  icon := ifx f.image then ICON_GALLERY else ifx e == "txt" || e == "md" || e == "log" then ICON_FILE_TEXT else ICON_FILE;
+  gp_set_chip(a, f.chip, cast(string) f.label[0..<f.ln], icon, ifx f.image then zeron_dark().muted else AT_FILE_TINT);
+  t[0].files[t[0].n] = f; t[0].n += 1;
+  return gp_chip_utf8(f.chip, out, 0);
+}
+e_copy :: (dst: [] u8, at: int, s: string) -> int {
+  k := at;
+  for c: s { if k < dst.count { dst[k] = c; k += 1; } }
+  // never cut a code point
+  while k < dst.count && k > at && k - at < s.count && (cast(int) s[k - at] & 0xC0) == 0x80 { k -= 1; }
+  return k;
+}
+at_put_int :: (dst: [] u8, at: int, v: int) -> int {
+  digits: [20] u8; n := 0; x := ifx v < 0 then 0 else v;
+  while true { digits[n] = cast(u8) ('0' + x % 10); n += 1; x /= 10; if x == 0 { break; } }
+  k := at;
+  while n > 0 { n -= 1; if k < dst.count { dst[k] = digits[n]; k += 1; } }
+  return k;
+}
+
+// The code point at i and its length (UTF-8).
+at_code :: (s: string, i: int) -> u32 {
+  c := cast(u32) s[i];
+  if c >= 0xF0 && i + 3 < s.count { return ((c & 7) << 18) | ((cast(u32) s[i + 1] & 63) << 12) | ((cast(u32) s[i + 2] & 63) << 6) | (cast(u32) s[i + 3] & 63); }
+  return c;
+}
+// Whether the text still holds a chip.
+at_has_chip :: (text: string, chip: int) -> bool {
+  for i: 0..<text.count { if text[i] >= 0xF0 && i + 3 < text.count && gp_chip_of(at_code(text, i)) == chip { return true; } }
+  return false;
+}
+// Send: the draft's attachments whose chips are still in the text become the sent message's.
+at_take :: (t: [] Attachments, text: string) -> int {
+  at_delivered(t);
+  k2 := 0;
+  for k: 0..<t[0].n { if at_has_chip(text, t[0].files[k].chip) { t[0].files[k2] = t[0].files[k]; k2 += 1; } }
+  t[0].n = k2; t[0].sn = k2; t[0].images = 0;
+  return k2;
+}
+// The sent message was handed to its engine: its bytes may go.
+at_delivered :: (t: [] Attachments) {
+  for k: t[0].sn..<t[0].n { t[0].files[k - t[0].sn] = t[0].files[k]; }
+  t[0].n -= t[0].sn; t[0].sn = 0;
+}
+// The sent message did not go: its attachments are the draft's again.
+at_restore :: (t: [] Attachments) {
+  t[0].images = 0;
+  for k: 0..<t[0].n { if t[0].files[k].image { t[0].images += 1; } }
+  t[0].sn = 0;
+}
+
+// The text with each chip as its label (chips the registry knows).
+at_plain :: (a: [] Atlas, text: string, out: [] u8, at: int) -> int {
+  k := at; i := 0;
+  while i < text.count {
+    if text[i] >= 0xF0 && i + 3 < text.count {
+      chip := gp_chip_of(at_code(text, i));
+      if chip >= 0 { k = e_copy(out, k, gp_chip_label(a, chip)); i += 4; continue; }
+    }
+    if k < out.count { out[k] = text[i]; k += 1; }
+    i += 1;
+  }
+  return k;
+}
+at_blank :: (s: string) -> bool { for c: s { if c != ' ' && c != '\n' && c != '\t' && c != '\r' { return false; } } return true; }
+// prompt.rs with_attachments: the message for Claude (its images also go as blocks, at_image_count).
+at_prompt :: (t: [] Attachments, a: [] Atlas, text: string, out: [] u8) -> string {
+  k := at_plain(a, text, out, 0);
+  body := cast(string) out[0..<k];
+  if t[0].sn == 0 { return body; }
+  if at_blank(body) {
+    all_images := true;
+    for j: 0..<t[0].sn { if !t[0].files[j].image { all_images = false; } }
+    k = e_copy(out, 0, ifx all_images then "See the attached image(s)." else "See the attached file(s).");
+  }
+  k = e_copy(out, k, "\n\nAttached images (local files — open them to view):");
+  for j: 0..<t[0].sn { k = e_copy(out, k, "\n- "); k = e_copy(out, k, at_path(t[0].files[..], j)); }
+  return cast(string) out[0..<k];
+}
+// The sent images Claude gets as blocks: those with a known type and their bytes kept.
+at_media_of :: (t: [] Attachments, j: int) -> string {
+  f := t[0].files[j];
+  if !f.image || f.n == 0 { return ""; }
+  return at_media(at_path(t[0].files[..], j), at_bytes(t, f));
+}
+
+// Whether bytes read as text: UTF-8 without NUL.
+at_is_text :: (b: [] u8) -> bool {
+  i := 0;
+  while i < b.count {
+    c := cast(int) b[i];
+    if c == 0 { return false; }
+    if c < 0x80 { i += 1; continue; }
+    n := ifx c >= 0xF0 && c < 0xF8 then 3 else ifx c >= 0xE0 then 2 else ifx c >= 0xC2 && c < 0xE0 then 1 else -1;
+    if n < 0 || i + n >= b.count { return false; }
+    for q: 1..<n + 1 { if (cast(int) b[i + q] & 0xC0) != 0x80 { return false; } }
+    i += n + 1;
+  }
+  return true;
+}
+
+// The Psionic hook (an engine that reads text alone): the message with
+// each text file's contents inline under its name. Returns the message, or
+// "" with why set when an attachment cannot go (an image, a binary file, a
+// file too large to inline).
+at_text_only :: (t: [] Attachments, a: [] Atlas, text: string, model: string, out: [] u8, why: [] u8, why_n: [] int) -> string {
+  why_n[0] = 0;
+  for j: 0..<t[0].sn {
+    f := t[0].files[j];
+    bad := f.image || f.n == 0 || f.n > AT_TEXT_MAX || !at_is_text(at_bytes(t, f));
+    if bad {
+      k := e_copy(why, 0, model);
+      if f.image { k = e_copy(why, k, " reads text only, so it can't see "); k = e_copy(why, k, at_label(t[0].files[..], j)); k = e_copy(why, k, ". Remove it, or switch the chat to Claude."); }
+      else { k = e_copy(why, k, " reads text only, and "); k = e_copy(why, k, at_label(t[0].files[..], j)); k = e_copy(why, k, " is not a text file it can read. Remove it, or switch the chat to Claude."); }
+      why_n[0] = k;
+      return "";
+    }
+  }
+  k := at_plain(a, text, out, 0);
+  if t[0].sn > 0 && at_blank(cast(string) out[0..<k]) { k = e_copy(out, 0, "See the attached file(s)."); }
+  for j: 0..<t[0].sn {
+    f := t[0].files[j];
+    k = e_copy(out, k, "\n\nAttached file ");
+    k = e_copy(out, k, at_label(t[0].files[..], j));
+    k = e_copy(out, k, ":\n```\n");
+    b := at_bytes(t, f);
+    for i: 0..<b.count { if k < out.count { out[k] = b[i]; k += 1; } }
+    if b.count > 0 && b[b.count - 1] != '\n' { k = e_copy(out, k, "\n"); }
+    k = e_copy(out, k, "```");
+  }
+  return cast(string) out[0..<k];
+}
+
+// The notice Zeron shows when staging fails (attachments.rs StageError): 1 too large, 2 not a file, else unreadable.
+at_failure :: (name: string, kind: int, out: [] u8) -> int {
+  k := e_copy(out, 0, name);
+  if kind == 1 { k = e_copy(out, k, " is too large (24 MB max)."); }
+  else if kind == 2 { k = e_copy(out, k, " is not a file."); }
+  else { k = e_copy(out, k, " could not be read."); }
+  return k;
+}
+
+// ---------------------------------------------------------------- checks
+
+at_test_bytes :: (s: string, buf: [] u8) -> [] u8 { for i: 0..<s.count { buf[i] = s[i]; } return buf[0..<s.count]; }
+
+#test "staged files get their chips: images count per draft, files keep their names; the chips that stay are sent" {
+  tb: [64] u8;
+  a: [1] Atlas; test_atlas(a[..]);
+  store: [64] u8;
+  t: [1] Attachments; t[0].store = store[..];
+  png := [8] u8.[0x89, 'P', 'N', 'G', 13, 10, 26, 10];
+  c1: [4] u8; c2: [4] u8; c3: [4] u8;
+  #assert at_add(t[..], a[..], "/up/1a2b3c4d-shot.png", "shot.png", png[..], c1[..]) == 4;
+  #assert at_add(t[..], a[..], "/up/5e6f7a8b-notes.txt", "notes.txt", at_test_bytes("The secret word is pelican.\n", tb[..]), c2[..]) == 4;
+  // a pasted image without a known name is still an image, by its bytes
+  #assert at_add(t[..], a[..], "/up/9c0d1e2f-paste", "paste", png[..], c3[..]) == 4;
+  #assert t[0].n == 3 && at_label(t[0].files[..], 0) == "Image 1" && at_label(t[0].files[..], 1) == "notes.txt" && at_label(t[0].files[..], 2) == "Image 2";
+  #assert gp_chip_label(a[..], t[0].files[0].chip) == "Image 1" && a[0].chips[t[0].files[1].chip].icon == ICON_FILE_TEXT;
+  // the third chip was deleted from the text: two go
+  text: [64] u8; k := 0;
+  for c: "what is " { text[k] = c; k += 1; }
+  for i: 0..<4 { text[k] = c1[i]; k += 1; }
+  text[k] = ' '; k += 1;
+  for i: 0..<4 { text[k] = c2[i]; k += 1; }
+  msg := cast(string) text[0..<k];
+  #assert at_take(t[..], msg) == 2 && t[0].n == 2 && t[0].sn == 2;
+  out: [512] u8;
+  p := at_prompt(t[..], a[..], msg, out[..]);
+  #assert p == "what is Image 1 notes.txt\n\nAttached images (local files — open them to view):\n- /up/1a2b3c4d-shot.png\n- /up/5e6f7a8b-notes.txt";
+  #assert at_media_of(t[..], 0) == "image/png" && at_media_of(t[..], 1) == "";
+  // an empty message says what is attached
+  #assert at_prompt(t[..], a[..], "", out[..]) == "See the attached file(s).\n\nAttached images (local files — open them to view):\n- /up/1a2b3c4d-shot.png\n- /up/5e6f7a8b-notes.txt";
+}
+
+#test "media types come from the name, then the first bytes; staging failures read as Zeron's" {
+  tb: [64] u8;
+  jpg := [4] u8.[0xFF, 0xD8, 0xFF, 0xE0];
+  #assert at_media("x.JPG", jpg[0..<0]) == "image/jpeg" && at_media("blob", jpg[..]) == "image/jpeg" && at_media("a.svg", jpg[0..<0]) == "";
+  #assert at_is_image_name("a.svg") && !at_is_image_name("a.txt");
+  buf: [64] u8;
+  #assert cast(string) buf[0..<at_failure("big.mov", 1, buf[..])] == "big.mov is too large (24 MB max).";
+}
+
+#test "a text-only engine gets text files inline and refuses images" {
+  tb: [64] u8;
+  a: [1] Atlas; test_atlas(a[..]);
+  store: [256] u8;
+  t: [1] Attachments; t[0].store = store[..];
+  c: [4] u8;
+  #assert at_add(t[..], a[..], "/up/5e6f7a8b-notes.txt", "notes.txt", at_test_bytes("The answer is 42.", tb[..]), c[..]) == 4;
+  msg := cast(string) c[0..<4];
+  #assert at_take(t[..], msg) == 1;
+  out: [256] u8; why: [256] u8; wn: [1] int;
+  #assert at_text_only(t[..], a[..], msg, "gpt-oss-20b", out[..], why[..], wn[..]) == "notes.txt\n\nAttached file notes.txt:\n```\nThe answer is 42.\n```" && wn[0] == 0;
+  at_delivered(t[..]);
+  png := [8] u8.[0x89, 'P', 'N', 'G', 13, 10, 26, 10];
+  #assert at_add(t[..], a[..], "/up/1a2b3c4d-shot.png", "shot.png", png[..], c[..]) == 4;
+  #assert at_take(t[..], cast(string) c[0..<4]) == 1;
+  #assert at_text_only(t[..], a[..], "what is this", "gpt-oss-20b", out[..], why[..], wn[..]) == "";
+  #assert cast(string) why[0..<wn[0]] == "gpt-oss-20b reads text only, so it can't see Image 1. Remove it, or switch the chat to Claude.";
+}

@@ -71,14 +71,23 @@ void zr_scroll_to(void *state, float px) { coaxial_zeron_scroll_to(at(state), px
 #define ZR_POOL (8 << 20)
 #define ZR_LINE (1 << 20)
 #define ZR_ARENA (1 << 20)
-#define ZR_OUT (256 << 10)
+#define ZR_OUT (32 << 20)      /* a message's frame: up to sixteen 5 MB images as base64 */
+#define ZR_STORE (48 << 20)    /* the attachments' bytes, and the message as its engine reads it */
 #define ZR_SCRATCH (64 << 10)
 void zr_attach(void *state, const uint8_t *cwd, int32_t length) {
   uint8_t *pool = malloc(ZR_POOL), *line = malloc(ZR_LINE), *arena = malloc(ZR_ARENA), *out = malloc(ZR_OUT), *scratch = malloc(ZR_SCRATCH);
   if (!pool || !line || !arena || !out || !scratch) return;
   coaxial_zeron_attach(at(state), (coax_v_u8){pool, ZR_POOL}, (coax_v_u8){line, ZR_LINE}, (coax_v_u8){arena, ZR_ARENA},
                        (coax_v_u8){out, ZR_OUT}, (coax_v_u8){scratch, ZR_SCRATCH}, str(cwd, length));
+  uint8_t *store = malloc(ZR_STORE);
+  if (store) coaxial_zeron_attach_store(at(state), (coax_v_u8){store, ZR_STORE});
 }
+// Attachments (zeron/attachments.coax): a file the host staged, its bytes (up to 5 MB) or a failure.
+void zr_attach_file(void *state, const uint8_t *path, int32_t path_len, const uint8_t *name, int32_t name_len, const uint8_t *bytes, int32_t length, int32_t failure) {
+  coaxial_zeron_attach_file(at(state), str(path, path_len), str(name, name_len), (coax_v_u8){(uint8_t *)bytes, bytes ? length : 0}, failure);
+}
+int32_t zr_choose_named(void *state, int32_t which, const uint8_t *name, int32_t length) { return coaxial_zeron_choose_named(at(state), which, str(name, length)) ? 1 : 0; }
+void zr_open_menu(void *state, int32_t which) { coaxial_zeron_open_menu(at(state), which); }
 void zr_demo(void *state) { coaxial_zeron_demo(at(state)); }
 void zr_choose(void *state, int32_t which, int32_t index) { coaxial_zeron_choose(at(state), which, index); }
 int32_t zr_live(void *state) { return coaxial_zeron_live(at(state)) ? 1 : 0; }

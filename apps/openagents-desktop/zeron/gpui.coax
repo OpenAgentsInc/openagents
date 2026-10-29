@@ -9,7 +9,13 @@
 // Two more for the transcript: the activity rail's elbow (paint_elbow, a
 // quadratic bend into a straight branch, as transcript.rs paints it with a
 // path) and Zeron's EdgeFade, a per-vertex fade band at the top and bottom
-// of the transcript (gp_fade, floats 24..27 of a vertex).
+// of the transcript (gp_fade, floats 24..27 of a vertex). And two for
+// Zeron's glass (glass.rs Plate): a vertical gradient fill (GPUI's
+// linear_gradient at 180 degrees) and an inset shadow without blur, the
+// lit top edge (paint_inset_shadows). An attachment chip in a line of text
+// is one code point in Supplementary Private Use Area-A (GP_CHIP_BASE + its
+// number): it measures and paints as Zeron's chip (composer/chip.rs), its
+// label padded with no-break spaces over a pill with the icon's well.
 //
 // The host is GPUI's platform layer: it rasterizes Zeron's font (Geist) with
 // CoreText exactly as gpui_macos/text_system.rs does (four subpixel x
@@ -19,13 +25,13 @@
 // Based on Zeron by Wing, MIT.
 
 GP_VERTEX_FLOATS :: 28;
-GP_QUAD :: 0.0; GP_SHADOW :: 1.0; GP_SPRITE :: 2.0; GP_COLOR_SPRITE :: 3.0; GP_ELBOW :: 4.0;
+GP_QUAD :: 0.0; GP_SHADOW :: 1.0; GP_SPRITE :: 2.0; GP_COLOR_SPRITE :: 3.0; GP_ELBOW :: 4.0; GP_GRADIENT :: 5.0; GP_INSET :: 6.0;
 GP_NO_CLIP :: 1000000.0;
 GP_SUBPIXEL :: 4;           // gpui text_system.rs SUBPIXEL_VARIANTS_X
 GP_DILATIONS :: 5;          // gpui_macos glyph_dilation_for_color: levels 0..4
 GP_SVG_SCALE :: 2.0;        // gpui svg_renderer.rs SMOOTH_SVG_SCALE_FACTOR
-GP_FONTS :: 9;
-GP_ICONS :: 24;
+GP_FONTS :: 12;
+GP_ICONS :: 40;
 
 // The glyphs the atlas holds, in order: ASCII 32..126, then these.
 GP_EXTRA :: [3] u32.[0x2026, 0x2022, 0x00A0];   // … • no-break space
@@ -38,6 +44,18 @@ GP_DYN_VARIANTS :: 20;      // GP_DILATIONS * GP_SUBPIXEL
 GP_DYN_MONO :: 2048;        // cells 0..<2048 in the main atlas
 GP_DYN_CELLS :: 2304;       // then 256 in the color atlas
 GP_CLUSTER_MAX :: 32;
+
+// Attachment chips (composer/chip.rs): GP_CHIP_BASE + k is chip k, whose
+// label and icon the composer registers (gp_set_chip). Its display is the
+// side pad and the five-space icon slot, the label, two spaces of trailing
+// room, all no-break spaces in the run's font.
+GP_CHIPS :: 32;
+GP_CHIP_LABEL :: 96;
+GP_CHIP_BASE :: 0xF0000;
+GP_CHIP_LEAD :: 6;          // MENTION_SIDE_PAD + CHIP_ICON_SLOT
+GP_CHIP_TRAIL :: 2;         // CHIP_TRAILING_PAD
+GP_NBSP :: 97;              // the no-break space's glyph
+GpChip :: struct { n: int; label: [GP_CHIP_LABEL] u8; icon: int; tint: Rgba; }
 
 // A grapheme the atlas lacks: its bytes in a font, the advance the host
 // measured, whether it is a color glyph, and its cells (cell + 1 for each
@@ -83,6 +101,8 @@ Atlas :: struct {
   cells: [GP_DYN_CELLS] GpCell;
   dyn_size: f32; dyn_pen_x: f32; dyn_pen_y: f32; dyn_y0: f32; dyn_cols: int;
   color_cols: int; color_width: f32; color_height: f32;
+  chips: [GP_CHIPS] GpChip;
+  chip_inset: f32;          // a chip's pill inset from its row, top and bottom
 }
 
 // ---------------------------------------------------------------- colors
@@ -199,6 +219,38 @@ paint_shadow :: (out: [] f32, at: int, d: f32, x: f32, y: f32, w: f32, h: f32, r
   b := blur * d;
   m := 3 * b;
   return emit(out, at, x0 - m, y0 - m, x1 + m, y1 + m, GP_SHADOW, b, x0, y0, x1 - x0, y1 - y0, radius * d, 0, 0, 0, 0, 0, color, color);
+}
+
+// A quad filled with GPUI's vertical linear gradient, top to bottom (no border).
+paint_gradient :: (out: [] f32, at: int, d: f32, x: f32, y: f32, w: f32, h: f32, radius: f32, top: Rgba, bottom: Rgba) -> int {
+  if top.a <= 0 && bottom.a <= 0 { return at; }
+  x0 := snap(x, d); y0 := snap(y, d);
+  x1 := snap(x + w, d); y1 := snap(y + h, d);
+  return emit(out, at, x0, y0, x1, y1, GP_GRADIENT, 0, x0, y0, x1 - x0, y1 - y0, radius * d, 0, 0, 0, 0, 0, top, bottom);
+}
+// GPUI paint_inset_shadows for an unblurred inset shadow offset dy down:
+// the band of the shape the shape moved dy down leaves uncovered (dy 1, the
+// lit top edge).
+paint_inset :: (out: [] f32, at: int, d: f32, x: f32, y: f32, w: f32, h: f32, radius: f32, dy: f32, color: Rgba) -> int {
+  if color.a <= 0 { return at; }
+  x0 := snap(x, d); y0 := snap(y, d);
+  x1 := snap(x + w, d); y1 := snap(y + h, d);
+  return emit(out, at, x0, y0, x1, y1, GP_INSET, dy * d, x0, y0, x1 - x0, y1 - y0, radius * d, 0, 0, 0, 0, 0, color, color);
+}
+
+// One glass surface (glass.rs Plate): a vertical gradient, a 1px rim, an
+// unblurred inset light dy down, and a soft drop under it.
+GpPlate :: struct {
+  top: Rgba; bottom: Rgba; rim: Rgba;
+  inset: Rgba; inset_dy: f32;
+  drop: Rgba; drop_dy: f32; drop_blur: f32;
+}
+// Plate::paint: the drop beneath, the fill with its rim, the inset light above.
+paint_plate :: (out: [] f32, at: int, d: f32, x: f32, y: f32, w: f32, h: f32, radius: f32, p: GpPlate) -> int {
+  v := paint_shadow(out, at, d, x, y, w, h, radius, 0, p.drop_dy, p.drop_blur, 0, p.drop);
+  v = paint_gradient(out, v, d, x, y, w, h, radius, p.top, p.bottom);
+  v = paint_quad(out, v, d, x, y, w, h, radius, 1, rgba(0, 0, 0, 0), p.rim);
+  return paint_inset(out, v, d, x, y, w, h, radius, p.inset_dy, p.inset);
 }
 
 // The activity rail's elbow (transcript.rs activity_ribbon): a 1px ribbon
@@ -433,13 +485,61 @@ dyn_cell_y :: (a: [] Atlas, cell: int) -> f32 {
 }
 
 // One step of a shaped line: the grapheme at byte i, its bytes, its glyph
-// (>= 0 in the atlas) or cache slot (slot >= 0), and its advance with any
-// kerning against the glyph before it.
-GpStep :: struct { len: int; glyph: int; slot: int; advance: f32; }
+// (>= 0 in the atlas) or cache slot (slot >= 0), or attachment chip (chip
+// k + 1), and its advance with any kerning against the glyph before it.
+GpStep :: struct { len: int; glyph: int; slot: int; advance: f32; chip: int; }
+
+// ---------------------------------------------------------------- attachment chips
+
+// Registers chip k: its label and its icon (an icon slot, tinted).
+gp_set_chip :: (a: [] Atlas, k: int, label: string, icon: int, tint: Rgba) {
+  if k < 0 || k >= GP_CHIPS { return; }
+  n := ifx label.count < GP_CHIP_LABEL then label.count else GP_CHIP_LABEL;
+  // never cut a code point
+  while n > 0 && n < label.count && (cast(int) label[n] & 0xC0) == 0x80 { n -= 1; }
+  for i: 0..<n { a[0].chips[k].label[i] = label[i]; }
+  a[0].chips[k].n = n; a[0].chips[k].icon = icon; a[0].chips[k].tint = tint;
+}
+gp_chip_label :: (a: [] Atlas, k: int) -> string { return cast(string) a[0].chips[k].label[0..<a[0].chips[k].n]; }
+// The chip a code point is, or -1.
+gp_chip_of :: (code: u32) -> int {
+  if code < GP_CHIP_BASE || code >= GP_CHIP_BASE + GP_CHIPS { return -1; }
+  return cast(int) (code - GP_CHIP_BASE);
+}
+// A chip's code point as UTF-8 (four bytes) into out at i; the next offset.
+gp_chip_utf8 :: (k: int, out: [] u8, i: int) -> int {
+  if i + 4 > out.count { return i; }
+  c := GP_CHIP_BASE + cast(u32) k;
+  out[i] = cast(u8) (0xF0 | (c >> 18)); out[i + 1] = cast(u8) (0x80 | ((c >> 12) & 63));
+  out[i + 2] = cast(u8) (0x80 | ((c >> 6) & 63)); out[i + 3] = cast(u8) (0x80 | (c & 63));
+  return i + 4;
+}
+// The chip's width in a font: the padding's no-break spaces and the label.
+gp_chip_width :: (a: [] Atlas, font: int, k: int) -> f32 {
+  return cast(f32) (GP_CHIP_LEAD + GP_CHIP_TRAIL) * a[0].fonts[font].advance[GP_NBSP] + text_width(a, font, gp_chip_label(a, k));
+}
+// paint_chip: the pill over the chip's whole display (inset from its row,
+// radius 5, ink 0.09), the well (1px in, the pill's height less 2, radius
+// 4, black 0.16) and the icon (14px, less for a short line) centered in it;
+// then the label after the icon slot, in the run's color.
+paint_chip :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, k: int, x: f32, top: f32, line_height: f32, color: Rgba) -> int {
+  inset := ifx a[0].chip_inset > 0 then a[0].chip_inset else 1.5f32;
+  w := gp_chip_width(a, font, k);
+  ph := line_height - 2 * inset; py := top + inset;
+  v := paint_quad(out, at, d, x, py, w, ph, 5, 0, rgba(1, 1, 1, 0.09), rgba(0, 0, 0, 0));
+  well := ph - 2;
+  v = paint_quad(out, v, d, x + 1, py + 1, well, well, 4, 0, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0));
+  side := ifx well - 4 < 14 then well - 4 else 14.0f32;
+  v = paint_icon(out, v, a, d, a[0].chips[k].icon, x + 1 + (well - side) / 2, py + 1 + (well - side) / 2, side, side, a[0].chips[k].tint);
+  lead := cast(f32) GP_CHIP_LEAD * a[0].fonts[font].advance[GP_NBSP];
+  return paint_text(out, v, a, d, font, gp_chip_label(a, k), x + lead, top, line_height, color);
+}
 
 gp_step :: (a: [] Atlas, font: int, text: string, i: int, prev: int) -> GpStep {
   n := cluster_len(text, i);
   r := rune_at(text, i);
+  ck := gp_chip_of(r.code);
+  if ck >= 0 { return GpStep.{len = n, glyph = -1, slot = -1, advance = gp_chip_width(a, font, ck), chip = ck + 1}; }
   g := ifx n == r.len then glyph_of(r.code) else -1;
   if g >= 0 {
     k := ifx prev >= 0 then a[0].fonts[font].kern[prev * GP_GLYPHS + g] else 0.0f32;
@@ -521,7 +621,9 @@ paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: strin
     qy := round_half_toward_zero(baseline * d);
     variant := cast(int) ((qx - floor(qx)) * sub);
     ox := floor(qx); oy := qy;
-    if st.glyph >= 0 && r.code != ' ' && r.code != 0xA0 {
+    if st.chip > 0 {
+      v = paint_chip(out, v, a, d, font, st.chip - 1, pen, top, line_height, color);
+    } else if st.glyph >= 0 && r.code != ' ' && r.code != 0xA0 {
       cell := (level * GP_SUBPIXEL + variant) * GP_GLYPHS + st.glyph;
       tx := cast(f32) (cell % cols) * size;
       ty := a[0].fonts[font].y0 + cast(f32) (cell / cols) * size;

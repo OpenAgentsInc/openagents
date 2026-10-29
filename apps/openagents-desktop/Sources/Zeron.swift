@@ -248,6 +248,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     let bytes = Int(zr_max_vertices()) * floats * 4
     vertices = (0..<2).map { _ in device.makeBuffer(length: bytes, options: .storageModeShared)! }
     addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect, .cursorUpdate], owner: self))
+    registerForDraggedTypes([.fileURL, .png, .tiff])
   }
   required init(coder: NSCoder) { fatalError() }
 
@@ -276,6 +277,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     switch zr_take_action(state) {
     case 1: terminal("claude /login")
     case 2: terminal("curl -fsSL https://claude.ai/install.sh | bash")
+    case 3: pickFiles()
     default: break
     }
     let copied = Int(zr_take_copy(state, &copyBuffer, Int32(copyBuffer.count)))
@@ -302,21 +304,97 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   }
 
   // The chat's engine: the user's own Claude Code in --cwd PATH (default the
-  // home folder), or Zeron's demo conversation with --demo; --model
-  // opus|sonnet|haiku, --effort low|medium|high|xhigh|max and --access
+  // home folder), or Zeron's demo conversation with --demo; --model (a
+  // model's id or name, or its start: haiku, claude-opus-5-5, "Sonnet 4.6"),
+  // --effort (low|medium|high|xhigh|max|ultracode|ultrathink) and --access
   // full|edits|supervised preset the composer's chips; --mode claude|psionic|lab
-  // the chat's mode (zeron/modes.coax; the effort then counts in its list).
+  // the chat's mode (zeron/modes.coax; set first, the model and effort are then its own).
   func configure(_ args: [String]) {
     func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
     if args.contains("--demo") { zr_demo(state); return }
     let cwd = value("--cwd").map { ($0 as NSString).expandingTildeInPath } ?? NSHomeDirectory()
     Array(cwd.utf8).withUnsafeBufferPointer { zr_attach(state, $0.baseAddress, Int32($0.count)) }
     if let m = value("--mode")?.lowercased(), let i = ["claude", "psionic", "lab"].firstIndex(of: m) { zr_choose(state, 4, Int32(i)) }
-    for (flag, which, names) in [("--model", 1, ["opus", "sonnet", "haiku"]), ("--effort", 2, ["low", "medium", "high", "xhigh", "max"]),
-                                 ("--access", 3, ["full", "edits", "supervised"])] {
-      if let v = value(flag)?.lowercased(), let i = names.firstIndex(of: v) { zr_choose(state, Int32(which), Int32(i)) }
-    }
+    for (flag, which) in [("--model", Int32(1)), ("--effort", Int32(2))] { if let v = value(flag) { named(which, v) } }
+    if let v = value("--access")?.lowercased(), let i = ["full", "edits", "supervised"].firstIndex(of: v) { zr_choose(state, 3, Int32(i)) }
   }
+  @discardableResult func named(_ which: Int32, _ name: String) -> Bool {
+    Array(name.utf8).withUnsafeBufferPointer { zr_choose_named(state, which, $0.baseAddress, Int32($0.count)) } != 0
+  }
+
+  // ---- attachments, staged as Zeron stages them (composer/attachments.rs):
+  // copied into the app's uploads folder as {id8}-{name} (24 MB at most),
+  // then handed to the composer with their bytes (up to 5 MB) as a chip.
+
+  static let uploadMax = 24 << 20, inlineMax = 5 << 20
+  func uploads() -> URL {
+    let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("OpenAgents/uploads")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+  }
+  // sanitize_file_name: the base name, [A-Za-z0-9._-] kept and the rest "_", its last 80 characters, "upload" for none
+  func sanitized(_ name: String) -> String {
+    let kept = String(name.unicodeScalars.map { c -> Character in
+      (c.isASCII && (CharacterSet.alphanumerics.contains(c) || c == "." || c == "-" || c == "_")) ? Character(c) : "_" })
+    let tail = String(kept.suffix(80))
+    return tail.isEmpty ? "upload" : tail
+  }
+  func stagedURL(_ name: String) -> URL {
+    let id = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(8)
+    return uploads().appendingPathComponent("\(id)-\(sanitized(name))")
+  }
+  func handOver(path: String, name: String, bytes: Data?, failure: Int32) {
+    let p = Array(path.utf8), n = Array(name.utf8)
+    let b = bytes.map { [UInt8]($0) } ?? []
+    p.withUnsafeBufferPointer { pp in n.withUnsafeBufferPointer { nn in b.withUnsafeBufferPointer { bb in
+      zr_attach_file(state, pp.baseAddress, Int32(pp.count), nn.baseAddress, Int32(nn.count), bb.baseAddress, Int32(bb.count), failure)
+    } } }
+  }
+  // A file from the open panel or a drop: staged (copied), then attached.
+  func attach(_ url: URL) {
+    let name = url.lastPathComponent
+    var dir: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: url.path, isDirectory: &dir), !dir.boolValue else { handOver(path: "", name: name, bytes: nil, failure: 2); return }
+    let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1
+    if size < 0 { handOver(path: "", name: name, bytes: nil, failure: 3); return }
+    if size > ZeronView.uploadMax { handOver(path: "", name: name, bytes: nil, failure: 1); return }
+    let dest = stagedURL(name)
+    do { try FileManager.default.copyItem(at: url, to: dest) } catch { handOver(path: "", name: name, bytes: nil, failure: 3); return }
+    let bytes = size <= ZeronView.inlineMax ? try? Data(contentsOf: dest) : nil
+    handOver(path: dest.path, name: name, bytes: bytes, failure: 0)
+  }
+  // Bytes with no file (a pasted or dropped image): written to uploads as name, then attached.
+  func attach(data: Data, name: String) {
+    if data.count > ZeronView.uploadMax { handOver(path: "", name: name, bytes: nil, failure: 1); return }
+    let dest = stagedURL(name)
+    do { try data.write(to: dest) } catch { handOver(path: "", name: name, bytes: nil, failure: 3); return }
+    handOver(path: dest.path, name: name, bytes: data.count <= ZeronView.inlineMax ? data : nil, failure: 0)
+  }
+  // The paperclip: the open panel, any files, several at once.
+  func pickFiles() {
+    let panel = NSOpenPanel()
+    panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = true
+    panel.message = "Attach files"
+    let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
+      guard r == .OK, let self else { return }
+      for url in panel.urls { self.attach(url) }
+    }
+    if let w = window, w.isVisible { panel.beginSheetModal(for: w, completionHandler: done) } else { done(panel.runModal()) }
+  }
+  // Files and images off a pasteboard (a paste or a drop): whether there were any.
+  func attach(from pb: NSPasteboard) -> Bool {
+    if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+      for url in urls { attach(url) }
+      return true
+    }
+    if let png = pb.data(forType: .png) { attach(data: png, name: "pasted-image.png"); return true }
+    if let tiff = pb.data(forType: .tiff), let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) {
+      attach(data: png, name: "pasted-image.png"); return true
+    }
+    return false
+  }
+  override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
+  override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { attach(from: sender.draggingPasteboard) }
   func terminal(_ command: String) {
     let script = "tell application \"Terminal\"\nactivate\ndo script \"\(command.replacingOccurrences(of: "\"", with: "\\\""))\"\nend tell"
     NSAppleScript(source: script)?.executeAndReturnError(nil)
@@ -337,7 +415,9 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   //   fixture open|closed   the transcript as the Zeron capture opens it (transcript-fixture.rs)
   //   scroll PX       the transcript scrolled PX from its top    pasteboard  print the pasteboard
   //   send TEXT       type TEXT into the composer and press Enter    stop  press Escape (stops a running turn)
-  //   model NAME      a chip's choice (also effort NAME, access NAME, as the flags take them)
+  //   model NAME      a chip's choice (also effort NAME, access NAME, as the flags take them; plan on|off)
+  //   open model|access   a chip's menu, as a press on it opens it
+  //   attach PATH     the file staged and attached, as the paperclip's panel or a drop would
   //   wait SECS       let the frames run    waitidle [SECS]  until the running turn ends (at most SECS, 300)
   // Without --frames the shot is taken 12 frames after the last step.
   func shot(_ path: String, width: Int, height: Int) {
@@ -402,9 +482,12 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     case "fixture": zr_fixture(state, arg == "closed" ? 0 : 1)
     case "send": typed(arg); _ = zr_key(state, -2, 0)
     case "stop": _ = zr_key(state, -1, 0)
-    case "model", "effort", "access":
-      let names = ["model": ["opus", "sonnet", "haiku"], "effort": ["low", "medium", "high", "xhigh", "max"], "access": ["full", "edits", "supervised"]][verb]!
-      if let i = names.firstIndex(of: arg.lowercased()) { zr_choose(state, verb == "model" ? 1 : verb == "effort" ? 2 : 3, Int32(i)) }
+    case "model", "effort": if !named(verb == "model" ? 1 : 2, arg) { print("no \(verb) named \(arg)") }
+    case "access":
+      if let i = ["full", "edits", "supervised"].firstIndex(of: arg.lowercased()) { zr_choose(state, 3, Int32(i)) }
+    case "plan": zr_choose(state, 5, arg == "off" ? 0 : 1)
+    case "open": zr_open_menu(state, arg == "access" ? 3 : 1)
+    case "attach": attach(URL(fileURLWithPath: (arg as NSString).expandingTildeInPath))
     case "mode":
       if let i = ["claude", "psionic", "lab"].firstIndex(of: arg.lowercased()) { zr_choose(state, 4, Int32(i)) }
     case "wait" where nums.count == 1: return (CACurrentMediaTime() + Double(nums[0]), false)
@@ -532,7 +615,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     }
     // while composing, the IME owns every key (Enter commits, arrows pick candidates)
     if hasMarkedText() { inputContext?.handleEvent(e); return }
-    if e.keyCode == 48 { return }   // Tab: Zeron's MentionTab, nothing without a mention or a list
+    if e.keyCode == 48 { _ = zr_key(state, -13, mods(e)); return }   // Tab: the open menu's next provider; else Zeron's MentionTab, nothing without a mention or a list
     let code = ZeronView.named[e.keyCode] ?? 0
     if binding(code: code, char: e.charactersIgnoringModifiers, mods: mods(e)) { return }
     if code != 0 || e.modifierFlags.contains(.command) || e.modifierFlags.contains(.control) { return }
@@ -558,8 +641,8 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   }
   @objc func paste(_ sender: Any?) {
     let pb = NSPasteboard.general
-    // files and images are attachments in Zeron (staged, not typed); this screen has none
-    if pb.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) { return }
+    // files and images are attachments in Zeron (staged, not typed)
+    if zr_wants_text(state) != 0, attach(from: pb) { return }
     guard let s = pb.string(forType: .string), !s.isEmpty else { return }
     let bytes = Array(s.utf8)
     if hasMarkedText() { inputContext?.discardMarkedText(); zr_unmark(state) }

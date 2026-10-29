@@ -5,7 +5,7 @@
 // blended source-over into a BGRA8Unorm target, as GPUI does.
 //
 // A vertex is 28 floats (gpui.coax GP_VERTEX_FLOATS):
-//   a: device x, y, kind (0 quad, 1 shadow, 2 sprite, 3 color sprite, 4 elbow), blur (a shadow's sigma)
+//   a: device x, y, kind (0 quad, 1 shadow, 2 sprite, 3 color sprite, 4 elbow, 5 gradient, 6 inset), blur (a shadow's sigma)
 //   b: the primitive's bounds in device pixels: x, y, w, h
 //   c: corner radius, border width, u, v (a sprite's atlas coordinate)
 //   d: fill (a sprite's color)
@@ -121,6 +121,25 @@ static float4 shadow_color(float2 p, float4 bounds, float corner_radius, float b
   return color * float4(1., 1., 1., alpha);
 }
 
+// A vertical linear gradient (GPUI linear_gradient, 180 degrees, sRGB
+// stops) in the quad's shape, no border.
+static float4 gradient_color(float2 p, float4 bounds, float corner_radius, float4 top, float4 bottom) {
+  float t = saturate((p.y - bounds.y) / max(bounds.w, 1.0));
+  float4 c = mix(top, bottom, t);
+  return quad_color(p, bounds, corner_radius, 0.0, c, float4(0.0));
+}
+
+// An unblurred inset shadow dy down (GPUI paint_inset_shadows): the shape,
+// less the shape moved dy down.
+static float4 inset_color(float2 p, float4 bounds, float corner_radius, float dy, float4 color) {
+  float2 half_size = bounds.zw / 2.0;
+  float2 a = fabs(p - bounds.xy - half_size) - half_size + corner_radius;
+  float2 b = fabs(p - float2(0.0, dy) - bounds.xy - half_size) - half_size + corner_radius;
+  float inside = saturate(0.5 - quad_sdf_impl(a, corner_radius));
+  float covered = saturate(0.5 - quad_sdf_impl(b, corner_radius));
+  return color * float4(1.0, 1.0, 1.0, inside * (1.0 - covered));
+}
+
 // zui shaders.metal edge_fade_alpha, the top and bottom edges.
 static float edge_fade_alpha(float2 p, float4 fade) {
   float ramp = 1.0;
@@ -154,6 +173,8 @@ static float4 elbow_color(float2 p, float4 b, float2 c, float4 color) {
 }
 
 static float4 zr_paint(ZV v, texture2d<float> atlas, texture2d<float> color_atlas) {
+  if (v.kind > 5.5) { return inset_color(v.pos.xy, v.bounds, v.shape.x, v.blur, v.fill); }
+  if (v.kind > 4.5) { return gradient_color(v.pos.xy, v.bounds, v.shape.x, v.fill, v.border); }
   if (v.kind > 3.5) { return elbow_color(v.pos.xy, v.bounds, v.shape, v.fill); }
   if (v.kind > 2.5) {
     constexpr sampler s(mag_filter::linear, min_filter::linear);

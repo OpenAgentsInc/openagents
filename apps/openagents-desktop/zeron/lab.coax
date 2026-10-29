@@ -276,8 +276,10 @@ lab_route :: (l: [] Lab, e: [] Engine, p: [] PsEngine, s: [] Session, text: stri
 }
 lab_claude :: (l: [] Lab, e: [] Engine, s: [] Session, model: int, effort: int) {
   l[0].via = 0;
-  e_set_model(e, model);
-  e[0].effort = effort;
+  e_init(e);
+  ids := MODEL_IDS;
+  if model >= 0 && model < 3 { e_set_model(e, claude_model_index(e[0].cat[..], ids[model])); }
+  e[0].effort = effort;     // EFFORT_IDS are the catalog's first five levels
   e_forward(e, s, l[0].part, false);
 }
 // Whether Psionic's turn ended with no answer: nothing but notices after the decision.
@@ -391,7 +393,7 @@ LAB_TEST_ANSWER :: "{\"model\":\"elephant-1\",\"answers\":{\"harness\":{\"type\"
   lab_route(l[..], e[..], p[..], ss[..], LAB_TEST_ANSWER, 1900);
   #assert ss[0].n == 2 && ss[0].parts[1].kind == P_ROUTE && ss[0].parts[1].tk == TK_ROUTE;
   #assert s_text_of(ss[..], 1) == "Routed to Claude Code · Sonnet 5.5 · Medium · 1.9 s" && ss[0].parts[1].detail == "elephant-1 · 1900 ms";
-  #assert e[0].model == 1 && e[0].effort == 1 && ss[0].live;
+  #assert e[0].cat[0].id[e[0].model] == "claude-sonnet-5-5" && e[0].effort == 1 && ss[0].live;
   t: [1] Transcript; ui: [1] SUi;
   s_build(ss[..], ui[..], t[..]);
   #assert t[0].ng == 1 && t[0].nt == 1 && t[0].groups[0].summary == "Routed to Claude Code · Sonnet 5.5 · Medium · 1.9 s" && !t[0].groups[0].open;
@@ -438,7 +440,7 @@ LAB_TEST_PSIONIC :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\
   s_notice(ss[..], N_OFFLINE, "Psionic isn't reachable");
   s_turn_end(ss[..], false, "");
   lab_pump(l[..], e[..], p[..], ss[..], 0.016);
-  #assert l[0].fallback && l[0].via == 0 && ss[0].live && e[0].model == 1 && e[0].effort == 1;
+  #assert l[0].fallback && l[0].via == 0 && ss[0].live && e[0].cat[0].id[e[0].model] == "claude-sonnet-5-5" && e[0].effort == 1;
   // once
   s_turn_end(ss[..], false, "");
   lab_pump(l[..], e[..], p[..], ss[..], 0.016);

@@ -90,3 +90,12 @@ void zr_choose(void *state, int32_t which, int32_t index);
 int32_t zr_live(void *state);
 int32_t zr_take_action(void *state);
 void zr_quit(void *state);
+// The composer's menus and attachments (zeron/picker.coax, attachments.coax):
+// choose_named picks a model or effort by id or name (1 model, 2 effort),
+// open_menu opens a chip's menu (1 model, 3 access); take_action 3 asks for
+// files to attach; attach_file hands over one the host staged (its staged
+// path, its name, its bytes up to 5 MB, or failure 1 too large, 2 not a
+// file, 3 unreadable).
+int32_t zr_choose_named(void *state, int32_t which, const uint8_t *name, int32_t length);
+void zr_open_menu(void *state, int32_t which);
+void zr_attach_file(void *state, const uint8_t *path, int32_t path_len, const uint8_t *name, int32_t name_len, const uint8_t *bytes, int32_t length, int32_t failure);

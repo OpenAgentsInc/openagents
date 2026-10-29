@@ -22,35 +22,54 @@ LAB_EFFORT :: "Elephant decides";
 MODE_BRANDS :: [MODE_COUNT] int.[0, ICON_PSIONIC, ICON_PSIONIC];
 CH_MODE :: 4;                    // coaxial_zeron_choose's which for the mode
 
-// How many choices a chip has in a mode, and each one's label.
+// Each mode's catalog for the picker menus (picker.coax): Claude's models
+// and levels (claude.coax), Psionic's one model and its three efforts,
+// the Lab's one row (Elephant decides).
+mode_catalog :: (mode: int) -> PkCatalog {
+  if mode == MODE_LAB {
+    // one row: Elephant picks the engine, the model and the effort per message
+    l := PkCatalog.{provider = "Lab", icon = ICON_PSIONIC, tint = zeron_dark().muted, n = 1, levels = 1, default_level = 0,
+                    access = 3, full_access = 2, plan = false};
+    l.id[0] = "lab"; l.label[0] = "Lab"; l.desc[0] = "Elephant routes each message to Claude Code or Psionic"; l.ladder[0] = 0;   // no slider: the chip says Elephant decides
+    l.level_id[0] = "auto"; l.level_label[0] = LAB_EFFORT;
+    cl := claude_catalog();
+    for k: 0..<3 { l.access_label[k] = cl.access_label[k]; l.access_desc[k] = cl.access_desc[k]; l.access_value[k] = cl.access_value[k]; }
+    return l;
+  }
+  if mode != MODE_PSIONIC { return claude_catalog(); }
+  c := PkCatalog.{provider = "Psionic", icon = ICON_PSIONIC, tint = zeron_dark().muted, n = 1, levels = 3, default_level = 1,
+                  access = 3, full_access = 2, plan = false};
+  c.id[0] = PS_MODEL; c.label[0] = PS_MODEL; c.ladder[0] = 7;
+  ids := PS_EFFORT_IDS; names := PS_EFFORT_NAMES;
+  for k: 0..<3 { c.level_id[k] = ids[k]; c.level_label[k] = names[k]; }
+  claude := claude_catalog();
+  for k: 0..<3 { c.access_label[k] = claude.access_label[k]; c.access_desc[k] = claude.access_desc[k]; c.access_value[k] = claude.access_value[k]; }
+  return c;
+}
+
+// How many choices a chip has in a mode, and each one's label (access by ACC_*).
 mode_option_count :: (mode: int, which: int) -> int {
   if which == CH_MODE { return MODE_COUNT; }
-  if mode == MODE_LAB && (which == CH_MODEL || which == CH_EFFORT) { return 1; }
-  if mode == MODE_PSIONIC {
-    if which == CH_MODEL { return 1; }
-    if which == CH_EFFORT { return 3; }
-  } else {
-    if which == CH_MODEL { return 3; }
-    if which == CH_EFFORT { return 5; }
-  }
   if which == CH_ACCESS { return 3; }
+  c := mode_catalog(mode);
+  if which == CH_MODEL { return c.n; }
+  if which == CH_EFFORT { return c.levels; }
   return 0;
 }
 mode_option_label :: (mode: int, which: int, i: int) -> string {
   if i < 0 || i >= mode_option_count(mode, which) { return ""; }
-  names := MODE_NAMES; models := MODEL_NAMES; efforts := EFFORT_NAMES; ps_efforts := PS_EFFORT_NAMES; access := ACCESS_NAMES;
+  names := MODE_NAMES; access := ACCESS_NAMES;
   if which == CH_MODE { return names[i]; }
   if which == CH_ACCESS { return access[i]; }
-  if mode == MODE_LAB { return ifx which == CH_MODEL then "Lab" else LAB_EFFORT; }
-  if mode == MODE_PSIONIC { return ifx which == CH_MODEL then PS_MODEL else ps_efforts[i]; }
-  return ifx which == CH_MODEL then models[i] else efforts[i];
+  c := mode_catalog(mode);
+  return ifx which == CH_MODEL then c.label[i] else c.level_label[i];
 }
 
 #test "each mode lists its own choices" {
-  #assert mode_option_count(MODE_CLAUDE, CH_MODEL) == 3 && mode_option_label(MODE_CLAUDE, CH_MODEL, 2) == "Haiku 5.5";
+  #assert mode_option_count(MODE_CLAUDE, CH_MODEL) == 13 && mode_option_label(MODE_CLAUDE, CH_MODEL, 3) == "Opus 5.5";
   #assert mode_option_count(MODE_PSIONIC, CH_MODEL) == 1 && mode_option_label(MODE_PSIONIC, CH_MODEL, 0) == "gpt-oss-20b";
   #assert mode_option_count(MODE_PSIONIC, CH_EFFORT) == 3 && mode_option_label(MODE_PSIONIC, CH_EFFORT, 2) == "High";
-  #assert mode_option_label(MODE_PSIONIC, CH_EFFORT, 3) == "" && mode_option_label(MODE_CLAUDE, CH_EFFORT, 3) == "X-High";
+  #assert mode_option_label(MODE_PSIONIC, CH_EFFORT, 3) == "" && mode_option_label(MODE_CLAUDE, CH_EFFORT, 6) == "Ultrathink";
   #assert mode_option_label(MODE_PSIONIC, CH_MODE, 1) == "Psionic" && mode_option_label(MODE_PSIONIC, CH_ACCESS, 1) == "Auto-accept edits";
   #assert mode_option_label(MODE_LAB, CH_MODE, 2) == "Lab" && mode_option_label(MODE_LAB, CH_MODEL, 0) == "Lab" && mode_option_label(MODE_LAB, CH_EFFORT, 0) == LAB_EFFORT;
 }

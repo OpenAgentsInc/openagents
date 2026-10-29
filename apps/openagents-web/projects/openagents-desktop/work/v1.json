@@ -385,6 +385,55 @@
       "blocked_by": [
         "desk-settings"
       ]
+    },
+    {
+      "slug": "desk-zeron-pickers",
+      "title": "Model, effort and access menus: Zeron's picker",
+      "parent": "desk-zeron-ui",
+      "size": "M",
+      "body": "The composer's chips open Zeron's real menus instead of cycling: the model chip its compact model picker (pickers.rs, pickers/compact.rs: the effort over the model's name, the glass effort slider, the list page with Back, provider tabs, search and rows), the access chip its access menu (the modes with descriptions and a check, Plan mode with its switch), as popover_card anchored to the chip. Keyboard as Zeron's (arrows, Enter, Escape, Home/End, Tab, type to filter), a press outside closes, hover and selected rows. The options are data per mode (a catalog: Claude's models and effort ladder from Zeron's model cache, Psionic's gpt-oss-20b and its efforts), so another engine plugs in as rows.",
+      "files": [
+        "apps/openagents-desktop/zeron/picker.coax",
+        "apps/openagents-desktop/zeron/composer.coax",
+        "apps/openagents-desktop/zeron/gpui.coax",
+        "apps/openagents-desktop/Zeron.metal",
+        "apps/openagents-desktop/zeron/claude.coax",
+        "apps/openagents-desktop/zeron/modes.coax",
+        "apps/openagents-desktop/zeron/screen.coax",
+        "apps/openagents-desktop/Sources/Zeron.swift",
+        "docs/desktop/coax-desktop.md"
+      ],
+      "acceptance": [
+        "coax test --library passes for picker.coax (keys, filter, slider, anchoring, pointer) and screen.coax (chips open the menus, picks change the chips)",
+        "--shot PNGs of the open model panel, model list and access menu beside Zeron's renders of the same state, with the measured differences reported",
+        "A live Claude turn whose model and effort were picked from the menus runs on them (the session records the model)",
+        "build.sh passes"
+      ]
+    },
+    {
+      "slug": "desk-zeron-attachments",
+      "title": "Attachments the way Zeron does them",
+      "parent": "desk-zeron-ui",
+      "size": "M",
+      "body": "The paperclip opens an open panel; drops and pastes of files or images attach too. Each file is staged into the app's uploads folder as Zeron stages it ({id8}-{name}, 24 MB at most, Zeron's notices on failure) and shown as an inline chip (Image N or the file's name) that the caret steps over and Backspace takes whole. Sent, the bubble keeps the chips; Claude gets the labels, the attached-paths list and images up to 5 MB as base64 image blocks (an SDK helper writes them into the frame). Psionic, text only: text files inline, an image refused with a clear message (a hook other text-only engines call).",
+      "files": [
+        "apps/openagents-desktop/zeron/attachments.coax",
+        "apps/openagents-desktop/zeron/screen.coax",
+        "apps/openagents-desktop/zeron/claude.coax",
+        "apps/openagents-desktop/zeron/psionic.coax",
+        "apps/openagents-desktop/zeron-face.c",
+        "apps/openagents-desktop/face.h",
+        "apps/openagents-desktop/Sources/Zeron.swift",
+        "coax/lib/agent/claude/control.coax",
+        "coax/lib/agent/claude/tests.coax",
+        "docs/desktop/coax-desktop.md"
+      ],
+      "acceptance": [
+        "coax test --library passes for attachments.coax (chips, prompt, media types, the text-only hook), the SDK's tests (an image block from bytes) and screen.coax (staging, failure notice, Psionic refusal)",
+        "--shot PNGs of the composer with an image and a text file attached and of the sent bubble beside Zeron's, with the measured differences reported",
+        "Live Claude turns answer about an attached image and an attached text file",
+        "build.sh passes"
+      ]
     }
   ]
 }

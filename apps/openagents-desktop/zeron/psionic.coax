@@ -341,8 +341,10 @@ ps_may_run :: (access: int, kind: int) -> bool {
 // ---------------------------------------------------------------- the engine
 
 // The user sent a message on Psionic: it joins the transcript and the replay, and the request goes.
-ps_send :: (p: [] PsEngine, s: [] Session, text: string) {
-  s_user(s, text);
+ps_send :: (p: [] PsEngine, s: [] Session, text: string) { ps_send_as(p, s, text, text); }
+// The same when the bubble shows other than what the model reads (attachments' chips; attachments.coax at_text_only).
+ps_send_as :: (p: [] PsEngine, s: [] Session, shown: string, text: string) {
+  s_user(s, shown);
   ps_forward(p, s, text);
 }
 // A message already in the transcript goes to gpt-oss-20b (the Lab sends it here once Elephant has routed it).

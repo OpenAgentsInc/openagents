@@ -1,0 +1,829 @@
+// Zeron's picker menus (crates/ui/src/pickers.rs, pickers/compact.rs,
+// popover.rs, glass.rs, settings/widgets.rs toggle_switch) for the
+// composer's chips, drawn with gpui.coax. The model chip opens the compact
+// model picker, Zeron's default: a 256px card whose panel titles the effort
+// over the model's name (a button onto the model list) above the effort
+// slider (a 28px light-glass rail, the accent-glass fill to just past the
+// thumb, the ladder's stops, the 44x32 white thumb); its second page is the
+// model list (Back and the provider's tab, the search row, then the rows:
+// the brand mark, the name, a description only for rows sharing a name, the
+// selected row in the card's selected wash and ring). The access chip
+// opens the access menu: each mode over what it allows (a check on the
+// chosen one), a hairline, then Plan mode with its switch. Both are
+// popover_card: the hairline border, radius 12, shadow-lg, anchored 6px
+// from the chip's bottom (or top) at its right edge, kept 8px inside the
+// window. Keys as Zeron binds them: the panel's Up/Down open the list on
+// the next model, Enter or Space open it, Left/Right/Home/End set the
+// effort, Escape closes; the list's arrows move, Enter picks, typing
+// filters, Escape returns to the panel; the access menu's arrows move and
+// Enter picks (or flips Plan mode). A press outside closes the menu.
+//
+// What the menus offer is data (PkCatalog): the models with their effort
+// ladders and the access modes the active engine supplies (claude.coax's
+// Claude catalog, an engine's own). Based on Zeron by Wing, MIT.
+
+#load "transcript.coax";   // its theme roles (ink, wash) and PHI
+
+// popover.rs
+CARD_RADIUS :: 12.0;
+CARD_INSET :: 4.0;
+MENU_GAP :: 2.0;
+MENU_ITEM_RADIUS :: 7.0;        // CARD_RADIUS - 1 - CARD_INSET
+MENU_OFFSET :: 6.0;             // anchored_menu: pt-6 from the trigger
+MENU_MARGIN :: 8.0;             // snap_to_window_with_margin
+MENU_MAX :: 640.0;              // menu_geometry: min(640, the room less 14)
+MENU_ROOM :: 14.0;
+SEARCH_ROW_HEIGHT :: 40.0;
+// compact.rs
+COMPACT_WIDTH :: 256.0;
+COMPACT_ROW_HEIGHT :: 32.0;
+COMPACT_LIST_ROWS :: 7;
+SLIDER_HEIGHT :: 36.0;
+RAIL_HEIGHT :: 28.0;
+RAIL_TOP :: 4.0;                // (SLIDER_HEIGHT - RAIL_HEIGHT) / 2
+THUMB_WIDTH :: 44.0;
+THUMB_HEIGHT :: 32.0;
+THUMB_INSET :: 22.0;            // THUMB_WIDTH / 2
+FILL_PAST :: 14.0;              // RAIL_HEIGHT / 2
+HEADER_HEIGHT :: 48.0;
+HEADER_HEIGHT_SINGLE :: 36.0;
+SLIDER_TOP :: 2.0;
+SLIDER_BOTTOM :: 4.0;
+CARD_BORDERS :: 2.0;
+LIST_HEADER :: 80.0;
+// pickers.rs: the access popover's width
+ACCESS_WIDTH :: 288.0;
+// settings/widgets.rs toggle_switch
+SWITCH_WIDTH :: 44.8; SWITCH_HEIGHT :: 28.8; SWITCH_TRACK_HEIGHT :: 20.8;
+SWITCH_SIDE_INSET :: 1.6; SWITCH_THUMB_WIDTH :: 24.0; SWITCH_MARK_SIZE :: 7.2;
+
+PK_MODELS :: 32;
+PK_LEVELS :: 8;
+PK_ACCESS :: 4;
+PK_QUERY :: 64;
+
+// What an engine offers: its models (an id, the name, a description, which
+// effort levels each takes), the effort levels, the access modes, and
+// whether it has a plan mode. An empty id is the CLI's default model.
+PkCatalog :: struct {
+  provider: string;             // the provider's name (the list's tab)
+  icon: int; tint: Rgba;        // its 14px brand mark and tint
+  n: int;
+  id: [PK_MODELS] string; label: [PK_MODELS] string; desc: [PK_MODELS] string;
+  ladder: [PK_MODELS] int;      // bit k: level k on that model's slider
+  levels: int;
+  level_id: [PK_LEVELS] string; level_label: [PK_LEVELS] string;
+  default_level: int;
+  access: int;
+  access_label: [PK_ACCESS] string; access_desc: [PK_ACCESS] string;
+  access_value: [PK_ACCESS] int;  // each row's value for the engine (its own numbering)
+  full_access: int;             // the access mode that asks nothing (the chip is muted on it)
+  plan: bool;                   // a plan mode to switch on
+}
+// What is chosen: indices into the catalog.
+PkSel :: struct { model: int; level: int; access: int; plan: bool; }
+
+// The level a model runs at: the chosen one when its ladder has it, else
+// the catalog's default, else the ladder's last (-1: no ladder).
+pk_level_for :: (cat: [] PkCatalog, m: int, level: int) -> int {
+  if m < 0 || m >= cat[0].n || cat[0].ladder[m] == 0 { return -1; }
+  if level >= 0 && (cat[0].ladder[m] & (1 << level)) != 0 { return level; }
+  if (cat[0].ladder[m] & (1 << cat[0].default_level)) != 0 { return cat[0].default_level; }
+  last := -1;
+  for k: 0..<cat[0].levels { if (cat[0].ladder[m] & (1 << k)) != 0 { last = k; } }
+  return last;
+}
+// A model's ladder: its levels in order, into out; how many.
+pk_ladder :: (cat: [] PkCatalog, m: int, out: [] int) -> int {
+  n := 0;
+  if m < 0 || m >= cat[0].n { return 0; }
+  for k: 0..<cat[0].levels { if (cat[0].ladder[m] & (1 << k)) != 0 && n < out.count { out[n] = k; n += 1; } }
+  return n;
+}
+// Whether another model carries the same name (its description tells them apart).
+pk_ambiguous :: (cat: [] PkCatalog, m: int) -> bool {
+  for k: 0..<cat[0].n { if k != m && cat[0].label[k] == cat[0].label[m] { return true; } }
+  return false;
+}
+
+PK_NONE :: 0; PK_MODEL :: 1; PK_ACCESS_MENU :: 2;
+KEY_TAB :: -13;   // the host's Tab while a menu is open (composer.coax numbers the rest)
+
+Picker :: struct {
+  kind: int;                    // PK_NONE, PK_MODEL (the compact picker), PK_ACCESS_MENU
+  list: bool;                   // the model picker's page: the model list
+  active: int;                  // the highlighted row (hover or keyboard), -1 none
+  keyboard: bool;               // the highlight came from the keyboard
+  query: [PK_QUERY] u8; qn: int;   // the model search
+  scroll: f32;                  // the list's scroll (px)
+  // the chip it opened from (logical px), and which way it opens
+  ax: f32; ay: f32; aw: f32; ah: f32;
+  below: bool; budget: f32;
+  // where it was last drawn
+  x: f32; y: f32; w: f32; h: f32;
+  title_hover: bool; back_hover: bool;
+  sx: f32; sy: f32; sw: f32;    // the effort slider's box
+  dragging: bool;
+  since: f32;                   // seconds since the last key (the search caret's blink)
+  list_y: f32; list_h: f32;     // the list's box (rows start CARD_INSET below its top)
+  tab_x: f32;                   // the first provider's tab
+  // the providers' tabs (Zeron's harness rail): how many (one once a chat
+  // has its engine), which one the list shows, each one's mark
+  tabs: int; view: int;
+  tab_icon: [4] int; tab_tint: [4] Rgba;
+  row_y: [8] f32; row_h: [8] f32; rows: int;   // the access menu's rows (the plan row last)
+  // what the user picked, until the screen takes it (-1 none)
+  pick_model: int; pick_level: int; pick_access: int; flip_plan: bool;
+}
+
+// menu_geometry: the room the menu may take, above the chip unless that is
+// under 180 and there is more below (or below is asked for).
+pk_open :: (p: [] Picker, kind: int, cat: [] PkCatalog, sel: PkSel, x: f32, y: f32, w: f32, h: f32, view_h: f32, force_below: bool) {
+  p[0].kind = kind; p[0].list = false; p[0].keyboard = false; p[0].qn = 0; p[0].scroll = 0; p[0].dragging = false;
+  p[0].ax = x; p[0].ay = y; p[0].aw = w; p[0].ah = h;
+  above := y - MENU_ROOM; below := view_h - (y + h) - MENU_ROOM;
+  if above < 0 { above = 0; }
+  if below < 0 { below = 0; }
+  p[0].below = force_below || (above < 180 && below > above);
+  room := ifx p[0].below then below else above;
+  p[0].budget = ifx room < MENU_MAX then room else MENU_MAX;
+  p[0].pick_model = -1; p[0].pick_level = -1; p[0].pick_access = -1; p[0].flip_plan = false;
+  p[0].tabs = 1; p[0].view = 0;
+  // the keyboard highlight starts on the chosen row
+  p[0].active = ifx kind == PK_ACCESS_MENU then sel.access else -1;
+}
+// The providers' tabs the list offers (at most four) and the one it opens on.
+pk_tabs :: (p: [] Picker, n: int, home: int) {
+  p[0].tabs = ifx n < 1 then 1 else ifx n > 4 then 4 else n;
+  p[0].view = ifx home >= 0 && home < p[0].tabs then home else 0;
+}
+pk_tab :: (p: [] Picker, k: int, icon: int, tint: Rgba) { if k >= 0 && k < 4 { p[0].tab_icon[k] = icon; p[0].tab_tint[k] = tint; } }
+// Tab: the next provider's models.
+pk_next_tab :: (p: [] Picker) {
+  p[0].list = true; p[0].qn = 0; p[0].scroll = 0; p[0].active = 0;
+  p[0].view = (p[0].view + 1) % (ifx p[0].tabs < 1 then 1 else p[0].tabs);
+}
+pk_close :: (p: [] Picker) { p[0].kind = PK_NONE; p[0].list = false; p[0].dragging = false; p[0].active = -1; }
+pk_is_open :: (p: [] Picker) -> bool { return p[0].kind != PK_NONE; }
+
+// ---------------------------------------------------------------- the model list's rows
+
+pk_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+pk_contains :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    ok := true;
+    for k: 0..<needle.count { if pk_lower(hay[i + k]) != pk_lower(needle[k]) { ok = false; break; } }
+    if ok { return true; }
+  }
+  return false;
+}
+pk_query :: (p: [] Picker) -> string { return cast(string) p[0].query[0..<p[0].qn]; }
+// The rows the search leaves (every model with none): catalog indices into out; how many.
+pk_rows :: (p: [] Picker, cat: [] PkCatalog, out: [] int) -> int {
+  q := pk_query(p); n := 0;
+  // a query of spaces alone searches nothing
+  blank := true;
+  for c: q { if c != ' ' { blank = false; } }
+  for m: 0..<cat[0].n {
+    if !blank && !pk_contains(cat[0].label[m], q) && !pk_contains(cat[0].id[m], q) { continue; }
+    if n < out.count { out[n] = m; n += 1; }
+  }
+  return n;
+}
+// compact_list_height: the rows (up to seven, four while empty) at a 34px pitch, the card inset around them.
+pk_list_height :: (rows: int) -> f32 {
+  r := ifx rows == 0 then 4 else ifx rows > COMPACT_LIST_ROWS then COMPACT_LIST_ROWS else rows;
+  return cast(f32) r * (COMPACT_ROW_HEIGHT + MENU_GAP) + 2 * CARD_INSET;
+}
+// Keeps the active row inside the list's box (scroll_to_item, Nearest).
+pk_reveal :: (p: [] Picker, rows: int) {
+  pitch: f32 = COMPACT_ROW_HEIGHT + MENU_GAP;
+  view := pk_list_height(rows) - 2 * CARD_INSET;
+  if p[0].list_h > 0 { view = p[0].list_h - 2 * CARD_INSET; }
+  if p[0].active < 0 { return; }
+  top := cast(f32) p[0].active * pitch;
+  if top < p[0].scroll { p[0].scroll = top; }
+  if top + pitch > p[0].scroll + view { p[0].scroll = top + pitch - view; }
+  most := cast(f32) rows * pitch - view;
+  if p[0].scroll > most { p[0].scroll = ifx most > 0 then most else 0.0f32; }
+  if p[0].scroll < 0 { p[0].scroll = 0; }
+}
+// The list on the model next to the chosen one (or the chosen one).
+pk_show_list :: (p: [] Picker, cat: [] PkCatalog, sel: PkSel, delta: int) {
+  p[0].list = true; p[0].qn = 0; p[0].scroll = 0; p[0].list_h = 0;
+  rows: [PK_MODELS] int;
+  n := pk_rows(p, cat, rows[..]);
+  at := -1;
+  for k: 0..<n { if rows[k] == sel.model { at = k; } }
+  if n > 0 {
+    if at < 0 { at = ifx delta < 0 then n - 1 else 0; }
+    else { at = ((at + delta) % n + n) % n; }
+  }
+  p[0].active = at;
+  pk_reveal(p, n);
+}
+
+// ---------------------------------------------------------------- keys
+
+// A key while a menu is open (composer.coax's key numbering); whether it used it.
+pk_key :: (p: [] Picker, cat: [] PkCatalog, sel: PkSel, key: int, mods: int) -> bool {
+  if p[0].kind == PK_NONE { return false; }
+  p[0].keyboard = true; p[0].since = 0;
+  plain := (mods & (MOD_CMD | MOD_CTRL | MOD_ALT)) == 0;
+  if p[0].kind == PK_ACCESS_MENU {
+    count := cat[0].access + (ifx cat[0].plan then 1 else 0);
+    if key == KEY_ESCAPE { pk_close(p); return true; }
+    if (key == KEY_UP || key == KEY_DOWN) && count > 0 {
+      d := ifx key == KEY_UP then -1 else 1;
+      p[0].active = ifx p[0].active < 0 then (ifx d > 0 then 0 else count - 1) else ((p[0].active + d) % count + count) % count;
+      return true;
+    }
+    if key == KEY_ENTER || key == ' ' {
+      if p[0].active >= 0 && p[0].active < cat[0].access { p[0].pick_access = p[0].active; pk_close(p); }
+      else if p[0].active == cat[0].access && cat[0].plan { p[0].flip_plan = true; }
+      return true;
+    }
+    return true;   // the menu holds the focus: other keys go nowhere
+  }
+  if !p[0].list {
+    if key == KEY_ESCAPE { pk_close(p); return true; }
+    if key == KEY_UP || key == KEY_DOWN { pk_show_list(p, cat, sel, ifx key == KEY_UP then -1 else 1); return true; }
+    if key == KEY_ENTER || key == ' ' { pk_show_list(p, cat, sel, 0); return true; }
+    if key == KEY_TAB && p[0].tabs > 1 { pk_next_tab(p); return true; }
+    ladder: [PK_LEVELS] int;
+    n := pk_ladder(cat, sel.model, ladder[..]);
+    if n > 0 && (key == KEY_LEFT || key == KEY_RIGHT || key == KEY_HOME || key == KEY_END) {
+      at := 0; lv := pk_level_for(cat, sel.model, sel.level);
+      for k: 0..<n { if ladder[k] == lv { at = k; } }
+      if key == KEY_LEFT { at = ifx at > 0 then at - 1 else 0; }
+      if key == KEY_RIGHT { at = ifx at + 1 < n then at + 1 else n - 1; }
+      if key == KEY_HOME { at = 0; }
+      if key == KEY_END { at = n - 1; }
+      p[0].pick_level = ladder[at];
+      return true;
+    }
+    return true;
+  }
+  // the model list (its search holds the focus)
+  rows: [PK_MODELS] int;
+  n := pk_rows(p, cat, rows[..]);
+  if key == KEY_ESCAPE { p[0].list = false; p[0].qn = 0; p[0].active = -1; return true; }
+  if key == KEY_TAB { if p[0].tabs > 1 { pk_next_tab(p); } return true; }
+  if key == KEY_UP || key == KEY_DOWN {
+    if n == 0 { return true; }
+    d := ifx key == KEY_UP then -1 else 1;
+    p[0].active = ifx p[0].active < 0 then (ifx d > 0 then 0 else n - 1) else ((p[0].active + d) % n + n) % n;
+    pk_reveal(p, n);
+    return true;
+  }
+  if key == KEY_ENTER {
+    if p[0].active >= 0 && p[0].active < n { p[0].pick_model = rows[p[0].active]; p[0].list = false; p[0].qn = 0; p[0].active = -1; }
+    return true;
+  }
+  if key == KEY_BACKSPACE {
+    if plain && p[0].qn > 0 {
+      k := p[0].qn - 1;
+      while k > 0 && (cast(int) p[0].query[k] & 0xC0) == 0x80 { k -= 1; }
+      p[0].qn = k;
+    } else if (mods & (MOD_CMD | MOD_ALT)) != 0 { p[0].qn = 0; }
+    pk_refilter(p, cat);
+    return true;
+  }
+  return true;
+}
+// Typing while the list is open goes to its search; the highlight moves to the first match.
+pk_text :: (p: [] Picker, cat: [] PkCatalog, text: string) -> bool {
+  if p[0].kind != PK_MODEL || !p[0].list { return p[0].kind != PK_NONE; }
+  p[0].since = 0;
+  for c: text {
+    if c == '\n' || c == '\r' || c == '\t' { continue; }
+    if p[0].qn < PK_QUERY { p[0].query[p[0].qn] = c; p[0].qn += 1; }
+  }
+  pk_refilter(p, cat);
+  return true;
+}
+pk_refilter :: (p: [] Picker, cat: [] PkCatalog) {
+  rows: [PK_MODELS] int;
+  n := pk_rows(p, cat, rows[..]);
+  p[0].scroll = 0;
+  p[0].active = ifx n > 0 then 0 else -1;
+}
+
+// ---------------------------------------------------------------- the pointer
+
+pk_inside :: (p: [] Picker, x: f32, y: f32) -> bool { return x >= p[0].x && x < p[0].x + p[0].w && y >= p[0].y && y < p[0].y + p[0].h; }
+// The slider's level under x (effort_index: stops include both ends).
+pk_slider_pick :: (p: [] Picker, cat: [] PkCatalog, sel: PkSel, x: f32) {
+  ladder: [PK_LEVELS] int;
+  n := pk_ladder(cat, sel.model, ladder[..]);
+  if n == 0 { return; }
+  run := p[0].sw - 2 * THUMB_INSET;
+  f := (x - p[0].sx - THUMB_INSET) / (ifx run < 1 then 1.0f32 else run);
+  f = ifx f < 0 then 0.0f32 else ifx f > 1 then 1.0f32 else f;
+  p[0].pick_level = ladder[cast(int) floor(f * cast(f32) (n - 1) + 0.5)];
+}
+// The list row (its index among the rows) under y, or -1.
+pk_list_row :: (p: [] Picker, rows: int, y: f32) -> int {
+  if y < p[0].list_y + CARD_INSET || y >= p[0].list_y + p[0].list_h - CARD_INSET { return -1; }
+  pitch: f32 = COMPACT_ROW_HEIGHT + MENU_GAP;
+  off := y - p[0].list_y - CARD_INSET + p[0].scroll;
+  k := cast(int) floor(off / pitch);
+  if off - cast(f32) k * pitch >= COMPACT_ROW_HEIGHT || k < 0 || k >= rows { return -1; }
+  return k;
+}
+// A press at logical (x, y): true when the menu took it. Outside the card
+// it closes the menu and lets the press through (on_mouse_down_out); the
+// chip it opened from is the screen's to toggle.
+pk_press :: (p: [] Picker, cat: [] PkCatalog, sel: PkSel, x: f32, y: f32) -> bool {
+  if p[0].kind == PK_NONE { return false; }
+  if !pk_inside(p, x, y) { pk_close(p); return false; }
+  p[0].keyboard = false;
+  if p[0].kind == PK_ACCESS_MENU {
+    for k: 0..<p[0].rows {
+      if y >= p[0].row_y[k] && y < p[0].row_y[k] + p[0].row_h[k] {
+        if k < cat[0].access { p[0].pick_access = k; pk_close(p); }
+        else { p[0].flip_plan = true; }
+      }
+    }
+    return true;
+  }
+  if !p[0].list {
+    if y >= p[0].sy && y < p[0].sy + SLIDER_HEIGHT && x >= p[0].sx && x < p[0].sx + p[0].sw {
+      p[0].dragging = true; pk_slider_pick(p, cat, sel, x);
+    } else if y < p[0].sy || pk_ladder_count(cat, sel.model) == 0 {
+      if y >= p[0].y + 1 + CARD_INSET && y < p[0].y + 1 + CARD_INSET + pk_header_height(cat, sel) { pk_show_list(p, cat, sel, 0); p[0].active = -1; }
+    }
+    return true;
+  }
+  // the list page: Back, the rows
+  if y < p[0].y + 1 + COMPACT_ROW_HEIGHT + 2 * CARD_INSET && x < p[0].x + 1 + CARD_INSET + COMPACT_ROW_HEIGHT {
+    p[0].list = false; p[0].qn = 0; p[0].active = -1; return true;
+  }
+  if y < p[0].y + 1 + COMPACT_ROW_HEIGHT + 2 * CARD_INSET {
+    t := cast(int) floor((x - p[0].tab_x) / (COMPACT_ROW_HEIGHT + MENU_GAP));
+    if x >= p[0].tab_x && t < p[0].tabs && t != p[0].view { p[0].view = t; p[0].qn = 0; p[0].scroll = 0; p[0].active = 0; }
+    return true;
+  }
+  rows: [PK_MODELS] int;
+  n := pk_rows(p, cat, rows[..]);
+  k := pk_list_row(p, n, y);
+  if k >= 0 { p[0].pick_model = rows[k]; p[0].list = false; p[0].qn = 0; p[0].active = -1; }
+  return true;
+}
+pk_ladder_count :: (cat: [] PkCatalog, m: int) -> int { ladder: [PK_LEVELS] int; return pk_ladder(cat, m, ladder[..]); }
+pk_header_height :: (cat: [] PkCatalog, sel: PkSel) -> f32 { return ifx pk_ladder_count(cat, sel.model) == 0 then HEADER_HEIGHT_SINGLE else HEADER_HEIGHT; }
+// The pointer moving (a drag of the thumb, else hover).
+pk_move :: (p: [] Picker, cat: [] PkCatalog, sel: PkSel, x: f32, y: f32) {
+  if p[0].kind == PK_NONE { return; }
+  if p[0].dragging { pk_slider_pick(p, cat, sel, x); return; }
+  inside := pk_inside(p, x, y);
+  p[0].title_hover = false; p[0].back_hover = false;
+  if p[0].kind == PK_ACCESS_MENU {
+    if !inside { return; }
+    for k: 0..<p[0].rows { if y >= p[0].row_y[k] && y < p[0].row_y[k] + p[0].row_h[k] { p[0].active = k; p[0].keyboard = false; } }
+    return;
+  }
+  if !inside { return; }
+  if !p[0].list {
+    top := p[0].y + 1 + CARD_INSET;
+    p[0].title_hover = y >= top && y < top + pk_header_height(cat, sel);
+    return;
+  }
+  p[0].back_hover = y < p[0].y + 1 + COMPACT_ROW_HEIGHT + 2 * CARD_INSET && x < p[0].x + 1 + CARD_INSET + COMPACT_ROW_HEIGHT;
+  rows: [PK_MODELS] int;
+  n := pk_rows(p, cat, rows[..]);
+  k := pk_list_row(p, n, y);
+  if k >= 0 { p[0].active = k; p[0].keyboard = false; }
+}
+pk_release :: (p: [] Picker) { p[0].dragging = false; }
+// The wheel over the list scrolls it.
+pk_wheel :: (p: [] Picker, cat: [] PkCatalog, dy: f32) -> bool {
+  if p[0].kind != PK_MODEL || !p[0].list { return p[0].kind != PK_NONE; }
+  rows: [PK_MODELS] int;
+  n := pk_rows(p, cat, rows[..]);
+  most := cast(f32) n * (COMPACT_ROW_HEIGHT + MENU_GAP) - (p[0].list_h - 2 * CARD_INSET);
+  s := p[0].scroll - dy;
+  p[0].scroll = ifx s < 0 then 0.0f32 else ifx s > most then (ifx most > 0 then most else 0.0f32) else s;
+  return true;
+}
+
+// ---------------------------------------------------------------- paint
+
+// Zeron Dark's popover roles: the card's surface and hairline are the
+// composer's (input_glass_bg, opaque), ink and wash theme.rs's (transcript.coax).
+PK_SELECTED :: Rgba.{r = 0.92, g = 0.92, b = 0.92, a = 0.11};   // card_selected_bg
+PK_RING :: Rgba.{r = 1, g = 1, b = 1, a = 0.09};                  // card_selected_shadows
+
+// glass.rs light_plate, accent_plate and thumb_plate, dark.
+light_plate :: () -> GpPlate {
+  return GpPlate.{top = rgba(1, 1, 1, 0.08), bottom = rgba(1, 1, 1, 0.05), rim = rgba(1, 1, 1, 0.09),
+                  inset = rgba(1, 1, 1, 0.07), inset_dy = 1, drop = rgba(0, 0, 0, 0.16), drop_dy = 1, drop_blur = 2};
+}
+lift :: (c: Rgba, amount: f32) -> Rgba { return Rgba.{r = c.r + (1 - c.r) * amount, g = c.g + (1 - c.g) * amount, b = c.b + (1 - c.b) * amount, a = c.a}; }
+accent_plate :: (th: Theme) -> GpPlate {
+  base := th.accent;   // Zeron Dark's accent_strong is its accent
+  return GpPlate.{top = lift(base, 0.06), bottom = base, rim = opacity(lift(base, 0.35), 0.35),
+                  inset = rgba(1, 1, 1, 0.12), inset_dy = 1, drop = rgba(0, 0, 0, 0), drop_dy = 0, drop_blur = 0};
+}
+thumb_plate :: () -> GpPlate {
+  return GpPlate.{top = rgba(1, 1, 1, 1), bottom = rgba(0.965, 0.965, 0.965, 1), rim = rgba(0, 0, 0, 0.12),
+                  inset = rgba(1, 1, 1, 0.8), inset_dy = 1, drop = rgba(0, 0, 0, 0.22), drop_dy = 1, drop_blur = 2};
+}
+
+// popover_card: shadow-lg (Tailwind's two drops), the surface, the hairline border.
+paint_card :: (out: [] f32, at: int, d: f32, x: f32, y: f32, w: f32, h: f32, th: Theme) -> int {
+  v := paint_shadow(out, at, d, x, y, w, h, CARD_RADIUS, 0, 10, 15, -3, rgba(0, 0, 0, 0.1));
+  v = paint_shadow(out, v, d, x, y, w, h, CARD_RADIUS, 0, 4, 6, -4, rgba(0, 0, 0, 0.1));
+  return paint_quad(out, v, d, x, y, w, h, CARD_RADIUS, 1, th.surface, th.border);
+}
+
+// Text cut to a width with an ellipsis (GPUI truncate), into buf.
+pk_fit :: (a: [] Atlas, font: int, s: string, w: f32, buf: [] u8) -> string {
+  if text_width(a, font, s) <= w { return s; }
+  ell := "…";
+  room := w - text_width(a, font, ell);
+  k := 0; x: f32 = 0; prev := -1;
+  while k < s.count {
+    st := gp_step(a, font, s, k, prev);
+    if x + st.advance > room { break; }
+    x += st.advance; prev = st.glyph; k += st.len;
+  }
+  n := 0;
+  for i: 0..<k { if n < buf.count { buf[n] = s[i]; n += 1; } }
+  for c: ell { if n < buf.count { buf[n] = c; n += 1; } }
+  return cast(string) buf[0..<n];
+}
+
+// Where the card goes: its right edge on the chip's, 6px past the chip
+// (below or above), inside the window's 8px margin.
+pk_place :: (p: [] Picker, w: f32, h: f32, view_w: f32, view_h: f32) {
+  x := p[0].ax + p[0].aw - w;
+  y := ifx p[0].below then p[0].ay + p[0].ah + MENU_OFFSET else p[0].ay - MENU_OFFSET - h;
+  if x + w > view_w - MENU_MARGIN { x = view_w - MENU_MARGIN - w; }
+  if x < MENU_MARGIN { x = MENU_MARGIN; }
+  if y + h > view_h - MENU_MARGIN { y = view_h - MENU_MARGIN - h; }
+  if y < MENU_MARGIN { y = MENU_MARGIN; }
+  p[0].x = x; p[0].y = y; p[0].w = w; p[0].h = h;
+}
+
+// The open menu, over everything; returns the vertex count.
+pk_paint :: (out: [] f32, at: int, p: [] Picker, cat: [] PkCatalog, sel: PkSel, a: [] Atlas, th: Theme, d: f32, view_w: f32, view_h: f32) -> int {
+  if p[0].kind == PK_NONE || !a[0].ready { return at; }
+  if p[0].kind == PK_ACCESS_MENU { return pk_paint_access(out, at, p, cat, sel, a, th, d, view_w, view_h); }
+  if p[0].list { return pk_paint_list(out, at, p, cat, sel, a, th, d, view_w, view_h); }
+  return pk_paint_panel(out, at, p, cat, sel, a, th, d, view_w, view_h);
+}
+
+// The compact panel: the header (the effort over the model's name, a
+// button onto the list), then the effort slider.
+pk_paint_panel :: (out: [] f32, at: int, p: [] Picker, cat: [] PkCatalog, sel: PkSel, a: [] Atlas, th: Theme, d: f32, view_w: f32, view_h: f32) -> int {
+  ladder: [PK_LEVELS] int;
+  n := pk_ladder(cat, sel.model, ladder[..]);
+  head: f32 = ifx n == 0 then HEADER_HEIGHT_SINGLE else HEADER_HEIGHT;
+  h := CARD_BORDERS + 2 * CARD_INSET + head + (ifx n == 0 then 0.0f32 else SLIDER_TOP + SLIDER_HEIGHT + SLIDER_BOTTOM);
+  if h > p[0].budget && p[0].budget > 0 { h = p[0].budget; }
+  pk_place(p, COMPACT_WIDTH, h, view_w, view_h);
+  x := p[0].x; y := p[0].y;
+  v := paint_card(out, at, d, x, y, COMPACT_WIDTH, h, th);
+  ix := x + 1 + CARD_INSET; iy := y + 1 + CARD_INSET; iw: f32 = COMPACT_WIDTH - 2 - 2 * CARD_INSET;
+  // the title button: ink 0.05 on hover
+  if p[0].title_hover { v = paint_quad(out, v, d, ix, iy, iw, head, MENU_ITEM_RADIUS, 0, ink(0.05), ink(0.05)); }
+  name := ifx sel.model >= 0 && sel.model < cat[0].n then cat[0].label[sel.model] else "";
+  buf: [160] u8;
+  lv := pk_level_for(cat, sel.model, sel.level);
+  tx := ix + 8;
+  if n > 0 {
+    // SemiBold 14 on a 17px line, then the name Medium 12 on 15, both centered in the 48px header
+    ty := iy + round_layout((head - 17 - 15) / 2);
+    v = paint_text(out, v, a, d, FONT_BOLD, ifx lv >= 0 then cat[0].level_label[lv] else "Default", tx, ty, 17, th.text);
+    nm := pk_fit(a, FONT_CHIP, name, iw - 16 - 13, buf[..]);
+    tone := ifx p[0].title_hover then th.text else th.muted;
+    v = paint_text(out, v, a, d, FONT_CHIP, nm, tx, ty + 17, 15, tone);
+    cx := tx + text_width(a, FONT_CHIP, nm) + 3;
+    v = paint_icon(out, v, a, d, ICON_CHEVRON_10, cx + (ifx p[0].title_hover then 3.0f32 else 0.0f32), ty + 17 + (15 - 10) / 2, 10, 10, opacity(tone, ifx p[0].title_hover then 1.0f32 else 0.55f32));
+  } else {
+    ty := iy + round_layout((head - 17) / 2);
+    nm := pk_fit(a, FONT_BOLD, name, iw - 16 - 13, buf[..]);
+    v = paint_text(out, v, a, d, FONT_BOLD, nm, tx, ty, 17, th.text);
+    cx := tx + text_width(a, FONT_BOLD, nm) + 3;
+    tone := ifx p[0].title_hover then th.text else th.muted;
+    v = paint_icon(out, v, a, d, ICON_CHEVRON_10, cx + (ifx p[0].title_hover then 3.0f32 else 0.0f32), ty + (17 - 10) / 2, 10, 10, opacity(tone, ifx p[0].title_hover then 1.0f32 else 0.55f32));
+  }
+  if n == 0 { p[0].sw = 0; return v; }
+  // the slider: px 8, 2 above and 4 below its 36px box
+  sx := ix + 8; sy := iy + head + SLIDER_TOP; sw: f32 = iw - 16;
+  p[0].sx = sx; p[0].sy = sy; p[0].sw = sw;
+  at_stop := 0;
+  for k: 0..<n { if ladder[k] == lv { at_stop = k; } }
+  fraction := ifx n > 1 then cast(f32) at_stop / cast(f32) (n - 1) else 0.0f32;
+  run := sw - 2 * THUMB_INSET;
+  center := THUMB_INSET + fraction * run;
+  v = paint_plate(out, v, d, sx, sy + RAIL_TOP, sw, RAIL_HEIGHT, RAIL_HEIGHT / 2, light_plate());
+  fill_w := ifx center + FILL_PAST < sw then center + FILL_PAST else sw;
+  v = paint_plate(out, v, d, sx, sy + RAIL_TOP, fill_w, RAIL_HEIGHT, RAIL_HEIGHT / 2, accent_plate(th));
+  // the stops: filled up to the thumb, open past it
+  for k: 0..<n {
+    stop := ifx n > 1 then cast(f32) k / cast(f32) (n - 1) else 0.0f32;
+    c := ifx stop <= fraction then rgba(1, 1, 1, 0.4) else opacity(th.muted, 0.28);
+    v = paint_quad(out, v, d, sx + THUMB_INSET + stop * run - 2, sy + SLIDER_HEIGHT / 2 - 2, 4, 4, 2, 0, c, c);
+  }
+  return paint_plate(out, v, d, sx + center - THUMB_WIDTH / 2, sy + (SLIDER_HEIGHT - THUMB_HEIGHT) / 2, THUMB_WIDTH, THUMB_HEIGHT, THUMB_HEIGHT / 2, thumb_plate());
+}
+
+// The model list: Back and the provider's tab, the search row, the rows.
+pk_paint_list :: (out: [] f32, at: int, p: [] Picker, cat: [] PkCatalog, sel: PkSel, a: [] Atlas, th: Theme, d: f32, view_w: f32, view_h: f32) -> int {
+  rows: [PK_MODELS] int;
+  n := pk_rows(p, cat, rows[..]);
+  list_h := pk_list_height(n);
+  if p[0].budget > 0 && LIST_HEADER + list_h + CARD_BORDERS > p[0].budget {
+    list_h = p[0].budget - LIST_HEADER - CARD_BORDERS;
+    if list_h < 0 { list_h = 0; }
+  }
+  h := LIST_HEADER + list_h + CARD_BORDERS;
+  pk_place(p, COMPACT_WIDTH, h, view_w, view_h);
+  x := p[0].x; y := p[0].y; w: f32 = COMPACT_WIDTH;
+  v := paint_card(out, at, d, x, y, w, h, th);
+  ix := x + 1; iy := y + 1; iw := w - 2;
+  // the strip: Back, then the provider's tab (viewed: ink 0.08), each a row-height square
+  bx := ix + CARD_INSET; by := iy + CARD_INSET;
+  if p[0].back_hover { v = paint_quad(out, v, d, bx, by, COMPACT_ROW_HEIGHT, COMPACT_ROW_HEIGHT, MENU_ITEM_RADIUS, 0, ink(0.05), ink(0.05)); }
+  v = paint_icon(out, v, a, d, ICON_BACK, bx, by, COMPACT_ROW_HEIGHT, COMPACT_ROW_HEIGHT, th.muted);
+  tx := bx + COMPACT_ROW_HEIGHT + MENU_GAP;
+  p[0].tab_x = tx;
+  // the tabs: the viewed one on ink 0.08, the others at 0.7 (each mark 16px, centered); none while searching
+  if pk_query(p).count == 0 {
+    for k: 0..<p[0].tabs {
+      kx := tx + cast(f32) k * (COMPACT_ROW_HEIGHT + MENU_GAP);
+      icon := p[0].tab_icon[k]; tint := p[0].tab_tint[k];
+      if k == p[0].view { v = paint_quad(out, v, d, kx, by, COMPACT_ROW_HEIGHT, COMPACT_ROW_HEIGHT, MENU_ITEM_RADIUS, 0, ink(0.08), ink(0.08)); }
+      v = paint_icon(out, v, a, d, icon, kx + 8, by + 8, 16, 16, ifx k == p[0].view then tint else opacity(tint, 0.7));
+    }
+  }
+  // the search row: 40 tall, px 10, the magnifier, the query (or its placeholder), the hairline under it
+  sy := iy + COMPACT_ROW_HEIGHT + 2 * CARD_INSET;
+  v = paint_icon(out, v, a, d, ICON_MAGNIFER_14, ix + 10, sy + (SEARCH_ROW_HEIGHT - 14) / 2, 14, 14, th.muted);
+  // the search is a ComposerInput: 14px (Medium, inherited) on the composer's 22.75 line, its placeholder, its blinking caret
+  qlh: f32 = INPUT_LINE_HEIGHT;
+  qy := sy + 7.5;   // the input's line box in the 39px row above the hairline, as Zeron lays it (measured)
+  q := pk_query(p);
+  qx := ix + 10 + 14 + 8;
+  if q.count == 0 { v = paint_text(out, v, a, d, FONT_SEARCH, "Search models…", qx, qy, qlh, th.faint); }
+  else { v = paint_text(out, v, a, d, FONT_SEARCH, q, qx, qy, qlh, th.text); }
+  if cast(int) floor(p[0].since / CARET_BLINK) % 2 == 0 {
+    v = paint_quad(out, v, d, qx + text_width(a, FONT_SEARCH, q), qy, 2, qlh, 0, 0, th.accent, th.accent);
+  }
+  v = paint_quad(out, v, d, ix, sy + SEARCH_ROW_HEIGHT - 1, iw, 1, 0, 0, ink(0.08), ink(0.08));
+  // the rows on ink 0.02, py 4, clipped to the list's box
+  ly := sy + SEARCH_ROW_HEIGHT;
+  p[0].list_y = ly; p[0].list_h = list_h;
+  v = paint_quad(out, v, d, ix, ly, iw, list_h, 0, 0, ink(0.02), ink(0.02));
+  clip_from := v;
+  pitch: f32 = COMPACT_ROW_HEIGHT + MENU_GAP;
+  rx := ix + CARD_INSET; rw := iw - 2 * CARD_INSET;
+  lh: f32 = 12 * PHI;
+  buf: [160] u8; dbuf: [160] u8;
+  if n == 0 {
+    v = paint_text(out, v, a, d, FONT_TOOL, "No models found", rx + 8, ly + CARD_INSET + (COMPACT_ROW_HEIGHT - lh) / 2, lh, th.muted);
+  }
+  for k: 0..<n {
+    ry := ly + CARD_INSET + cast(f32) k * pitch - p[0].scroll;
+    if ry + COMPACT_ROW_HEIGHT < ly || ry > ly + list_h { continue; }
+    m := rows[k];
+    is_sel := m == sel.model;
+    if is_sel {
+      v = paint_quad(out, v, d, rx, ry, rw, COMPACT_ROW_HEIGHT, MENU_ITEM_RADIUS, 0, PK_SELECTED, PK_SELECTED);
+      v = paint_quad(out, v, d, rx, ry, rw, COMPACT_ROW_HEIGHT, MENU_ITEM_RADIUS, 1, rgba(0, 0, 0, 0), PK_RING);
+    } else if k == p[0].active {
+      v = paint_quad(out, v, d, rx, ry, rw, COMPACT_ROW_HEIGHT, MENU_ITEM_RADIUS, 0, ink(0.05), ink(0.05));
+    }
+    v = paint_icon(out, v, a, d, cat[0].icon, rx + 8, ry + (COMPACT_ROW_HEIGHT - 14) / 2, 14, 14, cat[0].tint);
+    lx := rx + 8 + 14 + 8;
+    room := rx + rw - 4 - 28 - 8 - lx;   // the star button's room stays (its control is not offered)
+    ty := ry + round_half_toward_zero((COMPACT_ROW_HEIGHT - lh) / 2);
+    label := pk_fit(a, FONT_CHIP, cat[0].label[m], room, buf[..]);
+    v = paint_text(out, v, a, d, FONT_CHIP, label, lx, ty, lh, th.text);
+    if cat[0].desc[m].count > 0 && pk_ambiguous(cat, m) {
+      dx := lx + text_width(a, FONT_CHIP, label) + 6;
+      if room - (dx - lx) > 12 {
+        // baseline-aligned with the name
+        dlh: f32 = 11 * PHI;
+        base := ty + (lh - a[0].fonts[FONT_CHIP].ascent - a[0].fonts[FONT_CHIP].descent) / 2 + a[0].fonts[FONT_CHIP].ascent;
+        dty := base - a[0].fonts[FONT_MENU_SMALL].ascent - (dlh - a[0].fonts[FONT_MENU_SMALL].ascent - a[0].fonts[FONT_MENU_SMALL].descent) / 2;
+        v = paint_text(out, v, a, d, FONT_MENU_SMALL, pk_fit(a, FONT_MENU_SMALL, cat[0].desc[m], room - (dx - lx), dbuf[..]), dx, dty, dlh, th.muted);
+      }
+    }
+  }
+  gp_clip(out, clip_from, v, d, ix, ly, iw, list_h);
+  return v;
+}
+
+// A menu row's description wrapped to w (11px, at spaces): line ends into ends; how many lines.
+pk_wrap :: (a: [] Atlas, s: string, w: f32, ends: [] int) -> int {
+  n := 0; start := 0;
+  while start < s.count && n < ends.count {
+    x: f32 = 0; i := start; brk := -1; prev := -1; stop := s.count;
+    while i < s.count {
+      st := gp_step(a, FONT_MENU_SMALL, s, i, prev);
+      if x + st.advance > w && i > start { stop = ifx brk > start then brk else i; break; }
+      if s[i] == ' ' { brk = i; }
+      x += st.advance; prev = st.glyph; i += st.len;
+    }
+    ends[n] = stop; n += 1;
+    start = stop;
+    while start < s.count && s[start] == ' ' { start += 1; }
+  }
+  return ifx n == 0 then 1 else n;
+}
+// A row's height: py 6, the 13px label and its description's lines on
+// phi lines, each line box whole pixels (Taffy's rounding: 21 and 18, which
+// makes the access menu Zeron's 245).
+MENU_LINE :: 21.0; MENU_DESC_LINE :: 18.0;
+pk_row_height :: (a: [] Atlas, desc: string, w: f32) -> f32 {
+  ends: [8] int;
+  return 12 + MENU_LINE + cast(f32) pk_wrap(a, desc, w, ends[..]) * MENU_DESC_LINE;
+}
+
+// The access menu: the modes, a hairline, Plan mode with its switch.
+pk_paint_access :: (out: [] f32, at: int, p: [] Picker, cat: [] PkCatalog, sel: PkSel, a: [] Atlas, th: Theme, d: f32, view_w: f32, view_h: f32) -> int {
+  w: f32 = ACCESS_WIDTH;
+  rw: f32 = w - 2 - 2 * CARD_INSET;
+  check_w: f32 = 14 + 10;
+  text_w := rw - 16 - check_w;
+  plan_text_w := rw - 16 - SWITCH_WIDTH - 10;
+  plan_desc := "Explore and propose a plan before changing anything.";
+  // the rows' heights, laid out as Taffy rounds them
+  hs: [8] f32; n := 0;
+  for k: 0..<cat[0].access { hs[n] = pk_row_height(a, cat[0].access_desc[k], text_w); n += 1; }
+  if cat[0].plan { hs[n] = pk_row_height(a, plan_desc, plan_text_w); n += 1; }
+  content: f32 = 0;
+  for k: 0..<n { content += hs[k]; }
+  content += cast(f32) (n - 1) * MENU_GAP;
+  if cat[0].plan { content += 1 + 2 * MENU_GAP + MENU_GAP; }   // the separator and its gap
+  h := round_layout(CARD_BORDERS + 2 * CARD_INSET + content);
+  pk_place(p, w, h, view_w, view_h);
+  x := p[0].x; y := p[0].y;
+  v := paint_card(out, at, d, x, y, w, h, th);
+  rx := x + 1 + CARD_INSET;
+  ry := y + 1 + CARD_INSET;
+  p[0].rows = n;
+  lh: f32 = MENU_LINE; dlh: f32 = MENU_DESC_LINE;
+  for k: 0..<n {
+    plan_row := k == cat[0].access;
+    if plan_row {
+      ry += MENU_GAP;
+      sep_y := round_layout(ry);
+      v = paint_quad(out, v, d, x + 1, sep_y, w - 2, 1, 0, 0, ink(0.07), ink(0.07));
+      ry += 1 + MENU_GAP + MENU_GAP;
+    }
+    top := round_layout(ry); bottom := round_layout(ry + hs[k]);
+    p[0].row_y[k] = top; p[0].row_h[k] = bottom - top;
+    chosen := !plan_row && k == sel.access;
+    if chosen || k == p[0].active { v = paint_quad(out, v, d, rx, top, rw, bottom - top, MENU_ITEM_RADIUS, 0, PK_SELECTED, PK_SELECTED); }
+    label := ifx plan_row then "Plan mode" else cat[0].access_label[k];
+    desc := ifx plan_row then plan_desc else cat[0].access_desc[k];
+    tone := ifx chosen || k == p[0].active then th.text else opacity(th.text, 0.9);
+    v = paint_text(out, v, a, d, FONT_MENU, label, rx + 8, top + 6, lh, tone);
+    ends: [8] int;
+    nl := pk_wrap(a, desc, ifx plan_row then plan_text_w else text_w, ends[..]);
+    from := 0;
+    for q: 0..<nl {
+      to := ends[q];
+      v = paint_text(out, v, a, d, FONT_MENU_SMALL, cast(string) desc[from..<to], rx + 8, top + 6 + lh + cast(f32) q * dlh, dlh, th.muted);
+      from = to;
+      while from < desc.count && desc[from] == ' ' { from += 1; }
+    }
+    if chosen { v = paint_icon(out, v, a, d, ICON_CHECK, rx + rw - 8 - 14, top + (bottom - top - 14) / 2, 14, 14, th.muted); }
+    if plan_row { v = paint_switch(out, v, d, rx + rw - 8 - SWITCH_WIDTH, top + (bottom - top - SWITCH_HEIGHT) / 2, sel.plan, th); }
+    ry += hs[k] + MENU_GAP;
+  }
+  return v;
+}
+
+// toggle_switch, opaque (not frost): the track (the accent darkened by
+// black 0.14 when on, ink 0.18 over the surface when off) with its 1px
+// rim, the on mark (a 1.2x7.2 bar) or the off mark (a 6.4 ring), and the
+// near-white thumb with its rim.
+paint_switch :: (out: [] f32, at: int, d: f32, x: f32, y: f32, on: bool, th: Theme) -> int {
+  surface := th.surface;
+  track := ifx on then flatten(rgba(0, 0, 0, 0.14), th.accent) else flatten(ink(0.18), surface);
+  rim := ifx on then flatten(ink(0.12), track) else flatten(th.border, track);
+  ty := y + (SWITCH_HEIGHT - SWITCH_TRACK_HEIGHT) / 2;
+  v := paint_quad(out, at, d, x, ty, SWITCH_WIDTH, SWITCH_TRACK_HEIGHT, SWITCH_TRACK_HEIGHT / 2, 1, track, rim);
+  empty: f32 = SWITCH_WIDTH - SWITCH_THUMB_WIDTH - SWITCH_SIDE_INSET;
+  pad: f32 = (empty - SWITCH_MARK_SIZE) / 2;
+  my := ty + (SWITCH_TRACK_HEIGHT - SWITCH_MARK_SIZE) / 2;
+  if on {
+    v = paint_quad(out, v, d, x + pad + (SWITCH_MARK_SIZE - 1.2) / 2, my, 1.2, 7.2, 0.6, 0, rgba(1, 1, 1, 0.96), rgba(1, 1, 1, 0.96));
+  } else {
+    mx := x + SWITCH_WIDTH - pad - SWITCH_MARK_SIZE;
+    v = paint_quad(out, v, d, mx + 0.4, my + 0.4, 6.4, 6.4, 3.2, 1, rgba(0, 0, 0, 0), rgba(1, 1, 1, 0.92));
+  }
+  thumb := flatten(rgba(1, 1, 1, 0.96), surface);
+  thumb_h: f32 = SWITCH_TRACK_HEIGHT - 2 * SWITCH_SIDE_INSET;
+  tx := x + SWITCH_SIDE_INSET + (ifx on then SWITCH_WIDTH - SWITCH_THUMB_WIDTH - 2 * SWITCH_SIDE_INSET else 0.0f32);
+  return paint_quad(out, v, d, tx, ty + SWITCH_SIDE_INSET, SWITCH_THUMB_WIDTH, thumb_h, thumb_h / 2, 1, thumb, flatten(rgba(0, 0, 0, 0.10), thumb));
+}
+
+// ---------------------------------------------------------------- checks
+
+test_catalog :: () -> PkCatalog {
+  c := PkCatalog.{provider = "Claude", icon = ICON_CLAUDE_14, tint = hex(0xd97757, 1), n = 4, levels = 5, default_level = 2,
+                  access = 3, full_access = 2, plan = true};
+  c.id[0] = ""; c.label[0] = "Default (recommended)"; c.ladder[0] = 31;
+  c.id[1] = "claude-opus-5-5"; c.label[1] = "Opus 5.5"; c.desc[1] = "Best for everyday, complex tasks"; c.ladder[1] = 31;
+  c.id[2] = "opus"; c.label[2] = "Opus 5.5"; c.ladder[2] = 31;
+  c.id[3] = "claude-haiku-4-5"; c.label[3] = "Haiku 4.5"; c.ladder[3] = 0;
+  names := [5] string.["Low", "Medium", "High", "X-High", "Max"];
+  ids := [5] string.["low", "medium", "high", "xhigh", "max"];
+  for k: 0..<5 { c.level_id[k] = ids[k]; c.level_label[k] = names[k]; }
+  c.access_label[0] = "Supervised"; c.access_desc[0] = "Ask before commands and file changes.";
+  c.access_label[1] = "Auto-accept edits"; c.access_desc[1] = "Apply edits, ask before other actions.";
+  c.access_label[2] = "Full access"; c.access_desc[2] = "Run commands and edits without asking.";
+  return c;
+}
+
+#test "the panel's keys: Left/Right/Home/End step the effort along the model's ladder; Up/Down open the list beside it" {
+  cat: [1] PkCatalog; cat[0] = test_catalog();
+  p: [1] Picker;
+  sel := PkSel.{model = 0, level = 2, access = 2};
+  pk_open(p[..], PK_MODEL, cat[..], sel, 600, 450, 200, 32, 880, true);
+  #assert pk_is_open(p[..]) && p[0].below && p[0].budget == 880 - 482 - 14;
+  #assert pk_key(p[..], cat[..], sel, KEY_RIGHT, 0) && p[0].pick_level == 3;
+  #assert pk_key(p[..], cat[..], sel, KEY_HOME, 0) && p[0].pick_level == 0;
+  #assert pk_key(p[..], cat[..], sel, KEY_END, 0) && p[0].pick_level == 4;
+  sel.level = 0;
+  #assert pk_key(p[..], cat[..], sel, KEY_LEFT, 0) && p[0].pick_level == 0;
+  // Haiku 4.5 has no ladder: no level, the arrows do nothing to it
+  #assert pk_level_for(cat[..], 3, 2) == -1 && pk_level_for(cat[..], 1, 9) == 2 && pk_level_for(cat[..], 1, 4) == 4;
+  #assert pk_key(p[..], cat[..], sel, KEY_DOWN, 0) && p[0].list && p[0].active == 1;
+  #assert pk_key(p[..], cat[..], sel, KEY_UP, 0) && p[0].active == 0;
+  #assert pk_key(p[..], cat[..], sel, KEY_UP, 0) && p[0].active == 3;     // wraps
+  #assert pk_key(p[..], cat[..], sel, KEY_ENTER, 0) && p[0].pick_model == 3 && !p[0].list && pk_is_open(p[..]);
+  #assert pk_key(p[..], cat[..], sel, KEY_ESCAPE, 0) && !pk_is_open(p[..]);
+}
+
+#test "typing filters the model list, Backspace widens it, Escape returns to the panel" {
+  cat: [1] PkCatalog; cat[0] = test_catalog();
+  p: [1] Picker;
+  sel := PkSel.{model = 0, level = 2, access = 2};
+  pk_open(p[..], PK_MODEL, cat[..], sel, 600, 600, 200, 32, 880, false);
+  #assert !p[0].below;   // in a chat the menu opens above
+  #assert pk_key(p[..], cat[..], sel, KEY_ENTER, 0) && p[0].list && p[0].active == 0;
+  #assert pk_text(p[..], cat[..], "OPUS");
+  rows: [PK_MODELS] int;
+  #assert pk_rows(p[..], cat[..], rows[..]) == 2 && rows[0] == 1 && rows[1] == 2 && p[0].active == 0;
+  #assert pk_text(p[..], cat[..], "x") && pk_rows(p[..], cat[..], rows[..]) == 0 && p[0].active == -1;
+  #assert pk_key(p[..], cat[..], sel, KEY_BACKSPACE, 0) && pk_rows(p[..], cat[..], rows[..]) == 2;
+  #assert pk_key(p[..], cat[..], sel, KEY_DOWN, 0) && p[0].active == 1;
+  #assert pk_key(p[..], cat[..], sel, KEY_ENTER, 0) && p[0].pick_model == 2;
+  #assert pk_key(p[..], cat[..], sel, KEY_ENTER, 0) && p[0].list;
+  #assert pk_key(p[..], cat[..], sel, KEY_ESCAPE, 0) && !p[0].list && pk_is_open(p[..]) && p[0].qn == 0;
+  // the descriptions: only for rows sharing a name
+  #assert pk_ambiguous(cat[..], 1) && !pk_ambiguous(cat[..], 0);
+}
+
+#test "the access menu: arrows move over the modes and Plan mode, Enter picks and closes, or flips Plan mode" {
+  cat: [1] PkCatalog; cat[0] = test_catalog();
+  p: [1] Picker;
+  sel := PkSel.{model = 0, level = 2, access = 2};
+  pk_open(p[..], PK_ACCESS_MENU, cat[..], sel, 600, 450, 80, 32, 880, true);
+  #assert p[0].active == 2;
+  #assert pk_key(p[..], cat[..], sel, KEY_DOWN, 0) && p[0].active == 3;
+  #assert pk_key(p[..], cat[..], sel, KEY_ENTER, 0) && p[0].flip_plan && pk_is_open(p[..]);
+  #assert pk_key(p[..], cat[..], sel, KEY_DOWN, 0) && p[0].active == 0;
+  #assert pk_key(p[..], cat[..], sel, KEY_ENTER, 0) && p[0].pick_access == 0 && !pk_is_open(p[..]);
+}
+
+#test "the menus paint where Zeron puts them, and the pointer picks from them" {
+  a: [1] Atlas; test_atlas(a[..]);
+  cat: [1] PkCatalog; cat[0] = test_catalog();
+  p: [1] Picker;
+  sel := PkSel.{model = 0, level = 2, access = 2};
+  out: [60000] f32;
+  // the compact panel under the model chip, its right edge on the chip's: 256 x 100
+  pk_open(p[..], PK_MODEL, cat[..], sel, 781, 447, 198, 32, 880, true);
+  n := pk_paint(out[..], 0, p[..], cat[..], sel, a[..], zeron_dark(), 2, 1320, 880);
+  #assert n > 60 && p[0].x == 723 && p[0].y == 485 && p[0].w == 256 && p[0].h == 100;
+  #assert p[0].sx == 736 && p[0].sy == 540 && p[0].sw == 230;
+  // a press on the slider's last stop picks the ladder's top
+  #assert pk_press(p[..], cat[..], sel, 736 + 230 - 22, 558) && p[0].pick_level == 4 && p[0].dragging;
+  pk_move(p[..], cat[..], sel, 736 + 22, 558);
+  #assert p[0].pick_level == 0;
+  pk_release(p[..]);
+  // the header opens the list: 13 rows would cap at seven; four here
+  #assert pk_press(p[..], cat[..], sel, 800, 500) && p[0].list;
+  n = pk_paint(out[..], 0, p[..], cat[..], sel, a[..], zeron_dark(), 2, 1320, 880);
+  #assert p[0].h == 80 + 4 * 34 + 8 + 2 && p[0].list_y == 485 + 1 + 80;
+  // the third row picks the opus alias
+  #assert pk_press(p[..], cat[..], sel, 800, p[0].list_y + 4 + 2 * 34 + 10) && p[0].pick_model == 2 && !p[0].list;
+  // a press outside closes it and passes through
+  #assert !pk_press(p[..], cat[..], sel, 10, 10) && !pk_is_open(p[..]);
+  // the access menu: 288 wide at the access chip, three modes and Plan mode
+  pk_open(p[..], PK_ACCESS_MENU, cat[..], sel, 694, 447, 83, 32, 880, true);
+  n = pk_paint(out[..], 0, p[..], cat[..], sel, a[..], zeron_dark(), 2, 1320, 880);
+  #assert p[0].w == 288 && p[0].x == 777 - 288 && p[0].rows == 4;
+  #assert pk_press(p[..], cat[..], sel, 600, p[0].row_y[3] + 5) && p[0].flip_plan && pk_is_open(p[..]);
+  #assert pk_press(p[..], cat[..], sel, 600, p[0].row_y[1] + 5) && p[0].pick_access == 1 && !pk_is_open(p[..]);
+}

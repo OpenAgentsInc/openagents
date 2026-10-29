@@ -55,15 +55,39 @@ How it works:
   WebSearch, Task/Agent, MCP and TodoWrite, results attached, failures in
   red, errors and limits as Zeron's danger chips; rebuilds coalesce at 120
   ms. Sub-agent frames (`parent_tool_use_id`) are not drawn. The composer's
-  chips cycle on click (Zeron opens menus): model Haiku, Sonnet, Opus 5.5
-  (default Opus, `set_model` mid-session); effort Low to Max (default High,
-  applied by restarting with `--resume` before the next message); access
-  Full access (allow every tool), Auto-accept edits (`acceptEdits`, ask for
-  the rest) or Supervised (ask for every tool), asks shown as an Allow/Deny
-  chip. Enter sends; the send button becomes Stop while a turn runs, and Stop
+  chips open Zeron's own menus (`zeron/picker.coax`, from `pickers.rs`,
+  `pickers/compact.rs`, `popover.rs`, `glass.rs`): the model chip opens the
+  compact model picker (the effort over the model's name, the glass effort
+  slider; its list page has Back, a tab per mode while the chat is empty,
+  search, the rows), the access chip the access menu (Supervised, Auto-accept
+  edits, Full access with a check, then Plan mode and its switch). Keys as
+  Zeron's: arrows, Enter, Escape, Home/End, Tab, type to filter; a press
+  outside closes. What they offer is data (`PkCatalog`): Claude's is Zeron's
+  model cache (13 models, default "Default (recommended)" with no `--model`,
+  `set_model` mid-session) and its ladder Low to Ultrathink (default High;
+  Ultracode is xhigh plus `{"ultracode":true}` settings, Ultrathink no
+  `--effort` and an "Ultrathink:" opener, X-High falls back to Max where a
+  model lacks it; a new level restarts with `--resume`); access Full access
+  (allow every tool), Auto-accept edits (`acceptEdits`) or Supervised, and
+  Plan mode (`plan`), asks shown as an Allow/Deny chip. Open menus measure
+  against Zeron's renders of the same state: the panel 0.01% of pixels off
+  by more than 48, the access menu 0.04%, the list 1.2% (the search caret
+  and Zeron's hovered row). Attachments (`zeron/attachments.coax`) as Zeron
+  stages them: the paperclip's open panel, a drop or a paste of files or an
+  image copies each into `~/Library/Application Support/OpenAgents/uploads`
+  as `{id8}-{name}` (24 MB at most, else Zeron's "too large" notice above
+  the composer) and puts a chip at the caret ("Image N" or the file's name,
+  one character to the caret and Backspace). Sent, the bubble keeps the
+  chips; Claude gets their labels, the "Attached images (local files — open
+  them to view)" path list, and each image up to 5 MB as a base64 image
+  block before the text (the SDK's `cl_image_block_bytes`, written into a 32
+  MB frame). Psionic reads text alone: text files go inline under their
+  names and an image keeps the message in the composer with the reason
+  (`at_text_only`, the hook a text-only engine calls). Enter sends; the send button becomes Stop while a turn runs, and Stop
   or Escape sends the interrupt and ends the turn with "Stopped". `--demo`
   (or the shot step `fixture open`) shows Zeron's demo conversation instead.
-  Shot steps `send TEXT`, `stop`, `model/effort/access NAME`, `wait S` and
+  Shot steps `send TEXT`, `stop`, `model/effort/access NAME`, `plan on|off`,
+  `open model|access`, `attach PATH`, `wait S` and
   `waitidle S` drive a live run offscreen. Tests: `coax test --library
   zeron/claude.coax` runs a scrubbed recorded stream
   (`zeron/fixtures/claude-tools.jsonl`, regenerated with `fixture.py`)
@@ -71,13 +95,13 @@ How it works:
 - Claude | Psionic: a chat runs on Claude (above) or on Psionic, our own
   gpt-oss-20b through the Psionic Responses API (`zeron/psionic.coax`). As in
   Zeron the harness rides on the model chip: its mark (the OpenAgents power
-  symbol for Psionic) and model; on an empty chat the model chip cycles Opus,
-  Sonnet, Haiku, then gpt-oss-20b; a conversation keeps its mode. Psionic's
+  symbol for Psionic) and model; on an empty chat the model list has a tab
+  per mode (Tab moves between them); a conversation keeps its mode. Psionic's
   effort chip is Low, Medium, High (the request's `reasoning.effort`); the
   access chip gates its three tools (read_file, list_folder, run_command):
   Full access runs all, Auto-accept edits runs the two that read and asks for
   run_command, Supervised asks for each. The modes and each chip's choices
-  are tables in `zeron/modes.coax` (exported as `coaxial_zeron_option_*`,
+  are catalogs in `zeron/modes.coax` (exported as `coaxial_zeron_option_*`,
   `coaxial_zeron_mode*` for a picker; a new mode is a new row). Requests go
   through `coax/lib/gateway/` (`sse.coax`, the event-stream reader;
   `transport.coax`, streaming curl polled each frame, the key passed only
@@ -170,12 +194,13 @@ shadow and chips is identical; Zeron's three SVG icons, rasterized here by
 CoreSVG rather than resvg, differ at their antialiased edges (0.2% of the
 composer region's pixels, at most 24 of 255 in a channel). Not yet drawn: the
 project and device selectors above the composer, the titlebar, the
-microphone (Zeron hides it while dictation is off), the pickers' menus, and
-hover states. Selections against Zeron's render of the same keystrokes (one
+microphone (Zeron hides it while dictation is off), and hover states other
+than the chips'. With an image and a text file attached, the composer is
+0.08% of pixels off by more than 48; the sent bubble 0.85% (its chips' icons
+a device pixel apart). Selections against Zeron's render of the same keystrokes (one
 row, Shift+Alt+Left twice; three rows, Shift+Up twice): text and selection
-identical, pixel for pixel. Not ported from Zeron's input: mentions and
-chips, Markdown list continuation on Enter and Tab, dictation, attachments
-from pasted files or images.
+identical, pixel for pixel. Not ported from Zeron's input: mentions,
+Markdown list continuation on Enter and Tab, dictation.
 
 Component two, the transcript, against Zeron's render of the same demo
 (1320x880 at scale 2, `crates/ui/examples/transcript-fixture.rs` in a
