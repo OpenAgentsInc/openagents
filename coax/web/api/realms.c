@@ -4,7 +4,9 @@
 // (migrations/0048_realm_builder.sql); this file reads who asks and does the model's and the
 // bucket's part.
 //
-//   POST /api/playtest/realms/plan {prompt, board?}    -> 200 {plan, board, model}; 400, 429, 502, 503
+//   POST /api/playtest/realms/plan {prompt, setup?, plan?, on?}   -> 200 {plan, board, model}; 400, 429, 502, 503
+//   POST /api/playtest/realms/pick {field, words}      -> 200 {field, value}: SAY IT for one setup question
+//        (migrations/0049_realm_builder_setup.sql); 400, 429, 503
 //   POST /api/playtest/realms {plan?, board}           -> 200 {slug, path, name, page}; 400, 401, 429
 //   GET  /api/playtest/realms/<slug>                   -> text/plain, the spec a line each; 404
 //   POST /api/playtest/realms/<slug>/settings {tools}  -> 200 {tools}; 403 not the owner
@@ -70,7 +72,8 @@ static void answer_lines(int fd, int status, const char *json_text, const char *
   api_respond(fd, status, "text/plain; charset=utf-8", NULL, out, strlen(out));
 }
 
-static void plan_answer(int fd, const char *asked, const char *request, bool lines) {
+// The model's answer, held by SQL: builder_answer for a plan, builder_pick_answer for a pick.
+static void plan_answer(int fd, const char *asked, const char *request, bool lines, bool pick) {
   const char *model = env_or("OA_BUILDER_MODEL", "gemini-3.8-flash");
   char *got = NULL;
   double t0 = api_now_ms();
@@ -80,7 +83,8 @@ static void plan_answer(int fd, const char *asked, const char *request, bool lin
   snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));
   PGconn *db = api_db_new();
   const char *v[5] = {asked, http, got ? got : "", model, taken};
-  PGresult *r = db ? PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines' FROM verse.builder_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
+  PGresult *r = db ? PQexecParams(db, pick ? "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines' FROM verse.builder_pick_answer($1::jsonb, $2::int, $3, $4, $5::int) x"
+                                         : "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines' FROM verse.builder_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
                                   5, NULL, v, NULL, NULL, 0) : NULL;
   if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
     if (lines) answer_lines(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1), PQgetisnull(r, 0, 2) ? NULL : PQgetvalue(r, 0, 2));
@@ -93,12 +97,14 @@ static void plan_answer(int fd, const char *asked, const char *request, bool lin
   free(got);
 }
 
-static void plan(const request *q, PGconn *db, const char *key) {
+static void plan(const request *q, PGconn *db, const char *key, bool pick) {
   char *body = body_of(q);
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
   const char *v[3] = {body, env_or("OA_BUILDER_DAILY_CAP", "3000"), key};
-  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, jsonb_build_object('id', x->'id')::text "
-                                 "FROM verse.builder_ask($1::jsonb, $2::int, $3) x", 3, NULL, v, NULL, NULL, 0);
+  PGresult *r = PQexecParams(db, pick ? "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, (x - 'request' - 'status')::text "
+                                        "FROM verse.builder_pick_ask($1::jsonb, $2::int, $3) x"
+                                      : "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, (x - 'request' - 'status')::text "
+                                        "FROM verse.builder_ask($1::jsonb, $2::int, $3) x", 3, NULL, v, NULL, NULL, 0);
   free(body);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
@@ -120,7 +126,7 @@ static void plan(const request *q, PGconn *db, const char *key) {
   PQclear(r);
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
-  if (pid == 0) { plan_answer(q->fd, asked, request, lines); _exit(0); }
+  if (pid == 0) { plan_answer(q->fd, asked, request, lines, pick); _exit(0); }
   if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
   free(request); free(asked);
 }
@@ -234,9 +240,9 @@ bool realms_route(const request *q) {
     make(q, db, key);
     return true;
   }
-  if (!strcmp(rest, "plan")) {
+  if (!strcmp(rest, "plan") || !strcmp(rest, "pick")) {
     if (!post) { api_json(q->fd, 405, "{\"error\":\"POST a prompt\"}"); return true; }
-    plan(q, db, key);
+    plan(q, db, key, !strcmp(rest, "pick"));
     return true;
   }
   const char *slash = strchr(rest, '/');

@@ -202,6 +202,53 @@ def realm_builder_checks():
     check("someone else's plan makes nothing", st == 400 and raw.decode() == "no board", (st, raw))
     st, raw, _ = call("POST", "/api/playtest/realms/plan?as=lines", json.dumps({"prompt": ""}).encode(), h)
     check("an error as lines is its words alone", st == 400 and raw.decode() == "say what world you want", raw)
+
+    # setup (0049): the visitor's answers are fixed; the model fills the rest
+    time.sleep(2.1)
+    setup_owner = b_player()
+    h = {"Content-Type": "application/json", "X-Verse-Player": setup_owner}
+    builder_mode["text"] = json.dumps({"name": "Dune Watch", "camera": "third", "style": "painterly", "ground": "forest", "time": "day",
+                                       "features": [{"feature": "rocks", "on": True, "count": 5}]})
+    st, raw, _ = call("POST", "/api/playtest/realms/plan?as=lines", json.dumps({"prompt": "a lookout over the dunes",
+        "setup": {"camera": "first", "ground": "desert", "time": "night", "style": "photoreal", "colour": "red"}}).encode(), h)
+    text = raw.decode()
+    seen = builder_seen[-1]
+    check("setup answers are fixed over the model's; one not in the catalogue is left to the model",
+          st == 200 and "\nstyle painterly\nground desert\ntime night\ncamera first\n" in text, text)
+    check("the model is told what is fixed and asked for a camera",
+          seen["contents"][0]["parts"][0]["text"].startswith("Fixed in setup: ") and "photoreal" not in seen["contents"][0]["parts"][0]["text"]
+          and seen["generationConfig"]["responseSchema"]["properties"]["camera"]["enum"] == ["third", "first", "top", "side"]
+          and "camera" in seen["generationConfig"]["responseSchema"]["required"], seen["contents"][0]["parts"][0]["text"][:200])
+    setup_plan = int(text.split("\n")[0].split(" ")[1]) if text.startswith("plan ") else 0
+    st, raw, _ = call("POST", "/api/playtest/realms?as=lines", json.dumps({"plan": setup_plan, "on": [True], "setup": {"camera": "top", "time": "dusk"}}).encode(), h)
+    check("an answer changed on the board goes with MAKE IT", st == 200 and raw.decode().startswith("slug dune-watch\n"), raw)
+    st, spec = b_call("GET", "/api/playtest/realms/dune-watch")
+    check("the made realm keeps its camera, and the setup as the board showed it",
+          "camera top" in spec and "time dusk" in spec and "ground desert" in spec and "feature rocks 5" in spec, spec)
+    md = bucket["site"].get("realms/dune-watch/index.md", {}).get("data", b"").decode()
+    check("its text names the camera", "3D, top-down" in md, md[:200])
+    st, old = b_call("GET", "/api/playtest/realms/moonlit-marsh")
+    check("a realm made before cameras is third person", "camera third" in old, old)
+    check("a realm named Plan never takes the builder's route", sql("select verse.builder_slug('Plan')") == "plan-2")
+
+    # SAY IT for one question: the model picks one of its words, or none
+    time.sleep(2.1)
+    builder_mode["text"] = json.dumps({"value": "first"})
+    st, raw, _ = call("POST", "/api/playtest/realms/pick?as=lines", json.dumps({"field": "camera", "words": "through my own eyes"}).encode(), h)
+    seen = builder_seen[-1]
+    check("a spoken answer is picked by the model under that question's words",
+          st == 200 and raw.decode() == "field camera\nvalue first\n"
+          and seen["generationConfig"]["responseSchema"]["properties"]["value"]["enum"] == ["third", "first", "top", "none"]
+          and seen["contents"][0]["parts"][0]["text"] == "through my own eyes", (st, raw))
+    time.sleep(2.1)
+    builder_mode["text"] = json.dumps({"value": "fourth"})
+    st, got = b_call("POST", "/api/playtest/realms/pick", {"field": "time", "words": "whenever"}, setup_owner)
+    check("a word not the question's is none", st == 200 and got["value"] == "none" and got["field"] == "time", got)
+    check("an unknown question is a 400", b_call("POST", "/api/playtest/realms/pick", {"field": "colour", "words": "red"})[0] == 400)
+    check("no words is a 400", b_call("POST", "/api/playtest/realms/pick", {"field": "dims", "words": ""})[0] == 400)
+    builder_mode["status"] = 500
+    check("the model's error on a pick is a 503", b_call("POST", "/api/playtest/realms/pick", {"field": "dims", "words": "flat"})[0] == 503)
+    builder_mode["status"] = 200
     gcs_server.shutdown()
     builder_fake.shutdown()
 
