@@ -29,9 +29,9 @@ The [example](../examples/attention-sinks.coax),
 `gpt-oss-attention-cpu-wide-v1` profile. Inputs are synthetic, projected `f32`
 Q/K/V vectors and per-head sink logits. This chapter qualifies bounded CPU
 primitives; original checkpoint binding and a complete decoder remain chapter
-38's work. Read chapters [3](ch003-numbers-and-matrices.md),
+45's work. Read chapters [3](ch003-numbers-and-matrices.md),
 [6](ch006-attention-without-training.md) and
-[35](ch042-a-few-experts-then-a-router.md) first.
+[42](ch042-a-few-experts-then-a-router.md) first.
 
 ## Let the sink keep some probability
 
@@ -383,7 +383,7 @@ attention block or a GPU implementation. Full-size full-context attention,
 normalization/residual composition, original projection/expert binding and
 complete-model intermediate/logit references remain explicit chapter 45 gates.
 
-The next branch chapter is **37. The harmony format**: turn structured messages
+The next branch chapter is [44. The harmony format](ch044-the-harmony-format.md): turn structured messages
 into the exact model token stream and read its channel and turn boundaries.
 Attention semantics and conversation framing need their own checks before we
 join them in complete gpt-oss generation.

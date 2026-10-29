@@ -214,7 +214,7 @@ hex8 :: (d:[32]u8) {
 ## What this does not do yet
 
 This read scans every write, so a step costs time proportional to the trace
-length. Chapter 170 answers the same hard-max query as a convex-hull search in
+length. Chapter 171 answers the same hard-max query as a convex-hull search in
 logarithmic time. The scores here are integers. A transformer computes them in
 floating point with a very sharp softmax, and chapter 172 states when that is
 still exact.

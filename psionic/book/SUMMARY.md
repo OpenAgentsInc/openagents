@@ -45,6 +45,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–10, 12, 13, 26, 30 (Elephant on CUDA), 41–48, 56–57, 59, 165–168 and 172 are
+Chapters 1–10, 12, 13, 26, 30 (Elephant on CUDA), 41–48, 56–57, 59, 165–169 and 172 are
 runnable. Chapter 11, chapters 14–25, 27–29, 31–40 and the remaining outlines
 remain proposed.
