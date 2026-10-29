@@ -1,0 +1,261 @@
+// NIP-01 bounded filters. Matching filters parsed events; it grants no authority.
+#load "event.coax";
+#authority;
+
+#test "NIP-01 absent lists differ from explicitly empty lists" {
+ f:NostrFilter;e:NostrEvent;e.error=NE_OK;e.kind=1;e.created_at=10;
+ #assert nf_valid(f) && nf_match(f,e);
+ f.has_ids=true;#assert nf_valid(f) && !nf_match(f,e);f.has_ids=false;
+ f.has_authors=true;#assert nf_valid(f) && !nf_match(f,e);f.has_authors=false;
+ f.has_kinds=true;#assert nf_valid(f) && !nf_match(f,e);f.has_kinds=false;
+ tag:NostrTagFilter;tag.name='t';tags:=[1]NostrTagFilter.[tag];f.tags=tags[..];e.original="[]";e.tags_to=2;
+ #assert nf_valid(f) && !nf_match(f,e);
+}
+#test "AND across fields OR within lists and inclusive time" {
+ zero:="0000000000000000000000000000000000000000000000000000000000000000";
+ one:="1111111111111111111111111111111111111111111111111111111111111111";
+ ids:=[2]string.[one,zero];authors:=[2]string.[one,zero];kinds:=[2]int.[2,1];
+ f:NostrFilter;f.has_ids=true;f.ids=ids[..];f.has_authors=true;f.authors=authors[..];f.has_kinds=true;f.kinds=kinds[..];
+ f.has_since=true;f.since=10;f.has_until=true;f.until=10;f.has_limit=true;f.limit=0;
+ e:NostrEvent;e.error=NE_OK;e.kind=1;e.created_at=10;#assert nf_valid(f) && nf_match(f,e);
+ e.created_at=9;#assert !nf_match(f,e);e.created_at=11;#assert !nf_match(f,e);e.created_at=10;
+ e.kind=3;#assert !nf_match(f,e);e.kind=1;e.id[0]=1;#assert !nf_match(f,e);e.id[0]=0;e.public_key[0]=1;#assert !nf_match(f,e);
+}
+#test "tag predicates use the first tag value and decode JSON escapes" {
+ e:NostrEvent;e.error=NE_OK;e.kind=1;e.created_at=10;
+ e.original="[[\"t\",\"hello\",\"later\"],[\"\\u0074\",\"caf\\u00e9\"],[\"e\",\"0000000000000000000000000000000000000000000000000000000000000000\"]]";e.tags_from=0;e.tags_to=e.original.count;
+ values:=[2]string.["wrong","café"];tag:=NostrTagFilter.{name='t',values=values[..]};tags:=[1]NostrTagFilter.[tag];f:NostrFilter;f.tags=tags[..];
+ #assert nf_valid(f) && nf_match(f,e);
+ values[1]="later";#assert !nf_match(f,e);values[1]="hello";#assert nf_match(f,e);
+ tags[0].name='e';values[0]="short";#assert !nf_valid(f);values[0]="0000000000000000000000000000000000000000000000000000000000000000";tags[0].values=values[0..<1];#assert nf_match(f,e);
+ tags[0].name='!';#assert !nf_valid(f);
+}
+#test "serialize a bounded filter using JSON escaping" {
+ f:NostrFilter;f.has_kinds=true;kinds:=[2]int.[1,42];f.kinds=kinds[..];f.has_since=true;f.since=10;f.has_limit=true;f.limit=0;
+ values:=[1]string.["a\"b"];tags:=[1]NostrTagFilter.[NostrTagFilter.{name='t',values=values[..]}];f.tags=tags[..];
+ out:[128]u8;n:=nf_write(f,out[..],false);#assert n>0;
+ #assert cast(string)out[0..<n]=="{\"kinds\":[1,42],\"#t\":[\"a\\\"b\"],\"since\":10,\"limit\":0}";
+ #assert nf_write(f,out[0..<1],false)== -1 && nf_write(f,out[..],true)== -1;
+}
+#test "invalid event bounds and unsupported inputs refuse" {
+ f:NostrFilter;e:NostrEvent;#assert !nf_match(f,e);
+ e.error=NE_OK;e.kind=1;e.created_at=1;f.has_since=true;f.since=11;f.has_until=true;f.until=10;#assert nf_valid(f) && !nf_match(f,e);
+ f.has_limit=true;f.limit= -1;#assert !nf_valid(f);
+ f=NostrFilter.{};f.has_kinds=true;kinds:=[1]int.[65536];f.kinds=kinds[..];#assert !nf_valid(f);
+ f=NostrFilter.{};f.has_ids=true;ids:=[1]string.["abc"];f.ids=ids[..];#assert !nf_valid(f);
+}
+
+// This is a bounded subscription profile. Lists have at most 64 entries,
+// single-letter tag names are unique, and tag values have at most 256 UTF-8
+// bytes. Borrowed views must stay valid and immutable through each call.
+// Match requires a successfully parsed event, not a caller-forged record.
+// A match says nothing about signature, identity, freshness or authorization.
+NostrTagFilter :: struct { name:u8; values:[]string; }
+NostrFilter :: struct {
+  has_ids:bool; ids:[]string; has_authors:bool; authors:[]string;
+  has_kinds:bool; kinds:[]int; tags:[]NostrTagFilter;
+  has_since:bool; since:int; has_until:bool; until:int;
+  has_limit:bool; limit:int;
+}
+NF_SAFE :: 9007199254740991;
+nf_hex :: (s:string)->bool {
+  if s.count!=64 {return false;}
+  for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+  return true;
+}
+nf_utf8 :: (s:string)->bool {
+  if s.count>256 {return false;}
+  i:=0;while i<s.count {n:=json_utf8(s,i);if n==0 {return false;}i+=n;}return true;
+}
+nf_valid :: (f:NostrFilter)->bool {
+  if f.ids.count>64 || f.authors.count>64 || f.kinds.count>64 {return false;}
+  if (!f.has_ids && f.ids.count!=0) || (!f.has_authors && f.authors.count!=0) || (!f.has_kinds && f.kinds.count!=0) {return false;}
+  for s:f.ids {if !nf_hex(s) {return false;}}
+  for s:f.authors {if !nf_hex(s) {return false;}}
+  for k:f.kinds {if k<0 || k>65535 {return false;}}
+  for i:0..<f.tags.count {
+    tag:=f.tags[i];c:=tag.name;
+    if !((c>='a' && c<='z') || (c>='A' && c<='Z')) || tag.values.count>64 {return false;}
+    for j:0..<i {if f.tags[j].name==c {return false;}}
+    for s:tag.values {if !nf_utf8(s) || ((c=='e' || c=='p') && !nf_hex(s)) {return false;}}
+  }
+  if f.has_since && (f.since< -NF_SAFE || f.since>NF_SAFE) {return false;}
+  if f.has_until && (f.until< -NF_SAFE || f.until>NF_SAFE) {return false;}
+  if f.has_limit && (f.limit<0 || f.limit>NF_SAFE) {return false;}
+  return true;
+}
+nf_hex_match :: (values:[]string, bytes:[]u8)->bool {
+  if bytes.count!=32 {return false;}
+  digits:="0123456789abcdef";encoded:[64]u8;
+  for i:0..<32 {encoded[i*2]=digits[cast(int)(bytes[i]>>4)];encoded[i*2+1]=digits[cast(int)(bytes[i]&15)];}
+  for s:values {if s==cast(string)encoded[..] {return true;}}return false;
+}
+// Entire tag array is scanned, so malformed trailing material cannot match.
+nf_tag_limit :: ()->int {return NE_MAX_TAGS;}
+nf_tag_match :: (tag:NostrTagFilter, text:string)->bool {return nf_tag_match_limit(tag,text,nf_tag_limit());}
+nf_tag_match_limit :: (tag:NostrTagFilter, text:string, limit:int)->bool {
+  j:[1]Json;json_start(j[..],text);
+  if json_next(j[..])!=JSON_ARRAY {return false;}
+  found:=false;count:=0;t:=json_next(j[..]);
+  while t!=JSON_ARRAY_END {
+    if t!=JSON_ARRAY || count>=limit {return false;}count+=1;
+    first:bool;matched:=false;index:=0;v:=json_next(j[..]);
+    name:[1]u8;name[0]=tag.name;
+    while v!=JSON_ARRAY_END {
+      if v!=JSON_STRING || index>=NE_MAX_VALUES {return false;}
+      if index==0 {first=json_is(json_text(j[..]),cast(string)name[..]);}
+      if index==1 && first {for s:tag.values {if json_is(json_text(j[..]),s) {matched=true;}}}
+      index+=1;v=json_next(j[..]);
+    }
+    if matched {found=true;}t=json_next(j[..]);
+  }
+  if json_next(j[..])!=JSON_END {return false;}return found;
+}
+nf_tag_span_valid :: (total:int,from:int,to:int)->bool {
+  return cb_span(total,to,0) && cb_span(to,from,0);
+}
+#test "tag span validates empty and bounded ranges before parsing" {
+  #assert nf_tag_span_valid(0,0,0) && nf_tag_span_valid(5,1,5);
+  #assert !nf_tag_span_valid(5,2,1) && !nf_tag_span_valid(5,0,6);
+  #assert !nf_tag_span_valid(5,-1,0) && !nf_tag_span_valid(5,0,-1);
+}
+nf_match :: (f:NostrFilter,e:NostrEvent)->bool {
+  if !nf_valid(f) || e.error!=NE_OK || e.created_at<0 || e.created_at>NF_SAFE || e.kind<0 || e.kind>65535 {return false;}
+  id:=e.id; key:=e.public_key;
+  if f.has_ids && !nf_hex_match(f.ids,id[..]) {return false;}
+  if f.has_authors && !nf_hex_match(f.authors,key[..]) {return false;}
+  if f.has_kinds {found:=false;for k:f.kinds {if k==e.kind {found=true;}}if !found {return false;}}
+  if f.has_since && e.created_at<f.since {return false;}
+  if f.has_until && e.created_at>f.until {return false;}
+  for tag:f.tags {
+    if !nf_tag_span_valid(e.original.count,e.tags_from,e.tags_to) {return false;}
+    if !nf_tag_match(tag,e.original[e.tags_from..<e.tags_to]) {return false;}
+  }
+  // limit applies to the initial query's result count, not each event.
+  return true;
+}
+nf_key :: (out:[]u8,at:int,first:bool,key:string)->int {
+  n:=at;if !first {n=json_raw(out,n,",");}n=json_write_string(out,n,key);return json_raw(out,n,":");
+}
+nf_strings :: (out:[]u8,at:int,values:[]string)->int {
+  n:=json_raw(out,at,"[");for i:0..<values.count {if i>0 {n=json_raw(out,n,",");}n=json_write_string(out,n,values[i]);}return json_raw(out,n,"]");
+}
+nf_numbers :: (out:[]u8,at:int,values:[]int)->int {
+  n:=json_raw(out,at,"[");for i:0..<values.count {if i>0 {n=json_raw(out,n,",");}n=json_write_int(out,n,values[i]);}return json_raw(out,n,"]");
+}
+// Output must be disjoint from every filter view; overlap is a truthful host
+// observation. Failure may leave partial scratch bytes and returns -1.
+nf_write :: (f:NostrFilter,out:[]u8,overlap:bool)->int {
+  if overlap || !nf_valid(f) {return -1;}
+  n:=json_raw(out,0,"{");first:=true;
+  if f.has_ids {n=nf_key(out,n,first,"ids");n=nf_strings(out,n,f.ids);first=false;}
+  if f.has_authors {n=nf_key(out,n,first,"authors");n=nf_strings(out,n,f.authors);first=false;}
+  if f.has_kinds {n=nf_key(out,n,first,"kinds");n=nf_numbers(out,n,f.kinds);first=false;}
+  for tag:f.tags {key:[2]u8;key[0]='#';key[1]=tag.name;n=nf_key(out,n,first,cast(string)key[..]);n=nf_strings(out,n,tag.values);first=false;}
+  if f.has_since {n=nf_key(out,n,first,"since");n=json_write_int(out,n,f.since);first=false;}
+  if f.has_until {n=nf_key(out,n,first,"until");n=json_write_int(out,n,f.until);first=false;}
+  if f.has_limit {n=nf_key(out,n,first,"limit");n=json_write_int(out,n,f.limit);}
+  return json_raw(out,n,"}");
+}
+
+#test "bounded filter admission rejects invalid metadata and malformed tags" {
+  f:NostrFilter;e:NostrEvent;e.error=NE_OK;e.kind=1;e.created_at=1;
+  #assert nf_valid(f);bad:=[1]string.["bad"];f.ids=bad[..];#assert !nf_valid(f);f=NostrFilter.{};
+  f.has_since=true;f.since= -NF_SAFE;#assert nf_valid(f);f.since= -NF_SAFE-1;#assert !nf_valid(f);
+  f=NostrFilter.{};f.has_until=true;f.until=NF_SAFE;#assert nf_valid(f);f.until=NF_SAFE+1;#assert !nf_valid(f);
+  f=NostrFilter.{};f.has_limit=true;f.limit=NF_SAFE;#assert nf_valid(f);f.limit=NF_SAFE+1;#assert !nf_valid(f);
+  f=NostrFilter.{};names:=[2]NostrTagFilter.[NostrTagFilter.{name='x'},NostrTagFilter.{name='x'}];f.tags=names[..];#assert !nf_valid(f);
+  f.tags=names[0..<1];values:=[1]string.["a"];names[0].values=values[..];
+  e.original="[[\"x\",\"a\"],1]";e.tags_to=e.original.count;#assert !nf_match(f,e);
+  e.original="[[\"x\",\"a\"]]x";e.tags_to=e.original.count;#assert !nf_match(f,e);
+  e.tags_from= -1;#assert !nf_match(f,e);e.tags_from=0;e.tags_to=e.original.count+1;#assert !nf_match(f,e);
+  e.tags_from=1;e.tags_to=0;#assert !nf_match(f,e);e.tags_from=0;e.tags_to= -1;#assert !nf_match(f,e);
+}
+#test "serializer emits all fields and preserves explicit empty lists" {
+  ids:=[1]string.["0000000000000000000000000000000000000000000000000000000000000000"];
+  f:NostrFilter;f.has_ids=true;f.ids=ids[..];f.has_authors=true;f.authors=ids[..];f.has_kinds=true;f.has_since=true;f.since= -1;f.has_until=true;f.until=2;
+  out:[256]u8;n:=nf_write(f,out[..],false);
+  #assert n>0 && cast(string)out[0..<n]=="{\"ids\":[\"0000000000000000000000000000000000000000000000000000000000000000\"],\"authors\":[\"0000000000000000000000000000000000000000000000000000000000000000\"],\"kinds\":[],\"since\":-1,\"until\":2}";
+  f=NostrFilter.{};n=nf_write(f,out[..],false);#assert n==2 && cast(string)out[0..<n]=="{}";
+}
+
+
+#forall "filter hex accepts exactly lowercase hexadecimal bytes" c:0..<256 {
+  s:[64]u8;for i:0..<64 {s[i]='0';}s[31]=cast(u8)c;
+  expected:=(c>=48 && c<=57) || (c>=97 && c<=102);
+  #assert nf_hex(cast(string)s[..])==expected;
+}
+#test "filter list and value bounds admit exact limits" {
+  value:="0000000000000000000000000000000000000000000000000000000000000000";
+  ids:[65]string;authors:[65]string;kinds:[65]int;values:[65]string;
+  for i:0..<65 {ids[i]=value;authors[i]=value;kinds[i]=0;values[i]="x";}
+  f:NostrFilter;f.has_ids=true;f.ids=ids[0..<64];#assert nf_valid(f);f.ids=ids[..];#assert !nf_valid(f);
+  f=NostrFilter.{};f.has_authors=true;f.authors=authors[0..<64];#assert nf_valid(f);f.authors=authors[..];#assert !nf_valid(f);
+  f=NostrFilter.{};f.has_kinds=true;f.kinds=kinds[0..<64];#assert nf_valid(f);f.kinds=kinds[..];#assert !nf_valid(f);
+  f=NostrFilter.{};tags:[1]NostrTagFilter;tags[0].name='t';tags[0].values=values[0..<64];f.tags=tags[..];#assert nf_valid(f);tags[0].values=values[..];#assert !nf_valid(f);
+  kinds[0]=65535;f=NostrFilter.{};f.has_kinds=true;f.kinds=kinds[0..<1];#assert nf_valid(f);kinds[0]= -1;#assert !nf_valid(f);
+  f=NostrFilter.{};f.has_authors=true;authors[0]="bad";f.authors=authors[0..<1];#assert !nf_valid(f);
+  f=NostrFilter.{};authors[0]=value;f.authors=authors[0..<1];#assert !nf_valid(f);f=NostrFilter.{};kinds[0]=0;f.kinds=kinds[0..<1];#assert !nf_valid(f);authors[0]="bad";
+  tags[0].name='p';tags[0].values=authors[0..<1];f=NostrFilter.{};f.tags=tags[..];#assert !nf_valid(f);
+}
+#forall "tag names are exactly ASCII letters" c:0..<256 {
+  t:[1]NostrTagFilter;t[0].name=cast(u8)c;f:NostrFilter;f.tags=t[..];
+  #assert nf_valid(f)==((c>=65 && c<=90) || (c>=97 && c<=122));
+}
+#test "UTF-8 tag value extent and scalar encoding" {
+  v:[257]u8;for i:0..<257 {v[i]='a';}#assert nf_utf8(cast(string)v[0..<256]);#assert !nf_utf8(cast(string)v[..]);
+  v[0]=255;#assert !nf_utf8(cast(string)v[0..<1]);#assert nf_utf8("");
+}
+#test "scalar bounds and event numeric endpoints" {
+  f:NostrFilter;f.has_since=true;f.since=NF_SAFE;#assert nf_valid(f);f.since=NF_SAFE+1;#assert !nf_valid(f);
+  f=NostrFilter.{};f.has_until=true;f.until= -NF_SAFE;#assert nf_valid(f);f.until= -NF_SAFE-1;#assert !nf_valid(f);
+  e:NostrEvent;e.error=NE_OK;e.created_at=NF_SAFE;e.kind=65535;#assert nf_match(NostrFilter.{},e);
+  e.created_at=NF_SAFE+1;#assert !nf_match(NostrFilter.{},e);e.created_at=0;e.kind=0;#assert nf_match(NostrFilter.{},e);
+  e.kind=65536;#assert !nf_match(NostrFilter.{},e);e.kind= -1;#assert !nf_match(NostrFilter.{},e);
+}
+#test "tag arrays must be well formed with no extra values" {
+  vals:=[1]string.["a"];tag:=NostrTagFilter.{name='x',values=vals[..]};
+  #assert !nf_tag_match(tag,"{}");#assert !nf_tag_match(tag,"[[\"x\",\"a\"],1]");
+  #assert !nf_tag_match(tag,"[[\"x\",\"a\",1]]");
+  #assert nf_tag_match(tag,"[[\"x\",\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\",\"k\",\"l\",\"m\",\"n\",\"o\"]]");
+  #assert !nf_tag_match(tag,"[[\"x\",\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\",\"k\",\"l\",\"m\",\"n\",\"o\",\"p\"]]");
+  #assert !nf_tag_match(tag,"[[],[\"y\",\"a\"]]");
+}
+#test "serialization separators across optional field boundaries" {
+  f:NostrFilter;out:[512]u8;authors:=[2]string.["0000000000000000000000000000000000000000000000000000000000000000","1111111111111111111111111111111111111111111111111111111111111111"];
+  f.has_authors=true;f.authors=authors[..];f.has_since=true;f.since=1;f.has_until=true;f.until=2;f.has_limit=true;f.limit=3;
+  n:=nf_write(f,out[..],false);#assert cast(string)out[0..<n]=="{\"authors\":[\"0000000000000000000000000000000000000000000000000000000000000000\",\"1111111111111111111111111111111111111111111111111111111111111111\"],\"since\":1,\"until\":2,\"limit\":3}";
+  f.has_authors=false;f.authors=authors[0..<0];n=nf_write(f,out[..],false);#assert cast(string)out[0..<n]=="{\"since\":1,\"until\":2,\"limit\":3}";
+  f.has_since=false;n=nf_write(f,out[..],false);#assert cast(string)out[0..<n]=="{\"until\":2,\"limit\":3}";
+  f=NostrFilter.{};t:[1]NostrTagFilter;t[0].name='x';f.tags=t[..];f.has_since=true;f.since=1;
+  n=nf_write(f,out[..],false);#assert cast(string)out[0..<n]=="{\"#x\":[],\"since\":1}";
+}
+
+#test "tag count policy admits its boundary and refuses the next tag" {
+  vals:=[1]string.["a"];tag:=NostrTagFilter.{name='x',values=vals[..]};
+  #assert nf_tag_limit()==2000;
+  #assert nf_tag_match_limit(tag,"[[\"x\",\"a\"],[]]",2);
+  #assert !nf_tag_match_limit(tag,"[[\"x\",\"a\"],[],[]]",2);
+}
+#forall "hex comparison reads both digits of every byte" at:0..<32 {
+  bytes:[32]u8;encoded:[64]u8;for i:0..<64 {encoded[i]='0';}
+  bytes[at]=0xab;encoded[at*2]='a';encoded[at*2+1]='b';values:=[1]string.[cast(string)encoded[..]];
+  #assert nf_hex_match(values[..],bytes[..]);encoded[at*2+1]='c';values[0]=cast(string)encoded[..];#assert !nf_hex_match(values[..],bytes[..]);
+  #assert !nf_hex_match(values[..],bytes[0..<31]);
+}
+
+#test "all 52 distinct tag names fit and duplicate 53rd refuses" {
+  tags:[53]NostrTagFilter;
+  for i:0..<26 {tags[i].name=cast(u8)(65+i);tags[i+26].name=cast(u8)(97+i);}
+  f:NostrFilter;f.tags=tags[0..<52];#assert nf_valid(f);
+  tags[52].name='a';f.tags=tags[..];#assert !nf_valid(f);
+}
+
+#test "parsed event ties matching to decoded ID, author and tag spans" {
+  out:[1024]u8;e:=nostr_event_read(NE_FIXTURE,out[..],false);#assert e.error==NE_OK;
+  ids:=[1]string.[NE_FIXTURE_ID];authors:=[1]string.["79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"];
+  kinds:=[1]int.[1];values:=[1]string.["é"];tags:=[1]NostrTagFilter.[NostrTagFilter.{name='x',values=values[..]}];
+  f:NostrFilter;f.has_ids=true;f.ids=ids[..];f.has_authors=true;f.authors=authors[..];f.has_kinds=true;f.kinds=kinds[..];f.tags=tags[..];
+  #assert nf_match(f,e);values[0]="/\n";#assert nf_match(f,e);values[0]="absent";#assert !nf_match(f,e);
+  e=nostr_event_read(NE_WRONG_ID,out[..],false);#assert !nf_match(f,e);
+}
