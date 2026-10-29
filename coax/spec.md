@@ -995,7 +995,8 @@ C build bit for bit; other math functions use the device library. A caller
 must give each output element to exactly one work item. Shared memory,
 barriers, atomics and target capability queries are not part of the subset.
 
-A kernel that contains `for lane: 0..<32` loops is a warp kernel: each work
+A kernel that contains `for lane: 0..<32` loops (exactly those constant
+bounds; a loop named `lane` with other bounds is an ordinary loop) is a warp kernel: each work
 item is one 32-lane warp, launched as 32 threads per item. Each lane runs a
 lane loop's body once with its own `lane`; code outside lane loops is the
 warp's shared control flow and must give every lane the same values. A local

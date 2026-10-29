@@ -64,7 +64,6 @@ tile :: (item:int,a:[]u32,b:[]u32,c:[]f32,d:[]f32) #export_c {
 def warp(body,arrays='fa:[128]u32;fb:[64]u32;fc:[128]f32;'):
     return '#load "'+MMA+'";\nwarp_kernel :: (item:int,out:[]f32) #export_c {'+arrays+body+'}'
 WARP_REFUSALS=[
-    ('a lane loop that is not for lane: 0..<32 in a kernel',warp('for lane:0..<16 {fc[lane*4]=1;}')),
     ('a lane loop that is not for lane: 0..<32 in a kernel','f :: () {for lane:0..<32 {}}\nk :: (item:int,out:[]f32) #export_c {f();out[item]=1;}'),
     ('a per-lane index that is not lane*k+c into a [32*k] array',warp('for lane:0..<32 {fc[lane*4+4]=1;}')),
     ('a per-lane index that is not lane*k+c into a [32*k] array',warp('for lane:0..<32 {fc[lane*2]=1;}')),
@@ -117,6 +116,11 @@ class Cuda(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'w.coax';p.write_text(WARP)
             self.assertEqual(subprocess.run([str(COMPILER),'c',str(p),'--library'],capture_output=True,text=True).returncode,0)
+    def test_a_loop_named_lane_with_other_bounds_is_ordinary(self):
+        r=self.run_cuda('k :: (item:int,n:int,out:[]f32) #export_c {sum:f32=0;for lane:0..<n {sum+=1;}for lane:0..<16 {sum+=2;}out[item]=sum;}')
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertNotIn('threadIdx.x & 31u',r.stdout)
+        self.assertIn('if (coax_item >= coax_items) return;',r.stdout)
     def test_a_module_needs_a_kernel(self):
         r=self.run_cuda('f :: (x:f32)->f32 {return x;}')
         self.assertNotEqual(r.returncode,0);self.assertIn('error[E0701]',r.stderr)

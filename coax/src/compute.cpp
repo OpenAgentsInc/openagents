@@ -38,7 +38,13 @@ static bool mentions(const Expr *e, const char *name) {
   for (const Expr *a : e->args) if (mentions(a, name)) return true;
   return false;
 }
-static bool is_lane_loop(const Stmt *s) { return s->kind == StmtKind::for_range && str_eq(s->name, "lane"); }
+// A lane loop is exactly `for lane: 0..<32` over constants; a loop named lane
+// with other bounds is an ordinary loop.
+static bool is_lane_loop(const Stmt *s) {
+  if (s->kind != StmtKind::for_range || !str_eq(s->name, "lane")) return false;
+  const Expr *lo = constant_of(s->expr), *hi = constant_of(s->expr2);
+  return lo && hi && lo->int_value == 0 && hi->int_value == 32;
+}
 
 // Warp kernels: lane loops, per-lane arrays and device primitives, checked
 // against the CU_lane_* and CU_primitive_* policy and recorded in g_warp.
@@ -164,9 +170,8 @@ struct WarpAdmission {
   }
   void check(const Stmt *s, bool in_lane, bool direct) {
     if (!s) return;
-    if (s->kind == StmtKind::for_range && str_eq(s->name, "lane")) {
-      const Expr *lo = constant_of(s->expr), *hi = constant_of(s->expr2);
-      uint32_t r = CU_lane_loop(true, lo && hi, lo ? (int64_t)lo->int_value : -1, hi ? (int64_t)hi->int_value : -1, in_lane);
+    if (is_lane_loop(s)) {
+      uint32_t r = CU_lane_loop(true, true, 0, 32, in_lane);
       if (r) { refuse(s->loc, r); return; }
       g_warp.lane_loops.insert(s);
       std::set<std::string> saved = inner;
