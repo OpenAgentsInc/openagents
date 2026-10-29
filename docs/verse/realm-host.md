@@ -214,6 +214,7 @@ everyone sees it. Where each realm stands:
 | Ice Cream Man | none, by decision | a game: the keys, doors and the chase route are the puzzle, and a moved piece can make it unwinnable |
 | Fixture Realm | none: it is the host's test world | its lamp already moves; its golden must not change |
 | A First Realm (drop) | none here: a project's owner places its drop | the pieces are the project's, placed when its drop is published (drops.c) |
+| A Realm You Built (built) | its owner's BUILD, and visitors' builds the owner accepts | the realm is a made realm's spec (`docs/verse/realm-builder.md`), not a placed list |
 
 A realm that gets edit mode copies Everglade's: the page asks
 `/api/auth/me` (A|1 an admin), keeps its list of placed things, draws EDIT
@@ -227,3 +228,5 @@ for an admin only and publishes the list as the realm's world.
 4. `realms/<slug>/index.md`, linking its `licences.md`.
 5. `bun coax/web/realms.ts`, `coax test <module>.coax`, a headless shot, and its golden (the release walk, above).
 6. At launch: `listed` true (the galaxy's golden changes; approve it).
+
+A realm someone makes at `/realms/new` needs none of this: it is a row and a page the API writes, opened by the `built` realm's module (`docs/verse/realm-builder.md`).

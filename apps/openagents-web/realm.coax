@@ -186,7 +186,8 @@ BTN_CHAT :: BTN_DECLINE + 1; BTN_SAY :: BTN_CHAT + 1;          // the hotbar's C
 BTN_GFX :: BTN_SAY + 1;                                         // the hotbar's graphics: HIGH, MEDIUM, LOW
 BTN_VOICE :: BTN_GFX + 1;                                       // the hotbar's VOICE: talk to the house
 BTN_PIECE :: BTN_VOICE + 1;                                     // edit mode's MAKE A SET PIECE (the Sandbox)
-BUTTONS :: BTN_PIECE + 1;
+BTN_OWN :: BTN_PIECE + 1;                                       // the quest done: BUILD YOUR OWN REALM (/realms/new)
+BUTTONS :: BTN_OWN + 1;
 ACT_VOICE :: 7;     // host.js (coax/web/voice.js): the outbox is "on" or "off"
 ACT_VOICE_TO :: 8;  // voice.js: whom you face, the outbox a character's name ("" nobody)
 ACT_VOICE_SAY :: 9; // voice.js: speak the outbox, their answer to what VOICE heard
@@ -387,6 +388,7 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
   }
   if b == BTN_SAY { r[0].chat = true; realm_open_text(r, TYPE_CHAT); }
   if b == BTN_PIECE && v.pieces { realm_open_text(r, TYPE_PIECE); }
+  if b == BTN_OWN && v.quest >= QUEST_STEPS && r[0].action == 0 { r[0].out_n = put(r[0].outbox[..], 0, "/realms/new"); r[0].action = ACT_NAVIGATE; }
   if b == BTN_ACCEPT && v.offers > 0 { r[0].asks |= ASK_ACCEPT; }
   if b == BTN_DECLINE && v.offers > 0 { r[0].asks |= ASK_DECLINE; }
   // a hotbar slot takes its item in hand, or puts it away; the picked thing is let go
@@ -1361,6 +1363,8 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
     // the hotbar, what a click does now, and the prompt for what you face
     vertices = draw_hotbar(r, v, out, vertices);
     if v.pieces && v.selected.count == 0 { vertices = hud_button(r, out, vertices, BTN_PIECE, piece_box(r), "MAKE A SET PIECE", ifx phone(r) then "" else "P", false); }
+    // the house done: on to building your own realm (docs/verse/realm-builder.md)
+    if v.quest >= QUEST_STEPS && v.selected.count == 0 { vertices = hud_button(r, out, vertices, BTN_OWN, piece_box(r), "BUILD YOUR OWN REALM", "", true); }
     hint := hint_line(r, v);
     if hint.count > 0 {
       if v.selected.count > 0 { vertices = centred(d, out, vertices, v.selected, r[0].width * 0.5, hotbar_top(r) - 32 * k, 9 * k, orange(k, 0.95)); }
@@ -1697,7 +1701,7 @@ realm_button_label :: (r: [] Realm, x: f32, y: f32) -> string #export_c {
   if b == BTN_UNDO { return "undo"; } if b == BTN_REDO { return "redo"; }
   if b == BTN_ASK { return "ask"; } if b == BTN_TEACH { return "teach"; }
   if b == BTN_ACCEPT { return "accept"; } if b == BTN_DECLINE { return "decline"; } if b == BTN_VOICE { return "voice"; }
-  if b == BTN_CHAT { return "chat"; } if b == BTN_SAY { return "say"; }
+  if b == BTN_CHAT { return "chat"; } if b == BTN_SAY { return "say"; } if b == BTN_OWN { return "build-own"; }
   if b >= BTN_OP { return "edit-op"; }
   if b >= BTN_ITEM { return "item"; }
   return "";
@@ -1975,6 +1979,18 @@ plated :: (u: [] f32, b: Box) -> f32 {
   v.bearing = 0;
   b := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
   #assert a > b;                                  // the way glows on the edge
+}
+
+#test "the house done: BUILD YOUR OWN REALM goes to /realms/new; before, it isn't there" {
+  r: [1] Realm; desk(r[..]); v := view();
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  a := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert !r[0].shown[BTN_OWN];
+  v.quest = QUEST_STEPS;
+  b := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert r[0].shown[BTN_OWN];
+  realm_do(r[..], v, BTN_OWN);
+  #assert r[0].action == ACT_NAVIGATE && cast(string) r[0].outbox[0..<r[0].out_n] == "/realms/new";
 }
 
 #test "placing, Minecraft style: a number or a slot takes an item in hand, a click on the ground places it there, Escape puts it away" {

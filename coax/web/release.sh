@@ -285,6 +285,11 @@ if $stage; then
   for s in $(gcloud storage cat "gs://$staging_bucket/projects/published-slugs.txt" 2>/dev/null | grep -E '^[a-z0-9][a-z0-9-]{0,63}$' || true); do
     published+="|^projects/$s(/|\$)"
   done
+  # So do realms made at /realms/new on staging (coax/web/api/realms.c).
+  published+='|^realms/made-slugs\.txt$'
+  for s in $(gcloud storage cat "gs://$staging_bucket/realms/made-slugs.txt" 2>/dev/null | grep -E '^[a-z0-9][a-z0-9-]{0,63}$' || true); do
+    published+="|^realms/$s(/|\$)"
+  done
   # Held-back pages keep production's current bytes: their HTML isn't copied.
   # Their files are named by their content and never removed, so they still answer.
   [[ -z "${hold:-}" ]] || published+="|$hold"

@@ -14,8 +14,8 @@ let n = 0
 /** The real table with one realm changed, checked; opts as worlds() takes them. */
 function check(change: (realm: any) => void, opts: { site?: string; styleBlock?: boolean; packs?: string } = { styleBlock: false }, id = "everglade") {
   const t = table()
-  // the fixture's pack is the drop realm's too: a change to the fixture's is made to both
-  for (const w of t.worlds) if (w.id === id || (id === "fixture" && w.id === "drop")) change(w.realm)
+  // the fixture's pack is the drop realm's and the built realm's too: a change to the fixture's is made to all three
+  for (const w of t.worlds) if (w.id === id || (id === "fixture" && (w.id === "drop" || w.id === "built"))) change(w.realm)
   const file = join(dir, `t${n++}.json`)
   writeFileSync(file, JSON.stringify(t))
   return () => worlds(file, opts)

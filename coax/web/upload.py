@@ -73,6 +73,12 @@ if "projects/published-slugs.txt" in have:
     req = urllib.request.Request(api + "/o/" + urllib.parse.quote("projects/published-slugs.txt", safe="") + "?alt=media", headers=auth)
     with urllib.request.urlopen(req, timeout=30) as r:
         published += [f"projects/{s}/" for s in r.read().decode().split() if s]
+# So are realms made at /realms/new (coax/web/api/realms.c): their pages and the list.
+published += ["realms/made-slugs.txt"]
+if "realms/made-slugs.txt" in have:
+    req = urllib.request.Request(api + "/o/" + urllib.parse.quote("realms/made-slugs.txt", safe="") + "?alt=media", headers=auth)
+    with urllib.request.urlopen(req, timeout=30) as r:
+        published += [f"realms/{s}/" for s in r.read().decode().split() if s]
 stale = [n for n in have if n not in keep and n.startswith(prefix) and not any(n == p.rstrip("/") or (p.endswith("/") and n.startswith(p)) for p in published)]
 list(pool.map(lambda n: call(api + "/o/" + urllib.parse.quote(n, safe=""), "DELETE"), stale))
 print(f"  sent {len(sent)}, removed {len(stale)}, unchanged {len(keep) - len(sent)}")

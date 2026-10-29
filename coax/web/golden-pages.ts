@@ -39,7 +39,8 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   // Realms the galaxy doesn't list yet: with no golden, their shot waits in pending/ (golden-policy.ts).
   const unlisted = new Set(open.filter((w) => w.listed === false).map((w) => w.realm!.slug))
   // Pages of their own the galaxy doesn't open (not in realms.json), walked by their address.
-  const byAddress: Record<string, Page> = { garden: { path: "/realms/garden", lit: 0.5, settle: 3000, blocks: 6, module: "garden" } }
+  const byAddress: Record<string, Page> = { garden: { path: "/realms/garden", lit: 0.5, settle: 3000, blocks: 6, module: "garden" },
+    "realms-new": { path: "/realms/new", lit: 0.004, settle: 2500, blocks: 4, module: "builder" } }
   // The style fixture (docs/verse/art-styles.md): the fixture realm in the painterly preset at each clock key.
   for (const c of ["0", "0.25", "0.5", "0.75"])
     byAddress[`fixture-painterly-${c}`] = { path: `/realms/fixture?style=painterly&clock=${c}`, lit: 0.5, settle: 3000, blocks: 6, module: "fixture" }
