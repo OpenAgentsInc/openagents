@@ -24,6 +24,7 @@ splash=$!
 # The art styles' shading (verse/style.coax, docs/verse/art-styles.md) into the fixture and every
 # painterly realm's WGSL (realms.ts --check refuses a painterly realm without it).
 style_fns="verse_style_wrap verse_style_bands verse_style_bands2 verse_style_shade verse_style_ambient verse_style_dab verse_style_rim verse_style_haze verse_style_haze_glow verse_style_fog verse_style_sky_t verse_style_sky_band verse_style_halo verse_style_tone verse_style_saturation verse_style_lift verse_style_luma"
+(cd "$here/../.." && python3 coax/web/wgsl.py verse/look.coax verse_outline_styled verse_outline_crease --into apps/openagents-web/fixture.wgsl)
 for w in fixture everglade villa fairy; do
   (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns --into "apps/openagents-web/$w.wgsl")
 done

@@ -21,6 +21,39 @@ verse_outline_strength :: (cut:f32,glow:f32)->f32 #export_c {
 }
 // Ink: the light under an edge of that weight, darkened toward black.
 verse_outline_ink :: (light:f32,edge:f32)->f32 #export_c {return light*(1.0f32-0.82f32*lk_min(1.0f32,lk_max(0.0f32,edge)));}
+// Under painterly (docs/verse/art-styles.md, 9) an outline is only ever a
+// pale edge brighter than the surface it borders: no ink. Its weight is
+// capped at `cap` (the preset's outline_max, never past 0.35) and fades
+// with the haze's share there, so far edges go with the far world.
+LK_PALE_CAP :: 0.35;
+verse_outline_pale :: (light:f32,edge:f32,cap:f32,haze:f32)->f32 #export_c {
+ w:=lk_min(lk_min(1.0f32,lk_max(0.0f32,edge)),1.0f32)*lk_min(lk_max(cap,0.0f32),LK_PALE_CAP)*(1.0f32-lk_min(1.0f32,lk_max(0.0f32,haze)));
+ return light+w*(lk_max(light,0.0f32)+0.25f32);
+}
+// An outline in a style: 0 lowpoly (ink, as today), 1 painterly (pale only;
+// ink is refused, never drawn), 2 photoreal (none).
+verse_outline_styled :: (style:f32,light:f32,edge:f32,cap:f32,haze:f32)->f32 #export_c {
+ if style<0.5f32 {return verse_outline_ink(light,edge);}
+ if style<1.5f32 {return verse_outline_pale(light,edge,cap,haze);}
+ return light;
+}
+#test "painterly outlines only brighten, at most 0.35, and fade into the haze" {
+ #assert verse_outline_pale(0.4f32,0.0f32,0.35f32,0.0f32)==0.4f32;
+ #assert abs(verse_outline_pale(0.4f32,1.0f32,0.35f32,0.0f32)-(0.4f32+0.35f32*0.65f32))<0.0001f32;
+ // a stronger ask is capped at 0.35
+ #assert verse_outline_pale(0.4f32,1.0f32,1.0f32,0.0f32)==verse_outline_pale(0.4f32,1.0f32,0.35f32,0.0f32);
+ #assert verse_outline_pale(0.4f32,9.0f32,0.35f32,0.0f32)==verse_outline_pale(0.4f32,1.0f32,0.35f32,0.0f32);
+ // half hazed, half as strong; fully hazed, gone
+ #assert abs((verse_outline_pale(0.4f32,1.0f32,0.35f32,0.5f32)-0.4f32)*2.0f32-(verse_outline_pale(0.4f32,1.0f32,0.35f32,0.0f32)-0.4f32))<0.0001f32;
+ #assert verse_outline_pale(0.4f32,1.0f32,0.35f32,1.0f32)==0.4f32;
+ for i:0..<20 {l:=cast(f32)i*0.05f32;e:=cast(f32)i*0.06f32;#assert verse_outline_pale(l,e,0.35f32,0.2f32)>=l;}
+}
+#test "painterly refuses ink; lowpoly keeps it; photoreal draws none" {
+ #assert verse_outline_styled(0.0f32,0.5f32,1.0f32,0.35f32,0.0f32)==verse_outline_ink(0.5f32,1.0f32);
+ #assert verse_outline_styled(1.0f32,0.5f32,1.0f32,0.35f32,0.0f32)>0.5f32;
+ #assert verse_outline_styled(1.0f32,0.5f32,1.0f32,1.0f32,0.0f32)<=0.5f32+0.35f32*0.75f32+0.0001f32;
+ #assert verse_outline_styled(2.0f32,0.5f32,1.0f32,0.35f32,0.0f32)==0.5f32;
+}
 #test "flat surfaces have no depth edge, a jump does" {
  #assert verse_outline_depth(0.0f32,0.99f32)==0.0f32;
  #assert verse_outline_depth(0.0003f32,0.99f32)==0.0f32;

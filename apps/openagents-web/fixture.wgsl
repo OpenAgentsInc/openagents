@@ -84,7 +84,7 @@ const HEAD = vec4f(-0.3, 1.62, -1.8, 0.17);
 const POND = vec4f(0.7, 0.0, 2.7, 1.5);              // centre x, -, z, radius; 1.9 m deep in the middle
 const GRASS = vec4f(-3.4, 0.0, 2.2, 1.6);
 const RIDGE_Z = vec3f(60.0, 140.0, 260.0);
-struct Hit { t: f32, n: vec3f, albedo: vec3f, kind: f32 }   // kind 0 none, 1 matte, 2 water, 3 character
+struct Hit { t: f32, n: vec3f, albedo: vec3f, kind: f32, id: f32 }   // kind 0 none, 1 matte, 2 water, 3 character; id: which thing (outlines)
 fn st(i: u32) -> vec4f { return u.style[i]; }
 fn sphere_t(o: vec3f, d: vec3f, s: vec4f) -> f32 {
   let oc = o - s.xyz; let b = dot(oc, d); let c = dot(oc, oc) - s.w * s.w; let h = b * b - c;
@@ -143,25 +143,25 @@ fn ridge_albedo(i: i32) -> vec3f {
 }
 // The scene, nearest first. shadow: only whether anything is in the way, and how near the miss (soft edges).
 fn trace(o: vec3f, d: vec3f) -> Hit {
-  var h = Hit(1e9, vec3f(0.0, 1.0, 0.0), vec3f(0.0), 0.0);
+  var h = Hit(1e9, vec3f(0.0, 1.0, 0.0), vec3f(0.0), 0.0, 0.0);
   var t = sphere_t(o, d, SPHERE);
-  if (t > 0.0 && t < h.t) { h = Hit(t, normalize(o + d * t - SPHERE.xyz), vec3f(0.46, 0.13, 0.08), 1.0); }
+  if (t > 0.0 && t < h.t) { h = Hit(t, normalize(o + d * t - SPHERE.xyz), vec3f(0.46, 0.13, 0.08), 1.0, 1.0); }
   let c = cube_hit(o, d);
-  if (c.x > 0.0 && c.x < h.t) { h = Hit(c.x, c.yzw, vec3f(0.11, 0.19, 0.46), 1.0); }
+  if (c.x > 0.0 && c.x < h.t) { h = Hit(c.x, c.yzw, vec3f(0.11, 0.19, 0.46), 1.0, 2.0); }
   t = cylinder_t(o, d, TRUNK, 1.9);
-  if (t > 0.0 && t < h.t) { let p = o + d * t; h = Hit(t, normalize(vec3f(p.x - TRUNK.x, 0.0, p.z - TRUNK.z)), vec3f(0.17, 0.10, 0.05), 1.0); }
+  if (t > 0.0 && t < h.t) { let p = o + d * t; h = Hit(t, normalize(vec3f(p.x - TRUNK.x, 0.0, p.z - TRUNK.z)), vec3f(0.17, 0.10, 0.05), 1.0, 3.0); }
   for (var i = 0; i < 3; i++) {
     t = sphere_t(o, d, canopy(i));
     if (t > 0.0 && t < h.t) {
       // a blob: the leaf mass shades as one soft shape round the canopy's centre (spec 7)
       let p = o + d * t;
-      h = Hit(t, normalize(mix(normalize(p - canopy(i).xyz), normalize(p - CANOPY_C), 0.85)), vec3f(0.11, 0.27, 0.05), 1.0);
+      h = Hit(t, normalize(mix(normalize(p - canopy(i).xyz), normalize(p - CANOPY_C), 0.85)), vec3f(0.11, 0.27, 0.05), 1.0, 4.0);
     }
   }
   t = capsule_t(o, d, BODY.xyz + vec3f(0.0, 0.24, 0.0), BODY.xyz + vec3f(0.0, 1.30, 0.0), BODY.w);
-  if (t > 0.0 && t < h.t) { h = Hit(t, capsule_n(o + d * t, BODY.xyz + vec3f(0.0, 0.24, 0.0), BODY.xyz + vec3f(0.0, 1.30, 0.0)), vec3f(0.36, 0.24, 0.11), 3.0); }
+  if (t > 0.0 && t < h.t) { h = Hit(t, capsule_n(o + d * t, BODY.xyz + vec3f(0.0, 0.24, 0.0), BODY.xyz + vec3f(0.0, 1.30, 0.0)), vec3f(0.36, 0.24, 0.11), 3.0, 5.0); }
   t = sphere_t(o, d, HEAD);
-  if (t > 0.0 && t < h.t) { h = Hit(t, normalize(o + d * t - HEAD.xyz), vec3f(0.62, 0.38, 0.26), 3.0); }
+  if (t > 0.0 && t < h.t) { h = Hit(t, normalize(o + d * t - HEAD.xyz), vec3f(0.62, 0.38, 0.26), 3.0, 6.0); }
   // the ridges: painted flats standing across the view, each up to its silhouette
   for (var i = 0; i < 3; i++) {
     var zs = RIDGE_Z;
@@ -169,7 +169,7 @@ fn trace(o: vec3f, d: vec3f) -> Hit {
     if (d.z < 0.0 && tz > 0.0 && tz < h.t) {
       let p = o + d * tz;
       if (p.y < ridge_h(p.x, i)) {
-        h = Hit(tz, normalize(vec3f(-ridge_slope(p.x, i), 0.7 + 0.3 * clamp(p.y / ridge_h(p.x, i), 0.0, 1.0), 0.5)), ridge_albedo(i), 1.0);
+        h = Hit(tz, normalize(vec3f(-ridge_slope(p.x, i), 0.7 + 0.3 * clamp(p.y / ridge_h(p.x, i), 0.0, 1.0), 0.5)), ridge_albedo(i), 1.0, 7.0 + f32(i));
       }
     }
   }
@@ -180,9 +180,9 @@ fn trace(o: vec3f, d: vec3f) -> Hit {
       let p = o + d * tg;
       let pond = length(p.xz - POND.xz) / POND.w;
       let grass = length(p.xz - GRASS.xz) / GRASS.w;
-      if (pond < 1.0) { h = Hit(tg, vec3f(0.0, 1.0, 0.0), vec3f(1.9 * (1.0 - pond * pond)), 2.0); }
-      else if (grass < 1.0) { h = Hit(tg, vec3f(0.0, 1.0, 0.0), vec3f(0.15, 0.33, 0.05), 1.0); }
-      else { h = Hit(tg, vec3f(0.0, 1.0, 0.0), mix(vec3f(0.21, 0.29, 0.08), vec3f(0.27, 0.22, 0.10), 0.5 + 0.5 * sin(p.x * 0.21 + p.z * 0.13)), 1.0); }
+      if (pond < 1.0) { h = Hit(tg, vec3f(0.0, 1.0, 0.0), vec3f(1.9 * (1.0 - pond * pond)), 2.0, 10.0); }
+      else if (grass < 1.0) { h = Hit(tg, vec3f(0.0, 1.0, 0.0), vec3f(0.15, 0.33, 0.05), 1.0, 10.0); }
+      else { h = Hit(tg, vec3f(0.0, 1.0, 0.0), mix(vec3f(0.21, 0.29, 0.08), vec3f(0.27, 0.22, 0.10), 0.5 + 0.5 * sin(p.x * 0.21 + p.z * 0.13)), 1.0, 10.0); }
     }
   }
   return h;
@@ -262,14 +262,18 @@ fn tone(c: vec3f) -> vec3f {
   t = vec3f(verse_style_saturation(t.x, y, st(18u).y), verse_style_saturation(t.y, y, st(18u).y), verse_style_saturation(t.z, y, st(18u).y));
   return vec3f(verse_style_lift(t.x, st(18u).z), verse_style_lift(t.y, st(18u).z), verse_style_lift(t.z, st(18u).z));
 }
-fn paint(p: vec2f) -> vec3f {
+// The eye's ray through pixel p, from a fixed camera.
+fn ray(p: vec2f) -> vec3f {
   let aspect = u.size.x / max(u.size.y, 1.0);
   let tv = max(0.36, 0.5 / aspect);        // a phone's tall canvas still holds the whole scene across
   let q = vec2f((p.x / u.size.x * 2.0 - 1.0) * tv * aspect, (1.0 - p.y / u.size.y * 2.0) * tv);
   let fwd = normalize(vec3f(0.0, -0.12, -1.0));
   let right = normalize(cross(fwd, vec3f(0.0, 1.0, 0.0)));
   let up = cross(right, fwd);
-  let d = normalize(fwd + right * q.x + up * q.y);
+  return normalize(fwd + right * q.x + up * q.y);
+}
+fn paint(p: vec2f) -> vec3f {
+  let d = ray(p);
   let h = trace(EYE, d);
   var c = vec3f(0.0);
   if (h.kind == 0.0) {
@@ -277,6 +281,18 @@ fn paint(p: vec2f) -> vec3f {
     c += vec3f(stars(p)) * st(14u).w * 0.6;
   } else {
     c = shade(h, EYE, d);
+    // the outline in the style's form (verse/look.coax): where the thing changes a pixel over or
+    // the surface turns sharply; painterly makes it a pale edge, faded with the haze
+    let w = max(u.k, 1.0);
+    let hx = trace(EYE, ray(p + vec2f(w, 0.0)));
+    let hy = trace(EYE, ray(p + vec2f(0.0, w)));
+    var edge = select(0.0, 1.0, hx.id != h.id || hy.id != h.id);
+    edge = max(edge, max(verse_outline_crease(dot(h.n, hx.n)), verse_outline_crease(dot(h.n, hy.n))));
+    let wp = EYE + d * h.t;
+    let hz = st(9u);
+    let f = verse_style_haze(h.t, wp.y, 0.0, hz.x, hz.y, hz.z, hz.w);
+    let style = st(31u).y; let cap = st(31u).x;
+    c = vec3f(verse_outline_styled(style, c.x, edge, cap, f), verse_outline_styled(style, c.y, edge, cap, f), verse_outline_styled(style, c.z, edge, cap, f));
   }
   return pow(clamp(tone(c), vec3f(0.0), vec3f(1.0)), vec3f(1.0 / 2.2));
 }
@@ -353,6 +369,56 @@ struct V {
   return vec4f(v.tint.rgb * (core + halo) * v.shape.z * u.fade, 1.0);
 }
 
+// The outlines in the style's form (verse/look.coax).
+// ---- generated: verse/look.coax (verse_outline_styled, verse_outline_crease) by coax/web/wgsl.py; do not edit
+fn coax_p_lk_min(l_a: f32, l_b: f32) -> f32 {
+  if ((l_a < l_b))
+  {
+    return l_a;
+  }
+  return l_b;
+}
+fn coax_p_lk_max(l_a: f32, l_b: f32) -> f32 {
+  if ((l_a > l_b))
+  {
+    return l_a;
+  }
+  return l_b;
+}
+fn verse_outline_ink(l_light: f32, l_edge: f32) -> f32 {
+  return (l_light * (1.0 - (0.819999993 * coax_p_lk_min(1.0, coax_p_lk_max(0.0, l_edge)))));
+}
+fn verse_outline_pale(l_light: f32, l_edge: f32, l_cap: f32, l_haze: f32) -> f32 {
+  var coax_t4: f32;
+  var coax_t5: f32;
+  var coax_t6: f32;
+  var coax_t7: f32;
+  coax_t5 = coax_p_lk_min(coax_p_lk_min(1.0, coax_p_lk_max(0.0, l_edge)), 1.0);
+  coax_t6 = coax_p_lk_min(coax_p_lk_max(l_cap, 0.0), 0.349999994);
+  coax_t4 = (coax_t5 * coax_t6);
+  coax_t7 = (1.0 - coax_p_lk_min(1.0, coax_p_lk_max(0.0, l_haze)));
+  var l_w: f32 = (coax_t4 * coax_t7);
+  return (l_light + (l_w * (coax_p_lk_max(l_light, 0.0) + 0.25)));
+}
+fn verse_outline_styled(l_style: f32, l_light: f32, l_edge: f32, l_cap: f32, l_haze: f32) -> f32 {
+  if ((l_style < 0.5))
+  {
+    return verse_outline_ink(l_light, l_edge);
+  }
+  if ((l_style < 1.5))
+  {
+    return verse_outline_pale(l_light, l_edge, l_cap, l_haze);
+  }
+  return l_light;
+}
+fn coax_p_lk_ramp(l_a: f32, l_b: f32, l_x: f32) -> f32 {
+  var l_t: f32 = coax_p_lk_min(1.0, coax_p_lk_max(0.0, ((l_x - l_a) / (l_b - l_a))));
+  return ((l_t * l_t) * (3.0 - (2.0 * l_t)));
+}
+fn verse_outline_crease(l_facing: f32) -> f32 {
+  return coax_p_lk_ramp(0.75, 0.550000012, l_facing);
+}
+// ---- end generated
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
 // ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
