@@ -26,9 +26,9 @@ final class SignInViewController: WalletForm {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Sign in"
+        title = "Log in"
         navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
-        let about = Look.label("Scan the code on openagents.com/signin to sign in there, or the LINK A PHONE code on your project page.", .preferredFont(forTextStyle: .body), Look.dim)
+        let about = Look.label("Scan the code on openagents.com/login to log in there, or the LINK A PHONE code on your project page.", .preferredFont(forTextStyle: .body), Look.dim)
         let keyTitle = Look.label("Your key", .preferredFont(forTextStyle: .headline))
         npub.accessibilityIdentifier = "signin.npub"; npub.lineBreakMode = .byCharWrapping
         note.accessibilityIdentifier = "signin.note"
@@ -54,7 +54,7 @@ final class SignInViewController: WalletForm {
 
     private func take(_ text: String) {
         if !SignInRouter.open(text, from: self) {
-            note.text = "That isn't an openagents.com sign-in code or project link."
+            note.text = "That isn't an openagents.com login code or project link."
         } else { note.text = "" }
     }
 }
@@ -71,11 +71,11 @@ final class ApproveSignInViewController: WalletForm {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = code.kind == .signin ? "Sign in" : "Link this phone"
+        title = code.kind == .signin ? "Log in" : "Link this phone"
         question.text = code.question; question.accessibilityIdentifier = "signin.question"
         result.accessibilityIdentifier = "signin.result"
         let detail = Look.label(code.kind == .signin
-            ? "Approve only if you just opened the sign-in page yourself. The phone signs with its key and the page signs in as you."
+            ? "Approve only if you just opened the login page yourself. The phone signs with its key and the page logs in as you."
             : "Approve only if the code came from your own project page or an invite sent to you. This phone's key becomes one of your keys for that project.",
             .preferredFont(forTextStyle: .footnote), Look.dim)
         approve.addAction(UIAction { [weak self] _ in self?.go() }, for: .touchUpInside)

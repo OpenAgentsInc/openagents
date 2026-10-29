@@ -91,8 +91,8 @@ verse_signin_parse :: (raw: [] u8, debug: bool) -> SigninCode #export_c {
   if at == 7 && !r.local { return none; }   // plain http only to this machine
   r.host_at = a + at; r.host_n = host.count;
   p := h;
-  if si_starts(t, p, "/signin") {
-    p += 7;
+  if si_starts(t, p, "/login") || si_starts(t, p, "/signin") {
+    p += ifx si_starts(t, p, "/login") then 6 else 7;   // /signin: the codes build 1057 knows
     if si_starts(t, p, "/#") { p += 1; }
     if si_starts(t, p, "#c=") { r.kind = SIGNIN_SIGNIN; p += 3; }
     else if si_starts(t, p, "#link=") { r.kind = SIGNIN_LINK; p += 6; }
@@ -133,7 +133,7 @@ si_part :: (raw: [] u8, at: int, n: int) -> string { return cast(string) raw[at.
 // What the confirmation sheet asks.
 verse_signin_question :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c {
   if c.kind == SIGNIN_SIGNIN {
-    o := si_put(out, 0, "Sign in to ");
+    o := si_put(out, 0, "Log in to ");
     o = si_put(out, o, si_part(raw, c.host_at, c.host_n));
     return si_put(out, o, "?");
   }
@@ -292,6 +292,8 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int { t := tx(a, b,
 
 #test "link and invite codes" {
   #assert kind_of("https://openagents.com/signin#link=", SECRET, "", false) == SIGNIN_LINK;
+  #assert kind_of("https://openagents.com/login#c=", SECRET, "", false) == SIGNIN_SIGNIN;
+  #assert kind_of("https://openagents.com/login/#link=", SECRET, "", false) == SIGNIN_LINK;
   i := tx("https://openagents.com/projects/ab-12#invite=", SECRET, "");
   c := verse_signin_parse(i.b[0..<i.n], false);
   #assert c.kind == SIGNIN_INVITE && si_text(i.b[..], c.slug_at, c.slug_n) == "ab-12";
@@ -372,7 +374,7 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int { t := tx(a, b,
   buf: [200] u8;
   t := tx("https://staging.openagents.com/signin#c=", SECRET, "");
   n := verse_signin_question(t.b[0..<t.n], verse_signin_parse(t.b[0..<t.n], false), buf[..]);
-  #assert cast(string) buf[0..<n] == "Sign in to staging.openagents.com?";
+  #assert cast(string) buf[0..<n] == "Log in to staging.openagents.com?";
   l := tx("https://openagents.com/signin#link=", SECRET, "");
   n = verse_signin_question(l.b[0..<l.n], verse_signin_parse(l.b[0..<l.n], false), buf[..]);
   #assert cast(string) buf[0..<n] == "Link this phone to your project on openagents.com?";

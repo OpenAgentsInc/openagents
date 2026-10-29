@@ -439,7 +439,7 @@ AD_FIXTURE :: "200\n#SUMMARY||WHAT|COUNT\nSessions|4\nVisitors|3\n#SESSIONS|s|SE
   n := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, true);
   #assert s[0].status == 0 && s[0].ask_n > 0 && n > 0;   // LOADING
   #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/analytics?view=overview&days=7&space=all&auto=0";
-  ad_answer(s[..], "401\n{\"error\":\"sign in as an admin\"}");
+  ad_answer(s[..], "401\n{\"error\":\"log in as an admin\"}");
   #assert s[0].status == 401 && s[0].sec_n == 0 && s[0].data_n == 0;
   #assert ad_hit(s[..], 100, 100) == -1;   // nothing to press, not even the filters
 }

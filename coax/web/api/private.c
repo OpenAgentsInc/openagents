@@ -117,7 +117,7 @@ static void shell(const request *q, const char *slug, bool member) {
     "for (const a of from.attributes) s.setAttribute(a.name, a.value);\n"
     "s.dataset.page = \"%d\"; s.dataset.text = \"%s\";\n"
     "document.body.append(s);\n</script>\n</body>\n</html>\n",
-    member ? "Project" : "Private project", member ? "Project" : "Private project — ask a member for a sign-in link",
+    member ? "Project" : "Private project", member ? "Project" : "Private project — ask a member for a login link",
     member ? 0 : 1, slug);
   api_respond(q->fd, member ? 200 : 404, "text/html; charset=utf-8", PRIVATE_HEADERS, html, (size_t)n);
 }

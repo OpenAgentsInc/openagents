@@ -148,8 +148,8 @@ if not coder:
     check(s2 == 404 and b'data-page="1"' in b2 and nobody.encode() not in b2.split(b"<script", 1)[0], f"an unknown private slug is a 404 that names nothing ({s2})")
     check(s3 == 404 and b3 == b'{"error": "not found"}' and "no-store" in h3.get("cache-control", ""), f"an unknown private slug's API says only not found ({s3})")
 # Signing in with the phone (docs/phone-sign-in.md): the page, the app's universal links, the API.
-(s1, h1, b1), (s2, h2, b2), (s3, h3, b3) = fetch(["/signin", "/.well-known/apple-app-site-association", "/api/auth/me"])
-check(s1 == 200 and b'data-app="private"' in b1 and b'data-page="2"' in b1, f"/signin is the sign-in page ({s1})")
+(s1, h1, b1), (s2, h2, b2), (s3, h3, b3) = fetch(["/login", "/.well-known/apple-app-site-association", "/api/auth/me"])
+check(s1 == 200 and b'data-app="private"' in b1 and b'data-page="2"' in b1, f"/login is the login page ({s1})")
 check(s2 == 200 and "json" in h2.get("content-type", "") and b"HQWSG26L43.com.openagents.app" in b2, f"the app's universal links are served as JSON ({s2}, {h2.get('content-type')})")
 check(s3 == 401 and "no-store" in h3.get("cache-control", ""), f"/api/auth/me signed out is 401 ({s3})")
 # /chat (docs/chat.md): the page, and its API refuses anyone signed out like the dashboard's.

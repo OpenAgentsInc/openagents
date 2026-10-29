@@ -548,7 +548,7 @@ pv_crumbs :: (s: [] PrivateState, out: [] f32, v0: int, where: string, p: Pen) -
 pv_signin :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   d := p.d; w := s[0].width; h := s[0].height;
   white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM);
-  v := pv_crumbs(s, out, 0, "SIGN IN", p);
+  v := pv_crumbs(s, out, 0, "LOG IN", p);
   cx := w * 0.5;
   if s[0].me_status == 200 {
     k := pv_first(s, 'K');
@@ -591,7 +591,7 @@ pv_signin :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
     return put(out, v, word, cx - text_width(word, 10 * d) * 0.5, h * 0.5, 10 * d, dim);
   }
   side := pv_side(s);
-  title := "SIGN IN WITH YOUR PHONE";
+  title := "LOG IN WITH YOUR PHONE";
   tcap := ifx w / d < 520 then 10 * d else 12 * d;
   top := hi((h - side) * 0.5 - 30 * d, 70 * d);
   v = put(out, v, title, cx - text_width(title, tcap) * 0.5, top - 18 * d, tcap, white);
@@ -1164,7 +1164,7 @@ out_none :: () -> [] f32 { e: [] f32; return e; }
 pv_locked :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   d := p.d; w := s[0].width; h := s[0].height;
   white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM);
-  a := "PRIVATE PROJECT"; b := "ASK A MEMBER FOR A SIGN-IN LINK";
+  a := "PRIVATE PROJECT"; b := "ASK A MEMBER FOR A LOGIN LINK";
   cap := ifx w / d < 520 then 9 * d else 12 * d;
   v := put(out, 0, a, (w - text_width(a, cap)) * 0.5, h * 0.5 - 8 * d, cap, white);
   c2 := cap * 0.62;

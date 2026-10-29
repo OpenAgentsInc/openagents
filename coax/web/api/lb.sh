@@ -106,7 +106,7 @@ for pm in m["pathMatchers"]:
     rules.append({"priority": max([r["priority"] for r in rules] or [0]) + 1, "matchRules": [{"prefixMatch": "/api/"}],
                   "service": f"https://www.googleapis.com/compute/v1/projects/{project}/global/backendServices/{svc}"})
     changed = True
-# /admin/analytics (admin.coax), /signin (private.coax page 2) and /chat (chat.coax) are Coaxial
+# /admin/analytics (admin.coax), /login (private.coax page 2) and /chat (chat.coax) are Coaxial
 # pages: in production they go to the site's bucket with the other Coax pages,
 # not to the coder service; so does /.well-known/apple-app-site-association.
 for pm in m["pathMatchers"]:
@@ -114,14 +114,30 @@ for pm in m["pathMatchers"]:
     for rule in pm.get("routeRules", []):
         if not rule.get("service", "").endswith("/coaxial-openagents-web"): continue
         if not any(x.get("prefixMatch") == "/build/" for x in rule.get("matchRules", [])): continue   # the Coax files' rule
+        old = [x for x in rule["matchRules"] if (x.get("fullPathMatch") or x.get("prefixMatch")) in ("/signin", "/signin/")]
+        if old: rule["matchRules"] = [x for x in rule["matchRules"] if x not in old]; changed = True
         have = {r.get("fullPathMatch") or r.get("prefixMatch") for r in rule.get("matchRules", [])}
         for match in ({"fullPathMatch": "/admin/analytics"}, {"prefixMatch": "/admin/analytics/"},
-                      {"fullPathMatch": "/signin"}, {"prefixMatch": "/signin/"},
+                      {"fullPathMatch": "/login"}, {"prefixMatch": "/login/"},
                       {"fullPathMatch": "/chat"}, {"prefixMatch": "/chat/"},
                       {"fullPathMatch": "/.well-known/apple-app-site-association"}):
             if next(iter(match.values())) not in have:
                 rule["matchRules"].append(match); changed = True
                 print("url map: production " + next(iter(match.values())) + " to the site")
+# The page is /login ("Log in"): /signin, /logout and /signup go there; the coder service's WorkOS login is retired.
+for pm in m["pathMatchers"]:
+    if pm["name"] != "production": continue
+    rules = pm.setdefault("routeRules", [])
+    want = [{"fullPathMatch": "/signin"}, {"prefixMatch": "/signin/"}, {"fullPathMatch": "/logout"}, {"fullPathMatch": "/signup"}]
+    go = {"pathRedirect": "/login", "stripQuery": True, "redirectResponseCode": "FOUND"}
+    rule = next((r for r in rules if r.get("urlRedirect", {}).get("pathRedirect") in ("/login", "/signin")), None)
+    if rule and rule["matchRules"] == want and rule["urlRedirect"] == go: continue
+    if rule: rules.remove(rule)
+    free = next(p for p in range(11, 20) if p not in {r["priority"] for r in rules})
+    rules.append({"priority": free, "matchRules": want, "urlRedirect": go})
+    rules.sort(key=lambda r: r["priority"])
+    changed = True
+    print("url map: production /signin, /logout and /signup to /login")
 for k in ("kind", "creationTimestamp", "id", "selfLink"): m.pop(k, None)   # read-only: import refuses them
 json.dump(m, open(path, "w"))
 print("url map: /api/ rules added" if changed else "url map: /api/ rules already there")

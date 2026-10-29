@@ -415,7 +415,7 @@ header :: (out: [] f32, at: int, l: Layout, p: Pen, m: int, signed: bool, hot: i
   v = chip(out, v, "ALL", l.all.x0, base, cap, ak, p);
   v = chip(out, v, "NEW PROJECT", l.newp.x0, l.newp.y1 - 5 * d, cap, ifx hot == HIT_NEW then white else orange, p);
   if !signed {
-    note := "SIGN-IN NEEDED FOR MINE";
+    note := "LOG IN TO SEE MINE";
     if l.wide { v = put_right(out, v, note, l.all.x1, l.mine.y0 - 8 * d, 6 * d, dim); }
     else { v = put_right(out, v, note, right, b.y0 + 22 * d, 6 * d, dim); }
   }
@@ -504,8 +504,8 @@ draw_list :: (out: [] f32, at: int, l: Layout, p: Pen, table: string, viewer: st
   if n == 0 {
     y := l.rows_top + 30 * d; x := b.x0 + 26 * d; w := box_w(b) - 52 * d;
     if m == FILTER_MINE && !signed_in(viewer) {
-      v = put_fit(out, v, "SIGN IN TO SEE YOUR PROJECTS", x, y, 10 * d, white, w);
-      v = put_wrapped(out, v, "SIGN-IN ISN'T AVAILABLE YET. ALL SHOWS EVERY PUBLIC PROJECT.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
+      v = put_fit(out, v, "LOG IN TO SEE YOUR PROJECTS", x, y, 10 * d, white, w);
+      v = put_wrapped(out, v, "LOGGING IN ISN'T AVAILABLE YET. ALL SHOWS EVERY PUBLIC PROJECT.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
     } else if m == FILTER_MINE {
       v = put_fit(out, v, "NONE OF THESE ARE YOURS YET", x, y, 10 * d, white, w);
       v = put_wrapped(out, v, "ALL SHOWS EVERY PROJECT YOU CAN SEE.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
@@ -568,7 +568,7 @@ put_bytes :: (buf: [] u8, at: int, n: int) -> int {
 
 // What a file's status says, into buf.
 put_status :: (buf: [] u8, status: string, permille: int, signed: bool) -> int {
-  if same(status, "queued") { return put_text(buf, 0, ifx signed then "QUEUED" else "WAITING FOR SIGN-IN"); }
+  if same(status, "queued") { return put_text(buf, 0, ifx signed then "QUEUED" else "WAITING FOR LOGIN"); }
   if same(status, "starting") { return put_text(buf, 0, "STARTING"); }
   if same(status, "uploading") { c := put_text(buf, 0, "UPLOADING "); c += put_int(buf, c, permille / 10); return c + put_text(buf, c, "%"); }
   if same(status, "scanning") { return put_text(buf, 0, "SCANNING"); }
@@ -595,9 +595,9 @@ drop_layout :: (l: Layout, d: f32, drafted: bool) -> DropLayout {
   top := b.y0 + title_room(p) + (ifx l.wide then 26.0f32 else 50.0f32) * d;
   zh := clamp(box_h(b) * 0.36, 150 * d, 220 * d);
   k.zone = Box.{x0 = b.x0 + 18 * d, y0 = top, x1 = b.x1 - 18 * d, y1 = top + zh};
-  sw := chip_width("SIGN IN WITH NOSTR", 9 * d, p);
+  sw := chip_width("LOG IN WITH NOSTR", 9 * d, p);
   cx := (k.zone.x0 + k.zone.x1) * 0.5;
-  k.signin = chip_box("SIGN IN WITH NOSTR", cx - sw * 0.5, k.zone.y0 + zh * 0.5 + 34 * d, 9 * d, p);
+  k.signin = chip_box("LOG IN WITH NOSTR", cx - sw * 0.5, k.zone.y0 + zh * 0.5 + 34 * d, 9 * d, p);
   k.rows_top = k.zone.y1 + 22 * d;
   k.row_h = (ifx l.wide then 34.0f32 else 44.0f32) * d;
   bottom := b.y1 - 30 * d - (ifx drafted then DRAFT_ROOM * d else 0.0f32);
@@ -662,12 +662,12 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
   if dragging {
     v = put_center(out, v, "LET GO TO DROP", cx, mid + 6 * d, 16 * d, orange, zw);
   } else if !signed {
-    v = put_center(out, v, "SIGN IN TO DROP FILES", cx, mid - 22 * d, 12 * d, white, zw);
+    v = put_center(out, v, "LOG IN TO DROP FILES", cx, mid - 22 * d, 12 * d, white, zw);
     if signer {
-      v = chip(out, v, "SIGN IN WITH NOSTR", k.signin.x0, k.signin.y1 - 5 * d, 9 * d, ifx hot == HIT_SIGNIN then white else orange, p);
+      v = chip(out, v, "LOG IN WITH NOSTR", k.signin.x0, k.signin.y1 - 5 * d, 9 * d, ifx hot == HIT_SIGNIN then white else orange, p);
       v = put_center(out, v, "Your browser's Nostr signer signs you in.", cx, mid + 4 * d, 6.5 * d, dim, zw);
     } else {
-      v = put_center_wrapped(out, v, "Use a Nostr signer in this browser, or open your admin sign-in link.", cx, mid + 4 * d, 6.5 * d, dim, zw, 12 * d, 2);
+      v = put_center_wrapped(out, v, "Use a Nostr signer in this browser, or open your admin login link.", cx, mid + 4 * d, 6.5 * d, dim, zw, 12 * d, 2);
       v = put_center_wrapped(out, v, "Files you pick now wait until you're signed in.", cx, mid + 30 * d, 6.5 * d, faint, zw, 12 * d, 2);
     }
   } else {
@@ -1528,7 +1528,7 @@ drop_message :: (s: [] ProjectsState, text: string) {
   #assert same(cast(string) b[0..<put_bytes(b[..], 0, 5452595)], "5.2 MB");
   #assert same(cast(string) b[0..<put_bytes(b[..], 0, 67108864)], "64 MB");
   #assert same(cast(string) b[0..<put_status(b[..], "uploading", 420, true)], "UPLOADING 42%");
-  #assert same(cast(string) b[0..<put_status(b[..], "queued", 0, false)], "WAITING FOR SIGN-IN");
+  #assert same(cast(string) b[0..<put_status(b[..], "queued", 0, false)], "WAITING FOR LOGIN");
   #assert drop_progress("uploading", 420) == 0.42f32 && drop_progress("queued", 0) == 0 && drop_progress("kept", 0) == 1;
 }
 

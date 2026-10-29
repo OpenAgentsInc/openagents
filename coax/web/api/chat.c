@@ -330,7 +330,7 @@ bool chat_route(const request *q) {
     if (s) { reply(q->fd, s, s == 403 ? "{\"error\":\"the runner only\"}" : "{\"error\":\"sign the request\"}"); return true; }
   } else {
     int s = chat_who(q, db, pubkey);
-    if (s) { reply(q->fd, s, s == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"sign in as an admin\"}"); return true; }
+    if (s) { reply(q->fd, s, s == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return true; }
     if (post) {
       // CSRF: a cookie's write comes from this site's pages (Origin); a signed one may come from anywhere.
       char auth[16], from[256];

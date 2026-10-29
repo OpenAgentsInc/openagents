@@ -1,3 +1,3 @@
 # Private project
 
-Ask a member for a sign-in link. [Projects](/projects)
+Ask a member for a login link. [Projects](/projects)

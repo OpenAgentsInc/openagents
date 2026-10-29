@@ -188,12 +188,12 @@ final class HomeViewController: UIViewController {
     }
     private func setUpSignIn() {
         signInButton.translatesAutoresizingMaskIntoConstraints = false
-        signInButton.setTitle("SIGN IN", for: .normal)
+        signInButton.setTitle("LOG IN", for: .normal)
         signInButton.titleLabel?.font = UIFont(name: "Michroma", size: 10) ?? .systemFont(ofSize: 10, weight: .semibold)
         signInButton.setTitleColor(UIColor(white: 1, alpha: 0.7), for: .normal)
         signInButton.contentEdgeInsets = UIEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
         signInButton.accessibilityIdentifier = "signin.open"
-        signInButton.accessibilityLabel = "Sign in to openagents.com"
+        signInButton.accessibilityLabel = "Log in to openagents.com"
         signInButton.addAction(UIAction { [weak self] _ in self?.openSignIn() }, for: .touchUpInside)
         view.addSubview(signInButton)
         NSLayoutConstraint.activate([

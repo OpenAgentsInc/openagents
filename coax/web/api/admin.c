@@ -104,7 +104,7 @@ static int who_is(const request *q, PGconn *db, char who[65]) {
 int admin_who(const request *q, PGconn *db, char who[65]) { return who_is(q, db, who); }
 
 static void refuse(int fd, int status) {
-  api_json(fd, status, status == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"sign in as an admin\"}");
+  api_json(fd, status, status == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}");
 }
 
 static void login(const request *q, PGconn *db) {

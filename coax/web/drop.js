@@ -161,8 +161,8 @@ export function startDrops({ send }) {
       const ev = await globalThis.nostr.signEvent({ kind: 27235, created_at: Math.floor(Date.now() / 1000), content: "", tags: [["u", url], ["method", "POST"]] });
       const auth = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(ev))));
       const r = await fetch("/api/drops/signin", { method: "POST", credentials: "same-origin", headers: { Authorization: `Nostr ${auth}` } });
-      note = r.ok ? "" : ((await r.json().catch(() => ({}))).error || "sign-in refused");
-    } catch { note = "sign-in was cancelled"; }
+      note = r.ok ? "" : ((await r.json().catch(() => ({}))).error || "login refused");
+    } catch { note = "login was cancelled"; }
     push();
     await me();
   }

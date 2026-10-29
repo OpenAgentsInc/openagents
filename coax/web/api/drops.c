@@ -462,7 +462,7 @@ bool drops_route(const request *q) {
     if ((has_origin && strcmp(from, origin())) || (!has_origin && !signed_req)) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
   }
   if (!strcmp(rest, "signout") && post) { signout(q, db); return true; }
-  if (!in) { api_json(q->fd, 401, "{\"error\":\"sign in to drop files\"}"); return true; }
+  if (!in) { api_json(q->fd, 401, "{\"error\":\"log in to drop files\"}"); return true; }
   bool admin = admin_is(pk);
   if (!strcmp(rest, "signin")) {
     if (!post || !signed_req) { api_json(q->fd, 401, "{\"error\":\"sign the sign-in\"}"); return true; }

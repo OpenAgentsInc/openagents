@@ -748,7 +748,7 @@ ch_header :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen, wide: bool)
   return frame(out, v, b, 10 * d, p);
 }
 
-// Signed out, or not an admin: SIGN IN and nothing else.
+// Signed out, or not an admin: LOG IN and nothing else.
 ch_locked :: (s: [] ChatState, out: [] f32, p: Pen) -> int {
   d := p.d; w := s[0].width; h := s[0].height;
   white := ch_chrome(p, INK_WHITE); dim := ch_chrome(p, INK_DIM);
@@ -758,10 +758,10 @@ ch_locked :: (s: [] ChatState, out: [] f32, p: Pen) -> int {
   w1 := text_width("OPENAGENTS", 7 * d);
   ch_hit(s, Box.{x0 = x - 4 * d, y0 = cy - 14 * d, x1 = x + w1 + 4 * d, y1 = cy + 6 * d}, H_HOME);
   cap := 9 * d;
-  sw := chip_width("SIGN IN", cap, p);
-  b := chip_box("SIGN IN", (w - sw) * 0.5, h * 0.5, cap, p);
+  sw := chip_width("LOG IN", cap, p);
+  b := chip_box("LOG IN", (w - sw) * 0.5, h * 0.5, cap, p);
   ch_hit(s, b, H_SIGNIN);
-  return chip(out, v, "SIGN IN", (w - sw) * 0.5, h * 0.5, cap, ifx s[0].hot == H_SIGNIN then ch_chrome(p, INK_ORANGE) else white, p);
+  return chip(out, v, "LOG IN", (w - sw) * 0.5, h * 0.5, cap, ifx s[0].hot == H_SIGNIN then ch_chrome(p, INK_ORANGE) else white, p);
 }
 
 ch_signed_out :: (s: [] ChatState) -> bool { return s[0].status == 401 || s[0].status == 403 || s[0].status == 404; }
@@ -876,7 +876,7 @@ ch_choose_model :: (s: [] ChatState, k: int) {
 ch_act :: (s: [] ChatState, target: int) {
   if target != H_FIELD && target != H_SEND && target != H_KFIELD && target != H_KSAVE && (target < H_MODEL || target >= H_MODEL + 3) { s[0].typing = false; }
   if target == H_HOME { ch_go(s, "/"); }
-  else if target == H_SIGNIN { ch_go(s, "/signin"); }
+  else if target == H_SIGNIN { ch_go(s, "/login"); }
   else if target == H_NEW { s[0].shown = 0; s[0].listing = false; s[0].keying = false; s[0].back = 0; s[0].asked_at = -1000; s[0].typing = true; s[0].focus = 0; }
   else if target == H_CHATS { s[0].listing = !s[0].listing; s[0].keying = false; }
   else if target == H_KEY { s[0].keying = !s[0].keying; s[0].listing = false; s[0].knote_n = 0; s[0].replacing = false; ch_wipe_key(s); }
@@ -1017,18 +1017,18 @@ ch_typed_in :: (s: [] ChatState, text: string) {
   coaxial_chat_message(s, CH_TYPED, text.count);
 }
 
-#test "signed out or not an admin: SIGN IN and nothing else" {
+#test "signed out or not an admin: LOG IN and nothing else" {
   s: [1] ChatState;
   out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   n0 := ch_fresh(s[..], out[..], u[..], 1440, 900);
   #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/chat/state";
   coaxial_chat_asked(s[..], 0);
-  ch_answer(s[..], 0, "401\n{\"error\": \"sign in as an admin\"}");
+  ch_answer(s[..], 0, "401\n{\"error\": \"log in as an admin\"}");
   n := ch_fresh(s[..], out[..], u[..], 1440, 900);
   #assert n > 0 && s[0].line_n == 0 && ch_has_hit(s[..], H_SIGNIN) && !ch_has_hit(s[..], H_FIELD) && !ch_has_hit(s[..], H_KEY);
   #assert s[0].ask_n == 0;   // and it stops asking
   ch_act(s[..], H_SIGNIN);
-  #assert s[0].action == CH_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/signin";
+  #assert s[0].action == CH_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/login";
 }
 
 #test "an admin's page: the list, the conversation shown, its answer drawn, the tool in use and STOP" {
