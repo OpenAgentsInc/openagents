@@ -12,9 +12,10 @@ const table = () => JSON.parse(readFileSync(join(SITE, "realms.json"), "utf8"))
 const dir = mkdtempSync(join(tmpdir(), "realms-test-"))
 let n = 0
 /** The real table with one realm changed, checked; opts as worlds() takes them. */
-function check(change: (realm: any) => void, opts: { site?: string; styleBlock?: boolean } = { styleBlock: false }) {
+function check(change: (realm: any) => void, opts: { site?: string; styleBlock?: boolean; packs?: string } = { styleBlock: false }, id = "everglade") {
   const t = table()
-  change(t.worlds.find((w: any) => w.id === "everglade").realm)
+  // the fixture's pack is the drop realm's too: a change to the fixture's is made to both
+  for (const w of t.worlds) if (w.id === id || (id === "fixture" && w.id === "drop")) change(w.realm)
   const file = join(dir, `t${n++}.json`)
   writeFileSync(file, JSON.stringify(t))
   return () => worlds(file, opts)
@@ -62,4 +63,23 @@ test("the page carries data-style, data-clock and data-zones", () => {
   const r = worlds().find((w) => w.id === "everglade")!.realm!
   const html = page({ ...r, zones: [{ id: "crypt" }] })
   expect(html).toContain(`data-style="painterly" data-clock="cycle" data-zones="crypt:painterly"`)
+})
+test("refuses a painterly realm with a lowpoly pack, and a pack of another style", () => {
+  const packs = mkdtempSync(join(tmpdir(), "realms-packs-"))
+  writeFileSync(join(packs, "fixture.json"), JSON.stringify({ pack: "fixture" }))
+  expect(check(() => {}, { styleBlock: false, packs }, "fixture")).not.toThrow()
+  expect(check((r) => (r.style = "painterly"), { styleBlock: false, packs }, "fixture")).toThrow(/its pack fixture is lowpoly/)
+  writeFileSync(join(packs, "fixture.json"), JSON.stringify({ pack: "fixture", style: "lowpoly" }))
+  expect(check((r) => (r.style = "painterly"), { styleBlock: false, packs }, "fixture")).toThrow(/its pack fixture is lowpoly/)
+  writeFileSync(join(packs, "fixture.json"), JSON.stringify({ pack: "fixture", style: "painterly" }))
+  expect(check((r) => (r.style = "painterly"), { styleBlock: false, packs }, "fixture")).not.toThrow()
+  expect(check(() => {}, { styleBlock: false, packs }, "fixture")).toThrow(/drawn lowpoly but its pack fixture is painterly/)
+  // a lowpoly realm with a painterly zone may carry a painterly pack
+  expect(check((r) => (r.zones = [{ id: "glade", style: "painterly" }]), { styleBlock: false, packs }, "fixture")).not.toThrow()
+  // Everglade waits on its own pack task, but only while its pack names no style
+  writeFileSync(join(packs, "fixture.json"), JSON.stringify({ pack: "fixture" }))
+  writeFileSync(join(packs, "everglade.json"), JSON.stringify({ pack: "everglade" }))
+  expect(check(() => {}, { styleBlock: false, packs })).not.toThrow()
+  writeFileSync(join(packs, "everglade.json"), JSON.stringify({ pack: "everglade", style: "lowpoly" }))
+  expect(check(() => {}, { styleBlock: false, packs })).toThrow(/its pack everglade is lowpoly/)
 })

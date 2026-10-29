@@ -34,6 +34,19 @@ The catalog is text, a line each:
                                   a skinned character: its indices (numbered from its own first
                                   vertex), licence, the vertex buffer word its vertices start at,
                                   how many there are and its joints
+A pack names its art style (manifest "style": lowpoly, painterly or
+photoreal; none is lowpoly) and the catalog says it first: "style NAME".
+A painterly pack's layers must pass the style's texture rules
+(docs/verse/art-styles.md, 10. Textures and packs): at most 512 texels a
+side (256 when the manifest names no texture_size), no normal, roughness or
+detail maps, fine-detail energy at most 0.035 (the RMS of the luminance less
+its own 4x-down-then-up copy over opaque texels, sRGB 0..1), and mean HSV
+saturation 0.20 to 0.70 and value 0.18 to 0.92. "paint": true (or a list of
+SCN4 layer numbers) runs the paint pass first: a Kuwahara filter (radius 4
+at 512, 2 below), 24 colours, saturation and value pulled into range. A
+layer that still fails is refused with its numbers; the source stays as it
+was.
+
 Vertices are the Haunted House's (realm.wgsl): 48 bytes, position, normal,
 uv, colour with its layer in the alpha byte, then 12 zero bytes; the layer
 is the pack's own (0 first). A character's vertices follow the kit's, 32
@@ -82,8 +95,119 @@ def scene_meshes(path):
     return b, vb, ib, out
 
 
-def image(stem, size):
-    """A texture layer at size x size (PIL): JPEG, or PNG where the source has a cutout."""
+STYLES = ("lowpoly", "painterly", "photoreal")
+# The painterly texture rules (art-styles.md section 9 and 10).
+PAINT_MAX_SIZE, PAINT_DEFAULT_SIZE = 512, 256
+FINE_MAX = 0.035
+SAT_RANGE, VAL_RANGE = (0.20, 0.70), (0.18, 0.92)
+PAINT_COLOURS = 24
+# Map kinds a painterly pack never carries (the pack format has none; a manifest naming one is refused).
+MAP_KEYS = ("normal", "normals", "normal_map", "roughness", "roughness_map", "detail", "detail_map", "metallic", "metallic_map")
+
+
+def layer_measures(im):
+    """(fine-detail energy, mean saturation, mean value) of an image over its opaque texels."""
+    from PIL import Image, ImageChops
+    im = im.convert("RGBA")
+    w, h = im.size
+    lum = im.convert("RGB").convert("L")
+    # the 4x-down copy of the opaque texels only (weighted by coverage), so a cutout's hidden texels don't count
+    cover = im.getchannel("A").point(lambda x: 255 if x >= 128 else 0)
+    small = (max(1, w // 4), max(1, h // 4))
+    held = ImageChops.multiply(lum, cover).convert("F").resize(small, Image.BOX).resize((w, h), Image.BILINEAR)
+    seen = cover.convert("F").resize(small, Image.BOX).resize((w, h), Image.BILINEAR)
+    flat = lambda i: getattr(i, "get_flattened_data", i.getdata)()
+    held, seen = flat(held), flat(seen)
+    alpha, a = cover.tobytes(), lum.tobytes()
+    b = [held[i] * 255.0 / seen[i] if seen[i] > 0 else a[i] for i in range(w * h)]
+    hsv = im.convert("RGB").convert("HSV").tobytes()
+    n, e, sat, val = 0, 0.0, 0.0, 0.0
+    for i in range(w * h):
+        if alpha[i] < 128:
+            continue
+        d = (a[i] - b[i]) / 255.0
+        e += d * d; sat += hsv[3 * i + 1]; val += hsv[3 * i + 2]; n += 1
+    if not n:
+        return 0.0, 0.0, 0.0
+    return (e / n) ** 0.5, sat / n / 255.0, val / n / 255.0
+
+
+def layer_refusal(name, im):
+    """Why a layer fails the painterly rules, or None."""
+    e, sat, val = layer_measures(im)
+    why = []
+    if e > FINE_MAX:
+        why.append(f"fine-detail energy {e:.3f} (at most {FINE_MAX})")
+    if not SAT_RANGE[0] <= sat <= SAT_RANGE[1]:
+        why.append(f"mean saturation {sat:.2f} (from {SAT_RANGE[0]} to {SAT_RANGE[1]})")
+    if not VAL_RANGE[0] <= val <= VAL_RANGE[1]:
+        why.append(f"mean value {val:.2f} (from {VAL_RANGE[0]} to {VAL_RANGE[1]})")
+    return f"{name}: " + "; ".join(why) if why else None
+
+
+def kuwahara(rgb, r):
+    """A Kuwahara filter of radius r over an RGB image: each texel takes the mean of the
+    least varied of the four (r+1)x(r+1) squares it is a corner of (summed-area tables)."""
+    from PIL import Image
+    w, h = rgb.size
+    px = rgb.tobytes()
+    W = w + 1
+    sums = [[0] * (W * (h + 1)) for _ in range(5)]   # r, g, b, luminance, luminance squared
+    for y in range(h):
+        run = [0] * 5
+        row, up = (y + 1) * W, y * W
+        for x in range(w):
+            i = 3 * (y * w + x)
+            R, G, B = px[i], px[i + 1], px[i + 2]
+            L = (R * 299 + G * 587 + B * 114) // 1000
+            v = (R, G, B, L, L * L)
+            for k in range(5):
+                run[k] += v[k]
+                sums[k][row + x + 1] = sums[k][up + x + 1] + run[k]
+    def box(k, x0, y0, x1, y1):   # inclusive texels, clamped
+        t = sums[k]
+        return t[(y1 + 1) * W + x1 + 1] - t[y0 * W + x1 + 1] - t[(y1 + 1) * W + x0] + t[y0 * W + x0]
+    out = bytearray(3 * w * h)
+    for y in range(h):
+        for x in range(w):
+            best, pick = None, None
+            for x0, x1 in ((max(0, x - r), x), (x, min(w - 1, x + r))):
+                for y0, y1 in ((max(0, y - r), y), (y, min(h - 1, y + r))):
+                    n = (x1 - x0 + 1) * (y1 - y0 + 1)
+                    m = box(3, x0, y0, x1, y1) / n
+                    var = box(4, x0, y0, x1, y1) / n - m * m
+                    if best is None or var < best:
+                        best, pick = var, (x0, y0, x1, y1, n)
+            x0, y0, x1, y1, n = pick
+            i = 3 * (y * w + x)
+            out[i] = box(0, x0, y0, x1, y1) // n
+            out[i + 1] = box(1, x0, y0, x1, y1) // n
+            out[i + 2] = box(2, x0, y0, x1, y1) // n
+    return Image.frombytes("RGB", (w, h), bytes(out))
+
+
+def paint(im):
+    """The paint pass: Kuwahara (radius 4 at 512, 2 below), 24 colours, then each opaque texel's
+    saturation and value pulled into the albedo rules. Keeps the alpha (cutouts)."""
+    from PIL import Image
+    im = im.convert("RGBA")
+    alpha = im.getchannel("A")
+    rgb = kuwahara(im.convert("RGB"), 4 if max(im.size) >= 512 else 2)
+    rgb = rgb.quantize(colors=PAINT_COLOURS, method=Image.Quantize.MEDIANCUT).convert("RGB")
+    hsv = bytearray(rgb.convert("HSV").tobytes())
+    lo_s, hi_s = round(SAT_RANGE[0] * 255) + 1, round(SAT_RANGE[1] * 255) - 1
+    lo_v, hi_v = round(VAL_RANGE[0] * 255) + 1, round(VAL_RANGE[1] * 255) - 1
+    for i in range(1, len(hsv), 3):
+        hsv[i] = min(hi_s, max(lo_s, hsv[i]))
+        hsv[i + 1] = min(hi_v, max(lo_v, hsv[i + 1]))
+    out = Image.frombytes("HSV", rgb.size, bytes(hsv)).convert("RGB").convert("RGBA")
+    out.putalpha(alpha)
+    return out
+
+
+def image(stem, size, style="lowpoly", painted=False):
+    """A texture layer at size x size (PIL): JPEG, or PNG where the source has a cutout.
+    A painterly pack's layer is painted first when asked, then must pass the rules."""
     from PIL import Image
     path = next((stem.with_suffix(x) for x in (".jpg", ".png") if stem.with_suffix(x).exists()), None)
     if not path:
@@ -93,6 +217,12 @@ def image(stem, size):
     im = im.convert("RGBA" if cutout else "RGB")
     if im.size != (size, size):
         im = im.resize((size, size), Image.LANCZOS)
+    if style == "painterly":
+        if painted:
+            im = paint(im).convert("RGBA" if cutout else "RGB")
+        why = layer_refusal(path.name + (" (painted)" if painted else ""), im)
+        if why:
+            raise SystemExit(f"painterly layer refused: {why}" + ("" if painted else '; "paint": true runs the paint pass'))
     buf = io.BytesIO()
     if cutout:
         im.save(buf, "PNG", optimize=True)
@@ -340,7 +470,17 @@ def rig_coax(m, c, prefix, triangles):
 
 
 def build(manifest_path):
-    m = json.loads(Path(manifest_path).read_text())
+    m = json.loads(Path(manifest_path).read_text()) if not isinstance(manifest_path, dict) else manifest_path
+    style = m.get("style", "lowpoly")
+    if style not in STYLES:
+        raise SystemExit(f"{m['pack']}: style is one of {', '.join(STYLES)}, not {style!r}")
+    if style == "painterly":
+        named = [k for k in MAP_KEYS if k in m] + [f"{x['name']}.{k}" for x in m["meshes"] if isinstance(x, dict) for k in MAP_KEYS if k in x]
+        if named:
+            raise SystemExit(f"{m['pack']}: a painterly pack carries no normal, roughness or detail maps ({', '.join(named)})")
+        if int(m.get("texture_size", PAINT_DEFAULT_SIZE)) > PAINT_MAX_SIZE:
+            raise SystemExit(f"{m['pack']}: a painterly layer is at most {PAINT_MAX_SIZE} texels a side, not {m['texture_size']}")
+    paint_what = m.get("paint", False)
     licences = m["licences"]
     keys = list(licences)
     def licence_of(key, what):
@@ -380,14 +520,15 @@ def build(manifest_path):
                 vertices += raw[:35] + bytes([layers.index(layer)]) + bytes(12)
             indices.append(unique[raw])
         mesh_lines.append(f"M {name} {start} {len(indices) - start} {lic} " + " ".join(f"{x:.3f}" for x in lo + hi))
-    size = int(m.get("texture_size", 512))
+    size = int(m.get("texture_size", PAINT_DEFAULT_SIZE if style == "painterly" else 512))
     entries = []   # (kind, licence, name, bytes)
     layer_lines, sound_lines = [], []
     for k, layer in enumerate(layers):
         lic = layer_licence[layer]
         if lic == 255:
             raise SystemExit(f"layer {layer} is used by meshes of two licences; split them")
-        src, data = image(home(m["layers"].format(n=layer)), size)
+        painted = paint_what is True or (isinstance(paint_what, list) and layer in paint_what)
+        src, data = image(home(m["layers"].format(n=layer)), size, style, painted)
         entries.append((KIND_LAYER, lic, f"layer{k}", data))
         layer_lines.append(f"T {k} {src.name} {lic}")
     character_lines, rig = [], None
@@ -432,7 +573,8 @@ def build(manifest_path):
     ibytes = struct.pack(f"<{len(indices)}I", *indices)
     budget = int(m["budget"])
     def catalog(total):
-        lines = [f"pack {m['pack']}", f"budget {budget}", f"bytes {total}"]
+        lines = [f"style {style}"] if "style" in m else []
+        lines += [f"pack {m['pack']}", f"budget {budget}", f"bytes {total}"]
         lines += [f"L {k} {licences[key]['name']}|{licences[key]['licence']}|{licences[key]['url']}" for k, key in enumerate(keys)]
         return ("\n".join(lines + mesh_lines + character_lines + identity_lines + layer_lines + sound_lines) + "\n").encode()
     # The catalog names the file's size, which depends on the catalog: settle it.

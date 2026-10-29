@@ -113,6 +113,15 @@ separate files; Ice Cream Man, Dead Gears and Everglade use packs.
   Haunted House's 48 bytes (`realm.wgsl`), the layer in the colour's top
   byte, counted in the pack's own layers. `fixture.coax` reads a catalog
   (`fixture_catalog`), and `fixture.wgsl`'s `scene_vs` draws its vertices.
+- **Style**: `"style"` in the manifest (`lowpoly`, `painterly`, `photoreal`;
+  none is lowpoly) goes first in the catalog (`style NAME`). A painterly
+  pack's layers must pass the painterly texture rules (at most 512 texels,
+  256 by default; no normal, roughness or detail maps; fine-detail energy at
+  most 0.035; mean saturation and value inside the albedo rules), and
+  `"paint": true` (or a list of SCN4 layer numbers) runs the paint pass
+  first ([art-styles.md](art-styles.md), 10). `realms.ts --check` refuses a
+  realm whose pack's style isn't one it draws in. Tests:
+  `python3 verse/tools/test_pack_style.py`.
 - **Budget**: the fixture's is 1.5 MB. A realm's is what its world needs to
   open on a phone over a slow line; raise it in the manifest deliberately.
 

@@ -33,10 +33,14 @@ export const CLOCK = /^(cycle|real|fixed:(0(\.\d{1,4})?|1(\.0{1,4})?))$/
 // realm draws with it. Required once verse/style.coax exists (as-presets).
 export const STYLE_BLOCK = "// ---- generated: verse/style.coax"
 const STYLE_SOURCE = join(import.meta.dir, "../../verse/style.coax")
+const PACKS = join(import.meta.dir, "../../verse/packs")
+// Painterly realms whose pack isn't painted yet: each leaves this set with its pack task
+// (Everglade: eg-paint-pack, #f300). A pack that names a style never passes by it.
+const PACK_STYLE_PENDING = new Set(["everglade"])
 /** The table, checked: unique ids, slugs and slots; an open world has a realm and a realm a module,
  *  a style, its zones' ids once each, and a clock; a painterly or photoreal realm's WGSL has the style block. */
-export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; styleBlock?: boolean } = {}): World[] {
-  const site = opts.site ?? SITE, styleBlock = opts.styleBlock ?? existsSync(STYLE_SOURCE)
+export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; styleBlock?: boolean; packs?: string } = {}): World[] {
+  const site = opts.site ?? SITE, styleBlock = opts.styleBlock ?? existsSync(STYLE_SOURCE), packs = opts.packs ?? PACKS
   const list: World[] = JSON.parse(readFileSync(file, "utf8")).worlds
   const seen = new Set<string>()
   const once = (what: string) => { if (seen.has(what)) throw new Error(`realms.json: ${what} twice`); seen.add(what) }
@@ -62,6 +66,16 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
     if (styleBlock && [r.style, ...(r.zones ?? []).map((z) => z.style)].some((st) => st === "painterly" || st === "photoreal")) {
       const wgsl = join(site, `${r.module}.wgsl`)
       if (!existsSync(wgsl) || !readFileSync(wgsl, "utf8").includes(STYLE_BLOCK)) throw new Error(`realms.json: ${r.slug} is drawn ${r.style === "lowpoly" ? "partly painterly or photoreal" : r.style} but ${r.module}.wgsl has no style block (coax/web/wgsl.py verse/style.coax ... --into it)`)
+    }
+    // its pack's style (verse/packs/<pack>.json "style", none is lowpoly) is one the realm draws in
+    for (const a of r.assets) {
+      const pack = /^pack:.*\/([a-z0-9-]+)\.pack$/.exec(a)?.[1]
+      const manifest = pack && join(packs, `${pack}.json`)
+      if (!manifest || !existsSync(manifest)) continue
+      const declared = JSON.parse(readFileSync(manifest, "utf8")).style, ps = declared ?? "lowpoly"
+      const drawn = [r.style, ...(r.zones ?? []).map((z) => z.style ?? r.style)]
+      if (!drawn.includes(ps) && !(declared === undefined && PACK_STYLE_PENDING.has(r.slug)))
+        throw new Error(`realms.json: ${r.slug} is drawn ${drawn.join(" and ")} but its pack ${pack} is ${ps} (verse/packs/${pack}.json "style")`)
     }
     for (const a of r.assets) if (!/^[a-z]+:\S+$/.test(a)) throw new Error(`realms.json: ${r.slug}: asset ${a}`)
     const g = r.golden
