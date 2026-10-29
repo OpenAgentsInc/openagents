@@ -23,7 +23,7 @@ static_assert(COAX_LX_Kind_k_eqeq==44&&COAX_LX_Kind_k_ge==49&&COAX_LX_Kind_k_and
 static_assert(COAX_PS_Tag_type_array==2&&COAX_PS_Tag_type_view==3&&COAX_PS_Tag_expr_struct_lit==28&&COAX_PS_Tag_expr_array_lit==29,"aggregate type/value ABI");
 static_assert(COAX_PS_Tag_stmt_for_range==47&&COAX_PS_Tag_stmt_assert_==52&&COAX_PS_Tag_decl_struct_==66&&COAX_PS_Tag_decl_field==69&&COAX_PS_Tag_decl_field_init==71,"aggregate statement/field ABI");
 static coax_t_ScResult failure(uint32_t error,int64_t unit,int64_t line=0,int64_t column=0){coax_t_ScResult r{};r.error=error;r.unit=unit;r.line=line;r.column=column;return r;}
-static coax_t_ScResult ag_bridge_impl(const coax_string *sources,int64_t count,const coax_t_ScType *types,int64_t type_count,coax_string entry,coax_t_AgGuard *guards,int64_t capacity,int64_t *guard_count,bool compiled){
+static coax_t_ScResult ag_bridge_impl(const coax_string *sources,int64_t count,const coax_t_ScType *types,int64_t type_count,coax_string entry,coax_t_AgGuard *guards,int64_t capacity,int64_t *guard_count,bool compiled,bool classified,uint64_t secret_mask,const coax_string *names,const coax_string *parameter_types,int64_t parameter_count){
  *guard_count=0;
  try{
   if(!SC_units(count))return failure(2,-1);
@@ -68,12 +68,22 @@ static coax_t_ScResult ag_bridge_impl(const coax_string *sources,int64_t count,c
    }
   }
   std::vector<coax_t_AgMemory> memory(1);
-  auto result=compiled?AG_check_compiled({flat.data(),(int64_t)flat.size()},{values.data(),(int64_t)values.size()},{roots.data(),(int64_t)roots.size()},{const_cast<coax_t_ScType*>(types),type_count},entry,{memory.data(),1}):AG_check({flat.data(),(int64_t)flat.size()},{values.data(),(int64_t)values.size()},{roots.data(),(int64_t)roots.size()},{const_cast<coax_t_ScType*>(types),type_count},entry,{memory.data(),1});
+  coax_t_ScResult result{};
+  if(classified) {
+   if(parameter_count<0||parameter_count>8)return failure(2,-1);
+   std::vector<coax_t_AgLabel> labels;for(int64_t i=0;i<parameter_count;i++)labels.push_back({names[i],parameter_types[i]});
+   result=AG_check_classified({flat.data(),(int64_t)flat.size()},{values.data(),(int64_t)values.size()},{roots.data(),(int64_t)roots.size()},{const_cast<coax_t_ScType*>(types),type_count},entry,{memory.data(),1},secret_mask,{labels.data(),parameter_count},compiled);
+  }
+  else result=compiled?AG_check_compiled({flat.data(),(int64_t)flat.size()},{values.data(),(int64_t)values.size()},{roots.data(),(int64_t)roots.size()},{const_cast<coax_t_ScType*>(types),type_count},entry,{memory.data(),1}):AG_check({flat.data(),(int64_t)flat.size()},{values.data(),(int64_t)values.size()},{roots.data(),(int64_t)roots.size()},{const_cast<coax_t_ScType*>(types),type_count},entry,{memory.data(),1});
   if(capacity<memory[0].guard_count)return failure(2,-1);
   for(int64_t i=0;i<memory[0].guard_count;i++)guards[i]=memory[0].guards.e[i];
   *guard_count=memory[0].guard_count;return result;
  }catch(const std::bad_alloc&){return failure(2,-1);}
 }
-extern "C" coax_t_ScResult ag_bridge(const coax_string *sources,int64_t count,const coax_t_ScType *types,int64_t type_count,coax_string entry,coax_t_AgGuard *guards,int64_t capacity,int64_t *guard_count){return ag_bridge_impl(sources,count,types,type_count,entry,guards,capacity,guard_count,false);}
+extern "C" coax_t_ScResult ag_bridge(const coax_string *sources,int64_t count,const coax_t_ScType *types,int64_t type_count,coax_string entry,coax_t_AgGuard *guards,int64_t capacity,int64_t *guard_count){return ag_bridge_impl(sources,count,types,type_count,entry,guards,capacity,guard_count,false,false,0,nullptr,nullptr,0);}
 // Only the checked-source driver calls this after compiler and hash validation.
-extern "C" coax_t_ScResult ag_bridge_compiled(const coax_string *sources,int64_t count,const coax_t_ScType *types,int64_t type_count,coax_string entry,coax_t_AgGuard *guards,int64_t capacity,int64_t *guard_count){return ag_bridge_impl(sources,count,types,type_count,entry,guards,capacity,guard_count,true);}
+extern "C" coax_t_ScResult ag_bridge_compiled(const coax_string *sources,int64_t count,const coax_t_ScType *types,int64_t type_count,coax_string entry,coax_t_AgGuard *guards,int64_t capacity,int64_t *guard_count){return ag_bridge_impl(sources,count,types,type_count,entry,guards,capacity,guard_count,true,false,0,nullptr,nullptr,0);}
+
+// Internal driver entry. Classification and compile provenance are supplied only
+// after the checked driver binds them to its compiled source and type inventory.
+extern "C" coax_t_ScResult ag_bridge_classified(const coax_string *sources,int64_t count,const coax_t_ScType *types,int64_t type_count,coax_string entry,coax_t_AgGuard *guards,int64_t capacity,int64_t *guard_count,uint64_t secret_mask,const coax_string *names,const coax_string *parameter_types,int64_t parameter_count,bool compiled){return ag_bridge_impl(sources,count,types,type_count,entry,guards,capacity,guard_count,compiled,true,secret_mask,names,parameter_types,parameter_count);}

@@ -1,0 +1,154 @@
+{
+  "schema": "coax.classified-root-audit-evidence.v1",
+  "scope": "checked-source flow under explicit caller classification; no guard discharge or target/production approval",
+  "host": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "compiler": "coax0 0.22.0",
+  "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "tool_sources_sha256": {
+    "tools/coax-nostr/secret-check/aggregate.coax": "11e2000298d16bf4ec5af507bfe3276a50d05a485aec2fc2da237cfaa625c73d",
+    "tools/coax-nostr/secret-check/bridge-aggregate.cpp": "4698b4db5bb6ce7fad7d2950ef87904fd64d1bfd1942a8d9848b0faa700840fa",
+    "tools/coax-nostr/secret-check/check.py": "f8b6e850a3b1ad8b856f776e05c40756ffd7991779794c117ddc2d30a1114a61",
+    "tools/coax-nostr/secret-check/aggregate.py": "57ec01caef34b96a8451931d41dbe0f096e4ffb765e319bb478edead54e6fe84",
+    "tools/coax-nostr/secret-check/test_classified.py": "558cac3ffd83cda88a696b5217917a9df59c521a9b503ef13378967b799b3b18"
+  },
+  "policy_checks": {
+    "total": 191,
+    "passed": 191,
+    "log_sha256": "db37c24ff10fc818043fe5107ab47b43a5b2eb2576bdfcdc8cdda4b72191cae7"
+  },
+  "integration_tests": {
+    "classified": 6,
+    "aggregate_legacy": 13,
+    "scalar_legacy": 7,
+    "source_policy": 4
+  },
+  "mutation": {
+    "mutants": 2783,
+    "killed": 2783,
+    "survived": 0,
+    "selective_checks": 25501,
+    "skipped_checks": 131849,
+    "borrowed": 0,
+    "unstable": 0,
+    "log_sha256": "2bd681d44e3005a9d5ebf5394bbe0168db28c4048eafddd7647f8d1d73c276e6",
+    "previous_passes": [
+      {
+        "killed": 2664,
+        "total": 2778,
+        "survived": 114
+      },
+      {
+        "killed": 2748,
+        "total": 2778,
+        "survived": 30
+      },
+      {
+        "killed": 2777,
+        "total": 2787,
+        "survived": 10
+      }
+    ]
+  },
+  "classified_root": {
+    "entry": "smc_multiply",
+    "classification": "explicit whole-parameter classification",
+    "classification_assumption": "caller-supplied; public parameters must be public at the actual call boundary",
+    "classified_parameters": [
+      {
+        "name": "input",
+        "type": "ScScalar",
+        "classification": "secret"
+      },
+      {
+        "name": "peer",
+        "type": "SgPoint",
+        "classification": "public"
+      }
+    ],
+    "classification_manifest_sha256": "782ba78656d9b27a2f656a5812180027d732640a78301435a1d125b7ff3b48f3",
+    "compiler_profile": "native-c-checked-library",
+    "compiler_source_map_sha256": "27efddbdd7331bec037043cddc960ad50b41a607fd241677e599820f844f4cc3",
+    "source_sha256": {
+      "$REPO/coax/lib/crypto/secp_mult_const.coax": "d3eaa65e81815c69069549224a66bb8f2962228482963060c3ef0f4de3ff6b2e",
+      "$REPO/coax/lib/crypto/secp_group32.coax": "b4e11a4626ba2b7be823078dc8495b800ecd9f579366d706cdd4e421b18f437b",
+      "$REPO/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "$REPO/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "$REPO/coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+      "$REPO/coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+      "$REPO/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c"
+    },
+    "resolved_type_sha256": "498d0d568740438233850bbe9dd90c21fc623eccea019d6ed2da474c74988af9",
+    "audit_artifact_sha256": "25ea2a45d13e7bf90b8c5f76c1f282894ad26c0a3b0d343a1d68d4fd6ae8d61a",
+    "audit_input_sha256": {
+      "$REPO/tools/coax-nostr/secret-check/frontend.coax": "570f71b622640f2a2f55fb4fe1a05b78a36a2f606bf5e288f2150a3ba1b0de0c",
+      "$REPO/coax/lib/compiler/lexer.coax": "2a193c698aab87f24384bdd4443dc02d15a2a699cea5b371762392fc5925ad0b",
+      "$REPO/coax/lib/compiler/parser.coax": "448318fa44d7935bebb0efcf1d6a55f77c39d1cc4450c18ed5ffbe4c55d36365",
+      "$REPO/coax/lib/compiler/sources.coax": "a5cea55ef5f6efa502d15d9e0ddd462e3e1a5cffe0f25a8200873443c9df008d",
+      "$REPO/coax/lib/crypto/sha256-memory.coax": "9c59475cf6744005e9a9bff7efa5c1fd1cf90c5323a7c52e818a166b0451433d",
+      "$REPO/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+      "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "$REPO/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+      "$REPO/tools/coax-nostr/secret-check/source-policy.coax": "e0822835f32f266d4ca97b26d47ea158ffc58bed62eb5096d3eeec1dc9c628c5",
+      "$REPO/tools/coax-nostr/secret-check/aggregate.coax": "11e2000298d16bf4ec5af507bfe3276a50d05a485aec2fc2da237cfaa625c73d",
+      "$REPO/coax/lib/crypto/secret-flow.coax": "208119c702a971e799baa13221b211b38665c0a7a34c52a2af3f453ac5588f4e",
+      "$REPO/coax/lib/crypto/secret-types.coax": "e7a6a4632ab555ac12b3765d97bf18fcad5e18248f182889b31fb965682117e7",
+      "$REPO/coax/tests/nostr/secret_flow.coax": "b3b383a63aa7fffeaed0daf3bde6066c0c1e7f7e856c6a855f8c5c45fb2840d3",
+      "$REPO/coax/tests/nostr/secret_aggregate.coax": "6e87fcd53c8955bb1ce5f1dff6a57b57055fd6813461be07357da46f77afbd7a",
+      "$REPO/coax/tests/nostr/secret_aggregate_cases.coax": "b99853d36c10cedf11c195856d7d56032c3f8bd7a59a9d0b030350e09f55adc7",
+      "$REPO/tools/coax-nostr/secret-check/bridge-aggregate.cpp": "4698b4db5bb6ce7fad7d2950ef87904fd64d1bfd1942a8d9848b0faa700840fa",
+      "$REPO/tools/coax-nostr/secret-check/check.py": "f8b6e850a3b1ad8b856f776e05c40756ffd7991779794c117ddc2d30a1114a61",
+      "$REPO/tools/coax-nostr/secret-check/aggregate.py": "57ec01caef34b96a8451931d41dbe0f096e4ffb765e319bb478edead54e6fe84"
+    },
+    "error_name": "guard-obligations",
+    "source_status": "analyzed-with-guard-obligations",
+    "accepted": false,
+    "reached_procedures": 44,
+    "visited_nodes": 98078,
+    "return_dependency_mask": 1,
+    "authored_guard_obligations": [
+      {
+        "node": 6225,
+        "line": 239,
+        "column": 3,
+        "origin_mask": 1,
+        "kind": "authored-assertion",
+        "file": "$REPO/coax/lib/crypto/secp_field.coax",
+        "source_sha256": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+        "classification": "secret-derived"
+      },
+      {
+        "node": 10658,
+        "line": 92,
+        "column": 3,
+        "origin_mask": 1,
+        "kind": "authored-assertion",
+        "file": "$REPO/coax/lib/crypto/secp_field32.coax",
+        "source_sha256": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+        "classification": "secret-derived"
+      },
+      {
+        "node": 10404,
+        "line": 70,
+        "column": 3,
+        "origin_mask": 1,
+        "kind": "authored-assertion",
+        "file": "$REPO/coax/lib/crypto/secp_field32.coax",
+        "source_sha256": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+        "classification": "secret-derived"
+      }
+    ],
+    "object_timing_approved": false,
+    "production_crypto_approved": false
+  },
+  "classified_full_report_sha256": "60c71f1c964b3861905dc2517377fe5f16a0f7eec989d9e880ef136106e2deb3",
+  "all_secret_root": {
+    "classification": "all entry parameters secret",
+    "error_name": "secret-branch",
+    "line": 143,
+    "column": 31,
+    "accepted": false,
+    "full_report_sha256": "5355bc5ab3f5a160e6826d8f116a018995b02023a1b2ec3e6bf838e2636e021c"
+  }
+}

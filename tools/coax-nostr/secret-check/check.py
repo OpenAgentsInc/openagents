@@ -69,6 +69,8 @@ class Audit:
         self.lib.sc_bridge.argtypes=[C.POINTER(String),C.c_int64,C.POINTER(Type),C.c_int64,String];self.lib.sc_bridge.restype=Result
     def _analyze(self,sources,types,entry,compiled_runs=False):
         return self.lib.sc_bridge(sources,len(sources),types,len(types),entry)
+    def _classification_requested(self):return False
+    def _classification(self,metadata,hashes,entry):return None
     def _decorate_report(self,report):return report
     def close(self):
         if self.temporary:self.temporary.cleanup()
@@ -145,7 +147,13 @@ class Audit:
             for variable in procedure['variables']:
                 rows.append(Type(unit.get(procedure['file'],-1),string(procedure['name']),procedure['line'],string(variable['name']),variable['line'],string(variable['role']),string(variable['type'])))
         types=(Type*len(rows))(*rows);sources=(String*len(raw))(*[string(data) for data in raw])
-        result=self._analyze(sources,types,string(entry),compiled_runs=compiled_runs)
+        if self._classification_requested():report['classification']='explicit classification not yet validated'
+        try:classification=self._classification(metadata,hashes,entry)
+        except (ValueError,KeyError,TypeError):return finish(13,classification_error='invalid or mismatched classification')
+        if classification is None:result=self._analyze(sources,types,string(entry),compiled_runs=compiled_runs)
+        else:
+            report['classification']='explicit whole-parameter classification';report['classification_manifest_sha256']=classification['sha256'];report['classified_parameters']=classification['parameters'];report['classification_assumption']='caller-supplied; public parameters must be public at the actual call boundary'
+            result=self._analyze(sources,types,string(entry),compiled_runs=compiled_runs,classification=classification,string=string)
         # Detect changes after compilation/analysis; this is a bound snapshot,
         # never a promise that the filesystem remains frozen afterward.
         try:
