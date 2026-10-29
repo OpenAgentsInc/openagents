@@ -70,7 +70,8 @@ int main(int argc,char **argv){
   for(size_t k=(size_t)w;k<ITEMS;k+=(size_t)workers){
    const quality_item *q=&quality_items[k];coax_t_PrResult p=prepared[k];double prob[16];
    float temperature=pc_temperature(calibration,(coax_t_QrKind)q->kind,p.slots);
-   int64_t states=24*(3*8192+32*128*128)+8*2*p.written*4*256,work_count=5*states+p.written*100000+5*1048576;
+   /* State and workspace follow the session capacity, as in chapter 10 where it equalled the token count. */
+   int64_t states=max_states,work_count=max_work;
    double t=seconds();
    coax_t_PsAnswer a=psionic_answer(s,p,(coax_v_s64){tokens[k],p.written},(coax_v_t_PtOption){options[k],q->count},temperature,(coax_v_f32){state,states},(coax_v_f64){done[k].p,p.slots},(coax_v_f64){prob,16},(coax_v_f32){scratch,work_count});
    done[k].best=a.statistics.best;done[k].mass=a.statistics.mass;done[k].seconds=seconds()-t;done[k].status=a.status;

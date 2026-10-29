@@ -1,0 +1,36 @@
+// Chapter 12: the bundle's calibration, published answers and decision quality.
+#import "Basic";
+#load "../lib/decision-calibration.coax";
+#load "../lib/decision-json.coax";
+#load "../lib/decision-quality.coax";
+// book:begin example
+main :: () {
+    // The pinned readout.json is the bundle's only readout file; there is no temperature table.
+    text:=PC_PINNED_READOUT;readout:[63]u8;for i:0..<63 {readout[i]=text[i];}none:[1]u8;
+    calibration:=pc_load(0,readout[..],none[0..<0]);
+    #assert calibration.status==PcStatus.ok;
+    temperature:=pc_temperature(calibration,QrKind.choice,3);
+    print("calibration: none, temperature %\n",temperature);
+    // Three labeled decisions; their probabilities share one array.
+    p:[8]f64;work:[3]f64;json:[256]u8;
+    logits:=[4]f32.[2,1,0,0];slots:=[3]int.[0,1,2];
+    colors:=[3]PtOption.[PtOption.{name="red"},PtOption.{name="green"},PtOption.{name="blue"}];
+    #assert qr_read(QrKind.choice,temperature,logits[..],slots[..],p[0..<3],work[..],false).status==QrStatus.ok;
+    j:=pj_answer(QrKind.choice,PJ_SYSTEM_ONE,p[0..<3],colors[..],json[..],false);
+    print("%\n",cast(string)json[0..<j.written]);
+    // Chapter 10's original Elephant result for "Is the water wet?".
+    p[3]=0.757196285;p[4]=0.242803715;
+    answers:=[2]PtOption.[PtOption.{name="yes"},PtOption.{name="no"}];
+    j=pj_answer(QrKind.choice,PJ_DECISION_INDEX,p[3..<5],answers[..],json[..],false);
+    print("%\n",cast(string)json[0..<j.written]);
+    levels:=[3]PtOption.[PtOption.{description=PtEntry.{kind=PtEntryKind.text,value="low"}},PtOption.{description=PtEntry.{kind=PtEntryKind.text,value="medium"}},PtOption.{description=PtEntry.{kind=PtEntryKind.text,value="high"}}];
+    #assert qr_read(QrKind.score,temperature,logits[..],slots[..],p[5..<8],work[..],false).status==QrStatus.ok;
+    j=pj_answer(QrKind.score,PJ_SYSTEM_ONE,p[5..<8],levels[..],json[..],false);
+    print("%\n",cast(string)json[0..<j.written]);
+    // The labels are green, yes and level 0, so the first answer is wrong.
+    items:=[3]PqItem.[PqItem.{kind=QrKind.choice,count=3,start=0,gold=1,abstain=-1},PqItem.{kind=QrKind.choice,count=2,start=3,gold=0,abstain=-1},PqItem.{kind=QrKind.score,count=3,start=5,gold=0,abstain=-1}];
+    r:=pq_measure(items[..],p[..]);
+    #assert r.status==PqStatus.ok;
+    print("accuracy % of %, Brier %, calibration error %\n",r.correct,r.items,r.brier,r.ece);
+}
+// book:end example

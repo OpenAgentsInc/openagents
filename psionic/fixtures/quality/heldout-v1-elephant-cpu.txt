@@ -1,0 +1,47 @@
+held-out set psionic-ch12-heldout-v1: 12 items, sha256 704ae5e25be82587946e4cd13a2effa4297c23f13aa2edee8bbd604d2f619286
+calibration: none in the pinned bundle; temperature 1.0 for every kind
+authenticating original Elephant
+session open in 91 s
+running 12 decisions in 12 processes
+choice-water tokens=112 prefix=64 best=1 gold=1 mass=0.762459 seconds=4353
+  p=0.002928807,0.993571220,0.003499973
+  {"type":"choice","choice":"room temperature","probabilities":{"boiling":0.002929,"room temperature":0.993571,"frozen":0.0035},"confidence":0.990357}
+choice-payment tokens=110 prefix=63 best=0 gold=0 mass=0.981605 seconds=4295
+  p=0.999760347,0.000120185,0.000119469
+  {"type":"choice","choice":"cash","probabilities":{"cash":0.99976,"card":0.00012,"bank transfer":0.000119},"confidence":0.999641}
+choice-room-unknown tokens=117 prefix=57 best=2 gold=2 mass=0.838727 seconds=4545
+  p=0.004286453,0.007238023,0.988475524
+  {"type":"choice","choice":"unknown","probabilities":{"room 101":0.004286,"room 204":0.007238,"unknown":0.988476},"confidence":0.982713}
+choice-parcel tokens=116 prefix=58 best=2 gold=2 mass=0.984974 seconds=4437
+  p=0.000022106,0.000147891,0.999662403,0.000167600
+  {"type":"choice","choice":"Wednesday","probabilities":{"Monday":2.2e-05,"Tuesday":0.000148,"Wednesday":0.999662,"unknown":0.000168},"confidence":0.99955}
+choice-routing tokens=106 prefix=60 best=1 gold=1 mass=0.952879 seconds=4162
+  p=0.000654594,0.999191446,0.000153959
+  {"type":"choice","choice":"bug reports","probabilities":{"billing":0.000655,"bug reports":0.999191,"sales":0.000154},"confidence":0.998787}
+noul-window tokens=111 prefix=53 best=1 gold=1 mass=0.941102 seconds=4389
+  p=0.000371329,0.999628671
+  {"type":"noul","noul":0.000371}
+noul-height tokens=116 prefix=58 best=0 gold=0 mass=0.926812 seconds=4417
+  p=0.999669108,0.000330892
+  {"type":"noul","noul":0.999669}
+noul-hours tokens=130 prefix=66 best=1 gold=1 mass=0.967970 seconds=4850
+  p=0.000142345,0.999857655
+  {"type":"noul","noul":0.000142}
+noul-capital tokens=111 prefix=52 best=0 gold=0 mass=0.793910 seconds=4205
+  p=0.988583238,0.011416762
+  {"type":"noul","noul":0.988583}
+score-review-bad tokens=118 prefix=58 best=0 gold=0 mass=0.976410 seconds=4569
+  p=0.999912545,0.000062176,0.000025279
+  {"type":"score","score":0.000113,"legend":{"0":"very negative","1":"neutral","2":"very positive"},"probabilities":{"0":0.999913,"1":6.2e-05,"2":2.5e-05},"confidence":0.999831}
+score-review-plain tokens=114 prefix=54 best=1 gold=1 mass=0.843751 seconds=4418
+  p=0.008296165,0.991150862,0.000552973
+  {"type":"score","score":0.992257,"legend":{"0":"very negative","1":"neutral","2":"very positive"},"probabilities":{"0":0.008296,"1":0.991151,"2":0.000553},"confidence":0.986726}
+score-severity tokens=115 prefix=57 best=2 gold=2 mass=0.938835 seconds=4491
+  p=0.000428897,0.000749283,0.998821820
+  {"type":"score","score":1.998393,"legend":{"0":"minor","1":"moderate","2":"critical"},"probabilities":{"0":0.000429,"1":0.000749,"2":0.998822},"confidence":0.997589}
+quality: items=12 correct=12 brier=0.000056 ece=0.003476
+  choice: items=5 correct=5 brier=0.000053
+  noul: items=4 correct=4 brier=0.000065
+  score: items=3 correct=3 brier=0.000050
+  score mean absolute error=0.003154
+  abstention: offered=2 abstained=1; answered=11 correct=11

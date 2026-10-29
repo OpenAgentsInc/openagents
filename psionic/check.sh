@@ -30,6 +30,8 @@ python3 -I psionic/tests/qwen_linear_oracle.py --header > "$out/qwen-linear-orac
 python3 -I psionic/tests/qwen_full_oracle.py --header > "$out/qwen-full-oracle.h"
 python3 -I psionic/tests/qwen_decision_oracle.py --header > "$out/qwen-decision-oracle.h"
 python3 -I psionic/tests/readout_oracle.py
+python3 -I psionic/tests/answer_oracle.py
+python3 -I psionic/tests/quality_corpus.py
 python3 -I psionic/tests/qwen_model_oracle.py
 python3 -I psionic/tests/qwen_tokens_oracle.py
 python3 -I psionic/tests/elephant_layer0_fixture.py
@@ -37,7 +39,7 @@ python3 -I psionic/tests/elephant_reference_fixture.py
 python3 -I psionic/tests/elephant_reference_fixture.py --check-output psionic/fixtures/models/elephant/psionic-reference.txt
 python3 -I psionic/tests/session_fixture.py
 python3 -I psionic/tests/prepare_oracle.py --header > "$out/prepare-golden.h"
-for unit in harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle; do
+for unit in harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality; do
     "$coax" test "psionic/lib/$unit.coax"
     "$coax" test "psionic/lib/$unit.coax" --release
     "$coax" mutate "psionic/lib/$unit.coax"
@@ -46,7 +48,7 @@ for mode in debug release; do
     flags=()
     opt=-O0
     if [[ $mode == release ]]; then flags+=(--release); opt=-O2; fi
-    for unit in harmony gptoss-attention moe mxfp4 learn tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout rank5 rank5-bundle access layer-map model-map; do
+    for unit in harmony gptoss-attention moe mxfp4 learn tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout rank5 rank5-bundle access layer-map model-map decision-calibration decision-json decision-quality; do
         source="psionic/lib/$unit.coax"
         if [[ $unit == weights ]]; then source=psionic/lib/model-io/weights.coax; fi
         if [[ $unit == rank5 ]]; then source=psionic/lib/model-io/rank5.coax; fi
@@ -88,6 +90,9 @@ for mode in debug release; do
             access) adapter=psionic/platform/access-memory.c; harness=psionic/tests/access.c ;;
             layer-map) adapter=psionic/platform/layer-map-memory.c; harness=psionic/tests/layer_map.c ;;
             model-map) adapter=psionic/platform/model-map-memory.c; harness=psionic/tests/model_map.c ;;
+            decision-calibration) adapter=psionic/platform/decision-calibration-memory.c; harness=psionic/tests/decision_calibration.c ;;
+            decision-json) adapter=psionic/platform/decision-json-memory.c; harness=psionic/tests/decision_json.c ;;
+            decision-quality) adapter=psionic/platform/decision-quality-memory.c; harness=psionic/tests/decision_quality.c ;;
         esac
         for native in plain sanitized; do
             sanitizers=()

@@ -1,0 +1,5 @@
+calibration: none, temperature 1.0
+{"type":"choice","choice":"red","probabilities":{"red":0.665241,"green":0.244728,"blue":0.090031},"confidence":0.497861}
+{"type":"choice","choice":"yes","probabilities":{"yes":0.757196,"no":0.242804}}
+{"type":"score","score":0.42479,"legend":{"0":"low","1":"medium","2":"high"},"probabilities":{"0":0.665241,"1":0.244728,"2":0.090031},"confidence":0.362816}
+accuracy 2 of 3, Brier 0.4396848500523909, calibration error 0.19109520884988118

@@ -150,6 +150,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/probability-quality.coax",
+      "chapter": "psionic/book/ch12-are-the-probabilities-any-good.md",
+      "stdout": "psionic/fixtures/probability-quality.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

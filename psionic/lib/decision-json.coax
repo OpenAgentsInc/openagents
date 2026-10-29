@@ -1,6 +1,6 @@
 // Serialize typed decision probabilities as the published answer objects.
 #load "readout.coax";
-#load "text.coax";
+#load "text/request.coax";
 #authority;
 PjStatus :: enum u8 {ok;shape;number;entry;capacity;alias;}
 // system_one: OneJev's answer objects. decision_index: the fields the pinned engine.py keeps.
@@ -19,6 +19,13 @@ PJ_HEX :: "0123456789abcdef";
     #assert pj_round6(f64_from_bits(0x3fe0000000000000))==500000 && pj_round6(f64_from_bits(0x3fdfffffffffffff))==500000;
     #assert pj_round6(f64_from_bits(0x3eb0c6f7a0b5ed8d))==1 && pj_round6(f64_from_bits(0x3ea0c6f7a0b5ed8d))==0;
     #assert pj_round6(f64_from_bits(0x3ea0c6f7a0b5ed8e))==1 && pj_round6(f64_from_bits(0x3ea0c6f7a0b5ed8c))==0;
+    // Products that round to exactly n+0.5: the sign of the exact error decides.
+    #assert pj_round6(f64_from_bits(0x3eb92a737110e454))==2 && pj_round6(f64_from_bits(0x3ec4f8b588e368f1))==3;
+    #assert pj_round6(f64_from_bits(0x3ec4f8b588e368f0))==2 && pj_round6(f64_from_bits(0x3ecd5c31593e5fb7))==3;
+    // Exact ties go to the even neighbour.
+    #assert pj_round6(0.0078125)==7812 && pj_round6(0.0234375)==23438 && pj_round6(0.0390625)==39062 && pj_round6(0.0703125)==70312;
+    #assert pj_error(0.757196285,0.757196285*1000000)==-0.000000000008128608897095546;
+    x:=f64_from_bits(0x3eb0c6f7f52734c6);#assert pj_error(x,x*1000000)==f64_from_bits(0x3c81ec0000000000);
     #assert pj_round6(f64_from_bits(1))==0 && pj_round6(0.9999995)==1000000 && pj_round6(0.9999994999)==999999;
 }
 #test "numbers print as Python's repr of the rounded value" {
@@ -31,13 +38,14 @@ PJ_HEX :: "0123456789abcdef";
     #assert pj_number_text(8.25,out[..])=="8.25" && pj_number_text(4.0000004,out[..])=="4.0" && pj_number_text(0.1000004,out[..])=="0.1";
     #assert pj_number_text(-0.0,out[..])=="-0.0" && pj_number_text(-0.25,out[..])=="-0.25" && pj_number_text(0.0123,out[..])=="0.0123";
     #assert pj_number_text(0.999999,out[..])=="0.999999" && pj_number_text(0.000101,out[..])=="0.000101" && pj_number_text(0.00002,out[..])=="2e-05";
+    #assert pj_number_text(0.200001,out[..])=="0.200001" && pj_number_text(9,out[..])=="9.0";
 }
 #test "strings escape like json.dumps with ensure_ascii off" {
     out:[64]u8;w:=[1]PjWriter.[PjWriter.{data=out[..],store=true}];
     pj_string(w[..],"a\"b\\c\nd\re\tf");#assert cast(string)out[0..<w[0].at]=="\"a\\\"b\\\\c\\nd\\re\\tf\"";
-    raw:=[9]u8.[8,12,0,31,127,32,195,169,47];w[0].at=0;pj_string(w[..],cast(string)raw[..]);
-    want:=[22]u8.[34,92,98,92,102,92,117,48,48,48,48,92,117,48,48,49,102,127,32,195,169,47];
-    #assert w[0].at==23 && out[22]==34;for i:0..<22 {#assert out[i]==want[i];}
+    raw:=[10]u8.[8,12,0,31,127,32,195,169,47,16];w[0].at=0;pj_string(w[..],cast(string)raw[..]);
+    want:=[28]u8.[34,92,98,92,102,92,117,48,48,48,48,92,117,48,48,49,102,127,32,195,169,47,92,117,48,48,49,48];
+    #assert w[0].at==29 && out[28]==34;for i:0..<28 {#assert out[i]==want[i];}
     count:=[1]PjWriter.[PjWriter.{data=out[0..<0]}];pj_string(count[..],"ab");#assert count[0].at==4;
 }
 #test "choice, noul and score objects match the published fields" {
@@ -100,6 +108,9 @@ PJ_HEX :: "0123456789abcdef";
     bad[1]=-0.25;#assert pj_answer(QrKind.choice,PJ_SYSTEM_ONE,bad[..],two[..],out[..],false).status==PjStatus.number;
     invalid:=[1]u8.[255];named:=two;named[1].name=cast(string)invalid[..];
     #assert pj_answer(QrKind.choice,PJ_SYSTEM_ONE,p[..],named[..],out[..],false).status==PjStatus.entry;
+    named=two;named[0].name=cast(string)invalid[..];#assert pj_answer(QrKind.choice,PJ_SYSTEM_ONE,p[..],named[..],out[..],false).status==PjStatus.entry;
+    first:=[2]PtOption.[PtOption.{description=PtEntry.{kind=PtEntryKind.json,value="1"}},PtOption.{}];
+    #assert pj_answer(QrKind.score,PJ_SYSTEM_ONE,p[..],first[..],out[..],false).status==PjStatus.entry;
     levels:=[2]PtOption.[PtOption.{},PtOption.{description=PtEntry.{kind=PtEntryKind.json,value="{}"}}];
     #assert pj_answer(QrKind.score,PJ_SYSTEM_ONE,p[..],levels[..],out[..],false).status==PjStatus.entry;
     levels[1].description=PtEntry.{kind=PtEntryKind.text,value=cast(string)invalid[..]};
@@ -112,27 +123,24 @@ PJ_HEX :: "0123456789abcdef";
 }
 pj_byte :: (w:[]PjWriter,b:u8) {if w[0].store {w[0].data[w[0].at]=b;}w[0].at+=1;}
 pj_text :: (w:[]PjWriter,s:string) {for i:0..<s.count {pj_byte(w,s[i]);}}
-// Round |x|*10^6 to an integer, half to even, from the exact binary value (Dekker product).
+// The exact error of p=x*10^6 (Dekker): x*10^6 is exactly p+pj_error(x,p).
+pj_error :: (x:f64,p:f64)->f64 {c:=134217729*x;high:=c-(c-x);low:=x-high;return (high*1000000-p)+low*1000000;}
+// Round x*10^6 to an integer, half to even, from the exact binary value.
 pj_round6 :: (x:f64)->int {
-    p:=x*1000000;c:=134217729*x;high:=c-(c-x);low:=x-high;
-    e:=(high*1000000-p)+low*1000000;
-    n:=int(floor(p));if f64(n)==p && e<0 {n-=1;}
-    d:=p-(f64(n)+0.5);
+    p:=x*1000000;e:=pj_error(x,p);n:=int(floor(p));d:=p-(f64(n)+0.5);
     if d>0 || (d==0 && e>0) || (d==0 && e==0 && n%2==1) {n+=1;}
     return n;
 }
-pj_digits :: (w:[]PjWriter,v:int) {
-    scale:=1;while scale*10<=v {scale*=10;}
-    while scale>0 {pj_byte(w,cast(u8)(48+(v/scale)%10));scale/=10;}
-}
+pj_digit :: (w:[]PjWriter,v:int) {pj_byte(w,cast(u8)(48+v));}
 // Python repr of round(x, 6): fixed notation from 1e-4, otherwise exponent form.
 pj_number :: (w:[]PjWriter,x:f64) {
     if (f64_bits(x)>>63)==1 {pj_byte(w,45);}
     n:=pj_round6(abs(x));
     if n==0 {pj_text(w,"0.0");return;}
-    if n<10 {pj_digits(w,n);pj_text(w,"e-06");return;}
-    if n<100 {pj_digits(w,n/10);if n%10!=0 {pj_byte(w,46);pj_digits(w,n%10);}pj_text(w,"e-05");return;}
-    pj_digits(w,n/1000000);pj_byte(w,46);frac:=n%1000000;
+    if n<10 {pj_digit(w,n);pj_text(w,"e-06");return;}
+    if n<100 {pj_digit(w,n/10);if n%10!=0 {pj_byte(w,46);pj_digit(w,n%10);}pj_text(w,"e-05");return;}
+    // Values stay below 10: probabilities, confidences and expected levels 0..9.
+    pj_digit(w,n/1000000);pj_byte(w,46);frac:=n%1000000;
     if frac==0 {pj_byte(w,48);return;}
     scale:=100000;while frac%10==0 {frac/=10;scale/=10;}
     while scale>0 {pj_byte(w,cast(u8)(48+(frac/scale)%10));scale/=10;}
@@ -154,7 +162,7 @@ pj_string :: (w:[]PjWriter,s:string) {
     }
     pj_byte(w,34);
 }
-pj_key :: (w:[]PjWriter,i:int) {pj_byte(w,34);pj_digits(w,i);pj_byte(w,34);pj_byte(w,58);}
+pj_key :: (w:[]PjWriter,i:int) {pj_byte(w,34);pj_digit(w,i);pj_byte(w,34);pj_byte(w,58);}
 // answers._normalize: a left-to-right sum; a zero total becomes uniform.
 pj_normalize :: (p:[]f64,out:[]f64) {
     total:=0.0;for v:p {total+=v;}
@@ -166,13 +174,13 @@ pj_choice_confidence :: (p:[]f64)->f64 {
     q:[255]f64;pj_normalize(p,q[0..<n]);uniform:=1/f64(n);
     return (q[pj_first_max(q[0..<n])]-uniform)/(1-uniform);
 }
-pj_expected :: (p:[]f64)->f64 {q:[10]f64;pj_normalize(p,q[0..<p.count]);s:=0.0;for i:0..<p.count {s+=f64(i)*q[i];}return s;}
+pj_expected :: (p:[]f64)->f64 {q:[10]f64;pj_normalize(p,q[0..<p.count]);s:=0.0;for i:1..<p.count {s+=f64(i)*q[i];}return s;}
 pj_score_confidence :: (p:[]f64)->f64 {
     n:=p.count;if n==1 {return 1;}
     q:[10]f64;pj_normalize(p,q[0..<n]);mode:=pj_first_max(q[0..<n]);
     distance:=0.0;for i:0..<n {distance+=q[i]*abs(f64(i-mode));}
     center:=f64(n-1)/2;spread:=0.0;for i:0..<n {spread+=abs(f64(i)-center);}
-    r:=1-distance/(spread/f64(n));if r>0 {return r;}return 0;
+    r:=1-distance/(spread/f64(n));return (r+abs(r))/2;
 }
 // book:begin answer-json
 pj_emit :: (w:[]PjWriter,kind:QrKind,fields:u8,probabilities:[]f64,options:[]PtOption) {
@@ -226,3 +234,5 @@ pj_answer :: (kind:QrKind,fields:u8,probabilities:[]f64,options:[]PtOption,out:[
     w:=[1]PjWriter.[PjWriter.{data=out,store=true}];pj_emit(w[..],kind,fields,probabilities,options);
     return PjResult.{written=w[0].at};
 }
+
+#load "../fixtures/quality/answer-vectors.coax";
