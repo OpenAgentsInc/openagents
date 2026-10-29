@@ -48,7 +48,7 @@ chat_key :: (s: [] Villa, key: int) -> bool {
 
 // What the face does with the answer to a line said.
 villa_chat_said :: (s: [] Villa, status: int) #export_c {
-  if status == 200 { s[0].chat[0].n = 0; s[0].chat[0].said += 1; return; }
+  if status == 200 { s[0].chat[0].n = 0; s[0].chat[0].said += 1; pet_ev(s[0].pet[..], EV_CHAT, 0); return; }
   pet_toast(s[0].pet[..], ifx status == 429 then "A little slower: wait a moment" else "That didn't reach the others: try again");
 }
 villa_chat_line :: (s: [] Villa) -> string #export_c { return chat_text(s[0].chat[..]); }

@@ -43,6 +43,17 @@ BUTTONS :: 48;
 B_OPEN :: 1; B_CLOSE :: 2; B_FIELD :: 3; B_PHOTOS :: 4; B_AGENT :: 5; B_PLAY :: 6; B_TAB :: 7; B_SLIDER :: 8; B_PATTERN :: 9;
 B_COAT :: 10; B_MARKS :: 11; B_EMOTE :: 12; B_MEMORIAL :: 13; B_SHARE :: 14; B_NOTE :: 15; B_SEND :: 16; B_HIDE :: 17;
 B_SKILL :: 18; B_DO :: 19; B_KIND :: 20; B_SLOT :: 21; B_PLACE_VASE :: 22; B_CLEAN :: 23;
+// The steps the analytics record (hc-analytics), as the face names them.
+EVS :: 8;
+EV_PET_MADE :: 0; EV_AVATAR :: 1; EV_EMOTE :: 2; EV_PLACED :: 3; EV_FETCH :: 4; EV_OBEY :: 5; EV_DIG :: 6; EV_FLOWER :: 7;
+EV_VASE :: 8; EV_VASE_CLEAN :: 9; EV_MEMORIAL :: 10; EV_SHARE :: 11; EV_NOTE :: 12; EV_CHAT :: 13; EV_TIP :: 14; EV_UPLOAD :: 15;
+EV_KINDS :: 16;
+EV_NAMES :: [16] string.["villa-pet-made", "villa-avatar", "villa-emote", "villa-tombstone", "villa-fetch", "villa-obey", "villa-dig", "villa-flower",
+  "villa-vase", "villa-vase-clean", "villa-memorial", "villa-share", "villa-note", "villa-chat", "villa-tip", "villa-upload"];
+pet_ev :: (p: [] PetUi, kind: int, arg: int) {
+  if p[0].ev_n >= EVS { return; }
+  p[0].evs[p[0].ev_n] = kind; p[0].ev_arg[p[0].ev_n] = arg; p[0].ev_n += 1;
+}
 // Skills, as bits.
 SKILL_FETCH :: 1; SKILL_OBEY :: 2; SKILL_DIG :: 4;
 SKILL_WORDS :: [3] string.["fetch", "obedience", "digging"];
@@ -88,6 +99,7 @@ PetUi :: struct {
   hide_n: int;
   typed: [NOTE_BYTES] u8; typed_n: int;
   toast: [120] u8; toast_n: int; toast_t: f32;
+  evs: [EVS] int; ev_arg: [EVS] int; ev_n: int;   // steps for the analytics (EV_*), the face sends them
   field_box: Box;
   button: [BUTTONS] Box; button_kind: [BUTTONS] int; button_arg: [BUTTONS] int; buttons: int;
   slide: int;                                // the slider being dragged, -1 none
@@ -514,7 +526,9 @@ pet_answer :: (p: [] PetUi, kind: int, status: int, t: string) {
   if kind == ASK_VASES { if status == 200 { pet_take_vases(p, t); } p[0].vases_t = 0; return; }
   if kind == ASK_VASE {
     if status == 200 {
-      for k: 0..<VASE_SLOTS { p[0].vase[k] = -1; }
+      used := 0;
+      for k: 0..<VASE_SLOTS { if p[0].vase[k] >= 0 { used += 1; } p[0].vase[k] = -1; }
+      pet_ev(p, EV_VASE, ifx p[0].put_plot >= 0 then 100 + used else used);   // 100 and up: left by a tombstone
       p[0].asks = p[0].asks | ASK_VASES;
       pet_toast(p, ifx p[0].put_plot >= 0 then "Your vase is by their stone" else "Your vase is left here for everyone to see");
     } else {
@@ -526,9 +540,9 @@ pet_answer :: (p: [] PetUi, kind: int, status: int, t: string) {
     }
     return;
   }
-  if kind == ASK_CLEAN { p[0].asks = p[0].asks | ASK_VASES; if status == 200 { pet_toast(p, "You cleaned up your vase"); } return; }
+  if kind == ASK_CLEAN { p[0].asks = p[0].asks | ASK_VASES; if status == 200 { pet_toast(p, "You cleaned up your vase"); pet_ev(p, EV_VASE_CLEAN, 0); } return; }
   if kind == ASK_NOTE {
-    if status == 200 { p[0].typed_n = 0; pet_take_notes(p, t); pet_toast(p, "Your note is on the memorial"); }
+    if status == 200 { p[0].typed_n = 0; pet_take_notes(p, t); pet_toast(p, "Your note is on the memorial"); pet_ev(p, EV_NOTE, 0); }
     else if status == 429 { pet_toast(p, "A little slower: try again in a minute"); }
     else if status == 400 { pet_toast(p, "Notes can't carry links"); }
     else { pet_toast(p, "That note didn't send: try again"); }
@@ -542,11 +556,13 @@ pet_answer :: (p: [] PetUi, kind: int, status: int, t: string) {
     return;
   }
   pet_take(p, t, kind == ASK_NEW);
-  if kind == ASK_NEW { p[0].dirty = true; p[0].asks = p[0].asks | ASK_SAVE; }
+  if kind == ASK_NEW { p[0].dirty = true; p[0].asks = p[0].asks | ASK_SAVE; pet_ev(p, EV_PET_MADE, 0); }
+  if kind == ASK_AGENT { pet_ev(p, EV_AVATAR, 0); }
   if kind == ASK_SAVE { p[0].dirty = false; }
   if kind == ASK_PLACE {
     p[0].asks = p[0].asks | ASK_GARDEN;
     pet_toast(p, "Their tombstone is in the garden now");
+    pet_ev(p, EV_PLACED, 0);
   }
 }
 
@@ -620,6 +636,7 @@ pet_open_memorial :: (p: [] PetUi, slug: string) {
   if slug.count != 8 { return; }
   for k: 0..<8 { p[0].m_slug[k] = slug[k]; }
   p[0].view = PV_MEMORIAL; p[0].m_ok = false; p[0].m_status = 0; p[0].focus = -1; p[0].typed_n = 0;
+  pet_ev(p, EV_MEMORIAL, 0);
   p[0].asks = p[0].asks | ASK_MEMORIAL;
 }
 pet_close :: (p: [] PetUi) {
@@ -692,7 +709,7 @@ pet_pointer :: (p: [] PetUi, x: f32, y: f32, phase: int) -> bool {
     for c: 0..<3 { v := SWATCH[arg * 3 + c]; if kind == B_COAT { p[0].coat[c] = v; } else { p[0].marks[c] = v; } }
     p[0].look_new = true; pet_changed(p);
   }
-  else if kind == B_EMOTE { p[0].emote = arg; }
+  else if kind == B_EMOTE { p[0].emote = arg; pet_ev(p, EV_EMOTE, arg); }
   else if kind == B_MEMORIAL {
     if arg >= 0 && arg < p[0].garden { pet_open_memorial(p, pet_s(p[0].g_slug[arg * 8..<arg * 8 + 8], 8)); }
     else if p[0].slug_n == 8 { pet_open_memorial(p, pet_s(p[0].slug[..], 8)); }
@@ -700,7 +717,7 @@ pet_pointer :: (p: [] PetUi, x: f32, y: f32, phase: int) -> bool {
   else if kind == B_SHARE {
     n := pet_put(p[0].outbox[..], 0, "https://openagents.com/api/villa/m/");
     n = pet_put(p[0].outbox[..], n, pet_s(p[0].m_slug[..], 8));
-    if n > 0 { p[0].out_n = n; p[0].action = 2; pet_toast(p, "The link is copied: send it to family and friends"); }
+    if n > 0 { p[0].out_n = n; p[0].action = 2; pet_toast(p, "The link is copied: send it to family and friends"); pet_ev(p, EV_SHARE, 0); }
   }
   else if kind == B_SKILL { p[0].skills = p[0].skills ^ (1 << arg); pet_changed(p); }
   else if kind == B_DO { p[0].doing = arg; }

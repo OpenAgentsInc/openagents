@@ -221,6 +221,12 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
       track_end(tr());
     }
   }
+  // the steps you took this frame (villapet.coax EV_*), for the analytics dashboard
+  for (int64_t i = 0, e = villa_ev_count(at(state)); i < e; i++) {
+    coax_string name = villa_ev_name(at(state), i);
+    if (name.count && track_begin(tr(), name)) { track_int(tr(), track_cstr("n"), villa_ev_arg(at(state), i)); track_end(tr()); }
+  }
+  villa_ev_clear(at(state));
   track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
 }
@@ -283,6 +289,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     for (uint32_t i = 0; i + 7 < length; i++)
       if ((i == 0 || inbox[i - 1] == '\n') && !memcmp(inbox + i, "player=", 7) && i + 7 < length && inbox[i + 7] != '\n') has_player = true;
   }
+  if (kind == 4) { villa_kept(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (kind == 1) { villa_typed(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (kind == 52) { villa_pet_files(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (kind == 53) { villa_pet_scanned(at(state), (coax_string){(const char *)inbox, length}); return; }

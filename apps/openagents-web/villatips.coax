@@ -1,0 +1,151 @@
+// The first visit's tips (hc-tutorial): one at a time, in the realm's plate
+// under the place's name, from your first steps to your pet, fetch, the
+// field's flowers and the vase left by their tombstone. Each moves on when
+// you've done it (NEXT skips one, SKIP TIPS all of them); a light shows the
+// way to the field gate and to your pet's tombstone. How far you got is kept
+// in this browser (the host's keep, action 4: "tips=N"), so a second visit
+// starts where you left off.
+
+TIP_WALK :: 0; TIP_PET :: 1; TIP_FETCH :: 2; TIP_FIELD :: 3; TIP_VASE :: 4; TIP_LEAVE :: 5; TIP_END :: 6; TIPS_DONE :: 7;
+DO_TIP_NEXT :: 9; DO_TIPS_SKIP :: 10;
+TIP_END_SECONDS :: 9.0;
+
+Tips :: struct {
+  step: int;
+  from_x: f32; from_z: f32; placed: bool;   // where you were when it began
+  end_t: f32;
+  kept: int;                                // the step last kept in the browser
+}
+
+tips_text :: (s: [] Villa, step: int) -> string {
+  ph := phone(s);
+  p := s[0].pet[..];
+  if step == TIP_WALK { return ifx ph then "Welcome to Hecate's Cemetery. Walk with your left thumb" else "Welcome to Hecate's Cemetery. Walk with WASD, and drag to look around"; }
+  if step == TIP_PET { return "Bring your pet: tap BRING YOUR PET and tell us about them"; }
+  if step == TIP_FETCH { return ifx ph then "Play fetch: tap BALL to take the ball, and again to throw it" else "Play fetch: press F to take the ball, and F again to throw it"; }
+  if step == TIP_FIELD { return ifx ph then "Glowing flowers grow in the field, through the east gate. Walk up to one and tap PICK" else "Glowing flowers grow in the field, through the east gate. Walk up to one and press E"; }
+  if step == TIP_VASE { return ifx ph then "Tap VASE to arrange your flowers" else "Press V to arrange your flowers in a vase"; }
+  if step == TIP_LEAVE { return ifx tips_stone(s) >= 0 then "Leave the vase by their tombstone: follow the light" else "Leave the vase anywhere: everyone who visits will see it"; }
+  return "That's everything. Visit the other tombstones, and say hello in the chat";
+}
+
+// Your pet's tombstone in the garden, its plot, or -1.
+tips_stone :: (s: [] Villa) -> int {
+  p := s[0].pet[..];
+  for i: 0..<p[0].garden { if p[0].g_mine[i] { return p[0].g_plot[i]; } }
+  return -1;
+}
+
+tips_saw :: (p: [] PetUi, kind: int) -> bool {
+  for i: 0..<p[0].ev_n { if p[0].evs[i] == kind { return true; } }
+  return false;
+}
+
+tips_go :: (s: [] Villa, step: int) {
+  q := s[0].tips[..];
+  if step <= q[0].step { return; }
+  q[0].step = step; q[0].end_t = 0;
+  pet_ev(s[0].pet[..], EV_TIP, step);
+}
+
+// The browser's kept text, at load ("tips=N").
+villa_kept :: (s: [] Villa, t: string) #export_c {
+  if t.count < 6 || t[0..<5] != "tips=" { return; }
+  n := cast(int) t[5] - 48;
+  if n < 0 || n > TIPS_DONE { return; }
+  q := s[0].tips[..];
+  if n > q[0].step { q[0].step = n; }
+  q[0].kept = n;
+}
+
+// Once a frame: what you've done moves the tips on.
+tips_step :: (s: [] Villa, dt: f32) {
+  q := s[0].tips[..]; p := s[0].pet[..];
+  if !q[0].placed { q[0].placed = true; q[0].from_x = s[0].feet.x; q[0].from_z = s[0].feet.z; }
+  st := q[0].step;
+  if st == TIP_WALK && flat_length(sub(s[0].feet, v3(q[0].from_x, 0, q[0].from_z))) > 4 { tips_go(s, TIP_PET); }
+  st = q[0].step;
+  if st == TIP_PET && p[0].has && p[0].view == PV_NONE { tips_go(s, TIP_FETCH); }
+  st = q[0].step;
+  if st == TIP_FETCH && (tips_saw(p, EV_FETCH) || p[0].skills & SKILL_FETCH == 0) { tips_go(s, TIP_FIELD); }
+  st = q[0].step;
+  if st == TIP_FIELD && (tips_saw(p, EV_FLOWER) || p[0].bag[0] + p[0].bag[1] + p[0].bag[2] > 0) { tips_go(s, TIP_VASE); }
+  st = q[0].step;
+  if st == TIP_VASE && p[0].view == PV_VASE { tips_go(s, TIP_LEAVE); }
+  st = q[0].step;
+  if st == TIP_LEAVE && tips_saw(p, EV_VASE) { tips_go(s, TIP_END); }
+  if q[0].step == TIP_END { q[0].end_t += dt; if q[0].end_t > f32(TIP_END_SECONDS) { tips_go(s, TIPS_DONE); } }
+  // kept in the browser when it moves on (the pet's action slot, when it's free)
+  if q[0].kept != q[0].step && p[0].action == 0 {
+    n := pet_put(p[0].outbox[..], 0, "tips=");
+    p[0].outbox[n] = cast(u8) (48 + q[0].step);
+    p[0].out_n = n + 1; p[0].action = 4;
+    q[0].kept = q[0].step;
+  }
+}
+
+// The light that shows the way: over the field gate, then over your pet's tombstone.
+tips_draw :: (s: [] Villa) {
+  q := s[0].tips[..];
+  t := effect_time(s);
+  x := 0.0f32; z := 0.0f32; on := false;
+  if q[0].step == TIP_FIELD && s[0].feet.x < f32(GARDEN_X1) + 2 { x = f32(GARDEN_X1) + 1.2; z = f32(FIELD_GATE_Z); on = true; }
+  plot := tips_stone(s);
+  if q[0].step == TIP_LEAVE && plot >= 0 { x = plot_x(plot); z = plot_z(plot) + 0.62; on = true; }
+  if !on { return; }
+  g := ground_at(s, x, z);
+  pulse := 0.75 + 0.25 * sin(t * 2.4);
+  shape(s, SHAPE_CYLINDER, LOOK_BLOOM, v3(x, g + 2.6, z), 0, 0, 0.05, 4.2, 0.05, 0.55 * pulse, 0.62 * pulse, 0.9 * pulse);
+  ball(s, LOOK_BLOOM, v3(x, g + 2.4 + 0.25 * sin(t * 1.7), z), 0.16, 0.75 * pulse, 0.8 * pulse, 1.0 * pulse);
+}
+
+// The tip's plate, under the place's name (on a phone, under the row below it).
+tips_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
+  q := s[0].tips[..]; p := s[0].pet[..];
+  if q[0].step >= TIPS_DONE || p[0].view != PV_NONE || s[0].chat[0].typing { return n; }
+  k := hi(s[0].dpr, 0.5); w := s[0].width;
+  ph := phone(s);
+  cap := 8 * k; pad := 12 * k;
+  bw := lo(560 * k, w - 32 * k);
+  x0 := (w - bw) / 2;
+  y0 := 16 * k + 11 * k + 24 * k + 8 * k + (ifx ph then 38 * k + 8 * k else 0.0f32);
+  if !ph && x0 > 300 * k { y0 = 16 * k; }   // room between the place's name and the pet button
+  m := n;
+  y: [1] f32;
+  m = wrapped(out, m, tips_text(s, q[0].step), x0 + pad, y0 + pad + cap, bw - 2 * pad, cap, k, 3, 0.95, y[..]);
+  by0 := y[0] - cap * 0.9 + 4 * k;
+  bh := 28 * k;
+  if q[0].step < TIP_END {
+    sw := text_width("SKIP TIPS", 7.5 * k) + 26 * k; nw := text_width("NEXT", 7.5 * k) + 30 * k;
+    m = btn(s, out, m, Box.{x0 = x0 + bw - pad - sw, y0 = by0, x1 = x0 + bw - pad, y1 = by0 + bh}, "SKIP TIPS", B_DO, DO_TIPS_SKIP, false);
+    m = btn(s, out, m, Box.{x0 = x0 + bw - pad - sw - 8 * k - nw, y0 = by0, x1 = x0 + bw - pad - sw - 8 * k, y1 = by0 + bh}, "NEXT", B_DO, DO_TIP_NEXT, false);
+    plate(s, u, Box.{x0 = x0, y0 = y0, x1 = x0 + bw, y1 = by0 + bh + pad}, 0.8, 0);
+  } else {
+    plate(s, u, Box.{x0 = x0, y0 = y0, x1 = x0 + bw, y1 = y[0] - cap + pad}, 0.8, 0);
+  }
+  return m;
+}
+
+#test "the tips move on as you do each thing, NEXT and SKIP TIPS, and the browser keeps how far" {
+  s: [1] Villa;
+  villa_start(s[..]);
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  #assert s[0].tips[0].step == TIP_WALK;
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z) + 5, 0, 0, 0, 0);
+  #assert s[0].tips[0].step == TIP_PET && s[0].pet[0].action == 4 && cast(string) s[0].pet[0].outbox[0..<6] == "tips=1";
+  s[0].pet[0].action = 0;
+  s[0].pet[0].doing = DO_TIP_NEXT;
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z) + 5, 0, 0, 0, 0);
+  #assert s[0].tips[0].step == TIP_FETCH;
+  #assert play_key(s[..], 'f') && play_key(s[..], 'f');
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z) + 5, 0, 0, 0, 0);
+  #assert s[0].tips[0].step == TIP_FIELD;
+  s[0].pet[0].doing = DO_TIPS_SKIP;
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z) + 5, 0, 0, 0, 0);
+  #assert s[0].tips[0].step == TIPS_DONE;
+  t: [1] Villa;
+  villa_kept(t[..], "tips=4");
+  #assert t[0].tips[0].step == TIP_VASE && t[0].tips[0].kept == 4;
+  villa_kept(t[..], "tips=x");
+  #assert t[0].tips[0].step == TIP_VASE;
+}

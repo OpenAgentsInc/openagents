@@ -58,17 +58,19 @@ play_do :: (s: [] Villa, what: int) {
     }
     vel := v3(cos(s[0].face) * s[0].speed, 0, sin(s[0].face) * s[0].speed);
     s[0].fetch.ball = verse_ball_throw(b, hand_of(s), s[0].face, 0.5, vel);
+    pet_ev(p, EV_FETCH, 0);
     q[0].stay = false; q[0].stop_ask = true;
     return;
   }
-  if what == DO_SIT { if play_has(s, SKILL_OBEY, "sit, stay and come") { p[0].emote = 0; } return; }
-  if what == DO_STAY { if play_has(s, SKILL_OBEY, "sit, stay and come") { q[0].stay = true; p[0].emote = 0; pet_toast(p, "They stay right there"); } return; }
-  if what == DO_COME { if play_has(s, SKILL_OBEY, "sit, stay and come") { q[0].stay = false; q[0].stop_ask = true; } return; }
+  if what == DO_SIT { if play_has(s, SKILL_OBEY, "sit, stay and come") { p[0].emote = 0; pet_ev(p, EV_OBEY, 1); } return; }
+  if what == DO_STAY { if play_has(s, SKILL_OBEY, "sit, stay and come") { q[0].stay = true; p[0].emote = 0; pet_toast(p, "They stay right there"); pet_ev(p, EV_OBEY, 2); } return; }
+  if what == DO_COME { if play_has(s, SKILL_OBEY, "sit, stay and come") { q[0].stay = false; q[0].stop_ask = true; pet_ev(p, EV_OBEY, 3); } return; }
   if what == DO_DIG {
     if !play_has(s, SKILL_DIG, "digging") { return; }
     d := s[0].fetch.dog.pos;
     if in_garden(d.x, d.z) { pet_toast(p, "Dig in the field, not in the garden"); return; }
     p[0].emote = 6; q[0].dig_t = 2.4;
+    pet_ev(p, EV_DIG, 0);
     return;
   }
   if what == DO_PICK {
@@ -76,8 +78,11 @@ play_do :: (s: [] Villa, what: int) {
     if i < 0 { pet_toast(p, "Walk up to a glowing flower in the field to pick it"); return; }
     q[0].regrow[i] = f32(REGROW);
     p[0].bag[flower_kind(i)] += 1;
+    pet_ev(p, EV_FLOWER, flower_kind(i));
     return;
   }
+  if what == DO_TIP_NEXT { tips_go(s, s[0].tips[0].step + 1); return; }
+  if what == DO_TIPS_SKIP { tips_go(s, TIPS_DONE); return; }
   if what == DO_CHAT { s[0].chat[0].typing = true; s[0].held = 0; return; }
   if what == DO_SAY { chat_say(s[0].chat[..]); return; }
   if what == DO_VASE {
