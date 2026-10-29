@@ -3056,7 +3056,8 @@
       ],
       "blocks": [
         "secp-mult-base",
-        "coax-run-copy-work"
+        "coax-run-copy-work",
+        "coax-mutation-scheduling"
       ]
     },
     {
@@ -3080,6 +3081,34 @@
         "Checked Coax authority policy, boundary/overflow tests and zero-survivor mutation; Python-free bootstrap and affected compiler tests",
         "The real fixed-base tables still compile through #run under an explicitly documented finite profile and match the independent pinned oracle",
         "Record selected policy and measured copy work in build evidence; update the book and explain remaining unmetered work honestly"
+      ],
+      "blocked_by": [
+        "coax-run-resource-inputs"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "coax-mutation-scheduling",
+      "parent": "compiler",
+      "title": "Make full-graph mutation faster without weakening checks",
+      "size": "L",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Current mutation reruns every check for every reachable mutant. The Nostr event baseline has 177 check groups and more than 275 million evaluator steps, making each full graph run take many minutes. Explore scheduling only checks proven unable to be affected by a given function-local mutant while retaining every baseline check and every mutation site. A check that did not enter a mutated function may appear safe, but shared evaluator resources, cached/frozen state, failure behavior and check order must be accounted for: fall back to the full reference runner whenever independence is not established. This is not a scoped exclusion, mutant waiver or reduced coverage gate.",
+      "files": [
+        "coax/src/verify.cpp",
+        "coax/lib/compiler/",
+        "coax/tests/",
+        "coax/spec.md"
+      ],
+      "acceptance": [
+        "Run every baseline check and every reachable mutation site; preserve authority coverage, mutant budgets, diagnostics and zero-survivor policy",
+        "Demonstrate identical kill/survivor outcomes and check coverage against the original full runner for existing authority graphs and seeded faults, including persistent-resource, failure, #forall and check-order cases",
+        "Prove or conservatively detect check independence and use the full runner when shared state or resource interactions cannot be ruled out",
+        "Record realistic full-graph wall-time and work comparisons without relying on hardware-specific timeouts or omitting cases; retain Python-free bootstrap and affected compiler tests",
+        "Update book/spec and explain any fallback or remaining limitations"
       ],
       "blocked_by": [
         "coax-run-resource-inputs"

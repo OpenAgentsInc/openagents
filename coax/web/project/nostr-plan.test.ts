@@ -86,3 +86,9 @@ test("aggregate traversal work is tracked separately from existing step semantic
   expect(tasks.get("coax-run-copy-work").acceptance.join(" ")).toContain("aggregate assignments")
   expect(tasks.get("coax-run-copy-work").acceptance.join(" ")).toContain("contains_view")
 })
+
+test("mutation scheduling preserves full-graph guarantees", () => {
+  expect(reaches("coax-mutation-scheduling", "coax-run-resource-inputs")).toBe(true)
+  expect(tasks.get("coax-mutation-scheduling").body).toContain("fall back to the full reference runner")
+  expect(tasks.get("coax-mutation-scheduling").acceptance.join(" ")).toContain("every reachable mutation site")
+})
