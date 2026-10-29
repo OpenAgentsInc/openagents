@@ -76,8 +76,19 @@ These observations used the pinned `coax0 0.22.0` binary SHA
 `f335e7ec7b3f6d5966244a09aa8002b11b5ba607a1f673353c51effd9dab84a1`.
 Current main subsequently changed `coax/src/eval.cpp` for frozen aggregate
 constants; these tests do not claim revalidation with a newly rebuilt compiler.
-The three aggregate full-reference mutation runs were still in progress at
-this partial publication.
+The subsequent full-reference aggregate runs killed all 2,803 legacy,
+2,864 public-view and 2,955 large-profile mutants, with 160,669, 157,838 and
+165,833 full checks respectively and zero skipped, borrowed or unstable checks.
+Their retained [legacy](data/secret-checked-arithmetic-2026-10-29/legacy-reference.log),
+[public-view](data/secret-checked-arithmetic-2026-10-29/public-reference.log),
+and [large](data/secret-checked-arithmetic-2026-10-29/large-reference.log) logs
+have SHA-256 `7cc25e93282092ccd201a7a16d0cda47080e75d5d2a3344eac1cac903621b84a`,
+`dcd430fb65a8803d6681f1ae8431d44683fb6834df158f74552a13c73e0ccc96`, and
+`13958e6c435a8426818b6026e0398119cc4e9cae4e66b1e01b22d8fc87b85ace`.
+The shared tests were `17fb7be86bed9c44bb15cff5a7eae76c9bc98eb8657c2846ece2dc82a2512cd0`,
+`58c054b4bfb4e60626a30830acf566e1f772c29fc269113c9078fe771faa51ac`, and
+`c352871a69fa5615754b863adbd570b0d3dd907ebcd1c811a03544bae8beea0a`
+for scalar, aggregate and aggregate cases, respectively.
 
 The inherited compiler, source-map, view ownership and filesystem premises
 still apply. This repair does not establish target constant time, production
