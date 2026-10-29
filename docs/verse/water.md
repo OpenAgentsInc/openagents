@@ -5,8 +5,9 @@ of its specification, [verse/everglade/previous/water.md](../../verse/everglade/
 (copied from `0b401561a0^`; see its phased plan). Done: W1 (the physics),
 W2 (the shader, on the Coax WebGPU renderer), W3 adapted to today's
 Everglade (its river, swimming and floats) and, from W6, the ripple field
-with your wake and splash. W4, W5 and the rest of W6 are not started
-(project task `verse-water`, #c278).
+with your wake and splash, and most of W5 (below). The rest has a task each
+under `verse-water` (#c278): W3's rest (the ponds, the weir, NPC swimming,
+rowboat props), W4, the rest of W6, and W7 to W11.
 
 ## W1: the physics (done)
 
@@ -151,6 +152,41 @@ Not ported, because today's Everglade has none of them: the ponds, the
 weir and its plunge pool, rowboats, townsfolk swimming and underwater
 combat. You swim with the walk clip (there is no swim clip yet), and a
 phone has no dive button yet.
+
+## W5: the scene behind the water (done, in part)
+
+A page whose WGSL declares `water_scene` (Everglade) has the scene's light
+and depth copied after the scene and before the water (`host.js`
+`waterCopyLayout`: the post pass's rgba16float light and the depth32float
+depth, at `@group(3)`; the render pass ends, the two copies are made and a
+pass that loads both goes on). Pages without it draw as before. With it, a
+surface (the river, the fountain's pools) draws in one piece in the light
+half over the copy, and the transmittance half only clears what it covers
+(`water_whole`, everglade.wgsl); the fountain's falls, drawn over its pools,
+keep the two halves.
+
+- **Refraction.** What lies behind is read from the copy beside the pixel
+  by the surface's slope, 0.16 m a metre of water up to 1.2 m (0.12 on a
+  phone), never from something in front of the surface (its depth is
+  checked).
+- **Contact foam.** Where the water is much thinner along the view than
+  the baked depth to the bed says, something stands in it: a broken white
+  line round the bridge's piles, the fountain's column, a swimmer and the
+  ducks.
+- **Soft edges.** Water thinner than 6 cm against anything fades to what
+  is behind it.
+- **Reflection** (desktop): 20 growing steps along the ray reflected off a
+  nearly calm surface, in screen space against the copied depth; where one
+  finds the scene above the water it takes the sky's place in the
+  reflection, fading at the screen's edges and past 12 m. This stands in
+  for the old plan's planar reflection; a phone keeps the sky.
+
+Measured headless on an Apple GPU (`frametime.ts`, `#river-wade`, the river
+filling the view): desktop 1440x900 11.4 ms a frame before and after (the
+surface now shades once, not in each half), a phone's canvas 3.2 to 3.8 ms.
+Not done yet: soft particles (Everglade's water has no particles yet; W6's
+spray will read the copy). `#river-wade` starts you in the river north of
+the bridge, facing its piles.
 
 ## The painted preset (art-styles.md 12, as-painted-water)
 

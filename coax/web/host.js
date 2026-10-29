@@ -102,6 +102,8 @@
 //                             memory copied each frame to storage buffers
 //   coaxial_sounds(state), coaxial_sounds_len(state)  sounds to play now, a line each: NAME GAIN PAN
 //   coaxial_water_draws(state)  how many of the last draws are water (water_vs, waterPipelines)
+//                               (a WGSL with water_scene gets the scene's colour and depth copied
+//                               before them, at @group(3): waterCopyLayout)
 // The WGSL's scene_vs/scene_fs read group 1: the storage assets, then the stores, then the texture
 // and its sampler, in that order. A WGSL with shadow_vs/shadow_fs also gets a shadow map (shadowLayout).
 // A traced scene (a realm whose bg_fs draws the world, the style fixture) puts its own casters in the
@@ -671,7 +673,9 @@ async function loadShaders() {
   ]);
   gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; gpu.bloom = bl; gpu.post = po; gpu.caster = ca; gpu.grass = gr; // swapped whole, at the next frame
   gpu.particles = sc ? await particlePipeline(post) : null;
-  [gpu.waterTransmit, gpu.waterEmit] = sc && /fn\s+water_vs\b/.test(code) ? await waterPipelines(module, sceneGroups, post) : [null, null];
+  gpu.waterCopy = post && /var\s+water_scene\b/.test(code);
+  const waterGroups = gpu.waterCopy ? [...sceneGroups, ...(sceneGroups.length < 3 ? [emptyLayout()] : []), waterCopyLayout()] : sceneGroups;
+  [gpu.waterTransmit, gpu.waterEmit] = sc && /fn\s+water_vs\b/.test(code) ? await waterPipelines(module, waterGroups, post) : [null, null];
   return true;
   } finally {
     shaderLoads -= 1;
@@ -697,6 +701,17 @@ async function waterPipelines(module, groups, post) {
   });
   return Promise.all([half("water_transmit_fs", { operation: "add", srcFactor: "zero", dstFactor: "src" }),
     half("water_emit_fs", { operation: "add", srcFactor: "one", dstFactor: "one" })]);
+}
+
+// W5 (docs/verse/water.md): a page whose WGSL declares water_scene (and draws through the post pass)
+// has the scene's light and depth copied after the scene and before the water, read at @group(3):
+// binding 0 the light (rgba16float, linear), binding 1 the depth. Refraction, contact foam and soft
+// edges read them; the water's own triangles are not in them.
+function waterCopyLayout() {
+  gpu.waterCopyLayout ||= gpu.device.createBindGroupLayout({ entries: [
+    { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "unfilterable-float" } },
+    { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth" } }] });
+  return gpu.waterCopyLayout;
 }
 
 // The particles' own module and pipeline; a page without one, or one that doesn't compile, draws none.
@@ -896,13 +911,23 @@ function postLayouts() {
 function postTargets(w, h) {
   const { device } = gpu, use = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
   for (const t of gpu.postTextures || []) t.destroy();
+  // the water's copies of the scene (waterCopyLayout): the light and depth are their sources
+  const copied = gpu.waterCopy ? GPUTextureUsage.COPY_SRC : 0;
   const make = (tw, th, format) => device.createTexture({ size: [Math.max(1, tw), Math.max(1, th)], format, usage: use });
-  const light = make(w, h, "rgba16float"), aux = make(w, h, "rgba16float");
+  const light = device.createTexture({ size: [w, h], format: "rgba16float", usage: use | copied }), aux = make(w, h, "rgba16float");
   const q0 = make(Math.ceil(w / 4), Math.ceil(h / 4), "rgba16float"), q1 = make(q0.width, q0.height, "rgba16float");
   const e0 = make(Math.ceil(w / 8), Math.ceil(h / 8), "rgba16float"), e1 = make(e0.width, e0.height, "rgba16float");
   gpu.depth?.destroy();
-  gpu.depth = make(w, h, "depth32float");
+  gpu.depth = device.createTexture({ size: [w, h], format: "depth32float", usage: use | copied });
   gpu.postTextures = [light, aux, q0, q1, e0, e1];
+  gpu.waterCopyGroup = null;
+  if (gpu.waterCopy) {
+    const into = (format) => device.createTexture({ size: [w, h], format, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+    gpu.waterLight = into("rgba16float"); gpu.waterDepth = into("depth32float");
+    gpu.postTextures.push(gpu.waterLight, gpu.waterDepth);
+    gpu.waterCopyGroup = device.createBindGroup({ layout: waterCopyLayout(), entries: [
+      { binding: 0, resource: gpu.waterLight.createView() }, { binding: 1, resource: gpu.waterDepth.createView() }] });
+  }
   const { bloom, post } = postLayouts();
   const group = (src, k) => device.createBindGroup({ layout: bloom, entries: [
     { binding: 0, resource: src.createView() }, { binding: 1, resource: gpu.linear }, { binding: 2, resource: { buffer: gpu.steps[k] } }] });
@@ -1137,7 +1162,8 @@ function frame(now) {
     const bytes = Math.min(x.coaxial_store_bytes(arena.state, k), buffer.size) & ~3;
     if (bytes) device.queue.writeBuffer(buffer, 0, memory.buffer, x.coaxial_store(arena.state, k), bytes);
   });
-  if (gpu.scene && (!gpu.depth || gpu.depth.width !== w || gpu.depth.height !== h || !!gpu.post !== !!gpu.postGroup)) {
+  if (gpu.scene && (!gpu.depth || gpu.depth.width !== w || gpu.depth.height !== h || !!gpu.post !== !!gpu.postGroup
+      || (gpu.post && !!gpu.waterCopy !== !!gpu.waterCopyGroup))) {
     if (gpu.post) postTargets(w, h);
     else {
       gpu.depth?.destroy(); gpu.postGroup = null;
@@ -1179,6 +1205,19 @@ function frame(now) {
     pass.setPipeline(gpu.scene);
     if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
     drawScene(pass);
+    if (wet && post && gpu.waterCopyGroup) {
+      // W5: the scene's light and depth as they stand before the water, then on in a pass that keeps them
+      pass.end();
+      encoder.copyTextureToTexture({ texture: gpu.light }, { texture: gpu.waterLight }, [w, h]);
+      encoder.copyTextureToTexture({ texture: gpu.depth }, { texture: gpu.waterDepth }, [w, h]);
+      const keep = (view) => ({ view, loadOp: "load", storeOp: "store" });
+      pass = encoder.beginRenderPass({ colorAttachments: [keep(gpu.light.createView()), keep(gpu.aux.createView())],
+        depthStencilAttachment: { view: gpu.depth.createView(), depthLoadOp: "load", depthStoreOp: "store" } });
+      pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.sceneGroup);
+      pass.setBindGroup(2, gpu.shadow ? gpu.shadowGroup : (emptyLayout(), gpu.emptyGroup));
+      pass.setBindGroup(3, gpu.waterCopyGroup);
+      pass.setIndexBuffer(gpu.index, "uint32");
+    }
     for (let i = draws - wet; i < draws; i++) {
       pass.setPipeline(gpu.waterTransmit); drawOne(pass, i);
       pass.setPipeline(gpu.waterEmit); drawOne(pass, i);

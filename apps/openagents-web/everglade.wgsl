@@ -1376,7 +1376,9 @@ fn water_foam(rest: vec2f, shore: f32, crest: f32, extra: f32, noise: f32) -> f3
   return clamp(foam * u.water.scatter.w, 0.0, 1.0);
 }
 
-struct WaterShade { emit: vec3f, transmit: vec3f }
+// bend: the surface's slope that refracts; mirror: the sky's share of emit (rgb) and its weight
+// (W5 puts the scene there where its screen-space reflection finds it)
+struct WaterShade { emit: vec3f, transmit: vec3f, bend: vec2f, mirror: vec4f }
 
 // The surface seen from below: Snell's window, total internal reflection outside it.
 fn water_below(n: vec3f, v: vec3f, path: f32, slope: f32) -> WaterShade {
@@ -1479,6 +1481,8 @@ fn water_painted_teal(world: vec3f, rest: vec2f, flow: vec2f, depth: f32, shore:
   emit = mix(emit, foam_rgb, foam);
   o.emit = emit;
   o.transmit = vec3f((1.0 - alpha) * (1.0 - fresnel * edge) * (1.0 - foam));
+  o.bend = n.xz;
+  o.mirror = vec4f(refl, fresnel * edge * (1.0 - foam));
   return o;
 }
 
@@ -1528,6 +1532,8 @@ fn water_fragment(i: WaterOut) -> WaterShade {
   let cover = foam * smoothstep(-0.08, 0.0, depth);
   o.emit = clear * edge * (1.0 - cover) + foam_rgb * cover;
   o.transmit = mix(vec3f(1.0), through * (1.0 - fresnel), edge) * (1.0 - cover);
+  o.bend = n.xz;
+  o.mirror = vec4f(sky, fresnel * edge * (1.0 - cover));
   return o;
 }
 
@@ -1538,15 +1544,112 @@ fn water_halves(i: WaterOut) -> WaterShade {
   let fog = haze_share(d, i.world_depth.y);
   let emit = s.emit * (1.0 - fog) + haze_colour(fog, (i.world_depth.xyz - u.eye.xyz) / max(d, 0.001)) * fog * (vec3f(1.0) - s.transmit);
   // linear light now (the post pass encodes): what lies behind times the transmittance, plus the emitted
-  var o: WaterShade;
-  o.transmit = s.transmit;
+  var o = s;
   o.emit = max(emit, vec3f(0.0));
   return o;
 }
+
+// ---- W5 (docs/verse/water.md): the scene's light and depth as they stood before the water (host.js
+// waterCopyLayout). A surface (the river, the fountain's pools) draws in one piece over the copy: what
+// lies behind it bent by its slope (refraction), a broken white line where anything stands in it (the
+// bridge's piles, the fountain's column, a swimmer, the ducks), and a soft edge where it meets them. The
+// falls, drawn over the pools, keep the two halves (they multiply and add over what is drawn).
+@group(3) @binding(0) var water_scene: texture_2d<f32>;
+@group(3) @binding(1) var water_scene_depth: texture_depth_2d;
+// The view depth (clip w) a depth-buffer value stands for: the scene's clip z is a w + b.
+fn water_view_w(d: f32) -> f32 {
+  let a = dot(u.r2.xyz, u.r3.xyz) / max(dot(u.r3.xyz, u.r3.xyz), 1e-6);
+  let b = u.r2.w - a * u.r3.w;
+  let w = b / min(d - a, -1e-7);
+  return select(1e6, w, d < 0.999999 && w > 0.0);
+}
+fn water_scene_at(px: vec2i) -> vec3f {
+  let size = vec2i(textureDimensions(water_scene));
+  return textureLoad(water_scene, clamp(px, vec2i(0), size - vec2i(1)), 0).rgb;
+}
+fn water_scene_w(px: vec2i) -> f32 {
+  let size = vec2i(textureDimensions(water_scene_depth));
+  return water_view_w(textureLoad(water_scene_depth, clamp(px, vec2i(0), size - vec2i(1)), 0));
+}
+// How much water lies between the surface at world (pixel px) and what is behind it, along the view (m).
+fn water_thickness(px: vec2i, world: vec3f) -> f32 {
+  let w = dot(u.r3, vec4f(world, 1.0));
+  return max(water_scene_w(px) - w, 0.0) * distance(u.eye.xyz, world) / max(w, 1e-3);
+}
+// Screen-space reflection: 20 steps out along dir from p, growing; the first step whose point lies behind
+// the copied depth (within the step) is the hit. Returns the scene there and how sure (fading at the
+// screen's edges and toward the last step), or w 0 for none.
+fn water_ssr(p: vec3f, dir: vec3f) -> vec4f {
+  // a ray bent down into the water finds the bed, not a reflection
+  if (dir.y < 0.03) { return vec4f(0.0); }
+  let size = vec2f(textureDimensions(water_scene));
+  var t = 0.25;
+  var last = 0.0;
+  for (var k = 0; k < 20; k++) {
+    let q = p + dir * t;
+    let c = vec4f(dot(u.r0, vec4f(q, 1.0)), dot(u.r1, vec4f(q, 1.0)), dot(u.r2, vec4f(q, 1.0)), dot(u.r3, vec4f(q, 1.0)));
+    if (c.w <= 0.05) { return vec4f(0.0); }
+    let ndc = c.xy / c.w;
+    if (abs(ndc.x) > 1.0 || abs(ndc.y) > 1.0) { return vec4f(0.0); }
+    let px = vec2i((ndc * vec2f(0.5, -0.5) + vec2f(0.5)) * size);
+    let sw = water_scene_w(px);
+    if (sw < c.w && c.w - sw < (t - last) * 1.5 + 0.3) {
+      let edge = min(1.0 - abs(ndc.x), 1.0 - abs(ndc.y));
+      // what it finds must lie above the surface it reflects in
+      let sure = smoothstep(0.0, 0.12, edge) * (1.0 - smoothstep(14.0, 20.0, f32(k))) * smoothstep(0.03, 0.12, dir.y) * (1.0 - smoothstep(12.0, 30.0, t));
+      return vec4f(water_scene_at(px), sure);
+    }
+    last = t;
+    t = t * 1.32 + 0.1;
+  }
+  return vec4f(0.0);
+}
+fn water_whole(i: WaterOut) -> vec3f {
+  let s = water_halves(i);
+  let world = i.world_depth.xyz;
+  let px = vec2i(i.clip.xy);
+  let w = max(dot(u.r3, vec4f(world, 1.0)), 1e-3);
+  let thick = water_thickness(px, world);
+  // refraction: the bed seen a little aside, more through more water; never something in front of the surface
+  let focal = 0.5 * f32(textureDimensions(water_scene).y) * length(u.r1.xyz);
+  let small = u.water.control.x < 8.0;
+  let reach = select(0.16, 0.12, small) * min(thick, 1.2);
+  let off = vec2i(round(s.bend * reach * focal / w));
+  var at = px + off;
+  if (water_scene_w(at) < w) { at = px; }
+  let behind = water_scene_at(at);
+  var out = behind * s.transmit + s.emit;
+  let v = normalize(u.eye.xyz - world);
+  // reflection: on desktop the scene where the reflected ray meets it on the screen, in place of the sky
+  if (!small && s.mirror.w > 0.01 && u.eye.y > world.y) {
+    // reflected off a calmer surface than the shading's: the scene's edges in it stay whole, not broken up
+    let calm = normalize(vec3f(s.bend.x * 0.06, 1.0, s.bend.y * 0.06));
+    let hit = water_ssr(world, reflect(-v, calm));
+    let d = distance(u.eye.xyz, world);
+    out += (hit.rgb - s.mirror.rgb) * s.mirror.w * hit.w * (1.0 - haze_share(d, world.y));
+  }
+  // contact foam: water much thinner than the depth to the bed says (something stands in it), broken
+  let part = u32(i.extra.x + 0.5);
+  if (u.eye.y > world.y) {
+    let bed = i.world_depth.w / max(v.y, 0.08);
+    let near = (1.0 - smoothstep(0.03, 0.2, thick)) * (1.0 - smoothstep(0.35, 0.7, thick / max(bed, 0.02)));
+    let t = u.water.params.x;
+    let broken = smoothstep(0.25, 0.6, water_noise(vec3f(i.rest_flow.xy * 5.0, t * 0.8)) + 0.5 * near - 0.2);
+    let foam = clamp(near * broken * 1.4, 0.0, 1.0) * select(1.0, 0.0, part >= 3u);
+    let foam_rgb = vec3f(0.95, 0.97, 0.96) * (water_host_light(world, vec3f(0.0, 1.0, 0.0)) * 0.9 + vec3f(0.06));
+    out = mix(out, foam_rgb, foam);
+  }
+  // the soft edge: where the water thins to nothing against what stands in it, what is behind shows whole
+  out = mix(water_scene_at(px), out, smoothstep(0.0, 0.06, thick));
+  return max(out, vec3f(0.0));
+}
 @fragment fn water_transmit_fs(i: WaterOut) -> @location(0) vec4f {
+  // a surface draws whole in the light half (water_whole): this half clears what lies behind it
+  if (u32(i.extra.x + 0.5) < 3u) { return vec4f(0.0, 0.0, 0.0, 1.0); }
   return vec4f(clamp(water_halves(i).transmit, vec3f(0.0), vec3f(1.0)), 1.0);
 }
 @fragment fn water_emit_fs(i: WaterOut) -> @location(0) vec4f {
+  if (u32(i.extra.x + 0.5) < 3u) { return vec4f(water_whole(i), 0.0); }
   return vec4f(water_halves(i).emit, 0.0);
 }
 

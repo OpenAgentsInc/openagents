@@ -667,6 +667,14 @@ everglade_warp :: (s: [] Everglade) -> bool #export_c { w := s[0].warp; s[0].war
 everglade_hash :: (s: [] Everglade, hash: string) #export_c {
   if !s[0].started { everglade_start(s); }
   if hash == "above" || hash == "map" { s[0].above = true; s[0].lift = 1; return; }
+  // in the river just north of the bridge, facing its piles (the water's views: docs/verse/water.md)
+  if hash == "river-wade" {
+    s[0].spawn = v3(88, 0, -1.5); s[0].spawn_face = yaw_of(0, -1);
+    s[0].feet = v3(88, ground_at(s, 88, -1.5), -1.5);
+    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].warp = true; s[0].above = false; s[0].lift = 0;
+    return;
+  }
   // the quest board: just north of it, facing it, near enough to read it
   if hash == "quest-board" {
     bm := board_middle();
