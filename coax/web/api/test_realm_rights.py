@@ -70,6 +70,15 @@ def realm_rights_checks():
     check("a realm nobody has is a 404", b_call("GET", "/api/playtest/realms/no-such-realm")[0] == 404
           and b_call("POST", "/api/playtest/realms/no-such-realm/switch", {"row": "x", "on": True}, owner)[0] == 404)
 
+    # a hand-built realm's admin account publishes its world (Everglade's edits) as a site admin does
+    edits = {"everglade": 1, "edits": "eg-edit 1\nt 1 4.50 -10.00 0.79 1.00\n"}
+    check("a realm's visitor can't publish its world", pt("POST", "world/everglade", {"doc": edits, "summary": "a visitor"}, key=friend)[0] == 403)
+    sql("update verse.realm_rights set admins = admins || '{" + acct(friend) + "}' where slug = 'everglade'")
+    st, got = pt("POST", "world/everglade", {"doc": edits, "summary": "Placed a barrel"}, key=friend)
+    check("Everglade's admin account publishes its edits, and puts the designed city back", st == 200 and "version" in got
+          and pt("POST", "world/everglade/reset", {}, key=friend)[0] == 200 and pt("POST", "world/the-grid", {"doc": edits, "summary": "x"}, key=friend)[0] == 403, (st, got))
+    sql("update verse.realm_rights set admins = array_remove(admins, '" + acct(friend) + "') where slug = 'everglade'")
+
     # talking revises the board: the model answers under the realm's rows
     builder_fake.server_close()
     fake = http.server.ThreadingHTTPServer(("127.0.0.1", int(os.environ["BUILDER_PORT"])), FakeBuilderModel)

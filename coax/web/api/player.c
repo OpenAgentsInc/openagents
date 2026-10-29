@@ -15,8 +15,9 @@
 //   POST /api/playtest/worlds                 a new world owned by the player -> {id}
 //   GET  /api/playtest/world/<id>             the published world {doc, version, publishedBy,
 //                                             publishedAt}, or {doc: null, version: 0}: a link opens it
-//   POST /api/playtest/world/<id>             publish {doc, summary}: the owner, or anyone known on
-//                                             a world its owner opened; else 403 with offer: true
+//   POST /api/playtest/world/<id>             publish {doc, summary}: the owner (for a hand-built
+//                                             realm also its realm_rights owner and admins), or anyone
+//                                             known on a world its owner opened; else 403 with offer: true
 //   GET  /api/playtest/world/<id>/owner       {claimed, you, site, open, name}
 //   POST /api/playtest/world/<id>/open        {open}: the owner opens or closes direct publishing
 //   GET/POST /api/playtest/world/<id>/settings  {view: {view: third|first|top, allowToggle}}
@@ -189,6 +190,17 @@ bool player_route(const request *q) {
     memcpy(npub, ev.pubkey, sizeof npub);
     site = admin_is(npub);
   } else if (site_session(q, db)) site = true;
+  // A hand-built realm's owner or one of its admins (verse.realm_rights, docs/verse/realm-edit.md)
+  // publishes that realm's world, and puts it back, as the site does: for that world's routes only.
+  if (!site && key[0] && !strncmp(rest, "world/", 6)) {
+    char id[80]; size_t i = 0;
+    for (const char *p = rest + 6; *p && *p != '/' && i + 1 < sizeof id; p++) id[i++] = *p;
+    id[i] = 0;
+    const char *ev[2] = {id, key};
+    PGresult *m = PQexecParams(db, "SELECT (verse.edit_hand($1)).slug IS NOT NULL AND verse.edit_may($1, $2, false)", 2, NULL, ev, NULL, NULL, 0);
+    if (PQresultStatus(m) == PGRES_TUPLES_OK && PQntuples(m) == 1 && PQgetvalue(m, 0, 0)[0] == 't') site = true;
+    PQclear(m);
+  }
 
   char *body = malloc(q->body_len + 3);
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
