@@ -1,0 +1,17 @@
+#import "Basic";
+
+#load "../lib/readout.coax";
+// book:begin example
+main :: () {
+    // Vocabulary logits: three option slots and one other token.
+    logits:=[4]f32.[2,1,0,0];slots:=[3]int.[0,1,2];
+    probabilities:[3]f64;work:[3]f64;
+    choice:=qr_read(QrKind.choice,1,logits[..],slots[..],probabilities[..],work[..],false);
+    #assert choice.status==QrStatus.ok;
+    print("choice: option %, probability %, confidence %\n",choice.best,probabilities[choice.best],choice.confidence);
+    print("slot mass in vocabulary: %\n",choice.mass);
+    score:=qr_read(QrKind.score,1,logits[..],slots[..],probabilities[..],work[..],false);
+    #assert score.status==QrStatus.ok;
+    print("score expectation: %, confidence %\n",score.score,score.confidence);
+}
+// book:end example

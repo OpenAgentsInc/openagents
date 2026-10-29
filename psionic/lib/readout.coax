@@ -1,0 +1,92 @@
+// Decision slot LM readout and typed statistics.
+#load "ops.coax";
+#load "../fixtures/readout/qwen-slot-ids.coax";
+#authority;
+QrKind :: enum u8 {choice;noul;score;}
+QrStatus :: enum u8 {ok;shape;capacity;alias;number;index;}
+QrResult :: struct {status:QrStatus;written:int;best:int;mass:f64;confidence:f64;score:f64;truth:f64;}
+#test "selected slot probabilities and full-vocabulary mass are distinct" {
+    logits:=[4]f32.[0,0,0,0];slots:=[2]int.[0,1];out:=[3]f64.[-7,-7,-7];work:=[3]f64.[-9,-9,-9];
+    r:=qr_read(QrKind.choice,1,logits[..],slots[..],out[..],work[..],false);
+    #assert r.status==QrStatus.ok && r.written==2 && r.best==0 && r.mass==0.5 && r.confidence==0;
+    #assert out[0]==0.5 && out[1]==0.5 && out[2]==-7 && work[2]==-9;
+    r=qr_read(QrKind.noul,1,logits[..],slots[..],out[..],work[..],false);
+    #assert r.status==QrStatus.ok && r.truth==0.5;
+    r=qr_read(QrKind.score,1,logits[..],slots[..],out[..],work[..],false);
+    #assert r.status==QrStatus.ok && r.score==0.5 && r.confidence==0;
+}
+#test "one slot is certain and duplicate or invalid IDs refuse atomically" {
+    logits:=[3]f32.[0,1,2];slots:=[2]int.[1,1];out:=[2]f64.[-7,-7];work:=[2]f64.[-9,-9];
+    r:=qr_read(QrKind.choice,1,logits[..],slots[0..<1],out[..],work[..],false);
+    #assert r.status==QrStatus.ok && r.written==1 && r.confidence==1 && out[0]==1;
+    out[0]=-7;#assert qr_read(QrKind.choice,1,logits[..],slots[..],out[..],work[..],false).status==QrStatus.index;
+    slots[1]=3;#assert qr_read(QrKind.choice,1,logits[..],slots[..],out[..],work[..],false).status==QrStatus.index;
+    slots[1]=-1;#assert qr_read(QrKind.choice,1,logits[..],slots[..],out[..],work[..],false).status==QrStatus.index;
+    #assert out[0]==-7 && out[1]==-7;
+}
+qr_valid :: (kind:u8,count:int,temperature:f32)->bool {
+    if !psionic_tensor_finite_bits(f32_bits(temperature)) || temperature<=0 {return false;}
+    if kind==0 {return count>=1 && count<=255;}
+    if kind==1 {return count==2;}
+    if kind==2 {return count>=1 && count<=10;}
+    return false;
+}
+qr_argmax_all :: (logits:[]f32)->int {best:=0;for i:1..<logits.count {if logits[i]>logits[best] {best=i;}}return best;}
+qr_argmax_slots :: (logits:[]f32,slots:[]int)->int {best:=0;for i:1..<slots.count {if logits[slots[i]]>logits[slots[best]] {best=i;}}return best;}
+qr_nonnegative :: (x:f64)->f64 {return (x+abs(x))/2;}
+qr_vocab_valid :: (n:int)->bool {return n>=1 && n<=262144;}
+qr_pinned_slot :: (i:int)->int #export_c {if i<0 || i>=256 {return -1;}return QR_QWEN_SLOTS[i];}
+// book:begin readout
+qr_read :: (kind:QrKind,temperature:f32,logits:[]f32,slots:[]int,out:[]f64,work:[]f64,overlap:bool)->QrResult #export_c {
+    n:=slots.count;if !qr_valid(cast(u8)kind,n,temperature) || !qr_vocab_valid(logits.count) {return QrResult.{status=QrStatus.shape};}
+    if out.count<n || work.count<n {return QrResult.{status=QrStatus.capacity};}
+    if overlap {return QrResult.{status=QrStatus.alias};}
+    for value:logits {if !psionic_tensor_finite_bits(f32_bits(value)) {return QrResult.{status=QrStatus.number};}}
+    for i:0..<n {if slots[i]<0 || slots[i]>=logits.count {return QrResult.{status=QrStatus.index};}for j:0..<i {if slots[i]==slots[j] {return QrResult.{status=QrStatus.index};}}}
+    max_vocab:=f64(logits[qr_argmax_all(logits)]);
+    all:PsionicAccumulator;for value:logits {all=psionic_ops_accumulate(all,exp(f64(value)-max_vocab));}
+    selected:PsionicAccumulator;best:=qr_argmax_slots(logits,slots);max_slot:=f64(logits[slots[best]])/f64(temperature);
+    for id:slots {selected=psionic_ops_accumulate(selected,exp(f64(logits[id])-max_vocab));}
+    denominator:PsionicAccumulator;
+    for i:0..<n {work[i]=exp(f64(logits[slots[i]])/f64(temperature)-max_slot);denominator=psionic_ops_accumulate(denominator,work[i]);}
+    total:=psionic_ops_total(denominator);
+    for i:0..<n {work[i]/=total;}
+    result:=QrResult.{written=n,best=best,mass=psionic_ops_total(selected)/psionic_ops_total(all)};
+    if kind==QrKind.choice {
+        result.confidence=1;
+        if n>1 {uniform:=1/f64(n);result.confidence=(work[best]-uniform)/(1-uniform);}
+    } else if kind==QrKind.noul {result.truth=work[0];}
+    else {
+        expected:PsionicAccumulator;distance:PsionicAccumulator;uniform_distance:PsionicAccumulator;center:=f64(n-1)/2;
+        for i:0..<n {expected=psionic_ops_accumulate(expected,f64(i)*work[i]);distance=psionic_ops_accumulate(distance,abs(f64(i)-f64(best))*work[i]);uniform_distance=psionic_ops_accumulate(uniform_distance,abs(f64(i)-center));}
+        result.score=psionic_ops_total(expected);result.confidence=1;
+        if n>1 {result.confidence=qr_nonnegative(1-psionic_ops_total(distance)/(psionic_ops_total(uniform_distance)/f64(n)));}
+    }
+    for i:0..<n {out[i]=work[i];}return result;
+}
+// book:end readout
+#test "pinned original slot IDs are bounded and stable" {
+    #assert qr_pinned_slot(-1)==-1 && qr_pinned_slot(256)==-1;
+    #assert qr_pinned_slot(0)==32 && qr_pinned_slot(1)==33;
+    for i:0..<256 {#assert qr_pinned_slot(i)==QR_QWEN_SLOTS[i] && qr_pinned_slot(i)>=0 && qr_pinned_slot(i)<248320;}
+}
+#test "readout kind, temperature and vocabulary boundaries are exact" {
+    #assert qr_valid(0,1,1) && qr_valid(0,255,1) && !qr_valid(0,0,1) && !qr_valid(0,256,1);
+    #assert qr_valid(1,2,1) && !qr_valid(1,1,1) && !qr_valid(1,3,1);
+    #assert qr_valid(2,1,1) && qr_valid(2,10,1) && !qr_valid(2,0,1) && !qr_valid(2,11,1);
+    #assert !qr_valid(3,1,1) && !qr_valid(0,1,0) && !qr_valid(0,1,-1);
+    #assert !qr_vocab_valid(0) && qr_vocab_valid(1) && qr_vocab_valid(262144) && !qr_vocab_valid(262145);
+    #assert qr_nonnegative(1)==1 && qr_nonnegative(-1)==0;
+    a:=[3]f32.[1,2,2];ids:=[3]int.[0,1,2];#assert qr_argmax_all(a[..])==1 && qr_argmax_slots(a[..],ids[..])==1;
+}
+#test "all input and output counts and the first slot are checked" {
+    logits:=[3]f32.[0,1,2];slots:=[2]int.[0,1];out:[2]f64;work:[2]f64;
+    #assert qr_read(QrKind.choice,0,logits[..],slots[..],out[..],work[..],false).status==QrStatus.shape;
+    #assert qr_read(QrKind.choice,1,logits[0..<0],slots[..],out[..],work[..],false).status==QrStatus.shape;
+    #assert qr_read(QrKind.choice,1,logits[..],slots[..],out[0..<1],work[..],false).status==QrStatus.capacity;
+    #assert qr_read(QrKind.choice,1,logits[..],slots[..],out[..],work[0..<1],false).status==QrStatus.capacity;
+    #assert qr_read(QrKind.choice,1,logits[..],slots[..],out[..],work[..],true).status==QrStatus.alias;
+    slots[0]=-1;#assert qr_read(QrKind.choice,1,logits[..],slots[..],out[..],work[..],false).status==QrStatus.index;
+}
+
+#load "../fixtures/readout/readout-vectors.coax";

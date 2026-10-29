@@ -90,6 +90,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/read-options.coax",
+      "chapter": "psionic/book/ch09-read-the-options.md",
+      "stdout": "psionic/fixtures/read-options.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

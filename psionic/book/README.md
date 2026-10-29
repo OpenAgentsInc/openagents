@@ -26,6 +26,7 @@ run examples directly without the check command.
 | [6. Attention without training](ch06-attention-without-training.md) | Runnable: bounded CPU | Execute a dense causal decoder block with grouped-query attention, rotary positions and a key/value cache. |
 | [7. A hybrid sequence model](ch07-a-hybrid-sequence-model.md) | Runnable: bounded CPU | Compose Qwen-style causal linear and full-attention layers with their separate states. |
 | [8. Decisions have a different mask](ch08-decisions-have-a-different-mask.md) | Runnable: bounded CPU | Compute bidirectional full-attention blocks and fork all live hybrid prefix state. |
+| [9. Read the options](ch09-read-the-options.md) | Runnable: bounded CPU | Compute temperature-scaled option probabilities, vocabulary slot mass and typed decision statistics. |
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
 sets the proposed full reading order: early Elephant/Mammoth and useful

@@ -1,0 +1,16 @@
+{
+  "coax/bin/coax": "5388de6c9c976ff6328fd2f4f4aa3433e28d529deaac5f78a74abaab39c52498",
+  "psionic/lib/readout.coax": "e6dfb06648b25a754e6946c9b8c6b44998314e1dd9ad02cd31dc1d8db5e26552",
+  "psionic/lib/ops.coax": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+  "psionic/fixtures/readout/qwen-slot-ids.coax": "19d1bf515c17a37daa9831b6bf0aff43b9630c1333244c754836abb7d6e73190",
+  "psionic/fixtures/readout/readout-vectors.coax": "aea35f847bf603d0d1db0f20f6450add3a27b4963aa0b05585866448dae5b226",
+  "psionic/fixtures/text/ch05/goldens.json.gz": "89ae7696426ba69953de3a9d059ffb4da47121c846f0b22cf4f91831ebeca207",
+  "psionic/tests/readout_oracle.py": "6c21ffcd95b9362fcc578c22ff4807fe16dbc64eccd4b21ed5ab20732a852e90",
+  "psionic/tests/readout.c": "e9666e060ba45c5086086936d69fb70a6936b5fbbb6a8c758faddcb2f050cb14",
+  "psionic/platform/readout-memory.c": "6530d95adff706788883bb7f2170683d679a7dd376c2e4375667167ea630a233",
+  "psionic/platform/readout-memory.h": "370ae3a39e7ede4a6702f844036b08d288937de8388d1b73d581e481d20b7acf",
+  "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+  "psionic/examples/read-options.coax": "28cc05330cbc08f5a8e514a543a8124ee57a04b02e1df8aebbb9d59422b4ddd2",
+  "psionic/fixtures/read-options.out": "d0c3e46d87859383881a8dfb2cf1aaba92584fdc641732fe934e11fab9fff6c3",
+  "psionic/book/ch09-read-the-options.md": "ec6a0c64d00b3a49307e233ee35185bff975bcbf8845ec71528bfb0653a3afd0"
+}

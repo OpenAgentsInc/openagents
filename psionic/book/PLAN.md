@@ -7,7 +7,8 @@ Proposal, updated 2026-10-29. [Chapter 1](ch01-learning-a-number.md) and
 [Chapter 5](ch05-text-becomes-a-model-request.md) and
 [Chapter 6](ch06-attention-without-training.md) and
 [Chapter 7](ch07-a-hybrid-sequence-model.md) and
-[Chapter 8](ch08-decisions-have-a-different-mask.md) are runnable on the tested CPU host.
+[Chapter 8](ch08-decisions-have-a-different-mask.md) and
+[Chapter 9](ch09-read-the-options.md) are runnable on the tested CPU host.
 The remaining chapters below are outlines, not implemented capabilities. A
 chapter ships with shared Coax library code, authored checks, independent
 native tests, source-linked examples and an exact supported scope. Coax
@@ -46,7 +47,7 @@ on the shared numerics in I and supplies the forward primitives reused later.
 | [6. Attention without training](ch06-attention-without-training.md) — runnable | A bounded dense causal block, interleaved rotary tables, grouped-query attention and caches; full-sequence versus incremental results. |
 | [7. A hybrid sequence model](ch07-a-hybrid-sequence-model.md) — runnable: bounded causal CPU profile | Qwen-style dense blocks, causal convolution and Gated DeltaNet state transitions alongside causal full attention; upstream and real-weight qualification remain separate. |
 | [8. Decisions have a different mask](ch08-decisions-have-a-different-mask.md) — runnable: bounded CPU | Block-bidirectional full attention and complete hybrid prefix snapshots, with sequential isolated suffix forks; whole-model qualification remains separate. |
-| 9. Read the options | Slot LM-head readout, probabilities, typed answers and calibration fixtures under the exact decision contract. |
+| [9. Read the options](ch09-read-the-options.md) — runnable: bounded CPU | Slot LM-head probabilities, vocabulary mass and typed statistics with explicit temperature; serialization and calibration loading remain separate. |
 | 10. Execute Elephant | Complete original-weight text decisions, independent intermediate/logit/request oracles and measured resource admission. |
 | 11. Execute Mammoth | Reuse the engine with its own dimensions, shards and memory profile; complete real-weight checks for this checkpoint. |
 
