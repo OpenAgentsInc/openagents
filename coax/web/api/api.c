@@ -262,6 +262,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (player_route(&q)) return;
   if (private_route(&q)) return;
   if (drops_route(&q)) return;
+  if (villa_route(&q)) return;
   if (admin_route(&q)) return;
   api_json(cl->fd, 404, "{\"error\":\"not found\"}");
 }

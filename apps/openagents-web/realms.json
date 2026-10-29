@@ -104,6 +104,8 @@
         "alt": "Planetary Villa: Hecate's Cemetery, a moonlit memorial garden",
         "module": "villa",
         "slot": "hecates-cemetery",
+        "uploads": "image/*,video/*",
+        "card": "/realm/hecates-cemetery/card.jpg",
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
         "assets": ["index:/realm/hecates-cemetery/assets/Villa.indices", "particles:/particles.wgsl"]
       } }

@@ -39,3 +39,8 @@ bool npc_route(const request *q);         // npc.c
 bool private_route(const request *q);     // private.c
 bool room_route(const request *q);        // room.c
 bool drops_route(const request *q);       // drops.c
+bool drops_token(char *out, size_t cap);   // the bucket's part, shared with villa.c
+bool drops_open_upload(const char *object, const char *type, const char *bytes, const char *from, char *out, size_t cap);
+void drops_inspect(const char *object, long long *size, char **head_hex);
+void drops_delete_object(const char *object);
+bool villa_route(const request *q);       // villa.c

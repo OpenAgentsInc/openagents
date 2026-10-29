@@ -34,6 +34,7 @@
 #load "../../verse/throw.coax";
 #load "../../verse/cinematic.coax";
 #load "../../verse/particles.coax";
+#load "villapet.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 16000;
@@ -145,6 +146,8 @@ Villa :: struct {
   boxes: [BOXES * 6] f32; box_n: int;
   shadow_n: int;
   plate_n: int;
+  // Your pet, the garden's tombstones and a memorial open (villapet.coax).
+  pet: [1] PetUi;
 }
 
 // ---- the layout (metres; +z north, +x east)
@@ -300,6 +303,7 @@ villa_start :: (s: [] Villa) {
   s[0].fetch.ball = verse_ball_place(ground(), s[0].heights[..], f32(SPAWN_X) + 1.2, f32(SPAWN_Z) + 3, 0.12);
   s[0].fetch.ball.held = 99;   // put away until fetch is played (a skill, later)
   build_scenery(s);
+  pet_start(s[0].pet[..]);
 }
 
 // The player's walls (on its flat floor) and the camera's scenery (on the ground).
@@ -393,6 +397,7 @@ skip_flight :: (s: [] Villa) -> bool {
 villa_key :: (s: [] Villa, key: int, mods: int) -> bool #export_c {
   if !s[0].started { villa_start(s); }
   if skip_flight(s) { return true; }
+  if pet_key(s[0].pet[..], key) { s[0].held = 0; return true; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
   b := hold_bit(key);
@@ -417,6 +422,7 @@ villa_pointer :: (s: [] Villa, x: f32, y: f32, phase: int, kind: int, id: int) -
   if kind != 0 { s[0].touch = true; }
   if phase == 0 && skip_flight(s) { return true; }
   if villa_busy(s) { return true; }
+  if pet_pointer(s[0].pet[..], x, y, phase) { return true; }
   if kind != 0 { return false; }
   k := hi(s[0].dpr, 0.5);
   if phase == 0 { s[0].drag_on = true; s[0].drag_id = id; s[0].drag_x = x; s[0].drag_y = y; s[0].drag_travel = 0; return true; }
@@ -523,6 +529,31 @@ villa_step :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: 
     s[0].fetch = verse_fetch_step_among(s[0].fetch, ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), shown, t, s[0].walls[0..<s[0].block_n * 6]);
   } else {
     s[0].fetch.dog.vel = v3(0, 0, 0); s[0].fetch.dog.walking = false;
+  }
+  pet_tick(s[0].pet[..], t);
+  near_stone(s);
+}
+
+// The tombstone you stand at (within two metres of it), for its card.
+near_stone :: (s: [] Villa) {
+  p := s[0].pet[..];
+  p[0].near = -1;
+  best := 2.2f32;
+  for i: 0..<p[0].garden {
+    q := p[0].g_plot[i];
+    d := flat_length(sub(s[0].feet, v3(plot_x(q), 0, plot_z(q) + 0.62)));
+    if d < best { best = d; p[0].near = i; }
+  }
+}
+
+// Everyone's pets' tombstones, in their plots; yours with a small light on it.
+pet_stones :: (s: [] Villa) {
+  p := s[0].pet[..];
+  for i: 0..<p[0].garden {
+    q := p[0].g_plot[i];
+    x := plot_x(q); z := plot_z(q) + 0.62;
+    tombstone(s, q % 4, x, z, 1);
+    if p[0].g_mine[i] { ball(s, LOOK_GLOW, v3(x, ground_at(s, x, z) + 1.45, z), 0.07, 0.85, 0.9, 1.0); }
   }
 }
 
@@ -775,7 +806,10 @@ figures :: (s: [] Villa, u: [] f32) {
       if !finite3(a) || !finite3(b) { continue; }
       look := ifx glowing then LOOK_GLOW else LOOK_SHADOW;
       red := 0.01f32; green := 0.012f32; blue := 0.02f32;
-      if glowing { red = 0.92; green = 0.95; blue = 1.0; }
+      if glowing {   // white light, a little of your pet's coat in it
+        coat := s[0].pet[0].coat;
+        red = 0.72 + 0.28 * coat[0]; green = 0.75 + 0.25 * coat[1]; blue = 0.8 + 0.2 * coat[2];
+      }
       if glowing && (region == REGION_EYE || region == REGION_NOSE) { look = LOOK_EYE; red = 0.05; green = 0.07; blue = 0.12; }
       if length(sub(b, a)) > 0.002 { limb(s, SHAPE_CYLINDER, look, a, b, (ra + rb) * 0.5, red, green, blue); }
       ball(s, look, a, ra, red, green, blue);
@@ -948,6 +982,7 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
   } else {
     scenery(s, u);
     old_stones(s);
+    pet_stones(s);
   }
   figures(s, u);
   particles(s);
@@ -975,11 +1010,27 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
   u[U_GROUND] = f32(CELLS); u[U_GROUND + 1] = f32(CELL); u[U_GROUND + 2] = f32(EDGE); u[U_GROUND + 3] = f32(EDGE);
   paths(u);
   n := hud(s, out, u, move_on, ox, oy, pad_x, pad_y);
+  if !villa_busy(s) { n = pet_draw(s, out, u, n); }
   u[5] = f32(s[0].plate_n);
   return n;
 }
 
 villa_draws :: (s: [] Villa) -> int #export_c { return DRAWS; }
+
+// ---- your pet, for the face (villapet.coax)
+villa_pet_next :: (s: [] Villa) -> int #export_c { return pet_next(s[0].pet[..]); }
+villa_pet_post :: (kind: int) -> bool #export_c { return pet_post(kind); }
+villa_pet_url :: (s: [] Villa, kind: int, out: [] u8) -> int #export_c { return pet_url(s[0].pet[..], kind, out); }
+villa_pet_body :: (s: [] Villa, kind: int, out: [] u8) -> int #export_c { return pet_body(s[0].pet[..], kind, out); }
+villa_pet_answer :: (s: [] Villa, kind: int, status: int, t: string) #export_c { pet_answer(s[0].pet[..], kind, status, t); }
+villa_pet_files :: (s: [] Villa, t: string) #export_c { s[0].pet[0].files_n = pet_copy(s[0].pet[0].files[..], t); }
+villa_pet_scanned :: (s: [] Villa, t: string) #export_c { pet_take(s[0].pet[..], t, false); }
+villa_typed :: (s: [] Villa, t: string) #export_c { pet_typed(s[0].pet[..], t); }
+villa_wants_text :: (s: [] Villa) -> bool #export_c { return s[0].pet[0].focus != -1 && s[0].pet[0].view != PV_NONE; }
+villa_hash :: (s: [] Villa, t: string) #export_c {
+  if !s[0].started { villa_start(s); }
+  if t.count == 10 && t[0] == 'm' && t[1] == '/' { pet_open_memorial(s[0].pet[..], t[2..<10]); }
+}
 villa_store_cap :: (k: int) -> int #export_c {
   if k == 0 { return GROUND_POINTS * 4; }
   return OBJECTS * OBJECT_FLOATS * 4;

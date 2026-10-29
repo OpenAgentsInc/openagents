@@ -104,6 +104,7 @@
 
 import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
 import { startDrops } from "./drop.js";
+import { startUploads } from "./uploads.js";
 import { startVoice, ACT_VOICE } from "./voice.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
@@ -1025,6 +1026,8 @@ function send(kind, text = "") {
 globalThis.coaxial = { send, ready: false };
 // A page that takes dropped files (data-drops: /projects, NEW PROJECT): drop.js uploads them, the app draws it.
 if (script?.dataset.drops) startDrops({ send });
+// A page that sends files to this site (data-uploads: what its picker takes): uploads.js, on the app's action 30.
+if (script?.dataset.uploads) startUploads({ send, accept: script.dataset.uploads });
 // A page that talks (data-voice: the route its voice host answers as): voice.js, on the app's VOICE.
 const voice = script?.dataset.voice
   ? startVoice({ send, route: script.dataset.voice, wasmUrl: script.dataset.voiceWasm || "/build/voice.wasm" }) : null;

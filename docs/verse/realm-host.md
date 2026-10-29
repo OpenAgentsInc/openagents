@@ -39,6 +39,7 @@ written files are behind the table. Don't edit the written files.
 | `realm.slot_was` | A slot this realm used before, read once when its own is empty. The Haunted House kept its saves under `realm` (its module's name) before slots existed. |
 | `realm.assets` | The page's `data-assets` (host.js): `pack:` (the realm's asset pack, below), or `data:`, `storage:`, `index:`, `layers:`, `sound:` and `loop:` one file each; and `particles:/particles.wgsl` for particles. |
 
+| `realm.uploads` | What the page's file picker takes (`image/*,video/*`): the page gets `data-uploads`, and its action 30 picks files and sends them to this site's admit/upload/scan protocol (`coax/web/uploads.js`; Planetary Villa's pets). |
 | `realm.golden` | What the release walk asks of the page (below): `lit`, the least share of its pixels lit (the fixture 0.015, the Haunted House 0.03); `settle`, milliseconds to wait before its shot; `blocks`, how many 8 px blocks may differ from its golden. |
 
 Each realm also needs `realm/<slug>/index.md`, written by hand: the page as

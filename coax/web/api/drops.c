@@ -505,3 +505,11 @@ bool drops_route(const request *q) {
   api_json(q->fd, 404, "{\"error\":\"not found\"}");
   return true;
 }
+
+// The bucket's part for villa.c (Planetary Villa's pet files share this private bucket).
+bool drops_token(char *out, size_t cap) { return token(out, cap); }
+bool drops_open_upload(const char *object, const char *type, const char *bytes, const char *from, char *out, size_t cap) {
+  return open_upload(object, type, bytes, from, out, cap);
+}
+void drops_inspect(const char *object, long long *size, char **head_hex) { char md5[64]; inspect(object, size, md5, sizeof md5, head_hex); }
+void drops_delete_object(const char *object) { delete_object(object); }

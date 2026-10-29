@@ -1,0 +1,932 @@
+// Your pet in Hecate's Cemetery, and the others' tombstones and memorials
+// (hc-pet-upload, hc-pet-avatar-agent, hc-pet-customize, hc-emotes,
+// hc-tombstones, hc-memorial-page, hc-memorial-share; coax/web/api/villa.c and
+// migrations/0028_villa_pets.sql answer). Loaded by villa.coax: the panel is
+// drawn in its HUD, its presses and typing come first, and the face makes the
+// requests this file writes (villa_pet_next, villa_pet_url, villa_pet_body)
+// and hands back their answers (villa_pet_answer). Uploads go through the
+// page (action 30, coax/web/uploads.js).
+
+PET_FIELDS :: 6;
+PF_NAME :: 0; PF_BORN :: 1; PF_DIED :: 2; PF_LINE :: 3; PF_STORY :: 4; PF_TRAITS :: 5;
+FIELD_BYTES :: 1200;
+PF_CAP :: [6] int.[40, 24, 24, 120, 1200, 300];
+PF_LABEL :: [6] string.["NAME", "BORN", "PASSED", "A LINE FOR THE STONE", "ABOUT THEM", "WHAT MADE THEM THEM"];
+PF_KEY :: [6] string.["name", "born", "died", "line", "story", "traits"];
+
+// The avatar's numbers (verse/figure.coax Shape, in its order) and what the panel calls them.
+AV_NUMBERS :: 10;
+AV_KEY :: [10] string.["size", "legs", "body", "girth", "head", "snout", "ears", "ear_size", "tail", "fluff"];
+AV_LABEL :: [10] string.["SIZE", "LEGS", "BODY", "BUILD", "HEAD", "SNOUT", "EARS DOWN", "EAR SIZE", "TAIL", "FLUFF"];
+AV_LO :: [10] f32.[0.4, 0.5, 0.6, 0.6, 0.7, 0.4, 0, 0.5, 0, 0.5];
+AV_HI :: [10] f32.[1.8, 1.6, 1.6, 1.6, 1.5, 1.6, 1, 1.8, 1.8, 2];
+AV_USUAL :: [10] f32.[1, 1, 1, 1, 1, 1, 0, 1, 1, 1];
+PATTERN_WORDS :: [5] string.["plain", "patches", "points", "stripes", "socks"];
+// Coat swatches: linear RGB.
+SWATCHES :: 8;
+SWATCH :: [24] f32.[0.02, 0.02, 0.02,  0.3, 0.15, 0.05,  0.55, 0.36, 0.2,  0.8, 0.55, 0.25,  0.92, 0.8, 0.55,  0.95, 0.93, 0.9,  0.45, 0.45, 0.48,  0.6, 0.3, 0.12];
+EMOTES :: 6;
+EMOTE_LABEL :: [6] string.["SIT", "PLAY BOW", "ROLL OVER", "HOWL", "WAG", "SLEEP"];
+
+// The requests, one at a time, first wanted first.
+ASK_MINE :: 1; ASK_NEW :: 2; ASK_SAVE :: 4; ASK_AGENT :: 8; ASK_PLACE :: 16; ASK_GARDEN :: 32; ASK_MEMORIAL :: 64; ASK_NOTE :: 128; ASK_HIDE :: 256;
+ASK_KINDS :: 9;
+
+PV_NONE :: 0; PV_PET :: 1; PV_MEMORIAL :: 2;
+AGENT_NONE :: 0; AGENT_READING :: 1; AGENT_READY :: 2; AGENT_FAILED :: 3;
+GARDEN_MAX :: 60;
+CHOICES :: 8;
+NOTES :: 6;
+NOTE_BYTES :: 600;
+BUTTONS :: 48;
+// What a button does.
+B_OPEN :: 1; B_CLOSE :: 2; B_FIELD :: 3; B_PHOTOS :: 4; B_AGENT :: 5; B_PLAY :: 6; B_TAB :: 7; B_SLIDER :: 8; B_PATTERN :: 9;
+B_COAT :: 10; B_MARKS :: 11; B_EMOTE :: 12; B_MEMORIAL :: 13; B_SHARE :: 14; B_NOTE :: 15; B_SEND :: 16; B_HIDE :: 17;
+TYPE_NOTE :: 100;    // focus: the note box on a memorial
+
+PetUi :: struct {
+  view: int;
+  tab: int;                                  // 0 about them, 1 their look
+  asks: int;
+  has: bool; placed: bool; plot: int;
+  id: [24] u8; id_n: int;
+  slug: [12] u8; slug_n: int;
+  text: [PET_FIELDS * FIELD_BYTES] u8; text_n: [PET_FIELDS] int;
+  focus: int;                                // the field being typed in, -1 none
+  avatar: [AV_NUMBERS] f32; pattern: int; coat: [3] f32; marks: [3] f32;
+  look_new: bool;                            // the face should set the dog's shape
+  dirty: bool; dirty_t: f32;                 // edits not yet sent, and how long ago
+  agent: int; note: [200] u8; note_n: int;
+  choices: int; choice: [CHOICES * 220] u8; choice_n: [CHOICES] int;
+  files: [900] u8; files_n: int;
+  emote: int;                                // asked of the face, -1 none
+  // The garden's tombstones (everyone's placed pets).
+  garden: int; garden_t: f32;
+  g_plot: [GARDEN_MAX] int; g_mine: [GARDEN_MAX] bool;
+  g_name: [GARDEN_MAX * 40] u8; g_name_n: [GARDEN_MAX] int;
+  g_line: [GARDEN_MAX * 120] u8; g_line_n: [GARDEN_MAX] int;
+  g_slug: [GARDEN_MAX * 8] u8;
+  near: int;                                 // the tombstone you stand at, -1 none
+  // A memorial open.
+  m_slug: [8] u8; m_ok: bool; m_mine: bool; m_status: int;
+  m_name: [40] u8; m_name_n: int; m_dates: [60] u8; m_dates_n: int; m_line: [120] u8; m_line_n: int;
+  m_story: [1200] u8; m_story_n: int; m_traits: [300] u8; m_traits_n: int; m_ach: [300] u8; m_ach_n: int;
+  notes: int; n_num: [NOTES] int; n_name: [NOTES * 40] u8; n_name_n: [NOTES] int; n_text: [NOTES * NOTE_BYTES] u8; n_text_n: [NOTES] int;
+  hide_n: int;
+  typed: [NOTE_BYTES] u8; typed_n: int;
+  toast: [120] u8; toast_n: int; toast_t: f32;
+  field_box: Box;
+  button: [BUTTONS] Box; button_kind: [BUTTONS] int; button_arg: [BUTTONS] int; buttons: int;
+  slide: int;                                // the slider being dragged, -1 none
+  action: int; outbox: [256] u8; out_n: int;
+}
+
+// ---- small things
+
+pet_s :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+pet_field :: (p: [] PetUi, f: int) -> string { return cast(string) p[0].text[f * FIELD_BYTES..<f * FIELD_BYTES + p[0].text_n[f]]; }
+pet_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for k: 0..<s.count { out[at + k] = s[k]; }
+  return at + s.count;
+}
+pet_copy :: (dst: [] u8, s: string) -> int {
+  n := lo_int(s.count, dst.count);
+  for k: 0..<n { dst[k] = s[k]; }
+  return n;
+}
+lo_int :: (a: int, b: int) -> int { return ifx a < b then a else b; }
+pet_toast :: (p: [] PetUi, s: string) { p[0].toast_n = pet_copy(p[0].toast[..], s); p[0].toast_t = 4; }
+
+// A JSON string's contents, written escaped, into out at; the end, -1 if it doesn't fit.
+pj_put_str :: (out: [] u8, at: int, s: string) -> int {
+  o := pet_put(out, at, "\"");
+  for c: s {
+    if o < 0 || o + 7 > out.count { return -1; }
+    if c == 34 || c == 92 { out[o] = 92; out[o + 1] = c; o += 2; }
+    else if c == 10 { out[o] = 92; out[o + 1] = 'n'; o += 2; }
+    else if c < 32 { out[o] = 32; o += 1; }
+    else { out[o] = c; o += 1; }
+  }
+  return pet_put(out, o, "\"");
+}
+pj_put_num :: (out: [] u8, at: int, v: f32) -> int {
+  if at < 0 { return -1; }
+  w := ifx finite(v) then v else 0.0f32;
+  o := at;
+  if w < 0 { o = pet_put(out, o, "-"); w = -w; }
+  whole := cast(int) floor(w);
+  frac := cast(int) floor((w - f32(whole)) * 1000 + 0.5);
+  if frac >= 1000 { whole += 1; frac -= 1000; }
+  digits: [12] u8; d := 0;
+  if whole == 0 { digits[0] = '0'; d = 1; }
+  while whole > 0 && d < 12 { digits[d] = cast(u8) (48 + whole % 10); whole /= 10; d += 1; }
+  for k: 0..<d { if o < 0 || o >= out.count { return -1; } out[o] = digits[d - 1 - k]; o += 1; }
+  if o < 0 || o + 4 > out.count { return -1; }
+  out[o] = '.'; out[o + 1] = cast(u8) (48 + frac / 100); out[o + 2] = cast(u8) (48 + frac / 10 % 10); out[o + 3] = cast(u8) (48 + frac % 10);
+  return o + 4;
+}
+
+// ---- reading JSON (the server's answers): enough for objects, arrays, strings and numbers
+
+pj_space :: (t: string, i: int) -> int {
+  j := i;
+  while j < t.count && (t[j] == 32 || t[j] == 10 || t[j] == 13 || t[j] == 9) { j += 1; }
+  return j;
+}
+pj_string_end :: (t: string, i: int) -> int {
+  j := i + 1;
+  while j < t.count {
+    if t[j] == 92 { j += 2; continue; }
+    if t[j] == 34 { return j + 1; }
+    j += 1;
+  }
+  return t.count;
+}
+// Where the value at i ends.
+pj_end :: (t: string, i: int) -> int {
+  if i >= t.count { return t.count; }
+  if t[i] == 34 { return pj_string_end(t, i); }
+  if t[i] == 123 || t[i] == 91 {
+    depth := 0; j := i;
+    while j < t.count {
+      c := t[j];
+      if c == 34 { j = pj_string_end(t, j); continue; }
+      if c == 123 || c == 91 { depth += 1; }
+      if c == 125 || c == 93 { depth -= 1; if depth == 0 { return j + 1; } }
+      j += 1;
+    }
+    return t.count;
+  }
+  j := i;
+  while j < t.count && t[j] != 44 && t[j] != 125 && t[j] != 93 && t[j] != 32 && t[j] != 10 { j += 1; }
+  return j;
+}
+// The value of key in the object at obj, or -1.
+pj_get :: (t: string, obj: int, key: string) -> int {
+  i := pj_space(t, obj);
+  if i >= t.count || t[i] != 123 { return -1; }
+  i = pj_space(t, i + 1);
+  while i < t.count && t[i] == 34 {
+    e := pj_string_end(t, i);
+    keyed := e - i - 2 == key.count;
+    if keyed { for k: 0..<key.count { if t[i + 1 + k] != key[k] { keyed = false; break; } } }
+    i = pj_space(t, e);
+    if i >= t.count || t[i] != 58 { return -1; }
+    i = pj_space(t, i + 1);
+    if keyed { return i; }
+    i = pj_space(t, pj_end(t, i));
+    if i < t.count && t[i] == 44 { i = pj_space(t, i + 1); } else { return -1; }
+  }
+  return -1;
+}
+// A string value, unescaped, into out; its length (0 when not a string).
+pj_str :: (t: string, at: int, out: [] u8) -> int {
+  if at < 0 || at >= t.count || t[at] != 34 { return 0; }
+  e := pj_string_end(t, at) - 1;
+  i := at + 1; o := 0;
+  while i < e && o < out.count {
+    c := t[i];
+    if c == 92 && i + 1 < e {
+      d := t[i + 1];
+      if d == 'n' { out[o] = 10; } else if d == 't' { out[o] = 32; } else if d == 'u' { out[o] = '?'; i += 4; } else { out[o] = d; }
+      o += 1; i += 2; continue;
+    }
+    out[o] = c; o += 1; i += 1;
+  }
+  return o;
+}
+pj_num :: (t: string, at: int) -> f32 {
+  if at < 0 || at >= t.count { return 0; }
+  i := at; neg := false;
+  if t[i] == 45 { neg = true; i += 1; }
+  v := 0.0f64; seen := false;
+  while i < t.count && t[i] >= 48 && t[i] <= 57 { v = v * 10 + cast(f64) (t[i] - 48); i += 1; seen = true; }
+  if i < t.count && t[i] == 46 {
+    i += 1; d := 0.1f64;
+    while i < t.count && t[i] >= 48 && t[i] <= 57 { v += cast(f64) (t[i] - 48) * d; d *= 0.1; i += 1; }
+  }
+  if !seen || v > 1000000 { return 0; }
+  return cast(f32) (ifx neg then -v else v);
+}
+pj_true :: (t: string, at: int) -> bool { return at >= 0 && at < t.count && t[at] == 't'; }
+// The array at at's next element after i (i = at to start), or -1 at its end.
+pj_next :: (t: string, at: int, i: int) -> int {
+  if at < 0 || at >= t.count || t[at] != 91 { return -1; }
+  j := 0;
+  if i == at { j = pj_space(t, at + 1); }
+  else { j = pj_space(t, pj_end(t, i)); if j < t.count && t[j] == 44 { j = pj_space(t, j + 1); } else { return -1; } }
+  if j >= t.count || t[j] == 93 { return -1; }
+  return j;
+}
+
+// ---- what the server said
+
+// A pet (yours) as the server has it: its fields, look, the agent's choices, its files.
+pet_take :: (p: [] PetUi, t: string, all: bool) {
+  i := pj_space(t, 0);
+  id := pj_get(t, i, "id");
+  if id < 0 { return; }
+  p[0].has = true;
+  p[0].id_n = pj_str(t, id, p[0].id[..]);
+  p[0].slug_n = pj_str(t, pj_get(t, i, "slug"), p[0].slug[..]);
+  st: [12] u8;
+  sn := pj_str(t, pj_get(t, i, "status"), st[..]);
+  p[0].placed = sn == 6 && st[0] == 'p';
+  pl := pj_get(t, i, "plot");
+  p[0].plot = ifx pl >= 0 && t[pl] != 'n' then cast(int) pj_num(t, pl) else -1;
+  if all {
+    for f: 0..<PET_FIELDS {
+      if f == p[0].focus { continue; }
+      p[0].text_n[f] = pj_str(t, pj_get(t, i, PF_KEY[f]), p[0].text[f * FIELD_BYTES..<f * FIELD_BYTES + PF_CAP[f]]);
+    }
+  }
+  ag: [12] u8;
+  an := pj_str(t, pj_get(t, i, "agent"), ag[..]);
+  p[0].agent = ifx an == 7 then AGENT_READING else ifx an == 5 then AGENT_READY else ifx an == 6 then AGENT_FAILED else AGENT_NONE;
+  p[0].note_n = pj_str(t, pj_get(t, i, "agent_note"), p[0].note[..]);
+  if all || p[0].agent == AGENT_READY {
+    av := pj_get(t, i, "avatar");
+    if av >= 0 {
+      for k: 0..<AV_NUMBERS { v := pj_get(t, av, AV_KEY[k]); if v >= 0 { p[0].avatar[k] = clamp(pj_num(t, v), AV_LO[k], AV_HI[k]); } }
+      pw: [12] u8;
+      pn := pj_str(t, pj_get(t, av, "pattern"), pw[..]);
+      for k: 0..<5 { if pet_s(pw[..], pn) == PATTERN_WORDS[k] { p[0].pattern = k; } }
+      for which: 0..<2 {
+        arr := pj_get(t, av, ifx which == 0 then "coat" else "marks");
+        e := arr; c := 0;
+        while c < 3 { e = pj_next(t, arr, e); if e < 0 { break; } v := clamp(pj_num(t, e), 0, 1); if which == 0 { p[0].coat[c] = v; } else { p[0].marks[c] = v; } c += 1; }
+      }
+      p[0].look_new = true;
+    }
+    ch := pj_get(t, i, "choices");
+    p[0].choices = 0;
+    e := ch;
+    while p[0].choices < CHOICES {
+      e = pj_next(t, ch, e);
+      if e < 0 { break; }
+      c := p[0].choices;
+      slot := p[0].choice[c * 220..<c * 220 + 220];
+      n := pj_str(t, pj_get(t, e, "part"), slot);
+      n = pet_put(slot, n, ": ");
+      if n < 0 { continue; }
+      n += pj_str(t, pj_get(t, e, "why"), slot[n..<220]);
+      p[0].choice_n[c] = n;
+      p[0].choices = c + 1;
+    }
+  }
+}
+
+pet_take_garden :: (p: [] PetUi, t: string) {
+  arr := pj_get(t, 0, "pets");
+  e := arr; n := 0;
+  while n < GARDEN_MAX {
+    e = pj_next(t, arr, e);
+    if e < 0 { break; }
+    p[0].g_plot[n] = clamp_i(cast(int) pj_num(t, pj_get(t, e, "plot")), 0, 63);
+    p[0].g_name_n[n] = pj_str(t, pj_get(t, e, "name"), p[0].g_name[n * 40..<n * 40 + 40]);
+    p[0].g_line_n[n] = pj_str(t, pj_get(t, e, "line"), p[0].g_line[n * 120..<n * 120 + 120]);
+    _ := pj_str(t, pj_get(t, e, "slug"), p[0].g_slug[n * 8..<n * 8 + 8]);
+    p[0].g_mine[n] = pj_true(t, pj_get(t, e, "mine"));
+    n += 1;
+  }
+  p[0].garden = n;
+}
+clamp_i :: (v: int, a: int, b: int) -> int { return ifx v < a then a else ifx v > b then b else v; }
+
+pet_take_memorial :: (p: [] PetUi, t: string) {
+  i := pj_space(t, 0);
+  p[0].m_name_n = pj_str(t, pj_get(t, i, "name"), p[0].m_name[..]);
+  born: [24] u8; died: [24] u8;
+  bn := pj_str(t, pj_get(t, i, "born"), born[..]); dn := pj_str(t, pj_get(t, i, "died"), died[..]);
+  d := pet_put(p[0].m_dates[..], 0, pet_s(born[..], bn));
+  if dn > 0 { d = pet_put(p[0].m_dates[..], d, ifx bn > 0 then " - " else ""); d = pet_put(p[0].m_dates[..], d, pet_s(died[..], dn)); }
+  p[0].m_dates_n = ifx d < 0 then 0 else d;
+  p[0].m_line_n = pj_str(t, pj_get(t, i, "line"), p[0].m_line[..]);
+  p[0].m_story_n = pj_str(t, pj_get(t, i, "story"), p[0].m_story[..]);
+  p[0].m_traits_n = pj_str(t, pj_get(t, i, "traits"), p[0].m_traits[..]);
+  p[0].m_ach_n = pj_str(t, pj_get(t, i, "achievements"), p[0].m_ach[..]);
+  p[0].m_mine = pj_true(t, pj_get(t, i, "mine"));
+  pet_take_notes(p, t);
+  p[0].m_ok = p[0].m_name_n > 0;
+}
+pet_take_notes :: (p: [] PetUi, t: string) {
+  arr := pj_get(t, 0, "notes");
+  if arr < 0 { return; }
+  // the last NOTES of them
+  total := 0; e := arr;
+  while true { e = pj_next(t, arr, e); if e < 0 { break; } total += 1; }
+  skip := ifx total > NOTES then total - NOTES else 0;
+  e = arr; k := 0; n := 0;
+  while n < NOTES {
+    e = pj_next(t, arr, e);
+    if e < 0 { break; }
+    k += 1;
+    if k <= skip { continue; }
+    p[0].n_num[n] = cast(int) pj_num(t, pj_get(t, e, "n"));
+    p[0].n_name_n[n] = pj_str(t, pj_get(t, e, "name"), p[0].n_name[n * 40..<n * 40 + 40]);
+    p[0].n_text_n[n] = pj_str(t, pj_get(t, e, "text"), p[0].n_text[n * NOTE_BYTES..<n * NOTE_BYTES + NOTE_BYTES]);
+    n += 1;
+  }
+  p[0].notes = n;
+}
+
+// ---- the requests the face makes
+
+pet_start :: (p: [] PetUi) {
+  p[0].focus = -1; p[0].slide = -1; p[0].near = -1; p[0].emote = -1; p[0].plot = -1;
+  for k: 0..<AV_NUMBERS { p[0].avatar[k] = AV_USUAL[k]; }
+  p[0].coat[0] = 0.55; p[0].coat[1] = 0.36; p[0].coat[2] = 0.2;
+  p[0].marks[0] = 0.92; p[0].marks[1] = 0.88; p[0].marks[2] = 0.82;
+  p[0].asks = ASK_MINE | ASK_GARDEN;
+}
+
+// The next request wanted (an ASK_*), 0 none.
+pet_next :: (p: [] PetUi) -> int {
+  for k: 0..<ASK_KINDS {
+    b := 1 << k;
+    if p[0].asks & b == 0 { continue; }
+    needs_pet := b == ASK_SAVE || b == ASK_AGENT || b == ASK_PLACE || b == ASK_HIDE;
+    if needs_pet && !p[0].has { continue; }
+    if b == ASK_SAVE && (p[0].dirty_t < 0.8 && p[0].asks & (ASK_AGENT | ASK_PLACE) == 0) { continue; }
+    return b;
+  }
+  return 0;
+}
+pet_post :: (kind: int) -> bool { return kind != ASK_MINE && kind != ASK_GARDEN && kind != ASK_MEMORIAL; }
+
+pet_url :: (p: [] PetUi, kind: int, out: [] u8) -> int {
+  n := 0;
+  if kind == ASK_MINE || kind == ASK_NEW { n = pet_put(out, 0, "/api/villa/pets"); }
+  else if kind == ASK_GARDEN { n = pet_put(out, 0, "/api/villa/garden"); }
+  else if kind == ASK_MEMORIAL || kind == ASK_NOTE {
+    n = pet_put(out, 0, "/api/villa/memorial/"); n = pet_put(out, n, pet_s(p[0].m_slug[..], 8));
+    if kind == ASK_NOTE { n = pet_put(out, n, "/notes"); }
+  } else {
+    n = pet_put(out, 0, "/api/villa/pets/"); n = pet_put(out, n, pet_s(p[0].id[..], p[0].id_n));
+    if kind == ASK_AGENT { n = pet_put(out, n, "/agent"); }
+    if kind == ASK_PLACE { n = pet_put(out, n, "/place"); }
+    if kind == ASK_HIDE {
+      n = pet_put(out, n, "/notes/");
+      digits: [12] u8; d := 0; v := p[0].hide_n;
+      if v <= 0 { digits[0] = '0'; d = 1; }
+      while v > 0 && d < 12 { digits[d] = cast(u8) (48 + v % 10); v /= 10; d += 1; }
+      for k: 0..<d { if n < 0 || n >= out.count { return 0; } out[n] = digits[d - 1 - k]; n += 1; }
+      n = pet_put(out, n, "/hide");
+    }
+  }
+  return ifx n < 0 then 0 else n;
+}
+
+pet_body :: (p: [] PetUi, kind: int, out: [] u8) -> int {
+  if kind == ASK_NEW {
+    n := pet_put(out, 0, "{\"name\":");
+    n = pj_put_str(out, n, pet_field(p, PF_NAME));
+    return pet_put(out, n, "}");
+  }
+  if kind == ASK_NOTE {
+    n := pet_put(out, 0, "{\"text\":");
+    n = pj_put_str(out, n, pet_s(p[0].typed[..], p[0].typed_n));
+    return pet_put(out, n, "}");
+  }
+  if kind == ASK_PLACE { return pet_put(out, 0, "{\"near\":40}"); }
+  if kind != ASK_SAVE { return pet_put(out, 0, "{}"); }
+  n := pet_put(out, 0, "{");
+  for f: 0..<PET_FIELDS {
+    n = pj_put_str(out, n, PF_KEY[f]); n = pet_put(out, n, ":");
+    n = pj_put_str(out, n, pet_field(p, f)); n = pet_put(out, n, ",");
+  }
+  n = pet_put(out, n, "\"avatar\":{");
+  for k: 0..<AV_NUMBERS { n = pj_put_str(out, n, AV_KEY[k]); n = pet_put(out, n, ":"); n = pj_put_num(out, n, p[0].avatar[k]); n = pet_put(out, n, ","); }
+  n = pet_put(out, n, "\"pattern\":"); n = pj_put_str(out, n, PATTERN_WORDS[clamp_i(p[0].pattern, 0, 4)]);
+  for which: 0..<2 {
+    n = pet_put(out, n, ifx which == 0 then ",\"coat\":[" else "],\"marks\":[");
+    for c: 0..<3 { if c > 0 { n = pet_put(out, n, ","); } n = pj_put_num(out, n, ifx which == 0 then p[0].coat[c] else p[0].marks[c]); }
+  }
+  n = pet_put(out, n, "]}}");
+  return ifx n < 0 then 0 else n;
+}
+
+// An answer to a request: its status and body.
+pet_answer :: (p: [] PetUi, kind: int, status: int, t: string) {
+  if p[0].asks & kind != 0 { p[0].asks = p[0].asks - kind; }
+  if kind == ASK_GARDEN { if status == 200 { pet_take_garden(p, t); } p[0].garden_t = 0; return; }
+  if kind == ASK_MINE {
+    if status != 200 { return; }
+    arr := pj_get(t, 0, "pets");
+    first := pj_next(t, arr, arr);
+    if first >= 0 { pet_take(p, t[first..<pj_end(t, first)], true); }
+    return;
+  }
+  if kind == ASK_MEMORIAL {
+    p[0].m_status = status;
+    if status == 200 { pet_take_memorial(p, t); } else { p[0].m_ok = false; }
+    return;
+  }
+  if kind == ASK_HIDE { if status == 200 { pet_take_notes(p, t); } return; }
+  if kind == ASK_NOTE {
+    if status == 200 { p[0].typed_n = 0; pet_take_notes(p, t); pet_toast(p, "Your note is on the memorial"); }
+    else if status == 429 { pet_toast(p, "A little slower: try again in a minute"); }
+    else if status == 400 { pet_toast(p, "Notes can't carry links"); }
+    else { pet_toast(p, "That note didn't send: try again"); }
+    return;
+  }
+  if status != 200 {
+    if kind == ASK_AGENT { p[0].agent = AGENT_FAILED; }
+    e: [160] u8;
+    n := pj_str(t, pj_get(t, 0, "error"), e[..]);
+    pet_toast(p, ifx n > 0 then pet_s(e[..], n) else "That didn't save: try again");
+    return;
+  }
+  pet_take(p, t, kind == ASK_NEW);
+  if kind == ASK_NEW { p[0].dirty = true; p[0].asks = p[0].asks | ASK_SAVE; }
+  if kind == ASK_SAVE { p[0].dirty = false; }
+  if kind == ASK_PLACE {
+    p[0].asks = p[0].asks | ASK_GARDEN;
+    pet_toast(p, "Their tombstone is in the garden now");
+  }
+}
+
+// An edit: kept here at once, sent a moment later (a new pet is made first).
+pet_changed :: (p: [] PetUi) {
+  p[0].dirty = true; p[0].dirty_t = 0;
+  if !p[0].has { if p[0].text_n[PF_NAME] > 0 { p[0].asks = p[0].asks | ASK_NEW; } return; }
+  p[0].asks = p[0].asks | ASK_SAVE;
+}
+
+pet_tick :: (p: [] PetUi, dt: f32) {
+  p[0].dirty_t += dt;
+  p[0].garden_t += dt;
+  if p[0].toast_t > 0 { p[0].toast_t -= dt; }
+  if p[0].garden_t > 30 { p[0].asks = p[0].asks | ASK_GARDEN; p[0].garden_t = 0; }
+  if p[0].agent == AGENT_READING && p[0].asks & ASK_AGENT == 0 && p[0].dirty_t > 200 { p[0].agent = AGENT_FAILED; }
+}
+
+// ---- typing
+
+pet_typed :: (p: [] PetUi, t: string) {
+  if p[0].focus == TYPE_NOTE {
+    for c: t { if c >= 32 && p[0].typed_n < NOTE_BYTES { p[0].typed[p[0].typed_n] = c; p[0].typed_n += 1; } }
+    return;
+  }
+  f := p[0].focus;
+  if f < 0 || f >= PET_FIELDS { return; }
+  for c: t {
+    if p[0].text_n[f] >= PF_CAP[f] { break; }
+    if c < 32 && !(c == 10 && f == PF_STORY) { continue; }
+    p[0].text[f * FIELD_BYTES + p[0].text_n[f]] = c; p[0].text_n[f] += 1;
+  }
+  pet_changed(p);
+}
+pet_backspace :: (p: [] PetUi) {
+  if p[0].focus == TYPE_NOTE {
+    while p[0].typed_n > 0 { p[0].typed_n -= 1; if p[0].typed[p[0].typed_n] & 0xC0 != 0x80 { break; } }
+    return;
+  }
+  f := p[0].focus;
+  if f < 0 || f >= PET_FIELDS { return; }
+  while p[0].text_n[f] > 0 {
+    p[0].text_n[f] -= 1;
+    if p[0].text[f * FIELD_BYTES + p[0].text_n[f]] & 0xC0 != 0x80 { break; }
+  }
+  pet_changed(p);
+}
+// A key while the panel is open: true when it's the panel's.
+pet_key :: (p: [] PetUi, key: int) -> bool {
+  if p[0].view == PV_NONE { return false; }
+  if key == -1 { if p[0].focus != -1 { p[0].focus = -1; } else { pet_close(p); } return true; }
+  if p[0].focus == -1 { return false; }
+  if key == -3 { pet_backspace(p); return true; }
+  if key == -2 {
+    if p[0].focus == TYPE_NOTE { pet_send_note(p); return true; }
+    if p[0].focus == PF_STORY { pet_typed(p, "\n"); return true; }
+    p[0].focus = ifx p[0].focus + 1 < PET_FIELDS then p[0].focus + 1 else -1;
+    return true;
+  }
+  return true;   // typed letters come as text; the keys themselves walk nobody
+}
+pet_send_note :: (p: [] PetUi) {
+  if p[0].typed_n == 0 { return; }
+  p[0].asks = p[0].asks | ASK_NOTE;
+}
+
+pet_open_memorial :: (p: [] PetUi, slug: string) {
+  if slug.count != 8 { return; }
+  for k: 0..<8 { p[0].m_slug[k] = slug[k]; }
+  p[0].view = PV_MEMORIAL; p[0].m_ok = false; p[0].m_status = 0; p[0].focus = -1; p[0].typed_n = 0;
+  p[0].asks = p[0].asks | ASK_MEMORIAL;
+}
+pet_close :: (p: [] PetUi) {
+  p[0].view = PV_NONE; p[0].focus = -1; p[0].slide = -1;
+  if p[0].dirty && p[0].has { p[0].asks = p[0].asks | ASK_SAVE; p[0].dirty_t = 10; }
+}
+
+// ---- presses
+
+pet_button :: (p: [] PetUi, b: Box, kind: int, arg: int) {
+  n := p[0].buttons;
+  if n >= BUTTONS { return; }
+  p[0].button[n] = b; p[0].button_kind[n] = kind; p[0].button_arg[n] = arg;
+  p[0].buttons = n + 1;
+}
+pet_hit :: (p: [] PetUi, x: f32, y: f32) -> int {
+  k := p[0].buttons - 1;
+  while k >= 0 { if in_box(p[0].button[k], x, y) { return k; } k -= 1; }
+  return -1;
+}
+pet_slide_to :: (p: [] PetUi, k: int, x: f32) {
+  i := p[0].slide;
+  if i < 0 || i >= AV_NUMBERS || k < 0 { return; }
+  b := p[0].button[k];
+  t := clamp((x - b.x0) / hi(b.x1 - b.x0, 1), 0, 1);
+  p[0].avatar[i] = AV_LO[i] + t * (AV_HI[i] - AV_LO[i]);
+  p[0].look_new = true;
+  pet_changed(p);
+}
+
+// A press or a drag on the panel (phase 0 down, 1 move, 2 up). True when it was the panel's.
+pet_pointer :: (p: [] PetUi, x: f32, y: f32, phase: int) -> bool {
+  if phase == 1 && p[0].slide >= 0 {
+    for k: 0..<p[0].buttons { if p[0].button_kind[k] == B_SLIDER && p[0].button_arg[k] == p[0].slide { pet_slide_to(p, k, x); } }
+    return true;
+  }
+  if phase == 2 { was := p[0].slide >= 0; p[0].slide = -1; return was || (p[0].view != PV_NONE && pet_hit(p, x, y) >= 0); }
+  if phase != 0 { return false; }
+  k := pet_hit(p, x, y);
+  if k < 0 { if p[0].view != PV_NONE { p[0].focus = -1; return in_box(p[0].button[0], x, y); } return false; }
+  kind := p[0].button_kind[k]; arg := p[0].button_arg[k];
+  if kind != B_FIELD && kind != B_NOTE { p[0].focus = -1; }
+  if kind == B_OPEN { p[0].view = PV_PET; p[0].tab = 0; if !p[0].has { p[0].focus = PF_NAME; } }
+  else if kind == B_CLOSE { pet_close(p); }
+  else if kind == B_FIELD { p[0].focus = arg; }
+  else if kind == B_NOTE { p[0].focus = TYPE_NOTE; }
+  else if kind == B_SEND { pet_send_note(p); }
+  else if kind == B_TAB { p[0].tab = arg; }
+  else if kind == B_PHOTOS {
+    if !p[0].has { pet_toast(p, "Give them a name first"); return true; }
+    n := pet_put(p[0].outbox[..], 0, "/api/villa/pets/");
+    n = pet_put(p[0].outbox[..], n, pet_s(p[0].id[..], p[0].id_n));
+    n = pet_put(p[0].outbox[..], n, "/files");
+    if n > 0 { p[0].out_n = n; p[0].action = 30; }
+  }
+  else if kind == B_AGENT {
+    if !p[0].has { pet_toast(p, "Give them a name first"); return true; }
+    if p[0].agent == AGENT_READING { return true; }
+    p[0].agent = AGENT_READING; p[0].dirty_t = 0;
+    p[0].asks = p[0].asks | ASK_SAVE | ASK_AGENT;
+  }
+  else if kind == B_PLAY {
+    if !p[0].has { pet_toast(p, "Give them a name first"); return true; }
+    p[0].asks = p[0].asks | ASK_SAVE | ASK_PLACE;
+    p[0].view = PV_NONE;
+  }
+  else if kind == B_SLIDER { p[0].slide = arg; pet_slide_to(p, k, x); }
+  else if kind == B_PATTERN { p[0].pattern = arg; p[0].look_new = true; pet_changed(p); }
+  else if kind == B_COAT || kind == B_MARKS {
+    for c: 0..<3 { v := SWATCH[arg * 3 + c]; if kind == B_COAT { p[0].coat[c] = v; } else { p[0].marks[c] = v; } }
+    p[0].look_new = true; pet_changed(p);
+  }
+  else if kind == B_EMOTE { p[0].emote = arg; }
+  else if kind == B_MEMORIAL {
+    if arg >= 0 && arg < p[0].garden { pet_open_memorial(p, pet_s(p[0].g_slug[arg * 8..<arg * 8 + 8], 8)); }
+    else if p[0].slug_n == 8 { pet_open_memorial(p, pet_s(p[0].slug[..], 8)); }
+  }
+  else if kind == B_SHARE {
+    n := pet_put(p[0].outbox[..], 0, "https://openagents.com/api/villa/m/");
+    n = pet_put(p[0].outbox[..], n, pet_s(p[0].m_slug[..], 8));
+    if n > 0 { p[0].out_n = n; p[0].action = 2; pet_toast(p, "The link is copied: send it to family and friends"); }
+  }
+  else if kind == B_HIDE {
+    // the owner hides a note: the face sends it as a save of the note's state
+    p[0].hide_n = arg; p[0].asks = p[0].asks | ASK_HIDE;
+  }
+  return true;
+}
+
+// ---- drawing (in villa.coax's HUD)
+
+pt :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: f32, alpha: f32) -> int {
+  return draw_text(out, n, t, x, base, cap, GAP, SPACE, ink(k, alpha, PALE_R, PALE_G, PALE_B), false, false);
+}
+pt_dim :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: f32) -> int {
+  return draw_text(out, n, t, x, base, cap, GAP, SPACE, ink(k, 0.62, SILVER_R, SILVER_G, SILVER_B), false, false);
+}
+outline :: (out: [] f32, n: int, b: Box, k: f32, alpha: f32) -> int {
+  m := n;
+  xs := [4] f32.[b.x0, b.x1, b.x1, b.x0]; ys := [4] f32.[b.y0, b.y0, b.y1, b.y1];
+  for i: 0..<4 {
+    j := (i + 1) % 4;
+    if lit(out, m, xs[i], ys[i], xs[j], ys[j], 0.6 * k, alpha, 1.2 * k, SILVER_R, SILVER_G, SILVER_B, 0) { m += 6; }
+  }
+  return m;
+}
+// A button: its outline, its word centred, and its press.
+btn :: (s: [] Villa, out: [] f32, n: int, b: Box, word: string, kind: int, arg: int, on: bool) -> int {
+  k := hi(s[0].dpr, 0.5);
+  cap := 8 * k;
+  m := outline(out, n, b, k, ifx on then 0.95f32 else 0.45f32);
+  if on { m = outline(out, m, Box.{x0 = b.x0 + 2 * k, y0 = b.y0 + 2 * k, x1 = b.x1 - 2 * k, y1 = b.y1 - 2 * k}, k, 0.35); }
+  m = pt(out, m, word, (b.x0 + b.x1 - text_width(word, cap)) / 2, (b.y0 + b.y1 + cap) / 2, cap, k, ifx on then 1.0f32 else 0.85f32);
+  pet_button(s[0].pet[..], b, kind, arg);
+  return m;
+}
+// Text wrapped to a width, from its top line's base; at most lines lines. Returns n; the next base into y[0].
+wrapped :: (out: [] f32, n: int, t: string, x: f32, base: f32, width: f32, cap: f32, k: f32, lines: int, alpha: f32, y: [] f32) -> int {
+  m := n; from := 0; line := 0; b := base;
+  next: [1] int;
+  while from < t.count && line < lines {
+    next[0] = t.count;
+    end := wrap(t, from, width / cap, GAP, SPACE, false, next[..]);
+    if end <= from && next[0] <= from { break; }
+    m = pt(out, m, t[from..<end], x, b, cap, k, alpha);
+    from = next[0]; line += 1; b += cap * 1.9;
+  }
+  y[0] = b;
+  return m;
+}
+
+pet_panel_box :: (s: [] Villa) -> Box {
+  k := hi(s[0].dpr, 0.5); w := s[0].width; h := s[0].height; g := 16 * k;
+  pw := lo(470 * k, w - 2 * g);
+  return Box.{x0 = w - g - pw, y0 = g, x1 = w - g, y1 = h - g};
+}
+
+// A text field: its label, its box and what's typed (the end of it when long).
+field_draw :: (s: [] Villa, out: [] f32, n: int, f: int, x0: f32, x1: f32, top: f32, lines: int) -> int {
+  k := hi(s[0].dpr, 0.5); p := s[0].pet[..];
+  cap := 8.5 * k; m := n;
+  m = pt_dim(out, m, PF_LABEL[f], x0, top + 8 * k, 7 * k, k);
+  b := Box.{x0 = x0, y0 = top + 14 * k, x1 = x1, y1 = top + 14 * k + f32(lines) * cap * 1.9 + 12 * k};
+  focused := p[0].focus == f;
+  m = outline(out, m, b, k, ifx focused then 0.95f32 else 0.4f32);
+  pet_button(p, b, B_FIELD, f);
+  t := pet_field(p, f);
+  y: [1] f32;
+  if lines == 1 {
+    show := t; room := (b.x1 - b.x0 - 16 * k);
+    while show.count > 0 && text_width(show, cap) > room { show = show[1..<show.count]; }
+    m = pt(out, m, show, b.x0 + 8 * k, b.y0 + 6 * k + cap, cap, k, 0.95);
+    if focused { cx := b.x0 + 8 * k + text_width(show, cap) + 2 * k; if lit(out, m, cx, b.y0 + 5 * k, cx, b.y1 - 5 * k, 0.6 * k, 0.9, 1 * k, PALE_R, PALE_G, PALE_B, 0) { m += 6; } }
+  } else {
+    m = wrapped(out, m, t, b.x0 + 8 * k, b.y0 + 6 * k + cap, b.x1 - b.x0 - 16 * k, cap, k, lines, 0.95, y[..]);
+  }
+  if focused { p[0].field_box = b; }
+  return m;
+}
+
+pet_draw_about :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f32) -> int {
+  k := hi(s[0].dpr, 0.5); p := s[0].pet[..]; m := n;
+  y := top;
+  m = field_draw(s, out, m, PF_NAME, x0, x1, y, 1); y += 52 * k;
+  half := (x0 + x1) / 2;
+  m = field_draw(s, out, m, PF_BORN, x0, half - 6 * k, y, 1);
+  m = field_draw(s, out, m, PF_DIED, half + 6 * k, x1, y, 1); y += 52 * k;
+  m = field_draw(s, out, m, PF_LINE, x0, x1, y, 1); y += 52 * k;
+  m = field_draw(s, out, m, PF_STORY, x0, x1, y, 4); y += 98 * k;
+  m = field_draw(s, out, m, PF_TRAITS, x0, x1, y, 2); y += 66 * k;
+  bh := 34 * k;
+  m = btn(s, out, m, Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + bh}, "ADD PHOTOS OR A SHORT VIDEO", B_PHOTOS, 0, false);
+  y += bh + 8 * k;
+  // the files, a line each: name, then how far or what happened
+  ft := pet_s(p[0].files[..], p[0].files_n);
+  i := 0; line := 0;
+  while i < ft.count && line < 3 {
+    j := i; while j < ft.count && ft[j] != 10 { j += 1; }
+    row := ft[i..<j];
+    // name|permille|status|note
+    bars: [4] int; bc := 0;
+    for c: 0..<row.count { if row[c] == '|' && bc < 3 { bars[bc] = c; bc += 1; } }
+    if bc == 3 {
+      name := row[0..<bars[0]]; status := row[bars[1] + 1..<bars[2]]; note := row[bars[2] + 1..<row.count];
+      word := ifx status == "kept" then "KEPT" else ifx status == "sending" then "SENDING" else ifx status == "scanning" then "CHECKING" else "NOT KEPT";
+      m = pt_dim(out, m, name, x0, y + 8 * k, 7 * k, k);
+      m = pt(out, m, word, x1 - text_width(word, 7 * k), y + 8 * k, 7 * k, k, 0.85);
+      if note.count > 0 && status != "kept" { y += 14 * k; m = pt_dim(out, m, note, x0, y + 8 * k, 6.5 * k, k); }
+      y += 16 * k; line += 1;
+    }
+    i = j + 1;
+  }
+  y += 6 * k;
+  agent_word := ifx p[0].agent == AGENT_READING then "LOOKING AT THEM..." else ifx p[0].agent == AGENT_READY then "MAKE THEIR AVATAR AGAIN" else "MAKE THEIR AVATAR";
+  m = btn(s, out, m, Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + bh}, agent_word, B_AGENT, 0, p[0].agent == AGENT_READING);
+  y += bh + 8 * k;
+  if p[0].agent == AGENT_FAILED && p[0].note_n > 0 { m = pt_dim(out, m, pet_s(p[0].note[..], p[0].note_n), x0, y + 6 * k, 7 * k, k); y += 16 * k; }
+  if p[0].agent == AGENT_READY { m = pt_dim(out, m, "THEIR LOOK: WHAT WE SAW, AND CHANGE ANY OF IT", x0, y + 6 * k, 7 * k, k); y += 16 * k; }
+  play := ifx p[0].placed then "VISIT THEIR MEMORIAL" else "PLAY: PUT THEIR STONE IN THE GARDEN";
+  m = btn(s, out, m, Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + bh}, play, ifx p[0].placed then B_MEMORIAL else B_PLAY, -1, true);
+  return m;
+}
+
+pet_draw_look :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f32) -> int {
+  k := hi(s[0].dpr, 0.5); p := s[0].pet[..]; m := n;
+  y := top; cap := 7 * k;
+  yb: [1] f32;
+  for c: 0..<p[0].choices {
+    m = wrapped(out, m, pet_s(p[0].choice[c * 220..<c * 220 + 220], p[0].choice_n[c]), x0, y + cap, x1 - x0, cap, k, 2, 0.8, yb[..]);
+    y = yb[0] - cap + 4 * k;
+    if y > top + 110 * k { break; }
+  }
+  if p[0].choices > 0 { y += 8 * k; }
+  half := (x0 + x1) / 2; col := 0;
+  for i: 0..<AV_NUMBERS {
+    cx0 := ifx col == 0 then x0 else half + 8 * k; cx1 := ifx col == 0 then half - 8 * k else x1;
+    m = pt_dim(out, m, AV_LABEL[i], cx0, y + 8 * k, cap, k);
+    b := Box.{x0 = cx0, y0 = y + 12 * k, x1 = cx1, y1 = y + 30 * k};
+    mid := (b.y0 + b.y1) / 2;
+    if lit(out, m, b.x0, mid, b.x1, mid, 0.5 * k, 0.45, 1 * k, SILVER_R, SILVER_G, SILVER_B, 0) { m += 6; }
+    t := (p[0].avatar[i] - AV_LO[i]) / (AV_HI[i] - AV_LO[i]);
+    kx := b.x0 + t * (b.x1 - b.x0);
+    if lit(out, m, kx - 0.01, mid, kx + 0.01, mid, 6 * k, 0.9, 3 * k, PALE_R, PALE_G, PALE_B, 0) { m += 6; }
+    pet_button(p, b, B_SLIDER, i);
+    col = 1 - col;
+    if col == 0 { y += 38 * k; }
+  }
+  y += 6 * k;
+  m = pt_dim(out, m, "MARKINGS", x0, y + 8 * k, cap, k); y += 14 * k;
+  pw := (x1 - x0 - 4 * 6 * k) / 5;
+  for i: 0..<5 {
+    bx := x0 + f32(i) * (pw + 6 * k);
+    m = btn(s, out, m, Box.{x0 = bx, y0 = y, x1 = bx + pw, y1 = y + 28 * k}, PATTERN_WORDS[i], B_PATTERN, i, p[0].pattern == i);
+  }
+  y += 38 * k;
+  for which: 0..<2 {
+    m = pt_dim(out, m, ifx which == 0 then "COAT" else "MARKINGS' COLOUR", x0, y + 8 * k, cap, k); y += 14 * k;
+    sw := (x1 - x0 - 7 * 6 * k) / 8;
+    for i: 0..<SWATCHES {
+      bx := x0 + f32(i) * (sw + 6 * k);
+      b := Box.{x0 = bx, y0 = y, x1 = bx + sw, y1 = y + 22 * k};
+      cur := ifx which == 0 then p[0].coat[..] else p[0].marks[..];
+      on := abs(cur[0] - SWATCH[i * 3]) + abs(cur[1] - SWATCH[i * 3 + 1]) + abs(cur[2] - SWATCH[i * 3 + 2]) < 0.02;
+      cy := (b.y0 + b.y1) / 2;
+      if lit(out, m, b.x0 + 5 * k, cy, b.x1 - 5 * k, cy, 6 * k, 0.95, 1 * k, SWATCH[i * 3], SWATCH[i * 3 + 1], SWATCH[i * 3 + 2], 0) { m += 6; }
+      m = outline(out, m, b, k, ifx on then 0.95f32 else 0.3f32);
+      pet_button(p, b, ifx which == 0 then B_COAT else B_MARKS, i);
+    }
+    y += 32 * k;
+  }
+  m = pt_dim(out, m, "EMOTES: SEE THEM DO IT", x0, y + 8 * k, cap, k); y += 14 * k;
+  ew := (x1 - x0 - 2 * 6 * k) / 3;
+  for i: 0..<EMOTES {
+    bx := x0 + f32(i % 3) * (ew + 6 * k); by := y + f32(i / 3) * 34 * k;
+    m = btn(s, out, m, Box.{x0 = bx, y0 = by, x1 = bx + ew, y1 = by + 28 * k}, EMOTE_LABEL[i], B_EMOTE, i, false);
+  }
+  return m;
+}
+
+pet_draw_memorial :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f32, bottom: f32) -> int {
+  k := hi(s[0].dpr, 0.5); p := s[0].pet[..]; m := n;
+  y := top; yb: [1] f32;
+  if !p[0].m_ok {
+    m = pt_dim(out, m, ifx p[0].m_status == 0 then "OPENING THE MEMORIAL..." else "THIS MEMORIAL ISN'T HERE ANY MORE", x0, y + 10 * k, 8 * k, k);
+    return m;
+  }
+  big := 16 * k;
+  m = pt(out, m, pet_s(p[0].m_name[..], p[0].m_name_n), x0, y + big, big, k, 1); y += big + 14 * k;
+  if p[0].m_dates_n > 0 { m = pt_dim(out, m, pet_s(p[0].m_dates[..], p[0].m_dates_n), x0, y + 8 * k, 8 * k, k); y += 20 * k; }
+  if p[0].m_line_n > 0 { m = wrapped(out, m, pet_s(p[0].m_line[..], p[0].m_line_n), x0, y + 9 * k, x1 - x0, 9 * k, k, 2, 0.95, yb[..]); y = yb[0]; }
+  y += 6 * k;
+  parts := [3] string.["THEIR STORY", "WHAT MADE THEM THEM", "WHAT THEY DID"];
+  for q: 0..<3 {
+    t := ifx q == 0 then pet_s(p[0].m_story[..], p[0].m_story_n) else ifx q == 1 then pet_s(p[0].m_traits[..], p[0].m_traits_n) else pet_s(p[0].m_ach[..], p[0].m_ach_n);
+    if t.count == 0 { continue; }
+    m = pt_dim(out, m, parts[q], x0, y + 7 * k, 7 * k, k); y += 14 * k;
+    m = wrapped(out, m, t, x0, y + 8 * k, x1 - x0, 8 * k, k, ifx q == 0 then 6 else 3, 0.9, yb[..]); y = yb[0];
+  }
+  y += 4 * k;
+  m = pt_dim(out, m, "FROM THOSE WHO KNEW THEM", x0, y + 7 * k, 7 * k, k); y += 14 * k;
+  for i: 0..<p[0].notes {
+    if y > bottom - 120 * k { break; }
+    who := pet_s(p[0].n_name[i * 40..<i * 40 + 40], p[0].n_name_n[i]);
+    m = pt_dim(out, m, who, x0, y + 7 * k, 7 * k, k);
+    if p[0].m_mine { m = btn(s, out, m, Box.{x0 = x1 - 54 * k, y0 = y - 4 * k, x1 = x1, y1 = y + 14 * k}, "HIDE", B_HIDE, p[0].n_num[i], false); }
+    y += 13 * k;
+    m = wrapped(out, m, pet_s(p[0].n_text[i * NOTE_BYTES..<(i + 1) * NOTE_BYTES], p[0].n_text_n[i]), x0, y + 8 * k, x1 - x0, 8 * k, k, 3, 0.88, yb[..]);
+    y = yb[0];
+  }
+  // leave a note
+  nb := Box.{x0 = x0, y0 = bottom - 92 * k, x1 = x1 - 76 * k, y1 = bottom - 54 * k};
+  focused := p[0].focus == TYPE_NOTE;
+  m = outline(out, m, nb, k, ifx focused then 0.95f32 else 0.4f32);
+  pet_button(p, nb, B_NOTE, 0);
+  typed := pet_s(p[0].typed[..], p[0].typed_n);
+  show := typed;
+  while show.count > 0 && text_width(show, 8 * k) > nb.x1 - nb.x0 - 16 * k { show = show[1..<show.count]; }
+  if typed.count == 0 && !focused { m = pt_dim(out, m, "LEAVE A NOTE FOR THEM", nb.x0 + 8 * k, (nb.y0 + nb.y1 + 8 * k) / 2, 8 * k, k); }
+  else { m = pt(out, m, show, nb.x0 + 8 * k, (nb.y0 + nb.y1 + 8 * k) / 2, 8 * k, k, 0.95); }
+  if focused { p[0].field_box = nb; }
+  m = btn(s, out, m, Box.{x0 = x1 - 68 * k, y0 = nb.y0, x1 = x1, y1 = nb.y1}, "SEND", B_SEND, 0, false);
+  m = btn(s, out, m, Box.{x0 = x0, y0 = bottom - 42 * k, x1 = x1, y1 = bottom - 8 * k}, "SHARE THIS MEMORIAL: COPY ITS LINK", B_SHARE, 0, true);
+  return m;
+}
+
+// The panel, or its button and the tombstone you stand at; and the toast.
+pet_draw :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
+  p := s[0].pet[..];
+  p[0].buttons = 0;
+  p[0].field_box = no_box();
+  k := hi(s[0].dpr, 0.5); w := s[0].width; h := s[0].height; g := 16 * k;
+  m := n;
+  if p[0].view == PV_NONE {
+    word := ifx p[0].has then "YOUR PET" else "BRING YOUR PET";
+    cap := 9 * k;
+    bw := text_width(word, cap) + 36 * k;
+    b := Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 38 * k};
+    plate(s, u, b, 0.78, 0);
+    m = btn(s, out, m, b, word, B_OPEN, 0, false);
+    if p[0].near >= 0 && p[0].near < p[0].garden {
+      i := p[0].near;
+      cw := lo(420 * k, w - 2 * g);
+      cb := Box.{x0 = (w - cw) / 2, y0 = h - g - 150 * k, x1 = (w + cw) / 2, y1 = h - g - 46 * k};
+      plate(s, u, cb, 0.82, 0);
+      m = pt(out, m, pet_s(p[0].g_name[i * 40..<i * 40 + 40], p[0].g_name_n[i]), cb.x0 + 14 * k, cb.y0 + 24 * k, 12 * k, k, 1);
+      yb: [1] f32;
+      m = wrapped(out, m, pet_s(p[0].g_line[i * 120..<i * 120 + 120], p[0].g_line_n[i]), cb.x0 + 14 * k, cb.y0 + 46 * k, cb.x1 - cb.x0 - 28 * k, 8 * k, k, 1, 0.85, yb[..]);
+      m = btn(s, out, m, Box.{x0 = cb.x0 + 14 * k, y0 = cb.y1 - 40 * k, x1 = cb.x1 - 14 * k, y1 = cb.y1 - 10 * k}, "OPEN THEIR MEMORIAL", B_MEMORIAL, i, true);
+    }
+  } else {
+    b := pet_panel_box(s);
+    plate(s, u, b, 0.9, 0);
+    pet_button(p, b, 0, 0);   // the panel itself: presses on it stay on it
+    pad := 16 * k;
+    x0 := b.x0 + pad; x1 := b.x1 - pad;
+    m = btn(s, out, m, Box.{x0 = x1 - 70 * k, y0 = b.y0 + 12 * k, x1 = x1, y1 = b.y0 + 40 * k}, "CLOSE", B_CLOSE, 0, false);
+    if p[0].view == PV_PET {
+      m = pt(out, m, ifx p[0].has then "YOUR PET" else "BRING YOUR PET", x0, b.y0 + 32 * k, 11 * k, k, 1);
+      tw := (x1 - x0 - 8 * k) / 2;
+      ty := b.y0 + 52 * k;
+      m = btn(s, out, m, Box.{x0 = x0, y0 = ty, x1 = x0 + tw, y1 = ty + 30 * k}, "ABOUT THEM", B_TAB, 0, p[0].tab == 0);
+      m = btn(s, out, m, Box.{x0 = x1 - tw, y0 = ty, x1 = x1, y1 = ty + 30 * k}, "THEIR LOOK", B_TAB, 1, p[0].tab == 1);
+      if p[0].tab == 0 { m = pet_draw_about(s, out, m, x0, x1, ty + 44 * k); }
+      else { m = pet_draw_look(s, out, m, x0, x1, ty + 44 * k); }
+    } else {
+      m = pet_draw_memorial(s, out, m, x0, x1, b.y0 + 52 * k, b.y1 - pad);
+    }
+  }
+  if p[0].toast_t > 0 && p[0].toast_n > 0 {
+    t := pet_s(p[0].toast[..], p[0].toast_n);
+    cap := 8 * k;
+    tw := text_width(t, cap);
+    tb := Box.{x0 = (w - tw) / 2 - 14 * k, y0 = g + 52 * k, x1 = (w + tw) / 2 + 14 * k, y1 = g + 52 * k + cap + 22 * k};
+    plate(s, u, tb, 0.85 * clamp(p[0].toast_t, 0, 1), 0);
+    m = pt(out, m, t, tb.x0 + 14 * k, tb.y0 + 11 * k + cap, cap, k, clamp(p[0].toast_t, 0, 1));
+  }
+  return m;
+}
+
+// ---- checks
+
+#test "a pet's answer is read: its fields, look, the agent's choices; an edit is written back" {
+  p: [1] PetUi;
+  pet_start(p[..]);
+  t := "{\"id\": \"q-0123456789abcdef\", \"slug\": \"ab12cd34\", \"name\": \"Hecate\", \"born\": \"2012\", \"died\": \"\", \"line\": \"Queen \\\"of\\\" the garden\", \"story\": \"She dug.\", \"traits\": \"\", \"status\": \"placed\", \"plot\": 12, \"agent\": \"ready\", \"agent_note\": \"\", \"avatar\": {\"size\": 0.5, \"body\": 1.5, \"ears\": 1, \"pattern\": \"socks\", \"coat\": [0.3, 0.15, 0.05], \"marks\": [0.9, 0.9, 0.9]}, \"choices\": [{\"part\": \"body\", \"why\": \"Her long back.\"}], \"files\": []}";
+  pet_take(p[..], t, true);
+  #assert p[0].has && p[0].placed && p[0].plot == 12 && p[0].agent == AGENT_READY;
+  #assert pet_field(p[..], PF_NAME) == "Hecate" && pet_field(p[..], PF_LINE) == "Queen \"of\" the garden";
+  #assert abs(p[0].avatar[0] - 0.5) < 0.001 && abs(p[0].avatar[2] - 1.5) < 0.001 && p[0].pattern == 4 && abs(p[0].coat[0] - 0.3) < 0.001;
+  #assert p[0].choices == 1 && pet_s(p[0].choice[0..<220], p[0].choice_n[0]) == "body: Her long back.";
+  out: [9000] u8;
+  n := pet_body(p[..], ASK_SAVE, out[..]);
+  body := cast(string) out[0..<n];
+  #assert n > 0 && pj_get(body, 0, "line") > 0;
+  back: [200] u8;
+  #assert pet_s(back[..], pj_str(body, pj_get(body, 0, "line"), back[..])) == "Queen \"of\" the garden";
+  av := pj_get(body, 0, "avatar");
+  #assert abs(pj_num(body, pj_get(body, av, "body")) - 1.5) < 0.001;
+  #assert pet_url(p[..], ASK_PLACE, out[..]) == 40;
+}
+
+#test "typing names a new pet, which is made first, then saved" {
+  p: [1] PetUi;
+  pet_start(p[..]);
+  pet_answer(p[..], ASK_MINE, 200, "{\"pets\": []}");
+  #assert !p[0].has && pet_next(p[..]) == ASK_GARDEN;
+  p[0].view = PV_PET; p[0].focus = PF_NAME;
+  pet_typed(p[..], "Hec");
+  #assert pet_key(p[..], -3) && pet_field(p[..], PF_NAME) == "He";
+  #assert pet_key(p[..], 'w');     // a letter while typing walks nobody
+  pet_answer(p[..], ASK_GARDEN, 200, "{\"pets\": [{\"slug\": \"zz12zz34\", \"name\": \"Old Bo\", \"line\": \"Good boy\", \"plot\": 9, \"mine\": false}]}");
+  #assert p[0].garden == 1 && p[0].g_plot[0] == 9;
+  #assert pet_next(p[..]) == ASK_NEW;
+  out: [400] u8;
+  #assert cast(string) out[0..<pet_body(p[..], ASK_NEW, out[..])] == "{\"name\":\"He\"}";
+  pet_answer(p[..], ASK_NEW, 200, "{\"id\": \"q-0000000000000001\", \"slug\": \"aaaabbbb\", \"name\": \"He\", \"status\": \"draft\", \"agent\": \"none\"}");
+  #assert p[0].has && p[0].asks & ASK_SAVE != 0;
+}
+
+#test "a memorial is read with its notes; a note is sent; the link is copied" {
+  p: [1] PetUi;
+  pet_start(p[..]);
+  pet_open_memorial(p[..], "ab12cd34");
+  #assert p[0].view == PV_MEMORIAL && pet_next(p[..]) == ASK_MINE;
+  pet_answer(p[..], ASK_GARDEN, 200, "{\"pets\": []}");
+  pet_answer(p[..], ASK_MINE, 200, "{\"pets\": []}");
+  #assert pet_next(p[..]) == ASK_MEMORIAL;
+  out: [400] u8;
+  #assert cast(string) out[0..<pet_url(p[..], ASK_MEMORIAL, out[..])] == "/api/villa/memorial/ab12cd34";
+  pet_answer(p[..], ASK_MEMORIAL, 200, "{\"name\": \"Hecate\", \"born\": \"2012\", \"died\": \"2025\", \"line\": \"Queen\", \"story\": \"She dug.\", \"mine\": true, \"notes\": [{\"n\": 4, \"name\": \"Guest ABCD\", \"text\": \"Best girl\", \"hidden\": false}]}");
+  #assert p[0].m_ok && p[0].m_mine && pet_s(p[0].m_dates[..], p[0].m_dates_n) == "2012 - 2025" && p[0].notes == 1 && p[0].n_num[0] == 4;
+  p[0].focus = TYPE_NOTE;
+  pet_typed(p[..], "Miss you");
+  #assert pet_key(p[..], -2) && p[0].asks & ASK_NOTE != 0;
+  #assert cast(string) out[0..<pet_body(p[..], ASK_NOTE, out[..])] == "{\"text\":\"Miss you\"}";
+}
