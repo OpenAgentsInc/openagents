@@ -930,7 +930,8 @@
         "crypto-field-secret-guards",
         "crypto-classified-root-audit",
         "crypto-reviewed-guard-binding",
-        "crypto-total-secret-field"
+        "crypto-total-secret-field",
+        "crypto-public-peer-guard-binding"
       ],
       "blocks": [
         "crypto-ecdh-xonly"
@@ -3324,7 +3325,7 @@
       "blocks": [
         "secp-mult-base",
         "secp-mult-const",
-        "crypto-reviewed-guard-binding", "crypto-total-secret-field"]
+        "crypto-reviewed-guard-binding", "crypto-total-secret-field", "crypto-public-peer-guard-binding"]
     },
     {
       "slug": "crypto-classified-root-audit",
@@ -3359,7 +3360,7 @@
         "Affected source checks and full mutation pass with zero survivors, without changing resource limits; record exact evidence and never claim target-wide timing, JIT, erasure or production approval"
       ],
       "blocked_by": ["crypto-field-secret-guards", "crypto-classified-root-audit"],
-      "blocks": ["secp-mult-const", "crypto-total-secret-field"]
+      "blocks": ["secp-mult-const", "crypto-total-secret-field", "crypto-public-peer-guard-binding"]
     },
     {
       "slug": "crypto-total-secret-field",
@@ -3376,6 +3377,23 @@
         "Run affected full authority checks and mutation with zero survivors, independent adversarial checked/release native and Wasm oracles, exceptional cases and a timing probe with a positive control; record review and limitations"
       ],
       "blocked_by": ["crypto-field-secret-guards", "crypto-classified-root-audit", "crypto-reviewed-guard-binding"],
+      "blocks": ["secp-mult-const", "crypto-public-peer-guard-binding"]
+    },
+    {
+      "slug": "crypto-public-peer-guard-binding",
+      "parent": "m-assurance",
+      "title": "Bind the public peer guard proof to the revised variable-base source",
+      "size": "M",
+      "labels": ["nostr", "crypto", "coax"],
+      "body": "Bind the reviewed bounded-peer normalization proof to the exact revised classified multiplication source and its single public assertion obligation. Preserve the raw refused audit and the prior registry's refusal of changed inputs. Manual source-to-model and caller correspondence, public-peer classification and trusted tool/runtime are explicit premises; no target, erasure or production-secret approval follows.",
+      "files": ["tools/coax-nostr/", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Independently review exact unchanged peer-admission, validation and normalization correspondence against the recorded magnitude-eight proof, including arbitrary admitted peers and all 30 coordinate limbs",
+        "A separate opt-in decision binds the exact revised source and audit-tool graph, compiler profile and classification, full single public guard record, proof and solver identities, reviewed premises and runtime; the original accepted=false audit remains inspectable and the older registry still refuses the new graph",
+        "Changed source, tool, profile, classification, proof, solver or review records, arbitrary audit refusals, missing extra duplicate guards or changed guard origins fail closed; adversarial tests include positive real-source verification and default all-secret refusal",
+        "Affected checks and complete policy mutation pass with zero survivors; record source and tool identities, independent review and conditional scope without target or production approval"
+      ],
+      "blocked_by": ["crypto-field-secret-guards", "crypto-reviewed-guard-binding", "crypto-total-secret-field"],
       "blocks": ["secp-mult-const"]
     }
   ]
