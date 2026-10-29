@@ -1,0 +1,40 @@
+// Experimental scrypt PBKDF2-one staging with caller-owned secret state.
+// A host must erase the entire workspace; scalar/compiler copies remain.
+#load "scrypt_pbkdf2.coax";
+#load "hmac_workspace.coax";
+#authority;
+#test "owned PBKDF2 matches the RFC vector" {
+  p:="passwd";s:="salt";password:[6]u8;salt:[4]u8;
+  for i:0..<6 {password[i]=p[i];}for i:0..<4 {salt[i]=s[i];}
+  expected:=[64]u8.[0x55,0xac,0x04,0x6e,0x56,0xe3,0x08,0x9f,0xec,0x16,0x91,0xc2,0x25,0x44,0xb6,0x05,0xf9,0x41,0x85,0x21,0x6d,0xde,0x04,0x65,0xe6,0x8b,0x9d,0x57,0xc2,0x0d,0xac,0xbc,0x49,0xca,0x9c,0xcc,0xf1,0x79,0xb6,0x45,0x99,0x16,0x64,0xb3,0x9d,0x77,0xef,0x31,0x7c,0x71,0xb8,0x45,0xb1,0xe3,0x0b,0xd5,0x09,0x11,0x20,0x41,0xd3,0xa1,0x97,0x83];
+  work:[1]PbkdfOwned;out:[65]u8;out[64]=165;
+  #assert pbkdf_owned(password[..],salt[..],64,work[..],out[..],false);for i:0..<64 {#assert out[i]==expected[i];}#assert out[64]==165;
+}
+#test "owned PBKDF2 handles partial blocks and preserves refusal" {
+  password:[65]u8;salt:[65]u8;work:[1]PbkdfOwned;out:[66]u8;ref:[66]u8;for i:0..<65 {password[i]=cast(u8)i;salt[i]=cast(u8)(64-i);}
+  work[0].staged[100]=165;
+  #assert pbkdf_owned(password[..],salt[..],1,work[..],out[..],false);#assert work[0].staged[100]==0;
+  for n:[5]int.[1,31,32,33,65] {
+    #assert scrypt_pbkdf2_one(password[..],salt[..],n,ref[..],false);
+    #assert pbkdf_owned(password[..],salt[..],n,work[..],out[..],false);
+    for i:0..<n {#assert out[i]==ref[i];}
+  }
+  work[0].digest[0]=42;for i:0..<66 {out[i]=165;}
+  #assert !pbkdf_owned(password[..],salt[..],0,work[..],out[..],false);
+  #assert !pbkdf_owned(password[..],salt[..],65,work[0..<0],out[..],false);
+  #assert !pbkdf_owned(password[..],salt[..],65,work[..],out[0..<64],false);
+  #assert !pbkdf_owned(password[..],salt[..],65,work[..],out[..],true);
+  #assert work[0].digest[0]==42;for v:out {#assert v==165;}
+}
+PbkdfOwned :: struct {hmac:[1]HmacOwned;input:[1028]u8;staged:[1024]u8;digest:[32]u8;}
+// Stable disjoint views and truthful alias facts are the caller's obligation.
+pbkdf_owned :: (password:[]u8,salt:[]u8,length:int,work:[]PbkdfOwned,out:[]u8,overlap:bool)->bool #export_c {
+  if work.count!=1 || !pb1_admit(password.count,salt.count,length,out.count,overlap) {return false;}
+  work[0]=PbkdfOwned.{};for i:0..<salt.count {work[0].input[i]=salt[i];}
+  for block:0..<pb1_blocks(length) {
+    stored:=cb_store_be32(work[0].input[..],salt.count,cast(u32)(block+1));
+    ok:=hmac_owned(password,work[0].input[0..<salt.count+4],work[0].hmac[..],work[0].digest[..],false);if !ok {return ok;}
+    pb1_copy_block(work[0].staged[..],work[0].digest[..],block*32,length);
+  }
+  return pb1_commit(work[0].staged[0..<length],out,SHA_OK);
+}
