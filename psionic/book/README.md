@@ -34,6 +34,7 @@ run examples directly without the check command.
 | [16. Serve `/v1/systemone`](ch016-serve-systemone.md) | Runnable: loopback, toy and original Elephant, CPU | Answer NIP-DEC decision bodies over HTTP with typed refusals, deadlines, cancellation, busy refusals and the served model identity. |
 | [16b. The protobuf wire](ch016b-the-protobuf-wire.md) | Runnable: toy engine and native answers | Accept `application/x-protobuf` requests by transcoding them to the NIP-DEC body chapter 16 admits, and answer in protobuf on `Accept: application/x-protobuf`. |
 | [70. Learning with arrays](ch070-learning-with-arrays.md) | Runnable: cpu-f64-sgd-v1, simulated data | Predict whether a request meets its deadline with a constant, a handwritten rule, a line, logistic regression and one hidden layer: hand gradients, minibatch SGD, scaling, session splits, written costs, and a case where the larger model loses. |
+| [71. Gradients as a program](ch071-gradients-as-a-program.md) | Runnable: cpu-f64-tape-v1 | A model as a list of operations, a forward pass that saves every value and a reverse pass that accumulates adjoints; checked against 60-digit central differences and by retraining chapter 70's models. |
 | [41. Original MXFP4 weights](ch041-original-mxfp4-weights.md) | Runnable: bounded CPU format decoder | Decode original gpt-oss packed groups exactly, with independent bit oracles and atomic refusals. |
 | [42. A few experts, then a router](ch042-a-few-experts-then-a-router.md) | Runnable: bounded CPU router and tiny affine experts | Select and normalize top-k routes, dispatch by resident expert ID and publish a checked weighted mixture. |
 | [43. Attention with sinks and a window](ch043-attention-with-sinks-and-a-window.md) | Runnable: gpt-oss-attention-cpu-wide-v1 | Compute per-head sink attention with a bounded ring, split-half YaRN, biased projection and clamped expert activation. |
@@ -57,7 +58,7 @@ run examples directly without the check command.
 | [169. A harness that catches the compiler](ch169-a-harness-that-catches-the-compiler.md) | Runnable: bounded CPU | Run every program through the evaluator, a plan interpreter and the weights; catch four planted compiler bugs and place each in the schedule or the emitter. |
 | [172. From hard-max to softmax](ch172-from-hard-max-to-softmax.md) | Runnable: bounded CPU, binary64/binary32/bfloat16 rounding | Prove softmax reads stay exact for any trace length once β ≥ ln(4V), and measure where binary32 and bfloat16 rounding breaks them. |
 
-Chapter 70 starts learning from data on chapter 3's operations, chapters 41–48 start an independent gpt-oss branch, and 165–169 and 172 open Part XXIII (programs compiled into weights); chapters 14–40 other than 16 remain planned.
+Chapters 70–71 start learning from data on chapter 3's operations, chapters 41–48 start an independent gpt-oss branch, and 165–169 and 172 open Part XXIII (programs compiled into weights); chapters 14–40 other than 16 remain planned.
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
 sets the proposed full reading order: early Elephant/Mammoth and useful

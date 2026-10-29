@@ -360,6 +360,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/gradient-tape.coax",
+      "chapter": "psionic/book/ch071-gradients-as-a-program.md",
+      "stdout": "psionic/fixtures/gradient-tape.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

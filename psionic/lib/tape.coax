@@ -1,0 +1,437 @@
+// Chapter 71: gradients as a program. A model is written as a list of
+// operations; one pass forward saves every value, and one pass backward walks
+// the list in reverse and accumulates each node's adjoint into its operands,
+// and parameter adjoints into their slots. Profile cpu-f64-tape-v1: binary64,
+// at most 4,096 nodes and 4,096 parameter slots, every value, adjoint and
+// gradient within ±1e100.
+#load "tabular.coax";
+#authority;
+
+TpStatus :: enum u8 {ok;shape;capacity;alias;number;}
+TpOp :: enum u8 {param;constant;add;sub;mul;div;neg;square;exp;log;tanh;sigmoid;softplus;}
+// `slot` names a parameter; `value` is a constant; `a` and `b` are earlier nodes.
+TpNode :: struct {op:TpOp;a:int;b:int;slot:int;value:f64;}
+TpBuild :: struct {status:TpStatus;count:int;}
+
+TP_NODES_MAX :: 4096;
+TP_PARAMS_MAX :: 4096;
+TP_BOUND :: 1e100;
+TP_EXP_MAX :: 230.0;
+
+// Checks precede the implementation. Expected values are derived in chapter 71.
+#forall "operations take zero, one or two operands" k:0..<13 {
+    want:=1;if k<2 {want=0;} else if k<6 {want=2;}
+    #assert tp_arity(cast(TpOp)k)==want;
+}
+tp_p :: (slot:int)->TpNode {return TpNode.{op=TpOp.param,slot=slot};}
+tp_c :: (v:f64)->TpNode {return TpNode.{op=TpOp.constant,value=v};}
+tp_u :: (op:TpOp,a:int)->TpNode {return TpNode.{op=op,a=a};}
+tp_b :: (op:TpOp,a:int,b:int)->TpNode {return TpNode.{op=op,a=a,b=b};}
+#test "every operation forward, by hand" {
+    g:=[19]TpNode.[tp_p(0),tp_p(1),tp_c(3),tp_b(TpOp.add,0,1),tp_b(TpOp.sub,0,1),tp_b(TpOp.mul,3,4),tp_b(TpOp.div,5,2),
+        tp_u(TpOp.neg,6),tp_u(TpOp.square,7),tp_u(TpOp.exp,0),tp_u(TpOp.log,8),tp_u(TpOp.tanh,1),tp_u(TpOp.sigmoid,4),
+        tp_u(TpOp.softplus,5),tp_b(TpOp.add,9,10),tp_b(TpOp.add,14,11),tp_b(TpOp.add,15,12),tp_b(TpOp.add,16,13),tp_b(TpOp.mul,17,7)];
+    p:=[2]f64.[0.5,-2];v:[19]f64;
+    #assert tp_forward(g[..],p[..],v[..],false)==TpStatus.ok;
+    #assert v[0]==0.5 && v[1]==-2 && v[2]==3 && v[3]==-1.5 && v[4]==2.5 && v[5]==-3.75 && v[6]==-1.25 && v[7]==1.25 && v[8]==1.5625;
+    #assert v[9]==exp(0.5) && v[10]==log(1.5625) && v[11]==tb_tanh(-2) && v[12]==tb_sigmoid(2.5) && v[13]==tb_softplus(-3.75);
+    #assert v[18]==((((v[9]+v[10])+v[11])+v[12])+v[13])*1.25;
+    // Backward against central differences of the whole program.
+    gr:=[2]f64.[0,0];#assert tp_backward(g[..],v[..],gr[..],false)==TpStatus.ok;
+    for s:0..<2 {
+        up:=p;down:=p;up[s]+=1e-6;down[s]-=1e-6;w:[19]f64;
+        #assert tp_forward(g[..],up[..],w[..],false)==TpStatus.ok;hi:=w[18];
+        #assert tp_forward(g[..],down[..],w[..],false)==TpStatus.ok;
+        #assert abs((hi-w[18])/2e-6-gr[s])<=1e-8;
+    }
+}
+#test "each unary rule is its derivative, exactly" {
+    ops:=[7]TpOp.[TpOp.neg,TpOp.square,TpOp.exp,TpOp.log,TpOp.tanh,TpOp.sigmoid,TpOp.softplus];
+    x:=0.75;
+    for k:0..<7 {
+        g:=[2]TpNode.[tp_p(0),tp_u(ops[k],0)];p:=[1]f64.[x];v:[2]f64;gr:=[1]f64.[0];
+        #assert tp_forward(g[..],p[..],v[..],false)==TpStatus.ok && tp_backward(g[..],v[..],gr[..],false)==TpStatus.ok;
+        t:=tb_tanh(x);s:=tb_sigmoid(x);
+        want:=[7]f64.[-1,2*x,exp(x),1/x,1-t*t,s*(1-s),s];
+        #assert gr[0]==want[k];
+    }
+}
+#test "each binary rule is its pair of partial derivatives, exactly" {
+    ops:=[4]TpOp.[TpOp.add,TpOp.sub,TpOp.mul,TpOp.div];
+    a:=1.5;b:=-0.4;
+    da:=[4]f64.[1,1,b,1/b];db:=[4]f64.[1,-1,a,-(a/b)/b];
+    for k:0..<4 {
+        g:=[3]TpNode.[tp_p(0),tp_p(1),tp_b(ops[k],0,1)];p:=[2]f64.[a,b];v:[3]f64;gr:=[2]f64.[0,0];
+        #assert tp_forward(g[..],p[..],v[..],false)==TpStatus.ok && tp_backward(g[..],v[..],gr[..],false)==TpStatus.ok;
+        #assert gr[0]==da[k] && gr[1]==db[k];
+    }
+}
+#test "a node used twice, and a parameter read twice, accumulate" {
+    // x * x: both operands are node 0, so its adjoint receives x twice: 2x.
+    sq:=[2]TpNode.[tp_p(0),tp_b(TpOp.mul,0,0)];p:=[1]f64.[3];v:[3]f64;gr:=[1]f64.[0];
+    #assert tp_forward(sq[..],p[..],v[..],false)==TpStatus.ok && tp_backward(sq[..],v[..],gr[..],false)==TpStatus.ok && v[1]==9 && gr[0]==6;
+    // Two nodes read slot 0: 3a + 4a has gradient 7 in that slot; slot 1 is read by none.
+    two:=[5]TpNode.[tp_p(0),tp_p(0),tp_c(3),tp_b(TpOp.mul,2,0),tp_b(TpOp.add,3,1)];
+    two[1]=tp_p(0);two[4]=tp_b(TpOp.add,3,1);
+    q:=[2]f64.[5,9];w:[5]f64;h:=[2]f64.[0,0];
+    // 3*a + a: gradient 4 in slot 0, nothing in slot 1.
+    #assert tp_forward(two[..],q[..],w[..],false)==TpStatus.ok && tp_backward(two[..],w[..],h[..],false)==TpStatus.ok && h[0]==4 && h[1]==0;
+}
+#test "backward adds to the gradients it is given; zeroing is the caller's job" {
+    g:=[3]TpNode.[tp_p(0),tp_p(1),tp_b(TpOp.mul,0,1)];p:=[2]f64.[2,3];v:[3]f64;gr:=[2]f64.[0,0];
+    #assert tp_forward(g[..],p[..],v[..],false)==TpStatus.ok;
+    #assert tp_backward(g[..],v[..],gr[..],false)==TpStatus.ok && gr[0]==3 && gr[1]==2;
+    #assert tp_backward(g[..],v[..],gr[..],false)==TpStatus.ok && gr[0]==6 && gr[1]==4;
+}
+#test "backward reads only saved values" {
+    // The gradient of a*b in a is the saved value of b, whatever the parameters are now.
+    g:=[3]TpNode.[tp_p(0),tp_p(1),tp_b(TpOp.mul,0,1)];p:=[2]f64.[2,3];v:[3]f64;gr:=[2]f64.[0,0];
+    #assert tp_forward(g[..],p[..],v[..],false)==TpStatus.ok;
+    p[1]=100;v[1]=7;
+    #assert tp_backward(g[..],v[..],gr[..],false)==TpStatus.ok && gr[0]==7 && gr[1]==2;
+    // Only nodes that reach the last one contribute: a node after it does not exist,
+    // and a node before it that nothing reads has a zero adjoint.
+    h:=[4]TpNode.[tp_p(0),tp_p(1),tp_u(TpOp.exp,1),tp_u(TpOp.neg,0)];w:[4]f64;z:=[2]f64.[0,0];
+    #assert tp_forward(h[..],p[..],w[..],false)==TpStatus.ok && tp_backward(h[..],w[..],z[..],false)==TpStatus.ok && z[0]==-1 && z[1]==0;
+}
+#test "admission refuses malformed programs" {
+    big:[4097]TpNode;one:=[1]f64.[0];
+    #assert tp_admit(big[0..<4096],1)==TpStatus.ok && tp_admit(big[..],1)==TpStatus.shape && tp_admit(big[0..<0],1)==TpStatus.shape;
+    c:=[1]TpNode.[tp_c(1)];
+    #assert tp_admit(c[..],0)==TpStatus.ok && tp_admit(c[..],4096)==TpStatus.ok && tp_admit(c[..],-1)==TpStatus.shape && tp_admit(c[..],4097)==TpStatus.shape;
+    c[0].value=TP_BOUND;#assert tp_admit(c[..],0)==TpStatus.ok;
+    c[0].value=-TP_BOUND;#assert tp_admit(c[..],0)==TpStatus.ok;
+    c[0].value=TP_BOUND*2;#assert tp_admit(c[..],0)==TpStatus.number;
+    c[0].value=-TP_BOUND*2;#assert tp_admit(c[..],0)==TpStatus.number;
+    s:=[1]TpNode.[tp_p(2)];
+    #assert tp_admit(s[..],3)==TpStatus.ok && tp_admit(s[..],2)==TpStatus.shape;
+    s[0].slot=-1;#assert tp_admit(s[..],3)==TpStatus.shape;
+    g:=[2]TpNode.[tp_c(1),tp_u(TpOp.softplus,0)];
+    g[1].b=99;#assert tp_admit(g[..],0)==TpStatus.ok;
+    g[1].a=1;#assert tp_admit(g[..],0)==TpStatus.shape;
+    g[1].a=-1;#assert tp_admit(g[..],0)==TpStatus.shape;
+    g[1]=tp_b(TpOp.div,0,0);#assert tp_admit(g[..],0)==TpStatus.ok;
+    g[1].b=1;#assert tp_admit(g[..],0)==TpStatus.shape;
+    g[1].b=-1;#assert tp_admit(g[..],0)==TpStatus.shape;
+    g[1].b=0;g[1].a=1;#assert tp_admit(g[..],0)==TpStatus.shape;
+    // A parameter or constant node ignores its operand fields.
+    g[1]=tp_c(2);g[1].a=-5;g[1].b=7;#assert tp_admit(g[..],0)==TpStatus.ok;
+}
+#test "forward refuses before it writes, and every value stays in the domain" {
+    g:=[3]TpNode.[tp_p(0),tp_p(1),tp_b(TpOp.mul,0,1)];p:=[2]f64.[2,3];v:=[3]f64.[-7,-7,-7];
+    #assert tp_forward(g[..],p[..],v[0..<2],false)==TpStatus.capacity && tp_forward(g[..],p[..],v[..],true)==TpStatus.alias;
+    #assert tp_forward(g[..],p[0..<1],v[..],false)==TpStatus.shape;
+    p[0]=TP_BOUND*2;#assert tp_forward(g[..],p[..],v[..],false)==TpStatus.number;
+    p[0]=2;p[1]=-TP_BOUND*2;#assert tp_forward(g[..],p[..],v[..],false)==TpStatus.number;
+    p[1]=1e60;p[0]=1e60;#assert tp_forward(g[..],p[..],v[..],false)==TpStatus.number;
+    p[0]=0;p[1]=0;g[2]=tp_b(TpOp.div,0,1);#assert tp_forward(g[..],p[..],v[..],false)==TpStatus.number;
+    p[1]=1;g[2]=tp_b(TpOp.div,1,0);#assert tp_forward(g[..],p[..],v[..],false)==TpStatus.number;
+    g[2]=tp_u(TpOp.log,0);#assert tp_forward(g[..],p[..],v[..],false)==TpStatus.number;
+    p[0]=-1;#assert tp_forward(g[..],p[..],v[..],false)==TpStatus.number;
+    p[0]=TP_EXP_MAX;g[2]=tp_u(TpOp.exp,0);#assert tp_forward(g[..],p[..],v[..],false)==TpStatus.ok && v[2]==exp(TP_EXP_MAX);
+    v[0]=-7;v[1]=-7;v[2]=-7;
+    p[0]=f64_from_bits(f64_bits(TP_EXP_MAX)+1);#assert tp_forward(g[..],p[..],v[..],false)==TpStatus.number;
+    p[0]=1e60;g[2]=tp_u(TpOp.square,0);#assert tp_forward(g[..],p[..],v[..],false)==TpStatus.number;
+    for x:v {#assert x==-7;}
+    q:=[1]TpNode.[tp_c(3)];#assert tp_forward(q[..],p[0..<0],v[..],false)==TpStatus.ok && v[0]==3 && v[1]==-7;
+}
+#test "backward refuses before it writes" {
+    g:=[3]TpNode.[tp_p(0),tp_p(1),tp_b(TpOp.mul,0,1)];v:=[3]f64.[2,3,6];gr:=[2]f64.[-7,-7];
+    #assert tp_backward(g[..],v[0..<2],gr[..],false)==TpStatus.shape && tp_backward(g[..],v[..],gr[0..<1],false)==TpStatus.shape;
+    #assert tp_backward(g[..],v[..],gr[..],true)==TpStatus.alias;
+    v[0]=TP_BOUND*2;#assert tp_backward(g[..],v[..],gr[..],false)==TpStatus.number;
+    v[0]=2;v[2]=-TP_BOUND*2;#assert tp_backward(g[..],v[..],gr[..],false)==TpStatus.number;
+    #assert gr[0]==-7 && gr[1]==-7;
+    // A saved value nothing reads is still checked.
+    k:=[3]TpNode.[tp_c(1),tp_p(0),tp_u(TpOp.neg,1)];u:=[3]f64.[TP_BOUND*2,1,-1];
+    #assert tp_backward(k[..],u[..],gr[0..<1],false)==TpStatus.number && gr[0]==-7;
+    // Adjoints grow: d/dp of p * c * c * c is c^3 = 1e180, past the bound.
+    h:=[5]TpNode.[tp_p(0),tp_c(1e60),tp_b(TpOp.mul,0,1),tp_b(TpOp.mul,2,1),tp_b(TpOp.mul,3,1)];
+    p:=[1]f64.[1e-100];w:[5]f64;z:=[1]f64.[-7];
+    #assert tp_forward(h[..],p[..],w[..],false)==TpStatus.ok && tp_backward(h[..],w[..],z[..],false)==TpStatus.number && z[0]==-7;
+    // A gradient that would leave the bound after accumulation is refused too.
+    gr[0]=TP_BOUND;gr[1]=0;v[1]=1e90;v[2]=6;#assert tp_backward(g[..],v[..],gr[..],false)==TpStatus.number && gr[0]==TP_BOUND && gr[1]==0;
+    v[1]=3;gr[0]=-TP_BOUND+3;#assert tp_backward(g[..],v[..],gr[..],false)==TpStatus.ok && gr[1]==2;
+    gr[0]=0;gr[1]=-TP_BOUND;v[0]=-1e90;#assert tp_backward(g[..],v[..],gr[..],false)==TpStatus.number;
+}
+#test "the tabular models as programs: node counts and chapter 70's gradients" {
+    x:=[9]f64.[0.5,-1,0.25, -0.25,2,-1, 1.5,0.75,0.5];y:=[3]f64.[1,0,1];t:=[3]f64.[2,-1,0.5];rows:=[3]int.[2,0,1];
+    nodes:[512]TpNode;v:[512]f64;
+    ms:=[3]TbModel.[TbModel.{features=3,logistic=true},TbModel.{features=3},TbModel.{features=3,hidden=2,logistic=true}];
+    // Parameters, then per row: 3 features, the model, the loss; a sum and a mean.
+    counts:=[3]int.[4+3*(3+6+4)+2+2,4+3*(3+6+5)+2+2,11+3*(3+2*7+4+4)+2+2];
+    for k:0..<3 {
+        m:=ms[k];n:=tb_param_count(m);p:[11]f64;tb_initialize(m,5,p[..]);p[n-1]=0.3;p[0]=0.4;
+        target:=y[..];if !m.logistic {target=t[..];}
+        b:=tp_tabular(m,x[..],target,rows[..],nodes[..],false);
+        #assert b.status==TpStatus.ok && b.count==counts[k];
+        #assert tp_forward(nodes[0..<b.count],p[0..<n],v[..],false)==TpStatus.ok;
+        #assert abs(v[b.count-1]-tb_loss(m,p[0..<n],x[..],target,rows[..]))<=1e-15;
+        want:[11]f64;tb_gradient(m,p[0..<n],x[..],target,rows[..],want[0..<n]);
+        got:[11]f64;
+        #assert tp_gradient(m,p[0..<n],x[..],target,rows[..],got[0..<n],nodes[..],v[..],false)==TpStatus.ok;
+        for s:0..<n {#assert abs(got[s]-want[s])<=1e-15;}
+    }
+}
+#test "building and differentiating a tabular program refuse bad requests" {
+    x:=[4]f64.[1,2,3,4];y:=[2]f64.[1,0];rows:=[2]int.[0,1];nodes:[64]TpNode;v:[64]f64;m:=TbModel.{features=2,logistic=true};
+    #assert tp_tabular(m,x[..],y[..],rows[..],nodes[..],false).count==3+2*(2+4+4)+1+2;
+    #assert tp_tabular(TbModel.{features=9},x[..],y[..],rows[..],nodes[..],false).status==TpStatus.shape;
+    #assert tp_tabular(m,x[0..<3],y[..],rows[..],nodes[..],false).status==TpStatus.shape;
+    bad:=[1]int.[2];#assert tp_tabular(m,x[..],y[..],bad[..],nodes[..],false).status==TpStatus.shape;
+    #assert tp_tabular(m,x[..],y[..],rows[..],nodes[0..<25],false).status==TpStatus.capacity;
+    #assert tp_tabular(m,x[..],y[..],rows[..],nodes[0..<26],false).status==TpStatus.ok;
+    #assert tp_tabular(m,x[..],y[..],rows[..],nodes[..],true).status==TpStatus.alias;
+    p:=[3]f64.[0.1,0.2,0.3];g:=[3]f64.[-7,-7,-7];
+    #assert tp_gradient(m,p[..],x[..],y[..],rows[..],g[..],nodes[0..<25],v[..],false)==TpStatus.capacity;
+    #assert tp_gradient(m,p[..],x[..],y[..],rows[..],g[..],nodes[..],v[0..<25],false)==TpStatus.capacity;
+    #assert tp_gradient(m,p[..],x[..],y[..],rows[..],g[0..<2],nodes[..],v[..],false)==TpStatus.shape;
+    #assert tp_gradient(m,p[0..<2],x[..],y[..],rows[..],g[..],nodes[..],v[..],false)==TpStatus.shape;
+    #assert tp_gradient(m,p[..],x[..],y[..],rows[..],g[..],nodes[..],v[..],true)==TpStatus.alias;
+    p[0]=TP_BOUND*2;#assert tp_gradient(m,p[..],x[..],y[..],rows[..],g[..],nodes[..],v[..],false)==TpStatus.number;
+    #assert g[0]==-7 && g[2]==-7;
+    // A gradient call replaces what the caller held; it does not accumulate.
+    p[0]=0.1;
+    #assert tp_gradient(m,p[..],x[..],y[..],rows[..],g[..],nodes[..],v[..],false)==TpStatus.ok;
+    first:=g;#assert tp_gradient(m,p[..],x[..],y[..],rows[..],g[..],nodes[..],v[..],false)==TpStatus.ok;
+    for s:0..<3 {#assert g[s]==first[s] && g[s]!=-7;}
+}
+
+#test "training with the tape matches chapter 70's trainer" {
+    x:=[10]f64.[0.5,-1, -0.25,2, 1.5,0.75, -1,-0.5, 0.25,0.25];y:=[5]f64.[1,0,1,0,1];t:=[5]f64.[2,-1,0.5,0,1];rows:=[5]int.[0,1,2,3,4];
+    nodes:[512]TpNode;v:[512]f64;
+    ms:=[3]TbModel.[TbModel.{features=2,hidden=2,logistic=true},TbModel.{features=2,logistic=true},TbModel.{features=2}];
+    c:=TbConfig.{epochs=3,batch=2,rate=0.5,decay=0.1,init_seed=3,shuffle_seed=4};
+    for k:0..<3 {
+        m:=ms[k];target:=y[..];if !m.logistic {target=t[..];}
+        a:[9]f64;b:[9]f64;oa:=[5]int.[4,4,4,4,4];ob:=[5]int.[4,4,4,4,4];
+        ra:=tb_train(m,c,x[..],target,rows[..],a[..],oa[..],false);
+        rb:=tp_train(m,c,x[..],target,rows[..],b[..],ob[..],nodes[..],v[..],false);
+        #assert ra.status==TbStatus.ok && rb.status==TbStatus.ok && rb.steps==9 && abs(ra.loss-rb.loss)<=1e-15;
+        for s:0..<9 {#assert abs(a[s]-b[s])<=1e-14;}
+    }
+}
+#test "training with the tape refuses before it publishes" {
+    x:=[4]f64.[1,2,3,4];y:=[2]f64.[1,0];rows:=[2]int.[0,1];order:[2]int;nodes:[64]TpNode;v:[64]f64;
+    m:=TbModel.{features=2,logistic=true};c:=TbConfig.{epochs=1,batch=2,rate=0.5};p:=[3]f64.[-7,-7,-7];
+    bad:=c;bad.batch=0;
+    #assert tp_train(m,bad,x[..],y[..],rows[..],p[..],order[..],nodes[..],v[..],false).status==TbStatus.shape;
+    #assert tp_train(m,c,x[..],y[..],rows[..],p[..],order[..],nodes[..],v[..],true).status==TbStatus.alias;
+    // Two rows need 26 nodes and 26 values.
+    #assert tp_train(m,c,x[..],y[..],rows[..],p[..],order[..],nodes[0..<25],v[..],false).status==TbStatus.capacity;
+    #assert tp_train(m,c,x[..],y[..],rows[..],p[..],order[..],nodes[..],v[0..<25],false).status==TbStatus.capacity;
+    #assert p[0]==-7 && p[2]==-7;
+    #assert tp_train(m,c,x[..],y[..],rows[..],p[..],order[..],nodes[0..<26],v[0..<26],false).status==TbStatus.ok && p[0]!=-7;
+    big:=[1]f64.[1048576];one:=[1]int.[0];q:=[2]f64.[-7,-7];
+    r:=tp_train(TbModel.{features=1},TbConfig.{epochs=1,batch=1,rate=1},big[..],big[..],one[..],q[..],order[..],nodes[..],v[..],false);
+    #assert r.status==TbStatus.update && r.steps==0 && q[0]==-7 && q[1]==-7;
+}
+
+tp_arity :: (op:TpOp)->int {
+    k:=cast(int)op;
+    if k<2 {return 0;}
+    if k<6 {return 2;}
+    return 1;
+}
+
+// book:begin admit
+// Operands name earlier nodes, so every program is acyclic and runs in order.
+tp_admit :: (nodes:[]TpNode,params:int)->TpStatus #export_c {
+    if nodes.count<1 || nodes.count>TP_NODES_MAX || params<0 || params>TP_PARAMS_MAX {return TpStatus.shape;}
+    for n,i:nodes {
+        if cast(int)n.op>cast(int)TpOp.softplus {return TpStatus.shape;}
+        arity:=tp_arity(n.op);
+        if n.op==TpOp.param && (n.slot<0 || n.slot>=params) {return TpStatus.shape;}
+        if n.op==TpOp.constant && !tb_in(n.value,-TP_BOUND,TP_BOUND) {return TpStatus.number;}
+        if arity>=1 && (n.a<0 || n.a>=i) {return TpStatus.shape;}
+        if arity==2 && (n.b<0 || n.b>=i) {return TpStatus.shape;}
+    }
+    return TpStatus.ok;
+}
+// book:end admit
+
+// book:begin forward
+// One operation's value. Where it has none in the domain (log of a number
+// that is not positive, exp past 230), the result is outside it and refused.
+tp_apply :: (op:TpOp,a:f64,b:f64)->f64 {
+    if op==TpOp.add {return a+b;}
+    if op==TpOp.sub {return a-b;}
+    if op==TpOp.mul {return a*b;}
+    if op==TpOp.div {return a/b;}
+    if op==TpOp.neg {return -a;}
+    if op==TpOp.square {return a*a;}
+    if op==TpOp.exp {if a>TP_EXP_MAX {return 2*TP_BOUND;} return exp(a);}
+    if op==TpOp.log {if !(a>0) {return 2*TP_BOUND;} return log(a);}
+    if op==TpOp.tanh {return tb_tanh(a);}
+    if op==TpOp.sigmoid {return tb_sigmoid(a);}
+    return tb_softplus(a);
+}
+// Every node's value, in order; the last node is the program's result.
+tp_forward :: (nodes:[]TpNode,params:[]f64,values:[]f64,overlap:bool)->TpStatus #export_c {
+    s:=tp_admit(nodes,params.count);
+    if s!=TpStatus.ok {return s;}
+    if values.count<nodes.count {return TpStatus.capacity;}
+    if overlap {return TpStatus.alias;}
+    for p:params {if !tb_in(p,-TP_BOUND,TP_BOUND) {return TpStatus.number;}}
+    v:[4096]f64;
+    for n,i:nodes {
+        x:=n.value;
+        if n.op==TpOp.param {x=params[n.slot];}
+        if tp_arity(n.op)==1 {x=tp_apply(n.op,v[n.a],0);}
+        if tp_arity(n.op)==2 {x=tp_apply(n.op,v[n.a],v[n.b]);}
+        if !tb_in(x,-TP_BOUND,TP_BOUND) {return TpStatus.number;}
+        v[i]=x;
+    }
+    for i:0..<nodes.count {values[i]=v[i];}
+    return TpStatus.ok;
+}
+// book:end forward
+
+// book:begin backward
+// d out / d a and d out / d b from saved values only: the operands and the output.
+tp_partial_a :: (op:TpOp,a:f64,b:f64,out:f64)->f64 {
+    if op==TpOp.add || op==TpOp.sub {return 1;}
+    if op==TpOp.mul {return b;}
+    if op==TpOp.div {return 1/b;}
+    if op==TpOp.neg {return -1;}
+    if op==TpOp.square {return 2*a;}
+    if op==TpOp.exp {return out;}
+    if op==TpOp.log {return 1/a;}
+    if op==TpOp.tanh {return 1-out*out;}
+    if op==TpOp.sigmoid {return out*(1-out);}
+    return tb_sigmoid(a);
+}
+tp_partial_b :: (op:TpOp,a:f64,b:f64,out:f64)->f64 {
+    if op==TpOp.add {return 1;}
+    if op==TpOp.sub {return -1;}
+    if op==TpOp.mul {return a;}
+    return -out/b;
+}
+// Adds d result / d parameter into `grads`, one entry per slot. The adjoint of
+// a node is the sum over everything that reads it, so a node read twice, or a
+// slot read by two nodes, accumulates. The caller zeroes `grads` between steps.
+tp_backward :: (nodes:[]TpNode,values:[]f64,grads:[]f64,overlap:bool)->TpStatus #export_c {
+    s:=tp_admit(nodes,grads.count);
+    if s!=TpStatus.ok {return s;}
+    if values.count<nodes.count {return TpStatus.shape;}
+    if overlap {return TpStatus.alias;}
+    for i:0..<nodes.count {if !tb_in(values[i],-TP_BOUND,TP_BOUND) {return TpStatus.number;}}
+    adj:[4096]f64;staged:[4096]f64;
+    adj[nodes.count-1]=1;
+    i:=nodes.count-1;
+    while i>=0 {
+        n:=nodes[i];g:=adj[i];
+        if !tb_in(g,-TP_BOUND,TP_BOUND) {return TpStatus.number;}
+        if n.op==TpOp.param {staged[n.slot]+=g;}
+        arity:=tp_arity(n.op);
+        if arity>=1 {
+            b:=0.0;if arity==2 {b=values[n.b];}
+            adj[n.a]+=g*tp_partial_a(n.op,values[n.a],b,values[i]);
+            if arity==2 {adj[n.b]+=g*tp_partial_b(n.op,values[n.a],b,values[i]);}
+        }
+        i-=1;
+    }
+    for k:0..<grads.count {if !tb_in(grads[k]+staged[k],-TP_BOUND,TP_BOUND) {return TpStatus.number;}}
+    for k:0..<grads.count {grads[k]+=staged[k];}
+    return TpStatus.ok;
+}
+// book:end backward
+
+// book:begin tabular
+// Append one node; -1 once storage is full, and every later append stays -1.
+tp_push :: (nodes:[]TpNode,n:int,node:TpNode)->int {
+    if n<0 || n>=nodes.count {return -1;}
+    nodes[n]=node;
+    return n+1;
+}
+// Chapter 70's models and mean loss over `rows`, as a program. Nodes 0 to P-1
+// read parameter slots 0 to P-1, in chapter 70's layout; each use of a
+// parameter reads its node, so its adjoint collects every use.
+tp_tabular :: (m:TbModel,x:[]f64,y:[]f64,rows:[]int,nodes:[]TpNode,overlap:bool)->TpBuild #export_c {
+    d:=m.features;
+    if !tb_model_ok(m) || x.count!=y.count*d || !tb_row_ok(rows,y.count) {return TpBuild.{status=TpStatus.shape};}
+    if overlap {return TpBuild.{status=TpStatus.alias};}
+    P:=tb_param_count(m);n:=0;total:int;hd:=m.hidden*d;base:=hd+m.hidden;
+    for s:0..<P {n=tp_push(nodes,n,tp_p(s));}
+    for r,ri:rows {
+        xs:=n;
+        for j:0..<d {n=tp_push(nodes,n,tp_c(x[r*d+j]));}
+        z:=d;
+        if m.hidden==0 {
+            for j:0..<d {n=tp_push(nodes,n,tp_b(TpOp.mul,j,xs+j));n=tp_push(nodes,n,tp_b(TpOp.add,z,n-1));z=n-1;}
+        } else {
+            h:[16]int;
+            for k:0..<m.hidden {
+                a:=hd+k;
+                for j:0..<d {n=tp_push(nodes,n,tp_b(TpOp.mul,k*d+j,xs+j));n=tp_push(nodes,n,tp_b(TpOp.add,a,n-1));a=n-1;}
+                n=tp_push(nodes,n,tp_u(TpOp.tanh,a));h[k]=n-1;
+            }
+            z=P-1;
+            for k:0..<m.hidden {n=tp_push(nodes,n,tp_b(TpOp.mul,base+k,h[k]));n=tp_push(nodes,n,tp_b(TpOp.add,z,n-1));z=n-1;}
+        }
+        n=tp_push(nodes,n,tp_c(y[r]));label:=n-1;
+        if m.logistic {
+            // softplus(z) - y z
+            n=tp_push(nodes,n,tp_u(TpOp.softplus,z));n=tp_push(nodes,n,tp_b(TpOp.mul,label,z));n=tp_push(nodes,n,tp_b(TpOp.sub,n-2,n-1));
+        } else {
+            // (z - y)^2 / 2
+            n=tp_push(nodes,n,tp_b(TpOp.sub,z,label));n=tp_push(nodes,n,tp_u(TpOp.square,n-1));
+            n=tp_push(nodes,n,tp_c(0.5));n=tp_push(nodes,n,tp_b(TpOp.mul,n-1,n-2));
+        }
+        if ri==0 {total=n-1;} else {n=tp_push(nodes,n,tp_b(TpOp.add,total,n-1));total=n-1;}
+    }
+    n=tp_push(nodes,n,tp_c(f64(rows.count)));n=tp_push(nodes,n,tp_b(TpOp.div,total,n-1));
+    if n==-1 {return TpBuild.{status=TpStatus.capacity};}
+    return TpBuild.{count=n};
+}
+// book:end tabular
+
+// book:begin gradient
+// A drop-in for chapter 70's tb_gradient: build the program, run it forward,
+// zero the gradients and run it backward. `nodes` and `values` are scratch.
+tp_gradient :: (m:TbModel,p:[]f64,x:[]f64,y:[]f64,rows:[]int,g:[]f64,nodes:[]TpNode,values:[]f64,overlap:bool)->TpStatus #export_c {
+    n:=tb_param_count(m);
+    if p.count!=n || g.count!=n {return TpStatus.shape;}
+    b:=tp_tabular(m,x,y,rows,nodes,overlap);
+    if b.status!=TpStatus.ok {return b.status;}
+    s:=tp_forward(nodes[0..<b.count],p,values,false);
+    if s!=TpStatus.ok {return s;}
+    z:[4096]f64;
+    s=tp_backward(nodes[0..<b.count],values,z[0..<n],false);
+    if s!=TpStatus.ok {return s;}
+    for k:0..<n {g[k]=z[k];}
+    return TpStatus.ok;
+}
+// book:end gradient
+
+// book:begin train
+// Chapter 70's trainer with the tape in place of the hand-written gradient:
+// the same admission, initialization, shuffle, batches, decay and staging.
+tp_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,nodes:[]TpNode,values:[]f64,overlap:bool)->TbTrain #export_c {
+    admitted:=tb_admit_train(m,c,x,y,rows,params,order,overlap);
+    if admitted!=TbStatus.ok {return TbTrain.{status=admitted};}
+    n:=tb_param_count(m);
+    p:[161]f64;g:[161]f64;tb_initialize(m,c.init_seed,p[..]);
+    o:=order[0..<rows.count];for i:0..<rows.count {o[i]=rows[i];}
+    counter:=(cast(u64)0);steps:=0;
+    for epoch:0..<c.epochs {
+        counter=tb_shuffle(o,c.shuffle_seed,counter);
+        start:=0;
+        for i:0..<o.count {
+            if i+1-start!=c.batch && i+1!=o.count {continue;}
+            // After admission, only the program's own storage can fall short.
+            if tp_gradient(m,p[0..<n],x,y,o[start..<i+1],g[0..<n],nodes,values,false)!=TpStatus.ok {return TbTrain.{status=TbStatus.capacity};}
+            for k:0..<n {
+                step:=g[k];if tb_is_weight(m,k) {step+=c.decay*p[k];}
+                next:=p[k]-c.rate*step;
+                if !tb_in(next,-TB_DOMAIN,TB_DOMAIN) {return TbTrain.{status=TbStatus.update};}
+                p[k]=next;
+            }
+            steps+=1;start=i+1;
+        }
+    }
+    loss:=tb_loss(m,p[0..<n],x,y,rows);
+    for k:0..<n {params[k]=p[k];}
+    return TbTrain.{steps=steps,loss=loss};
+}
+// book:end train

@@ -1,0 +1,7 @@
+x * x at x = 3: value 9.0, gradient 6.0 (node 0 is read twice)
+3a + a at a = 5, two nodes reading slot 0: value 20.0, gradient 4.0
+a * b = 6.0 at (2, 3), backward twice without zeroing: gradient (6.0, 4.0), not (3, 2)
+one batch of 16 rows: logistic program 278 nodes, hidden-layer program 1602 nodes
+tape against chapter 70's hand-written gradient: largest difference 2.7755575615628914e-17
+logistic trained through the tape, 3600 steps: test log loss 0.1593
+hidden layer trained through the tape, 3600 steps: test log loss 0.1434

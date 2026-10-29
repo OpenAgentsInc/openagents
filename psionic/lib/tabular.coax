@@ -574,17 +574,24 @@ tb_budget :: (m:TbModel,c:TbConfig,rows:int)->bool {
 }
 
 // book:begin train
-tb_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,overlap:bool)->TbTrain #export_c {
+// Every refusal, before any work. Chapter 71's trainer shares it.
+tb_admit_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,overlap:bool)->TbStatus {
     n:=tb_param_count(m);d:=m.features;
-    if !tb_budget(m,c,rows.count) || c.batch<1 || c.batch>TB_BATCH_MAX || !(c.rate>0 && c.rate<=16) || !tb_in(c.decay,0,1) {return TbTrain.{status=TbStatus.shape};}
-    if x.count!=y.count*d || !tb_row_ok(rows,y.count) {return TbTrain.{status=TbStatus.shape};}
-    if params.count<n || order.count<rows.count {return TbTrain.{status=TbStatus.capacity};}
-    if overlap {return TbTrain.{status=TbStatus.alias};}
+    if !tb_budget(m,c,rows.count) || c.batch<1 || c.batch>TB_BATCH_MAX || !(c.rate>0 && c.rate<=16) || !tb_in(c.decay,0,1) {return TbStatus.shape;}
+    if x.count!=y.count*d || !tb_row_ok(rows,y.count) {return TbStatus.shape;}
+    if params.count<n || order.count<rows.count {return TbStatus.capacity;}
+    if overlap {return TbStatus.alias;}
     for r:rows {
-        for j:0..<d {if !tb_in(x[r*d+j],-TB_DOMAIN,TB_DOMAIN) {return TbTrain.{status=TbStatus.number};}}
-        if m.logistic && y[r]!=0 && y[r]!=1 {return TbTrain.{status=TbStatus.number};}
-        if !tb_in(y[r],-TB_DOMAIN,TB_DOMAIN) {return TbTrain.{status=TbStatus.number};}
+        for j:0..<d {if !tb_in(x[r*d+j],-TB_DOMAIN,TB_DOMAIN) {return TbStatus.number;}}
+        if m.logistic && y[r]!=0 && y[r]!=1 {return TbStatus.number;}
+        if !tb_in(y[r],-TB_DOMAIN,TB_DOMAIN) {return TbStatus.number;}
     }
+    return TbStatus.ok;
+}
+tb_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,overlap:bool)->TbTrain #export_c {
+    admitted:=tb_admit_train(m,c,x,y,rows,params,order,overlap);
+    if admitted!=TbStatus.ok {return TbTrain.{status=admitted};}
+    n:=tb_param_count(m);
     // Train on staged copies; the caller's parameters change only on success.
     p:[161]f64;g:[161]f64;tb_initialize(m,c.init_seed,p[..]);
     o:=order[0..<rows.count];for i:0..<rows.count {o[i]=rows[i];}
