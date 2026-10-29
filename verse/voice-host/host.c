@@ -347,9 +347,11 @@ typedef struct {
   // The reply a barge-in last cut, kept until that turn's transcript says
   // whether it was someone talking or the reply's own echo (resume_if_echo).
   char cut_text[MAX_TEXT + 1];
+  int16_t *cut_pcm;           // its rendered audio
   size_t cut_n, cut_played;   // samples rendered and played when it was cut
+  int cut_rendered;           // sentences rendered; the rest are still text
   uint64_t cut_at;            // now_ms() of the cut; 0: nothing kept
-  int cut_resumes;            // resumes in a row, so an echo can't loop on one sentence
+  int cut_resumes;            // resumes in a row, so an echo can't cut it forever
 } session;
 
 static session *sessions[MAX_SESSIONS];
@@ -465,6 +467,7 @@ static void session_close(int idx) {
   if (s->v) utter_free_all(s);
   stop_agent(s);
   drop_final(s);
+  free(s->cut_pcm);
   free(s->in.p);
   free(s->out.p);
   free(s->msg.p);
@@ -695,6 +698,11 @@ static void on_uplink_audio(session *s, const oa_voice_audio *a) {
   maybe_recognize(s);
 }
 
+static void clear_cut(session *s) {
+  free(s->cut_pcm);
+  s->cut_pcm = NULL; s->cut_n = 0; s->cut_at = 0; s->cut_resumes = 0;
+}
+
 // Barge-in or cancel: cut playback, move the epoch forward, stop the agent,
 // and discard every reply still being made for turns up to now.
 static void cut_speech(session *s, uint64_t client_epoch, bool barge) {
@@ -703,10 +711,12 @@ static void cut_speech(session *s, uint64_t client_epoch, bool barge) {
   char turn[65] = "";
   if (u) snprintf(turn, sizeof turn, "%s", u->turn);
   if (barge && was && u->text[0]) {
+    free(s->cut_pcm);
     snprintf(s->cut_text, sizeof s->cut_text, "%s", u->text);
-    s->cut_n = u->n; s->cut_played = (size_t)s->played_samples; s->cut_at = now_ms();
+    s->cut_pcm = u->pcm; u->pcm = NULL;   // kept for resume_cut; utter_free_all frees the rest
+    s->cut_n = u->n; s->cut_played = (size_t)s->played_samples; s->cut_rendered = u->appended; s->cut_at = now_ms();
   } else if (!barge) {
-    s->cut_at = 0; s->cut_resumes = 0;
+    clear_cut(s);
   }
   uint64_t e = oa_voice_cut(s->v);
   if (client_epoch > e) e = oa_voice_set_epoch(s->v, client_epoch);
@@ -969,40 +979,55 @@ static bool is_echo(const session *s, const char *text) {
 
 static void on_reply_sentence(session *s, const job *e);
 
-// The cut reply again, for this turn, from the start of the sentence the
-// phone was playing (from the next one when it already resumed once).
+// The cut reply again, for this turn, from the sample the phone had played
+// up to: its rendered audio from there, then the sentences not rendered yet.
+// Three echoes in a row and the reply stops.
 static void resume_cut(session *s, uint32_t turn_no, const char *turn) {
+  if (++s->cut_resumes > 3 || !s->cut_pcm) { clear_cut(s); send_turn_event(s, turn, OA_TURN_PHASE_ENDED, NULL, 0); return; }
+  size_t from = s->cut_played < s->cut_n ? s->cut_played : s->cut_n;
+  // The sentences of the reply, and where the unrendered ones start.
   const char *t = s->cut_text;
-  size_t len = strlen(t);
-  size_t at = s->cut_n ? (size_t)((double)len * (double)(s->cut_played < s->cut_n ? s->cut_played : s->cut_n) / (double)s->cut_n) : 0;
-  while (at > 0 && !(strchr(".?!", t[at - 1]) && t[at] == ' ')) at--;
-  if (s->cut_resumes > 0) {
+  size_t len = strlen(t), at = 0, rest_at = len;
+  for (int k = 0; k < s->cut_rendered && at < len; k++) {
     while (at < len && !(strchr(".?!", t[at]) && (t[at + 1] == ' ' || !t[at + 1]))) at++;
     if (at < len) at++;
+    while (t[at] == ' ') at++;
   }
-  while (t[at] == ' ') at++;
-  s->cut_resumes++;
-  char rest[MAX_TEXT + 1];
-  snprintf(rest, sizeof rest, "%s", t + at);
-  s->cut_at = 0;
-  if (!rest[0]) { send_turn_event(s, turn, OA_TURN_PHASE_ENDED, NULL, 0); return; }
-  logf_("%s: %s is the reply's echo; resuming from: %s", s->sid, turn, rest);
-  job e = {0};
-  e.turn_no = turn_no;
-  snprintf(e.turn, sizeof e.turn, "%s", turn);
-  for (char *a = rest; *a;) {
-    char *b = a;
+  rest_at = at;
+  utter *u = calloc(1, sizeof *u);
+  size_t n = s->cut_n - from;
+  if (!u || (n && !(u->pcm = malloc(n * 2)))) { free(u); clear_cut(s); send_turn_event(s, turn, OA_TURN_PHASE_ENDED, NULL, 0); return; }
+  if (n) memcpy(u->pcm, s->cut_pcm + from, n * 2);
+  u->n = u->cap = n;
+  u->no = ++s->utt_no;
+  snprintf(u->id, sizeof u->id, "u%u", u->no);
+  snprintf(u->turn, sizeof u->turn, "%s", turn);
+  u->turn_no = turn_no;
+  u->t_end = u->t_final = u->t_sentence = u->t_audio = now_ms();
+  u->plan = "resume";
+  // The caption: the words from about where it was cut.
+  size_t c = s->cut_n ? (size_t)((double)rest_at * (double)from / (double)s->cut_n) : 0;
+  while (c > 0 && t[c - 1] != ' ') c--;
+  snprintf(u->text, sizeof u->text, "%s", t + c);
+  for (const char *a = t + rest_at; *a && u->nseg < MAX_SEGS - 1;) {
+    const char *b = a;
     while (*b && !(strchr(".?!", *b) && (b[1] == ' ' || !b[1]))) b++;
     if (*b) b++;
-    char keep = *b; *b = 0;
-    snprintf(e.text, sizeof e.text, "%s", a);
-    on_reply_sentence(s, &e);
-    *b = keep;
+    char sentence[MAX_TEXT + 1];
+    snprintf(sentence, sizeof sentence, "%.*s", (int)(b - a), a);
+    synthesize(s, u, u->nseg, sentence);
     a = b;
     while (*a == ' ') a++;
   }
-  utter *u = utter_by_turn(s, turn_no);
-  if (u) { u->text_done = true; pump_speech(s, now_ms()); }
+  u->text_done = true;
+  free(s->cut_pcm); s->cut_pcm = NULL;
+  logf_("%s: %s is the reply's echo; resuming at %zu of %zu samples (%d sentence(s) to render): %s", s->sid, turn, from, s->cut_n,
+        u->nseg, u->text);
+  s->cut_at = 0;
+  utter **q = &s->speech;
+  while (*q) q = &(*q)->next;
+  *q = u;
+  pump_speech(s, now_ms());
 }
 
 static void deliver_final(session *s, uint32_t turn_no, const char *turn, const char *text) {
@@ -1012,7 +1037,7 @@ static void deliver_final(session *s, uint32_t turn_no, const char *turn, const 
     resume_cut(s, turn_no, turn);
     return;
   }
-  s->cut_at = 0; s->cut_resumes = 0;
+  clear_cut(s);
   if (g_verbose) logf_("%s: %s final (%s) in %llu ms: %s", s->sid, turn, s->plan, (unsigned long long)(s->t_final - s->t_end), text);
   else logf_("%s: %s final (%s) in %llu ms (%zu bytes)", s->sid, turn, s->plan, (unsigned long long)(s->t_final - s->t_end), strlen(text));
   send_turn_event(s, turn, OA_TURN_PHASE_FINAL, text, 0);
