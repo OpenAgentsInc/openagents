@@ -1,7 +1,9 @@
-// Experimental caller-owned outer AEAD workspace. Lower-level cipher and MAC
-// functions still have untracked stack temporaries; no production approval.
+// Experimental caller-owned AEAD workspace. Scalar and compiler-generated
+// temporaries remain untracked; no production secret-use approval.
 #load "xchacha20_poly1305.coax";
 #load "aead_cleanup.coax";
+#load "xchacha20_workspace.coax";
+#load "poly1305_workspace.coax";
 #authority;
 
 #test "AEAD workspace stages a verified result until cleanup" {
@@ -72,19 +74,19 @@
   #assert !aw_output_admit(1,0,false) && !aw_output_admit(0,CB_MAX_BYTES+1,false) && !aw_output_admit(0,0,true);
 }
 
-AeadScratch :: struct {zero:[32]u8;polykey:[32]u8;mac:[5168]u8;cipher:[4096]u8;tag:[16]u8;}
+AeadScratch :: struct {zero:[32]u8;polykey:[32]u8;mac:[5168]u8;cipher:[4096]u8;tag:[16]u8;xc:[1]XcWorkspace;poly:[1]PolyWorkspace;}
 AeadOperation :: struct {policy:AeadCleanup;staged:[4112]u8;count:int;active:bool;}
 // Host validates all extents, addresses and alias facts and maintains stable,
 // serialized ownership. The normalization/wipe/publish effects are not here.
 aw_tag :: (scratch:[]AeadScratch,key:[]u8,nonce:[]u8,aad:[]u8,cipher:[]u8)->bool {
-  stream:=xchacha20_xor_checked(key,nonce,0,scratch[0].zero[..],scratch[0].polykey[..],false);
+  stream:=xc_xor(key,nonce,0,scratch[0].zero[..],scratch[0].xc[..],scratch[0].polykey[..],false);
   at:=0;for b:aad {scratch[0].mac[at]=b;at+=1;}
   while at%16!=0 {at+=1;}
   for b:cipher {scratch[0].mac[at]=b;at+=1;}
   while at%16!=0 {at+=1;}
   a:=cb_store_le64(scratch[0].mac[..],at,cast(u64)aad.count);at+=8;
   b:=cb_store_le64(scratch[0].mac[..],at,cast(u64)cipher.count);at+=8;
-  ok:=poly1305_checked(scratch[0].polykey[..],scratch[0].mac[0..<at],scratch[0].tag[..],false);
+  ok:=poly_workspace(scratch[0].polykey[..],scratch[0].mac[0..<at],scratch[0].poly[..],scratch[0].tag[..],false);
   return stream.error==CC_OK && ok;
 }
 aw_start :: (state:[]AeadOperation,scratch:[]AeadScratch,key:[]u8,nonce:[]u8,aad:[]u8,text:[]u8,seal:bool,overlap:bool)->bool #export_c {
@@ -93,13 +95,15 @@ aw_start :: (state:[]AeadOperation,scratch:[]AeadScratch,key:[]u8,nonce:[]u8,aad
   state[0]=AeadOperation.{policy=ac_begin(),active=true};scratch[0]=AeadScratch.{};
   ok:bool;
   if seal {
-    stream:=xchacha20_xor_checked(key,nonce,1,text,scratch[0].cipher[0..<text.count],false);
+    stream:=xc_xor(key,nonce,1,text,scratch[0].xc[..],scratch[0].cipher[0..<text.count],false);
     tagged:=aw_tag(scratch,key,nonce,aad,scratch[0].cipher[0..<text.count]);
     ok=xcp_commit(scratch[0].cipher[0..<text.count],scratch[0].tag[..],state[0].staged[..],stream.error,tagged);
     state[0].count=text.count+16;
   } else {
     n:=text.count-16;tagged:=aw_tag(scratch,key,nonce,aad,text[0..<n]);
-    ok=xcp_finish_open(key,nonce,text,state[0].staged[0..<n],scratch[0].tag[..],tagged);
+    if tagged && cb_ct_equal(scratch[0].tag[..],text[n..<text.count])==CB_MAX64 {
+      stream:=xc_xor(key,nonce,1,text[0..<n],scratch[0].xc[..],state[0].staged[0..<n],false);ok=stream.error==CC_OK;
+    }
     state[0].count=n;
   }
   state[0].policy=ac_stop(state[0].policy,ifx ok then AC_SUCCESS else AC_FAILURE);return ok;
