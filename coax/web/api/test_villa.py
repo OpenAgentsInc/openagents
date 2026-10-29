@@ -22,6 +22,26 @@ def _villa_do_post(self):
 
 
 FakeGcs.do_POST = _villa_do_post
+_villa_get = FakeGcs.do_GET
+
+
+def _villa_do_get(self):
+    # a pet's files answer Range as the bucket does (a shown file is streamed, 0034_villa_memorial_media.sql)
+    name = self.object_name()[0] if "/o/" in self.path else ""
+    if "/villa/" not in name or "alt=media" not in self.path or self.headers.get("Authorization") != "Bearer test-gcs":
+        return _villa_get(self)
+    data = bucket["objects"].get(name)
+    if data is None:
+        return self.answer(404)
+    rng = self.headers.get("Range", "")
+    if not rng:
+        return self.answer(200, data)
+    a, b = rng[6:].split("-")
+    a, b = int(a), min(int(b), len(data) - 1)
+    return self.answer(206, data[a:b + 1], {"Content-Range": "bytes %d-%d/%d" % (a, b, len(data))})
+
+
+FakeGcs.do_GET = _villa_do_get
 gcs_server.server_close()   # test_project_drops.py stopped it; this file serves the same fake bucket again
 gcs_server = http.server.ThreadingHTTPServer(("127.0.0.1", int(os.environ["GCS_PORT"])), FakeGcs)
 threading.Thread(target=gcs_server.serve_forever, daemon=True).start()
@@ -104,7 +124,22 @@ vg = v("GET", "garden", guest)[1]["pets"]
 check("villa: everyone sees its tombstone", any(p["slug"] == pet["slug"] and p["plot"] == pet["plot"] and not p["mine"] for p in vg), vg)
 s, m = v("GET", "memorial/" + pet["slug"])
 check("villa: the memorial opens for anyone, without files", s == 200 and m["story"] == "She dug holes." and "files" not in m and "id" not in m, m)
-check("villa: a note needs a key", v("POST", "memorial/%s/notes" % pet["slug"], None, {"text": "hi"})[0] == 403)
+# Photos and videos on the memorial (0034_villa_memorial_media.sql): only the ones its owner shows.
+fid, fhex = up["file"], up["file"][2:]
+check("villa: no photo is on the memorial until its owner shows one", m.get("media") == [], m)
+check("villa: an unshown photo can't be fetched", v("GET", "memorial/%s/media/%s" % (pet["slug"], fhex))[0] == 404)
+check("villa: someone else can't show it", v("POST", "pets/%s/files/%s/show" % (pid, fid), guest)[0] == 404)
+check("villa: a refused file can't be shown", v("POST", "pets/%s/files/%s/show" % (pid, up2["file"]), kiki)[0] == 404)
+s, shown = v("POST", "pets/%s/files/%s/show" % (pid, fid), kiki)
+check("villa: its owner shows it", s == 200 and [f["shown"] for f in shown["files"] if f["id"] == fid] == [True], shown)
+check("villa: the memorial lists it", v("GET", "memorial/" + pet["slug"])[1].get("media") == [{"id": fhex, "kind": "image"}])
+s, raw, hh = call("GET", "/api/villa/memorial/%s/media/%s" % (pet["slug"], fhex))
+check("villa: anyone fetches a shown photo, as itself", s == 200 and raw == b"\xff\xd8\xff\xe0ok" and hh.get("Content-Type") == "image/jpeg"
+      and "nosniff" in hh.get("X-Content-Type-Options", ""), (s, raw, hh))
+s, raw, hh = call("GET", "/api/villa/memorial/%s/media/%s" % (pet["slug"], fhex), headers={"Range": "bytes=2-3"})
+check("villa: a range of it, for a video", s == 206 and raw == b"\xff\xe0" and hh.get("Content-Range") == "bytes 2-3/6", (s, raw, hh))
+check("villa: another pet's path doesn't open it", v("GET", "memorial/zzzzzzzz/media/%s" % fhex)[0] == 404)
+
 check("villa: a link in a note is refused", v("POST", "memorial/%s/notes" % pet["slug"], guest, {"text": "see www.spam.com"})[0] == 400)
 s, n = v("POST", "memorial/%s/notes" % pet["slug"], guest, {"text": "She was the best girl."})
 check("villa: a note is left", s == 200 and n["notes"][-1]["text"] == "She was the best girl.", n)
@@ -156,6 +191,54 @@ v("POST", "report", r1, {"kind": "note", "ref": note2})
 check("villa: a removed note is gone", va("POST", "reports/note/%s/remove" % note2)[0] == 200
       and not any(x["text"] == "A note someone dislikes." for x in v("GET", "memorial/" + pet["slug"])[1]["notes"]))
 check("villa: decided, it leaves the queue", not any(x["ref"] == note2 for x in va("GET", "reports")[1]["open"]))
+# Hiding can be undone, and the queue as a page (0033_villa_review.sql; admin.c's /api/admin/reports).
+s, q = va("GET", "reports")
+check("villa: a hidden note is among the decisions, with RESTORE", any(x["ref"] == note2 and x["decision"] == "hidden" and x["restore"] for x in q.get("decided", [])), q)
+check("villa: RESTORE brings the note back as it was", va("POST", "reports/note/%s/restore" % note2)[0] == 200
+      and any(x["text"] == "A note someone dislikes." for x in v("GET", "memorial/" + pet["slug"])[1]["notes"]))
+check("villa: nothing to restore twice", va("POST", "reports/note/%s/restore" % note2)[0] == 404)
+
+
+def aq(method, path, cookie=acookie, origin=None):
+    h = {"Content-Type": "application/json"}
+    if cookie:
+        h["Cookie"] = cookie
+    if origin:
+        h["Origin"] = origin
+    status, raw, _ = call(method, "/api/admin/reports" + path, b"" if method == "POST" else None, h)
+    return status, raw.decode()
+
+
+check("villa: the queue page's rows are for admins only", aq("GET", "", cookie=None)[0] == 401)
+s, rows = aq("GET", "")
+check("villa: the queue as rows: the open memorial report, then the decisions", s == 200 and rows.startswith("#OPEN REPORTS|aw|")
+      and ("\nmemorial|%s|3|" % pet["slug"]) in rows and "#DECIDED|rw|" in rows and ("\nnote|%s|RESTORED|" % note2) in rows, rows[:600])
+check("villa: a decision from another site is refused", aq("POST", "/memorial/%s/hide" % pet["slug"], origin="https://evil.example")[0] == 403)
+check("villa: HIDE from the page holds the memorial", aq("POST", "/memorial/%s/hide" % pet["slug"])[0] == 200
+      and v("GET", "memorial/" + pet["slug"])[0] == 404 and not any(p["slug"] == pet["slug"] for p in v("GET", "garden")[1]["pets"]))
+s, held = v("POST", "pets/%s/place" % pid, kiki)
+check("villa: PLAY again doesn't lift an admin's hold", held.get("status") == "held" and v("GET", "memorial/" + pet["slug"])[0] == 404, held)
+check("villa: the owner still has it, story and all", v("GET", "pets/" + pid, kiki)[1].get("story") == "She dug holes.")
+check("villa: RESTORE from the page puts it back on its plot", aq("POST", "/memorial/%s/restore" % pet["slug"])[0] == 200
+      and v("GET", "memorial/" + pet["slug"])[1].get("story") == "She dug holes."
+      and any(p["slug"] == pet["slug"] and p["plot"] == pet["plot"] for p in v("GET", "garden")[1]["pets"]))
+for who in (r1, r2):
+    v("POST", "report", who, {"kind": "chat", "ref": line})
+aq("POST", "/chat/%s/hide" % line)
+check("villa: a hidden chat line says so", [m["text"] for m in json.loads(call("GET", "/api/playtest/chat/hecates-cemetery?after=0")[1])["messages"] if str(m["n"]) == line] == ["This line was removed"])
+aq("POST", "/chat/%s/restore" % line)
+check("villa: a shown photo is reported", v("POST", "report", r1, {"kind": "file", "ref": fhex, "why": "not a pet"})[0] == 200)
+check("villa: the queue says what and where it is", ("\nfile|%s|1|" % fhex) in aq("GET", "")[1] and "/media/" + fhex in aq("GET", "")[1])
+aq("POST", "/file/%s/hide" % fhex)
+check("villa: a hidden photo is off the memorial and can't be fetched", v("GET", "memorial/" + pet["slug"])[1].get("media") == []
+      and v("GET", "memorial/%s/media/%s" % (pet["slug"], fhex))[0] == 404)
+v("POST", "pets/%s/files/%s/show" % (pid, fid), kiki)
+check("villa: showing it again doesn't lift the hold", v("GET", "memorial/%s/media/%s" % (pet["slug"], fhex))[0] == 404)
+aq("POST", "/file/%s/restore" % fhex)
+check("villa: restored, it's back", call("GET", "/api/villa/memorial/%s/media/%s" % (pet["slug"], fhex))[0] == 200)
+v("POST", "pets/%s/files/%s/unshow" % (pid, fid), kiki)
+check("villa: its owner takes it off", v("GET", "memorial/%s/media/%s" % (pet["slug"], fhex))[0] == 404 and v("GET", "memorial/" + pet["slug"])[1].get("media") == [])
+check("villa: a restored chat line says what it said", [m["text"] for m in json.loads(call("GET", "/api/playtest/chat/hecates-cemetery?after=0")[1])["messages"] if str(m["n"]) == line] == ["a rude line"])
 s, vpage = v("GET", "m/" + pet["slug"])
 check("villa: the share link names her and goes on to the realm", s == 200 and "Hecate, in Hecate&#39;s Cemetery" not in vpage
       and "Hecate, in Hecate's Cemetery" in vpage and "#m/" + pet["slug"] in vpage and "og:image" in vpage, vpage[:200])

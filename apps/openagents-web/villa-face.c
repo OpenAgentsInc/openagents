@@ -342,6 +342,9 @@ EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { (void
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { (void)state; action_kind = 0; action_n = 0; }
 // Typing in the pet's panel or a memorial's note: the keyboard field over the box drawn.
 EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return villa_wants_text(at(state)) ? 1 : 0; }
+// The memorial's photos and videos for the host to draw (coax/web/host.js, coaxial_media): villapet.coax's media_text.
+EXPORT("coaxial_media") uint32_t coaxial_media(uint32_t state) { return (uint32_t)(uintptr_t)villa(state)->pet.e[0].media_text.e; }
+EXPORT("coaxial_media_len") uint32_t coaxial_media_len(uint32_t state) { return (uint32_t)villa(state)->pet.e[0].media_n; }
 EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)&villa(state)->pet.e[0].field_box; }
 // A memorial's link: #m/<slug>.
 EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) {

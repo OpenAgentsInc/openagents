@@ -24,6 +24,9 @@
 //   POST /api/villa/report {kind, ref, why}      a memorial, a note or a chat line reported (migrations/0031_villa_reports.sql)
 //   GET  /api/villa/reports                      a signed-in admin: the open reports; POST reports/<kind>/<ref>/remove|keep
 //   GET  /api/villa/m/<slug>                     the share link: a page with the memorial's card, on to the realm
+//   POST /api/villa/pets/<id>/files/<f>/show|unshow  the owner puts a photo or video on the memorial, or takes it off
+//   GET  /api/villa/memorial/<slug>/media/<hex>  a shown file's bytes, from the private bucket (Range too)
+//                                                (migrations/0034_villa_memorial_media.sql)
 //
 // A write comes from this site's pages (Origin). Nothing anyone shared is logged.
 //   OA_DROPS_BUCKET, OA_DROPS_PREFIX   the bucket and this environment's folder (drops.c)
@@ -36,6 +39,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 
 #define PREFIX "/api/villa/"
@@ -181,6 +185,88 @@ static void agent(const request *q, PGconn *db, answer a) {
   _exit(0);
 }
 
+// ---- a shown photo or video, streamed from the bucket
+
+typedef struct { int fd; long status; char range[128]; long long length; bool sent; const char *type; } relay;
+static bool send_all(int fd, const char *p, size_t n) {
+  while (n) { ssize_t k = write(fd, p, n); if (k <= 0) return false; p += k; n -= (size_t)k; }
+  return true;
+}
+static size_t relay_head(char *data, size_t size, size_t n, void *user) {
+  relay *r = user; size_t k = size * n;
+  if (k > 5 && !strncmp(data, "HTTP/", 5)) { const char *sp = memchr(data, ' ', k); r->status = sp ? strtol(sp + 1, NULL, 10) : 0; r->range[0] = 0; r->length = -1; }
+  else if (k > 14 && !strncasecmp(data, "Content-Range:", 14)) {
+    const char *v = data + 14; size_t len = k - 14;
+    while (len && *v == ' ') { v++; len--; }
+    while (len && (v[len - 1] == '\r' || v[len - 1] == '\n')) len--;
+    if (len < sizeof r->range) { memcpy(r->range, v, len); r->range[len] = 0; }
+  } else if (k > 15 && !strncasecmp(data, "Content-Length:", 15)) r->length = strtoll(data + 15, NULL, 10);
+  return k;
+}
+static size_t relay_body(char *data, size_t size, size_t n, void *user) {
+  relay *r = user; size_t k = size * n;
+  if (!r->sent) {   // the first bytes: our head first, from what the bucket said
+    if (r->status != 200 && r->status != 206) return 0;
+    char head[700], extra[200] = "";
+    if (r->status == 206 && r->range[0]) snprintf(extra, sizeof extra, "Content-Range: %s\r\n", r->range);
+    int h = snprintf(head, sizeof head, "HTTP/1.1 %ld %s\r\nContent-Type: %s\r\nContent-Length: %lld\r\nAccept-Ranges: bytes\r\n%s"
+                     "Cache-Control: private, max-age=300\r\nX-Content-Type-Options: nosniff\r\nContent-Disposition: inline\r\n"
+                     "Content-Security-Policy: default-src 'none'; sandbox\r\nConnection: close\r\n\r\n",
+                     r->status, r->status == 206 ? "Partial Content" : "OK", r->type, r->length, extra);
+    if (r->length < 0 || !send_all(r->fd, head, (size_t)h)) return 0;
+    r->sent = true;
+  }
+  return send_all(r->fd, data, k) ? k : 0;
+}
+// A response holds at most this much (Cloud Run's HTTP/1 limit is 32 MiB): a video asks by Range, and an
+// open or larger range is answered with its first STREAM_PART bytes, which browsers follow with the next.
+#define STREAM_PART (8LL << 20)
+#define STREAM_WHOLE (24LL << 20)
+static void stream_file(const request *q, PGconn *db, answer a) {
+  char object[600], type[200], bytes[24];
+  field(db, a.all, "{stream,object}", object, sizeof object); field(db, a.all, "{stream,type}", type, sizeof type);
+  field(db, a.all, "{stream,bytes}", bytes, sizeof bytes);
+  free(a.body); free(a.all);
+  long long total = strtoll(bytes, NULL, 10);
+  // the range wanted, held to one part
+  char want[160], range[96] = "";
+  if (api_header(q, "Range", want, sizeof want) && !strncmp(want, "bytes=", 6) && isdigit((unsigned char)want[6])) {
+    char *end; long long from = strtoll(want + 6, &end, 10), to = -1;
+    if (*end == '-' && isdigit((unsigned char)end[1])) to = strtoll(end + 1, NULL, 10);
+    if (to < 0 || to - from + 1 > STREAM_PART) to = from + STREAM_PART - 1;
+    if (from >= total) { api_respond(q->fd, 416, "text/plain", NULL, "", 0); return; }
+    snprintf(range, sizeof range, "Range: bytes=%lld-%lld", from, to);
+  } else if (total > STREAM_WHOLE) snprintf(range, sizeof range, "Range: bytes=0-%lld", STREAM_PART - 1);
+  if (!in_child()) return;
+  char tok[4096], name[1024], url[2048], auth[4200];
+  if (!drops_token(tok, sizeof tok)) { api_json(q->fd, 503, "{\"error\":\"not now\"}"); _exit(0); }
+  size_t n = 0;
+  for (const char *c = object; *c && n + 4 < sizeof name; c++) {
+    unsigned char ch = (unsigned char)*c;
+    if (isalnum(ch) || ch == '-' || ch == '_' || ch == '.' || ch == '~') name[n++] = (char)ch;
+    else n += (size_t)snprintf(name + n, sizeof name - n, "%%%02X", ch);
+  }
+  name[n] = 0;
+  snprintf(url, sizeof url, "%s/storage/v1/b/%s/o/%s?alt=media", env_or("OA_DROPS_GCS", "https://storage.googleapis.com"),
+           env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops"), name);
+  snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
+  struct curl_slist *hd = curl_slist_append(NULL, auth);
+  if (range[0]) hd = curl_slist_append(hd, range);
+  relay r = {q->fd, 0, "", -1, false, type};
+  CURL *h = curl_easy_init();
+  curl_easy_setopt(h, CURLOPT_URL, url);
+  curl_easy_setopt(h, CURLOPT_HTTPHEADER, hd);
+  curl_easy_setopt(h, CURLOPT_HEADERFUNCTION, relay_head);
+  curl_easy_setopt(h, CURLOPT_HEADERDATA, &r);
+  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, relay_body);
+  curl_easy_setopt(h, CURLOPT_WRITEDATA, &r);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT, 120L);
+  curl_easy_perform(h);
+  if (!r.sent) { api_log("villa: the bucket answered %ld for a shown file", r.status); api_json(q->fd, 502, "{\"error\":\"not now\"}"); }
+  curl_slist_free_all(hd); curl_easy_cleanup(h);
+  _exit(0);
+}
+
 // HTML-escaped text into out.
 static void html(char *out, size_t cap, const char *s) {
   size_t n = 0;
@@ -256,16 +342,23 @@ bool villa_route(const request *q) {
   const char *v[6] = {q->method, parts, body, key, env_or("OA_DROPS_PREFIX", "dev"), env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops")};
   bool vases = !strncmp(rest, "vases", 5) && (rest[5] == 0 || rest[5] == '/');
   bool emote = !strncmp(rest, "pets/", 5) && strstr(rest, "/emote") && (strstr(rest, "/emote")[6] == 0 || strstr(rest, "/emote")[6] == '/');
+  // a shown file (memorial/<slug>/media/<hex>), or its owner showing one (pets/<id>/files/<f>/show|unshow)
+  size_t rl = strlen(rest);
+  bool media = (!strncmp(rest, "memorial/", 9) && strstr(rest, "/media/"))
+            || (!strncmp(rest, "pets/", 5) && strstr(rest, "/files/") && ((rl > 5 && !strcmp(rest + rl - 5, "/show")) || (rl > 7 && !strcmp(rest + rl - 7, "/unshow"))));
   bool reports = !strncmp(rest, "report", 6) && (rest[6] == 0 || rest[6] == '/' || (rest[6] == 's' && (rest[7] == 0 || rest[7] == '/')));
   char admin[65] = "";
   if (reports && rest[6] == 's' && admin_who(q, db, admin)) admin[0] = 0;   // the review queue: a signed-in admin only
   const char *rv[5] = {q->method, parts, body, key, admin};
-  answer a = emote ? ask(db, Q("villa.emote_api($1, $2::text[], $3::jsonb, $4)"), 4, v)
+  const char *mv[3] = {q->method, parts, key};
+  answer a = media ? ask(db, Q("villa.media_api($1, $2::text[], $3)"), 3, mv)
+           : emote ? ask(db, Q("villa.emote_api($1, $2::text[], $3::jsonb, $4)"), 4, v)
            : reports ? ask(db, Q("villa.reports_api($1, $2::text[], $3::jsonb, $4, $5)"), 5, rv)
            : vases ? ask(db, Q("villa.vases_api($1, $2::text[], $3::jsonb, $4)"), 4, v)
                    : ask(db, Q("villa.api($1, $2::text[], $3::jsonb, $4, $5, $6)"), 6, v);
   free(body);
   if (a.status == 200 && a.all) {
+    if (media && strstr(a.all, "\"stream\": {")) { stream_file(q, db, a); return true; }
     if (strstr(a.all, "\"open\": {")) { open_file(q, db, a); return true; }
     if (strstr(a.all, "\"scan\": {")) { scan_file(q, db, a); return true; }
     if (strstr(a.all, "\"request\": {")) { agent(q, db, a); return true; }

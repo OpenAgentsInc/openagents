@@ -5,7 +5,10 @@
 // drawn in its HUD, its presses and typing come first, and the face makes the
 // requests this file writes (villa_pet_next, villa_pet_url, villa_pet_body)
 // and hands back their answers (villa_pet_answer). Uploads go through the
-// page (action 30, coax/web/uploads.js).
+// page (action 30, coax/web/uploads.js). The photos and videos a memorial
+// shows (hc-memorial-media, migrations/0034_villa_memorial_media.sql) are
+// drawn by the host into the boxes this file names (media_text, coaxial_media
+// in coax/web/host.js): only the ones their owner put on it.
 
 PET_FIELDS :: 6;
 PF_NAME :: 0; PF_BORN :: 1; PF_DIED :: 2; PF_LINE :: 3; PF_STORY :: 4; PF_TRAITS :: 5;
@@ -30,7 +33,8 @@ EMOTE_LABEL :: [6] string.["SIT", "PLAY BOW", "ROLL OVER", "HOWL", "WAG", "SLEEP
 
 // The requests, one at a time, first wanted first.
 ASK_MINE :: 1; ASK_NEW :: 2; ASK_SAVE :: 4; ASK_AGENT :: 8; ASK_PLACE :: 16; ASK_GARDEN :: 32; ASK_MEMORIAL :: 64; ASK_NOTE :: 128; ASK_HIDE :: 256; ASK_VASES :: 512; ASK_VASE :: 1024; ASK_CLEAN :: 2048; ASK_REPORT :: 4096; ASK_EMOTE :: 8192; ASK_EMOTE_KEEP :: 16384;
-ASK_KINDS :: 15;
+ASK_SHOW :: 32768; ASK_FILE_DELETE :: 65536;   // a kept file on or off the memorial; a file deleted
+ASK_KINDS :: 17;
 
 PV_NONE :: 0; PV_PET :: 1; PV_MEMORIAL :: 2;
 AGENT_NONE :: 0; AGENT_READING :: 1; AGENT_READY :: 2; AGENT_FAILED :: 3;
@@ -43,9 +47,13 @@ BUTTONS :: 48;
 B_OPEN :: 1; B_CLOSE :: 2; B_FIELD :: 3; B_PHOTOS :: 4; B_AGENT :: 5; B_PLAY :: 6; B_TAB :: 7; B_SLIDER :: 8; B_PATTERN :: 9;
 B_COAT :: 10; B_MARKS :: 11; B_EMOTE :: 12; B_MEMORIAL :: 13; B_SHARE :: 14; B_NOTE :: 15; B_SEND :: 16; B_HIDE :: 17;
 B_SKILL :: 18; B_DO :: 19; B_KIND :: 20; B_SLOT :: 21; B_PLACE_VASE :: 22; B_CLEAN :: 23; B_REPORT :: 24; B_MAKE_EMOTE :: 25; B_EMOTE_FIELD :: 26;
+B_SHOW_FILE :: 27; B_DELETE_FILE :: 28; B_MEDIA :: 29; B_REPORT_MEDIA :: 30;
 // What a report is of (0031_villa_reports.sql), B_REPORT's arg: the kind times a million plus the note or line number.
-REPORT_MEMORIAL :: 0; REPORT_NOTE :: 1; REPORT_CHAT :: 2;
-REPORT_KIND_WORDS :: [3] string.["memorial", "note", "chat"];
+REPORT_MEMORIAL :: 0; REPORT_NOTE :: 1; REPORT_CHAT :: 2; REPORT_FILE :: 3;
+REPORT_KIND_WORDS :: [4] string.["memorial", "note", "chat", "file"];
+// Your pet's kept photos and videos, and the ones a memorial shows.
+MY_FILES :: 12; FILE_ID :: 20; FILE_NAME :: 40;
+MEDIA_MAX :: 6; MEDIA_ID :: 16; MEDIA_TEXT :: 1200;
 // The steps the analytics record (hc-analytics), as the face names them.
 EVS :: 8;
 EV_PET_MADE :: 0; EV_AVATAR :: 1; EV_EMOTE :: 2; EV_PLACED :: 3; EV_FETCH :: 4; EV_OBEY :: 5; EV_DIG :: 6; EV_FLOWER :: 7;
@@ -113,6 +121,14 @@ PetUi :: struct {
   em_text: [EMOTE_TEXT] u8; em_text_n: int;  // the agent's motion, for the face to check
   em_error: [300] u8; em_error_n: int;       // why the engine refused the last one
   em_tries: int;   // the report to send (REPORT_*; a note's or a chat line's number)
+  // your pet's kept files: whether the memorial shows each, or an admin hid it
+  fl_n: int; fl_id: [MY_FILES * FILE_ID] u8; fl_id_n: [MY_FILES] int; fl_name: [MY_FILES * FILE_NAME] u8; fl_name_n: [MY_FILES] int;
+  fl_video: [MY_FILES] bool; fl_shown: [MY_FILES] bool; fl_held: [MY_FILES] bool;
+  file_at: int; file_on: bool; file_sure: int;   // the file to show, hide or delete; DELETE pressed once (-1 none)
+  // the memorial's photos and videos (their ids' hex), the one open large (-1 none), the one reported
+  m_media_n: int; m_media: [MEDIA_MAX * MEDIA_ID] u8; m_video: [MEDIA_MAX] bool; m_big: int; report_media: int;
+  // what the host draws this frame: "image|video URL X0 Y0 X1 Y1" a line (coaxial_media)
+  media_text: [MEDIA_TEXT] u8; media_n: int;
   typed: [NOTE_BYTES] u8; typed_n: int;
   toast: [120] u8; toast_n: int; toast_t: f32;
   evs: [EVS] int; ev_arg: [EVS] int; ev_n: int;   // steps for the analytics (EV_*), the face sends them
@@ -316,6 +332,24 @@ pet_take :: (p: [] PetUi, t: string, all: bool) {
     }
     p[0].my_n = c;
   }
+  fls := pj_get(t, i, "files");
+  if fls >= 0 {
+    e := fls; c := 0;
+    while c < MY_FILES {
+      e = pj_next(t, fls, e);
+      if e < 0 { break; }
+      st2: [12] u8;
+      if pet_s(st2[..], pj_str(t, pj_get(t, e, "status"), st2[..])) != "kept" { continue; }
+      p[0].fl_id_n[c] = pj_str(t, pj_get(t, e, "id"), p[0].fl_id[c * FILE_ID..<(c + 1) * FILE_ID]);
+      p[0].fl_name_n[c] = pj_str(t, pj_get(t, e, "name"), p[0].fl_name[c * FILE_NAME..<(c + 1) * FILE_NAME]);
+      kd: [8] u8;
+      p[0].fl_video[c] = pet_s(kd[..], pj_str(t, pj_get(t, e, "kind"), kd[..])) == "video";
+      p[0].fl_shown[c] = pj_true(t, pj_get(t, e, "shown"));
+      p[0].fl_held[c] = pj_true(t, pj_get(t, e, "held"));
+      c += 1;
+    }
+    p[0].fl_n = c;
+  }
   ag: [12] u8;
   an := pj_str(t, pj_get(t, i, "agent"), ag[..]);
   p[0].agent = ifx an == 7 then AGENT_READING else ifx an == 5 then AGENT_READY else ifx an == 6 then AGENT_FAILED else AGENT_NONE;
@@ -411,6 +445,24 @@ pet_take_memorial :: (p: [] PetUi, t: string) {
   p[0].m_traits_n = pj_str(t, pj_get(t, i, "traits"), p[0].m_traits[..]);
   p[0].m_ach_n = pj_str(t, pj_get(t, i, "achievements"), p[0].m_ach[..]);
   p[0].m_mine = pj_true(t, pj_get(t, i, "mine"));
+  md := pj_get(t, i, "media");
+  p[0].m_media_n = 0; p[0].m_big = -1;
+  e := md;
+  while md >= 0 && p[0].m_media_n < MEDIA_MAX {
+    e = pj_next(t, md, e);
+    if e < 0 { break; }
+    c := p[0].m_media_n;
+    hex: [MEDIA_ID] u8;
+    hn := pj_str(t, pj_get(t, e, "id"), hex[..]);
+    if hn != MEDIA_ID { continue; }
+    ok := true;
+    for q: 0..<MEDIA_ID { h := hex[q]; if !((h >= '0' && h <= '9') || (h >= 'a' && h <= 'f')) { ok = false; } }
+    if !ok { continue; }
+    for q: 0..<MEDIA_ID { p[0].m_media[c * MEDIA_ID + q] = hex[q]; }
+    kd: [8] u8;
+    p[0].m_video[c] = pet_s(kd[..], pj_str(t, pj_get(t, e, "kind"), kd[..])) == "video";
+    p[0].m_media_n = c + 1;
+  }
   pet_take_notes(p, t);
   p[0].m_ok = p[0].m_name_n > 0;
 }
@@ -439,6 +491,7 @@ pet_take_notes :: (p: [] PetUi, t: string) {
 
 pet_start :: (p: [] PetUi) {
   p[0].focus = -1; p[0].slide = -1; p[0].near = -1; p[0].emote = -1; p[0].plot = -1;
+  p[0].file_sure = -1; p[0].m_big = -1;
   for k: 0..<AV_NUMBERS { p[0].avatar[k] = AV_USUAL[k]; }
   p[0].coat[0] = 0.55; p[0].coat[1] = 0.36; p[0].coat[2] = 0.2;
   p[0].marks[0] = 0.92; p[0].marks[1] = 0.88; p[0].marks[2] = 0.82;
@@ -452,7 +505,7 @@ pet_next :: (p: [] PetUi) -> int {
   for k: 0..<ASK_KINDS {
     b := 1 << k;
     if p[0].asks & b == 0 { continue; }
-    needs_pet := b == ASK_SAVE || b == ASK_AGENT || b == ASK_PLACE || b == ASK_HIDE;
+    needs_pet := b == ASK_SAVE || b == ASK_AGENT || b == ASK_PLACE || b == ASK_HIDE || b == ASK_SHOW || b == ASK_FILE_DELETE;
     if needs_pet && !p[0].has { continue; }
     if b == ASK_SAVE && (p[0].dirty_t < 0.8 && p[0].asks & (ASK_AGENT | ASK_PLACE) == 0) { continue; }
     return b;
@@ -477,6 +530,11 @@ pet_url :: (p: [] PetUi, kind: int, out: [] u8) -> int {
     if kind == ASK_PLACE { n = pet_put(out, n, "/place"); }
     if kind == ASK_EMOTE { n = pet_put(out, n, "/emote"); }
     if kind == ASK_EMOTE_KEEP { n = pet_put(out, n, "/emote/keep"); }
+    if kind == ASK_SHOW || kind == ASK_FILE_DELETE {
+      f := clamp_i(p[0].file_at, 0, MY_FILES - 1);
+      n = pet_put(out, n, "/files/"); n = pet_put(out, n, pet_s(p[0].fl_id[f * FILE_ID..<(f + 1) * FILE_ID], p[0].fl_id_n[f]));
+      n = pet_put(out, n, ifx kind == ASK_FILE_DELETE then "/delete" else ifx p[0].file_on then "/show" else "/unshow");
+    }
     if kind == ASK_HIDE {
       n = pet_put(out, n, "/notes/");
       digits: [12] u8; d := 0; v := p[0].hide_n;
@@ -517,9 +575,11 @@ pet_body :: (p: [] PetUi, kind: int, out: [] u8) -> int {
     return pet_put(out, n, "}");
   }
   if kind == ASK_REPORT {
-    rk := clamp_i(p[0].report_kind, 0, 2);
+    rk := clamp_i(p[0].report_kind, 0, 3);
     n := pet_put(out, 0, "{\"kind\":\""); n = pet_put(out, n, REPORT_KIND_WORDS[rk]); n = pet_put(out, n, "\",\"ref\":\"");
-    if rk == REPORT_MEMORIAL { n = pet_put(out, n, pet_s(p[0].m_slug[..], 8)); } else { n = pj_put_int(out, n, p[0].report_ref); }
+    if rk == REPORT_MEMORIAL { n = pet_put(out, n, pet_s(p[0].m_slug[..], 8)); }
+    else if rk == REPORT_FILE { f := clamp_i(p[0].report_media, 0, MEDIA_MAX - 1); n = pet_put(out, n, pet_s(p[0].m_media[f * MEDIA_ID..<(f + 1) * MEDIA_ID], MEDIA_ID)); }
+    else { n = pj_put_int(out, n, p[0].report_ref); }
     return pet_put(out, n, "\"}");
   }
   if kind == ASK_VASE {
@@ -591,6 +651,15 @@ pet_answer :: (p: [] PetUi, kind: int, status: int, t: string) {
   }
   if kind == ASK_EMOTE_KEEP {
     if status == 200 { pet_take(p, t, false); pet_toast(p, "Their new emote is kept: it's with the others"); }
+    return;
+  }
+  if kind == ASK_SHOW || kind == ASK_FILE_DELETE {
+    if status == 200 {
+      pet_take(p, t, false);
+      p[0].file_sure = -1;
+      pet_toast(p, ifx kind == ASK_FILE_DELETE then "It's deleted: it's gone from our bucket" else ifx p[0].file_on then "It's on their memorial now" else "It's off their memorial");
+      if p[0].placed { p[0].asks = p[0].asks | ASK_MEMORIAL; }   // a memorial open on your pet shows it at once
+    } else { pet_toast(p, "That didn't change: try again"); }
     return;
   }
   if kind == ASK_REPORT {
@@ -850,6 +919,21 @@ pet_pointer :: (p: [] PetUi, x: f32, y: f32, phase: int) -> bool {
     p[0].report_kind = arg / 1000000; p[0].report_ref = arg % 1000000;
     p[0].asks = p[0].asks | ASK_REPORT;
   }
+  else if kind == B_SHOW_FILE {
+    if arg < 0 || arg >= p[0].fl_n { return true; }
+    p[0].file_at = arg; p[0].file_on = !p[0].fl_shown[arg]; p[0].file_sure = -1;
+    p[0].asks = p[0].asks | ASK_SHOW;
+  }
+  else if kind == B_DELETE_FILE {
+    if arg < 0 || arg >= p[0].fl_n { return true; }
+    if p[0].file_sure != arg { p[0].file_sure = arg; return true; }   // once more to be sure
+    p[0].file_at = arg; p[0].asks = p[0].asks | ASK_FILE_DELETE;
+  }
+  else if kind == B_MEDIA { p[0].m_big = ifx p[0].m_big == arg || arg < 0 || arg >= p[0].m_media_n then -1 else arg; }
+  else if kind == B_REPORT_MEDIA {
+    if arg < 0 || arg >= p[0].m_media_n { return true; }
+    p[0].report_kind = REPORT_FILE; p[0].report_media = arg; p[0].asks = p[0].asks | ASK_REPORT;
+  }
   else if kind == B_HIDE {
     // the owner hides a note: the face sends it as a save of the note's state
     p[0].hide_n = arg; p[0].asks = p[0].asks | ASK_HIDE;
@@ -949,18 +1033,31 @@ pet_draw_about :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f32)
   m = btn(s, out, m, Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + bh}, "ADD PHOTOS OR A SHORT VIDEO", B_PHOTOS, 0, false);
   y += bh + 4 * k;
   uy: [1] f32;
-  m = wrapped(out, m, "ONLY YOU SEE THEM. THEY'RE USED FOR THEIR AVATAR AND MEMORIAL, NEVER FOR ANYTHING ELSE", x0, y + 7 * k, x1 - x0, 6.5 * k, k, 2, 0.6, uy[..]);
+  m = wrapped(out, m, "ONLY YOU SEE THEM UNLESS YOU PUT ONE ON THEIR MEMORIAL. THEY'RE USED FOR THEIR AVATAR AND MEMORIAL, NEVER FOR ANYTHING ELSE", x0, y + 7 * k, x1 - x0, 6.5 * k, k, 2, 0.6, uy[..]);
   y = uy[0] - 4 * k;
+  // the kept ones, each on or off the memorial, and DELETE (pressed twice)
+  for f: 0..<lo_int(p[0].fl_n, 3) {
+    dw := 62 * k; sw2 := 124 * k; rh := 20 * k;
+    name := pet_s(p[0].fl_name[f * FILE_NAME..<(f + 1) * FILE_NAME], p[0].fl_name_n[f]);
+    room := x1 - x0 - dw - sw2 - 16 * k;
+    while name.count > 0 && text_width(name, 7 * k) > room { name = name[0..<name.count - 1]; }
+    m = pt_dim(out, m, name, x0, y + 13 * k, 7 * k, k);
+    if p[0].fl_held[f] { m = pt_dim(out, m, "TAKEN DOWN BY US", x1 - dw - sw2 - 6 * k + 8 * k, y + 13 * k, 6.5 * k, k); }
+    else { m = btn(s, out, m, Box.{x0 = x1 - dw - sw2 - 6 * k, y0 = y, x1 = x1 - dw - 6 * k, y1 = y + rh}, ifx p[0].fl_shown[f] then "ON THE MEMORIAL" else "PUT ON MEMORIAL", B_SHOW_FILE, f, p[0].fl_shown[f]); }
+    m = btn(s, out, m, Box.{x0 = x1 - dw, y0 = y, x1 = x1, y1 = y + rh}, ifx p[0].file_sure == f then "SURE?" else "DELETE", B_DELETE_FILE, f, p[0].file_sure == f);
+    y += rh + 4 * k;
+  }
+  if p[0].fl_n > 3 { more: [24] u8; m = pt_dim(out, m, pet_s(more[..], pet_count(more[..], p[0].fl_n - 3, " MORE KEPT")), x0, y + 8 * k, 6.5 * k, k); y += 14 * k; }
   // the files, a line each: name, then how far or what happened
   ft := pet_s(p[0].files[..], p[0].files_n);
   i := 0; line := 0;
-  while i < ft.count && line < 3 {
+  while i < ft.count && line < 2 {
     j := i; while j < ft.count && ft[j] != 10 { j += 1; }
     row := ft[i..<j];
     // name|permille|status|note
     bars: [4] int; bc := 0;
     for c: 0..<row.count { if row[c] == '|' && bc < 3 { bars[bc] = c; bc += 1; } }
-    if bc == 3 {
+    if bc == 3 && row[bars[1] + 1..<bars[2]] != "kept" {   // kept ones are listed above
       name := row[0..<bars[0]]; status := row[bars[1] + 1..<bars[2]]; note := row[bars[2] + 1..<row.count];
       word := ifx status == "kept" then "KEPT" else ifx status == "sending" then "SENDING" else ifx status == "scanning" then "CHECKING" else "NOT KEPT";
       m = pt_dim(out, m, name, x0, y + 8 * k, 7 * k, k);
@@ -1069,6 +1166,29 @@ pet_draw_memorial :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f
   if p[0].m_dates_n > 0 { m = pt_dim(out, m, pet_s(p[0].m_dates[..], p[0].m_dates_n), x0, y + 8 * k, 8 * k, k); y += 20 * k; }
   if p[0].m_line_n > 0 { m = wrapped(out, m, pet_s(p[0].m_line[..], p[0].m_line_n), x0, y + 9 * k, x1 - x0, 9 * k, k, 2, 0.95, yb[..]); y = yb[0]; }
   y += 6 * k;
+  // the photos and videos their owner put here, drawn by the host (coaxial_media); one open large
+  if p[0].m_media_n > 0 && p[0].m_big >= 0 && p[0].m_big < p[0].m_media_n {
+    large := Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + lo(260 * k, (bottom - y) * 0.6)};
+    m = outline(out, m, large, k, 0.35);
+    pet_button(p, large, B_MEDIA, p[0].m_big);
+    pet_media(p, p[0].m_big, Box.{x0 = large.x0 + 2 * k, y0 = large.y0 + 2 * k, x1 = large.x1 - 2 * k, y1 = large.y1 - 2 * k});
+    y = large.y1 + 6 * k;
+    if !p[0].m_mine { m = btn(s, out, m, Box.{x0 = x1 - 64 * k, y0 = y, x1 = x1, y1 = y + 18 * k}, "REPORT", B_REPORT_MEDIA, p[0].m_big, false); }
+    m = pt_dim(out, m, ifx p[0].m_video[p[0].m_big] then "A VIDEO THEY SHARED, WITHOUT SOUND. TAP TO CLOSE" else "A PHOTO THEY SHARED. TAP TO CLOSE", x0, y + 12 * k, 6.5 * k, k);
+    y += 26 * k;
+  } else if p[0].m_media_n > 0 {
+    per := 3; gap := 6 * k;
+    tw := (x1 - x0 - gap * f32(per - 1)) / f32(per); th := tw * 0.72;
+    for q: 0..<p[0].m_media_n {
+      row := q / per; col := q % per;
+      tb := Box.{x0 = x0 + f32(col) * (tw + gap), y0 = y + f32(row) * (th + gap), x1 = x0 + f32(col) * (tw + gap) + tw, y1 = y + f32(row) * (th + gap) + th};
+      m = outline(out, m, tb, k, 0.3);
+      pet_button(p, tb, B_MEDIA, q);
+      pet_media(p, q, Box.{x0 = tb.x0 + 2 * k, y0 = tb.y0 + 2 * k, x1 = tb.x1 - 2 * k, y1 = tb.y1 - 2 * k});
+    }
+    rows := (p[0].m_media_n + per - 1) / per;
+    y += f32(rows) * (th + gap) + 4 * k;
+  }
   parts := [3] string.["THEIR STORY", "WHAT MADE THEM THEM", "WHAT THEY DID"];
   for q: 0..<3 {
     t := ifx q == 0 then pet_s(p[0].m_story[..], p[0].m_story_n) else ifx q == 1 then pet_s(p[0].m_traits[..], p[0].m_traits_n) else pet_s(p[0].m_ach[..], p[0].m_ach_n);
@@ -1104,9 +1224,25 @@ pet_draw_memorial :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f
   return m;
 }
 
+// A memorial's photo or video q for the host to draw into b this frame.
+pet_media :: (p: [] PetUi, q: int, b: Box) {
+  if q < 0 || q >= p[0].m_media_n || b.x1 - b.x0 < 4 || b.y1 - b.y0 < 4 { return; }
+  t := p[0].media_text[..]; n := p[0].media_n;
+  n = pet_put(t, n, ifx p[0].m_video[q] then "video /api/villa/memorial/" else "image /api/villa/memorial/");
+  n = pet_put(t, n, pet_s(p[0].m_slug[..], 8)); n = pet_put(t, n, "/media/");
+  n = pet_put(t, n, pet_s(p[0].m_media[q * MEDIA_ID..<(q + 1) * MEDIA_ID], MEDIA_ID));
+  xs := [4] f32.[b.x0, b.y0, b.x1, b.y1];
+  for c: 0..<4 { n = pet_put(t, n, " "); n = pj_put_int(t, n, cast(int) xs[c]); }
+  n = pet_put(t, n, "\n");
+  if n > 0 { p[0].media_n = n; }
+}
+// A count and a word into out: its length.
+pet_count :: (out: [] u8, v: int, word: string) -> int { n := pj_put_int(out, 0, v); n = pet_put(out, n, word); return ifx n < 0 then 0 else n; }
+
 // The panel, or its button and the tombstone you stand at; and the toast.
 pet_draw :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   p := s[0].pet[..];
+  p[0].media_n = 0;   // named again below while a memorial shows them
   p[0].field_box = no_box();   // its buttons were reset by play_hud, drawn first
   k := hi(s[0].dpr, 0.5); w := s[0].width; h := s[0].height; g := 16 * k;
   m := n;
@@ -1218,6 +1354,31 @@ pet_draw :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   pet_typed(p[..], "Miss you");
   #assert pet_key(p[..], -2) && p[0].asks & ASK_NOTE != 0;
   #assert cast(string) out[0..<pet_body(p[..], ASK_NOTE, out[..])] == "{\"text\":\"Miss you\"}";
+}
+
+#test "kept files go on the memorial by their owner's choice; a memorial names its photos and videos for the host" {
+  p: [1] PetUi;
+  pet_start(p[..]);
+  t := "{\"id\": \"q-0123456789abcdef\", \"slug\": \"ab12cd34\", \"name\": \"Hecate\", \"status\": \"placed\", \"plot\": 3, \"agent\": \"none\", \"files\": [{\"id\": \"g-00000000000000aa\", \"name\": \"park.jpg\", \"kind\": \"image\", \"status\": \"kept\", \"shown\": false, \"held\": false}, {\"id\": \"g-00000000000000bb\", \"name\": \"x.exe\", \"kind\": \"image\", \"status\": \"refused\"}, {\"id\": \"g-00000000000000cc\", \"name\": \"spin.mp4\", \"kind\": \"video\", \"status\": \"kept\", \"shown\": true, \"held\": true}]}";
+  pet_take(p[..], t, true);
+  #assert p[0].fl_n == 2 && !p[0].fl_shown[0] && p[0].fl_video[1] && p[0].fl_shown[1] && p[0].fl_held[1];
+  p[0].button_kind[0] = B_SHOW_FILE; p[0].button_arg[0] = 0; p[0].button[0] = Box.{x0 = 0, y0 = 0, x1 = 10, y1 = 10}; p[0].buttons = 1;
+  #assert pet_pointer(p[..], 5, 5, 0) && p[0].file_on;
+  #assert p[0].has;
+  #assert p[0].asks & ASK_SHOW != 0;
+  out: [400] u8;
+  #assert cast(string) out[0..<pet_url(p[..], ASK_SHOW, out[..])] == "/api/villa/pets/q-0123456789abcdef/files/g-00000000000000aa/show" && pet_post(ASK_SHOW);
+  p[0].button_kind[0] = B_DELETE_FILE;
+  #assert pet_pointer(p[..], 5, 5, 0) && p[0].file_sure == 0 && p[0].asks & ASK_FILE_DELETE == 0;   // once: are you sure?
+  #assert pet_pointer(p[..], 5, 5, 0) && p[0].asks & ASK_FILE_DELETE != 0;
+  #assert cast(string) out[0..<pet_url(p[..], ASK_FILE_DELETE, out[..])] == "/api/villa/pets/q-0123456789abcdef/files/g-00000000000000aa/delete";
+  pet_open_memorial(p[..], "ab12cd34");
+  pet_answer(p[..], ASK_MEMORIAL, 200, "{\"name\": \"Hecate\", \"mine\": false, \"media\": [{\"id\": \"00000000000000aa\", \"kind\": \"image\"}, {\"id\": \"../../etc\", \"kind\": \"image\"}, {\"id\": \"00000000000000cc\", \"kind\": \"video\"}], \"notes\": []}");
+  #assert p[0].m_media_n == 2 && p[0].m_video[1] && p[0].m_big == -1;   // an id that isn't a file's is dropped
+  pet_media(p[..], 1, Box.{x0 = 10, y0 = 20, x1 = 110.6, y1 = 90});
+  #assert cast(string) p[0].media_text[0..<p[0].media_n] == "video /api/villa/memorial/ab12cd34/media/00000000000000cc 10 20 110 90\n";
+  p[0].report_media = 1; p[0].report_kind = REPORT_FILE;
+  #assert cast(string) out[0..<pet_body(p[..], ASK_REPORT, out[..])] == "{\"kind\":\"file\",\"ref\":\"00000000000000cc\"}";
 }
 
 // The vase being arranged: seven places in a fan over its mouth, the flowers

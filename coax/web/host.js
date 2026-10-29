@@ -101,6 +101,12 @@
 //   coaxial_particle_cap(), coaxial_particles(state), coaxial_particle_bytes(state)
 //                             the emitters' memory, copied each frame to that storage buffer
 //   coaxial_particle_instances(state)  quads to draw (6 vertices each)
+// Pictures and videos from this site, optionally, drawn where the app says, over the scene and under
+// its strokes (Hecate's Cemetery's memorials):
+//   coaxial_media(state), coaxial_media_len(state)  a line each: "image URL X0 Y0 X1 Y1" or "video URL X0 Y0 X1 Y1",
+//                             URL this site's ("/..."), the box in the canvas's device pixels; the picture fits
+//                             inside it, centred. A video plays muted and loops; one no longer listed is let go.
+//                             At most 8. Message 607 says how each one came in, a line each: "URL W H" (0 0: it failed).
 
 import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
 import { startDrops } from "./drop.js";
@@ -818,6 +824,114 @@ function bindScene() {
   gpu.sceneGroup = device.createBindGroup({ layout: sceneLayout(), entries: resources.map((resource, binding) => ({ binding, resource })) });
 }
 
+// ---- media: pictures and videos the app names (coaxial_media), each a texture drawn into its box
+const MEDIA_KIND = 607, MEDIA_MAX = 8;
+const media = new Map();   // "kind url" -> { kind, url, el, texture, w, h, ready, failed, unseen, buffer, group }
+const MEDIA_WGSL = `
+struct M { rect: vec4f, look: vec4f };
+@group(0) @binding(0) var<uniform> m: M;
+@group(0) @binding(1) var t: texture_2d<f32>;
+@group(0) @binding(2) var s: sampler;
+struct O { @builtin(position) p: vec4f, @location(0) uv: vec2f };
+@vertex fn vs(@builtin(vertex_index) i: u32) -> O {
+  var c = array(vec2f(0, 0), vec2f(1, 0), vec2f(0, 1), vec2f(0, 1), vec2f(1, 0), vec2f(1, 1));
+  let k = c[i];
+  var o: O;
+  o.p = vec4f(mix(m.rect.x, m.rect.z, k.x), mix(m.rect.y, m.rect.w, k.y), 0, 1);
+  o.uv = k;
+  return o;
+}
+@fragment fn fs(o: O) -> @location(0) vec4f { return vec4f(textureSample(t, s, o.uv).rgb * m.look.x, 1); }`;
+function mediaPipeline(depth) {
+  const key = depth ? "mediaDepth" : "media";
+  if (gpu[key] !== undefined) return gpu[key];
+  const { device, format } = gpu;
+  gpu.mediaLayout ||= device.createBindGroupLayout({ entries: [
+    { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: {} },
+    { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+    { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: {} }] });
+  gpu.mediaSampler ||= device.createSampler({ magFilter: "linear", minFilter: "linear", addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge" });
+  const module = device.createShaderModule({ code: MEDIA_WGSL });
+  gpu[key] = device.createRenderPipeline({
+    layout: device.createPipelineLayout({ bindGroupLayouts: [gpu.mediaLayout] }),
+    vertex: { module, entryPoint: "vs" }, fragment: { module, entryPoint: "fs", targets: [{ format }] },
+    ...(depth ? { depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "always" } } : {}),
+  });
+  return gpu[key];
+}
+function mediaTold() {
+  send(MEDIA_KIND, [...media.values()].filter((m) => m.ready || m.failed).map((m) => `${m.url} ${m.failed ? 0 : m.w} ${m.failed ? 0 : m.h}`).join("\n"));
+}
+function mediaTexture(m, w, h) {
+  m.w = w; m.h = h;
+  m.texture = gpu.device.createTexture({ size: [w, h], format: "rgba8unorm", usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+  m.buffer = gpu.device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  mediaPipeline(false);
+  m.group = gpu.device.createBindGroup({ layout: gpu.mediaLayout, entries: [
+    { binding: 0, resource: { buffer: m.buffer } }, { binding: 1, resource: m.texture.createView() }, { binding: 2, resource: gpu.mediaSampler }] });
+}
+function mediaOpen(kind, url) {
+  const m = { kind, url, el: null, texture: null, w: 0, h: 0, ready: false, failed: false, unseen: 0, buffer: null, group: null };
+  media.set(`${kind} ${url}`, m);
+  const fail = () => { if (media.get(`${kind} ${url}`) !== m) return; m.failed = true; mediaTold(); };
+  if (kind === "image") {
+    fetch(url, { credentials: "same-origin" }).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+      .then((b) => createImageBitmap(b)).then(async (img) => {
+        if (media.get(`${kind} ${url}`) !== m) return;
+        const f = Math.min(1, 2048 / Math.max(img.width, img.height));   // a texture at most 2048 a side
+        const w = Math.max(1, Math.round(img.width * f)), h = Math.max(1, Math.round(img.height * f));
+        const src = f < 1 ? await createImageBitmap(img, { resizeWidth: w, resizeHeight: h, resizeQuality: "high" }) : img;
+        mediaTexture(m, w, h);
+        gpu.device.queue.copyExternalImageToTexture({ source: src }, { texture: m.texture }, [w, h]);
+        m.ready = true; mediaTold();
+      }).catch(fail);
+  } else {
+    const v = document.createElement("video");
+    v.muted = true; v.defaultMuted = true; v.loop = true; v.playsInline = true; v.autoplay = true; v.preload = "auto";
+    v.setAttribute("muted", ""); v.setAttribute("playsinline", "");   // never a sound: it plays silently, inline
+    v.addEventListener("loadeddata", () => {
+      if (media.get(`${kind} ${url}`) !== m || m.ready) return;
+      mediaTexture(m, Math.max(1, v.videoWidth), Math.max(1, v.videoHeight));
+      m.ready = true; mediaTold(); v.play().catch(() => {});
+    });
+    v.addEventListener("error", fail);
+    v.src = url; m.el = v;
+    v.play().catch(() => {});
+  }
+}
+function mediaClose(key, m) {
+  media.delete(key);
+  if (m.el) { m.el.pause(); m.el.removeAttribute("src"); m.el.load(); }
+  m.texture?.destroy(); m.buffer?.destroy();
+}
+// The media this frame wants, opened as they're first named; the ready ones drawn into pass.
+function drawMedia(x, pass, w, h, depth) {
+  const n = x.coaxial_media && x.coaxial_media_len ? x.coaxial_media_len(arena.state) : 0;
+  const wanted = new Set();
+  if (n > 0) {
+    const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_media(arena.state), n).slice());
+    for (const line of text.split("\n").slice(0, MEDIA_MAX)) {
+      const [kind, url, ...b] = line.split(" ");
+      const box = b.map(Number);
+      if ((kind !== "image" && kind !== "video") || !url?.startsWith("/") || url.startsWith("//") || box.length !== 4 || box.some((v) => !Number.isFinite(v))) continue;
+      const key = `${kind} ${url}`;
+      wanted.add(key);
+      if (!media.has(key)) mediaOpen(kind, url);
+      const m = media.get(key);
+      if (!m.ready || !m.group) continue;
+      if (m.el && m.el.readyState >= 2) { try { gpu.device.queue.copyExternalImageToTexture({ source: m.el }, { texture: m.texture }, [m.w, m.h]); } catch {} }
+      // fit inside the box, centred
+      const [x0, y0, x1, y1] = box, bw = x1 - x0, bh = y1 - y0;
+      if (bw <= 1 || bh <= 1) continue;
+      const f = Math.min(bw / m.w, bh / m.h), dw = m.w * f, dh = m.h * f, cx = x0 + (bw - dw) / 2, cy = y0 + (bh - dh) / 2;
+      gpu.device.queue.writeBuffer(m.buffer, 0, new Float32Array([cx / w * 2 - 1, 1 - cy / h * 2, (cx + dw) / w * 2 - 1, 1 - (cy + dh) / h * 2, 1, 0, 0, 0]));
+      pass.setPipeline(mediaPipeline(depth)); pass.setBindGroup(0, m.group); pass.draw(6);
+    }
+  }
+  for (const [key, m] of media) if (!wanted.has(key) && ++m.unseen > 60) mediaClose(key, m); else if (wanted.has(key)) m.unseen = 0;
+  if (n > 0 || media.size) pass.setBindGroup(0, gpu.bindGroup);
+}
+
 // ---- sounds: Web Audio, started by the first touch or key (browsers wait for one)
 let audio = null;
 const sounds = new Map();   // name -> a decoding or decoded buffer
@@ -961,6 +1075,7 @@ function frame(now) {
     pass = encoder.beginRenderPass({ colorAttachments: [screen()] });
     pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.postGroup); pass.setPipeline(gpu.post); pass.draw(3);
   }
+  if (x.coaxial_media) drawMedia(x, pass, w, h, !!gpu.scene && !post);
   if (n) { pass.setPipeline(gpu.fx); pass.setVertexBuffer(0, gpu.vertexBuffer); pass.draw(n); }
   pass.end();
   const texture = context.getCurrentTexture();
