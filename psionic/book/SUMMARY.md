@@ -15,6 +15,7 @@
 - [12. Are the probabilities any good?](ch012-are-the-probabilities-any-good.md)
 - [13. Qualify honestly](ch013-qualify-honestly.md)
 - [16. Serve `/v1/systemone`](ch016-serve-systemone.md)
+- [16b. The protobuf wire](ch016b-the-protobuf-wire.md)
 - [70. Learning with arrays](ch070-learning-with-arrays.md) — first learning chapter
 - [26. A Coax compute subset](ch026-a-coax-compute-subset.md) — first device chapter
 - [30. Elephant on CUDA](ch030-elephant-on-cuda.md)

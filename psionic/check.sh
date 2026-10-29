@@ -284,6 +284,15 @@ if [[ ${#only[@]} -eq 0 || " ${selected_coax[*]-} " == *" serve-"* ]]; then
     "$coax" test psionic/lib/serve-run.coax
     "$coax" test psionic/lib/serve-run.coax --release
     COAX="$coax" COAX_CC="$cc" psionic/tests/serve.sh
+    # The protobuf wire (16b): its native answers need the official protobuf
+    # runtime (PROTO_PYTHON, proto/README.md); without it only the Coax checks run.
+    if [[ -n ${PROTO_PYTHON:-} ]]; then
+        COAX="$coax" COAX_CC="$cc" psionic/tests/check_serve_proto.sh
+    else
+        "$coax" test psionic/lib/serve-proto.coax
+        "$coax" test psionic/lib/serve-proto.coax --release
+        echo "PROTO_PYTHON unset: protobuf native answers not decoded"
+    fi
     phase "chapter 16 server"
 fi
 python3 -I psionic/tests/book.py --coax "$coax" --jobs "$jobs"

@@ -113,6 +113,9 @@
     ],
     "voice": [
       "openagents/voice/v1alpha1/voice.proto"
+    ],
+    "systemone": [
+      "openagents/decision/v1alpha1/systemone.proto"
     ]
   },
   "profile_namespaces": {
@@ -178,6 +181,10 @@
     "voice": [
       "openagents.voice.",
       "openagents.options."
+    ],
+    "systemone": [
+      "openagents.decision.v1alpha1",
+      "openagents.options.v1alpha1"
     ]
   }
 }

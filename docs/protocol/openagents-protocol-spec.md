@@ -2399,6 +2399,14 @@ existing contract requires. Existing `requires`, `type`, nullable `code`, and
 extension behavior also need exact mapping tables; the sketches are not a
 complete replacement for `nostr::decision` or `jev` validators.
 
+**Protobuf projection (alpha).** `proto/openagents/decision/v1alpha1/systemone.proto`
+projects `SystemOneRequest` and `SystemOneResponse` as sketched above, with a
+local `Null` until the common types are published, plus `ServiceIdentity.identity`
+for the served model digest. Psionic's `POST /v1/systemone` accepts it as
+`application/x-protobuf` by transcoding to the NIP-DEC JSON and admitting that,
+and answers in it on `Accept: application/x-protobuf`. The JSON contract stays
+the definition; `decision.v1` itself is unchanged.
+
 **Limits** are exactly NIP-DEC's: 256 KiB payload,
 `request` ≤128 B, `model` 1–128 B, `state` ≤128 KiB and depth ≤32, 1–64
 questions, ≤64 KiB per question, entry depth ≤8, 1–255 choice options,

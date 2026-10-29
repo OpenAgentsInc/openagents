@@ -1,0 +1,104 @@
+syntax = "proto3";
+package openagents.decision.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+
+// A protobuf projection of the frozen JSON contract openagents.systemone.v1
+// (NIP-DEC, POST /v1/systemone), following the shapes in section 16.1 of the
+// protocol spec. The JSON contract stays the definition: a server admits a
+// protobuf request by transcoding it to that JSON and applying the same bounds.
+// Alpha until decision.v1 is published with its common types.
+
+message Null {}
+
+// The closed, bounded JSON-shaped tree the decision contract is defined over.
+message EntryType {
+  oneof value {
+    Null null = 1;
+    string text = 2 [(openagents.options.v1alpha1.max_bytes) = 131072];
+    EntryObject object = 3;
+    EntryArray array = 4;
+    double number = 5;
+    bool boolean = 6;
+  }
+}
+message EntryObject { repeated EntryField fields = 1 [(openagents.options.v1alpha1.max_count) = 4096]; }
+message EntryField {
+  optional string key = 1 [(openagents.options.v1alpha1.max_bytes) = 4096];
+  EntryType value = 2;
+}
+message EntryArray { repeated EntryType items = 1 [(openagents.options.v1alpha1.max_count) = 4096]; }
+
+enum QuestionType {
+  QUESTION_TYPE_UNSPECIFIED = 0;
+  QUESTION_TYPE_NOUL = 1;
+  QUESTION_TYPE_CHOICE = 2;
+  QUESTION_TYPE_SCORE = 3;
+}
+message Question {
+  QuestionType type = 1;
+  EntryType instructions = 2;
+  EntryType criteria = 3;
+}
+message NamedQuestion {
+  optional string id = 1 [(openagents.options.v1alpha1.max_bytes) = 128];
+  Question question = 2;
+}
+message SystemOneRequest {
+  option (openagents.options.v1alpha1.contract) = "openagents.systemone.v1";
+  option (openagents.options.v1alpha1.max_message_bytes) = 262144;
+  optional string request = 1 [(openagents.options.v1alpha1.max_bytes) = 128];
+  optional uint32 attempt = 2;
+  optional string model = 3 [(openagents.options.v1alpha1.max_bytes) = 128];
+  EntryType state = 4;
+  repeated NamedQuestion questions = 5 [(openagents.options.v1alpha1.max_count) = 64];
+  optional int64 deadline = 6;
+}
+
+message Probability {
+  optional string id = 1 [(openagents.options.v1alpha1.max_bytes) = 128];
+  optional double probability = 2;
+}
+message NoulAnswer { optional double noul = 1; }
+message ChoiceAnswer {
+  optional string choice = 1 [(openagents.options.v1alpha1.max_bytes) = 128];
+  optional double confidence = 2;
+  repeated Probability probabilities = 3 [(openagents.options.v1alpha1.max_count) = 255];
+}
+message ScoreAnswer {
+  optional double score = 1;
+  optional double confidence = 2;
+  repeated EntryField legend = 3 [(openagents.options.v1alpha1.max_count) = 10];
+  repeated Probability probabilities = 4 [(openagents.options.v1alpha1.max_count) = 10];
+}
+message Answer {
+  oneof answer {
+    NoulAnswer noul = 1;
+    ChoiceAnswer choice = 2;
+    ScoreAnswer score = 3;
+  }
+  optional string selected = 4 [(openagents.options.v1alpha1.max_bytes) = 128];
+}
+message NamedAnswer {
+  optional string id = 1 [(openagents.options.v1alpha1.max_bytes) = 128];
+  Answer answer = 2;
+}
+// door and version as in the spec; identity is the served model's
+// name@sha256 digest, which Psionic's server reports in every answer.
+message ServiceIdentity {
+  optional string door = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string version = 2 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string identity = 3 [(openagents.options.v1alpha1.max_bytes) = 256];
+}
+message SystemOneResponse {
+  option (openagents.options.v1alpha1.max_message_bytes) = 262144;
+  optional string model = 1 [(openagents.options.v1alpha1.max_bytes) = 128];
+  repeated NamedAnswer answers = 2 [(openagents.options.v1alpha1.max_count) = 64];
+  Null usage_null = 3;
+  ServiceIdentity service = 4;
+  optional uint64 latency_ms = 5;
+}
+// A refusal, as the JSON body's error object.
+message Error {
+  optional string code = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string message = 2 [(openagents.options.v1alpha1.max_bytes) = 256];
+}

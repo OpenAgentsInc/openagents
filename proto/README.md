@@ -24,6 +24,7 @@ workspace is restored.
 | `openagents/common/v1/` | Recovered refs, signed-original wrappers and domain-qualified errors. |
 | `openagents/engine/v1/` | Six recovered schemas: scene, agent, HUD, control, registered state and assets. Verse and other consumers share them. |
 | `openagents/host/v1/`, `openagents/reach/v1/` | Recovered phone task/admission, binding/cursor and authenticated reach records. Existing wire types are unchanged. |
+| `openagents/decision/v1alpha1/` | New protobuf projection of the frozen `openagents.systemone.v1` JSON contract (request and response), served by Psionic's `/v1/systemone`. See its [README](openagents/decision/v1alpha1/README.md). |
 | `openagents/options/v1alpha1/` | New experimental data-class, limit, presence, unit and contract annotations. Numbers are provisional pending registry review. |
 | `openagents/verse/common/v1alpha1/` | New bounded world reference. |
 | `openagents/verse/presence/v1alpha1/` | New transient presence projection using engine geometry. No change to NIP-MV, REACH or realm wire. |
