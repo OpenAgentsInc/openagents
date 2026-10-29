@@ -1,0 +1,6 @@
+descriptor-prefix wire check suites match
+protoc libprotoc 34.1 source fixture and exact envelope round-trip
+Wasm event source/projection and verification tests passed
+checked 18 source/projection cases, real and forged-signature paths; generated C 9e0d5ac55bc5f1dc627faec7bcb41f5e5b074d6233fe16b1cb88ceec54558438 Wasm 11e645aadb290f2d31861573375bdbe97e822f841a91f55b473845a909bb6ace
+Wasm event source/projection and verification tests passed
+release 18 source/projection cases, real and forged-signature paths; generated C 6757a50ed13ac61d154bb4f72abf526a7f0a2100c94288f986fa81a6201878e1 Wasm 0d3eda1abeb8a66c6694542b14c17815bfd6aaa6e4cd4dfb7fd457442296d001

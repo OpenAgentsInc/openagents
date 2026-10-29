@@ -1,0 +1,6 @@
+descriptor-prefix wire check suites match
+protoc libprotoc 34.1 and OpenSSL signed/forged fixture checks passed
+Wasm FI source/projection cases passed
+checked 19 FI consistency cases; generated C 8eda078475e897805ec0aaf5bbd45f5799f0de3036da6547edd0f5be7252c43c Wasm 1945541bd5b537ceda22e49901681f369c8e3577b63a2814ab83e20e5fae655b
+Wasm FI source/projection cases passed
+release 19 FI consistency cases; generated C 209e0728e230ccdb31e734a1cd5a31c0fd9718e66697918422b93e8e2674f3a2 Wasm c62933c070bdafff142a34ad25fb77595959b83aef4f0abdb3e38c29b8721259

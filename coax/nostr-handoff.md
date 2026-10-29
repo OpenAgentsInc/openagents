@@ -1,5 +1,42 @@
 # Coax Nostr epic: handoff
 
+## Restart — claude-nostr, 2026-10-29 (Linux host)
+
+The owner restarted the epic with one worker, `claude-nostr`, on the Linux
+machine (worktree `~/oa-coax-nostr`, branch `coax-nostr`, from
+`origin/main`). The project key is on this host, so claims, plans, notes and
+completions are signed on the relay as QUEUE.md describes. The live queue is
+the source of truth.
+
+The `codex-nostr-profiles` and `codex-nostr-codecs` claims still show on the
+relay (#79d5, #f07b, #71e7, #0f43, #6dc6, #3653, #12bd, #6652, #46bd, #d235,
+#bd06). This worker leaves them alone until the owner or taskmaster releases
+them.
+
+### Host facts
+
+- **Wasm on Linux.** `~/.cache/coax-wasm-toolchain` holds nix clang 21,
+  `wasm-ld` and wasi-libc 27, with compiler-rt builtins. To use it, set
+  `COAXIAL_CLANG=$T/bin/clang COAXIAL_SYSROOT=$T/sysroot
+  COAXIAL_RESOURCES=$T/resource PATH=$T/bin:$PATH`, where `$T` is that
+  directory. Node WASI runs the result. Not every fixture script reads these
+  variables yet. Some still hardcode `/opt/homebrew`.
+- **No iOS here.** There is no Xcode or simulator on this host. Any acceptance
+  check that needs an iOS target stays open for the Mac.
+- **No site releases from here.** `coax/web/release.sh` builds the pages with
+  the Mac toolchain paths, and its goldens are Mac renders. A release attempted
+  after #0af2 was stopped during its compiler bootstrap, before any build or
+  upload. The page catches up at the next release from the Mac. See
+  `NEEDS_OWNER.md`.
+
+### Running record
+
+| Task | State | Commit | Evidence |
+| --- | --- | --- | --- |
+| #0af2 crypto-secret-lint | done | `fc59b9c7a1` | Scalar policy revalidated on the rebuilt compiler: 41/41 checks; reference mutation 749/749 (8,891 checks, nothing skipped); `test_secret.py` 7/7; new `test_revalidate.py`: 400 generated programs, 257 accepted, emitted-C guard scan and checked/-O2 execution, 12 refused controls. Finding: the corrected policy refuses `cb_mask` (checked multiply on a secret), and `test_secret.py` had still asserted acceptance. `docs/verification/2026-10-29-secret-scalar-revalidation.md` |
+| #0af1 server-nip98-session | skipped (signed note) | — | Overlaps the phone sign-in worker's oa-api endpoints. Needs a taskmaster or owner decision |
+| #2ff9 nostr-proto-adapters | done | (this commit) | The event and FI projections from #161a meet the round-trip, mismatch and forged-authority criteria. On Linux: Coax checks 195/195 and 210/210; protoc, checked/release native, ASan/UBSan and Wasm fixtures pass; FI reference mutation 3,162/3,162. The event mutation rerun was stopped at 546/4,306, which is not a pass; #161a's 4,306/4,306 on the same source stands. HOST stays with #3d81. `docs/verification/2026-10-29-proto-adapters.md` |
+
 ## Stop handoff — 2026-10-29
 
 The owner asked for a stopping point and handoff. The previous execution
