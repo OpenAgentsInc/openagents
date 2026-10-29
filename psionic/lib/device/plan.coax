@@ -289,9 +289,26 @@ dp_attention :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,prefix:int,input:in
 // is the last token's vocabulary logits at logits.
 dp_plan :: (tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
     if tokens<1 || tokens>128 || prefix<0 || prefix>=tokens {return DpPlan.{status=DpStatus.shape};}
-    p:=dp_layout(tokens);
-    plan:=dp_residency(budget,p.total,stream);
+    plan:=dp_residency(budget,dp_layout(tokens).total,stream);
     if plan.status!=DpStatus.ok {return plan;}
+    return dp_schedule(tokens,prefix,plan,stream,ops);
+}
+// book:end plan
+// A later decision on weights already placed by an opened plan: the same
+// streamed set and the opened workspace, which must hold this layout.
+dp_replan :: (tokens:int,prefix:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
+    if opened.status!=DpStatus.ok || stream.count!=DP_STREAMABLE {return DpPlan.{status=DpStatus.capacity};}
+    if tokens<1 || tokens>128 || prefix<0 || prefix>=tokens {return DpPlan.{status=DpStatus.shape};}
+    if dp_layout(tokens).total>opened.workspace {return DpPlan.{status=DpStatus.capacity};}
+    n:=0;for i:0..<DP_STREAMABLE {if stream[i] {n+=1;}}
+    if n!=opened.streamed_tensors {return DpPlan.{status=DpStatus.capacity};}
+    return dp_schedule(tokens,prefix,opened,stream,ops);
+}
+// Where a decision may stop: before the first norm launch of each layer and
+// of the readout. A stopped decision has published nothing.
+dp_stop_point :: (op:DpOp)->bool #export_c {return op.kind==DpOpKind.launch && op.kernel==cast(u8)DpKernel.squares;}
+dp_schedule :: (tokens:int,prefix:int,placed:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan {
+    p:=dp_layout(tokens);plan:=placed;
     b:=DpBuilder.{ops=ops,ok=true,stream=stream};
     // Streamed weights in schedule order: gate, up, then down of each layer.
     for i:0..<DP_STREAMABLE {if stream[i] {b.order[b.count]=dp_stream_weight(i);b.count+=1;}}
@@ -311,7 +328,6 @@ dp_plan :: (tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan #
     if !b.ok {return DpPlan.{status=DpStatus.capacity};}
     plan.ops=b.n;return plan;
 }
-// book:end plan
 dp_down :: (layer:int)->int {if dp_full(layer) {return dp_weight(layer,10);}return dp_weight(layer,13);}
 dp_norm_last :: (b:DpBuilder,p:DpLayout,tokens:int,input:int)->DpBuilder {
     return dp_norm_rows(b,p,1,input+4*(tokens-1)*DP_WIDTH,dp_w(DP_FINAL,DP_WIDTH),p.final);
@@ -476,6 +492,34 @@ dp_digest :: (ops:[]DpOp,n:int)->u64 {
     #assert dp_slices(1024,4096,98304)==16 && dp_slices(32,4096,98304)==16 && dp_slices(6144,4096,98304)==16 && dp_slices(6145,4096,98304)==8;
     #assert dp_slices(32,24,98304)==2 && dp_slices(32,8,98304)==2 && dp_slices(32,4,98304)==1 && dp_slices(32,32,98304)==8 && dp_slices(98304,4096,98304)==1;
     #assert dp_slices(49152,4096,98304)==2 && dp_slices(49153,4096,98304)==1 && dp_slices(98305,4096,98304)==1 && dp_slices(12289,4096,98304)==4;
+}
+#test "a decision may stop before each layer and the readout" {
+    ops:[1500]DpOp;stream:[96]bool;w:=dp_workspace_bytes(86);all:=0;for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));}
+    plan:=dp_plan(86,49,w+all,stream[..],ops[..]);stops:=0;
+    for i:0..<plan.ops {if dp_stop_point(ops[i]) {stops+=1;}}
+    #assert stops==33 && dp_stop_point(ops[0]) && !dp_stop_point(ops[1]);
+    copy:=DpOp.{kind=DpOpKind.copy,kernel=cast(u8)DpKernel.squares};#assert !dp_stop_point(copy);
+}
+#test "a later decision reuses the opened placement" {
+    ops:[1500]DpOp;stream:[96]bool;again:[1500]DpOp;
+    w:=dp_workspace_bytes(128);all:=0;for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));}
+    slot:=dp_align(2*4096*12288);
+    opened:=dp_plan(128,0,w+all-7*slot,stream[..],ops[..]);
+    #assert opened.status==DpStatus.ok && opened.streamed_tensors==9 && opened.workspace==w;
+    later:=dp_replan(86,49,opened,stream[..],again[..]);
+    direct:=dp_plan(86,49,w+all-7*slot,stream[..],ops[..]);
+    #assert later.status==DpStatus.ok && later.ops==direct.ops && later.workspace==w && later.streamed_tensors==9;
+    #assert dp_digest(again[..],later.ops)==dp_digest(ops[..],direct.ops);
+    #assert dp_replan(129,0,opened,stream[..],again[..]).status==DpStatus.shape && dp_replan(86,86,opened,stream[..],again[..]).status==DpStatus.shape;
+    #assert dp_replan(0,0,opened,stream[..],again[..]).status==DpStatus.shape && dp_replan(86,-1,opened,stream[..],again[..]).status==DpStatus.shape;
+    #assert dp_replan(86,49,opened,stream[0..<95],again[..]).status==DpStatus.capacity;
+    small:=opened;small.workspace=dp_workspace_bytes(64);
+    #assert dp_replan(65,0,small,stream[..],again[..]).status==DpStatus.capacity && dp_replan(64,0,small,stream[..],again[..]).status==DpStatus.ok;
+    bad:=opened;bad.status=DpStatus.memory;#assert dp_replan(86,49,bad,stream[..],again[..]).status==DpStatus.capacity;
+    other:[96]bool;for i:0..<96 {other[i]=stream[i];}other[0]=!other[0];
+    #assert dp_replan(86,49,opened,other[..],again[..]).status==DpStatus.capacity;
+    fewer:=opened;fewer.streamed_tensors=8;#assert dp_replan(86,49,fewer,stream[..],again[..]).status==DpStatus.capacity;
+    #assert dp_replan(1,0,opened,stream[..],again[..]).status==DpStatus.ok && dp_replan(128,127,opened,stream[..],again[..]).status==DpStatus.ok;
 }
 #test "tensor-core projections pad tokens to warps and slice until the launch is full" {
     #assert dp_padded(1)==88 && dp_padded(86)==88 && dp_padded(88)==88 && dp_padded(89)==176;

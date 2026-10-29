@@ -313,8 +313,50 @@ The probabilities are chapter 10's to every printed digit: the HTTP path
 rendered the same 86 tokens and ran the same calculation. The decision took
 47 minutes on a 20-core Intel i7-14700K that other jobs were also using; the
 reference CPU path uses one core. That figure is one observation, not a
-latency claim. Further original-weight requests through the server wait for
-the GPU path; that is where its latency will be measured.
+latency claim.
+
+## Serve Elephant on the GPU
+
+With an NVIDIA device, the same server answers on chapter 30's device path:
+
+```shell
+psionic/platform/serve.sh --elephant-gpu ~/models/elephant-1-b3f8a934
+```
+
+Only the engine changes. Admission, the NIP-DEC bounds, the refusal codes
+and the answer body are the ones above: `sv_stage` in
+[serve-run.coax](../lib/serve-run.coax) prepares and fits each question
+exactly as `sv_answers` does, the host runs the device plan, and `sv_read`
+applies chapter 10's readout to the last token's logits. The plan and its
+residency come from [plan.coax](../lib/device/plan.coax), opened once for the
+largest admitted request (`--capacity`, at most 128 tokens). The C in
+[elephant-gpu.c](../platform/elephant-gpu.c) loads modules, places buffers,
+launches and waits, and nothing else.
+
+A CUDA context does not survive `fork`, so device decisions run in the
+server process, one at a time. Between layers the host asks whether the
+deadline has passed or the client has gone (`dp_stop_point` marks the 33
+places). A stopped decision returns before anything is rendered, and the
+slot machine then refuses with `timeout` or closes, as it does when it kills
+a CPU child.
+
+On the RTX 4080 with the card otherwise idle, the server was ready 76 seconds
+after it started: 0.3 seconds to compile the 19 generated kernels, 72.7
+seconds to authenticate the checkpoint on the CPU, and 1.3 seconds to place
+13.85 GiB on the device and pin 0.94 GiB of feed-forward matrices for
+streaming. Twelve warm JSON requests of chapter 10's sample, each over its
+own loopback connection and timed by `curl`, took 146.9 to 155.4 ms end to
+end, with a median of 147.8 ms. Three protobuf round trips (chapter 16b) took
+146.6 to 149.2 ms. Every answer was:
+
+```jai
+{"model":"elephant-1","answers":{"wet":{"type":"choice","choice":"yes","confidence":0.757202773,"probabilities":{"yes":0.757202773,"no":0.242797227}}},"usage":null,"service":{"door":"psionic","version":"psionic-serve-v1","identity":"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba"},"latency_ms":147}
+```
+
+That is p_yes 0.757202773 against chapter 10's 0.757196285, a difference of
+6.5e-6, inside chapter 30's frozen 0.0005. A client that hung up after 50 or
+80 ms was cancelled 3 to 4 ms later, and the next request answered the same.
+With `--deadline-ms 60` both requests were refused 524 `timeout` at 64 ms.
 
 ## What the checks establish
 

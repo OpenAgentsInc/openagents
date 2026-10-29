@@ -1,13 +1,12 @@
 /* Chapter 30: the authenticated original Elephant decision on a CUDA device.
    The CPU session authenticates and binds the original files; the Coax device
    plan (psionic/lib/device/plan.coax) decides residency, streaming and every
-   launch; this host performs the effects and times them.
+   launch; psionic/platform/elephant-gpu.c performs the effects, and this
+   harness times them, profiles them and qualifies them against the CPU.
    Usage: elephant-device ORIGINAL_DIRECTORY TOKENIZER_PST PROJECT.cu LAYER.cu WARP.cu [REPEAT]
    Prints SKIP and exits 0 without a device or NVRTC. */
 #define _GNU_SOURCE
-#include "cuda-host.h"
-#include "decision-answer.h"
-#include "plan.h"
+#include "elephant-gpu.h"
 #include "elephant-inventory.h"
 #include "elephant-request.h"
 #include <fcntl.h>
@@ -22,9 +21,6 @@
 
 /* The plan's constants (psionic/lib/device/plan.coax). */
 #define DP_KERNELS 19
-#define DP_PER_LAYER 16
-#define DP_HEAD 512
-#define DP_FINAL 513
 #define DP_WEIGHTS 514
 #define DP_WIDTH 4096
 #define DP_VOCAB 248320
@@ -64,20 +60,6 @@ static char *read_text(const char *path, size_t *n) {
     return text;
 }
 #define TRY(x) do { PcStatus s_ = (x); if (s_ != PC_OK) { fprintf(stderr, "%s: status %d: %s\n", #x, s_, pc_log()); exit(1); } } while (0)
-
-/* The session's view of weight id w: QlWeights and QhWeights are runs of
-   {pointer, count} views in the plan's weight order. */
-typedef struct { const void *data; int64_t count; } View;
-static View weight_view(coax_t_QxModel *m, int64_t w, size_t *element) {
-    if (w == DP_HEAD) { *element = 1; return (View){m->head.data, m->head.count}; }
-    if (w == DP_FINAL) { *element = 4; return (View){m->final_norm.data, m->final_norm.count}; }
-    int64_t layer = w / DP_PER_LAYER, j = w % DP_PER_LAYER;
-    coax_t_QeLayer *l = &m->layers.data[layer];
-    const View *fields = l->kind == 0 ? (const View *)&l->linear : (const View *)&l->full;
-    int bf16 = dp_weight_bf16(w);
-    *element = bf16 ? 1 : 4;
-    return fields[j];
-}
 
 /* The same Coax kernel, compiled to C, over every work item of one launch.
    base(k) is the host address of view argument k. */
@@ -126,35 +108,24 @@ static char *host_base(void *ctx, int64_t k) {
 int main(int argc, char **argv) {
     if (argc < 6) { fprintf(stderr, "usage: elephant-device ORIGINAL_DIRECTORY TOKENIZER_PST PROJECT.cu LAYER.cu WARP.cu [REPEAT]\n"); return 2; }
     int repeat = argc > 6 ? atoi(argv[6]) : 3;
-    PcDeviceInfo info;
-    PcStatus ds = pc_open(&info);
-    if (ds == PC_ABSENT) { printf("SKIP: no CUDA device (%s)\n", pc_log()); return 0; }
-    if (ds) { fprintf(stderr, "pc_open: %s\n", pc_log()); return 1; }
-    printf("device: %s, compute %d.%d, %.2f of %.2f GiB free\n", info.name, info.major, info.minor, info.free_bytes / 1073741824.0, info.total_bytes / 1073741824.0);
     double t0 = now();
-    /* Kernels first, so a missing NVRTC skips before the long authentication. */
-    PcModule modules[3];
-    double compile_seconds = 0;
-    const char *module_names[3] = {"project.cu", "layer.cu", "warp.cu"};
+    /* Kernels first, so a missing driver or NVRTC skips before the long authentication. */
+    EgSources src;
     for (int i = 0; i < 3; i++) {
         size_t n;
-        char *source = read_text(argv[3 + i], &n);
-        if (!source) { fprintf(stderr, "cannot read %s\n", argv[3 + i]); return 2; }
-        double seconds;
-        PcStatus s = pc_compile(source, n, module_names[i], &modules[i], &seconds);
-        if (s == PC_NO_NVRTC) { printf("SKIP: %s\n", pc_log()); return 0; }
-        if (s) { fprintf(stderr, "compile %s: %s\n", argv[3 + i], pc_log()); return 1; }
-        compile_seconds += seconds;
-        free(source);
+        char *text = read_text(argv[3 + i], &n);
+        if (!text) { fprintf(stderr, "cannot read %s\n", argv[3 + i]); return 2; }
+        src.text[i] = text;
+        src.length[i] = n;
     }
-    PcKernel kernels[DP_KERNELS];
-    for (int k = 0; k < DP_KERNELS; k++) {
-        coax_string name = dp_kernel_name(k);
-        char text[64];
-        snprintf(text, sizeof text, "%.*s", (int)name.count, name.data);
-        TRY(pc_kernel(modules[k < 3 ? 0 : k < 17 ? 1 : 2], text, &kernels[k]));
-    }
-    printf("compiled %d generated kernels with NVRTC in %.3f s\n", DP_KERNELS, compile_seconds);
+    EgEngine *e = calloc(1, sizeof *e);
+    if (!e) return 2;
+    int er = eg_compile(e, &src);
+    if (er == EG_SKIP) { printf("SKIP: %s\n", pc_log()); return 0; }
+    if (er) { fprintf(stderr, "compile: %s\n", pc_log()); return 1; }
+    PcDeviceInfo info = e->device;
+    printf("device: %s, compute %d.%d, %.2f of %.2f GiB free\n", info.name, info.major, info.minor, info.free_bytes / 1073741824.0, info.total_bytes / 1073741824.0);
+    printf("compiled %d generated kernels with NVRTC in %.3f s\n", DP_KERNELS, e->compile_seconds);
 
     /* The CPU session authenticates and binds the original files (chapter 10). */
     coax_v_u8 config = named(argv[1], "config.json"), tokenizer = named(argv[1], "tokenizer.json"), readout = named(argv[1], "readout.json"), index = {NULL, 0}, table = map_file(argv[2]);
@@ -190,66 +161,28 @@ int main(int argc, char **argv) {
         memcmp(tokens, elephant_request_tokens, sizeof(elephant_request_tokens))) { fprintf(stderr, "prepared token stream differs from reference\n"); return 1; }
     int64_t T = prepared.written, P = prepared.prefix;
 
-    /* The plan: what fits, what streams, and every operation. */
-    size_t free_bytes, total_bytes;
-    TRY(pc_memory(&free_bytes, &total_bytes));
-    int64_t margin = (int64_t)512 << 20; /* left for other processes and the driver */
-    int64_t budget = (int64_t)free_bytes - margin;
-    /* PSIONIC_DEVICE_BUDGET_MIB lowers the budget to measure smaller headroom. */
+    /* The plan: what fits, what streams, and every operation.
+       PSIONIC_DEVICE_BUDGET_MIB lowers the budget to measure smaller headroom. */
     const char *budget_env = getenv("PSIONIC_DEVICE_BUDGET_MIB");
-    if (budget_env && atoll(budget_env) > 0 && atoll(budget_env) * 1048576LL < budget) budget = atoll(budget_env) * 1048576LL;
-    _Bool stream[96];
-    int64_t op_cap = 4096; /* operations the plan may write */
-    coax_t_DpOp *ops = calloc((size_t)op_cap, sizeof(*ops));
-    coax_t_DpPlan plan = dp_plan(T, P, budget, (coax_v_bool){stream, 96}, (coax_v_t_DpOp){ops, op_cap});
-    if (plan.status) { fprintf(stderr, "plan status %u (budget %lld)\n", plan.status, (long long)budget); return 1; }
+    int64_t budget = budget_env && atoll(budget_env) > 0 ? atoll(budget_env) * 1048576LL : 0;
+    er = eg_place(e, session.model, T, budget);
+    if (er) { fprintf(stderr, "placement status %d (budget %lld): %s\n", er, (long long)e->budget, eg_log()); return 1; }
+    if (eg_prepare(e, tokens, T, P)) { fprintf(stderr, "plan refused the decision\n"); return 1; }
+    coax_t_DpPlan plan = e->plan;
+    coax_t_DpOp *ops = e->ops;
     printf("plan: %lld operations; workspace %.1f MiB, resident %.2f GiB, streamed %.2f GiB in %lld feed-forward matrices through 2 slots of %.1f MiB (budget %.2f GiB)\n",
            (long long)plan.ops, plan.workspace / 1048576.0, plan.resident / 1073741824.0, plan.streamed / 1073741824.0, (long long)plan.streamed_tensors,
-           plan.slot / 1048576.0, budget / 1073741824.0);
-
-    /* Device memory: one workspace, two slots, one resident arena. Streamed
-       tensors are copied once into pinned host memory. */
-    double tu = now();
-    PcBuffer workspace, slots[2] = {0, 0}, arena;
-    TRY(pc_alloc((size_t)plan.workspace, &workspace));
-    if (plan.slot) { TRY(pc_alloc((size_t)plan.slot, &slots[0])); TRY(pc_alloc((size_t)plan.slot, &slots[1])); }
-    TRY(pc_alloc((size_t)plan.resident, &arena));
-    PcBuffer *address = calloc(DP_WEIGHTS, sizeof(PcBuffer));
-    void **pinned = calloc(DP_WEIGHTS, sizeof(void *));
-    int64_t *bytes = calloc(DP_WEIGHTS, sizeof(int64_t));
-    PcStream compute, copy;
-    TRY(pc_stream(&compute));
-    TRY(pc_stream(&copy));
-    int64_t at = 0, pinned_bytes = 0;
-    for (int64_t w = 0; w < DP_WEIGHTS; w++) {
-        bytes[w] = dp_weight_bytes(w);
-        if (!bytes[w]) continue; /* no such tensor in this kind of layer */
-        size_t element;
-        View v = weight_view(&session.model, w, &element);
-        if ((int64_t)element * v.count != bytes[w]) { fprintf(stderr, "weight %lld: session has %lld bytes, plan expects %lld\n", (long long)w, (long long)(element * v.count), (long long)bytes[w]); return 1; }
-        if (dp_streamed(w, (coax_v_bool){stream, 96})) {
-            TRY(pc_host_alloc((size_t)bytes[w], &pinned[w]));
-            memcpy(pinned[w], v.data, (size_t)bytes[w]);
-            pinned_bytes += bytes[w];
-            continue;
-        }
-        address[w] = arena + (PcBuffer)at;
-        TRY(pc_upload(address[w], v.data, (size_t)bytes[w], copy));
-        at += (bytes[w] + 255) / 256 * 256;
-    }
-    TRY(pc_sync());
-    double uploaded = now() - tu;
+           plan.slot / 1048576.0, e->budget / 1073741824.0);
     printf("session: authenticated in %.1f s; uploaded %.2f GiB resident in %.2f s (%.1f GB/s); pinned %.2f GiB for streaming\n",
-           authenticated, at / 1073741824.0, uploaded, at / uploaded / 1e9, pinned_bytes / 1073741824.0);
-
-    PcEvent filled[2], released[2], start, mid, end;
-    for (int i = 0; i < 2; i++) { TRY(pc_event(&filled[i])); TRY(pc_event(&released[i])); }
+           authenticated, e->resident_bytes / 1073741824.0, e->upload_seconds, e->resident_bytes / e->upload_seconds / 1e9, e->pinned_bytes / 1073741824.0);
+    PcBuffer workspace = e->workspace, *slots = e->slots, *address = e->address;
+    PcKernel *kernels = e->kernels;
+    void **pinned = e->pinned;
+    int64_t *bytes = e->bytes;
+    PcStream compute = e->compute, copy = e->copy;
+    PcEvent *released = e->released, start, mid, end;
     TRY(pc_event(&start)); TRY(pc_event(&mid)); TRY(pc_event(&end));
-    /* Inputs and logits live in pinned memory, so a recorded replay can copy them. */
-    float *x, *rope, *logits, *rope_work = malloc((size_t)T * 64 * 4);
-    TRY(pc_host_alloc((size_t)T * DP_WIDTH * 4, (void **)&x));
-    TRY(pc_host_alloc((size_t)T * 64 * 4, (void **)&rope));
-    TRY(pc_host_alloc(DP_VOCAB * 4, (void **)&logits));
+    float *x = e->x, *rope = e->rope, *logits = e->logits;
     /* PSIONIC_DEVICE_REPLAY=1 records the decision's copies and launches once
        and replays the recording for every run. */
     const char *replay_env = getenv("PSIONIC_DEVICE_REPLAY");
@@ -271,9 +204,7 @@ int main(int argc, char **argv) {
         int timed = profile && run == repeat;
         double tr = now();
         /* Inputs: embedding rows and rotary coefficients, computed by Coax on the host. */
-        if (!dp_embed((coax_v_s64){tokens, T}, DP_WIDTH, session.model.embedding, (coax_v_f32){x, T * DP_WIDTH})) { fprintf(stderr, "embedding refused\n"); return 1; }
-        coax_t_QwResult rr = qw_rope(0, T, (coax_v_f32){rope, T * 64}, (coax_v_f32){rope_work, T * 64}, 0);
-        if (rr.status) { fprintf(stderr, "rope status %u\n", rr.status); return 1; }
+        if (eg_prepare(e, tokens, T, P)) { fprintf(stderr, "inputs refused\n"); return 1; }
         if (replay && graph) {
             TRY(pc_replay(graph, compute));
             goto issued;
@@ -289,30 +220,8 @@ int main(int argc, char **argv) {
         TRY(pc_upload(workspace + (PcBuffer)dp_rope_offset(T), rope, (size_t)T * 64 * 4, compute));
         TRY(pc_record(mid, compute));
         for (int64_t i = 0; i < plan.ops; i++) {
-            coax_t_DpOp *op = &ops[i];
             if (timed) TRY(pc_record(marks[i], compute));
-            if (op->kind == COAX_DpOpKind_copy) {
-                TRY(pc_wait(copy, released[op->slot]));
-                TRY(pc_upload(slots[op->slot], pinned[op->tensor], (size_t)bytes[op->tensor], copy));
-                TRY(pc_record(filled[op->slot], copy));
-            } else if (op->kind == COAX_DpOpKind_wait) {
-                TRY(pc_wait(compute, filled[op->slot]));
-            } else if (op->kind == COAX_DpOpKind_release) {
-                TRY(pc_record(released[op->slot], compute));
-            } else {
-                PcArg args[12];
-                for (int64_t k = 0; k < op->count; k++) {
-                    coax_t_DpArg *a = &op->args.e[k];
-                    args[k] = (PcArg){(PcArgKind)a->kind, a->value, a->real, 0, a->count};
-                    if (a->kind == 4) {
-                        PcBuffer base = a->buffer == 0 ? workspace : a->buffer <= 2 ? slots[a->buffer - 1] : address[a->buffer - 3];
-                        if (!base) { fprintf(stderr, "operation %lld uses an unbound buffer %lld\n", (long long)i, (long long)a->buffer); return 1; }
-                        args[k].data = base + (PcBuffer)a->offset;
-                    }
-                }
-                if (op->lanes == 32) TRY(pc_launch_warps(kernels[op->kernel], op->items, (int)op->block, args, (int)op->count, compute));
-                else TRY(pc_launch(kernels[op->kernel], op->items, (int)op->block, args, (int)op->count, compute));
-            }
+            if (eg_issue(e, i, compute)) { fprintf(stderr, "operation %lld: %s\n", (long long)i, pc_log()); return 1; }
         }
         if (timed) TRY(pc_record(marks[plan.ops], compute));
         TRY(pc_download(logits, workspace + (PcBuffer)dp_logits_offset(T), DP_VOCAB * 4, compute));
@@ -372,9 +281,7 @@ int main(int argc, char **argv) {
         if (!before || !gpu || !weights) return 2;
         for (int64_t w = 0; w < DP_WEIGHTS; w++) {
             if (!bytes[w]) continue;
-            size_t element;
-            View v = weight_view(&session.model, w, &element);
-            weights[w] = pinned[w] ? pinned[w] : (char *)v.data;
+            weights[w] = pinned[w] ? pinned[w] : (char *)eg_weight(e, w);
         }
         HostBuffers hb = {0};
         hb.weights = weights;
@@ -437,9 +344,9 @@ int main(int argc, char **argv) {
         printf("qualified %lld launches against the same kernels on the CPU: %lld bit-identical; largest relative difference %.3g (%.*s)\n",
                (long long)checked, (long long)exact, worst, (int)wn.count, wn.data);
     }
-    size_t free_after;
+    size_t free_after, total_bytes;
     pc_memory(&free_after, &total_bytes);
-    printf("device memory in use by this process: about %.2f GiB; %.2f GiB left free\n", (free_bytes - free_after) / 1073741824.0, free_after / 1073741824.0);
+    printf("device memory in use by this process: about %.2f GiB; %.2f GiB left free\n", ((double)e->free_before - (double)free_after) / 1073741824.0, free_after / 1073741824.0);
     printf("choice=%s p_yes=%.9g p_no=%.9g slot_mass=%.9g confidence=%.9g\n", answer.best == 0 ? "yes" : "no", probabilities[0], probabilities[1], answer.mass, answer.confidence);
     printf("first decision after process start: %.1f s (compile, authenticate, upload, run)\n", now() - t0);
     return 0;

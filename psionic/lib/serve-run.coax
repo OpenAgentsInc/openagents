@@ -28,3 +28,45 @@ sv_answers :: (engine:SvEngine,request:SvRequest,pools:SvPools,work:SvWork,p:[]f
     return SvCode.none;
 }
 // book:end answers
+// Chapter 16a: the same questions answered with logits from a device. The
+// host runs the device plan between sv_stage and sv_read, one question at a
+// time; admission and every refusal are the ones sv_answers gives.
+SvStaged :: struct {code:SvCode;prepared:PrResult;}
+sv_stage :: (engine:SvEngine,request:SvRequest,pools:SvPools,work:SvWork,i:int)->SvStaged #export_c {
+    if i<0 || i>=request.questions {return SvStaged.{code=SvCode.internal};}
+    q:=pools.questions[i];options:=pools.options[q.first..<q.first+q.count];
+    question:=PtQuestion.{kind=q.kind,instructions=q.instructions};
+    prepared:=ps_prepare(engine.session.table,request.state,question,options,work.tokens,work.prep,false);
+    return SvStaged.{code=sv_fits(engine,prepared,work.work.count),prepared=prepared};
+}
+// The readout of chapter 10 (ps_answer) over the last token's logits.
+sv_read :: (engine:SvEngine,request:SvRequest,pools:SvPools,i:int,prepared:PrResult,logits:[]f32,p:[]f64,prob:[]f64)->SvCode #export_c {
+    if !engine.sealed || p.count<SV_ANSWER_POOL || i<0 || i>=request.questions {return SvCode.internal;}
+    q:=pools.questions[i];tag:=cast(u8)prepared.kind;
+    if prepared.status!=PrStatus.ok || prepared.kind!=q.kind || !pt_question_count(tag,q.count) || !qr_valid(tag,prepared.slots,engine.temperature) {return SvCode.internal;}
+    if prepared.kind!=PtQuestionKind.noul && prepared.slots!=q.count {return SvCode.internal;}
+    slots:[255]int;for k:0..<prepared.slots {slots[k]=qr_pinned_slot(k);}
+    r:=qr_read(cast(QrKind)tag,engine.temperature,logits,slots[0..<prepared.slots],p[i*SV_OPTIONS_MAX..<(i+1)*SV_OPTIONS_MAX],prob,false);
+    if r.status!=QrStatus.ok {return SvCode.internal;}
+    return SvCode.none;
+}
+#test "a device answer is chapter 10's readout of the device logits" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],64);storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);work:SvWork;p:[16320]f64;prob:[4]f64;
+    r:=sv_decode("{\"model\":\"psionic-toy\",\"state\":\"go\",\"questions\":{\"a\":{\"type\":\"choice\",\"instructions\":\"x\",\"criteria\":{\"yes\":null,\"no\":null}}}}",pools);
+    #assert r.code==SvCode.none && r.questions==1;
+    staged:=SvStaged.{prepared=PrResult.{status=PrStatus.ok,kind=PtQuestionKind.choice,slots=2,written=8,prefix=4}};
+    logits:[1024]f32;logits[qr_pinned_slot(0)]=2;logits[qr_pinned_slot(1)]=1;
+    #assert sv_read(e,r,pools,0,staged.prepared,logits[..],p[..],prob[..])==SvCode.none;
+    want:[2]f64;w:[2]f64;slots:[2]int;slots[0]=qr_pinned_slot(0);slots[1]=qr_pinned_slot(1);
+    direct:=qr_read(QrKind.choice,1,logits[..],slots[..],want[..],w[..],false);
+    #assert direct.status==QrStatus.ok && p[0]==want[0] && p[1]==want[1] && p[0]>p[1] && p[255]==0;
+    #assert sv_read(e,r,pools,1,staged.prepared,logits[..],p[..],prob[..])==SvCode.internal && sv_read(e,r,pools,-1,staged.prepared,logits[..],p[..],prob[..])==SvCode.internal;
+    #assert sv_read(e,r,pools,0,staged.prepared,logits[..],p[0..<16319],prob[..])==SvCode.internal;
+    open:=e;open.sealed=false;#assert sv_read(open,r,pools,0,staged.prepared,logits[..],p[..],prob[..])==SvCode.internal;
+    bad:=staged.prepared;bad.status=PrStatus.capacity;#assert sv_read(e,r,pools,0,bad,logits[..],p[..],prob[..])==SvCode.internal;
+    bad=staged.prepared;bad.kind=PtQuestionKind.noul;#assert sv_read(e,r,pools,0,bad,logits[..],p[..],prob[..])==SvCode.internal;
+    bad=staged.prepared;bad.slots=3;#assert sv_read(e,r,pools,0,bad,logits[..],p[..],prob[..])==SvCode.internal;
+    #assert sv_read(e,r,pools,0,staged.prepared,logits[..],p[..],prob[0..<1])==SvCode.internal;
+    logits[7]=0.0/0.0;#assert sv_read(e,r,pools,0,staged.prepared,logits[..],p[..],prob[..])==SvCode.internal;
+    #assert sv_stage(e,r,pools,work,1).code==SvCode.internal && sv_stage(e,r,pools,work,-1).code==SvCode.internal;
+}
