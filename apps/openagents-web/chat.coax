@@ -25,7 +25,7 @@
 
 CH_MAX_VERTICES :: 240000;
 CH_INBOX :: 1048576;
-CH_DATA :: 1048576;
+CH_DATA :: 1048576;        // the last answer's lines (ChatHost holds both; ChatState sees them)
 CH_LINES :: 4096;
 CH_URL :: 128;
 CH_TEXT :: 8000;           // what a message may hold (chat.api keeps 8000)
@@ -85,9 +85,25 @@ ChatState :: struct {
   hit_box: [CH_HITS] Box; hit_id: [CH_HITS] int; hit_n: int;
   outbox: [CH_TEXT] u8; out_n: int; action: int;   // a URL, or a copy (TK_ACT_COPY) of what's typed
   md: [CH_MD] u8; md_n: int;
-  data: [CH_DATA] u8; data_n: int;
+  data: [] u8; data_n: int;   // ChatHost's (a #test's own short buffer)
   line_at: [CH_LINES] int; line_end: [CH_LINES] int; line_n: int;
+  inbox: [] u8;                // ChatHost's
+}
+
+// What the host keeps (chat-face.c): the state and the two megabyte buffers it
+// sees. They live here, outside ChatState, so a #test's state is small: the
+// compiler's aggregate storage limit (coax/spec.md, E0400) is well under the
+// two megabytes the page holds.
+ChatHost :: struct {
+  s: [1] ChatState;
+  data: [CH_DATA] u8;
   inbox: [CH_INBOX] u8;
+}
+// Before every call: the state sees the host's buffers (they move with it).
+coaxial_chat_bind :: (h: [] ChatHost) #export_c {
+  if h.count < 1 { return; }
+  h[0].s[0].data = h[0].data[..];
+  h[0].s[0].inbox = h[0].inbox[..];
 }
 
 // ---------------------------------------------------------------- the lines
@@ -309,7 +325,7 @@ ch_int :: (t: string) -> int {
 // The state's lines, from an answer or pushed (CH_PUSHED).
 ch_take :: (s: [] ChatState, bytes: string, from: int) {
   n := 0; i := from;
-  while i < bytes.count && n < CH_DATA { s[0].data[n] = bytes[i]; n += 1; i += 1; }
+  while i < bytes.count && n < s[0].data.count { s[0].data[n] = bytes[i]; n += 1; i += 1; }
   s[0].data_n = n; ch_index(s); s[0].status = 200;
   // the newest conversation, shown when none was chosen
   if s[0].shown < 0 { k := ch_int(ch_shown_id(s)); if k > 0 { s[0].shown = k; } }
@@ -1104,7 +1120,7 @@ coaxial_chat_key :: (s: [] ChatState, key: int, mods: int) -> bool #export_c {
 }
 coaxial_chat_wheel :: (s: [] ChatState, dy: f32) #export_c { if s.count > 0 { s[0].back -= dy * hi(s[0].d, 1); } }
 coaxial_chat_message :: (s: [] ChatState, kind: int, length: int) #export_c {
-  if s.count < 1 || length < 0 || length > CH_INBOX { return; }
+  if s.count < 1 || length < 0 || length > s[0].inbox.count { return; }
   text := cast(string) s[0].inbox[0..<length];
   if kind >= CH_HTTP && kind < CH_HTTP + 8 { ch_answer(s, kind - CH_HTTP, text); return; }
   if kind == CH_TYPED { if s[0].typing { ch_type(s, text); } return; }
@@ -1124,6 +1140,12 @@ coaxial_chat_inbox_cap :: () -> int #export_c { return CH_INBOX; }
 coaxial_chat_max_vertices :: () -> int #export_c { return CH_MAX_VERTICES; }
 
 // ---------------------------------------------------------------- checks
+
+// A #test's buffers: enough for the fixtures, and small, so the checks stay
+// inside the compiler's aggregate storage limit (E0400).
+CH_TEST_DATA :: 4096;
+CH_TEST_INBOX :: 1024;
+CH_TEST_VERTICES :: 24000;
 
 CH_FIXTURE :: "200\nZ|0.12|10.00|||0|1|7\nC|7|What does release.sh do?|claude-opus-5-5|Oct 28 15:52|1\nC|3|Older|claude-haiku-5-5|Oct 27 09:00|0\nS|7|What does release.sh do?|claude-opus-5-5|1\nU|20|done|Oct 28 15:50|claude-haiku-5-5|openagents|What does coax/web/release.sh do?|## What it does\\n\\nIt **releases** the site:\\n\\n- builds `apps/openagents-web`\\n- runs the goldens\\n\\n```\\ncoax/web/release.sh\\n```\\n\\n1. one\\n2. two \\p three\\n> quoted||Oct|0.0123\nT|20|Read|coax/web/release.sh\nU|21|running|Oct 28 15:52|claude-opus-5-5|openagents|And then?|||reading coax/web/deploy.sh|0.0000\nT|21|Read|coax/web/deploy.sh\n";
 
@@ -1145,8 +1167,8 @@ ch_typed_in :: (s: [] ChatState, text: string) {
 }
 
 #test "signed out or not an admin: LOG IN and nothing else" {
-  s: [1] ChatState;
-  out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   n0 := ch_fresh(s[..], out[..], u[..], 1440, 900);
   #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/chat/state";
   coaxial_chat_asked(s[..], 0);
@@ -1159,8 +1181,8 @@ ch_typed_in :: (s: [] ChatState, text: string) {
 }
 
 #test "an admin's page: the list, the conversation shown, its answer drawn, the tool in use and STOP" {
-  s: [1] ChatState;
-  out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   ch_loaded(s[..], out[..], u[..]);
   #assert s[0].status == 200 && s[0].shown == 7 && ch_count(s[..], 'U') == 2 && ch_busy(s[..]);
   n := ch_fresh(s[..], out[..], u[..], 2880, 1800);
@@ -1178,8 +1200,8 @@ ch_typed_in :: (s: [] ChatState, text: string) {
 }
 
 #test "a phone draws the conversation alone, CHATS over it" {
-  s: [1] ChatState;
-  out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   ch_loaded(s[..], out[..], u[..]);
   n := ch_fresh(s[..], out[..], u[..], 780, 1688);
   #assert n > 1000 && !ch_has_hit(s[..], H_CONV) && ch_has_hit(s[..], H_CHATS) && ch_has_hit(s[..], H_FIELD) && ch_has_hit(s[..], H_MODEL + 2);
@@ -1192,8 +1214,8 @@ ch_typed_in :: (s: [] ChatState, text: string) {
 }
 
 #test "a message is sent with its conversation and model, escaped as JSON; a new chat sends none" {
-  s: [1] ChatState;
-  out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   ch_loaded(s[..], out[..], u[..]);
   ch_answer(s[..], -5, "");   // nothing waits for that
   // the running turn ends
@@ -1231,8 +1253,8 @@ ch_typed_in :: (s: [] ChatState, text: string) {
 }
 
 #test "a model chosen mid-conversation is posted for it; the cap and its words" {
-  s: [1] ChatState;
-  out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   ch_loaded(s[..], out[..], u[..]);
   ch_act(s[..], H_MODEL + 1);
   #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/chat/model" && cast(string) s[0].body[0..<s[0].body_n] == "{\"c\":\"7\",\"model\":\"claude-sonnet-5-5\"}";
@@ -1254,8 +1276,8 @@ ch_typed_in :: (s: [] ChatState, text: string) {
 }
 
 #test "KEY: a pasted key is masked, posted once and wiped; a refusal says why; REMOVE" {
-  s: [1] ChatState;
-  out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   ch_loaded(s[..], out[..], u[..]);
   ch_act(s[..], H_KEY);
   n := ch_fresh(s[..], out[..], u[..], 1440, 900);
@@ -1282,7 +1304,7 @@ ch_typed_in :: (s: [] ChatState, text: string) {
 }
 
 #test "Markdown: escapes undone, marks taken out, links kept readable" {
-  s: [1] ChatState;
+  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
   #assert ch_decode(s[..], "a\\nb \\p c \\\\ d") == "a\nb | c \\ d";
   buf: [200] u8;
   #assert ch_inline("It **releases** `x` see [docs](https://a.b/c) and [f.c](f.c)", buf[..]) == "It releases x see docs (https://a.b/c) and f.c";
@@ -1290,8 +1312,8 @@ ch_typed_in :: (s: [] ChatState, text: string) {
 }
 
 #test "on the Mac app the turns are the user's own Claude Code: no KEY and no cap" {
-  s: [1] ChatState;
-  out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   n0 := ch_fresh(s[..], out[..], u[..], 2640, 1760);
   coaxial_chat_asked(s[..], 0);
   ch_answer(s[..], 0, "200\nZ|0.00|0.00|local||0|0|0|\n");
@@ -1303,16 +1325,16 @@ ch_typed_in :: (s: [] ChatState, text: string) {
 }
 
 #test "the web has no effort chips" {
-  s: [1] ChatState;
-  out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   ch_loaded(s[..], out[..], u[..]);
   n := ch_fresh(s[..], out[..], u[..], 2880, 1800);
   #assert !ch_has_hit(s[..], H_EFFORT) && ch_has_hit(s[..], H_KEY);
 }
 
 #test "a pushed state replaces the lines only for the conversation shown" {
-  s: [1] ChatState;
-  out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   ch_loaded(s[..], out[..], u[..]);
   push := "Z|0|0|local||0|1|7|high\nS|7|T|claude-opus-5-5|1\nU|21|running|Oct 28|claude-opus-5-5|local|And then?|Hel||writing|0\n";
   for i: 0..<push.count { s[0].inbox[i] = push[i]; }
@@ -1325,8 +1347,8 @@ ch_typed_in :: (s: [] ChatState, text: string) {
 }
 
 #test "the Mac app's Lab: LAB in the header, then BACK, one transcript and one field on /api/lab" {
-  s: [1] ChatState;
-  out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   n0 := ch_fresh(s[..], out[..], u[..], 2640, 1760);
   coaxial_chat_asked(s[..], 0);
   ch_answer(s[..], 0, "200\nZ|0|0|local||0|0|0|high\n");

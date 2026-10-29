@@ -9,7 +9,12 @@
 #define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
 IMPORT("coaxial_http") int32_t coaxial_http(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags);
 
-static coax_v_t_ChatState at(uint32_t state) { return (coax_v_t_ChatState){(coax_t_ChatState *)(uintptr_t)state, 1}; }
+// The host keeps one ChatHost: the ChatState and the buffers it sees, bound again before every call.
+static coax_v_t_ChatState at(uint32_t state) {
+  coax_t_ChatHost *h = (coax_t_ChatHost *)(uintptr_t)state;
+  coaxial_chat_bind((coax_v_t_ChatHost){h, 1});
+  return (coax_v_t_ChatState){h->s.e, 1};
+}
 
 // What chat.coax asks for, once there's a free slot (flag 4: answer wanted; 1: POST).
 static void send_asks(uint32_t state) {
@@ -25,9 +30,9 @@ static void send_asks(uint32_t state) {
 }
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
-  return (uint32_t)(sizeof(coax_t_ChatState) * 7u + offsetof(coax_t_ChatState, inbox) * 3u + 0x434854u);
+  return (uint32_t)(sizeof(coax_t_ChatHost) * 7u + offsetof(coax_t_ChatHost, inbox) * 3u + sizeof(coax_t_ChatState) * 5u + 0x434854u);
 }
-EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_ChatState); }
+EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_ChatHost); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_chat_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_projects_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_projects_uniform_floats(); }
@@ -53,7 +58,7 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   return used;
 }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { coaxial_chat_wheel(at(state), dy); }
-EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { return (uint32_t)(uintptr_t)at(state).data->inbox.e; }
+EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { return (uint32_t)(uintptr_t)at(state).data->inbox.data; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return (uint32_t)coaxial_chat_inbox_cap(); }
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, int32_t length) { coaxial_chat_message(at(state), kind, length); send_asks(state); }
 EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) { coaxial_chat_hash(at(state), (int64_t)length); }
