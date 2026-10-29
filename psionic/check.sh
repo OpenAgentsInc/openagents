@@ -5,6 +5,16 @@ cd "$(dirname "$0")/.."
 root=$PWD
 coax=${COAX:-$root/coax/bin/coax}
 cc=${COAX_CC:-cc}
+# The text fixtures pin Unicode 17.0.0; use a Python whose database matches.
+text_python=${PSIONIC_TEXT_PYTHON:-}
+if [[ -z $text_python ]]; then
+    for candidate in python3 python3.15; do
+        if command -v "$candidate" >/dev/null && [[ $("$candidate" -I -c 'import unicodedata; print(unicodedata.unidata_version)') == 17.0.0 ]]; then
+            text_python=$candidate; break
+        fi
+    done
+fi
+if [[ -z $text_python ]]; then echo "Psionic text checks need a Python with Unicode 17.0.0 (set PSIONIC_TEXT_PYTHON)" >&2; exit 1; fi
 if [[ ! -x "$coax" ]]; then
     if [[ -n ${COAX:-} ]]; then echo "COAX is not executable: $coax" >&2; exit 1; fi
     coax/build.sh
@@ -20,8 +30,8 @@ python3 -I psionic/tests/harmony_fixtures.py
 python3 -I psionic/tests/harmony_oracle.py --header > "$out/harmony-goldens.h"
 python3 -I psionic/tests/weights_fixtures.py --header > "$out/weights-fixtures.h"
 # The weights root checks/mutates every imported model-io unit plus JSON/SHA-256.
-python3 -I psionic/tests/text_fixtures.py
-python3 -I psionic/tests/text_oracle.py --header > "$out/text-goldens.h"
+"$text_python" -I psionic/tests/text_fixtures.py
+"$text_python" -I psionic/tests/text_oracle.py --header > "$out/text-goldens.h"
 python3 -I psionic/tests/attention_oracle.py --header > "$out/attention-oracle.h"
 python3 -I psionic/tests/delta_oracle.py --header > "$out/delta-oracle.h"
 python3 -I psionic/tests/qwen_attention_oracle.py --header > "$out/qwen-attention-oracle.h"
@@ -98,7 +108,7 @@ for mode in debug release; do
             sanitizers=()
             if [[ $native == sanitized ]]; then sanitizers=(-fsanitize=address,undefined -fno-omit-frame-pointer); fi
             "$cc" -std=c11 "$opt" -g -ffp-contract=off -fno-fast-math \
-                -Wall -Wextra -Werror -Wno-unused-function -Wno-unused-parameter \
+                -Wall -Wextra -Werror -Wno-unused-function -Wno-unused-parameter -Wno-unknown-pragmas \
                 "${sanitizers[@]}" -I"$out" -Ipsionic/platform \
                 "$out/$unit.c" "$adapter" "$harness" -lm -o "$out/$unit-native"
             echo "native $unit $mode $native:"
