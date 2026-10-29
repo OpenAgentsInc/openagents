@@ -1,0 +1,121 @@
+{
+  "schema": "coax.raw-peer-admission.v1",
+  "scope": "public raw-peer boundary behavior, not target constant time or production approval",
+  "baseline_commit": "c3484fd00e29ceb3d43b924138577c5bf434911a",
+  "compiler": "coax0 0.22.0",
+  "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+  "source_sha256": "d3eaa65e81815c69069549224a66bb8f2962228482963060c3ef0f4de3ff6b2e",
+  "driver_sha256": "e820c831b6869df8eac44b0689b6bc12a8adefc3babc72821cda7ced4742444b",
+  "test_sha256": "0ba5470d9359d536ed7f179d658a01259633d966b10349dc0dcbe50fe2c58978",
+  "source_graph": {
+    "coax/lib/crypto/secp_mult_const.coax": "d3eaa65e81815c69069549224a66bb8f2962228482963060c3ef0f4de3ff6b2e",
+    "coax/lib/crypto/secp_group32.coax": "b4e11a4626ba2b7be823078dc8495b800ecd9f579366d706cdd4e421b18f437b",
+    "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+    "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+    "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+    "coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c"
+  },
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "wasm_compiler": "Homebrew clang version 23.1.4",
+  "modes": [
+    {
+      "mode": "checked",
+      "artifacts": [
+        {
+          "version": "current",
+          "c_sha256": "10e281f72727bd5d88c6762c57ba30e302213fb96fd2fb2960c27281f68ba636",
+          "library_sha256": "2a86d583c6fd8d78ec8fe547d2528accf9d6cadf3ad208e68e0b168618cb052a",
+          "wasm_sha256": "e404b4a3d814a79fc38f56cbc9a71b5f9eeeb2df4abe88cd21f233c8ff6f831e",
+          "source_map_sha256": "542ec15ca4f77177d71c087beb8d1f63a52793968b6bac2c72d380f9e5ca4a80",
+          "header_sha256": "7221cf58f26015d672fa65da55ec273386c26dc94afae2c5a83eb19eb1929bbe",
+          "normalized_header_sha256": "e4192771e38f854f5999634acd110471aa04d7a347526a326a6186d86b572c56"
+        },
+        {
+          "version": "baseline",
+          "c_sha256": "e95ab4d4ad6f872fa89e4ed247eb5c85f687f4652e224277f5e1b769869d2221",
+          "library_sha256": "07ae4c6d9c391ee1fe32d061c1a82daf311b84818400337594edf20c95e9e034",
+          "wasm_sha256": "47e0b73b8b2f50141d2517c608c552596a20aca246dadd335d7550f5968654c3",
+          "source_map_sha256": "b3d7b4d9ece09b7a2acecb4433dcca89a15ca6a5f423593c71d4c1831ab12140",
+          "header_sha256": "b4f93379c334832af9d76ed8e15cee0bfb1824bce6b7fd0829b50d2669bfa046",
+          "normalized_header_sha256": "e4192771e38f854f5999634acd110471aa04d7a347526a326a6186d86b572c56"
+        }
+      ],
+      "native": {
+        "bounded": 65,
+        "refused": 60,
+        "failures": 0
+      },
+      "wasm": {
+        "target": "wasm32-wasip1",
+        "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+        "bounded": 65,
+        "refused": 60,
+        "failures": 0
+      }
+    },
+    {
+      "mode": "release",
+      "artifacts": [
+        {
+          "version": "current",
+          "c_sha256": "1572deabaddbe911fd0cb01eea69e63f81ae9d5f3a3c5fb01d7afdf3227e12e4",
+          "library_sha256": "1d311b731c243585e1c66056d381d4b957ee4780c54ee1196e1f92423415988b",
+          "wasm_sha256": "55868c3018ae53a55df9d62ae827fe4bb49be11dfc111c934b7c5430b768f764",
+          "source_map_sha256": "542ec15ca4f77177d71c087beb8d1f63a52793968b6bac2c72d380f9e5ca4a80",
+          "header_sha256": "7221cf58f26015d672fa65da55ec273386c26dc94afae2c5a83eb19eb1929bbe",
+          "normalized_header_sha256": "e4192771e38f854f5999634acd110471aa04d7a347526a326a6186d86b572c56"
+        },
+        {
+          "version": "baseline",
+          "c_sha256": "a0683358d1357080f92049d2f67d2b540f3720d2809e5713881d30046285d0de",
+          "library_sha256": "d699c8271126cac5d0ae4d420cb0e7583c1e82007178b190928299775d61747d",
+          "wasm_sha256": "5c311dc68ba3e9a478bca7dd7692824dea8b6231aa147e77d8e88586ab02298a",
+          "source_map_sha256": "b3d7b4d9ece09b7a2acecb4433dcca89a15ca6a5f423593c71d4c1831ab12140",
+          "header_sha256": "b4f93379c334832af9d76ed8e15cee0bfb1824bce6b7fd0829b50d2669bfa046",
+          "normalized_header_sha256": "e4192771e38f854f5999634acd110471aa04d7a347526a326a6186d86b572c56"
+        }
+      ],
+      "native": {
+        "bounded": 65,
+        "refused": 60,
+        "failures": 0
+      },
+      "wasm": {
+        "target": "wasm32-wasip1",
+        "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+        "bounded": 65,
+        "refused": 60,
+        "failures": 0
+      }
+    }
+  ],
+  "baseline_source_sha256": "60957c9aacf9412b82b56083bf3c02e8159a3f18ec62e5f847b305844201d0cf",
+  "fixtures_sha256": "ebcb0ea394793872d30c75094fdf7279936e8c0911264aa53820b23179c99d11",
+  "all_secret_source_audit": {
+    "full_report_sha256": "f752a915ac4cc584bdf29711b225623a76439cf3e1facdaae7582c3ecc3e0de1",
+    "classification": "all entry parameters secret",
+    "accepted": false,
+    "source_status": "refused",
+    "error": "secret-branch",
+    "line": 143,
+    "column": 31,
+    "visited_nodes": 1947,
+    "audit_artifact_sha256": "1873de0cf768fe54fb144bc1f49ca260127954038b9698f4b6da1369d5895f59"
+  },
+  "coax_checks": {
+    "passed": 83,
+    "total": 83
+  },
+  "authority_mutation": {
+    "mutants": 1353,
+    "killed": 1353,
+    "survived": 0,
+    "selective_checks": 2917,
+    "skipped": 39688,
+    "borrowed": 0,
+    "unstable": 0,
+    "log_sha256": "b2ce86a62b11b83035b54def8fc0e56f4264d9687982f3b70befcd3c2ac7634b"
+  }
+}

@@ -78,6 +78,27 @@ SmcDigits :: struct { magnitude: [65] u64; negative: [65] u64; }
   #assert !result.ok && sg_equal_mask(result.value,sg_infinity())==CB_MAX64;
 }
 
+#test "raw peer admission covers every coordinate limb and its exact limit" {
+  for i: 0..<10 {
+    limit := ifx i == 9 then cast(u64) 8*SF_MASK22 else cast(u64) 8*SF_MASK26;
+    p := sg_generator(); p.x.limb[i] = limit; #assert smc_peer_bounded(p);
+    p.x.limb[i] = limit+1; #assert !smc_peer_bounded(p);
+    p = sg_generator(); p.y.limb[i] = limit; #assert smc_peer_bounded(p);
+    p.y.limb[i] = limit+1; #assert !smc_peer_bounded(p);
+    p = sg_generator(); p.z.limb[i] = limit; #assert smc_peer_bounded(p);
+    p.z.limb[i] = limit+1; #assert !smc_peer_bounded(p);
+  }
+}
+#test "raw peer overflow is refused by the exported multiply before arithmetic" {
+  p := sg_generator(); p.x.limb[0] = CB_MAX64; rx := smc_multiply(sc_small(1),p);
+  p = sg_generator(); p.y.limb[9] = CB_MAX64; ry := smc_multiply(sc_small(1),p);
+  p = sg_generator(); p.z.limb[4] = CB_MAX64; rz := smc_multiply(sc_small(1),p);
+  #assert !rx.ok && !ry.ok && !rz.ok;
+  #assert rx.value.x.limb[0] == 1 && rx.value.y.limb[0] == 1 && rx.value.z.limb[0] == 0;
+  #assert ry.value.x.limb[0] == 1 && ry.value.y.limb[0] == 1 && ry.value.z.limb[0] == 0;
+  #assert rz.value.x.limb[0] == 1 && rz.value.y.limb[0] == 1 && rz.value.z.limb[0] == 0;
+}
+
 // Fixed65 digits; negative entries use a complete mask, never a branch.
 // The scalar is reduced modulo the group order before recoding.
 smc_recode :: (input: ScScalar) -> SmcDigits {
@@ -114,9 +135,20 @@ smc_signed :: (point: Sg32,negative: u64) -> Sg32 {
   zero:Sf32; neg := point; neg.y = sf32_sub(zero,point.y); neg = sg32_canonical_infinity(neg);
   return sg32_choose(negative,neg,point);
 }
-// Bounded peer coordinates are required by sg_valid_mask; infinity is
-// mathematically admitted, while ECDH peer admission is a separate gate.
+// Public raw peer admission: no field arithmetic runs until all three
+// coordinates satisfy the magnitude-8 contract. The scalar is not inspected.
+smc_peer_bounded :: (peer: SgPoint) -> bool {
+  for i: 0..<10 {
+    limit := ifx i == 9 then cast(u64) 8*SF_MASK22 else cast(u64) 8*SF_MASK26;
+    if peer.x.limb[i] > limit || peer.y.limb[i] > limit || peer.z.limb[i] > limit { return false; }
+  }
+  return true;
+}
+// Oversized raw peers refuse as {ok=false, value=canonical infinity} before
+// validity and normalization. Mathematical infinity remains admitted; ECDH
+// peer admission and target-code timing are separate gates.
 smc_multiply :: (input: ScScalar,peer: SgPoint) -> SgResult #export_c {
+  if !smc_peer_bounded(peer) { refused: SgResult; refused.value = sg_infinity(); return refused; }
   valid := sg_valid_mask(peer); admitted := sg_choose(valid,sg_normalize(peer),sg_infinity());
   table := smc_table(sg32_from_point(admitted)); digits := smc_recode(input);
   result := smc_signed(smc_pick(table[..],digits.magnitude[64]),digits.negative[64]);
