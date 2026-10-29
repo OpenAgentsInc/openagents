@@ -1,5 +1,7 @@
 # Experimental owned BlockMix workspace
 
+**Update:** The subsequent [scrypt owned-workspace integration](2026-10-29-scrypt-owned-integration.md) supersedes this snapshot’s integration status. Its stated hidden-copy and production limits still apply.
+
 This experimental Coax BlockMix/Salsa20/8 implementation places the named
 working and feed-forward words in caller-owned `BlockmixWorkspace`. It is not
 yet connected to ROMix or the NIP-49 host. A trusted host must provide valid,

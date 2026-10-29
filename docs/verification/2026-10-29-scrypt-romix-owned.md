@@ -1,5 +1,7 @@
 # Experimental ROMix owned intermediates
 
+**Update:** The subsequent [scrypt owned-workspace integration](2026-10-29-scrypt-owned-integration.md) supersedes this snapshot’s integration status. Its stated hidden-copy and production limits still apply.
+
 The existing experimental ROMix now retains its next block and the owned
 BlockMix/Salsa workspace inside `RomixState`. The registered scrypt host wipes
 its full `Nip49Scrypt` secret state, which includes those fields, before

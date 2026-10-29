@@ -1,5 +1,7 @@
 # Experimental owned streaming SHA-256
 
+**Update:** The subsequent [scrypt owned-workspace integration](2026-10-29-scrypt-owned-integration.md) supersedes this snapshot’s integration status. Its stated hidden-copy and production limits still apply.
+
 This internal Coax SHA-256 path retains its chaining state, block and 64-word
 message schedule in `ShaOwned` caller-owned storage. It supports streaming
 updates and a single finalization. It checks phase, lengths and the structural

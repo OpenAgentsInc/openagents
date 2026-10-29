@@ -1,5 +1,7 @@
 # Experimental owned HMAC workspace
 
+**Update:** The subsequent [scrypt owned-workspace integration](2026-10-29-scrypt-owned-integration.md) supersedes this snapshot’s integration status. Its stated hidden-copy and production limits still apply.
+
 This experimental one-shot HMAC-SHA256 retains the normalized key, inner and
 outer pad, digest and `ShaOwned` state in caller-owned `HmacOwned` storage. It
 handles empty, short, exact-block and long keys and propagates internal SHA

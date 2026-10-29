@@ -1,5 +1,7 @@
 # Experimental owned PBKDF2 workspace
 
+**Update:** The subsequent [scrypt owned-workspace integration](2026-10-29-scrypt-owned-integration.md) supersedes this snapshot’s integration status. Its stated hidden-copy and production limits still apply.
+
 This experimental one-iteration scrypt PBKDF2 stages its salt/counter input,
 HMAC workspace, digest and output in caller-owned `PbkdfOwned` storage. It
 publishes output only after all blocks succeed. It is not yet the shipped
