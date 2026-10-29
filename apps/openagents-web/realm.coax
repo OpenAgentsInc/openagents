@@ -775,7 +775,7 @@ use_box :: (r: [] Realm, v: RealmView) -> Box {
   k := r[0].dpr;
   cap := 10 * k;
   w := measure(use_label(v), GAP, SPACE, false) * cap + ifx phone(r) then 48 * k else 82 * k;
-  bottom := hotbar_top(r) - ifx hint_line(r, v).count > 0 then 48 * k else 18 * k;
+  bottom := hotbar_top(r) - 30 * k;   // over the help or hint line above the hotbar
   x0 := (r[0].width - w) * 0.5;
   return Box.{x0 = x0, y0 = bottom - 40 * k, x1 = x0 + w, y1 = bottom};
 }
