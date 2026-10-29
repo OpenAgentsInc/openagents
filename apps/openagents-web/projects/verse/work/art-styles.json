@@ -1,0 +1,792 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "verse",
+  "initiative": {
+    "slug": "art-styles",
+    "title": "Art styles: lowpoly, painterly and photoreal zones",
+    "body": "Every zone on the Verse is drawn in one of a few art styles, named in realms.json and defined by the engine: lowpoly, painterly (Breath of the Wild's look: soft toon bands, blue haze, painted skies, wind-swept grass) and photoreal. This initiative builds painterly in full and moves Everglade and Hecate's Cemetery onto it.",
+    "spec": "docs/verse/art-styles.md",
+    "labels": [
+      "engine",
+      "art-styles"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "as-styles",
+      "title": "Zone styles: the field, the presets and the style fixture",
+      "body": "A style per realm and zone, presets in verse/style.coax that realms declare rather than tune, and a fixture scene every feature shows on.",
+      "parent": "art-styles"
+    },
+    {
+      "slug": "as-painterly",
+      "title": "Painterly in the engine",
+      "body": "Each element of the painterly look as an engine feature with the spec's numbers: bands, rim, tinted soft shadows, haze, sky, bloom and shafts, day and night, foliage, grass, painted packs, characters, water and light outlines. Needed by Hecate's Cemetery (Planetary Villa) and Everglade.",
+      "parent": "art-styles"
+    },
+    {
+      "slug": "as-checks",
+      "title": "Painterly on phones, and the style check",
+      "body": "The phone tier, and a release check that measures whether a painterly realm looks painterly, with a side-by-side sheet for the owner and Kiki.",
+      "parent": "art-styles"
+    },
+    {
+      "slug": "as-everglade",
+      "title": "Everglade in painterly",
+      "body": "Everglade adopts the painterly preset and replaces what breaks the look: the grey haze, the bare ground, the grey-box people, the physical river, the plain stand-in boxes. Hecate's Cemetery's adoption is in the Planetary Villa project (https://openagents.com/projects/planetary-villa).",
+      "parent": "art-styles"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "as-style-field",
+      "parent": "as-styles",
+      "title": "A style for every realm and zone in realms.json",
+      "size": "M",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "Add the required `style` field (lowpoly | painterly | photoreal), the optional `zones` list and the `clock` field (cycle | fixed:T | real) to realms.json. realms.ts writes them into realms.coax, the realm page (`data-style`) and the page facts (message 600: `style=`, `zone.<id>=`, `clock=`); `realms.ts --check` refuses a missing or unknown style, a duplicated zone id, and a painterly or photoreal realm whose WGSL lacks the generated style block. Tag every existing realm: Hecate's Cemetery and Everglade painterly (Hecate's `clock: fixed:0.0`, Everglade `cycle`), every other realm lowpoly. Pages accept `?clock=T` to pin the clock for shots. Nothing draws differently yet.\n\nSpecification: `docs/verse/art-styles.md`, The style field.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-tag; Everglade: eg-paint-pack. Those tasks wait on this one.",
+      "files": [
+        "apps/openagents-web/realms.json",
+        "coax/web/realms.ts",
+        "coax/web/host.js",
+        "docs/verse/realm-host.md"
+      ],
+      "acceptance": [
+        "`bun coax/web/realms.ts --check` passes on the tagged table and fails on each refusal case (a test per case)",
+        "Every realm page's facts carry its style and clock (headless shot with `--eval` reading them, or a host test)",
+        "docs/verse/realm-host.md documents the fields",
+        "Every realm's golden is unchanged"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "as-presets",
+      "parent": "as-styles",
+      "title": "Style presets in the engine: verse/style.coax",
+      "size": "M",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "`verse/style.coax`: the `StylePreset` record with every painterly number in the spec (band edges and softness, rim, shadow tint, ambient, haze per clock key, sky, bloom, shafts, grass, foliage, water, tone, phone tier), the lowpoly preset (what realms draw today: one light term, light fog, no post) and a photoreal placeholder that refuses to evaluate. `verse_style_preset(style, tier)` and `verse_style_at(preset, clock)` (linear between the midnight, dawn, noon and dusk keys) fill a `STYLE_FLOATS` uniform block (32 vec4f). The shading functions are written in the subset `coax/web/wgsl.py` lowers and emitted into a realm's WGSL between `// ---- generated: verse/style.coax` markers; the band, rim, tint, haze and tone functions land here as stubs with their checks, and the feature tasks fill them.\n\nSpecification: `docs/verse/art-styles.md`, Presets.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-tag; Everglade: eg-paint-light. Those tasks wait on this one.",
+      "files": [
+        "verse/style.coax",
+        "coax/web/wgsl.py",
+        "apps/openagents-web/fixture.wgsl"
+      ],
+      "acceptance": [
+        "coax test passes on every Coax file touched, with #test checks pinning the numbers the spec gives",
+        "`wgsl.py verse/style.coax ... --into` emits the block into the fixture's WGSL and it compiles in headless Chrome",
+        "The clock interpolation is checked at every key and halfway between",
+        "No realm changes look"
+      ],
+      "blocked_by": [
+        "as-style-field"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-style-fixture",
+      "parent": "as-styles",
+      "title": "The style fixture: a painterly test scene in the fixture realm",
+      "size": "M",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "The fixture realm, opened with `?style=painterly`, draws a fixed test scene in the preset: a sphere and a cube, a blob tree, a patch of grass, a small pond, a standing figure, and three ridges stepping back at 60, 140 and 260 m, from a fixed camera, at `?clock=0`, `0.25`, `0.5` and `0.75`. Without the query it draws exactly what it draws now, so its golden holds. Every engine task in this initiative shows its feature here and updates these goldens. Its golden name is `fixture-painterly-<clock>.png`.\n\nSpecification: `docs/verse/art-styles.md`, Judging \"looks painterly\".",
+      "files": [
+        "apps/openagents-web/fixture.coax",
+        "apps/openagents-web/fixture-face.c",
+        "apps/openagents-web/fixture.wgsl",
+        "coax/web/goldens.ts",
+        "coax/web/goldens/"
+      ],
+      "acceptance": [
+        "`/realms/fixture` unchanged against its golden",
+        "Four new goldens, one per clock key, committed and walked by goldens.ts on staging",
+        "Desktop and phone shots attached in a note"
+      ],
+      "blocked_by": [
+        "as-presets"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-toon-bands",
+      "parent": "as-painterly",
+      "title": "Soft toon shading: three blended light bands, smooth normals",
+      "size": "M",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "The painterly diffuse: wrapped Lambert (wrap 0.25), the shadow term applied before banding, three bands (0, 0.55, 1.0) with edges at 0.20 and 0.58 and softness 0.06; two bands (edge 0.40, softness 0.08) for characters; no specular on matte surfaces and the one hard dab (step 0.92, 0.35) for wet or metal ones. Smooth vertex normals; the height field's normal blurred over 3 cells. In verse/style.coax, emitted to WGSL.\n\nSpecification: `docs/verse/art-styles.md`, 1. Shading.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-light; Everglade: eg-paint-light. Those tasks wait on this one.",
+      "files": [
+        "verse/style.coax",
+        "apps/openagents-web/fixture.wgsl"
+      ],
+      "acceptance": [
+        "coax test passes on every Coax file touched, with #test checks pinning the numbers the spec gives",
+        "The style fixture (/realms/fixture?style=painterly at each clock key) shows it at desktop and phone, and its goldens are updated and committed",
+        "A sphere in the fixture shows exactly three bands with soft edges (the band-histogram measure of the style check: two peaks at least 0.15 apart)",
+        "Inside the frame budget of every realm that uses it, desktop and phone (measured, numbers in a note)"
+      ],
+      "blocked_by": [
+        "as-style-fixture"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-rim",
+      "parent": "as-painterly",
+      "title": "Warm rim light along silhouettes",
+      "size": "S",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "The rim term: `smoothstep(0.38, 0.12, N·V)` weighted toward the key light's side, strength 0.30 (world) and 0.45 (characters), colour by clock (day warm, dusk orange, night moon-silver at 0.6). It fogs with the surface and never draws over the sky.\n\nSpecification: `docs/verse/art-styles.md`, 2. Rim light.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-light; Everglade: eg-paint-light, eg-paint-people. Those tasks wait on this one.",
+      "files": [
+        "verse/style.coax"
+      ],
+      "acceptance": [
+        "coax test passes on every Coax file touched, with #test checks pinning the numbers the spec gives",
+        "The style fixture (/realms/fixture?style=painterly at each clock key) shows it at desktop and phone, and its goldens are updated and committed",
+        "On a 1.8 m figure 8 m away at 1440×900 the rim is 2 to 4 px wide"
+      ],
+      "blocked_by": [
+        "as-toon-bands"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-soft-shadows",
+      "parent": "as-painterly",
+      "title": "Real soft shadows, tinted blue and violet, with a bright ambient",
+      "size": "L",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "Painterly realms draw a shadow map from the key light (the host's `shadow_vs`/`shadow_fs` path, 2048² desktop and 1024² phone, as the Haunted House uses): 9-tap Poisson PCF at 2.5 texels on desktop, 4 taps on a phone, fed into the bands. The shadow band takes `shadow_tint` (blue the largest channel, none under 0.35) and the hemisphere ambient by clock. Blob shadows stay under movers at 0.35 as contact shadows. A realm gives the shadow pass its draws; the light's frustum fits the camera's near 60 m (40 m on a phone).\n\nSpecification: `docs/verse/art-styles.md`, 3. Shadows and ambient.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-light; Everglade: eg-paint-light. Those tasks wait on this one.",
+      "files": [
+        "verse/style.coax",
+        "coax/web/host.js",
+        "apps/openagents-web/fixture.wgsl",
+        "apps/openagents-web/fixture.coax"
+      ],
+      "acceptance": [
+        "coax test passes on every Coax file touched, with #test checks pinning the numbers the spec gives",
+        "The style fixture (/realms/fixture?style=painterly at each clock key) shows it at desktop and phone, and its goldens are updated and committed",
+        "The fixture's cube casts a soft-edged blue shadow on the ground at noon and dusk; no shadowed pixel is grey or black (the style check's shadow-hue and near-black measures)",
+        "Inside the frame budget of every realm that uses it, desktop and phone (measured, numbers in a note)"
+      ],
+      "blocked_by": [
+        "as-toon-bands"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-tone-post",
+      "parent": "as-painterly",
+      "title": "The painterly post pass: tone curve, lifted blacks, gentle bloom",
+      "size": "M",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "Every painterly realm gets the host's post pass (`post_fs`, `bloom_fs`): tone `1 - exp(-c·exposure)` (1.6 day, 2.4 night), saturation 1.10, black lift 0.035, bloom threshold 0.85 with a 0.25 soft knee, mixed at 0.30 (0.22 on a phone). Emissive materials keep writing their bloom share. The post functions live in verse/style.coax and are emitted.\n\nSpecification: `docs/verse/art-styles.md`, 6. Bloom and light shafts, and 9. Palette and tone.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-light; Everglade: eg-paint-light. Those tasks wait on this one.",
+      "files": [
+        "verse/style.coax",
+        "apps/openagents-web/fixture.wgsl"
+      ],
+      "acceptance": [
+        "coax test passes on every Coax file touched, with #test checks pinning the numbers the spec gives",
+        "The style fixture (/realms/fixture?style=painterly at each clock key) shows it at desktop and phone, and its goldens are updated and committed",
+        "Encoded luminance of lit geometry never falls under 0.10 by day or 0.06 at night in the fixture",
+        "Inside the frame budget of every realm that uses it, desktop and phone (measured, numbers in a note)"
+      ],
+      "blocked_by": [
+        "as-style-fixture"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-day-night",
+      "parent": "as-painterly",
+      "title": "Time of day: the clock, the sun's path, the moon as key at night",
+      "size": "M",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "`verse_style_at` drives the key light from the realm's clock: the sun's elevation from −20° at midnight to 60° at noon on the preset's azimuth; below −6° the moon is the key (0.35, (0.62, 0.70, 0.95)); key colour and strength by clock (day (1.00, 0.95, 0.85) 1.0, dusk/dawn (1.00, 0.72, 0.48) 0.75). A realm with its own moon (Hecate's) passes its direction and keeps the preset's colours. `cycle` turns once every 48 real minutes; `?clock=` pins it.\n\nSpecification: `docs/verse/art-styles.md`, 13. Light through the day.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-light; Everglade: eg-paint-light. Those tasks wait on this one.",
+      "files": [
+        "verse/style.coax",
+        "apps/openagents-web/fixture.coax"
+      ],
+      "acceptance": [
+        "coax test passes on every Coax file touched, with #test checks pinning the numbers the spec gives",
+        "The style fixture (/realms/fixture?style=painterly at each clock key) shows it at desktop and phone, and its goldens are updated and committed",
+        "The fixture at `?clock=` 0, 0.25, 0.5 and 0.75 matches its four goldens; a cycle run shows a smooth day (a 10-frame strip in a note)"
+      ],
+      "blocked_by": [
+        "as-presets",
+        "as-style-fixture"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-haze",
+      "parent": "as-painterly",
+      "title": "Blue-cyan distance haze that stacks ridges like painted flats",
+      "size": "M",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "The haze curve: `1 - exp(-density·max(d - start, 0))`, thinned with height (falloff 60/50/40 m), capped (0.88/0.88/0.85), its colour per clock key from the spec's table and warmed toward the key light by `pow(V·L, 8)·0.45`. Applied identically to every surface, water, grass and particles; the sky's horizon equals the haze colour. Phone density ×1.25.\n\nSpecification: `docs/verse/art-styles.md`, 4. Atmosphere: haze.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-light; Everglade: eg-paint-light, eg-paint-distance. Those tasks wait on this one.",
+      "files": [
+        "verse/style.coax",
+        "apps/openagents-web/fixture.wgsl"
+      ],
+      "acceptance": [
+        "coax test passes on every Coax file touched, with #test checks pinning the numbers the spec gives",
+        "The style fixture (/realms/fixture?style=painterly at each clock key) shows it at desktop and phone, and its goldens are updated and committed",
+        "The fixture's three ridges read as three distinct, progressively bluer and paler layers at noon; haze at 100 m is 0.58 and at 200 m 0.86 (checked in Coax)",
+        "The style check's haze measure passes on the fixture"
+      ],
+      "blocked_by": [
+        "as-presets",
+        "as-style-fixture"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-painted-sky",
+      "parent": "as-painterly",
+      "title": "The painted sky: gradient, sun or moon with halo, soft clouds, night",
+      "size": "M",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "Sky from the view ray: zenith to horizon by `pow(up, 0.55)`, the 6° horizon band, colours per clock key; the sun or moon disc (drawn at 2°) and its two-term halo; one cloud layer at 1,500 m (2 octaves, `smoothstep(0.48, 0.62)`, two-tone, drifting 3 m/s, cover from the preset, 0 allowed); stars below −6° sun elevation. A realm with its own moon keeps it (Hecate's real phase).\n\nSpecification: `docs/verse/art-styles.md`, 5. Sky.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-sky; Everglade: eg-paint-light. Those tasks wait on this one.",
+      "files": [
+        "verse/style.coax",
+        "apps/openagents-web/fixture.wgsl"
+      ],
+      "acceptance": [
+        "coax test passes on every Coax file touched, with #test checks pinning the numbers the spec gives",
+        "The style fixture (/realms/fixture?style=painterly at each clock key) shows it at desktop and phone, and its goldens are updated and committed",
+        "The sky doesn't slide when the camera pitches (two shots at different pitch, the horizon's colour at the same elevation matches)",
+        "Phones draw one cloud octave",
+        "Inside the frame budget of every realm that uses it, desktop and phone (measured, numbers in a note)"
+      ],
+      "blocked_by": [
+        "as-haze",
+        "as-day-night"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-light-shafts",
+      "parent": "as-painterly",
+      "title": "Light shafts from the sun or moon",
+      "size": "S",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "A screen-space radial blur from the key light's screen position over the sky mask (depth at far), in the post pass: 24 samples on desktop, 12 on a phone, decay 0.94, weight 0.22 by day and 0.10 at night, faded out as the light leaves the frame by 0.35 of its size.\n\nSpecification: `docs/verse/art-styles.md`, 6. Bloom and light shafts.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-sky; Everglade: eg-paint-light. Those tasks wait on this one.",
+      "files": [
+        "verse/style.coax",
+        "apps/openagents-web/fixture.wgsl"
+      ],
+      "acceptance": [
+        "coax test passes on every Coax file touched, with #test checks pinning the numbers the spec gives",
+        "The style fixture (/realms/fixture?style=painterly at each clock key) shows it at desktop and phone, and its goldens are updated and committed",
+        "Shafts show through the fixture's blob tree when the sun is behind it, and nowhere when it's off-screen",
+        "Inside the frame budget of every realm that uses it, desktop and phone (measured, numbers in a note)"
+      ],
+      "blocked_by": [
+        "as-tone-post",
+        "as-painted-sky"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-wind-grass",
+      "parent": "as-painterly",
+      "title": "Dense wind-swept grass that sways constantly",
+      "size": "L",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "GPU-instanced grass blades from a hash of their cell (no blade buffer): 0.35 to 0.60 m tapered triangles, 24 per m² out to 32 m on desktop, 8 per m² out to 18 m on a phone, shrinking to nothing over the last 6 m. Colour from the ground's painted colour, tips 15% lighter and warmer, ±4% hue jitter, normals the ground's up. Wind: `A(0.6 sin(k·x − ωt) + 0.4 gust)`, A 0.30 rad, wavelength 12 m, 3 m/s, bend by height², bright bands rolling across; blades within 0.7 m of up to 8 movers lean away. The realm supplies the mask (paths, squares, floors, water, plots) as capsules plus its path distance. Frozen at t = 0 under `still`. The wind function is shared with foliage sway.\n\nSpecification: `docs/verse/art-styles.md`, 8. Grass.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-foliage; Everglade: eg-paint-foliage. Those tasks wait on this one.",
+      "files": [
+        "verse/style.coax",
+        "coax/web/host.js",
+        "apps/openagents-web/fixture.wgsl",
+        "apps/openagents-web/fixture.coax"
+      ],
+      "acceptance": [
+        "coax test passes on every Coax file touched, with #test checks pinning the numbers the spec gives",
+        "The style fixture (/realms/fixture?style=painterly at each clock key) shows it at desktop and phone, and its goldens are updated and committed",
+        "Grass costs at most 2.5 ms on desktop and 3 ms on a phone (measured on the fixture and noted)",
+        "Two `still` shots of the fixture are identical",
+        "No blade on a masked path in the fixture"
+      ],
+      "blocked_by": [
+        "as-toon-bands",
+        "as-haze"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-blob-foliage",
+      "parent": "as-painterly",
+      "title": "Blob-shaded canopies: sphere-ish normals, sway, matching far trees",
+      "size": "M",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "A canopy's normal becomes `normalize(mix(mesh_n, normalize(p - c), 0.85))` with `c` from the pack catalog's bounds (an ellipsoid for pines and cypresses) or a primitive's centre; leaf cards keep their alpha cut. Canopies sway with the grass wind at 0.05 m times their relative height. Far-tree cones shade with the same normal and colour as the kit tree they stand for. The pack's catalog gives each `_Leaves` mesh a canopy flag (pack_realm.py).\n\nSpecification: `docs/verse/art-styles.md`, 7. Foliage.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-foliage; Everglade: eg-paint-foliage, eg-paint-distance. Those tasks wait on this one.",
+      "files": [
+        "verse/style.coax",
+        "verse/tools/pack_realm.py",
+        "apps/openagents-web/fixture.wgsl"
+      ],
+      "acceptance": [
+        "coax test passes on every Coax file touched, with #test checks pinning the numbers the spec gives",
+        "The style fixture (/realms/fixture?style=painterly at each clock key) shows it at desktop and phone, and its goldens are updated and committed",
+        "The fixture's tree shades as one soft blob in three bands (shot in a note)",
+        "A kit tree and its far cone match within ΔE 8 at the swap distance through haze"
+      ],
+      "blocked_by": [
+        "as-toon-bands",
+        "as-wind-grass"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-paint-packs",
+      "parent": "as-painterly",
+      "title": "Painted texture packs: pack style, texture rules, the paint pass and the release check",
+      "size": "M",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "Packs declare `\"style\"`; pack_realm.py writes `style NAME` into the catalog and checks painterly layers: at most 512 texels (256 default for props and characters), no normal/roughness/detail maps, fine-detail energy ≤ 0.035 (luminance minus its 4×-down-up copy, RMS over opaque texels), saturation and value inside the albedo rules. `\"paint\": true` runs the paint pass (Kuwahara r4/r2, 24-colour quantize, saturation pulled into range) and the result must pass. `realms.ts --check` and the release walk refuse a realm whose pack's style differs from its own. The licences file is unchanged in shape.\n\nSpecification: `docs/verse/art-styles.md`, 10. Textures and packs.\n\nNeeded by Everglade: eg-paint-pack, eg-paint-people. Those tasks wait on this one.",
+      "files": [
+        "verse/tools/pack_realm.py",
+        "verse/packs/",
+        "coax/web/realms.ts",
+        "docs/verse/realm-host.md"
+      ],
+      "acceptance": [
+        "Python tests for each refusal and for the paint pass on a fixture layer (tooling only, never shipped)",
+        "The fixture pack, tagged painterly, passes; a deliberately grainy layer fails with its measured energy",
+        "`realms.ts --check` fails a painterly realm with a lowpoly pack"
+      ],
+      "blocked_by": [
+        "as-style-field"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-character-shading",
+      "parent": "as-painterly",
+      "title": "Painterly characters: two bands, strong rim, flat skin and cloth",
+      "size": "M",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "Skinned and figure characters take the character shading: two bands (edge 0.40, softness 0.08), rim 0.45, the tinted shadow and the cast shadow, no specular, textures sampled with LOD bias +2 at 512 texels so fine grain goes. Emissive materials (Hecate's dog) and designed blacks (the shadow visitor) are exempt by material flag. The pack's character layers go through the painterly checks. verse/skin.coax and verse/figure.coax consumers get the same functions.\n\nSpecification: `docs/verse/art-styles.md`, 11. Characters.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-figures; Everglade: eg-paint-people. Those tasks wait on this one.",
+      "files": [
+        "verse/style.coax",
+        "verse/skin.coax",
+        "verse/figure.coax",
+        "apps/openagents-web/fixture.wgsl"
+      ],
+      "acceptance": [
+        "coax test passes on every Coax file touched, with #test checks pinning the numbers the spec gives",
+        "The style fixture (/realms/fixture?style=painterly at each clock key) shows it at desktop and phone, and its goldens are updated and committed",
+        "The fixture's figure reads as two or three flat colour masses with a rim at 20 m (shot in a note)",
+        "Inside the frame budget of every realm that uses it, desktop and phone (measured, numbers in a note)"
+      ],
+      "blocked_by": [
+        "as-toon-bands",
+        "as-rim",
+        "as-paint-packs"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-painted-water",
+      "parent": "as-painterly",
+      "title": "A stylized water preset: colour bands and sparkles",
+      "size": "M",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "A `painted` preset in verse/water-look.coax beside the seven physical ones, with its shader path: depth colour bands (shallow under 0.4 m, mid to 1.5 m, deep, edges soft over 0.15 m) in place of Beer-Lambert; the sky gradient reflected with Schlick Fresnel and no roughness blur; sparkles on a 0.15 m grid (0.25 m phone) within 4° of the key light, 2 to 3 px, twinkling over 0.3 s, in place of GGX glints; a clean 0.25 m shore line and W6's ripples as white rings; haze and tone as every surface. The physics (W1), the mesh and the swimmer are unchanged; `water_body_sample` and the swimmer checks still pass.\n\nSpecification: `docs/verse/art-styles.md`, 12. Water.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-ground; Everglade: eg-paint-river. Those tasks wait on this one.",
+      "files": [
+        "verse/water-look.coax",
+        "verse/style.coax",
+        "docs/verse/water.md",
+        "apps/openagents-web/fixture.wgsl"
+      ],
+      "acceptance": [
+        "coax test passes on verse/water.coax and verse/water-look.coax (all existing checks plus the preset's)",
+        "The style fixture (/realms/fixture?style=painterly at each clock key) shows it at desktop and phone, and its goldens are updated and committed",
+        "docs/verse/water.md names the preset",
+        "Inside the frame budget of every realm that uses it, desktop and phone (measured, numbers in a note)"
+      ],
+      "blocked_by": [
+        "as-haze",
+        "as-painted-sky"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-outline-light",
+      "parent": "as-painterly",
+      "title": "Outlines in painterly: only the light form, faded with haze",
+      "size": "S",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "verse/look.coax gets a style input: under painterly an outline may only brighten (a pale edge over the surface), at most 0.35 strength, faded by the haze factor; dark ink is refused. Lowpoly keeps today's behaviour. Hecate's moonlit edges are the case this keeps.\n\nSpecification: `docs/verse/art-styles.md`, 9. Palette and tone (outlines).\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-light. Those tasks wait on this one.",
+      "files": [
+        "verse/look.coax",
+        "verse/style.coax"
+      ],
+      "acceptance": [
+        "coax test passes on verse/look.coax with checks for the cap, the haze fade and the refusal",
+        "The style fixture (/realms/fixture?style=painterly at each clock key) shows it at desktop and phone, and its goldens are updated and committed",
+        "Hecate's Cemetery's golden is unchanged until its adoption task"
+      ],
+      "blocked_by": [
+        "as-presets"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-phone-tier",
+      "parent": "as-checks",
+      "title": "The painterly phone tier",
+      "size": "M",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "`verse_style_preset(style, PHONE)` for a coarse pointer or a canvas under 600 css px: shadow map 1024² with 4 taps, grass 8/m² to 18 m, one cloud octave, 12 shaft samples, bloom 0.22, haze ×1.25, sparkle grid 0.25 m. Bands, rim, tint, palette and tone are identical. If a realm misses its phone frame budget, grass density halves before its radius.\n\nSpecification: `docs/verse/art-styles.md`, 14. The phone tier.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-review; Everglade: eg-paint-review. Those tasks wait on this one.",
+      "files": [
+        "verse/style.coax",
+        "coax/web/host.js"
+      ],
+      "acceptance": [
+        "coax test passes on every Coax file touched, with #test checks pinning the numbers the spec gives",
+        "The fixture at 390×844 matches its phone goldens at each clock key",
+        "Frame time on a phone-class profile measured for the fixture, Everglade and Hecate's Cemetery and noted"
+      ],
+      "blocked_by": [
+        "as-soft-shadows",
+        "as-wind-grass",
+        "as-painted-sky",
+        "as-light-shafts",
+        "as-painted-water",
+        "as-tone-post"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "as-style-check",
+      "parent": "as-checks",
+      "title": "The style check: measure \"looks painterly\" and the side-by-side sheet",
+      "size": "M",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "`coax/web/style-check.ts URL --style painterly`: shoots each painterly realm's `style_views` (realms.json) headless at 1440×900 and 390×844 with the clock pinned and `still`, masks the HUD plates, and measures fine detail (≤ 0.035), dark ink (≤ 0.2%), near black (≤ 0.5% day, ≤ 2% night), shadow hue (blue ≥ red, green), mean saturation (0.22 to 0.60), haze (ΔE ≤ 12 from the preset, spread ≤ 0.08) and bands (two peaks on the largest lit object, via `?probe`). It writes `style-<slug>.png`, the realm's views beside the style fixture's, for the owner's and Kiki's judgment. goldens.ts runs it for every painterly realm in the release walk; a failure stops the release.\n\nSpecification: `docs/verse/art-styles.md`, 15. Judging \"looks painterly\".\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-review; Everglade: eg-paint-review. Those tasks wait on this one.",
+      "files": [
+        "coax/web/style-check.ts",
+        "coax/web/goldens.ts",
+        "apps/openagents-web/realms.json",
+        "coax/web.md"
+      ],
+      "acceptance": [
+        "Bun tests for each measure on synthetic images (a grainy one, an inked one, a grey-shadowed one each fail)",
+        "The style fixture passes; today's Everglade and Hecate's shots fail with the measures the audit predicts (numbers in a note)",
+        "release.sh runs it on staging; documented in coax/web.md"
+      ],
+      "blocked_by": [
+        "as-style-fixture",
+        "as-toon-bands",
+        "as-soft-shadows",
+        "as-haze",
+        "as-tone-post"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "eg-paint-pack",
+      "parent": "as-everglade",
+      "title": "Everglade: painterly tag and a painted pack",
+      "size": "M",
+      "labels": [
+        "realms",
+        "everglade",
+        "painterly"
+      ],
+      "body": "Tag Everglade painterly in realms.json; declare `\"style\": \"painterly\"` in verse/packs/everglade.json and pass every layer through the painterly checks (the paint pass where Quaternius's layers fail; character layers at 256 where they don't need 512); keep the pack under its 6.75 MB budget. Remove the procedural fine noise from the ground, streets, squares and riverbed (2.7, 5, 9 and 13 cycles a metre today) and keep only broad colour (≤ 0.25 cycles a metre, ±8%).\n\nSpecification: `docs/verse/art-styles.md`, Audit: Everglade.",
+      "files": [
+        "apps/openagents-web/realms.json",
+        "verse/packs/everglade.json",
+        "apps/openagents-web/realms/everglade/assets/everglade.pack",
+        "apps/openagents-web/realms/everglade/licences.md",
+        "apps/openagents-web/everglade.wgsl"
+      ],
+      "acceptance": [
+        "`pack_realm.py` builds the pack with style painterly, every layer passing, licences.md regenerated",
+        "`realms.ts --check` passes",
+        "The golden is updated and approved",
+        "Desktop and phone shots of the road in, the commons, the river crossing and the deep wood in a note, with the side-by-side sheet once the style check exists"
+      ],
+      "blocked_by": [
+        "as-style-field",
+        "as-paint-packs"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "eg-paint-light",
+      "parent": "as-everglade",
+      "title": "Everglade: painterly light, haze, sky and a day that turns",
+      "size": "L",
+      "labels": [
+        "realms",
+        "everglade",
+        "painterly"
+      ],
+      "body": "Replace Everglade's own lighting with the preset: three bands with smooth normals, the warm rim, the sun's shadow map (trees, buildings and the palisade cast soft blue shadows on the streets), the hemisphere ambient, the post pass (tone, black lift, bloom; Everglade has no post pass today), blue-cyan haze in place of the pale grey `HORIZON` fog, the ray-based painted sky with sun and clouds, sun shafts through the canopy, and `clock: cycle` with dawn, day, dusk and night. At night the inn, the stalls' lanterns and the gate torches glow (emissive, blooming) so the streets stay readable. The water's host hooks take the same sky, sun and haze.\n\nSpecification: `docs/verse/art-styles.md`, Audit: Everglade.",
+      "files": [
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade-face.c",
+        "apps/openagents-web/everglade.wgsl",
+        "verse/everglade/plan.coax"
+      ],
+      "acceptance": [
+        "The style check passes at `?clock=0.5` and `0.75`; at `0` no more than 2% near black",
+        "Every hash start (`#commons`, `#river`, ...) still opens; the frame budget holds on a phone",
+        "The golden at a pinned clock is updated and approved",
+        "Desktop and phone shots of the road in, the commons, the river crossing and the deep wood in a note, with the side-by-side sheet once the style check exists"
+      ],
+      "blocked_by": [
+        "eg-paint-pack",
+        "as-toon-bands",
+        "as-rim",
+        "as-soft-shadows",
+        "as-tone-post",
+        "as-haze",
+        "as-painted-sky",
+        "as-light-shafts",
+        "as-day-night"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "eg-paint-distance",
+      "parent": "as-everglade",
+      "title": "Everglade: something far to stack in the haze",
+      "size": "M",
+      "labels": [
+        "realms",
+        "everglade",
+        "painterly"
+      ],
+      "body": "Painterly depth needs layers past 80 m; Everglade's views end at the forest wall. Add a ring of hills or ridges beyond the forest (the terrain rising in two or three steps out to 400 m, not walkable, outside the plan's checks) and let the far forest climb them, so the haze stacks them in bluer layers from the streets, the gates and the map view. Far cones shade like their kit trees.\n\nSpecification: `docs/verse/art-styles.md`, Audit: Everglade.",
+      "files": [
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade-face.c",
+        "apps/openagents-web/everglade.wgsl",
+        "verse/everglade/plan.coax",
+        "verse/terrain.coax"
+      ],
+      "acceptance": [
+        "From the South Gate, the river crossing and `#above`, at least two distinct ridge layers show through the haze (shots in a note)",
+        "plan.coax's checks still pass; nothing new is reachable",
+        "The phone triangle budget (700,000) holds",
+        "Desktop and phone shots of the road in, the commons, the river crossing and the deep wood in a note, with the side-by-side sheet once the style check exists"
+      ],
+      "blocked_by": [
+        "eg-paint-light",
+        "as-blob-foliage"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "eg-paint-foliage",
+      "parent": "as-everglade",
+      "title": "Everglade: blob canopies and wind-swept grass",
+      "size": "M",
+      "labels": [
+        "realms",
+        "everglade",
+        "painterly"
+      ],
+      "body": "The kit trees' leaves shade as blobs (canopy normals from the catalog), canopies sway, and grass covers the 6 m apron, the clearings, the river's glade and the meadow, with no grass on streets, the commons, squares, floors, the river or under buildings (the mask from plan.coax's paths, squares and solids). Grass parts round you, the people and the cats.\n\nSpecification: `docs/verse/art-styles.md`, Audit: Everglade.",
+      "files": [
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade-face.c",
+        "apps/openagents-web/everglade.wgsl",
+        "verse/everglade/plan.coax"
+      ],
+      "acceptance": [
+        "The style check's fine-detail and band measures pass in the deep wood and the glade",
+        "No grass on any street or square (a check in plan.coax over the mask)",
+        "Phone tier density and frame budget hold",
+        "Desktop and phone shots of the road in, the commons, the river crossing and the deep wood in a note, with the side-by-side sheet once the style check exists"
+      ],
+      "blocked_by": [
+        "eg-paint-light",
+        "as-blob-foliage",
+        "as-wind-grass"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "eg-paint-river",
+      "parent": "as-everglade",
+      "title": "Everglade: the river in the painted water preset",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade",
+        "painterly"
+      ],
+      "body": "Switch the river from W2's physical look to the `painted` preset: depth bands, sparkles in the sun, a clean shore line, the wake and splash as white rings, hazed like the land. The swimmer, the current, the ducks and the floats are unchanged.\n\nSpecification: `docs/verse/art-styles.md`, Audit: Everglade.",
+      "files": [
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade-face.c",
+        "apps/openagents-web/everglade.wgsl",
+        "verse/everglade/river.coax"
+      ],
+      "acceptance": [
+        "verse/everglade/river.coax's checks and the water checks pass",
+        "The river at the crossing reads as colour bands with sparkles (shot in a note)",
+        "Desktop and phone shots of the road in, the commons, the river crossing and the deep wood in a note, with the side-by-side sheet once the style check exists"
+      ],
+      "blocked_by": [
+        "eg-paint-light",
+        "as-painted-water"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "eg-paint-people",
+      "parent": "as-everglade",
+      "title": "Everglade: the Ranger, the people and the cats in painterly",
+      "size": "L",
+      "labels": [
+        "realms",
+        "everglade",
+        "painterly"
+      ],
+      "body": "The Ranger takes the character shading (two bands, rim, coarse mips, its layers through the painterly checks). The people, grey-box figures with sphere heads today, become aethyr's figure parts with the `Peasant` and `Ranger` outfits (as docs/verse/everglade.md already plans) in their trades' colours, and the cats `Custom_Cat`, all in the character shading and inside the pack budget. Talking, the quests and the flock are unchanged.\n\nSpecification: `docs/verse/art-styles.md`, Audit: Everglade.",
+      "files": [
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade-face.c",
+        "apps/openagents-web/everglade.wgsl",
+        "verse/everglade/people.coax",
+        "verse/packs/everglade.json",
+        "verse/tools/pack_realm.py"
+      ],
+      "acceptance": [
+        "No grey-box figure is left in any view (the style check's views and a walk of every character's spot)",
+        "eg-people's and eg-quests' checks pass",
+        "The phone triangle budget holds",
+        "Desktop and phone shots of the road in, the commons, the river crossing and the deep wood in a note, with the side-by-side sheet once the style check exists"
+      ],
+      "blocked_by": [
+        "eg-paint-light",
+        "as-character-shading",
+        "as-paint-packs"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "eg-paint-props",
+      "parent": "as-everglade",
+      "title": "Everglade: replace the plain boxes that break the painting",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade",
+        "painterly"
+      ],
+      "body": "Where a plain box or slab stands in for a thing, draw the kit piece the doc names: the bridge's `Floor_WoodDark` planks and `Prop_WoodenFence_Single` rails (a flat tan slab today), the deep wood's waystone (a grey box), and any other grey-box prop found walking the trails.\n\nSpecification: `docs/verse/art-styles.md`, Audit: Everglade.",
+      "files": [
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade-face.c",
+        "apps/openagents-web/everglade.wgsl",
+        "verse/everglade/plan.coax",
+        "verse/packs/everglade.json"
+      ],
+      "acceptance": [
+        "A walk of every place's hash start finds no untextured stand-in box (shots in a note)",
+        "plan.coax's reachability and river checks pass",
+        "Desktop and phone shots of the road in, the commons, the river crossing and the deep wood in a note, with the side-by-side sheet once the style check exists"
+      ],
+      "blocked_by": [
+        "eg-paint-pack"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "eg-paint-review",
+      "parent": "as-everglade",
+      "title": "Everglade in painterly: the style check, the phone tier and the owner's look",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade",
+        "painterly"
+      ],
+      "body": "Everglade passes the style check in the release walk at desktop and phone, at noon, dusk and night, and the owner approves the side-by-side sheet; the golden moves only with that approval.\n\nSpecification: `docs/verse/art-styles.md`, Audit: Everglade.",
+      "files": [
+        "apps/openagents-web/realms.json",
+        "coax/web/goldens/everglade.png"
+      ],
+      "acceptance": [
+        "`style-check.ts` passes on staging for every Everglade view",
+        "The owner's approval recorded in a note on this task",
+        "Golden updated and released"
+      ],
+      "blocked_by": [
+        "eg-paint-light",
+        "eg-paint-distance",
+        "eg-paint-foliage",
+        "eg-paint-river",
+        "eg-paint-people",
+        "eg-paint-props",
+        "as-style-check",
+        "as-phone-tier"
+      ],
+      "blocks": []
+    }
+  ]
+}
