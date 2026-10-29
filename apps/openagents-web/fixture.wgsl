@@ -954,11 +954,11 @@ fn verse_style_bloom_share(l_lum: f32, l_threshold: f32, l_knee: f32) -> f32 {
   var l_q: f32 = coax_p_st_min(coax_t40, coax_t41);
   return coax_p_st_min((coax_p_st_max(((l_q * l_q) / (4.0 * l_k)), (l_lum - l_threshold)) / l_lum), 1.0);
 }
-fn verse_style_bloom_mix(l_c: f32, l_bloom: f32, l_mix: f32) -> f32 {
-  return (l_c + (l_bloom * l_mix));
+fn verse_style_bloom_mix(l_c: f32, l_bloom: f32, l_amount: f32) -> f32 {
+  return (l_c + (l_bloom * l_amount));
 }
-fn verse_style_shadow_reach(l_phone: f32) -> f32 {
-  if ((l_phone > 0.5))
+fn verse_style_shadow_reach(l_on_phone: f32) -> f32 {
+  if ((l_on_phone > 0.5))
   {
     return 40.0;
   }
@@ -978,20 +978,20 @@ fn verse_style_shadow_across(l_x: f32, l_reach: f32) -> f32 {
 fn verse_style_shadow_depth(l_along: f32, l_reach: f32) -> f32 {
   return (0.5 - (l_along / (4.0 * coax_p_st_max(l_reach, 0.00100000005))));
 }
-fn verse_style_shadow_taps(l_phone: f32) -> f32 {
-  if ((l_phone > 0.5))
+fn verse_style_shadow_taps(l_on_phone: f32) -> f32 {
+  if ((l_on_phone > 0.5))
   {
     return 4.0;
   }
   return 9.0;
 }
-fn verse_style_shadow_radius(l_phone: f32) -> f32 {
-  return (2.5 + (0.0 * l_phone));
+fn verse_style_shadow_radius(l_on_phone: f32) -> f32 {
+  return (2.5 + (0.0 * l_on_phone));
 }
-fn verse_style_shadow_tap(l_k: f32, l_phone: f32, l_axis: f32) -> f32 {
+fn verse_style_shadow_tap(l_k: f32, l_on_phone: f32, l_which: f32) -> f32 {
   var l_x: f32 = 0.0;
   var l_y: f32 = 0.0;
-  if ((l_phone > 0.5))
+  if ((l_on_phone > 0.5))
   {
     if ((l_k < 0.5))
     {
@@ -1071,7 +1071,7 @@ fn verse_style_shadow_tap(l_k: f32, l_phone: f32, l_axis: f32) -> f32 {
       l_y = (-0.893000007);
     }
   }
-  if ((l_axis > 0.5))
+  if ((l_which > 0.5))
   {
     return l_y;
   }

@@ -64,7 +64,7 @@ verse_style_rim :: (ndv:f32,ndl:f32,start:f32,full:f32,strength:f32)->f32 #expor
 
 // ---- 3. Real shadows: the key light's shadow map (host.js shadowLayout, 2048 square, 1024 on a phone)
 // How far round the eye the map reaches, in metres: the camera's near 60 m, 40 m on a phone.
-verse_style_shadow_reach :: (phone:f32)->f32 #export_c {if phone>0.5f32 {return 40.0f32;} return 60.0f32;}
+verse_style_shadow_reach :: (on_phone:f32)->f32 #export_c {if on_phone>0.5f32 {return 40.0f32;} return 60.0f32;}
 // The map's place snapped to whole texels (reach across size texels each way), so shadows hold still as the eye moves.
 verse_style_shadow_snap :: (x:f32,reach:f32,size:f32)->f32 #export_c {
  texel:=2.0f32*reach/st_max(size,1.0f32);
@@ -76,20 +76,20 @@ verse_style_shadow_snap :: (x:f32,reach:f32,size:f32)->f32 #export_c {
 verse_style_shadow_across :: (x:f32,reach:f32)->f32 #export_c {return x/st_max(reach,0.001f32);}
 verse_style_shadow_depth :: (along:f32,reach:f32)->f32 #export_c {return 0.5f32-along/(4.0f32*st_max(reach,0.001f32));}
 // How many Poisson taps the filter takes, and how far out they reach in texels.
-verse_style_shadow_taps :: (phone:f32)->f32 #export_c {if phone>0.5f32 {return 4.0f32;} return 9.0f32;}
-verse_style_shadow_radius :: (phone:f32)->f32 #export_c {return 2.5f32+0.0f32*phone;}
-// Tap k's offset on the unit disc, axis 0 across and 1 down: nine spread Poisson points, or a
+verse_style_shadow_taps :: (on_phone:f32)->f32 #export_c {if on_phone>0.5f32 {return 4.0f32;} return 9.0f32;}
+verse_style_shadow_radius :: (on_phone:f32)->f32 #export_c {return 2.5f32+0.0f32*on_phone;}
+// Tap k's offset on the unit disc, `which` 0 across and 1 down: nine spread Poisson points, or a
 // phone's four in a turned square.
-verse_style_shadow_tap :: (k:f32,phone:f32,axis:f32)->f32 #export_c {
+verse_style_shadow_tap :: (k:f32,on_phone:f32,which:f32)->f32 #export_c {
  x:=0.0f32; y:=0.0f32;
- if phone>0.5f32 {
+ if on_phone>0.5f32 {
   if k<0.5f32 {x=-0.60f32;y=-0.25f32;} else if k<1.5f32 {x=0.25f32;y=-0.60f32;} else if k<2.5f32 {x=0.60f32;y=0.25f32;} else {x=-0.25f32;y=0.60f32;}
  } else {
   if k<0.5f32 {x=0.0f32;y=0.0f32;} else if k<1.5f32 {x=-0.326f32;y=-0.406f32;} else if k<2.5f32 {x=-0.840f32;y=-0.074f32;}
   else if k<3.5f32 {x=-0.696f32;y=0.457f32;} else if k<4.5f32 {x=-0.203f32;y=0.621f32;} else if k<5.5f32 {x=0.962f32;y=-0.195f32;}
   else if k<6.5f32 {x=0.473f32;y=-0.480f32;} else if k<7.5f32 {x=0.519f32;y=0.767f32;} else {x=0.185f32;y=-0.893f32;}
  }
- if axis>0.5f32 {return y;} return x;
+ if which>0.5f32 {return y;} return x;
 }
 // The cast shadow (1 lit, 0 shadowed) with a mover's blob under it: the blob darkens to
 // 1 - strength (0.35) at its middle and never lightens a cast shadow.
@@ -130,7 +130,7 @@ verse_style_sky_band :: (up:f32,lift:f32)->f32 #export_c {return lift*(1.0f32-st
 // A halo term, exp(-k (1 - cos theta)).
 verse_style_halo :: (cos_t:f32,k:f32)->f32 #export_c {return exp(-k*st_max(1.0f32-cos_t,0.0f32));}
 
-// ---- 5b. Clouds: one dome layer (1,500 m), two octaves of value noise (one on a phone), cut soft,
+// ---- 5b. Clouds: one dome layer (1,500 m), two octaves of value noise (one on a on_phone), cut soft,
 // shaded in two tones. Fairy Forest's sky is these, lifted into the engine.
 // A hash of a lattice point, 0 to 1.
 verse_style_hash :: (x:f32,y:f32)->f32 #export_c {
@@ -184,10 +184,10 @@ verse_style_grass_tilt :: (theta:f32,amp:f32,tilt_most:f32)->f32 #export_c {retu
 // A blade's height from its hash h (0 to 1): 0.35 to 0.60 m.
 verse_style_blade_height :: (h:f32,low:f32,high:f32)->f32 #export_c {return low+(high-low)*st_sat(h);}
 // How much of a blade stands at distance d from the eye: all of it to 6 m inside the radius (32 m,
-// 18 on a phone), shrinking to nothing at the radius, so the field has no edge.
+// 18 on a on_phone), shrinking to nothing at the radius, so the field has no edge.
 verse_style_grass_fade :: (d:f32,radius:f32,fade:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(radius-fade*0.5f32,fade*0.5f32,d);}
 // How many blades the realm draws in the half disc ahead of the eye: a square 2 radius across and
-// one radius deep, at the density (24 a square metre, 8 on a phone).
+// one radius deep, at the density (24 a square metre, 8 on a on_phone).
 verse_style_grass_blades :: (radius:f32,density:f32)->f32 #export_c {return 2.0f32*radius*radius*density;}
 // The mask: a blade's share of its height by its distance past a masked shape's edge (a path, a
 // plot, a floor): none on it, all of it 0.25 m clear of it.
@@ -228,8 +228,8 @@ verse_style_bloom_share :: (lum:f32,threshold:f32,knee:f32)->f32 #export_c {
  q:=st_min(st_max(lum-threshold+k,0.0f32),2.0f32*k);
  return st_min(st_max(q*q/(4.0f32*k),lum-threshold)/lum,1.0f32);
 }
-// The light with its blurred bright share mixed back: gently, mix of it.
-verse_style_bloom_mix :: (c:f32,bloom:f32,mix:f32)->f32 #export_c {return c+bloom*mix;}
+// The light with its blurred bright share mixed back: gently, `amount` of it.
+verse_style_bloom_mix :: (c:f32,bloom:f32,amount:f32)->f32 #export_c {return c+bloom*amount;}
 // ---- 6b. Light shafts: a radial blur of the sky's glow toward the key light's place on screen
 // The glow a sky pixel puts into the blur: the sky near the light, by the ray's cosine to it
 // (exp(-24 (1 - cos)): half at 14 degrees, a tenth at 25), so gaps in a canopy against the sky round
@@ -260,7 +260,7 @@ verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.715
 // ---- 7. Foliage: blob canopies (art-styles.md 7). A canopy shades as one soft blob round its centre,
 // not as its leaf cards: its normal leans 0.85 of the way to the blob's.
 // One channel of the blob's direction at a canopy point p with centre c and half size `half` on that
-// axis: (p - c) / half^2, an ellipsoid's gradient (a sphere's when the three half sizes match), so a
+// which: (p - c) / half^2, an ellipsoid's gradient (a sphere's when the three half sizes match), so a
 // pine's tall crown rounds over its top and sides alike. The three are normalized together.
 verse_style_canopy_axis :: (p:f32,c:f32,half:f32)->f32 #export_c {h:=st_max(half,0.001f32);return (p-c)/(h*h);}
 // One channel of the canopy normal before normalizing: the mesh's normal mixed `k` (0.85) toward the blob's.
@@ -308,13 +308,13 @@ verse_style_canopy_open :: (n:f32,gap:f32)->f32 #export_c {return ifx n<gap then
 #test "the shadow band takes the tint's hue once more, warm albedos included, keeping its value" {
  // the fixture's olive and brown grounds under the noon tint (0.52, 0.58, 0.86) times the day's sky
  // ambient (0.30, 0.36, 0.46): albedo x tint x ambient alone keeps them warm (blue the smallest)
- tr:=0.52f32; tg:=0.58f32; tb:=0.86f32; tl:=verse_style_luma(tr,tg,tb);
+ tr:=0.52f32; tint_g:=0.58f32; tb:=0.86f32; tl:=verse_style_luma(tr,tint_g,tb);
  for g:0..<2 {
   ar:=ifx g==0 then 0.21f32 else 0.27f32; ag:=ifx g==0 then 0.29f32 else 0.22f32; ab:=ifx g==0 then 0.08f32 else 0.10f32;
-  r:=ar*tr*0.30f32; gg:=ag*tg*0.36f32; b:=ab*tb*0.46f32;
+  r:=ar*tr*0.30f32; gg:=ag*tint_g*0.36f32; b:=ab*tb*0.46f32;
   #assert b<r && b<gg;
   y:=verse_style_luma(r,gg,b);
-  mr:=verse_style_cool(r,tr,tl,1.0f32); mg:=verse_style_cool(gg,tg,tl,1.0f32); mb:=verse_style_cool(b,tb,tl,1.0f32);
+  mr:=verse_style_cool(r,tr,tl,1.0f32); mg:=verse_style_cool(gg,tint_g,tl,1.0f32); mb:=verse_style_cool(b,tb,tl,1.0f32);
   m:=verse_style_luma(mr,mg,mb);
   cr:=verse_style_keep_value(mr,y,m); cg:=verse_style_keep_value(mg,y,m); cb:=verse_style_keep_value(mb,y,m);
   // its value kept, blue gaining on red and green, and colour left in it (never grey): its channels

@@ -565,6 +565,23 @@ Biggest gaps: no post pass at all, a pale grey haze instead of blue, no
 grass, no cast shadows or day/night, unbanded shading, the people still grey
 boxes, and a physically based river in a painted world.
 
+**Built** (October 29, eg-paint-light): Everglade reads the painterly preset
+at its clock (`STYLE_AT`, 32 rows after the water's block; `clock: cycle`,
+`?clock=T` pins it, a still page shows noon) and is lit by it: three bands
+(two for the Ranger) on smooth and blob normals, the cool shadow band, the
+hemisphere ambient, the warm rim, and the key light's shadow map
+(`shadow_vs`: every draw but the ground, leaf cards cutting it so canopies
+cast dappled shade; 60 m round the eye, 40 on a phone). The shapes' and the
+ground's colours are written as they show on screen, so the shader takes
+them to linear before the light. The haze is the preset's (its start and
+density pushed off over the map's lift), the sky is painted along each
+pixel's ray with the sun or moon, clouds and stars, and a post pass blooms,
+streams the light shafts through the canopies and roofs, tones and encodes,
+then lays the plates over it. The water's hooks take the same sky, key and
+ambient. The deep wood's waystone and the ruins' pillars stand as the kit's
+rock, not grey boxes. Still to come: the night's emissive windows, lanterns
+and torches.
+
 ## Order of the work
 
 1. The style field and presets, and the style fixture, which everything else

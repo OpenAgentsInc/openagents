@@ -19,21 +19,20 @@ struct U {
   square: array<vec4f, 4>,
   plate: array<vec4f, 64>,
   water: WaterU,   // the river's waves, look and mesh (verse/water-look.coax W_* rows)
+  style: array<vec4f, 32>,  // the painterly preset at the clock (verse/style-preset.coax SU_*: row = SU / 4)
 }
 @group(0) @binding(0) var<uniform> u: U;
 
-// The painterly day's haze and sky (verse/style-preset.coax, art-styles.md 4 and 5): the horizon
-// is the haze's colour, so the world meets the sky without a seam
-const HORIZON = vec3f(0.56, 0.74, 0.90);
-const ZENITH = vec3f(0.24, 0.48, 0.86);
-const HAZE_KEY = vec3f(1.00, 0.90, 0.72);   // the sun seen through the haze
-const HAZE_CAP = 0.88;
-// The haze over a surface d metres off at height y, looking along v: the style's curve from the
-// realm's start (u.sun.w) and density (u.eye.w), teal where thin and blue far off, warm toward the sun.
-fn haze_share(d: f32, y: f32) -> f32 { return verse_style_haze(d, y, u.eye.y - 2.5, u.sun.w, u.eye.w, HAZE_CAP, 60.0); }
+// The painterly preset at the clock (art-styles.md; everglade.coax writes u.style each frame).
+fn st(i: u32) -> vec4f { return u.style[i]; }
+// The haze over a surface d metres off at height y, looking along v (spec 4): the preset's curve from
+// where it starts (u.sun.w) and its density (u.eye.w), both the preset's own but thinned over the
+// map's lift, teal where thin and the preset's blue far off, warm toward the key light.
+fn haze_share(d: f32, y: f32) -> f32 { return verse_style_haze(d, y, u.eye.y - 2.5, u.sun.w, u.eye.w, st(9u).z, st(9u).w); }
 fn haze_colour(f: f32, v: vec3f) -> vec3f {
-  let h = vec3f(verse_style_haze_hue(HORIZON.x, 0.0, f, HAZE_CAP), verse_style_haze_hue(HORIZON.y, 1.0, f, HAZE_CAP), verse_style_haze_hue(HORIZON.z, 2.0, f, HAZE_CAP));
-  return mix(h, HAZE_KEY, verse_style_haze_glow(dot(v, normalize(u.sun.xyz))));
+  let hz = st(10u).xyz; let cap = st(9u).z;
+  let h = vec3f(verse_style_haze_hue(hz.x, 0.0, f, cap), verse_style_haze_hue(hz.y, 1.0, f, cap), verse_style_haze_hue(hz.z, 2.0, f, cap));
+  return mix(h, st(11u).xyz, verse_style_haze_glow(dot(v, st(1u).xyz)));
 }
 
 fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
@@ -66,10 +65,76 @@ fn encode(c: vec3f) -> vec3f { return pow(clamp(c, vec3f(0.0), vec3f(1.0)), vec3
   let p = array(vec2f(-1.0, -3.0), vec2f(-1.0, 1.0), vec2f(3.0, 1.0));
   return vec4f(p[i], 0.0, 1.0);
 }
-@fragment fn bg_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
-  let up = clamp((u.horizon - pos.y) / max(u.size.y, 1.0) * 1.6, 0.0, 1.0);
-  let sky = mix(HORIZON, ZENITH, pow(up, 0.7));
-  return vec4f(plates(pos.xy, encode(sky)), 1.0);
+// Everything draws light (rgba16float, its alpha the share that blooms) and aux (r: the sky's glow
+// the light shafts blur); post_fs blooms, tones, encodes and lays the plates over it (host.js post).
+struct Lit { @location(0) light: vec4f, @location(1) aux: vec4f }
+// The view's inverse (the clip rows', by cofactors), so the sky is painted along each pixel's ray.
+fn unview() -> mat4x4<f32> {
+  let m = transpose(mat4x4<f32>(u.r0, u.r1, u.r2, u.r3));
+  let a00 = m[0][0]; let a01 = m[0][1]; let a02 = m[0][2]; let a03 = m[0][3];
+  let a10 = m[1][0]; let a11 = m[1][1]; let a12 = m[1][2]; let a13 = m[1][3];
+  let a20 = m[2][0]; let a21 = m[2][1]; let a22 = m[2][2]; let a23 = m[2][3];
+  let a30 = m[3][0]; let a31 = m[3][1]; let a32 = m[3][2]; let a33 = m[3][3];
+  let b00 = a00 * a11 - a01 * a10; let b01 = a00 * a12 - a02 * a10; let b02 = a00 * a13 - a03 * a10;
+  let b03 = a01 * a12 - a02 * a11; let b04 = a01 * a13 - a03 * a11; let b05 = a02 * a13 - a03 * a12;
+  let b06 = a20 * a31 - a21 * a30; let b07 = a20 * a32 - a22 * a30; let b08 = a20 * a33 - a23 * a30;
+  let b09 = a21 * a32 - a22 * a31; let b10 = a21 * a33 - a23 * a31; let b11 = a22 * a33 - a23 * a32;
+  let det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
+  let k = 1.0 / select(det, 1e-9, abs(det) < 1e-12);
+  return mat4x4<f32>(
+    vec4f(a11 * b11 - a12 * b10 + a13 * b09, a02 * b10 - a01 * b11 - a03 * b09, a31 * b05 - a32 * b04 + a33 * b03, a22 * b04 - a21 * b05 - a23 * b03) * k,
+    vec4f(a12 * b08 - a10 * b11 - a13 * b07, a00 * b11 - a02 * b08 + a03 * b07, a32 * b02 - a30 * b05 - a33 * b01, a20 * b05 - a22 * b02 + a23 * b01) * k,
+    vec4f(a10 * b10 - a11 * b08 + a13 * b06, a01 * b08 - a00 * b10 - a03 * b06, a30 * b04 - a31 * b02 + a33 * b00, a21 * b02 - a20 * b04 - a23 * b00) * k,
+    vec4f(a11 * b07 - a10 * b09 - a12 * b06, a00 * b09 - a01 * b07 + a02 * b06, a31 * b01 - a30 * b03 - a32 * b00, a20 * b03 - a21 * b01 + a22 * b00) * k);
+}
+fn pixel_ray(p: vec2f) -> vec3f {
+  let ndc = vec4f(p.x / u.size.x * 2.0 - 1.0, 1.0 - p.y / u.size.y * 2.0, 0.9, 1.0);
+  let w = unview() * ndc;
+  return normalize(w.xyz / w.w - u.eye.xyz);
+}
+fn hash2(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }
+// Stars along a ray at night: one at most per cell of the sky's own grid, a few brighter.
+fn stars(d: vec3f) -> f32 {
+  if (d.y <= 0.0) { return 0.0; }
+  let q = d.xz / (d.y + 0.35) * 260.0;
+  let g = floor(q);
+  let h = hash2(g);
+  if (h < 0.93) { return 0.0; }
+  let at = g + vec2f(hash2(g + 1.7), hash2(g + 9.1)) * 0.8 + 0.1;
+  return select(0.32, 0.75, h > 0.992) * (1.0 - smoothstep(0.12, 0.42, length(q - at)));
+}
+// The painted sky along d (spec 5): the gradient by elevation, the horizon band lifted toward the
+// haze, the sun or moon with its two-term halo, and soft two-tone clouds drifting with the wind.
+fn sky(d: vec3f, l: vec3f) -> vec3f {
+  let up = d.y;
+  var c = mix(st(13u).xyz, st(12u).xyz, verse_style_sky_t(up));
+  c = mix(c, st(10u).xyz, verse_style_sky_band(up, st(12u).w));
+  let ct = dot(d, l);
+  let moon = st(1u).w > 0.5;
+  let disc = smoothstep(cos(st(14u).x * 1.15), cos(st(14u).x * 0.85), ct);
+  let halo = verse_style_halo(ct, st(14u).y) * 0.5 + verse_style_halo(ct, st(14u).z) * 0.25;
+  c += select(st(11u).xyz, st(0u).xyz, moon) * halo * select(1.0, 0.5, moon);
+  c = mix(c, select(vec3f(1.0, 0.97, 0.88) * 4.0, vec3f(0.85, 0.88, 1.0) * 1.6, moon), disc);
+  let cl = st(15u); let c2 = st(16u);
+  if (up > 0.01 && cl.x > 0.0) {
+    let t = select(u.time, 0.0, u.still > 0.5);
+    let p = d.xz / up * cl.y + st(25u).xy * cl.z * t;
+    let n = verse_style_cloud_field(p.x, p.y, c2.x, c2.y, cl.w);
+    let cover = verse_style_cloud_cover(n, cl.x, c2.z, c2.w);
+    let toward = normalize(l.xz + vec2f(0.0001)) * 260.0;
+    let lit = verse_style_cloud_lit(n, verse_style_cloud_field(p.x + toward.x, p.y + toward.y, c2.x, c2.y, cl.w));
+    let night = st(14u).w;
+    let cloud = mix(st(4u).xyz * st(17u).w * 0.9, st(17u).xyz, lit) * max(st(0u).w, 0.3) * (1.0 - 0.75 * night);
+    c = mix(c, cloud, cover * verse_style_cloud_fade(up) * (1.0 - 0.5 * night));
+  }
+  return c + vec3f(stars(d)) * st(14u).w * 0.6;
+}
+@fragment fn bg_fs(@builtin(position) pos: vec4f) -> Lit {
+  let d = pixel_ray(pos.xy);
+  let l = st(1u).xyz;
+  let c = sky(d, l);
+  let b = st(19u);
+  return Lit(vec4f(c, verse_style_bloom_share(verse_style_luma(c.x, c.y, c.z), b.x, b.y)), vec4f(verse_style_shaft_source(dot(d, l)), 0.0, 0.0, 0.0));
 }
 
 struct Obj { r0: vec4f, r1: vec4f, r2: vec4f, colour: vec4f }
@@ -172,6 +237,7 @@ const WIND = vec4f(0.30, 12.0, 3.0, 1.0 / 25.0);   // amplitude (rad), wavelengt
 const WIND_DIR = vec2f(0.8, 0.6);
 const LOOK_FAR_CANOPY = 6u;                        // a far tree's cone, lit as a blob
 const LOOK_CANOPY = 7u;                            // a kit tree's leaves, lit as a blob
+const LOOK_CHARACTER = 8u;                         // the Ranger: textured, two bands and the stronger rim (spec 11)
 fn canopy_n(n: vec3f, blob: vec3f) -> vec3f {
   return normalize(vec3f(verse_style_canopy_normal(n.x, blob.x, CANOPY_MIX), verse_style_canopy_normal(n.y, blob.y, CANOPY_MIX), verse_style_canopy_normal(n.z, blob.z, CANOPY_MIX)));
 }
@@ -184,7 +250,9 @@ fn canopy_sway(at: vec3f, share: f32) -> vec3f {
   return vec3f(WIND_DIR.x * d, 0.0, WIND_DIR.y * d);
 }
 
-@vertex fn scene_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> S {
+@vertex fn scene_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> S { return place(id, instance); }
+// Where a vertex of a draw lands (the scene and the shadow map both draw it).
+fn place(id: u32, instance: u32) -> S {
   var o: S;
   let n = u32(u.ground.x);
   if (instance < n * n) {
@@ -208,6 +276,7 @@ fn canopy_sway(at: vec3f, share: f32) -> vec3f {
   var tint = m.colour.rgb;
   var canopy = false;
   var cone = false;
+  var ranger = false;
   var share = 0.0;
   o.uv = vec2f(0.0);
   o.slice = 0u;
@@ -249,6 +318,7 @@ fn canopy_sway(at: vec3f, share: f32) -> vec3f {
       o.uv = vec2f(word(b + 4u), word(b + 5u));
       o.slice = vertices[b + 3u] >> 24u;
       tint = vec3f(1.0);
+      ranger = true;
     }
     default: {
       v = cone_vertex(id);
@@ -267,8 +337,60 @@ fn canopy_sway(at: vec3f, share: f32) -> vec3f {
   o.world = w;
   o.normal = normalize(normal + vec3f(0.0, 0.00001, 0.0));
   o.tint = tint;
-  o.look = select(select(u32(m.colour.w) / 8u, LOOK_CANOPY, canopy), LOOK_FAR_CANOPY, cone);
+  o.look = select(select(select(u32(m.colour.w) / 8u, LOOK_CANOPY, canopy), LOOK_FAR_CANOPY, cone), LOOK_CHARACTER, ranger);
   return o;
+}
+
+// ---- the key light's shadow map (spec 3; host.js shadow_vs): every draw but the ground drawn from the
+// light into a depth map round the eye (verse_style_shadow_reach: 60 m, 40 on a phone), its middle
+// snapped to whole texels so shadows hold still, read back with the preset's Poisson taps. A leaf
+// card's clear texels cast nothing, so the canopies throw dappled shade.
+struct Light { ax: vec3f, ay: vec3f, l: vec3f, mx: f32, my: f32, reach: f32 }
+fn light_space() -> Light {
+  let l = st(1u).xyz;
+  let ax = select(vec3f(1.0, 0.0, 0.0), normalize(cross(vec3f(0.0, 1.0, 0.0), l)), abs(l.y) < 0.999);
+  let ay = cross(l, ax);
+  let reach = verse_style_shadow_reach(st(31u).z);
+  let size = max(st(21u).x, 1.0);
+  let c = vec3f(u.eye.x, 0.0, u.eye.z);
+  return Light(ax, ay, l, verse_style_shadow_snap(dot(c, ax), reach, size), verse_style_shadow_snap(dot(c, ay), reach, size), reach);
+}
+fn shadow_place(w: vec3f, k: Light) -> vec3f {
+  return vec3f(verse_style_shadow_across(dot(w, k.ax) - k.mx, k.reach), verse_style_shadow_across(dot(w, k.ay) - k.my, k.reach),
+    verse_style_shadow_depth(dot(w - vec3f(k.mx * k.ax + k.my * k.ay), k.l), k.reach));
+}
+struct Shade { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) @interpolate(flat) slice: u32, @location(2) @interpolate(flat) cut: u32 }
+@vertex fn shadow_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> Shade {
+  var o: Shade;
+  let n = u32(u.ground.x);
+  if (instance < n * n || st(21u).x < 1.0) { o.pos = vec4f(0.0, 0.0, -1.0, 1.0); return o; }   // the ground casts nothing
+  let v = place(id, instance);
+  let q = shadow_place(v.world, light_space());
+  o.pos = vec4f(q.xy, q.z, 1.0);
+  o.uv = v.uv; o.slice = v.slice;
+  o.cut = select(0u, 1u, v.look == 5u || v.look == LOOK_CANOPY || v.look == LOOK_CHARACTER);
+  return o;
+}
+@fragment fn shadow_fs(v: Shade) {
+  if (v.cut == 1u && textureSampleLevel(sheets, sheet, v.uv, v.slice, 0.0).a < 0.35) { discard; }
+}
+@group(2) @binding(0) var shadow_map: texture_depth_2d;
+@group(2) @binding(1) var shadow_cmp: sampler_comparison;
+// How much of the key reaches p (normal n): 1 lit, 0 in shadow, the map's taps averaged; outside it, lit.
+fn map_lit(p: vec3f, n: vec3f) -> f32 {
+  if (st(21u).x < 1.0) { return 1.0; }
+  let q = shadow_place(p + n * 0.08, light_space());
+  let uv = vec2f(0.5 + 0.5 * q.x, 0.5 - 0.5 * q.y);
+  let texel = 1.0 / f32(textureDimensions(shadow_map).x);
+  let phone = st(31u).z; let taps = st(21u).y; let r = st(21u).z;
+  var lit = 0.0;
+  for (var k = 0.0; k < 9.0; k += 1.0) {
+    if (k >= taps) { break; }
+    let o = vec2f(verse_style_shadow_tap(k, phone, 0.0), verse_style_shadow_tap(k, phone, 1.0));
+    lit += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + o * r * texel, q.z - 0.0006);
+  }
+  let inside = all(uv > vec2f(0.0)) && all(uv < vec2f(1.0));
+  return select(1.0, lit / max(taps, 1.0), inside);
 }
 
 fn hash(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }
@@ -311,17 +433,17 @@ fn shade_shadows_at(p: vec2f, y: f32, level: bool) -> f32 {
 }
 fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
 
-@fragment fn scene_fs(s: S, @builtin(front_facing) front: bool) -> @location(0) vec4f {
+@fragment fn scene_fs(s: S, @builtin(front_facing) front: bool) -> Lit {
   let tex = textureSample(sheets, sheet, s.uv, s.slice);
   var n = normalize(s.normal);
   var base = s.tint;
   var shadow = 1.0;
-  if (s.look == 5u || s.look == LOOK_CANOPY) {
+  if (s.look == 5u || s.look == LOOK_CANOPY || s.look == LOOK_CHARACTER) {
     // A kit mesh: its texture, cut out where the leaves' layer is clear; both sides of a leaf lit
     // (a canopy's blob normal already faces out, so it keeps it).
     if (tex.a < 0.35) { discard; }
     base = tex.rgb * s.tint;
-    if (!front && s.look == 5u) { n = -n; }
+    if (!front && s.look != LOOK_CANOPY) { n = -n; }
     // a kit piece's top (a bench, a crate) takes the shadow of whoever stands on it
     if (n.y > 0.7) { shadow = shade_shadows_at(s.world.xz, s.world.y, true); }
   }
@@ -359,14 +481,42 @@ fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
   } else if (s.look == 4u) {
     base = mix(base, vec3f(0.85, 0.92, 0.95), 0.25 * noise(xz * 1.5 + vec2f(u.time * 0.2, 0.0)));
   }
-  let sun = normalize(u.sun.xyz);
-  let lambert = max(dot(n, sun), 0.0);
-  let sky = mix(vec3f(0.34, 0.31, 0.24), vec3f(0.56, 0.66, 0.80), n.y * 0.5 + 0.5);
-  var c = base * (sky * 0.62 + vec3f(1.0, 0.94, 0.82) * lambert * 0.9 * shadow) * mix(0.75, 1.0, shadow);
+  // the shapes' and the ground's colours are written as they show on screen (sRGB); the light works in
+  // linear, as the kit's textures (sampled sRGB) already are
+  if (s.look != 5u && s.look != LOOK_CANOPY && s.look != LOOK_CHARACTER) { base = pow(max(base, vec3f(0.0)), vec3f(2.2)); }
+  // the painterly light (spec 1 to 4): the wrapped key times its shadow map and the movers' blobs,
+  // in three soft bands (two for the Ranger), the shadow band the albedo under the cool tinted
+  // ambient, the warm rim along silhouettes, then the haze
+  let l = st(1u).xyz;
+  let v = normalize(s.world - u.eye.xyz);
+  let lit = verse_style_contact(map_lit(s.world, n), 1.0 - shadow, st(4u).w);
+  let character = s.look == LOOK_CHARACTER || s.look == 3u;
+  let w = verse_style_wrap(dot(n, l)) * lit;
+  let band = select(verse_style_bands(w, st(7u).x, st(7u).y, st(7u).z, st(7u).w), verse_style_bands2(w, st(8u).x, st(8u).y), character);
+  let key = st(0u).xyz * st(0u).w;
+  let amb = vec3f(verse_style_ambient(n.y, st(5u).x, st(6u).x, st(5u).w), verse_style_ambient(n.y, st(5u).y, st(6u).y, st(5u).w), verse_style_ambient(n.y, st(5u).z, st(6u).z, st(5u).w));
+  var c = banded(base, st(4u).xyz * amb, key + amb, band);
+  let rs = select(st(2u).w, st(3u).x, character);
+  c += st(2u).xyz * verse_style_rim(dot(n, -v), dot(n, l), st(3u).y, st(3u).z, rs) * lit;
   let d = length(u.eye.xyz - s.world);
   let fog = haze_share(d, s.world.y);
-  c = mix(c, haze_colour(fog, (s.world - u.eye.xyz) / max(d, 0.001)), fog);
-  return vec4f(plates(s.pos.xy, encode(c)), 1.0);
+  c = mix(c, haze_colour(fog, v), fog);
+  let b = st(19u);
+  // the far, hazed surface passes on the sky's glow toward the light, as the air in front of it does
+  return Lit(vec4f(c, verse_style_bloom_share(verse_style_luma(c.x, c.y, c.z), b.x, b.y)), vec4f(verse_style_shaft_source(dot(v, l)) * fog, 0.0, 0.0, 0.0));
+}
+// A banded surface (spec 1 and 3): the shadow band takes the tint's hue once more at the preset's
+// amount with its value kept (painterly shadows are cool, warm albedos too); the lit band the key.
+fn banded(a: vec3f, dark: vec3f, bright: vec3f, band: f32) -> vec3f {
+  let s = a * dark;
+  let t = st(4u).xyz;
+  let tl = verse_style_luma(t.x, t.y, t.z);
+  let k = st(21u).w;
+  let m = vec3f(verse_style_cool(s.x, t.x, tl, k), verse_style_cool(s.y, t.y, tl, k), verse_style_cool(s.z, t.z, tl, k));
+  let y = verse_style_luma(s.x, s.y, s.z); let ym = verse_style_luma(m.x, m.y, m.z);
+  let cool = vec3f(verse_style_keep_value(m.x, y, ym), verse_style_keep_value(m.y, y, ym), verse_style_keep_value(m.z, y, ym));
+  let l = a * bright;
+  return vec3f(verse_style_banded(cool.x, l.x, band), verse_style_banded(cool.y, l.y, band), verse_style_banded(cool.z, l.z, band));
 }
 
 struct V {
@@ -450,17 +600,19 @@ const WATER_SUN = vec3f(1.0, 0.94, 0.82);
 const WATER_SUN_E: f32 = 2.8274;          // the sun's illuminance: scene_fs's 0.9 times PI
 const WATER_BED: f32 = 0.15;              // the linear radiance a lit bed under the water has, about
 
+// The water's hooks take the painted sky, the preset's key and its ambient (eg-paint-light).
 fn water_host_sky(dir: vec3f, level: f32) -> vec3f {
-  let up = clamp(dir.y, 0.0, 1.0);
-  let sharp = mix(HORIZON, ZENITH, smoothstep(0.0, 0.55, up));
-  let blurred = mix(HORIZON, ZENITH, 0.55);
-  return mix(sharp, blurred, level * level);
+  let l = st(1u).xyz;
+  let d = normalize(vec3f(dir.x, max(dir.y, 0.0), dir.z));
+  let sharp = mix(st(10u).xyz, st(12u).xyz, verse_style_sky_t(d.y));
+  let blurred = mix(st(10u).xyz, st(12u).xyz, 0.55);
+  return mix(sharp, blurred, level * level) + select(st(11u).xyz, st(0u).xyz, st(1u).w > 0.5) * verse_style_halo(dot(d, l), st(14u).z) * 0.25;
 }
-fn water_host_sun() -> vec4f { return vec4f(normalize(u.sun.xyz), 1.0); }
-fn water_host_sun_light() -> vec3f { return WATER_SUN * WATER_SUN_E; }
+fn water_host_sun() -> vec4f { return vec4f(st(1u).xyz, select(1.0, 0.0, st(0u).w <= 0.0)); }
+fn water_host_sun_light() -> vec3f { return st(0u).xyz * st(0u).w * WATER_SUN_E; }
 fn water_host_light(world: vec3f, n: vec3f) -> vec3f {
-  let sky = mix(vec3f(0.34, 0.31, 0.24), vec3f(0.56, 0.66, 0.80), n.y * 0.5 + 0.5);
-  return sky * 0.62 + WATER_SUN * 0.9 * max(dot(n, normalize(u.sun.xyz)), 0.0) * shade_shadows(world.xz);
+  let amb = vec3f(verse_style_ambient(n.y, st(5u).x, st(6u).x, st(5u).w), verse_style_ambient(n.y, st(5u).y, st(6u).y, st(5u).w), verse_style_ambient(n.y, st(5u).z, st(6u).z, st(5u).w));
+  return amb + st(0u).xyz * st(0u).w * max(dot(n, st(1u).xyz), 0.0) * map_lit(world, n) * shade_shadows(world.xz);
 }
 
 fn water_node(k: u32, f: u32) -> f32 { return water_nodes[k * 8u + f]; }
@@ -846,12 +998,10 @@ fn water_halves(i: WaterOut) -> WaterShade {
   let d = length(u.eye.xyz - i.world_depth.xyz);
   let fog = haze_share(d, i.world_depth.y);
   let emit = s.emit * (1.0 - fog) + haze_colour(fog, (i.world_depth.xyz - u.eye.xyz) / max(d, 0.001)) * fog * (vec3f(1.0) - s.transmit);
-  let bed = WATER_BED * s.transmit;
-  // a plate's cover: what of the scene under it a plate keeps
-  let open = plates(i.clip.xy, vec3f(1.0)) - plates(i.clip.xy, vec3f(0.0));
+  // linear light now (the post pass encodes): what lies behind times the transmittance, plus the emitted
   var o: WaterShade;
-  o.transmit = mix(vec3f(1.0), encode(s.transmit), open);
-  o.emit = max(encode(bed + emit) - encode(bed), vec3f(0.0)) * open;
+  o.transmit = s.transmit;
+  o.emit = max(emit, vec3f(0.0));
   return o;
 }
 @fragment fn water_transmit_fs(i: WaterOut) -> @location(0) vec4f {
@@ -859,6 +1009,75 @@ fn water_halves(i: WaterOut) -> WaterShade {
 }
 @fragment fn water_emit_fs(i: WaterOut) -> @location(0) vec4f {
   return vec4f(water_halves(i).emit, 0.0);
+}
+
+// ---- the post pass (host.js postLayouts, art-styles.md 6 and 9): the bright share at a quarter and an
+// eighth of the size, blurred, mixed back at the preset's bloom mix; the light shafts; then the tone,
+// the encoding and the plates over it.
+struct Step { v: vec4f }
+@group(1) @binding(0) var bloom_src: texture_2d<f32>;
+@group(1) @binding(1) var bloom_lin: sampler;
+@group(1) @binding(2) var<uniform> bloom_step: Step;
+@fragment fn bloom_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let texel = 1.0 / vec2f(textureDimensions(bloom_src));
+  let uv = pos.xy * bloom_step.v.w * texel;
+  if (bloom_step.v.z < 0.5) {
+    var c = vec3f(0.0);
+    for (var k = 0; k < 4; k++) {
+      let t = textureSampleLevel(bloom_src, bloom_lin, uv + (vec2f(f32(k & 1), f32(k >> 1u)) * 2.0 - 1.0) * texel, 0.0);
+      c += t.rgb * clamp(t.a, 0.0, 1.0);
+    }
+    return vec4f(c * 0.25, 1.0);
+  }
+  let d = bloom_step.v.xy * texel;
+  var c = textureSampleLevel(bloom_src, bloom_lin, uv, 0.0).rgb * 0.227;
+  c += (textureSampleLevel(bloom_src, bloom_lin, uv + d * 1.385, 0.0).rgb + textureSampleLevel(bloom_src, bloom_lin, uv - d * 1.385, 0.0).rgb) * 0.316;
+  c += (textureSampleLevel(bloom_src, bloom_lin, uv + d * 3.231, 0.0).rgb + textureSampleLevel(bloom_src, bloom_lin, uv - d * 3.231, 0.0).rgb) * 0.070;
+  return vec4f(c, 1.0);
+}
+@group(1) @binding(0) var post_light: texture_2d<f32>;
+@group(1) @binding(1) var post_quarter: texture_2d<f32>;
+@group(1) @binding(2) var post_eighth: texture_2d<f32>;
+@group(1) @binding(3) var post_aux: texture_2d<f32>;
+@group(1) @binding(4) var post_depth: texture_depth_2d;
+@group(1) @binding(5) var post_lin: sampler;
+fn tone(c: vec3f) -> vec3f {
+  let e = st(18u).x;
+  var t = vec3f(verse_style_tone(c.x, e), verse_style_tone(c.y, e), verse_style_tone(c.z, e));
+  let y = verse_style_luma(t.x, t.y, t.z);
+  t = vec3f(verse_style_saturation(t.x, y, st(18u).y), verse_style_saturation(t.y, y, st(18u).y), verse_style_saturation(t.z, y, st(18u).y));
+  return vec3f(verse_style_lift(t.x, st(18u).z), verse_style_lift(t.y, st(18u).z), verse_style_lift(t.z, st(18u).z));
+}
+@fragment fn post_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let light = textureLoad(post_light, vec2i(pos.xy), 0).rgb;
+  let uv = pos.xy / u.size;
+  let b = textureSampleLevel(post_quarter, post_lin, uv, 0.0).rgb * 0.55 + textureSampleLevel(post_eighth, post_lin, uv, 0.0).rgb * 0.45;
+  let m = st(19u).z;
+  var c = vec3f(verse_style_bloom_mix(light.x, b.x, m), verse_style_bloom_mix(light.y, b.y, m), verse_style_bloom_mix(light.z, b.z, m));
+  c += shafts(pos.xy, uv) * st(11u).xyz * st(0u).w;
+  return vec4f(plates(pos.xy, encode(tone(c) * u.fade)), 1.0);
+}
+// Light shafts (spec 6): march from the pixel toward the key light's place on screen, gathering the
+// sky's glow (aux.r) with each tap weighted decay^i; the canopies and roofs block it, so light streams
+// through the gaps. Faded as the light leaves the frame; the march starts a hashed fraction in.
+fn shafts(p: vec2f, uv: vec2f) -> f32 {
+  let sh = st(20u);
+  let k = clip(u.eye.xyz + st(1u).xyz * 1000.0);
+  if (k.w <= 0.01 || sh.z <= 0.0) { return 0.0; }
+  let at = vec2f(0.5 + 0.5 * k.x / k.w, 0.5 - 0.5 * k.y / k.w);
+  let fade = verse_style_shaft_fade(at.x, at.y, sh.w);
+  if (fade <= 0.0) { return 0.0; }
+  let n = sh.x;
+  let step = (at - uv) / n;
+  let jitter = fract(52.9829189 * fract(dot(p, vec2f(0.06711056, 0.00583715))));
+  var sum = 0.0;
+  for (var i = 0.0; i < 24.0; i += 1.0) {
+    if (i >= n) { break; }
+    let q = uv + step * (i + jitter);
+    if (any(q < vec2f(0.0)) || any(q > vec2f(1.0))) { break; }
+    sum += textureSampleLevel(post_aux, post_lin, q, 0.0).r * verse_style_shaft_tap(i, sh.y);
+  }
+  return verse_style_shaft(sum, verse_style_shaft_total(n, sh.y), sh.z, fade);
 }
 
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
@@ -1074,11 +1293,11 @@ fn verse_style_bloom_share(l_lum: f32, l_threshold: f32, l_knee: f32) -> f32 {
   var l_q: f32 = coax_p_st_min(coax_t40, coax_t41);
   return coax_p_st_min((coax_p_st_max(((l_q * l_q) / (4.0 * l_k)), (l_lum - l_threshold)) / l_lum), 1.0);
 }
-fn verse_style_bloom_mix(l_c: f32, l_bloom: f32, l_mix: f32) -> f32 {
-  return (l_c + (l_bloom * l_mix));
+fn verse_style_bloom_mix(l_c: f32, l_bloom: f32, l_amount: f32) -> f32 {
+  return (l_c + (l_bloom * l_amount));
 }
-fn verse_style_shadow_reach(l_phone: f32) -> f32 {
-  if ((l_phone > 0.5))
+fn verse_style_shadow_reach(l_on_phone: f32) -> f32 {
+  if ((l_on_phone > 0.5))
   {
     return 40.0;
   }
@@ -1098,20 +1317,20 @@ fn verse_style_shadow_across(l_x: f32, l_reach: f32) -> f32 {
 fn verse_style_shadow_depth(l_along: f32, l_reach: f32) -> f32 {
   return (0.5 - (l_along / (4.0 * coax_p_st_max(l_reach, 0.00100000005))));
 }
-fn verse_style_shadow_taps(l_phone: f32) -> f32 {
-  if ((l_phone > 0.5))
+fn verse_style_shadow_taps(l_on_phone: f32) -> f32 {
+  if ((l_on_phone > 0.5))
   {
     return 4.0;
   }
   return 9.0;
 }
-fn verse_style_shadow_radius(l_phone: f32) -> f32 {
-  return (2.5 + (0.0 * l_phone));
+fn verse_style_shadow_radius(l_on_phone: f32) -> f32 {
+  return (2.5 + (0.0 * l_on_phone));
 }
-fn verse_style_shadow_tap(l_k: f32, l_phone: f32, l_axis: f32) -> f32 {
+fn verse_style_shadow_tap(l_k: f32, l_on_phone: f32, l_which: f32) -> f32 {
   var l_x: f32 = 0.0;
   var l_y: f32 = 0.0;
-  if ((l_phone > 0.5))
+  if ((l_on_phone > 0.5))
   {
     if ((l_k < 0.5))
     {
@@ -1191,7 +1410,7 @@ fn verse_style_shadow_tap(l_k: f32, l_phone: f32, l_axis: f32) -> f32 {
       l_y = (-0.893000007);
     }
   }
-  if ((l_axis > 0.5))
+  if ((l_which > 0.5))
   {
     return l_y;
   }
