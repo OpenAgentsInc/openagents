@@ -31,9 +31,8 @@
 #
 # Routing (one load balancer, coaxial-openagents-web-staging):
 #   staging.openagents.com → the staging bucket
-#   openagents.com         → the production bucket for / and the Coax files
-#                            (/build/*, /coaxial/*), the coder service for the rest
-#                            until it is retired (docs/2026-10-28-coder-service-deprecation.md)
+#   openagents.com         → the production bucket, /api/* to oa-api (the coder
+#                            service is retired: docs/2026-10-28-coder-service-deprecation.md)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"
 ref=origin/main stage=true prod=true
@@ -119,7 +118,7 @@ via=""
 [[ "$(dig +short openagents.com A | sort | head -1)" == "$lb_ip" ]] || via="--via $lb_ip"
 walked=true
 [[ -n "$via" ]] || bun "$tree/coax/web/goldens.ts" https://openagents.com --walk || walked=false
-if ! $walked || ! "$tree/coax/web/smoke.sh" https://openagents.com $via --coder; then
+if ! $walked || ! "$tree/coax/web/smoke.sh" https://openagents.com $via; then
   echo "release $commit: production smoke failed; rolling back to the pages from before" >&2
   "$here/rollback.sh" "$stamp"
   exit 1

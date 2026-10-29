@@ -6,8 +6,8 @@
 #   /api/* on openagents.com         -> Cloud Run oa-api
 # The backends pass the load balancer's view of the visitor to the service
 # as headers (geography, RTT, TLS, the client's address in X-Forwarded-For),
-# which pt-capture records. Every other path keeps its rule (the coder
-# service still gets what nothing else matches).
+# which pt-capture records. Every other path keeps its rule; what no rule
+# names goes to the site's bucket (the coder service is retired).
 #
 # Private projects (private.c, docs/private-projects.md):
 #   lb.sh private-route SLUG   /projects/SLUG and /projects/SLUG/* on both hosts -> the API
@@ -108,7 +108,7 @@ for pm in m["pathMatchers"]:
     changed = True
 # /admin/analytics (admin.coax), /login (private.coax page 2) and /chat (chat.coax) are Coaxial
 # pages: in production they go to the site's bucket with the other Coax pages,
-# not to the coder service; so does /.well-known/apple-app-site-association.
+# so does /.well-known/apple-app-site-association.
 for pm in m["pathMatchers"]:
     if pm["name"] != "production": continue
     for rule in pm.get("routeRules", []):
@@ -124,7 +124,7 @@ for pm in m["pathMatchers"]:
             if next(iter(match.values())) not in have:
                 rule["matchRules"].append(match); changed = True
                 print("url map: production " + next(iter(match.values())) + " to the site")
-# The page is /login ("Log in"): /signin, /logout and /signup go there; the coder service's WorkOS login is retired.
+# The page is /login ("Log in"): /signin, /logout and /signup go there.
 for pm in m["pathMatchers"]:
     if pm["name"] != "production": continue
     rules = pm.setdefault("routeRules", [])
@@ -138,6 +138,16 @@ for pm in m["pathMatchers"]:
     rules.sort(key=lambda r: r["priority"])
     changed = True
     print("url map: production /signin, /logout and /signup to /login")
+# The coder service is retired (docs/2026-10-28-coder-service-deprecation.md): whatever no rule
+# names is the site's bucket, so an unknown path gets the Coax 404.
+for pm in m["pathMatchers"]:
+    if pm["name"] != "production": continue
+    bucket = f"https://www.googleapis.com/compute/v1/projects/{project}/global/backendBuckets/coaxial-openagents-web"
+    if pm.get("defaultService") != bucket:
+        pm["defaultService"] = bucket; changed = True
+        print("url map: production's default is the site's bucket")
+    for rule in pm.get("routeRules", []):
+        if rule.get("service", "").endswith("/coaxial-coder"): raise SystemExit("lb.sh: a production rule still names coaxial-coder")
 for k in ("kind", "creationTimestamp", "id", "selfLink"): m.pop(k, None)   # read-only: import refuses them
 json.dump(m, open(path, "w"))
 print("url map: /api/ rules added" if changed else "url map: /api/ rules already there")

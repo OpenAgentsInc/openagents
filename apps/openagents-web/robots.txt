@@ -1,0 +1,12 @@
+# openagents.com: crawlers and agents are welcome.
+# What's here, as Markdown: /llms.txt and /llms-full.txt. Most pages have a twin: add index.md to a page's address.
+User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+Allow: /
+Disallow: /admin/
+Disallow: /chat
+Disallow: /login
+Disallow: /api/
+Disallow: /projects/private/
+
+Sitemap: https://openagents.com/sitemap.xml

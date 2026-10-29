@@ -147,6 +147,13 @@ if not coder:
     # 404 naming nothing; the locked page itself once the load balancer's error policy serves it (lb.sh private-pages)
     check(s2 == 404 and b'data-page="1"' in b2 and nobody.encode() not in b2.split(b"<script", 1)[0], f"an unknown private slug is a 404 that names nothing ({s2})")
     check(s3 == 404 and b3 == b'{"error": "not found"}' and "no-store" in h3.get("cache-control", ""), f"an unknown private slug's API says only not found ({s3})")
+# For agents: llms.txt and llms-full.txt, robots.txt, the sitemap, NIP-05 and security.txt, from the site.
+agent = [("/llms.txt", "text/plain", b"# OpenAgents"), ("/llms-full.txt", "text/plain", b"# OpenAgents"),
+         ("/robots.txt", "text/plain", b"User-agent"), ("/sitemap.xml", "application/xml", b"<urlset"),
+         ("/.well-known/nostr.json", "application/json", b'"coax"'), ("/.well-known/security.txt", "text/plain", b"Contact:"),
+         ("/cli/install.sh", "text/plain", b"#!/")]
+for (path, kind, start), (s, h, body) in zip(agent, fetch([p for p, _, _ in agent])):
+    check(s == 200 and h.get("content-type", "").startswith(kind) and start in body[:4000], f"{path} ({s}, {h.get('content-type')})")
 # Signing in with the phone (docs/phone-sign-in.md): the page, the app's universal links, the API.
 (s1, h1, b1), (s2, h2, b2), (s3, h3, b3) = fetch(["/login", "/.well-known/apple-app-site-association", "/api/auth/me"])
 check(s1 == 200 and b'data-app="private"' in b1 and b'data-page="2"' in b1, f"/login is the login page ({s1})")

@@ -55,7 +55,8 @@ for root, dirs, files in os.walk(app):
     dirs[:] = sorted(d for d in dirs if d not in ("build", "work", "node_modules") and not d.startswith("."))
     for f in sorted(files):
         rel = os.path.relpath(os.path.join(root, f), app)
-        if f == "README.md" or not f.endswith((".html", ".md", ".svg", ".jpg")): continue
+        agent = rel in ("llms.txt", "robots.txt") or (rel.startswith("cli" + os.sep) and f.endswith((".sh", ".ps1")))
+        if f == "README.md" or not (agent or f.endswith((".html", ".md", ".svg", ".jpg"))): continue
         pages.append(rel)
 for f in pages:
     path = os.path.join(app, f)
@@ -80,12 +81,20 @@ for f in pages:
     # the bucket can't map to index.html on its own; upload.py serves it as HTML.
     if os.path.basename(f) == "index.html" and os.path.dirname(f):
         shutil.copy(os.path.join(site, f), os.path.join(site, os.path.dirname(f) + ".page"))
-# The phone app's universal links (docs/phone-sign-in.md): well-known/X.json is
-# served at /.well-known/X as JSON (upload.py's .wellknown).
+# well-known/X.json is served at /.well-known/X as JSON (upload.py's .wellknown): the phone
+# app's universal links (docs/phone-sign-in.md) and nostr.json (NIP-05); other files keep their name.
 for f in sorted(os.listdir(os.path.join(app, "well-known"))) if os.path.isdir(os.path.join(app, "well-known")) else []:
-    if f.endswith(".json"):
-        os.makedirs(os.path.join(site, ".well-known"), exist_ok=True)
-        shutil.copy(os.path.join(app, "well-known", f), os.path.join(site, ".well-known", f[:-5] + ".wellknown"))
+    os.makedirs(os.path.join(site, ".well-known"), exist_ok=True)
+    shutil.copy(os.path.join(app, "well-known", f), os.path.join(site, ".well-known", f[:-5] + ".wellknown" if f.endswith(".json") else f))
+# For agents: llms-full.txt is every public page's Markdown twin in one file, and sitemap.xml lists those pages.
+public = sorted(f for f in pages if f.endswith("index.md") and not f.startswith(("admin", "chat", "login", "projects" + os.sep + "private")))
+def url(f): return "https://openagents.com/" + os.path.dirname(f).replace(os.sep, "/")
+with open(os.path.join(site, "llms-full.txt"), "w", encoding="utf-8") as out:
+    out.write(open(os.path.join(app, "llms.txt"), encoding="utf-8").read())
+    for f in public: out.write(f"\n\n---\n\nSource: {url(f)}\n\n" + open(os.path.join(app, f), encoding="utf-8").read())
+with open(os.path.join(site, "sitemap.xml"), "w", encoding="utf-8") as out:
+    out.write('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
+    out.write("".join(f"<url><loc>{url(f)}</loc></url>\n" for f in public) + "</urlset>\n")
 PY
 
 # Hidden presentations (unlock/), when COAXIAL_UNLOCKS names any: from the
