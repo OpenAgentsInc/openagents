@@ -9,7 +9,7 @@ AgBinding :: struct {name:string;value:AgValue;induction:bool;}
 AgEnv :: struct {bindings:[64]AgBinding;count:int;procedure:int;}
 AgGuard :: struct {node:int;unit:int;line:int;column:int;mask:u64;kind:u32;}
 AgMemo :: struct {procedure:int;count:int;args:[8]AgValue;result:AgValue;closure:u64;height:int;}
-AgMemory :: struct {taint:[4096]u64;dirty:[4096]bool;used:int;guard_count:int;guards:[256]AgGuard;memo:[128]AgMemo;memo_count:int;scope:[16]u64;height:[16]int;}
+AgMemory :: struct {taint:[4096]u64;dirty:[4096]bool;used:int;guard_count:int;guards:[256]AgGuard;memo:[128]AgMemo;memo_count:int;scope:[16]u64;height:[16]int;compiled_runs:bool;}
 AgBlock :: struct {value:AgValue;returned:bool;}
 #test "aggregate source bounds and scalar identities are explicit" {
  #assert AG_primitive("u64")==-1 && AG_primitive("u32")==-2 && AG_primitive("bool")==-3 && AG_primitive("int")==-4 && AG_primitive("u8")==-5;
@@ -133,6 +133,9 @@ AG_literal_field :: (nodes:[]ScNode,values:[]u64,id:int,field:ScNode,state:[]ScA
 AG_expr :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit,depth:int)->AgValue {
  if !AG_tick(state,id) {return AgValue.{};}if id==0 || depth>=16 {SC_fail(state,SC_LIMIT,id);return AgValue.{};}n:=nodes[id];
  if n.kind==16 || n.kind==18 {if n.kind==18 && values[id]>1 {SC_fail(state,SC_GRAPH,id);return AgValue.{};}r:=AgValue.{type=ifx n.kind==18 then -3 else -4};if values[id]<=cast(u64)AG_interval_limit() {r.known=true;r.lo=cast(int)values[id];r.hi=r.lo;}return r;}
+ // Only the checked-source driver may attest that the pinned compiler has
+ // successfully evaluated the same source graph. No value or type is guessed.
+ if n.kind==24 {if !memory[0].compiled_runs {SC_fail(state,SC_UNSUPPORTED,id);}return AgValue.{};}
  if n.kind==20 {slot:=AG_slot(env,n.name);if slot>=0 {return env[0].bindings[slot].value;}d:=AG_decl(nodes,roots,n.name,state);if nodes[d].kind!=65 {SC_fail(state,SC_CALL,id);return AgValue.{};}empty:[1]AgEnv;return AG_expr(nodes,values,roots,types,nodes[d].a,empty[..],memory,state,depth+1);}
  if n.kind==22 {a:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);r:=a;r.mask=AG_origin(a,memory);r.region=0;r.literal=0;if n.op!=35 && n.op!=52 {SC_fail(state,SC_UNSUPPORTED,id);return r;}
   if n.op==52 {r.type=-3;if a.known {r.lo=ifx a.hi==0 then 1 else 0;r.hi=ifx a.lo!=0 then 0 else 1;}}
@@ -256,13 +259,18 @@ AG_procedure :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,a
 }
 AG_primitive_name :: (type:int)->string {if type==-1 {return "u64";}if type==-2 {return "u32";}if type==-3 {return "bool";}if type==-4 {return "int";}if type==-5 {return "u8";}return "";}
 AG_parameter_name :: (types:[]ScType,p:ScNode,n:ScNode)->string {for t:types {if t.unit==p.unit && t.procedure==p.name && t.procedure_line==p.line && t.name==n.name && t.line==n.line && t.role=="parameter" {return t.type;}}return "";}
-AG_check :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,entry:string,memory:[]AgMemory)->ScResult #export_c {
+AG_check_source :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,entry:string,memory:[]AgMemory,compiled_runs:bool)->ScResult {
  if !SC_shape(nodes,roots,types) || values.count!=nodes.count || memory.count!=1 {return ScResult.{error=SC_GRAPH,unit=-1};}memory[0]=AgMemory.{};
+ memory[0].compiled_runs=compiled_runs;
  state:[1]ScAudit;id:=AG_decl(nodes,roots,entry,state[..]);if state[0].error!=0 {return ScResult.{error=state[0].error,unit=-1};}if nodes[id].kind!=64 {return ScResult.{error=SC_ENTRY,unit=-1};}args:[8]AgValue;at:=nodes[id].head;count:=0;
  while at!=0 {if !AG_tick(state[..],at) {break;}if count==8 {SC_fail(state[..],SC_LIMIT,id);break;}args[count].mask=cast(u64)1<<count;count+=1;at=nodes[at].next;}
  if count==0 {return ScResult.{error=SC_ENTRY,unit=-1};}r:=AG_procedure(nodes,values,roots,types,id,args[0..<count],memory,state[..]);where:=state[0].where;error:=state[0].error;if error==0 && memory[0].guard_count!=0 {error=AG_GUARDS;}
  return ScResult.{error=error,unit=nodes[where].unit,line=nodes[where].line,column=nodes[where].column,reached=state[0].count,visits=state[0].visits,return_mask=AG_origin(r,memory)};
 }
+// Direct graph callers have no compiler attestation. The compiled entry is
+// reserved for the source driver after compilation and source-hash checks.
+AG_check :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,entry:string,memory:[]AgMemory)->ScResult #export_c {return AG_check_source(nodes,values,roots,types,entry,memory,false);}
+AG_check_compiled :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,entry:string,memory:[]AgMemory)->ScResult #export_c {return AG_check_source(nodes,values,roots,types,entry,memory,true);}
 
 AG_tick :: (state:[]ScAudit,where:int)->bool {
  if state[0].error!=0 {return false;}if state[0].visits>=262144 {SC_fail(state,SC_LIMIT,where);return false;}state[0].visits+=1;return true;

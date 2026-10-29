@@ -6,8 +6,10 @@ import hashlib
 import os
 from pathlib import Path
 import random
+import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from aggregate import AggregateAudit
 from check import ROOT,COMPILER,run,metadata_sha
 
@@ -127,6 +129,49 @@ candidate :: (x:u64)->u64 #export_c {p:=Pair.{value=0};p.value=1;return helper(p
         self.case('summary_changed_callee','unsafe_vartime :: (x:u64)->u64 {return x;} helper :: (x:u64)->u64 {return unsafe_vartime(x);} candidate :: (x:u64)->u64 {return helper(x);}',8)
         r=self.case('summary_guard_context','helper :: (x:u64)->u64 {#assert x!=0;return x;} candidate :: (x:u64)->u64 {a:=helper(1);return helper(x)+a;}',14)
         self.assertEqual(len(r['authored_guard_obligations']),1);self.assertEqual(r['authored_guard_obligations'][0]['origin_mask'],1)
+    def test_compiled_run_provenance_is_required_and_public_only(self):
+        text='generate :: ()->[2]u64 {return [2]u64.[1,2];} table :: #run generate(); candidate :: (x:u64)->u64 #export_c {t:=table;return t[0]^x;}'
+        source=self.directory/'compiled_public_table.coax';source.write_text(text)
+        accepted=self.tool.audit(source,'candidate',run_steps=100000);self.assertTrue(accepted['accepted'],accepted);self.assertEqual(accepted['run_expression_provenance'],'compiled-source-hash-and-dependencies-verified');self.assertEqual(accepted['compiler_descriptors'],[])
+        default=self.tool.audit(source,'candidate');self.assertEqual(default['error'],5);self.assertNotIn('run_expression_provenance',default)
+        bridge=self.tool.lib.ag_bridge_compiled;self.tool.lib.ag_bridge_compiled=self.tool.lib.ag_bridge
+        try:unverified=self.tool.audit(source,'candidate',run_steps=100000)
+        finally:self.tool.lib.ag_bridge_compiled=bridge
+        self.assertEqual(unverified['error'],5);self.assertFalse(unverified['accepted'])
+        secret=self.directory/'run_secret_input.coax';secret.write_text('candidate :: (x:u64)->u64 {v:=#run x;return v;}');self.assertEqual(self.tool.audit(secret,'candidate',run_steps=100000)['error'],1)
+        unknown=self.directory/'run_unknown_loop_bound.coax';unknown.write_text('limit :: #run 2; candidate :: (x:u64)->u64 #export_c {for i:0..<limit {}return x;}');self.assertEqual(self.tool.audit(unknown,'candidate',run_steps=100000)['error'],2)
+        self.observations.append({'case':'compiled_public_table','report':accepted,'unverified_error':unverified['error'],'secret_compile_refused':True,'unknown_bound_refused':True})
+    def test_run_provenance_refuses_changed_or_missing_dependencies(self):
+        source=self.directory/'run_dependency_control.coax';source.write_text('value :: #run 1; candidate :: (x:u64)->u64 #export_c {return x;}')
+        original=subprocess.run
+        for variant in ['descriptor','source','steps','malformed','nonobject']:
+            def changed(command,*args,**kwargs):
+                result=original(command,*args,**kwargs)
+                if len(command)>1 and command[1]=='deps' and result.returncode==0:
+                    if variant=='malformed':result.stdout='{'
+                    elif variant=='nonobject':result.stdout='[]'
+                    else:
+                        data=json.loads(result.stdout)
+                        if variant=='descriptor':data['descriptors']=['unbound-descriptor']
+                        if variant=='source':data['sources']=[]
+                        if variant=='steps':data['run_steps']+=1
+                        result.stdout=json.dumps(data)
+                return result
+            with patch('check.subprocess.run',side_effect=changed):result=self.tool.audit(source,'candidate',run_steps=100000)
+            self.assertFalse(result['accepted'],(variant,result));self.assertNotIn('run_expression_provenance',result)
+        self.observations.append({'case':'compiled_run_dependency_controls','variants':['descriptor','source','steps','malformed','nonobject'],'all_refused':True})
+    def test_run_provenance_refuses_missing_or_mismatched_source_map(self):
+        source=self.directory/'run_map_control.coax';source.write_text('value :: #run 1; candidate :: (x:u64)->u64 #export_c {return x;}')
+        for variant in ['missing','malformed','hash']:
+            def changed():
+                path=self.tool.directory/'source-map.json'
+                if variant=='missing':path.unlink()
+                elif variant=='malformed':path.write_text('[]')
+                else:
+                    data=json.loads(path.read_text());key=next(iter(data['source_hashes']));data['source_hashes'][key]='0'*64;path.write_text(json.dumps(data))
+            result=self.tool.audit(source,'candidate',after_compile=changed,run_steps=100000)
+            self.assertEqual(result['error'],13,(variant,result));self.assertFalse(result['accepted']);self.assertNotIn('run_expression_provenance',result)
+        self.observations.append({'case':'compiled_run_source_map_controls','variants':['missing','malformed','hash'],'all_refused':True})
     def test_actual_crypto_closures_and_public_only_exclusion(self):
         for file,entry,error in [('secp_scalar.coax','sc_mul',0),('secp_field.coax','sf_multiply',14),('secp_field.coax','sf_inverse',14),('secp_group.coax','sg_choose',0),('secp_field.coax','sf_inverse_vartime',8),('secp_group.coax','sg_decode_public',8)]:
             r=self.tool.audit(ROOT/'coax/lib/crypto'/file,entry);self.assertEqual(r['error'],error,(entry,r));self.assertFalse(r['production_crypto_approved']);self.assertTrue(r['source_sha256']);canonical=json.dumps(r['resolved_type_inventory'],sort_keys=True,separators=(',',':')).encode();self.assertEqual(r['resolved_type_sha256'],hashlib.sha256(canonical).hexdigest());self.observations.append({'case':entry,'report':r})

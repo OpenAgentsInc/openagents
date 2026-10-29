@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import random
+import subprocess
 import tempfile
 import unittest
 from check import Audit,ROOT,COMPILER,run,metadata_sha
@@ -33,6 +34,17 @@ class SecretSource(unittest.TestCase):
         path=self.directory/(name+'.coax');path.write_text(text)
         report=self.tool.audit(path,'candidate');self.assertEqual(report['error'],expected,(name,report))
         self.observations.append({'case':name,'expected':expected,'report':report});return report
+    def test_explicit_run_step_input_is_bounded_and_recorded(self):
+        source=self.directory/'run-step-input.coax';source.write_text('value :: ()->u64 {return 7;} public_value :: #run value(); candidate :: (x:u64)->u64 #export_c {return x;}')
+        low=self.tool.audit(source,'candidate',run_steps=1);self.assertFalse(low['accepted']);self.assertEqual(low['compiler_run_steps'],1)
+        allowed=self.tool.audit(source,'candidate',run_steps=100000);self.assertTrue(allowed['accepted'],allowed);self.assertEqual(allowed['compiler_run_steps'],100000)
+        default=self.tool.audit(source,'candidate');self.assertTrue(default['accepted'],default);self.assertIsNone(default['compiler_run_steps'])
+        for invalid in [0,250000001,True,'100']:
+            with self.assertRaises(ValueError):self.tool.audit(source,'candidate',run_steps=invalid)
+        for script in ['check.py','aggregate.py']:
+            result=subprocess.run(['python3',str(ROOT/'tools/coax-nostr/secret-check'/script),str(source),'--entry','candidate','--run-steps','250000001'],capture_output=True,text=True)
+            self.assertEqual(result.returncode,2);self.assertIn('between 1 and 250000000',result.stderr)
+        self.observations.append({'case':'explicit_compiler_run_steps','default':None,'refused_budget':1,'accepted_budget':100000,'out_of_range_refused':True})
     def test_real_secret_control_indices_calls_and_unsupported_flow(self):
         cases=[
           ('ifx','candidate :: (x:u64)->u64 {return ifx x==0 then 1 else 2;}',6),
