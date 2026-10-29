@@ -48,6 +48,11 @@ K_BACK :: -3; K_ESC :: -1;
 MODELS :: [3] string.["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"];
 MODEL_NAMES :: [3] string.["HAIKU 5.5", "SONNET 5.5", "OPUS 5.5"];
 MODEL_DEFAULT :: 2;
+EFFORTS :: [5] string.["low", "medium", "high", "xhigh", "max"];
+EFFORT_NAMES :: [5] string.["LOW", "MEDIUM", "HIGH", "XHIGH", "MAX"];
+EFFORT_DEFAULT :: 2;
+H_EFFORT :: 30;            // + the effort's index (the Mac app)
+POST_EFFORT :: 6;
 
 ChatState :: struct {
   time: f32; ready: bool;
@@ -57,6 +62,7 @@ ChatState :: struct {
   ask: [CH_URL] u8; ask_n: int; ask_id: int;
   post: [CH_URL] u8; post_n: int; post_id: int; post_kind: int;
   body: [CH_BODY] u8; body_n: int;
+  effort: int;                   // the Mac app: the effort chosen here, its index + 1; 0 the backend's own
   shown: int;                    // the conversation shown: its id, 0 a new one, -1 the newest
   model: int;                    // the model chosen here, -1 the conversation's own
   note: [CH_NOTE] u8; note_n: int; note_at: f32;    // a word under the field: NOT SENT, the cap
@@ -120,6 +126,8 @@ ch_nth :: (s: [] ChatState, kind: u8, k: int) -> int {
 ch_z :: (s: [] ChatState, col: int) -> string { z := ch_first(s, 'Z'); return ifx z < 0 then "" else ch_cell(s, z, col); }
 ch_busy :: (s: [] ChatState) -> bool { return s[0].post_kind == POST_SEND || ch_z(s, 6) == "1"; }
 ch_has_key :: (s: [] ChatState) -> bool { return ch_z(s, 3).count > 0; }
+// The Mac app (apps/openagents-desktop): turns run the user's own Claude Code on that Mac, so no key, cap or KEY.
+ch_local :: (s: [] ChatState) -> bool { return ch_z(s, 3) == "local"; }
 // Today's spend on OpenAgents' key has reached the cap, and no key of the asker's is saved.
 ch_capped :: (s: [] ChatState) -> bool {
   if ch_has_key(s) || ch_first(s, 'Z') < 0 { return false; }
@@ -150,6 +158,13 @@ ch_model :: (s: [] ChatState) -> int {
   si := ch_first(s, 'S');
   if si >= 0 && s[0].shown != 0 { k := ch_model_index(ch_cell(s, si, 3)); if k >= 0 { return k; } }
   return MODEL_DEFAULT;
+}
+// The Mac app's reasoning effort: the one chosen here, else the backend's setting (Z column 8).
+ch_effort :: (s: [] ChatState) -> int {
+  if s[0].effort > 0 && s[0].effort <= 5 { return s[0].effort - 1; }
+  z := ch_z(s, 8);
+  for k: 0..<5 { if EFFORTS[k] == z { return k; } }
+  return EFFORT_DEFAULT;
 }
 ch_model_name :: (id: string) -> string { k := ch_model_index(id); return ifx k < 0 then "" else MODEL_NAMES[k]; }
 // The conversation the lines show: its id, or 0.
@@ -491,6 +506,7 @@ ch_working :: (s: [] ChatState, i: int, buf: [] u8) -> int {
 ch_turns :: (s: [] ChatState, out: [] f32, f: ChFlow, x0: f32, x1: f32, p: Pen, draw: bool) -> ChFlow {
   d := p.d; r := f;
   n := ch_count(s, 'U');
+  if n == 0 && ch_local(s) { return r; }
   if n == 0 {
     r = ch_text(s, out, r, "Ask anything about OpenAgents. The agent reads a fresh copy of the public openagents repository (main) and the web, and says which files it read. It can't change anything.",
                 x0, x1 - x0, BODY, ink(p, INK_FAINT), 6, draw);
@@ -615,6 +631,7 @@ ch_composer :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen) -> int {
   m := 0;
   orange := false;
   if s[0].note_n > 0 && s[0].time - s[0].note_at < 12 { m = ch_put(buf[..], 0, cast(string) s[0].note[0..<s[0].note_n]); orange = true; }
+  else if ch_local(s) { }
   else if ch_capped(s) {
     m = ch_put(buf[..], 0, "TODAY'S $"); m = ch_put(buf[..], m, ch_z(s, 2)); m = ch_put(buf[..], m, " FOR /CHAT IS USED UP. SAVE YOUR OWN KEY UNDER KEY, OR COME BACK TOMORROW.");
     orange = true;
@@ -632,19 +649,30 @@ ch_composer :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen) -> int {
     v = r.v;
   }
   // the models
-  cy := b.y0 + (ifx two then 50.0f32 else 38.0f32) * d;
+  cy := b.y0 + (ifx ch_local(s) then 26.0f32 else ifx two then 50.0f32 else 38.0f32) * d;
   cx := x0;
   chosen := ch_model(s);
   for k: 0..<3 {
     v = ch_chip(s, out, v, MODEL_NAMES[k], cx, cy, H_MODEL + k, k == chosen, p);
     cx += chip_width(MODEL_NAMES[k], 7 * d, p) + 6 * d;
   }
+  // the Mac app: the reasoning effort the CLI takes (--effort)
+  if ch_local(s) {
+    cx += 12 * d;
+    v = put(out, v, "EFFORT", cx, cy, 7 * d, ch_chrome(p, INK_DIM));
+    cx += text_width("EFFORT", 7 * d) + 8 * d;
+    picked := ch_effort(s);
+    for k: 0..<5 {
+      v = ch_chip(s, out, v, EFFORT_NAMES[k], cx, cy, H_EFFORT + k, k == picked, p);
+      cx += chip_width(EFFORT_NAMES[k], 7 * d, p) + 6 * d;
+    }
+  }
   // the field, and SEND or STOP
   busy := ch_busy(s);
   word := ifx busy then "STOP" else "SEND";
   sw := chip_width(word, 7 * d, p);
   fb := Box.{x0 = x0, y0 = b.y1 - 40 * d, x1 = x1 - sw - 10 * d, y1 = b.y1 - 10 * d};
-  v = ch_field(s, out, v, fb, p, 0, ifx ch_shown_id(s).count > 0 && s[0].shown != 0 then "Ask a follow-up" else "Ask the OpenAgents agent", H_FIELD);
+  v = ch_field(s, out, v, fb, p, 0, ifx ch_shown_id(s).count > 0 && s[0].shown != 0 then "Ask a follow-up" else ifx ch_local(s) then "Ask Claude Code" else "Ask the OpenAgents agent", H_FIELD);
   v = ch_chip(s, out, v, word, x1 - sw, fb.y1 - 6 * d, ifx busy then H_STOP else H_SEND, !busy && s[0].text_n > 0 && s[0].typing && s[0].focus == 0, p);
   return v;
 }
@@ -733,7 +761,7 @@ ch_header :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen, wide: bool)
   px := crumb + text_width("/", 7 * d) + SPACE * 7 * d;
   v = put(out, v, "CHAT", px, cy, 7 * d, ch_chrome(p, INK_ORANGE));
   kw := chip_width("KEY", 7 * d, p);
-  v = ch_chip(s, out, v, "KEY", right - kw, cy, H_KEY, s[0].keying, p);
+  if !ch_local(s) { v = ch_chip(s, out, v, "KEY", right - kw, cy, H_KEY, s[0].keying, p); }
   if !wide {
     nw := chip_width("NEW", 7 * d, p); cw := chip_width("CHATS", 7 * d, p);
     v = ch_chip(s, out, v, "NEW", right - kw - nw - 8 * d, cy, H_NEW, false, p);
@@ -874,7 +902,7 @@ ch_choose_model :: (s: [] ChatState, k: int) {
   }
 }
 ch_act :: (s: [] ChatState, target: int) {
-  if target != H_FIELD && target != H_SEND && target != H_KFIELD && target != H_KSAVE && (target < H_MODEL || target >= H_MODEL + 3) { s[0].typing = false; }
+  if target != H_FIELD && target != H_SEND && target != H_KFIELD && target != H_KSAVE && (target < H_MODEL || target >= H_MODEL + 3) && (target < H_EFFORT || target >= H_EFFORT + 5) { s[0].typing = false; }
   if target == H_HOME { ch_go(s, "/"); }
   else if target == H_SIGNIN { ch_go(s, "/login"); }
   else if target == H_NEW { s[0].shown = 0; s[0].listing = false; s[0].keying = false; s[0].back = 0; s[0].asked_at = -1000; s[0].typing = true; s[0].focus = 0; }
@@ -895,6 +923,10 @@ ch_act :: (s: [] ChatState, target: int) {
   else if target == H_REPLACE { s[0].replacing = true; s[0].knote_n = 0; s[0].typing = true; s[0].focus = 1; }
   else if target == H_REMOVE { if s[0].post_kind == 0 { ch_post(s, "key_remove", POST_KEY_REMOVE, "", "", "", "", "", ""); } }
   else if target >= H_MODEL && target < H_MODEL + 3 { ch_choose_model(s, target - H_MODEL); }
+  else if target >= H_EFFORT && target < H_EFFORT + 5 {
+    s[0].effort = target - H_EFFORT + 1;
+    if s[0].post_kind == 0 { ch_post(s, "effort", POST_EFFORT, "effort", EFFORTS[target - H_EFFORT], "", "", "", ""); }
+  }
   else if target >= H_CONV && target < H_CONV + 60 {
     i := ch_nth(s, 'C', target - H_CONV);
     if i >= 0 { s[0].shown = ch_int(ch_cell(s, i, 1)); s[0].model = -1; s[0].listing = false; s[0].back = 0; s[0].asked_at = -1000; }
@@ -1153,4 +1185,25 @@ ch_typed_in :: (s: [] ChatState, text: string) {
   buf: [200] u8;
   #assert ch_inline("It **releases** `x` see [docs](https://a.b/c) and [f.c](f.c)", buf[..]) == "It releases x see docs (https://a.b/c) and f.c";
   #assert ch_is_sep("|---|:--:|") && !ch_is_sep("| a | b |") && ch_is_rule("---") && !ch_is_rule("-- a");
+}
+
+#test "on the Mac app the turns are the user's own Claude Code: no KEY and no cap" {
+  s: [1] ChatState;
+  out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n0 := ch_fresh(s[..], out[..], u[..], 2640, 1760);
+  coaxial_chat_asked(s[..], 0);
+  ch_answer(s[..], 0, "200\nZ|0.00|0.00|local||0|0|0|\n");
+  n := ch_fresh(s[..], out[..], u[..], 2640, 1760);
+  #assert n > 0 && ch_local(s[..]) && !ch_capped(s[..]) && !ch_has_hit(s[..], H_KEY) && ch_has_hit(s[..], H_FIELD);
+  #assert ch_effort(s[..]) == EFFORT_DEFAULT && ch_has_hit(s[..], H_EFFORT + 4);
+  ch_act(s[..], H_EFFORT + 3);
+  #assert ch_effort(s[..]) == 3 && cast(string) s[0].post[0..<s[0].post_n] == "/api/chat/effort" && cast(string) s[0].body[0..<s[0].body_n] == "{\"effort\":\"xhigh\"}";
+}
+
+#test "the web has no effort chips" {
+  s: [1] ChatState;
+  out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  ch_loaded(s[..], out[..], u[..]);
+  n := ch_fresh(s[..], out[..], u[..], 2880, 1800);
+  #assert !ch_has_hit(s[..], H_EFFORT) && ch_has_hit(s[..], H_KEY);
 }
