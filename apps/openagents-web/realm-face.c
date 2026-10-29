@@ -171,6 +171,8 @@ static int64_t item_mesh[5];
 
 // What the house records (analytics.coax, realm_track): its Track and what it saw last frame.
 static coax_t_Track track_state;
+#include "place-face.h"
+static coax_t_Place place_pending;   // a kept place that came before the house opened
 static coax_t_RealmSeen seen;
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 static const char *link = "https://openagents.com/realms/haunted-house";
@@ -352,11 +354,45 @@ static void open_house(void) {
   player.phi = 1.5707963f;
   sticks = verse_sticks_reset();
   opened = true;
+  // where you were, if it came first (place-face.h); else where you start
+  verse_place_golden(place_k(), golden);
+  if (place_pending.ok) { place_put(0, place_pending); place_pending.ok = false; }
+  place_seen(0);
   apply_server();   // the server's save, if it came first and is newer
 }
 
 static void do_goal(void);
 static void follow_talk(void);
+
+// Where you are, kept so a reload puts you back (place-face.h): your feet,
+// facing, the camera's turn, tilt and distance and its view (first or third
+// person; in edit mode the one you'll have when you leave it).
+static coax_t_Place place_here(uint32_t state) {
+  (void)state;
+  if (!opened) return (coax_t_Place){0};
+  return verse_place(player.pos.x, player.pos.y, player.pos.z, verse_player_face(player), player.theta, player.phi, player.dist,
+                     house.editing ? edit_camera : house.camera, -1, 0);
+}
+// Put you back: on the walkable floor nearest it, clear of the walls, else where you start.
+static bool place_open(float x, float z) {
+  if (!verse_haunt_walkable(house, x, z)) return false;
+  return verse_place_clear((coax_v_f32){walls, wall_count * 6}, wall_count, x, 0, z, 0.3f);
+}
+static void place_put(uint32_t state, coax_t_Place p) {
+  (void)state;
+  if (!opened) { place_pending = p; return; }
+  float x = sandbox ? 0 : 7, z = sandbox ? -2 : 2;
+  for (int64_t i = 0, tries = verse_place_tries(); i < tries; i++) {
+    coax_t_Place t = verse_place_try(p.x, p.z, i);
+    if (place_open(t.x, t.z)) { x = t.x; z = t.z; break; }
+  }
+  player = verse_player_place(x, 0, z, p.face);
+  house.camera = p.view == 0 || p.view == 1 ? p.view : house.camera;
+  player.theta = p.yaw;
+  player.phi = isfinite(p.pitch) && p.pitch > 0.05f && p.pitch < 3.1f ? p.pitch : (house.camera == 0 ? 1.5707963f : 1.107f);
+  if (isfinite(p.zoom) && p.zoom > 0) player.dist = p.zoom;
+  house.facing = verse_player_face(player);
+}
 
 // E: talk to whoever is near, else the quest's orb, else open the door
 // (activateNearby, with the orb before the door so a door beside it
@@ -889,7 +925,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   now += dt;
   if (!opened && !failed && (ready & 15) == 15) open_house();
   draw_count = 0;
-  if (opened) step(dt);
+  if (opened) { step(dt); place_frame(state); }
   describe();
   float *u = (float *)(uintptr_t)uniforms;
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_realm_max_vertices() * coaxial_realm_vertex_floats()};
@@ -969,12 +1005,18 @@ EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { (void)state; r
 // Output: EXIT's navigation, a copied link, the house to keep.
 // The graphics the host draws with (host.js), so GFX names it: 0 HIGH, 1 MEDIUM, 2 LOW.
 EXPORT("coaxial_quality") void coaxial_quality(uint32_t state, int32_t q) { (void)state; realm_set_quality(realm_of(), q); }
-EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { (void)state; return (int32_t)realm.action; }
+EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { (void)state; return realm.action ? (int32_t)realm.action : place_action(); }
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) {
-  (void)state; return (uint32_t)(uintptr_t)(realm.action == 4 ? (void *)kept : (void *)realm.outbox.e);
+  (void)state;
+  if (place_out_now) return place_outbox();
+  return (uint32_t)(uintptr_t)(realm.action == 4 ? (void *)kept : (void *)realm.outbox.e);
 }
-EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { (void)state; return realm.action == 4 ? keep_n : (uint32_t)realm.out_n; }
-EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { (void)state; realm.action = 0; realm.out_n = 0; keep_n = 0; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) {
+  (void)state;
+  if (place_out_now) return place_outbox_len();
+  return realm.action == 4 ? keep_n : (uint32_t)realm.out_n;
+}
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { (void)state; if (place_out_now) { place_done(); return; } realm.action = 0; realm.out_n = 0; keep_n = 0; }
 
 // In: typed or pasted text for the survey (1), the house kept last visit (4),
 // and the host's page facts and visibility for analytics.coax (600 up).
@@ -984,6 +1026,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   (void)state;
   if (length > sizeof inbox) return;
   if (!track_state.page_n) track_init(tr(), track_cstr("haunt"));   // the facts come before the first frame
+  if (place_message(state, kind, inbox, length)) return;
   if (kind == 600) {   // the facts: a player with an email has a save on the server too
     read_account(length);
     facts_seen = true;

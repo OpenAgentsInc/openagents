@@ -61,6 +61,7 @@
 #load "../../verse/flock.coax";
 #load "../../verse/everglade/ranger.coax";
 #load "everglade-voice.coax";
+#load "everglade-place.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
 MAX_VERTICES :: 30000;

@@ -1,0 +1,472 @@
+// Where you are in a walkable realm, kept so a reload puts you back there
+// (eg-pos): your feet, the way you face, the camera's yaw, pitch and
+// distance, its view (the Haunted House's first or third person) and the
+// room you are in. Every realm on the shared controller (verse/player.coax)
+// keeps its place this way; its face does the platform half
+// (place-face.h) and the realm says what counts as open ground.
+//
+// Two copies, the newer wins:
+//   - this browser: the host's action 11 keeps the text under the realm's
+//     save slot (localStorage coaxial.<slot>.place, synchronous, so a page
+//     being left still keeps it); message 11 gives it back at load, after
+//     the page facts and before the first frame, so a reload never waits on
+//     the network;
+//   - the server, for a player with an account (logged in or joined): an
+//     AESV container (save.coax) of the same text at
+//     /api/playtest/progress/<slot>/place, asked for once the facts say
+//     there is an account, and put in force only when it is newer than what
+//     this browser gave back and you haven't moved since.
+// Precedence: a place the location's hash names (#commons, #in-inn ...) wins
+// over a kept one; golden mode (the release walk) keeps and restores nothing.
+//
+// When: nothing is kept until you move (a page you only looked at never
+// overwrites a newer copy from another device); then this browser at most
+// every PLACE_BROWSER_EVERY seconds while you move or look, the server every
+// PLACE_SERVER_EVERY, and both at once when the page is hidden or left.
+//
+// The text, a line each, numbers in millimetres and milliradians so it
+// round-trips exactly:
+//   verse-place 1 / realm=SLOT / at=MS / x= / y= / z= / face= / yaw= /
+//   pitch= / zoom= / view= / room=
+#load "save.coax";
+
+PLACE_HEAD :: "verse-place 1\n";
+PLACE_WORLD :: "place";          // the AESV container's world on the server
+PLACE_SCHEMA :: 1;
+PLACE_BROWSER_EVERY :: 1.0;      // seconds between keeps in this browser while you move
+PLACE_SERVER_EVERY :: 10.0;      // and on the server
+PLACE_STILL_MM :: 50;            // moved less than this (mm) ...
+PLACE_STILL_MRAD :: 20;          // ... and turned or looked less: nothing new to keep
+PLACE_TEXT :: 320;
+PLACE_FAR :: 1000000;            // metres: anything past this is not a place
+PLACE_KEEP :: 1;                 // verse_place_due: keep in this browser
+PLACE_SEND :: 2;                 //                  send to the server
+
+Place :: struct {
+  ok: bool;
+  x: f32; y: f32; z: f32;        // your feet
+  face: f32;                     // the way you face
+  yaw: f32; pitch: f32; zoom: f32;   // the camera
+  view: int;                     // the realm's camera view, 0 when it has one
+  room: int = -1;                // the room you are in, -1 outdoors
+  at: f64;                       // the wall clock (ms) when it was taken
+}
+
+PlaceKeeper :: struct {
+  slot: [64] u8; slot_n: int;    // the realm's save slot (the page facts' slot=)
+  account: bool;                 // the facts' account=: the server keeps a copy too
+  asked: bool;                   // the server's copy was asked for
+  named: bool;                   // the location's hash named a place: it wins
+  golden: bool;                  // the release walk: keep and restore nothing
+  moved: bool;                   // you moved since the page opened or a place was put back
+  start: Place;                  // where you were then
+  browser: Place; browser_t: f64;    // the last kept in this browser, and the page's clock then
+  server: Place; server_t: f64;      // the last sent to the server
+  newest: f64;                   // the at of the place in force
+}
+
+verse_place :: (px: f32, py: f32, pz: f32, pface: f32, pyaw: f32, ppitch: f32, pzoom: f32, pview: int, proom: int, pat: f64) -> Place #export_c {
+  p: Place;
+  p.ok = place_finite(px) && place_finite(py) && place_finite(pz) && place_finite(pface) && place_finite(pyaw) && place_finite(ppitch) && place_finite(pzoom);
+  p.x = px; p.y = py; p.z = pz; p.face = pface; p.yaw = pyaw; p.pitch = ppitch; p.zoom = pzoom;
+  p.view = pview; p.room = proom; p.at = pat;
+  return p;
+}
+
+place_finite :: (v: f32) -> bool { return v == v && v < f32(PLACE_FAR) && v > -f32(PLACE_FAR); }
+place_milli :: (v: f32) -> int { return cast(int) floor(cast(f64) v * 1000 + 0.5); }
+place_angle :: (a: int) -> int {
+  // milliradians, wrapped to one turn, so two ways of writing a direction compare equal
+  t := 6283;
+  w := a % t;
+  if w < 0 { w += t; }
+  return w;
+}
+
+// ---- the text
+
+place_line :: (out: [] u8, at: int, key: string, v: int) -> int {
+  if at < 0 || at + key.count + 24 > out.count { return -1; }
+  o := at;
+  for k: 0..<key.count { out[o] = key[k]; o += 1; }
+  out[o] = 61; o += 1;
+  x := v;
+  if x < 0 { out[o] = 45; o += 1; x = -x; }
+  digits: [20] u8; n := 0;
+  if x == 0 { digits[0] = 48; n = 1; }
+  while x > 0 && n < 20 { digits[n] = cast(u8) (48 + x % 10); x = x / 10; n += 1; }
+  for k: 0..<n { out[o] = digits[n - 1 - k]; o += 1; }
+  out[o] = 10;
+  return o + 1;
+}
+
+// The place as text for the realm `realm`; its length, or 0 when it isn't a place or doesn't fit.
+verse_place_text :: (p: Place, realm: string, out: [] u8) -> int #export_c {
+  if !p.ok || realm.count == 0 || realm.count > 64 || out.count < PLACE_HEAD.count + realm.count + 8 { return 0; }
+  for k: 0..<PLACE_HEAD.count { out[k] = PLACE_HEAD[k]; }
+  o := PLACE_HEAD.count;
+  rtag := "realm=";
+  for k: 0..<rtag.count { out[o] = rtag[k]; o += 1; }
+  for k: 0..<realm.count { out[o] = realm[k]; o += 1; }
+  out[o] = 10; o += 1;
+  o = place_line(out, o, "at", cast(int) (ifx p.at > 0 then p.at else 0.0));
+  o = place_line(out, o, "x", place_milli(p.x));
+  o = place_line(out, o, "y", place_milli(p.y));
+  o = place_line(out, o, "z", place_milli(p.z));
+  o = place_line(out, o, "face", place_milli(p.face));
+  o = place_line(out, o, "yaw", place_milli(p.yaw));
+  o = place_line(out, o, "pitch", place_milli(p.pitch));
+  o = place_line(out, o, "zoom", place_milli(p.zoom));
+  o = place_line(out, o, "view", p.view);
+  o = place_line(out, o, "room", p.room);
+  return ifx o < 0 then 0 else o;
+}
+
+place_int :: (s: string, ok: [] bool) -> int {
+  if s.count == 0 || s.count > 19 { ok[0] = false; return 0; }
+  neg := s[0] == 45;
+  i := ifx neg then 1 else 0;
+  if i >= s.count { ok[0] = false; return 0; }
+  v := 0;
+  while i < s.count {
+    c := s[i];
+    if c < 48 || c > 57 { ok[0] = false; return 0; }
+    v = v * 10 + cast(int) (c - 48);
+    i += 1;
+  }
+  return ifx neg then -v else v;
+}
+
+// A kept text read back for the realm `realm`; ok false when it is another
+// realm's, another version's, or any field is missing or not a number.
+verse_place_read :: (text: string, realm: string) -> Place #export_c {
+  none: Place;
+  if text.count < PLACE_HEAD.count || text[0..<PLACE_HEAD.count] != PLACE_HEAD { return none; }
+  p: Place;
+  ok: [1] bool; ok[0] = true;
+  seen := 0;
+  at: [1] int; at[0] = PLACE_HEAD.count;
+  while at[0] < text.count {
+    pline := save_line(text, at[..]);
+    eq := 0;
+    while eq < pline.count && pline[eq] != 61 { eq += 1; }
+    if eq >= pline.count { continue; }
+    pkey := pline[0..<eq]; pval := pline[eq + 1..<pline.count];
+    if pkey == "realm" { if pval != realm { return none; } seen |= 1; continue; }
+    v := place_int(pval, ok[..]);
+    if pkey == "at" { p.at = cast(f64) v; seen |= 2; }
+    else if pkey == "x" { p.x = f32(v) / 1000; seen |= 4; }
+    else if pkey == "y" { p.y = f32(v) / 1000; seen |= 8; }
+    else if pkey == "z" { p.z = f32(v) / 1000; seen |= 16; }
+    else if pkey == "face" { p.face = f32(v) / 1000; seen |= 32; }
+    else if pkey == "yaw" { p.yaw = f32(v) / 1000; seen |= 64; }
+    else if pkey == "pitch" { p.pitch = f32(v) / 1000; seen |= 128; }
+    else if pkey == "zoom" { p.zoom = f32(v) / 1000; seen |= 256; }
+    else if pkey == "view" { p.view = v; seen |= 512; }
+    else if pkey == "room" { p.room = v; seen |= 1024; }
+  }
+  if !ok[0] || seen != 2047 { return none; }
+  p.ok = place_finite(p.x) && place_finite(p.y) && place_finite(p.z) && place_finite(p.zoom) && p.zoom >= 0 && p.at > 0;
+  return ifx p.ok then p else none;
+}
+
+// Whether two places differ by more than a step or a glance (or a room or view).
+verse_place_differs :: (a: Place, b: Place) -> bool #export_c {
+  if a.ok != b.ok || a.view != b.view || a.room != b.room { return true; }
+  far := place_milli(a.x - b.x); far2 := place_milli(a.z - b.z); far3 := place_milli(a.y - b.y);
+  if far > PLACE_STILL_MM || far < -PLACE_STILL_MM || far2 > PLACE_STILL_MM || far2 < -PLACE_STILL_MM { return true; }
+  if far3 > PLACE_STILL_MM * 10 || far3 < -PLACE_STILL_MM * 10 { return true; }
+  if place_turned(a.face, b.face) || place_turned(a.yaw, b.yaw) || place_turned(a.pitch, b.pitch) { return true; }
+  dz := place_milli(a.zoom - b.zoom);
+  return dz > PLACE_STILL_MM * 4 || dz < -PLACE_STILL_MM * 4;
+}
+place_turned :: (a: f32, b: f32) -> bool {
+  d := place_angle(place_milli(a) - place_milli(b));
+  return d > PLACE_STILL_MRAD && d < 6283 - PLACE_STILL_MRAD;
+}
+
+// ---- the keeper
+
+// The page facts: the save slot and whether the player has an account.
+verse_place_facts :: (k: [] PlaceKeeper, facts: string) #export_c {
+  at: [1] int; at[0] = 0;
+  while at[0] < facts.count {
+    pline := save_line(facts, at[..]);
+    if pline.count > 5 && pline[0..<5] == "slot=" && pline.count - 5 <= 64 {
+      for i: 5..<pline.count { k[0].slot[i - 5] = pline[i]; }
+      k[0].slot_n = pline.count - 5;
+    }
+    if pline.count > 8 && pline[0..<8] == "account=" { k[0].account = true; }
+  }
+}
+verse_place_slot :: (k: [] PlaceKeeper) -> string #export_c { return cast(string) k[0].slot[0..<k[0].slot_n]; }
+verse_place_golden :: (k: [] PlaceKeeper, on: bool) #export_c { k[0].golden = on; }
+// The location's hash named a place (the realm decides what it names): it wins over a kept one.
+verse_place_named :: (k: [] PlaceKeeper, named: bool) #export_c { if named { k[0].named = true; } }
+
+// Where you are when the realm first puts you down.
+verse_place_open :: (k: [] PlaceKeeper, here: Place) #export_c {
+  k[0].start = here; k[0].browser = here; k[0].server = here; k[0].moved = false;
+}
+
+// A kept place (this browser's or the server's): true when the face should
+// put you there. Not over a place the hash named, in golden mode, once you
+// have moved, or when it is no newer than the place in force.
+verse_place_take :: (k: [] PlaceKeeper, kept: Place) -> bool #export_c {
+  if !kept.ok || k[0].named || k[0].golden || k[0].moved || kept.at <= k[0].newest { return false; }
+  k[0].newest = kept.at;
+  k[0].start = kept; k[0].browser = kept; k[0].server = kept;
+  return true;
+}
+
+// What to do with where you are now (t: the page's clock in seconds;
+// leaving: the page is hidden or being left): PLACE_KEEP and PLACE_SEND bits.
+verse_place_due :: (k: [] PlaceKeeper, here: Place, t: f64, leaving: bool) -> int #export_c {
+  if k[0].golden || !here.ok || here.at <= 0 || k[0].slot_n == 0 { return 0; }
+  if !k[0].moved && verse_place_differs(here, k[0].start) { k[0].moved = true; }
+  if !k[0].moved { return 0; }
+  due := 0;
+  if verse_place_differs(here, k[0].browser) && (leaving || t - k[0].browser_t >= PLACE_BROWSER_EVERY) { due |= PLACE_KEEP; }
+  if k[0].account && verse_place_differs(here, k[0].server) && (leaving || t - k[0].server_t >= PLACE_SERVER_EVERY) { due |= PLACE_SEND; }
+  return due;
+}
+// It was kept (what: the bits done).
+verse_place_kept :: (k: [] PlaceKeeper, here: Place, t: f64, what: int) #export_c {
+  if what & PLACE_KEEP != 0 { k[0].browser = here; k[0].browser_t = t; }
+  if what & PLACE_SEND != 0 { k[0].server = here; k[0].server_t = t; }
+  if what != 0 && here.at > k[0].newest { k[0].newest = here.at; }
+}
+
+// ---- the server's copy
+
+// The URL of this realm's place on the server: /api/playtest/progress/<slot>/place.
+verse_place_url :: (k: [] PlaceKeeper, out: [] u8) -> int #export_c {
+  head := "/api/playtest/progress/"; tail := "/place";
+  n := head.count + k[0].slot_n + tail.count;
+  if k[0].slot_n == 0 || n > out.count { return 0; }
+  for i: 0..<head.count { out[i] = head[i]; }
+  for i: 0..<k[0].slot_n { out[head.count + i] = k[0].slot[i]; }
+  for i: 0..<tail.count { out[head.count + k[0].slot_n + i] = tail[i]; }
+  return n;
+}
+// Whether to ask the server for its copy now (once, with an account).
+verse_place_ask :: (k: [] PlaceKeeper) -> bool #export_c {
+  if k[0].asked || !k[0].account || k[0].golden || k[0].slot_n == 0 { return false; }
+  k[0].asked = true;
+  return true;
+}
+// The body that keeps a place on the server ({"bytes": the AESV container, "at"}); its length or 0.
+verse_place_body :: (k: [] PlaceKeeper, here: Place, out: [] u8) -> int #export_c {
+  text: [PLACE_TEXT] u8;
+  n := verse_place_text(here, verse_place_slot(k), text[..]);
+  if n <= 0 { return 0; }
+  c: [PLACE_TEXT + 96] u8;
+  cn := save_pack(PLACE_WORLD, PLACE_SCHEMA, text[..], n, c[..]);
+  if cn <= 0 { return 0; }
+  b := save_post_body(c[..], cn, here.at, out);
+  return ifx b > 0 then b else 0;
+}
+// The server's answer ("STATUS\n" then {current, previous}) as a place; ok false when it has none.
+verse_place_server :: (k: [] PlaceKeeper, answer: string) -> Place #export_c {
+  none: Place;
+  bytes: [2048] u8;
+  s := save_from_server(answer, bytes[..]);
+  pick := save_pick(bytes[..], s, PLACE_WORLD, PLACE_SCHEMA, 1);
+  if pick.which == 0 { return none; }
+  return verse_place_read(cast(string) bytes[pick.at..<pick.at + pick.count], verse_place_slot(k));
+}
+
+// ---- open ground near a kept place
+
+// The i-th spot to try round (x, z) when a kept place is no longer open:
+// the place itself, then rings half a metre apart, six more spots a ring
+// each time out (about half a metre apart round it). PLACE_TRIES of them
+// reach 20 m.
+PLACE_RINGS :: 40;
+PLACE_TRIES :: 3 * PLACE_RINGS * (PLACE_RINGS + 1) + 1;
+verse_place_tries :: () -> int #export_c { return PLACE_TRIES; }
+verse_place_try :: (x: f32, z: f32, i: int) -> Place #export_c {
+  p: Place;
+  p.ok = true; p.x = x; p.z = z;
+  if i <= 0 { return p; }
+  ring := 1; first := 1;
+  while first + 6 * ring <= i { first += 6 * ring; ring += 1; }
+  k := i - first; n := 6 * ring;
+  a := cast(f64) k / cast(f64) n * 6.283185307179586;
+  r := cast(f64) ring * 0.5;
+  p.x = x + f32(r * sin(a)); p.z = z + f32(r * cos(a));
+  return p;
+}
+// Whether a body radius r standing at (x, y, z) is clear of walls (min x,
+// y, z, max x, y, z each, verse/player.coax WALL): the ones it would stand
+// inside, from its feet to its head.
+verse_place_clear :: (walls: [] f32, n: int, x: f32, y: f32, z: f32, r: f32) -> bool #export_c {
+  for w: 0..<n {
+    k := w * 6;
+    if k + 6 > walls.count { break; }
+    if x > walls[k] - r && x < walls[k + 3] + r && z > walls[k + 2] - r && z < walls[k + 5] + r && y + 1.7 > walls[k + 1] && y + 0.1 < walls[k + 4] { return false; }
+  }
+  return true;
+}
+
+#test "a place round-trips through its text exactly, for its realm only" {
+  p := verse_place(12.345, 0.5, -60.25, 1.5, -2.75, 0.4, 6.5, 1, 3, 1793222723475);
+  out: [PLACE_TEXT] u8;
+  n := verse_place_text(p, "everglade", out[..]);
+  text := cast(string) out[0..<n];
+  #assert text == "verse-place 1\nrealm=everglade\nat=1793222723475\nx=12345\ny=500\nz=-60250\nface=1500\nyaw=-2750\npitch=400\nzoom=6500\nview=1\nroom=3\n";
+  q := verse_place_read(text, "everglade");
+  #assert q.ok && q.x == 12.345 && q.z == -60.25 && q.yaw == -2.75 && q.zoom == 6.5 && q.view == 1 && q.room == 3 && q.at == 1793222723475;
+  #assert !verse_place_differs(p, q);
+  #assert !verse_place_read(text, "the-grid").ok;                       // another realm's
+  #assert !verse_place_read("verse-place 2\nrealm=everglade\n", "everglade").ok;
+  #assert !verse_place_read(text[0..<n - 7], "everglade").ok;           // room missing
+  #assert !verse_place_read("verse-place 1\nrealm=everglade\nat=5\nx=1e3\ny=0\nz=0\nface=0\nyaw=0\npitch=0\nzoom=0\nview=0\nroom=-1\n", "everglade").ok;
+  #assert !verse_place_read("", "everglade").ok;
+  // outdoors is room -1, kept as such
+  o := verse_place(1, 0, 1, 0, 0, 0, 5, 0, -1, 9);
+  m := verse_place_text(o, "garden", out[..]);
+  #assert verse_place_read(cast(string) out[0..<m], "garden").room == -1;
+  // not a place: nothing written
+  inf := 1.0f32 / 0.0f32;
+  #assert verse_place_text(verse_place(inf, 0, 0, 0, 0, 0, 5, 0, -1, 9), "garden", out[..]) == 0;
+  #assert verse_place_text(o, "", out[..]) == 0;
+}
+
+#test "a step or a glance counts, a twitch doesn't; a full turn is the same way" {
+  a := verse_place(0, 0, 0, 0, 0, 0, 5, 0, -1, 1);
+  #assert !verse_place_differs(a, verse_place(0.03, 0, -0.04, 0.01, 0.015, 0, 5.1, 0, -1, 2));
+  #assert verse_place_differs(a, verse_place(0.2, 0, 0, 0, 0, 0, 5, 0, -1, 2));
+  #assert verse_place_differs(a, verse_place(0, 0, 0, 0, 0.3, 0, 5, 0, -1, 2));
+  #assert verse_place_differs(a, verse_place(0, 0, 0, 0, 0, 0, 7, 0, -1, 2));
+  #assert verse_place_differs(a, verse_place(0, 0, 0, 0, 0, 0, 5, 0, 2, 2));     // walked into a room
+  #assert verse_place_differs(a, verse_place(0, 0, 0, 0, 0, 0, 5, 1, -1, 2));    // another view
+  #assert !verse_place_differs(a, verse_place(0, 0, 0, 6.2832, 0, 0, 5, 0, -1, 2));
+}
+
+facts_for :: (k: [] PlaceKeeper, account: bool) {
+  verse_place_facts(k, ifx account then "tab=1\nslot=everglade\nplayer=p-1\naccount=e-1\n" else "tab=1\nslot=everglade\nplayer=p-1\naccount=\n");
+}
+
+#test "nothing is kept until you move; then this browser every second, the server every ten, both at once when you leave" {
+  k: [1] PlaceKeeper;
+  facts_for(k[..], true);
+  #assert verse_place_slot(k[..]) == "everglade" && k[0].account;
+  spawn := verse_place(0, 0, 0, 0, 0, 0, 5, 0, -1, 1000);
+  verse_place_open(k[..], spawn);
+  #assert verse_place_due(k[..], verse_place(0, 0, 0, 0, 0, 0, 5, 0, -1, 2000), 1.0, false) == 0;
+  #assert verse_place_due(k[..], verse_place(0, 0, 0, 0, 0, 0, 5, 0, -1, 2000), 1.0, true) == 0;    // left without moving
+  // a step: this browser at once (a second since the last), the server too (ten since none)
+  here := verse_place(1, 0, 0, 0, 0, 0, 5, 0, -1, 12000);
+  d := verse_place_due(k[..], here, 11.0, false);
+  #assert d == PLACE_KEEP | PLACE_SEND;
+  verse_place_kept(k[..], here, 11.0, d);
+  // half a second on: not yet
+  #assert verse_place_due(k[..], verse_place(2, 0, 0, 0, 0, 0, 5, 0, -1, 12500), 11.5, false) == 0;
+  // a second on: this browser only
+  #assert verse_place_due(k[..], verse_place(3, 0, 0, 0, 0, 0, 5, 0, -1, 13000), 12.0, false) == PLACE_KEEP;
+  verse_place_kept(k[..], verse_place(3, 0, 0, 0, 0, 0, 5, 0, -1, 13000), 12.0, PLACE_KEEP);
+  // standing still: only the server catches up, ten seconds on; then nothing, however long
+  still := verse_place(3, 0, 0, 0, 0, 0, 5, 0, -1, 99000);
+  #assert verse_place_due(k[..], still, 21.0, false) == PLACE_SEND;
+  verse_place_kept(k[..], still, 21.0, PLACE_SEND);
+  #assert verse_place_due(k[..], still, 99.0, false) == 0;
+  // the page is hidden a quarter second after a step: both at once
+  #assert verse_place_due(k[..], verse_place(4, 0, 0, 0, 0, 0, 5, 0, -1, 13250), 12.25, true) == PLACE_KEEP | PLACE_SEND;
+  // without an account the server keeps nothing
+  g: [1] PlaceKeeper;
+  facts_for(g[..], false);
+  #assert !g[0].account && !verse_place_ask(g[..]);
+  verse_place_open(g[..], spawn);
+  #assert verse_place_due(g[..], here, 11.0, true) == PLACE_KEEP;
+  // golden mode keeps nothing; neither does a page without its slot yet
+  verse_place_golden(g[..], true);
+  #assert verse_place_due(g[..], verse_place(9, 0, 0, 0, 0, 0, 5, 0, -1, 14000), 30.0, true) == 0;
+  n: [1] PlaceKeeper;
+  verse_place_open(n[..], spawn);
+  #assert verse_place_due(n[..], here, 11.0, true) == 0;
+}
+
+#test "precedence: a hash's place wins, the newer copy wins, and nothing is put back once you've moved" {
+  k: [1] PlaceKeeper;
+  facts_for(k[..], true);
+  spawn := verse_place(0, 0, 0, 0, 0, 0, 5, 0, -1, 0);
+  verse_place_open(k[..], spawn);
+  browser := verse_place(10, 0, 5, 1, 1, 0.3, 4, 0, -1, 5000);
+  #assert verse_place_take(k[..], browser);
+  // the server's older copy stays out; its newer one comes in
+  #assert !verse_place_take(k[..], verse_place(20, 0, 5, 0, 0, 0, 4, 0, -1, 4000));
+  #assert verse_place_take(k[..], verse_place(30, 0, 5, 0, 0, 0, 4, 0, 2, 6000));
+  // having been put back is not moving: nothing is kept until you do
+  #assert verse_place_due(k[..], verse_place(30, 0, 5, 0, 0, 0, 4, 0, 2, 7000), 5.0, true) == 0;
+  // you walk; then a late, newer copy from the server stays out: you are newer
+  #assert verse_place_due(k[..], verse_place(31, 0, 5, 0, 0, 0, 4, 0, 2, 8000), 6.0, false) != 0;
+  #assert !verse_place_take(k[..], verse_place(50, 0, 5, 0, 0, 0, 4, 0, -1, 9000));
+  // a hash that names a place wins over any kept one
+  h: [1] PlaceKeeper;
+  facts_for(h[..], false);
+  verse_place_named(h[..], false);
+  verse_place_named(h[..], true);
+  verse_place_open(h[..], spawn);
+  #assert !verse_place_take(h[..], browser);
+  // golden mode never puts one back; nor is a refused text taken
+  gk: [1] PlaceKeeper;
+  verse_place_golden(gk[..], true);
+  #assert !verse_place_take(gk[..], browser);
+  f: [1] PlaceKeeper;
+  #assert !verse_place_take(f[..], verse_place_read("junk", "everglade"));
+}
+
+#test "the server's copy: asked once with an account, sent as a container, read back for this realm" {
+  k: [1] PlaceKeeper;
+  facts_for(k[..], true);
+  url: [96] u8;
+  un := verse_place_url(k[..], url[..]);
+  #assert cast(string) url[0..<un] == "/api/playtest/progress/everglade/place";
+  #assert verse_place_ask(k[..]) && !verse_place_ask(k[..]);
+  here := verse_place(-12.5, 1.25, 40, 3, 2, 0.5, 6, 0, 4, 1793222723475);
+  body: [1024] u8;
+  bn := verse_place_body(k[..], here, body[..]);
+  b := cast(string) body[0..<bn];
+  #assert bn > 0 && b[0..<10] == "{\"bytes\":\"" && b[bn - 19..<bn] == "\"at\":1793222723475}";
+  // the server answers with what it keeps: the same bytes back
+  bs := save_find(b, 0, "\"bytes\":\"");
+  be := bs;
+  while be < bn && b[be] != 34 { be += 1; }
+  answer: [1400] u8; an := 0;
+  pre := "200\n{\"current\": {\"at\": 1793222723475, \"bytes\": \"";
+  for i: 0..<pre.count { answer[an] = pre[i]; an += 1; }
+  for i: bs..<be { answer[an] = body[i]; an += 1; }
+  post := "\"}, \"previous\": null}";
+  for i: 0..<post.count { answer[an] = post[i]; an += 1; }
+  back := verse_place_server(k[..], cast(string) answer[0..<an]);
+  #assert back.ok && !verse_place_differs(back, here) && back.room == 4 && back.at == 1793222723475;
+  // a 403 (no account on the server) or nothing kept: no place
+  #assert !verse_place_server(k[..], "403\n{\"error\":\"join\"}").ok;
+  #assert !verse_place_server(k[..], "200\n{\"current\": null, \"previous\": null}").ok;
+  // another realm's slot reads nobody's
+  o: [1] PlaceKeeper;
+  verse_place_facts(o[..], "slot=the-grid\n");
+  #assert !verse_place_server(o[..], cast(string) answer[0..<an]).ok;
+  // no slot yet: no URL
+  e: [1] PlaceKeeper;
+  #assert verse_place_url(e[..], url[..]) == 0;
+}
+
+#test "the spots tried round a place: itself first, then rings out to about 20 m, and walls that block" {
+  first := verse_place_try(3, 4, 0);
+  #assert first.x == 3 && first.z == 4;
+  one := verse_place_try(0, 0, 1);
+  #assert abs(one.x * one.x + one.z * one.z - 0.25) < 0.001;
+  six := verse_place_try(0, 0, 7);   // the second ring's first
+  #assert abs(six.x * six.x + six.z * six.z - 1) < 0.001;
+  last := verse_place_try(0, 0, PLACE_TRIES - 1);
+  r := sqrt(last.x * last.x + last.z * last.z);
+  #assert abs(r - 20) < 0.01;
+  walls := [12] f32.[0, 0, 0, 2, 3, 2,   10, 5, 10, 12, 6, 12];
+  #assert !verse_place_clear(walls[..], 2, 1, 0, 1, 0.3);
+  #assert !verse_place_clear(walls[..], 2, 2.2, 0, 1, 0.3);      // within a body's radius
+  #assert verse_place_clear(walls[..], 2, 2.5, 0, 1, 0.3);
+  #assert verse_place_clear(walls[..], 2, 11, 0, 11, 0.3);       // under a beam overhead
+  #assert !verse_place_clear(walls[..], 2, 11, 4, 11, 0.3);
+}

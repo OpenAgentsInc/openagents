@@ -3,7 +3,8 @@
 // links it) and verse/grid.coax reads a phone's thumbs. Once a frame it
 // passes values between them in order: the page's controls, the player's
 // step among the garden's walls, then the page's frame with where you
-// ended up. It decides nothing. Every pointer is an offset into the host's
+// ended up. Where you are is kept so a reload puts you back (place-face.h).
+// It decides nothing. Every pointer is an offset into the host's
 // WebAssembly.Memory; the page's state is the host's (coaxial_state_size).
 #include "garden.h"
 #include "Player.h"
@@ -25,6 +26,7 @@ static coax_t_Track track_state;
 static bool golden;
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
+#include "place-face.h"
 
 static coax_t_Garden *garden(uint32_t state) { return (coax_t_Garden *)(uintptr_t)state; }
 static coax_v_t_Garden at(uint32_t state) { return (coax_v_t_Garden){garden(state), 1}; }
@@ -35,6 +37,19 @@ static void start(uint32_t state) {
   player = verse_player_place(spawn.x, spawn.y, spawn.z, 0);
   sticks = verse_sticks_reset();
   placed = true;
+  verse_place_golden(place_k(), golden);
+  garden_walls(at(state));   // the page started: its orbit is where you start
+  place_seen(state);
+}
+
+static coax_t_Place place_here(uint32_t state) {
+  if (!placed) return (coax_t_Place){0};
+  return verse_place_of(player.pos.x, player.pos.y, player.pos.z, verse_player_face(player), garden(state)->orbit, -1);
+}
+static void place_put(uint32_t state, coax_t_Place p) {
+  coax_t_Place q = garden_place_fix(at(state), p);
+  player = verse_player_place(q.x, 0, q.z, q.face);
+  garden_place_camera(at(state), q);
 }
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
@@ -68,6 +83,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   int64_t n = garden_frame(at(state), out, u, w, h, scale, dt, still != 0, feet.x, feet.y, feet.z, verse_player_face(player),
                            verse_player_act(player), player.vel.x, player.vel.z,
                            sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
+  place_frame(state);
   track_frame(tr(), dt, w, h, scale);
   if (n > 0) track_loaded(tr(), track_cstr("load-garden"));
   track_drain(&track_state);
@@ -110,12 +126,13 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inb
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
+  if (place_message(state, kind, inbox, length)) return;
   if (kind == 4) garden_kept(at(state), (coax_string){(const char *)inbox, length});   // the vase kept on a visit before
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) track_drain(&track_state);
 }
 
 // Output: the vase to keep (action 4, the realm save slot "garden").
-EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)garden_action(at(state)); }
-EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)garden(state)->kept.e; }
-EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)garden_outbox_len(at(state)); }
-EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { garden_action_done(at(state)); }
+EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { int32_t a = (int32_t)garden_action(at(state)); return a ? a : place_action(); }
+EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return place_out_now ? place_outbox() : (uint32_t)(uintptr_t)garden(state)->kept.e; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return place_out_now ? place_outbox_len() : (uint32_t)garden_outbox_len(at(state)); }
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { if (place_out_now) place_done(); else garden_action_done(at(state)); }

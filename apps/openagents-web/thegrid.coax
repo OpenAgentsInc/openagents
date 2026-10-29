@@ -23,6 +23,7 @@
 #load "analytics.coax";
 #load "../../verse/camera.coax";
 #load "../../verse/terrain.coax";
+#load "place-orbit.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as Everglade's
 MAX_VERTICES :: 16000;
@@ -240,6 +241,33 @@ thegrid_start :: (s: [] TheGrid) {
 
 thegrid_walls :: (s: [] TheGrid) -> int #export_c { if !s[0].started { thegrid_start(s); } return s[0].wall_n; }
 thegrid_golden :: (s: [] TheGrid, on: bool) #export_c { s[0].golden = on; }
+
+// ---- where you are, kept so a reload puts you back (eg-pos, place.coax)
+
+// Open ground on the Grid: inside the field, clear of the stations and out of
+// the Everglade gate's portal (a place kept there would send you on at once).
+thegrid_place_open :: (s: [] TheGrid, x: f32, z: f32) -> bool #export_c {
+  if !s[0].started { thegrid_start(s); }
+  if !finite(x) || !finite(z) || x * x + z * z > f32(FADE_FAR * FADE_FAR) { return false; }
+  if flat_gap(v3(x, 0, z), v3(f32(GATE_X), 0, f32(GATE_Z))) < f32(GATE_R) + 1.5 { return false; }
+  return verse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
+}
+// A kept place made good: itself when open, else the nearest open spot, else the spawn.
+thegrid_place_fix :: (s: [] TheGrid, p: Place) -> Place #export_c {
+  q := p; q.y = 0; q.room = -1;
+  for i: 0..<PLACE_TRIES {
+    t := verse_place_try(p.x, p.z, i);
+    if thegrid_place_open(s, t.x, t.z) { q.x = t.x; q.z = t.z; return q; }
+  }
+  q.x = 0; q.z = 0; q.face = 0; q.yaw = 0;
+  return q;
+}
+// You are put at a kept place: the feet and the orbit as kept.
+thegrid_place_camera :: (s: [] TheGrid, p: Place) #export_c {
+  if !s[0].started { thegrid_start(s); }
+  s[0].feet = v3(p.x, 0, p.z); s[0].face = p.face;
+  s[0].orbit = verse_place_orbit(p, s[0].feet);
+}
 
 // grid.data (pack_grid.py's header): the counts, the clips and the patrols.
 // False, and nothing kept, when it isn't one.
@@ -940,6 +968,22 @@ fake_data :: (out: [] u8) -> int {
   n = put_word(out, n, 2);
   for i: 0..<2 { n = put_real(out, n, 11); n = put_real(out, n, -2); n = put_real(out, n, -2.2); n = put_real(out, n, 2); n = put_real(out, n, f32(i) / 24); }
   return n;
+}
+
+#test "a kept place on the Grid: open ground stays, a station or the gate's portal moves you clear" {
+  g: [1] TheGrid;
+  thegrid_start(g[..]);
+  p := verse_place(-6, 0, -4, 1, 2, 0.4, 7, 0, -1, 1000);
+  #assert thegrid_place_open(g[..], -6, -4);
+  q := thegrid_place_fix(g[..], p);
+  #assert q.x == -6 && q.z == -4 && q.yaw == 2;
+  in_gate := thegrid_place_fix(g[..], verse_place(f32(GATE_X), 0, f32(GATE_Z), 0, 0, 0.3, 5, 0, -1, 1000));
+  #assert flat_gap(v3(in_gate.x, 0, in_gate.z), v3(f32(GATE_X), 0, f32(GATE_Z))) >= f32(GATE_R) + 1.5;
+  cx := (g[0].walls[0] + g[0].walls[3]) / 2; cz := (g[0].walls[2] + g[0].walls[5]) / 2;
+  m := thegrid_place_fix(g[..], verse_place(cx, 0, cz, 0, 0, 0.3, 5, 0, -1, 1000));
+  #assert thegrid_place_open(g[..], m.x, m.z);
+  thegrid_place_camera(g[..], q);
+  #assert g[0].orbit.yaw == 2 && g[0].orbit.want == 7 && g[0].feet.x == -6;
 }
 
 #test "the uniforms line up with thegrid.wgsl's" {

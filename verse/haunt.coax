@@ -202,6 +202,8 @@ verse_haunt_advance :: (s:Haunt,t:f64,player:HauntPoint,eye:HauntPoint,heading:f
 }
 // A walk must keep the capsule within the walkable union. Slide separately
 // along X and Z when a combined move meets a wall, as the old house did.
+// Whether (x, z) is on the house's walkable floor (a kept place, eg-pos, is checked by it).
+verse_haunt_walkable :: (s:Haunt,x:f32,z:f32)->bool #export_c {return s.ok && hh_walk(s,x,z);}
 verse_haunt_constrain :: (s:Haunt,was:HauntPoint,want:HauntPoint)->HauntPoint #export_c {
  if hh_walk(s,want.x,want.z) {return want;}
  if hh_walk(s,want.x,was.z) {return hh_p(want.x,want.y,was.z);}

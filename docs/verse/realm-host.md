@@ -140,6 +140,36 @@ convenience: a realm must start well with nothing kept, and must refuse a
 kept text that isn't its own (the fixture checks its tag; `save.coax` checks
 the world name, schema and CRC).
 
+**Where you are** (eg-pos) is kept apart from the slot's save, so a reload
+puts you back exactly there. Every realm on the shared controller does it
+the same way: Everglade, the Haunted House, the Sandbox, the Grid, the Garden
+and Hecate's Cemetery.
+
+- `apps/openagents-web/place.coax` decides: the place (feet, facing, the
+  camera's yaw, pitch and distance, its view, the room you are in, the wall
+  clock), its text (`verse-place 1`, millimetres and milliradians), when to
+  keep it and which copy wins. `place-orbit.coax` adds the free orbit's
+  camera; each realm says what open ground is (`<realm>_place_fix`: inside
+  the edge, clear of walls and placed pieces, out of the woods or a portal,
+  in the room it says) and moves a kept place that no longer is to the
+  nearest open spot within 20 m, else the spawn.
+- `place-face.h` is the face's half. Action 11 keeps the text in this
+  browser (localStorage `coaxial.<slot>.place`, written synchronously);
+  message 11 gives it back after the page facts and before the first frame,
+  so a reload never waits on the network. A player with an account (logged
+  in or joined) also keeps it on the server as an AESV container at
+  `/api/playtest/progress/<slot>/place` (the player key), asked for once at
+  load; the newer copy wins, and a late one never moves you once you have
+  moved.
+- Nothing is kept until you move; then this browser at most once a second
+  while you move or look, the server every ten seconds, and both at once
+  when the page is hidden or left.
+- A place the hash names (`#commons`, `#in-inn`, `#above` ...) wins over a
+  kept one. Golden mode (the release walk) keeps and restores nothing, so
+  goldens never depend on a saved place.
+- Dead Gears and Ice Cream Man keep their own rules: a run starts where the
+  game starts it.
+
 ## 4. The galaxy orbit
 
 The galaxy (`verse.coax`) draws `realms.coax`'s worlds in order, then

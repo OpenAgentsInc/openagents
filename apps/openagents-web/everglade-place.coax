@@ -1,0 +1,86 @@
+// Where you are in Everglade, kept so a reload puts you back (eg-pos),
+// loaded by everglade.coax: what counts as open ground for a kept place
+// (place.coax keeps it; everglade-face.c and place-face.h carry it). A kept
+// place inside a piece placed since, in the woods, past the edge or in
+// another room than it says is moved to the nearest open ground round it,
+// and to the spawn when there is none within about 20 m. Under water you
+// come back with your breath: a reload gives it back.
+#load "place-orbit.coax";
+
+// The walk-in building (eg-buildings) whose floor (x, z) is on, or -1 outdoors.
+everglade_room_at :: (s: [] Everglade, x: f32, z: f32) -> int #export_c {
+  for b: 0..<EG_BUILDINGS {
+    if !EG_INTERIOR[b] { continue; }
+    k := b * EG_BOX;
+    if x > EG_BUILDING[k] && x < EG_BUILDING[k + 2] && z > EG_BUILDING[k + 1] && z < EG_BUILDING[k + 3] { return b; }
+  }
+  return -1;
+}
+
+// Whether you may stand at (x, z): inside the world's edge, out of the
+// woods, clear of every wall and placed piece, and in the room `room` says
+// (-1: outdoors or any room you walk into).
+everglade_place_open :: (s: [] Everglade, x: f32, z: f32, room: int) -> bool #export_c {
+  if !s[0].started { everglade_start(s); }
+  if !finite(x) || !finite(z) || x < -99 || x > 99 || z < -99 || z > 99 { return false; }
+  if everglade_in_woods(x, z) { return false; }
+  if room >= 0 && everglade_room_at(s, x, z) != room { return false; }
+  return verse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
+}
+
+// A kept place made good: itself when it is open, else the nearest open
+// spot round it (in the same room if it was in one), else the spawn.
+everglade_place_fix :: (s: [] Everglade, p: Place) -> Place #export_c {
+  if !s[0].started { everglade_start(s); }
+  q := p;
+  q.y = 0;
+  for i: 0..<PLACE_TRIES {
+    t := verse_place_try(p.x, p.z, i);
+    if everglade_place_open(s, t.x, t.z, p.room) { q.x = t.x; q.z = t.z; q.room = everglade_room_at(s, t.x, t.z); return q; }
+  }
+  q.x = s[0].spawn.x; q.z = s[0].spawn.z; q.face = s[0].spawn_face; q.yaw = s[0].spawn_face; q.room = -1;
+  return q;
+}
+
+// You are put at a kept place: the feet the page draws and the camera behind them as kept.
+everglade_place_camera :: (s: [] Everglade, p: Place) #export_c {
+  if !s[0].started { everglade_start(s); }
+  s[0].feet = v3(p.x, ground_at(s, p.x, p.z), p.z);
+  s[0].face = p.face;
+  s[0].orbit = verse_place_orbit(p, s[0].feet);
+  s[0].above = false; s[0].lift = 0;
+}
+
+#test "a kept place in Everglade: open ground stays, a wall or the woods moves you to the nearest open spot, a room keeps you in it" {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  sp := g[0].spawn;
+  #assert everglade_place_open(g[..], sp.x, sp.z, -1);
+  // where you stood comes back as it was, the camera too
+  p := verse_place(sp.x + 1, 0, sp.z, 0.5, 1.25, 0.3, 6, 0, -1, 1000);
+  q := everglade_place_fix(g[..], p);
+  #assert q.x == p.x && q.z == p.z && q.yaw == 1.25 && q.zoom == 6;
+  // the woods: back to the nearest open ground, within 20 m
+  #assert everglade_in_woods(-80, 0);
+  w := everglade_place_fix(g[..], verse_place(-80, 0, 0, 0, 0, 0.3, 6, 0, -1, 1000));
+  #assert !everglade_in_woods(w.x, w.z) && everglade_place_open(g[..], w.x, w.z, -1);
+  // inside a wall (the first solid): moved just clear of it
+  k := 0;
+  cx := (g[0].walls[k] + g[0].walls[k + 3]) / 2; cz := (g[0].walls[k + 2] + g[0].walls[k + 5]) / 2;
+  #assert !everglade_place_open(g[..], cx, cz, -1);
+  m := everglade_place_fix(g[..], verse_place(cx, 0, cz, 0, 0, 0.3, 6, 0, -1, 1000));
+  #assert everglade_place_open(g[..], m.x, m.z, -1) && (m.x - cx) * (m.x - cx) + (m.z - cz) * (m.z - cz) < 400;
+  // in the inn: you come back in the inn
+  everglade_hash(g[..], "in-inn");
+  inn := everglade_spawn(g[..]);
+  r := everglade_room_at(g[..], inn.x, inn.z);
+  #assert r == EG_INN;
+  back := everglade_place_fix(g[..], verse_place(inn.x, 0, inn.z, 0, 0, 0.3, 6, 0, r, 1000));
+  #assert back.room == EG_INN && back.x == inn.x;
+  // far out past everything: the spawn
+  f := everglade_place_fix(g[..], verse_place(500, 0, 500, 0, 0, 0.3, 6, 0, -1, 1000));
+  #assert f.x == g[0].spawn.x && f.z == g[0].spawn.z && f.room == -1;
+  // the camera as kept, at those feet
+  everglade_place_camera(g[..], q);
+  #assert g[0].orbit.yaw == 1.25 && g[0].orbit.want == 6 && g[0].feet.x == q.x && !g[0].above;
+}

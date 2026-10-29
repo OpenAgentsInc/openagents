@@ -18,7 +18,10 @@
 // page's carved ground, each frame it says what water you are in, whose
 // pace, jump, current and breath the face passes to the controller and the
 // page, steps the ducks and lily pads, and writes the river's uniform block
-// after the page's frame; its baked nodes are store 3. It decides nothing. Every pointer is an offset into the host's
+// after the page's frame; its baked nodes are store 3. Where you are is
+// kept so a reload puts you back (place-face.h, everglade-place.coax): a
+// place the hash names wins, else the newer of this browser's and the
+// server's copies, moved to open ground if it no longer is. It decides nothing. Every pointer is an offset into the host's
 // WebAssembly.Memory; the page's state is the host's (coaxial_state_size).
 #include "everglade.h"
 #include "Player.h"
@@ -57,6 +60,8 @@ static float river_levels[105];
 static float river_floats[9 * 8];
 static coax_t_Swim swim;
 static coax_v_t_River rv(void) { return (coax_v_t_River){&river, 1}; }
+#include "place-face.h"
+static bool place_back;   // a kept place was put back: checked again when the published pieces come
 
 static coax_t_Everglade *city(uint32_t state) { return (coax_t_Everglade *)(uintptr_t)state; }
 static coax_v_t_Everglade at(uint32_t state) { return (coax_v_t_Everglade){city(state), 1}; }
@@ -73,6 +78,23 @@ static void start(uint32_t state) {
     river_built = true;
     swim.pace = 1; swim.breath = 1;
   }
+  place_seen(state);
+}
+
+// Where you are: your feet, your facing, the camera, the room you're in.
+static coax_t_Place place_here(uint32_t state) {
+  coax_t_Everglade *g = city(state);
+  if (!placed) return (coax_t_Place){0};
+  return verse_place_of(player.pos.x, player.pos.y, player.pos.z, verse_player_face(player), g->orbit,
+                        everglade_room_at(at(state), player.pos.x, player.pos.z));
+}
+// Put you at a kept place, on open ground near it if it no longer is.
+static void place_put(uint32_t state, coax_t_Place p) {
+  coax_t_Place q = everglade_place_fix(at(state), p);
+  player = verse_player_place(q.x, 0, q.z, q.face);
+  everglade_place_camera(at(state), q);
+  swim = (coax_t_Swim){0}; swim.pace = 1; swim.breath = 1; swim.surface = -1000;
+  place_back = true;
 }
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
@@ -146,6 +168,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   }
   ask_out(state);
   edit_out(state);
+  place_frame(state);
   track_frame(tr(), dt, w, h, scale);
   if (n > 0) track_loaded(tr(), track_cstr("load-everglade"));
   track_drain(&track_state);
@@ -244,6 +267,7 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inb
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
+  if (place_message(state, kind, inbox, length)) return;
   if (kind == 600) { facts_seen = true; if (has_line(length, "player=")) has_player = true; }
   if (mint_id >= 0 && kind == 512 + mint_id) {
     mint_id = -1;
@@ -253,7 +277,13 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     }
     return;
   }
-  if (world_id >= 0 && kind == 512 + world_id) { world_id = -1; everglade_world(at(state), (coax_string){(const char *)inbox, length}); return; }
+  if (world_id >= 0 && kind == 512 + world_id) {
+    world_id = -1;
+    everglade_world(at(state), (coax_string){(const char *)inbox, length});
+    // a piece published since may stand where you were put back
+    if (place_back && !place_keeper.moved) place_put(state, place_here(state));
+    return;
+  }
   if (edit_id >= 0 && kind == 512 + edit_id) { edit_id = -1; everglade_edit_answer(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (post_id >= 0 && kind == 512 + post_id) {
     post_id = -1;
@@ -285,11 +315,17 @@ EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
   everglade_hash(at(state), (coax_string){(const char *)inbox, length});
+  // a hash that named a place (or the map) wins over the kept one
+  coax_t_Everglade *g = city(state);
+  verse_place_named(place_k(), g->warp || g->above);
 }
 
-EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)everglade_action(at(state)); }
-EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->outbox.e; }
-EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)city(state)->out_n; }
-EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { everglade_action_done(at(state)); }
+EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) {
+  int32_t a = (int32_t)everglade_action(at(state));
+  return a ? a : place_action();
+}
+EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return place_out_now ? place_outbox() : (uint32_t)(uintptr_t)city(state)->outbox.e; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return place_out_now ? place_outbox_len() : (uint32_t)city(state)->out_n; }
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { if (place_out_now) place_done(); else everglade_action_done(at(state)); }
 EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return everglade_wants_text(at(state)) ? 1 : 0; }
 EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->field.e; }

@@ -34,6 +34,7 @@
 #load "../../verse/camera.coax";
 #load "../../verse/throw.coax";
 #load "../../verse/arrange.coax";
+#load "place-orbit.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 12000;
@@ -398,6 +399,32 @@ put6 :: (out: [] f32, i: int, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
 // The walls the player walks among, for the face.
 garden_walls :: (s: [] Garden) -> int #export_c { if !s[0].started { garden_start(s); } return s[0].wall_n; }
 garden_spawn :: (s: [] Garden) -> Point #export_c { return v3(f32(SPAWN_X), 0, f32(SPAWN_Z)); }
+
+// ---- where you are, kept so a reload puts you back (eg-pos, place.coax)
+
+// Open ground in the Garden: inside its edge and clear of the trees and hedges.
+garden_place_open :: (s: [] Garden, x: f32, z: f32) -> bool #export_c {
+  if !s[0].started { garden_start(s); }
+  e := abs(f32(EDGE)) - 1;
+  if !finite(x) || !finite(z) || x < -e || x > e || z < -e || z > e { return false; }
+  return verse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
+}
+// A kept place made good: itself when open, else the nearest open spot, else the spawn.
+garden_place_fix :: (s: [] Garden, p: Place) -> Place #export_c {
+  q := p; q.y = 0; q.room = -1;
+  for i: 0..<PLACE_TRIES {
+    t := verse_place_try(p.x, p.z, i);
+    if garden_place_open(s, t.x, t.z) { q.x = t.x; q.z = t.z; return q; }
+  }
+  q.x = f32(SPAWN_X); q.z = f32(SPAWN_Z); q.face = 0; q.yaw = 0;
+  return q;
+}
+// You are put at a kept place: the feet on the ground and the orbit as kept.
+garden_place_camera :: (s: [] Garden, p: Place) #export_c {
+  if !s[0].started { garden_start(s); }
+  s[0].feet = v3(p.x, ground_at(s, p.x, p.z), p.z); s[0].face = p.face;
+  s[0].orbit = verse_place_orbit(p, s[0].feet);
+}
 
 // ---- the controls
 
@@ -1057,6 +1084,21 @@ garden_store_cap :: (k: int) -> int #export_c {
 }
 
 // ---- checks
+
+#test "a kept place in the Garden: open ground stays, a hedge or past the edge moves you to open ground" {
+  g: [1] Garden;
+  garden_start(g[..]);
+  q := garden_place_fix(g[..], verse_place(2, 0, -15, 1, 1.5, 0.4, 6, 0, -1, 1000));
+  #assert garden_place_open(g[..], 2, -15) && q.x == 2 && q.z == -15 && q.yaw == 1.5;
+  k := 0;
+  cx := (g[0].walls[k] + g[0].walls[k + 3]) / 2; cz := (g[0].walls[k + 2] + g[0].walls[k + 5]) / 2;
+  m := garden_place_fix(g[..], verse_place(cx, 0, cz, 0, 0, 0.3, 5, 0, -1, 1000));
+  #assert garden_place_open(g[..], m.x, m.z);
+  out := garden_place_fix(g[..], verse_place(400, 0, 0, 0, 0, 0.3, 5, 0, -1, 1000));
+  #assert out.x == f32(SPAWN_X) && out.z == f32(SPAWN_Z);
+  garden_place_camera(g[..], q);
+  #assert g[0].orbit.yaw == 1.5 && g[0].orbit.want == 6 && g[0].feet.x == 2;
+}
 
 #test "the uniforms fit and line up with garden.wgsl's" {
   #assert UNIFORM_FLOATS % 4 == 0;

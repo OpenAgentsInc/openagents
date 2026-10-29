@@ -258,6 +258,12 @@ as grey boxes at full size, built on the realm host
   place's id in the hash starts you at it (`#commons`, `#market`, `#guilds`,
   `#temple`, `#observatory`, `#inn`, `#road`, `#deep-wood`, `#ruins`,
   `#crypt`, `#river`, `#gate`, `#north-gate`).
+- A reload puts you back where you were: your feet, facing, the camera's
+  turn, tilt and distance, and the room you were in (eg-pos,
+  [realm-host.md](realm-host.md#3-the-save-slot)). A place in the hash wins;
+  a kept place now inside a placed piece, in the woods or in another room
+  moves to the nearest open ground (`everglade-place.coax`). Under water you
+  come back with your breath.
 
 ## You: the Ranger (eg-ranger)
 

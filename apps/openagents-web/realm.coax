@@ -20,6 +20,7 @@
 #load "textkeys.coax";
 #load "analytics.coax";
 #load "save.coax";
+#load "place.coax";
 #load "world.coax";
 #load "room.coax";
 

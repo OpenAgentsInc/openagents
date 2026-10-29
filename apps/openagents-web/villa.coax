@@ -38,6 +38,7 @@
 #load "villaplay.coax";
 #load "villaroom.coax";
 #load "villatips.coax";
+#load "place-orbit.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 16000;
@@ -376,6 +377,36 @@ build_scenery :: (s: [] Villa) {
 }
 
 villa_walls :: (s: [] Villa) -> int #export_c { if !s[0].started { villa_start(s); } return s[0].wall_n; }
+
+// ---- where you are, kept so a reload puts you back (eg-pos, place.coax)
+
+// Open ground: inside the world's edge and clear of the walls, hedges and stones.
+villa_place_open :: (s: [] Villa, x: f32, z: f32) -> bool #export_c {
+  if !s[0].started { villa_start(s); }
+  e := abs(f32(EDGE)) - 1;
+  if !finite(x) || !finite(z) || x < -e || x > e || z < -e || z > e { return false; }
+  return verse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
+}
+// A kept place made good: itself when open, else the nearest open spot, else the spawn.
+villa_place_fix :: (s: [] Villa, p: Place) -> Place #export_c {
+  q := p; q.y = 0; q.room = -1;
+  for i: 0..<PLACE_TRIES {
+    t := verse_place_try(p.x, p.z, i);
+    if villa_place_open(s, t.x, t.z) { q.x = t.x; q.z = t.z; return q; }
+  }
+  q.x = f32(SPAWN_X); q.z = f32(SPAWN_Z); q.face = 0; q.yaw = 0;
+  return q;
+}
+// You are put back where you were: no fly-in to the gate (you are already
+// here), the orbit as kept and the dog at your heel.
+villa_place_camera :: (s: [] Villa, p: Place) #export_c {
+  if !s[0].started { villa_start(s); }
+  s[0].feet = v3(p.x, ground_at(s, p.x, p.z), p.z); s[0].face = p.face;
+  s[0].orbit = verse_place_orbit(p, s[0].feet);
+  s[0].flight_begun = true;
+  s[0].flight = verse_flight_start(flight_keys(), s[0].time, true);
+  s[0].fetch.dog.pos = v3(p.x - sin(p.face) * 1.5, s[0].feet.y, p.z - cos(p.face) * 1.5);
+}
 villa_spawn :: (s: [] Villa) -> Point #export_c { return v3(f32(SPAWN_X), 0, f32(SPAWN_Z)); }
 
 // ---- the controls
@@ -1058,6 +1089,20 @@ villa_store_cap :: (k: int) -> int #export_c {
 frame :: (s: [] Villa, out: [] f32, u: [] f32, dt: f32, x: f32, z: f32, face: f32) -> int {
   villa_step(s, dt, x, 0, z, face, 0, 0, 0);
   return villa_draw(s, out, u, 1280, 800, 1, false, 0, 0, 0, 0);
+}
+
+#test "a kept place in Hecate's Cemetery: open ground stays without the fly-in, a wall moves you clear" {
+  g: [1] Villa;
+  villa_start(g[..]);
+  sp := villa_spawn(g[..]);
+  #assert villa_place_open(g[..], sp.x, sp.z);
+  q := villa_place_fix(g[..], verse_place(sp.x + 2, 0, sp.z + 3, 1, 1.5, 0.4, 6, 0, -1, 1000));
+  #assert q.x == sp.x + 2 && q.z == sp.z + 3 && q.yaw == 1.5;
+  cx := (g[0].walls[0] + g[0].walls[3]) / 2; cz := (g[0].walls[2] + g[0].walls[5]) / 2;
+  m := villa_place_fix(g[..], verse_place(cx, 0, cz, 0, 0, 0.3, 5, 0, -1, 1000));
+  #assert villa_place_open(g[..], m.x, m.z);
+  villa_place_camera(g[..], q);
+  #assert g[0].orbit.yaw == 1.5 && g[0].orbit.want == 6 && g[0].flight_begun && !verse_flight_active(g[0].flight, g[0].time + 0.1);
 }
 
 #test "the uniforms fit and line up with villa.wgsl's" {

@@ -33,7 +33,10 @@
 //                             location's hash (empty: none), in place, 4 keeps it in this browser (one
 //                             text per save slot, in IndexedDB, else localStorage; given back on the next visit as
 //                             message 4; the slot is the page's data-slot, a realm's own, else the app's name), 5 keeps it as the browser's playtest player ({key, id, account},
-//                             localStorage verse.player, which the landing's join writes too); others go to the page's
+//                             localStorage verse.player, which the landing's join writes too), 11 keeps it as the
+//                             player's place in this realm (localStorage coaxial.<slot>.place, synchronous, so a page
+//                             being left keeps it; given back as message 11 after the page facts; never in golden
+//                             mode: apps/openagents-web/place.coax); others go to the page's
 //                             scripts as a "coaxial" event (0 when an engine loads), which
 //                             answer with coaxial.send(kind, text)
 // and, optionally, sockets: a WebSocket byte pipe, text frames only, at most 4 open. The app (its C face)
@@ -229,6 +232,9 @@ async function loadEngine(bytes, generation) {
   if (kept) send(4, kept);
   globalThis.coaxial.ready = true;
   if (x.coaxial_message) send(PAGE_KIND, pageFacts());
+  // Where the player was in this realm (action 11), before the first frame: a reload never waits on the network.
+  const place = golden ? "" : local(placeKey);
+  if (place) send(PLACE_KIND, place);
   viewer();
   dispatchEvent(new CustomEvent("coaxial", { detail: { code: 0, text: "" } }));
   return true;
@@ -1207,6 +1213,10 @@ function keep(text) {
   }
   try { localStorage.setItem(keptKey, text); } catch {}
 }
+// The player's place in this realm (action 11 keeps it, message 11 gives it back): small, so
+// localStorage, whose write is done before a page being left goes.
+const PLACE_KIND = 11, placeKey = `coaxial.${slot}.place`;
+function local(key) { try { return localStorage.getItem(key) || ""; } catch { return ""; } }
 // The browser's playtest player: {key, id, account} from the landing's join or a guest's key.
 function player() {
   try { const p = JSON.parse(localStorage.getItem("verse.player") || "null"); return p && typeof p.key === "string" ? p : null; }
@@ -1265,6 +1275,7 @@ function after(gesture, tap = false) {
     // The app's own place in the page (the hash), replaced so Back still leaves the page.
     else if (code === 3) { if (location.hash.slice(1) !== text) history.replaceState(history.state, "", text ? `#${encodeURIComponent(text)}` : location.pathname + location.search); }
     else if (code === 4) keep(text);
+    else if (code === PLACE_KIND) { if (!golden) try { localStorage.setItem(placeKey, text); } catch {} }
     else if (code === 6) setQuality(text);
     else if (code === ACT_VOICE && voice) voice.toggle(text === "end" ? "end" : text === "on");
     else if (code === ACT_VOICE_TO && voice) voice.face(text);

@@ -67,6 +67,7 @@ static uint8_t room_body[256], say_body[1400];
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 static figs_view fv(void) { return (figs_view){figs, 1}; }
+#include "place-face.h"
 
 static coax_t_Villa *villa(uint32_t state) { return (coax_t_Villa *)(uintptr_t)state; }
 static coax_v_t_Villa at(uint32_t state) { return (coax_v_t_Villa){villa(state), 1}; }
@@ -90,6 +91,20 @@ static void start(uint32_t state) {
   sticks = verse_sticks_reset();
   cast();
   placed = true;
+  verse_place_golden(place_k(), golden);
+  villa_walls(at(state));   // the page started: its orbit is where you start
+  place_seen(state);
+}
+
+// Where you are, kept so a reload puts you back (place-face.h).
+static coax_t_Place place_here(uint32_t state) {
+  if (!placed) return (coax_t_Place){0};
+  return verse_place_of(player.pos.x, player.pos.y, player.pos.z, verse_player_face(player), villa(state)->orbit, -1);
+}
+static void place_put(uint32_t state, coax_t_Place p) {
+  coax_t_Place q = villa_place_fix(at(state), p);
+  player = verse_player_place(q.x, 0, q.z, q.face);
+  villa_place_camera(at(state), q);
 }
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
@@ -225,6 +240,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_villa_max_vertices() * coaxial_villa_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_villa_uniform_floats()};
   int64_t n = villa_draw(at(state), out, u, w, h, scale, sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
+  place_frame(state);
   track_frame(tr(), dt, w, h, scale);
   if (n > 0) track_loaded(tr(), track_cstr("load-hecates-cemetery"));
   // The flight, once: that it played to its end or was skipped.
@@ -298,6 +314,7 @@ static int http_status(uint32_t length, uint32_t *body) {
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
+  if (place_message(state, kind, inbox, length)) return;
   if (kind == 600) {   // the page facts: whether the browser has a player key
     facts_seen = true;
     for (uint32_t i = 0; i + 7 < length; i++)
@@ -336,10 +353,10 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
 }
 
 // The page's actions: copy a link (2), keep the player key (5), pick files to upload (30, uploads.js).
-EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { (void)state; return action_kind; }
-EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)action_out; }
-EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { (void)state; return action_n; }
-EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { (void)state; action_kind = 0; action_n = 0; }
+EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { (void)state; return action_kind ? action_kind : place_action(); }
+EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { (void)state; return place_out_now ? place_outbox() : (uint32_t)(uintptr_t)action_out; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { (void)state; return place_out_now ? place_outbox_len() : action_n; }
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { (void)state; if (place_out_now) place_done(); else { action_kind = 0; action_n = 0; } }
 // Typing in the pet's panel or a memorial's note: the keyboard field over the box drawn.
 EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return villa_wants_text(at(state)) ? 1 : 0; }
 // The memorial's photos and videos for the host to draw (coax/web/host.js, coaxial_media): villapet.coax's media_text.
