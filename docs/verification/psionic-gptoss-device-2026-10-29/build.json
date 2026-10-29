@@ -1,0 +1,22 @@
+{
+  "cuda_emitter": "coax0 0.23.0",
+  "native_emitter": "coax0 0.22.0",
+  "host_cc": "GCC 15.2.0",
+  "cuda_toolkit": "13.2",
+  "driver": "595.71.05",
+  "tested_files_sha256": {
+    "coax": "0634fac1dc50a9eb2c9bf18e51486b567d996dcdfe47e9d66112c847f010eb46",
+    "device-host.c": "819fab40242b449e1f27059760c65edb79e086b58d3fad9a59889f54be2c4d45",
+    "device-host.h": "0845acff34702c952bea54a727c16124775a5a45057681144d9d02d79fe34337",
+    "device-kernels-v3.cu": "7466822732327e7e428febefb3d0b167a154ae3229e743d09bbf550c436ee11b",
+    "gptoss-device.c": "8bf17deb14a07cf7026745a5766da28f8b1fb66c63cbbf920897d8fb8b72ebae",
+    "gptoss-device.h": "f18a07e0242cdc84329e885dc5ff22c067cbe56b3c14edec694e08ca5b531e72",
+    "cuda-host.c": "276e2b60b5ea61515d83afc3dcfa3ff8589aea8bdd9c65718f140cbe60fb542c",
+    "cuda-host.h": "112c6cb0de4af9d3c151857d590f36e60e7f75f631a6540c0071337d002fb5a6",
+    "gptoss_device.c": "b8be819f1f956c2083ee97b7e7118b4d38b89d90c33f4b0f6c2298202948a2a8",
+    "native-v3-final": "31d86e398c55b0e67d87ff0d7bdd81c3b15253de48c6ba190ce8192742434c37"
+  },
+  "scope_notes": [
+    "The plan subsequently adds explicit pre-admission rejection of non-four-divisible expert counts and checks tensor-relative address bounds. These do not change the admitted original 20b launch program. Focused owned checks cover these rejection paths."
+  ]
+}

@@ -1,5 +1,31 @@
 # Invariants
 
+## Psionic original gpt-oss GPU sessions retain model state on device
+
+`psionic/lib/gptoss/device-*.coax` owns `gpt-oss-cuda-f32-v1`: original
+BF16/MXFP4 coefficient bytes relocate unchanged into aligned resident intervals,
+f32 lane products and ordered f64 reductions feed the complete CUDA decoder.
+Coax admits shapes, byte budgets, tensor-relative u32 index bounds, all kernel
+views and the ordered launch program; C performs effects. The native session
+has no automatic CPU fallback. Authentication and upload happen once.
+
+Single-token steps publish cache/logits/diagnostics only after all numeric
+flags succeed, then advance position. Batched prefill uses causal per-query
+history, stable expert token groups and a private full cache shadow. Each
+chunk publishes together, including wrapped window entries; earlier successful
+chunks remain committed if a later chunk fails. Caller-supplied sequential
+history, immutable admitted files, valid allocations and exclusive session
+access remain required. Driver failures poison the session. Greedy device
+generation uses Harmony framing and the shared final-only display gate;
+sampled device generation, speculation and tools retain separate gates.
+
+Check: `psionic/tests/check_gptoss_device.sh` uses focused owned fixtures,
+debug/release, native plain/ASan/UBSan and exact book output. CUDA/original
+runs are explicit opt-ins; original answers compare with retained independent
+CPU vectors, never routine full-original CPU inference. Full mutation roots
+remain excluded by the owner's request. Scope, hardware and measurements:
+[device record](docs/verification/psionic-gptoss-device-2026-10-29.md).
+
 ## Psionic original gpt-oss execution and constrained continuations
 
 `psionic/lib/gptoss/` owns `gpt-oss-cpu-wide-v1`: fixed independently pinned

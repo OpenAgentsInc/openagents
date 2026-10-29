@@ -1,0 +1,45 @@
+{
+  "profile": "gpt-oss-cuda-f32-v1",
+  "reference_sha256": "816b0df0293354898f371a7dff3cfa73db99a0870b285c94cb35a199dfbb0ff3",
+  "bound": 0.0005,
+  "steps": [
+    {
+      "logits": {
+        "maximum_scaled_error": 9.982306605057424e-06,
+        "top_token": 7,
+        "candidate_sha256": "86437731c26289fbdf8aa5b54a65e062c90ca3142f66d6a2775aca5867010b2e"
+      },
+      "trace": {
+        "maximum_scaled_error": 0.00048050535092247825,
+        "candidate_sha256": "f283ff2ba9737ff2a486b6c4bdd91264d9dd687161ffc83139003542722552ee"
+      },
+      "routes": {
+        "exact": true,
+        "candidate_sha256": "2c7d9f9a4fe27296e3fe40415099f676eb46dbedb6d044af5bafbfc328ed64e6"
+      },
+      "weights": {
+        "maximum_scaled_error": 3.2941411323473673e-07,
+        "candidate_sha256": "20241d38fa0fa6027325118c33b6bee352cefdd567a0833ddf848a00b570f71b"
+      }
+    },
+    {
+      "logits": {
+        "maximum_scaled_error": 1.1722817667519351e-05,
+        "top_token": 200005,
+        "candidate_sha256": "9479b4c4658e5533eb3037bdb91b248e1c6440348ae7dc04a35c88a8b6f2ef25"
+      },
+      "trace": {
+        "maximum_scaled_error": 0.0003078333769976421,
+        "candidate_sha256": "90cd72c232538d6e14e1f02bfd6cb0674fd297e4d78404a8381859e7e2446901"
+      },
+      "routes": {
+        "exact": true,
+        "candidate_sha256": "76abc2913712570d32e84b1b1e7c4c63962892fd0322f0f7fe615b9d790c6168"
+      },
+      "weights": {
+        "maximum_scaled_error": 8.400690570367646e-08,
+        "candidate_sha256": "ed30fc3b5df562852f9fb85760e48866450779497f0b95c84ac9dbc750e8a296"
+      }
+    }
+  ]
+}

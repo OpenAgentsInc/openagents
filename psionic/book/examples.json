@@ -220,6 +220,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/gptoss-device-plan.coax",
+      "chapter": "psionic/book/ch45a-original-weights-stay-on-the-gpu.md",
+      "stdout": "psionic/fixtures/gptoss-device-plan.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

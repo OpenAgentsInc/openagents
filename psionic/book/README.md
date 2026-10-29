@@ -34,6 +34,9 @@ run examples directly without the check command.
 | [43. Attention with sinks and a window](ch43-attention-with-sinks-and-a-window.md) | Runnable: gpt-oss-attention-cpu-wide-v1 | Compute per-head sink attention with a bounded ring, split-half YaRN, biased projection and clamped expert activation. |
 | [44. The harmony format](ch44-the-harmony-format.md) | Runnable: gpt-oss-harmony-text-v1 | Encode original byte ranks, frame typed messages with reasoning effort and parse strict complete replies with exact turn/handoff stops. |
 | [45. Execute gpt-oss-20b](ch45-execute-gpt-oss-20b.md) | Runnable: original CPU model and seeded generation | Complete authenticated 24-layer model, dense references, replay and sampling. |
+| [45a. Original weights stay on the GPU](ch45a-original-weights-stay-on-the-gpu.md) | Runnable: original 20b CUDA residency | Packed original weights, complete resident memory plan and focused owned checks. |
+| [45b. A complete CUDA decoder](ch45b-a-complete-cuda-decoder.md) | Runnable: original 20b CUDA greedy generation | Every layer, cache, router and full head stay on device; complete Harmony final display. |
+| [45c. Prefill together](ch45c-prefill-together.md) | Runnable: batched CUDA prefill | Coefficient reuse across tokens, grouped experts, causal chunk attention and atomic cache shadows. |
 | [46. Execute gpt-oss-120b](ch46-execute-gpt-oss-120b.md) | Runnable: original CPU model and residency | The same engine, 36 layers and 128 experts, original shards and measured memory. |
 | [47. Let the small model guess](ch47-let-the-small-model-guess.md) | Runnable: serial CPU speculative profile | Standard acceptance/correction, block bonus, whole-cache rollback, prompt n-grams and original greedy parity. |
 | [48. Call a tool](ch48-call-a-tool.md) | Runnable: finite JSON-schema enum and granted tools | Mask before sampling, typed commentary handoffs, tool-role results and final-only display. |

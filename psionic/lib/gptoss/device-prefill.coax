@@ -1,0 +1,79 @@
+// Bounded prompt chunks share coefficients across tokens; decoding keeps its
+// single-token program. The host only uploads IDs and executes these launches.
+#load "device-plan.coax";
+#authority;
+#test "prompt plans validate every token before upload and bound each chunk" {
+    ids:=[4]int.[1,2,3,4];#assert gd_prompt(GT_SHAPE,0,ids[..]).status==GStatus.ok;
+    ids[3]=16;#assert gd_prompt(GT_SHAPE,0,ids[..]).status==GStatus.token;ids[3]=4;
+    #assert gd_prompt(GT_SHAPE,5,ids[..]).status==GStatus.state && gd_prompt(GT_SHAPE,0,ids[0..<0]).status==GStatus.state;
+    #assert gd_chunk(128,257,128)==128 && gd_chunk(256,257,128)==1 && gd_chunk(257,257,128)==0;
+    pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
+    p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);ops:[192]GDOp;args:[4608]GDArg;
+    r:=gd_batch_program(GT_SHAPE,p,params[..],1,1,3,true,4,ops[..],args[..]);#assert r.status==GStatus.ok && r.ops>100 && r.ops<=p.max_ops;
+    seen:[43]bool;for i:0..<r.ops {seen[ops[i].kind]=true;for j:0..<ops[i].count {a:=args[ops[i].first+j];if a.view {#assert gd_ref_fits(p,a.ref);}}}for i:24..<43 {#assert seen[i];}
+    #assert gd_batch_program(GT_SHAPE,p,params[..],7,0,2,false,4,ops[..],args[..]).status==GStatus.state;
+    #assert gd_batch_program(GT_SHAPE,p,params[..],0,0,4,false,0,ops[..],args[..]).status==GStatus.state;
+}
+gd_prompt :: (s:GShape,position:int,ids:[]int)->GResult #export_c {
+    if !g_shape(s) || s.capacity>4096 {return GResult.{status=GStatus.shape};}
+    if position<0 || position>s.capacity || ids.count<1 || ids.count>s.capacity-position {return GResult.{status=GStatus.state};}
+    for id:ids {if id<0 || id>=s.vocab {return GResult.{status=GStatus.token};}}return GResult.{written=ids.count};
+}
+gd_chunk :: (first:int,count:int,batch:int)->int #export_c {
+    if first<0 || first>=count || batch<1 {return 0;}return gs_window(count-first,batch);
+}
+gd_guard :: (w:GDWriter,count:int)->GDWriter {
+    p:=w.plan;n:=(count+255)/256;r:=gd_emit(w,18,n,0,2,GDScalars.{},GDViews.{a=gd_slice(p,37,0,count),b=gd_slice(p,23,0,n)});
+    return gd_emit(r,19,1,0,2,GDScalars.{},GDViews.{a=gd_slice(p,23,0,n),b=gd_all(p,24)});
+}
+gd_batch_norm :: (w:GDWriter,d:int,n:int,scale:GDRef,x:GDRef,out:GDRef)->GDWriter {
+    p:=w.plan;r:=gd_emit(w,25,n*64,2,2,GDScalars.{a=d,b=64},GDViews.{a=x,b=gd_all(p,44)});
+    r=gd_emit(r,26,n*d,2,5,GDScalars.{a=d,b=64},GDViews.{a=gd_all(p,44),b=scale,c=x,d=out,e=gd_all(p,37)});return gd_guard(r,n*d);
+}
+gd_batch_bf :: (w:GDWriter,rows:int,cols:int,n:int,weight:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter {
+    p:=w.plan;r:=gd_emit(w,27,((n+7)/8)*(rows/4)*16,4,3,GDScalars.{a=rows,b=cols,c=n,d=16},GDViews.{a=weight,b=x,c=gd_all(p,40)});
+    r=gd_emit(r,28,n*rows,3,4,GDScalars.{a=rows,b=n,c=16},GDViews.{a=gd_all(p,40),b=bias,c=out,d=gd_all(p,37)});return gd_guard(r,n*rows);
+}
+gd_batch_mx :: (w:GDWriter,rows:int,cols:int,n:int,e:int,z:int,slot_input:int,weight:GDRef,scale:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter {
+    p:=w.plan;tiles:=(n*z+7)/8+e;r:=gd_emit(w,32,tiles*(rows/4)*16,7,6,GDScalars.{a=rows,b=cols,c=n,d=e,e=z,f=16,g=slot_input},GDViews.{a=weight,b=scale,c=gd_all(p,38),d=gd_all(p,39),e=x,f=gd_all(p,40)});
+    r=gd_emit(r,8,n*z*rows,2,5,GDScalars.{a=rows,b=16},GDViews.{a=gd_all(p,45),b=gd_all(p,40),c=bias,d=out,e=gd_all(p,37)});return gd_guard(r,n*z*rows);
+}
+gd_batch_program :: (s:GShape,p:GDPlan,params:[]GDParam,position:int,first:int,n:int,choose:bool,limit:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+    if p.status!=GStatus.ok || !g_shape(s) || s.capacity>4096 {return GDProgram.{status=GStatus.shape};}
+    if position<0 || first<0 || n<1 || n>p.batch || position>s.capacity-n || first>s.capacity-n || limit<1 || limit>s.capacity {return GDProgram.{status=GStatus.state};}
+    if params.count!=3+15*s.layers || ops.count<p.max_ops || args.count<p.max_args {return GDProgram.{status=GStatus.capacity};}
+    w:=GDWriter.{plan=p,ops=ops,args=args};d:=s.width;q:=s.heads*64;k:=s.kv_heads*64;h:=s.hidden;z:=s.selected;
+    control:=gd_all(p,24);x:=gd_slice(p,28,0,n*d);normal:=gd_slice(p,29,0,n*d);qkv:=gd_slice(p,30,0,n*(q+2*k));attention:=gd_slice(p,31,0,n*q);projected:=gd_slice(p,32,0,n*d);router:=gd_slice(p,33,0,n*s.experts);pending:=gd_slice(p,34,0,n*2*k);flags:=gd_all(p,37);
+    w=gd_emit(w,0,1,3,1,GDScalars.{a=0,b=position,c=s.vocab},GDViews.{a=control});
+    w=gd_emit(w,39,p.counts[16],0,2,GDScalars.{},GDViews.{a=gd_all(p,16),b=gd_all(p,35)});
+    w=gd_emit(w,24,n*d,2,4,GDScalars.{a=d,b=first},GDViews.{a=gd_all(p,26),b=gd_weight(params,0,2),c=x,d=flags});w=gd_guard(w,n*d);
+    for layer:0..<s.layers {base:=3+15*layer;ids:=gd_slice(p,14,layer*z,z);weights:=gd_slice(p,15,layer*z,z);trace:=gd_slice(p,13,layer*2*d,d);cap:=g_layer_capacity(s,layer);cache:=gd_slice(p,35,g_cache_base(s,layer),2*k*cap);window:=ifx layer%2==0 then s.window else 0;stride:=position+n;if window>0 && stride>window {stride=window;}
+        w=gd_batch_norm(w,d,n,gd_weight(params,base,2),x,normal);
+        w=gd_batch_bf(w,q+2*k,d,n,gd_weight(params,base+4,8),gd_weight(params,base+3,2),normal,qkv);
+        rotations:=n*(s.heads+s.kv_heads)*32;w=gd_emit(w,35,rotations,3,4,GDScalars.{a=s.heads,b=s.kv_heads,c=position},GDViews.{a=qkv,b=gd_all(p,25),c=pending,d=flags});w=gd_guard(w,rotations);
+        w=gd_emit(w,36,n*s.heads*stride,6,4,GDScalars.{a=s.heads,b=s.kv_heads,c=position,d=window,e=cap,f=stride},GDViews.{a=qkv,b=cache,c=pending,d=gd_all(p,36)});
+        w=gd_emit(w,37,n*s.heads,4,3,GDScalars.{a=s.heads,b=position,c=window,d=stride},GDViews.{a=gd_weight(params,base+5,2),b=gd_all(p,36),c=flags});w=gd_guard(w,n*s.heads);
+        w=gd_emit(w,38,n*q*8,8,4,GDScalars.{a=s.heads,b=s.kv_heads,c=n,d=position,e=window,f=cap,g=stride,h=8},GDViews.{a=gd_all(p,36),b=cache,c=pending,d=gd_all(p,40)});
+        w=gd_emit(w,28,n*q,3,4,GDScalars.{a=q,b=n,c=8},GDViews.{a=gd_all(p,40),b=GDRef.{elem=2},c=attention,d=flags});w=gd_guard(w,n*q);
+        w=gd_batch_bf(w,d,q,n,gd_weight(params,base+2,8),gd_weight(params,base+1,2),attention,projected);
+        w=gd_emit(w,33,n*d,2,4,GDScalars.{a=d,b=n},GDViews.{a=x,b=projected,c=trace,d=flags});w=gd_guard(w,n*d);
+        w=gd_batch_norm(w,d,n,gd_weight(params,base+10,2),x,normal);
+        w=gd_batch_bf(w,s.experts,d,n,gd_weight(params,base+7,8),gd_weight(params,base+6,2),normal,router);
+        w=gd_emit(w,29,n,3,6,GDScalars.{a=s.experts,b=z,c=n},GDViews.{a=router,b=gd_all(p,45),c=gd_all(p,46),d=ids,e=weights,f=flags});w=gd_guard(w,n);
+        w=gd_emit(w,30,s.experts,3,3,GDScalars.{a=s.experts,b=z,c=n},GDViews.{a=gd_all(p,45),b=gd_all(p,38),c=gd_all(p,39)});
+        w=gd_emit(w,31,1,1,1,GDScalars.{a=s.experts},GDViews.{a=gd_all(p,39)});
+        w=gd_batch_mx(w,2*h,d,n,s.experts,z,0,gd_weight(params,base+11,8),gd_weight(params,base+12,1),gd_weight(params,base+8,2),normal,gd_all(p,41));
+        w=gd_emit(w,10,n*z*h,1,3,GDScalars.{a=h},GDViews.{a=gd_all(p,41),b=gd_all(p,42),c=flags});w=gd_guard(w,n*z*h);
+        w=gd_batch_mx(w,d,h,n,s.experts,z,1,gd_weight(params,base+13,8),gd_weight(params,base+14,1),gd_weight(params,base+9,2),gd_all(p,42),gd_all(p,43));
+        w=gd_emit(w,34,n*d,3,5,GDScalars.{a=d,b=z,c=n},GDViews.{a=x,b=gd_all(p,43),c=gd_all(p,46),d=gd_slice(p,13,(2*layer+1)*d,d),e=flags});w=gd_guard(w,n*d);
+        kept:=gs_window(n,cap);w=gd_emit(w,40,kept*2*k,4,2,GDScalars.{a=s.kv_heads,b=position,c=n,d=cap},GDViews.{a=pending,b=cache});
+    }
+    w=gd_emit(w,1,p.flags,0,1,GDScalars.{},GDViews.{a=gd_all(p,22)});
+    w=gd_norm(w,d,gd_weight(params,1,2),gd_slice(p,28,(n-1)*d,d),gd_all(p,1));
+    w=gd_bf(w,s.vocab,d,gd_weight(params,2,8),GDRef.{elem=2},gd_all(p,1),gd_all(p,17));
+    summaries:=(w.result.flags+255)/256;w=gd_emit(w,18,summaries,0,2,GDScalars.{},GDViews.{a=gd_slice(p,22,0,w.result.flags),b=gd_slice(p,23,0,summaries)});w=gd_emit(w,19,1,0,2,GDScalars.{},GDViews.{a=gd_slice(p,23,0,summaries),b=control});
+    items:=p.counts[16];if s.vocab>items {items=s.vocab;}if p.counts[13]>items {items=p.counts[13];}
+    w=gd_emit(w,41,items,0,11,GDScalars.{},GDViews.{a=control,b=gd_all(p,35),c=gd_all(p,17),d=gd_all(p,13),e=gd_all(p,14),f=gd_all(p,15),g=gd_all(p,16),h=gd_all(p,18),i=gd_all(p,19),j=gd_all(p,20),k=gd_all(p,21)});
+    w=gd_emit(w,42,1,1,1,GDScalars.{a=n},GDViews.{a=control});
+    if choose {w=gd_emit(w,22,p.counts[27],0,2,GDScalars.{},GDViews.{a=gd_all(p,18),b=gd_all(p,27)});w=gd_emit(w,23,1,1,3,GDScalars.{a=limit},GDViews.{a=gd_all(p,18),b=gd_all(p,27),c=control});}return w.result;
+}

@@ -60,6 +60,8 @@ PcStatus pc_fill(PcBuffer dst, uint32_t value, size_t words, PcStream stream);
 
 PcStatus pc_stream(PcStream *stream);
 PcStatus pc_event(PcEvent *event);
+PcStatus pc_destroy_stream(PcStream stream);
+PcStatus pc_destroy_event(PcEvent event);
 PcStatus pc_record(PcEvent event, PcStream stream);
 PcStatus pc_wait(PcStream stream, PcEvent event);
 PcStatus pc_event_seconds(PcEvent start, PcEvent end, double *seconds);

@@ -218,6 +218,7 @@ phase "native debug/release, plain and ASan/UBSan"
 # The gpt-oss chapters (45-48) have their own runner; --only gptoss selects it.
 if [[ $gptoss == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_gptoss.sh
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_gptoss_device.sh
     phase "gpt-oss chapters"
 fi
 

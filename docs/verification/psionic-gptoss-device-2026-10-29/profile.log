@@ -1,0 +1,37 @@
+device NVIDIA GeForce RTX 4080 compute 8.9 free=15800795136 total=16711352320
+original 20b admitted/authenticated/uploaded once in 76.972737 s; weight bytes=13761300984 workspace=527933440 reserve=134217728
+original step 0 0.042345 seconds
+original step 1 0.054795 seconds
+kernel gk_begin launches=2 device_seconds=0.000074144
+kernel gk_clear launches=2 device_seconds=0.000015488
+kernel gk_norm_part launches=2 device_seconds=0.000030496
+kernel gk_norm launches=2 device_seconds=0.000020640
+kernel gk_bf_part launches=2 device_seconds=0.004139808
+kernel gk_bf_finish launches=2 device_seconds=0.000056320
+kernel gk_mx_finish launches=96 device_seconds=0.014519840
+kernel gk_activate launches=48 device_seconds=0.000678368
+kernel gk_flags_part launches=676 device_seconds=0.020030784
+kernel gk_flags_finish launches=676 device_seconds=0.016309376
+kernel gk_batch_embed launches=2 device_seconds=0.000016000
+kernel gk_batch_norm_part launches=96 device_seconds=0.001713056
+kernel gk_batch_norm launches=96 device_seconds=0.005553824
+kernel gk_batch_bf_part launches=144 device_seconds=0.039916224
+kernel gk_batch_finish launches=192 device_seconds=0.004966336
+kernel gk_batch_route launches=48 device_seconds=0.001509856
+kernel gk_group launches=48 device_seconds=0.003183264
+kernel gk_group_prefix launches=48 device_seconds=0.000360096
+kernel gk_batch_mx_part launches=96 device_seconds=0.322819295
+kernel gk_batch_residual launches=48 device_seconds=0.000411360
+kernel gk_batch_mix launches=48 device_seconds=0.000834560
+kernel gk_batch_rotate launches=48 device_seconds=0.000722592
+kernel gk_batch_scores launches=48 device_seconds=0.017818752
+kernel gk_batch_softmax launches=48 device_seconds=0.004897984
+kernel gk_batch_context_part launches=48 device_seconds=0.014622272
+kernel gk_copy launches=2 device_seconds=0.000669632
+kernel gk_batch_shadow launches=48 device_seconds=0.000276256
+kernel gk_publish_batch launches=2 device_seconds=0.000596032
+kernel gk_advance_many launches=2 device_seconds=0.000008448
+original 129-token varied prefix: complete serial/batch cache and logits bitwise equal across window/chunk boundary
+generation prefix=59 emitted=24 stop=1 prefill_seconds=0.236091 decode_seconds=0.637241
+final: Hello! 👋 How can I help you today?
+resident device bytes observed=15467741184; free=1243611136; no per-layer activation/route downloads

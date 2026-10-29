@@ -1,0 +1,7 @@
+// Native ABI for device plans plus the same Coax kernels compiled to C for
+// small-fixture conformance. `device-kernels.coax` alone is emitted as CUDA.
+#load "device-prefill.coax";
+#load "device-kernels.coax";
+#load "../gptoss-math.coax";
+#load "../harmony.coax";
+#load "tools.coax";

@@ -1,0 +1,77 @@
+{
+  "profile": "gpt-oss-cuda-f32-v1",
+  "model": "original-20b",
+  "input_tokens": 1024,
+  "forced_output_tokens": 128,
+  "context_capacity": 2048,
+  "concurrency": 1,
+  "clock": "host monotonic wall time",
+  "corpus": "ID[i]=1000+(i*7919)%190000, first 128 repeated as continuation",
+  "warmup": [
+    {
+      "repeat": -1,
+      "prefill_seconds": 4.316049,
+      "decode_seconds": 4.498108,
+      "decode_tokens_per_second": 28.456
+    }
+  ],
+  "runs": [
+    {
+      "repeat": 0,
+      "prefill_seconds": 4.327424,
+      "decode_seconds": 4.497752,
+      "decode_tokens_per_second": 28.459
+    },
+    {
+      "repeat": 1,
+      "prefill_seconds": 4.325127,
+      "decode_seconds": 4.498565,
+      "decode_tokens_per_second": 28.454
+    },
+    {
+      "repeat": 2,
+      "prefill_seconds": 4.314705,
+      "decode_seconds": 4.491084,
+      "decode_tokens_per_second": 28.501
+    },
+    {
+      "repeat": 3,
+      "prefill_seconds": 4.323985,
+      "decode_seconds": 4.501769,
+      "decode_tokens_per_second": 28.433
+    },
+    {
+      "repeat": 4,
+      "prefill_seconds": 4.333102,
+      "decode_seconds": 4.500677,
+      "decode_tokens_per_second": 28.44
+    }
+  ],
+  "prefill_seconds": {
+    "p50": 4.325127,
+    "p95_nearest_rank": 4.333102,
+    "minimum": 4.314705,
+    "maximum": 4.333102
+  },
+  "decode_seconds": {
+    "p50": 4.498565,
+    "p95_nearest_rank": 4.501769,
+    "minimum": 4.491084,
+    "maximum": 4.501769
+  },
+  "decode_tokens_per_second": {
+    "p50": 28.454,
+    "p95_nearest_rank": 28.501,
+    "minimum": 28.433,
+    "maximum": 28.501
+  },
+  "goals": {
+    "prefill_at_most_2_seconds": false,
+    "decode_at_least_25_tokens_per_second": true
+  },
+  "limitations": [
+    "Forced tokens measure core work, not sampled quality.",
+    "No packaged-reference or concurrency 4/8 qualification.",
+    "Five repeats give a coarse tail estimate."
+  ]
+}

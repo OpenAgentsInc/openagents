@@ -288,6 +288,22 @@ for its 38 tasks. When selecting a new breadth branch, create concrete issues
 from that branch's operator/data/checkpoint gates. This proposal creates no
 new issues, model downloads, hardware purchases or deployment requirements.
 
+## Measured GPT-OSS device baseline
+
+[Chapters 45a–45c](../book/ch45a-original-weights-stay-on-the-gpu.md) now run
+original 20b with resident packed weights, a complete greedy CUDA decoder and
+128-token grouped prefill. The retained original vectors pass the frozen
+numerical bound and exact route/top-token gates; a complete Harmony turn runs.
+At 1,024 input / 128 forced output, five warm 4080 repeats give median
+**4.325127 s prefill and 28.454 decode tokens/s**. The 2-second prefill goal
+remains open. See the [record](../../docs/verification/psionic-gptoss-device-2026-10-29.md).
+
+Next in the GPT-OSS delivery sequence: cooperative Coax compute primitives,
+original-MXFP4 matrix products with an explicit arithmetic profile, resident
+graph replay, then the complete throughput/serving gate. Larger-device 120b,
+fast speculative blocks and schema-masked device tools follow that qualified
+foundation. These new lettered chapters preserve all existing chapter numbers.
+
 ## What support means
 
 Each model/backend/profile earns its own evidence. Metadata or a synthetic

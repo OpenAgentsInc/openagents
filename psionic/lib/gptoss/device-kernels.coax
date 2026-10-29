@@ -1,0 +1,296 @@
+// gpt-oss-cuda-f32-v1. Original packed coefficients, f32 lane sums and
+// small ordered f64 reductions. No global matrix expansion or host math.
+#authority;
+
+#test "original BF16 and every E2M1 code decode directly" {
+    #assert gk_addr(4294967295,1,0)==4294967295 && gk_addr(128*32768-1,256,255)==1073741823;
+    #assert gk_bf(0x3f80)==1 && gk_bf(0xc000)== -2;
+    expected:=[16]f32.[0,0.5,1,1.5,2,3,4,6,0,-0.5,-1,-1.5,-2,-3,-4,-6];
+    for i:0..<16 {#assert gk_fp4(cast(u64)i)==expected[i];}
+    #assert f32_bits(gk_fp4(8))==0x80000000;
+    #assert gk_power(127)==1 && gk_power(128)==2 && f32_bits(gk_power(0))==0x00400000;
+    #assert gk_finite_bits(0x7f7fffff) && !gk_finite_bits(0x7f800000) && !gk_finite_bits(0xffc00001);
+}
+gk_bf :: (bits:u16)->f32 {return f32_from_bits(cast(u32)bits<<16);}
+gk_fp4 :: (code:u64)->f32 {
+    table:u64=0x0c08060403020100;v:=f32((table>>((code&7)*8))&255)*0.5f32;
+    return f32_from_bits(f32_bits(v)|(cast,trunc(u32)(code&8)<<28));
+}
+gk_power :: (scale:u8)->f32 {if scale==0 {return f32_from_bits(0x00400000);}return f32_from_bits(cast(u32)scale<<23);}
+gk_finite_bits :: (bits:u32)->bool {return (bits&0x7f800000)!=0x7f800000;}
+gk_bad :: (value:f32)->u8 {return ifx gk_finite_bits(f32_bits(value)) then cast(u8)0 else cast(u8)1;}
+
+gk_begin :: (item:int,token:int,position:int,vocab:int,control:[]int) #export_c {
+    control[0]=0;
+    if control[2]!=position || position<0 {control[0]=9;}
+    if token>=0 {control[1]=token;}
+    if control[1]<0 || control[1]>=vocab {control[0]=7;control[1]=0;}
+}
+gk_clear :: (item:int,flags:[]u8) #export_c {flags[item]=0;}
+gk_embed :: (item:int,width:int,embedding:[]u16,control:[]int,out:[]f32,flags:[]u8) #export_c {
+    value:=gk_bf(embedding[control[1]*width+item]);out[item]=value;flags[item]=gk_bad(value);
+}
+gk_norm_part :: (item:int,lanes:int,x:[]f32,partial:[]f64) #export_c {
+    sum:f64=0;for j:0..<(x.count+lanes-1)/lanes {i:=j*lanes+item;if i<x.count {v:=f64(x[i]);sum+=v*v;}}partial[item]=sum;
+}
+gk_norm :: (item:int,width:int,partial:[]f64,scale:[]u16,x:[]f32,out:[]f32,flags:[]u8) #export_c {
+    sum:f64=0;for v:partial {sum+=v;}den:=sqrt(sum/f64(width)+0.00001);
+    value:=f32(f64(x[item])/den*f64(gk_bf(scale[item])));out[item]=value;flags[item]=gk_bad(value);
+}
+// Lane-adjacent work items read adjacent groups of four packed BF16 values.
+gk_bf_part :: (item:int,rows:int,cols:int,lanes:int,w:[]u64,x:[]f32,partial:[]f32) #export_c {
+    row:=item/lanes;lane:=item%lanes;groups:=cols/4;sum:f32=0;total:f32=0;
+    for k:0..<(groups+lanes-1)/lanes {g:=k*lanes+lane;if g<groups {bits:=w[row*groups+g];for j:0..<4 {h:=cast,trunc(u16)(bits>>cast(u64)(16*j));sum+=gk_bf(h)*x[g*4+j];}}
+        if (k+1)%64==0 || k+1==(groups+lanes-1)/lanes {total+=sum;sum=0;}}
+    partial[lane*rows+row]=total;
+}
+gk_bf_finish :: (item:int,rows:int,lanes:int,partial:[]f32,bias:[]u16,out:[]f32,flags:[]u8) #export_c {
+    sum:f64=0;for lane:0..<lanes {sum+=f64(partial[lane*rows+item]);}v:=f32(sum);if bias.count!=0 {v+=gk_bf(bias[item]);}out[item]=v;flags[item]=gk_bad(v);
+}
+// Route IDs stay on device. Packed rows decode only the selected experts.
+gk_mx_part :: (item:int,rows:int,cols:int,lanes:int,input_stride:int,w:[]u64,scales:[]u8,ids:[]int,x:[]f32,partial:[]f32) #export_c {
+    lane:=item%lanes;row:=item/lanes%rows;slot:=item/(lanes*rows);expert:=ids[slot];groups:=cols/32;sum:f32=0;total:f32=0;bad_scale:u32=0;
+    for k:0..<(groups+lanes-1)/lanes {g:=k*lanes+lane;if g<groups {base:=(expert*rows+row)*groups+g;if scales[base]>252 {bad_scale=0x7f800000;}power:=gk_power(scales[base]);
+        for half:0..<2 {word:=w[base*2+half];for j:0..<16 {coefficient:=gk_fp4((word>>cast(u64)(4*j))&15)*power;sum+=coefficient*x[slot*input_stride+g*32+half*16+j];}}}
+        if (k+1)%8==0 || k+1==(groups+lanes-1)/lanes {total+=sum;sum=0;}}
+    partial[(slot*lanes+lane)*rows+row]=f32_from_bits(f32_bits(total)|bad_scale);
+}
+gk_mx_finish :: (item:int,rows:int,lanes:int,ids:[]int,partial:[]f32,bias:[]u16,out:[]f32,flags:[]u8) #export_c {
+    row:=item%rows;slot:=item/rows;sum:f64=0;for lane:0..<lanes {sum+=f64(partial[(slot*lanes+lane)*rows+row]);}
+    value:=f32(sum)+gk_bf(bias[ids[slot]*rows+row]);out[item]=value;flags[item]=gk_bad(value);
+}
+gk_residual :: (item:int,x:[]f32,projected:[]f32,trace:[]f32,flags:[]u8) #export_c {
+    value:=f32(f64(x[item])+f64(projected[item]));x[item]=value;trace[item]=value;flags[item]=gk_bad(value);
+}
+gk_activate :: (item:int,hidden:int,up:[]f32,out:[]f32,flags:[]u8) #export_c {
+    slot:=item/hidden;i:=item%hidden;gate:=up[slot*2*hidden+2*i];linear:=up[slot*2*hidden+2*i+1];
+    if gate>7 {gate=7;}if linear>7 {linear=7;}if linear< -7 {linear= -7;}
+    z:=1.702f32*gate;e:=exp(-abs(z));sig:=ifx z>=0 then 1.0f32/(1+e) else e/(1+e);value:=gate*sig*(linear+1);
+    out[item]=value;flags[item]=gk_bad(value);
+}
+gk_route :: (item:int,selected:int,logits:[]f32,ids:[]int,weights:[]f32,flags:[]u8) #export_c {
+    gk_select(selected,logits,ids,weights,flags);
+}
+gk_mix :: (item:int,width:int,selected:int,x:[]f32,experts:[]f32,weights:[]f32,trace:[]f32,flags:[]u8) #export_c {
+    sum:f64=0;for slot:0..<selected {sum+=f64(weights[slot])*f64(experts[slot*width+item]);}value:=f32(f64(x[item])+sum);x[item]=value;trace[item]=value;flags[item]=gk_bad(value);
+}
+// YaRN coefficients are authored once in Coax at admission and uploaded once.
+// The table has interleaved cosine/sine pairs, with the original concentration.
+gk_rotate :: (item:int,heads:int,kv_heads:int,position:int,qkv:[]f32,rope:[]f32,pending:[]f32,flags:[]u8) #export_c {
+    head:=item/32;pair:=item%32;co:=rope[position*64+2*pair];si:=rope[position*64+2*pair+1];index:=head*64+pair;
+    a:=qkv[index];b:=qkv[index+32];left:=f32(f64(a)*f64(co)-f64(b)*f64(si));right:=f32(f64(b)*f64(co)+f64(a)*f64(si));
+    if head<heads {qkv[index]=left;qkv[index+32]=right;}else {k:=(head-heads)*64+pair;pending[k]=left;pending[k+32]=right;pending[kv_heads*64+k]=qkv[heads*64+kv_heads*64+k];pending[kv_heads*64+k+32]=qkv[heads*64+kv_heads*64+k+32];}
+    flags[item]=gk_bad(left)|gk_bad(right);
+}
+gk_scores :: (item:int,heads:int,kv_heads:int,position:int,first:int,capacity:int,stride:int,qkv:[]f32,cache:[]f32,pending:[]f32,scores:[]f32) #export_c {
+    visible:=position-first+1;head:=item/visible;t:=first+item%visible;kh:=head/(heads/kv_heads);kn:=kv_heads*64;sum:f32=0;
+    for i:0..<64 {key:=pending[kh*64+i];if t<position {key=cache[(t%capacity)*2*kn+kh*64+i];}sum+=qkv[head*64+i]*key;}
+    scores[head*stride+item%visible]=sum*0.125f32;
+}
+gk_softmax :: (item:int,visible:int,stride:int,sinks:[]u16,scores:[]f32,flags:[]u8) #export_c {
+    flags[item]=gk_soft_row(gk_bf(sinks[item]),visible,scores[item*stride..<item*stride+visible]);
+}
+gk_context_part :: (item:int,heads:int,kv_heads:int,position:int,first:int,capacity:int,stride:int,lanes:int,scores:[]f32,cache:[]f32,pending:[]f32,partial:[]f32) #export_c {
+    lane:=item%lanes;d:=item/lanes%64;head:=item/(lanes*64);kh:=head/(heads/kv_heads);kn:=kv_heads*64;visible:=position-first+1;sum:f32=0;
+    for j:0..<(visible+lanes-1)/lanes {slot:=j*lanes+lane;if slot<visible {t:=first+slot;value:=pending[kn+kh*64+d];if t<position {value=cache[(t%capacity)*2*kn+kn+kh*64+d];}sum+=scores[head*stride+slot]*value;}}
+    partial[lane*heads*64+head*64+d]=sum;
+}
+gk_context_finish :: (item:int,width:int,lanes:int,partial:[]f32,out:[]f32,flags:[]u8) #export_c {
+    sum:f64=0;for lane:0..<lanes {sum+=f64(partial[lane*width+item]);}value:=f32(sum);out[item]=value;flags[item]=gk_bad(value);
+}
+// Each flag and each summary has one writer; no racing global error stores.
+gk_flags_part :: (item:int,flags:[]u8,summary:[]u32) #export_c {
+    bad:u32=0;for j:0..<256 {i:=item*256+j;if i<flags.count {bad|=cast(u32)flags[i];}}summary[item]=bad;
+}
+gk_flags_finish :: (item:int,summary:[]u32,control:[]int) #export_c {bad:u32=0;for v:summary {bad|=v;}if control[0]==0 && bad!=0 {control[0]=5;}}
+// Commit every public output only after all arithmetic flags are known.
+gk_publish :: (item:int,layers:int,width:int,kv_heads:int,window:int,capacity:int,control:[]int,pending:[]f32,logits:[]f32,trace:[]f32,ids:[]int,weights:[]f32,cache:[]f32,out:[]f32,out_trace:[]f32,out_ids:[]int,out_weights:[]f32) #export_c {
+    if control[0]!=0 {return;}
+    kn:=kv_heads*64;if item<pending.count {layer:=item/(2*kn);lane:=item%(2*kn);cap:=ifx layer%2==0 then window else capacity;base:=(layer/2*(window+capacity)+layer%2*window)*2*kn;cache[base+(control[2]%cap)*2*kn+lane]=pending[item];}
+    if item<logits.count {out[item]=logits[item];}if item<trace.count {out_trace[item]=trace[item];}if item<ids.count {out_ids[item]=ids[item];out_weights[item]=weights[item];}
+    // Position advancement is a separate kernel, after every copy completes.
+}
+gk_advance :: (item:int,control:[]int) #export_c {if control[0]==0 {control[2]+=1;}}
+gk_argmax_part :: (item:int,logits:[]f32,picks:[]int) #export_c {
+    first:=item*256;best:=first;for j:1..<256 {i:=first+j;if i<logits.count {if logits[i]>logits[best] {best=i;}}}picks[item]=best;
+}
+gk_choose :: (item:int,limit:int,logits:[]f32,picks:[]int,control:[]int) #export_c {
+    if control[0]!=0 {return;}best:=picks[0];for i:1..<picks.count {id:=picks[i];if logits[id]>logits[best] || (logits[id]==logits[best] && id<best) {best=id;}}
+    control[1]=best;control[3]+=1;stop:=0;if best==200002 {stop=1;}else if best==200012 {stop=2;}else if control[3]>=limit {stop=3;}control[4]=stop;
+}
+
+#test "lane products, bias and direct packed experts have hand-derived answers" {
+    w:=[2]u64.[0x3f803f803f803f80,0x3f803f803f803f80];x:=[8]f32.[1,2,3,4,5,6,7,8];part:[2]f32;out:[1]f32;flags:[1]u8;bias:=[1]u16.[0x4000];
+    for i:0..<2 {gk_bf_part(i,1,8,2,w[..],x[..],part[..]);}gk_bf_finish(0,1,2,part[..],bias[..],out[..],flags[..]);#assert out[0]==38 && flags[0]==0;
+    packed:=[2]u64.[0x2222222222222222,0x2222222222222222];scales:=[1]u8.[127];ids:=[1]int.[0];input_values:[32]f32;for i:0..<32 {input_values[i]=1;}
+    pp:[2]f32;gk_mx_part(0,1,32,2,0,packed[..],scales[..],ids[..],input_values[..],pp[..]);gk_mx_part(1,1,32,2,0,packed[..],scales[..],ids[..],input_values[..],pp[..]);gk_mx_finish(0,1,2,ids[..],pp[..],bias[..],out[..],flags[..]);#assert out[0]==34;
+}
+#test "routing, clamp, residual and greedy choices execute in the compute subset" {
+    logits:=[4]f32.[2,4,4,1];ids:[2]int;weights:[2]f32;flag:[1]u8;gk_route(0,2,logits[..],ids[..],weights[..],flag[..]);#assert ids[0]==1 && ids[1]==2 && weights[0]==0.5 && weights[1]==0.5 && flag[0]==0;
+    up:=[4]f32.[0,2,100,100];act:[2]f32;flags:[2]u8;gk_activate(0,2,up[..],act[..],flags[..]);gk_activate(1,2,up[..],act[..],flags[..]);#assert act[0]==0 && act[1]>55.99f32 && act[1]<56;
+    picks:[1]int;control:[8]int;gk_argmax_part(0,logits[..],picks[..]);gk_choose(0,1,logits[..],picks[..],control[..]);#assert control[1]==1 && control[3]==1 && control[4]==3;
+}
+#test "embedding, normalization, residual and mixture share finite storage" {
+    control:[8]int;gk_begin(0,1,0,4,control[..]);#assert control[0]==0 && control[1]==1;
+    gk_begin(0,4,0,4,control[..]);#assert control[0]==7 && control[1]==0;gk_begin(0,0,1,4,control[..]);#assert control[0]==9;gk_begin(0,1,0,4,control[..]);
+    embedding:=[4]u16.[0x3f80,0x4000,0x4040,0x4080];x:[2]f32;flags:=[2]u8.[7,7];
+    for i:0..<2 {gk_clear(i,flags[..]);gk_embed(i,2,embedding[..],control[..],x[..],flags[..]);}#assert x[0]==3 && x[1]==4 && flags[0]==0;
+    partial:[2]f64;scale:=[2]u16.[0x3f80,0];normal:[2]f32;
+    for i:0..<2 {gk_norm_part(i,2,x[..],partial[..]);gk_norm(i,2,partial[..],scale[..],x[..],normal[..],flags[..]);}
+    // Both partials must exist before normalization on the real stream.
+    for i:0..<2 {gk_norm(i,2,partial[..],scale[..],x[..],normal[..],flags[..]);}#assert abs(normal[0]-0.8485278f32)<0.000001f32 && normal[1]==0;
+    projected:=[2]f32.[1,2];trace:[2]f32;for i:0..<2 {gk_residual(i,x[..],projected[..],trace[..],flags[..]);}#assert x[0]==4 && trace[1]==6;
+    experts:=[4]f32.[2,4,6,8];weights:=[2]f32.[0.25,0.75];for i:0..<2 {gk_mix(i,2,2,x[..],experts[..],weights[..],trace[..],flags[..]);}#assert x[0]==9 && trace[1]==13;
+}
+#test "device attention preserves sink mass and a wrapped window" {
+    qkv:[192]f32;for i:128..<192 {qkv[i]=2;}rope:[192]f32;for i:0..<96 {rope[2*i]=1;}
+    pending:[256]f32;flags:[64]u8;for i:0..<64 {gk_rotate(i,1,1,2,qkv[..],rope[..],pending[0..<128],flags[..]);}
+    #assert pending[0]==0 && pending[64]==2;cache:[1280]f32;for i:0..<64 {cache[192+i]=4;}
+    scores:[8]f32;for i:0..<2 {gk_scores(i,1,1,2,1,2,8,qkv[..],cache[..],pending[..],scores[..]);}
+    sinks:[1]u16;gk_softmax(0,2,8,sinks[..],scores[..],flags[..]);#assert abs(scores[0]-f32(1.0/3.0))<0.0000001f32;
+    partial:[128]f32;for i:0..<128 {gk_context_part(i,1,1,2,1,2,8,2,scores[..],cache[..],pending[..],partial[..]);}
+    out:[64]f32;for i:0..<64 {gk_context_finish(i,64,2,partial[..],out[..],flags[..]);#assert abs(out[i]-2)<0.000001f32;}
+    logits:=[3]f32.[1,2,3];trace:[128]f32;ids:=[2]int.[0,1];weights:=[2]f32.[0.25,0.75];public:=[3]f32.[-7,-7,-7];public_trace:[128]f32;public_ids:[2]int;public_weights:[2]f32;control:[8]int;control[2]=2;control[0]=5;
+    for i:0..<256 {gk_publish(i,2,32,1,2,8,control[..],pending[..],logits[..],trace[..],ids[..],weights[..],cache[..],public[..],public_trace[..],public_ids[..],public_weights[..]);}#assert public[0]== -7 && cache[64]==0;
+    control[0]=0;for i:0..<256 {gk_publish(i,2,32,1,2,8,control[..],pending[..],logits[..],trace[..],ids[..],weights[..],cache[..],public[..],public_trace[..],public_ids[..],public_weights[..]);}
+    gk_advance(0,control[..]);#assert control[2]==3 && public[2]==3 && cache[64]==2 && public_ids[1]==1 && public_weights[1]==0.75;
+    bad:=[3]u8.[0,1,0];summary:[1]u32;gk_flags_part(0,bad[..],summary[..]);gk_flags_finish(0,summary[..],control[..]);#assert control[0]==5;gk_advance(0,control[..]);#assert control[2]==3;
+}
+
+gk_select :: (selected:int,logits:[]f32,ids:[]int,weights:[]f32,flags:[]u8) {
+    bad:u8=0;for v:logits {if gk_bad(v)!=0 {bad=1;}}
+    for slot:0..<selected {best:=-1;for i:0..<logits.count {used:=false;for j:0..<slot {if ids[j]==i {used=true;}}
+        if !used {if best<0 {best=i;}else if logits[i]>logits[best] {best=i;}}}ids[slot]=best;}
+    sum:f64=0;for i:0..<selected {sum+=exp(f64(logits[ids[i]])-f64(logits[ids[0]]));}
+    for i:0..<selected {weights[i]=f32(exp(f64(logits[ids[i]])-f64(logits[ids[0]]))/sum);}flags[0]=bad;
+}
+
+gk_soft_row :: (sink:f32,visible:int,scores:[]f32)->u8 {
+    maximum:=sink;bad:=gk_bad(sink);
+    for i:0..<visible {v:=scores[i];bad|=gk_bad(v);if v>maximum {maximum=v;}}
+    den:f64=f64(exp(sink-maximum));for i:0..<visible {v:=exp(scores[i]-maximum);scores[i]=v;den+=f64(v);}
+    for i:0..<visible {scores[i]=f32(f64(scores[i])/den);}return bad;
+}
+// Batched prefill: four rows by eight tokens reuse coefficients and inputs.
+gk_batch_embed :: (item:int,width:int,first:int,tokens:[]int,embedding:[]u16,out:[]f32,flags:[]u8) #export_c {
+    token:=tokens[first+item/width];v:=gk_bf(embedding[token*width+item%width]);out[item]=v;flags[item]=gk_bad(v);
+}
+gk_batch_norm_part :: (item:int,width:int,lanes:int,x:[]f32,partial:[]f64) #export_c {
+    token:=item/lanes;lane:=item%lanes;sum:f64=0;for j:0..<(width+lanes-1)/lanes {i:=j*lanes+lane;if i<width {v:=f64(x[token*width+i]);sum+=v*v;}}partial[item]=sum;
+}
+gk_batch_norm :: (item:int,width:int,lanes:int,partial:[]f64,scale:[]u16,x:[]f32,out:[]f32,flags:[]u8) #export_c {
+    token:=item/width;sum:f64=0;for i:0..<lanes {sum+=partial[token*lanes+i];}v:=f32(f64(x[item])/sqrt(sum/f64(width)+0.00001)*f64(gk_bf(scale[item%width])));out[item]=v;flags[item]=gk_bad(v);
+}
+// The admitted shapes fit 32-bit tensor-relative element addresses. Wrapping
+// address operations remove checked signed-64 products from the inner loop;
+// the complete views retain their bounds checks. No admitted address wraps.
+gk_addr :: (a:u32,b:u32,c:u32)->int {return cast(int)add_wrap(mul_wrap(a,b),c);}
+gk_batch_bf_part :: (item:int,rows:int,cols:int,tokens:int,lanes:int,w:[]u64,x:[]f32,partial:[]f32) #export_c {
+    work:=cast(u32)item;nr:=cast(u32)rows;nc:=cast(u32)cols;nt:=cast(u32)tokens;nl:=cast(u32)lanes;
+    lane:=work%nl;row0:=mul_wrap(work/nl%(nr/4),cast(u32)4);token0:=mul_wrap(work/(nl*(nr/4)),cast(u32)8);groups:=nc/4;parts:=(groups+nl-1)/nl;
+    sum:[32]f32;total:[32]f32;base:[8]u32;words:[4]u64;
+    for t:cast(u32)0..<cast(u32)8 {token:=token0+t;if token>=nt {token=nt-1;}base[t]=mul_wrap(token,nc);}
+    for k:cast(u32)0..<parts {g:=add_wrap(mul_wrap(k,nl),lane);if g<groups {
+        for r:cast(u32)0..<cast(u32)4 {words[r]=w[gk_addr(row0+r,groups,g)];}
+        for j:cast(u32)0..<cast(u32)4 {weights:[4]f32;for r:cast(u32)0..<cast(u32)4 {weights[r]=gk_bf(cast,trunc(u16)(words[r]>>cast(u64)(16*j)));}
+            at:=add_wrap(mul_wrap(g,cast(u32)4),j);for t:cast(u32)0..<cast(u32)8 {v:=x[cast(int)add_wrap(base[t],at)];for r:cast(u32)0..<cast(u32)4 {sum[r*8+t]+=weights[r]*v;}}
+        }
+    }if (k+1)%64==0 || k+1==parts {for i:0..<32 {total[i]+=sum[i];sum[i]=0;}}}
+    for t:cast(u32)0..<cast(u32)8 {if token0+t<nt {for r:cast(u32)0..<cast(u32)4 {partial[gk_addr(add_wrap(mul_wrap(lane,nt),token0+t),nr,row0+r)]=total[r*8+t];}}}
+}
+gk_batch_finish :: (item:int,rows:int,tokens:int,lanes:int,partial:[]f32,bias:[]u16,out:[]f32,flags:[]u8) #export_c {
+    token:=item/rows;row:=item%rows;sum:f64=0;for lane:0..<lanes {sum+=f64(partial[(lane*tokens+token)*rows+row]);}v:=f32(sum);if bias.count!=0 {v+=gk_bf(bias[row]);}out[item]=v;flags[item]=gk_bad(v);
+}
+gk_batch_route :: (item:int,experts:int,selected:int,tokens:int,logits:[]f32,ids:[]int,weights:[]f32,last_ids:[]int,last_weights:[]f32,flags:[]u8) #export_c {
+    gk_select(selected,logits[item*experts..<(item+1)*experts],ids[item*selected..<(item+1)*selected],weights[item*selected..<(item+1)*selected],flags[item..<item+1]);
+    if item==tokens-1 {for i:0..<selected {last_ids[i]=ids[item*selected+i];last_weights[i]=weights[item*selected+i];}}
+}
+gk_group :: (item:int,experts:int,selected:int,tokens:int,ids:[]int,map:[]int,counts:[]int) #export_c {
+    count:=0;for t:0..<tokens {for slot:0..<selected {i:=t*selected+slot;if ids[i]==item {map[item*tokens+count]=i;count+=1;}}}counts[item]=count;
+}
+gk_group_prefix :: (item:int,experts:int,counts:[]int) #export_c {
+    counts[experts]=0;for e:0..<experts {counts[experts+e+1]=counts[experts+e]+(counts[e]+7)/8;}
+}
+gk_expert_tile :: (tile:int,experts:int,counts:[]int)->int {
+    lo:=0;hi:=experts;for step:0..<8 {if lo<hi {mid:=(lo+hi)/2;if tile>=counts[experts+mid+1] {lo=mid+1;}else {hi=mid;}}}return lo;
+}
+gk_batch_mx_part :: (item:int,rows:int,cols:int,tokens:int,experts:int,selected:int,lanes:int,slot_input:int,w:[]u64,scales:[]u8,map:[]int,counts:[]int,x:[]f32,partial:[]f32) #export_c {
+    work:=cast(u32)item;nr:=cast(u32)rows;nc:=cast(u32)cols;nt:=cast(u32)tokens;nl:=cast(u32)lanes;
+    lane:=work%nl;row0:=mul_wrap(work/nl%(nr/4),cast(u32)4);tile:=work/(nl*(nr/4));if cast(int)tile>=counts[2*experts] {return;}
+    expert:=cast(u32)gk_expert_tile(cast(int)tile,experts,counts);offset:=mul_wrap(tile-cast(u32)counts[experts+cast(int)expert],cast(u32)8);groups:=nc/32;parts:=(groups+nl-1)/nl;
+    sum:[32]f32;total:[32]f32;indices:[8]u32;base:[8]u32;words:[4]u64;powers:[4]f32;bad_scale:u32=0;
+    for t:cast(u32)0..<cast(u32)8 {i:=offset+t;if cast(int)i>=counts[expert] {i=cast(u32)counts[expert]-1;}indices[t]=cast(u32)map[gk_addr(expert,nt,i)];token:=indices[t]/cast(u32)selected;if slot_input!=0 {token=indices[t];}base[t]=mul_wrap(token,nc);}
+    for k:cast(u32)0..<parts {g:=add_wrap(mul_wrap(k,nl),lane);if g<groups {
+        for r:cast(u32)0..<cast(u32)4 {block:=gk_addr(add_wrap(mul_wrap(expert,nr),row0+r),groups,g);scale:=scales[block];if scale>252 {bad_scale=0x7f800000;}powers[r]=gk_power(scale);}
+        for half:cast(u32)0..<cast(u32)2 {for r:cast(u32)0..<cast(u32)4 {block:=cast(u32)gk_addr(add_wrap(mul_wrap(expert,nr),row0+r),groups,g);words[r]=w[gk_addr(block,2,half)];}
+            for j:cast(u32)0..<cast(u32)16 {weights:[4]f32;for r:cast(u32)0..<cast(u32)4 {weights[r]=gk_fp4((words[r]>>cast(u64)(4*j))&15)*powers[r];}
+                at:=add_wrap(add_wrap(mul_wrap(g,cast(u32)32),half*16),j);for t:cast(u32)0..<cast(u32)8 {v:=x[cast(int)add_wrap(base[t],at)];for r:cast(u32)0..<cast(u32)4 {sum[r*8+t]+=weights[r]*v;}}
+            }
+        }
+    }if (k+1)%8==0 || k+1==parts {for i:0..<32 {total[i]+=sum[i];sum[i]=0;}}}
+    for t:cast(u32)0..<cast(u32)8 {if cast(int)(offset+t)<counts[expert] {for r:cast(u32)0..<cast(u32)4 {partial[gk_addr(add_wrap(mul_wrap(indices[t],nl),lane),nr,row0+r)]=f32_from_bits(f32_bits(total[r*8+t])|bad_scale);}}}
+}
+gk_batch_residual :: (item:int,width:int,tokens:int,x:[]f32,projected:[]f32,last_trace:[]f32,flags:[]u8) #export_c {
+    v:=f32(f64(x[item])+f64(projected[item]));x[item]=v;if item/width==tokens-1 {last_trace[item%width]=v;}flags[item]=gk_bad(v);
+}
+gk_batch_mix :: (item:int,width:int,selected:int,tokens:int,x:[]f32,experts:[]f32,weights:[]f32,last_trace:[]f32,flags:[]u8) #export_c {
+    token:=item/width;d:=item%width;sum:f64=0;for slot:0..<selected {sum+=f64(weights[token*selected+slot])*f64(experts[(token*selected+slot)*width+d]);}v:=f32(f64(x[item])+sum);x[item]=v;if token==tokens-1 {last_trace[d]=v;}flags[item]=gk_bad(v);
+}
+gk_batch_rotate :: (item:int,heads:int,kv_heads:int,start:int,qkv:[]f32,rope:[]f32,pending:[]f32,flags:[]u8) #export_c {
+    per:=(heads+kv_heads)*32;token:=item/per;head:=item%per/32;pair:=item%32;qwidth:=(heads+2*kv_heads)*64;index:=token*qwidth+head*64+pair;position:=start+token;
+    co:=rope[position*64+2*pair];si:=rope[position*64+2*pair+1];a:=qkv[index];b:=qkv[index+32];left:=f32(f64(a)*f64(co)-f64(b)*f64(si));right:=f32(f64(b)*f64(co)+f64(a)*f64(si));
+    if head<heads {qkv[index]=left;qkv[index+32]=right;}else {k:=(head-heads)*64+pair;kn:=kv_heads*64;at:=token*2*kn;pending[at+k]=left;pending[at+k+32]=right;pending[at+kn+k]=qkv[token*qwidth+heads*64+kn+k];pending[at+kn+k+32]=qkv[token*qwidth+heads*64+kn+k+32];}flags[item]=gk_bad(left)|gk_bad(right);
+}
+gk_batch_scores :: (item:int,heads:int,kv_heads:int,start:int,window:int,capacity:int,stride:int,qkv:[]f32,cache:[]f32,pending:[]f32,scores:[]f32) #export_c {
+    query:=item/(heads*stride);head:=item/stride%heads;slot:=item%stride;position:=start+query;first:=0;if window>0 && position>=window {first=position+1-window;}if slot>=position-first+1 {return;}
+    t:=first+slot;kh:=head/(heads/kv_heads);kn:=kv_heads*64;qwidth:=(heads+2*kv_heads)*64;sum:f32=0;
+    for d:0..<64 {key:f32=0;if t<start {key=cache[(t%capacity)*2*kn+kh*64+d];}else {key=pending[(t-start)*2*kn+kh*64+d];}sum+=qkv[query*qwidth+head*64+d]*key;}scores[item]=sum*0.125f32;
+}
+gk_batch_softmax :: (item:int,heads:int,start:int,window:int,stride:int,sinks:[]u16,scores:[]f32,flags:[]u8) #export_c {
+    query:=item/heads;head:=item%heads;position:=start+query;visible:=position+1;if window>0 && visible>window {visible=window;}
+    flags[item]=gk_soft_row(gk_bf(sinks[head]),visible,scores[item*stride..<item*stride+visible]);
+}
+gk_batch_context_part :: (item:int,heads:int,kv_heads:int,tokens:int,start:int,window:int,capacity:int,stride:int,lanes:int,scores:[]f32,cache:[]f32,pending:[]f32,partial:[]f32) #export_c {
+    lane:=item%lanes;d:=item/lanes%64;head:=item/(lanes*64)%heads;query:=item/(lanes*heads*64);position:=start+query;first:=0;if window>0 && position>=window {first=position+1-window;}visible:=position-first+1;kn:=kv_heads*64;kh:=head/(heads/kv_heads);sum:f32=0;
+    for j:0..<(visible+lanes-1)/lanes {slot:=j*lanes+lane;if slot<visible {t:=first+slot;value:f32=0;if t<start {value=cache[(t%capacity)*2*kn+kn+kh*64+d];}else {value=pending[(t-start)*2*kn+kn+kh*64+d];}sum+=scores[(query*heads+head)*stride+slot]*value;}}
+    partial[(lane*tokens+query)*heads*64+head*64+d]=sum;
+}
+gk_copy :: (item:int,input:[]f32,out:[]f32) #export_c {out[item]=input[item];}
+gk_batch_shadow :: (item:int,kv_heads:int,start:int,tokens:int,capacity:int,pending:[]f32,shadow:[]f32) #export_c {
+    kn:=kv_heads*64;kept:=tokens;if kept>capacity {kept=capacity;}t:=start+tokens-kept+item/(2*kn);lane:=item%(2*kn);shadow[(t%capacity)*2*kn+lane]=pending[(t-start)*2*kn+lane];
+}
+gk_publish_batch :: (item:int,control:[]int,shadow:[]f32,logits:[]f32,trace:[]f32,ids:[]int,weights:[]f32,cache:[]f32,out:[]f32,out_trace:[]f32,out_ids:[]int,out_weights:[]f32) #export_c {
+    if control[0]!=0 {return;}if item<shadow.count {cache[item]=shadow[item];}if item<logits.count {out[item]=logits[item];}if item<trace.count {out_trace[item]=trace[item];}if item<ids.count {out_ids[item]=ids[item];out_weights[item]=weights[item];}
+}
+gk_advance_many :: (item:int,tokens:int,control:[]int) #export_c {if control[0]==0 {control[2]+=tokens;}}
+
+#test "batched packed rows reuse coefficients and preserve ragged tokens" {
+    tokens:=[3]int.[0,1,0];embedding:=[8]u16.[0x3f80,0x4000,0x4040,0x4080,0x4000,0x4000,0x4000,0x4000];x:[12]f32;flags:[32]u8;
+    for i:0..<12 {gk_batch_embed(i,4,0,tokens[..],embedding[..],x[..],flags[..]);}#assert x[0]==1 && x[4]==2 && x[11]==4;
+    rms:[6]f64;normal:[12]f32;scale:=[4]u16.[0x3f80,0x3f80,0x3f80,0x3f80];
+    for i:0..<6 {gk_batch_norm_part(i,4,2,x[..],rms[..]);}for i:0..<12 {gk_batch_norm(i,4,2,rms[..],scale[..],x[..],normal[..],flags[..]);}#assert abs(normal[4]-0.99999875f32)<0.000001f32;
+    w:=[4]u64.[0x3f803f803f803f80,0x3f803f803f803f80,0x3f803f803f803f80,0x3f803f803f803f80];partial:[24]f32;out:[12]f32;empty:[1]u16;
+    for i:0..<2 {gk_batch_bf_part(i,4,4,3,2,w[..],x[..],partial[..]);}for i:0..<12 {gk_batch_finish(i,4,3,2,partial[..],empty[0..<0],out[..],flags[..]);#assert out[i]==f32(ifx i/4==1 then 8 else 10);}
+    trace:[4]f32;for i:0..<12 {gk_batch_residual(i,4,3,x[..],out[..],trace[..],flags[..]);}#assert x[0]==11 && trace[3]==14;
+    logits:=[12]f32.[4,3,2,1,1,2,4,3,4,1,3,2];ids:[6]int;weights:[6]f32;last_ids:[2]int;last_weights:[2]f32;
+    for i:0..<3 {gk_batch_route(i,4,2,3,logits[..],ids[..],weights[..],last_ids[..],last_weights[..],flags[..]);}#assert ids[0]==0 && ids[1]==1 && ids[2]==2 && ids[3]==3 && last_ids[1]==2;
+    map:[12]int;counts:[9]int;for i:0..<4 {gk_group(i,4,2,3,ids[..],map[..],counts[..]);}gk_group_prefix(0,4,counts[..]);#assert counts[0]==2 && counts[2]==2 && counts[8]==4;
+    packed:[16]u64;for i:0..<16 {packed[i]=0x2222222222222222;}scales:[8]u8;for i:0..<8 {scales[i]=127;}input:[96]f32;for i:0..<96 {input[i]=f32(i/32+1);}mxpart:[48]f32;bias:[16]u16;mxout:[24]f32;
+    // Four rows, four experts, one 32-value block per row.
+    packed2:[32]u64;scales2:[16]u8;for i:0..<32 {packed2[i]=0x2222222222222222;}for i:0..<16 {scales2[i]=127;}
+    for i:0..<8 {gk_batch_mx_part(i,4,32,3,4,2,2,0,packed2[..],scales2[..],map[..],counts[..],input[..],mxpart[..]);}
+    for i:0..<24 {gk_mx_finish(i,4,2,ids[..],mxpart[..],bias[..],mxout[..],flags[..]);#assert mxout[i]==f32(i/8+1)*32;}
+    mixed:[12]f32;for i:0..<12 {gk_batch_mix(i,4,2,3,mixed[..],mxout[..],weights[..],trace[..],flags[..]);}#assert abs(mixed[0]-32)<0.00001f32 && abs(trace[3]-96)<0.00001f32;
+}
+#test "batched attention is causal and commits a wrapped shadow together" {
+    qkv:[576]f32;for t:0..<3 {for d:0..<64 {qkv[t*192+128+d]=f32(2*(t+1));}}rope:[320]f32;for i:0..<160 {rope[2*i]=1;}
+    pending:[384]f32;flags:[192]u8;for i:0..<192 {gk_batch_rotate(i,1,1,1,qkv[..],rope[..],pending[..],flags[..]);}#assert pending[64]==2 && pending[320]==6;
+    cache:[256]f32;for d:0..<64 {cache[64+d]=8;}scores:[6]f32;
+    for i:0..<6 {gk_batch_scores(i,1,1,1,2,2,2,qkv[..],cache[..],pending[..],scores[..]);}sinks:[1]u16;for i:0..<3 {gk_batch_softmax(i,1,1,2,2,sinks[..],scores[..],flags[..]);}
+    partial:[384]f32;for i:0..<384 {gk_batch_context_part(i,1,1,3,1,2,2,2,2,scores[..],cache[..],pending[..],partial[..]);}
+    out:[192]f32;empty:[1]u16;for i:0..<192 {gk_batch_finish(i,64,3,2,partial[..],empty[0..<0],out[..],flags[..]);}#assert abs(out[0]-f32(10.0/3.0))<0.000001f32 && out[64]==2 && abs(out[128]-f32(10.0/3.0))<0.000001f32;
+    shadow:[256]f32;for i:0..<256 {gk_copy(i,cache[..],shadow[..]);}for i:0..<256 {gk_batch_shadow(i,1,1,3,2,pending[..],shadow[..]);}#assert shadow[64]==4 && shadow[192]==6;
+    control:[8]int;control[0]=5;logits:=[1]f32.[3];public:=[1]f32.[-7];trace:[1]f32;ids:=[1]int.[2];weights:=[1]f32.[1];out_ids:[1]int;
+    for i:0..<256 {gk_publish_batch(i,control[..],shadow[..],logits[..],logits[..],ids[..],weights[..],cache[..],public[..],trace[..],out_ids[..],weights[..]);}gk_advance_many(0,3,control[..]);#assert cache[64]==8 && public[0]== -7 && control[2]==0;
+    control[0]=0;for i:0..<256 {gk_publish_batch(i,control[..],shadow[..],logits[..],logits[..],ids[..],weights[..],cache[..],public[..],trace[..],out_ids[..],weights[..]);}gk_advance_many(0,3,control[..]);#assert cache[64]==4 && public[0]==3 && out_ids[0]==2 && control[2]==3;
+}

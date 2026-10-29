@@ -1,0 +1,14 @@
+device NVIDIA GeForce RTX 4080 compute 8.9 free=15803285504 total=16711352320
+original 20b admitted/authenticated/uploaded once in 84.684232 s; weight bytes=13761300984 workspace=527933440 reserve=134217728
+original step 0 0.042116 seconds
+original step 1 0.052842 seconds
+original 129-token varied prefix: complete serial/batch cache and logits bitwise equal across window/chunk boundary
+generation prefix=59 emitted=24 stop=1 prefill_seconds=0.235215 decode_seconds=0.637129
+final: Hello! 👋 How can I help you today?
+forced-token batched workload repeat=-1 input=1024 output=128 prefill=4.316049 decode=4.498108 tok_s=28.456
+forced-token batched workload repeat=0 input=1024 output=128 prefill=4.327424 decode=4.497752 tok_s=28.459
+forced-token batched workload repeat=1 input=1024 output=128 prefill=4.325127 decode=4.498565 tok_s=28.454
+forced-token batched workload repeat=2 input=1024 output=128 prefill=4.314705 decode=4.491084 tok_s=28.501
+forced-token batched workload repeat=3 input=1024 output=128 prefill=4.323985 decode=4.501769 tok_s=28.433
+forced-token batched workload repeat=4 input=1024 output=128 prefill=4.333102 decode=4.500677 tok_s=28.440
+resident device bytes observed=15212740608; free=1498611712; no per-layer activation/route downloads

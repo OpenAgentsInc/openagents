@@ -20,6 +20,9 @@
 - [44. The harmony format](ch44-the-harmony-format.md)
 
 - [45. Execute gpt-oss-20b](ch45-execute-gpt-oss-20b.md)
+- [45a. Original weights stay on the GPU](ch45a-original-weights-stay-on-the-gpu.md)
+- [45b. A complete CUDA decoder](ch45b-a-complete-cuda-decoder.md)
+- [45c. Prefill together](ch45c-prefill-together.md)
 - [46. Execute gpt-oss-120b](ch46-execute-gpt-oss-120b.md)
 - [47. Let the small model guess](ch47-let-the-small-model-guess.md)
 - [48. Call a tool](ch48-call-a-tool.md)

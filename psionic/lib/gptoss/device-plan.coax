@@ -1,0 +1,154 @@
+// Host-side admission and dispatch. C executes this program's device effects.
+#load "weights.coax";
+#load "../gptoss-math.coax";
+#authority;
+GD_BUFFERS :: 47;
+GD_RESERVE :: 134217728;
+GD_NAMES :: [44]string.["gk_begin","gk_clear","gk_embed","gk_norm_part","gk_norm","gk_bf_part","gk_bf_finish","gk_mx_part","gk_mx_finish","gk_residual","gk_activate","gk_route","gk_mix","gk_rotate","gk_scores","gk_softmax","gk_context_part","gk_context_finish","gk_flags_part","gk_flags_finish","gk_publish","gk_advance","gk_argmax_part","gk_choose","gk_batch_embed","gk_batch_norm_part","gk_batch_norm","gk_batch_bf_part","gk_batch_finish","gk_batch_route","gk_group","gk_group_prefix","gk_batch_mx_part","gk_batch_residual","gk_batch_mix","gk_batch_rotate","gk_batch_scores","gk_batch_softmax","gk_batch_context_part","gk_copy","gk_batch_shadow","gk_publish_batch","gk_advance_many",""];
+GDPlan :: struct {status:GStatus;weights:int;workspace:int;total:int;flags:int;files:int;upload:[16]int;counts:[47]int;width:[47]int;batch:int;max_ops:int;max_args:int;}
+GDRef :: struct {buffer:int;offset:int;count:int;elem:int=1;}
+GDParam :: struct {file:int;begin:int;bytes:int;device:int;}
+GDArg :: struct {view:bool;value:int;ref:GDRef;}
+GDOp :: struct {kind:int;items:int;first:int;count:int;}
+GDProgram :: struct {status:GStatus;ops:int;args:int;flags:int;}
+GDScalars :: struct {a:int;b:int;c:int;d:int;e:int;f:int;g:int;h:int;}
+GDViews :: struct {a:GDRef;b:GDRef;c:GDRef;d:GDRef;e:GDRef;f:GDRef;g:GDRef;h:GDRef;i:GDRef;j:GDRef;k:GDRef;l:GDRef;m:GDRef;n:GDRef;o:GDRef;p:GDRef;}
+GDWriter :: struct {result:GDProgram;plan:GDPlan;ops:[]GDOp;args:[]GDArg;}
+
+#test "resident plans include original bytes, bounded state and explicit headroom" {
+    s:=g_original_shape(0,2048);pins:=G20_ARTIFACTS;p:=gd_plan(s,pins[..],17179869184,17179869184);
+    #assert p.status==GStatus.ok && p.weights==13761300984 && p.total==p.weights+p.workspace+GD_RESERVE && p.counts[16]==12*1024*(128+2048);
+    #assert p.upload[0]==13761300984 && p.upload[1]==0 && p.upload[2]==0 && p.counts[25]==2048*64;
+    #assert gd_plan(s,pins[..],p.total-1,17179869184).status==GStatus.budget && gd_plan(s,pins[..],p.total,p.total).status==GStatus.ok;
+    s.experts=3;s.selected=2;#assert gd_plan(s,pins[..],17179869184,17179869184).status==GStatus.shape;s.experts=32;s.selected=4;
+    s.capacity=4097;#assert gd_plan(s,pins[..],17179869184,17179869184).status==GStatus.shape;
+    s=g_original_shape(1,256);large:=G120_ARTIFACTS;#assert gd_plan(s,large[..],17179869184,17179869184).status==GStatus.budget;
+}
+gd_plan :: (s:GShape,pins:[]GArtifact,free_bytes:int,budget:int)->GDPlan #export_c {
+    if !g_shape(s) || s.experts%4!=0 || s.capacity>4096 || pins.count<1 || pins.count>16 {return GDPlan.{status=GStatus.shape};}
+    // Every tensor-relative element address used by the tiled kernels fits u32.
+    if s.vocab*s.width>4294967295 || s.experts*2*s.hidden*(s.width/32)*2>4294967295 || s.experts*s.width*(s.hidden/32)*2>4294967295 {return GDPlan.{status=GStatus.shape};}
+    p:=GDPlan.{files=pins.count,max_ops=80*s.layers+32};p.max_args=24*p.max_ops;
+    for i:0..<pins.count {if pins[i].header!=0 {if !g_artifact_size(pins[i].bytes,p.weights) {return GDPlan.{status=GStatus.weights};}p.weights+=pins[i].bytes;}}
+    p.upload[0]=p.weights;
+    d:=s.width;q:=s.heads*64;k:=s.kv_heads*64;h:=s.hidden;l:=s.layers;z:=s.selected;v:=s.vocab;r:=v+2*z*h+z*d+q+2*k;
+    p.flags=l*(8*d+3*q+4*k+s.experts+1+z*(3*h+d))+d+v+1024;
+    p.batch=gs_window(s.capacity,128);b:=p.batch;largest:=2*z*h;if z*d>largest {largest=z*d;}if q+2*k>largest {largest=q+2*k;}if s.experts>largest {largest=s.experts;}
+    p.counts=[47]int.[d,d,q+2*k,q,d,s.experts,z*2*h,z*h,z*d,16*r,64,s.heads*s.capacity,l*2*k,2*l*d,l*z,l*z,g_cache_base(s,l),v,v,2*l*d,l*z,l*z,p.flags,(p.flags+255)/256,8,s.capacity*64,s.capacity,(v+255)/256,b*d,b*d,b*(q+2*k),b*q,b*d,b*s.experts,b*2*k,g_cache_base(s,l),b*s.heads*s.capacity,b*largest,s.experts*b,2*s.experts+1,16*b*largest,b*z*2*h,b*z*h,b*z*d,b*64,b*z,b*z];
+    p.counts[23]=(p.flags+p.counts[37]+255)/256;
+    p.width=[47]int.[4,4,4,4,4,4,4,4,4,4,8,4,4,4,8,4,4,4,4,4,8,4,1,4,8,4,8,8,4,4,4,4,4,4,4,4,4,1,8,8,4,4,4,4,8,8,4];
+    for i:0..<GD_BUFFERS {if p.counts[i]>4294967295 {return GDPlan.{status=GStatus.capacity};}p.workspace+=p.counts[i]*p.width[i];}p.total=p.weights+p.workspace+GD_RESERVE;
+    if budget<p.total || free_bytes<p.total {return GDPlan.{status=GStatus.budget};}return p;
+}
+gd_kernel_name :: (kind:int)->string #export_c {if kind<0 || kind>=43 {return "";}return GD_NAMES[kind];}
+gd_all :: (p:GDPlan,slot:int)->GDRef {return GDRef.{buffer=16+slot,count=p.counts[slot],elem=p.width[slot]};}
+gd_slice :: (p:GDPlan,slot:int,begin:int,count:int)->GDRef {return GDRef.{buffer=16+slot,offset=begin*p.width[slot],count=count,elem=p.width[slot]};}
+gd_weight :: (params:[]GDParam,index:int,elem:int)->GDRef {p:=params[index];return GDRef.{buffer=0,offset=p.device,count=p.bytes/elem,elem=elem};}
+gd_ref_fits :: (p:GDPlan,r:GDRef)->bool {
+    if r.buffer<0 || r.buffer>=16+GD_BUFFERS || r.offset<0 || r.count<0 || (r.elem!=1 && r.elem!=2 && r.elem!=4 && r.elem!=8) {return false;}
+    bytes:=0;if r.buffer<16 {bytes=p.upload[r.buffer];}else {i:=r.buffer-16;bytes=p.counts[i]*p.width[i];}
+    return r.offset%r.elem==0 && r.offset<=bytes && r.count<=(bytes-r.offset)/r.elem;
+}
+gd_params :: (profile:GProfile,out:[]GDParam)->GResult #export_c {
+    if profile.status!=GStatus.ok {return GResult.{status=profile.status};}s:=profile.shape;n:=3+15*s.layers;
+    if out.count<n {return GResult.{status=GStatus.capacity};}cursor:=0;names:=[3]string.["embedding.weight","norm.scale","unembedding.weight"];
+    for i:0..<3 {index:=g_spec_find(profile.specs,names[i]);if index<0 {return GResult.{status=GStatus.weights};}x:=profile.specs[index];cursor=(cursor+7)/8*8;out[i]=GDParam.{file=x.file,begin=x.begin,bytes=x.end-x.begin,device=cursor};cursor+=x.end-x.begin;}
+    for l:0..<s.layers {for slot:0..<15 {text:[128]u8;count:=g_tensor_name(l,slot,text[..]);index:=g_spec_find(profile.specs,cast(string)text[0..<count]);if index<0 {return GResult.{status=GStatus.weights};}x:=profile.specs[index];cursor=(cursor+7)/8*8;out[3+15*l+slot]=GDParam.{file=x.file,begin=x.begin,bytes=x.end-x.begin,device=cursor};cursor+=x.end-x.begin;}}
+    return GResult.{written=n,bytes=cursor};
+}
+gd_emit :: (w:GDWriter,kind:int,items:int,ni:int,nv:int,ints:GDScalars,views:GDViews)->GDWriter {
+    result:=w;if result.result.status!=GStatus.ok {return result;}
+    if kind<0 || kind>=43 || items<1 || items>4294967295 || ni<0 || ni>8 || nv<0 || nv>16 {result.result.status=GStatus.shape;return result;}
+    if result.result.ops>=w.ops.count || ni+nv>w.args.count-result.result.args {result.result.status=GStatus.capacity;return result;}
+    scalars:=[8]int.[ints.a,ints.b,ints.c,ints.d,ints.e,ints.f,ints.g,ints.h];refs:=[16]GDRef.[views.a,views.b,views.c,views.d,views.e,views.f,views.g,views.h,views.i,views.j,views.k,views.l,views.m,views.n,views.o,views.p];
+    for i:0..<nv {if !gd_ref_fits(w.plan,refs[i]) {result.result.status=GStatus.capacity;return result;}}
+    first:=result.result.args;for i:0..<ni {w.args[first+i]=GDArg.{value=scalars[i]};}for i:0..<nv {w.args[first+ni+i]=GDArg.{view=true,ref=refs[i]};}
+    w.ops[result.result.ops]=GDOp.{kind=kind,items=items,first=first,count=ni+nv};result.result.ops+=1;result.result.args+=ni+nv;return result;
+}
+gd_flags :: (w:GDWriter,count:int)->GDRef {return gd_slice(w.plan,22,w.result.flags,count);}
+gd_norm :: (w:GDWriter,width:int,scale:GDRef,x:GDRef,out:GDRef)->GDWriter {
+    p:=w.plan;r:=gd_emit(w,3,64,1,2,GDScalars.{a=64},GDViews.{a=x,b=gd_all(p,10)});
+    r=gd_emit(r,4,width,1,5,GDScalars.{a=width},GDViews.{a=gd_all(p,10),b=scale,c=x,d=out,e=gd_flags(r,width)});r.result.flags+=width;return r;
+}
+gd_bf :: (w:GDWriter,rows:int,cols:int,weight:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter {
+    p:=w.plan;r:=gd_emit(w,5,rows*16,3,3,GDScalars.{a=rows,b=cols,c=16},GDViews.{a=weight,b=x,c=gd_all(p,9)});
+    r=gd_emit(r,6,rows,2,4,GDScalars.{a=rows,b=16},GDViews.{a=gd_all(p,9),b=bias,c=out,d=gd_flags(r,rows)});r.result.flags+=rows;return r;
+}
+gd_mx :: (w:GDWriter,rows:int,cols:int,selected:int,stride:int,weight:GDRef,scale:GDRef,bias:GDRef,ids:GDRef,x:GDRef,out:GDRef)->GDWriter {
+    p:=w.plan;r:=gd_emit(w,7,selected*rows*16,4,5,GDScalars.{a=rows,b=cols,c=16,d=stride},GDViews.{a=weight,b=scale,c=ids,d=x,e=gd_all(p,9)});
+    r=gd_emit(r,8,selected*rows,2,5,GDScalars.{a=rows,b=16},GDViews.{a=ids,b=gd_all(p,9),c=bias,d=out,e=gd_flags(r,selected*rows)});r.result.flags+=selected*rows;return r;
+}
+// The program is scratch until its returned status succeeds. Launches run on a
+// single ordered stream; no host reads are needed between these operations.
+gd_program :: (s:GShape,p:GDPlan,params:[]GDParam,position:int,token:int,choose:bool,limit:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+    if p.status!=GStatus.ok || !g_shape(s) || s.capacity>4096 {return GDProgram.{status=GStatus.shape};}
+    if position<0 || position>=s.capacity || token< -1 || token>=s.vocab || limit<1 || limit>s.capacity {return GDProgram.{status=GStatus.state};}
+    if params.count!=3+15*s.layers || ops.count<p.max_ops || args.count<p.max_args {return GDProgram.{status=GStatus.capacity};}
+    w:=GDWriter.{plan=p,ops=ops,args=args};d:=s.width;q:=s.heads*64;k:=s.kv_heads*64;h:=s.hidden;z:=s.selected;
+    control:=gd_all(p,24);x:=gd_all(p,0);normal:=gd_all(p,1);qkv:=gd_all(p,2);attention:=gd_all(p,3);projected:=gd_all(p,4);router:=gd_all(p,5);up:=gd_all(p,6);activated:=gd_all(p,7);down:=gd_all(p,8);
+    w=gd_emit(w,0,1,3,1,GDScalars.{a=token,b=position,c=s.vocab},GDViews.{a=control});w=gd_emit(w,1,p.flags,0,1,GDScalars.{},GDViews.{a=gd_all(p,22)});
+    w=gd_emit(w,2,d,1,4,GDScalars.{a=d},GDViews.{a=gd_weight(params,0,2),b=control,c=x,d=gd_flags(w,d)});w.result.flags+=d;
+    for layer:0..<s.layers {base:=3+15*layer;ids:=gd_slice(p,14,layer*z,z);weights:=gd_slice(p,15,layer*z,z);pending:=gd_slice(p,12,layer*2*k,2*k);trace:=gd_slice(p,13,layer*2*d,d);cache:=gd_slice(p,16,g_cache_base(s,layer),2*k*g_layer_capacity(s,layer));
+        w=gd_norm(w,d,gd_weight(params,base,2),x,normal);
+        w=gd_bf(w,q+2*k,d,gd_weight(params,base+4,8),gd_weight(params,base+3,2),normal,qkv);
+        rotations:=(s.heads+s.kv_heads)*32;w=gd_emit(w,13,rotations,3,4,GDScalars.{a=s.heads,b=s.kv_heads,c=position},GDViews.{a=qkv,b=gd_all(p,25),c=pending,d=gd_flags(w,rotations)});w.result.flags+=rotations;
+        first:=0;if layer%2==0 && position>=s.window {first=position+1-s.window;}visible:=position-first+1;cap:=g_layer_capacity(s,layer);scalars:=GDScalars.{a=s.heads,b=s.kv_heads,c=position,d=first,e=cap,f=s.capacity,g=8};
+        w=gd_emit(w,14,s.heads*visible,6,4,scalars,GDViews.{a=qkv,b=cache,c=pending,d=gd_all(p,11)});
+        w=gd_emit(w,15,s.heads,2,3,GDScalars.{a=visible,b=s.capacity},GDViews.{a=gd_weight(params,base+5,2),b=gd_all(p,11),c=gd_flags(w,s.heads)});w.result.flags+=s.heads;
+        w=gd_emit(w,16,q*8,7,4,scalars,GDViews.{a=gd_all(p,11),b=cache,c=pending,d=gd_all(p,9)});
+        w=gd_emit(w,17,q,2,3,GDScalars.{a=q,b=8},GDViews.{a=gd_all(p,9),b=attention,c=gd_flags(w,q)});w.result.flags+=q;
+        w=gd_bf(w,d,q,gd_weight(params,base+2,8),gd_weight(params,base+1,2),attention,projected);
+        w=gd_emit(w,9,d,0,4,GDScalars.{},GDViews.{a=x,b=projected,c=trace,d=gd_flags(w,d)});w.result.flags+=d;
+        w=gd_norm(w,d,gd_weight(params,base+10,2),x,normal);
+        w=gd_bf(w,s.experts,d,gd_weight(params,base+7,8),gd_weight(params,base+6,2),normal,router);
+        w=gd_emit(w,11,1,1,4,GDScalars.{a=z},GDViews.{a=router,b=ids,c=weights,d=gd_flags(w,1)});w.result.flags+=1;
+        w=gd_mx(w,2*h,d,z,0,gd_weight(params,base+11,8),gd_weight(params,base+12,1),gd_weight(params,base+8,2),ids,normal,up);
+        w=gd_emit(w,10,z*h,1,3,GDScalars.{a=h},GDViews.{a=up,b=activated,c=gd_flags(w,z*h)});w.result.flags+=z*h;
+        w=gd_mx(w,d,h,z,h,gd_weight(params,base+13,8),gd_weight(params,base+14,1),gd_weight(params,base+9,2),ids,activated,down);
+        w=gd_emit(w,12,d,2,5,GDScalars.{a=d,b=z},GDViews.{a=x,b=down,c=weights,d=gd_slice(p,13,(2*layer+1)*d,d),e=gd_flags(w,d)});w.result.flags+=d;
+    }
+    w=gd_norm(w,d,gd_weight(params,1,2),x,normal);
+    w=gd_bf(w,s.vocab,d,gd_weight(params,2,8),GDRef.{elem=2},normal,gd_all(p,17));
+    summaries:=(w.result.flags+255)/256;w=gd_emit(w,18,summaries,0,2,GDScalars.{},GDViews.{a=gd_slice(p,22,0,w.result.flags),b=gd_slice(p,23,0,summaries)});
+    w=gd_emit(w,19,1,0,2,GDScalars.{},GDViews.{a=gd_slice(p,23,0,summaries),b=control});
+    items:=s.vocab;if p.counts[12]>items {items=p.counts[12];}if p.counts[13]>items {items=p.counts[13];}
+    w=gd_emit(w,20,items,5,11,GDScalars.{a=s.layers,b=d,c=s.kv_heads,d=s.window,e=s.capacity},GDViews.{a=control,b=gd_all(p,12),c=gd_all(p,17),d=gd_all(p,13),e=gd_all(p,14),f=gd_all(p,15),g=gd_all(p,16),h=gd_all(p,18),i=gd_all(p,19),j=gd_all(p,20),k=gd_all(p,21)});
+    w=gd_emit(w,21,1,0,1,GDScalars.{},GDViews.{a=control});
+    if choose {w=gd_emit(w,22,p.counts[27],0,2,GDScalars.{},GDViews.{a=gd_all(p,18),b=gd_all(p,27)});w=gd_emit(w,23,1,1,3,GDScalars.{a=limit},GDViews.{a=gd_all(p,18),b=gd_all(p,27),c=control});}
+    if w.result.flags>p.flags {return GDProgram.{status=GStatus.capacity};}return w.result;
+}
+#test "a tiny original-format model yields a complete checked device program" {
+    pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
+    p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);#assert p.status==GStatus.ok;
+    ops:[192]GDOp;args:[4608]GDArg;r:=gd_program(GT_SHAPE,p,params[..],0,1,true,4,ops[..],args[..]);#assert r.status==GStatus.ok && r.flags<p.flags && r.ops>40 && r.args>200;
+    seen:[24]int;for i:0..<r.ops {op:=ops[i];seen[op.kind]+=1;#assert op.items>0 && gd_kernel_name(op.kind)!="";for j:0..<op.count {a:=args[op.first+j];if a.view {#assert gd_ref_fits(p,a.ref);}}}
+    for i:0..<24 {#assert seen[i]>0;}
+    #assert gd_program(GT_SHAPE,p,params[..],8,1,true,4,ops[..],args[..]).status==GStatus.state;
+    #assert gd_program(GT_SHAPE,p,params[..],0,16,true,4,ops[..],args[..]).status==GStatus.state;
+    #assert gd_program(GT_SHAPE,p,params[..],0,1,true,4,ops[0..<191],args[..]).status==GStatus.capacity;
+    #assert gd_kernel_name(-1)=="" && gd_kernel_name(43)=="";
+}
+// Called at admission, never per token. Coefficients keep chapter 43's exact
+// authored YaRN construction while every application of them runs on device.
+gd_rope :: (capacity:int,out:[]f32)->GResult #export_c {
+    if capacity<1 || capacity>4096 {return GResult.{status=GStatus.shape};}if out.count<capacity*64 {return GResult.{status=GStatus.capacity};}
+    first:=0;for batch:0..<(capacity+127)/128 {count:=gs_window(capacity-first,128);r:=go_yarn(first,count,out[first*64..<(first+count)*64]);if r.status!=GoStatus.ok {return GResult.{status=GStatus.arithmetic};}first+=count;}return GResult.{written=capacity*64};
+}
+gd_kernel_count :: ()->int #export_c {return 43;}
+#test "device coefficient admission covers multiple bounded rotary batches" {
+    out:[8257]f32;one:[64]f32;out[8256]=-7;
+    r:=gd_rope(129,out[..]);s:=go_yarn(128,1,one[..]);#assert r.status==GStatus.ok && r.written==8256 && out[8256]== -7 && s.status==GoStatus.ok;
+    for i:0..<64 {#assert out[8192+i]==one[i];}#assert gd_kernel_count()==43;
+    #assert gd_rope(0,out[..]).status==GStatus.shape && gd_rope(4097,out[..]).status==GStatus.shape && gd_rope(129,out[0..<8255]).status==GStatus.capacity;
+}
+
+gd_buffer_count :: ()->int #export_c {return GD_BUFFERS;}
+gd_preserve :: (slot:int)->bool #export_c {return slot==25;}
+gd_packed_fits :: (p:GDPlan,bytes:int)->bool #export_c {return bytes>=0 && bytes<=p.upload[0];}
+#test "workspace metadata and opaque packing are bounded" {
+    pins:=GOWN_ARTIFACTS;p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);
+    #assert !gd_ref_fits(p,GDRef.{buffer=0,offset=1,count=1,elem=8}) && !gd_ref_fits(p,GDRef.{buffer=63,count=1});
+    #assert gd_buffer_count()==47 && gd_preserve(25) && !gd_preserve(24) && !gd_preserve(26);
+    #assert gd_packed_fits(p,p.upload[0]) && !gd_packed_fits(p,-1) && !gd_packed_fits(p,p.upload[0]+1);
+    #assert p.batch==8 && p.counts[35]==p.counts[16] && p.counts[39]==9;
+}

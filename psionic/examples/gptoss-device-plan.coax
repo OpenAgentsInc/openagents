@@ -1,0 +1,16 @@
+#import "Basic";
+#load "../lib/gptoss/device-prefill.coax";
+// book:begin example
+main :: () {
+    s:=g_original_shape(0,2048);pins:=G20_ARTIFACTS;
+    p:=gd_plan(s,pins[..],17179869184,17179869184);
+    #assert p.status==GStatus.ok;
+    print("original 20b packed weight bytes: %\n",p.weights);
+    print("resident workspace bytes: %; reserve bytes: %\n",p.workspace,GD_RESERVE);
+    print("prefill chunk: % tokens; generated kernel entry points: %\n",p.batch,gd_kernel_count());
+    print("1024 prompt tokens: % full chunks; final tail at 1023: %\n",1024/p.batch,gd_chunk(1023,1024,p.batch));
+    large:=G120_ARTIFACTS;
+    #assert gd_plan(g_original_shape(1,2048),large[..],17179869184,17179869184).status==GStatus.budget;
+    print("120b on 16 GiB: refused before allocation\n");
+}
+// book:end example

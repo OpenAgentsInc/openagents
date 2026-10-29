@@ -1,0 +1,6 @@
+admitted/uploaded once: 60.319 s
+Each input line is an independent request; weights stay resident. EOF exits.
+Hello! 👋 How can I help you today?
+prefix=59 generated=24 stop=1 prefill=0.234 s decode=0.632 s
+2 + 2 = 4.
+prefix=64 generated=23 stop=1 prefill=0.253 s decode=0.607 s

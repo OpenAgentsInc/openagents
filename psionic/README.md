@@ -24,6 +24,13 @@ tokenizer and typed Harmony rendering/parsing with exact completion stops.
 add seeded generation, standard speculative verification and a constrained tool
 round trip. The supported CPU and finite-schema profiles state their limits.
 
+[Chapters 45a–45c](book/ch45a-original-weights-stay-on-the-gpu.md) add resident
+original 20b CUDA execution, complete greedy Harmony generation and batched
+prefill on the RTX 4080. [Run a prompt](book/ch45b-a-complete-cuda-decoder.md)
+with `psionic/run-gptoss.sh`; [focused checks](tests/check_gptoss_device.sh)
+use owned tiny weights by default. Device throughput has separate measured
+gates in the plan.
+
 Start with [the book](book/README.md) and
 [Chapter 1: Learning a number](book/ch01-learning-a-number.md), then
 [Chapter 2: Shapes and storage](book/ch02-shapes-and-storage.md) and

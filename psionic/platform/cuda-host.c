@@ -42,8 +42,10 @@ static struct {
     CUresult (*cuMemsetD32Async)(PcBuffer, unsigned, size_t, PcStream);
     CUresult (*cuStreamCreate)(PcStream *, unsigned);
     CUresult (*cuStreamSynchronize)(PcStream);
+    CUresult (*cuStreamDestroy)(PcStream);
     CUresult (*cuStreamWaitEvent)(PcStream, PcEvent, unsigned);
     CUresult (*cuEventCreate)(PcEvent *, unsigned);
+    CUresult (*cuEventDestroy)(PcEvent);
     CUresult (*cuEventRecord)(PcEvent, PcStream);
     CUresult (*cuEventElapsedTime)(float *, PcEvent, PcEvent);
     CUresult (*cuLaunchKernel)(PcKernel, unsigned, unsigned, unsigned, unsigned, unsigned, unsigned, unsigned, PcStream, void **, void **);
@@ -106,6 +108,8 @@ static int load_cuda(void) {
     LOAD(g.cuda, cuMemsetD32Async, "cuMemsetD32Async");
     LOAD(g.cuda, cuStreamCreate, "cuStreamCreate");
     LOAD(g.cuda, cuStreamSynchronize, "cuStreamSynchronize");
+    LOAD(g.cuda, cuStreamDestroy, "cuStreamDestroy_v2");
+    LOAD(g.cuda, cuEventDestroy, "cuEventDestroy_v2");
     LOAD(g.cuda, cuStreamWaitEvent, "cuStreamWaitEvent");
     LOAD(g.cuda, cuEventCreate, "cuEventCreate");
     LOAD(g.cuda, cuEventRecord, "cuEventRecord");
@@ -270,3 +274,6 @@ PcStatus pc_launch(PcKernel kernel, int64_t items, int block, const PcArg *args,
     }
     return check(g.cuLaunchKernel(kernel, (unsigned)blocks, 1, 1, (unsigned)block, 1, 1, 0, stream, pointers, NULL), "cuLaunchKernel");
 }
+
+PcStatus pc_destroy_stream(PcStream stream) { return g.ready ? check(g.cuStreamDestroy(stream), "cuStreamDestroy") : PC_ABSENT; }
+PcStatus pc_destroy_event(PcEvent event) { return g.ready ? check(g.cuEventDestroy(event), "cuEventDestroy") : PC_ABSENT; }
