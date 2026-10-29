@@ -131,3 +131,12 @@ test("site releases bind the tested compiler to the actual target inputs", () =>
   expect(task.acceptance.join(" ")).toContain("before any staging write")
   expect(task.acceptance.join(" ")).toContain("without rerunning checks")
 })
+
+test("signing waits for a real bounded positive verification check", () => {
+  const task = tasks.get("schnorr-fast-verify")
+  expect(task).toBeDefined()
+  expect(reaches("schnorr-sign", task.slug)).toBe(true)
+  expect(reaches(task.slug, "schnorr-verify")).toBe(true)
+  expect(task.acceptance.join(" ")).toContain("20,000,000-step")
+  expect(task.body).toContain("do not replace it with a mock")
+})

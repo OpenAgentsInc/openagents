@@ -732,7 +732,8 @@
       ],
       "blocks": [
         "nostr-event",
-        "schnorr-sign"
+        "schnorr-sign",
+        "schnorr-fast-verify"
       ]
     },
     {
@@ -994,6 +995,7 @@
       "blocked_by": [
         "secp-mult-base",
         "schnorr-verify",
+        "schnorr-fast-verify",
         "crypto-secure-zero"
       ],
       "blocks": [
@@ -3450,6 +3452,22 @@
       ],
       "blocked_by": ["crypto-total-secret-field"],
       "blocks": ["crypto-public-view-audit", "crypto-ecdh-xonly"]
+    },
+    {
+      "slug": "schnorr-fast-verify",
+      "parent": "m2-verify",
+      "title": "Bounded full BIP-340 verification for signing checks",
+      "size": "L",
+      "labels": ["nostr", "crypto", "coax"],
+      "body": "The existing correct public verifier exceeds the unchanged 20,000,000-step per-check limit for an official valid signature. This prevents the signer from exercising its actual positive verification path in authority and full mutation checks. Build a faster general public verifier, or an equally strong bounded verification architecture, so the actual production entry can be checked end to end; do not replace it with a mock, bypass or precomputed answer. Preserve all existing verifier behavior and the current test, mutation and compiler resource limits. Verification is public-data variable-time, and this does not approve secret timing or production key handling.",
+      "files": ["coax/lib/crypto/", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Actual byte-view verification of at least one official valid BIP-340 signature executes as a Coax authority check within the unchanged 20,000,000-step per-check budget; invalid r, s, key, message and signature cases still refuse",
+        "All official verification vectors and independently generated adversarial cases agree with pinned libsecp and the existing verifier on checked and release native and Wasm; include independently reviewed source and exact tool and source hashes",
+        "Run all affected authority checks and full mutation with zero survivors and no equivalence waivers; preserve target, timing, lifetime and production-security limitations in the evidence"
+      ],
+      "blocked_by": ["schnorr-verify"],
+      "blocks": ["schnorr-sign"]
     }
   ]
 }
