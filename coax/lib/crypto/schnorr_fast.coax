@@ -1,0 +1,137 @@
+// Experimental public-data BIP-340 verifier; no secret timing claim.
+#load "schnorr.coax";
+#load "ecdh_fast.coax";
+#authority;
+
+SFV_TEST_KEY :: [32]u8.[249,48,138,1,146,88,195,16,73,52,79,133,248,157,82,41,181,49,200,69,131,111,153,176,134,1,241,19,188,224,54,249];
+SFV_TEST_SIG :: [64]u8.[233,7,131,31,128,132,141,16,105,165,55,27,64,36,16,54,75,223,28,95,131,7,176,8,76,85,241,206,45,202,130,21,37,246,106,74,133,234,139,113,228,130,167,79,56,45,44,229,235,238,232,253,178,23,47,71,125,244,144,13,49,5,54,192];
+#test "noncanonical r, s and public key refuse" {
+  message:[32]u8;key:=SFV_TEST_KEY;sig:=SFV_TEST_SIG;
+  for i:0..<32 {sig[i]=255;}#assert !schnorr_fast_verify_vartime(message[..],key[..],sig[..]);
+  sig=SFV_TEST_SIG;for i:32..<64 {sig[i]=255;}#assert !schnorr_fast_verify_vartime(message[..],key[..],sig[..]);
+  sig=SFV_TEST_SIG;for i:0..<32 {key[i]=255;}#assert !schnorr_fast_verify_vartime(message[..],key[..],sig[..]);
+}
+#test "fast verification refuses malformed view lengths" {
+  message:[1]u8;key:[32]u8;sig:[64]u8;
+  #assert !schnorr_fast_verify_vartime(message[..],key[0..<31],sig[..]);
+  #assert !schnorr_fast_verify_vartime(message[..],key[..],sig[0..<63]);
+}
+
+#test "fast Nostr entry enforces the exact 32-byte event id" {
+  message:[32]u8;key:=SFV_TEST_KEY;sig:=SFV_TEST_SIG;
+  #assert !sfv_nostr_length(31) && sfv_nostr_length(32) && !sfv_nostr_length(33);
+  #assert !nostr_fast_verify_vartime(message[0..<31],key[..],sig[..]);
+  #assert !nostr_fast_verify_vartime(message[0..<0],key[..],sig[..]);
+}
+#test "public generator table matches the existing odd-multiple kernel" {
+  expected:=sm_odd_table_vartime(sg_generator());
+  for i:0..<8 {#assert sg_equal_mask(sg32_to_point(SFV_GENERATORS[i]),expected[i])==CB_MAX64;}
+}
+
+#test "public point exceptional cases preserve the group equation" {
+  g:=sg32_from_point(sg_generator());inf:=sg32_infinity();neg:=sfv_negate(g);twice:=sfv_double(g);
+  #assert sfv_infinity(sfv_add(inf,inf));
+  #assert sg_equal_mask(sg32_to_point(sfv_add(g,inf)),sg_generator())==CB_MAX64;
+  #assert sg_equal_mask(sg32_to_point(sfv_add(inf,g)),sg_generator())==CB_MAX64;
+  #assert sfv_infinity(sfv_add(g,neg));
+  #assert sg_equal_mask(sg32_to_point(sfv_add(g,g)),sg_double_valid(sg_generator()))==CB_MAX64;
+  #assert sg_equal_mask(sg32_to_point(sfv_add(g,twice)),sg_add_valid(sg_generator(),sg_double_valid(sg_generator())))==CB_MAX64;
+}
+#test "public two-scalar multiplication covers zero and each term" {
+  g:=sg32_from_point(sg_generator());zero:=ScScalar.{};one:=sc_small(1);
+  #assert sfv_infinity(sfv_multiply(zero,g,zero));
+  #assert sg_equal_mask(sg32_to_point(sfv_multiply(one,g,zero)),sg_generator())==CB_MAX64;
+  #assert sg_equal_mask(sg32_to_point(sfv_multiply(zero,g,one)),sg_generator())==CB_MAX64;
+  #assert sg_equal_mask(sg32_to_point(sfv_multiply(one,g,one)),sg_double_valid(sg_generator()))==CB_MAX64;
+}
+
+#test "public digit sign includes zero and both signs" {
+  #assert sfv_negative(-1) && !sfv_negative(0) && !sfv_negative(1);
+}
+#test "final public equation rejects infinity, odd y and wrong x" {
+  g:=sg32_from_point(sg_generator());inf:=sg32_infinity();wrong:=g.x;wrong.limb[0]^=1;
+  #assert sfv_affine_match(g.x,g);
+  #assert !sfv_affine_match(g.x,inf);
+  #assert !sfv_affine_match(g.x,sfv_negate(g));
+  #assert !sfv_affine_match(wrong,g);
+  twice:=sfv_double(g);expected:=sg_to_affine(sg_double_valid(sg_generator()));
+  #assert (expected.value.y.limb[0]&2)==2 && (expected.value.y.limb[0]&1)==0;
+  #assert sfv_affine_match(sg32_from_field(expected.value.x),twice);
+}
+
+#test "official BIP-340 vector zero reaches real byte verification" {
+  message:[32]u8;public_key:=SFV_TEST_KEY;signature:=SFV_TEST_SIG;
+  #assert schnorr_fast_verify_vartime(message[..],public_key[..],signature[..]);
+}
+#test "modified message refuses after the full equation" {
+  message:[32]u8;message[0]=1;public_key:=SFV_TEST_KEY;signature:=SFV_TEST_SIG;
+  #assert !schnorr_fast_verify_vartime(message[..],public_key[..],signature[..]);
+}
+#test "modified in-range signature refuses after the full equation" {
+  message:[32]u8;public_key:=SFV_TEST_KEY;signature:=SFV_TEST_SIG;signature[63]^=1;
+  #assert !schnorr_fast_verify_vartime(message[..],public_key[..],signature[..]);
+}
+
+// All point values here are public and originate from a successful lift or
+// these curve-preserving operations. Infinity is represented by z=0.
+sfv_infinity :: (p:Sg32)->bool {zero:Sf32;return sf32_equal(p.z,zero);}
+sfv_double :: (p:Sg32)->Sg32 {
+  if sfv_infinity(p) {return sg32_infinity();}
+  return ef_double(p);
+}
+sfv_add :: (a:Sg32,b:Sg32)->Sg32 {
+  if sfv_infinity(a) {return b;}
+  if sfv_infinity(b) {return a;}
+  z1:=ef_field_mul(a.z,a.z);z2:=ef_field_mul(b.z,b.z);
+  u1:=ef_field_mul(a.x,z2);u2:=ef_field_mul(b.x,z1);
+  s1:=ef_field_mul(a.y,ef_field_mul(b.z,z2));s2:=ef_field_mul(b.y,ef_field_mul(a.z,z1));
+  h:=sf32_sub(u2,u1);diff:=sf32_sub(s2,s1);zero:Sf32;
+  if sf32_equal(h,zero) {if sf32_equal(diff,zero) {return sfv_double(a);}return sg32_infinity();}
+  twoh:=ef_field_add(h,h);ii:=ef_field_mul(twoh,twoh);jj:=ef_field_mul(h,ii);
+  rr:=ef_field_add(diff,diff);vv:=ef_field_mul(u1,ii);
+  r:Sg32;r.x=sf32_sub(sf32_sub(ef_field_mul(rr,rr),jj),ef_field_add(vv,vv));
+  t:=ef_field_mul(s1,jj);r.y=sf32_sub(ef_field_mul(rr,sf32_sub(vv,r.x)),ef_field_add(t,t));
+  zsum:=ef_field_add(a.z,b.z);r.z=ef_field_mul(sf32_sub(sf32_sub(ef_field_mul(zsum,zsum),z1),z2),h);
+  return sg32_canonical_infinity(r);
+}
+sfv_negative :: (digit:int)->bool {return digit<0;}
+sfv_negate :: (p:Sg32)->Sg32 {r:=p;zero:Sf32;r.y=sf32_sub(zero,p.y);return r;}
+sfv_multiply :: (g_scalar:ScScalar,point:Sg32,p_scalar:ScScalar)->Sg32 {
+  table:[8]Sg32;table[0]=point;twice:=sfv_double(point);
+  for i:1..<8 {table[i]=sfv_add(table[i-1],twice);}
+  g:=sm_wnaf_vartime(g_scalar,SM_P_WINDOW);p:=sm_wnaf_vartime(p_scalar,SM_P_WINDOW);
+  length:=sm_joint_length_vartime(g,p);result:=sg32_infinity();
+  for round:0..<length {
+    bit:=length-1-round;result=sfv_double(result);gd:=g.digits[bit];pd:=p.digits[bit];
+    if gd!=0 {negative:=sfv_negative(gd);absolute:=ifx negative then -gd else gd;chosen:=SFV_GENERATORS[(absolute-1)/2];if negative {chosen=sfv_negate(chosen);}result=sfv_add(result,chosen);}
+    if pd!=0 {negative:=sfv_negative(pd);absolute:=ifx negative then -pd else pd;chosen:=table[(absolute-1)/2];if negative {chosen=sfv_negate(chosen);}result=sfv_add(result,chosen);}
+  }
+  return result;
+}
+schnorr_fast_verify_vartime :: (message:[]u8,public_key:[]u8,signature:[]u8)->bool #export_c {
+  prepared:=sv_prepare_vartime(message,public_key,signature);if !prepared.ready {return false;}
+  result:=sfv_multiply(prepared.s,sg32_from_point(prepared.point),prepared.negative_e);
+  return sfv_affine_match(sg32_from_field(prepared.r),result);
+}
+sfv_affine_match :: (expected:Sf32,result:Sg32)->bool {
+  if sfv_infinity(result) {return false;}
+  inverse:=ef_inverse(result.z);z2:=ef_field_mul(inverse,inverse);
+  x:=ef_field_mul(result.x,z2);y:=ef_field_mul(result.y,ef_field_mul(z2,inverse));
+  return (y.limb[0]&1)==0 && sf32_equal(x,expected);
+}
+
+SFV_GENERATORS :: [8]Sg32.[
+ Sg32.{x=Sf32.{limb=[8]u32.[385357720,1509065051,768485593,43777243,3464956679,1436574357,4191992748,2042521214]},y=Sf32.{limb=[8]u32.[4212184248,2621952143,2793755673,4246189128,235997352,1571093500,648266853,1211816567]},z=Sf32.{limb=[8]u32.[1,0,0,0,0,0,0,0]}},
+ Sg32.{x=Sf32.{limb=[8]u32.[3168810745,2248274195,2205129136,3039938629,4171059753,1228164997,2455290640,4180707841]},y=Sf32.{limb=[8]u32.[2226710130,1824128373,885138203,1694542233,708309846,266549222,1663952916,948927247]},z=Sf32.{limb=[8]u32.[1,0,0,0,0,0,0,0]}},
+ Sg32.{x=Sf32.{limb=[8]u32.[2990600164,3416839529,3697384119,3901457597,173822248,1437902629,436674707,797695565]},y=Sf32.{limb=[8]u32.[2796315350,3702029626,2869782592,4152895259,2798240806,3571165661,921035734,3635159590]},z=Sf32.{limb=[8]u32.[1,0,0,0,0,0,0,0]}},
+ Sg32.{x=Sf32.{limb=[8]u32.[3401906620,3911966189,53535644,1027709822,4075452942,2744709989,1851634922,1555951716]},y=Sf32.{limb=[8]u32.[141714650,2768774696,335407029,2819870904,2249872603,2736229741,3123009888,1793837632]},z=Sf32.{limb=[8]u32.[1,0,0,0,0,0,0,0]}},
+ Sg32.{x=Sf32.{limb=[8]u32.[4230466750,3277787405,1280829204,3768030871,2673187517,162338698,4039636563,2899608802]},y=Sf32.{limb=[8]u32.[3327106103,97265194,929009167,2916649124,1983603177,1681394033,2963790333,3425929505]},z=Sf32.{limb=[8]u32.[1,0,0,0,0,0,0,0]}},
+ Sg32.{x=Sf32.{limb=[8]u32.[1570769099,3152811913,3854661777,1447663627,1892047532,1593058411,1487487262,2001397752]},y=Sf32.{limb=[8]u32.[3377710619,807236809,3757692584,925741538,3619140453,38002006,3949682201,3649347634]},z=Sf32.{limb=[8]u32.[1,0,0,0,0,0,0,0]}},
+ Sg32.{x=Sf32.{limb=[8]u32.[423647912,3740131215,1628330189,2960522182,3279193681,3352416773,3648333963,4068963266]},y=Sf32.{limb=[8]u32.[3674467713,699779922,1377806623,974784218,1707978567,1971458795,2374503049,179343406]},z=Sf32.{limb=[8]u32.[1,0,0,0,0,0,0,0]}},
+ Sg32.{x=Sf32.{limb=[8]u32.[3799910414,1152236792,1015412638,837129327,157283345,1514560227,2101602966,3616689487]},y=Sf32.{limb=[8]u32.[4137839448,3305430175,3633763237,3930107691,684486127,2206478018,2825679526,1478371442]},z=Sf32.{limb=[8]u32.[1,0,0,0,0,0,0,0]}}
+];
+
+sfv_nostr_length :: (count:int)->bool {return count==32;}
+nostr_fast_verify_vartime :: (event_id:[]u8,public_key:[]u8,signature:[]u8)->bool #export_c {
+  if !sfv_nostr_length(event_id.count) {return false;}return schnorr_fast_verify_vartime(event_id,public_key,signature);
+}

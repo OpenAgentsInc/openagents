@@ -1,0 +1,63 @@
+{
+  "official": 19,
+  "cases": 790,
+  "modes": [
+    {
+      "mode": "checked",
+      "native_cases": 790,
+      "wasm_cases": 790,
+      "source_sha256": {
+        "$REPO/coax/lib/crypto/schnorr_fast.coax": "d27a4b855d5d350888d46d0a2ef68f88c6d30e48ad54e1e201f46c3e432f8f4c",
+        "$REPO/coax/lib/crypto/schnorr.coax": "f90f2a3fca5f65bf0c32d22897b30c192e16946c3890a286e4a2922880ed1757",
+        "$REPO/coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+        "$REPO/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+        "$REPO/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+        "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+        "$REPO/coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+        "$REPO/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+        "$REPO/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+        "$REPO/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+        "$REPO/coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+        "$REPO/coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756",
+        "$REPO/coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915",
+        "$REPO/coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+        "$REPO/coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+        "$REPO/coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b"
+      },
+      "generated_c_sha256": "1982bd22b516446ccc34868cf7795727d33e0de5a55ea1b19698bd8e55d99538",
+      "native_sha256": "44110c3bb3d50aa43ed8b23b96a7f1b1631273467593823c310b71f88ac5981c",
+      "wasm_sha256": "fccc171f0c15fd6eeca116f1adfa7e5c6bcf2341a595f1a105d24dc1382cccb1"
+    },
+    {
+      "mode": "release",
+      "native_cases": 790,
+      "wasm_cases": 790,
+      "source_sha256": {
+        "$REPO/coax/lib/crypto/schnorr_fast.coax": "d27a4b855d5d350888d46d0a2ef68f88c6d30e48ad54e1e201f46c3e432f8f4c",
+        "$REPO/coax/lib/crypto/schnorr.coax": "f90f2a3fca5f65bf0c32d22897b30c192e16946c3890a286e4a2922880ed1757",
+        "$REPO/coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+        "$REPO/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+        "$REPO/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+        "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+        "$REPO/coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+        "$REPO/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+        "$REPO/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+        "$REPO/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+        "$REPO/coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+        "$REPO/coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756",
+        "$REPO/coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915",
+        "$REPO/coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+        "$REPO/coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+        "$REPO/coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b"
+      },
+      "generated_c_sha256": "21c80d2351874ca3b951cca01b0c955e7e23f707d77faad0c8b6c92c46e77192",
+      "native_sha256": "2ccdb08ea398ef8c39809a79bf324f4624baea24efefab44b28ddb428595ae5f",
+      "wasm_sha256": "3d5a501ee5943c9100831cd122224a84a4c1e7a074b0b3a73ed719cb4ecb17ef"
+    }
+  ],
+  "oracle_sha256": "8c46f911b6821f9fc0de66a55d50b11325e364cf64afd95ca6ab0b7f2882201b",
+  "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+  "schema": "coax.schnorr-fast-differential.v1",
+  "scope": "public correctness observations only; no target timing, secret handling or production approval",
+  "official_vector_sha256": "34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d"
+}
