@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.18.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.18.1**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -554,8 +554,8 @@ The optional decimal `--run-steps N` applies to all compile commands, including
 `coax test --steps`, mutation budgets, native optimization or arithmetic.
 Zero, signed, malformed, repeated or above-maximum inputs are refused before
 source evaluation. `coax deps` records the selected limit and fixed storage
-limits; `--timings` records steps consumed and tracked peak slots/containers once
-evaluation starts.
+limits; `--timings` records steps consumed and tracked peak slots/containers for
+frontend evaluation only, before authority checks begin.
 
 The independent storage limit counts actual allocated vector capacity, including
 nested copies and retained constants, and releases it with the last owner or
@@ -564,9 +564,10 @@ unreachable cycle may continue consuming budget until then. Its tracking is not
 a bound on total compiler RSS, syntax trees, strings, allocator metadata, host
 I/O or generated output.
 
-Aggregate deep copies and assignment traversal are currently not charged per
-element by the step counter. The live-storage cap limits simultaneous storage,
+Aggregate deep copies, assignment, view detection and struct-initialization
+traversal are currently not charged per element by the step counter. The live-storage cap limits simultaneous storage,
 not cumulative copy operations; a separate traversal budget remains planned.
+String comparisons, AST processing and host cleanup are also outside this meter.
 The work budget counts interpreted work, not parsing, every compiler allocation
 or total wall time. It is not a complete hostile-source resource sandbox.
 Memoized constants and folded `#run` sites are not re-executed. Host pointers

@@ -1,7 +1,7 @@
 # 20. Inside coax0
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.18.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.18.1**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 
 The driver embeds the version and status from a generated header. The authored
@@ -505,7 +505,7 @@ that none of its own memory can end up in your program.
 Every step of evaluation calls `tick`, which counts against a budget of
 100,000 steps per compilation by default; `--run-steps N` selects a finite
 limit up to 250,000,000. Zero-initializing an array element costs a step too;
-deep-copy and aggregate-assignment traversal is not charged per element. The
+deep-copy, assignment and view-detection traversal is not charged per element. The
 independent aggregate storage cap counts live capacity and containers, not
 total process memory.
 Calls and constant dependencies are capped at a depth of 64. Arithmetic

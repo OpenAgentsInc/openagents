@@ -735,9 +735,9 @@ the limits and the errors that go with them:
 
 `--run-steps N` is a build input shared by all compile-time sites. It does not
 change `coax test --steps`, mutation or native optimization. `coax deps`
-records the selected limit; `--timings FILE` records work and tracked peaks once evaluation starts.
-Deep copies and aggregate assignment do not yet charge a step per traversed
-element. The storage limit counts live vectors, not cumulative copy work; a
+records the selected limit; `--timings FILE` records frontend evaluation work and peaks before authority checks.
+Deep copies, aggregate assignment, view detection and struct initialization
+do not yet charge a step per traversed element. The storage limit counts live vectors, not cumulative copy work; a
 separate traversal budget is planned. The storage limits do not cover all
 compiler memory.
 Views keep their storage alive, and cycles are cleared at compilation teardown;

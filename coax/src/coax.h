@@ -190,6 +190,9 @@ struct CtMemory {
   static uint64_t max_containers() { return CB_container_limit(); }
   uint64_t slots = 0, containers = 0, peak_slots = 0, peak_containers = 0;
   std::vector<std::weak_ptr<CtStorage>> stores;
+  CtStorage *pending = nullptr;
+  bool draining = false;
+  void dispose(CtStorage *storage) noexcept;
   void remember(const std::shared_ptr<CtStorage> &storage);
   void clear_cycles() noexcept;
   void take_slots(size_t n);
@@ -218,6 +221,7 @@ template<class T> struct CtAllocator {
 struct Value;
 struct CtStorage : std::vector<Value, CtAllocator<Value>> {
   std::shared_ptr<CtMemory> owner;
+  CtStorage *pending_next = nullptr;
   explicit CtStorage(std::shared_ptr<CtMemory> memory);
   ~CtStorage();
 };

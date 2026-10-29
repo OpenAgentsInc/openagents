@@ -4,7 +4,7 @@ Task #7287 adds a selected shared work budget and an independent live
 aggregate-storage bound. `--run-steps` defaults to 100,000 and accepts positive
 decimal values through 250,000,000; check and mutation budgets do not change.
 `coax deps` records the selection and fixed storage limits. `--timings` records
-consumed work and tracked aggregate peaks once evaluation starts.
+frontend evaluation work and tracked aggregate peaks before authority checks.
 
 The Coax `#authority` policy controls decimal admission, defaults and
 allocation bounds. It passed four check groups and killed all 35 mutants.
@@ -16,7 +16,8 @@ failing status values.
 The evaluator charges the capacity requested by its vector allocator before
 allocation and tracks every aggregate container. Copies are charged recursively,
 views retain owners, frozen values belong to the compilation, failed partial
-allocations unwind, and graph teardown breaks view cycles. Registry entries are
+allocations unwind, and graph teardown breaks view cycles. Long view chains are disposed through
+an allocation-free queue rather than recursive native destructors. Registry entries are
 bounded and expired entries are pruned. Unreachable cycles can still consume
 budget until compilation teardown; slots/containers are not a bound on total
 RSS, strings, allocator metadata, syntax trees or host operations.
@@ -52,9 +53,32 @@ that task is resolved. No secret-safety or constant-time claim follows from the
 compiler budget.
 
 The existing step counter does not charge each element traversed by deep
-aggregate cloning or assignment. A probe that zero-initialized 10,000 bytes
+aggregate cloning, assignment, view detection or struct initialization. A probe that zero-initialized 10,000 bytes
 and copied them 100 times reported 10,912 steps and a 20,000-slot peak under
 the unchanged 100,000-step default. Thus the work input and live-storage cap
 do not by themselves bound cumulative copy work in proportion to the selected
 steps. `coax-run-copy-work` tracks a separate traversal limit; until then this
 is not a complete hostile-source CPU or memory sandbox.
+
+An independent review identified recursive reference-counted destruction as a
+native stack hazard. A 50,000-link scope-release chain reproduced an ASan stack
+overflow before the fix. After the fix, sanitizer tests release a 50,000-link
+acyclic chain and a 50,000-node cycle, and assert all tracked slots and
+containers return to zero. This covers those cases, not a proof for arbitrary
+compiler inputs or total process memory.
+
+An independent read-only review checked the iterative deleter's control-block
+allocation failure path, tracker lifetime, nested disposal, registry behavior
+and frozen-root teardown. Against the pinned fixed-base source snapshot
+`c30c817be7ed393040ca4b390ba2a0db2dabb672`, the cleanup-fixed 0.18.1 compiler
+emitted byte-identical checked and release table C to the previously tested
+compiler (the same two hashes recorded above). The follow-up release is 0.18.1;
+the pinned pre-fix binaries and historical results remain distinguished.
+
+The 0.18.1 candidate compiler (SHA-256
+`9d84212147091b1db4fed183a736571f96d13129a6e808ed04cf81116f218c23`)
+passed the ten resource tests and source-status check. A current-source
+Python-free stage0 regenerated the identical compiler graph and passed all
+four resource-policy checks with 35/35 mutants killed. Affected compile-time
+and check-runner suites passed 14 and 17 tests respectively. The arm64 iOS
+Simulator app built; no physical-device execution is claimed.

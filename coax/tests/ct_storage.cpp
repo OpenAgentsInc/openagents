@@ -44,6 +44,47 @@ int main() {
   }
   assert(memory->stores.size() <= CtMemory::max_containers() * 2);
   assert(memory->slots == 0 && memory->containers == 0);
+  // Ordinary scope release of a deep chain must not recurse on the native
+  // stack. Every link is a live view of the preceding storage.
+  {
+    TypeInfo view_type; view_type.kind = TypeKind::view;
+    std::shared_ptr<CtStorage> chain;
+    for (int i = 0; i < 50000; ++i) {
+      auto next = evaluator.storage();
+      Value view; view.type = &view_type; view.agg = chain;
+      next->push_back(std::move(view));
+      chain = std::move(next);
+    }
+    assert(memory->containers == 50000);
+    chain.reset();
+    assert(memory->containers == 0 && memory->slots == 0);
+    assert(memory->pending == nullptr && !memory->draining);
+  }
+  // Teardown must also handle a 50,000-node cycle after external owners die.
+  {
+    std::shared_ptr<CtMemory> retained;
+    std::weak_ptr<CtStorage> weak;
+    {
+      File cyclic;
+      Evaluator e{&cyclic};
+      retained = cyclic.ct_memory;
+      TypeInfo view_type; view_type.kind = TypeKind::view;
+      auto first = e.storage(); weak = first;
+      auto chain = first;
+      for (int i = 1; i < 50000; ++i) {
+        auto next = e.storage();
+        Value view; view.type = &view_type; view.agg = chain;
+        next->push_back(std::move(view)); chain = std::move(next);
+      }
+      Value back; back.type = &view_type; back.agg = chain;
+      first->push_back(std::move(back));
+      first.reset(); chain.reset();
+      assert(!weak.expired() && retained->containers == 50000);
+    }
+    assert(weak.expired());
+    assert(retained->containers == 0 && retained->slots == 0);
+    assert(retained->pending == nullptr && !retained->draining);
+  }
   // Nested aggregate clone must charge every backing vector, and failure while
   // cloning unwinds its partially constructed graph instead of leaking slots.
   TypeInfo arr; arr.kind = TypeKind::array;

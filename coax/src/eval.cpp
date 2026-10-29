@@ -15,6 +15,22 @@ CtStorage::CtStorage(std::shared_ptr<CtMemory> memory)
     : std::vector<Value, CtAllocator<Value>>(CtAllocator<Value>(memory)), owner(std::move(memory)) {}
 CtStorage::~CtStorage() { owner->release_container(); }
 
+// A view can retain another aggregate, including a long chain of them. The
+// last owner may disappear at scope exit or during cycle cleanup. Queue raw
+// storage intrusively so releasing children never recurses on the host stack.
+void CtMemory::dispose(CtStorage *storage) noexcept {
+  storage->pending_next = pending;
+  pending = storage;
+  if (draining) return;
+  draining = true;
+  while (pending) {
+    CtStorage *next = pending;
+    pending = next->pending_next;
+    delete next;
+  }
+  draining = false;
+}
+
 void CtMemory::remember(const std::shared_ptr<CtStorage> &storage) {
   // Bound registry overhead even when a long run creates many short-lived arrays.
   if (stores.size() >= max_containers() * 2) {
@@ -154,9 +170,11 @@ struct Evaluator {
   std::shared_ptr<CtStorage> storage() {
     auto memory = file->ct_memory;
     memory->take_container();
-    std::shared_ptr<CtStorage> result;
-    try { result = std::make_shared<CtStorage>(memory); }
+    CtStorage *raw;
+    try { raw = new CtStorage(memory); }
     catch (...) { memory->release_container(); throw; }
+    // If control-block allocation fails, shared_ptr invokes this deleter.
+    std::shared_ptr<CtStorage> result(raw, [memory](CtStorage *p) { memory->dispose(p); });
     memory->remember(result);
     return result;
   }
