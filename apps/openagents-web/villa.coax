@@ -1045,7 +1045,7 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
     pet_stones(s);
     play_draw(s);
     if redit_row_on(s[0].ed[..], "others") { room_draw(s); }
-    if redit_row_on(s[0].ed[..], "tips") { tips_draw(s); }
+    if redit_row_on(s[0].ed[..], "tips") && !redit_open(s[0].ed[..]) { tips_draw(s); }
   }
   figures(s, u);
   particles(s);
@@ -1075,7 +1075,7 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
   n := hud(s, out, u, move_on, ox, oy, pad_x, pad_y);
   if !villa_busy(s) {
     n = play_hud(s, out, u, n); n = pet_draw(s, out, u, n); n = room_hud(s, out, u, n);
-    if redit_row_on(s[0].ed[..], "tips") { n = tips_hud(s, out, u, n); }
+    if redit_row_on(s[0].ed[..], "tips") && !redit_open(s[0].ed[..]) { n = tips_hud(s, out, u, n); }
     // EDIT, left of YOUR PET, for its owner and admins (verse/edit/edit.coax); the pet's pane closes it
     k := hi(s[0].dpr, 0.5); g := 16 * k;
     if s[0].pet[0].view != PV_NONE { s[0].ed[0].pane = REDIT_SHUT; }
