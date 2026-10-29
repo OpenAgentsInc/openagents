@@ -1,0 +1,77 @@
+// Experimental PBKDF2-HMAC-SHA256 with exactly one iteration for scrypt.
+// It is not a standalone password-hardening function or a complete scrypt.
+#load "hmac.coax";
+#authority;
+
+#test "RFC 7914 section 11 one-iteration PBKDF2" {
+  p:="passwd";s:="salt";password:[6]u8;salt:[4]u8;
+  for i:0..<6 {password[i]=p[i];}for i:0..<4 {salt[i]=s[i];}
+  expected:=[64]u8.[0x55,0xac,0x04,0x6e,0x56,0xe3,0x08,0x9f,0xec,0x16,0x91,0xc2,0x25,0x44,0xb6,0x05,0xf9,0x41,0x85,0x21,0x6d,0xde,0x04,0x65,0xe6,0x8b,0x9d,0x57,0xc2,0x0d,0xac,0xbc,0x49,0xca,0x9c,0xcc,0xf1,0x79,0xb6,0x45,0x99,0x16,0x64,0xb3,0x9d,0x77,0xef,0x31,0x7c,0x71,0xb8,0x45,0xb1,0xe3,0x0b,0xd5,0x09,0x11,0x20,0x41,0xd3,0xa1,0x97,0x83];
+  out:[65]u8;out[64]=165;
+  #assert scrypt_pbkdf2_one(password[..],salt[..],64,out[..],false);
+  for i:0..<64 {#assert out[i]==expected[i];}#assert out[64]==165;
+}
+
+#test "one-iteration PBKDF2 rejects invalid sizes and aliases without writes" {
+  password:[1]u8;salt:[1]u8;out:[65]u8;for i:0..<65 {out[i]=165;}
+  #assert !scrypt_pbkdf2_one(password[..],salt[..],0,out[..],false);
+  #assert !scrypt_pbkdf2_one(password[..],salt[..],1025,out[..],false);
+  #assert !scrypt_pbkdf2_one(password[..],salt[..],64,out[0..<63],false);
+  #assert !scrypt_pbkdf2_one(password[..],salt[..],64,out[..],true);
+  for v:out {#assert v==165;}
+}
+
+#test "PBKDF2 bounds, empty inputs, partial blocks and status refusal" {
+  #assert pb1_admit(0,0,1,1,false);
+  #assert pb1_admit(1024,1024,1024,1024,false);
+  #assert pb1_admit(0,0,1,CB_MAX_BYTES,false);
+  #assert !pb1_admit(-1,0,1,1,false);
+  #assert !pb1_admit(1025,0,1,1,false);
+  #assert !pb1_admit(0,-1,1,1,false);
+  #assert !pb1_admit(0,1025,1,1,false);
+  #assert !pb1_admit(0,0,0,1,false);
+  #assert !pb1_admit(0,0,1025,1025,false);
+  #assert !pb1_admit(0,0,1,0,false);
+  #assert !pb1_admit(0,0,1,CB_MAX_BYTES+1,false);
+  #assert !pb1_admit(0,0,1,1,true);
+  empty:[1]u8;out:[34]u8;for i:0..<34 {out[i]=165;}
+  #assert !pb1_commit(empty[..],out[..],SHA_BAD_INPUT);
+  for v:out {#assert v==165;}
+  #assert scrypt_pbkdf2_one(empty[0..<0],empty[0..<0],33,out[..],false);
+  #assert out[0]==0xf7 && out[31]==0xad && out[32]==0x89 && out[33]==165;
+  staged:[34]u8;digest:[32]u8;for i:0..<34 {staged[i]=165;}
+  digest[0]=42;digest[1]=43;pb1_copy_block(staged[..],digest[..],32,33);
+  #assert staged[31]==165 && staged[32]==42 && staged[33]==165;
+}
+
+#forall "PBKDF2 block counts are exact" n:1..<1025 {
+  #assert pb1_blocks(n)==(n+31)/32;
+}
+
+// This internal composition requires valid stable views and a truthful alias
+// observation. Neither its password nor temporary HMAC state is proven erased.
+pb1_admit :: (password:int,salt:int,length:int,capacity:int,overlap:bool)->bool {
+  return password>=0 && password<=1024 && salt>=0 && salt<=1024 && length>=1 && length<=1024 && capacity>=length && capacity<=CB_MAX_BYTES && !overlap;
+}
+
+pb1_commit :: (value:[]u8,out:[]u8,status:u32)->bool {
+  if status!=SHA_OK {return false;}
+  for i:0..<value.count {out[i]=value[i];}
+  return true;
+}
+pb1_blocks :: (length:int)->int {return (length-1)/32+1;}
+pb1_copy_block :: (staged:[]u8,digest:[]u8,base:int,length:int) {
+  for j:0..<32 {at:=base+j;if at>=length {break;}staged[at]=digest[j];}
+}
+
+scrypt_pbkdf2_one :: (password:[]u8,salt:[]u8,length:int,out:[]u8,overlap:bool)->bool #export_c {
+  if !pb1_admit(password.count,salt.count,length,out.count,overlap) {return false;}
+  input:[1028]u8;for i:0..<salt.count {input[i]=salt[i];}
+  staged:[1024]u8;digest:[32]u8;status:=SHA_OK;
+  for block:0..<pb1_blocks(length) {
+    stored:=cb_store_be32(input[..],salt.count,cast(u32)(block+1));
+    status|=hmac_sha256_checked(password,input[0..<salt.count+4],digest[..],false);
+    pb1_copy_block(staged[..],digest[..],block*32,length);
+  }
+  return pb1_commit(staged[0..<length],out,status);
+}
