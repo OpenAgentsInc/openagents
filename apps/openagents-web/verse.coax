@@ -4,7 +4,7 @@
 //
 // The landing, as playtest.openagents.com drew it: CREATE YOUR WORLD over
 // ENTER THE VERSE, the one line about the house, and PLAYTEST NOW, which
-// goes to the galaxy. No email is asked for; one this browser gave the old
+// opens the Haunted House (/realm/haunted-house) directly. No email is asked for; one this browser gave the old
 // playtest is still joined again (POST /api/playtest/join, how "return").
 //
 // The galaxy: the playtest's worlds turning on their orbits, from the realm
@@ -265,13 +265,13 @@ join :: (s: [] VerseState, t: [] Track, how: string, wanted: bool) {
 
 // ---- what a press does
 
-// PLAYTEST NOW: the galaxy, as a guest (or as the email given before).
+// PLAYTEST NOW: straight into the Haunted House, as a guest (or as the email given before).
 enter :: (s: [] VerseState, t: [] Track) {
   if s[0].going { return; }
   s[0].note = NOTE_NONE; s[0].focused = false;
   s[0].going = true; s[0].going_at = s[0].time; s[0].answered = true;
-  if track_begin(t, "start") { track_str(t, "how", ifx s[0].kept_n > 0 then "email" else "guest"); track_str(t, "to", "galaxy"); track_end(t); }
-  go_to(s, "/verse/galaxy");
+  if track_begin(t, "start") { track_str(t, "how", ifx s[0].kept_n > 0 then "email" else "guest"); track_str(t, "to", "house"); track_end(t); }
+  go_to(s, PLANET_PATH[HOUSE]);
 }
 
 focus :: (s: [] VerseState, t: [] Track) {
@@ -1335,14 +1335,14 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   }
 }
 
-#test "PLAYTEST NOW goes to the galaxy as a guest, once; Enter does too" {
+#test "PLAYTEST NOW goes straight to the Haunted House as a guest, once; Enter does too" {
   s: [1] VerseState; t: [1] Track;
   page_at(s[..], t[..], PAGE_LANDING, 1440, 900);
   #assert batch_has(t[..], "\"ev\":\"landing\"");
   click(s[..], t[..], s[0].boxes[BTN_ENTER]);
   #assert batch_has(t[..], "\"ev\":\"start\"") && batch_has(t[..], "\"how\":\"guest\"") && !s[0].req_ready;
   redraw(s[..], t[..], 0.016);
-  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/verse/galaxy";
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/haunted-house";
   take_action(s[..]);
   click(s[..], t[..], s[0].boxes[BTN_ENTER]);
   redraw(s[..], t[..], 0.016);
