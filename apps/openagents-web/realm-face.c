@@ -70,6 +70,14 @@ static coax_t_Sticks sticks;
 static coax_t_Realm realm;
 static coax_t_RealmView view;
 static double now;
+// Golden mode (the release walk, coax/web/goldens.ts): the effects' clock
+// (candle flicker, animated props, fireflies, embers, dust, the sky) stands
+// at one moment, so two shots of the same build match. The house still
+// runs on now; only what moves on its own is held.
+#define GOLDEN_FX 2.0
+static bool golden;
+EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
+static double fx_now(void) { return golden ? GOLDEN_FX : now; }
 static int64_t wall_count, draw_count, light_count, instance_end;
 static float width, height, dpr;
 static bool opened, failed;
@@ -762,6 +770,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   float *u = (float *)(uintptr_t)uniforms;
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_realm_max_vertices() * coaxial_realm_vertex_floats()};
   int64_t n = realm_draw(realm_of(), view, out, (coax_v_f32){u, coaxial_realm_uniform_floats()}, w, h, scale, dt);
+  if (golden) u[2] = (float)GOLDEN_FX;   // the shaders' time: the sky, the particles
   if (!track_state.page_n) track_init(tr(), track_cstr("haunt"));
   track_frame(tr(), dt, w, h, scale);
   realm_track(realm_of(), (coax_v_t_RealmSeen){&seen, 1}, tr(), view, house.camera);
@@ -770,8 +779,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     coax_t_Vec3 eye = verse_player_view_eye(player, house.camera), at = verse_player_view_at(player, house.camera);
     bool flown = flight_view(&eye, &at, still != 0);
     verse_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, w, h, (coax_v_f32){u + 8, 16});
-    draw_count = verse_haunt_instances(house, now, (coax_v_t_HauntInstance){instances, 4096}, (coax_v_t_HauntDraw){draws, 256});
-    light_count = verse_haunt_lights(house, now, (coax_v_t_HauntGPUlight){lights, 64});
+    draw_count = verse_haunt_instances(house, fx_now(), (coax_v_t_HauntInstance){instances, 4096}, (coax_v_t_HauntDraw){draws, 256});
+    light_count = verse_haunt_lights(house, fx_now(), (coax_v_t_HauntGPUlight){lights, 64});
     instance_end = 0;
     for (int64_t i = 0; i < draw_count; i++) if (draws[i].base + draws[i].instances > instance_end) instance_end = draws[i].base + draws[i].instances;
     u[24] = house.eye.x; u[25] = house.eye.y; u[26] = house.eye.z; u[27] = (float)light_count;

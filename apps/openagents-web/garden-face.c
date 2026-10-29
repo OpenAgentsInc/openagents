@@ -21,6 +21,9 @@ static double now;
 static float width, height, dpr;
 static uint8_t inbox[16384];
 static coax_t_Track track_state;
+// Golden mode (the release walk, coax/web/goldens.ts): what moves on its own holds still.
+static bool golden;
+EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 
 static coax_t_Garden *garden(uint32_t state) { return (coax_t_Garden *)(uintptr_t)state; }
@@ -49,6 +52,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   width = w; height = h; dpr = scale;
   dt = dt < 0 ? 0 : dt > 0.1f ? 0.1f : dt;
   now += dt;
+  g->golden = golden;
+  g->wall_ms = track_state.epoch + track_state.t * 1000.0;
   garden_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
   bool busy = garden_busy(at(state));
   if (busy) sticks = verse_sticks_reset();
@@ -105,5 +110,12 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inb
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
+  if (kind == 4) garden_kept(at(state), (coax_string){(const char *)inbox, length});   // the vase kept on a visit before
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) track_drain(&track_state);
 }
+
+// Output: the vase to keep (action 4, the realm save slot "garden").
+EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)garden_action(at(state)); }
+EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)garden(state)->kept.e; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)garden_outbox_len(at(state)); }
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { garden_action_done(at(state)); }

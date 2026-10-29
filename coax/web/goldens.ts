@@ -2,7 +2,8 @@
 // nothing takes focus): the landing, ENTER as a guest, the galaxy, a click
 // on the Haunted House, the house; then every other realm in realms.json,
 // each opened from the galaxy (/verse/galaxy?realms=all, the arrows to its
-// world, ENTER), unlisted ones too, so a realm is walked before its launch. Each page must start (its engine says
+// world, ENTER), unlisted ones too, so a realm is walked before its launch;
+// then the pages of their own (the Garden) by their address. Each page must start (its engine says
 // ready, nothing reports an error or throws) and draw (enough lit pixels),
 // and looks like its golden screenshot. It closes the gap the HTTP smoke
 // leaves: a page that answers 200 but doesn't start, or draws nothing.
@@ -24,9 +25,11 @@
 // blocks may change are its "golden" in realms.json. A page differs when
 // more of its 8 px blocks changed than the page allows (a block changed
 // when its mean differs by more than SHADE in a channel; 16,000 blocks a
-// page). Blocks that move on their own (the house's candles, the galaxy's
-// orbits, the stars) are found by three more shots of the page and left
-// out, with the blocks round them.
+// page). Every page runs in golden mode (host.js): an app that knows it
+// holds its effects (the house's candles, fireflies, embers and dust) at
+// one moment. Blocks that still move on their own (the galaxy's orbits, the
+// stars) are found by three more shots of the page and left out, with the
+// blocks round them.
 // A moved panel or a changed word does not pass. A shot that differs is kept and its path printed: look at it, and
 // if the change is meant, run --update against staging and commit the
 // goldens with the change.
@@ -56,6 +59,9 @@ const PAGES: Record<string, Page> = { landing: { path: "/verse", lit: 0.004, set
 // through them with ?realms=all (realms.json's order).
 const table = worlds(), open = table.filter((w) => w.kind === "open" && w.realm)
 for (const w of open) PAGES[w.realm!.slug] = { path: `/realm/${w.realm!.slug}`, ...w.realm!.golden }
+// Pages of their own the galaxy doesn't open (not in realms.json), walked by their address.
+const BY_ADDRESS: Record<string, Page> = { garden: { path: "/realm/garden", lit: 0.5, settle: 3000, blocks: 6 } }
+for (const [name, page] of Object.entries(BY_ADDRESS)) PAGES[name] ??= page
 type Name = string
 
 // ---- PNG: Chrome's screenshots (8-bit RGB or RGBA, not interlaced) to RGBA
@@ -160,6 +166,8 @@ try {
   await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: false })
   await send("Runtime.enable"); await send("Network.enable")
   await send("Page.enable")
+  // golden mode on every page of the walk: particles, flicker and other effects hold still (host.js coaxial_golden)
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: "globalThis.coaxialGolden = true" })
   if (!root) await send("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(Navigator.prototype, 'sendBeacon', { value: () => false })" })
   const shot = async () => Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64")
   const until = async (test: () => Promise<boolean>, ms: number) => { const end = Date.now() + ms; while (Date.now() < end) { if (await test()) return true; await Bun.sleep(200) } return false }
@@ -246,6 +254,12 @@ try {
     for (let i = 0; i <= k; i++) await key("ArrowRight", "ArrowRight", 39)
     await key("Enter", "Enter", 13)
     await arrive(slug)
+  }
+  if (!root) for (const name of Object.keys(BY_ADDRESS)) {
+    if (open.some((w) => w.realm!.slug === name)) continue
+    await send("Page.navigate", { url: base + PAGES[name].path })
+    errors = []
+    await arrive(name)
   }
   if (!root && !sent.size) check(false, "analytics contract: no analytics batch was sent")
   ws.close()

@@ -12,6 +12,7 @@
 //   coaxial_frame(state, vertices, uniforms, width, height, dpr, dt, still)
 //                             -> vertex count
 //   coaxial_page(state, page) optional: which page to draw (data-page, e.g. a 404)
+//   coaxial_golden(on)        optional: golden mode, its animated effects held at one moment
 // and, optionally, input and output, all drawn and decided by the app:
 //   coaxial_key(state, key, mods) -> used     a code point, or a named key < 0 (KEYS)
 //   coaxial_key_up(state, key, mods) -> used  the same key let go (a game holds keys)
@@ -127,6 +128,8 @@ const probe = dev && new URLSearchParams(location.search).has("probe"); // tests
 const probeAt = probe ? Number(new URLSearchParams(location.search).get("at")) || 0 : 0;
 // Reduced motion draws the finished frame at once (probes use it too: headless browsers barely tick).
 const still = (probe && !probeAt) || matchMedia("(prefers-reduced-motion: reduce)").matches;
+// Golden mode (goldens.ts sets coaxialGolden; ?golden by hand): an app that exports coaxial_golden holds its effects still.
+const golden = globalThis.coaxialGolden === true || new URLSearchParams(location.search).has("golden");
 let frames = 0;
 // Development tests only: ?probe&do=STEPS runs input before the probed frame,
 // steps split by ";": "kTEXT" types keys, "K-2" a named key, "c40,120" clicks at CSS pixels, "m16:TEXT" a
@@ -182,6 +185,7 @@ async function loadEngine(bytes, generation) {
     arena.layout = layout;
   }
   x.coaxial_page?.(arena.state, Number((script && script.dataset.page) || 0));
+  if (golden) x.coaxial_golden?.(1);
   engine = { exports: x, layout };
   if (script?.dataset.text) send(2, script.dataset.text);
   for (const a of assets) if (a.done) deliver(a); // a new build gets what the last one had

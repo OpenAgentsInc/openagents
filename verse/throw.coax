@@ -234,6 +234,7 @@ FOLLOW_STOP :: 2.2;       // metres short of you it waits
 CHASE_STOP :: 0.45;       // its feet this near the ball, its mouth is on it
 BRING_STOP :: 1.3;        // it brings the ball this near you
 CATCH_SPEED :: 3.0;       // m/s: a ball slower than this can be caught up
+DOG_BODY :: 0.4;          // metres: the dog's body round its feet, against scenery
 
 Fetch :: struct { mode: int; dog: Follower; ball: Ball; }
 
@@ -243,6 +244,13 @@ dog_mouth :: (d: Follower) -> Point { return verse_hand(d.pos, d.face, f32(MOUTH
 // `you`. Following, it uses the paths; chasing, it runs straight.
 verse_fetch_step :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32,
                      you: Point, dt: f32) -> Fetch #export_c {
+  none: [6] f32;
+  return verse_fetch_step_among(f, g, heights, nodes, links, half, you, dt, none[0..<0]);
+}
+
+// The same among scenery the dog goes round (terrain.coax blocks).
+verse_fetch_step_among :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32,
+                           you: Point, dt: f32, blocks: [] f32) -> Fetch #export_c {
   next := f;
   none: [2] int;
   b := f.ball;
@@ -258,7 +266,7 @@ verse_fetch_step :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, links:
     // Aim the feet so the mouth lands on the ball.
     back := sub(f.dog.pos, b.pos); back.y = 0;
     spot := add(b.pos, times(unit_or(back, v3(0, 0, -1)), f32(MOUTH_AHEAD) - 0.2));
-    next.dog = verse_follower_step(f.dog, g, heights, nodes, none[0..<0], half, spot, 0.05, dt);
+    next.dog = verse_follower_step_among(f.dog, g, heights, nodes, none[0..<0], half, spot, 0.05, dt, blocks, f32(DOG_BODY));
     mouth := dog_mouth(next.dog);
     if length(sub(mouth, b.pos)) < 0.5 + b.radius && length(b.vel) < f32(CATCH_SPEED) {
       next.ball = b;
@@ -266,7 +274,7 @@ verse_fetch_step :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, links:
       next.mode = FETCH_BRING;
     }
   } else if next.mode == FETCH_BRING {
-    next.dog = verse_follower_step(f.dog, g, heights, nodes, links, half, you, f32(BRING_STOP), dt);
+    next.dog = verse_follower_step_among(f.dog, g, heights, nodes, links, half, you, f32(BRING_STOP), dt, blocks, f32(DOG_BODY));
     next.ball = verse_ball_carry(b, dog_mouth(next.dog));
     if flat_length(sub(next.dog.pos, you)) <= f32(BRING_STOP) + 0.3 && flat_length(next.dog.vel) < 0.6 {
       next.ball = verse_ball_release(next.ball, dog_mouth(next.dog), v3(0, 0, 0));
@@ -274,7 +282,7 @@ verse_fetch_step :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, links:
       next.mode = FETCH_FOLLOW;
     }
   } else {
-    next.dog = verse_follower_step(f.dog, g, heights, nodes, links, half, you, f32(FOLLOW_STOP), dt);
+    next.dog = verse_follower_step_among(f.dog, g, heights, nodes, links, half, you, f32(FOLLOW_STOP), dt, blocks, f32(DOG_BODY));
   }
   return next;
 }

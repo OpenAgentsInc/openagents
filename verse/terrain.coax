@@ -40,6 +40,7 @@ FOLLOW_RUN :: 5.2;     // m/s, when the target is far off
 FOLLOW_FAR :: 9.0;     // metres: far off
 FOLLOW_ACCEL :: 14.0;  // m/s^2
 FOLLOW_TURN :: 9.0;    // per second: turning to face its way
+FOLLOW_BLOCK :: 6;     // numbers per block of scenery: min x, y, z, max x, y, z
 RAY_STEP :: 0.35;      // metres between the ray's samples
 
 ground_points :: (g: Ground) -> int { return (g.n + 1) * (g.n + 1); }
@@ -273,13 +274,22 @@ verse_follower_place :: (g: Ground, heights: [] f32, x: f32, z: f32, face: f32) 
 // A step toward `to` by the paths, stopping `stop` metres short of it.
 verse_follower_step :: (f: Follower, g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32,
                         to: Point, stop: f32, dt: f32) -> Follower #export_c {
+  none: [6] f32;
+  return verse_follower_step_among(f, g, heights, nodes, links, half, to, stop, dt, none[0..<0], 0);
+}
+
+// The same step among scenery: blocks (FOLLOW_BLOCK numbers each, read flat)
+// it never walks into, for a body `radius` metres round. Walking into one
+// it slides along its face, the way round that is nearer `to`.
+verse_follower_step_among :: (f: Follower, g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32,
+                              to: Point, stop: f32, dt: f32, blocks: [] f32, radius: f32) -> Follower #export_c {
   next := f;
   t := ifx finite(dt) then clamp(dt, 0, 0.1) else 0.0f32;
   if !finite3(to) || !finite3(f.pos) || t <= 0 { return next; }
   away := flat_gap(f.pos, to);
   want := v3(0, 0, 0);
   if away > stop {
-    aim := verse_route_next(nodes, links, half, f.pos, to);
+    aim := past_blocks(f.pos, verse_route_next(nodes, links, half, f.pos, to), blocks, radius);
     dir := sub(aim, f.pos); dir.y = 0;
     dir = unit_or(dir, v3(0, 0, 0));
     speed := ifx away > f32(FOLLOW_FAR) then f32(FOLLOW_RUN) else f32(FOLLOW_WALK);
@@ -294,11 +304,96 @@ verse_follower_step :: (f: Follower, g: Ground, heights: [] f32, nodes: [] f32, 
   next.vel = add(f.vel, dv);
   next.vel.y = 0;
   next.pos = add(f.pos, times(next.vel, t));
+  next = around_blocks(next, to, blocks, radius);
   next.pos.y = verse_terrain_height(g, heights, next.pos.x, next.pos.z);
   speed_now := flat_length(next.vel);
   next.walking = speed_now > 0.2;
   if speed_now > 0.2 {
     next.face = wrap_angle(f.face + wrap_angle(yaw_of(next.vel.x, next.vel.z) - f.face) * settle(f32(FOLLOW_TURN), t));
+  }
+  return next;
+}
+
+// Whether the flat segment a to b crosses the rectangle (slabs).
+crosses :: (a: Point, b: Point, x0: f32, z0: f32, x1: f32, z1: f32) -> bool {
+  lo_t := 0.0f32; hi_t := 1.0f32;
+  dx := b.x - a.x; dz := b.z - a.z;
+  if abs(dx) < 0.000001 { if a.x <= x0 || a.x >= x1 { return false; } }
+  else {
+    t0 := (x0 - a.x) / dx; t1 := (x1 - a.x) / dx;
+    lo_t = hi(lo_t, lo(t0, t1)); hi_t = lo(hi_t, hi(t0, t1));
+  }
+  if abs(dz) < 0.000001 { if a.z <= z0 || a.z >= z1 { return false; } }
+  else {
+    t0 := (z0 - a.z) / dz; t1 := (z1 - a.z) / dz;
+    lo_t = hi(lo_t, lo(t0, t1)); hi_t = lo(hi_t, hi(t0, t1));
+  }
+  return lo_t < hi_t;
+}
+
+// Where to head for `aim` when a block stands in the way: round the corner
+// of the nearest such block that makes the shorter way, a little wide of it.
+past_blocks :: (from: Point, aim: Point, blocks: [] f32, radius: f32) -> Point {
+  n := blocks.count / FOLLOW_BLOCK;
+  r := hi(radius, 0);
+  best_d := 1000000.0f32; hit := -1;
+  for b: 0..<n {
+    k := b * FOLLOW_BLOCK;
+    if !crosses(from, aim, blocks[k] - r, blocks[k + 2] - r, blocks[k + 3] + r, blocks[k + 5] + r) { continue; }
+    cx := (blocks[k] + blocks[k + 3]) / 2; cz := (blocks[k + 2] + blocks[k + 5]) / 2;
+    d := flat_gap(from, v3(cx, 0, cz));
+    if d < best_d { best_d = d; hit = b; }
+  }
+  if hit < 0 { return aim; }
+  k := hit * FOLLOW_BLOCK;
+  wide := r + 0.25;
+  x0 := blocks[k] - wide; z0 := blocks[k + 2] - wide; x1 := blocks[k + 3] + wide; z1 := blocks[k + 5] + wide;
+  // the corners it can see past the block (inset a hair so a corner's own edges don't count)
+  e := 0.02f32;
+  corners := [8] f32.[x0, z0, x1, z0, x1, z1, x0, z1];
+  pick := aim; way := 1000000.0f32;
+  for c: 0..<4 {
+    p := v3(corners[c * 2], aim.y, corners[c * 2 + 1]);
+    ix0 := blocks[k] - r + e; iz0 := blocks[k + 2] - r + e; ix1 := blocks[k + 3] + r - e; iz1 := blocks[k + 5] + r - e;
+    if crosses(from, p, ix0, iz0, ix1, iz1) { continue; }
+    // a corner on the near side only helps when the rest of the way is clear from it
+    w := flat_gap(from, p) + flat_gap(p, aim);
+    if crosses(p, aim, ix0, iz0, ix1, iz1) { w += flat_gap(from, p) + 2 * wide; }
+    if w < way { way = w; pick = p; }
+  }
+  return pick;
+}
+
+// Out of every block it stepped into: pushed back out of the nearest face,
+// its speed into that face turned along it, toward the side nearer `to`.
+around_blocks :: (f: Follower, to: Point, blocks: [] f32, radius: f32) -> Follower {
+  next := f;
+  n := blocks.count / FOLLOW_BLOCK;
+  r := hi(radius, 0);
+  for round: 0..<2 {
+    for b: 0..<n {
+      k := b * FOLLOW_BLOCK;
+      x0 := blocks[k] - r; z0 := blocks[k + 2] - r; x1 := blocks[k + 3] + r; z1 := blocks[k + 5] + r;
+      p := next.pos;
+      if p.x <= x0 || p.x >= x1 || p.z <= z0 || p.z >= z1 { continue; }
+      // the face it is nearest, and that face's outward normal
+      w := p.x - x0; e := x1 - p.x; s := p.z - z0; nn := z1 - p.z;
+      nx := 0.0f32; nz := 0.0f32;
+      if lo(w, e) < lo(s, nn) {
+        if w < e { next.pos.x = x0; nx = -1; } else { next.pos.x = x1; nx = 1; }
+      } else {
+        if s < nn { next.pos.z = z0; nz = -1; } else { next.pos.z = z1; nz = 1; }
+      }
+      speed := flat_length(next.vel);
+      into := next.vel.x * nx + next.vel.z * nz;
+      if into < 0 { next.vel.x -= into * nx; next.vel.z -= into * nz; }
+      // along the face, the way that gets nearer: head-on it still goes round
+      tx := -nz; tz := nx;
+      side := (to.x - next.pos.x) * tx + (to.z - next.pos.z) * tz;
+      if side < 0 { tx = -tx; tz = -tz; }
+      along := next.vel.x * tx + next.vel.z * tz;
+      if along < speed * 0.6 { next.vel.x += tx * (speed * 0.6 - along); next.vel.z += tz * (speed * 0.6 - along); }
+    }
   }
   return next;
 }
@@ -449,6 +544,23 @@ built :: (heights: [] f32) -> bool {
   // It settles and stops.
   for k: 0..<20 { f = verse_follower_step(f, g, h[..], n[..], l[..], 0.9, to, 1.5, 0.1); }
   #assert flat_length(f.vel) < 0.3 && flat_gap(f.pos, to) > 0.9;
+}
+
+#forall "a follower goes round a block in its way, never through it" s: 0..<4 {
+  g := tg();
+  h: [TP] f32;
+  #assert built(h[..]);
+  n := TEST_NODES; l := TEST_LINKS;
+  // a pillar on the plaza between it and where it goes: head-on, and a little off
+  block := [6] f32.[-0.45, 0, -0.45, 0.45, 0.9, 0.45];
+  starts := [8] f32.[0, -4, 0.2, -4, -4, 0, 3, 3.2];
+  f := verse_follower_place(g, h[..], starts[s * 2], starts[s * 2 + 1], 0);
+  to := v3(-starts[s * 2], 0, -starts[s * 2 + 1]);
+  for k: 0..<200 {
+    f = verse_follower_step_among(f, g, h[..], n[..], l[..], 0.9, to, 0.3, 0.05, block[..], 0.35);
+    #assert !(abs(f.pos.x) < 0.78 && abs(f.pos.z) < 0.78);
+  }
+  #assert flat_gap(f.pos, to) < 0.8;
 }
 
 #test "from the south tail to the far corner it keeps to the paths" {
