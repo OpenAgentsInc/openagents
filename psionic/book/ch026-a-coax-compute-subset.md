@@ -105,7 +105,7 @@ the ones after it), and pass a zero-survivor mutation run.
 CUDA C. A kernel and everything it reaches may use only:
 
 - `bool`, `f32`, `f64` and the sized integers;
-- fixed arrays of at most 1,024 scalars, which become registers;
+- fixed arrays of at most 4,096 scalars, which become registers;
 - views of numbers (`[]f32`, `[]u64` and so on), which become device pointers
   with a count;
 - `if`, `else`, `for` loops over a range or a view, `break`, `continue`, and
@@ -176,11 +176,56 @@ products reach 5.4 to 6.4 TFLOP/s. The [verification
 record](../../docs/verification/psionic-ch26-2026-10-29.md) has every shape,
 the host and the tests that refuse each construct outside the subset.
 
+## Warps and tensor cores
+
+A work item on its own cannot use the GPU's tensor cores: their instruction is
+issued by a whole 32-lane warp, and each lane holds a piece of every matrix.
+So the subset has a second kind of kernel. A kernel that contains
+`for lane: 0..<32` loops is a warp kernel, and each of its work items is one
+warp. A local array of `32*k` values indexed `lane*k + c` inside those loops
+is per-lane: on the device, lane `l` keeps its own `k` values in registers.
+On the CPU, the same code is just loops over the whole array.
+
+The first device primitive, `cu_mma_bf16_16x8x16` in
+[`mma.coax`](../../coax/lib/compute/mma.coax), multiplies a 16 x 16 BF16
+matrix by a 16 x 8 one and adds the result into 16 x 8 f32 values. Its Coax
+body says what it means, element by element, in the PTX fragment layout; the
+device runs one `mma.sync` instruction instead. A conformance kernel loads
+whole fragments and calls it:
+
+<!-- source: psionic/lib/device/warp.coax tile -->
+```jai
+// Conformance kernel: tile `item` of each array holds whole fragments as
+// stored by lanes (a: 128 u32, b: 64 u32, c and d: 128 f32); d = c + a b.
+dw_mma_tile :: (item:int,a:[]u32,b:[]u32,c:[]f32,d:[]f32) #export_c {
+    fa:[128]u32;fb:[64]u32;fc:[128]f32;
+    for lane:0..<32 {
+        for j:0..<4 {fa[lane*4+j]=a[item*128+lane*4+j];fc[lane*4+j]=c[item*128+lane*4+j];}
+        for j:0..<2 {fb[lane*2+j]=b[item*64+lane*2+j];}
+    }
+    cu_mma_bf16_16x8x16(fa[..],fb[..],fc[..]);
+    for lane:0..<32 {for j:0..<4 {d[item*128+lane*4+j]=fc[lane*4+j];}}
+}
+```
+
+The tensor cores add their partial sums in f32 in an order the hardware
+chooses, so a device result is not bit-identical to the Coax body. Before
+measuring we froze the bound: at most `2^-20 * (|C| + sum |A B|)`. On 4,096
+random warps the largest difference was 3.8e-7 of that sum, and 43% of the
+outputs were bit-identical.
+
+The tensor cores need BF16 activations, and rounding each activation to BF16
+would cost far more accuracy than chapter 30 can spend. `dw_split` writes each
+activation as two BF16 values, `hi = bf16(x)` and `lo = bf16(x - hi)`, whose
+sum is within 2^-17 of `x`, and `dw_project` multiplies by both. Over
+Elephant's shapes it is within 6.3e-7 of `sum |w x|` of the CPU reference,
+and runs at 11 to 13 TFLOP/s, about twice the work-item kernel.
+
 ## Limits
 
-The subset has no shared memory, barriers, atomics, warp exchange or tensor
-cores, so a work item cannot cooperate with its neighbours. That is why the
-batched product runs at about a quarter of the card's f32 rate. The tested host
+The subset has no shared memory, barriers or atomics yet, so warps do not
+share tiles; the tensor-core projection reaches about a quarter of cuBLAS's
+BF16 rate. The tested host
 is one NixOS machine with one driver; that is evidence for this machine, not a
 qualified Linux target. [Chapter 30](ch030-elephant-on-cuda.md) uses these
 kernels, and more like them, for the whole Elephant decision.

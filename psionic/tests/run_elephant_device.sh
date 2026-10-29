@@ -19,11 +19,12 @@ done
 "$coax" c psionic/lib/device/plan.coax --library --release --header "$out/plan.h" > "$out/plan.c"
 "$coax" cuda psionic/lib/device/project.coax --release > "$out/project.cu"
 "$coax" cuda psionic/lib/device/layer.coax --release > "$out/layer.cu"
+"$coax" cuda psionic/lib/device/warp.coax --release > "$out/warp.cu"
 "$cc" -std=c11 -O2 -ffp-contract=off -fno-fast-math -Wall -Wextra -Werror -Wno-unknown-pragmas -Wno-unused-function \
     -Wno-unused-parameter -Wno-missing-field-initializers -I"$out" -Ipsionic/platform \
     "$out/decision-answer.c" "$out/plan.c" psionic/platform/decision-session-memory.c psionic/platform/decision-prepare-memory.c \
     psionic/platform/decision-answer-memory.c psionic/platform/cuda-host.c psionic/tests/elephant_device.c -ldl -lm -o "$out/elephant-device"
-"$out/elephant-device" "$1" psionic/fixtures/text/ch05/qwen35.pst "$out/project.cu" "$out/layer.cu" "${2:-3}" | tee "$out/result.log"
+"$out/elephant-device" "$1" psionic/fixtures/text/ch05/qwen35.pst "$out/project.cu" "$out/layer.cu" "$out/warp.cu" "${2:-3}" | tee "$out/result.log"
 if grep -q '^SKIP' "$out/result.log"; then exit 0; fi
 # Frozen before the device was measured: 0.0005 absolute on each decision
 # statistic, against the independent reference and the recorded CPU result.

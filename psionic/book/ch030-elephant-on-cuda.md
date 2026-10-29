@@ -110,8 +110,8 @@ coax/bin/coax run psionic/examples/device-plan.coax
 ```
 
 ```jai
-operations: 880, launches: 844, copies: 12
-workspace: 87122432 bytes
+operations: 1128, launches: 1092, copies: 12
+workspace: 91447808 bytes
 resident: 14667538432 bytes, streamed: 1207959552 bytes in 12 feed-forward matrices
 streamed down projections, by layer: 0 2 4 8 10 12 16 18 20 24 26 28
 first operation: copy weight 13 into slot 0
@@ -123,9 +123,10 @@ first launch: dl_squares over 1376 work items
 // Chapter 30's schedule for the 86-token sample with a 14 GiB device budget.
 // Nothing runs: the plan is data that the host executes.
 main :: () {
-    ops:[1000]DpOp;stream:[96]bool;
+    ops:[1500]DpOp;stream:[96]bool;
     budget:=14*1073741824;
     plan:=dp_plan(86,49,budget,stream[..],ops[..]);
+    #assert plan.status==DpStatus.ok;
     launches:=0;copies:=0;for i:0..<plan.ops {if ops[i].kind==DpOpKind.launch {launches+=1;} if ops[i].kind==DpOpKind.copy {copies+=1;}}
     print("operations: %, launches: %, copies: %\n",plan.ops,launches,copies);
     print("workspace: % bytes\n",plan.workspace);
@@ -160,10 +161,11 @@ the device's own inputs, and compares the whole workspace. 54 of the 55
 launches were identical bit for bit. The other was the softmax, whose f64
 `exp` comes from the CUDA math library rather than the C library.
 
-On the tested machine a warm decision takes about 237 ms from the host's
-request to the probabilities, against 2,092 s on one CPU core. Almost all of
-it is device compute: three quarters in the projections, which run at 6 to 7
-TFLOP/s. The 0.9 GB of streamed weights per decision arrive while earlier
+With chapter 26's work-item projections, a warm decision took about 237 ms
+from the host's request to the probabilities, against 2,092 s on one CPU core;
+three quarters of it was the projections, at 6 to 7 TFLOP/s. With the
+tensor-core projections of chapter 26's warp kernels it takes about 147 ms,
+with p(yes) 0.757202773, and the projections take about 95 ms of it. The 0.9 GB of streamed weights per decision arrive while earlier
 layers compute, so lowering the budget to 12 GiB (3.3 GB streamed) did not
 change the time; at 10 GiB (5.4 GB streamed) the copies begin to show, at
 about 255 ms.
@@ -182,8 +184,8 @@ has the measurements, the per-kernel profile and the headroom runs.
 
 ## Limits
 
-This is one request, one machine and one arithmetic profile. The projections
-use neither shared memory nor tensor cores; chapters 27 to 29 and 32 are where
+This is one request, one machine and one arithmetic profile. The tensor-core
+projections share no tiles between warps yet; chapters 27 to 29 and 32 are where
 they come from. Only the feed-forward matrices stream, so the plan refuses a
 budget below about 6.1 GiB. The session is still the CPU's, so a cold start is
 dominated by authentication. There is no batching, no prefix reuse across

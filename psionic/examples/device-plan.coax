@@ -5,9 +5,10 @@
 // Chapter 30's schedule for the 86-token sample with a 14 GiB device budget.
 // Nothing runs: the plan is data that the host executes.
 main :: () {
-    ops:[1000]DpOp;stream:[96]bool;
+    ops:[1500]DpOp;stream:[96]bool;
     budget:=14*1073741824;
     plan:=dp_plan(86,49,budget,stream[..],ops[..]);
+    #assert plan.status==DpStatus.ok;
     launches:=0;copies:=0;for i:0..<plan.ops {if ops[i].kind==DpOpKind.launch {launches+=1;} if ops[i].kind==DpOpKind.copy {copies+=1;}}
     print("operations: %, launches: %, copies: %\n",plan.ops,launches,copies);
     print("workspace: % bytes\n",plan.workspace);

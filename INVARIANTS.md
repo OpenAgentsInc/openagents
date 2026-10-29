@@ -159,10 +159,13 @@ native debug/release plus sanitizer checks. See the
 
 ## Psionic device kernels and plans own the device arithmetic and schedule
 
-`psionic/lib/device/project.coax` and `layer.coax` are `coax cuda` kernels:
+`psionic/lib/device/project.coax`, `layer.coax` and `warp.coax` are `coax cuda` kernels:
 each output element belongs to exactly one work item, so a result does not
 depend on scheduling, and the same source compiled to C reproduces the device
-bit for bit except where the device math library's `exp` or `log` differs.
+bit for bit except where the device math library's `exp` or `log` differs
+or, in `warp.coax`, the tensor cores round f32 partial sums differently from
+the Coax meaning of `cu_mma_bf16_16x8x16`; those are compared within frozen
+tolerances.
 `plan.coax` decides the workspace layout, which original weights stay resident
 and which stream through two slots, and every copy, wait, release and launch;
 `psionic/platform/cuda-host.c` executes those effects and decides nothing.

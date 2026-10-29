@@ -2,7 +2,7 @@
    The CPU session authenticates and binds the original files; the Coax device
    plan (psionic/lib/device/plan.coax) decides residency, streaming and every
    launch; this host performs the effects and times them.
-   Usage: elephant-device ORIGINAL_DIRECTORY TOKENIZER_PST PROJECT.cu LAYER.cu [REPEAT]
+   Usage: elephant-device ORIGINAL_DIRECTORY TOKENIZER_PST PROJECT.cu LAYER.cu WARP.cu [REPEAT]
    Prints SKIP and exits 0 without a device or NVRTC. */
 #define _GNU_SOURCE
 #include "cuda-host.h"
@@ -21,7 +21,7 @@
 #include <unistd.h>
 
 /* The plan's constants (psionic/lib/device/plan.coax). */
-#define DP_KERNELS 17
+#define DP_KERNELS 19
 #define DP_PER_LAYER 16
 #define DP_HEAD 512
 #define DP_FINAL 513
@@ -89,6 +89,7 @@ static char *view(CpuLaunch *c, int k) { return c->base(c->ctx, k); }
 #define VF(k) ((coax_v_f32){(float *)view(c, k), N(k)})
 #define VD(k) ((coax_v_f64){(double *)view(c, k), N(k)})
 #define VU(k) ((coax_v_u64){(uint64_t *)view(c, k), N(k)})
+#define VW(k) ((coax_v_u32){(uint32_t *)view(c, k), N(k)})
 static void cpu_launch(CpuLaunch *c) {
     int64_t n = c->op->items;
     for (int64_t i = 0; i < n; i++) switch (c->op->kernel) {
@@ -109,6 +110,8 @@ static void cpu_launch(CpuLaunch *c) {
         case 14: dl_scores(i, I(0), I(1), I(2), I(3), VF(4), VF(5), VF(6)); break;
         case 15: dl_softmax(i, I(0), I(1), I(2), VF(3), VD(4), VD(5)); break;
         case 16: dl_attend(i, I(0), I(1), I(2), VD(3), VF(4), VF(5), VF(6)); break;
+        case 17: dw_split(i, I(0), I(1), VF(2), VW(3), VW(4)); break;
+        case 18: dw_project(i, I(0), I(1), I(2), I(3), VW(4), VW(5), VW(6), VF(7)); break;
         default: fprintf(stderr, "unknown kernel %u\n", c->op->kernel); exit(1);
     }
 }
@@ -121,8 +124,8 @@ static char *host_base(void *ctx, int64_t k) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 5) { fprintf(stderr, "usage: elephant-device ORIGINAL_DIRECTORY TOKENIZER_PST PROJECT.cu LAYER.cu [REPEAT]\n"); return 2; }
-    int repeat = argc > 5 ? atoi(argv[5]) : 3;
+    if (argc < 6) { fprintf(stderr, "usage: elephant-device ORIGINAL_DIRECTORY TOKENIZER_PST PROJECT.cu LAYER.cu WARP.cu [REPEAT]\n"); return 2; }
+    int repeat = argc > 6 ? atoi(argv[6]) : 3;
     PcDeviceInfo info;
     PcStatus ds = pc_open(&info);
     if (ds == PC_ABSENT) { printf("SKIP: no CUDA device (%s)\n", pc_log()); return 0; }
@@ -130,14 +133,15 @@ int main(int argc, char **argv) {
     printf("device: %s, compute %d.%d, %.2f of %.2f GiB free\n", info.name, info.major, info.minor, info.free_bytes / 1073741824.0, info.total_bytes / 1073741824.0);
     double t0 = now();
     /* Kernels first, so a missing NVRTC skips before the long authentication. */
-    PcModule modules[2];
+    PcModule modules[3];
     double compile_seconds = 0;
-    for (int i = 0; i < 2; i++) {
+    const char *module_names[3] = {"project.cu", "layer.cu", "warp.cu"};
+    for (int i = 0; i < 3; i++) {
         size_t n;
         char *source = read_text(argv[3 + i], &n);
         if (!source) { fprintf(stderr, "cannot read %s\n", argv[3 + i]); return 2; }
         double seconds;
-        PcStatus s = pc_compile(source, n, i ? "layer.cu" : "project.cu", &modules[i], &seconds);
+        PcStatus s = pc_compile(source, n, module_names[i], &modules[i], &seconds);
         if (s == PC_NO_NVRTC) { printf("SKIP: %s\n", pc_log()); return 0; }
         if (s) { fprintf(stderr, "compile %s: %s\n", argv[3 + i], pc_log()); return 1; }
         compile_seconds += seconds;
@@ -148,7 +152,7 @@ int main(int argc, char **argv) {
         coax_string name = dp_kernel_name(k);
         char text[64];
         snprintf(text, sizeof text, "%.*s", (int)name.count, name.data);
-        TRY(pc_kernel(modules[k < 3 ? 0 : 1], text, &kernels[k]));
+        TRY(pc_kernel(modules[k < 3 ? 0 : k < 17 ? 1 : 2], text, &kernels[k]));
     }
     printf("compiled %d generated kernels with NVRTC in %.3f s\n", DP_KERNELS, compile_seconds);
 
@@ -285,7 +289,8 @@ int main(int argc, char **argv) {
                         args[k].data = base + (PcBuffer)a->offset;
                     }
                 }
-                TRY(pc_launch(kernels[op->kernel], op->items, (int)op->block, args, (int)op->count, compute));
+                if (op->lanes == 32) TRY(pc_launch_warps(kernels[op->kernel], op->items, (int)op->block, args, (int)op->count, compute));
+                else TRY(pc_launch(kernels[op->kernel], op->items, (int)op->block, args, (int)op->count, compute));
             }
         }
         if (timed) TRY(pc_record(marks[plan.ops], compute));
@@ -367,7 +372,8 @@ int main(int argc, char **argv) {
                 if (a->kind == 4) args[k].data = (a->buffer == 0 ? workspace : a->buffer <= 2 ? slots[a->buffer - 1] : address[a->buffer - 3]) + (PcBuffer)a->offset;
             }
             if (qualify) { TRY(pc_sync()); TRY(pc_download(before, workspace, wsize, NULL)); TRY(pc_sync()); }
-            TRY(pc_launch(kernels[op->kernel], op->items, (int)op->block, args, (int)op->count, NULL));
+            if (op->lanes == 32) TRY(pc_launch_warps(kernels[op->kernel], op->items, (int)op->block, args, (int)op->count, NULL));
+            else TRY(pc_launch(kernels[op->kernel], op->items, (int)op->block, args, (int)op->count, NULL));
             if (!qualify) continue;
             TRY(pc_sync());
             TRY(pc_download(gpu, workspace, wsize, NULL));

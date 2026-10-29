@@ -4,13 +4,14 @@
 // written; it makes no arithmetic, tiling or scheduling decision.
 #load "project.coax";
 #load "layer.coax";
+#load "warp.coax";
 #authority;
 
 // Kernels in the order the host looks them up by name.
-DpKernel :: enum u8 {project;matvec;reduce;squares;add_squares;scale;add;swiglu;conv;gates;qk;scan;gate_norm;prepare;scores;softmax;attend;}
-DP_KERNELS :: 17;
+DpKernel :: enum u8 {project;matvec;reduce;squares;add_squares;scale;add;swiglu;conv;gates;qk;scan;gate_norm;prepare;scores;softmax;attend;split;mma_project;}
+DP_KERNELS :: 19;
 dp_kernel_name :: (id:int)->string #export_c {
-    names:=[17] string.["dv_project","dv_matvec","dv_reduce","dl_squares","dl_add_squares","dl_scale","dl_add","dl_swiglu","dl_conv","dl_gates","dl_qk","dl_scan","dl_gate_norm","dl_prepare","dl_scores","dl_softmax","dl_attend"];
+    names:=[19] string.["dv_project","dv_matvec","dv_reduce","dl_squares","dl_add_squares","dl_scale","dl_add","dl_swiglu","dl_conv","dl_gates","dl_qk","dl_scan","dl_gate_norm","dl_prepare","dl_scores","dl_softmax","dl_attend","dw_split","dw_project"];
     if id<0 || id>=DP_KERNELS {return "";}
     return names[id];
 }
@@ -24,7 +25,8 @@ DpOpKind :: enum u8 {launch;copy;wait;release;}
 // A view names a buffer (0 workspace, 1 and 2 the streaming slots, 3+id a
 // resident weight), a byte offset and an element count.
 DpArg :: struct {kind:u8;value:int;real:f64;buffer:int;offset:int;count:int;}
-DpOp :: struct {kind:DpOpKind;kernel:u8;items:int;block:int;count:int;tensor:int;slot:int;args:[12]DpArg;}
+// lanes is 32 for a warp kernel, whose items are warps of 32 threads.
+DpOp :: struct {kind:DpOpKind;kernel:u8;items:int;block:int;lanes:int;count:int;tensor:int;slot:int;args:[12]DpArg;}
 DpStatus :: enum u8 {ok;shape;capacity;memory;}
 DpPlan :: struct {status:DpStatus;ops:int;workspace:int;resident:int;streamed:int;slot:int;streamed_tensors:int;}
 
@@ -73,7 +75,7 @@ dp_weight_bytes :: (w:int)->int #export_c {
 // Workspace regions, in f32 elements unless noted; offsets are bytes, each
 // aligned to 256.
 DpLayout :: struct {x0:int;x1:int;norm:int;residual:int;qkv:int;z:int;a:int;b:int;k:int;v:int;conv:int;qn:int;kn:int;beta:int;decay:int;
-    draft:int;mix:int;aq:int;ak:int;scores:int;stats:int;probs:int;squares:int;partial:int;partial_rows:int;out:int;gate:int;up:int;product:int;down:int;rope:int;final:int;logits:int;lanes:int;total:int;}
+    draft:int;mix:int;aq:int;ak:int;scores:int;stats:int;probs:int;squares:int;partial:int;partial_rows:int;hi:int;lo:int;out:int;gate:int;up:int;product:int;down:int;rope:int;final:int;logits:int;lanes:int;total:int;}
 dp_align :: (n:int)->int {return (n+255)/256*256;}
 dp_layout :: (tokens:int)->DpLayout {
     // The first 256 bytes stay unused, so offset 0 never names a region.
@@ -83,7 +85,8 @@ dp_layout :: (tokens:int)->DpLayout {
     p.k=at;at+=dp_align(4*t*1024);p.v=at;at+=dp_align(4*t*1024);p.conv=at;at+=dp_align(4*t*8192);
     p.qn=at;at+=dp_align(4*t*2048);p.kn=at;at+=dp_align(4*t*2048);p.beta=at;at+=dp_align(4*t*32);p.decay=at;at+=dp_align(4*t*32);
     p.draft=at;at+=dp_align(4*t*4096);p.mix=at;at+=dp_align(4*t*4096);p.aq=at;at+=dp_align(4*t*4096);p.ak=at;at+=dp_align(4*t*1024);
-    p.scores=at;at+=dp_align(4*t*16*t);p.stats=at;at+=dp_align(8*t*16*3);p.probs=at;at+=dp_align(8*t*16*t);p.squares=at;at+=dp_align(8*t*16);p.partial=at;p.partial_rows=DP_PARTIAL_ROWS;at+=dp_align(4*p.partial_rows*t);p.out=at;at+=dp_align(4*t*d);
+    p.scores=at;at+=dp_align(4*t*16*t);p.stats=at;at+=dp_align(8*t*16*3);p.probs=at;at+=dp_align(8*t*16*t);p.squares=at;at+=dp_align(8*t*16);p.partial=at;p.partial_rows=DP_PARTIAL_ROWS;at+=dp_align(4*p.partial_rows*t);
+    pad:=dp_padded(t);p.hi=at;at+=dp_align(4*pad*DP_HIDDEN/2);p.lo=at;at+=dp_align(4*pad*DP_HIDDEN/2);p.out=at;at+=dp_align(4*t*d);
     p.gate=at;at+=dp_align(4*t*DP_HIDDEN);p.up=at;at+=dp_align(4*t*DP_HIDDEN);p.product=at;at+=dp_align(4*t*DP_HIDDEN);p.down=at;at+=dp_align(4*t*d);
     p.rope=at;at+=dp_align(4*t*64);p.final=at;at+=dp_align(4*d);p.logits=at;at+=dp_align(4*DP_VOCAB);p.lanes=at;at+=dp_align(4*16*DP_VOCAB);
     p.total=at;return p;
@@ -166,7 +169,34 @@ dp_slices :: (rows:int,cols:int,capacity:int)->int #export_c {
     return s;
 }
 // book:end slices
+// book:begin tensor
+// Tokens padded to whole tensor-core warps (88 each).
+dp_padded :: (tokens:int)->int {return (tokens+DW_TOKENS-1)/DW_TOKENS*DW_TOKENS;}
+// Column slices for the tensor-core projection: doubled from 1 while the
+// launch has fewer than 4096 warps, every slice keeps at least 8 steps of 16
+// columns and the partial sums fit their region; at most 32.
+dp_mma_slices :: (rows:int,cols:int,capacity:int)->int #export_c {
+    s:=1;steps:=cols/16;
+    while s<32 && rows/16*s<4096 && steps%(2*s)==0 && steps/(2*s)>=8 && 2*s*rows<=capacity {s*=2;}
+    return s;
+}
+// A whole-prompt projection on the tensor cores: split the activations into
+// BF16 halves, multiply per slice, add the slices.
+dp_mma :: (b:DpBuilder,p:DpLayout,weight:DpArg,rows:int,cols:int,tokens:int,input:int,output:int)->DpBuilder {
+    pad:=dp_padded(tokens);s:=dp_mma_slices(rows,cols,p.partial_rows);
+    x:[12]DpArg;x[0]=dp_int(cols);x[1]=dp_int(tokens);x[2]=dp_ws(input,tokens*cols);x[3]=dp_ws(p.hi,pad*cols/2);x[4]=dp_ws(p.lo,pad*cols/2);
+    r:=dp_push(b,dp_launch(DpKernel.split,pad*cols/2,x,5));
+    a:[12]DpArg;w:=weight;w.count=rows*cols/2;
+    a[0]=dp_int(rows);a[1]=dp_int(cols);a[2]=dp_int(tokens);a[3]=dp_int(s);a[4]=w;a[5]=dp_ws(p.hi,pad*cols/2);a[6]=dp_ws(p.lo,pad*cols/2);a[7]=dp_ws(p.partial,s*tokens*rows);
+    op:=dp_launch(DpKernel.mma_project,rows/16*(pad/DW_TOKENS)*s,a,8);op.lanes=32;
+    r=dp_push(r,op);
+    e:[12]DpArg;e[0]=dp_int(tokens*rows);e[1]=dp_int(s);e[2]=dp_ws(p.partial,s*tokens*rows);e[3]=dp_ws(output,tokens*rows);
+    return dp_push(r,dp_launch(DpKernel.reduce,tokens*rows,e,4));
+}
+// book:end tensor
+DP_MMA_TOKENS :: 16; // from this many tokens, projections use the tensor cores
 dp_project :: (b:DpBuilder,p:DpLayout,weight:DpArg,rows:int,cols:int,tokens:int,input:int,output:int)->DpBuilder {
+    if tokens>=DP_MMA_TOKENS {return dp_mma(b,p,weight,rows,cols,tokens,input,output);}
     a:[12]DpArg;w:=weight;w.count=rows*cols/4;s:=dp_slices(rows,cols,p.partial_rows);
     a[0]=dp_int(rows);a[1]=dp_int(cols);a[2]=dp_int(tokens);a[3]=dp_int(s);a[4]=w;a[5]=dp_ws(input,tokens*cols);a[6]=dp_ws(p.partial,s*tokens*rows);
     r:=dp_push(b,dp_launch(DpKernel.project,dv_project_items(rows,tokens,s),a,7));
@@ -313,8 +343,8 @@ dp_embed :: (tokens:[]int,width:int,embedding:[]u8,out:[]f32)->bool #export_c {
 #test "kernel names follow the host's lookup order" {
     #assert dp_kernel_name(0)=="dv_project" && dp_kernel_name(1)=="dv_matvec" && dp_kernel_name(2)=="dv_reduce";
     #assert dp_kernel_name(3)=="dl_squares" && dp_kernel_name(5)=="dl_scale" && dp_kernel_name(11)=="dl_scan" && dp_kernel_name(16)=="dl_attend";
-    #assert dp_kernel_name(-1)=="" && dp_kernel_name(17)=="";
-    #assert cast(int)DpKernel.attend==16 && DP_KERNELS==17;
+    #assert dp_kernel_name(-1)=="" && dp_kernel_name(19)=="" && dp_kernel_name(17)=="dw_split" && dp_kernel_name(18)=="dw_project";
+    #assert cast(int)DpKernel.attend==16 && cast(int)DpKernel.mma_project==18 && DP_KERNELS==19;
 }
 #forall "every fourth layer is full attention" layer:0..<32 {
     #assert dp_full(layer)==(layer==3 || layer==7 || layer==11 || layer==15 || layer==19 || layer==23 || layer==27 || layer==31);
@@ -344,7 +374,7 @@ dp_embed :: (tokens:[]int,width:int,embedding:[]u8,out:[]f32)->bool #export_c {
     p:=dp_layout(86);
     #assert p.x0==256 && p.x1==256+dp_align(4*86*4096) && p.total%256==0 && p.lanes+dp_align(4*16*248320)==p.total;
     #assert dp_input_offset(86)==256 && dp_rope_offset(86)==p.rope && dp_logits_offset(86)==p.logits && dp_workspace_bytes(86)==p.total;
-    #assert p.total==87122432;
+    #assert p.total==91447808 && p.lo-p.hi==dp_align(4*88*6144);
     #assert dp_align(0)==0 && dp_align(1)==256 && dp_align(256)==256 && dp_align(257)==512;
 }
 #test "residency streams spread feed-forward matrices only when it must" {
@@ -393,7 +423,7 @@ dp_digest :: (ops:[]DpOp,n:int)->u64 {
     h:u64=14695981039346656037;
     for i:0..<n {
         op:=ops[i];
-        fields:=[7]int.[cast(int)op.kind,cast(int)op.kernel,op.items,op.block,op.count,op.tensor,op.slot];
+        fields:=[8]int.[cast(int)op.kind,cast(int)op.kernel,op.items,op.block,op.lanes,op.count,op.tensor,op.slot];
         for f:fields {h=mul_wrap(h^cast,trunc(u64)f,1099511628211);}
         for a:op.args {
             more:=[5]int.[cast(int)a.kind,a.value,a.buffer,a.offset,a.count];
@@ -404,15 +434,16 @@ dp_digest :: (ops:[]DpOp,n:int)->u64 {
     return h;
 }
 #test "the decision plan: resident, then streamed through two slots" {
-    ops:[1400]DpOp;stream:[96]bool;w:=dp_workspace_bytes(86);all:=0;for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));}
+    ops:[1500]DpOp;stream:[96]bool;w:=dp_workspace_bytes(86);all:=0;for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));}
     plan:=dp_plan(86,49,w+all,stream[..],ops[..]);
-    #assert plan.status==DpStatus.ok && plan.ops==844 && plan.streamed==0;
+    #assert plan.status==DpStatus.ok && plan.ops==1092 && plan.streamed==0;
     launches:=0;for i:0..<plan.ops {if ops[i].kind==DpOpKind.launch {launches+=1;}#assert ops[i].count<=12 && ops[i].block==128;}
-    #assert launches==844 && ops[0].kernel==cast(u8)DpKernel.squares && ops[843].kernel==cast(u8)DpKernel.reduce && ops[842].items==16*248320;
-    #assert dp_digest(ops[..],plan.ops)==5973709171149792199;
+    #assert launches==1092 && ops[0].kernel==cast(u8)DpKernel.squares && ops[1091].kernel==cast(u8)DpKernel.reduce && ops[1090].items==16*248320;
+    #assert ops[2].kernel==cast(u8)DpKernel.split && ops[3].kernel==cast(u8)DpKernel.mma_project && ops[3].lanes==32 && ops[3].items==512*8 && ops[2].lanes==0;
+    #assert dp_digest(ops[..],plan.ops)==4173709594799487567;
     slot:=dp_align(2*4096*12288);
     streamed:=dp_plan(86,49,w+all-7*slot,stream[..],ops[..]);
-    #assert streamed.status==DpStatus.ok && streamed.ops==844+9*3 && streamed.streamed_tensors==9;
+    #assert streamed.status==DpStatus.ok && streamed.ops==1092+9*3 && streamed.streamed_tensors==9;
     // Two prefetches, then a wait before and a release after each streamed layer,
     // and each released slot is refilled with the next streamed tensor.
     #assert ops[0].kind==DpOpKind.copy && ops[0].slot==0 && ops[1].kind==DpOpKind.copy && ops[1].slot==1 && ops[1].tensor==dp_weight(2,13);
@@ -424,12 +455,17 @@ dp_digest :: (ops:[]DpOp,n:int)->u64 {
         if op.kind==DpOpKind.release {releases+=1;#assert ops[i-1].kind==DpOpKind.launch;}
     }
     #assert waits==9 && copies==9 && releases==9;
-    #assert dp_digest(ops[..],streamed.ops)==7120020205357973815;
+    #assert dp_digest(ops[..],streamed.ops)==4555201676792927755;
     #assert dp_plan(0,0,w+all,stream[..],ops[..]).status==DpStatus.shape && dp_plan(129,0,w+all,stream[..],ops[..]).status==DpStatus.shape;
     #assert dp_plan(86,86,w+all,stream[..],ops[..]).status==DpStatus.shape && dp_plan(86,-1,w+all,stream[..],ops[..]).status==DpStatus.shape;
-    #assert dp_plan(86,49,w+all,stream[..],ops[0..<843]).status==DpStatus.capacity;
+    #assert dp_plan(86,49,w+all,stream[..],ops[0..<1091]).status==DpStatus.capacity;
     #assert dp_plan(1,0,w+all,stream[..],ops[..]).status==DpStatus.ok && dp_plan(128,127,w+all,stream[..],ops[..]).status==DpStatus.ok;
     #assert dp_plan(86,49,100,stream[..],ops[..]).status==DpStatus.memory;
+    // Short prompts keep the work-item projections; 16 tokens use the tensor cores.
+    short:=dp_plan(8,3,w+all,stream[..],ops[..]);
+    #assert short.status==DpStatus.ok && short.ops==844 && ops[2].kernel==cast(u8)DpKernel.project && dp_digest(ops[..],short.ops)==4401176032947051311;
+    fifteen:=dp_plan(15,0,w+all,stream[..],ops[..]);#assert fifteen.ops==844 && ops[2].kernel==cast(u8)DpKernel.project;
+    sixteen:=dp_plan(16,0,w+all,stream[..],ops[..]);#assert sixteen.ops==1092 && ops[2].kernel==cast(u8)DpKernel.split;
     // Everything that can stream does: 96 copies, the first a layer-0 gate.
     all96:=dp_plan(86,49,w+all-94*slot,stream[..],ops[..]);
     #assert all96.status==DpStatus.ok && all96.streamed_tensors==96 && ops[0].tensor==dp_weight(0,11) && ops[1].tensor==dp_weight(0,12);
@@ -440,6 +476,14 @@ dp_digest :: (ops:[]DpOp,n:int)->u64 {
     #assert dp_slices(1024,4096,98304)==16 && dp_slices(32,4096,98304)==16 && dp_slices(6144,4096,98304)==16 && dp_slices(6145,4096,98304)==8;
     #assert dp_slices(32,24,98304)==2 && dp_slices(32,8,98304)==2 && dp_slices(32,4,98304)==1 && dp_slices(32,32,98304)==8 && dp_slices(98304,4096,98304)==1;
     #assert dp_slices(49152,4096,98304)==2 && dp_slices(49153,4096,98304)==1 && dp_slices(98305,4096,98304)==1 && dp_slices(12289,4096,98304)==4;
+}
+#test "tensor-core projections pad tokens to warps and slice until the launch is full" {
+    #assert dp_padded(1)==88 && dp_padded(86)==88 && dp_padded(88)==88 && dp_padded(89)==176;
+    #assert dp_mma_slices(8192,4096,98304)==8 && dp_mma_slices(12288,4096,98304)==8 && dp_mma_slices(4096,12288,98304)==16;
+    #assert dp_mma_slices(4096,4096,98304)==16 && dp_mma_slices(1024,4096,98304)==32 && dp_mma_slices(32,4096,98304)==32;
+    #assert dp_mma_slices(4096,4096,1048576)==16 && dp_mma_slices(4095,4096,1048576)==32;
+    #assert dp_mma_slices(65536,4096,98304)==1 && dp_mma_slices(32768,4096,98304)==2 && dp_mma_slices(16,256,98304)==2 && dp_mma_slices(16,512,98304)==4;
+    #assert dp_mma_slices(16,768,98304)==4 && dp_mma_slices(16,240,98304)==1 && dp_mma_slices(16,1048576,98304)==32 && dp_mma_slices(12288,4096,98303)==4 && dp_mma_slices(12288,4096,98304*2)==8;
 }
 #test "embedding rows decode BF16 and refuse bad tokens and non-finite rows" {
     // Three rows of width 4.
