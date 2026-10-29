@@ -317,7 +317,16 @@ class Tab {
       this.check(drawn, `${name}: a scene frame completed`)
     }
     await Bun.sleep(page.settle)
-    const bytes = await this.shot(), image = png(bytes), share = lit(image)
+    let bytes = await this.shot(), image = png(bytes), share = lit(image)
+    // A dark page (the fixture: a night sky, a lamp and its HUD, under 2% lit) can be caught on a
+    // frame the compositor hasn't filled yet, all black; it gets a few more frames to show itself
+    // before it counts as drawing nothing (2026-10-29: fixture "0.0% lit" on a staging walk while
+    // the same shot matched its golden).
+    for (let again = 0; share < page.lit && again < 4; again++) {
+      this.log(`  info  ${name}: ${(share * 100).toFixed(1)}% lit, under ${(page.lit * 100).toFixed(1)}%; shooting it again`)
+      await Bun.sleep(750)
+      bytes = await this.shot(); image = png(bytes); share = lit(image)
+    }
     this.check(this.errors.length === 0, `${name}: no errors${this.errors.length ? ` (${this.errors.join("; ")})` : ""}`)
     this.errors = []
     this.check(share >= page.lit, `${name}: draws (${(share * 100).toFixed(1)}% lit, at least ${(page.lit * 100).toFixed(1)}%)`)
