@@ -478,7 +478,8 @@ const PAGE_KIND = 600, HIDDEN_KIND = 601, SHOWN_KIND = 602, LEAVE_KIND = 603, ER
 function viewer() {
   if (!engine?.exports.coaxial_message || location.protocol === "file:") return;
   fetch("/api/auth/me", { credentials: "same-origin" })
-    .then((r) => (r.ok ? r.text() : ""), () => "")
+    // read the body either way: an unread one (the signed-out 401) never finishes loading
+    .then((r) => r.text().then((t) => (r.ok ? t : "")), () => "")
     .then((t) => send(VIEWER_KIND, t), () => send(VIEWER_KIND, ""));
 }
 const randomId = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");

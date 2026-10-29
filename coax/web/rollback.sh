@@ -15,4 +15,8 @@ pages=$(gcloud storage ls "$kept/" | grep -E '\.(html|md)$' || true)
 for p in $pages; do
   gcloud storage cp "$p" "gs://$bucket/$(basename "$p")" --cache-control "no-cache" --quiet > /dev/null
 done
+# Production no longer runs the newest release that passed: a newer entry
+# without PASSED says so, so the next release ships and walks in full.
+echo "rollback to $1" | gcloud storage cp - "gs://$bucket/releases/$(date -u +%Y%m%dT%H%M%SZ)/ROLLBACK" --quiet > /dev/null ||
+  echo "rollback: couldn't mark the rollback under releases/; until a release passes, release.sh may take the rolled-back commit as live" >&2
 echo "rollback: production pages restored from $1"

@@ -60,7 +60,8 @@ built on:
     port of the playtest infrastructure.
   - Each page has an `index.md` beside it for agents.
   - Releases go through `coax/web/release.sh`: a clean build of `origin/main`
-    goes to staging, is smoked, promoted to production and smoked again,
+    goes to staging, is smoked and walked, promoted to production and
+    checked again (briefly by default, the full walk with `--thorough`),
     with automatic rollback.
 - **The iOS app** ([`apps/openagents-ios/`](apps/openagents-ios/README.md))
   is a minimal native home: the animated graph and HUD, running in Coax.
