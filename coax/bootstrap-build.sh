@@ -16,6 +16,7 @@ if [[ -n "${COAX_HOST_TARGET:-}" ]]; then c_flags+=(-target "$COAX_HOST_TARGET")
 # Stage0 has the language frontend but deliberately no proto implementation.
 # It compiles the authoritative Coax importer, then we link that C11 object
 # into the standalone final compiler. Nothing is downloaded or interpreted.
+./check-proto-cap.sh lib/proto/wire.coax lib/proto/importer.coax
 work="bin/.bootstrap-$$"
 mkdir -p "$work"
 trap 'rm -rf "$work"' EXIT

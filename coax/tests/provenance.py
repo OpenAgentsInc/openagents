@@ -27,7 +27,7 @@ class ProvenanceTests(unittest.TestCase):
   self.tree=Path(self.tmp.name)/'repo';(self.tree/'coax').mkdir(parents=True);(self.tree/'scripts').mkdir()
   for name in ('src','bootstrap','lib/compiler','lib/proto'):
    shutil.copytree(ROOT/name,self.tree/'coax'/name)
-  for name in ('build.sh','bootstrap-build.sh','provenance.sh','provenance-bridge.c','release.coax','release-model.coax'):
+  for name in ('build.sh','bootstrap-build.sh','check-proto-cap.sh','provenance.sh','provenance-bridge.c','release.coax','release-model.coax'):
    shutil.copy2(ROOT/name,self.tree/'coax'/name)
   shutil.copy2(ROOT.parent/'scripts/coax-release.sh',self.tree/'scripts/coax-release.sh')
   self.binary=Path(self.tmp.name)/'coax';self.binary.write_bytes(b'tested compiler fixture');self.binary.chmod(0o755)
@@ -89,6 +89,11 @@ elif 'worktree' in a and 'add' in a: shutil.copytree(os.environ['TARGET_TREE'],a
   self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
   self.assertIn('compiler inputs or binary differ',result.stderr)
   self.assertFalse(marker.exists())
+ def test_cap_guard_changes_invalidate_build_record(self):
+  self.verify()
+  guard=self.tree/'coax/check-proto-cap.sh'
+  guard.write_text(guard.read_text()+'\n# changed cap guard\n')
+  self.verify(success=False)
  def test_write_refuses_a_source_change_after_the_original_fingerprint(self):
   old=self.run_script('fingerprint',self.tree,success=True).stdout.strip()
   candidate=Path(self.tmp.name)/'late-record'

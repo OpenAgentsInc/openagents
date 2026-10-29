@@ -1,0 +1,8 @@
+syntax = "proto3";
+package coax.test.message_limit;
+import "openagents/options/v1alpha1/options.proto";
+message Absent { optional bytes data = 1; }
+message Zero { option (openagents.options.v1alpha1.max_message_bytes) = 0; optional bytes data = 1; }
+message Below { option (openagents.options.v1alpha1.max_message_bytes) = 1048575; optional bytes data = 1; }
+message Equal { option (openagents.options.v1alpha1.max_message_bytes) = 1048576; optional bytes data = 1; }
+message Above { option (openagents.options.v1alpha1.max_message_bytes) = 1048577; optional bytes data = 1; }

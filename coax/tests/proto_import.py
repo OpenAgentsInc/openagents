@@ -317,9 +317,19 @@ main :: () {a:[4] u8;b:[4] u8;
         self.assertTrue(any(x['line']==1 and 'generated proto import P' in x['message'] for x in errors),errors)
         self.assertEqual(list(temp.iterdir()),[])
 
+    def test_shared_message_cap_is_identical(self):
+        wire=(ROOT/'coax/lib/proto/wire.coax').read_text()
+        importer=(ROOT/'coax/lib/proto/importer.coax').read_text()
+        a=re.search(r'^PB_MAX_BYTES :: (\d+);$',wire,re.M)
+        b=re.search(r'^D_WIRE_MAX_BYTES :: (\d+);$',importer,re.M)
+        self.assertIsNotNone(a);self.assertIsNotNone(b)
+        self.assertEqual(a.group(1),b.group(1))
+
     def test_schema_declaration_characterization(self):
         baseline=json.loads((ROOT/'coax/tests/proto/import-baselines.json').read_text())
-        current=json.loads((ROOT/'coax/tests/proto/presence-baselines.json').read_text())
+        prior=json.loads((ROOT/'coax/tests/proto/presence-baselines.json').read_text())
+        current=json.loads((ROOT/'coax/tests/proto/message-limit-baselines.json').read_text())
+        self.assertEqual(set(prior['profiles']),set(baseline['profiles']))
         self.assertEqual(set(current['profiles']),set(baseline['profiles']))
         self.assertEqual(current['reference_prefix'],baseline['prefix'])
         for name,expected in baseline['profiles'].items():

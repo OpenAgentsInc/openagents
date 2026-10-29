@@ -2,6 +2,13 @@
 // The same procedures execute in checks and in the native compiler.
 #authority;
 D_MAX_BYTES :: 8388608;
+// Must match PB_MAX_BYTES in wire.coax; importer tests check the shared cap.
+D_WIRE_MAX_BYTES :: 1048576;
+D_tighter_message_limit :: (n:u64)->bool {return n>0 && n<cast(u64)D_WIRE_MAX_BYTES;}
+#test "only tighter message limits need a generated guard" {
+ #assert !D_tighter_message_limit(0) && D_tighter_message_limit(1);
+ #assert D_tighter_message_limit(1048575) && !D_tighter_message_limit(1048576) && !D_tighter_message_limit(1048577);
+}
 D_Wire :: struct {number:u32;wt:u8;raw:u64;data:string;next:int;present:bool;}
 D_Opts :: struct {n:[9] u64;text:[9] string;bits:u32;map_entry:bool;}
 D_Type :: struct {full:string;name:string;wire:string;first:int;count:int;groups:int;group_count:int;opts:D_Opts;}
@@ -393,7 +400,7 @@ G_check :: (s:[] D_State,m:D_Type,p:string) {
   a:[10] string;a[0]=p;a[1]=m.name;a[9]=G_fmt(s,"return $0Check.{error=$0",a[..]);
   G_line(s,"$1__check :: (wire:[] u8,depth:int,budget:int,required:bool,canonical:bool)->$0Check {",a[..]);
   G_line(s,"if !$0message_admitted(depth,wire.count) {return $0Check.{error=$0LIMIT};}",a[..]);
-  if m.opts.n[1]!=0 {a[5]=G_num(s,cast(s64)m.opts.n[1]);G_line(s,"if wire.count>$5 {return $0Check.{error=$0LIMIT};}",a[..]);}
+  if D_tighter_message_limit(m.opts.n[1]) {a[5]=G_num(s,cast(s64)m.opts.n[1]);G_line(s,"if wire.count>$5 {return $0Check.{error=$0LIMIT};}",a[..]);}
   G_line(s,"left:=budget;pos:=0;",a[..]);
   for i:m.first..<m.first+m.count {
     f:=s[0].fields[i];a[2]=f.name;
@@ -440,6 +447,20 @@ G_check :: (s:[] D_State,m:D_Type,p:string) {
     }
   }
   G_line(s,"return $0Check.{left=left};}",a[..]);
+}
+#test "generated message guards only tighten the shared cap" {
+  arena:[8192]u8;output:[8192]u8;fields:[1]D_Field;
+  for choice:0..<4 {
+    state:=[1]D_State.[D_State.{fields=fields[..],arena=arena[..],output=output[..]}];
+    m:=D_Type.{name="P_M"};
+    if choice==1 {m.opts.n[1]=1;}
+    if choice==2 {m.opts.n[1]=1048576;}
+    if choice==3 {m.opts.n[1]=1048577;}
+    G_check(state[..],m,"P__pb_");#assert state[0].error=="";
+    needle:="if wire.count>";found:=false;
+    for i:0..<state[0].written {if needle.count<=state[0].written-i && cast(string)output[i..<i+needle.count]==needle {found=true;}}
+    #assert found==(choice==1);
+  }
 }
 #test "required repeated and real oneof templates" {
   fields:[4] D_Field;

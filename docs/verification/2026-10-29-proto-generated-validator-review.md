@@ -99,3 +99,27 @@ The reviewed changed wire source SHA-256 is
 `bf7f55c25616bcabe0417b0ed2cfa56272e75545b2dc8e13c961d88bb458b87a`.
 An independent source review also checked the generated-prefix boundary tests;
 that review did not rerun tests or approve arbitrary schemas.
+
+The generator now omits a message-specific size branch when that option is no
+stricter than the shared 1 MiB admission cap; tighter message limits still
+produce their own guard. This removes redundant unreachable mutations without
+raising either bound. The importer and wire copies of the cap are checked for
+exact equality by a Python-free gate in the private bootstrap; the gate itself
+is fingerprinted by provenance. Matching, mismatching, duplicate, missing and
+malformed definitions have direct negative controls. The gate applies to the
+owned compiler runtime, not arbitrary host-supplied runtime strings.
+
+The changed importer passed 125 checks and 1,723/1,723 full-reference mutations
+with zero skipped checks. Independent read-only review covered importer
+`66cca8e68a0417a7f92b3bb5cec20eaceb73f8fc5f801692b49edd0fbc8b61f8`,
+the cap guard `465f082009c64f3735347687b9ceebbc57fd91469e7b4d37d80d56f5cf08b705`,
+and boundary harness `2704d600fc29f2b7a7b43b31b8b0e997f61963c48a010aa388e55318acf3f5b4`;
+it did not rerun tests or approve arbitrary runtimes or schemas. A fresh
+Python-free bootstrap, 11 provenance tests, 22 importer tests (one optional
+oracle skipped), and a Debug iOS simulator build passed. Independent protoc
+regeneration and 20 cap cases passed in checked/release native, ASan/UBSan and
+Wasm; 18 presence cases passed in checked/release native and Wasm. All 12
+frozen descriptor profiles matched the explicitly derived transformation, and
+four structural negative controls were rejected. The historical baseline
+files remain unchanged. The experimental event projection passed 195 Coax
+checks with the new generator; its full mutation gate remains open.

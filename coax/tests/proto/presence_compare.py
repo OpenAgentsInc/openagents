@@ -96,6 +96,9 @@ for name,entry in baseline['profiles'].items():
  historic=a.replace(admission,original).replace('N__pb_root_depth(),N__pb_default_fields()','0,N__pb_MAX_FIELDS')
  if hashlib.sha256(historic.encode()).hexdigest()!=entry['declarations_sha256']:raise ValueError(name+' historical fingerprint mismatch')
  expected=transform(a,parse_descriptor(data))
+ # The shared admission guard already enforces 1 MiB. A descriptor explicitly
+ # specifying that same ceiling cannot tighten it; omit its duplicate branch.
+ expected=expected.replace('if wire.count>1048576 {return N__pb_Check.{error=N__pb_LIMIT};}\n','')
  if expected!=b:
   import difflib
   print('\n'.join(list(difflib.unified_diff(expected.splitlines(),b.splitlines()))[:35]));raise ValueError(name)

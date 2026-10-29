@@ -34,7 +34,7 @@ fingerprint() (
   fi
   {
     printf 'coax-input-v1\0'
-    for path in coax/build.sh coax/bootstrap-build.sh coax/provenance.sh coax/provenance-bridge.c coax/release.coax coax/release-model.coax scripts/coax-release.sh; do
+    for path in coax/build.sh coax/bootstrap-build.sh coax/check-proto-cap.sh coax/provenance.sh coax/provenance-bridge.c coax/release.coax coax/release-model.coax scripts/coax-release.sh; do
       digest="$(file_hash "$root/$path")" || exit 1
       printf '%s\0%s\0' "$path" "$digest"
     done
