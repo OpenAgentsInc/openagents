@@ -1,0 +1,144 @@
+{
+  "schema": "coax.nostr-store-ingress-source-inventory.v1",
+  "tested_compiler_sha256": "f335e7ec7b3f6d5966244a09aa8002b11b5ba607a1f673353c51effd9dab84a1",
+  "tested_root": "/Users/christopherdavid/.codex/worktrees/coax-nostr-event-store/openagents",
+  "source_inventory": [
+    {
+      "path": "coax/lib/nostr/store_admit.coax",
+      "sha256": "b0c636a735536e615cd448b88c3a30e58b921ceed854ac6f31cf0a0b16e54090"
+    },
+    {
+      "path": "coax/lib/nostr/event.coax",
+      "sha256": "3b0c0feca25959ecd4a4138a3e74a795c65258198fcb1510c0f9e5b2d3e5419f"
+    },
+    {
+      "path": "coax/tests/nostr/event_fast_checks.coax",
+      "sha256": "f3fdb0d59e3666987f3ceb0adeaad66fc576c20f92fd8c6cd85fb4a861e53ded"
+    },
+    {
+      "path": "coax/tests/nostr/event_fixtures.coax",
+      "sha256": "fcc3347dc54dfe1fb1361ab23ab0b76b7641f9691e280dec71526c0bcec78a67"
+    },
+    {
+      "path": "coax/lib/nostr/hex.coax",
+      "sha256": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5"
+    },
+    {
+      "path": "coax/lib/nostr/codecs-common.coax",
+      "sha256": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377"
+    },
+    {
+      "path": "coax/lib/crypto/schnorr.coax",
+      "sha256": "f90f2a3fca5f65bf0c32d22897b30c192e16946c3890a286e4a2922880ed1757"
+    },
+    {
+      "path": "coax/lib/crypto/secp_mult.coax",
+      "sha256": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195"
+    },
+    {
+      "path": "coax/lib/crypto/secp_group.coax",
+      "sha256": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c"
+    },
+    {
+      "path": "coax/lib/crypto/secp_field.coax",
+      "sha256": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484"
+    },
+    {
+      "path": "coax/lib/crypto/bytes.coax",
+      "sha256": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd"
+    },
+    {
+      "path": "coax/lib/crypto/secp_scalar.coax",
+      "sha256": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a"
+    },
+    {
+      "path": "coax/tests/nostr/scalar_fixtures.coax",
+      "sha256": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c"
+    },
+    {
+      "path": "coax/lib/crypto/sha256.coax",
+      "sha256": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9"
+    },
+    {
+      "path": "coax/lib/proto/fingerprint.coax",
+      "sha256": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a"
+    },
+    {
+      "path": "coax/tests/nostr/schnorr_checks.coax",
+      "sha256": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc"
+    },
+    {
+      "path": "coax/tests/nostr/schnorr_fixtures.coax",
+      "sha256": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756"
+    },
+    {
+      "path": "coax/lib/nostr/adapters/json-admission.coax",
+      "sha256": "7b520fb5a24b259d5daaa68064823f05c60ea8f1cb4d5c19418f12eccd487824"
+    },
+    {
+      "path": "coax/lib/nostr/json.coax",
+      "sha256": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f"
+    },
+    {
+      "path": "coax/lib/nostr/fixtures/json_suite.coax",
+      "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2"
+    },
+    {
+      "path": "coax/lib/nostr/fixtures/coax_relay.coax",
+      "sha256": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046"
+    },
+    {
+      "path": "coax/lib/nostr/adapters/json-policy.coax",
+      "sha256": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c"
+    },
+    {
+      "path": "coax/tests/nostr/event_checks.coax",
+      "sha256": "b8663ffe4d5289ff62e43a02c302ce831aba6ea3383f1bc5f21721bfdffe9225"
+    },
+    {
+      "path": "coax/lib/crypto/schnorr_fast.coax",
+      "sha256": "d27a4b855d5d350888d46d0a2ef68f88c6d30e48ad54e1e201f46c3e432f8f4c"
+    },
+    {
+      "path": "coax/lib/crypto/ecdh_fast.coax",
+      "sha256": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915"
+    },
+    {
+      "path": "coax/lib/crypto/secp_group32.coax",
+      "sha256": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a"
+    },
+    {
+      "path": "coax/lib/crypto/secp_field32_total.coax",
+      "sha256": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf"
+    },
+    {
+      "path": "coax/lib/crypto/secp_field32.coax",
+      "sha256": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b"
+    },
+    {
+      "path": "coax/lib/nostr/store_policy.coax",
+      "sha256": "5f6b9ce7ce952c2407811f001690e1e32ef7f3bd1d557631c73151a8f750d161"
+    },
+    {
+      "path": "coax/lib/nostr/store_snapshot.coax",
+      "sha256": "47b774840065b82f5377bc9959bdb2a378dd43a5098b4fcea1751465612ce5e7"
+    },
+    {
+      "path": "coax/lib/nostr/store_layout.coax",
+      "sha256": "e4811a5af38b25d444c3e9c7470385e737050f87575b936e8b80e05e19aab534"
+    }
+  ],
+  "descriptors": [],
+  "test_fixture_inputs": {
+    "coax/tests/nostr/store_admit_native.py": "b33320649c94d46a8d5e8513d67acd2eacfcf42722a34fe008f1ea1523aa58c4",
+    "coax/tests/nostr/store_admit_wasm.c": "fd645bfb2f0728b2836946320b295a7292af97095c9547c65e72351820bca9bc",
+    "coax/tests/nostr/store_admit_wasm.cjs": "028253624f86f32499f6ff1e30310ccab63ebb7e07f469c1b587f17b37408d5a"
+  },
+  "current_helper_hashes_after_test": {
+    "coax/tests/nostr/secp_field.py": "5f8ee0f91cf3febe741faacbb9e4f7bbf629ad1d2120dd40d89bedbb3f3a4e06",
+    "tools/coax-nostr/fuzz/oracle.py": "d690d0f5e5318e96fc6c6c5f56ce87af5543d90d8acb8f53abc67381d7626cd9",
+    "coax/tests/nostr/make_event_fixtures.py": "18c4245736d5d6b2879b44a357268e5f0313b4caae9925a19e686db722efb5d1",
+    "coax/tests/quiet_crash.py": "546bf7e16ba8ace17c12884466af2c22e6938586923c37c7b779b1efe55b39b4"
+  },
+  "destination_mismatches": []
+}

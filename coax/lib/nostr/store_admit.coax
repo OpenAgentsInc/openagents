@@ -1,0 +1,74 @@
+// Exact-byte verification and one-original snapshot staging. This is not the
+// complete store: replacement, deletion, replay and durable commit are absent.
+#load "event.coax";
+#load "../crypto/schnorr_fast.coax";
+#load "store_policy.coax";
+#load "store_snapshot.coax";
+#authority;
+NS_ADMIT_OK :: 0; NS_ADMIT_INVALID :: 1; NS_ADMIT_ALIAS :: 2; NS_ADMIT_CAPACITY :: 3; NS_ADMIT_EPHEMERAL :: 4;
+NsAdmission :: struct {status:u32;id:[32]u8;created:int;kind:int;written:int;}
+NS_VALID_TEST :: "{\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":0,\"kind\":1,\"tags\":[],\"content\":\"hello\",\"id\":\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\",\"sig\":\"92f72cb720a448d2ffd93220af78149293a81406c9f19c813e90d51388861d92ced3eae53e3c8e87f2770506fa5110c8dd692a673c4e2ad25481b92abc2a77b1\"}";
+NS_EPHEMERAL_TEST :: "{\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":0,\"kind\":20000,\"tags\":[],\"content\":\"hello\",\"id\":\"0b09c9c0cb5f15bf0291b7e8b5e61f2b1adc909b886735ca1f59fb164ef2e93a\",\"sig\":\"13100f4cd1ac624c8441b293b9d72970a6e49ebc94a6494bfd5e08c348b740b6139398afa00e53396cfc3a35b7a921ab83c819b6b0e1e7c22d85feb658f5bf8e\"}";
+NS_WRONG_SIGNER_TEST :: "{\"pubkey\":\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\",\"created_at\":0,\"kind\":1,\"tags\":[],\"content\":\"hello\",\"id\":\"e5383da928d4c08f7bfb8601b9719d26b7ae989280e4826244eb85b2b3f71ca9\",\"sig\":\"ed195de38514a3be425317516c899cb03ceea45a6f57422b124dab46f497da1f285a2081ea9b1feb51de248eb29546e08bd596efdc4cb19a1e42c86438a62f49\"}";
+#test "verified original reaches a framed snapshot under the default budget" {
+ scratch:[1024]u8;out:[1024]u8;result:=ns_admit_one(NS_VALID_TEST,scratch[..],out[..],false);
+ #assert result.status==NS_ADMIT_OK && result.kind==1 && result.created==0;
+ index:[2]int;frame:=ns_snapshot_scan(out[0..<result.written],index[..],false);
+ #assert frame.ok && index[0]==20 && index[1]==NS_VALID_TEST.count;
+ #assert cast(string)out[index[0]..<index[0]+index[1]]==NS_VALID_TEST;
+}
+#test "a forged signature cannot publish a snapshot" {
+ raw:[1024]u8;for i:0..<NS_VALID_TEST.count {raw[i]=NS_VALID_TEST[i];}raw[NS_VALID_TEST.count-3]='0';
+ scratch:[1024]u8;out:[1024]u8;out[0]=77;
+ result:=ns_admit_one(cast(string)raw[0..<NS_VALID_TEST.count],scratch[..],out[..],false);
+ #assert result.status==NS_ADMIT_INVALID && result.written==0 && out[0]==77;
+}
+#test "a matching hash signed by a different key is refused" {
+ scratch:[1024]u8;out:[1024]u8;out[0]=77;
+ result:=ns_admit_one(NS_WRONG_SIGNER_TEST,scratch[..],out[..],false);
+ #assert result.status==NS_ADMIT_INVALID && result.written==0 && out[0]==77;
+}
+#test "valid ephemeral events are verified but not persisted" {
+ scratch:[1024]u8;out:[1024]u8;out[0]=77;
+ result:=ns_admit_one(NS_EPHEMERAL_TEST,scratch[..],out[..],false);
+ #assert result.status==NS_ADMIT_EPHEMERAL && result.written==0 && out[0]==77;
+}
+#test "verified input with short output refuses before snapshot publication" {
+ scratch:[1024]u8;out:[1]u8;out[0]=77;
+ result:=ns_admit_one(NS_VALID_TEST,scratch[..],out[..],false);
+ #assert result.status==NS_ADMIT_CAPACITY && result.written==0 && out[0]==77;
+}
+#test "hash mismatch malformed input and overlap never publish" {
+ raw:[1024]u8;for i:0..<NS_VALID_TEST.count {raw[i]=NS_VALID_TEST[i];}
+ for i:0..<NS_VALID_TEST.count {if raw[i]=='h' && raw[i+1]=='e' {raw[i]='H';break;}}
+ scratch:[1024]u8;out:[1024]u8;out[0]=77;
+ #assert ns_admit_one(cast(string)raw[0..<NS_VALID_TEST.count],scratch[..],out[..],false).status==NS_ADMIT_INVALID && out[0]==77;
+ #assert ns_admit_one("{}",scratch[..],out[..],false).status==NS_ADMIT_INVALID && out[0]==77;
+ #assert ns_admit_one(NS_VALID_TEST,scratch[..],out[..],true).status==NS_ADMIT_ALIAS && out[0]==77;
+}
+#test "single-frame staging refuses short output before touching it" {
+ out:[22]u8;out[0]=77;#assert !ns_frame_one("ab",out[0..<21]);#assert out[0]==77;
+ #assert ns_frame_one("ab",out[..]);index:[2]int;r:=ns_snapshot_scan(out[..],index[..],false);
+ #assert r.ok && index[0]==20 && index[1]==2 && cast(string)out[20..<22]=="ab";
+}
+// This private helper stages one unverified byte string; only the verified
+// entry below may publish it as admitted evidence.
+ns_frame_one :: (text:string,out:[]u8)->bool {
+ layout:=ns_log_layout(1,text.count,2,out.count,false);
+ if !layout.ok || !ns_payload_valid(text.count,0,text.count) {return false;}
+ out[0]=78;out[1]=83;out[2]=76;out[3]=71;
+ ns_put_u32(out,4,1);ns_put_u32(out,8,1);ns_put_u32(out,12,text.count);ns_put_u32(out,16,text.count);
+ for i:0..<text.count {out[20+i]=text[i];}return true;
+}
+// overlap is a truthful observation covering all input, scratch and output
+// storage. The caller guarantees live, exclusive, stable and disjoint spans.
+// Scratch may change on refusal; output is written only after verification.
+ns_admit_one :: (text:string,scratch:[]u8,out:[]u8,overlap:bool)->NsAdmission #export_c {
+ if overlap {return NsAdmission.{status=NS_ADMIT_ALIAS};}
+ event:=nostr_event_read(text,scratch,false);
+ if event.error!=NE_OK {return NsAdmission.{status=NS_ADMIT_INVALID};}
+ if !nostr_fast_verify_vartime(event.id[..],event.public_key[..],event.signature[..]) {return NsAdmission.{status=NS_ADMIT_INVALID};}
+ if ns_class(event.kind)==NS_EPHEMERAL {return NsAdmission.{status=NS_ADMIT_EPHEMERAL};}
+ if !ns_frame_one(text,out) {return NsAdmission.{status=NS_ADMIT_CAPACITY};}
+ return NsAdmission.{status=NS_ADMIT_OK,id=event.id,created=event.created_at,kind=event.kind,written=20+text.count};
+}

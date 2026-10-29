@@ -1,0 +1,62 @@
+// Internal value comparisons for a verified-event store. These operations do
+// not verify events, own strings, admit storage, persist data or grant trust.
+#authority;
+NS_ORDINARY :: 0; NS_REPLACEABLE :: 1; NS_EPHEMERAL :: 2; NS_ADDRESSABLE :: 3;
+NsMeta :: struct {id:[32]u8;author:[32]u8;kind:int;created:int;identifier:string;expiry:int=-1;}
+
+#test "kind ranges classify replacement, ephemeral and addressable events" {
+ #assert ns_class(0)==NS_REPLACEABLE && ns_class(3)==NS_REPLACEABLE;
+ #assert ns_class(1)==NS_ORDINARY && ns_class(5)==NS_ORDINARY;
+ #assert ns_class(9999)==NS_ORDINARY && ns_class(10000)==NS_REPLACEABLE && ns_class(19999)==NS_REPLACEABLE;
+ #assert ns_class(20000)==NS_EPHEMERAL && ns_class(29999)==NS_EPHEMERAL;
+ #assert ns_class(30000)==NS_ADDRESSABLE && ns_class(39999)==NS_ADDRESSABLE && ns_class(40000)==NS_ORDINARY;
+}
+#test "replacement identity includes kind author and address identifier" {
+ a:=NsMeta.{kind=30023,identifier="alpha"};b:=a;
+ #assert ns_same_key(a,b);b.identifier="beta";#assert !ns_same_key(a,b);
+ b=a;b.kind=30024;#assert !ns_same_key(a,b);b=a;b.author[31]=1;#assert !ns_same_key(a,b);
+ a.kind=0;b=a;b.identifier="different";#assert ns_same_key(a,b);
+ a.kind=1;b=a;#assert !ns_same_key(a,b);
+ a.kind=20000;b=a;#assert !ns_same_key(a,b);
+}
+#test "winner is latest then lexicographically lowest full id" {
+ a:=NsMeta.{created=9};b:=NsMeta.{created=10};#assert ns_newer(b,a) && !ns_newer(a,b);
+ a.created=10;a.id[31]=1;b.id[31]=2;#assert ns_newer(a,b) && !ns_newer(b,a);
+ a.id[0]=1;b.id[0]=0;#assert ns_newer(b,a) && !ns_newer(a,b);
+ b.id=a.id;#assert !ns_newer(a,b) && !ns_newer(b,a);
+}
+#test "authorized deletion requires exact id author and excludes deletion requests" {
+ target:=NsMeta.{kind=1};author:[32]u8;id:[32]u8;
+ #assert ns_delete_id(target,author,id);author[0]=1;#assert !ns_delete_id(target,author,id);
+ author[0]=0;id[31]=1;#assert !ns_delete_id(target,author,id);
+ id[31]=0;target.kind=5;#assert !ns_delete_id(target,author,id);
+}
+#test "address deletion requires matching author key and time boundary" {
+ target:=NsMeta.{kind=30023,created=10,identifier="x"};request:=NsMeta.{kind=30023,created=10,identifier="x"};
+ signer:[32]u8;#assert ns_delete_address(target,request,signer);request.created=9;#assert !ns_delete_address(target,request,signer);
+ request.created=10;request.identifier="y";#assert !ns_delete_address(target,request,signer);
+ request.identifier="x";request.author[0]=1;#assert !ns_delete_address(target,request,signer);
+ request.author[0]=0;signer[0]=1;#assert !ns_delete_address(target,request,signer);
+ signer[0]=0;target.kind=1;request.kind=1;#assert !ns_delete_address(target,request,signer);
+}
+#forall "expiry becomes hidden at the exact public timestamp" now:0..<8,expiry:0..<8 {
+ #assert ns_expired(cast(int)expiry,cast(int)now)==(now>=expiry);
+}
+#test "absent expiration does not expire" {#assert !ns_expired(-1,0) && !ns_expired(-1,9223372036854775807);}
+
+ns_class :: (kind:int)->u32 #export_c {
+ if kind==0 || kind==3 || (kind>=10000 && kind<20000) {return NS_REPLACEABLE;}
+ if kind>=20000 && kind<30000 {return NS_EPHEMERAL;}
+ if kind>=30000 && kind<40000 {return NS_ADDRESSABLE;}
+ return NS_ORDINARY;
+}
+ns_equal32 :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+ns_before :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}return false;}
+ns_same_key :: (a:NsMeta,b:NsMeta)->bool {
+ kind:=ns_class(a.kind);if a.kind!=b.kind || !ns_equal32(a.author,b.author) {return false;}
+ if kind==NS_REPLACEABLE {return true;}if kind==NS_ADDRESSABLE {return a.identifier==b.identifier;}return false;
+}
+ns_newer :: (a:NsMeta,b:NsMeta)->bool {return a.created>b.created || (a.created==b.created && ns_before(a.id,b.id));}
+ns_expired :: (expiry:int,now:int)->bool {return expiry>=0 && now>=expiry;}
+ns_delete_id :: (target:NsMeta,author:[32]u8,id:[32]u8)->bool {return target.kind!=5 && ns_equal32(target.author,author) && ns_equal32(target.id,id);}
+ns_delete_address :: (target:NsMeta,request:NsMeta,signer:[32]u8)->bool {return ns_equal32(request.author,signer) && ns_same_key(target,request) && target.created<=request.created;}

@@ -1,0 +1,116 @@
+// Framing of untrusted snapshots, not event verification or store admission.
+// A successful scan only identifies byte spans; every original still requires
+// exact-byte cryptographic verification before use.
+#load "store_layout.coax";
+#authority;
+NS_FRAME_MAX_ORIGINAL :: 262144;
+NsScan :: struct {ok:bool;count:int;bytes:int;}
+NsLength :: struct {ok:bool;value:int;}
+#test "one original has a canonical bounded frame" {
+ input:=[22]u8.[78,83,76,71,0,0,0,1,0,0,0,1,0,0,0,2,0,0,0,2,104,105];index:[2]int;
+ r:=ns_snapshot_scan(input[..],index[..],false);
+ #assert r.ok && r.count==1 && r.bytes==2 && index[0]==20 && index[1]==2;
+}
+#test "empty frame is distinct from truncation and foreign version" {
+ input:=[16]u8.[78,83,76,71,0,0,0,1,0,0,0,0,0,0,0,0];index:[1]int;
+ r:=ns_snapshot_scan(input[..],index[0..<0],false);#assert r.ok && r.count==0 && r.bytes==0;
+ #assert !ns_snapshot_scan(input[0..<15],index[0..<0],false).ok;
+ input[7]=2;#assert !ns_snapshot_scan(input[..],index[0..<0],false).ok;
+ input[7]=1;input[0]=0;#assert !ns_snapshot_scan(input[..],index[0..<0],false).ok;
+}
+#test "refused framing preserves every output index" {
+ input:=[22]u8.[78,83,76,71,0,0,0,1,0,0,0,1,0,0,0,2,0,0,0,2,104,105];index:=[2]int.[77,88];
+ #assert !ns_snapshot_scan(input[..],index[..],true).ok && index[0]==77 && index[1]==88;
+ #assert !ns_snapshot_scan(input[..],index[0..<1],false).ok && index[0]==77;
+ input[19]=3;#assert !ns_snapshot_scan(input[..],index[..],false).ok && index[0]==77 && index[1]==88;
+ input[19]=0;#assert !ns_snapshot_scan(input[..],index[..],false).ok;
+ input[19]=2;input[15]=1;#assert !ns_snapshot_scan(input[..],index[..],false).ok;
+}
+#test "extra trailing bytes and missing records are refused" {
+ input:=[23]u8.[78,83,76,71,0,0,0,1,0,0,0,1,0,0,0,2,0,0,0,2,104,105,0];index:[4]int;
+ #assert !ns_snapshot_scan(input[..],index[0..<2],false).ok;
+ input[11]=2;#assert !ns_snapshot_scan(input[..],index[..],false).ok;
+}
+#test "big-endian lengths include all four bytes" {
+ input:=[5]u8.[0,1,2,3,4];#assert ns_u32(input[..],1)==16909060;
+ input=[5]u8.[0,255,255,255,255];#assert ns_u32(input[..],1)==4294967295;
+ out:=[6]u8.[9,0,0,0,0,9];ns_put_u32(out[..],1,16909060);
+ #assert out[0]==9 && out[1]==1 && out[2]==2 && out[3]==3 && out[4]==4 && out[5]==9;
+}
+#forall "span checks agree with an independent small arithmetic model" total:0..<8,at:-1..<10,n:-1..<10 {
+ #assert ns_span(cast(int)total,cast(int)at,cast(int)n)==(at>=0 && n>=0 && at+n<=total);
+}
+#test "input, header and payload boundaries are checked independently" {
+ #assert !ns_input_size(15) && ns_input_size(16) && ns_input_size(1050640) && !ns_input_size(1050641);
+ input:=[4]u8.[0,0,0,0];#assert ns_length(input[..],0).ok && ns_length(input[..],0).value==0;
+ #assert !ns_length(input[0..<3],0).ok;
+ #assert !ns_payload_valid(1,0,0) && ns_payload_valid(1,0,1);
+ #assert ns_payload_valid(262144,0,262144) && !ns_payload_valid(262145,0,262145);
+ #assert !ns_payload_valid(2,1,2) && !ns_payload_valid(0,1,1);
+}
+#test "two originals preserve both spans and exact order" {
+ input:=[27]u8.[78,83,76,71,0,0,0,1,0,0,0,2,0,0,0,3,0,0,0,1,97,0,0,0,2,98,99];index:[4]int;
+ r:=ns_snapshot_scan(input[..],index[..],false);
+ #assert r.ok && r.count==2 && r.bytes==3;
+ #assert index[0]==20 && index[1]==1 && index[2]==25 && index[3]==2;
+}
+#test "two raw originals encode and scan without changing unused output" {
+ bytes:=[3]u8.[97,98,99];index:=[4]int.[0,1,1,2];out:[28]u8;out[27]=99;
+ w:=ns_snapshot_write(bytes[..],index[..],out[..],false);#assert w.ok && w.count==2 && w.bytes==3 && out[27]==99;
+ decoded:[4]int;r:=ns_snapshot_scan(out[0..<27],decoded[..],false);
+ #assert r.ok && decoded[0]==20 && decoded[1]==1 && decoded[2]==25 && decoded[3]==2;
+ #assert out[20]==97 && out[25]==98 && out[26]==99;
+}
+#test "snapshot output is untouched for malformed raw spans or quotas" {
+ bytes:=[3]u8.[97,98,99];index:=[4]int.[0,1,1,2];out:[27]u8;out[0]=77;
+ #assert !ns_snapshot_write(bytes[..],index[..],out[..],true).ok && out[0]==77;
+ #assert !ns_snapshot_write(bytes[..],index[0..<3],out[..],false).ok && out[0]==77;
+ #assert !ns_snapshot_write(bytes[..],index[..],out[0..<26],false).ok && out[0]==77;
+ index[0]=-1;#assert !ns_snapshot_write(bytes[..],index[..],out[..],false).ok && out[0]==77;
+ index[0]=0;index[1]=0;#assert !ns_snapshot_write(bytes[..],index[..],out[..],false).ok && out[0]==77;
+ index[1]=1;index[2]=2;#assert !ns_snapshot_write(bytes[..],index[..],out[..],false).ok && out[0]==77;
+ index[2]=0;index[3]=2;#assert !ns_snapshot_write(bytes[..],index[..],out[..],false).ok && out[0]==77;
+ index[2]=1;index[3]=3;#assert !ns_snapshot_write(bytes[..],index[..],out[..],false).ok && out[0]==77;
+}
+ns_u32 :: (input:[]u8,at:int)->int {return (cast(int)input[at]<<24)|(cast(int)input[at+1]<<16)|(cast(int)input[at+2]<<8)|cast(int)input[at+3];}
+ns_span :: (total:int,at:int,n:int)->bool {return at>=0 && n>=0 && at<=total && n<=total-at;}
+ns_input_size :: (size:int)->bool {return size>=16 && size<=NS_LOG_MAX_SNAPSHOT;}
+ns_length :: (input:[]u8,at:int)->NsLength {if !ns_span(input.count,at,4) {return NsLength.{};}return NsLength.{ok=true,value=ns_u32(input,at)};}
+ns_payload_valid :: (total:int,at:int,length:int)->bool {return length>0 && length<=NS_FRAME_MAX_ORIGINAL && ns_span(total,at,length);}
+ns_put_u32 :: (out:[]u8,at:int,value:int) {for i:0..<4 {out[at+i]=cast(u8)((value>>((3-i)*8))&255);}}
+ns_snapshot_scan :: (input:[]u8,index:[]int,overlap:bool)->NsScan #export_c {
+ if overlap || !ns_input_size(input.count) {return NsScan.{};}
+ if input[0]!=78 || input[1]!=83 || input[2]!=76 || input[3]!=71 || ns_u32(input,4)!=1 {return NsScan.{};}
+ count:=ns_u32(input,8);bytes:=ns_u32(input,12);
+ layout:=ns_log_layout(count,bytes,index.count,input.count,false);
+ if !layout.ok {return NsScan.{};}if input.count!=layout.snapshot_bytes {return NsScan.{};}
+ at:=16;
+ for i:0..<count {
+  read:=ns_length(input,at);if !read.ok {return NsScan.{};}length:=read.value;at+=4;
+  if !ns_payload_valid(input.count,at,length) {return NsScan.{};}
+  at+=length;
+ }
+ if at!=input.count {return NsScan.{};}
+ at=16;
+ for i:0..<count {length:=ns_u32(input,at);at+=4;index[i*2]=at;index[i*2+1]=length;at+=length;}
+ return NsScan.{ok=true,count=count,bytes=bytes};
+}
+// Writes framing only; caller must independently verify originals before any
+// store admission. All input spans are checked before the first output write.
+ns_snapshot_write :: (bytes:[]u8,index:[]int,out:[]u8,overlap:bool)->NsScan #export_c {
+ if index.count%2!=0 {return NsScan.{};}count:=index.count/2;
+ layout:=ns_log_layout(count,bytes.count,index.count,out.count,overlap);if !layout.ok {return NsScan.{};}
+ at:=0;
+ for i:0..<count {
+  from:=index[i*2];length:=index[i*2+1];
+  if from!=at || !ns_payload_valid(bytes.count,from,length) {return NsScan.{};}at+=length;
+ }
+ if at!=bytes.count {return NsScan.{};}
+ out[0]=78;out[1]=83;out[2]=76;out[3]=71;ns_put_u32(out,4,1);ns_put_u32(out,8,count);ns_put_u32(out,12,bytes.count);
+ at=16;
+ for i:0..<count {
+  from:=index[i*2];length:=index[i*2+1];ns_put_u32(out,at,length);at+=4;
+  for j:0..<length {out[at+j]=bytes[from+j];}at+=length;
+ }
+ return NsScan.{ok=true,count=count,bytes=bytes.count};
+}

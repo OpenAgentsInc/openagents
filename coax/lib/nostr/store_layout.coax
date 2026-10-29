@@ -1,0 +1,40 @@
+// Bounded layout for an immutable-original event log. This is resource
+// geometry only: it does not verify events, authenticate persistence, or
+// establish physical allocation, disjointness or exclusive access.
+#authority;
+NS_LOG_MAX_EVENTS :: 512;
+NS_LOG_MAX_BYTES :: 1048576;
+NS_LOG_HEADER :: 16;
+NS_LOG_MAX_SNAPSHOT :: 1050640;
+NsLogLayout :: struct {ok:bool;events:int;bytes:int;index_words:int;snapshot_bytes:int;}
+
+#test "layout derives one offset and length per event" {
+ a:=ns_log_layout(0,0,0,16,false);#assert a.ok && a.index_words==0 && a.snapshot_bytes==16;
+ b:=ns_log_layout(3,99,6,127,false);#assert b.ok && b.events==3 && b.bytes==99 && b.index_words==6 && b.snapshot_bytes==127;
+ #assert ns_log_layout(3,99,6,128,false).ok;
+}
+#test "maximum event log and snapshot limits are explicit" {
+ a:=ns_log_layout(512,1048576,1024,1050640,false);
+ #assert a.ok && a.index_words==1024 && a.snapshot_bytes==1050640;
+ #assert !ns_log_layout(513,1048576,1026,1050644,false).ok;
+  #assert !ns_log_layout(513,0,1026,2068,false).ok;
+ #assert !ns_log_layout(512,1048577,1024,1050641,false).ok;
+  #assert !ns_log_layout(0,1048577,0,1048593,false).ok;
+ #assert !ns_log_layout(512,1048576,1024,1050641,false).ok;
+}
+#test "bad capacities and overlapping physical views refuse before arithmetic" {
+ #assert !ns_log_layout(-1,0,0,16,false).ok && !ns_log_layout(0,-1,0,16,false).ok;
+ #assert !ns_log_layout(3,99,5,127,false).ok && !ns_log_layout(3,99,7,127,false).ok;
+ #assert !ns_log_layout(3,99,6,126,false).ok && !ns_log_layout(0,0,0,15,false).ok;
+ #assert !ns_log_layout(0,0,0,16,true).ok && !ns_log_layout(3,99,6,127,true).ok;
+ #assert !ns_log_layout(9223372036854775807,0,0,16,false).ok;
+ #assert !ns_log_layout(0,9223372036854775807,0,16,false).ok;
+ #assert !ns_log_layout(0,0,9223372036854775807,16,false).ok;
+ #assert !ns_log_layout(0,0,0,9223372036854775807,false).ok;
+}
+ns_log_layout :: (events:int,bytes:int,index_words:int,snapshot_capacity:int,overlap:bool)->NsLogLayout #export_c {
+ if overlap || events<0 || events>NS_LOG_MAX_EVENTS || bytes<0 || bytes>NS_LOG_MAX_BYTES || snapshot_capacity>NS_LOG_MAX_SNAPSHOT {return NsLogLayout.{};}
+ index:=events*2;required:=NS_LOG_HEADER+events*4+bytes;
+ if index_words!=index || snapshot_capacity<required {return NsLogLayout.{};}
+ return NsLogLayout.{ok=true,events=events,bytes=bytes,index_words=index,snapshot_bytes=required};
+}
