@@ -94,3 +94,19 @@ s, vgone = v("POST", "pets/%s/remove" % pid, kiki)
 check("villa: removing takes the pet, its tombstone and its files", s == 200 and v("GET", "memorial/" + pet["slug"])[0] == 404
       and not any("/villa/" + pid in k for k in bucket["objects"]), bucket["objects"].keys())
 gcs_server.shutdown()
+
+# Skills and vases (0029_villa_play.sql).
+s, pet2 = v("POST", "pets", kiki, {"name": "Bo"})
+check("villa: a new pet has every skill", sorted(pet2["avatar"]["skills"]) == ["digging", "fetch", "obedience"], pet2)
+s, pet2 = v("POST", "pets/" + pet2["id"], kiki, {"avatar": {"skills": ["fetch", "flying"]}})
+check("villa: skills are only the known ones", pet2["avatar"]["skills"] == ["fetch"], pet2)
+check("villa: an empty vase is refused", v("POST", "vases", kiki, {"x": 1, "z": 2, "flowers": []})[0] == 400)
+s, vase = v("POST", "vases", kiki, {"x": 1, "z": 2, "yaw": 0.5, "flowers": [{"kind": 0, "slot": 0}, {"kind": 9, "slot": 1}, {"kind": 2, "slot": 3}], "plot": 12})
+check("villa: a vase is left, its bad flower dropped", s == 200 and [f["kind"] for f in vase["flowers"]] == [0, 2] and vase["plot"] == 12 and vase["mine"], vase)
+check("villa: one vase a minute", v("POST", "vases", kiki, {"x": 1, "z": 2, "flowers": [{"kind": 1, "slot": 0}]})[0] == 429)
+vs = v("GET", "vases", guest)[1]["vases"]
+check("villa: everyone sees it", any(x["n"] == vase["n"] and not x["mine"] for x in vs), vs)
+v("POST", "vases/%d/clean" % vase["n"], guest)
+check("villa: someone else can't clean it up", any(x["n"] == vase["n"] for x in v("GET", "vases")[1]["vases"]))
+v("POST", "vases/%d/clean" % vase["n"], kiki)
+check("villa: its maker cleans it up", not any(x["n"] == vase["n"] for x in v("GET", "vases")[1]["vases"]))

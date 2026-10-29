@@ -23,6 +23,8 @@ int64_t vf_max_bones(void);
 int64_t vf_size(void);
 int64_t vf_pet_emote(figs_view f, int64_t n);
 _Bool vf_emote(figs_view f, int64_t i, int64_t motion);
+void vf_stop(figs_view f, int64_t i);
+int64_t vf_motion_named(figs_view f, coax_string name);
 #include "analytics-face.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -109,7 +111,14 @@ static void pet_action(uint32_t state) {
 // The pet's requests: the next one wanted goes when none is waiting.
 static void pet_requests(uint32_t state) {
   coax_t_PetUi *p = &villa(state)->pet.e[0];
-  if (p->emote >= 0) { vf_emote(fv(), 1, vf_pet_emote(fv(), p->emote)); p->emote = -1; }
+  coax_t_Play *q = &villa(state)->play.e[0];
+  // 0..5 the stock emotes, 6 digging; a come (or a throw) ends a still one
+  if (p->emote == 6) vf_emote(fv(), 1, vf_motion_named(fv(), (coax_string){"dig", 3}));
+  else if (p->emote >= 0) vf_emote(fv(), 1, vf_pet_emote(fv(), p->emote));
+  p->emote = -1;
+  coax_t_Follower dog = villa_dog(at(state));
+  float dx = dog.pos.x - villa(state)->feet.x, dz = dog.pos.z - villa(state)->feet.z;
+  if (q->stop_ask || (!q->stay && q->dig_t <= 0 && dx * dx + dz * dz > 9.0f && vf_still(fv(), 1))) { vf_stop(fv(), 1); q->stop_ask = false; }
   pet_action(state);
   if (mint_n && !action_kind) { memcpy(action_out, mint_record, mint_n); action_n = mint_n; action_kind = 5; mint_n = 0; has_player = true; }
   if (!facts_seen) return;

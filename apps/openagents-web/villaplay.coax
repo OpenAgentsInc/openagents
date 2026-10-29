@@ -1,0 +1,274 @@
+// Playing in Hecate's Cemetery (hc-skills, hc-fetch, hc-explore,
+// hc-flowers-field, hc-vase, hc-vase-place): fetch in the field, sit, stay
+// and come, digging, glowing flowers to pick and a vase to arrange and leave
+// anywhere. Loaded by villa.coax; the pet's skills and the vases are kept by
+// the server (villapet.coax makes the requests).
+
+// Glowing flowers in the field: x, z, kind. Off the loop path and the trees.
+FLOWERS :: 21;
+FLOWER_AT :: [63] f32.[
+  7.5, 5.5, 0,   10.5, -5, 1,   10.5, 17.5, 2,   16, 3, 0,   16.5, -17.5, 1,   18.5, 21.5, 2,   21, -3.5, 0,
+  22, 14, 1,   26.5, 1.5, 2,   26.5, -19, 0,   29, 14, 1,   33.5, -2, 2,   33, 18.5, 0,   31.5, 1, 1,
+  35.5, -15.5, 2,   40, 6, 0,   40, -9.5, 1,   40.5, 19.5, 2,   34, -26, 0,   13.5, 24, 1,   12.5, -25.5, 2
+];
+REGROW :: 120.0;       // seconds before a picked flower grows back
+PICK_REACH :: 1.7;
+HOLES :: 8;
+HAND_AHEAD :: 0.35; HAND_UP :: 1.15; HAND_RIGHT :: 0.25;
+BALL_PUT_AWAY :: 99;
+FADE_DAYS :: 3.0;      // a vase's flowers fade over three days
+
+Play :: struct {
+  regrow: [FLOWERS] f32;             // seconds left before it shows again; 0 it's there
+  near_flower: int;                  // the flower within reach, -1 none
+  near_vase: int;                    // your vase within reach, -1 none
+  stay: bool;                        // told to stay: it holds where it is
+  holes: [HOLES * 3] f32; hole_n: int;   // x, z, how long ago
+  dig_t: f32;                        // digging, seconds left
+  stop_ask: bool;                    // the face ends the dog's still emote
+}
+
+flower_x :: (i: int) -> f32 { return FLOWER_AT[i * 3]; }
+flower_z :: (i: int) -> f32 { return FLOWER_AT[i * 3 + 1]; }
+flower_kind :: (i: int) -> int { return cast(int) FLOWER_AT[i * 3 + 2]; }
+in_garden :: (x: f32, z: f32) -> bool { return x > f32(GARDEN_X0) && x < f32(GARDEN_X1) && z > f32(GARDEN_Z0) && z < f32(GARDEN_Z1); }
+hand_of :: (s: [] Villa) -> Point { return verse_hand(s[0].feet, s[0].face, f32(HAND_AHEAD), f32(HAND_UP), f32(HAND_RIGHT)); }
+
+play_has :: (s: [] Villa, skill: int, word: string) -> bool {
+  if s[0].pet[0].skills & skill != 0 { return true; }
+  t: [120] u8;
+  n := pet_put(t[..], 0, "Your pet doesn't know ");
+  n = pet_put(t[..], n, word);
+  n = pet_put(t[..], n, " yet: choose it in YOUR PET");
+  if n > 0 { pet_toast(s[0].pet[..], cast(string) t[0..<n]); }
+  return false;
+}
+
+// What the HUD or a key asked for this frame.
+play_do :: (s: [] Villa, what: int) {
+  p := s[0].pet[..]; q := s[0].play[..];
+  b := s[0].fetch.ball;
+  if what == DO_THROW {
+    if !play_has(s, SKILL_FETCH, "fetch") { return; }
+    if b.held != 0 {   // the ball comes to your hand: from your pocket, or from the ground
+      if b.held == 1 { pet_toast(p, "Let them bring it back first"); return; }
+      s[0].fetch.ball = verse_ball_pick(b, 0, s[0].feet, hand_of(s));
+      s[0].fetch.ball.held = 0;
+      return;
+    }
+    vel := v3(cos(s[0].face) * s[0].speed, 0, sin(s[0].face) * s[0].speed);
+    s[0].fetch.ball = verse_ball_throw(b, hand_of(s), s[0].face, 0.5, vel);
+    q[0].stay = false; q[0].stop_ask = true;
+    return;
+  }
+  if what == DO_SIT { if play_has(s, SKILL_OBEY, "sit, stay and come") { p[0].emote = 0; } return; }
+  if what == DO_STAY { if play_has(s, SKILL_OBEY, "sit, stay and come") { q[0].stay = true; p[0].emote = 0; pet_toast(p, "They stay right there"); } return; }
+  if what == DO_COME { if play_has(s, SKILL_OBEY, "sit, stay and come") { q[0].stay = false; q[0].stop_ask = true; } return; }
+  if what == DO_DIG {
+    if !play_has(s, SKILL_DIG, "digging") { return; }
+    d := s[0].fetch.dog.pos;
+    if in_garden(d.x, d.z) { pet_toast(p, "Dig in the field, not in the garden"); return; }
+    p[0].emote = 6; q[0].dig_t = 2.4;
+    return;
+  }
+  if what == DO_PICK {
+    i := q[0].near_flower;
+    if i < 0 { pet_toast(p, "Walk up to a glowing flower in the field to pick it"); return; }
+    q[0].regrow[i] = f32(REGROW);
+    p[0].bag[flower_kind(i)] += 1;
+    return;
+  }
+  if what == DO_VASE {
+    if p[0].bag[0] + p[0].bag[1] + p[0].bag[2] == 0 { pet_toast(p, "Pick glowing flowers in the field first (E)"); return; }
+    p[0].view = PV_VASE; p[0].focus = -1;
+    ahead := v3(cos(s[0].face), 0, sin(s[0].face));
+    p[0].put_x = s[0].feet.x + ahead.x * 0.9; p[0].put_z = s[0].feet.z + ahead.z * 0.9; p[0].put_yaw = s[0].face;
+    p[0].put_plot = ifx p[0].near >= 0 && p[0].near < p[0].garden then p[0].g_plot[p[0].near] else -1;
+    if p[0].put_plot >= 0 {   // by the stone: in front of it, on the bed
+      p[0].put_x = plot_x(p[0].put_plot) + 0.55; p[0].put_z = plot_z(p[0].put_plot) + 0.1;
+    }
+    return;
+  }
+}
+
+// A key for play: F the ball, 1 sit, 2 stay, 3 come, G dig, E pick, V the vase.
+play_key :: (s: [] Villa, key: int) -> bool {
+  c := ifx key >= 'A' && key <= 'Z' then key + 32 else key;
+  what := ifx c == 'f' then DO_THROW else ifx c == '1' then DO_SIT else ifx c == '2' then DO_STAY else ifx c == '3' then DO_COME
+          else ifx c == 'g' then DO_DIG else ifx c == 'e' then DO_PICK else ifx c == 'v' then DO_VASE else -1;
+  if what < 0 { return false; }
+  play_do(s, what);
+  return true;
+}
+
+// Once a frame, after the dog's step: the ball, the flowers, the holes, what's in reach.
+play_step :: (s: [] Villa, dt: f32) {
+  p := s[0].pet[..]; q := s[0].play[..];
+  if p[0].doing >= 0 { what := p[0].doing; p[0].doing = -1; play_do(s, what); }
+  b := s[0].fetch.ball;
+  if b.held == 0 { s[0].fetch.ball = verse_ball_carry(b, hand_of(s)); }
+  else if b.held < 0 {
+    s[0].fetch.ball = verse_ball_step(b, ground(), s[0].heights[..], s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6], dt);
+    // brought back and dropped by you: it comes to your hand
+    nb := s[0].fetch.ball;
+    if !nb.thrown && s[0].fetch.mode == FETCH_FOLLOW && verse_ball_can_pick(nb, s[0].feet) { s[0].fetch.ball = verse_ball_pick(nb, 0, s[0].feet, hand_of(s)); s[0].fetch.ball.held = 0; }
+  }
+  for i: 0..<FLOWERS { if q[0].regrow[i] > 0 { q[0].regrow[i] = hi(q[0].regrow[i] - dt, 0); } }
+  q[0].near_flower = -1;
+  best := f32(PICK_REACH);
+  for i: 0..<FLOWERS {
+    if q[0].regrow[i] > 0 { continue; }
+    d := flat_length(sub(s[0].feet, v3(flower_x(i), 0, flower_z(i))));
+    if d < best { best = d; q[0].near_flower = i; }
+  }
+  q[0].near_vase = -1;
+  for i: 0..<p[0].vases {
+    if p[0].v_mine[i] && flat_length(sub(s[0].feet, v3(p[0].v_x[i], 0, p[0].v_z[i]))) < 1.6 { q[0].near_vase = i; }
+  }
+  for h: 0..<q[0].hole_n { q[0].holes[h * 3 + 2] += dt; }
+  if q[0].dig_t > 0 {
+    q[0].dig_t -= dt;
+    if q[0].dig_t <= 0 {   // a hole where it dug, then it stands again
+      d := s[0].fetch.dog;
+      ahead := v3(cos(d.face), 0, sin(d.face));
+      k := ifx q[0].hole_n < HOLES then q[0].hole_n else 0;
+      q[0].holes[k * 3] = d.pos.x + ahead.x * 0.6; q[0].holes[k * 3 + 1] = d.pos.z + ahead.z * 0.6; q[0].holes[k * 3 + 2] = 0;
+      if q[0].hole_n < HOLES { q[0].hole_n += 1; }
+      q[0].stop_ask = true;
+    }
+  }
+}
+
+// The field's flowers, the ball, the holes and the vases, as scene shapes.
+play_draw :: (s: [] Villa) {
+  p := s[0].pet[..]; q := s[0].play[..];
+  t := effect_time(s);
+  for i: 0..<FLOWERS {
+    if q[0].regrow[i] > 0 { continue; }
+    x := flower_x(i); z := flower_z(i); k := flower_kind(i);
+    g := ground_at(s, x, z);
+    sway := 0.06 * sin(t * 1.3 + f32(i));
+    shape(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(x + sway * 0.5, g + 0.22, z), 0, sway, 0.03, 0.44, 0.03, 0.12, 0.3, 0.18);
+    pulse := 0.85 + 0.15 * sin(t * 2.1 + f32(i) * 1.7);
+    ball(s, LOOK_BLOOM, v3(x + sway, g + 0.48, z), 0.09, FLOWER_RGB[k * 3] * pulse, FLOWER_RGB[k * 3 + 1] * pulse, FLOWER_RGB[k * 3 + 2] * pulse);
+  }
+  b := s[0].fetch.ball;
+  if b.held != BALL_PUT_AWAY { ball(s, LOOK_GLOW, b.pos, b.radius, 0.95, 0.9, 0.7); }
+  for h: 0..<q[0].hole_n {
+    x := q[0].holes[h * 3]; z := q[0].holes[h * 3 + 1];
+    g := ground_at(s, x, z);
+    shape(s, SHAPE_CYLINDER, LOOK_SOIL, v3(x, g + 0.01, z), 0, 0, 0.55, 0.03, 0.55, 0.04, 0.035, 0.03);
+    shape(s, SHAPE_SPHERE, LOOK_SOIL, v3(x + 0.38, g + 0.03, z), 0, 0, 0.4, 0.14, 0.3, 0.12, 0.1, 0.08);
+  }
+  for i: 0..<p[0].vases {
+    x := p[0].v_x[i]; z := p[0].v_z[i];
+    g := ground_at(s, x, z);
+    fresh := clamp(1 - p[0].v_age[i] / f32(FADE_DAYS * 86400), 0.12, 1);
+    shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 0.17, z), 0, 0, 0.22, 0.34, 0.22, 0.5, 0.52, 0.6);
+    shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 0.36, z), 0, 0, 0.16, 0.06, 0.16, 0.55, 0.57, 0.65);
+    for k: 0..<VASE_SLOTS {
+      kind := p[0].v_flowers[i * VASE_SLOTS + k];
+      if kind < 0 { continue; }
+      a := f32(PI) * (0.15 + 0.7 * f32(k) / f32(VASE_SLOTS - 1)) + p[0].v_yaw[i];
+      droop := (1 - fresh) * 0.25;
+      top := v3(x - cos(a) * 0.16, g + 0.72 - droop, z - sin(a) * 0.16);
+      limb(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(x, g + 0.38, z), top, 0.012, 0.12 * fresh, 0.3 * fresh, 0.18 * fresh);
+      ball(s, ifx fresh > 0.4 then LOOK_BLOOM else LOOK_MATTE, top, 0.06, FLOWER_RGB[kind * 3] * fresh, FLOWER_RGB[kind * 3 + 1] * fresh, FLOWER_RGB[kind * 3 + 2] * fresh);
+    }
+  }
+}
+
+// The play buttons above the hint (a phone's thumbs, or the keys' names), and your flowers.
+play_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
+  p := s[0].pet[..]; q := s[0].play[..];
+  p[0].buttons = 0;   // this frame's buttons start here; pet_draw adds its own after
+  if p[0].view != PV_NONE { return n; }
+  k := hi(s[0].dpr, 0.5); w := s[0].width; h := s[0].height;
+  m := n;
+  phone_ := phone(s);
+  words: [7] string;
+  does: [7] int;
+  c := 0;
+  if p[0].skills & SKILL_FETCH != 0 { words[c] = ifx phone_ then "BALL" else "F  BALL"; does[c] = DO_THROW; c += 1; }
+  if p[0].skills & SKILL_OBEY != 0 {
+    words[c] = ifx phone_ then "SIT" else "1  SIT"; does[c] = DO_SIT; c += 1;
+    words[c] = ifx q[0].stay then (ifx phone_ then "COME" else "3  COME") else (ifx phone_ then "STAY" else "2  STAY");
+    does[c] = ifx q[0].stay then DO_COME else DO_STAY; c += 1;
+  }
+  if p[0].skills & SKILL_DIG != 0 { words[c] = ifx phone_ then "DIG" else "G  DIG"; does[c] = DO_DIG; c += 1; }
+  if q[0].near_flower >= 0 { words[c] = ifx phone_ then "PICK" else "E  PICK"; does[c] = DO_PICK; c += 1; }
+  any := p[0].bag[0] + p[0].bag[1] + p[0].bag[2] > 0;
+  if any { words[c] = ifx phone_ then "VASE" else "V  VASE"; does[c] = DO_VASE; c += 1; }
+  if c == 0 { return m; }
+  cap := 7.5 * k; gap := 6 * k;
+  bw := lo(84 * k, (w - 32 * k - f32(c - 1) * gap) / f32(c)); bh := 34 * k;
+  total := f32(c) * bw + f32(c - 1) * gap;
+  y1 := h - 16 * k - 7.5 * k - 20 * k - 10 * k;
+  x := (w - total) / 2;
+  plate(s, u, Box.{x0 = x - 8 * k, y0 = y1 - bh - 8 * k, x1 = x + total + 8 * k, y1 = y1 + 8 * k}, 0.6, 0);
+  for i: 0..<c {
+    b := Box.{x0 = x + f32(i) * (bw + gap), y0 = y1 - bh, x1 = x + f32(i) * (bw + gap) + bw, y1 = y1};
+    m = btn(s, out, m, b, words[i], B_DO, does[i], false);
+  }
+  if any {
+    line: [120] u8; ln := 0;
+    for f: 0..<FLOWER_KINDS {
+      if f > 0 { ln = pet_put(line[..], ln, " · "); }
+      ln = pet_put(line[..], ln, FLOWER_NAME[f]); ln = pet_put(line[..], ln, " "); ln = pj_put_int(line[..], ln, p[0].bag[f]);
+    }
+    if ln > 0 {
+      t := cast(string) line[0..<ln];
+      tw := text_width(t, cap);
+      yb := y1 - bh - 18 * k;
+      m = pt_dim(out, m, t, (w - tw) / 2, yb, cap, k);
+    }
+  }
+  if q[0].near_vase >= 0 && p[0].near < 0 {
+    i := q[0].near_vase;
+    cw := lo(300 * k, w - 32 * k);
+    cb := Box.{x0 = (w - cw) / 2, y0 = y1 - bh - 110 * k, x1 = (w + cw) / 2, y1 = y1 - bh - 40 * k};
+    plate(s, u, cb, 0.82, 0);
+    m = pt(out, m, "YOUR VASE", cb.x0 + 14 * k, cb.y0 + 22 * k, 9 * k, k, 1);
+    m = btn(s, out, m, Box.{x0 = cb.x0 + 14 * k, y0 = cb.y1 - 36 * k, x1 = cb.x1 - 14 * k, y1 = cb.y1 - 8 * k}, "CLEAN IT UP", B_CLEAN, p[0].v_n[i], false);
+  }
+  return m;
+}
+
+// ---- checks
+
+#test "the field's flowers stand off the paths, the trees and the garden" {
+  for i: 0..<FLOWERS {
+    x := flower_x(i); z := flower_z(i);
+    #assert !in_garden(x, z) && x > f32(GARDEN_X1) + 2 && x < 46 && abs(z) < 30;
+    #assert flower_kind(i) >= 0 && flower_kind(i) < FLOWER_KINDS;
+    for t: 0..<TREES { #assert flat_length(sub(v3(x, 0, z), v3(TREE[t * 5], 0, TREE[t * 5 + 1]))) > TREE[t * 5 + 3] + 0.8; }
+    for l: 0..<LINKS {
+      a := LINK_AB[l * 2]; b := LINK_AB[l * 2 + 1];
+      ax := NODE_XZ[a * 2]; az := NODE_XZ[a * 2 + 1]; bx := NODE_XZ[b * 2]; bz := NODE_XZ[b * 2 + 1];
+      dx := bx - ax; dz := bz - az;
+      tt := clamp(((x - ax) * dx + (z - az) * dz) / hi(dx * dx + dz * dz, 0.0001), 0, 1);
+      #assert flat_length(v3(x - (ax + dx * tt), 0, z - (az + dz * tt))) > f32(PATH_HALF) + 0.6;
+    }
+  }
+}
+
+#test "a flower is picked into the bag and grows back; the ball comes to hand, then flies; no skill, no trick" {
+  s: [1] Villa;
+  villa_start(s[..]);
+  x := flower_x(3); z := flower_z(3); k := flower_kind(3);
+  villa_step(s[..], 1.0 / 60.0, x + 0.5, 0, z, 0, 0, 0, 0);
+  #assert s[0].play[0].near_flower == 3;
+  #assert play_key(s[..], 'E') && s[0].pet[0].bag[k] == 1 && s[0].play[0].regrow[3] > 0;
+  villa_step(s[..], 1.0 / 60.0, x + 0.5, 0, z, 0, 0, 0, 0);
+  #assert s[0].play[0].near_flower != 3;
+  for i: 0..<130 { play_step(s[..], 1); }
+  #assert s[0].play[0].regrow[3] == 0;
+  #assert play_key(s[..], 'f') && s[0].fetch.ball.held == 0;
+  #assert play_key(s[..], 'f') && s[0].fetch.ball.held < 0 && s[0].fetch.ball.thrown;
+  s[0].pet[0].skills = 0;
+  #assert play_key(s[..], 'g') && s[0].pet[0].emote != 6 && s[0].pet[0].toast_n > 0;
+  #assert play_key(s[..], 'v') && s[0].pet[0].view == PV_VASE;   // one moonpetal or so in the bag
+  s[0].pet[0].view = PV_NONE; for f: 0..<FLOWER_KINDS { s[0].pet[0].bag[f] = 0; }
+  #assert play_key(s[..], 'v') && s[0].pet[0].view == PV_NONE;
+  #assert !play_key(s[..], 'x');
+}

@@ -29,8 +29,8 @@ EMOTES :: 6;
 EMOTE_LABEL :: [6] string.["SIT", "PLAY BOW", "ROLL OVER", "HOWL", "WAG", "SLEEP"];
 
 // The requests, one at a time, first wanted first.
-ASK_MINE :: 1; ASK_NEW :: 2; ASK_SAVE :: 4; ASK_AGENT :: 8; ASK_PLACE :: 16; ASK_GARDEN :: 32; ASK_MEMORIAL :: 64; ASK_NOTE :: 128; ASK_HIDE :: 256;
-ASK_KINDS :: 9;
+ASK_MINE :: 1; ASK_NEW :: 2; ASK_SAVE :: 4; ASK_AGENT :: 8; ASK_PLACE :: 16; ASK_GARDEN :: 32; ASK_MEMORIAL :: 64; ASK_NOTE :: 128; ASK_HIDE :: 256; ASK_VASES :: 512; ASK_VASE :: 1024; ASK_CLEAN :: 2048;
+ASK_KINDS :: 12;
 
 PV_NONE :: 0; PV_PET :: 1; PV_MEMORIAL :: 2;
 AGENT_NONE :: 0; AGENT_READING :: 1; AGENT_READY :: 2; AGENT_FAILED :: 3;
@@ -42,6 +42,19 @@ BUTTONS :: 48;
 // What a button does.
 B_OPEN :: 1; B_CLOSE :: 2; B_FIELD :: 3; B_PHOTOS :: 4; B_AGENT :: 5; B_PLAY :: 6; B_TAB :: 7; B_SLIDER :: 8; B_PATTERN :: 9;
 B_COAT :: 10; B_MARKS :: 11; B_EMOTE :: 12; B_MEMORIAL :: 13; B_SHARE :: 14; B_NOTE :: 15; B_SEND :: 16; B_HIDE :: 17;
+B_SKILL :: 18; B_DO :: 19; B_KIND :: 20; B_SLOT :: 21; B_PLACE_VASE :: 22; B_CLEAN :: 23;
+// Skills, as bits.
+SKILL_FETCH :: 1; SKILL_OBEY :: 2; SKILL_DIG :: 4;
+SKILL_WORDS :: [3] string.["fetch", "obedience", "digging"];
+SKILL_LABEL :: [3] string.["FETCH", "SIT, STAY, COME", "DIGGING"];
+// The field's flowers: three kinds, each glowing its own colour.
+FLOWER_KINDS :: 3;
+FLOWER_NAME :: [3] string.["MOONPETAL", "LANTERN", "STARBELL"];
+FLOWER_RGB :: [9] f32.[0.55, 0.75, 1.0,  1.0, 0.72, 0.32,  0.78, 0.55, 1.0];
+VASE_SLOTS :: 7;
+VASES_MAX :: 80;
+PV_VASE :: 3;
+DO_THROW :: 0; DO_SIT :: 1; DO_STAY :: 2; DO_COME :: 3; DO_DIG :: 4; DO_PICK :: 5; DO_VASE :: 6;
 TYPE_NOTE :: 100;    // focus: the note box on a memorial
 
 PetUi :: struct {
@@ -78,6 +91,17 @@ PetUi :: struct {
   field_box: Box;
   button: [BUTTONS] Box; button_kind: [BUTTONS] int; button_arg: [BUTTONS] int; buttons: int;
   slide: int;                                // the slider being dragged, -1 none
+  skills: int;                               // SKILL_* bits
+  // Flowers picked (by kind), the vase being arranged (a kind per slot, -1 empty) and the kind in hand.
+  bag: [FLOWER_KINDS] int;
+  vase: [VASE_SLOTS] int; holding: int;
+  put_x: f32; put_z: f32; put_yaw: f32; put_plot: int;   // where the vase goes
+  // The vases left in the garden and the field.
+  vases: int; vases_t: f32;
+  v_n: [VASES_MAX] int; v_x: [VASES_MAX] f32; v_z: [VASES_MAX] f32; v_yaw: [VASES_MAX] f32; v_age: [VASES_MAX] f32; v_mine: [VASES_MAX] bool;
+  v_flowers: [VASES_MAX * VASE_SLOTS] int;   // a kind per slot, -1 empty
+  clean_n: int;
+  doing: int;                                // a play the HUD asked for (DO_*), -1 none
   action: int; outbox: [256] u8; out_n: int;
 }
 
@@ -125,6 +149,16 @@ pj_put_num :: (out: [] u8, at: int, v: f32) -> int {
   if o < 0 || o + 4 > out.count { return -1; }
   out[o] = '.'; out[o + 1] = cast(u8) (48 + frac / 100); out[o + 2] = cast(u8) (48 + frac / 10 % 10); out[o + 3] = cast(u8) (48 + frac % 10);
   return o + 4;
+}
+
+pj_put_int :: (out: [] u8, at: int, v: int) -> int {
+  if at < 0 { return -1; }
+  digits: [20] u8; d := 0; w := ifx v < 0 then -v else v;
+  if w == 0 { digits[0] = '0'; d = 1; }
+  while w > 0 && d < 20 { digits[d] = cast(u8) (48 + w % 10); w /= 10; d += 1; }
+  o := ifx v < 0 then pet_put(out, at, "-") else at;
+  for k: 0..<d { if o < 0 || o >= out.count { return -1; } out[o] = digits[d - 1 - k]; o += 1; }
+  return o;
 }
 
 // ---- reading JSON (the server's answers): enough for objects, arrays, strings and numbers
@@ -258,6 +292,12 @@ pet_take :: (p: [] PetUi, t: string, all: bool) {
         while c < 3 { e = pj_next(t, arr, e); if e < 0 { break; } v := clamp(pj_num(t, e), 0, 1); if which == 0 { p[0].coat[c] = v; } else { p[0].marks[c] = v; } c += 1; }
       }
       p[0].look_new = true;
+      sk := pj_get(t, av, "skills");
+      if sk >= 0 {
+        bits := 0; e := sk; w: [16] u8;
+        while true { e = pj_next(t, sk, e); if e < 0 { break; } n := pj_str(t, e, w[..]); for q: 0..<3 { if pet_s(w[..], n) == SKILL_WORDS[q] { bits = bits | (1 << q); } } }
+        p[0].skills = bits;
+      }
     }
     ch := pj_get(t, i, "choices");
     p[0].choices = 0;
@@ -293,6 +333,29 @@ pet_take_garden :: (p: [] PetUi, t: string) {
   p[0].garden = n;
 }
 clamp_i :: (v: int, a: int, b: int) -> int { return ifx v < a then a else ifx v > b then b else v; }
+
+pet_take_vases :: (p: [] PetUi, t: string) {
+  arr := pj_get(t, 0, "vases");
+  e := arr; n := 0;
+  while n < VASES_MAX {
+    e = pj_next(t, arr, e);
+    if e < 0 { break; }
+    p[0].v_n[n] = cast(int) pj_num(t, pj_get(t, e, "n"));
+    p[0].v_x[n] = pj_num(t, pj_get(t, e, "x")); p[0].v_z[n] = pj_num(t, pj_get(t, e, "z")); p[0].v_yaw[n] = pj_num(t, pj_get(t, e, "yaw"));
+    p[0].v_age[n] = pj_num(t, pj_get(t, e, "age"));
+    p[0].v_mine[n] = pj_true(t, pj_get(t, e, "mine"));
+    for k: 0..<VASE_SLOTS { p[0].v_flowers[n * VASE_SLOTS + k] = -1; }
+    fl := pj_get(t, e, "flowers"); f := fl;
+    while true {
+      f = pj_next(t, fl, f);
+      if f < 0 { break; }
+      slot := cast(int) pj_num(t, pj_get(t, f, "slot")); kind := cast(int) pj_num(t, pj_get(t, f, "kind"));
+      if slot >= 0 && slot < VASE_SLOTS && kind >= 0 && kind < FLOWER_KINDS { p[0].v_flowers[n * VASE_SLOTS + slot] = kind; }
+    }
+    n += 1;
+  }
+  p[0].vases = n;
+}
 
 pet_take_memorial :: (p: [] PetUi, t: string) {
   i := pj_space(t, 0);
@@ -338,7 +401,9 @@ pet_start :: (p: [] PetUi) {
   for k: 0..<AV_NUMBERS { p[0].avatar[k] = AV_USUAL[k]; }
   p[0].coat[0] = 0.55; p[0].coat[1] = 0.36; p[0].coat[2] = 0.2;
   p[0].marks[0] = 0.92; p[0].marks[1] = 0.88; p[0].marks[2] = 0.82;
-  p[0].asks = ASK_MINE | ASK_GARDEN;
+  p[0].skills = 7; p[0].holding = -1; p[0].doing = -1; p[0].put_plot = -1;
+  for k: 0..<VASE_SLOTS { p[0].vase[k] = -1; }
+  p[0].asks = ASK_MINE | ASK_GARDEN | ASK_VASES;
 }
 
 // The next request wanted (an ASK_*), 0 none.
@@ -353,11 +418,13 @@ pet_next :: (p: [] PetUi) -> int {
   }
   return 0;
 }
-pet_post :: (kind: int) -> bool { return kind != ASK_MINE && kind != ASK_GARDEN && kind != ASK_MEMORIAL; }
+pet_post :: (kind: int) -> bool { return kind != ASK_MINE && kind != ASK_GARDEN && kind != ASK_MEMORIAL && kind != ASK_VASES; }
 
 pet_url :: (p: [] PetUi, kind: int, out: [] u8) -> int {
   n := 0;
   if kind == ASK_MINE || kind == ASK_NEW { n = pet_put(out, 0, "/api/villa/pets"); }
+  else if kind == ASK_VASES || kind == ASK_VASE { n = pet_put(out, 0, "/api/villa/vases"); }
+  else if kind == ASK_CLEAN { n = pet_put(out, 0, "/api/villa/vases/"); n = pj_put_int(out, n, p[0].clean_n); n = pet_put(out, n, "/clean"); }
   else if kind == ASK_GARDEN { n = pet_put(out, 0, "/api/villa/garden"); }
   else if kind == ASK_MEMORIAL || kind == ASK_NOTE {
     n = pet_put(out, 0, "/api/villa/memorial/"); n = pet_put(out, n, pet_s(p[0].m_slug[..], 8));
@@ -390,6 +457,22 @@ pet_body :: (p: [] PetUi, kind: int, out: [] u8) -> int {
     return pet_put(out, n, "}");
   }
   if kind == ASK_PLACE { return pet_put(out, 0, "{\"near\":40}"); }
+  if kind == ASK_VASE {
+    n := pet_put(out, 0, "{\"x\":"); n = pj_put_num(out, n, p[0].put_x);
+    n = pet_put(out, n, ",\"z\":"); n = pj_put_num(out, n, p[0].put_z);
+    n = pet_put(out, n, ",\"yaw\":"); n = pj_put_num(out, n, p[0].put_yaw);
+    if p[0].put_plot >= 0 { n = pet_put(out, n, ",\"plot\":"); n = pj_put_int(out, n, p[0].put_plot); }
+    n = pet_put(out, n, ",\"flowers\":[");
+    first := true;
+    for k: 0..<VASE_SLOTS {
+      if p[0].vase[k] < 0 { continue; }
+      if !first { n = pet_put(out, n, ","); }
+      first = false;
+      n = pet_put(out, n, "{\"kind\":"); n = pj_put_int(out, n, p[0].vase[k]); n = pet_put(out, n, ",\"slot\":"); n = pj_put_int(out, n, k); n = pet_put(out, n, "}");
+    }
+    n = pet_put(out, n, "]}");
+    return ifx n < 0 then 0 else n;
+  }
   if kind != ASK_SAVE { return pet_put(out, 0, "{}"); }
   n := pet_put(out, 0, "{");
   for f: 0..<PET_FIELDS {
@@ -399,6 +482,10 @@ pet_body :: (p: [] PetUi, kind: int, out: [] u8) -> int {
   n = pet_put(out, n, "\"avatar\":{");
   for k: 0..<AV_NUMBERS { n = pj_put_str(out, n, AV_KEY[k]); n = pet_put(out, n, ":"); n = pj_put_num(out, n, p[0].avatar[k]); n = pet_put(out, n, ","); }
   n = pet_put(out, n, "\"pattern\":"); n = pj_put_str(out, n, PATTERN_WORDS[clamp_i(p[0].pattern, 0, 4)]);
+  n = pet_put(out, n, ",\"skills\":[");
+  sk_first := true;
+  for q: 0..<3 { if p[0].skills & (1 << q) != 0 { if !sk_first { n = pet_put(out, n, ","); } sk_first = false; n = pj_put_str(out, n, SKILL_WORDS[q]); } }
+  n = pet_put(out, n, "]");
   for which: 0..<2 {
     n = pet_put(out, n, ifx which == 0 then ",\"coat\":[" else "],\"marks\":[");
     for c: 0..<3 { if c > 0 { n = pet_put(out, n, ","); } n = pj_put_num(out, n, ifx which == 0 then p[0].coat[c] else p[0].marks[c]); }
@@ -424,6 +511,22 @@ pet_answer :: (p: [] PetUi, kind: int, status: int, t: string) {
     return;
   }
   if kind == ASK_HIDE { if status == 200 { pet_take_notes(p, t); } return; }
+  if kind == ASK_VASES { if status == 200 { pet_take_vases(p, t); } p[0].vases_t = 0; return; }
+  if kind == ASK_VASE {
+    if status == 200 {
+      for k: 0..<VASE_SLOTS { p[0].vase[k] = -1; }
+      p[0].asks = p[0].asks | ASK_VASES;
+      pet_toast(p, ifx p[0].put_plot >= 0 then "Your vase is by their stone" else "Your vase is left here for everyone to see");
+    } else {
+      e: [160] u8;
+      en := pj_str(t, pj_get(t, 0, "error"), e[..]);
+      // the flowers come back to the bag
+      for k: 0..<VASE_SLOTS { if p[0].vase[k] >= 0 { p[0].bag[p[0].vase[k]] += 1; p[0].vase[k] = -1; } }
+      pet_toast(p, ifx en > 0 then pet_s(e[..], en) else "The vase didn't stay: try again");
+    }
+    return;
+  }
+  if kind == ASK_CLEAN { p[0].asks = p[0].asks | ASK_VASES; if status == 200 { pet_toast(p, "You cleaned up your vase"); } return; }
   if kind == ASK_NOTE {
     if status == 200 { p[0].typed_n = 0; pet_take_notes(p, t); pet_toast(p, "Your note is on the memorial"); }
     else if status == 429 { pet_toast(p, "A little slower: try again in a minute"); }
@@ -459,6 +562,9 @@ pet_tick :: (p: [] PetUi, dt: f32) {
   p[0].garden_t += dt;
   if p[0].toast_t > 0 { p[0].toast_t -= dt; }
   if p[0].garden_t > 30 { p[0].asks = p[0].asks | ASK_GARDEN; p[0].garden_t = 0; }
+  p[0].vases_t += dt;
+  if p[0].vases_t > 45 { p[0].asks = p[0].asks | ASK_VASES; p[0].vases_t = 0; }
+  for k: 0..<p[0].vases { p[0].v_age[k] += dt; }
   if p[0].agent == AGENT_READING && p[0].asks & ASK_AGENT == 0 && p[0].dirty_t > 200 { p[0].agent = AGENT_FAILED; }
 }
 
@@ -596,6 +702,24 @@ pet_pointer :: (p: [] PetUi, x: f32, y: f32, phase: int) -> bool {
     n = pet_put(p[0].outbox[..], n, pet_s(p[0].m_slug[..], 8));
     if n > 0 { p[0].out_n = n; p[0].action = 2; pet_toast(p, "The link is copied: send it to family and friends"); }
   }
+  else if kind == B_SKILL { p[0].skills = p[0].skills ^ (1 << arg); pet_changed(p); }
+  else if kind == B_DO { p[0].doing = arg; }
+  else if kind == B_KIND { p[0].holding = ifx p[0].holding == arg then -1 else arg; }
+  else if kind == B_SLOT {
+    cur := p[0].vase[arg];
+    if cur >= 0 { p[0].bag[cur] += 1; p[0].vase[arg] = -1; }
+    else if p[0].holding >= 0 && p[0].bag[p[0].holding] > 0 {
+      p[0].vase[arg] = p[0].holding; p[0].bag[p[0].holding] -= 1;
+      if p[0].bag[p[0].holding] == 0 { p[0].holding = -1; }
+    } else { pet_toast(p, "Pick a flower below, then a place in the vase"); }
+  }
+  else if kind == B_PLACE_VASE {
+    some := false;
+    for q: 0..<VASE_SLOTS { if p[0].vase[q] >= 0 { some = true; } }
+    if !some { pet_toast(p, "Put a flower in the vase first"); return true; }
+    p[0].asks = p[0].asks | ASK_VASE; p[0].view = PV_NONE;
+  }
+  else if kind == B_CLEAN { p[0].clean_n = arg; p[0].asks = p[0].asks | ASK_CLEAN; }
   else if kind == B_HIDE {
     // the owner hides a note: the face sends it as a save of the note's state
     p[0].hide_n = arg; p[0].asks = p[0].asks | ASK_HIDE;
@@ -685,6 +809,13 @@ pet_draw_about :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f32)
   m = field_draw(s, out, m, PF_STORY, x0, x1, y, 4); y += 98 * k;
   m = field_draw(s, out, m, PF_TRAITS, x0, x1, y, 2); y += 66 * k;
   bh := 34 * k;
+  m = pt_dim(out, m, "WHAT THEY CAN DO", x0, y + 6 * k, 7 * k, k); y += 12 * k;
+  sw := (x1 - x0 - 2 * 6 * k) / 3;
+  for q: 0..<3 {
+    bx := x0 + f32(q) * (sw + 6 * k);
+    m = btn(s, out, m, Box.{x0 = bx, y0 = y, x1 = bx + sw, y1 = y + 28 * k}, SKILL_LABEL[q], B_SKILL, q, p[0].skills & (1 << q) != 0);
+  }
+  y += 38 * k;
   m = btn(s, out, m, Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + bh}, "ADD PHOTOS OR A SHORT VIDEO", B_PHOTOS, 0, false);
   y += bh + 8 * k;
   // the files, a line each: name, then how far or what happened
@@ -822,8 +953,7 @@ pet_draw_memorial :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f
 // The panel, or its button and the tombstone you stand at; and the toast.
 pet_draw :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   p := s[0].pet[..];
-  p[0].buttons = 0;
-  p[0].field_box = no_box();
+  p[0].field_box = no_box();   // its buttons were reset by play_hud, drawn first
   k := hi(s[0].dpr, 0.5); w := s[0].width; h := s[0].height; g := 16 * k;
   m := n;
   if p[0].view == PV_NONE {
@@ -858,6 +988,8 @@ pet_draw :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
       m = btn(s, out, m, Box.{x0 = x1 - tw, y0 = ty, x1 = x1, y1 = ty + 30 * k}, "THEIR LOOK", B_TAB, 1, p[0].tab == 1);
       if p[0].tab == 0 { m = pet_draw_about(s, out, m, x0, x1, ty + 44 * k); }
       else { m = pet_draw_look(s, out, m, x0, x1, ty + 44 * k); }
+    } else if p[0].view == PV_VASE {
+      m = pet_draw_vase(s, out, m, x0, x1, b.y0 + 52 * k);
     } else {
       m = pet_draw_memorial(s, out, m, x0, x1, b.y0 + 52 * k, b.y1 - pad);
     }
@@ -930,3 +1062,55 @@ pet_draw :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   #assert pet_key(p[..], -2) && p[0].asks & ASK_NOTE != 0;
   #assert cast(string) out[0..<pet_body(p[..], ASK_NOTE, out[..])] == "{\"text\":\"Miss you\"}";
 }
+
+// The vase being arranged: seven places in a fan over its mouth, the flowers
+// picked below; a flower chosen, then a place; a place pressed again gives it back.
+pet_draw_vase :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f32) -> int {
+  k := hi(s[0].dpr, 0.5); p := s[0].pet[..]; m := n;
+  m = pt(out, m, "ARRANGE YOUR VASE", x0, top - 20 * k, 11 * k, k, 1);
+  cx := (x0 + x1) / 2; base := top + 250 * k;
+  // the vase: a rounded body drawn in light
+  vw := 54 * k; vh := 90 * k;
+  pts := [12] f32.[-0.45, 0, -0.62, -0.35, -0.5, -0.75, -0.3, -1, 0.3, -1, 0.5, -0.75];
+  for i: 0..<5 {
+    for side: 0..<2 {
+      sg := ifx side == 0 then 1.0f32 else -1.0f32;
+      ax := cx + sg * pts[i * 2] * vw; ay := base + pts[i * 2 + 1] * vh;
+      bx := cx + sg * pts[i * 2 + 2] * vw; by := base + pts[i * 2 + 3] * vh;
+      if i < 5 && lit(out, m, ax, ay, bx, by, 0.9 * k, 0.8, 2 * k, SILVER_R, SILVER_G, SILVER_B, 0) { m += 6; }
+    }
+  }
+  if lit(out, m, cx - 0.45 * vw, base, cx + 0.45 * vw, base, 0.9 * k, 0.8, 2 * k, SILVER_R, SILVER_G, SILVER_B, 0) { m += 6; }
+  mouth := base - vh;
+  for q: 0..<VASE_SLOTS {
+    a := f32(PI) * (0.15 + 0.7 * f32(q) / f32(VASE_SLOTS - 1));
+    fx := cx - cos(a) * 110 * k; fy := mouth - sin(a) * 120 * k;
+    kind := p[0].vase[q];
+    if kind >= 0 {
+      if lit(out, m, cx + (fx - cx) * 0.15, mouth + 6 * k, fx, fy, 0.7 * k, 0.6, 1 * k, 0.35, 0.6, 0.4, 0) { m += 6; }
+      if lit(out, m, fx - 0.01, fy, fx + 0.01, fy, 9 * k, 1.0, 8 * k, FLOWER_RGB[kind * 3], FLOWER_RGB[kind * 3 + 1], FLOWER_RGB[kind * 3 + 2], 0) { m += 6; }
+    } else {
+      m = outline(out, m, Box.{x0 = fx - 9 * k, y0 = fy - 9 * k, x1 = fx + 9 * k, y1 = fy + 9 * k}, k, 0.3);
+    }
+    pet_button(p, Box.{x0 = fx - 18 * k, y0 = fy - 18 * k, x1 = fx + 18 * k, y1 = fy + 18 * k}, B_SLOT, q);
+  }
+  y := base + 24 * k;
+  m = pt_dim(out, m, "YOUR FLOWERS: CHOOSE ONE, THEN A PLACE IN THE VASE", x0, y, 7 * k, k); y += 10 * k;
+  fw := (x1 - x0 - 2 * 6 * k) / 3;
+  for q: 0..<FLOWER_KINDS {
+    bx := x0 + f32(q) * (fw + 6 * k);
+    b := Box.{x0 = bx, y0 = y, x1 = bx + fw, y1 = y + 52 * k};
+    m = outline(out, m, b, k, ifx p[0].holding == q then 0.95f32 else 0.4f32);
+    if lit(out, m, bx + 18 * k - 0.01, y + 18 * k, bx + 18 * k + 0.01, y + 18 * k, 7 * k, 1.0, 6 * k, FLOWER_RGB[q * 3], FLOWER_RGB[q * 3 + 1], FLOWER_RGB[q * 3 + 2], 0) { m += 6; }
+    m = pt(out, m, FLOWER_NAME[q], bx + 32 * k, y + 22 * k, 7 * k, k, 0.9);
+    count: [8] u8;
+    cn := pj_put_int(count[..], 0, p[0].bag[q]);
+    m = pt_dim(out, m, pet_s(count[..], lo_int(hi_int(cn, 0), 8)), bx + 32 * k, y + 40 * k, 7 * k, k);
+    pet_button(p, b, B_KIND, q);
+  }
+  y += 66 * k;
+  word := ifx p[0].put_plot >= 0 then "LEAVE IT BY THEIR STONE" else "LEAVE IT HERE";
+  m = btn(s, out, m, Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 34 * k}, word, B_PLACE_VASE, 0, true);
+  return m;
+}
+hi_int :: (a: int, b: int) -> int { return ifx a > b then a else b; }

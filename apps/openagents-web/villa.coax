@@ -35,6 +35,7 @@
 #load "../../verse/cinematic.coax";
 #load "../../verse/particles.coax";
 #load "villapet.coax";
+#load "villaplay.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 16000;
@@ -148,6 +149,8 @@ Villa :: struct {
   plate_n: int;
   // Your pet, the garden's tombstones and a memorial open (villapet.coax).
   pet: [1] PetUi;
+  // Playing: fetch, sit, stay and come, digging, flowers and vases (villaplay.coax).
+  play: [1] Play;
 }
 
 // ---- the layout (metres; +z north, +x east)
@@ -398,6 +401,7 @@ villa_key :: (s: [] Villa, key: int, mods: int) -> bool #export_c {
   if !s[0].started { villa_start(s); }
   if skip_flight(s) { return true; }
   if pet_key(s[0].pet[..], key) { s[0].held = 0; return true; }
+  if play_key(s, key) { return true; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
   b := hold_bit(key);
@@ -524,7 +528,7 @@ villa_step :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: 
   s[0].fl_active = verse_flight_active(f, now); s[0].fl_flying = verse_flight_flying(f, now);
   s[0].fl_take = verse_flight_take(f, now); s[0].fl_t = f32(now - f.start);
   // the dog keeps by you, going round the scenery; it stays put while it sits or digs
-  if !s[0].pet_still {
+  if !s[0].pet_still && !s[0].play[0].stay {
     nodes := NODE_XZ; links := LINK_AB;
     s[0].fetch = verse_fetch_step_among(s[0].fetch, ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), shown, t, s[0].walls[0..<s[0].block_n * 6]);
   } else {
@@ -532,6 +536,7 @@ villa_step :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: 
   }
   pet_tick(s[0].pet[..], t);
   near_stone(s);
+  play_step(s, t);
 }
 
 // The tombstone you stand at (within two metres of it), for its card.
@@ -983,6 +988,7 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
     scenery(s, u);
     old_stones(s);
     pet_stones(s);
+    play_draw(s);
   }
   figures(s, u);
   particles(s);
@@ -1010,7 +1016,7 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
   u[U_GROUND] = f32(CELLS); u[U_GROUND + 1] = f32(CELL); u[U_GROUND + 2] = f32(EDGE); u[U_GROUND + 3] = f32(EDGE);
   paths(u);
   n := hud(s, out, u, move_on, ox, oy, pad_x, pad_y);
-  if !villa_busy(s) { n = pet_draw(s, out, u, n); }
+  if !villa_busy(s) { n = play_hud(s, out, u, n); n = pet_draw(s, out, u, n); } else { s[0].pet[0].buttons = 0; }
   u[5] = f32(s[0].plate_n);
   return n;
 }

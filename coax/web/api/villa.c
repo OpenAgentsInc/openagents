@@ -18,6 +18,8 @@
 //   POST /api/villa/pets/<id>/place {near}       PLAY: its tombstone takes a plot
 //   POST /api/villa/pets/<id>/remove             the pet, its tombstone, notes and files, gone
 //   POST /api/villa/pets/<id>/notes/<n>/hide|show
+//   GET  /api/villa/vases                        the vases left in the garden and the field; POST one {x, z, yaw, flowers, plot}
+//   POST /api/villa/vases/<n>/clean              its maker cleans it up
 //   GET  /api/villa/m/<slug>                     the share link: a page with the memorial's card, on to the realm
 //
 // A write comes from this site's pages (Origin). Nothing anyone shared is logged.
@@ -247,7 +249,9 @@ bool villa_route(const request *q) {
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   const char *v[6] = {q->method, parts, body, key, env_or("OA_DROPS_PREFIX", "dev"), env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops")};
-  answer a = ask(db, Q("villa.api($1, $2::text[], $3::jsonb, $4, $5, $6)"), 6, v);
+  bool vases = !strncmp(rest, "vases", 5) && (rest[5] == 0 || rest[5] == '/');
+  answer a = vases ? ask(db, Q("villa.vases_api($1, $2::text[], $3::jsonb, $4)"), 4, v)
+                   : ask(db, Q("villa.api($1, $2::text[], $3::jsonb, $4, $5, $6)"), 6, v);
   free(body);
   if (a.status == 200 && a.all) {
     if (strstr(a.all, "\"open\": {")) { open_file(q, db, a); return true; }

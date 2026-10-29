@@ -212,6 +212,14 @@ vf_place :: (f: [] Figs, i: int, x: f32, y: f32, z: f32, yaw: f32, out: [] f32, 
   return verse_figure_place(w.skel, vf_pose(f, w), Place.{x = x, y = y, z = z, yaw = yaw}, out, bound);
 }
 
+// A still emote (sit, sleep, dig...) ends: it fades back to standing.
+vf_stop :: (f: [] Figs, i: int) #export_c {
+  if i < 0 || i >= VF_FIGS { return; }
+  w := f[0].figs[i];
+  if w.now.motion >= 0 && w.now.motion < f[0].motion_n && w.now.stop < 0 { w.now.stop = f[0].clock; }
+  f[0].figs[i] = w;
+}
+
 vf_bone_floats :: () -> int #export_c { return BONE_FLOATS; }
 vf_size :: () -> int #export_c { return size_of(Figs); }
 vf_max_bones :: () -> int #export_c { return MAX_PARTS; }
