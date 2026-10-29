@@ -16,7 +16,7 @@ class Loc(C.Structure):_fields_=[(n,C.c_int64) for n in ('line','column','offset
 class Token(C.Structure):_fields_=[('kind',C.c_uint32),('text',LX.Text),('loc',Loc),('value',C.c_uint64),('floating',C.c_double),('width',C.c_int64),('raw_count',C.c_int64)]
 class Node(C.Structure):
     _fields_=[('kind',C.c_uint32),('loc',Loc),('name',LX.Text),('name2',LX.Text),('loc2',Loc)]+[(n,C.c_int64) for n in ('a','b','c','d','head','tail','next')]+[('op',C.c_uint32),('flag',C.c_bool),('flag2',C.c_bool),('value',C.c_uint64),('floating',C.c_double),('width',C.c_int64)]
-class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('pos','used','depth')]+[('code',LX.Text),('loc',Loc),('fix',LX.Text),('length',C.c_int64)]
+class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('pos','used','depth')]+[('code',LX.Text),('loc',Loc),('fix',LX.Text),('length',C.c_int64),('development',C.c_bool)]
 class Result(C.Structure):_fields_=[('ok',C.c_bool),('root',C.c_int64)]
 def view(T):
     class V(C.Structure):_fields_=[('data',C.POINTER(T)),('count',C.c_int64)]
@@ -97,6 +97,15 @@ class Parser(unittest.TestCase):
         for source in ('x :: '+'('*1000+'1'+')'*1000+';', 'f :: () {'+'{'*1000+'}'*1000+'}', 'x :: '+'!'*1000+'true;', 'S :: struct {x:'+ '[] '*1000+'u8;}'):
             r,n,s,msg,keep=self.parse(source)
             self.assertFalse(r.ok);self.assertEqual(LX.raw(s.code),b'E0221');self.assertEqual(s.depth,0)
+    def test_existing_struct_field_type_nesting_boundary(self):
+        # Independently observed on the 0.16 parser: struct-field parsing
+        # admits 126 nested fixed arrays, then refuses 127 at E0221.
+        for depth, accepted in [(126, True), (127, False)]:
+            source='S :: struct {x:'+'[1] '*depth+'u8;}'
+            r,n,s,msg,keep=self.parse(source)
+            self.assertEqual(r.ok,accepted,(depth,msg))
+            self.assertEqual(s.depth,0)
+            if not accepted:self.assertEqual(LX.raw(s.code),b'E0221')
     def test_native_bridge_under_sanitizers(self):
         # The complete compiler links the actual generated compiler modules.
         # This covers pointer/value-list reconstruction as well as the C kernel.

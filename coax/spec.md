@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.16.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.17.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -710,19 +710,36 @@ inputs enter cache keys. A failed plugin invalidates the workspace output.
 This API, `Code`, macros and generated declaration scheduling are not
 implemented by the scalar evaluator.
 
-### 10.5 Planned conditional compilation
+### 10.5 Build-profile conditionals; general conditions planned
 
-`#if CONSTANT { ... } else { ... }` selects declarations or statements at
-compile time. Both branches must parse; only the selected branch participates
-in name resolution, typechecking, effects and emission. A condition cannot
-depend on a declaration that exists only inside its own selected branch.
-Such dependency cycles must be diagnosed rather than guessed.
+Version 0.17.0 supports the fixed workspace selector `#if BUILD_DEBUG { ... }`
+with an optional `else { ... }` inside struct field lists and procedure/check
+statement blocks. `BUILD_DEBUG` selects development unless the compiler command
+has `--release`. It is a context-specific selector, not ordinary name resolution;
+user constants cannot configure it. Selected fields join the enclosing struct
+in source order. Selected statement blocks keep ordinary lexical scope.
 
-This is distinct from runtime `if`, whose bodies are checked and whose
-`#run` sites must succeed even when its condition is false. Target and module
-configuration used by `#if` are explicit workspace inputs and cache-key
-components. The bootstrap rejects `#if`; adding it follows the declaration
-dependency scheduler instead of ad hoc source-text deletion.
+Both branches parse under the same syntax/node/nesting budgets. Only the selected
+syntax-tree nodes participate in name resolution, field layout/defaults,
+reflection, #run, authority reachability and emission. Inactive nodes are cleared
+before helper discovery, so inactive reflection or wide arithmetic cannot inject
+helper declarations. The native host passes the explicit build-mode input; the
+selection policy lives in the checked Coax parser, not a source-text preprocessor.
+
+This changes struct layout. Every producer/consumer of such a native record must
+use the same profile and generated header. Keep profile-dependent fields out of
+published wire/native contracts unless the contract explicitly versions them.
+`--release` also retains its existing integer-wrapping behavior; this feature does
+not introduce a new overflow policy. Native optimization, NDEBUG, Xcode's build
+configuration and Coax build profile are separate inputs. Current app generation
+keeps the checked Coax profile; it does not silently adopt release arithmetic.
+
+Arbitrary `#if CONSTANT`, negated/compound selectors, conditional imports and
+top-level declarations remain unsupported. General conditions will need the
+declaration dependency scheduler: a condition cannot depend on a declaration
+inside its own selected branch, and cycles must be diagnosed. Target/module
+configuration must enter future cache keys. The existing runtime `if` still
+checks both bodies and its #run sites; ordinary #assert still runs in release.
 
 ## 11. Memory, context and errors
 

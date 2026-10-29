@@ -1,7 +1,7 @@
 # Getting started
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.16.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.17.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Let's get Coax running. In this chapter we'll build the compiler, write
 the traditional first program, and look at the different ways the
@@ -39,9 +39,9 @@ compiler. [Chapter 20](ch20-inside-coax0.md) walks through all of this.
 Let's make sure it worked:
 
 <!-- coax-release:version-example:start -->
-```shell
+```bash
 $ coax/bin/coax version
-coax0 0.16.0
+coax0 0.17.0
 ```
 <!-- coax-release:version-example:end -->
 

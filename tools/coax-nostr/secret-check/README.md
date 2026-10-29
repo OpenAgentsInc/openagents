@@ -96,3 +96,11 @@ adds actual typed fields, fixed arrays, known view regions and bounded public
 loops. It preserves scalar-v1 semantics and reports unresolved authored guards
 as `analyzed-with-guard-obligations` with `accepted=false`. Its source analysis
 is also subject to the independent guard, target timing and production gates.
+
+`source-policy.coax` refuses actual lexer `#if` directives in every physical
+source unit before either audit calls the build-selecting parser. Ordinary
+runtime `if` and string contents such as `"#if"` keep their normal meaning.
+Neither source profile advertises conditional build-selection coverage.
+Run `test_source_policy.py` with `COAX_SOURCE_POLICY_COMPILER` set to a
+conditional-capable compiler to exercise real development/release inputs; this
+is focused audit integration tooling, not an app or bootstrap dependency.

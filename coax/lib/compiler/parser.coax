@@ -52,7 +52,7 @@ PS_Tag :: enum u32 {
 PS_Loc :: struct {line:int;column:int;offset:int;}
 PS_Token :: struct {kind:u32;text:string;loc:PS_Loc;value:u64;floating:f64;width:int;raw_count:int;}
 PS_Node :: struct {kind:PS_Tag;loc:PS_Loc;name:string;name2:string;loc2:PS_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:f64;width:int;}
-PS_State :: struct {pos:int;used:int;depth:int;code:string;loc:PS_Loc;fix:string;length:int;}
+PS_State :: struct {pos:int;used:int;depth:int;code:string;loc:PS_Loc;fix:string;length:int;development:bool;}
 PS_Result :: struct {ok:bool;root:int;}
 PS_Caps :: struct {nodes:int;message:int;imports:int;}
 PS_caps :: (tokens:int,source:int)->PS_Caps #export_c {
@@ -379,6 +379,7 @@ PS_simple :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
 PS_uninitialized :: (t:[] PS_Token,s:[] PS_State)->bool {for i:0..<3 {if PS_peek(t,s,i).kind!=35 {return false;}}return true;}
 PS_stmt :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
   v:=PS_peek(t,s,0);if v.kind==10 {return PS_block(t,n,s,out);}
+  if v.kind==6 && v.text=="if" {return PS_profile_stmt(t,n,s,out);}
   if v.kind==6 && v.text=="assert" {PS_skip(t,s);id:=PS_new(n,s,out,PS_Tag.stmt_assert_,v.loc);n[id].a=PS_expression(t,n,s,out);PS_expect(t,s,out,15,"after #assert");return PS_valid(s,id);}
   if v.kind==2 {
     if v.text=="if" {return PS_if(t,n,s,out);}if v.text=="for" {return PS_for(t,n,s,out);}
@@ -430,16 +431,58 @@ PS_proc :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->i
 PS_struct :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->int {
   id:=PS_new(n,s,out,PS_Tag.decl_struct_,name.loc);n[id].name=name.text;PS_skip(t,s);
   if PS_at(t,s,6) {d:=PS_peek(t,s,0);parts:=[3] string.["#",d.text," on structs is not supported by coax0 yet"];PS_error(s,out,d.loc,"E0210","",parts[..]);return 0;}
-  PS_expect(t,s,out,10,"to start the struct's fields");
-  while !PS_at(t,s,11) && s[0].code=="" {
-    if PS_kw(t,s,"using") {PS_reserved(s,out,PS_peek(t,s,0));return 0;}
-    f:=PS_ident(t,s,out,"a field name");PS_expect(t,s,out,16,"after the field name");
-    field:=PS_new(n,s,out,PS_Tag.decl_field,f.loc);n[field].name=f.text;n[field].a=PS_type(t,n,s,out);
-    if PS_at(t,s,23) {PS_skip(t,s);n[field].b=PS_expression(t,n,s,out);}
-    PS_expect(t,s,out,15,"after the field");PS_link(n,id,field);
-  }
-  PS_expect(t,s,out,11,"to close the struct");return PS_valid(s,id);
+  PS_field_block(t,n,s,out,id);return PS_valid(s,id);
 }
+// Build-profile selection operates on fully parsed syntax trees. It is not
+// source-text deletion or arbitrary compile-time expression evaluation.
+PS_debug_condition :: (t:[]PS_Token,s:[]PS_State,out:[]u8)->PS_Loc {
+ directive:=PS_take(t,s);selector:=PS_take(t,s);
+ if selector.kind!=1 || selector.text!="BUILD_DEBUG" || !PS_at(t,s,10) {
+  PS_fail(s,out,selector.loc,"E0210","this slice supports only #if BUILD_DEBUG followed by a block","");
+ }
+ return directive.loc;
+}
+// Branches allocate disjoint contiguous node ranges. Retain the allocation
+// count/budget, but clear inactive nodes before type/schema helper discovery.
+PS_discard_range :: (n:[]PS_Node,first:int,end:int) {for i:first..<end {n[i]=PS_Node.{};}}
+PS_profile_stmt :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8)->int {
+ loc:=PS_debug_condition(t,s,out);yes_from:=s[0].used+1;yes:=PS_block(t,n,s,out);yes_end:=s[0].used+1;no:int;
+ if PS_kw(t,s,"else") {PS_skip(t,s);no=PS_block(t,n,s,out);}
+ else {no=PS_new(n,s,out,PS_Tag.stmt_block,loc);}
+ if s[0].development {PS_discard_range(n,yes_end,s[0].used+1);return PS_valid(s,yes);}
+ PS_discard_range(n,yes_from,yes_end);return PS_valid(s,no);
+}
+PS_field_block :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,parent:int) {
+ PS_expect(t,s,out,10,"to start the struct's fields");
+ while !PS_at(t,s,11) && s[0].code=="" {
+  token:=PS_peek(t,s,0);
+  if token.kind==6 && token.text=="if" {PS_profile_fields(t,n,s,out,parent);continue;}
+  if PS_kw(t,s,"using") {PS_reserved(s,out,token);return;}
+  f:=PS_ident(t,s,out,"a field name");PS_expect(t,s,out,16,"after the field name");
+  field:=PS_new(n,s,out,PS_Tag.decl_field,f.loc);n[field].name=f.text;n[field].a=PS_type(t,n,s,out);
+  if PS_at(t,s,23) {PS_skip(t,s);n[field].b=PS_expression(t,n,s,out);}
+  PS_expect(t,s,out,15,"after the field");PS_link(n,parent,field);
+ }
+ PS_expect(t,s,out,11,"to close the struct");
+}
+PS_profile_fields :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,parent:int) {
+ loc:=PS_debug_condition(t,s,out);if s[0].code!="" {return;}
+ if !PS_enter(s,out,loc) {return;}defer PS_leave(s);
+ // Private holder records preserve ordinary field-list representation. Neither
+ // holder enters the file's declaration list or acquires a layout/type identity.
+ yes_from:=s[0].used+1;yes:=PS_new(n,s,out,PS_Tag.decl_struct_,loc);PS_field_block(t,n,s,out,yes);yes_end:=s[0].used+1;
+ no:=PS_new(n,s,out,PS_Tag.decl_struct_,PS_Loc.{});
+ if PS_kw(t,s,"else") {PS_skip(t,s);PS_field_block(t,n,s,out,no);}
+ selected:=ifx s[0].development then yes else no;
+ if n[selected].head!=0 {
+  if n[parent].head==0 {n[parent].head=n[selected].head;}
+  else {n[n[parent].tail].next=n[selected].head;}
+  n[parent].tail=n[selected].tail;
+ }
+ if s[0].development {PS_discard_range(n,yes_end,s[0].used+1);}else {PS_discard_range(n,yes_from,yes_end);}
+ n[selected]=PS_Node.{};
+}
+
 PS_enum :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->int {
   id:=PS_new(n,s,out,PS_Tag.decl_enum_,name.loc);n[id].name=name.text;PS_skip(t,s);
   if PS_at(t,s,10) {PS_fail(s,out,PS_peek(t,s,0).loc,"E0219","an enum names its underlying integer type","Outcome :: enum u8 { ... }");return 0;}
@@ -470,11 +513,14 @@ PS_check :: (source:string,t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,d:
   }
   n[p].name=n[id].name;n[p].b=PS_block(t,n,s,out);return PS_valid(s,id);
 }
-PS_parse :: (source:string,t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->PS_Result #export_c {
+PS_parse :: (source:string,t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8)->PS_Result #export_c {
+ return PS_parse_build(source,t,n,s,out,true);
+}
+PS_parse_build :: (source:string,t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,development:bool)->PS_Result #export_c {
   s[0]=PS_State.{};
   if t.count==0 {PS_fail(s,out,PS_Loc.{},"E0221","parser needs an EOF-terminated token stream","");return PS_Result.{};}
   if t[t.count-1].kind!=0 {PS_fail(s,out,t[t.count-1].loc,"E0221","parser needs an EOF-terminated token stream","");return PS_Result.{};}
-  root:=PS_new(n,s,out,PS_Tag.decl_file,PS_Loc.{});
+  root:=PS_new(n,s,out,PS_Tag.decl_file,PS_Loc.{});s[0].development=development;
   while !PS_at(t,s,0) && s[0].code=="" {
     v:=PS_peek(t,s,0);id:int;
     if v.kind==6 {
@@ -4131,4 +4177,324 @@ PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c 
   t:=[5] PS_Token.[PS_Token.{kind=6,text="import_proto"},PS_Token.{kind=5,text="x.pb"},PS_Token.{kind=1,text="as"},PS_Token.{kind=1,text="X"},PS_Token.{kind=15}];out:[1] PS_Import;
   r:=PS_imports(t[0..<end],out[..],false);
   if end==0 {#assert r.code=="" && r.count==0;}else if end==5 {#assert r.code=="" && r.count==1;}else {#assert r.code=="E0501";}
+}
+
+// Build-profile syntax fixtures use the real lexer token vocabulary.
+
+#test "build-profile field and statement selection preserves order and lexical blocks" {
+ tokens:=[50]PS_Token.[
+ PS_Token.{kind=1,text="S",value=0,loc=PS_Loc.{line=1,column=1,offset=0},raw_count=1},
+ PS_Token.{kind=17,text="::",value=0,loc=PS_Loc.{line=1,column=3,offset=2},raw_count=2},
+ PS_Token.{kind=2,text="struct",value=0,loc=PS_Loc.{line=1,column=6,offset=5},raw_count=6},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=13,offset=12},raw_count=1},
+ PS_Token.{kind=1,text="a",value=0,loc=PS_Loc.{line=1,column=15,offset=14},raw_count=1},
+ PS_Token.{kind=16,text=":",value=0,loc=PS_Loc.{line=1,column=16,offset=15},raw_count=1},
+ PS_Token.{kind=1,text="u8",value=0,loc=PS_Loc.{line=1,column=17,offset=16},raw_count=2},
+ PS_Token.{kind=15,text=";",value=0,loc=PS_Loc.{line=1,column=19,offset=18},raw_count=1},
+ PS_Token.{kind=6,text="if",value=0,loc=PS_Loc.{line=1,column=21,offset=20},raw_count=2},
+ PS_Token.{kind=1,text="BUILD_DEBUG",value=0,loc=PS_Loc.{line=1,column=25,offset=24},raw_count=11},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=37,offset=36},raw_count=1},
+ PS_Token.{kind=1,text="magnitude",value=0,loc=PS_Loc.{line=1,column=39,offset=38},raw_count=9},
+ PS_Token.{kind=16,text=":",value=0,loc=PS_Loc.{line=1,column=48,offset=47},raw_count=1},
+ PS_Token.{kind=1,text="u64",value=0,loc=PS_Loc.{line=1,column=49,offset=48},raw_count=3},
+ PS_Token.{kind=15,text=";",value=0,loc=PS_Loc.{line=1,column=52,offset=51},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=54,offset=53},raw_count=1},
+ PS_Token.{kind=2,text="else",value=0,loc=PS_Loc.{line=1,column=56,offset=55},raw_count=4},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=61,offset=60},raw_count=1},
+ PS_Token.{kind=1,text="packed",value=0,loc=PS_Loc.{line=1,column=63,offset=62},raw_count=6},
+ PS_Token.{kind=16,text=":",value=0,loc=PS_Loc.{line=1,column=69,offset=68},raw_count=1},
+ PS_Token.{kind=1,text="u32",value=0,loc=PS_Loc.{line=1,column=70,offset=69},raw_count=3},
+ PS_Token.{kind=15,text=";",value=0,loc=PS_Loc.{line=1,column=73,offset=72},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=75,offset=74},raw_count=1},
+ PS_Token.{kind=1,text="z",value=0,loc=PS_Loc.{line=1,column=77,offset=76},raw_count=1},
+ PS_Token.{kind=16,text=":",value=0,loc=PS_Loc.{line=1,column=78,offset=77},raw_count=1},
+ PS_Token.{kind=1,text="u8",value=0,loc=PS_Loc.{line=1,column=79,offset=78},raw_count=2},
+ PS_Token.{kind=15,text=";",value=0,loc=PS_Loc.{line=1,column=81,offset=80},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=83,offset=82},raw_count=1},
+ PS_Token.{kind=1,text="f",value=0,loc=PS_Loc.{line=1,column=85,offset=84},raw_count=1},
+ PS_Token.{kind=17,text="::",value=0,loc=PS_Loc.{line=1,column=87,offset=86},raw_count=2},
+ PS_Token.{kind=8,text="(",value=0,loc=PS_Loc.{line=1,column=90,offset=89},raw_count=1},
+ PS_Token.{kind=9,text=")",value=0,loc=PS_Loc.{line=1,column=91,offset=90},raw_count=1},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=93,offset=92},raw_count=1},
+ PS_Token.{kind=6,text="if",value=0,loc=PS_Loc.{line=1,column=95,offset=94},raw_count=2},
+ PS_Token.{kind=1,text="BUILD_DEBUG",value=0,loc=PS_Loc.{line=1,column=99,offset=98},raw_count=11},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=111,offset=110},raw_count=1},
+ PS_Token.{kind=1,text="inspect",value=0,loc=PS_Loc.{line=1,column=113,offset=112},raw_count=7},
+ PS_Token.{kind=8,text="(",value=0,loc=PS_Loc.{line=1,column=120,offset=119},raw_count=1},
+ PS_Token.{kind=9,text=")",value=0,loc=PS_Loc.{line=1,column=121,offset=120},raw_count=1},
+ PS_Token.{kind=15,text=";",value=0,loc=PS_Loc.{line=1,column=122,offset=121},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=124,offset=123},raw_count=1},
+ PS_Token.{kind=2,text="else",value=0,loc=PS_Loc.{line=1,column=126,offset=125},raw_count=4},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=131,offset=130},raw_count=1},
+ PS_Token.{kind=1,text="ship",value=0,loc=PS_Loc.{line=1,column=133,offset=132},raw_count=4},
+ PS_Token.{kind=8,text="(",value=0,loc=PS_Loc.{line=1,column=137,offset=136},raw_count=1},
+ PS_Token.{kind=9,text=")",value=0,loc=PS_Loc.{line=1,column=138,offset=137},raw_count=1},
+ PS_Token.{kind=15,text=";",value=0,loc=PS_Loc.{line=1,column=139,offset=138},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=141,offset=140},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=143,offset=142},raw_count=1},
+ PS_Token.{kind=0,text="",value=0,loc=PS_Loc.{line=1,column=144,offset=143},raw_count=0}
+ ];
+ {nodes:[256]PS_Node;state:[1]PS_State;out:[512]u8;r:=PS_parse("",tokens[..],nodes[..],state[..],out[..]);#assert r.ok && state[0].development;
+  st:=nodes[r.root].head;#assert nodes[nodes[nodes[st].head].next].name=="magnitude";
+ }
+
+ for mode:0..<2 {
+  nodes:[256]PS_Node;for i:1..<256 {nodes[i].name="spare";}state:[1]PS_State;out:[512]u8;
+  r:=PS_parse_build("",tokens[..],nodes[..],state[..],out[..],mode==1);
+  #assert r.ok && state[0].development==(mode==1) && state[0].depth==0;
+  st:=nodes[r.root].head;first:=nodes[st].head;second:=nodes[first].next;last:=nodes[second].next;
+  #assert nodes[first].name=="a" && nodes[second].name==ifx mode==1 then "magnitude" else "packed";
+  #assert nodes[nodes[second].a].name==ifx mode==1 then "u64" else "u32";
+  #assert nodes[last].name=="z" && nodes[last].next==0;
+  proc:=nodes[st].next;block:=nodes[nodes[proc].b].head;
+  #assert nodes[block].kind==PS_Tag.stmt_block && nodes[block].next==0;
+  expr:=nodes[nodes[block].head].a;#assert nodes[expr].kind==PS_Tag.expr_call;
+  #assert nodes[expr].name==ifx mode==1 then "inspect" else "ship";
+  // Inactive nodes and private holders must not request helper declarations.
+  // Every remaining non-null node belongs to the selected file tree.
+  live:[256]bool;live[r.root]=true;
+  for pass:0..<16 {for i:1..<state[0].used+1 {if live[i] {
+   for child:[6]int.[nodes[i].a,nodes[i].b,nodes[i].c,nodes[i].d,nodes[i].head,nodes[i].next] {if child!=0 {live[child]=true;}}
+  }}}
+  for i:1..<state[0].used+1 {#assert live[i] || nodes[i].kind==PS_Tag.invalid;}
+  #assert nodes[state[0].used+1].name=="spare";
+
+ }
+}
+
+#test "profile blocks without else and nested choices retain only active fields" {
+ tokens:=[41]PS_Token.[
+ PS_Token.{kind=1,text="S",value=0,loc=PS_Loc.{line=1,column=1,offset=0},raw_count=1},
+ PS_Token.{kind=17,text="::",value=0,loc=PS_Loc.{line=1,column=3,offset=2},raw_count=2},
+ PS_Token.{kind=2,text="struct",value=0,loc=PS_Loc.{line=1,column=6,offset=5},raw_count=6},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=13,offset=12},raw_count=1},
+ PS_Token.{kind=1,text="a",value=0,loc=PS_Loc.{line=1,column=15,offset=14},raw_count=1},
+ PS_Token.{kind=16,text=":",value=0,loc=PS_Loc.{line=1,column=16,offset=15},raw_count=1},
+ PS_Token.{kind=1,text="u8",value=0,loc=PS_Loc.{line=1,column=17,offset=16},raw_count=2},
+ PS_Token.{kind=15,text=";",value=0,loc=PS_Loc.{line=1,column=19,offset=18},raw_count=1},
+ PS_Token.{kind=6,text="if",value=0,loc=PS_Loc.{line=1,column=21,offset=20},raw_count=2},
+ PS_Token.{kind=1,text="BUILD_DEBUG",value=0,loc=PS_Loc.{line=1,column=25,offset=24},raw_count=11},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=37,offset=36},raw_count=1},
+ PS_Token.{kind=6,text="if",value=0,loc=PS_Loc.{line=1,column=39,offset=38},raw_count=2},
+ PS_Token.{kind=1,text="BUILD_DEBUG",value=0,loc=PS_Loc.{line=1,column=43,offset=42},raw_count=11},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=55,offset=54},raw_count=1},
+ PS_Token.{kind=1,text="debug",value=0,loc=PS_Loc.{line=1,column=57,offset=56},raw_count=5},
+ PS_Token.{kind=16,text=":",value=0,loc=PS_Loc.{line=1,column=62,offset=61},raw_count=1},
+ PS_Token.{kind=1,text="u8",value=0,loc=PS_Loc.{line=1,column=63,offset=62},raw_count=2},
+ PS_Token.{kind=15,text=";",value=0,loc=PS_Loc.{line=1,column=65,offset=64},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=67,offset=66},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=69,offset=68},raw_count=1},
+ PS_Token.{kind=1,text="z",value=0,loc=PS_Loc.{line=1,column=71,offset=70},raw_count=1},
+ PS_Token.{kind=16,text=":",value=0,loc=PS_Loc.{line=1,column=72,offset=71},raw_count=1},
+ PS_Token.{kind=1,text="u8",value=0,loc=PS_Loc.{line=1,column=73,offset=72},raw_count=2},
+ PS_Token.{kind=15,text=";",value=0,loc=PS_Loc.{line=1,column=75,offset=74},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=77,offset=76},raw_count=1},
+ PS_Token.{kind=1,text="f",value=0,loc=PS_Loc.{line=1,column=79,offset=78},raw_count=1},
+ PS_Token.{kind=17,text="::",value=0,loc=PS_Loc.{line=1,column=81,offset=80},raw_count=2},
+ PS_Token.{kind=8,text="(",value=0,loc=PS_Loc.{line=1,column=84,offset=83},raw_count=1},
+ PS_Token.{kind=9,text=")",value=0,loc=PS_Loc.{line=1,column=85,offset=84},raw_count=1},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=87,offset=86},raw_count=1},
+ PS_Token.{kind=6,text="if",value=0,loc=PS_Loc.{line=1,column=89,offset=88},raw_count=2},
+ PS_Token.{kind=1,text="BUILD_DEBUG",value=0,loc=PS_Loc.{line=1,column=93,offset=92},raw_count=11},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=105,offset=104},raw_count=1},
+ PS_Token.{kind=6,text="assert",value=0,loc=PS_Loc.{line=1,column=107,offset=106},raw_count=6},
+ PS_Token.{kind=2,text="true",value=0,loc=PS_Loc.{line=1,column=115,offset=114},raw_count=4},
+ PS_Token.{kind=15,text=";",value=0,loc=PS_Loc.{line=1,column=119,offset=118},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=121,offset=120},raw_count=1},
+ PS_Token.{kind=2,text="return",value=0,loc=PS_Loc.{line=1,column=123,offset=122},raw_count=6},
+ PS_Token.{kind=15,text=";",value=0,loc=PS_Loc.{line=1,column=129,offset=128},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=131,offset=130},raw_count=1},
+ PS_Token.{kind=0,text="",value=0,loc=PS_Loc.{line=1,column=132,offset=131},raw_count=0}
+ ];
+ for mode:0..<2 {
+  nodes:[256]PS_Node;state:[1]PS_State;out:[512]u8;
+  r:=PS_parse_build("",tokens[..],nodes[..],state[..],out[..],mode==1);#assert r.ok;
+  st:=nodes[r.root].head;at:=nodes[nodes[st].head].next;
+  if mode==1 {#assert nodes[at].name=="debug";at=nodes[at].next;}
+  #assert nodes[at].name=="z" && nodes[at].next==0;
+  proc:=nodes[st].next;block:=nodes[nodes[proc].b].head;
+  if mode==1 {#assert nodes[nodes[block].head].kind==PS_Tag.stmt_assert_;}else {#assert nodes[block].head==0;}
+  #assert nodes[nodes[block].next].kind==PS_Tag.stmt_ret;
+ }
+}
+
+#test "an unknown profile selector refuses" {
+ tokens:=[11]PS_Token.[
+ PS_Token.{kind=1,text="f",value=0,loc=PS_Loc.{line=1,column=1,offset=0},raw_count=1},
+ PS_Token.{kind=17,text="::",value=0,loc=PS_Loc.{line=1,column=3,offset=2},raw_count=2},
+ PS_Token.{kind=8,text="(",value=0,loc=PS_Loc.{line=1,column=6,offset=5},raw_count=1},
+ PS_Token.{kind=9,text=")",value=0,loc=PS_Loc.{line=1,column=7,offset=6},raw_count=1},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=9,offset=8},raw_count=1},
+ PS_Token.{kind=6,text="if",value=0,loc=PS_Loc.{line=1,column=11,offset=10},raw_count=2},
+ PS_Token.{kind=1,text="UNKNOWN",value=0,loc=PS_Loc.{line=1,column=15,offset=14},raw_count=7},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=23,offset=22},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=24,offset=23},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=26,offset=25},raw_count=1},
+ PS_Token.{kind=0,text="",value=0,loc=PS_Loc.{line=1,column=27,offset=26},raw_count=0}
+ ];
+ for mode:0..<2 {nodes:[128]PS_Node;state:[1]PS_State;out:[256]u8;
+  r:=PS_parse_build("",tokens[..],nodes[..],state[..],out[..],mode==1);#assert !r.ok && state[0].code=="E0210";
+ }
+}
+
+#test "a nonidentifier selector refuses" {
+ tokens:=[11]PS_Token.[
+ PS_Token.{kind=1,text="f",value=0,loc=PS_Loc.{line=1,column=1,offset=0},raw_count=1},
+ PS_Token.{kind=17,text="::",value=0,loc=PS_Loc.{line=1,column=3,offset=2},raw_count=2},
+ PS_Token.{kind=8,text="(",value=0,loc=PS_Loc.{line=1,column=6,offset=5},raw_count=1},
+ PS_Token.{kind=9,text=")",value=0,loc=PS_Loc.{line=1,column=7,offset=6},raw_count=1},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=9,offset=8},raw_count=1},
+ PS_Token.{kind=6,text="if",value=0,loc=PS_Loc.{line=1,column=11,offset=10},raw_count=2},
+ PS_Token.{kind=2,text="true",value=0,loc=PS_Loc.{line=1,column=15,offset=14},raw_count=4},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=20,offset=19},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=21,offset=20},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=23,offset=22},raw_count=1},
+ PS_Token.{kind=0,text="",value=0,loc=PS_Loc.{line=1,column=24,offset=23},raw_count=0}
+ ];
+ for mode:0..<2 {nodes:[128]PS_Node;state:[1]PS_State;out:[256]u8;
+  r:=PS_parse_build("",tokens[..],nodes[..],state[..],out[..],mode==1);#assert !r.ok && state[0].code=="E0210";
+ }
+}
+
+#test "general condition expressions remain unsupported" {
+ tokens:=[13]PS_Token.[
+ PS_Token.{kind=1,text="f",value=0,loc=PS_Loc.{line=1,column=1,offset=0},raw_count=1},
+ PS_Token.{kind=17,text="::",value=0,loc=PS_Loc.{line=1,column=3,offset=2},raw_count=2},
+ PS_Token.{kind=8,text="(",value=0,loc=PS_Loc.{line=1,column=6,offset=5},raw_count=1},
+ PS_Token.{kind=9,text=")",value=0,loc=PS_Loc.{line=1,column=7,offset=6},raw_count=1},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=9,offset=8},raw_count=1},
+ PS_Token.{kind=6,text="if",value=0,loc=PS_Loc.{line=1,column=11,offset=10},raw_count=2},
+ PS_Token.{kind=1,text="BUILD_DEBUG",value=0,loc=PS_Loc.{line=1,column=15,offset=14},raw_count=11},
+ PS_Token.{kind=50,text="&&",value=0,loc=PS_Loc.{line=1,column=27,offset=26},raw_count=2},
+ PS_Token.{kind=2,text="true",value=0,loc=PS_Loc.{line=1,column=30,offset=29},raw_count=4},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=35,offset=34},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=36,offset=35},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=38,offset=37},raw_count=1},
+ PS_Token.{kind=0,text="",value=0,loc=PS_Loc.{line=1,column=39,offset=38},raw_count=0}
+ ];
+ for mode:0..<2 {nodes:[128]PS_Node;state:[1]PS_State;out:[256]u8;
+  r:=PS_parse_build("",tokens[..],nodes[..],state[..],out[..],mode==1);#assert !r.ok && state[0].code=="E0210";
+ }
+}
+
+#test "disabled field branches must still parse" {
+ tokens:=[13]PS_Token.[
+ PS_Token.{kind=1,text="S",value=0,loc=PS_Loc.{line=1,column=1,offset=0},raw_count=1},
+ PS_Token.{kind=17,text="::",value=0,loc=PS_Loc.{line=1,column=3,offset=2},raw_count=2},
+ PS_Token.{kind=2,text="struct",value=0,loc=PS_Loc.{line=1,column=6,offset=5},raw_count=6},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=13,offset=12},raw_count=1},
+ PS_Token.{kind=6,text="if",value=0,loc=PS_Loc.{line=1,column=15,offset=14},raw_count=2},
+ PS_Token.{kind=1,text="BUILD_DEBUG",value=0,loc=PS_Loc.{line=1,column=19,offset=18},raw_count=11},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=31,offset=30},raw_count=1},
+ PS_Token.{kind=1,text="value",value=0,loc=PS_Loc.{line=1,column=33,offset=32},raw_count=5},
+ PS_Token.{kind=16,text=":",value=0,loc=PS_Loc.{line=1,column=38,offset=37},raw_count=1},
+ PS_Token.{kind=1,text="u8",value=0,loc=PS_Loc.{line=1,column=39,offset=38},raw_count=2},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=42,offset=41},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=44,offset=43},raw_count=1},
+ PS_Token.{kind=0,text="",value=0,loc=PS_Loc.{line=1,column=45,offset=44},raw_count=0}
+ ];
+ for mode:0..<2 {nodes:[128]PS_Node;state:[1]PS_State;out:[256]u8;
+  r:=PS_parse_build("",tokens[..],nodes[..],state[..],out[..],mode==1);#assert !r.ok && state[0].code=="E0201";
+ }
+}
+
+#test "disabled statement branches must still parse" {
+ tokens:=[14]PS_Token.[
+ PS_Token.{kind=1,text="f",value=0,loc=PS_Loc.{line=1,column=1,offset=0},raw_count=1},
+ PS_Token.{kind=17,text="::",value=0,loc=PS_Loc.{line=1,column=3,offset=2},raw_count=2},
+ PS_Token.{kind=8,text="(",value=0,loc=PS_Loc.{line=1,column=6,offset=5},raw_count=1},
+ PS_Token.{kind=9,text=")",value=0,loc=PS_Loc.{line=1,column=7,offset=6},raw_count=1},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=9,offset=8},raw_count=1},
+ PS_Token.{kind=6,text="if",value=0,loc=PS_Loc.{line=1,column=11,offset=10},raw_count=2},
+ PS_Token.{kind=1,text="BUILD_DEBUG",value=0,loc=PS_Loc.{line=1,column=15,offset=14},raw_count=11},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=27,offset=26},raw_count=1},
+ PS_Token.{kind=1,text="inspect",value=0,loc=PS_Loc.{line=1,column=29,offset=28},raw_count=7},
+ PS_Token.{kind=8,text="(",value=0,loc=PS_Loc.{line=1,column=36,offset=35},raw_count=1},
+ PS_Token.{kind=9,text=")",value=0,loc=PS_Loc.{line=1,column=37,offset=36},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=39,offset=38},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=41,offset=40},raw_count=1},
+ PS_Token.{kind=0,text="",value=0,loc=PS_Loc.{line=1,column=42,offset=41},raw_count=0}
+ ];
+ for mode:0..<2 {nodes:[128]PS_Node;state:[1]PS_State;out:[256]u8;
+  r:=PS_parse_build("",tokens[..],nodes[..],state[..],out[..],mode==1);#assert !r.ok && state[0].code=="E0201";
+ }
+}
+
+#test "top level profile declarations remain unsupported" {
+ tokens:=[9]PS_Token.[
+ PS_Token.{kind=6,text="if",value=0,loc=PS_Loc.{line=1,column=1,offset=0},raw_count=2},
+ PS_Token.{kind=1,text="BUILD_DEBUG",value=0,loc=PS_Loc.{line=1,column=5,offset=4},raw_count=11},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=17,offset=16},raw_count=1},
+ PS_Token.{kind=1,text="x",value=0,loc=PS_Loc.{line=1,column=19,offset=18},raw_count=1},
+ PS_Token.{kind=17,text="::",value=0,loc=PS_Loc.{line=1,column=21,offset=20},raw_count=2},
+ PS_Token.{kind=3,text="1",value=1,loc=PS_Loc.{line=1,column=24,offset=23},raw_count=1},
+ PS_Token.{kind=15,text=";",value=0,loc=PS_Loc.{line=1,column=25,offset=24},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=27,offset=26},raw_count=1},
+ PS_Token.{kind=0,text="",value=0,loc=PS_Loc.{line=1,column=28,offset=27},raw_count=0}
+ ];
+ for mode:0..<2 {nodes:[128]PS_Node;state:[1]PS_State;out:[256]u8;
+  r:=PS_parse_build("",tokens[..],nodes[..],state[..],out[..],mode==1);#assert !r.ok && state[0].code=="E0210";
+ }
+}
+
+#test "conditional field nesting errors retain the directive location" {
+ tokens:=[5]PS_Token.[PS_Token.{kind=6,text="if",loc=PS_Loc.{line=9,column=3,offset=17}},PS_Token.{kind=1,text="BUILD_DEBUG"},PS_Token.{kind=10},PS_Token.{kind=11},PS_Token.{}];
+ nodes:[8]PS_Node;state:=[1]PS_State.[PS_State.{depth=128}];out:[128]u8;
+ PS_profile_fields(tokens[..],nodes[..],state[..],out[..],0);
+ #assert state[0].code=="E0221" && state[0].loc.line==9 && state[0].loc.column==3 && state[0].loc.offset==17 && state[0].depth==128;
+}
+
+#test "other directives in field lists retain ordinary field syntax refusal" {
+ tokens:=[6]PS_Token.[PS_Token.{kind=10},PS_Token.{kind=6,text="assert"},PS_Token.{kind=2,text="true"},PS_Token.{kind=15},PS_Token.{kind=11},PS_Token.{}];
+ nodes:[16]PS_Node;state:[1]PS_State;out:[256]u8;
+ PS_field_block(tokens[..],nodes[..],state[..],out[..],0);
+ #assert state[0].code=="E0208";
+}
+
+#forall "inactive node clearing preserves exact prefix and suffix sentinels" first:0..<8,end:0..<8 {
+ if first<=end {
+  nodes:[8]PS_Node;for i:0..<8 {nodes[i]=PS_Node.{kind=PS_Tag.expr_ident,name="sentinel",a=9,b=10,c=11,d=12,head=13,tail=14,next=15,value=16,width=32,flag=true};}
+  PS_discard_range(nodes[..],first,end);
+  for i:0..<8 {
+   if i>=first && i<end {#assert nodes[i].kind==PS_Tag.invalid && nodes[i].name=="" && nodes[i].a==0 && nodes[i].b==0 && nodes[i].c==0 && nodes[i].d==0 && nodes[i].head==0 && nodes[i].tail==0 && nodes[i].next==0 && nodes[i].value==0 && nodes[i].width==0 && !nodes[i].flag;}
+   else {#assert nodes[i].kind==PS_Tag.expr_ident && nodes[i].name=="sentinel" && nodes[i].a==9 && nodes[i].next==15 && nodes[i].value==16;}
+  }
+ }
+}
+#test "inactive statement ranges preserve every caller prefix node and directive location" {
+ tokens:=[5]PS_Token.[PS_Token.{kind=6,text="if",loc=PS_Loc.{line=9,column=3,offset=17}},PS_Token.{kind=1,text="BUILD_DEBUG"},PS_Token.{kind=10},PS_Token.{kind=11},PS_Token.{}];
+ nodes:[16]PS_Node;nodes[1]=PS_Node.{kind=PS_Tag.decl_file,name="parent"};nodes[2]=PS_Node.{kind=PS_Tag.stmt_block,name="prior"};
+ state:=[1]PS_State.[PS_State.{used=2}];out:[256]u8;id:=PS_profile_stmt(tokens[..],nodes[..],state[..],out[..]);
+ #assert state[0].code=="" && id==4 && nodes[id].kind==PS_Tag.stmt_block && nodes[id].loc.line==9 && nodes[id].loc.column==3 && nodes[id].loc.offset==17;
+ #assert nodes[1].kind==PS_Tag.decl_file && nodes[1].name=="parent" && nodes[2].kind==PS_Tag.stmt_block && nodes[2].name=="prior";
+}
+
+#test "terminal field branches preserve caller spare capacity" {
+ tokens:=[21]PS_Token.[
+ PS_Token.{kind=1,text="S",value=0,loc=PS_Loc.{line=1,column=1,offset=0},raw_count=1},
+ PS_Token.{kind=17,text="::",value=0,loc=PS_Loc.{line=1,column=3,offset=2},raw_count=2},
+ PS_Token.{kind=2,text="struct",value=0,loc=PS_Loc.{line=1,column=6,offset=5},raw_count=6},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=13,offset=12},raw_count=1},
+ PS_Token.{kind=6,text="if",value=0,loc=PS_Loc.{line=1,column=15,offset=14},raw_count=2},
+ PS_Token.{kind=1,text="BUILD_DEBUG",value=0,loc=PS_Loc.{line=1,column=19,offset=18},raw_count=11},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=31,offset=30},raw_count=1},
+ PS_Token.{kind=1,text="a",value=0,loc=PS_Loc.{line=1,column=33,offset=32},raw_count=1},
+ PS_Token.{kind=16,text=":",value=0,loc=PS_Loc.{line=1,column=34,offset=33},raw_count=1},
+ PS_Token.{kind=1,text="u8",value=0,loc=PS_Loc.{line=1,column=35,offset=34},raw_count=2},
+ PS_Token.{kind=15,text=";",value=0,loc=PS_Loc.{line=1,column=37,offset=36},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=39,offset=38},raw_count=1},
+ PS_Token.{kind=2,text="else",value=0,loc=PS_Loc.{line=1,column=41,offset=40},raw_count=4},
+ PS_Token.{kind=10,text="{",value=0,loc=PS_Loc.{line=1,column=46,offset=45},raw_count=1},
+ PS_Token.{kind=1,text="b",value=0,loc=PS_Loc.{line=1,column=48,offset=47},raw_count=1},
+ PS_Token.{kind=16,text=":",value=0,loc=PS_Loc.{line=1,column=49,offset=48},raw_count=1},
+ PS_Token.{kind=1,text="u32",value=0,loc=PS_Loc.{line=1,column=50,offset=49},raw_count=3},
+ PS_Token.{kind=15,text=";",value=0,loc=PS_Loc.{line=1,column=53,offset=52},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=55,offset=54},raw_count=1},
+ PS_Token.{kind=11,text="}",value=0,loc=PS_Loc.{line=1,column=57,offset=56},raw_count=1},
+ PS_Token.{kind=0,text="",value=0,loc=PS_Loc.{line=1,column=58,offset=57},raw_count=0}
+ ];
+ for mode:0..<2 {nodes:[64]PS_Node;for i:1..<64 {nodes[i].name="spare";}state:[1]PS_State;out:[256]u8;
+  r:=PS_parse_build("",tokens[..],nodes[..],state[..],out[..],mode==1);#assert r.ok;
+  #assert nodes[state[0].used+1].name=="spare";
+ }
 }

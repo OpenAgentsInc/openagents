@@ -1,0 +1,15 @@
+#authority;
+Sample :: struct {
+ value:u32;
+ #if BUILD_DEBUG {magnitude:u64;}
+}
+inspect :: (value:u32)->u32 #export_c {
+ sample:Sample;sample.value=value;
+ #if BUILD_DEBUG {sample.magnitude=1;#assert sample.magnitude==1;}
+ return sample.value;
+}
+#test "both build profiles preserve the value with different layouts" {
+ #assert inspect(3)==3;
+ #if BUILD_DEBUG {#assert size_of(Sample)==16;}
+ else {#assert size_of(Sample)==4;}
+}

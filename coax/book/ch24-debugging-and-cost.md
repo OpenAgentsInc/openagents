@@ -244,3 +244,13 @@ noise and threshold. It does not establish constant time for another target,
 optimizer, JIT tier, secret distribution or algorithm. Source restrictions,
 generated-object inspection, erasure, independent review and key custody remain
 separate gates. See the [harness method and scoped evidence](https://github.com/OpenAgentsInc/openagents/blob/main/tools/coax-nostr/timing/README.md).
+
+Build-profile layout is another input to preserve. In Coax 0.17.0,
+`#if BUILD_DEBUG` fields/statements select development unless the compiler
+command includes `--release`. That choice can change native struct sizes,
+reflection and ABI. Compile each producer and consumer with the same profile
+and generated header; a debugger source hash alone does not identify it.
+Native optimization, NDEBUG and Xcode's configuration are separate inputs.
+The existing app generator continues to use checked Coax semantics; a compiler
+release flag is an explicit adoption choice, including its existing arithmetic
+policy. General conditional compilation remains planned.

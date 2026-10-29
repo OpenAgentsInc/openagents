@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.16.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.17.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -57,7 +57,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `#foreign` | After a procedure's signature, with no body: import a C function that passes only integers, floats and `bool` | works | — |
 | `#import_proto "file.pb" as Prefix;` | Generate types and bounded codecs from a protobuf descriptor set (CPU code only) | works | — |
 | `#load "part.coax";` | Add a once-only source unit with relative paths, cycle/budget checks and physical-file authority | works | 0.11.0 |
-| `#if` | Conditional compilation | reserved | — |
+| `#if` | BUILD_DEBUG field/statement blocks; general conditions and top-level declarations remain planned | partial | 0.17.0 |
 | `#insert` `#expand` `#text` `#location` | Typed code and macros | reserved | — |
 | `#derive(...)` | Generate operations from fields | reserved | — |
 | `#bake_arguments` | Explicit partial specialization | reserved | — |

@@ -362,7 +362,7 @@ struct File {
   bool metal = false;    // checked against the Metal scalar profile
 };
 
-bool parse(Arena *arena, const Source *src, const std::vector<Token> &tokens, File *out);
+bool parse(Arena *arena, const Source *src, const std::vector<Token> &tokens, File *out, bool development = true);
 
 // ---- Checker, evaluator and C emitter ----
 

@@ -1,0 +1,11 @@
+// Source-profile admission before any build-dependent parser edge selection.
+#authority;
+#forall "conditional directives refuse while ordinary tokens retain their meaning" directive:0..<2,word:0..<4 {
+ words:=[4]string.["if","run","#if","iffy"];
+ #assert audit_source_token_allowed(directive==1,words[word])==!(directive==1 && word==0);
+}
+#test "runtime if and string contents are not compiler directives" {
+ #assert audit_source_token_allowed(false,"if") && audit_source_token_allowed(false,"#if");
+ #assert !audit_source_token_allowed(true,"if");
+}
+audit_source_token_allowed :: (directive:bool,text:string)->bool #export_c {return !directive || text!="if";}

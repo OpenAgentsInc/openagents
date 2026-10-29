@@ -3,3 +3,4 @@
 #load "../../../coax/lib/compiler/parser.coax";
 #load "../../../coax/lib/compiler/sources.coax";
 #load "../../../coax/lib/crypto/sha256-memory.coax";
+#load "source-policy.coax";

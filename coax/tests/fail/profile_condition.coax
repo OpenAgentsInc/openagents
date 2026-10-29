@@ -1,0 +1,3 @@
+// expect: E0210
+FLAG :: true;
+main :: () {#if FLAG {}}

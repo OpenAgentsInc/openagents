@@ -1,0 +1,2 @@
+// expect: E0201
+main :: () {#if BUILD_DEBUG {} else {x:=1}}

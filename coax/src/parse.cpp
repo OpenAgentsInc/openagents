@@ -61,13 +61,13 @@ std::vector<coax_t_PS_Token> parser_tokens(const std::vector<Token> &tokens) {
   return input;
 }
 }
-bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File *out) {
+bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File *out,bool development) {
   auto input=parser_tokens(tokens);
   const auto caps=PS_caps((int64_t)input.size(),(int64_t)src->text.size());
   std::vector<coax_t_PS_Node> nodes((size_t)caps.nodes);std::vector<uint8_t> message((size_t)caps.message);
   coax_t_PS_State state{};
-  const auto result=PS_parse({src->text.data(),(int64_t)src->text.size()},{input.data(),(int64_t)input.size()},
-      {nodes.data(),(int64_t)nodes.size()},{&state,1},{message.data(),(int64_t)message.size()});
+  const auto result=PS_parse_build({src->text.data(),(int64_t)src->text.size()},{input.data(),(int64_t)input.size()},
+      {nodes.data(),(int64_t)nodes.size()},{&state,1},{message.data(),(int64_t)message.size()},development);
   if(!result.ok) {
     error_at(src,parser_loc(state.loc),std::string(state.code.data,(size_t)state.code.count).c_str(),
         std::string((char*)message.data(),(size_t)state.length),std::string(state.fix.data?state.fix.data:"",(size_t)state.fix.count));return false;

@@ -994,3 +994,49 @@ split.
 
 For the distinction between finite checks, native tests, independent oracles
 and authorization, see [Chapter 25](ch25-verification-boundaries.md).
+
+## Checks that belong to a build profile
+
+Coax 0.17.0 adds a small conditional-compilation slice:
+
+<!-- checked-source: examples/ch10_build_profiles.coax -->
+```coax
+#authority;
+Sample :: struct {
+ value:u32;
+ #if BUILD_DEBUG {magnitude:u64;}
+}
+inspect :: (value:u32)->u32 #export_c {
+ sample:Sample;sample.value=value;
+ #if BUILD_DEBUG {sample.magnitude=1;#assert sample.magnitude==1;}
+ return sample.value;
+}
+#test "both build profiles preserve the value with different layouts" {
+ #assert inspect(3)==3;
+ #if BUILD_DEBUG {#assert size_of(Sample)==16;}
+ else {#assert size_of(Sample)==4;}
+}
+```
+
+Run the selected checks and mutation in both profiles:
+
+```sh
+coax/bin/coax test coax/book/examples/ch10_build_profiles.coax
+coax/bin/coax mutate coax/book/examples/ch10_build_profiles.coax
+coax/bin/coax test coax/book/examples/ch10_build_profiles.coax --release
+coax/bin/coax mutate coax/book/examples/ch10_build_profiles.coax --release
+```
+
+Both branches must parse. Only the selected fields and statement blocks reach
+resolution, layout, compile-time work and output. The profile selector is fixed
+by the compiler's `--release` flag; it is not a lookup of a user constant.
+Arbitrary conditions, imports and top-level declarations are still planned.
+Statement blocks keep lexical scope, so locals declared inside one stay there.
+
+An ordinary #assert still executes in release. This construct lets the author
+explicitly remove a development-only statement; it does not justify removing
+money, admission or other required authority checks. A profile's tests and
+mutation results describe that profile, so exercise both when both ship.
+The native struct layout differs: every linked consumer must use the matching
+profile/header. Wire schemas keep their own stable definitions. Compiler release
+arithmetic and native optimization also remain separate choices; see Chapter 24.

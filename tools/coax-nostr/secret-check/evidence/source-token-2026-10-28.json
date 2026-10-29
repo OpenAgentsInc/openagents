@@ -1,0 +1,75 @@
+{
+  "schema": "coax.source-token-admission.v1",
+  "compiler_sha256": "348b89eca4d3af675667e131176b9e188966f3ee60c3013131e2b710298da4e6",
+  "test_driver_sha256": "a134dea2c9dc6f05534d6b598fdc0092856b9ab020c6a28429164d61c7cbf011",
+  "cases": [
+    {
+      "case": "loaded-conditional-refused",
+      "profile": "unsigned-scalar-source-v1",
+      "error": 5,
+      "source_sha256": {
+        "$CASES/root.coax": "32e86379d14ecc3818d419640dd15acbe4b71af7e9a23e4c8a2192754af8ac66",
+        "$CASES/hidden.coax": "7c450fd0c5ff9b4ca1bbebc2dd39630cea8610c203aa1ed8280a36ed2b2949c2"
+      }
+    },
+    {
+      "case": "loaded-conditional-refused",
+      "profile": "aggregate-source-v1",
+      "error": 5,
+      "source_sha256": {
+        "$CASES/root.coax": "32e86379d14ecc3818d419640dd15acbe4b71af7e9a23e4c8a2192754af8ac66",
+        "$CASES/hidden.coax": "7c450fd0c5ff9b4ca1bbebc2dd39630cea8610c203aa1ed8280a36ed2b2949c2"
+      }
+    },
+    {
+      "case": "native-token-predicate",
+      "both_profiles": true,
+      "truth_table_cases": 8
+    },
+    {
+      "case": "ordinary-tokens",
+      "string_both_profiles": true,
+      "aggregate_runtime_if": true,
+      "scalar_if_still_unsupported": true
+    },
+    {
+      "case": "conditional-refused",
+      "profile": "unsigned-scalar-source-v1",
+      "error": 5,
+      "line": 1,
+      "source_sha256": {
+        "$CASES/conditional.coax": "96b41780a3f3b5b98ea8afac118ae2fd0b4e067b5be31baa3dab18a2da364b49"
+      }
+    },
+    {
+      "case": "conditional-refused",
+      "profile": "aggregate-source-v1",
+      "error": 5,
+      "line": 1,
+      "source_sha256": {
+        "$CASES/conditional.coax": "96b41780a3f3b5b98ea8afac118ae2fd0b4e067b5be31baa3dab18a2da364b49"
+      }
+    }
+  ],
+  "scope": "conditional-capable target compiler validates both modes; actual token guard refuses before audit parser/edge selection, no build-mode admission",
+  "source_sha256": {
+    "tools/coax-nostr/secret-check/source-policy.coax": "e0822835f32f266d4ca97b26d47ea158ffc58bed62eb5096d3eeec1dc9c628c5",
+    "tools/coax-nostr/secret-check/frontend.coax": "570f71b622640f2a2f55fb4fe1a05b78a36a2f606bf5e288f2150a3ba1b0de0c",
+    "tools/coax-nostr/secret-check/bridge.cpp": "dbd2ab727e8b178ce3d53fdbbd8c813de2adc8b2c427da0fd3728d6275f95316",
+    "tools/coax-nostr/secret-check/bridge-aggregate.cpp": "1479f1d0ab321b83433e429561061e142f8460f6cb8ac14950125d7b4d1cebd4",
+    "tools/coax-nostr/secret-check/test_source_policy.py": "a134dea2c9dc6f05534d6b598fdc0092856b9ab020c6a28429164d61c7cbf011"
+  },
+  "policy_compiler_sha256": "46d332386114ff213a2083440469332742915ea99b2506a9619730420fda2719",
+  "checks": {
+    "summary": "2 checks, 2 passed, 0 failed",
+    "output_sha256": "6f3eb3d366d73cd1cf99b8bc17e9ec3caecd34d20f26ca07268360993e218f54"
+  },
+  "mutation": {
+    "summary": "1 mutant, 1 killed, 0 survived",
+    "output_sha256": "cb9b13435ef646a8ab752a18c8c222f17d2448b15c13d0ad44f57b9fd4ab597a"
+  },
+  "native": {
+    "summary": "OK",
+    "output_sha256": "416d8922f8541c2dab93750aac785439352ccc33fd45a693d92b7a015cf6ebb4"
+  }
+}

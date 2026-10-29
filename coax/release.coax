@@ -1,7 +1,7 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.16.0";
+IMPLEMENTATION_VERSION :: "0.17.0";
 STATUS_SCHEMA_VERSION :: 1;
 CATALOGUE :: [95]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
@@ -41,7 +41,7 @@ CATALOGUE :: [95]ReleaseFeature.[
   ReleaseFeature.{id="directives.foreign",section="Directives",name="`#foreign`",meaning="After a procedure's signature, with no body: import a C function that passes only integers, floats and `bool`",status="works",introduced=""},
   ReleaseFeature.{id="directives.import-proto-file-pb-as-prefix",section="Directives",name="`#import_proto \"file.pb\" as Prefix;`",meaning="Generate types and bounded codecs from a protobuf descriptor set (CPU code only)",status="works",introduced=""},
   ReleaseFeature.{id="directives.load-part-coax",section="Directives",name="`#load \"part.coax\";`",meaning="Add a once-only source unit with relative paths, cycle/budget checks and physical-file authority",status="works",introduced="0.11.0"},
-  ReleaseFeature.{id="directives.if",section="Directives",name="`#if`",meaning="Conditional compilation",status="reserved",introduced=""},
+  ReleaseFeature.{id="directives.if",section="Directives",name="`#if`",meaning="BUILD_DEBUG field/statement blocks; general conditions and top-level declarations remain planned",status="partial",introduced="0.17.0"},
   ReleaseFeature.{id="directives.insert",section="Directives",name="`#insert` `#expand` `#text` `#location`",meaning="Typed code and macros",status="reserved",introduced=""},
   ReleaseFeature.{id="directives.derive",section="Directives",name="`#derive(...)`",meaning="Generate operations from fields",status="reserved",introduced=""},
   ReleaseFeature.{id="directives.bake-arguments",section="Directives",name="`#bake_arguments`",meaning="Explicit partial specialization",status="reserved",introduced=""},
@@ -161,5 +161,5 @@ main :: () {
   print("@@coax-file coax/STATUS.md\n");emit_document(rows[..],false);print("@@coax-end\n");
   print("@@coax-file coax/book/appendix-a-keywords.md\n");emit_document(rows[..],true);print("@@coax-end\n");
   print("@@coax-file coax/generated/current.md\nCurrent compiler: **coax0 %**. Status inventory schema: **%**.\n@@coax-end\n",IMPLEMENTATION_VERSION,STATUS_SCHEMA_VERSION);
-  print("@@coax-file coax/generated/version-example.md\n```sh\n$ coax/bin/coax version\ncoax0 %\n```\n@@coax-end\n",IMPLEMENTATION_VERSION);
+  print("@@coax-file coax/generated/version-example.md\n```bash\n$ coax/bin/coax version\ncoax0 %\n```\n@@coax-end\n",IMPLEMENTATION_VERSION);
 }

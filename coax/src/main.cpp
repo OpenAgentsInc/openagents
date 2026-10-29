@@ -232,7 +232,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
       TimedPhase phase{"lex"};ok=lex(arena, src, &tokens);
     }
   }
-  if (ok) {TimedPhase phase{"parse"};ok=parse(arena, src, tokens, file);}
+  if (ok) {TimedPhase phase{"parse"};ok=parse(arena, src, tokens, file, !opts.release);}
   if (ok) {
     bool exports = false;
     for (const ProcDecl *p : file->procs) exports = exports || p->export_c;

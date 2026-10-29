@@ -37,6 +37,7 @@ extern "C" coax_t_ScResult sc_bridge(const coax_string *sources,int64_t count,co
     if(!item.has_token)continue;
     const auto t=item.token;coax_string text{source.data+t.text_begin,t.text_end-t.text_begin};
     if(t.decoded){owned.emplace_back((char*)decoded.data(),(size_t)t.decoded_count);const auto &s=owned.back();text={s.data(),(int64_t)s.size()};}
+    if(!audit_source_token_allowed(t.kind==COAX_LX_Kind_k_directive,text))return failure(5,unit,t.loc.line,t.loc.column);
     double floating;std::memcpy(&floating,&t.float_value,sizeof(floating));
     tokens.push_back({(uint32_t)t.kind,text,{t.loc.line,t.loc.column,t.loc.offset},t.int_value,floating,t.float_bits,t.text_end-t.text_begin});
     syntax.push_back({(uint32_t)t.kind,text,t.loc.offset,t.loc.offset+t.text_end-t.text_begin});

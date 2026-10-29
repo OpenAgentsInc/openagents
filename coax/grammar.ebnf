@@ -1,4 +1,4 @@
-(* Coax 0.11.0 accepted subset. Planned language syntax is not in this grammar.
+(* Coax 0.17.0 accepted subset. Planned language syntax is not in this grammar.
    Lexing: ASCII identifiers (excluding reserved keywords); integer tokens in
    decimal/hex/binary with separators, up to the u64 maximum; decimal float
    tokens with a fraction and/or exponent ("1.5", "2e-3"; never "1." so that
@@ -19,7 +19,9 @@ procedure = identifier, "::", "(", [ parameters ], ")",
 parameters = parameter, { ",", parameter }, [ "," ] ;
 parameter = identifier, ":", type ;
 constant = identifier, "::", expression, ";" ;
-struct = identifier, "::", "struct", "{", { field }, "}" ;
+struct = identifier, "::", "struct", field-block ;
+field-block = "{", { field | profile-fields }, "}" ;
+profile-fields = "#if", "BUILD_DEBUG", field-block, [ "else", field-block ] ;
 field = identifier, ":", type, [ "=", expression ], ";" ;
 enum = identifier, "::", "enum", type, "{", { member }, "}" ;
 member = identifier, [ "=", expression ], ";" ;
@@ -35,7 +37,11 @@ type = identifier | reserved-type-name
 
 block = "{", { statement }, "}" ;
 statement = block | declaration | assignment, ";" | return | if | while | for |
-            "break", ";" | "continue", ";" | defer | assertion | expression, ";" ;
+            "break", ";" | "continue", ";" | defer | assertion | profile-statements | expression, ";" ;
+profile-statements = "#if", "BUILD_DEBUG", block, [ "else", block ] ;
+(* BUILD_DEBUG is a fixed workspace selector: true unless --release. Both
+   branches parse; only selected AST participates in semantics/emission.
+   This is not arbitrary constant-expression or top-level conditional compilation. *)
 declaration = identifier, ":=", expression, ";" |
               identifier, ":", type, [ "=", ( expression | "---" ) ], ";" ;
 assignment = place, ( "=" | "+=" | "-=" | "*=" | "/=" | "%=" |

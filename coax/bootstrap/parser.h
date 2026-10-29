@@ -84,7 +84,7 @@ typedef uint32_t coax_t_PS_Tag;
 #define COAX_PS_Tag_decl_assertion ((coax_t_PS_Tag)UINT64_C(75))
 struct coax_t_PS_Node { coax_t_PS_Tag kind; coax_t_PS_Loc loc; coax_string name; coax_string name2; coax_t_PS_Loc loc2; int64_t a; int64_t b; int64_t c; int64_t d; int64_t head; int64_t tail; int64_t next; uint32_t op; _Bool flag; _Bool flag2; uint64_t value; double floating; int64_t width; };
 typedef struct { coax_t_PS_Node *data; int64_t count; } coax_v_t_PS_Node;
-struct coax_t_PS_State { int64_t pos; int64_t used; int64_t depth; coax_string code; coax_t_PS_Loc loc; coax_string fix; int64_t length; };
+struct coax_t_PS_State { int64_t pos; int64_t used; int64_t depth; coax_string code; coax_t_PS_Loc loc; coax_string fix; int64_t length; _Bool development; };
 typedef struct { coax_t_PS_State *data; int64_t count; } coax_v_t_PS_State;
 #ifndef COAX_coax_v_u8_DEFINED
 #define COAX_coax_v_u8_DEFINED
@@ -124,7 +124,7 @@ COAX_LAYOUT(offsetof(coax_t_PS_Node, flag2) == 149, "offset of PS_Node.flag2");
 COAX_LAYOUT(offsetof(coax_t_PS_Node, value) == 152, "offset of PS_Node.value");
 COAX_LAYOUT(offsetof(coax_t_PS_Node, floating) == 160, "offset of PS_Node.floating");
 COAX_LAYOUT(offsetof(coax_t_PS_Node, width) == 168, "offset of PS_Node.width");
-COAX_LAYOUT(sizeof(coax_t_PS_State) == 88 && COAX_ALIGNOF(coax_t_PS_State) == 8, "layout of PS_State");
+COAX_LAYOUT(sizeof(coax_t_PS_State) == 96 && COAX_ALIGNOF(coax_t_PS_State) == 8, "layout of PS_State");
 COAX_LAYOUT(offsetof(coax_t_PS_State, pos) == 0, "offset of PS_State.pos");
 COAX_LAYOUT(offsetof(coax_t_PS_State, used) == 8, "offset of PS_State.used");
 COAX_LAYOUT(offsetof(coax_t_PS_State, depth) == 16, "offset of PS_State.depth");
@@ -132,6 +132,7 @@ COAX_LAYOUT(offsetof(coax_t_PS_State, code) == 24, "offset of PS_State.code");
 COAX_LAYOUT(offsetof(coax_t_PS_State, loc) == 40, "offset of PS_State.loc");
 COAX_LAYOUT(offsetof(coax_t_PS_State, fix) == 64, "offset of PS_State.fix");
 COAX_LAYOUT(offsetof(coax_t_PS_State, length) == 80, "offset of PS_State.length");
+COAX_LAYOUT(offsetof(coax_t_PS_State, development) == 88, "offset of PS_State.development");
 COAX_LAYOUT(sizeof(coax_t_PS_Result) == 16 && COAX_ALIGNOF(coax_t_PS_Result) == 8, "layout of PS_Result");
 COAX_LAYOUT(offsetof(coax_t_PS_Result, ok) == 0, "offset of PS_Result.ok");
 COAX_LAYOUT(offsetof(coax_t_PS_Result, root) == 8, "offset of PS_Result.root");
@@ -152,6 +153,7 @@ COAX_LAYOUT(offsetof(coax_t_PS_Imports, loc) == 40, "offset of PS_Imports.loc");
 
 coax_t_PS_Caps PS_caps(int64_t tokens, int64_t source);
 coax_t_PS_Result PS_parse(coax_string source, coax_v_t_PS_Token t, coax_v_t_PS_Node n, coax_v_t_PS_State s, coax_v_u8 out);
+coax_t_PS_Result PS_parse_build(coax_string source, coax_v_t_PS_Token t, coax_v_t_PS_Node n, coax_v_t_PS_State s, coax_v_u8 out, _Bool development);
 coax_t_PS_Imports PS_imports(coax_v_t_PS_Token t, coax_v_t_PS_Import out, _Bool metal);
 
 #ifdef __cplusplus

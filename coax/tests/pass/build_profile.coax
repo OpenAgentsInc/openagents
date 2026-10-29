@@ -1,0 +1,8 @@
+#import "Basic";
+Sample :: struct {value:u32;#if BUILD_DEBUG {magnitude:u64;}}
+main :: () {
+ sample:Sample;sample.value=3;
+ #if BUILD_DEBUG {sample.magnitude=1;#assert sample.magnitude==1 && size_of(Sample)==16;}
+ else {#assert size_of(Sample)==4;}
+ print("%\n",sample.value);
+}
