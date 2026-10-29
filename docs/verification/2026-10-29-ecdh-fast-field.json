@@ -1,0 +1,71 @@
+{
+  "schema": "coax.ecdh-fast-field-partial.v1",
+  "scope": "reviewed public fixture arithmetic only; ECDH and signing entries, target timing and erasure remain separate",
+  "source_sha256": {
+    "coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915",
+    "coax/tests/nostr/ecdh_fast.py": "2f3dd864f788aef15eeb91f7ffa4f4dfeb1629a6bf23e631be8a938a55690b4a",
+    "coax/tests/nostr/ecdh_fast_adapter.coax": "e9465188eb0b610fccdfd86dbaf90854b14cd80750815df9edb185a65d4eac48",
+    "coax/tests/nostr/ecdh_fast_wasm.c": "7d1350f2479ebe7e3c83cb92629e1233489089fee4a60be81d42c15bae8d86f2",
+    "coax/tests/nostr/ecdh_fast_wasm.cjs": "cdf0e6f2573dbe4d182a06f55f64e3ad7da547cf48559776c502fc9f49c0e365"
+  },
+  "oracle": {
+    "schema": "coax.ecdh-fused-field-oracle.v1",
+    "scope": "public full-width arithmetic fixtures, no target or production approval",
+    "source_graph": {
+      "coax/tests/nostr/ecdh_fast_adapter.coax": "e9465188eb0b610fccdfd86dbaf90854b14cd80750815df9edb185a65d4eac48",
+      "coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915",
+      "coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+      "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+      "coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b"
+    },
+    "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+    "pairs": 101310,
+    "inverse_cases": 518,
+    "modes": [
+      {
+        "mode": "checked",
+        "native_cases": 203138,
+        "native_failures": 0,
+        "wasm": {
+          "cases": 203138,
+          "failures": 0,
+          "engine": "Node v26.12.1 V8 14.6.202.34-node.40"
+        },
+        "native_sha256": "8d65e856b9645634f110cd65eb5b08622e63f61f86a52e01d1f8fcc496040210",
+        "wasm_sha256": "66af0f0f30eb9b55c91aeede58a10391fbf6c3f6438b115ac1992e48bad65775"
+      },
+      {
+        "mode": "release",
+        "native_cases": 203138,
+        "native_failures": 0,
+        "wasm": {
+          "cases": 203138,
+          "failures": 0,
+          "engine": "Node v26.12.1 V8 14.6.202.34-node.40"
+        },
+        "native_sha256": "4fed2a86833082412325b0a57be40bb89be5140119e806d16d7b3ce228455d31",
+        "wasm_sha256": "2f07aadb5a758fc2d246c70b5e3706c554fadd1bedad8c67dfc940b5b34157ca"
+      }
+    ],
+    "fixture_sha256": "7960c37ddd9edb0018cc155ddca73a5bb101e386a1fa0759619ca049ac4a36ce"
+  },
+  "oracle_report_sha256": "64eb01c829de51a90f7b96455f07504edf370a04b2e514683ab6102a4296d0e9",
+  "mutation": {
+    "source": "coax/lib/crypto/ecdh_fast.coax",
+    "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+    "mutants": 1416,
+    "killed": 1416,
+    "survived": 0,
+    "log_sha256": "0ea8d0d8c6b57827b18ddb8b6fa2444a027440ce09c6b1b1d28b843e18a74f05"
+  },
+  "historical_private_ecdh_root": {
+    "source_sha256": "15851bc19d28f16b8ec468fbadbd4311943d27f448740a1f3329376cace50006",
+    "report_sha256": "76b2785bebdc89eeedd2807392b4e78aff6ad8cebe567238344d1654afefe788",
+    "accepted": true,
+    "scope": "source audit of ECDH private root with public peer and secret scalar; that root is outside this snapshot, and this is not a signing or full ECDH audit"
+  },
+  "conditional_model_report_sha256": "1cb0f57bccfd5695b0e3599d6118e7097420fc73137aa023569271acb33987a1"
+}

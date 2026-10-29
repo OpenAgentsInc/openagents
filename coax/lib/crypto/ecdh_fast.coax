@@ -1,0 +1,119 @@
+// Experimental full-domain fused total field reductions for ECDH.
+#load "secp_group32.coax";
+#authority;
+#test "fused reducers accept full-width and canonical edges" {
+  max:Sf32;for i:0..<8 {max.limb[i]=cast(u32)SF32_WORD;}
+  #assert sf32_equal(ef_field_add(max,max),sf32_add_total(max,max));
+  #assert sf32_equal(ef_field_mul(max,max),sf32_mul_total(max,max));
+}
+#forall "fused reducers match independent total reducers across limbs" index:0..<8 {
+  a:Sf32;b:Sf32;for i:0..<8 {a.limb[i]=cast(u32)(123456789+i*991);b.limb[i]=cast(u32)(345678901+i*313);}
+  a.limb[index]=cast(u32)SF32_WORD;b.limb[index]=cast(u32)SF32_WORD;
+  #assert sf32_equal(ef_field_add(a,b),sf32_add_total(a,b));
+  #assert sf32_equal(ef_field_mul(a,b),sf32_mul_total(a,b));
+}
+#test "fused inverse returns zero for zero and inverse for two" {
+  zero:Sf32;one:Sf32;one.limb[0]=1;two:Sf32;two.limb[0]=2;
+  #assert sf32_equal(ef_inverse(zero),zero);
+  #assert sf32_equal(ef_field_mul(two,ef_inverse(two)),one);
+}
+#forall "fused finish complete-mask selection preserves each limb" index:0..<8,carry:0..<2 {
+  f:Sf32Fold;f.value.limb[index]=123456789;f.carry=cast(u64)carry;
+  candidate:=sf32_fold_total(f.value,1);want:=ifx carry==1 then candidate.value else f.value;
+  #assert sf32_equal(ef_finish(f),want);
+}
+#test "fused group formulas agree with the checked canonical group kernel" {
+  g:=sg32_from_point(sg_generator());zero:=sg32_infinity();
+  #assert sg_equal_mask(sg32_to_point(ef_double(g)),sg32_to_point(sg32_double(g)))==CB_MAX64;
+  #assert sg_equal_mask(sg32_to_point(ef_add(g,g)),sg32_to_point(sg32_add(g,g)))==CB_MAX64;
+  #assert sg_equal_mask(sg32_to_point(ef_add(g,zero)),sg32_to_point(g))==CB_MAX64;
+}
+#test "fused group addition covers distinct, opposite and infinity points" {
+  g:=sg32_from_point(sg_generator());twice:=sg32_double(g);zero:Sf32;negative:=g;negative.y=sf32_sub(zero,g.y);inf:=sg32_infinity();
+  #assert sg_equal_mask(sg32_to_point(ef_add(g,twice)),sg32_to_point(sg32_add(g,twice)))==CB_MAX64;
+  #assert sg_equal_mask(sg32_to_point(ef_add(g,negative)),sg_infinity())==CB_MAX64;
+  #assert sg_equal_mask(sg32_to_point(ef_add(inf,g)),sg32_to_point(g))==CB_MAX64;
+}
+ef_finish :: (folded:Sf32Fold)->Sf32 {
+  candidate:=sf32_fold_total(folded.value,1);
+  mask:=cast(u32)(value_barrier(((folded.carry|candidate.carry)&1)*CB_MAX64)&SF32_WORD);r:Sf32;
+  r.limb[0]=folded.value.limb[0]^((folded.value.limb[0]^candidate.value.limb[0])&value_barrier(mask));
+  r.limb[1]=folded.value.limb[1]^((folded.value.limb[1]^candidate.value.limb[1])&value_barrier(mask));
+  r.limb[2]=folded.value.limb[2]^((folded.value.limb[2]^candidate.value.limb[2])&value_barrier(mask));
+  r.limb[3]=folded.value.limb[3]^((folded.value.limb[3]^candidate.value.limb[3])&value_barrier(mask));
+  r.limb[4]=folded.value.limb[4]^((folded.value.limb[4]^candidate.value.limb[4])&value_barrier(mask));
+  r.limb[5]=folded.value.limb[5]^((folded.value.limb[5]^candidate.value.limb[5])&value_barrier(mask));
+  r.limb[6]=folded.value.limb[6]^((folded.value.limb[6]^candidate.value.limb[6])&value_barrier(mask));
+  r.limb[7]=folded.value.limb[7]^((folded.value.limb[7]^candidate.value.limb[7])&value_barrier(mask));
+  return r;
+}
+ef_field_add :: (a:Sf32,b:Sf32)->Sf32 {
+  r:Sf32;carry:u64;
+  for i:0..<8 {wide:=cast(u64)a.limb[i]+cast(u64)b.limb[i]+carry;r.limb[i]=cast(u32)(wide&SF32_WORD);carry=wide>>32;}
+  return ef_finish(sf32_fold_total(r,carry));
+}
+ef_field_mul :: (a:Sf32,b:Sf32)->Sf32 {
+  product:[16]u32;
+  for i:0..<8 {
+    carry:u64;wide:u64;
+    wide=cast(u64)a.limb[i]*cast(u64)b.limb[0]+cast(u64)product[i];product[i]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=cast(u64)a.limb[i]*cast(u64)b.limb[1]+cast(u64)product[i+1]+carry;product[i+1]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=cast(u64)a.limb[i]*cast(u64)b.limb[2]+cast(u64)product[i+2]+carry;product[i+2]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=cast(u64)a.limb[i]*cast(u64)b.limb[3]+cast(u64)product[i+3]+carry;product[i+3]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=cast(u64)a.limb[i]*cast(u64)b.limb[4]+cast(u64)product[i+4]+carry;product[i+4]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=cast(u64)a.limb[i]*cast(u64)b.limb[5]+cast(u64)product[i+5]+carry;product[i+5]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=cast(u64)a.limb[i]*cast(u64)b.limb[6]+cast(u64)product[i+6]+carry;product[i+6]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=cast(u64)a.limb[i]*cast(u64)b.limb[7]+cast(u64)product[i+7]+carry;product[i+7]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    product[i+8]=cast(u32)carry;
+  }
+  r:Sf32;carry:u64;previous:u64;
+  for i:0..<8 {high:=cast(u64)product[i+8];wide:=cast(u64)product[i]+high*977+previous+carry;r.limb[i]=cast(u32)(wide&SF32_WORD);carry=wide>>32;previous=high;}
+  return ef_finish(sf32_fold_total(r,previous+carry));
+}
+ef_double :: (p:Sg32)->Sg32 {
+  aa:=ef_field_mul(p.x,p.x);bb:=ef_field_mul(p.y,p.y);cc:=ef_field_mul(bb,bb);
+  q:=ef_field_add(p.x,bb);dd:=sf32_sub(sf32_sub(ef_field_mul(q,q),aa),cc);dd=ef_field_add(dd,dd);
+  ee:=ef_field_add(ef_field_add(aa,aa),aa);ff:=ef_field_mul(ee,ee);
+  r:Sg32;r.x=sf32_sub(ff,ef_field_add(dd,dd));
+  eightcc:=ef_field_add(cc,cc);eightcc=ef_field_add(eightcc,eightcc);eightcc=ef_field_add(eightcc,eightcc);
+  r.y=sf32_sub(ef_field_mul(ee,sf32_sub(dd,r.x)),eightcc);
+  yz:=ef_field_mul(p.y,p.z);r.z=ef_field_add(yz,yz);return sg32_canonical_infinity(r);
+}
+ef_add :: (a:Sg32,b:Sg32)->Sg32 {
+  z1z1:=ef_field_mul(a.z,a.z);z2z2:=ef_field_mul(b.z,b.z);
+  u1:=ef_field_mul(a.x,z2z2);u2:=ef_field_mul(b.x,z1z1);
+  s1:=ef_field_mul(a.y,ef_field_mul(b.z,z2z2));s2:=ef_field_mul(b.y,ef_field_mul(a.z,z1z1));
+  h:=sf32_sub(u2,u1);twoh:=ef_field_add(h,h);ii:=ef_field_mul(twoh,twoh);jj:=ef_field_mul(h,ii);
+  diff:=sf32_sub(s2,s1);rr:=ef_field_add(diff,diff);vv:=ef_field_mul(u1,ii);
+  r:Sg32;r.x=sf32_sub(sf32_sub(ef_field_mul(rr,rr),jj),ef_field_add(vv,vv));
+  t:=ef_field_mul(s1,jj);r.y=sf32_sub(ef_field_mul(rr,sf32_sub(vv,r.x)),ef_field_add(t,t));
+  zsum:=ef_field_add(a.z,b.z);r.z=ef_field_mul(sf32_sub(sf32_sub(ef_field_mul(zsum,zsum),z1z1),z2z2),h);
+  zero:Sf32;same:=sg32_mask_equal(h,zero)&sg32_mask_equal(s1,s2);
+  r=sg32_choose(same,ef_double(a),r);
+  r=sg32_choose(sg32_mask_equal(a.z,zero),b,r);
+  r=sg32_choose(sg32_mask_equal(b.z,zero),a,r);return sg32_canonical_infinity(r);
+}
+// The immutable public chain is admitted at compile time before any use.
+ef_schedule_valid :: (chain:[12]SfChainStep)->bool {
+  for i:0..<12 {if !sf_chain_step_valid(chain[i],i) {return false;}}return true;
+}
+#assert #run ef_schedule_valid(SF_FIELD_CHAIN);
+#test "the fixed exponent schedule satisfies every public bound" {#assert ef_schedule_valid(SF_FIELD_CHAIN);}
+#forall "schedule validation rejects a bad step at each position" index:0..<12 {
+  chain:=SF_FIELD_CHAIN;chain[index].left=index+1;#assert !ef_schedule_valid(chain);
+}
+// Public fixed exponent schedule inherited from the reviewed field chain.
+ef_square_n :: (a:Sf32,count:int)->Sf32 {
+  // Private: count is supplied by the validated public exponent schedule.
+  r:=a;for i:0..<count {r=ef_field_mul(r,r);}return r;
+}
+ef_inverse :: (a:Sf32)->Sf32 {
+  cache:[13]Sf32;cache[0]=a;
+  for i:0..<12 {
+    step:=SF_FIELD_CHAIN[i];
+    cache[i+1]=ef_field_mul(ef_square_n(cache[step.left],step.squares),cache[step.right]);
+  }
+  power9:=ef_field_mul(ef_field_mul(cache[1],cache[1]),cache[1]);
+  power45:=ef_field_mul(ef_square_n(power9,2),power9);
+  return ef_field_mul(ef_square_n(cache[12],10),power45);
+}

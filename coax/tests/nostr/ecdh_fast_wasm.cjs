@@ -1,0 +1,5 @@
+const fs=require('node:fs'),{WASI}=require('node:wasi');
+(async()=>{const memory=new WebAssembly.Memory({initial:64,maximum:1024}),wasi=new WASI({version:'preview1',args:[],env:{}});const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[2]),{env:{memory},wasi_snapshot_preview1:wasi.wasiImport});wasi.initialize(instance);
+ const x=instance.exports,base=Number(x.__heap_base.value)+1024,b=base+32,out=b+40,u=new Uint8Array(memory.buffer),data=fs.readFileSync(process.argv[3]);if(data.length%97)throw Error('fixture length');
+ for(let i=0;i<data.length/97;i++){let at=i*97;u.set(data.subarray(at+1,at+33),base);u.set(data.subarray(at+33,at+65),b);u.fill(0xa5,out-8,out+40);x.field(data[at],base,b,out);if(!Buffer.from(u.slice(out,out+32)).equals(data.subarray(at+65,at+97)))throw Error(`case ${i}`);if(u.slice(out-8,out).some(v=>v!==0xa5)||u.slice(out+32,out+40).some(v=>v!==0xa5))throw Error(`guard ${i}`);}
+ console.log(JSON.stringify({cases:data.length/97,failures:0,engine:`Node ${process.version} V8 ${process.versions.v8}`}));})().catch(e=>{console.error(e.stack||e);process.exitCode=1;});
