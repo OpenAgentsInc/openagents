@@ -946,7 +946,7 @@ fn verse_paint_sparkle(l_rdl: f32) -> f32 {
 }
 // ---- end generated
 
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -1061,5 +1061,21 @@ fn verse_style_lift(l_c: f32, l_lift: f32) -> f32 {
 }
 fn verse_style_luma(l_r: f32, l_g: f32, l_b: f32) -> f32 {
   return (((0.212599993 * l_r) + (0.715200007 * l_g)) + (0.0722000003 * l_b));
+}
+fn verse_style_bloom_share(l_lum: f32, l_threshold: f32, l_knee: f32) -> f32 {
+  var coax_t18: f32;
+  var coax_t19: f32;
+  if ((l_lum <= 0.0))
+  {
+    return 0.0;
+  }
+  var l_k: f32 = coax_p_st_max(l_knee, 9.99999975e-06);
+  coax_t18 = coax_p_st_max(((l_lum - l_threshold) + l_k), 0.0);
+  coax_t19 = (2.0 * l_k);
+  var l_q: f32 = coax_p_st_min(coax_t18, coax_t19);
+  return coax_p_st_min((coax_p_st_max(((l_q * l_q) / (4.0 * l_k)), (l_lum - l_threshold)) / l_lum), 1.0);
+}
+fn verse_style_bloom_mix(l_c: f32, l_bloom: f32, l_mix: f32) -> f32 {
+  return (l_c + (l_bloom * l_mix));
 }
 // ---- end generated

@@ -57,14 +57,19 @@ fn stars(p: vec2f) -> f32 {
   let p = array(vec2f(-1.0, -3.0), vec2f(-1.0, 1.0), vec2f(3.0, 1.0));
   return vec4f(p[i], 0.0, 1.0);
 }
-@fragment fn bg_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+// With the post pass (host.js postLayouts) everything draws light and, in alpha, the share
+// of it that blooms; lowpoly blooms nothing and post_fs passes it through as drawn.
+struct Lit { @location(0) light: vec4f, @location(1) aux: vec4f }
+@fragment fn bg_fs(@builtin(position) pos: vec4f) -> Lit {
   let p = pos.xy;
-  if (u.painted > 0.5) { return vec4f(panels(p, paint(p)), 1.0); }
+  if (u.painted > 0.5) {
+    return Lit(paint(p), vec4f(0.0));
+  }
   let c = vec2f(0.5, 0.58) * u.size;
   let r = length((p - c) / max(u.size.y, 1.0));
   var sky = vec3f(0.012, 0.013, 0.02) + vec3f(0.035, 0.036, 0.045) * exp(-r * r * 6.0);
   sky += vec3f(stars(p)) * u.fade;
-  return vec4f(panels(p, sky), 1.0);
+  return Lit(vec4f(panels(p, sky), 0.0), vec4f(0.0));
 }
 // ---- the style fixture (fixture.coax, ?style=painterly): a fixed scene traced
 // here and shaded with the style's own functions (verse/style.coax, the
@@ -81,10 +86,11 @@ fn canopy(i: i32) -> vec4f {
 const CANOPY_C = vec3f(3.9, 2.5, -2.6);
 const BODY = vec4f(-0.3, 0.0, -1.8, 0.24);           // a figure: capsule from y 0.24 to 1.30, head above
 const HEAD = vec4f(-0.3, 1.62, -1.8, 0.17);
+const LANTERN = vec4f(-2.3, 0.16, 1.9, 0.16);         // a glowing orb on the ground: all its light blooms (spec 6)
 const POND = vec4f(0.7, 0.0, 2.7, 1.5);              // centre x, -, z, radius; 1.9 m deep in the middle
 const GRASS = vec4f(-3.4, 0.0, 2.2, 1.6);
 const RIDGE_Z = vec3f(60.0, 140.0, 260.0);
-struct Hit { t: f32, n: vec3f, albedo: vec3f, kind: f32, id: f32 }   // kind 0 none, 1 matte, 2 water, 3 character; id: which thing (outlines)
+struct Hit { t: f32, n: vec3f, albedo: vec3f, kind: f32, id: f32 }   // kind 0 none, 1 matte, 2 water, 3 character, 4 emissive (albedo is its light); id: which thing (outlines)
 fn st(i: u32) -> vec4f { return u.style[i]; }
 fn sphere_t(o: vec3f, d: vec3f, s: vec4f) -> f32 {
   let oc = o - s.xyz; let b = dot(oc, d); let c = dot(oc, oc) - s.w * s.w; let h = b * b - c;
@@ -162,6 +168,8 @@ fn trace(o: vec3f, d: vec3f) -> Hit {
   if (t > 0.0 && t < h.t) { h = Hit(t, capsule_n(o + d * t, BODY.xyz + vec3f(0.0, 0.24, 0.0), BODY.xyz + vec3f(0.0, 1.30, 0.0)), vec3f(0.36, 0.24, 0.11), 3.0, 5.0); }
   t = sphere_t(o, d, HEAD);
   if (t > 0.0 && t < h.t) { h = Hit(t, normalize(o + d * t - HEAD.xyz), vec3f(0.62, 0.38, 0.26), 3.0, 6.0); }
+  t = sphere_t(o, d, LANTERN);
+  if (t > 0.0 && t < h.t) { h = Hit(t, normalize(o + d * t - LANTERN.xyz), vec3f(3.2, 1.9, 0.8), 4.0, 11.0); }
   // the ridges: painted flats standing across the view, each up to its silhouette
   for (var i = 0; i < 3; i++) {
     var zs = RIDGE_Z;
@@ -219,6 +227,7 @@ fn sky(d: vec3f, l: vec3f) -> vec3f {
   return c;
 }
 fn shade(h: Hit, o: vec3f, d: vec3f) -> vec3f {
+  if (h.kind > 3.5) { return h.albedo; }
   let p = o + d * h.t;
   let l = st(1u).xyz;
   let n = h.n;
@@ -272,7 +281,7 @@ fn ray(p: vec2f) -> vec3f {
   let up = cross(right, fwd);
   return normalize(fwd + right * q.x + up * q.y);
 }
-fn paint(p: vec2f) -> vec3f {
+fn paint(p: vec2f) -> vec4f {
   let d = ray(p);
   let h = trace(EYE, d);
   var c = vec3f(0.0);
@@ -294,7 +303,9 @@ fn paint(p: vec2f) -> vec3f {
     let style = st(31u).y; let cap = st(31u).x;
     c = vec3f(verse_outline_styled(style, c.x, edge, cap, f), verse_outline_styled(style, c.y, edge, cap, f), verse_outline_styled(style, c.z, edge, cap, f));
   }
-  return pow(clamp(tone(c), vec3f(0.0), vec3f(1.0)), vec3f(1.0 / 2.2));
+  // linear light and the share of it that blooms; post_fs blooms, tones and encodes it
+  let b = st(19u);
+  return vec4f(c, select(verse_style_bloom_share(verse_style_luma(c.x, c.y, c.z), b.x, b.y), 1.0, h.kind > 3.5));
 }
 // ---- the pack's meshes: its vertices (pack_realm.py: the Haunted House's 48
 // bytes, position, normal, uv, colour with its layer in the top byte), a
@@ -329,7 +340,7 @@ struct S {
   o.slice = vertices[b + 8u] >> 24u;
   return o;
 }
-@fragment fn scene_fs(s: S) -> @location(0) vec4f {
+@fragment fn scene_fs(s: S) -> Lit {
   let tex = textureSample(sheets, sheet, s.uv, s.slice);
   if (tex.a < 0.35) { discard; }
   let n = normalize(s.normal);
@@ -340,7 +351,45 @@ struct S {
   let near = max(0.0, dot(n, to / max(d, 0.001))) * u.lamp.w / (1.0 + 0.18 * d * d);
   lit += vec3f(1.0, 0.62, 0.28) * near * 1.6;
   let c = tex.rgb * s.tint * lit * u.fade;
-  return vec4f(panels(s.pos.xy, c), 1.0);
+  return Lit(vec4f(panels(s.pos.xy, c), 0.0), vec4f(0.0));
+}
+// ---- the post pass (host.js postLayouts): the bright share at a quarter and an eighth of
+// the size, blurred, mixed back at the style's bloom mix; then the tone, and the plates over it.
+struct Step { v: vec4f }
+@group(1) @binding(0) var bloom_src: texture_2d<f32>;
+@group(1) @binding(1) var bloom_lin: sampler;
+@group(1) @binding(2) var<uniform> bloom_step: Step;
+@fragment fn bloom_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let texel = 1.0 / vec2f(textureDimensions(bloom_src));
+  let uv = pos.xy * bloom_step.v.w * texel;
+  if (bloom_step.v.z < 0.5) {
+    var c = vec3f(0.0);
+    for (var k = 0; k < 4; k++) {
+      let t = textureSampleLevel(bloom_src, bloom_lin, uv + (vec2f(f32(k & 1), f32(k >> 1u)) * 2.0 - 1.0) * texel, 0.0);
+      c += t.rgb * clamp(t.a, 0.0, 1.0);
+    }
+    return vec4f(c * 0.25, 1.0);
+  }
+  let d = bloom_step.v.xy * texel;
+  var c = textureSampleLevel(bloom_src, bloom_lin, uv, 0.0).rgb * 0.227;
+  c += (textureSampleLevel(bloom_src, bloom_lin, uv + d * 1.385, 0.0).rgb + textureSampleLevel(bloom_src, bloom_lin, uv - d * 1.385, 0.0).rgb) * 0.316;
+  c += (textureSampleLevel(bloom_src, bloom_lin, uv + d * 3.231, 0.0).rgb + textureSampleLevel(bloom_src, bloom_lin, uv - d * 3.231, 0.0).rgb) * 0.070;
+  return vec4f(c, 1.0);
+}
+@group(1) @binding(0) var post_light: texture_2d<f32>;
+@group(1) @binding(1) var post_quarter: texture_2d<f32>;
+@group(1) @binding(2) var post_eighth: texture_2d<f32>;
+@group(1) @binding(3) var post_aux: texture_2d<f32>;
+@group(1) @binding(4) var post_depth: texture_depth_2d;
+@group(1) @binding(5) var post_lin: sampler;
+@fragment fn post_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let light = textureLoad(post_light, vec2i(pos.xy), 0).rgb;
+  if (u.painted < 0.5) { return vec4f(light, 1.0); }
+  let uv = pos.xy / u.size;
+  let b = textureSampleLevel(post_quarter, post_lin, uv, 0.0).rgb * 0.55 + textureSampleLevel(post_eighth, post_lin, uv, 0.0).rgb * 0.45;
+  let m = st(19u).z;
+  let c = vec3f(verse_style_bloom_mix(light.x, b.x, m), verse_style_bloom_mix(light.y, b.y, m), verse_style_bloom_mix(light.z, b.z, m));
+  return vec4f(panels(pos.xy, pow(clamp(tone(c), vec3f(0.0), vec3f(1.0)), vec3f(1.0 / 2.2))), 1.0);
 }
 // ---- the strokes: one quad per stroke or light (fixture.coax lit, tinted_dot)
 struct V {
@@ -420,7 +469,7 @@ fn verse_outline_crease(l_facing: f32) -> f32 {
 }
 // ---- end generated
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -535,5 +584,21 @@ fn verse_style_lift(l_c: f32, l_lift: f32) -> f32 {
 }
 fn verse_style_luma(l_r: f32, l_g: f32, l_b: f32) -> f32 {
   return (((0.212599993 * l_r) + (0.715200007 * l_g)) + (0.0722000003 * l_b));
+}
+fn verse_style_bloom_share(l_lum: f32, l_threshold: f32, l_knee: f32) -> f32 {
+  var coax_t18: f32;
+  var coax_t19: f32;
+  if ((l_lum <= 0.0))
+  {
+    return 0.0;
+  }
+  var l_k: f32 = coax_p_st_max(l_knee, 9.99999975e-06);
+  coax_t18 = coax_p_st_max(((l_lum - l_threshold) + l_k), 0.0);
+  coax_t19 = (2.0 * l_k);
+  var l_q: f32 = coax_p_st_min(coax_t18, coax_t19);
+  return coax_p_st_min((coax_p_st_max(((l_q * l_q) / (4.0 * l_k)), (l_lum - l_threshold)) / l_lum), 1.0);
+}
+fn verse_style_bloom_mix(l_c: f32, l_bloom: f32, l_mix: f32) -> f32 {
+  return (l_c + (l_bloom * l_mix));
 }
 // ---- end generated

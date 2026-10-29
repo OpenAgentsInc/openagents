@@ -81,6 +81,17 @@ verse_style_tone :: (c:f32,exposure:f32)->f32 #export_c {return 1.0f32-exp(-st_m
 verse_style_saturation :: (c:f32,lum:f32,amount:f32)->f32 #export_c {return st_max(0.0f32,lum+(c-lum)*amount);}
 // Blacks lifted before encoding: c = lift + (1 - lift) c.
 verse_style_lift :: (c:f32,lift:f32)->f32 #export_c {return lift+(1.0f32-lift)*c;}
+// The share of a pixel's light that blooms (art-styles.md 6): none under the
+// threshold less the knee, all of the excess past the threshold, a quadratic
+// knee between so the glow starts without a seam. As a fraction of the light.
+verse_style_bloom_share :: (lum:f32,threshold:f32,knee:f32)->f32 #export_c {
+ if lum<=0.0f32 {return 0.0f32;}
+ k:=st_max(knee,0.00001f32);
+ q:=st_min(st_max(lum-threshold+k,0.0f32),2.0f32*k);
+ return st_min(st_max(q*q/(4.0f32*k),lum-threshold)/lum,1.0f32);
+}
+// The light with its blurred bright share mixed back: gently, mix of it.
+verse_style_bloom_mix :: (c:f32,bloom:f32,mix:f32)->f32 #export_c {return c+bloom*mix;}
 // Relative luminance of linear RGB.
 verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.7152f32*g+0.0722f32*b;}
 
@@ -154,6 +165,21 @@ verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.715
  #assert abs(verse_style_halo(1.0f32,900.0f32)-1.0f32)<0.0001f32;
  #assert verse_style_halo(0.99f32,900.0f32)<0.001f32;
  #assert verse_style_halo(0.99f32,60.0f32)>0.5f32;
+}
+#test "bloom starts 0.25 under 0.85 with a soft knee and takes all of the excess past it" {
+ #assert verse_style_bloom_share(0.5f32,0.85f32,0.25f32)==0.0f32;
+ #assert verse_style_bloom_share(0.60f32,0.85f32,0.25f32)==0.0f32;
+ #assert verse_style_bloom_share(0.0f32,0.85f32,0.25f32)==0.0f32;
+ // at the threshold the knee gives k/4 of light: 0.0625 of 0.85
+ #assert abs(verse_style_bloom_share(0.85f32,0.85f32,0.25f32)-0.0625f32/0.85f32)<0.0001f32;
+ // past threshold + knee, just the excess
+ #assert abs(verse_style_bloom_share(2.0f32,0.85f32,0.25f32)-1.15f32/2.0f32)<0.0001f32;
+ // continuous and never stepping back across the knee
+ for i:0..<200 {a:=0.55f32+cast(f32)i*0.004f32;
+  #assert verse_style_bloom_share(a+0.004f32,0.85f32,0.25f32)*(a+0.004f32)>=verse_style_bloom_share(a,0.85f32,0.25f32)*a;
+  #assert abs(verse_style_bloom_share(a+0.004f32,0.85f32,0.25f32)*(a+0.004f32)-verse_style_bloom_share(a,0.85f32,0.25f32)*a)<0.01f32;}
+ #assert abs(verse_style_bloom_mix(0.5f32,1.0f32,0.30f32)-0.80f32)<0.0001f32;
+ #assert abs(verse_style_bloom_mix(0.5f32,1.0f32,0.22f32)-0.72f32)<0.0001f32;
 }
 #test "the tone keeps black, approaches white, and lifts blacks 0.035" {
  #assert verse_style_tone(0.0f32,1.6f32)==0.0f32;
