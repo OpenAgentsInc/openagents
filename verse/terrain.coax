@@ -172,6 +172,17 @@ verse_terrain_normal :: (g: Ground, heights: [] f32, x: f32, z: f32) -> Point #e
   return unit_or(v3(-sx / g.cell, 1, -sz / g.cell), v3(0, 1, 0));
 }
 
+// The painterly ground's normal (docs/verse/art-styles.md, 1): the height
+// field's slope taken over 3 cells (1.5 each side), so the triangles' facets
+// don't show in the light bands. Exact on a plane; continuous across cells.
+verse_terrain_normal_smooth :: (g: Ground, heights: [] f32, x: f32, z: f32) -> Point #export_c {
+  if g.n < 1 || g.cell <= 0 { return v3(0, 1, 0); }
+  r := 1.5 * g.cell;
+  sx := verse_terrain_height(g, heights, x + r, z) - verse_terrain_height(g, heights, x - r, z);
+  sz := verse_terrain_height(g, heights, x, z + r) - verse_terrain_height(g, heights, x, z - r);
+  return unit_or(v3(-sx / (2 * r), 1, -sz / (2 * r)), v3(0, 1, 0));
+}
+
 // How far along a ray (dir a unit vector) before it meets the ground, up
 // to far.
 verse_terrain_ray :: (g: Ground, heights: [] f32, from: Point, dir: Point, far: f32) -> f32 #export_c {
@@ -450,6 +461,27 @@ built :: (heights: [] f32) -> bool {
       #assert n.y > 0.6 && near(length(n), 1, 0.0001);
     }
   }
+}
+
+#test "the painterly ground normal is exact on a slope and has no facet steps" {
+  g := tg();
+  // a plane rising 0.2 m per metre east: the smooth normal is the plane's
+  slope: [TP] f32;
+  for j: 0..<TG + 1 { for i: 0..<TG + 1 { slope[j * (TG + 1) + i] = 0.2 * (g.west + f32(i) * g.cell); } }
+  n := verse_terrain_normal_smooth(g, slope[..], 3.3, -7.1);
+  #assert near(n.x, -0.2 / sqrt(1.04), 0.0001) && near(n.z, 0, 0.0001);
+  // the built ground: across a cell's diagonal the faceted normal jumps, the smooth one barely moves
+  h: [TP] f32;
+  #assert built(h[..]);
+  worst_facet := 0.0f32; worst_smooth := 0.0f32;
+  for i: 0..<40 {
+    x := -20 + f32(i) * 0.977; z := x;   // a point on a cell's diagonal, and its neighbour across
+    a := verse_terrain_normal(g, h[..], x + 0.002, z - 0.002); b := verse_terrain_normal(g, h[..], x - 0.002, z + 0.002);
+    c := verse_terrain_normal_smooth(g, h[..], x + 0.002, z - 0.002); d := verse_terrain_normal_smooth(g, h[..], x - 0.002, z + 0.002);
+    worst_facet = hi(worst_facet, length(sub(a, b))); worst_smooth = hi(worst_smooth, length(sub(c, d)));
+    #assert c.y > 0.6 && near(length(c), 1, 0.0001);
+  }
+  #assert worst_smooth < 0.01 && worst_smooth < worst_facet;
 }
 
 #test "paths are level across and gentle along" {
