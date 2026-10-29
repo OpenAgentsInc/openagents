@@ -1,0 +1,75 @@
+// Bookkeeping for caller-owned large scratch, in bounded secure-zero chunks.
+// This records host-reported effects; it does not erase memory by itself.
+#load "zeroize.coax";
+#authority;
+
+#test "large cleanup acknowledges each chunk before reporting completion" {
+  c:=zero_large_begin(1048581,true);#assert c.error==ZERO_OK;
+  #assert !zero_large_complete(c.state);
+  part:=zero_large_next(c.state);#assert part.error==ZERO_OK && part.offset==0 && part.length==1048576;
+  bad:=zero_large_ack(c.state,1,part.length,ZERO_OK);#assert bad.error==ZERO_STATE && bad.state.cursor==0;
+  bad=zero_large_ack(c.state,0,part.length-1,ZERO_OK);#assert bad.error==ZERO_STATE && bad.state.cursor==0;
+  bad=zero_large_ack(c.state,0,part.length,ZERO_EFFECT);#assert bad.error==ZERO_EFFECT && bad.state.cursor==0;
+  c=zero_large_ack(c.state,0,part.length,ZERO_OK);#assert c.error==ZERO_OK && !zero_large_complete(c.state);
+  part=zero_large_next(c.state);#assert part.offset==1048576 && part.length==5;
+  c=zero_large_ack(c.state,part.offset,part.length,ZERO_OK);#assert c.error==ZERO_OK && zero_large_complete(c.state);
+  #assert zero_large_next(c.state).error==ZERO_STATE;
+  #assert zero_large_ack(c.state,0,5,ZERO_OK).error==ZERO_STATE;
+}
+
+#test "large cleanup admission rejects missing, negative and oversized regions" {
+  #assert zero_large_begin(-1,true).error==ZERO_CAPACITY;
+  #assert zero_large_begin(268435457,true).error==ZERO_CAPACITY;
+  #assert zero_large_begin(1,false).error==ZERO_ADDRESS;
+  c:=zero_large_begin(0,false);#assert c.error==ZERO_OK && zero_large_complete(c.state);
+  c=zero_large_begin(268435456,true);#assert c.error==ZERO_OK && zero_large_next(c.state).length==1048576;
+}
+
+#test "large cleanup validates restored state and exact chunk boundaries" {
+  s:=ZeroLarge.{length=1,phase=ZERO_CLOSING};#assert zero_large_valid(s);
+  s.length=-1;#assert !zero_large_valid(s);
+  s.length=268435457;#assert !zero_large_valid(s);
+  s.length=1;s.cursor=-1;#assert !zero_large_valid(s);
+  s.cursor=2;#assert !zero_large_valid(s);
+  s.cursor=1;#assert !zero_large_valid(s);
+  s.phase=ZERO_CLOSED;#assert zero_large_valid(s);
+  s.cursor=0;#assert !zero_large_valid(s);
+  s.length=1048577;s.cursor=1;s.phase=ZERO_CLOSING;#assert !zero_large_valid(s);
+  s.length=1048576;s.cursor=1048576;#assert !zero_large_valid(s);
+  s.length=1048577;
+  s.cursor=0;s.phase=ZERO_OPEN;#assert !zero_large_valid(s);
+  c:=zero_large_begin(1048575,true);#assert zero_large_next(c.state).length==1048575;
+  c=zero_large_begin(1048576,true);#assert zero_large_next(c.state).length==1048576;
+  c=zero_large_begin(1048577,true);#assert zero_large_next(c.state).length==1048576;
+}
+
+ZERO_LARGE_LIMIT :: 268435456;
+ZeroLarge :: struct {length:int;cursor:int;phase:u32;}
+ZeroLargeChange :: struct {state:ZeroLarge;error:u32;}
+ZeroLargeSpan :: struct {offset:int;length:int;error:u32;}
+
+zero_large_valid :: (s:ZeroLarge)->bool {
+  if s.length<0 || s.length>ZERO_LARGE_LIMIT || s.cursor<0 || s.cursor>s.length {return false;}
+  if s.phase==ZERO_CLOSED {return s.cursor==s.length;}
+  return s.phase==ZERO_CLOSING && s.cursor<s.length && s.cursor%ZERO_LIMIT==0;
+}
+zero_large_begin :: (length:int,present:bool)->ZeroLargeChange #export_c {
+  if length<0 || length>ZERO_LARGE_LIMIT {return ZeroLargeChange.{error=ZERO_CAPACITY};}
+  if length>0 && !present {return ZeroLargeChange.{error=ZERO_ADDRESS};}
+  phase:=ifx length==0 then cast(u32)ZERO_CLOSED else cast(u32)ZERO_CLOSING;
+  return ZeroLargeChange.{state=ZeroLarge.{length=length,phase=phase}};
+}
+zero_large_complete :: (s:ZeroLarge)->bool #export_c {return zero_large_valid(s) && s.phase==ZERO_CLOSED;}
+zero_large_next :: (s:ZeroLarge)->ZeroLargeSpan #export_c {
+  if !zero_large_valid(s) || s.phase!=ZERO_CLOSING {return ZeroLargeSpan.{error=ZERO_STATE};}
+  remaining:=s.length-s.cursor;length:=ZERO_LIMIT;
+  if (remaining-1)/ZERO_LIMIT==0 {length=remaining;}
+  return ZeroLargeSpan.{offset=s.cursor,length=length};
+}
+zero_large_ack :: (s:ZeroLarge,offset:int,length:int,status:u32)->ZeroLargeChange #export_c {
+  part:=zero_large_next(s);
+  if part.error!=ZERO_OK || offset!=part.offset || length!=part.length {return ZeroLargeChange.{state=s,error=ZERO_STATE};}
+  if status!=ZERO_OK {return ZeroLargeChange.{state=s,error=ZERO_EFFECT};}
+  next:=s;next.cursor+=length;if next.cursor==next.length {next.phase=ZERO_CLOSED;}
+  return ZeroLargeChange.{state=next};
+}
