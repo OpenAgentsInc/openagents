@@ -102,6 +102,40 @@ cl_image_block :: (o: [] ClOut, media_type: string, base64: string) {
   cl_put(o, "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":"); cl_put_string(o, media_type);
   cl_put(o, ",\"data\":"); cl_put_string(o, base64); cl_put(o, "}}");
 }
+// The same from the image's bytes, encoded (base64, padded) straight into the frame.
+cl_image_block_bytes :: (o: [] ClOut, media_type: string, bytes: [] u8) {
+  cl_put(o, "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":"); cl_put_string(o, media_type);
+  cl_put(o, ",\"data\":\"");
+  cl_put_base64(o, bytes);
+  cl_put(o, "\"}}");
+}
+CL_B64 :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+cl_put_base64 :: (o: [] ClOut, src: [] u8) {
+  if o[0].failed { return; }
+  if o[0].len + (src.count + 2) / 3 * 4 > o[0].buf.count { o[0].failed = true; return; }
+  alphabet := CL_B64;
+  k := o[0].len; i := 0;
+  while i < src.count {
+    left := src.count - i;
+    v := cast(int) src[i] << 16;
+    if left > 1 { v = v | (cast(int) src[i + 1] << 8); }
+    if left > 2 { v = v | cast(int) src[i + 2]; }
+    o[0].buf[k] = alphabet[(v >> 18) & 63]; o[0].buf[k + 1] = alphabet[(v >> 12) & 63];
+    o[0].buf[k + 2] = ifx left > 1 then alphabet[(v >> 6) & 63] else '=';
+    o[0].buf[k + 3] = ifx left > 2 then alphabet[v & 63] else '=';
+    k += 4; i += 3;
+  }
+  o[0].len = k;
+}
+// A user message whose content blocks are written in place (images too
+// large to stage as a string first): cl_user_open, the blocks with commas
+// between them, then cl_user_close.
+cl_user_open :: (o: [] ClOut) { cl_put(o, "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":["); }
+cl_user_close :: (o: [] ClOut, session_id: string, client_composed: bool) {
+  cl_put(o, "]},\"parent_tool_use_id\":null,\"session_id\":"); cl_put_string(o, session_id);
+  if client_composed { cl_put(o, ",\"client_composed\":true"); }
+  cl_put(o, "}\n");
+}
 
 // ---- permission answers (PermissionResult)
 

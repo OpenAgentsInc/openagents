@@ -156,6 +156,23 @@ near :: (a: f64, b: f64) -> bool { return abs(a - b) < 0.001; }
   #assert cl_str(ar[..], line, "message.content") == "Hello, Claude!" && cl_bool(line, "client_composed").value;
 }
 
+#test "a user message written in place: an image's bytes go as base64 before the text" {
+  buf: [512] u8; o: [1] ClOut; o[0].buf = buf[..];
+  px := [4] u8.[0x89, 'P', 'N', 'G'];
+  cl_user_open(o[..]); cl_image_block_bytes(o[..], "image/png", px[..]); cl_put(o[..], ","); cl_text_block(o[..], "what is this"); cl_user_close(o[..], "s-1", false);
+  #assert !o[0].failed;
+  line := cast(string) buf[0..<o[0].len - 1];
+  ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  c := cl_at(line, "message.content");
+  #assert cl_json(line, cl_element(line, c, 0)) == "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\"iVBORw==\"}}";
+  #assert cl_str(ar[..], line, "session_id") == "s-1" && cl_classify(ar[..], line).kind == ClKind.user;
+  b2: [8] u8; o2: [1] ClOut; o2[0].buf = b2[..];
+  cl_put_base64(o2[..], px[0..<3]);
+  #assert cast(string) b2[0..<4] == "iVBO" && o2[0].len == 4;
+  cl_put_base64(o2[..], px[..]);
+  #assert o2[0].failed;
+}
+
 #test "a streamed user message with content blocks serializes as the TS SDK does" {
   bb: [256] u8; b: [1] ClOut; b[0].buf = bb[..];
   cl_put(b[..], "["); cl_text_block(b[..], "describe"); cl_put(b[..], ","); cl_image_block(b[..], "image/jpeg", "AAAA"); cl_put(b[..], "]");
