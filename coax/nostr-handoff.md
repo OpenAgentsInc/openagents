@@ -11,48 +11,43 @@ phone-link endpoints, `/signin`, and its TestFlight build. Do not take those.
 The QR dependency #503d is on main (`78e2095bc1`); the phone fast path and the
 full NIP-46 work remain distinct.
 
-### Active validator issue #161a
+### Generated protobuf validator issue #161a — done
 
-#161a remains claimed while a full-reference event mutation gate is running.
-The prior final run failed: 4,301/4,302 mutants killed; the surviving change
-made `N_SignedEvent_decode` require minimal wire encoding. A new test covers
-a valid non-minimal envelope: 195/195 checks pass and an isolated diagnostic
-kills that mutant, but that diagnostic is not a full mutation pass. A fresh
-full-reference run is required on the changed test source. Do not mark it done
-until that gate, independent review and the other acceptance requirements pass.
-The project publisher and final completion release must follow the normal queue process.
+#161a is resolved on the relay and on main at
+`d42b3c1c2ff45fd04fb18e77bd4dd4aa38ac3b76`. The actual generated consumer
+closures passed full-reference mutation without waivers: event 4,306/4,306
+and FI 3,162/3,162. Their Coax checks passed 195/195 and 210/210. The tested
+inputs, source identities, commands, independent review and native, Wasm,
+ASan/UBSan, protoc and iOS Simulator fixture results are recorded in
+`docs/verification/2026-10-29-proto-consumers.md` and its adjacent input
+manifest. The compiler bootstrap remains Python-free.
 
-The changed runtime rejects negative internal depth (`7ed6d17885`), and the
-generator removes only a per-message limit redundant with the shared 1 MiB
-cap (`8179746a5d`). The latter's Python-free bootstrap checks and fingerprints
-cap parity, and its scope, independent review and tests are documented in
-`docs/verification/2026-10-29-proto-generated-validator-review.md`. The full
-final FI reference run killed 3,162/3,162 mutants; final event/FI fixtures passed
-checked/release native, Wasm, ASan/UBSan and iOS Simulator, including protoc and
-independent signature controls. Projections compare borrowed original bytes and
-do not prove signatures, membership, identity, freshness or authorization.
-They require live, stable, physically valid borrowed storage. The event adapter
-has narrower JSON/tag limits than the generic descriptor; the FI adapter has
-narrower header, payload and audience limits. Nostr kind 0..65535 is enforced
-by the original event parser in this adapter, not by the generic uint32 DTO.
+The prior event reference run failed 4,301/4,302: a non-minimal envelope
+was not tested through the ordinary decoder. The final tests cover acceptance
+by the ordinary decoder and rejection by the minimal decoder; only the full
+rerun above is the acceptance gate. Earlier partial failure logs remain in
+`/tmp/coax-event-final-reference.log` and
+`/tmp/coax-required-policy-event-full-mutation.log`. The final complete traces
+are `/tmp/coax-event-envelope-reference.log` and
+`/tmp/coax-fi-final-reference.log`; they and the fixture logs are also in
+`/Users/christopherdavid/.codex/handoffs/nostr-validator-161a-20261029/`.
+That directory is local, not a remote backup. The sources and verification
+summary are committed on main.
 
-Uncommitted projection sources and reproducible test fixtures are in
-`/tmp/codex-event-final` (base `8179746a5d`) and in the verified local archive
-`/Users/christopherdavid/.codex/handoffs/nostr-validator-161a-20261029/projections-envelope-check.tar.gz`
-(SHA-256 `fc663357726b43cf5ce568ccc459a5aa0150febfb6468ce0595ab92395b6e2f8`).
-The adjacent README and manifest include recovery instructions and per-file
-hashes; this is not a remote backup. Key source/compiler hashes are
-the older `/tmp/coax-event-final-key-hashes.txt` and `/tmp/coax-fi-final-key-hashes.txt`;
-the updated event source SHA-256 is
-`1946d02e0cd1cbf2e816ad3b2e7e0e773a3118c1a93e7686da6bec9ce4ce8c29`.
-Logs: `/tmp/coax-event-envelope-reference.log` (running),
-`/tmp/coax-event-final-reference.log` (failed), `/tmp/coax-fi-final-reference.log`,
-`/tmp/coax-event-final-interop.log` and `/tmp/coax-fi-final-interop.log`. The
-first event run failed with 130 survivors in
-`/tmp/coax-required-policy-event-full-mutation.log`; do not present it as a
-pass. #ef04 tracks versioned numeric-range semantics; #5869 tracks ordinal
-error precedence (`LIMIT | WIRE` can be misreported as `DUPLICATE`). Both are
-separate from signature or authorization and remain open.
+The runtime rejects negative internal depth (`7ed6d17885`), and the generator
+removes only a per-message limit redundant with the shared 1 MiB cap
+(`8179746a5d`); bootstrap checks and fingerprints enforce cap parity. The
+projections compare borrowed original bytes and do not prove signatures,
+membership, identity, freshness or authorization. They require live, stable,
+physically valid borrowed storage. Event JSON/tag and FI header/payload/audience
+limits are narrower than their generic descriptors. Nostr kind 0..65535 is
+checked by the original event parser, not the generic uint32 DTO.
+
+#ef04 tracks explicit schema numeric-range semantics; #5869 tracks ordinal
+error precedence (`LIMIT | WIRE` can be misreported as `DUPLICATE`). Both
+remain open and are separate from signature or authorization. The projections
+are experimental and unverified, and they do not complete the rest of the
+Nostr epic or authorize secret handling.
 
 ### Store and project page
 
