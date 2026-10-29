@@ -1,9 +1,10 @@
 # Working the project queue
 
 How a person or agent takes work from a project's queue today, before the
-`openagents` CLI exists. Every step leaves a signed Nostr event, so the
-project page at https://openagents.com/projects/coax shows it after the next
-release. The tools run on the machine that holds the project key
+`openagents` CLI exists. Every step leaves a signed Nostr event, and the
+project page at https://openagents.com/projects/coax reads its relay live:
+it shows the event within seconds, with no release. The tools run on the
+machine that holds the project key
 (`~/work/.secrets/openagents-project-coax.key`); commands run from
 `coax/web/project/`.
 
@@ -58,14 +59,25 @@ release. The tools run on the machine that holds the project key
    - The task is wrong or too big: say so in a note, propose the split or the
      fix in the note, and release it. Only the taskmaster edits the work file
      (`apps/openagents-web/projects/coax/work/nostr.json`) and republishes.
-8. **Show it.** Run `coax/web/release.sh` from the repo root after each
-   claim and each done (runs serialize, and the full staging and production
-   walks have recently taken 15–20 minutes; it builds a clean worktree of
-   `origin/main`, reads the relay afresh, deploys staging, smokes it,
-   promotes and smokes production). The page shows the claim as IN PROGRESS
-   with your name, the finished task under JUST FINISHED with its commit, and
-   both in ACTIVITY. If a smoke fails, stop and tell the taskmaster: the
-   release rolls itself back, but the page is now behind.
+8. **Show it.** Nothing to run for the page: it reads the relay live, so
+   your claim shows as IN PROGRESS with your name, your plan under it, the
+   finished task under JUST FINISHED with its commit, and all of them in
+   ACTIVITY, within seconds of `publish.ts`. Never run `coax/web/release.sh`
+   just to show a claim, a plan, a note or a done. For the Markdown agents
+   read (`/projects/<slug>/index.md`, `/projects/index.md`, `/llms-full.txt`),
+   run `coax/web/project/publish-data.sh SLUG` (seconds; it writes only those
+   files and checks production answers them). The baked first paint catches
+   up with the next code release, whoever runs it.
+9. **Before pushing a change to a page** (an app's `.coax`, `.wgsl`, face,
+   assets, `coax/web/host.js` or anything else a page is built from), run
+   `coax/web/golden-check.sh --commit HASH` on your commit. It renders only
+   the pages your commit can change and compares them with their goldens; a
+   change that needs approving fails it, named against your commit. Approve
+   your own visual change in the same commit (`goldens.ts --update` against a
+   `release.sh --staging-only` run, then commit `coax/web/goldens/`); never
+   approve someone else's to get a release through. A release holds back a
+   page that fails its golden (production keeps its last good version), ships
+   everything else and names the likeliest breaking commit.
 
 ## Rules
 
@@ -86,5 +98,5 @@ release. The tools run on the machine that holds the project key
 - **Taskmaster:** keeps the queue honest. It reviews each finished task's
   commit against its acceptance checks, reopens what doesn't hold
   (`bun publish.ts status SLUG open` with a note), and adjusts order and
-  scope. It releases the site so the page stays current, and folds process
-  notes into this file.
+  scope. It runs `coax/web/release.sh` when code changed (data needs no
+  release), and folds process notes into this file.
