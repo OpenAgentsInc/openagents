@@ -19,7 +19,7 @@
 // nobody else gets EDIT.
 
 EB_ITEM :: 0;                              // the hotbar: one per item, then
-EB_UNDO :: EG_EDIT_ITEMS; EB_REDO :: EB_UNDO + 1; EB_ORIGINAL :: EB_UNDO + 2; EB_DONE :: EB_UNDO + 3;
+EB_UNDO :: EG_EDIT_BUTTONS; EB_REDO :: EB_UNDO + 1; EB_ORIGINAL :: EB_UNDO + 2; EB_DONE :: EB_UNDO + 3;
 EB_HOTBAR :: EB_DONE + 1;
 EB_OP :: EB_HOTBAR;                        // the picked thing's row
 EB_OPS :: 8;
@@ -216,9 +216,9 @@ edit_original :: (s: [] Everglade) {
 edit_press :: (s: [] Everglade, b: int) {
   if b == EB_EDIT { edit_toggle(s); return; }
   if !edit_on(s) { return; }
-  if !s[0].ev.admin && !(b >= EB_ITEM && b < EB_ITEM + EG_EDIT_ITEMS) && b != EB_DONE { return; }   // a visitor places and is done
+  if !s[0].ev.admin && !(b >= EB_ITEM && b < EB_ITEM + EG_EDIT_BUTTONS) && b != EB_DONE { return; }   // a visitor places and is done
   if b != EB_ORIGINAL { s[0].ev.sure = 0; }
-  if b >= EB_ITEM && b < EB_ITEM + EG_EDIT_ITEMS { edit_place_one(s, b - EB_ITEM); return; }
+  if b >= EB_ITEM && b < EB_ITEM + EG_EDIT_BUTTONS { edit_place_one(s, b - EB_ITEM); return; }
   if b == EB_UNDO { edit_undo(s, false); s[0].ev.picked = -1; s[0].ev.person = -1; return; }
   if b == EB_REDO { edit_redo(s); return; }
   if b == EB_ORIGINAL { edit_original(s); return; }
@@ -248,7 +248,7 @@ everglade_edit_key :: (s: [] Everglade, key: int, down: bool) -> bool {
   }
   b := -1;
   if op >= 0 { b = EB_OP + op; }
-  if key >= '1' && key < '1' + EG_EDIT_ITEMS { b = EB_ITEM + (key - '1'); }
+  if key >= '1' && key < '1' + EG_EDIT_BUTTONS { b = EB_ITEM + (key - '1'); }
   if key == 'z' || key == 'Z' { b = EB_UNDO; }
   if key == 'y' || key == 'Y' { b = EB_REDO; }
   if key == 'e' || key == 'E' { return true; }   // nobody to talk to while editing
@@ -405,10 +405,10 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
     acts := [4] string.["UNDO", "REDO", "ORIGINAL", "DONE"];
     for i: 0..<4 { if s[0].ev.admin || i == 3 { n = edit_button(s, out, u, n, EB_UNDO + i, edit_row(s, ifx s[0].ev.admin then i else 0, ifx s[0].ev.admin then 4 else 1, 120 * k, bh, y), ifx i == 2 && sure then "SURE?" else acts[i], "", i == 3 || (i == 2 && sure)); } }
     y -= bh + 6 * k;
-    for i: 0..<EG_EDIT_ITEMS { n = edit_button(s, out, u, n, EB_ITEM + i, edit_row(s, i, EG_EDIT_ITEMS, 100 * k, bh, y), EG_EDIT_LABEL[i], "", false); }
+    for i: 0..<EG_EDIT_BUTTONS { n = edit_button(s, out, u, n, EB_ITEM + i, edit_row(s, i, EG_EDIT_BUTTONS, 100 * k, bh, y), EG_EDIT_LABEL[i], "", false); }
   } else {
     slots := EB_HOTBAR;
-    for i: 0..<EG_EDIT_ITEMS {
+    for i: 0..<EG_EDIT_BUTTONS {
       digit[0] = cast(u8) ('1' + i);
       n = edit_button(s, out, u, n, EB_ITEM + i, edit_row(s, i, slots, 104 * k, bh, y), EG_EDIT_LABEL[i], cast(string) digit[..], false);
     }

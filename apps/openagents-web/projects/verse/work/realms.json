@@ -1191,6 +1191,101 @@
         "Metal parts are untinted"
       ],
       "blocked_by": []
+    },
+    {
+      "slug": "eg-voice-verbs",
+      "parent": "eg",
+      "title": "Everglade voice edits: the verbs the owner asks for",
+      "size": "M",
+      "labels": [
+        "realms",
+        "everglade",
+        "admin",
+        "voice"
+      ],
+      "body": "The owner: \"I said put pumpkins on the stall and it made another stall. ... Give me the things I'm asking for. Like I asked for a building. It didn't. We need to expand the assets it can do. And if I say something like fill the field with purple flowers, figure out something to put, even if you have to draw with geometry.\" The selector's schema (coax/web/api/migrations/0051) gains place with a count and an arrangement (in front, row, ring all around, scatter, fill), place ON a nearby thing's top (pumpkins on the stall's counter), remove including the city's buildings (an admin's reversible hide), move, resize (bigger, smaller, twice as big), rotate, restore, and a list for \"what can I put down\". The model picks verbs and items under the schema, no keyword matching; something not in the catalogue or the city is said plainly (\"NO PIECE CALLED BOB\", \"I CAN'T MAKE A DRAGON\") and nothing is substituted.",
+      "files": [
+        "coax/web/api/",
+        "verse/everglade/edits.coax",
+        "apps/openagents-web/everglade-voice.coax"
+      ],
+      "acceptance": [
+        "Every logged sentence of 2026-10-29 gets the edit the owner meant (edit_live.sh)",
+        "A thing not in the catalogue is named, never swapped for another",
+        "coax test and coax/web/api/test.sh pass"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "eg-voice-catalogue",
+      "parent": "eg",
+      "title": "Everglade voice edits: many more things to place",
+      "size": "M",
+      "labels": [
+        "realms",
+        "everglade",
+        "voice",
+        "assets"
+      ],
+      "body": "The owner: \"I said put pumpkins on the stall and it made another stall. ... Give me the things I'm asking for. Like I asked for a building. It didn't. We need to expand the assets it can do. And if I say something like fill the field with purple flowers, figure out something to put, even if you have to draw with geometry.\" The pack (verse/packs/everglade.json) gains pumpkins, carrots, pots, buckets, a market cart, vases, stools, coins, flowers, crop plants, rocks and bushes from the Fantasy Props and Stylized Nature kits and our own low-poly models, within the 6.75 MB budget (the textures they use are already in the pack); with the town's own pieces that makes 34 things to place, a house, a shed and a tower among them. The selector's catalogue lists every one with its size.",
+      "files": [
+        "verse/packs/everglade.json",
+        "apps/openagents-web/everglade-items.coax",
+        "apps/openagents-web/realms/everglade/"
+      ],
+      "acceptance": [
+        "The pack stays within its budget",
+        "Every catalogue item draws within its instance caps (coax test)"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "eg-voice-fallback",
+      "parent": "eg",
+      "title": "Everglade voice edits: patches of flowers and crops, and things drawn with geometry",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade",
+        "voice"
+      ],
+      "body": "The owner: \"I said put pumpkins on the stall and it made another stall. ... Give me the things I'm asking for. Like I asked for a building. It didn't. We need to expand the assets it can do. And if I say something like fill the field with purple flowers, figure out something to put, even if you have to draw with geometry.\" Flowers and crops are patches of hundreds of small instanced plants, worked out once per change and each left out where it would stand in something; \"fill the field with purple flowers\" plants the open ground in front. A lantern, a sign, a hay pile and a stone wall are drawn with the engine's shapes. A phone draws at most 160 plants a frame, a desktop 420, nearest first.",
+      "files": [
+        "apps/openagents-web/everglade-items.coax"
+      ],
+      "acceptance": [
+        "\"fill the field with purple flowers\" plants hundreds of purple flowers",
+        "A phone's plants a frame stay at 160"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "eg-voice-live",
+      "parent": "eg",
+      "title": "Everglade voice edits: checked on production",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade",
+        "voice"
+      ],
+      "body": "Each sentence of the owner's log said on production through the page's own path (heard words to the selector, the page does the edit): pumpkins on the stall, a building in front, the barrel bigger, 12 benches around, the crates moved, the temple hidden, a field of purple flowers. Shots kept; the world put back as it was afterwards.",
+      "files": [
+        "coax/web/api/edit_live.sh"
+      ],
+      "acceptance": [
+        "Each logged sentence does what was asked on production",
+        "edit_live.sh covers them"
+      ],
+      "blocked_by": [
+        "eg-voice-verbs",
+        "eg-voice-catalogue",
+        "eg-voice-fallback"
+      ],
+      "blocks": []
     }
   ]
 }

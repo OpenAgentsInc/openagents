@@ -373,14 +373,16 @@ backs into them, so the only ways out of the city are the trails.
 - **Along the tree line:** `Bush_Common_Flowers`, `Fern_1`,
   `Rock_Medium_1` and `_2`.
 - **The pack:** `verse/packs/everglade.json`, compiled to
-  `realms/everglade/assets/everglade.pack` (8.0 MB: 8,037,876 bytes,
-  budget 8,250,000) with `licences.md`; it carries the town's 44 Medieval
+  `realms/everglade/assets/everglade.pack` (8.7 MB: 8,634,456 bytes,
+  budget 8,700,000) with `licences.md`; it carries the town's 44 Medieval
   Village and Fantasy Props pieces as well as the forest's, the Ranger
   (1.7 MB of it) and the people's 14 shared parts and clips (2.0 MB). The
   budget was 5 MB before the Ranger and rose by the Ranger's bytes, rounded
   up; it rose from 6,750,000 by the people's, rounded up: 19 people dressed
   from 14 parts, every texture once (512 px JPEG layers), outfits decimated
-  to half their triangles and heads and hair to 60%. It also carries 1,024 identity indices (`"identity"`), so
+  to half their triangles and heads and hair to 60%. It rose again from 8,250,000
+  by the 13 placeable props and plants of the voice edits' catalogue (596,364
+  bytes of mesh, no new textures but a plain white one), rounded up. It also carries 1,024 identity indices (`"identity"`), so
   the city's shapes, drawn from the vertex index alone, share the pack's
   index buffer.
 - **The phone:** each frame the trees in view and nearer than 55 m (42 m on
@@ -609,3 +611,53 @@ Everglade's world (`POST /api/playtest/world/everglade`, admin site session
 only). Everyone sees them. `POST /api/playtest/world/everglade/reset` puts
 the designed city back; every version is kept in the realm's log. The
 switch is per realm: `"voice": "everglade"` in `apps/openagents-web/realms.json`.
+
+### The verbs and the catalogue (eg-voice-verbs, eg-voice-catalogue, eg-voice-fallback)
+
+After the owner's log of 2026-10-29 ("put pumpkins on the stall" made a
+stall, "put a building in front of me" made a stall, "this barrel is
+bigger", "place 12 benches all around", "delete this temple building" and
+"what else can I put down?" did nothing), `0051_realm_voice_verbs.sql`
+gives the selector these edits, each under the schema, no words matched:
+
+- **place** an item, with a count (up to 40), a size ("big crates"), a
+  colour, and an arrangement: in front (a row), `ring` (all around you,
+  each facing in), `scatter`, `fill` ("fill the field with purple
+  flowers"); or `onto` a nearby thing's top: "put six pumpkins on the
+  stall" puts them on the counter of the nearest stall (a market stall or
+  a placed one), smaller if that is what it takes for all of them to fit
+  (PLACED 6 PUMPKINS ON THE STALL).
+- **remove**, as before, and the city's buildings: "delete this temple
+  building" hides the temple (an admin's edit, kept in the list as
+  `b 7`; UNDO, ORIGINAL or "bring back the temple" puts it back). The town
+  is laid again without it, its walls and label go.
+- **move** ("move these crates": to in front of you; or forward, back,
+  left, right, away, closer, by metres), **resize** ("this barrel is
+  bigger": 1.5 times; "twice as big"), **rotate** (degrees to your right),
+  **restore**, **list** ("what can I put down?": the whole catalogue,
+  written and said) and **undo**.
+- Something not in the catalogue or the city is said plainly, never
+  swapped for another: I CAN'T MAKE A DRAGON, NO PIECE CALLED BOB.
+
+The catalogue (`verse/everglade/edits.coax` EG_EDIT_NAME, the server's in
+the same order) is 34 things: crate, barrel, bench, fence, stall, pumpkin,
+sack, apple crate, carrots, pot, bucket, lantern, cart, vase, table, chair,
+stool, anvil, cauldron, training dummy, weapon rack, banner, coins, sign,
+bush, flowers, rock, rock pile, hay pile, stone wall, crops, house, shed
+and tower, each with its size for the model. Most are the kits' pieces
+(`apps/openagents-web/everglade-items.coax`); the pack gained 12 of them
+(the textures they use were already in it; the budget rose by their
+596,364 bytes to 8,700,000): the heavier props (the chest, the iron fence, the wall lantern, the
+apple barrel) were left out to keep that rise small. Where the kits have
+nothing, the engine's shapes draw it: a lantern on a post, a sign, a hay
+pile, a stone wall. A house, a shed and a tower are built from the town's
+own walls, doors and roofs, square to the city, the door toward you (six
+at most).
+
+Flowers and crops are patches: hundreds of small kit plants (Flower_3,
+tinted the colour said, white when none; Plant_7 in rows for crops), laid
+once per change on a sunflower spiral (1,200 plants at most) and each left
+out where it would stand in a building, a prop, a placed thing, a street or
+the woods. Each frame draws the nearest 280 (140 on a phone), so a field
+stays cheap. Every placed thing's instance is 16 floats held in the page's
+state, so the pieces' caps (EDIT_CAPS, 1,432 in all) are kept lean.

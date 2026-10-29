@@ -1,0 +1,356 @@
+// What an admin's edits look like in Everglade (eg-voice-verbs), loaded by
+// everglade.coax: each thing of the catalogue (verse/everglade/edits.coax
+// EG_EDIT_NAME) as the kit's pieces, or drawn with the engine's shapes where
+// the kits have none (a lantern, a sign, a hay pile, a stone wall), a patch
+// of flowers or crops as hundreds of small kit plants, and a house, a shed
+// or a tower from the town's own walls and roofs. And the plan's buildings
+// an admin hid: the town is laid again without them, their walls taken out.
+//
+// The patches' plants are worked out when the list changes (edit_spots):
+// a sunflower spiral over the patch, each plant left out where it would
+// stand in a building, a prop, a placed thing, a street or the woods. Each
+// frame draws the nearest of them (EDIT_SPOTS_DRAWN, fewer on a phone), so
+// a field of flowers stays cheap.
+
+EDIT_SPOTS :: 1200;            // every patch's plants together
+EDIT_SPOTS_DRAWN :: 280;       // drawn a frame, nearest first (each kind's group holds as many)
+EDIT_SPOTS_PHONE :: 140;
+EDIT_SPOTS_NEAR :: 26.0;       // metres: nearer plants are drawn first, then on to EDIT_SPOTS_FAR
+EDIT_SPOTS_FAR :: 70.0;
+// The instances an admin's things may use of each piece's group, beside the town's.
+EDIT_CAPS :: [76] int.[M_CRATE, 40, M_BARREL, 40, M_BENCH, 40, M_FENCE, 40, M_STALL, 8, M_PUMPKIN, 40, M_BAG, 16, M_APPLES, 16,
+  M_CARROT, 60, M_POT, 16, M_BUCKET, 16, M_CART, 6, M_VASE, 16, M_TABLE, 12, M_CHAIR, 24, M_STOOL, 16, M_ANVIL, 6,
+  M_CAULDRON, 6, M_DUMMY, 12, M_WEAPONS, 6, M_BANNER, 16, M_COINS, 32, M_SHRUB, 40, M_FLOWER3, 280,
+  M_STONE, 96, M_SPROUT, 200, M_PLASTER, 48, M_PLASTER_WINDOW, 24, M_PLASTER_DOOR, 4, M_BRICK, 64, M_BRICK_WINDOW, 32,
+  M_BRICK_DOOR, 4, M_WINDOW, 56, M_DOOR, 8, M_CORNER, 64, M_ROOF, 8, M_TOWER_ROOF, 4, M_GABLE, 16];
+EDIT_OBJECTS :: 1432;          // the sum of EDIT_CAPS' counts (each is 16 floats in Everglade, so they stay lean)
+// The kit's piece for each thing that is one piece (-1: drawn otherwise), and its scale across and up.
+EDIT_PIECE :: [34] int.[M_CRATE, M_BARREL, M_BENCH, M_FENCE, M_STALL, M_PUMPKIN, M_BAG, M_APPLES, -1, M_POT,
+  M_BUCKET, -1, M_CART, M_VASE, M_TABLE, M_CHAIR, M_STOOL, M_ANVIL, M_CAULDRON, M_DUMMY,
+  M_WEAPONS, M_BANNER, -1, -1, M_SHRUB, -1, M_STONE, -1, -1, -1,   -1, -1, -1, -1];
+EDIT_PIECE_WIDE :: [34] f32.[1, 1, 1, 1, 1.55, 1, 1, 1, 1, 1,   1, 1, 1, 1, 1, 1, 1, 1, 1, 1,   1, 1, 1, 1, 1.2, 1, 1.6, 1, 1, 1,   1, 1, 1, 1];
+EDIT_PIECE_TALL :: [34] f32.[1, 1, 1, 1, 1, 1, 1, 1, 1, 1,   1, 1, 1, 1, 1, 1, 1, 1, 1, 1,   1, 1, 1, 1, 1.2, 1, 1.4, 1, 1, 1,   1, 1, 1, 1];
+// What each colour multiplies a piece's own by (EG_COLOUR_NAME's order).
+EDIT_TINT :: [24] f32.[1, 1, 1,   0.62, 0.42, 1.0,   0.45, 0.62, 1.05,   1.05, 0.38, 0.34,   1.05, 0.62, 0.82,   1.05, 0.95, 0.4,   1.25, 1.25, 1.25,   1.05, 0.62, 0.3];
+
+edit_cap :: (group: int) -> int {
+  n := 0;
+  for i: 0..<EDIT_CAPS.count / 2 { if group_of(EDIT_CAPS[i * 2]) == group { n += EDIT_CAPS[i * 2 + 1]; } }
+  return n;
+}
+
+// ---- one thing
+
+// A point turned with a thing: its local (u across, v along) from its middle, on the ground.
+EdLocal :: struct { x: f32; z: f32; }
+ed_local :: (t: EgThing, u: f32, v: f32) -> EdLocal {
+  c := cos(t.yaw); sn := sin(t.yaw);
+  return EdLocal.{x = t.x + c * u + sn * v, z = t.z - sn * u + c * v};
+}
+// A kit piece of a thing at its local (u, v), up by y, turned by yaw more, in its colour.
+ed_piece :: (s: [] Everglade, t: EgThing, m: int, u: f32, v: f32, y: f32, yaw: f32, sx: f32, sy: f32) {
+  p := ed_local(t, u * t.size, v * t.size);
+  g := ground_at(s, t.x, t.z) + t.lift;
+  group := group_of(m);
+  before := s[0].kit_used[group];
+  piece(s, m, p.x, g + y * t.size, p.z, t.yaw + yaw, sx * t.size, sy * t.size, sx * t.size);
+  if t.tint > 0 && s[0].kit_used[group] > before { ed_tint(s, group, t.tint); }
+}
+// The colour of the group's last instance.
+ed_tint :: (s: [] Everglade, group: int, tint: int) {
+  o := (s[0].group_at[group] + s[0].kit_used[group] - 1) * OBJECT_FLOATS;
+  for k: 0..<3 { s[0].objects[o + 12 + k] = EDIT_TINT[tint * 3 + k]; }
+}
+// An engine shape of a thing at its local (u, v), its middle up by y; sizes before the thing's size.
+ed_shape :: (s: [] Everglade, t: EgThing, kind: int, look: int, u: f32, v: f32, y: f32, sx: f32, sy: f32, sz: f32, r: f32, gr: f32, b: f32) {
+  p := ed_local(t, u * t.size, v * t.size);
+  g := ground_at(s, t.x, t.z) + t.lift;
+  shape(s, kind, look, v3(p.x, g + y * t.size, p.z), t.yaw, 0, sx * t.size, sy * t.size, sz * t.size, r, gr, b);
+}
+
+WOOD_R :: 0.42; WOOD_G :: 0.3; WOOD_B :: 0.19;
+STRAW_R :: 0.86; STRAW_G :: 0.72; STRAW_B :: 0.38;
+
+edit_thing :: (s: [] Everglade, t: EgThing) {
+  k := eg_edit_kind(t.kind);
+  m := EDIT_PIECE[k];
+  if m >= 0 { ed_piece(s, t, m, 0, 0, 0, 0, EDIT_PIECE_WIDE[k], EDIT_PIECE_TALL[k]); return; }
+  if k == 8 {   // carrots: a bunch of five
+    for i: 0..<5 { a := f32(i) * 1.257; ed_piece(s, t, M_CARROT, 0.1 * cos(a), 0.1 * sin(a), 0, a, 1, 1); }
+    return;
+  }
+  if k == 11 {  // a lantern on a post
+    ed_shape(s, t, SHAPE_BOX, LOOK_MATTE, 0, 0, 1.05, 0.12, 2.1, 0.12, 0.2, 0.16, 0.12);
+    ed_shape(s, t, SHAPE_BOX, LOOK_MATTE, 0, 0, 2.12, 0.34, 0.06, 0.34, 0.16, 0.14, 0.12);
+    ed_shape(s, t, SHAPE_SPHERE, LOOK_MATTE, 0, 0, 2.3, 0.26, 0.32, 0.26, 1.0, 0.82, 0.42);
+    ed_shape(s, t, SHAPE_CONE, LOOK_MATTE, 0, 0, 2.52, 0.38, 0.16, 0.38, 0.16, 0.14, 0.12);
+    return;
+  }
+  if k == 22 {  // a pile of coins: two heaps
+    ed_piece(s, t, M_COINS, -0.07, 0, 0, 0, 1, 1); ed_piece(s, t, M_COINS, 0.09, 0.05, 0, 1.3, 0.8, 0.8);
+    return;
+  }
+  if k == 23 {  // a sign: a post and a board, the board in its colour
+    ed_shape(s, t, SHAPE_BOX, LOOK_MATTE, 0, 0, 0.9, 0.12, 1.8, 0.12, WOOD_R, WOOD_G, WOOD_B);
+    c := t.tint * 3;
+    ed_shape(s, t, SHAPE_BOX, LOOK_MATTE, 0, 0.08, 1.4, 1.2, 0.6, 0.06, 0.78 * EDIT_TINT[c], 0.62 * EDIT_TINT[c + 1], 0.4 * EDIT_TINT[c + 2]);
+    return;
+  }
+  if k == 27 {  // a rock pile: six of the kit's own rocks
+    sizes := [18] f32.[0, 0, 1.5,   0.7, 0.4, 1.1,   -0.6, 0.5, 1.0,   0.5, -0.6, 0.9,   -0.5, -0.5, 1.2,   0.1, 0.2, 0.9];
+    for i: 0..<6 { ed_piece(s, t, M_STONE, sizes[i * 3], sizes[i * 3 + 1], ifx i == 5 then 0.45f32 else 0.0f32, f32(i) * 1.1, sizes[i * 3 + 2], sizes[i * 3 + 2]); }
+    return;
+  }
+  if k == 28 {  // a hay pile: two mounds of straw
+    ed_shape(s, t, SHAPE_SPHERE, LOOK_MATTE, 0, 0, 0.35, 2.0, 1.4, 1.8, STRAW_R, STRAW_G, STRAW_B);
+    ed_shape(s, t, SHAPE_SPHERE, LOOK_MATTE, 0.2, 0.1, 0.8, 1.2, 0.9, 1.1, STRAW_R * 0.95, STRAW_G * 0.95, STRAW_B);
+    return;
+  }
+  if k == 29 {  // a stone wall: two courses of blocks, the kit's rocks along its top
+    for row: 0..<2 {
+      for i: 0..<4 {
+        u := -1.5 + f32(i) + ifx row == 1 then 0.25f32 else 0.0f32;
+        if u > 1.55 { continue; }
+        shade := 0.56 + 0.06 * f32((i * 3 + row * 5) % 4);
+        ed_shape(s, t, SHAPE_BOX, LOOK_STONE, u, 0, 0.3 + f32(row) * 0.55, 0.96, 0.54, 0.6, shade, shade * 0.98, shade * 0.94);
+      }
+    }
+    return;
+  }
+  if EG_EDIT_SORT[k] == EG_SORT_BUILDING { edit_building(s, t); return; }
+  // patches (flowers, crops) are their spots (edit_spots_draw)
+}
+
+// ---- a placed building: the town's walls round its footprint, a door to the front, its roof
+
+EDIT_STOREYS :: [3] int.[1, 1, 3];
+edit_building :: (s: [] Everglade, t: EgThing) {
+  k := eg_edit_kind(t.kind);
+  box: [EG_BOX] f32;
+  eg_edit_box(t, box[..]);
+  x0 := box[0] + 0.3; z0 := box[1] + 0.3; x1 := box[2] - 0.3; z1 := box[3] - 0.3;
+  g := ground_at(s, t.x, t.z);
+  n := EDIT_STOREYS[k - EG_KIND_HOUSE];
+  stone := k == EG_KIND_HOUSE + 2;
+  // the door on the side its front faces
+  fx := sin(t.yaw); fz := cos(t.yaw);
+  door := ifx abs(fz) >= abs(fx) then (ifx fz < 0 then 0 else 1) else (ifx fx < 0 then 2 else 3);
+  for w: 0..<4 {
+    q := side_of(x0, z0, x1, z1, w);
+    reach_m := abs(q.bx - q.ax) + abs(q.bz - q.az);
+    modules := hi_i(cast(int) (reach_m / f32(EG_MODULE) + 0.5), 1);
+    step := reach_m / f32(modules);
+    ux := (q.bx - q.ax) / reach_m; uz := (q.bz - q.az) / reach_m;
+    for i: 0..<modules {
+      d := (f32(i) + 0.5) * step;
+      cx := q.ax + ux * d - q.nx * f32(WALL_FACE); cz := q.az + uz * d - q.nz * f32(WALL_FACE);
+      sx := step / f32(EG_MODULE);
+      for f: 0..<n {
+        y := g + f32(f) * f32(STOREY);
+        is_door := f == 0 && w == door && i == modules / 2;
+        window := !is_door && modules > 1 && i % 2 == 1;
+        mm := ifx is_door then (ifx stone then M_BRICK_DOOR else M_PLASTER_DOOR)
+              else ifx window then (ifx stone then M_BRICK_WINDOW else M_PLASTER_WINDOW)
+              else ifx stone then M_BRICK else M_PLASTER;
+        piece(s, mm, cx, y, cz, q.yaw, sx, 1, 1);
+        if window { piece(s, M_WINDOW, cx, y, cz, q.yaw, sx, 1, 1); }
+        if is_door { piece(s, M_DOOR, cx - ux * 0.53, y, cz - uz * 0.53, q.yaw, 1, 1, 1); }
+      }
+    }
+    for f: 0..<n { piece(s, M_CORNER, q.ax, g + f32(f) * f32(STOREY), q.az, 0, 1.6, 1, 1.6); }
+  }
+  top := g + f32(n) * f32(STOREY);
+  w := x1 - x0; d := z1 - z0;
+  if stone {
+    r := (hi(w, d) + 0.9) / 5.66;
+    piece(s, M_TOWER_ROOF, (x0 + x1) / 2, top + 0.57 * r, (z0 + z1) / 2, 0, r, r, r);
+    return;
+  }
+  long_z := d >= w;
+  span := ifx long_z then w else d;
+  run := ifx long_z then d else w;
+  sx := (span + 0.8) / 8.24; sz := (run + 0.8) / 9.68; sy := sx * 0.85;
+  piece(s, M_ROOF, (x0 + x1) / 2, top + 0.78 * sy, (z0 + z1) / 2, ifx long_z then 0.0f32 else f32(PI) / 2, sx, sy, sz);
+  gx := span / 6.7; gy := 5.4 * sy / 4.38;
+  for e: 0..<2 {
+    q := side_of(x0, z0, x1, z1, ifx long_z then e else 2 + e);
+    piece(s, M_GABLE, (q.ax + q.bx) / 2 - q.nx * f32(WALL_FACE), top, (q.az + q.bz) / 2 - q.nz * f32(WALL_FACE), q.yaw, gx, gy, 1);
+  }
+}
+
+// A building stands square to the city: its turn to the nearest quarter.
+ed_square :: (yaw: f32) -> f32 {
+  q := floor(yaw / (f32(PI) / 2) + 0.5);
+  return q * f32(PI) / 2;
+}
+
+// ---- patches: their plants, worked out when the list changes
+
+ed_hash :: (a: int, b: int) -> f32 {
+  h := next_seed(next_seed(a * 7919 + b * 104729 + 17));
+  return rand01(h);
+}
+
+// Each patch's plants: a sunflower spiral over its disc (flowers) or rows across its square (crops),
+// each left out where it may not stand (eg_spot_free).
+edit_spots :: (s: [] Everglade) {
+  e := s[0].ev.edits;
+  s[0].ev.spot_n = 0;
+  solids: [EG_SOLIDS * EG_BOX] f32;
+  sn := everglade_solids(solids[..]);
+  for i: 0..<e.n {
+    t := e.things[i];
+    k := eg_edit_kind(t.kind);
+    if EG_EDIT_SORT[k] != EG_SORT_PATCH { continue; }
+    if k == EG_KIND_FLOWERS {
+      r := EG_EDIT_HALF[k * 3] * t.size;
+      want := lo_i(cast(int) (f32(PI) * r * r / 0.55), 900);
+      for j: 0..<want {
+        if s[0].ev.spot_n >= EDIT_SPOTS { return; }
+        d := r * sqrt((f32(j) + 0.5) / f32(want));
+        a := f32(j) * 2.39996 + t.yaw;
+        x := t.x + d * sin(a) + (ed_hash(i, j) - 0.5) * 0.3;
+        z := t.z + d * cos(a) + (ed_hash(j, i) - 0.5) * 0.3;
+        if !eg_spot_free(e, solids[..], sn, x, z, 0.12) { continue; }
+        ed_spot(s, x, z, ed_hash(i + 3, j) * 6.28, 0.16 + 0.07 * ed_hash(j + 5, i), M_FLOWER3, ifx t.tint <= 1 then 0 else t.tint);   // one mesh, tinted; white when unsaid
+      }
+    } else {
+      h := EG_EDIT_HALF[k * 3] * t.size;
+      rows := hi_i(cast(int) (h * 2 / 0.7), 1);
+      across := hi_i(cast(int) (h * 2 / 0.45), 1);
+      for row: 0..<rows {
+        for j: 0..<across {
+          if s[0].ev.spot_n >= EDIT_SPOTS { return; }
+          p := ed_local(t, -h + (f32(j) + 0.5) * h * 2 / f32(across), -h + (f32(row) + 0.5) * h * 2 / f32(rows));
+          if !eg_spot_free(e, solids[..], sn, p.x, p.z, 0.15) { continue; }
+          ed_spot(s, p.x, p.z, ed_hash(row, j) * 6.28, 0.9 + 0.3 * ed_hash(j, row), M_SPROUT, t.tint);
+        }
+      }
+    }
+  }
+}
+ed_spot :: (s: [] Everglade, x: f32, z: f32, yaw: f32, size: f32, m: int, tint: int) {
+  n := s[0].ev.spot_n;
+  // x, z, ground, and the size with the turn folded in (size + whole turns of 8): 4 floats; mesh and colour: 1 int
+  s[0].ev.spot[n * 4] = x; s[0].ev.spot[n * 4 + 1] = z; s[0].ev.spot[n * 4 + 2] = ground_at(s, x, z);
+  s[0].ev.spot[n * 4 + 3] = size + 8 * f32(cast(int) (yaw * 8 / 6.2832) % 8);
+  s[0].ev.spot_k[n] = m * 16 + tint;
+  s[0].ev.spot_n = n + 1;
+}
+// Each frame: the plants near you first, then farther, as many as each group holds.
+edit_spots_draw :: (s: [] Everglade) {
+  most := ifx phone(s) then EDIT_SPOTS_PHONE else EDIT_SPOTS_DRAWN;
+  for pass: 0..<2 {
+    reach := ifx pass == 0 then f32(EDIT_SPOTS_NEAR) else f32(EDIT_SPOTS_FAR);
+    for i: 0..<s[0].ev.spot_n {
+      x := s[0].ev.spot[i * 4]; z := s[0].ev.spot[i * 4 + 1];
+      dx := x - s[0].feet.x; dz := z - s[0].feet.z;
+      dd := dx * dx + dz * dz;
+      if dd > reach * reach || (pass == 1 && dd <= f32(EDIT_SPOTS_NEAR * EDIT_SPOTS_NEAR)) { continue; }
+      m := s[0].ev.spot_k[i] / 16; tint := s[0].ev.spot_k[i] % 16;
+      group := group_of(m);
+      if s[0].kit_used[group] - s[0].ev.town_used[group] >= most { continue; }
+      sk := s[0].ev.spot[i * 4 + 3];
+      turns := cast(int) (sk / 8);
+      sz := sk - 8 * f32(turns);
+      before := s[0].kit_used[group];
+      piece(s, m, x, s[0].ev.spot[i * 4 + 2], z, f32(turns) * 0.7854 + f32(i % 7) * 0.11, sz, sz, sz);
+      if tint > 0 && s[0].kit_used[group] > before { ed_tint(s, group, tint); }
+    }
+  }
+}
+
+// ---- each frame, and when the list changes
+
+// Each frame: the town's pieces as laid, then the placed things and the patches' plants.
+edit_draw :: (s: [] Everglade) {
+  for g: KIT_FOREST..<KIT_GROUPS { s[0].kit_used[g] = s[0].ev.town_used[g]; }
+  for i: 0..<s[0].ev.edits.n { edit_thing(s, s[0].ev.edits.things[i]); }
+  edit_spots_draw(s);
+}
+// At the start, once the town is laid: what the town uses of each group.
+edit_start :: (s: [] Everglade) {
+  for g: 0..<KIT_GROUPS { s[0].ev.town_used[g] = s[0].kit_used[g]; }
+  s[0].ev.wall_base = s[0].wall_n;
+  s[0].ev.finger = -1; s[0].ev.finger2 = -1; s[0].ev.lit = -1; s[0].ev.picked = -1; s[0].ev.person = -1;
+}
+// The town laid again without the buildings an admin hid, and the walls without theirs.
+edit_relay_town :: (s: [] Everglade) {
+  hidden := s[0].ev.edits.hidden;
+  if hidden == s[0].ev.built_hidden { return; }
+  s[0].ev.built_hidden = hidden;
+  for g: KIT_FOREST..<KIT_GROUPS { s[0].kit_used[g] = 0; }
+  build_town(s);
+  for g: KIT_FOREST..<KIT_GROUPS { s[0].ev.town_used[g] = s[0].kit_used[g]; }
+  build_scenery(s);
+  s[0].ev.wall_base = s[0].wall_n;
+  spells_start(s);   // the spells' breakable pieces are the town's again (nothing when the face gave them none)
+}
+// Whether a solid's box (five numbers at k) stands in a building an admin hid: its walls, inside and out.
+edit_in_hidden :: (s: [] Everglade, solids: [] f32, k: int) -> bool {
+  if s[0].ev.edits.hidden == 0 { return false; }
+  cx := (solids[k] + solids[k + 2]) / 2; cz := (solids[k + 1] + solids[k + 3]) / 2;
+  for b: 0..<EG_BUILDINGS {
+    if !eg_hidden(s[0].ev.edits, b) { continue; }
+    q := b * EG_BOX;
+    if cx >= EG_BUILDING[q] - 0.01 && cx <= EG_BUILDING[q + 2] + 0.01 && cz >= EG_BUILDING[q + 1] - 0.01 && cz <= EG_BUILDING[q + 3] + 0.01 { return true; }
+  }
+  return false;
+}
+
+// ---- checks
+
+#test "items: every thing of the catalogue draws within its groups, a patch of flowers is hundreds of plants" {
+  #assert EG_EDIT_NAME.count == EG_EDIT_ITEMS && EG_EDIT_LABEL.count == EG_EDIT_ITEMS && EG_EDIT_LABELS.count == EG_EDIT_ITEMS;
+  #assert EG_EDIT_HALF.count == EG_EDIT_ITEMS * 3 && EG_EDIT_TOP.count == EG_EDIT_ITEMS && EDIT_PIECE.count == EG_EDIT_ITEMS;
+  total := 0;
+  for i: 0..<EDIT_CAPS.count / 2 { total += EDIT_CAPS[i * 2 + 1]; }
+  #assert total == EDIT_OBJECTS;
+  #assert EG_EDIT_NAME[EG_KIND_FLOWERS] == "flowers" && EG_EDIT_NAME[EG_KIND_CROPS] == "crops" && EG_EDIT_NAME[EG_KIND_HOUSE] == "house";
+  #assert KIT_MESH[M_PUMPKIN] == "Custom_Pumpkin" && KIT_MESH[M_FLOWER3] == "Flower_3_Single" && KIT_MESH[M_SHRUB] == "Custom_Bush";
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  // one of every thing in a grid on the open ground east of the commons
+  for k: 0..<EG_EDIT_ITEMS {
+    t := eg_thing(k, -30 + f32(k % 6) * 9, 60 + f32(k / 6) * 9, 0, 1);
+    s[0].ev.edits.things[k] = t;
+  }
+  s[0].ev.edits.n = EG_EDIT_ITEMS;
+  edit_spots(s[..]);
+  shapes := s[0].counts[1] + s[0].counts[2] + s[0].counts[3] + s[0].counts[4];
+  edit_draw(s[..]);
+  #assert s[0].counts[1] + s[0].counts[2] + s[0].counts[3] + s[0].counts[4] > shapes;   // lantern, sign, hay, wall
+  for g: KIT_FOREST..<KIT_GROUPS { #assert s[0].kit_used[g] <= s[0].group_cap[g]; }
+  #assert s[0].kit_used[group_of(M_PUMPKIN)] == s[0].ev.town_used[group_of(M_PUMPKIN)] + 1;
+  #assert s[0].kit_used[group_of(M_ROOF)] == s[0].ev.town_used[group_of(M_ROOF)] + 2;          // the house and the shed
+  #assert s[0].kit_used[group_of(M_TOWER_ROOF)] == s[0].ev.town_used[group_of(M_TOWER_ROOF)] + 1;
+  // a big patch of purple flowers: hundreds of plants, the nearest drawn, none in a building or on a street
+  s[0].ev.edits.n = 1;
+  s[0].ev.edits.things[0] = eg_thing(EG_KIND_FLOWERS, 30, 4, 0, 3);
+  s[0].ev.edits.things[0].tint = 1;
+  edit_spots(s[..]);
+  #assert s[0].ev.spot_n > 200;
+  s[0].feet = v3(30, 0, 4); s[0].width = 1280; s[0].dpr = 1;
+  edit_draw(s[..]);
+  #assert s[0].kit_used[group_of(M_FLOWER3)] - s[0].ev.town_used[group_of(M_FLOWER3)] > 200;
+  // a phone draws fewer
+  s[0].width = 390; s[0].dpr = 3;
+  edit_draw(s[..]);
+  #assert s[0].kit_used[group_of(M_FLOWER3)] - s[0].ev.town_used[group_of(M_FLOWER3)] == EDIT_SPOTS_PHONE;
+  s[0].width = 1280; s[0].dpr = 1;
+  edit_draw(s[..]);
+  drawn := s[0].kit_used[group_of(M_FLOWER3)] - s[0].ev.town_used[group_of(M_FLOWER3)];
+  #assert drawn > 200 && drawn <= EDIT_SPOTS_DRAWN;
+}
+
+#test "items: a hidden building is laid without, and its walls go" {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  walls := s[0].wall_n; roofs := s[0].kit_used[group_of(M_ROOF)];
+  s[0].ev.edits.hidden = cast(u32) 1 << cast(u32) EG_TEMPLE;
+  edit_relay_town(s[..]);
+  #assert s[0].wall_n < walls && s[0].kit_used[group_of(M_ROOF)] == roofs - 1;
+  s[0].ev.edits.hidden = 0;
+  edit_relay_town(s[..]);
+  #assert s[0].wall_n == walls && s[0].kit_used[group_of(M_ROOF)] == roofs;
+}

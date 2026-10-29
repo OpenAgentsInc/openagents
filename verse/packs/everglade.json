@@ -1,7 +1,7 @@
 {
   "pack": "everglade",
   "title": "Everglade",
-  "budget": 8250000,
+  "budget": 8700000,
   "scene": "~/work/aethyr-cpp/build-native/native-root/assets/scene.bin",
   "layers": "~/work/aethyr-cpp/assets/layer{n}",
   "texture_size": 512,
@@ -31,6 +31,11 @@
       "name": "Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard]",
       "licence": "CC0 1.0 Universal (each pack's License_Standard.txt or License.txt)",
       "url": "https://quaternius.com/"
+    },
+    "openagents-custom-models": {
+      "name": "OpenAgents' own low-poly models (pumpkin, rock, bush), made for the Verse",
+      "licence": "CC0 1.0 Universal",
+      "url": "https://openagents.com/"
     }
   },
   "meshes": [
@@ -85,7 +90,28 @@
     "Roof_Front_Brick6",
     "Scroll_1",
     "Stairs_Exterior_Platform",
-    "Prop_WoodenFence_Single"
+    "Prop_WoodenFence_Single",
+    "Carrot",
+    "Pot_1",
+    "Bucket_Wooden_1",
+    "Stall_Cart_Empty",
+    "Vase_2",
+    "Stool",
+    "Coin_Pile",
+    "Flower_3_Single",
+    "Plant_7",
+    {
+      "name": "Custom_Pumpkin",
+      "licence": "openagents-custom-models"
+    },
+    {
+      "name": "Custom_Rock",
+      "licence": "openagents-custom-models"
+    },
+    {
+      "name": "Custom_Bush",
+      "licence": "openagents-custom-models"
+    }
   ],
   "character": {
     "name": "player/male-ranger",

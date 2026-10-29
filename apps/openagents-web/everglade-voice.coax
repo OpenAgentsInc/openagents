@@ -30,9 +30,7 @@ VOICE_FACING :: "Everglade builder";   // whom the voice host leaves our turns t
 EDIT_UNDOS :: 16;
 EDIT_POST :: 6144;
 EDIT_ASK :: 512;
-EDIT_LINE :: 160;
-EDIT_MESH :: [5] int.[M_CRATE, M_BARREL, M_BENCH, M_FENCE, M_STALL];
-EDIT_NAMES :: [5] string.["crate", "barrel", "bench", "fence", "stall"];
+EDIT_LINE :: 480;
 
 EditVoice :: struct {
   admin: bool;              // /api/auth/me said A|1 (checked again by every write on the server)
@@ -59,7 +57,10 @@ EditVoice :: struct {
   person: int;                        // the city's person picked in edit mode, -1 none
   px: [EG_SPOTS] f32; py: [EG_SPOTS] f32; pseen: [EG_SPOTS] bool;   // the people on the screen, for a pick
   wall_base: int;
-  town_used: [5] int;
+  town_used: [KIT_GROUPS] int;        // what the town uses of each group (everglade-items.coax)
+  built_hidden: u32;                  // the plan's buildings the town was last laid without
+  word1: [64] u8; word2: [64] u8; onto_words: [64] u8;   // scratch for what a line says
+  spot: [EDIT_SPOTS * 4] f32; spot_k: [EDIT_SPOTS] int; spot_n: int;   // the patches' plants
   // The shared edit layer: its EDIT is Everglade's (the board and SETTINGS open with edit mode); a
   // visitor with BUILD places as cards; its owner and admins edit as a site admin does
   ed: [1] RealmEdit; ed_open: bool;
@@ -218,28 +219,79 @@ everglade_edit_answer :: (s: [] Everglade, answer: string) #export_c {
   if e < 0 || body[e] != '"' { ev_line(s, "THAT DIDN'T WORK · TRY AGAIN"); return; }
   word := ev_word(body, e);
   if word == "undo" { edit_undo(s, true); return; }
-  i := eg_json_at(body, "item");
-  item := -1;
-  if i >= 0 && body[i] == '"' {
-    w := ev_word(body, i);
-    for k: 0..<EG_EDIT_ITEMS { if w == EDIT_NAMES[k] { item = k; } }
-    if w == "person" { item = EG_PICK_PERSON; }
-    if w == "cat" { item = EG_PICK_CAT; }
-  }
+  if word == "list" { edit_list(s); return; }
+  if word == "missing" { edit_missing(s, ev_field(body, "name"), false); return; }
+  item := ev_item(ev_field(body, "item"));
+  all := ev_true(body, "all");
   if word == "remove" {
-    h := eg_json_at(body, "who");
-    who := -1;
-    if h >= 0 && body[h] == '"' { w := ev_word(body, h); for k: 0..<EG_SPOTS { if w == EG_PERSON[k] { who = k; } } }
-    a := eg_json_at(body, "all");
-    all := a >= 0 && a + 4 <= body.count && body[a..<a + 4] == "true";
+    who := ev_who(ev_field(body, "who"));
+    bname := ev_field(body, "building");
+    big := item >= 0 && item < EG_EDIT_ITEMS && EG_EDIT_SORT[item] == EG_SORT_BUILDING;
+    if ev_field(body, "item") == "building" || big || bname.count > 0 && item < 0 {
+      if big && edit_remove_placed(s, item, all) { return; }   // a placed house near you goes first
+      // else the city's: the one named, a house for "that house", the nearest for "this building"
+      edit_hide(s, ifx bname.count > 0 then bname else ifx item == EG_KIND_HOUSE then "house" else "");
+      return;
+    }
     edit_remove(s, item, who, all);
     return;
   }
-  if word != "place" || item < 0 || item >= EG_EDIT_ITEMS { ev_line(s, "THAT DIDN'T WORK · TRY AGAIN"); return; }
+  if word == "restore" { edit_restore(s, ev_field(body, "building"), ev_who(ev_field(body, "who"))); return; }
+  if word == "move" { edit_move(s, item, all, ev_field(body, "direction"), ev_float(body, "metres", 2)); return; }
+  if word == "resize" { edit_resize(s, item, all, ev_float(body, "size", 1.5)); return; }
+  if word == "rotate" { edit_rotate(s, item, all, ev_float(body, "turn", 90)); return; }
+  if word != "place" { ev_line(s, "THAT DIDN'T WORK · TRY AGAIN"); return; }
+  if item < 0 || item >= EG_EDIT_ITEMS { edit_missing(s, ev_field(body, "item"), true); return; }
   c := eg_json_at(body, "count");
   count := 1;
-  if c >= 0 { got := eg_number(body[c..<body.count], 0); if got.v > 0 { count = eg_clamp_n(got.v, 1, 6); } }
-  edit_place(s, item, count, true);
+  if c >= 0 { got := eg_number(body[c..<body.count], 0); if got.v > 0 { count = eg_clamp_n(got.v, 1, 40); } }
+  onto := ev_item(ev_field(body, "onto"));
+  tint := 0;
+  colour := ev_field(body, "colour");
+  for k: 1..<EG_COLOURS { if colour == EG_COLOUR_NAME[k] { tint = k; } }
+  size := clamp(ev_float(body, "size", 1), f32(EG_EDIT_SIZE_MIN), f32(EG_EDIT_SIZE_MAX));
+  arrange := ev_field(body, "arrange");
+  if onto >= 0 && EG_EDIT_TOP[onto] > 0 { edit_place_onto(s, item, count, onto, size, tint); return; }
+  if EG_EDIT_SORT[item] == EG_SORT_PATCH { edit_patch(s, item, count, arrange == "fill" || arrange == "scatter", size, tint); return; }
+  if arrange == "ring" { edit_ring(s, item, count, size, tint); return; }
+  if arrange == "scatter" || arrange == "fill" { edit_scatter(s, item, ifx arrange == "fill" then hi_i(count, 12) else count, size, tint, arrange == "fill"); return; }
+  edit_place_as(s, item, count, size, tint, true);
+}
+// A string field's words ("" when there is none or it isn't a string).
+ev_field :: (body: string, key: string) -> string {
+  at := eg_json_at(body, key);
+  if at < 0 || body[at] != '"' { return ""; }
+  return ev_word(body, at);
+}
+ev_true :: (body: string, key: string) -> bool {
+  a := eg_json_at(body, key);
+  return a >= 0 && a + 4 <= body.count && body[a..<a + 4] == "true";
+}
+// A number field (whole or with a fraction, maybe negative), or otherwise.
+ev_float :: (body: string, key: string, otherwise: f32) -> f32 {
+  at := eg_json_at(body, key);
+  if at < 0 { return otherwise; }
+  i := at; minus := false;
+  if i < body.count && body[i] == '-' { minus = true; i += 1; }
+  v := 0.0f32; digits := 0;
+  while i < body.count && body[i] >= '0' && body[i] <= '9' { v = v * 10 + f32(body[i] - '0'); i += 1; digits += 1; }
+  if i < body.count && body[i] == '.' {
+    i += 1; place := 0.1f32;
+    while i < body.count && body[i] >= '0' && body[i] <= '9' { v += place * f32(body[i] - '0'); place = place / 10; i += 1; digits += 1; }
+  }
+  if digits == 0 { return otherwise; }
+  return ifx minus then -v else v;
+}
+// The catalogue's index for an item's name (EG_EDIT_NAME), a person or a cat, or -1.
+ev_item :: (w: string) -> int {
+  for k: 0..<EG_EDIT_ITEMS { if w == EG_EDIT_NAME[k] { return k; } }
+  if w == "person" { return EG_PICK_PERSON; }
+  if w == "cat" { return EG_PICK_CAT; }
+  return -1;
+}
+ev_who :: (w: string) -> int {
+  for k: 0..<EG_SPOTS { if w == EG_PERSON[k] { return k; } }
+  return -1;
 }
 eg_clamp_n :: (v: int, a: int, b: int) -> int { if v < a { return a; } if v > b { return b; } return v; }
 // A JSON string value's words at text[at] (its opening quote).
@@ -263,7 +315,10 @@ edit_remember :: (s: [] Everglade) {
 // "PLACED A CRATE", "PLACED 4 CRATES"; "REMOVED ..." the same way.
 ev_count :: (out: [] u8, verb: string, n: int, one: string, many: string) -> int {
   m := ev_put(out, verb);
-  if n == 1 { m += ev_put(out[m..<out.count], "A "); m += ev_put(out[m..<out.count], one); return m; }
+  if n == 1 {
+    vowel := one.count > 0 && (one[0] == 'A' || one[0] == 'E' || one[0] == 'I' || one[0] == 'O' || one[0] == 'U');
+    m += ev_put(out[m..<out.count], ifx vowel then "AN " else "A "); m += ev_put(out[m..<out.count], one); return m;
+  }
   m = eg_put_int(out, m, n);
   m += ev_put(out[m..<out.count], " ");
   return m + ev_put(out[m..<out.count], many);
@@ -298,46 +353,483 @@ EDIT_CLEAR :: 0.25;   // metres a placed thing stays off you, past your walker's
 // Places count of item in a row in front of you, clear of you, each where it
 // may stand, as one group (a later "remove these" takes the row). A row that
 // doesn't fit is shifted further out, and what still doesn't is left out and said.
-edit_place :: (s: [] Everglade, item: int, count: int, spoken: bool) {
+edit_place :: (s: [] Everglade, item: int, count: int, spoken: bool) { edit_place_as(s, item, count, 1, 0, spoken); }
+edit_place_as :: (s: [] Everglade, item: int, count: int, size: f32, tint: int, spoken: bool) {
   if s[0].ev.edits.n >= EG_EDIT_MAX { ev_line(s, "THE CITY HAS AS MANY THINGS AS IT TAKES"); ev_say(s, "There's no room for more things."); return; }
+  big := EG_EDIT_SORT[item] == EG_SORT_BUILDING;
+  want := count;
+  if big {
+    want = 1;
+    if edit_buildings(s) >= EG_EDIT_BUILDINGS { ev_line(s, "THE CITY HAS AS MANY NEW BUILDINGS AS IT TAKES"); ev_say(s, "There's no room for another building."); return; }
+  }
   before := s[0].ev.edits;
   fx := sin(s[0].face); fz := cos(s[0].face);
   rx := fz; rz := -fx;   // across your view
-  w := EG_EDIT_HALF[item * 3] * 2 + 0.5;
+  yaw := ifx big then ed_square(s[0].face + f32(PI)) else s[0].face;
+  probe := eg_thing(item, 0, 0, yaw, size);
+  box: [EG_BOX] f32;
+  eg_edit_box(probe, box[..]);
+  across_w := abs((box[2] - box[0]) * rx) + abs((box[3] - box[1]) * rz);   // its width across your view
+  deep := abs((box[2] - box[0]) * fx) + abs((box[3] - box[1]) * fz);
+  w := across_w + 0.5;
   // the row's near edge clear of you: your radius, a margin, then half the thing's depth
-  first := f32(EG_RADIUS) + f32(EDIT_CLEAR) + EG_EDIT_HALF[item * 3 + 1] + 0.5;
+  first := f32(EG_RADIUS) + f32(EDIT_CLEAR) + deep / 2 + 0.5;
+  group := eg_new_group(s[0].ev.edits);
+  placed := 0;
+  tries := ifx big then 10 else 4;
+  for k: 0..<want {
+    if s[0].ev.edits.n >= EG_EDIT_MAX { break; }
+    done := false;
+    for d: 0..<tries {
+      for side: 0..<(ifx big then 3 else 1) {
+        if done { break; }
+        across := (f32(k) - f32(want - 1) / 2) * w + f32(side % 2 * 2 - 1) * f32((side + 1) / 2) * 3;
+        t := eg_thing(item, 0, 0, yaw, size);
+        t.group = group; t.tint = tint;
+        ahead := first + f32(d) * (ifx big then 1.5f32 else 1.1f32);
+        t.x = s[0].feet.x + fx * ahead + rx * across; t.z = s[0].feet.z + fz * ahead + rz * across;
+        if edit_try(s, t) { done = true; }
+      }
+      if done { break; }
+    }
+    if done { placed += 1; }
+  }
+  edit_placed(s, before, item, placed, want, "", spoken);
+}
+// Adds t to the list if it may stand there, clear of you: whether it did.
+edit_try :: (s: [] Everglade, t: EgThing) -> bool {
+  box: [EG_BOX] f32;
+  eg_edit_box(t, box[..]);
+  // never on you (a patch of flowers may be round you: you walk through it)
+  if t.lift < 0.05 && EG_EDIT_SORT[eg_edit_kind(t.kind)] != EG_SORT_PATCH && box_gap(box[..], 0, s[0].feet.x, s[0].feet.z) < f32(EG_RADIUS) + f32(EDIT_CLEAR) { return false; }
+  if s[0].ev.edits.n >= EG_EDIT_MAX { return false; }
+  s[0].ev.edits.things[s[0].ev.edits.n] = t; s[0].ev.edits.n += 1;
+  if eg_edit_fault(s[0].ev.edits, s[0].ev.edits.n - 1) == EG_FAULT_NONE { return true; }
+  s[0].ev.edits.n -= 1;
+  return false;
+}
+edit_buildings :: (s: [] Everglade) -> int {
+  n := 0;
+  for i: 0..<s[0].ev.edits.n { if EG_EDIT_SORT[eg_edit_kind(s[0].ev.edits.things[i].kind)] == EG_SORT_BUILDING { n += 1; } }
+  return n;
+}
+// After a place: kept (UNDO takes it back), said ("PLACED 6 PUMPKINS ON THE STALL"), published.
+edit_placed :: (s: [] Everglade, before: EgEdits, item: int, placed: int, want: int, place_on: string, spoken: bool) {
+  if placed == 0 { s[0].ev.edits = before; ev_line(s, "THERE'S NO ROOM THERE"); ev_say(s, "There's no room there."); return; }
+  after := s[0].ev.edits;
+  s[0].ev.edits = before; edit_remember(s); s[0].ev.edits = after;
+  n := ev_count(s[0].ev.line[..], "PLACED ", placed, ev_coloured(s, item, after.things[after.n - 1].tint, false), ev_coloured(s, item, after.things[after.n - 1].tint, true));
+  n += ev_put(s[0].ev.line[n..<EDIT_LINE], place_on);
+  if placed < want {
+    n += ev_put(s[0].ev.line[n..<EDIT_LINE], " · ");
+    n = eg_put_int(s[0].ev.line[..], n, want - placed);
+    n += ev_put(s[0].ev.line[n..<EDIT_LINE], " DIDN'T FIT");
+  }
+  s[0].ev.line_n = lo_i(n, EDIT_LINE);
+  ev_say_line(s);
+  if spoken { edit_changed(s, "Placed by voice"); } else { edit_settle(s); }
+}
+// An item's label with its colour said ("PURPLE PATCH OF FLOWERS"), in a scratch buffer.
+ev_coloured :: (s: [] Everglade, item: int, tint: int, many: bool) -> string {
+  label := ifx many then EG_EDIT_LABELS[item] else EG_EDIT_LABEL[item];
+  if tint <= 0 || tint >= EG_COLOURS { return label; }
+  buf := ifx many then s[0].ev.word2[..] else s[0].ev.word1[..];
+  n := ev_put(buf, EG_COLOUR_WORD[tint]);
+  n += ev_put(buf[n..<buf.count], " ");
+  n += ev_put(buf[n..<buf.count], label);
+  return cast(string) buf[0..<n];
+}
+
+// "Put six pumpkins on the stall": on the top of the nearest such thing near
+// you (a placed one, or one of the market's stalls), in rows across it, each
+// made smaller if that's what it takes for them all to fit.
+edit_place_onto :: (s: [] Everglade, item: int, count: int, onto: int, size: f32, tint: int) {
+  // the nearest top of that kind: x, z, yaw, its top's height, half across and half along it
+  best := 1e9f32; tx := 0.0f32; tz := 0.0f32; tyaw := 0.0f32; ttop := 0.0f32; hx := 0.0f32; hz := 0.0f32;
+  reach := f32(EG_REMOVE_NEAR * EG_REMOVE_NEAR);
+  for i: 0..<s[0].ev.edits.n {
+    o := s[0].ev.edits.things[i];
+    if eg_edit_kind(o.kind) != onto || o.lift > 0.05 { continue; }
+    d := eg_gap2(o.x, o.z, s[0].feet.x, s[0].feet.z);
+    if d < best && d < reach {
+      wide := ifx onto == 4 then 1.55f32 else 1.0f32;
+      best = d; tx = o.x; tz = o.z; tyaw = o.yaw; ttop = ground_at(s, o.x, o.z) + EG_EDIT_TOP[onto] * o.size;
+      hx = EG_EDIT_HALF[onto * 3] * o.size * wide * 0.8; hz = EG_EDIT_HALF[onto * 3 + 1] * o.size * wide * 0.7;
+    }
+  }
+  if onto == 4 {   // the market's own stalls (everglade.coax stalls)
+    for i: EG_STALL..<EG_WAYSTONE {
+      k := i * EG_BOX;
+      x := (EG_PROP[k] + EG_PROP[k + 2]) / 2; z := (EG_PROP[k + 1] + EG_PROP[k + 3]) / 2;
+      d := eg_gap2(x, z, s[0].feet.x, s[0].feet.z);
+      if d < best && d < reach {
+        best = d; tx = x; tz = z; tyaw = ifx z > 0 then f32(PI) else 0.0f32; ttop = ground_at(s, x, z) + EG_EDIT_TOP[4];
+        hx = EG_EDIT_HALF[12] * 1.55 * 0.8; hz = EG_EDIT_HALF[13] * 1.55 * 0.7;
+      }
+    }
+  }
+  if best > 1e8 {
+    n := ev_put(s[0].ev.line[..], "NO ");
+    n += ev_put(s[0].ev.line[n..<EDIT_LINE], EG_EDIT_LABEL[onto]);
+    s[0].ev.line_n = n + ev_put(s[0].ev.line[n..<EDIT_LINE], " NEAR YOU TO PUT THEM ON");
+    ev_say_line(s);
+    return;
+  }
+  before := s[0].ev.edits;
+  // the largest size up to the one said at which count of them fit in rows on the top
+  ix := EG_EDIT_HALF[item * 3] * 2; iz := EG_EDIT_HALF[item * 3 + 1] * 2;
+  sc := size;
+  cols := 1; rows := 1;
+  while true {
+    cols = hi_i(cast(int) floor(hx * 2 / (ix * sc + 0.04)), 1);
+    rows = hi_i(cast(int) floor(hz * 2 / (iz * sc + 0.04)), 1);
+    if cols * rows >= count || sc <= 0.35 { break; }
+    sc = sc * 0.9;
+  }
+  if count < cols * rows { if count <= cols { cols = count; rows = 1; } else { rows = (count + cols - 1) / cols; } }
   group := eg_new_group(s[0].ev.edits);
   placed := 0;
   for k: 0..<count {
-    if s[0].ev.edits.n >= EG_EDIT_MAX { break; }
-    across := (f32(k) - f32(count - 1) / 2) * w;
+    if k >= cols * rows { break; }
+    c := k % cols; r := k / cols;
+    u := (f32(c) - f32(cols - 1) / 2) * hx * 2 / f32(cols);
+    v := (f32(r) - f32(rows - 1) / 2) * hz * 2 / f32(rows);
+    ct := cos(tyaw); st := sin(tyaw);
+    t := eg_thing(item, tx + ct * u + st * v, tz - st * u + ct * v, tyaw + f32(k) * 0.7, sc);
+    t.group = group; t.tint = tint;
+    t.lift = hi(ttop - ground_at(s, t.x, t.z), 0.06);
+    if edit_try(s, t) { placed += 1; }
+  }
+  n := ev_put(s[0].ev.onto_words[..], " ON THE ");
+  n += ev_put(s[0].ev.onto_words[n..<s[0].ev.onto_words.count], EG_EDIT_LABEL[onto]);
+  edit_placed(s, before, item, placed, count, cast(string) s[0].ev.onto_words[0..<n], true);
+}
+
+// "Place 12 benches all around": a ring round you, each facing in, as wide as they need.
+edit_ring :: (s: [] Everglade, item: int, count: int, size: f32, tint: int) {
+  before := s[0].ev.edits;
+  wide := EG_EDIT_HALF[item * 3] * 2 * size * (ifx item == 4 then 1.55f32 else 1.0f32);
+  r := hi(f32(EG_RADIUS) + f32(EDIT_CLEAR) + EG_EDIT_HALF[item * 3 + 1] * size + 1.5, f32(count) * (wide + 0.6) / (2 * f32(PI)));
+  group := eg_new_group(s[0].ev.edits);
+  placed := 0;
+  for k: 0..<count {
+    a := s[0].face + f32(k) * 2 * f32(PI) / f32(count);
     done := false;
     for d: 0..<4 {
-      t: EgThing;
-      t.kind = item; t.size = 1; t.yaw = s[0].face; t.group = group;
-      ahead := first + f32(d) * 1.1;
-      t.x = s[0].feet.x + fx * ahead + rx * across; t.z = s[0].feet.z + fz * ahead + rz * across;
-      box: [EG_BOX] f32;
-      eg_edit_box(t, box[..]);
-      if box_gap(box[..], 0, s[0].feet.x, s[0].feet.z) < f32(EG_RADIUS) + f32(EDIT_CLEAR) { continue; }   // never on you
-      s[0].ev.edits.things[s[0].ev.edits.n] = t; s[0].ev.edits.n += 1;
-      if eg_edit_fault(s[0].ev.edits, s[0].ev.edits.n - 1) == EG_FAULT_NONE { done = true; break; }
-      s[0].ev.edits.n -= 1;
+      if done { break; }
+      rr := r + f32(d) * 1.2;
+      t := eg_thing(item, s[0].feet.x + rr * sin(a), s[0].feet.z + rr * cos(a), a + f32(PI), size);
+      t.group = group; t.tint = tint;
+      done = edit_try(s, t);
+    }
+    if done { placed += 1; }
+  }
+  edit_placed(s, before, item, placed, count, " AROUND YOU", true);
+}
+
+// "Scatter barrels about" or "fill the yard with crates": spread over the open ground in front.
+edit_scatter :: (s: [] Everglade, item: int, count: int, size: f32, tint: int, wide: bool) {
+  before := s[0].ev.edits;
+  reach := ifx wide then 12.0f32 else 6.0f32;
+  group := eg_new_group(s[0].ev.edits);
+  placed := 0;
+  seed := s[0].ev.edits.n * 31 + count;
+  for k: 0..<count {
+    done := false;
+    for d: 0..<10 {
+      if done { break; }
+      a := s[0].face + (ed_hash(seed + k, d) - 0.5) * 2.2;
+      rr := f32(EG_RADIUS) + 1.5 + ed_hash(d, seed + k) * reach;
+      t := eg_thing(item, s[0].feet.x + rr * sin(a), s[0].feet.z + rr * cos(a), ed_hash(k, d + 9) * 6.28, size);
+      t.group = group; t.tint = tint;
+      done = edit_try(s, t);
+    }
+    if done { placed += 1; }
+  }
+  edit_placed(s, before, item, placed, count, "", true);
+}
+
+// A patch of flowers or crops in front of you; "fill the field" makes it as big as the open ground takes.
+edit_patch :: (s: [] Everglade, item: int, count: int, fill: bool, size: f32, tint: int) {
+  before := s[0].ev.edits;
+  had := s[0].ev.spot_n;
+  fx := sin(s[0].face); fz := cos(s[0].face);
+  group := eg_new_group(s[0].ev.edits);
+  placed := 0;
+  n := ifx fill then 1 else eg_clamp_n(count, 1, 4);
+  for k: 0..<n {
+    sc := ifx fill then 4.0f32 else size;
+    done := false;
+    while !done && sc >= 0.5 {
+      r := EG_EDIT_HALF[item * 3] * sc;
+      ahead := f32(EG_RADIUS) + r * 0.85 + f32(k) * r * 2.1;
+      t := eg_thing(item, s[0].feet.x + fx * ahead, s[0].feet.z + fz * ahead, s[0].face, sc);
+      t.group = group; t.tint = tint;
+      done = edit_try(s, t);
+      sc = sc * 0.75;
     }
     if done { placed += 1; }
   }
   if placed == 0 { s[0].ev.edits = before; ev_line(s, "THERE'S NO ROOM THERE"); ev_say(s, "There's no room there."); return; }
   after := s[0].ev.edits;
   s[0].ev.edits = before; edit_remember(s); s[0].ev.edits = after;
-  n := ev_count(s[0].ev.line[..], "PLACED ", placed, EG_EDIT_LABEL[item], EG_EDIT_LABELS[item]);
-  if placed < count {
-    n += ev_put(s[0].ev.line[n..<EDIT_LINE], " · ");
-    n = eg_put_int(s[0].ev.line[..], n, count - placed);
-    n += ev_put(s[0].ev.line[n..<EDIT_LINE], " DIDN'T FIT");
-  }
-  s[0].ev.line_n = lo_i(n, EDIT_LINE);
+  edit_spots(s);
+  // "PLANTED A FIELD OF 512 PURPLE FLOWERS"
+  m := ev_put(s[0].ev.line[..], ifx fill then "PLANTED A FIELD OF " else "PLANTED ");
+  m = eg_put_int(s[0].ev.line[..], m, s[0].ev.spot_n - had);
+  m += ev_put(s[0].ev.line[m..<EDIT_LINE], " ");
+  if tint > 0 { m += ev_put(s[0].ev.line[m..<EDIT_LINE], EG_COLOUR_WORD[tint]); m += ev_put(s[0].ev.line[m..<EDIT_LINE], " "); }
+  m += ev_put(s[0].ev.line[m..<EDIT_LINE], ifx item == EG_KIND_FLOWERS then "FLOWERS" else "PLANTS IN ROWS");
+  s[0].ev.line_n = m;
   ev_say_line(s);
-  if spoken { edit_changed(s, "Placed by voice"); } else { edit_settle(s); }
+  edit_changed(s, "Planted by voice");
+}
+// "What can I put down?": everything the catalogue places, written and said.
+edit_list :: (s: [] Everglade) {
+  n := ev_put(s[0].ev.line[..], "I CAN PLACE ");
+  for k: 0..<EG_EDIT_ITEMS {
+    if k > 0 { n += ev_put(s[0].ev.line[n..<EDIT_LINE], ifx k == EG_EDIT_ITEMS - 1 then " AND " else ", "); }
+    n += ev_put(s[0].ev.line[n..<EDIT_LINE], EG_EDIT_LABELS[k]);
+  }
+  s[0].ev.line_n = n;
+  ev_say_line(s);
+}
+
+// Something asked for that isn't in the catalogue or the city: said plainly, nothing else done.
+edit_missing :: (s: [] Everglade, name: string, place: bool) {
+  n := ev_put(s[0].ev.line[..], ifx place then "I CAN'T MAKE " else "NO PIECE CALLED ");
+  if place && name.count > 0 { n += ev_put(s[0].ev.line[n..<EDIT_LINE], ifx name[0] == 'a' || name[0] == 'e' || name[0] == 'i' || name[0] == 'o' || name[0] == 'u' then "AN " else "A "); }
+  for i: 0..<name.count {
+    c := name[i];
+    if c >= 'a' && c <= 'z' { c = c - 32; }
+    if n < EDIT_LINE { s[0].ev.line[n] = c; n += 1; }
+  }
+  if name.count == 0 { n += ev_put(s[0].ev.line[n..<EDIT_LINE], "THAT"); }
+  s[0].ev.line_n = n;
+  ev_say_line(s);
+}
+
+// ---- the city's buildings: an admin may hide one ("delete this temple building") and bring it back
+
+// The plan's building named (EG_BUILDING_NAME, any case; "" any) nearest you, hidden or not as asked, or -1.
+edit_building_named :: (s: [] Everglade, name: string, hidden: bool) -> int {
+  best := -1; most := 1e9f32;
+  for b: 0..<EG_BUILDINGS {
+    if eg_hidden(s[0].ev.edits, b) != hidden { continue; }
+    if name.count > 0 && name != "nearest" && !ev_same_name(EG_BUILDING_NAME[b], name) { continue; }
+    bld := EG_BUILDING;
+    gap := box_gap(bld[..], b, s[0].feet.x, s[0].feet.z);
+    if gap < most { most = gap; best = b; }
+  }
+  if name.count == 0 || name == "nearest" { if most > 30 && !hidden { return -1; } }
+  return best;
+}
+// "THE INN" and "inn", "MAGES' TOWER" and "mages' tower": the same name.
+ev_same_name :: (upper: string, said: string) -> bool {
+  u := upper;
+  if u.count > 4 && u[0..<4] == "THE " { u = u[4..<u.count]; }
+  if u.count != said.count { return false; }
+  for i: 0..<u.count {
+    c := said[i];
+    if c >= 'a' && c <= 'z' { c = c - 32; }
+    if c != u[i] { return false; }
+  }
+  return true;
+}
+edit_hide :: (s: [] Everglade, name: string) {
+  b := edit_building_named(s, name, false);
+  if b < 0 {
+    if name.count > 0 && name != "nearest" && edit_building_named(s, name, true) >= 0 {
+      n := ev_put(s[0].ev.line[..], "THE "); n += ev_name_building(s, n, name);
+      s[0].ev.line_n = n + ev_put(s[0].ev.line[n..<EDIT_LINE], " IS ALREADY HIDDEN");
+    } else if name.count > 0 && name != "nearest" { edit_missing(s, name, false); return; }
+    else { ev_line(s, "NO BUILDING NEAR YOU TO HIDE"); }
+    ev_say_line(s);
+    return;
+  }
+  edit_remember(s);
+  s[0].ev.edits.hidden = s[0].ev.edits.hidden | (cast(u32) 1 << cast(u32) b);
+  n := ev_put(s[0].ev.line[..], "HID ");
+  s[0].ev.line_n = n + ev_put(s[0].ev.line[n..<EDIT_LINE], ev_the_building(b));
+  ev_say_line(s);
+  edit_changed(s, "Hidden by voice");
+}
+ev_the_building :: (b: int) -> string {
+  return EG_BUILDING_THE[b];
+}
+EG_BUILDING_THE :: [16] string.["THE INN", "THE GENERAL STORE", "THE SMITHY", "THE ALCHEMIST", "THE FIGHTERS' HALL", "THE RANGERS' LODGE",
+  "THE MAGES' TOWER", "THE TEMPLE", "THE OBSERVATORY", "THE STABLES", "THE HOUSE", "THE HOUSE", "THE HOUSE", "THE HOUSE", "THE HOUSE", "THE HOUSE"];
+ev_name_building :: (s: [] Everglade, n: int, name: string) -> int {
+  m := n;
+  for i: 0..<name.count { c := name[i]; if c >= 'a' && c <= 'z' { c = c - 32; } if m < EDIT_LINE { s[0].ev.line[m] = c; m += 1; } }
+  return m - n;
+}
+// "Bring back the temple", "bring Marta back": a hidden building or a person taken away.
+edit_restore :: (s: [] Everglade, name: string, who: int) {
+  if who >= 0 {
+    if !eg_gone(s[0].ev.edits, who) {
+      n := ev_put(s[0].ev.line[..], ev_name_up(who));
+      s[0].ev.line_n = n + ev_put(s[0].ev.line[n..<EDIT_LINE], " IS HERE");
+      ev_say_line(s);
+      return;
+    }
+    edit_remember(s);
+    s[0].ev.edits.gone = s[0].ev.edits.gone ^ (cast(u32) 1 << cast(u32) who);
+    n := ev_put(s[0].ev.line[..], "BROUGHT BACK ");
+    s[0].ev.line_n = n + ev_put(s[0].ev.line[n..<EDIT_LINE], ev_name_up(who));
+    ev_say_person(s, "Brought back ", who, ".");
+    edit_changed(s, "Brought back by voice");
+    return;
+  }
+  b := edit_building_named(s, name, true);
+  if b < 0 { ev_line(s, "NOTHING HIDDEN TO BRING BACK"); ev_say_line(s); return; }
+  edit_remember(s);
+  s[0].ev.edits.hidden = s[0].ev.edits.hidden ^ (cast(u32) 1 << cast(u32) b);
+  n := ev_put(s[0].ev.line[..], "BROUGHT BACK ");
+  s[0].ev.line_n = n + ev_put(s[0].ev.line[n..<EDIT_LINE], ev_the_building(b));
+  ev_say_line(s);
+  edit_changed(s, "Brought back by voice");
+}
+// A placed thing of kind near you, taken away (a placed house before the city's): whether there was one.
+edit_remove_placed :: (s: [] Everglade, kind: int, all: bool) -> bool {
+  take := eg_pick_things(s[0].ev.edits, s[0].feet.x, s[0].feet.z, kind, all);
+  if take.n_things == 0 { return false; }
+  edit_remember(s);
+  edit_take(s, take, true);
+  return true;
+}
+
+// ---- move, resize, turn: the placed things a sentence names, as a removal picks them
+
+// What a move, resize or turn takes, or nothing (and says why).
+edit_targets :: (s: [] Everglade, kind: int, all: bool) -> EgTake {
+  take := eg_pick_things(s[0].ev.edits, s[0].feet.x, s[0].feet.z, kind, all);
+  if take.n_things == 0 {
+    n := ev_put(s[0].ev.line[..], "NO PLACED ");
+    n += ev_put(s[0].ev.line[n..<EDIT_LINE], ifx kind >= 0 && kind < EG_EDIT_ITEMS then EG_EDIT_LABEL[kind] else "THING");
+    s[0].ev.line_n = n + ev_put(s[0].ev.line[n..<EDIT_LINE], " NEAR YOU");
+    ev_say_line(s);
+  }
+  return take;
+}
+// "MOVED 4 CRATES", "MADE THE BARREL BIGGER": the verb, how many and what.
+ev_did :: (s: [] Everglade, verb: string, take: EgTake, after: string) {
+  e := s[0].ev.edits;
+  kind := -1; mixed := false;
+  for i: 0..<e.n {
+    if (take.things >> cast(u64) i) & 1 == 0 { continue; }
+    k := eg_edit_kind(e.things[i].kind);
+    if kind < 0 { kind = k; } else if kind != k { mixed = true; }
+  }
+  n := ev_put(s[0].ev.line[..], verb);
+  if take.n_things == 1 && !mixed { n += ev_put(s[0].ev.line[n..<EDIT_LINE], "THE "); n += ev_put(s[0].ev.line[n..<EDIT_LINE], EG_EDIT_LABEL[kind]); }
+  else {
+    n = eg_put_int(s[0].ev.line[..], n, take.n_things);
+    n += ev_put(s[0].ev.line[n..<EDIT_LINE], " ");
+    n += ev_put(s[0].ev.line[n..<EDIT_LINE], ifx mixed then "THINGS" else EG_EDIT_LABELS[kind]);
+  }
+  s[0].ev.line_n = n + ev_put(s[0].ev.line[n..<EDIT_LINE], after);
+  ev_say_line(s);
+}
+// Whether every thing taken may stand where it now is.
+edit_all_stand :: (s: [] Everglade, take: EgTake) -> bool {
+  for i: 0..<s[0].ev.edits.n {
+    if (take.things >> cast(u64) i) & 1 == 0 { continue; }
+    if eg_edit_fault(s[0].ev.edits, i) != EG_FAULT_NONE { return false; }
+    box: [EG_BOX] f32;
+    eg_edit_box(s[0].ev.edits.things[i], box[..]);
+    if s[0].ev.edits.things[i].lift < 0.05 && box_gap(box[..], 0, s[0].feet.x, s[0].feet.z) < f32(EG_RADIUS) { return false; }
+  }
+  return true;
+}
+// "Move these crates" (here: to in front of you), "move it two metres left", "away", "closer".
+edit_move :: (s: [] Everglade, kind: int, all: bool, direction: string, metres: f32) {
+  take := edit_targets(s, kind, all);
+  if take.n_things == 0 { return; }
+  before := s[0].ev.edits;
+  fx := sin(s[0].face); fz := cos(s[0].face);
+  cx := 0.0f32; cz := 0.0f32;
+  for i: 0..<before.n { if (take.things >> cast(u64) i) & 1 != 0 { cx += before.things[i].x; cz += before.things[i].z; } }
+  cx = cx / f32(take.n_things); cz = cz / f32(take.n_things);
+  dx := 0.0f32; dz := 0.0f32;
+  m := clamp(metres, 0.5, 30);
+  if direction == "forward" { dx = fx * m; dz = fz * m; }
+  else if direction == "back" { dx = -fx * m; dz = -fz * m; }
+  else if direction == "right" { dx = fz * m; dz = -fx * m; }
+  else if direction == "left" { dx = -fz * m; dz = fx * m; }
+  else if direction == "away" || direction == "closer" {
+    ax := cx - s[0].feet.x; az := cz - s[0].feet.z; d := hi(sqrt(ax * ax + az * az), 0.01);
+    sg := ifx direction == "away" then 1.0f32 else -1.0f32;
+    if direction == "closer" { m = lo(m, hi(d - 2.5, 0)); }
+    dx = sg * ax / d * m; dz = sg * az / d * m;
+  } else {
+    // here: the group's middle to in front of you, past its own reach
+    reach := 0.0f32;
+    for i: 0..<before.n { if (take.things >> cast(u64) i) & 1 != 0 { reach = hi(reach, sqrt(eg_gap2(before.things[i].x, before.things[i].z, cx, cz)) + EG_EDIT_HALF[eg_edit_kind(before.things[i].kind) * 3]); } }
+    ahead := f32(EG_RADIUS) + f32(EDIT_CLEAR) + reach + 0.8;
+    dx = s[0].feet.x + fx * ahead - cx; dz = s[0].feet.z + fz * ahead - cz;
+  }
+  // as far as they go, down to a quarter of the way
+  for step: 0..<4 {
+    k := 1.0f32 - f32(step) * 0.25;
+    s[0].ev.edits = before;
+    for i: 0..<before.n {
+      if (take.things >> cast(u64) i) & 1 == 0 { continue; }
+      s[0].ev.edits.things[i].x += dx * k; s[0].ev.edits.things[i].z += dz * k;
+      if s[0].ev.edits.things[i].lift > 0.05 { s[0].ev.edits.things[i].lift = 0; }   // moved off its top
+    }
+    if edit_all_stand(s, take) {
+      after := s[0].ev.edits;
+      s[0].ev.edits = before; edit_remember(s); s[0].ev.edits = after;
+      ev_did(s, "MOVED ", take, "");
+      edit_changed(s, "Moved by voice");
+      return;
+    }
+  }
+  s[0].ev.edits = before;
+  ev_line(s, "THERE'S NO ROOM THERE"); ev_say(s, "There's no room there.");
+}
+// "This barrel is bigger", "make it twice as big", "smaller".
+edit_resize :: (s: [] Everglade, kind: int, all: bool, factor: f32) {
+  take := edit_targets(s, kind, all);
+  if take.n_things == 0 { return; }
+  f := clamp(factor, 0.25, 4);
+  if abs(f - 1) < 0.01 { f = 1.5; }
+  before := s[0].ev.edits;
+  for step: 0..<6 {
+    k := 1 + (f - 1) * (1 - f32(step) / 6);
+    s[0].ev.edits = before;
+    for i: 0..<before.n {
+      if (take.things >> cast(u64) i) & 1 == 0 { continue; }
+      s[0].ev.edits.things[i].size = clamp(before.things[i].size * k, f32(EG_EDIT_SIZE_MIN), f32(EG_EDIT_SIZE_MAX));
+    }
+    if edit_all_stand(s, take) {
+      after := s[0].ev.edits;
+      s[0].ev.edits = before; edit_remember(s); s[0].ev.edits = after;
+      ev_did(s, "MADE ", take, ifx f > 1 then " BIGGER" else " SMALLER");
+      edit_changed(s, "Resized by voice");
+      return;
+    }
+  }
+  s[0].ev.edits = before;
+  ev_line(s, "THERE'S NO ROOM FOR IT BIGGER"); ev_say_line(s);
+}
+// "Turn the bench around" (180), "turn it left" (-90): degrees to your right.
+edit_rotate :: (s: [] Everglade, kind: int, all: bool, degrees: f32) {
+  take := edit_targets(s, kind, all);
+  if take.n_things == 0 { return; }
+  before := s[0].ev.edits;
+  for i: 0..<before.n {
+    if (take.things >> cast(u64) i) & 1 == 0 { continue; }
+    t := before.things[i];
+    turned := t.yaw + clamp(degrees, -360, 360) * f32(PI) / 180;
+    s[0].ev.edits.things[i].yaw = ifx EG_EDIT_SORT[eg_edit_kind(t.kind)] == EG_SORT_BUILDING then ed_square(turned) else turned;
+  }
+  if !edit_all_stand(s, take) { s[0].ev.edits = before; ev_line(s, "THERE'S NO ROOM TO TURN IT"); ev_say_line(s); return; }
+  after := s[0].ev.edits;
+  s[0].ev.edits = before; edit_remember(s); s[0].ev.edits = after;
+  ev_did(s, "TURNED ", take, "");
+  edit_changed(s, "Turned by voice");
 }
 
 // Takes away what a removal names (verse/everglade/edits.coax eg_remove_pick):
@@ -417,13 +909,18 @@ edit_changed :: (s: [] Everglade, summary: string) {
   s[0].ev.post_n = eg_edits_body(s[0].ev.edits, summary, s[0].ev.post[..]);
 }
 
-// The player's walls: the plan's, then a box for each placed thing.
+// The player's walls: the plan's (without the buildings an admin hid), then a box for each
+// placed thing you can't walk through; and the patches' plants again.
 edit_walls :: (s: [] Everglade) {
+  edit_relay_town(s);
+  edit_spots(s);
   w := s[0].ev.wall_base;
   box: [EG_BOX] f32;
   for i: 0..<s[0].ev.edits.n {
     if w >= WALLS { break; }
     t := s[0].ev.edits.things[i];
+    k := eg_edit_kind(t.kind);
+    if t.lift > 0.05 || EG_EDIT_SORT[k] == EG_SORT_PATCH || EG_EDIT_HALF[k * 3 + 2] * t.size < 0.3 { continue; }
     eg_edit_box(t, box[..]);
     // from under the ground to its top where it's drawn (edit_draw stands it at the ground under its middle)
     g := ground_at(s, t.x, t.z);
@@ -431,29 +928,6 @@ edit_walls :: (s: [] Everglade) {
     w += 1;
   }
   s[0].wall_n = w;
-}
-
-// Each frame: the placed things as the kit's pieces, after the town's own.
-edit_draw :: (s: [] Everglade) {
-  for k: 0..<EG_EDIT_ITEMS { s[0].kit_used[group_of(EDIT_MESH[k])] = s[0].ev.town_used[k]; }
-  for i: 0..<s[0].ev.edits.n {
-    t := s[0].ev.edits.things[i];
-    g := ground_at(s, t.x, t.z);
-    m := EDIT_MESH[eg_edit_kind(t.kind)];
-    sc := ifx t.kind == 4 then 1.55f32 * t.size else t.size;
-    piece(s, m, t.x, g, t.z, t.yaw, sc, t.size, sc);
-  }
-}
-// At the start, once the town is laid: what the town uses of each item's group.
-edit_start :: (s: [] Everglade) {
-  for k: 0..<EG_EDIT_ITEMS { s[0].ev.town_used[k] = s[0].kit_used[group_of(EDIT_MESH[k])]; }
-  s[0].ev.wall_base = s[0].wall_n;
-  s[0].ev.finger = -1; s[0].ev.finger2 = -1; s[0].ev.lit = -1; s[0].ev.picked = -1; s[0].ev.person = -1;
-}
-// The extra instances an item's group keeps for placed things.
-edit_cap :: (group: int) -> int {
-  for k: 0..<EG_EDIT_ITEMS { if group_of(EDIT_MESH[k]) == group { return EG_EDIT_MAX; } }
-  return 0;
 }
 
 // ---- on the screen: the button, and what was heard and done
@@ -465,7 +939,7 @@ ev_text :: (s: [] Everglade) -> string {
   if (p == "hearing" || p == "heard") && s[0].ev.caption_n > 0 && s[0].ev.line_n == 0 { return cast(string) s[0].ev.caption[0..<s[0].ev.caption_n]; }
   if p == "notice" && s[0].ev.caption_n > 0 { return cast(string) s[0].ev.caption[0..<s[0].ev.caption_n]; }
   if s[0].ev.line_n > 0 { return cast(string) s[0].ev.line[0..<s[0].ev.line_n]; }
-  return "SAY: PUT TWO BARRELS HERE · REMOVE THAT · UNDO";
+  return "SAY: PUT SIX PUMPKINS ON THE STALL · WHAT CAN I PUT DOWN?";
 }
 
 // The button at the bottom middle, over the hint; returns its top.
@@ -483,13 +957,44 @@ everglade_voice_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom
   n = draw_text(out, n, word, floor((w - text_width(word, ts)) / 2), floor(b.y1 - 20 * k), ts, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
   line := ev_text(s);
   ls := 7.5 * k;
-  room := w - 48 * k;
-  lw := text_width(line, ls);
-  if lw > room { ls = ls * room / lw; lw = room; }
+  room := hi(lo(w - 48 * k, 760 * k), 120 * k);
+  // a long line ("I CAN PLACE ...") wraps at its words, up to four rows, then gets smaller
+  cuts: [5] int; rows := ev_wrap(line, ls, room, cuts[..]);
+  while rows > 4 && ls > 4 * k { ls = ls * 0.9; rows = ev_wrap(line, ls, room, cuts[..]); }
+  rows = lo_i(rows, 5);
+  lw := 0.0f32;
+  for r: 0..<rows { lw = hi(lw, text_width(line[cuts[r]..<ev_row_end(line, cuts[..], r, rows)], ls)); }
+  lw = lo(lw, room);
+  lead := ls + 8 * k;
   y1 := b.y0 - 8 * k;
-  plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - ls - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
-  n = draw_text(out, n, line, floor((w - lw) / 2), floor(y1 - 10 * k), ls, GAP, SPACE, ink(k, 0.9, PARCH_R, PARCH_G, PARCH_B), false, false);
+  plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - ls - 20 * k - f32(rows - 1) * lead, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
+  for r: 0..<rows {
+    part := line[cuts[r]..<ev_row_end(line, cuts[..], r, rows)];
+    pw := lo(text_width(part, ls), room);
+    n = draw_text(out, n, part, floor((w - pw) / 2), floor(y1 - 10 * k - f32(rows - 1 - r) * lead), ls, GAP, SPACE, ink(k, 0.9, PARCH_R, PARCH_G, PARCH_B), false, false);
+  }
   return n;
+}
+// Where each row of text starts when it wraps at its spaces to room wide (cuts), and how many rows (at most 5).
+ev_wrap :: (text: string, size: f32, room: f32, cuts: [] int) -> int {
+  rows := 1; cuts[0] = 0;
+  start := 0; last := -1;
+  i := 0;
+  while i <= text.count {
+    if i == text.count || text[i] == ' ' {
+      if text_width(text[start..<i], size) > room && last > start {
+        if rows >= 5 { return 6; }
+        cuts[rows] = last + 1; rows += 1; start = last + 1;
+      }
+      last = i;
+    }
+    i += 1;
+  }
+  return rows;
+}
+ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
+  if r + 1 < rows { return cuts[r + 1] - 1; }
+  return text.count;
 }
 
 // ---- checks
@@ -570,7 +1075,7 @@ everglade_voice_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom
   for f: 0..<8 {
     s[0].ev.edits.n = 0;
     s[0].feet = v3(4, 0, -12); s[0].face = f32(f) * f32(PI) / 4;
-    for item: 0..<EG_EDIT_ITEMS {
+    for item: 0..<EG_EDIT_BUTTONS {
       edit_place(s[..], item, 6, false);
     }
     #assert s[0].ev.edits.n > 0;
@@ -693,4 +1198,71 @@ everglade_voice_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom
   #assert everglade_key(s[..], EV_KEY_DELETE, 0) && eg_gone(s[0].ev.edits, 5) && s[0].ev.person == -1;
   #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "REMOVED MARTA" && s[0].ev.due > 0;
   #assert everglade_key(s[..], 'z', 0) && !eg_gone(s[0].ev.edits, 5);
+}
+
+#test "voice verbs: pumpkins on the stall's top, a house, a ring of benches, a field of purple flowers" {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  everglade_message(s[..], MSG_VIEWER, "A|1\n");
+  // by the market's south stalls, facing them
+  s[0].feet = v3(26, 0, -2.5); s[0].face = f32(PI);
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"place\", \"item\": \"pumpkin\", \"count\": 6, \"onto\": \"stall\", \"model\": \"m\"}");
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "PLACED 6 PUMPKINS ON THE STALL";
+  #assert s[0].ev.edits.n == 6 && s[0].ev.edits.things[0].kind == 5 && s[0].ev.edits.things[0].lift > 0.8;
+  for i: 0..<6 { t := s[0].ev.edits.things[i]; #assert abs(t.x - 26) < 1.5 && abs(t.z + 6) < 0.8; }
+  // what can I put down
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"list\"}");
+  line := cast(string) s[0].ev.line[0..<s[0].ev.line_n];
+  #assert line.count > 200 && line[0..<20] == "I CAN PLACE CRATES, " && line[line.count - 10..<line.count] == "AND TOWERS";
+  // a building in front: a house, never a stall
+  s[0].ev.edits.n = 0;
+  s[0].feet = v3(6, 0, -14); s[0].face = f32(PI) / 2;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"place\", \"item\": \"house\", \"count\": 1}");
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "PLACED A HOUSE" && s[0].ev.edits.n == 1 && s[0].ev.edits.things[0].kind == EG_KIND_HOUSE;
+  // twelve benches all around
+  s[0].ev.edits.n = 0;
+  s[0].feet = v3(-20, 0, 12); s[0].face = 0;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"place\", \"item\": \"bench\", \"count\": 12, \"arrange\": \"ring\"}");
+  line = cast(string) s[0].ev.line[0..<s[0].ev.line_n];
+  #assert s[0].ev.edits.n >= 8 && line[0..<7] == "PLACED " && contains(line, "BENCHES AROUND YOU");
+  // fill the field with purple flowers
+  s[0].ev.edits.n = 0; edit_walls(s[..]);
+  s[0].feet = v3(6, 0, -14); s[0].face = f32(PI) / 2;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"place\", \"item\": \"flowers\", \"colour\": \"purple\", \"arrange\": \"fill\"}");
+  line = cast(string) s[0].ev.line[0..<s[0].ev.line_n];
+  #assert s[0].ev.spot_n > 150 && line[0..<19] == "PLANTED A FIELD OF " && contains(line, "PURPLE FLOWERS");
+}
+
+#test "voice verbs: the barrel bigger, the crates moved, the temple hidden and back, and a name that isn't here" {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  everglade_message(s[..], MSG_VIEWER, "A|1\n");
+  s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"place\", \"item\": \"barrel\", \"count\": 1}");
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"resize\", \"item\": \"barrel\", \"size\": 1.5}");
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "MADE THE BARREL BIGGER" && abs(s[0].ev.edits.things[0].size - 1.5) < 0.01;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"undo\"}");
+  #assert abs(s[0].ev.edits.things[0].size - 1) < 0.01;
+  s[0].ev.edits.n = 0;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"place\", \"item\": \"crate\", \"count\": 4}");
+  x0 := s[0].ev.edits.things[0].x; z0 := s[0].ev.edits.things[0].z;
+  s[0].face = 0;   // turned round: "move these crates" brings them in front
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"move\", \"item\": \"crate\", \"all\": true, \"direction\": \"here\"}");
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "MOVED 4 CRATES" && s[0].ev.edits.things[0].z > -9 && abs(s[0].ev.edits.things[0].z - z0) > 1;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"rotate\", \"item\": \"crate\", \"turn\": 90}");
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "TURNED THE CRATE";
+  // the temple: hidden, its walls and roof gone, and back
+  s[0].feet = v3(0, 0, 30); s[0].face = 0;
+  walls := s[0].wall_n;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"remove\", \"item\": \"building\", \"building\": \"temple\"}");
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "HID THE TEMPLE" && eg_hidden(s[0].ev.edits, EG_TEMPLE) && s[0].wall_n < walls;
+  #assert s[0].ev.post_n > 0 && contains(cast(string) s[0].ev.post[0..<s[0].ev.post_n], "b 7");
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"restore\", \"building\": \"temple\"}");
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "BROUGHT BACK THE TEMPLE" && !eg_hidden(s[0].ev.edits, EG_TEMPLE) && s[0].wall_n == walls;
+  // what isn't in the catalogue or the city is said, and nothing else is done
+  n := s[0].ev.edits.n;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"missing\", \"name\": \"Marta\"}");
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "NO PIECE CALLED MARTA" && s[0].ev.edits.n == n;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"place\", \"item\": \"dragon\"}");
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "I CAN'T MAKE A DRAGON" && s[0].ev.edits.n == n;
 }

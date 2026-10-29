@@ -64,6 +64,7 @@
 #load "everglade-voice.coax";
 #load "everglade-place.coax";
 #load "everglade-spells.coax";
+#load "everglade-items.coax";
 #load "../../verse/style-preset.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
@@ -118,14 +119,15 @@ KIT_CAP :: 80;            // a forest group's instances
 KIT_AT :: SHAPE_OBJECTS;
 KIT_GROUPS :: KIT_MESHES - KIT_TREES;
 // The town's pieces' instances, a group each, from mesh 12 on.
-TOWN_CAP :: [40] int.[
+TOWN_CAP :: [52] int.[
   260, 200, 20, 140, 220, 200, 8, 330, 20, 140,
   16, 12, 760, 328, 100, 6, 4, 8, 16, 30,
   24, 12, 40, 24, 24, 12, 10, 4, 6, 6,
-  8, 3, 6, 12, 4, 2, 40, 6, 8, 20
+  8, 3, 6, 12, 4, 2, 40, 6, 8, 20,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 ];
 TOWN_OBJECTS :: 3089;     // the sum of TOWN_CAP
-OBJECTS :: SHAPE_OBJECTS + KIT_FOREST * KIT_CAP + TOWN_OBJECTS + EG_EDIT_ITEMS * EG_EDIT_MAX + SP_DEBRIS_OBJECTS;   // and an admin's placed things (everglade-voice.coax), and the spells' debris (everglade-spells.coax)
+OBJECTS :: SHAPE_OBJECTS + KIT_FOREST * KIT_CAP + TOWN_OBJECTS + EDIT_OBJECTS + SP_DEBRIS_OBJECTS;   // and an admin's placed things (everglade-items.coax), and the spells' debris
 RANGER_AT :: OBJECTS;     // you, the Ranger: one object after everything else
 // Lathed stone (the fountain's basin and column): a profile turned about its axis (everglade.wgsl
 // lathe_vertex), drawn in LATHE_WEDGES instances of LATHE_SECTORS sectors and LATHE_SEGMENTS
@@ -167,8 +169,8 @@ LOOK_ROCK :: 10;
 // What glows at night (everglade.wgsl): a lamp's or the brazier's flame (its colour times how lit the
 // lamps are, blooming), and the windows, whose glass (the pack's glass_pane) glows warm.
 LOOK_FLAME :: 13; LOOK_WINDOW :: 14;   // (11 and 12 are the planks and the sawn wood)
-KIT_MESHES :: 52;
-KIT_MESH :: [52] string.["Pine_5", "Pine_5_Leaves", "Pine_4", "Pine_4_Leaves", "CommonTree_3", "CommonTree_3_Leaves",
+KIT_MESHES :: 64;
+KIT_MESH :: [64] string.["Pine_5", "Pine_5_Leaves", "Pine_4", "Pine_4_Leaves", "CommonTree_3", "CommonTree_3_Leaves",
   "CommonTree_4", "CommonTree_4_Leaves", "Bush_Common_Flowers", "Fern_1", "Rock_Medium_1", "Rock_Medium_2",
   "Wall_Plaster_Straight", "Wall_Plaster_Window_Wide_Round", "Wall_Plaster_Door_Round", "Wall_Plaster_WoodGrid",
   "Wall_UnevenBrick_Straight", "Wall_UnevenBrick_Window_Wide_Round", "Wall_UnevenBrick_Door_Round", "Window_Wide_Round1",
@@ -176,7 +178,10 @@ KIT_MESH :: [52] string.["Pine_5", "Pine_5_Leaves", "Pine_4", "Pine_4_Leaves", "
   "Floor_Brick", "Prop_Chimney", "Stair_Interior_Solid", "Stall_Empty", "FarmCrate_Apple", "Barrel", "Crate_Wooden",
   "Table_Large", "Chair_1", "Bench", "Mug", "Shelf_Arch", "Bag", "Anvil", "WeaponStand", "Sword_Bronze", "Shield_Wooden",
   "Cauldron", "Dummy", "Banner_1", "Peg_Rack", "Chalice", "Roof_Front_Brick6", "Scroll_1", "Stairs_Exterior_Platform",
-  "Prop_WoodenFence_Single"];
+  "Prop_WoodenFence_Single",
+  // what an admin may place besides (everglade-items.coax, eg-voice-verbs)
+  "Carrot", "Pot_1", "Bucket_Wooden_1", "Stall_Cart_Empty", "Vase_2", "Stool", "Coin_Pile", "Flower_3_Single",
+  "Plant_7", "Custom_Pumpkin", "Custom_Rock", "Custom_Bush"];
 // The town's meshes by name.
 M_PLASTER :: 12; M_PLASTER_WINDOW :: 13; M_PLASTER_DOOR :: 14; M_PLASTER_GRID :: 15;
 M_BRICK :: 16; M_BRICK_WINDOW :: 17; M_BRICK_DOOR :: 18; M_WINDOW :: 19; M_DOOR :: 20; M_CORNER :: 21;
@@ -184,6 +189,8 @@ M_ROOF :: 22; M_TOWER_ROOF :: 23; M_LOG :: 24; M_FLOOR_WOOD :: 25; M_FLOOR_BRICK
 M_STALL :: 29; M_APPLES :: 30; M_BARREL :: 31; M_CRATE :: 32; M_TABLE :: 33; M_CHAIR :: 34; M_BENCH :: 35; M_MUG :: 36;
 M_SHELF :: 37; M_BAG :: 38; M_ANVIL :: 39; M_WEAPONS :: 40; M_SWORD :: 41; M_SHIELD :: 42; M_CAULDRON :: 43; M_DUMMY :: 44;
 M_BANNER :: 45; M_PEGS :: 46; M_CHALICE :: 47; M_GABLE :: 48; M_SCROLL :: 49; M_STEP :: 50; M_FENCE :: 51;
+M_CARROT :: 52; M_POT :: 53; M_BUCKET :: 54; M_CART :: 55; M_VASE :: 56; M_STOOL :: 57; M_COINS :: 58; M_FLOWER3 :: 59;
+M_SPROUT :: 60; M_PUMPKIN :: 61; M_STONE :: 62; M_SHRUB :: 63;
 STOREY :: 3.12;           // a kit wall's height
 WALL_FACE :: 0.09;        // how far a wall's outer face stands from its origin (its local +z)
 // The shapes' five draws, then a draw per kit mesh, then yours, the
@@ -461,6 +468,7 @@ build_scenery :: (s: [] Everglade) {
     k := i * EG_BOX;
     x0 := solids[k]; z0 := solids[k + 1]; x1 := solids[k + 2]; z1 := solids[k + 3]; h := solids[k + 4];
     // the fountain stands in the way as a round body, its plinth's
+    if edit_in_hidden(s, solids[..], k) { continue; }
     fountain := x0 == fp[0] && z0 == fp[1] && x1 == fp[2] && z1 == fp[3];
     if w < WALLS && !fountain { put6(s[0].walls[..], w, x0, 0, z0, x1, h, z1); w += 1; }
     if h > 1.5 && bx < BOXES && x1 - x0 < 150 && z1 - z0 < 150 {
@@ -1225,7 +1233,7 @@ city :: (s: [] Everglade, u: [] f32) {
   // observatory's dome is the engine's sphere, as the kits have none.
   ob := EG_OBSERVATORY * EG_BOX;
   ox := (EG_BUILDING[ob] + EG_BUILDING[ob + 2]) / 2; oz := (EG_BUILDING[ob + 1] + EG_BUILDING[ob + 3]) / 2;
-  shape(s, SHAPE_SPHERE, LOOK_STONE, v3(ox, ground_at(s, ox, oz) + f32(STOREY) * f32(OBSERVATORY_STOREYS), oz), 0, 0, 7.4, 7.4, 7.4, 0.78, 0.78, 0.82);
+  if !eg_hidden(s[0].ev.edits, EG_OBSERVATORY) { shape(s, SHAPE_SPHERE, LOOK_STONE, v3(ox, ground_at(s, ox, oz) + f32(STOREY) * f32(OBSERVATORY_STOREYS), oz), 0, 0, 7.4, 7.4, 7.4, 0.78, 0.78, 0.82); }
   // The commons: the fountain, the quest board.
   g := ground_at(s, 0, 0);
   // the fountain: a carved basin and a column with an upper bowl, its water the water shader's
@@ -1551,6 +1559,7 @@ stalls :: (s: [] Everglade) {
 build_town :: (s: [] Everglade) {
   palisade(s);
   for b: 0..<EG_BUILDINGS {
+    if eg_hidden(s[0].ev.edits, b) { continue; }   // an admin took it away (everglade-items.coax)
     building(s, b);
     if EG_INTERIOR[b] { furnish(s, b); }
   }
@@ -2183,7 +2192,7 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
     m = tag(s, out, u, m, EG_PLACE_NAME[p], pp, (ifx overview then 8.0f32 else 9.0f32) * k, 0.95, true);
   }
   for b: 0..<EG_BUILDINGS {
-    if b >= EG_HOUSES { continue; }
+    if b >= EG_HOUSES || eg_hidden(s[0].ev.edits, b) { continue; }
     q := b * EG_BOX;
     cx := (EG_BUILDING[q] + EG_BUILDING[q + 2]) / 2; cz := (EG_BUILDING[q + 1] + EG_BUILDING[q + 3]) / 2;
     pp := v3(cx, ground_at(s, cx, cz) + EG_BUILDING[q + 4] + 1.5, cz);
@@ -2600,7 +2609,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   // the grass (art-styles.md 8): a square two radii across round the eye, at the preset's density;
   // none from above (the map) or before the pack (the scene's groups) is in
   for k: 0..<SOLIDS * 4 { u[U_SOLID + k] = 0; }
-  for b: 0..<EG_BUILDINGS { for k: 0..<4 { u[U_SOLID + b * 4 + k] = EG_BUILDING[b * EG_BOX + k]; } }
+  for b: 0..<EG_BUILDINGS { for k: 0..<4 { u[U_SOLID + b * 4 + k] = ifx eg_hidden(s[0].ev.edits, b) then 9000.0f32 else EG_BUILDING[b * EG_BOX + k]; } }
   for i: 0..<EG_PROPS { for k: 0..<4 { u[U_SOLID + (EG_BUILDINGS + i) * 4 + k] = EG_PROP[i * EG_BOX + k]; } }
   gr := u[STYLE_AT + SU_GRASS + 1];
   // the far field (4 r2 a density) and the near ring past it (style.coax verse_style_near_blades)
@@ -2666,7 +2675,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
   #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
   total := 0;
   for g: 0..<KIT_GROUPS - KIT_FOREST { total += TOWN_CAP[g]; }
-  #assert total == TOWN_OBJECTS && KIT_GROUPS - KIT_FOREST == 40;
+  #assert total == TOWN_OBJECTS && KIT_GROUPS - KIT_FOREST == 52;
   #assert KIT_MESH[M_FENCE] == "Prop_WoodenFence_Single" && KIT_MESH[M_ROOF] == "Roof_RoundTiles_6x8" && KIT_MESH[M_CHALICE] == "Chalice";
   g: [1] Everglade;
   everglade_start(g[..]);
@@ -3191,6 +3200,19 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert g[0].birds[0].started && g[0].birds[0].trail_n == FLOCK_TRAIL;
   #assert g[0].counts[SHAPE_BOX] < SLOTS[SHAPE_BOX] && g[0].counts[SHAPE_SPHERE] < SLOTS[SHAPE_SPHERE];
   for i: 0..<FLOCK_BIRDS { #assert flat_gap(g[0].birds[0].pos[i], v3(0, 0, -79.65)) < 5; }
+  // a minted player key goes out before a waiting save, which follows it
+  g[0].dirty = true;
+  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].action == ACT_KEEP;
+  everglade_keep_player(g[..], "{\"key\":\"k\",\"id\":\"p-3\"}");
+  #assert everglade_action(g[..]) == ACT_PLAYER && g[0].dirty;
+  everglade_action_done(g[..]);
+  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert everglade_action(g[..]) == ACT_KEEP;
+}
+
+// (its own test: three Everglades in one test outgrow the compile-time store)
+#test "a quest save comes back for its player only" {
   // a save given back before the facts; then the facts say whose browser it is
   h: [1] Everglade;
   everglade_message(h[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
@@ -3201,15 +3223,6 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   everglade_message(o[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
   everglade_message(o[..], MSG_FACTS, "now=1\nplayer=p-2\n");
   #assert o[0].stages[0] == 0 && o[0].stages[1] == 0 && !o[0].flock;
-  // a minted player key goes out before a waiting save, which follows it
-  g[0].dirty = true;
-  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  #assert g[0].action == ACT_KEEP;
-  everglade_keep_player(g[..], "{\"key\":\"k\",\"id\":\"p-3\"}");
-  #assert everglade_action(g[..]) == ACT_PLAYER && g[0].dirty;
-  everglade_action_done(g[..]);
-  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  #assert everglade_action(g[..]) == ACT_KEEP;
 }
 
 #test "a conversation keeps its last lines, oldest dropped" {

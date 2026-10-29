@@ -12,9 +12,12 @@
 //
 // The list as text (eg_edits_text, eg_edits_read), a line each:
 //   eg-edit 1
-//   t KIND X Z YAW SIZE GROUP   an item: X and Z in centimetres, YAW in degrees, SIZE in percent,
-//                               GROUP the row it was placed in (0 or left out: on its own)
+//   t KIND X Z YAW SIZE GROUP LIFT TINT   an item: X and Z in centimetres, YAW in degrees, SIZE in percent,
+//                               GROUP the row it was placed in (0 or left out: on its own), LIFT
+//                               centimetres up on another's top and TINT its colour (EG_COLOUR_NAME),
+//                               both left out when 0
 //   p SPOT                      the person at plan.coax EG_SPOT SPOT is taken away
+//   b BUILDING                  the plan's building (EG_BUILDING) is hidden: an admin took it away
 //
 // A thing may not stand in a wall, a building, a prop, the woods or past
 // the world's edge (eg_edit_fault: the realm refuses the place or the move).
@@ -24,18 +27,52 @@
 
 #load "people.coax";
 
-EG_EDIT_ITEMS :: 5;
-EG_EDIT_MAX :: 48;      // things an admin may add
-EG_EDIT_LABEL :: [5] string.["CRATE", "BARREL", "BENCH", "FENCE", "STALL"];
-EG_EDIT_LABELS :: [5] string.["CRATES", "BARRELS", "BENCHES", "FENCES", "STALLS"];   // more than one
-// Each one's footprint at size 1 from the pack's bounds (verse/packs/everglade.json): half its
+// The catalogue (eg-voice-verbs): every thing an admin may place, by its
+// index. The server's selector names them the same way, in the same order
+// (coax/web/api/migrations/0051_realm_voice_verbs.sql); kinds 0..4 were the
+// first five and keep their numbers in published lists.
+EG_EDIT_ITEMS :: 34;
+EG_EDIT_BUTTONS :: 5;   // edit mode's buttons place the first five
+EG_EDIT_MAX :: 64;      // things an admin may add
+EG_EDIT_NAME :: [34] string.["crate", "barrel", "bench", "fence", "stall", "pumpkin", "sack", "apple crate", "carrots", "pot",
+  "bucket", "lantern", "cart", "vase", "table", "chair", "stool", "anvil", "cauldron", "training dummy",
+  "weapon rack", "banner", "coins", "sign", "bush", "flowers", "rock", "rock pile", "hay pile", "stone wall",
+  "crops", "house", "shed", "tower"];
+EG_EDIT_LABEL :: [34] string.["CRATE", "BARREL", "BENCH", "FENCE", "STALL", "PUMPKIN", "SACK", "APPLE CRATE", "BUNCH OF CARROTS", "POT",
+  "BUCKET", "LANTERN", "CART", "VASE", "TABLE", "CHAIR", "STOOL", "ANVIL", "CAULDRON", "TRAINING DUMMY",
+  "WEAPON RACK", "BANNER", "PILE OF COINS", "SIGN", "BUSH", "PATCH OF FLOWERS", "ROCK", "ROCK PILE", "HAY PILE", "STONE WALL",
+  "PATCH OF CROPS", "HOUSE", "SHED", "TOWER"];
+EG_EDIT_LABELS :: [34] string.["CRATES", "BARRELS", "BENCHES", "FENCES", "STALLS", "PUMPKINS", "SACKS", "APPLE CRATES", "BUNCHES OF CARROTS", "POTS",
+  "BUCKETS", "LANTERNS", "CARTS", "VASES", "TABLES", "CHAIRS", "STOOLS", "ANVILS", "CAULDRONS", "TRAINING DUMMIES",
+  "WEAPON RACKS", "BANNERS", "PILES OF COINS", "SIGNS", "BUSHES", "PATCHES OF FLOWERS", "ROCKS", "ROCK PILES", "HAY PILES", "STONE WALLS",
+  "PATCHES OF CROPS", "HOUSES", "SHEDS", "TOWERS"];
+// Each one's footprint at size 1 (the kit's pieces from the pack's bounds, verse/packs/everglade.json): half its
 // width across (its local x), half its depth (its local z), and its height, metres.
-EG_EDIT_HALF :: [15] f32.[0.42, 0.45, 0.93,   0.35, 0.35, 0.9,   1.39, 0.27, 0.53,   1.03, 0.06, 0.81,   0.92, 0.47, 2.63];
-EG_EDIT_SIZE_MIN :: 0.5; EG_EDIT_SIZE_MAX :: 3.0;
+EG_EDIT_HALF :: [102] f32.[0.42, 0.45, 0.93,   0.35, 0.35, 0.9,   1.39, 0.27, 0.53,   1.03, 0.06, 0.81,   0.92, 0.47, 2.63,
+  0.31, 0.31, 0.47,   0.33, 0.27, 0.8,   0.36, 0.21, 0.24,   0.22, 0.22, 0.57,   0.27, 0.24, 0.22,
+  0.22, 0.19, 0.29,   0.2, 0.2, 2.4,   1.51, 0.53, 2.63,   0.35, 0.35, 0.52,   1.42, 0.55, 0.81,
+  0.29, 0.27, 1.12,   0.24, 0.24, 0.59,   0.54, 0.2, 0.56,   0.49, 0.47, 0.82,   0.4, 0.29, 1.86,
+  0.69, 0.49, 1.11,   0.81, 0.1, 2.39,   0.2, 0.16, 0.14,   0.6, 0.1, 1.8,   0.8, 0.8, 1.2,
+  3.0, 3.0, 0.5,   0.9, 0.9, 0.8,   1.25, 1.25, 1.2,   1.0, 1.0, 1.2,   2.0, 0.3, 1.2,
+  2.0, 2.0, 0.4,   3.0, 2.5, 6.0,   1.5, 1.5, 3.0,   2.0, 2.0, 10.0];
+// The top others may stand on (place ... onto): its height at size 1 and how far in from its edges, metres; 0 none.
+EG_EDIT_TOP :: [34] f32.[0.93, 0.9, 0.53, 0, 1.0, 0, 0, 0, 0, 0,   0, 0, 0.95, 0, 0.81, 0, 0.59, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0];
+// What sort each is: one piece, a patch of many small ones you walk through (flowers, crops), or a building.
+EG_SORT_THING :: 0; EG_SORT_PATCH :: 1; EG_SORT_BUILDING :: 2;
+EG_EDIT_SORT :: [34] int.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 1, 0, 0, 0, 0,   1, 2, 2, 2];
+EG_EDIT_BUILDINGS :: 6;   // placed buildings at once
+EG_KIND_FLOWERS :: 25; EG_KIND_CROPS :: 30; EG_KIND_HOUSE :: 31;
+// The colours a thing may be said in (place ... colour); 0 its own.
+EG_COLOURS :: 8;
+EG_COLOUR_NAME :: [8] string.["none", "purple", "blue", "red", "pink", "yellow", "white", "orange"];
+EG_COLOUR_WORD :: [8] string.["", "PURPLE", "BLUE", "RED", "PINK", "YELLOW", "WHITE", "ORANGE"];
+EG_EDIT_SIZE_MIN :: 0.25; EG_EDIT_SIZE_MAX :: 4.0;
 EG_EDIT_HEAD :: "eg-edit 1\n";
 
-EgThing :: struct { kind: int; x: f32; z: f32; yaw: f32; size: f32; group: int; }
-EgEdits :: struct { n: int; things: [EG_EDIT_MAX] EgThing; gone: u32; }   // gone: a bit per EG_SPOT
+// lift: metres it stands above the ground (on another's top); tint: EG_COLOUR_NAME's.
+EgThing :: struct { kind: int; x: f32; z: f32; yaw: f32; size: f32; group: int; lift: f32; tint: int; }
+// gone: a bit per EG_SPOT; hidden: a bit per plan.coax EG_BUILDING the admin took away (it comes back with UNDO or ORIGINAL)
+EgEdits :: struct { n: int; things: [EG_EDIT_MAX] EgThing; gone: u32; hidden: u32; }
 
 // Why a thing can't stand where it is.
 EG_FAULT_NONE :: 0; EG_FAULT_EDGE :: 1; EG_FAULT_WOODS :: 2; EG_FAULT_SOLID :: 3; EG_FAULT_THING :: 4;
@@ -61,6 +98,11 @@ eg_edit_fault :: (e: EgEdits, i: int) -> int {
   eg_edit_box(t, box[..]);
   b := f32(EG_BOUND) - 1;
   if box[0] < -b || box[2] > b || box[1] < -b || box[3] > b { return EG_FAULT_EDGE; }
+  // on another's top it stands on that, not the ground: only the edge holds it
+  if t.lift > 0.05 { return EG_FAULT_NONE; }
+  // a patch of flowers or crops is walked through: its middle out of the woods is enough
+  // (the page leaves out each flower that would stand in something)
+  if EG_EDIT_SORT[eg_edit_kind(t.kind)] == EG_SORT_PATCH { return ifx everglade_in_woods(t.x, t.z) then EG_FAULT_WOODS else EG_FAULT_NONE; }
   if everglade_in_woods(t.x, t.z) || everglade_in_woods(box[0], box[1]) || everglade_in_woods(box[2], box[3]) ||
      everglade_in_woods(box[0], box[3]) || everglade_in_woods(box[2], box[1]) { return EG_FAULT_WOODS; }
   solids: [EG_SOLIDS * EG_BOX] f32;
@@ -71,7 +113,7 @@ eg_edit_fault :: (e: EgEdits, i: int) -> int {
   if boxes_gap(box[..], 0, br[..], 0) <= 0.05 { return EG_FAULT_SOLID; }
   other: [EG_BOX] f32;
   for j: 0..<e.n {
-    if j == i { continue; }
+    if j == i || e.things[j].lift > 0.05 || EG_EDIT_SORT[eg_edit_kind(e.things[j].kind)] == EG_SORT_PATCH { continue; }
     eg_edit_box(e.things[j], other[..]);
     if boxes_gap(box[..], 0, other[..], 0) <= 0.02 { return EG_FAULT_THING; }
   }
@@ -114,6 +156,11 @@ eg_gap2 :: (ax: f32, az: f32, bx: f32, bz: f32) -> f32 { return (ax - bx) * (ax 
 // group the nearest was placed with. With no kind and not all, the nearest
 // of the things and the people; with no kind and all, the placed things.
 eg_remove_pick :: (e: EgEdits, x: f32, z: f32, kind: int, who: int, all: bool) -> EgTake {
+  return eg_pick(e, x, z, kind, who, all, kind == EG_PICK_PERSON || kind == EG_PICK_CAT || (kind == EG_PICK_ANY && !all));
+}
+// What a move, a resize or a turn takes: placed things only, as a removal picks them.
+eg_pick_things :: (e: EgEdits, x: f32, z: f32, kind: int, all: bool) -> EgTake { return eg_pick(e, x, z, kind, -1, all, false); }
+eg_pick :: (e: EgEdits, x: f32, z: f32, kind: int, who: int, all: bool, folk: bool) -> EgTake {
   r: EgTake;
   if who >= 0 && who < EG_SPOTS {
     if !eg_gone(e, who) { r.people = cast(u32) 1 << cast(u32) who; r.n_people = 1; }
@@ -126,7 +173,6 @@ eg_remove_pick :: (e: EgEdits, x: f32, z: f32, kind: int, who: int, all: bool) -
     d := eg_gap2(e.things[i].x, e.things[i].z, x, z);
     if d < most { most = d; best = i; }
   }
-  folk := kind == EG_PICK_PERSON || kind == EG_PICK_CAT || (kind == EG_PICK_ANY && !all);
   person := -1;
   if folk {
     for i: 0..<EG_SPOTS {
@@ -173,6 +219,28 @@ eg_new_group :: (e: EgEdits) -> int {
   return g + 1;
 }
 
+// Whether the plan's building b is hidden (an admin took it away: "delete this temple building").
+eg_hidden :: (e: EgEdits, b: int) -> bool { return b >= 0 && b < EG_BUILDINGS && (e.hidden >> cast(u32) b) & 1 != 0; }
+
+// Whether a small thing (a flower of a patch, radius r) may stand at x, z: in the open, off the
+// streets, out of the city's solids (solids[0..<n], everglade_solids) and of every placed thing but patches.
+eg_spot_free :: (e: EgEdits, solids: [] f32, n: int, x: f32, z: f32, r: f32) -> bool {
+  b := f32(EG_BOUND) - 1;
+  if x < -b || x > b || z < -b || z > b || everglade_in_woods(x, z) { return false; }
+  box := [5] f32.[x - r, z - r, x + r, z + r, 0.5];
+  for s: 0..<n - 4 { if boxes_gap(box[..], 0, solids, s) <= 0.05 { return false; } }
+  br := EG_BRIDGE;
+  if boxes_gap(box[..], 0, br[..], 0) <= 0.05 { return false; }
+  for l: 0..<EG_LINKS { if link_box_gap(EG_LINK_AB[l * 2], EG_LINK_AB[l * 2 + 1], box[..], 0) < f32(EG_PATH_HALF) { return false; } }
+  other: [EG_BOX] f32;
+  for j: 0..<e.n {
+    if e.things[j].lift > 0.05 || EG_EDIT_SORT[eg_edit_kind(e.things[j].kind)] == EG_SORT_PATCH { continue; }
+    eg_edit_box(e.things[j], other[..]);
+    if boxes_gap(box[..], 0, other[..], 0) <= 0.02 { return false; }
+  }
+  return true;
+}
+
 // ---- the list as text
 
 eg_put_int :: (out: [] u8, at: int, v: int) -> int {
@@ -197,8 +265,17 @@ eg_edits_text :: (e: EgEdits, out: [] u8) -> int {
     n = raw_put(out, n, " "); n = eg_put_int(out, n, eg_round(t.z * 100));
     n = raw_put(out, n, " "); n = eg_put_int(out, n, eg_round(t.yaw * 180 / f32(PI)));
     n = raw_put(out, n, " "); n = eg_put_int(out, n, eg_round(t.size * 100));
-    if t.group > 0 { n = raw_put(out, n, " "); n = eg_put_int(out, n, t.group); }
+    lift := eg_round(t.lift * 100);
+    if t.group > 0 || lift > 0 || t.tint > 0 { n = raw_put(out, n, " "); n = eg_put_int(out, n, t.group); }
+    if lift > 0 || t.tint > 0 {
+      n = raw_put(out, n, " "); n = eg_put_int(out, n, lift);
+      n = raw_put(out, n, " "); n = eg_put_int(out, n, t.tint);
+    }
     n = raw_put(out, n, "\n");
+  }
+  for b: 0..<EG_BUILDINGS {
+    if (e.hidden >> cast(u32) b) & 1 == 0 { continue; }
+    n = raw_put(out, n, "b "); n = eg_put_int(out, n, b); n = raw_put(out, n, "\n");
   }
   for i: 0..<EG_SPOTS {
     if !eg_gone(e, i) { continue; }
@@ -235,7 +312,13 @@ eg_edits_read :: (text: string, e: [] EgEdits) -> bool {
     line := text[i..<j];
     i = j + 1;
     if line.count == 0 { continue; }
-    if line.count < 3 || (line[0] != 't' && line[0] != 'p') || line[1] != ' ' { return false; }
+    if line.count < 3 || (line[0] != 't' && line[0] != 'p' && line[0] != 'b') || line[1] != ' ' { return false; }
+    if line[0] == 'b' {
+      bld := eg_number(line, 2);
+      if !bld.ok || bld.end != line.count { return false; }
+      if bld.v >= 0 && bld.v < EG_BUILDINGS { got.hidden |= cast(u32) 1 << cast(u32) bld.v; }
+      continue;
+    }
     if line[0] == 'p' {
       spot := eg_number(line, 2);
       if !spot.ok || spot.end != line.count { return false; }
@@ -245,18 +328,24 @@ eg_edits_read :: (text: string, e: [] EgEdits) -> bool {
     kind := eg_number(line, 2); x := eg_number(line, kind.end); z := eg_number(line, x.end);
     yaw := eg_number(line, z.end); size := eg_number(line, yaw.end);
     if !kind.ok || !x.ok || !z.ok || !yaw.ok || !size.ok { return false; }
-    group := 0;
+    // then, each optional in turn: the group, the lift (centimetres) and the colour
+    group := 0; lift := 0; tint := 0;
     if size.end != line.count {
       g := eg_number(line, size.end);
-      if !g.ok || g.end != line.count { return false; }
+      if !g.ok { return false; }
       group = hi_i(g.v, 0);
+      if g.end != line.count {
+        l := eg_number(line, g.end); c := eg_number(line, l.end);
+        if !l.ok || !c.ok || c.end != line.count { return false; }
+        lift = hi_i(lo_i(l.v, 1000), 0); tint = ifx c.v >= 0 && c.v < EG_COLOURS then c.v else 0;
+      }
     }
     if kind.v < 0 || kind.v >= EG_EDIT_ITEMS || got.n >= EG_EDIT_MAX { continue; }
     t: EgThing;
     t.kind = kind.v; t.x = f32(x.v) / 100; t.z = f32(z.v) / 100;
     t.yaw = f32(yaw.v) * f32(PI) / 180;
     t.size = clamp(f32(size.v) / 100, f32(EG_EDIT_SIZE_MIN), f32(EG_EDIT_SIZE_MAX));
-    t.group = group;
+    t.group = group; t.lift = f32(lift) / 100; t.tint = tint;
     got.things[got.n] = t; got.n += 1;
     if eg_edit_fault(got, got.n - 1) != EG_FAULT_NONE { got.n -= 1; }
   }
@@ -310,7 +399,7 @@ eg_edits_answer :: (answer: string, e: [] EgEdits) -> int {
   v := eg_json_at(body, "version");
   if v < 0 { return -1; }
   version := eg_number(body[v..<body.count], 0);
-  if version.v == 0 { e[0].n = 0; e[0].gone = 0; return 0; }
+  if version.v == 0 { e[0].n = 0; e[0].gone = 0; e[0].hidden = 0; return 0; }
   at := eg_json_at(body, "edits");
   if at < 0 || body[at] != '"' { return -1; }
   text: [4096] u8; n := 0;
@@ -377,7 +466,7 @@ eg_one :: (t: EgThing) -> EgEdits { e: EgEdits; e.things[0] = t; e.n = 1; return
   #assert abs(back[0].things[1].size - 1) < 0.001 && abs(back[0].things[1].x + 20.5) < 0.001;
   #assert !eg_edits_read("eg-edit 2\n", back[..]) && !eg_edits_read("eg-edit 1\nt 1 2 3\n", back[..]) && !eg_edits_read("eg-edit 1\nx 1 2 3 4 5\n", back[..]);
   // a thing that can't stand where it says is dropped; an unknown kind too; sizes are held to their range
-  #assert eg_edits_read("eg-edit 1\nt 0 -2700 4100 0 100\nt 9 600 -1200 0 100\nt 1 600 -1200 0 900\n", back[..]);
+  #assert eg_edits_read("eg-edit 1\nt 0 -2700 4100 0 100\nt 99 600 -1200 0 100\nt 1 600 -1200 0 900\n", back[..]);
   #assert back[0].n == 1 && back[0].things[0].kind == 1 && back[0].things[0].size == f32(EG_EDIT_SIZE_MAX);
   #assert eg_edits_read("eg-edit 1\n", back[..]) && back[0].n == 0;
 }
@@ -421,6 +510,31 @@ eg_one :: (t: EgThing) -> EgEdits { e: EgEdits; e.things[0] = t; e.n = 1; return
   #assert eg_remove_pick(e, -3.4, -32, EG_PICK_CAT, -1, false).people == cast(u32) 64;
   #assert eg_remove_pick(e, 60, -40, EG_PICK_ANY, -1, false).n_things == 0;
   #assert eg_new_group(e) == 2;
+}
+
+#test "the list keeps what stands on another's top, its colour, and the city's buildings taken away" {
+  e: EgEdits;
+  e.things[0] = eg_thing(4, 6, -12, 0, 1); e.things[1] = eg_thing(5, 6.2, -12, 0, 0.7); e.things[1].lift = 1.0; e.things[1].group = 2;
+  e.things[2] = eg_thing(25, 10, -14, 0, 2); e.things[2].tint = 1; e.n = 3;
+  e.hidden = cast(u32) 1 << 7;
+  out: [512] u8;
+  n := eg_edits_text(e, out[..]);
+  #assert cast(string) out[0..<n] == "eg-edit 1\nt 4 600 -1200 0 100\nt 5 620 -1200 0 70 2 100 0\nt 25 1000 -1400 0 200 0 0 1\nb 7\n";
+  back: [1] EgEdits;
+  #assert eg_edits_read(cast(string) out[0..<n], back[..]);
+  // the pumpkin on the stall's top stands in the stall's footprint, and is kept
+  #assert back[0].n == 3 && abs(back[0].things[1].lift - 1) < 0.001 && back[0].things[2].tint == 1 && eg_hidden(back[0], 7) && !eg_hidden(back[0], 6);
+  #assert eg_edit_fault(back[0], 1) == EG_FAULT_NONE && eg_edit_fault(back[0], 0) == EG_FAULT_NONE;
+  // a patch of flowers is walked through: it doesn't stop a thing standing in it
+  #assert eg_edit_fault(back[0], 2) == EG_FAULT_NONE;
+  #assert !eg_edits_read("eg-edit 1\nt 1 600 -1200 0 100 0 5\n", back[..]) && !eg_edits_read("eg-edit 1\nb x\n", back[..]);
+  // a flower may stand in the open, not in a building, on a street or in a placed thing
+  solids: [EG_SOLIDS * EG_BOX] f32;
+  sn := everglade_solids(solids[..]);
+  #assert eg_spot_free(e, solids[..], sn, 10, -14, 0.15) && !eg_spot_free(e, solids[..], sn, -27, 41, 0.15);
+  #assert !eg_spot_free(e, solids[..], sn, 0, -34, 0.15) && !eg_spot_free(e, solids[..], sn, 6, -12, 0.15);
+  // moving and resizing take placed things, never the city's people
+  #assert eg_pick_things(e, 3.2, -7, EG_PICK_ANY, false).n_people == 0;
 }
 
 #test "the list keeps who is gone and each thing's row" {
