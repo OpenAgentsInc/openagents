@@ -137,6 +137,7 @@ Fixture :: struct {
   view: [16] f32;            // clip = rows · world
   // the style fixture: ?style= in the page's URL (STYLE_*, -1 none) and its clock
   paint: int; clock: f32; day: StyleClock; day_from: f32;   // the clock now, how it runs, and when it was read
+  pitch: f32;                // ?pitch=: radians up from the fixture's own view (the sky mustn't slide)
   mask: bool;                // ?probe=shadow: draw where the shadow band falls, for the style check
 }
 
@@ -213,6 +214,7 @@ fixture_message :: (s: [] Fixture, kind: int, text: string) #export_c {
   s[0].counted = true;
   s[0].paint = style_query(fact_line(text, "url"));
   s[0].mask = s[0].paint >= 0 && query_has(fact_line(text, "url"), "probe=shadow");
+  s[0].pitch = clamp(query_decimal(fact_line(text, "url"), "pitch="), -0.6, 0.6);
   s[0].day = verse_style_clock(fact_line(text, "clock"), fact_line(text, "now"), fact_line(text, "day"));
   s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
   // the style fixture is a test view: it doesn't count as a visit or keep anything
@@ -245,6 +247,22 @@ query_has :: (url: string, pair: string) -> bool {
     i = e;
   }
   return false;
+}
+// The decimal after `key` (pitch=) in a URL's query, 0 when there is none.
+query_decimal :: (url: string, key: string) -> f32 {
+  i := 0;
+  while i < url.count && url[i] != '?' { i += 1; }
+  while i < url.count && url[i] != '#' {
+    i += 1;
+    e := i; while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+    if e - i > key.count && url[i..<i + key.count] == key {
+      at: [1] int; at[0] = 0;
+      v := decimal_at(url[i + key.count..<e], at[..]);
+      return ifx at[0] < 0 then 0.0f32 else v;
+    }
+    i = e;
+  }
+  return 0;
 }
 // A key=value line's value ("" none).
 fact_line :: (facts: string, key: string) -> string {
@@ -683,6 +701,9 @@ fixture_frame :: (s: [] Fixture, out: [] f32, uniforms: [] f32, width: f32, heig
     if !still { s[0].clock = verse_style_clock_at(s[0].day, s[0].time - s[0].day_from); }
     // the preset for this canvas (a phone's tier under 600 css px wide), at the clock
     tier := ifx width / s[0].dpr < 600 then STYLE_PHONE else STYLE_DESKTOP;
+    // the traced scene has no meshes, so the view's first row carries the pitch (fixture.wgsl ray)
+    for i: 0..<16 { uniforms[VIEW_AT + i] = 0; }
+    uniforms[VIEW_AT] = s[0].pitch;
     if verse_style_at(verse_style_preset(s[0].paint, tier), s[0].clock, uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]) { uniforms[7] = ifx s[0].mask then 2.0f32 else 1.0f32; }
   }
   uniforms[5] = cast(f32) s[0].plate_n;
@@ -851,6 +872,9 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
   #assert style_query("https://x/realms/fixture?a=1&style=painterly#top") == STYLE_PAINTERLY;
   #assert style_query("https://x/realms/fixture#style=painterly") == -1;
   #assert query_has("https://x/realms/fixture?style=painterly&probe=shadow", "probe=shadow");
+  #assert abs(query_decimal("https://x/realms/fixture?style=painterly&pitch=0.25&still", "pitch=") - 0.25) < 0.0001;
+  #assert abs(query_decimal("https://x/realms/fixture?pitch=-0.1", "pitch=") + 0.1) < 0.0001;
+  #assert query_decimal("https://x/realms/fixture?style=painterly", "pitch=") == 0 && query_decimal("https://x/realms/fixture?pitch=x", "pitch=") == 0;
   #assert !query_has("https://x/realms/fixture?style=painterly#probe=shadow", "probe=shadow") && !query_has("https://x/realms/fixture?probe=shadowy", "probe=shadow");
 }
 #test "?clock=cycle turns the style fixture's day: a quarter in twelve minutes" {

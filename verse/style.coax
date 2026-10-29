@@ -120,6 +120,39 @@ verse_style_sky_band :: (up:f32,lift:f32)->f32 #export_c {return lift*(1.0f32-st
 // A halo term, exp(-k (1 - cos theta)).
 verse_style_halo :: (cos_t:f32,k:f32)->f32 #export_c {return exp(-k*st_max(1.0f32-cos_t,0.0f32));}
 
+// ---- 5b. Clouds: one dome layer (1,500 m), two octaves of value noise (one on a phone), cut soft,
+// shaded in two tones. Fairy Forest's sky is these, lifted into the engine.
+// A hash of a lattice point, 0 to 1.
+verse_style_hash :: (x:f32,y:f32)->f32 #export_c {
+ v:=sin(x*127.1f32+y*311.7f32)*43758.5453f32;
+ return v-floor(v);
+}
+// Value noise at (x, y): the four lattice hashes round it, eased between.
+verse_style_noise :: (x:f32,y:f32)->f32 #export_c {
+ ix:=floor(x); iy:=floor(y); fx:=x-ix; fy:=y-iy;
+ sx:=fx*fx*(3.0f32-2.0f32*fx); sy:=fy*fy*(3.0f32-2.0f32*fy);
+ a:=verse_style_hash(ix,iy); b:=verse_style_hash(ix+1.0f32,iy);
+ c:=verse_style_hash(ix,iy+1.0f32); d:=verse_style_hash(ix+1.0f32,iy+1.0f32);
+ return a+(b-a)*sx+((c+(d-c)*sx)-(a+(b-a)*sx))*sy;
+}
+// The cloud field at (x, z) metres on the layer: the first octave at s1 per metre, and with two
+// octaves 0.35 of a second at s2, offset so they don't line up.
+verse_style_cloud_field :: (x:f32,z:f32,s1:f32,s2:f32,octaves:f32)->f32 #export_c {
+ n:=verse_style_noise(x*s1,z*s1);
+ if octaves<1.5f32 {return n;}
+ return n*0.65f32+verse_style_noise(x*s2+3.1f32,z*s2+7.7f32)*0.35f32;
+}
+// How much of the sky the field covers: cut soft from cut_lo to cut_hi (0.48, 0.62) at the default cover
+// 0.35, more cover lowering the cut; none at all at cover 0.
+verse_style_cloud_cover :: (n:f32,cover:f32,cut_lo:f32,cut_hi:f32)->f32 #export_c {
+ return verse_style_soft_step((cut_lo+cut_hi)*0.5f32,(cut_hi-cut_lo)*0.5f32,n+(cover-0.35f32)*0.4f32)*verse_style_soft_step(0.025f32,0.025f32,cover);
+}
+// The lit share of a cloud, from the field here and a little toward the light: thinning toward the
+// light is the lit top, thickening its underside.
+verse_style_cloud_lit :: (n:f32,toward:f32)->f32 #export_c {return st_sat((n-toward)*5.0f32+0.55f32);}
+// Clouds fade into the horizon band: none under 0.01 of elevation sine, all by 0.16, at most 0.92.
+verse_style_cloud_fade :: (up:f32)->f32 #export_c {return verse_style_soft_step(0.085f32,0.075f32,up)*0.92f32;}
+
 // ---- 9. Tone
 // The tone curve: 1 - exp(-c exposure).
 verse_style_tone :: (c:f32,exposure:f32)->f32 #export_c {return 1.0f32-exp(-st_max(c,0.0f32)*exposure);}
@@ -274,6 +307,26 @@ verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.715
  #assert abs(verse_style_halo(1.0f32,900.0f32)-1.0f32)<0.0001f32;
  #assert verse_style_halo(0.99f32,900.0f32)<0.001f32;
  #assert verse_style_halo(0.99f32,60.0f32)>0.5f32;
+}
+#test "value noise stays in 0..1, is smooth, and repeats exactly at a lattice point" {
+ for i:0..<200 {x:=cast(f32)i*0.173f32-11.0f32; y:=cast(f32)i*0.311f32+4.0f32;
+  n:=verse_style_noise(x,y);
+  #assert n>=0.0f32 && n<=1.0f32;
+  #assert abs(verse_style_noise(x+0.001f32,y)-n)<0.02f32;
+  h:=verse_style_hash(x,y); #assert h>=0.0f32 && h<1.0f32;}
+ #assert verse_style_noise(3.0f32,5.0f32)==verse_style_hash(3.0f32,5.0f32);
+}
+#test "clouds: two octaves (one on a phone), cut at 0.48 to 0.62, none at cover 0" {
+ #assert verse_style_cloud_field(100.0f32,40.0f32,1.0f32/2000.0f32,1.0f32/700.0f32,1.0f32)==verse_style_noise(0.05f32,0.02f32);
+ two:=verse_style_cloud_field(100.0f32,40.0f32,1.0f32/2000.0f32,1.0f32/700.0f32,2.0f32);
+ #assert abs(two-(verse_style_noise(0.05f32,0.02f32)*0.65f32+verse_style_noise(100.0f32/700.0f32+3.1f32,40.0f32/700.0f32+7.7f32)*0.35f32))<0.00001f32;
+ #assert verse_style_cloud_cover(0.48f32,0.35f32,0.48f32,0.62f32)==0.0f32;
+ #assert verse_style_cloud_cover(0.62f32,0.35f32,0.48f32,0.62f32)==1.0f32;
+ #assert abs(verse_style_cloud_cover(0.55f32,0.35f32,0.48f32,0.62f32)-0.5f32)<0.0001f32;
+ #assert verse_style_cloud_cover(0.9f32,0.0f32,0.48f32,0.62f32)==0.0f32;
+ #assert verse_style_cloud_cover(0.5f32,0.6f32,0.48f32,0.62f32)>verse_style_cloud_cover(0.5f32,0.35f32,0.48f32,0.62f32);
+ #assert verse_style_cloud_lit(0.6f32,0.6f32)==0.55f32 && verse_style_cloud_lit(0.4f32,0.6f32)==0.0f32 && verse_style_cloud_lit(0.8f32,0.6f32)==1.0f32;
+ #assert verse_style_cloud_fade(0.005f32)==0.0f32 && verse_style_cloud_fade(0.2f32)==0.92f32;
 }
 #test "bloom starts 0.25 under 0.85 with a soft knee and takes all of the excess past it" {
  #assert verse_style_bloom_share(0.5f32,0.85f32,0.25f32)==0.0f32;

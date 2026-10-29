@@ -277,6 +277,9 @@ fn shadow(p: vec3f, n: vec3f) -> f32 {
   let blob = 1.0 - smoothstep(0.15, 0.55, length(p.xz - BODY.xz)) * step(p.y, 0.02);
   return verse_style_contact(map_lit(p, n), blob, st(4u).w);
 }
+// The painted sky along d (spec 5): from the ray, not the screen, so it holds still as the eye
+// pitches. The gradient by elevation, the horizon band lifted toward the haze, the sun or moon
+// with its two-term halo, and one layer of soft two-tone clouds at 1,500 m drifting with the wind.
 fn sky(d: vec3f, l: vec3f) -> vec3f {
   let up = d.y;
   var c = mix(st(13u).xyz, st(12u).xyz, verse_style_sky_t(up));
@@ -288,6 +291,19 @@ fn sky(d: vec3f, l: vec3f) -> vec3f {
   let glow = select(st(11u).xyz, st(0u).xyz, moon);
   c += glow * halo * select(1.0, 0.5, moon);
   c = mix(c, select(vec3f(1.0, 0.97, 0.88) * 4.0, vec3f(0.85, 0.88, 1.0) * 1.6, moon), disc);
+  let cl = st(15u); let c2 = st(16u);
+  if (up > 0.01 && cl.x > 0.0) {
+    let t = select(u.time, 0.0, u.still > 0.5);           // still: the clouds stand where they were at 0
+    let p = d.xz / up * cl.y + st(25u).xy * cl.z * t;
+    let n = verse_style_cloud_field(p.x, p.y, c2.x, c2.y, cl.w);
+    let cover = verse_style_cloud_cover(n, cl.x, c2.z, c2.w);
+    let toward = normalize(l.xz + vec2f(0.0001)) * 260.0;
+    let lit = verse_style_cloud_lit(n, verse_style_cloud_field(p.x + toward.x, p.y + toward.y, c2.x, c2.y, cl.w));
+    // at night (the stars out) the clouds go dim and thin, so the moonlit sky stays dark
+    let night = st(14u).w;
+    let cloud = mix(st(4u).xyz * st(17u).w * 0.9, st(17u).xyz, lit) * max(st(0u).w, 0.3) * (1.0 - 0.75 * night);
+    c = mix(c, cloud, cover * verse_style_cloud_fade(up) * (1.0 - 0.5 * night));
+  }
   return c;
 }
 // A banded surface (spec 1 and 3): the albedo under the tinted ambient in the shadow band, given the
@@ -359,7 +375,8 @@ fn ray(p: vec2f) -> vec3f {
   let aspect = u.size.x / max(u.size.y, 1.0);
   let tv = max(0.36, 0.5 / aspect);        // a phone's tall canvas still holds the whole scene across
   let q = vec2f((p.x / u.size.x * 2.0 - 1.0) * tv * aspect, (1.0 - p.y / u.size.y * 2.0) * tv);
-  let fwd = normalize(vec3f(0.0, -0.12, -1.0));
+  let a = -0.11942 + u.r0.x;                 // pitch: the fixture's own, plus ?pitch= (radians, fixture.coax)
+  let fwd = vec3f(0.0, sin(a), -cos(a));
   let right = normalize(cross(fwd, vec3f(0.0, 1.0, 0.0)));
   let up = cross(right, fwd);
   return normalize(fwd + right * q.x + up * q.y);
@@ -560,7 +577,7 @@ fn verse_outline_crease(l_facing: f32) -> f32 {
 }
 // ---- end generated
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -689,6 +706,48 @@ fn verse_style_halo(l_cos_t: f32, l_k: f32) -> f32 {
   coax_t27 = coax_p_st_max((1.0 - l_cos_t), 0.0);
   return exp((coax_t26 * coax_t27));
 }
+fn verse_style_hash(l_x: f32, l_y: f32) -> f32 {
+  var l_v: f32 = (sin(((l_x * 127.099998) + (l_y * 311.700012))) * 43758.5469);
+  return (l_v - floor(l_v));
+}
+fn verse_style_noise(l_x: f32, l_y: f32) -> f32 {
+  var l_ix: f32 = floor(l_x);
+  var l_iy: f32 = floor(l_y);
+  var l_fx: f32 = (l_x - l_ix);
+  var l_fy: f32 = (l_y - l_iy);
+  var l_sx: f32 = ((l_fx * l_fx) * (3.0 - (2.0 * l_fx)));
+  var l_sy: f32 = ((l_fy * l_fy) * (3.0 - (2.0 * l_fy)));
+  var l_a: f32 = verse_style_hash(l_ix, l_iy);
+  var l_b: f32 = verse_style_hash((l_ix + 1.0), l_iy);
+  var l_c: f32 = verse_style_hash(l_ix, (l_iy + 1.0));
+  var l_d: f32 = verse_style_hash((l_ix + 1.0), (l_iy + 1.0));
+  return ((l_a + ((l_b - l_a) * l_sx)) + (((l_c + ((l_d - l_c) * l_sx)) - (l_a + ((l_b - l_a) * l_sx))) * l_sy));
+}
+fn verse_style_cloud_field(l_x: f32, l_z: f32, l_s1: f32, l_s2: f32, l_octaves: f32) -> f32 {
+  var coax_t28: f32;
+  var coax_t29: f32;
+  var l_n: f32 = verse_style_noise((l_x * l_s1), (l_z * l_s1));
+  if ((l_octaves < 1.5))
+  {
+    return l_n;
+  }
+  coax_t28 = (l_n * 0.649999976);
+  coax_t29 = (verse_style_noise(((l_x * l_s2) + 3.0999999), ((l_z * l_s2) + 7.69999981)) * 0.349999994);
+  return (coax_t28 + coax_t29);
+}
+fn verse_style_cloud_cover(l_n: f32, l_cover: f32, l_cut_lo: f32, l_cut_hi: f32) -> f32 {
+  var coax_t30: f32;
+  var coax_t31: f32;
+  coax_t30 = verse_style_soft_step(((l_cut_lo + l_cut_hi) * 0.5), ((l_cut_hi - l_cut_lo) * 0.5), (l_n + ((l_cover - 0.349999994) * 0.400000006)));
+  coax_t31 = verse_style_soft_step(0.0250000004, 0.0250000004, l_cover);
+  return (coax_t30 * coax_t31);
+}
+fn verse_style_cloud_lit(l_n: f32, l_toward: f32) -> f32 {
+  return coax_p_st_sat((((l_n - l_toward) * 5.0) + 0.550000012));
+}
+fn verse_style_cloud_fade(l_up: f32) -> f32 {
+  return (verse_style_soft_step(0.0850000009, 0.075000003, l_up) * 0.920000017);
+}
 fn verse_style_tone(l_c: f32, l_exposure: f32) -> f32 {
   return (1.0 - exp(((-coax_p_st_max(l_c, 0.0)) * l_exposure)));
 }
@@ -702,16 +761,16 @@ fn verse_style_luma(l_r: f32, l_g: f32, l_b: f32) -> f32 {
   return (((0.212599993 * l_r) + (0.715200007 * l_g)) + (0.0722000003 * l_b));
 }
 fn verse_style_bloom_share(l_lum: f32, l_threshold: f32, l_knee: f32) -> f32 {
-  var coax_t28: f32;
-  var coax_t29: f32;
+  var coax_t32: f32;
+  var coax_t33: f32;
   if ((l_lum <= 0.0))
   {
     return 0.0;
   }
   var l_k: f32 = coax_p_st_max(l_knee, 9.99999975e-06);
-  coax_t28 = coax_p_st_max(((l_lum - l_threshold) + l_k), 0.0);
-  coax_t29 = (2.0 * l_k);
-  var l_q: f32 = coax_p_st_min(coax_t28, coax_t29);
+  coax_t32 = coax_p_st_max(((l_lum - l_threshold) + l_k), 0.0);
+  coax_t33 = (2.0 * l_k);
+  var l_q: f32 = coax_p_st_min(coax_t32, coax_t33);
   return coax_p_st_min((coax_p_st_max(((l_q * l_q) / (4.0 * l_k)), (l_lum - l_threshold)) / l_lum), 1.0);
 }
 fn verse_style_bloom_mix(l_c: f32, l_bloom: f32, l_mix: f32) -> f32 {
