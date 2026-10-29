@@ -1085,9 +1085,21 @@ everglade_ask_sent :: (s: [] Everglade) #export_c { s[0].ask_n = 0; }
 
 // The "text" of the server's answer, unescaped, into out; its length.
 answer_text :: (body: string, out: [] u8) -> int {
-  key := "\"text\":\"";
+  // "text", a colon and the opening quote, with or without spaces between (the server writes "text": ")
+  key := "\"text\"";
   i := 0; found := -1;
-  while i + key.count <= body.count { if body[i..<i + key.count] == key { found = i + key.count; break; } i += 1; }
+  while i + key.count <= body.count {
+    if body[i..<i + key.count] == key {
+      j := i + key.count;
+      while j < body.count && body[j] == ' ' { j += 1; }
+      if j < body.count && body[j] == ':' {
+        j += 1;
+        while j < body.count && body[j] == ' ' { j += 1; }
+        if j < body.count && body[j] == '"' { found = j + 1; break; }
+      }
+    }
+    i += 1;
+  }
   if found < 0 { return 0; }
   n := 0; i = found;
   while i < body.count && body[i] != '"' && n < out.count {
