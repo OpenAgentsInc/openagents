@@ -1,0 +1,1155 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "psionic",
+  "initiative": {
+    "slug": "psionic-native-ml",
+    "title": "Psionic: native decision models and learning pipelines in Coax",
+    "body": "Build Psionic from scratch with a runnable book and shared Coax libraries. Owner priority: complete native Elephant and Mammoth support early, independent of the pedagogical training order. Then grow nanochat-compatible inference, reproducible pretraining, SFT, reward training, decision-model post-training and explicit distributed execution. M0 is already shipped; future tasks are open.",
+    "spec": "docs/psionic/roadmap.md",
+    "labels": [
+      "psionic",
+      "coax",
+      "book"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "psionic-foundations",
+      "title": "Shared numerical and artifact foundations",
+      "body": "Extend the completed scalar trainer with reusable storage, dense operations and pinned model contracts. These foundations serve inference and learning."
+    },
+    {
+      "slug": "psionic-decision-models",
+      "title": "Elephant and Mammoth first",
+      "body": "Urgent delivery path: native Coax Qwen3.5 hybrid execution, faithful decision prompts, independent suffix forks and slot readout. Elephant first, Mammoth immediately after; neither waits for autodiff or nanochat training."
+    },
+    {
+      "slug": "psionic-acceleration",
+      "title": "Useful native device execution",
+      "body": "Develop the missing Coax compute subset and a measured Metal backend alongside the decision engine. Qualify exact original-weight profiles before separate quantized profiles."
+    },
+    {
+      "slug": "psionic-learning",
+      "title": "Reusable learning and nanochat",
+      "body": "Build autodiff and a tiny complete decoder, then reproduce the pinned nanochat architecture, tokenization, optimizer and resumable pretraining in Coax."
+    },
+    {
+      "slug": "psionic-post-training",
+      "title": "Post-training and evaluation",
+      "body": "Add masked SFT, the pinned nanochat reward-training recipe, and decision-model training only after the relevant gradients, data and evaluation paths work."
+    },
+    {
+      "slug": "psionic-integration",
+      "title": "Serving, multimodality and scale",
+      "body": "Versioned System One integration, later vision, and explicit same-node distributed training. Each capability needs its own end-to-end evidence."
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "psionic-tiny-model",
+      "title": "Learn y = 2x with the first runnable chapter",
+      "parent": "psionic-foundations",
+      "size": "S",
+      "labels": [
+        "complete",
+        "book"
+      ],
+      "body": "Completed baseline, commit 38eab9b9fe0326c333325ff5a05df400de1dd0e2. Shared scalar library, book chapter, output publication and native overlap boundary. Retain it as a regression, not a claim of tensor or GPU support.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/"
+      ],
+      "acceptance": [
+        "psionic/check.sh passes: 13 authored checks, 65/65 mutants killed, four native configurations and four book runs.",
+        "Exact first update: loss 10, gradient -10, weight 1.25, loss 1.40625.",
+        "Sixteen updates predict 6 within 3e-6 for held-out input 3; retained evidence is docs/verification/psionic-m0-2026-10-28.md."
+      ],
+      "blocked_by": [],
+      "status": "resolved",
+      "blocks": [
+        "psionic-shapes"
+      ]
+    },
+    {
+      "slug": "psionic-model-pins",
+      "title": "Pin Elephant, Mammoth and nanochat contracts and oracle manifests",
+      "parent": "psionic-foundations",
+      "size": "M",
+      "labels": [
+        "priority",
+        "artifacts"
+      ],
+      "body": "Start from docs/psionic/model-targets.md and nanochat.md. Freeze exact model revisions, configs, tensor inventories, tokenizer/renderer versions, source/license notices, numerical profiles and small oracle cases. Recheck current metadata rather than repeating the historical free API window or old license label. Do not download multi-GB weights or execute external scripts on this Mac.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/fixtures/models/",
+        "docs/psionic/model-targets.md"
+      ],
+      "acceptance": [
+        "Commit machine-readable manifests for both Base Labs revisions and nanochat 92d63d4e8bb4df75c3b71618f31ddde2378b2bcd, with source hashes and required operations.",
+        "Document original BF16 storage, text-first scope, model-specific bounds, reference capture recipe and refusal identities.",
+        "Tiny synthetic fixtures and all metadata checks run offline; artifact publication requirements distinguish metadata from actual license text."
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "psionic-safetensors",
+        "psionic-qwen-tokenizer",
+        "psionic-decision-oracles"
+      ]
+    },
+    {
+      "slug": "psionic-shapes",
+      "title": "Admit bounded tensor shapes and caller-owned storage",
+      "parent": "psionic-foundations",
+      "size": "M",
+      "labels": [
+        "priority",
+        "foundations",
+        "book"
+      ],
+      "body": "Implement contiguous f32 metadata with bounded rank, scalar/empty-dimension policy, overflow-safe element/byte counts, explicit scratch and alias rules. Do not extend the scalar trainer's [-16,16] limits to all tensor work; every new kernel needs its own numerical contract. Book chapter 2.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/tensor.coax",
+        "psionic/tests/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "#test/#forall cover rank/dimension/overflow/capacity boundaries in both debug and release.",
+        "A narrow #authority admission file has zero surviving mutants.",
+        "Native ASan/UBSan exercises real aliases, short storage and failed admission with unchanged output; chapter listings call the library."
+      ],
+      "blocked_by": [
+        "psionic-tiny-model"
+      ],
+      "blocks": [
+        "psionic-dense-ops",
+        "psionic-safetensors",
+        "psionic-compute-contract"
+      ]
+    },
+    {
+      "slug": "psionic-dense-ops",
+      "title": "Build dense CPU operations with independent numerical oracles",
+      "parent": "psionic-foundations",
+      "size": "L",
+      "labels": [
+        "priority",
+        "numerics",
+        "book"
+      ],
+      "body": "Add dot, matrix-vector/matrix multiply, add, gather, reduction, stable softmax and normalization as needed by the first complete forward path. Define accumulation order, masks, non-finite behavior, aliasing and justified tolerances. Book chapter 3; retain a simple scalar oracle when optimizing.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/ops.coax",
+        "psionic/tests/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "Hand-computable fixtures and independent high-precision comparisons cover rectangular shapes and boundary magnitudes.",
+        "All-masked/empty/NaN cases have explicit failure contracts; no silent uniform-probability fallback.",
+        "Native debug/release/sanitizers and source-linked book examples pass through psionic/check.sh."
+      ],
+      "blocked_by": [
+        "psionic-shapes"
+      ],
+      "blocks": [
+        "psionic-qwen-layers",
+        "psionic-slot-readout",
+        "psionic-metal-compute",
+        "psionic-autodiff",
+        "psionic-muon"
+      ]
+    },
+    {
+      "slug": "psionic-safetensors",
+      "title": "Read sharded safetensors and BF16 in Coax",
+      "parent": "psionic-decision-models",
+      "size": "L",
+      "labels": [
+        "priority",
+        "artifacts"
+      ],
+      "body": "Build a bounded safetensors header/index reader, deterministic BF16 decoding and typed tensor inventory. Native code maps/reads bytes only. Admit Elephant's single file and Mammoth's shards by manifest; refuse before publishing partial model state. Initial f32 reference execution must explicitly account for any BF16 expansion and residency.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/model-io/",
+        "psionic/fixtures/models/",
+        "psionic/tests/"
+      ],
+      "acceptance": [
+        "Independent byte vectors cover BF16 signs/subnormals/non-finite representations and safetensors offsets.",
+        "Truncated data, duplicate tensors, inconsistent shard maps, overlapping spans, overflow, unsupported dtype and wrong shapes refuse.",
+        "Authority mutation has zero survivors; native malformed-file/sanitizer tests use small fixtures without downloading weights."
+      ],
+      "blocked_by": [
+        "psionic-shapes",
+        "psionic-model-pins"
+      ],
+      "blocks": [
+        "psionic-qwen-layers",
+        "psionic-elephant-cpu",
+        "psionic-nanochat-forward"
+      ]
+    },
+    {
+      "slug": "psionic-qwen-tokenizer",
+      "title": "Implement exact Qwen3.5 tokenization for the decision models",
+      "parent": "psionic-decision-models",
+      "size": "L",
+      "labels": [
+        "priority",
+        "tokenizer"
+      ],
+      "body": "Implement the pinned tokenizer's byte/pretokenization/BPE/special-token behavior in Coax. Parse its data rather than running Python/Rust tokenizers in production. Share generic components with the later nanochat tokenizer while keeping model-specific rules/version identities separate.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/tokenizer/",
+        "psionic/fixtures/tokenizers/",
+        "psionic/tests/"
+      ],
+      "acceptance": [
+        "Independent pinned token-ID fixtures cover UTF-8, whitespace, JSON state, option labels and special-token boundaries.",
+        "Malformed tokenizer metadata, capacity exhaustion and unsupported rules fail explicitly.",
+        "An offline tokenizer test command and chapter/case-study references identify the exact tokenizer hash."
+      ],
+      "blocked_by": [
+        "psionic-model-pins"
+      ],
+      "blocks": [
+        "psionic-decision-prompts",
+        "psionic-nanochat-tokenizer"
+      ]
+    },
+    {
+      "slug": "psionic-decision-prompts",
+      "title": "Render exact Base Labs state, questions and option slots",
+      "parent": "psionic-decision-models",
+      "size": "M",
+      "labels": [
+        "priority",
+        "decision"
+      ],
+      "body": "Port the published patched prompt and chat-template semantics. Render choice, noul and score; preserve option order and exact shared-prefix/suffix token boundaries. Text-only is the first declared profile. Unknown fields/images/unsupported sizes need explicit outcomes, not accidental template coercion.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/decision/prompt.coax",
+        "psionic/fixtures/decision/",
+        "psionic/tests/"
+      ],
+      "acceptance": [
+        "Compare bytes, token IDs, prefix cut, suffix lengths, answer positions and slot letters with pinned independent fixtures.",
+        "Cover a one-option choice, maximum 255 options, invalid option counts and score levels 2–10.",
+        "Limits use the trained request bounds and actual token counts; no truncation or character-based estimate."
+      ],
+      "blocked_by": [
+        "psionic-qwen-tokenizer"
+      ],
+      "blocks": [
+        "psionic-prefix-forks",
+        "psionic-slot-readout"
+      ]
+    },
+    {
+      "slug": "psionic-qwen-layers",
+      "title": "Implement Qwen3.5 embeddings, projections, normalization and FFN",
+      "parent": "psionic-decision-models",
+      "size": "L",
+      "labels": [
+        "priority",
+        "qwen35"
+      ],
+      "body": "Implement the exact dense forward pieces used by both model configurations, including their normalization/gating/position conventions. Map named tensors from the admitted manifest. This is inference work and must not wait for generic autodiff.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/qwen35/",
+        "psionic/fixtures/qwen35/",
+        "psionic/tests/"
+      ],
+      "acceptance": [
+        "Tiny synthetic layers match independent intermediate tensors under predeclared f32/BF16-reference tolerances.",
+        "Both 9B and 27B dimensions/layouts pass metadata checks; unsupported config variants refuse.",
+        "No tensor arithmetic is delegated to native C/Swift, BLAS or a hidden external engine."
+      ],
+      "blocked_by": [
+        "psionic-dense-ops",
+        "psionic-safetensors"
+      ],
+      "blocks": [
+        "psionic-full-attention",
+        "psionic-deltanet",
+        "psionic-elephant-cpu"
+      ]
+    },
+    {
+      "slug": "psionic-full-attention",
+      "title": "Implement block-bidirectional Qwen full attention",
+      "parent": "psionic-decision-models",
+      "size": "L",
+      "labels": [
+        "priority",
+        "attention"
+      ],
+      "body": "Implement full-attention layers for the decision profile: prefix tokens can see their prefix block, suffix tokens see prefix plus their own suffix block, and sibling questions remain isolated. This differs from the causal mask required by generative nanochat.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/qwen35/attention.coax",
+        "psionic/fixtures/qwen35/",
+        "psionic/tests/"
+      ],
+      "acceptance": [
+        "Enumerate tiny masks including padding; prove by perturbation that suffix tokens cannot change prefix outputs or sibling branches.",
+        "Independent GQA/RoPE/QK/output intermediate vectors match the pinned Qwen configuration.",
+        "Full-sequence and cached-prefix execution agree within frozen numerical tolerances."
+      ],
+      "blocked_by": [
+        "psionic-qwen-layers"
+      ],
+      "blocks": [
+        "psionic-prefix-forks",
+        "psionic-elephant-cpu"
+      ]
+    },
+    {
+      "slug": "psionic-deltanet",
+      "title": "Implement causal Gated DeltaNet and convolution state",
+      "parent": "psionic-decision-models",
+      "size": "L",
+      "labels": [
+        "priority",
+        "qwen35"
+      ],
+      "body": "Implement the Qwen3.5 linear-attention recurrence and its causal convolution/gates, distinct from full-attention KV state. Support Elephant's and Mammoth's different value-head counts. Start with an independently checkable scalar scan.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/qwen35/deltanet.coax",
+        "psionic/fixtures/qwen35/",
+        "psionic/tests/"
+      ],
+      "acceptance": [
+        "Per-token recurrent/conv state and outputs match independently captured tiny fixtures.",
+        "Chunked versus unchunked prefill agrees; reset and resumed state have explicit identities and limits.",
+        "All metadata/state bounds are checked and mutated; native sanitizers cover short and aliased buffers."
+      ],
+      "blocked_by": [
+        "psionic-qwen-layers"
+      ],
+      "blocks": [
+        "psionic-prefix-forks",
+        "psionic-elephant-cpu"
+      ]
+    },
+    {
+      "slug": "psionic-prefix-forks",
+      "title": "Fork complete hybrid prefix state without cross-question leakage",
+      "parent": "psionic-decision-models",
+      "size": "L",
+      "labels": [
+        "priority",
+        "cache"
+      ],
+      "body": "Snapshot full-attention KV, DeltaNet recurrence, convolution state, positions and model/tokenizer/profile identity. Begin with bounded sequential forks; batch only after equality is established. A KV-only snapshot is incomplete for this backbone.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/decision/prefix.coax",
+        "psionic/tests/",
+        "psionic/fixtures/decision/"
+      ],
+      "acceptance": [
+        "Each branch matches an independent full request; question permutation/branch mutation cannot alter another answer.",
+        "Reusing a stale, wrong-model or wrong-prefix snapshot refuses.",
+        "Short/oversized fork storage and cancellation release have native lifetime tests; sequential and future batched profiles remain distinguishable."
+      ],
+      "blocked_by": [
+        "psionic-full-attention",
+        "psionic-deltanet",
+        "psionic-decision-prompts"
+      ],
+      "blocks": [
+        "psionic-elephant-cpu"
+      ]
+    },
+    {
+      "slug": "psionic-slot-readout",
+      "title": "Implement slot_lm probabilities and typed decision answers",
+      "parent": "psionic-decision-models",
+      "size": "M",
+      "labels": [
+        "priority",
+        "decision"
+      ],
+      "body": "Gather the exact option-letter LM-head rows at the pinned answer position and normalize only the admitted option set. Implement choice/noul/score result semantics and calibration only when the pinned artifact actually supplies it. There is no invented classifier head or generated text.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/decision/readout.coax",
+        "psionic/fixtures/decision/",
+        "psionic/tests/"
+      ],
+      "acceptance": [
+        "Independent logits/probabilities fixtures cover ties, one-option behavior, ordering, score expectation and noul P(true).",
+        "Probabilities are finite, bounded and normalized; malformed logits/options fail before answer publication.",
+        "Synthetic readout tests run without a full model and identify readout/profile version."
+      ],
+      "blocked_by": [
+        "psionic-decision-prompts",
+        "psionic-dense-ops"
+      ],
+      "blocks": [
+        "psionic-elephant-cpu"
+      ]
+    },
+    {
+      "slug": "psionic-decision-oracles",
+      "title": "Capture independent Elephant and Mammoth reference cases",
+      "parent": "psionic-decision-models",
+      "size": "L",
+      "labels": [
+        "priority",
+        "oracle"
+      ],
+      "body": "Prepare a reviewed, bounded reference-capture harness for the pinned OneJev plus serve.patch bundle. Do not run downloaded setup scripts on this Mac. Capture in an explicitly admitted isolated environment or consume independently supplied retained fixtures. Reference Python is tooling only, never the production engine.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/tools/reference/",
+        "psionic/fixtures/decision/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Retain prompt/token boundaries, representative layer tensors, complete hybrid prefix state, slot logits/probabilities and typed answers for both models.",
+        "Include empty/oversized/multi-question requests, masks, branch independence and trained-length refusal.",
+        "Record exact sources, device/precision, tolerances and capture commands; unavailable full-weight/device evidence stays unverified and concrete owner actions go in NEEDS_OWNER.md."
+      ],
+      "blocked_by": [
+        "psionic-model-pins"
+      ],
+      "blocks": [
+        "psionic-elephant-cpu"
+      ]
+    },
+    {
+      "slug": "psionic-elephant-cpu",
+      "title": "Run complete Elephant text decisions with the Coax CPU engine",
+      "parent": "psionic-decision-models",
+      "size": "L",
+      "labels": [
+        "priority",
+        "elephant",
+        "inference"
+      ],
+      "body": "Assemble all 32 Elephant layers and the slot readout over original admitted weights. Start with a declared bounded text/request profile. Keep weights and large scratch in resident host storage with Coax-owned admission; do not inherit M0's numeric magnitude cap or imply the full model fits f32-expanded memory from BF16 file size alone.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/decision/",
+        "psionic/examples/decision/",
+        "psionic/tests/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "A complete pinned real-weight request for each question type matches independent token/intermediate/logit/probability fixtures.",
+        "Two-question prefix forks, wrong artifact identities and over-limit requests have end-to-end checks.",
+        "Record actual persistent/scratch/peak memory and cold/warm latency; report scoped CPU support only when real-weight execution passes. No autodiff/pretraining dependency."
+      ],
+      "blocked_by": [
+        "psionic-safetensors",
+        "psionic-qwen-layers",
+        "psionic-full-attention",
+        "psionic-deltanet",
+        "psionic-prefix-forks",
+        "psionic-slot-readout",
+        "psionic-decision-oracles"
+      ],
+      "blocks": [
+        "psionic-mammoth-cpu",
+        "psionic-elephant-metal",
+        "psionic-quantization",
+        "psionic-evaluation",
+        "psionic-decision-backward",
+        "psionic-systemone-serving"
+      ]
+    },
+    {
+      "slug": "psionic-mammoth-cpu",
+      "title": "Run complete Mammoth immediately after Elephant",
+      "parent": "psionic-decision-models",
+      "size": "L",
+      "labels": [
+        "priority",
+        "mammoth",
+        "inference"
+      ],
+      "body": "Reuse the same hybrid engine for Mammoth's 64 layers and larger dimensions/value-head count. Add an explicit original-weight residency/chunking plan. This is the next decision-model delivery milestone, ahead of nanochat training and generic framework breadth.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/decision/",
+        "psionic/fixtures/models/",
+        "psionic/tests/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "A real pinned Mammoth request for choice/noul/score passes independent full-model numerical/answer gates.",
+        "Exercise its own dimensions, sharded inventory, context/fork limits and memory refusal; Elephant evidence does not qualify Mammoth.",
+        "Retain measured memory/latency and a runnable case-study section; synthetic-only coverage is recorded as partial."
+      ],
+      "blocked_by": [
+        "psionic-elephant-cpu"
+      ],
+      "blocks": [
+        "psionic-mammoth-metal",
+        "psionic-quantization",
+        "psionic-systemone-serving",
+        "psionic-decision-vision"
+      ]
+    },
+    {
+      "slug": "psionic-compute-contract",
+      "title": "Specify the minimum Coax tensor-compute consumer",
+      "parent": "psionic-acceleration",
+      "size": "M",
+      "labels": [
+        "priority",
+        "compiler",
+        "gpu"
+      ],
+      "body": "Turn one Psionic matmul/reduction into the compiler consumer that the scalar Metal profile cannot express. Define buffer/index/entry/binding/bounded-loop semantics, completion and later workgroup synchronization. Reconcile any existing Coax project work before filing a duplicate compiler task; add a cross-project needs link when that owner exists.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "coax/spec.md",
+        "coax/ROADMAP.md",
+        "docs/psionic/architecture.md",
+        "psionic/fixtures/compute/"
+      ],
+      "acceptance": [
+        "Retain a minimal source/negative-case set and an explicit current-versus-planned feature inventory.",
+        "Name the compiler/spec/conformance changes and the first actual-device acceptance test.",
+        "No handcrafted native arithmetic shader or BLAS fallback is presented as Coax compute support."
+      ],
+      "blocked_by": [
+        "psionic-shapes"
+      ],
+      "blocks": [
+        "psionic-metal-compute"
+      ]
+    },
+    {
+      "slug": "psionic-metal-compute",
+      "title": "Implement and qualify the first generated Metal tensor kernels",
+      "parent": "psionic-acceleration",
+      "size": "L",
+      "labels": [
+        "priority",
+        "gpu"
+      ],
+      "body": "Implement the admitted Coax compute subset plus a thin native buffer/command/completion adapter. Qualify matmul, gather and reductions needed by decision inference. This work can run alongside the CPU decision engine and does not wait for learning chapters.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "coax/src/",
+        "coax/lib/compiler/",
+        "coax/tests/",
+        "psionic/lib/backend/",
+        "psionic/platform/"
+      ],
+      "acceptance": [
+        "Compiler negative/conformance and required bootstrap checks pass for any compiler edits.",
+        "Generated Metal compiles and executes on a real device, comparing outputs with independent CPU oracles.",
+        "Native alias/binding/capacity/failure/completion tests pass; report actual transfer and compute costs separately."
+      ],
+      "blocked_by": [
+        "psionic-compute-contract",
+        "psionic-dense-ops"
+      ],
+      "blocks": [
+        "psionic-elephant-metal",
+        "psionic-distributed-training"
+      ]
+    },
+    {
+      "slug": "psionic-elephant-metal",
+      "title": "Qualify original-weight Elephant on Metal",
+      "parent": "psionic-acceleration",
+      "size": "L",
+      "labels": [
+        "priority",
+        "elephant",
+        "gpu"
+      ],
+      "body": "Move the complete Elephant text decision graph onto generated Coax kernels, preserving masks, recurrent state and readout. Scope supported original-weight precision and hardware by evidence. Refuse insufficient memory rather than silently swapping to another engine.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/backend/",
+        "psionic/lib/decision/",
+        "psionic/platform/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Run the same real-weight oracle corpus on actual Metal and the frozen CPU reference.",
+        "Record full-graph residency, peak memory, cold/warm end-to-end latency and bounded multi-question behavior.",
+        "Device errors/cancellation/background or completion lifetimes cannot publish successful partial answers."
+      ],
+      "blocked_by": [
+        "psionic-elephant-cpu",
+        "psionic-metal-compute"
+      ],
+      "blocks": [
+        "psionic-mammoth-metal"
+      ]
+    },
+    {
+      "slug": "psionic-mammoth-metal",
+      "title": "Qualify Mammoth memory and native Metal execution",
+      "parent": "psionic-acceleration",
+      "size": "L",
+      "labels": [
+        "priority",
+        "mammoth",
+        "gpu"
+      ],
+      "body": "Reuse the qualified device path for Mammoth with its own admission, memory and numerical profile. Decide whole-model residency versus bounded staging from observed limits; no hardware purchase or paid run is authorized by this issue.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/backend/",
+        "psionic/lib/decision/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Mammoth's own real-weight corpus passes on the named physical target.",
+        "Retain measured persistent/scratch/peak memory and end-to-end latency, including staging if used.",
+        "Insufficient memory and unsupported target/profile fail clearly; Elephant support cannot mark this done."
+      ],
+      "blocked_by": [
+        "psionic-mammoth-cpu",
+        "psionic-elephant-metal"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "psionic-quantization",
+      "title": "Add one measured quantized decision-model profile",
+      "parent": "psionic-acceleration",
+      "size": "L",
+      "labels": [
+        "quantization",
+        "decision"
+      ],
+      "body": "Choose one published block format from actual memory needs. Implement decoding/quantization in Coax and retain original-weight output as the reference. Converted weights get new identities and a documented license/attribution record before publication.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/quant/",
+        "psionic/fixtures/quant/",
+        "psionic/tests/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Independent block/partial-row/sign/scale vectors and native malformed-input checks pass.",
+        "Teacher-forced numerical error, answer agreement, calibration and memory/latency changes are measured on held-out cases with thresholds frozen first.",
+        "Quantized Elephant and Mammoth are separately qualified; approximation never borrows original-weight profile identity."
+      ],
+      "blocked_by": [
+        "psionic-elephant-cpu",
+        "psionic-mammoth-cpu"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "psionic-autodiff",
+      "title": "Add bounded reverse-mode differentiation over shared operations",
+      "parent": "psionic-learning",
+      "size": "L",
+      "labels": [
+        "training",
+        "book"
+      ],
+      "body": "Build a bounded tape, parameter/activation identity, gradient accumulation/zeroing/detach and SGD. Reproduce the manual y=2x result before adding new trainers. This branch must not block the urgent forward-only decision engine.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/autodiff/",
+        "psionic/lib/optim/",
+        "psionic/book/",
+        "psionic/tests/"
+      ],
+      "acceptance": [
+        "Analytic and finite-difference gradients cover every admitted primitive on tiny smooth cases.",
+        "Tape exhaustion, repeated backward and alias/lifetime rules have explicit tested outcomes and atomic optimizer publication.",
+        "Source-linked learning chapters use actual library operations; M0 remains a regression."
+      ],
+      "blocked_by": [
+        "psionic-dense-ops"
+      ],
+      "blocks": [
+        "psionic-byte-lm",
+        "psionic-nanochat-backward",
+        "psionic-resume-data",
+        "psionic-adamw",
+        "psionic-decision-backward"
+      ]
+    },
+    {
+      "slug": "psionic-byte-lm",
+      "title": "Train a complete byte-level bigram language model",
+      "parent": "psionic-learning",
+      "size": "M",
+      "labels": [
+        "training",
+        "book"
+      ],
+      "body": "Add a real 256-byte vocabulary, fixed train/held-out split, cross-entropy and named seeded sampling. Keep data tiny and licensed. This teaches likelihood and data leakage before a transformer.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/nn/",
+        "psionic/examples/",
+        "psionic/book/",
+        "psionic/fixtures/data/"
+      ],
+      "acceptance": [
+        "Held-out loss beats a declared baseline without changing the split or thresholds.",
+        "Independent probability/gradient and RNG replay fixtures pass.",
+        "The runnable chapter trains and generates with the shared library and bounded capacities."
+      ],
+      "blocked_by": [
+        "psionic-autodiff"
+      ],
+      "blocks": [
+        "psionic-causal-decoder"
+      ]
+    },
+    {
+      "slug": "psionic-causal-decoder",
+      "title": "Build a tiny complete causal decoder and its backward path",
+      "parent": "psionic-learning",
+      "size": "L",
+      "labels": [
+        "training",
+        "transformer"
+      ],
+      "body": "Implement embeddings, causal GQA/RoPE attention, FFN, normalization, logits, complete gradients and bounded KV inference. Reuse math from the decision engine while keeping causal and block-bidirectional profiles explicit.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/transformer/",
+        "psionic/examples/",
+        "psionic/book/",
+        "psionic/tests/"
+      ],
+      "acceptance": [
+        "Full-sequence versus incremental-decode logits agree and future-token perturbation cannot change past outputs.",
+        "All primitive/whole-block gradient checks and a small full training run pass.",
+        "The example executes every block and produces multi-token output; head-only decode does not pass."
+      ],
+      "blocked_by": [
+        "psionic-byte-lm"
+      ],
+      "blocks": [
+        "psionic-nanochat-forward"
+      ]
+    },
+    {
+      "slug": "psionic-nanochat-tokenizer",
+      "title": "Implement pinned nanochat BPE and conversation tokens",
+      "parent": "psionic-learning",
+      "size": "L",
+      "labels": [
+        "nanochat",
+        "tokenizer"
+      ],
+      "body": "Reuse the generic tokenizer core but implement nanochat's own split pattern, merge ranks and ordered special tokens. Export tokenizer data into an inspectable inert format; do not load tokenizer.pkl or require rustbpe/tiktoken at runtime. Tokenizer training may begin with a tiny deterministic Coax BPE trainer.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/tokenizer/",
+        "psionic/fixtures/nanochat/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "Pinned independent IDs match for Unicode, two-digit numeric splits, document BOS and conversation/tool boundaries.",
+        "Malformed merges/special-ID collisions/capacity failures refuse; byte-level loss accounting has fixtures.",
+        "The chapter distinguishes tokenizer inference compatibility from reproducing upstream tokenizer-training results."
+      ],
+      "blocked_by": [
+        "psionic-qwen-tokenizer"
+      ],
+      "blocks": [
+        "psionic-nanochat-forward"
+      ]
+    },
+    {
+      "slug": "psionic-nanochat-forward",
+      "title": "Execute the pinned nanochat architecture and safe checkpoint export",
+      "parent": "psionic-learning",
+      "size": "L",
+      "labels": [
+        "nanochat",
+        "inference"
+      ],
+      "body": "Implement the current pinned gpt.py profile: RoPE convention, QK normalization/scales, ReLU-squared MLP, untied embedding/head, window pattern, value embeddings/gates, residual/x0 scalars, smear and backout. Define a reviewed inert export of tensor/config data from .pt; never make pickle execution a production loader.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/nanochat/",
+        "psionic/tools/export/",
+        "psionic/fixtures/nanochat/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "Independent per-block/logit fixtures plus cached-versus-full decoding cover every enabled architecture feature.",
+        "Exact model/config/tokenizer/source identities accompany checkpoint export; unsupported historical defaults refuse or use a separately versioned reader.",
+        "Include a small complete checkpoint and source-linked chapter; generic GPT compatibility cannot mark this done."
+      ],
+      "blocked_by": [
+        "psionic-causal-decoder",
+        "psionic-nanochat-tokenizer",
+        "psionic-safetensors"
+      ],
+      "blocks": [
+        "psionic-nanochat-backward",
+        "psionic-evaluation",
+        "psionic-nanochat-pretrain"
+      ]
+    },
+    {
+      "slug": "psionic-nanochat-backward",
+      "title": "Check gradients for every enabled nanochat model feature",
+      "parent": "psionic-learning",
+      "size": "L",
+      "labels": [
+        "nanochat",
+        "gradients"
+      ],
+      "body": "Extend the tiny causal decoder backward path to the exact pinned nanochat profile: value embeddings/gates, residual/x0 mixing, smear, backout, QK scaling and window semantics. Forward checkpoint compatibility alone does not establish trainability.\n\nPlan: docs/psionic/nanochat.md; reading order: psionic/book/PLAN.md. Product math stays in Coax. Write independent gradient checks before implementation and run psionic/check.sh with the new cases.",
+      "files": [
+        "psionic/lib/nanochat/",
+        "psionic/fixtures/nanochat/",
+        "psionic/tests/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "Analytic and finite-difference tiny-feature and whole-model gradients match independent fixtures, including parameter sharing and masked boundaries.",
+        "An optimizer-independent loss-direction check exercises every enabled parameter family; unsupported gradients refuse.",
+        "Tape/activation capacity and alias failures preserve model state, with native sanitizer cases."
+      ],
+      "blocked_by": [
+        "psionic-nanochat-forward",
+        "psionic-autodiff"
+      ],
+      "blocks": [
+        "psionic-nanochat-pretrain"
+      ]
+    },
+    {
+      "slug": "psionic-resume-data",
+      "title": "Implement reproducible dataset packing and checkpoint resume",
+      "parent": "psionic-learning",
+      "size": "L",
+      "labels": [
+        "training",
+        "data"
+      ],
+      "body": "Implement deterministic document boundaries, split provenance, shuffle/packing state, RNG counters, optimizer/parameter revisions and atomic checkpoint publication. Native code handles file effects; Coax owns records and admission.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/data/",
+        "psionic/lib/checkpoint/",
+        "psionic/tests/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "An interrupted tiny training run resumes to the declared equivalent uninterrupted state/loss stream.",
+        "Wrong model/tokenizer/data/optimizer identity, corrupt/truncated state and stale checkpoint pointers refuse.",
+        "Checkpoint and dataset metadata are inspectable/versioned; no raw ABI structs or arbitrary Python objects."
+      ],
+      "blocked_by": [
+        "psionic-autodiff"
+      ],
+      "blocks": [
+        "psionic-evaluation",
+        "psionic-nanochat-pretrain",
+        "psionic-decision-posttrain",
+        "psionic-distributed-training"
+      ]
+    },
+    {
+      "slug": "psionic-adamw",
+      "title": "Implement checked AdamW and explicit precision state",
+      "parent": "psionic-learning",
+      "size": "M",
+      "labels": [
+        "training",
+        "optimizer"
+      ],
+      "body": "Add AdamW with independently specified moments, bias correction, decoupled weight decay and parameter groups. Define master/compute precision and finite-update admission before mixed-precision training.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/optim/",
+        "psionic/tests/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "Independent scalar/matrix one-step and multi-step fixtures cover moments, bias correction, grouping and weight decay order.",
+        "Non-finite gradients, insufficient state, overflow policy and resume have explicit tests.",
+        "Do not claim nanochat optimizer parity until its Muon/grouping task also passes."
+      ],
+      "blocked_by": [
+        "psionic-autodiff"
+      ],
+      "blocks": [
+        "psionic-muon",
+        "psionic-decision-posttrain"
+      ]
+    },
+    {
+      "slug": "psionic-muon",
+      "title": "Reproduce nanochat MuonAdamW parameter groups and updates",
+      "parent": "psionic-learning",
+      "size": "L",
+      "labels": [
+        "nanochat",
+        "optimizer"
+      ],
+      "body": "Port the pinned combined optimizer's matrix/scalar grouping, momentum, Polar Express iteration coefficients, variance reduction, equilibration/renormalization settings and learning-rate scaling. Support one rank first; keep multi-rank ownership separate.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/optim/",
+        "psionic/fixtures/nanochat/",
+        "psionic/tests/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "Frozen independent updates for tall/wide/square matrices and scalar/embedding groups match within declared tolerances.",
+        "Saved optimizer state resumes identically under the named precision profile.",
+        "Any omitted upstream option is explicitly unsupported; plain SGD/AdamW is not called nanochat recipe parity."
+      ],
+      "blocked_by": [
+        "psionic-adamw",
+        "psionic-dense-ops"
+      ],
+      "blocks": [
+        "psionic-nanochat-pretrain"
+      ]
+    },
+    {
+      "slug": "psionic-evaluation",
+      "title": "Build held-out language and decision evaluation records",
+      "parent": "psionic-post-training",
+      "size": "L",
+      "labels": [
+        "evaluation",
+        "training"
+      ],
+      "body": "Implement fixed split/decontamination records, language loss/bits-per-byte, deterministic answer checks, and decision accuracy/Brier/calibration/abstention metrics. Keep numerical conformance, model quality and speed as separate results.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/eval/",
+        "psionic/fixtures/eval/",
+        "psionic/book/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Tiny independently scored fixtures establish every metric and aggregation convention.",
+        "Model/tokenizer/data/profile hashes and refusal counts are in the report; missing/failed evidence cannot pass.",
+        "Promotion thresholds and held-out sets freeze before candidate evaluation; repeated test exposure cannot masquerade as fresh confirmation."
+      ],
+      "blocked_by": [
+        "psionic-resume-data",
+        "psionic-nanochat-forward",
+        "psionic-elephant-cpu"
+      ],
+      "blocks": [
+        "psionic-nanochat-sft",
+        "psionic-nanochat-rl",
+        "psionic-decision-posttrain"
+      ]
+    },
+    {
+      "slug": "psionic-nanochat-pretrain",
+      "title": "Train a small nanochat profile end to end in Coax",
+      "parent": "psionic-learning",
+      "size": "L",
+      "labels": [
+        "nanochat",
+        "pretraining"
+      ],
+      "body": "Reproduce a small named single-device subset of the pinned base_train.py recipe with complete gradients, initialization, token budgets, accumulation, schedule and optimizer groups. Start with a tiny admitted corpus. Full upstream speedrun data/compute is a separate measured target, not an implied budget.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/nanochat/",
+        "psionic/lib/train/",
+        "psionic/examples/train/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "Independent initialization/gradient/update fixtures plus deterministic tiny-run loss and held-out gates pass.",
+        "Resume and exact consumed-token/data-position accounting pass; actual elapsed work and peak memory are reported.",
+        "Architecture, tokenizer, optimizer and precision differences from upstream are explicit; no Python/PyTorch runtime performs product training."
+      ],
+      "blocked_by": [
+        "psionic-nanochat-forward",
+        "psionic-resume-data",
+        "psionic-muon",
+        "psionic-nanochat-backward"
+      ],
+      "blocks": [
+        "psionic-nanochat-sft",
+        "psionic-distributed-training"
+      ]
+    },
+    {
+      "slug": "psionic-nanochat-sft",
+      "title": "Add nanochat-style masked supervised conversation training",
+      "parent": "psionic-post-training",
+      "size": "L",
+      "labels": [
+        "nanochat",
+        "sft"
+      ],
+      "body": "Implement chat_sft.py's pinned conversation rendering and assistant/tool loss masks, task mixture, packing and evaluation over a small licensed corpus. A separately scoped continued-pretraining stage may be added from a real use; the current speedrun has no distinct mid-training command.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/train/",
+        "psionic/lib/nanochat/",
+        "psionic/fixtures/sft/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "Independent token/label/loss-mask and gradient fixtures cover user/assistant/tool boundaries.",
+        "A small SFT run has held-out chat/task evaluation and reproducible resume, with a regression check against its base.",
+        "Data provenance, model revisions and promotion/refusal decisions are retained; endpoint plumbing alone does not establish SFT."
+      ],
+      "blocked_by": [
+        "psionic-nanochat-pretrain",
+        "psionic-evaluation"
+      ],
+      "blocks": [
+        "psionic-nanochat-rl"
+      ]
+    },
+    {
+      "slug": "psionic-nanochat-rl",
+      "title": "Implement the pinned nanochat reward-training recipe",
+      "parent": "psionic-post-training",
+      "size": "L",
+      "labels": [
+        "nanochat",
+        "rl"
+      ],
+      "body": "Port the bounded on-policy GSM8K-style recipe from chat_rl.py: group samples, mean-centered rewards, token-level normalization and the exact policy-gradient objective. The pinned source omits a KL trust region and PPO clipping; do not advertise generic GRPO/PPO/RLHF parity. Keep tools and reward execution outside the model's authority.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/rl/",
+        "psionic/fixtures/rl/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "Deterministic synthetic rollout/reward/advantage/loss/gradient fixtures match an independent oracle.",
+        "Sample/length/compute bounds, data splits, reward provenance and resume are explicit.",
+        "A small held-out improvement/regression report precedes promotion; untrusted generated code is not executed on the owner's Mac."
+      ],
+      "blocked_by": [
+        "psionic-nanochat-sft",
+        "psionic-evaluation"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "psionic-decision-backward",
+      "title": "Differentiate the decision backbone and masked slot loss",
+      "parent": "psionic-post-training",
+      "size": "L",
+      "labels": [
+        "decision",
+        "gradients"
+      ],
+      "body": "Add actual gradients for Qwen projections, block-bidirectional full attention, causal DeltaNet/convolution state, prefix forks and slot loss. Reusing a generic causal transformer backward pass is insufficient.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/qwen35/",
+        "psionic/lib/decision/",
+        "psionic/tests/"
+      ],
+      "acceptance": [
+        "Finite-difference and independent tiny hybrid-block gradients cover prefix/suffix boundaries and shared-prefix accumulation.",
+        "Frozen-base and selected-trainable-region semantics are explicit; unsupported gradients refuse.",
+        "Memory/tape/sequence exhaustion preserves parameters and optimizer state; no large-weight run is required for the first gradient gate."
+      ],
+      "blocked_by": [
+        "psionic-elephant-cpu",
+        "psionic-autodiff"
+      ],
+      "blocks": [
+        "psionic-decision-posttrain"
+      ]
+    },
+    {
+      "slug": "psionic-decision-posttrain",
+      "title": "Fine-tune and calibrate a bounded Elephant decision profile",
+      "parent": "psionic-post-training",
+      "size": "L",
+      "labels": [
+        "decision",
+        "post-training"
+      ],
+      "body": "Start with a bounded selected-parameter or adapter profile and explicitly admitted data. Implement decision cross-entropy/Brier calibration and abstention conventions from the pinned recipe. Extend to Mammoth/full fine-tuning only with separate gradient, memory and held-out evidence. This branch need not wait for nanochat RL.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/train/decision/",
+        "psionic/fixtures/decision/",
+        "psionic/book/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Tiny exact loss/gradient/update and frozen-base tests pass; checkpoint resume preserves trainable regions.",
+        "A named small run retains train/held-out provenance, calibration/abstention and general-skill regression gates.",
+        "Artifacts bind served base, tokenizer/readout and optimizer revision; unavailable hardware/budget is recorded rather than reporting a completed real-weight fine-tune."
+      ],
+      "blocked_by": [
+        "psionic-decision-backward",
+        "psionic-adamw",
+        "psionic-resume-data",
+        "psionic-evaluation"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "psionic-systemone-serving",
+      "title": "Expose qualified native decisions through the shared System One boundary",
+      "parent": "psionic-integration",
+      "size": "L",
+      "labels": [
+        "serving",
+        "decision"
+      ],
+      "body": "Connect the qualified decision engine to the existing shared System One contracts/codecs; inspect coax/lib/systemone and root proto/spec before adding anything. Add bounded ingress, model/profile identity, deadlines and typed refusals. Local library support is distinct from a hosted deployment.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/serve/",
+        "psionic/platform/",
+        "coax/lib/systemone/",
+        "proto/",
+        "docs/protocol/"
+      ],
+      "acceptance": [
+        "Real choice/noul/score requests round-trip through the selected existing codec and qualified native engine.",
+        "Overload, deadline, wrong profile, cancellation and malformed results never produce successful partial answers.",
+        "Any required public contract change begins in root proto/spec with a new version; no hidden Baseten/OneJev fallback."
+      ],
+      "blocked_by": [
+        "psionic-elephant-cpu",
+        "psionic-mammoth-cpu"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "psionic-decision-vision",
+      "title": "Add separately qualified image inputs for Elephant and Mammoth",
+      "parent": "psionic-integration",
+      "size": "L",
+      "labels": [
+        "vision",
+        "decision"
+      ],
+      "body": "Implement the pinned vision preprocessing, encoder/projector, image token layout and memory limits with explicit text-versus-image profiles. The first text-only milestone does not imply image support merely because the checkpoint contains vision tensors.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/vision/",
+        "psionic/lib/decision/",
+        "psionic/fixtures/vision/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "Independent image-patch/preprocessing/encoder/token fixtures and a complete multimodal decision pass.",
+        "Malformed/decompression/size/token limits and mixed text/image ordering are tested.",
+        "Device/precision/peak memory and each model's own real-weight image results are retained."
+      ],
+      "blocked_by": [
+        "psionic-mammoth-cpu"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "psionic-distributed-training",
+      "title": "Add one explicit same-node distributed training topology",
+      "parent": "psionic-integration",
+      "size": "L",
+      "labels": [
+        "distributed",
+        "training"
+      ],
+      "body": "Choose one actual homogeneous multi-device target and implement data-parallel sharding, collective reductions, deterministic ownership and checkpoint/resume. Add the backend work the selected target needs (for example CUDA); single-device Metal does not establish multi-GPU or multi-node support.\n\nPlan: docs/psionic/roadmap.md; reading order: psionic/book/PLAN.md. Implement product logic in Coax, write checks first, keep host code to effects, and retain independent native evidence. Run psionic/check.sh with the new focused checks. Authority owners require zero surviving mutants; no equivalent exemptions. No rewards, paid runs or deployments are implied by taking this task.",
+      "files": [
+        "psionic/lib/distributed/",
+        "psionic/platform/",
+        "psionic/tests/",
+        "psionic/book/"
+      ],
+      "acceptance": [
+        "A tiny one-rank versus multi-rank update is compared under declared reduction tolerances and global token accounting.",
+        "Rank loss, short collectives, stale state and reshard refusal are exercised with retained recovery outcomes.",
+        "Actual target/topology evidence is required; broader distributed optimizer/elastic/WAN work remains separately scoped."
+      ],
+      "blocked_by": [
+        "psionic-nanochat-pretrain",
+        "psionic-resume-data",
+        "psionic-metal-compute"
+      ],
+      "blocks": []
+    }
+  ]
+}

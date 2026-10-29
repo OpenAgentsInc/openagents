@@ -49,55 +49,76 @@ Publish the real observed transcript only after running that command. Do not
 add a model download, GPU prerequisite, server, or large external dataset to
 this first milestone.
 
-## Cumulative chapter sequence
+## Delivery priority: Elephant, then Mammoth
 
-Each row extends the same library and runnable examples. A milestone may span
-several small commits; each accepted chapter includes its own evidence and
-the relevant earlier regressions.
+The owner priority is [native Elephant and Mammoth](model-targets.md), with
+shared foundations reused by the later [nanochat pipeline](nanochat.md).
+[The live Psionic project](https://openagents.com/projects/psionic) contains
+the dependency graph, acceptance checks, and stable issue slugs. Its source
+is [work/roadmap.json](../../apps/openagents-web/projects/psionic/work/roadmap.json).
+Future work is open; M0 alone is recorded complete.
 
-| Milestone / chapters | Depends on | Working result | Completion gate |
-| --- | --- | --- | --- |
-| M0 / 1. Learning a number — implemented | Current CPU subset | The one-parameter trainer above; shared library, book, and example verification. | `psionic/check.sh`: independent first update and convergence, bounded training, native refusals/aliases, sanitizers, exact listings/transcripts. |
-| M1 / 2. Shapes and storage; 3. Numbers and matrices | M0 | Shared contiguous `f32` operations: indexing, dot, matrix multiply, addition, reductions, stable softmax and normalization as needed. | Overflow/capacity/alias refusals; independent tiny matrix and reduction oracles; per-op error contracts; M0 uses shared operations where applicable. |
-| M2 / 4. Learning with arrays; 5. Gradients as a program | M1 | A tiny linear classifier, then bounded reverse-mode autodiff and SGD over shared ops. | Analytic and finite-difference gradients; accumulation/detach/tape-limit tests; autodiff reproduces the manual example and learns on held-out cases. |
-| M3 / 6. Bytes and predictions; 7. A small language model | M2 | A 256-byte vocabulary and a trainable bigram model, with explicit token IDs and seeded sampling. | Fixed split/corpus/license; probability/loss checks, held-out loss against a declared baseline, exact RNG replay within the profile. Bytes are the actual vocabulary, not a placeholder BPE implementation. |
-| M4 / 8. Attention; 9. A complete tiny decoder | M3 | Causal attention, embeddings, position convention, feed-forward block, forward/backward execution, and a bounded KV cache. | Full-sequence versus incremental-decode logits; causal isolation; checked gradients; training and generation of the entire tiny model. No head-only stand-in. |
-| M5 / 10. Saving and resuming; 11. Reading a real model | M4 | Parameter/optimizer/RNG/data-state persistence; one pinned external format, tokenizer, template, and small decoder family. | Resume matches uninterrupted training within its declared profile; malformed artifacts fail; independent token IDs, intermediate tensors, logits, and multi-token generation for the complete imported model. |
-| M6 / 12. Where the time and memory go | M4; M5 for imported-model claims | Measured CPU baseline, layout/view extensions justified by workloads, then focused CPU optimizations. | Fixed workload and tolerance before optimization; native debug/release and sanitizer regressions; raw cold/warm timings, allocation/scratch evidence, and honest failed budgets. |
-| M7 / 13. The same computation on Metal | M6 plus compiler compute milestone | One bounded device operation, then the tiny model on actual Metal buffers. | Real device dispatch and readback, CPU numerical comparison, resource limits, command failures and completion/lifetime checks. Scalar shader compilation alone cannot pass. |
-| M8 / 14. Quantized weights and useful local inference | M5, M6; M7 for GPU claims | One exact published quantization layout, a complete admitted model, and reusable local inference API. | Independent block vectors, incomplete-block refusal, memory/quality/error measurements; backend/profile identity; actual complete answers and cancellation behavior. |
-| M9 / 15+. Serving, data pipelines, and distributed work | Demonstrated local use; explicit contracts | Bounded serving, richer training/data/eval, adapters and selected multi-device/distributed capabilities. | Separate framework, serving, training, device, and topology acceptance. Root protocol changes precede cross-surface integration. |
+| Priority | Work | Must finish first |
+| --- | --- | --- |
+| Now | Pin both model bundles/nanochat, reference contracts and license/provenance; admit shapes/storage. | M0 is shipped. Contract research and shapes are ready independently. |
+| Next | Dense operations, safetensors/BF16, exact Qwen tokenizer/decision prompts, independent reference capture. | Each task's data/math prerequisites; no training subsystem. |
+| Next | Qwen3.5 dense blocks, block-bidirectional full attention, causal DeltaNet, complete prefix forks and slot readout. | Shared operations/artifacts and exact prompt/state fixtures. |
+| First real model | Complete original-weight Elephant text decisions. | All hybrid layers, exact renderer/readout, bounded state and independent full-model oracles. |
+| Immediately after | Complete original-weight Mammoth using the same engine. | Elephant implementation, Mammoth-specific dimensions, shards, memory and real-weight evidence. |
+| Alongside this path | Coax compute consumer, generated Metal kernels, Elephant then Mammoth device qualification. | Concrete shapes/operations and each model's CPU numerical reference; no generic training dependency. |
+| After original-weight baselines | One separately qualified quantized profile and shared System One serving integration. | Full-model numerical evidence and explicit artifact/profile/contract boundaries. |
 
-The main path is M0 → M1 → M2 → M3 → M4. CPU work continues while a concrete
-M7 compute case informs compiler development. M5 checkpoint work can begin
-as soon as M2 has optimizer state; the table's M5 gate also includes the later
-complete-model import. M6 measurement habits start at M0 even though sustained
-optimization comes later.
+CPU reference correctness and device execution can advance together. Do not
+wait for a fast full-model CPU service or finish the entire teaching spine
+before starting compute support. Current scalar Metal emission is insufficient
+for these kernels. Reference Python/OneJev is tooling; native model support
+requires actual complete Coax execution.
 
-## Bound the first imported model
+Smaller synthetic fixtures and source-contract work need no paid hardware.
+A large-weight reference/target run records its actual machine, memory and
+compute admission when undertaken. No budget, deployment or model download is
+a prerequisite for starting the ready work.
 
-Choose the artifact when M5 starts, using the devices and budgets then
-available. Prefer a small dense decoder whose full forward pass fits in local
-memory and whose tokenizer and intermediate outputs can be independently
-checked. Record the exact revision, license, hashes, architecture, dtype,
-context, required operations, memory estimate, and oracle before implementing
-its reader. An existing small-model Psionic fixture can be useful evidence.
+## The cumulative library and book
 
-GPT-OSS, MoE routing, large DeepSeek variants, and distributed expert offload
-are later targets. The ML book and Psionic history supply worked questions
-for them, but their complexity should not set the minimum first chapter.
-Do not select a marketing model name as a substitute for an executable
-architecture and artifact contract.
+Milestone names remain the library's coverage map; their number is not delivery
+priority. [The book plan](../../psionic/book/PLAN.md) is the current reading
+order, including the early real-model case study and later nanochat chapters.
 
-## Completion and scope decisions
+| Milestone | Dependencies | Result and completion gate |
+| --- | --- | --- |
+| M0: learning a number — implemented | Current CPU subset | `psionic/check.sh`: exact first update, bounded training/held-out result, native refusals/aliases, sanitizers, listings and transcripts. |
+| M1: shapes and dense numerics | M0 | Bounded storage, dot/matmul/gather/reductions/normalization with independent oracles and per-operation numerics. Chapters 2–3. |
+| Early decision path | M1 plus pinned artifacts/tokenizer and the hybrid forward architecture | Original-weight Elephant, then Mammoth, text first. Independent masks, prefix-state forks, slot probabilities and complete real-weight requests. Chapters 10–14 can ship before chapters 4–9. |
+| M2: arrays, autodiff and SGD | M1 | A tiny classifier, analytic/finite-difference gradients, bounded tape/state and reproduction of the manual trainer. Chapters 4–5. |
+| M3: byte language model | M2 | A real byte vocabulary, fixed licensed splits, likelihood, named RNG and complete small training/generation. Chapters 6–7. |
+| M4: complete causal decoder | M3 | Causal attention/FFN, full gradients, full-versus-cached logits, causal isolation and a complete tiny training example. Chapters 8–9. |
+| M5: artifacts and resumable state | Forward artifact work starts after M1; optimizer/data-state work after M2 | Bounded safetensors/BF16 and exact model/tokenizer identity early; deterministic packing, RNG/optimizer/data-state resume later. Weight import does not depend on completing generic training. Chapters 10 and 19. |
+| M6: measured CPU behavior | Every concrete operation/workload as it appears | Fixed numerical and memory/latency observations before optimization; raw samples and honest failed budgets. Chapter 15. |
+| M7: native device execution | M1 operations and the explicit Coax compute milestone | Generated kernels actually run on a named device with CPU numerical oracles, bindings, limits and completion/lifetime checks. Decision inference is the first consumer. Chapter 16. |
+| M8: quantization and local inference | Original-weight model reference; M7 for device claims | Independent block vectors, partial-row refusal, separate identities and measured held-out numerical/quality/memory effects. Chapter 17. |
+| nanochat inference and gradients | Shared artifacts/tokenizer plus M4 | The pinned complete architecture, inert checkpoint export, exact tokenization, cached inference and every enabled feature's gradients. Chapter 18. |
+| nanochat pretraining | Its forward/backward profile, data/resume, exact AdamW/Muon groups and held-out checks | A tiny complete deterministic run first; measured one-device scale later. Upstream speedrun cost/speed is not inherited. Chapters 19–21. |
+| SFT and reward training | Pretraining, masked conversation data, independent evaluation and rollout/reward contracts | SFT first, then the specific pinned nanochat policy-gradient recipe; separate promotion/regression evidence. Chapters 22–23. |
+| Decision post-training | Qualified hybrid forward/backward plus shared optimizer/data/evaluation | Bounded trainable regions/adapters, cross-entropy/Brier/abstention, resume and held-out promotion; it need not wait for nanochat RL. Chapter 24. |
+| M9: serving, vision and distributed work | Qualified local models and explicit consumer/target contracts | Shared System One integration; separately qualified image handling; one actual homogeneous multi-device training topology. Chapters 25–26 extend integration topics; broader APIs and scale remain explicit follow-ups. |
 
-After M0, assess whether a new reader can reproduce and explain every update.
-After M2, assess whether this is becoming a reusable learning library rather
-than a collection of model-specific loops. After M4, keep the tiny full model
-as the cumulative regression when real weights or device kernels arrive.
+## What support means
 
-Later work should be pulled by a complete workload: a missing tensor
-operation, an observed CPU cost, a model the product needs, or a measured
-device limit. Broad PyTorch/MLX API parity, a general lazy graph compiler,
-multi-vendor GPU support, and public compute orchestration each require a
-separate scoped decision. They are not prerequisites for this book's opening.
+Each model/backend/profile earns its own evidence. Metadata or a synthetic
+layer test means partial implementation, not full real-weight support.
+Elephant does not qualify Mammoth, and text support does not qualify vision.
+Original BF16 file size does not establish f32-expanded residency or available
+GPU memory. Quantized outputs get their own approximation/quality gates.
+
+For nanochat, distinguish forward/checkpoint compatibility, tokenizer behavior,
+all enabled gradients, optimizer updates, whole pretraining, SFT and RL. The
+pinned speedrun has no standalone mid-training stage and runs SFT after base
+training; RL is separate. An arbitrary tiny GPT or a Python wrapper cannot
+close the native nanochat issues.
+
+Keep M0 and the tiny complete decoder as cumulative regressions. Write each
+chapter from its running library result, and keep incomplete material labelled
+planned. A missing device or reference artifact does not turn an implementation
+failure into a pass; record the concrete missing action and keep useful local
+work moving.

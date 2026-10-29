@@ -32,6 +32,17 @@ library with it. Cross-link the relevant language chapters instead of
 repeating their reference material. Decide publication after the first
 runnable chapters exist; writing the book does not require a new website.
 
+## Current priority
+
+The [Psionic project](https://openagents.com/projects/psionic) tracks work as
+signed OpenAgents issues; [the issue map](project.md) links every task and
+records the two ready starting points. [Elephant and Mammoth](model-targets.md) are the first
+real-weight targets, delivered ahead of general training work. The
+[nanochat study](nanochat.md) separates checkpoint inference, pretraining, SFT
+and reward training; [the book plan](../../psionic/book/PLAN.md) maps their
+reading order. Implementation readiness is the dependency graph, not chapter
+number.
+
 ## Where to start
 
 [Chapter 1](../../psionic/book/ch01-learning-a-number.md) answers one question:

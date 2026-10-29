@@ -1,0 +1,18 @@
+{
+  "slug": "psionic",
+  "name": "Psionic",
+  "description": "Machine learning from scratch in Coax, developed with a runnable book. First: native Elephant and Mammoth decision models; then nanochat inference, pretraining and post-training.",
+  "relay": "wss://relay.openagents.com",
+  "repo": {
+    "d": "openagents",
+    "name": "OpenAgents",
+    "description": "The OpenAgents monorepo: the apps, the protocol, Coax and the Grid.",
+    "web": "https://github.com/OpenAgentsInc/openagents",
+    "clone": "https://github.com/OpenAgentsInc/openagents.git",
+    "euc": "0aa2d953dd48f0d402ea7c826bad90b2548524c2"
+  },
+  "path": "psionic/",
+  "contributions": "open",
+  "license": "Apache-2.0",
+  "pubkey": "7fa6eb9366eead55197f55259f8702acc1656bd4663de6e474cbbb3dc9fbd3fa"
+}
