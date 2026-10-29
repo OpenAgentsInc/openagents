@@ -1,0 +1,147 @@
+// A complete bounded block through a sequence of hybrid layers.
+#load "qwen-linear-layer.coax";
+#load "qwen-decision.coax";
+#load "qwen-prefix.coax";
+#authority;
+QeKind :: enum u8 {linear;full;}
+QeLayer :: struct {kind:u8;linear:QlWeights;full:QhWeights;}
+QeStatus :: enum u8 {ok;shape;capacity;alias;number;arithmetic;mask;}
+QeResult :: struct {status:QeStatus;written:int;}
+QeShape :: struct {linear:QlShape;full:QhShape;state:QpShape;}
+QeLayout :: struct {state:int;first:int;second:int;layer:int;total:int;}
+#test "a hybrid block executes both layers and atomically advances state" {
+    linear:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    full:=QhShape.{width=2,hidden=1,capacity=3,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=linear,full=full,state=QpShape.{linear_layers=1,full_layers=1,capacity=3,delta=linear.delta,attention=full.attention}};
+    bytes:[16]u8;norm:[2]f32;conv:[12]f32;scalar:[1]f32;gain:=[1]f32.[1];
+    lw:=QlWeights.{input_norm=norm[..],post_norm=norm[..],conv=conv[..],a_log=scalar[..],dt=scalar[..],delta_norm=gain[..],qkv=bytes[0..<12],z=bytes[0..<4],a=bytes[0..<4],b=bytes[0..<4],mixer_out=bytes[0..<4],gate=bytes[0..<4],up=bytes[0..<4],down=bytes[0..<4]};
+    fw:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=norm[..],k_norm=norm[..],q=bytes[..],k=bytes[0..<8],v=bytes[0..<8],mixer_out=bytes[0..<8],gate=bytes[0..<4],up=bytes[0..<4],down=bytes[0..<4]};
+    layers:=[2]QeLayer.[QeLayer.{kind=cast(u8)QeKind.linear,linear=lw},QeLayer.{kind=cast(u8)QeKind.full,full=fw}];
+    state:[22]f32;state[9]=4;for i:18..<22 {state[i]=-5;}input:=[4]f32.[1,2,3,4];rope:=[4]f32.[1,0,1,0];out:=[5]f32.[-7,-7,-7,-7,-7];work:[400]f32;
+    r:=qe_block(shape,layers[..],input[..],rope[..],0,2,state[..],out[..],work[..],false);
+    #assert r.status==QeStatus.ok && r.written==4 && out[0]==1 && out[1]==2 && out[2]==3 && out[3]==4 && out[4]==-7;
+    #assert state[9]==1;
+    for i:10..<18 {#assert state[i]==0;}for i:18..<22 {#assert state[i]==-5;}
+}
+#test "a late invalid layer cannot publish partial model state or outputs" {
+    linear:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    full:=QhShape.{width=2,hidden=1,capacity=3,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=linear,full=full,state=QpShape.{linear_layers=1,full_layers=1,capacity=3,delta=linear.delta,attention=full.attention}};
+    bytes:[16]u8;bad:=[4]u8.[0,0,0x80,0x7f];norm:[2]f32;conv:[12]f32;scalar:[1]f32;gain:=[1]f32.[1];
+    lw:=QlWeights.{input_norm=norm[..],post_norm=norm[..],conv=conv[..],a_log=scalar[..],dt=scalar[..],delta_norm=gain[..],qkv=bytes[0..<12],z=bytes[0..<4],a=bytes[0..<4],b=bytes[0..<4],mixer_out=bytes[0..<4],gate=bytes[0..<4],up=bytes[0..<4],down=bytes[0..<4]};
+    fw:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=norm[..],k_norm=norm[..],q=bytes[..],k=bytes[0..<8],v=bytes[0..<8],mixer_out=bytes[0..<8],gate=bytes[0..<4],up=bytes[0..<4],down=bad[..]};
+    layers:=[2]QeLayer.[QeLayer.{kind=cast(u8)QeKind.linear,linear=lw},QeLayer.{kind=cast(u8)QeKind.full,full=fw}];state:[22]f32;state[9]=4;
+    before:=state;input:=[4]f32.[1,2,3,4];rope:=[4]f32.[1,0,1,0];out:=[4]f32.[-7,-7,-7,-7];work:[400]f32;
+    r:=qe_block(shape,layers[..],input[..],rope[..],0,2,state[..],out[..],work[..],false);
+    #assert r.status==QeStatus.number && r.written==0;for i:0..<22 {#assert state[i]==before[i];}for v:out {#assert v==-7;}
+}
+qe_valid :: (s:QeShape)->bool {
+    if !qp_valid(s.state) {return false;}
+    if !qb_valid(cast(u8)s.full.dtype,s.full.width,s.full.hidden,s.full.attention.epsilon) {return false;}
+    if s.linear.width!=s.full.width || s.linear.hidden!=s.full.hidden || s.linear.dtype!=s.full.dtype || s.full.capacity!=s.state.capacity {return false;}
+    expected:=QpShape.{linear_layers=s.state.linear_layers,full_layers=s.state.full_layers,capacity=s.full.capacity,delta=s.linear.delta,attention=s.full.attention};
+    return qp_same_shape(s.state,expected);
+}
+qe_layers_valid :: (s:QeShape,layers:[]QeLayer)->bool {
+    if layers.count!=s.state.linear_layers+s.state.full_layers {return false;}
+    nl:=0;
+    for layer:layers {
+        if layer.kind==cast(u8)QeKind.linear {nl+=1;if !ql_weights_valid(s.linear,layer.linear) {return false;}}
+        else if layer.kind==cast(u8)QeKind.full {if !qh_weights_valid(s.full,layer.full) {return false;}}
+        else {return false;}
+    }
+    return nl==s.state.linear_layers;
+}
+qe_layout :: (s:QeShape,start:int,count:int)->QeLayout {
+    p:QeLayout;p.first=qp_total(s.state);p.second=p.first+count*s.linear.width;p.layer=p.second+count*s.linear.width;
+    p.total=p.layer+ql_work_count(s.linear)+qd_layout(s.full,start,count).total;return p;
+}
+qe_block :: (s:QeShape,layers:[]QeLayer,input:[]f32,rope:[]f32,start:int,count:int,state:[]f32,out:[]f32,work:[]f32,overlap:bool)->QeResult #export_c {
+    if !qe_valid(s) {return QeResult.{status=QeStatus.shape};}
+    if !qd_block_valid(start,count,s.state.capacity) {return QeResult.{status=QeStatus.capacity};}
+    p:=qe_layout(s,start,count);d:=s.linear.width;
+    if !qe_layers_valid(s,layers) || input.count!=count*d || rope.count!=count*s.full.attention.rotary_dim || state.count!=qp_total(s.state) || out.count<count*d || work.count<p.total {return QeResult.{status=QeStatus.capacity};}
+    if overlap {return QeResult.{status=QeStatus.alias};}
+    stage:=work[p.state..<p.first];a:=work[p.first..<p.second];b:=work[p.second..<p.layer];layer_work:=work[p.layer..<p.total];
+    linear_total:=s.state.linear_layers*qp_linear_count(s.state);full_count:=qp_full_count(s.state);live:=qp_live_full(s.state,start);
+    for i:0..<linear_total {stage[i]=state[i];}
+    for layer:0..<s.state.full_layers {base:=linear_total+layer*full_count;for i:0..<live {stage[base+i]=state[base+i];}}
+    for i:0..<count*d {a[i]=input[i];}
+    li:=0;fi:=0;first:=true;
+    for layer:layers {
+        source:=a;dest:=b;if !first {source=b;dest=a;}
+        if layer.kind==cast(u8)QeKind.linear {
+            base:=li*qp_linear_count(s.state);history:=3*pd_channels(s.state.delta);states:=pd_states(s.state.delta);
+            for t:0..<count {
+                r:=ql_step(s.linear,layer.linear,source[t*d..<(t+1)*d],stage[base..<base+history],stage[base+history..<base+history+states],dest[t*d..<(t+1)*d],layer_work,false);
+                if r.status!=QlStatus.ok {return QeResult.{status=cast(QeStatus)cast(u8)r.status};}
+            }li+=1;
+        } else {
+            base:=linear_total+fi*full_count;
+            r:=qd_block(s.full,layer.full,source,rope,start,count,stage[base..<base+full_count],dest,layer_work,false);
+            if r.status!=QhStatus.ok {return QeResult.{status=cast(QeStatus)cast(u8)r.status};}fi+=1;
+        }
+        first=!first;
+    }
+    for i:0..<linear_total {state[i]=stage[i];}
+    old_live:=live;live=qp_live_full(s.state,start+count);
+    for layer:0..<s.state.full_layers {base:=linear_total+layer*full_count;for i:old_live..<live {state[base+i]=stage[base+i];}}
+    final:=a;if !first {final=b;}
+    for i:0..<count*d {out[i]=final[i];}return QeResult.{written=count*d};
+}
+
+#load "../fixtures/hybrid/qwen-model-vectors.coax";
+
+#test "model shape and layer counts must agree before execution" {
+    linear:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    full:=QhShape.{width=2,hidden=1,capacity=3,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=linear,full=full,state=QpShape.{linear_layers=1,full_layers=1,capacity=3,delta=linear.delta,attention=full.attention}};
+    bytes:[16]u8;norm:[2]f32;conv:[12]f32;scalar:[1]f32;gain:=[1]f32.[1];
+    lw:=QlWeights.{input_norm=norm[..],post_norm=norm[..],conv=conv[..],a_log=scalar[..],dt=scalar[..],delta_norm=gain[..],qkv=bytes[0..<12],z=bytes[0..<4],a=bytes[0..<4],b=bytes[0..<4],mixer_out=bytes[0..<4],gate=bytes[0..<4],up=bytes[0..<4],down=bytes[0..<4]};
+    fw:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=norm[..],k_norm=norm[..],q=bytes[..],k=bytes[0..<8],v=bytes[0..<8],mixer_out=bytes[0..<8],gate=bytes[0..<4],up=bytes[0..<4],down=bytes[0..<4]};
+    layers:=[2]QeLayer.[QeLayer.{kind=cast(u8)QeKind.linear,linear=lw},QeLayer.{kind=cast(u8)QeKind.full,full=fw}];
+    state:[22]f32;state[9]=4;for i:18..<22 {state[i]=-5;}input:=[4]f32.[1,2,3,4];rope:=[4]f32.[1,0,1,0];out:=[5]f32.[-7,-7,-7,-7,-7];work:[400]f32;
+    #assert qe_valid(shape) && qe_layers_valid(shape,layers[..]);
+    bad:=shape;bad.linear.width=0;#assert !qe_valid(bad);bad=shape;bad.full.width=0;#assert !qe_valid(bad);
+    bad=shape;bad.state.capacity=0;#assert !qe_valid(bad);bad=shape;bad.full.width=3;#assert !qe_valid(bad);
+    bad=shape;bad.full.hidden=2;#assert !qe_valid(bad);bad=shape;bad.full.dtype=QmDtype.f32;#assert !qe_valid(bad);
+    bad=shape;bad.full.capacity=2;#assert !qe_valid(bad);bad=shape;bad.state.delta.key_heads=2;#assert !qe_valid(bad);
+    bad=shape;bad.state.attention.heads=2;#assert !qe_valid(bad);
+    #assert !qe_layers_valid(shape,layers[0..<1]);
+    copy:=layers;copy[1].kind=cast(u8)QeKind.linear;copy[1].linear=lw;#assert !qe_layers_valid(shape,copy[..]);
+    copy=layers;copy[0].kind=2;#assert !qe_layers_valid(shape,copy[..]);
+    copy=layers;copy[0].linear.qkv=bytes[0..<1];#assert !qe_layers_valid(shape,copy[..]);
+    copy=layers;copy[1].full.q=bytes[0..<1];#assert !qe_layers_valid(shape,copy[..]);
+    plan:=qe_layout(shape,0,2);#assert plan.state==0 && plan.first==22 && plan.second==26 && plan.layer==30 && plan.total<=work.count;
+    for k:0..<10 {
+        x:=input[..];pos:=rope[..];cache:=state[..];dest:=out[..];scratch:=work[..];start:=0;count:=2;alias:=false;layer_view:=layers[..];
+        if k==0 {start=-1;}if k==1 {count=0;}if k==2 {start=2;}if k==3 {x=input[0..<3];}
+        if k==4 {pos=rope[0..<3];}if k==5 {cache=state[0..<21];}if k==6 {dest=out[0..<3];}
+        if k==7 {scratch=work[0..<plan.total-1];}if k==8 {alias=true;}if k==9 {layer_view=layers[0..<1];}
+        r:=qe_block(shape,layer_view,x,pos,start,count,cache,dest,scratch,alias);
+        #assert r.status!=QeStatus.ok && r.written==0;for v:out {#assert v==-7;}#assert state[9]==4;
+    }
+}
+#test "two layers of each kind retain live prefix caches and advance distinct states" {
+    linear:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    full:=QhShape.{width=2,hidden=1,capacity=3,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=linear,full=full,state=QpShape.{linear_layers=2,full_layers=2,capacity=3,delta=linear.delta,attention=full.attention}};
+    bytes:[16]u8;norm:[2]f32;conv:[12]f32;scalar:[1]f32;gain:=[1]f32.[1];
+    lw:=QlWeights.{input_norm=norm[..],post_norm=norm[..],conv=conv[..],a_log=scalar[..],dt=scalar[..],delta_norm=gain[..],qkv=bytes[0..<12],z=bytes[0..<4],a=bytes[0..<4],b=bytes[0..<4],mixer_out=bytes[0..<4],gate=bytes[0..<4],up=bytes[0..<4],down=bytes[0..<4]};
+    fw:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=norm[..],k_norm=norm[..],q=bytes[..],k=bytes[0..<8],v=bytes[0..<8],mixer_out=bytes[0..<8],gate=bytes[0..<4],up=bytes[0..<4],down=bytes[0..<4]};
+    kp:=[8]u8.[128,63,0,0,0,0,128,63];kn:=[8]u8.[128,191,0,0,0,0,128,191];fp:=fw;fn:=fw;fp.k=kp[..];fn.k=kn[..];
+    layers:=[4]QeLayer.[QeLayer.{kind=cast(u8)QeKind.linear,linear=lw},QeLayer.{kind=cast(u8)QeKind.full,full=fp},QeLayer.{kind=cast(u8)QeKind.linear,linear=lw},QeLayer.{kind=cast(u8)QeKind.full,full=fn}];
+    state:[44]f32;state[9]=4;state[19]=8;for i:0..<4 {state[20+i]=f32(i+1);state[32+i]=f32(i+5);}
+    for i:24..<32 {state[i]=-3;}for i:36..<44 {state[i]=-4;}
+    input:=[4]f32.[1,2,3,4];rope:=[4]f32.[1,0,1,0];out:[4]f32;work:[1000]f32;
+    plan:=qe_layout(shape,1,2);r:=qe_block(shape,layers[..],input[..],rope[..],1,2,state[..],out[..],work[0..<plan.total],false);
+    #assert r.status==QeStatus.ok && r.written==4 && state[9]==1 && state[19]==2;
+    for i:0..<4 {#assert out[i]==input[i] && state[20+i]==f32(i+1) && state[32+i]==f32(i+5);}
+    #assert state[24]>0 && state[36]<0 && abs(state[24]+state[36])<0.000001f32;
+    #assert state[28]>0 && state[40]<0 && abs(state[28]+state[40])<0.000001f32;
+    state[9]=4;state[19]=8;for i:24..<32 {state[i]=-3;}for i:36..<44 {state[i]=-4;}
+    p:=qe_layout(shape,1,1);r=qe_block(shape,layers[..],input[0..<2],rope[0..<2],1,1,state[..],out[0..<2],work[0..<p.total],false);
+    #assert r.status==QeStatus.ok && r.written==2 && out[0]==1 && out[1]==2 && state[9]==2 && state[19]==4;
+    #assert state[24]>0 && state[36]<0;for i:28..<32 {#assert state[i]==-3;}
+    for i:40..<44 {#assert state[i]==-4;}
+}

@@ -1,0 +1,21 @@
+{
+  "coax/bin/coax": "5388de6c9c976ff6328fd2f4f4aa3433e28d529deaac5f78a74abaab39c52498",
+  "psionic/lib/qwen-model.coax": "a19e213d3f3d3f3018ea7dfcdcb5ee390154bea5f33c8764f750fcad4619be60",
+  "psionic/lib/qwen-rope.coax": "afe3415f61511d4ad93ced99999aab95b8b7acaa4e009a6068921fcef6665cd8",
+  "psionic/lib/qwen-linear-layer.coax": "d98239772214fca7f7b5c488fd1e0b526187fb7155587d8426993eb232a4f9b0",
+  "psionic/lib/qwen-full-layer.coax": "a9283010057aaa5f1a0674c72e619a1f09315a2a35c5c9b35cf896a12dc35946",
+  "psionic/lib/qwen-decision.coax": "d367999746ccc5abc5b259d251e52e87d6b1d7eb07d91b47dd9b29608d052c78",
+  "psionic/lib/qwen-prefix.coax": "3844d466e870c0a2229d4b22d0a9078e9df53d6b92ac6048929419d501fec966",
+  "psionic/tests/qwen_model.c": "4ab60e4a3863100fc3266cb587b246109b600a92aa1e17dbfc581c0be29f6e02",
+  "psionic/tests/qwen_model_oracle.py": "3f10bd76078c9aab905b371e93f5e3878c5d7f1ab5cb906a93f0b431018168ff",
+  "psionic/tests/qwen_linear_oracle.py": "0d78c3621561190e95af36a1309feded08a155aca2f82602d479abd04e797de1",
+  "psionic/tests/qwen_decision_oracle.py": "87caa7731e019b5a80ce8b0d729e95fa7175b772372acf22d0fcf3e552c7c437",
+  "psionic/tests/qwen_full_oracle.py": "c21cd9017f0d678b041b3864cb1e95769b3628e26a5f1f7591b3e617c58cdb47",
+  "psionic/tests/qwen_rope.c": "43f0f931bba21db26cb659c01802c8e2626068555abbf5408ba5f900b1ff8948",
+  "psionic/fixtures/hybrid/qwen-model-vectors.coax": "b02346222400f4cee756e3747f5599c4732e0aaf46a8cf55d4875fc2acaf8d9f",
+  "psionic/platform/qwen-model-memory.c": "0f0f37406d1bf230cc432928574b847481707e09e1d871788aedce2a20e83dae",
+  "psionic/platform/qwen-model-memory.h": "9344577a77ae4aaf64d4fdf9d327d5f3f597cd1124c247c6a2df226692a4466a",
+  "psionic/platform/qwen-rope-memory.c": "cdee3e8975595c09ed4271686b810819e96754b8ba96026bc1efcdb4fa23c30b",
+  "psionic/platform/qwen-rope-memory.h": "ac5db6a5c55cc93ace087a60a8c637be5f0b8a49d35b6db61d627f30277b5e57",
+  "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e"
+}

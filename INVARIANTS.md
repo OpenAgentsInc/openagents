@@ -1,5 +1,32 @@
 # Invariants
 
+## Psionic text rotary positions are deterministic and staged
+
+`psionic/lib/qwen-rope.coax` generates text-only Qwen rotary coefficients with
+64 rotated dimensions and theta 10,000,000. It checks positions and capacities,
+requires disjoint writable buffers and stages coefficients before publication.
+Caller pointer validity, extent, alignment and exclusive access are obligations.
+This does not implement image-position rotary semantics.
+
+Check: `psionic/check.sh` includes zero-survivor authority mutation and native
+plain/sanitized reference checks. See the
+[hybrid executor record](docs/verification/psionic-hybrid-executor-2026-10-29.md).
+
+## Psionic hybrid execution publishes a complete block
+
+`psionic/lib/qwen-model.coax` runs a caller-supplied ordered layer sequence.
+Linear layers process tokens causally and full-attention layers process the
+whole block against their live prefix. Coax validates matching state and layer
+shapes and stages activations, recurrent/convolution state and KV additions;
+a failed layer cannot publish partial output or state. Unused KV tails remain
+unchanged. Weight mapping, model identity and rotary positions remain caller
+obligations. The C adapter observes nested spans only; valid pointers, extents,
+alignment, immutable weights and exclusive access remain caller obligations.
+
+Check: `psionic/check.sh` includes independent nonzero linear and cached
+full-attention references, authority mutation and native plain/sanitized tests.
+This bounded executor alone does not establish complete model execution.
+
 ## Psionic decision blocks fork all live hybrid prefix state
 
 `psionic/lib/qwen-decision.coax` prepares every Q/K/V row in a current block

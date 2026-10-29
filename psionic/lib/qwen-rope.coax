@@ -1,0 +1,33 @@
+// Text-only Qwen3.5 rotary coefficients for the pinned decision models.
+#load "tensor.coax";
+#authority;
+QwStatus :: enum u8 {ok;range;capacity;alias;}
+QwResult :: struct {status:QwStatus;written:int;}
+#test "original theta frequencies and split-half coefficient layout" {
+    out:[129]f32;work:[128]f32;out[128]=-7;
+    r:=qw_rope(0,2,out[..],work[..],false);#assert r.status==QwStatus.ok && r.written==128 && out[128]==-7;
+    for i:0..<32 {#assert out[2*i]==1 && out[2*i+1]==0;}
+    #assert abs(out[64]-0.5403023f32)<0.000001f32 && abs(out[65]-0.84147098f32)<0.000001f32;
+    #assert abs(out[94]-0.99999986f32)<0.000001f32 && abs(out[95]-0.0005232991f32)<0.00000001f32;
+    #assert abs(out[126]-1)<0.000001f32 && abs(out[127]-0.00000016548171f32)<0.00000000001f32;
+    q:=qw_rope(16383,1,out[..],work[..],false);#assert q.status==QwStatus.ok;
+    #assert abs(out[0]-(-0.91883091f32))<0.000001f32 && abs(out[1]-0.39465144f32)<0.000001f32;
+}
+#test "position, counts and disjoint storage are checked before publication" {
+    #assert qw_valid(0,1) && qw_valid(16383,1) && qw_valid(0,16384);
+    #assert !qw_valid(-1,1) && !qw_valid(16384,1) && !qw_valid(0,0) && !qw_valid(16383,2) && !qw_valid(0,16385);
+    out:[64]f32;work:[64]f32;for i:0..<64 {out[i]=-7;}
+    #assert qw_rope(0,1,out[0..<63],work[..],false).status==QwStatus.capacity;
+    #assert qw_rope(0,1,out[..],work[0..<63],false).status==QwStatus.capacity;
+    #assert qw_rope(0,1,out[..],work[..],true).status==QwStatus.alias;
+    #assert qw_rope(-1,1,out[..],work[..],false).status==QwStatus.range;
+    for v:out {#assert v==-7;}
+}
+qw_valid :: (start:int,count:int)->bool {return start>=0 && count>=1 && count<=16384-start;}
+qw_rope :: (start:int,count:int,out:[]f32,work:[]f32,overlap:bool)->QwResult #export_c {
+    if !qw_valid(start,count) {return QwResult.{status=QwStatus.range};}
+    n:=64*count;if out.count<n || work.count<n {return QwResult.{status=QwStatus.capacity};}
+    if overlap {return QwResult.{status=QwStatus.alias};}
+    for t:0..<count {for i:0..<32 {phase:=f64(start+t)*exp(-log(10000000.0)*f64(2*i)/64);work[t*64+2*i]=f32(cos(phase));work[t*64+2*i+1]=f32(sin(phase));}}
+    for i:0..<n {out[i]=work[i];}return QwResult.{written=n};
+}
