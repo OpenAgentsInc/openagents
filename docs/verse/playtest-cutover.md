@@ -2,8 +2,19 @@
 
 Task `pt-cutover-plan` (#2086) of the Verse project
 (https://openagents.com/projects/verse). Written 2026-10-28 by
-claude-verse-18. The switch is the owner's decision after the parity review
-(`pt-parity-review`); nothing here has changed playtest.openagents.com.
+claude-verse-18. The switch was the owner's decision after the parity review
+(`pt-parity-review`).
+
+**Switched 2026-10-29, 02:33 CDT** (owner's go: once openagents.com/verse
+showed the old landing, which it does since the release with the playtest's
+orbs, field and glass button, and PLAYTEST NOW opening the Haunted House
+directly). T−15 import: every `held` equal to its `source` (events 1806,
+sessions 145, playtesters 31; 132 events added since the run before). The
+moved map was in after 21 s, the first clean pass came at 138 s and it
+settled (five clean passes) at 153 s. A headless visit to
+playtest.openagents.com landed on /verse, recorded its page view with
+`q: from=playtest`, and PLAYTEST NOW opened the house. Imports at T+1 h and
+T+24 h follow as in section 4.
 
 **In one line:** the switch changes only the URL map of the playtest's own
 load balancer, so every old address answers 301 to its place on
