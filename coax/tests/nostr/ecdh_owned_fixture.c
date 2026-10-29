@@ -48,6 +48,8 @@ int main(void){
  assert(coax_ecdh_owned_collect(h,output,31)==COAX_ECDH_OWNED_PENDING);assert(filled(output,0xa5,32));
  assert(coax_ecdh_owned_close(h)==COAX_ECDH_OWNED_PENDING);
  assert(coax_ecdh_owned_collect(h,output,32)==0);assert(!memcmp(output,peer,32));assert(coax_ecdh_owned_close(h)==0);
+ h=coax_ecdh_owned_acquire();assert(h);assert(coax_ecdh_owned_start(h,key,31,peer,32)==COAX_ECDH_OWNED_INVALID);
+ assert(coax_ecdh_owned_cancel(h)==COAX_ECDH_OWNED_CANCELLED);assert(coax_ecdh_owned_close(h)==COAX_ECDH_OWNED_INVALID);
  uint64_t old=h;h=coax_ecdh_owned_acquire();assert(h && h!=old);assert(coax_ecdh_owned_start(old,key,32,peer,32)==COAX_ECDH_OWNED_INVALID);
  assert(coax_ecdh_owned_start(h,key,32,invalid,32)==COAX_ECDH_OWNED_PEER);assert(coax_ecdh_owned_close(h)==0);
 #ifdef COAX_ECDH_OWNED_TEST_EFFECT
@@ -65,6 +67,12 @@ int main(void){
  uint8_t other[32];memset(other,0xa5,32);assert(coax_ecdh_owned_collect(h,other,32)==COAX_ECDH_OWNED_PENDING);assert(filled(other,0xa5,32));
  assert(coax_ecdh_owned_close(h)==COAX_ECDH_OWNED_PENDING);fail_next=1;assert(coax_ecdh_owned_retry(h)==COAX_ECDH_OWNED_PENDING);assert(!coax_ecdh_owned_acquire());
  assert(coax_ecdh_owned_retry(h)==COAX_ECDH_OWNED_EFFECT);assert(filled(output,0,32));assert(coax_ecdh_owned_close(h)==0);
+ h=coax_ecdh_owned_acquire();assert(coax_ecdh_owned_start(h,key,32,peer,32)==COAX_ECDH_OWNED_PENDING);
+ fail_next=1;assert(coax_ecdh_owned_cancel(h)==COAX_ECDH_OWNED_PENDING);
+ assert(coax_ecdh_owned_close(h)==COAX_ECDH_OWNED_PENDING);assert(coax_ecdh_owned_retry(h)==COAX_ECDH_OWNED_EFFECT);assert(coax_ecdh_owned_close(h)==0);
+ h=coax_ecdh_owned_acquire();assert(coax_ecdh_owned_start(h,key,32,peer,32)==COAX_ECDH_OWNED_PENDING);
+ memset(output,0xa5,32);fail_next=1;assert(coax_ecdh_owned_collect(h,output,32)==COAX_ECDH_OWNED_PENDING);assert(!memcmp(output,peer,32));
+ assert(coax_ecdh_owned_cancel(h)==COAX_ECDH_OWNED_CANCELLED);assert(filled(output,0,32));assert(coax_ecdh_owned_close(h)==0);
 #endif
  h=coax_ecdh_owned_acquire();assert(coax_ecdh_owned_start(h,key,32,peer,32)==COAX_ECDH_OWNED_PENDING);assert(coax_ecdh_owned_cancel(h)==COAX_ECDH_OWNED_CANCELLED);assert(coax_ecdh_owned_close(h)==0);
 #if !defined(__wasi__) && defined(COAX_ECDH_OWNED_TEST_EFFECT)

@@ -1,0 +1,165 @@
+{
+  "schema": "coax.ecdh-owned-lifecycle-evidence.v1",
+  "scope": "experimental controlled owner ABI and finite checked/release host observations; no hidden-copy, target or production approval",
+  "migration_commit": "a192dfca617d2581dabc70145d6b414b5f03576c",
+  "source_sha256": {
+    "coax/tests/nostr/ecdh_owned_fixture.c": "d24663dd8d424f117d4bf1d78c19b58411f5040ba1b4585b59fcdd63b49ab353",
+    "coax/tests/nostr/ecdh_owned_threads_wasm.c": "284b522fc58d7c1439599a68ab66628067c60731f331d8e3a2c536395a0f1d0b",
+    "coax/tests/nostr/ecdh_owned_threads_wasm.cjs": "039c64edbb1a703bfaa3c2e5c6ab18d38d80ad67737457359eef95e2d88d2dae",
+    "coax/tests/nostr/ecdh_owned_threads_wasm.py": "17d70b79a7604b591844b9967c067c2ab29ac5bec3c6f125a066ed83ebfa3e4e",
+    "coax/tests/nostr/ecdh_owned.py": "516a4b8558d9ae1fbdf9536a57aa74cc67aeef13020c0e53a35d288d9e1c5649",
+    "coax/lib/crypto/ecdh_lifecycle.coax": "567b504931a37333f7933ca11f06904a94ac3fb929bdcaae0388e89364fa4eba",
+    "coax/lib/crypto/platform/ecdh_owned.c": "b1c57dedeb78080cc15b9b7391d861d4cb7064e67cdc3150bd1055006a69a2ff",
+    "coax/lib/crypto/platform/ecdh_owned.h": "5b3aff2c6f207fccc900d8f4db7d25104055d271ced7b93e0f8df0e85b723720"
+  },
+  "prior_records": {
+    "prototype": "docs/verification/2026-10-29-ecdh-owned-prototype.json",
+    "prototype_sha256": "5864df6b43e6ec211656cccfd5d94347568ae10db51b970e547d4658e1256496",
+    "migration": "docs/verification/2026-10-29-ecdh-abi-migration.json",
+    "migration_sha256": "0e7c817a16c93066c0e0d5e6d489beec8ffdac0348e983178714ce458cecf8b9"
+  },
+  "policy_checks": 8,
+  "policy_mutants": 222,
+  "policy_killed": 222,
+  "policy_survived": 0,
+  "migrated_stage_checks": 107,
+  "migrated_stage_mutants": 1842,
+  "migrated_stage_killed": 1842,
+  "migrated_stage_survived": 0,
+  "host_fixture_logs": {
+    "direct_sha256": "7a99fb207ee0792c528be81630cddc2c43ffa67f8b54e34e13630ef86e6d398f",
+    "injected_sha256": "d82de8e010d61a7d0fa99c5347d757aa01ded9559bcc4de8ae3b8f372fb36adf",
+    "scope": "checked/release native, native ASan/UBSan and unshared Wasm; native contention and injected reentry"
+  },
+  "shared_wasm": {
+    "positive_report_sha256": "d55278c2a947d2c8eb58064439aa6697b7a6ff9b75da333b1c5ba69f7e02ab02",
+    "negative_report_sha256": "a04b23afd4cd4be8c2f782cf368845cff1854e1254b0fd9daeb24a9508f5a46a",
+    "positive": {
+      "schema": "coax.ecdh-shared-wasm-contention.v1",
+      "scope": "test-only shared-memory target; public artifact is unshared and target/production approval is not implied",
+      "negative_control": false,
+      "negative_host_sha256": null,
+      "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+      "compiler_version": "coax0 0.22.0",
+      "clang_version": "Homebrew clang version 23.1.4",
+      "inputs": {
+        "$REPO/coax/bin/coax": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+        "/opt/homebrew/opt/llvm/bin/clang": "5c51770b83a5407e507ad19fcfe1ec141deeb15f0d86312568915f3637f31f5a",
+        "/opt/homebrew/bin/wasm-ld": "4c6afc01e2cda45bd78412d6fadf140d94a84031647cdb05d75ad479145150b7",
+        "/opt/homebrew/bin/node": "92a0c4293164f55741d9b3fbf00bd61c50263ccfa847b583348f5eb5f64f6d08",
+        "/opt/homebrew/opt/python@3.15/bin/python3.15": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac",
+        "$REPO/coax/lib/crypto/platform/zeroize.c": "7f1767b1bd35a577a43b0c076e561fb7737f2bbe31bc89e903064bd457b9081a",
+        "$REPO/coax/lib/crypto/platform/ecdh_owned.c": "b1c57dedeb78080cc15b9b7391d861d4cb7064e67cdc3150bd1055006a69a2ff",
+        "$REPO/coax/lib/crypto/platform/ecdh_owned.h": "5b3aff2c6f207fccc900d8f4db7d25104055d271ced7b93e0f8df0e85b723720",
+        "$REPO/coax/tests/nostr/ecdh_owned_threads_wasm.c": "284b522fc58d7c1439599a68ab66628067c60731f331d8e3a2c536395a0f1d0b",
+        "$REPO/coax/tests/nostr/ecdh_owned_threads_wasm.cjs": "039c64edbb1a703bfaa3c2e5c6ab18d38d80ad67737457359eef95e2d88d2dae",
+        "$REPO/coax/tests/nostr/ecdh_owned_threads_wasm.py": "17d70b79a7604b591844b9967c067c2ab29ac5bec3c6f125a066ed83ebfa3e4e",
+        "$REPO/coax/lib/crypto/ecdh_owned_adapter.coax": "e52c179ee19e4b038fe924e3ea25c0b7c05bb940f7f6555e82bc564dcefc0d55",
+        "$REPO/coax/lib/crypto/ecdh.coax": "8bd78fccaa462d832e5c89621ac2159c78aa8035d4f13568783f3d195ad07c28",
+        "$REPO/coax/lib/crypto/secp_mult_const.coax": "948b31ef93663792305347ca5f65e22259c5777e783edf7b9502b09033de622b",
+        "$REPO/coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+        "$REPO/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+        "$REPO/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+        "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+        "$REPO/coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+        "$REPO/coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+        "$REPO/coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+        "$REPO/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+        "$REPO/coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915",
+        "$REPO/coax/lib/crypto/zeroize.coax": "158c6a3eb2c8139a1ac6059201dc26aae052b358cab580121335f774235df16c",
+        "$REPO/coax/lib/crypto/ecdh_lifecycle.coax": "567b504931a37333f7933ca11f06904a94ac3fb929bdcaae0388e89364fa4eba"
+      },
+      "modes": [
+        {
+          "mode": "checked",
+          "wasm_sha256": "141c5f67fdac9f0cac3c0e5755117607ba3ebf3d8669a906103fb1f901b4ec8a",
+          "observation": {
+            "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+            "shared": true,
+            "busy_calls": 5,
+            "output_unchanged": true,
+            "cancelled_and_closed": true,
+            "stack_boundary_canaries_unchanged": true
+          }
+        },
+        {
+          "mode": "release",
+          "wasm_sha256": "9d1834b33e028099b608496c4d130360857d373415123f76dfada8fc744a4c98",
+          "observation": {
+            "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+            "shared": true,
+            "busy_calls": 5,
+            "output_unchanged": true,
+            "cancelled_and_closed": true,
+            "stack_boundary_canaries_unchanged": true
+          }
+        }
+      ]
+    },
+    "negative": {
+      "schema": "coax.ecdh-shared-wasm-contention.v1",
+      "scope": "test-only shared-memory target; public artifact is unshared and target/production approval is not implied",
+      "negative_control": true,
+      "negative_host_sha256": "9fd90726ce305436f2b3aed30166be289e143e8e3e8669d12d62825227a5c57a",
+      "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+      "compiler_version": "coax0 0.22.0",
+      "clang_version": "Homebrew clang version 23.1.4",
+      "inputs": {
+        "$REPO/coax/bin/coax": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+        "/opt/homebrew/opt/llvm/bin/clang": "5c51770b83a5407e507ad19fcfe1ec141deeb15f0d86312568915f3637f31f5a",
+        "/opt/homebrew/bin/wasm-ld": "4c6afc01e2cda45bd78412d6fadf140d94a84031647cdb05d75ad479145150b7",
+        "/opt/homebrew/bin/node": "92a0c4293164f55741d9b3fbf00bd61c50263ccfa847b583348f5eb5f64f6d08",
+        "/opt/homebrew/opt/python@3.15/bin/python3.15": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac",
+        "$REPO/coax/lib/crypto/platform/zeroize.c": "7f1767b1bd35a577a43b0c076e561fb7737f2bbe31bc89e903064bd457b9081a",
+        "$REPO/coax/lib/crypto/platform/ecdh_owned.c": "b1c57dedeb78080cc15b9b7391d861d4cb7064e67cdc3150bd1055006a69a2ff",
+        "$REPO/coax/lib/crypto/platform/ecdh_owned.h": "5b3aff2c6f207fccc900d8f4db7d25104055d271ced7b93e0f8df0e85b723720",
+        "$REPO/coax/tests/nostr/ecdh_owned_threads_wasm.c": "284b522fc58d7c1439599a68ab66628067c60731f331d8e3a2c536395a0f1d0b",
+        "$REPO/coax/tests/nostr/ecdh_owned_threads_wasm.cjs": "039c64edbb1a703bfaa3c2e5c6ab18d38d80ad67737457359eef95e2d88d2dae",
+        "$REPO/coax/tests/nostr/ecdh_owned_threads_wasm.py": "17d70b79a7604b591844b9967c067c2ab29ac5bec3c6f125a066ed83ebfa3e4e",
+        "$REPO/coax/lib/crypto/ecdh_owned_adapter.coax": "e52c179ee19e4b038fe924e3ea25c0b7c05bb940f7f6555e82bc564dcefc0d55",
+        "$REPO/coax/lib/crypto/ecdh.coax": "8bd78fccaa462d832e5c89621ac2159c78aa8035d4f13568783f3d195ad07c28",
+        "$REPO/coax/lib/crypto/secp_mult_const.coax": "948b31ef93663792305347ca5f65e22259c5777e783edf7b9502b09033de622b",
+        "$REPO/coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+        "$REPO/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+        "$REPO/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+        "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+        "$REPO/coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+        "$REPO/coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+        "$REPO/coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+        "$REPO/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+        "$REPO/coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915",
+        "$REPO/coax/lib/crypto/zeroize.coax": "158c6a3eb2c8139a1ac6059201dc26aae052b358cab580121335f774235df16c",
+        "$REPO/coax/lib/crypto/ecdh_lifecycle.coax": "567b504931a37333f7933ca11f06904a94ac3fb929bdcaae0388e89364fa4eba"
+      },
+      "modes": [
+        {
+          "mode": "checked",
+          "wasm_sha256": "5b3ae9297f0655aba8b4d79ba42931db0a47a39e80d3e5388859593a2351fe9a",
+          "observation": {
+            "unlocked_control": "detected expected contention violation"
+          }
+        },
+        {
+          "mode": "release",
+          "wasm_sha256": "58853e964f55360efb29f69d5a6cd470721b268feee682d3cd10df85fec22c1e",
+          "observation": {
+            "unlocked_control": "detected expected contention violation"
+          }
+        }
+      ]
+    }
+  },
+  "historical_probe_refusals": [
+    "first shared-memory attempt omitted the exported memory required by the WASI helper",
+    "later attempt called the reactor initializer twice on shared state and trapped; the finite probe initializes once before the worker"
+  ],
+  "limitations": [
+    "controlled new artifact only; historical binaries and arbitrary raw-adapter builds remain outside the boundary",
+    "live aligned exclusive disjoint caller buffers and private output remain caller premises",
+    "bearer handle possession, one loaded process instance, stable runtime, synchronous whole-region wipe and absence of crash remain premises",
+    "shared-memory test uses a specific one-time initialization pattern and manually separated stacks; observed boundary canaries do not prove a general stack high-water bound",
+    "the published Wasm artifact is unshared; shared-memory build is a test-only probe",
+    "raw classified audit remains refused; conditional stage decision retains manual proof and tool premises",
+    "no hidden-copy erasure, general target/JIT timing or production-secret approval"
+  ]
+}
