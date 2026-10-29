@@ -6,6 +6,7 @@ CB_MAX_SLOTS :: 1572864;
 CB_MAX_CONTAINERS :: 131072;
 CB_MAX_STRING_LIVE :: 67108864;
 CB_MAX_STRING_WORK :: 268435456;
+CB_MAX_TRAVERSAL :: 134217728;
 
 #test "published defaults and storage limits are exact" {
  #assert CB_default_steps()==100000;
@@ -19,6 +20,12 @@ CB_MAX_STRING_WORK :: 268435456;
  #assert !CB_admit(67108864,1,CB_string_live_limit());
  #assert CB_admit(268435455,1,CB_string_work_limit());
  #assert !CB_admit(268435456,1,CB_string_work_limit());
+}
+#test "aggregate traversal limit is finite and exact" {
+ #assert CB_traversal_limit()==134217728;
+ #assert CB_admit(134217727,1,CB_traversal_limit());
+ #assert !CB_admit(134217728,1,CB_traversal_limit());
+ #assert !CB_admit(18446744073709551615,1,CB_traversal_limit());
 }
 #test "work input accepts decimal limits and refuses invalid values" {
  #assert CB_parse_steps("1")==1;
@@ -66,3 +73,5 @@ CB_container_limit :: ()->u64 #export_c {return CB_MAX_CONTAINERS;}
 
 CB_string_live_limit :: ()->u64 #export_c {return CB_MAX_STRING_LIVE;}
 CB_string_work_limit :: ()->u64 #export_c {return CB_MAX_STRING_WORK;}
+
+CB_traversal_limit :: ()->u64 #export_c {return CB_MAX_TRAVERSAL;}

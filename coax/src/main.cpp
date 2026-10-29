@@ -159,7 +159,7 @@ struct NativeTimings {
   std::string path,source_map;
   std::map<std::string,double> seconds;
   size_t generated_bytes=0;
-  uint64_t run_steps=100000, evaluated_steps=0, peak_slots=0, peak_containers=0, peak_string_bytes=0;
+  uint64_t run_steps=100000, evaluated_steps=0, peak_slots=0, peak_containers=0, peak_string_bytes=0, traversal_work=0;
   std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
 } g_timings;
 struct TimedPhase {
@@ -169,7 +169,7 @@ struct TimedPhase {
 };
 static int finish_profile(int status) {
   if(g_timings.path.empty()) return status;
-  std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"run_steps\":"<<g_timings.run_steps<<",\"evaluated_steps\":"<<g_timings.evaluated_steps<<",\"aggregate_peak_slots\":"<<g_timings.peak_slots<<",\"aggregate_peak_containers\":"<<g_timings.peak_containers<<",\"string_peak_bytes\":"<<g_timings.peak_string_bytes<<",\"seconds\":{";
+  std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"run_steps\":"<<g_timings.run_steps<<",\"evaluated_steps\":"<<g_timings.evaluated_steps<<",\"aggregate_peak_slots\":"<<g_timings.peak_slots<<",\"aggregate_peak_containers\":"<<g_timings.peak_containers<<",\"string_peak_bytes\":"<<g_timings.peak_string_bytes<<",\"aggregate_traversal_work\":"<<g_timings.traversal_work<<",\"seconds\":{";
   bool first=true;for(const auto &[phase,duration]:g_timings.seconds) {out<<(first?"":",")<<json_string(phase)<<":"<<duration;first=false;}
   out<<(first?"":",")<<"\"total\":"<<std::chrono::duration<double>(std::chrono::steady_clock::now()-g_timings.start).count()<<"}}\n";
   if(!write_file(g_timings.path,out.str())) {fprintf(stderr,"coax: cannot write timing report '%s'\n",g_timings.path.c_str());return 1;}return status;
@@ -246,7 +246,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
     file->library = library == 1 || (library == 2 && exports);
     file->metal = opts.metal;
     {TimedPhase phase{"check"};ok=check(arena,file);}
-    if(ok) {TimedPhase phase{"evaluate"};g_timings.run_steps=opts.run_steps;ok=evaluate(file,opts.run_steps,&g_timings.evaluated_steps);g_timings.peak_slots=file->ct_memory->peak_slots;g_timings.peak_containers=file->ct_memory->peak_containers;g_timings.peak_string_bytes=file->ct_memory->string_peak_bytes;}
+    if(ok) {TimedPhase phase{"evaluate"};g_timings.run_steps=opts.run_steps;ok=evaluate(file,opts.run_steps,&g_timings.evaluated_steps,&g_timings.traversal_work);g_timings.peak_slots=file->ct_memory->peak_slots;g_timings.peak_containers=file->ct_memory->peak_containers;g_timings.peak_string_bytes=file->ct_memory->string_peak_bytes;}
   }
   if (ok) {TimedPhase phase{"authority"};if(run_checks && file->authority)ok=run_all_checks(file,TEST_STEPS,false);}
   if (!ok && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
@@ -265,7 +265,7 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   else if (what == Output::header) *text = emit_header(&file);
   else if (what == Output::layout) *text = layout_report(&file);
   else if (what == Output::deps) {
-    *text="{\"schema_version\":1,\"run_steps\":" + std::to_string(opts.run_steps) + ",\"aggregate_slot_limit\":" + std::to_string(CtMemory::max_slots()) + ",\"aggregate_container_limit\":" + std::to_string(CtMemory::max_containers()) + ",\"string_live_byte_limit\":" + std::to_string(CB_string_live_limit()) + ",\"string_materialization_work_limit\":" + std::to_string(CB_string_work_limit()) + ",\"sources\":[";
+    *text="{\"schema_version\":1,\"run_steps\":" + std::to_string(opts.run_steps) + ",\"aggregate_slot_limit\":" + std::to_string(CtMemory::max_slots()) + ",\"aggregate_container_limit\":" + std::to_string(CtMemory::max_containers()) + ",\"aggregate_traversal_limit\":" + std::to_string(CB_traversal_limit()) + ",\"string_live_byte_limit\":" + std::to_string(CB_string_live_limit()) + ",\"string_materialization_work_limit\":" + std::to_string(CB_string_work_limit()) + ",\"sources\":[";
     bool first=true;
     for (const auto &unit:src.units) {*text+=(first?"":",")+json_string(unit->canonical);first=false;}
     *text+="],\"descriptors\":[";first=true;

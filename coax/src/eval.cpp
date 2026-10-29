@@ -132,6 +132,7 @@ struct Evaluator {
   File *file;
   uint64_t steps = 0, max_steps = CB_default_steps();
   uint64_t string_work = 0;
+  uint64_t traversal_work = 0, traversal_limit = CB_traversal_limit();
   uint32_t dependency_depth = 0;
   Loc current_loc{};
   bool failed = false;
@@ -165,6 +166,13 @@ struct Evaluator {
     }
     steps += cost;
     return true;
+  }
+
+  // A separate finite meter for aggregate traversal; it never changes the
+  // expression/statement step budget. Admit before visiting the next value.
+  void traverse() {
+    if (!CB_admit(traversal_work, 1, traversal_limit)) throw CtTraversalLimit{};
+    ++traversal_work;
   }
 
   // ---- values ----
@@ -204,6 +212,7 @@ struct Evaluator {
       field_defaults(d);
       v.agg = storage();
       for (const Field &f : d->fields) {
+        traverse();
         if (failed) return v;
         v.agg->push_back(f.init ? literal(f.init) : zero(f.type, loc));
       }
@@ -212,26 +221,28 @@ struct Evaluator {
       v.agg = storage();
       v.agg->reserve((size_t)t->length);
       Value element = zero(t->elem, loc);
-      for (int64_t i = 0; i < t->length && !failed; i++) v.agg->push_back(clone(element));
+      for (int64_t i = 0; i < t->length && !failed; i++) v.agg->push_back(clone(element, true));
     }
     return v;
   }
 
   // Aggregates copy deeply; views and strings keep sharing what they borrow.
-  Value clone(const Value &v) {
+  Value clone(const Value &v, bool nested = false) {
+    if (nested || is_aggregate(v.type)) traverse();
     Value c = v;
     if (is_aggregate(v.type) && v.agg) {
       c.agg = storage();
       c.agg->reserve(v.agg->size());
-      for (const Value &e : *v.agg) c.agg->push_back(clone(e));
+      for (const Value &e : *v.agg) c.agg->push_back(clone(e, true));
     }
     return c;
   }
 
   // Assignment writes into existing storage, so views of it see the change.
-  static void assign_into(Value &dst, const Value &src) {
+  void assign_into(Value &dst, const Value &src, bool nested = false) {
+    if (nested || is_aggregate(dst.type)) traverse();
     if (is_aggregate(dst.type) && dst.agg && src.agg) {
-      for (size_t i = 0; i < dst.agg->size(); i++) assign_into((*dst.agg)[i], (*src.agg)[i]);
+      for (size_t i = 0; i < dst.agg->size(); i++) assign_into((*dst.agg)[i], (*src.agg)[i], true);
     } else {
       dst = src;
     }
@@ -248,10 +259,11 @@ struct Evaluator {
     }
   }
 
-  bool contains_view(const Value &v) {
+  bool contains_view(const Value &v, bool nested = false) {
+    if (nested || is_aggregate(v.type) || v.type->kind == TypeKind::view) traverse();
     if (v.type->kind == TypeKind::view) return true;
     if (v.agg && is_aggregate(v.type))
-      for (const Value &e : *v.agg) if (contains_view(e)) return true;
+      for (const Value &e : *v.agg) if (contains_view(e, true)) return true;
     return false;
   }
 
@@ -305,6 +317,7 @@ struct Evaluator {
     d->defaults = 1;
     for (Field &f : d->fields) {
       if (!f.init || failed) continue;
+      traverse();
       CtFrame empty;
       Value v = expr(f.init, empty, false);
       freeze(f.init, v, f.init->loc);
@@ -713,6 +726,7 @@ struct Evaluator {
         Value v = zero(e->type, e->loc);
         for (const FieldInit &fi : e->fields) {
           if (failed) return {};
+          traverse();
           (*v.agg)[(size_t)fi.field] = expr(fi.value, frame, allow_calls);
         }
         return v;
@@ -723,6 +737,7 @@ struct Evaluator {
         v.agg = storage();
         for (Expr *a : e->args) {
           if (failed) return {};
+          traverse();
           v.agg->push_back(expr(a, frame, allow_calls));
         }
         return v;
@@ -892,7 +907,7 @@ struct Evaluator {
         if (s->name2.count) frame.locals.push_back({s->name2, {}, true});
         for (int64_t i = 0; i < count && !failed; i++) {
           frame.locals[mark].value = ct == &T_STRING ? scalar(&T_U8, (uint8_t)collection.s.data[i])
-                                                     : clone((*storage)[(size_t)(offset + i)]);
+                                                     : clone((*storage)[(size_t)(offset + i)], true);
           if (s->name2.count) frame.locals[mark + 1].value = scalar(T_INT, (uint64_t)i);
           Flow f = stmt(s->then_, frame, returned);
           if (f == Flow::ret) { frame.locals.resize(mark); return f; }
@@ -1064,6 +1079,7 @@ CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps) {
   evaluator.quiet = true;
   evaluator.max_steps = max_steps;
   try { return evaluator.check(check); }
+  catch (const CtTraversalLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate traversal limit exceeded"); }
   catch (const CtStringLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time string storage or work limit exceeded"); }
   catch (const CtLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate storage limit exceeded"); }
   catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time allocation failed"); }
@@ -1071,14 +1087,18 @@ CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps) {
   out.code = evaluator.fail_code; out.message = evaluator.fail_message; return out;
 }
 
-bool evaluate(File *file, uint64_t max_steps, uint64_t *used) {
+bool evaluate(File *file, uint64_t max_steps, uint64_t *used, uint64_t *traversed) {
   Evaluator evaluator{file};
   evaluator.max_steps = max_steps;
-  try { bool ok = evaluator.run(); if (used) *used = evaluator.steps; return ok; }
+  try { bool ok = evaluator.run(); if (used) *used = evaluator.steps;
+    if (traversed) *traversed = evaluator.traversal_work;
+    return ok; }
+  catch (const CtTraversalLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate traversal limit exceeded"); }
   catch (const CtStringLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time string storage or work limit exceeded"); }
   catch (const CtLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate storage limit exceeded"); }
   catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time allocation failed"); }
   if (used) *used = evaluator.steps;
+  if (traversed) *traversed = evaluator.traversal_work;
   return false;
 }
 

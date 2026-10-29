@@ -30,6 +30,7 @@ uint64_t CB_slot_limit(void);
 uint64_t CB_container_limit(void);
 uint64_t CB_string_live_limit(void);
 uint64_t CB_string_work_limit(void);
+uint64_t CB_traversal_limit(void);
 
 #ifdef __cplusplus
 }

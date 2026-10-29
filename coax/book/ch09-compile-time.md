@@ -725,6 +725,7 @@ the limits and the errors that go with them:
 | --- | --- | --- |
 | Evaluation work in one compile | 100,000 steps by default; `--run-steps N` selects up to 250,000,000 | `E0400` |
 | Live aggregate storage | 1,572,864 vector capacity slots and 131,072 containers | `E0400` |
+| Aggregate traversal | 134,217,728 value/field visits per frontend evaluation or individual check | `E0400` |
 | Owned cast-string storage | 67,108,864 live bytes per compile; 268,435,456 materialized bytes per frontend evaluation or individual check | `E0400` |
 | Nested compile-time calls | 64 | `E0403` |
 | Constants depending on constants | 64 deep | `E0403` |
@@ -743,10 +744,14 @@ keeps it through code emission. Each snapshot charges its length plus a
 terminator to live bytes and materialization work. Releasing its last owner
 returns the live bytes; cumulative work stays charged until that evaluation or
 check ends. Source strings and allocator metadata are outside these limits.
-Deep copies, aggregate assignment, view detection and struct initialization
-do not yet charge a step per traversed element. The storage limit counts live vectors, not cumulative copy work; a
-separate traversal budget is planned. The storage limits do not cover all
-compiler memory.
+Deep copies, aggregate assignment, view detection and struct or array
+initialization charge a separate traversal budget for each visited value or
+field, including work before a failure. This does not change the ordinary step
+counter. Each check, including all of its quantified cases, has its own
+traversal budget. `coax deps` records the limit and `--timings` reports frontend
+traversal work. Cleanup is not charged to this meter; live aggregate storage
+and the weak-storage registry are independently bounded. These limits do not
+cover all compiler memory or work.
 Views keep their storage alive, and cycles are cleared at compilation teardown;
 an unreachable cycle can use budget until then.
 

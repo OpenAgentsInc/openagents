@@ -184,6 +184,7 @@ const std::vector<Type> &all_composite_types();  // arrays and views, in creatio
 
 struct CtLimit {};
 struct CtStringLimit {};
+struct CtTraversalLimit {};
 struct CtStorage;
 struct CtString;
 struct CtMemory {
@@ -433,7 +434,7 @@ bool parse(Arena *arena, const Source *src, const std::vector<Token> &tokens, Fi
 
 bool check(Arena *arena, File *file);
 // Bounded, side-effect-free AST evaluation; no host I/O or foreign calls.
-bool evaluate(File *file, uint64_t max_steps, uint64_t *used = nullptr);
+bool evaluate(File *file, uint64_t max_steps, uint64_t *used = nullptr, uint64_t *traversed = nullptr);
 // Whether an expression contains a procedure call (whose effects order can observe).
 bool has_call(const Expr *e);
 
