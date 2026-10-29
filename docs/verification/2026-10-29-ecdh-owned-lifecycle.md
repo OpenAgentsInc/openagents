@@ -1,5 +1,10 @@
 # Owned ECDH scratch lifecycle
 
+**Source-audit security correction:** the historical aggregate-source acceptance
+or conditional decision in this record is superseded and untrusted until
+the exact graph and premises are revalidated with the corrected analyzer.
+See the [checked-cast advisory](2026-10-29-secret-audit-checked-cast.md).
+
 The controlled owner-only public artifacts introduced by the
 [ABI migration](2026-10-29-ecdh-abi-migration.md) do not accept a caller
 workspace. The host owns one statically initialized slot and tracks work,

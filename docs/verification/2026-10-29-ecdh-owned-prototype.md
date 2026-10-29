@@ -1,5 +1,10 @@
 # Experimental owned ECDH prototype
 
+**Source-audit security correction:** the historical aggregate-source acceptance
+or conditional decision in this record is superseded and untrusted until
+the exact graph and premises are revalidated with the corrected analyzer.
+See the [checked-cast advisory](2026-10-29-secret-audit-checked-cast.md).
+
 This is partial work toward the owned lifecycle, not completion of ECDH or
 approval for production secrets. The one-slot host has a private, statically
 initialized work region and separate result staging. A Coax state policy

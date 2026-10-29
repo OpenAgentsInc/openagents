@@ -1,5 +1,10 @@
 # Experimental ECDH public ABI migration
 
+**Source-audit security correction:** the historical aggregate-source acceptance
+or conditional decision in this record is superseded and untrusted until
+the exact graph and premises are revalidated with the corrected analyzer.
+See the [checked-cast advisory](2026-10-29-secret-audit-checked-cast.md).
+
 This is an explicit compatibility break for the experimental public ECDH
 build. The previous `ecdh_stage`, `coax_ecdh_raw` and `coax_ecdh_cleanup`
 entrypoints are not supplied by the new owner-only artifact. Existing binary

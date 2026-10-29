@@ -1,5 +1,10 @@
 # Reviewed guard binding for the variable-base source profile
 
+**Source-audit security correction:** historical aggregate-source results and
+conditional decisions in this record are superseded and untrusted until
+the exact graph and premises are revalidated with the corrected analyzer.
+See the [checked-cast advisory](2026-10-29-secret-audit-checked-cast.md).
+
 This opt-in decision covers the reviewed `smc_multiply` source profile conditionally. The classified auditor's output remains intact: `accepted=false`, `error=guard-obligations`, and all three secret-derived assertions remain visible. The separate `source_scope_decision` reports `source_scope_accepted=true` only when the exact reviewed registry entry matches. It does not approve emitted objects, Wasm or JIT timing, erasure, or production-secret use.
 
 The outer `run.py` launcher is an explicitly trusted reviewed code anchor. It pins the inner verifier and registry policy and checks their identities before and after running the verifier. Its own recorded hash cannot authenticate itself: changed launcher code requires independent review and trusted deployment. The inner `check.py` emits only a provisional registry match; it does not itself issue the source-scope decision. The launcher preserves the raw audit and validates the provisional result before producing the separate decision. Changed pinned inputs refuse; the registry is never silently refreshed.

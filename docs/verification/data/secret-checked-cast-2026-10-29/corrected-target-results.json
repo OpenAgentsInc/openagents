@@ -1,0 +1,161 @@
+{
+  "source_sha256": "31a13f2466189250f15c1b81470485c7b2ec3ac88a74bdb0f8656a97455faf21",
+  "compiler_sha256": "f335e7ec7b3f6d5966244a09aa8002b11b5ba607a1f673353c51effd9dab84a1",
+  "host_cc_sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+  "wasm_clang_sha256": "5c51770b83a5407e507ad19fcfe1ec141deeb15f0d86312568915f3637f31f5a",
+  "node_sha256": "92a0c4293164f55741d9b3fbf00bd61c50263ccfa847b583348f5eb5f64f6d08",
+  "results": [
+    [
+      "secret-check",
+      "checked_u",
+      false,
+      "unsupported"
+    ],
+    [
+      "secret-check",
+      "trunc_u",
+      true,
+      "accepted"
+    ],
+    [
+      "secret-check",
+      "checked_s",
+      false,
+      "type"
+    ],
+    [
+      "secret-check",
+      "checked_us",
+      false,
+      "unsupported"
+    ],
+    [
+      "secret-check",
+      "checked_wide",
+      false,
+      "unsupported"
+    ],
+    [
+      "secret-check",
+      "public-checked",
+      true,
+      "public-only"
+    ],
+    [
+      "public-view-check",
+      "checked_u",
+      false,
+      "unsupported"
+    ],
+    [
+      "public-view-check",
+      "trunc_u",
+      true,
+      "accepted"
+    ],
+    [
+      "public-view-check",
+      "checked_s",
+      false,
+      "type"
+    ],
+    [
+      "public-view-check",
+      "checked_us",
+      false,
+      "unsupported"
+    ],
+    [
+      "public-view-check",
+      "checked_wide",
+      false,
+      "unsupported"
+    ],
+    [
+      "public-view-check",
+      "public-checked",
+      true,
+      "public-only"
+    ],
+    [
+      "large-source-audit",
+      "checked_u",
+      false,
+      "unsupported"
+    ],
+    [
+      "large-source-audit",
+      "trunc_u",
+      true,
+      "accepted"
+    ],
+    [
+      "large-source-audit",
+      "checked_s",
+      false,
+      "type"
+    ],
+    [
+      "large-source-audit",
+      "checked_us",
+      false,
+      "unsupported"
+    ],
+    [
+      "large-source-audit",
+      "checked_wide",
+      false,
+      "unsupported"
+    ],
+    [
+      "large-source-audit",
+      "public-checked",
+      true,
+      "public-only"
+    ],
+    [
+      "checked",
+      "native",
+      8,
+      "passed"
+    ],
+    [
+      "checked",
+      "wasm",
+      8,
+      "passed"
+    ],
+    [
+      "checked",
+      "artifact_sha256",
+      {
+        "c": "dc1fbc1b42c03fb5b23de240ca96d3934d4409e1aaf1abd0aaa3700da9032239",
+        "native": "f92319c73dd14e84ad1e823acaf799028cde267981e97c59d6df04faa6d5d15f",
+        "wasm": "73efcfbd7e2780c278d70a9f3a4f40607702ab102b4e355745c1372de86f8a74",
+        "source_map": "566733b1d5768025e8787fd0ee71ccdb4ef96cc9363296e290e14e33082fe1c1"
+      }
+    ],
+    [
+      "release",
+      "native",
+      8,
+      "passed"
+    ],
+    [
+      "release",
+      "wasm",
+      8,
+      "passed"
+    ],
+    [
+      "release",
+      "artifact_sha256",
+      {
+        "c": "dc1fbc1b42c03fb5b23de240ca96d3934d4409e1aaf1abd0aaa3700da9032239",
+        "native": "f92319c73dd14e84ad1e823acaf799028cde267981e97c59d6df04faa6d5d15f",
+        "wasm": "73efcfbd7e2780c278d70a9f3a4f40607702ab102b4e355745c1372de86f8a74",
+        "source_map": "566733b1d5768025e8787fd0ee71ccdb4ef96cc9363296e290e14e33082fe1c1"
+      }
+    ]
+  ]
+}

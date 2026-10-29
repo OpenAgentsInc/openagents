@@ -1,0 +1,12 @@
+secret-check float_source type
+secret-check float_target unsupported
+secret-check enum_source type
+secret-check enum_target unsupported
+public-view-check float_source type
+public-view-check float_target unsupported
+public-view-check enum_source type
+public-view-check enum_target unsupported
+large-source-audit float_source type
+large-source-audit float_target unsupported
+large-source-audit enum_source type
+large-source-audit enum_target unsupported

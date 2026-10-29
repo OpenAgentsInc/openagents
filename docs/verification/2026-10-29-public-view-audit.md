@@ -1,5 +1,10 @@
 # Classified public-view source audit
 
+**Source-audit security correction:** historical aggregate-source results and
+conditional decisions in this record are superseded and untrusted until
+the exact graph and premises are revalidated with the corrected analyzer.
+See the [checked-cast advisory](2026-10-29-secret-audit-checked-cast.md).
+
 The separately namespaced `tools/coax-nostr/public-view-check/aggregate.py` provides the opt-in v2 classification. The legacy source auditor and the previously reviewed guard-binding registry retain their exact pinned sources; the prior conditional variable-base decision was rerun successfully under its own premises. The v2 classification models root views only under explicit caller-supplied premises: each view has the exact resolved element type, fixed extent and read or write access, and all views are live, aligned, initialized as classified, exclusive for the invocation and mutually disjoint from each other and all other reachable storage. The auditor does not verify physical pointers, lifetimes, overlap or caller classifications. Whole-region taint is monotone through aliases and writes; readonly views refuse writes. Unsupported aliases, view escape, unknown effects and secret-dependent branches or indices refuse. The all-secret default and v1 classification remain unchanged.
 
 The v2 manifest binds the exact entry, ordered resolved parameters and classifications, compiled source closure, compiler, checked-native library profile, auditor input hashes and the loaded audit artifact identity. Public-only procedures are analyzed with their transitive bodies and effects, and every actual argument and reached region must be public at the call; a name does not declassify data. The existing `_vartime` prohibition remains unconditional. Public assertions are still reported as obligations rather than assumed true.

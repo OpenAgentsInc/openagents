@@ -1,5 +1,10 @@
 # Total field arithmetic for the variable-base source path
 
+**Source-audit security correction:** historical aggregate-source results and
+conditional decisions in this record are superseded and untrusted until
+the exact graph and premises are revalidated with the corrected analyzer.
+See the [checked-cast advisory](2026-10-29-secret-audit-checked-cast.md).
+
 This candidate supplies separate fixed-work 8×32 add and multiply reducers for the variable-base group kernel. The pre-existing checked field helpers and exported normalization procedure remain in place. The new finish selects canonical infinity with the public peer-validity mask before converting the already canonical 8×32 result. Oversized raw peers still refuse before any field arithmetic. This is source and arithmetic evidence, not target-code timing, erasure or production-secret approval.
 
 Let B=2^32, M=2^256, c=B+977 and p=M-c. Each new reducer admits every eight-word u32 input. Addition forms a value below 2M, folds each high carry using M≡c (mod p), and performs two fixed folds before canonical selection. The first fold can carry for noncanonical inputs; the second cannot. Multiplication's schoolbook step has maximum (B-1)^2+2(B-1)=B²-1, so each u64 accumulator and carry fit. Its first high-word reduction has top at most c; two further folds produce a value below M. Canonical selection then subtracts p at most once. The unrolled fold is subject to the same word bounds. No existing assertion is removed from the checked helpers; the distinct total reducers handle inputs for which the checked add helper can refuse.

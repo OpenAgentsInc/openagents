@@ -1,5 +1,10 @@
 # Conditional ECDH public guard binding
 
+**Source-audit security correction:** the historical aggregate-source acceptance
+or conditional decision in this record is superseded and untrusted until
+the exact graph and premises are revalidated with the corrected analyzer.
+See the [checked-cast advisory](2026-10-29-secret-audit-checked-cast.md).
+
 The exact classified ECDH source audit still reports `accepted=false` with two public-unproved assertions at `secp_field.coax:239` and `:492`. A separately invoked reviewed registry can issue a conditional source-only decision for that exact graph, profile, tool and complete guard set. It does not change the raw audit or authorize ECDH use.
 
 The [proof](2026-10-29-ecdh-public-guards-proof.json) pins the source graph and replays the historical magnitude-eight normalization query with its exact query hash. It proves that loading every possible 32-byte peer produces the exact 256-bit value within 26/22-bit limb bounds, and that the twelve immutable field-chain entries satisfy their index and square-count bounds. Omitting the load mask and inserting an invalid chain index produce satisfiable controls. The [manual correspondence](2026-10-29-ecdh-public-guards-review.md) traces invalid and noncanonical peers through load, normalization, sqrt and finish. Independent review found no missed caller or binding issue under that trace. The earlier manually reviewed multiplication post-fold magnitude bound remains a premise rather than a new solver query.

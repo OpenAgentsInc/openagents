@@ -1,5 +1,15 @@
 # Larger secret-source inventory: partial profile
 
+**Security correction:** this is historical evidence for the original
+snapshot, which accepted a secret-dependent checked narrowing cast even
+though that cast can trap. Its prior mutation and source reviews did not
+establish secret-control-flow safety for casts. All three aggregate profiles
+were subsequently changed to refuse secret-origin checked casts
+conservatively, including widening casts; truncating casts and public inputs
+retain their prior treatment. Historical conditional decisions bound to the
+old tools must not be reused as current approvals. The signer refusal below
+was a refusal, not an acceptance.
+
 The experimental `tools/coax-nostr/large-source-audit/` profile admits up to
 32 ordered physical source units, each at most 65,536 bytes, with an unchanged
 262,144-byte aggregate source budget. Its graph-shape boundary admits at most
@@ -13,12 +23,14 @@ separate (`coax.secret-large-classification-views.v3`); live, stable, aligned,
 disjoint views and their classifications are caller premises.
 
 This is a **partial source-analysis profile**, not completion of #4828. The
-previous 16-unit profile and its historical refusals remain unchanged. The
+previous 16-unit profile and its historical refusals were unchanged at the
+time of this snapshot. The
 new profile still retains the old 8-level type bound, fixed view extents of
 1–1,024, 4,096 public interval bound, 64 reached procedures, 16 call depth,
 and existing visit and guard budgets. Unsupported constructs and exhausted
 budgets refuse. The exact copied dataflow/bridge changes are checked against
-the pinned prior profile by `test_correspondence.py`; this is a correspondence
+the pinned profile by `test_correspondence.py`; after the security correction
+that check pins the corrected v2 profile, not the historical one. It is a correspondence
 check, not a new proof of the inherited evaluator.
 
 On compiler `coax0 0.22.0` SHA-256

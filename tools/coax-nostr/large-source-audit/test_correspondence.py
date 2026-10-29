@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check exact scoped correspondence with the previously reviewed v2 profile."""
+"""Check scoped correspondence with the checked-cast-corrected v2 profile."""
 import hashlib
 import unittest
 from pathlib import Path
@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[3]
 OLD = ROOT/'tools/coax-nostr/public-view-check'
 NEW = Path(__file__).resolve().parent
 PINS = {
-    'aggregate.coax':'a01cf12169831c2892d1dbaf0d36c0e408b71da388e2b0d18704c656c8535794',
+    'aggregate.coax':'de5a4c08961d2364f61d01151aa2ad33874549ef1102411dbfa72c899fa16225',
     'bridge-aggregate.cpp':'ac56e8d614612532900a62462a6089e4c0de6f2857c57d8c52a98cd8cfb5754c',
     'check.py':'4a478426bcf468e5e4d319185bffce2b503ac62e3fc2ef4659cbb13d77656e6b',
     'aggregate.py':'6e3babd692fdb5a3ea351b6abf50ed9d33aef6856a9857d868d37c716ac9078d',

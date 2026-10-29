@@ -1,5 +1,10 @@
 # Binding the public-peer guard to the revised source
 
+**Source-audit security correction:** historical aggregate-source results and
+conditional decisions in this record are superseded and untrusted until
+the exact graph and premises are revalidated with the corrected analyzer.
+See the [checked-cast advisory](2026-10-29-secret-audit-checked-cast.md).
+
 This opt-in binding makes a separate conditional source-only decision for the revised `smc_multiply` profile. The live classified audit remains intact with `accepted=false` and one `public-unproved` assertion at `secp_field.coax:239`; the original audit is never rewritten as accepted. The binding accepts only that complete public guard record and the exact reviewed root, compiler profile, resolved types, classification, source and audit-tool graph, historical proof and solver, review records and runtime. The previous reviewed registry continues to refuse the changed graph. A default all-secret audit refuses the public-peer admission branch.
 
 The decision explicitly trusts the reviewed outer launcher as a local code anchor. Its recorded hash cannot authenticate the launcher itself, so a changed launcher requires independent review and trusted deployment. The launcher pins the inner verifier and policy before and after execution; the inner emits a provisional match, and only the launcher makes the separate conditional decision. It accepts no caller-supplied audit or proof and never refreshes the registry. Python and its native loader, the pinned compiler/toolchain and solver, and the operating system and stable local filesystem remain trusted. The proof child has a private working directory, a cleared environment and a path-and-hash-checked solver load before import; this does not attest a hostile operating system or transient replacement of trusted code.

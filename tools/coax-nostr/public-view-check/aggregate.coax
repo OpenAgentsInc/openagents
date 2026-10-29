@@ -338,7 +338,7 @@ AG_expr :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[]
   if n.op==52 {r.type=-3;if a.known {r.lo=ifx a.hi==0 then 1 else 0;r.hi=ifx a.lo!=0 then 0 else 1;}}
   else {r.known=false;}return r;}
  if n.kind==23 {a:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);b:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,depth+1);return AG_binary(a,b,n.op,memory,state,id);}
- if n.kind==30 {r:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);if AG_primitive_name(r.type)=="" {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}r.mask=AG_origin(r,memory);r.region=0;r.type=AG_type(nodes,roots,n.d,state);if r.type==-5 && r.known && (r.lo<0 || r.hi>255) {r.known=false;}return r;}
+ if n.kind==30 {r:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);if AG_primitive_name(r.type)=="" {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}r.mask=AG_origin(r,memory);if r.mask!=0 && !n.flag {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}r.region=0;r.type=AG_type(nodes,roots,n.d,state);if r.type==-5 && r.known && (r.lo<0 || r.hi>255) {r.known=false;}return r;}
  if n.kind==31 {condition:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);if AG_origin(condition,memory)!=0 {SC_fail(state,SC_BRANCH,id);return AgValue.{};}
   a:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,depth+1);b:=AG_expr(nodes,values,roots,types,n.c,env,memory,state,depth+1);if condition.known && condition.lo==condition.hi {return ifx condition.lo!=0 then a else b;}return AG_union(a,b,memory);}
  if n.kind==25 {base:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);

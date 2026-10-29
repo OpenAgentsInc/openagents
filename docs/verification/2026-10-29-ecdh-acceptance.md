@@ -1,5 +1,10 @@
 # X-only ECDH acceptance
 
+**Source-audit security correction:** the historical aggregate-source acceptance
+or conditional decision in this record is superseded and untrusted until
+the exact graph and premises are revalidated with the corrected analyzer.
+See the [checked-cast advisory](2026-10-29-secret-audit-checked-cast.md).
+
 The controlled owner-only public artifacts return raw 32-byte affine x for
 admitted x-only ECDH. They do not use libsecp256k1's default compressed-point
 hash. The independently generated fixtures compare the public artifact's

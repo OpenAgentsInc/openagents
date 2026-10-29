@@ -1,5 +1,10 @@
 # X-only ECDH candidate
 
+**Source-audit security correction:** the historical aggregate-source acceptance
+or conditional decision in this record is superseded and untrusted until
+the exact graph and premises are revalidated with the corrected analyzer.
+See the [checked-cast advisory](2026-10-29-secret-audit-checked-cast.md).
+
 This report records the historical candidate at commit `b7ab3d6d71424412097accd11baa42be17831c69`. The later [serialization change](2026-10-29-ecdh-serialization.md) has its own source hashes and evidence.
 
 This candidate computes the 32-byte affine x coordinate after a public x-only peer lift and strict scalar admission. It does not use libsecp256k1's default ECDH hash callback. The test harness derives NIP-44 conversation keys independently by HMAC-SHA-256 over that raw x with the `nip44-v2` salt; the candidate itself returns raw x and does not implement the NIP-44 key schedule.

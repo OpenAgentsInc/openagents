@@ -38,10 +38,15 @@ class PublicViews(unittest.TestCase):
         for cls,mask in [('public',0),('secret',1)]:
             p,baseline,m=self.source('read_'+cls,'candidate :: (v:[]u8)->u8 #export_c {return v[0];}', [('v','[] u8',cls,'read',2)])
             self.assertFalse(baseline['accepted']);r=self.audit(p,m,0);self.assertEqual(r['return_dependency_mask'],mask);self.assertIn('caller supplies live aligned',r['view_assumption'])
+    def test_checked_cast_on_secret_view(self):
+        p,_,m=self.source('secret_cast','candidate :: (v:[]u8)->u64 #export_c {return cast(u64)v[0];}', [('v','[] u8','secret','read',2)])
+        r=self.audit(p,m,5);self.assertEqual(r['error_name'],'unsupported');self.assertFalse(r['accepted'])
+        p,_,m=self.source('tainted_alias_cast','candidate :: (v:[]u8,x:u8)->u64 #export_c {w:[]u8=v[0..<1];v[0]=x;return cast(u64)w[0];}', [('v','[] u8','public','write',2),('x','u8','secret',None,0)])
+        r=self.audit(p,m,5);self.assertEqual(r['error_name'],'unsupported');self.assertFalse(r['accepted'])
     def test_taint_alias_and_readonly_effects(self):
         cases=[
           ('branch','candidate :: (v:[]u8)->u8 #export_c {if v[0]==0 {return 1;}return 2;}',[('v','[] u8','secret','read',2)],6),
-          ('index','candidate :: (v:[]u8,i:u64)->u8 #export_c {return v[cast(int)i];}',[('v','[] u8','public','read',2),('i','u64','secret',None,0)],7),
+          ('index','candidate :: (v:[]u8,i:u64)->u8 #export_c {return v[cast,trunc(int)i];}',[('v','[] u8','public','read',2),('i','u64','secret',None,0)],7),
           ('readonly','candidate :: (v:[]u8)->u8 #export_c {v[0]=1;return v[0];}',[('v','[] u8','public','read',2)],5),
           ('readonly_callee','write :: (v:[]u8)->u8 {v[0]=1;return 0;} candidate :: (v:[]u8)->u8 #export_c {return write(v);}',[('v','[] u8','public','read',2)],5),
           ('readonly_slice','write :: (v:[]u8)->u8 {v[0]=1;return 0;} candidate :: (v:[]u8)->u8 #export_c {w:[]u8=v[0..<1];return write(w);}',[('v','[] u8','public','read',2)],5),
@@ -100,12 +105,13 @@ class PublicViews(unittest.TestCase):
             replace(original);r=self.tool.audit(p,'candidate',classification=m,after_compile=lambda:replace(poison));self.assertEqual(r['error'],13,r);self.assertEqual(r['audit_artifact_sha256'],old_hash)
         finally:replace(original)
         self.assertEqual(self.audit(p,m,0)['return_dependency_mask'],1)
-    def test_real_ecdh_entry_remains_guarded(self):
+    def test_real_ecdh_entry_refuses_secret_checked_cast(self):
         p=ROOT/'coax/lib/crypto/ecdh.coax';base=self.tool.audit(p,'ecdh_stage')
         self.assertFalse(base['accepted']);self.assertEqual(base['error_name'],'unsupported')
         rows=[{'name':'secret','type':'[] u8','classification':'secret','view':{'element_type':'u8','extent':32,'access':'read'}},{'name':'peer','type':'[] u8','classification':'public','view':{'element_type':'u8','extent':32,'access':'read'}},{'name':'work','type':'[] EcdhScratch','classification':'public','view':{'element_type':'EcdhScratch','extent':1,'access':'write'}}]
         m={'schema':'coax.secret-large-classification-views.v3','entry':'ecdh_stage','sources':base['source_sha256'],'parameters':rows,'views_disjoint':True,'live_aligned_exclusive':True,'public_only':True,'compiler_sha256':self.tool.compiler_fingerprint,'audit_inputs':self.tool.inputs,'audit_artifact_sha256':metadata_sha(self.tool.artifact),'profile':'native-c-checked-library'}
-        r=self.tool.audit(p,'ecdh_stage',classification=m);self.assertEqual(r['error'],14,r);self.assertFalse(r['accepted']);self.assertLess(r['visited_nodes'],262144);self.assertEqual(r['return_dependency_mask'],1)
+        r=self.tool.audit(p,'ecdh_stage',classification=m);self.assertEqual(r['error'],5,r);self.assertFalse(r['accepted']);self.assertLess(r['visited_nodes'],262144)
+        self.assertTrue(r['file'].endswith('/crypto/bytes.coax'));self.assertEqual((r['line'],r['column']),(108,28))
         self.assertEqual([(g['line'],g['origin_mask']) for g in r['authored_guard_obligations']],[(239,0),(492,0)])
-        self.observations.append({'case':'real_ecdh_entry','expected':14,'report':r})
+        self.observations.append({'case':'real_ecdh_entry','expected':5,'report':r})
 if __name__=='__main__':unittest.main()
