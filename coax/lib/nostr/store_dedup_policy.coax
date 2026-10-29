@@ -1,0 +1,58 @@
+// Byte and quota policy only. This function neither verifies events nor owns
+// originals. Its caller must prove both exact immutable byte strings represent
+// the same independently verified event ID before applying any decision.
+#load "store_snapshot.coax";
+#authority;
+NsDuplicateDecision :: struct {ok:bool;replace:bool;bytes:int;}
+#test "same verified identity chooses the lowest exact byte string" {
+ a:=ns_duplicate_decide("b","a",1,1);#assert a.ok && a.replace && a.bytes==1;
+ b:=ns_duplicate_decide("a","b",1,1);#assert b.ok && !b.replace && b.bytes==1;
+ c:=ns_duplicate_decide("abc","abc",3,3);#assert c.ok && !c.replace && c.bytes==3;
+ #assert ns_duplicate_decide("abc","ab",3,3).replace;
+ #assert !ns_duplicate_decide("ab","abc",2,3).replace;
+ #assert ns_duplicate_decide("é","z",2,2).replace;
+ #assert ns_duplicate_decide("aca","aba",3,3).replace;
+ #assert !ns_duplicate_decide("aba","aca",3,3).replace;
+}
+#test "a winning replacement charges its size delta before publication" {
+ a:=ns_duplicate_decide("z","aa",7,8);#assert a.ok && a.replace && a.bytes==8;
+ b:=ns_duplicate_decide("z","aa",7,7);#assert !b.ok && !b.replace && b.bytes==0;
+ c:=ns_duplicate_decide("zz","a",7,7);#assert c.ok && c.replace && c.bytes==6;
+ d:=ns_duplicate_decide("a","zz",7,7);#assert d.ok && !d.replace && d.bytes==7;
+}
+#test "invalid or inconsistent quota inputs refuse without a decision" {
+ #assert !ns_duplicate_decide("","a",1,1).ok && !ns_duplicate_decide("a","",1,1).ok;
+ #assert !ns_duplicate_decide("a","b",-1,1).ok && !ns_duplicate_decide("ab","a",1,2).ok;
+ #assert !ns_duplicate_decide("a","b",1,-1).ok && !ns_duplicate_decide("a","b",2,1).ok;
+ #assert !ns_duplicate_decide("a","b",1,NS_LOG_MAX_BYTES+1).ok;
+}
+#test "the full byte quota still permits duplicates and shrinking representations" {
+ a:=ns_duplicate_decide("b","c",NS_LOG_MAX_BYTES,NS_LOG_MAX_BYTES);
+ #assert a.ok && !a.replace && a.bytes==NS_LOG_MAX_BYTES;
+ b:=ns_duplicate_decide("zz","a",NS_LOG_MAX_BYTES,NS_LOG_MAX_BYTES);
+ #assert b.ok && b.replace && b.bytes==NS_LOG_MAX_BYTES-1;
+}
+#test "both original size limits accept the exact boundary and refuse the next byte" {
+ big:[NS_FRAME_MAX_ORIGINAL+2]u8;big[0]='z';
+ at_limit:=cast(string)big[0..<NS_FRAME_MAX_ORIGINAL];above:=cast(string)big[0..<NS_FRAME_MAX_ORIGINAL+1];
+ #assert ns_duplicate_decide(at_limit,"a",NS_FRAME_MAX_ORIGINAL,NS_FRAME_MAX_ORIGINAL).ok;
+ #assert !ns_duplicate_decide(above,"a",NS_FRAME_MAX_ORIGINAL+1,NS_FRAME_MAX_ORIGINAL+1).ok;
+ #assert ns_duplicate_decide("a",at_limit,1,NS_LOG_MAX_BYTES).ok;
+ #assert !ns_duplicate_decide("a",above,1,NS_LOG_MAX_BYTES).ok;
+}
+// Lexicographic order of exact original UTF-8 bytes, not decoded text.
+ns_original_before :: (a:string,b:string)->bool {
+ i:=0;
+ while i<a.count && i<b.count {if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}i+=1;}
+ return a.count<b.count;
+}
+// bytes and quota count payload bytes, excluding frame headers; a duplicate
+// never increases record count. This policy returns a value and writes no data.
+ns_duplicate_decide :: (old:string,candidate:string,bytes:int,quota:int)->NsDuplicateDecision {
+ if old.count<1 || old.count>NS_FRAME_MAX_ORIGINAL || candidate.count<1 || candidate.count>NS_FRAME_MAX_ORIGINAL {return NsDuplicateDecision.{};}
+ if quota>NS_LOG_MAX_BYTES || bytes<old.count || bytes>quota {return NsDuplicateDecision.{};}
+ if !ns_original_before(candidate,old) {return NsDuplicateDecision.{ok=true,bytes=bytes};}
+ base:=bytes-old.count;
+ if candidate.count>quota-base {return NsDuplicateDecision.{};}
+ return NsDuplicateDecision.{ok=true,replace=true,bytes=base+candidate.count};
+}
