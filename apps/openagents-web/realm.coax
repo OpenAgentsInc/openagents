@@ -1026,7 +1026,7 @@ draw_edit :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
 // What a question to a character, and a lesson, do with your words.
 ASK_DISCLOSURE :: "Your question goes to our server, and Google's Gemini answers as the character. We save the question and the answer.";
 TEACH_DISCLOSURE :: "They remember it in this house: it is kept with your save.";
-PIECE_DISCLOSURE :: "Your sentence goes to our server, and Google's Gemini picks one of the Sandbox's set pieces for it: a flock of birds that follows you, a ring of lanterns, a grove of trees or a pond. We save the sentence and the piece.";
+PIECE_DISCLOSURE :: "Your sentence goes to our server, where Google's Gemini picks a flock of birds, lanterns, a grove or a pond for it. We save both.";
 
 // The typed box: the survey's question, or whom you ask or teach; what's
 // typed with a caret, SEND (ASK, TEACH) and CANCEL.
@@ -1172,7 +1172,8 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
   vertices = draw_others(r, v, out, vertices);
   // the map before edit mode's rows, so their plates lie over it
   if r[0].map { vertices = draw_map(r, v, out, vertices, uniforms); }
-  if v.editing { vertices = draw_edit(r, v, out, vertices); }
+  // a sentence being typed for a set piece hides the edit bars it would cover
+  if v.editing && !(r[0].typing && r[0].typing_for == TYPE_PIECE) { vertices = draw_edit(r, v, out, vertices); }
   else if v.offers > 0 && !r[0].map { vertices = draw_offer(r, v, out, vertices); }
   chatting := chat_shown(r, v);
   if chatting { vertices = draw_chat(r, v, out, vertices); }
@@ -1604,6 +1605,8 @@ view :: () -> RealmView { v: RealmView; v.ready = true; v.title = "Foyer"; v.que
   _ := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
   #assert r[0].shown[BTN_PIECE];
   #assert realm_key(r[..], v, 'p', 0, true) && realm_wants_text(r[..]) && realm_typing_for(r[..]) == TYPE_PIECE;
+  _ = realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert !r[0].shown[BTN_PIECE] && !r[0].shown[BTN_ITEM] && r[0].shown[BTN_SEND];   // the box, not the bars under it
   realm_type(r[..], "a flock of birds follows me");
   #assert realm_key(r[..], v, KEY_ENTER, 0, true) && realm_take(r[..]) == ASK_SEND && realm_typed(r[..]) == "a flock of birds follows me";
   // the Haunted House has no set pieces, and a picked thing's row takes the place

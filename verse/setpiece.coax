@@ -41,7 +41,7 @@ PIECE_HAS_SIZE :: [PIECES] bool.[false, true, true, true];
 PIECE_MESHES :: 9;
 MESH_CROW :: 0; MESH_BAT :: 1; MESH_LANTERN :: 2; MESH_TREE_ROUND :: 3; MESH_TREE_PINE :: 4; MESH_TREE_DEAD :: 5;
 MESH_BUSH :: 6; MESH_WATER :: 7; MESH_STONE :: 8;
-PIECE_MESH_NAMES :: [PIECE_MESHES] string.["Custom_Crow", "Custom_Bat", "Custom_JackOLantern", "Custom_Tree_Round", "Custom_Tree_Pine",
+PIECE_MESH_NAMES :: [PIECE_MESHES] string.["Custom_Crow", "Custom_Bat", "Custom_Moon", "Custom_Tree_Round", "Custom_Tree_Pine",
   "Custom_Tree_Dead", "Custom_Bush", "Custom_Ground", "Custom_Rock"];
 PIECE_MESH_LABELS :: [PIECE_MESHES] string.["Bird", "Bat", "Lantern", "Tree", "Pine", "Dead tree", "Bush", "Pond", "Stone"];
 
@@ -51,6 +51,7 @@ PIECE_MESH_LABELS :: [PIECE_MESHES] string.["Bird", "Bat", "Lantern", "Tree", "P
 PLACE_FLOATS :: 12;
 PLACES_MAX :: 40;
 MOTION_FLOCK :: 7;
+MOTION_BOB :: 3;   // the engine's gentle bob and turn (a lantern's)
 TAU :: 6.2831853;
 
 SetPiece :: struct { piece: int = -1; count: int = -1; kind: int = -1; colour: int = -1; size: int = -1; }
@@ -183,7 +184,7 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
     for i: 0..<q.count {
       a := (cast(f32) i + sp_next(r[..]) * 0.6f32) / cast(f32) q.count * TAU;
       ring := 1.8f32 + sp_next(r[..]) * 1.6f32;
-      n = sp_put(out, n, mesh, cos(a) * ring, 2.4f32 + sp_next(r[..]) * 1.4f32, sin(a) * ring, 0, ifx mesh == MESH_BAT then 1.1f32 else 1.5f32 + sp_next(r[..]) * 0.3f32,
+      n = sp_put(out, n, mesh, cos(a) * ring, 2.4f32 + sp_next(r[..]) * 1.4f32, sin(a) * ring, 0, ifx mesh == MESH_BAT then 0.9f32 else 1.1f32 + sp_next(r[..]) * 0.3f32,
                  1, 1, 1, 0, MOTION_FLOCK, false);
     }
   }
@@ -193,8 +194,8 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
     for i: 0..<q.count {
       a := turn + cast(f32) i / cast(f32) q.count * TAU;
       lx := cx + cos(a) * reach; lz := cz + sin(a) * reach;
-      // each faces the ring's middle: (sin yaw, cos yaw) = -(cos a, sin a)
-      n = sp_put(out, n, MESH_LANTERN, lx, 0, lz, -a - TAU / 4.0f32, 1.3f32, COLOUR_RGB[c], COLOUR_RGB[c + 1], COLOUR_RGB[c + 2], 1.0f32, 0, true);
+      // a glowing ball at head height that bobs and turns; it lights in its own colour, not its mesh's
+      n = sp_put(out, n, MESH_LANTERN, lx, 1.1f32, lz, a, 0.22f32, COLOUR_RGB[c], COLOUR_RGB[c + 1], COLOUR_RGB[c + 2], 1.0f32, MOTION_BOB, false);
     }
   }
   if q.piece == PIECE_GROVE {
@@ -217,18 +218,18 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
   }
   if q.piece == PIECE_POND {
     radius := verse_piece_pond_radius(q);
-    // The water: four squares turned a sixteenth of a turn apart, their
-    // corners on the rim, a sixteen-pointed shape the stones round off.
-    for k: 0..<4 {
-      n = sp_put(out, n, MESH_WATER, cx, 0.012f32 + cast(f32) k * 0.002f32, cz, cast(f32) k * TAU / 16.0f32, radius * 1.4142136f32, 0.18f32, 0.42f32, 0.62f32, 0.25f32, 0, false);
+    // The water: eight squares turned a thirty-second of a turn apart, their
+    // corners on the rim (never in less than 0.92 of it), the points under the stones.
+    for k: 0..<8 {
+      n = sp_put(out, n, MESH_WATER, cx, 0.012f32 + cast(f32) k * 0.001f32, cz, cast(f32) k * TAU / 32.0f32, radius * 1.4142136f32, 0.1f32, 0.27f32, 0.42f32, 0.06f32, 0, false);
     }
-    stones := sp_clamp(cast(int) (TAU * radius / 1.1f32), 8, 24);
+    stones := sp_clamp(cast(int) (TAU * radius / 0.9f32), 10, 28);
     turn := sp_next(r[..]) * TAU;
     for i: 0..<stones {
       a := turn + (cast(f32) i + sp_next(r[..]) * 0.4f32) / cast(f32) stones * TAU;
-      rr := radius + 0.1f32 + sp_next(r[..]) * 0.25f32;
+      rr := radius * 0.96f32 + sp_next(r[..]) * 0.15f32;
       g := 0.75f32 + sp_next(r[..]) * 0.25f32;
-      n = sp_put(out, n, MESH_STONE, cx + cos(a) * rr, 0, cz + sin(a) * rr, sp_next(r[..]) * TAU, 0.3f32 + sp_next(r[..]) * 0.3f32, g, g, g, 0, 0, true);
+      n = sp_put(out, n, MESH_STONE, cx + cos(a) * rr, 0, cz + sin(a) * rr, sp_next(r[..]) * TAU, 0.45f32 + sp_next(r[..]) * 0.3f32, g, g, g, 0, 0, true);
     }
     for i: 0..<3 {
       a := turn + 0.5f32 + cast(f32) i * 2.1f32;
@@ -320,7 +321,7 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
   for i: 0..<n {
     o := i * PLACE_FLOATS;
     dx := out[o + 1]; dz := out[o + 3] - 5.0;
-    #assert out[o] == cast(f32) MESH_LANTERN && abs(sqrt(dx * dx + dz * dz) - 3.0) < 0.01 && out[o + 9] == 1.0;
+    #assert out[o] == cast(f32) MESH_LANTERN && abs(sqrt(dx * dx + dz * dz) - 3.0) < 0.01 && out[o + 9] == 1.0 && out[o + 10] == cast(f32) MOTION_BOB && out[o + 11] == 0;
     #assert out[o + 6] == 0.45 && out[o + 7] == 1 && out[o + 8] == 0.45;   // green
   }
 }
@@ -328,14 +329,14 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
 #test "a pond: water within its rim, stones round it, and nothing for no piece" {
   out: [PLACES_MAX * PLACE_FLOATS] f32;
   n := verse_piece_layout(SetPiece.{piece = PIECE_POND, size = 2}, 99, 0, 0, 0, out[..]);
-  #assert n <= PLACES_MAX && n > 4 + 8;
+  #assert n <= PLACES_MAX && n > 8 + 10;
   water := 0; stones := 0;
   for i: 0..<n {
     o := i * PLACE_FLOATS;
     if out[o] == cast(f32) MESH_WATER { water += 1; #assert out[o + 11] == 0 && out[o + 5] * 0.5 * 1.4142136 <= 4.2001; }
     if out[o] == cast(f32) MESH_STONE { stones += 1; }
   }
-  #assert water == 4 && stones == 23;   // one every 1.1 m of a 4.2 m rim
+  #assert water == 8 && stones == 28;   // one every 0.9 m of a 4.2 m rim, at most 28
   #assert verse_piece_layout(SetPiece.{piece = -1}, 1, 0, 0, 0, out[..]) == 0;
   small: [2 * PLACE_FLOATS] f32;
   #assert verse_piece_layout(SetPiece.{piece = PIECE_FLOCK, count = 12}, 1, 0, 0, 0, small[..]) == 2;   // never past what it's given

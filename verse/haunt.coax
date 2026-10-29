@@ -341,11 +341,12 @@ verse_haunt_add :: (s:Haunt,mesh:int,id:string,name:string,x:f32,z:f32)->Haunt #
 }
 
 // A placed piece of the Sandbox's set pieces (verse/setpiece.coax): any
-// mesh, where and how it was laid out. A flock's bird (motion 7) keeps its
-// place round the flock, not the world's, so it isn't held to the walk.
+// mesh, where and how it was laid out, still or bobbing (motion 3). A
+// flock's bird (motion 7) keeps its place round the flock, not the world's,
+// so it isn't held to the walk.
 verse_haunt_put :: (s:Haunt,mesh:int,id:string,name:string,at:HauntPoint,yaw:f32,scale:f32,tint:HauntPoint,glow:f32,motion:int,solid:bool)->Haunt #export_c {
  next:=s;if mesh<0 || mesh>=s.mesh_count || s.entity_count>=s.entities.count || id.count==0 || (motion!=7 && !hh_walk(s,at.x,at.z)){return next;}
- e:HauntEntity;e.id=id;e.name=name;e.mesh=mesh;e.pos=at;e.yaw=yaw;e.scale=hh_clamp(scale,0.1,8);e.tint=tint;e.glow=hh_clamp(glow,0,2);e.motion=ifx motion==7 then 7 else 0;e.solid=solid && motion!=7;
+ e:HauntEntity;e.id=id;e.name=name;e.mesh=mesh;e.pos=at;e.yaw=yaw;e.scale=hh_clamp(scale,0.1,8);e.tint=tint;e.glow=hh_clamp(glow,0,2);e.motion=ifx motion==7 || motion==3 then motion else 0;e.solid=solid && motion!=7;
  if !hh_entity_ok(e,s.mesh_count){return next;}
  next.entities[next.entity_count]=e;next.entity_count+=1;next.dirty=true;return next;
 }
