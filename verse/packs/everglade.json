@@ -53,7 +53,7 @@
     "Wall_UnevenBrick_Straight",
     "Wall_UnevenBrick_Window_Wide_Round",
     "Wall_UnevenBrick_Door_Round",
-    "Window_Wide_Round1",
+    { "name": "Window_Wide_Round1", "glass": [-0.6, 1.05, 0.6, 2.62, -0.1] },
     "Door_1_Round",
     "Corner_Exterior_Wood",
     "Roof_RoundTiles_6x8",

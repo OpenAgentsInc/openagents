@@ -165,7 +165,7 @@ LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_WATER :
 // and mottled, moss on their tops (everglade.wgsl LOOK_ROCK), so a sunlit face isn't the brightest thing about.
 LOOK_ROCK :: 10;
 // What glows at night (everglade.wgsl): a lamp's or the brazier's flame (its colour times how lit the
-// lamps are, blooming), and the window panes, whose glass glows warm.
+// lamps are, blooming), and the windows, whose glass (the pack's glass_pane) glows warm.
 LOOK_FLAME :: 13; LOOK_WINDOW :: 14;   // (11 and 12 are the planks and the sawn wood)
 KIT_MESHES :: 52;
 KIT_MESH :: [52] string.["Pine_5", "Pine_5_Leaves", "Pine_4", "Pine_4_Leaves", "CommonTree_3", "CommonTree_3_Leaves",

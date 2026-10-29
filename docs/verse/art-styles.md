@@ -624,12 +624,21 @@ brazier (the kit's cauldron) on the commons. The nearest 16 to the eye (8 on a
 phone) go to the shader (`U_LIGHT_INFO`, `U_LIGHTS`), each pooling `(1 -
 (d/reach)²)²` of its warm colour on the ground and the walls, wrapped a little
 round each surface; how lit they are follows the key (none while the sun is
-above 0.45, all once the moon keys). The flames glow and bloom. The window
-panes are marked (`LOOK_WINDOW`) to glow warm at night, but the kit's panes
-mostly sit in the window walls' own meshes, so few glow yet: that is the next
-step. The commons' paving and the streets' dirt are darker and richer than
+above 0.45, all once the moon keys). The flames glow and bloom. The commons' paving and the streets' dirt are darker and richer than
 before (0.42 to 0.52 grey and 0.47 to 0.58 brown), so a sunlit square isn't the
 palest thing in the frame.
+
+**Built** (October 29, lit windows): the Medieval Village kit has no glass (its
+windows are open arches onto the room behind), so the pack adds one: the
+manifest gives `Window_Wide_Round1` a `glass` quad across its opening
+(`pack_realm.py glass_pane`, marked in its vertices' second spare word, its uv
+the pane's own). By day it is a dark pane with a little of the sky across its
+top. From dusk about two rooms in three light, each by where its window stands
+(the rest stay dark), a deep amber to pale gold brightest low in the pane,
+blooming, with the room's light on the frame and sill; the haze takes it with
+distance, so far windows are warm points. Seen from inside a room the pane is
+discarded, so you look out through it. Phone, the commons at night, 390×844
+at 3×: 5.2 ms GPU p50.
 
 ## Order of the work
 

@@ -387,6 +387,7 @@ fn place(id: u32, instance: u32) -> S {
   var cone = false;
   var ranger = false;
   var share = 0.0;
+  var glass = false;
   o.uv = vec2f(0.0);
   o.slice = 0u;
   o.dye = vec4f(0.0);
@@ -408,6 +409,7 @@ fn place(id: u32, instance: u32) -> S {
         share = f32(blob >> 24u) / 255.0;
         canopy = true;
       }
+      glass = vertices[b + 10u] == 1u;   // a window's glass (pack_realm.py glass_pane)
     }
     case 6u: {
       if (m.colour.z > 1.5) {
@@ -493,6 +495,13 @@ fn place(id: u32, instance: u32) -> S {
   o.normal = normalize(normal + vec3f(0.0, 0.00001, 0.0));
   o.tint = tint;
   o.look = select(select(select((u32(m.colour.w) / 8u) % 32u, LOOK_CANOPY, canopy), LOOK_FAR_CANOPY, cone), LOOK_CHARACTER, ranger);
+  if (o.look == LOOK_WINDOW) {
+    // a window: dye.x how bright its room is at night, from where the window stands (about a third
+    // stay dark), dye.y 1 on its glass and 0.5 on its frame, dye.z the room's warmth (dye.w stays 0,
+    // so person_dye leaves the texture as it is)
+    let h = fract(sin(dot(vec3f(m.r0.w, m.r1.w, m.r2.w), vec3f(12.9898, 4.1414, 78.233))) * 43758.547);
+    o.dye = vec4f(select(0.0, 0.6 + 0.4 * fract(h * 7.31), h < 0.66), select(0.5, 1.0, glass), fract(h * 13.7), 0.0);
+  }
   return o;
 }
 
@@ -693,15 +702,33 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
     let f = base * (0.35 + 7.0 * glow) * (0.85 + 0.3 * noise(vec2f(u.time * 6.0, s.world.y * 9.0 + s.world.x)));
     return Lit(vec4f(f, select(0.0, 0.9, glow > 0.05)), vec4f(0.0));
   }
+  if (s.look == LOOK_WINDOW && s.dye.y > 0.75) { return glass(s, front); }
   let lit = verse_style_contact(map_lit(s.world, n), 1.0 - shadow, st(4u).w);
   var res = paint(base, n, s.world, lit, s.look == LOOK_CHARACTER || s.look == 3u, true);
-  if (s.look == LOOK_WINDOW && tex.b > tex.r - 0.02) {
-    // a window's glass, lit from inside once the lamps are
-    let glow = u.light_info.y;
-    res.light = vec4f(res.light.rgb + vec3f(1.0, 0.6, 0.24) * 2.4 * glow, select(res.light.a, 0.8, glow > 0.05));
+  if (s.look == LOOK_WINDOW) {
+    // a lit room's light on its window's frame and sill
+    let spill = s.dye.x * u.light_info.y;
+    res.light = vec4f(res.light.rgb + base * room_warm(s.dye.z) * 0.9 * spill, res.light.a);
   }
   return res;
 }
+// A window's glass (seen from the street; from inside a room you look through it): by day a dark
+// pane with the sky's colour across its top, painted flat; from dusk most rooms light, a deep amber
+// brightest low in the pane where the hearth is, each its own warmth, blooming softly. The haze
+// still takes it with distance, less where the room is lit, so far windows are small warm points.
+fn glass(s: S, front: bool) -> Lit {
+  if (!front) { discard; }
+  let v = normalize(s.world - u.eye.xyz);
+  let up = clamp(s.uv.y, 0.0, 1.0);   // the pane's own uv: 0 at the sill, 1 at the arch
+  var c = mix(vec3f(0.035, 0.05, 0.065), st(5u).xyz * 0.45, 0.35 + 0.4 * up);
+  let room = s.dye.x * u.light_info.y;
+  c = mix(c, room_warm(s.dye.z) * (1.7 - 0.8 * up), clamp(room, 0.0, 1.0));
+  let fog = haze_share(length(u.eye.xyz - s.world), s.world.y);
+  c = mix(c, haze_colour(fog, v), fog * (1.0 - 0.6 * room));
+  return Lit(vec4f(c, select(0.0, 0.85, room > 0.05)), vec4f(0.0));
+}
+// A lit room's colour: deep amber to a paler gold.
+fn room_warm(k: f32) -> vec3f { return mix(vec3f(1.0, 0.36, 0.08), vec3f(1.0, 0.5, 0.16), k); }
 // The painterly light (spec 1 to 4): the wrapped key times what of it reaches (lit: the shadow map and
 // the movers' blobs) in three soft bands (two for a character), the shadow band the albedo under the
 // cool tinted ambient, the warm rim along silhouettes (not on a blade: a field edge on would all be

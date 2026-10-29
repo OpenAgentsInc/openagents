@@ -60,7 +60,9 @@ first 4 are its blob (docs/verse/art-styles.md, 7. Foliage): the direction
 from the canopy's centre (the middle of its bounds) as three signed bytes
 (n * 127; over the half sizes squared for an ellipsoid, then normalized),
 and its share of the tree's height (y over the leaves' top, 255ths), which
-the wind's sway scales by. A character's vertices follow the kit's, 32
+the wind's sway scales by. A window's glass (a mesh's "glass" in the manifest:
+x0, y0, x1, y1, z) is a quad added to its mesh, its vertices' second spare
+word 1 (glass_pane). A character's vertices follow the kit's, 32
 bytes each: position (3 x f32), the normal as three signed bytes (n / 127)
 with the layer in the fourth, uv (2 x f32), four joints (u8) and four
 weights (u8, 255ths summing to 255).
@@ -282,6 +284,21 @@ def canopy_colour(vertices, vstart, vend, layer_images):
             if px[i + 3] >= 90:
                 total[0] += lin[px[i]]; total[1] += lin[px[i + 1]]; total[2] += lin[px[i + 2]]; texels += 1
     return [round(1000 * total[k] / max(texels, 1) * colour[k] / max(n, 1)) for k in range(3)]
+
+
+def glass_pane(vertices, quad, layer):
+    """A window's glass (manifest: a mesh's "glass": [x0, y0, x1, y1, z]): one quad across its
+    opening facing +z (the wall's outer side), on the mesh's first vertex's layer, its uv the
+    pane's own 0 to 1 (the shader paints it, sampling nothing it shows), marked by a 1 in its
+    vertices' second spare word, which the realm's shader lights (the kit leaves the opening
+    empty). Returns its six indices."""
+    x0, y0, x1, y1, z = (float(v) for v in quad)
+    first = len(vertices) // 48
+    for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1)):
+        uv = struct.pack("<2f", (x - x0) / (x1 - x0), (y - y0) / (y1 - y0))
+        vertices += struct.pack("<3f", x, y, z) + struct.pack("<3f", 0.0, 0.0, 1.0) + uv
+        vertices += bytes([255, 255, 255, layer]) + bytes(4) + struct.pack("<I", 1) + bytes(4)
+    return [first, first + 1, first + 2, first, first + 2, first + 3]
 
 
 class Reader:
@@ -574,6 +591,8 @@ def build(manifest_path):
                 hi = [max(hi[k], p[k]) for k in range(3)]
                 vertices += raw[:35] + bytes([layers.index(layer)]) + bytes(12)
             indices.append(unique[raw])
+        if isinstance(item, dict) and "glass" in item:
+            indices += glass_pane(vertices, item["glass"], vertices[vstart * 48 + 35])
         line = f"M {name} {start} {len(indices) - start} {lic} " + " ".join(f"{x:.3f}" for x in lo + hi)
         if canopy_shape(name):
             canopy_blob(vertices, vstart, lo, hi, canopy_shape(name) == "ellipsoid")
