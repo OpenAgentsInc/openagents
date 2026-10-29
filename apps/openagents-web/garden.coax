@@ -9,7 +9,10 @@
 // and a dog that follows you by those paths. There is a ball
 // (verse/throw.coax): E picks it up, E or a click throws it the way the
 // camera looks (an arc shows where it will land), it bounces and rolls, and
-// the dog fetches it back to you.
+// the dog fetches it back to you. On the pedestal in the plaza stands a
+// vase: E beside it (verse/arrange.coax) brings the camera in close, where a
+// click on the vase puts a flower in it and a click on a flower takes it
+// out, then E, Escape or DONE hands the view back.
 //
 // The player walks on a flat floor and is drawn at the ground's height
 // where it stands: a step over a hill is a step over the flat, so the
@@ -27,6 +30,7 @@
 #load "analytics.coax";
 #load "../../verse/camera.coax";
 #load "../../verse/throw.coax";
+#load "../../verse/arrange.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 12000;
@@ -55,9 +59,9 @@ PATH_HALF :: 0.9;      // a path's half width
 // The shapes garden.wgsl draws, and how many of each one frame holds.
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4;
 SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];   // the ground's cell, then each shape
-SLOTS :: [5] int.[0, 128, 160, 48, 32];
-SLOT_AT :: [5] int.[0, 0, 128, 288, 336];
-OBJECTS :: 368;
+SLOTS :: [5] int.[0, 160, 200, 64, 32];
+SLOT_AT :: [5] int.[0, 0, 160, 360, 424];
+OBJECTS :: 456;
 OBJECT_FLOATS :: 16;   // rows r0, r1, r2 (an affine map from the shape), colour and shape + 8 * look
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_WATER :: 4;
 DRAWS :: 5;
@@ -100,6 +104,12 @@ Garden :: struct {
   button: Box;              // the phone's PICK UP or THROW, when it shows (x1 > x0)
   button_finger: int;       // the finger pressing it, or -1
   button_on: bool;
+  vase: Arrange;            // the close-up on the vase (arrange.coax)
+  point_x: f32; point_y: f32; point_on: bool;   // the mouse, in device pixels
+  tap: bool; tap_x: f32; tap_y: f32;            // a click or tap on the scene, for the next frame
+  palette: [ARRANGE_KINDS] Box;                 // the flower swatches, while arranging
+  done: Box;
+  finger: int; finger_x: f32; finger_y: f32; finger_travel: f32;   // one finger, while arranging
   // The scene.
   heights: [GROUND_POINTS] f32;
   objects: [OBJECTS * OBJECT_FLOATS] f32;
@@ -153,6 +163,14 @@ FLOWER_RGB :: [9] f32.[0.86, 0.2, 0.22,  0.95, 0.74, 0.2,  0.95, 0.94, 0.9];
 SPAWN_X :: 0.0; SPAWN_Z :: -18.0;
 DOG_X :: -1.5; DOG_Z :: -15.5;
 BALL_X :: 0.7; BALL_Z :: -16.9;
+// The vase on the pedestal: its foot on the pedestal's top, its opening.
+VASE_FOOT :: 0.97;
+VASE_OPEN :: 1.36;
+VASE_R :: 0.085;
+VASE_NEAR :: 2.4;      // metres from the pedestal's middle that E arranges it
+ARRANGE_KINDS :: 4;
+ARRANGE_RGB :: [12] f32.[0.88, 0.2, 0.24,  0.97, 0.76, 0.2,  0.96, 0.95, 0.9,  0.62, 0.38, 0.86];
+ARRANGE_NAMES :: [4] string.["RED", "GOLD", "WHITE", "VIOLET"];
 ARC_POINTS :: 28;
 
 // ---- small things
@@ -204,6 +222,15 @@ garden_start :: (s: [] Garden) {
   s[0].fetch.dog = verse_follower_place(ground(), s[0].heights[..], f32(DOG_X), f32(DOG_Z), 0);
   s[0].fetch.ball = verse_ball_place(ground(), s[0].heights[..], f32(BALL_X), f32(BALL_Z), 0.12);
   s[0].button_finger = -1;
+  s[0].finger = -1;
+  s[0].vase = verse_arrange_new(v3(0, f32(VASE_OPEN), 0), f32(VASE_R));
+  for i: 0..<5 {
+    a := f32(i) * 1.26 + 0.3;
+    s[0].vase = verse_arrange_pick(s[0].vase, i % ARRANGE_KINDS);
+    s[0].vase.stems[i] = Stem.{x = cos(a) * 0.045, z = sin(a) * 0.045, lean = 0.32, toward = yaw_of(cos(a), sin(a)), height = 0.4 + 0.06 * sin(f32(i) * 2.4), kind = i % ARRANGE_KINDS};
+  }
+  s[0].vase.count = 5;
+  s[0].vase = verse_arrange_pick(s[0].vase, 0);
   build_scenery(s);
 }
 
@@ -267,6 +294,8 @@ garden_key :: (s: [] Garden, key: int, mods: int) -> bool #export_c {
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
   if key == 'e' || key == 'E' { s[0].use = true; return true; }
+  if key == KEY_ESCAPE && s[0].vase.open { s[0].vase = verse_arrange_close(s[0].vase); return true; }
+  if s[0].vase.open && key >= '1' && key < '1' + ARRANGE_KINDS { s[0].vase = verse_arrange_pick(s[0].vase, key - '1'); return true; }
   b := hold_bit(key);
   if b == 0 { return false; }
   s[0].held = s[0].held | b;
@@ -280,7 +309,7 @@ garden_key_up :: (s: [] Garden, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-garden_blur :: (s: [] Garden) #export_c { s[0].held = 0; s[0].drag_on = false; }
+garden_blur :: (s: [] Garden) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].finger = -1; s[0].point_on = false; }
 
 in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 
@@ -289,6 +318,9 @@ in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && 
 // sticks), so this says it isn't used.
 garden_pointer :: (s: [] Garden, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { garden_start(s); }
+  if kind != 0 { s[0].touch = true; }
+  if verse_arrange_active(s[0].vase) { return arranging_pointer(s, x, y, phase, kind, id); }
+  if kind == 0 && phase <= 1 { s[0].point_x = x; s[0].point_y = y; s[0].point_on = true; }
   if kind != 0 {
     s[0].touch = true;
     if phase == 0 && in_box(s[0].button, x, y) { s[0].button_finger = id; s[0].button_on = true; return true; }
@@ -313,6 +345,42 @@ garden_pointer :: (s: [] Garden, x: f32, y: f32, phase: int, kind: int, id: int)
   return true;
 }
 
+// The swatch or DONE under a click or tap, if any: true when it took it.
+arranging_hud :: (s: [] Garden, x: f32, y: f32) -> bool {
+  if in_box(s[0].done, x, y) { s[0].vase = verse_arrange_close(s[0].vase); return true; }
+  for i: 0..<ARRANGE_KINDS {
+    if in_box(s[0].palette[i], x, y) { s[0].vase = verse_arrange_pick(s[0].vase, i); return true; }
+  }
+  return false;
+}
+
+// In the close-up a pointer is all the close-up's: it points (a mouse
+// hovers), a drag walks the view round the vase, and a click or tap on the
+// vase places or takes out a flower, or picks a swatch or DONE.
+arranging_pointer :: (s: [] Garden, x: f32, y: f32, phase: int, kind: int, id: int) -> bool {
+  k := hi(s[0].dpr, 0.5);
+  if kind == 0 { s[0].point_x = x; s[0].point_y = y; s[0].point_on = true; }
+  if phase == 0 {
+    if s[0].finger >= 0 && s[0].finger != id { return true; }
+    s[0].finger = id; s[0].finger_x = x; s[0].finger_y = y; s[0].finger_travel = 0;
+    return true;
+  }
+  if id != s[0].finger { return kind != 0; }
+  if phase == 1 {
+    dx := (x - s[0].finger_x) / k;
+    s[0].vase = verse_arrange_turn(s[0].vase, -dx * f32(LOOK_DRAG));
+    s[0].finger_travel += (abs(x - s[0].finger_x) + abs(y - s[0].finger_y)) / k;
+    s[0].finger_x = x; s[0].finger_y = y;
+    return true;
+  }
+  if phase == 2 && s[0].finger_travel < 8 && !arranging_hud(s, x, y) { s[0].tap = true; s[0].tap_x = x; s[0].tap_y = y; }
+  s[0].finger = -1;
+  return true;
+}
+
+// The face asks this before it moves you: in the close-up you stand still.
+garden_busy :: (s: [] Garden) -> bool #export_c { return verse_arrange_active(s[0].vase); }
+
 garden_wheel :: (s: [] Garden, dy: f32) #export_c {
   if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
 }
@@ -334,6 +402,12 @@ garden_controls :: (s: [] Garden, dt: f32, dyaw: f32, dpitch: f32) #export_c {
   s[0].key_y = axis(h, HOLD_FORWARD, HOLD_BACK);
   s[0].run = h & HOLD_RUN != 0;
   s[0].jump = h & HOLD_JUMP != 0;
+  if verse_arrange_active(s[0].vase) {
+    s[0].key_x = 0; s[0].key_y = 0; s[0].run = false; s[0].jump = false;
+    s[0].vase = verse_arrange_turn(s[0].vase, (dyaw + axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT) * 2.0 * clamp(dt, 0, 0.25)));
+    s[0].look_yaw = 0; s[0].look_pitch = 0;
+    return;
+  }
   o := verse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
   o = verse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
   s[0].orbit = o;
@@ -508,6 +582,9 @@ paths :: (u: [] f32) {
   u[U_PATH_INFO] = f32(n); u[U_PATH_INFO + 1] = f32(PATH_HALF);
 }
 
+// Close enough to the pedestal to arrange the vase.
+by_vase :: (you: Point) -> bool { return flat_length(v3(you.x, 0, you.z)) < f32(VASE_NEAR); }
+
 // Where you hold the ball: in your right hand, raised in front of you.
 your_hand :: (you: Point, face: f32) -> Point { return verse_hand(you, face, 0.42, 1.25, 0.3); }
 
@@ -521,6 +598,14 @@ throw_lift :: (o: Orbit) -> f32 { return clamp(0.42 - o.pitch * 0.7, 0.12, 1.0);
 play :: (s: [] Garden, you: Point, face: f32, vx: f32, vz: f32, dt: f32) {
   nodes := NODE_XZ; links := LINK_AB;
   b := s[0].fetch.ball;
+  if s[0].use && verse_arrange_active(s[0].vase) {
+    if s[0].vase.open { s[0].vase = verse_arrange_close(s[0].vase); } else { s[0].vase = verse_arrange_open(s[0].vase, s[0].orbit.yaw); }
+    s[0].use = false;
+  }
+  if s[0].use && b.held != 0 && !verse_ball_can_pick(b, you) && by_vase(you) {
+    s[0].vase = verse_arrange_open(s[0].vase, s[0].orbit.yaw);
+    s[0].use = false;
+  }
   if s[0].use {
     if b.held == 0 {
       b = verse_ball_throw(b, your_hand(you, face), s[0].orbit.yaw, throw_lift(s[0].orbit), v3(vx, 0, vz));
@@ -600,6 +685,10 @@ plate :: (s: [] Garden, u: [] f32, b: Box, alpha: f32, look: f32) {
 phone :: (s: [] Garden) -> bool { return s[0].touch || s[0].width / hi(s[0].dpr, 0.5) < 700; }
 
 hint :: (s: [] Garden) -> string {
+  if verse_arrange_active(s[0].vase) {
+    if phone(s) { return "TAP THE VASE TO ADD · TAP A FLOWER TO TAKE IT OUT · DRAG TURNS"; }
+    return "CLICK THE VASE TO ADD A FLOWER · CLICK A FLOWER TO TAKE IT OUT · DRAG TURNS · E OR ESC RETURNS";
+  }
   if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP JUMPS"; }
   return "WASD WALK · DRAG OR ARROWS TURN THE CAMERA · WHEEL ZOOMS · SPACE JUMPS · SHIFT RUNS";
 }
@@ -610,6 +699,7 @@ use_word :: (s: [] Garden) -> string {
   if b.held == 0 { return "THROW"; }
   you := add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z), 0));
   if verse_ball_can_pick(b, you) { return "PICK UP"; }
+  if by_vase(you) { return "ARRANGE"; }
   return "";
 }
 
@@ -618,7 +708,7 @@ prompt :: (s: [] Garden, out: [] f32, u: [] f32, n: int, above: f32) -> int {
   k := hi(s[0].dpr, 0.5);
   word := use_word(s);
   s[0].button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
-  if word.count == 0 { return n; }
+  if word.count == 0 || verse_arrange_active(s[0].vase) { return n; }
   m := n;
   cap := 9 * k;
   if phone(s) {
@@ -659,6 +749,7 @@ hud :: (s: [] Garden, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, p
   plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - small - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
   n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, small, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
   n = prompt(s, out, u, n, y1 - small - 20 * k);
+  n = arranging(s, out, u, n, y1 - small - 20 * k);
   if move_on {
     r := 46 * k;
     for i: 0..<32 {
@@ -669,6 +760,102 @@ hud :: (s: [] Garden, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, p
     if lit(out, n, kx - 0.01, ky, kx + 0.01, ky, 14 * k, 0.8, 6 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; }
   }
   return n;
+}
+
+// While arranging: the flower swatches and DONE, above the hint.
+arranging :: (s: [] Garden, out: [] f32, u: [] f32, n: int, above: f32) -> int {
+  k := hi(s[0].dpr, 0.5);
+  none := Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  s[0].done = none;
+  for i: 0..<ARRANGE_KINDS { s[0].palette[i] = none; }
+  if !s[0].vase.open { return n; }
+  m := n;
+  cap := 9 * k;
+  pad := 14 * k; gap := 8 * k; bh := 40 * k;
+  wide := 0.0f32;
+  for i: 0..<ARRANGE_KINDS { wide += text_width(ARRANGE_NAMES[i], cap) + 2 * pad + gap; }
+  dw := text_width("DONE", cap) + 2 * pad;
+  wide += dw;
+  scale := lo(1, (s[0].width - 32 * k) / hi(wide, 1));
+  x := (s[0].width - wide * scale) / 2;
+  y1 := above - 12 * k; y0 := y1 - bh;
+  for i: 0..<ARRANGE_KINDS {
+    word := ARRANGE_NAMES[i];
+    bw := (text_width(word, cap) + 2 * pad) * scale;
+    b := Box.{x0 = x, y0 = y0, x1 = x + bw, y1 = y1};
+    s[0].palette[i] = b;
+    on := s[0].vase.kind == i;
+    plate(s, u, b, ifx on then 0.95f32 else 0.75f32, ifx on then 2.0f32 else 0.0f32);
+    m = draw_text(out, m, word, (b.x0 + b.x1 - text_width(word, cap * scale)) / 2, (y0 + y1 + cap * scale) / 2, cap * scale, GAP, SPACE,
+                  ink(k, 0.95, ARRANGE_RGB[i * 3], ARRANGE_RGB[i * 3 + 1], ARRANGE_RGB[i * 3 + 2]), false, false);
+    x += bw + gap * scale;
+  }
+  b := Box.{x0 = x, y0 = y0, x1 = x + dw * scale, y1 = y1};
+  s[0].done = b;
+  plate(s, u, b, 0.9, 1);
+  m = draw_text(out, m, "DONE", (b.x0 + b.x1 - text_width("DONE", cap * scale)) / 2, (y0 + y1 + cap * scale) / 2, cap * scale, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  return m;
+}
+
+kind_of :: (k: int) -> int { if k < 0 { return 0; } if k >= ARRANGE_KINDS { return ARRANGE_KINDS - 1; } return k; }
+
+// The vase on the pedestal and the flowers in it; in the close-up, where
+// a click would put one (a pale bud) or which it would take out (lit up).
+vase :: (s: [] Garden) {
+  foot := f32(VASE_FOOT);
+  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(0, foot + 0.025, 0), 0, 0, 0.17, 0.05, 0.17, 0.2, 0.3, 0.52);
+  shape(s, SHAPE_SPHERE, LOOK_STONE, v3(0, foot + 0.16, 0), 0, 0, 0.27, 0.26, 0.27, 0.22, 0.34, 0.6);
+  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(0, foot + 0.3, 0), 0, 0, 0.15, 0.14, 0.15, 0.22, 0.34, 0.6);
+  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(0, f32(VASE_OPEN) - 0.012, 0), 0, 0, 0.21, 0.03, 0.21, 0.26, 0.38, 0.64);
+  shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(0, f32(VASE_OPEN) + 0.004, 0), 0, 0, 0.17, 0.004, 0.17, 0.06, 0.07, 0.05);
+  a := s[0].vase;
+  for i: 0..<a.count {
+    st := a.stems[i];
+    base := verse_arrange_base(a, i);
+    tip := verse_arrange_tip(a, i);
+    shape(s, SHAPE_BOX, LOOK_LEAVES, mix(base, tip, 0.5), st.toward, st.lean, 0.014, st.height, 0.014, 0.25, 0.5, 0.2);
+    leaf := mix(base, tip, 0.45);
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, add(leaf, v3(sin(st.toward + 1.2) * 0.03, 0, cos(st.toward + 1.2) * 0.03)), st.toward + 1.2, 0.5, 0.025, 0.012, 0.07, 0.25, 0.52, 0.22);
+    c := kind_of(st.kind);
+    lift := ifx a.hover == ARRANGE_TAKE && a.hover_stem == i then 1.35f32 else 1.0f32;
+    glow := ifx lift > 1 then 0.25f32 else 0.0f32;
+    r := lo(ARRANGE_RGB[c * 3] + glow, 1); g := lo(ARRANGE_RGB[c * 3 + 1] + glow, 1); bl := lo(ARRANGE_RGB[c * 3 + 2] + glow, 1);
+    shape(s, SHAPE_SPHERE, LOOK_MATTE, tip, st.toward, st.lean, 0.13 * lift, 0.06 * lift, 0.13 * lift, r, g, bl);
+    shape(s, SHAPE_SPHERE, LOOK_MATTE, add(tip, v3(0, 0.02, 0)), 0, 0, 0.04 * lift, 0.03 * lift, 0.04 * lift, 0.98, 0.84, 0.3);
+  }
+  if a.open && a.hover == ARRANGE_PLACE {
+    c := kind_of(a.kind);
+    shape(s, SHAPE_SPHERE, LOOK_MATTE, add(a.hover_at, v3(0, 0.04, 0)), 0, 0, 0.05, 0.05, 0.05,
+          0.5 + ARRANGE_RGB[c * 3] * 0.5, 0.5 + ARRANGE_RGB[c * 3 + 1] * 0.5, 0.5 + ARRANGE_RGB[c * 3 + 2] * 0.5);
+  }
+}
+
+// The ray under a point on the screen (device pixels) through this shot,
+// with garden's projection (view).
+screen_ray :: (s: [] Garden, shot: Shot, x: f32, y: f32) -> OrbitRay {
+  w := hi(s[0].width, 1); h := hi(s[0].height, 1);
+  aspect := w / h;
+  fy := clamp(aspect * 1.25, 0.95, 1.9);
+  return verse_shot_ray(shot, fy / aspect, fy, 2 * x / w - 1, 1 - 2 * y / h);
+}
+
+// The close-up's frame: the blend in or out, what the mouse points at, and
+// a click or tap placing or taking out a flower.
+close_up :: (s: [] Garden, live: Shot, t: f32, still: bool) -> Shot {
+  s[0].vase = verse_arrange_step(s[0].vase, t, still);
+  shot := verse_arrange_view(s[0].vase, live);
+  if !s[0].vase.open { s[0].tap = false; return shot; }
+  if s[0].tap {
+    s[0].vase = verse_arrange_point(s[0].vase, screen_ray(s, shot, s[0].tap_x, s[0].tap_y));
+    s[0].vase = verse_arrange_click(s[0].vase);
+    s[0].tap = false;
+  }
+  if s[0].point_on && !s[0].touch {
+    s[0].vase = verse_arrange_point(s[0].vase, screen_ray(s, shot, s[0].point_x, s[0].point_y));
+  } else {
+    s[0].vase.hover = ARRANGE_NONE; s[0].vase.hover_stem = -1;
+  }
+  return shot;
 }
 
 // ---- the frame
@@ -692,7 +879,7 @@ garden_frame :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f32, 
   if finite(speed) { s[0].stride += speed * t / 1.8; }
   shown := add(feet, v3(0, ground_at(s, feet.x, feet.z), 0));
 
-  shot := camera_frame(s, shown, vx, vz, t);
+  shot := close_up(s, camera_frame(s, shown, vx, vz, t), t, still);
 
   // The scene.
   for k: 0..<5 { s[0].counts[k] = 0; }
@@ -700,7 +887,10 @@ garden_frame :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f32, 
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   scenery(s, u);
   play(s, shown, face, vx, vz, t);
-  figure(s, u, shown, face, s[0].stride, act, s[0].fetch.ball.held == 0);
+  vase(s);
+  if !(s[0].vase.blend > 0.6 && flat_length(v3(shown.x, 0, shown.z)) < 1.3) {
+    figure(s, u, shown, face, s[0].stride, act, s[0].fetch.ball.held == 0);
+  }
   pup := s[0].fetch.dog;
   dog(s, u, pup.pos, pup.face, s[0].dog_stride, pup.walking);
   ball(s, u, shown, face);
@@ -862,6 +1052,63 @@ garden_store_cap :: (k: int) -> int #export_c {
   // Pressed and slid off, it doesn't fire.
   #assert garden_pointer(g[..], 300, 720, 0, 1, 9) && garden_pointer(g[..], 100, 720, 1, 1, 9) && !g[0].button_on;
   #assert garden_pointer(g[..], 100, 720, 2, 1, 9) && !g[0].use;
+}
+
+#test "E by the pedestal brings the close-up in; a click on the vase adds a flower, on a flower takes it out; DONE returns" {
+  g: [1] Garden;
+  out: [2000 * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  garden_start(g[..]);
+  g[0].width = 1280; g[0].height = 800; g[0].dpr = 1;
+  you := v3(0, 0, -1.8);
+  g[0].feet = you;
+  #assert use_word(g[..])[0] == 'A';
+  #assert garden_key(g[..], 'e', 0);
+  play(g[..], you, 0, 0, 0, 0.1);
+  #assert g[0].vase.open && garden_busy(g[..]);
+  live := Shot.{eye = v3(0, 2.5, -6), at = v3(0, 1.5, 0)};
+  shot := live;
+  for i: 0..<10 { shot = close_up(g[..], live, 0.1, false); }
+  #assert verse_arrange_ready(g[0].vase);
+  // Walking keys don't walk you.
+  #assert garden_key(g[..], 'w', 0);
+  garden_controls(g[..], 0.1, 0, 0);
+  #assert g[0].key_y == 0;
+  #assert garden_key_up(g[..], 'w', 0);
+  // Click the middle of the screen: the vase's opening (the close-up looks just above it).
+  before := g[0].vase.count;
+  centre := screen_ray(g[..], shot, 640, 400);
+  #assert dot(centre.dir, unit_or(sub(shot.at, shot.eye), v3(0, 0, 1))) > 0.9999;
+  open_at := v3(0.03, f32(VASE_OPEN), -0.02);
+  p := [4] f32.[0, 0, 0, 0];
+  // Project the spot to the screen, the way garden.wgsl does, then click there.
+  view(shot, 1280, 800, u[..], U_VIEW);
+  cx := u[U_VIEW] * open_at.x + u[U_VIEW + 1] * open_at.y + u[U_VIEW + 2] * open_at.z + u[U_VIEW + 3];
+  cy := u[U_VIEW + 4] * open_at.x + u[U_VIEW + 5] * open_at.y + u[U_VIEW + 6] * open_at.z + u[U_VIEW + 7];
+  cw := u[U_VIEW + 12] * open_at.x + u[U_VIEW + 13] * open_at.y + u[U_VIEW + 14] * open_at.z + u[U_VIEW + 15];
+  sx := (cx / cw + 1) * 0.5 * 1280; sy := (1 - cy / cw) * 0.5 * 800;
+  g[0].vase = verse_arrange_pick(g[0].vase, 3);
+  #assert garden_pointer(g[..], sx, sy, 0, 0, 1) && garden_pointer(g[..], sx, sy, 2, 0, 1);
+  shot = close_up(g[..], live, 0.016, false);
+  #assert g[0].vase.count == before + 1 && g[0].vase.stems[before].kind == 3;
+  #assert same(verse_arrange_base(g[0].vase, before), open_at, 0.01);
+  // Its head, clicked, takes it out.
+  tip := verse_arrange_tip(g[0].vase, before);
+  cx = u[U_VIEW] * tip.x + u[U_VIEW + 1] * tip.y + u[U_VIEW + 2] * tip.z + u[U_VIEW + 3];
+  cy = u[U_VIEW + 4] * tip.x + u[U_VIEW + 5] * tip.y + u[U_VIEW + 6] * tip.z + u[U_VIEW + 7];
+  cw = u[U_VIEW + 12] * tip.x + u[U_VIEW + 13] * tip.y + u[U_VIEW + 14] * tip.z + u[U_VIEW + 15];
+  #assert garden_pointer(g[..], (cx / cw + 1) * 640, (1 - cy / cw) * 400, 0, 0, 1) && garden_pointer(g[..], (cx / cw + 1) * 640, (1 - cy / cw) * 400, 2, 0, 1);
+  shot = close_up(g[..], live, 0.016, false);
+  #assert g[0].vase.count == before;
+  // DONE (drawn by the HUD) hands the view back.
+  n := arranging(g[..], out[..], u[..], 0, 760);
+  #assert n > 0 && g[0].done.x1 > g[0].done.x0;
+  for i: 0..<ARRANGE_KINDS { #assert g[0].palette[i].x1 > g[0].palette[i].x0 && g[0].palette[i].x1 <= g[0].done.x0; }
+  d := g[0].done;
+  #assert garden_pointer(g[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 0, 0, 1) && garden_pointer(g[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 2, 0, 1);
+  #assert !g[0].vase.open;
+  for i: 0..<10 { shot = close_up(g[..], live, 0.1, false); }
+  #assert !garden_busy(g[..]) && same(shot.eye, live.eye, 0.0001);
 }
 
 #test "the hint fits a phone" {

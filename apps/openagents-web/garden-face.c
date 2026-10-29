@@ -50,6 +50,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   dt = dt < 0 ? 0 : dt > 0.1f ? 0.1f : dt;
   now += dt;
   garden_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
+  bool busy = garden_busy(at(state));
+  if (busy) sticks = verse_sticks_reset();
   player = verse_player_input(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, g->run || sticks.run, g->jump || sticks.jump, 0, 0);
   player.theta = garden_player_theta(at(state));
   sticks = verse_sticks_used(sticks);

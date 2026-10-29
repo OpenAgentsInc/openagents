@@ -300,6 +300,24 @@ verse_orbit_toward :: (o: Orbit, s: Shot) -> Orbit #export_c {
   return next;
 }
 
+// Partway from one shot to another (eased): how a host blends into a
+// close-up and back out to its live camera without a jump.
+verse_shot_mix :: (a: Shot, b: Shot, t: f32) -> Shot #export_c {
+  k := ease(t);
+  return Shot.{eye = mix(a.eye, b.eye, k), at = mix(a.at, b.at, k)};
+}
+
+// The ray from the eye through a point on the screen: nx, ny from -1 to 1
+// (right, up), with the projection's horizontal and vertical scales fx, fy
+// (a point d ahead and x across lands at x * fx / d). What a click points at.
+verse_shot_ray :: (s: Shot, fx: f32, fy: f32, nx: f32, ny: f32) -> OrbitRay #export_c {
+  f := unit_or(sub(s.at, s.eye), v3(0, 0, 1));
+  r := unit_or(cross(f, v3(0, 1, 0)), v3(1, 0, 0));
+  up := cross(r, f);
+  d := add(f, add(times(r, nx / hi(fx, 0.0001)), times(up, ny / hi(fy, 0.0001))));
+  return OrbitRay.{from = s.eye, dir = unit_or(d, f), far = 1000};
+}
+
 // ---- Checks ----
 
 behind_you :: () -> Shot { return Shot.{eye = v3(0, 2.6, -4.2), at = v3(0, 1.6, 0)}; }
@@ -548,4 +566,23 @@ settled :: (o: Orbit) -> Orbit {
   back := verse_orbit_toward(verse_orbit_start(v3(2, 0, 2), 1), verse_orbit_shot(o));
   #assert same(verse_orbit_forward(back), verse_orbit_forward(o), 0.001);
   #assert verse_orbit_toward(o, Shot.{eye = v3(1, 1, 1), at = v3(1, 1, 1)}).yaw == o.yaw;
+}
+
+#test "a shot blends from one to the other and rests at both ends" {
+  a := behind_you(); b := Shot.{eye = v3(3, 2, 1), at = v3(0, 1, 0)};
+  #assert same(verse_shot_mix(a, b, 0).eye, a.eye, 0.00001) && same(verse_shot_mix(a, b, 1).at, b.at, 0.00001);
+  m := verse_shot_mix(a, b, 0.5);
+  #assert near(m.eye.x, 1.5, 0.0001);
+}
+
+#test "the screen's middle points along the shot, and its edges at the projection's edges" {
+  s := Shot.{eye = v3(0, 2, -4), at = v3(0, 2, 0)};
+  r := verse_shot_ray(s, 1.2, 1.5, 0, 0);
+  #assert same(r.dir, v3(0, 0, 1), 0.0001) && same(r.from, s.eye, 0.0001);
+  e := verse_shot_ray(s, 1.2, 1.5, 1, 1);
+  // A point on that ray, projected the way a host's view does, lands at (1, 1).
+  p := add(e.from, times(e.dir, 3));
+  f := v3(0, 0, 1); rr := unit_or(cross(f, v3(0, 1, 0)), v3(1, 0, 0)); up := cross(rr, f);
+  d := dot(f, sub(p, s.eye));
+  #assert near(dot(rr, sub(p, s.eye)) * 1.2 / d, 1, 0.0001) && near(dot(up, sub(p, s.eye)) * 1.5 / d, 1, 0.0001);
 }

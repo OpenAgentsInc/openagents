@@ -1,0 +1,289 @@
+// A close-up arranging view: the camera leaves the world and frames one
+// object up close (a vase on a pedestal), and you point at it to place small
+// things on it (flower stems in the vase's opening) or take them out, then
+// it hands the view back to the world's camera. The host keeps an Arrange
+// value and passes it back each frame:
+//   verse_arrange_new (the object: its opening's centre and radius),
+//   verse_arrange_open / verse_arrange_close, verse_arrange_step each frame,
+//   verse_arrange_view to blend its live camera with the close-up,
+//   verse_arrange_point with the ray under the pointer (verse_shot_ray),
+//   verse_arrange_click to place or take out what it points at,
+//   verse_arrange_turn to walk the view round the object, and
+//   verse_arrange_tip / verse_arrange_base to draw the stems.
+//   coax/bin/coax test --library verse/arrange.coax
+
+#load "camera.coax";
+
+ARRANGE_STEMS :: 24;
+ARRANGE_IN :: 0.7;          // seconds to blend into the close-up and out again
+ARRANGE_DIST :: 1.05;       // metres from the eye to what it looks at
+ARRANGE_PITCH :: 0.6;       // radians the close-up looks down into the opening
+ARRANGE_LIFT :: 0.2;       // it looks this far above the opening
+ARRANGE_HEAD :: 0.06;       // a stem's head, as a pointer target
+ARRANGE_SPREAD :: 0.85;     // stems stand within this much of the opening
+ARRANGE_REACH :: 2.0;       // a pointer this many radii out still means the opening
+ARRANGE_NONE :: 0;
+ARRANGE_PLACE :: 1;         // the pointer is on the opening: a click places a stem
+ARRANGE_TAKE :: 2;          // the pointer is on a stem: a click takes it out
+
+Stem :: struct {
+  x: f32; z: f32;           // where it stands in the opening, from its centre
+  lean: f32;                // radians from upright, outward
+  toward: f32;              // the yaw it leans toward
+  height: f32;
+  kind: int;                // which flower (the host's palette)
+}
+
+Arrange :: struct {
+  centre: Point;            // the opening's centre
+  radius: f32;
+  open: bool;
+  blend: f32;               // 0 the world's camera, 1 the close-up
+  yaw: f32;                 // the close-up looks this way (as an orbit's yaw)
+  stems: [ARRANGE_STEMS] Stem;
+  count: int;
+  kind: int;                // what a click places
+  hover: int;
+  hover_at: Point;
+  hover_stem: int;
+}
+
+verse_arrange_new :: (centre: Point, radius: f32) -> Arrange #export_c {
+  a: Arrange;
+  a.centre = centre;
+  a.radius = hi(radius, 0.01);
+  a.hover_stem = -1;
+  return a;
+}
+
+// Into the close-up, facing the way the world's camera faced (yaw), so the
+// blend is a move in, not a swing round.
+verse_arrange_open :: (a: Arrange, yaw: f32) -> Arrange #export_c {
+  next := a;
+  if !next.open && next.blend <= 0 { next.yaw = ifx finite(yaw) then wrap_angle(yaw) else 0.0f32; }
+  next.open = true;
+  return next;
+}
+
+verse_arrange_close :: (a: Arrange) -> Arrange #export_c {
+  next := a;
+  next.open = false;
+  next.hover = ARRANGE_NONE; next.hover_stem = -1;
+  return next;
+}
+
+verse_arrange_step :: (a: Arrange, dt: f32, reduced: bool) -> Arrange #export_c {
+  next := a;
+  t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  k := ifx reduced then 1.0f32 else t / f32(ARRANGE_IN);
+  next.blend = clamp01(ifx next.open then next.blend + k else next.blend - k);
+  return next;
+}
+
+// In the close-up (or blending): the world's camera should not take input.
+verse_arrange_active :: (a: Arrange) -> bool #export_c { return a.open || a.blend > 0; }
+
+// Far enough in that a click means the object.
+verse_arrange_ready :: (a: Arrange) -> bool #export_c { return a.open && a.blend >= 0.9; }
+
+verse_arrange_shot :: (a: Arrange) -> Shot #export_c {
+  at := add(a.centre, v3(0, f32(ARRANGE_LIFT), 0));
+  p := f32(ARRANGE_PITCH); d := f32(ARRANGE_DIST);
+  back := v3(-sin(a.yaw) * cos(p), sin(p), -cos(a.yaw) * cos(p));
+  return Shot.{eye = add(at, times(back, d)), at = at};
+}
+
+// What to draw: the world's live camera, the close-up, or between.
+verse_arrange_view :: (a: Arrange, live: Shot) -> Shot #export_c {
+  return verse_shot_mix(live, verse_arrange_shot(a), a.blend);
+}
+
+// Walks the view round the object: + turns it left, like an orbit's look.
+verse_arrange_turn :: (a: Arrange, dyaw: f32) -> Arrange #export_c {
+  next := a;
+  if finite(dyaw) { next.yaw = wrap_angle(next.yaw + dyaw); }
+  return next;
+}
+
+verse_arrange_pick :: (a: Arrange, kind: int) -> Arrange #export_c { next := a; next.kind = kind; return next; }
+
+verse_arrange_base :: (a: Arrange, i: int) -> Point #export_c {
+  if i < 0 || i >= a.count { return a.centre; }
+  s := a.stems[i];
+  return add(a.centre, v3(s.x, 0, s.z));
+}
+
+verse_arrange_tip :: (a: Arrange, i: int) -> Point #export_c {
+  if i < 0 || i >= a.count { return a.centre; }
+  s := a.stems[i];
+  up := v3(sin(s.lean) * sin(s.toward), cos(s.lean), sin(s.lean) * cos(s.toward));
+  return add(verse_arrange_base(a, i), times(up, s.height));
+}
+
+// How far along the ray it meets a ball round c of radius r, or -1.
+ray_ball :: (r: OrbitRay, c: Point, radius: f32) -> f32 {
+  o := sub(r.from, c);
+  b := dot(o, r.dir);
+  q := dot(o, o) - radius * radius;
+  h := b * b - q;
+  if h < 0 { return -1; }
+  t := -b - sqrt(h);
+  if t < 0 { return -1; }
+  return t;
+}
+
+// What the pointer is on: a stem's head (nearest first), else the opening
+// (generously: a pointer just off its rim means its edge), else nothing.
+verse_arrange_point :: (a: Arrange, ray: OrbitRay) -> Arrange #export_c {
+  next := a;
+  next.hover = ARRANGE_NONE; next.hover_stem = -1;
+  if !next.open || !finite3(ray.from) || !finite3(ray.dir) { return next; }
+  best := 1000000.0f32;
+  for i: 0..<next.count {
+    t := ray_ball(ray, verse_arrange_tip(next, i), f32(ARRANGE_HEAD) * 1.4);
+    if t >= 0 && t < best { best = t; next.hover_stem = i; }
+  }
+  if next.hover_stem >= 0 { next.hover = ARRANGE_TAKE; next.hover_at = verse_arrange_tip(next, next.hover_stem); return next; }
+  if ray.dir.y > -0.0001 { return next; }
+  t := (next.centre.y - ray.from.y) / ray.dir.y;
+  if t < 0 { return next; }
+  p := add(ray.from, times(ray.dir, t));
+  off := v3(p.x - next.centre.x, 0, p.z - next.centre.z);
+  d := flat_length(off);
+  if d > next.radius * f32(ARRANGE_REACH) { return next; }
+  room := next.radius * f32(ARRANGE_SPREAD);
+  if d > room { off = times(off, room / d); }
+  next.hover = ARRANGE_PLACE;
+  next.hover_at = add(next.centre, off);
+  return next;
+}
+
+// Places a stem where the pointer is, leaning out the further from the
+// middle it stands, or takes out the stem it is on. A full vase refuses.
+verse_arrange_click :: (a: Arrange) -> Arrange #export_c {
+  next := a;
+  if !verse_arrange_ready(next) { return next; }
+  if next.hover == ARRANGE_TAKE && next.hover_stem >= 0 && next.hover_stem < next.count {
+    for i: next.hover_stem..<next.count - 1 { next.stems[i] = next.stems[i + 1]; }
+    next.count -= 1;
+    next.hover = ARRANGE_NONE; next.hover_stem = -1;
+    return next;
+  }
+  if next.hover != ARRANGE_PLACE || next.count >= ARRANGE_STEMS { return next; }
+  s: Stem;
+  s.x = next.hover_at.x - next.centre.x;
+  s.z = next.hover_at.z - next.centre.z;
+  out := clamp01(flat_length(v3(s.x, 0, s.z)) / next.radius);
+  s.lean = 0.08 + 0.5 * out;
+  s.toward = ifx out > 0.05 then yaw_of(s.x, s.z) else f32(next.count) * 2.4;
+  s.height = 0.4 + 0.07 * sin(f32(next.count) * 2.399 + 1);
+  s.kind = next.kind;
+  next.stems[next.count] = s;
+  next.count += 1;
+  next.hover = ARRANGE_NONE;
+  return next;
+}
+
+// ---- Checks ----
+
+arrange_vase :: () -> Arrange { return verse_arrange_new(v3(0, 1.3, 0), 0.1); }
+
+arrange_opened :: () -> Arrange {
+  a := verse_arrange_open(arrange_vase(), 0.4);
+  for i: 0..<30 { a = verse_arrange_step(a, 0.05, false); }
+  return a;
+}
+
+// The ray from the close-up's eye to p.
+arrange_from_eye :: (a: Arrange, p: Point) -> OrbitRay {
+  e := verse_arrange_shot(a).eye;
+  return OrbitRay.{from = e, dir = unit_or(sub(p, e), v3(0, -1, 0)), far = 1000};
+}
+
+#test "opening blends from the live camera into the close-up and closing back" {
+  live := Shot.{eye = v3(0, 2.5, -5), at = v3(0, 1.5, 0)};
+  a := verse_arrange_open(arrange_vase(), 0.4);
+  #assert verse_arrange_active(a) && !verse_arrange_ready(a);
+  #assert same(verse_arrange_view(a, live).eye, live.eye, 0.0001);
+  a = verse_arrange_step(a, 0.35, false);
+  mid := verse_arrange_view(a, live);
+  #assert !same(mid.eye, live.eye, 0.01) && !same(mid.eye, verse_arrange_shot(a).eye, 0.01);
+  for i: 0..<10 { a = verse_arrange_step(a, 0.1, false); }
+  #assert verse_arrange_ready(a) && same(verse_arrange_view(a, live).eye, verse_arrange_shot(a).eye, 0.0001);
+  a = verse_arrange_close(a);
+  #assert verse_arrange_active(a);
+  for i: 0..<10 { a = verse_arrange_step(a, 0.1, false); }
+  #assert !verse_arrange_active(a) && same(verse_arrange_view(a, live).eye, live.eye, 0.0001);
+  // Reduced motion cuts.
+  b := verse_arrange_step(verse_arrange_open(arrange_vase(), 0), 0.01, true);
+  #assert verse_arrange_ready(b);
+}
+
+#test "the close-up looks down into the opening from the side the camera was on" {
+  a := arrange_opened();
+  s := verse_arrange_shot(a);
+  d := sub(s.at, s.eye);
+  #assert d.y < 0 && near(length(d), f32(ARRANGE_DIST), 0.0001);
+  #assert near(yaw_of(d.x, d.z), 0.4, 0.0001);
+  #assert s.eye.y > a.centre.y + 0.5;
+  // Turning walks it round.
+  b := verse_arrange_turn(a, 1.0);
+  d2 := sub(verse_arrange_shot(b).at, verse_arrange_shot(b).eye);
+  #assert near(yaw_of(d2.x, d2.z), 1.4, 0.0001);
+}
+
+#test "a click on the opening places a stem there; a click on its head takes it out" {
+  a := arrange_opened();
+  spot := add(a.centre, v3(0.05, 0, 0.02));
+  a = verse_arrange_point(a, arrange_from_eye(a, spot));
+  #assert a.hover == ARRANGE_PLACE && same(a.hover_at, spot, 0.001);
+  a = verse_arrange_pick(a, 2);
+  a = verse_arrange_click(a);
+  #assert a.count == 1 && a.stems[0].kind == 2;
+  #assert same(verse_arrange_base(a, 0), spot, 0.001);
+  // It stands up out of the vase, leaning outward.
+  tip := verse_arrange_tip(a, 0);
+  #assert tip.y > a.centre.y + 0.3 && tip.x > spot.x;
+  a = verse_arrange_point(a, arrange_from_eye(a, tip));
+  #assert a.hover == ARRANGE_TAKE && a.hover_stem == 0;
+  a = verse_arrange_click(a);
+  #assert a.count == 0;
+}
+
+#test "a pointer just off the rim means its edge; far off means nothing" {
+  a := arrange_opened();
+  a = verse_arrange_point(a, arrange_from_eye(a, add(a.centre, v3(0.15, 0, 0))));
+  #assert a.hover == ARRANGE_PLACE && near(a.hover_at.x - a.centre.x, 0.1 * f32(ARRANGE_SPREAD), 0.0001);
+  a = verse_arrange_point(a, arrange_from_eye(a, add(a.centre, v3(0.6, 0, 0))));
+  #assert a.hover == ARRANGE_NONE;
+  a = verse_arrange_click(a);
+  #assert a.count == 0;
+  // Pointing up at the sky is nothing too.
+  a = verse_arrange_point(a, OrbitRay.{from = v3(0, 2, -1), dir = v3(0, 1, 0), far = 10});
+  #assert a.hover == ARRANGE_NONE;
+}
+
+#test "clicks before the view arrives, or into a full vase, do nothing" {
+  a := verse_arrange_open(arrange_vase(), 0);
+  a = verse_arrange_step(a, 0.1, false);
+  a.hover = ARRANGE_PLACE; a.hover_at = a.centre;
+  #assert verse_arrange_click(a).count == 0;
+  b := arrange_opened();
+  for i: 0..<ARRANGE_STEMS + 3 {
+    b = verse_arrange_point(b, arrange_from_eye(b, add(b.centre, v3(0.07 * cos(f32(i)), 0, 0.07 * sin(f32(i))))));
+    if b.hover == ARRANGE_PLACE { b = verse_arrange_click(b); }
+  }
+  #assert b.count <= ARRANGE_STEMS && b.count > 10;
+}
+
+#forall "every stem stands in the opening and its tip above it" xi: 0..<9, zi: 0..<9 {
+  x := f32(xi) / 4 - 1; z := f32(zi) / 4 - 1;
+  a := arrange_opened();
+  a = verse_arrange_point(a, arrange_from_eye(a, add(a.centre, v3(x * 0.2, 0, z * 0.2))));
+  if a.hover == ARRANGE_PLACE {
+    a = verse_arrange_click(a);
+    #assert a.count == 1;
+    #assert flat_length(sub(verse_arrange_base(a, 0), a.centre)) <= a.radius * f32(ARRANGE_SPREAD) + 0.0001;
+    #assert verse_arrange_tip(a, 0).y > a.centre.y + 0.25;
+  }
+}
