@@ -27,14 +27,18 @@ def run(*args,**kwargs):
 def metadata_sha(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 class Audit:
-    def __init__(self,compiler=COMPILER,directory=None):
+    def __init__(self,compiler=COMPILER,directory=None,_policy_source=None,_bridge_source=None):
         self.compiler=Path(compiler).resolve();self.temporary=tempfile.TemporaryDirectory(prefix='coax-secret-check-') if directory is None else None
         self.directory=Path(self.temporary.name) if self.temporary else Path(directory);self.directory.mkdir(parents=True,exist_ok=True)
-        for name,source in [('frontend',HERE/'frontend.coax'),('policy',ROOT/'coax/lib/crypto/secret-flow.coax')]:
-            output=self.directory/(name+'.c');output.write_text(run(self.compiler,'c',source,'--library','--header',self.directory/(name+'.h')).stdout)
+        self.compiler_fingerprint=metadata_sha(self.compiler);self.compiler_version=run(self.compiler,'--version').stdout.strip()
+        self.policy_source=_policy_source or ROOT/'coax/lib/crypto/secret-flow.coax';self.bridge_source=_bridge_source or HERE/'bridge.cpp'
+        compiled_maps=[]
+        bridge_bytes=self.bridge_source.read_bytes();bridge_copy=self.directory/'bridge-build.cpp';bridge_copy.write_bytes(bridge_bytes)
+        for name,source in [('frontend',HERE/'frontend.coax'),('policy',self.policy_source)]:
+            output=self.directory/(name+'.c');map_path=self.directory/(name+'-map.json');output.write_text(run(self.compiler,'c',source,'--library','--header',self.directory/(name+'.h'),'--source-map',map_path).stdout);compiled_maps.append(json.loads(map_path.read_text()))
             run('cc','-std=c11','-O2','-fPIC','-c',output,'-o',self.directory/(name+'.o'))
         self.artifact=self.directory/'secret-check.dylib'
-        run('c++','-std=c++20','-O2','-shared','-fPIC','-I'+str(self.directory),self.directory/'frontend.o',self.directory/'policy.o',HERE/'bridge.cpp','-o',self.artifact)
+        run('c++','-std=c++20','-O2','-shared','-fPIC','-I'+str(self.directory),self.directory/'frontend.o',self.directory/'policy.o',bridge_copy,'-o',self.artifact)
         self.lib=C.CDLL(str(self.artifact))
         self.lib.SC_source_limit.restype=C.c_int64
         self.lib.SC_units.argtypes=[C.c_int64];self.lib.SC_units.restype=C.c_bool
@@ -43,12 +47,24 @@ class Audit:
         self.lib.SC_closure.argtypes=[PathView,PathView];self.lib.SC_closure.restype=C.c_bool
         self.lib.SC_error_name.argtypes=[C.c_uint32];self.lib.SC_error_name.restype=String
         self.lib.sha256_hash.argtypes=[ByteView,ByteView];self.lib.sha256_hash.restype=C.c_uint32
-        self.lib.sc_bridge.argtypes=[C.POINTER(String),C.c_int64,C.POINTER(Type),C.c_int64,String];self.lib.sc_bridge.restype=Result
-        # Provenance metadata only; source identity admission uses Coax SHA/match.
+        self._bind_bridge()
+        # Bind tool inputs to the actual compiled snapshots too. The normal
+        # compiler source maps are authoritative; `deps` is not a flow proof.
         self.inputs={}
-        for source in [HERE/'frontend.coax',ROOT/'coax/lib/crypto/secret-flow.coax']:
-            for path in json.loads(run(self.compiler,'deps',source).stdout)['sources']:self.inputs[path]=metadata_sha(path)
-        for path in [HERE/'bridge.cpp',Path(__file__)]:self.inputs[str(path)]=metadata_sha(path)
+        for metadata in compiled_maps:
+            for path,expected in metadata['source_hashes'].items():
+                digest=self.source_hash(Path(path).read_bytes());encoded=C.create_string_buffer(expected.encode())
+                if not self.lib.SC_identity(String(C.cast(encoded,C.c_void_p),len(expected)),ByteView(digest,32)):
+                    raise ValueError('audit tool source changed during its build')
+                self.inputs[path]=expected
+        if self.bridge_source.read_bytes()!=bridge_bytes:raise ValueError('audit bridge changed during its build')
+        for path in [self.bridge_source,Path(__file__)]:self.inputs[str(path)]=metadata_sha(path)
+        if metadata_sha(self.compiler)!=self.compiler_fingerprint:raise ValueError('compiler changed during audit tool build')
+    def _bind_bridge(self):
+        self.lib.sc_bridge.argtypes=[C.POINTER(String),C.c_int64,C.POINTER(Type),C.c_int64,String];self.lib.sc_bridge.restype=Result
+    def _analyze(self,sources,types,entry):
+        return self.lib.sc_bridge(sources,len(sources),types,len(types),entry)
+    def _decorate_report(self,report):return report
     def close(self):
         if self.temporary:self.temporary.cleanup()
     def source_hash(self,data):
@@ -62,12 +78,13 @@ class Audit:
             return String(C.cast(buffer,C.c_void_p),len(data))
         def paths(values):
             array=(PathValue*len(values))(*[PathValue(string(x)) for x in values]);keep.append(array);return PathView(array,len(values))
-        compiler_hash=metadata_sha(self.compiler)
+        compiler_hash=self.compiler_fingerprint
         report={'schema':'coax.secret-source-audit.v1','entry':entry,'classification':'all entry parameters secret','profile':'unsigned-scalar-source-v1','accepted':False,
-                'compiler_sha256':compiler_hash,'compiler':run(self.compiler,'--version').stdout.strip(),'audit_artifact_sha256':metadata_sha(self.artifact),
+                'compiler_sha256':compiler_hash,'compiler':self.compiler_version,'audit_artifact_sha256':metadata_sha(self.artifact),
                 'audit_input_sha256':self.inputs,'object_timing_approved':False,'checked_runtime_guards_proved':False,'aggregate_memory_loops_supported':False}
         def finish(error,**extra):
-            name=self.lib.SC_error_name(error);report.update(error=error,error_name=C.string_at(name.data,name.count).decode(),accepted=error==0,**extra);return report
+            name=self.lib.SC_error_name(error);report.update(error=error,error_name=C.string_at(name.data,name.count).decode(),accepted=error==0,**extra);return self._decorate_report(report)
+        if metadata_sha(self.compiler)!=self.compiler_fingerprint:return finish(13)
         source_map=self.directory/'source-map.json'
         checked=subprocess.run([str(self.compiler),'c',str(path),'--library','--source-map',str(source_map)],capture_output=True,text=True)
         if checked.returncode:return finish(1)
@@ -89,11 +106,19 @@ class Audit:
             digest=self.source_hash(data)
             if not self.lib.SC_identity(string(hashes.get(name,'')),ByteView(digest,32)):return finish(13,drift_file=name)
         unit={name:i for i,name in enumerate(names)};rows=[]
+        inventory={'schema':'coax.compiler-resolved-types.v1','functions':[
+            {'unit':unit.get(p['file'],-1),'name':p['name'],'line':p['line'],'variables':[
+                {key:v[key] for key in ['name','line','role','type']} for v in p['variables']]}
+            for p in metadata['functions']]}
+        canonical=json.dumps(inventory,sort_keys=True,separators=(',',':')).encode()
+        report['resolved_type_sha256']=bytes(self.source_hash(canonical)).hex()
+        report['resolved_type_inventory']=inventory
+        report['resolved_type_inventory_scope']='compiler-typed physical closure; only reached procedures flow-analyzed'
         for procedure in metadata['functions']:
             for variable in procedure['variables']:
                 rows.append(Type(unit.get(procedure['file'],-1),string(procedure['name']),procedure['line'],string(variable['name']),variable['line'],string(variable['role']),string(variable['type'])))
         types=(Type*len(rows))(*rows);sources=(String*len(raw))(*[string(data) for data in raw])
-        result=self.lib.sc_bridge(sources,len(raw),types,len(rows),string(entry))
+        result=self._analyze(sources,types,string(entry))
         # Detect changes after compilation/analysis; this is a bound snapshot,
         # never a promise that the filesystem remains frozen afterward.
         try:
@@ -103,6 +128,7 @@ class Audit:
                 digest=self.source_hash(data)
                 if not self.lib.SC_identity(string(hashes[name]),ByteView(digest,32)):return finish(13,drift_file=name)
         except OSError:return finish(13)
+        if metadata_sha(self.compiler)!=self.compiler_fingerprint:return finish(13)
         return finish(result.error,file=names[result.unit] if 0<=result.unit<len(names) else None,line=result.line,column=result.column,reached_procedures=result.reached,visited_nodes=result.visits,return_dependency_mask=result.return_mask)
 
 if __name__=='__main__':

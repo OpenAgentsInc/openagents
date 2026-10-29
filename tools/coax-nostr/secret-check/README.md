@@ -90,3 +90,9 @@ sets `checked_runtime_guards_proved`, `object_timing_approved` and
 `aggregate_memory_loops_supported` to false. Existing native/Wasm timing probes
 and caller-buffer erasure contracts remain separate, and do not upgrade this
 profile automatically. No `#secret` syntax is implemented or advertised.
+
+The separate [aggregate crypto source profile](../../../docs/verification/2026-10-28-crypto-secret-source.md)
+adds actual typed fields, fixed arrays, known view regions and bounded public
+loops. It preserves scalar-v1 semantics and reports unresolved authored guards
+as `analyzed-with-guard-obligations` with `accepted=false`. Its source analysis
+is also subject to the independent guard, target timing and production gates.
