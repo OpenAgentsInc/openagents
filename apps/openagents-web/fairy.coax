@@ -36,6 +36,7 @@
 #load "../../verse/fairy-forest/forest.coax";
 #load "../../verse/fairy-forest/talk.coax";
 #load "place-orbit.coax";
+#load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 16000;
@@ -155,6 +156,9 @@ Fairy :: struct {
   pane_top: f32;                            // the talk pane's top edge, while you talk
   seen_x: [FF_CREATURES] f32; seen_y: [FF_CREATURES] f32; seen_r: [FF_CREATURES] f32; seen_on: [FF_CREATURES] bool;
   tap_creature: int; tap_finger: int;       // a finger put down on a creature (creature + 1, 0 none)
+  // The shared edit layer: its board switches the sparkles, the grass and the ridges; SETTINGS has flight
+  ed: [1] RealmEdit;
+  ed_out: [256] u8; ed_out_n: int;
 }
 
 // ---- small things
@@ -521,6 +525,8 @@ hold_bit :: (key: int) -> int {
 
 fairy_key :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
   if !s[0].started { fairy_start(s); }
+  used := redit_key(s[0].ed[..], key, true);
+  if used > 0 { return used == 1; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
   if s[0].talk > 0 { return talk_key(s, key, mods); }
@@ -533,6 +539,8 @@ fairy_key :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
 }
 
 fairy_key_up :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
+  if redit_key(s[0].ed[..], key, false) == 1 { return true; }
+  if redit_typing(s[0].ed[..]) { return false; }
   b := hold_bit(key);
   if b == 0 { return false; }
   if s[0].held & b != 0 { s[0].held = s[0].held - b; }
@@ -547,6 +555,7 @@ in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && 
 // it; any other finger is the face's (the sticks).
 fairy_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { fairy_start(s); }
+  if redit_pointer(s[0].ed[..], x, y, phase, id) { return true; }
   talking := s[0].talk > 0;
   if talking && talk_pointer(s, x, y, phase, id) { return true; }
   if kind != 0 {
@@ -615,6 +624,10 @@ fairy_jump :: (s: [] Fairy) -> bool #export_c { return s[0].jump; }
 // quick tap between two frames still beats), and none left after.
 fairy_taps :: (s: [] Fairy) -> int #export_c { n := s[0].taps; s[0].taps = 0; return n; }
 fairy_phone :: (s: [] Fairy) -> bool #export_c { return phone(s); }
+// The edit layer's: may visitors fly (its SETTINGS),
+// and its push to talk for the host (the kind, its outbox in ed_out).
+fairy_may_fly :: (s: [] Fairy) -> bool #export_c { return redit_tool(s[0].ed[..], "fly"); }
+fairy_edit_action :: (s: [] Fairy) -> int #export_c { a := redit_take_action(s[0].ed[..], s[0].ed_out[..]); s[0].ed_out_n = a.n; return a.kind; }
 
 // ---- talking (ff-talk, verse/fairy-forest/talk.coax)
 
@@ -748,7 +761,7 @@ fairy_facts :: (s: [] Fairy, facts: string) #export_c {
   }
 }
 // While you talk, the phone's keyboard comes up over the typed line, and you stand still.
-fairy_wants_text :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0; }
+fairy_wants_text :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0 || redit_typing(s[0].ed[..]); }
 fairy_talking :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0; }
 
 // ---- the scene
@@ -1787,6 +1800,13 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
       n = draw_text(out, n, verb, x0 + text_width("E", bc) + 16 * k, b.y1 - 11 * k, bc, GAP, SPACE, ink(k, 0.95, CREAM_R, CREAM_G, CREAM_B), false, false);
     }
   }
+  // EDIT, top right, for its owner and admins (verse/edit/edit.coax)
+  ew := text_width("EDIT", 9 * k) + 32 * k;
+  n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = w - gutter - ew, y0 = gutter, x1 = w - gutter, y1 = gutter + 38 * k});
+  for i: 0..<s[0].ed[0].plate_n {
+    pb := s[0].ed[0].plate_box[i];
+    plate(s, u, Box.{x0 = pb.x0, y0 = pb.y0, x1 = pb.x1, y1 = pb.y1}, s[0].ed[0].plate_alpha[i], s[0].ed[0].plate_look[i]);
+  }
   if move_on {
     r := 46 * k;
     for i: 0..<32 {
@@ -1911,6 +1931,8 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
   s[0].time += f64(t);
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5);
+  redit_start(s[0].ed[..], "fairy-forest");
+  redit_step(s[0].ed[..], f32(s[0].time), width, height, dpr);
   feet := v3(fx, fy, fz);
   if !finite3(feet) { feet = s[0].feet; }
   s[0].face = face; s[0].act = act;
@@ -1933,7 +1955,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   s[0].mine = true;
   fairy_figure(s, u, shown, face, s[0].stride, act, s[0].air, flap);
   s[0].mine = false;
-  sparkle(s, shown, face, speed > 0.6 || s[0].air > 0.2, t);
+  if redit_row_on(s[0].ed[..], "sparkles") { sparkle(s, shown, face, speed > 0.6 || s[0].air > 0.2, t); } else { s[0].spark_next = 0; for i: 0..<18 * 4 { s[0].sparks[i] = 0; } }
   creatures(s, u, shown);
   heart(s, u);
   patches(s);
@@ -1942,7 +1964,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   old_ring(s, u, shot.eye);
   heart_bloom(s);
   trees(s, u, shot.eye);
-  ridges(s);
+  if redit_row_on(s[0].ed[..], "ridges") { ridges(s); }
   ferns(s, shot.eye);
   ph := phone(s);
   for kind: 0..<5 {
@@ -1971,7 +1993,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   // the grass round the camera's ground point, patch-snapped so it doesn't swim
   // the grass round your feet (the camera's look point is up in the air when you fly), and none once the eye is 30 m up
   gx := floor(shown.x / 2) * 2 - f32(side); gz := floor(shown.z / 2) * 2 - f32(side);
-  if shot.eye.y - ground_at(s, shot.eye.x, shot.eye.z) > 30 { s[0].draws[g + 3] = 0; }
+  if shot.eye.y - ground_at(s, shot.eye.x, shot.eye.z) > 30 || !redit_row_on(s[0].ed[..], "grass") { s[0].draws[g + 3] = 0; }
   u[U_GRASS] = gx; u[U_GRASS + 1] = gz; u[U_GRASS + 2] = f32(side); u[U_GRASS + 3] = f32(blades);
   u[U_GRASS2] = f32(side) - 1; u[U_GRASS2 + 1] = f32(FF_LEVEL); u[U_GRASS2 + 2] = f32(FF_PATH_HALF); u[U_GRASS2 + 3] = shown.x;
   // you part the grass where you stand
@@ -2253,4 +2275,29 @@ dist2 :: (a: Point, b: Point) -> f32 { dx := a.x - b.x; dy := a.y - b.y; return 
   // the heart tree in bloom, seen from its clearing
   for k: 0..<3 { nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, 0, 0, -14, 3.1, 0, 0, 0, 0, 0, false, 0, 0, 0, 0); }
   for k: 1..<5 { #assert g[0].counts[k] < SLOTS[k]; }
+}
+
+#test "EDIT for its owner and admins only; the board switches the grass and the ridges off, SETTINGS flight" {
+  g: [1] Fairy;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  n := fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0.7, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].ed[0].req_ready && cast(string) g[0].ed[0].req_url[0..<g[0].ed[0].req_url_n] == "/api/playtest/realms/fairy-forest";
+  spheres := g[0].counts[SHAPE_SPHERE];
+  #assert g[0].draws[GRASS_DRAW * 4 + 3] > 0 && fairy_may_fly(g[..]);
+  redit_requested(g[0].ed[..], 5);
+  used := redit_message(g[0].ed[..], HTTP_KIND + 5, "200\nrealm fairy-forest\nrole visitor\nowner 0\ntool fly 0\nrow sparkles 1 Sparkles\nrow grass 0 Grass\nrow ridges 0 Ridges\n");
+  n = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0.7, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].draws[GRASS_DRAW * 4 + 3] == 0 && g[0].counts[SHAPE_SPHERE] == spheres - RIDGES;
+  #assert !fairy_may_fly(g[..]) && !g[0].ed[0].shown[RB_EDIT];   // a visitor: no flight, no EDIT
+  a: [1] Fairy;
+  n = fairy_frame(a[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0.7, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  redit_requested(a[0].ed[..], 6);
+  used = redit_message(a[0].ed[..], HTTP_KIND + 6, "200\nrealm fairy-forest\nrole owner\nowner 1\ntool fly 0\nrow grass 1 Grass\nwaiting 0\n");
+  n = fairy_frame(a[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0.7, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert a[0].ed[0].shown[RB_EDIT] && fairy_may_fly(a[..]);   // its owner flies, settings or not
+  e := a[0].ed[0].boxes[RB_EDIT];
+  #assert e.x1 <= 1280 && e.x0 > 1000;
+  #assert fairy_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 0, 0, 1) && fairy_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 2, 0, 1);
+  #assert a[0].ed[0].pane == REDIT_BOARD;
 }
