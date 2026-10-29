@@ -26,6 +26,13 @@
 // error, the day's answers used up, nothing back in NPC_WAIT seconds) the
 // house's own lines answer (verse_haunt_ask). What you TEACH a character is
 // added to what they know and kept with the house's save.
+//
+// The Sandbox's set pieces (rl-sandbox-pieces): in edit mode MAKE A SET
+// PIECE (P) takes one sentence to the server's selector
+// (/api/playtest/sandbox/piece), where Gemini picks a piece from the
+// catalogue in verse/setpiece.coax; its answer is checked there again, laid
+// out by its seeded generator in front of you, added as one undo step, and
+// published to the shared Sandbox at once.
 #include "realm.h"
 #include "Player.h"
 #include "Grid.h"
@@ -35,6 +42,7 @@
 #undef coax_a12_f32
 #include "Haunt-buffer.h"
 #include "Particles.h"
+#include "Setpiece.h"
 #include "analytics-face.h"
 #include <math.h>
 #include <stdbool.h>
@@ -158,6 +166,18 @@ static coax_t_Track track_state;
 static coax_t_RealmSeen seen;
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 static const char *link = "https://openagents.com/realm/haunted-house";
+
+// The set piece asked for (-1 none waiting), its parts' ids, and what the
+// publish says it was.
+#define PIECE_URL "/api/playtest/sandbox/piece"
+#define PIECE_WAIT 25.0
+static int32_t piece_ask = -1;
+static double piece_asked_at;
+static uint8_t piece_body[1024];
+static float places[64 * 12];
+static char piece_ids[1024][16];
+static int piece_id_n;
+static char piece_said[96], send_said[128];
 
 static bool world_holds(void);
 static void world_open(coax_string h);
@@ -618,6 +638,65 @@ static void teach(int64_t who, coax_string lesson) {
   toast(said);
 }
 
+// The sentence to the selector.
+static void ask_piece(coax_string typed) {
+  if (!sandbox || piece_ask >= 0) { if (piece_ask >= 0) toast("Still making the last one"); return; }
+  int64_t n = verse_piece_body(typed, (coax_v_u8){piece_body, sizeof piece_body});
+  piece_ask = n > 0 ? coaxial_http((uint32_t)(uintptr_t)PIECE_URL, sizeof PIECE_URL - 1, (uint32_t)(uintptr_t)piece_body, (uint32_t)n, HTTP_ASK) : -1;
+  if (piece_ask < 0) { toast("That didn't reach the server; try again"); return; }
+  piece_asked_at = now;
+  toast("Making it...");
+}
+
+// Lays the piece out in front of you: one undo step, then published.
+static void make_piece(coax_t_SetPiece p) {
+  coax_t_Vec3 feet = verse_player_feet(player);
+  uint32_t seed = (uint32_t)(int64_t)wall_ms() * 2654435761u ^ (uint32_t)piece_id_n;
+  int64_t n = verse_piece_layout(p, (int64_t)seed, feet.x, feet.z, house.heading, (coax_v_f32){places, sizeof places / sizeof places[0]});
+  if (n <= 0) { toast("That isn't one of the Sandbox's set pieces yet"); return; }
+  int h0 = history_at;
+  remember();
+  int64_t added = 0;
+  for (int64_t i = 0; i < n && piece_id_n < 1024; i++) {
+    const float *o = places + i * 12;
+    int64_t m = (int64_t)o[0], before = house.entity_count;
+    int64_t mesh = verse_haunt_mesh(house, verse_piece_mesh(m));
+    snprintf(piece_ids[piece_id_n], sizeof piece_ids[0], "s%06x-%02d", (unsigned)(seed & 0xffffff), (int)i);
+    house = verse_haunt_put(house, mesh, text(piece_ids[piece_id_n]), verse_piece_label(m), (coax_t_HauntPoint){o[1], o[2], o[3]},
+                            o[4], o[5], (coax_t_HauntPoint){o[6], o[7], o[8]}, o[9], (int64_t)o[10], o[11] > 0.5f);
+    if (house.entity_count > before) { piece_id_n++; added++; }
+  }
+  if (!added) { history_at = history_n = h0; toast("There's no room there"); return; }   // nothing changed: no undo step
+  coax_string said = verse_piece_says(p, (coax_v_u8){(uint8_t *)piece_said, sizeof piece_said - 1});
+  piece_said[said.count] = 0;
+  rebuild_walls();
+  realm_track_place(tr(), said, text("piece"));
+  house.selected = -1;
+  toast(piece_said);
+  snprintf(send_said, sizeof send_said, "Made %c%s in the Sandbox", piece_said[0] >= 'A' && piece_said[0] <= 'Z' ? piece_said[0] - 'A' + 'a' : piece_said[0], piece_said + 1);
+  if (world_holds() && world_send()) house.dirty = false;   // one publish, not again at DONE
+  send_said[0] = 0;
+}
+
+// The selector's answer ("STATUS\n" then {piece, count, kind, colour, size}).
+static void take_piece(uint32_t length) {
+  piece_ask = -1;
+  const char *b = (const char *)inbox, *nl = memchr(b, '\n', length);
+  int status = 0;
+  for (const char *c = b; nl && c < nl && *c >= '0' && *c <= '9'; c++) status = status * 10 + (*c - '0');
+  if (status == 200 && nl) {
+    coax_t_SetPiece p = verse_piece_read((coax_string){nl + 1, (int64_t)(b + length - nl - 1)});
+    if (p.piece >= 0) { make_piece(p); return; }
+  }
+  toast(status == 422 ? "The Sandbox can't make that yet: try birds, lanterns, trees or a pond"
+      : status == 429 ? "A little slower: one set piece at a time" : "That didn't reach the server; try again");
+}
+static void piece_waited(void) {
+  if (piece_ask < 0 || now - piece_asked_at < PIECE_WAIT) return;
+  piece_ask = -1;
+  toast("That didn't reach the server; try again");
+}
+
 // What's typed, sent: the survey's answer, a question or a lesson.
 static void send_typed(void) {
   int64_t kind = realm_typing_for(realm_of());
@@ -625,6 +704,7 @@ static void send_typed(void) {
   coax_string typed = realm_typed(realm_of());
   realm_close_text(realm_of());
   if (kind == 3) { room_say(typed); return; }
+  if (kind == 4) { ask_piece(typed); return; }
   if (house.talking < 0) return;
   if (kind == 2) teach(house.talking, typed);
   else ask_npc(typed);
@@ -692,6 +772,7 @@ static void step(float dt) {
   house = verse_haunt_advance(house, now, point(feet), point(eye), player.theta, distance, player.on_ground);
   take_asks();
   npc_waited();
+  piece_waited();
   // A step of the quest is kept at once; other changes at most every 1.5 s.
   static int64_t quest_kept = -1;
   world_frame();
@@ -712,6 +793,7 @@ static void describe(void) {
     bool goal = verse_haunt_at_goal(house);
     v.quest = sandbox ? -1 : house.quest;
     v.no_voice = sandbox;
+    v.pieces = sandbox;
     v.quest_line = sandbox ? (coax_string){"", 0} : verse_haunt_step_line(house);
     v.goal = goal ? verse_haunt_goal_prompt(house) : (coax_string){"", 0};
     v.bearing = verse_haunt_goal_bearing(house);
@@ -886,6 +968,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   }
   if (progress_ask >= 0 && kind == 512 + progress_ask) { progress_ask = -2; take_server(length); return; }
   if (npc_ask >= 0 && kind == 512 + npc_ask) { take_answer(length); return; }
+  if (piece_ask >= 0 && kind == 512 + piece_ask) { take_piece(length); return; }
   if (world_message(kind, length)) return;
   if (room_message(kind, length)) return;
   if (kind >= 512 && kind < 520) return;   // an answer let go

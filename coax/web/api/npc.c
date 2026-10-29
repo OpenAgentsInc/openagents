@@ -69,18 +69,16 @@ static bool token(char *out, size_t cap) {
   return out[0] != 0;
 }
 
-// In the child: asks the model, keeps the answer, answers the page.
-static void answer(int fd, const char *asked, const char *request) {
-  const char *model = getenv("OA_NPC_MODEL"); if (!model || !*model) model = "gemini-3.8-flash";
+// Asks the model (its generateContent URL from url_env, else Vertex's for
+// model): the HTTP status (0 unreached) and the body into b.
+static long ask_model(const char *url_env, const char *model, const char *request, buf *b) {
   char url[512];
-  const char *given = getenv("OA_NPC_URL");
+  const char *given = getenv(url_env);
   if (given && *given) snprintf(url, sizeof url, "%s", given);
   else snprintf(url, sizeof url, "https://aiplatform.googleapis.com/v1/projects/%s/locations/global/publishers/google/models/%s:generateContent",
                 PROJECT, model);
   char tok[4096], auth[4200];
   long status = 0;
-  buf b = {0};
-  double t0 = api_now_ms();
   if (token(tok, sizeof tok)) {
     CURL *h = curl_easy_init();
     snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
@@ -89,11 +87,20 @@ static void answer(int fd, const char *asked, const char *request) {
     curl_easy_setopt(h, CURLOPT_HTTPHEADER, hd);
     curl_easy_setopt(h, CURLOPT_POSTFIELDS, request);
     curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, take);
-    curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
+    curl_easy_setopt(h, CURLOPT_WRITEDATA, b);
     curl_easy_setopt(h, CURLOPT_TIMEOUT, 25L);
     if (curl_easy_perform(h) == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
     curl_slist_free_all(hd); curl_easy_cleanup(h);
   } else api_log("npc: no token");
+  return status;
+}
+
+// In the child: asks the model, keeps the answer, answers the page.
+static void answer(int fd, const char *asked, const char *request) {
+  const char *model = getenv("OA_NPC_MODEL"); if (!model || !*model) model = "gemini-3.8-flash";
+  buf b = {0};
+  double t0 = api_now_ms();
+  long status = ask_model("OA_NPC_URL", model, request, &b);
   char http[16], taken[16];
   snprintf(http, sizeof http, "%ld", status);
   snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));
@@ -150,4 +157,74 @@ bool npc_route(const request *q) {
   if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
   free(request); free(asked);
   return true;   // the parent closes its copy of the connection
+}
+
+// ---- the Sandbox's set pieces (rl-sandbox-pieces): POST /api/playtest/sandbox/piece
+//   {sentence}  (X-Verse-Player optional)  -> 200 {piece, count?, kind?, colour?, size?, model}
+//   400 no sentence, 422 nothing fits, 429 one at a time, 502 not a piece, 503 no answer
+// Gemini picks one piece from the catalogue (migrations/0036_sandbox_pieces.sql
+// verse.piece_catalogue, a response schema of its words) and SQL holds the
+// answer to it; the page lays it out (verse/setpiece.coax). As a question
+// is, the model call is made by a child.
+//   OA_PIECE_URL    the generateContent URL (tests point it at a fake)
+//   OA_PIECE_MODEL  the model (gemini-3.8-flash)
+//   OA_PIECE_DAILY_CAP  set pieces a day across the server (2000)
+static void piece_answer(int fd, const char *asked, const char *request) {
+  const char *model = getenv("OA_PIECE_MODEL"); if (!model || !*model) model = "gemini-3.8-flash";
+  buf b = {0};
+  double t0 = api_now_ms();
+  long status = ask_model("OA_PIECE_URL", model, request, &b);
+  char http[16], taken[16];
+  snprintf(http, sizeof http, "%ld", status);
+  snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));
+  PGconn *db = api_db_new();
+  const char *v[5] = {asked, http, b.p ? b.p : "", model, taken};
+  PGresult *r = db ? PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.piece_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
+                                  5, NULL, v, NULL, NULL, 0) : NULL;
+  if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
+  else { api_log("piece: %s", db ? PQerrorMessage(db) : "no database"); api_json(fd, 503, "{\"error\":\"not kept\"}"); }
+  if (status != 200) api_log("piece: model answered %ld", status);
+  if (r) PQclear(r);
+  if (db) PQfinish(db);
+  free(b.p);
+}
+
+bool piece_route(const request *q) {
+  if (strcmp(q->path, "/api/playtest/sandbox/piece")) return false;
+  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a sentence\"}"); return true; }
+  PGconn *db = api_db();
+  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  char *body = malloc(q->body_len + 3);
+  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
+  const char *cap = getenv("OA_PIECE_DAILY_CAP");
+  char key[160] = "";
+  api_header(q, "X-Verse-Player", key, sizeof key);
+  const char *v[3] = {body, cap && *cap ? cap : "2000", key};
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, jsonb_build_object('id', x->'id')::text "
+                                 "FROM verse.piece_ask($1::jsonb, $2::int, $3) x", 3, NULL, v, NULL, NULL, 0);
+  free(body);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
+    const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+    bool theirs = state && !strncmp(state, "22", 2);
+    if (!theirs) api_log("piece: %s", PQerrorMessage(db));
+    PQclear(r);
+    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not asked\"}");
+    return true;
+  }
+  int status = atoi(PQgetvalue(r, 0, 0));
+  if (status != 200) {
+    char out[160]; snprintf(out, sizeof out, "{\"error\":\"%s\"}", PQgetvalue(r, 0, 1));
+    PQclear(r);
+    api_json(q->fd, status, out);
+    return true;
+  }
+  char *request = strdup(PQgetvalue(r, 0, 2)), *asked = strdup(PQgetvalue(r, 0, 3));
+  PQclear(r);
+  signal(SIGCHLD, SIG_IGN);
+  pid_t pid = fork();
+  if (pid == 0) { piece_answer(q->fd, asked, request); _exit(0); }
+  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  free(request); free(asked);
+  return true;
 }

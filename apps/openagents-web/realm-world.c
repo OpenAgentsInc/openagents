@@ -65,7 +65,7 @@ static bool world_send(void) {
   int64_t cn = save_pack(text(SAVE_WORLD), SAVE_SCHEMA, (coax_v_u8){saved, n}, n, (coax_v_u8){container, sizeof container});
   if (cn <= 0) return false;
   world_offering = !world_owner && !sandbox;   // the Sandbox is open: everyone publishes
-  int64_t bn = world_body((coax_v_u8){container, cn}, cn, wall_ms(), text(sandbox ? "Built in the Sandbox" : placed_n ? "Placed things in the house" : "Changed the house"),
+  int64_t bn = world_body((coax_v_u8){container, cn}, cn, wall_ms(), text(send_said[0] ? send_said : sandbox ? "Built in the Sandbox" : placed_n ? "Placed things in the house" : "Changed the house"),
                           world_offering, (coax_v_u8){(uint8_t *)post, sizeof post});
   int64_t un = world_url(world_name(), world_offering ? 3 : 0, (coax_string){"", 0}, (coax_v_u8){(uint8_t *)world_url_buf, sizeof world_url_buf});
   if (bn <= 0 || un <= 0) return false;

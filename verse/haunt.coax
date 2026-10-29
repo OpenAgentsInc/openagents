@@ -29,6 +29,7 @@ Haunt :: struct {
  spark:HauntPoint; spark_until:f64; facing:f32; avatar:int;
  flash_until:f64; dim_until:f64; dirty:bool; steps:f32; was_ground:bool=true;
  sound_count:int; sounds:[16]HauntSound; time:f64; player:HauntPoint; eye:HauntPoint; heading:f32;
+ flock:HauntPoint; flock_on:bool;   // where the Sandbox's flocks fly round (motion 7): eases after you
 }
 
 // Checks are written ahead of their implementations: source rules, rather
@@ -179,6 +180,7 @@ verse_haunt_advance :: (s:Haunt,t:f64,player:HauntPoint,eye:HauntPoint,heading:f
  next:=s;next.time=t;next.player=player;next.eye=eye;next.heading=heading;next.sound_count=0;
  if !s.ok{return next;}
  next=hh_people_step(next,hh_clamp(cast(f32)(t-s.time),0,0.1));
+ next=hh_flock_follow(next,s,player,hh_clamp(cast(f32)(t-s.time),0,0.1));
  // Walked in: at the orange light, or anywhere in the room it is in (the
  // light's 1.4 m reach misses a player who comes through the door's left side).
  light:=hh_p(8,0,21.6);
@@ -216,7 +218,7 @@ verse_haunt_instances :: (s:Haunt,t:f64,out:[]HauntInstance,draws:[]HauntDraw)->
    e:=s.entities[i];if e.mesh!=m || e.hidden || e.scale<=0 {continue;}
    if e.parent.count>0 {owner:=hh_find(s,e.parent);if owner>=0 {p:=s.entities[owner];if p.hidden || p.scale<=0{continue;}e.pos=hh_mounted(p,e.mount);e.scale*=p.scale/e.mount_scale;}}
    if e.motion==6 && hh_len(e.pos,s.player)>110 {continue;}
-   if base>=out.count{return 0;}e=hh_animated(e,t);
+   if base>=out.count{return 0;}if e.motion==7 {e=hh_flocked(s,e,t);}e=hh_animated(e,t);
    if e.motion==6 {e.yaw+=sin(cast(f32)t*0.6+e.pos.x)*0.008;}
    c:=cos(e.yaw)*e.scale;sn:=sin(e.yaw)*e.scale;
    v:HauntInstance;v.rows=[12]f32.[c,0,sn,e.pos.x,0,e.scale,0,e.pos.y,-sn,0,c,e.pos.z];v.material=[4]f32.[e.tint.x,e.tint.y,e.tint.z,e.glow];
@@ -317,7 +319,7 @@ verse_haunt_ask :: (s:Haunt,text:string)->Haunt #export_c {
 // Reusable ray picker, against each mesh's transformed bounds.
 verse_haunt_pick :: (s:Haunt,origin:HauntPoint,direction:HauntPoint)->int #export_c {
  best:=-1;distance:=15.0f32;
- for i:0..<s.entity_count {e:=s.entities[i];if e.hidden || e.scale<=0 || (e.fixed && hh_person_index(s,e.id)<0){continue;}b:=s.meshes[e.mesh];c:=cos(e.yaw);sn:=sin(e.yaw);
+ for i:0..<s.entity_count {e:=s.entities[i];if e.motion==7 {e=hh_flocked(s,e,s.time);}if e.hidden || e.scale<=0 || (e.fixed && hh_person_index(s,e.id)<0){continue;}b:=s.meshes[e.mesh];c:=cos(e.yaw);sn:=sin(e.yaw);
   px:=origin.x-e.pos.x;pz:=origin.z-e.pos.z;
   p:=[3]f32.[(c*px-sn*pz)/e.scale,(origin.y-e.pos.y)/e.scale,(sn*px+c*pz)/e.scale];d:=[3]f32.[(c*direction.x-sn*direction.z)/e.scale,direction.y/e.scale,(sn*direction.x+c*direction.z)/e.scale];
   low:=[3]f32.[b.low.x,b.low.y,b.low.z];high:=[3]f32.[b.high.x,b.high.y,b.high.z];near:=0.0f32;far:=distance;
@@ -336,6 +338,57 @@ verse_haunt_person_of :: (s:Haunt,entity:int)->int #export_c {if entity<0 || ent
 verse_haunt_add :: (s:Haunt,mesh:int,id:string,name:string,x:f32,z:f32)->Haunt #export_c {
  next:=s;if mesh<0 || mesh>=s.mesh_count || s.entity_count>=s.entities.count || !hh_walk(s,x,z){return next;}
  e:HauntEntity;e.id=id;e.name=name;e.mesh=mesh;e.pos=hh_p(x,0,z);e.tint=hh_p(1,1,1);e.solid=true;next.entities[next.entity_count]=e;next.selected=next.entity_count;next.entity_count+=1;next.dirty=true;next.quest=hh_quest(s.quest,"place");return next;
+}
+
+// A placed piece of the Sandbox's set pieces (verse/setpiece.coax): any
+// mesh, where and how it was laid out. A flock's bird (motion 7) keeps its
+// place round the flock, not the world's, so it isn't held to the walk.
+verse_haunt_put :: (s:Haunt,mesh:int,id:string,name:string,at:HauntPoint,yaw:f32,scale:f32,tint:HauntPoint,glow:f32,motion:int,solid:bool)->Haunt #export_c {
+ next:=s;if mesh<0 || mesh>=s.mesh_count || s.entity_count>=s.entities.count || id.count==0 || (motion!=7 && !hh_walk(s,at.x,at.z)){return next;}
+ e:HauntEntity;e.id=id;e.name=name;e.mesh=mesh;e.pos=at;e.yaw=yaw;e.scale=hh_clamp(scale,0.1,8);e.tint=tint;e.glow=hh_clamp(glow,0,2);e.motion=ifx motion==7 then 7 else 0;e.solid=solid && motion!=7;
+ if !hh_entity_ok(e,s.mesh_count){return next;}
+ next.entities[next.entity_count]=e;next.entity_count+=1;next.dirty=true;return next;
+}
+// The flock's middle eases after whoever walks (about 1.6 of the way a
+// second); one far off, or the first, is put with them at once.
+hh_flock_follow :: (next:Haunt,s:Haunt,player:HauntPoint,dt:f32)->Haunt {
+ out:=next;
+ if !s.flock_on || hh_len(s.flock,player)>30 {out.flock=player;out.flock_on=true;return out;}
+ k:=hh_clamp(dt*1.6,0,1);out.flock=hh_p(s.flock.x+(player.x-s.flock.x)*k,s.flock.y+(player.y-s.flock.y)*k,s.flock.z+(player.z-s.flock.z)*k);return out;
+}
+// Where a flock's bird is drawn at t: its place turned slowly round the
+// flock's middle, swaying in and out and bobbing, headed the way it flies.
+hh_flocked :: (s:Haunt,e:HauntEntity,t:f64)->HauntEntity {
+ out:=e;f:=cast(f32)t;ring:=sqrt(e.pos.x*e.pos.x+e.pos.z*e.pos.z);a0:=hh_atan2(e.pos.z,e.pos.x);
+ a:=a0+f*0.55;sway:=ring+sin(f*1.3+a0*3)*0.35;
+ out.pos=hh_p(s.flock.x+cos(a)*sway,s.flock.y+e.pos.y+sin(f*2.1+a0*5)*0.25,s.flock.z+sin(a)*sway);
+ out.yaw=hh_atan2(-sin(a),cos(a));return out;
+}
+#test "a flock follows you: its middle eases after you, a bird flies round it" {
+ s:Haunt;s.ok=true;
+ s=verse_haunt_advance(s,0,hh_p(10,0,10),hh_p(10,1.6,10),0,0,true);
+ #assert s.flock_on && s.flock.x==10 && s.flock.z==10;   // the first frame: with you at once
+ s=verse_haunt_advance(s,0.1,hh_p(12,0,10),hh_p(12,1.6,10),0,0,true);
+ #assert abs(s.flock.x-10.32)<0.001;                     // then after you, a little each frame
+ for k:0..<60 {s=verse_haunt_advance(s,0.2+cast(f64)k*0.1,hh_p(12,0,10),hh_p(12,1.6,10),0,0,true);}
+ #assert abs(s.flock.x-12)<0.01;
+ s=verse_haunt_advance(s,7,hh_p(80,0,10),hh_p(80,1.6,10),0,0,true);
+ #assert s.flock.x==80;                                  // gone far: waiting there
+ e:HauntEntity;e.pos=hh_p(2,3,0);e.motion=7;e.scale=1;
+ for t:[3]f64.[0,1.5,4] {d:=hh_flocked(s,e,t);dx:=d.pos.x-80;dz:=d.pos.z-10;r:=sqrt(dx*dx+dz*dz);#assert r>1.6 && r<2.4 && d.pos.y>2.7 && d.pos.y<3.3;}
+ #assert hh_flocked(s,e,0).pos.x!=hh_flocked(s,e,2).pos.x;   // it flies
+}
+#test "a set piece's part is placed whole, a bird anywhere, the rest on the walk" {
+ m:=[2]HauntMesh.[HauntMesh.{name="a"},HauntMesh.{name="b"}];es:[3]HauntEntity;w:=[1]HauntRect.[HauntRect.{x0= -5,z0= -5,x1=5,z1=5}];
+ s:Haunt;s.ok=true;s.meshes=m[..];s.mesh_count=2;s.entities=es[..];s.walks=w[..];s.walk_count=1;
+ s=verse_haunt_put(s,1,"p1","Tree",hh_p(1,0,2),0.5,1.2,hh_p(0.9,0.9,0.9),0,0,true);
+ #assert s.entity_count==1 && s.entities[0].mesh==1 && s.entities[0].solid && s.entities[0].yaw==0.5 && s.entities[0].scale==1.2 && s.dirty;
+ s=verse_haunt_put(s,0,"p2","Bird",hh_p(40,3,0),0,1.5,hh_p(1,1,1),0,7,true);
+ #assert s.entity_count==2 && s.entities[1].motion==7 && !s.entities[1].solid;   // a bird is never in your way
+ #assert verse_haunt_put(s,0,"p3","Tree",hh_p(40,0,0),0,1,hh_p(1,1,1),0,0,true).entity_count==2;   // off the walk
+ #assert verse_haunt_put(s,2,"p3","Tree",hh_p(0,0,0),0,1,hh_p(1,1,1),0,0,true).entity_count==2;    // no such mesh
+ s=verse_haunt_put(s,0,"p3","Tree",hh_p(0,0,0),0,1,hh_p(1,1,1),0,0,true);
+ #assert verse_haunt_put(s,0,"p4","Tree",hh_p(0,0,0),0,1,hh_p(1,1,1),0,0,true).entity_count==3;   // full
 }
 
 // Generated codecs write the exact shared Save contract. Static room and

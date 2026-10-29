@@ -36,6 +36,7 @@ bool chat_route(const request *q);        // chat.c
 void chat_key(const request *q, const char *pubkey, bool member);   // KEY for a signed-in admin, or a project member (private.c)
 bool player_route(const request *q);      // player.c
 bool npc_route(const request *q);         // npc.c
+bool piece_route(const request *q);       // npc.c: the Sandbox's set pieces
 bool private_route(const request *q);     // private.c
 bool room_route(const request *q);        // room.c
 bool drops_route(const request *q);       // drops.c

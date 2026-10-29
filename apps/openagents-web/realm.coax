@@ -94,6 +94,7 @@ TYPED_MAX :: 480;  // what's typed (the survey's answer, a question, a lesson), 
 // What the typed box is for: the survey's answer, a question for whoever
 // you're talking to, or something to teach them.
 TYPE_SURVEY :: 0; TYPE_ASK :: 1; TYPE_TEACH :: 2; TYPE_CHAT :: 3;
+TYPE_PIECE :: 4;   // a sentence for the Sandbox's set pieces (verse/setpiece.coax)
 MEMORY_LINES :: 10;   // the conversation a character is reminded of (the server's last ten lines)
 MEMORY_LINE :: 400;   // bytes of a line kept
 HAUNT_NAME :: "Haunted House";   // the world, as a character names it
@@ -106,6 +107,7 @@ RealmView :: struct {
   quest: int;           // the quest's step, 0 to 8 (8: complete)
   quest_line: string;   // what to do now
   no_voice: bool;       // a realm without a voice (the Sandbox): no VOICE button
+  pieces: bool;         // edit mode makes set pieces from a sentence (the Sandbox): MAKE A SET PIECE, P
   goal: string;         // at the quest's orb: what E does there ("" not at it)
   bearing: f32;         // the orb's angle from where you look, radians (sign: the side)
   editing: bool;        // edit mode
@@ -175,7 +177,8 @@ BTN_ACCEPT :: BTN_TEACH + 1; BTN_DECLINE :: BTN_TEACH + 2;   // an offered chang
 BTN_CHAT :: BTN_DECLINE + 1; BTN_SAY :: BTN_CHAT + 1;          // the hotbar's CHAT, and the chat's SAY
 BTN_GFX :: BTN_SAY + 1;                                         // the hotbar's graphics: HIGH, MEDIUM, LOW
 BTN_VOICE :: BTN_GFX + 1;                                       // the hotbar's VOICE: talk to the house
-BUTTONS :: BTN_VOICE + 1;
+BTN_PIECE :: BTN_VOICE + 1;                                     // edit mode's MAKE A SET PIECE (the Sandbox)
+BUTTONS :: BTN_PIECE + 1;
 ACT_VOICE :: 7;     // host.js (coax/web/voice.js): the outbox is "on" or "off"
 
 // Graphics (host.js): how many pixels the house is drawn with. HIGH every
@@ -317,6 +320,7 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
     else if r[0].typing && r[0].typing_for == TYPE_CHAT { r[0].typing = false; }
   }
   if b == BTN_SAY { r[0].chat = true; realm_open_text(r, TYPE_CHAT); }
+  if b == BTN_PIECE && v.pieces && v.editing { realm_open_text(r, TYPE_PIECE); }
   if b == BTN_ACCEPT && v.offers > 0 { r[0].asks |= ASK_ACCEPT; }
   if b == BTN_DECLINE && v.offers > 0 { r[0].asks |= ASK_DECLINE; }
   if b >= BTN_ITEM && b < BTN_ITEM + v.item_n { r[0].slot = b - BTN_ITEM; r[0].asks |= ASK_PLACE; }
@@ -426,6 +430,7 @@ realm_key :: (r: [] Realm, v: RealmView, key: int, mods: int, down: bool) -> boo
   if v.editing {
     op := edit_key(v, key);
     if op >= 0 { edit_op(r, op); return true; }
+    if v.pieces && (key == 'p' || key == 'P') { realm_do(r, v, BTN_PIECE); return true; }
   }
   // Edit mode's hotbar: 1 to 9 place its items.
   if v.editing && key >= '1' && key < '1' + v.item_n {
@@ -688,6 +693,15 @@ item_box :: (r: [] Realm, i: int) -> Box {
   x0 := (r[0].width - total) * 0.5 + cast(f32) i * (w + gap);
   bottom := ifx phone(r) then stick_rest_y(r[0].height, k) - STICK * k - 18 * k else slot_box(r, 0).y0 - 22 * k;
   return Box.{x0 = x0, y0 = bottom - h, x1 = x0 + w, y1 = bottom};
+}
+
+// MAKE A SET PIECE, where the picked thing's row goes, in the middle.
+piece_box :: (r: [] Realm) -> Box {
+  k := r[0].dpr;
+  w := ifx phone(r) then 190 * k else 230 * k;
+  row := op_box(r, 0);
+  x0 := (r[0].width - w) * 0.5;
+  return Box.{x0 = x0, y0 = row.y0, x1 = x0 + w, y1 = row.y1};
 }
 
 // The row for the picked thing or the zone, over edit mode's hotbar.
@@ -969,6 +983,7 @@ draw_edit :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   y := top_bottom(r) + 100 * k;
   vertices := centred(d, out, at, "EDITING", r[0].width * 0.5, y, 12 * k, orange(k, 0.95));
   hint := ifx phone(r) then "TAP A THING TO PICK IT · A SLOT PLACES ONE" else "CLICK A THING TO PICK IT · 1 TO 5 PLACE · Z UNDO · B OR ESC TO PLAY";
+  if v.pieces && !phone(r) { hint = "CLICK A THING TO PICK IT · 1 TO 5 PLACE · P MAKES A SET PIECE · Z UNDO · B OR ESC TO PLAY"; }
   if v.selected.count > 0 && !phone(r) { hint = "ARROWS MOVE IT · R TURNS · + AND - RESIZE · DELETE REMOVES · ESC LETS GO"; }
   if v.person && !phone(r) { hint = "ARROWS MOVE THEM · R TURNS THEM · DELETE REMOVES THEM · ESC LETS GO"; }
   if v.selected.count == 0 && v.zone.count > 0 && !phone(r) { hint = "ARROWS MOVE THE ZONE · + AND - RESIZE IT · CLICK A THING TO PICK IT"; }
@@ -981,6 +996,10 @@ draw_edit :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   if v.can_undo { vertices = hud_button(r, out, vertices, BTN_UNDO, item_box(r, ITEMS), "UNDO", "Z", false); }
   if v.can_redo { vertices = hud_button(r, out, vertices, BTN_REDO, item_box(r, ITEMS + 1), "REDO", "Y", false); }
   vertices = hud_button(r, out, vertices, BTN_EDIT, item_box(r, ITEMS + 2), "DONE", "", true);
+  // the Sandbox's set pieces, over the hotbar while nothing is picked
+  if v.pieces && v.selected.count == 0 && v.zone.count == 0 {
+    vertices = hud_button(r, out, vertices, BTN_PIECE, piece_box(r), "MAKE A SET PIECE", ifx phone(r) then "" else "P", false);
+  }
   // what's picked, or the zone, named over its row
   name := ifx v.selected.count > 0 then v.selected else v.zone;
   if name.count == 0 { return vertices; }
@@ -1007,6 +1026,7 @@ draw_edit :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
 // What a question to a character, and a lesson, do with your words.
 ASK_DISCLOSURE :: "Your question goes to our server, and Google's Gemini answers as the character. We save the question and the answer.";
 TEACH_DISCLOSURE :: "They remember it in this house: it is kept with your save.";
+PIECE_DISCLOSURE :: "Your sentence goes to our server, and Google's Gemini picks one of the Sandbox's set pieces for it: a flock of birds that follows you, a ring of lanterns, a grove of trees or a pond. We save the sentence and the piece.";
 
 // The typed box: the survey's question, or whom you ask or teach; what's
 // typed with a caret, SEND (ASK, TEACH) and CANCEL.
@@ -1017,11 +1037,12 @@ draw_ask :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) 
   x := b.x0 + 18 * k;
   kind := r[0].typing_for;
   title: [96] u8;
-  tn := put(title[..], 0, ifx kind == TYPE_ASK then "ASK " else ifx kind == TYPE_TEACH then "TEACH " else "TELL US HOW IT WENT");
-  if kind != TYPE_SURVEY { tn = put(title[..], tn, v.talking); }
+  tn := put(title[..], 0, ifx kind == TYPE_ASK then "ASK " else ifx kind == TYPE_TEACH then "TEACH " else ifx kind == TYPE_PIECE then "MAKE A SET PIECE" else "TELL US HOW IT WENT");
+  if kind != TYPE_SURVEY && kind != TYPE_PIECE { tn = put(title[..], tn, v.talking); }
   vertices = write(k, out, vertices, cast(string) title[0..<tn], x, b.y0 + 26 * k, 10 * k, GAP, SPACE, orange(k, 0.95), false, false);
   text := realm_typed(r);
-  empty := ifx kind == TYPE_ASK then "Type your question" else ifx kind == TYPE_TEACH then "Something true in this house they should know" else "Type here";
+  empty := ifx kind == TYPE_ASK then "Type your question" else ifx kind == TYPE_TEACH then "Something true in this house they should know"
+           else ifx kind == TYPE_PIECE then "One sentence: a flock of birds follows me" else "Type here";
   shown := ifx text.count > 0 then text else empty;
   used: [1] f32;
   // all of it selected (Cmd+A) is drawn orange
@@ -1037,11 +1058,11 @@ draw_ask :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) 
   y1 := b.y1 - 14 * k;
   cancel := Box.{x0 = b.x1 - 18 * k - bw, y0 = y1 - bh, x1 = b.x1 - 18 * k, y1 = y1};
   sending := Box.{x0 = cancel.x0 - 12 * k - bw, y0 = y1 - bh, x1 = cancel.x0 - 12 * k, y1 = y1};
-  vertices = hud_button(r, out, vertices, BTN_SEND, sending, ifx kind == TYPE_ASK then "ASK" else ifx kind == TYPE_TEACH then "TEACH" else "SEND",
+  vertices = hud_button(r, out, vertices, BTN_SEND, sending, ifx kind == TYPE_ASK then "ASK" else ifx kind == TYPE_TEACH then "TEACH" else ifx kind == TYPE_PIECE then "MAKE" else "SEND",
                         "ENTER", text.count > 0);
   // what happens to the words, under the box (analytics.coax)
   said: [1] f32;
-  disclosure := ifx kind == TYPE_ASK then ASK_DISCLOSURE else ifx kind == TYPE_TEACH then TEACH_DISCLOSURE else TRACK_DISCLOSURE;
+  disclosure := ifx kind == TYPE_ASK then ASK_DISCLOSURE else ifx kind == TYPE_TEACH then TEACH_DISCLOSURE else ifx kind == TYPE_PIECE then PIECE_DISCLOSURE else TRACK_DISCLOSURE;
   vertices = draw_wrapped(k, out, vertices, disclosure, b.x0 + 4 * k, b.y1 + 8 * k, 7 * k, GAP, SPACE, white(k, 0.7),
                           b.x1 - b.x0 - 8 * k, 14 * k, false, true, said[..]);
   return hud_button(r, out, vertices, BTN_CANCEL, cancel, "CANCEL", "ESC", false);
@@ -1575,6 +1596,23 @@ view :: () -> RealmView { v: RealmView; v.ready = true; v.title = "Foyer"; v.que
   #assert r[0].boxes[BTN_EXIT].x0 == slot_box(r[..], 6).x0 && r[0].boxes[BTN_GFX].x0 == slot_box(r[..], 5).x0;
   buf: [48] u8;
   #assert quest_text(buf[..], -1) == "EVERYONE'S OPEN GROUND";
+}
+
+#test "the Sandbox's edit mode makes a set piece from a sentence: MAKE or P opens it, MAKE sends it" {
+  r: [1] Realm; desk(r[..]); v := view(); v.editing = true; v.pieces = true;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  _ := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert r[0].shown[BTN_PIECE];
+  #assert realm_key(r[..], v, 'p', 0, true) && realm_wants_text(r[..]) && realm_typing_for(r[..]) == TYPE_PIECE;
+  realm_type(r[..], "a flock of birds follows me");
+  #assert realm_key(r[..], v, KEY_ENTER, 0, true) && realm_take(r[..]) == ASK_SEND && realm_typed(r[..]) == "a flock of birds follows me";
+  // the Haunted House has no set pieces, and a picked thing's row takes the place
+  h: [1] Realm; desk(h[..]); w := view(); w.editing = true;
+  _ = realm_draw(h[..], w, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert !h[0].shown[BTN_PIECE] && !realm_key(h[..], w, 'p', 0, true) && !realm_wants_text(h[..]);
+  v.selected = "Crate";
+  _ = realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert !r[0].shown[BTN_PIECE];
 }
 
 #test "GFX steps the graphics down and tells the host; G does too" {

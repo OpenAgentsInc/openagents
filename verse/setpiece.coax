@@ -1,0 +1,363 @@
+// The Sandbox's set pieces (rl-sandbox-pieces): what one typed sentence
+// can make, and where its parts go. The sentence never reaches this file:
+// the server's selector (POST /api/playtest/sandbox/piece, coax/web/api/npc.c
+// and migrations/0036_sandbox_pieces.sql) has Gemini pick one piece from
+// this catalogue with its bounded fields, checks it against the same
+// catalogue, and the page reads that answer here and checks it again
+// (verse_piece_read). Then a seeded generator lays the piece out in front
+// of you (verse_piece_layout) as placements the Sandbox's engine adds
+// (verse/haunt.coax verse_haunt_put): one undo step, one publish.
+//
+// The catalogue, kept small and done well:
+//   flock     birds that fly round whoever is walking: count 3-12, kind crow | bat
+//   lanterns  a ring of glowing lanterns: count 4-16, colour, size (the ring's width)
+//   grove     a stand of trees: count 3-20, kind round | pine | dead | mixed, size (how spread)
+//   pond      water ringed with stones and bushes: size
+// A field a piece doesn't have is -1. A count out of range is held to it, a
+// missing one is the piece's default; a kind, colour or size that isn't the
+// piece's is its default. An unknown piece is no piece (-1).
+//   coax/bin/coax test verse/setpiece.coax
+
+PIECES :: 4;
+PIECE_FLOCK :: 0; PIECE_LANTERNS :: 1; PIECE_GROVE :: 2; PIECE_POND :: 3;
+PIECE_NAMES :: [PIECES] string.["flock", "lanterns", "grove", "pond"];
+PIECE_COUNT_MIN :: [PIECES] int.[3, 4, 3, 0];
+PIECE_COUNT_MAX :: [PIECES] int.[12, 16, 20, 0];
+PIECE_COUNT_DEFAULT :: [PIECES] int.[7, 8, 9, 0];
+// Kinds: a piece's are KIND_FIRST up, KIND_N of them, the first its default.
+KINDS :: 6;
+KIND_NAMES :: [KINDS] string.["crow", "bat", "round", "pine", "dead", "mixed"];
+PIECE_KIND_FIRST :: [PIECES] int.[0, 0, 2, 0];
+PIECE_KIND_N :: [PIECES] int.[2, 0, 4, 0];
+COLOURS :: 7;
+COLOUR_NAMES :: [COLOURS] string.["orange", "gold", "red", "green", "blue", "violet", "white"];
+COLOUR_RGB :: [COLOURS * 3] f32.[1, 0.55, 0.2,  1, 0.82, 0.3,  1, 0.3, 0.25,  0.45, 1, 0.45,  0.4, 0.65, 1,  0.75, 0.45, 1,  1, 0.95, 0.85];
+PIECE_HAS_COLOUR :: [PIECES] bool.[false, true, false, false];
+SIZES :: 3;
+SIZE_NAMES :: [SIZES] string.["small", "medium", "large"];
+PIECE_HAS_SIZE :: [PIECES] bool.[false, true, true, true];
+
+// The meshes a piece uses (the Haunted House's, which the Sandbox shares).
+PIECE_MESHES :: 9;
+MESH_CROW :: 0; MESH_BAT :: 1; MESH_LANTERN :: 2; MESH_TREE_ROUND :: 3; MESH_TREE_PINE :: 4; MESH_TREE_DEAD :: 5;
+MESH_BUSH :: 6; MESH_WATER :: 7; MESH_STONE :: 8;
+PIECE_MESH_NAMES :: [PIECE_MESHES] string.["Custom_Crow", "Custom_Bat", "Custom_JackOLantern", "Custom_Tree_Round", "Custom_Tree_Pine",
+  "Custom_Tree_Dead", "Custom_Bush", "Custom_Ground", "Custom_Rock"];
+PIECE_MESH_LABELS :: [PIECE_MESHES] string.["Bird", "Bat", "Lantern", "Tree", "Pine", "Dead tree", "Bush", "Pond", "Stone"];
+
+// A placement is PLACE_FLOATS floats: mesh x y z yaw scale r g b glow motion solid.
+// x y z are the world's, except a flock's (motion MOTION_FLOCK): its place
+// round the flock, which the engine flies round whoever is walking.
+PLACE_FLOATS :: 12;
+PLACES_MAX :: 40;
+MOTION_FLOCK :: 7;
+TAU :: 6.2831853;
+
+SetPiece :: struct { piece: int = -1; count: int = -1; kind: int = -1; colour: int = -1; size: int = -1; }
+
+verse_piece_count :: () -> int #export_c { return PIECES; }
+verse_piece_name :: (piece: int) -> string #export_c { if piece < 0 || piece >= PIECES { return ""; } return PIECE_NAMES[piece]; }
+verse_piece_mesh :: (mesh: int) -> string #export_c { if mesh < 0 || mesh >= PIECE_MESHES { return ""; } return PIECE_MESH_NAMES[mesh]; }
+verse_piece_label :: (mesh: int) -> string #export_c { if mesh < 0 || mesh >= PIECE_MESHES { return ""; } return PIECE_MESH_LABELS[mesh]; }
+verse_piece_places_max :: () -> int #export_c { return PLACES_MAX; }
+
+sp_clamp :: (x: int, a: int, b: int) -> int { if x < a { return a; } if x > b { return b; } return x; }
+
+// Holds a piece to the catalogue (see the top of the file).
+verse_piece_check :: (p: SetPiece) -> SetPiece #export_c {
+  out: SetPiece;
+  if p.piece < 0 || p.piece >= PIECES { return out; }
+  k := p.piece;
+  out.piece = k;
+  if PIECE_COUNT_MAX[k] > 0 { out.count = ifx p.count <= 0 then PIECE_COUNT_DEFAULT[k] else sp_clamp(p.count, PIECE_COUNT_MIN[k], PIECE_COUNT_MAX[k]); }
+  if PIECE_KIND_N[k] > 0 {
+    first := PIECE_KIND_FIRST[k];
+    out.kind = ifx p.kind >= first && p.kind < first + PIECE_KIND_N[k] then p.kind else first;
+  }
+  if PIECE_HAS_COLOUR[k] { out.colour = ifx p.colour >= 0 && p.colour < COLOURS then p.colour else 0; }
+  if PIECE_HAS_SIZE[k] { out.size = ifx p.size >= 0 && p.size < SIZES then p.size else 1; }
+  return out;
+}
+
+// The raw value after "key": in a flat JSON object: a string's letters
+// (no escapes: these are catalogue words) or a number's digits; "" if none.
+sp_value :: (json: string, key: string) -> string {
+  i := 0;
+  while i + key.count + 2 <= json.count {
+    if json[i] == '"' && json[i + key.count + 1] == '"' && json[i + 1..<i + key.count + 1] == key {
+      j := i + key.count + 2;
+      while j < json.count && (json[j] == ' ' || json[j] == '\n' || json[j] == '\t') { j += 1; }
+      if j >= json.count || json[j] != ':' { i += 1; continue; }
+      j += 1;
+      while j < json.count && (json[j] == ' ' || json[j] == '\n' || json[j] == '\t') { j += 1; }
+      if j < json.count && json[j] == '"' {
+        e := j + 1;
+        while e < json.count && json[e] != '"' && json[e] != '\\' { e += 1; }
+        if e >= json.count || json[e] != '"' { return ""; }
+        return json[j + 1..<e];
+      }
+      e := j;
+      while e < json.count && ((json[e] >= '0' && json[e] <= '9') || (e == j && json[e] == '-')) { e += 1; }
+      return json[j..<e];
+    }
+    i += 1;
+  }
+  return "";
+}
+sp_find :: (names: [] string, word: string) -> int { for i: 0..<names.count { if names[i] == word { return i; } } return -1; }
+sp_int :: (digits: string) -> int {
+  if digits.count == 0 || digits.count > 6 { return -1; }
+  n := 0;
+  for i: 0..<digits.count { if digits[i] < '0' || digits[i] > '9' { return -1; } n = n * 10 + cast(int) (digits[i] - '0'); }
+  return n;
+}
+
+// Reads the selector's answer ({piece, count, kind, colour, size}) and
+// holds it to the catalogue.
+verse_piece_read :: (json: string) -> SetPiece #export_c {
+  pieces := PIECE_NAMES; kinds := KIND_NAMES; colours := COLOUR_NAMES; sizes := SIZE_NAMES;
+  p: SetPiece;
+  p.piece = sp_find(pieces[..], sp_value(json, "piece"));
+  p.count = sp_int(sp_value(json, "count"));
+  p.kind = sp_find(kinds[..], sp_value(json, "kind"));
+  p.colour = sp_find(colours[..], sp_value(json, "colour"));
+  p.size = sp_find(sizes[..], sp_value(json, "size"));
+  return verse_piece_check(p);
+}
+
+// What the piece is, for the notice: "A flock of 7 crows".
+verse_piece_says :: (p: SetPiece, buf: [] u8) -> string #export_c {
+  n := 0;
+  if p.piece == PIECE_FLOCK { n = sp_text(buf, n, "A flock of "); n = sp_number(buf, n, p.count); n = sp_text(buf, n, ifx p.kind == 1 then " bats" else " birds"); }
+  if p.piece == PIECE_LANTERNS { n = sp_text(buf, n, "A ring of "); n = sp_number(buf, n, p.count); n = sp_text(buf, n, " "); n = sp_text(buf, n, COLOUR_NAMES[sp_clamp(p.colour, 0, COLOURS - 1)]); n = sp_text(buf, n, " lanterns"); }
+  if p.piece == PIECE_GROVE { n = sp_text(buf, n, "A grove of "); n = sp_number(buf, n, p.count); n = sp_text(buf, n, " trees"); }
+  if p.piece == PIECE_POND { n = sp_text(buf, n, ifx p.size == 0 then "A small pond" else ifx p.size == 2 then "A large pond" else "A pond"); }
+  return cast(string) buf[0..<n];
+}
+sp_text :: (buf: [] u8, at: int, t: string) -> int { n := at; for i: 0..<t.count { if n < buf.count { buf[n] = t[i]; n += 1; } } return n; }
+sp_number :: (buf: [] u8, at: int, x: int) -> int {
+  digits: [8] u8; d := 0; v := ifx x < 0 then 0 else x;
+  while d == 0 || (v > 0 && d < 8) { digits[d] = cast(u8) ('0' + v % 10); v /= 10; d += 1; }
+  n := at;
+  while d > 0 { d -= 1; if n < buf.count { buf[n] = digits[d]; n += 1; } }
+  return n;
+}
+
+// The generator's numbers: the demo's linear congruential step, so a seed
+// lays a piece out the same way every time.
+Seeded :: struct { s: int; }
+sp_next :: (r: [] Seeded) -> f32 {
+  r[0].s = (r[0].s * 1664525 + 1013904223) % 4294967296;
+  return cast(f32) (cast(f64) r[0].s / 4294967296.0);
+}
+sp_put :: (out: [] f32, n: int, mesh: int, x: f32, y: f32, z: f32, yaw: f32, scale: f32, r: f32, g: f32, b: f32, glow: f32, motion: int, solid: bool) -> int {
+  if n >= PLACES_MAX || (n + 1) * PLACE_FLOATS > out.count { return n; }
+  o := n * PLACE_FLOATS;
+  out[o] = cast(f32) mesh; out[o + 1] = x; out[o + 2] = y; out[o + 3] = z; out[o + 4] = yaw; out[o + 5] = scale;
+  out[o + 6] = r; out[o + 7] = g; out[o + 8] = b; out[o + 9] = glow; out[o + 10] = cast(f32) motion; out[o + 11] = ifx solid then 1.0f32 else 0.0f32;
+  return n + 1;
+}
+
+// How far the piece reaches from its middle, metres.
+verse_piece_reach :: (p: SetPiece) -> f32 #export_c {
+  if p.piece == PIECE_LANTERNS { return ifx p.size == 0 then 3.0f32 else ifx p.size == 2 then 8.0f32 else 5.0f32; }
+  if p.piece == PIECE_GROVE { spread := ifx p.size == 0 then 1.6f32 else ifx p.size == 2 then 2.8f32 else 2.2f32; return spread * sqrt(cast(f32) p.count) + 1.0f32; }
+  if p.piece == PIECE_POND { return verse_piece_pond_radius(p) + 1.5f32; }
+  return 0.0f32;
+}
+verse_piece_pond_radius :: (p: SetPiece) -> f32 #export_c { return ifx p.size == 0 then 1.8f32 else ifx p.size == 2 then 4.2f32 else 2.8f32; }
+
+// Lays piece p out for someone standing at (x, z) looking along heading
+// (they look along -(sin heading, cos heading)): a flock round them, the
+// rest just in front, clear of their feet. Writes placements to out and
+// returns how many (0 for no piece). The same seed lays it out the same way.
+verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out: [] f32) -> int #export_c {
+  q := verse_piece_check(p);
+  if q.piece < 0 { return 0; }
+  r: [1] Seeded; r[0].s = (seed % 4294967296 + 4294967296) % 4294967296;
+  n := 0;
+  reach := verse_piece_reach(q);
+  cx := x - sin(heading) * (reach + 2.0f32); cz := z - cos(heading) * (reach + 2.0f32);
+  if q.piece == PIECE_FLOCK {
+    mesh := ifx q.kind == 1 then MESH_BAT else MESH_CROW;
+    for i: 0..<q.count {
+      a := (cast(f32) i + sp_next(r[..]) * 0.6f32) / cast(f32) q.count * TAU;
+      ring := 1.8f32 + sp_next(r[..]) * 1.6f32;
+      n = sp_put(out, n, mesh, cos(a) * ring, 2.4f32 + sp_next(r[..]) * 1.4f32, sin(a) * ring, 0, ifx mesh == MESH_BAT then 1.1f32 else 1.5f32 + sp_next(r[..]) * 0.3f32,
+                 1, 1, 1, 0, MOTION_FLOCK, false);
+    }
+  }
+  if q.piece == PIECE_LANTERNS {
+    c := sp_clamp(q.colour, 0, COLOURS - 1) * 3;
+    turn := sp_next(r[..]) * TAU;
+    for i: 0..<q.count {
+      a := turn + cast(f32) i / cast(f32) q.count * TAU;
+      lx := cx + cos(a) * reach; lz := cz + sin(a) * reach;
+      // each faces the ring's middle: (sin yaw, cos yaw) = -(cos a, sin a)
+      n = sp_put(out, n, MESH_LANTERN, lx, 0, lz, -a - TAU / 4.0f32, 1.3f32, COLOUR_RGB[c], COLOUR_RGB[c + 1], COLOUR_RGB[c + 2], 1.0f32, 0, true);
+    }
+  }
+  if q.piece == PIECE_GROVE {
+    spread := reach - 1.0f32;
+    at: [40] f32; k := 0; tries := 0;
+    while k < q.count && tries < q.count * 40 {
+      tries += 1;
+      a := sp_next(r[..]) * TAU; d := sqrt(sp_next(r[..])) * spread;
+      tx := cx + cos(a) * d; tz := cz + sin(a) * d;
+      clear := true;
+      for j: 0..<k { if (at[j * 2] - tx) * (at[j * 2] - tx) + (at[j * 2 + 1] - tz) * (at[j * 2 + 1] - tz) < 2.4f32 * 2.4f32 { clear = false; } }
+      if !clear { continue; }
+      at[k * 2] = tx; at[k * 2 + 1] = tz; k += 1;
+      pick := sp_next(r[..]);
+      mesh := ifx q.kind == 2 then MESH_TREE_ROUND else ifx q.kind == 3 then MESH_TREE_PINE else ifx q.kind == 4 then MESH_TREE_DEAD
+              else ifx pick < 0.45f32 then MESH_TREE_ROUND else ifx pick < 0.8f32 then MESH_TREE_PINE else MESH_BUSH;
+      shade := 0.85f32 + sp_next(r[..]) * 0.3f32;
+      n = sp_put(out, n, mesh, tx, 0, tz, sp_next(r[..]) * TAU, 0.75f32 + sp_next(r[..]) * 0.6f32, shade, shade, shade, 0, 0, true);
+    }
+  }
+  if q.piece == PIECE_POND {
+    radius := verse_piece_pond_radius(q);
+    // The water: four squares turned a sixteenth of a turn apart, their
+    // corners on the rim, a sixteen-pointed shape the stones round off.
+    for k: 0..<4 {
+      n = sp_put(out, n, MESH_WATER, cx, 0.012f32 + cast(f32) k * 0.002f32, cz, cast(f32) k * TAU / 16.0f32, radius * 1.4142136f32, 0.18f32, 0.42f32, 0.62f32, 0.25f32, 0, false);
+    }
+    stones := sp_clamp(cast(int) (TAU * radius / 1.1f32), 8, 24);
+    turn := sp_next(r[..]) * TAU;
+    for i: 0..<stones {
+      a := turn + (cast(f32) i + sp_next(r[..]) * 0.4f32) / cast(f32) stones * TAU;
+      rr := radius + 0.1f32 + sp_next(r[..]) * 0.25f32;
+      g := 0.75f32 + sp_next(r[..]) * 0.25f32;
+      n = sp_put(out, n, MESH_STONE, cx + cos(a) * rr, 0, cz + sin(a) * rr, sp_next(r[..]) * TAU, 0.3f32 + sp_next(r[..]) * 0.3f32, g, g, g, 0, 0, true);
+    }
+    for i: 0..<3 {
+      a := turn + 0.5f32 + cast(f32) i * 2.1f32;
+      n = sp_put(out, n, MESH_BUSH, cx + cos(a) * (radius + 1.0f32), 0, cz + sin(a) * (radius + 1.0f32), sp_next(r[..]) * TAU, 0.8f32 + sp_next(r[..]) * 0.4f32, 1, 1, 1, 0, 0, true);
+    }
+  }
+  return n;
+}
+
+// ---- checks
+
+#test "the catalogue holds a piece to its fields" {
+  p := verse_piece_check(SetPiece.{piece = PIECE_FLOCK, count = 40, kind = 3, colour = 2, size = 0});
+  #assert p.piece == PIECE_FLOCK && p.count == 12 && p.kind == 0 && p.colour == -1 && p.size == -1;   // too many, a tree kind, no colour or size
+  p = verse_piece_check(SetPiece.{piece = PIECE_FLOCK, count = 1, kind = 1});
+  #assert p.count == 3 && p.kind == 1;
+  p = verse_piece_check(SetPiece.{piece = PIECE_LANTERNS});
+  #assert p.count == 8 && p.kind == -1 && p.colour == 0 && p.size == 1;   // the defaults
+  p = verse_piece_check(SetPiece.{piece = PIECE_GROVE, count = 5, kind = 1, size = 9});
+  #assert p.count == 5 && p.kind == 2 && p.size == 1;   // a bat is no tree
+  p = verse_piece_check(SetPiece.{piece = PIECE_POND, count = 9, kind = 2, colour = 1, size = 2});
+  #assert p.count == -1 && p.kind == -1 && p.colour == -1 && p.size == 2;
+  #assert verse_piece_check(SetPiece.{piece = 4}).piece == -1 && verse_piece_check(SetPiece.{piece = -1, count = 3}).count == -1;
+}
+
+#test "the selector's answer is read and held to the catalogue" {
+  p := verse_piece_read("{\"piece\": \"flock\", \"count\": 9, \"kind\": \"bat\", \"colour\": \"\", \"size\": \"\"}");
+  #assert p.piece == PIECE_FLOCK && p.count == 9 && p.kind == 1 && p.colour == -1;
+  p = verse_piece_read("{\"piece\":\"lanterns\",\"count\":99,\"colour\":\"blue\",\"size\":\"large\",\"model\":\"gemini\"}");
+  #assert p.piece == PIECE_LANTERNS && p.count == 16 && p.colour == 4 && p.size == 2;
+  p = verse_piece_read("{\"piece\":\"grove\",\"kind\":\"palm\",\"count\":\"lots\"}");
+  #assert p.piece == PIECE_GROVE && p.kind == 2 && p.count == 9;   // an unknown kind and a count that isn't one: the defaults
+  #assert verse_piece_read("{\"piece\":\"castle\",\"count\":3}").piece == -1;
+  #assert verse_piece_read("{\"piece\":\"Flock\"}").piece == -1;   // exact catalogue words only
+  #assert verse_piece_read("{\"error\":\"none fit\"}").piece == -1 && verse_piece_read("").piece == -1;
+  #assert verse_piece_read("{\"piece\":\"pond").piece == -1;      // cut short
+  #assert verse_piece_read("{\"count\":\"pond\",\"piece\":\"pond\"}").piece == PIECE_POND;
+}
+
+#test "what a piece is, in words" {
+  buf: [64] u8;
+  #assert verse_piece_says(verse_piece_check(SetPiece.{piece = PIECE_FLOCK, count = 7}), buf[..]) == "A flock of 7 birds";
+  #assert verse_piece_says(verse_piece_check(SetPiece.{piece = PIECE_LANTERNS, count = 12, colour = 4}), buf[..]) == "A ring of 12 blue lanterns";
+  #assert verse_piece_says(verse_piece_check(SetPiece.{piece = PIECE_POND, size = 0}), buf[..]) == "A small pond";
+}
+
+#test "a flock: its birds round whoever they follow, overhead, apart" {
+  out: [PLACES_MAX * PLACE_FLOATS] f32;
+  n := verse_piece_layout(SetPiece.{piece = PIECE_FLOCK, count = 8}, 42, 10, 10, 0, out[..]);
+  #assert n == 8;
+  for i: 0..<n {
+    o := i * PLACE_FLOATS;
+    ring := sqrt(out[o + 1] * out[o + 1] + out[o + 3] * out[o + 3]);
+    #assert out[o] == cast(f32) MESH_CROW && out[o + 10] == cast(f32) MOTION_FLOCK && out[o + 11] == 0;   // flies, never in your way
+    #assert ring >= 1.8 && ring <= 3.4 && out[o + 2] >= 2.4 && out[o + 2] <= 3.8;   // places round them, not the world's
+  }
+  bats: [PLACES_MAX * PLACE_FLOATS] f32;
+  #assert verse_piece_layout(SetPiece.{piece = PIECE_FLOCK, count = 3, kind = 1}, 42, 0, 0, 0, bats[..]) == 3 && bats[0] == cast(f32) MESH_BAT;
+}
+
+#test "a seed lays a piece out the same way every time, another seed differently" {
+  a: [PLACES_MAX * PLACE_FLOATS] f32; b: [PLACES_MAX * PLACE_FLOATS] f32; c: [PLACES_MAX * PLACE_FLOATS] f32;
+  g := SetPiece.{piece = PIECE_GROVE, count = 6, kind = 5};
+  na := verse_piece_layout(g, 7, 0, 0, 0, a[..]); nb := verse_piece_layout(g, 7, 0, 0, 0, b[..]); nc := verse_piece_layout(g, 8, 0, 0, 0, c[..]);
+  #assert na == 6 && nb == 6 && nc == 6;
+  same := true; differ := false;
+  for i: 0..<na * PLACE_FLOATS { if a[i] != b[i] { same = false; } if a[i] != c[i] { differ = true; } }
+  #assert same && differ;
+}
+
+#test "a grove stands in front of you, its trees apart" {
+  out: [PLACES_MAX * PLACE_FLOATS] f32;
+  // looking along -z (heading 0): the grove is at negative z, clear of your feet
+  n := verse_piece_layout(SetPiece.{piece = PIECE_GROVE, count = 9, kind = 3}, 1234, 0, 0, 0, out[..]);
+  #assert n == 9;
+  for i: 0..<n {
+    o := i * PLACE_FLOATS;
+    #assert out[o] == cast(f32) MESH_TREE_PINE && out[o + 11] == 1 && out[o + 3] < -1.0;
+    #assert out[o + 1] * out[o + 1] + out[o + 3] * out[o + 3] > 4.0;
+    for j: 0..<i { p := j * PLACE_FLOATS; dx := out[o + 1] - out[p + 1]; dz := out[o + 3] - out[p + 3]; #assert dx * dx + dz * dz >= 2.4 * 2.4 - 0.001; }
+  }
+}
+
+#test "lanterns ring their middle, lit in their colour" {
+  out: [PLACES_MAX * PLACE_FLOATS] f32;
+  n := verse_piece_layout(SetPiece.{piece = PIECE_LANTERNS, count = 6, colour = 3, size = 0}, 5, 0, 0, 3.14159265, out[..]);
+  #assert n == 6;
+  // looking along +z: the ring's middle is 5 m ahead (its 3 m reach and 2 m clear)
+  for i: 0..<n {
+    o := i * PLACE_FLOATS;
+    dx := out[o + 1]; dz := out[o + 3] - 5.0;
+    #assert out[o] == cast(f32) MESH_LANTERN && abs(sqrt(dx * dx + dz * dz) - 3.0) < 0.01 && out[o + 9] == 1.0;
+    #assert out[o + 6] == 0.45 && out[o + 7] == 1 && out[o + 8] == 0.45;   // green
+  }
+}
+
+#test "a pond: water within its rim, stones round it, and nothing for no piece" {
+  out: [PLACES_MAX * PLACE_FLOATS] f32;
+  n := verse_piece_layout(SetPiece.{piece = PIECE_POND, size = 2}, 99, 0, 0, 0, out[..]);
+  #assert n <= PLACES_MAX && n > 4 + 8;
+  water := 0; stones := 0;
+  for i: 0..<n {
+    o := i * PLACE_FLOATS;
+    if out[o] == cast(f32) MESH_WATER { water += 1; #assert out[o + 11] == 0 && out[o + 5] * 0.5 * 1.4142136 <= 4.2001; }
+    if out[o] == cast(f32) MESH_STONE { stones += 1; }
+  }
+  #assert water == 4 && stones == 23;   // one every 1.1 m of a 4.2 m rim
+  #assert verse_piece_layout(SetPiece.{piece = -1}, 1, 0, 0, 0, out[..]) == 0;
+  small: [2 * PLACE_FLOATS] f32;
+  #assert verse_piece_layout(SetPiece.{piece = PIECE_FLOCK, count = 12}, 1, 0, 0, 0, small[..]) == 2;   // never past what it's given
+}
+
+// The selector's request body, {"sentence": "..."}: quotes and backslashes
+// escaped, control bytes as spaces. Returns its length, or -1 if it doesn't fit.
+verse_piece_body :: (sentence: string, out: [] u8) -> int #export_c {
+  n := sp_text(out, 0, "{\"sentence\":\"");
+  for i: 0..<sentence.count {
+    c := sentence[i];
+    if c == '"' || c == '\\' { n = sp_text(out, n, "\\"); }
+    if n < out.count { out[n] = ifx c < 32 then cast(u8) ' ' else c; n += 1; }
+  }
+  n = sp_text(out, n, "\"}");
+  return ifx n >= out.count then -1 else n;
+}
+
+#test "the sentence goes to the selector as JSON" {
+  buf: [64] u8;
+  n := verse_piece_body("a \"big\" pond\\\nplease", buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"sentence\":\"a \\\"big\\\" pond\\\\ please\"}";
+  small: [16] u8;
+  #assert verse_piece_body("a flock of birds follows me", small[..]) == -1;
+}

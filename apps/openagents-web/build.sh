@@ -26,7 +26,7 @@ m="$here/../../verse"
 "$here/../../coax/web/voice/build.sh" "$here/build/voice.wasm" &
 voice=$!
 "$here/../../coax/web/wasm.sh" "$here/realm.coax" "$here/realm-face.c" "$here/build/realm.wasm" \
-  "$m/haunt.coax" "$m/haunt-buffer.coax" "$m/player.coax" "$m/grid.coax" "$m/particles.coax" "$m/cinematic.coax" &
+  "$m/haunt.coax" "$m/haunt-buffer.coax" "$m/player.coax" "$m/grid.coax" "$m/particles.coax" "$m/cinematic.coax" "$m/setpiece.coax" &
 realm=$!
 # /realm/garden: the engine's world pieces (camera, terrain, throwing,
 # arranging) in an open-air realm, with the player and thumbs as their own libraries.
