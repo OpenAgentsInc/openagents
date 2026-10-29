@@ -1,0 +1,33 @@
+// Exercise the imported descriptor, including its shared wire policy.
+#import_proto "../../../proto/descriptors/nostr-event.pb" as N;
+#load "proto_wire_N.coax";
+#test "generated JSON object validator boundaries" {
+ empty:[1]u8;
+ #assert N_JsonObject__check(empty[0..<0],64,0,false,false).error==0;
+ #assert N_JsonObject__check(empty[0..<0],65,0,false,false).error==N__pb_LIMIT;
+ #assert N_JsonObject__check(empty[0..<0],0,0,true,false).error==N__pb_REQUIRED;
+ #assert N_JsonObject_decode(empty[0..<0]).error==N__pb_REQUIRED;
+ one:=[3]u8.[10,1,97];
+ good:=N_JsonObject__check(one[..],0,1,true,false);
+ #assert good.error==0 && good.left==0;
+ #assert N_JsonObject__check(one[..],0,0,true,false).error==N__pb_LIMIT;
+ #assert N_JsonObject_decode(one[..]).error==0;
+ duplicate:=[4]u8.[10,0,10,0];
+ #assert N_JsonObject_decode(duplicate[..]).error==N__pb_DUPLICATE;
+ wrong:=[2]u8.[8,0];#assert N_JsonObject_decode(wrong[..]).error==N__pb_WIRE;
+ malformed:=[1]u8.[0];#assert N_JsonObject_decode(malformed[..]).error==N__pb_WIRE;
+ nonminimal:=[3]u8.[10,128,0];
+ #assert N_JsonObject_decode(nonminimal[..]).error==0;
+ #assert N_JsonObject__check(nonminimal[..],0,1,true,true).error==N__pb_WIRE;
+ #assert N__pb_message_admitted(64,1048576) && !N__pb_message_admitted(65,0);
+ #assert !N__pb_message_admitted(0,-1) && !N__pb_message_admitted(0,1048577);
+ #assert N__pb_root_depth()==0 && N__pb_default_fields()==524288;
+}
+#test "generated JSON object payload size is exact" {
+ wire:[131077]u8;wire[0]=10;wire[1]=128;wire[2]=128;wire[3]=8;
+ #assert N_JsonObject_decode(wire[0..<131076]).error==0;
+ wire[1]=129;
+ #assert N_JsonObject_decode(wire[..]).error==N__pb_LIMIT;
+}
+
+main :: () {}

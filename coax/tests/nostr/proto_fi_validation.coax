@@ -1,0 +1,59 @@
+// Exercise the imported descriptor, including its shared wire policy.
+#import_proto "../../../proto/descriptors/block-identity.pb" as F;
+#load "proto_wire_F.coax";
+#test "generated JSON object validator boundaries" {
+ empty:[1]u8;
+ #assert F_JsonObject__check(empty[0..<0],64,0,false,false).error==0;
+ #assert F_JsonObject__check(empty[0..<0],65,0,false,false).error==F__pb_LIMIT;
+ #assert F_JsonObject__check(empty[0..<0],0,0,true,false).error==F__pb_REQUIRED;
+ #assert F_JsonObject_decode(empty[0..<0]).error==F__pb_REQUIRED;
+ one:=[3]u8.[10,1,97];
+ good:=F_JsonObject__check(one[..],0,1,true,false);
+ #assert good.error==0 && good.left==0;
+ #assert F_JsonObject__check(one[..],0,0,true,false).error==F__pb_LIMIT;
+ #assert F_JsonObject_decode(one[..]).error==0;
+ duplicate:=[4]u8.[10,0,10,0];
+ #assert F_JsonObject_decode(duplicate[..]).error==F__pb_DUPLICATE;
+ wrong:=[2]u8.[8,0];#assert F_JsonObject_decode(wrong[..]).error==F__pb_WIRE;
+ malformed:=[1]u8.[0];#assert F_JsonObject_decode(malformed[..]).error==F__pb_WIRE;
+ nonminimal:=[3]u8.[10,128,0];
+ #assert F_JsonObject_decode(nonminimal[..]).error==0;
+ #assert F_JsonObject__check(nonminimal[..],0,1,true,true).error==F__pb_WIRE;
+ #assert F__pb_message_admitted(64,1048576) && !F__pb_message_admitted(65,0);
+ #assert !F__pb_message_admitted(0,-1) && !F__pb_message_admitted(0,1048577);
+ #assert F__pb_root_depth()==0 && F__pb_default_fields()==524288;
+}
+#test "generated JSON object payload size is exact" {
+ wire:[131077]u8;wire[0]=10;wire[1]=128;wire[2]=128;wire[3]=8;
+ #assert F_JsonObject_decode(wire[0..<131076]).error==0;
+ wire[1]=129;
+ #assert F_JsonObject_decode(wire[..]).error==F__pb_LIMIT;
+}
+
+main :: () {}
+
+#test "generated FI number validation and getters" {
+ empty:[1]u8;#assert F_JsonNumber__check(empty[0..<0],65,0,false,false).error==F__pb_LIMIT;
+ #assert F_JsonNumber__check(empty[0..<0],0,0,true,false).error==F__pb_REQUIRED;
+ one:=[3]u8.[10,1,49];good:=F_JsonNumber__check(one[..],0,1,true,false);
+ #assert good.error==0 && good.left==0 && F_JsonNumber__check(one[..],0,0,true,false).error==F__pb_LIMIT;
+ #assert F_JsonNumber_decode(one[..]).error==0;
+ dup:=[6]u8.[10,1,49,10,1,50];#assert F_JsonNumber_decode(dup[..]).error==F__pb_DUPLICATE;
+ wrong:=[2]u8.[8,0];#assert F_JsonNumber_decode(wrong[..]).error==F__pb_WIRE;
+ bad:=[3]u8.[10,1,255];#assert F_JsonNumber_decode(bad[..]).error==F__pb_UTF8;
+ overlong:=[4]u8.[10,129,0,49];#assert F_JsonNumber_decode(overlong[..]).error==0;
+ #assert F_JsonNumber__check(overlong[..],0,1,true,true).error==F__pb_WIRE;
+ bounded:[132]u8;bounded[0]=10;bounded[1]=128;bounded[2]=1;
+ #assert F_JsonNumber_decode(bounded[0..<131]).error==0;bounded[1]=129;
+ #assert F_JsonNumber_decode(bounded[..]).error==F__pb_LIMIT;
+ prefixed:=[5]u8.[16,0,10,1,49];value:=F_JsonNumber_get_decimal(F_JsonNumber_decode(prefixed[..]));
+ #assert value.error==0 && value.present && value.value=="1";
+ invalid:=F_JsonNumber.{wire=wrong[..]};#assert F_JsonNumber_get_decimal(invalid).error==F__pb_WIRE;
+ invalid=F_JsonNumber.{wire=one[..],error=F__pb_VALUE};#assert F_JsonNumber_get_decimal(invalid).error==F__pb_VALUE;
+}
+#test "generated FI object getters report presence and failures" {
+ prefixed:=[5]u8.[16,0,10,1,97];m:=F_JsonObject_decode(prefixed[..]);value:=F_JsonObject_get_utf8(m);
+ #assert value.error==0 && value.present && value.value.count==1 && value.value[0]==97;
+ m.error=F__pb_VALUE;#assert F_JsonObject_get_utf8(m).error==F__pb_VALUE;
+ wrong:=[2]u8.[8,0];m=F_JsonObject.{wire=wrong[..]};#assert F_JsonObject_get_utf8(m).error==F__pb_WIRE;
+}

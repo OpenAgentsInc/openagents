@@ -93,10 +93,12 @@ python3 tests/verify.py
 verify_rc=$?
 "$COAX" test tests/proto/runtime.coax
 wire_checks_rc=$?
+python3 tests/nostr/proto_wire_parity.py && "$COAX" test tests/nostr/proto_event_validation.coax && "$COAX" test tests/nostr/proto_fi_validation.coax
+generated_checks_rc=$?
 "$COAX" test lib/proto/wire.coax && "$COAX" mutate lib/proto/wire.coax
 wire_core_rc=$?
 "$COAX" test lib/proto/importer.coax
 importer_checks_rc=$?
 "$COAX" test lib/proto/fingerprint.coax && "$COAX" mutate lib/proto/fingerprint.coax
 fingerprint_checks_rc=$?
-[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $lexer_rc -eq 0 && $parser_rc -eq 0 && $budget_rc -eq 0 && $strings_rc -eq 0 && $traversal_rc -eq 0 && $provenance_rc -eq 0 && $mutation_schedule_rc -eq 0 && $build_profiles_rc -eq 0 && $checker_rc -eq 0 && $sources_rc -eq 0 && $reflection_rc -eq 0 && $debugging_rc -eq 0 && $nostr_rc -eq 0 && $constant_time_rc -eq 0 && $wrapping_rc -eq 0 && $mul_wide_rc -eq 0 && $proto_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]
+[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $lexer_rc -eq 0 && $parser_rc -eq 0 && $budget_rc -eq 0 && $strings_rc -eq 0 && $traversal_rc -eq 0 && $provenance_rc -eq 0 && $mutation_schedule_rc -eq 0 && $build_profiles_rc -eq 0 && $checker_rc -eq 0 && $sources_rc -eq 0 && $reflection_rc -eq 0 && $debugging_rc -eq 0 && $nostr_rc -eq 0 && $constant_time_rc -eq 0 && $wrapping_rc -eq 0 && $mul_wide_rc -eq 0 && $proto_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $generated_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]

@@ -35,6 +35,16 @@ def checked(args,**kw):
     if r.returncode:raise AssertionError(r.stderr.decode(errors='replace'))
     return r.stdout
 
+def normalize_generated_declarations(body,p):
+    admission=b'if !'+p+b'message_admitted(depth,wire.count) {return '+p+b'Check.{error='+p+b'LIMIT};}'
+    original=b'if depth>'+p+b'MAX_DEPTH || wire.count<0 || wire.count>'+p+b'MAX_BYTES {return '+p+b'Check.{error='+p+b'LIMIT};}'
+    old_root=b'0,'+p+b'MAX_FIELDS'
+    root=p+b'root_depth(),'+p+b'default_fields()'
+    validators=body.count(b'__check :: (wire:[] u8,depth:int,budget:int,required:bool,canonical:bool)')
+    if not validators or body.count(admission)!=validators or original in body or old_root in body or not body.count(root):
+        raise ValueError('generated validator did not consistently use the shared admission policy')
+    return body.replace(admission,original).replace(root,old_root)
+
 SOURCE='''
 #import_proto "NOSTR" as N;
 #import_proto "TYPES" as X;
@@ -252,6 +262,9 @@ main :: () {a:[4] u8;b:[4] u8;
         self.assertEqual(self.lib.transform(buf,len(self.event),buf,4096,0),-6)
         self.assertEqual(buf.raw,before)
         self.assertEqual(self.transform(self.event,0,1)[0],-2)
+        for lib in (self.lib,self.release):
+            self.assertEqual(lib.inspect(buf,-1,0),2)
+            self.assertEqual(lib.inspect(buf,1048577,0),2)
     def test_all_profiles_and_driver_diagnostics(self):
         for name in ('nostr-event','block-agent','block-identity','block-channel','coax-foundation','phone-agent','ios-home','metareal','verse'):
             src=self.d/'profile.coax';src.write_text('#import_proto "'+str(ROOT/'proto/descriptors'/f'{name}.pb')+'" as P;\nmain :: () {}')
@@ -303,7 +316,15 @@ main :: () {a:[4] u8;b:[4] u8;
             self.assertEqual(hashlib.sha256(descriptor.read_bytes()).hexdigest(),expected['descriptor_sha256'],name)
             source=checked([COAX,'proto',descriptor,'--prefix',baseline['prefix']])
             body=source.split(b'// @proto-descriptor-declarations\n',1)[1]
-            self.assertEqual(hashlib.sha256(body).hexdigest(),expected['declarations_sha256'],name)
+            # Preserve the historical declaration fingerprint while checking
+            # that the shared admission refactor is the only emitted change.
+            p=baseline['prefix'].encode()+b'__pb_'
+            normalized=normalize_generated_declarations(body,p)
+            self.assertEqual(hashlib.sha256(normalized).hexdigest(),expected['declarations_sha256'],name)
+            admission=b'if !'+p+b'message_admitted(depth,wire.count) {return '+p+b'Check.{error='+p+b'LIMIT};}'
+            old=b'if depth>'+p+b'MAX_DEPTH || wire.count<0 || wire.count>'+p+b'MAX_BYTES {return '+p+b'Check.{error='+p+b'LIMIT};}'
+            with self.assertRaises(ValueError): normalize_generated_declarations(body.replace(admission,old,1),p)
+            with self.assertRaises(ValueError): normalize_generated_declarations(body.replace(p+b'root_depth(),'+p+b'default_fields()',b'0,'+p+b'MAX_FIELDS',1),p)
             self.assertNotIn(b'#authority;',source)
             self.assertNotIn(b'@proto-runtime-checks',source)
 
@@ -400,6 +421,7 @@ return 0;}'''
         host=self.d/'san.c';host.write_text(HOST+'''
 #include <assert.h>
 int main(void){uint8_t w[512],out[4096];uint32_t state=17;
+assert(inspect(w,-1,0)==2 && inspect(w,1048577,0)==2);
 for(int n=0;n<512;n++){for(int i=0;i<n;i++){state=state*1664525+1013904223;w[i]=(uint8_t)(state>>24);}
 (void)inspect(w,n,3);(void)transform(w,n,out,sizeof out,1);}
 assert(transform(w,0,out,sizeof out,2)>0);return 0;}

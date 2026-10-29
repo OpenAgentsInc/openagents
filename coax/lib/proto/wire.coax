@@ -25,6 +25,10 @@ PB_Bytes :: struct { value:[] u8; present:bool; error:u32; }
 PB_String :: struct { value:string; present:bool; error:u32; }
 // Count-only admission makes the native span boundary explicit and testable.
 PB_small :: (count:int)->bool {return count>=0 && count<=PB_MAX_BYTES;}
+// Check metadata before any generated decoder accesses its borrowed view.
+PB_message_admitted :: (depth:int,count:int)->bool {return depth<=PB_MAX_DEPTH && PB_small(count);}
+PB_root_depth :: ()->int {return 0;}
+PB_default_fields :: ()->int {return PB_MAX_FIELDS;}
 PB_cursor :: (count:int,at:int)->bool {return PB_small(count) && at>=0 && at<=count;}
 PB_fits :: (total:int,capacity:int)->bool {return PB_small(total) && total<=capacity;}
 PB_inputs :: (wire:int,capacity:int,data:int,text:int)->u32 {
@@ -138,6 +142,12 @@ PB_copy_checked :: (wire:[] u8,out:[] u8,overlap:bool)->PB_View {
 }
 // @proto-runtime-checks
 #authority;
+
+#test "message admission preserves depth and foreign view bounds" {
+  #assert PB_message_admitted(0,0) && PB_message_admitted(64,1048576);
+  #assert !PB_message_admitted(65,0) && !PB_message_admitted(0,-1) && !PB_message_admitted(0,1048577);
+  #assert PB_root_depth()==0 && PB_default_fields()==524288;
+}
 
 #test "count admission includes both endpoints and rejects neighbors" {
   #assert !PB_small(-1) && PB_small(0) && PB_small(1048576) && !PB_small(1048577);
