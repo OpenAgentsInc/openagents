@@ -68,7 +68,7 @@ const flow = async () => {
 
 const chrome = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 const profile = mkdtempSync(join(tmpdir(), "coax-flow-"))
-const proc = Bun.spawn([chrome, "--headless=new", `--user-data-dir=${profile}`, "--no-first-run",
+const proc = Bun.spawn([chrome, "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run",
   "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })
 let failed = 1
 try {

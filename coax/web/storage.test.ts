@@ -91,7 +91,7 @@ beforeAll(async () => {
     if (path === '/probe.wgsl') return new Response(shader)
     return new Response('<!doctype html><html><body><canvas id="coaxial"></canvas><script type="module" src="/host.js" data-app="probe" data-wasm="/probe.wasm"></script></body></html>', { headers: { 'Content-Type': 'text/html' } })
   } })
-  chrome = Bun.spawn([process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '--headless=new', `--user-data-dir=${join(temp, 'chrome')}`, '--no-first-run', '--hide-scrollbars', '--enable-unsafe-webgpu', '--use-angle=metal', '--remote-debugging-port=0', 'about:blank'], { stdout: 'ignore', stderr: 'ignore' })
+  chrome = Bun.spawn([process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '--headless=new', '--mute-audio', `--user-data-dir=${join(temp, 'chrome')}`, '--no-first-run', '--hide-scrollbars', '--enable-unsafe-webgpu', '--use-angle=metal', '--remote-debugging-port=0', 'about:blank'], { stdout: 'ignore', stderr: 'ignore' })
   let port = ''
   for (let i = 0; i < 100; i++) { try { port = readFileSync(join(temp, 'chrome/DevToolsActivePort'), 'utf8').split('\n')[0]; break } catch {} await Bun.sleep(50) }
   if (!port) throw Error('Chrome did not open a debugging port')

@@ -13,7 +13,7 @@ if (!url || !out) { console.error("usage: bun coax/web/shot.ts URL OUT.png [WxH]
 const [w, h] = size.split("x").map(Number)
 const chrome = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 const profile = mkdtempSync(join(tmpdir(), "coax-shot-"))
-const proc = Bun.spawn([chrome, "--headless=new", `--user-data-dir=${profile}`, "--no-first-run",
+const proc = Bun.spawn([chrome, "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run",
   "--hide-scrollbars", "--enable-unsafe-webgpu", "--enable-features=Vulkan", "--use-angle=metal",
   `--window-size=${w},${h}`, "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })
 try {

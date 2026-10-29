@@ -33,9 +33,10 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 - **No GitHub Actions.** Checks run locally or on our own machines.
 - **No visible browsers.** Page checks and screenshots run in headless
   Chrome, which renders WebGPU: `bun coax/web/shot.ts URL OUT.png [WxH]
-  [WAIT_MS] [--eval JS]`, or the same flags (`--headless=new
+  [WAIT_MS] [--eval JS]`, or the same flags (`--headless=new --mute-audio
   --enable-unsafe-webgpu --use-angle=metal`) in your own driver. Never open a
-  window or take focus on the owner's screen.
+  window or take focus on the owner's screen, and never play sound on it:
+  headless Chrome still plays a page's audio unless it is muted.
 - **Bitcoin-only money.** Lightning, on-chain Bitcoin, Spark and Taproot
   Assets. No USDC, USDT, EVM, Solana, Tron or Cashu. The first wallet is
   Breez Spark ([docs/lightning/](docs/lightning/README.md)).

@@ -33,7 +33,7 @@ class RandomImport(unittest.TestCase):
             thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
             try:
                 url=f'http://127.0.0.1:{server.server_port}/entropy_import.html'
-                browser=subprocess.Popen([str(CHROME),'--headless=new','--disable-gpu','--disable-background-networking','--disable-component-update','--disable-default-apps','--disable-sync','--no-first-run','--no-default-browser-check','--remote-debugging-port=0','--user-data-dir='+str(d/'chrome'),'about:blank'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                browser=subprocess.Popen([str(CHROME),'--headless=new','--mute-audio','--disable-gpu','--disable-background-networking','--disable-component-update','--disable-default-apps','--disable-sync','--no-first-run','--no-default-browser-check','--remote-debugging-port=0','--user-data-dir='+str(d/'chrome'),'about:blank'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                 try:
                     run=subprocess.run(['bun',str(ROOT/'coax/tests/browser_status.js'),str(d/'chrome'),url],capture_output=True,text=True,timeout=30)
                     self.assertEqual(run.returncode,0,run.stdout+'\n'+run.stderr)

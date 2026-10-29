@@ -18,7 +18,7 @@ const chrome=process.env.CHROME??'/Applications/Google Chrome.app/Contents/MacOS
 const profile=mkdtempSync(join(tmpdir(),'coax-timing-browser-'));
 // Request optimizing-only Wasm to avoid silently mixing baseline and optimized
 // tiers. This is a requested engine configuration, not a JIT attestation.
-const flags=['--headless=new','--no-first-run','--disable-background-timer-throttling','--js-flags=--no-liftoff','--remote-debugging-port=0'];
+const flags=['--headless=new','--mute-audio','--no-first-run','--disable-background-timer-throttling','--js-flags=--no-liftoff','--remote-debugging-port=0'];
 const proc=Bun.spawn([chrome,...flags,`--user-data-dir=${profile}`,'about:blank'],{stdout:'ignore',stderr:Bun.file(join(directory,'chrome.stderr'))});
 let ws:WebSocket|undefined,deadline:ReturnType<typeof setTimeout>|undefined;
 try{

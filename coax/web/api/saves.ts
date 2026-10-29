@@ -18,7 +18,7 @@ const email = `saves-smoke+${Date.now()}@openagents.com`
 
 async function browser() {
   const profile = mkdtempSync(join(tmpdir(), "coax-saves-"))
-  const proc = Bun.spawn([chrome, "--headless=new", `--user-data-dir=${profile}`, "--no-first-run", "--enable-unsafe-webgpu",
+  const proc = Bun.spawn([chrome, "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run", "--enable-unsafe-webgpu",
     "--enable-features=Vulkan", "--use-angle=metal", "--window-size=1280,800", "--remote-debugging-port=0", "about:blank"],
     { stdout: "ignore", stderr: "ignore" })
   const portFile = join(profile, "DevToolsActivePort")

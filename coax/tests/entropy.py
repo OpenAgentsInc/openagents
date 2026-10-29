@@ -77,7 +77,7 @@ class Entropy(unittest.TestCase):
             thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
             try:
                 url=f'http://127.0.0.1:{server.server_port}/index.html'
-                run=subprocess.run([str(CHROME),'--headless=new','--disable-gpu','--disable-background-networking','--disable-component-update','--disable-default-apps','--disable-sync','--no-first-run','--no-default-browser-check','--user-data-dir='+str(d/'chrome'),'--virtual-time-budget=10000','--dump-dom',url],capture_output=True,text=True,timeout=40)
+                run=subprocess.run([str(CHROME),'--headless=new','--mute-audio','--disable-gpu','--disable-background-networking','--disable-component-update','--disable-default-apps','--disable-sync','--no-first-run','--no-default-browser-check','--user-data-dir='+str(d/'chrome'),'--virtual-time-budget=10000','--dump-dom',url],capture_output=True,text=True,timeout=40)
                 self.assertEqual(run.returncode,0,run.stderr)
                 self.assertIn('PASS 21 browser/Wasm CSPRNG boundary cases',run.stdout,run.stdout)
                 print('Chrome: 21 actual browser/Wasm CSPRNG boundary cases passed')

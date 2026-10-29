@@ -9,7 +9,7 @@ const connect='nostrconnect://'+'0'.repeat(64)+'?relay=wss%3A%2F%2Frelay.openage
 strings[16]=connect+'0'.repeat(300-connect.length);
 const profile=mkdtempSync(join(tmpdir(),'coax-qr-reference-'));
 const chrome=process.env.CHROME??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const proc=Bun.spawn([chrome,'--headless=new','--no-first-run',`--user-data-dir=${profile}`,'--remote-debugging-port=0','about:blank'],{stdout:'ignore',stderr:'ignore'});
+const proc=Bun.spawn([chrome,'--headless=new','--mute-audio','--no-first-run',`--user-data-dir=${profile}`,'--remote-debugging-port=0','about:blank'],{stdout:'ignore',stderr:'ignore'});
 let ws:WebSocket|undefined,deadline:ReturnType<typeof setTimeout>|undefined;
 try{
  const portFile=join(profile,'DevToolsActivePort');for(let i=0;i<100&&!existsSync(portFile);i++)await Bun.sleep(50);

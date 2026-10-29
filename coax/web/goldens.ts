@@ -134,7 +134,7 @@ function against(shots: Image[], golden: Image) {
 // ---- Chrome
 const chrome = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 const profile = mkdtempSync(join(tmpdir(), "coax-goldens-"))
-const proc = Bun.spawn([chrome, "--headless=new", `--user-data-dir=${profile}`, "--no-first-run", "--hide-scrollbars",
+const proc = Bun.spawn([chrome, "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run", "--hide-scrollbars",
   "--enable-unsafe-webgpu", "--enable-features=Vulkan", "--use-angle=metal", `--window-size=${W},${H}`,
   "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })
 const failed: string[] = []

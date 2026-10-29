@@ -12,7 +12,7 @@ const assets=new Map([
  ['/worker.wasm',{path:resolve(modulePath),type:'application/wasm'}],
 ]);
 const server=Bun.serve({hostname:'127.0.0.1',port:0,fetch(request){const asset=assets.get(new URL(request.url).pathname);return asset?new Response(Bun.file(asset.path),{headers:{'content-type':asset.type}}):new Response('',{status:404});}});
-const chrome=Bun.spawn([process.env.CHROME??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','--headless=new',`--user-data-dir=${profile}`,'--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-component-update','--disable-sync','--disable-background-timer-throttling','--disable-renderer-backgrounding','--enable-unsafe-webgpu','--use-angle=metal','--window-size=800,600','--remote-debugging-port=0','about:blank'],{stdout:'ignore',stderr:'ignore'});
+const chrome=Bun.spawn([process.env.CHROME??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','--headless=new','--mute-audio',`--user-data-dir=${profile}`,'--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-component-update','--disable-sync','--disable-background-timer-throttling','--disable-renderer-backgrounding','--enable-unsafe-webgpu','--use-angle=metal','--window-size=800,600','--remote-debugging-port=0','about:blank'],{stdout:'ignore',stderr:'ignore'});
 let socket:WebSocket|undefined;
 try{
  const portFile=join(profile,'DevToolsActivePort');for(let i=0;i<100&&!existsSync(portFile);i++)await Bun.sleep(50);
