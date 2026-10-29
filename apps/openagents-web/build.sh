@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/icecream.wasm, build/everglade.wasm, build/private.wasm and build/chat.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/private.wasm and build/chat.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -37,6 +37,9 @@ fixture=$!
 # /realm/ice-cream-man: Ice Cream Man's house (verse/icecream/scene.coax, its own library) under its HUD.
 "$here/../../coax/web/wasm.sh" "$here/icecream.coax" "$here/icecream-face.c" "$here/build/icecream.wasm" "$m/icecream/scene.coax" &
 icecream=$!
+# /realm/dead-gears: the ship survival game (verse/deadgears/rules.coax, loaded by the page).
+"$here/../../coax/web/wasm.sh" "$here/deadgears.coax" "$here/deadgears-face.c" "$here/build/deadgears.wasm" &
+deadgears=$!
 # /realm/characters: the engine's figures (verse/figure.coax).
 "$here/../../coax/web/wasm.sh" "$here/characters.coax" "$here/characters-face.c" "$here/build/characters.wasm" &
 characters=$!
@@ -81,4 +84,5 @@ wait "$garden"
 wait "$characters"
 wait "$fixture"
 wait "$icecream"
+wait "$deadgears"
 wait "$everglade"

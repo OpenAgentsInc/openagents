@@ -61,6 +61,17 @@
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
         "assets": ["index:/realm/everglade/assets/Everglade.indices"]
       } },
+    { "id": "deadgears", "name": "DEAD GEARS", "kind": "open", "listed": false, "orbit": { "r": 0.3, "a": 1.15, "size": 0.03 },
+      "realm": {
+        "slug": "dead-gears",
+        "title": "Dead Gears",
+        "description": "Dead Gears, a Verse realm in the browser: hold a ship's hold against three waves of crawlers, hounds, reavers and brutes with a cutter that severs limbs, telekinetic lift and stun, and a support engineer, then repair the reactor between waves.",
+        "alt": "Enter the Verse: hold the ship in Dead Gears",
+        "module": "deadgears",
+        "slot": "dead-gears",
+        "golden": { "lit": 0.05, "settle": 3000, "blocks": 6 },
+        "assets": ["index:/realm/dead-gears/assets/DeadGears.indices"]
+      } },
     { "id": "fixture", "name": "FIXTURE REALM", "kind": "open", "listed": false, "orbit": { "r": 0.26, "a": 1.9, "size": 0.026 },
       "realm": {
         "slug": "fixture",
