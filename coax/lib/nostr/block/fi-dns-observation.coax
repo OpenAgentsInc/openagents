@@ -1,0 +1,58 @@
+// A bounded, untrusted callback observation only. No state here proves that
+// a resolver has delivered a complete answer set or grants network authority.
+#load "fi-addresses.coax";
+#authority;
+FI_DNS_OBSERVING :: 0; FI_DNS_FAILED :: 1; FI_DNS_CANCELLED :: 2;
+FiDnsObservation :: struct {status:int;count:int;}
+
+#test "public addresses accumulate but batch boundaries cannot complete a lookup" {
+ public4:=[4]u8.[8,8,8,8];public6:=[16]u8.[38,6,71,0,0,0,0,0,0,0,0,0,0,0,0,1];
+ s:=fi_dns_observation_start();#assert s.status==FI_DNS_OBSERVING && s.count==0;
+ s=fi_dns_observation_add(s,public4[..]);#assert s.status==FI_DNS_OBSERVING && s.count==1;
+ // A later address after an earlier callback batch must still be classified.
+ s=fi_dns_observation_add(s,public6[..]);#assert s.status==FI_DNS_OBSERVING && s.count==2;
+ private:=[4]u8.[127,0,0,1];s=fi_dns_observation_add(s,private[..]);#assert s.status==FI_DNS_FAILED;
+ s=fi_dns_observation_add(s,public4[..]);#assert s.status==FI_DNS_FAILED;
+}
+#test "bounds and both address families fail closed" {
+ a:=[4]u8.[8,8,8,8];s:=fi_dns_observation_start();
+ for i:0..<16 {s=fi_dns_observation_add(s,a[..]);#assert s.status==FI_DNS_OBSERVING && s.count==i+1;}
+ s=fi_dns_observation_add(s,a[..]);#assert s.status==FI_DNS_FAILED;
+ s=fi_dns_observation_start();#assert fi_dns_observation_add(s,a[0..<3]).status==FI_DNS_FAILED;
+ mapped:=[16]u8.[0,0,0,0,0,0,0,0,0,0,255,255,8,8,8,8];#assert fi_dns_observation_add(s,mapped[..]).status==FI_DNS_FAILED;
+}
+#test "cancellation errors and removals are terminal" {
+ a:=[4]u8.[8,8,8,8];s:=fi_dns_observation_start();s=fi_dns_observation_add(s,a[..]);
+ canceled:=fi_dns_observation_cancel(s);#assert canceled.status==FI_DNS_CANCELLED;
+ #assert fi_dns_observation_add(canceled,a[..]).status==FI_DNS_CANCELLED;
+ #assert fi_dns_observation_fail(canceled).status==FI_DNS_CANCELLED;
+ #assert fi_dns_observation_cancel(canceled).status==FI_DNS_CANCELLED;
+ failed:=fi_dns_observation_fail(s);#assert failed.status==FI_DNS_FAILED;
+ #assert fi_dns_observation_add(failed,a[..]).status==FI_DNS_FAILED;
+ #assert fi_dns_observation_cancel(failed).status==FI_DNS_FAILED;
+}
+#test "invalid observation state is terminal" {
+ a:=[4]u8.[8,8,8,8];s:=FiDnsObservation.{status=FI_DNS_OBSERVING,count= -1};
+ #assert fi_dns_observation_add(s,a[..]).status==FI_DNS_FAILED;s.count=17;
+ #assert fi_dns_observation_add(s,a[..]).status==FI_DNS_FAILED;
+ s.status=77;s.count=0;#assert fi_dns_observation_add(s,a[..]).status==FI_DNS_FAILED;
+ #assert fi_dns_observation_fail(s).status==FI_DNS_FAILED && fi_dns_observation_cancel(s).status==FI_DNS_FAILED;
+ s.status=FI_DNS_OBSERVING;s.count= -1;#assert fi_dns_observation_cancel(s).status==FI_DNS_FAILED;
+ s.count=0;#assert fi_dns_observation_cancel(s).status==FI_DNS_CANCELLED;
+ s.count=16;#assert fi_dns_observation_cancel(s).status==FI_DNS_CANCELLED;
+ s.count=17;#assert fi_dns_observation_cancel(s).status==FI_DNS_FAILED;
+ s.status=FI_DNS_FAILED;s.count=7;#assert fi_dns_observation_cancel(s).status==FI_DNS_FAILED && fi_dns_observation_cancel(s).count==7;
+}
+fi_dns_observation_start :: ()->FiDnsObservation #export_c {return FiDnsObservation.{};}
+fi_dns_observation_fail :: (s:FiDnsObservation)->FiDnsObservation #export_c {
+ if s.status==FI_DNS_CANCELLED {return s;}return FiDnsObservation.{status=FI_DNS_FAILED};
+}
+fi_dns_observation_cancel :: (s:FiDnsObservation)->FiDnsObservation #export_c {
+ if s.status==FI_DNS_FAILED || s.status==FI_DNS_CANCELLED {return s;}if s.status!=FI_DNS_OBSERVING || s.count<0 || s.count>16 {return FiDnsObservation.{status=FI_DNS_FAILED};}
+ return FiDnsObservation.{status=FI_DNS_CANCELLED};
+}
+fi_dns_observation_add :: (s:FiDnsObservation,address:[]u8)->FiDnsObservation #export_c {
+ if s.status!=FI_DNS_OBSERVING {return fi_dns_observation_fail(s);}
+ if s.count<0 || s.count>=16 || !fi_address_allowed(address,FI_PUBLIC_HTTPS) {return FiDnsObservation.{status=FI_DNS_FAILED};}
+ return FiDnsObservation.{status=FI_DNS_OBSERVING,count=s.count+1};
+}

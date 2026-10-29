@@ -93,3 +93,55 @@ deadline, and fetches successfully again. This is a finite local proof of data
 flow and ordinary cancellation, not proof of exclusive child-reaping in a
 shipped service, client authentication, authenticated snapshot/policy binding,
 iOS support or readiness to authorize FI.
+
+## macOS DNS-SD observation prerequisite (not a provider)
+
+`fi-dns-observation.coax` is an untrusted bounded callback observation. It
+classifies each supplied address with the existing Coax public-address policy,
+poisons on an unsafe or excess address, and keeps failure/cancellation terminal.
+There is no success or completion state and it returns no destination. Caller
+state and address views must be valid, stable and confined to a serial callback
+context; a caller can fabricate a value, so this type is not proof or authority.
+A cleared DNS-SD `MoreComing` flag is not a complete answer set: Apple says it
+only means no additional result is immediately queued, and later results can
+still arrive. See <https://developer.apple.com/documentation/dnssd/kdnsserviceflagsmorecoming>.
+
+The macOS-only `fi_dns_sd_probe.c` is a test fixture, not an adapter. It runs a
+real `DNSServiceGetAddrInfo` localhost request with both address families, and
+sets up and deallocates the reference on the same serial dispatch queue. The
+host test process uses `SIGCHLD` auto-reaping and this fixture creates no child
+process. It observed callbacks before deallocation and none during a finite
+100 ms post-deallocation interval. Synthetic callbacks cover a later private
+answer after a quiescent batch, a late event after cancellation, removals,
+short and scoped socket addresses, and the seventeenth result. The probe relies
+on valid OS-provided sockaddr storage. Test-only alarm and semaphore timeouts
+are not a production deadline: no general bound is established for DNS-SD
+startup, cancellation, event dispatch, or OS scheduling. This is neither a
+complete all-address snapshot nor proof that later or changed answers cannot
+arrive. It makes no iOS, browser, transport, provider or authorization claim.
+A real provider must establish a complete answer-set contract, connect the
+classified exact peer and verified TLS response, enforce its own bounded
+lifecycle, and bind the response to trusted policy and snapshot provenance.
+
+On the separately verified 0.21.0 compiler SHA-256
+`73d2aeb0e1e57c355d87242946f89e1462f8b765f57087f4307d471a0277e1d4`,
+Coax test passed 22/22 groups and the default-budget mutation gate killed
+168/168 without waivers. An independent Python state oracle passed 2401
+four-event traces plus the 17-event bound in each checked/release native mode.
+The macOS DNS-SD fixture passed each checked/release native and ASan/UBSan
+mode. These are bounded local observations, not platform or production proof.
+
+- `coax/lib/nostr/block/fi-dns-observation.coax`: `ed87fd12831955383c27714e207468c942b3c392ac1ec7926c64fa4b22dcfdd9`
+- `coax/tests/nostr/fi_dns_observation.py`: `cb4086a26c75a55d4ea72c4e4bba40845c448ac4a1dc2181ad589983526ce960`
+- `coax/tests/nostr/fi_dns_sd_probe.c`: `69cc720e47c079e2fd3667d9cc748d57d4805b1cab6b067177bce284da122c50`
+- `coax/tests/nostr/fi_dns_sd_probe.py`: `d71f5acdd64f43e6b98a0ea45eb983f32dc6b7d78e62ed3343245ff8d51b20b0`
+
+Independent read-only review (`fixedbase_rescue`) found no concrete blocker in
+the observation model or original test-only lifecycle fixture at C hash
+`3e584b10bde079ac5a042b67ece7f6453e2dc0e1af5bab10aab800c573fe5bf5`.
+A narrow delta review of the current C hash found no new blocker: the change
+replaced a fixed delay with a bounded first-callback semaphore wait. It also
+reviewed the independent trace model. No tests were rerun, and it did not
+approve a provider, network behavior or authority. It noted the valid OS
+sockaddr assumption and that one finite localhost test does not establish
+general quiescence or completeness.

@@ -181,3 +181,15 @@ mutations survived and the gate failed. Test-only additions for a signed
 one-byte kid and malformed/capacity boundaries bring Coax checks to 256/256;
 the full default-budget mutation rerun killed 3397/3397 without waivers. The source hash, public fixture hashes,
 and limits are recorded in `../fi-jws/LOCAL-CANDIDATE-EVIDENCE.md`.
+
+After the partial local-verification commit, an unconnected DNS observation
+prerequisite and macOS DNS-SD test fixture were added. The Coax state has no
+complete/success state and cannot authorize; it rejects unsafe or overflow
+callbacks, errors/removals and events after cancellation. The macOS probe
+used real localhost DNS-SD callbacks and same-queue deallocation under
+SIGCHLD auto-reaping, without a child process. This is finite local evidence,
+not an exhaustive answer-set or bounded platform lifecycle guarantee.
+Apple's MoreComing flag does not mean the answer set is complete. The source,
+independent trace oracle, review, exact hashes and open requirements are in
+`../fi-jws/TRANSPORT-EVIDENCE.md`. The previously disabled unsafe prototype
+remains uncommitted, and all provider and FI authority remain closed.
