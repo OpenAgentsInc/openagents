@@ -125,54 +125,106 @@ def voice_edit(sentence, answer=None, cookie="9" * 64, realm="everglade", origin
 
 
 import time
-s, a = voice_edit("put two barrels here", {"edit": "place", "item": "barrel", "count": 2})
-check("voice edit: an admin's sentence becomes the edit the model picked", s == 200 and a == {"edit": "place", "item": "barrel", "count": 2, "model": "gemini-3.8-flash"}, (s, a))
+M = {"model": "gemini-3.8-flash"}
+def said(**kw):   # a whole answer as the model gives it: every field, "not said" values for the rest
+    a = {"edit": "none", "item": "something", "name": "", "count": 1, "arrange": "front", "onto": "ground", "colour": "unsaid", "size": 1,
+         "direction": "here", "metres": 0, "turn": 0, "all": False, "who": "nobody", "building": "unnamed"}
+    a.update(kw)
+    return a
+s, a = voice_edit("put two barrels here", said(edit="place", item="barrel", count=2))
+check("voice edit: an admin's sentence becomes the edit the model picked, without its not-said fields", s == 200 and a == {"edit": "place", "item": "barrel", "count": 2, **M}, (s, a))
 sent = piece_seen[-1]["body"]
 check("voice edit: the words are the model's only input from the admin", sent["contents"] == [{"role": "user", "parts": [{"text": "put two barrels here"}]}])
 schema = sent["generationConfig"]["responseSchema"]
+props = schema["properties"]
 check("voice edit: under the realm's catalogue as enums",
-      schema["properties"]["edit"]["enum"] == ["place", "remove", "undo", "none"] and schema["properties"]["item"]["enum"] == ["crate", "barrel", "bench", "fence", "stall", "person", "cat"]
-      and schema["properties"]["all"]["type"] == "boolean" and "Old Tam" in schema["properties"]["who"]["enum"], schema)
+      props["edit"]["enum"] == ["place", "remove", "move", "resize", "rotate", "restore", "list", "undo", "none"]
+      and len(props["item"]["enum"]) == 38 and props["item"]["enum"][:5] == ["crate", "barrel", "bench", "fence", "stall"]
+      and props["item"]["enum"][34:] == ["person", "cat", "building", "something"]
+      and props["onto"]["enum"] == ["ground", "stall", "table", "crate", "barrel", "bench", "cart", "stool"]
+      and props["arrange"]["enum"] == ["front", "row", "ring", "scatter", "fill"] and props["colour"]["enum"][-1] == "unsaid"
+      and props["direction"]["enum"][0] == "here" and props["building"]["enum"][:2] == ["unnamed", "inn"] and "temple" in props["building"]["enum"]
+      and props["all"]["type"] == "boolean" and props["name"]["type"] == "string" and "Old Tam" in props["who"]["enum"], schema)
 here = os.path.dirname(os.path.abspath(__file__))
-coax_items = re.findall(r'"([^"]*)"', re.search(r'EG_EDIT_LABEL :: \[5\] string\.\[([^\]]*)\]', open(os.path.join(here, "../../../verse/everglade/edits.coax")).read()).group(1))
-check("voice edit: the server's things are the page's (verse/everglade/edits.coax)", [x.lower() for x in coax_items] == schema["properties"]["item"]["enum"][:5], coax_items)
+edits_coax = open(os.path.join(here, "../../../verse/everglade/edits.coax")).read()
+named = re.search(r'EG_EDIT_NAME :: \[(\d+)\] string\.\[([^\]]*)\]', edits_coax)
+if named:   # the page's names, in the contract's order
+    coax_items = re.findall(r'"([^"]*)"', named.group(2))
+    check("voice edit: the server's things are the page's (verse/everglade/edits.coax EG_EDIT_NAME)", coax_items == props["item"]["enum"][:34], coax_items)
+else:       # until the page's names land: its first five labels
+    coax_items = re.findall(r'"([^"]*)"', re.search(r'EG_EDIT_LABEL :: \[5\] string\.\[([^\]]*)\]', edits_coax).group(1))
+    check("voice edit: the server's things are the page's (verse/everglade/edits.coax)", [x.lower() for x in coax_items] == props["item"]["enum"][:5], coax_items)
 coax_people = re.findall(r'"([^"]*)"', re.search(r'EG_PERSON :: \[22\] string\.\[([^\]]*)\]', open(os.path.join(here, "../../../verse/everglade/people.coax")).read()).group(1))
-check("voice edit: the server's people are the page's (verse/everglade/people.coax), after nobody", schema["properties"]["who"]["enum"] == ["nobody"] + coax_people, coax_people)
-check("voice edit: all and who are always answered", schema["required"] == ["edit", "all", "who"], schema)
+check("voice edit: the server's people are the page's (verse/everglade/people.coax), after nobody", props["who"]["enum"] == ["nobody"] + coax_people, coax_people)
+order = ["edit", "item", "name", "count", "arrange", "onto", "colour", "size", "direction", "metres", "turn", "all", "who", "building"]
+check("voice edit: every field is answered, edit and item first, then name", schema["required"] == order and schema["propertyOrdering"] == order, schema)
 prompt = sent["systemInstruction"]["parts"][0]["text"]
-check("voice edit: the prompt shows how many is said ('these crates', 'clear this') and never lists the edits back to the admin",
-      "remove these crates => remove, item crate, all true" in prompt and "clear this => remove, all true" in prompt and "remove these cats => remove, item cat, all true" in prompt, prompt)
-s, a = voice_edit("a hundred crates", {"edit": "place", "item": "crate", "count": 100, "colour": "red"})
-check("voice edit: a count is held to its range, other fields dropped", s == 200 and a == {"edit": "place", "item": "crate", "count": 6, "model": "gemini-3.8-flash"}, a)
-s, a = voice_edit("undo that", {"edit": "undo", "item": "crate"})
-check("voice edit: undo has no fields", s == 200 and a == {"edit": "undo", "model": "gemini-3.8-flash"}, a)
-s, a = voice_edit("remove these crates", {"edit": "remove", "item": "crate", "all": True, "count": 4})
-check("voice edit: remove these crates is every crate near, as the page takes them", s == 200 and a == {"edit": "remove", "item": "crate", "all": True, "model": "gemini-3.8-flash"}, a)
-s, a = voice_edit("remove these crates", {"edit": "remove", "item": "crate", "all": False, "who": "Marta"})
-check("voice edit: a name never rides along with a placed thing's kind", s == 200 and a == {"edit": "remove", "item": "crate", "model": "gemini-3.8-flash"}, a)
-s, a = voice_edit("remove these cats", {"edit": "remove", "item": "cat", "all": True, "who": "Soot"})
-check("voice edit: nor with many", s == 200 and a == {"edit": "remove", "item": "cat", "all": True, "model": "gemini-3.8-flash"}, a)
-s, a = voice_edit("remove that", {"edit": "remove", "all": False, "who": "nobody"})
-check("voice edit: nobody named is no name", s == 200 and a == {"edit": "remove", "model": "gemini-3.8-flash"}, a)
-s, a = voice_edit("clear this", {"edit": "remove", "all": True})
-check("voice edit: clear this", s == 200 and a == {"edit": "remove", "all": True, "model": "gemini-3.8-flash"}, a)
-s, a = voice_edit("remove that", {"edit": "remove", "all": False, "who": "Nobody"})
-check("voice edit: remove that is the nearest; a name not of the city is dropped", s == 200 and a == {"edit": "remove", "model": "gemini-3.8-flash"}, a)
-s, a = voice_edit("remove Old Tam", {"edit": "remove", "who": "Old Tam", "item": "person"})
-check("voice edit: remove a person by name", s == 200 and a == {"edit": "remove", "item": "person", "who": "Old Tam", "model": "gemini-3.8-flash"}, a)
-s, a = voice_edit("put down a cat", {"edit": "place", "item": "cat"})
-check("voice edit: people aren't placed", s == 502, (s, a))
+check("voice edit: the prompt lists every thing with its size, and shows the logged sentences",
+      all(i in prompt for i in props["item"]["enum"][:34]) and "stall 2.9x1.5x2.6" in prompt and "tower 4x4x10" in prompt
+      and "put pumpkins on the stall => place, item pumpkin, count 3, onto stall" in prompt and "put a building in front of me => place, item house" in prompt
+      and "what else can I put down? => list" in prompt and "this barrel is bigger => resize, item barrel, size 1.5" in prompt
+      and "movies crates" in prompt and "place 12 benches all around => place, item bench, count 12, arrange ring" in prompt
+      and "delete this temple building => remove, item building, building temple" in prompt and "four big crates in front => place, item crate, count 4, size 1.5" in prompt
+      and "fill the field with purple flowers => place, item flowers, colour purple, arrange fill" in prompt
+      and "place a dragon => place, item something, name dragon" in prompt and "remove Bob => remove, item person, name Bob" in prompt
+      and "remove these crates => remove, item crate, all true" in prompt and "what time is it => none" in prompt, prompt)
+
+def held(sentence, answer, want, what):
+    s, a = voice_edit(sentence, said(**answer))
+    check("voice edit: " + what, s == 200 and a == {**want, **M}, (s, a))
+held("a hundred crates", dict(edit="place", item="crate", count=100, turn=45, all=True, who="Marta"), {"edit": "place", "item": "crate", "count": 40}, "a count is held to 1..40, other edits' fields dropped")
+held("some crates", dict(edit="place", item="crate", count=0), {"edit": "place", "item": "crate", "count": 1}, "a count under one is one")
+held("six pumpkins on the stall", dict(edit="place", item="pumpkin", count=6, onto="stall"), {"edit": "place", "item": "pumpkin", "count": 6, "onto": "stall"}, "place onto a thing with a top")
+held("fill the field with purple flowers", dict(edit="place", item="flowers", arrange="fill", colour="purple"), {"edit": "place", "item": "flowers", "count": 1, "arrange": "fill", "colour": "purple"}, "fill, with a colour")
+held("twelve benches around me", dict(edit="place", item="bench", count=12, arrange="ring"), {"edit": "place", "item": "bench", "count": 12, "arrange": "ring"}, "a ring")
+held("four enormous crates", dict(edit="place", item="crate", count=4, size=9), {"edit": "place", "item": "crate", "count": 4, "size": 4}, "a size is held to 0.25..4")
+held("a tiny crate", dict(edit="place", item="crate", size=0.1, onto="table", colour="green"), {"edit": "place", "item": "crate", "count": 1, "size": 0.25, "onto": "table"}, "a colour not of the list is dropped")
+held("a crate on the pot", dict(edit="place", item="crate", onto="pot", arrange="sideways"), {"edit": "place", "item": "crate", "count": 1}, "onto only a thing with a top, arrange only of the list")
+held("place a dragon", dict(edit="place", item="something", name="dragon"), {"edit": "missing", "name": "dragon"}, "a place of a thing not in the list is missing, by its name")
+held("put down a cat", dict(edit="place", item="cat", name="cat"), {"edit": "missing", "name": "cat"}, "people and cats aren't placed")
+s, a = voice_edit("place a thing", said(edit="place", item="something"))
+check("voice edit: a place of nothing it knows and no name is not an edit", s == 502, (s, a))
 s, a = voice_edit("place a dragon", {"edit": "place", "item": "dragon"})
-check("voice edit: a thing not in the catalogue is not an edit", s == 502, (s, a))
-s, a = voice_edit("what time is it", {"edit": "none"})
+check("voice edit: an item not in the catalogue, no name: not an edit", s == 502, (s, a))
+held("undo that", dict(edit="undo", item="crate", count=3), {"edit": "undo"}, "undo has no fields")
+held("what else can I put down?", dict(edit="list", item="crate"), {"edit": "list"}, "list has no fields")
+held("remove these crates", dict(edit="remove", item="crate", all=True, count=4), {"edit": "remove", "item": "crate", "all": True}, "remove these crates is every crate near")
+held("remove these crates", dict(edit="remove", item="crate", who="Marta"), {"edit": "remove", "item": "crate"}, "a name never rides along with a placed thing's kind")
+held("remove these cats", dict(edit="remove", item="cat", all=True, who="Soot"), {"edit": "remove", "item": "cat", "all": True}, "nor with many")
+held("remove that", dict(edit="remove"), {"edit": "remove"}, "remove that is the nearest")
+held("clear this", dict(edit="remove", all=True), {"edit": "remove", "all": True}, "clear this")
+held("remove that", dict(edit="remove", who="Nobody"), {"edit": "remove"}, "a name not of the city is dropped")
+held("remove Old Tam", dict(edit="remove", who="Old Tam", item="person"), {"edit": "remove", "item": "person", "who": "Old Tam"}, "remove a person by name")
+held("delete this temple building", dict(edit="remove", item="building", building="temple"), {"edit": "remove", "item": "building", "building": "temple"}, "remove a building of the city")
+held("remove the inn", dict(edit="remove", building="inn"), {"edit": "remove", "item": "building", "building": "inn"}, "a building named is a building")
+held("remove that house", dict(edit="remove", item="house", building="house"), {"edit": "remove", "item": "house"}, "a placed house is not the city's")
+held("remove Bob", dict(edit="remove", item="person", name="Bob"), {"edit": "missing", "name": "Bob"}, "a person not of the city is missing")
+held("remove the crates and Bob", dict(edit="remove", item="crate", all=True, name="Bob"), {"edit": "remove", "item": "crate", "all": True}, "a known thing named wins over a missing one")
+held("movies crates", dict(edit="move", item="crate", all=True, direction="here", metres=0, size=2), {"edit": "move", "item": "crate", "all": True, "direction": "here"}, "move, here")
+held("move it left forty metres", dict(edit="move", direction="left", metres=40), {"edit": "move", "direction": "left", "metres": 30}, "metres are held to 0.5..30")
+held("nudge it", dict(edit="move", direction="sideways", metres=0.1), {"edit": "move", "direction": "here", "metres": 0.5}, "a direction not of the list is here")
+held("move Marta", dict(edit="move", item="person", who="Marta"), {"edit": "move", "direction": "here"}, "move takes placed things only")
+held("this barrel is bigger", dict(edit="resize", item="barrel", size=1.5, count=2), {"edit": "resize", "item": "barrel", "size": 1.5}, "resize")
+held("make it huge", dict(edit="resize", size=10), {"edit": "resize", "size": 4}, "a resize is held to 0.25..4")
+held("resize it", dict(edit="resize", size=1), {"edit": "resize", "size": 1.5}, "a resize of no factor is bigger")
+held("turn it around", dict(edit="rotate", turn=180), {"edit": "rotate", "turn": 180}, "rotate")
+held("spin these benches", dict(edit="rotate", item="bench", all=True, turn=720), {"edit": "rotate", "item": "bench", "all": True, "turn": 360}, "a turn is held to -360..360")
+held("turn it", dict(edit="rotate"), {"edit": "rotate", "turn": 90}, "a turn of no amount is 90")
+held("bring back the temple", dict(edit="restore", building="temple", all=True, item="crate"), {"edit": "restore", "building": "temple"}, "restore a building")
+held("bring Marta back", dict(edit="restore", who="Marta"), {"edit": "restore", "who": "Marta"}, "restore a person")
+held("bring back Bob", dict(edit="restore", name="Bob"), {"edit": "missing", "name": "Bob"}, "restore of someone not of the city is missing")
+s, a = voice_edit("summon a lich", {"edit": "missing", "name": "lich"})
+check("voice edit: the model can't answer missing itself", s == 502, (s, a))
+s, a = voice_edit("what time is it", said(edit="none"))
 check("voice edit: nothing fits", s == 422, (s, a))
-s, a = voice_edit("put a crate here", {"edit": "place", "item": "crate"}, cookie="8" * 64)
+s, a = voice_edit("put a crate here", said(edit="place", item="crate"), cookie="8" * 64)
 check("voice edit: someone logged in who isn't an admin is refused", s == 403, (s, a))
-s, a = voice_edit("put a crate here", {"edit": "place", "item": "crate"}, cookie=None)
+s, a = voice_edit("put a crate here", said(edit="place", item="crate"), cookie=None)
 check("voice edit: signed out is refused", s == 401, (s, a))
-s, a = voice_edit("put a crate here", {"edit": "place", "item": "crate"}, origin="https://evil.example")
+s, a = voice_edit("put a crate here", said(edit="place", item="crate"), origin="https://evil.example")
 check("voice edit: another site's page is refused", s == 403, (s, a))
-s, a = voice_edit("put a crate here", {"edit": "place", "item": "crate"}, realm="ice-cream-man")
+s, a = voice_edit("put a crate here", said(edit="place", item="crate"), realm="ice-cream-man")
 check("voice edit: a realm without voice edits says so", s == 400, (s, a))
 check("voice edit: every sentence is kept with the admin who said it",
-      sql("select count(*) from verse.voice_edits where pubkey = '" + admin_hex + "'") == "13" and sql("select count(*) from verse.voice_edits where pubkey <> '" + admin_hex + "'") == "0")
+      sql("select count(*) from verse.voice_edits where pubkey = '" + admin_hex + "'") == "42" and sql("select count(*) from verse.voice_edits where pubkey <> '" + admin_hex + "'") == "0",
+      sql("select count(*) from verse.voice_edits"))
