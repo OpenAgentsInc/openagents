@@ -33,6 +33,7 @@ bool admin_route(const request *q);
 bool admin_is(const char *pubkey);        // a pubkey in OA_ADMIN_PUBKEYS
 int admin_who(const request *q, PGconn *db, char who[65]);   // 0 an admin (cookie or NIP-98), else 401/403
 bool chat_route(const request *q);        // chat.c
+void chat_key(const request *q, const char *pubkey, bool member);   // KEY for a signed-in admin, or a project member (private.c)
 bool player_route(const request *q);      // player.c
 bool npc_route(const request *q);         // npc.c
 bool private_route(const request *q);     // private.c

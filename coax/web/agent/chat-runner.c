@@ -274,6 +274,26 @@ static const char *chat_model(const char *m) {
   return !strcmp(m, "claude-haiku-5-5") || !strcmp(m, "claude-sonnet-5-5") ? m : "claude-opus-5-5";
 }
 
+// A turn's credential from next's answer (oa-api's "credential": {kind, owner,
+// sealed}, the asker's own): opened into chat_cred for the engine's child
+// alone, as ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN, never both. None:
+// ours. False when it can't be opened. /chat and project turns both use it.
+static bool turn_credential(const char *next) {
+  const char *cj; size_t cn;
+  engine_cred_name = "ANTHROPIC_API_KEY"; engine_cred = anthropic_key;
+  if (!jget(next, "credential", &cj, &cn) || *cj != '{') return true;
+  char *c = strndup(cj, cn), *kind = jstr(c, "kind", ""), *owner = jstr(c, "owner", ""), *sealed = jstr(c, "sealed", "");
+  bool ok = unseal(sealed, owner, kind, chat_cred, sizeof chat_cred);
+  OPENSSL_cleanse(c, cn); free(c); free(owner); free(sealed);
+  if (ok) { engine_cred_name = !strcmp(kind, "oauth") ? "CLAUDE_CODE_OAUTH_TOKEN" : "ANTHROPIC_API_KEY"; engine_cred = chat_cred; }
+  free(kind);
+  return ok;
+}
+static void turn_credential_done(void) {
+  OPENSSL_cleanse(chat_cred, sizeof chat_cred);
+  engine_cred_name = "ANTHROPIC_API_KEY"; engine_cred = anthropic_key;
+}
+
 // One /chat turn from next's answer.
 static void chat_turn(const char *next) {
   const char *tj; size_t tn;
@@ -296,19 +316,7 @@ static void chat_turn(const char *next) {
   if (!chat_checkout(repo)) { chat_end(id, "failed", "\"\"", "\"the repository could not be reached\"", 0, false); goto out; }
   if (mkdir(dir, 0700) || mkdir(home, 0700) || mkdir(cfg, 0700)) { chat_end(id, "failed", "\"\"", "\"the runner could not make a work directory\"", 0, false); goto out; }
   // the credential: the asker's own, else ours
-  {
-    const char *cj; size_t cn;
-    engine_cred_name = "ANTHROPIC_API_KEY"; engine_cred = anthropic_key;
-    if (jget(next, "credential", &cj, &cn) && *cj == '{') {
-      char *c = strndup(cj, cn), *kind = jstr(c, "kind", ""), *owner = jstr(c, "owner", ""), *sealed = jstr(c, "sealed", "");
-      bool ok = unseal(sealed, owner, kind, chat_cred, sizeof chat_cred);
-      free(c); free(owner); free(sealed);
-      if (!ok) { free(kind); chat_end(id, "failed", "\"\"", "\"Your saved key could not be opened. Save it again under KEY.\"", 0, false); goto out; }
-      engine_cred_name = !strcmp(kind, "oauth") ? "CLAUDE_CODE_OAUTH_TOKEN" : "ANTHROPIC_API_KEY";
-      engine_cred = chat_cred;
-      free(kind);
-    }
-  }
+  if (!turn_credential(next)) { chat_end(id, "failed", "\"\"", "\"Your saved key could not be opened. Save it again under KEY.\"", 0, false); goto out; }
   // the session: put back where the CLI looks for it
   snprintf(kept, sizeof kept, "%s/%s.jsonl", store, sid);
   session_dir(cfg, repo, sdir, sizeof sdir);
@@ -339,8 +347,7 @@ static void chat_turn(const char *next) {
   if (session_found(cfg, sid, found, sizeof found) && !copy_file(found, kept)) say("chat turn %lld: the session was not kept", id);
   chat_end(id, status, answer.p, error.p, cost, resumed);
 out:
-  OPENSSL_cleanse(chat_cred, sizeof chat_cred);
-  engine_cred_name = "ANTHROPIC_API_KEY"; engine_cred = anthropic_key;
+  turn_credential_done();
   remove_dir(dir);
   free(turn_json); free(model); free(sid); free(answer.p); free(error.p);
 }

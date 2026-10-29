@@ -49,7 +49,7 @@ PV_NAVIGATE :: 1; PV_SET_HASH :: 3; PV_KEEP_PLAYER :: 5;
 PV_REFRESH :: 30.0;        // seconds between reads of the state
 PV_FRESH :: 75.0;          // an answer this old or newer is LIVE
 POST_MESSAGE :: 1; POST_REDEEM :: 2; POST_LOGOUT :: 3; POST_ASK :: 4; POST_STOP :: 5; POST_UNDO :: 6; POST_AGREE :: 7;
-POST_CHALLENGE :: 8; POST_POLL :: 9; POST_LINK :: 10; POST_SITE_OUT :: 11;
+POST_CHALLENGE :: 8; POST_POLL :: 9; POST_LINK :: 10; POST_SITE_OUT :: 11; POST_KEY :: 12; POST_KEY_REMOVE :: 13;
 ASK_STATE :: 1; ASK_TALK :: 2; ASK_ME :: 3;
 PV_POLL :: 2.0;            // seconds between polls of a shown code
 PV_CODE_LIFE :: 300.0;     // a code is good this long (signin.api)
@@ -57,6 +57,8 @@ PV_QR :: 5929;             // every QR version's grid (coax/lib/qr)
 CODE_NONE :: 0; CODE_ASKING :: 1; CODE_SHOWN :: 2; CODE_DONE :: 3; CODE_EXPIRED :: 4; CODE_FAILED :: 5;
 H_HOME :: 1; H_PROJECTS :: 2; H_SIGNOUT :: 3; H_PREV :: 4; H_NEXT :: 5; H_FIELD :: 6; H_SEND :: 7; H_LINK :: 8; H_AFIELD :: 9; H_ASK :: 10;
 H_LINKPHONE :: 11; H_CLOSE :: 12; H_NEWCODE :: 13; H_SITE_OUT :: 14;
+H_KEYOPEN :: 15; H_KFIELD :: 16; H_KSAVE :: 17; H_KREPLACE :: 18; H_KREMOVE :: 19;   // KEY, under the agent's field
+PV_KEY :: 400;             // a pasted credential's most
 H_UNDO :: 100; H_STOP :: 140; H_AGREE :: 200;   // + the turn's (or goal's) index
 H_MINE :: 300;                                  // + a project's index on /signin
 K_BACK :: -3; K_ESC :: -1;
@@ -81,6 +83,8 @@ PrivateState :: struct {
   typing: bool; text: [PV_TEXT] u8; text_n: int;
   focus: int;                    // the field typed into: 0 messages, 1 the agent
   atext: [PV_TEXT] u8; atext_n: int;
+  kkey: [PV_KEY] u8; kkey_n: int;   // KEY's field (focus 2): drawn masked, wiped once sent
+  keying: bool;                    // KEY's field is out
   ask_kind: int;                 // what the read in flight is: ASK_STATE or ASK_TALK
   tstatus: int; tasked_at: f32;  // the conversation: -1 not read yet, 200, or 404 (this project has no agent)
   tdata: [PV_TDATA] u8; tdata_n: int;
@@ -273,7 +277,11 @@ pv_body :: (s: [] PrivateState, kind: int, key: string, value: string) {
 }
 // The face sent them, and which answer each waits for.
 coaxial_private_asked :: (s: [] PrivateState, id: int) #export_c { if s.count > 0 { s[0].ask_n = 0; s[0].ask_id = id; } }
-coaxial_private_posted :: (s: [] PrivateState, id: int) #export_c { if s.count > 0 { s[0].post_n = 0; s[0].post_id = id; } }
+coaxial_private_posted :: (s: [] PrivateState, id: int) #export_c {
+  if s.count < 1 { return; }
+  for i: 0..<s[0].body_n { s[0].body[i] = 0; }   // a credential stays in the page no longer than this
+  s[0].post_n = 0; s[0].post_id = id;
+}
 pv_say :: (s: [] PrivateState, word: string) { s[0].note_n = pv_put(s[0].note[..], 0, word); s[0].note_at = s[0].time; }
 pv_go :: (s: [] PrivateState, url: string) { s[0].out_n = pv_put(s[0].outbox[..], 0, url); s[0].action = PV_NAVIGATE; }
 pv_go_page :: (s: [] PrivateState) {
@@ -341,6 +349,10 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
     if code == 200 { pv_go_page(s); } else { pv_say(s, "THAT LINK WAS USED OR HAS EXPIRED"); }
   } else if kind == POST_LOGOUT {
     pv_go_page(s);
+  } else if kind == POST_KEY || kind == POST_KEY_REMOVE {
+    if code == 200 { s[0].keying = false; s[0].typing = false; pv_say_agent(s, ifx kind == POST_KEY then "KEY SAVED: YOUR TURNS RUN ON IT" else "KEY REMOVED"); }
+    else { pv_say_agent(s, pv_error(bytes, i)); }
+    s[0].tasked_at = -1000;
   } else if kind >= POST_ASK && kind <= POST_AGREE {
     if code == 200 {
       if kind == POST_ASK { s[0].atext_n = 0; pv_say_agent(s, "SENT TO THE AGENT"); }
@@ -355,6 +367,8 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
 }
 // The "error" of a JSON answer from i, or NOT DONE.
 pv_error :: (bytes: string, i: int) -> string {
+  v := pv_value(bytes, i, "error");   // "error": "..." or "error":"..."
+  if v.count > 0 { return v; }
   key := "\"error\": \"";
   k := i;
   while k + key.count <= bytes.count {
@@ -865,6 +879,7 @@ pv_messages :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p:
 // A field's typed text: 0 the messages', 1 the agent's.
 pv_typed :: (s: [] PrivateState, which: int) -> string {
   if which == 1 { return cast(string) s[0].atext[0..<s[0].atext_n]; }
+  if which == 2 { return cast(string) s[0].kkey[0..<s[0].kkey_n]; }
   return cast(string) s[0].text[0..<s[0].text_n];
 }
 // A field: what's typed, drawn here; the host's keyboard field sits over the focused one.
@@ -884,6 +899,12 @@ pv_field :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pe
     caret_x := tx;
     if typed.count == 0 {
       if !on { r.v = put_fit(out, r.v, hint, tx, base, BODY * d, ink(p, INK_FAINT), room); }
+    } else if which == 2 {
+      stars: [48] u8;
+      n := ifx typed.count < 40 then typed.count else 40;
+      for q: 0..<n { stars[q] = '*'; }
+      r.v = put_fit(out, r.v, cast(string) stars[0..<n], tx, base, BODY * d, white, room);
+      caret_x = tx + lo(ink_width(cast(string) stars[0..<n], BODY * d, GAP, SPACE, white), room) + 1.5 * d;
     } else {
       // the end of what's typed, as much as fits
       from := 0;
@@ -922,6 +943,9 @@ pv_agent :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pe
     buf: [160] u8;
     m := pv_upper(buf[..], 0, ta_cell(s, i, 5));
     if kind == "undo" { m = pv_put(buf[..], m, " · UNDO TURN"); }
+    cred := ta_cell(s, i, 15);
+    if cred == "own" { m = pv_put(buf[..], m, " · "); m = pv_upper(buf[..], m, ta_cell(s, i, 5)); m = pv_put(buf[..], m, "'S KEY"); }
+    else if cred == "openagents" { m = pv_put(buf[..], m, " · OPENAGENTS KEY"); }
     base := r.y + 10 * d;
     if draw && base > top && base < s[0].height {
       r.v = put_fit(out, r.v, cast(string) buf[0..<m], x0, base, 6 * d, pv_chrome(p, INK_ORANGE), x1 - x0 - 90 * d);
@@ -978,11 +1002,50 @@ pv_agent :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pe
     r.y += 10 * d;
   }
   r = pv_field(s, out, r, x0, x1, p, draw, top, 1, "Ask the project's agent", "ASK", H_AFIELD, H_ASK);
+  r = pv_key(s, out, r, x0, x1, p, draw, top);
   if s[0].anote_n > 0 && s[0].time - s[0].anote_at < 6 {
     r = pv_text(s, out, r, cast(string) s[0].anote[0..<s[0].anote_n], x0, x1 - x0, 6, pv_chrome(p, INK_ORANGE), 2, draw, top);
   }
   r.y += 2 * d;
   return pv_text(s, out, r, "What you write here and the project's contents go to Anthropic's API as the model's input.", x0, x1 - x0, 6, ink(p, INK_FAINT), 2, draw, top);
+}
+
+// KEY: the member's own Anthropic API key or Claude subscription token
+// (docs/chat.md): their turns then run on it, with no cap from us. Saved, it
+// shows only its kind and last four, with REPLACE and REMOVE; the same key
+// works on /chat. The K line: K|kind|last4|expired.
+pv_key :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pen, draw: bool, top: f32) -> PvFlow {
+  d := p.d; r := f;
+  k := ta_first(s, 'K');
+  if k < 0 { return r; }
+  kind := ta_cell(s, k, 1);
+  y := r.y + 12 * d;
+  if kind.count > 0 && !s[0].keying {
+    buf: [120] u8;
+    m := pv_put(buf[..], 0, "YOUR KEY: ");
+    m = pv_put(buf[..], m, ifx kind == "oauth" then "CLAUDE SUBSCRIPTION TOKEN" else "ANTHROPIC API KEY");
+    m = pv_put(buf[..], m, " ENDING "); m = pv_put(buf[..], m, ta_cell(s, k, 2));
+    if ta_cell(s, k, 3) == "1" { m = pv_put(buf[..], m, " · EXPIRED"); }
+    rw := chip_width("REPLACE", 7 * d, p); xw := chip_width("REMOVE", 7 * d, p);
+    if draw && y > top && y < s[0].height {
+      r.v = put_fit(out, r.v, cast(string) buf[0..<m], x0, y, 6 * d, pv_chrome(p, ifx ta_cell(s, k, 3) == "1" then INK_ORANGE else INK_DIM), x1 - x0 - rw - xw - 20 * d);
+    }
+    r.v = pv_chip(s, out, r.v, "REPLACE", x1 - rw - xw - 8 * d, y, H_KREPLACE, false, p, draw, top);
+    r.v = pv_chip(s, out, r.v, "REMOVE", x1 - xw, y, H_KREMOVE, false, p, draw, top);
+    r.y = y + 8 * d;
+  } else if !s[0].keying {
+    if draw && y > top && y < s[0].height { r.v = put_fit(out, r.v, "TURNS RUN ON THE OPENAGENTS KEY", x0, y, 6 * d, pv_chrome(p, INK_DIM), x1 - x0 - 120 * d); }
+    w := chip_width("USE YOUR OWN KEY", 7 * d, p);
+    r.v = pv_chip(s, out, r.v, "USE YOUR OWN KEY", x1 - w, y, H_KEYOPEN, false, p, draw, top);
+    r.y = y + 8 * d;
+  } else {
+    r.y += 4 * d;
+    r = pv_text(s, out, r, "Anthropic API key, or Claude subscription token (from claude setup-token)", x0, x1 - x0, 6, pv_chrome(p, INK_DIM), 2, draw, top);
+    r = pv_field(s, out, r, x0, x1, p, draw, top, 2, "Paste it here", ifx s[0].post_kind == POST_KEY then "CHECKING" else "SAVE", H_KFIELD, H_KSAVE);
+    r = pv_text(s, out, r, "For a subscription: run claude setup-token, approve in the browser, and paste the token it prints here. Your turns then cost you, not the project.",
+                x0, x1 - x0, 6, ink(p, INK_FAINT), 3, draw, top);
+  }
+  return r;
 }
 
 PV_PANELS :: 7;
@@ -1212,6 +1275,7 @@ pv_hit_at :: (s: [] PrivateState, x: f32, y: f32) -> int {
   return -1;
 }
 pv_send :: (s: [] PrivateState) {
+  if s[0].focus == 2 { pv_save_key(s); return; }
   if s[0].focus == 1 { pv_ask_agent(s); return; }
   if s[0].text_n == 0 || s[0].post_kind != 0 { return; }
   text := cast(string) s[0].text[0..<s[0].text_n];
@@ -1226,6 +1290,14 @@ pv_ask_agent :: (s: [] PrivateState) {
   if a >= text.count { return; }
   pv_post(s, "ask", POST_ASK, "text", text[a..<text.count]);
 }
+pv_wipe_key :: (s: [] PrivateState) { for i: 0..<PV_KEY { s[0].kkey[i] = 0; } s[0].kkey_n = 0; }
+// KEY's SAVE: posted once (oa-api has the runner check and seal it), then wiped here.
+pv_save_key :: (s: [] PrivateState) {
+  if s[0].kkey_n == 0 || s[0].post_kind != 0 { return; }
+  pv_post(s, "key", POST_KEY, "credential", cast(string) s[0].kkey[0..<s[0].kkey_n]);
+  pv_wipe_key(s);
+  pv_say_agent(s, "CHECKING THE KEY");
+}
 // A turn's id from the k-th turn line, for STOP and UNDO TURN.
 pv_turn_post :: (s: [] PrivateState, op: string, kind: int, k: int) {
   i := ta_nth(s, 'U', k);
@@ -1234,7 +1306,11 @@ pv_turn_post :: (s: [] PrivateState, op: string, kind: int, k: int) {
 }
 trim_lead :: (text: string) -> int { i := 0; while i < text.count && text[i] == ' ' { i += 1; } return i; }
 pv_act :: (s: [] PrivateState, target: int) {
-  if target != H_FIELD && target != H_SEND && target != H_AFIELD && target != H_ASK { s[0].typing = false; }
+  if target != H_FIELD && target != H_SEND && target != H_AFIELD && target != H_ASK && target != H_KFIELD && target != H_KSAVE { s[0].typing = false; }
+  if target == H_KEYOPEN || target == H_KREPLACE { s[0].keying = true; s[0].typing = true; s[0].focus = 2; pv_wipe_key(s); }
+  else if target == H_KFIELD { s[0].typing = true; s[0].focus = 2; }
+  else if target == H_KSAVE { s[0].focus = 2; pv_save_key(s); }
+  else if target == H_KREMOVE { if s[0].post_kind == 0 { pv_post(s, "key_remove", POST_KEY_REMOVE, "", ""); } }
   if target == H_HOME { pv_go(s, "/"); }
   else if target == H_LINKPHONE { if !s[0].linking { s[0].linking = true; s[0].code_state = CODE_NONE; s[0].scroll = 0; pv_new_code(s); } }
   else if target == H_CLOSE { s[0].linking = false; s[0].code_state = CODE_NONE; s[0].qr_size = 0; s[0].poll_n = 0; }
@@ -1296,7 +1372,11 @@ coaxial_private_pointer :: (s: [] PrivateState, x: f32, y: f32, phase: int, kind
 pv_type :: (s: [] PrivateState, text: string) {
   for c: text {
     t := ifx c == '\n' || c == '\r' || c == '\t' then ' ' else c;
-    if s[0].focus == 1 {
+    if s[0].focus == 2 {
+      if c <= ' ' { continue; }   // a key has no spaces or line breaks
+      if s[0].kkey_n >= PV_KEY { return; }
+      s[0].kkey[s[0].kkey_n] = c; s[0].kkey_n += 1;
+    } else if s[0].focus == 1 {
       if s[0].atext_n >= PV_TEXT { return; }
       s[0].atext[s[0].atext_n] = t; s[0].atext_n += 1;
     } else {
@@ -1312,7 +1392,9 @@ coaxial_private_key :: (s: [] PrivateState, key: int) -> bool #export_c {
     if key == K_ENTER { pv_send(s); return true; }
     if key == K_ESC { s[0].typing = false; return true; }
     if key == K_BACK {
-      if s[0].focus == 1 {
+      if s[0].focus == 2 {
+        if s[0].kkey_n > 0 { s[0].kkey_n -= 1; s[0].kkey[s[0].kkey_n] = 0; }
+      } else if s[0].focus == 1 {
         if s[0].atext_n > 0 {
           n := s[0].atext_n - 1;
           while n > 0 && (s[0].atext[n] & 0xC0) == 0x80 { n -= 1; }
@@ -1722,4 +1804,36 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
   n = pv_fresh(s[..], out[..], u[..], 1440, 900);
   #assert s[0].post_n == 0;
   #assert coaxial_private_key(s[..], K_ESC) && !s[0].linking && s[0].poll_n == 0;
+}
+
+#test "KEY: a member's own key is pasted masked, posted once and wiped; saved, it shows its kind and last four; each turn says whose key ran it" {
+  s: [1] PrivateState;
+  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  pv_loaded(s[..], out[..], u[..]);
+  n1 := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, "200\nZ|0.42|10.00|0|2\nU|7|ask|done|Oct 28 15:40|Ada|Hi|Hello.|||0|0||||openagents\nK|||0\n");
+  n2 := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert pv_has_hit(s[..], H_KEYOPEN) && !pv_has_hit(s[..], H_KREMOVE);
+  pv_act(s[..], H_KEYOPEN);
+  #assert s[0].keying && s[0].typing && s[0].focus == 2;
+  typed := " sk-ant-oat01-abc\nWXYZ ";
+  for i: 0..<typed.count { s[0].inbox[i] = typed[i]; }
+  coaxial_private_message(s[..], PV_TYPED, typed.count);
+  #assert cast(string) s[0].kkey[0..<s[0].kkey_n] == "sk-ant-oat01-abcWXYZ" && s[0].atext_n == 0;
+  k := coaxial_private_key(s[..], K_ENTER);
+  #assert s[0].kkey_n == 0 && s[0].kkey[0] == 0;
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/projects/proj/api/key" && cast(string) s[0].body[0..<s[0].body_n] == "{\"credential\":\"sk-ant-oat01-abcWXYZ\"}";
+  coaxial_private_posted(s[..], 2);
+  #assert s[0].body[0] == 0;
+  pv_answer(s[..], 2, "400\n{\"error\":\"That key didn't work: invalid\"}");
+  #assert cast(string) s[0].anote[0..<s[0].anote_n] == "That key didn't work: invalid";
+  coaxial_private_asked(s[..], 3);
+  pv_answer(s[..], 3, "200\nZ|0.42|10.00|0|2\nU|7|ask|done|Oct 28 15:40|Ada|Hi|Hello.|||0|0||||own\nK|oauth|OATK|0\n");
+  s[0].keying = false;
+  n3 := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert pv_has_hit(s[..], H_KREPLACE) && pv_has_hit(s[..], H_KREMOVE) && !pv_has_hit(s[..], H_KEYOPEN);
+  #assert ta_cell(s[..], ta_nth(s[..], 'U', 0), 15) == "own";
+  pv_act(s[..], H_KREMOVE);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/projects/proj/api/key_remove" && cast(string) s[0].body[0..<s[0].body_n] == "{}";
 }

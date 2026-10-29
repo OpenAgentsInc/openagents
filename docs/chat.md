@@ -88,6 +88,16 @@ subscription token (`claude setup-token`, `sk-ant-oat...`).
 - **Never shown.** The page sends it once and wipes it from its memory;
   answers carry only the kind and last four. It is never logged or put in an
   event. REMOVE deletes it. Each answer says "YOUR KEY" or "OPENAGENTS KEY".
+- **One store for /chat and projects.** The credential is kept per signed-in
+  pubkey, and the same KEY item sits on each project page under the agent's
+  field (`/projects/SLUG/api/key`, `key_remove`; only a member can save one).
+  A project turn runs on the credential of the member who sent the message,
+  with no cap from us and no charge to the project's $10 a day; with none
+  saved it runs on our key under that cap. Another member's credential is
+  never used: `projects.api('next')` hands the runner only the asker's
+  sealed credential, and the turn header says "CHRIS'S KEY" or
+  "OPENAGENTS KEY". An expired token fails that turn with the same message
+  and marks the credential expired.
 
 ## The checkout and the runner's size
 

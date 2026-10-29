@@ -240,7 +240,9 @@ protocol, not the npm package:
   - cwd and env.
 - **Credentials:** an `ANTHROPIC_API_KEY` given in the child's environment
   only, never a file and never logged. A Claude Code login also works for
-  owner-local smokes.
+  owner-local smokes. A member's own saved key or subscription token (KEY on
+  the page, one store shared with /chat) replaces ours for the turns that
+  member sends; see [chat.md](chat.md#your-own-key).
 - **Where it lives:**
   - library `coax/lib/agent/claude/`;
   - shim `coax/platform/process-native.c`;
@@ -257,7 +259,8 @@ protocol, not the npm package:
   model's context.
 - **Spend:**
   - $10 a day per project, from the CLI's reported cost, enforced by the
-    runner;
+    runner; turns on a member's own credential have no cap from us and
+    don't count;
   - max turns per message;
   - one turn at a time per project.
 - **No shell and no network** for the model. Its only effects are:
@@ -281,7 +284,8 @@ protocol, not the npm package:
 6. End-to-end on staging, then production, then a phone check.
 
 Later:
-- members connect their own Claude or Codex harness instead of our key;
+- members connect their own Codex harness instead of our key (their own
+  Claude key or token works today);
 - a live socket instead of polling;
 - the native app view;
 - end-to-end encrypted projects, where the runner holds a member-granted

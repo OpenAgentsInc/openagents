@@ -232,11 +232,73 @@ check("chat: REMOVE deletes the saved key", s == 200 and sql("select count(*) fr
 s, b = cpage("GET", "state", query=f"?c={C}", cookie="f" * 64)
 check("chat: someone else's session can't read the conversation", s == 401, s)
 
+# ---- the project agent: the member who asked, on their own saved credential
+# (one store with /chat), else OpenAgents' key under the project's cap; never another member's
+prunner_log = os.path.join(cwork, "prunner.log")
+prunner = subprocess.Popen([os.environ["RUNNER_BIN"], "--listen", f"127.0.0.1:{CHAT_PORT + 2}"], stderr=open(prunner_log, "w"), env={
+    "OA_API_ORIGIN": API, "OA_RUNNER_KEY": open(os.environ["RUN_KEY_FILE"]).read().strip(), "OA_CHAT_SEAL_KEY": "5e" * 32,
+    "OA_AGENT_ENGINE": os.path.join(agent_src, "test-chat-engine.py"), "OA_AGENT_REPOS": "",
+    "OA_AGENT_WORK": os.path.join(cwork, "pwork"), "ANTHROPIC_API_KEY": OURS, "OA_GIT": shutil.which("git"), "PATH": "/usr/bin:/bin"})
+for _ in range(50):
+    try:
+        if urllib.request.urlopen(f"http://127.0.0.1:{CHAT_PORT + 2}/").status == 200:
+            break
+    except Exception:
+        time.sleep(0.1)
+
+
+def pturn(cookie, text, xff):
+    s, b, _ = page("POST", f"/projects/{ASLUG}/api/ask", {"text": text}, cookie=cookie, xff=xff)
+    tid = json.loads(b).get("turn") if s == 200 else None
+    urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{CHAT_PORT + 2}/wake", method="POST", data=json.dumps({"slug": ASLUG}).encode()))
+    for _ in range(150):
+        s, tb = talk(cookie)
+        u = next((l.split("|") for l in tb.split("\n") if l.startswith(f"U|{tid}|")), None)
+        if u and u[3] in ("done", "failed", "stopped", "refused"):
+            return u, tb
+        time.sleep(0.2)
+    return u, tb
+
+
+def kline(tb):
+    return next((l.split("|") for l in tb.split("\n") if l.startswith("K|")), None)
+
+
+s, b, _ = page("POST", f"/projects/{ASLUG}/api/key", {"credential": GOOD_OAT}, cookie=cy, xff="10.1.0.3")
+check("project: a member saves a subscription token from the project page", s == 200 and json.loads(b).get("kind") == "oauth" and GOOD_OAT not in b.decode(), (s, b))
+s, b, _ = page("POST", f"/projects/{ASLUG}/api/key", {"credential": GOOD_OAT}, cookie=None, xff="10.1.0.8")
+check("project: KEY needs a member", s == 404, s)
+u, tb = pturn(cy, "Cy's question", "10.1.0.3")
+check("project: Cy's turn runs on Cy's token alone, no cap from us",
+      u and u[3] == "done" and f"cred=CLAUDE_CODE_OAUTH_TOKEN:{h8(GOOD_OAT)} " in u[7] and u[15] == "own" and "budget=0.00" in u[7], u)
+check("project: Cy's panel shows Cy's key", kline(tb) == ["K", "oauth", "OATK", "0"], kline(tb))
+u, tb = pturn(ada, "Ada's question", "10.1.0.2")
+check("project: Ada has none, so hers runs on OpenAgents' key under the cap, never Cy's",
+      u and u[3] == "done" and f"cred=ANTHROPIC_API_KEY:{h8(OURS)} " in u[7] and h8(GOOD_OAT) not in u[7] and u[15] == "openagents" and "budget=0.00" not in u[7], u)
+check("project: Ada's panel shows no key of hers", kline(tb) == ["K", "", "", "0"], kline(tb))
+s, b = cpage("POST", "key", {"credential": GOOD_API})
+u, tb = pturn(ada, "Ada again", "10.1.0.2")
+check("project: a key saved on /chat runs Ada's project turns too (one store)", s == 200 and u and f"cred=ANTHROPIC_API_KEY:{h8(GOOD_API)} " in u[7] and u[15] == "own", (s, u))
+spent_before = sql(f"select projects.spent('{ASLUG}')")
+u, tb = pturn(cy, "costly on Cy's own", "10.1.0.3")
+check("project: turns on a member's own credential don't count toward the project's spend", sql(f"select projects.spent('{ASLUG}')") == spent_before, spent_before)
+u, tb = pturn(cy, "expire please", "10.1.0.3")
+check("project: an expired token says so and is marked expired; the next turn falls back to our key",
+      u and u[3] == "failed" and "setup-token" in u[8] and kline(tb) == ["K", "oauth", "OATK", "1"], (u, kline(tb)))
+s, b, _ = page("POST", f"/projects/{ASLUG}/api/key_remove", {}, cookie=cy, xff="10.1.0.3")
+s2, tb = talk(cy)
+check("project: REMOVE from the project page deletes it", s == 200 and kline(tb) == ["K", "", "", "0"], (s, kline(tb)))
+cpage("POST", "key_remove", {})
+prunner.terminate()
+time.sleep(0.3)
+chat_log_extra = open(prunner_log).read()
+
 # ---- no credential anywhere it shouldn't be
 time.sleep(0.5)
-logs = open(os.environ["API_LOG"]).read() + open(chat_log).read()
+logs = open(os.environ["API_LOG"]).read() + open(chat_log).read() + chat_log_extra
 dump = sql("select coalesce(string_agg(t::text, ' '), '') from (select row_to_json(x)::text t from chat.turns x union all select row_to_json(e)::text from chat.events e "
-           "union all select row_to_json(c)::text from chat.conversations c) z")
+           "union all select row_to_json(c)::text from chat.conversations c union all select row_to_json(p)::text from projects.turns p "
+           "union all select row_to_json(q)::text from projects.events q) z")
 leaked = [h8(v) for v in SECRETS if v in logs or v in dump]
 check("chat: no key or token in the logs, turns, events or conversations", not leaked, leaked)
 chat_runner.terminate()

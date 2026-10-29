@@ -84,6 +84,8 @@ static const char *engine_bin;
 static char engine_cfg[900];
 static bool chat_expired;     // a /chat engine said the subscription token expired
 static void chat_turns(void);
+static bool turn_credential(const char *next);   // chat-runner.c: the asker's own credential, if any
+static void turn_credential_done(void);
 static const char *api_base = "/api/private/";   // /chat's turns: /api/chat/ (slug "runner")
 
 // ---- growable text
@@ -564,7 +566,7 @@ static void end_turn(const char *slug, long long id, const char *status, const c
   putf(&body, "{\"turn\":%lld,\"status\":\"%s\",\"answer\":%s,\"error\":%s,\"cost_usd\":%.4f", id, status,
        answer && *answer ? answer : "\"\"", error && *error ? error : "\"\"", cost);
   if (commit && *commit) { puts_(&body, ",\"commit\":"); putq(&body, commit); puts_(&body, ",\"commit_message\":"); putq(&body, commit_message); }
-  putf(&body, ",\"files\":%s}", files && *files ? files : "[]");
+  putf(&body, ",\"files\":%s,\"credential_expired\":%s}", files && *files ? files : "[]", chat_expired ? "true" : "false");
   api("POST", slug, "end", body.p, &out);
   say("turn %lld %s cost %.4f%s", id, status, cost, commit && *commit ? " committed" : "");
   free(body.p); free(out.p);
@@ -582,6 +584,7 @@ static void one_turn(const char *slug, const char *next) {
   text answer = {0}, error = {0}, files = {0}, out = {0};
   double cost = 0;
   char status[16] = "failed";
+  chat_expired = false;
   if (!turn_dir(id, has_repo ? keysrc : NULL, dir, sizeof dir, key, sizeof key)) {
     end_turn(slug, id, "failed", "\"\"", "\"the runner could not make a work directory\"", NULL, NULL, NULL, 0);
     goto out;
@@ -630,7 +633,16 @@ static void one_turn(const char *slug, const char *next) {
     // the workspace: what this turn offers (docs/project-agent.md, "The runner's seam")
     putf(&first, ",\"today\":\"%s\",\"workspace\":{\"kind\":\"project\",\"budget\":\"project:%s\",\"tools\":[\"project\"],\"write\":true}}", today, slug);
     snprintf(home, sizeof home, "%s/home", dir); mkdir(home, 0700);
-    run_engine(slug, first.p, id, co, home, &answer, &error, &cost, status);
+    // the member who asked: their own credential when they saved one (no cap from us), else ours;
+    // a fresh CLAUDE_CONFIG_DIR either way
+    if (turn_credential(next)) {
+      snprintf(engine_cfg, sizeof engine_cfg, "%s/cfg", dir); mkdir(engine_cfg, 0700);
+      run_engine(slug, first.p, id, co, home, &answer, &error, &cost, status);
+      engine_cfg[0] = 0;
+    } else {
+      error.n = 0; puts_(&error, "\"Your saved key could not be opened. Save it again under KEY.\"");
+    }
+    turn_credential_done();
     free(first.p); free(history); free(version); free(spent); free(cap);
   }
   if (has_repo && !strcmp(status, "done")) {

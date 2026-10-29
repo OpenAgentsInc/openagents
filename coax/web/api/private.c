@@ -372,6 +372,20 @@ bool private_route(const request *q) {
   // GETs read; everything else is a POST.
   bool reads = !strcmp(what, "shell") || !strcmp(what, "state") || !strcmp(what, "inbox") || !strcmp(what, "talk");
   if (reads == post) { free(body); no(q); return true; }
+  // KEY (docs/chat.md): the member's own Anthropic key or Claude token, checked and sealed as /chat's are.
+  if (!strcmp(what, "key")) {
+    free(body);
+    if (!allowed("keyset", ip, 6)) { api_respond(q->fd, 429, "application/json", PRIVATE_HEADERS "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21); return true; }
+    const char *kv[4] = {"key_owner", slug, "{}", who};
+    PGresult *kr = PQexecParams(db, "SELECT (x->>'status')::int, coalesce(x->'body'->>'pubkey', '') FROM projects.api($1, $2, $3::jsonb, $4::jsonb) x", 4, NULL, kv, NULL, NULL, 0);
+    char owner[65] = "";
+    if (PQresultStatus(kr) == PGRES_TUPLES_OK && PQntuples(kr) == 1 && atoi(PQgetvalue(kr, 0, 0)) == 200) snprintf(owner, sizeof owner, "%s", PQgetvalue(kr, 0, 1));
+    PQclear(kr);
+    if (strlen(owner) != 64) { no(q); return true; }
+    api_log("private key by %.8s", owner);
+    chat_key(q, owner, true);
+    return true;
+  }
   const char *v[4] = {what, slug, body, who};
   // The agent's document tools (migration 0018) build a new version, then push through projects.api.
   bool tool = !strcmp(what, "patch") || !strcmp(what, "milestone_edit") || !strcmp(what, "goal_propose");

@@ -65,14 +65,27 @@ en_tool :: (buf: [] u8, name: string, detail: string) {
   en_send(o[..]);
 }
 
-en_done :: (buf: [] u8, status: string, answer: string, error: string, cost: f64) {
+en_done :: (buf: [] u8, status: string, answer: string, error: string, cost: f64) { en_done_as(buf, status, answer, error, cost, false); }
+// expired: the member's subscription token expired (the runner marks it so)
+en_done_as :: (buf: [] u8, status: string, answer: string, error: string, cost: f64, expired: bool) {
   o: [1] ClOut; o[0].buf = buf;
   cl_put(o[..], "{\"t\":\"done\",\"status\":"); cl_put_string(o[..], status);
   cl_put(o[..], ",\"answer\":"); cl_put_string(o[..], answer);
   cl_put(o[..], ",\"error\":"); cl_put_string(o[..], error);
-  cl_put(o[..], ",\"cost_usd\":"); en_usd(o[..], cost); cl_put(o[..], "}");
+  cl_put(o[..], ",\"cost_usd\":"); en_usd(o[..], cost);
+  cl_put(o[..], ",\"credential_expired\":"); cl_put(o[..], ifx expired then "true" else "false"); cl_put(o[..], "}");
   en_send(o[..]);
 }
+en_has :: (s: string, w: string) -> bool {
+  if w.count == 0 || w.count > s.count { return false; }
+  for i: 0..<s.count - w.count + 1 { if s[i..<i + w.count] == w { return true; } }
+  return false;
+}
+// What the CLI says when a subscription token has expired or is no good.
+en_expired :: (text: string) -> bool {
+  return en_has(text, "Login expired") || en_has(text, "/login") || en_has(text, "OAuth token has expired") || en_has(text, "OAuth access token is invalid");
+}
+EXPIRED :: "Your token expired. Make a new one with claude setup-token and save it under KEY.";
 
 // A path as the members know it: inside the checkout, or the project document.
 en_shown :: (path: string, cwd: string, doc: string) -> string {
@@ -212,7 +225,7 @@ main :: () {
   defer cl_close(proc[..]);
   en_event(out[..], "working", "text", "reading the project");
 
-  cost := 0.0; status := "failed"; err := "the agent stopped before it finished";
+  cost := 0.0; status := "failed"; err := "the agent stopped before it finished"; expired := false;
   mar: [262144] u8; marg: [1] ClArena; marg[0].buf = mar[..];
   ans_buf: [16384] u8; ans_n := 0;
   call_n := 0;
@@ -310,11 +323,13 @@ main :: () {
         err = "the turn reached today's spending limit";
       } else if r.kind == ClResultKind.error_max_turns {
         err = "the turn took too many steps; ask for something smaller";
+      } else if en_expired(r.result) {
+        err = EXPIRED; expired = true;
       } else {
         err = "the model returned an error";
       }
     }
   }
   if stopped { r := cl_kill(proc[..]); en_done(out[..], "stopped", "", "", cost); return; }
-  en_done(out[..], status, cast(string) ans_buf[0..<ans_n], err, cost);
+  en_done_as(out[..], status, cast(string) ans_buf[0..<ans_n], err, cost, expired);
 }

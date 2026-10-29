@@ -172,11 +172,14 @@ static int chat_who(const request *q, PGconn *db, char who[65]) {
   return status;
 }
 
+// Set in a KEY child for a project member, whom private.c has checked: chat.api keeps their credential too.
+static bool keys_for_member;
+
 // chat.api: its status into *status, its body (a string for state, else JSON) and whether to wake the runner.
 static char *call(PGconn *db, const char *op, const char *body, const char *pubkey, bool runner, int *status, bool *wake) {
   char who[400];
   snprintf(who, sizeof who, "{\"pubkey\":\"%s\",\"may\":%s,\"runner\":%s,\"cap_usd\":\"%.16s\"}",
-           pubkey, pubkey[0] && admin_is(pubkey) ? "true" : "false", runner ? "true" : "false", cap_usd());
+           pubkey, pubkey[0] && (admin_is(pubkey) || keys_for_member) ? "true" : "false", runner ? "true" : "false", cap_usd());
   const char *v[3] = {op, body, who};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, CASE WHEN jsonb_typeof(x->'body') = 'string' THEN x->>'body' ELSE (x->'body')::text END, "
                                  "coalesce(x->>'wake', 'false') = 'true' FROM chat.api($1, $2::jsonb, $3::jsonb) x", 3, NULL, v, NULL, NULL, 0);
@@ -195,13 +198,13 @@ static char *call(PGconn *db, const char *op, const char *body, const char *pubk
 }
 
 // ---- a credential: its shape here, its truth at the runner
-// "api" for sk-ant-api…, "oauth" for sk-ant-oat…, else NULL. Only [A-Za-z0-9_-], 24 to 400 long.
+// "oauth" for sk-ant-oat…, "api" for any other sk-ant-… key, else NULL. Only [A-Za-z0-9_-], 24 to 400 long.
 static const char *credential_kind(const char *c) {
   size_t n = strlen(c);
   if (n < 24 || n > 400) return NULL;
   for (size_t i = 0; i < n; i++) if (!isalnum((unsigned char)c[i]) && c[i] != '_' && c[i] != '-') return NULL;
-  if (!strncmp(c, "sk-ant-api", 10)) return "api";
   if (!strncmp(c, "sk-ant-oat", 10)) return "oauth";
+  if (!strncmp(c, "sk-ant-", 7)) return "api";   // sk-ant-api…, and other Anthropic keys: the models list decides
   return NULL;
 }
 // The "credential" string of a JSON body, only when it is a plain string with no escapes.
@@ -283,6 +286,26 @@ static void save_key(const request *q, const char *pubkey, char *cred, const cha
   PQfinish(db);
 }
 
+// KEY: a pasted credential, for the signed-in pubkey: its shape here, then a
+// child has the runner check and seal it and keeps the sealed bytes. /chat
+// and the project page (private.c, once it knows the member) both use it.
+void chat_key(const request *q, const char *pubkey, bool member) {
+  char cred[512];
+  if (!credential_of(q->body, q->body_len, cred, sizeof cred)) { reply(q->fd, 400, "{\"error\":\"That key didn't work: paste the whole key\"}"); return; }
+  const char *kind = credential_kind(cred);
+  if (!kind) {
+    memset(cred, 0, sizeof cred);
+    reply(q->fd, 400, "{\"error\":\"That key didn't work: an Anthropic key starts sk-ant-, a Claude subscription token sk-ant-oat\"}");
+    return;
+  }
+  // A check can take a while (a model turn): a child answers, and the service goes on.
+  signal(SIGCHLD, SIG_IGN);
+  pid_t pid = fork();
+  if (pid == 0) { keys_for_member = member; save_key(q, pubkey, cred, kind); _exit(0); }
+  memset(cred, 0, sizeof cred);
+  if (pid < 0) reply(q->fd, 503, "{\"error\":\"busy\"}");
+}
+
 bool chat_route(const request *q) {
   if (strncmp(q->path, "/api/chat/", 10)) return false;
   const char *op = q->path + 10;
@@ -318,23 +341,7 @@ bool chat_route(const request *q) {
     }
   }
 
-  if (!strcmp(op, "key")) {
-    char cred[512];
-    if (!credential_of(q->body, q->body_len, cred, sizeof cred)) { reply(q->fd, 400, "{\"error\":\"That key didn't work: paste the whole key\"}"); return true; }
-    const char *kind = credential_kind(cred);
-    if (!kind) {
-      memset(cred, 0, sizeof cred);
-      reply(q->fd, 400, "{\"error\":\"That key didn't work: an Anthropic API key starts sk-ant-api, a Claude subscription token sk-ant-oat\"}");
-      return true;
-    }
-    // A check can take a while (a model turn): a child answers, and the service goes on.
-    signal(SIGCHLD, SIG_IGN);
-    pid_t pid = fork();
-    if (pid == 0) { save_key(q, pubkey, cred, kind); _exit(0); }
-    memset(cred, 0, sizeof cred);
-    if (pid < 0) { reply(q->fd, 503, "{\"error\":\"busy\"}"); return true; }
-    return true;   // the child answers on the same socket; api.c closes the parent's copy
-  }
+  if (!strcmp(op, "key")) { chat_key(q, pubkey, false); return true; }
 
   char *body;
   if (post) {

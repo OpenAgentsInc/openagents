@@ -5,7 +5,8 @@
 # credential the turn got (a short hash, never the value), whether it resumed
 # its session, the model, and a file from its checkout. "slow" waits for STOP;
 # "costly" costs a dollar; "expire" says the subscription token expired. It
-# writes the session file where the CLI would. Tooling only.
+# writes the session file where the CLI would. A project turn (no session,
+# no README.md) gets the same answer. Tooling only.
 import hashlib, json, os, sys
 
 def send(x):
@@ -13,7 +14,7 @@ def send(x):
 
 first = json.loads(sys.stdin.readline())
 text = first["turn"]["text"]
-sid = first.get("resume") or first.get("session_id") or ""
+sid = first.get("resume") or first.get("session_id") or "project"
 send({"t": "event", "type": "working", "data": {"text": "reading README.md"}})
 send({"t": "event", "type": "agent.tool_use", "data": {"name": "Read", "detail": "README.md"}})
 if "slow" in text:
@@ -32,9 +33,10 @@ path = os.path.join(proj, sid + ".jsonl")
 turns = sum(1 for _ in open(path)) if os.path.exists(path) else 0
 with open(path, "a") as f:
     f.write(json.dumps({"said": len(text)}) + "\n")
-readme = open(os.path.join(first["cwd"], "README.md")).read().strip()
+readme_path = os.path.join(first["cwd"], "README.md")
+readme = open(readme_path).read().strip() if os.path.exists(readme_path) else "none"
 others = sorted(k for k in os.environ if k not in ("HOME", "PATH", "CLAUDE_CONFIG_DIR", "OA_AGENT_MODEL", "DISABLE_AUTOUPDATER",
-                                                     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "PWD", "SHLVL", "_", "LC_CTYPE", "__CF_USER_TEXT_ENCODING")
+                                                     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "OA_AGENT_SLUG", "PWD", "SHLVL", "_", "LC_CTYPE", "__CF_USER_TEXT_ENCODING")
                  # macOS's /usr/bin/python3 shim adds these itself
                  and k not in ("CPATH", "LIBRARY_PATH", "MANPATH", "SDKROOT"))
 answer = "cred=%s resume=%s turns=%d model=%s mode=%s readme=%s budget=%.2f others=%s" % (
