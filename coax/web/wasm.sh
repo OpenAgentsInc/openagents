@@ -15,8 +15,12 @@ sysroot="${COAXIAL_SYSROOT:-/opt/homebrew/opt/wasi-libc/share/wasi-sysroot}"
 resources="${COAXIAL_RESOURCES:-/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes}"
 export PATH="/opt/homebrew/opt/lld/bin:$PATH"
 name="$(basename "$coax_file" .coax)"
-work="$(dirname "$out")/.c"
-mkdir -p "$work"
+# Concurrent pages often compile the same libraries (and dev rebuilds may
+# target the same output). Give each invocation its own headers, C and objects.
+work_root="$(dirname "$out")/.c"
+mkdir -p "$work_root"
+work="$(mktemp -d "$work_root/$name.XXXXXXXX")"
+trap 'rm -rf "$work"' EXIT
 "$repo/coax/bin/coax" c "$coax_file" --library --header "$work/$name.h" > "$work/$name.c"
 # No fast math and no contraction: the browser computes what the checks computed.
 # COAXIAL_MODE=dev (what coax serve uses) compiles at -O1 in parallel and
@@ -41,6 +45,6 @@ wait "$coax_pid"
 for pid in ${pids[@]+"${pids[@]}"}; do wait "$pid"; done
 link_opt=(); [[ "$mode" == dev ]] || link_opt=("$opt")
 "$clang" --target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" ${link_opt[@]+"${link_opt[@]}"} \
-  -mexec-model=reactor -o "$out.tmp" "${objects[@]}" \
+  -mexec-model=reactor -o "$work/output.wasm" "${objects[@]}" \
   -Wl,--import-memory,--max-memory=67108864,-z,stack-size=1048576,--export=__heap_base,--gc-sections,--strip-debug
-mv "$out.tmp" "$out"   # the server never serves a half-written module
+mv "$work/output.wasm" "$out"   # the server never serves a half-written module

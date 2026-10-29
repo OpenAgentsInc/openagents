@@ -4,6 +4,8 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
+# Guard the shared-library/output race before launching parallel world builds.
+python3 "$here/../../coax/web/tests/wasm_isolation.py"
 # The realm host's table (realms.json): the galaxy's worlds into realms.coax
 # and each realm's page (docs/verse/realm-host.md).
 bun "$here/../../coax/web/realms.ts"
