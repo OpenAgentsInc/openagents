@@ -1,0 +1,128 @@
+{
+  "browser": {
+    "mode": "headless Chrome with WebGPU/Metal and --mute-audio",
+    "screenshots": [
+      {
+        "case": "EVENT / VERIFIED",
+        "file": "coax-real-event-original.png",
+        "sha256": "580221dc85f6394e94b3693f00cd4fea72c8fdcac83b07822323920e4762656b",
+        "size": "1280x800"
+      },
+      {
+        "case": "ID / REFUSED",
+        "file": "coax-real-event-id.png",
+        "sha256": "e2f6aa54cd26d6ee1a4961a4d16198f81d798c5b940bd03b0906361a721af9bb",
+        "size": "1280x800"
+      },
+      {
+        "case": "TEXT / REFUSED",
+        "file": "coax-real-event-text.png",
+        "sha256": "6ec9083ff359e7def0cb524843eabb89e62119f26c71255ed56362153f546ca9",
+        "size": "1280x800"
+      },
+      {
+        "case": "SIG / REFUSED",
+        "file": "coax-real-event-phone.png",
+        "sha256": "d69f11441d9313522923785d1863cf09248788d933095c14a7ef1232394eacb3",
+        "size": "390x844"
+      },
+      {
+        "case": "LIMIT / REFUSED",
+        "file": "coax-real-event-limit.png",
+        "sha256": "d151315a0128bee67df59a08047ff93fae9d10406049b16e57d00e5d3dc1c047",
+        "size": "390x844"
+      }
+    ]
+  },
+  "captured_event_sha256": "dcf32812f99618c23fa3dd2bff0569ef590f2b15d2d44b61bfb61f3257f00e93",
+  "checks": {
+    "probe": {
+      "failed": 0,
+      "passed": 37
+    },
+    "verifier": {
+      "failed": 0,
+      "passed": 180
+    },
+    "visuals_check": {
+      "command": "coax/web/check-visuals.sh apps/openagents-web/.dev/nostr",
+      "exit_code": 0
+    }
+  },
+  "compiler": "coax0 0.22.0",
+  "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+  "elapsed_seconds": 18.14885654198588,
+  "event_id": "813d9fb02bd78ce24200ba986b62ef727f0c032f712cff82241bd465f4bc9d21",
+  "independent_sha256_and_bigint_bip340": true,
+  "native": [
+    {
+      "artifact_sha256": "a4019cd23bf97b32b93bbf9cb57919c22fa3a3ca7fcec91e0a4038ba378b3270",
+      "probe_c_sha256": "814661fd6b168ef4648ddf1f2b484d0138c1451b9e57a848fe14bbea86873b8d",
+      "profile": "checked",
+      "result": "native: seven verifier cases; five keyboard cases; fifteen HUD clicks; six cancel/mismatch cases passed",
+      "verifier_c_sha256": "b2fe1516a736c46e0e52b92a8ecaae69bbadf85341e0c4d07fc2ecee72b9cce1"
+    },
+    {
+      "artifact_sha256": "cbf028598e63663aed87dc7882a1a24c19763908da583aef2f5053e53c2efed0",
+      "probe_c_sha256": "487149db90133a2c3ccd1f8d3221eb0d3762a7ebf53e03b7d847d1b71dc35839",
+      "profile": "release",
+      "result": "native: seven verifier cases; five keyboard cases; fifteen HUD clicks; six cancel/mismatch cases passed",
+      "verifier_c_sha256": "613599c0df04efa8a139d73184c1934048b4c462b257e87753d73bd00cee2302"
+    }
+  ],
+  "schema": "coax.real-event-probe.v1",
+  "scope": "local development public-event verification and display; no signing or production admission",
+  "signing_dependency_absent": true,
+  "source_before_after_core_unchanged": "3b0c0feca25959ecd4a4138a3e74a795c65258198fcb1510c0f9e5b2d3e5419f",
+  "sources": {
+    "apps/openagents-web/.dev/nostr/build.sh": "f39473bbc94e95c1feb605fca53f0990638f7ad64224b309f9ced0131cbc9fd8",
+    "apps/openagents-web/.dev/nostr/face.c": "514dfe6949791ed014f50fa030725ac6c68ecd5ba41e976d07b2136186511739",
+    "apps/openagents-web/.dev/nostr/fixture.coax": "b371ca5fbf3d71ff92ecbc711dc650e9f918e617e87ea11ae956d5cf5663e890",
+    "apps/openagents-web/.dev/nostr/index.html": "f6c13bb24c7b2fcf8ab0e4a438eadf3910a86a2a12595940f9b63d860ec6fd24",
+    "apps/openagents-web/.dev/nostr/probe-test.c": "80b49efaeb6bae4e3ff8fc8c88d43bf8f50b53e7751d6c6c50c4fc2151622440",
+    "apps/openagents-web/.dev/nostr/probe-test.cjs": "895e0fe0b877760daa87487876a617e7c3c5e78634a3110c5253b1f25fc57c80",
+    "apps/openagents-web/.dev/nostr/probe.coax": "6027d6e49b5c288c7d82a4178f5ebde147b01ad31609a47020034575e31703d1",
+    "apps/openagents-web/.dev/nostr/test.py": "85d644985494959bac1e8121fcd57d774e358839c293b448752f693fcae75037",
+    "apps/openagents-web/.dev/nostr/verifier.coax": "e3276dfa3896bf4ffded306f45876065b9bf8dae9f6812c983580bd4ed59b15a",
+    "apps/openagents-web/analytics.coax": "1e00e3f1410cd7fc03e71fac23607d07a08106c842c87bcad8c6be849b251c20",
+    "apps/openagents-web/font.coax": "37fe091afa40087986e865d8bdef9aec126864eeef8b94896bd4fe05c6d9e5dd",
+    "apps/openagents-web/graph.coax": "43eb4d30a220dfa882aa775b2649c87763b4ec14568baa2ed60bfa7d609e59ac",
+    "apps/openagents-web/splash.coax": "4b9e82c95722ba6c674b7109aa15ca2ae3b2e9ea467f242ecc5d000b4fc3011d",
+    "apps/openagents-web/ui.coax": "1578e8fc6b7d4646268be1c01b75705541981935c3c04edfd1c428296bb561af",
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/schnorr.coax": "f90f2a3fca5f65bf0c32d22897b30c192e16946c3890a286e4a2922880ed1757",
+    "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+    "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+    "coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+    "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/nostr/adapters/json-admission.coax": "7b520fb5a24b259d5daaa68064823f05c60ea8f1cb4d5c19418f12eccd487824",
+    "coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+    "coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+    "coax/lib/nostr/event.coax": "3b0c0feca25959ecd4a4138a3e74a795c65258198fcb1510c0f9e5b2d3e5419f",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/hex.coax": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5",
+    "coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "coax/tests/nostr/event_checks.coax": "b8663ffe4d5289ff62e43a02c302ce831aba6ea3383f1bc5f21721bfdffe9225",
+    "coax/tests/nostr/event_fast_checks.coax": "f3fdb0d59e3666987f3ceb0adeaad66fc576c20f92fd8c6cd85fb4a861e53ded",
+    "coax/tests/nostr/event_fixtures.coax": "fcc3347dc54dfe1fb1361ab23ab0b76b7641f9691e280dec71526c0bcec78a67",
+    "coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+    "coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+    "coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756",
+    "tools/coax-nostr/fuzz/oracle.py": "d690d0f5e5318e96fc6c6c5f56ce87af5543d90d8acb8f53abc67381d7626cd9",
+    "verse/hud.coax": "b5c77728ac1e510341be59d5f8c4efe2c297b2619573f492ede45b049aaa67e3",
+    "verse/hud/types.coax": "9d938915e8c308352c2437b55820f86f7394d96225aba2885a69869c4058a797"
+  },
+  "wasm": {
+    "artifact_sha256": "2517403be1341ebbb65894348fbedd3b7c64dced3c31cb570def6c5b8f003636",
+    "cancel_or_mismatch": 6,
+    "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+    "frames": 30,
+    "guard_bytes": true,
+    "hud_clicks": 15,
+    "keyboard_cases": 5,
+    "stack_bytes": 1048576
+  }
+}

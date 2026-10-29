@@ -1,0 +1,80 @@
+// Local-only display probe. Only the shared raw-event verifier determines the
+// observed signature result; this screen grants no production authority.
+#load "../../splash.coax";
+#load "../../../../verse/hud.coax";
+#load "fixture.coax";
+
+#test "the display never upgrades a read-only or refused record" {
+  #assert np_label(0,true)=="VERIFIED";
+  #assert np_label(0,false)=="REFUSED";
+  #assert np_label(7,true)=="REFUSED";
+  #assert np_label(8,false)=="REFUSED";
+}
+#test "invalid selections cannot replace the current case" {
+  #assert np_mode(0) && np_mode(4) && !np_mode(-1) && !np_mode(5);
+  p:[1]NostrProbe;#assert !np_select(p[..],-1) && !p[0].pending;
+  #assert np_select(p[..],4) && p[0].mode==4 && p[0].pending;
+}
+
+NostrProbe :: struct {
+  mode:int; error:int; admission:int; written:int; verified:bool;
+  initialized:bool; pending:bool; width:f32; height:f32; dpr:f32=1;
+  down:int=-1; frames:int;
+}
+NP_LABELS :: [5]string.["EVENT","ID","TEXT","SIG","LIMIT"];
+np_mode :: (mode:int)->bool {return mode>=0 && mode<5;}
+np_label :: (error:int,verified:bool)->string {
+  if error==0 && verified {return "VERIFIED";}return "REFUSED";
+}
+np_select :: (p:[]NostrProbe,mode:int)->bool #export_c {
+  if p.count!=1 || !np_mode(mode) {return false;}
+  p[0].mode=mode;p[0].pending=true;return true;
+}
+np_requested :: (p:[]NostrProbe)->int #export_c {
+  if p.count!=1 || !np_mode(p[0].mode) {return -1;}
+  if !p[0].initialized || p[0].pending {return p[0].mode;}return -1;
+}
+// Scalar observations of the separately compiled shared verifier. The host
+// transports them; no signing, author or action authority is granted here.
+np_observed :: (p:[]NostrProbe,observation:[]int) #export_c {
+  if p.count!=1 || observation.count!=4 {return;}
+  p[0].error=observation[0];p[0].admission=observation[1];
+  p[0].written=observation[2];p[0].verified=observation[3]==1;
+  p[0].initialized=true;p[0].pending=false;
+}
+np_slot :: (width:f32,height:f32,d:f32,index:int)->Box {
+  r:=verse_hud_slot(width/d,height/d,0,index,5);
+  return Box.{x0=r.x*d,y0=r.y*d,x1=(r.x+r.width)*d,y1=(r.y+r.height)*d};
+}
+np_pointer :: (p:[]NostrProbe,x:f32,y:f32,phase:int)->bool #export_c {
+  if p.count!=1 || p[0].width<1 || p[0].height<1 || p[0].dpr<0.5 {return false;}
+  hit:=-1;for i:0..<5 {if inside(np_slot(p[0].width,p[0].height,p[0].dpr,i),x,y) {hit=i;}}
+  if phase==POINTER_DOWN {p[0].down=hit;return hit>=0;}
+  if phase==POINTER_CANCEL {p[0].down=-1;return false;}
+  if phase==POINTER_UP {down:=p[0].down;p[0].down=-1;if hit>=0 && hit==down {return np_select(p,hit);}}
+  return hit>=0;
+}
+np_key :: (p:[]NostrProbe,key:int)->bool #export_c {
+  if key>=49 && key<=53 {return np_select(p,key-49);}return false;
+}
+np_frame :: (p:[]NostrProbe,out:[]f32,u:[]f32,width:f32,height:f32,dpr:f32)->int #export_c {
+  if p.count!=1 || u.count<16 || width<1 || height<1 || dpr<0.5 || dpr>4 {return 0;}
+  p[0].width=width;p[0].height=height;p[0].dpr=dpr;p[0].frames+=1;
+  for i:0..<16 {u[i]=0;}u[0]=width;u[1]=height;u[3]=1;u[4]=1;
+  d:=dpr;left:=32*d;right:=width-left;v:=0;
+  white:=ink(0.6*d,0.9,5*d,0.95,0.95,0.95);
+  muted:=ink(0.5*d,0.6,3*d,0.65,0.65,0.65);
+  v=write(d,out,v,"NOSTR",left,48*d,11*d,0.4,0.8,white,false,false);
+  v=write(d,out,v,"PROBE",left,72*d,7*d,0.4,0.8,muted,false,false);
+  cap:=lo(32*d,(right-left)/9);
+  v=write(d,out,v,np_label(p[0].error,p[0].verified),left,height*0.44,cap,0.2,0.6,white,false,false);
+  v=draw_fit(d,out,v,"813D9FB0…FBC9D21",left,height*0.44+36*d,9*d,0.25,0.7,muted,right-left);
+  v=write(d,out,v,NP_LABELS[p[0].mode],left,height*0.44+65*d,8*d,0.3,0.7,muted,false,false);
+  for i:0..<5 {
+    b:=np_slot(width,height,d,i);active:=i==p[0].mode;
+    v=hud(out,v,b,d,ifx active then 0.65f32 else 0.0f32,0,ifx active then 1.0f32 else 0.45f32,0.95,0.95,0.95);
+    text:=NP_LABELS[i];size:=6*d;w:=measure(text,0.1,0.5,false)*size;
+    v=write(d,out,v,text,(b.x0+b.x1-w)*0.5,(b.y0+b.y1+size)*0.5,size,0.1,0.5,white,false,false);
+  }
+  return v;
+}

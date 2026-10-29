@@ -1,0 +1,16 @@
+// Separate compilation preserves the shared verifier's source bytes despite
+// flat-name collisions with the existing generic web renderer.
+#load "../../../../coax/lib/nostr/event.coax";
+#load "fixture.coax";
+// Internal scalar-view observation: error, admission, written, verified(0/1).
+// This is synchronous C ABI transport, not a persisted or network contract.
+nv_run :: (mode:int,observation:[]int) #export_c {
+  if observation.count!=4 {return;}
+  for i:0..<4 {observation[i]=0;}
+  if mode<0 || mode>=5 {observation[0]=NE_LIMIT;return;}
+  scratch:[1024]u8;
+  event:=nostr_event_verify_vartime(NP_CASES[mode],scratch[..],false);
+  // Borrowed original/scratch spans never leave this synchronous call.
+  observation[0]=event.error;observation[1]=event.admission;
+  observation[2]=event.written;observation[3]=ifx event.verified then 1 else 0;
+}
