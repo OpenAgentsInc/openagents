@@ -4,16 +4,19 @@
 // vertex. Based on Zeron by Wing, MIT. Colors are straight sRGB with alpha,
 // blended source-over into a BGRA8Unorm target, as GPUI does.
 //
-// A vertex is 20 floats (gpui.coax GP_VERTEX_FLOATS):
-//   a: device x, y, kind (0 quad, 1 shadow, 2 sprite), blur (a shadow's sigma)
+// A vertex is 24 floats (gpui.coax GP_VERTEX_FLOATS):
+//   a: device x, y, kind (0 quad, 1 shadow, 2 sprite, 3 color sprite), blur (a shadow's sigma)
 //   b: the primitive's bounds in device pixels: x, y, w, h
 //   c: corner radius, border width, u, v (a sprite's atlas coordinate)
 //   d: fill (a sprite's color)
 //   e: border color
+//   f: the content mask, device x0, y0, x1, y1
+// Color sprites (emoji) sample the color atlas: straight-alpha RGBA, as
+// gpui_macos stores polychrome glyphs.
 #include <metal_stdlib>
 using namespace metal;
 
-struct ZIn { float4 a [[attribute(0)]]; float4 b [[attribute(1)]]; float4 c [[attribute(2)]]; float4 d [[attribute(3)]]; float4 e [[attribute(4)]]; };
+struct ZIn { float4 a [[attribute(0)]]; float4 b [[attribute(1)]]; float4 c [[attribute(2)]]; float4 d [[attribute(3)]]; float4 e [[attribute(4)]]; float4 f [[attribute(5)]]; };
 struct ZV {
   float4 pos [[position]];
   float kind [[flat]]; float blur [[flat]];
@@ -21,13 +24,14 @@ struct ZV {
   float2 shape [[flat]];
   float2 uv;
   float4 fill [[flat]]; float4 border [[flat]];
+  float4 clip [[flat]];
 };
 
 vertex ZV zr_vs(ZIn v [[stage_in]], constant float2 &viewport [[buffer(1)]]) {
   ZV o;
   o.pos = float4(v.a.x / viewport.x * 2.0 - 1.0, 1.0 - v.a.y / viewport.y * 2.0, 0.0, 1.0);
   o.kind = v.a.z; o.blur = v.a.w; o.bounds = v.b; o.shape = v.c.xy; o.uv = v.c.zw;
-  o.fill = v.d; o.border = v.e;
+  o.fill = v.d; o.border = v.e; o.clip = v.f;
   return o;
 }
 
@@ -112,7 +116,14 @@ static float4 shadow_color(float2 p, float4 bounds, float corner_radius, float b
   return color * float4(1., 1., 1., alpha);
 }
 
-fragment float4 zr_fs(ZV v [[stage_in]], texture2d<float> atlas [[texture(0)]]) {
+fragment float4 zr_fs(ZV v [[stage_in]], texture2d<float> atlas [[texture(0)]], texture2d<float> color_atlas [[texture(1)]]) {
+  if (v.pos.x < v.clip.x || v.pos.y < v.clip.y || v.pos.x >= v.clip.z || v.pos.y >= v.clip.w) { discard_fragment(); }
+  if (v.kind > 2.5) {
+    constexpr sampler s(mag_filter::linear, min_filter::linear);
+    float4 c = color_atlas.sample(s, v.uv);
+    c.a *= v.fill.a;
+    return c;
+  }
   if (v.kind > 1.5) {
     constexpr sampler s(mag_filter::linear, min_filter::linear);
     float4 c = v.fill;

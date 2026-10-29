@@ -18,7 +18,85 @@ func geist(_ weight: Int32) -> CGFont? {
 // The atlas: per font, every glyph at four subpixel x offsets and five dilations
 // (gpui_macos rasterize_glyph: alpha-only, smoothing with fill luminance
 // level/4 when dilated), then every icon at twice its device size (gpui svg_renderer).
-func zeronAtlas(_ device: MTLDevice, state: UnsafeMutableRawPointer, dpr: CGFloat) -> MTLTexture {
+// Then room for GPUI's glyph cache (gpui.coax): every other grapheme, shaped
+// and rasterized when the text first uses it (ZeronAtlas.serve), mono ones
+// below the icons, emoji in a second, color atlas.
+final class ZeronAtlas {
+  let mono: MTLTexture, color: MTLTexture
+  let fonts: [CTFont], dpr: CGFloat, cell: Int, penX: Int, penY: Int
+  init(mono: MTLTexture, color: MTLTexture, fonts: [CTFont], dpr: CGFloat, cell: Int, penX: Int, penY: Int) {
+    self.mono = mono; self.color = color; self.fonts = fonts; self.dpr = dpr; self.cell = cell; self.penX = penX; self.penY = penY
+  }
+
+  // What the last frame asked for: each new grapheme's advance and whether
+  // CoreText draws it in color (a color-glyph font, Apple Color Emoji), then
+  // each wanted cell drawn as rasterize_glyph does.
+  func serve(_ state: UnsafeMutableRawPointer) {
+    var bytes = [UInt8](repeating: 0, count: 64)
+    var guardCount = 0
+    while case let slot = zr_next_cluster(state), slot >= 0, guardCount < 600 {
+      guardCount += 1
+      let (line, _) = shape(state, slot, &bytes)
+      let width = Float(CTLineGetTypographicBounds(line, nil, nil, nil))
+      let runs = CTLineGetGlyphRuns(line) as! [CTRun]
+      let isColor = runs.contains { run in
+        let attrs = CTRunGetAttributes(run) as NSDictionary
+        guard let f = attrs[kCTFontAttributeName] else { return false }
+        return CTFontGetSymbolicTraits(f as! CTFont).contains(.traitColorGlyphs)
+      }
+      zr_measured(state, slot, width, isColor ? 1 : 0)
+    }
+    var info = [Float](repeating: 0, count: 6)
+    guardCount = 0
+    while case let index = zr_next_cell(state), index >= 0, guardCount < 3000 {
+      guardCount += 1
+      _ = zr_cell(state, index, &info)
+      let (line, _) = shape(state, Int32(info[0]), &bytes)
+      let level = Int(info[1]), variant = Int(info[2]), isColor = info[3] > 0.5
+      let tx = Int(info[4]), ty = Int(info[5])
+      if isColor {
+        let g = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4, space: CGColorSpaceCreateDeviceRGB(),
+                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        draw(line, in: g, level: 0, variant: 0)
+        // RGBA with premultiplied alpha to straight alpha (swap_rgba_pa_to_bgra, in RGBA order here)
+        let px = g.data!.assumingMemoryBound(to: UInt8.self)
+        for i in 0..<(side * side) {
+          let a = Int(px[i * 4 + 3])
+          if a > 0 && a < 255 { for k in 0..<3 { px[i * 4 + k] = UInt8(min(255, Int(px[i * 4 + k]) * 255 / a)) } }
+        }
+        color.replace(region: MTLRegionMake2D(tx, ty, side, side), mipmapLevel: 0, withBytes: g.data!, bytesPerRow: side * 4)
+      } else {
+        let g = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side, space: CGColorSpaceCreateDeviceGray(),
+                          bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue)!
+        draw(line, in: g, level: level, variant: variant)
+        mono.replace(region: MTLRegionMake2D(tx, ty, side, side), mipmapLevel: 0, withBytes: g.data!, bytesPerRow: side)
+      }
+      zr_cell_ready(state, index)
+    }
+  }
+  var side: Int { cell }
+  func shape(_ state: UnsafeMutableRawPointer, _ slot: Int32, _ bytes: inout [UInt8]) -> (CTLine, Int) {
+    let code = Int(zr_cluster(state, slot, &bytes, Int32(bytes.count)))
+    let font = fonts[min(max(code / 256, 0), fonts.count - 1)], n = code % 256
+    let text = String(decoding: bytes[0..<n], as: UTF8.self)
+    let attrs: [NSAttributedString.Key: Any] = [.font: font, NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true]
+    return (CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs)), n)
+  }
+  func draw(_ line: CTLine, in g: CGContext, level: Int, variant: Int) {
+    g.setAllowsAntialiasing(true); g.setShouldAntialias(true)
+    g.setAllowsFontSubpixelPositioning(true); g.setShouldSubpixelPositionFonts(true)
+    g.setAllowsFontSubpixelQuantization(false); g.setShouldSubpixelQuantizeFonts(false)
+    g.setTextDrawingMode(.fill)
+    if level > 0 { g.setShouldSmoothFonts(true); g.setFillColor(gray: CGFloat(level) * 0.25, alpha: 1) }
+    else { g.setShouldSmoothFonts(false); g.setFillColor(gray: 0, alpha: 1) }
+    g.translateBy(x: CGFloat(penX), y: CGFloat(cell - penY))
+    g.scaleBy(x: dpr, y: dpr)
+    g.textPosition = CGPoint(x: CGFloat(variant) / 4 / dpr, y: 0)
+    CTLineDraw(line, g)
+  }
+}
+
+func zeronAtlas(_ device: MTLDevice, state: UnsafeMutableRawPointer, dpr: CGFloat) -> ZeronAtlas {
   let glyphs = Int(zr_glyph_count()), fonts = Int(zr_font_count()), icons = Int(zr_icon_count())
   let width = 4096
   var y0 = 0
@@ -42,7 +120,10 @@ func zeronAtlas(_ device: MTLDevice, state: UnsafeMutableRawPointer, dpr: CGFloa
     if iconX + px > width { iconX = 0; iconY += rowH; rowH = 0 }
     tiles.append((iconX, iconY, px)); iconX += px + 2; rowH = max(rowH, px + 2)
   }
-  let height = iconY + rowH + 1
+  // the glyph cache's mono cells, sized for the largest font
+  let dynCell = slots.map { $0.cell }.max() ?? 64
+  let dynY0 = iconY + rowH + 1, dynCols = width / dynCell
+  let height = dynY0 + ((2048 + dynCols - 1) / dynCols) * dynCell
   let g = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
                     space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue)!
   for (f, s) in slots.enumerated() {
@@ -116,14 +197,19 @@ func zeronAtlas(_ device: MTLDevice, state: UnsafeMutableRawPointer, dpr: CGFloa
   let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm, width: width, height: height, mipmapped: false)
   let texture = device.makeTexture(descriptor: d)!
   texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: g.data!, bytesPerRow: width)
-  return texture
+  let colorCols = width / dynCell, colorHeight = ((256 + colorCols - 1) / colorCols) * dynCell
+  let cd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: width, height: colorHeight, mipmapped: false)
+  let color = device.makeTexture(descriptor: cd)!
+  let penX = Int(round(Double(dynCell) * 0.2)), penY = Int(round(Double(dynCell) * 0.7))
+  zr_set_dynamic(state, Float(dynCell), Float(penX), Float(penY), Float(dynY0), Int32(dynCols), Int32(colorCols), Float(width), Float(colorHeight))
+  return ZeronAtlas(mono: texture, color: color, fonts: slots.map { $0.font }, dpr: dpr, cell: dynCell, penX: penX, penY: penY)
 }
 
-final class ZeronView: MTKView, MTKViewDelegate {
+final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemValidation {
   let state = zr_new()!
   var queue: MTLCommandQueue!
   var pipeline: MTLRenderPipelineState!
-  var atlas: MTLTexture?, atlasDpr: CGFloat = 0
+  var atlas: ZeronAtlas?, atlasDpr: CGFloat = 0
   var vertices: [MTLBuffer] = [], slot = 0
   let inflight = DispatchSemaphore(value: 2)
   var last = CACurrentMediaTime()
@@ -140,8 +226,9 @@ final class ZeronView: MTKView, MTKViewDelegate {
     let p = MTLRenderPipelineDescriptor()
     p.vertexFunction = library.makeFunction(name: "zr_vs"); p.fragmentFunction = library.makeFunction(name: "zr_fs")
     let v = MTLVertexDescriptor()
-    for i in 0..<5 { v.attributes[i].format = .float4; v.attributes[i].offset = 16 * i; v.attributes[i].bufferIndex = 0 }
-    v.layouts[0].stride = Int(zr_vertex_floats()) * 4
+    let floats = Int(zr_vertex_floats())
+    for i in 0..<(floats / 4) { v.attributes[i].format = .float4; v.attributes[i].offset = 16 * i; v.attributes[i].bufferIndex = 0 }
+    v.layouts[0].stride = floats * 4
     p.vertexDescriptor = v
     // GPUI's blending (metal_renderer.rs): straight alpha, source over.
     let a = p.colorAttachments[0]!
@@ -150,7 +237,7 @@ final class ZeronView: MTKView, MTKViewDelegate {
     a.sourceRGBBlendFactor = .sourceAlpha; a.sourceAlphaBlendFactor = .one
     a.destinationRGBBlendFactor = .oneMinusSourceAlpha; a.destinationAlphaBlendFactor = .oneMinusSourceAlpha
     pipeline = try! device.makeRenderPipelineState(descriptor: p)
-    let bytes = Int(zr_max_vertices()) * Int(zr_vertex_floats()) * 4
+    let bytes = Int(zr_max_vertices()) * floats * 4
     vertices = (0..<2).map { _ in device.makeBuffer(length: bytes, options: .storageModeShared)! }
     addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect, .cursorUpdate], owner: self))
   }
@@ -172,6 +259,8 @@ final class ZeronView: MTKView, MTKViewDelegate {
     slot = (slot + 1) % 2
     let buf = vertices[slot]
     let n = zr_frame(state, buf.contents().assumingMemoryBound(to: Float.self), Float(size.width), Float(size.height), Float(dpr), dt)
+    // the graphemes and cells this frame wanted, for the next
+    atlas!.serve(state)
     let want = zr_cursor(state) != 0
     if want != beam { beam = want; (want ? NSCursor.iBeam : NSCursor.arrow).set() }
     pass.colorAttachments[0].loadAction = .clear
@@ -182,7 +271,8 @@ final class ZeronView: MTKView, MTKViewDelegate {
       enc.setRenderPipelineState(pipeline)
       enc.setVertexBuffer(buf, offset: 0, index: 0)
       enc.setVertexBytes(&viewport, length: 8, index: 1)
-      enc.setFragmentTexture(atlas, index: 0)
+      enc.setFragmentTexture(atlas!.mono, index: 0)
+      enc.setFragmentTexture(atlas!.color, index: 1)
       enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(n))
     }
     enc.endEncoding()
@@ -191,8 +281,17 @@ final class ZeronView: MTKView, MTKViewDelegate {
     cmd.commit()
   }
 
-  // --shot PATH [--size W,H] [--click X,Y] [--type TEXT] [--frames N]: draw offscreen at scale 2
+  // --shot PATH [--size W,H] [--click X,Y] [--type TEXT] [--do STEPS] [--frames N]: draw offscreen at scale 2
   // (clicking at device pixel X,Y at frame 30, typing TEXT at frame 45), write the last frame as a PNG, quit.
+  // --do runs STEPS, separated by " ; ", one every 4 frames from frame 50, through the same paths
+  // as the keyboard, mouse, menus and IME:
+  //   click X,Y[,N]   press and release at device pixel X,Y (N clicks: 2 a word, 3 the line)
+  //   shiftclick X,Y  drag X,Y,X2,Y2   wheel DY
+  //   key CHORD       a key as Zeron's keymap names it: cmd+a, shift+alt+left, backspace, shift+enter
+  //   type TEXT       mark TEXT  (IME marked text)   commit TEXT (IME insertText)
+  //   menu TITLE      an Edit menu item through the menu bar (Undo, Cut, Copy, Paste, Select All...)
+  //   keyevent CHORD  a real NSEvent through keyDown and the input context
+  //   menus           print the menu bar
   func shot(_ path: String, width: Int, height: Int) {
     let args = CommandLine.arguments
     let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorPixelFormat, width: width, height: height, mipmapped: false)
@@ -201,14 +300,16 @@ final class ZeronView: MTKView, MTKViewDelegate {
     let pass = MTLRenderPassDescriptor()
     pass.colorAttachments[0].texture = target; pass.colorAttachments[0].storeAction = .store
     var frames = 0
-    let last = args.firstIndex(of: "--frames").flatMap { Int(args[$0 + 1]) } ?? 60
+    let steps = args.firstIndex(of: "--do").map { i in i + 1 < args.count ? args[i + 1].components(separatedBy: " ; ") : [] } ?? []
+    let last = args.firstIndex(of: "--frames").flatMap { Int(args[$0 + 1]) } ?? max(60, 50 + steps.count * 4 + 12)
     Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { timer in
       frames += 1
       if frames == 30, let i = args.firstIndex(of: "--click"), i + 1 < args.count {
         let xy = args[i + 1].split(separator: ",").compactMap { Float($0) }
-        if xy.count == 2 { _ = zr_pointer(self.state, xy[0], xy[1], 0); _ = zr_pointer(self.state, xy[0], xy[1], 2) }
+        if xy.count == 2 { _ = zr_pointer(self.state, xy[0], xy[1], 0, 1, 0); _ = zr_pointer(self.state, xy[0], xy[1], 2, 1, 0) }
       }
       if frames == 45, let i = args.firstIndex(of: "--type"), i + 1 < args.count { self.typed(args[i + 1]) }
+      if frames >= 50 && (frames - 50) % 4 == 0 && (frames - 50) / 4 < steps.count { self.step(steps[(frames - 50) / 4]) }
       self.render(pass, size: CGSize(width: width, height: height), dpr: 2) { cmd in
         guard frames == last else { return }
         timer.invalidate()
@@ -226,17 +327,102 @@ final class ZeronView: MTKView, MTKViewDelegate {
       }
     }
   }
+  func step(_ line: String) {
+    let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
+    guard let verb = parts.first else { return }
+    let arg = parts.count > 1 ? parts[1] : ""
+    let nums = arg.split(separator: ",").compactMap { Float($0) }
+    switch verb {
+    case "click" where nums.count >= 2:
+      let n = nums.count > 2 ? Int32(nums[2]) : 1
+      _ = zr_pointer(state, nums[0], nums[1], 0, n, 0); _ = zr_pointer(state, nums[0], nums[1], 2, n, 0)
+    case "shiftclick" where nums.count >= 2:
+      _ = zr_pointer(state, nums[0], nums[1], 0, 1, 1); _ = zr_pointer(state, nums[0], nums[1], 2, 1, 1)
+    case "drag" where nums.count == 4:
+      _ = zr_pointer(state, nums[0], nums[1], 0, 1, 0)
+      for k in 1...8 { let t = Float(k) / 8; _ = zr_pointer(state, nums[0] + (nums[2] - nums[0]) * t, nums[1] + (nums[3] - nums[1]) * t, 1, 1, 0) }
+      _ = zr_pointer(state, nums[2], nums[3], 2, 1, 0)
+    case "wheel" where nums.count == 1: _ = zr_wheel(state, nums[0])
+    case "key":
+      let (code, mods, char) = chord(arg)
+      _ = binding(code: code, char: char, mods: mods)
+    case "type": typed(arg)
+    case "mark": setMarkedText(arg, selectedRange: NSRange(location: (arg as NSString).length, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+    case "commit": insertText(arg, replacementRange: NSRange(location: NSNotFound, length: 0))
+    case "menu":
+      for top in NSApp.mainMenu?.items ?? [] {
+        guard let sub = top.submenu, let i = sub.items.firstIndex(where: { $0.title == arg }) else { continue }
+        // offscreen there is no key window to route a nil-targeted item, so it goes to this view, as it would in the window
+        let item = sub.items[i]
+        if let action = item.action, validateMenuItem(item) { NSApp.sendAction(action, to: self, from: item) }
+        else { print("menu \(arg) is disabled") }
+      }
+    case "menus":   // the menu bar as AppKit has it, printed
+      for top in NSApp.mainMenu?.items ?? [] {
+        let sub = top.submenu
+        print("\(sub?.title ?? "?"): " + (sub?.items ?? []).map { $0.isSeparatorItem ? "|" : $0.title + ($0.keyEquivalent.isEmpty ? "" : " [\($0.keyEquivalentModifierMask.contains(.shift) ? "shift-" : "")\($0.keyEquivalentModifierMask.contains(.option) ? "alt-" : "")\($0.keyEquivalentModifierMask.contains(.control) ? "ctrl-" : "")cmd-\($0.keyEquivalent)]") }.joined(separator: ", "))
+      }
+    case "keyevent":
+      let (code, mods, char) = chord(arg)
+      var flags: NSEvent.ModifierFlags = []
+      if mods & 1 != 0 { flags.insert(.shift) }; if mods & 2 != 0 { flags.insert(.control) }
+      if mods & 4 != 0 { flags.insert(.option) }; if mods & 8 != 0 { flags.insert(.command) }
+      let keyCode = ZeronView.keyCodes[char ?? ""].map { UInt16($0) } ?? ZeronView.named.first(where: { $0.value == code })?.key ?? 0
+      inputContext?.activate()   // offscreen the window never becomes key, which is what activates it
+      for type in [NSEvent.EventType.keyDown, .keyUp] {
+        guard let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+                                       windowNumber: window?.windowNumber ?? 0, context: nil, characters: mods & 4 != 0 ? "" : (char ?? ""), charactersIgnoringModifiers: char ?? "",
+                                       isARepeat: false, keyCode: keyCode) else { continue }
+        if type == .keyDown { keyDown(with: e) } else { keyUp(with: e) }
+      }
+    default: print("unknown step: \(line)")
+    }
+  }
+  static let named: [UInt16: Int32] = [53: -1, 36: -2, 76: -2, 51: -3, 123: -4, 124: -5, 126: -6, 125: -7, 115: -8, 119: -9, 116: -10, 121: -11, 117: -12]
+  static let keyCodes: [String: Int] = ["a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14,
+                                        "r": 15, "y": 16, "t": 17, "o": 31, "u": 32, "i": 34, "p": 35, "l": 37, "j": 38, "k": 40, "n": 45, "m": 46]
+  // "shift+alt+left" -> (named key or 0, mods, a letter)
+  func chord(_ text: String) -> (Int32, Int32, String?) {
+    var mods: Int32 = 0, code: Int32 = 0, char: String? = nil
+    let names: [String: Int32] = ["escape": -1, "enter": -2, "backspace": -3, "left": -4, "right": -5, "up": -6, "down": -7, "home": -8, "end": -9, "delete": -12]
+    for part in text.lowercased().split(separator: "+").map(String.init) {
+      switch part {
+      case "shift": mods |= 1
+      case "ctrl": mods |= 2
+      case "alt": mods |= 4
+      case "cmd": mods |= 8
+      default: if let n = names[part] { code = n } else { char = part }
+      }
+    }
+    return (code, mods, char)
+  }
+
+  // ---- the pointer
 
   func place(_ e: NSEvent) -> (Float, Float) {
     let p = convert(e.locationInWindow, from: nil), d = window?.backingScaleFactor ?? 2
     return (Float(p.x * d), Float((bounds.height - p.y) * d))
   }
-  func pointer(_ e: NSEvent, _ phase: Int32) { let (x, y) = place(e); _ = zr_pointer(state, x, y, phase) }
-  override func mouseDown(with e: NSEvent) { window?.makeFirstResponder(self); pointer(e, 0) }
-  override func mouseDragged(with e: NSEvent) { pointer(e, 1) }
-  override func mouseMoved(with e: NSEvent) { pointer(e, 1) }
-  override func mouseUp(with e: NSEvent) { pointer(e, 2) }
+  func pointer(_ e: NSEvent, _ phase: Int32) -> Bool {
+    let (x, y) = place(e)
+    return zr_pointer(state, x, y, phase, Int32(max(e.clickCount, 1)), mods(e)) != 0
+  }
+  override func mouseDown(with e: NSEvent) {
+    window?.makeFirstResponder(self)
+    if hasMarkedText() { inputContext?.discardMarkedText() }
+    _ = pointer(e, 0)
+  }
+  override func mouseDragged(with e: NSEvent) { _ = pointer(e, 1) }
+  override func mouseMoved(with e: NSEvent) { _ = pointer(e, 1) }
+  override func mouseUp(with e: NSEvent) { _ = pointer(e, 2) }
+  override func scrollWheel(with e: NSEvent) {
+    // GPUI's pixel delta: precise deltas as they come, lines times the line height
+    let dy = e.hasPreciseScrollingDeltas ? e.scrollingDeltaY : e.scrollingDeltaY * 22.75
+    if zr_wheel(state, Float(dy)) == 0 { super.scrollWheel(with: e) }
+  }
   override func cursorUpdate(with event: NSEvent) { (beam ? NSCursor.iBeam : NSCursor.arrow).set() }
+
+  // ---- the keyboard: Zeron's keymap first, then the input context (IME, dead keys, plain typing)
 
   func typed(_ s: String) { Array(s.utf8).withUnsafeBufferPointer { zr_text(state, $0.baseAddress, Int32($0.count)) } }
   func mods(_ e: NSEvent) -> Int32 {
@@ -247,18 +433,123 @@ final class ZeronView: MTKView, MTKViewDelegate {
     if e.modifierFlags.contains(.command) { m |= 8 }
     return m
   }
-  override func performKeyEquivalent(with e: NSEvent) -> Bool {
-    if e.modifierFlags.contains(.command), e.charactersIgnoringModifiers == "v", zr_wants_text(state) != 0,
-       let s = NSPasteboard.general.string(forType: .string) { typed(s); return true }
-    return super.performKeyEquivalent(with: e)
+  // A keystroke Zeron's composer binds (input_key_bindings): named keys and
+  // cmd-/ctrl- chords. Ctrl+C, X and V go to the pasteboard as Cmd's do
+  // (through the menu). Whether it was bound.
+  func binding(code: Int32, char: String?, mods: Int32) -> Bool {
+    if code != 0 { return zr_key(state, code, mods) != 0 }
+    guard let c = char?.unicodeScalars.first, mods & (2 | 8) != 0 else { return false }
+    let letter = String(c).lowercased()
+    if mods & 2 != 0 && mods & (4 | 8) == 0 && mods & 1 == 0 {
+      if letter == "c" { copy(nil); return true }
+      if letter == "x" { cut(nil); return true }
+      if letter == "v" { paste(nil); return true }
+    }
+    if mods & 8 != 0 && mods & (2 | 4) == 0 {
+      if letter == "c" { copy(nil); return true }
+      if letter == "x" { cut(nil); return true }
+      if letter == "v" { paste(nil); return true }
+    }
+    return zr_key(state, Int32(c.value), mods) != 0
   }
   override func keyDown(with e: NSEvent) {
-    if e.keyCode == 36 && e.modifierFlags.contains(.shift) && zr_wants_text(state) != 0 { typed("\n"); return }
-    if let k = ChatView.named[e.keyCode] { _ = zr_key(state, k, mods(e)); return }
-    guard let s = e.characters, !s.isEmpty, !e.modifierFlags.contains(.command), !e.modifierFlags.contains(.control) else {
-      if let c = e.charactersIgnoringModifiers?.unicodeScalars.first { _ = zr_key(state, Int32(c.value), mods(e)) }
+    guard zr_wants_text(state) != 0 else {
+      // unfocused: a key that isn't Escape focuses nothing; Zeron's composer only takes keys when focused
       return
     }
-    if zr_wants_text(state) != 0 { typed(s) }
+    // while composing, the IME owns every key (Enter commits, arrows pick candidates)
+    if hasMarkedText() { inputContext?.handleEvent(e); return }
+    if e.keyCode == 48 { return }   // Tab: Zeron's MentionTab, nothing without a mention or a list
+    let code = ZeronView.named[e.keyCode] ?? 0
+    if binding(code: code, char: e.charactersIgnoringModifiers, mods: mods(e)) { return }
+    if code != 0 || e.modifierFlags.contains(.command) || e.modifierFlags.contains(.control) { return }
+    inputContext?.handleEvent(e)
   }
+
+  // ---- the Edit menu (and Cmd+C/X/V/A/Z, its key equivalents)
+
+  @objc func undo(_ sender: Any?) { zr_undo(state) }
+  @objc func redo(_ sender: Any?) { zr_redo(state) }
+  @objc override func selectAll(_ sender: Any?) { zr_select_all(state) }
+  @objc func copy(_ sender: Any?) {
+    let n = Int(zr_selected_count(state))
+    guard n > 0 else { return }
+    var bytes = [UInt8](repeating: 0, count: n)
+    _ = zr_selected(state, &bytes, Int32(n))
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(String(decoding: bytes, as: UTF8.self), forType: .string)
+  }
+  @objc func cut(_ sender: Any?) {
+    guard zr_selected_count(state) > 0 else { return }
+    copy(sender); zr_cut(state)
+  }
+  @objc func paste(_ sender: Any?) {
+    let pb = NSPasteboard.general
+    // files and images are attachments in Zeron (staged, not typed); this screen has none
+    if pb.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) { return }
+    guard let s = pb.string(forType: .string), !s.isEmpty else { return }
+    let bytes = Array(s.utf8)
+    if hasMarkedText() { inputContext?.discardMarkedText(); zr_unmark(state) }
+    bytes.withUnsafeBufferPointer { zr_paste(state, $0.baseAddress, Int32($0.count)) }
+  }
+  func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    let focused = zr_wants_text(state) != 0
+    switch item.action {
+    case #selector(undo(_:)), #selector(redo(_:)), #selector(selectAll(_:)), #selector(paste(_:)): return focused
+    case #selector(copy(_:)), #selector(cut(_:)): return focused && zr_selected_count(state) > 0
+    default: return true
+    }
+  }
+
+  // ---- NSTextInputClient (GPUI's ElementInputHandler over the composer)
+
+  func string(_ value: Any) -> String { (value as? NSAttributedString)?.string ?? (value as? String) ?? "" }
+  func insertText(_ value: Any, replacementRange: NSRange) {
+    let bytes = Array(string(value).utf8)
+    let from = replacementRange.location == NSNotFound ? -1 : Int32(replacementRange.location)
+    let to = replacementRange.location == NSNotFound ? -1 : Int32(replacementRange.location + replacementRange.length)
+    bytes.withUnsafeBufferPointer { zr_replace(state, from, to, $0.baseAddress, Int32($0.count)) }
+  }
+  func setMarkedText(_ value: Any, selectedRange: NSRange, replacementRange: NSRange) {
+    let bytes = Array(string(value).utf8)
+    let from = replacementRange.location == NSNotFound ? -1 : Int32(replacementRange.location)
+    let to = replacementRange.location == NSNotFound ? -1 : Int32(replacementRange.location + replacementRange.length)
+    let sf = selectedRange.location == NSNotFound ? -1 : Int32(selectedRange.location)
+    let st = selectedRange.location == NSNotFound ? -1 : Int32(selectedRange.location + selectedRange.length)
+    bytes.withUnsafeBufferPointer { zr_mark(state, from, to, $0.baseAddress, Int32($0.count), sf, st) }
+  }
+  func unmarkText() { zr_unmark(state) }
+  func selectedRange() -> NSRange {
+    let a = Int(zr_range16(state, 0)), b = Int(zr_range16(state, 1))
+    return NSRange(location: a, length: b - a)
+  }
+  func markedRange() -> NSRange {
+    let a = Int(zr_range16(state, 2)), b = Int(zr_range16(state, 3))
+    return a < 0 ? NSRange(location: NSNotFound, length: 0) : NSRange(location: a, length: b - a)
+  }
+  func hasMarkedText() -> Bool { zr_range16(state, 2) >= 0 }
+  func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? {
+    let total = Int(zr_range16(state, 4))
+    let a = min(range.location, total), b = min(range.location + range.length, total)
+    guard a <= b else { return nil }
+    var bytes = [UInt8](repeating: 0, count: 8192)
+    let n = Int(zr_text16(state, Int32(a), Int32(b), &bytes, Int32(bytes.count)))
+    actualRange?.pointee = NSRange(location: a, length: b - a)
+    return NSAttributedString(string: String(decoding: bytes[0..<n], as: UTF8.self))
+  }
+  func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
+  func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+    var r = [Float](repeating: 0, count: 4)
+    guard zr_rect16(state, Int32(range.location == NSNotFound ? 0 : range.location), &r) != 0, let window else { return .zero }
+    actualRange?.pointee = range
+    let local = NSRect(x: CGFloat(r[0]), y: bounds.height - CGFloat(r[1]) - CGFloat(r[3]), width: CGFloat(r[2]), height: CGFloat(r[3]))
+    return window.convertToScreen(convert(local, to: nil))
+  }
+  func characterIndex(for point: NSPoint) -> Int {
+    guard let window else { return NSNotFound }
+    let p = convert(window.convertPoint(fromScreen: point), from: nil), d = window.backingScaleFactor
+    return Int(zr_index16(state, Float(p.x * d), Float((bounds.height - p.y) * d)))
+  }
+  // Commands the IME sends for keys Zeron's keymap doesn't bind do nothing, as in GPUI.
+  override func doCommand(by selector: Selector) {}
 }

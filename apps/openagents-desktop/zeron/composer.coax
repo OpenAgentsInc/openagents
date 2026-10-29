@@ -49,7 +49,7 @@ FONT_SIZES :: [2] f32.[14, 12];
 FONT_WEIGHTS :: [2] int.[0, 1];   // 0 Geist, 1 Geist Medium
 
 COMPOSER_TEXT :: 8000;
-COMPOSER_LINES :: 64;
+COMPOSER_LINES :: 1024;
 
 // Zeron Dark, opaque (builtins.rs zeron_dark and theme.rs's derived roles).
 Theme :: struct {
@@ -58,6 +58,7 @@ Theme :: struct {
   border: Rgba;         // composer_surface_border
   text: Rgba; muted: Rgba; faint: Rgba;
   accent: Rgba;         // the caret
+  selection: Rgba;      // the accent at 0.35 (theme crate AccentRoles::derive)
   bg: Rgba;             // Send's arrow
   claude: Rgba;         // the Claude mark (icons.rs claude_brand)
 }
@@ -65,119 +66,471 @@ zeron_dark :: () -> Theme {
   return Theme.{
     shell = hex(0x0d0d0d, 1), surface = hex(0x27272a, 1), border = rgba(1, 1, 1, 26.0 / 255.0),   // zeron_theme stores alpha as a byte: 0.10 is 26
     text = hex(0xe8e8ea, 1), muted = hex(0xa9a9ae, 1), faint = hex(0x85858a, 1),
-    accent = hex(0x8b7cf6, 1), bg = hex(0x060606, 1), claude = hex(0xd97757, 1)};
+    accent = hex(0x8b7cf6, 1), selection = hex(0x8b7cf6, 89.0 / 255.0), bg = hex(0x060606, 1), claude = hex(0xd97757, 1)};
 }
+
+// Zeron's input (composer.rs ComposerInput, "adapted from gpui
+// examples/input.rs"): a selection with an anchor and a caret, edits that
+// replace it, undo in the bursts the user typed (UNDO_COALESCE), IME marked
+// text, and the caret's side at a soft wrap (CaretAffinity).
+UNDO_COALESCE :: 0.7;       // seconds a run of one-character edits keeps merging
+UNDO_LIMIT :: 200;
+HISTORY_POOL :: 131072;     // bytes of snapshots per stack (the oldest go first)
+
+// Snapshots of the text and selection, newest last, their bytes in one pool.
+History :: struct {
+  count: int; used: int;
+  at: [UNDO_LIMIT] int; len: [UNDO_LIMIT] int;
+  anchor: [UNDO_LIMIT] int; caret: [UNDO_LIMIT] int;
+  pool: [HISTORY_POOL] u8;
+}
+UNDO :: 0; REDO :: 1;
+EDIT_NONE :: 0; EDIT_INSERT :: 1; EDIT_DELETE :: 2;
+// How a press selects (press_intent); a drag keeps the unit it started with.
+PRESS_CARET :: 0; PRESS_EXTEND :: 1; PRESS_WORD :: 2; PRESS_LINE :: 3;
 
 Composer :: struct {
   text: [COMPOSER_TEXT] u8; n: int;
-  caret: int;                   // a byte offset on a code point boundary
+  anchor: int; caret: int;      // byte offsets on grapheme boundaries; the selection runs between
+  upstream: bool;               // the caret at a soft wrap sits at the end of the upper row
+  marked: bool; marked_at: int; marked_end: int;   // IME composition
+  column: f32; has_column: bool;                   // Up/Down keep this x (preferred_column)
   focused: bool;
   since: f32;                   // seconds since the last keystroke or caret move (the blink)
+  clock: f32;                   // seconds, for undo coalescing
   sent: int;                    // messages Enter has cleared
-  // where it was last drawn (logical px), for the pointer
+  last_kind: int; last_at: int; last_time: f32;    // the edit a typing run merges into
+  hist: [2] History;
+  // the pointer: a press's unit and the range it first selected
+  selecting: bool; drag_unit: int; drag_from: int; drag_to: int;
+  // scrolling once the text outgrows the box
+  scroll: f32; follow: bool;
+  // where it was last drawn (logical px), for the pointer and the IME
   x: f32; y: f32; w: f32; h: f32;
-  text_x: f32; text_y: f32; text_w: f32;
+  text_x: f32; text_y: f32; text_w: f32; view_h: f32;
   line_at: [COMPOSER_LINES] int; line_end: [COMPOSER_LINES] int; lines: int;
 }
 
 typed :: (c: [] Composer) -> string { return cast(string) c[0].text[0..<c[0].n]; }
+sel_lo :: (c: [] Composer) -> int { return ifx c[0].anchor < c[0].caret then c[0].anchor else c[0].caret; }
+sel_hi :: (c: [] Composer) -> int { return ifx c[0].anchor > c[0].caret then c[0].anchor else c[0].caret; }
+selected :: (c: [] Composer) -> string { return cast(string) c[0].text[sel_lo(c)..<sel_hi(c)]; }
+
+// ---------------------------------------------------------------- boundaries
+
+// The grapheme boundary before / after byte i.
+prev_boundary :: (c: [] Composer, i: int) -> int {
+  t := typed(c);
+  k := 0; last := 0;
+  while k < t.count && k < i { last = k; k += cluster_len(t, k); }
+  return ifx i <= 0 then 0 else last;
+}
+next_boundary :: (c: [] Composer, i: int) -> int {
+  t := typed(c);
+  if i >= t.count { return t.count; }
+  return i + cluster_len(t, i);
+}
+
+// Word segmentation, UAX #29 as unicode-segmentation's split_word_bounds
+// does it for the scripts a composer meets: runs of letters and digits (with
+// _ and the apostrophe, colon or point between letters, the comma or point
+// between digits), runs of katakana, runs of spaces; every other grapheme
+// (punctuation, symbols, emoji, each ideograph and hiragana) alone.
+WB_OTHER :: 0; WB_LETTER :: 1; WB_NUMERIC :: 2; WB_KATAKANA :: 3; WB_EXTNUM :: 4;
+WB_MIDLETTER :: 5; WB_MIDNUM :: 6; WB_MIDNUMLET :: 7; WB_SPACE :: 8; WB_NEWLINE :: 9;
+
+word_class :: (t: string, i: int) -> int {
+  c := rune_at(t, i).code;
+  if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') { return WB_LETTER; }
+  if c >= '0' && c <= '9' { return WB_NUMERIC; }
+  if c == ' ' || c == 0x1680 || (c >= 0x2000 && c <= 0x200A && c != 0x2007) || c == 0x205F || c == 0x3000 { return WB_SPACE; }
+  if c == '\n' || c == '\r' || c == 0x85 || c == 0x2028 || c == 0x2029 || c == 0x0B || c == 0x0C { return WB_NEWLINE; }
+  if c == '_' || c == 0x203F || c == 0x2040 || c == 0x2054 || c == 0xFE33 || c == 0xFE34 || c == 0xFF3F { return WB_EXTNUM; }
+  if c == '.' || c == '\'' || c == 0x2018 || c == 0x2019 || c == 0x2024 || c == 0xFE52 || c == 0xFF07 || c == 0xFF0E { return WB_MIDNUMLET; }
+  if c == ':' || c == 0xB7 || c == 0x387 || c == 0x5F4 || c == 0x2027 || c == 0xFE13 || c == 0xFE55 || c == 0xFF1A { return WB_MIDLETTER; }
+  if c == ',' || c == ';' || c == 0x37E || c == 0x589 || c == 0x60C || c == 0x60D || c == 0x66C || c == 0x7F8 || c == 0x2044 ||
+     c == 0xFE10 || c == 0xFE14 || c == 0xFE50 || c == 0xFE54 || c == 0xFF0C || c == 0xFF1B { return WB_MIDNUM; }
+  if (c >= 0x30A1 && c <= 0x30FA) || (c >= 0x30FC && c <= 0x30FF) || (c >= 0x31F0 && c <= 0x31FF) || (c >= 0xFF66 && c <= 0xFF9D) { return WB_KATAKANA; }
+  if (c >= 0xFF10 && c <= 0xFF19) || (c >= 0x660 && c <= 0x669) || (c >= 0x966 && c <= 0x96F) { return WB_NUMERIC; }
+  // letters: Latin, IPA, Greek, Cyrillic, Armenian, Hebrew, Arabic, Devanagari, Thai's neighbours, Hangul, fullwidth Latin
+  if (c >= 0xC0 && c <= 0x24F && c != 0xD7 && c != 0xF7) || c == 0xAA || c == 0xB5 || c == 0xBA ||
+     (c >= 0x250 && c <= 0x2C1) || (c >= 0x370 && c <= 0x3FF && c != 0x37E && c != 0x387) || (c >= 0x400 && c <= 0x52F) ||
+     (c >= 0x531 && c <= 0x587) || (c >= 0x5D0 && c <= 0x5F2) || (c >= 0x620 && c <= 0x64A) || (c >= 0x671 && c <= 0x6D3) ||
+     (c >= 0x904 && c <= 0x939) || (c >= 0x1E00 && c <= 0x1FFF) || (c >= 0x1100 && c <= 0x11FF) || (c >= 0xAC00 && c <= 0xD7A3) ||
+     (c >= 0xFF21 && c <= 0xFF3A) || (c >= 0xFF41 && c <= 0xFF5A) { return WB_LETTER; }
+  return WB_OTHER;
+}
+wb_joins :: (prev: int, next: int) -> bool {
+  if prev == WB_LETTER || prev == WB_NUMERIC { return next == WB_LETTER || next == WB_NUMERIC || next == WB_EXTNUM; }
+  if prev == WB_KATAKANA { return next == WB_KATAKANA || next == WB_EXTNUM; }
+  if prev == WB_EXTNUM { return next == WB_LETTER || next == WB_NUMERIC || next == WB_KATAKANA || next == WB_EXTNUM; }
+  return false;
+}
+// The end of the word segment starting at byte i.
+word_seg_end :: (t: string, i: int) -> int {
+  if i >= t.count { return t.count; }
+  first := word_class(t, i);
+  j := i + cluster_len(t, i);
+  if first == WB_SPACE {
+    while j < t.count && word_class(t, j) == WB_SPACE { j += cluster_len(t, j); }
+    return j;
+  }
+  if first != WB_LETTER && first != WB_NUMERIC && first != WB_KATAKANA && first != WB_EXTNUM { return j; }
+  prev := first;
+  while j < t.count {
+    next := word_class(t, j);
+    if wb_joins(prev, next) { prev = next; j += cluster_len(t, j); continue; }
+    // a letter, then ' : . and a letter; a digit, then , ; . ' and a digit
+    mid := (prev == WB_LETTER && (next == WB_MIDLETTER || next == WB_MIDNUMLET)) ||
+           (prev == WB_NUMERIC && (next == WB_MIDNUM || next == WB_MIDNUMLET));
+    if mid {
+      k := j + cluster_len(t, j);
+      if k < t.count && word_class(t, k) == prev { j = k + cluster_len(t, k); continue; }
+    }
+    break;
+  }
+  return j;
+}
+blank_segment :: (t: string, from: int, to: int) -> bool {
+  for k: from..<to { if t[k] != ' ' && t[k] != '\t' && t[k] != '\n' && t[k] != '\r' { return false; } }
+  return true;
+}
+// previous_word_boundary: the start of the last non-blank segment before i.
+prev_word :: (c: [] Composer, i: int) -> int {
+  t := typed(c);
+  k := 0; best := 0;
+  while k < t.count && k < i {
+    e := word_seg_end(t, k);
+    if !blank_segment(t, k, e) { best = k; }
+    k = e;
+  }
+  return best;
+}
+// next_word_boundary: the end of the first non-blank segment ending after i.
+next_word :: (c: [] Composer, i: int) -> int {
+  t := typed(c);
+  k := 0;
+  while k < t.count {
+    e := word_seg_end(t, k);
+    if e > i && !blank_segment(t, k, e) { return e; }
+    k = e;
+  }
+  return t.count;
+}
+// word_range: the segment holding byte i (a double click's word); empty at the end.
+word_from :: (c: [] Composer, i: int) -> int {
+  t := typed(c);
+  k := 0;
+  while k < t.count {
+    e := word_seg_end(t, k);
+    if k <= i && i < e { return k; }
+    k = e;
+  }
+  return i;
+}
+word_to :: (c: [] Composer, i: int) -> int {
+  t := typed(c);
+  k := 0;
+  while k < t.count {
+    e := word_seg_end(t, k);
+    if k <= i && i < e { return e; }
+    k = e;
+  }
+  return i;
+}
+// The logical line (between newlines) holding byte i, and where its text ends (before a CR).
+line_start :: (c: [] Composer, i: int) -> int {
+  k := ifx i < c[0].n then i else c[0].n;
+  while k > 0 && c[0].text[k - 1] != '\n' { k -= 1; }
+  return k;
+}
+line_stop :: (c: [] Composer, i: int) -> int {
+  k := ifx i < c[0].n then i else c[0].n;
+  while k < c[0].n && c[0].text[k] != '\n' { k += 1; }
+  return k;
+}
+line_content_end :: (c: [] Composer, i: int) -> int {
+  e := line_stop(c, i);
+  if e < c[0].n && e > 0 && c[0].text[e - 1] == '\r' { return e - 1; }
+  return e;
+}
+
+// ---------------------------------------------------------------- history
+
+hist_drop_oldest :: (c: [] Composer, w: int) {
+  if c[0].hist[w].count == 0 { return; }
+  k := c[0].hist[w].len[0];
+  for i: k..<c[0].hist[w].used { c[0].hist[w].pool[i - k] = c[0].hist[w].pool[i]; }
+  c[0].hist[w].used -= k;
+  for j: 1..<c[0].hist[w].count {
+    c[0].hist[w].at[j - 1] = c[0].hist[w].at[j] - k; c[0].hist[w].len[j - 1] = c[0].hist[w].len[j];
+    c[0].hist[w].anchor[j - 1] = c[0].hist[w].anchor[j]; c[0].hist[w].caret[j - 1] = c[0].hist[w].caret[j];
+  }
+  c[0].hist[w].count -= 1;
+}
+// Pushes the text and selection as they stand.
+hist_push :: (c: [] Composer, w: int) {
+  n := c[0].n;
+  if n > HISTORY_POOL { return; }
+  while c[0].hist[w].count > 0 && (c[0].hist[w].count >= UNDO_LIMIT || c[0].hist[w].used + n > HISTORY_POOL) { hist_drop_oldest(c, w); }
+  k := c[0].hist[w].count; at := c[0].hist[w].used;
+  for i: 0..<n { c[0].hist[w].pool[at + i] = c[0].text[i]; }
+  c[0].hist[w].at[k] = at; c[0].hist[w].len[k] = n;
+  c[0].hist[w].anchor[k] = c[0].anchor; c[0].hist[w].caret[k] = c[0].caret;
+  c[0].hist[w].used += n; c[0].hist[w].count += 1;
+}
+// Pops the newest snapshot into the text (restore).
+hist_pop :: (c: [] Composer, w: int) {
+  k := c[0].hist[w].count - 1;
+  if k < 0 { return; }
+  at := c[0].hist[w].at[k]; n := c[0].hist[w].len[k];
+  for i: 0..<n { c[0].text[i] = c[0].hist[w].pool[at + i]; }
+  c[0].n = n; c[0].anchor = c[0].hist[w].anchor[k]; c[0].caret = c[0].hist[w].caret[k];
+  c[0].hist[w].used = at; c[0].hist[w].count = k;
+  c[0].upstream = false; c[0].has_column = false; c[0].marked = false;
+  c[0].last_kind = EDIT_NONE;   // never merge a later edit into a step undo just crossed
+  c[0].follow = true; c[0].since = 0;
+}
+composer_undo :: (c: [] Composer) {
+  if c[0].hist[UNDO].count == 0 { return; }
+  hist_push(c, REDO); hist_pop(c, UNDO);
+}
+composer_redo :: (c: [] Composer) {
+  if c[0].hist[REDO].count == 0 { return; }
+  hist_push(c, UNDO); hist_pop(c, REDO);
+}
+can_undo :: (c: [] Composer) -> bool { return c[0].hist[UNDO].count > 0; }
+can_redo :: (c: [] Composer) -> bool { return c[0].hist[REDO].count > 0; }
+
+// record_edit: before bytes [from, to) become s. A run merges only while it
+// stays one character at a time, contiguous, of one kind, and within the
+// idle window; a space or newline, a paste, a pause or a caret jump starts
+// a new step.
+one_char :: (s: string) -> bool { return s.count > 0 && rune_at(s, 0).len == s.count; }
+record_edit :: (c: [] Composer, from: int, to: int, s: string) {
+  kind := ifx s.count == 0 then EDIT_DELETE else EDIT_INSERT;
+  coalescible := ifx kind == EDIT_INSERT then from == to && one_char(s)
+                 else to > from && from + cluster_len(typed(c), from) == to;
+  recent := c[0].clock - c[0].last_time < UNDO_COALESCE;
+  mergeable := false;
+  if coalescible && kind == EDIT_INSERT && c[0].last_kind == EDIT_INSERT {
+    mergeable = from == c[0].last_at && s[0] != '\n' && s[0] != ' ' && s[0] != '\t' && recent;
+  }
+  if coalescible && kind == EDIT_DELETE && c[0].last_kind == EDIT_DELETE { mergeable = to == c[0].last_at && recent; }
+  if !mergeable { hist_push(c, UNDO); }
+  c[0].hist[REDO].count = 0; c[0].hist[REDO].used = 0;   // a fresh edit drops the redo branch
+  if coalescible {
+    c[0].last_kind = kind; c[0].last_at = ifx kind == EDIT_INSERT then from + s.count else from; c[0].last_time = c[0].clock;
+  } else {
+    c[0].last_kind = EDIT_NONE;
+  }
+}
 
 // ---------------------------------------------------------------- editing
 
-composer_insert :: (c: [] Composer, s: string) {
-  if s.count == 0 || c[0].n + s.count > COMPOSER_TEXT { return; }
-  k := c[0].n;
-  while k > c[0].caret { k -= 1; c[0].text[k + s.count] = c[0].text[k]; }
-  for i: 0..<s.count { c[0].text[c[0].caret + i] = s[i]; }
-  c[0].n += s.count; c[0].caret += s.count; c[0].since = 0;
+// Bytes [from, to) become s; the caret lands after it. Whether it fit.
+splice :: (c: [] Composer, from: int, to: int, s: string) -> bool {
+  if from < 0 || to > c[0].n || from > to { return false; }
+  grow := s.count - (to - from);
+  if c[0].n + grow > COMPOSER_TEXT { return false; }
+  if grow > 0 {
+    k := c[0].n;
+    while k > to { k -= 1; c[0].text[k + grow] = c[0].text[k]; }
+  } else if grow < 0 {
+    for k: to..<c[0].n { c[0].text[k + grow] = c[0].text[k]; }
+  }
+  for i: 0..<s.count { c[0].text[from + i] = s[i]; }
+  c[0].n += grow;
+  return true;
 }
-// Removes bytes [from, to).
-composer_cut :: (c: [] Composer, from: int, to: int) {
-  if from < 0 || to > c[0].n || from >= to { return; }
-  gone := to - from;
-  for k: to..<c[0].n { c[0].text[k - gone] = c[0].text[k]; }
-  c[0].n -= gone;
-  if c[0].caret >= to { c[0].caret -= gone; } else if c[0].caret > from { c[0].caret = from; }
-  c[0].since = 0;
+// replace_text_in_range: the given range (from < 0: the composition, else
+// the selection) becomes s.
+composer_replace :: (c: [] Composer, from_in: int, to_in: int, s: string) {
+  from := from_in; to := to_in;
+  if from < 0 {
+    if c[0].marked { from = c[0].marked_at; to = c[0].marked_end; } else { from = sel_lo(c); to = sel_hi(c); }
+  }
+  if from > c[0].n || to > c[0].n || from > to { return; }
+  // an IME commit is the tail of a composition whose snapshot was taken when it began
+  if !c[0].marked { record_edit(c, from, to, s); }
+  if !splice(c, from, to, s) { return; }
+  c[0].anchor = from + s.count; c[0].caret = c[0].anchor;
+  c[0].upstream = false; c[0].has_column = false; c[0].marked = false;
+  c[0].follow = true; c[0].since = 0;
 }
-// The code point boundary before / after byte i.
-prev_boundary :: (c: [] Composer, i: int) -> int {
-  if i <= 0 { return 0; }
-  k := i - 1;
-  while k > 0 && (c[0].text[k] & 0xC0) == 0x80 { k -= 1; }
-  return k;
+// replace_and_mark_text_in_range: the composition so far; the selection
+// inside it (sel_from < 0: the caret at its end).
+composer_mark :: (c: [] Composer, from_in: int, to_in: int, s: string, sel_from: int, sel_to: int) {
+  from := from_in; to := to_in;
+  if from < 0 {
+    if c[0].marked { from = c[0].marked_at; to = c[0].marked_end; } else { from = sel_lo(c); to = sel_hi(c); }
+  }
+  if from > c[0].n || to > c[0].n || from > to { return; }
+  if !c[0].marked {
+    // the composition's first keystroke: one undo drops all of it
+    hist_push(c, UNDO);
+    c[0].hist[REDO].count = 0; c[0].hist[REDO].used = 0;
+    c[0].last_kind = EDIT_NONE;
+  }
+  if !splice(c, from, to, s) { return; }
+  c[0].marked = s.count > 0; c[0].marked_at = from; c[0].marked_end = from + s.count;
+  if sel_from >= 0 && sel_from <= s.count && sel_to >= sel_from && sel_to <= s.count {
+    c[0].anchor = from + sel_from; c[0].caret = from + sel_to;
+  } else {
+    c[0].anchor = from + s.count; c[0].caret = c[0].anchor;
+  }
+  c[0].upstream = false; c[0].has_column = false;
+  c[0].follow = true; c[0].since = 0;
 }
-next_boundary :: (c: [] Composer, i: int) -> int {
-  if i >= c[0].n { return c[0].n; }
-  k := i + 1;
-  while k < c[0].n && (c[0].text[k] & 0xC0) == 0x80 { k += 1; }
-  return k;
+composer_unmark :: (c: [] Composer) {
+  if c[0].marked { c[0].marked = false; c[0].last_kind = EDIT_NONE; }
 }
-// The start of the word before byte i (Alt+Backspace, Alt+Left).
-word_start :: (c: [] Composer, i: int) -> int {
-  k := i;
-  while k > 0 && (c[0].text[k - 1] == ' ' || c[0].text[k - 1] == '\n') { k -= 1; }
-  while k > 0 && c[0].text[k - 1] != ' ' && c[0].text[k - 1] != '\n' { k -= 1; }
-  return k;
+// Typing (an IME commit with no range).
+composer_insert :: (c: [] Composer, s: string) { composer_replace(c, -1, -1, s); }
+// Paste: always its own undo step, even one character.
+composer_paste :: (c: [] Composer, s: string) {
+  if s.count == 0 { return; }
+  c[0].last_kind = EDIT_NONE;
+  composer_replace(c, -1, -1, s);
+  c[0].last_kind = EDIT_NONE;
 }
-word_end :: (c: [] Composer, i: int) -> int {
-  k := i;
-  while k < c[0].n && (c[0].text[k] == ' ' || c[0].text[k] == '\n') { k += 1; }
-  while k < c[0].n && c[0].text[k] != ' ' && c[0].text[k] != '\n' { k += 1; }
-  return k;
+// Cut (after the host copied the selection): the selection goes, as its own step.
+composer_cut_selection :: (c: [] Composer) {
+  if c[0].anchor == c[0].caret { return; }
+  c[0].last_kind = EDIT_NONE;
+  composer_replace(c, -1, -1, "");
+  c[0].last_kind = EDIT_NONE;
+}
+
+move_to :: (c: [] Composer, i: int) {
+  k := ifx i < 0 then 0 else ifx i > c[0].n then c[0].n else i;
+  c[0].anchor = k; c[0].caret = k;
+  c[0].upstream = false; c[0].has_column = false; c[0].last_kind = EDIT_NONE;
+  c[0].follow = true; c[0].since = 0;
+}
+select_to :: (c: [] Composer, i: int) {
+  c[0].last_kind = EDIT_NONE;
+  extend_to(c, i);
+}
+// Deletion extends the selection without breaking a typing run.
+extend_to :: (c: [] Composer, i: int) {
+  k := ifx i < 0 then 0 else ifx i > c[0].n then c[0].n else i;
+  c[0].caret = k;
+  c[0].upstream = false; c[0].has_column = false;
+  c[0].follow = true; c[0].since = 0;
+}
+// Backspace, Delete and the Opt/Cmd family: with a selection they take only it.
+delete_to :: (c: [] Composer, i: int) {
+  if c[0].anchor == c[0].caret {
+    if c[0].caret == i { return; }
+    extend_to(c, i);
+  }
+  composer_replace(c, -1, -1, "");
+}
+composer_select_all :: (c: [] Composer) { move_to(c, 0); select_to(c, c[0].n); }
+
+// Submit, connected to nothing: the text clears as a new document (set_text).
+composer_submit :: (c: [] Composer) {
+  if c[0].n == 0 { return; }
+  c[0].sent += 1; c[0].n = 0;
+  move_to(c, 0);
+  c[0].marked = false; c[0].scroll = 0;
+  for w: 0..<2 { c[0].hist[w].count = 0; c[0].hist[w].used = 0; }
 }
 
 // Keys (ui.coax's numbering: -1 Escape, -2 Enter, -3 Backspace, -4 Left,
-// -5 Right, -6 Up, -7 Down, -8 Home, -9 End, -12 Delete; mods 1 Shift,
-// 2 Ctrl, 4 Alt, 8 Cmd). Whether the composer used the key.
-composer_key :: (c: [] Composer, key: int, mods: int) -> bool {
+// -5 Right, -6 Up, -7 Down, -8 Home, -9 End, -12 Delete; letters as their
+// code; mods 1 Shift, 2 Ctrl, 4 Alt, 8 Cmd), bound as Zeron binds them
+// (composer.rs input_key_bindings, macOS). Whether the composer used it.
+KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_BACKSPACE :: -3; KEY_LEFT :: -4; KEY_RIGHT :: -5;
+KEY_UP :: -6; KEY_DOWN :: -7; KEY_HOME :: -8; KEY_END :: -9; KEY_DELETE :: -12;
+MOD_SHIFT :: 1; MOD_CTRL :: 2; MOD_ALT :: 4; MOD_CMD :: 8;
+
+composer_key :: (c: [] Composer, a: [] Atlas, key: int, mods: int) -> bool {
   if !c[0].focused { return false; }
-  word := (mods & 6) != 0; line := (mods & 8) != 0;
-  if key == -2 {
-    if c[0].n > 0 { c[0].sent += 1; c[0].n = 0; c[0].caret = 0; c[0].since = 0; }   // Send: connected to nothing
+  shift := (mods & MOD_SHIFT) != 0; ctrl := (mods & MOD_CTRL) != 0; alt := (mods & MOD_ALT) != 0; cmd := (mods & MOD_CMD) != 0;
+  plain := !ctrl && !alt && !cmd;
+  i := c[0].caret;
+  if key == KEY_ENTER && plain {
+    if shift { composer_replace(c, -1, -1, "\n"); } else { composer_submit(c); }   // shift-enter: Newline
     return true;
   }
-  if key == -3 {
-    from := ifx line then 0 else ifx word then word_start(c, c[0].caret) else prev_boundary(c, c[0].caret);
-    composer_cut(c, from, c[0].caret);
+  if key == KEY_BACKSPACE {
+    if plain { delete_to(c, ifx c[0].anchor == c[0].caret then prev_boundary(c, i) else i); return true; }   // backspace, shift-backspace
+    if alt && !cmd && !ctrl && !shift { delete_to(c, prev_word(c, i)); return true; }
+    if cmd && !alt && !ctrl && !shift { delete_to(c, line_start(c, i)); return true; }
+    return false;
+  }
+  if key == KEY_DELETE {
+    if plain && !shift { delete_to(c, ifx c[0].anchor == c[0].caret then next_boundary(c, i) else i); return true; }
+    if alt && !cmd && !ctrl && !shift { delete_to(c, next_word(c, i)); return true; }
+    if cmd && !alt && !ctrl && !shift { delete_to(c, line_content_end(c, i)); return true; }
+    return false;
+  }
+  if key == KEY_LEFT || key == KEY_RIGHT {
+    left := key == KEY_LEFT;
+    to := 0;
+    if plain { to = ifx left then prev_boundary(c, i) else next_boundary(c, i); }
+    else if alt && !cmd && !ctrl { to = ifx left then prev_word(c, i) else next_word(c, i); }
+    else if cmd && !alt && !ctrl { to = ifx left then line_start(c, i) else line_content_end(c, i); }
+    else { return false; }
+    if shift { select_to(c, to); }
+    else if plain && c[0].anchor != c[0].caret { move_to(c, ifx left then sel_lo(c) else sel_hi(c)); }   // a selection collapses to its edge
+    else { move_to(c, to); }
     return true;
   }
-  if key == -12 {
-    to := ifx line then c[0].n else ifx word then word_end(c, c[0].caret) else next_boundary(c, c[0].caret);
-    composer_cut(c, c[0].caret, to);
+  if key == KEY_UP || key == KEY_DOWN {
+    up := key == KEY_UP;
+    if cmd && !alt && !ctrl {
+      if shift { select_to(c, ifx up then 0 else c[0].n); } else { move_to(c, ifx up then 0 else c[0].n); }
+      return true;
+    }
+    if !plain { return false; }
+    vertical(c, a, ifx up then -1 else 1, shift);
     return true;
   }
-  if key == -4 { c[0].caret = ifx line then 0 else ifx word then word_start(c, c[0].caret) else prev_boundary(c, c[0].caret); c[0].since = 0; return true; }
-  if key == -5 { c[0].caret = ifx line then c[0].n else ifx word then word_end(c, c[0].caret) else next_boundary(c, c[0].caret); c[0].since = 0; return true; }
-  if key == -8 || key == -6 { c[0].caret = 0; c[0].since = 0; return true; }
-  if key == -9 || key == -7 { c[0].caret = c[0].n; c[0].since = 0; return true; }
-  if key == -1 { c[0].focused = false; return true; }
+  if (key == KEY_HOME || key == KEY_END) && plain {
+    to := ifx key == KEY_HOME then line_start(c, i) else line_content_end(c, i);
+    if shift { select_to(c, to); } else { move_to(c, to); }
+    return true;
+  }
+  // cmd or ctrl: z undo, shift-z redo, a select all (c, x, v are the host's: the pasteboard)
+  if (cmd || ctrl) && !alt && !(cmd && ctrl) {
+    if key == 'z' || key == 'Z' { if shift { composer_redo(c); } else { composer_undo(c); } return true; }
+    if (key == 'a' || key == 'A') && !shift { composer_select_all(c); return true; }
+  }
+  if key == KEY_ESCAPE && plain && !shift { c[0].focused = false; return true; }
   return false;
 }
 
 // ---------------------------------------------------------------- layout
 
 // Wraps the text to width w (logical px) at spaces, and at newlines: each
-// line's byte range into line_at / line_end. Always at least one line.
-composer_wrap :: (c: [] Composer, f: GpFont, w: f32) {
+// row's byte range into line_at / line_end. Always at least one row.
+composer_wrap :: (c: [] Composer, a: [] Atlas, w: f32) {
   t := typed(c);
   c[0].lines = 0;
   start := 0;
   while c[0].lines < COMPOSER_LINES {
     stop := start; brk := -1; i := start;
-    while i < t.count && t[i] != '\n' {
-      j := next_boundary(c, i);
-      if text_width(f, cast(string) t[start..<j]) > w && i > start {
+    pen: f32 = 0; prev := -1;
+    while i < t.count && t[i] != '\n' && !(t[i] == '\r' && i + 1 < t.count && t[i + 1] == '\n') {
+      st := gp_step(a, FONT_INPUT, t, i, prev);
+      j := i + st.len;
+      if pen + st.advance > w && i > start {
         if brk > start { stop = brk; } else { stop = i; }
         break;
       }
+      pen += st.advance; prev = st.glyph;
       if t[i] == ' ' { brk = j; }
       i = j; stop = i;
     }
     c[0].line_at[c[0].lines] = start; c[0].line_end[c[0].lines] = stop; c[0].lines += 1;
     if stop >= t.count { break; }
-    start = ifx t[stop] == '\n' then stop + 1 else stop;
-    if start >= t.count && t[stop] == '\n' && c[0].lines < COMPOSER_LINES {
+    nl := stop;
+    if t[nl] == '\r' && nl + 1 < t.count && t[nl + 1] == '\n' { nl += 1; }
+    start = ifx t[nl] == '\n' then nl + 1 else stop;
+    if start >= t.count && t[nl] == '\n' && c[0].lines < COMPOSER_LINES {
       c[0].line_at[c[0].lines] = start; c[0].line_end[c[0].lines] = start; c[0].lines += 1;
       break;
     }
@@ -186,77 +539,233 @@ composer_wrap :: (c: [] Composer, f: GpFont, w: f32) {
 
 // The border-box height for the wrapped text: the text box (lines + pt-4 pb-1)
 // clamps to 76..260, then the actions row and the hairline (composer.rs).
-composer_height :: (lines: int) -> f32 {
+text_box :: (lines: int) -> f32 {
   box := cast(f32) (ifx lines < 1 then 1 else lines) * INPUT_LINE_HEIGHT + TEXTAREA_PAD_V;
   if box < TEXTAREA_MIN { box = TEXTAREA_MIN; }
   if box > TEXTAREA_MAX { box = TEXTAREA_MAX; }
-  return box + ACTIONS_ROW_HEIGHT + PILL_BORDER_V;
+  return box;
 }
+composer_height :: (lines: int) -> f32 { return text_box(lines) + ACTIONS_ROW_HEIGHT + PILL_BORDER_V; }
 
-// The line holding byte offset i.
+// The row holding byte i; at a soft wrap, the upper row when upstream.
 line_of :: (c: [] Composer, i: int) -> int {
   for k: 0..<c[0].lines {
     if i <= c[0].line_end[k] && (k + 1 >= c[0].lines || i < c[0].line_at[k + 1]) { return k; }
   }
   return c[0].lines - 1;
 }
+row_of :: (c: [] Composer, i: int, upstream: bool) -> int {
+  k := line_of(c, i);
+  if upstream && k > 0 && i == c[0].line_at[k] && c[0].line_end[k - 1] == i { return k - 1; }
+  return k;
+}
+// The x of byte i in row k (logical px from the text's left; position_for_index).
+x_in_row :: (c: [] Composer, a: [] Atlas, k: int, i: int) -> f32 {
+  from := c[0].line_at[k];
+  to := ifx i < c[0].line_end[k] then i else c[0].line_end[k];
+  if to <= from { return 0; }
+  return text_x_at(a, FONT_INPUT, cast(string) c[0].text[from..<c[0].line_end[k]], to - from);
+}
+// caret_for_point: the byte nearest a point in content coordinates
+// (logical px from the text's top-left, unscrolled), and whether it sits
+// at the end of a soft-wrapped row.
+Hit :: struct { at: int; upstream: bool; }
+hit_at :: (c: [] Composer, a: [] Atlas, x: f32, y: f32) -> Hit {
+  if y < 0 { return Hit.{at = 0, upstream = false}; }
+  k := cast(int) floor(y / INPUT_LINE_HEIGHT);
+  if k >= c[0].lines { k = c[0].lines - 1; }
+  from := c[0].line_at[k];
+  i := from + text_offset(a, FONT_INPUT, cast(string) c[0].text[from..<c[0].line_end[k]], x);
+  up := k + 1 < c[0].lines && i == c[0].line_end[k] && c[0].line_at[k + 1] == i;
+  return Hit.{at = i, upstream = up};
+}
+// Up/Down: a row above or below, keeping the x column; past the first or
+// last row, the start or the end (vertical_target).
+vertical :: (c: [] Composer, a: [] Atlas, dir: int, extend: bool) {
+  k := row_of(c, c[0].caret, c[0].upstream);
+  col := ifx c[0].has_column then c[0].column else x_in_row(c, a, k, c[0].caret);
+  to := k + dir;
+  h := Hit.{at = 0, upstream = false};
+  if to < 0 { h = Hit.{at = 0, upstream = false}; }
+  else if to >= c[0].lines { h = Hit.{at = c[0].n, upstream = true}; }
+  else { h = hit_at(c, a, col, (cast(f32) to + 0.5) * INPUT_LINE_HEIGHT); }
+  if extend { select_to(c, h.at); } else { move_to(c, h.at); }
+  c[0].upstream = h.upstream; c[0].column = col; c[0].has_column = true;
+}
 
-// A press at logical (x, y): focuses the composer when inside it and puts
-// the caret nearest the press. Whether it was inside.
-composer_press :: (c: [] Composer, a: [] Atlas, x: f32, y: f32) -> bool {
+// ---------------------------------------------------------------- the pointer
+
+// A unit's range at byte i: the word, or the logical line with its newline.
+unit_from :: (c: [] Composer, unit: int, i: int) -> int { return ifx unit == PRESS_LINE then line_start(c, i) else word_from(c, i); }
+unit_to :: (c: [] Composer, unit: int, i: int) -> int {
+  if unit == PRESS_WORD { return word_to(c, i); }
+  e := line_stop(c, i);
+  return ifx e < c[0].n then e + 1 else e;
+}
+// The content point under a logical window point.
+content_hit :: (c: [] Composer, a: [] Atlas, x: f32, y: f32) -> Hit { return hit_at(c, a, x - c[0].text_x, y - c[0].text_y + c[0].scroll); }
+
+// A press at logical (x, y) with its click count: focuses the composer when
+// inside it; one click puts the caret, shift-click extends, two select the
+// word, three the line (on_mouse_down). Whether it was inside.
+composer_press :: (c: [] Composer, a: [] Atlas, x: f32, y: f32, clicks: int, shift: bool) -> bool {
   inside := x >= c[0].x && x < c[0].x + c[0].w && y >= c[0].y && y < c[0].y + c[0].h;
   c[0].focused = inside;
+  c[0].selecting = false;
   if !inside || !a[0].ready { return inside; }
-  f := a[0].fonts[FONT_INPUT];
-  k := cast(int) floor((y - c[0].text_y) / INPUT_LINE_HEIGHT);
-  if k < 0 { k = 0; }
-  if k >= c[0].lines { k = c[0].lines - 1; }
-  t := typed(c);
-  from := c[0].line_at[k];
-  c[0].caret = from + text_offset(f, cast(string) t[from..<c[0].line_end[k]], x - c[0].text_x);
-  c[0].since = 0;
+  if c[0].marked { composer_unmark(c); }
+  intent := ifx clicks >= 3 then PRESS_LINE else ifx clicks == 2 then PRESS_WORD else ifx shift then PRESS_EXTEND else PRESS_CARET;
+  h := content_hit(c, a, x, y);
+  c[0].selecting = true; c[0].drag_unit = intent;
+  if intent == PRESS_WORD || intent == PRESS_LINE {
+    from := unit_from(c, intent, h.at); to := unit_to(c, intent, h.at);
+    move_to(c, from); select_to(c, to);
+    c[0].drag_from = from; c[0].drag_to = to;
+  } else if intent == PRESS_EXTEND {
+    select_to(c, h.at); c[0].upstream = h.upstream;
+  } else {
+    move_to(c, h.at); c[0].upstream = h.upstream;
+  }
   return true;
+}
+// The pointer moving with the button down: the selection follows it, by
+// the unit the press chose (drag_select_to).
+composer_drag :: (c: [] Composer, a: [] Atlas, x: f32, y: f32) {
+  if !c[0].selecting || !a[0].ready { return; }
+  h := content_hit(c, a, x, y);
+  unit := c[0].drag_unit;
+  if unit == PRESS_WORD || unit == PRESS_LINE {
+    from := unit_from(c, unit, h.at); to := unit_to(c, unit, h.at);
+    if from < c[0].drag_from {
+      move_to(c, c[0].drag_to); select_to(c, from);
+    } else {
+      move_to(c, c[0].drag_from); select_to(c, ifx to > c[0].drag_to then to else c[0].drag_to);
+    }
+  } else {
+    select_to(c, h.at); c[0].upstream = h.upstream;
+  }
+}
+composer_release :: (c: [] Composer) { c[0].selecting = false; }
+
+// The wheel over the text: scrolls it when it overflows (on_scroll_wheel).
+composer_wheel :: (c: [] Composer, dy: f32) -> bool {
+  most := cast(f32) c[0].lines * INPUT_LINE_HEIGHT - c[0].view_h;
+  if most <= 0 { return false; }
+  s := c[0].scroll - dy;
+  c[0].scroll = ifx s < 0 then 0.0f32 else ifx s > most then most else s;
+  c[0].follow = false;
+  return true;
+}
+
+// ---------------------------------------------------------------- UTF-16 (the IME's offsets)
+
+u16_of :: (c: [] Composer, byte: int) -> int {
+  t := typed(c);
+  k := 0; u := 0;
+  while k < t.count && k < byte {
+    r := rune_at(t, k);
+    u += ifx r.code >= 0x10000 then 2 else 1;
+    k += r.len;
+  }
+  return u;
+}
+byte_of :: (c: [] Composer, u16: int) -> int {
+  t := typed(c);
+  k := 0; u := 0;
+  while k < t.count && u < u16 {
+    r := rune_at(t, k);
+    u += ifx r.code >= 0x10000 then 2 else 1;
+    k += r.len;
+  }
+  return k;
+}
+// The same within a string (the IME's selection inside its marked text).
+byte_in :: (s: string, u16: int) -> int {
+  k := 0; u := 0;
+  while k < s.count && u < u16 {
+    r := rune_at(s, k);
+    u += ifx r.code >= 0x10000 then 2 else 1;
+    k += r.len;
+  }
+  return k;
 }
 
 // ---------------------------------------------------------------- paint
 
 // A trigger chip's width: padding, the optional icon and gap, the label, and
 // the suffix with its gap (pickers.rs model_chip_width ceils each text).
-chip_label_width :: (f: GpFont, s: string) -> f32 { return ceil(text_width(f, s)); }
+chip_label_width :: (a: [] Atlas, s: string) -> f32 { return ceil(text_width(a, FONT_CHIP, s)); }
 
 // The composer at logical (x, y), width w, the column it centers in; returns
 // the vertex count. dt advances the caret's blink.
 paint_composer :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme, d: f32, x: f32, y: f32, w: f32) -> int {
   if !a[0].ready { return at; }
-  fi := a[0].fonts[FONT_INPUT]; fc := a[0].fonts[FONT_CHIP];
   left := x + 1 + 16; text_w := w - 2 - 32;
-  composer_wrap(c, fi, text_w);
-  h := composer_height(c[0].lines);
+  composer_wrap(c, a, text_w);
+  h := round_layout(y + composer_height(c[0].lines)) - y;   // Taffy rounds the pill's edges
+  view_h := text_box(c[0].lines) - TEXTAREA_PAD_V;
   c[0].x = x; c[0].y = y; c[0].w = w; c[0].h = h;
-  c[0].text_x = left; c[0].text_y = y + 1 + TEXTAREA_PAD_TOP; c[0].text_w = text_w;
+  c[0].text_x = left; c[0].text_y = y + 1 + TEXTAREA_PAD_TOP; c[0].text_w = text_w; c[0].view_h = view_h;
+  lh: f32 = INPUT_LINE_HEIGHT;
+  // the scroll keeps the caret's row in view (clamp_scroll)
+  most := cast(f32) c[0].lines * lh - view_h;
+  if most < 0 { most = 0; }
+  if c[0].follow {
+    ct := cast(f32) row_of(c, c[0].caret, c[0].upstream) * lh;
+    if ct < c[0].scroll { c[0].scroll = ct; } else if ct + lh > c[0].scroll + view_h { c[0].scroll = ct + lh - view_h; }
+  }
+  if c[0].scroll > most { c[0].scroll = most; }
+  if c[0].scroll < 0 { c[0].scroll = 0; }
   // shadow-lg, then the pill (theme.rs: no shadow on frost, this is opaque)
   v := paint_shadow(out, at, d, x, y, w, h, COMPOSER_RADIUS, 0, 10, 15, -3, rgba(0, 0, 0, 0.1));
   v = paint_shadow(out, v, d, x, y, w, h, COMPOSER_RADIUS, 0, 4, 6, -4, rgba(0, 0, 0, 0.1));
   v = paint_quad(out, v, d, x, y, w, h, COMPOSER_RADIUS, 1, th.surface, th.border);
-  // the text, or the placeholder; the caret
+  // the text box, clipped to the input's bounds (paint_bounds: into the top padding once scrolled)
   t := typed(c);
-  top := c[0].text_y;
-  box_bottom := y + h - 1 - ACTIONS_ROW_HEIGHT - 4;
-  if c[0].n == 0 {
-    v = paint_text(out, v, a, d, FONT_INPUT, PLACEHOLDER, left, top, INPUT_LINE_HEIGHT, th.faint);
-  } else {
-    for k: 0..<c[0].lines {
-      ly := top + cast(f32) k * INPUT_LINE_HEIGHT;
-      if ly + INPUT_LINE_HEIGHT > box_bottom + 0.5 { break; }
-      v = paint_text(out, v, a, d, FONT_INPUT, cast(string) t[c[0].line_at[k]..<c[0].line_end[k]], left, ly, INPUT_LINE_HEIGHT, th.text);
+  top := c[0].text_y - c[0].scroll;
+  masked := v;
+  lo := sel_lo(c); hi := sel_hi(c);
+  if c[0].n > 0 && hi > lo {
+    // selection_quads: the first row from the start to the right edge, whole middle rows, the last row to the end
+    rs := row_of(c, lo, false); re := row_of(c, hi, true);
+    sx := x_in_row(c, a, rs, lo); ex := x_in_row(c, a, re, hi);
+    if rs == re {
+      v = paint_quad(out, v, d, left + sx, top + cast(f32) rs * lh, ex - sx, lh, 0, 0, th.selection, th.selection);
+    } else {
+      v = paint_quad(out, v, d, left + sx, top + cast(f32) rs * lh, text_w - sx, lh, 0, 0, th.selection, th.selection);
+      if re > rs + 1 { v = paint_quad(out, v, d, left, top + cast(f32) (rs + 1) * lh, text_w, cast(f32) (re - rs - 1) * lh, 0, 0, th.selection, th.selection); }
+      v = paint_quad(out, v, d, left, top + cast(f32) re * lh, ex, lh, 0, 0, th.selection, th.selection);
     }
   }
-  if c[0].focused && cast(int) floor(c[0].since / CARET_BLINK) % 2 == 0 {
-    k := line_of(c, c[0].caret);
-    from := c[0].line_at[k];
-    cx := left + text_x_of(fi, t, from, c[0].caret);
-    v = paint_quad(out, v, d, cx, top + cast(f32) k * INPUT_LINE_HEIGHT, 2, INPUT_LINE_HEIGHT, 0, 0, th.accent, th.accent);
+  if c[0].n == 0 {
+    v = paint_text(out, v, a, d, FONT_INPUT, PLACEHOLDER, left, top, lh, th.faint);
+  } else {
+    fi := a[0].fonts[FONT_INPUT].ascent; fd := a[0].fonts[FONT_INPUT].descent;
+    for k: 0..<c[0].lines {
+      ly := top + cast(f32) k * lh;
+      if ly + lh < c[0].text_y - TEXTAREA_PAD_TOP || ly > c[0].text_y + view_h { continue; }
+      v = paint_text(out, v, a, d, FONT_INPUT, cast(string) t[c[0].line_at[k]..<c[0].line_end[k]], left, ly, lh, th.text);
+      // the IME's composition: underlined, 1px in the text color (line.rs: descent * 0.618 under the baseline)
+      if c[0].marked {
+        ma := ifx c[0].marked_at > c[0].line_at[k] then c[0].marked_at else c[0].line_at[k];
+        mb := ifx c[0].marked_end < c[0].line_end[k] then c[0].marked_end else c[0].line_end[k];
+        if mb > ma {
+          ux := left + x_in_row(c, a, k, ma); uw := x_in_row(c, a, k, mb) - x_in_row(c, a, k, ma);
+          uy := ly + (lh - fi - fd) / 2 + fi + fd * 0.618;
+          bx := floor(ux * d + 0.5); by := floor(uy * d + 0.5); bw := snap_stroke(uw, d); bh := snap_stroke(1, d);
+          v = emit(out, v, bx, by, bx + bw, by + bh, GP_QUAD, 0, bx, by, bw, bh, 0, 0, 0, 0, 0, 0, th.text, th.text);
+        }
+      }
+    }
   }
+  // the caret: 2px in the accent, the line's height, blinking; none over a selection
+  if c[0].focused && hi == lo && cast(int) floor(c[0].since / CARET_BLINK) % 2 == 0 {
+    k := row_of(c, c[0].caret, c[0].upstream);
+    cx := left + x_in_row(c, a, k, c[0].caret);
+    v = paint_quad(out, v, d, cx, top + cast(f32) k * lh, 2, lh, 0, 0, th.accent, th.accent);
+  }
+  pad := ifx c[0].scroll > 1 then TEXTAREA_PAD_TOP else 0.0f32;
+  gp_clip(out, masked, v, d, left, c[0].text_y - pad, text_w, view_h + pad);
   // the actions row: 42 tall at the pill's bottom inside the hairline, 32px items centered
   row_mid := y + h - 1 - ACTIONS_BOTTOM_PAD - CHIP_HEIGHT / 2;
   v = paint_icon(out, v, a, d, ICON_PAPERCLIP, x + 1 + ACTION_INSET, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, th.muted);
@@ -264,92 +773,290 @@ paint_composer :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme,
   v = paint_quad(out, v, d, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, SEND_SIZE / 2, 0, th.text, th.text);
   v = paint_icon(out, v, a, d, ICON_ARROW_UP, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, th.bg);
   // the model chip: brand mark, the model in the text tone at 0.9, the effort muted at 0.7
-  model_w := 2 * MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP + chip_label_width(fc, MODEL_LABEL) + CHIP_GAP + chip_label_width(fc, EFFORT_LABEL);
+  model_w := 2 * MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP + chip_label_width(a, MODEL_LABEL) + CHIP_GAP + chip_label_width(a, EFFORT_LABEL);
   mx := send_x - ACTION_PRIMARY_GAP - model_w;
   chip_top := row_mid - CHIP_HEIGHT / 2;
-  lh: f32 = CHIP_TEXT_SIZE * 1.618034;   // GPUI's default line height, phi
+  clh: f32 = CHIP_TEXT_SIZE * 1.618034;   // GPUI's default line height, phi
   // Taffy rounds each layout box to whole logical pixels (GPUI layouts with rounding on)
-  ly := round_half_toward_zero(row_mid - lh / 2);
+  cly := round_half_toward_zero(row_mid - clh / 2);
   v = paint_icon(out, v, a, d, ICON_CLAUDE, mx + MODEL_CHIP_PAD, chip_top + (CHIP_HEIGHT - CHIP_ICON) / 2, CHIP_ICON, CHIP_ICON, th.claude);
   lx := mx + MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP;
-  v = paint_text(out, v, a, d, FONT_CHIP, MODEL_LABEL, lx, ly, lh, opacity(th.text, 0.9));
-  v = paint_text(out, v, a, d, FONT_CHIP, EFFORT_LABEL, lx + chip_label_width(fc, MODEL_LABEL) + CHIP_GAP, ly, lh, opacity(th.muted, 0.7));
+  v = paint_text(out, v, a, d, FONT_CHIP, MODEL_LABEL, lx, cly, clh, opacity(th.text, 0.9));
+  v = paint_text(out, v, a, d, FONT_CHIP, EFFORT_LABEL, lx + chip_label_width(a, MODEL_LABEL) + CHIP_GAP, cly, clh, opacity(th.muted, 0.7));
   // Full access: a chip without an icon, muted while it is full access
-  access_w := 2 * CHIP_PAD + text_width(fc, ACCESS_LABEL);
+  access_w := 2 * CHIP_PAD + text_width(a, FONT_CHIP, ACCESS_LABEL);
   ax := round_half_toward_zero(mx - PICKERS_GAP - access_w);
-  v = paint_text(out, v, a, d, FONT_CHIP, ACCESS_LABEL, ax + CHIP_PAD, ly, lh, th.muted);
+  v = paint_text(out, v, a, d, FONT_CHIP, ACCESS_LABEL, ax + CHIP_PAD, cly, clh, th.muted);
   return v;
-}
-
-// The pen x from byte `from` to byte `to` of t.
-text_x_of :: (f: GpFont, t: string, from: int, to: int) -> f32 {
-  if to <= from { return 0; }
-  return text_width(f, cast(string) t[from..<to]);
 }
 
 // ---------------------------------------------------------------- checks
 
-test_font :: (f: [] GpFont) {
-  for g: 0..<GP_GLYPHS { f[0].advance[g] = 8; }
-  f[0].size = 14; f[0].ascent = 13; f[0].descent = 3;
+// Every glyph 8 wide (14 for a grapheme the atlas lacks, once "measured").
+test_atlas :: (a: [] Atlas) {
+  a[0].ready = true; a[0].width = 4096; a[0].height = 4096; a[0].frame = 1;
+  for k: 0..<GP_FONTS {
+    for g: 0..<GP_GLYPHS { a[0].fonts[k].advance[g] = 8; }
+    a[0].fonts[k].size = 14; a[0].fonts[k].ascent = 13; a[0].fonts[k].descent = 3;
+    a[0].fonts[k].cell = 64; a[0].fonts[k].cols = 64;
+  }
+  for k: 0..<3 { a[0].icons[k] = GpIcon.{x = 0, y = 0, w = 36, h = 36}; }
 }
-
-#test "typing inserts at the caret; Backspace and Delete take a character, a word or the line" {
-  c: [1] Composer;
+measure_all :: (a: [] Atlas) {
+  for s: 0..<GP_DYN_SLOTS { if a[0].clusters[s].state == 1 { a[0].clusters[s].advance = 14; a[0].clusters[s].state = 2; } }
+}
+// A focused composer holding text, wrapped 800 wide, the caret at the end.
+setup :: (c: [] Composer, a: [] Atlas, s: string) {
+  test_atlas(a);
   c[0].focused = true;
-  composer_insert(c[..], "hello world");
+  composer_insert(c, s);
+  c[0].last_kind = EDIT_NONE;
+  for w: 0..<2 { c[0].hist[w].count = 0; c[0].hist[w].used = 0; }
+  composer_wrap(c, a, 800);
+}
+press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return composer_key(c, a, k, mods); }
+
+#test "typing inserts at the caret; Backspace and Delete take a grapheme, a word or the line" {
+  c: [1] Composer; a: [1] Atlas;
+  setup(c[..], a[..], "hello world");
   #assert typed(c[..]) == "hello world" && c[0].caret == 11;
-  #assert composer_key(c[..], -3, 0) && typed(c[..]) == "hello worl";
-  #assert composer_key(c[..], -3, 4) && typed(c[..]) == "hello ";
-  #assert composer_key(c[..], -4, 0) && composer_key(c[..], -4, 0);
+  #assert press_key(c[..], a[..], KEY_BACKSPACE, 0) && typed(c[..]) == "hello worl";
+  #assert press_key(c[..], a[..], KEY_BACKSPACE, MOD_ALT) && typed(c[..]) == "hello ";
+  #assert press_key(c[..], a[..], KEY_LEFT, 0) && press_key(c[..], a[..], KEY_LEFT, 0);
   composer_insert(c[..], "X");
   #assert typed(c[..]) == "hellXo " && c[0].caret == 5;
-  #assert composer_key(c[..], -12, 0) && typed(c[..]) == "hellX ";
-  #assert composer_key(c[..], -3, 8) && typed(c[..]) == " " && c[0].caret == 0;
-  #assert composer_key(c[..], -9, 0);
-  composer_insert(c[..], "é");
-  #assert c[0].n == 3 && composer_key(c[..], -3, 0) && c[0].n == 1;
+  #assert press_key(c[..], a[..], KEY_DELETE, 0) && typed(c[..]) == "hellX ";
+  #assert press_key(c[..], a[..], KEY_BACKSPACE, MOD_CMD) && typed(c[..]) == " " && c[0].caret == 0;
+  #assert press_key(c[..], a[..], KEY_END, 0);
+  composer_insert(c[..], "e");
+  composer_insert(c[..], "́");   // a combining acute: one grapheme with the e
+  #assert c[0].n == 4 && press_key(c[..], a[..], KEY_BACKSPACE, 0) && c[0].n == 1;
+  composer_insert(c[..], "👍🏽");
+  #assert press_key(c[..], a[..], KEY_LEFT, 0) && c[0].caret == 1 && press_key(c[..], a[..], KEY_DELETE, 0) && c[0].n == 1;
 }
-#test "Enter sends nothing anywhere: it clears the text; an unfocused composer takes no keys" {
-  c: [1] Composer;
-  c[0].focused = true;
-  composer_insert(c[..], "do it");
-  #assert composer_key(c[..], -2, 0) && c[0].n == 0 && c[0].caret == 0 && c[0].sent == 1;
-  #assert composer_key(c[..], -2, 0) && c[0].sent == 1;
-  #assert composer_key(c[..], -1, 0) && !c[0].focused;
-  #assert !composer_key(c[..], -3, 0);
+#test "Cmd+Backspace and Cmd+Delete stop at the logical line; Alt+Delete takes the next word" {
+  c: [1] Composer; a: [1] Atlas;
+  setup(c[..], a[..], "one two\nthree four");
+  move_to(c[..], 14);   // inside "four"... after "three "
+  #assert press_key(c[..], a[..], KEY_BACKSPACE, MOD_CMD) && typed(c[..]) == "one two\nfour";
+  #assert press_key(c[..], a[..], KEY_DELETE, MOD_ALT) && typed(c[..]) == "one two\n";
+  move_to(c[..], 4);
+  #assert press_key(c[..], a[..], KEY_DELETE, MOD_CMD) && typed(c[..]) == "one \n";
+}
+#test "typing or deleting over a selection replaces it; plain arrows collapse it to its edge" {
+  c: [1] Composer; a: [1] Atlas;
+  setup(c[..], a[..], "hello world");
+  #assert press_key(c[..], a[..], KEY_LEFT, MOD_SHIFT | MOD_ALT) && sel_lo(c[..]) == 6 && sel_hi(c[..]) == 11 && selected(c[..]) == "world";
+  composer_insert(c[..], "there");
+  #assert typed(c[..]) == "hello there" && c[0].caret == 11 && c[0].anchor == 11;
+  #assert press_key(c[..], a[..], KEY_LEFT, MOD_SHIFT | MOD_CMD) && selected(c[..]) == "hello there";
+  #assert press_key(c[..], a[..], KEY_RIGHT, 0) && c[0].caret == 11 && c[0].anchor == 11;
+  #assert press_key(c[..], a[..], KEY_LEFT, MOD_SHIFT) && press_key(c[..], a[..], KEY_LEFT, MOD_SHIFT) && selected(c[..]) == "re";
+  #assert press_key(c[..], a[..], KEY_LEFT, 0) && c[0].caret == 9 && c[0].anchor == 9;
+  #assert press_key(c[..], a[..], KEY_RIGHT, MOD_SHIFT) && press_key(c[..], a[..], KEY_BACKSPACE, MOD_ALT) && typed(c[..]) == "hello thee";   // with a selection Alt+Backspace takes only it
+  #assert press_key(c[..], a[..], 'a', MOD_CMD) && sel_lo(c[..]) == 0 && sel_hi(c[..]) == 10;
+  composer_paste(c[..], "x");
+  #assert typed(c[..]) == "x";
+  #assert press_key(c[..], a[..], 'a', MOD_CTRL) && selected(c[..]) == "x";   // Zeron binds ctrl- as well as cmd-
+}
+#test "words are UAX 29 segments: punctuation stops, apostrophes and decimal points don't" {
+  c: [1] Composer; a: [1] Atlas;
+  setup(c[..], a[..], "don't stop, 3.14 foo_bar  日本語 カタカナ!");
+  t := typed(c[..]);
+  #assert word_seg_end(t, 0) == 5 && word_seg_end(t, 6) == 10 && word_seg_end(t, 10) == 11;
+  #assert word_seg_end(t, 12) == 16 && word_seg_end(t, 17) == 24 && word_seg_end(t, 24) == 26;
+  #assert word_seg_end(t, 26) == 29;                         // each ideograph alone
+  kata := 36;
+  #assert word_seg_end(t, kata) == kata + 12 && word_seg_end(t, kata + 12) == kata + 13;   // katakana run, then !
+  #assert prev_word(c[..], 11) == 10 && prev_word(c[..], 10) == 6 && prev_word(c[..], 6) == 0;   // the comma is a stop
+  #assert next_word(c[..], 0) == 5 && next_word(c[..], 5) == 10 && next_word(c[..], 10) == 11 && next_word(c[..], 11) == 16;
+  #assert word_from(c[..], 7) == 6 && word_to(c[..], 7) == 10 && word_from(c[..], t.count) == t.count;
+}
+#test "undo rewinds in typed bursts; redo replays; a new edit drops redo" {
+  c: [1] Composer; a: [1] Atlas;
+  setup(c[..], a[..], "");
+  for ch: 0..<5 { composer_insert(c[..], "a"); c[0].clock += 0.1; }
+  composer_insert(c[..], " ");                 // a space starts a step
+  composer_insert(c[..], "b");
+  #assert typed(c[..]) == "aaaaa b";
+  c[0].clock += 2;                             // a pause starts a step
+  composer_insert(c[..], "c");
+  #assert press_key(c[..], a[..], 'z', MOD_CMD) && typed(c[..]) == "aaaaa b";
+  #assert press_key(c[..], a[..], 'z', MOD_CMD) && typed(c[..]) == "aaaaa";
+  #assert press_key(c[..], a[..], 'z', MOD_CMD) && typed(c[..]) == "" && !can_undo(c[..]);
+  #assert press_key(c[..], a[..], 'Z', MOD_CMD | MOD_SHIFT) && typed(c[..]) == "aaaaa" && c[0].caret == 5;
+  #assert press_key(c[..], a[..], 'z', MOD_CTRL | MOD_SHIFT) && typed(c[..]) == "aaaaa b";
+  composer_insert(c[..], "!");
+  #assert !can_redo(c[..]);
+  // backspaces merge; the selection comes back with the text
+  c[0].clock += 2;
+  #assert press_key(c[..], a[..], KEY_BACKSPACE, 0) && press_key(c[..], a[..], KEY_BACKSPACE, 0) && typed(c[..]) == "aaaaa ";
+  #assert press_key(c[..], a[..], 'z', MOD_CMD) && typed(c[..]) == "aaaaa b!";
+  composer_select_all(c[..]);
+  composer_paste(c[..], "q");
+  #assert press_key(c[..], a[..], 'z', MOD_CMD) && typed(c[..]) == "aaaaa b!" && sel_lo(c[..]) == 0 && sel_hi(c[..]) == 8;
+}
+#test "the history keeps 200 steps and drops the oldest" {
+  c: [1] Composer; a: [1] Atlas;
+  setup(c[..], a[..], "");
+  for k: 0..<203 { composer_insert(c[..], " "); }
+  #assert c[0].hist[UNDO].count == UNDO_LIMIT;
+  for k: 0..<UNDO_LIMIT { composer_undo(c[..]); }
+  #assert c[0].n == 3 && !can_undo(c[..]);
+}
+#test "cut takes the selection as its own step; Enter clears as a new document" {
+  c: [1] Composer; a: [1] Atlas;
+  setup(c[..], a[..], "cut me");
+  move_to(c[..], 4); select_to(c[..], 6);
+  #assert selected(c[..]) == "me";
+  composer_cut_selection(c[..]);
+  #assert typed(c[..]) == "cut " && press_key(c[..], a[..], 'z', MOD_CMD) && typed(c[..]) == "cut me";
+  #assert press_key(c[..], a[..], KEY_ENTER, MOD_SHIFT) && typed(c[..]) == "cut \n";
+  #assert press_key(c[..], a[..], KEY_ENTER, 0) && c[0].n == 0 && c[0].sent == 1 && !can_undo(c[..]);
+  #assert press_key(c[..], a[..], KEY_ESCAPE, 0) && !c[0].focused && !press_key(c[..], a[..], KEY_BACKSPACE, 0);
+}
+#test "Home and End reach the logical line, Cmd+Up and Cmd+Down the document; Up and Down keep the column" {
+  c: [1] Composer; a: [1] Atlas;
+  setup(c[..], a[..], "abcdef\nab\nabcdef");
+  move_to(c[..], 12);   // "ab|cdef" on the third line
+  #assert press_key(c[..], a[..], KEY_HOME, MOD_SHIFT) && selected(c[..]) == "ab";
+  #assert press_key(c[..], a[..], KEY_RIGHT, MOD_CMD) && c[0].caret == 16;
+  #assert press_key(c[..], a[..], KEY_UP, 0) && c[0].caret == 9;        // the short line's end
+  #assert press_key(c[..], a[..], KEY_UP, 0) && c[0].caret == 6;        // the column (6 glyphs) comes back
+  #assert press_key(c[..], a[..], KEY_UP, 0) && c[0].caret == 0;        // past the first row: the start
+  #assert press_key(c[..], a[..], KEY_DOWN, MOD_SHIFT | MOD_CMD) && selected(c[..]) == typed(c[..]);
+  #assert press_key(c[..], a[..], KEY_UP, MOD_CMD) && c[0].caret == 0 && c[0].anchor == 0;
+  #assert press_key(c[..], a[..], KEY_DOWN, MOD_SHIFT) && selected(c[..]) == "abcdef\n";
+}
+#test "a press puts the caret, shift extends, two select the word, three the line; a drag keeps the unit" {
+  c: [1] Composer; a: [1] Atlas;
+  setup(c[..], a[..], "alpha beta\ngamma");
+  c[0].x = 0; c[0].y = 0; c[0].w = 800; c[0].h = 200; c[0].text_x = 10; c[0].text_y = 10;
+  row0: f32 = 10 + 5; row1: f32 = 10 + 22.75 + 5;
+  #assert composer_press(c[..], a[..], 10 + 8 * 7 + 2, row0, 1, false) && c[0].caret == 7 && c[0].anchor == 7;
+  composer_release(c[..]);
+  #assert composer_press(c[..], a[..], 10 + 8 * 2, row1, 1, true) && sel_lo(c[..]) == 7 && sel_hi(c[..]) == 13;
+  composer_release(c[..]);
+  #assert composer_press(c[..], a[..], 10 + 8 * 7, row0, 2, false) && selected(c[..]) == "beta";
+  composer_drag(c[..], a[..], 10 + 8, row0);                      // back over "alpha": whole words
+  #assert selected(c[..]) == "alpha beta" && c[0].caret == 0;
+  composer_release(c[..]);
+  #assert composer_press(c[..], a[..], 10 + 8, row0, 3, false) && selected(c[..]) == "alpha beta\n";
+  composer_drag(c[..], a[..], 10 + 8, row1);
+  #assert selected(c[..]) == "alpha beta\ngamma";
+  composer_release(c[..]);
+  #assert composer_press(c[..], a[..], 10 + 8 * 3, row0, 1, false);
+  composer_drag(c[..], a[..], 10 + 8 * 5, row0);
+  #assert selected(c[..]) == "ha";
+  composer_drag(c[..], a[..], 10 + 8 * 400, row1 + 400);            // past the end
+  #assert sel_hi(c[..]) == c[0].n;
+  #assert !composer_press(c[..], a[..], 900, 900, 1, false) && !c[0].focused;
+}
+#test "a click past a soft-wrapped row's end puts the caret at that row's end" {
+  c: [1] Composer; a: [1] Atlas;
+  setup(c[..], a[..], "aaaa bbbb cc");
+  composer_wrap(c[..], a[..], 40);
+  #assert c[0].lines == 3 && c[0].line_end[0] == 5 && c[0].line_at[1] == 5;
+  c[0].x = 0; c[0].y = 0; c[0].w = 800; c[0].h = 200; c[0].text_x = 0; c[0].text_y = 0;
+  #assert composer_press(c[..], a[..], 70, 5, 1, false) && c[0].caret == 5 && c[0].upstream && row_of(c[..], 5, true) == 0;
+  #assert composer_press(c[..], a[..], 0, 30, 1, false) && c[0].caret == 5 && !c[0].upstream && row_of(c[..], 5, false) == 1;
+}
+#test "IME: marked text replaces itself, commits once, and undoes as one step" {
+  c: [1] Composer; a: [1] Atlas;
+  setup(c[..], a[..], "x ");
+  composer_mark(c[..], -1, -1, "n", -1, -1);
+  composer_mark(c[..], -1, -1, "にh", -1, -1);
+  composer_mark(c[..], -1, -1, "にほ", 0, 6);       // the IME selects inside it
+  #assert typed(c[..]) == "x にほ" && c[0].marked && c[0].marked_at == 2 && c[0].marked_end == 8 && sel_lo(c[..]) == 2 && sel_hi(c[..]) == 8;
+  #assert u16_of(c[..], 8) == 4 && byte_of(c[..], 3) == 5 && byte_in("にほ", 1) == 3;
+  composer_replace(c[..], -1, -1, "日本");
+  #assert typed(c[..]) == "x 日本" && !c[0].marked && c[0].caret == 8;
+  #assert press_key(c[..], a[..], 'z', MOD_CMD) && typed(c[..]) == "x ";
+  // a dead key (Option+e, then e): the accent is marked, then replaced
+  composer_mark(c[..], -1, -1, "´", -1, -1);
+  composer_replace(c[..], -1, -1, "é");
+  #assert typed(c[..]) == "x é";
+  // the press-and-hold popup replaces the letter before the caret by range
+  composer_insert(c[..], "a");
+  n := c[0].n;
+  composer_replace(c[..], n - 1, n, "à");
+  #assert typed(c[..]) == "x éà";
+  #assert u16_of(c[..], c[0].n) == 4 && u16_of(c[..], 0) == 0;
+  composer_insert(c[..], "😀");
+  #assert u16_of(c[..], c[0].n) == 6 && byte_of(c[..], 6) == c[0].n && byte_of(c[..], 5) == c[0].n;
 }
 #test "the height is Zeron's: 120 empty, growing a line at a time up to 304" {
   #assert composer_height(1) == 120 && composer_height(2) == 120;
   #assert composer_height(3) == 22.75 * 3 + 20 + 44;
   #assert composer_height(20) == 304;
 }
-#test "text wraps at spaces and at newlines" {
-  f: [1] GpFont; test_font(f[..]);
-  c: [1] Composer;
-  composer_insert(c[..], "aaaa bbbb cc");
-  composer_wrap(c[..], f[0], 80);
+#test "text wraps at spaces and at newlines (CR LF is one)" {
+  c: [1] Composer; a: [1] Atlas;
+  setup(c[..], a[..], "aaaa bbbb cc");
+  composer_wrap(c[..], a[..], 80);
   #assert c[0].lines == 2 && c[0].line_at[1] == 10 && c[0].line_end[0] == 10;
-  c[0].n = 0; c[0].caret = 0;
+  c[0].n = 0; move_to(c[..], 0);
   composer_insert(c[..], "ab\ncd\n");
-  composer_wrap(c[..], f[0], 800);
+  composer_wrap(c[..], a[..], 800);
   #assert c[0].lines == 3 && c[0].line_end[0] == 2 && c[0].line_at[1] == 3 && c[0].line_at[2] == 6;
   #assert line_of(c[..], 6) == 2 && line_of(c[..], 1) == 0;
-  c[0].n = 0; c[0].caret = 0;
-  composer_wrap(c[..], f[0], 800);
+  c[0].n = 0; move_to(c[..], 0);
+  composer_insert(c[..], "ab\r\ncd");
+  composer_wrap(c[..], a[..], 800);
+  #assert c[0].lines == 2 && c[0].line_end[0] == 2 && c[0].line_at[1] == 4;
+  #assert press_key(c[..], a[..], KEY_LEFT, 0) && press_key(c[..], a[..], KEY_LEFT, 0) && press_key(c[..], a[..], KEY_LEFT, 0) && c[0].caret == 2;   // over CR LF at once
+  c[0].n = 0; move_to(c[..], 0);
+  composer_wrap(c[..], a[..], 800);
   #assert c[0].lines == 1;
 }
 #test "the empty composer paints its pill, shadows, placeholder and actions" {
-  a: [1] Atlas;
-  a[0].ready = true; a[0].width = 4096; a[0].height = 4096;
-  for k: 0..<GP_FONTS { for g: 0..<GP_GLYPHS { a[0].fonts[k].advance[g] = 7; } a[0].fonts[k].cell = 64; a[0].fonts[k].cols = 64; }
-  for k: 0..<3 { a[0].icons[k] = GpIcon.{x = 0, y = 0, w = 36, h = 36}; }
+  a: [1] Atlas; test_atlas(a[..]);
   c: [1] Composer;
-  out: [40000] f32;
+  out: [48000] f32;
   n := paint_composer(out[..], 0, c[..], a[..], zeron_dark(), 2, 292, 368, 736);
-  // 2 shadows + pill + 11 placeholder glyphs (the space draws nothing) + paperclip + send + arrow + mark + 20 + 4 + 10 label glyphs
+  // 2 shadows + pill + 11 placeholder glyphs (the space and the ellipsis's cell count once) + paperclip + send + arrow + mark + 20 + 4 + 10 label glyphs
   #assert n == 6 * (3 + 11 + 4 + 20 + 4 + 10);
   #assert c[0].h == 120 && out[GP_VERTEX_FLOATS * 12 + 4] == 584 && out[GP_VERTEX_FLOATS * 12 + 5] == 736;
-  #assert composer_press(c[..], a[..], 300, 400) && c[0].focused && c[0].caret == 0;
-  #assert !composer_press(c[..], a[..], 10, 10) && !c[0].focused;
+  #assert composer_press(c[..], a[..], 300, 400, 1, false) && c[0].focused && c[0].caret == 0;
+  #assert !composer_press(c[..], a[..], 10, 10, 1, false) && !c[0].focused;
+}
+#test "a selection paints as Zeron's: under the text, row by row to the box's right edge, no caret" {
+  a: [1] Atlas; test_atlas(a[..]);
+  c: [1] Composer;
+  c[0].focused = true;
+  composer_insert(c[..], "abc\ndef\nghi");
+  move_to(c[..], 1); select_to(c[..], 9);
+  out: [48000] f32;
+  n := paint_composer(out[..], 0, c[..], a[..], zeron_dark(), 2, 100, 100, 736);
+  // shadows and pill, then the three selection quads
+  q := GP_VERTEX_FLOATS * 6 * 3;
+  left: f32 = 100 + 17;
+  ty: f32 = 100 + 17;
+  #assert out[q + 4] == snap(left + 8, 2) && out[q + 5] == snap(ty, 2) && out[q + 4] + out[q + 6] == snap(left + 702, 2);
+  #assert out[q + 12] == zeron_dark().selection.r && abs(out[q + 15] - 0.349) < 0.001;
+  q2 := q + GP_VERTEX_FLOATS * 6;
+  #assert out[q2 + 4] == snap(left, 2) && out[q2 + 5] == snap(ty + 22.75, 2) && out[q2 + 6] == snap(left + 702, 2) - snap(left, 2);
+  q3 := q2 + GP_VERTEX_FLOATS * 6;
+  #assert out[q3 + 4] == snap(left, 2) && out[q3 + 6] == snap(left + 8, 2) - snap(left, 2) && out[q3 + 5] == snap(ty + 45.5, 2);
+  // the text box is clipped
+  #assert out[q + 20] == snap(left, 2) && out[q + 22] == snap(left + 702, 2);
+  // 9 glyphs follow, and no caret: the next is the paperclip
+  #assert out[q3 + GP_VERTEX_FLOATS * 6 * 10 + 2] == GP_SPRITE && out[q3 + GP_VERTEX_FLOATS * 6 * 10 + 20] == -GP_NO_CLIP;
+  #assert n == 6 * (3 + 3 + 9 + 4 + 20 + 4 + 10);
+}
+#test "the composition is underlined; long text scrolls to keep the caret in view" {
+  a: [1] Atlas; test_atlas(a[..]);
+  c: [1] Composer;
+  c[0].focused = true;
+  composer_insert(c[..], "ab");
+  composer_mark(c[..], -1, -1, "cd", -1, -1);
+  out: [48000] f32;
+  n := paint_composer(out[..], 0, c[..], a[..], zeron_dark(), 2, 100, 100, 736);
+  u := GP_VERTEX_FLOATS * 6 * (3 + 4);
+  // the underline under "cd": x 16 px in, 16 wide, 2 device px tall in the text color
+  #assert out[u + 2] == GP_QUAD && out[u + 4] == 266 && out[u + 6] == 32 && out[u + 7] == 2 && out[u + 12] == zeron_dark().text.r;
+  for k: 0..<30 { composer_insert(c[..], "\n"); }
+  n = paint_composer(out[..], 0, c[..], a[..], zeron_dark(), 2, 100, 100, 736);
+  #assert n > 0 && c[0].view_h == 240 && c[0].scroll == 31.0 * 22.75 - 240;
+  #assert composer_wheel(c[..], 100) && c[0].scroll == 31.0 * 22.75 - 340 && !c[0].follow;
 }

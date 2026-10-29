@@ -212,10 +212,7 @@ final class App: NSObject, NSApplicationDelegate {
       guard let lines = backend.pushed() else { return }
       Array(lines.utf8).withUnsafeBufferPointer { dk_message(chatState, 603, $0.baseAddress, Int32($0.count)) }
     }
-    let menu = NSMenu(), item = NSMenuItem(), sub = NSMenu()
-    sub.addItem(withTitle: "Quit OpenAgents", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-    item.submenu = sub; menu.addItem(item)
-    NSApp.mainMenu = menu
+    NSApp.mainMenu = App.menus()
     window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1320, height: 880),
                       styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
     window.title = "OpenAgents"
@@ -239,6 +236,48 @@ final class App: NSObject, NSApplicationDelegate {
     NSApp.activate(ignoringOtherApps: true)
   }
   func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { true }
+
+  // Zeron's menu bar (crates/ui/src/app_menus.rs) for what this app has: the
+  // app menu, Edit (the composer's Undo, Redo, Cut, Copy, Paste, Select All,
+  // by their native selectors through the responder chain; AppKit adds
+  // Dictation and Emoji & Symbols to a menu titled Edit), and Window.
+  static func menus() -> NSMenu {
+    let bar = NSMenu()
+    func menu(_ title: String, _ items: [NSMenuItem]) {
+      let top = NSMenuItem(), sub = NSMenu(title: title)
+      for i in items { sub.addItem(i) }
+      top.submenu = sub; bar.addItem(top)
+    }
+    func item(_ title: String, _ action: Selector?, _ key: String = "", _ mods: NSEvent.ModifierFlags = .command) -> NSMenuItem {
+      let i = NSMenuItem(title: title, action: action, keyEquivalent: key)
+      i.keyEquivalentModifierMask = mods
+      return i
+    }
+    let services = NSMenuItem(title: "Services", action: nil, keyEquivalent: ""), servicesMenu = NSMenu(title: "Services")
+    services.submenu = servicesMenu; NSApp.servicesMenu = servicesMenu
+    menu("OpenAgents", [
+      item("About OpenAgents", #selector(NSApplication.orderFrontStandardAboutPanel(_:))), .separator(),
+      services, .separator(),
+      item("Hide OpenAgents", #selector(NSApplication.hide(_:)), "h"),
+      item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
+      item("Show All", #selector(NSApplication.unhideAllApplications(_:))), .separator(),
+      item("Quit OpenAgents", #selector(NSApplication.terminate(_:)), "q"),
+    ])
+    menu("Edit", [
+      item("Undo", #selector(ZeronView.undo(_:)), "z"),
+      item("Redo", #selector(ZeronView.redo(_:)), "z", [.command, .shift]), .separator(),
+      item("Cut", #selector(ZeronView.cut(_:)), "x"),
+      item("Copy", #selector(ZeronView.copy(_:)), "c"),
+      item("Paste", #selector(ZeronView.paste(_:)), "v"), .separator(),
+      item("Select All", #selector(ZeronView.selectAll(_:)), "a"),
+    ])
+    let window = [item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
+                  item("Zoom", #selector(NSWindow.performZoom(_:))), .separator(),
+                  item("Close Window", #selector(NSWindow.performClose(_:)), "w")]
+    menu("Window", window)
+    NSApp.windowsMenu = bar.items.last?.submenu
+    return bar
+  }
 }
 
 // --route TEXT: Mammoth's decision for TEXT on this Mac, printed; no window (a live check of the Lab's router).

@@ -34,8 +34,26 @@ How it works:
   the chips of `pickers.rs`) in its expanded new-chat form, in Zeron Dark on
   the opaque surface. `zeron/screen.coax` is the new chat screen: the canvas
   and the composer where Zeron's new chat puts it. It is connected to
-  nothing: typing, the caret, Backspace and Delete (with Alt and Cmd),
-  the arrows, wrapping, growing and the placeholder work; Enter clears.
+  nothing: Enter clears the text as Zeron's submit does.
+- Text editing is Zeron's (`ComposerInput` in `composer.rs`), in Coax: a
+  selection with an anchor and a caret; Zeron's keymap (Shift, Alt and Cmd
+  arrows, Home/End and Cmd+Left/Right to the logical line, Cmd+Up/Down to the
+  document, Up/Down keeping the column, Alt/Cmd+Backspace and Delete, the
+  same chords on Ctrl for Z, A, C, X, V); typing or pasting over a selection
+  replaces it; undo and redo in typed bursts (700 ms, 200 steps, a paste or
+  cut its own step); click, Shift+click, drag, double-click word and
+  triple-click line, a drag keeping its unit; caret and selection by
+  grapheme, words by UAX #29; scrolling once the text passes 260px; the
+  selection drawn as Zeron's (the accent at 0.35, row by row to the box's
+  right edge, no caret over it). The host adds Zeron's menu bar (app menu;
+  Edit with Undo, Redo, Cut, Copy, Paste, Select All, to which AppKit adds
+  Dictation and Emoji & Symbols; Window), the pasteboard, and
+  `NSTextInputClient` for IME composition (underlined as GPUI underlines
+  marked text), dead keys, the accent popup and the emoji picker. Text the
+  atlas lacks (other scripts, accents, emoji) goes through a glyph cache as
+  GPUI's does: Coax asks for each new grapheme, the host shapes it with
+  CoreText and rasterizes its cells (emoji into a color atlas). Zeron's
+  composer has no context menu, so neither does this one.
 - The app opens on that screen. The HUD chat, LAB and router
   (`chat.coax`, `router.coax`) stay in the tree and build, unshown.
 - Licenses and attribution: `apps/openagents-desktop/zeron/NOTICE`.
@@ -47,10 +65,16 @@ CoreSVG rather than resvg, differ at their antialiased edges (0.2% of the
 composer region's pixels, at most 24 of 255 in a channel). Not yet drawn: the
 project and device selectors above the composer, the titlebar, the
 microphone (Zeron hides it while dictation is off), the pickers' menus, and
-hover states.
+hover states. Selections against Zeron's render of the same keystrokes (one
+row, Shift+Alt+Left twice; three rows, Shift+Up twice): text and selection
+identical, pixel for pixel. Not ported from Zeron's input: mentions and
+chips, Markdown list continuation on Enter and Tab, dictation, attachments
+from pasted files or images.
 
 Rebuild and look: `apps/openagents-desktop/build.sh --open`; an offscreen PNG:
-`build/OpenAgents.app/Contents/MacOS/OpenAgents --shot out.png [--click X,Y] [--type TEXT]`.
+`build/OpenAgents.app/Contents/MacOS/OpenAgents --shot out.png [--click X,Y] [--type TEXT] [--do STEPS]`,
+where STEPS drive the keyboard, mouse, menus and IME (`Sources/Zeron.swift`
+`shot`), e.g. `--do "key shift+alt+left ; menu Copy ; click 900,792,2 ; menu Paste"`.
 
 ## What came before
 

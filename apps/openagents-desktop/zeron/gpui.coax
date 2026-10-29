@@ -14,8 +14,9 @@
 // gives Coax each font's metrics and each icon's tile (gp_font_*, gp_icon).
 // Based on Zeron by Wing, MIT.
 
-GP_VERTEX_FLOATS :: 20;
-GP_QUAD :: 0.0; GP_SHADOW :: 1.0; GP_SPRITE :: 2.0;
+GP_VERTEX_FLOATS :: 24;
+GP_QUAD :: 0.0; GP_SHADOW :: 1.0; GP_SPRITE :: 2.0; GP_COLOR_SPRITE :: 3.0;
+GP_NO_CLIP :: 1000000.0;
 GP_SUBPIXEL :: 4;           // gpui text_system.rs SUBPIXEL_VARIANTS_X
 GP_DILATIONS :: 5;          // gpui_macos glyph_dilation_for_color: levels 0..4
 GP_SVG_SCALE :: 2.0;        // gpui svg_renderer.rs SMOOTH_SVG_SCALE_FACTOR
@@ -25,6 +26,27 @@ GP_ICONS :: 8;
 // The glyphs the atlas holds, in order: ASCII 32..126, then these.
 GP_EXTRA :: [3] u32.[0x2026, 0x2022, 0x00A0];   // … • no-break space
 GP_GLYPHS :: 98;
+
+// The glyph cache (below): graphemes, and their rasterized cells.
+GP_DYN_SLOTS :: 512;
+GP_DYN_HASH :: 1024;
+GP_DYN_VARIANTS :: 20;      // GP_DILATIONS * GP_SUBPIXEL
+GP_DYN_MONO :: 2048;        // cells 0..<2048 in the main atlas
+GP_DYN_CELLS :: 2304;       // then 256 in the color atlas
+GP_CLUSTER_MAX :: 32;
+
+// A grapheme the atlas lacks: its bytes in a font, the advance the host
+// measured, whether it is a color glyph, and its cells (cell + 1 for each
+// dilation and subpixel; a color glyph has one). state 0 free, 1 waiting
+// for the host to measure, 2 measured.
+GpCluster :: struct {
+  font: int; n: int; bytes: [GP_CLUSTER_MAX] u8;
+  advance: f32; color: bool; state: int; used: int;
+  cell: [GP_DYN_VARIANTS] int;
+}
+// A rasterized cell of a cached grapheme. state 0 free, 1 waiting for the
+// host to draw it, 2 ready.
+GpCell :: struct { slot: int; level: int; variant: int; state: int; used: int; }
 
 Rgba :: struct { r: f32; g: f32; b: f32; a: f32; }
 
@@ -48,6 +70,15 @@ Atlas :: struct {
   fonts: [GP_FONTS] GpFont;
   icons: [GP_ICONS] GpIcon;
   ready: bool;
+  // the glyph cache: dyn_size-pixel cells with the pen at (dyn_pen_x,
+  // dyn_pen_y), mono ones from dyn_y0 in dyn_cols columns, color ones in the
+  // color atlas (color_width x color_height) in color_cols columns
+  frame: int;
+  clusters: [GP_DYN_SLOTS] GpCluster;
+  hash: [GP_DYN_HASH] int; tombs: int;
+  cells: [GP_DYN_CELLS] GpCell;
+  dyn_size: f32; dyn_pen_x: f32; dyn_pen_y: f32; dyn_y0: f32; dyn_cols: int;
+  color_cols: int; color_width: f32; color_height: f32;
 }
 
 // ---------------------------------------------------------------- colors
@@ -82,6 +113,9 @@ round_half_toward_zero :: (v: f32) -> f32 {
   m := ceil(abs(v) - 0.5);
   return ifx v < 0 then -m else m;
 }
+// Taffy's layout rounding (GPUI lays out with rounding on): each box's edges
+// land on whole logical pixels, rounded half away from zero.
+round_layout :: (v: f32) -> f32 { return ifx v < 0 then -floor(-v + 0.5) else floor(v + 0.5); }
 snap :: (v: f32, d: f32) -> f32 { return round_half_toward_zero(v * d); }
 snap_stroke :: (v: f32, d: f32) -> f32 {
   if v == 0 { return 0; }
@@ -108,8 +142,23 @@ emit :: (out: [] f32, at: int, x0: f32, y0: f32, x1: f32, y1: f32, kind: f32, bl
     out[o + 8] = radius; out[o + 9] = border; out[o + 10] = us[k]; out[o + 11] = vs[k];
     out[o + 12] = fill.r; out[o + 13] = fill.g; out[o + 14] = fill.b; out[o + 15] = fill.a;
     out[o + 16] = edge.r; out[o + 17] = edge.g; out[o + 18] = edge.b; out[o + 19] = edge.a;
+    out[o + 20] = -GP_NO_CLIP; out[o + 21] = -GP_NO_CLIP; out[o + 22] = GP_NO_CLIP; out[o + 23] = GP_NO_CLIP;
   }
   return at + 6;
+}
+
+// GPUI's content mask: vertices from..<to draw only inside the logical
+// rectangle (snapped as window.rs snapped_content_mask does).
+gp_clip :: (out: [] f32, from: int, to: int, d: f32, x: f32, y: f32, w: f32, h: f32) {
+  x0 := snap(x, d); y0 := snap(y, d); x1 := snap(x + w, d); y1 := snap(y + h, d);
+  for k: from..<to {
+    o := k * GP_VERTEX_FLOATS;
+    if o + GP_VERTEX_FLOATS > out.count { return; }
+    if x0 > out[o + 20] { out[o + 20] = x0; }
+    if y0 > out[o + 21] { out[o + 21] = y0; }
+    if x1 < out[o + 22] { out[o + 22] = x1; }
+    if y1 < out[o + 23] { out[o + 23] = y1; }
+  }
 }
 
 // GPUI paint_quad: a rect of logical bounds, corner radius and border width,
@@ -145,6 +194,16 @@ paint_sprite :: (out: [] f32, at: int, a: [] Atlas, x0: f32, y0: f32, x1: f32, y
               tx / W, ty / H, (tx + tw) / W, (ty + th) / H, color, color);
 }
 
+// A color glyph from the color atlas, its own colors at the opacity (GPUI
+// paint_emoji, polychrome_sprite_fragment).
+paint_color_sprite :: (out: [] f32, at: int, a: [] Atlas, x0: f32, y0: f32, x1: f32, y1: f32,
+                       tx: f32, ty: f32, tw: f32, th: f32, alpha: f32) -> int {
+  if alpha <= 0 || a[0].color_width <= 0 { return at; }
+  W := a[0].color_width; H := a[0].color_height;
+  return emit(out, at, x0, y0, x1, y1, GP_COLOR_SPRITE, 0, x0, y0, x1 - x0, y1 - y0, 0, 0,
+              tx / W, ty / H, (tx + tw) / W, (ty + th) / H, rgba(1, 1, 1, alpha), rgba(1, 1, 1, alpha));
+}
+
 // GPUI paint_svg: an icon of logical size centered in a logical box. The
 // tile is GP_SVG_SCALE times the device size, drawn at half.
 paint_icon :: (out: [] f32, at: int, a: [] Atlas, d: f32, icon: int, x: f32, y: f32, w: f32, h: f32, color: Rgba) -> int {
@@ -174,6 +233,44 @@ rune_at :: (text: string, i: int) -> Rune {
   return Rune.{code = c, len = n};
 }
 
+// A code point that joins the one before it into one grapheme: combining
+// marks, variation selectors, emoji skin tones and tags.
+is_extend :: (c: u32) -> bool {
+  return (c >= 0x300 && c <= 0x36F) || (c >= 0x483 && c <= 0x489) || (c >= 0x591 && c <= 0x5C7) ||
+         (c >= 0x610 && c <= 0x61A) || (c >= 0x64B && c <= 0x65F) || (c >= 0x1AB0 && c <= 0x1AFF) ||
+         (c >= 0x1DC0 && c <= 0x1DFF) || (c >= 0x20D0 && c <= 0x20FF) || (c >= 0x3099 && c <= 0x309A) ||
+         (c >= 0xFE00 && c <= 0xFE0F) || (c >= 0xFE20 && c <= 0xFE2F) || (c >= 0x1F3FB && c <= 0x1F3FF) ||
+         (c >= 0xE0020 && c <= 0xE007F) || (c >= 0xE0100 && c <= 0xE01EF);
+}
+is_regional :: (c: u32) -> bool { return c >= 0x1F1E6 && c <= 0x1F1FF; }
+
+// The bytes of the grapheme at byte i (what GPUI's caret steps over: a
+// letter with its marks, an emoji with its modifiers and joiners, a flag,
+// CR LF). 0 at the end.
+cluster_len :: (text: string, i: int) -> int {
+  if i >= text.count { return 0; }
+  r := rune_at(text, i);
+  k := i + r.len;
+  if r.code == '\r' && k < text.count && text[k] == '\n' { return 2; }
+  if r.code < 0x80 && (k >= text.count || text[k] < 0x80) { return r.len; }
+  if is_regional(r.code) && k < text.count {
+    r2 := rune_at(text, k);
+    if is_regional(r2.code) { k += r2.len; }
+  }
+  while k < text.count {
+    r2 := rune_at(text, k);
+    if r2.code == 0x200D {
+      k += r2.len;
+      if k < text.count { k += rune_at(text, k).len; }
+    } else if is_extend(r2.code) {
+      k += r2.len;
+    } else {
+      break;
+    }
+  }
+  return k - i;
+}
+
 // A code point's glyph in the atlas, or -1.
 glyph_of :: (code: u32) -> int {
   if code >= 32 && code <= 126 { return cast(int) code - 32; }
@@ -182,37 +279,194 @@ glyph_of :: (code: u32) -> int {
   return -1;
 }
 
-// The pen position after each glyph of text: CoreText's advances and kerning,
-// as GPUI's shaped line places them. Returns the width (logical px).
-text_width :: (f: GpFont, text: string) -> f32 {
+// ---------------------------------------------------------------- the glyph cache
+//
+// Everything else (accents, other scripts, emoji: what IME and paste bring)
+// is GPUI's glyph cache: a grapheme the atlas lacks gets a cluster slot the
+// first frame it is measured, the host shapes it with CoreText (its advance,
+// and whether it is a color glyph) and rasterizes the cells painted with it,
+// in the dynamic part of the atlas (or the color atlas for emoji). It shows
+// from the next frame. Slots and cells are reused least recently used.
+
+dyn_hash_of :: (font: int, text: string, i: int, n: int) -> int {
+  h := font + 7;
+  for k: 0..<n { h = (h * 31 + cast(int) text[i + k]) % 1000003; }
+  return h % GP_DYN_HASH;
+}
+dyn_same :: (c: GpCluster, font: int, text: string, i: int, n: int) -> bool {
+  if c.font != font || c.n != n { return false; }
+  for k: 0..<n { if c.bytes[k] != text[i + k] { return false; } }
+  return true;
+}
+// The slot holding text[i..<i+n] in font, or -1.
+dyn_find :: (a: [] Atlas, font: int, text: string, i: int, n: int) -> int {
+  h := dyn_hash_of(font, text, i, n);
+  for probe: 0..<GP_DYN_HASH {
+    e := a[0].hash[(h + probe) % GP_DYN_HASH];
+    if e == 0 { return -1; }
+    if e > 0 && dyn_same(a[0].clusters[e - 1], font, text, i, n) { return e - 1; }
+  }
+  return -1;
+}
+dyn_insert :: (a: [] Atlas, slot: int) {
+  c := a[0].clusters[slot];
+  h := dyn_hash_of(c.font, cast(string) c.bytes[0..<c.n], 0, c.n);
+  for probe: 0..<GP_DYN_HASH {
+    k := (h + probe) % GP_DYN_HASH;
+    if a[0].hash[k] <= 0 {
+      if a[0].hash[k] < 0 { a[0].tombs -= 1; }
+      a[0].hash[k] = slot + 1;
+      return;
+    }
+  }
+}
+dyn_rehash :: (a: [] Atlas) {
+  for k: 0..<GP_DYN_HASH { a[0].hash[k] = 0; }
+  a[0].tombs = 0;
+  for s: 0..<GP_DYN_SLOTS { if a[0].clusters[s].state != 0 { dyn_insert(a, s); } }
+}
+dyn_free_cell :: (a: [] Atlas, cell: int) {
+  s := a[0].cells[cell].slot;
+  if a[0].cells[cell].state != 0 && s >= 0 && s < GP_DYN_SLOTS {
+    k := a[0].cells[cell].level * GP_SUBPIXEL + a[0].cells[cell].variant;
+    if a[0].clusters[s].cell[k] == cell + 1 { a[0].clusters[s].cell[k] = 0; }
+  }
+  a[0].cells[cell].state = 0;
+}
+// Frees the least recently used slot not used this frame; -1 when every slot is.
+dyn_alloc :: (a: [] Atlas) -> int {
+  best := -1;
+  for s: 0..<GP_DYN_SLOTS {
+    if a[0].clusters[s].state == 0 { return s; }
+    if a[0].clusters[s].used < a[0].frame && (best < 0 || a[0].clusters[s].used < a[0].clusters[best].used) { best = s; }
+  }
+  if best < 0 { return -1; }
+  for k: 0..<GP_DYN_VARIANTS { if a[0].clusters[best].cell[k] > 0 { dyn_free_cell(a, a[0].clusters[best].cell[k] - 1); } }
+  // its hash entry becomes a tombstone
+  c := a[0].clusters[best];
+  h := dyn_hash_of(c.font, cast(string) c.bytes[0..<c.n], 0, c.n);
+  for probe: 0..<GP_DYN_HASH {
+    k := (h + probe) % GP_DYN_HASH;
+    if a[0].hash[k] == 0 { break; }
+    if a[0].hash[k] == best + 1 { a[0].hash[k] = -1; a[0].tombs += 1; break; }
+  }
+  a[0].clusters[best].state = 0;
+  if a[0].tombs > GP_DYN_HASH / 4 { dyn_rehash(a); }
+  return best;
+}
+// The slot for a grapheme, made (and wanted from the host) when new; -1 when
+// the cache is full this frame or the grapheme is too long.
+dyn_slot :: (a: [] Atlas, font: int, text: string, i: int, n: int) -> int {
+  if n > GP_CLUSTER_MAX { return -1; }
+  s := dyn_find(a, font, text, i, n);
+  if s < 0 {
+    s = dyn_alloc(a);
+    if s < 0 { return -1; }
+    a[0].clusters[s].font = font; a[0].clusters[s].n = n;
+    for k: 0..<n { a[0].clusters[s].bytes[k] = text[i + k]; }
+    for k: 0..<GP_DYN_VARIANTS { a[0].clusters[s].cell[k] = 0; }
+    a[0].clusters[s].state = 1; a[0].clusters[s].advance = 0; a[0].clusters[s].color = false;
+    dyn_insert(a, s);
+  }
+  a[0].clusters[s].used = a[0].frame;
+  return s;
+}
+// A ready cell of slot s for (level, variant), asking for it when missing; -1 until ready.
+dyn_cell :: (a: [] Atlas, s: int, level: int, variant: int) -> int {
+  color := a[0].clusters[s].color;
+  k := ifx color then 0 else level * GP_SUBPIXEL + variant;
+  have := a[0].clusters[s].cell[k];
+  if have > 0 {
+    a[0].cells[have - 1].used = a[0].frame;
+    return ifx a[0].cells[have - 1].state == 2 then have - 1 else -1;
+  }
+  from := ifx color then GP_DYN_MONO else 0;
+  to := ifx color then GP_DYN_CELLS else GP_DYN_MONO;
+  best := -1;
+  for c: from..<to {
+    if a[0].cells[c].state == 0 { best = c; break; }
+    if a[0].cells[c].used < a[0].frame && (best < 0 || a[0].cells[c].used < a[0].cells[best].used) { best = c; }
+  }
+  if best < 0 { return -1; }
+  dyn_free_cell(a, best);
+  a[0].cells[best] = GpCell.{slot = s, level = ifx color then 0 else level, variant = ifx color then 0 else variant, state = 1, used = a[0].frame};
+  a[0].clusters[s].cell[k] = best + 1;
+  return -1;
+}
+// A dynamic cell's texel origin: mono cells in the main atlas below the
+// fonts and icons, color cells in the color atlas.
+dyn_cell_x :: (a: [] Atlas, cell: int) -> f32 {
+  if cell >= GP_DYN_MONO { return cast(f32) ((cell - GP_DYN_MONO) % a[0].color_cols) * a[0].dyn_size; }
+  return cast(f32) (cell % a[0].dyn_cols) * a[0].dyn_size;
+}
+dyn_cell_y :: (a: [] Atlas, cell: int) -> f32 {
+  if cell >= GP_DYN_MONO { return cast(f32) ((cell - GP_DYN_MONO) / a[0].color_cols) * a[0].dyn_size; }
+  return a[0].dyn_y0 + cast(f32) (cell / a[0].dyn_cols) * a[0].dyn_size;
+}
+
+// One step of a shaped line: the grapheme at byte i, its bytes, its glyph
+// (>= 0 in the atlas) or cache slot (slot >= 0), and its advance with any
+// kerning against the glyph before it.
+GpStep :: struct { len: int; glyph: int; slot: int; advance: f32; }
+
+gp_step :: (a: [] Atlas, font: int, text: string, i: int, prev: int) -> GpStep {
+  n := cluster_len(text, i);
+  r := rune_at(text, i);
+  g := ifx n == r.len then glyph_of(r.code) else -1;
+  if g >= 0 {
+    k := ifx prev >= 0 then a[0].fonts[font].kern[prev * GP_GLYPHS + g] else 0.0f32;
+    return GpStep.{len = n, glyph = g, slot = -1, advance = k + a[0].fonts[font].advance[g]};
+  }
+  if r.code < 32 { return GpStep.{len = n, glyph = -1, slot = -1, advance = 0}; }   // controls draw nothing
+  s := dyn_slot(a, font, text, i, n);
+  if s < 0 {
+    q := glyph_of('?');
+    return GpStep.{len = n, glyph = q, slot = -1, advance = a[0].fonts[font].advance[q]};
+  }
+  adv := ifx a[0].clusters[s].state == 2 then a[0].clusters[s].advance else 0.0f32;
+  return GpStep.{len = n, glyph = -1, slot = s, advance = adv};
+}
+
+// The width of text (logical px): CoreText's advances and kerning, as GPUI's
+// shaped line places them.
+text_width :: (a: [] Atlas, font: int, text: string) -> f32 {
   x: f32 = 0; prev := -1; i := 0;
   while i < text.count {
-    r := rune_at(text, i); i += r.len;
-    g := glyph_of(r.code);
-    if g < 0 { g = glyph_of('?'); }
-    if prev >= 0 { x += f.kern[prev * GP_GLYPHS + g]; }
-    x += f.advance[g]; prev = g;
+    st := gp_step(a, font, text, i, prev);
+    x += st.advance; prev = st.glyph; i += st.len;
   }
   return x;
 }
 
 // The pen x at byte offset `upto` of text (logical px from the start).
-text_x :: (f: GpFont, text: string, upto: int) -> f32 {
+text_x :: (a: [] Atlas, font: int, text: string, upto: int) -> f32 {
   n := ifx upto < text.count then upto else text.count;
-  return text_width(f, cast(string) text[0..<n]);
+  return text_width(a, font, cast(string) text[0..<n]);
 }
 
-// The byte offset in text nearest the logical x.
-text_offset :: (f: GpFont, text: string, x: f32) -> int {
+// The x of the glyph at byte `upto` (its kerning included, as CoreText
+// positions it; GPUI's x_for_index), or the width at the end.
+text_x_at :: (a: [] Atlas, font: int, text: string, upto: int) -> f32 {
   pen: f32 = 0; prev := -1; i := 0;
   while i < text.count {
-    r := rune_at(text, i);
-    g := glyph_of(r.code);
-    if g < 0 { g = glyph_of('?'); }
-    k := ifx prev >= 0 then f.kern[prev * GP_GLYPHS + g] else 0.0f32;
-    step := k + f.advance[g];
-    if x < pen + step * 0.5 { return i; }
-    pen += step; prev = g; i += r.len;
+    st := gp_step(a, font, text, i, prev);
+    if i >= upto { return pen + (ifx st.glyph >= 0 then st.advance - a[0].fonts[font].advance[st.glyph] else 0.0f32); }
+    pen += st.advance; prev = st.glyph; i += st.len;
+  }
+  return pen;
+}
+
+// GPUI's closest_index_for_x: the first glyph whose x is at or past x, or
+// the one before it, whichever x is nearer; past every glyph's x, the end.
+text_offset :: (a: [] Atlas, font: int, text: string, x: f32) -> int {
+  pen: f32 = 0; prev := -1; i := 0;
+  prev_index := 0; prev_x: f32 = 0;
+  while i < text.count {
+    st := gp_step(a, font, text, i, prev);
+    origin := pen + (ifx st.glyph >= 0 then st.advance - a[0].fonts[font].advance[st.glyph] else 0.0f32);
+    if origin >= x { return ifx origin - x < x - prev_x then i else prev_index; }
+    prev_index = i; prev_x = origin;
+    pen += st.advance; prev = st.glyph; i += st.len;
   }
   return text.count;
 }
@@ -222,34 +476,45 @@ text_offset :: (f: GpFont, text: string, x: f32) -> int {
 // (top + (line_height - ascent - descent) / 2 + ascent). Each glyph's origin
 // snaps to a quarter device pixel in x and a whole one in y, as
 // window.rs paint_glyph does, and draws the cell rasterized for that
-// subpixel and for the color's dilation.
+// subpixel and for the color's dilation. A color glyph (emoji) lands on a
+// whole pixel and draws its own colors (paint_emoji).
 paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: string, x: f32, top: f32, line_height: f32, color: Rgba) -> int {
   if font < 0 || font >= GP_FONTS || !a[0].ready { return at; }
-  f := a[0].fonts[font];
-  baseline := top + (line_height - f.ascent - f.descent) / 2 + f.ascent;
+  baseline := top + (line_height - a[0].fonts[font].ascent - a[0].fonts[font].descent) / 2 + a[0].fonts[font].ascent;
   level := dilation(color);
   v := at; pen := x; prev := -1; i := 0;
   sub := cast(f32) GP_SUBPIXEL;
+  cols := a[0].fonts[font].cols; size := a[0].fonts[font].cell;
   while i < text.count {
-    r := rune_at(text, i); i += r.len;
-    g := glyph_of(r.code);
-    if g < 0 { g = glyph_of('?'); }
-    if prev >= 0 { pen += f.kern[prev * GP_GLYPHS + g]; }
+    st := gp_step(a, font, text, i, prev);
+    r := rune_at(text, i);
+    pen += st.advance - (ifx st.glyph >= 0 then a[0].fonts[font].advance[st.glyph] else st.advance);   // the kerning first
     qx := round_half_toward_zero(pen * d * sub) / sub;
     qy := round_half_toward_zero(baseline * d);
     variant := cast(int) ((qx - floor(qx)) * sub);
     ox := floor(qx); oy := qy;
-    if r.code != ' ' && r.code != 0xA0 {
-      cell := (level * GP_SUBPIXEL + variant) * GP_GLYPHS + g;
-      tx := cast(f32) (cell % f.cols) * f.cell;
-      ty := f.y0 + cast(f32) (cell / f.cols) * f.cell;
-      v = paint_sprite(out, v, a, ox - f.pen_x, oy - f.pen_y, ox - f.pen_x + f.cell, oy - f.pen_y + f.cell, tx, ty, f.cell, f.cell, color);
+    if st.glyph >= 0 && r.code != ' ' && r.code != 0xA0 {
+      cell := (level * GP_SUBPIXEL + variant) * GP_GLYPHS + st.glyph;
+      tx := cast(f32) (cell % cols) * size;
+      ty := a[0].fonts[font].y0 + cast(f32) (cell / cols) * size;
+      v = paint_sprite(out, v, a, ox - a[0].fonts[font].pen_x, oy - a[0].fonts[font].pen_y, ox - a[0].fonts[font].pen_x + size, oy - a[0].fonts[font].pen_y + size, tx, ty, size, size, color);
+    } else if st.slot >= 0 && a[0].clusters[st.slot].state == 2 && a[0].dyn_size > 0 {
+      c := dyn_cell(a, st.slot, level, variant);
+      if c >= 0 {
+        ds := a[0].dyn_size; px := a[0].dyn_pen_x; py := a[0].dyn_pen_y;
+        if c >= GP_DYN_MONO {
+          ex := floor(pen * d);
+          v = paint_color_sprite(out, v, a, ex - px, oy - py, ex - px + ds, oy - py + ds, dyn_cell_x(a, c), dyn_cell_y(a, c), ds, ds, color.a);
+        } else {
+          v = paint_sprite(out, v, a, ox - px, oy - py, ox - px + ds, oy - py + ds, dyn_cell_x(a, c), dyn_cell_y(a, c), ds, ds, color);
+        }
+      }
     }
-    pen += f.advance[g]; prev = g;
+    pen += ifx st.glyph >= 0 then a[0].fonts[font].advance[st.glyph] else st.advance;
+    prev = st.glyph; i += st.len;
   }
   return v;
 }
-
 // ---------------------------------------------------------------- checks
 
 #test "colors, opacity and flattening are GPUI's" {
@@ -266,7 +531,7 @@ paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: strin
   #assert snap_stroke(0.25, 2) == 1 && snap_stroke(1, 2) == 2 && snap_stroke(0, 2) == 0;
 }
 #test "a quad is six vertices carrying its snapped bounds, radius and border" {
-  out: [120] f32;
+  out: [144] f32;
   n := paint_quad(out[..], 0, 2, 10, 20, 100, 50, 26, 1, hex(0x343438, 1), rgba(1, 1, 1, 0.1));
   #assert n == 6;
   #assert out[4] == 20 && out[5] == 40 && out[6] == 200 && out[7] == 100 && out[8] == 52 && out[9] == 2;
@@ -275,21 +540,70 @@ paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: strin
   #assert paint_quad(out[..], 18, 2, 0, 0, 10, 10, 0, 0, hex(0, 1), hex(0, 1)) == 18;   // no room
 }
 #test "a shadow covers three blurs past its spread bounds" {
-  out: [120] f32;
+  out: [144] f32;
   n := paint_shadow(out[..], 0, 2, 0, 0, 100, 50, 26, 0, 10, 15, -3, rgba(0, 0, 0, 0.1));
   #assert n == 6 && out[2] == GP_SHADOW && out[3] == 30;
   #assert out[4] == 6 && out[5] == 26 && out[6] == 188 && out[7] == 88;
   #assert out[0] == 6 - 90;
 }
 #test "text measures with advances and kerning, and finds offsets" {
-  f: GpFont;
-  for g: 0..<GP_GLYPHS { f.advance[g] = 7; }
-  f.kern[glyph_of('A') * GP_GLYPHS + glyph_of('V')] = -1;
-  #assert text_width(f, "AV") == 13 && text_width(f, "VA") == 14;
-  #assert text_width(f, "a…") == 14;   // the ellipsis is one glyph
-  #assert text_x(f, "abc", 2) == 14 && text_x(f, "abc", 9) == 21;
-  #assert text_offset(f, "abc", 0) == 0 && text_offset(f, "abc", 4) == 1 && text_offset(f, "abc", 100) == 3;
+  a: [1] Atlas;
+  for g: 0..<GP_GLYPHS { a[0].fonts[0].advance[g] = 7; }
+  a[0].fonts[0].kern[glyph_of('A') * GP_GLYPHS + glyph_of('V')] = -1;
+  #assert text_width(a[..], 0, "AV") == 13 && text_width(a[..], 0, "VA") == 14;
+  #assert text_width(a[..], 0, "a…") == 14;   // the ellipsis is one glyph
+  #assert text_x(a[..], 0, "abc", 2) == 14 && text_x(a[..], 0, "abc", 9) == 21;
+  #assert text_offset(a[..], 0, "abc", 0) == 0 && text_offset(a[..], 0, "abc", 4) == 1 && text_offset(a[..], 0, "abc", 100) == 3;
+  #assert text_offset(a[..], 0, "abc", 15) == 3;            // past the last glyph's x: the end, as GPUI does
+  #assert text_x_at(a[..], 0, "AV", 1) == 6 && text_x_at(a[..], 0, "AV", 2) == 13;   // the V sits kerned
   #assert glyph_of(' ') == 0 && glyph_of('~') == 94 && glyph_of(0x2026) == 95 && glyph_of(0x4e00) == -1;
+}
+#test "graphemes: a letter with its marks, emoji with modifiers and joiners, flags, CR LF" {
+  #assert cluster_len("ab", 0) == 1 && cluster_len("", 0) == 0;
+  #assert cluster_len("éx", 0) == 3;            // e + combining acute
+  #assert cluster_len("👍🏽", 0) == 8;    // thumbs up, medium skin
+  #assert cluster_len("👨‍👩", 0) == 11;   // man ZWJ woman
+  #assert cluster_len("🇯🇵🇺", 0) == 8;   // JP, then a lone U
+  #assert cluster_len("\r\nx", 0) == 2 && cluster_len("日本", 0) == 3;
+}
+#test "a grapheme the atlas lacks is measured by the host, then drawn from its cell" {
+  a: [1] Atlas;
+  a[0].ready = true; a[0].width = 1024; a[0].height = 1024; a[0].frame = 1;
+  a[0].dyn_size = 48; a[0].dyn_pen_x = 10; a[0].dyn_pen_y = 34; a[0].dyn_y0 = 512; a[0].dyn_cols = 20;
+  a[0].color_cols = 20; a[0].color_width = 1024; a[0].color_height = 256;
+  a[0].fonts[0].ascent = 13; a[0].fonts[0].descent = 3; a[0].fonts[0].cell = 48; a[0].fonts[0].cols = 20;
+  for g: 0..<GP_GLYPHS { a[0].fonts[0].advance[g] = 7; }
+  #assert text_width(a[..], 0, "a日b") == 14;           // not measured yet
+  s := dyn_find(a[..], 0, "日", 0, 3);
+  #assert s >= 0 && a[0].clusters[s].state == 1;
+  a[0].clusters[s].advance = 14; a[0].clusters[s].state = 2;
+  #assert text_width(a[..], 0, "a日b") == 28 && text_offset(a[..], 0, "a日b", 12) == 1 && text_offset(a[..], 0, "a日b", 15) == 4;
+  out: [480] f32;
+  #assert paint_text(out[..], 0, a[..], 2, 0, "日", 0, 0, 20, hex(0xffffff, 1)) == 0;   // its cell is wanted
+  c := a[0].clusters[s].cell[4 * GP_SUBPIXEL] - 1;
+  #assert c >= 0 && a[0].cells[c].state == 1 && a[0].cells[c].level == 4;
+  a[0].cells[c].state = 2;
+  #assert paint_text(out[..], 0, a[..], 2, 0, "日", 0, 0, 20, hex(0xffffff, 1)) == 6 && out[2] == GP_SPRITE;
+  // an emoji is a color glyph: one cell in the color atlas
+  e := dyn_slot(a[..], 0, "😀", 0, 4);
+  a[0].clusters[e].advance = 18; a[0].clusters[e].color = true; a[0].clusters[e].state = 2;
+  #assert paint_text(out[..], 0, a[..], 2, 0, "😀", 0, 0, 20, hex(0xffffff, 1)) == 0;
+  ce := a[0].clusters[e].cell[0] - 1;
+  #assert ce >= GP_DYN_MONO;
+  a[0].cells[ce].state = 2;
+  #assert paint_text(out[..], 0, a[..], 2, 0, "😀", 0, 0, 20, hex(0xffffff, 1)) == 6 && out[2] == GP_COLOR_SPRITE;
+  // full: the least recently used slot goes, and its hash entry with it
+  for k: 0..<GP_DYN_SLOTS { if a[0].clusters[k].state == 0 { a[0].clusters[k].state = 2; a[0].clusters[k].used = 1; a[0].clusters[k].n = 0; } }
+  a[0].clusters[s].used = 0; a[0].frame = 2;
+  t := dyn_slot(a[..], 0, "本", 0, 3);
+  #assert t == s && dyn_find(a[..], 0, "日", 0, 3) == -1 && dyn_find(a[..], 0, "本", 0, 3) == t;
+}
+#test "a content mask narrows the vertices it covers" {
+  out: [240] f32;
+  n := paint_quad(out[..], 0, 2, 0, 0, 100, 100, 0, 0, hex(0, 1), hex(0, 1));
+  #assert out[20] == -GP_NO_CLIP;
+  gp_clip(out[..], 0, n, 2, 10, 20, 30, 40);
+  #assert out[20] == 20 && out[21] == 40 && out[22] == 80 && out[23] == 120 && out[GP_VERTEX_FLOATS * 5 + 23] == 120;
 }
 #test "a glyph lands on a quarter device pixel, in the cell for its subpixel and dilation" {
   a: [1] Atlas;
@@ -297,7 +611,7 @@ paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: strin
   a[0].fonts[0].size = 14; a[0].fonts[0].ascent = 13; a[0].fonts[0].descent = 3;
   a[0].fonts[0].cell = 48; a[0].fonts[0].pen_x = 8; a[0].fonts[0].pen_y = 36; a[0].fonts[0].cols = 20;
   for g: 0..<GP_GLYPHS { a[0].fonts[0].advance[g] = 7.1; }
-  out: [240] f32;
+  out: [288] f32;
   n := paint_text(out[..], 0, a[..], 2, 0, "ab", 10.1, 0, 22.75, hex(0x000000, 1));
   #assert n == 12;
   // 'a' at x 20.2 device: quantized 20.25, variant 1; baseline 2 * (3.375 + 13) = 32.75, rounded 33

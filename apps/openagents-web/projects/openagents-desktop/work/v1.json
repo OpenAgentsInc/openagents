@@ -58,6 +58,24 @@
       ]
     },
     {
+      "slug": "desk-zeron-editing",
+      "title": "The composer edits text the way Zeron's does",
+      "parent": "desk-zeron-ui",
+      "size": "M",
+      "body": "Full text editing in the Zeron composer, at parity with Zeron's composer (crates/ui/src/composer.rs and the GPUI it uses): selection with Shift/Alt/Cmd arrows, click, drag, double-click word, triple-click all; word and line movement and deletion; typing or pasting over a selection replaces it; Cmd+A/C/X/V through NSPasteboard; Cmd+Z / Cmd+Shift+Z undo and redo with Zeron's coalescing; a standard menu bar (app menu with Quit; Edit with Undo, Redo, Cut, Copy, Paste, Select All); NSTextInputClient for IME marked text, accents and the emoji picker; multi-line paste. The selection highlight matches a Zeron render in colour and shape.",
+      "files": [
+        "apps/openagents-desktop/",
+        "docs/desktop/coax-desktop.md"
+      ],
+      "acceptance": [
+        "coax test covers selection, undo/redo, replace-on-type and word boundaries, and passes",
+        "A --shot with keys or a drag shows a selection drawn like a Zeron render of the same text, with the measured difference reported",
+        "Copy and paste go through the real pasteboard in a scripted check",
+        "The Edit menu shows Undo, Redo, Cut, Copy, Paste and Select All, and each works",
+        "IME marked text works through NSTextInputClient"
+      ]
+    },
+    {
       "slug": "desk-host",
       "title": "Mac host: a window that draws Coax HUD output with Metal",
       "parent": "desk-local-chat",
