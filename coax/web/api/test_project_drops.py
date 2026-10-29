@@ -584,8 +584,11 @@ def grow_checks():
               and tag(ms, "parent") == [["parent", ini["id"]]] and ["t", "milestone"] in ms["tags"] and tag(st, "parent") == [["parent", ms["id"]]]
               and tag(st, "slug") == [["slug", "t-2"]] and tag(st, "subject") == [["subject", "Lit market stalls"]]
               and tag(ff, "a") == tag(task, "a"), (ff["tags"], ms["tags"], st["tags"]))
-        check("grow: the design notes are a comment on the project",
+        proj = [e for e in before if e["kind"] == 30621 and e["pubkey"] == pk][-1]
+        check("grow: the design notes are a comment on the project, its 30621 event named beside its address",
               tag(note, "A") == [["A", f"30621:{pk}:moon-villa", "wss://relay.openagents.com"]] and tag(note, "K") == [["K", "30621"]]
+              and tag(note, "E") == [["E", proj["id"], "wss://relay.openagents.com", pk]] and tag(note, "e") == [["e", proj["id"], "wss://relay.openagents.com", pk]]
+              and len(tag(note, "a")) == 1
               and note["content"].startswith("# Fireflies") and "## Open questions\n\n- How many fireflies?" in note["content"], note)
         check("grow: the order keeps every rank and puts the new issues after them",
               [t[1:] for t in tag(order, "item")] == [[ini["id"], "11"], [mil["id"], "12"], [task["id"], "13"], [ff["id"], "1311"], [ms["id"], "1312"], [st["id"], "1313"]]

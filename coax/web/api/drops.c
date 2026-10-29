@@ -959,7 +959,7 @@ static relay *grow_relay(const target *t, unsigned char sk[32], char **evs) {
   relay *r = relay_open(getenv("OA_PUBLISH_RELAY"), sk, err, sizeof err);
   if (!r) { api_log("drops: grow: %s", err); memset(sk, 0, 32); return NULL; }
   char filter[200];
-  snprintf(filter, sizeof filter, "{\"authors\":[\"%s\"],\"kinds\":[1621,1630,1631,1632,1633,30623],\"limit\":5000}", t->pubkey);
+  snprintf(filter, sizeof filter, "{\"authors\":[\"%s\"],\"kinds\":[1621,1630,1631,1632,1633,30621,30623],\"limit\":5000}", t->pubkey);
   *evs = relay_query(r, filter, err, sizeof err);
   if (!*evs) { api_log("drops: grow: %s", err); relay_close(r); memset(sk, 0, 32); return NULL; }
   return r;
@@ -992,6 +992,7 @@ static const char *grow_steps(PGconn *c, const char *pk, const char *drop, const
   relay *r = grow_relay(t, sk, &evs);
   if (!r) return "the relay";
   answer b = ask(c, Q("drops.grow_begin($1, $2, $3::jsonb)"), 3, (const char *[]){pk, drop, evs});
+  if (b.status == 200) free(sql_text(c, "SELECT drops.grow_root($1, $2::jsonb)::text", 2, (const char *[]){drop, evs}));   // the note's parent (0042)
   free(evs);
   int began = b.status;
   free(b.body); free(b.all);
