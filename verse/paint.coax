@@ -1,0 +1,122 @@
+// The painterly look's shading functions (docs/verse/art-styles.md,
+// Painterly), as plain f32 functions a realm's WGSL calls through
+// coax/web/wgsl.py, as verse/look.coax's outlines are. One source for every
+// painterly realm: Fairy Forest uses them first (apps/openagents-web/fairy.wgsl);
+// the presets task (as-presets, verse/style.coax) is meant to take them in
+// with its preset record. The numbers here are the spec's day keys; colours
+// are per channel so the WGSL lowerer (scalars only) can carry them.
+//   coax/bin/coax test verse/paint.coax
+pt_min :: (a:f32,b:f32)->f32 {if a<b{return a;}return b;}
+pt_max :: (a:f32,b:f32)->f32 {if a>b{return a;}return b;}
+pt_sat :: (x:f32)->f32 {return pt_min(1.0f32,pt_max(0.0f32,x));}
+pt_ramp :: (a:f32,b:f32,x:f32)->f32 {t:=pt_sat((x-a)/(b-a));return t*t*(3.0f32-2.0f32*t);}
+
+// 1. Shading: wrapped Lambert (wrap 0.25), the shadow term before banding.
+verse_paint_wrap :: (ndl:f32,shadow:f32)->f32 #export_c {return pt_sat((ndl+0.25f32)/1.25f32)*pt_sat(shadow);}
+// Three bands: shadow 0, mid 0.55, lit 1, edges at 0.20 and 0.58, softness 0.06.
+verse_paint_band :: (w:f32)->f32 #export_c {
+ return 0.55f32*pt_ramp(0.14f32,0.26f32,w)+0.45f32*pt_ramp(0.52f32,0.64f32,w);
+}
+// Characters: two bands, one edge at 0.40, softness 0.08.
+verse_paint_band2 :: (w:f32)->f32 #export_c {return pt_ramp(0.32f32,0.48f32,w);}
+
+// 2. Rim: from N.V 0.38 (68 degrees from the eye) to full at 0.12, stronger
+// on the key light's side.
+verse_paint_rim :: (ndv:f32,ndl:f32,strength:f32)->f32 #export_c {
+ return pt_ramp(0.38f32,0.12f32,ndv)*(0.35f32+0.65f32*pt_sat(ndl+0.3f32))*strength;
+}
+
+// 4. Haze: by distance past start, thinned with height over the eye's
+// ground, capped so far ridges still show. The day key: start 20 m,
+// density 0.011 /m, falloff 60 m, cap 0.88; a phone's density x1.25.
+verse_paint_haze :: (d:f32,above:f32,density:f32)->f32 #export_c {
+ f_dist:=1.0f32-exp(-density*pt_max(d-20.0f32,0.0f32));
+ f_height:=exp(-pt_max(above,0.0f32)/60.0f32);
+ return pt_min(f_dist*(1.0f32+(f_height-1.0f32)*0.6f32),0.88f32);
+}
+// The key light's warmth in the haze toward it: pow(V.L, 8) * 0.45.
+verse_paint_haze_sun :: (vdl:f32)->f32 #export_c {
+ c:=pt_sat(vdl);c2:=c*c;c4:=c2*c2;
+ return c4*c4*0.45f32;
+}
+
+// 5. Sky: zenith to horizon by pow(up, 0.55) of the ray's elevation; the
+// 6 degree band at the horizon lifted 15% toward the haze.
+verse_paint_sky_mix :: (up:f32)->f32 #export_c {
+ if up<=0.0f32 {return 0.0f32;}
+ return pow(up,0.55f32);
+}
+verse_paint_sky_band :: (up:f32)->f32 #export_c {return 0.15f32*(1.0f32-pt_ramp(0.0f32,0.105f32,abs(up)));}
+// The sun's two-term halo, exp(-k(1 - cos)) with k = 900 and 60.
+verse_paint_halo :: (c:f32)->f32 #export_c {return exp(-900.0f32*(1.0f32-c))+0.35f32*exp(-60.0f32*(1.0f32-c));}
+// Cloud cover from a noise value: smoothstep(0.48, 0.62, n), thinned by cover (0 none, 0.35 default).
+verse_paint_cloud :: (n:f32,cover:f32)->f32 #export_c {return pt_ramp(0.48f32,0.62f32,n+(cover-0.35f32)*0.4f32)*pt_ramp(0.0f32,0.05f32,cover);}
+
+// 9. Tone: 1 - exp(-c * exposure), then blacks lifted 0.035.
+verse_paint_tone :: (c:f32,exposure:f32)->f32 #export_c {
+ t:=1.0f32-exp(-pt_max(c,0.0f32)*exposure);
+ return 0.035f32+0.965f32*t;
+}
+// Bloom: the share over threshold 0.85 with a soft knee of 0.25.
+verse_paint_bloom :: (l:f32)->f32 #export_c {
+ k:=pt_sat((l-0.6f32)/0.5f32);
+ soft:=k*k*0.25f32;
+ return pt_max(soft,l-0.85f32)/pt_max(l,0.0001f32);
+}
+
+// 12. Water: the painted preset's depth bands (shallow under 0.4 m, mid to
+// 1.5 m, deep below, each edge soft over 0.15 m).
+verse_paint_water_mid :: (depth:f32)->f32 #export_c {return pt_ramp(0.325f32,0.475f32,depth);}
+verse_paint_water_deep :: (depth:f32)->f32 #export_c {return pt_ramp(1.425f32,1.575f32,depth);}
+// A sparkle where a cell's reflection is within 4 degrees of the sun (cos 4 deg = 0.99756).
+verse_paint_sparkle :: (rdl:f32)->f32 #export_c {return pt_ramp(0.99756f32,0.9993f32,rdl);}
+
+#test "wrapped Lambert: a quarter wrap, the shadow before banding" {
+ #assert verse_paint_wrap(1.0f32,1.0f32)==1.0f32;
+ #assert verse_paint_wrap(-0.25f32,1.0f32)==0.0f32;
+ #assert abs(verse_paint_wrap(0.0f32,1.0f32)-0.2f32)<0.0001f32;
+ #assert verse_paint_wrap(1.0f32,0.0f32)==0.0f32;
+}
+#test "three bands at 0, 0.55 and 1, edges at 0.20 and 0.58" {
+ #assert verse_paint_band(0.0f32)==0.0f32;
+ #assert verse_paint_band(0.1f32)==0.0f32;
+ #assert abs(verse_paint_band(0.4f32)-0.55f32)<0.0001f32;
+ #assert verse_paint_band(1.0f32)==1.0f32;
+ #assert abs(verse_paint_band(0.20f32)-0.275f32)<0.001f32;
+ #assert abs(verse_paint_band(0.58f32)-0.775f32)<0.001f32;
+ #assert verse_paint_band2(0.2f32)==0.0f32 && verse_paint_band2(0.6f32)==1.0f32;
+ #assert abs(verse_paint_band2(0.4f32)-0.5f32)<0.001f32;
+}
+#test "the rim lights silhouettes only, more on the lit side" {
+ #assert verse_paint_rim(1.0f32,1.0f32,0.3f32)==0.0f32;
+ #assert verse_paint_rim(0.5f32,1.0f32,0.3f32)==0.0f32;
+ #assert abs(verse_paint_rim(0.0f32,1.0f32,0.3f32)-0.3f32)<0.0001f32;
+ #assert verse_paint_rim(0.0f32,-1.0f32,0.3f32)<verse_paint_rim(0.0f32,1.0f32,0.3f32);
+}
+#test "haze at 100 m is 0.58 and at 200 m 0.86 by day, capped at 0.88" {
+ #assert verse_paint_haze(10.0f32,0.0f32,0.011f32)==0.0f32;
+ #assert abs(verse_paint_haze(100.0f32,0.0f32,0.011f32)-0.585f32)<0.005f32;
+ #assert abs(verse_paint_haze(200.0f32,0.0f32,0.011f32)-0.862f32)<0.005f32;
+ #assert verse_paint_haze(5000.0f32,0.0f32,0.011f32)==0.88f32;
+ #assert verse_paint_haze(200.0f32,60.0f32,0.011f32)<verse_paint_haze(200.0f32,0.0f32,0.011f32);
+ #assert verse_paint_haze_sun(1.0f32)==0.45f32 && verse_paint_haze_sun(0.0f32)==0.0f32;
+}
+#test "sky: the horizon band, the halo and the clouds" {
+ #assert verse_paint_sky_mix(0.0f32)==0.0f32 && verse_paint_sky_mix(1.0f32)==1.0f32;
+ #assert verse_paint_sky_band(0.0f32)==0.15f32 && verse_paint_sky_band(0.2f32)==0.0f32;
+ #assert verse_paint_halo(1.0f32)>1.3f32 && verse_paint_halo(0.9f32)<0.01f32;
+ #assert verse_paint_cloud(0.3f32,0.35f32)==0.0f32 && verse_paint_cloud(0.8f32,0.35f32)==1.0f32;
+ #assert verse_paint_cloud(0.8f32,0.0f32)==0.0f32;
+}
+#test "tone lifts blacks and never clips; bloom takes only the bright" {
+ #assert abs(verse_paint_tone(0.0f32,1.6f32)-0.035f32)<0.0001f32;
+ #assert verse_paint_tone(100.0f32,1.6f32)<=1.0f32;
+ #assert verse_paint_tone(0.5f32,1.6f32)>verse_paint_tone(0.25f32,1.6f32);
+ #assert verse_paint_bloom(0.3f32)==0.0f32;
+ #assert verse_paint_bloom(2.0f32)>0.5f32;
+}
+#test "painted water: three depth bands and sparkles near the sun's reflection" {
+ #assert verse_paint_water_mid(0.2f32)==0.0f32 && verse_paint_water_mid(0.8f32)==1.0f32;
+ #assert verse_paint_water_deep(1.0f32)==0.0f32 && verse_paint_water_deep(2.0f32)==1.0f32;
+ #assert verse_paint_sparkle(1.0f32)==1.0f32 && verse_paint_sparkle(0.99f32)==0.0f32;
+}
