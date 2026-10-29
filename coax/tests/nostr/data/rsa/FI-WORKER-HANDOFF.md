@@ -193,3 +193,47 @@ Apple's MoreComing flag does not mean the answer set is complete. The source,
 independent trace oracle, review, exact hashes and open requirements are in
 `../fi-jws/TRANSPORT-EVIDENCE.md`. The previously disabled unsafe prototype
 remains uncommitted, and all provider and FI authority remain closed.
+
+A separate test-only macOS scratch XPC reaper probe exercises a host-wide
+`waitpid(-1)` reaper during a request for a stalled resolver; a resolver
+PID marker precedes the overlapping host reaps and the PID is absent after
+cancellation. Four marker-only runs passed; a newer revision also checks a
+test-held resolver lock immediately after a counted reap, passed once and
+failed an unlocked negative control. Marker ordering alone does not prove the
+resolver was still alive at each counted reap. The probe uses the explicit unsafe transport
+flag and does not establish exclusive service ownership, bound OS teardown or
+authenticate a provider. See `../fi-jws/TRANSPORT-EVIDENCE.md` for source hash,
+initial cold-start failures and the narrow independent review.
+
+A separate test-only reaperless pipe experiment avoids parent-side
+supervisor PID waits/signals. Its single-purpose supervisor waits for its own
+resolver child and internal EOF before emitting a complete response or cleanup
+terminal. The default-disabled client retains a separate response pipe through
+cancellation and keeps one slot busy until terminal plus EOF; missing terminal
+quarantines the slot. Native and sanitizer probes exercised host-wide reaping,
+SIGCHLD auto-reap, busy/reuse and a deliberate supervisor-crash/live-resolver
+counterexample. This is not an installed or authenticated service, provider or
+FI authority, and no universal cleanup deadline is claimed. Exact hashes,
+remaining assumptions and independent review are in
+`../fi-jws/TRANSPORT-EVIDENCE.md`.
+
+A macOS-only mutual XPC peer scratch test checks service-side
+client requirements and client-side service CDHash. A different ad-hoc binary
+with the same allowed client identifier was accepted, demonstrating that this
+identifier-only test requirement is spoofable and is not deployable identity.
+It makes no iOS or authority claim; exact hash and controls are recorded in
+`../fi-jws/TRANSPORT-EVIDENCE.md`.
+
+The test-only reaperless client experiment passes an advisory lock through
+supervisor to resolver. In the crash fixture, a fresh process cannot acquire
+the same inode until the orphan exits. This relies on a stable trusted inode
+and a cooperative helper. A negative control with an untrusted helper that
+fakes `FDE1` and drops the lock starts a second helper while both descendants
+remain alive; therefore the default-disabled client is not a provider and its
+terminal/lock cannot establish cleanup without authenticated implementation and
+channel binding. Exact test hashes and review limitations are in the transport
+evidence; the pipe CLOEXEC race and host reaping policy remain unresolved.
+
+The scratch experiments and byte-identical disabled prototype copies are
+under `coax/tests/nostr/`; the original untracked platform prototypes remain in
+the existing worktree. They are not product adapters or enabled providers.
