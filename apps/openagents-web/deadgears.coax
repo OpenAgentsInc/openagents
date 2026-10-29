@@ -1354,16 +1354,9 @@ coaxial_deadgears_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
 coaxial_deadgears_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
 coaxial_deadgears_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 
-// One frame: you walk and look, the rules step (unless the fight is paused,
-// over or held for a golden), the events play, then the world, the light
-// and the HUD are written. The fight's step is at most 0.05 s a frame: a
-// stalled frame slows the fight rather than skipping it.
-deadgears_frame :: (s: [] DeadGears, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
-  started(s);
-  if u.count < UNIFORM_FLOATS || out.count < MAX_VERTICES * VERTEX_FLOATS || width < 1 || height < 1 { return 0; }
-  t := ifx finite(dt) then clamp(dt, 0, 0.05) else 0.0f32;
-  s[0].time += f64(t);
-  s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
+// The fight's part of a frame: the crowd ?spawn= asked for, you walking and
+// looking, the rules' step, their events, the clocks and the hour.
+step_fight :: (s: [] DeadGears, t: f32) {
   g := game(s);
   if s[0].facts && !s[0].spawned {
     s[0].spawned = true;
@@ -1402,6 +1395,19 @@ deadgears_frame :: (s: [] DeadGears, out: [] f32, u: [] f32, width: f32, height:
     s[0].tracked_wave = g.st[0].wave;
     if track_begin(s[0].track[..], "wave") { track_int(s[0].track[..], "wave", g.st[0].wave); track_bool(s[0].track[..], "restored", s[0].restored); track_end(s[0].track[..]); }
   }
+}
+
+// One frame: you walk and look, the rules step (unless the fight is paused,
+// over or held for a golden), the events play, then the world, the light
+// and the HUD are written. The fight's step is at most 0.05 s a frame: a
+// stalled frame slows the fight rather than skipping it.
+deadgears_frame :: (s: [] DeadGears, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  started(s);
+  if u.count < UNIFORM_FLOATS || out.count < MAX_VERTICES * VERTEX_FLOATS || width < 1 || height < 1 { return 0; }
+  t := ifx finite(dt) then clamp(dt, 0, 0.05) else 0.0f32;
+  s[0].time += f64(t);
+  s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
+  step_fight(s, t);
   camera(s, width, height);
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   view(s, width, height, u);
@@ -1571,4 +1577,56 @@ tag_end :: () -> int { return SAVE_TAG.count + 1; }
   deadgears_message(p[..], HOST_PAGE, "tab=1\nurl=https://openagents.com/realm/dead-gears?hour=18.4");
   n = frame(p[..], 1280, 800, 1, 0.016);
   #assert abs(p[0].deck_hour - 18.4) < 0.01 && night_level(18.4) > night_level(15.5);
+}
+
+// A player that aims at the nearest creature and holds fire, and between
+// waves walks to the reactor and holds repair: through the keys on a laptop
+// (F, E), through the thumbs' buttons on a phone (FIRE, REPAIR).
+bot_turn :: (s: [] DeadGears) {
+  g := game(s);
+  best := -1; most: f32 = 1000000;
+  for i: 0..<ecs_high(g.e) {
+    if !alive_mutant(g, i) { continue; }
+    d := flat(g.pos[i], s[0].feet);
+    if d < most { most = d; best = i; }
+  }
+  if best >= 0 { p := g.pos[best]; s[0].yaw = atan2(p.x - s[0].feet.x, p.z - s[0].feet.z); }
+}
+play_out :: (s: [] DeadGears, phone_size: bool, fight: bool, frames: int) -> int {
+  g := game(s);
+  w: f32 = ifx phone_size then 390.0f32 else 1280.0f32; h: f32 = ifx phone_size then 844.0f32 else 800.0f32;
+  n := frame(s, w, h, 1, 0.05);
+  held := -1;
+  for f: 0..<frames {
+    if over(s) { n = frame(s, w, h, 1, 0.05); return f; }
+    if fight {
+      b := s[0].boxes[BTN_FIRE];
+      if g.st[0].phase == REPAIR {
+        s[0].feet = v3(0, 0, -14.2); g.pos[me_slot(g)] = s[0].feet;
+        if phone_size { if held < 0 { used := deadgears_pointer(s, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1, 7); held = 7; } }
+        else { used := deadgears_key(s, 'e', 0); }
+      } else {
+        if held >= 0 { used := deadgears_pointer(s, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1, 7); held = -1; }
+        bot_turn(s);
+        if phone_size { used := deadgears_pointer(s, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1, 8); }
+        else { used := deadgears_key(s, 'f', 0); }
+      }
+    }
+    if f % 40 == 0 { n = frame(s, w, h, 1, 0.05); } else { step_fight(s, 0.05); }
+  }
+  return frames;
+}
+
+#test "a full game is won on a laptop and on a phone, and lost by standing still" {
+  for size: 0..<2 {
+    s: [1] DeadGears;
+    started(s[..]);
+    f := play_out(s[..], size == 1, true, 6000);
+    g := game(s[..]);
+    #assert g.st[0].phase == WON && g.st[0].repairs == 3 && s[0].shown[BTN_AGAIN];
+  }
+  s: [1] DeadGears;
+  started(s[..]);
+  f := play_out(s[..], false, false, 6000);
+  #assert game(s[..]).st[0].phase == LOST && s[0].shown[BTN_AGAIN];
 }
