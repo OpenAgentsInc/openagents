@@ -1,0 +1,96 @@
+// Device primitives of the CUDA compute subset, with their CPU meaning.
+// `coax cuda` emits a call to cu_mma_bf16_16x8x16 as one warp-wide
+// tensor-core instruction (mma.sync m16n8k16, BF16 inputs, f32 accumulation);
+// this body is what the call means everywhere else.
+//
+// Fragments are per-lane arrays: lane l of a warp holds a[4l..4l+3],
+// b[2l..2l+1] and c[4l..4l+3]. With g = l/4 and t = l%4, and each u32 holding
+// two BF16 values (low half first):
+//   a[4l+0] = A[g][2t..2t+1]    a[4l+1] = A[g+8][2t..2t+1]
+//   a[4l+2] = A[g][2t+8..2t+9]  a[4l+3] = A[g+8][2t+8..2t+9]
+//   b[2l+0] = B[2t..2t+1][g]    b[2l+1] = B[2t+8..2t+9][g]
+//   c[4l+0] = C[g][2t]  c[4l+1] = C[g][2t+1]  c[4l+2] = C[g+8][2t]  c[4l+3] = C[g+8][2t+1]
+// C[m][n] += sum over k of A[m][k] B[k][n]. Every product is exact in f32;
+// here the 16 products add in f64 and the sum rounds once into C. The device
+// may round its partial sums differently, so a device result is compared
+// within a tolerance, not bit for bit.
+#authority;
+
+cu_bf16 :: (word:u32,high:bool)->f32 {
+    if high {return f32_from_bits((word>>16)<<16);}
+    return f32_from_bits(word<<16);
+}
+// A[m][k] of the A fragment.
+cu_mma_a :: (a:[]u32,m:int,k:int)->f32 {
+    lane:=(m%8)*4+(k%8)/2;reg:=m/8+2*(k/8);
+    return cu_bf16(a[4*lane+reg],k%2==1);
+}
+// B[k][n] of the B fragment.
+cu_mma_b :: (b:[]u32,k:int,n:int)->f32 {
+    lane:=n*4+(k%8)/2;
+    return cu_bf16(b[2*lane+k/8],k%2==1);
+}
+// The position of C[m][n] in the C fragment.
+cu_mma_c :: (m:int,n:int)->int {return 4*((m%8)*4+n/2)+2*(m/8)+n%2;}
+
+cu_mma_bf16_16x8x16 :: (a:[]u32,b:[]u32,c:[]f32) {
+    for m:0..<16 {
+        for n:0..<8 {
+            sum:f64=0;
+            for k:0..<16 {sum+=f64(cu_mma_a(a,m,k))*f64(cu_mma_b(b,k,n));}
+            i:=cu_mma_c(m,n);c[i]=f32(f64(c[i])+sum);
+        }
+    }
+}
+
+#test "BF16 halves decode exactly" {
+    #assert cu_bf16(0x40003f80,false)==1 && cu_bf16(0x40003f80,true)==2;
+    #assert cu_bf16(0xc0400000,true)==-3 && cu_bf16(0x0000bf00,false)==-0.5;
+}
+#test "fragment positions follow the PTX m16n8k16 layout" {
+    a:[128]u32;b:[64]u32;
+    // Lane 6 is g = 1, t = 2.
+    a[24]=0x40003f80;a[25]=0x40804040;a[26]=0x40c040a0;a[27]=0x410040e0;
+    #assert cu_mma_a(a[..],1,4)==1 && cu_mma_a(a[..],1,5)==2 && cu_mma_a(a[..],9,4)==3 && cu_mma_a(a[..],9,5)==4;
+    #assert cu_mma_a(a[..],1,12)==5 && cu_mma_a(a[..],1,13)==6 && cu_mma_a(a[..],9,12)==7 && cu_mma_a(a[..],9,13)==8;
+    b[12]=0x40003f80;b[13]=0x40804040;
+    #assert cu_mma_b(b[..],4,1)==1 && cu_mma_b(b[..],5,1)==2 && cu_mma_b(b[..],12,1)==3 && cu_mma_b(b[..],13,1)==4;
+    #assert cu_mma_c(1,4)==24 && cu_mma_c(1,5)==25 && cu_mma_c(9,4)==26 && cu_mma_c(9,5)==27 && cu_mma_c(0,0)==0 && cu_mma_c(15,7)==127;
+}
+// Fragments with A[m][k] = (m+2k)%5 - 2 and B[k][n] = (3k+n)%7 - 3, each u32
+// written whole from the layout above.
+cu_test_word :: (lo:f32,hi:f32)->u32 {return (f32_bits(lo)>>16)|((f32_bits(hi)>>16)<<16);}
+cu_test_a :: (m:int,k:int)->f32 {return f32((m+2*k)%5)-2;}
+cu_test_b :: (k:int,n:int)->f32 {return f32((3*k+n)%7)-3;}
+cu_test_fill :: (a:[]u32,b:[]u32) {
+    for lane:0..<32 {
+        g:=lane/4;t:=lane%4;
+        a[4*lane]=cu_test_word(cu_test_a(g,2*t),cu_test_a(g,2*t+1));
+        a[4*lane+1]=cu_test_word(cu_test_a(g+8,2*t),cu_test_a(g+8,2*t+1));
+        a[4*lane+2]=cu_test_word(cu_test_a(g,2*t+8),cu_test_a(g,2*t+9));
+        a[4*lane+3]=cu_test_word(cu_test_a(g+8,2*t+8),cu_test_a(g+8,2*t+9));
+        b[2*lane]=cu_test_word(cu_test_b(2*t,g),cu_test_b(2*t+1,g));
+        b[2*lane+1]=cu_test_word(cu_test_b(2*t+8,g),cu_test_b(2*t+9,g));
+    }
+}
+#test "the primitive adds the matrix product into C" {
+    a:[128]u32;b:[64]u32;c:[128]f32;
+    cu_test_fill(a[..],b[..]);
+    for m:0..<16 {for n:0..<8 {c[cu_mma_c(m,n)]=f32(m-n);}}
+    cu_mma_bf16_16x8x16(a[..],b[..],c[..]);
+    for m:0..<16 {for n:0..<8 {
+        sum:=m-n;
+        for k:0..<16 {sum+=((m+2*k)%5-2)*((3*k+n)%7-3);}
+        #assert cu_mma_a(a[..],m,n)==cu_test_a(m,n) && cu_mma_b(b[..],m,n)==cu_test_b(m,n);
+        #assert c[cu_mma_c(m,n)]==f32(sum);
+    }}
+}
+#test "the 16 products are added before rounding into C" {
+    // A row of 2^-24 times a column of ones: sixteen ulps of 1, added at once.
+    a:[128]u32;b:[64]u32;c:[128]f32;
+    for i:0..<128 {a[i]=0x33803380;}
+    for i:0..<64 {b[i]=0x3f803f80;}
+    for i:0..<128 {c[i]=1;}
+    cu_mma_bf16_16x8x16(a[..],b[..],c[..]);
+    for i:0..<128 {#assert c[i]==1+16*f32_from_bits(0x33800000);}
+}

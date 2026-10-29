@@ -155,7 +155,7 @@ const ErrorInfo ERRORS[] = {
     {"E0603", "source graph budget exceeded", "One compilation admits at most 64 distinct source units, 32 active units, 16 MiB of source bytes and 512 loads per unit. Source I/O is bounded before allocation and while reading."},
     {"E0604", "unbalanced source unit", "In a composed program every physical source must balance its own parentheses, brackets and braces within depth 128. Declarations cannot cross a source boundary."},
     // ---- E07xx: device code ----
-    {"E0700", "outside the CUDA compute subset", "coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 1024 scalars, views of numbers, if/else, for loops, break, continue and acyclic calls. Strings, structs, enums, while loops, defer, #assert, print and #foreign calls stay in the C library. Every #export_c procedure is a kernel: it returns nothing and its first parameter is its int work item."},
+    {"E0700", "outside the CUDA compute subset", "coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break, continue and acyclic calls. Strings, structs, enums, while loops, defer, #assert, print and #foreign calls stay in the C library. Every #export_c procedure is a kernel: it returns nothing and its first parameter is its int work item."},
     {"E0701", "CUDA module has no kernel", "coax cuda compiles the #export_c procedures of a file as kernels, with what they call. Mark at least one procedure #export_c."},
 
 };

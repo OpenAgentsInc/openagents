@@ -1,7 +1,7 @@
 # Appendix A. Keywords, directives, types and current status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.23.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.24.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -138,6 +138,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | Release/status generation | Canonical Coax catalogue, CLI status and build/publication drift gate | works | 0.14.0 |
 | Compiler build identity | Checked source and artifact consistency record for site releases; not authentication | works | 0.22.0 |
 | `coax cuda` compute subset | CUDA C for NVRTC: kernels over an int work item with scalars, bounded fixed arrays, numeric views, for loops and acyclic calls; no shared memory, barriers or atomics yet | partial | 0.23.0 |
+| CUDA warp kernels | `for lane: 0..<32` loops, per-lane register arrays and the BF16 tensor-core primitive `cu_mma_bf16_16x8x16`; no shared memory or barriers yet | partial | 0.24.0 |
 | Linux x86-64 C11 host | Builds, checks and runs on the tested NixOS x86-64 host with GCC; not a release-qualified target | partial | 0.23.0 |
 | Bounded aggregate traversal | Independent finite work accounting for evaluated aggregate traversal | works | 0.21.0 |
 | Bounded interpreted string snapshots | Owned cast snapshots with finite live bytes and materialization work | works | 0.20.0 |

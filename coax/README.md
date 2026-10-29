@@ -1,7 +1,7 @@
 # Coax
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.23.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.24.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Everything Coax lives in this folder, at the root of the openagents repo.
 
@@ -232,12 +232,15 @@ apps/openagents-ios/build.sh
   is a kernel: it returns nothing and its first parameter is its `int` work
   item; the generated `__global__` entry takes the item count first and runs
   item `i` once. Values are bool, f32, f64 and sized integers, fixed arrays
-  of at most 1024 scalars and views of numbers; control flow is `if`/`else`,
+  of at most 4096 scalars and views of numbers; control flow is `if`/`else`,
   `for` and acyclic calls. Integer and bounds checks are the C build's,
   ending in a trap instruction. Strings, structs, enums, `while`, `defer`,
   `#assert`, `print` and `#foreign` calls are E0700. Compile the output with
-  `--fmad=false` so float arithmetic rounds once per operation as in C. There
-  is no shared memory, barrier or atomic yet; the host
+  `--fmad=false` so float arithmetic rounds once per operation as in C. A
+  kernel with `for lane: 0..<32` loops runs one 32-lane warp per item, keeps
+  `lane*k+c`-indexed arrays per lane and can call the tensor-core primitive
+  `cu_mma_bf16_16x8x16` (`lib/compute/mma.coax`). There is no shared memory,
+  barrier or atomic yet; the host
   ([psionic/platform/cuda-host.c](../psionic/platform/cuda-host.c)) loads,
   binds, launches and waits.
 

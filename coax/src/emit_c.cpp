@@ -12,6 +12,8 @@
 #include <cmath>
 #include <algorithm>
 #include <functional>
+#include <map>
+#include <set>
 #include <filesystem>
 
 namespace coax {
@@ -345,6 +347,17 @@ static coax_t_CoaxU64Product coax_mul_wide(uint64_t a,uint64_t b) {
 #endif
 }
 )COAXRT";
+
+// Warp kernels (compute.cpp fills this before emission): lane loops,
+// per-lane arrays and their element offsets, and the MMA primitive's calls.
+struct WarpInfo {
+  std::set<const Stmt *> lane_loops, lane_arrays;
+  std::map<const Expr *, int64_t> lane_index;  // index expression lane*k+c -> k
+  std::set<const ProcDecl *> warp_kernels;
+  std::set<const Expr *> mma_calls;
+};
+WarpInfo g_warp;
+static bool is_mma_primitive(const ProcDecl *p) { return p && str_eq(p->name, "cu_mma_bf16_16x8x16"); }
 
 namespace {
 
@@ -698,6 +711,13 @@ struct Emitter {
             return std::string(e->type == &T_U32 ? "coax_value_barrier_u32(" : "coax_value_barrier_u64(") + ex(e->args[0]) + ")";
           return "coax_"+to_std(e->text)+"("+ex(e->args[0])+")";
         }
+        if (opts.cuda && g_warp.mma_calls.count(e)) {
+          // One warp-wide tensor-core multiply-add on the lanes' fragment registers.
+          std::string a = local_name(e->args[0]->lhs->text), b = local_name(e->args[1]->lhs->text), c = local_name(e->args[2]->lhs->text);
+          return "asm volatile(\"mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};\" : \"+f\"(" +
+                 c + "[0]), \"+f\"(" + c + "[1]), \"+f\"(" + c + "[2]), \"+f\"(" + c + "[3]) : \"r\"(" + a + "[0]), \"r\"(" + a + "[1]), \"r\"(" + a +
+                 "[2]), \"r\"(" + a + "[3]), \"r\"(" + b + "[0]), \"r\"(" + b + "[1]))";
+        }
         std::vector<Operand> ops;
         for (const Expr *a : e->args) ops.push_back({a, false});
         std::string name = e->intrinsic != Intrinsic::none ? math_name(e) : proc_name(e->proc);
@@ -724,6 +744,12 @@ struct Emitter {
         }
         return "(" + ex(e->lhs) + ")." + to_std(e->text);
       case ExprKind::index: {
+        if (opts.cuda) {
+          auto at = g_warp.lane_index.find(e);
+          // The element is this lane's own: index - lane*k, which folds to the offset.
+          if (at != g_warp.lane_index.end())
+            return local_name(e->lhs->text) + "[(" + ex(e->rhs) + ") - l_lane * " + std::to_string(at->second) + "]";
+        }
         Type lt = e->lhs->type;
         if (lt == &T_STRING)
           return ordered({{e->lhs, false}, {e->rhs, false}}, [&](const std::vector<std::string> &t) {
@@ -1004,6 +1030,11 @@ struct Emitter {
         else line(ex(s->expr) + ";");
         break;
       case StmtKind::var: {
+        if (opts.cuda && g_warp.lane_arrays.count(s)) {
+          // Lane l keeps elements l*k .. l*k+k-1: this lane's k values.
+          line(c_type(s->type->elem) + " " + local_name(s->name) + "[" + std::to_string(s->type->length / 32) + "] = {};");
+          break;
+        }
         std::string decl = c_type(s->type) + " " + local_name(s->name);
         if (s->expr) decl += " = " + ex(s->expr);
         else if (!s->uninit) decl += " = " + zero_value(s->type);  // zero or defaults, unless `---`
@@ -1045,6 +1076,11 @@ struct Emitter {
         loop(s->then_);
         break;
       case StmtKind::for_range: {
+        if (opts.cuda && g_warp.lane_loops.count(s)) {
+          // Each lane runs the body once, as its own `lane`.
+          loop(s->then_, {"const int64_t " + local_name(s->name) + " = (int64_t)(threadIdx.x & 31u);"});
+          break;
+        }
         std::string t = c_type(s->type), n = std::to_string(temp_count++);
         std::string i = local_name(s->name);
         line("{");
@@ -1367,7 +1403,7 @@ std::vector<const ProcDecl *> cuda_procs(const File *file) {
   std::function<void(const ProcDecl *)> visit_proc;
   std::function<void(const Expr *)> visit_expr = [&](const Expr *e) {
     if (!e) return;
-    if (e->kind == ExprKind::call && e->proc) visit_proc(e->proc);
+    if (e->kind == ExprKind::call && e->proc && !is_mma_primitive(e->proc)) visit_proc(e->proc);
     visit_expr(e->lhs); visit_expr(e->rhs); visit_expr(e->third);
     for (const Expr *a : e->args) visit_expr(a);
     for (const FieldInit &f : e->fields) visit_expr(f.value);
@@ -1449,8 +1485,12 @@ static std::string emit_cuda(const File *file, const EmitOptions &opts) {
       w += ", " + c_type(p->params[i].type) + " " + em.local_name(p->params[i].name);
       call += ", " + em.local_name(p->params[i].name);
     }
-    s += w + ") {\n  int64_t coax_item = (int64_t)blockIdx.x * (int64_t)blockDim.x + (int64_t)threadIdx.x;\n"
-         "  if (coax_item >= coax_items) return;\n  " + call + ");\n}\n";
+    if (g_warp.warp_kernels.count(p))  // one warp per work item; launch 32 threads per item
+      s += w + ") {\n  int64_t coax_item = ((int64_t)blockIdx.x * (int64_t)blockDim.x + (int64_t)threadIdx.x) >> 5;\n"
+           "  if (coax_item >= coax_items) return;\n  " + call + ");\n}\n";
+    else
+      s += w + ") {\n  int64_t coax_item = (int64_t)blockIdx.x * (int64_t)blockDim.x + (int64_t)threadIdx.x;\n"
+           "  if (coax_item >= coax_items) return;\n  " + call + ");\n}\n";
   }
   for (size_t at = 0; (at = s.find("_Bool", at)) != std::string::npos;) s.replace(at, 5, "bool");
   return s;

@@ -6,7 +6,7 @@
 // 16 view, 17 anything else.
 #authority;
 
-CU_ARRAY_LIMIT :: 1024;
+CU_ARRAY_LIMIT :: 4096;
 CU_DEPTH_LIMIT :: 64;
 
 #forall "scalars are bool, both floats and every sized integer" code:0..<20 {
@@ -22,7 +22,7 @@ CU_number :: (code:u32)->bool #export_c {return code>=2 && code<=11;}
 #test "every refusal reason has its own text and the fix names the subset" {
  #assert CU_reason_text(0)=="";
  #assert CU_reason_text(1)=="a string value" && CU_reason_text(2)=="a struct value" && CU_reason_text(3)=="an enum value";
- #assert CU_reason_text(4)=="an array that is not a fixed array of at most 1024 scalars" && CU_reason_text(5)=="a view of something other than numbers";
+ #assert CU_reason_text(4)=="an array that is not a fixed array of at most 4096 scalars" && CU_reason_text(5)=="a view of something other than numbers";
  #assert CU_reason_text(6)=="a value of this type";
  #assert CU_reason_text(7)=="a while loop" && CU_reason_text(8)=="defer" && CU_reason_text(9)=="#assert";
  #assert CU_reason_text(10)=="print" && CU_reason_text(11)=="a #foreign call" && CU_reason_text(12)=="a recursive call";
@@ -30,20 +30,28 @@ CU_number :: (code:u32)->bool #export_c {return code>=2 && code<=11;}
  #assert CU_reason_text(15)=="a kernel that returns a value" && CU_reason_text(16)=="a kernel whose first parameter is not its int work item";
  #assert CU_reason_text(17)=="a call chain deeper than 64" && CU_reason_text(18)=="a returned value that is not a scalar";
  #assert CU_reason_text(19)=="a view parameter of a kernel that is not a view of numbers" && CU_reason_text(20)=="a #foreign procedure";
- #assert CU_reason_text(21)=="this reason";
- #assert CU_fix()=="coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 1024 scalars, views of numbers, if/else, for loops, break/continue and acyclic calls; every #export_c procedure is a kernel with an int work item first and no result";
+ #assert CU_reason_text(21)=="a lane loop that is not for lane: 0..<32 in a kernel" && CU_reason_text(22)=="a lane loop inside a lane loop";
+ #assert CU_reason_text(23)=="a per-lane index that is not lane*k+c into a [32*k] array" && CU_reason_text(24)=="a per-lane array outside lane loops and device primitives";
+ #assert CU_reason_text(25)=="a lane loop assigning a value the warp shares" && CU_reason_text(26)=="break or continue directly in a lane loop";
+ #assert CU_reason_text(27)=="a device primitive with the wrong arguments" && CU_reason_text(28)=="a device primitive inside a lane loop";
+ #assert CU_reason_text(29)=="this reason";
+ #assert CU_fix()=="coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break/continue and acyclic calls; every #export_c procedure is a kernel with an int work item first and no result";
 }
 CU_reason_text :: (reason:u32)->string #export_c {
- texts:=[21] string.["","a string value","a struct value","an enum value","an array that is not a fixed array of at most 1024 scalars",
+ texts:=[29] string.["","a string value","a struct value","an enum value","an array that is not a fixed array of at most 4096 scalars",
   "a view of something other than numbers","a value of this type","a while loop","defer","#assert","print","a #foreign call",
   "a recursive call","this storage intrinsic","a compile-time aggregate","a kernel that returns a value",
   "a kernel whose first parameter is not its int work item","a call chain deeper than 64","a returned value that is not a scalar",
-  "a view parameter of a kernel that is not a view of numbers","a #foreign procedure"];
- if reason>=21 {return "this reason";}
+  "a view parameter of a kernel that is not a view of numbers","a #foreign procedure",
+  "a lane loop that is not for lane: 0..<32 in a kernel","a lane loop inside a lane loop",
+  "a per-lane index that is not lane*k+c into a [32*k] array","a per-lane array outside lane loops and device primitives",
+  "a lane loop assigning a value the warp shares","break or continue directly in a lane loop",
+  "a device primitive with the wrong arguments","a device primitive inside a lane loop"];
+ if reason>=29 {return "this reason";}
  return texts[cast(int)reason];
 }
 CU_fix :: ()->string #export_c {
- return "coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 1024 scalars, views of numbers, if/else, for loops, break/continue and acyclic calls; every #export_c procedure is a kernel with an int work item first and no result";
+ return "coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break/continue and acyclic calls; every #export_c procedure is a kernel with an int work item first and no result";
 }
 
 // A value's type: a local, parameter, or intermediate expression.
@@ -57,8 +65,8 @@ CU_fix :: ()->string #export_c {
  #assert r==expected;
 }
 #test "fixed arrays are bounded register storage" {
- #assert CU_value(15,2,1)==0 && CU_value(15,2,1024)==0;
- #assert CU_value(15,2,1025)==4 && CU_value(15,2,0)==4 && CU_value(15,2,-1)==4;
+ #assert CU_value(15,2,1)==0 && CU_value(15,2,4096)==0;
+ #assert CU_value(15,2,4097)==4 && CU_value(15,2,0)==4 && CU_value(15,2,-1)==4;
  #assert CU_value(16,2,0)==0 && CU_value(16,2,5000)==0;
 }
 CU_value :: (code:u32,elem:u32,length:int)->u32 #export_c {
@@ -149,3 +157,62 @@ CU_kernel_parameter :: (code:u32,elem:u32)->u32 #export_c {
  #assert CU_procedure(foreign)==cast(u32)(ifx foreign then 20 else 0);
 }
 CU_procedure :: (foreign:bool)->u32 #export_c {if foreign {return 20;}return 0;}
+
+// Warp kernels. A kernel that contains `for lane: 0..<32` loops runs as one
+// 32-lane warp per work item: each lane runs the loop body once with its own
+// `lane`. Arrays of 32*k values indexed lane*k+c inside lane loops are
+// per-lane: lane l keeps elements l*k..l*k+k-1 in registers. Code outside
+// lane loops is the warp's shared control flow; device primitives such as
+// cu_mma_bf16_16x8x16 run there on whole per-lane arrays.
+#forall "lane loops are 0..<32, in a kernel, not nested" kernel:bool, constant:bool, lo:0..<3, hi:30..<34, nested:bool {
+ expected:u32=0;
+ if nested {expected=22;} else if !kernel || !constant || lo!=0 || hi!=32 {expected=21;}
+ #assert CU_lane_loop(kernel,constant,lo,hi,nested)==expected;
+}
+CU_lane_loop :: (kernel:bool,constant:bool,lo:int,hi:int,nested:bool)->u32 #export_c {
+ if nested {return 22;}
+ if !kernel || !constant || lo!=0 || hi!=32 {return 21;}
+ return 0;
+}
+#forall "a per-lane index is lane*k+c with 0 <= c < k into 32*k values" length:0..<200, scale:0..<8, offset:-1..<8, form:bool {
+ expected:u32=23;
+ if form && length>=32 && length%32==0 && scale==length/32 && offset>=0 && offset<scale {expected=0;}
+ #assert CU_lane_index(length,scale,offset,form)==expected;
+}
+CU_lane_index :: (length:int,scale:int,offset:int,form:bool)->u32 #export_c {
+ if !form || length<32 || length%32!=0 || scale!=length/32 || offset<0 || offset>=scale {return 23;}
+ return 0;
+}
+#forall "per-lane arrays are indexed in lane loops or passed whole to primitives outside them" in_lane:bool, indexed:bool, primitive:bool {
+ expected:u32=24;
+ if indexed && in_lane {expected=0;} else if primitive && !in_lane {expected=0;} else if primitive {expected=28;}
+ #assert CU_lane_use(in_lane,indexed,primitive)==expected;
+}
+CU_lane_use :: (in_lane:bool,indexed:bool,primitive:bool)->u32 #export_c {
+ if indexed && in_lane {return 0;}
+ if primitive {if in_lane {return 28;}return 0;}
+ return 24;
+}
+#forall "a lane loop writes its own locals and per-lane elements only" outer:bool, lane_array:bool {
+ #assert CU_lane_assign(outer,lane_array)==cast(u32)(ifx outer && !lane_array then 25 else 0);
+}
+CU_lane_assign :: (outer:bool,lane_array:bool)->u32 #export_c {if outer && !lane_array {return 25;}return 0;}
+#forall "break and continue may not leave a lane loop" direct:bool {
+ #assert CU_lane_jump(direct)==cast(u32)(ifx direct then 26 else 0);
+}
+CU_lane_jump :: (direct:bool)->u32 #export_c {if direct {return 26;}return 0;}
+// cu_mma_bf16_16x8x16(a, b, c): a is [128]u32 (the 16x16 BF16 A fragment), b
+// is [64]u32 (16x8 BF16 B), c is [128]f32 (16x8 f32, updated in place). The
+// type codes are those of compute_code (10 u32, 2 f32).
+#forall "the MMA primitive takes whole per-lane arrays of the fragment sizes" a:120..<136, b:60..<68, c:120..<136, ac:0..<12, cc:0..<4 {
+ expected:u32=27;
+ if a==128 && b==64 && c==128 && ac==10 && cc==2 {expected=0;}
+ #assert CU_primitive_mma(a,b,c,cast(u32)ac,10,cast(u32)cc)==expected;
+}
+#test "the MMA primitive's B fragment is u32 too" {
+ #assert CU_primitive_mma(128,64,128,10,10,2)==0 && CU_primitive_mma(128,64,128,10,2,2)==27 && CU_primitive_mma(128,64,128,10,11,2)==27;
+}
+CU_primitive_mma :: (a:int,b:int,c:int,a_code:u32,b_code:u32,c_code:u32)->u32 #export_c {
+ if a!=128 || b!=64 || c!=128 || a_code!=10 || b_code!=10 || c_code!=2 {return 27;}
+ return 0;
+}

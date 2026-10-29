@@ -250,11 +250,11 @@ PcStatus pc_event_seconds(PcEvent start, PcEvent end, double *seconds) {
 PcStatus pc_sync_stream(PcStream stream) { return g.ready ? check(g.cuStreamSynchronize(stream), "cuStreamSynchronize") : PC_ABSENT; }
 PcStatus pc_sync(void) { return g.ready ? check(g.cuCtxSynchronize(), "cuCtxSynchronize") : PC_ABSENT; }
 
-PcStatus pc_launch(PcKernel kernel, int64_t items, int block, const PcArg *args, int count, PcStream stream) {
+static PcStatus launch(PcKernel kernel, int64_t items, int64_t threads, int block, const PcArg *args, int count, PcStream stream) {
     if (!g.ready) return PC_ABSENT;
     if (!kernel || items < 0 || block < 1 || block > 1024 || count < 0 || count > 30 || (count && !args)) return PC_ARGUMENT;
     if (items == 0) return PC_OK;
-    int64_t blocks = (items + block - 1) / block;
+    int64_t blocks = (threads + block - 1) / block;
     if (blocks > 2147483647) return PC_ARGUMENT;
     /* Storage for each parameter, laid out as the generated kernel declares it. */
     struct { int64_t i; uint32_t u; float f; double d; struct { PcBuffer data; int64_t count; } v; } slot[31];
@@ -273,6 +273,13 @@ PcStatus pc_launch(PcKernel kernel, int64_t items, int block, const PcArg *args,
         }
     }
     return check(g.cuLaunchKernel(kernel, (unsigned)blocks, 1, 1, (unsigned)block, 1, 1, 0, stream, pointers, NULL), "cuLaunchKernel");
+}
+PcStatus pc_launch(PcKernel kernel, int64_t items, int block, const PcArg *args, int count, PcStream stream) {
+    return launch(kernel, items, items, block, args, count, stream);
+}
+PcStatus pc_launch_warps(PcKernel kernel, int64_t warps, int block, const PcArg *args, int count, PcStream stream) {
+    if (block % 32 != 0 || warps > INT64_MAX / 32) return PC_ARGUMENT;
+    return launch(kernel, warps, warps * 32, block, args, count, stream);
 }
 
 PcStatus pc_destroy_stream(PcStream stream) { return g.ready ? check(g.cuStreamDestroy(stream), "cuStreamDestroy") : PC_ABSENT; }

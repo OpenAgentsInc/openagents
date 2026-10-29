@@ -70,5 +70,7 @@ PcStatus pc_sync(void);
 
 /* items work items in blocks of block threads (1..1024). */
 PcStatus pc_launch(PcKernel kernel, int64_t items, int block, const PcArg *args, int count, PcStream stream);
+/* A warp kernel: `warps` work items of 32 lanes each; block is a multiple of 32. */
+PcStatus pc_launch_warps(PcKernel kernel, int64_t warps, int block, const PcArg *args, int count, PcStream stream);
 
 #endif

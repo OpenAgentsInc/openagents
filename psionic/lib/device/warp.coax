@@ -1,0 +1,142 @@
+// Warp kernels: one 32-lane warp per work item, with tensor-core products.
+#load "../../../coax/lib/compute/mma.coax";
+#authority;
+
+// book:begin tile
+// Conformance kernel: tile `item` of each array holds whole fragments as
+// stored by lanes (a: 128 u32, b: 64 u32, c and d: 128 f32); d = c + a b.
+dw_mma_tile :: (item:int,a:[]u32,b:[]u32,c:[]f32,d:[]f32) #export_c {
+    fa:[128]u32;fb:[64]u32;fc:[128]f32;
+    for lane:0..<32 {
+        for j:0..<4 {fa[lane*4+j]=a[item*128+lane*4+j];fc[lane*4+j]=c[item*128+lane*4+j];}
+        for j:0..<2 {fb[lane*2+j]=b[item*64+lane*2+j];}
+    }
+    cu_mma_bf16_16x8x16(fa[..],fb[..],fc[..]);
+    for lane:0..<32 {for j:0..<4 {d[item*128+lane*4+j]=fc[lane*4+j];}}
+}
+// book:end tile
+
+#test "the conformance tile adds a b into c for each item" {
+    a:[256]u32;b:[128]u32;c:[256]f32;d:[256]f32;
+    cu_test_fill(a[128..<256],b[64..<128]);
+    for i:0..<256 {c[i]=f32(i%3);}
+    for item:0..<2 {dw_mma_tile(item,a[..],b[..],c[..],d[..]);}
+    for i:0..<128 {#assert d[i]==f32(i%3);}
+    for m:0..<16 {for n:0..<8 {
+        sum:=0;for k:0..<16 {sum+=((m+2*k)%5-2)*((3*k+n)%7-3);}
+        at:=128+cu_mma_c(m,n);
+        #assert d[at]==f32(sum)+f32(at%3);
+    }}
+}
+
+// BF16 halves for the tensor cores: x = hi + lo with hi = bf16(x) and
+// lo = bf16(x - hi), both rounded to nearest even. x - hi is exact, so
+// hi + lo is within 2^-17 |x| of x.
+dw_bf16 :: (x:f32)->u32 {
+    bits:=f32_bits(x);
+    return (bits+0x7fff+((bits>>16)&1))>>16;
+}
+// Item t*(cols/2)+p: columns 2p and 2p+1 of token t, as packed BF16 pairs.
+// Tokens from `tokens` up to the padded count are zero.
+dw_split :: (item:int,cols:int,tokens:int,x:[]f32,hi:[]u32,lo:[]u32) #export_c {
+    half:=cols/2;t:=item/half;p:=item%half;h:u32=0;l:u32=0;
+    if t<tokens {
+        a:=x[t*cols+2*p];b:=x[t*cols+2*p+1];
+        ha:=dw_bf16(a);hb:=dw_bf16(b);
+        la:=dw_bf16(a-f32_from_bits(ha<<16));lb:=dw_bf16(b-f32_from_bits(hb<<16));
+        h=ha|(hb<<16);l=la|(lb<<16);
+    }
+    hi[item]=h;lo[item]=l;
+}
+
+DW_TILES :: 11;  // token tiles of 8 per warp: 88 tokens
+DW_TOKENS :: 88;
+// book:begin project
+// Rows r0..r0+15 of out = w x for 88 tokens, on the tensor cores. Work item
+// ((group*rows/16)+block)*slices+slice; slice s takes its own contiguous run
+// of 16-column steps and writes partial[(s*tokens+t)*rows+r] for dv_reduce.
+// w holds BF16 pairs (rows by cols/2 u32); hi and lo are dw_split's halves
+// for the padded tokens. Each step adds A hi and A lo into f32 fragments.
+dw_project :: (item:int,rows:int,cols:int,tokens:int,slices:int,w:[]u32,hi:[]u32,lo:[]u32,partial:[]f32) #export_c {
+    slice:=item%slices;rest:=item/slices;blocks:=rows/16;
+    r0:=rest%blocks*16;t0:=rest/blocks*DW_TOKENS;half:=cols/2;per:=cols/16/slices;
+    fa:[128]u32;fb:[64]u32;fl:[64]u32;fc:[128]f32;acc:[1408]f32;
+    for s:0..<per {
+        k0:=(slice*per+s)*8; // in u32 pairs
+        for lane:0..<32 {
+            base:=(r0+lane/4)*half+k0+lane%4;
+            fa[lane*4]=w[base];fa[lane*4+1]=w[base+8*half];fa[lane*4+2]=w[base+4];fa[lane*4+3]=w[base+8*half+4];
+        }
+        for tile:0..<DW_TILES {
+            for lane:0..<32 {
+                xb:=(t0+tile*8+lane/4)*half+k0+lane%4;
+                fb[lane*2]=hi[xb];fb[lane*2+1]=hi[xb+4];fl[lane*2]=lo[xb];fl[lane*2+1]=lo[xb+4];
+                for j:0..<4 {fc[lane*4+j]=acc[lane*44+tile*4+j];}
+            }
+            cu_mma_bf16_16x8x16(fa[..],fb[..],fc[..]);
+            cu_mma_bf16_16x8x16(fa[..],fl[..],fc[..]);
+            for lane:0..<32 {for j:0..<4 {acc[lane*44+tile*4+j]=fc[lane*4+j];}}
+        }
+    }
+    for lane:0..<32 {
+        for tile:0..<DW_TILES {
+            for j:0..<4 {
+                row:=r0+lane/4+8*(j/2);token:=t0+tile*8+2*(lane%4)+j%2;
+                if token<tokens {partial[(slice*tokens+token)*rows+row]=acc[lane*44+tile*4+j];}
+            }
+        }
+    }
+}
+// book:end project
+
+#test "BF16 rounding is to nearest, ties to even" {
+    #assert dw_bf16(1)==0x3f80 && dw_bf16(-2)==0xc000 && dw_bf16(0)==0;
+    #assert dw_bf16(f32_from_bits(0x3f808000))==0x3f80 && dw_bf16(f32_from_bits(0x3f818000))==0x3f82;
+    #assert dw_bf16(f32_from_bits(0x3f808001))==0x3f81 && dw_bf16(f32_from_bits(0x3f807fff))==0x3f80;
+}
+#test "split halves add back to the activation and pad with zero" {
+    x:=[6]f32.[1,f32_from_bits(0x3f800001),-3,0.1,2.5,-0.75];hi:[9]u32;lo:[9]u32;
+    for i:0..<9 {hi[i]=7;lo[i]=7;dw_split(i,2,3,x[..],hi[..],lo[..]);}
+    #assert hi[0]==(0x3f80|(0x3f80<<16)) && lo[0]==dw_bf16(f32_from_bits(0x3f800001)-1)<<16;
+    #assert hi[1]==(dw_bf16(-3)|(dw_bf16(0.1)<<16)) && (lo[1]>>16)==dw_bf16(0.1-f32_from_bits(dw_bf16(0.1)<<16)) && lo[1]&0xffff==0;
+    #assert hi[2]==(dw_bf16(2.5)|(dw_bf16(-0.75)<<16)) && lo[2]==0;
+    for i:3..<9 {#assert hi[i]==0 && lo[i]==0;}
+}
+#test "the tensor-core projection matches integer products for every row, token and slice" {
+    // 16 rows by 32 columns, 90 tokens (two warp groups), two slices.
+    rows:=16;cols:=32;tokens:=90;half:=16;
+    w:[256]u32;x:[2880]f32;hi:[2816]u32;lo:[2816]u32;partial:[2880]f32;
+    for r:0..<rows {for p:0..<half {
+        a:=f32((r+3*p)%5)-2;b:=f32((2*r+p)%3)-1;
+        w[r*half+p]=dw_bf16(a)|(dw_bf16(b)<<16);
+    }}
+    // Every activation has a nonzero low half, so both MMAs matter.
+    for t:0..<tokens {for c:0..<cols {x[t*cols+c]=f32((t+c)%7)-3+f32(c+1)*0.0137;}}
+    for i:0..<176*half {dw_split(i,cols,tokens,x[..],hi[..],lo[..]);}
+    items:=(rows/16)*2*2;
+    for i:0..<items {dw_project(items-1-i,rows,cols,tokens,2,w[..],hi[..],lo[..],partial[..]);}
+    checked:=[8]int.[0,1,2,3,44,87,88,89];
+    for t:checked {for r:0..<rows {
+        sum:f64=0;scale:f64=0;
+        for c:0..<cols {
+            p:=c/2;v:=f32((r+3*p)%5)-2;if c%2==1 {v=f32((2*r+p)%3)-1;}
+            sum+=f64(v)*f64(x[t*cols+c]);scale+=abs(f64(v)*f64(x[t*cols+c]));
+        }
+        got:=f64(partial[t*rows+r])+f64(partial[(tokens+t)*rows+r]);
+        // The halves carry x to within 2^-17; dropping either costs far more.
+        #assert abs(got-sum)<=scale/65536;
+    }}
+}
+#test "row blocks and token groups of the tensor-core projection" {
+    // 32 rows (two blocks) by 32 columns (two steps), 9 tokens, one slice.
+    rows:=32;cols:=32;tokens:=9;half:=16;
+    w:[512]u32;x:[288]f32;hi:[1408]u32;lo:[1408]u32;partial:[288]f32;
+    for r:0..<rows {for p:0..<half {w[r*half+p]=dw_bf16(f32(r%4)-1)|(dw_bf16(f32(p+r))<<16);}}
+    for t:0..<tokens {for c:0..<cols {x[t*cols+c]=f32(t-c);}}
+    for i:0..<88*half {dw_split(i,cols,tokens,x[..],hi[..],lo[..]);}
+    for i:0..<2 {dw_project(1-i,rows,cols,tokens,1,w[..],hi[..],lo[..],partial[..]);}
+    for t:0..<tokens {for r:0..<rows {
+        sum:=0;for p:0..<half {sum+=(r%4-1)*(t-2*p)+(p+r)*(t-2*p-1);}
+        #assert partial[t*rows+r]==f32(sum);
+    }}
+}
