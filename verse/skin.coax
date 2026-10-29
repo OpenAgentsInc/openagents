@@ -53,6 +53,7 @@ Skin :: struct {
   time: f32;                // seconds into it
   clock: f32;               // seconds played in all
   changed: f32;             // the clock when the clip last changed
+  fade: f32;                // seconds a change blends over; 0 for SKIN_FADE
   from: [SKIN_JOINTS_MAX] SkinLocal;   // the pose it left
   now: [SKIN_JOINTS_MAX] SkinLocal;    // the pose now
 }
@@ -154,10 +155,11 @@ skin_advance :: (r: SkinRig, s: [] Skin, clip: int, speed: f32, dt: f32) {
   if clip != s[0].clip {
     for j: 0..<r.joints { s[0].from[j] = s[0].now[j]; }
     s[0].changed = s[0].clock;
-    if first { s[0].changed -= f32(SKIN_FADE); }
+    if first { s[0].changed -= ifx s[0].fade > 0 then s[0].fade else f32(SKIN_FADE); }
     s[0].clip = clip;
   }
-  f := clamp01((s[0].clock - s[0].changed) / f32(SKIN_FADE));
+  fade := ifx s[0].fade > 0 then s[0].fade else f32(SKIN_FADE);
+  f := clamp01((s[0].clock - s[0].changed) / fade);
   f = f * f * (3 - 2 * f);
   for j: 0..<r.joints {
     target := skin_sample(r, clip, j, s[0].time);
@@ -211,6 +213,22 @@ skin_joint :: (r: SkinRig, s: [] Skin, j: int) -> Point {
     q = quat_unit(quat_mul(q, l.q));
   }
   return t;
+}
+
+// Turns joint j of the pose now by yaw radians about the character's up
+// (+y) through the joint, its children with it: a glance, on the neck and
+// the head. The joint's new rotation in the character's space is the turn
+// times its old one, so its parent's rotation there is taken off again.
+skin_turn :: (r: SkinRig, s: [] Skin, j: int, yaw: f32) {
+  if j < 0 || j >= r.joints || r.joints > SKIN_JOINTS_MAX || !finite(yaw) { return; }
+  chain: [SKIN_JOINTS_MAX] int;
+  n := 0; k := r.parent[j];
+  while k >= 0 && n < SKIN_JOINTS_MAX { chain[n] = k; n += 1; p := r.parent[k]; k = ifx p < k then p else -1; }
+  gp := Quat.{};
+  while n > 0 { n -= 1; gp = quat_unit(quat_mul(gp, s[0].now[chain[n]].q)); }
+  turn := Quat.{y = sin(yaw / 2), w = cos(yaw / 2)};
+  back := Quat.{x = -gp.x, y = -gp.y, z = -gp.z, w = gp.w};
+  s[0].now[j].q = quat_unit(quat_mul(back, quat_mul(turn, quat_mul(gp, s[0].now[j].q))));
 }
 
 // ---- checks, on a two-joint rig: a root and an arm one metre up it
@@ -322,4 +340,23 @@ test_rig :: (d: [] TestRig) -> SkinRig {
   skin_advance(r, s[..], 3, 0, 1);
   skin_palette(r, s[..], pal[..]);
   #assert near(pal[19] + pal[17] * 2, 4, 0.001) && near(pal[7], 2, 0.001);
+}
+
+#test "a turn swings a joint and its children about the character's up through it" {
+  d: [1] TestRig;
+  r := test_rig(d[..]);
+  s: [1] Skin;
+  skin_advance(r, s[..], 0, 0, 0.5);
+  // the root lies on its side (a quarter turn about z): the arm points along -x
+  s[0].now[0].q = Quat.{z = 0.70710678, w = 0.70710678};
+  s[0].now[1].t = v3(0, 1, 0);
+  before := skin_joint(r, s[..], 1);
+  #assert near(before.x, -1, 0.0001) && near(before.y, 0, 0.0001);
+  // turning the root a quarter about +y carries the arm from -x to +z
+  skin_turn(r, s[..], 0, 1.57079633);
+  after := skin_joint(r, s[..], 1);
+  #assert near(after.x, 0, 0.0001) && near(after.z, 1, 0.0001) && near(after.y, 0, 0.0001);
+  // turning the arm itself moves nothing of its own place
+  skin_turn(r, s[..], 1, 0.7);
+  #assert near(length(sub(skin_joint(r, s[..], 1), after)), 0, 0.0001);
 }

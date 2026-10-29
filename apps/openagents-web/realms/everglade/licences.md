@@ -1,6 +1,6 @@
 # Licences: the Everglade pack
 
-Every asset in `everglade.pack` (6,021,808 bytes of its 6,750,000-byte budget) and its licence. Written by `verse/tools/pack_realm.py` from `verse/packs/everglade.json`.
+Every asset in `everglade.pack` (8,037,876 bytes of its 8,250,000-byte budget) and its licence. Written by `verse/tools/pack_realm.py` from `verse/packs/everglade.json`.
 
 ## Sources
 
@@ -8,6 +8,7 @@ Every asset in `everglade.pack` (6,021,808 bytes of its 6,750,000-byte budget) a
 - Quaternius Medieval Village MegaKit: CC0 1.0 Universal, https://quaternius.com/
 - Quaternius Fantasy Props MegaKit: CC0 1.0 Universal, https://quaternius.com/
 - Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library: CC0 1.0 Universal, https://quaternius.com/
+- Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard]: CC0 1.0 Universal (each pack's License_Standard.txt or License.txt), https://quaternius.com/
 
 ## Assets
 
@@ -66,6 +67,20 @@ Every asset in `everglade.pack` (6,021,808 bytes of its 6,750,000-byte budget) a
 | Stairs_Exterior_Platform | mesh | Quaternius Medieval Village MegaKit |
 | Prop_WoodenFence_Single | mesh | Quaternius Medieval Village MegaKit |
 | player/male-ranger | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
+| people/male-peasant | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| people/male-ranger | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| people/male-hood | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| people/female-peasant | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| people/female-ranger | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| people/female-hood | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| people/male-head | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| people/female-head | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| people/hair-parted | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| people/hair-buzzed | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| people/hair-beard | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| people/hair-long | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| people/hair-buns | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| people/hair-buzzed-female | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 | texture 0 (layer29.jpg) | texture | Quaternius Stylized Nature MegaKit |
 | texture 1 (layer33.png) | texture | Quaternius Stylized Nature MegaKit |
 | texture 2 (layer32.png) | texture | Quaternius Stylized Nature MegaKit |
@@ -89,3 +104,14 @@ Every asset in `everglade.pack` (6,021,808 bytes of its 6,750,000-byte budget) a
 | texture 20 (player/bc7aa863bd22ab0a) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
 | texture 21 (player/d08e3356a83211bc) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
 | texture 22 (player/df680cbc1967a61e) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
+| texture 23 (T_Peasant_BaseColor.png) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| texture 24 (T_Peasant_2_BaseColor.png) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| texture 25 (T_Regular_Male_Dark_BaseColor.png) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| texture 26 (T_Ranger_BaseColor.png) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| texture 27 (T_Ranger_3_BaseColor.png) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| texture 28 (T_Regular_Female_Dark_BaseColor.png) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| texture 29 (T_Hair_1_BaseColor.png) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| texture 30 (T_Eye_Brown.png) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| texture 31 (T_Superhero_Male_Dark.png_(cut)) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| texture 32 (T_Hair_2_BaseColor.png) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| texture 33 (T_Superhero_Female_Dark_BaseColor.png_(cut)) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |

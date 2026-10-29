@@ -60,6 +60,7 @@
 #load "../../verse/everglade/quests.coax";
 #load "../../verse/flock.coax";
 #load "../../verse/everglade/ranger.coax";
+#load "../../verse/everglade/folk.coax";
 #load "everglade-voice.coax";
 #load "everglade-place.coax";
 #load "../../verse/style-preset.coax";
@@ -136,11 +137,26 @@ PROFILE_BASIN :: 0; PROFILE_COLUMN :: 1;
 LOOK_CARVED :: 9;
 LOOK_PLANKS :: 11;        // a deck of planks (everglade.wgsl planks): boards, gaps, staggered ends, grain
 LOOK_WOOD :: 12;          // sawn timber: grain and a tone per piece         // carved stone: coursed blocks, weathered, wet and mossy at the waterline
-ALL_OBJECTS :: OBJECTS + 1 + LATHE_SLOTS;
 // The fountain on the commons (docs/verse/water.md, "The fountain"): its pool's level over the
 // ground, and the water's instances after the river's patches (everglade.wgsl fountain_vertex).
 FOUNTAIN_POOL :: 0.62;
 FOUNTAIN_INSTANCES :: 32;
+// Then the city's people (verse/everglade/folk.coax): each part of the pack's
+// a run of PEOPLE_SHOWN instances, one for each person shown wearing it.
+PEOPLE_SHOWN :: 10;       // people drawn at once at most, the nearest in view
+PEOPLE_SHOWN_PHONE :: 6;
+PEOPLE_NEAR :: 60.0;      // metres: nearer than this (and in view) they are drawn
+PEOPLE_NEAR_PHONE :: 40.0;
+PEOPLE_AT :: LATHE_AT + LATHE_SLOTS;
+ALL_OBJECTS :: PEOPLE_AT + PEOPLE_PARTS * PEOPLE_SHOWN;
+// Store 2, the joints' skinning matrices (three rows of four a joint): yours,
+// then each person shown's, after theirs three rows of their colours: skin
+// (and their outfit's colourway), hair, and the dye on their cloth with how
+// much takes (everglade.wgsl case 6u, colour.z PERSON_MARK).
+PERSON_ROWS :: PEOPLE_JOINTS * 3 + 3;
+// A person is a skinned shape like you, told apart by colour.z (yours is 1).
+PERSON_MARK :: 2.0;
+PALETTE_FLOATS :: RANGER_JOINTS * 12 + PEOPLE_SHOWN * PERSON_ROWS * 4;
 OBJECT_FLOATS :: 16;
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_WATER :: 4; LOOK_KIT :: 5;
 // The kit's rocks (Rock_Medium_1 and _2: the undergrowth's and the waystone's): the kit's texture, darkened
@@ -168,12 +184,14 @@ M_SHELF :: 37; M_BAG :: 38; M_ANVIL :: 39; M_WEAPONS :: 40; M_SWORD :: 41; M_SHI
 M_BANNER :: 45; M_PEGS :: 46; M_CHALICE :: 47; M_GABLE :: 48; M_SCROLL :: 49; M_STEP :: 50; M_FENCE :: 51;
 STOREY :: 3.12;           // a kit wall's height
 WALL_FACE :: 0.09;        // how far a wall's outer face stands from its origin (its local +z)
-// The shapes' five draws, then a draw per kit mesh, then yours, then the
-// river's (last: the host draws it after everything else, in two halves).
-DRAWS :: 5 + KIT_MESHES + 3;
+// The shapes' five draws, then a draw per kit mesh, then yours, the
+// fountain's stone, then one per part the people wear, then the river's
+// (last: the host draws it after everything else, in two halves).
 RANGER_DRAW :: 5 + KIT_MESHES;
 LATHE_DRAW :: 5 + KIT_MESHES + 1;
-WATER_DRAW :: 5 + KIT_MESHES + 2;
+PEOPLE_DRAW :: LATHE_DRAW + 1;
+WATER_DRAW :: PEOPLE_DRAW + PEOPLE_PARTS;
+DRAWS :: WATER_DRAW + 1;
 // The river's floats, as river.coax everglade_river_floats writes them: x,
 // y, z, yaw, how far it tips and which way, 0, and the kind (0 a duck, 1 a lily pad).
 FLOATS :: 9;
@@ -295,7 +313,15 @@ Everglade :: struct {
   flock: bool;                             // the bird flock is yours (the river quest handed in)
   birds: [1] Flock;                        // and where its birds are (verse/flock.coax)
   // you, the Ranger: its rig, its playback and its joints' skinning matrices (store 2)
-  rig: [1] Ranger; skin: [1] Skin; palette: [RANGER_JOINTS * 12] f32;
+  rig: [1] Ranger; skin: [1] Skin; palette: [PALETTE_FLOATS] f32;
+  // the city's people: how each lives, their poses, their rig, the pack's parts and who is shown
+  folk: [EG_SPOTS] Folk; people_rig: [1] People;
+  // a pose for each one shown (a person keeps theirs while shown; one who comes into
+  // view takes a pose no one shown holds, and starts it afresh)
+  poses: [PEOPLE_SHOWN] Skin; pose_of: [PEOPLE_SHOWN] int;
+  part_first: [PEOPLE_PARTS] int; part_count: [PEOPLE_PARTS] int; part_word: [PEOPLE_PARTS] int;
+  part_used: [PEOPLE_PARTS] int; shown_n: int; shown: [PEOPLE_SHOWN] int;
+  answered: f32;                           // seconds since the one you talk to last said something
   ev: EditVoice;                           // an admin's voice edits and what's published over the plan (everglade-voice.coax)
 }
 
@@ -397,6 +423,10 @@ everglade_start :: (s: [] Everglade) {
   s[0].focus = -1; s[0].pick = 0; s[0].thanks = -1; s[0].board_finger = -1; s[0].news = -1; s[0].talk_quest = -1;
   ranger_load(s[0].rig[..]);
   s[0].skin[0] = Skin.{};
+  people_load(s[0].people_rig[..]);
+  for i: 0..<EG_SPOTS { folk_start(s[0].folk[i..<i + 1], i); }
+  for k: 0..<PEOPLE_SHOWN { s[0].poses[k] = Skin.{}; s[0].pose_of[k] = -1; }
+  s[0].answered = 1000;
   build_scenery(s);
   plant_forest(s);
   at := KIT_AT;
@@ -521,6 +551,7 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
   for k: 0..<KIT_TREES * 3 { s[0].canopy_rgb[k] = 0; }
   s[0].identity_first = -1;
   s[0].ranger_first = 0; s[0].ranger_count = 0; s[0].ranger_word = 0;
+  for k: 0..<PEOPLE_PARTS { s[0].part_first[k] = 0; s[0].part_count[k] = 0; s[0].part_word[k] = 0; }
   i := 0;
   while i < text.count {
     e := i; while e < text.count && text[e] != '\n' { e += 1; }
@@ -539,6 +570,12 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
       for k: 0..<6 { nums[k] = whole_at(line, at); at = word_end(line, at + 1); }
       if line[2..<name_end] == RANGER_NAME && nums[0] >= 0 && nums[1] > 0 && nums[3] >= 0 && nums[5] == RANGER_JOINTS {
         s[0].ranger_first = nums[0]; s[0].ranger_count = nums[1]; s[0].ranger_word = nums[3];
+      }
+      // or a part the people wear, on their skeleton
+      for k: 0..<PEOPLE_PARTS {
+        if line[2..<name_end] == PEOPLE_PART_NAME[k] && nums[0] >= 0 && nums[1] > 0 && nums[3] >= 0 && nums[5] == PEOPLE_JOINTS {
+          s[0].part_first[k] = nums[0]; s[0].part_count[k] = nums[1]; s[0].part_word[k] = nums[3];
+        }
       }
       continue;
     }
@@ -923,6 +960,7 @@ add_line :: (s: [] Everglade, npc: bool, text: string) {
   for i: 0..<text.count { if n < LINE_BYTES { s[0].line_text[k * LINE_BYTES + n] = text[i]; n += 1; } }
   s[0].line_npc[k] = npc; s[0].line_len[k] = n;
   s[0].line_n = k + 1;
+  if npc { s[0].answered = 0; }
 }
 line_of :: (s: [] Everglade, k: int) -> string { return cast(string) s[0].line_text[k * LINE_BYTES..<k * LINE_BYTES + s[0].line_len[k]]; }
 typed_text :: (s: [] Everglade) -> string { return cast(string) s[0].typed[0..<s[0].typed_n]; }
@@ -931,6 +969,7 @@ talk_to :: (s: [] Everglade, i: int) {
   if i < 0 || i >= EG_SPOTS { return; }
   s[0].talk = i; s[0].line_n = 0; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0;
   s[0].held = 0; s[0].talk_quest = -1;
+  folk_nod(s[0].folk[i..<i + 1]);
   q := eg_quest_talk(s[0].stages[..], i);
   if q >= 0 { quest_moved(s, q); s[0].talk_quest = q; add_line(s, true, EG_QUEST_ARRIVE[q]); return; }
   // the crier takes in what's ready to hand in, as the board does
@@ -1667,9 +1706,17 @@ forest :: (s: [] Everglade, u: [] f32, eye: Point) {
   }
 }
 
-// The city's characters, each where their day starts: a grey-box figure in
-// their trade's colour; a cat is small and round.
-people :: (s: [] Everglade, u: [] f32, you: Point) {
+// The city's characters, each where their day starts. The people are
+// skinned characters (verse/everglade/folk.coax): every one lives each frame
+// (turns to you, glances, shifts, nods, talks), and the nearest in view,
+// PEOPLE_SHOWN at most, are posed and drawn, a part an instance. The cats
+// are small and round.
+people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32) {
+  for k: 0..<PEOPLE_PARTS { s[0].part_used[k] = 0; }
+  s[0].shown_n = 0;
+  cap := ifx phone(s) then PEOPLE_SHOWN_PHONE else PEOPLE_SHOWN;
+  reach := ifx phone(s) then f32(PEOPLE_NEAR_PHONE) else f32(PEOPLE_NEAR);
+  gaps: [PEOPLE_SHOWN] f32;
   for i: 0..<EG_SPOTS {
     if eg_gone(s[0].ev.edits, i) { continue; }   // an admin took them away
     x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1]; face := EG_SPOT[i * 3 + 2];
@@ -1682,20 +1729,65 @@ people :: (s: [] Everglade, u: [] f32, you: Point) {
       shape(s, SHAPE_CONE, LOOK_MATTE, add(head, v3(-cos(face) * 0.06, 0.1, sin(face) * 0.06)), face, 0, 0.07, 0.1, 0.05, 0.8, 0.5, 0.2);
       continue;
     }
-    c := role_colour(i);
-    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + 0.75, z), face, 0, 0.55, 1.5, 0.42, c.x, c.y, c.z);
-    shape(s, SHAPE_SPHERE, LOOK_SKIN, v3(x, g + 1.7, z), face, 0, 0.38, 0.42, 0.38, 0.93, 0.76, 0.62);
-    if flat_gap(v3(x, 0, z), you) < 30 { shadow(s, u, x, z, g, 0.5, 0.5); }
+    talking := s[0].talk == i;
+    folk_step(s[0].folk[i..<i + 1], i, dt, you, talking, ifx talking then s[0].answered else 1000.0f32);
+    gap := flat_gap(v3(x, 0, z), you);
+    if gap < 30 { shadow(s, u, x, z, g, 0.5, 0.5); }
+    if gap > reach || !in_view(u, x, g + 1, z, 1.3) { continue; }
+    // the nearest `cap`, nearest first
+    k := s[0].shown_n;
+    if k == cap { if gap >= gaps[k - 1] { continue; } k -= 1; } else { s[0].shown_n += 1; }
+    while k > 0 && gaps[k - 1] > gap { gaps[k] = gaps[k - 1]; s[0].shown[k] = s[0].shown[k - 1]; k -= 1; }
+    gaps[k] = gap; s[0].shown[k] = i;
   }
+  // each keeps the pose they had; the rest take the poses no one shown holds
+  slot: [PEOPLE_SHOWN] int;
+  held: [PEOPLE_SHOWN] bool;
+  for k: 0..<s[0].shown_n {
+    slot[k] = -1;
+    for p: 0..<PEOPLE_SHOWN { if s[0].pose_of[p] == s[0].shown[k] { slot[k] = p; held[p] = true; } }
+  }
+  for k: 0..<s[0].shown_n {
+    if slot[k] >= 0 { continue; }
+    p := 0;
+    while p < PEOPLE_SHOWN && held[p] { p += 1; }
+    held[p] = true; slot[k] = p;
+    s[0].pose_of[p] = s[0].shown[k]; s[0].poses[p] = Skin.{};
+  }
+  for k: 0..<s[0].shown_n { pose_person(s, s[0].shown[k], k, slot[k], dt); }
 }
 
-role_colour :: (i: int) -> Point {
-  name := EG_SPOT_NAME[i];
-  if name == "GATE GUARD" { return v3(0.55, 0.22, 0.2); }
-  if name == "PRIEST" || name == "ASTRONOMER" || name == "ARCHMAGE" { return v3(0.36, 0.3, 0.62); }
-  if name == "FIGHTERS' MASTER" || name == "SMITH" { return v3(0.38, 0.36, 0.34); }
-  if name == "RANGERS' WARDEN" || name == "WOODWARDEN" { return v3(0.24, 0.42, 0.22); }
-  return v3(0.66, 0.52, 0.32);
+// Person i, shown k-th: their pose and colours into store 2, an instance of each part they wear.
+pose_person :: (s: [] Everglade, i: int, k: int, slot: int, dt: f32) {
+  rig := people_rig(s[0].people_rig[..], FOLK_FEMALE[i]);
+  at := RANGER_JOINTS * 12 + k * PERSON_ROWS * 4;
+  folk_pose(rig, s[0].folk[i..<i + 1], s[0].poses[slot..<slot + 1], dt, s[0].palette[at..<at + PEOPLE_JOINTS * 12]);
+  h := at + PEOPLE_JOINTS * 12;
+  for c: 0..<3 {
+    s[0].palette[h + c] = SKIN_TONE[FOLK_SKIN[i] * 3 + c];
+    s[0].palette[h + 4 + c] = FOLK_HAIR_RGB[i * 3 + c];
+  }
+  s[0].palette[h + 3] = f32(FOLK_VARIANT[i]);
+  s[0].palette[h + 7] = 0;
+  for c: 0..<4 { s[0].palette[h + 8 + c] = FOLK_DYE[i * 4 + c]; }
+  x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1];
+  y := ground_at(s, x, z);
+  yaw := s[0].folk[i].yaw;
+  c := cos(yaw); sn := sin(yaw);
+  rows := [12] f32.[c, 0, sn, x,   0, 1, 0, y,   -sn, 0, c, z];
+  parts: [FOLK_PARTS_MAX] int;
+  n := folk_parts(i, parts[..]);
+  for p: 0..<n {
+    part := parts[p];
+    if s[0].part_count[part] <= 0 { continue; }
+    o := (PEOPLE_AT + part * PEOPLE_SHOWN + s[0].part_used[part]) * OBJECT_FLOATS;
+    s[0].part_used[part] += 1;
+    for r: 0..<12 { s[0].objects[o + r] = rows[r]; }
+    s[0].objects[o + 12] = f32(s[0].part_word[part]);
+    s[0].objects[o + 13] = f32(RANGER_JOINTS * 3 + k * PERSON_ROWS);
+    s[0].objects[o + 14] = PERSON_MARK;
+    s[0].objects[o + 15] = f32(SHAPE_SKINNED + 8 * LOOK_KIT);
+  }
 }
 
 // The bird flock (eg-companion): small dark birds beating their wings, each
@@ -2272,7 +2364,8 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   view(shot, width, height, u, U_VIEW);
   figure(s, u, shown, face, speed, act == 3, t);
   if s[0].flock { flock_frame(s[0].birds[..], shown, face, t); birds(s); }
-  people(s, u, shown);
+  people(s, u, shown, t);
+  s[0].answered += t;
   city(s, u);
   forest(s, u, shot.eye);
   landmarks(s);
@@ -2308,6 +2401,15 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   s[0].draws[d + 1] = cast(u32) LATHE_VERTICES;
   s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + LATHE_AT);
   s[0].draws[d + 3] = cast(u32) s[0].lathe_n;
+  // the people: a part a draw, its instances the people shown wearing it
+  for k: 0..<PEOPLE_PARTS {
+    d = (PEOPLE_DRAW + k) * 4;
+    s[0].draws[d] = cast(u32) s[0].part_first[k];
+    s[0].draws[d + 1] = cast(u32) s[0].part_count[k];
+    s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + PEOPLE_AT + k * PEOPLE_SHOWN);
+    s[0].draws[d + 3] = cast(u32) (ifx s[0].part_count[k] > 0 then s[0].part_used[k] else 0);
+    s[0].kit_triangles += s[0].part_count[k] / 3 * s[0].part_used[k];
+  }
   // the water: the river a patch an instance, then the fountain's, drawn after everything (host.js
   // coaxial_water_draws)
   d = WATER_DRAW * 4;
@@ -2392,7 +2494,7 @@ everglade_busy :: (s: [] Everglade) -> bool #export_c { return s[0].above || s[0
 everglade_draws :: (s: [] Everglade) -> int #export_c { return ifx s[0].pack_ready then DRAWS else 0; }
 everglade_store_cap :: (k: int) -> int #export_c {
   if k == 0 { return EG_GROUND_POINTS * 4; }
-  if k == 2 { return RANGER_JOINTS * 12 * 4; }
+  if k == 2 { return PALETTE_FLOATS * 4; }
   return ALL_OBJECTS * OBJECT_FLOATS * 4;
 }
 
@@ -2469,7 +2571,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
   #assert squares > 100 && holes * 50 < squares;
 }
 
-CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 3474 0 0 0 0 1 8 1\nM Pine_4 4938 6480 0 0 0 0 1 9 1\nM Pine_4_Leaves 11418 3630 0 0 0 0 1 9 1 canopy ellipsoid 33 98 0\nM CommonTree_3 15048 5115 0 0 0 0 1 8 1\nM CommonTree_3_Leaves 20163 5400 0 0 0 0 1 9 1 canopy sphere 97 198 0\nM CommonTree_4 25563 9840 0 0 0 0 1 8 1\nM CommonTree_4_Leaves 35403 2358 0 0 0 0 1 9 1\nM Bush_Common_Flowers 37761 4104 0 0 0 0 1 1 1\nM Fern_1 40461 864 0 0 0 0 1 1 1\nM Rock_Medium_1 41325 1026 0 0 0 0 1 2 1\nM Rock_Medium_2 42351 732 0 0 0 0 1 2 1\nI 43083 1024\nC player/male-ranger 44107 94188 3 692676 27402 75\nT 0 layer29.jpg 0\n";
+CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 3474 0 0 0 0 1 8 1\nM Pine_4 4938 6480 0 0 0 0 1 9 1\nM Pine_4_Leaves 11418 3630 0 0 0 0 1 9 1 canopy ellipsoid 33 98 0\nM CommonTree_3 15048 5115 0 0 0 0 1 8 1\nM CommonTree_3_Leaves 20163 5400 0 0 0 0 1 9 1 canopy sphere 97 198 0\nM CommonTree_4 25563 9840 0 0 0 0 1 8 1\nM CommonTree_4_Leaves 35403 2358 0 0 0 0 1 9 1\nM Bush_Common_Flowers 37761 4104 0 0 0 0 1 1 1\nM Fern_1 40461 864 0 0 0 0 1 1 1\nM Rock_Medium_1 41325 1026 0 0 0 0 1 2 1\nM Rock_Medium_2 42351 732 0 0 0 0 1 2 1\nI 43083 1024\nC player/male-ranger 44107 94188 3 692676 27402 75\nC people/male-peasant 246666 20058 4 911892 5751 65\nC people/male-ranger 266724 32610 4 946398 10887 65\nC people/male-hood 299334 3204 4 1011720 706 65\nC people/female-peasant 302538 19422 4 1015956 6185 65\nC people/female-ranger 321960 34032 4 1053066 11408 65\nC people/female-hood 355992 3204 4 1121514 706 65\nC people/male-head 359196 8268 4 1125750 1837 65\nC people/female-head 367464 9480 4 1136772 2058 65\nC people/hair-parted 376944 2337 4 1149120 496 65\nC people/hair-buzzed 379281 1494 4 1152096 300 65\nC people/hair-beard 380775 1860 4 1153896 389 65\nC people/hair-long 382635 8598 4 1156230 3060 65\nC people/hair-buns 391233 9732 4 1174590 3481 65\nC people/hair-buzzed-female 400965 1494 4 1195476 300 65\nT 0 layer29.jpg 0\n";
 
 #test "the pack's catalog: the kit's meshes by name and the shapes' identity indices; nothing draws before it" {
   g: [1] Everglade;
@@ -2591,6 +2693,36 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
     worst = hi(worst, length(sub(got, v3(RANGER_CHECK[row * 9 + 6], RANGER_CHECK[row * 9 + 7], RANGER_CHECK[row * 9 + 8]))));
   }
   #assert worst < 0.001;
+}
+
+#test "the people: the catalog names their parts, and the nearest in view are drawn a part an instance, posed" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  everglade_start(g[..]);
+  everglade_catalog(g[..], CATALOG);
+  for k: 0..<PEOPLE_PARTS { #assert g[0].part_count[k] > 0 && g[0].part_word[k] > 0; }
+  #assert g[0].part_count[PART_MALE_RANGER] == 32610 && g[0].part_word[PART_BEARD] == 1153896;
+  // at the South Gate, facing the gate: the guards are in view
+  sp := everglade_spawn(g[..]);
+  for f: 0..<3 { n := everglade_frame(g[..], out[..], u[..], 1440, 900, 1, 1.0 / 60.0, false, sp.x, 0, sp.z, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert g[0].shown_n > 0 && g[0].shown_n <= PEOPLE_SHOWN;
+  drawn := 0;
+  for k: 0..<PEOPLE_PARTS {
+    d := (PEOPLE_DRAW + k) * 4;
+    #assert g[0].draws[d] == cast(u32) g[0].part_first[k] && g[0].draws[d + 1] == cast(u32) g[0].part_count[k];
+    #assert g[0].draws[d + 3] == cast(u32) g[0].part_used[k] && g[0].part_used[k] <= g[0].shown_n;
+    drawn += g[0].part_used[k];
+    for j: 0..<g[0].part_used[k] {
+      o := (PEOPLE_AT + k * PEOPLE_SHOWN + j) * OBJECT_FLOATS;
+      #assert g[0].objects[o + 12] == f32(g[0].part_word[k]) && g[0].objects[o + 14] == PERSON_MARK && g[0].objects[o + 15] == f32(SHAPE_SKINNED + 8 * LOOK_KIT);
+    }
+  }
+  // each one shown wears a body and a head at least
+  #assert drawn >= 2 * g[0].shown_n;
+  // and their poses are finite, the river's draw still last
+  for k: 0..<g[0].shown_n * PERSON_ROWS * 4 { #assert finite(g[0].palette[RANGER_JOINTS * 12 + k]); }
+  #assert WATER_DRAW == DRAWS - 1;
 }
 
 #test "a phone draws at most its cap of kit trees, however you look" {

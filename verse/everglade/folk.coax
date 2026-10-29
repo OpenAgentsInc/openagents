@@ -1,0 +1,392 @@
+// Everglade's people as they look and live (eg-folk): each of the city's
+// people is put together from the Quaternius Universal Base Characters and
+// Modular Character Outfits - Fantasy parts in the realm's pack (a body's
+// outfit, a head, a hairstyle, maybe a beard or a hood; verse/tools/people.py
+// rebinds every part onto one of two skeletons), and plays the Universal
+// Animation Library's clips through verse/everglade/people-rig.coax.
+// Who wears what, their skin, hair and dye are here, a row a spot of
+// plan.coax; what they say is people.coax's. The cats are not here: they
+// are drawn apart, as cats.
+//
+// How they live, folk_step, each at their own times from their own seed:
+//   - they stand in their idle and now and then shift their weight into
+//     their trade's other stance (arms folded, a lantern held, a spell
+//     readied) and back;
+//   - they glance about (the neck and head turn), and look at you when you
+//     come near;
+//   - within FOLK_FACE metres they turn to face you, stepping round, and
+//     back to their own way when you leave (past FOLK_FACE_OFF);
+//   - when you start talking to them they nod, and while their answer is
+//     fresh they talk with their hands.
+//   coax/bin/coax test --library verse/everglade/folk.coax --steps 2000000000
+
+#load "plan.coax";
+#load "people-rig.coax";
+
+// The pack's parts, in PEOPLE_PART_NAME's order.
+PART_MALE_PEASANT :: 0; PART_MALE_RANGER :: 1; PART_MALE_HOOD :: 2;
+PART_FEMALE_PEASANT :: 3; PART_FEMALE_RANGER :: 4; PART_FEMALE_HOOD :: 5;
+PART_MALE_HEAD :: 6; PART_FEMALE_HEAD :: 7;
+PART_HAIR_PARTED :: 8; PART_HAIR_BUZZED :: 9; PART_BEARD :: 10;
+PART_HAIR_LONG :: 11; PART_HAIR_BUNS :: 12; PART_HAIR_BUZZED_FEMALE :: 13;
+FOLK_PARTS_MAX :: 5;      // a person's parts at most: outfit, head, hair, beard, hood
+
+FOLK_FACE :: 4.0;         // metres: nearer than this they turn to face you
+FOLK_FACE_OFF :: 5.0;     // and further than this they turn back to their own way
+FOLK_LOOK :: 7.0;         // nearer than this they look at you
+FOLK_TURN :: 2.4;         // radians a second they turn at most
+FOLK_STEP_FROM :: 0.35;   // a turn bigger than this steps round (the walk, slowly)
+FOLK_STEP_PACE :: 0.7;    // metres a second the stepping walk is played at
+FOLK_GLANCE_MAX :: 0.55;  // radians a glance turns the head at most
+FOLK_LOOK_MAX :: 1.1;     // and looking at you
+FOLK_NOD :: 1.9;          // seconds the nod plays
+FOLK_FADE :: 0.6;         // seconds a change of stance blends (a weight shift is slow)
+
+// Each spot's look. Outfit: 0 the peasant's, 1 the ranger's. Hair: a part,
+// or -1 for none (a hood covers it). Variant: 1 wears the outfit's other
+// colourway (T_Peasant_2, T_Ranger_3). Stance: the clip they shift into.
+FOLK_FEMALE :: [22] bool.[
+  false, true, false,
+  false, false,
+  true, false,
+  false, true, true, false,
+  false, true,
+  false, true,
+  true, false,
+  false, true,
+  false, false, false
+];
+FOLK_OUTFIT :: [22] int.[
+  1, 1, 0,
+  0, 0,
+  0, 0,
+  0, 0, 0, 0,
+  0, 0,
+  1, 1,
+  0, 0,
+  0, 0,
+  1, 0, 0
+];
+FOLK_HOOD :: [22] bool.[
+  false, false, false,  false, false,  false, false,  false, false, false, false,
+  false, false,  false, true,  false, false,  false, false,  true, false, false
+];
+FOLK_HAIR :: [22] int.[
+  PART_HAIR_BUZZED, PART_HAIR_BUZZED_FEMALE, PART_HAIR_PARTED,
+  PART_HAIR_PARTED, -1,
+  PART_HAIR_BUNS, -1,
+  PART_HAIR_PARTED, PART_HAIR_LONG, PART_HAIR_BUNS, PART_HAIR_BUZZED,
+  PART_HAIR_BUZZED, PART_HAIR_LONG,
+  PART_HAIR_BUZZED, -1,
+  PART_HAIR_LONG, -1,
+  PART_HAIR_BUZZED, PART_HAIR_LONG,
+  -1, PART_HAIR_BUZZED, PART_HAIR_PARTED
+];
+FOLK_BEARD :: [22] bool.[
+  true, false, false,  true, false,  false, false,  true, false, false, false,
+  true, false,  true, false,  false, false,  false, false,  true, true, false
+];
+FOLK_VARIANT :: [22] int.[
+  0, 0, 1,  0, 0,  0, 0,  1, 0, 0, 0,  1, 0,  1, 0,  1, 0,  0, 0,  1, 1, 0
+];
+FOLK_STANCE :: [22] int.[
+  PEOPLE_FOLD, PEOPLE_FOLD, PEOPLE_FOLD,
+  PEOPLE_IDLE, PEOPLE_IDLE,
+  PEOPLE_FOLD, PEOPLE_IDLE,
+  PEOPLE_FOLD, PEOPLE_TALK, PEOPLE_FOLD, PEOPLE_TALK,
+  PEOPLE_FOLD, PEOPLE_SPELL,
+  PEOPLE_FOLD, PEOPLE_FOLD,
+  PEOPLE_SPELL, PEOPLE_IDLE,
+  PEOPLE_IDLE, PEOPLE_LANTERN,
+  PEOPLE_FOLD, PEOPLE_FOLD, PEOPLE_IDLE
+];
+// Their resting clip: the crier calls out; the guards stand with folded arms.
+FOLK_REST :: [22] int.[
+  PEOPLE_FOLD, PEOPLE_FOLD, PEOPLE_IDLE,
+  PEOPLE_TALK, PEOPLE_IDLE,
+  PEOPLE_IDLE, PEOPLE_IDLE,
+  PEOPLE_IDLE, PEOPLE_IDLE, PEOPLE_IDLE, PEOPLE_IDLE,
+  PEOPLE_IDLE, PEOPLE_IDLE,
+  PEOPLE_IDLE, PEOPLE_IDLE,
+  PEOPLE_IDLE, PEOPLE_IDLE,
+  PEOPLE_IDLE, PEOPLE_IDLE,
+  PEOPLE_IDLE, PEOPLE_IDLE, PEOPLE_IDLE
+];
+// Skin, a tint over the base bodies' skin (linear): fair, the bodies' own, tan, brown, deep.
+SKIN_TONE :: [15] f32.[1.12, 1.06, 1.02,   1, 1, 1,   0.86, 0.76, 0.66,   0.66, 0.52, 0.42,   0.46, 0.34, 0.27];
+FOLK_SKIN :: [22] int.[
+  2, 0, 1,  0, 0,  1, 0,  3, 0, 4, 2,  3, 0,  2, 1,  0, 0,  1, 0,  2, 2, 1
+];
+// Hair, over the kit's pale hair (linear).
+FOLK_HAIR_RGB :: [66] f32.[
+  0.06, 0.04, 0.03,   0.32, 0.12, 0.04,   0.2, 0.1, 0.04,
+  0.62, 0.45, 0.2,    0, 0, 0,
+  0.45, 0.13, 0.04,   0, 0, 0,
+  0.08, 0.05, 0.035,  0.78, 0.6, 0.3,     0.03, 0.025, 0.025,  0.25, 0.14, 0.06,
+  0.05, 0.035, 0.03,  0.04, 0.03, 0.03,
+  0.55, 0.55, 0.57,   0.2, 0.1, 0.04,
+  0.88, 0.88, 0.92,   0, 0, 0,
+  0.62, 0.62, 0.64,   0.86, 0.86, 0.92,
+  0.18, 0.1, 0.05,    0.6, 0.6, 0.62,     0.22, 0.12, 0.05
+];
+// The dye on their cloth (linear) and how much of it takes: crimson guards,
+// the crier's blue, an indigo scholar, the priest's white ...
+FOLK_DYE :: [88] f32.[
+  0.32, 0.03, 0.025, 1,   0.32, 0.03, 0.025, 1,   0, 0, 0, 0,
+  0.03, 0.08, 0.36, 1,    0, 0, 0, 0,
+  0.1, 0.22, 0.06, 0.9,   0, 0, 0, 0,
+  0.42, 0.26, 0.04, 0.9,  0.12, 0.3, 0.05, 1,   0.42, 0.05, 0.14, 1,   0.03, 0.2, 0.2, 1,
+  0.05, 0.05, 0.055, 0.8, 0.18, 0.04, 0.3, 1,
+  0, 0, 0, 0,             0.1, 0.16, 0.04, 0.8,
+  0.03, 0.03, 0.26, 1,    0, 0, 0, 0,
+  0.8, 0.78, 0.7, 1,      0.07, 0.03, 0.26, 1,
+  0.08, 0.13, 0.04, 1,    0, 0, 0, 0,             0.36, 0.22, 0.06, 0.9
+];
+
+// The parts person i wears, into out; how many.
+folk_parts :: (i: int, out: [] int) -> int {
+  if i < 0 || i >= EG_SPOTS || EG_SPOT_CAT[i] || out.count < FOLK_PARTS_MAX { return 0; }
+  f := FOLK_FEMALE[i];
+  n := 0;
+  out[n] = ifx FOLK_OUTFIT[i] == 1 then (ifx f then PART_FEMALE_RANGER else PART_MALE_RANGER)
+           else (ifx f then PART_FEMALE_PEASANT else PART_MALE_PEASANT); n += 1;
+  out[n] = ifx f then PART_FEMALE_HEAD else PART_MALE_HEAD; n += 1;
+  if FOLK_HAIR[i] >= 0 { out[n] = FOLK_HAIR[i]; n += 1; }
+  if FOLK_BEARD[i] && !f { out[n] = PART_BEARD; n += 1; }
+  if FOLK_HOOD[i] { out[n] = ifx f then PART_FEMALE_HOOD else PART_MALE_HOOD; n += 1; }
+  return n;
+}
+
+// The triangles person i's parts draw.
+folk_triangles :: (i: int) -> int {
+  parts: [FOLK_PARTS_MAX] int;
+  n := folk_parts(i, parts[..]);
+  t := 0;
+  for k: 0..<n { t += PEOPLE_PART_TRIANGLES[parts[k]]; }
+  return t;
+}
+
+// ---- how they live
+
+// One person's day so far.
+Folk :: struct {
+  yaw: f32;                 // the way they face now
+  facing: bool;             // turned to you
+  clip: int;                // the clip playing
+  clock: f32;               // seconds they have lived
+  seed: int;
+  shift_at: f32; shift_until: f32;   // the next weight shift and when it ends
+  glance: f32; glance_to: f32; glance_at: f32;   // the head's turn, where it goes and when it next moves
+  nod_until: f32; talk_until: f32;
+  ready: bool;
+}
+
+folk_next :: (seed: int) -> int { return (seed * 1103515245 + 12345) % 2147483648; }
+folk_rand :: (f: [] Folk) -> f32 { f[0].seed = folk_next(f[0].seed); return f32(f[0].seed) / 2147483648.0; }
+folk_wrap :: (a: f32) -> f32 {
+  x := a;
+  while x > f32(PI) { x -= 2 * f32(PI); }
+  while x < -f32(PI) { x += 2 * f32(PI); }
+  return x;
+}
+
+folk_start :: (f: [] Folk, i: int) {
+  f[0] = Folk.{};
+  f[0].yaw = EG_SPOT[i * 3 + 2];
+  f[0].seed = 7919 * (i + 3) + 104729;
+  f[0].clip = FOLK_REST[i];
+  // their own times: a first shift and glance a few seconds in, never all at once
+  f[0].shift_at = 4 + 10 * folk_rand(f);
+  f[0].glance_at = 1 + 4 * folk_rand(f);
+  f[0].ready = true;
+}
+
+// Person i's life for dt seconds: you stand at you (none if far is true), they
+// are being talked to (talking), and their last answer came `answered` seconds
+// ago (a large number if none). Chooses the clip, the way they face and the
+// head's turn; skin_advance and folk_pose do the rest.
+folk_step :: (f: [] Folk, i: int, dt: f32, you: Point, talking: bool, answered: f32) {
+  if !f[0].ready { folk_start(f, i); }
+  t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  f[0].clock += t;
+  x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1];
+  dx := you.x - x; dz := you.z - z;
+  gap := sqrt(dx * dx + dz * dz);
+  if !finite(gap) { gap = 1000; }
+  toward := ifx gap > 0.01 then atan2(dx, dz) else f[0].yaw;
+  if gap < f32(FOLK_FACE) || talking { f[0].facing = true; }
+  else if gap > f32(FOLK_FACE_OFF) { f[0].facing = false; }
+  goal := ifx f[0].facing then toward else EG_SPOT[i * 3 + 2];
+  left := folk_wrap(goal - f[0].yaw);
+  stepping := abs(left) > f32(FOLK_STEP_FROM);
+  turn := clamp(left, -f32(FOLK_TURN) * t, f32(FOLK_TURN) * t);
+  f[0].yaw = folk_wrap(f[0].yaw + turn);
+  // the clip: a nod as a talk starts, hands while the answer is fresh, a step round, a shift, the rest
+  clip := FOLK_REST[i];
+  if f[0].clock >= f[0].shift_at {
+    if f[0].shift_until <= f[0].shift_at { f[0].shift_until = f[0].clock + 4 + 5 * folk_rand(f); }
+    if f[0].clock < f[0].shift_until { clip = ifx FOLK_STANCE[i] == FOLK_REST[i] then PEOPLE_IDLE else FOLK_STANCE[i]; }
+    else { f[0].shift_at = f[0].clock + 8 + 10 * folk_rand(f); }
+  }
+  if talking && answered < 6 { clip = PEOPLE_TALK; }
+  if f[0].clock < f[0].nod_until { clip = PEOPLE_NOD; }
+  if stepping { clip = PEOPLE_WALK; }
+  f[0].clip = clip;
+  // the head: looking at you when you are near, else glancing about now and then
+  if gap < f32(FOLK_LOOK) {
+    f[0].glance_to = clamp(folk_wrap(toward - f[0].yaw), -f32(FOLK_LOOK_MAX), f32(FOLK_LOOK_MAX));
+    f[0].glance_at = f[0].clock + 1;
+  } else if f[0].clock >= f[0].glance_at {
+    r := folk_rand(f);
+    f[0].glance_to = ifx r < 0.4 then 0.0f32 else (folk_rand(f) * 2 - 1) * f32(FOLK_GLANCE_MAX);
+    f[0].glance_at = f[0].clock + 2 + 5 * folk_rand(f);
+  }
+  follow_share := clamp01(t * 4);
+  f[0].glance += (f[0].glance_to - f[0].glance) * follow_share;
+}
+
+// They nod: a talk with them has begun.
+folk_nod :: (f: [] Folk) { f[0].nod_until = f[0].clock + f32(FOLK_NOD); }
+
+// Plays their clip for dt seconds on their skin (its changes blend over FOLK_FADE: a weight
+// shift is slow) and turns the neck and head by the glance (two parts in five and three), then
+// writes the joints' skinning matrices into out (PEOPLE_JOINTS x 12).
+folk_pose :: (r: SkinRig, f: [] Folk, sk: [] Skin, dt: f32, out: [] f32) {
+  speed := ifx f[0].clip == PEOPLE_WALK then f32(FOLK_STEP_PACE) else 0.0f32;
+  sk[0].fade = f32(FOLK_FADE);
+  skin_advance(r, sk, f[0].clip, speed, dt);
+  skin_turn(r, sk, PEOPLE_NECK, f[0].glance * 0.4);
+  skin_turn(r, sk, PEOPLE_HEAD, f[0].glance * 0.6);
+  skin_palette(r, sk, out);
+}
+
+// ---- checks
+
+#test "the parts are the pack's, in its order, and each person wears their own body's" {
+  #assert PEOPLE_PARTS == 14 && PEOPLE_PART_NAME[PART_MALE_PEASANT] == "people/male-peasant";
+  #assert PEOPLE_PART_NAME[PART_FEMALE_RANGER] == "people/female-ranger" && PEOPLE_PART_NAME[PART_MALE_HEAD] == "people/male-head";
+  #assert PEOPLE_PART_NAME[PART_BEARD] == "people/hair-beard" && PEOPLE_PART_NAME[PART_HAIR_BUZZED_FEMALE] == "people/hair-buzzed-female";
+  dressed := 0;
+  for i: 0..<EG_SPOTS {
+    parts: [FOLK_PARTS_MAX] int;
+    n := folk_parts(i, parts[..]);
+    if EG_SPOT_CAT[i] { #assert n == 0; continue; }
+    dressed += 1;
+    #assert n >= 2;
+    for k: 0..<n { #assert parts[k] >= 0 && parts[k] < PEOPLE_PARTS && PEOPLE_PART_FEMALE[parts[k]] == FOLK_FEMALE[i]; }
+    // no one is bald and hoodless but by choice, and a hood covers the hair
+    #assert FOLK_HOOD[i] || FOLK_HAIR[i] >= 0;
+    #assert !(FOLK_HOOD[i] && FOLK_HAIR[i] >= 0);
+    #assert FOLK_VARIANT[i] == 0 || FOLK_VARIANT[i] == 1;
+    #assert folk_triangles(i) > 8000 && folk_triangles(i) < 22000;
+  }
+  #assert dressed == 19;
+}
+
+#test "the people's poses are the clips' as people.py sampled them, on both bodies" {
+  d: [1] People;
+  people_load(d[..]);
+  worst := 0.0f32;
+  for row: 0..<PEOPLE_CHECK.count / 7 {
+    body := cast(int) PEOPLE_CHECK[row * 7]; clip := cast(int) PEOPLE_CHECK[row * 7 + 1];
+    at := PEOPLE_CHECK[row * 7 + 2]; j := cast(int) PEOPLE_CHECK[row * 7 + 3];
+    rig := people_rig(d[..], body == 1);
+    s: [1] Skin;
+    s[0] = Skin.{};
+    pace := ifx rig.distance[clip] > 0 then rig.distance[clip] / rig.duration[clip] else 0.0f32;
+    skin_advance(rig, s[..], clip, pace, at);
+    p := skin_joint(rig, s[..], j);
+    worst = hi(worst, length(sub(p, v3(PEOPLE_CHECK[row * 7 + 4], PEOPLE_CHECK[row * 7 + 5], PEOPLE_CHECK[row * 7 + 6]))));
+  }
+  #assert worst < 0.001;
+}
+
+#test "standing, a man's and a woman's heads are 1.5 to 1.85 m up and their feet on the ground" {
+  d: [1] People;
+  people_load(d[..]);
+  for body: 0..<2 {
+    rig := people_rig(d[..], body == 1);
+    s: [1] Skin;
+    skin_advance(rig, s[..], PEOPLE_IDLE, 0, 0.5);
+    head := skin_joint(rig, s[..], PEOPLE_HEAD);
+    low := 10.0f32;
+    for j: 0..<PEOPLE_JOINTS { low = lo(low, skin_joint(rig, s[..], j).y); }
+    #assert head.y > 1.5 && head.y < 1.85 && low > -0.05 && low < 0.12;
+    pal: [PEOPLE_JOINTS * 12] f32;
+    skin_palette(rig, s[..], pal[..]);
+    for k: 0..<PEOPLE_JOINTS * 12 { #assert finite(pal[k]); }
+  }
+}
+
+FOLK_AWAY :: Point.{x = 0, y = 0, z = 900};
+
+#test "they turn to face you within 4 m, step round while they turn, and turn back when you go" {
+  f: [1] Folk;
+  i := 18;   // Vega, at the observatory, facing south
+  folk_start(f[..], i);
+  x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1];
+  you := v3(x + 3, 0, z);     // 3 m to the west (+x)
+  folk_step(f[..], i, 1.0 / 60.0, you, false, 1000);
+  #assert f[0].facing && f[0].clip == PEOPLE_WALK;
+  for k: 0..<120 { folk_step(f[..], i, 1.0 / 60.0, you, false, 1000); }
+  #assert near(f[0].yaw, f32(PI) / 2, 0.01) && f[0].clip != PEOPLE_WALK;
+  // a step back to 4.5 m: still facing you (they let go past 5)
+  you = v3(x + 4.5, 0, z);
+  folk_step(f[..], i, 1.0 / 60.0, you, false, 1000);
+  #assert f[0].facing;
+  for k: 0..<180 { folk_step(f[..], i, 1.0 / 60.0, FOLK_AWAY, false, 1000); }
+  #assert !f[0].facing && near(f[0].yaw, folk_wrap(EG_SPOT[i * 3 + 2]), 0.01);
+}
+
+#test "they nod as a talk starts and talk with their hands while the answer is fresh" {
+  f: [1] Folk;
+  i := 5;   // Marta
+  folk_start(f[..], i);
+  you := v3(EG_SPOT[i * 3] + sin(EG_SPOT[i * 3 + 2]) * 2, 0, EG_SPOT[i * 3 + 1] + cos(EG_SPOT[i * 3 + 2]) * 2);
+  folk_step(f[..], i, 1.0 / 60.0, you, true, 1000);
+  folk_nod(f[..]);
+  folk_step(f[..], i, 1.0 / 60.0, you, true, 1000);
+  #assert f[0].clip == PEOPLE_NOD;
+  for k: 0..<130 { folk_step(f[..], i, 1.0 / 60.0, you, true, 1000); }
+  #assert f[0].clip != PEOPLE_NOD && f[0].clip != PEOPLE_TALK;
+  folk_step(f[..], i, 1.0 / 60.0, you, true, 1);
+  #assert f[0].clip == PEOPLE_TALK;
+  folk_step(f[..], i, 1.0 / 60.0, you, true, 7);
+  #assert f[0].clip != PEOPLE_TALK;
+}
+
+#test "alone, they shift their weight now and then and glance about, within bounds, each at their own times" {
+  a: [1] Folk; b: [1] Folk;
+  folk_start(a[..], 0); folk_start(b[..], 11);
+  shifted := 0; back := 0; moved := 0; alike := 0;
+  last := a[0].clip;
+  for k: 0..<60 * 40 {
+    folk_step(a[..], 0, 1.0 / 60.0, FOLK_AWAY, false, 1000);
+    folk_step(b[..], 11, 1.0 / 60.0, FOLK_AWAY, false, 1000);
+    if a[0].clip != last { if a[0].clip == FOLK_REST[0] { back += 1; } else { shifted += 1; } last = a[0].clip; }
+    #assert abs(a[0].glance) <= f32(FOLK_GLANCE_MAX) + 0.001 && a[0].clip != PEOPLE_WALK;
+    if abs(a[0].glance) > 0.05 { moved += 1; }
+    if a[0].clip == b[0].clip && a[0].clip != PEOPLE_IDLE { alike += 1; }
+  }
+  #assert shifted >= 1 && back >= 1 && moved > 0 && alike < 60 * 40;
+}
+
+#test "a pose's palette with a glance: finite, and the head turned the way of the glance" {
+  d: [1] People;
+  people_load(d[..]);
+  rig := people_rig(d[..], false);
+  f: [1] Folk; sk: [1] Skin;
+  folk_start(f[..], 0);
+  pal: [PEOPLE_JOINTS * 12] f32;
+  folk_pose(rig, f[..], sk[..], 0.1, pal[..]);
+  ahead := skin_joint(rig, sk[..], PEOPLE_HEAD);
+  f[0].glance = 0.8;
+  folk_pose(rig, f[..], sk[..], 0.0, pal[..]);
+  for k: 0..<PEOPLE_JOINTS * 12 { #assert finite(pal[k]); }
+  // the nose (a point ahead of the head, in its frame at rest) swings toward +x for a positive glance
+  b := PEOPLE_HEAD * 12;
+  nose := v3(pal[b] * 0 + pal[b + 1] * 1.7 + pal[b + 2] * 0.15 + pal[b + 3],
+             pal[b + 4] * 0 + pal[b + 5] * 1.7 + pal[b + 6] * 0.15 + pal[b + 7],
+             pal[b + 8] * 0 + pal[b + 9] * 1.7 + pal[b + 10] * 0.15 + pal[b + 11]);
+  #assert nose.x > ahead.x + 0.03;
+}

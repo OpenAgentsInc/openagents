@@ -144,7 +144,7 @@ struct Obj { r0: vec4f, r1: vec4f, r2: vec4f, colour: vec4f }
 @group(1) @binding(0) var<storage, read> vertices: array<u32>;
 @group(1) @binding(1) var<storage, read> heights: array<f32>;
 @group(1) @binding(2) var<storage, read> objects: array<Obj>;
-@group(1) @binding(3) var<storage, read> pose: array<vec4f>;   // the Ranger's joints: three rows each
+@group(1) @binding(3) var<storage, read> pose: array<vec4f>;   // the Ranger's joints, then each person's (three rows each, then three of colours)
 @group(1) @binding(4) var<storage, read> water_nodes: array<f32>;   // the river's baked nodes (verse/water-look.coax)
 @group(1) @binding(5) var sheets: texture_2d_array<f32>;
 @group(1) @binding(6) var sheet: sampler;
@@ -158,6 +158,7 @@ struct S {
   @location(3) @interpolate(flat) look: u32,
   @location(4) uv: vec2f,
   @location(5) @interpolate(flat) slice: u32,
+  @location(6) @interpolate(flat) dye: vec4f,   // a person's cloth dye: rgb, then its rule and share (person_dye)
 }
 
 fn quad(v: u32) -> vec2f {
@@ -338,6 +339,9 @@ const WIND = vec4f(0.30, 12.0, 3.0, 1.0 / 25.0);   // amplitude (rad), wavelengt
 const WIND_DIR = vec2f(0.8, 0.6);
 const LOOK_FAR_CANOPY = 6u;                        // a far tree's cone, lit as a blob
 const LOOK_CANOPY = 7u;                            // a kit tree's leaves, lit as a blob
+const PERSON_SPAN = 2.5;                           // a person's vertex box (verse/tools/people.py SPAN, LOW)
+const PERSON_LOW = vec3f(-1.25, -0.25, -1.25);
+const PERSON_JOINTS = 65u;                         // verse/everglade/people-rig.coax PEOPLE_JOINTS
 const LOOK_CHARACTER = 8u;                         // the Ranger: textured, two bands and the stronger rim (spec 11)
 const LOOK_ROCK = 10u;                             // a kit rock (everglade.coax LOOK_ROCK): darker, mottled, mossy on top
 const LOOK_FLAME = 11u;                            // a lamp's flame: its colour, glowing as the lamps are lit
@@ -384,6 +388,7 @@ fn place(id: u32, instance: u32) -> S {
   var share = 0.0;
   o.uv = vec2f(0.0);
   o.slice = 0u;
+  o.dye = vec4f(0.0);
   switch kind {
     case 1u: { v = box_vertex(id); }
     case 2u: { v = sphere_vertex(id); }
@@ -404,6 +409,43 @@ fn place(id: u32, instance: u32) -> S {
       }
     }
     case 6u: {
+      if (m.colour.z > 1.5) {
+      // One of the city's people (verse/everglade/folk.coax, colour.z 2): a part's 24-byte vertex
+      // (verse/tools/people.py vertex), skinned by up to four joints of its person's block of
+      // the pose, which starts at row colour.y; after the joints, their skin tone and the
+      // outfit's colourway, their hair, and their dye.
+      let b = u32(m.colour.x) + id * 6u;
+      let xy = unpack2x16unorm(vertices[b]);
+      let zw = vertices[b + 1u];
+      let at = vec4f(vec3f(xy.x, xy.y, f32(zw & 0xffffu) / 65535.0) * PERSON_SPAN + PERSON_LOW, 1.0);
+      let nw = unpack4x8snorm(vertices[b + 2u]).xyz;
+      let j = vec4u(unpack4x8unorm(vertices[b + 4u]) * 255.0 + 0.5);
+      let wt = unpack4x8unorm(vertices[b + 5u]);
+      let base = u32(m.colour.y);
+      var sp = vec3f(0.0);
+      var sn = vec3f(0.0);
+      for (var k = 0u; k < 4u; k++) {
+        let r = base + j[k] * 3u;
+        let a = pose[r]; let c = pose[r + 1u]; let e = pose[r + 2u];
+        sp += wt[k] * vec3f(dot(a, at), dot(c, at), dot(e, at));
+        sn += wt[k] * vec3f(dot(a.xyz, nw), dot(c.xyz, nw), dot(e.xyz, nw));
+      }
+      v = Vert(sp, sn);
+      o.uv = unpack2x16unorm(vertices[b + 3u]);
+      let colours = base + PERSON_JOINTS * 3u;
+      let skin = pose[colours];
+      let kind = (zw >> 24u) & 255u;
+      o.slice = (zw >> 16u) & 255u;
+      tint = vec3f(1.0);
+      if (kind == 1u) { tint = skin.rgb; }
+      if (kind == 2u) { tint = pose[colours + 1u].rgb; }
+      if (kind == 3u || kind == 4u) {
+        o.slice += u32(skin.w);
+        let d = pose[colours + 2u];
+        o.dye = vec4f(d.rgb, f32(kind - 2u) * 2.0 + d.w);
+      }
+      ranger = true;
+      } else {
       // The Ranger: the pack's 32-byte character vertex, skinned by up to four joints of the pose.
       let b = u32(m.colour.x) + id * 8u;
       let at = vec4f(word(b), word(b + 1u), word(b + 2u), 1.0);
@@ -423,6 +465,7 @@ fn place(id: u32, instance: u32) -> S {
       o.slice = vertices[b + 3u] >> 24u;
       tint = vec3f(1.0);
       ranger = true;
+      }
     }
     case 7u: {
       let word = u32(m.colour.w) / 256u;
@@ -546,6 +589,29 @@ fn shade_shadows_at(p: vec2f, y: f32, level: bool) -> f32 {
 }
 fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
 
+// A person's cloth takes their dye (verse/everglade/folk.coax FOLK_DYE): rule 1 (dye.w 2 plus the
+// share) the pale cloth, pale and unsaturated texels, as the peasant's shirts; rule 2 (dye.w 4 plus
+// the share) the green cloth, texels green over red and blue, as the ranger's tunic. A dyed texel is the dye
+// at the texel's own lightness against the cloth's usual, so folds and seams stay.
+fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
+  // dye.w: 2 + share on a pale cloth, 4 + share on a green one (case 6u's people), 0 for no dye
+  if (dye.w < 2.0) { return t; }
+  let green = dye.w >= 4.0;
+  let share = clamp(dye.w - select(2.0, 4.0, green), 0.0, 1.0);
+  let hi = max(t.r, max(t.g, t.b));
+  let lo = min(t.r, min(t.g, t.b));
+  let sat = (hi - lo) / max(hi, 0.0001);
+  let light = dot(t, vec3f(0.2126, 0.7152, 0.0722));
+  var mask = smoothstep(0.12, 0.3, hi) * (1.0 - smoothstep(0.22, 0.42, sat));
+  var usual = 0.42;
+  if (green) {
+    mask = smoothstep(0.02, 0.06, t.g - max(t.r, t.b));
+    usual = 0.09;
+  }
+  let dyed = dye.rgb * clamp(light / usual, 0.0, 1.6);
+  return max(mix(t, dyed, mask * share), vec3f(0.0));
+}
+
 @fragment fn scene_fs(s: S, @builtin(front_facing) front: bool) -> Lit {
   let tex = textureSample(sheets, sheet, s.uv, s.slice);
   var n = normalize(s.normal);
@@ -555,7 +621,7 @@ fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
     // A kit mesh: its texture, cut out where the leaves' layer is clear; both sides of a leaf lit
     // (a canopy's blob normal already faces out, so it keeps it).
     if (tex.a < 0.35) { discard; }
-    base = tex.rgb * s.tint;
+    base = person_dye(tex.rgb, s.dye) * s.tint;
     if (!front && s.look != LOOK_CANOPY) { n = -n; }
     // a kit piece's top (a bench, a crate) takes the shadow of whoever stands on it
     if (n.y > 0.7) { shadow = shade_shadows_at(s.world.xz, s.world.y, true); }

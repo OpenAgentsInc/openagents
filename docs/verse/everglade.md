@@ -134,7 +134,7 @@ meshes. Where a kit has no piece, the line says what is assembled instead.
 | Ruins | SN `Rock_Medium_*`; MV `Prop_Brick1..4`, `Wall_UnevenBrick_Straight` broken off, `Wall_Arch`; FP `Vase_Rubble_Medium`. |
 | Crypt | MV `Wall_UnevenBrick_Door_Round`, `DoorFrame_Round_Brick`, `Door_4_Round`; SN `DeadTree_1..3`, `Rock_Medium_*`. |
 | River crossing | The bridge is the engine's timber for now (everglade.coax `city`: a plank deck, `LOOK_PLANKS`, with staggered boards and gaps; a rail of posts and two bars each side, four beams under it, two rows of three piles under cap beams, `LOOK_WOOD`; the rails don't stop you yet), later MV `Floor_WoodDark` planks and `Prop_WoodenFence_Single` rails; SN `Rock_Medium_*` on the banks; water drawn by the engine (the water system, docs/verse/water.md). |
-| Characters | You are the previous Everglade's Ranger (below, "You: the Ranger"); the people are still plain figures, to be aethyr's figure parts with the `Peasant` and `Ranger` outfits; the cats are aethyr's `Custom_Cat`. |
+| Characters | You are the previous Everglade's Ranger (below, "You: the Ranger"); the people are Quaternius Universal Base Characters dressed in the Fantasy outfits' `Peasant` and `Ranger` (below, "How the people look"); the cats are still plain shapes, to be aethyr's `Custom_Cat`. |
 
 ## Where characters stand
 
@@ -175,6 +175,36 @@ talks. They stand at their spots all day for now; schedules are for later.
 | Woodwarden | On the Deep Wood Trail by the waystone |
 | Ferryman | On the river's far bank, by the bridge |
 | Ruin scholar | Among the ruins |
+
+### How the people look
+
+Every person is a Quaternius Universal Base Character (male or female) in
+one of the Fantasy outfits, `Peasant` or `Ranger` (with its second and third
+colourways), with or without the Ranger's hood, a head and one of six
+hairstyles; `verse/everglade/folk.coax` picks each person's parts, skin,
+hair colour, outfit dye and stance (`FOLK_*`, by spot). The 14 parts are
+packed once (`"people"` in the manifest, built by `verse/tools/people.py`)
+and every person shares them: a part is drawn once per frame for everyone
+wearing it, each person's pose and colours a block of rows in the pose
+store. The outfits' pale or green cloth takes the person's dye in the
+shader (`person_dye`), so a guard's tunic is crimson, the astronomer's deep
+indigo with a silver plait, without another texture.
+
+They move with seven clips of the Universal Animation Library 1 and 2,
+retargeted to the two bodies (`verse/everglade/people-rig.coax`): idle,
+walk, talk, a nod, folded arms, a raised lantern and a spell idle. Alone,
+they shift their weight and glance about; within 4 m they turn to face you
+and look at you (the neck and head turned through `skin_turn` in
+`verse/skin.coax`); when you speak they nod, and they talk while their
+answer shows. The ten nearest in view (six on a phone) within 60 m (40 on a
+phone) are drawn.
+
+Not yet: the Standard Fantasy outfits are only `Peasant` and `Ranger`, so
+the archmage, priest and astronomer wear dyed peasant and ranger clothes.
+Robes, a noble's and a knight's dress are in the full "Modular Character
+Outfits - Fantasy" pack, not here. The cats are still plain shapes: no
+kit in the workspace has an animated cat; aethyr's static `Custom_Cat`
+(`tools/custom_models.py`) is the stand-in to come.
 
 ## The quests (eg-quests)
 
@@ -249,8 +279,8 @@ as grey boxes at full size, built on the realm host
 - `apps/openagents-web/everglade.coax`, `everglade-face.c`, `everglade.wgsl`:
   the realm. It draws the ground and streets (`verse/terrain.coax`), the
   palisade, every building as a box with a gable roof, the props, the
-  forest (below), you as the Ranger (below), the characters as plain
-  figures and cats, and each
+  forest (below), you as the Ranger (below), the people (Quaternius
+  characters, above) and the cats (still plain shapes), and each
   place's name as you come near. The free orbit
   (`verse/camera.coax`) follows you and keeps out of the walls; walking is
   `verse/player.coax` among the plan's solids, thumbs `verse/grid.coax`.
@@ -340,11 +370,14 @@ backs into them, so the only ways out of the city are the trails.
 - **Along the tree line:** `Bush_Common_Flowers`, `Fern_1`,
   `Rock_Medium_1` and `_2`.
 - **The pack:** `verse/packs/everglade.json`, compiled to
-  `realms/everglade/assets/everglade.pack` (6.0 MB: 6,021,808 bytes,
-  budget 6,750,000) with `licences.md`; it carries the town's 44 Medieval
-  Village and Fantasy Props pieces as well as the forest's, and the Ranger
-  (1.7 MB of it). The budget was 5 MB before the Ranger and rose by the
-  Ranger's bytes, rounded up. It also carries 1,024 identity indices (`"identity"`), so
+  `realms/everglade/assets/everglade.pack` (8.0 MB: 8,037,876 bytes,
+  budget 8,250,000) with `licences.md`; it carries the town's 44 Medieval
+  Village and Fantasy Props pieces as well as the forest's, the Ranger
+  (1.7 MB of it) and the people's 14 shared parts and clips (2.0 MB). The
+  budget was 5 MB before the Ranger and rose by the Ranger's bytes, rounded
+  up; it rose from 6,750,000 by the people's, rounded up: 19 people dressed
+  from 14 parts, every texture once (512 px JPEG layers), outfits decimated
+  to half their triangles and heads and hair to 60%. It also carries 1,024 identity indices (`"identity"`), so
   the city's shapes, drawn from the vertex index alone, share the pack's
   index buffer.
 - **The phone:** each frame the trees in view and nearer than 55 m (42 m on

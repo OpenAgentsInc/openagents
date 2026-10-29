@@ -37,7 +37,9 @@ The catalog is text, a line each:
   C NAME FIRST COUNT K WORD VERTICES JOINTS
                                   a skinned character: its indices (numbered from its own first
                                   vertex), licence, the vertex buffer word its vertices start at,
-                                  how many there are and its joints
+                                  how many there are and its joints; the manifest's "people"
+                                  (verse/tools/people.py) adds one per shared part, named
+                                  people/PART, in its 24-byte vertex, and writes their rig
 A pack names its art style (manifest "style": lowpoly, painterly or
 photoreal; none is lowpoly) and the catalog says it first: "style NAME".
 A painterly pack's layers must pass the style's texture rules
@@ -622,6 +624,21 @@ def build(manifest_path):
         character_lines.append(f"C {c['name']} {first} {len(indices) - first} {lic} {word} {count} {len(c['joints'])}")
         if "rig" in spec:
             rig = (spec["rig"], rig_coax(m, c, spec.get("prefix", "RIG"), (len(indices) - first) // 3))
+    rigs = [rig] if rig else []
+    if "people" in m:
+        import people
+        spec = m["people"]
+        lic = licence_of(spec.get("licence"), "people")
+        parts, extra, prig = people.build(spec, size, len(layer_lines))
+        for source, data in extra:
+            entries.append((KIND_LAYER, lic, f"layer{len(layer_lines)}", data))
+            layer_lines.append(f"T {len(layer_lines)} {source.replace(' ', '_')} {lic}")
+        for part in parts:
+            first, word = len(indices), len(vertices) // 4
+            vertices += part["vertices"]
+            indices += part["indices"]
+            character_lines.append(f"C people/{part['name']} {first} {len(part['indices'])} {lic} {word} {part['count']} {len(prig[0]['male'].names)}")
+        rigs.append((spec["rig"], people.rig_coax(m, prig, parts, spec.get("prefix", "PEOPLE"))))
     for s in m.get("sounds", []):
         lic = licence_of(s.get("licence"), f"sound {s['name']}")
         entries.append((KIND_SOUND, lic, s["name"], home(s["file"]).read_bytes()))
@@ -660,7 +677,7 @@ def build(manifest_path):
         out[off:off + len(data)] = data
     if total > budget:
         raise SystemExit(f"{m['pack']}: {total} bytes, over its budget of {budget}")
-    return m, keys, bytes(out), mesh_lines + character_lines, layer_lines, sound_lines, rig
+    return m, keys, bytes(out), mesh_lines + character_lines, layer_lines, sound_lines, rigs
 
 
 def licences_md(m, keys, mesh_lines, layer_lines, sound_lines, total):
@@ -688,11 +705,11 @@ def licences_md(m, keys, mesh_lines, layer_lines, sound_lines, total):
 if __name__ == "__main__":
     if len(sys.argv) not in (3, 4):
         raise SystemExit(__doc__.split("\n\n")[1])
-    m, keys, data, ml, ll, sl, rig = build(sys.argv[1])
+    m, keys, data, ml, ll, sl, rigs = build(sys.argv[1])
     Path(sys.argv[2]).parent.mkdir(parents=True, exist_ok=True)
     Path(sys.argv[2]).write_bytes(data)
-    if rig:
-        Path(__file__).resolve().parents[2].joinpath(rig[0]).write_text(rig[1])
+    for path, text in rigs:
+        Path(__file__).resolve().parents[2].joinpath(path).write_text(text)
     if len(sys.argv) == 4:
         Path(sys.argv[3]).write_text(licences_md(m, keys, ml, ll, sl, len(data)))
     print(f"{m['pack']}: {len(data):,} bytes of {int(m['budget']):,}; {len(ml)} meshes, {len(ll)} layers, {len(sl)} sound{"" if len(sl) == 1 else "s"}")

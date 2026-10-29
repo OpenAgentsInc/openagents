@@ -1,7 +1,7 @@
 {
   "pack": "everglade",
   "title": "Everglade",
-  "budget": 6750000,
+  "budget": 8250000,
   "scene": "~/work/aethyr-cpp/build-native/native-root/assets/scene.bin",
   "layers": "~/work/aethyr-cpp/assets/layer{n}",
   "texture_size": 512,
@@ -25,6 +25,11 @@
     "quaternius-universal-characters": {
       "name": "Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library",
       "licence": "CC0 1.0 Universal",
+      "url": "https://quaternius.com/"
+    },
+    "quaternius-standard-characters": {
+      "name": "Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard]",
+      "licence": "CC0 1.0 Universal (each pack's License_Standard.txt or License.txt)",
       "url": "https://quaternius.com/"
     }
   },
@@ -90,5 +95,217 @@
     "licence": "quaternius-universal-characters",
     "rig": "verse/everglade/ranger.coax",
     "prefix": "RANGER"
+  },
+  "people": {
+    "licence": "quaternius-standard-characters",
+    "rig": "verse/everglade/people-rig.coax",
+    "prefix": "PEOPLE",
+    "quality": 80,
+    "skeletons": {
+      "male": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Peasant.gltf",
+      "female": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Peasant.gltf"
+    },
+    "libraries": {
+      "ual1": "~/Downloads/Universal Animation Library[Standard]/Unreal-Godot/UAL1_Standard.glb",
+      "ual2": "~/Downloads/Universal Animation Library 2[Standard]/Unreal-Godot/UAL2_Standard.glb"
+    },
+    "clips": [
+      {
+        "name": "idle",
+        "library": "ual1",
+        "clip": "Idle_Loop"
+      },
+      {
+        "name": "walk",
+        "library": "ual1",
+        "clip": "Walk_Loop",
+        "distance": 1.3
+      },
+      {
+        "name": "talk",
+        "library": "ual1",
+        "clip": "Idle_Talking_Loop"
+      },
+      {
+        "name": "nod",
+        "library": "ual2",
+        "clip": "Yes"
+      },
+      {
+        "name": "fold",
+        "library": "ual2",
+        "clip": "Idle_FoldArms_Loop"
+      },
+      {
+        "name": "lantern",
+        "library": "ual2",
+        "clip": "Idle_Lantern_Loop"
+      },
+      {
+        "name": "spell",
+        "library": "ual1",
+        "clip": "Spell_Simple_Idle_Loop"
+      }
+    ],
+    "kinds": {
+      "MI_Peasant": "pale",
+      "MI_Ranger": "green",
+      "MI_Regular_Male": "skin",
+      "MI_Superhero_Male": "skin",
+      "MI_Superhero_Female": "skin",
+      "MI_Hair_1": "hair",
+      "MI_Hair_2": "hair",
+      "MI_Eyes": "plain"
+    },
+    "variants": {
+      "T_Peasant_BaseColor.png": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Textures/Peasant/T_Peasant_2_BaseColor.png",
+      "T_Ranger_BaseColor.png": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Textures/Ranger/T_Ranger_3_BaseColor.png"
+    },
+    "parts": [
+      {
+        "name": "male-peasant",
+        "body": "male",
+        "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Peasant.gltf",
+        "keep": 0.5,
+        "drop_small": 0.025
+      },
+      {
+        "name": "male-ranger",
+        "body": "male",
+        "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Ranger.gltf",
+        "meshes": [
+          "Male_Ranger_Acc_Pauldron",
+          "Male_Ranger_Arms",
+          "Male_Ranger_Arms_Bracer",
+          "Male_Ranger_Body",
+          "Male_Ranger_Body_Belt_1",
+          "Male_Ranger_Legs"
+        ],
+        "keep": 0.5,
+        "also": [
+          {
+            "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Peasant.gltf",
+            "meshes": [
+              "Male_Peasant_Feet"
+            ]
+          }
+        ],
+        "drop_small": 0.025
+      },
+      {
+        "name": "male-hood",
+        "body": "male",
+        "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Ranger.gltf",
+        "meshes": [
+          "Male_Ranger_Head_Hood"
+        ],
+        "keep": 0.5
+      },
+      {
+        "name": "female-peasant",
+        "body": "female",
+        "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Peasant.gltf",
+        "keep": 0.5,
+        "drop_small": 0.025
+      },
+      {
+        "name": "female-ranger",
+        "body": "female",
+        "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Ranger.gltf",
+        "meshes": [
+          "Female_Ranger_Acc_Pauldrons",
+          "Female_Ranger_Arms",
+          "Female_Ranger_Arms_Bracer",
+          "Female_Ranger_Body",
+          "Female_Ranger_Body_Belt_1",
+          "Female_Ranger_Body_Belt_2",
+          "Female_Ranger_Legs"
+        ],
+        "keep": 0.5,
+        "also": [
+          {
+            "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Peasant.gltf",
+            "meshes": [
+              "Female_Peasant_Feet"
+            ]
+          }
+        ],
+        "drop_small": 0.025
+      },
+      {
+        "name": "female-hood",
+        "body": "female",
+        "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Ranger.gltf",
+        "meshes": [
+          "Female_Ranger_Head_Hood"
+        ],
+        "keep": 0.5
+      },
+      {
+        "name": "male-head",
+        "body": "male",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Base Characters/Godot - UE/Superhero_Male_FullBody.gltf",
+        "cut": [
+          "Head",
+          "neck_01"
+        ],
+        "crop": {
+          "MI_Superhero_Male": 0.01
+        },
+        "keep": 0.6
+      },
+      {
+        "name": "female-head",
+        "body": "female",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Base Characters/Godot - UE/Superhero_Female_FullBody.gltf",
+        "cut": [
+          "Head",
+          "neck_01"
+        ],
+        "crop": {
+          "MI_Superhero_Female": 0.01
+        },
+        "keep": 0.6
+      },
+      {
+        "name": "hair-parted",
+        "body": "male",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_SimpleParted.gltf",
+        "keep": 0.6
+      },
+      {
+        "name": "hair-buzzed",
+        "body": "male",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Buzzed.gltf",
+        "keep": 0.6
+      },
+      {
+        "name": "hair-beard",
+        "body": "male",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Beard.gltf",
+        "keep": 0.6
+      },
+      {
+        "name": "hair-long",
+        "body": "female",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Long.gltf",
+        "keep": 0.6
+      },
+      {
+        "name": "hair-buns",
+        "body": "female",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Buns.gltf",
+        "keep": 0.6
+      },
+      {
+        "name": "hair-buzzed-female",
+        "body": "female",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_BuzzedFemale.gltf",
+        "keep": 0.6
+      }
+    ],
+    "clamp": [
+      "MI_Eyes"
+    ]
   }
 }
