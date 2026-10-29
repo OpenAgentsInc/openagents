@@ -664,7 +664,11 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
   // a drop on a project (its page's ADD TO PROJECT): S's sixth field is its name (rc-later-drops)
   onto := ifx same(field(text, 0, 0), "S") then field(text, 0, 5) else "";
   outsider := same(field(text, 0, 0), "S") && same(field(text, 0, 1), "2");   // signed in, not one of its members
-  v := titled(out, at, b, ifx onto.count > 0 then "ADD TO PROJECT" else "NEW PROJECT", onto, p);
+  v := titled(out, at, b, ifx onto.count > 0 then "ADD TO PROJECT" else "NEW PROJECT", "", p);
+  if onto.count > 0 {   // the project's name after the title, short of CLOSE
+    nx := b.x0 + 24 * d + text_width("ADD TO PROJECT", 8 * d) + 10 * d;
+    if k.close.x0 - 10 * d > nx { v = put_fit(out, v, onto, nx, b.y0 + 20 * d, 6.5 * d, pale, k.close.x0 - 10 * d - nx); }
+  }
   v = chip(out, v, "CLOSE", k.close.x0, k.close.y1 - 5 * d, FILTER_CAP * d, ifx hot == HIT_CLOSE then white else dim, p);
   v = put_wrapped(out, v, ifx onto.count > 0 then "Drop new notes, voice memos, art, models and sounds for it. We read them against its work and propose changes you accept or decline."
                   else "Drop design notes, voice memos, concept art, 3D models, textures and sounds. They stay private to you until you publish.",

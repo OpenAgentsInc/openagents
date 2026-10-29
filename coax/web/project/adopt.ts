@@ -24,7 +24,8 @@ const hex = (await Bun.file(flag("key", `${process.env.HOME}/work/.secrets/opena
 const key = hexToBytes(hex)
 if (getPublicKey(key) !== project.pubkey) { console.error(`the key file is not ${slug}'s key`); process.exit(1) }
 const members = [project.owner_pubkey, ...(project.maintainers ?? [])].filter((k: string) => /^[0-9a-f]{64}$/.test(k ?? ""))
-const body = JSON.stringify({ slug, name: project.name, key: hex, members })
+// written as the API reads it (drops.c's str_of: a '": "' after each name)
+const body = `{"slug": ${JSON.stringify(slug)}, "name": ${JSON.stringify(project.name)}, "key": ${JSON.stringify(hex)}, "members": ${JSON.stringify(members)}}`
 const url = `${api}/api/drops/adopt`
 const auth = new Signer(key).sign({ kind: 27235, content: "", tags: [["u", url], ["method", "POST"],
   ["payload", createHash("sha256").update(body).digest("hex")]] })
