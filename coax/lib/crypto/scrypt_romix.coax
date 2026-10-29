@@ -1,6 +1,7 @@
 // Experimental resumable RFC 7914 ROMix. Memory indexes depend on the input.
 // This is not full scrypt, and it is not approved for production secrets.
 #load "scrypt_blockmix.coax";
+#load "scrypt_blockmix_workspace.coax";
 #authority;
 
 #test "RFC 7914 section 10 ROMix with bounded resumable steps" {
@@ -46,13 +47,14 @@
   #assert romix_power_of_two(1) && romix_power_of_two(2) && !romix_power_of_two(3);
   #assert !romix_power_of_two(0);
   state:[1]RomixState;state[0]=RomixState.{r=1,n=2,phase=ROMIX_FILL};
-  #assert romix_valid(state[0],256);
-  state[0].index=2;#assert !romix_valid(state[0],256);
-  state[0].index=-1;#assert !romix_valid(state[0],256);
-  state[0].index=0;state[0].phase=0;#assert !romix_valid(state[0],256);
-  state[0].phase=ROMIX_DONE;#assert !romix_valid(state[0],256);
-  state[0].index=2;#assert romix_valid(state[0],256);
-  state[0].r=0;#assert !romix_valid(state[0],256);
+  #assert romix_valid(state[..],256);
+  #assert !romix_valid(state[0..<0],256);
+  state[0].index=2;#assert !romix_valid(state[..],256);
+  state[0].index=-1;#assert !romix_valid(state[..],256);
+  state[0].index=0;state[0].phase=0;#assert !romix_valid(state[..],256);
+  state[0].phase=ROMIX_DONE;#assert !romix_valid(state[..],256);
+  state[0].index=2;#assert romix_valid(state[..],256);
+  state[0].r=0;#assert !romix_valid(state[..],256);
   #assert romix_output_admit(128,128,false);
   #assert romix_output_admit(128,CB_MAX_BYTES,false);
   #assert !romix_output_admit(128,127,false);
@@ -70,7 +72,7 @@
 
 ROMIX_FILL :: 1; ROMIX_MIX :: 2; ROMIX_DONE :: 3;
 ROMIX_MAX_N :: 262144; ROMIX_MAX_MEMORY :: 268435456; ROMIX_MAX_STEP :: 64;
-RomixState :: struct {x:[1024]u8;r:int;n:int;index:int;phase:int;}
+RomixState :: struct {x:[1024]u8;next:[1024]u8;block:[1]BlockmixWorkspace;r:int;n:int;index:int;phase:int;}
 
 romix_power_of_two :: (bits:u64)->bool {
   if bits==0 {return false;}
@@ -95,10 +97,11 @@ romix_complete_step :: (state:[]RomixState,next:[]u8,size:int,ok:bool)->bool {
   }
   return true;
 }
-romix_valid :: (state:RomixState,memory:int)->bool {
-  if !romix_params(state.r,state.n,memory) {return false;}
-  if state.phase==ROMIX_DONE {return state.index==state.n;}
-  return (state.phase==ROMIX_FILL || state.phase==ROMIX_MIX) && state.index>=0 && state.index<state.n;
+romix_valid :: (state:[]RomixState,memory:int)->bool {
+  if state.count!=1 {return false;}
+  if !romix_params(state[0].r,state[0].n,memory) {return false;}
+  if state[0].phase==ROMIX_DONE {return state[0].index==state[0].n;}
+  return (state[0].phase==ROMIX_FILL || state[0].phase==ROMIX_MIX) && state[0].index>=0 && state[0].index<state[0].n;
 }
 // Internal ABI: the host must keep state and scratch memory stable and
 // disjoint from all other views, and protect both from tampering. The scratch
@@ -112,8 +115,8 @@ romix_start :: (state:[]RomixState,input:[]u8,memory:[]u8,r:int,n:int,overlap:bo
 
 romix_step :: (state:[]RomixState,memory:[]u8,budget:int,overlap:bool)->bool #export_c {
   if state.count!=1 || overlap || budget<1 || budget>ROMIX_MAX_STEP {return false;}
-  if !romix_valid(state[0],memory.count) {return false;}
-  size:=state[0].r*128;next:[1024]u8;success:=true;
+  if !romix_valid(state,memory.count) {return false;}
+  size:=state[0].r*128;success:=true;
   for step:0..<budget {
     if state[0].phase==ROMIX_DONE {break;}
     if state[0].phase==ROMIX_FILL {
@@ -126,8 +129,8 @@ romix_step :: (state:[]RomixState,memory:[]u8,budget:int,overlap:bool)->bool #ex
       selected:=cast(int)(word & cast(u64)(state[0].n-1));base:=selected*size;
       for i:0..<size {state[0].x[i]^=memory[base+i];}
     }
-    ok:=scrypt_blockmix(state[0].x[0..<size],next[0..<size],state[0].r,false);
-    success=romix_complete_step(state,next[..],size,ok);
+    ok:=blockmix_owned(state[0].x[0..<size],state[0].block[..],state[0].next[0..<size],state[0].r,false);
+    success=romix_complete_step(state,state[0].next[..],size,ok);
     if !success {break;}
   }
   return success;
@@ -135,7 +138,7 @@ romix_step :: (state:[]RomixState,memory:[]u8,budget:int,overlap:bool)->bool #ex
 
 romix_finish :: (state:[]RomixState,out:[]u8,overlap:bool)->bool #export_c {
   if state.count!=1 || overlap {return false;}
-  if !romix_valid(state[0],ROMIX_MAX_MEMORY) || state[0].phase!=ROMIX_DONE {return false;}
+  if !romix_valid(state,ROMIX_MAX_MEMORY) || state[0].phase!=ROMIX_DONE {return false;}
   size:=state[0].r*128;if !romix_output_admit(size,out.count,false) {return false;}
   for i:0..<size {out[i]=state[0].x[i];}
   return true;
