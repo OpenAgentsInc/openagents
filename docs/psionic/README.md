@@ -1,10 +1,13 @@
 # Psionic in Coax
 
-Status: M0 implemented, 2026-10-28; later milestones are proposed. The
-[Coax library and first book chapter](../../psionic/README.md) train and run a
-bounded one-parameter CPU model. Run `psionic/check.sh` from the repository
-root. [The verification record](../verification/psionic-m0-2026-10-28.md)
-states the tested scope. The retired Rust workspace remains historical input.
+Status, 2026-10-28: M0 and chapter 2 shape/storage admission are implemented;
+dense numerics and later milestones remain proposed. The
+[Coax library and book](../../psionic/README.md) train a bounded scalar CPU model
+and admit contiguous shapes with checked indexing and caller-owned storage.
+Run `psionic/check.sh` from the repository root.
+[Chapter 1 verification](../verification/psionic-m0-2026-10-28.md) and
+[chapter 2 verification](../verification/psionic-ch02-2026-10-28.md) state the
+tested scopes. The retired Rust workspace remains historical input.
 
 Build Psionic as a Coax library whose book explains and exercises the actual
 library as it grows. Start on the CPU with bounded storage, explicit numerical
@@ -56,8 +59,11 @@ gradient. It checks the first update exactly, trains for sixteen steps, and
 predicts on a held-out input. The same Coax implementation runs through its
 authored checks and a compiled native host.
 
-The next milestone adds bounded tensor shape/storage admission and scalar CPU
-matrix operations. The early forward path then implements Elephant and Mammoth.
+[Chapter 2](../../psionic/book/ch02-shapes-and-storage.md) now implements bounded
+shape/storage admission, row-major indexing and staged copy.
+[Its verification](../verification/psionic-ch02-2026-10-28.md) records the tested
+scope. The next chapter adds scalar CPU matrix operations. The early forward
+path then implements Elephant and Mammoth.
 The learning path replaces the hand-written gradient with autodiff over those
 same operations, then builds small physical and language models.
 The [roadmap](roadmap.md) specifies the boundaries of each step.

@@ -1,7 +1,7 @@
 # Development process
 
-Status: M0 implements this workflow through [psionic/check.sh](../../psionic/check.sh).
-The runner checks the shared library, two examples, native boundaries, and
+Status: chapters 1–2 implement this workflow through [psionic/check.sh](../../psionic/check.sh).
+The runner checks both library units, three examples, native boundaries, and
 source-linked book listings. Later target and performance work below remains
 proposed until its workload and evidence exist.
 
@@ -60,7 +60,7 @@ the native host to bypass a compiler limitation.
 
 ## A small local verification entry point
 
-M0's `psionic/check.sh` uses an explicit [example manifest](../../psionic/book/examples.json):
+`psionic/check.sh` uses an explicit [example manifest](../../psionic/book/examples.json):
 every runnable example has a source path, supported build
 modes, required tools, expected exit status, and comparison method. Every
 chapter says `planned`, `partial`, or `runnable` for its own contents;
@@ -73,7 +73,7 @@ teaching output and explicit expected statuses for deliberate failures.
 Use typed numeric fixtures and tolerance-aware comparisons for floating-point
 results; never normalize away unexpected failures or non-finite outputs.
 
-The M0 runner combines these kinds of checks. As the book grows, add
+The current runner combines these kinds of checks. As the book grows, add
 targeted selection for the changed chapter or library module:
 
 ```text
@@ -141,7 +141,7 @@ Before a chapter is called complete, list what ran and what did not. Put
 required owner taps, credentials, paid compute, device checks, or sign-offs
 in the workspace's `NEEDS_OWNER.md` with a concrete action and acceptance
 condition. Work that is entirely local and credential-free should continue
-without an owner dependency. M0 needs no owner action.
+without an owner dependency. Chapters 1–2 need no owner action.
 
 Integrate with the app, voice engine, or a future provider only through a
 real consumer's explicit boundary. Introduce cross-surface contracts in root

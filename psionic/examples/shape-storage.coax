@@ -1,0 +1,38 @@
+#load "../lib/tensor.coax";
+#import "Basic";
+
+// book:begin example
+main :: () {
+    scalar := psionic_tensor_layout(PsionicShape.{});
+    #assert scalar.status == PsionicTensorStatus.ok;
+    shape := PsionicShape.{rank = 2, dims = [4] int.[2, 3, 0, 0]};
+    matrix := psionic_tensor_layout(shape);
+    last := psionic_tensor_index(shape, [4] int.[1, 2, 0, 0]);
+    #assert matrix.status == PsionicTensorStatus.ok && last.status == PsionicTensorStatus.ok;
+    print("scalar: elements = %, bytes = %\n", scalar.elements, scalar.bytes);
+    print("matrix [2, 3]: elements = %, bytes = %\n", matrix.elements, matrix.bytes);
+    print("strides = [%, %], index [1, 2] = %\n", matrix.strides[0], matrix.strides[1], last.offset);
+
+    source := [6] f32.[10, 20, 30, 40, 50, 60];
+    destination := [8] f32.[-7, -7, -7, -7, -7, -7, -7, -7];
+    scratch := [8] f32.[-9, -9, -9, -9, -9, -9, -9, -9];
+    // Local arrays are disjoint. Native callers use the address-observing adapter.
+    copied := psionic_tensor_copy_checked(shape, source[..], destination[..], scratch[..], false);
+    #assert copied.status == PsionicTensorStatus.ok && copied.written == 6;
+    for i: 0..<6 { #assert destination[i] == source[i] && scratch[i] == source[i]; }
+    #assert destination[6] == -7 && destination[7] == -7 && scratch[6] == -9 && scratch[7] == -9;
+    print("copied % values: first = %, last = %, spare output = %\n",
+        copied.written, destination[0], destination[last.offset], destination[6]);
+
+    refused := psionic_tensor_copy_checked(shape, source[..], destination[0..<5], scratch[..], false);
+    #assert refused.status == PsionicTensorStatus.capacity && refused.written == 0;
+    for i: 0..<6 { #assert destination[i] == source[i] && scratch[i] == source[i]; }
+    #assert destination[6] == -7 && destination[7] == -7 && scratch[6] == -9 && scratch[7] == -9;
+    print("refused: five output slots cannot hold six values; storage unchanged\n");
+
+    empty_axis := psionic_tensor_layout(PsionicShape.{rank = 2, dims = [4] int.[2, 0, 0, 0]});
+    oversized := psionic_tensor_layout(PsionicShape.{rank = 2, dims = [4] int.[1024, 1025, 0, 0]});
+    #assert empty_axis.status == PsionicTensorStatus.dimension && oversized.status == PsionicTensorStatus.limit;
+    print("refused: an empty axis and an oversized element count\n");
+}
+// book:end example

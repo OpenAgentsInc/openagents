@@ -1,5 +1,30 @@
 # Invariants
 
+## Psionic tensor storage admits shapes before touching caller data
+
+`psionic/lib/tensor.coax` owns contiguous binary32 shape/index/copy admission:
+rank 0–4, positive active dimensions, zero inactive dimensions, a scalar count
+of one, and at most 1,048,576 elements / 4,194,304 logical data bytes. Product
+limits are checked by division before multiplication. Failed layout/index
+results have zero payload fields; callers must inspect status.
+
+The synchronous staged copy requires an exact logical source view and sufficient
+disjoint destination/scratch capacities, including their declared tails. Every
+source value must be finite; chapter 1's magnitude cap is not inherited. All
+refusals precede any write and report zero written elements. Success preserves
+source bits and unused writable capacity on the tested Apple LP64 CPU profile.
+The shared native `psionic/platform/spans.h` observes address ranges; Coax owns
+admission. Native callers still own pointer validity, truthful allocation
+extent, alignment, lifetime and exclusive access during the call.
+
+Check: `psionic/check.sh` runs both chapters' Coax debug/release checks and
+zero-survivor authority mutation gates, independent native layouts/indices,
+short allocations, aliases/non-finite representations and a maximum-size copy
+in plain/sanitized debug/release builds, plus source-linked book/transcript
+checks. See `docs/verification/psionic-ch02-2026-10-28.md`. Dense operations,
+autodiff and GPU execution remain planned; these checks are bounded evidence,
+not general memory safety or concurrent atomic publication.
+
 ## Psionic's first trainer publishes only completed bounded work
 
 `psionic/lib/learn.coax` owns the one-parameter CPU model, its mean squared

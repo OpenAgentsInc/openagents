@@ -1,0 +1,6 @@
+scalar: elements = 1, bytes = 4
+matrix [2, 3]: elements = 6, bytes = 24
+strides = [3, 1], index [1, 2] = 5
+copied 6 values: first = 10.0, last = 60.0, spare output = -7.0
+refused: five output slots cannot hold six values; storage unchanged
+refused: an empty axis and an oversized element count

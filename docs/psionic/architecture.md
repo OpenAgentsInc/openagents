@@ -1,8 +1,8 @@
 # Architecture and considerations
 
-Status: M0 implements the bounded scalar CPU learning path in
-[psionic/](../../psionic/README.md). Tensor, autodiff, artifact and accelerator
-contracts below remain proposed. The [source survey](research.md) supplies
+Status: chapters 1–2 implement bounded scalar learning and contiguous CPU
+shape/storage admission in [psionic/](../../psionic/README.md). Dense numerical
+operations, autodiff, artifact and accelerator contracts below remain proposed. The [source survey](research.md) supplies
 their motivation; each increment needs fresh checks and native evidence.
 
 ## One library with a small beginning
@@ -37,7 +37,13 @@ dimensions, counts, offsets, and requested work fit. Initial execution is
 synchronous, so buffers stay alive for the full call. Do not retain a borrowed
 view after its owner's lifetime or return a view into local scratch.
 
-The first dense contract should state:
+Chapter 2 implements the shape/storage portion of these contracts in
+[lib/tensor.coax](../../psionic/lib/tensor.coax): rank 0–4, at most 1,048,576
+elements, canonical zero inactive dimensions and checked row-major offsets.
+Its staged copy requires an exact logical input view and sufficient separate
+destination/scratch capacity; it accepts every finite binary32 value. Later
+arithmetic kernels must state their own numeric domains. The first dense
+contract should retain:
 
 - `f32` values, row-major contiguous storage, rank at most four, rank-zero
   scalars containing one element, and positive dimensions for non-scalars.

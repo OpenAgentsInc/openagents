@@ -338,6 +338,6 @@ library already retains this regression so publication remains atomic as
 later chapters add more operations.
 
 We now have a shared numerical implementation, a learning rule, prediction,
-bounded admission, and a reproducible verification path. The next chapter
-will give arrays shapes and storage contracts so the same ideas can grow
+bounded admission, and a reproducible verification path. [The next chapter](ch02-shapes-and-storage.md)
+gives arrays shapes and storage contracts so the same ideas can grow
 beyond one parameter.

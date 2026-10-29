@@ -19,6 +19,7 @@ run examples directly without the check command.
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [1. Learning a number](ch01-learning-a-number.md) | Runnable: CPU | Train `prediction = weight * x`, check every loss, predict a held-out value, and refuse malformed work. |
+| [2. Shapes and storage](ch02-shapes-and-storage.md) | Runnable: CPU | Admit rank-zero through rank-four shapes, count bytes safely, locate values and stage a copy into caller storage. |
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
 sets the proposed full reading order: early Elephant/Mammoth and useful

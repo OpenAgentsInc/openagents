@@ -6,14 +6,30 @@
       "chapter": "psionic/book/ch01-learning-a-number.md",
       "stdout": "psionic/fixtures/learn-number.out",
       "exit_status": 0,
-      "modes": ["debug", "release"]
+      "modes": [
+        "debug",
+        "release"
+      ]
     },
     {
       "source": "psionic/examples/refuse-capacity.coax",
       "chapter": "psionic/book/ch01-learning-a-number.md",
       "stdout": "psionic/fixtures/refuse-capacity.out",
       "exit_status": 0,
-      "modes": ["debug", "release"]
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/shape-storage.coax",
+      "chapter": "psionic/book/ch02-shapes-and-storage.md",
+      "stdout": "psionic/fixtures/shape-storage.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

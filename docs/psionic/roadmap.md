@@ -1,7 +1,8 @@
 # Starting point and roadmap
 
-Status, 2026-10-28: M0 is implemented on the tested Apple LP64 CPU host.
-Every later milestone and model study remains `planned`.
+Status, 2026-10-28: M0 and the shape/storage portion of M1 are implemented
+on the tested Apple LP64 CPU host. Dense numerics and later model studies
+remain `planned`.
 [Run the first chapter](../../psionic/book/ch01-learning-a-number.md)
 or `psionic/check.sh`; [retained verification](../verification/psionic-m0-2026-10-28.md)
 records the scope. Later chapter titles are working names; gates determine
@@ -50,6 +51,20 @@ Publish the real observed transcript only after running that command. Do not
 add a model download, GPU prerequisite, server, or large external dataset to
 this first milestone.
 
+## Chapter 2: shapes and storage — implemented
+
+[The chapter](../../psionic/book/ch02-shapes-and-storage.md) and
+[shared tensor unit](../../psionic/lib/tensor.coax) admit contiguous `f32`
+shapes of rank 0–4, canonical inactive dimensions, bounded element/byte counts,
+row-major strides and checked coordinates. A staged copy exercises exact
+logical input length, writable capacities, finite data, native span observations
+and unchanged storage on refusal. The 1,048,576-element cap is this teaching
+profile; larger model buffers need an explicitly qualified profile.
+
+[The verification record](../verification/psionic-ch02-2026-10-28.md) retains
+Coax checks/mutation and actual native debug/release/sanitizer evidence. M1 is
+still partial: dense numerical operations belong to chapter 3.
+
 ## Delivery priority: Elephant, then Mammoth
 
 The owner priority is [native Elephant and Mammoth](model-targets.md), with
@@ -59,11 +74,12 @@ the existing decision/nanochat dependency graph, acceptance checks and stable
 issue slugs. The NVIDIA breadth and expanded contents below are proposals;
 this update does not add project issues. The existing queue source
 is [work/roadmap.json](../../apps/openagents-web/projects/psionic/work/roadmap.json).
-Future work is open; M0 alone is recorded complete.
+The signed queue records M0 complete; chapter 2 now implements the shape/storage
+increment in source. This change does not publish issue-status updates.
 
 | Priority | Work | Must finish first |
 | --- | --- | --- |
-| Now | Pin both model bundles/nanochat, reference contracts and license/provenance; admit shapes/storage. | M0 is shipped. Contract research and shapes are ready independently. |
+| Now | Pin both model bundles/nanochat, reference contracts and license/provenance; build dense numerics over the admitted shape/storage API. | M0 and chapter 2 are shipped. Contract research can proceed independently. |
 | Next | Dense operations, safetensors/BF16, exact Qwen tokenizer/decision prompts, independent reference capture. | Each task's data/math prerequisites; no training subsystem. |
 | Next | Qwen3.5 dense blocks, block-bidirectional full attention, causal DeltaNet, complete prefix forks and slot readout. | Shared operations/artifacts and exact prompt/state fixtures. |
 | First real model | Complete original-weight Elephant text decisions. | All hybrid layers, exact renderer/readout, bounded state and independent full-model oracles. |
@@ -85,7 +101,7 @@ a prerequisite for starting the ready work.
 ## Proposed book order
 
 The [full proposed table of contents](../../psionic/book/PLAN.md) now gives
-one outline per chapter, with prerequisite notes. Only chapter 1 is runnable;
+one outline per chapter, with prerequisite notes. Chapters 1–2 are runnable;
 chapter numbers and part boundaries are provisional. The new
 [NVIDIA breadth survey](nvidia-breadth.md) records pinned candidate checkpoints,
 operator requirements, data studies and source-license qualifications.
@@ -123,7 +139,7 @@ the broader model studies extend that map without changing signed issue IDs.
 | Branch / existing milestone coverage | What it actually needs | Completion gate |
 | --- | --- | --- |
 | M0: scalar learning — implemented | Current tested CPU subset | `psionic/check.sh`, retained native/mutation/sanitizer/book evidence. |
-| M1: shapes and dense numerics | M0 | Bounded storage and independent dot/matmul/gather/reduction/normalization oracles. Chapters 2–3. |
+| M1: shapes implemented; dense numerics planned | M0 | Chapter 2 ships checked shape/storage/index/copy with native and mutation evidence. Chapter 3 still needs independent dot/matmul/gather/reduction/normalization oracles. |
 | Urgent decision inference | M1, bounded artifacts/tokenizer, exact Qwen hybrid and decision contract | Complete original-weight Elephant, then Mammoth; masks, prefix isolation, slot probabilities and real-weight request evidence. Chapters 4–11. |
 | M5: artifacts and resumable state | Artifact admission after M1; optimizer/data state once training exists | Early safetensors/BF16 with exact identities; later deterministic packing and model/optimizer/RNG/data-state resume. Chapters 4 and 24. |
 | M6–M8: performance, devices, quantization | Concrete operators and CPU references; original-weight evidence before quantization claims | Measured budgets, real generated-kernel execution, device lifetimes and separately qualified approximate profiles. Chapters 12–15 accompany decision work. |

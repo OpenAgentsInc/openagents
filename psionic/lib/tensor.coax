@@ -1,0 +1,256 @@
+// Chapter 2: bounded contiguous f32 metadata and caller-owned storage.
+#authority;
+
+PsionicTensorStatus :: enum u8 { ok; rank; dimension; limit; capacity; alias; number; index; }
+// book:begin metadata
+PsionicShape :: struct { rank: int; dims: [4] int; }
+PsionicLayout :: struct { status: PsionicTensorStatus; elements: int; bytes: int; strides: [4] int; }
+PsionicIndex :: struct { status: PsionicTensorStatus; offset: int; }
+PsionicCopy :: struct { status: PsionicTensorStatus; written: int; }
+// book:end metadata
+
+// Checks first. Counts/strides/offsets are independent small integer oracles.
+#test "a scalar has one element and no axes" {
+    r := psionic_tensor_layout(PsionicShape.{});
+    #assert r.status == PsionicTensorStatus.ok && r.elements == 1 && r.bytes == 4;
+    for s: r.strides { #assert s == 0; }
+    i := psionic_tensor_index(PsionicShape.{}, [4] int.[0, 0, 0, 0]);
+    #assert i.status == PsionicTensorStatus.ok && i.offset == 0;
+}
+#test "row-major layouts for every supported rank" {
+    counts := [5] int.[1, 2, 6, 24, 120];
+    strides := [5] [4] int.[[4] int.[0, 0, 0, 0], [4] int.[1, 0, 0, 0],
+        [4] int.[3, 1, 0, 0], [4] int.[12, 4, 1, 0], [4] int.[60, 20, 5, 1]];
+    for rank: 0..<5 {
+        shape := PsionicShape.{rank = rank};
+        for axis: 0..<rank { shape.dims[axis] = axis + 2; }
+        r := psionic_tensor_layout(shape);
+        #assert r.status == PsionicTensorStatus.ok && r.elements == counts[rank] && r.bytes == 4 * counts[rank];
+        for axis: 0..<4 { #assert r.strides[axis] == strides[rank][axis]; }
+    }
+}
+#forall "rank endpoints" rank: -1..<6 {
+    shape := PsionicShape.{rank = rank};
+    for axis: 0..<4 { if axis < rank { shape.dims[axis] = 1; } }
+    r := psionic_tensor_layout(shape);
+    if rank >= 0 && rank <= 4 {
+        #assert r.status == PsionicTensorStatus.ok && r.elements == 1 && r.bytes == 4;
+        for axis: 0..<4 { if axis < rank { #assert r.strides[axis] == 1; }
+            else { #assert r.strides[axis] == 0; } }
+    } else {
+        #assert r.status == PsionicTensorStatus.rank && r.elements == 0 && r.bytes == 0;
+        for s: r.strides { #assert s == 0; }
+    }
+}
+#forall "active axes must be positive" axis: 0..<4, extent: -1..<4 {
+    shape := PsionicShape.{rank = 4, dims = [4] int.[1, 1, 1, 1]};
+    shape.dims[axis] = extent;
+    r := psionic_tensor_layout(shape);
+    if extent >= 1 {
+        #assert r.status == PsionicTensorStatus.ok && r.elements == extent && r.bytes == 4 * extent;
+    } else {
+        #assert r.status == PsionicTensorStatus.dimension && r.elements == 0 && r.bytes == 0;
+        for s: r.strides { #assert s == 0; }
+    }
+}
+#test "inactive axes are canonical zero, even for scalars" {
+    for rank: 0..<4 {
+        for axis: rank..<4 {
+            for dirty: -1..<2 {
+                shape := PsionicShape.{rank = rank};
+                for active: 0..<rank { shape.dims[active] = 1; }
+                shape.dims[axis] = dirty;
+                r := psionic_tensor_layout(shape);
+                if dirty == 0 { #assert r.status == PsionicTensorStatus.ok && r.elements == 1; }
+                else {
+                    #assert r.status == PsionicTensorStatus.dimension && r.elements == 0 && r.bytes == 0;
+                    for s: r.strides { #assert s == 0; }
+                }
+            }
+        }
+    }
+}
+#test "count admission precedes multiplication and failure clears all metadata" {
+    sizes := [4] int.[1048575, 1048576, 1048577, 9223372036854775807];
+    for axis: 0..<4 {
+        for k: 0..<4 {
+            shape := PsionicShape.{rank = 4, dims = [4] int.[1, 1, 1, 1]};
+            shape.dims[axis] = sizes[k];
+            r := psionic_tensor_layout(shape);
+            if k < 2 {
+                #assert r.status == PsionicTensorStatus.ok && r.elements == sizes[k] && r.bytes == 4 * sizes[k];
+                for a: 0..<4 {
+                    if a < axis { #assert r.strides[a] == sizes[k]; }
+                    else { #assert r.strides[a] == 1; }
+                }
+            } else {
+                #assert r.status == PsionicTensorStatus.limit && r.elements == 0 && r.bytes == 0;
+                for s: r.strides { #assert s == 0; }
+            }
+        }
+    }
+    exact := psionic_tensor_layout(PsionicShape.{rank = 2, dims = [4] int.[1024, 1024, 0, 0]});
+    #assert exact.status == PsionicTensorStatus.ok && exact.elements == 1048576 && exact.bytes == 4194304;
+    #assert exact.strides[0] == 1024 && exact.strides[1] == 1 && exact.strides[2] == 0 && exact.strides[3] == 0;
+    over := psionic_tensor_layout(PsionicShape.{rank = 2, dims = [4] int.[1024, 1025, 0, 0]});
+    #assert over.status == PsionicTensorStatus.limit && over.elements == 0 && over.bytes == 0;
+    for s: over.strides { #assert s == 0; }
+    bad_rank := psionic_tensor_layout(PsionicShape.{rank = 9223372036854775807});
+    #assert bad_rank.status == PsionicTensorStatus.rank;
+    negative := psionic_tensor_layout(PsionicShape.{rank = 1, dims = [4] int.[-9223372036854775807, 0, 0, 0]});
+    #assert negative.status == PsionicTensorStatus.dimension;
+    // Validate every dimension before considering the product limit.
+    bad_dimension := psionic_tensor_layout(PsionicShape.{rank = 2, dims = [4] int.[0, 9223372036854775807, 0, 0]});
+    #assert bad_dimension.status == PsionicTensorStatus.dimension;
+}
+#forall "four-dimensional indices have a hand-derived address" a: 0..<2, b: 0..<3, c: 0..<4, d: 0..<5 {
+    r := psionic_tensor_index(PsionicShape.{rank = 4, dims = [4] int.[2, 3, 4, 5]}, [4] int.[a, b, c, d]);
+    #assert r.status == PsionicTensorStatus.ok && r.offset == 60*a + 20*b + 5*c + d;
+}
+#test "indices reject negative, one-past-end and inactive coordinates" {
+    for rank: 0..<5 {
+        shape := PsionicShape.{rank = rank};
+        for axis: 0..<rank { shape.dims[axis] = 2; }
+        for axis: 0..<4 {
+            coords: [4] int;
+            if axis < rank {
+                coords[axis] = 1;
+                good := psionic_tensor_index(shape, coords);
+                #assert good.status == PsionicTensorStatus.ok;
+            }
+            coords[axis] = -1;
+            low := psionic_tensor_index(shape, coords);
+            #assert low.status == PsionicTensorStatus.index && low.offset == 0;
+            coords[axis] = 2;
+            high := psionic_tensor_index(shape, coords);
+            #assert high.status == PsionicTensorStatus.index && high.offset == 0;
+            coords[axis] = 9223372036854775807;
+            huge := psionic_tensor_index(shape, coords);
+            #assert huge.status == PsionicTensorStatus.index && huge.offset == 0;
+        }
+    }
+    ranks := [3] int.[-1, 1, 1];
+    dims := [3] int.[0, 0, 1048577];
+    expected := [3] PsionicTensorStatus.[PsionicTensorStatus.rank, PsionicTensorStatus.dimension, PsionicTensorStatus.limit];
+    for k: 0..<3 {
+        bad := psionic_tensor_index(PsionicShape.{rank = ranks[k], dims = [4] int.[dims[k], 0, 0, 0]}, [4] int.[0, 0, 0, 0]);
+        #assert bad.status == expected[k] && bad.offset == 0;
+    }
+}
+#test "finite tensor data is not limited to the first trainer's magnitudes" {
+    bits := [14] u32.[0, 0x80000000, 1, 0x80000001, 0x41800001, 0xc1800001,
+        0x7f7fffff, 0xff7fffff, 0x7f800000, 0xff800000, 0x7fc00000, 0xffc00000, 0x7f800001, 0xffffffff];
+    for k: 0..<14 { #assert psionic_tensor_finite_bits(bits[k]) == (k < 8); }
+    source: [8] f32; destination: [9] f32; scratch: [10] f32;
+    for k: 0..<8 { source[k] = f32_from_bits(bits[k]); }
+    destination[8] = -7; scratch[8] = -9; scratch[9] = -9;
+    r := psionic_tensor_copy_checked(PsionicShape.{rank = 1, dims = [4] int.[8, 0, 0, 0]}, source[..], destination[..], scratch[..], false);
+    #assert r.status == PsionicTensorStatus.ok && r.written == 8;
+    for k: 0..<8 {
+        #assert f32_bits(destination[k]) == bits[k] && f32_bits(scratch[k]) == bits[k] && f32_bits(source[k]) == bits[k];
+    }
+    #assert destination[8] == -7 && scratch[8] == -9 && scratch[9] == -9;
+}
+#forall "input is exactly the logical tensor; writable capacity may have tails" input: 0..<4, output: 0..<4, work: 0..<4 {
+    source := [4] f32.[32, -64, 17, 1];
+    destination := [4] f32.[-7, -7, -7, -7]; scratch := [4] f32.[-9, -9, -9, -9];
+    r := psionic_tensor_copy_checked(PsionicShape.{rank = 1, dims = [4] int.[2, 0, 0, 0]}, source[0..<input], destination[0..<output], scratch[0..<work], false);
+    if input == 2 && output >= 2 && work >= 2 {
+        #assert r.status == PsionicTensorStatus.ok && r.written == 2;
+        #assert destination[0] == 32 && destination[1] == -64 && scratch[0] == 32 && scratch[1] == -64;
+    } else {
+        #assert r.status == PsionicTensorStatus.capacity && r.written == 0;
+        #assert destination[0] == -7 && destination[1] == -7 && scratch[0] == -9 && scratch[1] == -9;
+    }
+    #assert destination[2] == -7 && destination[3] == -7 && scratch[2] == -9 && scratch[3] == -9;
+    #assert source[0] == 32 && source[1] == -64 && source[2] == 17 && source[3] == 1;
+}
+#test "copy refuses before any write with deterministic failure precedence" {
+    shape := PsionicShape.{rank = 1, dims = [4] int.[2, 0, 0, 0]};
+    source := [3] f32.[1, 2, 3]; destination := [3] f32.[-7, -7, -7]; scratch := [3] f32.[-9, -9, -9];
+    ranks := [3] int.[-1, 1, 1]; dims := [3] int.[0, 0, 1048577];
+    expected := [3] PsionicTensorStatus.[PsionicTensorStatus.rank, PsionicTensorStatus.dimension, PsionicTensorStatus.limit];
+    for k: 0..<3 {
+        r := psionic_tensor_copy_checked(PsionicShape.{rank = ranks[k], dims = [4] int.[dims[k], 0, 0, 0]}, source[0..<0], destination[..], scratch[..], true);
+        #assert r.status == expected[k] && r.written == 0;
+    }
+    short := psionic_tensor_copy_checked(shape, source[0..<1], destination[..], scratch[..], true);
+    #assert short.status == PsionicTensorStatus.capacity && short.written == 0;
+    alias := psionic_tensor_copy_checked(shape, source[0..<2], destination[..], scratch[..], true);
+    #assert alias.status == PsionicTensorStatus.alias && alias.written == 0;
+    // Real non-finite float values are exercised in the native harness.
+    for v: destination { #assert v == -7; }
+    for v: scratch { #assert v == -9; }
+    source[2] = f32_from_bits(0x7f7fffff); // Outside the logical input view.
+    good := psionic_tensor_copy_checked(shape, source[0..<2], destination[..], scratch[..], false);
+    #assert good.status == PsionicTensorStatus.ok && good.written == 2;
+    #assert destination[0] == 1 && destination[1] == 2 && destination[2] == -7;
+    #assert scratch[0] == 1 && scratch[1] == 2 && scratch[2] == -9;
+}
+#test "scalar storage is one real float" {
+    source := [1] f32.[123]; destination := [1] f32.[-7]; scratch := [1] f32.[-9];
+    r := psionic_tensor_copy_checked(PsionicShape.{}, source[..], destination[..], scratch[..], false);
+    #assert r.status == PsionicTensorStatus.ok && r.written == 1 && destination[0] == 123 && scratch[0] == 123;
+}
+
+// book:begin layout
+psionic_tensor_layout :: (shape: PsionicShape) -> PsionicLayout #export_c {
+    if shape.rank < 0 || shape.rank > 4 { return PsionicLayout.{status = PsionicTensorStatus.rank}; }
+    for axis: 0..<4 {
+        if axis < shape.rank {
+            if shape.dims[axis] <= 0 { return PsionicLayout.{status = PsionicTensorStatus.dimension}; }
+        } else {
+            if shape.dims[axis] != 0 { return PsionicLayout.{status = PsionicTensorStatus.dimension}; }
+        }
+    }
+    elements := 1; axis := shape.rank; strides: [4] int;
+    while axis > 0 {
+        axis -= 1;
+        dim := shape.dims[axis];
+        if dim > 1048576 / elements { return PsionicLayout.{status = PsionicTensorStatus.limit}; }
+        strides[axis] = elements;
+        elements *= dim;
+    }
+    return PsionicLayout.{status = PsionicTensorStatus.ok, elements = elements, bytes = elements * 4, strides = strides};
+}
+// book:end layout
+
+// book:begin index
+psionic_tensor_index :: (shape: PsionicShape, coordinates: [4] int) -> PsionicIndex #export_c {
+    layout := psionic_tensor_layout(shape);
+    if layout.status != PsionicTensorStatus.ok { return PsionicIndex.{status = layout.status}; }
+    for axis: 0..<4 {
+        if axis < shape.rank {
+            if coordinates[axis] < 0 || coordinates[axis] >= shape.dims[axis] {
+                return PsionicIndex.{status = PsionicTensorStatus.index};
+            }
+        } else {
+            if coordinates[axis] != 0 { return PsionicIndex.{status = PsionicTensorStatus.index}; }
+        }
+    }
+    offset := 0;
+    for axis: 0..<shape.rank { offset = offset * shape.dims[axis] + coordinates[axis]; }
+    return PsionicIndex.{status = PsionicTensorStatus.ok, offset = offset};
+}
+// book:end index
+
+psionic_tensor_finite_bits :: (bits: u32) -> bool { return (bits & 0x7fffffff) < 0x7f800000; }
+
+// Internal checked boundary: overlap is observed by the native adapter, not guessed here.
+// book:begin copy
+psionic_tensor_copy_checked :: (shape: PsionicShape, source: [] f32, destination: [] f32,
+        scratch: [] f32, overlap: bool) -> PsionicCopy #export_c {
+    layout := psionic_tensor_layout(shape);
+    if layout.status != PsionicTensorStatus.ok { return PsionicCopy.{status = layout.status}; }
+    if source.count != layout.elements || destination.count < layout.elements || scratch.count < layout.elements {
+        return PsionicCopy.{status = PsionicTensorStatus.capacity};
+    }
+    if overlap { return PsionicCopy.{status = PsionicTensorStatus.alias}; }
+    for value: source {
+        if !psionic_tensor_finite_bits(f32_bits(value)) { return PsionicCopy.{status = PsionicTensorStatus.number}; }
+    }
+    for i: 0..<layout.elements { scratch[i] = source[i]; }
+    for i: 0..<layout.elements { destination[i] = scratch[i]; }
+    return PsionicCopy.{status = PsionicTensorStatus.ok, written = layout.elements};
+}
+// book:end copy
