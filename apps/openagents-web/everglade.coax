@@ -1,0 +1,861 @@
+// Everglade, openagents.com/realm/everglade: the forest city as a grey-box
+// blockout you walk. The layout is verse/everglade/plan.coax's (the plan in
+// words is docs/verse/everglade.md): the palisade and its four gates, the
+// commons with its fountain and quest board, the market, the inn, the guild
+// halls, the temple and the observatory, the stables on the road in, the
+// trails out to the deep wood, the ruins, the crypt and the river crossing,
+// and where each of the city's characters will stand. Everything is a box,
+// a cylinder or a cone in plain colours, with each place's name over it.
+//
+// You walk it with the engine's controller (verse/player.coax, its own
+// library) among the plan's solids and see it through the free orbit
+// (verse/camera.coax). M (or MAP on a phone) lifts the camera over the city;
+// the location's hash starts you at a place (#market, #temple ...) and
+// #above opens on the map view. Nobody can change the city: there is no
+// editing here.
+//
+// The player walks on a flat floor and is drawn at the ground's height
+// where it stands, as in the Garden; the ground is verse/terrain.coax's.
+// everglade.wgsl draws a ground of cells (store 0, its heights) and every
+// object as a shape (store 1). everglade-face.c binds it for the browser.
+//   coax/bin/coax test apps/openagents-web/everglade.coax --steps 200000000
+
+#load "font.coax";
+#load "analytics.coax";
+#load "../../verse/camera.coax";
+#load "../../verse/everglade/plan.coax";
+
+VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
+MAX_VERTICES :: 30000;
+PLATES :: 12;
+// The uniforms: width, height, time, fade, still, plates, dpr, horizon; the
+// view's four rows; the eye and the fog's density; the sun and where the
+// fog starts; the ground; SHADOWS blobs; PATHS path pieces and their count
+// and half width; SQUARES paved discs (x, z, radius, 0); then the plates.
+SHADOWS :: 16;
+PATHS :: 32;
+SQUARES :: 4;
+U_VIEW :: 8; U_EYE :: 24; U_SUN :: 28; U_GROUND :: 32; U_SHADOW :: 36;
+U_PATH :: U_SHADOW + SHADOWS * 4;
+U_PATH_INFO :: U_PATH + PATHS * 4;
+U_SQUARE :: U_PATH_INFO + 4;
+U_PLATE :: U_SQUARE + SQUARES * 4;
+UNIFORM_FLOATS :: U_PLATE + PLATES * 8;
+
+SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4;
+SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
+SLOTS :: [5] int.[0, 520, 72, 48, 300];
+SLOT_AT :: [5] int.[0, 0, 520, 592, 640];
+OBJECTS :: 940;
+OBJECT_FLOATS :: 16;
+LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_WATER :: 4;
+DRAWS :: 5;
+
+WALLS :: 64;           // the player's walls (player.coax WALL numbers each)
+BOXES :: 64;           // the camera's boxes (camera.coax BOX numbers each)
+TREES :: 280;          // the forest ring past the palisade: x, z, size each
+
+HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 16; HOLD_JUMP :: 32;
+HOLD_TURN_LEFT :: 64; HOLD_TURN_RIGHT :: 128; HOLD_TILT_UP :: 256; HOLD_TILT_DOWN :: 512;
+KEY_ESCAPE :: -1; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
+
+LOOK_DRAG :: 0.0055;
+WHEEL_ZOOM :: 0.006;
+NAME_NEAR :: 11.0;     // metres: a character's name shows this near
+PLACE_NEAR :: 70.0;    // and a building's or a place's
+
+PARCH_R :: 0.93; PARCH_G :: 0.9; PARCH_B :: 0.82;
+GOLD_R :: 0.86; GOLD_G :: 0.72; GOLD_B :: 0.42;
+
+Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+
+Everglade :: struct {
+  started: bool;
+  time: f64;
+  width: f32; height: f32; dpr: f32;
+  touch: bool;
+  orbit: Orbit;
+  held: int;
+  drag_on: bool; drag_id: int; drag_x: f32; drag_y: f32;
+  look_yaw: f32; look_pitch: f32;
+  wheel: f32;
+  key_x: f32; key_y: f32; run: bool; jump: bool;
+  feet: Point; face: f32; act: int; stride: f32;
+  above: bool;              // the map view: the camera over the city
+  lift: f32;                // eased toward 1 in the map view, 0 at your shoulder
+  warp: bool;               // the face should put you at spawn (a hash named a place)
+  spawn: Point; spawn_face: f32;
+  map_button: Box; map_finger: int;
+  heights: [EG_GROUND_POINTS] f32;
+  objects: [OBJECTS * OBJECT_FLOATS] f32;
+  counts: [5] int;
+  draws: [DRAWS * 4] u32;
+  walls: [WALLS * 6] f32; wall_n: int;
+  boxes: [BOXES * 6] f32; box_n: int;
+  trees: [TREES * 3] f32; tree_n: int;
+  shadow_n: int;
+  plate_n: int;
+}
+
+// ---- small things
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  size := sqrt(dx * dx + dy * dy);
+  if size <= 0 { return false; }
+  ux := dx / size; uy := dy / size;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, size + r, size + r, -r, size + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = size; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+ink :: (k: f32, light: f32, red: f32, green: f32, blue: f32) -> Ink {
+  i: Ink;
+  i.core = 0.55 * k; i.light = light; i.glow = 1.2 * k; i.red = red; i.green = green; i.blue = blue; i.mode = 0; i.scale = k;
+  return i;
+}
+GAP :: 0.5; SPACE :: 1.2;
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+
+put6 :: (out: [] f32, i: int, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
+  k := i * 6;
+  if k + 6 > out.count { return; }
+  out[k] = a; out[k + 1] = b; out[k + 2] = c; out[k + 3] = d; out[k + 4] = e; out[k + 5] = f;
+}
+
+// ---- the page's state
+
+coaxial_everglade_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_everglade_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_everglade_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+ground_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return verse_terrain_height(everglade_ground(), s[0].heights[..], x, z); }
+
+everglade_start :: (s: [] Everglade) {
+  s[0].started = true;
+  ok := everglade_build_ground(s[0].heights[..]);
+  s[0].spawn = v3(f32(EG_SPAWN_X), 0, f32(EG_SPAWN_Z));
+  s[0].spawn_face = 0;
+  s[0].feet = v3(s[0].spawn.x, ground_at(s, s[0].spawn.x, s[0].spawn.z), s[0].spawn.z);
+  s[0].orbit = verse_orbit_start(s[0].feet, 0);
+  s[0].map_finger = -1;
+  build_scenery(s);
+  plant_forest(s);
+}
+
+// The player's walls (every solid, from the floor up) and the camera's
+// boxes (the palisade, the buildings and the props tall enough to hide
+// you), from the plan.
+build_scenery :: (s: [] Everglade) {
+  solids: [EG_SOLIDS * EG_BOX] f32;
+  n := everglade_solids(solids[..]);
+  w := 0; bx := 0;
+  for i: 0..<n {
+    k := i * EG_BOX;
+    x0 := solids[k]; z0 := solids[k + 1]; x1 := solids[k + 2]; z1 := solids[k + 3]; h := solids[k + 4];
+    if w < WALLS { put6(s[0].walls[..], w, x0, 0, z0, x1, h, z1); w += 1; }
+    if h > 1.5 && bx < BOXES && x1 - x0 < 150 && z1 - z0 < 150 {
+      g := ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
+      put6(s[0].boxes[..], bx, x0, g - 1, z0, x1, g + h, z1); bx += 1;
+    }
+  }
+  s[0].wall_n = w; s[0].box_n = bx;
+}
+
+// The forest past the palisade: trees scattered by a fixed seed, kept off
+// the trails, the river and the landmarks (eg-forest makes it a forest).
+plant_forest :: (s: [] Everglade) {
+  seed := 12345;
+  n := 0;
+  solids: [EG_SOLIDS * EG_BOX] f32;
+  count := everglade_solids(solids[..]);
+  nodes := EG_NODE_XZ; links := EG_LINK_AB;
+  tries := 0;
+  while n < TREES && tries < 3000 {
+    tries += 1;
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    x := f32(seed) / 2147483648.0 * 196 - 98;
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    z := f32(seed) / 2147483648.0 * 196 - 98;
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    size := 0.8 + f32(seed) / 2147483648.0 * 0.6;
+    if x > -70 && x < 70 && z > -62 && z < 66 { continue; }
+    if verse_path_nearest(nodes[..], links[..], x, z).d < 5 { continue; }
+    clear := true;
+    for k: 0..<count - 4 { if box_gap(solids[..], k, x, z) < 4 { clear = false; break; } }
+    if !clear { continue; }
+    for t: 0..<n {
+      dx := s[0].trees[t * 3] - x; dz := s[0].trees[t * 3 + 1] - z;
+      if dx * dx + dz * dz < 10 { clear = false; break; }
+    }
+    if !clear { continue; }
+    s[0].trees[n * 3] = x; s[0].trees[n * 3 + 1] = z; s[0].trees[n * 3 + 2] = size;
+    n += 1;
+  }
+  s[0].tree_n = n;
+}
+
+everglade_walls :: (s: [] Everglade) -> int #export_c { if !s[0].started { everglade_start(s); } return s[0].wall_n; }
+everglade_spawn :: (s: [] Everglade) -> Point #export_c { if !s[0].started { everglade_start(s); } return s[0].spawn; }
+everglade_spawn_face :: (s: [] Everglade) -> f32 #export_c { return s[0].spawn_face; }
+// True once when the face should put you at the spawn again.
+everglade_warp :: (s: [] Everglade) -> bool #export_c { w := s[0].warp; s[0].warp = false; return w; }
+
+// The location's hash: "above" opens on the map; a place's id starts you on
+// the street nearest it, facing it.
+everglade_hash :: (s: [] Everglade, hash: string) #export_c {
+  if !s[0].started { everglade_start(s); }
+  if hash == "above" || hash == "map" { s[0].above = true; s[0].lift = 1; return; }
+  for p: 0..<EG_PLACES {
+    if hash != EG_PLACE_ID[p] { continue; }
+    px := EG_PLACE[p * 2]; pz := EG_PLACE[p * 2 + 1];
+    best := 0; most := 1000000.0f32;
+    for k: 0..<EG_NODES {
+      dx := EG_NODE_XZ[k * 2] - px; dz := EG_NODE_XZ[k * 2 + 1] - pz;
+      d := dx * dx + dz * dz;
+      if d < most { most = d; best = k; }
+    }
+    nx := EG_NODE_XZ[best * 2]; nz := EG_NODE_XZ[best * 2 + 1];
+    s[0].spawn = v3(nx, 0, nz);
+    s[0].spawn_face = ifx most > 1 then yaw_of(px - nx, pz - nz) else 0.0f32;
+    s[0].feet = v3(nx, ground_at(s, nx, nz), nz);
+    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].warp = true;
+    s[0].above = false; s[0].lift = 0;
+    return;
+  }
+}
+
+// ---- the controls
+
+hold_bit :: (key: int) -> int {
+  if key == 'w' || key == 'W' { return HOLD_FORWARD; }
+  if key == 's' || key == 'S' { return HOLD_BACK; }
+  if key == 'a' || key == 'A' { return HOLD_LEFT; }
+  if key == 'd' || key == 'D' { return HOLD_RIGHT; }
+  if key == KEY_SHIFT { return HOLD_RUN; }
+  if key == ' ' { return HOLD_JUMP; }
+  if key == KEY_LEFT { return HOLD_TURN_LEFT; }
+  if key == KEY_RIGHT { return HOLD_TURN_RIGHT; }
+  if key == KEY_UP { return HOLD_TILT_UP; }
+  if key == KEY_DOWN { return HOLD_TILT_DOWN; }
+  return 0;
+}
+
+everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
+  if !s[0].started { everglade_start(s); }
+  if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
+  if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
+  if key == 'm' || key == 'M' { s[0].above = !s[0].above; return true; }
+  if key == KEY_ESCAPE && s[0].above { s[0].above = false; return true; }
+  b := hold_bit(key);
+  if b == 0 { return false; }
+  s[0].held = s[0].held | b;
+  return true;
+}
+
+everglade_key_up :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
+  b := hold_bit(key);
+  if b == 0 { return false; }
+  if s[0].held & b != 0 { s[0].held = s[0].held - b; }
+  return true;
+}
+
+everglade_blur :: (s: [] Everglade) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].map_finger = -1; }
+
+in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+
+// A mouse drag turns the camera; a finger on MAP presses it; any other
+// finger is the face's (the sticks), so this says it isn't used.
+everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if !s[0].started { everglade_start(s); }
+  if kind != 0 {
+    s[0].touch = true;
+    if phase == 0 && in_box(s[0].map_button, x, y) { s[0].map_finger = id; return true; }
+    if id != s[0].map_finger { return false; }
+    if phase == 2 && in_box(s[0].map_button, x, y) { s[0].above = !s[0].above; }
+    if phase >= 2 { s[0].map_finger = -1; }
+    return true;
+  }
+  k := hi(s[0].dpr, 0.5);
+  if phase == 0 && in_box(s[0].map_button, x, y) { s[0].above = !s[0].above; return true; }
+  if phase == 0 { s[0].drag_on = true; s[0].drag_id = id; s[0].drag_x = x; s[0].drag_y = y; return true; }
+  if !s[0].drag_on || id != s[0].drag_id { return false; }
+  if phase == 1 {
+    s[0].look_yaw -= (x - s[0].drag_x) / k * f32(LOOK_DRAG);
+    s[0].look_pitch -= (y - s[0].drag_y) / k * f32(LOOK_DRAG);
+    s[0].drag_x = x; s[0].drag_y = y;
+    return true;
+  }
+  s[0].drag_on = false;
+  return true;
+}
+
+everglade_wheel :: (s: [] Everglade, dy: f32) #export_c {
+  if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
+}
+
+axis :: (held: int, plus: int, minus: int) -> f32 {
+  a := 0.0f32;
+  if held & plus != 0 { a += 1; }
+  if held & minus != 0 { a -= 1; }
+  return a;
+}
+
+everglade_controls :: (s: [] Everglade, dt: f32, dyaw: f32, dpitch: f32) #export_c {
+  if !s[0].started { everglade_start(s); }
+  h := s[0].held;
+  s[0].key_x = axis(h, HOLD_RIGHT, HOLD_LEFT);
+  s[0].key_y = axis(h, HOLD_FORWARD, HOLD_BACK);
+  s[0].run = h & HOLD_RUN != 0;
+  s[0].jump = h & HOLD_JUMP != 0;
+  o := verse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
+  o = verse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
+  s[0].orbit = o;
+  s[0].look_yaw = 0; s[0].look_pitch = 0;
+}
+
+everglade_player_theta :: (s: [] Everglade) -> f32 #export_c { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
+
+// ---- the scene
+
+shape :: (s: [] Everglade, kind: int, look: int, centre: Point, yaw: f32, tilt: f32, sx: f32, sy: f32, sz: f32,
+          red: f32, green: f32, blue: f32) {
+  if kind < 1 || kind > 4 { return; }
+  n := s[0].counts[kind];
+  if n >= SLOTS[kind] { return; }
+  s[0].counts[kind] = n + 1;
+  o := (SLOT_AT[kind] + n) * OBJECT_FLOATS;
+  cy := cos(yaw); sy_ := sin(yaw); ct := cos(tilt); st := sin(tilt);
+  c0 := v3(cy * sx, 0, -sy_ * sx);
+  c1 := v3(sy_ * st * sy, ct * sy, cy * st * sy);
+  c2 := v3(sy_ * ct * sz, -st * sz, cy * ct * sz);
+  s[0].objects[o] = c0.x; s[0].objects[o + 1] = c1.x; s[0].objects[o + 2] = c2.x; s[0].objects[o + 3] = centre.x;
+  s[0].objects[o + 4] = c0.y; s[0].objects[o + 5] = c1.y; s[0].objects[o + 6] = c2.y; s[0].objects[o + 7] = centre.y;
+  s[0].objects[o + 8] = c0.z; s[0].objects[o + 9] = c1.z; s[0].objects[o + 10] = c2.z; s[0].objects[o + 11] = centre.z;
+  s[0].objects[o + 12] = red; s[0].objects[o + 13] = green; s[0].objects[o + 14] = blue;
+  s[0].objects[o + 15] = f32(kind + 8 * look);
+}
+
+shadow :: (s: [] Everglade, u: [] f32, x: f32, z: f32, radius: f32, strength: f32) {
+  n := s[0].shadow_n;
+  if n >= SHADOWS { return; }
+  k := U_SHADOW + n * 4;
+  u[k] = x; u[k + 1] = z; u[k + 2] = radius; u[k + 3] = strength;
+  s[0].shadow_n = n + 1;
+}
+
+// A box standing on the ground from footprint x0, z0 to x1, z1, h tall.
+block :: (s: [] Everglade, look: int, x0: f32, z0: f32, x1: f32, z1: f32, h: f32, red: f32, green: f32, blue: f32) {
+  g := ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
+  shape(s, SHAPE_BOX, look, v3((x0 + x1) / 2, g + (h - 1) / 2, (z0 + z1) / 2), 0, 0, x1 - x0, h + 1, z1 - z0, red, green, blue);
+}
+
+// A gable roof over a footprint: a box turned a quarter on its long axis,
+// half of it showing above the walls.
+roof :: (s: [] Everglade, x0: f32, z0: f32, x1: f32, z1: f32, h: f32, red: f32, green: f32, blue: f32) {
+  g := ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
+  w := x1 - x0; d := z1 - z0;
+  along_x := w >= d;
+  span := ifx along_x then d else w;
+  side := span * 0.5 * 1.4142 + 0.3;
+  centre := v3((x0 + x1) / 2, g + h, (z0 + z1) / 2);
+  if along_x {
+    shape(s, SHAPE_BOX, LOOK_MATTE, centre, f32(PI) / 2, f32(PI) / 4, side, side, w + 0.6, 0.42, 0.36, 0.33);
+  } else {
+    shape(s, SHAPE_BOX, LOOK_MATTE, centre, 0, f32(PI) / 4, side, side, d + 0.6, 0.42, 0.36, 0.33);
+  }
+}
+
+city :: (s: [] Everglade, u: [] f32) {
+  // The palisade: timber walls and their towers.
+  for i: 0..<EG_PALISADE_N {
+    k := i * EG_BOX;
+    tall := EG_PALISADE[k + 4] > 5;
+    block(s, LOOK_MATTE, EG_PALISADE[k], EG_PALISADE[k + 1], EG_PALISADE[k + 2], EG_PALISADE[k + 3], EG_PALISADE[k + 4],
+          ifx tall then 0.46f32 else 0.52f32, ifx tall then 0.4f32 else 0.45f32, ifx tall then 0.34f32 else 0.38f32);
+  }
+  // The buildings: grey walls and a darker roof; houses lighter, landmarks warmer.
+  for b: 0..<EG_BUILDINGS {
+    k := b * EG_BOX;
+    x0 := EG_BUILDING[k]; z0 := EG_BUILDING[k + 1]; x1 := EG_BUILDING[k + 2]; z1 := EG_BUILDING[k + 3]; h := EG_BUILDING[k + 4];
+    house := b >= EG_HOUSES;
+    wall := ifx house then 0.72f32 else 0.66f32;
+    if b == EG_OBSERVATORY || b == EG_MAGES {
+      block(s, LOOK_STONE, x0, z0, x1, z1, h, wall, wall, wall * 1.03);
+      g := ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
+      shape(s, SHAPE_CONE, LOOK_MATTE, v3((x0 + x1) / 2, g + h + 2, (z0 + z1) / 2), 0, 0, (x1 - x0) * 1.2, 4, (z1 - z0) * 1.2, 0.4, 0.36, 0.42);
+      if b == EG_OBSERVATORY {
+        shape(s, SHAPE_SPHERE, LOOK_STONE, v3((x0 + x1) / 2, g + h + 4.5, (z0 + z1) / 2), 0, 0, 3, 3, 3, 0.75, 0.75, 0.8);
+      }
+    } else {
+      block(s, LOOK_STONE, x0, z0, x1, z1, h - 2.5, wall, wall * 0.98, wall * 0.95);
+      roof(s, x0, z0, x1, z1, h - 2.5, 0.42, 0.36, 0.33);
+    }
+    // The door: a dark slab on the wall facing its door spot.
+    dx := EG_DOOR[b * 2]; dz := EG_DOOR[b * 2 + 1];
+    g := ground_at(s, dx, dz);
+    across := dx < x0 || dx > x1;
+    wx := clamp(dx, x0, x1); wz := clamp(dz, z0, z1);
+    shape(s, SHAPE_BOX, LOOK_MATTE, v3(wx, g + 1.1, wz), 0, 0, ifx across then 0.25f32 else 1.4f32, 2.2, ifx across then 1.4f32 else 0.25f32, 0.22, 0.16, 0.1);
+  }
+  // The commons: the fountain, the quest board.
+  g := ground_at(s, 0, 0);
+  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(0, g + 0.3, 0), 0, 0, 6, 0.9, 6, 0.7, 0.68, 0.64);
+  shape(s, SHAPE_CYLINDER, LOOK_WATER, v3(0, g + 0.72, 0), 0, 0, 5.2, 0.1, 5.2, 0.32, 0.52, 0.62);
+  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(0, g + 1.4, 0), 0, 0, 0.9, 2.2, 0.9, 0.72, 0.7, 0.66);
+  shape(s, SHAPE_SPHERE, LOOK_WATER, v3(0, g + 2.7, 0), 0, 0, 1.4, 0.7, 1.4, 0.42, 0.62, 0.72);
+  for i: 1..<EG_PROPS {
+    k := i * EG_BOX;
+    x0 := EG_PROP[k]; z0 := EG_PROP[k + 1]; x1 := EG_PROP[k + 2]; z1 := EG_PROP[k + 3]; h := EG_PROP[k + 4];
+    if i >= EG_RIVER {
+      // The river in reaches of eight metres, each at the ground's height there.
+      reaches := cast(int) ((z1 - z0) / 8) + 1;
+      for r: 0..<reaches {
+        rz0 := z0 + (z1 - z0) * f32(r) / f32(reaches); rz1 := z0 + (z1 - z0) * f32(r + 1) / f32(reaches);
+        lowest := lo(lo(ground_at(s, x0, rz0), ground_at(s, x1, rz0)), lo(ground_at(s, x0, rz1), ground_at(s, x1, rz1)));
+        highest := hi(hi(ground_at(s, x0, rz0), ground_at(s, x1, rz0)), hi(ground_at(s, x0, rz1), ground_at(s, x1, rz1)));
+        shape(s, SHAPE_BOX, LOOK_WATER, v3((x0 + x1) / 2, (lowest + highest) / 2 - 0.1, (rz0 + rz1) / 2), 0, 0, x1 - x0, highest - lowest + 0.25, rz1 - rz0 + 0.05, 0.28, 0.46, 0.58);
+      }
+      continue;
+    }
+    if i == EG_BOARD {
+      block(s, LOOK_MATTE, x0, z0, x1, z1, h, 0.5, 0.38, 0.24);
+      shape(s, SHAPE_BOX, LOOK_MATTE, v3((x0 + x1) / 2, ground_at(s, x0, z0) + 1.7, z0 - 0.02), 0, 0, x1 - x0 - 0.3, 0.9, 0.05, 0.92, 0.88, 0.76);
+      continue;
+    }
+    if i >= EG_STALL && i < EG_WAYSTONE {
+      block(s, LOOK_MATTE, x0, z0, x1, z1, 1.0, 0.55, 0.42, 0.28);
+      tint := [9] f32.[0.78, 0.3, 0.26,  0.3, 0.5, 0.72,  0.86, 0.72, 0.3];
+      c := (i - EG_STALL) % 3;
+      shape(s, SHAPE_BOX, LOOK_MATTE, v3((x0 + x1) / 2, ground_at(s, x0, z0) + h, (z0 + z1) / 2), 0, 0, x1 - x0 + 0.4, 0.12, z1 - z0 + 0.6, tint[c * 3], tint[c * 3 + 1], tint[c * 3 + 2]);
+      continue;
+    }
+    block(s, LOOK_STONE, x0, z0, x1, z1, h, 0.6, 0.6, 0.58);
+  }
+  br := EG_BRIDGE;
+  shape(s, SHAPE_BOX, LOOK_MATTE, v3((br[0] + br[2]) / 2, ground_at(s, 88, -11.5) + 0.1, (br[1] + br[3]) / 2), 0, 0, br[2] - br[0], 0.4, br[3] - br[1], 0.5, 0.38, 0.24);
+  // The forest.
+  for t: 0..<s[0].tree_n {
+    x := s[0].trees[t * 3]; z := s[0].trees[t * 3 + 1]; k := s[0].trees[t * 3 + 2];
+    base := ground_at(s, x, z);
+    shape(s, SHAPE_BOX, LOOK_MATTE, v3(x, base + 1.2 * k, z), 0, 0, 0.5 * k, 2.4 * k + 0.4, 0.5 * k, 0.36, 0.26, 0.17);
+    shape(s, SHAPE_CONE, LOOK_LEAVES, v3(x, base + 4.6 * k, z), f32(t), 0, 4.2 * k, 6.4 * k, 4.2 * k, 0.2, 0.36 + 0.04 * f32(t % 3), 0.18);
+  }
+}
+
+// The city's characters, each where their day starts: a grey-box figure in
+// their trade's colour; a cat is small and round.
+people :: (s: [] Everglade, u: [] f32, you: Point) {
+  for i: 0..<EG_SPOTS {
+    x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1]; face := EG_SPOT[i * 3 + 2];
+    g := ground_at(s, x, z);
+    if EG_SPOT_CAT[i] {
+      shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(x, g + 0.2, z), face, 0, 0.26, 0.24, 0.46, 0.85, 0.55, 0.22);
+      head := v3(x + sin(face) * 0.24, g + 0.36, z + cos(face) * 0.24);
+      shape(s, SHAPE_SPHERE, LOOK_MATTE, head, face, 0, 0.2, 0.18, 0.2, 0.85, 0.55, 0.22);
+      shape(s, SHAPE_CONE, LOOK_MATTE, add(head, v3(cos(face) * 0.06, 0.1, -sin(face) * 0.06)), face, 0, 0.07, 0.1, 0.05, 0.8, 0.5, 0.2);
+      shape(s, SHAPE_CONE, LOOK_MATTE, add(head, v3(-cos(face) * 0.06, 0.1, sin(face) * 0.06)), face, 0, 0.07, 0.1, 0.05, 0.8, 0.5, 0.2);
+      continue;
+    }
+    c := role_colour(i);
+    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + 0.75, z), face, 0, 0.55, 1.5, 0.42, c.x, c.y, c.z);
+    shape(s, SHAPE_SPHERE, LOOK_SKIN, v3(x, g + 1.7, z), face, 0, 0.38, 0.42, 0.38, 0.93, 0.76, 0.62);
+    if flat_gap(v3(x, 0, z), you) < 30 { shadow(s, u, x, z, 0.5, 0.5); }
+  }
+}
+
+role_colour :: (i: int) -> Point {
+  name := EG_SPOT_NAME[i];
+  if name == "GATE GUARD" { return v3(0.55, 0.22, 0.2); }
+  if name == "PRIEST" || name == "ASTRONOMER" || name == "ARCHMAGE" { return v3(0.36, 0.3, 0.62); }
+  if name == "FIGHTERS' MASTER" || name == "SMITH" { return v3(0.38, 0.36, 0.34); }
+  if name == "RANGERS' WARDEN" || name == "WOODWARDEN" { return v3(0.24, 0.42, 0.22); }
+  return v3(0.66, 0.52, 0.32);
+}
+
+// You: a figure in a blue coat, its legs and arms swinging with your stride.
+figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, stride: f32, act: int) {
+  swing := ifx act == 1 || act == 2 then sin(stride * 2.4) * (ifx act == 2 then 0.75f32 else 0.5f32) else 0.0f32;
+  if act == 3 { swing = 0.5; }
+  bob := ifx act == 1 || act == 2 then abs(cos(stride * 2.4)) * 0.05 else 0.0f32;
+  base := add(feet, v3(0, bob, 0));
+  right := v3(-cos(face), 0, sin(face));
+  hip := add(base, v3(0, 0.82, 0));
+  for side: 0..<2 {
+    sign := ifx side == 0 then 1.0f32 else -1.0f32;
+    leg := add(hip, times(right, 0.11 * sign));
+    a := swing * sign;
+    down := v3(sin(face) * sin(a), -cos(a), cos(face) * sin(a));
+    shape(s, SHAPE_BOX, LOOK_MATTE, add(leg, times(down, 0.4)), face, a, 0.15, 0.8, 0.17, 0.22, 0.2, 0.26);
+    shoulder := add(add(base, v3(0, 1.38, 0)), times(right, 0.3 * sign));
+    arm := v3(sin(face) * sin(-a * 0.8), -cos(-a * 0.8), cos(face) * sin(-a * 0.8));
+    shape(s, SHAPE_BOX, LOOK_MATTE, add(shoulder, times(arm, 0.32)), face, -a * 0.8, 0.12, 0.64, 0.13, 0.2, 0.36, 0.62);
+  }
+  shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(base, v3(0, 1.12, 0)), face, 0, 0.52, 0.64, 0.36, 0.2, 0.38, 0.66);
+  head := add(base, v3(0, 1.66, 0));
+  shape(s, SHAPE_SPHERE, LOOK_SKIN, head, face, 0, 0.36, 0.4, 0.36, 0.93, 0.76, 0.62);
+  shadow(s, u, feet.x, feet.z, 0.45, 0.6);
+}
+
+NEAR :: 0.1; FAR :: 420.0;
+view :: (shot: Shot, width: f32, height: f32, u: [] f32, at: int) {
+  f := unit_or(sub(shot.at, shot.eye), v3(0, 0, 1));
+  r := unit_or(cross(f, v3(0, 1, 0)), v3(1, 0, 0));
+  up := cross(r, f);
+  aspect := width / hi(height, 1);
+  fy := clamp(aspect * 1.25, 0.95, 1.9);
+  fx := fy / aspect;
+  depth := f32(FAR / (FAR - NEAR));
+  e := shot.eye;
+  rows := [16] f32.[
+    r.x * fx, r.y * fx, r.z * fx, -dot(r, e) * fx,
+    up.x * fy, up.y * fy, up.z * fy, -dot(up, e) * fy,
+    f.x * depth, f.y * depth, f.z * depth, (-dot(f, e) - f32(NEAR)) * depth,
+    f.x, f.y, f.z, -dot(f, e)
+  ];
+  for i: 0..<16 { u[at + i] = rows[i]; }
+}
+
+horizon_y :: (shot: Shot, u: [] f32, height: f32) -> f32 {
+  f := sub(shot.at, shot.eye); f.y = 0;
+  far := add(shot.eye, times(unit_or(f, v3(0, 0, 1)), 1000));
+  cy := u[U_VIEW + 4] * far.x + u[U_VIEW + 5] * far.y + u[U_VIEW + 6] * far.z + u[U_VIEW + 7];
+  cw := u[U_VIEW + 12] * far.x + u[U_VIEW + 13] * far.y + u[U_VIEW + 14] * far.z + u[U_VIEW + 15];
+  if !(cw > 0.001) { return 0; }
+  return (1 - cy / cw) * 0.5 * height;
+}
+
+ground_room :: (s: [] Everglade, r: OrbitRay) -> f32 {
+  lifted := add(r.from, v3(0, -0.5, 0));
+  return verse_terrain_ray(everglade_ground(), s[0].heights[..], lifted, r.dir, r.far);
+}
+
+// The map view: high over the city's south edge, looking north and down
+// over all of it, with you still in it.
+ABOVE_EYE :: [3] f32.[0, 150, -128];
+ABOVE_AT :: [3] f32.[0, 0, 6];
+
+camera_frame :: (s: [] Everglade, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
+  speed := sqrt(vx * vx + vz * vz);
+  o := verse_orbit_follow(s[0].orbit, feet, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
+  room := verse_orbit_room(o, s[0].boxes[0..<0], s[0].boxes[0..<s[0].box_n * 6]);
+  room = lo(room, ground_room(s, verse_orbit_ray(o)));
+  o = verse_orbit_limit(o, room, dt);
+  s[0].orbit = o;
+  shot := verse_orbit_shot(o);
+  s[0].lift += ((ifx s[0].above then 1.0f32 else 0.0f32) - s[0].lift) * settle(3.0, dt);
+  if s[0].lift < 0.001 { return shot; }
+  e := ABOVE_EYE; a := ABOVE_AT;
+  t := s[0].lift * s[0].lift * (3 - 2 * s[0].lift);
+  high := Shot.{eye = v3(e[0], e[1], e[2]), at = v3(a[0], a[1], a[2])};
+  return Shot.{eye = mix(shot.eye, high.eye, t), at = mix(shot.at, high.at, t)};
+}
+
+paths :: (u: [] f32) {
+  n := 0;
+  for i: 0..<EG_LINKS {
+    if n >= PATHS { break; }
+    a := EG_LINK_AB[i * 2]; b := EG_LINK_AB[i * 2 + 1];
+    k := U_PATH + n * 4;
+    u[k] = EG_NODE_XZ[a * 2]; u[k + 1] = EG_NODE_XZ[a * 2 + 1]; u[k + 2] = EG_NODE_XZ[b * 2]; u[k + 3] = EG_NODE_XZ[b * 2 + 1];
+    n += 1;
+  }
+  u[U_PATH_INFO] = f32(n); u[U_PATH_INFO + 1] = f32(EG_PATH_HALF);
+  for i: 0..<EG_SQUARES {
+    if i >= SQUARES { break; }
+    k := U_SQUARE + i * 4;
+    u[k] = EG_SQUARE[i * 4]; u[k + 1] = EG_SQUARE[i * 4 + 1]; u[k + 2] = EG_SQUARE[i * 4 + 2];
+  }
+}
+
+// ---- the HUD
+
+plate :: (s: [] Everglade, u: [] f32, b: Box, alpha: f32, look: f32) {
+  n := s[0].plate_n;
+  if n >= PLATES { return; }
+  k := U_PLATE + n * 8;
+  u[k] = b.x0; u[k + 1] = b.y0; u[k + 2] = b.x1; u[k + 3] = b.y1;
+  u[k + 4] = alpha; u[k + 5] = look; u[k + 6] = s[0].dpr; u[k + 7] = 0;
+  s[0].plate_n = n + 1;
+}
+
+phone :: (s: [] Everglade) -> bool { return s[0].touch || s[0].width / hi(s[0].dpr, 0.5) < 700; }
+
+hint :: (s: [] Everglade) -> string {
+  if s[0].above {
+    if phone(s) { return "THE MAP · TAP MAP TO WALK AGAIN"; }
+    return "THE MAP · M OR ESC TO WALK AGAIN";
+  }
+  if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP JUMPS"; }
+  return "WASD WALK · DRAG OR ARROWS TURN · WHEEL ZOOMS · SHIFT RUNS · M MAP";
+}
+
+// The district you are in: the nearest place.
+where :: (you: Point) -> string {
+  best := 0; most := 1000000.0f32;
+  for p: 0..<EG_PLACES {
+    dx := EG_PLACE[p * 2] - you.x; dz := EG_PLACE[p * 2 + 1] - you.z;
+    d := dx * dx + dz * dz;
+    if d < most { most = d; best = p; }
+  }
+  return EG_PLACE_NAME[best];
+}
+
+// Where a point lands on the screen (device pixels), and whether it is in front.
+Screen :: struct { x: f32; y: f32; w: f32; ok: bool; }
+on_screen :: (u: [] f32, p: Point, width: f32, height: f32) -> Screen {
+  s: Screen;
+  cx := u[U_VIEW] * p.x + u[U_VIEW + 1] * p.y + u[U_VIEW + 2] * p.z + u[U_VIEW + 3];
+  cy := u[U_VIEW + 4] * p.x + u[U_VIEW + 5] * p.y + u[U_VIEW + 6] * p.z + u[U_VIEW + 7];
+  cw := u[U_VIEW + 12] * p.x + u[U_VIEW + 13] * p.y + u[U_VIEW + 14] * p.z + u[U_VIEW + 15];
+  s.w = cw;
+  s.ok = cw > 0.5;
+  if !s.ok { return s; }
+  s.x = (cx / cw + 1) * 0.5 * width; s.y = (1 - cy / cw) * 0.5 * height;
+  s.ok = s.x > -200 && s.x < width + 200 && s.y > 0 && s.y < height;
+  return s;
+}
+
+// A name over a point in the world, centred, smaller the further it is.
+tag :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, text: string, p: Point, cap: f32, light: f32, gold: bool) -> int {
+  sc := on_screen(u, p, s[0].width, s[0].height);
+  if !sc.ok { return n; }
+  k := hi(s[0].dpr, 0.5);
+  w := text_width(text, cap);
+  r := ifx gold then f32(GOLD_R) else f32(PARCH_R);
+  g := ifx gold then f32(GOLD_G) else f32(PARCH_G);
+  b := ifx gold then f32(GOLD_B) else f32(PARCH_B);
+  return draw_text(out, n, text, sc.x - w / 2, sc.y, cap, GAP, SPACE, ink(k, light, r, g, b), false, false);
+}
+
+labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
+  k := hi(s[0].dpr, 0.5);
+  m := n;
+  overview := s[0].lift > 0.5;
+  here := where(you);
+  for p: 0..<EG_PLACES {
+    if !overview && EG_PLACE_NAME[p] == here { continue; }
+    pp := v3(EG_PLACE[p * 2], ground_at(s, EG_PLACE[p * 2], EG_PLACE[p * 2 + 1]) + 3, EG_PLACE[p * 2 + 1]);
+    if !overview && flat_gap(pp, you) > f32(PLACE_NEAR) { continue; }
+    m = tag(s, out, u, m, EG_PLACE_NAME[p], pp, (ifx overview then 8.0f32 else 9.0f32) * k, 0.95, true);
+  }
+  for b: 0..<EG_BUILDINGS {
+    if b >= EG_HOUSES { continue; }
+    q := b * EG_BOX;
+    cx := (EG_BUILDING[q] + EG_BUILDING[q + 2]) / 2; cz := (EG_BUILDING[q + 1] + EG_BUILDING[q + 3]) / 2;
+    pp := v3(cx, ground_at(s, cx, cz) + EG_BUILDING[q + 4] + 1.5, cz);
+    if !overview && flat_gap(pp, you) > f32(PLACE_NEAR) * 0.6 { continue; }
+    m = tag(s, out, u, m, EG_BUILDING_NAME[b], pp, (ifx overview then 6.0f32 else 7.5f32) * k, 0.85, false);
+  }
+  if overview { return m; }
+  for i: 0..<EG_SPOTS {
+    x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1];
+    if flat_gap(v3(x, 0, z), you) > f32(NAME_NEAR) { continue; }
+    tall := ifx EG_SPOT_CAT[i] then 0.8f32 else 2.25f32;
+    m = tag(s, out, u, m, EG_SPOT_NAME[i], v3(x, ground_at(s, x, z) + tall, z), 6.5 * k, 0.8, false);
+  }
+  return m;
+}
+
+hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32, you: Point) -> int {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  n := labels(s, out, u, 0, you);
+  gutter := 16 * k;
+  cap := 11 * k;
+  title := "EVERGLADE";
+  small := 7 * k;
+  sub_line := where(you);
+  tw := hi(text_width(title, cap), text_width(sub_line, small));
+  plate(s, u, Box.{x0 = gutter, y0 = gutter, x1 = gutter + tw + 28 * k, y1 = gutter + cap + small + 34 * k}, 0.82, 0);
+  n = draw_text(out, n, title, gutter + 14 * k, gutter + 12 * k + cap, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  n = draw_text(out, n, sub_line, gutter + 14 * k, gutter + 22 * k + cap + small, small, GAP, SPACE, ink(k, 0.8, PARCH_R, PARCH_G, PARCH_B), false, false);
+  // MAP, top right: a click or a tap lifts the camera over the city.
+  word := ifx s[0].above then "WALK" else "MAP";
+  bw := text_width(word, 9 * k) + 32 * k; bh := 38 * k;
+  mb := Box.{x0 = w - gutter - bw, y0 = gutter, x1 = w - gutter, y1 = gutter + bh};
+  s[0].map_button = mb;
+  plate(s, u, mb, 0.85, ifx s[0].above then 2.0f32 else 1.0f32);
+  n = draw_text(out, n, word, mb.x0 + 16 * k, mb.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  line := hint(s);
+  hs := 7.5 * k;
+  room := w - 2 * gutter - 24 * k;
+  lw := text_width(line, hs);
+  if lw > room { hs = hs * room / lw; lw = room; }
+  y1 := h - gutter;
+  plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - hs - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
+  n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, hs, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+  if move_on {
+    r := 46 * k;
+    for i: 0..<32 {
+      a0 := f32(i) * f32(TAU) / 32; a1 := f32(i + 1) * f32(TAU) / 32;
+      if lit(out, n, ox + cos(a0) * r, oy + sin(a0) * r, ox + cos(a1) * r, oy + sin(a1) * r, 0.8 * k, 0.5, 1.5 * k, PARCH_R, PARCH_G, PARCH_B, 0) { n += 6; }
+    }
+    kx := ox + pad_x * r; ky := oy - pad_y * r;
+    if lit(out, n, kx - 0.01, ky, kx + 0.01, ky, 14 * k, 0.8, 6 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; }
+  }
+  return n;
+}
+
+// ---- the frame
+
+everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
+                    fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32,
+                    move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c {
+  if !s[0].started { everglade_start(s); }
+  if u.count < UNIFORM_FLOATS { return 0; }
+  t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  s[0].time += f64(t);
+  s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5);
+  feet := v3(fx, fy, fz);
+  if !finite3(feet) { feet = s[0].feet; }
+  s[0].feet = feet; s[0].face = face; s[0].act = act;
+  speed := sqrt(vx * vx + vz * vz);
+  if finite(speed) { s[0].stride += speed * t / 1.8; }
+  shown := add(feet, v3(0, ground_at(s, feet.x, feet.z), 0));
+
+  shot := camera_frame(s, shown, vx, vz, t);
+
+  for k: 0..<5 { s[0].counts[k] = 0; }
+  s[0].shadow_n = 0; s[0].plate_n = 0;
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  figure(s, u, shown, face, s[0].stride, act);
+  people(s, u, shown);
+  city(s, u);
+  for kind: 0..<5 {
+    d := kind * 4;
+    s[0].draws[d] = 0;
+    s[0].draws[d + 1] = cast(u32) SHAPE_VERTICES[kind];
+    s[0].draws[d + 2] = cast(u32) (ifx kind == 0 then 0 else EG_CELLS * EG_CELLS + SLOT_AT[kind]);
+    s[0].draws[d + 3] = cast(u32) (ifx kind == 0 then EG_CELLS * EG_CELLS else s[0].counts[kind]);
+  }
+
+  u[0] = width; u[1] = height; u[2] = f32(s[0].time); u[3] = 1; u[4] = ifx still then 1.0f32 else 0.0f32;
+  u[6] = s[0].dpr;
+  view(shot, width, height, u, U_VIEW);
+  u[7] = horizon_y(shot, u, height);
+  u[U_EYE] = shot.eye.x; u[U_EYE + 1] = shot.eye.y; u[U_EYE + 2] = shot.eye.z;
+  u[U_EYE + 3] = lerp(0.012, 0.004, s[0].lift);
+  sun := unit_or(v3(0.45, 0.8, 0.32), v3(0, 1, 0));
+  u[U_SUN] = sun.x; u[U_SUN + 1] = sun.y; u[U_SUN + 2] = sun.z;
+  u[U_SUN + 3] = lerp(40, 170, s[0].lift);
+  u[U_GROUND] = f32(EG_CELLS); u[U_GROUND + 1] = f32(EG_CELL); u[U_GROUND + 2] = f32(EG_EDGE); u[U_GROUND + 3] = f32(EG_EDGE);
+  paths(u);
+
+  n := hud(s, out, u, move_on && !s[0].above, ox, oy, pad_x, pad_y, shown);
+  u[5] = f32(s[0].plate_n);
+  return n;
+}
+
+// While the map shows, you stand still.
+everglade_busy :: (s: [] Everglade) -> bool #export_c { return s[0].above; }
+
+everglade_draws :: (s: [] Everglade) -> int #export_c { return DRAWS; }
+everglade_store_cap :: (k: int) -> int #export_c {
+  if k == 0 { return EG_GROUND_POINTS * 4; }
+  return OBJECTS * OBJECT_FLOATS * 4;
+}
+
+// ---- checks
+
+#test "the uniforms and shape slots line up with everglade.wgsl's" {
+  #assert UNIFORM_FLOATS % 4 == 0;
+  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && UNIFORM_FLOATS == 344;
+  #assert SLOT_AT[4] + SLOTS[4] == OBJECTS;
+  for k: 2..<5 { #assert SLOT_AT[k] == SLOT_AT[k - 1] + SLOTS[k - 1]; }
+  #assert EG_LINKS <= PATHS && EG_SQUARES <= SQUARES;
+}
+
+#test "a frame draws the whole city within its slots, and you in front of the camera" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert n > 0 && n <= MAX_VERTICES;
+  for k: 1..<5 { #assert g[0].counts[k] < SLOTS[k]; }
+  #assert g[0].tree_n > 150;
+  #assert g[0].counts[SHAPE_BOX] > EG_PALISADE_N + 2 * EG_BUILDINGS + g[0].tree_n;
+  #assert g[0].wall_n == EG_SOLIDS && g[0].box_n > EG_PALISADE_N + EG_BUILDINGS;
+  p := [4] f32.[0, 1.6, -84, 1];
+  cw := 0.0f32; cx := 0.0f32; cy := 0.0f32;
+  for i: 0..<4 { cx += u[U_VIEW + i] * p[i]; cy += u[U_VIEW + 4 + i] * p[i]; cw += u[U_VIEW + 12 + i] * p[i]; }
+  #assert cw > 0 && abs(cx / cw) < 1 && abs(cy / cw) < 1;
+}
+
+#test "the trees stay off the trails and out of the city" {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  nodes := EG_NODE_XZ; links := EG_LINK_AB;
+  for t: 0..<g[0].tree_n {
+    x := g[0].trees[t * 3]; z := g[0].trees[t * 3 + 1];
+    #assert verse_path_nearest(nodes[..], links[..], x, z).d >= 5;
+    #assert !(x > -70 && x < 70 && z > -62 && z < 66);
+  }
+}
+
+#test "M lifts the camera over the city and back; you stand still meanwhile" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  #assert everglade_key(g[..], 'm', 0) && everglade_busy(g[..]);
+  for i: 0..<40 { n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert g[0].lift > 0.99;
+  // From above, the fountain and the far gate are both in view.
+  for q: 0..<2 {
+    z := ifx q == 0 then 0.0f32 else 60.0f32;
+    sc := on_screen(u[..], v3(0, 0, z), 1280, 800);
+    #assert sc.ok;
+  }
+  #assert everglade_key(g[..], KEY_ESCAPE, 0) && !everglade_busy(g[..]);
+}
+
+#test "a hash names a place: you start on the street nearest it, facing it" {
+  g: [1] Everglade;
+  everglade_hash(g[..], "market");
+  #assert everglade_warp(g[..]) && !everglade_warp(g[..]);
+  sp := everglade_spawn(g[..]);
+  #assert flat_gap(sp, v3(34, 0, 0)) < 12;
+  everglade_hash(g[..], "nowhere");
+  #assert !everglade_warp(g[..]);
+  everglade_hash(g[..], "above");
+  #assert g[0].above && g[0].lift == 1;
+  for p: 0..<EG_PLACES {
+    everglade_hash(g[..], EG_PLACE_ID[p]);
+    #assert everglade_warp(g[..]);
+  }
+}
+
+#test "a click on MAP lifts the camera; a drag elsewhere turns it" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  b := g[0].map_button;
+  #assert b.x1 > b.x0 && b.x1 <= 1280;
+  #assert everglade_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 0, 1) && g[0].above;
+  used := everglade_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 0, 1);
+  #assert g[0].above && !g[0].drag_on;
+  #assert everglade_pointer(g[..], 600, 400, 0, 0, 2) && g[0].drag_on;
+  #assert !everglade_pointer(g[..], 300, 500, 0, 1, 3);
+}
+
+#test "the hint and the district fit a phone" {
+  g: [1] Everglade;
+  g[0].touch = true;
+  #assert text_width(hint(g[..]), 6.5 * 3) < 1170 - 96;
+  #assert where(v3(33, 0, 1)) == "THE MARKET" && where(v3(0, 0, -86)) == "THE ROAD IN";
+}

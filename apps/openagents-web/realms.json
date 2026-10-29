@@ -50,6 +50,17 @@
     { "id": "grove", "name": "EVERGLADE", "kind": "locked", "orbit": { "r": 0.34, "a": 4.2, "size": 0.032 } },
     { "id": "coding", "name": "CODING", "kind": "soon", "orbit": { "r": 0.37, "a": 3.25, "size": 0.043 } },
     { "id": "grid", "name": "THE GRID", "kind": "locked", "orbit": { "r": 0.3, "a": 5.4, "size": 0.036 } },
+    { "id": "everglade", "name": "EVERGLADE BLOCKOUT", "kind": "open", "listed": false, "orbit": { "r": 0.21, "a": 4.65, "size": 0.024 },
+      "realm": {
+        "slug": "everglade",
+        "title": "Everglade",
+        "description": "Everglade, the forest city, as a walkable grey-box blockout: the palisade and its gates, the commons and fountain, the market, the inn, the guild halls, the temple and observatory, and the trails out to the deep wood, the ruins, the crypt and the river crossing.",
+        "alt": "Enter the Verse: walk Everglade, the forest city",
+        "module": "everglade",
+        "slot": "everglade",
+        "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
+        "assets": ["index:/realm/everglade/assets/Everglade.indices"]
+      } },
     { "id": "fixture", "name": "FIXTURE REALM", "kind": "open", "listed": false, "orbit": { "r": 0.26, "a": 1.9, "size": 0.026 },
       "realm": {
         "slug": "fixture",

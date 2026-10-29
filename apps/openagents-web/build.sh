@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/icecream.wasm, build/private.wasm and build/chat.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/icecream.wasm, build/everglade.wasm, build/private.wasm and build/chat.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -27,6 +27,10 @@ realm=$!
 "$here/../../coax/web/wasm.sh" "$here/garden.coax" "$here/garden-face.c" "$here/build/garden.wasm" \
   "$m/player.coax" "$m/grid.coax" &
 garden=$!
+# /realm/everglade: the forest city's blockout (verse/everglade/plan.coax), with the player and thumbs.
+"$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/everglade-face.c" "$here/build/everglade.wasm" \
+  "$m/player.coax" "$m/grid.coax" &
+everglade=$!
 # /realm/fixture: the realm host's test world, the smallest realm module.
 "$here/../../coax/web/wasm.sh" "$here/fixture.coax" "$here/fixture-face.c" "$here/build/fixture.wasm" &
 fixture=$!
@@ -77,3 +81,4 @@ wait "$garden"
 wait "$characters"
 wait "$fixture"
 wait "$icecream"
+wait "$everglade"
