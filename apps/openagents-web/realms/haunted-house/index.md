@@ -10,13 +10,16 @@ It is the same Coax code the OpenAgents iOS app runs, compiled to WebAssembly an
 
 ## Controls
 
-- Computer: W A S D or the arrow keys move you at a run, drag the mouse to look, Space jumps, Shift walks, E acts on what you face (talks to a person, does the quest's step at its orb, opens a door; in a conversation, T asks them a typed question, TEACH tells them something to remember, E asks for a hint and Escape says goodbye), V changes the view, M opens the map, C opens the chat (type, Enter sends, Escape stops typing, C closes it), the wheel zooms (out of first person into third, and back in). B opens edit mode (the camera steps behind you): 1 to 5 place a jack-o'-lantern, a candlestick, a ghost, a spider or a tombstone in front of you; click a thing to pick it, then the arrows move it across and along your view, R turns it, + and - resize it, Delete removes it, and Escape lets go. With nothing picked, the nearest haunt zone (within three metres) shows: BIGGER, SMALLER, ONCE or ALWAYS, RESET. Z undoes and Y redoes (sixteen steps). B, Escape or DONE play again.
-- Phone: your left thumb walks, your right thumb looks, a tap jumps. The HUD's buttons (VIEW, MAP, EDIT, CHAT, EXIT, the chat's SAY SOMETHING, SEND and CANCEL, edit mode's things, edits, UNDO and REDO, a conversation's ASK, TEACH, HINT and BYE, and the prompt for what you face) take taps; in edit mode a tap on a thing picks it.
+There is one camera, behind you. Indoors it comes in closer, and any wall, beam or roof between it and you isn't drawn (`cut_away` in `realm.wgsl`), so it never loses you. On screen there are only your name (or Guest), the minimap, one voice button and the hotbar; a panel shows only while it's needed.
+
+- Computer: W A S D or the arrow keys move you, drag the mouse to look, Space jumps, Shift walks, X does a little spin, E acts on what you face (talks to a person, does the quest's step at its orb, opens a door; in a conversation T asks a typed question, E asks for a hint and Escape says goodbye), the wheel moves the camera in and out, M or the minimap opens the map, C opens the chat.
+- Placing, as in Minecraft: 1 to 5 (or a hotbar slot) takes a jack-o'-lantern, candlestick, ghost, spider or tombstone in hand; a click on the floor puts it there. Escape or the slot again puts it away. With nothing in hand, a click on a thing picks it (it shows lit): drag it to move it, the wheel or + and - size it, Q and E (or R) turn it, Delete removes it, a click on nothing lets go. Ctrl or Cmd+Z undoes, with Shift (or Ctrl+Y) redoes. Each change is kept, and in a world you own, published.
+- Phone: a finger that starts on the stick (bottom left) walks; anywhere else it looks, and a tap places what's in hand or picks a thing (a person in reach talks to you). Drag a picked thing to move it, pinch to size it, twist two fingers to turn it; a quick two-finger tap undoes. The round button on the right jumps; held, it spins. The voice button sits under the minimap.
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
 ## The quest: Make it yours
 
-Eight steps, one at a time, each at an orange orb (the HUD names the step, and a glow on the screen's edge points to an orb out of view): walk in, edit the hall, place something, save your house, share it (copies the link), make it your own, invite a friend (copies the link), tell us how it went (a typed answer). The house, your changes, the step you're on and your answer are kept in this browser and come back on your next visit.
+Six steps, one at a time, each at an orange orb (the HUD names the step, and a glow on the screen's edge points to an orb out of view): walk in, pick something from the hotbar, place it, save your house, make it your own, tell us how it went (a typed answer). There's no sharing step: a save made at the old share or invite step goes on to the next. The house, your changes, the step you're on and your answer are kept in this browser and come back on your next visit.
 
 ## Talking to the characters
 
@@ -30,11 +33,11 @@ Everyone else in the same world is drawn where they stand, a pale figure with th
 
 ## A player's own world
 
-A link with a world's id after `#` (`/realms/haunted-house#planet-…`) opens that player's world: what its owner last published (`GET /api/playtest/world/<id>`) over the house. Its owner's edits are published when they leave edit mode or reach the quest's save step; anyone else's are offered to the owner instead (`POST /api/playtest/change/<id>`). The owner sees the newest offer waiting, with who made it, and presses ACCEPT (the world is published with it) or DECLINE (nothing changes); `GET /api/playtest/log/<id>` lists every publish and offer. Nothing is paid. `coax/web/api/realm-flow.ts` plays this in headless Chrome.
+A link with a world's id after `#` (`/realms/haunted-house#planet-…`) opens that player's world: what its owner last published (`GET /api/playtest/world/<id>`) over the house. Its owner's edits are published as each one is made (a placing, or a drag, size or turn when it ends) and at the quest's save step; anyone else's are offered to the owner instead (`POST /api/playtest/change/<id>`). The owner sees the newest offer waiting, with who made it, and presses ACCEPT (the world is published with it) or DECLINE (nothing changes); `GET /api/playtest/log/<id>` lists every publish and offer. Nothing is paid. `coax/web/api/realm-flow.ts` plays this in headless Chrome.
 
 ## On the screen
 
-The room you're in, the quest's progress and its step, the house's notices as haunts go off, who or what is near, everyone else here, a conversation, the chat, the map and the hotbar. Everything is drawn by Coax in the house's own plain look: each panel and button a dark wood plate with one thin bronze line, its words parchment, in the Filament stroke font.
+Your name (your npub shortened, or Guest) and the quest's step at the top left; the minimap with the room's name at the top right; the voice button; the hotbar at the bottom; on a phone the stick and the jump circle. The house's notices, who or what is near, a picked thing's name and how to change it, a conversation, the chat and the map show only while they matter. Everything is drawn by Coax in the house's own plain look: each panel and button a dark wood plate with one thin bronze line, its words parchment, in the Filament stroke font.
 
 ## What the iOS app has that the web doesn't yet
 

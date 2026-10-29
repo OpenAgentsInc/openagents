@@ -65,7 +65,7 @@ Haunt :: struct {
   s:Haunt;s.ok=true;s.areas=rooms[..];s.area_count=2;
   z:f32=2;t:f64=0;
   while z<23 && s.quest==0 {p:=hh_p(x,0,z);s=verse_haunt_advance(s,t,p,p,0,0.05,true);z+=0.05;t+=1.0/60;}
-  #assert s.quest==1 && z<20.2 && verse_haunt_step_line(s)=="Edit the hall: walk to the orb";
+  #assert s.quest==1 && z<20.2 && verse_haunt_step_line(s)=="Pick something from the hotbar";
  }
  s:Haunt;s.ok=true;s.areas=rooms[..];s.area_count=2;p:=hh_p(6.5,0,19);s=verse_haunt_advance(s,0,p,p,0,0,true);#assert s.quest==0;
 }
@@ -173,7 +173,11 @@ hh_animated :: (e:HauntEntity,t:f64)->HauntEntity {
  if e.effect==3 && elapsed<4 {out.pos.y+=elapsed*0.7;out.pos.z-=elapsed*0.6;}
  return out;
 }
+// No sharing (the playtest redesign): Share (4) and Invite (6) are passed
+// over, and a save kept at either goes on to the next.
 hh_quest :: (step:int,action:string)->int {
+ if step==4 || step==6 {return hh_quest(step+1,action);}
+ if (step==3 && action=="publish") || (step==5 && action=="realm") {return step+2;}
  if (step==0 && action=="walk-in") || (step==1 && action=="edit") || (step==2 && action=="place") || (step==3 && action=="publish") || (step==4 && action=="share") || (step==5 && action=="realm") || (step==6 && action=="invite") || (step==7 && action=="survey") {return step+1;}return step;
 }
 verse_haunt_quest :: (s:Haunt,action:string)->Haunt #export_c {next:=s;next.quest=hh_quest(s.quest,action);next.dirty=true;return next;}
@@ -446,7 +450,7 @@ verse_haunt_restore :: (s:Haunt,bytes:[]u8)->Haunt #export_c {
  pi:=HH_Save_iter_people(v);while pi.has_value {id:=HH_Person_get_id(pi.value).value;index:=hh_person_index(next,id);
  if index<0 {index=next.people_count;next.people_count+=1;}p:HauntPerson;p.doc=pi.value;p.id=id;p.name=HH_Person_get_name(pi.value).value;p.role=HH_Person_get_role(pi.value).value;p.pos=hh_v(HH_Person_get_position(pi.value).value);p.knowledge=HH_Person_get_knowledge(pi.value).value;p.brain=HH_Person_get_brain(pi.value).value;next.people[index]=p;pi=HH_Save_next_people(pi);}
  zi:=HH_Save_iter_zones(v);while zi.has_value {id:=HH_Zone_get_id(zi.value).value;for i:0..<s.zone_count {if next.zones[i].id==id {next.zones[i].pos=hh_v(HH_Zone_get_position(zi.value).value);next.zones[i].half=hh_v(HH_Zone_get_half(zi.value).value);next.zones[i].radius=HH_Zone_get_radius(zi.value).value;next.zones[i].sphere=HH_Zone_get_sphere(zi.value).value;next.zones[i].once=HH_Zone_get_once(zi.value).value;}}zi=HH_Save_next_zones(zi);}
- next.quest=quest;next.fired=fired;next.title=HH_Save_get_title(v).value;next.instance_id=HH_Save_get_instance_id(v).value;if next.instance_id.count==0{next.instance_id=next.world_id;}next.feedback=HH_Save_get_feedback(v).value;next.dirty=false;next.selected=-1;next.talking=-1;return next;
+ next.quest=ifx quest==4 || quest==6 then quest+1 else quest;next.fired=fired;next.title=HH_Save_get_title(v).value;next.instance_id=HH_Save_get_instance_id(v).value;if next.instance_id.count==0{next.instance_id=next.world_id;}next.feedback=HH_Save_get_feedback(v).value;next.dirty=false;next.selected=-1;next.talking=-1;return next;
 }
 verse_haunt_walls :: (s:Haunt,out:[]f32)->int #export_c {
  count:=0;for i:0..<s.entity_count {
@@ -472,12 +476,12 @@ verse_haunt_goal_name :: (s:Haunt)->string #export_c {if s.quest==0{return "Expl
 // that does it (standing in the orb counts whichever way you look). The bearing is the goal's angle from the look direction,
 // its sign the side, for a glow at the screen's edge.
 verse_haunt_step_line :: (s:Haunt)->string #export_c {
- if s.quest==0{return "Walk in through the front door";}if s.quest==1{return "Edit the hall: walk to the orb";}if s.quest==2{return "Place something in the hall";}
+ if s.quest==0{return "Walk in through the front door";}if s.quest==1{return "Pick something from the hotbar";}if s.quest==2{return "Place something in the hall";}
  if s.quest==3{return "Save your house at the orb";}if s.quest==4{return "Share your house: the orb in the yard";}if s.quest==5{return "Make the house your own";}
  if s.quest==6{return "Invite a friend: the orb by the gate";}if s.quest==7{return "Tell us how it went";}return "Quest complete";
 }
 verse_haunt_goal_prompt :: (s:Haunt)->string #export_c {
- if s.quest==1{return "Edit the hall";}if s.quest==2{return "Place something here";}if s.quest==3{return "Save your house";}if s.quest==4{return "Copy the link";}
+ if s.quest==1{return "Pick a thing";}if s.quest==2{return "Place something here";}if s.quest==3{return "Save your house";}if s.quest==4{return "Copy the link";}
  if s.quest==5{return "Make it yours";}if s.quest==6{return "Copy the invite";}if s.quest==7{return "Tell us how it went";}return "";
 }
 verse_haunt_at_goal :: (s:Haunt)->bool #export_c {
@@ -490,7 +494,7 @@ verse_haunt_goal_bearing :: (s:Haunt)->f32 #export_c {
 }
 #test "the quest's orb answers only in reach and in front, and points the way" {
  s:Haunt;s.quest=1;s.player=hh_p(8,0,23.4);s.heading=3.14159265;
- #assert verse_haunt_at_goal(s) && verse_haunt_goal_prompt(s)=="Edit the hall";
+ #assert verse_haunt_at_goal(s) && verse_haunt_goal_prompt(s)=="Pick a thing";
  #assert abs(verse_haunt_goal_bearing(s))<0.01;
  s.heading=0;#assert !verse_haunt_at_goal(s) && abs(verse_haunt_goal_bearing(s))>3.1;
  s.heading=3.14159265-1.57079633;a:=verse_haunt_goal_bearing(s);s.heading=3.14159265+1.57079633;#assert abs(a)>1.5 && abs(a+verse_haunt_goal_bearing(s))<0.01;
@@ -499,10 +503,12 @@ verse_haunt_goal_bearing :: (s:Haunt)->f32 #export_c {
  s.quest=0;s.player=hh_p(8,0,23.4);#assert !verse_haunt_at_goal(s) && verse_haunt_goal_prompt(s)=="";
  s.quest=8;#assert !verse_haunt_at_goal(s) && verse_haunt_step_line(s)=="Quest complete";
 }
-#test "the quest runs from walking in to complete, a step at a time" {
- s:Haunt;steps:=[8]string.["walk-in","edit","place","publish","share","realm","invite","survey"];
- for i:0..<8 {#assert s.quest==i;#assert verse_haunt_step_line(s).count>0;s=verse_haunt_quest(s,steps[(i+1)%8]);#assert s.quest==i;s=verse_haunt_quest(s,steps[i]);}
+#test "the quest runs from walking in to complete, a step at a time, with no sharing" {
+ s:Haunt;steps:=[6]string.["walk-in","edit","place","publish","realm","survey"];at:=[7]int.[0,1,2,3,5,7,8];
+ for i:0..<6 {#assert s.quest==at[i];#assert verse_haunt_step_line(s).count>0;s=verse_haunt_quest(s,steps[(i+1)%6]);#assert s.quest==at[i];s=verse_haunt_quest(s,steps[i]);}
  #assert s.quest==8 && verse_haunt_goal_prompt(s)=="";
+ old:Haunt;old.quest=4;#assert verse_haunt_quest(old,"").quest==5;old.quest=6;#assert verse_haunt_quest(old,"").quest==7;
+ #assert verse_haunt_quest(old,"survey").quest==8;
 }
 verse_haunt_place_point :: (s:Haunt)->HauntPoint #export_c {return hh_p(s.player.x-sin(s.heading)*2,0,s.player.z-cos(s.heading)*2);}
 verse_haunt_view :: (s:Haunt)->Haunt #export_c {next:=s;next.camera=(s.camera+1)%3;return next;}
@@ -729,7 +735,7 @@ hh_mounted :: (e:HauntEntity,p:HauntPoint)->HauntPoint {return hh_p(e.pos.x+(cos
 
 #test "a personal copy has its own identity and advances only Create" {
  s:Haunt;s.quest=5;next:=verse_haunt_fork(s,"Mine","copy-1");
- #assert next.title=="Mine" && next.instance_id=="copy-1" && next.quest==6;
+ #assert next.title=="Mine" && next.instance_id=="copy-1" && next.quest==7;
  next=verse_haunt_fork(s,"","copy-1");#assert next.quest==5;
  s.quest=7;next=verse_haunt_feedback(s,"Fun house");#assert next.quest==8 && next.feedback=="Fun house";
 }

@@ -15,7 +15,7 @@ struct U {
   size: vec2f, time: f32, fade: f32, still: f32, panels: f32, k: f32, pad0: f32,
   r0: vec4f, r1: vec4f, r2: vec4f, r3: vec4f,   // the view: clip = (r0, r1, r2, r3) · world
   eye: vec4f,          // the eye, and how many lights
-  flash: vec4f,        // lightning, 0, 0, 0
+  flash: vec4f,        // lightning, then the cutaway's target (your chest; y under -1000: none)
   panel: array<vec4f, 56>,  // per plate (realm.coax PLATES): x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
 }
 @group(0) @binding(0) var<uniform> u: U;
@@ -155,9 +155,27 @@ fn moonlit(w: vec3f, n: vec3f) -> f32 {
   o.material = (o.slice * 37u + tint.r * 3u + tint.g * 5u + tint.b * 11u) & 127u;
   return o;
 }
+// The cutaway: a wall, beam or roof between the eye and you isn't drawn,
+// so the one camera never loses you (a round window along the line of
+// sight, wider near the eye; the floor under you stays).
+fn cut_away(w: vec3f, n: vec3f) -> bool {
+  let chest = u.flash.yzw;
+  if (chest.y < -1000.0) { return false; }
+  if (n.y > 0.7 && w.y < chest.y) { return false; }   // the floor you stand on stays
+  if (length(w.xz - chest.xz) < 0.4 && w.y < chest.y + 1.0) { return false; }   // and you
+  let line = chest - u.eye.xyz;
+  let span = length(line);
+  if (span < 0.3) { return false; }
+  let along = dot(w - u.eye.xyz, line) / span;
+  if (along <= 0.0 || along > span - 0.2) { return false; }
+  if (w.y < chest.y - 1.1) { return false; }
+  let off = length(w - (u.eye.xyz + line * (along / span)));
+  return off < 1.05 + 0.35 * (1.0 - along / span);
+}
 @fragment fn scene_fs(s: S) -> Lit {
   let tex = textureSample(sheets, sheet, s.uv, s.slice);
   if (tex.a < 0.35) { discard; }
+  if (cut_away(s.world, normalize(s.normal))) { discard; }
   let n = normalize(s.normal);
   let facing = max(0.0, dot(n, moon_dir()));
   let moon = select(0.0, facing * moonlit(s.world, n), facing > 0.0);

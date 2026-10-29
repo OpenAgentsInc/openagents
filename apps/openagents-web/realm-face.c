@@ -77,6 +77,10 @@ static uint8_t document[262144];   // Haunt.pb: the house's strings point into i
 static uint32_t document_n;
 
 static coax_t_Haunt house;
+#define ZOOM_NEAR 1.5f   // the one camera's nearest and farthest
+#define ZOOM_FAR 6.0f
+#define ROOM_ZOOM 3.0f   // indoors, at most this far back
+static float zoom_pref = 4.4f;
 static coax_t_Player player;
 static coax_t_Sticks sticks;
 static coax_t_Realm realm;
@@ -111,7 +115,6 @@ static uint32_t history_len[HISTORY];
 static int history_n, history_at;
 static uint8_t live[2][SNAP];
 static int live_k;
-static int64_t edit_camera;   // the view before edit mode (it shows you in third person)
 // The world the document is (its world_id): the Haunted House, or the
 // Sandbox (rl-sandbox), everyone's open ground, which opens as its own
 // shared world on the server, published when you leave edit mode.
@@ -175,7 +178,6 @@ static coax_t_Track track_state;
 static coax_t_Place place_pending;   // a kept place that came before the house opened
 static coax_t_RealmSeen seen;
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
-static const char *link = "https://openagents.com/realms/haunted-house";
 
 // The set piece asked for (-1 none waiting), its parts' ids, and what the
 // publish says it was.
@@ -344,14 +346,14 @@ static void open_house(void) {
     if (!verse_haunt_draw_range(meshes[i].first, meshes[i].count, index_count)) { failed = true; return; }
   rebuild_walls();
   if (house.world_id.count == 7 && !memcmp(house.world_id.data, "sandbox", 7)) {
-    sandbox = true; save_world = "sandbox"; link = "https://openagents.com/realms/sandbox"; items = sandbox_items;
+    sandbox = true; save_world = "sandbox"; items = sandbox_items;
     house.quest = 8;   // no quest here: done, and the HUD shows none
     world_open(text("sandbox"));
   }
   if (kept_n && !world_holds()) restore_kept();
   for (int i = 0; i < 5; i++) item_mesh[i] = verse_haunt_mesh(house, text(items[i].mesh));
   player = sandbox ? verse_player_place(0, 0, -2, 0) : verse_player_place(7, 0, 2, 0);
-  player.phi = 1.5707963f;
+  house.camera = 1; player.phi = 1.107f;   // one camera: behind you, pulled in and cut away indoors
   sticks = verse_sticks_reset();
   opened = true;
   // where you were, if it came first (place-face.h); else where you start
@@ -370,8 +372,8 @@ static void follow_talk(void);
 static coax_t_Place place_here(uint32_t state) {
   (void)state;
   if (!opened) return (coax_t_Place){0};
-  return verse_place(player.pos.x, player.pos.y, player.pos.z, verse_player_face(player), player.theta, player.phi, player.dist,
-                     house.editing ? edit_camera : house.camera, -1, 0);
+  return verse_place(player.pos.x, player.pos.y, player.pos.z, verse_player_face(player), player.theta, player.phi, zoom_pref,
+                     1, -1, 0);
 }
 // Put you back: on the walkable floor nearest it, clear of the walls, else where you start.
 static bool place_open(float x, float z) {
@@ -387,10 +389,10 @@ static void place_put(uint32_t state, coax_t_Place p) {
     if (place_open(t.x, t.z)) { x = t.x; z = t.z; break; }
   }
   player = verse_player_place(x, 0, z, p.face);
-  house.camera = p.view == 0 || p.view == 1 ? p.view : house.camera;
+  house.camera = 1;   // one camera, whatever an older save kept
   player.theta = p.yaw;
-  player.phi = isfinite(p.pitch) && p.pitch > 0.05f && p.pitch < 3.1f ? p.pitch : (house.camera == 0 ? 1.5707963f : 1.107f);
-  if (isfinite(p.zoom) && p.zoom > 0) player.dist = p.zoom;
+  player.phi = isfinite(p.pitch) && p.pitch > 0.3f && p.pitch < 2.2f ? p.pitch : 1.107f;
+  if (isfinite(p.zoom) && p.zoom >= ZOOM_NEAR && p.zoom <= ZOOM_FAR) zoom_pref = p.zoom;
   house.facing = verse_player_face(player);
 }
 
@@ -442,20 +444,76 @@ static void redo(void) {
   back_to(++history_at);
 }
 
-// Into or out of edit mode: it shows you in third person, and lets go of
-// what's picked when it ends.
-static void set_editing(bool on) {
-  if (on == house.editing) return;
-  house = verse_haunt_edit_mode(house, on);
-  if (on) { edit_camera = house.camera; house.camera = 1; player.phi = 1.107f; }
-  else { house.camera = edit_camera; player.phi = house.camera == 0 ? 1.5707963f : 1.107f; house.selected = -1; world_edited(); }
+// No edit mode: something picked shows lit (the house's editing flag is
+// "something is picked"). A gesture on it (a drag, a pinch, a twist) is one
+// undo step, published when it ends.
+static double gesture_at = -10;   // the last drag, size or turn (-10 none going)
+static float grab_dx, grab_dz;    // from the ground under the finger to the picked thing's feet
+static bool jump_asked;
+static double emote_at = -10;
+
+static void picked_is(int64_t i) {
+  if (house.selected >= 0 && i != house.selected && gesture_at < 0) world_edited();
+  house = verse_haunt_select(house, i);
+  house.editing = house.selected >= 0;
 }
 
-// Picks what's under (x, y) on the screen, in edit mode.
-static void pick(float x, float y) {
+// Where a ray through (x, y) on the screen meets the floor you stand on (false: it doesn't, or it's too far).
+static bool ground_at(float x, float y, float *gx, float *gz) {
   coax_t_Vec3 eye = verse_player_view_eye(player, house.camera), at = verse_player_view_at(player, house.camera);
   coax_t_HauntPoint ray = verse_haunt_ray(point(eye), point(at), x, y, width, height);
-  house = verse_haunt_select(house, verse_haunt_pick(house, point(eye), ray));
+  float floor_y = verse_player_feet(player).y;
+  if (ray.y > -0.02f) return false;
+  float t = (floor_y - eye.y) / ray.y;
+  if (t > 14) return false;
+  *gx = eye.x + ray.x * t; *gz = eye.z + ray.z * t;
+  return true;
+}
+
+// What's under (x, y) on the screen: -1 nothing.
+static int64_t pick_at(float x, float y) {
+  coax_t_Vec3 eye = verse_player_view_eye(player, house.camera), at = verse_player_view_at(player, house.camera);
+  coax_t_HauntPoint ray = verse_haunt_ray(point(eye), point(at), x, y, width, height);
+  return verse_haunt_pick(house, point(eye), ray);
+}
+
+// A tap with nothing held: a character in reach talks, a thing is picked, nothing lets go.
+static void tap(float x, float y) {
+  int64_t i = pick_at(x, y), person = verse_haunt_person_of(house, i);
+  if (person >= 0 && verse_haunt_reach(house, person)) { picked_is(-1); house = verse_haunt_talk(house, person, 0); return; }
+  picked_is(i);
+}
+
+static void gesture(void) {
+  if (gesture_at < 0) remember();
+  gesture_at = now;
+}
+
+// The picked thing, dragged: its feet go to the floor under the finger, keeping where it was grabbed.
+static void drag_to(float x, float y) {
+  int64_t i = house.selected;
+  float gx, gz;
+  if (i < 0 || i >= house.entity_count || !ground_at(x, y, &gx, &gz)) return;
+  coax_t_HauntPoint at = entities[i].pos;
+  if (gesture_at < 0) { grab_dx = at.x - gx; grab_dz = at.z - gz; }
+  gesture();
+  house = verse_haunt_edit(house, i, 0, gx + grab_dx - at.x);
+  house = verse_haunt_edit(house, i, 2, gz + grab_dz - at.z);
+  rebuild_walls();
+}
+
+static void xform_picked(coax_t_Xform x) {
+  int64_t i = house.selected;
+  if (i < 0 || i >= house.entity_count) return;
+  gesture();
+  if (x.scale != 1) house = verse_haunt_edit(house, i, 4, x.scale);
+  if (x.turn != 0) house = verse_haunt_edit(house, i, 3, x.turn);
+  rebuild_walls();
+}
+
+// A gesture ends a beat after its last move: published then.
+static void gesture_frame(void) {
+  if (gesture_at >= 0 && now - gesture_at > 0.4) { gesture_at = -10; world_edited(); }
 }
 
 // What a character does (their brain), as the row's word, and the action
@@ -474,7 +532,7 @@ static void edit_op(int64_t op) {
   realm_track_edit(tr(), op);
   if (op == 12) { undo(); return; }
   if (op == 13) { redo(); return; }
-  if (op == 14) { house.selected = -1; return; }
+  if (op == 14) { picked_is(-1); return; }
   // Moves go from where you look: left and right across the view, away and near along it.
   int64_t way = op >= 17 && op <= 20 ? op - 17 : op;
   float h = house.heading, fx = -sinf(h), fz = -cosf(h), step = 0.25f;
@@ -513,49 +571,42 @@ static void edit_op(int64_t op) {
   if (op == 4) house = verse_haunt_edit(house, i, 3, 0.7853982f);
   if (op == 5) house = verse_haunt_edit(house, i, 4, 1.2f);
   if (op == 6) house = verse_haunt_edit(house, i, 4, 1 / 1.2f);
-  if (op == 7) { house = verse_haunt_edit(house, i, 7, 0); house.selected = -1; }
+  if (op == 7) { house = verse_haunt_edit(house, i, 7, 0); picked_is(-1); }
   rebuild_walls();
+  world_edited();
 }
 
-// Copies the house's link (the host's action 2).
-static void copy_link(void) {
-  memcpy(realm.outbox.e, link, strlen(link));
-  realm.out_n = (int64_t)strlen(link);
-  coax_string w = world_name();
-  if (world_holds() && realm.out_n + 1 + w.count <= (int64_t)sizeof realm.outbox.e) {
-    realm.outbox.e[realm.out_n++] = '#';
-    memcpy(realm.outbox.e + realm.out_n, w.data, (size_t)w.count);
-    realm.out_n += w.count;
-  }
-  realm.action = 2;
-}
-
-// Places edit mode's item `slot` in front of you.
-static void place(int64_t slot, const char *via) {
+// Places hotbar item `slot` at (x, z) on the floor.
+static void place_at(int64_t slot, const char *via, float x, float z) {
   if (slot < 0 || slot >= 5 || item_mesh[slot] < 0 || placed_n >= 1024) return;
-  coax_t_HauntPoint at = verse_haunt_place_point(house);
+  coax_t_HauntPoint at = {x, 0, z};
   int64_t before = house.entity_count;
   snprintf(placed[placed_n], sizeof placed[0], "placed-%d", placed_n);
   house = verse_haunt_add(house, item_mesh[slot], text(placed[placed_n]), text(items[slot].name), at.x, at.z);
   if (house.entity_count == before) { toast("There's no room there"); return; }
   placed_n++;
+  picked_is(-1);
   rebuild_walls();
   realm_track_place(tr(), text(items[slot].name), text(via));
+  world_edited();
+}
+// In front of you (the quest's orb).
+static void place(int64_t slot, const char *via) {
+  coax_t_HauntPoint at = verse_haunt_place_point(house);
+  place_at(slot, via, at.x, at.z);
 }
 
 // E at the quest's orb: the step it asks for.
 static void do_goal(void) {
   if (!verse_haunt_at_goal(house)) return;
   switch (house.quest) {
-  case 1: set_editing(true); break;
+  case 1: realm.hold = 0; house = verse_haunt_quest(house, text("edit")); break;
   case 2: remember(); place(0, "orb"); break;
   case 3:
     house = verse_haunt_quest(house, text("publish"));
     if (world_holds()) { house.dirty = false; world_send(); break; }
     keep(true); toast(has_account ? "Saved, here and on the server" : "Saved in this browser"); break;
-  case 4: copy_link(); house = verse_haunt_quest(house, text("share")); toast("Link copied"); break;
   case 5: house = verse_haunt_fork(house, text("My Haunted House"), text("mine")); toast("This house is yours now"); break;
-  case 6: copy_link(); house = verse_haunt_quest(house, text("invite")); toast("Invite link copied"); break;
   case 7: realm_ask_text(realm_of()); break;
   }
 }
@@ -775,14 +826,20 @@ static void take_asks(void) {
   int64_t asks = realm_take(realm_of());
   if (asks & 32) do_goal();
   if (asks & 64) send_typed();
-  if (asks & 128) set_editing(!house.editing);
-  if ((asks & 256) && house.editing) { remember(); place(realm.slot, "hotbar"); }
-  if ((asks & 512) && house.editing) pick(realm.pick_x, realm.pick_y);
-  if ((asks & 1024) && house.editing) edit_op(realm.op);
+  if (asks & 256) {
+    float gx, gz;
+    if (ground_at(realm.pick_x, realm.pick_y, &gx, &gz)) { remember(); place_at(realm.slot, "hotbar", gx, gz); }
+    else toast("Too far");
+  }
+  if (asks & 512) tap(realm.pick_x, realm.pick_y);
+  if (asks & 16384) drag_to(realm.pick_x, realm.pick_y);
+  if (asks & 32768) xform_picked(realm_take_xform(realm_of()));
+  if (asks & 1024) edit_op(realm.op);
+  if (asks & 65536) jump_asked = true;
+  if (asks & 131072) { jump_asked = true; emote_at = now; }
   if (asks & 2048) world_decide(true);
   if (asks & 4096) world_decide(false);
   if (asks & 1) use_nearby();
-  if (asks & 2) { house = verse_haunt_view(house); player.phi = house.camera == 0 ? 1.5707963f : 1.107f; }
   if ((asks & 4) && house.talking >= 0) {
     house = verse_haunt_talk(house, house.talking, 1);
     realm_remember(realm_of(), true, house.reply);
@@ -811,11 +868,17 @@ static void queue_sounds(void) {
 static void step(float dt) {
   coax_v_t_Realm r = realm_of();
   coax_t_Vec3 was = player.pos;
-  if (realm.zoom != 0) {
-    coax_t_PlayerZoom z = verse_player_zoom_view(player, house.camera, realm.zoom);
-    player = z.player; house.camera = z.mode; realm.zoom = 0;
+  house.camera = 1;
+  // The one camera: the wheel or a pinch sets how far back it sits; in a room it comes in closer.
+  if (realm.zoom != 0 && isfinite(realm.zoom)) {
+    zoom_pref += realm.zoom; realm.zoom = 0;
+    zoom_pref = zoom_pref < ZOOM_NEAR ? ZOOM_NEAR : zoom_pref > ZOOM_FAR ? ZOOM_FAR : zoom_pref;
   }
-  bool run = verse_runs((realm.held & 16) != 0, sticks.run, sticks.pad_x, sticks.pad_y), jump = sticks.jump || (realm.held & 32);
+  int64_t here = verse_haunt_area(house, point(verse_player_feet(player)));
+  player.max_dist = here >= 0 && areas[here].room && zoom_pref > ROOM_ZOOM ? ROOM_ZOOM : zoom_pref;
+  if (realm.hold >= 0 && house.quest == 1) house = verse_haunt_quest(house, text("edit"));   // a hotbar item in hand
+  bool run = verse_runs((realm.held & 16) != 0, sticks.run, sticks.pad_x, sticks.pad_y), jump = sticks.jump || (realm.held & 32) || jump_asked;
+  jump_asked = false;
   player = verse_player_input(player, realm_key_x(r), realm_key_y(r), sticks.pad_x, sticks.pad_y, run, jump,
                                  sticks.dyaw + realm.dyaw, sticks.dpitch + realm.dpitch);
   realm.dyaw = 0; realm.dpitch = 0;
@@ -826,9 +889,12 @@ static void step(float dt) {
   coax_t_Vec3 feet = verse_player_feet(player);
   float distance = hypotf(feet.x - was.x, feet.z - was.z);
   house.facing = verse_player_face(player);
+  if (now - emote_at < 0.8) house.facing += (float)((now - emote_at) / 0.8) * 6.2831853f;   // the emote: a spin
   coax_t_Vec3 eye = verse_player_view_eye(player, house.camera);
   house = verse_haunt_advance(house, now, point(feet), point(eye), player.theta, distance, player.on_ground);
   take_asks();
+  gesture_frame();
+  house.editing = house.selected >= 0 && house.selected < house.entity_count;
   npc_waited();
   realm_voice_to(r, house.talking >= 0 && house.talking < house.people_count ? people[house.talking].name : (coax_string){"", 0});
   if (say_waiting && realm_voice_say(r, (coax_string){say_text, (int64_t)say_n})) say_waiting = false;
@@ -857,16 +923,18 @@ static void describe(void) {
     v.quest_line = sandbox ? (coax_string){"", 0} : verse_haunt_step_line(house);
     v.goal = goal ? verse_haunt_goal_prompt(house) : (coax_string){"", 0};
     v.bearing = verse_haunt_goal_bearing(house);
-    v.editing = house.editing;
+    v.editing = false;
+    v.me = realm_me(realm_of());
     v.item_n = 0;
     for (int i = 0; i < 5; i++) if (item_mesh[i] >= 0) v.items.e[v.item_n++] = text(items[i].label);
-    bool picked = house.editing && house.selected >= 0 && house.selected < house.entity_count;
+    bool picked = house.selected >= 0 && house.selected < house.entity_count;
     v.selected = picked ? entities[house.selected].name : (coax_string){"", 0};
+    if (picked) { coax_t_HauntPoint at = entities[house.selected].pos; v.sel_at.e[0] = at.x; v.sel_at.e[1] = at.y; v.sel_at.e[2] = at.z; }
     if (picked && v.selected.count == 0) v.selected = text("Thing");
     int64_t who = picked ? verse_haunt_person_of(house, house.selected) : -1;
     v.person = who >= 0;
     if (who >= 0) { v.selected = people[who].name; v.mind = text(mind_word(people[who].brain)); }
-    int64_t zone = house.editing && !picked ? verse_haunt_zone_near(house) : -1;
+    int64_t zone = -1;
     v.zone = zone >= 0 ? zones[zone].name : (coax_string){"", 0};
     v.zone_once = zone >= 0 && zones[zone].once;
     v.can_undo = history_at > 0;
@@ -880,9 +948,10 @@ static void describe(void) {
     world_describe(&v);
     room_describe(&v);
     v.map_n = 0;
-    if (realm.map) {
+    {   // the minimap, or the map when it's open
       coax_t_Box b = realm_map_box(realm_of());
-      int64_t n = verse_haunt_map(house, b.x1 - b.x0, b.y1 - b.y0, (coax_v_t_HauntMapRect){boxes, 66});
+      (void)b;   // realm.coax fits the house into its box
+      int64_t n = verse_haunt_map(house, 800, 1200, (coax_v_t_HauntMapRect){boxes, 66});
       for (int64_t i = 0; i < n && i < 66; i++) {
         float *m = v.map.e + i * 5;
         m[0] = boxes[i].x; m[1] = boxes[i].y; m[2] = boxes[i].width; m[3] = boxes[i].height; m[4] = (float)boxes[i].kind;
@@ -947,6 +1016,9 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     if (flown) { u[24] = eye.x; u[25] = eye.y; u[26] = eye.z; }
     choose_particles(u[24], u[25], u[26]);
     u[28] = now < house.flash_until ? 1.0f : 0.0f;
+    // The cutaway (realm.wgsl): what stands between the eye and you isn't drawn. Not in a flight.
+    coax_t_Vec3 feet = verse_player_feet(player);
+    u[29] = feet.x; u[30] = flown ? -1e4f : feet.y + 1.0f; u[31] = feet.z;
   }
   return n < 0 ? 0u : (uint32_t)n;
 }
@@ -1040,6 +1112,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (room_message(kind, length)) return;
   if (kind >= 512 && kind < 520) return;   // an answer let go
 
+  if (kind == 606) realm_viewer(realm_of(), (coax_string){(const char *)inbox, length});   // who is logged in
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) { track_drain(&track_state); return; }
   if (kind == 1) realm_type(realm_of(), (coax_string){(const char *)inbox, length});
   if (kind == 50) realm_voice(realm_of(), (coax_string){(const char *)inbox, length});   // coax/web/voice.js

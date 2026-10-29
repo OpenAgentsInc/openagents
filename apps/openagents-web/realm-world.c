@@ -100,7 +100,7 @@ static bool world_message(int32_t kind, uint32_t length) {
   if (send_ask >= 0 && kind == 512 + send_ask) {
     send_ask = -1;
     int status = world_status(length);
-    toast(status == 200 ? (world_offering ? "Your change is offered to the owner" : sandbox ? "Published: everyone in the Sandbox sees it" : "Published: everyone with the link sees it")
+    toast(status == 200 ? (world_offering ? "Your change is offered to the owner" : sandbox ? "Published: everyone in the Sandbox sees it" : "Published")
                         : "That didn't reach the server; try again");
     if (status != 200) world_changed = true;
     return true;

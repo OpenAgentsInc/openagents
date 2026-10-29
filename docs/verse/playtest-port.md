@@ -295,3 +295,26 @@ analytics until `pt-capture`.
    WorkOS). The analytics schema already has the column.
 
 The switch-over plan and its rehearsal: `docs/verse/playtest-cutover.md`.
+
+## 7. The playtest redesign (Kiki's notes, milestone `pt-redesign`)
+
+The Haunted House on openagents.com departs from the old playtest here, on
+purpose:
+
+- **One camera**, behind you, closer indoors, with whatever stands between it
+  and you cut away (`cut_away` in `realm.wgsl`). No view switch, no first
+  person, no top-down.
+- **Few buttons**: your name (npub shortened, or Guest), the minimap, one
+  voice button, the hotbar; on a phone the stick and one round jump button
+  (held, it spins). No VIEW, EDIT, EXIT or edit-mode panels.
+- **No edit mode**: placing is Minecraft-style (take a hotbar item, click or
+  tap the floor). A tap on a thing picks it; drag moves, the wheel or a pinch
+  sizes, Q/E or a two-finger twist turns, Delete removes; Ctrl/Cmd+Z or a
+  quick two-finger tap undoes. The `edit` analytics step now fires when a
+  hotbar item is first taken in hand.
+- **Touch intent**: only a finger that starts on the stick walks; anywhere
+  else it looks, and a tap places or picks.
+- **No sharing**: the quest's share and invite steps are gone (six steps:
+  walk in, pick, place, save, make it yours, survey), and nothing copies a
+  link. The `share` and `invite` events are no longer sent by the house; the
+  analytics contract never required them.
