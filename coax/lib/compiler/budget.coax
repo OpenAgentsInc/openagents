@@ -1,0 +1,55 @@
+// Deterministic compiler evaluation admission; the host owns allocation.
+#authority;
+CB_MAX_RUN_STEPS :: 250000000;
+CB_DEFAULT_RUN_STEPS :: 100000;
+CB_MAX_SLOTS :: 1048576;
+CB_MAX_CONTAINERS :: 131072;
+
+#test "published defaults and storage limits are exact" {
+ #assert CB_default_steps()==100000;
+ #assert CB_slot_limit()==1048576;
+ #assert CB_container_limit()==131072;
+}
+#test "work input accepts decimal limits and refuses invalid values" {
+ #assert CB_parse_steps("1")==1;
+ #assert CB_parse_steps("9")==9;
+ #assert CB_parse_steps("100000")==100000;
+ #assert CB_parse_steps("250000000")==250000000;
+ #assert CB_parse_steps("000001")==1;
+ #assert CB_parse_steps("")==0;
+ #assert CB_parse_steps("0")==0;
+ #assert CB_parse_steps("-1")==0;
+ #assert CB_parse_steps("+1")==0;
+ #assert CB_parse_steps("1x")==0;
+ #assert CB_parse_steps(":")==0;
+ #assert CB_parse_steps("250000001")==0;
+ #assert CB_parse_steps("250000010")==0;
+ #assert CB_parse_steps("999999999999999999999999999999999999")==0;
+}
+#forall "aggregate allocation admission at boundaries" current:0..<6, extra:0..<6, maximum:0..<6 {
+ #assert CB_admit(cast(u64)current,cast(u64)extra,cast(u64)maximum)==(current<=maximum && extra<=maximum-current);
+}
+#test "aggregate admission handles full width without overflow" {
+ #assert CB_admit(18446744073709551615,0,18446744073709551615);
+ #assert !CB_admit(18446744073709551615,1,18446744073709551615);
+ #assert !CB_admit(18446744073709551615,0,1);
+}
+
+CB_parse_steps :: (text:string)->u64 #export_c {
+ if text.count==0 {return 0;}
+ value:u64=0;
+ for c:text {
+  if c<48 || c>57 {return 0;}
+  digit:=cast(u64)(c-48);
+  if value>CB_MAX_RUN_STEPS/10 || (value==CB_MAX_RUN_STEPS/10 && digit>CB_MAX_RUN_STEPS%10) {return 0;}
+  value=value*10+digit;
+ }
+ return value;
+}
+CB_admit :: (current:u64,extra:u64,maximum:u64)->bool #export_c {
+ return current<=maximum && extra<=maximum-current;
+}
+
+CB_default_steps :: ()->u64 #export_c {return CB_DEFAULT_RUN_STEPS;}
+CB_slot_limit :: ()->u64 #export_c {return CB_MAX_SLOTS;}
+CB_container_limit :: ()->u64 #export_c {return CB_MAX_CONTAINERS;}

@@ -23,11 +23,11 @@ if [[ ! -x $compiler ]]; then
   # Bootstrap only a temporary generator frontend, never publish an unchecked
   # compiler. The checked-in header is the release seed for this first stage.
   mkdir -p "$work/seed"
-  for part in lexer parser checker sources; do
+  for part in budget lexer parser checker sources; do
     "${CC:-cc}" -std=c11 -O1 "${host_flags[@]}" -c "coax/bootstrap/$part.c" -o "$work/seed/$part.o"
   done
   : > "$work/proto_runtime.inc"
-  "${CXX:-c++}" -std=c++20 -O1 "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I coax/bootstrap -I "$work" coax/src/main.cpp "$work/seed/lexer.o" "$work/seed/parser.o" "$work/seed/checker.o" "$work/seed/sources.o" -o "$work/stage0"
+  "${CXX:-c++}" -std=c++20 -O1 "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I coax/bootstrap -I "$work" coax/src/main.cpp "$work/seed/budget.o" "$work/seed/lexer.o" "$work/seed/parser.o" "$work/seed/checker.o" "$work/seed/sources.o" -o "$work/stage0"
   compiler=$work/stage0
 fi
 "$compiler" c "$root/coax/release.coax" > "$work/catalogue.c"

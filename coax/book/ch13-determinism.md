@@ -281,7 +281,7 @@ is the first piece of Coax that is deterministic by construction:
 
 - It has no clock, no randomness, no files and no output. A `#run` that
   tries to print is an error.
-- Its limits count work, not time. One compilation gets 100,000 steps,
+- Its limits count work, not time. One compilation gets 100,000 steps by default,
   so whether a program compiles doesn't depend on how fast the machine
   is.
 - Overflow, division by zero, bounds and bad casts are errors in debug
@@ -563,11 +563,11 @@ ch13_replay.coax:35:54: error[E0400]: compile-time evaluation exceeded 100000 st
 ```
 
 The test above already used 70,272 steps for 120 frames, so 600 frames
-doesn't fit in one compilation's 100,000. Because the limit counts
+doesn't fit in one compilation's default 100,000. Because the limit counts
 steps rather than seconds, this error comes out the same on every
 machine; a slow build server can't fail where your laptop passed. For
-longer tests, `coax test` takes `--steps N` to raise the budget for
-that run. For a long replay in a shipping build, leave it at run time
+longer checks, `coax test` takes `--steps N`. A compile-time build can
+select `--run-steps N` independently, up to 250,000,000. For a long replay in a shipping build, leave it at run time
 and keep the golden fingerprint in a test.
 
 ## What isn't pinned yet

@@ -1,7 +1,7 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.17.0";
+IMPLEMENTATION_VERSION :: "0.18.0";
 STATUS_SCHEMA_VERSION :: 1;
 CATALOGUE :: [95]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
@@ -32,7 +32,7 @@ CATALOGUE :: [95]ReleaseFeature.[
   ReleaseFeature.{id="keywords.strict",section="Keywords",name="`strict` `deterministic`",meaning="Floating-point and determinism markers",status="reserved",introduced=""},
   ReleaseFeature.{id="keywords.shader",section="Keywords",name="`shader`",meaning="GPU procedure",status="reserved",introduced=""},
   ReleaseFeature.{id="directives.import-basic",section="Directives",name="`#import \"Basic\";`",meaning="Import a module; `Basic` is the only one",status="works",introduced=""},
-  ReleaseFeature.{id="directives.run-expr",section="Directives",name="`#run expr`",meaning="Evaluate at compile time",status="works",introduced=""},
+  ReleaseFeature.{id="directives.run-expr",section="Directives",name="`#run expr`",meaning="Evaluate with bounded configurable shared work and aggregate storage",status="works",introduced="0.18.0"},
   ReleaseFeature.{id="directives.assert-expr",section="Directives",name="`#assert expr;`",meaning="A compile-time `bool` check at the top level; an always-on check as a statement",status="works",introduced=""},
   ReleaseFeature.{id="directives.test-name",section="Directives",name="`#test \"name\" { }`",meaning="A check run by `coax test`, never compiled into the program",status="works",introduced="0.5.0"},
   ReleaseFeature.{id="directives.forall-a-t-b-lo-hi",section="Directives",name="`#forall a: T, b: lo..<hi { }` (optionally `#forall \"name\" ...`)",meaning="A check over every combination of its bindings",status="works",introduced="0.5.0"},

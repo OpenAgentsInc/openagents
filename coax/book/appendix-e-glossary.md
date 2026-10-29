@@ -14,8 +14,9 @@ and its checks run on every build (Chapter 10).
 
 **Budget.** A compile-time limit counted in work (steps, depth, nodes),
 never in seconds, so whether a program compiles doesn't depend on the
-machine. A compile gets 100,000 evaluation steps; each check gets its own
-20,000,000 by default.
+machine. A compile gets 100,000 evaluation steps by default, configurable up to
+250,000,000; each check gets its own 20,000,000 by default. Aggregate storage
+has a separate fixed limit.
 
 **Capability.** A declared permission for build-time code to read files,
 run processes or use the network. Pure `#run` code has none.

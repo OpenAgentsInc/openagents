@@ -9,8 +9,13 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <new>
 #include <string>
 #include <vector>
+
+extern "C" uint64_t CB_default_steps();
+extern "C" uint64_t CB_slot_limit();
+extern "C" uint64_t CB_container_limit();
 
 namespace coax {
 
@@ -177,12 +182,52 @@ const std::vector<Type> &all_composite_types();  // arrays and views, in creatio
 // value never holds a host address, so nothing of the compiler's memory can
 // reach a target executable.
 
+struct CtLimit {};
+struct CtStorage;
+struct CtMemory {
+  // Counts vector capacity slots and aggregate containers, not total RSS.
+  static uint64_t max_slots() { return CB_slot_limit(); }
+  static uint64_t max_containers() { return CB_container_limit(); }
+  uint64_t slots = 0, containers = 0, peak_slots = 0, peak_containers = 0;
+  std::vector<std::weak_ptr<CtStorage>> stores;
+  void remember(const std::shared_ptr<CtStorage> &storage);
+  void clear_cycles() noexcept;
+  void take_slots(size_t n);
+  void release_slots(size_t n) noexcept { slots -= n; }
+  void take_container();
+  void release_container() noexcept { --containers; }
+};
+template<class T> struct CtAllocator {
+  using value_type = T;
+  std::shared_ptr<CtMemory> memory;
+  CtAllocator() = default;
+  explicit CtAllocator(std::shared_ptr<CtMemory> m) : memory(std::move(m)) {}
+  template<class U> CtAllocator(const CtAllocator<U> &other) : memory(other.memory) {}
+  T *allocate(size_t n) {
+    memory->take_slots(n);
+    try { return std::allocator<T>{}.allocate(n); }
+    catch (...) { memory->release_slots(n); throw; }
+  }
+  void deallocate(T *p, size_t n) noexcept {
+    std::allocator<T>{}.deallocate(p,n);
+    memory->release_slots(n);
+  }
+  template<class U> bool operator==(const CtAllocator<U> &o) const noexcept { return memory == o.memory; }
+  template<class U> bool operator!=(const CtAllocator<U> &o) const noexcept { return !(*this == o); }
+};
+struct Value;
+struct CtStorage : std::vector<Value, CtAllocator<Value>> {
+  std::shared_ptr<CtMemory> owner;
+  explicit CtStorage(std::shared_ptr<CtMemory> memory);
+  ~CtStorage();
+};
+
 struct Value {
   Type type = &T_VOID;
   uint64_t bits = 0;  // integers (two's complement bit pattern), bool, enum
   double f = 0;       // f32 values are stored rounded to float
   Str s;
-  std::shared_ptr<std::vector<Value>> agg;  // struct fields, array elements, view storage
+  std::shared_ptr<CtStorage> agg;  // struct fields, array elements, view storage
   int64_t offset = 0, count = 0;            // view: window into agg
 };
 
@@ -348,6 +393,9 @@ struct CheckDecl {
 
 struct CheckInput;
 struct File {
+  ~File();
+  std::shared_ptr<CtMemory> ct_memory = std::make_shared<CtMemory>();
+  std::vector<std::unique_ptr<Value>> frozen_values;
   std::shared_ptr<CheckInput> check_input;
   const Source *src = nullptr;
   Slice<Import> imports;
@@ -368,7 +416,7 @@ bool parse(Arena *arena, const Source *src, const std::vector<Token> &tokens, Fi
 
 bool check(Arena *arena, File *file);
 // Bounded, side-effect-free AST evaluation; no host I/O or foreign calls.
-bool evaluate(File *file);
+bool evaluate(File *file, uint64_t max_steps, uint64_t *used = nullptr);
 // Whether an expression contains a procedure call (whose effects order can observe).
 bool has_call(const Expr *e);
 
@@ -376,6 +424,7 @@ std::string json_string(const std::string &s);
 std::string emit_debug_map(const File *file);
 
 struct EmitOptions {
+  uint64_t run_steps = CB_default_steps(); // shared #run and constant evaluation budget
   bool debug_info = false; // opt-in original-source native line tables
   bool release = false;  // release: integer overflow wraps; debug: it traps
   bool library = false;  // no C main; #export_c procedures are the interface

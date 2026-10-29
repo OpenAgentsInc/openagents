@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.17.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.18.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -534,7 +534,8 @@ Limits for the bootstrap:
 
 | Resource | Limit and diagnostic |
 | --- | --- |
-| Evaluation work | 100,000 steps across one compilation: each evaluated expression or statement, and each array element created, E0400. |
+| Evaluation work | 100,000 steps by default across one compilation; `--run-steps N` selects 1 through 250,000,000. Each evaluated expression or statement and each array element created counts; E0400. |
+| Aggregate storage | At most 1,048,576 live aggregate-vector capacity slots and 131,072 live aggregate containers, independently of the work limit and in every profile; E0400. |
 | Active interpreted calls | 64, E0403; call sites are printed as bounded source notes. |
 | Active constant dependencies | 64, E0403; type-resolution dependencies also stop at 64, E0347. |
 | Constant cycles | E0340 for type dependencies; E0402 for a value cycle reached through a procedure. |
@@ -547,6 +548,21 @@ Limits for the bootstrap:
 | View in a result | E0409. |
 | Index or slice out of bounds | E0410. |
 | Cast, enum value or shift out of range | E0411. |
+
+The optional decimal `--run-steps N` applies to all compile commands, including
+`test` and `mutate`; it changes frontend evaluation only. It does not change
+`coax test --steps`, mutation budgets, native optimization or arithmetic.
+Zero, signed, malformed, repeated or above-maximum inputs are refused before
+source evaluation. `coax deps` records the selected limit and fixed storage
+limits; `--timings` records steps consumed and tracked peak slots/containers once
+evaluation starts.
+
+The independent storage limit counts actual allocated vector capacity, including
+nested copies and retained constants, and releases it with the last owner or
+view. The evaluator also clears view cycles when the compilation ends; an
+unreachable cycle may continue consuming budget until then. Its tracking is not
+a bound on total compiler RSS, syntax trees, strings, allocator metadata, host
+I/O or generated output.
 
 The work budget counts interpreted work, not parsing, every compiler allocation
 or total wall time. It is not a complete hostile-source resource sandbox.
@@ -1024,7 +1040,7 @@ failures point at that directive. Since 0.13.0, optional native line maps retain
 physical Coax locations through generated C; default debug native builds enable
 them. Schema-1 maps also record source hashes and procedure/variable names.
 `coax deps FILE` emits schema-version-1 JSON with canonical sources in visitation
-order and resolved descriptor inputs. It checks the program first. This is a
+order, resolved descriptor inputs and the selected work/storage limits. It checks the program first. This is a
 path inventory, not a content-hashed lockfile, native-toolchain manifest or
 cache key. Normal compilation and dependency listing invoke no Python,
 preprocessor or protoc helper.

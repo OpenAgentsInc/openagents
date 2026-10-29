@@ -7,8 +7,40 @@
 #include "coax.h"
 
 #include <cmath>
+#include <algorithm>
 
 namespace coax {
+
+CtStorage::CtStorage(std::shared_ptr<CtMemory> memory)
+    : std::vector<Value, CtAllocator<Value>>(CtAllocator<Value>(memory)), owner(std::move(memory)) {}
+CtStorage::~CtStorage() { owner->release_container(); }
+
+void CtMemory::remember(const std::shared_ptr<CtStorage> &storage) {
+  // Bound registry overhead even when a long run creates many short-lived arrays.
+  if (stores.size() >= max_containers() * 2) {
+    stores.erase(std::remove_if(stores.begin(), stores.end(),
+                                [](const auto &item) { return item.expired(); }), stores.end());
+  }
+  stores.emplace_back(storage);
+}
+void CtMemory::clear_cycles() noexcept {
+  // Views can form cycles. File teardown invalidates the entire interpreted
+  // graph after emission, so break those cycles before dropping frozen roots.
+  for (const auto &item : stores) if (auto storage = item.lock()) storage->clear();
+  stores.clear();
+}
+File::~File() { if (ct_memory) ct_memory->clear_cycles(); }
+
+void CtMemory::take_slots(size_t n) {
+  if (!CB_admit(slots, n, max_slots())) throw CtLimit{};
+  slots += n;
+  if (slots > peak_slots) peak_slots = slots;
+}
+void CtMemory::take_container() {
+  if (!CB_admit(containers, 1, max_containers())) throw CtLimit{};
+  ++containers;
+  if (containers > peak_containers) peak_containers = containers;
+}
 
 bool has_call(const Expr *e) {
   if (!e) return false;
@@ -39,7 +71,7 @@ struct CtFrame {
 
 // Keeps storage alive while a located element is in use.
 struct Holder {
-  std::vector<std::shared_ptr<std::vector<Value>>> keep;
+  std::vector<std::shared_ptr<CtStorage>> keep;
   std::vector<std::unique_ptr<Value>> temps;
   Value *temp(Value v) {
     temps.push_back(std::make_unique<Value>(std::move(v)));
@@ -68,15 +100,16 @@ bool fits_type(Type t, __int128 v) {
 
 struct Evaluator {
   File *file;
-  uint64_t steps = 0, max_steps = MAX_STEPS;
+  uint64_t steps = 0, max_steps = CB_default_steps();
   uint32_t dependency_depth = 0;
+  Loc current_loc{};
   bool failed = false;
   bool quiet = false;  // checks: record the failure instead of printing it
   Loc fail_loc;
   std::string fail_code, fail_message;
   std::vector<Loc> calls;
   std::vector<const ProcDecl *> executed;
-  static constexpr uint32_t MAX_STEPS = 100000, MAX_DEPTH = 64;
+  static constexpr uint32_t MAX_DEPTH = 64;
 
   void err(Loc loc, const char *code, const std::string &message) {
     if (failed) return;
@@ -93,6 +126,7 @@ struct Evaluator {
   }
 
   bool tick(Loc loc, uint32_t cost = 1) {
+    current_loc = loc;
     if (failed) return false;
     if (steps > max_steps || cost > max_steps - steps) {
       err(loc, "E0400", "compile-time evaluation exceeded " + std::to_string(max_steps) + " steps");
@@ -117,6 +151,16 @@ struct Evaluator {
     return v;
   }
 
+  std::shared_ptr<CtStorage> storage() {
+    auto memory = file->ct_memory;
+    memory->take_container();
+    std::shared_ptr<CtStorage> result;
+    try { result = std::make_shared<CtStorage>(memory); }
+    catch (...) { memory->release_container(); throw; }
+    memory->remember(result);
+    return result;
+  }
+
   // The value of a declaration without an initializer: zero, or the
   // struct's field defaults. Arrays cost one step per element.
   Value zero(Type t, Loc loc) {
@@ -125,14 +169,14 @@ struct Evaluator {
     if (t->kind == TypeKind::struct_) {
       StructDecl *d = t->struct_decl;
       field_defaults(d);
-      v.agg = std::make_shared<std::vector<Value>>();
+      v.agg = storage();
       for (const Field &f : d->fields) {
         if (failed) return v;
         v.agg->push_back(f.init ? literal(f.init) : zero(f.type, loc));
       }
     } else if (t->kind == TypeKind::array) {
       if (!tick(loc, (uint32_t)t->length)) return v;
-      v.agg = std::make_shared<std::vector<Value>>();
+      v.agg = storage();
       v.agg->reserve((size_t)t->length);
       Value element = zero(t->elem, loc);
       for (int64_t i = 0; i < t->length && !failed; i++) v.agg->push_back(clone(element));
@@ -141,10 +185,10 @@ struct Evaluator {
   }
 
   // Aggregates copy deeply; views and strings keep sharing what they borrow.
-  static Value clone(const Value &v) {
+  Value clone(const Value &v) {
     Value c = v;
     if (is_aggregate(v.type) && v.agg) {
-      c.agg = std::make_shared<std::vector<Value>>();
+      c.agg = storage();
       c.agg->reserve(v.agg->size());
       for (const Value &e : *v.agg) c.agg->push_back(clone(e));
     }
@@ -194,7 +238,8 @@ struct Evaluator {
       case TypeKind::string_: e->kind = ExprKind::string_lit; e->text = value.s; break;
       default:
         e->kind = ExprKind::ct_value;
-        e->ct = new Value(clone(value));
+        file->frozen_values.push_back(std::make_unique<Value>(clone(value)));
+        e->ct = file->frozen_values.back().get();
         break;
     }
   }
@@ -608,7 +653,7 @@ struct Evaluator {
       case ExprKind::array_lit: {
         Value v;
         v.type = e->type;
-        v.agg = std::make_shared<std::vector<Value>>();
+        v.agg = storage();
         for (Expr *a : e->args) {
           if (failed) return {};
           v.agg->push_back(expr(a, frame, allow_calls));
@@ -760,7 +805,7 @@ struct Evaluator {
       case StmtKind::for_each: {
         Type ct = s->expr->type;
         Holder h;
-        std::shared_ptr<std::vector<Value>> storage;
+        std::shared_ptr<CtStorage> storage;
         int64_t offset = 0, count = 0;
         Value collection;
         if (ct->kind == TypeKind::array) {
@@ -951,12 +996,21 @@ CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps) {
   Evaluator evaluator{file};
   evaluator.quiet = true;
   evaluator.max_steps = max_steps;
-  return evaluator.check(check);
+  try { return evaluator.check(check); }
+  catch (const CtLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate storage limit exceeded"); }
+  catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate allocation failed"); }
+  CheckOutcome out; out.passed = false; out.loc = evaluator.fail_loc;
+  out.code = evaluator.fail_code; out.message = evaluator.fail_message; return out;
 }
 
-bool evaluate(File *file) {
+bool evaluate(File *file, uint64_t max_steps, uint64_t *used) {
   Evaluator evaluator{file};
-  return evaluator.run();
+  evaluator.max_steps = max_steps;
+  try { bool ok = evaluator.run(); if (used) *used = evaluator.steps; return ok; }
+  catch (const CtLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate storage limit exceeded"); }
+  catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate allocation failed"); }
+  if (used) *used = evaluator.steps;
+  return false;
 }
 
 }  // namespace coax

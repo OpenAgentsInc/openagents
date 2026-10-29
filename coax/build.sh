@@ -27,11 +27,12 @@ trap 'rm -rf "$work"' EXIT
   cat lib/proto/fingerprint.coax
   printf ')COAX_FP";\n'
 } > "$work/proto_runtime.inc"
+"${CC:-cc}" "${c_flags[@]}" -c bootstrap/budget.c -o "$work/seed-budget.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/lexer.c -o "$work/seed-lexer.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/parser.c -o "$work/seed-parser.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/checker.c -o "$work/seed-checker.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/sources.c -o "$work/seed-sources.o"
-"${CXX:-c++}" "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I bootstrap -I "$work" -o "$work/stage0" src/main.cpp "$work/seed-lexer.o" "$work/seed-parser.o" "$work/seed-checker.o" "$work/seed-sources.o"
+"${CXX:-c++}" "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I bootstrap -I "$work" -o "$work/stage0" src/main.cpp "$work/seed-budget.o" "$work/seed-lexer.o" "$work/seed-parser.o" "$work/seed-checker.o" "$work/seed-sources.o"
 gate() {
   if "$@" > "$work/gate.log" 2>&1; then return 0; fi
   cat "$work/gate.log" >&2
@@ -42,6 +43,11 @@ gate() {
 gate "$work/stage0" test release-model.coax
 gate "$work/stage0" mutate release-model.coax
 COAX_RELEASE_COMPILER="$PWD/$work/stage0" ../scripts/coax-release.sh --check
+gate "$work/stage0" test lib/compiler/budget.coax
+gate "$work/stage0" mutate lib/compiler/budget.coax
+"$work/stage0" c lib/compiler/budget.coax --library --header "$work/budget.h" > "$work/budget.c"
+cmp bootstrap/budget.c "$work/budget.c"
+cmp bootstrap/budget.h "$work/budget.h"
 gate "$work/stage0" test lib/compiler/lexer.coax
 gate "$work/stage0" mutate lib/compiler/lexer.coax
 "$work/stage0" c lib/compiler/lexer.coax --library --header "$work/lexer.h" > "$work/lexer.c"
@@ -81,6 +87,10 @@ gate "$work/stage0" mutate lib/proto/importer.coax
 "${CXX:-c++}" "${host_flags[@]}" -I "$work" -o "$work/coax" src/main.cpp "$work/proto_importer.o"
 "$work/coax" c lib/compiler/compiler.coax --library > "$work/rebuilt.c"
 cmp "$work/proto_importer.c" "$work/rebuilt.c"
+gate "$work/coax" test lib/compiler/budget.coax
+"$work/coax" c lib/compiler/budget.coax --library --header "$work/final-budget.h" > "$work/final-budget.c"
+cmp bootstrap/budget.c "$work/final-budget.c"
+cmp bootstrap/budget.h "$work/final-budget.h"
 gate "$work/coax" test lib/compiler/lexer.coax
 gate "$work/coax" test lib/compiler/parser.coax
 gate "$work/coax" test lib/compiler/checker.coax

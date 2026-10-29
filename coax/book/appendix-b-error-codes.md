@@ -1,7 +1,7 @@
 # Appendix B. Error codes
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.17.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.18.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 This appendix lists every error code the current compiler can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
@@ -165,7 +165,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 
 | Code | Meaning | What to do |
 | --- | --- | --- |
-| `E0400` | compile-time step budget exceeded | Compile-time evaluation is bounded at 100000 steps per compilation; each array element created costs one. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N). Make the computation smaller or move it to run time. |
+| `E0400` | compile-time resource budget exceeded | Compile-time evaluation defaults to 100000 shared steps; --run-steps selects a positive limit up to 250000000. Aggregate storage has an independent fixed cap. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N). |
 | `E0401` | compile-time code cannot capture a runtime value | #run code and constants see only constants and their own locals. |
 | `E0402` | compile-time cycle | A constant, or a struct's field defaults, depend on themselves while being evaluated. |
 | `E0403` | compile-time depth exceeded | Compile-time calls and dependencies are bounded at depth 64. |

@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.17.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.18.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -48,7 +48,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | Name | Meaning | Status | Introduced |
 | --- | --- | --- | --- |
 | `#import "Basic";` | Import a module; `Basic` is the only one | works | — |
-| `#run expr` | Evaluate at compile time | works | — |
+| `#run expr` | Evaluate with bounded configurable shared work and aggregate storage | works | 0.18.0 |
 | `#assert expr;` | A compile-time `bool` check at the top level; an always-on check as a statement | works | — |
 | `#test "name" { }` | A check run by `coax test`, never compiled into the program | works | 0.5.0 |
 | `#forall a: T, b: lo..<hi { }` (optionally `#forall "name" ...`) | A check over every combination of its bindings | works | 0.5.0 |
