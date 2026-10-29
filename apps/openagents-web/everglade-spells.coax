@@ -75,7 +75,7 @@ SpBolt :: struct { live: bool; t: f32; mega: bool; points: [SP_BOLT_POINTS] Poin
 Spells :: struct {
   on: bool;                  // the ruleset says srd5
   ready: bool;               // the pieces have their shapes (the pack's catalog)
-  dm: [1] DemoWorld;
+  dm: [] DemoWorld;           // the pieces and their debris: the page's face holds it (everglade_attach_demolish); none, nothing breaks
   dice: [1] SrdDice;
   bounds: [KIT_MESHES * 6] f32; have: [KIT_MESHES] bool;
   group_x: [SP_GROUPS] f32; group_z: [SP_GROUPS] f32; group_n: [SP_GROUPS] int;
@@ -144,8 +144,20 @@ sp_object :: (mesh: int) -> SrdObject {
   if m < 0 || m >= 40 { return srd_object(MAT_WOOD, SIZE_MEDIUM, false); }
   return srd_object(SP_MAT[m], SP_SIZE[m], SP_TOUGH[m]);
 }
-sp_on :: (s: [] Everglade) -> bool { return s[0].sp.on && s[0].sp.ready; }
-sp_dm :: (s: [] Everglade) -> [] DemoWorld { return s[0].sp.dm[..]; }
+sp_on :: (s: [] Everglade) -> bool { return s[0].sp.on && s[0].sp.ready && s[0].sp.dm.count > 0; }
+sp_dm :: (s: [] Everglade) -> [] DemoWorld { return s[0].sp.dm; }
+
+// The page's face hands the city its pieces' storage (it is large, so a
+// city without spells, as most checks, holds none): from then on its town
+// can break.
+everglade_attach_demolish :: (s: [] Everglade, w: [] DemoWorld) #export_c {
+  if w.count < 1 { return; }
+  s[0].sp.dm = w;
+  if s[0].started { spells_start(s); }
+  any := false;
+  for m: 0..<KIT_MESHES { if s[0].sp.have[m] { any = true; } }
+  if any { sp_shapes(s); }
+}
 
 // The group a piece regrows with: the building it stands in, else a 16 m cell.
 sp_group :: (x: f32, z: f32) -> int {
@@ -162,6 +174,7 @@ sp_group :: (x: f32, z: f32) -> int {
 
 // At the start, once the town is laid: every town piece's instance.
 spells_start :: (s: [] Everglade) {
+  if s[0].sp.dm.count < 1 { return; }
   w := sp_dm(s);
   demo_new(w, false);
   s[0].sp.dice[0] = srd_dice(20261029);
@@ -234,6 +247,7 @@ sp_decimal :: (t: string) -> f32 {
 }
 SP_UNIT :: [6] f32.[-0.5, 0, -0.5, 0.5, 1, 0.5];
 sp_shapes :: (s: [] Everglade) {
+  if s[0].sp.dm.count < 1 { return; }
   w := sp_dm(s);
   for i: 0..<w[0].n {
     m := w[0].pieces[i].mesh;
@@ -522,7 +536,7 @@ sp_upper :: (out: [] u8, text: string) -> string {
 // they reach, the debris steps, each piece's instance is written as it is
 // now, and the spells' fire, light and smoke are drawn.
 spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
-  if !s[0].sp.ready { return; }
+  if !s[0].sp.ready || s[0].sp.dm.count < 1 { return; }
   w := sp_dm(s);
   demo_tier(w, phone(s));
   s[0].sp.shot = shot;
@@ -875,8 +889,9 @@ spells_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) ->
 // The town meshes' bounds as the pack's catalog gives them (pack 2026-10-29), for the checks.
 SP_TEST_BOUNDS :: "M Wall_Plaster_Straight 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_Plaster_Window_Wide_Round 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_Plaster_Door_Round 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_Plaster_WoodGrid 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_UnevenBrick_Straight 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_UnevenBrick_Window_Wide_Round 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_UnevenBrick_Door_Round 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Window_Wide_Round1 0 1 0 -0.682 1.016 -0.1 0.682 2.742 0.1\nM Door_1_Round 0 1 0 -0.046 0 -0.1 1.074 2.351 0.1\nM Corner_Exterior_Wood 0 1 0 -0.105 0 -0.12 0.105 3 0.12\nM Roof_RoundTiles_6x8 0 1 0 -4.125 -0.782 -4.829 4.125 4.89 4.854\nM Roof_Tower_RoundTiles 0 1 0 -2 0 -2 2 4 2\nM Roof_Log 0 1 0 -0.586 3.849 -5.348 0.563 5.236 5.348\nM Floor_WoodDark 0 1 0 -1 -0.1 -1 1 0 1\nM Floor_Brick 0 1 0 -1 -0.1 -1 1 0 1\nM Prop_Chimney 0 1 0 -0.4 0 -0.4 0.4 3.178 0.4\nM Stall_Empty 0 1 0 -0.922 0 -0.466 0.922 2.627 0.466\nM Barrel 0 1 0 -0.349 0 -0.349 0.349 0.898 0.349\nM Crate_Wooden 0 1 0 -0.421 0 -0.454 0.421 0.931 0.454\nM Bench 0 1 0 -1.388 0 -0.267 1.388 0.533 0.267\nM Prop_WoodenFence_Single 0 1 0 -1.03 0 -0.06 1.03 0.81 0.06\nM Roof_Front_Brick6 0 1 0 -3.347 -0.132 -0.335 3.348 4.384 0.794\n";
 
-sp_ready_city :: (g: [] Everglade) {
+sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   everglade_start(g);
+  everglade_attach_demolish(g, dm);
   everglade_catalog(g, CATALOG);
   spells_catalog(g, SP_TEST_BOUNDS);
   everglade_message(g, MSG_FACTS, "now=1\nruleset=srd5\nplayer=p-1");
@@ -887,6 +902,8 @@ sp_ready_city :: (g: [] Everglade) {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
   everglade_start(g[..]);
+  dm: [1] DemoWorld;
+  everglade_attach_demolish(g[..], dm[..]);
   everglade_catalog(g[..], CATALOG);
   spells_catalog(g[..], SP_TEST_BOUNDS);
   #assert g[0].sp.ready && !sp_on(g[..]) && !everglade_key(g[..], '1', 0);
@@ -913,7 +930,8 @@ sp_ready_city :: (g: [] Everglade) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
-  sp_ready_city(g[..]);
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
   inn := EG_INN * EG_BOX;
   ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
   #assert everglade_key(g[..], '1', 0) && g[0].sp.armed == SP_METEOR;
@@ -948,7 +966,8 @@ sp_ready_city :: (g: [] Everglade) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
-  sp_ready_city(g[..]);
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
   g[0].touch = true;
   _ := everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   b := g[0].sp.boxes[SP_BOLT];
@@ -967,7 +986,8 @@ sp_ready_city :: (g: [] Everglade) {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
-  sp_ready_city(g[..]);
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
   w := sp_dm(g[..]);
   inn := EG_INN * EG_BOX;
   ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;

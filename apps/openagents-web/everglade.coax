@@ -3182,20 +3182,15 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert g[0].counts[SHAPE_BOX] < SLOTS[SHAPE_BOX] && g[0].counts[SHAPE_SPHERE] < SLOTS[SHAPE_SPHERE];
   for i: 0..<FLOCK_BIRDS { #assert flat_gap(g[0].birds[0].pos[i], v3(0, 0, -79.65)) < 5; }
   // a save given back before the facts; then the facts say whose browser it is
-  // (each other city in its own block, so the checks hold two at once, not three)
-  {
-    h: [1] Everglade;
-    everglade_message(h[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
-    #assert h[0].stages[0] == EG_QUEST_DONE && h[0].stages[1] == 2 && h[0].flock;
-    everglade_message(h[..], MSG_FACTS, "now=1\nplayer=p-1\n");
-    #assert h[0].stages[1] == 2 && h[0].flock;
-  }
-  {
-    o: [1] Everglade;
-    everglade_message(o[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
-    everglade_message(o[..], MSG_FACTS, "now=1\nplayer=p-2\n");
-    #assert o[0].stages[0] == 0 && o[0].stages[1] == 0 && !o[0].flock;
-  }
+  h: [1] Everglade;
+  everglade_message(h[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
+  #assert h[0].stages[0] == EG_QUEST_DONE && h[0].stages[1] == 2 && h[0].flock;
+  everglade_message(h[..], MSG_FACTS, "now=1\nplayer=p-1\n");
+  #assert h[0].stages[1] == 2 && h[0].flock;
+  o: [1] Everglade;
+  everglade_message(o[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
+  everglade_message(o[..], MSG_FACTS, "now=1\nplayer=p-2\n");
+  #assert o[0].stages[0] == 0 && o[0].stages[1] == 0 && !o[0].flock;
   // a minted player key goes out before a waiting save, which follows it
   g[0].dirty = true;
   n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);

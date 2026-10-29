@@ -64,7 +64,14 @@ static coax_v_t_River rv(void) { return (coax_v_t_River){&river, 1}; }
 static bool place_back;   // a kept place was put back: checked again when the published pieces come
 
 static coax_t_Everglade *city(uint32_t state) { return (coax_t_Everglade *)(uintptr_t)state; }
-static coax_v_t_Everglade at(uint32_t state) { return (coax_v_t_Everglade){city(state), 1}; }
+// The town's breakable pieces and their debris (everglade-spells.coax), handed to the city on its first use.
+static coax_t_DemoWorld demo_world;
+static bool demo_attached;
+static coax_v_t_Everglade at(uint32_t state) {
+  coax_v_t_Everglade v = {city(state), 1};
+  if (!demo_attached) { demo_attached = true; everglade_attach_demolish(v, (coax_v_t_DemoWorld){&demo_world, 1}); }
+  return v;
+}
 static void start(uint32_t state) {
   if (!track_state.page_n) track_init(tr(), track_cstr("everglade"));
   if (placed) return;
