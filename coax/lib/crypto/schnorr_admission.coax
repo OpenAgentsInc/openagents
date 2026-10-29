@@ -1,0 +1,47 @@
+// Numeric signature-host admission; host must prove allocation/liveness,
+// exact extents, alignment, stable ownership and actual target pointer width.
+#load "scrypt_admission.coax";
+#authority;
+#test "disjoint signing regions and zero message" {
+  spans:=[6]SignSpan.[SignSpan.{address=10000,length=100},SignSpan.{address=20000,length=200},SignSpan.{address=30000,length=32},SignSpan.{address=40000,length=32},SignSpan.{address=50000,length=17},SignSpan.{address=60000,length=64}];
+  #assert sig_admit(spans[..],false) && sig_admit(spans[..],true);
+  spans[4]=SignSpan.{};#assert sig_admit(spans[..],false) && sig_admit(spans[..],true);
+  #assert !sig_admit(spans[0..<5],false);
+}
+#test "every pairwise signing alias refuses" {
+  spans:=[6]SignSpan.[SignSpan.{address=10000,length=100},SignSpan.{address=20000,length=200},SignSpan.{address=30000,length=32},SignSpan.{address=40000,length=32},SignSpan.{address=50000,length=17},SignSpan.{address=60000,length=64}];
+  for i:0..<6 {for j:i+1..<6 {candidate:=spans;candidate[j].address=candidate[i].address;#assert !sig_admit(candidate[..],false);}}
+}
+#test "signing extents, widths and address bounds" {
+  r:=[6]SignSpan.[SignSpan.{address=10000,length=100},SignSpan.{address=20000,length=200},SignSpan.{address=30000,length=32},SignSpan.{address=40000,length=32},SignSpan.{address=50000,length=17},SignSpan.{address=60000,length=64}];
+  bad:=r;bad[0].length=0;#assert !sig_admit(bad[..],false);
+  bad=r;bad[1].length=0;#assert !sig_admit(bad[..],false);
+  bad=r;bad[2].length=31;#assert !sig_admit(bad[..],false);
+  bad=r;bad[3].length=31;#assert !sig_admit(bad[..],false);
+  bad=r;bad[5].length=63;#assert !sig_admit(bad[..],false);
+  bad=r;bad[5].length=1048577;#assert !sig_admit(bad[..],false);
+  bad=r;bad[4].length=-1;#assert !sig_admit(bad[..],false);
+  bad=r;bad[4].length=1048577;#assert !sig_admit(bad[..],false);
+  bad=r;bad[4].address=0;#assert !sig_admit(bad[..],false);
+  bad=r;bad[5].address=cast(u64)18446744073709551600;#assert !sig_admit(bad[..],false);
+  bad=r;bad[5].address=cast(u64)4294967280;#assert !sig_admit(bad[..],true) && sig_admit(bad[..],false);
+  bad=r;bad[0].address=0;#assert !sig_admit(bad[..],false);
+  bad=r;bad[0].length=1;bad[1].length=1;#assert sig_admit(bad[..],false);
+  distant:=[6]SignSpan.[SignSpan.{address=10000000,length=1048576},SignSpan.{address=20000000,length=1048576},SignSpan.{address=30000000,length=32},SignSpan.{address=40000000,length=32},SignSpan.{address=50000000,length=1048576},SignSpan.{address=60000000,length=1048576}];
+  #assert sig_admit(distant[..],false);distant[0].length=1048577;#assert !sig_admit(distant[..],false);distant[0].length=1048576;
+  distant[1].length=1048577;#assert !sig_admit(distant[..],false);distant[1].length=1048576;
+  distant[5].length=1048577;#assert !sig_admit(distant[..],false);
+}
+SignSpan :: struct {address:u64;length:int;}
+// Order: host/session, workspace, key, auxiliary randomness, message, output.
+// Empty spans have no access; all nonempty spans are pairwise disjoint.
+sig_admit :: (spans:[]SignSpan,narrow:bool)->bool #export_c {
+  if spans.count!=6 {return false;}
+  for i:0..<6 {
+    s:=spans[i];if !sa_span(s.address,s.length,1048576) {return false;}
+    if narrow && !sa_span32(s.address,s.length) {return false;}
+  }
+  if spans[0].length<1 || spans[1].length<1 || spans[2].length!=32 || spans[3].length!=32 || spans[5].length<64 {return false;}
+  for i:1..<6 {for j:0..<i {if sa_overlap(spans[i].address,spans[i].length,spans[j].address,spans[j].length) {return false;}}}
+  return true;
+}
