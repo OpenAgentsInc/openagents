@@ -1,0 +1,54 @@
+// HChaCha20 subkey derivation; not a complete authenticated cipher.
+// This initial primitive has no production secret-use approval.
+#load "chacha20.coax";
+#authority;
+
+#test "HChaCha20 draft section 2.2.1 subkey" {
+  key:[32]u8;for i:0..<32 {key[i]=cast(u8)i;}
+  nonce:=[16]u8.[0,0,0,9,0,0,0,74,0,0,0,0,49,65,89,39];
+  expected:=[8]u32.[0x423b4182,0xfe7bb227,0x50420ed3,0x737d878a,0xd5e4f9a0,0x53a8748a,0x13c42ec1,0xdcecd326];
+  out:[33]u8;out[32]=165;
+  result:=hchacha20_checked(key[..],nonce[..],out[..],false);
+  #assert result.error==CC_OK && result.written==32 && out[32]==165;
+  for i:0..<8 {#assert cb_load_le32(out[..],i*4).value==expected[i];}
+  result=hchacha20_checked(key[..],nonce[..],out[0..<32],false);
+  #assert result.error==CC_OK && result.written==32;
+}
+
+#test "HChaCha20 admission refuses bad sizes and alias without writes" {
+  key:[33]u8;nonce:[17]u8;out:[33]u8;for i:0..<33 {out[i]=165;}
+  #assert hchacha20_checked(key[0..<31],nonce[0..<16],out[..],false).error==CC_KEY;
+  #assert hchacha20_checked(key[..],nonce[0..<16],out[..],false).error==CC_KEY;
+  #assert hchacha20_checked(key[0..<32],nonce[0..<15],out[..],false).error==CC_NONCE;
+  #assert hchacha20_checked(key[0..<32],nonce[..],out[..],false).error==CC_NONCE;
+  #assert hchacha20_checked(key[0..<32],nonce[0..<16],out[0..<31],false).error==CC_OUTPUT;
+  #assert hchacha20_checked(key[0..<32],nonce[0..<16],out[..],true).error==CC_ALIAS;
+  #assert hc_admit(32,16,CB_MAX_BYTES+1,false)==CC_OUTPUT;
+  #assert hc_admit(32,16,CB_MAX_BYTES,false)==CC_OK;
+  #assert hc_admit(-1,16,32,false)==CC_KEY;
+  #assert hc_admit(32,-1,32,false)==CC_NONCE;
+  #assert hc_admit(32,16,-1,false)==CC_OUTPUT;
+  for v:out {#assert v==165;}
+}
+
+hc_admit :: (key:int,nonce:int,capacity:int,overlap:bool)->u32 {
+  if key!=32 {return CC_KEY;}
+  if nonce!=16 {return CC_NONCE;}
+  if capacity<32 || capacity>CB_MAX_BYTES {return CC_OUTPUT;}
+  if overlap {return CC_ALIAS;}
+  return CC_OK;
+}
+
+// Internal ABI: the caller must validate pointer views and the alias fact.
+hchacha20_checked :: (key:[]u8,nonce:[]u8,out:[]u8,overlap:bool)->ChaChaResult #export_c {
+  error:=hc_admit(key.count,nonce.count,out.count,overlap);
+  if error!=CC_OK {return ChaChaResult.{error=error};}
+  initial:=cc_initial(key,nonce[4..<16],cb_load_le32(nonce,0).value);
+  block:=cc_block_words(initial);
+  for i:0..<8 {
+    source:=ifx i<4 then i else i+8;
+    word:=sub_wrap(block.words[source],initial.words[source]);
+    stored:=cb_store_le32(out,i*4,word);
+  }
+  return ChaChaResult.{written=32};
+}
