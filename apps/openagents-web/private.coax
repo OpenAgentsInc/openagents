@@ -1676,7 +1676,7 @@ pv_loaded :: (s: [] PrivateState, out: [] f32, u: [] f32) {
   #assert !pv_has_hit(s[..], H_AFIELD) && s[0].ask_kind == ASK_STATE;
 }
 
-PV_CODE_ANSWER :: "200\n{\"url\": \"https://openagents.com/signin#c=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\", \"poll\": \"ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100\", \"challenge\": \"00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\", \"expires_in\": 300}";
+PV_CODE_ANSWER :: "200\n{\"url\": \"https://openagents.com/login#c=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\", \"poll\": \"ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100\", \"challenge\": \"00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\", \"expires_in\": 300}";
 // A stand-in grid: a checkerboard of the size a 70-byte URL makes.
 pv_fake_qr :: (s: [] PrivateState) -> int {
   for i: 0..<37 * 37 { s[0].qr[i] = cast(u8) ((i + i / 37) % 2); }
@@ -1699,7 +1699,7 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
   coaxial_private_posted(s[..], 2);
   pv_answer(s[..], 2, PV_CODE_ANSWER);
   #assert s[0].qr_want && s[0].code_n == 96 && s[0].poll_n == 64;
-  #assert cast(string) s[0].code_url[0..<s[0].code_n] == "https://openagents.com/signin#c=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+  #assert cast(string) s[0].code_url[0..<s[0].code_n] == "https://openagents.com/login#c=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
   coaxial_private_qr(s[..], 0, pv_fake_qr(s[..]));
   #assert s[0].code_state == CODE_SHOWN && !s[0].qr_want && s[0].qr_size == 37;
   // the QR's light squares stay on the canvas, whole pixels a module
@@ -1767,7 +1767,7 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
   // a short or missing poll token is no code
   pv_act(s[..], H_NEWCODE);
   coaxial_private_posted(s[..], 5);
-  pv_answer(s[..], 5, "200\n{\"url\": \"https://openagents.com/signin#c=00\", \"poll\": \"ab\"}");
+  pv_answer(s[..], 5, "200\n{\"url\": \"https://openagents.com/login#c=00\", \"poll\": \"ab\"}");
   #assert s[0].code_state == CODE_FAILED && !s[0].qr_want;
 }
 

@@ -80,7 +80,7 @@ DOC = {
 # ---- nobody learns anything: no project, no session, a stranger
 s_none, b_none, h_none = page("GET", "/projects/no-such")
 s_locked, b_locked, h_locked = page("GET", f"/projects/{SLUG}")
-check("an unknown slug's page is the locked shell (404)", s_none == 404 and b"ask a member for a sign-in link" in b_none)
+check("an unknown slug's page is the locked shell (404)", s_none == 404 and b"ask a member for a login link" in b_none)
 check("every private answer is no-store, private", "no-store, private" in h_none.get("Cache-Control", ""))
 check("private answers vary by credential, can't be framed, send no referrer",
       "Cookie" in h_none.get("Vary", "") and "Authorization" in h_none.get("Vary", "")

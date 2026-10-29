@@ -64,7 +64,7 @@ s, b, _ = site("POST", "challenge", {}, origin="https://evil.example")
 check("a challenge from another site is refused", s == 403)
 s, ch, _ = site("POST", "challenge", {})
 check("the page gets a challenge and its own poll token", s == 200 and len(ch["challenge"]) == 64 and len(ch["poll"]) == 64
-      and ch["challenge"] != ch["poll"] and ch["expires_in"] == 300 and ch["url"] == API + "/signin#c=" + ch["challenge"], (s, ch))
+      and ch["challenge"] != ch["poll"] and ch["expires_in"] == 300 and ch["url"] == API + "/login#c=" + ch["challenge"], (s, ch))
 check("only the challenge's and poll's hashes are kept",
       sql(f"select count(*) from signin.challenges where challenge_sha256 = encode(sha256('{ch['challenge']}'), 'hex') and poll_sha256 = encode(sha256('{ch['poll']}'), 'hex')") == "1"
       and sql(f"select count(*) from signin.challenges where challenge_sha256 = '{ch['challenge']}' or poll_sha256 = '{ch['poll']}'") == "0")
@@ -138,7 +138,7 @@ s, b, _ = at_page(f"/projects/{PSLUG}/api/link", cookie="oa_project=" + ada_cook
 check("LINK A PHONE from another site is refused", s == 403, (s, b))
 s, lk, _ = at_page(f"/projects/{PSLUG}/api/link", cookie="oa_project=" + ada_cookie, method="POST", body={})
 lk = json.loads(lk)
-check("a member gets a link challenge", s == 200 and lk["url"] == API + "/signin#link=" + lk["challenge"] and len(lk["challenge"]) == 64 and len(lk["poll"]) == 64, (s, lk))
+check("a member gets a link challenge", s == 200 and lk["url"] == API + "/login#link=" + lk["challenge"] and len(lk["challenge"]) == 64 and len(lk["poll"]) == 64, (s, lk))
 s, b, _ = phone(PHONE_KEY, "/api/auth/approve", {"challenge": lk["challenge"], "kind": "signin"})
 check("a link challenge can't be approved as a sign-in", s == 404, (s, b))
 agent(os.environ["ADMIN_KEY"], "POST", "agent", {"pubkey": STRANGER, "name": "Helper", "role": "agent"}, slug=PSLUG)
