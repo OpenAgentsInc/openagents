@@ -1,0 +1,941 @@
+// The chat's engine: the user's own Claude Code, driven through the Coax
+// Claude Agent SDK (coax/lib/agent/claude), and what its stream becomes in
+// Zeron's transcript. One long-lived `claude` per conversation, in
+// streaming input (each message a user frame on its stdin, resumed with
+// --resume=SESSION when it has to start again), polled from the frame loop
+// without blocking (cl_poll), so the UI stays one thread.
+//
+// The stream maps onto the transcript as Zeron's Claude harness and
+// document fold do (harness/src/claude/normalize.rs, doc/src/parts.rs
+// fold_event_into_parts, ui/src/transcript.rs): text and thinking come from
+// the stream's deltas, each extending the trailing part of its kind or
+// starting one; tool calls come from the full assistant frames
+// (decode_tool_use: Bash, Read, Write, Edit, Grep, Glob, WebFetch,
+// WebSearch, TodoWrite, Agent/Task, mcp__server__tool, any other by name);
+// tool results attach to their call (is_error marks it failed); frames
+// from a subagent (parent_tool_use_id) stay out of the parent's
+// transcript; an assistant error, a failed result or a dead process
+// becomes the error chip, labelled as run_errors.rs reads it. Unlike
+// Zeron's fold, which keeps chips one-liners, a call keeps its output and
+// an edit or write its diff, so the chip opens onto them. Consecutive
+// thoughts and calls fold into one tool group (reasoning joins the group),
+// summarized as tool_group_summary does; the trailing group stays open
+// while the turn streams, and a thought while it is the live tail.
+//
+// The login, PATH and environment rules are the old Backend's: the user's
+// own login (no API key: ANTHROPIC_API_KEY is removed from the child),
+// their login shell's PATH (probed once, ~/.local/bin, /opt/homebrew/bin
+// and /usr/local/bin added when missing), BROWSER=true (the SDK's), and an
+// install line when claude is missing. Based on Zeron by Wing, MIT.
+
+#load "transcript.coax";
+#load "claude_fixture.coax";
+#load "../../../coax/lib/agent/claude/claude.coax";
+
+// ---------------------------------------------------------------- the session
+
+S_PARTS :: 768;
+P_USER :: 0; P_TEXT :: 1; P_THINK :: 2; P_TOOL :: 3; P_NOTICE :: 4;
+S_DIFF_MAX :: 40;          // lines an edit's diff keeps a side (Zeron caps the chip's body too)
+
+SPart :: struct {
+  kind: int;
+  at: int; n: int;          // its text in the pool: the message, text, thought or notice
+  notice: int;              // P_NOTICE: N_*
+  // P_TOOL, decoded when the call arrives
+  id: string; tk: int;
+  arg: string; detail: string;
+  before: string; after: string; // an edit's old and new strings, a write's content (new)
+  input: string;            // the call's input, JSON (an approval answers with it)
+  output: string; failed: bool; resolved: bool;
+}
+
+Session :: struct {
+  pool: [] u8; np: int;
+  parts: [S_PARTS] SPart; n: int;
+  live: bool;               // a turn is running
+  stopping: bool;           // STOP was pressed in it
+  noticed: bool;            // it already has its error chip
+  secs: f32;                // its elapsed seconds
+  turns: int;
+  changed: bool;            // since the transcript was last built
+  asking: int;              // the part asking to approve a call, or -1
+}
+
+s_init :: (s: [] Session, pool: [] u8) { s[0].pool = pool; s[0].np = 0; s[0].n = 0; s[0].asking = -1; }
+
+s_text_of :: (s: [] Session, k: int) -> string { return cast(string) s[0].pool[s[0].parts[k].at..<s[0].parts[k].at + s[0].parts[k].n]; }
+
+// Copies text into the pool ("" when it is full). Tabs become a space each:
+// the transcript's fonts draw no tab.
+s_put :: (s: [] Session, text: string) -> string {
+  if s[0].np + text.count > s[0].pool.count { return ""; }
+  at := s[0].np;
+  for k: 0..<text.count { c := text[k]; s[0].pool[at + k] = ifx c == '\t' then ' ' else c; }
+  s[0].np += text.count;
+  return cast(string) s[0].pool[at..<at + text.count];
+}
+// One line of text for a chip's header (single_line: whitespace runs as one space).
+s_single :: (s: [] Session, text: string) -> string {
+  at := s[0].np; n := 0; space := false;
+  for k: 0..<text.count {
+    c := text[k];
+    if c == '\n' || c == '\r' || c == '\t' || c == ' ' { space = n > 0; continue; }
+    if at + n + 2 > s[0].pool.count { break; }
+    if space { s[0].pool[at + n] = ' '; n += 1; space = false; }
+    s[0].pool[at + n] = c; n += 1;
+  }
+  s[0].np += n;
+  return cast(string) s[0].pool[at..<at + n];
+}
+s_part :: (s: [] Session, kind: int) -> int {
+  if s[0].n >= S_PARTS { return -1; }
+  k := s[0].n; s[0].n += 1;
+  s[0].parts[k] = SPart.{kind = kind, at = s[0].np};
+  s[0].changed = true;
+  return k;
+}
+// Appends to a part's text, moving it to the pool's end first when something came after it.
+s_append :: (s: [] Session, k: int, text: string) {
+  p := s[0].parts[k];
+  if p.at + p.n != s[0].np {
+    if s[0].np + p.n + text.count > s[0].pool.count { return; }
+    at := s[0].np;
+    for q: 0..<p.n { s[0].pool[at + q] = s[0].pool[p.at + q]; }
+    s[0].np += p.n; s[0].parts[k].at = at;
+  }
+  if s[0].np + text.count > s[0].pool.count { return; }
+  q := s_put(s, text);
+  s[0].parts[k].n += text.count;
+  s[0].changed = true;
+}
+
+// A message the user sent: a new turn.
+s_user :: (s: [] Session, text: string) {
+  k := s_part(s, P_USER);
+  if k >= 0 { s_append(s, k, text); }
+  s[0].live = true; s[0].stopping = false; s[0].noticed = false; s[0].secs = 0; s[0].turns += 1;
+}
+// A text or thinking delta (TextDelta, ReasoningDelta): the trailing part of
+// its kind grows, else a new one starts.
+s_delta :: (s: [] Session, kind: int, text: string) {
+  if text.count == 0 { return; }
+  k := s[0].n - 1;
+  if k < 0 || s[0].parts[k].kind != kind { k = s_part(s, kind); }
+  if k >= 0 { s_append(s, k, text); }
+}
+s_notice :: (s: [] Session, kind: int, text: string) {
+  k := s_part(s, P_NOTICE);
+  if k < 0 { return; }
+  s[0].parts[k].notice = kind;
+  s_append(s, k, text);
+  if kind != N_ASK { s[0].noticed = true; }
+}
+s_tool_of :: (s: [] Session, id: string) -> int {
+  k := s[0].n - 1;
+  while k >= 0 { if s[0].parts[k].kind == P_TOOL && s[0].parts[k].id == id { return k; } k -= 1; }
+  return -1;
+}
+
+// Lowercase ASCII contains (run_errors.rs compares lowercased text).
+s_has :: (text: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > text.count { return needle.count == 0; }
+  for i: 0..<text.count - needle.count + 1 {
+    same := true;
+    for j: 0..<needle.count {
+      c := text[i + j];
+      if c >= 'A' && c <= 'Z' { c = c + 32; }
+      if c != needle[j] { same = false; break; }
+    }
+    if same { return true; }
+  }
+  return false;
+}
+SIGNED_OUT_NEEDLES :: [26] string.["isn't signed in", "is not signed in", "not signed in", "not logged in",
+  "please run /login", "run `claude login`", "run codex login", "authentication failed", "authentication_error",
+  "sign in to claude again", "sign in again", "log in again", "invalid api key", "invalid x-api-key",
+  "oauth token has expired", "token has expired", "token expired", "refresh token", "unauthorized", "http 401",
+  "status 401", "(401)", "401 ", "logged out", "login required", "please log in"];
+LIMIT_NEEDLES :: [12] string.["usage limit", "limit reached", "rate limit", "rate-limit", "you've hit your",
+  "you have hit your", "hit your limit", "quota", "http 429", "status 429", "(429)", "too many requests"];
+// What an error's text reports (provider_problem): signed out, a limit, or neither.
+s_problem :: (text: string) -> int {
+  if s_has(text, "out of credits") || s_has(text, "cloud credits") { return N_ERROR; }
+  for n: SIGNED_OUT_NEEDLES { if s_has(text, n) { return N_SIGNED_OUT; } }
+  for n: LIMIT_NEEDLES { if s_has(text, n) { return N_LIMIT; } }
+  return N_ERROR;
+}
+
+// A tool call (decode_tool_use), its input decoded into the pool.
+s_tool_use :: (s: [] Session, ar: [] ClArena, id: string, name: string, input: string) {
+  k := s_tool_of(s, id);
+  if k < 0 { k = s_part(s, P_TOOL); }
+  if k < 0 { return; }
+  p := SPart.{kind = P_TOOL, at = s[0].np, id = s_put(s, id), input = s_put(s, input)};
+  p.output = s[0].parts[k].output; p.failed = s[0].parts[k].failed; p.resolved = s[0].parts[k].resolved;
+  if name == "Bash" { p.tk = TK_EXEC; p.arg = s_put(s, cl_str(ar, input, "command")); p.detail = s_single(s, p.arg); }
+  else if name == "Read" { p.tk = TK_READ; p.arg = s_put(s, cl_str(ar, input, "file_path")); }
+  else if name == "Write" { p.tk = TK_WRITE; p.arg = s_put(s, cl_str(ar, input, "file_path")); p.after = s_put(s, cl_str(ar, input, "content")); }
+  else if name == "Edit" {
+    p.tk = TK_EDIT; p.arg = s_put(s, cl_str(ar, input, "file_path"));
+    p.before = s_put(s, cl_str(ar, input, "old_string")); p.after = s_put(s, cl_str(ar, input, "new_string"));
+  }
+  else if name == "MultiEdit" || name == "NotebookEdit" { p.tk = TK_EDIT; p.arg = s_put(s, ifx name == "MultiEdit" then cl_str(ar, input, "file_path") else cl_str(ar, input, "notebook_path")); }
+  else if name == "Grep" {
+    p.tk = TK_SEARCH; p.arg = s_put(s, cl_str(ar, input, "pattern"));
+    path := cl_str(ar, input, "path");
+    if path.count > 0 {
+      at := s[0].np; a := s_put(s, p.arg); b := s_put(s, " in "); c := s_put(s, path);
+      p.detail = cast(string) s[0].pool[at..<s[0].np];
+    }
+  }
+  else if name == "Glob" { p.tk = TK_GLOB; p.arg = s_put(s, cl_str(ar, input, "pattern")); }
+  else if name == "WebFetch" { p.tk = TK_FETCH; p.arg = s_put(s, cl_str(ar, input, "url")); }
+  else if name == "WebSearch" { p.tk = TK_WEB; p.arg = s_put(s, cl_str(ar, input, "query")); }
+  else if name == "TodoWrite" {
+    p.tk = TK_TODO;
+    todos := cl_raw(input, "todos");
+    total := cl_count(todos); done := 0;
+    at := s[0].np;
+    for i: 0..<total {
+      item := cl_json(todos, cl_item(todos, i));
+      fin := cl_str(ar, item, "status") == "completed";
+      if fin { done += 1; }
+      if i > 0 { q := s_put(s, "\n"); }
+      q := s_put(s, ifx fin then "[x] " else "[ ] "); q = s_put(s, cl_str(ar, item, "content"));
+    }
+    p.arg = cast(string) s[0].pool[at..<s[0].np];
+    buf: [40] u8; nb := put_int(buf[..], 0, done); buf[nb] = '/'; nb += 1; nb = put_int(buf[..], nb, total);
+    for c: " done" { buf[nb] = c; nb += 1; }
+    p.detail = s_put(s, cast(string) buf[0..<nb]);
+  }
+  else if name == "Agent" || name == "Task" {
+    p.tk = TK_AGENT; p.detail = s_single(s, cl_str(ar, input, "description"));
+    p.arg = s_put(s, cl_str(ar, input, "prompt"));
+    if p.arg.count == 0 { p.arg = p.detail; }
+  }
+  else if name.count > 5 && name[0..<5] == "mcp__" {
+    p.tk = TK_MCP; p.arg = p.input;
+    rest := cast(string) name[5..<name.count];
+    cut := -1;
+    for i: 0..<rest.count - 1 { if rest[i] == '_' && rest[i + 1] == '_' { cut = i; break; } }
+    at := s[0].np;
+    if cut > 0 { a := s_put(s, cast(string) rest[0..<cut]); b := s_put(s, " · "); c := s_put(s, cast(string) rest[cut + 2..<rest.count]); }
+    else { a := s_put(s, rest); }
+    p.detail = cast(string) s[0].pool[at..<s[0].np];
+  }
+  else { p.tk = TK_TOOL; p.detail = s_put(s, name); p.arg = p.input; }
+  s[0].parts[k] = p;
+  s[0].changed = true;
+}
+
+// A tool result: its output (a string, or the text of its blocks).
+s_tool_result :: (s: [] Session, ar: [] ClArena, item: string) {
+  k := s_tool_of(s, cl_str(ar, item, "tool_use_id"));
+  if k < 0 { return; }
+  c := cl_at(item, "content");
+  out := "";
+  if c.ok && c.tok == JSON_STRING { out = s_put(s, cl_text(ar, item, c)); }
+  else if c.ok {
+    blocks := cl_json(item, c);
+    at := s[0].np;
+    for i: 0..<cl_count(blocks) {
+      b := cl_json(blocks, cl_item(blocks, i));
+      if cl_str(ar, b, "type") == "text" { if s[0].np > at { q := s_put(s, "\n"); } q := s_put(s, cl_str(ar, b, "text")); }
+    }
+    out = cast(string) s[0].pool[at..<s[0].np];
+  }
+  s[0].parts[k].output = out;
+  s[0].parts[k].failed = cl_bool(item, "is_error").value;
+  s[0].parts[k].resolved = true;
+  s[0].changed = true;
+}
+
+// The end of a turn: stopped, failed (its error chip once) or done.
+s_turn_end :: (s: [] Session, failed: bool, why: string) {
+  if !s[0].live { return; }
+  s[0].live = false; s[0].changed = true;
+  if s[0].stopping { s_notice(s, N_STOPPED, ""); return; }
+  if failed && !s[0].noticed { s_notice(s, s_problem(why), ifx why.count > 0 then why else "The turn failed."); }
+}
+
+// One SDK message from the CLI's stdout.
+s_on_message :: (s: [] Session, ar: [] ClArena, m: ClMessage) {
+  if m.parent_tool_use_id.count > 0 { return; }   // a subagent's frame
+  l := m.line;
+  if m.kind == ClKind.stream_event {
+    if !cl_eq(l, cl_at(l, "event.type"), "content_block_delta") { return; }
+    dt := cl_at(l, "event.delta.type");
+    if cl_eq(l, dt, "text_delta") { s_delta(s, P_TEXT, cl_str(ar, l, "event.delta.text")); }
+    else if cl_eq(l, dt, "thinking_delta") { s_delta(s, P_THINK, cl_str(ar, l, "event.delta.thinking")); }
+    return;
+  }
+  if m.kind == ClKind.assistant {
+    content := cl_raw(l, "message.content");
+    for i: 0..<cl_count(content) {
+      item := cl_json(content, cl_item(content, i));
+      if cl_str(ar, item, "type") == "tool_use" { s_tool_use(s, ar, cl_str(ar, item, "id"), cl_str(ar, item, "name"), cl_raw(item, "input")); }
+    }
+    e := cl_assistant_error(l, cl_at(l, "error"));
+    if e != ClAssistantError.none && !s[0].noticed {
+      text := "";
+      for i: 0..<cl_count(content) {
+        item := cl_json(content, cl_item(content, i));
+        if cl_str(ar, item, "type") == "text" { text = cl_str(ar, item, "text"); break; }
+      }
+      kind := s_problem(text);
+      if e == ClAssistantError.authentication_failed || e == ClAssistantError.oauth_org_not_allowed { kind = N_SIGNED_OUT; }
+      if e == ClAssistantError.rate_limit || e == ClAssistantError.billing_error { kind = N_LIMIT; }
+      s_notice(s, kind, ifx text.count > 0 then text else "Claude Code answered with an error.");
+    }
+    return;
+  }
+  if m.kind == ClKind.user {
+    content := cl_raw(l, "message.content");
+    for i: 0..<cl_count(content) {
+      item := cl_json(content, cl_item(content, i));
+      if cl_str(ar, item, "type") == "tool_result" { s_tool_result(s, ar, item); }
+    }
+    return;
+  }
+  if m.kind == ClKind.result {
+    why := cl_str(ar, l, "result");
+    if why.count == 0 { why = cl_str(ar, l, "errors.0"); }
+    s_turn_end(s, cl_bool(l, "is_error").value || m.result != ClResultKind.success, why);
+  }
+}
+
+// ---------------------------------------------------------------- into the transcript
+
+// The open state each group and chip had when last built, and whether the
+// user has since set it (a press flips what was built: from then on it is theirs).
+SUi :: struct {
+  first: int;                       // the part the transcript starts at (older ones scrolled off its capacity)
+  g_set: [T_GROUPS] bool; g_user: [T_GROUPS] int;    // 0 auto, 1 open, 2 closed
+  t_set: [T_TOOLS] bool; t_user: [T_TOOLS] int;
+  built_groups: int; built_tools: int;
+}
+
+plural :: (t: [] Transcript, n: int, one: string, many: string, out: [] u8, at: int) -> int {
+  k := put_int(out, at, n); out[k] = ' '; k += 1;
+  w := ifx n == 1 then one else many;
+  for c: w { out[k] = c; k += 1; }
+  return k;
+}
+seg_sep :: (out: [] u8, k: int) -> int {
+  if k == 0 { return 0; }
+  out[k] = ' '; out[k + 1] = 0xC2; out[k + 2] = 0xB7; out[k + 3] = ' ';
+  return k + 4;
+}
+seg_word :: (out: [] u8, k: int, w: string) -> int { j := k; for c: w { out[j] = c; j += 1; } return j; }
+// The group's summary (tool_group_summary): "Thought process · Ran 2 commands · edited 1 file · 1 failed".
+s_summary :: (s: [] Session, t: [] Transcript, from: int, to: int) -> string {
+  thoughts := 0; commands := 0; edited := 0; reads := 0; searches := 0; fetches := 0; todos := 0; other := 0; failed := 0; calls := 0;
+  for k: from..<to {
+    p := s[0].parts[k];
+    if p.kind == P_THINK { thoughts += 1; continue; }
+    calls += 1;
+    if p.failed { failed += 1; }
+    if p.tk == TK_EXEC { commands += 1; }
+    else if p.tk == TK_EDIT || p.tk == TK_WRITE {
+      seen := false;
+      for j: from..<k { q := s[0].parts[j]; if q.kind == P_TOOL && (q.tk == TK_EDIT || q.tk == TK_WRITE) && q.arg == p.arg { seen = true; } }
+      if !seen { edited += 1; }
+    }
+    else if p.tk == TK_READ { reads += 1; }
+    else if p.tk == TK_SEARCH || p.tk == TK_GLOB || p.tk == TK_WEB { searches += 1; }
+    else if p.tk == TK_FETCH { fetches += 1; }
+    else if p.tk == TK_TODO { todos += 1; }
+    else { other += 1; }
+  }
+  out: [512] u8; k := 0;
+  if thoughts == 1 { k = seg_word(out[..], k, "thought process"); }
+  else if thoughts > 1 { k = seg_word(out[..], k, "thought "); k = plural(t, thoughts, "time", "times", out[..], k); }
+  if calls > 0 {
+    base := k;
+    if commands > 0 { k = seg_sep(out[..], k); k = seg_word(out[..], k, "ran "); k = plural(t, commands, "command", "commands", out[..], k); }
+    if edited > 0 { k = seg_sep(out[..], k); k = seg_word(out[..], k, "edited "); k = plural(t, edited, "file", "files", out[..], k); }
+    if reads > 0 { k = seg_sep(out[..], k); k = seg_word(out[..], k, "read "); k = plural(t, reads, "file", "files", out[..], k); }
+    if searches > 0 { k = seg_sep(out[..], k); k = seg_word(out[..], k, "searched "); k = plural(t, searches, "time", "times", out[..], k); }
+    if fetches > 0 { k = seg_sep(out[..], k); k = seg_word(out[..], k, "fetched "); k = plural(t, fetches, "page", "pages", out[..], k); }
+    if todos > 0 { k = seg_sep(out[..], k); k = seg_word(out[..], k, "updated todos"); }
+    if other > 0 { k = seg_sep(out[..], k); k = seg_word(out[..], k, "called "); k = plural(t, other, "tool", "tools", out[..], k); }
+    if k == base { k = seg_sep(out[..], k); k = plural(t, calls, "tool", "tools", out[..], k); }
+    if failed > 0 { k = seg_sep(out[..], k); k = put_int(out[..], k, failed); k = seg_word(out[..], k, " failed"); }
+    // the shared summary arrives capitalized ("Thought process · Ran 2 commands")
+    first := ifx base > 0 then base + 4 else 0;
+    if first < k && out[first] >= 'a' && out[first] <= 'z' { out[first] = out[first] - 32; }
+  }
+  if k > 0 && out[0] >= 'a' && out[0] <= 'z' { out[0] = out[0] - 32; }
+  return t_pool(t, cast(string) out[0..<k]);
+}
+
+// Lines of a text, at most max (a trailing newline ends the last).
+s_lines :: (text: string, out: [] ToolLine, max: int) -> int {
+  n := 0; i := 0;
+  if text.count == 0 { return 0; }
+  while i < text.count && n < max && n < out.count {
+    j := i; while j < text.count && text[j] != '\n' { j += 1; }
+    out[n] = ToolLine.{from = i, to = j}; n += 1;
+    i = j + 1;
+  }
+  return n;
+}
+// An edit's diff (changes.rs, one hunk): the longest common subsequence of
+// the old and new lines, then deletions before additions between matches; a
+// write is all additions. Numbers count from the strings' first line.
+s_diff :: (t: [] Transcript, old: string, new: string, hunk_out: [] u8) -> int {
+  a: [S_DIFF_MAX] ToolLine; b: [S_DIFF_MAX] ToolLine;
+  na := s_lines(old, a[..], S_DIFF_MAX); nb := s_lines(new, b[..], S_DIFF_MAX);
+  lcs: [1681] int;   // (S_DIFF_MAX + 1)^2
+  w := nb + 1;
+  i := na;
+  while i >= 0 {
+    j := nb;
+    while j >= 0 {
+      v := 0;
+      if i < na && j < nb {
+        if cast(string) old[a[i].from..<a[i].to] == cast(string) new[b[j].from..<b[j].to] { v = 1 + lcs[(i + 1) * w + j + 1]; }
+        else { x := lcs[(i + 1) * w + j]; y := lcs[i * w + j + 1]; v = ifx x > y then x else y; }
+      }
+      lcs[i * w + j] = v;
+      j -= 1;
+    }
+    i -= 1;
+  }
+  i = 0; j := 0; lines := 0;
+  while i < na || j < nb {
+    if i < na && j < nb && cast(string) old[a[i].from..<a[i].to] == cast(string) new[b[j].from..<b[j].to] {
+      t_diff_line(t, DL_CONTEXT, i + 1, j + 1, cast(string) old[a[i].from..<a[i].to]); i += 1; j += 1;
+    } else if i < na && (j >= nb || lcs[(i + 1) * w + j] >= lcs[i * w + j + 1]) {
+      t_diff_line(t, DL_DEL, i + 1, 0, cast(string) old[a[i].from..<a[i].to]); i += 1;
+    } else {
+      t_diff_line(t, DL_ADD, 0, j + 1, cast(string) new[b[j].from..<b[j].to]); j += 1;
+    }
+    lines += 1;
+  }
+  // @@ -1,na +1,nb @@
+  k := seg_word(hunk_out, 0, "@@ -");
+  k = put_int(hunk_out, k, ifx na > 0 then 1 else 0); hunk_out[k] = ','; k += 1; k = put_int(hunk_out, k, na);
+  k = seg_word(hunk_out, k, " +"); k = put_int(hunk_out, k, ifx nb > 0 then 1 else 0); hunk_out[k] = ','; k += 1; k = put_int(hunk_out, k, nb);
+  k = seg_word(hunk_out, k, " @@");
+  return k * 1000 + lines;
+}
+
+// Rebuilds the transcript from the session's parts (from ui.first on).
+s_build :: (s: [] Session, ui: [] SUi, t: [] Transcript) {
+  // what the user changed since the last build is theirs
+  for g: 0..<t[0].ng { if g < ui[0].built_groups && t[0].groups[g].open != ui[0].g_set[g] { ui[0].g_user[g] = ifx t[0].groups[g].open then 1 else 2; } }
+  for k: 0..<t[0].nt { if k < ui[0].built_tools && t[0].tools[k].open != ui[0].t_set[k] { ui[0].t_user[k] = ifx t[0].tools[k].open then 1 else 2; } }
+  t_reset(t);
+  i := ui[0].first;
+  in_assistant := false;
+  while i < s[0].n {
+    p := s[0].parts[i];
+    if p.kind == P_USER { t_user(t, s_text_of(s, i)); in_assistant = false; i += 1; continue; }
+    if !in_assistant { t_entry(t); in_assistant = true; }
+    if p.kind == P_TEXT { t_text(t, s_text_of(s, i)); i += 1; continue; }
+    if p.kind == P_NOTICE { n := t_notice(t, p.notice, s_text_of(s, i)); i += 1; continue; }
+    // a run of thoughts and calls: one group
+    j := i;
+    while j < s[0].n && (s[0].parts[j].kind == P_THINK || s[0].parts[j].kind == P_TOOL) { j += 1; }
+    g := t_group(t, s_summary(s, t, i, j));
+    if g < 0 { break; }
+    tail := s[0].live && j == s[0].n;
+    for k: i..<j {
+      q := s[0].parts[k];
+      tool: Tool;
+      if q.kind == P_THINK { tool = Tool.{kind = TK_THOUGHT, arg = s_text_of(s, k), resolved = true}; }
+      else {
+        tool = Tool.{kind = q.tk, arg = q.arg, detail = q.detail, output = q.output, failed = q.failed, resolved = q.resolved};
+        if (q.tk == TK_EDIT || q.tk == TK_WRITE) && (q.before.count > 0 || q.after.count > 0) {
+          hunk: [64] u8;
+          d0 := t[0].nd;
+          r := s_diff(t, q.before, q.after, hunk[..]);
+          tool.hunk = t_pool(t, cast(string) hunk[0..<r / 1000]); tool.diff_from = d0; tool.diff_lines = t[0].nd - d0;
+        }
+      }
+      ti := t_tool(t, g, tool);
+      if ti < 0 { break; }
+      // a thought opens while it is the live tail (keeping it in view)
+      auto := tail && k + 1 == j && q.kind == P_THINK;
+      u := ifx ti < T_TOOLS then ui[0].t_user[ti] else 0;
+      t[0].tools[ti].open = ifx u == 0 then auto else u == 1;
+      ui[0].t_set[ti] = t[0].tools[ti].open;
+    }
+    // the trailing group of a streaming entry stays open
+    u := ui[0].g_user[g];
+    t[0].groups[g].open = ifx u == 0 then tail else u == 1;
+    ui[0].g_set[g] = t[0].groups[g].open;
+    i = j;
+  }
+  ui[0].built_groups = t[0].ng; ui[0].built_tools = t[0].nt;
+  t[0].pinned = t[0].pinned || s[0].live;
+  s[0].changed = false;
+}
+// Whether the last build ran out of the transcript's room.
+s_overflowed :: (t: [] Transcript) -> bool {
+  return t[0].nr >= T_ROWS || t[0].ng >= T_GROUPS || t[0].nt >= T_TOOLS || t[0].nn >= T_NOTICES
+      || t[0].md[0].nb >= MD_BLOCKS || t[0].md[0].n >= MD_TEXT || t[0].md[0].nr >= MD_RUNS || t[0].md[0].ni >= MD_ITEMS
+      || t[0].ntext >= T_TEXTS || t[0].nbox >= T_BOXES || t[0].nsel >= T_SELS || t[0].nhit >= T_HITS;
+}
+// Starts the transcript at the next user message (the oldest turn leaves it); whether one is left.
+s_drop_turn :: (s: [] Session, ui: [] SUi) -> bool {
+  k := ui[0].first + 1;
+  while k < s[0].n && s[0].parts[k].kind != P_USER { k += 1; }
+  if k >= s[0].n { return false; }
+  ui[0].first = k;
+  for g: 0..<T_GROUPS { ui[0].g_user[g] = 0; }
+  for q: 0..<T_TOOLS { ui[0].t_user[q] = 0; }
+  ui[0].built_groups = 0; ui[0].built_tools = 0;
+  return true;
+}
+
+// ---------------------------------------------------------------- the engine
+
+MODEL_IDS :: [3] string.["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
+MODEL_NAMES :: [3] string.["Opus 5.5", "Sonnet 5.5", "Haiku 5.5"];
+EFFORT_IDS :: [5] string.["low", "medium", "high", "xhigh", "max"];
+EFFORT_NAMES :: [5] string.["Low", "Medium", "High", "X-High", "Max"];
+// Zeron's access levels for Claude (its access picker): Full access answers
+// every permission prompt itself; Auto-accept edits runs in acceptEdits and
+// asks for the rest; Supervised asks for each call.
+ACC_FULL :: 0; ACC_EDITS :: 1; ACC_SUPERVISED :: 2;
+ACCESS_NAMES :: [3] string.["Full access", "Auto-accept edits", "Supervised"];
+INSTALL_LINE :: "curl -fsSL https://claude.ai/install.sh | bash";
+
+E_PATH :: 4096; E_FILE :: 1024;
+
+Engine :: struct {
+  on: bool;                          // the host attached buffers (never in tests)
+  q: [1] ClQuery; p: [1] ClProcess;
+  line: [] u8; arena: [] u8; out: [] u8; scratch: [] u8;
+  running: bool;                     // the CLI is up
+  ready: bool;                       // it answered initialize
+  pend: int;                         // a user part waiting for initialize, or -1
+  model: int; effort: int; access: int;            // chosen (indices)
+  run_effort: int;                   // what the running CLI was started with
+  // the login shell's PATH and claude, probed once
+  probe: int; probed: bool;
+  probe_out: [E_PATH + 1024] u8; probe_n: int;
+  path_env: [E_PATH + 8] u8; path_n: int;          // "PATH=..."
+  claude: [E_FILE] u8; claude_n: int;
+  cwd: [E_FILE] u8; cwd_n: int;
+  sid: [128] u8; sid_n: int;         // the conversation's session, for --resume
+  err: [2048] u8;
+}
+
+e_str :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+
+// The login shell's PATH and where claude is (the old Backend's lookup: the
+// usual install places, then `command -v claude`).
+PROBE_SCRIPT :: "printf 'OA_PATH=%s\\n' \"$PATH\"; for p in \"$HOME/.local/bin/claude\" /opt/homebrew/bin/claude /usr/local/bin/claude \"$HOME/.claude/local/claude\"; do if [ -x \"$p\" ]; then printf 'OA_CLAUDE=%s\\n' \"$p\"; fi; done; printf 'OA_CLAUDE=%s\\n' \"$(command -v claude)\"";
+
+e_probe_start :: (e: [] Engine) {
+  h := cxproc_new();
+  if h < 0 { e[0].probed = true; return; }
+  ok := cl_push(h, CL_FIELD_ARG, "/bin/zsh") && cl_push(h, CL_FIELD_ARG, "-lc") && cl_push(h, CL_FIELD_ARG, PROBE_SCRIPT);
+  ok = ok && cl_push(h, CL_FIELD_ENV, "BROWSER=true");
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); e[0].probed = true; e_probe_done(e); return; }
+  e[0].probe = h;
+}
+// Reads what the probe printed; when it ends, settles PATH and claude.
+e_probe_poll :: (e: [] Engine) {
+  if e[0].probed || e[0].probe < 0 { return; }
+  for guard: 0..<16 {
+    n := cxproc_read_line(e[0].probe, 0);
+    if n == CL_TIMEOUT { return; }
+    if n < 0 { break; }
+    if e[0].probe_n + n + 1 < e[0].probe_out.count {
+      for i: 0..<n { e[0].probe_out[e[0].probe_n + i] = cast(u8) cxproc_line_byte(e[0].probe, i); }
+      e[0].probe_n += n; e[0].probe_out[e[0].probe_n] = '\n'; e[0].probe_n += 1;
+    }
+  }
+  r := cxproc_release(e[0].probe); e[0].probe = -1; e[0].probed = true;
+  e_probe_done(e);
+}
+e_set :: (dst: [] u8, at: int, s: string) -> int { k := at; for c: s { if k < dst.count { dst[k] = c; k += 1; } } return k; }
+e_path_has :: (path: string, dir: string) -> bool {
+  i := 0;
+  while i <= path.count {
+    j := i; while j < path.count && path[j] != ':' { j += 1; }
+    if cast(string) path[i..<j] == dir { return true; }
+    i = j + 1;
+  }
+  return false;
+}
+e_probe_done :: (e: [] Engine) {
+  out := e_str(e[0].probe_out[..], e[0].probe_n);
+  path := ""; i := 0;
+  while i < out.count {
+    j := i; while j < out.count && out[j] != '\n' { j += 1; }
+    l := cast(string) out[i..<j];
+    if l.count > 8 && l[0..<8] == "OA_PATH=" { path = cast(string) l[8..<l.count]; }
+    if l.count > 10 && l[0..<10] == "OA_CLAUDE=" && e[0].claude_n == 0 && l.count - 10 < E_FILE { e[0].claude_n = e_set(e[0].claude[..], 0, cast(string) l[10..<l.count]); }
+    i = j + 1;
+  }
+  home: [E_FILE] u8;
+  h := cl_getenv("HOME", home[..]);
+  k := e_set(e[0].path_env[..], 0, "PATH=");
+  local: [E_FILE + 16] u8; ln := e_set(local[..], e_set(local[..], 0, h), "/.local/bin");
+  extra := [3] string.[e_str(local[..], ln), "/opt/homebrew/bin", "/usr/local/bin"];
+  for x: extra { if !e_path_has(path, x) && k + x.count + 1 < E_PATH { k = e_set(e[0].path_env[..], k, x); k = e_set(e[0].path_env[..], k, ":"); } }
+  if path.count == 0 { path = "/usr/bin:/bin:/usr/sbin:/sbin"; }
+  if k + path.count < E_PATH { k = e_set(e[0].path_env[..], k, path); }
+  else if k > 5 { k -= 1; }
+  e[0].path_n = k;
+}
+
+// Starts the CLI for the chosen model, effort and access (resuming the
+// conversation's session when it has one). Whether it started.
+e_start :: (e: [] Engine, s: [] Session) -> bool {
+  if e[0].p[0].handle >= 0 { cl_close(e[0].p[..]); }
+  e[0].q[0] = ClQuery.{};
+  q := e[0].q[..];
+  cl_init(q, e[0].line, e[0].arena, e[0].out);
+  o: [1] ClOptions;
+  o[0].persist_session = true; o[0].control_timeout_ms = 60000;
+  if e[0].claude_n > 0 { o[0].program = e_str(e[0].claude[..], e[0].claude_n); }
+  models := MODEL_IDS; efforts := EFFORT_IDS;
+  o[0].model = models[e[0].model]; o[0].effort = efforts[e[0].effort];
+  o[0].include_partial_messages = true;
+  o[0].thinking_display = "summarized";
+  o[0].permission_handler = true;
+  o[0].permission_mode = ifx e[0].access == ACC_EDITS then ClPermissionMode.accept_edits else ClPermissionMode.default;
+  if e[0].cwd_n > 0 { o[0].cwd = e_str(e[0].cwd[..], e[0].cwd_n); }
+  if e[0].path_n > 5 { cl_add_env(o[..], e_str(e[0].path_env[..], e[0].path_n)); }
+  cl_remove_env(o[..], "ANTHROPIC_API_KEY");
+  if e[0].sid_n > 0 { o[0].resume = e_str(e[0].sid[..], e[0].sid_n); }
+  q[0].options = o[0];
+  why := cl_start(q, e[0].p[..], "", true, e[0].scratch);
+  if why.count > 0 {
+    e[0].p[0].handle = -1;
+    if why == "claude executable not found" || e[0].claude_n == 0 && why == "failed to spawn claude process" {
+      s_notice(s, N_INSTALL, "Install it in Terminal, then send again: curl -fsSL https://claude.ai/install.sh | bash");
+    } else { s_notice(s, N_ERROR, why); }
+    s_turn_end(s, false, "");
+    return false;
+  }
+  e[0].running = true; e[0].ready = false; e[0].run_effort = e[0].effort;
+  return true;
+}
+
+// The user sent a message: it joins the transcript, then goes to the CLI
+// (started, or restarted for a new effort, first).
+e_send :: (e: [] Engine, s: [] Session, text: string) {
+  was_live := s[0].live;
+  s_user(s, text);
+  k := s[0].n - 1;
+  if !e[0].on { return; }
+  if !e[0].probed { e[0].pend = k; return; }   // e_pump starts it once PATH is known
+  if e[0].running && e[0].run_effort != e[0].effort && e[0].ready && !was_live { e_close(e); }
+  if !e[0].running { e[0].pend = k; if !e_start(e, s) { e[0].pend = -1; } return; }
+  if !e[0].ready { e[0].pend = k; return; }
+  cl_send_user(e[0].q[..], s_text_of(s, k));
+}
+e_close :: (e: [] Engine) {
+  if e[0].p[0].handle >= 0 { cl_close(e[0].p[..]); }
+  e[0].running = false; e[0].ready = false;
+}
+
+// STOP: the control protocol's interrupt (a CLI still starting is closed).
+e_stop :: (e: [] Engine, s: [] Session) {
+  if !s[0].live { return; }
+  s[0].stopping = true;
+  if s[0].asking >= 0 { e_answer(e, s, false); }
+  if !e[0].on || !e[0].running || !e[0].ready {
+    e[0].pend = -1;
+    if e[0].running { e_close(e); }
+    s_turn_end(s, false, "");
+    return;
+  }
+  r := cl_interrupt(e[0].q[..]);
+}
+
+// The chips: the model and access change the running CLI (set_model,
+// set_permission_mode); a new effort starts it again with the next message.
+e_set_model :: (e: [] Engine, m: int) {
+  e[0].model = m;
+  if e[0].on && e[0].running && e[0].ready { models := MODEL_IDS; r := cl_set_model(e[0].q[..], models[m]); }
+}
+e_set_access :: (e: [] Engine, a: int) {
+  e[0].access = a;
+  if e[0].on && e[0].running && e[0].ready {
+    r := cl_set_permission_mode(e[0].q[..], ifx a == ACC_EDITS then ClPermissionMode.accept_edits else ClPermissionMode.default);
+  }
+}
+
+// An approval's answer (the chip's Allow or Deny).
+e_answer :: (e: [] Engine, s: [] Session, allow: bool) {
+  k := s[0].asking;
+  if k < 0 { return; }
+  s[0].asking = -1;
+  input := s[0].parts[k].input;
+  // the approval chip leaves once answered
+  if k < s[0].n && s[0].parts[k].kind == P_NOTICE {
+    for j: k..<s[0].n - 1 { s[0].parts[j] = s[0].parts[j + 1]; }
+    s[0].n -= 1; s[0].changed = true;
+  }
+  if !e[0].on { return; }
+  if allow { cl_allow(e[0].q[..], input, ""); }
+  else { cl_deny(e[0].q[..], "The user denied this.", false); }
+}
+
+// A permission prompt (can_use_tool): Full access allows it; otherwise the
+// transcript asks (polling waits for the answer: cl_poll would answer it).
+e_permission :: (e: [] Engine, s: [] Session, ev: ClEvent) {
+  if e[0].access == ACC_FULL { cl_allow(e[0].q[..], ev.request.input, ""); return; }
+  buf: [600] u8;
+  k := e_set(buf[..], 0, ev.request.tool_name);
+  cmd := cl_str(e[0].q[0].ar[..], ev.request.input, "command");
+  if cmd.count == 0 { cmd = cl_str(e[0].q[0].ar[..], ev.request.input, "file_path"); }
+  if cmd.count > 0 { k = e_set(buf[..], k, ": "); k = e_set(buf[..], k, cmd); }
+  s_notice(s, N_ASK, e_str(buf[..], k));
+  s[0].asking = s[0].n - 1;
+  s[0].parts[s[0].asking].input = s_put(s, ev.request.input);
+}
+
+// Each frame: the probe, then what the CLI wrote (at most a batch of lines).
+e_pump :: (e: [] Engine, s: [] Session) {
+  if !e[0].on { return; }
+  if !e[0].probed { e_probe_poll(e); if !e[0].probed { return; } }
+  if !e[0].running && e[0].pend >= 0 && s[0].live {
+    if !e_start(e, s) { e[0].pend = -1; return; }
+  }
+  if !e[0].running || s[0].asking >= 0 { return; }
+  for guard: 0..<200 {
+    ev := cl_poll(e[0].q[..], e[0].p[..], 0);
+    if ev.kind == ClEventKind.idle { return; }
+    if ev.kind == ClEventKind.initialized {
+      e[0].ready = true;
+      if e[0].pend >= 0 { cl_send_user(e[0].q[..], s_text_of(s, e[0].pend)); e[0].pend = -1; }
+      continue;
+    }
+    if ev.kind == ClEventKind.message {
+      s_on_message(s, e[0].q[0].ar[..], ev.message);
+      sid := cl_session_id(e[0].q[..]);
+      if sid.count > 0 { e[0].sid_n = e_set(e[0].sid[..], 0, sid); }
+      continue;
+    }
+    if ev.kind == ClEventKind.permission {
+      e_permission(e, s, ev);
+      if s[0].asking >= 0 { return; }
+      continue;
+    }
+    if ev.kind == ClEventKind.failed || ev.kind == ClEventKind.end {
+      why := "";
+      if ev.kind == ClEventKind.failed { why = cl_error(e[0].q[..]); }
+      tail := cl_stderr(e[0].p[..], e[0].err[..]);
+      if tail.count > 0 { why = tail; }
+      if why.count == 0 { why = "Claude Code stopped before answering."; }
+      e_close(e);
+      e[0].pend = -1;
+      s_turn_end(s, !s[0].stopping, why);
+      return;
+    }
+  }
+}
+
+// ---------------------------------------------------------------- checks
+
+// A recorded line as the engine's reader classifies it, reading only what
+// the mapping uses (its type, a result's subtype, its parent): the SDK's
+// cl_classify checks every frame against its spec too, which an
+// interpreted test can afford for a few frames (the last check below
+// feeds those through cl_feed), not for the whole turn.
+s_test_message :: (ar: [] ClArena, line: string) -> ClMessage {
+  m := ClMessage.{frame = ClFrame.message, line = line};
+  names := CL_TYPES;
+  m.kind = cast(ClKind) (cl_index_of(line, cl_find(line, "type"), names[..]) + 1);
+  if m.kind == ClKind.result { m.result = ifx cl_eq(line, cl_find(line, "subtype"), "success") then ClResultKind.success else ClResultKind.error_during_execution; }
+  p := cl_find(line, "parent_tool_use_id");
+  if p.ok && p.tok == JSON_STRING { m.parent_tool_use_id = cl_text(ar, line, p); }
+  return m;
+}
+s_test_feed :: (s: [] Session, q: [] ClQuery, lines: [] string) {
+  for line: lines { q[0].ar[0].at = 0; s_on_message(s, q[0].ar[..], s_test_message(q[0].ar[..], line)); }
+}
+
+#test "a recorded Claude Code turn folds into Zeron's parts: thinking, calls with their results, the answer" {
+  q: [1] ClQuery; line: [8] u8; arena: [65536] u8; out: [4096] u8;
+  cl_init(q[..], line[..], arena[..], out[..]);
+  q[0].streaming = true;
+  s: [1] Session; pool: [65536] u8;
+  s_init(s[..], pool[..]);
+  s_user(s[..], "Look around this folder and fix the typo in notes.txt");
+  fx := CLAUDE_FIXTURE;
+  s_test_feed(s[..], q[..], fx[..]);
+  #assert !s[0].live && !s[0].noticed;
+  kinds: [32] int; n := 0;
+  for k: 0..<s[0].n { if n < 32 { kinds[n] = s[0].parts[k].kind; n += 1; } }
+  // the message, Bash ls and cat, the thought, Read, Grep, Edit, the failed cat, then the answer
+  #assert kinds[0] == P_USER;
+  tools := 0; thoughts := 0; texts := 0;
+  for k: 1..<s[0].n {
+    p := s[0].parts[k];
+    if p.kind == P_TOOL { tools += 1; #assert p.resolved; }
+    if p.kind == P_THINK { thoughts += 1; }
+    if p.kind == P_TEXT { texts += 1; }
+  }
+  #assert tools == 6 && thoughts >= 1 && texts >= 1;
+  // calls decode as decode_tool_use does
+  edit := -1; failed := -1; grep := -1;
+  for k: 0..<s[0].n {
+    p := s[0].parts[k];
+    if p.kind != P_TOOL { continue; }
+    if p.tk == TK_EDIT { edit = k; }
+    if p.failed { failed = k; }
+    if p.tk == TK_SEARCH { grep = k; }
+  }
+  #assert edit > 0 && s[0].parts[edit].arg == "/tmp/demo/notes.txt" && s[0].parts[edit].before == "- bred" && s[0].parts[edit].after == "- bread";
+  #assert failed > 0 && s[0].parts[failed].tk == TK_EXEC && s[0].parts[failed].arg == "cat missing.txt";
+  #assert s[0].parts[failed].output == "Exit code 1\ncat: missing.txt: No such file or directory";
+  #assert grep > 0 && s[0].parts[grep].arg == "TODO";
+  // the answer is the streamed Markdown, whole
+  last := s_text_of(s[..], s[0].n - 1);
+  #assert s[0].parts[s[0].n - 1].kind == P_TEXT && last.count > 40;
+}
+
+#test "the parts become Zeron's rows: the bubble, one tool group with its summary, chips open on output and diff" {
+  q: [1] ClQuery; line: [8] u8; arena: [65536] u8; out: [4096] u8;
+  cl_init(q[..], line[..], arena[..], out[..]);
+  q[0].streaming = true;
+  s: [1] Session; pool: [65536] u8;
+  s_init(s[..], pool[..]);
+  s_user(s[..], "Look around this folder and fix the typo in notes.txt");
+  fx := CLAUDE_FIXTURE;
+  s_test_feed(s[..], q[..], fx[..]);
+  t: [1] Transcript; a: [1] Atlas; ui: [1] SUi;
+  md_test_atlas(a[..]);
+  for k: 0..<ICON_COUNT { a[0].icons[k] = GpIcon.{x = 0, y = 0, w = 36, h = 36}; }
+  s_build(s[..], ui[..], t[..]);
+  #assert t[0].rows[0].kind == R_USER && t[0].rows[1].kind == R_GROUP;
+  g := t[0].groups[0];
+  #assert g.tools == 7 && !g.open;
+  #assert g.summary == "Thought process · Ran 3 commands · edited 1 file · read 1 file · searched 1 time · 1 failed";
+  // the edit's chip holds its diff: the old line out, the new one in
+  ed := -1;
+  for k: 0..<g.tools { if t[0].tools[g.tool0 + k].kind == TK_EDIT { ed = g.tool0 + k; } }
+  #assert ed >= 0 && t[0].tools[ed].diff_lines == 2 && t[0].tools[ed].hunk == "@@ -1,1 +1,1 @@";
+  #assert t[0].diff[t[0].tools[ed].diff_from].kind == DL_DEL && t[0].diff[t[0].tools[ed].diff_from + 1].text == "- bread";
+  // the reply follows as Markdown rows; laying it all out fits the transcript
+  #assert t[0].rows[t[0].nr - 1].kind == R_MD;
+  t[0].view_h = 880;
+  t_set_open(t[..], 0, -1, true);
+  for k: 0..<g.tools { t_set_open(t[..], 0, k, true); }
+  t_layout(t[..], a[..], zeron_dark(), 292, 736, 145);
+  #assert !s_overflowed(t[..]) && t[0].rows[1].h > 26 + 2 + 7 * 32;
+  // opened by the user, the group stays open through the next build
+  s_build(s[..], ui[..], t[..]);
+  #assert t[0].groups[0].open && t[0].tools[ed].open;
+}
+
+#test "a live turn streams: the trailing group open, the thought open while it is the tail, the working trailer" {
+  s: [1] Session; pool: [8192] u8;
+  s_init(s[..], pool[..]);
+  t: [1] Transcript; a: [1] Atlas; ui: [1] SUi;
+  md_test_atlas(a[..]);
+  for k: 0..<ICON_COUNT { a[0].icons[k] = GpIcon.{x = 0, y = 0, w = 36, h = 36}; }
+  s_user(s[..], "hi");
+  s_delta(s[..], P_THINK, "Let me ");
+  s_delta(s[..], P_THINK, "look.");
+  s_build(s[..], ui[..], t[..]);
+  #assert s[0].n == 2 && s_text_of(s[..], 1) == "Let me look." && t[0].groups[0].open && t[0].tools[0].open;
+  s_delta(s[..], P_TEXT, "Hello **there**");
+  s_delta(s[..], P_TEXT, ".");
+  s_build(s[..], ui[..], t[..]);
+  #assert s[0].n == 3 && !t[0].groups[0].open && !t[0].tools[0].open && t[0].rows[2].kind == R_MD;
+  t[0].working = true; t[0].work_secs = 75; t[0].view_h = 880;
+  t_layout(t[..], a[..], zeron_dark(), 292, 736, 145);
+  // the trailer: nine spinner cells, the word and "1m 15s"
+  found := false;
+  for k: 0..<t[0].ntext { if t[0].texts[k].text == "1m 15s" { found = true; } }
+  #assert found;
+  s_turn_end(s[..], false, "");
+  #assert !s[0].live && s[0].parts[s[0].n - 1].kind == P_TEXT;
+}
+
+#test "STOP marks the turn stopped; a failed turn's chip reads signed out or a limit and offers Log in" {
+  s: [1] Session; pool: [8192] u8;
+  s_init(s[..], pool[..]);
+  e: [1] Engine;
+  s_user(s[..], "write a long story");
+  s_delta(s[..], P_TEXT, "Once upon");
+  e_stop(e[..], s[..]);
+  #assert !s[0].live && s[0].parts[s[0].n - 1].kind == P_NOTICE && s[0].parts[s[0].n - 1].notice == N_STOPPED;
+  s_user(s[..], "again");
+  s_turn_end(s[..], true, "Not logged in · Please run /login");
+  #assert s[0].parts[s[0].n - 1].notice == N_SIGNED_OUT;
+  s_user(s[..], "again");
+  s_turn_end(s[..], true, "You've hit your usage limit.");
+  #assert s[0].parts[s[0].n - 1].notice == N_LIMIT;
+  #assert s_problem("exit status 2") == N_ERROR && s_problem("HTTP 401 Unauthorized") == N_SIGNED_OUT;
+  t: [1] Transcript; a: [1] Atlas; ui: [1] SUi;
+  md_test_atlas(a[..]);
+  for k: 0..<ICON_COUNT { a[0].icons[k] = GpIcon.{x = 0, y = 0, w = 36, h = 36}; }
+  s_build(s[..], ui[..], t[..]);
+  t[0].view_h = 880;
+  t_layout(t[..], a[..], zeron_dark(), 292, 736, 145); t_clamp(t[..]);
+  r := t[0].nr - 1;
+  #assert t[0].rows[r].kind == R_NOTICE && t[0].notices[t[0].rows[r].notice].kind == N_LIMIT;
+  // its Log in button asks the screen to sign in
+  hit := -1;
+  for k: 0..<t[0].nhit { if t[0].hits[k].kind == H_ACTION && t[0].hits[k].b == 0 && t[0].hits[k].a == t[0].rows[r].notice { hit = k; } }
+  #assert hit >= 0;
+  h := t[0].hits[hit];
+  t_pointer(t[..], a[..], h.x + 4, h.y + t[0].offset + 4, 0, 1, false);
+  t_pointer(t[..], a[..], h.x + 4, h.y + t[0].offset + 4, 2, 1, false);
+  #assert t[0].action == A_LOGIN;
+}
+
+#test "tool calls decode as Zeron's harness decodes them" {
+  q: [1] ClQuery; line: [8] u8; arena: [8192] u8; out: [64] u8;
+  cl_init(q[..], line[..], arena[..], out[..]);
+  s: [1] Session; pool: [8192] u8;
+  s_init(s[..], pool[..]);
+  ar := q[0].ar[..];
+  s_tool_use(s[..], ar, "a", "Grep", "{\"pattern\":\"fn main\",\"path\":\"src\"}");
+  s_tool_use(s[..], ar, "b", "TodoWrite", "{\"todos\":[{\"content\":\"one\",\"status\":\"completed\"},{\"content\":\"two\",\"status\":\"pending\"}]}");
+  s_tool_use(s[..], ar, "c", "mcp__github__create_issue", "{\"title\":\"x\"}");
+  s_tool_use(s[..], ar, "d", "Task", "{\"description\":\"Scan the repo\",\"prompt\":\"look\"}");
+  s_tool_use(s[..], ar, "e", "Bash", "{\"command\":\"ls\\n  -la\"}");
+  s_tool_use(s[..], ar, "f", "Frobnicate", "{}");
+  #assert s[0].parts[0].tk == TK_SEARCH && s[0].parts[0].detail == "fn main in src";
+  #assert s[0].parts[1].tk == TK_TODO && s[0].parts[1].detail == "1/2 done" && s[0].parts[1].arg == "[x] one\n[ ] two";
+  #assert s[0].parts[2].tk == TK_MCP && s[0].parts[2].detail == "github · create_issue";
+  #assert s[0].parts[3].tk == TK_AGENT && s[0].parts[3].detail == "Scan the repo";
+  #assert s[0].parts[4].arg == "ls\n  -la" && s[0].parts[4].detail == "ls -la";
+  #assert s[0].parts[5].tk == TK_TOOL && s[0].parts[5].detail == "Frobnicate";
+  t: [1] Transcript;
+  #assert s_summary(s[..], t[..], 0, 6) == "Ran 1 command · searched 1 time · updated todos · called 3 tools";
+  // a write is all additions
+  hunk: [64] u8;
+  r := s_diff(t[..], "", "a\nb", hunk[..]);
+  #assert r % 1000 == 2 && t[0].diff[0].kind == DL_ADD && cast(string) hunk[0..<r / 1000] == "@@ -0,0 +1,2 @@";
+}
+
+#test "the engine's reader takes the recorded frames: cl_feed classifies them and the result ends the turn" {
+  q: [1] ClQuery; line: [8] u8; arena: [65536] u8; out: [4096] u8;
+  cl_init(q[..], line[..], arena[..], out[..]);
+  q[0].streaming = true;
+  s: [1] Session; pool: [16384] u8;
+  s_init(s[..], pool[..]);
+  s_user(s[..], "fix the typo");
+  fx := CLAUDE_FIXTURE;
+  // the init, the edit's call and its result, the final result
+  picked := 0;
+  for l: fx {
+    q[0].ar[0].at = 0;
+    ty := cl_str(q[0].ar[..], l, "type");
+    keep := ty == "result" || (ty == "system" && picked == 0);
+    if !keep && (ty == "assistant" || ty == "user") { keep = s_has(l, "notes.txt has been updated") || s_has(l, "\"name\":\"edit\""); }
+    if !keep { continue; }
+    ev := cl_feed(q[..], l);
+    #assert ev.kind == ClEventKind.message && ev.message.kind != ClKind.unknown;
+    s_on_message(s[..], q[0].ar[..], ev.message);
+    picked += 1;
+  }
+  #assert picked == 4 && cl_session_id(q[..]) == "dfc3d0c7-79e7-4d09-b940-c3ad305b7492";
+  #assert s[0].parts[1].kind == P_TOOL && s[0].parts[1].tk == TK_EDIT && s[0].parts[1].resolved && !s[0].parts[1].failed;
+  #assert !s[0].live && s[0].n == 2;
+}

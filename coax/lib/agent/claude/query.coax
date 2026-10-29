@@ -23,6 +23,7 @@ ClEventKind :: enum u8 {
   tool_call;        // tools/call to an SDK MCP server: answer with cl_tool_answer
   failed;           // the query is over; q.error says why
   end;              // the CLI closed its output
+  idle;             // cl_poll: no line came within its timeout
 }
 
 ClEvent :: struct {
@@ -65,6 +66,7 @@ ClQuery :: struct {
   pending_mcp_id_len: int;
   // Requests the host sent that wait for an answer (their sdk-N), for timeouts.
   waiting: int;
+  waiting_since: int;      // cl_poll: when the oldest of them started waiting (ms), 0 when none
 }
 
 cl_init :: (q: [] ClQuery, line: [] u8, arena: [] u8, out: [] u8) {

@@ -66,3 +66,21 @@ int32_t zr_can_cut(void *state) { return coaxial_zeron_can_cut(at(state)) ? 1 : 
 int32_t zr_take_copy(void *state, uint8_t *out, int32_t cap) { return (int32_t)coaxial_zeron_take_copy(at(state), (coax_v_u8){out, cap}); }
 void zr_fixture(void *state, int32_t open) { coaxial_zeron_fixture(at(state), open != 0); }
 void zr_scroll_to(void *state, float px) { coaxial_zeron_scroll_to(at(state), px); }
+// The chat's engine (zeron/claude.coax): its buffers, the folder Claude Code
+// works in, and what the host does for it.
+#define ZR_POOL (8 << 20)
+#define ZR_LINE (1 << 20)
+#define ZR_ARENA (1 << 20)
+#define ZR_OUT (256 << 10)
+#define ZR_SCRATCH (64 << 10)
+void zr_attach(void *state, const uint8_t *cwd, int32_t length) {
+  uint8_t *pool = malloc(ZR_POOL), *line = malloc(ZR_LINE), *arena = malloc(ZR_ARENA), *out = malloc(ZR_OUT), *scratch = malloc(ZR_SCRATCH);
+  if (!pool || !line || !arena || !out || !scratch) return;
+  coaxial_zeron_attach(at(state), (coax_v_u8){pool, ZR_POOL}, (coax_v_u8){line, ZR_LINE}, (coax_v_u8){arena, ZR_ARENA},
+                       (coax_v_u8){out, ZR_OUT}, (coax_v_u8){scratch, ZR_SCRATCH}, str(cwd, length));
+}
+void zr_demo(void *state) { coaxial_zeron_demo(at(state)); }
+void zr_choose(void *state, int32_t which, int32_t index) { coaxial_zeron_choose(at(state), which, index); }
+int32_t zr_live(void *state) { return coaxial_zeron_live(at(state)) ? 1 : 0; }
+int32_t zr_take_action(void *state) { return (int32_t)coaxial_zeron_take_action(at(state)); }
+void zr_quit(void *state) { coaxial_zeron_quit(at(state)); }

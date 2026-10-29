@@ -272,6 +272,12 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     let want = zr_cursor(state)
     if want != cursorKind { cursorKind = want; cursorFor(want).set() }
     // a code block's Copy, pressed
+    // a notice's Log in or Install: Terminal runs it (the CLI's own sign-in, the install line)
+    switch zr_take_action(state) {
+    case 1: terminal("claude /login")
+    case 2: terminal("curl -fsSL https://claude.ai/install.sh | bash")
+    default: break
+    }
     let copied = Int(zr_take_copy(state, &copyBuffer, Int32(copyBuffer.count)))
     if copied > 0 {
       NSPasteboard.general.clearContents()
@@ -295,6 +301,25 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     cmd.commit()
   }
 
+  // The chat's engine: the user's own Claude Code in --cwd PATH (default the
+  // home folder), or Zeron's demo conversation with --demo; --model
+  // opus|sonnet|haiku, --effort low|medium|high|xhigh|max and --access
+  // full|edits|supervised preset the composer's chips.
+  func configure(_ args: [String]) {
+    func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
+    if args.contains("--demo") { zr_demo(state); return }
+    let cwd = value("--cwd").map { ($0 as NSString).expandingTildeInPath } ?? NSHomeDirectory()
+    Array(cwd.utf8).withUnsafeBufferPointer { zr_attach(state, $0.baseAddress, Int32($0.count)) }
+    for (flag, which, names) in [("--model", 1, ["opus", "sonnet", "haiku"]), ("--effort", 2, ["low", "medium", "high", "xhigh", "max"]),
+                                 ("--access", 3, ["full", "edits", "supervised"])] {
+      if let v = value(flag)?.lowercased(), let i = names.firstIndex(of: v) { zr_choose(state, Int32(which), Int32(i)) }
+    }
+  }
+  func terminal(_ command: String) {
+    let script = "tell application \"Terminal\"\nactivate\ndo script \"\(command.replacingOccurrences(of: "\"", with: "\\\""))\"\nend tell"
+    NSAppleScript(source: script)?.executeAndReturnError(nil)
+  }
+
   // --shot PATH [--size W,H] [--click X,Y] [--type TEXT] [--do STEPS] [--frames N]: draw offscreen at scale 2
   // (clicking at device pixel X,Y at frame 30, typing TEXT at frame 45), write the last frame as a PNG, quit.
   // --do runs STEPS, separated by " ; ", one every 4 frames from frame 50, through the same paths
@@ -309,6 +334,10 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   //   move X,Y        the pointer moving to device pixel X,Y (hover)
   //   fixture open|closed   the transcript as the Zeron capture opens it (transcript-fixture.rs)
   //   scroll PX       the transcript scrolled PX from its top    pasteboard  print the pasteboard
+  //   send TEXT       type TEXT into the composer and press Enter    stop  press Escape (stops a running turn)
+  //   model NAME      a chip's choice (also effort NAME, access NAME, as the flags take them)
+  //   wait SECS       let the frames run    waitidle [SECS]  until the running turn ends (at most SECS, 300)
+  // Without --frames the shot is taken 12 frames after the last step.
   func shot(_ path: String, width: Int, height: Int) {
     let args = CommandLine.arguments
     let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorPixelFormat, width: width, height: height, mipmapped: false)
@@ -316,9 +345,11 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     let target = device!.makeTexture(descriptor: d)!
     let pass = MTLRenderPassDescriptor()
     pass.colorAttachments[0].texture = target; pass.colorAttachments[0].storeAction = .store
-    var frames = 0
+    var frames = 0, next = 50, index = 0
+    var hold: (until: Double, idle: Bool)? = nil
+    var last = args.firstIndex(of: "--frames").flatMap { Int(args[$0 + 1]) } ?? Int.max
+    let fixed = last != Int.max
     let steps = args.firstIndex(of: "--do").map { i in i + 1 < args.count ? args[i + 1].components(separatedBy: " ; ") : [] } ?? []
-    let last = args.firstIndex(of: "--frames").flatMap { Int(args[$0 + 1]) } ?? max(60, 50 + steps.count * 4 + 12)
     Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { timer in
       frames += 1
       if frames == 30, let i = args.firstIndex(of: "--click"), i + 1 < args.count {
@@ -326,7 +357,12 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
         if xy.count == 2 { _ = zr_pointer(self.state, xy[0], xy[1], 0, 1, 0); _ = zr_pointer(self.state, xy[0], xy[1], 2, 1, 0) }
       }
       if frames == 45, let i = args.firstIndex(of: "--type"), i + 1 < args.count { self.typed(args[i + 1]) }
-      if frames >= 50 && (frames - 50) % 4 == 0 && (frames - 50) / 4 < steps.count { self.step(steps[(frames - 50) / 4]) }
+      if let h = hold {
+        if CACurrentMediaTime() >= h.until || (h.idle && zr_live(self.state) == 0) { hold = nil; next = frames + 4 }
+      } else if frames >= next && index < steps.count {
+        hold = self.step(steps[index]); index += 1; next = frames + 4
+      }
+      if !fixed && last == Int.max && index >= steps.count && hold == nil { last = max(60, frames + 12) }
       self.render(pass, size: CGSize(width: width, height: height), dpr: 2) { cmd in
         guard frames == last else { return }
         timer.invalidate()
@@ -338,15 +374,15 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
                               bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
             let rep = NSBitmapImageRep(cgImage: g.makeImage()!)
             try? rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))
-            exit(0)
+            zr_quit(self.state); exit(0)
           }
         }
       }
     }
   }
-  func step(_ line: String) {
+  @discardableResult func step(_ line: String) -> (until: Double, idle: Bool)? {
     let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
-    guard let verb = parts.first else { return }
+    guard let verb = parts.first else { return nil }
     let arg = parts.count > 1 ? parts[1] : ""
     let nums = arg.split(separator: ",").compactMap { Float($0) }
     switch verb {
@@ -362,6 +398,13 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     case "wheel" where nums.count == 1: _ = zr_wheel(state, nums[0])
     case "move" where nums.count == 2: _ = zr_pointer(state, nums[0], nums[1], 1, 1, 0)
     case "fixture": zr_fixture(state, arg == "closed" ? 0 : 1)
+    case "send": typed(arg); _ = zr_key(state, -2, 0)
+    case "stop": _ = zr_key(state, -1, 0)
+    case "model", "effort", "access":
+      let names = ["model": ["opus", "sonnet", "haiku"], "effort": ["low", "medium", "high", "xhigh", "max"], "access": ["full", "edits", "supervised"]][verb]!
+      if let i = names.firstIndex(of: arg.lowercased()) { zr_choose(state, verb == "model" ? 1 : verb == "effort" ? 2 : 3, Int32(i)) }
+    case "wait" where nums.count == 1: return (CACurrentMediaTime() + Double(nums[0]), false)
+    case "waitidle": return (CACurrentMediaTime() + Double(nums.first ?? 300), true)
     case "scroll" where nums.count == 1: zr_scroll_to(state, nums[0])
     case "pasteboard": print("pasteboard: \(NSPasteboard.general.string(forType: .string) ?? "")")
     case "key":
@@ -398,6 +441,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
       }
     default: print("unknown step: \(line)")
     }
+    return nil
   }
   static let named: [UInt16: Int32] = [53: -1, 36: -2, 76: -2, 51: -3, 123: -4, 124: -5, 126: -6, 125: -7, 115: -8, 119: -9, 116: -10, 121: -11, 117: -12]
   static let keyCodes: [String: Int] = ["a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14,

@@ -66,10 +66,13 @@ FONT_WEIGHTS :: [9] int.[0, 1, 0, 2, 3, 3, 3, 3, 0];
 ICON_PAPERCLIP :: 0; ICON_ARROW_UP :: 1; ICON_CLAUDE :: 2;
 ICON_CHEVRON :: 3; ICON_TERMINAL :: 4; ICON_DOCUMENT :: 5; ICON_PEN :: 6; ICON_MAGNIFER :: 7;
 ICON_GLOBAL :: 8; ICON_THOUGHT :: 9; ICON_COPY :: 10; ICON_WRAP :: 11; ICON_RUST :: 12; ICON_CHEVRON_RIGHT :: 13;
-ICON_COUNT :: 14;
-ICON_NAMES :: [14] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
-                           "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right"];
-ICON_SIZES :: [14] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14];
+ICON_DOCUMENT_ADD :: 14; ICON_FOLDER :: 15; ICON_CHECKLIST :: 16; ICON_BOT :: 17; ICON_WIDGET :: 18;
+ICON_DANGER :: 19; ICON_STOP :: 20;
+ICON_COUNT :: 21;
+ICON_NAMES :: [21] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
+                           "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right",
+                           "document-add", "folder-with-files", "checklist", "bot", "widget", "danger-triangle", "stop"];
+ICON_SIZES :: [21] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11];
 
 COMPOSER_TEXT :: 8000;
 COMPOSER_LINES :: 1024;
@@ -135,6 +138,39 @@ Composer :: struct {
   docked: bool;                 // under a chat's transcript (the chat's model chip)
   compact: bool;                // docked, in its one-row form this frame
   last: [COMPOSER_TEXT] u8; last_n: int;           // what Enter last sent
+  // The chat it drives (screen.coax sets these): the chips' labels ("" for
+  // the defaults above), and whether a run is live (Send becomes Stop).
+  model_label: string; effort_label: string; access_label: string;
+  running: bool;
+  // Where the actions were last drawn (logical px), for presses: CH_SEND,
+  // CH_MODEL, CH_EFFORT, CH_ACCESS; and the one a press hit, until the
+  // screen takes it (-1 for none).
+  chip_x: [4] f32; chip_w: [4] f32; chip_y: [4] f32; chip_h: [4] f32;
+  clicked: int = -1;
+}
+CH_SEND :: 0; CH_MODEL :: 1; CH_EFFORT :: 2; CH_ACCESS :: 3;
+chip_at :: (c: [] Composer, k: int, x: f32, y: f32, w: f32, h: f32) { c[0].chip_x[k] = x; c[0].chip_y[k] = y; c[0].chip_w[k] = w; c[0].chip_h[k] = h; }
+// The action under a logical point, or -1.
+composer_chip_hit :: (c: [] Composer, x: f32, y: f32) -> int {
+  for k: 0..<4 {
+    if c[0].chip_w[k] > 0 && x >= c[0].chip_x[k] && x < c[0].chip_x[k] + c[0].chip_w[k] && y >= c[0].chip_y[k] && y < c[0].chip_y[k] + c[0].chip_h[k] { return k; }
+  }
+  return -1;
+}
+model_label_of :: (c: [] Composer) -> string { return ifx c[0].model_label.count > 0 then c[0].model_label else ifx c[0].docked then CHAT_MODEL_LABEL else MODEL_LABEL; }
+effort_label_of :: (c: [] Composer) -> string { return ifx c[0].effort_label.count > 0 then c[0].effort_label else EFFORT_LABEL; }
+access_label_of :: (c: [] Composer) -> string { return ifx c[0].access_label.count > 0 then c[0].access_label else ACCESS_LABEL; }
+// Send, or Stop while a run is live and nothing is typed (composer.rs
+// SendButtonMode: Stop is the text-colored circle holding an 11px square
+// in the background color, radius 3; with text typed it still sends, and
+// the CLI queues the message behind the run).
+paint_send :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme, d: f32, send_x: f32, row_mid: f32) -> int {
+  chip_at(c, CH_SEND, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE);
+  v := paint_quad(out, at, d, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, SEND_SIZE / 2, 0, th.text, th.text);
+  if c[0].running && c[0].n == 0 {
+    return paint_quad(out, v, d, send_x + (SEND_SIZE - 11) / 2, row_mid - 11.0 / 2, 11, 11, 3, 0, th.bg, th.bg);
+  }
+  return paint_icon(out, v, a, d, ICON_ARROW_UP, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, th.bg);
 }
 
 typed :: (c: [] Composer) -> string { return cast(string) c[0].text[0..<c[0].n]; }
@@ -640,6 +676,9 @@ composer_press :: (c: [] Composer, a: [] Atlas, x: f32, y: f32, clicks: int, shi
   inside := x >= c[0].x && x < c[0].x + c[0].w && y >= c[0].y && y < c[0].y + c[0].h;
   c[0].focused = inside;
   c[0].selecting = false;
+  // Send (or Stop) and the chips: the screen acts on them
+  hit := ifx inside then composer_chip_hit(c, x, y) else -1;
+  if hit >= 0 { c[0].clicked = hit; return true; }
   if !inside || !a[0].ready { return inside; }
   if c[0].marked { composer_unmark(c); }
   intent := ifx clicks >= 3 then PRESS_LINE else ifx clicks == 2 then PRESS_WORD else ifx shift then PRESS_EXTEND else PRESS_CARET;
@@ -798,11 +837,11 @@ paint_composer :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme,
   row_mid := y + h - 1 - ACTIONS_BOTTOM_PAD - CHIP_HEIGHT / 2;
   v = paint_icon(out, v, a, d, ICON_PAPERCLIP, x + 1 + ACTION_INSET, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, th.muted);
   send_x := x + w - 1 - ACTION_INSET - SEND_SIZE;
-  v = paint_quad(out, v, d, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, SEND_SIZE / 2, 0, th.text, th.text);
-  v = paint_icon(out, v, a, d, ICON_ARROW_UP, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, th.bg);
-  if c[0].docked { return paint_chat_chip(out, v, a, th, d, send_x, row_mid); }
+  v = paint_send(out, v, c, a, th, d, send_x, row_mid);
+  if c[0].docked { return paint_chat_chip(out, v, c, a, th, d, send_x, row_mid); }
   // the model chip: brand mark, the model in the text tone at 0.9, the effort muted at 0.7
-  model_w := 2 * MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP + chip_label_width(a, MODEL_LABEL) + CHIP_GAP + chip_label_width(a, EFFORT_LABEL);
+  ml := model_label_of(c); el := effort_label_of(c); al := access_label_of(c);
+  model_w := 2 * MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP + chip_label_width(a, ml) + CHIP_GAP + chip_label_width(a, el);
   mx := send_x - ACTION_PRIMARY_GAP - model_w;
   chip_top := row_mid - CHIP_HEIGHT / 2;
   clh: f32 = CHIP_TEXT_SIZE * 1.618034;   // GPUI's default line height, phi
@@ -810,35 +849,56 @@ paint_composer :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme,
   cly := row_mid - CHIP_HEIGHT / 2 + round_half_toward_zero((CHIP_HEIGHT - clh) / 2);   // centered in the chip, rounded within it
   v = paint_icon(out, v, a, d, ICON_CLAUDE, mx + MODEL_CHIP_PAD, chip_top + (CHIP_HEIGHT - CHIP_ICON) / 2, CHIP_ICON, CHIP_ICON, th.claude);
   lx := mx + MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP;
-  v = paint_text(out, v, a, d, FONT_CHIP, MODEL_LABEL, lx, cly, clh, opacity(th.text, 0.9));
-  v = paint_text(out, v, a, d, FONT_CHIP, EFFORT_LABEL, lx + chip_label_width(a, MODEL_LABEL) + CHIP_GAP, cly, clh, opacity(th.muted, 0.7));
+  v = paint_text(out, v, a, d, FONT_CHIP, ml, lx, cly, clh, opacity(th.text, 0.9));
+  ex := lx + chip_label_width(a, ml) + CHIP_GAP;
+  v = paint_text(out, v, a, d, FONT_CHIP, el, ex, cly, clh, opacity(th.muted, 0.7));
+  // the model's part of the chip (the mark and the name) and the effort's
+  chip_at(c, CH_MODEL, mx, chip_top, ex - CHIP_GAP / 2 - mx, CHIP_HEIGHT);
+  chip_at(c, CH_EFFORT, ex - CHIP_GAP / 2, chip_top, mx + model_w - (ex - CHIP_GAP / 2), CHIP_HEIGHT);
   // Full access: a chip without an icon, muted while it is full access
-  access_w := 2 * CHIP_PAD + text_width(a, FONT_CHIP, ACCESS_LABEL);
+  access_w := 2 * CHIP_PAD + text_width(a, FONT_CHIP, al);
   ax := round_half_toward_zero(mx - PICKERS_GAP - access_w);
-  v = paint_text(out, v, a, d, FONT_CHIP, ACCESS_LABEL, ax + CHIP_PAD, cly, clh, th.muted);
+  v = paint_text(out, v, a, d, FONT_CHIP, al, ax + CHIP_PAD, cly, clh, th.muted);
+  chip_at(c, CH_ACCESS, ax, chip_top, access_w, CHIP_HEIGHT);
   return v;
 }
 
 // A chat's model chip left of Send: the Claude mark and the model, no effort
 // and no access chip (the chat runs workspace-write).
-chat_chip_width :: (a: [] Atlas) -> f32 { return 2 * MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP + chip_label_width(a, CHAT_MODEL_LABEL); }
-paint_chat_chip :: (out: [] f32, at: int, a: [] Atlas, th: Theme, d: f32, send_x: f32, row_mid: f32) -> int {
-  mx := send_x - ACTION_PRIMARY_GAP - chat_chip_width(a);
+// With the chat's labels set, the effort follows the model, muted, as the
+// new-chat chip shows it, so the chip still changes both mid-chat.
+chat_chip_width :: (c: [] Composer, a: [] Atlas) -> f32 {
+  w := 2 * MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP + chip_label_width(a, model_label_of(c));
+  if c[0].effort_label.count > 0 { w += CHIP_GAP + chip_label_width(a, c[0].effort_label); }
+  return w;
+}
+paint_chat_chip :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme, d: f32, send_x: f32, row_mid: f32) -> int {
+  cw := chat_chip_width(c, a);
+  mx := send_x - ACTION_PRIMARY_GAP - cw;
   clh: f32 = CHIP_TEXT_SIZE * 1.618034;
   cly := row_mid - CHIP_HEIGHT / 2 + round_half_toward_zero((CHIP_HEIGHT - clh) / 2);   // centered in the chip, rounded within it
   v := paint_icon(out, at, a, d, ICON_CLAUDE, mx + MODEL_CHIP_PAD, row_mid - CHIP_ICON / 2, CHIP_ICON, CHIP_ICON, th.claude);
-  return paint_text(out, v, a, d, FONT_CHIP, CHAT_MODEL_LABEL, mx + MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP, cly, clh, opacity(th.text, 0.9));
+  ml := model_label_of(c);
+  lx := mx + MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP;
+  v = paint_text(out, v, a, d, FONT_CHIP, ml, lx, cly, clh, opacity(th.text, 0.9));
+  ex := lx + chip_label_width(a, ml) + CHIP_GAP;
+  chip_at(c, CH_ACCESS, 0, 0, 0, 0);
+  if c[0].effort_label.count == 0 { chip_at(c, CH_MODEL, mx, row_mid - CHIP_HEIGHT / 2, cw, CHIP_HEIGHT); chip_at(c, CH_EFFORT, 0, 0, 0, 0); return v; }
+  v = paint_text(out, v, a, d, FONT_CHIP, c[0].effort_label, ex, cly, clh, opacity(th.muted, 0.7));
+  chip_at(c, CH_MODEL, mx, row_mid - CHIP_HEIGHT / 2, ex - CHIP_GAP / 2 - mx, CHIP_HEIGHT);
+  chip_at(c, CH_EFFORT, ex - CHIP_GAP / 2, row_mid - CHIP_HEIGHT / 2, mx + cw - (ex - CHIP_GAP / 2), CHIP_HEIGHT);
+  return v;
 }
 
 // The docked composer's text width in its one-row form (between the
 // paperclip and the model chip), and whether the text fits it there.
-compact_text_width :: (a: [] Atlas, w: f32) -> f32 {
-  return w - 2 - COMPACT_INSET - SEND_SIZE - 2 * COMPACT_TEXT_PAD - chat_chip_width(a) - ACTION_PRIMARY_GAP - SEND_SIZE - COMPACT_INSET;
+compact_text_width :: (c: [] Composer, a: [] Atlas, w: f32) -> f32 {
+  return w - 2 - COMPACT_INSET - SEND_SIZE - 2 * COMPACT_TEXT_PAD - chat_chip_width(c, a) - ACTION_PRIMARY_GAP - SEND_SIZE - COMPACT_INSET;
 }
 composer_fits_compact :: (c: [] Composer, a: [] Atlas, w: f32) -> bool {
   t := typed(c);
   for k: 0..<t.count { if t[k] == '\n' { return false; } }
-  return text_width(a, FONT_INPUT, t) <= compact_text_width(a, w);
+  return text_width(a, FONT_INPUT, t) <= compact_text_width(c, a, w);
 }
 // The docked composer's height at width w.
 docked_height :: (c: [] Composer, a: [] Atlas, w: f32) -> f32 {
@@ -861,7 +921,7 @@ paint_composer_docked :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th:
   }
   c[0].compact = true;
   h: f32 = COMPACT_TOTAL_HEIGHT; y := bottom - h;
-  text_w := compact_text_width(a, w);
+  text_w := compact_text_width(c, a, w);
   left := x + 1 + COMPACT_INSET + SEND_SIZE + COMPACT_TEXT_PAD;
   lh: f32 = INPUT_LINE_HEIGHT;
   top := y + 1 + (h - PILL_BORDER_V - lh) / 2;
@@ -890,9 +950,8 @@ paint_composer_docked :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th:
   row_mid := y + h - 1 - (h - PILL_BORDER_V) / 2;
   v = paint_icon(out, v, a, d, ICON_PAPERCLIP, x + 1 + COMPACT_INSET, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, th.muted);
   send_x := x + w - 1 - COMPACT_INSET - SEND_SIZE;
-  v = paint_quad(out, v, d, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, SEND_SIZE / 2, 0, th.text, th.text);
-  v = paint_icon(out, v, a, d, ICON_ARROW_UP, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, th.bg);
-  return paint_chat_chip(out, v, a, th, d, send_x, row_mid);
+  v = paint_send(out, v, c, a, th, d, send_x, row_mid);
+  return paint_chat_chip(out, v, c, a, th, d, send_x, row_mid);
 }
 
 // ---------------------------------------------------------------- checks

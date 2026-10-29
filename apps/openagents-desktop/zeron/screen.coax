@@ -1,18 +1,31 @@
-// The Mac app's chat screen, the first piece of the Zeron-fork UI
-// (docs/desktop/coax-desktop.md): Zeron Dark's canvas with a chat's
-// transcript (transcript.coax, Zeron's demo conversation, connected to
-// nothing) in the 736px column and the composer docked under it as Zeron
-// docks it in a chat. The host (Sources/Zeron.swift, through zeron-face.c)
-// builds the atlas from the fonts and icons listed here, then each frame
-// asks for the vertices. Based on Zeron by Wing, MIT.
+// The Mac app's chat screen, the Zeron-fork UI (docs/desktop/coax-desktop.md):
+// Zeron Dark's canvas, opening on Zeron's empty new chat (its composer, the
+// new-chat form, alone in the middle). A sent message starts the chat: the
+// user's own Claude Code answers it (claude.coax), streaming into the
+// transcript (transcript.coax) in the 736px column, the composer docked
+// under it as Zeron docks it in a chat. The composer's chips pick the model
+// and effort and the access (each click takes the next: Zeron opens a menu
+// there), Send turns into Stop while the turn runs, and Stop or Escape
+// interrupts it. Zeron's demo conversation stays as a fixture (--demo, and
+// the transcript-fixture capture's `fixture` step). The host
+// (Sources/Zeron.swift, through zeron-face.c) builds the atlas from the
+// fonts and icons listed here, gives the engine its buffers and working
+// folder, then each frame asks for the vertices. Based on Zeron by Wing, MIT.
 
-#load "transcript.coax";
+#load "claude.coax";
 
 ZR_MAX_VERTICES :: 200000;
 ZR_COLUMN_PAD :: 16.0;
 // The docked composer's bottom margin (Zeron's composer stack: the pill,
 // then 40px under it) and the status strip above it.
 ZR_DOCK_BOTTOM :: 40.0;
+// Where Zeron's new-chat composer sits: (viewport - height) / 2, less this
+// (measured from Zeron at 1320x880: the pill's top at 368).
+ZR_HERO_LIFT :: 12.0;
+// The coalescing of a streaming turn's redraws of the transcript (seconds).
+ZR_COALESCE :: 0.12;
+// What the host is asked to do (coaxial_zeron_take_action).
+HOST_NONE :: 0; HOST_LOGIN :: 1; HOST_INSTALL :: 2;
 
 ZeronState :: struct {
   ready: bool;
@@ -25,6 +38,46 @@ ZeronState :: struct {
   lx: f32; ly: f32;              // the pointer (logical px)
   cursor: int;                   // 0 arrow, 1 I-beam, 2 pointing hand
   on_composer: bool;             // the press went to the composer
+  // the chat
+  session: [1] Session;
+  engine: [1] Engine;
+  ui: [1] SUi;
+  demo: bool;                    // Zeron's demo conversation instead of a chat
+  since_build: f32;              // seconds since the transcript was rebuilt
+  host_action: int;              // HOST_*, until the host takes it
+  own_pool: [4096] u8;           // the conversation's text until the host attaches its pool
+}
+
+zr_labels :: (s: [] ZeronState) {
+  c := s[0].composer[..]; e := s[0].engine[..];
+  models := MODEL_NAMES; efforts := EFFORT_NAMES; access := ACCESS_NAMES;
+  // the demo keeps the capture's chip (the chat's model id, nothing else)
+  if s[0].demo { c[0].model_label = ""; c[0].effort_label = ""; c[0].access_label = ""; return; }
+  c[0].model_label = models[e[0].model]; c[0].effort_label = efforts[e[0].effort]; c[0].access_label = access[e[0].access];
+}
+// The demo conversation, as the transcript-fixture capture opens it.
+zr_demo :: (s: [] ZeronState) {
+  if s[0].demo { return; }
+  s[0].demo = true;
+  t := s[0].transcript[..];
+  t_reset(t);
+  t[0].working = false;
+  t_demo(t);
+  s[0].composer[0].docked = true;
+  zr_labels(s);
+}
+// Whether the screen shows Zeron's empty new chat (no message yet).
+zr_empty :: (s: [] ZeronState) -> bool { return !s[0].demo && s[0].session[0].n == 0; }
+// A chip or Send pressed in the composer.
+zr_chip :: (s: [] ZeronState, which: int) {
+  c := s[0].composer[..]; e := s[0].engine[..]; ss := s[0].session[..];
+  if which == CH_SEND {
+    if ss[0].live && c[0].n == 0 { e_stop(e, ss); } else { composer_submit(c); }
+  }
+  else if which == CH_MODEL { e_set_model(e, (e[0].model + 1) % 3); }
+  else if which == CH_EFFORT { e[0].effort = (e[0].effort + 1) % 5; }
+  else if which == CH_ACCESS { e_set_access(e, (e[0].access + 1) % 3); }
+  zr_labels(s);
 }
 
 // The composer's box this frame, and whether a point is over it.
@@ -50,18 +103,50 @@ zr_update_cursor :: (s: [] ZeronState) {
 }
 
 zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int {
-  t := s[0].transcript[..];
+  t := s[0].transcript[..]; c := s[0].composer[..]; e := s[0].engine[..]; ss := s[0].session[..];
   if !s[0].ready {
-    s[0].ready = true; s[0].composer[0].focused = true; s[0].composer[0].docked = true;
+    s[0].ready = true; c[0].focused = true; c[0].clicked = -1;
     s[0].want_scroll = -1;
-    t_demo(t);
+    if ss[0].pool.count == 0 { s_init(ss, s[0].own_pool[..]); }
+    ss[0].asking = -1;
+    e[0].effort = 2;   // High, Zeron's default
+    t[0].seed = 1;
+    zr_labels(s);
   }
   d := ifx dpr < 1 then 1.0f32 else dpr;
   s[0].width = width; s[0].height = height; s[0].d = d;
   dt1 := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
-  s[0].composer[0].since += dt1;
-  s[0].composer[0].clock += dt1;
+  c[0].since += dt1;
+  c[0].clock += dt1;
   s[0].atlas[0].frame += 1;
+  // the engine: what Claude Code wrote since the last frame
+  e_pump(e, ss);
+  // Send, Stop and the chips
+  if c[0].clicked >= 0 { k := c[0].clicked; c[0].clicked = -1; zr_chip(s, k); }
+  // a sent message joins the transcript as the user's bubble (and goes to Claude Code), and the view follows it
+  if c[0].sent != s[0].seen_sent {
+    s[0].seen_sent = c[0].sent;
+    text := cast(string) c[0].last[0..<c[0].last_n];
+    if s[0].demo { t_user(t, t_pool(t, text)); }
+    else { e_send(e, ss, text); s[0].since_build = ZR_COALESCE; }
+    t[0].pinned = true;
+  }
+  // a notice's buttons
+  if t[0].action != A_NONE {
+    if t[0].action == A_ALLOW || t[0].action == A_DENY { e_answer(e, ss, t[0].action == A_ALLOW); }
+    else { s[0].host_action = ifx t[0].action == A_INSTALL then HOST_INSTALL else HOST_LOGIN; }
+    t[0].action = A_NONE;
+  }
+  // the transcript follows the session, its redraws coalesced while a turn streams
+  if ss[0].live { ss[0].secs += dt1; }
+  s[0].since_build += dt1;
+  if !s[0].demo && ss[0].changed && (s[0].since_build >= ZR_COALESCE || !ss[0].live) {
+    s_build(ss, s[0].ui[..], t);
+    s[0].since_build = 0;
+  }
+  t[0].working = ss[0].live && !s[0].demo;
+  t[0].work_secs = ss[0].secs; t[0].spin += dt1;
+  c[0].running = ss[0].live && !s[0].demo;
   th := zeron_dark();
   w := width / d; h := height / d;
   v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, th.shell, th.shell);
@@ -69,17 +154,22 @@ zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, d
   column := ifx w < COMPOSER_MAX_WIDTH then w else COMPOSER_MAX_WIDTH;
   cw := column - 2 * ZR_COLUMN_PAD;
   x := round_layout((w - cw) / 2);
-  // a sent message joins the transcript as the user's bubble, and the view follows it
-  c := s[0].composer[..];
-  if c[0].sent != s[0].seen_sent {
-    s[0].seen_sent = c[0].sent;
-    t_user(t, t_pool(t, cast(string) c[0].last[0..<c[0].last_n]));
-    t[0].pinned = true;
+  if zr_empty(s) {
+    // Zeron's new chat: the expanded composer, centered a little high
+    c[0].docked = false;
+    composer_wrap(c, s[0].atlas[..], cw - 34);
+    y := round_layout((h - composer_height(c[0].lines)) / 2 - ZR_HERO_LIFT);
+    t[0].nr = 0; t[0].nbox = 0; t[0].ntext = 0; t[0].nsel = 0; t[0].nhit = 0;
+    v = paint_composer(out, v, c, s[0].atlas[..], th, d, x, y, cw);
+    zr_update_cursor(s);
+    return v;
   }
   ch := docked_height(c, s[0].atlas[..], cw);
   stack := STATUS_STRIP_HEIGHT + ch + ZR_DOCK_BOTTOM;
   t[0].view_h = h;
   t_layout(t, s[0].atlas[..], th, x, cw, stack + TRANSCRIPT_FADE_BAND + SPACE_SM);
+  // a chat longer than the transcript holds starts at a later turn
+  if !s[0].demo && s_overflowed(t) && s_drop_turn(ss, s[0].ui[..]) { ss[0].changed = true; }
   if s[0].want_scroll >= 0 { t_scroll_to(t, s[0].want_scroll); s[0].want_scroll = -1; }
   t_clamp(t);
   v = t_paint(out, v, t, s[0].atlas[..], th, d, h, stack - STATUS_STRIP_HEIGHT);
@@ -136,6 +226,8 @@ coaxial_zeron_wheel :: (s: [] ZeronState, dy: f32) -> bool #export_c {
 }
 coaxial_zeron_key :: (s: [] ZeronState, key_code: int, mods: int) -> bool #export_c {
   if s.count < 1 { return false; }
+  // Escape stops a running turn (Enter never does: it sends, and the CLI queues it)
+  if key_code == KEY_ESCAPE && mods == 0 && s[0].session[0].live && !s[0].demo { e_stop(s[0].engine[..], s[0].session[..]); return true; }
   return composer_key(s[0].composer[..], s[0].atlas[..], key_code, mods);
 }
 // Typing: text with no range (replaces the selection or the composition).
@@ -184,6 +276,14 @@ coaxial_zeron_can_cut :: (s: [] ZeronState) -> bool #export_c { return s.count >
 coaxial_zeron_take_copy :: (s: [] ZeronState, out: [] u8) -> int #export_c {
   if s.count < 1 { return 0; }
   t := s[0].transcript[..];
+  // a notice's copy: its message
+  if t[0].copy_notice > 0 {
+    msg := t[0].notices[t[0].copy_notice - 1].text;
+    t[0].copy_notice = 0;
+    if msg.count > out.count { return 0; }
+    for k: 0..<msg.count { out[k] = msg[k]; }
+    return msg.count;
+  }
   b := t[0].copy_code - 1;
   if b < 0 { return 0; }
   code := md_block_text(t[0].md[..], b);
@@ -197,10 +297,46 @@ coaxial_zeron_take_copy :: (s: [] ZeronState, out: [] u8) -> int #export_c {
 // second group), or all closed again; and a scroll from the top in px.
 coaxial_zeron_fixture :: (s: [] ZeronState, open: bool) #export_c {
   if s.count < 1 { return; }
+  zr_demo(s);
   t := s[0].transcript[..];
   for g: 0..<t[0].ng { t_set_open(t, g, -1, open); for k: 0..<t[0].groups[g].tools { t_set_open(t, g, k, false); } }
   if open { t_set_open(t, 0, 0, true); t_set_open(t, 0, 3, true); t_set_open(t, 0, 4, true); t_set_open(t, 1, 0, true); }
 }
+// The engine's buffers (the host allocates them: a conversation's text, a
+// stdout line, its decoded strings, the frames owed to the CLI, the
+// argument list) and the folder Claude Code works in. Without them (the
+// checks here) a sent message only joins the transcript.
+coaxial_zeron_attach :: (s: [] ZeronState, pool: [] u8, line: [] u8, arena: [] u8, out: [] u8, scratch: [] u8, cwd: string) #export_c {
+  if s.count < 1 { return; }
+  e := s[0].engine[..];
+  s_init(s[0].session[..], pool);
+  e[0].line = line; e[0].arena = arena; e[0].out = out; e[0].scratch = scratch;
+  e[0].p[0].handle = -1; e[0].probe = -1; e[0].pend = -1;
+  e[0].cwd_n = e_set(e[0].cwd[..], 0, cwd);
+  e[0].on = true;
+  e_probe_start(e);
+}
+// The demo conversation (--demo).
+coaxial_zeron_demo :: (s: [] ZeronState) #export_c { if s.count > 0 { zr_demo(s); } }
+// Picks a chip's choice: which 1 model (0 Opus, 1 Sonnet, 2 Haiku), 2 effort (0 Low .. 4 Max), 3 access (0 Full access, 1 Auto-accept edits, 2 Supervised).
+coaxial_zeron_choose :: (s: [] ZeronState, which: int, index: int) #export_c {
+  if s.count < 1 || index < 0 { return; }
+  e := s[0].engine[..];
+  if which == CH_MODEL && index < 3 { e_set_model(e, index); }
+  if which == CH_EFFORT && index < 5 { e[0].effort = index; }
+  if which == CH_ACCESS && index < 3 { e_set_access(e, index); }
+  zr_labels(s);
+}
+// Whether a turn is running (the --shot steps wait on it).
+coaxial_zeron_live :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && s[0].session[0].live; }
+// What the host should do for a notice's button (HOST_LOGIN: Terminal running `claude /login`; HOST_INSTALL: the install line), once.
+coaxial_zeron_take_action :: (s: [] ZeronState) -> int #export_c {
+  if s.count < 1 { return 0; }
+  a := s[0].host_action; s[0].host_action = HOST_NONE;
+  return a;
+}
+// The app is quitting: Claude Code's process group goes with it.
+coaxial_zeron_quit :: (s: [] ZeronState) #export_c { if s.count > 0 && s[0].engine[0].on { e_close(s[0].engine[..]); } }
 coaxial_zeron_scroll_to :: (s: [] ZeronState, px: f32) #export_c { if s.count > 0 { s[0].want_scroll = ifx px < 0 then 0.0f32 else px; } }
 coaxial_zeron_cut :: (s: [] ZeronState) #export_c { if s.count > 0 { composer_cut_selection(s[0].composer[..]); } }
 coaxial_zeron_paste :: (s: [] ZeronState, text: string) #export_c {
@@ -365,9 +501,45 @@ zr_test_screen :: (s: [] ZeronState) {
   coaxial_zeron_set_atlas(s, 8192, 2048);
 }
 
-#test "the screen opens on the demo chat, the composer docked and focused under it" {
+#test "the screen opens on Zeron's empty new chat; a sent message starts the chat, the composer docked under it" {
   s: [1] ZeronState;
   zr_test_screen(s[..]);
+  out: [200000] f32;
+  n := coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  c := s[0].composer[..]; t := s[0].transcript[..];
+  #assert n > 100 && coaxial_zeron_wants_text(s[..]) && !c[0].docked && !c[0].compact && t[0].nr == 0;
+  #assert c[0].x == 292 && c[0].w == 736 && c[0].y == round_layout((880 - c[0].h) / 2 - 12);
+  #assert c[0].model_label == "Opus 5.5" && c[0].effort_label == "High" && c[0].access_label == "Full access";
+  // a chip press takes its next choice: the model, the effort, the access
+  for k: 1..<4 {
+    px := (c[0].chip_x[k] + 3) * 2; py := (c[0].chip_y[k] + 3) * 2;
+    #assert coaxial_zeron_pointer(s[..], px, py, 0, 1, 0);
+    #assert !coaxial_zeron_pointer(s[..], px, py, 2, 1, 0);
+    n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  }
+  #assert c[0].model_label == "Sonnet 5.5" && c[0].effort_label == "X-High" && c[0].access_label == "Auto-accept edits";
+  coaxial_zeron_choose(s[..], CH_MODEL, 2);
+  #assert s[0].engine[0].model == 2 && c[0].model_label == "Haiku 5.5";
+  coaxial_zeron_text(s[..], "hi");
+  #assert c[0].n == 2 && coaxial_zeron_key(s[..], -3, 0) && c[0].n == 1;
+  // Enter sends: the message joins the transcript as a bubble, the turn runs
+  #assert coaxial_zeron_key(s[..], -2, 0) && c[0].n == 0;
+  n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  #assert t[0].nr == 1 && t[0].rows[0].kind == R_USER && t[0].rows[0].text == "h";
+  #assert c[0].docked && c[0].compact && c[0].running && t[0].working && coaxial_zeron_live(s[..]);
+  #assert c[0].h == 49 && c[0].y == 880 - 40 - 49;
+  // Send is Stop now: pressing it stops the turn, and the transcript says so
+  sx := (c[0].chip_x[CH_SEND] + 14) * 2; sy := (c[0].chip_y[CH_SEND] + 14) * 2;
+  #assert coaxial_zeron_pointer(s[..], sx, sy, 0, 1, 0);
+  n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  #assert !coaxial_zeron_live(s[..]) && !c[0].running && t[0].nr == 2 && t[0].rows[1].kind == R_NOTICE;
+  #assert t[0].notices[t[0].rows[1].notice].kind == N_STOPPED;
+}
+
+#test "--demo opens Zeron's demo chat, the composer docked and focused under it" {
+  s: [1] ZeronState;
+  zr_test_screen(s[..]);
+  coaxial_zeron_demo(s[..]);
   out: [200000] f32;
   n := coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
   #assert n > 600 && coaxial_zeron_wants_text(s[..]);
@@ -377,16 +549,15 @@ zr_test_screen :: (s: [] ZeronState) {
   // short content sits at the bottom, clear of the composer's stack
   #assert t[0].offset > 0 && t[0].content_h + t[0].offset == 880;
   coaxial_zeron_text(s[..], "hi");
-  #assert c[0].n == 2 && coaxial_zeron_key(s[..], -3, 0) && c[0].n == 1;
-  // Enter sends: the message joins the transcript as a bubble
   #assert coaxial_zeron_key(s[..], -2, 0) && c[0].n == 0;
   n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
-  #assert t[0].nr == 10 && t[0].rows[9].kind == R_USER && t[0].rows[9].text == "h";
+  #assert t[0].nr == 10 && t[0].rows[9].kind == R_USER && t[0].rows[9].text == "hi" && !coaxial_zeron_live(s[..]);
 }
 
 #test "the pointer opens a group, selects transcript text for Copy; the wheel scrolls" {
   s: [1] ZeronState;
   zr_test_screen(s[..]);
+  coaxial_zeron_demo(s[..]);
   out: [200000] f32;
   n := coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
   t := s[0].transcript[..];

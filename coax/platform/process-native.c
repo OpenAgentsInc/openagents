@@ -228,6 +228,7 @@ int64_t cxproc_read_line(int64_t h, int64_t timeout_ms) {
     p->buf.count -= p->scan; p->scan = 0;
   }
   int64_t deadline = timeout_ms < 0 ? -1 : cxproc_now_ms() + timeout_ms;
+  int polled = 0; /* a 0 timeout still takes what the pipe already holds */
   for (;;) {
     if (find_line(p)) {
       if (p->skipping) {
@@ -250,12 +251,13 @@ int64_t cxproc_read_line(int64_t h, int64_t timeout_ms) {
     int wait = -1;
     if (deadline >= 0) {
       int64_t left = deadline - cxproc_now_ms();
-      if (left <= 0) return CXPROC_TIMEOUT;
-      wait = left > 1000000 ? 1000000 : (int)left;
+      if (left <= 0 && polled) return CXPROC_TIMEOUT;
+      wait = left <= 0 ? 0 : left > 1000000 ? 1000000 : (int)left;
     }
+    polled = 1;
     int r = poll(fds, p->err >= 0 ? 2 : 1, wait);
     if (r < 0) { if (errno == EINTR) continue; return CXPROC_ERROR; }
-    if (r == 0) continue;
+    if (r == 0) { if (wait == 0) return CXPROC_TIMEOUT; continue; }
     if (p->err >= 0 && (fds[1].revents & (POLLIN | POLLHUP | POLLERR))) drain_stderr(p);
     if (fds[0].revents & (POLLIN | POLLHUP | POLLERR)) {
       char d[65536];

@@ -156,6 +156,14 @@ foreign procedure, so strings cross one byte per call):
   `Bash` (`touch smoke-denied.txt`), the result counted one permission
   denial, and the file was not made.
 
+- `cl_poll(q, p, timeout_ms)` is `cl_next` for a host that must not block
+  (the desktop app's frame loop): it writes what is queued, then returns a
+  line if one arrives within the timeout (0 takes only what is already
+  there), or an `idle` event. A control request still times out after
+  `control_timeout_ms`, counted across calls. `options.effort`
+  (`--effort`) and `options.thinking_display` (`--thinking-display`) map
+  the CLI's flags.
+
 ## Deferred
 
 - Everything the crate lists as deferred in its own PARITY.md.
@@ -171,7 +179,7 @@ foreign procedure, so strings cross one byte per call):
 - One callback per hook matcher; `decisionClassification` and `toolUseID`
   are not set on permission answers.
 - Options not mapped yet: agents, sandbox, output format (`--json-schema`),
-  thinking and effort, plugins, and the `initialize` fields title, skills,
+  thinking budgets as settings, plugins, and the `initialize` fields title, skills,
   plan-mode instructions, tool aliases, prompt suggestions, agent progress
   summaries, subagent text, dialog kinds and the stop affordance.
 - Typed readers for nested arrays (slash commands, plugins, MCP server

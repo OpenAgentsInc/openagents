@@ -94,6 +94,31 @@ cl_next :: (q: [] ClQuery, p: [] ClProcess) -> ClEvent {
   timeout := ifx q[0].waiting > 0 then q[0].options.control_timeout_ms else -1;
   n := cxproc_read_line(p[0].handle, timeout);
   if n == CL_TIMEOUT { return cl_fail(q, "control request timed out", ""); }
+  return cl_take_line(q, p, n);
+}
+
+// cl_next for a host that must not block (a UI's frame loop): the same
+// writes, then a line if one comes within timeout_ms (0 only takes what is
+// already there), else an idle event. A control request the host sent
+// still fails the query once it has waited options.control_timeout_ms,
+// counted across calls.
+cl_poll :: (q: [] ClQuery, p: [] ClProcess, timeout_ms: int) -> ClEvent {
+  cl_settle_pending(q);
+  if !cl_flush(q, p) { return cl_fail(q, "failed to write to stdin: ", "broken pipe"); }
+  if q[0].completed { return ClEvent.{kind = ClEventKind.end}; }
+  if q[0].waiting > 0 {
+    now := cxproc_now_ms();
+    if q[0].waiting_since == 0 { q[0].waiting_since = now; }
+    else if now - q[0].waiting_since > q[0].options.control_timeout_ms { return cl_fail(q, "control request timed out", ""); }
+  } else { q[0].waiting_since = 0; }
+  n := cxproc_read_line(p[0].handle, ifx timeout_ms < 0 then 0 else timeout_ms);
+  if n == CL_TIMEOUT { return ClEvent.{kind = ClEventKind.idle}; }
+  return cl_take_line(q, p, n);
+}
+
+// What cxproc_read_line's answer n means: the end, a skipped line, a
+// failure, or the line itself fed to the query.
+cl_take_line :: (q: [] ClQuery, p: [] ClProcess, n: int) -> ClEvent {
   if n == CL_EOF { q[0].completed = true; return ClEvent.{kind = ClEventKind.end}; }
   if n == CL_TOO_LONG || n > q[0].line.count {
     if n > 0 { for i: 0..<q[0].line.count { q[0].line[i] = 0; } }

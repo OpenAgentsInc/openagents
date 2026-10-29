@@ -81,6 +81,8 @@ ClOptions :: struct {
   max_budget_usd: f64;
   has_max_budget: bool;
   max_thinking_tokens: int;         // 0 is unset
+  effort: string;                   // --effort: low, medium, high, xhigh, max ("" leaves the CLI's)
+  thinking_display: string;         // --thinking-display: summarized makes newer models stream readable thinking
   allowed_tools: [CL_LIST] string;
   allowed_count: int;
   disallowed_tools: [CL_LIST] string;
@@ -223,6 +225,8 @@ cl_build_args :: (o: ClOptions, a: [] ClArgs, scratch: [] u8) {
     cl_arg_pair(a, "--max-budget-usd", cast(string) scratch[0..<out[0].len]);
   }
   if p.model.count > 0 { cl_arg_pair(a, "--model", p.model); }
+  if p.effort.count > 0 { cl_arg_pair(a, "--effort", p.effort); }
+  if p.thinking_display.count > 0 { cl_arg_pair(a, "--thinking-display", p.thinking_display); }
   if p.permission_handler { cl_arg_pair(a, "--permission-prompt-tool", "stdio"); }
   else if p.permission_prompt_tool_name.count > 0 { cl_arg_pair(a, "--permission-prompt-tool", p.permission_prompt_tool_name); }
   if p.continue_session { cl_arg(a, "--continue"); }

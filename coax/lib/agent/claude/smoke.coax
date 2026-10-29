@@ -5,7 +5,8 @@
 // tool calc.add (with a PreToolUse hook answered by the host); and a turn
 // whose Bash call the host's permission handler denies, checked by the file
 // Bash would have made not being there. Before them, a kill: a fake CLI
-// that leaves a grandchild running, killed as a group. Run it with smoke.sh.
+// that leaves a grandchild running, killed as a group; and cl_poll against
+// a fake CLI that answers late. Run it with smoke.sh.
 
 #import "Basic";
 #load "claude.coax";
@@ -196,6 +197,27 @@ kill_group :: (b: Buffers, fake: string) -> bool {
   return alive && gone && status == 128 + CL_SIGKILL;
 }
 
+// A fake CLI that writes one line after a pause: cl_poll with no wait
+// comes back idle at once, and the line arrives through later polls.
+poll_slow :: (b: Buffers, slow: string) -> bool {
+  q: [1] ClQuery; new_query(q[..], b);
+  q[0].options.program = slow;
+  p: [1] ClProcess;
+  problem := cl_start(q[..], p[..], "", true, b.scratch);
+  if problem.count > 0 { print("poll: start: %\n", problem); return false; }
+  defer cl_close(p[..]);
+  t0 := cxproc_now_ms();
+  first := cl_poll(q[..], p[..], 0);
+  quick := cxproc_now_ms() - t0 < 100;
+  idles := 0;
+  ev := first;
+  deadline := t0 + 5000;
+  while ev.kind == ClEventKind.idle && cxproc_now_ms() < deadline { idles += 1; ev = cl_poll(q[..], p[..], 10); }
+  took := cxproc_now_ms() - t0;
+  print("poll: first idle=% in under 100 ms=% idle polls=% then % after % ms\n", first.kind == ClEventKind.idle, quick, idles, ev.kind, took);
+  return first.kind == ClEventKind.idle && quick && idles > 3 && ev.kind == ClEventKind.none && took >= 200;
+}
+
 main :: () {
   line: [CL_LINE_MAX] u8; arena: [262144] u8; out: [262144] u8; scratch: [196608] u8;
   b := Buffers.{line = line[..], arena = arena[..], out = out[..], scratch = scratch[..]};
@@ -205,6 +227,9 @@ main :: () {
   fake := cl_getenv("SMOKE_FAKE_CLI", fake_buf[..]);
   ok := true;
   if fake.count > 0 { ok = kill_group(b, fake) && ok; }
+  slow_buf: [1024] u8;
+  slow := cl_getenv("SMOKE_SLOW_CLI", slow_buf[..]);
+  if slow.count > 0 { ok = poll_slow(b, slow) && ok; }
   dir_buf: [1024] u8;
   dir := cl_getenv("SMOKE_DIR", dir_buf[..]);
   if cl_getenv("SMOKE_SKIP_LIVE", model_buf[64..<128]).count == 0 {

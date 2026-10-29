@@ -14,6 +14,10 @@
 #load "markdown.coax";
 
 TK_THOUGHT :: 0; TK_EXEC :: 1; TK_READ :: 2; TK_EDIT :: 3; TK_SEARCH :: 4; TK_FETCH :: 5;
+// The rest of Zeron's ToolCall kinds (proto view.rs tool_chip_content):
+// Write, Glob, Web (a web search), Todo, MCP ("server · tool"), Agent (a
+// subagent, its description) and any other tool by its name.
+TK_WRITE :: 6; TK_GLOB :: 7; TK_WEB :: 8; TK_TODO :: 9; TK_MCP :: 10; TK_AGENT :: 11; TK_TOOL :: 12;
 
 // transcript.rs / changes.rs constants
 CHIP_CARD_HEIGHT :: 30.0;
@@ -54,6 +58,8 @@ Tool :: struct {
   // an edit's diff: one hunk
   hunk: string; diff_from: int; diff_lines: int;
   open: bool;           // the chip's detail is open
+  detail: string;       // the header's detail when it isn't the argument ("pattern in path", "2/5 done", "server · tool")
+  name: string;         // TK_TOOL: the tool's name, its label's detail
 }
 
 tool_label :: (t: Tool) -> string {
@@ -62,6 +68,13 @@ tool_label :: (t: Tool) -> string {
   if t.kind == TK_READ { return "Read"; }
   if t.kind == TK_EDIT { return "Edit"; }
   if t.kind == TK_SEARCH { return "Search"; }
+  if t.kind == TK_WRITE { return "Write"; }
+  if t.kind == TK_GLOB { return "Glob"; }
+  if t.kind == TK_WEB { return "Web"; }
+  if t.kind == TK_TODO { return "Todo"; }
+  if t.kind == TK_MCP { return "MCP"; }
+  if t.kind == TK_AGENT { return "Agent"; }
+  if t.kind == TK_TOOL { return "Tool"; }
   return "Fetch";
 }
 tool_icon :: (t: Tool) -> int {
@@ -70,14 +83,20 @@ tool_icon :: (t: Tool) -> int {
   if t.kind == TK_READ { return ICON_DOCUMENT; }
   if t.kind == TK_EDIT { return ICON_PEN; }
   if t.kind == TK_SEARCH { return ICON_MAGNIFER; }
+  if t.kind == TK_WRITE { return ICON_DOCUMENT_ADD; }
+  if t.kind == TK_GLOB { return ICON_FOLDER; }
+  if t.kind == TK_TODO { return ICON_CHECKLIST; }
+  if t.kind == TK_AGENT { return ICON_BOT; }
+  if t.kind == TK_MCP || t.kind == TK_TOOL { return ICON_WIDGET; }
   return ICON_GLOBAL;
 }
-// Whether the header shows a file badge (read and edit name a file).
-tool_has_file :: (t: Tool) -> bool { return t.kind == TK_READ || t.kind == TK_EDIT; }
+// Whether the header shows a file badge (read, write and edit name a file).
+tool_has_file :: (t: Tool) -> bool { return t.kind == TK_READ || t.kind == TK_EDIT || t.kind == TK_WRITE; }
 // The header's detail text: the file's name for a badge (file_badge_name),
 // else the argument on one line (a thought has none).
 tool_detail :: (t: Tool) -> string {
   if t.kind == TK_THOUGHT { return ""; }
+  if t.detail.count > 0 { return t.detail; }
   if tool_has_file(t) {
     s := t.arg; k := s.count;
     while k > 0 && s[k - 1] != '/' { k -= 1; }
@@ -165,7 +184,7 @@ tool_open_height :: (t: Tool) -> f32 {
   h: f32 = 0;
   if t.kind == TK_THOUGHT { return lines_height(thought_lines(t.arg, buf[..])); }
   h += lines_height(call_lines(t.arg, buf[..]));
-  if t.kind == TK_EDIT && t.diff_lines > 0 { h += diff_height(t); }
+  if (t.kind == TK_EDIT || t.kind == TK_WRITE) && t.diff_lines > 0 { h += diff_height(t); }
   else if t.output.count > 0 {
     n := output_lines(t.output, buf[..]);
     if n > 0 { h += lines_height(n); }

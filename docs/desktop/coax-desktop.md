@@ -1,8 +1,8 @@
 # OpenAgents for Mac, in Coax (spec, draft)
 
 Written 2026-10-28; updated 2026-10-29. Status: `apps/openagents-desktop/`
-builds and opens on a new chat screen whose composer is drawn as Zeron draws
-it (below). The rest of this spec is still a proposal.
+builds and opens on Zeron's new chat screen, which talks to your own Claude
+Code (below). The rest of this spec is still a proposal.
 
 A native Mac app where Claude Code and Codex work side by side in one window,
 and can talk to each other. The UI follows the old OpenAgents desktop app (the
@@ -34,9 +34,40 @@ How it works:
   the chips of `pickers.rs`) in its expanded new-chat form, in Zeron Dark on
   the opaque surface, and docked under a chat (one row with the chat's model
   chip until the text needs more). `zeron/screen.coax` is the chat screen:
-  the canvas, the transcript and the docked composer. It is connected to
-  nothing: Enter clears the text as Zeron's submit does and appends it to the
-  transcript as your message.
+  the canvas, the transcript and the docked composer, connected to your own
+  Claude Code (below).
+- `zeron/claude.coax` runs your `claude` CLI through `coax/lib/agent/claude`
+  (stream-json both ways, the control protocol), polled without blocking from
+  the frame loop: one long-lived session per conversation, cwd `$HOME` or
+  `--cwd PATH`. Like the old Backend it injects no key (ANTHROPIC_API_KEY is
+  removed), takes PATH from your login shell plus `~/.local/bin` and the
+  Homebrew dirs, and shows a chip with the install line
+  (`curl -fsSL https://claude.ai/install.sh | bash`, Install runs it in
+  Terminal) when claude is missing, or Log in (`claude /login` in Terminal)
+  when the run errors as signed out. Events fold into parts and parts into
+  transcript rows the way Zeron does (`harness/src/claude/normalize.rs`
+  decode_tool_use, `doc/src/parts.rs`, `proto/src/view.rs` chip labels and
+  group summaries, `ui/src/transcript.rs` grouping and the working trailer
+  with its gradient spinner, flavour word and elapsed time): streaming
+  Markdown and thinking, consecutive thinking and tools folded into a group
+  whose trailing one stays open while the turn runs, chips for Bash,
+  Read/Edit/Write (Edit and Write with a line diff), Grep/Glob, WebFetch and
+  WebSearch, Task/Agent, MCP and TodoWrite, results attached, failures in
+  red, errors and limits as Zeron's danger chips; rebuilds coalesce at 120
+  ms. Sub-agent frames (`parent_tool_use_id`) are not drawn. The composer's
+  chips cycle on click (Zeron opens menus): model Haiku, Sonnet, Opus 5.5
+  (default Opus, `set_model` mid-session); effort Low to Max (default High,
+  applied by restarting with `--resume` before the next message); access
+  Full access (allow every tool), Auto-accept edits (`acceptEdits`, ask for
+  the rest) or Supervised (ask for every tool), asks shown as an Allow/Deny
+  chip. Enter sends; the send button becomes Stop while a turn runs, and Stop
+  or Escape sends the interrupt and ends the turn with "Stopped". `--demo`
+  (or the shot step `fixture open`) shows Zeron's demo conversation instead.
+  Shot steps `send TEXT`, `stop`, `model/effort/access NAME`, `wait S` and
+  `waitidle S` drive a live run offscreen. Tests: `coax test --library
+  zeron/claude.coax` runs a scrubbed recorded stream
+  (`zeron/fixtures/claude-tools.jsonl`, regenerated with `fixture.py`)
+  through the mapping.
 - `zeron/transcript.coax` (with `markdown.coax` and `tools.coax`) is Zeron's
   chat transcript (`crates/ui/src/transcript.rs`, `render.rs`'s Markdown and
   code blocks, `changes.rs`'s diff rows) showing a fixed demo conversation,

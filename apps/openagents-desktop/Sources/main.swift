@@ -220,9 +220,11 @@ final class App: NSObject, NSApplicationDelegate {
     window.minSize = NSSize(width: 900, height: 600)
     // The Zeron-fork chat screen (Zeron.swift); the HUD's ChatView stays in the tree, unshown.
     window.backgroundColor = NSColor(red: 13 / 255, green: 13 / 255, blue: 13 / 255, alpha: 1)
-    window.contentView = ZeronView(frame: window.contentRect(forFrameRect: window.frame))
+    let zeron = ZeronView(frame: window.contentRect(forFrameRect: window.frame))
+    window.contentView = zeron
     window.center()
     let args = CommandLine.arguments
+    zeron.configure(args)
     // --shot draws offscreen; the window never shows.
     if !args.contains("--shot") { window.makeKeyAndOrderFront(nil) }
     window.makeFirstResponder(window.contentView)
@@ -236,6 +238,8 @@ final class App: NSObject, NSApplicationDelegate {
     NSApp.activate(ignoringOtherApps: true)
   }
   func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { true }
+  // Claude Code's process group goes with the app.
+  func applicationWillTerminate(_ n: Notification) { if let v = window?.contentView as? ZeronView { zr_quit(v.state) } }
 
   // Zeron's menu bar (crates/ui/src/app_menus.rs) for what this app has: the
   // app menu, Edit (the composer's Undo, Redo, Cut, Copy, Paste, Select All,

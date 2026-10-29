@@ -77,3 +77,16 @@ int32_t zr_can_cut(void *state);
 int32_t zr_take_copy(void *state, uint8_t *out, int32_t cap);
 void zr_fixture(void *state, int32_t open);
 void zr_scroll_to(void *state, float px);
+// The chat's engine (zeron/claude.coax): the user's own Claude Code. attach
+// gives it its buffers and the folder it works in (without it a message
+// only joins the transcript); demo shows Zeron's demo conversation instead;
+// choose picks a chip's choice (1 model: 0 Opus, 1 Sonnet, 2 Haiku; 2
+// effort: 0 Low .. 4 Max; 3 access: 0 Full access, 1 Auto-accept edits,
+// 2 Supervised); live says a turn is running; take_action is a notice's
+// button for the host (1 log in, 2 install), once; quit ends Claude Code.
+void zr_attach(void *state, const uint8_t *cwd, int32_t length);
+void zr_demo(void *state);
+void zr_choose(void *state, int32_t which, int32_t index);
+int32_t zr_live(void *state);
+int32_t zr_take_action(void *state);
+void zr_quit(void *state);

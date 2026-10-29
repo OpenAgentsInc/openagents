@@ -25,7 +25,7 @@ GP_SUBPIXEL :: 4;           // gpui text_system.rs SUBPIXEL_VARIANTS_X
 GP_DILATIONS :: 5;          // gpui_macos glyph_dilation_for_color: levels 0..4
 GP_SVG_SCALE :: 2.0;        // gpui svg_renderer.rs SMOOTH_SVG_SCALE_FACTOR
 GP_FONTS :: 9;
-GP_ICONS :: 16;
+GP_ICONS :: 24;
 
 // The glyphs the atlas holds, in order: ASCII 32..126, then these.
 GP_EXTRA :: [3] u32.[0x2026, 0x2022, 0x00A0];   // … • no-break space

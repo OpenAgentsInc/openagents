@@ -20,7 +20,7 @@
 
 #load "tools.coax";
 
-T_ROWS :: 128; T_GROUPS :: 32; T_TOOLS :: 96; T_DIFF :: 64; T_POOL :: 32768;
+T_ROWS :: 256; T_GROUPS :: 64; T_TOOLS :: 256; T_DIFF :: 512; T_POOL :: 32768;
 T_BOXES :: 2048; T_TEXTS :: 4096; T_SELS :: 1024; T_HITS :: 256;
 
 // Theme.rs constants
@@ -41,14 +41,44 @@ CODE_RADIUS :: 10.0; CODE_HEADER_HEIGHT :: 28.0; CODE_PADDING_X :: 12.0; CODE_PA
 CODE_LINE_HEIGHT :: 18.0; CODE_ACTION_SIZE :: 22.0;
 PHI :: 1.618034;                // GPUI's default line height, relative
 
-R_USER :: 0; R_MD :: 1; R_GROUP :: 2;
+R_USER :: 0; R_MD :: 1; R_GROUP :: 2; R_NOTICE :: 3;
 TI_QUAD :: 0; TI_ICON :: 1; TI_ELBOW :: 2; TI_TEXT :: 3;
-H_GROUP :: 1; H_CHIP :: 2; H_WRAP :: 3; H_COPY :: 4;
+H_GROUP :: 1; H_CHIP :: 2; H_WRAP :: 3; H_COPY :: 4; H_ACTION :: 5;
+
+// A notice row: Zeron's ErrorChip (notice.rs notice_chip_with_action, the
+// transcript's tile) for a failed turn, labelled as run_errors.rs reads the
+// message ("Signed out" and "Limit reached" carry "Log in"); the same chip
+// in Zeron's warning palette asking to approve a tool call (Allow, Deny);
+// Claude Code missing (Install); and a quiet "Stopped" line under a turn
+// the user stopped.
+N_ERROR :: 0; N_SIGNED_OUT :: 1; N_LIMIT :: 2; N_INSTALL :: 3; N_STOPPED :: 4; N_ASK :: 5;
+TNotice :: struct { kind: int; text: string; }
+T_NOTICES :: 64;
+// What a notice's button asks of the screen (t.action, until it takes it).
+A_NONE :: 0; A_LOGIN :: 1; A_INSTALL :: 2; A_ALLOW :: 3; A_DENY :: 4;
+NOTICE_PAD :: 10.0; NOTICE_PY :: 8.0; NOTICE_GAP :: 6.0; NOTICE_TILE :: 20.0;
+NOTICE_LINE :: 19.416408;       // 12px text on GPUI's phi line
+NOTICE_BUTTON_H :: 27.416408;   // py 4 around it
+DANGER_MUTED :: 0xfca5a5; WARNING :: 0xfbbf24; WARNING_MUTED :: 0xfde68a;
+// The working trailer under the last row (render_working_trailer): pt 16,
+// the 3x3 gradient spinner (loaders.rs, 2.5px cells, 750ms a turn), the
+// flavour word and the elapsed time.
+WORK_TOP :: 16.0;
+WORK_HEIGHT :: 19.416408;
+GSPIN_CELL :: 2.5;
+GSPIN_PERIOD :: 0.75;
+GSPIN_DIM :: 0.1;
+GSPIN_TINTS :: [3] int.[0xB6D3EF, 0xEDB185, 0xF888A0];
+FLAVOUR_WORDS :: [21] string.["Zeroning", "Thinking", "Pondering", "Scheming", "Brewing", "Weaving", "Tinkering",
+  "Musing", "Composing", "Sifting", "Untangling", "Distilling", "Sketching", "Plotting", "Riffing",
+  "Combobulating", "Percolating", "Marinating", "Noodling", "Puzzling", "Conjuring"];
+FLAVOUR_ROTATE_SECS :: 7;
 
 TRow :: struct {
   kind: int; entry: int; part: int;
   block: int;                   // R_MD: the Markdown block
   group: int;                   // R_GROUP
+  notice: int;                  // R_NOTICE
   text: string;                 // R_USER
   turn_start: bool; last_of_entry: bool;
   y: f32; h: f32;               // laid out (content px)
@@ -74,7 +104,8 @@ Transcript :: struct {
   groups: [T_GROUPS] TGroup; ng: int;
   tools: [T_TOOLS] Tool; nt: int;
   diff: [T_DIFF] DiffLine; nd: int;
-  pool: [T_POOL] u8; np: int;   // sent messages' text
+  pool: [T_POOL] u8; np: int;   // sent messages' text, then what each layout writes (numbers, cut text)
+  np_base: int; laid: bool;     // where layout's own bytes start, once laid out since the last change
   entries: int; parts: int;
   // the view
   scroll: f32;                  // content px above the viewport's top
@@ -87,6 +118,11 @@ Transcript :: struct {
   sels: [T_SELS] TSel; nsel: int;
   hits: [T_HITS] THit; nhit: int;
   copy_code: int;               // a code block's Copy pressed: its block, until the host takes it
+  notices: [T_NOTICES] TNotice; nn: int;
+  copy_notice: int;             // a notice's copy pressed: its notice + 1, until the host takes it
+  action: int; action_a: int;   // a notice's button pressed (A_*) and its notice, until the screen takes it
+  // the working trailer (a run is live), its seconds and the spinner's clock
+  working: bool; work_secs: f32; spin: f32; seed: int;
   // the pointer (window logical px)
   px: f32; py: f32; inside: bool;
   hover_kind: int; hover_a: int; hover_b: int;
@@ -117,7 +153,8 @@ t_pool :: (t: [] Transcript, s: string) -> string {
 t_row :: (t: [] Transcript, kind: int) -> int {
   if t[0].nr >= T_ROWS { return -1; }
   r := t[0].nr; t[0].nr += 1;
-  t[0].rows[r] = TRow.{kind = kind, entry = t[0].entries - 1, part = t[0].parts, block = -1, group = -1};
+  t[0].laid = false;
+  t[0].rows[r] = TRow.{kind = kind, entry = t[0].entries - 1, part = t[0].parts, block = -1, group = -1, notice = -1};
   return r;
 }
 t_entry :: (t: [] Transcript) { t[0].entries += 1; }
@@ -160,9 +197,27 @@ t_group :: (t: [] Transcript, summary: string) -> int {
 t_tool :: (t: [] Transcript, g: int, tool: Tool) -> int {
   if g < 0 || t[0].nt >= T_TOOLS { return -1; }
   k := t[0].nt; t[0].nt += 1;
+  t[0].laid = false;
   t[0].tools[k] = tool;
   t[0].groups[g].tools += 1;
   return k;
+}
+// A notice row in the current entry.
+t_notice :: (t: [] Transcript, kind: int, text: string) -> int {
+  if t[0].nn >= T_NOTICES { return -1; }
+  t[0].parts += 1;
+  k := t[0].nn; t[0].nn += 1;
+  t[0].notices[k] = TNotice.{kind = kind, text = text};
+  r := t_row(t, R_NOTICE);
+  if r >= 0 { t[0].rows[r].notice = k; }
+  t_mark_ends(t);
+  return k;
+}
+// Empties the conversation for a rebuild (the view, pointer and selection stay).
+t_reset :: (t: [] Transcript) {
+  t[0].nr = 0; t[0].ng = 0; t[0].nt = 0; t[0].nd = 0; t[0].np = 0; t[0].nn = 0; t[0].laid = false;
+  t[0].entries = 0; t[0].parts = 0;
+  t[0].md[0].n = 0; t[0].md[0].nb = 0; t[0].md[0].nr = 0; t[0].md[0].ni = 0;
 }
 t_diff_line :: (t: [] Transcript, kind: int, old_no: int, new_no: int, text: string) {
   if t[0].nd >= T_DIFF { return; }
@@ -464,19 +519,23 @@ lay_chip_header :: (t: [] Transcript, a: [] Atlas, th: Theme, g: int, k: int, x:
   ty := y + (CHIP_CARD_HEIGHT - lh) / 2;
   pen := x + ceil(t_text_seg(t, a, -1, x, ty, lh, FONT_TOOL, tint, tool_label(tool)));   // GPUI measures text to whole px
   detail := tool_detail(tool);
+  room := x + w - 8 - 18 - pen;   // the chevron's place stays clear
   if tool_has_file(tool) {
     pen += 8;
     name_c := ifx tool.failed then hex(DANGER, 1) else ifx hover then th.text else opacity(th.text, 0.85);
+    detail = t_fit(t, a, FONT_TOOL, detail, room - 8 - 1 - 20 - 6 - 6);
     nw := ceil(text_width(a, FONT_TOOL, detail));
     by := y + (CHIP_CARD_HEIGHT - 22) / 2;
     t_quad(t, pen, by, 1 + 20 + 6 + nw + 6, 22, 5, ink(0.06));
     t_quad(t, pen + 1, by + 1, 20, 20, 4, rgba(0, 0, 0, 0.16));
-    t_icon(t, ICON_RUST, pen + 1 + 3, by + 1 + 3, 14, hex(0xfb923c, 1));
+    if t_is_rust(detail) { t_icon(t, ICON_RUST, pen + 1 + 3, by + 1 + 3, 14, hex(0xfb923c, 1)); }
+    else { t_icon(t, ICON_DOCUMENT, pen + 1 + 3, by + 1 + 3, 14, th.muted); }
     pen += 1 + 20 + 6;
     q := t_text_seg(t, a, -1, pen, by + (22 - lh) / 2, lh, FONT_TOOL, name_c, detail);
     pen += nw + 6;
   } else if detail.count > 0 {
     pen += 8;
+    detail = t_fit(t, a, FONT_TOOL, detail, room - 8);
     pen += ceil(t_text_seg(t, a, -1, pen, ty, lh, FONT_TOOL, tint, detail));
   }
   if hover {
@@ -485,6 +544,137 @@ lay_chip_header :: (t: [] Transcript, a: [] Atlas, th: Theme, g: int, k: int, x:
     t_icon(t, ifx tool.open then ICON_CHEVRON else ICON_CHEVRON_RIGHT, pen + 3, y + (CHIP_CARD_HEIGHT - 12) / 2, 12, cc);
   }
   t_hit(t, H_CHIP, g, k, x, y, w, CHIP_CARD_HEIGHT);
+}
+
+// A file name GPUI would badge with the Rust glyph.
+t_is_rust :: (name: string) -> bool { return name.count > 3 && name[name.count - 3] == '.' && name[name.count - 2] == 'r' && name[name.count - 1] == 's'; }
+// A one-line text cut to fit w with an ellipsis (GPUI's truncate), in the pool.
+t_fit :: (t: [] Transcript, a: [] Atlas, font: int, s: string, w: f32) -> string {
+  if text_width(a, font, s) <= w { return s; }
+  ell := text_width(a, font, "…");
+  k := 0; x: f32 = 0;
+  while k < s.count {
+    r := rune_at(s, k);
+    cw := text_width(a, font, cast(string) s[k..<k + r.len]);
+    if x + cw + ell > w { break; }
+    x += cw; k += r.len;
+  }
+  head := t_pool(t, cast(string) s[0..<k]);
+  tail := t_pool(t, "…");
+  if head.count != k || tail.count == 0 { return cast(string) s[0..<k]; }
+  return cast(string) t[0].pool[t[0].np - k - tail.count..<t[0].np];
+}
+
+// A notice (notice.rs, the tile): the wash, the header (the triangle's tile,
+// the label, copy at the right), the wrapped message, the actions under it.
+t_notice_label :: (kind: int) -> string {
+  if kind == N_SIGNED_OUT { return "Signed out"; }
+  if kind == N_LIMIT { return "Limit reached"; }
+  if kind == N_INSTALL { return "Claude Code isn't installed"; }
+  if kind == N_ASK { return "Approval needed"; }
+  return "Error";
+}
+t_notice_button :: (t: [] Transcript, a: [] Atlas, th: Theme, k: int, which: int, label: string, x: f32, y: f32, accent: Rgba, muted: Rgba) -> f32 {
+  bw := 2 * 10 + ceil(text_width(a, FONT_CHIP, label));
+  hover := t_hovered(t, H_ACTION, k, which);
+  t_quad(t, x, y, bw, NOTICE_BUTTON_H, 6, opacity(accent, ifx hover then 0.22f32 else 0.14f32));
+  q := t_text_seg(t, a, -1, x + 10, y + 4, NOTICE_LINE, FONT_CHIP, muted, label);
+  t_hit(t, H_ACTION, k, which, x, y, bw, NOTICE_BUTTON_H);
+  return bw;
+}
+lay_notice :: (t: [] Transcript, a: [] Atlas, th: Theme, k: int, x: f32, y: f32, w: f32) -> f32 {
+  n := t[0].notices[k];
+  if n.kind == N_STOPPED {
+    t_icon(t, ICON_STOP, x + 1, y + (18 - 11) / 2, 11, th.faint);
+    q := t_plain(t, a, x + 1 + 11 + 8, y, 18, FONT_TOOL, th.faint, "Stopped", true);
+    return 18;
+  }
+  warn := n.kind == N_ASK;
+  accent := hex(ifx warn then WARNING else DANGER, 1);
+  muted := hex(ifx warn then WARNING_MUTED else DANGER_MUTED, 1);
+  inner := w - 2 * NOTICE_PAD;
+  no_runs: [1] MdRun;
+  lines: [64] MdLine;
+  nl := md_wrap(a, n.text, no_runs[0..<0], inner, true, lines[..]);
+  h := NOTICE_PY + NOTICE_TILE + NOTICE_GAP + cast(f32) nl * NOTICE_LINE + NOTICE_PY;
+  acts := n.kind == N_SIGNED_OUT || n.kind == N_LIMIT || n.kind == N_INSTALL || n.kind == N_ASK;
+  if acts { h += NOTICE_GAP + 2 + NOTICE_BUTTON_H; }
+  t_quad(t, x, y, w, h, 10, opacity(accent, 0.1));
+  hy := y + NOTICE_PY;
+  t_quad(t, x + NOTICE_PAD, hy, NOTICE_TILE, NOTICE_TILE, 6, opacity(accent, 0.12));
+  t_icon(t, ICON_DANGER, x + NOTICE_PAD + 4, hy + 4, 12, opacity(muted, 0.8));
+  q := t_text_seg(t, a, -1, x + NOTICE_PAD + NOTICE_TILE + 8, hy + (NOTICE_TILE - NOTICE_LINE) / 2, NOTICE_LINE, FONT_CHIP, opacity(muted, 0.8), t_notice_label(n.kind));
+  cx := x + w - NOTICE_PAD - NOTICE_TILE;
+  if t_hovered(t, H_ACTION, k, 2) { t_quad(t, cx, hy, NOTICE_TILE, NOTICE_TILE, 6, opacity(accent, 0.12)); }
+  t_icon(t, ICON_COPY, cx + 4, hy + 4, 12, opacity(muted, 0.8));
+  t_hit(t, H_ACTION, k, 2, cx, hy, NOTICE_TILE, NOTICE_TILE);
+  my := hy + NOTICE_TILE + NOTICE_GAP;
+  for q2: 0..<nl {
+    seg := cast(string) n.text[lines[q2].from..<lines[q2].to];
+    q = t_plain(t, a, x + NOTICE_PAD, my + cast(f32) q2 * NOTICE_LINE, NOTICE_LINE, FONT_TOOL, muted, seg, q2 + 1 == nl);
+  }
+  if acts {
+    by := my + cast(f32) nl * NOTICE_LINE + NOTICE_GAP + 2;
+    if n.kind == N_ASK {
+      bw := t_notice_button(t, a, th, k, 0, "Allow", x + NOTICE_PAD, by, accent, muted);
+      bw = t_notice_button(t, a, th, k, 1, "Deny", x + NOTICE_PAD + bw + 8, by, accent, muted);
+    } else {
+      bw := t_notice_button(t, a, th, k, 0, ifx n.kind == N_INSTALL then "Install" else "Log in", x + NOTICE_PAD, by, accent, muted);
+    }
+  }
+  return h;
+}
+
+// The working trailer: the spinner's 3x3 cells (each row its tint, the
+// pulse rising from the bottom edge to the top-centre cell), the flavour
+// word and the elapsed time.
+gspin_opacity :: (p: f32, dim: f32) -> f32 {
+  q := p - floor(p);
+  if q < 0.45 { return 1 + (dim - 1) * (q / 0.45); }
+  if q < 0.92 { return dim; }
+  return dim + (1 - dim) * ((q - 0.92) / 0.08);
+}
+format_elapsed :: (t: [] Transcript, secs: int) -> string {
+  buf: [24] u8; n := 0;
+  s := ifx secs < 0 then 0 else secs;
+  a := s; b := 0; ua: u8 = 's'; ub: u8 = 0;
+  if s >= 86400 { a = s / 86400; b = (s % 86400) / 3600; ua = 'd'; ub = 'h'; }
+  else if s >= 3600 { a = s / 3600; b = (s % 3600) / 60; ua = 'h'; ub = 'm'; }
+  else if s >= 60 { a = s / 60; b = s % 60; ua = 'm'; ub = 's'; }
+  n = put_int(buf[..], n, a); buf[n] = ua; n += 1;
+  if ub != 0 { buf[n] = ' '; n += 1; n = put_int(buf[..], n, b); buf[n] = ub; n += 1; }
+  return t_pool(t, cast(string) buf[0..<n]);
+}
+put_int :: (buf: [] u8, at: int, v: int) -> int {
+  digits: [12] u8; nd := 0; m := v;
+  if m == 0 { digits[0] = '0'; nd = 1; }
+  while m > 0 && nd < 12 { digits[nd] = cast(u8) ('0' + m % 10); m /= 10; nd += 1; }
+  for q: 0..<nd { buf[at + q] = digits[nd - 1 - q]; }
+  return at + nd;
+}
+lay_working :: (t: [] Transcript, a: [] Atlas, th: Theme, x: f32, y: f32) -> f32 {
+  mid := y + WORK_HEIGHT / 2;
+  side: f32 = 3 * GSPIN_CELL + 2 * (GSPIN_CELL / 2);
+  top := mid - side / 2;
+  phase := t[0].spin / GSPIN_PERIOD;
+  tints := GSPIN_TINTS;
+  for row: 0..<3 {
+    for col: 0..<3 {
+      dist := 2.0f32 - cast(f32) row + abs(cast(f32) col - 1);
+      o := gspin_opacity(phase + dist / 4, GSPIN_DIM);
+      t_quad(t, x + cast(f32) col * 1.5 * GSPIN_CELL, top + cast(f32) row * 1.5 * GSPIN_CELL, GSPIN_CELL, GSPIN_CELL, GSPIN_CELL / 2, hex(tints[row], o));
+    }
+  }
+  secs := cast(int) floor(t[0].work_secs);
+  words := FLAVOUR_WORDS;
+  step := secs / FLAVOUR_ROTATE_SECS;
+  word := words[(t[0].seed + step) % 21];
+  wx := x + side + SPACE_SM;
+  ww := t_text_seg(t, a, -1, wx, y, WORK_HEIGHT, FONT_TOOL, th.muted, word);
+  ew := t_text_seg(t, a, -1, wx + ww, y, WORK_HEIGHT, FONT_TOOL, th.muted, "…");
+  sl: f32 = 11 * PHI;
+  q := t_text_seg(t, a, -1, wx + ww + ew + SPACE_SM, y + 1 + (WORK_HEIGHT - sl) / 2, sl, FONT_SMALL, th.faint, format_elapsed(t, secs));
+  return WORK_HEIGHT;
 }
 
 // A tool group (render_tool_group, collapsing): the 26px summary header with
@@ -523,7 +713,7 @@ lay_group :: (t: [] Transcript, a: [] Atlas, th: Theme, g: int, x: f32, y: f32, 
       } else {
         n := call_lines(tool.arg, buf[..]);
         py += DETAIL_SEPARATOR + lay_detail_lines(t, a, tool.arg, buf[..], n, cx, py + DETAIL_SEPARATOR, FONT_MONO_12, th.faint);
-        if tool.kind == TK_EDIT && tool.diff_lines > 0 {
+        if (tool.kind == TK_EDIT || tool.kind == TK_WRITE) && tool.diff_lines > 0 {
           py += DETAIL_SEPARATOR + lay_diff(t, a, th, tool, cx, py + DETAIL_SEPARATOR, cw);
         } else if tool.output.count > 0 {
           n = output_lines(tool.output, buf[..]);
@@ -544,7 +734,7 @@ top_gap :: (t: [] Transcript, r: int) -> f32 {
   row := t[0].rows[r]; prev := t[0].rows[r - 1];
   if row.turn_start { return SPACE_LG; }
   if row.kind == R_MD && prev.kind == R_MD && row.part == prev.part { return MD_BLOCK_GAP; }
-  if row.kind == R_GROUP || prev.kind == R_GROUP { return SPACE_MD; }
+  if row.kind == R_GROUP || prev.kind == R_GROUP || row.kind == R_NOTICE { return SPACE_MD; }
   return SPACE_SM;
 }
 
@@ -552,6 +742,8 @@ top_gap :: (t: [] Transcript, r: int) -> f32 {
 // bottom_pad: the last row's clearance (the composer stack, the fade band, 8).
 t_layout :: (t: [] Transcript, a: [] Atlas, th: Theme, x: f32, w: f32, bottom_pad: f32) {
   t[0].nbox = 0; t[0].ntext = 0; t[0].nsel = 0; t[0].nhit = 0;
+  // what the last layout wrote to the pool goes; the conversation's text stays
+  if t[0].laid { t[0].np = t[0].np_base; } else { t[0].np_base = t[0].np; t[0].laid = true; }
   y: f32 = 0;
   for r: 0..<t[0].nr {
     y += top_gap(t, r);
@@ -559,10 +751,18 @@ t_layout :: (t: [] Transcript, a: [] Atlas, th: Theme, x: f32, w: f32, bottom_pa
     h: f32 = 0;
     if row.kind == R_USER { h = lay_user(t, a, th, r, x, y, w); }
     else if row.kind == R_MD { h = lay_md(t, a, th, row.block, x, y, w); }
+    else if row.kind == R_NOTICE { h = lay_notice(t, a, th, row.notice, x, y, w); }
     else { h = lay_group(t, a, th, row.group, x, y, w); }
     t[0].rows[r].y = y; t[0].rows[r].h = h;
     y += h;
-    if row.last_of_entry { y += TIMESTAMP_LANE; }
+    // the live entry's lane holds the working trailer instead of its time
+    if row.last_of_entry && !(t[0].working && r + 1 == t[0].nr) { y += TIMESTAMP_LANE; }
+  }
+  if t[0].working {
+    if t[0].nr == 0 { y += TITLEBAR_HEIGHT + SPACE_LG + 10 - WORK_TOP; }
+    y += WORK_TOP;
+    y += lay_working(t, a, th, x, y);
+    y += TIMESTAMP_LANE - WORK_TOP;
   }
   t[0].content_h = y + bottom_pad;
 }
@@ -783,6 +983,12 @@ t_pointer :: (t: [] Transcript, a: [] Atlas, x: f32, y: f32, phase: int, clicks:
       if t[0].press_kind == H_GROUP { t_toggle(t, t[0].press_a, -1); }
       else if t[0].press_kind == H_CHIP { t_toggle(t, t[0].press_a, t[0].press_b); }
       else if t[0].press_kind == H_COPY { t[0].copy_code = t[0].press_a + 1; }
+      else if t[0].press_kind == H_ACTION {
+        nk := t[0].notices[t[0].press_a].kind;
+        if t[0].press_b == 2 { t[0].copy_notice = t[0].press_a + 1; }
+        else if nk == N_ASK { t[0].action = ifx t[0].press_b == 0 then A_ALLOW else A_DENY; t[0].action_a = t[0].press_a; }
+        else { t[0].action = ifx nk == N_INSTALL then A_INSTALL else A_LOGIN; t[0].action_a = t[0].press_a; }
+      }
     }
     t[0].press_kind = 0;
   }

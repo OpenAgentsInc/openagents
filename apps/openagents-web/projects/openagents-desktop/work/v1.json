@@ -97,7 +97,7 @@
       "title": "Mac host: a window that draws Coax HUD output with Metal",
       "parent": "desk-local-chat",
       "size": "L",
-      "body": "apps/openagents-desktop/: a thin AppKit app (1320x880, min 900x600, inset title bar). It calls a Coax app compiled to C each frame and draws its vertex buffer with a Metal port of the HUD shader (apps/openagents-web/ui.wgsl), using the iOS app's Metal host as the reference. Mouse, keys, text input, scroll and the clipboard reach the app the way host.js delivers them on the web.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "apps/openagents-desktop/: a thin AppKit app (1320x880, min 900x600, inset title bar). It calls a Coax app compiled to C each frame and draws its vertex buffer with a Metal port of the HUD shader (apps/openagents-web/ui.wgsl), using the iOS app's Metal host as the reference. Mouse, keys, text input, scroll and the clipboard reach the app the way host.js delivers them on the web.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "apps/openagents-desktop/",
         "coax/web/wasm.sh"
@@ -114,7 +114,7 @@
       "title": "Engine: run the local claude CLI with the user's login",
       "parent": "desk-local-chat",
       "size": "M",
-      "body": "A Coax engine thread that runs `claude` through coax/lib/agent/claude (stream-json, control protocol) and coax/platform/process-native.c. The child gets the user's own environment and login (no ANTHROPIC_API_KEY injected, no OpenAgents credential); the PATH comes from the user's login shell so a Homebrew or ~/.local install is found. The UI talks to the engine only by messages.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "A Coax engine (apps/openagents-desktop/zeron/claude.coax) that runs `claude` through coax/lib/agent/claude (stream-json, control protocol) and coax/platform/process-native.c, polled without blocking from the Zeron UI's frame loop, one long-lived session per conversation. The child gets the user's own environment and login (no ANTHROPIC_API_KEY injected, no OpenAgents credential); the PATH comes from the user's login shell so a Homebrew or ~/.local install is found. Its events fold into the Zeron transcript the way Zeron's harness does it (streaming Markdown and thinking, tool groups and chips with results and diffs, the working indicator, STOP).\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "apps/openagents-desktop/",
         "coax/lib/agent/claude/"
@@ -130,7 +130,7 @@
       "title": "The chat: /chat's page in the desktop window",
       "parent": "desk-local-chat",
       "size": "M",
-      "body": "Port what apps/openagents-web/chat.coax draws (conversation list, the shown conversation's turns, composer, model chips with Opus 5.5 by default, STOP, cost and time per turn, which files the agent read) to the desktop app over the engine instead of /api/chat. Share the drawing code with the web page where it can be shared rather than copying it.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "The chat in the Zeron UI (apps/openagents-desktop/zeron/: composer, transcript, tool groups) over the engine instead of /api/chat: conversation list, the shown conversation's turns, the composer with model chips (Opus 5.5 by default), effort and access, STOP, cost and time per turn, which files the agent read.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "apps/openagents-desktop/",
         "apps/openagents-web/chat.coax"
@@ -150,7 +150,7 @@
       "title": "Conversations kept locally and resumed",
       "parent": "desk-local-chat",
       "size": "S",
-      "body": "Each conversation's events append to ~/Library/Application Support/OpenAgents/sessions/<id>.jsonl with claude's session id, so reopening the app shows every conversation and a follow-up resumes it (--resume).\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "Each conversation's events append to ~/Library/Application Support/OpenAgents/sessions/<id>.jsonl with claude's session id, so reopening the app shows every conversation and a follow-up resumes it (--resume).\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "apps/openagents-desktop/"
       ],
@@ -167,7 +167,7 @@
       "title": "Missing or logged-out Claude Code: the one line that fixes it",
       "parent": "desk-local-chat",
       "size": "S",
-      "body": "When claude isn't installed the window shows `curl -fsSL https://claude.ai/install.sh | bash` with a button that runs it; when it isn't logged in, the login command with a button. Never a bare instruction.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "When claude isn't installed the window shows `curl -fsSL https://claude.ai/install.sh | bash` with a button that runs it; when it isn't logged in, the login command with a button. Never a bare instruction.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "apps/openagents-desktop/"
       ],
@@ -184,7 +184,7 @@
       "title": "Codex app-server client in Coax",
       "parent": "desk-codex",
       "size": "L",
-      "body": "coax/lib/agent/codex/: JSON-RPC 2.0 over stdio to `codex app-server`: initialize, thread start and resume, turns, streamed items, approvals, interrupt. Pull-based like the Claude library.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "coax/lib/agent/codex/: JSON-RPC 2.0 over stdio to `codex app-server`: initialize, thread start and resume, turns, streamed items, approvals, interrupt. Pull-based like the Claude library.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "coax/lib/agent/codex/"
       ],
@@ -198,7 +198,7 @@
       "title": "One event model for both harnesses",
       "parent": "desk-codex",
       "size": "M",
-      "body": "coax/lib/agent/events.coax: message start, text delta, message done, thinking, tool call and result, approval asked and answered, turn done with cost, error. Both libraries write it; the transcript draws only it.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "coax/lib/agent/events.coax: message start, text delta, message done, thinking, tool call and result, approval asked and answered, turn done with cost, error. Both libraries write it; the transcript draws only it.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "coax/lib/agent/"
       ],
@@ -214,7 +214,7 @@
       "title": "Codex sessions in the window",
       "parent": "desk-codex",
       "size": "M",
-      "body": "The composer's harness choice (CLAUDE CODE or CODEX) and Codex's models; a Codex session streams in the same transcript.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "The composer's harness choice (CLAUDE CODE or CODEX) and Codex's models; a Codex session streams in the same transcript.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "apps/openagents-desktop/"
       ],
@@ -231,7 +231,7 @@
       "title": "Sidebar, tabs and folders",
       "parent": "desk-sessions",
       "size": "M",
-      "body": "Sidebar 208-400 px (default 256, collapse with Cmd+S): NEW SESSION, sessions by folder with harness mark, status dot and time. Tabs for open sessions. Cmd+N, Cmd+W, Cmd+1-9, Shift+Up/Down. The folder picker for a new session.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "Sidebar 208-400 px (default 256, collapse with Cmd+S): NEW SESSION, sessions by folder with harness mark, status dot and time. Tabs for open sessions. Cmd+N, Cmd+W, Cmd+1-9, Shift+Up/Down. The folder picker for a new session.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "apps/openagents-desktop/"
       ],
@@ -248,7 +248,7 @@
       "title": "Approvals inline, and the status strip",
       "parent": "desk-sessions",
       "size": "M",
-      "body": "Tool calls that need approval show ALLOW and DENY in the transcript for both harnesses; the status strip under the composer says working, waiting for approval or idle.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "Tool calls that need approval show ALLOW and DENY in the transcript for both harnesses; the status strip under the composer says working, waiting for approval or idle.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "apps/openagents-desktop/"
       ],
@@ -264,7 +264,7 @@
       "title": "The room in the engine",
       "parent": "desk-room",
       "size": "M",
-      "body": "An ordered log of agent-to-agent messages per window; ask_agent runs a turn in the other session and returns its final answer as the tool result; tell_agent queues for the next turn; an agent waiting on an ask can't be asked by the one it waits on; STOP cancels its asks. No hop limit by default; a user-set one is allowed.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "An ordered log of agent-to-agent messages per window; ask_agent runs a turn in the other session and returns its final answer as the tool result; tell_agent queues for the next turn; an agent waiting on an ask can't be asked by the one it waits on; STOP cancels its asks. No hop limit by default; a user-set one is allowed.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "apps/openagents-desktop/",
         "coax/lib/agent/"
@@ -281,7 +281,7 @@
       "title": "Room tools for Claude Code and Codex",
       "parent": "desk-room",
       "size": "M",
-      "body": "Claude Code gets agents_list, ask_agent, tell_agent and room_read through an in-process SDK MCP server (coax/lib/agent/claude/mcp.coax); Codex through a stdio MCP server (the app's binary with --mcp-room).\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "Claude Code gets agents_list, ask_agent, tell_agent and room_read through an in-process SDK MCP server (coax/lib/agent/claude/mcp.coax); Codex through a stdio MCP server (the app's binary with --mcp-room).\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "apps/openagents-desktop/",
         "coax/lib/agent/"
@@ -299,7 +299,7 @@
       "title": "ROOM tab and @mentions",
       "parent": "desk-room",
       "size": "S",
-      "body": "A ROOM tab listing every agent-to-agent message, from -> to; both transcripts show them; @name in the composer sends that part as tell_agent.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "A ROOM tab listing every agent-to-agent message, from -> to; both transcripts show them; @name in the composer sends that part as tell_agent.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "apps/openagents-desktop/"
       ],
@@ -315,7 +315,7 @@
       "title": "Settings and resume for every session",
       "parent": "desk-ship",
       "size": "S",
-      "body": "settings.json (window, sidebar width, defaults, shortcuts) and resume for Codex threads too.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "settings.json (window, sidebar width, defaults, shortcuts) and resume for Codex threads too.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "apps/openagents-desktop/"
       ],
@@ -331,7 +331,7 @@
       "title": "A signed, notarized app",
       "parent": "desk-ship",
       "size": "S",
-      "body": "A script builds OpenAgents.app and a .dmg, signed and notarized from this Mac.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax with the HUD components; no comments ship.",
+      "body": "A script builds OpenAgents.app and a .dmg, signed and notarized from this Mac.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "apps/openagents-desktop/"
       ],

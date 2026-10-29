@@ -18,10 +18,10 @@ MD_PLAIN :: 0; MD_BOLD :: 1; MD_CODE :: 2;
 // Block kinds.
 MB_PARA :: 0; MB_LIST :: 1; MB_CODE :: 2;
 
-MD_TEXT :: 32768;
-MD_BLOCKS :: 128;
-MD_RUNS :: 1024;
-MD_ITEMS :: 128;
+MD_TEXT :: 65536;
+MD_BLOCKS :: 256;
+MD_RUNS :: 2048;
+MD_ITEMS :: 256;
 
 // A styled stretch of a block's (or an item's) display text, in bytes.
 MdRun :: struct { from: int; to: int; style: int; }
@@ -119,6 +119,20 @@ md_number :: (line: string) -> int {
   while k < line.count && line[k] >= '0' && line[k] <= '9' { v = v * 10 + cast(int) (line[k] - '0'); k += 1; }
   return v;
 }
+// A heading's marker ("# " to "###### "): its length, 0 if none.
+md_heading :: (line: string) -> int {
+  k := 0;
+  while k < line.count && k < 6 && line[k] == '#' { k += 1; }
+  if k > 0 && k < line.count && line[k] == ' ' { return k + 1; }
+  return 0;
+}
+// A thematic break: three or more of one of - * _ and nothing else.
+md_rule :: (line: string) -> bool {
+  if line.count < 3 || (line[0] != '-' && line[0] != '*' && line[0] != '_') { return false; }
+  n := 0;
+  for k: 0..<line.count { if line[k] == line[0] { n += 1; } else if line[k] != ' ' { return false; } }
+  return n >= 3;
+}
 md_blank :: (line: string) -> bool {
   for k: 0..<line.count { if line[k] != ' ' && line[k] != '\t' && line[k] != '\r' { return false; } }
   return true;
@@ -184,6 +198,21 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
       doc[0].blocks[b].items = doc[0].ni - doc[0].blocks[b].item0;
       continue;
     }
+    // a rule draws nothing here
+    if md_rule(line) { i = e + 1; continue; }
+    // a heading: its own paragraph, all bold (render.rs sets headings in the strong weight)
+    hk := md_heading(line);
+    if hk > 0 {
+      b := md_new_block(doc, MB_PARA, part);
+      if b < 0 { return doc[0].nb - before; }
+      at := doc[0].n; r0 := doc[0].nr;
+      first_run := md_inline(doc, cast(string) line[hk..<line.count], at);
+      for q: r0..<doc[0].nr { doc[0].runs[q].style = MD_BOLD; }
+      doc[0].blocks[b].at = at; doc[0].blocks[b].n = doc[0].n - at;
+      doc[0].blocks[b].run0 = r0; doc[0].blocks[b].runs = doc[0].nr - r0;
+      i = e + 1;
+      continue;
+    }
     // a paragraph: lines up to a blank line, a list or a fence, soft breaks as spaces
     b := md_new_block(doc, MB_PARA, part);
     if b < 0 { return doc[0].nb - before; }
@@ -194,7 +223,7 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
     while i < src.count {
       e2 := md_line_end(src, i);
       l2 := cast(string) src[i..<e2];
-      if md_blank(l2) || md_bullet(l2) > 0 || md_ordinal(l2) > 0 || (l2.count >= 3 && l2[0] == '`' && l2[1] == '`' && l2[2] == '`') { break; }
+      if md_blank(l2) || md_bullet(l2) > 0 || md_ordinal(l2) > 0 || md_heading(l2) > 0 || (l2.count >= 3 && l2[0] == '`' && l2[1] == '`' && l2[2] == '`') { break; }
       to = e2; i = e2 + 1;
     }
     r0 := doc[0].nr;
@@ -412,4 +441,12 @@ md_test_atlas :: (a: [] Atlas) {
   #assert n == 4 && runs[0].style == SYN_VARIABLE && runs[1].style == SYN_PUNCTUATION && runs[2].style == SYN_PROPERTY && runs[3].style == SYN_COMMENT;
   n = syn_rust("if group.any_failed() { \"s\" } else { 1 }", runs[..]);
   #assert runs[0].style == SYN_KEYWORD && runs[3].style == SYN_FUNCTION && runs[7].style == SYN_STRING && runs[9].style == SYN_KEYWORD && runs[11].style == SYN_NUMBER;
+}
+
+#test "a heading is its own bold paragraph; a rule draws nothing" {
+  doc: [1] MdDoc;
+  n := md_parse(doc[..], "## Files here\nsome text\n\n---\n\n- a", 1);
+  #assert n == 3 && doc[0].blocks[0].kind == MB_PARA && md_block_text(doc[..], 0) == "Files here";
+  #assert doc[0].runs[doc[0].blocks[0].run0].style == MD_BOLD && md_block_text(doc[..], 1) == "some text";
+  #assert doc[0].blocks[2].kind == MB_LIST && md_heading("#nope") == 0 && md_rule("- - -") && !md_rule("--x");
 }

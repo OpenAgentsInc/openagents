@@ -19,8 +19,15 @@ echo '{"type":"keep_alive"}'
 wait
 FAKE
 chmod +x "$work/fake-claude"
+cat > "$work/slow-claude" <<'SLOW'
+#!/bin/sh
+sleep 0.3
+echo '{"type":"keep_alive"}'
+sleep 300
+SLOW
+chmod +x "$work/slow-claude"
 mkdir "$work/deny"
-export BROWSER=/usr/bin/true NO_OPEN_BROWSER=1 SMOKE_FAKE_CLI="$work/fake-claude" SMOKE_DIR="$work/deny"
+export BROWSER=/usr/bin/true NO_OPEN_BROWSER=1 SMOKE_FAKE_CLI="$work/fake-claude" SMOKE_SLOW_CLI="$work/slow-claude" SMOKE_DIR="$work/deny"
 "$work/smoke" | tee "$work/out"
 if [ -e "$work/deny/smoke-denied.txt" ]; then echo "deny: Bash ran after all"; exit 1; fi
 tail -1 "$work/out" | grep -q '^smoke: ok$'

@@ -17,7 +17,8 @@ extern "C" {
    stdout and stderr on pipes. cxproc_read_line returns the next stdout
    line's length (its bytes through cxproc_line_byte, valid until the next
    read), CXPROC_EOF, CXPROC_TIMEOUT, CXPROC_ERROR or CXPROC_TOO_LONG (the
-   line was skipped). stderr is drained while reading and its last
+   line was skipped); a timeout of 0 takes only what the pipe already holds,
+   without waiting, and a negative one waits for ever. stderr is drained while reading and its last
    CXPROC_STDERR_KEEP bytes are kept. cxproc_write buffers a byte and
    cxproc_flush sends them. cxproc_kill signals the whole group;
    cxproc_wait reaps the child; cxproc_release kills, reaps and frees. */

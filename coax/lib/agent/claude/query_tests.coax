@@ -332,3 +332,21 @@ fx_mcp :: (id: string, server: string, message: string, buf: [] u8) -> string {
 }
 
 near_f :: (a: f64, b: f64) -> bool { return abs(a - b) < 0.001; }
+
+#test "effort and thinking display ride in their flags' own arguments" {
+  o: [1] ClOptions;
+  o[0].model = "claude-haiku-5-5"; o[0].effort = "low"; o[0].thinking_display = "summarized";
+  a: [1] ClArgs; abuf: [8192] u8; a[0].buf = abuf[..]; s: [4096] u8;
+  cl_build_args(o[0], a[..], s[..]);
+  model := -1; effort := -1; thinking := -1;
+  for i: 0..<a[0].count {
+    if cl_arg_at(a[..], i) == "--model=claude-haiku-5-5" { model = i; }
+    if cl_arg_at(a[..], i) == "--effort=low" { effort = i; }
+    if cl_arg_at(a[..], i) == "--thinking-display=summarized" { thinking = i; }
+  }
+  #assert model > 0 && effort == model + 1 && thinking == effort + 1;
+  b: [1] ClOptions;
+  a[0].len = 0; a[0].count = 0;
+  cl_build_args(b[0], a[..], s[..]);
+  for i: 0..<a[0].count { #assert cl_arg_at(a[..], i)[0..<4] != "--ef" || cl_arg_at(a[..], i).count < 4; }
+}
