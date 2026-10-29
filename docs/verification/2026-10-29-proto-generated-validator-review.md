@@ -57,3 +57,11 @@ propagation; these checks pass, but a later full mutation run is still needed.
 The complete Python-free compiler bootstrap subsequently passed with this
 importer and wire source. The additional FI assertions also pass, but that does
 not replace the pending full consumer mutation rerun.
+
+After adding direct required-field, nested-depth, noncanonical and forged-error
+witnesses, the complete identity projection mutation run killed 3,159/3,159
+mutants with no equivalence waivers. The root projection source for that run
+was SHA-256 `fa887723059edbb2d4632f0b14aecbefab83a5a276b3638ba04d7fee71bce0fd`;
+this is an uncommitted experimental unverified consumer and not a signature decision.
+The event projection and an additional full reference-mode identity run remain
+open; this evidence does not close the task.
