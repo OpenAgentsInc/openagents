@@ -1,0 +1,246 @@
+{
+  "schema": "coax.load32-proof.v1",
+  "source": "coax/lib/crypto/bytes.coax",
+  "source_sha256": "f1427b0d05c28c4f64800b1a64b11125c8087ecd4edd573a2e3a706182f543a1",
+  "driver_sha256": "2e6ee05f8518879e4da3bbc431074911f550b87bf86ecfe980c285e22c036a89",
+  "z3": "4.16.0",
+  "needles": [
+    "cb_load_word :: (data: [] u8, at: int, width: int, big: bool) -> CbU64 {",
+    "    index := ifx big then at + i else at + width - 1 - i;",
+    "    value = (value << 8) | cast(u64) data[index];",
+    "cb_load_word32 :: (data: [] u8, at: int, big: bool) -> CbU32 {\n  result: CbU32;\n  if !cb_span(data.count, at, 4) { return result; }\n  value: u32;\n  for i: 0..<4 {\n    index := ifx big then at + i else at + 3 - i;\n    value = (value << 8) | cast,trunc(u32) data[index];\n  }\n  result.value = value; result.ok = true;\n  return result;\n}",
+    "cb_load_be32 :: (data: [] u8, at: int) -> CbU32 #export_c { return cb_load_word32(data, at, true); }",
+    "cb_load_le32 :: (data: [] u8, at: int) -> CbU32 #export_c { return cb_load_word32(data, at, false); }"
+  ],
+  "checks": [
+    {
+      "name": "be_old_fits_u32",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "56497384cdcab0f8e08c07095c323b1464887b5e1b06112fd7c8c25ea5c0efb5"
+    },
+    {
+      "name": "be_new_equals_old",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "60b1c1ac0e8935fe9d65bba3969d7aa7d9d7d8ce3c87b000a9ae39dc42045ae4"
+    },
+    {
+      "name": "be_step0_below_2_24",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "c3d67dcefb6cd94536145f59fe6a15739731bdd245e1d2163c77b3c20fa52706"
+    },
+    {
+      "name": "be_step0_disjoint_or",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "e7810f0bc70f71171202bcc54af6348159026d91a6695ad23fe1edad1b2defc4"
+    },
+    {
+      "name": "be_step1_below_2_24",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "fc42df2fab040b99e28b7b6efb12c122fb230f1ccd6d0ca74a838d79d6ed4b90"
+    },
+    {
+      "name": "be_step1_disjoint_or",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "c8bf66bd0833667a68fab1bfb6cee09f283015b057e70c8338eec5497c8994f1"
+    },
+    {
+      "name": "be_step2_below_2_24",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "03991ac1d82498f1ce8d1a2863493f01e81be325babbe59680d60ea4e3851461"
+    },
+    {
+      "name": "be_step2_disjoint_or",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "4daf84f1b7f1737c9ff8e2334ad1e9936ea9efa6a1336defadc3b19b1a7f8f17"
+    },
+    {
+      "name": "be_step3_below_2_24",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "45968717cd6f3cd47b8180dc1c56cf3bcfeadde427a4c03b832bcf3eae917233"
+    },
+    {
+      "name": "be_step3_disjoint_or",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "b6a166001daea51b6a3d83286947fcf54889ff4b86a03048eb24db779c83d8b3"
+    },
+    {
+      "name": "be_byte0_field",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "202a04abd27209802271847a7a0d3e82d278ab1c1040b4596816231c2615ea80"
+    },
+    {
+      "name": "be_byte1_field",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "fa1a5f3b44f6caac4cc1a06b008d8b43704695ed773eff56cc8d5e8d0be2d313"
+    },
+    {
+      "name": "be_byte2_field",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "06327895ddd929f7a94c7c0232ba8d7b408188da33ecc86a00eb5747e91f9bca"
+    },
+    {
+      "name": "be_byte3_field",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "62db7f769fd32c4735062d068b8d4197479de88631d2a947a6ad0a7897a72daa"
+    },
+    {
+      "name": "be_control_width3_differs",
+      "expected": "sat",
+      "result": "sat",
+      "smt_sha256": "29d29a8bfd4dcbb1eede5e998357a03b20176dc6d53a31f1ef5783d4be764c9d"
+    },
+    {
+      "name": "be_control_width5_loses_bits",
+      "expected": "sat",
+      "result": "sat",
+      "smt_sha256": "82813f158866dd541af009de9233091b841e528b473f8930bc321dbfeb55f240"
+    },
+    {
+      "name": "be_start_value_shifted_out",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "269d9aaac6fe3d4ecc2161b10b0642e6c55ed0f9d7e3378b422356cbe573a3a3"
+    },
+    {
+      "name": "be_control_uninitialized_width3_differs",
+      "expected": "sat",
+      "result": "sat",
+      "smt_sha256": "5cf0fd859f22987bd8e52d7d9a076f378b44f17d7516fbf79c470aeafe5f65c0"
+    },
+    {
+      "name": "be_control_swapped_order_differs",
+      "expected": "sat",
+      "result": "sat",
+      "smt_sha256": "b128f3f7f339761ddfd6bb566c6ed41fbc9d728594fc90e5492cecfc6d19143d"
+    },
+    {
+      "name": "le_old_fits_u32",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "12bdee80f34ed894f5f5ea891712e392d42c5ac7e85d124397df325d0432c49f"
+    },
+    {
+      "name": "le_new_equals_old",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "5a284e00b1b9d4b60f025f4e5da2240319a39a78d118c90249a79882d4859881"
+    },
+    {
+      "name": "le_step0_below_2_24",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "c3d67dcefb6cd94536145f59fe6a15739731bdd245e1d2163c77b3c20fa52706"
+    },
+    {
+      "name": "le_step0_disjoint_or",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "c1c074087459cf3f26a22e656069d27cc8bceab1a5a9243952f5f8660ed6db33"
+    },
+    {
+      "name": "le_step1_below_2_24",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "92d2ec38490c0f73538f3f7a1c55f2eceeb2fec265cac82197c8d128645ca27c"
+    },
+    {
+      "name": "le_step1_disjoint_or",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "432aac42455cd9b79d27491897aa07e0dbad4cc9f53771604daffff077ff0556"
+    },
+    {
+      "name": "le_step2_below_2_24",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "df4f01a4338ac476ae3e81da0f85379e73f726bdfb083b67d7e30527408cd17d"
+    },
+    {
+      "name": "le_step2_disjoint_or",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "1e18879459a00f0ec97026adb940f455e21b118fc44cdd71496b284a77af41c0"
+    },
+    {
+      "name": "le_step3_below_2_24",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "bc2fda64a351e439c631dc214661f25901b1b2584313e9f4baa494ddffc3ae68"
+    },
+    {
+      "name": "le_step3_disjoint_or",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "f3c5b23d9fdb70f6e2f0fea97f803e0c5c8f2bcd95a7e7e1175598a05cd28f34"
+    },
+    {
+      "name": "le_byte0_field",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "af422016a745c72e4c5a9799ccb9ae192ca6952650c5039bb00a3b9d366c2361"
+    },
+    {
+      "name": "le_byte1_field",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "cb013d9323ea6a843242f806bfe10de45bcbc0cccde0d74eac340fba35a2c361"
+    },
+    {
+      "name": "le_byte2_field",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "a464be60f5aecc198e14c8d4e4c77fb597734615d3e3f4354b9b5f6592cf57a2"
+    },
+    {
+      "name": "le_byte3_field",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "7f2d1bdff3e613435e6b0bbee6bb2e90180841e7fc7e03c093aa5e36e4807150"
+    },
+    {
+      "name": "le_control_width3_differs",
+      "expected": "sat",
+      "result": "sat",
+      "smt_sha256": "39e078c582d5683702c1e77237e2e7e3181b0f876d180604ca88b3bfeaaf3615"
+    },
+    {
+      "name": "le_control_width5_loses_bits",
+      "expected": "sat",
+      "result": "sat",
+      "smt_sha256": "a0123b6338c129af84858791342130fa83cf6b1fff04857a5d57106a8cc7420a"
+    },
+    {
+      "name": "le_start_value_shifted_out",
+      "expected": "unsat",
+      "result": "unsat",
+      "smt_sha256": "08d32140419f37c8d793f8922f3a60f3b3e3c2d5ec9040620da16e7633adf56a"
+    },
+    {
+      "name": "le_control_uninitialized_width3_differs",
+      "expected": "sat",
+      "result": "sat",
+      "smt_sha256": "8b106628cbf3afeee3a4b49b29cd4f93e9ec58297f13da564556925f330f5334"
+    },
+    {
+      "name": "le_control_swapped_order_differs",
+      "expected": "sat",
+      "result": "sat",
+      "smt_sha256": "ca5d3c13151583415d887bc910096e8f053bd8f331647669b1ba60d14f1cec89"
+    }
+  ],
+  "premise": "the hand-written models correspond to the pinned source lines (the removed old cast(u32) wrappers were reviewed against the previous source); independently reviewed, not solver-checked; the refusal path is covered by Coax checks and mutation, not by z3"
+}

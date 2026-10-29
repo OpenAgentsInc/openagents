@@ -15,7 +15,7 @@ The exported API is available from Coax or its generated C ABI:
 | Procedure | Contract |
 | --- | --- |
 | `cb_span(total, at, n)` | Nonnegative span, at most 1 MiB of borrowed storage; subtraction checks avoid integer overflow. |
-| `cb_load_be32/le32/be64/le64(data, at)` | Returns `{value, ok}`; failure returns zero and does not read outside the admitted span. |
+| `cb_load_be32/le32/be64/le64(data, at)` | Returns `{value, ok}`; failure returns zero and does not read outside the admitted span. The 32-bit loads use a fixed four-byte `u32` accumulator with no checked cast ([#092b](../../../docs/verification/2026-10-29-load32-total.md)). |
 | `cb_store_be32/le32/be64/le64(out, at, value)` | Typed 32/64-bit input; invalid spans refuse before writing; adjacent bytes remain unchanged. |
 | `cb_mask(bit)` | Low bit selects zero or `UINT64_MAX`; `(bit & 1) * UINT64_MAX` is defined even in checked mode. |
 | `cb_ct_equal(a, b)` | Equal admitted bytes return `UINT64_MAX`, unequal or invalid lengths return zero; empty views compare equal. It scans the complete public length. |

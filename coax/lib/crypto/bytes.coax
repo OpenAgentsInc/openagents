@@ -95,6 +95,37 @@ CbU64 :: struct { value: u64; ok: bool; }
   #assert !cb_select_checked(0, a[..], a[..], out[..], false, true);
 }
 
+#forall "four-byte loads equal the 64-bit narrowing model for every byte at every position" position: 0..<4, value: 0..<256, big: bool, background: 0..<3 {
+  fill := [3] u8.[0, 165, 255];
+  data: [6] u8; for i: 0..<6 { data[i] = cast,trunc(u8) (cast(int) fill[background] + i * 37); }
+  data[1 + position] = cast(u8) value;
+  old := cb_load_word(data[..], 1, 4, big); loaded := cb_load_word32(data[..], 1, big);
+  #assert old.ok && loaded.ok && loaded.value == cast(u32) old.value;
+  shift := ifx big then (3 - position) * 8 else position * 8;
+  #assert (loaded.value >> shift) & 255 == cast(u32) value;
+}
+#forall "four-byte refusals return zero and match the span model" count: 0..<9, at: -1..<10 {
+  data := [8] u8.[255, 255, 255, 255, 255, 255, 255, 255];
+  for big: [2] bool.[false, true] {
+    loaded := cb_load_word32(data[0..<count], at, big);
+    #assert loaded.ok == cb_span(count, at, 4);
+    if !loaded.ok { #assert loaded.value == 0; }
+    else { #assert loaded.value == 4294967295; }
+    #assert loaded.ok == cb_load_word(data[0..<count], at, 4, big).ok;
+  }
+  for i: 0..<8 { #assert data[i] == 255; }
+}
+#test "four-byte loads keep exact endian order through the public wrappers" {
+  data := [6] u8.[0, 1, 2, 3, 4, 5];
+  #assert cb_load_be32(data[..], 1).value == 0x01020304 && cb_load_le32(data[..], 1).value == 0x04030201;
+  #assert cb_load_be32(data[..], 2).ok && cb_load_be32(data[..], 2).value == 0x02030405;
+  #assert !cb_load_be32(data[..], 3).ok && cb_load_be32(data[..], 3).value == 0;
+  #assert !cb_load_le32(data[..], 3).ok && cb_load_le32(data[..], 3).value == 0;
+  #assert !cb_load_be32(data[..], -1).ok && !cb_load_le32(data[0..<3], 0).ok;
+  high := [4] u8.[128, 0, 0, 1];
+  #assert cb_load_be32(high[..], 0).value == 0x80000001 && cb_load_le32(high[..], 0).value == 0x01000080;
+}
+
 cb_span :: (total: int, at: int, n: int) -> bool #export_c {
   if total < 0 || total > CB_MAX_BYTES || at < 0 || n < 0 || at > total { return false; }
   return n <= total - at;
@@ -119,14 +150,23 @@ cb_store_word :: (out: [] u8, at: int, value: u64, width: int, big: bool) -> boo
   }
   return true;
 }
-cb_load_be32 :: (data: [] u8, at: int) -> CbU32 #export_c {
-  loaded := cb_load_word(data, at, 4, true); result: CbU32;
-  result.value = cast(u32) loaded.value; result.ok = loaded.ok; return result;
+// A fixed four-byte u32 accumulator: each step shifts at most 24 meaningful
+// bits left by 8 and ORs in a byte widened without a checked cast, so no bit is
+// lost and no runtime guard depends on the loaded bytes. Only the public span
+// and index decide control flow. Refusal returns zero.
+cb_load_word32 :: (data: [] u8, at: int, big: bool) -> CbU32 {
+  result: CbU32;
+  if !cb_span(data.count, at, 4) { return result; }
+  value: u32;
+  for i: 0..<4 {
+    index := ifx big then at + i else at + 3 - i;
+    value = (value << 8) | cast,trunc(u32) data[index];
+  }
+  result.value = value; result.ok = true;
+  return result;
 }
-cb_load_le32 :: (data: [] u8, at: int) -> CbU32 #export_c {
-  loaded := cb_load_word(data, at, 4, false); result: CbU32;
-  result.value = cast(u32) loaded.value; result.ok = loaded.ok; return result;
-}
+cb_load_be32 :: (data: [] u8, at: int) -> CbU32 #export_c { return cb_load_word32(data, at, true); }
+cb_load_le32 :: (data: [] u8, at: int) -> CbU32 #export_c { return cb_load_word32(data, at, false); }
 cb_load_be64 :: (data: [] u8, at: int) -> CbU64 #export_c { return cb_load_word(data, at, 8, true); }
 cb_load_le64 :: (data: [] u8, at: int) -> CbU64 #export_c { return cb_load_word(data, at, 8, false); }
 cb_store_be32 :: (out: [] u8, at: int, value: u32) -> bool #export_c { return cb_store_word(out, at, cast(u64) value, 4, true); }

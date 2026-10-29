@@ -1,0 +1,27 @@
+{
+  "schema": "coax.load32-vectors.v1",
+  "cases_per_target": 6216,
+  "source_sha256": "f1427b0d05c28c4f64800b1a64b11125c8087ecd4edd573a2e3a706182f543a1",
+  "compiler": "coax0 0.22.0",
+  "compiler_sha256": "6e385ae9e0d92cca16a8818ca11a9f5c594b19299958963c1812b272f1cc68b8",
+  "oracle": "Python int.from_bytes",
+  "targets": {
+    "native-checked": {
+      "passed": 6216,
+      "library_sha256": "664ae3941094d9f9892d6ea2186557acb2777d9fc53282090ca6acce2e8ae4f1"
+    },
+    "native-release": {
+      "passed": 6216,
+      "library_sha256": "8c6a6c861e2e4743611622f6b246fd70f2731fc1f3db25eb79a36ec137d62711"
+    },
+    "wasm-checked": {
+      "passed": 6216,
+      "wasm_sha256": "509ddcfc51e6e8a0287e13a0eb3425ce4cfd056439e148198a80ceb949305ca2"
+    },
+    "wasm-release": {
+      "passed": 6216,
+      "wasm_sha256": "ef3f37f36bd868351fb07f4ed07f2edb7e0a6668f950bacbf0549f09a152ebd0"
+    }
+  },
+  "emitted_c": "cb_load_word32 and its two wrappers call no checked-cast helper in checked or release C"
+}

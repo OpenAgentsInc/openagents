@@ -1,0 +1,16 @@
+bytes-memory: 13 checks, 13 passed, 0 failed
+chacha20: 18 checks, 18 passed, 0 failed
+ecdh: 110 checks, 110 passed, 0 failed
+hchacha20: 20 checks, 20 passed, 0 failed
+pbkdf2: 61 checks, 61 passed, 0 failed
+phrase-gate-profile: 84 checks, 84 passed, 0 failed
+poly1305: 19 checks, 19 passed, 0 failed
+schnorr_scalar_workspace: 29 checks, 29 passed, 0 failed
+scrypt_blockmix: 19 checks, 19 passed, 0 failed
+scrypt_blockmix_workspace: 21 checks, 21 passed, 0 failed
+secp_field32: 18 checks, 18 passed, 0 failed
+secp_field: 39 checks, 39 passed, 0 failed
+secp_scalar: 26 checks, 26 passed, 0 failed
+sha256: 41 checks, 41 passed, 0 failed
+sha256_workspace: 45 checks, 45 passed, 0 failed
+xchacha20_workspace: 25 checks, 25 passed, 0 failed
