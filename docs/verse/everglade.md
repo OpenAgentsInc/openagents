@@ -539,8 +539,13 @@ a broken building's footprint (next step).
 130 and 20); a new chunk takes the oldest sleeping one's place. Debris
 steps at 60 Hz (rigid.coax bodies, box corners against the ground with
 friction and restitution, chunks pushing apart), sleeps once still for
-0.6 s or after 12 s, and a sleeping chunk costs nothing to step. Chunks,
-fire and smoke draw as the shapes' boxes and spheres (700 and 168 slots);
+0.6 s or after 12 s, and a sleeping chunk costs nothing to step. Each chunk
+draws as the town's own kit piece it broke from, shrunk into its box, so it
+shows that texture: plaster or its timber grid, brick and stone, roof
+tiles, a beam, planks (six kit groups keep 64 instances each past the
+town's for it). Fire and lightning char what they break: its chunks come
+out darkened, some nearly to soot, with a plume of dust. Fire and smoke
+draw as the shapes' boxes and spheres (700 and 168 slots);
 fire and lightning are LOOK_GLOW in everglade.wgsl: unlit, three times
 their colour, blooming, no shadow.
 

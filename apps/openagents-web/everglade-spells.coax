@@ -61,6 +61,13 @@ SP_GROUPS :: 192;         // a building each, then 16 m cells for the rest
 SP_REGROW :: 60.0;        // s of rest before a broken building grows back
 SP_REGROW_AWAY :: 30.0;   // m you must be from it
 SP_NEWS :: 5.0;           // s a cast's line shows
+// The debris is drawn as the town's own kit pieces, shrunk to each chunk's box, so a chunk shows the
+// texture of what it broke from: plaster, the timber grid, brick and stone, roof tiles, a beam, planks.
+// Each of those meshes' groups keeps SP_DEBRIS_CAP instances past the town's for it (spells_cap).
+SP_DEBRIS_MESHES :: 6;
+SP_DEBRIS_MESH :: [6] int.[M_PLASTER, M_PLASTER_GRID, M_BRICK, M_ROOF, M_CORNER, M_FLOOR_WOOD];
+SP_DEBRIS_CAP :: 64;
+SP_DEBRIS_OBJECTS :: SP_DEBRIS_MESHES * SP_DEBRIS_CAP;
 
 YELLOW_R :: 1.0; YELLOW_G :: 0.68; YELLOW_B :: 0.22;
 LOOK_GLOW :: 15;          // everglade.wgsl LOOK_GLOW: its own light, unlit, blooming
@@ -78,6 +85,7 @@ Spells :: struct {
   dm: [] DemoWorld;           // the pieces and their debris: the page's face holds it (everglade_attach_demolish); none, nothing breaks
   dice: [1] SrdDice;
   bounds: [KIT_MESHES * 6] f32; have: [KIT_MESHES] bool;
+  town_used: [SP_DEBRIS_MESHES] int;   // each debris mesh's group: the town's own instances (the debris follows them)
   group_x: [SP_GROUPS] f32; group_z: [SP_GROUPS] f32; group_n: [SP_GROUPS] int;
   armed: int;                // the slot aimed, -1 none
   px: f32; py: f32; seen: bool;            // the pointer, device pixels
@@ -126,18 +134,6 @@ SP_TOUGH :: [40] bool.[
   true, true, true, true, true, true, true, false, false, false,
   false, false, false, false, false, false, false, true, false, true,
   false, true, false, false, false, true, true, false, true, false];
-// its chunks' colour, sRGB
-SP_COLOUR :: [40 * 3] f32.[
-  0.86, 0.8, 0.68, 0.86, 0.8, 0.68, 0.86, 0.8, 0.68, 0.66, 0.52, 0.38,
-  0.63, 0.47, 0.38, 0.63, 0.47, 0.38, 0.63, 0.47, 0.38, 0.6, 0.75, 0.82,
-  0.5, 0.35, 0.22, 0.48, 0.34, 0.22, 0.66, 0.33, 0.25, 0.6, 0.32, 0.26,
-  0.5, 0.37, 0.25, 0.5, 0.36, 0.24, 0.62, 0.6, 0.56, 0.6, 0.46, 0.38,
-  0.52, 0.38, 0.25, 0.55, 0.4, 0.26, 0.7, 0.22, 0.15, 0.55, 0.4, 0.26,
-  0.6, 0.45, 0.3, 0.5, 0.36, 0.24, 0.5, 0.36, 0.24, 0.52, 0.38, 0.25,
-  0.75, 0.72, 0.66, 0.5, 0.36, 0.24, 0.62, 0.55, 0.42, 0.3, 0.3, 0.32,
-  0.5, 0.36, 0.24, 0.62, 0.55, 0.42, 0.55, 0.4, 0.26, 0.3, 0.3, 0.32,
-  0.8, 0.65, 0.3, 0.6, 0.15, 0.12, 0.5, 0.36, 0.24, 0.8, 0.65, 0.3,
-  0.63, 0.47, 0.38, 0.88, 0.82, 0.66, 0.62, 0.6, 0.56, 0.55, 0.4, 0.26];
 
 sp_object :: (mesh: int) -> SrdObject {
   m := mesh - (KIT_FOREST + KIT_TREES);
@@ -172,6 +168,21 @@ sp_group :: (x: f32, z: f32) -> int {
 
 // ---- hooks: the realm calls these
 
+// The extra instances a kit group keeps for debris.
+spells_cap :: (group: int) -> int {
+  for k: 0..<SP_DEBRIS_MESHES { if group_of(SP_DEBRIS_MESH[k]) == group { return SP_DEBRIS_CAP; } }
+  return 0;
+}
+// Which debris mesh a chunk of mesh m (and body b, for a mix) draws as.
+sp_debris :: (m: int, b: int) -> int {
+  if m >= M_PLASTER && m <= M_PLASTER_GRID { return ifx b % 3 == 0 then 1 else 0; }   // plaster, and its timber grid
+  if m == M_WINDOW { return 0; }
+  if (m >= M_BRICK && m <= M_BRICK_DOOR) || m == M_FLOOR_BRICK || m == M_CHIMNEY || m == M_GABLE || m == M_STEP { return 2; }
+  if m == M_ROOF || m == M_TOWER_ROOF { return 3; }
+  if m == M_CORNER || m == M_LOG { return 4; }
+  return 5;
+}
+
 // At the start, once the town is laid: every town piece's instance.
 spells_start :: (s: [] Everglade) {
   if s[0].sp.dm.count < 1 { return; }
@@ -191,6 +202,7 @@ spells_start :: (s: [] Everglade) {
       s[0].sp.group_x[grp] += rows[3]; s[0].sp.group_z[grp] += rows[11]; s[0].sp.group_n[grp] += 1;
     }
   }
+  for k: 0..<SP_DEBRIS_MESHES { s[0].sp.town_used[k] = s[0].kit_used[group_of(SP_DEBRIS_MESH[k])]; }
   for g: 0..<SP_GROUPS { if s[0].sp.group_n[g] > 0 { s[0].sp.group_x[g] /= f32(s[0].sp.group_n[g]); s[0].sp.group_z[g] /= f32(s[0].sp.group_n[g]); } }
 }
 
@@ -257,9 +269,8 @@ sp_shapes :: (s: [] Everglade) {
     for c: 0..<6 { b[c] = ifx s[0].sp.have[m] then s[0].sp.bounds[k + c] else SP_UNIT[c]; }
     r := w[0].rest[i * 12..<i * 12 + 12];
     o := sp_object(m);
-    c := m - (KIT_FOREST + KIT_TREES);
-    colour := ifx c >= 0 && c < 40 then v3(SP_COLOUR[c * 3], SP_COLOUR[c * 3 + 1], SP_COLOUR[c * 3 + 2]) else v3(0.6, 0.5, 0.4);
-    demo_shape(w, i, v3(b[0], b[1], b[2]), v3(b[3], b[4], b[5]), ground_at(s, r[3], r[11]), o.material, o.ac, o.hp, colour, m == M_ROOF);
+    // a chunk's colour is its tint over the kit's own texture (sp_debris): white, a little toned
+    demo_shape(w, i, v3(b[0], b[1], b[2]), v3(b[3], b[4], b[5]), ground_at(s, r[3], r[11]), o.material, o.ac, o.hp, v3(1, 1, 1), m == M_ROOF);
   }
   demo_link(w);
   s[0].sp.ready = true;
@@ -450,6 +461,12 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
   }
   _ := demo_settle(w);
   kind := ifx slot == SP_ORB then 2 else ifx slot == SP_METEOR then 0 else 1;
+  // fire and lightning char what they broke: its new chunks darkened, some to soot; and dust where it broke
+  for b: 0..<DEMO_BODIES {
+    if w[0].meta[b].kind != DEMO_CHUNK || w[0].meta[b].born != w[0].clock { continue; }
+    burn := ifx kind == 2 then 1.0f32 else 0.3 + 0.6 * srd_unit(s[0].sp.dice[..]);
+    w[0].meta[b].cr *= burn; w[0].meta[b].cg *= burn * 0.94; w[0].meta[b].cb *= burn * 0.88;
+  }
   sp_add_blast(s, at, radius, kind);
   if kind != 2 { sp_add_scorch(s, v3(at.x, sp_surface(s, at.x, at.z, at.y + 0.5), at.z), ifx kind == 0 then 1.4f32 else radius * 0.45); }
   for q: 0..<(ifx kind == 2 then 0 else 4) {
@@ -583,7 +600,9 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   demo_step(w, everglade_ground(), s[0].heights[..], dt);
   for e: 0..<w[0].event_n {
     ev := w[0].events[e];
-    sp_add_puff(s, ev.at, v3(0, 0.8, 0), hi(ev.size, 0.8) * 1.4, 2.5, ifx ev.kind == 2 then 0.5f32 else 0.62f32);
+    // dust: a plume where it broke, and one drifting off
+    sp_add_puff(s, ev.at, v3(0, 0.8, 0), hi(ev.size, 0.8) * 1.4, 3.0, 0.7);
+    if ev.kind == 1 { sp_add_puff(s, add(ev.at, v3(0, 0.5, 0)), v3(0.6, 0.4, 0.3), hi(ev.size, 0.8), 3.5, 0.62); }
   }
   s[0].sp.regrow_t += dt;
   if s[0].sp.regrow_t > 1 { s[0].sp.regrow_t = 0; sp_regrow(s); }
@@ -649,13 +668,34 @@ sp_rod :: (s: [] Everglade, a: Point, b: Point, thick: f32, colour: Point) {
   sp_shape(s, SHAPE_BOX, LOOK_GLOW, mix(a, b, 0.5), times(x, thick), times(y, l + thick * 0.5), times(z, thick), colour);
 }
 
+// Kit mesh m's instance filling a chunk's box: its bounds' axes stretched to the box's.
+sp_chunk :: (s: [] Everglade, m: int, box: DemoBox) {
+  g := group_of(m);
+  n := s[0].kit_used[g];
+  if n >= s[0].group_cap[g] { return; }
+  s[0].kit_used[g] = n + 1;
+  k := m * 6;
+  b: [6] f32;
+  for c: 0..<6 { b[c] = ifx s[0].sp.have[m] then s[0].sp.bounds[k + c] else SP_UNIT[c]; }
+  cx := times(box.x, 1 / hi(b[3] - b[0], 0.01)); cy := times(box.y, 1 / hi(b[4] - b[1], 0.01)); cz := times(box.z, 1 / hi(b[5] - b[2], 0.01));
+  mx := (b[0] + b[3]) / 2; my := (b[1] + b[4]) / 2; mz := (b[2] + b[5]) / 2;
+  t := sub(box.at, add(add(times(cx, mx), times(cy, my)), times(cz, mz)));
+  o := (s[0].group_at[g] + n) * OBJECT_FLOATS;
+  s[0].objects[o] = cx.x; s[0].objects[o + 1] = cy.x; s[0].objects[o + 2] = cz.x; s[0].objects[o + 3] = t.x;
+  s[0].objects[o + 4] = cx.y; s[0].objects[o + 5] = cy.y; s[0].objects[o + 6] = cz.y; s[0].objects[o + 7] = t.y;
+  s[0].objects[o + 8] = cx.z; s[0].objects[o + 9] = cy.z; s[0].objects[o + 10] = cz.z; s[0].objects[o + 11] = t.z;
+  s[0].objects[o + 12] = box.colour.x; s[0].objects[o + 13] = box.colour.y; s[0].objects[o + 14] = box.colour.z;
+  s[0].objects[o + 15] = f32(SHAPE_MESH + 8 * LOOK_KIT);
+}
+
 sp_draw :: (s: [] Everglade, dt: f32) {
   w := sp_dm(s);
-  // the debris: a box each
+  // the debris: each chunk the kit piece it broke from (sp_debris), shrunk into its box, toned
+  for k: 0..<SP_DEBRIS_MESHES { s[0].kit_used[group_of(SP_DEBRIS_MESH[k])] = s[0].sp.town_used[k]; }
   box: [1] DemoBox;
   for b: 0..<DEMO_BODIES {
     if !demo_chunk_box(w, b, box[..]) { continue; }
-    sp_shape(s, SHAPE_BOX, LOOK_STONE, box[0].at, box[0].x, box[0].y, box[0].z, box[0].colour);
+    sp_chunk(s, SP_DEBRIS_MESH[sp_debris(w[0].pieces[w[0].meta[b].piece].mesh, b)], box[0]);
   }
   // the meteors: a burning rock, a trail of fire behind it and smoke
   for m: 0..<SP_METEORS {
@@ -946,6 +986,14 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   for f: 0..<50 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
   #assert w[0].broken_n > 20 && g[0].sp.broke > 20 && g[0].sp.news_n > 0;
   #assert demo_chunks(w) > 50 && demo_chunks(w) <= w[0].chunk_cap;
+  // the debris draws as the kit's own pieces (plaster, its timber grid, the roof's tiles), past the town's instances
+  debris := 0;
+  for k: 0..<SP_DEBRIS_MESHES {
+    gk := group_of(SP_DEBRIS_MESH[k]);
+    #assert g[0].kit_used[gk] >= g[0].sp.town_used[k] && g[0].kit_used[gk] <= g[0].group_cap[gk];
+    debris += g[0].kit_used[gk] - g[0].sp.town_used[k];
+  }
+  #assert debris > 30;
   #assert g[0].counts[SHAPE_BOX] < SLOTS[SHAPE_BOX] && g[0].counts[SHAPE_SPHERE] <= SLOTS[SHAPE_SPHERE];
   // the inn's roof is down
   roof_down := false;
