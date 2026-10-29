@@ -55,7 +55,7 @@ OUTBOX :: 64;
 
 HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 16; HOLD_JUMP :: 32;
 HOLD_TURN_LEFT :: 64; HOLD_TURN_RIGHT :: 128; HOLD_TILT_UP :: 256; HOLD_TILT_DOWN :: 512;
-KEY_ESCAPE :: -1; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
+KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_BACKSPACE :: -3; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
 LOOK_DRAG :: 0.0055;
 WHEEL_ZOOM :: 0.006;
 NAME_NEAR :: 45.0;     // metres: a place's name shows this near
@@ -80,6 +80,68 @@ SOLID :: [60] f32.[
 ];
 
 Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+
+// ---- the stations (the demo's grid-ui.js panels): walk up to one (STATION_NEAR
+// of its place) and press E, or tap its name, and its panel opens over the
+// bottom of the screen: what it is, and up to three buttons. A button shows
+// an answer, goes to a page, or (the suggestion box) sends what you typed to
+// the site's feedback (POST /api/playtest/survey/answer, question
+// grid_suggestion), where the admin dashboard shows it. Places 0 to 6 are
+// stations; 7 is the Everglade gate.
+STATIONS :: 7;
+STATION_NEAR :: 3.0;
+STATION_PYLONS :: 0; STATION_GUIDE :: 1; STATION_FOREMAN :: 2; STATION_SUGGEST :: 3; STATION_GAMES :: 4;
+STATION_BUILDS :: 5; STATION_GYM :: 6;
+STATION_TITLE :: [7] string.["PYLON TERMINAL", "GRID GUIDE", "FOREMAN", "LEAVE A SUGGESTION", "GAME LAB", "BUILD STATUS", "GYM BOARDS"];
+STATION_TEXT :: [7] string.[
+  "Pylons are the computers that run work for OpenAgents. No live pylons to show right now. What we are building, and the work open on it, is on the projects page.",
+  "Explore the Grid, meet the robots on their rounds, and walk up to a station. Ask about something below.",
+  "The Foreman keeps OpenAgents' work moving: every project's tasks, who is on them and what just finished, signed on Nostr and shown on the projects page.",
+  "Tell us what would make the Verse better. Type it, then press SEND.",
+  "The Game Lab isn't open yet. The worlds made so far are on the galaxy: open one from there.",
+  "What is being built in the Verse, live: the tasks in progress, the ones just finished and their commits, from the project's signed Nostr events.",
+  "The original Gym and its RESULTS and EVALS boards, kept as they were in the first Verse."
+];
+STATION_PROMPT :: [7] string.["USE THE PYLON TERMINAL", "ASK THE GRID GUIDE", "SEE THE FOREMAN", "LEAVE A SUGGESTION",
+  "VISIT THE GAME LAB", "READ THE BUILD BOARD", "READ THE GYM BOARDS"];
+// Each station's buttons, three each: a label ("" none) and what it does.
+BUTTON_NONE :: 0; BUTTON_ANSWER :: 1; BUTTON_LINK :: 2; BUTTON_SEND :: 3;
+STATION_BUTTON :: [21] string.[
+  "PROJECTS", "", "",
+  "CONTROLS", "FIND A PLACE", "WHAT IS THIS?",
+  "PROJECTS", "", "",
+  "SEND", "", "",
+  "GALAXY", "", "",
+  "THE VERSE PROJECT", "ALL PROJECTS", "",
+  "", "", ""
+];
+STATION_DOES :: [21] int.[
+  BUTTON_LINK, BUTTON_NONE, BUTTON_NONE,
+  BUTTON_ANSWER, BUTTON_ANSWER, BUTTON_ANSWER,
+  BUTTON_LINK, BUTTON_NONE, BUTTON_NONE,
+  BUTTON_SEND, BUTTON_NONE, BUTTON_NONE,
+  BUTTON_LINK, BUTTON_NONE, BUTTON_NONE,
+  BUTTON_LINK, BUTTON_LINK, BUTTON_NONE,
+  BUTTON_NONE, BUTTON_NONE, BUTTON_NONE
+];
+// A link's page, or an answer's words.
+STATION_WHAT :: [21] string.[
+  "/projects", "", "",
+  "W A S D or the arrows walk and turn, drag the mouse to look, Shift runs, Space jumps, the wheel zooms. On a phone the left thumb walks, the right looks and a tap jumps. Walk up to a station and press E, or tap its name, to open it.",
+  "The Pylon terminal stands just ahead of where you start, with the Foreman beside it. The help desk, the Game Lab, the suggestion box and the build board are round them, the gym is north up the long walk, and the gate to Everglade is close by. Each place's name shows as you come near.",
+  "The Grid is where the Verse began: the first Verse demo's world, its stations and its robots walking their rounds, now in Coax. Walk through the gate to go on to Everglade, or press GALAXY to see every world.",
+  "/projects", "", "",
+  "", "", "",
+  "/verse/galaxy", "", "",
+  "/projects/verse", "/projects", "",
+  "", "", ""
+];
+SUGGEST_URL :: "/api/playtest/survey/answer";
+SUGGEST_Q :: "grid_suggestion";
+TYPED :: 1000;           // the most a suggestion keeps (the server's own cap)
+POST_BYTES :: 4096;
+SENT_NONE :: 0; SENT_SENDING :: 1; SENT_OK :: 2; SENT_FAILED :: 3;
+MSG_FACTS :: 600;
 
 TheGrid :: struct {
   started: bool;
@@ -106,6 +168,14 @@ TheGrid :: struct {
   galaxy_button: Box; button_finger: int; pressed: bool;
   outbox: [OUTBOX] u8; out_n: int; action: int;
   plate_n: int;
+  // the stations: which is near, which is open, its buttons, what an answer says
+  near: int; panel: int; answer: int;
+  buttons: [3] Box; close_button: Box; open_button: Box; panel_finger: int;
+  typed: [TYPED] u8; typed_n: int;
+  post: [POST_BYTES] u8; post_n: int; sent: int;   // a suggestion for the face to send, and how it went
+  visitor: [64] u8; visitor_n: int; player: [64] u8; player_n: int; stamp: [24] u8; stamp_n: int;
+  field: [4] f32;
+  prompt: [64] u8; prompt_n: int;
 }
 
 // ---- small things
@@ -158,6 +228,7 @@ thegrid_start :: (s: [] TheGrid) {
   s[0].feet = v3(0, 0, 0); s[0].face = 0;
   s[0].orbit = verse_orbit_start(s[0].feet, 0);
   s[0].button_finger = -1; s[0].drag_id = -1;
+  s[0].near = -1; s[0].panel = -1; s[0].answer = -1; s[0].panel_finger = -1;
   n := 0;
   for i: 0..<SOLIDS {
     if n >= WALLS { break; }
@@ -246,6 +317,8 @@ thegrid_action_done :: (s: [] TheGrid) #export_c { s[0].out_n = 0; }
 
 thegrid_key :: (s: [] TheGrid, key: int, mods: int) -> bool #export_c {
   if !s[0].started { thegrid_start(s); }
+  if s[0].panel >= 0 { return panel_key(s, key, mods); }
+  if (key == 'e' || key == 'E') && s[0].near >= 0 { open_station(s, s[0].near); return true; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
   b := hold_bit(key);
@@ -261,7 +334,7 @@ thegrid_key_up :: (s: [] TheGrid, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-thegrid_blur :: (s: [] TheGrid) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].button_finger = -1; s[0].pressed = false; }
+thegrid_blur :: (s: [] TheGrid) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].button_finger = -1; s[0].pressed = false; s[0].panel_finger = -1; }
 
 in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 
@@ -270,6 +343,13 @@ in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && 
 thegrid_pointer :: (s: [] TheGrid, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { thegrid_start(s); }
   if kind != 0 { s[0].touch = true; }
+  if s[0].panel >= 0 { return panel_pointer(s, x, y, phase, id); }
+  if phase == 0 && in_box(s[0].open_button, x, y) { s[0].panel_finger = id; return true; }
+  if id == s[0].panel_finger {
+    if phase == 2 && s[0].near >= 0 && in_box(s[0].open_button, x, y) { open_station(s, s[0].near); }
+    if phase >= 2 { s[0].panel_finger = -1; }
+    return true;
+  }
   if phase == 0 && in_box(s[0].galaxy_button, x, y) { s[0].button_finger = id; s[0].pressed = true; return true; }
   if id == s[0].button_finger {
     if phase == 2 && in_box(s[0].galaxy_button, x, y) { leave_to(s, GALAXY); }
@@ -291,6 +371,170 @@ thegrid_pointer :: (s: [] TheGrid, x: f32, y: f32, phase: int, kind: int, id: in
 }
 
 thegrid_cursor :: (s: [] TheGrid) -> int #export_c { return ifx s[0].pressed then 1 else 0; }
+
+// ---- the stations' panels
+
+open_station :: (s: [] TheGrid, i: int) {
+  if i < 0 || i >= STATIONS { return; }
+  s[0].panel = i; s[0].answer = -1; s[0].held = 0;
+  if i == STATION_SUGGEST && s[0].sent == SENT_OK { s[0].sent = SENT_NONE; }
+}
+close_panel :: (s: [] TheGrid) { s[0].panel = -1; s[0].panel_finger = -1; }
+// While a panel is open you stand still; the suggestion box takes typing.
+thegrid_busy :: (s: [] TheGrid) -> bool #export_c { return s[0].panel >= 0; }
+thegrid_wants_text :: (s: [] TheGrid) -> bool #export_c { return s[0].panel == STATION_SUGGEST && s[0].sent != SENT_SENDING; }
+
+press :: (s: [] TheGrid, b: int) {
+  i := s[0].panel;
+  if i < 0 || b < 0 || b > 2 { return; }
+  k := i * 3 + b;
+  does := STATION_DOES[k];
+  if does == BUTTON_ANSWER { s[0].answer = k; }
+  if does == BUTTON_LINK { leave_to(s, STATION_WHAT[k]); }
+  if does == BUTTON_SEND { send_suggestion(s); }
+}
+
+panel_key :: (s: [] TheGrid, key: int, mods: int) -> bool {
+  if key == KEY_ESCAPE { close_panel(s); return true; }
+  if s[0].panel == STATION_SUGGEST {
+    if key == KEY_ENTER { send_suggestion(s); return true; }
+    if s[0].sent == SENT_SENDING { return true; }
+    if key == KEY_BACKSPACE {
+      n := s[0].typed_n;
+      while n > 0 { n -= 1; if (s[0].typed[n] & 0xC0) != 0x80 { break; } }
+      s[0].typed_n = n;
+      return true;
+    }
+    if (mods & 10) != 0 { return false; }
+    if key < 32 || key == 127 { return key >= 0; }
+    if s[0].sent == SENT_FAILED { s[0].sent = SENT_NONE; }
+    type_code(s, key);
+    return true;
+  }
+  if key >= '1' && key <= '3' { press(s, key - '1'); return true; }
+  if key == KEY_ENTER || key == 'e' || key == 'E' { press(s, 0); return true; }
+  return (mods & 10) == 0 && key != KEY_SHIFT;
+}
+// A code point as UTF-8 onto what's typed, if it fits.
+type_code :: (s: [] TheGrid, c: int) {
+  n := s[0].typed_n;
+  size := ifx c < 0x80 then 1 else ifx c < 0x800 then 2 else ifx c < 0x10000 then 3 else 4;
+  if n + size > TYPED { return; }
+  if size == 1 { s[0].typed[n] = cast(u8) c; }
+  if size == 2 { s[0].typed[n] = cast(u8) (0xC0 | (c >> 6)); s[0].typed[n + 1] = cast(u8) (0x80 | (c & 63)); }
+  if size == 3 { s[0].typed[n] = cast(u8) (0xE0 | (c >> 12)); s[0].typed[n + 1] = cast(u8) (0x80 | ((c >> 6) & 63)); s[0].typed[n + 2] = cast(u8) (0x80 | (c & 63)); }
+  if size == 4 {
+    s[0].typed[n] = cast(u8) (0xF0 | (c >> 18)); s[0].typed[n + 1] = cast(u8) (0x80 | ((c >> 12) & 63));
+    s[0].typed[n + 2] = cast(u8) (0x80 | ((c >> 6) & 63)); s[0].typed[n + 3] = cast(u8) (0x80 | (c & 63));
+  }
+  s[0].typed_n = n + size;
+}
+typed_text :: (s: [] TheGrid) -> string { return cast(string) s[0].typed[0..<s[0].typed_n]; }
+
+panel_pointer :: (s: [] TheGrid, x: f32, y: f32, phase: int, id: int) -> bool {
+  if phase == 0 { s[0].panel_finger = id; return true; }
+  if id != s[0].panel_finger { return true; }
+  if phase == 2 {
+    if in_box(s[0].close_button, x, y) { close_panel(s); }
+    else { for b: 0..<3 { if in_box(s[0].buttons[b], x, y) { press(s, b); } } }
+  }
+  if phase >= 2 { s[0].panel_finger = -1; }
+  return true;
+}
+
+// ---- a suggestion: the feedback's answer body, every text escaped
+
+json_put :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count {
+    c := text[i];
+    if n + 2 >= out.count { return n; }
+    if c == '"' || c == '\\' { out[n] = '\\'; out[n + 1] = c; n += 2; continue; }
+    out[n] = ifx c < 32 then cast(u8) ' ' else c; n += 1;
+  }
+  return n;
+}
+raw_put :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count { if n < out.count { out[n] = text[i]; n += 1; } }
+  return n;
+}
+// The respondent id the feedback wants (16 hex digits): this browser's visitor and this visit's stamp, hashed.
+respondent :: (visitor: string, stamp: string, out: [] u8) -> int {
+  prime: u64 = 0x100000001b3;
+  h: u64 = 0xcbf29ce484222325;
+  for i: 0..<visitor.count { h = mul_wrap(h ^ cast(u64) visitor[i], prime); }
+  h = mul_wrap(h ^ cast(u64) '|', prime);
+  for i: 0..<stamp.count { h = mul_wrap(h ^ cast(u64) stamp[i], prime); }
+  hex := "0123456789abcdef";
+  for k: 0..<16 {
+    shift: u64 = cast(u64) (60 - 4 * k);
+    if k < out.count { out[k] = hex[cast(int) ((h >> shift) & cast(u64) 15)]; }
+  }
+  return 16;
+}
+grid_suggestion_body :: (out: [] u8, text: string, visitor: string, stamp: string, player: string) -> int {
+  rid: [16] u8;
+  r := respondent(visitor, stamp, rid[..]);
+  n := raw_put(out, 0, "{\"rid\":\"");
+  n = raw_put(out, n, cast(string) rid[0..<r]);
+  n = raw_put(out, n, "\",\"q\":\"");
+  n = raw_put(out, n, SUGGEST_Q);
+  n = raw_put(out, n, "\",\"a\":\"");
+  n = json_put(out, n, text);
+  n = raw_put(out, n, "\",\"player\":\"");
+  n = json_put(out, n, player);
+  n = raw_put(out, n, "\"}");
+  if n >= out.count - 1 { return 0; }
+  return n;
+}
+blank :: (text: string) -> bool { for i: 0..<text.count { if text[i] != ' ' { return false; } } return true; }
+send_suggestion :: (s: [] TheGrid) {
+  if s[0].panel != STATION_SUGGEST || s[0].sent == SENT_SENDING || s[0].post_n > 0 || blank(typed_text(s)) { return; }
+  n := grid_suggestion_body(s[0].post[..], typed_text(s), cast(string) s[0].visitor[0..<s[0].visitor_n],
+                            cast(string) s[0].stamp[0..<s[0].stamp_n], cast(string) s[0].player[0..<s[0].player_n]);
+  if n == 0 { return; }
+  s[0].post_n = n; s[0].sent = SENT_SENDING;
+}
+// The face's side: the body to send, that it went, and the answer ("STATUS\n" then the body).
+thegrid_post :: (s: [] TheGrid) -> int #export_c { return s[0].post_n; }
+thegrid_post_sent :: (s: [] TheGrid) #export_c { s[0].post_n = 0; }
+thegrid_post_answer :: (s: [] TheGrid, reply: string) #export_c {
+  if s[0].sent != SENT_SENDING { return; }
+  ok := reply.count >= 4 && reply[0..<4] == "200\n";
+  s[0].sent = ifx ok then SENT_OK else SENT_FAILED;
+  if ok { s[0].typed_n = 0; }
+}
+// The page facts: visitor= and now= make the respondent id; player= goes with it.
+take_fact :: (line: string, name: string, out: [] u8) -> int {
+  if line.count < name.count || line[0..<name.count] != name { return -1; }
+  n := 0;
+  for k: name.count..<line.count { if n < out.count { out[n] = line[k]; n += 1; } }
+  return n;
+}
+thegrid_message :: (s: [] TheGrid, kind: int, text: string) #export_c {
+  if kind != MSG_FACTS { return; }
+  i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e];
+    i = e + 1;
+    v := take_fact(line, "visitor=", s[0].visitor[..]); if v >= 0 { s[0].visitor_n = v; }
+    p := take_fact(line, "player=", s[0].player[..]); if p >= 0 { s[0].player_n = p; }
+    t := take_fact(line, "now=", s[0].stamp[..]); if t >= 0 { s[0].stamp_n = t; }
+  }
+}
+
+// The nearest station within STATION_NEAR of you, or -1.
+nearest_station :: (you: Point) -> int {
+  best := -1; most := f32(STATION_NEAR * STATION_NEAR);
+  for p: 0..<STATIONS {
+    dx := PLACE[p * 3] - you.x; dz := PLACE[p * 3 + 1] - you.z;
+    d := dx * dx + dz * dz;
+    if d < most { most = d; best = p; }
+  }
+  return best;
+}
 
 thegrid_wheel :: (s: [] TheGrid, dy: f32) #export_c {
   if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
@@ -461,6 +705,106 @@ labels :: (s: [] TheGrid, out: [] f32, u: [] f32, n: int, you: Point) -> int {
   return m;
 }
 
+open_prompt :: (s: [] TheGrid) -> string {
+  if s[0].near < 0 { return ""; }
+  m := raw_put(s[0].prompt[..], 0, ifx phone(s) then "" else "E · ");
+  m = raw_put(s[0].prompt[..], m, STATION_PROMPT[s[0].near]);
+  s[0].prompt_n = m;
+  return cast(string) s[0].prompt[0..<m];
+}
+
+// A station's panel along the bottom: its title and CLOSE, what it is (or
+// the answer a button gave), the suggestion's typed line, and its buttons.
+wrap_lines :: (text: string, width: f32, cap: f32, starts: [] int, ends: [] int) -> int {
+  lines := 0; from := 0;
+  next: [1] int;
+  while from < text.count && lines < starts.count {
+    e := wrap(text, from, width / cap, GAP, SPACE, false, next[..]);
+    starts[lines] = from; ends[lines] = e; lines += 1;
+    if next[0] <= from { break; }
+    from = next[0];
+  }
+  return lines;
+}
+panel_view :: (s: [] TheGrid, out: [] f32, u: [] f32, at: int) -> int {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  gutter := 16 * k;
+  pw := lo(w - 2 * gutter, 760 * k);
+  x0 := (w - pw) / 2; x1 := x0 + pw;
+  cap := 8.5 * k; lead := cap * 2.1;
+  i := s[0].panel;
+  said := STATION_TEXT[i];
+  if s[0].answer >= 0 { said = STATION_WHAT[s[0].answer]; }
+  if i == STATION_SUGGEST && s[0].sent == SENT_OK { said = "Thank you. Your suggestion is in."; }
+  if i == STATION_SUGGEST && s[0].sent == SENT_FAILED { said = "It didn't go. Check your connection and press SEND again."; }
+  inner := pw - 32 * k;
+  starts: [6] int; ends: [6] int;
+  lines := wrap_lines(said, inner, cap, starts[..], ends[..]);
+  buttons := 0;
+  for b: 0..<3 { if STATION_BUTTON[i * 3 + b].count > 0 { buttons += 1; } }
+  typing := i == STATION_SUGGEST;
+  ph := 30 * k + cap + 14 * k + f32(hi_i(lines, 1)) * lead + (ifx typing then 56 * k else 0.0f32)
+        + (ifx buttons > 0 then 60 * k else 0.0f32) + 16 * k;
+  y0 := h - gutter - ph;
+  plate(s, u, Box.{x0 = x0, y0 = y0, x1 = x1, y1 = h - gutter}, 0.9, 0);
+  n := at;
+  y := y0 + 18 * k + cap;
+  n = draw_text(out, n, STATION_TITLE[i], x0 + 16 * k, y, cap, GAP, SPACE, ink(k, 0.95, INK_R, INK_G, INK_B), false, false);
+  cw := text_width("CLOSE", 8 * k) + 28 * k;
+  cb := Box.{x0 = x1 - 10 * k - cw, y0 = y0 + 8 * k, x1 = x1 - 10 * k, y1 = y0 + 8 * k + 34 * k};
+  s[0].close_button = cb;
+  plate(s, u, cb, 0.85, 1);
+  n = draw_text(out, n, "CLOSE", cb.x0 + 14 * k, cb.y1 - 13 * k, 8 * k, GAP, SPACE, ink(k, 0.95, INK_R, INK_G, INK_B), false, false);
+  y += 14 * k;
+  for l: 0..<lines {
+    y += lead;
+    if ends[l] > starts[l] {
+      n = draw_text(out, n, said[starts[l]..<ends[l]], x0 + 16 * k, y - lead * 0.4, cap, GAP, SPACE, ink(k, 0.85, DIM_R, DIM_G, DIM_B), false, false);
+    }
+  }
+  if typing {
+    y += 12 * k;
+    fb := Box.{x0 = x0 + 12 * k, y0 = y, x1 = x1 - 12 * k, y1 = y + 40 * k};
+    plate(s, u, fb, 0.95, 0);
+    s[0].field[0] = fb.x0; s[0].field[1] = fb.y0; s[0].field[2] = fb.x1 - fb.x0; s[0].field[3] = fb.y1 - fb.y0;
+    tc := cap;
+    base := fb.y1 - 15 * k;
+    if s[0].sent == SENT_SENDING {
+      n = draw_text(out, n, "SENDING", fb.x0 + 12 * k, base, tc * 0.85, GAP, SPACE, ink(k, 0.6, DIM_R, DIM_G, DIM_B), false, false);
+    } else if s[0].typed_n > 0 {
+      typed := typed_text(s);
+      shown := typed; skip := 0;
+      tw := text_width(shown, tc);
+      while tw > fb.x1 - fb.x0 - 3 * tc && skip < typed.count { skip += 1; while skip < typed.count && (typed[skip] & 0xC0) == 0x80 { skip += 1; } shown = typed[skip..<typed.count]; tw = text_width(shown, tc); }
+      n = draw_text(out, n, shown, fb.x0 + 12 * k, base, tc, GAP, SPACE, ink(k, 0.95, 1, 1, 1), false, false);
+      cx := fb.x0 + 12 * k + tw + 3 * k;
+      if (cast(int) (s[0].time * 2)) % 2 == 0 && lit(out, n, cx, base, cx, base - tc, 0.6 * k, 0.9, 1.2 * k, 1, 1, 1, 0) { n += 6; }
+    } else {
+      n = draw_text(out, n, "TYPE YOUR SUGGESTION", fb.x0 + 12 * k, base, tc * 0.85, GAP, SPACE, ink(k, 0.5, DIM_R, DIM_G, DIM_B), false, false);
+    }
+    y = fb.y1;
+  }
+  if buttons > 0 {
+    y += 14 * k;
+    bx := x0 + 12 * k;
+    for b: 0..<3 {
+      label := STATION_BUTTON[i * 3 + b];
+      if label.count == 0 { continue; }
+      bs := 8.5 * k;
+      bw := text_width(label, bs) + 32 * k;
+      if bx + bw > x1 - 12 * k { bs = bs * (x1 - 12 * k - bx - 32 * k) / text_width(label, bs); bw = x1 - 12 * k - bx; }
+      bb := Box.{x0 = bx, y0 = y, x1 = bx + bw, y1 = y + 40 * k};
+      s[0].buttons[b] = bb;
+      on := s[0].answer == i * 3 + b;
+      plate(s, u, bb, 0.9, ifx on then 2.0f32 else 1.0f32);
+      n = draw_text(out, n, label, bb.x0 + 16 * k, bb.y1 - 15 * k, bs, GAP, SPACE, ink(k, 0.95, INK_R, INK_G, INK_B), false, false);
+      bx = bb.x1 + 10 * k;
+    }
+  }
+  return n;
+}
+
 hud :: (s: [] TheGrid, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32, you: Point) -> int {
   k := hi(s[0].dpr, 0.5);
   w := s[0].width; h := s[0].height;
@@ -481,6 +825,10 @@ hud :: (s: [] TheGrid, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, 
   s[0].galaxy_button = gb;
   plate(s, u, gb, 0.85, ifx s[0].pressed then 2.0f32 else 1.0f32);
   n = draw_text(out, n, word, gb.x0 + 16 * k, gb.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, INK_R, INK_G, INK_B), false, false);
+  s[0].open_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  for b: 0..<3 { s[0].buttons[b] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
+  s[0].close_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  if s[0].panel >= 0 { return panel_view(s, out, u, n); }
   line := hint(s);
   hs := 7.5 * k;
   room := w - 2 * gutter - 24 * k;
@@ -489,6 +837,17 @@ hud :: (s: [] TheGrid, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, 
   y1 := h - gutter;
   plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - hs - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
   n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, hs, GAP, SPACE, ink(k, 0.85, DIM_R, DIM_G, DIM_B), false, false);
+  // A station near: E (or a tap on its name) opens it.
+  if s[0].near >= 0 {
+    ask := open_prompt(s);
+    ts := 9 * k;
+    aw := text_width(ask, ts) + 32 * k;
+    if aw > w - 2 * gutter { ts = ts * (w - 2 * gutter) / aw; aw = w - 2 * gutter; }
+    ob := Box.{x0 = (w - aw) / 2, y0 = y1 - hs - 76 * k, x1 = (w + aw) / 2, y1 = y1 - hs - 34 * k};
+    s[0].open_button = ob;
+    plate(s, u, ob, 0.85, ifx s[0].panel_finger >= 0 then 2.0f32 else 1.0f32);
+    n = draw_text(out, n, ask, ob.x0 + 16 * k, ob.y1 - 15 * k, ts, GAP, SPACE, ink(k, 0.95, INK_R, INK_G, INK_B), false, false);
+  }
   if move_on {
     r := 46 * k;
     for i: 0..<32 {
@@ -521,6 +880,8 @@ thegrid_frame :: (s: [] TheGrid, out: [] f32, u: [] f32, width: f32, height: f32
   // Through the Everglade gate: on to Everglade.
   if ready(s) && flat_gap(feet, v3(f32(GATE_X), 0, f32(GATE_Z))) < f32(GATE_R) { leave_to(s, EVERGLADE); }
 
+  s[0].near = ifx s[0].panel >= 0 || !ready(s) then -1 else nearest_station(feet);
+
   shot := camera_frame(s, feet, vx, vz, t);
 
   s[0].plate_n = 0;
@@ -549,7 +910,7 @@ thegrid_frame :: (s: [] TheGrid, out: [] f32, u: [] f32, width: f32, height: f32
   u[U_EYE + 3] = f32(LINE_PX) * s[0].dpr;
   u[U_FIELD] = f32(FADE_NEAR); u[U_FIELD + 1] = f32(FADE_FAR); u[U_FIELD + 2] = f32(s[0].bones);
 
-  n := hud(s, out, u, move_on, ox, oy, pad_x, pad_y, feet);
+  n := hud(s, out, u, move_on && s[0].panel < 0, ox, oy, pad_x, pad_y, feet);
   u[5] = f32(s[0].plate_n);
   return n;
 }
@@ -673,6 +1034,92 @@ fake_data :: (out: [] u8) -> int {
   #assert !thegrid_pointer(g[..], 300, 500, 0, 1, 4);
   m = thegrid_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 9.2, 0, 1.1, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert thegrid_action(g[..]) == ACT_NAVIGATE && cast(string) g[0].outbox[0..<g[0].out_n] == EVERGLADE;
+}
+
+#test "walk up to a station and press E: its panel opens, its buttons answer or go, Esc closes" {
+  g: [1] TheGrid;
+  b: [2048] u8;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  n := fake_data(b[..]);
+  ok := thegrid_data(g[..], cast(string) b[0..<n]);
+  for i: 0..<4 { thegrid_arrived(g[..], true); }
+  // at the start nothing is near enough
+  m := thegrid_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].near == -1 && !thegrid_key(g[..], 'e', 0);
+  // by the help desk
+  m = thegrid_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, -6, 0, -3.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].near == STATION_GUIDE && open_prompt(g[..]) == "E · ASK THE GRID GUIDE";
+  #assert g[0].open_button.x1 > g[0].open_button.x0;
+  #assert thegrid_key(g[..], 'E', 0) && g[0].panel == STATION_GUIDE && thegrid_busy(g[..]) && !thegrid_wants_text(g[..]);
+  m = thegrid_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, -6, 0, -3.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert m > 0 && g[0].plate_n <= PLATES && g[0].near == -1;
+  for k: 0..<3 { #assert g[0].buttons[k].x1 > g[0].buttons[k].x0 && g[0].buttons[k].x1 <= 1280; }
+  // W types nothing and walks nowhere; 2 answers where things are
+  #assert thegrid_key(g[..], 'w', 0) && g[0].held == 0;
+  #assert thegrid_key(g[..], '2', 0) && g[0].answer == STATION_GUIDE * 3 + 1;
+  // a click on WHAT IS THIS?
+  bb := g[0].buttons[2];
+  #assert thegrid_pointer(g[..], bb.x0 + 3, bb.y0 + 3, 0, 0, 1) && thegrid_pointer(g[..], bb.x0 + 3, bb.y0 + 3, 2, 0, 1);
+  #assert g[0].answer == STATION_GUIDE * 3 + 2 && thegrid_action(g[..]) == 0;
+  #assert thegrid_key(g[..], KEY_ESCAPE, 0) && g[0].panel == -1 && !thegrid_busy(g[..]);
+  // the build board goes to the Verse project's page
+  m = thegrid_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 30, 0, -5.4, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].near == STATION_BUILDS && thegrid_key(g[..], 'e', 0);
+  #assert thegrid_key(g[..], KEY_ENTER, 0) && thegrid_action(g[..]) == ACT_NAVIGATE && cast(string) g[0].outbox[0..<g[0].out_n] == "/projects/verse";
+  thegrid_action_done(g[..]);
+  // every station's links are the site's own pages, and every button does something
+  for i: 0..<STATIONS {
+    #assert STATION_TITLE[i].count > 0 && STATION_TEXT[i].count > 0 && STATION_PROMPT[i].count > 0;
+    for k: 0..<3 {
+      d := STATION_DOES[i * 3 + k];
+      #assert (STATION_BUTTON[i * 3 + k].count > 0) == (d != BUTTON_NONE);
+      if d == BUTTON_LINK { #assert STATION_WHAT[i * 3 + k][0] == '/'; }
+      if d == BUTTON_ANSWER { #assert STATION_WHAT[i * 3 + k].count > 20; }
+    }
+  }
+}
+
+#test "the suggestion box: type, SEND, and it goes to the site's feedback; a failure keeps what you typed" {
+  g: [1] TheGrid;
+  b: [2048] u8;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  n := fake_data(b[..]);
+  ok := thegrid_data(g[..], cast(string) b[0..<n]);
+  for i: 0..<4 { thegrid_arrived(g[..], true); }
+  thegrid_message(g[..], MSG_FACTS, "tab=t\nvisitor=v-1\nnow=1730000000000\nplayer=p-4\n");
+  g[0].touch = true;
+  m := thegrid_frame(g[..], out[..], u[..], 1170, 2532, 3, 0.016, false, 12, 0, -8.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].near == STATION_SUGGEST && open_prompt(g[..]) == "LEAVE A SUGGESTION";
+  ob := g[0].open_button;
+  #assert thegrid_pointer(g[..], (ob.x0 + ob.x1) / 2, (ob.y0 + ob.y1) / 2, 0, 1, 5);
+  #assert thegrid_pointer(g[..], (ob.x0 + ob.x1) / 2, (ob.y0 + ob.y1) / 2, 2, 1, 5) && g[0].panel == STATION_SUGGEST;
+  #assert thegrid_wants_text(g[..]);
+  m = thegrid_frame(g[..], out[..], u[..], 1170, 2532, 3, 0.016, false, 12, 0, -8.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].field[2] > 0 && g[0].field[1] + g[0].field[3] <= 2532;
+  // nothing typed: SEND sends nothing
+  #assert thegrid_key(g[..], KEY_ENTER, 0) && thegrid_post(g[..]) == 0;
+  for c: "More \"lamps\"" { #assert thegrid_key(g[..], cast(int) c, 0); }
+  #assert thegrid_key(g[..], KEY_BACKSPACE, 0) && typed_text(g[..]) == "More \"lamps";
+  #assert thegrid_key(g[..], '!', 0);
+  sb := g[0].buttons[0];
+  #assert thegrid_pointer(g[..], sb.x0 + 3, sb.y0 + 3, 0, 1, 6) && thegrid_pointer(g[..], sb.x0 + 3, sb.y0 + 3, 2, 1, 6);
+  body := cast(string) g[0].post[0..<thegrid_post(g[..])];
+  #assert g[0].sent == SENT_SENDING && !thegrid_wants_text(g[..]);
+  #assert body[0..<8] == "{\"rid\":\"" && body[24..<body.count] == "\",\"q\":\"grid_suggestion\",\"a\":\"More \\\"lamps!\",\"player\":\"p-4\"}";
+  for k: 8..<24 { #assert (body[k] >= '0' && body[k] <= '9') || (body[k] >= 'a' && body[k] <= 'f'); }
+  thegrid_post_sent(g[..]);
+  // it didn't go: what you typed stays, and SEND tries again
+  thegrid_post_answer(g[..], "0\n");
+  #assert g[0].sent == SENT_FAILED && typed_text(g[..]) == "More \"lamps!";
+  #assert thegrid_key(g[..], KEY_ENTER, 0) && thegrid_post(g[..]) > 0;
+  thegrid_post_sent(g[..]);
+  thegrid_post_answer(g[..], "200\n{\"saved\":true}");
+  #assert g[0].sent == SENT_OK && g[0].typed_n == 0;
+  m = thegrid_frame(g[..], out[..], u[..], 1170, 2532, 3, 0.016, false, 12, 0, -8.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
+  cb := g[0].close_button;
+  #assert thegrid_pointer(g[..], cb.x0 + 2, cb.y0 + 2, 0, 1, 7) && thegrid_pointer(g[..], cb.x0 + 2, cb.y0 + 2, 2, 1, 7) && g[0].panel == -1;
 }
 
 #test "the stations and the gym are walls; the hint and names fit a phone" {

@@ -50,9 +50,13 @@ Everglade. The tasks are in the Verse project under "Port the realms"
      packed by `verse/tools/pack_grid.py` into storage buffers that
      `thegrid.wgsl` draws unlit, lines as screen-space quads and the robots
      skinned on the GPU from their clips' frames, replaying their recorded
-     rounds. The gate goes to Everglade. The stations' panels (the Pylon
-     terminal, the guide, the suggestion box, the build board) are not
-     ported; their names show and they are walls.
+     rounds. The gate goes to Everglade. Walk up to a station (the Pylon
+     terminal, the guide, Foreman, the suggestion box, the game lab, the
+     build board, the gym boards) and E, or the button a phone shows,
+     opens its panel: what it is, answers, and links to the site's own
+     pages. The suggestion box sends what you type to the site's feedback
+     (`/api/playtest/survey/answer`, question `grid_suggestion`). Live
+     pylon and build counts are not shown yet.
    - **Medieval Town folds into Everglade** (rl-medieval, decided
      October 29). The demo's town (`~/work/aethyr-demo` `src/town.cpp`,
      `docs/medieval-town.md`) is the layout of Hivemind's Modular Medieval

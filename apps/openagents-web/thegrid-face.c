@@ -24,6 +24,9 @@ static float width, height, dpr;
 static uint8_t inbox[4096];
 static uint8_t data[65536];
 static coax_t_Track track_state;
+#define SUGGEST_URL "/api/playtest/survey/answer"
+static int32_t post_id = -1;
+static void post_out(uint32_t state);
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 
 static coax_t_TheGrid *grid(uint32_t state) { return (coax_t_TheGrid *)(uintptr_t)state; }
@@ -55,7 +58,10 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   dt = dt < 0 ? 0 : dt > 0.1f ? 0.1f : dt;
   now += dt;
   thegrid_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
-  player = verse_player_input(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, g->run || sticks.run, g->jump || sticks.jump, 0, 0);
+  bool busy = thegrid_busy(at(state));
+  if (busy) sticks = verse_sticks_reset();
+  if (busy) player = verse_player_input(player, 0, 0, 0, 0, false, false, 0, 0);
+  else player = verse_player_input(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, g->run || sticks.run, g->jump || sticks.jump, 0, 0);
   player.theta = thegrid_player_theta(at(state));
   sticks = verse_sticks_used(sticks);
   int64_t walls = thegrid_walls(at(state));
@@ -66,10 +72,20 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   int64_t n = thegrid_frame(at(state), out, u, w, h, scale, dt, still != 0, feet.x, feet.y, feet.z, verse_player_face(player),
                             verse_player_act(player), player.vel.x, player.vel.z,
                             sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
+  post_out(state);
   track_frame(tr(), dt, w, h, scale);
   if (n > 0 && thegrid_draws(at(state)) > 0) track_loaded(tr(), track_cstr("load-the-grid"));
   track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
+}
+
+// A suggestion the page wrote goes to the site's feedback; its answer comes back to the page.
+static void post_out(uint32_t state) {
+  int64_t n = thegrid_post(at(state));
+  if (n <= 0 || post_id >= 0) return;
+  post_id = coaxial_http((uint32_t)(uintptr_t)SUGGEST_URL, sizeof SUGGEST_URL - 1, (uint32_t)(uintptr_t)grid(state)->post.e, (uint32_t)n, 1 | 4 | 8);
+  thegrid_post_sent(at(state));
+  if (post_id < 0) { post_id = -1; thegrid_post_answer(at(state), (coax_string){"0\n", 2}); }
 }
 
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)grid(state)->draws.e; }
@@ -107,6 +123,12 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inb
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
+  if (post_id >= 0 && kind == 512 + post_id) {
+    post_id = -1;
+    thegrid_post_answer(at(state), (coax_string){(const char *)inbox, length});
+    return;
+  }
+  thegrid_message(at(state), kind, (coax_string){(const char *)inbox, length});
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) track_drain(&track_state);
 }
 
@@ -114,6 +136,8 @@ EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)grid(state)->outbox.e; }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)grid(state)->out_n; }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { thegrid_action_done(at(state)); }
+EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return thegrid_wants_text(at(state)) ? 1 : 0; }
+EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)grid(state)->field.e; }
 
 EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes) {
   (void)state;

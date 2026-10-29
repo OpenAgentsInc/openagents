@@ -10,7 +10,7 @@ The bare Verse world, at https://openagents.com/realm/the-grid: a floor of lines
 - The Game Lab, the gym with its boards, and the Lagrange arch.
 - The gate to Everglade: walk into it and you go to [Everglade](https://openagents.com/realm/everglade).
 
-Each place's name shows over it as you come near. The stations stand as they did in the first Verse; walking up to them doesn't open anything yet.
+Each place's name shows over it as you come near. Walk up to a station and press E (on a phone, tap the button that shows) to open its panel: what it is, a few answers, and links to the site's pages. The suggestion box takes a line of text and sends it to us. Esc or CLOSE shuts the panel.
 
 ## Playing
 
