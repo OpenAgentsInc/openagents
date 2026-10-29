@@ -7,13 +7,17 @@ villa_asked = []
 villa_answer = {"species": "dog", "size": 0.5, "legs": 0.8, "body": 1.5, "girth": 1, "head": 1, "snout": 1.2, "ears": 1,
                 "ear_size": 1.4, "tail": 1, "fluff": 1, "pattern": "socks", "coat": [0.3, 0.15, 0.05], "marks": [0.9, 0.9, 0.9],
                 "choices": [{"part": "body", "why": "Her long back in the photo."}], "extra": 9}
+villa_emote = {"name": "Spin Twice!", "label": "spin", "text": "motion spin_twice; rig animal; seconds 1.6; once; still; at 0.8; pelvis 0 -180 0; at 1.6; pelvis 0 180 0"}
 _villa_post = FakeGcs.do_POST
 
 
 def _villa_do_post(self):
     if self.path == "/villa-model":
-        villa_asked.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
-        return self.answer(200, json.dumps({"candidates": [{"content": {"parts": [{"text": json.dumps(villa_answer)}]}}]}).encode())
+        asked = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        villa_asked.append(asked)
+        emote = "animation" in asked["systemInstruction"]["parts"][0]["text"]
+        said = json.dumps(villa_emote if emote else villa_answer)
+        return self.answer(200, json.dumps({"candidates": [{"content": {"parts": [{"text": said}]}}]}).encode())
     return _villa_post(self)
 
 
@@ -72,6 +76,25 @@ check("villa: the agent reads the story and the kept photo only",
       s == 200 and "She dug holes." in parts[0]["text"] and [p["fileData"]["fileUri"] for p in parts[1:]] == ["gs://drops-test/" + obj[0]], parts)
 check("villa: its avatar and choices are kept", pet["agent"] == "ready" and pet["avatar"]["body"] == 1.5 and pet["avatar"]["pattern"] == "socks"
       and "extra" not in pet["avatar"] and pet["choices"][0]["part"] == "body", pet)
+
+# Emotes the agent writes from a sentence (0032_villa_emotes.sql).
+check("villa: an emote needs words", v("POST", "pets/%s/emote" % pid, kiki, {"said": ""})[0] == 400)
+check("villa: someone else can't ask for one", v("POST", "pets/%s/emote" % pid, guest, {"said": "spins"})[0] == 404)
+s, em = v("POST", "pets/%s/emote" % pid, kiki, {"said": "She always spun twice before lying down."})
+asked = villa_asked[-1]["contents"][0]["parts"][0]["text"]
+check("villa: the agent writes a motion from what was said", s == 200 and em["motion"]["name"] == "spin_twice_" and em["motion"]["label"] == "SPIN"
+      and em["motion"]["text"].startswith("motion spin_twice;") and "spun twice" in asked, em)
+check("villa: one ask at a time", v("POST", "pets/%s/emote" % pid, kiki, {"said": "again"})[0] == 429)
+__import__("time").sleep(4.1)
+v("POST", "pets/%s/emote" % pid, kiki, {"said": "spins", "error": "line 5: pelvis yaw 400 is out of range", "last": "motion x"})
+check("villa: a refused motion is asked again with the reason", "out of range" in villa_asked[-1]["contents"][0]["parts"][0]["text"])
+s, pet = v("POST", "pets/%s/emote/keep" % pid, kiki, {"name": "spin_twice", "label": "spin", "text": em["motion"]["text"], "said": "She spun."})
+check("villa: a motion that played is kept on the pet", s == 200 and [e["name"] for e in pet["emotes"]] == ["spin_twice"] and pet["emotes"][0]["label"] == "SPIN", pet)
+for i in range(9):
+    s, pet = v("POST", "pets/%s/emote/keep" % pid, kiki, {"name": "m%d" % i, "label": "M", "text": "motion m"})
+check("villa: eight emotes at most, the newest kept", len(pet["emotes"]) == 8 and pet["emotes"][-1]["name"] == "m8" and pet["emotes"][0]["name"] == "m1", [e["name"] for e in pet["emotes"]])
+s, pet = v("POST", "pets/%s/emote/m8/delete" % pid, kiki)
+check("villa: an emote is taken off", s == 200 and "m8" not in [e["name"] for e in pet["emotes"]], pet)
 
 check("villa: the garden has no draft", all(p["slug"] != pet["slug"] for p in v("GET", "garden")[1]["pets"]))
 check("villa: a memorial is not open before PLAY", v("GET", "memorial/" + pet["slug"])[0] == 404)

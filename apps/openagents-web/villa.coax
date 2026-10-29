@@ -1243,3 +1243,40 @@ villa_ev_count :: (s: [] Villa) -> int #export_c { return s[0].pet[0].ev_n; }
 villa_ev_name :: (s: [] Villa, i: int) -> string #export_c { k := s[0].pet[0].evs[i]; return ifx k >= 0 && k < EV_KINDS then EV_NAMES[k] else ""; }
 villa_ev_arg :: (s: [] Villa, i: int) -> int #export_c { return s[0].pet[0].ev_arg[i]; }
 villa_ev_clear :: (s: [] Villa) #export_c { s[0].pet[0].ev_n = 0; }
+
+// Emotes the agent made (villapet.coax): the one to check, and the ones kept.
+villa_emote_check :: (s: [] Villa) -> bool #export_c { return s[0].pet[0].em == EM_CHECK; }
+villa_emote_text :: (s: [] Villa) -> string #export_c { p := s[0].pet[..]; return cast(string) p[0].em_text[0..<p[0].em_text_n]; }
+villa_emote_checked :: (s: [] Villa, ok: bool, why: string) #export_c { pet_emote_checked(s[0].pet[..], ok, why); }
+villa_my_emote_text :: (s: [] Villa, i: int) -> string #export_c {
+  p := s[0].pet[..];
+  if i < 0 || i >= p[0].my_n { return ""; }
+  return cast(string) p[0].my_text[i * EMOTE_TEXT..<i * EMOTE_TEXT + p[0].my_text_n[i]];
+}
+
+#test "an emote the agent writes: checked, asked again with the reason, then kept" {
+  s: [1] Villa;
+  villa_start(s[..]);
+  p := s[0].pet[..];
+  p[0].has = true; p[0].id_n = 3; p[0].id[0] = 'q'; p[0].id[1] = '-'; p[0].id[2] = '1';
+  pet_typed(p, "x");   // nothing focused: nothing typed
+  p[0].view = PV_PET; p[0].focus = TYPE_EMOTE;
+  pet_typed(p, "She spun twice");
+  #assert pet_key(p, -2) && p[0].em == EM_MAKING && p[0].asks & ASK_EMOTE != 0;
+  b: [4000] u8;
+  n := pet_body(p, ASK_EMOTE, b[..]);
+  #assert cast(string) b[0..<n] == "{\"said\":\"She spun twice\"}";
+  pet_answer(p, ASK_EMOTE, 200, "{\"motion\": {\"name\": \"spin\", \"label\": \"SPIN\", \"text\": \"motion spin; rig animal; seconds 1.6; once; still; at 0.8; pelvis 0 -180 0; at 1.6; pelvis 0 180 0\"}}");
+  #assert villa_emote_check(s[..]) && villa_emote_text(s[..]) == "motion spin; rig animal; seconds 1.6; once; still; at 0.8; pelvis 0 -180 0; at 1.6; pelvis 0 180 0";
+  villa_emote_checked(s[..], false, "line 7: pelvis yaw 400 is out of range");
+  #assert p[0].em == EM_MAKING && p[0].em_tries == 2;
+  n = pet_body(p, ASK_EMOTE, b[..]);
+  #assert cast(string) b[0..<n] == "{\"said\":\"She spun twice\",\"error\":\"line 7: pelvis yaw 400 is out of range\",\"last\":\"motion spin; rig animal; seconds 1.6; once; still; at 0.8; pelvis 0 -180 0; at 1.6; pelvis 0 180 0\"}";
+  p[0].em = EM_CHECK;
+  villa_emote_checked(s[..], true, "");
+  #assert p[0].em == EM_NONE && p[0].asks & ASK_EMOTE_KEEP != 0;
+  n = pet_url(p, ASK_EMOTE_KEEP, b[..]);
+  #assert cast(string) b[0..<n] == "/api/villa/pets/q-1/emote/keep";
+  pet_take(p, "{\"id\": \"q-1\", \"emotes\": [{\"name\": \"spin\", \"label\": \"SPIN\", \"text\": \"motion spin; rig animal\"}]}", false);
+  #assert p[0].my_n == 1 && villa_my_emote_text(s[..], 0) == "motion spin; rig animal" && villa_my_emote_text(s[..], 1) == "";
+}

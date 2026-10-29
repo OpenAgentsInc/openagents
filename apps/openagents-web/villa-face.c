@@ -24,6 +24,8 @@ int64_t vf_size(void);
 int64_t vf_pet_emote(figs_view f, int64_t n);
 _Bool vf_emote(figs_view f, int64_t i, int64_t motion);
 void vf_stop(figs_view f, int64_t i);
+int64_t vf_motion_add(figs_view f, coax_string text);
+coax_string vf_error(figs_view f);
 int64_t vf_motion_named(figs_view f, coax_string name);
 #include "analytics-face.h"
 #include <stdbool.h>
@@ -35,6 +37,7 @@ int64_t vf_motion_named(figs_view f, coax_string name);
 #define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
 IMPORT("coaxial_http") int32_t coaxial_http(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags);
 #define PLAYER_URL "/api/playtest/player"
+#define RIG_WHY "rig must be animal: this is for a dog"
 
 static coax_t_Player player;
 static coax_t_Sticks sticks;
@@ -118,9 +121,20 @@ static void pet_requests(uint32_t state) {
   coax_t_PetUi *p = &villa(state)->pet.e[0];
   coax_t_Play *q = &villa(state)->play.e[0];
   // 0..5 the stock emotes, 6 digging; a come (or a throw) ends a still one
-  if (p->emote == 6) vf_emote(fv(), 1, vf_motion_named(fv(), (coax_string){"dig", 3}));
+  if (p->emote >= 100) {   // one the agent made: into the library (by its name), then played
+    int64_t slot = vf_motion_add(fv(), villa_my_emote_text(at(state), p->emote - 100));
+    if (slot >= 0) vf_emote(fv(), 1, slot);
+  }
+  else if (p->emote == 6) vf_emote(fv(), 1, vf_motion_named(fv(), (coax_string){"dig", 3}));
   else if (p->emote >= 0) vf_emote(fv(), 1, vf_pet_emote(fv(), p->emote));
   p->emote = -1;
+  // the agent's new motion: read by the engine; it plays, or the reason goes back to the agent
+  if (villa_emote_check(at(state))) {
+    int64_t slot = vf_motion_add(fv(), villa_emote_text(at(state)));
+    if (slot >= 0 && vf_emote(fv(), 1, slot)) villa_emote_checked(at(state), true, (coax_string){"", 0});
+    else if (slot >= 0) villa_emote_checked(at(state), false, (coax_string){RIG_WHY, sizeof RIG_WHY - 1});
+    else villa_emote_checked(at(state), false, vf_error(fv()));
+  }
   coax_t_Follower dog = villa_dog(at(state));
   float dx = dog.pos.x - villa(state)->feet.x, dz = dog.pos.z - villa(state)->feet.z;
   if (q->stop_ask || (!q->stay && q->dig_t <= 0 && dx * dx + dz * dz > 9.0f && vf_still(fv(), 1))) { vf_stop(fv(), 1); q->stop_ask = false; }

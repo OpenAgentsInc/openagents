@@ -29,8 +29,8 @@ EMOTES :: 6;
 EMOTE_LABEL :: [6] string.["SIT", "PLAY BOW", "ROLL OVER", "HOWL", "WAG", "SLEEP"];
 
 // The requests, one at a time, first wanted first.
-ASK_MINE :: 1; ASK_NEW :: 2; ASK_SAVE :: 4; ASK_AGENT :: 8; ASK_PLACE :: 16; ASK_GARDEN :: 32; ASK_MEMORIAL :: 64; ASK_NOTE :: 128; ASK_HIDE :: 256; ASK_VASES :: 512; ASK_VASE :: 1024; ASK_CLEAN :: 2048; ASK_REPORT :: 4096;
-ASK_KINDS :: 13;
+ASK_MINE :: 1; ASK_NEW :: 2; ASK_SAVE :: 4; ASK_AGENT :: 8; ASK_PLACE :: 16; ASK_GARDEN :: 32; ASK_MEMORIAL :: 64; ASK_NOTE :: 128; ASK_HIDE :: 256; ASK_VASES :: 512; ASK_VASE :: 1024; ASK_CLEAN :: 2048; ASK_REPORT :: 4096; ASK_EMOTE :: 8192; ASK_EMOTE_KEEP :: 16384;
+ASK_KINDS :: 15;
 
 PV_NONE :: 0; PV_PET :: 1; PV_MEMORIAL :: 2;
 AGENT_NONE :: 0; AGENT_READING :: 1; AGENT_READY :: 2; AGENT_FAILED :: 3;
@@ -42,7 +42,7 @@ BUTTONS :: 48;
 // What a button does.
 B_OPEN :: 1; B_CLOSE :: 2; B_FIELD :: 3; B_PHOTOS :: 4; B_AGENT :: 5; B_PLAY :: 6; B_TAB :: 7; B_SLIDER :: 8; B_PATTERN :: 9;
 B_COAT :: 10; B_MARKS :: 11; B_EMOTE :: 12; B_MEMORIAL :: 13; B_SHARE :: 14; B_NOTE :: 15; B_SEND :: 16; B_HIDE :: 17;
-B_SKILL :: 18; B_DO :: 19; B_KIND :: 20; B_SLOT :: 21; B_PLACE_VASE :: 22; B_CLEAN :: 23; B_REPORT :: 24;
+B_SKILL :: 18; B_DO :: 19; B_KIND :: 20; B_SLOT :: 21; B_PLACE_VASE :: 22; B_CLEAN :: 23; B_REPORT :: 24; B_MAKE_EMOTE :: 25; B_EMOTE_FIELD :: 26;
 // What a report is of (0031_villa_reports.sql), B_REPORT's arg: the kind times a million plus the note or line number.
 REPORT_MEMORIAL :: 0; REPORT_NOTE :: 1; REPORT_CHAT :: 2;
 REPORT_KIND_WORDS :: [3] string.["memorial", "note", "chat"];
@@ -70,6 +70,10 @@ VASES_MAX :: 80;
 PV_VASE :: 3;
 DO_THROW :: 0; DO_SIT :: 1; DO_STAY :: 2; DO_COME :: 3; DO_DIG :: 4; DO_PICK :: 5; DO_VASE :: 6;
 TYPE_NOTE :: 100;    // focus: the note box on a memorial
+TYPE_EMOTE :: 101;   // focus: what they used to do, for an emote the agent makes
+// Emotes the agent made (0032_villa_emotes.sql): kept on the pet, at most eight.
+MY_EMOTES :: 8; EMOTE_TEXT :: 3000; EMOTE_SAID :: 300; EMOTE_TRIES :: 3;
+EM_NONE :: 0; EM_MAKING :: 1; EM_CHECK :: 2; EM_FAILED :: 3;
 
 PetUi :: struct {
   view: int;
@@ -100,7 +104,15 @@ PetUi :: struct {
   m_story: [1200] u8; m_story_n: int; m_traits: [300] u8; m_traits_n: int; m_ach: [300] u8; m_ach_n: int;
   notes: int; n_num: [NOTES] int; n_name: [NOTES * 40] u8; n_name_n: [NOTES] int; n_text: [NOTES * NOTE_BYTES] u8; n_text_n: [NOTES] int;
   hide_n: int;
-  report_kind: int; report_ref: int;   // the report to send (REPORT_*; a note's or a chat line's number)
+  report_kind: int; report_ref: int;
+  my_n: int; my_name: [MY_EMOTES * 24] u8; my_name_n: [MY_EMOTES] int; my_label: [MY_EMOTES * 16] u8; my_label_n: [MY_EMOTES] int;
+  my_text: [MY_EMOTES * EMOTE_TEXT] u8; my_text_n: [MY_EMOTES] int;
+  em: int;                                   // EM_*: an emote being made
+  em_said: [EMOTE_SAID] u8; em_said_n: int;  // what was said, kept while it's made
+  em_name: [24] u8; em_name_n: int; em_label: [16] u8; em_label_n: int;
+  em_text: [EMOTE_TEXT] u8; em_text_n: int;  // the agent's motion, for the face to check
+  em_error: [300] u8; em_error_n: int;       // why the engine refused the last one
+  em_tries: int;   // the report to send (REPORT_*; a note's or a chat line's number)
   typed: [NOTE_BYTES] u8; typed_n: int;
   toast: [120] u8; toast_n: int; toast_t: f32;
   evs: [EVS] int; ev_arg: [EVS] int; ev_n: int;   // steps for the analytics (EV_*), the face sends them
@@ -291,6 +303,19 @@ pet_take :: (p: [] PetUi, t: string, all: bool) {
       p[0].text_n[f] = pj_str(t, pj_get(t, i, PF_KEY[f]), p[0].text[f * FIELD_BYTES..<f * FIELD_BYTES + PF_CAP[f]]);
     }
   }
+  ems := pj_get(t, i, "emotes");
+  if ems >= 0 {
+    e := ems; c := 0;
+    while c < MY_EMOTES {
+      e = pj_next(t, ems, e);
+      if e < 0 { break; }
+      p[0].my_name_n[c] = pj_str(t, pj_get(t, e, "name"), p[0].my_name[c * 24..<c * 24 + 24]);
+      p[0].my_label_n[c] = pj_str(t, pj_get(t, e, "label"), p[0].my_label[c * 16..<c * 16 + 16]);
+      p[0].my_text_n[c] = pj_str(t, pj_get(t, e, "text"), p[0].my_text[c * EMOTE_TEXT..<(c + 1) * EMOTE_TEXT]);
+      c += 1;
+    }
+    p[0].my_n = c;
+  }
   ag: [12] u8;
   an := pj_str(t, pj_get(t, i, "agent"), ag[..]);
   p[0].agent = ifx an == 7 then AGENT_READING else ifx an == 5 then AGENT_READY else ifx an == 6 then AGENT_FAILED else AGENT_NONE;
@@ -450,6 +475,8 @@ pet_url :: (p: [] PetUi, kind: int, out: [] u8) -> int {
     n = pet_put(out, 0, "/api/villa/pets/"); n = pet_put(out, n, pet_s(p[0].id[..], p[0].id_n));
     if kind == ASK_AGENT { n = pet_put(out, n, "/agent"); }
     if kind == ASK_PLACE { n = pet_put(out, n, "/place"); }
+    if kind == ASK_EMOTE { n = pet_put(out, n, "/emote"); }
+    if kind == ASK_EMOTE_KEEP { n = pet_put(out, n, "/emote/keep"); }
     if kind == ASK_HIDE {
       n = pet_put(out, n, "/notes/");
       digits: [12] u8; d := 0; v := p[0].hide_n;
@@ -474,6 +501,21 @@ pet_body :: (p: [] PetUi, kind: int, out: [] u8) -> int {
     return pet_put(out, n, "}");
   }
   if kind == ASK_PLACE { return pet_put(out, 0, "{\"near\":40}"); }
+  if kind == ASK_EMOTE {
+    n := pet_put(out, 0, "{\"said\":"); n = pj_put_str(out, n, pet_s(p[0].em_said[..], p[0].em_said_n));
+    if p[0].em_error_n > 0 {
+      n = pet_put(out, n, ",\"error\":"); n = pj_put_str(out, n, pet_s(p[0].em_error[..], p[0].em_error_n));
+      n = pet_put(out, n, ",\"last\":"); n = pj_put_str(out, n, pet_s(p[0].em_text[..], p[0].em_text_n));
+    }
+    return pet_put(out, n, "}");
+  }
+  if kind == ASK_EMOTE_KEEP {
+    n := pet_put(out, 0, "{\"name\":"); n = pj_put_str(out, n, pet_s(p[0].em_name[..], p[0].em_name_n));
+    n = pet_put(out, n, ",\"label\":"); n = pj_put_str(out, n, pet_s(p[0].em_label[..], p[0].em_label_n));
+    n = pet_put(out, n, ",\"text\":"); n = pj_put_str(out, n, pet_s(p[0].em_text[..], p[0].em_text_n));
+    n = pet_put(out, n, ",\"said\":"); n = pj_put_str(out, n, pet_s(p[0].em_said[..], p[0].em_said_n));
+    return pet_put(out, n, "}");
+  }
   if kind == ASK_REPORT {
     rk := clamp_i(p[0].report_kind, 0, 2);
     n := pet_put(out, 0, "{\"kind\":\""); n = pet_put(out, n, REPORT_KIND_WORDS[rk]); n = pet_put(out, n, "\",\"ref\":\"");
@@ -534,6 +576,23 @@ pet_answer :: (p: [] PetUi, kind: int, status: int, t: string) {
     return;
   }
   if kind == ASK_HIDE { if status == 200 { pet_take_notes(p, t); } return; }
+  if kind == ASK_EMOTE {
+    if status != 200 {
+      p[0].em = EM_FAILED;
+      pet_toast(p, ifx status == 429 then "A little slower: try again in a moment" else "We couldn't make that one: try again");
+      return;
+    }
+    mo := pj_get(t, 0, "motion");
+    p[0].em_name_n = pj_str(t, pj_get(t, mo, "name"), p[0].em_name[..]);
+    p[0].em_label_n = pj_str(t, pj_get(t, mo, "label"), p[0].em_label[..]);
+    p[0].em_text_n = pj_str(t, pj_get(t, mo, "text"), p[0].em_text[..]);
+    p[0].em = EM_CHECK;   // the face reads it with the engine's reader and plays it
+    return;
+  }
+  if kind == ASK_EMOTE_KEEP {
+    if status == 200 { pet_take(p, t, false); pet_toast(p, "Their new emote is kept: it's with the others"); }
+    return;
+  }
   if kind == ASK_REPORT {
     pet_toast(p, ifx status == 200 then "Thank you: we'll look at it" else ifx status == 429 then "A little slower: try again later" else ifx status == 404 then "It isn't there any more" else "That report didn't send: try again");
     return;
@@ -602,6 +661,10 @@ pet_tick :: (p: [] PetUi, dt: f32) {
 // ---- typing
 
 pet_typed :: (p: [] PetUi, t: string) {
+  if p[0].focus == TYPE_EMOTE {
+    for c: t { if c >= 32 && p[0].em_said_n < EMOTE_SAID { p[0].em_said[p[0].em_said_n] = c; p[0].em_said_n += 1; } }
+    return;
+  }
   if p[0].focus == TYPE_NOTE {
     for c: t { if c >= 32 && p[0].typed_n < NOTE_BYTES { p[0].typed[p[0].typed_n] = c; p[0].typed_n += 1; } }
     return;
@@ -616,6 +679,10 @@ pet_typed :: (p: [] PetUi, t: string) {
   pet_changed(p);
 }
 pet_backspace :: (p: [] PetUi) {
+  if p[0].focus == TYPE_EMOTE {
+    while p[0].em_said_n > 0 { p[0].em_said_n -= 1; if p[0].em_said[p[0].em_said_n] & 0xC0 != 0x80 { break; } }
+    return;
+  }
   if p[0].focus == TYPE_NOTE {
     while p[0].typed_n > 0 { p[0].typed_n -= 1; if p[0].typed[p[0].typed_n] & 0xC0 != 0x80 { break; } }
     return;
@@ -636,11 +703,36 @@ pet_key :: (p: [] PetUi, key: int) -> bool {
   if key == -3 { pet_backspace(p); return true; }
   if key == -2 {
     if p[0].focus == TYPE_NOTE { pet_send_note(p); return true; }
+    if p[0].focus == TYPE_EMOTE { pet_make_emote(p); return true; }
     if p[0].focus == PF_STORY { pet_typed(p, "\n"); return true; }
     p[0].focus = ifx p[0].focus + 1 < PET_FIELDS then p[0].focus + 1 else -1;
     return true;
   }
   return true;   // typed letters come as text; the keys themselves walk nobody
+}
+// Asks the agent for an emote from what's typed.
+pet_make_emote :: (p: [] PetUi) {
+  if p[0].em_said_n == 0 { pet_toast(p, "Tell us something they always did first"); return; }
+  if !p[0].has { pet_toast(p, "Give them a name first"); return; }
+  if p[0].em == EM_MAKING || p[0].em == EM_CHECK { return; }
+  p[0].em = EM_MAKING; p[0].em_tries = 1; p[0].em_error_n = 0; p[0].focus = -1;
+  p[0].asks = p[0].asks | ASK_EMOTE;
+}
+// The face's check of the agent's motion: it played, or why the engine refused it.
+pet_emote_checked :: (p: [] PetUi, ok: bool, why: string) {
+  if p[0].em != EM_CHECK { return; }
+  if ok {
+    p[0].em = EM_NONE; p[0].em_said_n = 0;
+    p[0].asks = p[0].asks | ASK_EMOTE_KEEP;
+    pet_ev(p, EV_EMOTE, 100);
+    return;
+  }
+  n := 0;
+  while n < why.count && n < 300 { p[0].em_error[n] = why[n]; n += 1; }
+  p[0].em_error_n = n;
+  if p[0].em_tries >= EMOTE_TRIES { p[0].em = EM_FAILED; pet_toast(p, "We couldn't make that one: try saying it another way"); return; }
+  p[0].em_tries += 1; p[0].em = EM_MAKING;
+  p[0].asks = p[0].asks | ASK_EMOTE;
 }
 pet_send_note :: (p: [] PetUi) {
   if p[0].typed_n == 0 { return; }
@@ -693,11 +785,13 @@ pet_pointer :: (p: [] PetUi, x: f32, y: f32, phase: int) -> bool {
   k := pet_hit(p, x, y);
   if k < 0 { if p[0].view != PV_NONE { p[0].focus = -1; return in_box(p[0].button[0], x, y); } return false; }
   kind := p[0].button_kind[k]; arg := p[0].button_arg[k];
-  if kind != B_FIELD && kind != B_NOTE { p[0].focus = -1; }
+  if kind != B_FIELD && kind != B_NOTE && kind != B_EMOTE_FIELD { p[0].focus = -1; }
   if kind == B_OPEN { p[0].view = PV_PET; p[0].tab = 0; if !p[0].has { p[0].focus = PF_NAME; } }
   else if kind == B_CLOSE { pet_close(p); }
   else if kind == B_FIELD { p[0].focus = arg; }
   else if kind == B_NOTE { p[0].focus = TYPE_NOTE; }
+  else if kind == B_EMOTE_FIELD { p[0].focus = TYPE_EMOTE; }
+  else if kind == B_MAKE_EMOTE { pet_make_emote(p); }
   else if kind == B_SEND { pet_send_note(p); }
   else if kind == B_TAB { p[0].tab = arg; }
   else if kind == B_PHOTOS {
@@ -854,8 +948,9 @@ pet_draw_about :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f32)
   y += 38 * k;
   m = btn(s, out, m, Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + bh}, "ADD PHOTOS OR A SHORT VIDEO", B_PHOTOS, 0, false);
   y += bh + 4 * k;
-  m = pt_dim(out, m, "ONLY YOU SEE THEM: USED FOR THEIR AVATAR AND MEMORIAL, NEVER ANYTHING ELSE", x0, y + 7 * k, 6.5 * k, k);
-  y += 14 * k;
+  uy: [1] f32;
+  m = wrapped(out, m, "ONLY YOU SEE THEM. THEY'RE USED FOR THEIR AVATAR AND MEMORIAL, NEVER FOR ANYTHING ELSE", x0, y + 7 * k, x1 - x0, 6.5 * k, k, 2, 0.6, uy[..]);
+  y = uy[0] - 4 * k;
   // the files, a line each: name, then how far or what happened
   ft := pet_s(p[0].files[..], p[0].files_n);
   i := 0; line := 0;
@@ -939,6 +1034,24 @@ pet_draw_look :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f32) 
     bx := x0 + f32(i % 3) * (ew + 6 * k); by := y + f32(i / 3) * 34 * k;
     m = btn(s, out, m, Box.{x0 = bx, y0 = by, x1 = bx + ew, y1 = by + 28 * k}, EMOTE_LABEL[i], B_EMOTE, i, false);
   }
+  y += f32((EMOTES + 2) / 3) * 34 * k;
+  for i: 0..<p[0].my_n {
+    bx := x0 + f32(i % 3) * (ew + 6 * k); by := y + f32(i / 3) * 34 * k;
+    m = btn(s, out, m, Box.{x0 = bx, y0 = by, x1 = bx + ew, y1 = by + 28 * k}, pet_s(p[0].my_label[i * 16..<i * 16 + 16], p[0].my_label_n[i]), B_EMOTE, 100 + i, false);
+  }
+  y += f32((p[0].my_n + 2) / 3) * 34 * k + 4 * k;
+  m = pt_dim(out, m, "A NEW ONE: SOMETHING THEY ALWAYS DID", x0, y + 8 * k, cap, k); y += 14 * k;
+  eb := Box.{x0 = x0, y0 = y, x1 = x1 - 86 * k, y1 = y + 32 * k};
+  focused := p[0].focus == TYPE_EMOTE;
+  m = outline(out, m, eb, k, ifx focused then 0.95f32 else 0.4f32);
+  pet_button(p, eb, B_EMOTE_FIELD, 0);
+  said := pet_s(p[0].em_said[..], p[0].em_said_n);
+  while said.count > 0 && text_width(said, 8 * k) > eb.x1 - eb.x0 - 16 * k { said = said[1..<said.count]; }
+  if said.count == 0 && !focused { m = pt_dim(out, m, "SHE ALWAYS SPUN TWICE BEFORE LYING DOWN", eb.x0 + 8 * k, (eb.y0 + eb.y1 + 8 * k) / 2, 7 * k, k); }
+  else { m = pt(out, m, said, eb.x0 + 8 * k, (eb.y0 + eb.y1 + 8 * k) / 2, 8 * k, k, 0.95); }
+  if focused { p[0].field_box = eb; }
+  busy := p[0].em == EM_MAKING || p[0].em == EM_CHECK;
+  m = btn(s, out, m, Box.{x0 = x1 - 80 * k, y0 = eb.y0, x1 = x1, y1 = eb.y1}, ifx busy then "MAKING..." else "MAKE IT", B_MAKE_EMOTE, 0, false);
   return m;
 }
 

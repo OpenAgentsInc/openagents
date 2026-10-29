@@ -20,6 +20,7 @@
 //   POST /api/villa/pets/<id>/notes/<n>/hide|show
 //   GET  /api/villa/vases                        the vases left in the garden and the field; POST one {x, z, yaw, flowers, plot}
 //   POST /api/villa/vases/<n>/clean              its maker cleans it up
+//   POST /api/villa/pets/<id>/emote {said, error, last}  an emote the agent writes; emote/keep {name, label, text}; emote/<name>/delete
 //   POST /api/villa/report {kind, ref, why}      a memorial, a note or a chat line reported (migrations/0031_villa_reports.sql)
 //   GET  /api/villa/reports                      a signed-in admin: the open reports; POST reports/<kind>/<ref>/remove|keep
 //   GET  /api/villa/m/<slug>                     the share link: a page with the memorial's card, on to the realm
@@ -139,8 +140,9 @@ static void scan_file(const request *q, PGconn *db, answer a) {
 
 // The avatar agent: the request to Gemini, its answer kept.
 static void agent(const request *q, PGconn *db, answer a) {
-  char pet[40];
+  char pet[40], done[16] = "";
   field(db, a.all, "{pet}", pet, sizeof pet);
+  field(db, a.all, "{done}", done, sizeof done);   // "emote": a motion (0032_villa_emotes.sql), else the avatar
   const char *v[1] = {a.all};
   PGresult *r = PQexecParams(db, "SELECT ($1::jsonb->'request')::text", 1, NULL, v, NULL, NULL, 0);
   char *request = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 ? strdup(PQgetvalue(r, 0, 0)) : NULL;
@@ -173,7 +175,8 @@ static void agent(const request *q, PGconn *db, answer a) {
   PGconn *c = api_db_new();
   if (!c) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); _exit(0); }
   const char *w[4] = {pet, http, b.p ? b.p : "", took};
-  reply(q->fd, ask(c, Q("villa.agent_done($1, $2::int, $3, $4::int)"), 4, w));
+  reply(q->fd, !strcmp(done, "emote") ? ask(c, Q("villa.emote_done($1, $2::int, $3, $4::int)"), 4, w)
+                                      : ask(c, Q("villa.agent_done($1, $2::int, $3, $4::int)"), 4, w));
   PQfinish(c); free(b.p); free(request);
   _exit(0);
 }
@@ -252,11 +255,13 @@ bool villa_route(const request *q) {
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   const char *v[6] = {q->method, parts, body, key, env_or("OA_DROPS_PREFIX", "dev"), env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops")};
   bool vases = !strncmp(rest, "vases", 5) && (rest[5] == 0 || rest[5] == '/');
+  bool emote = !strncmp(rest, "pets/", 5) && strstr(rest, "/emote") && (strstr(rest, "/emote")[6] == 0 || strstr(rest, "/emote")[6] == '/');
   bool reports = !strncmp(rest, "report", 6) && (rest[6] == 0 || rest[6] == '/' || (rest[6] == 's' && (rest[7] == 0 || rest[7] == '/')));
   char admin[65] = "";
   if (reports && rest[6] == 's' && admin_who(q, db, admin)) admin[0] = 0;   // the review queue: a signed-in admin only
   const char *rv[5] = {q->method, parts, body, key, admin};
-  answer a = reports ? ask(db, Q("villa.reports_api($1, $2::text[], $3::jsonb, $4, $5)"), 5, rv)
+  answer a = emote ? ask(db, Q("villa.emote_api($1, $2::text[], $3::jsonb, $4)"), 4, v)
+           : reports ? ask(db, Q("villa.reports_api($1, $2::text[], $3::jsonb, $4, $5)"), 5, rv)
            : vases ? ask(db, Q("villa.vases_api($1, $2::text[], $3::jsonb, $4)"), 4, v)
                    : ask(db, Q("villa.api($1, $2::text[], $3::jsonb, $4, $5, $6)"), 6, v);
   free(body);

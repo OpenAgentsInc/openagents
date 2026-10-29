@@ -246,6 +246,13 @@ vf_max_bones :: () -> int #export_c { return MAX_PARTS; }
   #assert !vf_emote(f[..], 1, vf_motion_named(f[..], "wave"));
 }
 
+#test "the agent's motion the villa tests send reads (the spin twice)" {
+  f: [1] Figs;
+  vf_start(f[..]);
+  #assert vf_motion_add(f[..], "motion spin; rig animal; seconds 1.6; once; still; at 0.8; pelvis 0 -180 0; at 1.6; pelvis 0 180 0") >= 0;
+  #assert vf_motion_add(f[..], "motion spin; rig animal; seconds 1.6; once; at 0.8; neck 0 0 0; nose 10 0 0") < 0 && vf_error(f[..]).count > 0;
+}
+
 #test "an agent's motion is added, named again it replaces, a bad one says why" {
   f: [1] Figs;
   vf_start(f[..]);
