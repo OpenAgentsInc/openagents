@@ -40,6 +40,12 @@
       "title": "Ready to switch playtest.openagents.com",
       "body": "Everything needed to point playtest.openagents.com at the new system, staged and rehearsed, with the old demo's data carried over; the owner does the final review and says when.",
       "parent": "playtest-port"
+    },
+    {
+      "slug": "pt-redesign",
+      "title": "Playtest redesign",
+      "body": "Kiki's playtest feedback of 2026-10-29: say what the playtest is, the Agent orb as a voice guide, almost no buttons in the Haunted House, Minecraft-style placing, touch that knows what you mean, no sharing, one camera that never blocks the view, livelier characters.",
+      "parent": "playtest-port"
     }
   ],
   "tasks": [
@@ -632,6 +638,184 @@
       "blocked_by": [
         "pt-saves"
       ],
+      "blocks": []
+    },
+    {
+      "slug": "ptr-landing-guide",
+      "parent": "pt-redesign",
+      "title": "The landing says it's a Haunted House playtest, and the Agent orb guides by voice",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "verse",
+        "redesign"
+      ],
+      "body": "The /verse landing (verse.coax) says in short words that this is a Haunted House-themed playtest. The Agent orb is in the landing's scene; tapping it (or its voice button) starts a push-to-talk voice chat with a guide persona on the voice host (a `guide` route): what the test is for, what the Verse is for, what the Haunted House is for. PLAYTEST NOW still opens the house.",
+      "files": [
+        "apps/openagents-web/verse.coax",
+        "verse/voice-host/speech.c"
+      ],
+      "acceptance": [
+        "The landing names the Haunted House playtest",
+        "Holding the orb talks to the guide; the mic is on only while held",
+        "PLAYTEST NOW opens /realms/haunted-house"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "ptr-few-buttons",
+      "parent": "pt-redesign",
+      "title": "The Haunted House shows a minimap, your name, one voice button and the hotbar, nothing else",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "verse",
+        "redesign"
+      ],
+      "body": "Remove VIEW, MAP, EDIT, CHAT, GFX and EXIT buttons and the edit rows from the house's HUD. On screen: a minimap in a top corner, the account name or Guest, one voice button, and the hotbar of items. Only what the current action needs appears.",
+      "files": [
+        "apps/openagents-web/realm.coax",
+        "apps/openagents-web/realm-face.c"
+      ],
+      "acceptance": [
+        "Desktop and phone shots show only the minimap, name, voice and hotbar while walking",
+        "Character chat and the quest still work"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "ptr-place-gestures",
+      "parent": "pt-redesign",
+      "title": "Place, move, scale and turn items Minecraft style, with no move buttons",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "verse",
+        "redesign"
+      ],
+      "body": "Pick a hotbar item, click or tap the ground and it goes there. Tap a placed item to select it; drag moves it on the ground; pinch or the wheel scales it; a two-finger twist, Q/E or a modifier drag turns it. Tap empty space to deselect. Undo is Ctrl/Cmd+Z or a two-finger tap (Nomad Sculpt).",
+      "files": [
+        "apps/openagents-web/realm.coax",
+        "apps/openagents-web/realm-face.c",
+        "verse/haunt.coax"
+      ],
+      "acceptance": [
+        "Each gesture has a coax test",
+        "No arrow, turn or size buttons remain"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "ptr-touch-intent",
+      "parent": "pt-redesign",
+      "title": "The stick moves only when your finger starts on it; anywhere else looks; a round jump button",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "verse",
+        "redesign"
+      ],
+      "body": "On touch, the move stick acts only when a finger starts on it. A finger elsewhere orbits the camera, and a tap selects or places. One perfect circle on the right jumps; holding it emotes.",
+      "files": [
+        "verse/grid.coax",
+        "apps/openagents-web/realm.coax"
+      ],
+      "acceptance": [
+        "A finger off the stick never walks",
+        "The jump circle jumps"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "ptr-no-sharing",
+      "parent": "pt-redesign",
+      "title": "No sharing in the playtest",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "verse",
+        "redesign"
+      ],
+      "body": "Remove every step, button or prompt that shares or copies a link (the quest's share and invite steps). Update the analytics contract (#fe6f) and goldens deliberately; the old events simply stop.",
+      "files": [
+        "apps/openagents-web/realm.coax",
+        "coax/web/goldens.ts"
+      ],
+      "acceptance": [
+        "No share or invite step in the quest",
+        "The release's analytics contract passes"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "ptr-one-camera",
+      "parent": "pt-redesign",
+      "title": "One camera, and the house never blocks your view",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "verse",
+        "redesign"
+      ],
+      "body": "Remove view switching. Inside the house the camera pulls in smoothly against walls and fades or cuts away what stands between it and you; verified with headless shots through every room and doorway on desktop and phone.",
+      "files": [
+        "verse/camera.coax",
+        "verse/player.coax",
+        "apps/openagents-web/realm-face.c"
+      ],
+      "acceptance": [
+        "No VIEW button or V key",
+        "Shots in every room show the player unblocked"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "ptr-npc-life",
+      "parent": "pt-redesign",
+      "title": "The house's characters move more: idle variety, looking at you, gestures and reactions",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "verse",
+        "redesign"
+      ],
+      "body": "Give the Haunted House's characters idle variety, a look at the player when near, gestures while talking and reactions to haunts, with the engine's motions (verse/motion.coax) and skinned characters where available.",
+      "files": [
+        "verse/haunt.coax"
+      ],
+      "acceptance": [
+        "Shots or a probe show characters turning to the player and gesturing when talked to",
+        "coax tests for the new motion choices"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "ptr-keep-working",
+      "parent": "pt-redesign",
+      "title": "Saves, edit and publish, character chat, voice, the quest and analytics keep working through the redesign",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "verse",
+        "redesign"
+      ],
+      "body": "Everything the playtest does today that the redesign keeps: saves, edit and publish without share, character chat, voice, the quest, analytics with the team excluded, and playtest.openagents.com's redirects.",
+      "files": [
+        "coax/web/goldens.ts",
+        "coax/web/api/realm-flow.ts"
+      ],
+      "acceptance": [
+        "The release's goldens walk and analytics contract pass",
+        "realm-flow.ts passes"
+      ],
+      "blocked_by": [],
       "blocks": []
     }
   ]
