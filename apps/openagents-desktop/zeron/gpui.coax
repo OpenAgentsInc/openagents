@@ -6,6 +6,10 @@
 // as vertices for apps/openagents-desktop/Zeron.metal, which ports GPUI's
 // fragment shaders. Layout is in logical pixels; a primitive's bounds snap to
 // device pixels the way GPUI's window.rs does (snap_bounds, cover_bounds).
+// Two more for the transcript: the activity rail's elbow (paint_elbow, a
+// quadratic bend into a straight branch, as transcript.rs paints it with a
+// path) and Zeron's EdgeFade, a per-vertex fade band at the top and bottom
+// of the transcript (gp_fade, floats 24..27 of a vertex).
 //
 // The host is GPUI's platform layer: it rasterizes Zeron's font (Geist) with
 // CoreText exactly as gpui_macos/text_system.rs does (four subpixel x
@@ -14,14 +18,14 @@
 // gives Coax each font's metrics and each icon's tile (gp_font_*, gp_icon).
 // Based on Zeron by Wing, MIT.
 
-GP_VERTEX_FLOATS :: 24;
-GP_QUAD :: 0.0; GP_SHADOW :: 1.0; GP_SPRITE :: 2.0; GP_COLOR_SPRITE :: 3.0;
+GP_VERTEX_FLOATS :: 28;
+GP_QUAD :: 0.0; GP_SHADOW :: 1.0; GP_SPRITE :: 2.0; GP_COLOR_SPRITE :: 3.0; GP_ELBOW :: 4.0;
 GP_NO_CLIP :: 1000000.0;
 GP_SUBPIXEL :: 4;           // gpui text_system.rs SUBPIXEL_VARIANTS_X
 GP_DILATIONS :: 5;          // gpui_macos glyph_dilation_for_color: levels 0..4
 GP_SVG_SCALE :: 2.0;        // gpui svg_renderer.rs SMOOTH_SVG_SCALE_FACTOR
-GP_FONTS :: 2;
-GP_ICONS :: 8;
+GP_FONTS :: 9;
+GP_ICONS :: 16;
 
 // The glyphs the atlas holds, in order: ASCII 32..126, then these.
 GP_EXTRA :: [3] u32.[0x2026, 0x2022, 0x00A0];   // … • no-break space
@@ -143,6 +147,7 @@ emit :: (out: [] f32, at: int, x0: f32, y0: f32, x1: f32, y1: f32, kind: f32, bl
     out[o + 12] = fill.r; out[o + 13] = fill.g; out[o + 14] = fill.b; out[o + 15] = fill.a;
     out[o + 16] = edge.r; out[o + 17] = edge.g; out[o + 18] = edge.b; out[o + 19] = edge.a;
     out[o + 20] = -GP_NO_CLIP; out[o + 21] = -GP_NO_CLIP; out[o + 22] = GP_NO_CLIP; out[o + 23] = GP_NO_CLIP;
+    out[o + 24] = 0; out[o + 25] = 0; out[o + 26] = 0; out[o + 27] = 0;
   }
   return at + 6;
 }
@@ -158,6 +163,17 @@ gp_clip :: (out: [] f32, from: int, to: int, d: f32, x: f32, y: f32, w: f32, h: 
     if y0 > out[o + 21] { out[o + 21] = y0; }
     if x1 < out[o + 22] { out[o + 22] = x1; }
     if y1 < out[o + 23] { out[o + 23] = y1; }
+  }
+}
+
+// GPUI's EdgeFade (zui shaders.metal edge_fade_alpha): vertices from..<to
+// fade out toward a top and a bottom edge (logical y), each over its band;
+// the alpha is the ramp squared. A band of 0 leaves that edge alone.
+gp_fade :: (out: [] f32, from: int, to: int, d: f32, top: f32, band_top: f32, bottom: f32, band_bottom: f32) {
+  for k: from..<to {
+    o := k * GP_VERTEX_FLOATS;
+    if o + GP_VERTEX_FLOATS > out.count { return; }
+    out[o + 24] = top * d; out[o + 25] = band_top * d; out[o + 26] = bottom * d; out[o + 27] = band_bottom * d;
   }
 }
 
@@ -183,6 +199,18 @@ paint_shadow :: (out: [] f32, at: int, d: f32, x: f32, y: f32, w: f32, h: f32, r
   b := blur * d;
   m := 3 * b;
   return emit(out, at, x0 - m, y0 - m, x1 + m, y1 + m, GP_SHADOW, b, x0, y0, x1 - x0, y1 - y0, radius * d, 0, 0, 0, 0, 0, color, color);
+}
+
+// The activity rail's elbow (transcript.rs activity_ribbon): a 1px ribbon
+// from (x, y) down and round to (x + r, y + r) along GPUI's quadratic
+// (r t^2, r (2t - t^2)), then straight on to end_x, filled as GPUI fills the
+// path (antialiased coverage of a 1px-wide band). joined: the trunk carries
+// on down through x, so the ribbon there is not painted twice.
+paint_elbow :: (out: [] f32, at: int, d: f32, x: f32, y: f32, r: f32, end_x: f32, joined: bool, color: Rgba) -> int {
+  if color.a <= 0 { return at; }
+  x0 := floor((x - 1) * d); y0 := floor(y * d);
+  x1 := ceil((end_x + 1) * d); y1 := ceil((y + r + 1) * d);
+  return emit(out, at, x0, y0, x1, y1, GP_ELBOW, 0, x * d, y * d, r * d, end_x * d, d, ifx joined then 1.0f32 else 0.0f32, 0, 0, 0, 0, color, color);
 }
 
 // A tinted alpha mask: device rectangle, atlas tile in texels.
@@ -531,7 +559,7 @@ paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: strin
   #assert snap_stroke(0.25, 2) == 1 && snap_stroke(1, 2) == 2 && snap_stroke(0, 2) == 0;
 }
 #test "a quad is six vertices carrying its snapped bounds, radius and border" {
-  out: [144] f32;
+  out: [168] f32;
   n := paint_quad(out[..], 0, 2, 10, 20, 100, 50, 26, 1, hex(0x343438, 1), rgba(1, 1, 1, 0.1));
   #assert n == 6;
   #assert out[4] == 20 && out[5] == 40 && out[6] == 200 && out[7] == 100 && out[8] == 52 && out[9] == 2;
@@ -540,7 +568,7 @@ paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: strin
   #assert paint_quad(out[..], 18, 2, 0, 0, 10, 10, 0, 0, hex(0, 1), hex(0, 1)) == 18;   // no room
 }
 #test "a shadow covers three blurs past its spread bounds" {
-  out: [144] f32;
+  out: [168] f32;
   n := paint_shadow(out[..], 0, 2, 0, 0, 100, 50, 26, 0, 10, 15, -3, rgba(0, 0, 0, 0.1));
   #assert n == 6 && out[2] == GP_SHADOW && out[3] == 30;
   #assert out[4] == 6 && out[5] == 26 && out[6] == 188 && out[7] == 88;
@@ -578,7 +606,7 @@ paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: strin
   #assert s >= 0 && a[0].clusters[s].state == 1;
   a[0].clusters[s].advance = 14; a[0].clusters[s].state = 2;
   #assert text_width(a[..], 0, "a日b") == 28 && text_offset(a[..], 0, "a日b", 12) == 1 && text_offset(a[..], 0, "a日b", 15) == 4;
-  out: [480] f32;
+  out: [560] f32;
   #assert paint_text(out[..], 0, a[..], 2, 0, "日", 0, 0, 20, hex(0xffffff, 1)) == 0;   // its cell is wanted
   c := a[0].clusters[s].cell[4 * GP_SUBPIXEL] - 1;
   #assert c >= 0 && a[0].cells[c].state == 1 && a[0].cells[c].level == 4;
@@ -599,11 +627,15 @@ paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: strin
   #assert t == s && dyn_find(a[..], 0, "日", 0, 3) == -1 && dyn_find(a[..], 0, "本", 0, 3) == t;
 }
 #test "a content mask narrows the vertices it covers" {
-  out: [240] f32;
+  out: [336] f32;
   n := paint_quad(out[..], 0, 2, 0, 0, 100, 100, 0, 0, hex(0, 1), hex(0, 1));
-  #assert out[20] == -GP_NO_CLIP;
+  #assert out[20] == -GP_NO_CLIP && out[25] == 0;
   gp_clip(out[..], 0, n, 2, 10, 20, 30, 40);
   #assert out[20] == 20 && out[21] == 40 && out[22] == 80 && out[23] == 120 && out[GP_VERTEX_FLOATS * 5 + 23] == 120;
+  gp_fade(out[..], 0, n, 2, 38, 24, 880, 89);
+  #assert out[24] == 76 && out[25] == 48 && out[26] == 1760 && out[GP_VERTEX_FLOATS * 5 + 27] == 178;
+  m := paint_elbow(out[..], n, 2, 304.5, 100, 6, 320, true, rgba(1, 1, 1, 0.12));
+  #assert m == n + 6 && out[n * GP_VERTEX_FLOATS + 2] == GP_ELBOW && out[n * GP_VERTEX_FLOATS + 4] == 609 && out[n * GP_VERTEX_FLOATS + 9] == 1;
 }
 #test "a glyph lands on a quarter device pixel, in the cell for its subpixel and dilation" {
   a: [1] Atlas;
@@ -611,7 +643,7 @@ paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: strin
   a[0].fonts[0].size = 14; a[0].fonts[0].ascent = 13; a[0].fonts[0].descent = 3;
   a[0].fonts[0].cell = 48; a[0].fonts[0].pen_x = 8; a[0].fonts[0].pen_y = 36; a[0].fonts[0].cols = 20;
   for g: 0..<GP_GLYPHS { a[0].fonts[0].advance[g] = 7.1; }
-  out: [288] f32;
+  out: [336] f32;
   n := paint_text(out[..], 0, a[..], 2, 0, "ab", 10.1, 0, 22.75, hex(0x000000, 1));
   #assert n == 12;
   // 'a' at x 20.2 device: quantized 20.25, variant 1; baseline 2 * (3.375 + 13) = 32.75, rounded 33

@@ -1,0 +1,219 @@
+// Zeron's tool calls in the transcript (crates/ui/src/transcript.rs): what
+// a tool chip says and holds. A chip's header is its label ("Run", "Read",
+// "Edit", "Search", "Fetch", "Thought process") and detail (the command,
+// pattern or URL on one line, or a file badge with the file's name), tinted
+// red when the call failed; its glyph is the call's icon (tool_icon_path).
+// Opening it shows the full invocation (call_block: the whole command, path
+// or URL, wrapped at 80 columns) and what came back: output lines (verbatim,
+// at most 24), a thought's text (word-wrapped at 96 columns), or the edit's
+// diff (changes.rs: a hunk header, then each line with its old and new
+// numbers). Every height here is Zeron's analytic one (detail_height,
+// changes::body_height), so a group's height is known without measuring.
+// Based on Zeron by Wing, MIT.
+
+#load "markdown.coax";
+
+TK_THOUGHT :: 0; TK_EXEC :: 1; TK_READ :: 2; TK_EDIT :: 3; TK_SEARCH :: 4; TK_FETCH :: 5;
+
+// transcript.rs / changes.rs constants
+CHIP_CARD_HEIGHT :: 30.0;
+TOOL_TREE_ROW_HEIGHT :: 32.0;
+TOOL_GROUP_HEADER_HEIGHT :: 26.0;
+TOOL_LABEL_LINE_HEIGHT :: 18.0;
+CHIPS_TOP_PAD :: 2.0;
+OUTPUT_LINE_HEIGHT :: 18.0;
+OUTPUT_BODY_PAD :: 12.0;
+DETAIL_SEPARATOR :: 1.0;
+OUTPUT_DETAIL_MAX_LINES :: 24;
+CALL_WRAP_COLS :: 80;
+THOUGHT_WRAP_COLS :: 96;
+HUNK_HEADER_HEIGHT :: 28.0;
+DIFF_LINE_HEIGHT :: 21.0;
+BODY_BOTTOM_PAD :: 8.0;
+GUTTER_WIDTH :: 36.0;
+MARKER_WIDTH :: 28.0;
+ACCENT_BAR_WIDTH :: 3.0;
+UNIFIED_CODE_PADDING_LEFT :: 12.0;
+ACTIVITY_GUTTER_WIDTH :: 48.0;
+ACTIVITY_TEXT_GAP :: 8.0;
+ACTIVITY_TRUNK_X :: 12.5;
+ACTIVITY_BEND_RADIUS :: 6.0;
+ACTIVITY_BRANCH_END_X :: 28.0;
+ACTIVITY_ICON_LEFT :: 32.0;
+ACTIVITY_ICON_SIZE :: 16.0;
+
+DL_CONTEXT :: 0; DL_ADD :: 1; DL_DEL :: 2;
+DiffLine :: struct { kind: int; old_no: int; new_no: int; text: string; }
+TOOL_DIFF_LINES :: 64;
+
+Tool :: struct {
+  kind: int;
+  arg: string;          // the command, path, pattern or URL; a thought's text
+  output: string;       // what came back ("" for none)
+  failed: bool; resolved: bool;
+  // an edit's diff: one hunk
+  hunk: string; diff_from: int; diff_lines: int;
+  open: bool;           // the chip's detail is open
+}
+
+tool_label :: (t: Tool) -> string {
+  if t.kind == TK_THOUGHT { return "Thought process"; }
+  if t.kind == TK_EXEC { return "Run"; }
+  if t.kind == TK_READ { return "Read"; }
+  if t.kind == TK_EDIT { return "Edit"; }
+  if t.kind == TK_SEARCH { return "Search"; }
+  return "Fetch";
+}
+tool_icon :: (t: Tool) -> int {
+  if t.kind == TK_THOUGHT { return ICON_THOUGHT; }
+  if t.kind == TK_EXEC { return ICON_TERMINAL; }
+  if t.kind == TK_READ { return ICON_DOCUMENT; }
+  if t.kind == TK_EDIT { return ICON_PEN; }
+  if t.kind == TK_SEARCH { return ICON_MAGNIFER; }
+  return ICON_GLOBAL;
+}
+// Whether the header shows a file badge (read and edit name a file).
+tool_has_file :: (t: Tool) -> bool { return t.kind == TK_READ || t.kind == TK_EDIT; }
+// The header's detail text: the file's name for a badge (file_badge_name),
+// else the argument on one line (a thought has none).
+tool_detail :: (t: Tool) -> string {
+  if t.kind == TK_THOUGHT { return ""; }
+  if tool_has_file(t) {
+    s := t.arg; k := s.count;
+    while k > 0 && s[k - 1] != '/' { k -= 1; }
+    return cast(string) s[k..<s.count];
+  }
+  return t.arg;
+}
+
+// ---------------------------------------------------------------- detail lines
+
+// A detail body's lines as byte ranges of a source string.
+ToolLine :: struct { from: int; to: int; }
+
+// Output lines: split at newlines, trailing blank lines dropped, at most 24.
+output_lines :: (s: string, out: [] ToolLine) -> int {
+  n := 0; i := 0;
+  if s.count == 0 { return 0; }
+  while i <= s.count && n < out.count && n < OUTPUT_DETAIL_MAX_LINES {
+    j := i; while j < s.count && s[j] != '\n' { j += 1; }
+    out[n] = ToolLine.{from = i, to = j}; n += 1;
+    i = j + 1;
+    if j >= s.count { break; }
+  }
+  while n > 0 && md_blank(cast(string) s[out[n - 1].from..<out[n - 1].to]) { n -= 1; }
+  return n;
+}
+// Characters (code points) in s[from..<to].
+chars_in :: (s: string, from: int, to: int) -> int {
+  n := 0; i := from;
+  while i < to { i += rune_at(s, i).len; n += 1; }
+  return n;
+}
+// The byte after `cols` characters from i (or to).
+after_chars :: (s: string, i: int, to: int, cols: int) -> int {
+  k := i; n := 0;
+  while k < to && n < cols { k += rune_at(s, k).len; n += 1; }
+  return k;
+}
+// The invocation block (call_block): each line of the argument cut into
+// 80-character pieces.
+call_lines :: (s: string, out: [] ToolLine) -> int {
+  n := 0; i := 0;
+  while i < s.count && n < out.count && n < OUTPUT_DETAIL_MAX_LINES {
+    j := i; while j < s.count && s[j] != '\n' { j += 1; }
+    k := i;
+    while n < out.count {
+      e := after_chars(s, k, j, CALL_WRAP_COLS);
+      out[n] = ToolLine.{from = k, to = e}; n += 1;
+      k = e;
+      if k >= j { break; }
+    }
+    i = j + 1;
+  }
+  return n;
+}
+// A thought's lines (wrap_styled_runs): words joined by one space up to 96
+// characters, an overlong word split at the budget.
+thought_lines :: (s: string, out: [] ToolLine) -> int {
+  n := 0; i := 0;
+  while i < s.count && s[i] == ' ' { i += 1; }
+  while i < s.count && n < out.count {
+    start := i; last := i; cols := 0;
+    while i < s.count {
+      j := i; while j < s.count && s[j] != ' ' { j += 1; }
+      w := chars_in(s, i, j);
+      if cols > 0 && cols + 1 + w > THOUGHT_WRAP_COLS { break; }
+      if cols == 0 && w > THOUGHT_WRAP_COLS { j = after_chars(s, i, j, THOUGHT_WRAP_COLS); w = THOUGHT_WRAP_COLS; }
+      cols += ifx cols > 0 then 1 + w else w;
+      last = j; i = j;
+      while i < s.count && s[i] == ' ' { i += 1; }
+    }
+    out[n] = ToolLine.{from = start, to = last}; n += 1;
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- heights
+
+// An open chip's added height: separator and body for the invocation, then
+// for its output, thought or diff (detail_height).
+lines_height :: (n: int) -> f32 { return DETAIL_SEPARATOR + cast(f32) n * OUTPUT_LINE_HEIGHT + OUTPUT_BODY_PAD; }
+diff_height :: (t: Tool) -> f32 { return DETAIL_SEPARATOR + HUNK_HEADER_HEIGHT + cast(f32) t.diff_lines * DIFF_LINE_HEIGHT + BODY_BOTTOM_PAD; }
+tool_open_height :: (t: Tool) -> f32 {
+  buf: [64] ToolLine;
+  h: f32 = 0;
+  if t.kind == TK_THOUGHT { return lines_height(thought_lines(t.arg, buf[..])); }
+  h += lines_height(call_lines(t.arg, buf[..]));
+  if t.kind == TK_EDIT && t.diff_lines > 0 { h += diff_height(t); }
+  else if t.output.count > 0 {
+    n := output_lines(t.output, buf[..]);
+    if n > 0 { h += lines_height(n); }
+  }
+  return h;
+}
+// A chip's row in a collapsing group: the tree row, plus its open detail.
+tool_row_height :: (t: Tool) -> f32 { return TOOL_TREE_ROW_HEIGHT + (ifx t.open then tool_open_height(t) else 0.0f32); }
+
+// The gutter width for a diff's line numbers (changes.rs gutter_width).
+diff_gutter :: (max_line: int) -> f32 {
+  digits := 1; m := ifx max_line < 1 then 1 else max_line;
+  while m >= 10 { m /= 10; digits += 1; }
+  g := cast(f32) digits * 6.6 + 8 + 6;
+  return ifx g < GUTTER_WIDTH then GUTTER_WIDTH else g;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a chip's label, icon and detail are Zeron's" {
+  e := Tool.{kind = TK_EDIT, arg = "crates/ui/src/shell/transcript.rs"};
+  #assert tool_label(e) == "Edit" && tool_icon(e) == ICON_PEN && tool_detail(e) == "transcript.rs" && tool_has_file(e);
+  r := Tool.{kind = TK_EXEC, arg = "cargo test -p zeron-ui tool_group"};
+  #assert tool_label(r) == "Run" && tool_detail(r) == "cargo test -p zeron-ui tool_group" && !tool_has_file(r);
+  #assert tool_detail(Tool.{kind = TK_THOUGHT, arg = "x"}) == "" && tool_label(Tool.{kind = TK_FETCH}) == "Fetch";
+}
+
+#test "details split, wrap and cap their lines as Zeron does" {
+  buf: [64] ToolLine;
+  #assert output_lines("a\nb\n\n", buf[..]) == 2 && buf[1].from == 2 && buf[1].to == 3;
+  #assert output_lines("", buf[..]) == 0;
+  long := "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890";
+  #assert call_lines(long, buf[..]) == 2 && buf[0].to == 80 && buf[1].to == 91;
+  t := "The header color comes from one place. Find it, keep the failure on the chips and in the summary count, and rerun the group tests.";
+  n := thought_lines(t, buf[..]);
+  #assert n == 2 && cast(string) t[buf[1].from..<buf[1].to] == "count, and rerun the group tests.";
+  #assert chars_in(cast(string) t[buf[0].from..<buf[0].to], 0, buf[0].to - buf[0].from) <= 96;
+}
+
+#test "open chips grow by Zeron's analytic detail heights" {
+  run := Tool.{kind = TK_EXEC, arg = "cargo test", output = "error\n  --> x", failed = true, resolved = true, open = true};
+  // the tree row, the invocation (1 line) and the output (2 lines)
+  #assert tool_row_height(run) == 32 + 31 + 49;
+  thought := Tool.{kind = TK_THOUGHT, arg = "short", open = true};
+  #assert tool_row_height(thought) == 32 + 31;
+  edit := Tool.{kind = TK_EDIT, arg = "a/b.rs", diff_lines = 10, open = true};
+  #assert tool_row_height(edit) == 32 + 31 + 1 + 28 + 210 + 8;
+  edit.open = false;
+  #assert tool_row_height(edit) == 32;
+  #assert diff_gutter(7) == 36 && abs(diff_gutter(12345) - 47) < 0.001;
+}

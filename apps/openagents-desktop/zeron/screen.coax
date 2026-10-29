@@ -1,28 +1,61 @@
-// The Mac app's new chat screen, the first piece of the Zeron-fork UI
-// (docs/desktop/coax-desktop.md): Zeron Dark's canvas, empty but for the
-// composer where Zeron's new chat places it, centered in a 768px column.
-// The host (Sources/Zeron.swift, through zeron-face.c) builds the atlas from
-// the fonts and icons listed here, then each frame asks for the vertices.
-// Based on Zeron by Wing, MIT.
+// The Mac app's chat screen, the first piece of the Zeron-fork UI
+// (docs/desktop/coax-desktop.md): Zeron Dark's canvas with a chat's
+// transcript (transcript.coax, Zeron's demo conversation, connected to
+// nothing) in the 736px column and the composer docked under it as Zeron
+// docks it in a chat. The host (Sources/Zeron.swift, through zeron-face.c)
+// builds the atlas from the fonts and icons listed here, then each frame
+// asks for the vertices. Based on Zeron by Wing, MIT.
 
-#load "composer.coax";
+#load "transcript.coax";
 
-ZR_MAX_VERTICES :: 60000;
-// Where Zeron's new-chat composer sits: (viewport - height) / 2, less this
-// (measured from Zeron at 1320x880: the pill's top at 368).
-ZR_HERO_LIFT :: 12.0;
+ZR_MAX_VERTICES :: 200000;
 ZR_COLUMN_PAD :: 16.0;
+// The docked composer's bottom margin (Zeron's composer stack: the pill,
+// then 40px under it) and the status strip above it.
+ZR_DOCK_BOTTOM :: 40.0;
 
 ZeronState :: struct {
   ready: bool;
   width: f32; height: f32; d: f32;
   atlas: [1] Atlas;
   composer: [1] Composer;
-  pointer_in: bool;              // the pointer is over the composer (the I-beam)
+  transcript: [1] Transcript;
+  seen_sent: int;                // the composer's sends already appended
+  want_scroll: f32;              // a scroll_to for the next layout (< 0: none)
+  lx: f32; ly: f32;              // the pointer (logical px)
+  cursor: int;                   // 0 arrow, 1 I-beam, 2 pointing hand
+  on_composer: bool;             // the press went to the composer
+}
+
+// The composer's box this frame, and whether a point is over it.
+zr_on_composer :: (s: [] ZeronState, x: f32, y: f32) -> bool {
+  c := s[0].composer[..];
+  return x >= c[0].x && x < c[0].x + c[0].w && y >= c[0].y && y < c[0].y + c[0].h;
+}
+// The transcript takes the pointer between the titlebar and the composer's stack.
+zr_on_transcript :: (s: [] ZeronState, x: f32, y: f32) -> bool {
+  return y >= TITLEBAR_HEIGHT && y < s[0].composer[0].y - STATUS_STRIP_HEIGHT;
+}
+zr_update_cursor :: (s: [] ZeronState) {
+  c := s[0].composer[..];
+  x := s[0].lx; y := s[0].ly;
+  s[0].cursor = 0;
+  if zr_on_composer(s, x, y) {
+    // the text area: an I-beam (the compact form's row between paperclip and chip)
+    if c[0].compact { s[0].cursor = ifx x >= c[0].text_x - COMPACT_TEXT_PAD && x < c[0].text_x + c[0].text_w + COMPACT_TEXT_PAD then 1 else 0; }
+    else { s[0].cursor = ifx x >= c[0].text_x - 16 && y < c[0].y + c[0].h - ACTIONS_ROW_HEIGHT then 1 else 0; }
+  } else if zr_on_transcript(s, x, y) {
+    s[0].cursor = t_cursor(s[0].transcript[..], x, y);
+  }
 }
 
 zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int {
-  if !s[0].ready { s[0].ready = true; s[0].composer[0].focused = true; }
+  t := s[0].transcript[..];
+  if !s[0].ready {
+    s[0].ready = true; s[0].composer[0].focused = true; s[0].composer[0].docked = true;
+    s[0].want_scroll = -1;
+    t_demo(t);
+  }
   d := ifx dpr < 1 then 1.0f32 else dpr;
   s[0].width = width; s[0].height = height; s[0].d = d;
   dt1 := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
@@ -32,14 +65,27 @@ zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, d
   th := zeron_dark();
   w := width / d; h := height / d;
   v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, th.shell, th.shell);
+  if !s[0].atlas[0].ready { return v; }
   column := ifx w < COMPOSER_MAX_WIDTH then w else COMPOSER_MAX_WIDTH;
   cw := column - 2 * ZR_COLUMN_PAD;
-  x := (w - cw) / 2;
-  // the height decides the top: wrap first at this width
-  if s[0].atlas[0].ready { composer_wrap(s[0].composer[..], s[0].atlas[..], cw - 34); }
-  ch := composer_height(s[0].composer[0].lines);
-  y := round_layout((h - ch) / 2 - ZR_HERO_LIFT);
-  return paint_composer(out, v, s[0].composer[..], s[0].atlas[..], th, d, x, y, cw);
+  x := round_layout((w - cw) / 2);
+  // a sent message joins the transcript as the user's bubble, and the view follows it
+  c := s[0].composer[..];
+  if c[0].sent != s[0].seen_sent {
+    s[0].seen_sent = c[0].sent;
+    t_user(t, t_pool(t, cast(string) c[0].last[0..<c[0].last_n]));
+    t[0].pinned = true;
+  }
+  ch := docked_height(c, s[0].atlas[..], cw);
+  stack := STATUS_STRIP_HEIGHT + ch + ZR_DOCK_BOTTOM;
+  t[0].view_h = h;
+  t_layout(t, s[0].atlas[..], th, x, cw, stack + TRANSCRIPT_FADE_BAND + SPACE_SM);
+  if s[0].want_scroll >= 0 { t_scroll_to(t, s[0].want_scroll); s[0].want_scroll = -1; }
+  t_clamp(t);
+  v = t_paint(out, v, t, s[0].atlas[..], th, d, h, stack - STATUS_STRIP_HEIGHT);
+  v = paint_composer_docked(out, v, c, s[0].atlas[..], th, d, x, h - ZR_DOCK_BOTTOM, cw);
+  zr_update_cursor(s);
+  return v;
 }
 
 // ---------------------------------------------------------------- the host's calls
@@ -49,21 +95,44 @@ coaxial_zeron_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, 
   return zr_frame(s, out, width, height, dpr, dt);
 }
 // phase 0 down, 1 move (or drag), 2 up; device pixels; the press's click
-// count and modifiers (1 Shift). Whether the composer took it.
+// count and modifiers (1 Shift). A press over the composer goes to it, any
+// other to the transcript (selecting its text, opening its groups and
+// chips); moves and the release follow the press. Whether the composer took it.
 coaxial_zeron_pointer :: (s: [] ZeronState, x: f32, y: f32, phase: int, clicks: int, mods: int) -> bool #export_c {
   if s.count < 1 { return false; }
   d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
-  c := s[0].composer[..];
+  c := s[0].composer[..]; t := s[0].transcript[..];
   lx := x / d; ly := y / d;
-  s[0].pointer_in = lx >= c[0].text_x - 16 && lx < c[0].x + c[0].w && ly >= c[0].y && ly < c[0].y + c[0].h - ACTIONS_ROW_HEIGHT;
-  if phase == 0 { return composer_press(c, s[0].atlas[..], lx, ly, clicks, (mods & MOD_SHIFT) != 0); }
-  if phase == 1 { composer_drag(c, s[0].atlas[..], lx, ly); return c[0].selecting; }
+  s[0].lx = lx; s[0].ly = ly;
+  shift := (mods & MOD_SHIFT) != 0;
+  if phase == 0 {
+    s[0].on_composer = zr_on_composer(s, lx, ly);
+    if s[0].on_composer { t[0].has_sel = false; t_hover(t, -1, -1); }
+    took := composer_press(c, s[0].atlas[..], lx, ly, clicks, shift);
+    if !s[0].on_composer && zr_on_transcript(s, lx, ly) { t_pointer(t, s[0].atlas[..], lx, ly, 0, clicks, shift); }
+    zr_update_cursor(s);
+    return took;
+  }
+  if phase == 1 {
+    if c[0].selecting { composer_drag(c, s[0].atlas[..], lx, ly); zr_update_cursor(s); return true; }
+    if t[0].selecting || t[0].press_kind != 0 || zr_on_transcript(s, lx, ly) { t_pointer(t, s[0].atlas[..], lx, ly, 1, clicks, shift); }
+    else { t_hover(t, -1, -1); }
+    zr_update_cursor(s);
+    return false;
+  }
   composer_release(c);
+  if t[0].selecting || t[0].press_kind != 0 { t_pointer(t, s[0].atlas[..], lx, ly, 2, clicks, shift); }
+  zr_update_cursor(s);
   return false;
 }
+// A wheel's pixel delta: the composer's text scrolls when the pointer is
+// over it and it overflows; otherwise the transcript.
 coaxial_zeron_wheel :: (s: [] ZeronState, dy: f32) -> bool #export_c {
   if s.count < 1 { return false; }
-  return composer_wheel(s[0].composer[..], dy);
+  if zr_on_composer(s, s[0].lx, s[0].ly) && composer_wheel(s[0].composer[..], dy) { return true; }
+  moved := t_wheel(s[0].transcript[..], dy);
+  t_hover(s[0].transcript[..], s[0].lx, s[0].ly);
+  return moved;
 }
 coaxial_zeron_key :: (s: [] ZeronState, key_code: int, mods: int) -> bool #export_c {
   if s.count < 1 { return false; }
@@ -80,16 +149,59 @@ coaxial_zeron_undo :: (s: [] ZeronState) #export_c { if s.count > 0 { composer_u
 coaxial_zeron_redo :: (s: [] ZeronState) #export_c { if s.count > 0 { composer_redo(s[0].composer[..]); } }
 coaxial_zeron_can_undo :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && can_undo(s[0].composer[..]); }
 coaxial_zeron_can_redo :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && can_redo(s[0].composer[..]); }
-coaxial_zeron_select_all :: (s: [] ZeronState) #export_c { if s.count > 0 && s[0].composer[0].focused { composer_select_all(s[0].composer[..]); } }
-// The selection's bytes, for Copy and Cut (0 when nothing is selected).
+// Select All: the focused composer's text, else the whole transcript.
+coaxial_zeron_select_all :: (s: [] ZeronState) #export_c {
+  if s.count < 1 { return; }
+  if s[0].composer[0].focused { composer_select_all(s[0].composer[..]); return; }
+  t := s[0].transcript[..];
+  if t[0].nsel == 0 { return; }
+  t[0].anchor = SelPos.{line = 0, off = 0};
+  t[0].focus = SelPos.{line = t[0].nsel - 1, off = t_line_len(t, t[0].nsel - 1)};
+  t[0].has_sel = true;
+}
+// The selection's bytes, for Copy and Cut (0 when nothing is selected):
+// the focused composer's, else the transcript's.
+zr_composer_selects :: (s: [] ZeronState) -> bool { return s[0].composer[0].focused && sel_hi(s[0].composer[..]) > sel_lo(s[0].composer[..]); }
 coaxial_zeron_selected :: (s: [] ZeronState, out: [] u8) -> int #export_c {
   if s.count < 1 { return 0; }
+  if !zr_composer_selects(s) {
+    n := t_selected(s[0].transcript[..], out);
+    return ifx n > out.count then 0 else n;
+  }
   t := selected(s[0].composer[..]);
   if t.count > out.count { return 0; }
   for k: 0..<t.count { out[k] = t[k]; }
   return t.count;
 }
-coaxial_zeron_selected_count :: (s: [] ZeronState) -> int #export_c { if s.count < 1 { return 0; } return sel_hi(s[0].composer[..]) - sel_lo(s[0].composer[..]); }
+coaxial_zeron_selected_count :: (s: [] ZeronState) -> int #export_c {
+  if s.count < 1 { return 0; }
+  if !zr_composer_selects(s) { none: [1] u8; return t_selected(s[0].transcript[..], none[0..<0]); }
+  return sel_hi(s[0].composer[..]) - sel_lo(s[0].composer[..]);
+}
+// Whether Cut applies (only the composer's text can be cut).
+coaxial_zeron_can_cut :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && zr_composer_selects(s); }
+// A code block's Copy, pressed: its code's bytes, once (0 when none waits).
+coaxial_zeron_take_copy :: (s: [] ZeronState, out: [] u8) -> int #export_c {
+  if s.count < 1 { return 0; }
+  t := s[0].transcript[..];
+  b := t[0].copy_code - 1;
+  if b < 0 { return 0; }
+  code := md_block_text(t[0].md[..], b);
+  if code.count > out.count { return 0; }
+  t[0].copy_code = 0;
+  for k: 0..<code.count { out[k] = code[k]; }
+  return code.count;
+}
+// The demo as the transcript-fixture capture opens it (every group open,
+// and the thought, the failed run and the edit, then the first run of the
+// second group), or all closed again; and a scroll from the top in px.
+coaxial_zeron_fixture :: (s: [] ZeronState, open: bool) #export_c {
+  if s.count < 1 { return; }
+  t := s[0].transcript[..];
+  for g: 0..<t[0].ng { t_set_open(t, g, -1, open); for k: 0..<t[0].groups[g].tools { t_set_open(t, g, k, false); } }
+  if open { t_set_open(t, 0, 0, true); t_set_open(t, 0, 3, true); t_set_open(t, 0, 4, true); t_set_open(t, 1, 0, true); }
+}
+coaxial_zeron_scroll_to :: (s: [] ZeronState, px: f32) #export_c { if s.count > 0 { s[0].want_scroll = ifx px < 0 then 0.0f32 else px; } }
 coaxial_zeron_cut :: (s: [] ZeronState) #export_c { if s.count > 0 { composer_cut_selection(s[0].composer[..]); } }
 coaxial_zeron_paste :: (s: [] ZeronState, text: string) #export_c {
   if s.count < 1 || !s[0].composer[0].focused { return; }
@@ -151,7 +263,7 @@ coaxial_zeron_index16 :: (s: [] ZeronState, x: f32, y: f32) -> int #export_c {
   return u16_of(c, content_hit(c, s[0].atlas[..], x / d, y / d).at);
 }
 coaxial_zeron_wants_text :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && s[0].composer[0].focused; }
-coaxial_zeron_cursor :: (s: [] ZeronState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].pointer_in then 1 else 0; }
+coaxial_zeron_cursor :: (s: [] ZeronState) -> int #export_c { if s.count < 1 { return 0; } return s[0].cursor; }
 coaxial_zeron_max_vertices :: () -> int #export_c { return ZR_MAX_VERTICES; }
 coaxial_zeron_vertex_floats :: () -> int #export_c { return GP_VERTEX_FLOATS; }
 
@@ -163,12 +275,12 @@ coaxial_zeron_glyph_code :: (g: int) -> int #export_c {
   return ifx g - 95 < 3 then cast(int) extra[g - 95] else 63;
 }
 coaxial_zeron_font_count :: () -> int #export_c { return GP_FONTS; }
-coaxial_zeron_font_size :: (k: int) -> f32 #export_c { sizes := FONT_SIZES; return ifx k >= 0 && k < 2 then sizes[k] else 14.0f32; }
-coaxial_zeron_font_weight :: (k: int) -> int #export_c { weights := FONT_WEIGHTS; return ifx k >= 0 && k < 2 then weights[k] else 0; }
-coaxial_zeron_icon_count :: () -> int #export_c { return 3; }
-coaxial_zeron_icon_size :: (i: int) -> f32 #export_c { sizes := ICON_SIZES; return ifx i >= 0 && i < 3 then sizes[i] else 16.0f32; }
+coaxial_zeron_font_size :: (k: int) -> f32 #export_c { sizes := FONT_SIZES; return ifx k >= 0 && k < GP_FONTS then sizes[k] else 14.0f32; }
+coaxial_zeron_font_weight :: (k: int) -> int #export_c { weights := FONT_WEIGHTS; return ifx k >= 0 && k < GP_FONTS then weights[k] else 0; }
+coaxial_zeron_icon_count :: () -> int #export_c { return ICON_COUNT; }
+coaxial_zeron_icon_size :: (i: int) -> f32 #export_c { sizes := ICON_SIZES; return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32; }
 coaxial_zeron_icon_name :: (i: int, out: [] u8) -> int #export_c {
-  if i < 0 || i >= 3 { return 0; }
+  if i < 0 || i >= ICON_COUNT { return 0; }
   names := ICON_NAMES;
   n := ifx names[i].count < out.count then names[i].count else out.count;
   for k: 0..<n { out[k] = names[i][k]; }
@@ -243,49 +355,64 @@ coaxial_zeron_cell_ready :: (s: [] ZeronState, cell: int) #export_c {
   if s[0].atlas[0].cells[cell].state == 1 { s[0].atlas[0].cells[cell].state = 2; }
 }
 
-#test "the screen opens focused on the empty composer, centered as Zeron's new chat" {
-  s: [1] ZeronState;
+zr_test_screen :: (s: [] ZeronState) {
   header := [7] f32.[13, 3, 64, 12, 44, 0, 64];
   adv: [GP_GLYPHS] f32;
   for g: 0..<GP_GLYPHS { adv[g] = 7; }
   kern: [9604] f32;
-  for k: 0..<2 { coaxial_zeron_set_font(s[..], k, header[..], adv[..], kern[..]); }
-  for i: 0..<3 { coaxial_zeron_set_icon(s[..], i, 0, 0, 36, 36); }
-  coaxial_zeron_set_atlas(s[..], 4096, 2048);
-  out: [60000] f32;
+  for k: 0..<GP_FONTS { coaxial_zeron_set_font(s, k, header[..], adv[..], kern[..]); }
+  for i: 0..<ICON_COUNT { coaxial_zeron_set_icon(s, i, 0, 0, 36, 36); }
+  coaxial_zeron_set_atlas(s, 8192, 2048);
+}
+
+#test "the screen opens on the demo chat, the composer docked and focused under it" {
+  s: [1] ZeronState;
+  zr_test_screen(s[..]);
+  out: [200000] f32;
   n := coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
-  #assert n > 6 && coaxial_zeron_wants_text(s[..]);
-  c := s[0].composer[..];
-  #assert c[0].x == 292 && c[0].y == 368 && c[0].w == 736 && c[0].h == 120;
+  #assert n > 600 && coaxial_zeron_wants_text(s[..]);
+  c := s[0].composer[..]; t := s[0].transcript[..];
+  #assert c[0].compact && c[0].x == 292 && c[0].w == 736 && c[0].h == 49 && c[0].y == 880 - 40 - 49;
+  #assert t[0].nr == 9 && t[0].rows[0].y == 64;
+  // short content sits at the bottom, clear of the composer's stack
+  #assert t[0].offset > 0 && t[0].content_h + t[0].offset == 880;
   coaxial_zeron_text(s[..], "hi");
   #assert c[0].n == 2 && coaxial_zeron_key(s[..], -3, 0) && c[0].n == 1;
-  #assert !coaxial_zeron_pointer(s[..], 10, 10, 0, 1, 0) && !coaxial_zeron_wants_text(s[..]);
-  #assert coaxial_zeron_pointer(s[..], 700, 800, 0, 1, 0) && coaxial_zeron_cursor(s[..]) == 1;
-  #assert !coaxial_zeron_pointer(s[..], 700, 800, 2, 1, 0);
-  // the Edit menu and the IME's view of the text
-  coaxial_zeron_paste(s[..], "日本 ok");
-  #assert c[0].n == 10;
-  #assert coaxial_zeron_range16(s[..], 4) == 6;
-  #assert coaxial_zeron_range16(s[..], 1) == 5;   // the press put the caret before the h
-  coaxial_zeron_select_all(s[..]);
-  buf: [64] u8;
-  #assert coaxial_zeron_selected(s[..], buf[..]) == 10 && coaxial_zeron_selected_count(s[..]) == 10;
-  coaxial_zeron_cut(s[..]);
-  #assert c[0].n == 0 && coaxial_zeron_can_undo(s[..]);
-  coaxial_zeron_undo(s[..]);
-  #assert c[0].n == 10 && coaxial_zeron_can_redo(s[..]);
-  coaxial_zeron_mark(s[..], 0, 0, "かな", 2, 2);
-  #assert coaxial_zeron_range16(s[..], 2) == 0 && coaxial_zeron_range16(s[..], 3) == 2 && coaxial_zeron_range16(s[..], 0) == 2;
-  coaxial_zeron_replace(s[..], -1, -1, "仮名");
-  #assert coaxial_zeron_range16(s[..], 2) == -1 && coaxial_zeron_text16(s[..], 0, 2, buf[..]) == 6;
-  r: [4] f32;
-  #assert coaxial_zeron_rect16(s[..], 0, r[..]) && r[0] == c[0].text_x && r[3] == INPUT_LINE_HEIGHT;
-  // the glyph cache: the frame asks the host for the new graphemes
+  // Enter sends: the message joins the transcript as a bubble
+  #assert coaxial_zeron_key(s[..], -2, 0) && c[0].n == 0;
   n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
-  slot := coaxial_zeron_next_cluster(s[..]);
-  #assert slot >= 0 && coaxial_zeron_cluster(s[..], slot, buf[..]) == 3;
-  coaxial_zeron_measured(s[..], slot, 14, false);
-  #assert coaxial_zeron_glyph_code(0) == 32 && coaxial_zeron_glyph_code(95) == 0x2026;
+  #assert t[0].nr == 10 && t[0].rows[9].kind == R_USER && t[0].rows[9].text == "h";
+}
+
+#test "the pointer opens a group, selects transcript text for Copy; the wheel scrolls" {
+  s: [1] ZeronState;
+  zr_test_screen(s[..]);
+  out: [200000] f32;
+  n := coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  t := s[0].transcript[..];
+  // the first group's header, in device px
+  hy := (t[0].rows[1].y + t[0].offset + 13) * 2;
+  #assert !coaxial_zeron_pointer(s[..], 800, hy, 1, 1, 0) && coaxial_zeron_cursor(s[..]) == 2;
+  #assert !coaxial_zeron_pointer(s[..], 800, hy, 0, 1, 0) && !coaxial_zeron_wants_text(s[..]);
+  #assert !coaxial_zeron_pointer(s[..], 800, hy, 2, 1, 0) && t[0].groups[0].open;
+  n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  // the last bubble: a triple click takes its line, Copy gets it
+  by := (t[0].rows[6].y + t[0].offset + 21) * 2;
+  #assert !coaxial_zeron_pointer(s[..], 1900, by, 0, 3, 0);
+  #assert !coaxial_zeron_pointer(s[..], 1900, by, 2, 3, 0);
+  buf: [256] u8;
+  #assert coaxial_zeron_selected_count(s[..]) == 24 && coaxial_zeron_selected(s[..], buf[..]) == 24 && !coaxial_zeron_can_cut(s[..]);
+  #assert cast(string) buf[0..<24] == "Ship it and open the PR.";
+  // everything open: taller than the window, pinned to the bottom; the wheel moves it
+  coaxial_zeron_fixture(s[..], true);
+  coaxial_zeron_scroll_to(s[..], 500);
+  n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  #assert t[0].scroll == 500 && t[0].offset == -500;
+  #assert coaxial_zeron_wheel(s[..], 100) && t[0].scroll == 400;
+  // a code block's Copy hands the host its code
+  t[0].copy_code = t[0].rows[4].block + 1;
+  #assert coaxial_zeron_take_copy(s[..], buf[..]) == 83 && coaxial_zeron_take_copy(s[..], buf[..]) == 0;
   name: [32] u8;
-  #assert coaxial_zeron_icon_name(2, name[..]) == 11;
+  #assert coaxial_zeron_icon_name(2, name[..]) == 11 && coaxial_zeron_icon_count() == ICON_COUNT && coaxial_zeron_font_size(5) == 12.5;
+  #assert coaxial_zeron_glyph_code(0) == 32 && coaxial_zeron_glyph_code(95) == 0x2026;
 }

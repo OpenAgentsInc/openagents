@@ -32,9 +32,26 @@ How it works:
   metrics (`zeron-face.c`).
 - `zeron/composer.coax` is Zeron's composer (`crates/ui/src/composer.rs` and
   the chips of `pickers.rs`) in its expanded new-chat form, in Zeron Dark on
-  the opaque surface. `zeron/screen.coax` is the new chat screen: the canvas
-  and the composer where Zeron's new chat puts it. It is connected to
-  nothing: Enter clears the text as Zeron's submit does.
+  the opaque surface, and docked under a chat (one row with the chat's model
+  chip until the text needs more). `zeron/screen.coax` is the chat screen:
+  the canvas, the transcript and the docked composer. It is connected to
+  nothing: Enter clears the text as Zeron's submit does and appends it to the
+  transcript as your message.
+- `zeron/transcript.coax` (with `markdown.coax` and `tools.coax`) is Zeron's
+  chat transcript (`crates/ui/src/transcript.rs`, `render.rs`'s Markdown and
+  code blocks, `changes.rs`'s diff rows) showing a fixed demo conversation,
+  Zeron's own (`crates/client/src/demo/transcripts.rs`): user bubbles,
+  Markdown (paragraphs, bold, inline code, lists, a fenced code block with
+  Zeron Dark's Rust highlighting and its wrap and Copy buttons), and tool
+  groups that open to the activity rail and chips (thought, search, read and
+  edit with file badges, a failed run, a run still going, a fetch), each chip
+  opening to its invocation and its output, thought or diff. Wheel and
+  trackpad scrolling (momentum as AppKit delivers it), pinned to the bottom
+  until you scroll up; clicks open and close groups and chips; Zeron's hover
+  tones and chip chevrons; drag, double- and triple-click selection across
+  rows, copied with its line breaks (Copy, Cmd+C, Select All); the code
+  block's Copy puts its code on the pasteboard; the content fades under the
+  titlebar and the composer as Zeron's EdgeFade does.
 - Text editing is Zeron's (`ComposerInput` in `composer.rs`), in Coax: a
   selection with an anchor and a caret; Zeron's keymap (Shift, Alt and Cmd
   arrows, Home/End and Cmd+Left/Right to the logical line, Cmd+Up/Down to the
@@ -71,10 +88,25 @@ identical, pixel for pixel. Not ported from Zeron's input: mentions and
 chips, Markdown list continuation on Enter and Tab, dictation, attachments
 from pasted files or images.
 
+Component two, the transcript, against Zeron's render of the same demo
+(1320x880 at scale 2, `crates/ui/examples/transcript-fixture.rs` in a
+throwaway Zeron worktree): collapsed, and expanded (every group open, the
+thought, failed run, edit and first run of the second group open) at scroll
+0, 500 and the bottom. In the transcript column at most 0.4% of pixels differ
+at all and at most 0.01% by more than 32 of 255 (the Rust file icon,
+rasterized by CoreSVG, and one middle dot); bubbles, paragraphs, lists, code
+block, diff and chips are otherwise identical. Not yet drawn: the titlebar
+and the collapsed sidebar's handle, the timestamp and copy actions an entry
+shows on hover, the code block's wrap toggle (drawn, not wired), Copy's
+checkmark, and approvals; hover states follow Zeron's code but were not
+compared against a Zeron render.
+
 Rebuild and look: `apps/openagents-desktop/build.sh --open`; an offscreen PNG:
 `build/OpenAgents.app/Contents/MacOS/OpenAgents --shot out.png [--click X,Y] [--type TEXT] [--do STEPS]`,
 where STEPS drive the keyboard, mouse, menus and IME (`Sources/Zeron.swift`
-`shot`), e.g. `--do "key shift+alt+left ; menu Copy ; click 900,792,2 ; menu Paste"`.
+`shot`), e.g. `--do "key shift+alt+left ; menu Copy ; click 900,792,2 ; menu Paste"`;
+`--do "click 20,20 ; fixture open ; scroll 500"` opens the transcript as the
+Zeron capture does.
 
 ## What came before
 

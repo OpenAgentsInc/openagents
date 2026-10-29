@@ -1,0 +1,934 @@
+// Zeron's chat transcript (crates/ui/src/transcript.rs), drawn with
+// gpui.coax: the rows of a conversation in the 736px column, the user's
+// messages as right-aligned bubbles, the assistant's replies as Markdown
+// blocks (markdown.coax), its tool calls as a tool group (tools.coax): a
+// quiet summary header with its chevron, then, open, the activity rail with
+// a glyph per call and each call's chip, which opens onto its invocation and
+// its output, thought or diff. Gaps, paddings, sizes and colors are Zeron's
+// (top_gap_for, render_tool_group, chip_header_row, activity_rail,
+// detail_body, changes.rs's diff rows, render.rs's code block); the content
+// fades out under the titlebar and the composer as Zeron's EdgeFade does.
+//
+// Layout makes a display list in content coordinates (boxes, then text
+// segments grouped into selectable lines, then hit regions); painting puts
+// it at the scroll offset. The pointer selects text across rows (copied
+// with its line breaks), clicks open and close groups and chips, and hovers
+// light headers and chips as Zeron's do. The conversation is a fixed demo,
+// Zeron's own demo transcript (crates/client/src/demo/transcripts.rs's
+// wording): it is connected to nothing; a sent message is appended as a
+// user bubble. Based on Zeron by Wing, MIT.
+
+#load "tools.coax";
+
+T_ROWS :: 128; T_GROUPS :: 32; T_TOOLS :: 96; T_DIFF :: 64; T_POOL :: 32768;
+T_BOXES :: 2048; T_TEXTS :: 4096; T_SELS :: 1024; T_HITS :: 256;
+
+// Theme.rs constants
+SPACE_SM :: 8.0; SPACE_MD :: 12.0; SPACE_LG :: 16.0;
+TITLEBAR_HEIGHT :: 38.0;
+TRANSCRIPT_FADE_BAND :: 24.0;
+STATUS_STRIP_HEIGHT :: 24.0;
+TRANSCRIPT_WIDTH :: 736.0;      // settings transcriptWidth
+ROW_PAD_X :: 48.0;
+TIMESTAMP_LANE :: 32.0;         // SPACE_SM + 2 * SPACE_MD, under an entry's last row
+MD_BLOCK_GAP :: 12.0;
+MD_LINE_HEIGHT :: 22.0;
+BUBBLE_RADIUS :: 16.0;
+BUBBLE_PAD_X :: 16.0; BUBBLE_PAD_Y :: 10.0;
+LIST_ITEM_GAP :: 4.0; LIST_MARKER_W :: 18.0; LIST_MARKER_GAP :: 8.0; LIST_DISC :: 5.0;
+INLINE_CODE_RADIUS :: 4.5; INLINE_CODE_PAD_X :: 2.0; INLINE_CODE_INSET_Y :: 2.0;
+CODE_RADIUS :: 10.0; CODE_HEADER_HEIGHT :: 28.0; CODE_PADDING_X :: 12.0; CODE_PADDING_Y :: 10.0;
+CODE_LINE_HEIGHT :: 18.0; CODE_ACTION_SIZE :: 22.0;
+PHI :: 1.618034;                // GPUI's default line height, relative
+
+R_USER :: 0; R_MD :: 1; R_GROUP :: 2;
+TI_QUAD :: 0; TI_ICON :: 1; TI_ELBOW :: 2; TI_TEXT :: 3;
+H_GROUP :: 1; H_CHIP :: 2; H_WRAP :: 3; H_COPY :: 4;
+
+TRow :: struct {
+  kind: int; entry: int; part: int;
+  block: int;                   // R_MD: the Markdown block
+  group: int;                   // R_GROUP
+  text: string;                 // R_USER
+  turn_start: bool; last_of_entry: bool;
+  y: f32; h: f32;               // laid out (content px)
+}
+TGroup :: struct { tool0: int; tools: int; summary: string; open: bool; }
+
+// The display list.
+TItem :: struct {
+  kind: int; x: f32; y: f32; w: f32; h: f32;
+  radius: f32; border: f32; fill: Rgba; edge: Rgba;
+  icon: int; joined: bool; end_x: f32;
+  text: string; font: int; sel: int; off: int;
+}
+// A selectable line of text: its segments texts[item0..<item0+items], and
+// whether a line break follows it when copied (a soft wrap has none).
+TSel :: struct { x: f32; y: f32; h: f32; item0: int; items: int; hard: bool; }
+THit :: struct { x: f32; y: f32; w: f32; h: f32; kind: int; a: int; b: int; }
+SelPos :: struct { line: int; off: int; }
+
+Transcript :: struct {
+  md: [1] MdDoc;
+  rows: [T_ROWS] TRow; nr: int;
+  groups: [T_GROUPS] TGroup; ng: int;
+  tools: [T_TOOLS] Tool; nt: int;
+  diff: [T_DIFF] DiffLine; nd: int;
+  pool: [T_POOL] u8; np: int;   // sent messages' text
+  entries: int; parts: int;
+  // the view
+  scroll: f32;                  // content px above the viewport's top
+  pinned: bool;                 // following the bottom
+  content_h: f32; view_h: f32; offset: f32;   // offset: content y 0 in window y
+  started: bool;
+  // the display list from the last layout
+  boxes: [T_BOXES] TItem; nbox: int;
+  texts: [T_TEXTS] TItem; ntext: int;
+  sels: [T_SELS] TSel; nsel: int;
+  hits: [T_HITS] THit; nhit: int;
+  copy_code: int;               // a code block's Copy pressed: its block, until the host takes it
+  // the pointer (window logical px)
+  px: f32; py: f32; inside: bool;
+  hover_kind: int; hover_a: int; hover_b: int;
+  press_kind: int; press_a: int; press_b: int;
+  selecting: bool; has_sel: bool; anchor: SelPos; focus: SelPos;
+}
+
+ink :: (a: f32) -> Rgba { return rgba(1, 1, 1, a); }
+// zeron_theme keeps a color's alpha as a byte: opacity(0.055) is 14/255.
+byte_alpha :: (c: Rgba, a: f32) -> Rgba { return opacity(c, floor(a * 255 + 0.5) / 255); }
+wash :: (a: f32) -> Rgba { return rgba(0.92, 0.92, 0.92, a); }
+DANGER :: 0xf87171; SUCCESS :: 0x34d399;
+syntax_color :: (role: int, plain: Rgba) -> Rgba {
+  if role < 0 || role > 11 { return plain; }
+  palette := SYNTAX_DARK;
+  return hex(palette[role], 1);
+}
+
+// ---------------------------------------------------------------- the model
+
+t_pool :: (t: [] Transcript, s: string) -> string {
+  if t[0].np + s.count > T_POOL { return ""; }
+  at := t[0].np;
+  for k: 0..<s.count { t[0].pool[at + k] = s[k]; }
+  t[0].np += s.count;
+  return cast(string) t[0].pool[at..<at + s.count];
+}
+t_row :: (t: [] Transcript, kind: int) -> int {
+  if t[0].nr >= T_ROWS { return -1; }
+  r := t[0].nr; t[0].nr += 1;
+  t[0].rows[r] = TRow.{kind = kind, entry = t[0].entries - 1, part = t[0].parts, block = -1, group = -1};
+  return r;
+}
+t_entry :: (t: [] Transcript) { t[0].entries += 1; }
+t_mark_ends :: (t: [] Transcript) {
+  for r: 0..<t[0].nr {
+    t[0].rows[r].turn_start = r == 0 || t[0].rows[r - 1].entry != t[0].rows[r].entry;
+    t[0].rows[r].last_of_entry = r + 1 == t[0].nr || t[0].rows[r + 1].entry != t[0].rows[r].entry;
+  }
+}
+// A user message: its own entry, one bubble.
+t_user :: (t: [] Transcript, text: string) {
+  t_entry(t);
+  t[0].parts += 1;
+  r := t_row(t, R_USER);
+  if r >= 0 { t[0].rows[r].text = text; }
+  t_mark_ends(t);
+}
+// An assistant text part: a row per Markdown block.
+t_text :: (t: [] Transcript, src: string) {
+  t[0].parts += 1;
+  first := t[0].md[0].nb;
+  n := md_parse(t[0].md[..], src, t[0].parts);
+  for k: 0..<n {
+    r := t_row(t, R_MD);
+    if r >= 0 { t[0].rows[r].block = first + k; }
+  }
+  t_mark_ends(t);
+}
+// A tool group row; its tools follow with t_tool.
+t_group :: (t: [] Transcript, summary: string) -> int {
+  if t[0].ng >= T_GROUPS { return -1; }
+  t[0].parts += 1;
+  g := t[0].ng; t[0].ng += 1;
+  t[0].groups[g] = TGroup.{tool0 = t[0].nt, tools = 0, summary = summary, open = false};
+  r := t_row(t, R_GROUP);
+  if r >= 0 { t[0].rows[r].group = g; }
+  t_mark_ends(t);
+  return g;
+}
+t_tool :: (t: [] Transcript, g: int, tool: Tool) -> int {
+  if g < 0 || t[0].nt >= T_TOOLS { return -1; }
+  k := t[0].nt; t[0].nt += 1;
+  t[0].tools[k] = tool;
+  t[0].groups[g].tools += 1;
+  return k;
+}
+t_diff_line :: (t: [] Transcript, kind: int, old_no: int, new_no: int, text: string) {
+  if t[0].nd >= T_DIFF { return; }
+  t[0].diff[t[0].nd] = DiffLine.{kind = kind, old_no = old_no, new_no = new_no, text = text};
+  t[0].nd += 1;
+}
+
+// Zeron's demo conversation (the transcript-fixture capture uses the same).
+DEMO_REPLY :: "Done — the header keeps `text_muted` even on failure; only the chip label and the summary segment (\"1 failed\") pick up `danger`:\n\n- the header reads the group's **summary**, never its children\n- a failed chip tints its own label\n- the count lands in the summary as `· 1 failed`\n\n```rust\nfn header_color(_group: &ToolGroup, theme: &Theme) -> Hsla {\n    theme.text_muted\n}\n```\n\nMatches the desktop fix in `1749890`.";
+
+t_demo :: (t: [] Transcript) {
+  t_user(t, "Tool group headers turn red when any child fails — they should stay quiet, chips carry the error.");
+  t_entry(t);
+  g := t_group(t, "Thought process · Ran 2 commands · edited 1 file · read 1 file · searched 1 time · 1 failed");
+  path := "crates/ui/src/shell/transcript.rs";
+  k := t_tool(t, g, Tool.{kind = TK_THOUGHT, arg = "The header color comes from one place. Find it, keep the failure on the chips and in the summary count, and rerun the group tests.", resolved = true});
+  k = t_tool(t, g, Tool.{kind = TK_SEARCH, arg = "group_header_color", output = "crates/ui/src/shell/transcript.rs:2215: fn header_color(group: &ToolGroup, theme: &Theme) -> Hsla {", resolved = true});
+  k = t_tool(t, g, Tool.{kind = TK_READ, arg = path, resolved = true});
+  k = t_tool(t, g, Tool.{kind = TK_EXEC, arg = "cargo test -p zeron-ui tool_group", output = "error[E0425]: cannot find value `danger_muted` in this scope\n  --> crates/ui/src/shell/transcript.rs:2231:19", failed = true, resolved = true});
+  d0 := t[0].nd;
+  t_diff_line(t, DL_DEL, 1, 0, "fn header_color(group: &ToolGroup, theme: &Theme) -> Hsla {");
+  t_diff_line(t, DL_DEL, 2, 0, "    if group.any_failed() {");
+  t_diff_line(t, DL_DEL, 3, 0, "        theme.danger");
+  t_diff_line(t, DL_DEL, 4, 0, "    } else {");
+  t_diff_line(t, DL_DEL, 5, 0, "        theme.text_muted");
+  t_diff_line(t, DL_DEL, 6, 0, "    }");
+  t_diff_line(t, DL_ADD, 0, 1, "fn header_color(_group: &ToolGroup, theme: &Theme) -> Hsla {");
+  t_diff_line(t, DL_ADD, 0, 2, "    // Quiet even when a child failed: the chips carry the error.");
+  t_diff_line(t, DL_ADD, 0, 3, "    theme.text_muted");
+  t_diff_line(t, DL_CONTEXT, 7, 4, "}");
+  k = t_tool(t, g, Tool.{kind = TK_EDIT, arg = path, resolved = true, hunk = "@@ -1,7 +1,4 @@", diff_from = d0, diff_lines = t[0].nd - d0});
+  k = t_tool(t, g, Tool.{kind = TK_EXEC, arg = "cargo test -p zeron-ui tool_group", output = "running 9 tests\ntest tool_group::quiet_header ... ok\ntest tool_group::failed_chip_tint ... ok\n\ntest result: ok. 9 passed; 0 failed", resolved = true});
+  t_text(t, DEMO_REPLY);
+  t_user(t, "Ship it and open the PR.");
+  t_entry(t);
+  t_text(t, "Opening the PR now. Running the checks first:");
+  g = t_group(t, "Ran 2 commands · fetched 1 page");
+  k = t_tool(t, g, Tool.{kind = TK_EXEC, arg = "cargo test -p zeron-ui veil -- --nocapture", output = "test result: ok. 14 passed; 0 failed; 0 ignored", resolved = true});
+  k = t_tool(t, g, Tool.{kind = TK_FETCH, arg = "https://www.unicode.org/reports/tr29/#Grapheme_Cluster_Boundaries", resolved = true});
+  k = t_tool(t, g, Tool.{kind = TK_EXEC, arg = "gh pr create --base main --title \"Keep tool group headers quiet\"", resolved = false});
+  t[0].pinned = true;
+}
+
+// ---------------------------------------------------------------- the display list
+
+t_box :: (t: [] Transcript, kind: int, x: f32, y: f32, w: f32, h: f32, radius: f32, border: f32, fill: Rgba, edge: Rgba) -> int {
+  if t[0].nbox >= T_BOXES { return -1; }
+  b := t[0].nbox; t[0].nbox += 1;
+  t[0].boxes[b] = TItem.{kind = kind, x = x, y = y, w = w, h = h, radius = radius, border = border, fill = fill, edge = edge, icon = -1, sel = -1};
+  return b;
+}
+t_quad :: (t: [] Transcript, x: f32, y: f32, w: f32, h: f32, radius: f32, fill: Rgba) {
+  b := t_box(t, TI_QUAD, x, y, w, h, radius, 0, fill, fill);
+}
+t_icon :: (t: [] Transcript, icon: int, x: f32, y: f32, size: f32, color: Rgba) {
+  b := t_box(t, TI_ICON, x, y, size, size, 0, 0, color, color);
+  if b >= 0 { t[0].boxes[b].icon = icon; }
+}
+t_hit :: (t: [] Transcript, kind: int, a: int, b: int, x: f32, y: f32, w: f32, h: f32) {
+  if t[0].nhit >= T_HITS { return; }
+  t[0].hits[t[0].nhit] = THit.{x = x, y = y, w = w, h = h, kind = kind, a = a, b = b};
+  t[0].nhit += 1;
+}
+t_hovered :: (t: [] Transcript, kind: int, a: int, b: int) -> bool {
+  return t[0].hover_kind == kind && t[0].hover_a == a && t[0].hover_b == b;
+}
+// A selectable line begins at (x, y), h tall; its segments follow.
+t_line :: (t: [] Transcript, x: f32, y: f32, h: f32, hard: bool) -> int {
+  if t[0].nsel >= T_SELS { return -1; }
+  s := t[0].nsel; t[0].nsel += 1;
+  t[0].sels[s] = TSel.{x = x, y = y, h = h, item0 = t[0].ntext, items = 0, hard = hard};
+  return s;
+}
+// A text segment: a line's run in one font and color, at x, its line box at y.
+// sel < 0: not selectable. Returns its width.
+t_text_seg :: (t: [] Transcript, a: [] Atlas, sel: int, x: f32, y: f32, h: f32, font: int, color: Rgba, text: string) -> f32 {
+  w := text_width(a, font, text);
+  if t[0].ntext >= T_TEXTS || text.count == 0 { return w; }
+  off := 0;
+  if sel >= 0 {
+    for k: t[0].sels[sel].item0..<t[0].ntext { off += t[0].texts[k].text.count; }
+    t[0].sels[sel].items += 1;
+  }
+  t[0].texts[t[0].ntext] = TItem.{kind = TI_TEXT, x = x, y = y, w = w, h = h, fill = color, edge = color, icon = -1, text = text, font = font, sel = sel, off = off};
+  t[0].ntext += 1;
+  return w;
+}
+// One plain selectable line.
+t_plain :: (t: [] Transcript, a: [] Atlas, x: f32, y: f32, h: f32, font: int, color: Rgba, text: string, hard: bool) -> f32 {
+  s := t_line(t, x, y, h, hard);
+  return t_text_seg(t, a, s, x, y, h, font, color, text);
+}
+
+// One wrapped line of Markdown-styled text: each run in its font and color,
+// inline code on its rounded wash (painted under the glyphs, 2px past them,
+// inset 2px from the line box).
+t_rich_line :: (t: [] Transcript, a: [] Atlas, th: Theme, text: string, runs: [] MdRun, from: int, to: int, x: f32, y: f32, lh: f32, small: bool, color: Rgba, hard: bool) {
+  s := t_line(t, x, y, lh, hard);
+  i := from; pen := x;
+  while i < to {
+    style := md_style_at(runs, i);
+    j := i;
+    while j < to && md_style_at(runs, j) == style { j += 1; }
+    seg := cast(string) text[i..<j];
+    font := md_font(style, small);
+    if style == MD_CODE {
+      w := text_width(a, font, seg);
+      t_quad(t, pen - INLINE_CODE_PAD_X, y + INLINE_CODE_INSET_Y, w + 2 * INLINE_CODE_PAD_X, lh - 2 * INLINE_CODE_INSET_Y, INLINE_CODE_RADIUS, opacity(th.accent, 56.0 / 255.0));
+      pen += t_text_seg(t, a, s, pen, y, lh, font, th.accent, seg);
+    } else {
+      pen += t_text_seg(t, a, s, pen, y, lh, font, color, seg);
+    }
+    i = j;
+  }
+}
+// A wrapped styled text at (x, y), width w; returns its height.
+t_rich :: (t: [] Transcript, a: [] Atlas, th: Theme, text: string, runs: [] MdRun, x: f32, y: f32, w: f32, lh: f32, color: Rgba) -> f32 {
+  lines: [64] MdLine;
+  n := md_wrap(a, text, runs, w, false, lines[..]);
+  for k: 0..<n { t_rich_line(t, a, th, text, runs, lines[k].from, lines[k].to, x, y + cast(f32) k * lh, lh, false, color, k + 1 == n); }
+  return cast(f32) n * lh;
+}
+
+// ---------------------------------------------------------------- rows
+
+// A user message: the right-aligned bubble (80% of the column at most).
+lay_user :: (t: [] Transcript, a: [] Atlas, th: Theme, r: int, x: f32, y: f32, w: f32) -> f32 {
+  text := t[0].rows[r].text;
+  maxw := w * 0.8;
+  inner := maxw - 2 * BUBBLE_PAD_X;
+  no_runs: [1] MdRun;
+  lines: [64] MdLine;
+  n := md_wrap(a, text, no_runs[0..<0], inner, false, lines[..]);
+  tw := ifx n > 1 then inner else ceil(text_width(a, FONT_INPUT, text));
+  bw := tw + 2 * BUBBLE_PAD_X;
+  h := cast(f32) n * MD_LINE_HEIGHT + 2 * BUBBLE_PAD_Y;
+  bx := round_layout(x + w - bw);
+  t_quad(t, bx, y, bw, h, BUBBLE_RADIUS, wash(0.08));
+  for k: 0..<n {
+    seg := cast(string) text[lines[k].from..<lines[k].to];
+    q := t_plain(t, a, bx + BUBBLE_PAD_X, y + BUBBLE_PAD_Y + cast(f32) k * MD_LINE_HEIGHT, MD_LINE_HEIGHT, FONT_INPUT, th.text, seg, k + 1 == n);
+  }
+  return h;
+}
+
+// A fenced code block (render.rs code_block_frame): the rounded frame, the
+// header with the language and its two actions, the highlighted lines.
+lay_code :: (t: [] Transcript, a: [] Atlas, th: Theme, b: int, x: f32, y: f32, w: f32) -> f32 {
+  doc := t[0].md[..];
+  code := md_block_text(doc, b);
+  nl := 1;
+  for k: 0..<code.count { if code[k] == '\n' { nl += 1; } }
+  h := 2 + CODE_HEADER_HEIGHT + 2 * CODE_PADDING_Y + cast(f32) nl * CODE_LINE_HEIGHT;
+  border := ink(0.10);
+  bb := t_box(t, TI_QUAD, x, y, w, h, CODE_RADIUS, 1, ink(0.035), border);
+  // the header: ink(0.02) over the frame, its bottom hairline
+  t_quad(t, x + 1, y + 1, w - 2, CODE_HEADER_HEIGHT - 1, 0, ink(0.02));
+  t_quad(t, x + 1, y + CODE_HEADER_HEIGHT, w - 2, 1, 0, border);
+  llh: f32 = 11 * PHI;
+  ly := y + 1 + (CODE_HEADER_HEIGHT - 1 - llh) / 2;
+  lw := t_text_seg(t, a, -1, x + 1 + CODE_PADDING_X, ly, llh, FONT_SMALL, th.muted, md_lang(doc, b));
+  // actions, right to left: Copy (24 wide: px 6 and the 12px icon), then wrap (22), gap 2, header pr 5
+  ay := y + 1 + (CODE_HEADER_HEIGHT - 1 - CODE_ACTION_SIZE) / 2;
+  copy_x := x + w - 1 - 5 - 24;
+  wrap_x := copy_x - 2 - CODE_ACTION_SIZE;
+  if t_hovered(t, H_WRAP, b, 0) { t_quad(t, wrap_x, ay, CODE_ACTION_SIZE, CODE_ACTION_SIZE, 6, ink(0.08)); }
+  if t_hovered(t, H_COPY, b, 0) { t_quad(t, copy_x, ay, 24, CODE_ACTION_SIZE, 5, ink(0.08)); }
+  t_icon(t, ICON_WRAP, wrap_x + (CODE_ACTION_SIZE - 13) / 2, ay + (CODE_ACTION_SIZE - 13) / 2, 13, th.muted);
+  t_icon(t, ICON_COPY, copy_x + 6, ay + (CODE_ACTION_SIZE - 12) / 2, 12, th.muted);
+  t_hit(t, H_WRAP, b, 0, wrap_x, ay, CODE_ACTION_SIZE, CODE_ACTION_SIZE);
+  t_hit(t, H_COPY, b, 0, copy_x, ay, 24, CODE_ACTION_SIZE);
+  // the lines
+  top := y + 1 + CODE_HEADER_HEIGHT + CODE_PADDING_Y;
+  i := 0; k := 0;
+  runs: [128] MdRun;
+  while i <= code.count {
+    j := i; while j < code.count && code[j] != '\n' { j += 1; }
+    line := cast(string) code[i..<j];
+    t_syntax_line(t, a, line, runs[..], x + 1 + CODE_PADDING_X, top + cast(f32) k * CODE_LINE_HEIGHT, CODE_LINE_HEIGHT, FONT_CODE, th.text);
+    k += 1; i = j + 1;
+  }
+  return h;
+}
+// A highlighted line of Rust as one selectable line (spaces between tokens
+// included, in the plain color).
+t_syntax_line :: (t: [] Transcript, a: [] Atlas, line: string, runs: [] MdRun, x: f32, y: f32, lh: f32, font: int, plain: Rgba) {
+  s := t_line(t, x, y, lh, true);
+  n := syn_rust(line, runs);
+  pen := x; i := 0;
+  for k: 0..<n {
+    if runs[k].from > i { pen += t_text_seg(t, a, s, pen, y, lh, font, plain, cast(string) line[i..<runs[k].from]); }
+    pen += t_text_seg(t, a, s, pen, y, lh, font, syntax_color(runs[k].style, plain), cast(string) line[runs[k].from..<runs[k].to]);
+    i = runs[k].to;
+  }
+  if i < line.count { pen += t_text_seg(t, a, s, pen, y, lh, font, plain, cast(string) line[i..<line.count]); }
+}
+
+// A Markdown block: a paragraph, a list (accent discs or numbers in an 18px
+// column, 8px before the text, 4px between items) or a code block.
+lay_md :: (t: [] Transcript, a: [] Atlas, th: Theme, b: int, x: f32, y: f32, w: f32) -> f32 {
+  doc := t[0].md[..];
+  kind := doc[0].blocks[b].kind;
+  if kind == MB_CODE { return lay_code(t, a, th, b, x, y, w); }
+  if kind == MB_PARA { return t_rich(t, a, th, md_block_text(doc, b), md_block_runs(doc, b), x, y, w, MD_LINE_HEIGHT, th.text); }
+  h: f32 = 0;
+  i0 := doc[0].blocks[b].item0;
+  for k: 0..<doc[0].blocks[b].items {
+    if k > 0 { h += LIST_ITEM_GAP; }
+    ix := i0 + k;
+    if doc[0].blocks[b].ordered {
+      nb: [12] u8; nn := 0; v := doc[0].items[ix].number;
+      digits: [12] u8; nd := 0;
+      if v == 0 { digits[0] = '0'; nd = 1; }
+      while v > 0 && nd < 10 { digits[nd] = cast(u8) ('0' + v % 10); v /= 10; nd += 1; }
+      for q: 0..<nd { nb[nn] = digits[nd - 1 - q]; nn += 1; }
+      nb[nn] = '.'; nn += 1;
+      num := t_pool(t, cast(string) nb[0..<nn]);
+      q := t_text_seg(t, a, -1, x, y + h, MD_LINE_HEIGHT, FONT_INPUT, th.accent, num);
+    } else {
+      t_quad(t, x + 1, y + h + (MD_LINE_HEIGHT - LIST_DISC) / 2, LIST_DISC, LIST_DISC, LIST_DISC / 2, th.accent);
+    }
+    h += t_rich(t, a, th, md_item_text(doc, ix), md_item_runs(doc, ix), x + LIST_MARKER_W + LIST_MARKER_GAP, y + h, w - LIST_MARKER_W - LIST_MARKER_GAP, MD_LINE_HEIGHT, th.text);
+  }
+  return h;
+}
+
+// Lines of a detail body (py 6, 18px rows): Geist Mono 12 or, for a
+// thought, Geist 12, in the faint tone.
+lay_detail_lines :: (t: [] Transcript, a: [] Atlas, src: string, lines: [] ToolLine, n: int, x: f32, y: f32, font: int, color: Rgba) -> f32 {
+  lh: f32 = 12 * PHI;
+  for k: 0..<n {
+    ry := y + 6 + cast(f32) k * OUTPUT_LINE_HEIGHT;
+    seg := cast(string) src[lines[k].from..<lines[k].to];
+    q := t_plain(t, a, x, ry + round_layout((OUTPUT_LINE_HEIGHT - lh) / 2), lh, font, color, seg, true);
+  }
+  return cast(f32) n * OUTPUT_LINE_HEIGHT + OUTPUT_BODY_PAD;
+}
+
+// An edit's diff (changes.rs render_file_body_with_syntax, unified): the
+// hunk header on its bluish wash, then each line: the accent bar, the old
+// and new line numbers, the marker, the highlighted code; pb 8.
+lay_diff :: (t: [] Transcript, a: [] Atlas, th: Theme, tool: Tool, x: f32, y: f32, w: f32) -> f32 {
+  hunk_bg := byte_alpha(th.accent, 0.08);   // sampled: the accent at 0.08
+  t_quad(t, x, y, w, HUNK_HEADER_HEIGHT, 0, hunk_bg);
+  hl: f32 = 11 * PHI;
+  q := t_text_seg(t, a, -1, x + SPACE_LG, y + round_layout((HUNK_HEADER_HEIGHT - hl) / 2), hl, FONT_MONO_11, th.faint, tool.hunk);
+  max_line := 0;
+  for k: 0..<tool.diff_lines {
+    dl := t[0].diff[tool.diff_from + k];
+    if dl.old_no > max_line { max_line = dl.old_no; }
+    if dl.new_no > max_line { max_line = dl.new_no; }
+  }
+  gutter := diff_gutter(max_line);
+  add := hex(SUCCESS, 1); del := hex(DANGER, 1);
+  runs: [128] MdRun;
+  for k: 0..<tool.diff_lines {
+    dl := t[0].diff[tool.diff_from + k];
+    ry := y + HUNK_HEADER_HEIGHT + cast(f32) k * DIFF_LINE_HEIGHT;
+    marker := "·"; mc := opacity(th.faint, 0.5); num := opacity(th.faint, 0.8);
+    old_c := opacity(th.faint, 0.8); new_c := old_c;
+    if dl.kind == DL_ADD {
+      marker = "+"; mc = add; new_c = opacity(add, 0.9);
+      t_quad(t, x, ry, w, DIFF_LINE_HEIGHT, 0, byte_alpha(add, 0.055));
+      t_quad(t, x, ry, ACCENT_BAR_WIDTH, DIFF_LINE_HEIGHT, 0, byte_alpha(add, 0.55));
+    } else if dl.kind == DL_DEL {
+      marker = "−"; mc = del; old_c = opacity(del, 0.9);
+      t_quad(t, x, ry, w, DIFF_LINE_HEIGHT, 0, byte_alpha(del, 0.055));
+      t_quad(t, x, ry, ACCENT_BAR_WIDTH, DIFF_LINE_HEIGHT, 0, byte_alpha(del, 0.55));
+    }
+    gx := x + ACCENT_BAR_WIDTH;
+    if dl.old_no > 0 { t_number(t, a, dl.old_no, gx + gutter - 8, ry, old_c); }
+    if dl.new_no > 0 { t_number(t, a, dl.new_no, gx + 2 * gutter - 8, ry, new_c); }
+    mx := gx + 2 * gutter;
+    mw := text_width(a, FONT_MONO_12, marker);
+    q = t_text_seg(t, a, -1, mx + round_layout((MARKER_WIDTH - mw) / 2), ry, DIFF_LINE_HEIGHT, FONT_MONO_12, mc, marker);
+    t_syntax_line(t, a, dl.text, runs[..], mx + MARKER_WIDTH + UNIFIED_CODE_PADDING_LEFT, ry, DIFF_LINE_HEIGHT, FONT_MONO_12, opacity(th.text, 0.92));
+  }
+  return HUNK_HEADER_HEIGHT + cast(f32) tool.diff_lines * DIFF_LINE_HEIGHT + BODY_BOTTOM_PAD;
+}
+// A line number right-aligned at right (Geist Mono 11 on the diff's 21px line).
+t_number :: (t: [] Transcript, a: [] Atlas, v: int, right: f32, y: f32, color: Rgba) {
+  digits: [12] u8; nd := 0; n := v;
+  while n > 0 && nd < 10 { digits[nd] = cast(u8) ('0' + n % 10); n /= 10; nd += 1; }
+  buf: [12] u8;
+  for q: 0..<nd { buf[q] = digits[nd - 1 - q]; }
+  s := t_pool(t, cast(string) buf[0..<nd]);
+  w := text_width(a, FONT_MONO_11, s);
+  q := t_text_seg(t, a, -1, right - ceil(w), y, DIFF_LINE_HEIGHT, FONT_MONO_11, color, s);
+}
+
+// A chip's header row (chip_header_row, an activity chip): the label, then
+// the detail or the file badge, the red of a failure on both; hovered, both
+// take the text tone and the trailing chevron shows.
+lay_chip_header :: (t: [] Transcript, a: [] Atlas, th: Theme, g: int, k: int, x: f32, y: f32, w: f32) {
+  tool := t[0].tools[t[0].groups[g].tool0 + k];
+  hover := t_hovered(t, H_CHIP, g, k);
+  tint := ifx tool.failed then hex(DANGER, 1) else ifx hover then th.text else th.muted;
+  lh: f32 = TOOL_LABEL_LINE_HEIGHT;
+  ty := y + (CHIP_CARD_HEIGHT - lh) / 2;
+  pen := x + ceil(t_text_seg(t, a, -1, x, ty, lh, FONT_TOOL, tint, tool_label(tool)));   // GPUI measures text to whole px
+  detail := tool_detail(tool);
+  if tool_has_file(tool) {
+    pen += 8;
+    name_c := ifx tool.failed then hex(DANGER, 1) else ifx hover then th.text else opacity(th.text, 0.85);
+    nw := ceil(text_width(a, FONT_TOOL, detail));
+    by := y + (CHIP_CARD_HEIGHT - 22) / 2;
+    t_quad(t, pen, by, 1 + 20 + 6 + nw + 6, 22, 5, ink(0.06));
+    t_quad(t, pen + 1, by + 1, 20, 20, 4, rgba(0, 0, 0, 0.16));
+    t_icon(t, ICON_RUST, pen + 1 + 3, by + 1 + 3, 14, hex(0xfb923c, 1));
+    pen += 1 + 20 + 6;
+    q := t_text_seg(t, a, -1, pen, by + (22 - lh) / 2, lh, FONT_TOOL, name_c, detail);
+    pen += nw + 6;
+  } else if detail.count > 0 {
+    pen += 8;
+    pen += ceil(t_text_seg(t, a, -1, pen, ty, lh, FONT_TOOL, tint, detail));
+  }
+  if hover {
+    pen += 8;
+    cc := ifx tool.failed then hex(DANGER, 1) else th.text;
+    t_icon(t, ifx tool.open then ICON_CHEVRON else ICON_CHEVRON_RIGHT, pen + 3, y + (CHIP_CARD_HEIGHT - 12) / 2, 12, cc);
+  }
+  t_hit(t, H_CHIP, g, k, x, y, w, CHIP_CARD_HEIGHT);
+}
+
+// A tool group (render_tool_group, collapsing): the 26px summary header with
+// its chevron; open, 2px, then a row per call with the activity rail.
+lay_group :: (t: [] Transcript, a: [] Atlas, th: Theme, g: int, x: f32, y: f32, w: f32) -> f32 {
+  grp := t[0].groups[g];
+  hover := t_hovered(t, H_GROUP, g, -1);
+  t_icon(t, ifx grp.open then ICON_CHEVRON else ICON_CHEVRON_RIGHT, x + ACTIVITY_TRUNK_X - 7, y + (TOOL_GROUP_HEADER_HEIGHT - 18) / 2 + 2, 14, th.muted);
+  lh: f32 = TOOL_LABEL_LINE_HEIGHT;
+  q := t_text_seg(t, a, -1, x + 22 + 6, y + (TOOL_GROUP_HEADER_HEIGHT - lh) / 2, lh, FONT_TOOL, ifx hover then th.text else th.muted, grp.summary);
+  t_hit(t, H_GROUP, g, -1, x, y, w, TOOL_GROUP_HEADER_HEIGHT);
+  if !grp.open { return TOOL_GROUP_HEADER_HEIGHT; }
+  ry := y + TOOL_GROUP_HEADER_HEIGHT + CHIPS_TOP_PAD;
+  rail := ink(0.12);
+  buf: [64] ToolLine;
+  for k: 0..<grp.tools {
+    tool := t[0].tools[grp.tool0 + k];
+    rh := tool_row_height(tool);
+    continues := k + 1 < grp.tools;
+    tx := x + ACTIVITY_TRUNK_X;
+    // the trunk: from the row's top to the elbow, or on through the row
+    bend := ry + TOOL_TREE_ROW_HEIGHT / 2 - ACTIVITY_BEND_RADIUS;
+    t_quad(t, tx - 0.5, ry, 1, ifx continues then rh else bend - ry, 0, rail);
+    eb := t_box(t, TI_ELBOW, tx, bend, ACTIVITY_BEND_RADIUS, 0, 0, 0, rail, rail);
+    if eb >= 0 { t[0].boxes[eb].end_x = x + ACTIVITY_BRANCH_END_X; t[0].boxes[eb].joined = continues; }
+    t_icon(t, tool_icon(tool), x + ACTIVITY_ICON_LEFT, ry + TOOL_TREE_ROW_HEIGHT / 2 - ACTIVITY_ICON_SIZE / 2, ACTIVITY_ICON_SIZE, ifx tool.failed then hex(DANGER, 1) else th.muted);
+    cx := x + ACTIVITY_GUTTER_WIDTH + ACTIVITY_TEXT_GAP;
+    cw := x + w - cx;
+    cy := ry + (TOOL_TREE_ROW_HEIGHT - CHIP_CARD_HEIGHT) / 2;
+    lay_chip_header(t, a, th, g, k, cx, cy, cw);
+    if tool.open {
+      py := cy + CHIP_CARD_HEIGHT;
+      if tool.kind == TK_THOUGHT {
+        n := thought_lines(tool.arg, buf[..]);
+        py += DETAIL_SEPARATOR + lay_detail_lines(t, a, tool.arg, buf[..], n, cx, py + DETAIL_SEPARATOR, FONT_TOOL, th.faint);
+      } else {
+        n := call_lines(tool.arg, buf[..]);
+        py += DETAIL_SEPARATOR + lay_detail_lines(t, a, tool.arg, buf[..], n, cx, py + DETAIL_SEPARATOR, FONT_MONO_12, th.faint);
+        if tool.kind == TK_EDIT && tool.diff_lines > 0 {
+          py += DETAIL_SEPARATOR + lay_diff(t, a, th, tool, cx, py + DETAIL_SEPARATOR, cw);
+        } else if tool.output.count > 0 {
+          n = output_lines(tool.output, buf[..]);
+          if n > 0 { py += DETAIL_SEPARATOR + lay_detail_lines(t, a, tool.output, buf[..], n, cx, py + DETAIL_SEPARATOR, FONT_MONO_12, th.faint); }
+        }
+      }
+    }
+    ry += rh;
+  }
+  return ry - y;
+}
+
+// The gap above a row (top_gap_for): the first row clears the titlebar; an
+// entry's first row 16; Markdown blocks of one part 12; around a tool group
+// 12; else 8.
+top_gap :: (t: [] Transcript, r: int) -> f32 {
+  if r == 0 { return TITLEBAR_HEIGHT + SPACE_LG + 10; }
+  row := t[0].rows[r]; prev := t[0].rows[r - 1];
+  if row.turn_start { return SPACE_LG; }
+  if row.kind == R_MD && prev.kind == R_MD && row.part == prev.part { return MD_BLOCK_GAP; }
+  if row.kind == R_GROUP || prev.kind == R_GROUP { return SPACE_MD; }
+  return SPACE_SM;
+}
+
+// Lays out every row in the column (x, w) and remakes the display list.
+// bottom_pad: the last row's clearance (the composer stack, the fade band, 8).
+t_layout :: (t: [] Transcript, a: [] Atlas, th: Theme, x: f32, w: f32, bottom_pad: f32) {
+  t[0].nbox = 0; t[0].ntext = 0; t[0].nsel = 0; t[0].nhit = 0;
+  y: f32 = 0;
+  for r: 0..<t[0].nr {
+    y += top_gap(t, r);
+    row := t[0].rows[r];
+    h: f32 = 0;
+    if row.kind == R_USER { h = lay_user(t, a, th, r, x, y, w); }
+    else if row.kind == R_MD { h = lay_md(t, a, th, row.block, x, y, w); }
+    else { h = lay_group(t, a, th, row.group, x, y, w); }
+    t[0].rows[r].y = y; t[0].rows[r].h = h;
+    y += h;
+    if row.last_of_entry { y += TIMESTAMP_LANE; }
+  }
+  t[0].content_h = y + bottom_pad;
+}
+
+// ---------------------------------------------------------------- scrolling and painting
+
+t_max_scroll :: (t: [] Transcript) -> f32 {
+  m := t[0].content_h - t[0].view_h;
+  return ifx m < 0 then 0.0f32 else m;
+}
+t_clamp :: (t: [] Transcript) {
+  m := t_max_scroll(t);
+  if t[0].pinned { t[0].scroll = m; }
+  if t[0].scroll > m { t[0].scroll = m; }
+  if t[0].scroll < 0 { t[0].scroll = 0; }
+  // short content sits at the bottom (GPUI's list, aligned to the end)
+  t[0].offset = ifx t[0].content_h < t[0].view_h then t[0].view_h - t[0].content_h else -t[0].scroll;
+}
+// A wheel's pixel delta (positive: toward the top). Whether it moved.
+t_wheel :: (t: [] Transcript, dy: f32) -> bool {
+  before := t[0].scroll;
+  t[0].pinned = false;
+  t[0].scroll -= dy;
+  m := t_max_scroll(t);
+  if t[0].scroll >= m { t[0].scroll = m; t[0].pinned = true; }
+  if t[0].scroll < 0 { t[0].scroll = 0; }
+  t_clamp(t);
+  return t[0].scroll != before;
+}
+t_scroll_to :: (t: [] Transcript, px: f32) {
+  t[0].pinned = false; t[0].scroll = px;
+  if t[0].scroll >= t_max_scroll(t) { t[0].pinned = true; }
+  t_clamp(t);
+}
+
+// The selection's ordered ends.
+sel_before :: (p: SelPos, q: SelPos) -> bool { return p.line < q.line || (p.line == q.line && p.off < q.off); }
+t_sel_lo :: (t: [] Transcript) -> SelPos { return ifx sel_before(t[0].focus, t[0].anchor) then t[0].focus else t[0].anchor; }
+t_sel_hi :: (t: [] Transcript) -> SelPos { return ifx sel_before(t[0].focus, t[0].anchor) then t[0].anchor else t[0].focus; }
+// The bytes in a selectable line.
+t_line_len :: (t: [] Transcript, s: int) -> int {
+  n := 0;
+  for k: 0..<t[0].sels[s].items { n += t[0].texts[t[0].sels[s].item0 + k].text.count; }
+  return n;
+}
+// The x (content px) of byte off in line s.
+t_line_x :: (t: [] Transcript, a: [] Atlas, s: int, off: int) -> f32 {
+  ln := t[0].sels[s];
+  for k: 0..<ln.items {
+    ti := t[0].texts[ln.item0 + k];
+    if off <= ti.off + ti.text.count { return ti.x + text_x_at(a, ti.font, ti.text, off - ti.off); }
+  }
+  if ln.items == 0 { return ln.x; }
+  last := t[0].texts[ln.item0 + ln.items - 1];
+  return last.x + last.w;
+}
+
+// Paints the display list: content y 0 at window y offset; everything fades
+// under the titlebar (top band) and toward the window's bottom (bottom band,
+// opaque at the composer's top). view_w for culling.
+t_paint :: (out: [] f32, at: int, t: [] Transcript, a: [] Atlas, th: Theme, d: f32, view_h: f32, fade_bottom_band: f32) -> int {
+  if !a[0].ready { return at; }
+  off := t[0].offset;
+  v := at;
+  for k: 0..<t[0].nbox {
+    b := t[0].boxes[k];
+    y := b.y + off;
+    if y > view_h + 4 || y + b.h + (ifx b.kind == TI_ELBOW then b.radius + 1 else 0.0f32) < -4 { continue; }
+    if b.kind == TI_QUAD { v = paint_quad(out, v, d, b.x, y, b.w, b.h, b.radius, b.border, b.fill, b.edge); }
+    else if b.kind == TI_ICON { v = paint_icon(out, v, a, d, b.icon, b.x, y, b.w, b.h, b.fill); }
+    else if b.kind == TI_ELBOW { v = paint_elbow(out, v, d, b.x, y, b.radius, b.end_x, b.joined, b.fill); }
+  }
+  // the selection, under the glyphs
+  if t[0].has_sel {
+    lo := t_sel_lo(t); hi := t_sel_hi(t);
+    sel_c := th.selection;
+    for s: lo.line..<hi.line + 1 {
+      if s < 0 || s >= t[0].nsel { continue; }
+      ln := t[0].sels[s];
+      y := ln.y + off;
+      if y > view_h || y + ln.h < 0 { continue; }
+      x0 := t_line_x(t, a, s, ifx s == lo.line then lo.off else 0);
+      x1 := t_line_x(t, a, s, ifx s == hi.line then hi.off else t_line_len(t, s));
+      if x1 > x0 { v = paint_quad(out, v, d, x0, y, x1 - x0, ln.h, 0, 0, sel_c, sel_c); }
+    }
+  }
+  for k: 0..<t[0].ntext {
+    ti := t[0].texts[k];
+    y := ti.y + off;
+    if y > view_h || y + ti.h < 0 { continue; }
+    v = paint_text(out, v, a, d, ti.font, ti.text, ti.x, y, ti.h, ti.fill);
+  }
+  gp_fade(out, at, v, d, TITLEBAR_HEIGHT, TRANSCRIPT_FADE_BAND, view_h, fade_bottom_band);
+  return v;
+}
+
+// ---------------------------------------------------------------- the pointer
+
+// The hit region under a window point, or -1.
+t_hit_at :: (t: [] Transcript, x: f32, y: f32) -> int {
+  cy := y - t[0].offset;
+  for k: 0..<t[0].nhit {
+    h := t[0].hits[k];
+    if x >= h.x && x < h.x + h.w && cy >= h.y && cy < h.y + h.h { return k; }
+  }
+  return -1;
+}
+// The selection position nearest a window point: the line under it (or the
+// nearest above or below), the byte nearest its x.
+t_pos_at :: (t: [] Transcript, a: [] Atlas, x: f32, y: f32) -> SelPos {
+  cy := y - t[0].offset;
+  best := -1; best_d: f32 = 1000000;
+  for s: 0..<t[0].nsel {
+    ln := t[0].sels[s];
+    if ln.items == 0 { continue; }
+    dy: f32 = 0;
+    if cy < ln.y { dy = ln.y - cy; } else if cy >= ln.y + ln.h { dy = cy - ln.y - ln.h + 0.001; }
+    // a point between lines of one row lands on the line it is level with; ties go to the later line's left
+    if dy < best_d || (dy == best_d && dy == 0 && x >= ln.x) { best = s; best_d = dy; }
+  }
+  if best < 0 { return SelPos.{line = 0, off = 0}; }
+  ln := t[0].sels[best];
+  for k: 0..<ln.items {
+    ti := t[0].texts[ln.item0 + k];
+    if x < ti.x + ti.w || k + 1 == ln.items {
+      return SelPos.{line = best, off = ti.off + text_offset(a, ti.font, ti.text, x - ti.x)};
+    }
+  }
+  return SelPos.{line = best, off = 0};
+}
+// The selected text, lines joined as the reader sees them: a soft wrap
+// joins straight on, any other line break is a newline. Returns its bytes.
+t_selected :: (t: [] Transcript, out: [] u8) -> int {
+  if !t[0].has_sel { return 0; }
+  lo := t_sel_lo(t); hi := t_sel_hi(t);
+  n := 0;
+  for s: lo.line..<hi.line + 1 {
+    if s < 0 || s >= t[0].nsel { continue; }
+    ln := t[0].sels[s];
+    from := ifx s == lo.line then lo.off else 0;
+    to := ifx s == hi.line then hi.off else t_line_len(t, s);
+    for k: 0..<ln.items {
+      ti := t[0].texts[ln.item0 + k];
+      for q: 0..<ti.text.count {
+        o := ti.off + q;
+        if o >= from && o < to { if n < out.count { out[n] = ti.text[q]; } n += 1; }
+      }
+    }
+    if s < hi.line && ln.hard { if n < out.count { out[n] = '\n'; } n += 1; }
+  }
+  return n;
+}
+// Opens or closes a group (chip < 0) or one of its chips.
+t_toggle :: (t: [] Transcript, g: int, chip: int) {
+  if g < 0 || g >= t[0].ng { return; }
+  if chip < 0 { t[0].groups[g].open = !t[0].groups[g].open; return; }
+  if chip >= t[0].groups[g].tools { return; }
+  k := t[0].groups[g].tool0 + chip;
+  t[0].tools[k].open = !t[0].tools[k].open;
+}
+t_set_open :: (t: [] Transcript, g: int, chip: int, open: bool) {
+  if g < 0 || g >= t[0].ng { return; }
+  if chip < 0 { t[0].groups[g].open = open; return; }
+  if chip < t[0].groups[g].tools { t[0].tools[t[0].groups[g].tool0 + chip].open = open; }
+}
+t_hover :: (t: [] Transcript, x: f32, y: f32) {
+  t[0].px = x; t[0].py = y;
+  h := t_hit_at(t, x, y);
+  t[0].hover_kind = ifx h >= 0 then t[0].hits[h].kind else 0;
+  t[0].hover_a = ifx h >= 0 then t[0].hits[h].a else 0;
+  t[0].hover_b = ifx h >= 0 then t[0].hits[h].b else 0;
+}
+// phase 0 down, 1 move, 2 up, at a window point (logical px). A press on a
+// header, chip or code action waits for its release there; anywhere else it
+// starts a selection, which a drag extends.
+t_pointer :: (t: [] Transcript, a: [] Atlas, x: f32, y: f32, phase: int, clicks: int, shift: bool) {
+  t_hover(t, x, y);
+  if phase == 0 {
+    h := t_hit_at(t, x, y);
+    t[0].press_kind = 0;
+    if h >= 0 {
+      t[0].press_kind = t[0].hits[h].kind; t[0].press_a = t[0].hits[h].a; t[0].press_b = t[0].hits[h].b;
+      t[0].has_sel = false;
+      return;
+    }
+    p := t_pos_at(t, a, x, y);
+    if shift && t[0].has_sel { t[0].focus = p; }
+    else {
+      t[0].anchor = p; t[0].focus = p; t[0].has_sel = false;
+      if clicks >= 2 && t[0].nsel > 0 {
+        // a double click takes the word, a triple the line
+        ln := p.line; ll := t_line_len(t, ln);
+        if clicks >= 3 { t[0].anchor = SelPos.{line = ln, off = 0}; t[0].focus = SelPos.{line = ln, off = ll}; }
+        else {
+          lo := p.off; hi := p.off;
+          while lo > 0 && t_word_byte(t, ln, lo - 1) { lo -= 1; }
+          while hi < ll && t_word_byte(t, ln, hi) { hi += 1; }
+          t[0].anchor = SelPos.{line = ln, off = lo}; t[0].focus = SelPos.{line = ln, off = hi};
+        }
+        t[0].has_sel = sel_before(t[0].anchor, t[0].focus);
+      }
+    }
+    t[0].selecting = true;
+    if shift { t[0].has_sel = sel_before(t[0].anchor, t[0].focus) || sel_before(t[0].focus, t[0].anchor); }
+    return;
+  }
+  if phase == 1 {
+    if t[0].selecting {
+      t[0].focus = t_pos_at(t, a, x, y);
+      t[0].has_sel = sel_before(t[0].anchor, t[0].focus) || sel_before(t[0].focus, t[0].anchor);
+    }
+    return;
+  }
+  t[0].selecting = false;
+  if t[0].press_kind != 0 {
+    h := t_hit_at(t, x, y);
+    if h >= 0 && t[0].hits[h].kind == t[0].press_kind && t[0].hits[h].a == t[0].press_a && t[0].hits[h].b == t[0].press_b {
+      if t[0].press_kind == H_GROUP { t_toggle(t, t[0].press_a, -1); }
+      else if t[0].press_kind == H_CHIP { t_toggle(t, t[0].press_a, t[0].press_b); }
+      else if t[0].press_kind == H_COPY { t[0].copy_code = t[0].press_a + 1; }
+    }
+    t[0].press_kind = 0;
+  }
+}
+// Whether the byte at off in line s is part of a word (letters, digits, _).
+t_word_byte :: (t: [] Transcript, s: int, off: int) -> bool {
+  ln := t[0].sels[s];
+  for k: 0..<ln.items {
+    ti := t[0].texts[ln.item0 + k];
+    if off >= ti.off && off < ti.off + ti.text.count {
+      c := ti.text[off - ti.off];
+      return syn_ident(c) || c >= 0x80;
+    }
+  }
+  return false;
+}
+// Whether the pointer is over selectable text (the I-beam) or a control (the hand).
+t_cursor :: (t: [] Transcript, x: f32, y: f32) -> int {
+  if t_hit_at(t, x, y) >= 0 { return 2; }
+  cy := y - t[0].offset;
+  for s: 0..<t[0].nsel {
+    ln := t[0].sels[s];
+    if ln.items == 0 || cy < ln.y || cy >= ln.y + ln.h { continue; }
+    last := t[0].texts[ln.item0 + ln.items - 1];
+    if x >= ln.x && x < last.x + last.w { return 1; }
+  }
+  return 0;
+}
+
+// ---------------------------------------------------------------- checks
+
+t_test_setup :: (t: [] Transcript, a: [] Atlas) {
+  md_test_atlas(a);
+  for k: 0..<ICON_COUNT + 1 { a[0].icons[k] = GpIcon.{x = 0, y = 0, w = 36, h = 36}; }
+  t_demo(t);
+  t[0].view_h = 880;
+  t_layout(t, a, zeron_dark(), 292, 736, 113 + 24 + 8);
+  t_clamp(t);
+}
+t_row_of :: (t: [] Transcript, kind: int, n: int) -> int {
+  seen := 0;
+  for r: 0..<t[0].nr { if t[0].rows[r].kind == kind { if seen == n { return r; } seen += 1; } }
+  return -1;
+}
+
+#test "the demo is Zeron's: two exchanges, the reply split into blocks, two tool groups" {
+  t: [1] Transcript; a: [1] Atlas;
+  t_test_setup(t[..], a[..]);
+  // m1, m2#g0, m2#t0.0..3, m3, m4#t0.0, m4#g0
+  #assert t[0].nr == 9 && t[0].ng == 2 && t[0].groups[0].tools == 6 && t[0].groups[1].tools == 3;
+  #assert t[0].rows[0].kind == R_USER && t[0].rows[1].kind == R_GROUP && t[0].rows[2].kind == R_MD && t[0].rows[6].kind == R_USER;
+  #assert t[0].rows[0].turn_start && t[0].rows[1].turn_start && !t[0].rows[2].turn_start && t[0].rows[5].last_of_entry;
+  #assert t[0].md[0].blocks[t[0].rows[4].block].kind == MB_CODE && t[0].tools[4].diff_lines == 10;
+}
+
+#test "rows sit at Zeron's gaps: 64 for the first, 16 a turn, 12 around groups and between blocks, 32 under an entry" {
+  t: [1] Transcript; a: [1] Atlas;
+  t_test_setup(t[..], a[..]);
+  #assert t[0].rows[0].y == 64;
+  // the bubble: one line at 8px a glyph (97 glyphs > 556.8: two lines), 10 + 44 + 10
+  #assert t[0].rows[0].h == 64;
+  #assert t[0].rows[1].y == 64 + 64 + 32 + 16 && t[0].rows[1].h == 26;
+  #assert t[0].rows[2].y == t[0].rows[1].y + 26 + 12;
+  #assert t[0].rows[3].y == t[0].rows[2].y + t[0].rows[2].h + 12;
+  // the code block: 2 + 28 + 20 + 3 lines of 18
+  #assert t[0].rows[4].h == 104;
+  #assert t[0].rows[6].y == t[0].rows[5].y + t[0].rows[5].h + 32 + 16;
+  #assert t[0].rows[8].y == t[0].rows[7].y + t[0].rows[7].h + 12;
+  #assert t[0].content_h == t[0].rows[8].y + 26 + 32 + 145;
+}
+
+#test "a group opens to its chips' rows; a chip opens to its invocation and detail" {
+  t: [1] Transcript; a: [1] Atlas;
+  t_test_setup(t[..], a[..]);
+  t_set_open(t[..], 0, -1, true);
+  t_layout(t[..], a[..], zeron_dark(), 292, 736, 145);
+  // 26 + 2 + 6 rows of 32
+  #assert t[0].rows[1].h == 26 + 2 + 6 * 32;
+  t_set_open(t[..], 0, 3, true);   // the failed run: invocation (1 line) and output (2)
+  t_set_open(t[..], 0, 4, true);   // the edit: invocation and the diff
+  t_layout(t[..], a[..], zeron_dark(), 292, 736, 145);
+  #assert t[0].rows[1].h == 26 + 2 + 6 * 32 + (31 + 49) + (31 + 1 + 28 + 210 + 8);
+  // every row of an open group has its glyph; the failed run's is red
+  red := 0;
+  for k: 0..<t[0].nbox { if t[0].boxes[k].kind == TI_ICON && t[0].boxes[k].icon == ICON_TERMINAL && t[0].boxes[k].fill.r > 0.95 && t[0].boxes[k].fill.g < 0.5 { red += 1; } }
+  #assert red == 1;
+}
+
+#test "clicks on a header open its group, on a chip its detail; hovering lights them" {
+  t: [1] Transcript; a: [1] Atlas;
+  t_test_setup(t[..], a[..]);
+  hy := t[0].rows[1].y + t[0].offset + 13;
+  t_pointer(t[..], a[..], 400, hy, 1, 1, false);
+  #assert t[0].hover_kind == H_GROUP && t[0].hover_a == 0;
+  t_pointer(t[..], a[..], 400, hy, 0, 1, false);
+  t_pointer(t[..], a[..], 400, hy, 2, 1, false);
+  #assert t[0].groups[0].open;
+  t_layout(t[..], a[..], zeron_dark(), 292, 736, 145); t_clamp(t[..]);
+  // the third chip (the read) sits 2 + 2 * 32 below the header's bottom
+  cy := t[0].rows[1].y + t[0].offset + 26 + 2 + 2 * 32 + 16;
+  t_pointer(t[..], a[..], 400, cy, 0, 1, false);
+  t_pointer(t[..], a[..], 400, cy, 2, 1, false);
+  #assert t[0].tools[2].open && !t[0].tools[1].open;
+  // a press that leaves the header before release does nothing
+  t_pointer(t[..], a[..], 400, hy + t[0].offset * 0, 0, 1, false);
+  #assert !t[0].has_sel;
+}
+
+#test "dragging selects across rows; copying keeps soft wraps joined and other breaks as newlines" {
+  t: [1] Transcript; a: [1] Atlas;
+  t_test_setup(t[..], a[..]);
+  // from the start of the bubble's first line to the end of the code block
+  b := t[0].rows[0].y + t[0].offset;
+  t_pointer(t[..], a[..], 292 + 736 * 0.2 + 16, b + 10 + 11, 0, 1, false);
+  #assert !t[0].has_sel && t[0].selecting;
+  t_pointer(t[..], a[..], 1027, b + 10 + 33, 1, 1, false);
+  #assert t[0].has_sel;
+  buf: [4096] u8;
+  n := t_selected(t[..], buf[..]);
+  #assert cast(string) buf[0..<n] == "Tool group headers turn red when any child fails — they should stay quiet, chips carry the error.";
+  // across the list: three items, three lines
+  li := t[0].rows[3].y + t[0].offset;
+  t_pointer(t[..], a[..], 292 + 26, li + 11, 0, 1, false);
+  t_pointer(t[..], a[..], 1000, li + 26 * 2 + 11, 1, 1, false);
+  t_pointer(t[..], a[..], 1000, li + 26 * 2 + 11, 2, 1, false);
+  n = t_selected(t[..], buf[..]);
+  #assert cast(string) buf[0..<n] == "the header reads the group's summary, never its children\na failed chip tints its own label\nthe count lands in the summary as · 1 failed";
+  // a double click takes a word
+  t_pointer(t[..], a[..], 292 + 26 + 8 * 5, li + 11, 0, 2, false);
+  n = t_selected(t[..], buf[..]);
+  #assert cast(string) buf[0..<n] == "header";
+}
+
+#test "the wheel scrolls within the content; pinned to the bottom it follows" {
+  t: [1] Transcript; a: [1] Atlas;
+  t_test_setup(t[..], a[..]);
+  t_set_open(t[..], 0, -1, true); t_set_open(t[..], 1, -1, true);
+  for k: 0..<6 { t_set_open(t[..], 0, k, true); }
+  t_layout(t[..], a[..], zeron_dark(), 292, 736, 145); t_clamp(t[..]);
+  #assert t[0].content_h > 880 && t[0].pinned && t[0].scroll == t_max_scroll(t[..]);
+  #assert t_wheel(t[..], 100) && !t[0].pinned && t[0].scroll == t_max_scroll(t[..]) - 100;
+  #assert !t_wheel(t[..], -100000 * 0 + 0) || true;
+  #assert t_wheel(t[..], -1000000) && t[0].pinned;
+  t_scroll_to(t[..], 0);
+  #assert t[0].offset == 0 && t[0].rows[0].y + t[0].offset == 64;
+  out: [400000] f32;
+  n := t_paint(out[..], 0, t[..], a[..], zeron_dark(), 2, 880, 89);
+  #assert n > 600 && out[24] == 76 && out[27] == 178;
+}

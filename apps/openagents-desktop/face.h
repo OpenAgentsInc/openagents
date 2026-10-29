@@ -70,3 +70,10 @@ int32_t zr_key(void *state, int32_t key, int32_t mods);
 void zr_text(void *state, const uint8_t *bytes, int32_t length);
 int32_t zr_wants_text(void *state);
 int32_t zr_cursor(void *state);
+// The transcript (zeron/transcript.coax): whether Cut applies (the composer's
+// selection), a code block's pressed Copy, the fixture capture's open state
+// and a scroll from the top in px (the --shot steps).
+int32_t zr_can_cut(void *state);
+int32_t zr_take_copy(void *state, uint8_t *out, int32_t cap);
+void zr_fixture(void *state, int32_t open);
+void zr_scroll_to(void *state, float px);

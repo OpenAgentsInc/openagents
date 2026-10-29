@@ -62,3 +62,7 @@ void zr_measured(void *state, int32_t slot, float advance, int32_t color) { coax
 int32_t zr_next_cell(void *state) { return (int32_t)coaxial_zeron_next_cell(at(state)); }
 int32_t zr_cell(void *state, int32_t cell, float *out) { return coaxial_zeron_cell(at(state), cell, (coax_v_f32){out, 6}) ? 1 : 0; }
 void zr_cell_ready(void *state, int32_t cell) { coaxial_zeron_cell_ready(at(state), cell); }
+int32_t zr_can_cut(void *state) { return coaxial_zeron_can_cut(at(state)) ? 1 : 0; }
+int32_t zr_take_copy(void *state, uint8_t *out, int32_t cap) { return (int32_t)coaxial_zeron_take_copy(at(state), (coax_v_u8){out, cap}); }
+void zr_fixture(void *state, int32_t open) { coaxial_zeron_fixture(at(state), open != 0); }
+void zr_scroll_to(void *state, float px) { coaxial_zeron_scroll_to(at(state), px); }

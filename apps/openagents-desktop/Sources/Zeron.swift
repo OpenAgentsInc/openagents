@@ -7,9 +7,10 @@ import AppKit
 import CoreText
 import MetalKit
 
-// Geist from the bundle (fonts/, SIL OFL 1.1, as Zeron bundles it).
+// Geist and Geist Mono from the bundle (fonts/, SIL OFL 1.1, as Zeron bundles
+// them): 0 Geist, 1 Geist Medium, 2 Geist SemiBold, 3 Geist Mono (zr_font_weight).
 func geist(_ weight: Int32) -> CGFont? {
-  let name = weight == 1 ? "Geist-Medium" : "Geist"
+  let name = ["Geist", "Geist-Medium", "Geist-SemiBold", "GeistMono"][Int(min(max(weight, 0), 3))]
   guard let url = Bundle.main.url(forResource: name, withExtension: "ttf", subdirectory: "fonts"),
         let data = try? Data(contentsOf: url) as CFData, let provider = CGDataProvider(data: data) else { return nil }
   return CGFont(provider)
@@ -98,18 +99,19 @@ final class ZeronAtlas {
 
 func zeronAtlas(_ device: MTLDevice, state: UnsafeMutableRawPointer, dpr: CGFloat) -> ZeronAtlas {
   let glyphs = Int(zr_glyph_count()), fonts = Int(zr_font_count()), icons = Int(zr_icon_count())
-  let width = 4096
+  let width = 8192
   var y0 = 0
-  struct Slot { var font: CTFont; var cell: Int; var penX: Int; var penY: Int; var y0: Int; var cols: Int; var size: CGFloat }
+  struct Slot { var font: CTFont; var cell: Int; var penX: Int; var penY: Int; var y0: Int; var cols: Int; var size: CGFloat; var mono: Bool }
   var slots: [Slot] = []
   for f in 0..<fonts {
     let size = CGFloat(zr_font_size(Int32(f)))
-    let cg = geist(zr_font_weight(Int32(f)))!
+    let weight = zr_font_weight(Int32(f))
+    let cg = geist(weight)!
     let font = CTFontCreateWithGraphicsFont(cg, size, nil, nil)
     let cell = Int(ceil(size * dpr * 2.4))
     let cols = width / cell
     let cells = glyphs * 4 * 5
-    let slot = Slot(font: font, cell: cell, penX: Int(round(Double(cell) * 0.2)), penY: Int(round(Double(cell) * 0.7)), y0: y0, cols: cols, size: size)
+    let slot = Slot(font: font, cell: cell, penX: Int(round(Double(cell) * 0.2)), penY: Int(round(Double(cell) * 0.7)), y0: y0, cols: cols, size: size, mono: weight == 3)
     slots.append(slot)
     y0 += ((cells + cols - 1) / cols) * cell
   }
@@ -137,7 +139,8 @@ func zeronAtlas(_ device: MTLDevice, state: UnsafeMutableRawPointer, dpr: CGFloa
     // Kerning as CoreText shapes it (what GPUI's line layout gets from CTLine): a pair's width less its advances.
     var kern = [Float](repeating: 0, count: glyphs * glyphs)
     let attrs: [NSAttributedString.Key: Any] = [.font: s.font]
-    for a in 1..<glyphs where a < 95 {
+    // (a monospaced font has none)
+    for a in 1..<glyphs where a < 95 && !s.mono {
       for b in 1..<glyphs where b < 95 {
         let pair = String(UnicodeScalar(UInt8(32 + a))) + String(UnicodeScalar(UInt8(32 + b)))
         let line = CTLineCreateWithAttributedString(NSAttributedString(string: pair, attributes: attrs))
@@ -180,7 +183,11 @@ func zeronAtlas(_ device: MTLDevice, state: UnsafeMutableRawPointer, dpr: CGFloa
     guard let url = Bundle.main.url(forResource: file, withExtension: "svg", subdirectory: "icons"),
           var svg = try? String(contentsOf: url, encoding: .utf8) else { continue }
     // Sized to the tile (a viewBox that isn't square fills it, which lands closest to usvg's pixmap).
-    svg = svg.replacingOccurrences(of: " width=\"1em\" height=\"1em\"", with: "")
+    if let open = svg.range(of: "<svg"), let close = svg.range(of: ">", range: open.upperBound..<svg.endIndex) {
+      let head = String(svg[open.lowerBound..<close.lowerBound])
+        .replacingOccurrences(of: #"\s(width|height)="[^"]*""#, with: "", options: .regularExpression)
+      svg.replaceSubrange(open.lowerBound..<close.lowerBound, with: head)
+    }
     svg = svg.replacingOccurrences(of: "<svg ", with: "<svg width=\"\(t.2)\" height=\"\(t.2)\" ")
     guard let image = NSImage(data: Data(svg.utf8)) else { continue }
     let rgba = CGContext(data: nil, width: t.2, height: t.2, bitsPerComponent: 8, bytesPerRow: t.2 * 4, space: CGColorSpaceCreateDeviceRGB(),
@@ -213,7 +220,8 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   var vertices: [MTLBuffer] = [], slot = 0
   let inflight = DispatchSemaphore(value: 2)
   var last = CACurrentMediaTime()
-  var beam = false
+  var cursorKind: Int32 = 0
+  var copyBuffer = [UInt8](repeating: 0, count: 65536)
 
   init(frame: CGRect) {
     let device = MTLCreateSystemDefaultDevice()!
@@ -261,8 +269,14 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     let n = zr_frame(state, buf.contents().assumingMemoryBound(to: Float.self), Float(size.width), Float(size.height), Float(dpr), dt)
     // the graphemes and cells this frame wanted, for the next
     atlas!.serve(state)
-    let want = zr_cursor(state) != 0
-    if want != beam { beam = want; (want ? NSCursor.iBeam : NSCursor.arrow).set() }
+    let want = zr_cursor(state)
+    if want != cursorKind { cursorKind = want; cursorFor(want).set() }
+    // a code block's Copy, pressed
+    let copied = Int(zr_take_copy(state, &copyBuffer, Int32(copyBuffer.count)))
+    if copied > 0 {
+      NSPasteboard.general.clearContents()
+      NSPasteboard.general.setString(String(decoding: copyBuffer[0..<copied], as: UTF8.self), forType: .string)
+    }
     pass.colorAttachments[0].loadAction = .clear
     pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
     guard let cmd = queue.makeCommandBuffer(), let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { inflight.signal(); return }
@@ -292,6 +306,9 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   //   menu TITLE      an Edit menu item through the menu bar (Undo, Cut, Copy, Paste, Select All...)
   //   keyevent CHORD  a real NSEvent through keyDown and the input context
   //   menus           print the menu bar
+  //   move X,Y        the pointer moving to device pixel X,Y (hover)
+  //   fixture open|closed   the transcript as the Zeron capture opens it (transcript-fixture.rs)
+  //   scroll PX       the transcript scrolled PX from its top    pasteboard  print the pasteboard
   func shot(_ path: String, width: Int, height: Int) {
     let args = CommandLine.arguments
     let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorPixelFormat, width: width, height: height, mipmapped: false)
@@ -343,6 +360,10 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
       for k in 1...8 { let t = Float(k) / 8; _ = zr_pointer(state, nums[0] + (nums[2] - nums[0]) * t, nums[1] + (nums[3] - nums[1]) * t, 1, 1, 0) }
       _ = zr_pointer(state, nums[2], nums[3], 2, 1, 0)
     case "wheel" where nums.count == 1: _ = zr_wheel(state, nums[0])
+    case "move" where nums.count == 2: _ = zr_pointer(state, nums[0], nums[1], 1, 1, 0)
+    case "fixture": zr_fixture(state, arg == "closed" ? 0 : 1)
+    case "scroll" where nums.count == 1: zr_scroll_to(state, nums[0])
+    case "pasteboard": print("pasteboard: \(NSPasteboard.general.string(forType: .string) ?? "")")
     case "key":
       let (code, mods, char) = chord(arg)
       _ = binding(code: code, char: char, mods: mods)
@@ -420,7 +441,8 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     let dy = e.hasPreciseScrollingDeltas ? e.scrollingDeltaY : e.scrollingDeltaY * 22.75
     if zr_wheel(state, Float(dy)) == 0 { super.scrollWheel(with: e) }
   }
-  override func cursorUpdate(with event: NSEvent) { (beam ? NSCursor.iBeam : NSCursor.arrow).set() }
+  func cursorFor(_ kind: Int32) -> NSCursor { kind == 1 ? .iBeam : kind == 2 ? .pointingHand : .arrow }
+  override func cursorUpdate(with event: NSEvent) { cursorFor(cursorKind).set() }
 
   // ---- the keyboard: Zeron's keymap first, then the input context (IME, dead keys, plain typing)
 
@@ -454,7 +476,10 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   }
   override func keyDown(with e: NSEvent) {
     guard zr_wants_text(state) != 0 else {
-      // unfocused: a key that isn't Escape focuses nothing; Zeron's composer only takes keys when focused
+      // unfocused: Zeron's composer only takes keys when focused; Copy and Select All reach the transcript
+      if e.modifierFlags.contains(.command), let c = e.charactersIgnoringModifiers?.lowercased() {
+        if c == "c" { copy(nil) } else if c == "a" { selectAll(nil) }
+      }
       return
     }
     // while composing, the IME owns every key (Enter commits, arrows pick candidates)
@@ -480,7 +505,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     NSPasteboard.general.setString(String(decoding: bytes, as: UTF8.self), forType: .string)
   }
   @objc func cut(_ sender: Any?) {
-    guard zr_selected_count(state) > 0 else { return }
+    guard zr_can_cut(state) != 0 else { return }
     copy(sender); zr_cut(state)
   }
   @objc func paste(_ sender: Any?) {
@@ -495,8 +520,10 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
     let focused = zr_wants_text(state) != 0
     switch item.action {
-    case #selector(undo(_:)), #selector(redo(_:)), #selector(selectAll(_:)), #selector(paste(_:)): return focused
-    case #selector(copy(_:)), #selector(cut(_:)): return focused && zr_selected_count(state) > 0
+    case #selector(undo(_:)), #selector(redo(_:)), #selector(paste(_:)): return focused
+    case #selector(selectAll(_:)): return true
+    case #selector(copy(_:)): return zr_selected_count(state) > 0
+    case #selector(cut(_:)): return zr_can_cut(state) != 0
     default: return true
     }
   }

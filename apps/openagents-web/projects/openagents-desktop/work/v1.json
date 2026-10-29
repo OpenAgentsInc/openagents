@@ -76,6 +76,23 @@
       ]
     },
     {
+      "slug": "desk-zeron-transcript",
+      "title": "The transcript and tool calls, drawn the way Zeron draws them",
+      "parent": "desk-zeron-ui",
+      "size": "L",
+      "body": "The Zeron-fork chat screen shows a chat transcript with a demo conversation (static data, connected to nothing), drawn as Zeron's transcript draws it (crates/ui/src/transcript.rs, crates/ui/src/markdown/render.rs): user bubbles, assistant Markdown (paragraphs, inline code, lists, code blocks), the thinking chip, and the tool-call tree (the group header with its summary and chevron, the activity rail, each tool's icon, label, file badge and status: shell with output, read, edit with its diff, search, web fetch, running and failed calls), collapsed and expanded. The transcript scrolls with the wheel and trackpad, a click opens or closes a group or a call, transcript text selects and copies, and the composer stays at the bottom. The demo content comes from Zeron's own demo transcripts (crates/client/src/demo/transcripts.rs). Matched pixel for pixel against a render of Zeron itself.",
+      "files": [
+        "apps/openagents-desktop/",
+        "docs/desktop/coax-desktop.md"
+      ],
+      "acceptance": [
+        "coax test covers the transcript layout and the Markdown parsing and passes",
+        "A --shot of the demo transcript, collapsed and expanded, matches a Zeron render of the same conversation, with the measured difference per region reported",
+        "Scrolling, opening and closing tool groups and calls, and selecting and copying transcript text work in scripted --do checks",
+        "build.sh passes and the app opens on the transcript with the composer at the bottom"
+      ]
+    },
+    {
       "slug": "desk-host",
       "title": "Mac host: a window that draws Coax HUD output with Metal",
       "parent": "desk-local-chat",

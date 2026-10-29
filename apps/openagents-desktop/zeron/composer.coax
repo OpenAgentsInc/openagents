@@ -1,11 +1,14 @@
-// Zeron's composer (crates/ui/src/composer.rs, its expanded new-chat form),
+// Zeron's composer (crates/ui/src/composer.rs): its expanded new-chat form,
+// and the form it docks in under a chat's transcript (compact: one 49px row
+// while the text fits it, else expanded with the bottom edge held), both
 // drawn with gpui.coax: the 26px pill with its hairline and Tailwind's
 // shadow-lg, the text area (Geist 14 on a 22.75 line, "Do anything…" in the
 // faint tone, the accent caret 2px wide), and the actions row: the
 // paperclip on the left; Full access, the Claude mark with the model and
 // its effort, and Send on the right. Measurements are Zeron's constants;
 // colors are Zeron Dark's (crates/theme/src/builtins.rs) on its opaque
-// surface. It is connected to nothing: Enter clears the text.
+// surface. It is connected to nothing: Enter clears the text (and keeps a
+// copy of what was sent, which the chat screen appends to its transcript).
 // Based on Zeron by Wing, MIT.
 
 #load "gpui.coax";
@@ -40,13 +43,33 @@ ACCESS_LABEL :: "Full access";
 MODEL_LABEL :: "Default (recommended)";
 EFFORT_LABEL :: "High";
 
-FONT_INPUT :: 0;            // Geist 14
-FONT_CHIP :: 1;             // Geist Medium 12
+// A chat's model chip (no effort named, no access chip: workspace-write).
+CHAT_MODEL_LABEL :: "claude-opus-5-5";
+COMPACT_TOTAL_HEIGHT :: 49.0;  // composer.rs: py-3 + one 22.75 line + the hairline
+COMPACT_INSET :: 8.0;          // morph_cluster_inset, compact
+COMPACT_TEXT_PAD :: 8.0;       // the input's px-2
+
+// The fonts the atlas holds (the host rasterizes each size): Zeron's UI and
+// transcript sizes. Weights: 0 Geist, 1 Geist Medium, 2 Geist SemiBold, 3 Geist Mono.
+FONT_INPUT :: 0;            // Geist 14: the input, messages, Markdown
+FONT_CHIP :: 1;             // Geist Medium 12: composer chips
+FONT_TOOL :: 2;             // Geist 12: tool groups and chips
+FONT_BOLD :: 3;             // Geist SemiBold 14: **bold**
+FONT_MONO_14 :: 4;          // Geist Mono 14: inline code
+FONT_CODE :: 5;             // Geist Mono 12.5: code blocks
+FONT_MONO_12 :: 6;          // Geist Mono 12: tool output, invocations, diffs
+FONT_MONO_11 :: 7;          // Geist Mono 11: diff gutters and hunk headers
+FONT_SMALL :: 8;            // Geist 11: a code block's language
+FONT_SIZES :: [9] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11];
+FONT_WEIGHTS :: [9] int.[0, 1, 0, 2, 3, 3, 3, 3, 0];
+
 ICON_PAPERCLIP :: 0; ICON_ARROW_UP :: 1; ICON_CLAUDE :: 2;
-ICON_NAMES :: [3] string.["paperclip", "arrow-up", "claude-mark"];
-ICON_SIZES :: [3] f32.[18, 14, 16];
-FONT_SIZES :: [2] f32.[14, 12];
-FONT_WEIGHTS :: [2] int.[0, 1];   // 0 Geist, 1 Geist Medium
+ICON_CHEVRON :: 3; ICON_TERMINAL :: 4; ICON_DOCUMENT :: 5; ICON_PEN :: 6; ICON_MAGNIFER :: 7;
+ICON_GLOBAL :: 8; ICON_THOUGHT :: 9; ICON_COPY :: 10; ICON_WRAP :: 11; ICON_RUST :: 12; ICON_CHEVRON_RIGHT :: 13;
+ICON_COUNT :: 14;
+ICON_NAMES :: [14] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
+                           "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right"];
+ICON_SIZES :: [14] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14];
 
 COMPOSER_TEXT :: 8000;
 COMPOSER_LINES :: 1024;
@@ -109,6 +132,9 @@ Composer :: struct {
   x: f32; y: f32; w: f32; h: f32;
   text_x: f32; text_y: f32; text_w: f32; view_h: f32;
   line_at: [COMPOSER_LINES] int; line_end: [COMPOSER_LINES] int; lines: int;
+  docked: bool;                 // under a chat's transcript (the chat's model chip)
+  compact: bool;                // docked, in its one-row form this frame
+  last: [COMPOSER_TEXT] u8; last_n: int;           // what Enter last sent
 }
 
 typed :: (c: [] Composer) -> string { return cast(string) c[0].text[0..<c[0].n]; }
@@ -432,6 +458,8 @@ composer_select_all :: (c: [] Composer) { move_to(c, 0); select_to(c, c[0].n); }
 // Submit, connected to nothing: the text clears as a new document (set_text).
 composer_submit :: (c: [] Composer) {
   if c[0].n == 0 { return; }
+  for k: 0..<c[0].n { c[0].last[k] = c[0].text[k]; }
+  c[0].last_n = c[0].n;
   c[0].sent += 1; c[0].n = 0;
   move_to(c, 0);
   c[0].marked = false; c[0].scroll = 0;
@@ -772,13 +800,14 @@ paint_composer :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme,
   send_x := x + w - 1 - ACTION_INSET - SEND_SIZE;
   v = paint_quad(out, v, d, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, SEND_SIZE / 2, 0, th.text, th.text);
   v = paint_icon(out, v, a, d, ICON_ARROW_UP, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, th.bg);
+  if c[0].docked { return paint_chat_chip(out, v, a, th, d, send_x, row_mid); }
   // the model chip: brand mark, the model in the text tone at 0.9, the effort muted at 0.7
   model_w := 2 * MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP + chip_label_width(a, MODEL_LABEL) + CHIP_GAP + chip_label_width(a, EFFORT_LABEL);
   mx := send_x - ACTION_PRIMARY_GAP - model_w;
   chip_top := row_mid - CHIP_HEIGHT / 2;
   clh: f32 = CHIP_TEXT_SIZE * 1.618034;   // GPUI's default line height, phi
   // Taffy rounds each layout box to whole logical pixels (GPUI layouts with rounding on)
-  cly := round_half_toward_zero(row_mid - clh / 2);
+  cly := row_mid - CHIP_HEIGHT / 2 + round_half_toward_zero((CHIP_HEIGHT - clh) / 2);   // centered in the chip, rounded within it
   v = paint_icon(out, v, a, d, ICON_CLAUDE, mx + MODEL_CHIP_PAD, chip_top + (CHIP_HEIGHT - CHIP_ICON) / 2, CHIP_ICON, CHIP_ICON, th.claude);
   lx := mx + MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP;
   v = paint_text(out, v, a, d, FONT_CHIP, MODEL_LABEL, lx, cly, clh, opacity(th.text, 0.9));
@@ -788,6 +817,82 @@ paint_composer :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme,
   ax := round_half_toward_zero(mx - PICKERS_GAP - access_w);
   v = paint_text(out, v, a, d, FONT_CHIP, ACCESS_LABEL, ax + CHIP_PAD, cly, clh, th.muted);
   return v;
+}
+
+// A chat's model chip left of Send: the Claude mark and the model, no effort
+// and no access chip (the chat runs workspace-write).
+chat_chip_width :: (a: [] Atlas) -> f32 { return 2 * MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP + chip_label_width(a, CHAT_MODEL_LABEL); }
+paint_chat_chip :: (out: [] f32, at: int, a: [] Atlas, th: Theme, d: f32, send_x: f32, row_mid: f32) -> int {
+  mx := send_x - ACTION_PRIMARY_GAP - chat_chip_width(a);
+  clh: f32 = CHIP_TEXT_SIZE * 1.618034;
+  cly := row_mid - CHIP_HEIGHT / 2 + round_half_toward_zero((CHIP_HEIGHT - clh) / 2);   // centered in the chip, rounded within it
+  v := paint_icon(out, at, a, d, ICON_CLAUDE, mx + MODEL_CHIP_PAD, row_mid - CHIP_ICON / 2, CHIP_ICON, CHIP_ICON, th.claude);
+  return paint_text(out, v, a, d, FONT_CHIP, CHAT_MODEL_LABEL, mx + MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP, cly, clh, opacity(th.text, 0.9));
+}
+
+// The docked composer's text width in its one-row form (between the
+// paperclip and the model chip), and whether the text fits it there.
+compact_text_width :: (a: [] Atlas, w: f32) -> f32 {
+  return w - 2 - COMPACT_INSET - SEND_SIZE - 2 * COMPACT_TEXT_PAD - chat_chip_width(a) - ACTION_PRIMARY_GAP - SEND_SIZE - COMPACT_INSET;
+}
+composer_fits_compact :: (c: [] Composer, a: [] Atlas, w: f32) -> bool {
+  t := typed(c);
+  for k: 0..<t.count { if t[k] == '\n' { return false; } }
+  return text_width(a, FONT_INPUT, t) <= compact_text_width(a, w);
+}
+// The docked composer's height at width w.
+docked_height :: (c: [] Composer, a: [] Atlas, w: f32) -> f32 {
+  if composer_fits_compact(c, a, w) { return COMPACT_TOTAL_HEIGHT; }
+  composer_wrap(c, a, w - 2 - 32);
+  return composer_height(c[0].lines);
+}
+
+// The composer docked under a chat at logical x, its bottom edge at bottom,
+// width w: one row while the text fits (composer.rs's compact pill: the
+// paperclip, the input, the model chip and Send on one bottom-justified
+// 47px line), else the expanded form grown upward.
+paint_composer_docked :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme, d: f32, x: f32, bottom: f32, w: f32) -> int {
+  if !a[0].ready { return at; }
+  c[0].docked = true;
+  if !composer_fits_compact(c, a, w) {
+    c[0].compact = false;
+    composer_wrap(c, a, w - 2 - 32);
+    return paint_composer(out, at, c, a, th, d, x, bottom - composer_height(c[0].lines), w);
+  }
+  c[0].compact = true;
+  h: f32 = COMPACT_TOTAL_HEIGHT; y := bottom - h;
+  text_w := compact_text_width(a, w);
+  left := x + 1 + COMPACT_INSET + SEND_SIZE + COMPACT_TEXT_PAD;
+  lh: f32 = INPUT_LINE_HEIGHT;
+  top := y + 1 + (h - PILL_BORDER_V - lh) / 2;
+  composer_wrap(c, a, 100000);
+  c[0].x = x; c[0].y = y; c[0].w = w; c[0].h = h;
+  c[0].text_x = left; c[0].text_y = top; c[0].text_w = text_w; c[0].view_h = lh; c[0].scroll = 0;
+  // GPUI clamps the radii to half the box (clamp_radii_for_quad_size): 24.5 here
+  r: f32 = ifx COMPOSER_RADIUS > h / 2 then h / 2 else COMPOSER_RADIUS;
+  v := paint_shadow(out, at, d, x, y, w, h, r, 0, 10, 15, -3, rgba(0, 0, 0, 0.1));
+  v = paint_shadow(out, v, d, x, y, w, h, r, 0, 4, 6, -4, rgba(0, 0, 0, 0.1));
+  v = paint_quad(out, v, d, x, y, w, h, r, 1, th.surface, th.border);
+  t := typed(c);
+  lo := sel_lo(c); hi := sel_hi(c);
+  if c[0].n > 0 && hi > lo {
+    sx := x_in_row(c, a, 0, lo); ex := x_in_row(c, a, 0, hi);
+    v = paint_quad(out, v, d, left + sx, top, ex - sx, lh, 0, 0, th.selection, th.selection);
+  }
+  if c[0].n == 0 {
+    v = paint_text(out, v, a, d, FONT_INPUT, PLACEHOLDER, left, top, lh, th.faint);
+  } else {
+    v = paint_text(out, v, a, d, FONT_INPUT, t, left, top, lh, th.text);
+  }
+  if c[0].focused && hi == lo && cast(int) floor(c[0].since / CARET_BLINK) % 2 == 0 {
+    v = paint_quad(out, v, d, left + x_in_row(c, a, 0, c[0].caret), top, 2, lh, 0, 0, th.accent, th.accent);
+  }
+  row_mid := y + h - 1 - (h - PILL_BORDER_V) / 2;
+  v = paint_icon(out, v, a, d, ICON_PAPERCLIP, x + 1 + COMPACT_INSET, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, th.muted);
+  send_x := x + w - 1 - COMPACT_INSET - SEND_SIZE;
+  v = paint_quad(out, v, d, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, SEND_SIZE / 2, 0, th.text, th.text);
+  v = paint_icon(out, v, a, d, ICON_ARROW_UP, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, th.bg);
+  return paint_chat_chip(out, v, a, th, d, send_x, row_mid);
 }
 
 // ---------------------------------------------------------------- checks
@@ -800,7 +905,7 @@ test_atlas :: (a: [] Atlas) {
     a[0].fonts[k].size = 14; a[0].fonts[k].ascent = 13; a[0].fonts[k].descent = 3;
     a[0].fonts[k].cell = 64; a[0].fonts[k].cols = 64;
   }
-  for k: 0..<3 { a[0].icons[k] = GpIcon.{x = 0, y = 0, w = 36, h = 36}; }
+  for k: 0..<ICON_COUNT { a[0].icons[k] = GpIcon.{x = 0, y = 0, w = 36, h = 36}; }
 }
 measure_all :: (a: [] Atlas) {
   for s: 0..<GP_DYN_SLOTS { if a[0].clusters[s].state == 1 { a[0].clusters[s].advance = 14; a[0].clusters[s].state = 2; } }

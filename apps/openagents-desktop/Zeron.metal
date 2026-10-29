@@ -4,19 +4,23 @@
 // vertex. Based on Zeron by Wing, MIT. Colors are straight sRGB with alpha,
 // blended source-over into a BGRA8Unorm target, as GPUI does.
 //
-// A vertex is 24 floats (gpui.coax GP_VERTEX_FLOATS):
-//   a: device x, y, kind (0 quad, 1 shadow, 2 sprite, 3 color sprite), blur (a shadow's sigma)
+// A vertex is 28 floats (gpui.coax GP_VERTEX_FLOATS):
+//   a: device x, y, kind (0 quad, 1 shadow, 2 sprite, 3 color sprite, 4 elbow), blur (a shadow's sigma)
 //   b: the primitive's bounds in device pixels: x, y, w, h
 //   c: corner radius, border width, u, v (a sprite's atlas coordinate)
 //   d: fill (a sprite's color)
 //   e: border color
 //   f: the content mask, device x0, y0, x1, y1
+//   g: GPUI's EdgeFade, device top y, top band, bottom y, bottom band (a band of 0: no fade)
+// An elbow (the transcript's activity rail, a path GPUI fills) carries its
+// start x, y, radius and end x in b, and the device scale and whether the
+// trunk runs on through it in c.
 // Color sprites (emoji) sample the color atlas: straight-alpha RGBA, as
 // gpui_macos stores polychrome glyphs.
 #include <metal_stdlib>
 using namespace metal;
 
-struct ZIn { float4 a [[attribute(0)]]; float4 b [[attribute(1)]]; float4 c [[attribute(2)]]; float4 d [[attribute(3)]]; float4 e [[attribute(4)]]; float4 f [[attribute(5)]]; };
+struct ZIn { float4 a [[attribute(0)]]; float4 b [[attribute(1)]]; float4 c [[attribute(2)]]; float4 d [[attribute(3)]]; float4 e [[attribute(4)]]; float4 f [[attribute(5)]]; float4 g [[attribute(6)]]; };
 struct ZV {
   float4 pos [[position]];
   float kind [[flat]]; float blur [[flat]];
@@ -25,13 +29,14 @@ struct ZV {
   float2 uv;
   float4 fill [[flat]]; float4 border [[flat]];
   float4 clip [[flat]];
+  float4 fade [[flat]];
 };
 
 vertex ZV zr_vs(ZIn v [[stage_in]], constant float2 &viewport [[buffer(1)]]) {
   ZV o;
   o.pos = float4(v.a.x / viewport.x * 2.0 - 1.0, 1.0 - v.a.y / viewport.y * 2.0, 0.0, 1.0);
   o.kind = v.a.z; o.blur = v.a.w; o.bounds = v.b; o.shape = v.c.xy; o.uv = v.c.zw;
-  o.fill = v.d; o.border = v.e; o.clip = v.f;
+  o.fill = v.d; o.border = v.e; o.clip = v.f; o.fade = v.g;
   return o;
 }
 
@@ -116,8 +121,40 @@ static float4 shadow_color(float2 p, float4 bounds, float corner_radius, float b
   return color * float4(1., 1., 1., alpha);
 }
 
-fragment float4 zr_fs(ZV v [[stage_in]], texture2d<float> atlas [[texture(0)]], texture2d<float> color_atlas [[texture(1)]]) {
-  if (v.pos.x < v.clip.x || v.pos.y < v.clip.y || v.pos.x >= v.clip.z || v.pos.y >= v.clip.w) { discard_fragment(); }
+// zui shaders.metal edge_fade_alpha, the top and bottom edges.
+static float edge_fade_alpha(float2 p, float4 fade) {
+  float ramp = 1.0;
+  if (fade.y > 0.0) { ramp = min(ramp, clamp((p.y - fade.x) / fade.y, 0.0, 1.0)); }
+  if (fade.w > 0.0) { ramp = min(ramp, clamp((fade.z - p.y) / fade.w, 0.0, 1.0)); }
+  return ramp * ramp;
+}
+
+static float segment_distance(float2 p, float2 a, float2 b) {
+  float2 pa = p - a, ba = b - a;
+  float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+
+// The rail's elbow: coverage of a 1px ribbon along transcript.rs's
+// activity_branch_points (24 steps of the quadratic, then the straight leg).
+static float4 elbow_color(float2 p, float4 b, float2 c, float4 color) {
+  float2 s = b.xy; float r = b.z; float end_x = b.w; float half_w = 0.5 * c.x;
+  float dist = 1e9;
+  float2 prev = s;
+  for (int k = 1; k <= 24; k++) {
+    float t = float(k) / 24.0;
+    float2 q = s + r * float2(t * t, 2.0 * t - t * t);
+    dist = min(dist, segment_distance(p, prev, q));
+    prev = q;
+  }
+  dist = min(dist, segment_distance(p, prev, float2(end_x, s.y + r)));
+  float cover = saturate(half_w + 0.5 - dist);
+  if (c.y > 0.5) { cover = max(0.0, cover - saturate(half_w + 0.5 - fabs(p.x - s.x))); }
+  return color * float4(1.0, 1.0, 1.0, cover);
+}
+
+static float4 zr_paint(ZV v, texture2d<float> atlas, texture2d<float> color_atlas) {
+  if (v.kind > 3.5) { return elbow_color(v.pos.xy, v.bounds, v.shape, v.fill); }
   if (v.kind > 2.5) {
     constexpr sampler s(mag_filter::linear, min_filter::linear);
     float4 c = color_atlas.sample(s, v.uv);
@@ -132,4 +169,11 @@ fragment float4 zr_fs(ZV v [[stage_in]], texture2d<float> atlas [[texture(0)]], 
   }
   if (v.kind > 0.5) { return shadow_color(v.pos.xy, v.bounds, v.shape.x, v.blur, v.fill); }
   return quad_color(v.pos.xy, v.bounds, v.shape.x, v.shape.y, v.fill, v.border);
+}
+
+fragment float4 zr_fs(ZV v [[stage_in]], texture2d<float> atlas [[texture(0)]], texture2d<float> color_atlas [[texture(1)]]) {
+  if (v.pos.x < v.clip.x || v.pos.y < v.clip.y || v.pos.x >= v.clip.z || v.pos.y >= v.clip.w) { discard_fragment(); }
+  float4 c = zr_paint(v, atlas, color_atlas);
+  c.a *= edge_fade_alpha(v.pos.xy, v.fade);
+  return c;
 }

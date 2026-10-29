@@ -1,7 +1,9 @@
 Third-party material in the Zeron-fork UI (zeron/, Zeron.metal, fonts/, icons/)
 
-1. Zeron (https://github.com/zeronsh/zeron): its composer's design, measurements and
-   colors are ported in zeron/*.coax; Based on Zeron by Wing. MIT License:
+1. Zeron (https://github.com/zeronsh/zeron): its composer's and transcript's design
+   (messages, Markdown, code blocks, tool groups and their details, diffs), measurements
+   and colors are ported in zeron/*.coax, and its demo conversation's wording is reused
+   as the transcript's demo; Based on Zeron by Wing. MIT License:
 
    MIT License
    
@@ -28,8 +30,17 @@ Third-party material in the Zeron-fork UI (zeron/, Zeron.metal, fonts/, icons/)
 2. GPUI's shaders (zeronsh/zui, gpui_macos/src/shaders.metal), ported in Zeron.metal:
    Apache License 2.0, https://www.apache.org/licenses/LICENSE-2.0
 
-3. Geist (fonts/Geist.ttf, fonts/Geist-Medium.ttf), copyright The Geist Project Authors,
-   vercel/geist-font v1.7.2 as Zeron bundles it: SIL Open Font License 1.1, fonts/Geist-OFL.txt.
+3. Geist and Geist Mono (fonts/Geist.ttf, fonts/Geist-Medium.ttf, fonts/Geist-SemiBold.ttf,
+   fonts/GeistMono.ttf), copyright The Geist Project Authors, vercel/geist-font v1.7.2 as
+   Zeron bundles them: SIL Open Font License 1.1, fonts/Geist-OFL.txt.
 
-4. icons/paperclip.svg and icons/arrow-up.svg: Solar Icons by 480 Design (Linear), CC BY 4.0,
-   https://creativecommons.org/licenses/by/4.0/. icons/claude-mark.svg: Zeron's port of the Claude mark.
+4. icons/paperclip.svg, icons/arrow-up.svg, icons/alt-arrow-down.svg, icons/alt-arrow-right.svg, icons/document.svg,
+   icons/pen.svg, icons/magnifer.svg, icons/global.svg, icons/chat-round-line.svg and
+   icons/copy.svg: Solar Icons by 480 Design (Linear), CC BY 4.0,
+   https://creativecommons.org/licenses/by/4.0/, as Zeron bundles them. icons/terminal.svg and
+   icons/wrap-text.svg: Zeron's own icons (MIT, above). icons/claude-mark.svg: Zeron's port of
+   the Claude mark.
+
+5. icons/file-rust.svg: from miguelsolorio/vscode-symbols (commit 296ef1b6) as Zeron bundles
+   it (crates/ui/assets/file-icons). MIT License, Copyright (c) 2020-22 Miguel Solorio:
+   the permission notice is the same as in 1 above.
