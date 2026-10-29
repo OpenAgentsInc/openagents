@@ -222,6 +222,174 @@ For a payments and agent product that means:
   case;
 - keep the money rules strict, which is the reason they live in checked Coax.
 
+## How we might respond
+
+This section draws on two sources:
+
+- our own history, as recorded in the episode archive
+  ([`docs/transcripts/README.md`](../transcripts/README.md));
+- our internal strategy work and experiments.
+
+The essay is written for investors deciding what to own. We have to decide
+what to build. Our own record both supports it and corrects it.
+
+### We reached the same conclusion from the other side
+
+For most of this year our working thesis has been that *execution is
+abundant; machine work that clears review and approval is scarce.* The unit
+of value keeps moving:
+
+- Bitcoin priced the hash.
+- The AI era priced the token, which nobody actually wants.
+- The next unit is the **accepted outcome**: work defined in advance, done
+  wherever it is cheapest, checked, recorded in a receipt, and paid to
+  everyone who contributed.
+
+The essay arrives at the same place as an investor. Intelligence is the
+giveaway, and value goes to whatever the work has to pass through. The
+archive shows how we got here. The market arc runs from charging for chat to
+buying accepted work ([228–239](../transcripts/228.md),
+[237](../transcripts/237.md)). Assurance and product promises raised the
+standard from visible activity to evidence of the result
+([234](../transcripts/234.md), [252](../transcripts/252.md)).
+
+### Where our own evidence corrects the essay
+
+1. **Pooled usage data is not a moat for the layer in the middle.** The essay
+   says the most-used rails gather data that improves the model. That holds
+   for a lab that trains on what it collects. It did not hold for a router.
+   In our own controlled experiments:
+   - learned per-task model routing did not beat the best single model;
+   - harness knowledge learned on one model made the next model worse;
+   - the edge from pooled history appeared only on problems new to a
+     customer, and faded within a few hundred tasks.
+
+   At a model release, the gain went to whoever **switched first** to the
+   better, cheaper model. Two things last:
+   - being the **system of record for accepted outcomes**: who defined the
+     work, what evidence was produced, what was accepted, and who was paid;
+   - being first to know which model to switch to.
+
+   Both pass the essay's tests. They are controllable, they grow with
+   activity, and they are hard to split across several systems at once. We
+   should stop describing "operational memory compounds" as the moat.
+2. **A toll needs traffic that already exists.** We have built market
+   plumbing ahead of agents worth paying for ([100](../transcripts/100.md),
+   [103](../transcripts/103.md)), and compute sellers without enough buyers
+   ([174](../transcripts/174.md)). The essay's railroad history says the same
+   thing: locomotives first earned money on routes that already carried coal.
+   Our answer is to be our own first buyer. Our agents' work (builds, tests,
+   checks, delegation) is the first demand on anything we build. Every new
+   rail must carry our own traffic from day one.
+3. **Charge for the result, not the pipe.** The essay assumes every rail has
+   an owner who collects a toll. We use open rails (Nostr, Lightning) because
+   a single coordinator can disappear ([266–267](../transcripts/266.md)) and a
+   platform can break the workflows built on it
+   ([204–207](../transcripts/204.md)). The two fit together if we never tax
+   the transport and take our margin only on accepted work. That also helps
+   with the essay's last test, political claims on rent. Nobody owns an open
+   rail, so it draws no antitrust claim. A fee that is visibly tied to
+   verified work is easier to defend than a toll on movement.
+4. **Power is where margin pools, and agent work can use power nobody else
+   can.** The essay's own example of scarcity is a finished data centre
+   waiting for a grid connection. Its example of a political claim is a
+   county board denying a data-centre and power-plant permit. Most agent
+   work is different from training and from a person waiting on an answer:
+   - it tolerates delay;
+   - it can be paused and resumed;
+   - it doesn't care where it runs.
+
+   That means it can run on off-grid, curtailed or stranded power, with no
+   interconnection queue and no permit fight. A company that owns its own
+   demand and places it on the cheapest capacity earns application margins
+   instead of GPU-hour margins. Of all the positions open to us, this one
+   passes the essay's Height tests best. The metric that ties it together is
+   **accepted outcomes per kilowatt-hour**.
+5. **Receipts can make compute financeable without the essay's backstop.**
+   The essay expects the buildout to be financed by retirement accounts and,
+   in the end, the Treasury. Suppose a stream of accepted work is metered and
+   recorded in a form a lender can read: signed, chained and timestamped to
+   Bitcoin. Then future output can be collateral the way future hashrate is
+   for miners, and a fleet can grow on its own receipts instead of equity
+   alone.
+6. **The essay's dollar argument is the case for a self-custodied dollar
+   unit on Bitcoin.** Where the essay is right:
+   - weak-currency users want dollar-stable balances;
+   - agents will price in dollars;
+   - the issuer and the channel owner capture the float.
+
+   Our response:
+   - **Settle in Bitcoin.**
+   - **Offer the dollar unit as a Bitcoin-native asset** (Taproot Assets on
+     Lightning), held in the user's own wallet. Bitcoin-collateralised dollar
+     credit can serve working capital such as pre-funded agent budgets and
+     provider payouts.
+   - **Pay providers and contributors per accepted outcome over Lightning.**
+     This is the promise Coder 1.0 made to plugin authors
+     ([290](../transcripts/290.md)).
+7. **Continuity is part of being a Height.** A durable position needs
+   durable contracts. The archive is a record of resets: [183](../transcripts/183.md),
+   [233](../transcripts/233.md), [253](../transcripts/253.md), and the reset
+   of 2026-10-27. Products can change. What has to stay fixed is the part
+   others build on: protocol messages, receipt formats and payment rules. The
+   protocol rule that "published contracts keep their identity" is a
+   strategic commitment, not only a hygiene rule.
+
+### Concrete moves
+
+- **Price per accepted outcome, with a declared cap.** Don't charge for wall
+  time or tokens. Time billing pays us for the failure strong models actually
+  have, which is runs that loop until they time out.
+- **Keep model choice coarse and build the switch bench.** Choose models per
+  lane rather than per call, using measured results. Run each new release
+  against our own tasks quickly enough to switch first. Treat instructions
+  written for one model as tied to that model, and retire them when the model
+  changes.
+- **Put the receipt in the protocol.** Define one signed, chained,
+  Bitcoin-timestamped record of what was asked, what ran, what was checked,
+  what was accepted, and who was paid. Use the same record for customers,
+  contributors and lenders.
+- **Ship the wallet with both sats and a dollar balance**, with the payment
+  rules in checked Coax. Treat weak-currency, phone-first users (the essay's
+  Malena) as the main market, not an export.
+- **Measure accepted outcomes per kWh** and plan compute around flexible
+  power. Use rented cloud only until owned capacity is cheaper per accepted
+  outcome.
+- **Keep approvals rare and meaningful.** Ask before merges, deploys, secrets
+  and payments, and for little else. Back every approval with checks the user
+  can open. Gym and Fire Loop ([288 prep, 289](../transcripts/289.md)) apply
+  the same idea to our own development: keep complete transcripts, inspect
+  failures, and stop unproductive runs early.
+- **Make data terms explicit before data is valuable.** Traces stay private
+  by default. Sharing them is opt-in, redacted and paid
+  ([215](../transcripts/215.md), [245](../transcripts/245.md)). When a lab
+  comes asking to buy a "whole-firm training environment", the terms already
+  exist.
+- **Design for the bottom of the K.** Expect fraud run over chat and by
+  agents, cheap phones, and unstable currencies. Strict payment rules and
+  receipts are the defence.
+
+### Risks the essay raises for us specifically
+
+- **Labs widening their boundary.** The labs now ship their own harnesses,
+  and the essay expects them to buy whole businesses. A metaharness in front
+  of Claude Code or Codex lasts only as long as they let it, unless what it
+  sells is something a lab can't offer neutrally across rivals: verification,
+  settlement and a record that belongs to the customer.
+- **The best models may stop being for sale.** The essay expects pre-release
+  review and a sovereign frontier that isn't sold. Plan on the commercial
+  frontier plus open weights, and keep at least one lane that runs entirely
+  on open models we can host.
+- **Any margin on inference resale is temporary.** Open weights trail the
+  frontier by about four months and set a price floor near the cost of
+  compute. Don't plan around that margin.
+- **Dollar-token rules and issuer risk.** A Bitcoin-native dollar unit still
+  has an issuer. Keep sats as the default unit people can always fall back
+  to.
+- **Expensive capital.** If the essay is right that the forty-year fall in
+  interest rates is over, funding hardware from equity gets harder. Financing
+  backed by receipts stops being optional.
+
 ## Where to be sceptical
 
 - **It is an investment pitch.** Part VIII ends by telling allocators to
