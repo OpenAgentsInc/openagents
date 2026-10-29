@@ -1,0 +1,63 @@
+// Salsa20/8 core for the optional scrypt profile. This is a primitive, not a
+// key-backup implementation or an approval of target side-channel behavior.
+#authority;
+
+#test "RFC 7914 section 8 Salsa20/8 block" {
+  input:=[16]u32.[0x219a877e,0x86c93e4f,0xe640a97c,0x268f7141,0x5b55eeba,0xb5c1618c,0x1146f80d,0x1d3bcd6d,0x19f324ee,0x853d9bdf,0x4b1e1214,0x32aac55a,0x291d0276,0x2948c709,0x8dc6ebed,0x5ec2b8b8];
+  expected:=[16]u32.[0x9c851fa4,0x99cc0866,0xcbca813b,0x05ef0c02,0x81214b04,0x7d33fda2,0x631c7bfd,0x292f6896,0x683139b4,0xbce6c9e3,0xb7c56bfe,0xba966da0,0x10cc24e4,0x5c74912c,0x3d67ad24,0x818f61c7];
+  actual:=salsa20_8_words(input);
+  for i:0..<16 {#assert actual[i]==expected[i];}
+  out:[16]u32;
+  #assert salsa20_8_core(input[..],out[..],false);
+  for i:0..<16 {#assert out[i]==expected[i];}
+}
+
+#test "a zero block remains zero" {
+  input:[16]u32;actual:=salsa20_8_words(input);
+  for i:0..<16 {#assert actual[i]==0;}
+}
+
+#test "core admission rejects short input, output and aliases without writes" {
+  input:[17]u32;out:[17]u32;for i:0..<17 {out[i]=0xa5a5a5a5;}
+  #assert !salsa20_8_core(input[0..<15],out[..],false);
+  #assert !salsa20_8_core(input[..],out[0..<15],false);
+  #assert !salsa20_8_core(input[..],out[..],true);
+  for v:out {#assert v==0xa5a5a5a5;}
+  #assert salsa20_8_core(input[..],out[..],false);
+  for i:0..<16 {#assert out[i]==0;}
+  #assert out[16]==0xa5a5a5a5;
+}
+
+salsa20_8_words :: (input:[16]u32)->[16]u32 {
+  x:=input;
+  for round:0..<4 {
+    x[4]^=rotl(add_wrap(x[0],x[12]),7); x[8]^=rotl(add_wrap(x[4],x[0]),9);
+    x[12]^=rotl(add_wrap(x[8],x[4]),13); x[0]^=rotl(add_wrap(x[12],x[8]),18);
+    x[9]^=rotl(add_wrap(x[5],x[1]),7); x[13]^=rotl(add_wrap(x[9],x[5]),9);
+    x[1]^=rotl(add_wrap(x[13],x[9]),13); x[5]^=rotl(add_wrap(x[1],x[13]),18);
+    x[14]^=rotl(add_wrap(x[10],x[6]),7); x[2]^=rotl(add_wrap(x[14],x[10]),9);
+    x[6]^=rotl(add_wrap(x[2],x[14]),13); x[10]^=rotl(add_wrap(x[6],x[2]),18);
+    x[3]^=rotl(add_wrap(x[15],x[11]),7); x[7]^=rotl(add_wrap(x[3],x[15]),9);
+    x[11]^=rotl(add_wrap(x[7],x[3]),13); x[15]^=rotl(add_wrap(x[11],x[7]),18);
+    x[1]^=rotl(add_wrap(x[0],x[3]),7); x[2]^=rotl(add_wrap(x[1],x[0]),9);
+    x[3]^=rotl(add_wrap(x[2],x[1]),13); x[0]^=rotl(add_wrap(x[3],x[2]),18);
+    x[6]^=rotl(add_wrap(x[5],x[4]),7); x[7]^=rotl(add_wrap(x[6],x[5]),9);
+    x[4]^=rotl(add_wrap(x[7],x[6]),13); x[5]^=rotl(add_wrap(x[4],x[7]),18);
+    x[11]^=rotl(add_wrap(x[10],x[9]),7); x[8]^=rotl(add_wrap(x[11],x[10]),9);
+    x[9]^=rotl(add_wrap(x[8],x[11]),13); x[10]^=rotl(add_wrap(x[9],x[8]),18);
+    x[12]^=rotl(add_wrap(x[15],x[14]),7); x[13]^=rotl(add_wrap(x[12],x[15]),9);
+    x[14]^=rotl(add_wrap(x[13],x[12]),13); x[15]^=rotl(add_wrap(x[14],x[13]),18);
+  }
+  for i:0..<16 {x[i]=add_wrap(x[i],input[i]);}
+  return x;
+}
+
+// Internal ABI: the host or a checked adapter must supply valid views and
+// a truthful overlap observation. This alone is not a public pointer gate.
+salsa20_8_core :: (input:[]u32,out:[]u32,overlap:bool)->bool #export_c {
+  if input.count<16 || out.count<16 || overlap {return false;}
+  words:[16]u32;for i:0..<16 {words[i]=input[i];}
+  words=salsa20_8_words(words);
+  for i:0..<16 {out[i]=words[i];}
+  return true;
+}
