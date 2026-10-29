@@ -1,0 +1,196 @@
+{
+  "artifact_bytes": 27271552,
+  "compiler": "coax0 0.22.0",
+  "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+  "generated_c_sha256": "6c272d062218eceb80d077f9425a129ef07c50edfad4aac0318ac7964f77f3a0",
+  "native_flags": [
+    "-std=c11",
+    "-O2"
+  ],
+  "object_sha256": "23d9003c1c82a91e864866cf8ed52843e646ff8f2fdb250da72ff399420335e2",
+  "observer_context": {
+    "concurrent_workloads": [
+      "WebGPU/Chrome staging visual walk",
+      "Coax scrypt mutation run"
+    ],
+    "limitation": "These workloads overlapped the measurement on the shared host; their effect on noise and statistical sensitivity is unknown.",
+    "original_report_sha256": "f97da7c4e6681021996ec59f3d89b16f9d3752ab84df56cbe763223be2c634ed"
+  },
+  "raw_retention": "CT01 raw rows and exact native object retained in ignored output directory; hashes retained here",
+  "runs": [
+    {
+      "coax": {
+        "acquisition_ns": 306573946084,
+        "clock_resolution_ns": 42,
+        "degenerate": false,
+        "fixture": 0,
+        "mean0": 306366.22097801056,
+        "mean1": 306719.361724004,
+        "minimum_clock_pair_ns": 0,
+        "n0": 500000,
+        "n1": 500000,
+        "raw_bytes": 9000012,
+        "status": 2,
+        "t": -1.24193619559669,
+        "variance0": 21326318963.372864,
+        "variance1": 19100269684.762154,
+        "warmup": 20000
+      },
+      "fixture": "variable",
+      "independent": {
+        "degenerate": false,
+        "mean0": 306366.220978,
+        "mean1": 306719.361724,
+        "n0": 500000,
+        "n1": 500000,
+        "noise": [
+          {
+            "maximum_ns": 54062000,
+            "median_ns": 304167,
+            "minimum_ns": 234458,
+            "p99_ns": 442792,
+            "zero_ticks": 0
+          },
+          {
+            "maximum_ns": 32707584,
+            "median_ns": 304417,
+            "minimum_ns": 234542,
+            "p99_ns": 442916,
+            "zero_ticks": 0
+          }
+        ],
+        "status": 2,
+        "t": -1.2419361956198187,
+        "variance0": 21326318963.37267,
+        "variance1": 19100269684.762558
+      },
+      "raw_file": "variable.bin",
+      "raw_sha256": "d19d4565f1849218ba4bd9fd75e321f09904173778d83491bd66de8514e6ae6d"
+    },
+    {
+      "coax": {
+        "acquisition_ns": 50743667,
+        "clock_resolution_ns": 42,
+        "degenerate": false,
+        "fixture": 1,
+        "mean0": 29.151446000000174,
+        "mean1": 30.172662000000084,
+        "minimum_clock_pair_ns": 0,
+        "n0": 500000,
+        "n1": 500000,
+        "raw_bytes": 9000012,
+        "status": 2,
+        "t": -1.447374134401019,
+        "variance0": 51717.201000511195,
+        "variance1": 197193.52469288695,
+        "warmup": 20000
+      },
+      "fixture": "fixed-control",
+      "independent": {
+        "degenerate": false,
+        "mean0": 29.151446,
+        "mean1": 30.172662,
+        "n0": 500000,
+        "n1": 500000,
+        "noise": [
+          {
+            "maximum_ns": 124875,
+            "median_ns": 41,
+            "minimum_ns": 0,
+            "p99_ns": 42,
+            "zero_ticks": 169330
+          },
+          {
+            "maximum_ns": 207333,
+            "median_ns": 41,
+            "minimum_ns": 0,
+            "p99_ns": 42,
+            "zero_ticks": 168427
+          }
+        ],
+        "status": 2,
+        "t": -1.4473741344011561,
+        "variance0": 51717.20100051108,
+        "variance1": 197193.52469288316
+      },
+      "raw_file": "fixed-control.bin",
+      "raw_sha256": "bd6a124fafd46e7265e3a29ea6462dba9e949dd2b4523f738a57d88ab42f99eb"
+    },
+    {
+      "coax": {
+        "acquisition_ns": 134066416,
+        "clock_resolution_ns": 42,
+        "degenerate": false,
+        "fixture": 2,
+        "mean0": 18.750145999999713,
+        "mean1": 209.0933999999974,
+        "minimum_clock_pair_ns": 0,
+        "n0": 500000,
+        "n1": 500000,
+        "raw_bytes": 9000012,
+        "status": 1,
+        "t": -428.78330644728237,
+        "variance0": 6285.981290941286,
+        "variance1": 92244.19175282217,
+        "warmup": 20000
+      },
+      "fixture": "branch-control",
+      "independent": {
+        "degenerate": false,
+        "mean0": 18.750146,
+        "mean1": 209.0934,
+        "n0": 500000,
+        "n1": 500000,
+        "noise": [
+          {
+            "maximum_ns": 17333,
+            "median_ns": 0,
+            "minimum_ns": 0,
+            "p99_ns": 42,
+            "zero_ticks": 287043
+          },
+          {
+            "maximum_ns": 30541,
+            "median_ns": 125,
+            "minimum_ns": 0,
+            "p99_ns": 459,
+            "zero_ticks": 143879
+          }
+        ],
+        "status": 1,
+        "t": -428.78330644728476,
+        "variance0": 6285.981290941266,
+        "variance1": 92244.1917528235
+      },
+      "raw_file": "branch-control.bin",
+      "raw_sha256": "2afed24aec6412aa30dbedd892cffb717d7e0326abf6938ba54eedbc7cfd156b"
+    }
+  ],
+  "samples_per_fixture": 1000000,
+  "schema": "coax.secp-variable-base-timing.v1",
+  "scope": "first-order Welch observations of public fixed-zero versus seeded256-bit inputs, fixed public peer and this named native target only; no source guard, object/JIT, independent audit, erasure or production-secret admission",
+  "seed": 20261029,
+  "sources": {
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+    "coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+    "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+    "coax/lib/crypto/secp_group32.coax": "b4e11a4626ba2b7be823078dc8495b800ecd9f579366d706cdd4e421b18f437b",
+    "coax/lib/crypto/secp_mult_const.coax": "d3eaa65e81815c69069549224a66bb8f2962228482963060c3ef0f4de3ff6b2e",
+    "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+    "coax/tests/nostr/secp_mult_const_timing.c": "08745c1801b45575353a407cc106da9b72674a25037cf04d0294a278e5a1198b",
+    "coax/tests/nostr/secp_mult_const_timing.coax": "f01ccd0ef8dd12cdc42eea76844ebd38826193ab914c671e9666ce7c738e43fc",
+    "coax/tests/nostr/secp_mult_const_timing.py": "84c19e187f71e29a0bb0ab7061763e68fcf98ed5388839ff6c6bf56ef04e1903",
+    "tools/coax-nostr/timing/fixtures.coax": "499667507b2faa5a24812b4b8decf210bb64329822fbb7d0d4fc926ebb79640f",
+    "tools/coax-nostr/timing/model.coax": "f9ee68c4e90d6db9f71569c79058eb60d7c1ce52271204785c1ef623ecfe95e3",
+    "tools/coax-nostr/timing/run.py": "1afcb114fe00f414670c08697d97f87b110736c24458ccd235c0a879a8a164cc"
+  },
+  "target": {
+    "architecture": "arm64",
+    "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+    "cpu": "Apple M5 Max",
+    "environment": "normal shared developer machine; no affinity/governor/process changes",
+    "os": "Darwin 25.4.0"
+  },
+  "threshold_abs_t": 10
+}

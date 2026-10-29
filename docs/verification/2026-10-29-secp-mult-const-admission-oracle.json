@@ -1,0 +1,102 @@
+{
+  "boundary_scalars_per_mode": 517,
+  "compiler": "coax0 0.22.0",
+  "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+  "elapsed_seconds": 130.5989711250004,
+  "exceptional_cases_per_mode": 6,
+  "expected_sha256": "a8ed6d305a0eae2a1b57997826787fbd0e978cd89e5abc4eb9ab7f0a500ad53a",
+  "independent_affine_cross_checks": 32,
+  "input_sha256": "229ebb69962ef5e4592090665b3a7bb2c35506563c251b54cd40c2a85347f4ed",
+  "libsecp_artifact_sha256": "8c46f911b6821f9fc0de66a55d50b11325e364cf64afd95ca6ab0b7f2882201b",
+  "libsecp_source_commit": "6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d",
+  "modes": [
+    {
+      "generated_c_sha256": "50007d19f2526de0b95575f95d484e14c1143607dfb8cce5cf79a0d1f1d2a5e4",
+      "library_sha256": "d9d85203d9a8ae4450c173362655108d095191183fe18df64bec94e32d137c71",
+      "mode": "checked",
+      "object_bytes": 59656,
+      "object_sha256": "f6cac30c40924eb2dacae9c6ab9c4e345aa7d33c0b0bd5fc4a70cedfb434c4db",
+      "stack_usage_records": [
+        "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-secp-const-idhb8dh_/checked.c:1095:smc_multiply\t2560\tstatic"
+      ],
+      "stream_sha256": "892ee1b002274053acb5ae3e9043b78e7bfab7e45403730f4aca7e588596b4b7"
+    },
+    {
+      "generated_c_sha256": "bba73e850c63ff692ca63ae45f63bbec00fe7300f9e8c52727bd83fdd7bc3328",
+      "library_sha256": "d0fdf9784e415615f2ad5f220a9a44989a54eaeb0778ca721d200fa33df4d5fc",
+      "mode": "release",
+      "object_bytes": 55256,
+      "object_sha256": "2827fe2d764631b0fbf9b79ec241d8947cdc77b1d11498eddda25069a455fd1e",
+      "stack_usage_records": [
+        "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-secp-const-idhb8dh_/release.c:1095:smc_multiply\t3008\tstatic"
+      ],
+      "stream_sha256": "c1c80d03f1ac374696a29bad1f5299efd530c9c6eda99bbd8e3f36c7868558ac"
+    }
+  ],
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "native_random": [
+    {
+      "elapsed_seconds": 29.689555999997538,
+      "failures": 0,
+      "mode": "checked",
+      "output_sha256": "680469218252742f227c44389f149ec026a8fe4da8ed04606fd14b3c1c31f09b",
+      "pairs": 100000
+    },
+    {
+      "elapsed_seconds": 32.89922362501966,
+      "failures": 0,
+      "mode": "release",
+      "output_sha256": "680469218252742f227c44389f149ec026a8fe4da8ed04606fd14b3c1c31f09b",
+      "pairs": 100000
+    }
+  ],
+  "native_target": "arm64-apple-darwin25.4.0",
+  "random_pairs": 100000,
+  "sanitizer_single_bits": 256,
+  "schema": "coax.secp-mult-const.v1",
+  "scope": "public-fixture arithmetic and source schedule only; no discharged secret guards, object/JIT review, device, erasure or production-secret approval",
+  "seed": 20261029,
+  "sources": {
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+    "coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+    "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+    "coax/lib/crypto/secp_group32.coax": "b4e11a4626ba2b7be823078dc8495b800ecd9f579366d706cdd4e421b18f437b",
+    "coax/lib/crypto/secp_mult_const.coax": "d3eaa65e81815c69069549224a66bb8f2962228482963060c3ef0f4de3ff6b2e",
+    "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+    "coax/tests/nostr/scalar_candidate.py": "4a52ddd914edc2469850229c3b490d7f5bedc1c0fb418c3087df76831954b966",
+    "coax/tests/nostr/secp_field.py": "5f8ee0f91cf3febe741faacbb9e4f7bbf629ad1d2120dd40d89bedbb3f3a4e06",
+    "coax/tests/nostr/secp_field32.py": "34c2d6d3538417c027f43c84ab24d73f02dc573a196cf1bd9c96319e52502ca1",
+    "coax/tests/nostr/secp_field32_adapter.coax": "ba911543b1f8406f0565193e195d7e6d7ce4b7d8d3a7c017f36721b096480cda",
+    "coax/tests/nostr/secp_field_mul.py": "bbf58edc942f4c00712d9b016be5f834a57813a9c230fdb618be1fd756e7ff80",
+    "coax/tests/nostr/secp_group.py": "95a53bd98ca92d84eef4663d752cd16cea8e065f8761dd924e2a820254a00328",
+    "coax/tests/nostr/secp_mult_const.py": "f8bf13fabc5047c352dffddd4112ebeaef014754ae0b20505e8b0b744b3b8887",
+    "coax/tests/nostr/secp_mult_const_stream.c": "e11fdc2a8eed31c31837c6d3fad44cc0194df8c7873f728d6664f33fc031d5f0",
+    "coax/tests/nostr/secp_mult_const_wasm.c": "23805e662e4d885d161fc6918ed489faa15e98800db0e6d5768c23add2867bde",
+    "coax/tests/nostr/secp_mult_const_wasm.cjs": "9430a37d9b351997e26ae2523cf7ff1291fe5ed0a435cfbd15cfb89dd39f8eec",
+    "tools/coax-nostr/fuzz/UPSTREAM.json": "dfc511b8c6ab64e780f52bf9e4ce77c8273b96edd64827459f37c1e9b8bbf33e",
+    "tools/coax-nostr/fuzz/oracle.py": "d690d0f5e5318e96fc6c6c5f56ce87af5543d90d8acb8f53abc67381d7626cd9"
+  },
+  "temporary_bytes": 52648640,
+  "truncated_stream_refusals": 2,
+  "wasm": [
+    {
+      "artifact_sha256": "f68302c9b875da045e14cfb1a8bb27102b8cf36dcf6a06cca3bbd8a54ba23b73",
+      "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+      "failures": 0,
+      "mode": "checked",
+      "pairs": 100517,
+      "stack_bytes": 1048576,
+      "target": "wasm32-wasip1"
+    },
+    {
+      "artifact_sha256": "cf0d0e7985b0b82ff160e7be4b5f744235469a44f361b1dff8c4a939d211f87d",
+      "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+      "failures": 0,
+      "mode": "release",
+      "pairs": 100517,
+      "stack_bytes": 1048576,
+      "target": "wasm32-wasip1"
+    }
+  ]
+}

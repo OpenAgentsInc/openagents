@@ -135,13 +135,23 @@ follow-up #f07b added bounded public-loop/callee analysis without a limit waiver
 The repaired auditor subsequently analyzed the complete `smc_multiply` source
 closure in the native-C checked-library profile: 97,203 visits, 43 reached
 procedures and three secret-derived authored assertions. The result is
-`analyzed-with-guard-obligations` with `accepted=false`; the unresolved guards
-are `secp_field.coax:239` and `secp_field32.coax:70,92`. The
+`analyzed-with-guard-obligations` with `accepted=false`; the then-unproved
+guards were `secp_field.coax:239` and `secp_field32.coax:70,92`. The
 [source report](2026-10-29-secp-variable-base-source-reaudit.json) records the
-exact source, compiler, audit-tool and type identities. These observations are
-not source admission or proof that the assertions are unreachable. Guard discharge,
-compiler/object/JIT inspection, independent security review, device evidence,
+exact source, compiler, audit-tool and type identities. That analysis did not
+prove the assertions unreachable. The later guard reproof and changed-source
+classification are recorded below; object/JIT inspection, device evidence,
 erasure and production-secret admission remain separate gates.
+
+## Revalidation after raw-peer admission
+
+The exported entry now rejects every raw coordinate limb outside the magnitude-eight bounds before validity or normalization. The ABI and bounded-peer behavior are unchanged; an oversized raw peer returns `ok=false` and canonical infinity. The [admission report](2026-10-29-secp-peer-admission.md) records adversarial boundary checks and 1,353/1,353 source mutants killed. A [changed-source guard reproof](2026-10-29-secp-field-guard-reproof.md) independently reviews the admitted caller trace and proves the three arithmetic guard outcomes under the documented domains. The guards remain in source; this is not an automatic source-auditor waiver.
+
+The [classified source audit](2026-10-29-classified-root-audit.md) analyzes this exact source with scalar secret and peer public, an explicit caller assumption. It reaches 44 procedures in 98,078 visits and reports the same three authored guard obligations with `accepted=false`. The default all-parameters-secret audit refuses the peer-dependent admission branch. These results establish no secrecy classification for a caller and do not approve generated objects, JIT behavior, erasure or production secrets.
+
+The refreshed [independent oracle run](2026-10-29-secp-mult-const-admission-oracle.json) matched 100,000 random pairs per native mode and 100,517 cases per Wasm mode, including boundary scalars, with zero failures; all four runner tests passed. The additional scaled-peer probe passed 1,000 random projective peers in each native mode, and the [Wasm exceptional-peer probe](2026-10-29-secp-mult-const-admission-wasm-exceptions.json) passed 15 cases per mode. Its inherited report's `random_pairs` setting is configuration metadata; that separate probe ran exceptional cases only. The scaled probe source SHA-256 is `015d98513f4c9872681a164cf99630369fac18bf48612b706d5f8de16b06b2e0`; its retained log SHA-256 is `d05cfca3a495be0640ff0acdd0dabeb441e1dc58e8ebfe574ab1525d01452615`. These tests use public fixtures and do not establish target constant-time behavior or production approval.
+
+The refreshed [native timing run](2026-10-29-secp-mult-const-admission-timing.json) recorded 1,000,000 observations per fixture with a fixed public peer. The variable fixture reported Welch t = -1.242; the fixed control reported -1.447, and the planted-branch control reported -428.783 and was detected. Independent recomputation agreed. A WebGPU/Chrome staging visual walk and a separate Coax scrypt mutation run overlapped this shared-host measurement; their effect on noise and sensitivity is unknown. Raw observations and the exact native binary are retained in ignored `coax/bin/nostr-variable-base-admission-timing`, with hashes in the report. This measurement is not a constant-time proof or target/production approval.
 
 ## Reproduce
 
