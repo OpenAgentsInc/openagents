@@ -924,7 +924,8 @@
         "crypto-secret-lint",
         "crypto-secret-aggregate-closure",
         "crypto-secret-public-loop-summaries",
-        "crypto-field-secret-guards"
+        "crypto-field-secret-guards",
+        "crypto-classified-root-audit"
       ],
       "blocks": [
         "crypto-ecdh-xonly"
@@ -3032,7 +3033,8 @@
         "secp-mult-const",
         "crypto-secret-codegen",
         "crypto-secret-public-loop-summaries",
-        "crypto-field-secret-guards"
+        "crypto-field-secret-guards",
+        "crypto-classified-root-audit"
       ]
     },
     {
@@ -3213,7 +3215,8 @@
       ],
       "blocks": [
         "secp-mult-const",
-        "crypto-field-secret-guards"
+        "crypto-field-secret-guards",
+        "crypto-classified-root-audit"
       ]
     },
     {
@@ -3266,6 +3269,24 @@
         "secp-mult-base",
         "secp-mult-const"
       ]
+    },
+    {
+      "slug": "crypto-classified-root-audit",
+      "parent": "m-assurance",
+      "title": "Audit classified public and secret root inputs across public control flow",
+      "size": "L",
+      "labels": ["nostr", "crypto", "coax"],
+      "body": "Extend the source-bound aggregate auditor for an explicitly classified public-peer/secret-scalar root and its public admission control flow. Preserve all-secret defaults, existing limits and guard reporting. Unsupported classifications, alias effects and control flow must fail closed. This is source analysis only; it grants no object or JIT timing, erasure or production-secret approval.",
+      "files": ["tools/coax-nostr/secret-check/", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Opt-in whole-parameter classifications bind to exact resolved entry, parameter names, positions, types and compiled source graph; default remains all secret and malformed or mismatched declarations refuse",
+        "Public conditional and bounded loop paths including early returns are analyzed conservatively with sound state, alias, return and guard joins; secret branches and indices, unknown effects and unsupported joins still refuse without increased resource limits",
+        "Independent adversarial runtime and source fixtures cover both branches, loop early returns, zero-trip paths, secret/public flips, mutated aggregates, aliases, transitive unsafe calls and guard unions; compare against existing all-secret behavior",
+        "The actual source-hashed smc_multiply root is analyzed with peer public and scalar secret under the existing bounded audit profile and reports every reachable authored guard; unresolved guards keep acceptance false",
+        "Affected full policy checks, full mutation with zero survivors and independent security review pass; record source, classification, profile and tool identities without target or production approval"
+      ],
+      "blocked_by": ["crypto-secret-aggregate-closure", "crypto-secret-public-loop-summaries"],
+      "blocks": ["secp-mult-const"]
     }
   ]
 }
