@@ -1115,6 +1115,82 @@
       ],
       "blocked_by": [],
       "blocks": []
+    },
+    {
+      "slug": "eg-npc-labels",
+      "parent": "eg",
+      "title": "Name and role labels follow the person",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade"
+      ],
+      "body": "In the after-vega shot the ASTRONOMER label floats over empty grass, away from Vega. Labels track the person's head as they walk and turn.",
+      "files": [
+        "verse/everglade/folk.coax",
+        "apps/openagents-web/everglade.coax"
+      ],
+      "acceptance": [
+        "Headless shot: every label sits over its person"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "eg-cats",
+      "parent": "eg",
+      "title": "Cats: a real cat model",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade"
+      ],
+      "body": "Cats are still placeholder shapes. Use aethyr-cpp's static Custom_Cat as a stand-in now; swap in an animated cat when the owner adds a Quaternius animals pack (NEEDS_OWNER).",
+      "files": [
+        "verse/everglade/folk.coax",
+        "apps/openagents-web/everglade.coax"
+      ],
+      "acceptance": [
+        "The errand cat is a cat in a headless shot"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "eg-robes",
+      "parent": "eg",
+      "title": "Robes for the archmage, priest and astronomer",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade"
+      ],
+      "body": "They wear dyed peasant or ranger clothes; robes are in the Source tier of Modular Character Outfits - Fantasy (NEEDS_OWNER). Fit them when the pack is in ~/Downloads.",
+      "files": [
+        "verse/everglade/folk.coax",
+        "apps/openagents-web/everglade.coax"
+      ],
+      "acceptance": [
+        "Each robed role wears robes"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "eg-bram-tint",
+      "parent": "eg",
+      "title": "Bram's metal shoulder guard keeps its metal colour",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade"
+      ],
+      "body": "The dye tints his metal pauldron red.",
+      "files": [
+        "verse/everglade/folk.coax",
+        "apps/openagents-web/everglade.coax"
+      ],
+      "acceptance": [
+        "Metal parts are untinted"
+      ],
+      "blocked_by": []
     }
   ]
 }
