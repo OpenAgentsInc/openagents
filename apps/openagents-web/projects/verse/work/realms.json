@@ -894,6 +894,60 @@
         "ff-first-crack"
       ],
       "blocks": []
+    },
+    {
+      "slug": "ff-save",
+      "parent": "ff",
+      "title": "Fairy Forest saves where you are and what you restored",
+      "size": "S",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "Nothing in Fairy Forest is saved: refresh and the forest is faded again. Save the position (as every walkable realm does) and the restored patches, skills and roots per player.",
+      "files": [
+        "apps/openagents-web/fairy.coax"
+      ],
+      "acceptance": [
+        "Refresh keeps position, colour restored, skills and roots"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ff-talk",
+      "parent": "ff",
+      "title": "Fairy Forest's creatures talk and remember you",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "The creatures show moods but don't talk. Use the character chat and memory Everglade's people use, with their troubles and passing remarks.",
+      "files": [
+        "apps/openagents-web/fairy.coax"
+      ],
+      "acceptance": [
+        "Talking to each creature gets an answer about its trouble; it remembers what you did"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ff-roots",
+      "parent": "ff",
+      "title": "The last two glades and roots, and the heart tree blooming",
+      "size": "M",
+      "labels": [
+        "realms",
+        "engine"
+      ],
+      "body": "The first crack has three of five roots and a simple heart tree. Add Thornfall and the Old Ring with their troubles, and the heart blooming as the ending.",
+      "files": [
+        "apps/openagents-web/fairy.coax"
+      ],
+      "acceptance": [
+        "All five roots can be woken and the heart tree blooms; headless shot of the bloom"
+      ],
+      "blocked_by": []
     }
   ]
 }

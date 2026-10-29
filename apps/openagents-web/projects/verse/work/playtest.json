@@ -817,6 +817,44 @@
       ],
       "blocked_by": [],
       "blocks": []
+    },
+    {
+      "slug": "ptr-mic-check",
+      "parent": "pt-redesign",
+      "title": "Real-microphone check of the orb and the Haunted House voice button",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "voice"
+      ],
+      "body": "The landing orb guide and the house's voice button were tested only with recorded audio. Check both with a real microphone on desktop Chrome and an iPhone, and fix what breaks (permission prompt, hold and release, echo).",
+      "files": [
+        "apps/openagents-web/landing.coax",
+        "apps/openagents-web/realm.coax"
+      ],
+      "acceptance": [
+        "Owner says a sentence to the orb and to the house button on desktop and phone and gets the right answer"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ptr-tap-talk",
+      "parent": "pt-redesign",
+      "title": "Tapping a character on a phone starts talking to them",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "web"
+      ],
+      "body": "E works; tap-to-talk on characters was never tested. Test it in a headless phone run and fix it.",
+      "files": [
+        "apps/openagents-web/realm.coax",
+        "apps/openagents-web/realm-face.c"
+      ],
+      "acceptance": [
+        "A headless 390 px run taps a character and the talk pane opens"
+      ],
+      "blocked_by": []
     }
   ]
 }
