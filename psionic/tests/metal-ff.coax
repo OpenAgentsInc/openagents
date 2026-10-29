@@ -1,0 +1,26 @@
+// Chapter 31's float-float conformance kernels. On Metal an f64 is a
+// float-float pair (APPLE-FF-v1); compiled to C the same kernels use binary64,
+// which is the oracle. psionic/tests/metal_kernels.c runs both.
+#authority;
+
+// exp, log and sqrt of the f32 whose bits are first + item, widened to f64.
+ff_math :: (item:int,first:u32,ex:[]f64,lg:[]f64,sq:[]f64) #export_c {
+    x:=f64(f32_from_bits(add_wrap(first,cast,trunc(u32)item)));
+    ex[item]=exp(x);lg[item]=log(abs(x));sq[item]=sqrt(abs(x));
+}
+// Sums, products and quotients of widened f32 values: a b + c, (a + b) - c
+// and a / b, in that order per item.
+ff_arith :: (item:int,a:[]f32,b:[]f32,c:[]f32,out:[]f64) #export_c {
+    x:=f64(a[item]);y:=f64(b[item]);z:=f64(c[item]);
+    out[3*item]=x*y+z;out[3*item+1]=(x+y)-z;out[3*item+2]=x/y;
+}
+
+#test "the oracle build is binary64" {
+    ex:[2]f64;lg:[2]f64;sq:[2]f64;
+    for i:0..<2 {ff_math(i,0x3f800000,ex[..],lg[..],sq[..]);}
+    #assert ex[0]==exp(1.0f64) && lg[0]==0 && sq[0]==1;
+    #assert lg[1]==log(f64(f32_from_bits(0x3f800001))) && ex[1]==exp(f64(f32_from_bits(0x3f800001)));
+    a:=[1]f32.[3];b:=[1]f32.[0.1];c:=[1]f32.[1];out:[3]f64;
+    ff_arith(0,a[..],b[..],c[..],out[..]);
+    #assert out[0]==3*f64(b[0])+1 && out[1]==(3+f64(b[0]))-1 && out[2]==3/f64(b[0]);
+}
