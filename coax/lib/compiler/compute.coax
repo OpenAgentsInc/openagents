@@ -1,0 +1,151 @@
+// The CUDA compute subset: which checked procedures `coax cuda` admits.
+// Native code observes the checked tree and reports through these decisions;
+// this policy decides. Type codes are a versioned bridge to the native graph:
+// 0 void, 1 bool, 2 f32, 3 f64, 4 s8, 5 s16, 6 s32, 7 int (s64), 8 u8,
+// 9 u16, 10 u32, 11 u64, 12 string, 13 struct, 14 enum, 15 fixed array,
+// 16 view, 17 anything else.
+#authority;
+
+CU_ARRAY_LIMIT :: 1024;
+CU_DEPTH_LIMIT :: 64;
+
+#forall "scalars are bool, both floats and every sized integer" code:0..<20 {
+ #assert CU_scalar(cast(u32)code)==(code>=1 && code<=11);
+}
+#forall "numbers exclude bool" code:0..<20 {
+ #assert CU_number(cast(u32)code)==(code>=2 && code<=11);
+}
+CU_scalar :: (code:u32)->bool #export_c {return code>=1 && code<=11;}
+CU_number :: (code:u32)->bool #export_c {return code>=2 && code<=11;}
+
+// Reasons. 0 admits; each other value names what is refused.
+#test "every refusal reason has its own text and the fix names the subset" {
+ #assert CU_reason_text(0)=="";
+ #assert CU_reason_text(1)=="a string value" && CU_reason_text(2)=="a struct value" && CU_reason_text(3)=="an enum value";
+ #assert CU_reason_text(4)=="an array that is not a fixed array of at most 1024 scalars" && CU_reason_text(5)=="a view of something other than numbers";
+ #assert CU_reason_text(6)=="a value of this type";
+ #assert CU_reason_text(7)=="a while loop" && CU_reason_text(8)=="defer" && CU_reason_text(9)=="#assert";
+ #assert CU_reason_text(10)=="print" && CU_reason_text(11)=="a #foreign call" && CU_reason_text(12)=="a recursive call";
+ #assert CU_reason_text(13)=="this storage intrinsic" && CU_reason_text(14)=="a compile-time aggregate";
+ #assert CU_reason_text(15)=="a kernel that returns a value" && CU_reason_text(16)=="a kernel whose first parameter is not its int work item";
+ #assert CU_reason_text(17)=="a call chain deeper than 64" && CU_reason_text(18)=="a returned value that is not a scalar";
+ #assert CU_reason_text(19)=="a view parameter of a kernel that is not a view of numbers" && CU_reason_text(20)=="a #foreign procedure";
+ #assert CU_reason_text(21)=="this reason";
+ #assert CU_fix()=="coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 1024 scalars, views of numbers, if/else, for loops, break/continue and acyclic calls; every #export_c procedure is a kernel with an int work item first and no result";
+}
+CU_reason_text :: (reason:u32)->string #export_c {
+ texts:=[21] string.["","a string value","a struct value","an enum value","an array that is not a fixed array of at most 1024 scalars",
+  "a view of something other than numbers","a value of this type","a while loop","defer","#assert","print","a #foreign call",
+  "a recursive call","this storage intrinsic","a compile-time aggregate","a kernel that returns a value",
+  "a kernel whose first parameter is not its int work item","a call chain deeper than 64","a returned value that is not a scalar",
+  "a view parameter of a kernel that is not a view of numbers","a #foreign procedure"];
+ if reason>=21 {return "this reason";}
+ return texts[cast(int)reason];
+}
+CU_fix :: ()->string #export_c {
+ return "coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 1024 scalars, views of numbers, if/else, for loops, break/continue and acyclic calls; every #export_c procedure is a kernel with an int work item first and no result";
+}
+
+// A value's type: a local, parameter, or intermediate expression.
+#forall "value admission is closed over every type code" code:0..<20, elem:0..<20 {
+ r:=CU_value(cast(u32)code,cast(u32)elem,4);
+ expected:u32=6;
+ if code>=1 && code<=11 {expected=0;}
+ else if code==12 {expected=1;} else if code==13 {expected=2;} else if code==14 {expected=3;}
+ else if code==15 {expected=ifx elem>=1 && elem<=11 then 0 else 4;}
+ else if code==16 {expected=ifx elem>=2 && elem<=11 then 0 else 5;}
+ #assert r==expected;
+}
+#test "fixed arrays are bounded register storage" {
+ #assert CU_value(15,2,1)==0 && CU_value(15,2,1024)==0;
+ #assert CU_value(15,2,1025)==4 && CU_value(15,2,0)==4 && CU_value(15,2,-1)==4;
+ #assert CU_value(16,2,0)==0 && CU_value(16,2,5000)==0;
+}
+CU_value :: (code:u32,elem:u32,length:int)->u32 #export_c {
+ if CU_scalar(code) {return 0;}
+ if code==12 {return 1;}
+ if code==13 {return 2;}
+ if code==14 {return 3;}
+ if code==15 {if CU_scalar(elem) && length>=1 && length<=CU_ARRAY_LIMIT {return 0;}return 4;}
+ if code==16 {if CU_number(elem) {return 0;}return 5;}
+ return 6;
+}
+#forall "results are scalars or nothing" code:0..<20 {
+ #assert CU_result(cast(u32)code)==cast(u32)(ifx code<=11 then 0 else 18);
+}
+CU_result :: (code:u32)->u32 #export_c {if code==0 || CU_scalar(code) {return 0;}return 18;}
+
+// Statement kinds: 0 block, 1 expr, 2 var, 3 assign, 4 return, 5 if, 6 while,
+// 7 for range, 8 for each, 9 break, 10 continue, 11 defer, 12 #assert.
+#forall "for loops are bounded by their range or view; while, defer and #assert are refused" kind:0..<16 {
+ expected:u32=0;if kind==6 {expected=7;} else if kind==11 {expected=8;} else if kind==12 {expected=9;} else if kind>12 {expected=6;}
+ #assert CU_statement(cast(u32)kind)==expected;
+}
+CU_statement :: (kind:u32)->u32 #export_c {
+ reasons:=[13] u32.[0,0,0,0,0,0,7,0,0,0,0,8,9];
+ if kind>=13 {return 6;}
+ return reasons[cast(int)kind];
+}
+
+// Byte intrinsics by native code: 1 bytes_overlap, 2 f32_from_bits,
+// 3 f64_from_bits, 4 f32_bits, 5 f64_bits, 6 value_barrier, 7 add_wrap,
+// 8 sub_wrap, 9 mul_wrap, 10 rotl, 11 rotr, 12 mul_wide.
+#forall "bit reinterpretation and wrapping arithmetic are admitted" code:0..<16 {
+ #assert CU_byte_intrinsic(cast(u32)code)==cast(u32)(ifx (code>=2 && code<=5) || (code>=7 && code<=11) then 0 else 13);
+}
+CU_byte_intrinsic :: (code:u32)->u32 #export_c {
+ if code>=2 && code<=5 {return 0;}
+ if code>=7 && code<=11 {return 0;}
+ return 13;
+}
+
+// One call expression: what it targets and how deep the chain already is.
+#forall "calls refuse print, host calls, cycles and deep chains" print:bool, foreign:bool, active:bool, depth:0..<70 {
+ r:=CU_call(print,foreign,active,depth);
+ expected:u32=0;
+ if print {expected=10;} else if foreign {expected=11;} else if active {expected=12;} else if depth>=64 {expected=17;}
+ #assert r==expected;
+}
+CU_call :: (print:bool,foreign:bool,active:bool,depth:int)->u32 #export_c {
+ if print {return 10;}
+ if foreign {return 11;}
+ if active {return 12;}
+ if depth>=CU_DEPTH_LIMIT {return 17;}
+ return 0;
+}
+#forall "compile-time values must be scalars" code:0..<20 {
+ #assert CU_constant(cast(u32)code)==cast(u32)(ifx code>=1 && code<=11 then 0 else 14);
+}
+CU_constant :: (code:u32)->u32 #export_c {if CU_scalar(code) {return 0;}return 14;}
+
+// A kernel (#export_c procedure) returns nothing and takes its work item
+// first; its other parameters are scalars or views of numbers.
+#forall "kernel signatures" ret:0..<18, count:0..<3, first:0..<18 {
+ expected:u32=0;
+ if ret!=0 {expected=15;} else if count<1 || first!=7 {expected=16;}
+ #assert CU_kernel(cast(u32)ret,count,cast(u32)first)==expected;
+}
+CU_kernel :: (ret:u32,count:int,first:u32)->u32 #export_c {
+ if ret!=0 {return 15;}
+ if count<1 || first!=7 {return 16;}
+ return 0;
+}
+#forall "kernel parameters are scalars or views of numbers" code:0..<18, elem:0..<18 {
+ expected:u32=0;
+ if code==16 {expected=ifx elem>=2 && elem<=11 then 0 else 19;}
+ else if code==12 {expected=1;} else if code==13 {expected=2;} else if code==14 {expected=3;}
+ else if !(code>=1 && code<=11) {expected=6;}
+ #assert CU_kernel_parameter(cast(u32)code,cast(u32)elem)==expected;
+}
+CU_kernel_parameter :: (code:u32,elem:u32)->u32 #export_c {
+ if CU_scalar(code) {return 0;}
+ if code==16 {if CU_number(elem) {return 0;}return 19;}
+ if code==12 {return 1;}
+ if code==13 {return 2;}
+ if code==14 {return 3;}
+ return 6;
+}
+#forall "#foreign procedures are refused" foreign:bool {
+ #assert CU_procedure(foreign)==cast(u32)(ifx foreign then 20 else 0);
+}
+CU_procedure :: (foreign:bool)->u32 #export_c {if foreign {return 20;}return 0;}

@@ -1,7 +1,7 @@
 # 20. Inside coax0
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.22.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.23.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 
 The driver embeds the version and status from a generated header. The authored
@@ -48,6 +48,8 @@ driver ties them together. Here is where everything lives:
 | `src/check.cpp` | Storage and graph transport for the Coax checker, then reconstruction of native checked objects |
 | `src/eval.cpp` | Runs `#run`, constants, `#assert` and checks over the checked tree, within budgets |
 | `src/emit_c.cpp` | The checked tree to one C11 file with its runtime; headers and layout reports |
+| `lib/compiler/compute.coax` | The CUDA compute subset: which types, statements, calls and kernel signatures `coax cuda` admits |
+| `src/compute.cpp` | Walks the kernels and what they reach, and reports the policy's refusals (E0700, E0701) |
 | `src/verify.cpp` | `coax test` and `coax mutate` |
 | `lib/compiler/sources.coax` | Source load syntax, canonical identity/cycles, graph budgets and verification scope |
 | `src/sources.cpp` | Filesystem reads and source/diagnostic storage transport |

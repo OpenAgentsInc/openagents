@@ -1,0 +1,206 @@
+// Original BF16 rows times f32 activations, as coax cuda kernels.
+// DEVICE-F32-CHUNKED-v1: each product rounds once to f32; products add in f32
+// within chunks of 256 of a slice's columns; chunk sums add in f32 within the
+// slice (every slices-th group of four columns); slice sums add in f64 in order; the result rounds once to f32. The
+// error is at most (258 + cols/256) * 2^-24 * sum |w x|, under 2^-15 for
+// every Elephant shape. Each output or partial is written by exactly one work
+// item, so results do not depend on scheduling.
+#authority;
+
+DV_ROWS :: 4;
+DV_TOKENS :: 8;
+DV_LANES :: 16;
+DV_GROUPS_PER_CHUNK :: 64; // 64 of a slice's groups: 256 columns
+
+// Column j (0..3) of four BF16 values packed little-endian in a u64.
+dv_bf16 :: (bits:u64,lane:int)->f32 {
+    half:=(bits>>cast(u64)(16*lane))&0xffff;
+    return f32_from_bits(cast,trunc(u32)half<<16);
+}
+#test "BF16 lanes decode little-endian halves exactly" {
+    bits:u64=0x40403f80c0004000;
+    #assert dv_bf16(bits,0)==2 && dv_bf16(bits,1)==-2 && dv_bf16(bits,2)==1 && dv_bf16(bits,3)==3;
+    #assert dv_bf16(0x7f7f,0)==f32_from_bits(0x7f7f0000) && f32_bits(dv_bf16(0x8000000000000000,3))==0x80000000;
+}
+
+// Items of dv_project: 4 rows by 8 tokens by one slice of the columns.
+dv_project_items :: (rows:int,tokens:int,slices:int)->int {
+    if rows<DV_ROWS || tokens<1 || slices<1 || rows%DV_ROWS!=0 {return 0;}
+    return rows/DV_ROWS*((tokens+DV_TOKENS-1)/DV_TOKENS)*slices;
+}
+#test "projection items cover four rows by eight tokens by a slice" {
+    #assert dv_project_items(4,1,1)==1 && dv_project_items(4,8,1)==1 && dv_project_items(4,9,1)==2 && dv_project_items(8,86,3)==66;
+    #assert dv_project_items(6,1,1)==0 && dv_project_items(0,1,1)==0 && dv_project_items(4,0,1)==0 && dv_project_items(-4,1,1)==0;
+    #assert dv_project_items(4,1,0)==0 && dv_project_items(4,1,2)==2;
+}
+
+// The first row and first token of work item `item`; its slice is
+// item % slices. Slices are fastest, so a slice's lanes are neighbours. Four
+// neighbouring row blocks share a token tile, so their lanes read the same
+// activations; the tiles of those blocks follow while their weight rows are
+// still cached. A row count that is not a multiple of 16 takes one block at a
+// time.
+dv_group :: (rows:int)->int {if (rows/DV_ROWS)%4!=0 {return 1;}return 4;}
+dv_row :: (item:int,rows:int,tokens:int,slices:int)->int {
+    tiles:=(tokens+DV_TOKENS-1)/DV_TOKENS;rest:=item/slices;group:=dv_group(rows);
+    return (rest/group/tiles*group+rest%group)*DV_ROWS;
+}
+dv_token :: (item:int,rows:int,tokens:int,slices:int)->int {
+    tiles:=(tokens+DV_TOKENS-1)/DV_TOKENS;
+    return item/slices/dv_group(rows)%tiles*DV_TOKENS;
+}
+#test "work items place slices fastest, then four row blocks, then token tiles" {
+    // 32 rows (8 blocks), 17 tokens (3 tiles), 2 slices.
+    #assert dv_row(0,32,17,2)==0 && dv_token(0,32,17,2)==0;
+    #assert dv_row(1,32,17,2)==0 && dv_token(1,32,17,2)==0;
+    #assert dv_row(2,32,17,2)==4 && dv_token(2,32,17,2)==0;
+    #assert dv_row(7,32,17,2)==12 && dv_token(7,32,17,2)==0;
+    #assert dv_row(8,32,17,2)==0 && dv_token(8,32,17,2)==8;
+    #assert dv_row(23,32,17,2)==12 && dv_token(23,32,17,2)==16;
+    #assert dv_row(24,32,17,2)==16 && dv_token(24,32,17,2)==0;
+    #assert dv_row(47,32,17,2)==28 && dv_token(47,32,17,2)==16;
+    // 16 tokens are exactly two tiles.
+    #assert dv_row(4,16,16,1)==0 && dv_token(4,16,16,1)==8;
+    #assert dv_row(7,16,16,1)==12 && dv_token(7,16,16,1)==8;
+    #assert dv_row(8,32,16,1)==16 && dv_token(8,32,16,1)==0;
+    // 8 rows (two blocks) go one block at a time.
+    #assert dv_row(1,8,17,1)==0 && dv_token(1,8,17,1)==8;
+    #assert dv_row(3,8,17,1)==4 && dv_token(3,8,17,1)==0;
+    #assert dv_row(5,8,17,1)==4 && dv_token(5,8,17,1)==16;
+}
+
+// book:begin project
+// out[t*rows+r] = sum over c of w[r*cols+c]*x[t*cols+c]. w holds four BF16
+// columns (a group) per u64. Slice s of `slices` takes groups s, s+slices,
+// ..., so neighbouring work items read neighbouring bytes. With one slice the
+// item writes out; otherwise it writes partial[(s*tokens+t)*rows+r] for
+// dv_reduce. Ragged token tiles repeat the last token and write nothing.
+dv_project :: (item:int,rows:int,cols:int,tokens:int,slices:int,w:[]u64,x:[]f32,out:[]f32) #export_c {
+    slice:=item%slices;r0:=dv_row(item,rows,tokens,slices);t0:=dv_token(item,rows,tokens,slices);
+    groups:=cols/4;per:=groups/slices;
+    base:[8]int;
+    for t:0..<DV_TOKENS {token:=t0+t;if token>=tokens {token=tokens-1;}base[t]=token*cols;}
+    partial:[32]f32;total:[32]f32;weights:[16]f32;
+    for k:0..<per {
+        g:=k*slices+slice;
+        for r:0..<DV_ROWS {
+            bits:=w[(r0+r)*groups+g];
+            for j:0..<4 {weights[r*4+j]=dv_bf16(bits,j);}
+        }
+        for t:0..<DV_TOKENS {
+            at:=base[t]+4*g;xs:=x[at..<at+4]; // one check for four columns
+            for j:0..<4 {
+                value:=xs[j];
+                for r:0..<DV_ROWS {partial[r*DV_TOKENS+t]+=weights[r*4+j]*value;}
+            }
+        }
+        if (k+1)%DV_GROUPS_PER_CHUNK==0 || k+1==per {
+            for i:0..<32 {total[i]+=partial[i];partial[i]=0;}
+        }
+    }
+    for t:0..<DV_TOKENS {
+        if t0+t<tokens {
+            for r:0..<DV_ROWS {
+                at:=(t0+t)*rows+r0+r;
+                at+=slice*tokens*rows; // slice 0 of 1 writes out itself
+                out[at]=total[r*DV_TOKENS+t];
+            }
+        }
+    }
+}
+// book:end project
+
+// book:begin matvec
+// One token: item row*16+lane sums the groups lane, lane+16, ... of its row,
+// so the 16 lanes of a row read 128 contiguous bytes at a time. It writes
+// partial[lane*rows+row] for dv_reduce with 16 slices.
+dv_matvec :: (item:int,rows:int,cols:int,w:[]u64,x:[]f32,partial:[]f32) #export_c {
+    groups:=cols/4;row:=item/DV_LANES;lane:=item%DV_LANES;per:=groups/DV_LANES;
+    sum:f32=0;total:f32=0;
+    for k:0..<per {
+        g:=k*DV_LANES+lane;bits:=w[row*groups+g];
+        for j:0..<4 {sum+=dv_bf16(bits,j)*x[4*g+j];}
+        if (k+1)%DV_GROUPS_PER_CHUNK==0 || k+1==per {total+=sum;sum=0;}
+    }
+    partial[lane*rows+row]=total;
+}
+// book:end matvec
+
+// book:begin reduce
+// out[i] for i = t*rows+r: the slice partials added in f64, in slice order.
+dv_reduce :: (item:int,count:int,slices:int,partial:[]f32,out:[]f32) #export_c {
+    sum:f64=0;
+    for s:0..<slices {sum+=f64(partial[s*count+item]);}
+    out[item]=f32(sum);
+}
+// book:end reduce
+
+// The CPU runs the same kernels over every item, in reverse order.
+dv_project_run :: (rows:int,cols:int,tokens:int,slices:int,w:[]u64,x:[]f32,out:[]f32,partial:[]f32) {
+    n:=dv_project_items(rows,tokens,slices);
+    if slices==1 {for i:0..<n {dv_project(n-1-i,rows,cols,tokens,1,w,x,out);}return;}
+    for i:0..<n {dv_project(n-1-i,rows,cols,tokens,slices,w,x,partial);}
+    for i:0..<rows*tokens {dv_reduce(rows*tokens-1-i,rows*tokens,slices,partial,out);}
+}
+dv_matvec_run :: (rows:int,cols:int,w:[]u64,x:[]f32,out:[]f32,partial:[]f32) {
+    for i:0..<rows*DV_LANES {dv_matvec(rows*DV_LANES-1-i,rows,cols,w,x,partial);}
+    for i:0..<rows {dv_reduce(rows-1-i,rows,DV_LANES,partial,out);}
+}
+
+#test "small integer projections are exact for every row, token and slicing" {
+    // 16 rows by 64 columns: row r is (r+1) in every column; x[t][c] = t+c.
+    w:[256]u64;
+    ones:=[16]u64.[0x3f80,0x4000,0x4040,0x4080,0x40a0,0x40c0,0x40e0,0x4100,0x4110,0x4120,0x4130,0x4140,0x4150,0x4160,0x4170,0x4180];
+    for r:0..<16 {v:=ones[r];for g:0..<16 {w[16*r+g]=v|(v<<16)|(v<<32)|(v<<48);}}
+    x:[1088]f32;for t:0..<17 {for c:0..<64 {x[t*64+c]=f32(t+c);}}
+    partial:[4352]f32;
+    for slices:1..<5 {
+        if slices!=3 {
+            out:[272]f32;for i:0..<272 {out[i]=-1;}
+            dv_project_run(16,64,17,slices,w[..],x[..],out[..],partial[..]);
+            for t:0..<17 {for r:0..<16 {#assert out[t*16+r]==f32((r+1)*(64*t+2016));}}
+            even:[256]f32;dv_project_run(16,64,16,slices,w[..],x[0..<1024],even[..],partial[..]);
+            for t:0..<16 {for r:0..<16 {#assert even[t*16+r]==f32((r+1)*(64*t+2016));}}
+        }
+    }
+    one:[16]f32;dv_matvec_run(16,64,w[..],x[0..<64],one[..],partial[..]);
+    for r:0..<16 {#assert one[r]==f32((r+1)*2016);}
+    four:[4]f32;dv_project_run(4,64,1,1,w[0..<64],x[0..<64],four[..],partial[..]);
+    for r:0..<4 {#assert four[r]==f32((r+1)*2016);}
+}
+#test "products add in f32 within 256 columns, then across chunks, then slices in f64" {
+    // 4 rows of 1536 BF16 1.0 columns; x[0] = 2^24 and every other x is 1.
+    cols:=1536;w:[1536]u64;for i:0..<1536 {w[i]=0x3f803f803f803f80;}
+    x:[1536]f32;x[0]=16777216;for c:1..<cols {x[c]=1;}
+    partial:[64]f32;
+    // One slice: the first chunk loses its 255 ones and later chunk sums
+    // round at 2^24 in the f32 total: 2^24 + 5 * 256.
+    one:[4]f32;dv_project_run(4,cols,1,1,w[..],x[..],one[..],partial[..]);
+    for r:0..<4 {#assert one[r]==16777216+1280;}
+    // Three slices of 512: the first slice holds 2^24 + 256, the others 512,
+    // and their f64 sum is exact.
+    three:[4]f32;dv_project_run(4,cols,1,3,w[..],x[..],three[..],partial[..]);
+    for r:0..<4 {#assert three[r]==16777216+1280;}
+    // The matvec lanes see groups 0, 16, ...: lane 0 starts at 2^24.
+    rows:[4]f32;mv:[64]f32;x[1]=1;dv_matvec_run(4,cols,w[..],x[..],rows[..],mv[..]);
+    for r:0..<4 {#assert rows[r]==16777216+1440;}
+}
+#test "matvec lanes add in f32 within 256 columns, then across chunks" {
+    // One row of 8192 BF16 1.0 columns: lane 0 has 128 groups, two chunks.
+    w:[2048]u64;for i:0..<2048 {w[i]=0x3f803f803f803f80;}
+    x:[8192]f32;for c:0..<8192 {x[c]=1;}x[0]=16777216;
+    out:[1]f32;partial:[16]f32;dv_matvec_run(1,8192,w[..],x[..],out[..],partial[..]);
+    // Lane 0: the first chunk loses its 255 ones, the second keeps 256; 15 lanes of 512.
+    #assert out[0]==16777216+256+7680 && partial[0]==16777216+256 && partial[15]==512;
+}
+#test "ragged token tiles and row blocks write only their own outputs" {
+    cols:=520;w:[1040]u64;for i:0..<1040 {w[i]=0x3f803f803f803f80;}
+    w[0]=0x4000400040004000;w[1039]=0x4040404040404040;
+    x:[5200]f32;for t:0..<10 {for c:0..<cols {x[t*cols+c]=f32(t+1);}}
+    out:[80]f32;partial:[80]f32;dv_project_run(8,cols,10,1,w[..],x[..],out[..],partial[..]);
+    for t:0..<10 {
+        s:=f32(t+1);
+        #assert out[t*8]==s*f32(cols+4) && out[t*8+7]==s*f32(cols+8);
+        for r:1..<7 {#assert out[t*8+r]==s*f32(cols);}
+    }
+}

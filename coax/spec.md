@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.22.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.23.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -979,6 +979,21 @@ after completion, and cannot reinterpret a live buffer under an incompatible
 layout. The initial Metal emitter only handles scalar f32/bool visual functions;
 native stage wrappers supply vector packing and resource binding. The general
 GPU design in this section remains planned.
+
+`coax cuda` is a second, separate profile: the CUDA compute subset. Its
+admission is the Coax policy `lib/compiler/compute.coax` over the checked
+tree. Each `#export_c` procedure is a kernel that returns nothing and takes
+its `int` work item first; the emitted entry takes an item count and runs
+the procedure once for each item below it, in no defined order. A kernel and
+everything it reaches use only bool, f32, f64, sized integers, fixed arrays of
+at most 1024 scalars and views of numbers (kernel parameters are scalars or
+views of numbers), `if`/`else`, `for` loops and acyclic calls; everything else
+is E0700, and a file without a kernel is E0701. Integer, cast and bounds
+checks keep their meaning and trap the launch. Float operations round once
+each when compiled with `--fmad=false`, so +, -, *, / and sqrt agree with the
+C build bit for bit; other math functions use the device library. A caller
+must give each output element to exactly one work item. Shared memory,
+barriers, atomics and target capability queries are not part of the subset.
 
 ## 16. Builds, iteration and hot reload
 

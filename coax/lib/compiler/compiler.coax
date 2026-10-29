@@ -7,3 +7,4 @@
 #load "sources.coax";
 #load "../proto/fingerprint.coax";
 #load "../proto/importer.coax";
+#load "compute.coax";

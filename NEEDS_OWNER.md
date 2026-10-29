@@ -23,3 +23,15 @@ only the page lags. Either run `coax/web/release.sh` from the Mac now and
 then, or decide whether the Linux host may release. That would need Linux
 goldens or a policy for them, and `COAXIAL_*` set to
 `~/.cache/coax-wasm-toolchain`.
+
+## GPU profiling counters for Psionic CUDA work
+
+Nsight Compute (`~/cuda-13.2/bin/ncu`) refuses this user with
+`ERR_NVGPUCTRPERM`: the NVIDIA driver restricts GPU performance counters to
+administrators. Kernel tuning for Psionic's CUDA chapters (26 and 30) works
+without them, from event timings, but per-kernel occupancy, memory and
+instruction counters need them. Allowing them is a system change: set the
+`nvidia` module option `NVreg_RestrictProfilingToAdminUsers=0` (on NixOS,
+`boot.extraModprobeConfig = "options nvidia NVreg_RestrictProfilingToAdminUsers=0";`)
+and reload the driver or reboot. Decide whether to allow it; nothing is
+blocked if not.

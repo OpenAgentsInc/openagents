@@ -21,6 +21,11 @@ layouts and full shader procedures.
 > the iOS app ships with it. Everything under "Planned" at the end of the
 > chapter (`@gpu` structs, `shader` procedures, WGSL) is design only
 > (spec §15).
+>
+> A separate compute profile, `coax cuda` (0.23.0), compiles `#export_c`
+> kernels with loops, integers, fixed arrays and views to CUDA C. It is
+> described in the spec (§15) and used by the Psionic book's chapters 26 and
+> 30; this chapter stays with the Metal scalar profile.
 
 ## What `coax metal` accepts
 

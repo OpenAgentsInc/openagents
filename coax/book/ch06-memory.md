@@ -1,7 +1,7 @@
 # 6. Arrays, strings, memory and the context
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.22.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.23.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Every value in a program lives somewhere in memory, and somebody decides
 when that memory is reused. In a garbage-collected language you rarely have

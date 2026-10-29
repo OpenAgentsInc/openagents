@@ -1,9 +1,9 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.22.0";
+IMPLEMENTATION_VERSION :: "0.23.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [99]ReleaseFeature.[
+CATALOGUE :: [101]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -96,6 +96,8 @@ CATALOGUE :: [99]ReleaseFeature.[
   ReleaseFeature.{id="borrow.local",section="Capabilities",name="E0383 local-borrow diagnostics",meaning="Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked",status="works",introduced="0.13.0"},
   ReleaseFeature.{id="release.status",section="Capabilities",name="Release/status generation",meaning="Canonical Coax catalogue, CLI status and build/publication drift gate",status="works",introduced="0.14.0"},
   ReleaseFeature.{id="release.provenance",section="Capabilities",name="Compiler build identity",meaning="Checked source and artifact consistency record for site releases; not authentication",status="works",introduced="0.22.0"},
+  ReleaseFeature.{id="target.cuda",section="Capabilities",name="`coax cuda` compute subset",meaning="CUDA C for NVRTC: kernels over an int work item with scalars, bounded fixed arrays, numeric views, for loops and acyclic calls; no shared memory, barriers or atomics yet",status="partial",introduced="0.23.0"},
+  ReleaseFeature.{id="target.linux",section="Capabilities",name="Linux x86-64 C11 host",meaning="Builds, checks and runs on the tested NixOS x86-64 host with GCC; not a release-qualified target",status="partial",introduced="0.23.0"},
   ReleaseFeature.{id="compiler.aggregate-work",section="Capabilities",name="Bounded aggregate traversal",meaning="Independent finite work accounting for evaluated aggregate traversal",status="works",introduced="0.21.0"},
   ReleaseFeature.{id="compiler.string-resources",section="Capabilities",name="Bounded interpreted string snapshots",meaning="Owned cast snapshots with finite live bytes and materialization work",status="works",introduced="0.20.0"},
   ReleaseFeature.{id="tools.mutation-scheduling",section="Capabilities",name="Conservative mutation scheduling",meaning="Runs all mutants with isolated check scheduling and full-run fallback",status="works",introduced="0.19.0"},

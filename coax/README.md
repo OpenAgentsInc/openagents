@@ -1,7 +1,7 @@
 # Coax
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.22.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.23.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Everything Coax lives in this folder, at the root of the openagents repo.
 
@@ -66,6 +66,7 @@ coax/build.sh test
 | `coax header FILE [-o out.h]` | Write the C header for those procedures, with layout assertions |
 | `coax c FILE [--release] [--library [--header out.h]]` | Print the generated C, optionally as a library with its header |
 | `coax metal FILE` | Print the file's f32/bool procedures as Metal Shading Language |
+| `coax cuda FILE` | Print the file's `#export_c` kernels, and what they call, as CUDA C for NVRTC |
 | `coax check FILE` | Typecheck and run compile-time code, without a C compiler |
 | `coax proto PROFILE.pb --prefix Name [-o FILE]` | Generate inspectable Coax types/codecs directly from a descriptor |
 | `coax deps FILE` | Print a checked JSON source/descriptor input inventory |
@@ -226,6 +227,19 @@ apps/openagents-ios/build.sh
   f32 and bool values, `if`/`else`, locals and acyclic calls. Loops, strings,
   integers, f64, `print` and `#foreign` calls are E0377. Native stages bind
   textures and attributes; this is not a general GPU compiler.
+- `coax cuda FILE` emits CUDA C for NVRTC from the same checked tree (the
+  compute subset, `lib/compiler/compute.coax`). Every `#export_c` procedure
+  is a kernel: it returns nothing and its first parameter is its `int` work
+  item; the generated `__global__` entry takes the item count first and runs
+  item `i` once. Values are bool, f32, f64 and sized integers, fixed arrays
+  of at most 1024 scalars and views of numbers; control flow is `if`/`else`,
+  `for` and acyclic calls. Integer and bounds checks are the C build's,
+  ending in a trap instruction. Strings, structs, enums, `while`, `defer`,
+  `#assert`, `print` and `#foreign` calls are E0700. Compile the output with
+  `--fmad=false` so float arithmetic rounds once per operation as in C. There
+  is no shared memory, barrier or atomic yet; the host
+  ([psionic/platform/cuda-host.c](../psionic/platform/cuda-host.c)) loads,
+  binds, launches and waits.
 
 ## Compile-time contract
 

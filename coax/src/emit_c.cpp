@@ -216,6 +216,120 @@ static uint64_t coax_rotl_u64(uint64_t a,uint64_t b){unsigned k=(unsigned)(b&63u
 static uint64_t coax_rotr_u64(uint64_t a,uint64_t b){unsigned k=(unsigned)(b&63u);return (uint64_t)((a>>k)|(a<<((64u-k)&63u)));}
 )COAXRT";
 
+// The device runtime of `coax cuda`: the same checks as RUNTIME, spelled for
+// NVRTC (C++, no libc headers, no overflow builtins). A failed check executes
+// a trap instruction: the launch fails and the host sees the error.
+static const char *CUDA_RUNTIME = R"COAXRT(/* Coax float arithmetic is plain IEEE, one rounding per operation. Compile
+   with --fmad=false (and the default --prec-div=true --prec-sqrt=true
+   --ftz=false) so +, -, *, / and sqrt round exactly as the C build does. */
+typedef signed char int8_t; typedef short int16_t; typedef int int32_t; typedef long long int64_t;
+typedef unsigned char uint8_t; typedef unsigned short uint16_t; typedef unsigned int uint32_t; typedef unsigned long long uint64_t;
+#define INT64_C(x) x##LL
+#define UINT64_C(x) x##ULL
+#define INT64_MIN (-9223372036854775807LL - 1)
+#define INT64_MAX 9223372036854775807LL
+#define UINT64_MAX 18446744073709551615ULL
+#pragma nv_diag_suppress 177
+#define COAX_DEV static __device__ inline
+COAX_DEV void coax_trap(const char *what, int32_t line) { (void)what; (void)line; __trap(); }
+/* Narrow integers are computed in 64 bits and range checked. */
+#define COAX_NARROW_OPS(T, N, LO, HI)                                                                     \
+  COAX_DEV T coax_add_##N(T a, T b, int32_t l) { int64_t r = (int64_t)a + (int64_t)b; if (r < LO || r > HI) coax_trap("integer overflow in '+'", l); return (T)r; } \
+  COAX_DEV T coax_sub_##N(T a, T b, int32_t l) { int64_t r = (int64_t)a - (int64_t)b; if (r < LO || r > HI) coax_trap("integer overflow in '-'", l); return (T)r; } \
+  COAX_DEV T coax_mul_##N(T a, T b, int32_t l) { int64_t r = (int64_t)a * (int64_t)b; if (r < LO || r > HI) coax_trap("integer overflow in '*'", l); return (T)r; } \
+  COAX_DEV T coax_neg_##N(T a, int32_t l) { int64_t r = -(int64_t)a; if (r < LO || r > HI) coax_trap("integer overflow in unary '-'", l); return (T)r; } \
+  COAX_DEV T coax_wadd_##N(T a, T b) { return (T)(uint64_t)((uint64_t)(int64_t)a + (uint64_t)(int64_t)b); }                        \
+  COAX_DEV T coax_wsub_##N(T a, T b) { return (T)(uint64_t)((uint64_t)(int64_t)a - (uint64_t)(int64_t)b); }                        \
+  COAX_DEV T coax_wmul_##N(T a, T b) { return (T)(uint64_t)((uint64_t)(int64_t)a * (uint64_t)(int64_t)b); }                        \
+  COAX_DEV T coax_wneg_##N(T a) { return (T)(uint64_t)(0ULL - (uint64_t)(int64_t)a); }
+#define COAX_SHIFT_DIV_OPS(T, N, SIGNED, MIN)                                                             \
+  COAX_DEV T coax_div_##N(T a, T b, int32_t l) {                                                          \
+    if (b == 0) coax_trap("division by zero", l);                                                       \
+    if (SIGNED && a == MIN && b == (T)-1) coax_trap("integer overflow in '/'", l);                      \
+    return (T)(a / b);                                                                                  \
+  }                                                                                                     \
+  COAX_DEV T coax_mod_##N(T a, T b, int32_t l) {                                                          \
+    if (b == 0) coax_trap("division by zero in '%'", l);                                                \
+    if (SIGNED && b == (T)-1) return 0;                                                                 \
+    return (T)(a % b);                                                                                  \
+  }                                                                                                     \
+  COAX_DEV T coax_shl_##N(T a, int64_t b, int32_t l) {                                                    \
+    if (b < 0 || b >= (int64_t)(8 * sizeof(T))) coax_trap("shift amount out of range", l);              \
+    return (T)((uint64_t)a << b);                                                                       \
+  }                                                                                                     \
+  COAX_DEV T coax_shr_##N(T a, int64_t b, int32_t l) {                                                    \
+    if (b < 0 || b >= (int64_t)(8 * sizeof(T))) coax_trap("shift amount out of range", l);              \
+    return (T)(a >> b);                                                                                 \
+  }
+COAX_NARROW_OPS(int8_t, s8, -128LL, 127LL)
+COAX_NARROW_OPS(int16_t, s16, -32768LL, 32767LL)
+COAX_NARROW_OPS(int32_t, s32, -2147483648LL, 2147483647LL)
+COAX_NARROW_OPS(uint8_t, u8, 0LL, 255LL)
+COAX_NARROW_OPS(uint16_t, u16, 0LL, 65535LL)
+COAX_NARROW_OPS(uint32_t, u32, 0LL, 4294967295LL)
+COAX_DEV int64_t coax_add_s64(int64_t a, int64_t b, int32_t l) { int64_t r = (int64_t)((uint64_t)a + (uint64_t)b); if (((a ^ r) & (b ^ r)) < 0) coax_trap("integer overflow in '+'", l); return r; }
+COAX_DEV int64_t coax_sub_s64(int64_t a, int64_t b, int32_t l) { int64_t r = (int64_t)((uint64_t)a - (uint64_t)b); if (((a ^ b) & (a ^ r)) < 0) coax_trap("integer overflow in '-'", l); return r; }
+COAX_DEV int64_t coax_mul_s64(int64_t a, int64_t b, int32_t l) {
+  int64_t r = (int64_t)((uint64_t)a * (uint64_t)b);
+  if ((a == -1 && b == INT64_MIN) || (b == -1 && a == INT64_MIN) || (a != 0 && (r / a != b))) coax_trap("integer overflow in '*'", l);
+  return r;
+}
+COAX_DEV int64_t coax_neg_s64(int64_t a, int32_t l) { if (a == INT64_MIN) coax_trap("integer overflow in unary '-'", l); return -a; }
+COAX_DEV int64_t coax_wadd_s64(int64_t a, int64_t b) { return (int64_t)((uint64_t)a + (uint64_t)b); }
+COAX_DEV int64_t coax_wsub_s64(int64_t a, int64_t b) { return (int64_t)((uint64_t)a - (uint64_t)b); }
+COAX_DEV int64_t coax_wmul_s64(int64_t a, int64_t b) { return (int64_t)((uint64_t)a * (uint64_t)b); }
+COAX_DEV int64_t coax_wneg_s64(int64_t a) { return (int64_t)(0ULL - (uint64_t)a); }
+COAX_DEV uint64_t coax_add_u64(uint64_t a, uint64_t b, int32_t l) { uint64_t r = a + b; if (r < a) coax_trap("integer overflow in '+'", l); return r; }
+COAX_DEV uint64_t coax_sub_u64(uint64_t a, uint64_t b, int32_t l) { if (b > a) coax_trap("integer overflow in '-'", l); return a - b; }
+COAX_DEV uint64_t coax_mul_u64(uint64_t a, uint64_t b, int32_t l) { uint64_t r = a * b; if (a != 0 && r / a != b) coax_trap("integer overflow in '*'", l); return r; }
+COAX_DEV uint64_t coax_neg_u64(uint64_t a, int32_t l) { if (a != 0) coax_trap("integer overflow in unary '-'", l); return 0; }
+COAX_DEV uint64_t coax_wadd_u64(uint64_t a, uint64_t b) { return a + b; }
+COAX_DEV uint64_t coax_wsub_u64(uint64_t a, uint64_t b) { return a - b; }
+COAX_DEV uint64_t coax_wmul_u64(uint64_t a, uint64_t b) { return a * b; }
+COAX_DEV uint64_t coax_wneg_u64(uint64_t a) { return 0ULL - a; }
+COAX_SHIFT_DIV_OPS(int8_t, s8, 1, (int8_t)-128)
+COAX_SHIFT_DIV_OPS(int16_t, s16, 1, (int16_t)-32768)
+COAX_SHIFT_DIV_OPS(int32_t, s32, 1, (int32_t)(-2147483647 - 1))
+COAX_SHIFT_DIV_OPS(int64_t, s64, 1, INT64_MIN)
+COAX_SHIFT_DIV_OPS(uint8_t, u8, 0, 0)
+COAX_SHIFT_DIV_OPS(uint16_t, u16, 0, 0)
+COAX_SHIFT_DIV_OPS(uint32_t, u32, 0, 0)
+COAX_SHIFT_DIV_OPS(uint64_t, u64, 0, 0)
+/* n is a count, never negative, so one unsigned comparison is the whole check. */
+COAX_DEV int64_t coax_index(int64_t i, int64_t n, int32_t l) { if ((uint64_t)i >= (uint64_t)n) coax_trap("index out of bounds", l); return i; }
+COAX_DEV void coax_slice_check(int64_t lo, int64_t hi, int64_t n, int32_t l) { if ((uint64_t)hi > (uint64_t)n || (uint64_t)lo > (uint64_t)hi) coax_trap("slice out of bounds", l); }
+COAX_DEV int64_t coax_cast_ss(int64_t v, int64_t lo, int64_t hi, int32_t l) { if (v < lo || v > hi) coax_trap("cast out of range", l); return v; }
+COAX_DEV uint64_t coax_cast_su(int64_t v, uint64_t hi, int32_t l) { if (v < 0 || (uint64_t)v > hi) coax_trap("cast out of range", l); return (uint64_t)v; }
+COAX_DEV int64_t coax_cast_us(uint64_t v, int64_t hi, int32_t l) { if (v > (uint64_t)hi) coax_trap("cast out of range", l); return (int64_t)v; }
+COAX_DEV uint64_t coax_cast_uu(uint64_t v, uint64_t hi, int32_t l) { if (v > hi) coax_trap("cast out of range", l); return v; }
+COAX_DEV int64_t coax_ftoi_s(double v, int64_t lo, int64_t hi, int32_t l) {
+  if (!(v >= -9223372036854775808.0 && v < 9223372036854775808.0)) coax_trap("cast out of range", l);
+  int64_t i = (int64_t)v; if (i < lo || i > hi) coax_trap("cast out of range", l); return i;
+}
+COAX_DEV uint64_t coax_ftoi_u(double v, uint64_t hi, int32_t l) {
+  if (!(v > -1.0 && v < 18446744073709551616.0)) coax_trap("cast out of range", l);
+  uint64_t u = (uint64_t)v; if (u > hi) coax_trap("cast out of range", l); return u;
+}
+COAX_DEV float coax_f32_from_bits(uint32_t x) { return __int_as_float((int)x); }
+COAX_DEV double coax_f64_from_bits(uint64_t x) { return __longlong_as_double((long long)x); }
+COAX_DEV uint32_t coax_f32_bits(float f) { return (uint32_t)__float_as_int(f); }
+COAX_DEV uint64_t coax_f64_bits(double f) { return (uint64_t)__double_as_longlong(f); }
+COAX_DEV float coax_to_f32(double v, int32_t l) {
+  if (v == v && v - v == 0.0 && fabs(v) >= 3.4028235677973366e38) coax_trap("cast out of range", l);
+  return (float)v;
+}
+COAX_DEV uint32_t coax_add_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a+b);}
+COAX_DEV uint32_t coax_sub_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a-b);}
+COAX_DEV uint32_t coax_mul_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a*b);}
+COAX_DEV uint32_t coax_rotl_u32(uint32_t a,uint32_t b){unsigned k=(unsigned)(b&31u);return (uint32_t)((a<<k)|(a>>((32u-k)&31u)));}
+COAX_DEV uint32_t coax_rotr_u32(uint32_t a,uint32_t b){unsigned k=(unsigned)(b&31u);return (uint32_t)((a>>k)|(a<<((32u-k)&31u)));}
+COAX_DEV uint64_t coax_add_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a+b);}
+COAX_DEV uint64_t coax_sub_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a-b);}
+COAX_DEV uint64_t coax_mul_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a*b);}
+COAX_DEV uint64_t coax_rotl_u64(uint64_t a,uint64_t b){unsigned k=(unsigned)(b&63u);return (uint64_t)((a<<k)|(a>>((64u-k)&63u)));}
+COAX_DEV uint64_t coax_rotr_u64(uint64_t a,uint64_t b){unsigned k=(unsigned)(b&63u);return (uint64_t)((a>>k)|(a<<((64u-k)&63u)));}
+)COAXRT";
+
 // Uses the named Coax record declared in Types; inserted only when used.
 static const char *WIDE_RUNTIME = R"COAXRT(
 static coax_t_CoaxU64Product coax_mul_wide(uint64_t a,uint64_t b) {
@@ -403,6 +517,7 @@ struct Emitter {
     return name + (e->type == &T_F32 ? "f" : "");
   }
   std::string proc_name(const ProcDecl *p) {
+    if (opts.cuda && p->export_c) return "coax_k_" + to_std(p->name);  // the kernel wrapper keeps the name
     return p->export_c || p->foreign ? to_std(p->name) : "coax_p_" + to_std(p->name);
   }
 
@@ -442,6 +557,7 @@ struct Emitter {
   }
 
   std::string zero_value(Type t) {
+    if (opts.cuda && (t->kind == TypeKind::array || t->kind == TypeKind::view)) return c_type(t) + "{}";
     if (needs_init(t)) return "coax_init_" + tag(t) + "()";
     switch (t->kind) {
       case TypeKind::string_: return "COAX_STR(0, 0)";
@@ -545,6 +661,12 @@ struct Emitter {
           std::string t = buf;
           if (t.find_first_of(".eEn") == std::string::npos) t += ".0";
           return t + "f";
+        }
+        if (opts.cuda && !std::isfinite(e->float_value)) {
+          // NVRTC has no __builtin_nan/inf: spell the bit pattern.
+          bool f32 = e->type == &T_F32, nan = std::isnan(e->float_value), neg = e->float_value < 0;
+          if (f32) return std::string("__int_as_float((int)") + (nan ? "0x7fc00000u" : neg ? "0xff800000u" : "0x7f800000u") + ")";
+          return std::string("__longlong_as_double((long long)") + (nan ? "0x7ff8000000000000ULL" : neg ? "0xfff0000000000000ULL" : "0x7ff0000000000000ULL") + ")";
         }
         return float_text(e->type, e->float_value);
       case ExprKind::bool_lit: return e->int_value ? "1" : "0";
@@ -662,9 +784,9 @@ struct Emitter {
         std::vector<Operand> ops;
         for (const Expr *a : e->args) ops.push_back({a, false});
         return ordered(ops, [&](const std::vector<std::string> &t) {
-          std::string s = "((" + c_type(e->type) + "){{";
+          std::string s = opts.cuda ? c_type(e->type) + "{{" : "((" + c_type(e->type) + "){{";
           for (size_t i = 0; i < t.size(); i++) s += (i ? ", " : "") + t[i];
-          return s + "}})";
+          return s + (opts.cuda ? "}}" : "}})");
         });
       }
       case ExprKind::cast: return cast(e);
@@ -929,6 +1051,14 @@ struct Emitter {
         indent++;
         line(t + " coax_lo" + n + " = " + ex(s->expr) + ";");
         line(t + " coax_hi" + n + " = " + ex(s->expr2) + ";");
+        // CUDA: a loop over constant bounds with at most 128 steps is unrolled,
+        // so fixed arrays indexed by its counter stay in registers.
+        auto literal = [](const Expr *x) -> const Expr * {
+          if (x->kind == ExprKind::ident && x->constant && x->constant->expr) x = x->constant->expr;
+          return x->kind == ExprKind::int_lit ? x : nullptr;
+        };
+        const Expr *lo = literal(s->expr), *hi = literal(s->expr2);
+        if (opts.cuda && lo && hi && (int64_t)hi->int_value - (int64_t)lo->int_value <= 128) line("#pragma unroll");
         line("for (" + t + " " + i + " = coax_lo" + n + "; " + i + " < coax_hi" + n + "; " + i + "++)");
         loop(s->then_);
         indent--;
@@ -975,7 +1105,7 @@ struct Emitter {
   // ---- declarations ----
 
   std::string prototype(const ProcDecl *p, bool header = false) {
-    std::string s = (header || p->export_c ? "" : p->foreign ? "extern " : "static ") + c_type(p->ret) + " " +
+    std::string s = (opts.cuda ? "static __device__ " : header || p->export_c ? "" : p->foreign ? "extern " : "static ") + c_type(p->ret) + " " +
                     proc_name(p) + "(";
     if (p->params.count == 0) s += "void";
     for (int32_t i = 0; i < p->params.count; i++) {
@@ -1230,7 +1360,104 @@ static std::string source_runtime(const File *file) {
   return out+runtime;
 }
 
+// Procedures a CUDA module contains: the kernels (#export_c) and what they
+// call, in declaration order. Checks and their helpers stay on the CPU.
+std::vector<const ProcDecl *> cuda_procs(const File *file) {
+  std::vector<const ProcDecl *> seen;
+  std::function<void(const ProcDecl *)> visit_proc;
+  std::function<void(const Expr *)> visit_expr = [&](const Expr *e) {
+    if (!e) return;
+    if (e->kind == ExprKind::call && e->proc) visit_proc(e->proc);
+    visit_expr(e->lhs); visit_expr(e->rhs); visit_expr(e->third);
+    for (const Expr *a : e->args) visit_expr(a);
+    for (const FieldInit &f : e->fields) visit_expr(f.value);
+  };
+  std::function<void(const Stmt *)> visit_stmt = [&](const Stmt *st) {
+    if (!st) return;
+    visit_expr(st->expr); visit_expr(st->expr2); visit_expr(st->target);
+    for (const Stmt *c : st->body) visit_stmt(c);
+    visit_stmt(st->then_); visit_stmt(st->else_);
+  };
+  visit_proc = [&](const ProcDecl *p) {
+    for (const ProcDecl *q : seen) if (q == p) return;
+    seen.push_back(p);
+    visit_stmt(p->body);
+  };
+  for (const ProcDecl *p : file->procs) if (p->export_c && !p->foreign) visit_proc(p);
+  std::vector<const ProcDecl *> ordered;
+  for (const ProcDecl *p : file->procs)
+    for (const ProcDecl *q : seen) if (q == p) { ordered.push_back(p); break; }
+  return ordered;
+}
+
+static std::string emit_cuda(const File *file, const EmitOptions &opts) {
+  Emitter em{file, opts};
+  std::vector<const ProcDecl *> procs = cuda_procs(file);
+  std::string functions;
+  for (const ProcDecl *p : procs) functions += em.function(p);
+  // The array and view types those procedures use, in dependency order.
+  std::vector<Type> used;
+  auto add = [&](Type t) {
+    if (t->kind != TypeKind::array && t->kind != TypeKind::view) return;
+    for (Type u : used) if (u == t) return;
+    used.push_back(t);
+  };
+  std::function<void(const Expr *)> types_expr = [&](const Expr *e) {
+    if (!e) return;
+    add(e->type);
+    types_expr(e->lhs); types_expr(e->rhs); types_expr(e->third);
+    for (const Expr *a : e->args) types_expr(a);
+  };
+  std::function<void(const Stmt *)> types_stmt = [&](const Stmt *st) {
+    if (!st) return;
+    add(st->type);
+    types_expr(st->expr); types_expr(st->expr2); types_expr(st->target);
+    if (st->expr) add(st->expr->type);
+    for (const Stmt *c : st->body) types_stmt(c);
+    types_stmt(st->then_); types_stmt(st->else_);
+  };
+  for (const ProcDecl *p : procs) {
+    add(p->ret);
+    for (const Param &prm : p->params) add(prm.type);
+    types_stmt(p->body);
+  }
+  TypeWriter types;
+  for (Type t : all_composite_types())
+    for (Type u : used) if (u == t) { types.need(t); break; }
+  std::string helpers;
+  for (Type t : types.done) {
+    if (t->kind != TypeKind::view) continue;
+    std::string c = c_type(t), e = c_type(t->elem), tg = tag(t);
+    helpers += "COAX_DEV " + e + " *coax_elem_" + tg + "(" + c + " v, int64_t i, int32_t l) { return &v.data[coax_index(i, v.count, l)]; }\n";
+    helpers += "COAX_DEV " + c + " coax_mkview_" + tg + "(" + e + " *data, int64_t n, int64_t lo, int64_t hi, int32_t l) {\n"
+               "  coax_slice_check(lo, hi, n, l);\n  " + c + " r = {data + lo, hi - lo};\n  return r;\n}\n";
+    helpers += "COAX_DEV " + c + " coax_reslice_" + tg + "(" + c + " v, int64_t lo, int64_t hi, int32_t l) {\n"
+               "  coax_slice_check(lo, hi, v.count, l);\n  " + c + " r = {v.data + lo, hi - lo};\n  return r;\n}\n";
+  }
+  std::string s = "/* Generated by coax0 from " + file->src->path + " (coax cuda). Do not edit: change the .coax file. */\n";
+  s += CUDA_RUNTIME;
+  s += "\n/* Types */\n" + types.out + helpers + "\n";
+  for (const ProcDecl *p : procs) s += em.prototype(p) + ";\n";
+  s += functions;
+  // One entry per kernel: work item i of n runs the procedure once.
+  s += "\n/* Kernels: launch with n items; item i calls the procedure with i. */\n";
+  for (const ProcDecl *p : procs) {
+    if (!p->export_c) continue;
+    std::string w = "extern \"C\" __global__ void " + to_std(p->name) + "(int64_t coax_items";
+    std::string call = em.proc_name(p) + "(coax_item";
+    for (int32_t i = 1; i < p->params.count; i++) {
+      w += ", " + c_type(p->params[i].type) + " " + em.local_name(p->params[i].name);
+      call += ", " + em.local_name(p->params[i].name);
+    }
+    s += w + ") {\n  int64_t coax_item = (int64_t)blockIdx.x * (int64_t)blockDim.x + (int64_t)threadIdx.x;\n"
+         "  if (coax_item >= coax_items) return;\n  " + call + ");\n}\n";
+  }
+  for (size_t at = 0; (at = s.find("_Bool", at)) != std::string::npos;) s.replace(at, 5, "bool");
+  return s;
+}
+
 std::string emit_c(const File *file, const EmitOptions &opts) {
+  if (opts.cuda) return emit_cuda(file, opts);
   Emitter em{file, opts};
   std::string functions;
   for (const ProcDecl *p : file->procs) functions += em.function(p);

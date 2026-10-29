@@ -426,6 +426,7 @@ struct File {
   bool authority = false;  // at least one authored unit requires checked execution
   bool library = false;  // set by the driver: no C main, main optional
   bool metal = false;    // checked against the Metal scalar profile
+  bool cuda = false;     // checked against the CUDA compute subset
 };
 
 bool parse(Arena *arena, const Source *src, const std::vector<Token> &tokens, File *out, bool development = true);
@@ -447,6 +448,7 @@ struct EmitOptions {
   bool release = false;  // release: integer overflow wraps; debug: it traps
   bool library = false;  // no C main; #export_c procedures are the interface
   bool metal = false;    // Metal Shading Language instead of C
+  bool cuda = false;     // CUDA C for NVRTC: the compute subset (lib/compiler/compute.coax)
 };
 std::string emit_c(const File *file, const EmitOptions &opts);
 // A C header for the file's #export_c procedures and the types they use,
