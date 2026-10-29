@@ -1,0 +1,447 @@
+// The art styles' presets (docs/verse/art-styles.md, Presets): every number a
+// style gives, as one record a realm reads with verse_style_preset(style,
+// tier) and evaluates at its clock with verse_style_at(preset, clock, out),
+// which fills the STYLE_FLOATS uniform block (32 vec4f) its WGSL reads. The
+// shading functions that use those numbers are verse/style.coax (loaded
+// here so the checks below can run them on a preset's own numbers); they are
+// a separate file because wgsl.py lowers only the Metal scalar profile.
+//
+// What changes through the day is a StyleKey at each of four clock keys:
+// midnight (0), dawn (0.25), noon (0.5) and dusk (0.75); verse_style_at is
+// linear between them. Where the spec gives one value for "dusk/dawn", both
+// keys take it. A few values the spec leaves open (dusk ambient, dusk
+// exposure and shaft weight, the clouds' lit top away from noon) are
+// between its day and night numbers and marked "between" below.
+//
+//   coax/bin/coax test verse/style-preset.coax
+#load "style.coax";
+
+STYLE_LOWPOLY :: 0;
+STYLE_PAINTERLY :: 1;
+STYLE_PHOTOREAL :: 2;
+STYLE_DESKTOP :: 0;
+STYLE_PHONE :: 1;
+STYLE_KEYS :: 4;            // midnight, dawn, noon, dusk
+STYLE_FLOATS :: 128;        // 32 vec4f
+
+// ---- the uniform block (a realm's StyleU), in floats from its start; a row is a vec4f
+SU_KEY :: 0;                // key colour rgb, key strength
+SU_KEY_DIR :: 4;            // the key light's direction (toward it) xyz, 1 when it is the moon
+SU_RIM :: 8;                // rim colour rgb, world rim strength (the night's 0.6 applied)
+SU_RIM2 :: 12;              // character rim strength, N.V where it starts, N.V where it is full, 0
+SU_TINT :: 16;              // shadow tint rgb, blob (contact) shadow strength
+SU_SKY_AMB :: 20;           // ambient from the sky rgb, ambient scale
+SU_GROUND_AMB :: 24;        // ambient from the ground rgb, 0
+SU_BANDS :: 28;             // edge 0, edge 1, softness, the mid band's value
+SU_BANDS2 :: 32;            // characters' edge, its softness, the dab's R.L cut, the dab's strength
+SU_HAZE :: 36;              // start (m), density (1/m, the tier's applied), cap, height falloff (m)
+SU_HAZE_COLOUR :: 40;       // haze colour rgb, how much the height thins it (0.6)
+SU_HAZE_KEY :: 44;          // the key light seen through the haze rgb, its glow (0.45)
+SU_ZENITH :: 48;            // sky zenith rgb, the horizon band's lift toward the haze
+SU_HORIZON :: 52;           // sky horizon rgb, the gradient's power (0.55)
+SU_SUN :: 56;               // the disc's radius (rad), halo k near, halo k wide, stars (0 to 1)
+SU_CLOUDS :: 60;            // cover (0 to 0.6), height (m), drift (m/s), octaves
+SU_CLOUDS2 :: 64;           // first scale (1/m), second scale (1/m), cut low, cut high
+SU_CLOUD_TOP :: 68;         // the clouds' lit top rgb, the underside's shadow tint factor
+SU_TONE :: 72;              // exposure, saturation, black lift, 1 when the post pass tones
+SU_BLOOM :: 76;             // threshold, soft knee, mix, 0
+SU_SHAFTS :: 80;            // samples, decay, weight, the frame-edge margin
+SU_SHADOW :: 84;            // shadow map size (texels), PCF taps, PCF radius (texels), 0
+SU_GRASS :: 88;             // blades per m2, radius (m), fade (m), least height (m)
+SU_GRASS2 :: 92;            // most height (m), base width (m), the tip's lift, hue jitter
+SU_WIND :: 96;              // bend amplitude (rad), wavelength (m), speed (m/s), gust scale (1/m)
+SU_WIND2 :: 100;            // wind direction x, z, the bent normal's most tilt (rad), parting radius (m)
+SU_FOLIAGE :: 104;          // canopy normal mix, sway (m), 0, 0
+SU_WATER_SHALLOW :: 108;    // shallow rgb, the shallow band's depth (m)
+SU_WATER_MID :: 112;        // mid rgb, the mid band's depth (m)
+SU_WATER_DEEP :: 116;       // deep rgb, each edge's softness (m)
+SU_SPARKLE :: 120;          // sparkle grid (m), within (rad) of the light, twinkle (s), foam line (m)
+SU_STYLE :: 124;            // outline's most strength, the style, the tier, the clock
+
+DEG :: 0.017453292;
+
+StyleKey :: struct {
+  key_r: f32; key_g: f32; key_b: f32; key_strength: f32;
+  rim_r: f32; rim_g: f32; rim_b: f32; rim_scale: f32;          // rim colour; its share of the rim strengths
+  tint_r: f32; tint_g: f32; tint_b: f32;
+  sky_r: f32; sky_g: f32; sky_b: f32; ambient: f32;            // ambient sky colour and scale
+  ground_r: f32; ground_g: f32; ground_b: f32;
+  haze_start: f32; haze_density: f32; haze_cap: f32; haze_falloff: f32;
+  haze_r: f32; haze_g: f32; haze_b: f32;
+  hkey_r: f32; hkey_g: f32; hkey_b: f32;                       // the key light in the haze
+  zenith_r: f32; zenith_g: f32; zenith_b: f32;
+  horizon_r: f32; horizon_g: f32; horizon_b: f32;
+  cloud_r: f32; cloud_g: f32; cloud_b: f32;
+  exposure: f32; shaft_weight: f32;
+}
+
+StylePreset :: struct {
+  style: int; tier: int;
+  ok: bool;                   // false: the style has no preset yet (photoreal)
+  keys: [STYLE_KEYS] StyleKey;
+  // shading
+  band_e0: f32; band_e1: f32; band_soft: f32; band_mid: f32;
+  char_edge: f32; char_soft: f32; dab_cut: f32; dab_strength: f32;
+  rim_world: f32; rim_char: f32; rim_start: f32; rim_full: f32;
+  blob: f32;
+  // light through the day
+  sun_azimuth: f32;           // rad about +y from +z
+  sun_low: f32; sun_high: f32; // the sun's elevation at midnight and noon (rad)
+  moon_below: f32;            // the moon is the key while the sun is below this (rad)
+  // haze and sky
+  haze_height_mix: f32; haze_glow: f32; haze_tier: f32;
+  sky_lift: f32; sky_power: f32;
+  sun_disc: f32; halo_near: f32; halo_wide: f32;
+  cloud_cover: f32; cloud_height: f32; cloud_drift: f32; cloud_octaves: f32;
+  cloud_scale1: f32; cloud_scale2: f32; cloud_cut_lo: f32; cloud_cut_hi: f32; cloud_under: f32;
+  // post
+  toned: f32; saturation: f32; black_lift: f32;
+  bloom_threshold: f32; bloom_knee: f32; bloom_mix: f32;
+  shaft_samples: f32; shaft_decay: f32; shaft_margin: f32;
+  shadow_size: f32; shadow_taps: f32; shadow_radius: f32;
+  // grass and foliage
+  grass_density: f32; grass_radius: f32; grass_fade: f32; grass_low: f32; grass_high: f32;
+  grass_width: f32; grass_tip: f32; grass_jitter: f32;
+  wind_amp: f32; wind_wavelength: f32; wind_speed: f32; wind_gust: f32;
+  wind_x: f32; wind_z: f32; wind_tilt: f32; parting: f32;
+  canopy_mix: f32; sway: f32;
+  // water (the painted preset)
+  shallow_r: f32; shallow_g: f32; shallow_b: f32; shallow_depth: f32;
+  mid_r: f32; mid_g: f32; mid_b: f32; mid_depth: f32;
+  deep_r: f32; deep_g: f32; deep_b: f32; water_soft: f32;
+  sparkle_grid: f32; sparkle_angle: f32; twinkle: f32; foam_line: f32;
+  // outlines
+  outline_max: f32;
+}
+
+sk_light :: (kr: f32, kg: f32, kb: f32, ks: f32, rr: f32, rg: f32, rb: f32, rs: f32) -> StyleKey {
+  k: StyleKey;
+  k.key_r = kr; k.key_g = kg; k.key_b = kb; k.key_strength = ks;
+  k.rim_r = rr; k.rim_g = rg; k.rim_b = rb; k.rim_scale = rs;
+  return k;
+}
+
+// Painterly's keys (sections 2 to 6, 9 and 13 of the spec).
+painterly_key :: (i: int) -> StyleKey {
+  k: StyleKey;
+  night := i == 0; day := i == 2;
+  if night {
+    // the moon is the key: (0.62, 0.70, 0.95) at 0.35; its rim is silver at 0.6 of the strength
+    k = sk_light(0.62, 0.70, 0.95, 0.35, 0.70, 0.78, 0.95, 0.6);
+    k.tint_r = 0.36; k.tint_g = 0.42; k.tint_b = 0.70;
+    k.sky_r = 0.14; k.sky_g = 0.18; k.sky_b = 0.34; k.ambient = 1.0;
+    k.ground_r = 0.06; k.ground_g = 0.06; k.ground_b = 0.08;
+    k.haze_start = 12; k.haze_density = 0.016; k.haze_cap = 0.85; k.haze_falloff = 40;
+    k.haze_r = 0.10; k.haze_g = 0.14; k.haze_b = 0.27;
+    k.hkey_r = 0.40; k.hkey_g = 0.48; k.hkey_b = 0.70;
+    k.zenith_r = 0.012; k.zenith_g = 0.018; k.zenith_b = 0.05;
+    k.horizon_r = 0.10; k.horizon_g = 0.14; k.horizon_b = 0.27;
+    k.cloud_r = 0.30; k.cloud_g = 0.34; k.cloud_b = 0.46;           // between
+    k.exposure = 2.4; k.shaft_weight = 0.10;
+  } else if day {
+    k = sk_light(1.00, 0.95, 0.85, 1.0, 1.00, 0.84, 0.60, 1.0);
+    k.tint_r = 0.52; k.tint_g = 0.58; k.tint_b = 0.86;
+    k.sky_r = 0.55; k.sky_g = 0.66; k.sky_b = 0.84; k.ambient = 0.55;
+    k.ground_r = 0.45; k.ground_g = 0.40; k.ground_b = 0.30;
+    k.haze_start = 20; k.haze_density = 0.011; k.haze_cap = 0.88; k.haze_falloff = 60;
+    k.haze_r = 0.56; k.haze_g = 0.74; k.haze_b = 0.90;
+    k.hkey_r = 1.00; k.hkey_g = 0.90; k.hkey_b = 0.72;
+    k.zenith_r = 0.24; k.zenith_g = 0.48; k.zenith_b = 0.86;
+    k.horizon_r = 0.56; k.horizon_g = 0.74; k.horizon_b = 0.90;
+    k.cloud_r = 1.0; k.cloud_g = 0.98; k.cloud_b = 0.95;
+    k.exposure = 1.6; k.shaft_weight = 0.22;
+  } else {
+    // dawn and dusk
+    k = sk_light(1.00, 0.72, 0.48, 0.75, 1.00, 0.70, 0.45, 1.0);
+    k.tint_r = 0.58; k.tint_g = 0.48; k.tint_b = 0.82;
+    k.sky_r = 0.42; k.sky_g = 0.44; k.sky_b = 0.62; k.ambient = 0.55;  // between
+    k.ground_r = 0.30; k.ground_g = 0.26; k.ground_b = 0.22;           // between
+    k.haze_start = 20; k.haze_density = 0.013; k.haze_cap = 0.88; k.haze_falloff = 50;
+    k.haze_r = 0.78; k.haze_g = 0.66; k.haze_b = 0.74;
+    k.hkey_r = 1.00; k.hkey_g = 0.62; k.hkey_b = 0.40;
+    k.zenith_r = 0.20; k.zenith_g = 0.24; k.zenith_b = 0.52;
+    k.horizon_r = 0.95; k.horizon_g = 0.62; k.horizon_b = 0.48;
+    k.cloud_r = 1.0; k.cloud_g = 0.80; k.cloud_b = 0.66;              // between
+    k.exposure = 2.0; k.shaft_weight = 0.16;                          // between
+  }
+  return k;
+}
+
+// Lowpoly: what the realms draw today, as numbers. One light term (no bands:
+// both edges at 0 so every lit surface is "lit"), a light distance fog, no
+// post pass, outlines allowed.
+lowpoly_key :: () -> StyleKey {
+  k: StyleKey;
+  k = sk_light(1.0, 1.0, 1.0, 0.9, 1.0, 1.0, 1.0, 0.0);
+  k.tint_r = 1.0; k.tint_g = 1.0; k.tint_b = 1.0;
+  k.sky_r = 0.62; k.sky_g = 0.62; k.sky_b = 0.62; k.ambient = 1.0;
+  k.ground_r = 0.30; k.ground_g = 0.30; k.ground_b = 0.30;
+  k.haze_start = 40; k.haze_density = 0.012; k.haze_cap = 0.92; k.haze_falloff = 1000;
+  k.haze_r = 0.80; k.haze_g = 0.86; k.haze_b = 0.90;
+  k.hkey_r = 0.80; k.hkey_g = 0.86; k.hkey_b = 0.90;
+  k.zenith_r = 0.36; k.zenith_g = 0.56; k.zenith_b = 0.80;
+  k.horizon_r = 0.80; k.horizon_g = 0.86; k.horizon_b = 0.90;
+  k.cloud_r = 1.0; k.cloud_g = 1.0; k.cloud_b = 1.0;
+  k.exposure = 1.0; k.shaft_weight = 0.0;
+  return k;
+}
+
+/** The preset of `style` (STYLE_LOWPOLY, STYLE_PAINTERLY, STYLE_PHOTOREAL) for
+ *  `tier` (STYLE_DESKTOP, STYLE_PHONE). Photoreal has none yet: ok is false. */
+verse_style_preset :: (style: int, tier: int) -> StylePreset {
+  p: StylePreset;
+  p.style = style; p.tier = ifx tier == STYLE_PHONE then STYLE_PHONE else STYLE_DESKTOP;
+  phone := p.tier == STYLE_PHONE;
+  if style != STYLE_LOWPOLY && style != STYLE_PAINTERLY { p.ok = false; return p; }
+  p.ok = true;
+  paint := style == STYLE_PAINTERLY;
+  for i: 0..<STYLE_KEYS { p.keys[i] = ifx paint then painterly_key(i) else lowpoly_key(); }
+  p.sun_azimuth = 0.6; p.sun_low = -20 * DEG; p.sun_high = 60 * DEG; p.moon_below = -6 * DEG;
+  p.rim_start = 0.38; p.rim_full = 0.12;
+  if paint {
+    p.band_e0 = 0.20; p.band_e1 = 0.58; p.band_soft = 0.06; p.band_mid = 0.55;
+    p.char_edge = 0.40; p.char_soft = 0.08; p.dab_cut = 0.92; p.dab_strength = 0.35;
+    p.rim_world = 0.30; p.rim_char = 0.45; p.blob = 0.35;
+    p.haze_height_mix = 0.6; p.haze_glow = 0.45; p.haze_tier = ifx phone then 1.25 else 1.0;
+    p.sky_lift = 0.15; p.sky_power = 0.55;
+    p.sun_disc = 1.0 * DEG; p.halo_near = 900; p.halo_wide = 60;    // drawn at 2 degrees across
+    p.cloud_cover = 0.35; p.cloud_height = 1500; p.cloud_drift = 3; p.cloud_octaves = ifx phone then 1.0 else 2.0;
+    p.cloud_scale1 = 1.0 / 2000.0; p.cloud_scale2 = 1.0 / 700.0; p.cloud_cut_lo = 0.48; p.cloud_cut_hi = 0.62; p.cloud_under = 1.4;
+    p.toned = 1; p.saturation = 1.10; p.black_lift = 0.035;
+    p.bloom_threshold = 0.85; p.bloom_knee = 0.25; p.bloom_mix = ifx phone then 0.22 else 0.30;
+    p.shaft_samples = ifx phone then 12.0 else 24.0; p.shaft_decay = 0.94; p.shaft_margin = 0.35;
+    p.shadow_size = ifx phone then 1024.0 else 2048.0; p.shadow_taps = ifx phone then 4.0 else 9.0; p.shadow_radius = 2.5;
+    p.grass_density = ifx phone then 8.0 else 24.0; p.grass_radius = ifx phone then 18.0 else 32.0; p.grass_fade = 6;
+    p.grass_low = 0.35; p.grass_high = 0.60; p.grass_width = 0.06; p.grass_tip = 0.15; p.grass_jitter = 0.04;
+    p.wind_amp = 0.30; p.wind_wavelength = 12; p.wind_speed = 3; p.wind_gust = 1.0 / 25.0;
+    p.wind_x = 0.8; p.wind_z = 0.6; p.wind_tilt = 20 * DEG; p.parting = 0.7;
+    p.canopy_mix = 0.85; p.sway = 0.05;
+    p.shallow_r = 0.30; p.shallow_g = 0.72; p.shallow_b = 0.74; p.shallow_depth = 0.4;
+    p.mid_r = 0.10; p.mid_g = 0.45; p.mid_b = 0.55; p.mid_depth = 1.5;
+    p.deep_r = 0.05; p.deep_g = 0.22; p.deep_b = 0.36; p.water_soft = 0.15;
+    p.sparkle_grid = ifx phone then 0.25 else 0.15; p.sparkle_angle = 4 * DEG; p.twinkle = 0.3; p.foam_line = 0.25;
+    p.outline_max = 0.35;
+  } else {
+    p.band_e0 = 0; p.band_e1 = 0; p.band_soft = 0; p.band_mid = 1;
+    p.char_edge = 0; p.char_soft = 0; p.dab_cut = 2; p.dab_strength = 0;
+    p.blob = 0.5; p.haze_height_mix = 0; p.haze_tier = 1; p.sky_power = 1;
+    p.shadow_size = 0; p.outline_max = 1;
+  }
+  return p;
+}
+
+// The sun's elevation at `clock` (0 midnight, 0.5 noon): sun_low at midnight to sun_high at noon.
+verse_style_sun_elevation :: (p: StylePreset, clock: f32) -> f32 {
+  return 0.5 * (p.sun_low + p.sun_high) - 0.5 * (p.sun_high - p.sun_low) * cos(6.2831853 * clock);
+}
+
+lerp_f :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
+put4 :: (out: [] f32, at: int, a: f32, b: f32, c: f32, d: f32) { out[at] = a; out[at + 1] = b; out[at + 2] = c; out[at + 3] = d; }
+
+// The keys around `clock`, mixed: key i to key i+1 (wrapping) by t.
+style_key_at :: (p: StylePreset, clock: f32) -> StyleKey {
+  c := clock - floor(clock);
+  q := c * 4.0;
+  i := cast(int) floor(q);
+  if i > 3 { i = 3; }
+  t := q - cast(f32) i;
+  a := p.keys[i]; b := p.keys[(i + 1) % 4];
+  k: StyleKey;
+  k.key_r = lerp_f(a.key_r, b.key_r, t); k.key_g = lerp_f(a.key_g, b.key_g, t); k.key_b = lerp_f(a.key_b, b.key_b, t);
+  k.key_strength = lerp_f(a.key_strength, b.key_strength, t);
+  k.rim_r = lerp_f(a.rim_r, b.rim_r, t); k.rim_g = lerp_f(a.rim_g, b.rim_g, t); k.rim_b = lerp_f(a.rim_b, b.rim_b, t);
+  k.rim_scale = lerp_f(a.rim_scale, b.rim_scale, t);
+  k.tint_r = lerp_f(a.tint_r, b.tint_r, t); k.tint_g = lerp_f(a.tint_g, b.tint_g, t); k.tint_b = lerp_f(a.tint_b, b.tint_b, t);
+  k.sky_r = lerp_f(a.sky_r, b.sky_r, t); k.sky_g = lerp_f(a.sky_g, b.sky_g, t); k.sky_b = lerp_f(a.sky_b, b.sky_b, t);
+  k.ambient = lerp_f(a.ambient, b.ambient, t);
+  k.ground_r = lerp_f(a.ground_r, b.ground_r, t); k.ground_g = lerp_f(a.ground_g, b.ground_g, t); k.ground_b = lerp_f(a.ground_b, b.ground_b, t);
+  k.haze_start = lerp_f(a.haze_start, b.haze_start, t); k.haze_density = lerp_f(a.haze_density, b.haze_density, t);
+  k.haze_cap = lerp_f(a.haze_cap, b.haze_cap, t); k.haze_falloff = lerp_f(a.haze_falloff, b.haze_falloff, t);
+  k.haze_r = lerp_f(a.haze_r, b.haze_r, t); k.haze_g = lerp_f(a.haze_g, b.haze_g, t); k.haze_b = lerp_f(a.haze_b, b.haze_b, t);
+  k.hkey_r = lerp_f(a.hkey_r, b.hkey_r, t); k.hkey_g = lerp_f(a.hkey_g, b.hkey_g, t); k.hkey_b = lerp_f(a.hkey_b, b.hkey_b, t);
+  k.zenith_r = lerp_f(a.zenith_r, b.zenith_r, t); k.zenith_g = lerp_f(a.zenith_g, b.zenith_g, t); k.zenith_b = lerp_f(a.zenith_b, b.zenith_b, t);
+  k.horizon_r = lerp_f(a.horizon_r, b.horizon_r, t); k.horizon_g = lerp_f(a.horizon_g, b.horizon_g, t); k.horizon_b = lerp_f(a.horizon_b, b.horizon_b, t);
+  k.cloud_r = lerp_f(a.cloud_r, b.cloud_r, t); k.cloud_g = lerp_f(a.cloud_g, b.cloud_g, t); k.cloud_b = lerp_f(a.cloud_b, b.cloud_b, t);
+  k.exposure = lerp_f(a.exposure, b.exposure, t); k.shaft_weight = lerp_f(a.shaft_weight, b.shaft_weight, t);
+  return k;
+}
+
+/** The preset at `clock` (0 midnight, 0.25 dawn, 0.5 noon, 0.75 dusk; wraps)
+ *  into `out` (at least STYLE_FLOATS): the realm copies it into its uniforms
+ *  as one block. False, and nothing written, for a preset that isn't ok. */
+verse_style_at :: (p: StylePreset, clock: f32, out: [] f32) -> bool {
+  if !p.ok || out.count < STYLE_FLOATS { return false; }
+  for i: 0..<STYLE_FLOATS { out[i] = 0; }
+  k := style_key_at(p, clock);
+  e := verse_style_sun_elevation(p, clock);
+  moon := e < p.moon_below;
+  // the key's direction: the sun, or below moon_below the moon opposite it (a realm with a real moon puts its own)
+  sx := cos(e) * sin(p.sun_azimuth); sy := sin(e); sz := cos(e) * cos(p.sun_azimuth);
+  if moon { sx = -sx; sy = -sy; sz = -sz; }
+  put4(out, SU_KEY, k.key_r, k.key_g, k.key_b, k.key_strength);
+  put4(out, SU_KEY_DIR, sx, sy, sz, ifx moon then 1.0 else 0.0);
+  put4(out, SU_RIM, k.rim_r, k.rim_g, k.rim_b, p.rim_world * k.rim_scale);
+  put4(out, SU_RIM2, p.rim_char * k.rim_scale, p.rim_start, p.rim_full, 0);
+  put4(out, SU_TINT, k.tint_r, k.tint_g, k.tint_b, p.blob);
+  put4(out, SU_SKY_AMB, k.sky_r, k.sky_g, k.sky_b, k.ambient);
+  put4(out, SU_GROUND_AMB, k.ground_r, k.ground_g, k.ground_b, 0);
+  put4(out, SU_BANDS, p.band_e0, p.band_e1, p.band_soft, p.band_mid);
+  put4(out, SU_BANDS2, p.char_edge, p.char_soft, p.dab_cut, p.dab_strength);
+  put4(out, SU_HAZE, k.haze_start, k.haze_density * p.haze_tier, k.haze_cap, k.haze_falloff);
+  put4(out, SU_HAZE_COLOUR, k.haze_r, k.haze_g, k.haze_b, p.haze_height_mix);
+  put4(out, SU_HAZE_KEY, k.hkey_r, k.hkey_g, k.hkey_b, p.haze_glow);
+  put4(out, SU_ZENITH, k.zenith_r, k.zenith_g, k.zenith_b, p.sky_lift);
+  put4(out, SU_HORIZON, k.horizon_r, k.horizon_g, k.horizon_b, p.sky_power);
+  stars := st_sat((p.moon_below - e) / (6 * DEG));
+  put4(out, SU_SUN, p.sun_disc, p.halo_near, p.halo_wide, stars);
+  put4(out, SU_CLOUDS, p.cloud_cover, p.cloud_height, p.cloud_drift, p.cloud_octaves);
+  put4(out, SU_CLOUDS2, p.cloud_scale1, p.cloud_scale2, p.cloud_cut_lo, p.cloud_cut_hi);
+  put4(out, SU_CLOUD_TOP, k.cloud_r, k.cloud_g, k.cloud_b, p.cloud_under);
+  put4(out, SU_TONE, k.exposure, p.saturation, p.black_lift, p.toned);
+  put4(out, SU_BLOOM, p.bloom_threshold, p.bloom_knee, p.bloom_mix, 0);
+  put4(out, SU_SHAFTS, p.shaft_samples, p.shaft_decay, k.shaft_weight, p.shaft_margin);
+  put4(out, SU_SHADOW, p.shadow_size, p.shadow_taps, p.shadow_radius, 0);
+  put4(out, SU_GRASS, p.grass_density, p.grass_radius, p.grass_fade, p.grass_low);
+  put4(out, SU_GRASS2, p.grass_high, p.grass_width, p.grass_tip, p.grass_jitter);
+  put4(out, SU_WIND, p.wind_amp, p.wind_wavelength, p.wind_speed, p.wind_gust);
+  put4(out, SU_WIND2, p.wind_x, p.wind_z, p.wind_tilt, p.parting);
+  put4(out, SU_FOLIAGE, p.canopy_mix, p.sway, 0, 0);
+  put4(out, SU_WATER_SHALLOW, p.shallow_r, p.shallow_g, p.shallow_b, p.shallow_depth);
+  put4(out, SU_WATER_MID, p.mid_r, p.mid_g, p.mid_b, p.mid_depth);
+  put4(out, SU_WATER_DEEP, p.deep_r, p.deep_g, p.deep_b, p.water_soft);
+  put4(out, SU_SPARKLE, p.sparkle_grid, p.sparkle_angle, p.twinkle, p.foam_line);
+  put4(out, SU_STYLE, p.outline_max, cast(f32) p.style, cast(f32) p.tier, clock - floor(clock));
+  return true;
+}
+
+// The numbers that change through the day, for the checks.
+STYLE_KEYED :: 24;
+STYLE_KEYED_AT :: [STYLE_KEYED] int.[SU_KEY, SU_KEY + 1, SU_KEY + 2, SU_KEY + 3, SU_RIM, SU_RIM + 1, SU_RIM + 2, SU_RIM + 3, SU_TINT, SU_TINT + 2,
+  SU_SKY_AMB, SU_SKY_AMB + 3, SU_GROUND_AMB, SU_HAZE, SU_HAZE + 1, SU_HAZE + 2, SU_HAZE + 3, SU_HAZE_COLOUR,
+  SU_HAZE_KEY + 1, SU_ZENITH, SU_HORIZON + 1, SU_CLOUD_TOP + 2, SU_TONE, SU_SHAFTS + 2];
+near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
+
+#test "the painterly preset holds the spec's shading numbers" {
+  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  #assert p.ok;
+  #assert p.band_e0 == 0.20 && p.band_e1 == 0.58 && p.band_soft == 0.06 && p.band_mid == 0.55;
+  #assert p.char_edge == 0.40 && p.char_soft == 0.08;
+  #assert p.rim_world == 0.30 && p.rim_char == 0.45 && p.rim_start == 0.38 && p.rim_full == 0.12;
+  #assert p.dab_cut == 0.92 && p.dab_strength == 0.35 && p.blob == 0.35;
+  #assert p.saturation == 1.10 && p.black_lift == 0.035 && p.outline_max == 0.35;
+  #assert p.bloom_threshold == 0.85 && p.bloom_knee == 0.25 && p.bloom_mix == 0.30;
+  #assert p.wind_amp == 0.30 && p.wind_wavelength == 12 && p.wind_speed == 3;
+  #assert near(p.wind_x * p.wind_x + p.wind_z * p.wind_z, 1);
+}
+#test "the phone tier: less in it, the same painting" {
+  d := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  f := verse_style_preset(STYLE_PAINTERLY, STYLE_PHONE);
+  #assert d.shadow_size == 2048 && d.shadow_taps == 9 && f.shadow_size == 1024 && f.shadow_taps == 4;
+  #assert d.grass_density == 24 && d.grass_radius == 32 && f.grass_density == 8 && f.grass_radius == 18;
+  #assert d.cloud_octaves == 2 && f.cloud_octaves == 1;
+  #assert d.shaft_samples == 24 && f.shaft_samples == 12;
+  #assert d.bloom_mix == 0.30 && f.bloom_mix == 0.22;
+  #assert d.haze_tier == 1.0 && f.haze_tier == 1.25;
+  #assert d.sparkle_grid == 0.15 && f.sparkle_grid == 0.25;
+  // bands, rim, tint and tone are the same on both
+  #assert d.band_e0 == f.band_e0 && d.band_e1 == f.band_e1 && d.rim_world == f.rim_world && d.saturation == f.saturation;
+  a: [STYLE_FLOATS] f32; b: [STYLE_FLOATS] f32;
+  #assert verse_style_at(d, 0.5, a[..]) && verse_style_at(f, 0.5, b[..]);
+  #assert near(b[SU_HAZE + 1], a[SU_HAZE + 1] * 1.25);
+  for i: 0..<4 { #assert a[SU_TINT + i] == b[SU_TINT + i]; #assert a[SU_TONE + i] == b[SU_TONE + i]; #assert a[SU_BANDS + i] == b[SU_BANDS + i]; }
+}
+#test "photoreal has no preset yet and refuses to evaluate" {
+  p := verse_style_preset(STYLE_PHOTOREAL, STYLE_DESKTOP);
+  #assert !p.ok;
+  out: [STYLE_FLOATS] f32;
+  out[0] = 7;
+  #assert !verse_style_at(p, 0.5, out[..]);
+  #assert out[0] == 7;
+  #assert !verse_style_preset(9, STYLE_DESKTOP).ok;
+  short: [8] f32;
+  #assert !verse_style_at(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), 0.5, short[..]);
+}
+#test "every key evaluates to its own numbers: noon day, dusk, midnight night, dawn as dusk" {
+  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  o: [STYLE_FLOATS] f32;
+  #assert verse_style_at(p, 0.5, o[..]);
+  #assert near(o[SU_KEY], 1.0) && near(o[SU_KEY + 1], 0.95) && near(o[SU_KEY + 2], 0.85) && near(o[SU_KEY + 3], 1.0);
+  #assert near(o[SU_TINT], 0.52) && near(o[SU_TINT + 1], 0.58) && near(o[SU_TINT + 2], 0.86);
+  #assert near(o[SU_HAZE], 20) && near(o[SU_HAZE + 1], 0.011) && near(o[SU_HAZE + 2], 0.88) && near(o[SU_HAZE + 3], 60);
+  #assert near(o[SU_HAZE_COLOUR], 0.56) && near(o[SU_HAZE_COLOUR + 1], 0.74) && near(o[SU_HAZE_COLOUR + 2], 0.90);
+  #assert near(o[SU_HORIZON], o[SU_HAZE_COLOUR]) && near(o[SU_HORIZON + 2], o[SU_HAZE_COLOUR + 2]);
+  #assert near(o[SU_ZENITH + 2], 0.86) && near(o[SU_TONE], 1.6) && near(o[SU_RIM + 3], 0.30) && near(o[SU_SHAFTS + 2], 0.22);
+  #assert o[SU_KEY_DIR + 3] == 0 && near(o[SU_KEY_DIR + 1], sin(60 * DEG)) && o[SU_SUN + 3] == 0;
+  #assert verse_style_at(p, 0.75, o[..]);
+  #assert near(o[SU_KEY + 1], 0.72) && near(o[SU_KEY + 3], 0.75) && near(o[SU_HAZE + 1], 0.013) && near(o[SU_HAZE + 3], 50);
+  #assert near(o[SU_TINT], 0.58) && near(o[SU_TINT + 1], 0.48) && near(o[SU_HORIZON], 0.95) && near(o[SU_RIM + 1], 0.70);
+  #assert near(o[SU_KEY_DIR + 1], sin(20 * DEG)) && o[SU_KEY_DIR + 3] == 0;
+  #assert verse_style_at(p, 0.25, o[..]);
+  #assert near(o[SU_KEY + 1], 0.72) && near(o[SU_HAZE_COLOUR], 0.78) && near(o[SU_HAZE_KEY + 1], 0.62);
+  #assert verse_style_at(p, 0.0, o[..]);
+  #assert near(o[SU_KEY], 0.62) && near(o[SU_KEY + 2], 0.95) && near(o[SU_KEY + 3], 0.35);
+  #assert near(o[SU_HAZE], 12) && near(o[SU_HAZE + 1], 0.016) && near(o[SU_HAZE + 2], 0.85) && near(o[SU_HAZE + 3], 40);
+  #assert near(o[SU_HAZE_COLOUR + 2], 0.27) && near(o[SU_ZENITH + 2], 0.05) && near(o[SU_TONE], 2.4) && near(o[SU_SHAFTS + 2], 0.10);
+  #assert near(o[SU_RIM], 0.70) && near(o[SU_RIM + 3], 0.18) && near(o[SU_RIM2], 0.27);
+  // the moon is the key at midnight, up in the sky, and the stars are out
+  #assert o[SU_KEY_DIR + 3] == 1 && o[SU_KEY_DIR + 1] > 0 && o[SU_SUN + 3] == 1;
+  #assert verse_style_at(p, 1.0, o[..]) && near(o[SU_KEY], 0.62) && near(o[SU_STYLE + 3], 0);
+}
+#test "halfway between keys is the mean of both" {
+  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  for i: 0..<4 {
+    a: [STYLE_FLOATS] f32; b: [STYLE_FLOATS] f32; m: [STYLE_FLOATS] f32;
+    c := cast(f32) i * 0.25;
+    #assert verse_style_at(p, c, a[..]) && verse_style_at(p, c + 0.25, b[..]) && verse_style_at(p, c + 0.125, m[..]);
+    // every keyed number (key, rim, tint, ambient, haze, sky, clouds, exposure, shafts)
+    for n: 0..<STYLE_KEYED {
+      j := STYLE_KEYED_AT[n];
+      #assert near(m[j], 0.5 * (a[j] + b[j]));
+    }
+  }
+}
+#test "shadows are blue or violet all day and night, no channel below 0.35" {
+  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  o: [STYLE_FLOATS] f32;
+  for i: 0..<96 {
+    #assert verse_style_at(p, cast(f32) i / 96.0, o[..]);
+    r := o[SU_TINT]; g := o[SU_TINT + 1]; b := o[SU_TINT + 2];
+    #assert b > r && b > g && r >= 0.35 && g >= 0.35;
+  }
+}
+#test "the sun runs -20 degrees at midnight to 60 at noon; the moon keys below -6" {
+  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  #assert near(verse_style_sun_elevation(p, 0), -20 * DEG) && near(verse_style_sun_elevation(p, 0.5), 60 * DEG);
+  #assert near(verse_style_sun_elevation(p, 0.25), 20 * DEG) && near(verse_style_sun_elevation(p, 0.75), 20 * DEG);
+  o: [STYLE_FLOATS] f32;
+  for i: 0..<48 {
+    c := cast(f32) i / 48.0;
+    #assert verse_style_at(p, c, o[..]);
+    e := verse_style_sun_elevation(p, c);
+    #assert (o[SU_KEY_DIR + 3] == 1) == (e < -6 * DEG);
+    #assert near(o[SU_KEY_DIR] * o[SU_KEY_DIR] + o[SU_KEY_DIR + 1] * o[SU_KEY_DIR + 1] + o[SU_KEY_DIR + 2] * o[SU_KEY_DIR + 2], 1);
+    #assert o[SU_KEY_DIR + 1] > -0.11;   // the key is never far below the horizon
+  }
+}
+#test "the preset's own numbers run through the shading functions as the spec says" {
+  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  o: [STYLE_FLOATS] f32;
+  #assert verse_style_at(p, 0.5, o[..]);
+  h100 := verse_style_haze(100, 0, 0, o[SU_HAZE], o[SU_HAZE + 1], o[SU_HAZE + 2], o[SU_HAZE + 3]);
+  h200 := verse_style_haze(200, 0, 0, o[SU_HAZE], o[SU_HAZE + 1], o[SU_HAZE + 2], o[SU_HAZE + 3]);
+  #assert abs(h100 - 0.58) < 0.01 && abs(h200 - 0.86) < 0.01;
+  #assert verse_style_haze(9000, 0, 0, o[SU_HAZE], o[SU_HAZE + 1], o[SU_HAZE + 2], o[SU_HAZE + 3]) == o[SU_HAZE + 2];
+  #assert verse_style_bands(0.4, o[SU_BANDS], o[SU_BANDS + 1], o[SU_BANDS + 2], o[SU_BANDS + 3]) == o[SU_BANDS + 3];
+  // the phone's haze is thicker at the same distance
+  f: [STYLE_FLOATS] f32;
+  #assert verse_style_at(verse_style_preset(STYLE_PAINTERLY, STYLE_PHONE), 0.5, f[..]);
+  #assert verse_style_haze(100, 0, 0, f[SU_HAZE], f[SU_HAZE + 1], f[SU_HAZE + 2], f[SU_HAZE + 3]) > h100;
+}
+#test "lowpoly is one light term, light fog and no post" {
+  p := verse_style_preset(STYLE_LOWPOLY, STYLE_PHONE);
+  o: [STYLE_FLOATS] f32;
+  #assert p.ok && verse_style_at(p, 0.3, o[..]);
+  #assert o[SU_TONE + 3] == 0 && o[SU_BLOOM + 2] == 0 && o[SU_SHAFTS + 2] == 0 && o[SU_GRASS] == 0 && o[SU_CLOUDS] == 0;
+  #assert o[SU_BANDS + 3] == 1 && o[SU_STYLE] == 1 && o[SU_STYLE + 1] == 0 && o[SU_STYLE + 2] == 1;
+  #assert near(o[SU_STYLE + 3], 0.3);
+}

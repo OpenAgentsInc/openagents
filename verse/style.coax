@@ -1,0 +1,167 @@
+// The art styles' shading functions (docs/verse/art-styles.md), as plain f32
+// functions the realms' WGSL calls. coax/web/wgsl.py emits them into a
+// realm's WGSL between "// ---- generated: verse/style.coax" markers, the
+// way verse/look.coax's outlines are. The numbers they take come from the
+// realm's style preset, evaluated at its clock (verse/style-preset.coax:
+// verse_style_at fills the STYLE_FLOATS uniform block), so a realm never
+// hand-tunes them. Colours are linear RGB; a colour function works on one
+// channel at a time (the Metal scalar profile has no vectors).
+//
+//   coax/bin/coax test verse/style.coax
+st_min :: (a:f32,b:f32)->f32 {if a<b{return a;}return b;}
+st_max :: (a:f32,b:f32)->f32 {if a>b{return a;}return b;}
+st_sat :: (x:f32)->f32 {return st_min(1.0f32,st_max(0.0f32,x));}
+// smoothstep(e - s, e + s, x): a band edge at e, blended over 2s.
+verse_style_soft_step :: (e:f32,s:f32,x:f32)->f32 #export_c {
+ t:=st_sat((x-(e-s))/st_max(2.0f32*s,0.000001f32));
+ return t*t*(3.0f32-2.0f32*t);
+}
+
+// ---- 1. Shading: soft toon bands
+// Wrapped Lambert: N.L lifted a quarter, so the terminator sits past the side.
+verse_style_wrap :: (ndl:f32)->f32 #export_c {return st_sat((ndl+0.25f32)/1.25f32);}
+// Three bands: shadow 0, mid (`mid`, 0.55), lit 1, edges e0 and e1 (0.20, 0.58)
+// softened over s (0.06). w is the wrapped term times the shadow map's soft term.
+verse_style_bands :: (w:f32,e0:f32,e1:f32,s:f32,mid:f32)->f32 #export_c {
+ return mid*verse_style_soft_step(e0,s,w)+(1.0f32-mid)*verse_style_soft_step(e1,s,w);
+}
+// Two bands, for characters: one edge (0.40, softness 0.08).
+verse_style_bands2 :: (w:f32,e:f32,s:f32)->f32 #export_c {return verse_style_soft_step(e,s,w);}
+// One channel of a banded surface: the albedo under the tinted ambient in the
+// shadow band (`shadow_light`: shadow tint times ambient) and under the key
+// plus ambient in the lit one (`lit_light`), mixed by the band.
+verse_style_shade :: (albedo:f32,shadow_light:f32,lit_light:f32,band:f32)->f32 #export_c {
+ return albedo*(shadow_light+(lit_light-shadow_light)*st_sat(band));
+}
+// A hemisphere ambient channel: ground below, sky above, by the normal's y.
+verse_style_ambient :: (ny:f32,sky:f32,ground:f32,scale:f32)->f32 #export_c {
+ return (ground+(sky-ground)*(st_sat(ny*0.5f32+0.5f32)))*scale;
+}
+// The one hard dab of a wet, metal or glass surface: R.L past `cut` (0.92) at `strength` (0.35).
+verse_style_dab :: (rdl:f32,cut:f32,strength:f32)->f32 #export_c {return ifx rdl>=cut then strength else 0.0f32;}
+
+// ---- 2. Rim light
+// How much rim a surface gets: from where it turns `start` (N.V 0.38) from the
+// eye to full at `full` (0.12), more on the key light's side, times strength.
+verse_style_rim :: (ndv:f32,ndl:f32,start:f32,full:f32,strength:f32)->f32 #export_c {
+ t:=st_sat((ndv-start)/(full-start));
+ edge:=t*t*(3.0f32-2.0f32*t);
+ return edge*(0.35f32+0.65f32*st_sat(ndl+0.3f32))*strength;
+}
+
+// ---- 4. Atmosphere: haze
+// The haze's share at distance d, height y over the ground at the eye (base_y):
+// exponential past `start`, thinner higher up (falloff), capped.
+verse_style_haze :: (d:f32,y:f32,base_y:f32,start:f32,density:f32,cap:f32,falloff:f32)->f32 #export_c {
+ dist:=1.0f32-exp(-density*st_max(d-start,0.0f32));
+ height:=exp(-st_max(y-base_y,0.0f32)/st_max(falloff,0.001f32));
+ return st_min(dist*(1.0f32+(height-1.0f32)*0.6f32),cap);
+}
+// How much of the key light's colour the haze takes looking toward it (V.L).
+verse_style_haze_glow :: (vdl:f32)->f32 #export_c {
+ a:=st_sat(vdl);a2:=a*a;a4:=a2*a2;
+ return a4*a4*0.45f32;
+}
+// One channel of a surface through the haze: toward haze_c (the haze's colour
+// with the key's glow mixed in) by the haze's share f.
+verse_style_fog :: (c:f32,haze_c:f32,f:f32)->f32 #export_c {return c+(haze_c-c)*st_sat(f);}
+
+// ---- 5. Sky
+// The gradient from horizon (0) to zenith (1) by the view ray's elevation sine.
+verse_style_sky_t :: (up:f32)->f32 #export_c {return pow(st_max(up,0.000001f32),0.55f32);}
+// The horizon band: within 6 degrees (sine 0.1045) of the horizon, lifted toward the haze.
+verse_style_sky_band :: (up:f32,lift:f32)->f32 #export_c {return lift*(1.0f32-st_sat(abs(up)/0.1045f32));}
+// A halo term, exp(-k (1 - cos theta)).
+verse_style_halo :: (cos_t:f32,k:f32)->f32 #export_c {return exp(-k*st_max(1.0f32-cos_t,0.0f32));}
+
+// ---- 9. Tone
+// The tone curve: 1 - exp(-c exposure).
+verse_style_tone :: (c:f32,exposure:f32)->f32 #export_c {return 1.0f32-exp(-st_max(c,0.0f32)*exposure);}
+// Saturation about luminance: a channel pushed away from the pixel's luminance.
+verse_style_saturation :: (c:f32,lum:f32,amount:f32)->f32 #export_c {return st_max(0.0f32,lum+(c-lum)*amount);}
+// Blacks lifted before encoding: c = lift + (1 - lift) c.
+verse_style_lift :: (c:f32,lift:f32)->f32 #export_c {return lift+(1.0f32-lift)*c;}
+// Relative luminance of linear RGB.
+verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.7152f32*g+0.0722f32*b;}
+
+#test "the band edges sit at 0.20 and 0.58 and blend over 0.12" {
+ #assert verse_style_bands(0.0f32,0.20f32,0.58f32,0.06f32,0.55f32)==0.0f32;
+ #assert verse_style_bands(0.14f32,0.20f32,0.58f32,0.06f32,0.55f32)==0.0f32;
+ #assert abs(verse_style_bands(0.20f32,0.20f32,0.58f32,0.06f32,0.55f32)-0.275f32)<0.0001f32;
+ #assert abs(verse_style_bands(0.26f32,0.20f32,0.58f32,0.06f32,0.55f32)-0.55f32)<0.0001f32;
+ #assert abs(verse_style_bands(0.40f32,0.20f32,0.58f32,0.06f32,0.55f32)-0.55f32)<0.0001f32;
+ #assert abs(verse_style_bands(0.52f32,0.20f32,0.58f32,0.06f32,0.55f32)-0.55f32)<0.0001f32;
+ #assert abs(verse_style_bands(0.64f32,0.20f32,0.58f32,0.06f32,0.55f32)-1.0f32)<0.0001f32;
+ #assert verse_style_bands(1.0f32,0.20f32,0.58f32,0.06f32,0.55f32)==1.0f32;
+}
+#test "the bands never step back as the light grows" {
+ for i:0..<100 {a:=cast(f32)i*0.01f32;
+  #assert verse_style_bands(a+0.01f32,0.20f32,0.58f32,0.06f32,0.55f32)>=verse_style_bands(a,0.20f32,0.58f32,0.06f32,0.55f32);}
+}
+#test "the wrap lifts the terminator a quarter and stays in 0..1" {
+ #assert verse_style_wrap(1.0f32)==1.0f32;
+ #assert verse_style_wrap(-0.25f32)==0.0f32;
+ #assert verse_style_wrap(-1.0f32)==0.0f32;
+ #assert abs(verse_style_wrap(0.0f32)-0.2f32)<0.0001f32;
+}
+#test "characters get two bands at 0.40" {
+ #assert verse_style_bands2(0.31f32,0.40f32,0.08f32)==0.0f32;
+ #assert abs(verse_style_bands2(0.40f32,0.40f32,0.08f32)-0.5f32)<0.0001f32;
+ #assert verse_style_bands2(0.49f32,0.40f32,0.08f32)==1.0f32;
+}
+#test "the shadow band is the albedo under the tinted ambient, never black" {
+ #assert abs(verse_style_shade(0.5f32,0.3f32,1.5f32,0.0f32)-0.15f32)<0.0001f32;
+ #assert abs(verse_style_shade(0.5f32,0.3f32,1.5f32,1.0f32)-0.75f32)<0.0001f32;
+ #assert verse_style_shade(0.5f32,0.3f32,1.5f32,-1.0f32)>0.0f32;
+}
+#test "one dab of paint, not a gloss" {
+ #assert verse_style_dab(0.91f32,0.92f32,0.35f32)==0.0f32;
+ #assert verse_style_dab(0.95f32,0.92f32,0.35f32)==0.35f32;
+}
+#test "the rim starts at 68 degrees, is full at 83, and is stronger toward the key" {
+ #assert verse_style_rim(0.38f32,1.0f32,0.38f32,0.12f32,0.30f32)==0.0f32;
+ #assert verse_style_rim(0.9f32,1.0f32,0.38f32,0.12f32,0.30f32)==0.0f32;
+ #assert abs(verse_style_rim(0.12f32,1.0f32,0.38f32,0.12f32,0.30f32)-0.30f32)<0.0001f32;
+ #assert abs(verse_style_rim(0.0f32,-1.0f32,0.38f32,0.12f32,0.30f32)-0.105f32)<0.0001f32;
+ #assert verse_style_rim(0.2f32,0.5f32,0.38f32,0.12f32,0.30f32)>verse_style_rim(0.2f32,-0.5f32,0.38f32,0.12f32,0.30f32);
+}
+#test "day haze: 0.58 at 100 m, 0.86 at 200 m, never past its cap" {
+ #assert verse_style_haze(20.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==0.0f32;
+ #assert abs(verse_style_haze(100.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)-0.585f32)<0.005f32;
+ #assert abs(verse_style_haze(200.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)-0.862f32)<0.005f32;
+ #assert verse_style_haze(5000.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==0.88f32;
+}
+#test "haze thins higher up, to 0.4 of itself far above the eye" {
+ low:=verse_style_haze(100.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
+ high:=verse_style_haze(100.0f32,60.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
+ top:=verse_style_haze(100.0f32,10000.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
+ #assert high<low;
+ #assert abs(top-low*0.4f32)<0.001f32;
+ #assert verse_style_haze(100.0f32,-30.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==low;
+}
+#test "the haze glows toward the key light only" {
+ #assert verse_style_haze_glow(-1.0f32)==0.0f32;
+ #assert verse_style_haze_glow(0.0f32)==0.0f32;
+ #assert abs(verse_style_haze_glow(1.0f32)-0.45f32)<0.0001f32;
+ #assert abs(verse_style_fog(0.2f32,0.8f32,0.5f32)-0.5f32)<0.0001f32;
+}
+#test "the sky runs horizon to zenith by elevation, with a 6 degree band" {
+ #assert verse_style_sky_t(0.0f32)<0.001f32;
+ #assert abs(verse_style_sky_t(1.0f32)-1.0f32)<0.0001f32;
+ #assert verse_style_sky_t(-0.5f32)<0.001f32;
+ #assert abs(verse_style_sky_band(0.0f32,0.15f32)-0.15f32)<0.0001f32;
+ #assert verse_style_sky_band(0.2f32,0.15f32)==0.0f32;
+ #assert abs(verse_style_halo(1.0f32,900.0f32)-1.0f32)<0.0001f32;
+ #assert verse_style_halo(0.99f32,900.0f32)<0.001f32;
+ #assert verse_style_halo(0.99f32,60.0f32)>0.5f32;
+}
+#test "the tone keeps black, approaches white, and lifts blacks 0.035" {
+ #assert verse_style_tone(0.0f32,1.6f32)==0.0f32;
+ #assert verse_style_tone(20.0f32,1.6f32)>0.999f32;
+ #assert verse_style_tone(0.3f32,2.4f32)>verse_style_tone(0.3f32,1.6f32);
+ #assert abs(verse_style_lift(0.0f32,0.035f32)-0.035f32)<0.00001f32;
+ #assert abs(verse_style_lift(1.0f32,0.035f32)-1.0f32)<0.00001f32;
+ #assert abs(verse_style_saturation(0.6f32,0.5f32,1.10f32)-0.61f32)<0.0001f32;
+ #assert verse_style_saturation(0.0f32,0.5f32,3.0f32)==0.0f32;
+ #assert abs(verse_style_luma(1.0f32,1.0f32,1.0f32)-1.0f32)<0.0001f32;
+}

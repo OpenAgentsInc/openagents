@@ -62,14 +62,16 @@ and a `style`; a zone without one takes the realm's.
 
 ## Presets
 
-Each style is an engine preset: one Coax record in `verse/style.coax`
+Each style is an engine preset: one Coax record in `verse/style-preset.coax`
 (`StylePreset`) holding every number this document gives, keyed by time of
-day where it changes. A realm reads its preset with
+day where it changes (built October 29, as-presets; the block's layout is the
+`SU_*` constants there). A realm reads its preset with
 `verse_style_preset(style, tier)`, evaluates it with
 `verse_style_at(preset, clock)` each frame and copies the result into its
 uniforms as one block (`STYLE_FLOATS`, 32 vec4f). The shading functions
 (bands, rim, shadow tint, haze, sky, grass wind, foliage normal, tone) are
-Coax in the same file, written in the subset `coax/web/wgsl.py` lowers, and
+Coax in `verse/style.coax` (a file of their own, because `wgsl.py` lowers
+only the Metal scalar profile, which has no records), written in the subset `coax/web/wgsl.py` lowers, and
 emitted into each realm's WGSL between
 `// ---- generated: verse/style.coax` markers, the way `verse/look.coax`'s
 outline functions are today. One source, every realm, with checks:
