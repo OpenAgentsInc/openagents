@@ -431,6 +431,50 @@
         "edit-shared",
         "edit-owners"
       ]
+    },
+    {
+      "slug": "byo-talk-toggle",
+      "parent": "byo-next",
+      "title": "TALK on /realms/new is a toggle, not hold to talk",
+      "size": "S",
+      "labels": [
+        "realm-builder",
+        "web"
+      ],
+      "body": "Owner, October 29: tap TALK (or Space) to start, the button says LISTENING with the words as they're heard, tap again to send. A quiet spell after words sends; nothing heard closes the microphone. The microphone is open only while TALK is on. TYPE IT stays; other realms keep push to talk.",
+      "files": [
+        "apps/openagents-web/builder.coax"
+      ],
+      "acceptance": [
+        "coax test apps/openagents-web/builder.coax: the toggle, Space, the quiet spell and nothing-heard checks pass",
+        "Production /realms/new shows TALK and the tap hint"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "byo-setup",
+      "parent": "byo-next",
+      "title": "Setup questions before the board, and the cameras the made realm honours",
+      "size": "L",
+      "labels": [
+        "realm-builder",
+        "web",
+        "api"
+      ],
+      "body": "Owner, October 29: guide the visitor through 2D or 3D, the camera (third person, first person, top-down; second person isn't a game camera), the art style, the ground and the time of day, one at a time, each a tap or SAY IT or SKIP. The answers are the planner's fixed fields; CHANGE on the board goes through them again. The made realm draws each camera: third, first person at eye height with no figure and drag look, top-down at a fixed angle, and 2D side-on with an orthographic camera, a lane and jump.",
+      "files": [
+        "apps/openagents-web/builder.coax",
+        "apps/openagents-web/myrealm.coax",
+        "apps/openagents-web/myrealm.wgsl",
+        "coax/web/api/migrations/0049_realm_builder_setup.sql",
+        "coax/web/api/realms.c"
+      ],
+      "acceptance": [
+        "coax/web/api/test.sh passes the setup and pick checks",
+        "coax test builder.coax and myrealm.coax pass the setup and camera checks",
+        "A first-person and a top-down realm made on staging draw their cameras"
+      ],
+      "blocked_by": []
     }
   ]
 }

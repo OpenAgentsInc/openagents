@@ -8,6 +8,21 @@ and takes them into it.
 
 ## The flow
 
+0. **Setup.** Before the prompt, a few questions one at a time, each with big tap choices (or the
+   keys 1 to 6), SAY IT (TALK as a toggle; the words go to `POST /api/playtest/realms/pick
+   {field, words}`, where the model picks one of that question's words under a schema of just
+   those words, or "none") and SKIP (the model picks from the prompt):
+   - 2D (side-on) or 3D;
+   - the camera, 3D only: third person, first person or top-down. The owner asked for "first,
+     second or third person"; second person isn't a game camera, so it's top-down instead;
+   - the art style: low poly or painterly;
+   - the ground: meadow, forest, desert, snow, stone, beach;
+   - the time of day: day, dawn, dusk, night.
+   What you do there (explore, build, quest) isn't asked: there are no quests yet, and building is
+   the board's own VISITORS CAN row. The answers go with every plan and MAKE IT as fixed fields
+   (`setup {camera, style, ground, time}`; 2D is the side camera, 3D with no camera chosen is
+   third person). The model is told they are fixed, and its board is held to them. The board shows
+   the setup in a line with CHANGE, which goes through the questions again with its answers shown.
 1. **Prompt.** TALK is a toggle (a tap or Space): it shows LISTENING and the words as they are
    heard; the next tap closes the microphone and sends them as one prompt. A pause between
    sentences doesn't send; four quiet seconds after words do, and 25 s with nothing heard closes
@@ -45,6 +60,15 @@ and takes them into it.
 | props | crates, barrels, wagon, fence, camp (up to 5) | the fixture pack's props |
 | character | a name and a role (up to 4) | a figure with its name and role |
 | tool | build, fly, jump, map, talk, voice | what visitors may do (below) |
+
+Cameras (`verse.builder_cameras()`, 0049; the spec's `camera` line, `myrealm.coax`):
+
+| Camera | What you see | Controls |
+|---|---|---|
+| third | behind you and above (the first one built) | W/S walk, A/D turn, a drag turns |
+| first | at eye height (1.6 m), your figure unseen | W/S walk, A/D turn, a drag looks round, up and down |
+| top | 17 m up and 10 m south of you, a fixed angle, north up | W/A/S/D, a thumb or a drag walk that way |
+| side | 2D: side-on, orthographic (12 m tall), a lane through the realm | A/D walk, W or Space jumps (always); you walk through things |
 
 Grounds: meadow, forest, desert, snow, stone, beach. Times: day, dawn, dusk, night. Styles:
 lowpoly and painterly (photoreal is not built yet, so it is not offered).
@@ -87,4 +111,4 @@ realm, and `release.sh` never copies staging's made realms over production's. `/
 
 `apps/openagents-web/builder.coax`, `builder-face.c`, `builder.wgsl`, `realms/new/`;
 `myrealm.coax`, `myrealm-face.c`, `myrealm.wgsl`, `realms/built/`; `coax/web/api/realms.c`,
-`migrations/0048_realm_builder.sql`, `test_realm_builder.py`.
+`migrations/0048_realm_builder.sql`, `0049_realm_builder_setup.sql`, `test_realm_builder.py`.

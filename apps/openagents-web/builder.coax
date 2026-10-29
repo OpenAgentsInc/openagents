@@ -8,6 +8,13 @@
 // /realms/<slug>. Nothing here reads the words: the server's model does, and this page only
 // shows the board it answers and sends back which boxes are checked.
 //
+// First, a few setup questions one at a time (migrations/0049_realm_builder_setup.sql): 2D or 3D,
+// the camera (third person, first person, top-down; "second person" isn't a game camera), the
+// art style, the ground and the time of day. Each is a tap, or SAY IT (the words go to
+// POST /api/playtest/realms/pick, where the model picks one of that question's words), or SKIP
+// (the model picks from the prompt). What was answered goes with every plan and MAKE IT as fixed
+// fields; the board's CHANGE goes through the questions again.
+//
 // The page draws everything (plates and words are verse.coax's look); builder.wgsl draws the sky,
 // the plates and the strokes; builder-face.c sends the page's requests and the analytics batches.
 //   coax/bin/coax test apps/openagents-web/builder.coax
@@ -81,10 +88,29 @@ PLAN_URL :: "/api/playtest/realms/plan?as=lines";
 MAKE_URL :: "/api/playtest/realms?as=lines";
 PLAYER_URL :: "/api/playtest/player";
 REQ_NONE :: 0; REQ_PLAN :: 1; REQ_MAKE :: 2; REQ_PLAYER :: 3;
-PH_ASK :: 0; PH_PLANNING :: 1; PH_BOARD :: 2; PH_MAKING :: 3; PH_GOING :: 4;
+PH_ASK :: 0; PH_PLANNING :: 1; PH_BOARD :: 2; PH_MAKING :: 3; PH_GOING :: 4; PH_SETUP :: 5;
+PICK_URL :: "/api/playtest/realms/pick?as=lines";
+REQ_PICK :: 4;
+// the setup questions, their words (as the server's) and what the page shows for each
+Q_DIMS :: 0; Q_CAMERA :: 1; Q_STYLE :: 2; Q_GROUND :: 3; Q_TIME :: 4; QUESTIONS :: 5; CHOICES :: 6;
+Q_FIELD :: [QUESTIONS] string.["dims", "camera", "style", "ground", "time"];
+Q_ASK :: [QUESTIONS] string.["2D OR 3D?", "WHICH CAMERA?", "WHICH ART STYLE?", "WHAT GROUND?", "WHAT TIME OF DAY?"];
+Q_COUNT :: [QUESTIONS] int.[2, 3, 2, 6, 4];
+Q_WORDS :: [QUESTIONS * CHOICES] string.["3d", "2d", "", "", "", "",
+                                          "third", "first", "top", "", "", "",
+                                          "lowpoly", "painterly", "", "", "", "",
+                                          "meadow", "forest", "desert", "snow", "stone", "beach",
+                                          "day", "dawn", "dusk", "night", "", ""];
+Q_SHOWN :: [QUESTIONS * CHOICES] string.["3D", "2D, SIDE-ON", "", "", "", "",
+                                          "THIRD PERSON", "FIRST PERSON", "TOP-DOWN", "", "", "",
+                                          "LOW POLY", "PAINTERLY", "", "", "", "",
+                                          "MEADOW", "FOREST", "DESERT", "SNOW", "STONE", "BEACH",
+                                          "DAY", "DAWN", "DUSK", "NIGHT", "", ""];
 FEATS :: 28; KIND :: 12; LABEL :: 48; NAME :: 40; WORD :: 16;
 TYPED :: 400; CAPTION :: 200; NOTE :: 120; OUTBOX :: 512; BODY :: 1024; URL :: 128;
-BTN_TALK :: 0; BTN_TYPE :: 1; BTN_MAKE :: 2; BTN_BACK :: 3; BTN_SEND :: 4; BUTTONS :: 5;
+BTN_TALK :: 0; BTN_TYPE :: 1; BTN_MAKE :: 2; BTN_BACK :: 3; BTN_SEND :: 4;
+BTN_SKIP :: 5; BTN_PREV :: 6; BTN_SETUP :: 7; BTN_CHOICE :: 8;   // BTN_CHOICE + i: a setup question's choice i
+BUTTONS :: BTN_CHOICE + CHOICES;
 ROW :: 34.0;              // CSS pixels a feature's row takes
 WAIT :: 40.0;             // seconds a request may take before the page gives up on it
 QUIET_SEND :: 4.0;        // TALK on: seconds of quiet after words are heard before they go on their own
@@ -107,10 +133,12 @@ Builder :: struct {
   stopping: bool; stop_at: f32; quiet_at: f32; got: [TYPED] u8; got_n: int;
   vphase: [WORD] u8; vphase_n: int; caption: [CAPTION] u8; caption_n: int;
   said: [TYPED] u8; said_n: int;
+  // setup: the question shown, and each answer (an index into its words, -1 not answered)
+  q: int; chosen: [QUESTIONS] int; to_board: bool;
   // the board
   plan: int;
   name: [NAME] u8; name_n: int;
-  style: [WORD] u8; style_n: int; ground: [WORD] u8; ground_n: int; tod: [WORD] u8; tod_n: int;
+  style: [WORD] u8; style_n: int; ground: [WORD] u8; ground_n: int; tod: [WORD] u8; tod_n: int; cam: [WORD] u8; cam_n: int;
   feat_n: int;
   kind: [FEATS * KIND] u8; kind_n: [FEATS] int;
   label: [FEATS * LABEL] u8; label_n: [FEATS] int;
@@ -130,6 +158,8 @@ Builder :: struct {
 builder_reset :: (s: [] Builder) {
   s[0].started = true; s[0].press = -1; s[0].hover = -1; s[0].row_press = -1; s[0].finger = -1; s[0].drag_id = -1;
   s[0].req_id = -1; s[0].plan = 0;
+  s[0].phase = PH_SETUP; s[0].q = 0;
+  for i: 0..<QUESTIONS { s[0].chosen[i] = -1; }
 }
 begin :: (s: [] Builder) { if !s[0].started { builder_reset(s); } }
 
@@ -168,6 +198,28 @@ put_switches :: (s: [] Builder, buf: [] u8, at: int) -> int {
   }
   return put(buf, n, "]");
 }
+// The answered setup as the server's fixed fields: ,"setup":{"camera":"first",...}; nothing when
+// none is answered. 2D is the side camera; 3D with no camera chosen is third person.
+put_setup :: (s: [] Builder, buf: [] u8, at: int) -> int {
+  cam := camera_word(s);
+  n := at; first := true;
+  for f: 0..<4 {
+    key := ifx f == 0 then "camera" else Q_FIELD[f + 1];
+    v := ifx f == 0 then cam else answer_word(s, f + 1);
+    if v.count == 0 { continue; }
+    n = put(buf, n, ifx first then ",\"setup\":{\"" else ",\""); first = false;
+    n = put(buf, n, key); n = put(buf, n, "\":\""); n = put(buf, n, v); n = put(buf, n, "\"");
+  }
+  if !first { n = put(buf, n, "}"); }
+  return n;
+}
+answer_word :: (s: [] Builder, q: int) -> string { c := s[0].chosen[q]; return ifx c >= 0 then Q_WORDS[q * CHOICES + c] else ""; }
+camera_word :: (s: [] Builder) -> string {
+  if answer_word(s, Q_DIMS) == "2d" { return "side"; }
+  c := answer_word(s, Q_CAMERA);
+  if c.count > 0 { return c; }
+  return ifx answer_word(s, Q_DIMS) == "3d" then "third" else "";
+}
 request :: (s: [] Builder, what: int, url: string, body_n: int) {
   s[0].req_url_n = put(s[0].req_url[..], 0, url);
   s[0].req_body_n = body_n; s[0].req_flags = HTTP_POST | HTTP_ANSWER | TRACK_KEY;
@@ -182,7 +234,7 @@ busy :: (s: [] Builder) -> bool { return s[0].req_ready || s[0].req_id >= 0; }
 fail :: (s: [] Builder, why: string) {
   set_note(s, why);
   s[0].req_id = -1; s[0].req_what = REQ_NONE;
-  s[0].phase = ifx s[0].feat_n > 0 || s[0].plan > 0 then PH_BOARD else PH_ASK;
+  if s[0].phase != PH_SETUP { s[0].phase = ifx s[0].feat_n > 0 || s[0].plan > 0 then PH_BOARD else PH_ASK; }
 }
 
 // What was said or typed goes to the planner (with the board, to change it).
@@ -196,6 +248,7 @@ ask_plan :: (s: [] Builder, t: [] Track, words: string, via: string) {
     n = put(s[0].req_body[..], n, ",\"plan\":"); n = put_int(s[0].req_body[..], n, s[0].plan);
     n = put(s[0].req_body[..], n, ",\"on\":"); n = put_switches(s, s[0].req_body[..], n);
   }
+  n = put_setup(s, s[0].req_body[..], n);
   n = put(s[0].req_body[..], n, "}");
   if n <= 0 { set_note(s, "That's too long. Say it shorter."); return; }
   request(s, REQ_PLAN, PLAN_URL, n);
@@ -208,10 +261,74 @@ make_it :: (s: [] Builder, t: [] Track) {
   n := put(s[0].req_body[..], 0, "{\"plan\":");
   n = put_int(s[0].req_body[..], n, s[0].plan);
   n = put(s[0].req_body[..], n, ",\"on\":"); n = put_switches(s, s[0].req_body[..], n);
+  n = put_setup(s, s[0].req_body[..], n);
   n = put(s[0].req_body[..], n, "}");
   request(s, REQ_MAKE, MAKE_URL, n);
   s[0].phase = PH_MAKING; s[0].note_n = 0;
   if track_begin(t, "builder-make") { track_int(t, "n", s[0].feat_n); track_int(t, "on", on_count(s)); track_end(t); }
+}
+
+// ---- setup
+
+// SKIP: this question is the model's to answer from the prompt.
+choose_skip :: (s: [] Builder, t: [] Track) {
+  if track_begin(t, "builder-setup") { track_str(t, "question", Q_FIELD[s[0].q]); track_str(t, "answer", "skip"); track_str(t, "via", "tap"); track_end(t); }
+  s[0].note_n = 0;
+  next_question(s);
+}
+
+// An answer: kept, then the next question (2D needs no camera); after the last, the prompt, or
+// the board when it was changed from there.
+choose :: (s: [] Builder, t: [] Track, i: int, via: string) {
+  q := s[0].q;
+  if s[0].phase != PH_SETUP || q < 0 || q >= QUESTIONS || i >= Q_COUNT[q] { return; }
+  s[0].chosen[q] = i; s[0].note_n = 0;
+  if track_begin(t, "builder-setup") { track_str(t, "question", Q_FIELD[q]); track_str(t, "answer", ifx i >= 0 then Q_WORDS[q * CHOICES + i] else "skip"); track_str(t, "via", via); track_end(t); }
+  next_question(s);
+}
+next_question :: (s: [] Builder) {
+  s[0].q += 1;
+  if s[0].q == Q_CAMERA && answer_word(s, Q_DIMS) == "2d" { s[0].chosen[Q_CAMERA] = -1; s[0].q += 1; }
+  if s[0].q >= QUESTIONS { s[0].q = QUESTIONS; s[0].phase = ifx s[0].to_board then PH_BOARD else PH_ASK; s[0].to_board = false; }
+}
+prev_question :: (s: [] Builder) {
+  if s[0].phase != PH_SETUP || s[0].q <= 0 { return; }
+  s[0].q -= 1;
+  if s[0].q == Q_CAMERA && answer_word(s, Q_DIMS) == "2d" { s[0].q -= 1; }
+  s[0].note_n = 0;
+}
+fill_answer :: (s: [] Builder, q: int, word: string) {
+  if s[0].chosen[q] >= 0 { return; }
+  for i: 0..<Q_COUNT[q] { if Q_WORDS[q * CHOICES + i] == word { s[0].chosen[q] = i; } }
+}
+// CHANGE (the prompt's or the board's): the questions again, from the first, with the answers shown.
+open_setup :: (s: [] Builder) {
+  if busy(s) || s[0].held || s[0].phase == PH_MAKING || s[0].phase == PH_GOING || s[0].phase == PH_SETUP { return; }
+  s[0].to_board = s[0].phase == PH_BOARD;
+  // from the board: what it shows is answered (the model's picks too)
+  if s[0].to_board {
+    cam := cast(string) s[0].cam[0..<s[0].cam_n];
+    if s[0].chosen[Q_DIMS] < 0 { fill_answer(s, Q_DIMS, ifx cam == "side" then "2d" else "3d"); }
+    if cam != "side" { fill_answer(s, Q_CAMERA, cam); }
+    fill_answer(s, Q_STYLE, cast(string) s[0].style[0..<s[0].style_n]);
+    fill_answer(s, Q_GROUND, cast(string) s[0].ground[0..<s[0].ground_n]);
+    fill_answer(s, Q_TIME, cast(string) s[0].tod[0..<s[0].tod_n]);
+  }
+  s[0].phase = PH_SETUP; s[0].q = 0; s[0].typing = false; s[0].note_n = 0;
+}
+// SAY IT: the words go to the server's picker for this question.
+ask_pick :: (s: [] Builder, t: [] Track, words: string) {
+  w := words[trim_from(words)..<trim_to(words)];
+  if w.count == 0 || busy(s) || s[0].phase != PH_SETUP || s[0].q >= QUESTIONS { return; }
+  s[0].said_n = copy_into(s[0].said[..], w);
+  n := put(s[0].req_body[..], 0, "{\"field\":\"");
+  n = put(s[0].req_body[..], n, Q_FIELD[s[0].q]);
+  n = put(s[0].req_body[..], n, "\",\"words\":");
+  n = json_quote(s[0].req_body[..], n, w, 200);
+  n = put(s[0].req_body[..], n, "}");
+  if n <= 0 { set_note(s, "That's too long. Say it shorter."); return; }
+  request(s, REQ_PICK, PICK_URL, n);
+  s[0].note_n = 0;
 }
 
 // ---- answers in
@@ -237,6 +354,7 @@ read_board :: (s: [] Builder, body: string) -> bool {
     if starts(line, "style ") { s[0].style_n = copy_into(s[0].style[..], line[6..<line.count]); continue; }
     if starts(line, "ground ") { s[0].ground_n = copy_into(s[0].ground[..], line[7..<line.count]); continue; }
     if starts(line, "time ") { s[0].tod_n = copy_into(s[0].tod[..], line[5..<line.count]); continue; }
+    if starts(line, "camera ") { s[0].cam_n = copy_into(s[0].cam[..], line[7..<line.count]); continue; }
     if starts(line, "f ") && n < FEATS {
       k := 2; while k < line.count && line[k] != ' ' { k += 1; }
       if k + 2 >= line.count { continue; }
@@ -272,6 +390,16 @@ take_answer :: (s: [] Builder, t: [] Track, text: string) {
     if status == 200 && body.count > 0 && body.count < OUTBOX && s[0].action == 0 {
       s[0].out_n = put(s[0].outbox[..], 0, body); s[0].action = ACT_KEEP_PLAYER; s[0].has_player = true;
     }
+    return;
+  }
+  if what == REQ_PICK {
+    if status != 200 { say_why(s, status, body); s[0].phase = PH_SETUP; return; }
+    value := ""; i := 0;
+    while i < body.count { e := line_end(body, i); line := body[i..<e]; i = e + 1; if starts(line, "value ") { value = line[6..<line.count]; } }
+    q := s[0].q; got := -1;
+    if q < QUESTIONS { for c: 0..<Q_COUNT[q] { if Q_WORDS[q * CHOICES + c] == value { got = c; } } }
+    if got < 0 { set_note(s, "Tap one, or say it again."); return; }
+    choose(s, t, got, "voice");
     return;
   }
   if status != 200 { say_why(s, status, body); return; }
@@ -324,7 +452,7 @@ builder_message :: (s: [] Builder, t: [] Track, kind: int, text: string) #export
         s[0].got_n += copy_into(s[0].got[s[0].got_n..<TYPED], cap);
         s[0].quiet_at = s[0].time;
         if s[0].stopping { finish_talk(s, t); }
-      } else { ask_plan(s, t, cap, "voice"); }
+      } else if s[0].phase == PH_SETUP { ask_pick(s, t, cap); } else { ask_plan(s, t, cap, "voice"); }
     }
     // voice turned itself off (no microphone, the day's voice used up): TALK is off too
     if (ph == "off" || ph == "notice") && s[0].held { s[0].held = false; s[0].stopping = true; s[0].stop_at = s[0].time; }
@@ -359,7 +487,10 @@ mid_sentence :: (s: [] Builder) -> bool {
 // TALK is off: what was heard goes to the planner as one prompt.
 finish_talk :: (s: [] Builder, t: [] Track) {
   s[0].stopping = false;
-  if s[0].got_n > 0 { ask_plan(s, t, cast(string) s[0].got[0..<s[0].got_n], "voice"); }
+  if s[0].got_n > 0 {
+    words := cast(string) s[0].got[0..<s[0].got_n];
+    if s[0].phase == PH_SETUP { ask_pick(s, t, words); } else { ask_plan(s, t, words, "voice"); }
+  }
   s[0].got_n = 0;
 }
 talk_tick :: (s: [] Builder, t: [] Track) {
@@ -397,6 +528,11 @@ builder_key :: (s: [] Builder, t: [] Track, key: int, mods: int, down: bool) -> 
     return true;
   }
   if !down { return false; }
+  if s[0].phase == PH_SETUP {
+    if key >= '1' && key <= '6' { if !busy(s) && !s[0].held { choose(s, t, key - '1', "key"); } return true; }
+    if key == KEY_ESCAPE { if s[0].q > 0 { prev_question(s); } else { go_back(s); } return true; }
+    return false;
+  }
   if key == 't' || key == 'T' { open_typing(s); return true; }
   if key == KEY_ENTER && s[0].phase == PH_BOARD { make_it(s, t); return true; }
   if key == KEY_ESCAPE { go_back(s); return true; }
@@ -417,6 +553,8 @@ builder_label :: (s: [] Builder, x: f32, y: f32) -> string #export_c {
   b := button_at(s, x, y);
   if b == BTN_TALK { return "talk"; } if b == BTN_TYPE { return "type"; } if b == BTN_MAKE { return "make"; }
   if b == BTN_BACK { return "galaxy"; } if b == BTN_SEND { return "send"; }
+  if b == BTN_SKIP { return "skip"; } if b == BTN_PREV { return "back"; } if b == BTN_SETUP { return "setup"; }
+  if b >= BTN_CHOICE { return "choice"; }
   if row_at(s, x, y) >= 0 { return "feature"; }
   return "";
 }
@@ -441,6 +579,10 @@ builder_pointer :: (s: [] Builder, t: [] Track, x: f32, y: f32, phase: int, kind
       if b == BTN_MAKE { make_it(s, t); }
       if b == BTN_BACK { go_back(s); }
       if b == BTN_SEND { send_typed(s, t); }
+      if b >= BTN_CHOICE && !busy(s) && !s[0].held { choose(s, t, b - BTN_CHOICE, "tap"); }
+      if b == BTN_SKIP && !busy(s) && !s[0].held && s[0].phase == PH_SETUP && s[0].q < QUESTIONS { s[0].chosen[s[0].q] = -1; choose_skip(s, t); }
+      if b == BTN_PREV { prev_question(s); }
+      if b == BTN_SETUP { open_setup(s); }
     }
     if phase != POINTER_MOVE { s[0].press = -1; }
     return true;
@@ -524,6 +666,95 @@ checkbox :: (s: [] Builder, out: [] f32, at: int, x: f32, y: f32, size: f32, on:
 }
 
 style_words :: (style: string) -> string { if style == "painterly" { return "PAINTERLY"; } return "LOW POLY"; }
+camera_words :: (cam: string) -> string {
+  if cam == "first" { return "3D · FIRST PERSON"; } if cam == "top" { return "3D · TOP-DOWN"; } if cam == "side" { return "2D · SIDE-ON"; }
+  return "3D · THIRD PERSON";
+}
+put_sep :: (buf: [] u8, m: int) -> int { return ifx m > 0 then put(buf, m, " · ") else m; }
+// The setup in a line: 3D · FIRST PERSON · LOW POLY · DESERT · NIGHT. On the board every part
+// shows (an answer, else the board's); before it, only what was answered.
+put_summary :: (s: [] Builder, buf: [] u8, board: bool) -> int {
+  m := 0;
+  cam := camera_word(s);
+  if cam.count == 0 && board { cam = cast(string) s[0].cam[0..<s[0].cam_n]; }
+  if cam.count > 0 { m = put(buf, m, camera_words(cam)); }
+  st := answer_word(s, Q_STYLE); if st.count == 0 && board { st = cast(string) s[0].style[0..<s[0].style_n]; }
+  if st.count > 0 { m = put_sep(buf, m); m = put(buf, m, style_words(st)); }
+  gr := answer_word(s, Q_GROUND); if gr.count == 0 && board { gr = cast(string) s[0].ground[0..<s[0].ground_n]; }
+  if gr.count > 0 { m = put_sep(buf, m); m = put(buf, m, gr); }
+  td := answer_word(s, Q_TIME); if td.count == 0 && board { td = cast(string) s[0].tod[0..<s[0].tod_n]; }
+  if td.count > 0 { m = put_sep(buf, m); m = put(buf, m, td); }
+  upper(buf, m);
+  return m;
+}
+// What's being heard (TALK on, or its last sentence on the way): the heard sentences, then the one
+// being heard; a long run shows its end. 0 when nothing yet.
+put_heard :: (s: [] Builder, buf: [] u8) -> int {
+  heard: [TYPED + CAPTION + 2] u8;
+  m := put(heard[..], 0, cast(string) s[0].got[0..<s[0].got_n]);
+  if s[0].caption_n > 0 && cast(string) s[0].vphase[0..<s[0].vphase_n] == "hearing" {
+    if m > 0 { m = put(heard[..], m, " "); }
+    m = put(heard[..], m, caption_text(s));
+  }
+  from := most(m - 72, 0);
+  return put(buf, 0, cast(string) heard[from..<m]);
+}
+
+// The setup questions, one at a time: which of how many, the question, a big choice each, then
+// BACK, SAY IT and SKIP.
+draw_setup :: (s: [] Builder, out: [] f32, at: int, top: f32) -> int {
+  k := s[0].dpr; w := s[0].width; h := s[0].height; d := k; n := at;
+  ph := phone(s); g := 16 * k;
+  for i: 0..<4 { s[0].field[i] = 0; }
+  for i: 0..<FEATS { s[0].row_shown[i] = false; }
+  s[0].list = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  q := s[0].q;
+  if q < 0 || q >= QUESTIONS { return n; }
+  col := lo(w - 2 * g, 640 * k);
+  cx := w * 0.5; x0 := cx - col * 0.5; x1 := cx + col * 0.5;
+  bh := ifx ph then 56 * k else 60 * k;
+  bottom := h - g - bh;
+  two := answer_word(s, Q_DIMS) == "2d";
+  total := ifx two then QUESTIONS - 1 else QUESTIONS;
+  step := q + 1; if two && q > Q_CAMERA { step -= 1; }
+  count := Q_COUNT[q];
+  cols := ifx ph then (ifx count <= 3 then 1 else 2) else (ifx count <= 4 then count else 3);
+  rows := (count + cols - 1) / cols;
+  ch := ifx ph then 58 * k else 72 * k; gap := 12 * k;
+  grid := cast(f32) rows * ch + cast(f32) (rows - 1) * gap;
+  y0 := top + hi((bottom - 40 * k - top - (76 * k + grid)) * 0.42, 6 * k);
+  sb: [24] u8; sm := put(sb[..], 0, "SETUP "); sm = put_int(sb[..], sm, step); sm = put(sb[..], sm, " OF "); sm = put_int(sb[..], sm, total);
+  n = centred(d, out, n, cast(string) sb[0..<sm], cx, y0 + 14 * k, 7.5 * k, bronze(k, 0.85));
+  ask := Q_ASK[q];
+  n = centred(d, out, n, ask, cx, y0 + 50 * k, fit_cap(ask, 15 * k, col), white(k, 0.98));
+  gy := y0 + 76 * k;
+  cw := (col - cast(f32) (cols - 1) * gap) / cast(f32) cols;
+  for i: 0..<count {
+    r := i / cols; c := i % cols;
+    // a short last row sits in the middle
+    left := ifx r == rows - 1 then count - r * cols else cols;
+    lx := x0 + (col - (cast(f32) left * cw + cast(f32) (left - 1) * gap)) * 0.5;
+    b := Box.{x0 = lx + cast(f32) c * (cw + gap), y0 = gy + cast(f32) r * (ch + gap), x1 = lx + cast(f32) c * (cw + gap) + cw, y1 = gy + cast(f32) r * (ch + gap) + ch};
+    n = pill(s, out, n, BTN_CHOICE + i, b, Q_SHOWN[q * CHOICES + i], s[0].chosen[q] == i);
+  }
+  // BACK (after the first), SAY IT (with voice), SKIP
+  parts := 1; if q > 0 { parts += 1; } if s[0].voice { parts += 1; }
+  bw := (col - cast(f32) (parts - 1) * 10 * k) / cast(f32) parts;
+  bx := x0;
+  if q > 0 { n = pill(s, out, n, BTN_PREV, Box.{x0 = bx, y0 = bottom, x1 = bx + bw, y1 = bottom + bh}, "BACK", false); bx += bw + 10 * k; }
+  if s[0].voice { n = pill(s, out, n, BTN_TALK, Box.{x0 = bx, y0 = bottom, x1 = bx + bw, y1 = bottom + bh}, ifx s[0].held then "LISTENING" else "SAY IT", true); bx += bw + 10 * k; }
+  n = pill(s, out, n, BTN_SKIP, Box.{x0 = bx, y0 = bottom, x1 = bx + bw, y1 = bottom + bh}, "SKIP", false);
+  // what's heard, the words being picked from, or a note
+  buf: [CAPTION + 16] u8; m := 0;
+  if s[0].held || s[0].stopping { m = put_heard(s, buf[..]); if m == 0 { m = put(buf[..], 0, ifx s[0].held then "LISTENING: TAP SAY IT TO SEND" else "SENDING"); } }
+  else if busy(s) && s[0].req_what == REQ_PICK { m = put(buf[..], 0, said_text(s)); }
+  else if s[0].note_n > 0 { m = put(buf[..], 0, note_text(s)); }
+  if m > 0 {
+    upper(buf[..], m); line := cast(string) buf[0..<m];
+    n = centred(d, out, n, line, cx, bottom - 16 * k, fit_cap(line, 8.5 * k, col), ifx s[0].note_n > 0 && !s[0].held then ember(k, 0.95) else white(k, 0.9));
+  }
+  return n;
+}
 
 // The board: the realm, then IN YOUR REALM and VISITORS CAN, a row each.
 draw_board :: (s: [] Builder, out: [] f32, at: int, area: Box) -> int {
@@ -534,12 +765,16 @@ draw_board :: (s: [] Builder, out: [] f32, at: int, area: Box) -> int {
   tn := put(buf[..], 0, name_text(s)); upper(buf[..], tn);
   title := cast(string) buf[0..<tn];
   n = write(d, out, n, title, area.x0 + pad, area.y0 + 30 * k, fit_cap(title, 14 * k, area.x1 - area.x0 - 2 * pad), GAP, SPACE, white(k, 1), false, false);
-  sub: [80] u8;
-  m := put(sub[..], 0, style_words(cast(string) s[0].style[0..<s[0].style_n])); m = put(sub[..], m, " · ");
-  g0 := m; m = put(sub[..], m, cast(string) s[0].ground[0..<s[0].ground_n]); m = put(sub[..], m, " · ");
-  m = put(sub[..], m, cast(string) s[0].tod[0..<s[0].tod_n]); upper(sub[..], m);
+  // the setup as it will be made (an answer changed since wins over the board's), and CHANGE
+  sub: [120] u8;
+  m := put_summary(s, sub[..], true);
   line := cast(string) sub[0..<m];
-  n = write(d, out, n, line, area.x0 + pad, area.y0 + 50 * k, fit_cap(line, 7.5 * k, area.x1 - area.x0 - 2 * pad), GAP, SPACE, bronze(k, 0.9), false, false);
+  change := "CHANGE";
+  cw := measure(change, GAP, SPACE, false) * 7.5 * k;
+  room := area.x1 - area.x0 - 2 * pad - cw - 14 * k;
+  n = write(d, out, n, line, area.x0 + pad, area.y0 + 50 * k, fit_cap(line, 7.5 * k, room), GAP, SPACE, bronze(k, 0.9), false, false);
+  n = write(d, out, n, change, area.x1 - pad - cw, area.y0 + 50 * k, 7.5 * k, GAP, SPACE, ember(k, ifx s[0].hover == BTN_SETUP then 1.0f32 else 0.8f32), false, false);
+  s[0].boxes[BTN_SETUP] = Box.{x0 = area.x0, y0 = area.y0 + 36 * k, x1 = area.x1, y1 = area.y0 + 60 * k}; s[0].shown[BTN_SETUP] = true;
   // the list, scrolled inside its box
   s[0].list = Box.{x0 = area.x0, y0 = area.y0 + 64 * k, x1 = area.x1, y1 = area.y1 - 8 * k};
   row := ROW * k; y := s[0].list.y0 - s[0].scroll;
@@ -595,6 +830,7 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
   title := "BUILD YOUR OWN REALM";
   n = write(d, out, n, title, tb.x0 + 14 * k, tb.y0 + 28 * k, fit_cap(title, 12 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, white(k, 0.98), false, false);
   n = pill(s, out, n, BTN_BACK, Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 44 * k}, "GALAXY", false);
+  if s[0].phase == PH_SETUP { return draw_setup(s, out, n, tb.y1 + 14 * k); }
 
   col := lo(w - 2 * g, 600 * k);
   cx := w * 0.5; x0 := cx - col * 0.5; x1 := cx + col * 0.5;
@@ -637,15 +873,7 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
   status := "";
   buf: [CAPTION + 16] u8;
   if s[0].held || s[0].stopping {
-    // the heard sentences, then the one being heard; a long run shows its end
-    heard: [TYPED + CAPTION + 2] u8;
-    m := put(heard[..], 0, cast(string) s[0].got[0..<s[0].got_n]);
-    if s[0].caption_n > 0 && cast(string) s[0].vphase[0..<s[0].vphase_n] == "hearing" {
-      if m > 0 { m = put(heard[..], m, " "); }
-      m = put(heard[..], m, caption_text(s));
-    }
-    from := most(m - 72, 0);
-    m2 := put(buf[..], 0, cast(string) heard[from..<m]);
+    m2 := put_heard(s, buf[..]);
     status = ifx m2 > 0 then cast(string) buf[0..<m2] else (ifx s[0].held then "LISTENING: TAP TALK TO SEND" else "SENDING");
   }
   else if s[0].phase == PH_PLANNING { status = ifx s[0].plan > 0 then "CHANGING THE BOARD" else "MAKING YOUR BOARD"; }
@@ -678,6 +906,14 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
     n = centred(d, out, n, hint, cx, mid + 30 * k, fit_cap(hint, 8 * k, col), bronze(k, 0.85));
     ex := "A FOGGY MOOR WITH A LIGHTHOUSE KEEPER AND BATS";
     n = centred(d, out, n, ex, cx, mid + 58 * k, fit_cap(ex, 7 * k, col), white(k, 0.45));
+    // the setup so far, and CHANGE
+    if s[0].phase == PH_ASK {
+      sb: [140] u8; sm := put_summary(s, sb[..], false);
+      sm = put(sb[..], sm, ifx sm > 0 then " · CHANGE" else "SETUP");
+      sl := cast(string) sb[0..<sm];
+      sw := lo(measure(sl, GAP, SPACE, false) * 7.5 * k + 36 * k, col);
+      n = pill(s, out, n, BTN_SETUP, Box.{x0 = cx - sw * 0.5, y0 = mid - 92 * k, x1 = cx + sw * 0.5, y1 = mid - 56 * k}, sl, false);
+    }
     if s[0].said_n > 0 && s[0].phase == PH_PLANNING {
       sb: [TYPED + 4] u8; sm := put(sb[..], 0, said_text(s)); upper(sb[..], sm);
       said := cast(string) sb[0..<sm];
@@ -742,7 +978,10 @@ ready :: (s: [] Builder, t: [] Track, voice: bool) {
            else "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/new\nplayer=p-1234\n";
   t0 := track_message(t, HOST_FACTS, facts);
   builder_message(s, t, HOST_FACTS, facts);
+  // past the setup questions, every one skipped (the setup's own checks start at the first)
+  s[0].phase = PH_ASK; s[0].q = QUESTIONS;
 }
+at_setup :: (s: [] Builder, t: [] Track, voice: bool) { ready(s, t, voice); s[0].phase = PH_SETUP; s[0].q = 0; }
 tap :: (s: [] Builder, t: [] Track, b: Box) {
   x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
   p1 := builder_pointer(s, t, x, y, POINTER_DOWN, 1, 4);
@@ -920,4 +1159,102 @@ answer :: (s: [] Builder, t: [] Track, text: string) { id := 3; builder_requeste
   #assert s[0].req_ready && s[0].req_what == REQ_PLAYER && cast(string) s[0].req_url[0..<s[0].req_url_n] == PLAYER_URL;
   answer(s[..], t[..], "200\n{\"key\":\"abc\",\"id\":\"p-1\",\"account\":null}");
   #assert builder_action(s[..]) == ACT_KEEP_PLAYER && outbox_is(s[..], "{\"key\":\"abc\",\"id\":\"p-1\",\"account\":null}");
+}
+
+#test "setup first: one question at a time, a tap each; 2D skips the camera; the answers go with the plan as fixed fields" {
+  s: [1] Builder; t: [1] Track;
+  at_setup(s[..], t[..], true);
+  n := frame_of(s[..], t[..], 2560, 1600, 2);
+  #assert s[0].phase == PH_SETUP && s[0].q == Q_DIMS && s[0].shown[BTN_CHOICE] && s[0].shown[BTN_CHOICE + 1] && !s[0].shown[BTN_CHOICE + 2];
+  #assert s[0].shown[BTN_TALK] && s[0].shown[BTN_SKIP] && !s[0].shown[BTN_PREV] && !s[0].shown[BTN_MAKE];
+  tap(s[..], t[..], s[0].boxes[BTN_CHOICE]);            // 3D
+  m := frame_of(s[..], t[..], 2560, 1600, 2);
+  #assert s[0].q == Q_CAMERA && s[0].shown[BTN_CHOICE + 2] && s[0].shown[BTN_PREV];
+  tap(s[..], t[..], s[0].boxes[BTN_CHOICE + 1]);        // first person
+  m2 := frame_of(s[..], t[..], 2560, 1600, 2);
+  tap(s[..], t[..], s[0].boxes[BTN_SKIP]);              // style: the model's
+  m3 := frame_of(s[..], t[..], 2560, 1600, 2);
+  #assert s[0].q == Q_GROUND && s[0].shown[BTN_CHOICE + 5];
+  tap(s[..], t[..], s[0].boxes[BTN_CHOICE + 2]);        // desert
+  m4 := frame_of(s[..], t[..], 2560, 1600, 2);
+  #assert builder_key(s[..], t[..], '4', 0, true);       // night, by its number
+  #assert s[0].phase == PH_ASK;
+  m5 := frame_of(s[..], t[..], 2560, 1600, 2);
+  #assert s[0].shown[BTN_SETUP] && s[0].shown[BTN_TALK];
+  builder_message(s[..], t[..], MSG_VOICE, "heard|a lookout");
+  #assert body_is(s[..], "{\"prompt\":\"a lookout\",\"setup\":{\"camera\":\"first\",\"ground\":\"desert\",\"time\":\"night\"}}");
+  // 2D: no camera question, and the side camera
+  q: [1] Builder; u: [1] Track;
+  at_setup(q[..], u[..], false);
+  f := frame_of(q[..], u[..], 780, 1688, 2);
+  #assert !q[0].shown[BTN_TALK];
+  tap(q[..], u[..], q[0].boxes[BTN_CHOICE + 1]);
+  #assert q[0].q == Q_STYLE;
+  f2 := frame_of(q[..], u[..], 780, 1688, 2);
+  tap(q[..], u[..], q[0].boxes[BTN_PREV]);
+  #assert q[0].q == Q_DIMS && q[0].chosen[Q_DIMS] == 1;
+  tap(q[..], u[..], q[0].boxes[BTN_CHOICE + 1]);
+  for i: 0..<3 { f3 := frame_of(q[..], u[..], 780, 1688, 2); tap(q[..], u[..], q[0].boxes[BTN_SKIP]); }
+  #assert q[0].phase == PH_ASK;
+  ask_plan(q[..], u[..], "a long road", "typed");
+  #assert body_is(q[..], "{\"prompt\":\"a long road\",\"setup\":{\"camera\":\"side\"}}");
+}
+
+#test "setup: SAY IT sends the words to the picker for that question; its pick answers it, none asks again" {
+  s: [1] Builder; t: [1] Track;
+  at_setup(s[..], t[..], true);
+  n := frame_of(s[..], t[..], 2560, 1600, 2);
+  tap(s[..], t[..], s[0].boxes[BTN_CHOICE]);
+  m := frame_of(s[..], t[..], 2560, 1600, 2);
+  builder_action_done(s[..]); a0 := builder_action(s[..]); builder_action_done(s[..]);
+  tap(s[..], t[..], s[0].boxes[BTN_TALK]);
+  #assert s[0].held && builder_action(s[..]) == ACT_VOICE && outbox_is(s[..], "on");
+  builder_message(s[..], t[..], MSG_VOICE, "heard|through my own eyes");
+  tap(s[..], t[..], s[0].boxes[BTN_TALK]);
+  // nothing mid-sentence: the next frame sends it
+  m1 := frame_of(s[..], t[..], 2560, 1600, 2);
+  #assert cast(string) s[0].req_url[0..<s[0].req_url_n] == PICK_URL && body_is(s[..], "{\"field\":\"camera\",\"words\":\"through my own eyes\"}");
+  answer(s[..], t[..], "200\nfield camera\nvalue first\n");
+  #assert s[0].chosen[Q_CAMERA] == 1 && s[0].q == Q_STYLE && s[0].phase == PH_SETUP;
+  builder_message(s[..], t[..], MSG_VOICE, "heard|whatever");
+  answer(s[..], t[..], "200\nfield style\nvalue none\n");
+  #assert s[0].q == Q_STYLE && s[0].chosen[Q_STYLE] == -1 && note_text(s[..]) == "Tap one, or say it again.";
+  builder_message(s[..], t[..], MSG_VOICE, "heard|soft");
+  answer(s[..], t[..], "503\nno answer");
+  #assert s[0].phase == PH_SETUP && s[0].q == Q_STYLE && note_text(s[..]) == "No answer.";
+}
+
+#test "the board shows the setup and CHANGE goes through it again; the change goes with MAKE IT" {
+  s: [1] Builder; t: [1] Track;
+  ready(s[..], t[..], true);
+  n := frame_of(s[..], t[..], 2560, 1600, 2);
+  builder_message(s[..], t[..], MSG_VOICE, "heard|a dark marsh");
+  answer(s[..], t[..], "200\nplan 41\nname Moonlit Marsh\nstyle painterly\nground forest\ntime night\ncamera top\nf water 1 Large pond\n");
+  m := frame_of(s[..], t[..], 2560, 1600, 2);
+  #assert s[0].phase == PH_BOARD && s[0].shown[BTN_SETUP] && cast(string) s[0].cam[0..<s[0].cam_n] == "top";
+  sb: [140] u8; sm := put_summary(s[..], sb[..], true);
+  #assert cast(string) sb[0..<sm] == "3D · TOP-DOWN · PAINTERLY · FOREST · NIGHT";
+  tap(s[..], t[..], s[0].boxes[BTN_SETUP]);
+  #assert s[0].phase == PH_SETUP && s[0].q == 0 && s[0].chosen[Q_DIMS] == 0 && s[0].chosen[Q_CAMERA] == 2 && s[0].chosen[Q_TIME] == 3;
+  m2 := frame_of(s[..], t[..], 2560, 1600, 2);
+  tap(s[..], t[..], s[0].boxes[BTN_CHOICE]);
+  m3 := frame_of(s[..], t[..], 2560, 1600, 2);
+  tap(s[..], t[..], s[0].boxes[BTN_CHOICE + 1]);        // first person now
+  for i: 0..<3 { m4 := frame_of(s[..], t[..], 2560, 1600, 2); tap(s[..], t[..], s[0].boxes[BTN_CHOICE + s[0].chosen[s[0].q]]); }
+  #assert s[0].phase == PH_BOARD && s[0].feat_n == 1;
+  m5 := frame_of(s[..], t[..], 2560, 1600, 2);
+  tap(s[..], t[..], s[0].boxes[BTN_MAKE]);
+  #assert body_is(s[..], "{\"plan\":41,\"on\":[true],\"setup\":{\"camera\":\"first\",\"style\":\"painterly\",\"ground\":\"forest\",\"time\":\"night\"}}");
+}
+
+#test "the setup fits a 390 px phone: every choice and button inside it" {
+  s: [1] Builder; t: [1] Track;
+  at_setup(s[..], t[..], true);
+  for q: 0..<QUESTIONS {
+    n := frame_of(s[..], t[..], 780, 1688, 2);
+    for i: 0..<BUTTONS { if s[0].shown[i] { #assert s[0].boxes[i].x0 >= 0 && s[0].boxes[i].x1 <= 780 && s[0].boxes[i].y1 <= 1688; } }
+    for i: 0..<s[0].plate_n { #assert s[0].plates[i].y0 > 0; }
+    tap(s[..], t[..], s[0].boxes[BTN_CHOICE]);
+  }
+  #assert s[0].phase == PH_ASK;
 }
