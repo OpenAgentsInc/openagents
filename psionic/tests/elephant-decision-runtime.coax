@@ -1,0 +1,4 @@
+// Owned real decision experiment entry: text, model and readout remain Coax.
+#load "../lib/text.coax";
+#load "../lib/model-io/layer-map.coax";
+#load "../lib/qwen-request.coax";

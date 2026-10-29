@@ -1,0 +1,58 @@
+// Apply an authenticated model to a prepared typed decision.
+#load "decision-session.coax";
+#load "decision-prepare.coax";
+#load "qwen-request.coax";
+#authority;
+PsAnswer :: struct {status:QxStatus;cause:int;statistics:QrResult;choice:string;}
+#test "prepared choice selects a label from pinned slot IDs" {
+    linear:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    full:=QhShape.{width=2,hidden=1,capacity=3,attention=QfShape.{heads=1,kv_heads=1,head_dim=64,rotary_dim=64,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=linear,full=full,state=QpShape.{linear_layers=1,full_layers=1,capacity=3,delta=linear.delta,attention=full.attention}};
+    zero:[512]u8;norm:[2]f32;qnorm:[64]f32;conv:[12]f32;scalar:[1]f32;gain:=[1]f32.[1];
+    lw:=QlWeights.{input_norm=norm[..],post_norm=norm[..],conv=conv[..],a_log=scalar[..],dt=scalar[..],delta_norm=gain[..],qkv=zero[0..<12],z=zero[0..<4],a=zero[0..<4],b=zero[0..<4],mixer_out=zero[0..<4],gate=zero[0..<4],up=zero[0..<4],down=zero[0..<4]};
+    fw:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=qnorm[..],k_norm=qnorm[..],q=zero[..],k=zero[0..<256],v=zero[0..<256],mixer_out=zero[0..<256],gate=zero[0..<4],up=zero[0..<4],down=zero[0..<4]};
+    layers:=[2]QeLayer.[QeLayer.{kind=cast(u8)QeKind.linear,linear=lw},QeLayer.{kind=cast(u8)QeKind.full,full=fw}];
+    embedding:[160]u8;embedding[0]=0;embedding[1]=64;embedding[2]=128;embedding[3]=64;head:[160]u8;head[32*4]=128;head[32*4+1]=63;head[33*4+2]=128;head[33*4+3]=63;
+    model:=QxModel.{shape=shape,layers=layers[..],vocab=40,embedding=embedding[..],head=head[..],final_norm=norm[..]};
+    session:=PsSession.{model=model};prepared:=PrResult.{written=2,prefix=1,slots=2,kind=PtQuestionKind.choice};tokens:=[2]int.[0,0];options:=[2]PtOption.[PtOption.{name="yes"},PtOption.{name="no"}];
+    state:[394]f32;out:=[3]f64.[-7,-7,-7];prob:[4]f64;work:[71000]f32;
+    r:=ps_answer(session,prepared,tokens[..],options[..],1,state[..],out[..],prob[..],work[..],false);
+    #assert r.status==QxStatus.ok && r.choice=="no" && r.statistics.best==1 && abs(out[0]-0.35365245499220305)<0.000001 && abs(r.statistics.mass-0.11971594252671172)<0.000001;
+    noul:=prepared;noul.kind=PtQuestionKind.noul;
+    q:=ps_answer(session,noul,tokens[..],options[0..<0],1,state[..],out[..],prob[..],work[..],false);
+    #assert q.status==QxStatus.ok && q.choice=="" && abs(q.statistics.truth-0.35365245499220305)<0.000001;
+    score:=prepared;score.kind=PtQuestionKind.score;
+    q=ps_answer(session,score,tokens[..],options[..],1,state[..],out[..],prob[..],work[..],false);
+    #assert q.status==QxStatus.ok && q.choice=="" && abs(q.statistics.score-(1-0.35365245499220305))<0.000001;
+    single:=prepared;single.slots=1;
+    q=ps_answer(session,single,tokens[..],options[0..<1],1,state[..],out[..],prob[..],work[..],false);
+    #assert q.status==QxStatus.ok && q.choice=="yes" && q.statistics.confidence==1 && out[0]==1;
+    before:=state;out[0]=-7;out[1]=-7;
+    badsession:=session;badsession.status=PsOpenStatus.digest;
+    #assert ps_answer(badsession,prepared,tokens[..],options[..],1,state[..],out[..],prob[..],work[..],false).status==QxStatus.shape;
+    invalid:=prepared;invalid.status=PrStatus.token;
+    #assert ps_answer(session,invalid,tokens[..],options[..],1,state[..],out[..],prob[..],work[..],false).status==QxStatus.shape;
+    #assert ps_answer(session,prepared,tokens[..],options[0..<0],1,state[..],out[..],prob[..],work[..],false).status==QxStatus.shape;
+    #assert ps_answer(session,prepared,tokens[..],options[..],0,state[..],out[..],prob[..],work[..],false).status==QxStatus.shape;
+    #assert ps_answer(session,prepared,tokens[0..<1],options[..],1,state[..],out[..],prob[..],work[..],false).status==QxStatus.capacity;
+    #assert ps_answer(session,prepared,tokens[..],options[..],1,state[..],out[..],prob[..],work[..],true).status==QxStatus.alias;
+    invalid=prepared;invalid.slots=1;#assert ps_answer(session,invalid,tokens[..],options[..],1,state[..],out[..],prob[..],work[..],false).status==QxStatus.shape;
+    bad:=prepared;bad.prefix=2;
+    q=ps_answer(session,bad,tokens[..],options[..],1,state[..],out[..],prob[..],work[..],false);
+    #assert q.status==QxStatus.capacity && q.choice=="" && out[0]==-7;for i:0..<394 {#assert state[i]==before[i];}
+}
+// book:begin answer
+ps_answer :: (session:PsSession,prepared:PrResult,tokens:[]int,options:[]PtOption,temperature:f32,state:[]f32,out:[]f64,prob:[]f64,work:[]f32,overlap:bool)->PsAnswer #export_c {
+    tag:=cast(u8)prepared.kind;
+    if session.status!=PsOpenStatus.ok || prepared.status!=PrStatus.ok || !pt_question_count(tag,options.count) || !qr_valid(tag,prepared.slots,temperature) {return PsAnswer.{status=QxStatus.shape};}
+    if tokens.count!=prepared.written {return PsAnswer.{status=QxStatus.capacity};}
+    if prepared.kind!=PtQuestionKind.noul && prepared.slots!=options.count {return PsAnswer.{status=QxStatus.shape};}
+    if overlap {return PsAnswer.{status=QxStatus.alias};}
+    slots:[255]int;for i:0..<prepared.slots {slots[i]=qr_pinned_slot(i);}
+    result:=qs_decide(session.model,tokens,prepared.prefix,state,cast(QrKind)tag,temperature,slots[0..<prepared.slots],out,prob,work,false);
+    if result.status!=QxStatus.ok {return PsAnswer.{status=result.status,cause=result.cause};}
+    answer:=PsAnswer.{statistics=result.answer};
+    if prepared.kind==PtQuestionKind.choice {answer.choice=options[result.answer.best].name;}
+    return answer;
+}
+// book:end answer

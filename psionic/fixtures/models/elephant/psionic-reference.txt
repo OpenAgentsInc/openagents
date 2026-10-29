@@ -1,0 +1,3 @@
+authenticating original Elephant
+executing typed decision
+choice=yes p_yes=0.757196285 p_no=0.242803715 slot_mass=0.228232722 confidence=0.514392571

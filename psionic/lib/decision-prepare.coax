@@ -1,0 +1,38 @@
+// Render, tokenize and split one typed request before model execution.
+#load "text.coax";
+#load "../fixtures/text/ch05/prepare-gold.coax";
+#authority;
+PrStatus :: enum u8 {ok;capacity;alias;render;token;split;}
+PrWorkspace :: struct {prompt:[]u8;render_work:[]u8;candidate:[]int;full:[]int;token_stage:[]int;normal:[]u8;scalars:[]int;symbols:[]int;}
+PrResult :: struct {status:PrStatus;cause:int;written:int;prefix:int;slots:int;kind:PtQuestionKind;}
+#test "typed request becomes the independently expected complete toy token stream" {
+    table:=PT_TOY;state:=PtEntry.{kind=PtEntryKind.text,value="ready"};q:=PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{kind=PtEntryKind.text,value="Pick."}};
+    options:=[2]PtOption.[PtOption.{name="yes"},PtOption.{name="no"}];prompt:[1024]u8;render_work:[1024]u8;normal:[2048]u8;
+    candidate:[512]int;full:[512]int;stage:[512]int;scalars:[2048]int;symbols:[1024]int;out:[512]int;for i:0..<512 {out[i]=-7;}
+    w:=PrWorkspace.{prompt=prompt[..],render_work=render_work[..],candidate=candidate[..],full=full[..],token_stage=stage[..],normal=normal[..],scalars=scalars[..],symbols=symbols[..]};
+    r:=ps_prepare(table[..],state,q,options[..],out[..],w,false);
+    #assert r.status==PrStatus.ok && r.written==PR_TOY_IDS.count && r.prefix==PR_TOY_PREFIX && r.slots==2 && r.kind==PtQuestionKind.choice;
+    for i:0..<r.written {#assert out[i]==PR_TOY_IDS[i];}#assert out[r.written]==-7;
+    exact:=ps_prepare(table[..],state,q,options[..],out[0..<r.written],w,false);#assert exact.status==PrStatus.ok && exact.written==r.written;
+    before:=out;bad:=ps_prepare(table[..],state,q,options[..],out[0..<r.written-1],w,false);
+    #assert bad.status==PrStatus.capacity && bad.written==0;for i:0..<512 {#assert out[i]==before[i];}
+    #assert ps_prepare(table[..],state,q,options[..],out[..],w,true).status==PrStatus.alias;
+    #assert ps_prepare(table[..],state,q,options[0..<0],out[..],w,true).status==PrStatus.render;
+}
+ps_prepare :: (table:[]u8,state:PtEntry,question:PtQuestion,options:[]PtOption,out:[]int,work:PrWorkspace,overlap:bool)->PrResult #export_c {
+    if !pt_question_count(cast(u8)question.kind,options.count) {return PrResult.{status=PrStatus.render,cause=cast(int)PtStatus.range};}
+    if overlap {return PrResult.{status=PrStatus.alias};}
+    rendered:=pt_render_checked(state,question,options,work.prompt,work.render_work,false);
+    if rendered.status!=PtStatus.ok {return PrResult.{status=PrStatus.render,cause=cast(int)rendered.status};}
+    text:=cast(string)work.prompt[0..<rendered.written];prefix_text:=text[0..<rendered.prefix_bytes];
+    candidate:=pt_encode_checked(table,prefix_text,work.candidate,work.token_stage,work.normal,work.scalars,work.symbols,false);
+    if candidate.status!=PtStatus.ok {return PrResult.{status=PrStatus.token,cause=cast(int)candidate.status};}
+    full:=pt_encode_checked(table,text,work.full,work.token_stage,work.normal,work.scalars,work.symbols,false);
+    if full.status!=PtStatus.ok {return PrResult.{status=PrStatus.token,cause=cast(int)full.status};}
+    ends:=[1]int.[full.written];branch:[1]PtBranch;
+    split:=pt_split_checked(work.candidate[0..<candidate.written],work.full[0..<full.written],ends[..],branch[..],false);
+    if split.status!=PtStatus.ok {return PrResult.{status=PrStatus.split,cause=cast(int)split.status};}
+    if out.count<full.written {return PrResult.{status=PrStatus.capacity};}
+    for i:0..<full.written {out[i]=work.full[i];}
+    return PrResult.{written=full.written,prefix=split.prefix,slots=rendered.slots,kind=question.kind};
+}

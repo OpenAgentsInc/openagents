@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapters 1–9, local/owned machines only. No model downloads or services.
+# Chapters 1–10, local/owned machines only. No model downloads or services.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 root=$PWD
@@ -27,7 +27,12 @@ python3 -I psionic/tests/qwen_decision_oracle.py --header > "$out/qwen-decision-
 python3 -I psionic/tests/readout_oracle.py
 python3 -I psionic/tests/qwen_model_oracle.py
 python3 -I psionic/tests/qwen_tokens_oracle.py
-for unit in learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle; do
+python3 -I psionic/tests/elephant_layer0_fixture.py
+python3 -I psionic/tests/elephant_reference_fixture.py
+python3 -I psionic/tests/elephant_reference_fixture.py --check-output psionic/fixtures/models/elephant/psionic-reference.txt
+python3 -I psionic/tests/session_fixture.py
+python3 -I psionic/tests/prepare_oracle.py --header > "$out/prepare-golden.h"
+for unit in learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle; do
     "$coax" test "psionic/lib/$unit.coax"
     "$coax" test "psionic/lib/$unit.coax" --release
     "$coax" mutate "psionic/lib/$unit.coax"
@@ -36,14 +41,14 @@ for mode in debug release; do
     flags=()
     opt=-O0
     if [[ $mode == release ]]; then flags+=(--release); opt=-O2; fi
-    for unit in learn tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models readout rank5 access layer-map model-map rank5-bundle; do
+    for unit in learn tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout rank5 rank5-bundle access layer-map model-map; do
         source="psionic/lib/$unit.coax"
         if [[ $unit == weights ]]; then source=psionic/lib/model-io/weights.coax; fi
         if [[ $unit == rank5 ]]; then source=psionic/lib/model-io/rank5.coax; fi
+        if [[ $unit == rank5-bundle ]]; then source=psionic/lib/model-io/rank5-bundle.coax; fi
         if [[ $unit == access ]]; then source=psionic/lib/model-io/access.coax; fi
         if [[ $unit == layer-map ]]; then source=psionic/lib/model-io/layer-map.coax; fi
         if [[ $unit == model-map ]]; then source=psionic/lib/model-io/model-map.coax; fi
-        if [[ $unit == rank5-bundle ]]; then source=psionic/lib/model-io/rank5-bundle.coax; fi
         "$coax" c "$source" --library --header "$out/$unit.h" "${flags[@]}" > "$out/$unit.c"
         case "$unit" in
             learn) adapter=psionic/platform/memory.c; harness=psionic/tests/native.c ;;
@@ -63,14 +68,17 @@ for mode in debug release; do
             qwen-model) adapter=psionic/platform/qwen-model-memory.c; harness=psionic/tests/qwen_model.c ;;
             qwen-tokens) adapter=psionic/platform/qwen-tokens-memory.c; harness=psionic/tests/qwen_tokens.c ;;
             qwen-rope) adapter=psionic/platform/qwen-rope-memory.c; harness=psionic/tests/qwen_rope.c ;;
-            decision-models) adapter=psionic/platform/decision-models-memory.c; harness=psionic/tests/decision_models.c ;;
             qwen-request) adapter=psionic/platform/qwen-request-memory.c; harness=psionic/tests/qwen_request.c ;;
+            decision-models) adapter=psionic/platform/decision-models-memory.c; harness=psionic/tests/decision_models.c ;;
+            decision-prepare) adapter=psionic/platform/decision-prepare-memory.c; harness=psionic/tests/decision_prepare.c ;;
+            decision-session) adapter=psionic/platform/decision-session-memory.c; harness=psionic/tests/decision_session.c ;;
+            decision-answer) adapter=psionic/platform/decision-answer-memory.c; harness=psionic/tests/decision_answer.c ;;
             readout) adapter=psionic/platform/readout-memory.c; harness=psionic/tests/readout.c ;;
             rank5) adapter=psionic/platform/rank5-memory.c; harness=psionic/tests/rank5.c ;;
-            model-map) adapter=psionic/platform/model-map-memory.c; harness=psionic/tests/model_map.c ;;
-            layer-map) adapter=psionic/platform/layer-map-memory.c; harness=psionic/tests/layer_map.c ;;
-            access) adapter=psionic/platform/access-memory.c; harness=psionic/tests/access.c ;;
             rank5-bundle) adapter=psionic/platform/rank5-bundle-memory.c; harness=psionic/tests/rank5_bundle.c ;;
+            access) adapter=psionic/platform/access-memory.c; harness=psionic/tests/access.c ;;
+            layer-map) adapter=psionic/platform/layer-map-memory.c; harness=psionic/tests/layer_map.c ;;
+            model-map) adapter=psionic/platform/model-map-memory.c; harness=psionic/tests/model_map.c ;;
         esac
         for native in plain sanitized; do
             sanitizers=()
@@ -85,4 +93,4 @@ for mode in debug release; do
     done
 done
 python3 -I psionic/tests/book.py --coax "$coax"
-echo "Psionic chapters 1–9 pass: Coax debug/release checks, zero-survivor mutation, native debug/release, ASan/UBSan and book"
+echo "Psionic chapters 1–10 pass: Coax debug/release checks, zero-survivor mutation, native debug/release, ASan/UBSan and book"

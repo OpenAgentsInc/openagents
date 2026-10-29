@@ -1,0 +1,12 @@
+#import "Basic";
+#load "../lib/decision-models.coax";
+
+// book:begin example
+main :: () {
+    target:=ps_target(0,128);
+    #assert target.status==PsStatus.ok;
+    print("model: %\n",target.origin);
+    print("layers: % linear, % full attention\n",target.shape.state.linear_layers,target.shape.state.full_layers);
+    print("vocabulary: %, tensors: %\n",target.vocab,target.tensors);
+}
+// book:end example

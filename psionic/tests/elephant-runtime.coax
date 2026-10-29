@@ -1,0 +1,3 @@
+// Owned real-weight experiment entry: no executable model logic lives in C.
+#load "../lib/model-io/layer-map.coax";
+#load "../lib/readout.coax";

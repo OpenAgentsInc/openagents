@@ -52,6 +52,8 @@ credentials, or downloads at run time.
 | --- | --- |
 | [lib/learn.coax](lib/learn.coax) | Checks first, admission, loss/gradient, fixed-rate SGD, prediction. |
 | [lib/tensor.coax](lib/tensor.coax) | Checked rank/shape/byte/stride metadata, indexing and staged finite-f32 copy. |
+| [lib/qwen-model.coax](lib/qwen-model.coax) | Ordered hybrid layers with staged complete-block state and activations; original-weight qualification is recorded in chapter 10. |
+| [lib/model-io/rank5-bundle.coax](lib/model-io/rank5-bundle.coax) | Separate full rank-five inventory and bundle binding, including all original tensor axes. |
 | [lib/readout.coax](lib/readout.coax), [tests/readout.c](tests/readout.c) | Slot mass, explicit-temperature probabilities and typed statistics, with original slot IDs and native buffer checks. |
 | [lib/qwen-decision.coax](lib/qwen-decision.coax), [lib/qwen-prefix.coax](lib/qwen-prefix.coax) | Bidirectional full-attention blocks and isolated snapshots of complete live hybrid state. |
 | [lib/qwen-linear-layer.coax](lib/qwen-linear-layer.coax), [lib/qwen-full-layer.coax](lib/qwen-full-layer.coax) | Bounded causal Qwen-style linear and full-attention layers with staged model state. |
@@ -112,8 +114,9 @@ complete checkpoint execution and model behavior remain unqualified. See
 [chapter 7](book/ch07-a-hybrid-sequence-model.md).
 Chapter 8 evaluates a bidirectional full-attention block and forks convolution,
 recurrent and live KV state. The fork compares a caller-bound model identity;
-full-checkpoint and end-to-end decision qualification are still planned.
+see chapter 10 for the Elephant original-checkpoint qualification.
 Chapter 9 provides CPU slot readout given full-vocabulary logits and explicit
 temperature; it does not load calibration artifacts or serialize responses.
-Autodiff, full model execution, GPU
-execution and serving remain planned.
+Chapter 10 authenticates and executes a typed Elephant text decision on the CPU;
+see [execution progress](../docs/psionic/model-execution-progress.md). Mammoth
+end-to-end qualification, autodiff, GPU execution and serving remain planned.

@@ -1,0 +1,115 @@
+// Authenticated original files become a borrowed, fully bound decision model.
+#load "decision-models.coax";
+#load "model-io/model-map.coax";
+#load "model-io/rank5-bundle.coax";
+#load "text.coax";
+#load "qwen-tokens.coax";
+#load "../fixtures/models/session/toy.coax";
+#authority;
+PsOpenStatus :: enum u8 {ok;shape;capacity;alias;digest;bundle;binding;}
+PsWorkspace :: struct {inventory:[]P5Tensor;draft:[]P5Tensor;layers:[]QeLayer;params:[]f32;stage:[]f32;layer_work:[]f32;norm:[]f32;norm_work:[]f32;}
+PsSession :: struct {status:PsOpenStatus;cause:int;target:PsKind;model:QxModel;table:[]u8;}
+PsGlobals :: struct {status:PwStatus;embedding:[]u8;head:[]u8;norm:[]f32;}
+#test "complete synthetic original session authenticates and publishes one model" {
+    config:=CH04_CONFIG_JSON;tokenizer:=CH04_TOKENIZER_JSON;file:=PS_TOY_FILE;specs:=PS_TOY_SPECS;index:[1]u8;
+    ls:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    fs:=QhShape.{width=2,hidden=1,capacity=1,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=ls,full=fs,state=QpShape.{linear_layers=3,full_layers=1,capacity=1,delta=ls.delta,attention=fs.attention}};
+    target:=PsTarget.{origin="owned",revision="v1",config_sha=CH04_CONFIG_JSON_SHA,tokenizer_sha=CH04_TOKENIZER_JSON_SHA,readout_sha=CH04_CONFIG_JSON_SHA,vocab=4,tensors=56,shards=1,shape=shape};
+    target.shard[0]=PsShardPin.{name="model.safetensors",bytes=file.count,sha=PS_TOY_SHA};files:=[1]PaFile.[PaFile.{data=file[..]}];
+    inventory:[56]P5Tensor;draft:[56]P5Tensor;layers:[4]QeLayer;params:[65]f32;stage:[65]f32;layer_work:[27]f32;norm:[2]f32;norm_work:[2]f32;
+    memory:=PsWorkspace.{inventory=inventory[..],draft=draft[..],layers=layers[..],params=params[..],stage=stage[..],layer_work=layer_work[..],norm=norm[..],norm_work=norm_work[..]};
+    r:=ps_bind_core(target,config[..],tokenizer[..],config[..],index[0..<0],files[..],specs[..],memory,tokenizer[..],false);
+    #assert r.status==PsOpenStatus.ok && r.model.vocab==4 && r.model.layers.count==4 && r.model.embedding.count==16 && r.model.head.count==16 && r.model.final_norm.count==2 && r.table.count==tokenizer.count && r.table[0]==tokenizer[0];
+    #assert r.model.layers[0].linear.input_norm.count==2 && r.model.layers[3].full.q.count==16;
+    many_files:=[3]PaFile.[files[0],files[0],files[0]];two:=target;two.shards=2;
+    #assert ps_bind_core(two,config[..],tokenizer[..],config[..],index[0..<0],many_files[0..<2],specs[..],memory,tokenizer[..],true).status==PsOpenStatus.alias;
+    two.shards=3;#assert ps_bind_core(two,config[..],tokenizer[..],config[..],index[0..<0],many_files[..],specs[..],memory,tokenizer[..],true).status==PsOpenStatus.shape;
+    #assert !ps_readout_size(0) && ps_readout_size(1) && ps_readout_size(1048576) && !ps_readout_size(1048577);
+    #assert ps_bind_core(target,config[..],tokenizer[..],config[0..<1],index[0..<0],files[..],specs[..],memory,tokenizer[..],true).status==PsOpenStatus.alias;
+    bad:=target;bad.shard[0].sha=CH04_CONFIG_JSON_SHA;q:=ps_bind_core(bad,config[..],tokenizer[..],config[..],index[0..<0],files[..],specs[..],memory,tokenizer[..],false);
+    #assert q.status==PsOpenStatus.bundle && q.model.vocab==0;
+    bad=target;bad.readout_sha=CH04_TOKENIZER_JSON_SHA;q=ps_bind_core(bad,config[..],tokenizer[..],config[..],index[0..<0],files[..],specs[..],memory,tokenizer[..],false);
+    #assert q.status==PsOpenStatus.digest && q.model.vocab==0;
+    #assert ps_bind_core(target,config[..],tokenizer[..],config[..],index[0..<0],files[..],specs[..],memory,tokenizer[..],true).status==PsOpenStatus.alias;
+    for k:0..<14 {
+        badtarget:=target;badmem:=memory;f:=files[..];sp:=specs[..];rd:=config[..];
+        if k==0 {badtarget.status=PsStatus.kind;}if k==1 {badtarget.vocab=0;}if k==2 {badtarget.shards=0;}if k==3 {f=files[0..<0];}if k==4 {sp=specs[0..<55];}
+        if k==5 {badmem.inventory=inventory[0..<55];}if k==6 {badmem.draft=draft[0..<55];}if k==7 {badmem.layers=layers[0..<3];}
+        if k==8 {badmem.params=params[0..<64];}if k==9 {badmem.stage=stage[0..<64];}if k==10 {badmem.layer_work=layer_work[0..<26];}
+        if k==11 {badmem.norm=norm[0..<1];}if k==12 {badmem.norm_work=norm_work[0..<1];}if k==13 {rd=config[0..<0];}
+        result:=ps_bind_core(badtarget,config[..],tokenizer[..],rd,index[0..<0],f,sp,badmem,tokenizer[..],false);
+        if k<5 {#assert result.status==PsOpenStatus.shape;}else {#assert result.status==PsOpenStatus.capacity;}
+        #assert result.model.vocab==0;
+    }
+    broken:=config;broken[0]=0;q=ps_bind_core(target,broken[..],tokenizer[..],config[..],index[0..<0],files[..],specs[..],memory,tokenizer[..],false);
+    #assert q.status==PsOpenStatus.bundle && q.cause==cast(int)PwStatus.digest;
+    badshape:=target;badshape.shape.linear.width=3;badshape.shape.full.width=3;
+    bigger_params:[100]f32;bigger_stage:[100]f32;bigger_work:[40]f32;bigger_norm:[3]f32;bigger_norm_work:[3]f32;
+    more:=memory;more.params=bigger_params[..];more.stage=bigger_stage[..];more.layer_work=bigger_work[..];more.norm=bigger_norm[..];more.norm_work=bigger_norm_work[..];
+    q=ps_bind_core(badshape,config[..],tokenizer[..],config[..],index[0..<0],files[..],specs[..],more,tokenizer[..],false);
+    #assert q.status==PsOpenStatus.binding && q.cause==cast(int)PwStatus.manifest;
+}
+ps_readout_size :: (count:int)->bool {return count>=1 && count<=PW_HEADER_MAX;}
+ps_bind_core :: (target:PsTarget,config:[]u8,tokenizer:[]u8,readout:[]u8,index:[]u8,files:[]PaFile,specs:[]P5Spec,memory:PsWorkspace,table:[]u8,overlap:bool)->PsSession {
+    s:=target.shape;
+    if target.status!=PsStatus.ok || !qe_valid(s) || s.linear.dtype!=QmDtype.bf16 || !qr_vocab_valid(target.vocab) || target.shards<1 || target.shards>2 || files.count!=target.shards || target.tensors!=specs.count {return PsSession.{status=PsOpenStatus.shape};}
+    linear:=pma_params(s,false);full:=pma_params(s,true);n:=s.state.linear_layers+s.state.full_layers;params:=s.state.linear_layers*linear+s.state.full_layers*full;
+    if memory.inventory.count<target.tensors || memory.draft.count<target.tensors || memory.layers.count<n || memory.params.count<params || memory.stage.count<params || memory.layer_work.count<linear+full || memory.norm.count<s.linear.width || memory.norm_work.count<s.linear.width || !ps_readout_size(readout.count) {return PsSession.{status=PsOpenStatus.capacity};}
+    if overlap {return PsSession.{status=PsOpenStatus.alias};}
+    if !pw_digest(readout,target.readout_sha) {return PsSession.{status=PsOpenStatus.digest};}
+    id:=PwIdentity.{origin=target.origin,revision=target.revision,config_sha=target.config_sha,tokenizer_sha=target.tokenizer_sha,index_sha=target.index_sha};
+    shards:[2]PwShard;for i:0..<target.shards {pin:=target.shard[i];shards[i]=PwShard.{name=pin.name,size=pin.bytes,sha=pin.sha,data=files[i].data};}
+    bundle:=p5_bundle_checked(id,config,tokenizer,index,shards[0..<target.shards],specs,memory.inventory,memory.draft,false);
+    if bundle.status!=PwStatus.ok {return PsSession.{status=PsOpenStatus.bundle,cause=cast(int)bundle.status};}
+    inv:=memory.inventory[0..<bundle.written];layers:=memory.layers[0..<n];values:=memory.params[0..<params];
+    binding:=pma_bind(s,inv,files,layers,values,memory.stage,memory.layer_work,false);
+    if binding.status!=PwStatus.ok {return PsSession.{status=PsOpenStatus.binding,cause=cast(int)binding.status};}
+    globals:=ps_globals(target,inv,files,memory.norm,memory.norm_work);
+    if globals.status!=PwStatus.ok {return PsSession.{status=PsOpenStatus.binding,cause=cast(int)globals.status};}
+    return PsSession.{target=target.kind,model=QxModel.{shape=s,layers=layers,vocab=target.vocab,embedding=globals.embedding,head=globals.head,final_norm=globals.norm},table=table};
+}
+ps_open :: (kind:u8,capacity:int,config:[]u8,tokenizer:[]u8,readout:[]u8,index:[]u8,files:[]PaFile,specs:[]P5Spec,table:[]u8,memory:PsWorkspace,overlap:bool)->PsSession #export_c {
+    target:=ps_target(kind,capacity);if target.status!=PsStatus.ok {return PsSession.{status=PsOpenStatus.shape,cause=cast(int)target.status};}
+    if files.count!=target.shards || specs.count!=target.tensors {return PsSession.{status=PsOpenStatus.shape};}
+    if overlap {return PsSession.{status=PsOpenStatus.alias};}
+    if !pt_admit(table) {return PsSession.{status=PsOpenStatus.digest};}
+    return ps_bind_core(target,config,tokenizer,readout,index,files,specs,memory,table,overlap);
+}
+#test "a pinned session refuses unsupported identity, overlap and tokenizer table" {
+    bytes:[1]u8;files:[1]PaFile;specs:[1]P5Spec;memory:PsWorkspace;
+    #assert ps_open(2,1,bytes[..],bytes[..],bytes[..],bytes[0..<0],files[..],specs[..],bytes[..],memory,false).status==PsOpenStatus.shape;
+    #assert ps_open(0,1,bytes[..],bytes[..],bytes[..],bytes[0..<0],files[..],specs[..],bytes[..],memory,true).status==PsOpenStatus.shape;
+    enough:[760]P5Spec;
+    #assert ps_open(0,1,bytes[..],bytes[..],bytes[..],bytes[0..<0],files[..],enough[..],bytes[..],memory,true).status==PsOpenStatus.alias;
+    #assert ps_open(0,1,bytes[..],bytes[..],bytes[..],bytes[0..<0],files[..],enough[..],bytes[..],memory,false).status==PsOpenStatus.digest;
+}
+#test "global embedding, head and final norm are independently checked" {
+    s:=QeShape.{linear=QlShape.{width=2}};target:=PsTarget.{shape=s,vocab=4};
+    matrix:=P5Shape.{rank=2,dims=[5]int.[4,2,0,0,0]};vector:=P5Shape.{rank=1,dims=[5]int.[2,0,0,0,0]};
+    inv:=[3]P5Tensor.[P5Tensor.{name="model.language_model.embed_tokens.weight",shape=matrix,elements=8,begin=0,end=16},P5Tensor.{name="lm_head.weight",shape=matrix,elements=8,begin=16,end=32},P5Tensor.{name="model.language_model.norm.weight",shape=vector,elements=2,begin=32,end=36}];
+    bytes:[36]u8;bytes[32]=128;bytes[33]=63;bytes[35]=64;files:=[1]PaFile.[PaFile.{data=bytes[..]}];out:=[3]f32.[-7,-7,-7];work:[2]f32;
+    r:=ps_globals(target,inv[..],files[..],out[..],work[..]);#assert r.status==PwStatus.ok && r.embedding.count==16 && r.head.count==16 && r.norm.count==2 && out[0]==1 && out[1]==2 && out[2]==-7;
+    for i:0..<3 {bad:=inv;bad[i].name="missing";out[0]=-7;#assert ps_globals(target,bad[..],files[..],out[..],work[..]).status==PwStatus.manifest && out[0]==-7;}
+    bytes[32]=128;bytes[33]=127;out[0]=-7;#assert ps_globals(target,inv[..],files[..],out[..],work[..]).status==PwStatus.number && out[0]==-7;
+    #assert ps_globals(target,inv[..],files[..],out[0..<1],work[..]).status==PwStatus.capacity;
+    bigger:[8193]f32;scratch:[8193]f32;boundary:=target;boundary.shape.linear.width=0;
+    #assert ps_globals(boundary,inv[..],files[..],bigger[..],scratch[..]).status==PwStatus.capacity;
+    boundary.shape.linear.width=1;#assert ps_globals(boundary,inv[..],files[..],bigger[..],scratch[..]).status==PwStatus.manifest;
+    boundary.shape.linear.width=8192;#assert ps_globals(boundary,inv[..],files[..],bigger[..],scratch[..]).status==PwStatus.manifest;
+    boundary.shape.linear.width=8193;#assert ps_globals(boundary,inv[..],files[..],bigger[..],scratch[..]).status==PwStatus.capacity;
+}
+
+ps_globals :: (target:PsTarget,inventory:[]P5Tensor,files:[]PaFile,out:[]f32,work:[]f32)->PsGlobals {
+    d:=target.shape.linear.width;if d<1 || d>8192 || out.count<d || work.count<d {return PsGlobals.{status=PwStatus.capacity};}
+    matrix:=P5Shape.{rank=2,dims=[5]int.[target.vocab,d,0,0,0]};vector:=P5Shape.{rank=1,dims=[5]int.[d,0,0,0,0]};
+    embedding:=pa_view("model.language_model.embed_tokens.weight",matrix,PwDtype.bf16,inventory,files);
+    if embedding.status!=PwStatus.ok {return PsGlobals.{status=embedding.status};}
+    head:=pa_view("lm_head.weight",matrix,PwDtype.bf16,inventory,files);
+    if head.status!=PwStatus.ok {return PsGlobals.{status=head.status};}
+    norm:=pa_view("model.language_model.norm.weight",vector,PwDtype.bf16,inventory,files);
+    if norm.status!=PwStatus.ok {return PsGlobals.{status=norm.status};}
+    decoded:=pa_decode(norm,out[0..<d],work[0..<d],false);
+    if decoded.status!=PwStatus.ok {return PsGlobals.{status=decoded.status};}
+    return PsGlobals.{embedding=embedding.data,head=head.data,norm=out[0..<d]};
+}

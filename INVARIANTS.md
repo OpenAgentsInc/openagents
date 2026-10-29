@@ -33,6 +33,26 @@ Failed mapping does not publish a layer; scratch may change. Check:
 checks; the [layer record](docs/verification/psionic-layer-map-2026-10-29.md)
 describes original-file evidence and limits.
 
+## Psionic original sessions and typed text decisions
+
+`psionic/lib/decision-session.coax` admits a pinned target, authenticates the
+original artifacts and packed tokenizer, binds the exact inventory and maps
+the complete text stack. Names, tensor bytes and bound layer storage remain
+borrowed and immutable for the session lifetime. `decision-prepare.coax`
+turns one typed request into a staged token stream and a safe shared-prefix
+boundary; the caller must associate that result, the tokens and option names
+with the authenticated session. `decision-answer.coax` uses pinned slot IDs,
+resets request state, runs prefix and suffix and maps the chosen index back to
+an option. The caller supplies capacity, temperature and valid, disjoint,
+live storage; native address checks do not establish allocation validity or
+exclusive ownership. Workspace can change on failure, but session, request
+output, answer probabilities and live state publish only on success. The text
+profile does not admit images or provide a service or calibration.
+
+Check: `psionic/check.sh` covers debug/release checks, authority mutations,
+book examples and native plain/sanitized adapters. The chapter 10 verification
+record describes the independent original-weight comparisons and limits.
+
 ## Psionic token blocks stage model state through full-vocabulary readout
 
 `psionic/lib/qwen-tokens.coax` gathers original-format embedding rows, runs
