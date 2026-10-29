@@ -23,7 +23,7 @@ speech_config g_speech;
 static void share_init(void);
 
 static const speech_profile PROFILES[] = {
-    {"foreman", 1, "en-US-Chirp3-HD-Charon", "en-US"},
+    {"foreman", 2, "en-US-Chirp3-HD-Sulafat", "en-US"},
     {"kore", 1, "en-US-Chirp3-HD-Kore", "en-US"},
     {"puck", 1, "en-US-Chirp3-HD-Puck", "en-US"},
 };

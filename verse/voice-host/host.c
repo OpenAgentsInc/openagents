@@ -284,8 +284,9 @@ typedef struct utter {
   char text[MAX_TEXT + 1];   // the sentences known so far
   int16_t *pcm;              // contiguous rendered audio, in sentence order
   size_t n, cap, sent;
-  struct { int16_t *pcm; size_t n; bool ready; } seg[MAX_SEGS];
+  struct { int16_t *pcm; size_t n; bool ready; size_t end; } seg[MAX_SEGS];  // end: its text's end in text
   int nseg, appended;
+  size_t base;               // text already in pcm before the segments (a resume's)
   char overflow[MAX_TEXT + 1];  // sentences past MAX_SEGS - 1, rendered as one
   bool text_done;            // the agent has finished (or failed)
   bool started;              // Speech sent
@@ -350,7 +351,7 @@ typedef struct {
   char cut_text[MAX_TEXT + 1];
   int16_t *cut_pcm;           // its rendered audio
   size_t cut_n, cut_played;   // samples rendered and played when it was cut
-  int cut_rendered;           // sentences rendered; the rest are still text
+  size_t cut_rest;            // where cut_text's unrendered sentences start
   uint64_t cut_at;            // now_ms() of the cut; 0: nothing kept
   int cut_resumes;            // resumes in a row, so an echo can't cut it forever
   // Turns that started while a reply played and never barged in: the phone's
@@ -734,7 +735,7 @@ static void cut_speech(session *s, uint64_t client_epoch, bool barge) {
     free(s->cut_pcm);
     snprintf(s->cut_text, sizeof s->cut_text, "%s", u->text);
     s->cut_pcm = u->pcm; u->pcm = NULL;   // kept for resume_cut; utter_free_all frees the rest
-    s->cut_n = u->n; s->cut_played = (size_t)s->played_samples; s->cut_rendered = u->appended; s->cut_at = now_ms();
+    s->cut_n = u->n; s->cut_played = (size_t)s->played_samples; s->cut_rest = u->appended ? u->seg[u->appended - 1].end : u->base; s->cut_at = now_ms();
   } else if (!barge) {
     clear_cut(s);
   }
@@ -929,7 +930,7 @@ static void on_reply_sentence(session *s, const job *e) {
   snprintf(u->text + have, sizeof u->text - have, "%s%s", have ? " " : "", e->text);
   clip_utf8(u->text, MAX_TEXT);
   if (u->started) send_speech(s, u);
-  if (u->nseg < MAX_SEGS - 1) synthesize(s, u, u->nseg, e->text);
+  if (u->nseg < MAX_SEGS - 1) { u->seg[u->nseg].end = strlen(u->text); synthesize(s, u, u->nseg, e->text); }
   else {
     size_t o = strlen(u->overflow);
     snprintf(u->overflow + o, sizeof u->overflow - o, "%s%s", o ? " " : "", e->text);
@@ -1008,13 +1009,8 @@ static void resume_cut(session *s, uint32_t turn_no, const char *turn) {
   size_t from = s->cut_played < s->cut_n ? s->cut_played : s->cut_n;
   // The sentences of the reply, and where the unrendered ones start.
   const char *t = s->cut_text;
-  size_t len = strlen(t), at = 0, rest_at = len;
-  for (int k = 0; k < s->cut_rendered && at < len; k++) {
-    while (at < len && !(strchr(".?!", t[at]) && (t[at + 1] == ' ' || !t[at + 1]))) at++;
-    if (at < len) at++;
-    while (t[at] == ' ') at++;
-  }
-  rest_at = at;
+  size_t len = strlen(t), rest_at = s->cut_rest < len ? s->cut_rest : len;
+  while (t[rest_at] == ' ') rest_at++;
   utter *u = calloc(1, sizeof *u);
   size_t n = s->cut_n - from;
   if (!u || (n && !(u->pcm = malloc(n * 2)))) { free(u); clear_cut(s); send_turn_event(s, turn, OA_TURN_PHASE_ENDED, NULL, 0); return; }
@@ -1030,12 +1026,14 @@ static void resume_cut(session *s, uint32_t turn_no, const char *turn) {
   size_t c = s->cut_n ? (size_t)((double)rest_at * (double)from / (double)s->cut_n) : 0;
   while (c > 0 && t[c - 1] != ' ') c--;
   snprintf(u->text, sizeof u->text, "%s", t + c);
+  u->base = rest_at - c;
   for (const char *a = t + rest_at; *a && u->nseg < MAX_SEGS - 1;) {
     const char *b = a;
     while (*b && !(strchr(".?!", *b) && (b[1] == ' ' || !b[1]))) b++;
     if (*b) b++;
     char sentence[MAX_TEXT + 1];
     snprintf(sentence, sizeof sentence, "%.*s", (int)(b - a), a);
+    u->seg[u->nseg].end = (size_t)(b - t) - c;
     synthesize(s, u, u->nseg, sentence);
     a = b;
     while (*a == ' ') a++;
@@ -1161,7 +1159,7 @@ static void on_job_done(job *j) {
     }
     send_meter(s);
     if (!u) { send_turn_event(s, j->turn, OA_TURN_PHASE_ENDED, NULL, 0); break; }
-    if (!u->text_done && u->overflow[0]) synthesize(s, u, u->nseg, u->overflow);
+    if (!u->text_done && u->overflow[0]) { u->seg[u->nseg].end = strlen(u->text); synthesize(s, u, u->nseg, u->overflow); }
     u->text_done = true;
     pump_speech(s, now_ms());
     break;
