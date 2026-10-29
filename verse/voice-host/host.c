@@ -33,6 +33,7 @@
 #define MAX_TEXT MAX_REPLY      // Utterance.text / TurnEvent.text max_bytes
 #define WORKERS 8
 #define LEAD_MS 400             // how far downlink audio runs ahead of real time
+#define QUIET_RESUME 0.3f       // a barged reply goes on at this gain until its words say echo or someone
 #define PARTIAL_EVERY 16000     // re-recognize for a PARTIAL every ~1 s of new 16 kHz audio
 #define HISTORY 10             // exchanges of conversation the agent sees
 #define OUT_LIMIT (2u << 20)    // a client this far behind is dropped
@@ -294,6 +295,7 @@ typedef struct utter {
   uint64_t t_end, t_final, t_sentence, t_audio;
   const char *plan;
   uint64_t gap_us;           // playback gaps: audio that wasn't ready in time
+  bool quiet;                // a barged reply going on quietly until the barge-in's words decide
   struct utter *next;
 } utter;
 
@@ -355,6 +357,7 @@ typedef struct {
   uint64_t cut_at;            // now_ms() of the cut; 0: nothing kept
   int cut_resumes;            // resumes in a row, so an echo can't cut it forever
   uint32_t echo_turn;         // a turn already taken for the echo from its partial: its final is dropped
+  bool barge_wait;            // a barge-in came before its turn: the quiet resume starts with the turn
   // Turns that started while a reply played and never barged in: the phone's
   // own engine judged them too weak to interrupt, so they are the reply's
   // echo or the room, not someone talking (deliver_final drops them).
@@ -494,6 +497,7 @@ static uint32_t ms_of(size_t samples) { return (uint32_t)(samples * 1000 / OA_VO
 
 static void deliver_final(session *s, uint32_t turn_no, const char *turn, const char *text);
 static void plan_final(session *s);
+static void resume_cut(session *s, uint32_t turn_no, const char *turn, bool quiet);
 
 static void start_turn(session *s, const oa_voice_control *c) {
   char turn[65];
@@ -549,6 +553,10 @@ static void start_turn(session *s, const oa_voice_control *c) {
   r.u.route.target = B(oa_voice_floor_route(s->fl, 0) == TARGET_ROUTE ? s->route : "");
   r.u.route.reason = B("default");
   send_msg(s, &r);
+  if (s->barge_wait) {
+    s->barge_wait = false;
+    if (s->cut_pcm && s->cut_at && now_ms() - s->cut_at < 1000) resume_cut(s, s->turn_no, s->turn, true);
+  }
 }
 
 // Recognize the turn so far: every ~1 s of new audio (a PARTIAL), and early,
@@ -812,6 +820,9 @@ static void end_utterance(session *s, utter *u) {
     send_msg(s, &c);
   }
   send_turn_event(s, u->turn, OA_TURN_PHASE_ENDED, NULL, u->n);
+  // A quiet reply that played out before its words decided: nothing left to
+  // resume, though is_echo still knows the reply's words.
+  if (u->quiet) { free(s->cut_pcm); s->cut_pcm = NULL; }
   s->speech = u->next;
   utter_free(u);
   s->speaking = false;
@@ -841,6 +852,8 @@ static void pump_speech(session *s, uint64_t now) {
       uint32_t k = (uint32_t)(u->n - u->sent < chunk ? u->n - u->sent : chunk);
       int16_t pcm[OA_VOICE_MAX_AUDIO_BYTES / 2];
       memcpy(pcm, u->pcm + u->sent, k * 2);
+      if (u->quiet)
+        for (uint32_t i = 0; i < k; i++) pcm[i] = (int16_t)(pcm[i] * QUIET_RESUME);
       oa_voice_features f;
       uint32_t seq = oa_voice_downlink_sequence(s->v);
       uint32_t ev = oa_voice_downlink(s->v, pcm, k, s->out_rate, &f);  // gain/duck/pause from decisions
@@ -1002,10 +1015,48 @@ static bool is_echo(const session *s, const char *text) {
 
 static void on_reply_sentence(session *s, const job *e);
 
+static utter *quiet_of(session *s) {
+  for (utter *u = s->speech; u; u = u->next)
+    if (u->quiet) return u;
+  return NULL;
+}
+
+// The barge-in was someone talking: the quiet reply stops (what the phone
+// has buffered, under LEAD_MS, plays out quietly).
+static void stop_quiet(session *s, const char *turn) {
+  utter **q = &s->speech;
+  while (*q && !(*q)->quiet) q = &(*q)->next;
+  utter *u = *q;
+  if (!u) return;
+  if (u == s->speech && s->speaking) {
+    oa_voice_msg c = {.kind = OA_MSG_CONTROL};
+    c.u.control.kind = OA_CONTROL_SPEECH_END;
+    c.u.control.turn = B(u->turn);
+    c.u.control.utterance = B(u->id);
+    c.u.control.media_epoch = oa_voice_epoch(s->v);
+    c.u.control.played_samples = u->sent;
+    send_msg(s, &c);
+    s->speaking = false;
+    oa_voice_playing(s->v, false);
+  }
+  *q = u->next;
+  logf_("%s: %s is someone talking; the quiet reply %s stops at %zu of %zu samples", s->sid, turn, u->id, u->sent, u->n);
+  utter_free(u);
+}
+
 // The cut reply again, for this turn, from the sample the phone had played
 // up to: its rendered audio from there, then the sentences not rendered yet.
-// Three echoes in a row and the reply stops.
-static void resume_cut(session *s, uint32_t turn_no, const char *turn) {
+// Three echoes in a row and the reply stops. Quiet: right at the barge-in,
+// before any words are known, at QUIET_RESUME gain and keeping the cut for
+// is_echo; once they say echo it goes on at full gain with no gap.
+static void resume_cut(session *s, uint32_t turn_no, const char *turn, bool quiet) {
+  utter *going = quiet ? NULL : quiet_of(s);
+  if (going) {
+    going->quiet = false;
+    logf_("%s: %s is the reply's echo; %s goes on at full volume", s->sid, turn, going->id);
+    clear_cut(s);
+    return;
+  }
   if (++s->cut_resumes > 3 || !s->cut_pcm) { clear_cut(s); send_turn_event(s, turn, OA_TURN_PHASE_ENDED, NULL, 0); return; }
   size_t from = s->cut_played < s->cut_n ? s->cut_played : s->cut_n;
   // The sentences of the reply, and where the unrendered ones start.
@@ -1040,10 +1091,10 @@ static void resume_cut(session *s, uint32_t turn_no, const char *turn) {
     while (*a == ' ') a++;
   }
   u->text_done = true;
-  free(s->cut_pcm); s->cut_pcm = NULL;
-  logf_("%s: %s is the reply's echo; resuming at %zu of %zu samples (%d sentence(s) to render): %s", s->sid, turn, from, s->cut_n,
-        u->nseg, u->text);
-  s->cut_at = 0;
+  u->quiet = quiet;
+  logf_("%s: %s %s at %zu of %zu samples (%d sentence(s) to render): %s", s->sid, turn,
+        quiet ? "barged in; the reply goes on quietly" : "is the reply's echo; resuming", from, s->cut_n, u->nseg, u->text);
+  if (!quiet) { free(s->cut_pcm); s->cut_pcm = NULL; s->cut_at = 0; }
   utter **q = &s->speech;
   while (*q) q = &(*q)->next;
   *q = u;
@@ -1063,9 +1114,10 @@ static void deliver_final(session *s, uint32_t turn_no, const char *turn, const 
   }
   if (is_echo(s, text)) {
     logf_("%s: %s heard %s", s->sid, turn, text);
-    resume_cut(s, turn_no, turn);
+    resume_cut(s, turn_no, turn, false);
     return;
   }
+  stop_quiet(s, turn);
   clear_cut(s);
   if (g_verbose) logf_("%s: %s final (%s) in %llu ms: %s", s->sid, turn, s->plan, (unsigned long long)(s->t_final - s->t_end), text);
   else logf_("%s: %s final (%s) in %llu ms (%zu bytes)", s->sid, turn, s->plan, (unsigned long long)(s->t_final - s->t_end), strlen(text));
@@ -1108,12 +1160,18 @@ static void on_job_done(job *j) {
       }
       // Two or more of the reply's own words while the turn is still open:
       // the echo, so the reply goes on now rather than after the turn ends.
+      // Three or more and few of them the reply's: someone is talking.
       static char w[64][32];
-      if (j->ok && s->turn_open && s->echo_turn != j->turn_no && words_of(j->text, w, 64) >= 2 && is_echo(s, j->text)) {
+      int nw = j->ok ? words_of(j->text, w, 64) : 0;
+      bool echo = nw >= 2 && is_echo(s, j->text);
+      if (j->ok && s->turn_open && s->echo_turn != j->turn_no && echo) {
         logf_("%s: %s heard %s so far", s->sid, j->turn, j->text);
         s->echo_turn = j->turn_no;
-        resume_cut(s, j->turn_no, j->turn);
-      } else if (j->ok && s->turn_open && j->text[0]) send_turn_event(s, j->turn, OA_TURN_PHASE_PARTIAL, j->text, 0);
+        resume_cut(s, j->turn_no, j->turn, false);
+      } else if (j->ok && s->turn_open && j->text[0]) {
+        if (nw >= 3 && !echo) stop_quiet(s, j->turn);
+        send_turn_event(s, j->turn, OA_TURN_PHASE_PARTIAL, j->text, 0);
+      }
       if (s->final_pending) plan_final(s);
       else if (s->turn_open) maybe_recognize(s);
     }
@@ -1270,6 +1328,14 @@ static void on_control(session *s, const oa_voice_control *c) {
     (void)take_quiet(s, s->turn_no);   // loud enough to interrupt: someone talking (or an echo is_echo will catch)
     if (c->played_samples) s->played_samples = c->played_samples;
     cut_speech(s, c->media_epoch, true);
+    // Most barge-ins on a phone's loudspeaker are the reply's own echo:
+    // rather than a gap until the words show which, it goes on quietly now.
+    // The phone may send the barge-in before the turn it starts.
+    s->barge_wait = false;
+    if (s->cut_pcm && s->cut_at && g_provider == PROVIDER_GOOGLE) {
+      if (s->turn_open) resume_cut(s, s->turn_no, s->turn, true);
+      else s->barge_wait = true;
+    }
     break;
   case OA_CONTROL_CANCEL:
     if (s->turn_open) {
