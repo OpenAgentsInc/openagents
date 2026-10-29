@@ -1,6 +1,6 @@
 # The realm host
 
-Status: built, October 28 (rl-realm-host). Every Verse realm on
+Status: built, October 28 (rl-realm-host, rl-asset-packs). Every Verse realm on
 openagents.com opens the same way, from one table. Ice Cream Man, Dead
 Gears and Everglade are built on it ([realms-port.md](realms-port.md)).
 
@@ -37,7 +37,7 @@ written files are behind the table. Don't edit the written files.
 | `realm.module` | The module: `apps/openagents-web/<module>.coax`, `<module>-face.c` and `<module>.wgsl`, built to `build/<module>.wasm` by a line in `build.sh`. Two realms may share a module (the page tells it which realm it is). |
 | `realm.slot` | The save slot (below). Unique across realms. |
 | `realm.slot_was` | A slot this realm used before, read once when its own is empty. The Haunted House kept its saves under `realm` (its module's name) before slots existed. |
-| `realm.assets` | The page's `data-assets` (host.js): `data:`, `storage:`, `index:`, `layers:`, `sound:`, `loop:` and `particles:`. |
+| `realm.assets` | The page's `data-assets` (host.js): `pack:` (the realm's asset pack, below), or `data:`, `storage:`, `index:`, `layers:`, `sound:` and `loop:` one file each; and `particles:/particles.wgsl` for particles. |
 
 Each realm also needs `realm/<slug>/index.md`, written by hand: the page as
 text for agents, search engines and screen readers. The generator refuses a
@@ -48,7 +48,7 @@ realm without one.
 A realm's module is a Coaxial app (the full list of exports is in the header
 of `coax/web/host.js`). It is its own wasm, so one realm's size or a
 broken build never touches another's. The smallest realm module is the
-fixture (`fixture.coax`, `fixture-face.c`, 50 KB); the Haunted House
+fixture (`fixture.coax`, `fixture-face.c`, 55 KB); the Haunted House
 (`realm.coax`, `realm-face.c` and the engine's libraries) is the full one.
 
 What every realm module exports:
@@ -70,6 +70,46 @@ links them (`build.sh` lists them after the face): `player.coax` walks,
 `grid.coax` reads thumbs, `camera.coax` orbits, `particles.coax` emits,
 `cinematic.coax` flies a camera (`realm-flight.c` shows a realm using it).
 `save.coax` packs a realm's saves with a CRC and a schema number.
+
+## Asset packs
+
+A new realm's kit art comes as one **pack**: the meshes, their texture
+layers and its sounds in a single file the page streams on entry, under a
+size budget, with every asset's licence recorded. The Haunted House keeps its
+separate files; Ice Cream Man, Dead Gears and Everglade use packs.
+
+- **Manifest**, `verse/packs/<realm>.json`: the pack's name and title, its
+  `budget` in bytes, the source scene (Aethyr's SCN4 `scene.bin`, packed from
+  the Quaternius kits) and texture layers, `texture_size` (layers are resized
+  to it, 512 by default), the `licences` (name, licence, URL each), the
+  `meshes` by name and the `sounds` (name, file, licence).
+- **Compiler**: `python3 verse/tools/pack_realm.py verse/packs/<realm>.json
+  apps/openagents-web/realm/<slug>/assets/<realm>.pack
+  apps/openagents-web/realm/<slug>/licences.md`. It refuses a pack over its
+  budget, an asset without a licence, a mesh it can't find and a texture
+  layer shared by two licences. A mesh takes its kit's licence from its SCN4
+  kind; a layer the licence of the meshes that use it; a sound names its own.
+  The format is in the compiler's header.
+- **Licences**: the compiler writes `realm/<slug>/licences.md` (every
+  asset, its kind and licence) and puts the same in the pack's catalog; the
+  realm shows them (the fixture's panel) and links the file from its
+  `index.md`. Commit both with the pack.
+- **On the page**: one asset, `pack:/realm/<slug>/assets/<realm>.pack`. It
+  stands for four assets in its place: 0 the catalog (`data`), 1 the
+  vertices (`storage`), 2 the indices (`index`), 3 the layers (`layers`); its
+  sounds are added by name for `coaxial_sounds`. While it streams the realm
+  gets message 605, `LOADED TOTAL` bytes, about ten times a second; then
+  `coaxial_asset_ready` for each of the four (bytes 0: it failed).
+- **The catalog**, a line each: `pack NAME`, `budget BYTES`, `bytes BYTES`;
+  `L K NAME|LICENCE|URL` licence K; `M NAME FIRST COUNT K X0 Y0 Z0 X1 Y1 Z1`
+  a mesh (its indices into the pack's index buffer, its licence, its bounds
+  in metres); `T LAYER SOURCE K` a layer; `S NAME K` a sound. A realm draws a
+  mesh as `coaxial_draws` `[FIRST, COUNT, instance, 1]`. Vertices are the
+  Haunted House's 48 bytes (`realm.wgsl`), the layer in the colour's top
+  byte, counted in the pack's own layers. `fixture.coax` reads a catalog
+  (`fixture_catalog`), and `fixture.wgsl`'s `scene_vs` draws its vertices.
+- **Budget**: the fixture's is 1.5 MB. A realm's is what its world needs to
+  open on a phone over a slow line; raise it in the manifest deliberately.
 
 ## 3. The save slot
 
@@ -97,7 +137,8 @@ table doesn't list shows only at `/verse/galaxy?realms=all`.
 ## Adding a realm
 
 1. Its module: `<module>.coax` with checks, `<module>-face.c`, `<module>.wgsl`; a `wasm.sh` line in `build.sh`.
-2. Its world in `realms.json`: listed `false` until launch.
-3. `realm/<slug>/index.md`.
-4. `bun coax/web/realms.ts`, `coax test <module>.coax`, a headless shot, and its golden (`coax/web/goldens.ts`).
-5. At launch: `listed` true (the galaxy's golden changes; approve it).
+2. Its pack: `verse/packs/<realm>.json`, compiled with `pack_realm.py` (above).
+3. Its world in `realms.json`: listed `false` until launch, assets `pack:...`.
+4. `realm/<slug>/index.md`, linking its `licences.md`.
+5. `bun coax/web/realms.ts`, `coax test <module>.coax`, a headless shot, and its golden (`coax/web/goldens.ts`).
+6. At launch: `listed` true (the galaxy's golden changes; approve it).

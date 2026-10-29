@@ -2,12 +2,16 @@
 // world (docs/verse/realm-host.md). It is a realm like any other: its own
 // module (this file and fixture-face.c), its own page written from
 // realms.json, a world on the galaxy (unlisted: /verse/galaxy?realms=all
-// shows it) and its own save slot. A light stands on a round floor; you move
-// it (WASD or the arrows, or a drag) and it stays where you left it, kept in
-// this realm's slot with how many times you came, apart from every other
-// realm's save. GALAXY goes back.
+// shows it), its own save slot and its own asset pack. A lamp stands on a
+// round floor ringed with kit pieces from the pack; you move it (WASD or the
+// arrows, or a drag) and it lights what it nears, and it stays where you left
+// it, kept in this realm's slot with how many times you came, apart from
+// every other realm's save. While the pack streams a line says how much has
+// come; then a panel names every source in it and its licence. GALAXY goes
+// back.
 //
-// Plates and words are verse.coax's look (fixture.wgsl draws the plates).
+// Plates and words are verse.coax's look; fixture.wgsl draws the plates and
+// the pack's meshes, lit by the lamp.
 
 #load "font.coax";
 #load "ui.coax";
@@ -15,7 +19,10 @@
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 24000;
 PLATES :: 16;
-PANEL_AT :: 8;         // width, height, time, fade, still, plates, dpr, 0; then per plate x0, y0, x1, y1, scale, alpha, look, 0
+// width, height, time, fade, still, plates, dpr, 0; the view's four rows; the
+// lamp (x, y, z, strength); then per plate x0, y0, x1, y1, scale, alpha, look, 0
+VIEW_AT :: 8; LAMP_AT :: 24;
+PANEL_AT :: 28;
 UNIFORM_FLOATS :: PANEL_AT + PLATES * 8;
 
 MODE_STROKE :: 0.0;
@@ -81,6 +88,12 @@ OUTBOX :: 256;
 SPEED :: 0.9;           // floor radii a second
 HOLD_UP :: 1; HOLD_DOWN :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8;
 BTN_GALAXY :: 0; BUTTONS :: 1;
+// The pack (verse/tools/pack_realm.py): its catalog is asset 0, its vertices,
+// indices and layers 1 to 3 (host.js pack:URL); the host says how it streams.
+MSG_PACK :: 605;
+MESHES :: 16; LICENCES :: 8; NAME :: 32; LICENCE_NAME :: 64;
+FLOOR :: 6.0;           // the floor's radius, metres
+INSTANCE_FLOATS :: 16;  // per mesh drawn: three rows of its transform, then tint and glow
 
 Fixture :: struct {
   started: bool;
@@ -97,6 +110,19 @@ Fixture :: struct {
   boxes: [BUTTONS] Box; shown: [BUTTONS] bool;
   outbox: [OUTBOX] u8; out_n: int; action: int;
   plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;
+  // the pack: how it streams, then its catalog
+  loaded: int; total: int; pack_ready: bool; pack_failed: bool; pack_at: f32;
+  pack_bytes: int; budget: int; textures: int; sounds: int;
+  mesh_n: int; mesh_name: [MESHES * NAME] u8; mesh_name_n: [MESHES] int;
+  mesh_first: [MESHES] int; mesh_count: [MESHES] int; mesh_licence: [MESHES] int;
+  mesh_top: [MESHES] f32;    // its height, metres
+  licence_n: int; licence: [LICENCES * LICENCE_NAME] u8; licence_len: [LICENCES] int;
+  uses: [LICENCES] int;      // assets under each licence
+  unlicensed: int;           // assets naming no licence the pack lists (none, in a good pack)
+  // the scene the host draws: [first, count, base instance, instances] a mesh, and their transforms
+  draws: [MESHES * 4] u32; draw_n: int;
+  objects: [MESHES * INSTANCE_FLOATS] f32;
+  view: [16] f32;            // clip = rows · world
 }
 
 fixture_reset :: (s: [] Fixture) {
@@ -111,6 +137,20 @@ int_at :: (text: string, at: [] int) -> int {
   if i < text.count && text[i] == '-' { neg = true; i += 1; }
   while i < text.count && text[i] >= '0' && text[i] <= '9' && digits < 9 { v = v * 10 + cast(int) (text[i] - '0'); i += 1; digits += 1; }
   at[0] = ifx digits > 0 then i else -1;
+  return ifx neg then -v else v;
+}
+// A decimal ("-0.243") from at[0]; at[0] is then past it, or -1 when there is none.
+decimal_at :: (text: string, at: [] int) -> f32 {
+  neg := at[0] < text.count && at[0] >= 0 && text[at[0]] == '-';
+  whole := int_at(text, at);
+  if at[0] < 0 { return 0; }
+  v := cast(f32) (ifx whole < 0 then -whole else whole);
+  i := at[0];
+  if i < text.count && text[i] == '.' {
+    i += 1; step: f32 = 0.1;
+    while i < text.count && text[i] >= '0' && text[i] <= '9' { v += step * cast(f32) (text[i] - '0'); step *= 0.1; i += 1; }
+    at[0] = i;
+  }
   return ifx neg then -v else v;
 }
 put_signed :: (buf: [] u8, at: int, v: int) -> int {
@@ -148,6 +188,12 @@ keep_inside :: (s: [] Fixture) {
 fixture_message :: (s: [] Fixture, kind: int, text: string) #export_c {
   if !s[0].started { fixture_reset(s); }
   if kind == MSG_KEPT { _ := fixture_restore(s, text); return; }
+  if kind == MSG_PACK {
+    at: [1] int;
+    s[0].loaded = int_at(text, at[..]); if at[0] < 0 { return; }
+    s[0].total = int_at(text, at[..]); if at[0] < 0 { s[0].total = 0; }
+    return;
+  }
   if kind != HOST_FACTS || s[0].counted { return; }
   s[0].counted = true; s[0].visits += 1; s[0].dirty = true;
   realm := fact_line(text, "realm"); slot := fact_line(text, "slot");
@@ -182,22 +228,161 @@ fixture_blur :: (s: [] Fixture) #export_c { s[0].held = 0; s[0].dragging = false
 
 leave_to :: (s: [] Fixture, url: string) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, url); s[0].action = ACT_NAVIGATE; } }
 
-// The floor: a disc seen from above at a slant, in device pixels.
-Floor :: struct { cx: f32; cy: f32; rx: f32; ry: f32; }
-floor_of :: (s: [] Fixture) -> Floor {
-  w := s[0].width; h := s[0].height;
-  rx := lo(w * 0.42, h * 0.62);
-  return Floor.{cx = w * 0.5, cy = h * 0.58, rx = rx, ry = rx * 0.38};
+// ---- the pack's catalog (pack_realm.py): a line each
+
+fixture_catalog :: (s: [] Fixture, text: string) #export_c {
+  if !s[0].started { fixture_reset(s); }
+  s[0].mesh_n = 0; s[0].licence_n = 0; s[0].textures = 0; s[0].sounds = 0; s[0].unlicensed = 0;
+  for k: 0..<LICENCES { s[0].uses[k] = 0; }
+  i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    catalog_line(s, text[i..<e]);
+    i = e + 1;
+  }
+  s[0].pack_ready = s[0].mesh_n > 0; s[0].pack_at = s[0].time;
+  place(s);
+}
+// Counts an asset under licence k, or as unlicensed.
+licensed :: (s: [] Fixture, k: int) { if k >= 0 && k < s[0].licence_n { s[0].uses[k] += 1; } else { s[0].unlicensed += 1; } }
+word_end :: (line: string, from: int) -> int { e := from; while e < line.count && line[e] != ' ' { e += 1; } return e; }
+catalog_line :: (s: [] Fixture, line: string) {
+  if line.count < 2 { return; }
+  at: [1] int;
+  if line.count > 6 && line[0..<6] == "bytes " { at[0] = 6; s[0].pack_bytes = int_at(line, at[..]); return; }
+  if line.count > 7 && line[0..<7] == "budget " { at[0] = 7; s[0].budget = int_at(line, at[..]); return; }
+  if line[1] != ' ' { return; }
+  if line[0] == 'L' {
+    at[0] = 2; k := int_at(line, at[..]);
+    if at[0] < 0 || k != s[0].licence_n || k >= LICENCES { return; }
+    pipe := at[0] + 1; while pipe < line.count && line[pipe] != '|' { pipe += 1; }
+    lic := pipe + 1; lic_end := lic; while lic_end < line.count && line[lic_end] != '|' { lic_end += 1; }
+    n := put(s[0].licence[k * LICENCE_NAME..<(k + 1) * LICENCE_NAME], 0, line[at[0] + 1..<pipe]);
+    if lic < line.count { n = put(s[0].licence[k * LICENCE_NAME..<(k + 1) * LICENCE_NAME], n, " · "); n = put(s[0].licence[k * LICENCE_NAME..<(k + 1) * LICENCE_NAME], n, line[lic..<lic_end]); }
+    s[0].licence_len[k] = n; s[0].licence_n = k + 1;
+    return;
+  }
+  if line[0] == 'M' {
+    e := word_end(line, 2);
+    at[0] = e; first := int_at(line, at[..]); if at[0] < 0 { return; }
+    count := int_at(line, at[..]); if at[0] < 0 { return; }
+    k := int_at(line, at[..]); if at[0] < 0 { k = -1; }
+    licensed(s, k);
+    top: f32 = 1;
+    if at[0] >= 0 { for j: 0..<5 { if at[0] >= 0 { at[0] += 1; top = decimal_at(line, at[..]); } } }
+    m := s[0].mesh_n;
+    if m >= MESHES || first < 0 || count <= 0 { return; }
+    s[0].mesh_name_n[m] = put(s[0].mesh_name[m * NAME..<(m + 1) * NAME], 0, line[2..<e]);
+    s[0].mesh_first[m] = first; s[0].mesh_count[m] = count; s[0].mesh_licence[m] = k; s[0].mesh_top[m] = top; s[0].mesh_n = m + 1;
+    return;
+  }
+  if line[0] == 'T' || line[0] == 'S' {
+    // T LAYER SOURCE K, S NAME K: the licence is the last word
+    j := line.count; while j > 0 && line[j - 1] != ' ' { j -= 1; }
+    at[0] = j; k := int_at(line, at[..]);
+    licensed(s, ifx at[0] < 0 then -1 else k);
+    if line[0] == 'T' { s[0].textures += 1; } else { s[0].sounds += 1; }
+  }
+}
+mesh_name :: (s: [] Fixture, m: int) -> string { return cast(string) s[0].mesh_name[m * NAME..<m * NAME + s[0].mesh_name_n[m]]; }
+licence_name :: (s: [] Fixture, k: int) -> string { return cast(string) s[0].licence[k * LICENCE_NAME..<k * LICENCE_NAME + s[0].licence_len[k]]; }
+ends_with :: (text: string, tail: string) -> bool { return text.count >= tail.count && text[text.count - tail.count..<text.count] == tail; }
+
+// The pack's meshes round the back of the floor, a draw each: a mesh named
+// X_Leaves stands where X stands (a tree's leaves), the rest each in its own
+// place, facing in; one taller than TALLEST (with its leaves) is scaled down.
+TALLEST :: 3.2;
+place :: (s: [] Fixture) {
+  spots := 0;
+  for m: 0..<s[0].mesh_n { if !ends_with(mesh_name(s, m), "_Leaves") { spots += 1; } }
+  spot := -1;
+  s[0].draw_n = 0;
+  for m: 0..<s[0].mesh_n {
+    if !ends_with(mesh_name(s, m), "_Leaves") || spot < 0 { spot += 1; }
+    a: f32 = 3.1415927 + (cast(f32) spot + 0.5) / cast(f32) hi(cast(f32) spots, 1) * 3.1415927;
+    r: f32 = FLOOR * 0.9;
+    x := r * cos(a); z := r * sin(a);
+    yaw := -a - 1.5707963;
+    top := s[0].mesh_top[m];
+    if m + 1 < s[0].mesh_n && ends_with(mesh_name(s, m + 1), "_Leaves") { top = hi(top, s[0].mesh_top[m + 1]); }
+    if ends_with(mesh_name(s, m), "_Leaves") && m > 0 { top = hi(top, s[0].mesh_top[m - 1]); }
+    size: f32 = ifx top > TALLEST then TALLEST / top else 1.0f32;
+    o := m * INSTANCE_FLOATS; c := cos(yaw) * size; sn := sin(yaw) * size;
+    s[0].objects[o] = c; s[0].objects[o + 1] = 0; s[0].objects[o + 2] = sn; s[0].objects[o + 3] = x;
+    s[0].objects[o + 4] = 0; s[0].objects[o + 5] = size; s[0].objects[o + 6] = 0; s[0].objects[o + 7] = 0;
+    s[0].objects[o + 8] = -sn; s[0].objects[o + 9] = 0; s[0].objects[o + 10] = c; s[0].objects[o + 11] = z;
+    s[0].objects[o + 12] = 1; s[0].objects[o + 13] = 1; s[0].objects[o + 14] = 1; s[0].objects[o + 15] = 0;
+    d := s[0].draw_n * 4;
+    s[0].draws[d] = cast(u32) s[0].mesh_first[m]; s[0].draws[d + 1] = cast(u32) s[0].mesh_count[m];
+    s[0].draws[d + 2] = cast(u32) m; s[0].draws[d + 3] = 1;
+    s[0].draw_n += 1;
+  }
+}
+fixture_pack_failed :: (s: [] Fixture) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
+fixture_draw_count :: (s: [] Fixture) -> int #export_c { return ifx s[0].pack_ready then s[0].draw_n else 0; }
+
+// ---- the view: an eye above the floor's near edge, looking at its middle
+
+EYE_X :: 0.0; EYE_Y :: 7.4; EYE_Z :: 12.5;
+AT_Y :: 0.2;
+FOV :: 0.9;   // radians, top to bottom
+view_rows :: (s: [] Fixture) {
+  aspect := s[0].width / hi(s[0].height, 1);
+  // forward f, side r, up u (right-handed, y up)
+  fx: f32 = 0 - EYE_X; fy: f32 = AT_Y - EYE_Y; fz: f32 = 0 - EYE_Z;
+  fl := sqrt(fx * fx + fy * fy + fz * fz); fx /= fl; fy /= fl; fz /= fl;
+  rx := -fz; rz := fx; rl := sqrt(rx * rx + rz * rz); rx /= rl; rz /= rl;   // f × (0, 1, 0)
+  ux := -rz * fy; uy := rz * fx - rx * fz; uz := rx * fy;                    // r × f
+  t: f32 = 1 / tan(cast(f32) FOV * 0.5);
+  sx := t / hi(aspect, 0.3); sy := t;
+  if aspect < 1 { sx = t * 0.85; sy = sx * aspect; }   // a phone: the floor across most of its width
+  near: f32 = 0.1; far: f32 = 80.0;
+  a := far / (near - far); b := near * far / (near - far);
+  ex: f32 = EYE_X; ey: f32 = EYE_Y; ez: f32 = EYE_Z;
+  v := s[0].view[..];
+  v[0] = sx * rx; v[1] = 0; v[2] = sx * rz; v[3] = -sx * (rx * ex + rz * ez);
+  v[4] = sy * ux; v[5] = sy * uy; v[6] = sy * uz; v[7] = -sy * (ux * ex + uy * ey + uz * ez);
+  // view z is -f·(p - eye); clip z = a·z + b, clip w = -z = f·(p - eye)
+  v[8] = -a * fx; v[9] = -a * fy; v[10] = -a * fz; v[11] = a * (fx * ex + fy * ey + fz * ez) + b;
+  v[12] = fx; v[13] = fy; v[14] = fz; v[15] = -(fx * ex + fy * ey + fz * ez);
+}
+Seen :: struct { x: f32; y: f32; ok: bool; }
+// A world point on the screen, device pixels.
+seen :: (s: [] Fixture, x: f32, y: f32, z: f32) -> Seen {
+  v := s[0].view[..];
+  cx := v[0] * x + v[1] * y + v[2] * z + v[3];
+  cy := v[4] * x + v[5] * y + v[6] * z + v[7];
+  cw := v[12] * x + v[13] * y + v[14] * z + v[15];
+  if cw < 0.01 { return Seen.{x = 0, y = 0, ok = false}; }
+  return Seen.{x = (cx / cw * 0.5 + 0.5) * s[0].width, y = (0.5 - cy / cw * 0.5) * s[0].height, ok = true};
+}
+// Where a screen point meets the floor (y = 0), as -1..1 of its radius.
+Spot :: struct { x: f32; z: f32; ok: bool; }
+floor_at :: (s: [] Fixture, px: f32, py: f32) -> Spot {
+  // search the floor's depth for the row under the point, then its width
+  lo_z: f32 = -FLOOR * 1.2; hi_z: f32 = FLOOR * 1.2;
+  for i: 0..<24 {
+    mid := (lo_z + hi_z) * 0.5;
+    q := seen(s, 0, 0, mid);
+    if q.y < py { lo_z = mid; } else { hi_z = mid; }
+  }
+  z := (lo_z + hi_z) * 0.5;
+  a := seen(s, 0, 0, z); b := seen(s, 1, 0, z);
+  if !a.ok || !b.ok || abs(b.x - a.x) < 0.001 { return Spot.{x = 0, z = 0, ok = false}; }
+  x := (px - a.x) / (b.x - a.x);
+  return Spot.{x = x / FLOOR, z = z / FLOOR, ok = true};
 }
 
 button_at :: (s: [] Fixture, x: f32, y: f32) -> int {
   for i: 0..<BUTTONS { if s[0].shown[i] && inside(s[0].boxes[i], x, y) { return i; } }
   return -1;
 }
-// Where (x, y) lies on the floor; a press on it moves the light there.
+// Where (x, y) lies on the floor; a press on it moves the lamp there.
 place_at :: (s: [] Fixture, x: f32, y: f32) {
-  f := floor_of(s);
-  s[0].x = clamp((x - f.cx) / f.rx, -1, 1); s[0].z = clamp((y - f.cy) / f.ry, -1, 1);
+  view_rows(s);
+  p := floor_at(s, x, y);
+  if !p.ok { return; }
+  s[0].x = clamp(p.x, -1, 1); s[0].z = clamp(p.z, -1, 1);
   keep_inside(s);
   s[0].dirty = true; s[0].moved_at = s[0].time;
 }
@@ -246,13 +431,77 @@ centred :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: 
 }
 fit_cap :: (text: string, cap: f32, width: f32) -> f32 { return lo(cap, width / hi(measure(text, GAP, SPACE, false), 0.001)); }
 
-ring :: (out: [] f32, at: int, f: Floor, scale: f32, segments: int, core: f32, light: f32, glow: f32, red: f32, green: f32, blue: f32) -> int {
+// A line on the floor from (ax, az) to (bx, bz), metres.
+floor_line :: (s: [] Fixture, out: [] f32, at: int, ax: f32, az: f32, bx: f32, bz: f32, core: f32, light: f32, glow: f32) -> int {
+  p := seen(s, ax, 0, az); q := seen(s, bx, 0, bz);
+  if !p.ok || !q.ok { return at; }
+  if lit(out, at, p.x, p.y, q.x, q.y, core, light, glow, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { return at + 6; }
+  return at;
+}
+ring :: (s: [] Fixture, out: [] f32, at: int, r: f32, segments: int, core: f32, light: f32, glow: f32) -> int {
   vertices := at;
   step := 6.2831853 / cast(f32) segments;
   for i: 0..<segments {
     a := cast(f32) i * step; b := a + step;
-    if lit(out, vertices, f.cx + f.rx * scale * cos(a), f.cy + f.ry * scale * sin(a), f.cx + f.rx * scale * cos(b), f.cy + f.ry * scale * sin(b),
-           core, light, glow, red, green, blue, MODE_STROKE) { vertices += 6; }
+    vertices = floor_line(s, out, vertices, r * cos(a), r * sin(a), r * cos(b), r * sin(b), core, light, glow);
+  }
+  return vertices;
+}
+// A number of bytes as KB, "1,189 KB".
+put_kb :: (buf: [] u8, at: int, bytes: int) -> int {
+  kb := (bytes + 512) / 1024;
+  n := at;
+  if kb >= 1000 { n = put_int(buf, n, kb / 1000); n = put(buf, n, ","); r := kb % 1000; if r < 100 { n = put(buf, n, "0"); } if r < 10 { n = put(buf, n, "0"); } n = put_int(buf, n, r); }
+  else { n = put_int(buf, n, kb); }
+  return put(buf, n, " KB");
+}
+upper :: (buf: [] u8, n: int) { for i: 0..<n { if buf[i] >= 'a' && buf[i] <= 'z' { buf[i] -= 32; } } }
+
+LAMP_HEIGHT :: 1.6;
+PACK_LINE :: 15.0;
+// The pack: while it streams, a line and a bar under the title; once in, what
+// it holds against its budget and every source in it with its licence.
+draw_pack :: (s: [] Fixture, out: [] f32, at: int) -> int {
+  k := s[0].dpr; w := s[0].width; d := k; g := 16 * k;
+  phone := w < 640 * k;
+  vertices := at;
+  buf: [160] u8;
+  top := ifx phone then 136 * k else 88 * k;
+  if !s[0].pack_ready {
+    n := put(buf[..], 0, ifx s[0].pack_failed then "THE REALM'S PACK DIDN'T ARRIVE" else "LOADING THE REALM'S PACK ");
+    if !s[0].pack_failed && s[0].total > 0 { n = put_kb(buf[..], n, s[0].loaded); n = put(buf[..], n, " OF "); n = put_kb(buf[..], n, s[0].total); }
+    line := cast(string) buf[0..<n];
+    bw := lo(w - 2 * g, 360 * k);
+    b := Box.{x0 = g, y0 = top, x1 = g + bw, y1 = top + 40 * k};
+    plate(s, b, 0.92, LOOK_PLAIN);
+    vertices = write(d, out, vertices, line, b.x0 + 14 * k, b.y0 + 18 * k, fit_cap(line, 7.5 * k, bw - 28 * k), GAP, SPACE, white(k, 0.9), false, false);
+    share := ifx s[0].total > 0 then clamp(cast(f32) s[0].loaded / cast(f32) s[0].total, 0, 1) else 0.0f32;
+    x0 := b.x0 + 14 * k; x1 := b.x1 - 14 * k; y := b.y0 + 30 * k;
+    if lit(out, vertices, x0, y, x1, y, 0.5 * k, 0.25, 1 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
+    if share > 0 && lit(out, vertices, x0, y, x0 + (x1 - x0) * share, y, 1.2 * k, 1, 2.5 * k, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { vertices += 6; }
+    return vertices;
+  }
+  rows := s[0].licence_n + 1;
+  bw := lo(w - 2 * g, 470 * k);
+  b := Box.{x0 = g, y0 = top, x1 = g + bw, y1 = top + 16 * k + cast(f32) rows * PACK_LINE * k + 6 * k};
+  plate(s, b, 0.9, LOOK_PLAIN);
+  n := put(buf[..], 0, "PACK ");
+  n = put_kb(buf[..], n, s[0].pack_bytes); n = put(buf[..], n, " OF ITS "); n = put_kb(buf[..], n, s[0].budget);
+  n = put(buf[..], n, " · "); n = put_int(buf[..], n, s[0].mesh_n); n = put(buf[..], n, " MESHES, ");
+  n = put_int(buf[..], n, s[0].textures); n = put(buf[..], n, " TEXTURES, "); n = put_int(buf[..], n, s[0].sounds);
+  n = put(buf[..], n, ifx s[0].sounds == 1 then " SOUND" else " SOUNDS");
+  head := cast(string) buf[0..<n];
+  room := bw - 28 * k;
+  y := b.y0 + 20 * k;
+  vertices = write(d, out, vertices, head, b.x0 + 14 * k, y, fit_cap(head, 7 * k, room), GAP, SPACE, bronze(k, 0.95), false, false);
+  for i: 0..<s[0].licence_n {
+    y += PACK_LINE * k;
+    m := put(buf[..], 0, licence_name(s, i));
+    m = put(buf[..], m, " · "); m = put_int(buf[..], m, s[0].uses[i]);
+    m = put(buf[..], m, ifx s[0].uses[i] == 1 then " ASSET" else " ASSETS");
+    upper(buf[..], m);
+    line := cast(string) buf[0..<m];
+    vertices = write(d, out, vertices, line, b.x0 + 14 * k, y, fit_cap(line, 6.5 * k, room), GAP, SPACE, white(k, 0.85), false, false);
   }
   return vertices;
 }
@@ -261,20 +510,21 @@ draw_realm :: (s: [] Fixture, out: [] f32) -> int {
   k := s[0].dpr; w := s[0].width; h := s[0].height; d := k;
   phone := w < 640 * k;
   vertices := 0;
-  f := floor_of(s);
   // the floor: rings and spokes, faint
-  for r: 1..<5 { vertices = ring(out, vertices, f, cast(f32) r * 0.25, 72, 0.5 * k, 0.16 + 0.04 * cast(f32) r, 1.2 * k, GOLD_R, GOLD_G, GOLD_B); }
+  for r: 1..<5 { vertices = ring(s, out, vertices, FLOOR * cast(f32) r * 0.25, 72, 0.5 * k, 0.16 + 0.04 * cast(f32) r, 1.2 * k); }
   for i: 0..<12 {
     a := cast(f32) i * 6.2831853 / 12;
-    if lit(out, vertices, f.cx, f.cy, f.cx + f.rx * cos(a), f.cy + f.ry * sin(a), 0.4 * k, 0.12, 1 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
+    vertices = floor_line(s, out, vertices, 0, 0, FLOOR * cos(a), FLOOR * sin(a), 0.4 * k, 0.12, 1 * k);
   }
-  // the light, its shadow on the floor and its post
-  lx := f.cx + s[0].x * f.rx; ly := f.cy + s[0].z * f.ry;
+  // the lamp: its glow on the floor, its post and its flame
+  wx := s[0].x * FLOOR; wz := s[0].z * FLOOR;
+  foot := seen(s, wx, 0, wz); top := seen(s, wx, LAMP_HEIGHT, wz);
   pulse := ifx s[0].still then 0.5f32 else 0.5 + 0.5 * sin(s[0].time * 2.4);
-  tall := 70 * k * (0.75 + 0.25 * (s[0].z + 1) * 0.5);
-  if tinted_dot(out, vertices, lx, ly, 0.1, 1.6, 26 * k, EMBER_R, EMBER_G, EMBER_B) { vertices += 6; }
-  if lit(out, vertices, lx, ly, lx, ly - tall, 1.1 * k, 0.8, 2 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { vertices += 6; }
-  if tinted_dot(out, vertices, lx, ly - tall, 6 * k, 1, 10 * k + pulse * 8 * k, EMBER_R, EMBER_G, EMBER_B) { vertices += 6; }
+  if foot.ok && top.ok {
+    if tinted_dot(out, vertices, foot.x, foot.y, 0.1, 1.6, 26 * k, EMBER_R, EMBER_G, EMBER_B) { vertices += 6; }
+    if lit(out, vertices, foot.x, foot.y, top.x, top.y, 1.1 * k, 0.8, 2 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { vertices += 6; }
+    if tinted_dot(out, vertices, top.x, top.y, 6 * k, 1, 10 * k + pulse * 8 * k, EMBER_R, EMBER_G, EMBER_B) { vertices += 6; }
+  }
 
   // the title, the slot and the visit
   g := 16 * k;
@@ -301,13 +551,14 @@ draw_realm :: (s: [] Fixture, out: [] f32) -> int {
   vertices = centred(d, out, vertices, "GALAXY", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
 
   // what to do
-  hint := ifx phone then "DRAG TO MOVE THE LIGHT. IT STAYS WHERE YOU LEAVE IT." else "WASD, THE ARROWS OR A DRAG MOVE THE LIGHT. IT STAYS WHERE YOU LEAVE IT.";
+  hint := ifx phone then "DRAG TO MOVE THE LAMP. IT STAYS WHERE YOU LEAVE IT." else "WASD, THE ARROWS OR A DRAG MOVE THE LAMP. IT STAYS WHERE YOU LEAVE IT.";
   hc := fit_cap(hint, 7.5 * k, w - 2 * g);
   vertices = centred(d, out, vertices, hint, w * 0.5, h - 40 * k, hc, white(k, 0.6));
   if s[0].restored {
-    back := "YOUR LIGHT IS WHERE YOU LEFT IT";
+    back := "YOUR LAMP IS WHERE YOU LEFT IT";
     vertices = centred(d, out, vertices, back, w * 0.5, h - 58 * k, fit_cap(back, 7.5 * k, w - 2 * g), bronze(k, 0.8));
   }
+  vertices = draw_pack(s, out, vertices);
   return vertices;
 }
 
@@ -344,6 +595,10 @@ fixture_frame :: (s: [] Fixture, out: [] f32, uniforms: [] f32, width: f32, heig
   uniforms[3] = ifx still then 1.0f32 else ease(s[0].time / 0.6);
   uniforms[4] = ifx still then 1.0f32 else 0.0f32;
   uniforms[6] = s[0].dpr;
+  view_rows(s);
+  for i: 0..<16 { uniforms[VIEW_AT + i] = s[0].view[i]; }
+  uniforms[LAMP_AT] = s[0].x * FLOOR; uniforms[LAMP_AT + 1] = LAMP_HEIGHT; uniforms[LAMP_AT + 2] = s[0].z * FLOOR;
+  uniforms[LAMP_AT + 3] = ifx still then 1.0f32 else 0.9 + 0.1 * sin(s[0].time * 2.4);
   n := draw_realm(s, out);
   uniforms[5] = cast(f32) s[0].plate_n;
   for i: 0..<s[0].plate_n {
@@ -419,9 +674,45 @@ outbox_is :: (s: [] Fixture, text: string) -> bool { return cast(string) s[0].ou
   press_key(s[..], KEY_UP, true);
   for i: 0..<60 { step_by(s[..], 0.05); }
   #assert sqrt(s[0].x * s[0].x + s[0].z * s[0].z) <= 0.921;
-  f := floor_of(s[..]);
-  tap(s[..], f.cx + f.rx * 0.5, f.cy, 1);
-  #assert abs(s[0].x - 0.5) < 0.001 && abs(s[0].z) < 0.001;
+  view_rows(s[..]);
+  q := seen(s[..], 0.5 * FLOOR, 0, 0);
+  tap(s[..], q.x, q.y, 1);
+  #assert abs(s[0].x - 0.5) < 0.01 && abs(s[0].z) < 0.01;
+}
+
+CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy Props MegaKit|CC0 1.0|https://quaternius.com\nL 1 Quaternius Medieval Village MegaKit|CC0 1.0|https://quaternius.com\nL 2 Engine sounds|CC0 1.0|https://openagents.com\nM Barrel 0 300 0 -0.4 0 -0.4 0.4 1 0.4\nM CommonTree_3 300 600 1 -1 0 -1 1 4 1\nM CommonTree_3_Leaves 900 900 1 -2 1 -2 2 5 2\nT 0 a.jpg 0\nT 1 b.png 1\nS chime 2\n";
+
+#test "the pack's catalog: its meshes, each asset under a licence, its size against its budget" {
+  s: [1] Fixture;
+  fixture_catalog(s[..], CATALOG);
+  #assert s[0].pack_ready && s[0].mesh_n == 3 && s[0].licence_n == 3;
+  #assert mesh_name(s[..], 1) == "CommonTree_3" && s[0].mesh_first[1] == 300 && s[0].mesh_count[1] == 600;
+  #assert s[0].uses[0] == 2 && s[0].uses[1] == 3 && s[0].uses[2] == 1 && s[0].unlicensed == 0;
+  #assert s[0].textures == 2 && s[0].sounds == 1;
+  #assert s[0].pack_bytes == 1189356 && s[0].budget == 1500000 && s[0].pack_bytes <= s[0].budget;
+  #assert licence_name(s[..], 2) == "Engine sounds · CC0 1.0";
+  // a tree's leaves stand where the tree does
+  #assert fixture_draw_count(s[..]) == 3;
+  #assert s[0].objects[1 * INSTANCE_FLOATS + 3] == s[0].objects[2 * INSTANCE_FLOATS + 3];
+  #assert s[0].objects[0 * INSTANCE_FLOATS + 3] != s[0].objects[1 * INSTANCE_FLOATS + 3];
+  #assert abs(s[0].mesh_top[0] - 1) < 0.001 && abs(s[0].mesh_top[2] - 5) < 0.001;
+  #assert abs(s[0].objects[1 * INSTANCE_FLOATS + 5] - TALLEST / 5) < 0.001 && s[0].objects[5] == 1;
+  #assert s[0].draws[4 + 0] == 300 && s[0].draws[4 + 1] == 600 && s[0].draws[4 + 2] == 1;
+}
+
+#test "an asset naming no licence the pack lists is counted as unlicensed" {
+  s: [1] Fixture;
+  fixture_catalog(s[..], "L 0 Kit|CC0 1.0|u\nM Barrel 0 3 4 0 0 0 1 1 1\nT 0 a.jpg 9\n");
+  #assert s[0].unlicensed == 2 && s[0].uses[0] == 0;
+}
+
+#test "while the pack streams nothing is drawn from it, and a line says how much has come" {
+  s: [1] Fixture;
+  fixture_message(s[..], MSG_PACK, "524288 1189356");
+  #assert s[0].loaded == 524288 && s[0].total == 1189356 && fixture_draw_count(s[..]) == 0;
+  buf: [32] u8;
+  #assert cast(string) buf[0..<put_kb(buf[..], 0, 1189356)] == "1,161 KB";
+  #assert cast(string) buf[0..<put_kb(buf[..], 0, 524288)] == "512 KB";
 }
 
 #test "GALAXY and Escape go back to the galaxy" {

@@ -1,9 +1,12 @@
-// The fixture realm's two passes (verse.wgsl's): the night behind (stars,
-// a glow where the floor lies, and the plates fixture.coax lays out) and the
-// strokes over it (the floor's rings, the light, the words). Every place and
-// size comes from fixture.coax.
+// The fixture realm's three passes: the night behind (stars, a glow where
+// the floor lies, and the plates fixture.coax lays out), the pack's meshes
+// (scene_vs, scene_fs: lit by a key light and the lamp, the plates kept over
+// them) and the strokes over all of it (the floor's rings, the lamp, the
+// words). Every place and size comes from fixture.coax.
 struct U {
   size: vec2f, time: f32, fade: f32, still: f32, panels: f32, k: f32, pad0: f32,
+  r0: vec4f, r1: vec4f, r2: vec4f, r3: vec4f,  // the view: clip = rows · world
+  lamp: vec4f,                                 // the lamp: where (metres), strength
   panel: array<vec4f, 32>,  // per plate (fixture.coax PLATES): x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
 }
 @group(0) @binding(0) var<uniform> u: U;
@@ -60,6 +63,52 @@ fn stars(p: vec2f) -> f32 {
   var sky = vec3f(0.012, 0.013, 0.02) + vec3f(0.035, 0.036, 0.045) * exp(-r * r * 6.0);
   sky += vec3f(stars(p)) * u.fade;
   return vec4f(panels(p, sky), 1.0);
+}
+// ---- the pack's meshes: its vertices (pack_realm.py: the Haunted House's 48
+// bytes, position, normal, uv, colour with its layer in the top byte), a
+// transform and tint a draw, its texture layers
+@group(1) @binding(0) var<storage, read> vertices: array<u32>;
+struct Object { r0: vec4f, r1: vec4f, r2: vec4f, material: vec4f }
+@group(1) @binding(1) var<storage, read> objects: array<Object>;
+@group(1) @binding(2) var sheets: texture_2d_array<f32>;
+@group(1) @binding(3) var sheet: sampler;
+fn word(i: u32) -> f32 { return bitcast<f32>(vertices[i]); }
+struct S {
+  @builtin(position) pos: vec4f,
+  @location(0) world: vec3f,
+  @location(1) normal: vec3f,
+  @location(2) uv: vec2f,
+  @location(3) tint: vec3f,
+  @location(4) @interpolate(flat) slice: u32,
+}
+@vertex fn scene_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> S {
+  let b = id * 12u;
+  let p = vec4f(word(b), word(b + 1u), word(b + 2u), 1.0);
+  let n = vec3f(word(b + 3u), word(b + 4u), word(b + 5u));
+  let m = objects[instance];
+  let w = vec3f(dot(m.r0, p), dot(m.r1, p), dot(m.r2, p));
+  let wp = vec4f(w, 1.0);
+  var o: S;
+  o.pos = vec4f(dot(u.r0, wp), dot(u.r1, wp), dot(u.r2, wp), dot(u.r3, wp));
+  o.world = w;
+  o.normal = vec3f(dot(m.r0.xyz, n), dot(m.r1.xyz, n), dot(m.r2.xyz, n));
+  o.uv = vec2f(word(b + 6u), word(b + 7u));
+  o.tint = unpack4x8unorm(vertices[b + 8u]).rgb * m.material.rgb;
+  o.slice = vertices[b + 8u] >> 24u;
+  return o;
+}
+@fragment fn scene_fs(s: S) -> @location(0) vec4f {
+  let tex = textureSample(sheets, sheet, s.uv, s.slice);
+  if (tex.a < 0.35) { discard; }
+  let n = normalize(s.normal);
+  let key = max(0.0, dot(n, normalize(vec3f(-0.4, 0.8, 0.45))));
+  var lit = vec3f(0.10, 0.11, 0.16) * (0.6 + 0.4 * n.y) + vec3f(0.42, 0.44, 0.55) * key;
+  let to = u.lamp.xyz - s.world;
+  let d = length(to);
+  let near = max(0.0, dot(n, to / max(d, 0.001))) * u.lamp.w / (1.0 + 0.18 * d * d);
+  lit += vec3f(1.0, 0.62, 0.28) * near * 1.6;
+  let c = tex.rgb * s.tint * lit * u.fade;
+  return vec4f(panels(s.pos.xy, c), 1.0);
 }
 // ---- the strokes: one quad per stroke or light (fixture.coax lit, tinted_dot)
 struct V {

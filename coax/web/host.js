@@ -79,6 +79,10 @@
 //   index:URL     the scene's index buffer (u32)
 //   layers:URL|URL|...  a 2D-array texture, an image a layer, sRGB, mipmapped
 //   sound:NAME=URL a sound the app plays by name;  loop:URL  one that loops from the first touch or key
+//   pack:URL      a realm's asset pack (verse/tools/pack_realm.py, docs/verse/realm-host.md): one file,
+//                 streamed, that stands for four assets in its place, its catalog (data), vertices
+//                 (storage), indices (index) and texture layers (layers), and adds its sounds by name.
+//                 While it streams the app hears message 605, "LOADED TOTAL" bytes. One pack a page.
 // and each one that arrives (or fails, bytes 0) is told: coaxial_asset_ready(state, i, bytes), i its
 // place in the list. The app's scene, drawn between bg and fx with a depth buffer once every GPU asset is in:
 //   coaxial_draws(state), coaxial_draw_count(state)   u32 [first, count, base instance, instances] each,
@@ -131,6 +135,8 @@ let engine = null;   // { exports, layout }
 let arena = null;    // { state, vertices, uniforms, floats, uniformFloats, maxVertices }
 let gpu = null;      // { device, context, format, bindGroup, uniformBuffer, vertexBuffer, bg, fx }
 let wanted = 0;      // the newest requested engine; an older finished build never replaces it
+const PACK_PARTS = ["data", "storage", "index", "layers"], PACK_KIND = 605;
+const PACK_CATALOG = 1, PACK_VERTICES = 2, PACK_INDICES = 3, PACK_LAYER = 4, PACK_SOUND = 5;
 const assets = parseAssets((script && script.dataset.assets) || "");
 let last = 0;
 const randomScratch = {}; // lazily reserved once, shared by synchronous engine calls
@@ -594,11 +600,64 @@ async function particlePipeline(post) {
 
 // ---- the scene's assets and group 1
 function parseAssets(text) {
-  return text.split(/\s+/).filter(Boolean).map((entry, i) => {
-    const k = entry.indexOf(":"), kind = entry.slice(0, k), rest = entry.slice(k + 1);
-    if (kind === "sound") { const e = rest.indexOf("="); return { i, kind, name: rest.slice(0, e), url: rest.slice(e + 1) }; }
-    return { i, kind, url: rest, urls: rest.split("|") };
-  });
+  const list = [];
+  for (const entry of text.split(/\s+/).filter(Boolean)) {
+    const k = entry.indexOf(":"), kind = entry.slice(0, k), rest = entry.slice(k + 1), i = list.length;
+    if (kind === "sound") { const e = rest.indexOf("="); list.push({ i, kind, name: rest.slice(0, e), url: rest.slice(e + 1) }); }
+    else if (kind === "pack") { const pack = { url: rest }; for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack }); }
+    else list.push({ i, kind, url: rest, urls: rest.split("|") });
+  }
+  return list;
+}
+// ---- a realm's asset pack (verse/tools/pack_realm.py has the format)
+async function loadPack(pack) {
+  const parts = assets.filter((a) => a.pack === pack);
+  let entries = null;
+  try {
+    const r = await fetch(pack.url);
+    if (!r.ok || !r.body) throw new Error(`${pack.url}: ${r.status}`);
+    const reader = r.body.getReader(), chunks = [];
+    let loaded = 0, total = Number(r.headers.get("content-length")) || 0, told = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value); loaded += value.length;
+      if (loaded >= 12 && chunks[0].length >= 12) total = new DataView(chunks[0].buffer, chunks[0].byteOffset).getUint32(8, true);
+      if (performance.now() - told > 100) { told = performance.now(); send(PACK_KIND, `${loaded} ${total}`); }
+    }
+    const bytes = new Uint8Array(loaded);
+    let at = 0; for (const c of chunks) { bytes.set(c, at); at += c.length; }
+    send(PACK_KIND, `${loaded} ${loaded}`);
+    entries = unpack(bytes);
+    const { device } = gpu, of = (kind) => entries.filter((e) => e.kind === kind);
+    const [catalog, vertices, indices, layers] = parts;
+    catalog.bytes = of(PACK_CATALOG)[0].bytes; catalog.size = catalog.bytes.length;
+    for (const [a, e] of [[vertices, of(PACK_VERTICES)[0]], [indices, of(PACK_INDICES)[0]]]) {
+      const whole = new Uint8Array(align(Math.max(e.bytes.length, 4), 4)); whole.set(e.bytes);
+      a.buffer = device.createBuffer({ size: whole.length, usage: (a.kind === "index" ? GPUBufferUsage.INDEX : GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST });
+      device.queue.writeBuffer(a.buffer, 0, whole); a.size = e.bytes.length;
+    }
+    const images = await Promise.all(of(PACK_LAYER).map((e) => createImageBitmap(new Blob([e.bytes]))));
+    if (images.length) { layers.texture = await layerTexture(images); layers.size = images.length; }
+    else layers.failed = true;
+    for (const e of of(PACK_SOUND)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: e.bytes, done: true });
+  } catch (e) { for (const a of parts) a.failed = true; say(`${app}: ${e.message}`, true); }
+  for (const a of parts) { a.done = true; deliver(a); }
+  bindScene();
+}
+// The pack's entries: its header and table checked against its length; nothing outside it is read.
+function unpack(bytes) {
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+  if (bytes.length < 32 || String.fromCharCode(...bytes.subarray(0, 4)) !== "VPK1" || v.getUint32(8, true) !== bytes.length) throw new Error("not a whole asset pack");
+  const n = v.getUint32(4, true), table = v.getUint32(16, true), out = [];
+  if (table + n * 48 > bytes.length) throw new Error("asset pack: its table runs past its end");
+  for (let k = 0; k < n; k++) {
+    const at = table + k * 48, offset = v.getUint32(at + 4, true), length = v.getUint32(at + 8, true);
+    if (offset + length > bytes.length) throw new Error("asset pack: an entry runs past its end");
+    const name = new TextDecoder().decode(bytes.subarray(at + 16, at + 48)).replace(/\0.*$/s, "");
+    out.push({ kind: bytes[at], licence: bytes[at + 1], name, bytes: bytes.subarray(offset, offset + length) });
+  }
+  return out;
 }
 // Hands an asset that has arrived to the app (data into its memory) and tells it.
 function deliver(a) {
@@ -615,18 +674,7 @@ async function loadAsset(a) {
   try {
     if (a.kind === "layers") {
       const images = await Promise.all(a.urls.map(async (u) => createImageBitmap(await (await fetch(u)).blob())));
-      const [w, h] = [images[0].width, images[0].height];
-      const levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
-      const texture = device.createTexture({ size: [w, h, images.length], format: "rgba8unorm-srgb", mipLevelCount: levels,
-        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
-      for (const [layer, image] of images.entries())
-        for (let level = 0; level < levels; level++) {
-          const lw = Math.max(1, w >> level), lh = Math.max(1, h >> level);
-          const source = level === 0 && image.width === w && image.height === h ? image
-            : await createImageBitmap(image, { resizeWidth: lw, resizeHeight: lh, resizeQuality: "high" });
-          device.queue.copyExternalImageToTexture({ source }, { texture, mipLevel: level, origin: [0, 0, layer] }, [lw, lh]);
-        }
-      a.texture = texture; a.size = images.length;
+      a.texture = await layerTexture(images); a.size = images.length;
     } else {
       const r = await fetch(a.url);
       if (!r.ok) throw new Error(`${a.url}: ${r.status}`);
@@ -644,6 +692,21 @@ async function loadAsset(a) {
   a.done = true;
   deliver(a);
   bindScene();
+}
+// A 2D-array texture, an image a layer, sRGB, mipmapped (every image at the first one's size).
+async function layerTexture(images) {
+  const { device } = gpu, [w, h] = [images[0].width, images[0].height];
+  const levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
+  const texture = device.createTexture({ size: [w, h, images.length], format: "rgba8unorm-srgb", mipLevelCount: levels,
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+  for (const [layer, image] of images.entries())
+    for (let level = 0; level < levels; level++) {
+      const lw = Math.max(1, w >> level), lh = Math.max(1, h >> level);
+      const source = level === 0 && image.width === w && image.height === h ? image
+        : await createImageBitmap(image, { resizeWidth: lw, resizeHeight: lh, resizeQuality: "high" });
+      device.queue.copyExternalImageToTexture({ source }, { texture, mipLevel: level, origin: [0, 0, layer] }, [lw, lh]);
+    }
+  return texture;
 }
 function sceneLayout() {
   if (gpu.sceneLayout) return gpu.sceneLayout;
@@ -742,14 +805,15 @@ function startAudio() {
   if (audio || !assets.some((a) => a.kind === "sound" || a.kind === "loop")) return;
   try { audio = new AudioContext(); } catch { return; }
   const loop = assets.find((a) => a.kind === "loop");
-  if (loop) decoded(loop.url).then((b) => {
+  if (loop) decoded(loop).then((b) => {
     const s = audio.createBufferSource(), g = audio.createGain();
     s.buffer = b; s.loop = true; g.gain.value = 0.35; s.connect(g).connect(audio.destination); s.start();
   }).catch(() => {});
 }
-function decoded(url) {
-  if (!sounds.has(url)) sounds.set(url, fetch(url).then((r) => r.arrayBuffer()).then((b) => audio.decodeAudioData(b)));
-  return sounds.get(url);
+function decoded(a) {
+  const key = a.url || `pack:${a.name}`;
+  if (!sounds.has(key)) sounds.set(key, (a.bytes ? Promise.resolve(a.bytes.slice().buffer) : fetch(a.url).then((r) => r.arrayBuffer())).then((b) => audio.decodeAudioData(b)));
+  return sounds.get(key);
 }
 let playing = 0;
 function playSounds(x) {
@@ -760,7 +824,7 @@ function playSounds(x) {
     const [name, gain, pan] = line.split(" ");
     const a = assets.find((s) => s.kind === "sound" && s.name === name);
     if (!a || playing >= 16) continue;
-    decoded(a.url).then((b) => {
+    decoded(a).then((b) => {
       const s = audio.createBufferSource(), g = audio.createGain(), p = audio.createStereoPanner();
       s.buffer = b; g.gain.value = Number(gain) || 0; p.pan.value = Math.max(-1, Math.min(1, Number(pan) || 0));
       s.connect(g).connect(p).connect(audio.destination); playing++; s.onended = () => playing--; s.start();
@@ -1130,7 +1194,8 @@ async function main() {
     observeSize();
     requestAnimationFrame(frame);
     // The heavy ones first; sounds are fetched when first played.
-    for (const a of assets) if (!["sound", "loop", "particles"].includes(a.kind)) loadAsset(a);
+    for (const a of assets) if (!a.pack && !["sound", "loop", "particles"].includes(a.kind)) loadAsset(a);
+    for (const pack of new Set(assets.filter((a) => a.pack).map((a) => a.pack))) loadPack(pack);
   } catch (e) {
     document.documentElement.classList.remove("gpu");
     say(`${app}: ${e.message}`, true);

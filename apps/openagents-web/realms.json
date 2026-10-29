@@ -57,7 +57,7 @@
         "alt": "Enter the Verse",
         "module": "fixture",
         "slot": "fixture",
-        "assets": []
+        "assets": ["pack:/realm/fixture/assets/fixture.pack"]
       } }
   ]
 }

@@ -2,7 +2,8 @@
 // Wasm exports over fixture.coax. The host keeps one Fixture; this file
 // decides nothing. It is the smallest realm module the realm host takes
 // (docs/verse/realm-host.md): layout and sizes, the frame, keys, the pointer,
-// the inbox (the slot's save and the page facts) and actions (keep, go).
+// the inbox (the slot's save, the page facts, the pack's progress), actions
+// (keep, go), the pack's catalog (asset 0) and the scene drawn from it.
 #include "fixture.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -12,6 +13,7 @@
 static coax_t_Fixture *state_at(uint32_t state) { return (coax_t_Fixture *)(uintptr_t)state; }
 static coax_v_t_Fixture at(uint32_t state) { return (coax_v_t_Fixture){state_at(state), 1}; }
 static uint8_t inbox[16384];
+static uint8_t catalog[32768];
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_Fixture) * 1000003u + offsetof(coax_t_Fixture, plates) * 7u + offsetof(coax_t_Fixture, outbox) * 13u + 0x46495855u);
@@ -48,3 +50,18 @@ EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->outbox.e; }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)state_at(state)->out_n; }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { fixture_action_done(at(state)); }
+
+EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes) {
+  (void)state;
+  return i == 0 && bytes <= sizeof catalog ? (uint32_t)(uintptr_t)catalog : 0u;
+}
+EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) {
+  if (i == 0 && bytes > 0 && bytes <= sizeof catalog) fixture_catalog(at(state), (coax_string){(const char *)catalog, (int64_t)bytes});
+  if (i >= 0 && i <= 3 && bytes == 0) fixture_pack_failed(at(state));
+}
+EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->draws.e; }
+EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)fixture_draw_count(at(state)); }
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 1u; }
+EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { (void)k; return (uint32_t)sizeof(((coax_t_Fixture *)0)->objects); }
+EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { (void)k; return (uint32_t)(uintptr_t)state_at(state)->objects.e; }
+EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { (void)k; return (uint32_t)(state_at(state)->draw_n * 16 * sizeof(float)); }

@@ -1,0 +1,16 @@
+{
+  "pack": "fixture",
+  "title": "Fixture Realm",
+  "budget": 1500000,
+  "scene": "~/work/aethyr-cpp/build-native/native-root/assets/scene.bin",
+  "layers": "~/work/aethyr-cpp/assets/layer{n}",
+  "texture_size": 512,
+  "licences": {
+    "quaternius-fantasy-props": { "name": "Quaternius Fantasy Props MegaKit", "licence": "CC0 1.0 Universal", "url": "https://quaternius.com/" },
+    "quaternius-medieval-village": { "name": "Quaternius Medieval Village MegaKit", "licence": "CC0 1.0 Universal", "url": "https://quaternius.com/" },
+    "quaternius-stylized-nature": { "name": "Quaternius Stylized Nature MegaKit", "licence": "CC0 1.0 Universal", "url": "https://quaternius.com/" },
+    "aethyr-engine-sounds": { "name": "Aethyr engine sounds (synthesized)", "licence": "CC0 1.0 Universal", "url": "https://creativecommons.org/publicdomain/zero/1.0/" }
+  },
+  "meshes": ["Barrel", "Chest_Wood", "Anvil", "Prop_Wagon", "Prop_Crate", "Prop_WoodenFence_Single", "CommonTree_3", "CommonTree_3_Leaves", "Rock_Medium_1", "Fern_1"],
+  "sounds": [{ "name": "chime", "file": "~/work/aethyr-cpp/assets/audio/chime.mp3", "licence": "aethyr-engine-sounds" }]
+}
