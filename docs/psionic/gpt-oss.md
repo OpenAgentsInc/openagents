@@ -102,10 +102,10 @@ is o200k_base's pattern and ranks plus harmony special tokens through ID
   Metal path "not production-ready", and a reference runtime does not establish
   Psionic execution in any case.
 - **Upstream sizing.** The 20b model's "within 16GB of memory" and the 120b
-  model's single-80 GB-GPU target are upstream claims. Chapter 13's residency
+  model's single-80 GB-GPU target are upstream claims. Chapter 14's residency
   plan measures each model on the machine it runs on.
 - **Upstream sampling defaults.** The recommended temperature 1.0 and top-p 1.0
-  become explicit parameters under chapter 21's named RNG, not hidden defaults.
+  become explicit parameters under chapter 22's named RNG, not hidden defaults.
 
 ## Evidence for each model
 

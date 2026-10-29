@@ -1,6 +1,6 @@
 # Inference across a mesh
 
-Planning note, 2026-10-29, for Part XVII of the
+Planning note, 2026-10-29, for Part XVIII of the
 [book plan](../../psionic/book/PLAN.md). It carries forward two documents
 from before the reset and adds a review of Mesh-LLM at its current revision.
 Nothing was installed, joined or run.
@@ -27,7 +27,7 @@ Nothing was installed, joined or run.
 
 ## Lessons that carry over
 
-From the earlier review, restated as Psionic rules (chapters 100–107):
+From the earlier review, restated as Psionic rules (chapters 115–122):
 
 1. **A split must match the whole model.** Every split needs logits, greedy
    output and cached continuation to match the whole model on identical
@@ -77,7 +77,7 @@ At the current revision Mesh-LLM, among other things:
   ([`mesh/docs/plugins/flash-moe.md`](https://github.com/Mesh-LLM/mesh-llm/blob/f2a7f62c755e283c389a28cbf8d1e8f926677a4e/mesh/docs/plugins/flash-moe.md)).
 
 Mesh-LLM's numerical engine is a patched llama.cpp runtime. Psionic's stays
-in Coax. That makes chapter 110 an interoperation chapter: a Psionic server
+in Coax. That makes chapter 125 an interoperation chapter: a Psionic server
 behind Mesh-LLM's plugin endpoint, serving the same OpenAI-compatible and
 decision contracts. It does not adopt the runtime. Note that Mesh-LLM's causal
 decision readout is its own method. It is not the Base Labs slot readout that
@@ -87,7 +87,7 @@ chapters 9–12 qualify.
 
 Darkbloom (Layr-Labs/d-inference) is under a proprietary licence. The
 earlier review took ideas only, and so does this one. Its lessons, kept for
-chapters 108–109:
+chapters 123–124:
 
 - **Process hardening is not an enclave.** A hardened process on a Mac its
   owner controls is harder to snoop on. It is not private, because root can
@@ -108,10 +108,10 @@ so encrypted transport protects the link, not the data from that peer.
 ## Where Psionic can go further
 
 **Check work by re-executing it.** Under a fixed backend profile, Psionic's
-fixed reduction order and batch invariance (chapter 88) make outputs
+fixed reduction order and batch invariance (chapter 103) make outputs
 reproducible bit for bit. A trusted node can therefore re-run a sampled
 fraction of a peer's requests and compare exactly, rather than trusting
-reported usage (chapter 109). Across different backends the comparison uses
+reported usage (chapter 124). Across different backends the comparison uses
 that profile's stated tolerance, and an inexact match is evidence, not proof.
 
 ## Decisions that belong to the owner

@@ -29,6 +29,7 @@ refusals, and execution evidence throughout that progression.
 | [Architecture and considerations](architecture.md) | What belongs in Coax, storage and numerical contracts, compiler limits, and the eventual backend boundary. |
 | [Starting point and roadmap](roadmap.md) | A concrete first change, a chapter sequence, dependencies, and acceptance gates. |
 | [Production inference notes](inference-engineering.md) | What Psionic takes from *Inference Engineering* (Baseten): service metrics, batching, caching, routing, autoscaling, rollout and observability, mapped to Coax chapters, and what it does not adopt. |
+| [DeepSeek natively](deepseek.md) | The pre-reset DeepSeek V4.1 Flash work condensed: the architecture, what was achieved and measured, why numerical parity failed, the efficiency techniques to rebuild in Coax, and what Psionic does not adopt. |
 | [Mistral target survey](mistral.md) | The Mistral ladder from Ministral 3 to Mistral Large 4 (Le Chonk): pinned revisions, licences, the features each model adds and Large 4's model-as-a-service licence boundary. |
 | [Inference across a mesh](mesh.md) | Mesh-LLM lessons carried forward and updated, Darkbloom and private-inference trust lessons, and re-execution checks for peers. |
 | [gpt-oss target survey](gpt-oss.md) | Pinned gpt-oss-20b/120b and harmony sources: MXFP4 originals, sink/window attention, expert routing, the response format, and what Psionic does not adopt. |
