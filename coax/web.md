@@ -34,6 +34,7 @@ native kernel, is separate work.
 | The browser host | `coax/web/host.js`: WebGPU, the frame clock, state in one `WebAssembly.Memory`, code and shader swaps, the dev error note, the `?probe` frame readback | Works for apps with one uniform block and one vertex stream |
 | Coax → Wasm | `coax/web/wasm.sh`: `coax c` → clang wasm32-wasip1 → wasm-ld; dev (`-O1`, parallel) and release (`-O2`) | The splash is 24 KB (release) |
 | Dev server | `coax/web/serve.c` + `serve.sh` (`coax serve`): static files, a watcher, rebuilds, `/coaxial/live` | Measured: an engine rebuild in 118–135 ms, shader and page messages, compiler errors with the `.coax` location |
+| Realm host | `apps/openagents-web/realms.json` (every galaxy world and realm page), `coax/web/realms.ts` (writes `realms.coax` and `realm/<slug>/index.html`), host.js `data-realm`/`data-slot` (a save slot per realm), `fixture.coax` (the smallest realm) | The contract a realm follows: [docs/verse/realm-host.md](../docs/verse/realm-host.md) |
 | Staging deploy | `coax/web/deploy.sh APP SERVICE` (`coax deploy`, for now): release build, content-named wasm/shader/host files, a direct parallel upload of only what changed to the app's bucket (`upload.py`). `cdn.sh` (one time) puts Cloud CDN and a load balancer in front of the bucket; `deploy.sh --server` builds the static server image once for the Cloud Run fallback, which mounts the same bucket | A deploy takes about 1.2 s (0.4 s build, 0.8 s upload); staging.openagents.com |
 
 Not built: `coax wgsl` (shaders are hand-written WGSL for now), the

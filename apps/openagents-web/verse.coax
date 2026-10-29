@@ -9,9 +9,11 @@
 // and is kept in the browser so a returning player goes straight on. Both
 // ways reach the galaxy.
 //
-// The galaxy: the playtest's worlds turning on their orbits; only the
-// Haunted House opens (/realm/haunted-house). Coding is coming soon and the
-// rest are locked, as the playtest drew them. Drag turns it. Players' own
+// The galaxy: the playtest's worlds turning on their orbits, from the realm
+// host's table (realms.json, written into realms.coax): an open world opens
+// its realm's page (/realm/<slug>), today the Haunted House. Coding is coming
+// soon and the rest are locked, as the playtest drew them. A world the table
+// doesn't list (the fixture realm) shows only with ?realms=all. Drag turns it. Players' own
 // realms (pt-planets) circle outside them, the newest REALMS, and each
 // opens its world (/realm/haunted-house#<id>); MAKE YOUR REALM sets one up
 // (a name, its kind, look, view and time of day) on the server
@@ -26,6 +28,7 @@
 #load "ui.coax";
 #load "analytics.coax";
 #load "world.coax";
+#load "realms.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 40000;
@@ -145,6 +148,7 @@ VerseState :: struct {
   rot: f32; tilt: f32; spun: bool;
   down: bool; down_id: int; down_x: f32; down_y: f32; drag_rot: f32; drag_tilt: f32; moved: f32;
   over: int;                 // the planet under the mouse, or the one a first tap picked (-1 none)
+  all: bool;                 // ?realms=all: unlisted worlds too
   toast: [96] u8; toast_n: int; toast_at: f32;
   // players' realms, newest first, and yours
   realm_ids: [REALMS * REALM_ID] u8; realm_id_n: [REALMS] int;
@@ -278,7 +282,7 @@ pick :: (s: [] VerseState, t: [] Track, p: int, via: string) {
   if track_begin(t, "planet-click") { track_str(t, "planet", realm_id_at(s, p)); track_str(t, "via", via); track_bool(t, "open", open); track_end(t); }
   if p >= PLANETS { open_realm(s, realm_id_at(s, p)); return; }
   if open {
-    if s[0].next_n == 0 && s[0].action == 0 { s[0].answered = true; go_to(s, "/realm/haunted-house"); }
+    if s[0].next_n == 0 && s[0].action == 0 { s[0].answered = true; go_to(s, PLANET_PATH[p]); }
     return;
   }
   n := 0;
@@ -351,6 +355,7 @@ verse_message :: (s: [] VerseState, t: [] Track, kind: int, bytes: string) #expo
 planet_at :: (s: [] VerseState, x: f32, y: f32) -> int {
   best := -1; score := 1.0e9f32;
   for p: 0..<PLANETS + s[0].realm_n {
+    if !planet_shown(s, p) { continue; }
     q := project(s, p);
     reach := hi(q.r * 1.5, 22 * s[0].dpr);
     dx := q.x - x; dy := q.y - y;
@@ -454,15 +459,8 @@ verse_action_done :: (s: [] VerseState) #export_c { for i: 0..<OUTBOX { s[0].out
 
 // ---- the galaxy's worlds (the playtest's map, app.js galaxy.bodies)
 
-PLANETS :: 7;
-KIND_LOCKED :: 0; KIND_OPEN :: 1; KIND_SOON :: 2;
+// PLANETS and PLANET_* are realms.coax's; these two have tags of their own.
 HOUSE :: 1; CODING :: 5;
-PLANET_ID :: [PLANETS] string.["oa", "house", "blue", "brain", "grove", "coding", "grid"];
-PLANET_NAME :: [PLANETS] string.["OPENAGENTS", "HAUNTED HOUSE", "BLUE RUSH", "BIG BRAIN", "EVERGLADE", "CODING", "THE GRID"];
-PLANET_KIND :: [PLANETS] int.[KIND_LOCKED, KIND_OPEN, KIND_LOCKED, KIND_LOCKED, KIND_LOCKED, KIND_SOON, KIND_LOCKED];
-PLANET_R :: [PLANETS] f32.[0, 0.15, 0.42, 0.46, 0.34, 0.37, 0.3];
-PLANET_A :: [PLANETS] f32.[0, 0, 2.4, 0.5, 4.2, 3.25, 5.4];
-PLANET_SIZE :: [PLANETS] f32.[0.075, 0.028, 0.05, 0.045, 0.032, 0.043, 0.036];
 ORBITS :: [6] f32.[0.15, 0.26, 0.3, 0.34, 0.42, 0.46];
 
 Seen :: struct { x: f32; y: f32; r: f32; depth: f32; }
@@ -483,6 +481,7 @@ project :: (s: [] VerseState, p: int) -> Seen {
 }
 
 // The galaxy's worlds and then players' realms (p from PLANETS).
+planet_shown :: (s: [] VerseState, p: int) -> bool { return p >= PLANETS || PLANET_LISTED[p] || s[0].all; }
 realm_kind_at :: (s: [] VerseState, p: int) -> int { return ifx p >= PLANETS then KIND_OPEN else PLANET_KIND[p]; }
 realm_id_at :: (s: [] VerseState, p: int) -> string {
   if p < PLANETS { return PLANET_ID[p]; }
@@ -522,6 +521,7 @@ realm_name_into :: (raw: string, out: [] u8) -> int {
 // The page facts' player (its public id; the key stays in the browser).
 verse_facts :: (s: [] VerseState, facts: string) #export_c {
   if !s[0].started { verse_reset(s); }
+  s[0].all = text_has(fact_of(facts, "url"), "realms=all");
   id := fact_of(facts, "player");
   if !world_id_ok(id) || id.count > 32 { return; }
   for i: 0..<id.count { s[0].player[i] = id[i]; }
@@ -911,6 +911,7 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
   shown_planets := ifx s[0].setup then 0 else PLANETS;
   shown_realms := ifx s[0].setup then 0 else s[0].realm_n;
   for p: 0..<shown_planets {
+    if !planet_shown(s, p) { continue; }
     q := project(s, p);
     if PLANET_KIND[p] == KIND_OPEN {
       if tinted_dot(out, vertices, q.x, q.y, 0.1, 3.2, q.r * 3.4, EMBER_R, EMBER_G, EMBER_B) { vertices += 6; }
@@ -1253,6 +1254,28 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   redraw(s[..], t[..], 0.016);
   #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/haunted-house";
   #assert batch_has(t[..], "\"open\":true");
+}
+
+#test "every open world opens its own realm page; an unlisted one only with realms=all" {
+  #assert PLANET_ID[HOUSE] == "house" && PLANET_ID[CODING] == "coding" && PLANET_PATH[HOUSE] == "/realm/haunted-house";
+  fixture := -1;
+  for p: 0..<PLANETS {
+    #assert (PLANET_KIND[p] == KIND_OPEN) == (PLANET_PATH[p].count > 0);
+    if PLANET_ID[p] == "fixture" { fixture = p; }
+  }
+  #assert fixture >= 0 && !PLANET_LISTED[fixture];
+  for all: 0..<2 {
+    s: [1] VerseState; t: [1] Track;
+    if all == 1 { verse_facts(s[..], "url=https://openagents.com/verse/galaxy?realms=all"); }
+    page_at(s[..], t[..], PAGE_GALAXY, 1440, 900);
+    q := project(s[..], fixture);
+    #assert (planet_at(s[..], q.x, q.y) == fixture) == (all == 1);
+    if all == 0 { continue; }
+    poke(s[..], t[..], q.x, q.y, POINTER_DOWN, 0, 1);
+    poke(s[..], t[..], q.x, q.y, POINTER_UP, 0, 1);
+    redraw(s[..], t[..], 0.016);
+    #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/fixture";
+  }
 }
 
 #test "a drag turns the galaxy and opens nothing" {

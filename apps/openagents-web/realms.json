@@ -1,0 +1,63 @@
+{
+  "v": "openagents.realms.v1",
+  "about": "Every world on the galaxy and every realm page. coax/web/realms.ts writes realms.coax (the galaxy's table) and realm/<slug>/index.html from it. docs/verse/realm-host.md is the contract.",
+  "worlds": [
+    { "id": "oa", "name": "OPENAGENTS", "kind": "locked", "orbit": { "r": 0, "a": 0, "size": 0.075 } },
+    { "id": "house", "name": "HAUNTED HOUSE", "kind": "open", "orbit": { "r": 0.15, "a": 0, "size": 0.028 },
+      "realm": {
+        "slug": "haunted-house",
+        "title": "Haunted House",
+        "description": "The Haunted House, a Verse realm you walk through in the browser: nine haunts to find, characters to talk to, doors to open. The same Coax code as the OpenAgents iOS app.",
+        "alt": "Enter the Verse: edit our haunted house. Can you make it scarier?",
+        "module": "realm",
+        "slot": "haunted-house",
+        "slot_was": "realm",
+        "assets": [
+          "data:/realm/haunted-house/assets/Haunt.pb",
+          "storage:/realm/haunted-house/assets/Haunt.vertices",
+          "index:/realm/haunted-house/assets/Haunt.indices",
+          "layers:/realm/haunted-house/assets/haunt-layer0.jpg|/realm/haunted-house/assets/haunt-layer1.jpg|/realm/haunted-house/assets/haunt-layer2.jpg|/realm/haunted-house/assets/haunt-layer18.jpg|/realm/haunted-house/assets/haunt-layer19.jpg|/realm/haunted-house/assets/haunt-layer20.jpg|/realm/haunted-house/assets/haunt-layer21.jpg|/realm/haunted-house/assets/haunt-layer22.jpg|/realm/haunted-house/assets/haunt-layer24.jpg|/realm/haunted-house/assets/haunt-layer26.jpg|/realm/haunted-house/assets/haunt-layer27.jpg|/realm/haunted-house/assets/haunt-layer28.jpg",
+          "sound:boo=/realm/haunted-house/assets/haunt-boo.mp3",
+          "sound:boom=/realm/haunted-house/assets/haunt-boom.mp3",
+          "sound:bubble=/realm/haunted-house/assets/haunt-bubble.mp3",
+          "sound:chime=/realm/haunted-house/assets/haunt-chime.mp3",
+          "sound:click=/realm/haunted-house/assets/haunt-click.mp3",
+          "sound:creak=/realm/haunted-house/assets/haunt-creak.mp3",
+          "sound:hiss=/realm/haunted-house/assets/haunt-hiss.mp3",
+          "sound:jump=/realm/haunted-house/assets/haunt-jump.mp3",
+          "sound:land=/realm/haunted-house/assets/haunt-land.mp3",
+          "sound:slam=/realm/haunted-house/assets/haunt-slam.mp3",
+          "sound:step_grass_1=/realm/haunted-house/assets/haunt-step_grass_1.mp3",
+          "sound:step_grass_2=/realm/haunted-house/assets/haunt-step_grass_2.mp3",
+          "sound:step_grass_3=/realm/haunted-house/assets/haunt-step_grass_3.mp3",
+          "sound:step_metal_1=/realm/haunted-house/assets/haunt-step_metal_1.mp3",
+          "sound:step_metal_2=/realm/haunted-house/assets/haunt-step_metal_2.mp3",
+          "sound:step_metal_3=/realm/haunted-house/assets/haunt-step_metal_3.mp3",
+          "sound:step_stone_1=/realm/haunted-house/assets/haunt-step_stone_1.mp3",
+          "sound:step_stone_2=/realm/haunted-house/assets/haunt-step_stone_2.mp3",
+          "sound:step_stone_3=/realm/haunted-house/assets/haunt-step_stone_3.mp3",
+          "sound:step_wood_1=/realm/haunted-house/assets/haunt-step_wood_1.mp3",
+          "sound:step_wood_2=/realm/haunted-house/assets/haunt-step_wood_2.mp3",
+          "sound:step_wood_3=/realm/haunted-house/assets/haunt-step_wood_3.mp3",
+          "sound:thunder=/realm/haunted-house/assets/haunt-thunder.mp3",
+          "loop:/realm/haunted-house/assets/haunt-wind_loop.mp3",
+          "particles:/particles.wgsl"
+        ]
+      } },
+    { "id": "blue", "name": "BLUE RUSH", "kind": "locked", "orbit": { "r": 0.42, "a": 2.4, "size": 0.05 } },
+    { "id": "brain", "name": "BIG BRAIN", "kind": "locked", "orbit": { "r": 0.46, "a": 0.5, "size": 0.045 } },
+    { "id": "grove", "name": "EVERGLADE", "kind": "locked", "orbit": { "r": 0.34, "a": 4.2, "size": 0.032 } },
+    { "id": "coding", "name": "CODING", "kind": "soon", "orbit": { "r": 0.37, "a": 3.25, "size": 0.043 } },
+    { "id": "grid", "name": "THE GRID", "kind": "locked", "orbit": { "r": 0.3, "a": 5.4, "size": 0.036 } },
+    { "id": "fixture", "name": "FIXTURE REALM", "kind": "open", "listed": false, "orbit": { "r": 0.26, "a": 1.9, "size": 0.026 },
+      "realm": {
+        "slug": "fixture",
+        "title": "Fixture Realm",
+        "description": "The realm host's test world: its own module, its own save slot and its own asset pack, opened from the galaxy like any realm.",
+        "alt": "Enter the Verse",
+        "module": "fixture",
+        "slot": "fixture",
+        "assets": []
+      } }
+  ]
+}

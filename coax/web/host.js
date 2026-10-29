@@ -30,8 +30,8 @@
 //   coaxial_action(state), coaxial_outbox(state), coaxial_outbox_len(state), coaxial_action_done(state)
 //                             out: 1 navigates to the outbox's URL (under data-root, if the page has one; or an https:// URL), 2 copies its text, 3 makes it the
 //                             location's hash (empty: none), in place, 4 keeps it in this browser (one
-//                             text per app, in IndexedDB, else localStorage; given back on the next visit as
-//                             message 4), 5 keeps it as the browser's playtest player ({key, id, account},
+//                             text per save slot, in IndexedDB, else localStorage; given back on the next visit as
+//                             message 4; the slot is the page's data-slot, a realm's own, else the app's name), 5 keeps it as the browser's playtest player ({key, id, account},
 //                             localStorage verse.player, which the landing's join writes too); others go to the page's
 //                             scripts as a "coaxial" event (0 when an engine loads), which
 //                             answer with coaxial.send(kind, text)
@@ -103,6 +103,12 @@ const app = (script && script.dataset.app) || "app";
 // can keep them for good; in development they are /build/APP.wasm and /APP.wgsl.
 const wasmUrl = (script && script.dataset.wasm) || `/build/${app}.wasm`;
 const wgslUrl = (script && script.dataset.wgsl) || `/${app}.wgsl`;
+// A realm page (docs/verse/realm-host.md) names its realm (data-realm) and the
+// save slot it keeps under (data-slot); data-slot-was is a slot it used
+// before, read once when its own is empty, so a renamed slot keeps its save.
+const realmId = (script && script.dataset.realm) || "";
+const slot = (script && script.dataset.slot) || app;
+const slotWas = (script && script.dataset.slotWas) || "";
 // A pinned demo (pin.sh) serves its pages under a path of its own (data-root,
 // e.g. /demo/playtest); the app's own links stay inside it.
 const root = (script && script.dataset.root) || "";
@@ -438,7 +444,7 @@ function pageFacts() {
     vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio || 1, coarse: matchMedia("(pointer: coarse)").matches ? 1 : 0,
     touch: navigator.maxTouchPoints || 0, gpu: navigator.gpu ? 1 : 0, hidden: document.hidden ? 1 : 0,
     webdriver: navigator.webdriver ? 1 : 0, fcp: fcp ? Math.round(fcp.startTime) : 0, dcl: nav ? Math.round(nav.domContentLoadedEventEnd) : 0,
-    player: player()?.id || "", account: player()?.account || "" })
+    player: player()?.id || "", account: player()?.account || "", realm: realmId, slot })
     .map(([k, v]) => `${k}=${clean(v)}`).join("\n");
 }
 addEventListener("visibilitychange", () => send(document.hidden ? HIDDEN_KIND : SHOWN_KIND));
@@ -867,29 +873,30 @@ const call = (name, ...args) => (engine && engine.exports[name] ? engine.exports
 let field = null;   // INVARIANTS.md: the keyboard field, an invisible input over the app's drawn field (keyboard, paste, context menu)
 let touched = false;
 
-// What the app kept in this browser (action 4): IndexedDB (database coaxial, store kept, the app's
-// name), else localStorage. Storage can be refused, so it is only a convenience. A text kept in
+// What the app kept in this browser (action 4): IndexedDB (database coaxial, store kept, the save
+// slot), else localStorage. Storage can be refused, so it is only a convenience. A text kept in
 // localStorage before IndexedDB is read once and moves over at the next keep.
-const keptKey = `coaxial.${app}.kept`;
+const keptKey = `coaxial.${slot}.kept`;
 let keptDb = null;
 const keptRead = (async () => {
   keptDb = await new Promise((ok) => {
     try { const r = indexedDB.open("coaxial", 1); r.onupgradeneeded = () => r.result.createObjectStore("kept"); r.onsuccess = () => ok(r.result); r.onerror = r.onblocked = () => ok(null); }
     catch { ok(null); }
   });
-  let text = "";
-  if (keptDb) text = await new Promise((ok) => {
-    try { const q = keptDb.transaction("kept").objectStore("kept").get(app); q.onsuccess = () => ok(typeof q.result === "string" ? q.result : ""); q.onerror = () => ok(""); }
+  const read = (key) => !keptDb ? "" : new Promise((ok) => {
+    try { const q = keptDb.transaction("kept").objectStore("kept").get(key); q.onsuccess = () => ok(typeof q.result === "string" ? q.result : ""); q.onerror = () => ok(""); }
     catch { ok(""); }
   });
-  if (!text) { try { text = localStorage.getItem(keptKey) || ""; } catch {} }
+  const local = (key) => { try { return localStorage.getItem(key) || ""; } catch { return ""; } };
+  let text = (await read(slot)) || local(keptKey);
+  if (!text && slotWas) text = (await read(slotWas)) || local(`coaxial.${slotWas}.kept`);
   return text;
 })();
 function keep(text) {
   if (keptDb) {
     try {
       const t = keptDb.transaction("kept", "readwrite");
-      t.objectStore("kept").put(text, app);
+      t.objectStore("kept").put(text, slot);
       t.oncomplete = () => { try { localStorage.removeItem(keptKey); } catch {} };
       return;
     } catch {}

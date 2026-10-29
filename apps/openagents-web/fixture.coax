@@ -1,0 +1,435 @@
+// The fixture realm (openagents.com/realm/fixture): the realm host's test
+// world (docs/verse/realm-host.md). It is a realm like any other: its own
+// module (this file and fixture-face.c), its own page written from
+// realms.json, a world on the galaxy (unlisted: /verse/galaxy?realms=all
+// shows it) and its own save slot. A light stands on a round floor; you move
+// it (WASD or the arrows, or a drag) and it stays where you left it, kept in
+// this realm's slot with how many times you came, apart from every other
+// realm's save. GALAXY goes back.
+//
+// Plates and words are verse.coax's look (fixture.wgsl draws the plates).
+
+#load "font.coax";
+#load "ui.coax";
+
+VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
+MAX_VERTICES :: 24000;
+PLATES :: 16;
+PANEL_AT :: 8;         // width, height, time, fade, still, plates, dpr, 0; then per plate x0, y0, x1, y1, scale, alpha, look, 0
+UNIFORM_FLOATS :: PANEL_AT + PLATES * 8;
+
+MODE_STROKE :: 0.0;
+MODE_LINK :: 1.0;
+MODE_PULSE :: 2.0;
+MODE_GLOW_TEXT :: 3.0;
+MODE_BAR :: 4.0;
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
+
+// One stroke as a quad wide enough for its glow, as verse.coax draws one.
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+// A round light: a disc of radius radius in a glow.
+tinted_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, glow: f32, red: f32, green: f32, blue: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0 { return false; }
+  r := radius + glow;
+  a := [6] f32.[-r, r, r, -r, r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = x + a[v]; out[o + 1] = y + c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = 0; out[o + 5] = radius; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = MODE_STROKE;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+// ---- the realm's state, kept by the host
+
+MSG_KEPT :: 4;          // host.js: what this realm's slot kept, on each visit
+ACT_KEEP :: 4;          // host.js: keep the outbox's text in this realm's slot
+HOST_FACTS :: 600;      // host.js: the page facts
+SAVE_TAG :: "fixture-save 1";
+SAVE_WAIT :: 0.4;       // seconds after a move before it is kept
+OUTBOX :: 256;
+SPEED :: 0.9;           // floor radii a second
+HOLD_UP :: 1; HOLD_DOWN :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8;
+BTN_GALAXY :: 0; BUTTONS :: 1;
+
+Fixture :: struct {
+  started: bool;
+  time: f32; width: f32; height: f32; dpr: f32; still: bool;
+  x: f32; z: f32;            // the light on the floor, each -1..1 (inside the unit circle)
+  visits: int;
+  restored: bool;            // the slot had a save and it opened
+  counted: bool;             // this visit is counted (the facts came)
+  dirty: bool; moved_at: f32;
+  held: int;
+  dragging: bool; drag_id: int;
+  realm: [48] u8; realm_n: int; slot: [48] u8; slot_n: int;   // the page facts' realm and slot
+  press: int; hover: int;
+  boxes: [BUTTONS] Box; shown: [BUTTONS] bool;
+  outbox: [OUTBOX] u8; out_n: int; action: int;
+  plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;
+}
+
+fixture_reset :: (s: [] Fixture) {
+  s[0].started = true; s[0].press = -1; s[0].hover = -1; s[0].drag_id = -1; s[0].moved_at = -100;
+}
+
+// ---- the save: one line, "fixture-save 1 X Z VISITS", X and Z in thousandths
+
+int_at :: (text: string, at: [] int) -> int {
+  i := at[0]; neg := false; v := 0; digits := 0;
+  while i < text.count && text[i] == ' ' { i += 1; }
+  if i < text.count && text[i] == '-' { neg = true; i += 1; }
+  while i < text.count && text[i] >= '0' && text[i] <= '9' && digits < 9 { v = v * 10 + cast(int) (text[i] - '0'); i += 1; digits += 1; }
+  at[0] = ifx digits > 0 then i else -1;
+  return ifx neg then -v else v;
+}
+put_signed :: (buf: [] u8, at: int, v: int) -> int {
+  n := at;
+  if v < 0 && n < buf.count { buf[n] = '-'; n += 1; }
+  return put_int(buf, n, ifx v < 0 then -v else v);
+}
+fixture_save :: (s: [] Fixture, out: [] u8) -> int {
+  n := put(out, 0, SAVE_TAG); n = put(out, n, " ");
+  n = put_signed(out, n, cast(int) (s[0].x * 1000)); n = put(out, n, " ");
+  n = put_signed(out, n, cast(int) (s[0].z * 1000)); n = put(out, n, " ");
+  return put_int(out, n, s[0].visits);
+}
+// Opens a kept line; false (and nothing changed) when it isn't this realm's.
+fixture_restore :: (s: [] Fixture, text: string) -> bool {
+  tag := SAVE_TAG;
+  if text.count <= tag.count || text[0..<tag.count] != tag { return false; }
+  at: [1] int; at[0] = tag.count;
+  x := int_at(text, at[..]); if at[0] < 0 { return false; }
+  z := int_at(text, at[..]); if at[0] < 0 { return false; }
+  visits := int_at(text, at[..]); if at[0] < 0 || visits < 0 { return false; }
+  if x < -1000 || x > 1000 || z < -1000 || z > 1000 { return false; }
+  s[0].x = cast(f32) x / 1000; s[0].z = cast(f32) z / 1000; s[0].visits = visits;
+  s[0].restored = true;
+  keep_inside(s);
+  return true;
+}
+keep_inside :: (s: [] Fixture) {
+  r := sqrt(s[0].x * s[0].x + s[0].z * s[0].z);
+  if r > 0.92 { s[0].x *= 0.92 / r; s[0].z *= 0.92 / r; }
+}
+
+// ---- in from the host
+
+fixture_message :: (s: [] Fixture, kind: int, text: string) #export_c {
+  if !s[0].started { fixture_reset(s); }
+  if kind == MSG_KEPT { _ := fixture_restore(s, text); return; }
+  if kind != HOST_FACTS || s[0].counted { return; }
+  s[0].counted = true; s[0].visits += 1; s[0].dirty = true;
+  realm := fact_line(text, "realm"); slot := fact_line(text, "slot");
+  s[0].realm_n = put(s[0].realm[..], 0, realm); s[0].slot_n = put(s[0].slot[..], 0, slot);
+}
+// A key=value line's value ("" none).
+fact_line :: (facts: string, key: string) -> string {
+  i := 0;
+  while i < facts.count {
+    e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if e - i > key.count && facts[i + key.count] == '=' && facts[i..<i + key.count] == key { return facts[i + key.count + 1..<e]; }
+    i = e + 1;
+  }
+  return "";
+}
+
+hold_of :: (key: int) -> int {
+  if key == KEY_UP || key == 'w' || key == 'W' { return HOLD_UP; }
+  if key == KEY_DOWN || key == 's' || key == 'S' { return HOLD_DOWN; }
+  if key == KEY_LEFT || key == 'a' || key == 'A' { return HOLD_LEFT; }
+  if key == KEY_RIGHT || key == 'd' || key == 'D' { return HOLD_RIGHT; }
+  return 0;
+}
+fixture_key :: (s: [] Fixture, key: int, down: bool) -> bool #export_c {
+  if !s[0].started { fixture_reset(s); }
+  h := hold_of(key);
+  if h != 0 { s[0].held = ifx down then s[0].held | h else s[0].held & (15 - h); return true; }
+  if down && key == KEY_ESCAPE { leave_to(s, "/verse/galaxy"); return true; }
+  return false;
+}
+fixture_blur :: (s: [] Fixture) #export_c { s[0].held = 0; s[0].dragging = false; s[0].press = -1; }
+
+leave_to :: (s: [] Fixture, url: string) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, url); s[0].action = ACT_NAVIGATE; } }
+
+// The floor: a disc seen from above at a slant, in device pixels.
+Floor :: struct { cx: f32; cy: f32; rx: f32; ry: f32; }
+floor_of :: (s: [] Fixture) -> Floor {
+  w := s[0].width; h := s[0].height;
+  rx := lo(w * 0.42, h * 0.62);
+  return Floor.{cx = w * 0.5, cy = h * 0.58, rx = rx, ry = rx * 0.38};
+}
+
+button_at :: (s: [] Fixture, x: f32, y: f32) -> int {
+  for i: 0..<BUTTONS { if s[0].shown[i] && inside(s[0].boxes[i], x, y) { return i; } }
+  return -1;
+}
+// Where (x, y) lies on the floor; a press on it moves the light there.
+place_at :: (s: [] Fixture, x: f32, y: f32) {
+  f := floor_of(s);
+  s[0].x = clamp((x - f.cx) / f.rx, -1, 1); s[0].z = clamp((y - f.cy) / f.ry, -1, 1);
+  keep_inside(s);
+  s[0].dirty = true; s[0].moved_at = s[0].time;
+}
+fixture_pointer :: (s: [] Fixture, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if !s[0].started { fixture_reset(s); }
+  b := button_at(s, x, y);
+  s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
+  if phase == POINTER_DOWN {
+    if b >= 0 { s[0].press = b; return true; }
+    s[0].dragging = true; s[0].drag_id = id; place_at(s, x, y);
+    return true;
+  }
+  if s[0].press >= 0 {
+    if phase == POINTER_UP && b == s[0].press && b == BTN_GALAXY { leave_to(s, "/verse/galaxy"); }
+    if phase != POINTER_MOVE { s[0].press = -1; }
+    return true;
+  }
+  if s[0].dragging && id == s[0].drag_id {
+    if phase == POINTER_MOVE { place_at(s, x, y); } else { s[0].dragging = false; }
+    return true;
+  }
+  return false;
+}
+fixture_cursor :: (s: [] Fixture) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
+fixture_action :: (s: [] Fixture) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
+fixture_action_done :: (s: [] Fixture) #export_c { s[0].out_n = 0; }
+
+// ---- the look (verse.coax's)
+
+GAP :: 0.5; SPACE :: 1.2; WIDE :: 1.1;
+PARCH_R :: 0.91; PARCH_G :: 0.863; PARCH_B :: 0.753;
+GOLD_R :: 0.80; GOLD_G :: 0.64; GOLD_B :: 0.36;
+EMBER_R :: 0.91; EMBER_G :: 0.47; EMBER_B :: 0.17;
+LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;
+white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARCH_R, PARCH_G, PARCH_B); }
+bronze :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, GOLD_R, GOLD_G, GOLD_B); }
+
+plate :: (s: [] Fixture, b: Box, alpha: f32, look: f32) {
+  n := s[0].plate_n;
+  if n >= PLATES { return; }
+  s[0].plates[n] = b; s[0].plate_alpha[n] = alpha; s[0].plate_look[n] = look; s[0].plate_n = n + 1;
+}
+centred :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  w := measure(text, GAP, SPACE, false) * cap;
+  return write(d, out, at, text, x - w * 0.5, base, cap, GAP, SPACE, k, false, false);
+}
+fit_cap :: (text: string, cap: f32, width: f32) -> f32 { return lo(cap, width / hi(measure(text, GAP, SPACE, false), 0.001)); }
+
+ring :: (out: [] f32, at: int, f: Floor, scale: f32, segments: int, core: f32, light: f32, glow: f32, red: f32, green: f32, blue: f32) -> int {
+  vertices := at;
+  step := 6.2831853 / cast(f32) segments;
+  for i: 0..<segments {
+    a := cast(f32) i * step; b := a + step;
+    if lit(out, vertices, f.cx + f.rx * scale * cos(a), f.cy + f.ry * scale * sin(a), f.cx + f.rx * scale * cos(b), f.cy + f.ry * scale * sin(b),
+           core, light, glow, red, green, blue, MODE_STROKE) { vertices += 6; }
+  }
+  return vertices;
+}
+
+draw_realm :: (s: [] Fixture, out: [] f32) -> int {
+  k := s[0].dpr; w := s[0].width; h := s[0].height; d := k;
+  phone := w < 640 * k;
+  vertices := 0;
+  f := floor_of(s);
+  // the floor: rings and spokes, faint
+  for r: 1..<5 { vertices = ring(out, vertices, f, cast(f32) r * 0.25, 72, 0.5 * k, 0.16 + 0.04 * cast(f32) r, 1.2 * k, GOLD_R, GOLD_G, GOLD_B); }
+  for i: 0..<12 {
+    a := cast(f32) i * 6.2831853 / 12;
+    if lit(out, vertices, f.cx, f.cy, f.cx + f.rx * cos(a), f.cy + f.ry * sin(a), 0.4 * k, 0.12, 1 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
+  }
+  // the light, its shadow on the floor and its post
+  lx := f.cx + s[0].x * f.rx; ly := f.cy + s[0].z * f.ry;
+  pulse := ifx s[0].still then 0.5f32 else 0.5 + 0.5 * sin(s[0].time * 2.4);
+  tall := 70 * k * (0.75 + 0.25 * (s[0].z + 1) * 0.5);
+  if tinted_dot(out, vertices, lx, ly, 0.1, 1.6, 26 * k, EMBER_R, EMBER_G, EMBER_B) { vertices += 6; }
+  if lit(out, vertices, lx, ly, lx, ly - tall, 1.1 * k, 0.8, 2 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { vertices += 6; }
+  if tinted_dot(out, vertices, lx, ly - tall, 6 * k, 1, 10 * k + pulse * 8 * k, EMBER_R, EMBER_G, EMBER_B) { vertices += 6; }
+
+  // the title, the slot and the visit
+  g := 16 * k;
+  title := "FIXTURE REALM";
+  buf: [96] u8;
+  n := put(buf[..], 0, "SAVED IN SLOT ");
+  n = put(buf[..], n, ifx s[0].slot_n > 0 then cast(string) s[0].slot[0..<s[0].slot_n] else "?");
+  n = put(buf[..], n, " · VISIT ");
+  n = put_int(buf[..], n, s[0].visits);
+  sub := cast(string) buf[0..<n];
+  tw := hi(measure(title, GAP, SPACE, false) * 11 * k, measure(sub, GAP, SPACE, false) * 7.5 * k) + 32 * k;
+  tb := Box.{x0 = g, y0 = g, x1 = lo(g + tw, w - g), y1 = g + 54 * k};
+  plate(s, tb, 0.92, LOOK_PLAIN);
+  vertices = write(d, out, vertices, title, tb.x0 + 16 * k, tb.y0 + 24 * k, fit_cap(title, 11 * k, tb.x1 - tb.x0 - 32 * k), GAP, SPACE, white(k, 0.97), false, false);
+  vertices = write(d, out, vertices, sub, tb.x0 + 16 * k, tb.y0 + 42 * k, fit_cap(sub, 7.5 * k, tb.x1 - tb.x0 - 32 * k), GAP, SPACE, bronze(k, 0.9), false, false);
+
+  // GALAXY, top right
+  bw := 104 * k;
+  b := Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 34 * k};
+  if phone { b = Box.{x0 = w - g - bw, y0 = tb.y1 + 10 * k, x1 = w - g, y1 = tb.y1 + 44 * k}; }
+  s[0].boxes[BTN_GALAXY] = b; s[0].shown[BTN_GALAXY] = true;
+  look: f32 = LOOK_LIT; if s[0].hover == BTN_GALAXY || s[0].press == BTN_GALAXY { look += LOOK_HOVER; }
+  plate(s, b, 0.92, look);
+  vertices = centred(d, out, vertices, "GALAXY", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
+
+  // what to do
+  hint := ifx phone then "DRAG TO MOVE THE LIGHT. IT STAYS WHERE YOU LEAVE IT." else "WASD, THE ARROWS OR A DRAG MOVE THE LIGHT. IT STAYS WHERE YOU LEAVE IT.";
+  hc := fit_cap(hint, 7.5 * k, w - 2 * g);
+  vertices = centred(d, out, vertices, hint, w * 0.5, h - 40 * k, hc, white(k, 0.6));
+  if s[0].restored {
+    back := "YOUR LIGHT IS WHERE YOU LEFT IT";
+    vertices = centred(d, out, vertices, back, w * 0.5, h - 58 * k, fit_cap(back, 7.5 * k, w - 2 * g), bronze(k, 0.8));
+  }
+  return vertices;
+}
+
+// ---- the frame
+
+// The light moves with the keys held, and is kept a moment after the last move.
+fixture_step :: (s: [] Fixture, dt: f32) {
+  step := clamp(dt, 0, 0.1);
+  s[0].time += step;
+  dx := 0.0f32; dz := 0.0f32;
+  if (s[0].held & HOLD_LEFT) != 0 { dx -= 1; }
+  if (s[0].held & HOLD_RIGHT) != 0 { dx += 1; }
+  if (s[0].held & HOLD_UP) != 0 { dz -= 1; }
+  if (s[0].held & HOLD_DOWN) != 0 { dz += 1; }
+  if dx != 0 || dz != 0 {
+    s[0].x += dx * SPEED * step; s[0].z += dz * SPEED * step;
+    keep_inside(s); s[0].dirty = true; s[0].moved_at = s[0].time;
+  }
+  // kept a moment after the last move, once nothing else waits
+  if s[0].dirty && s[0].counted && s[0].action == 0 && s[0].time - s[0].moved_at > SAVE_WAIT {
+    s[0].out_n = fixture_save(s, s[0].outbox[..]); s[0].action = ACT_KEEP; s[0].dirty = false;
+  }
+}
+
+fixture_frame :: (s: [] Fixture, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !s[0].started { fixture_reset(s); }
+  s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
+  fixture_step(s, dt);
+  s[0].plate_n = 0;
+  for i: 0..<BUTTONS { s[0].shown[i] = false; }
+  for i: 0..<UNIFORM_FLOATS { uniforms[i] = 0; }
+  uniforms[0] = width; uniforms[1] = height; uniforms[2] = ifx still then 20.0f32 else s[0].time;
+  uniforms[3] = ifx still then 1.0f32 else ease(s[0].time / 0.6);
+  uniforms[4] = ifx still then 1.0f32 else 0.0f32;
+  uniforms[6] = s[0].dpr;
+  n := draw_realm(s, out);
+  uniforms[5] = cast(f32) s[0].plate_n;
+  for i: 0..<s[0].plate_n {
+    o := PANEL_AT + i * 8; b := s[0].plates[i];
+    uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
+    uniforms[o + 4] = s[0].dpr; uniforms[o + 5] = s[0].plate_alpha[i]; uniforms[o + 6] = s[0].plate_look[i]; uniforms[o + 7] = 0;
+  }
+  return n;
+}
+
+coaxial_fixture_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_fixture_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_fixture_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---- checks
+
+tick :: (s: [] Fixture, dt: f32) {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := fixture_frame(s, out[..], u[..], 2880, 1800, 2, dt, false);
+  #assert n > 0;
+}
+step_by :: (s: [] Fixture, dt: f32) {
+  if !s[0].started { fixture_reset(s); }
+  if s[0].width < 1 { s[0].width = 2880; s[0].height = 1800; s[0].dpr = 2; }
+  fixture_step(s, dt);
+}
+press_key :: (s: [] Fixture, k: int, down: bool) { used := fixture_key(s, k, down); }
+tap :: (s: [] Fixture, x: f32, y: f32, kind: int) {
+  a := fixture_pointer(s, x, y, POINTER_DOWN, kind, 3);
+  b := fixture_pointer(s, x, y, POINTER_UP, kind, 3);
+}
+outbox_is :: (s: [] Fixture, text: string) -> bool { return cast(string) s[0].outbox[0..<s[0].out_n] == text; }
+
+#test "a visit is counted and kept in the realm's own slot" {
+  s: [1] Fixture;
+  fixture_message(s[..], HOST_FACTS, "tab=1\nrealm=fixture\nslot=fixture\nurl=https://openagents.com/realm/fixture");
+  #assert s[0].visits == 1 && cast(string) s[0].slot[0..<s[0].slot_n] == "fixture";
+  tick(s[..], 0.016);
+  #assert fixture_action(s[..]) == ACT_KEEP && outbox_is(s[..], "fixture-save 1 0 0 1");
+  fixture_action_done(s[..]);
+  tick(s[..], 0.016);
+  #assert fixture_action(s[..]) == 0;   // nothing new, nothing kept
+}
+
+#test "the light moves, is kept, and opens where it was on the next visit" {
+  s: [1] Fixture;
+  fixture_message(s[..], HOST_FACTS, "slot=fixture");
+  press_key(s[..], 'd', true);
+  for i: 0..<10 { step_by(s[..], 0.05); }
+  press_key(s[..], 'd', false);
+  #assert s[0].x > 0.3 && s[0].z == 0;
+  for i: 0..<10 { step_by(s[..], 0.05); }
+  #assert fixture_action(s[..]) == ACT_KEEP;
+  next: [1] Fixture;
+  fixture_message(next[..], MSG_KEPT, cast(string) s[0].outbox[0..<s[0].out_n]);
+  fixture_message(next[..], HOST_FACTS, "slot=fixture");
+  #assert next[0].restored && next[0].visits == 2 && abs(next[0].x - s[0].x) < 0.002;
+}
+
+#test "another realm's save, or a broken one, doesn't open here" {
+  s: [1] Fixture;
+  #assert !fixture_restore(s[..], "AESV1 haunted-house");
+  #assert !fixture_restore(s[..], "fixture-save 1 12 ");
+  #assert !fixture_restore(s[..], "fixture-save 1 5000 0 3");
+  #assert !s[0].restored && s[0].visits == 0;
+  #assert fixture_restore(s[..], "fixture-save 1 -250 400 7") && s[0].x == -0.25 && s[0].visits == 7;
+}
+
+#test "the light stays on the floor, and a drag puts it under the finger" {
+  s: [1] Fixture;
+  fixture_message(s[..], HOST_FACTS, "slot=fixture");
+  step_by(s[..], 0.016);
+  press_key(s[..], KEY_UP, true);
+  for i: 0..<60 { step_by(s[..], 0.05); }
+  #assert sqrt(s[0].x * s[0].x + s[0].z * s[0].z) <= 0.921;
+  f := floor_of(s[..]);
+  tap(s[..], f.cx + f.rx * 0.5, f.cy, 1);
+  #assert abs(s[0].x - 0.5) < 0.001 && abs(s[0].z) < 0.001;
+}
+
+#test "GALAXY and Escape go back to the galaxy" {
+  s: [1] Fixture;
+  tick(s[..], 0.016);
+  b := s[0].boxes[BTN_GALAXY];
+  tap(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, 0);
+  #assert fixture_action(s[..]) == ACT_NAVIGATE && outbox_is(s[..], "/verse/galaxy");
+  t: [1] Fixture;
+  #assert fixture_key(t[..], KEY_ESCAPE, true) && fixture_action(t[..]) == ACT_NAVIGATE;
+}

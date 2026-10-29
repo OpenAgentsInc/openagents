@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm and build/private.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm and build/private.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
+# The realm host's table (realms.json): the galaxy's worlds into realms.coax
+# and each realm's page (docs/verse/realm-host.md).
+bun "$here/../../coax/web/realms.ts"
 # The HUD bar's light, the same function the iOS stages draw (verse/light.coax).
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/light.coax verse_bar --into apps/openagents-web/splash.wgsl)
 "$here/../../coax/web/wasm.sh" "$here/splash.coax" "$here/face.c" "$here/build/splash.wasm" &
@@ -23,6 +26,9 @@ realm=$!
 "$here/../../coax/web/wasm.sh" "$here/garden.coax" "$here/garden-face.c" "$here/build/garden.wasm" \
   "$m/player.coax" "$m/grid.coax" &
 garden=$!
+# /realm/fixture: the realm host's test world, the smallest realm module.
+"$here/../../coax/web/wasm.sh" "$here/fixture.coax" "$here/fixture-face.c" "$here/build/fixture.wasm" &
+fixture=$!
 # /realm/characters: the engine's figures (verse/figure.coax).
 "$here/../../coax/web/wasm.sh" "$here/characters.coax" "$here/characters-face.c" "$here/build/characters.wasm" &
 characters=$!
@@ -61,3 +67,4 @@ wait "$realm"
 wait "$verse_app"
 wait "$garden"
 wait "$characters"
+wait "$fixture"
