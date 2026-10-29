@@ -1,0 +1,177 @@
+// Experimental internal composition. The host must verify pointer ownership,
+// disjointness and lifetime, serialize all calls, and perform actual erasure.
+#load "scrypt_nip49.coax";
+#load "scrypt_cleanup.coax";
+#authority;
+
+#test "scrypt session withholds output until host confirms cleanup" {
+  session:[1]ScryptJob;memory:[2048]u8;password:=[5]u8.[110,111,115,116,114];salt:[16]u8;
+  for i:0..<16 {salt[i]=cast(u8)i;}
+  out:[32]u8;out[0]=165;
+  #assert sj_start(session[..],password[..],salt[..],memory[..],1,false);
+  #assert !sj_publish(session[..],out[..],false) && out[0]==165;
+  #assert sj_step(session[..],memory[..],1,false);
+  #assert sj_step(session[..],memory[..],3,false);
+  #assert sj_next(session[..])==SC_SCRATCH;
+  #assert !sj_publish(session[..],out[..],false);
+  #assert !sj_ack(session[..],SC_SCRATCH,false);
+  #assert sj_ack(session[..],SC_SCRATCH,true);
+  #assert sj_next(session[..])==SC_STATE;
+  #assert sj_ack(session[..],SC_STATE,true);
+  #assert sj_next(session[..])==0;
+  #assert sj_publish(session[..],out[..],false);
+  #assert out[0]!=165;
+  #assert !sj_publish(session[..],out[..],false);
+}
+#test "cancellation and failures require staged key cleanup" {
+  session:[1]ScryptJob;memory:[2048]u8;password:[1]u8;salt:[16]u8;out:[32]u8;
+  #assert sj_start(session[..],password[..],salt[..],memory[..],1,false);
+  #assert sj_cancel(session[..]);#assert sj_next(session[..])==SC_SCRATCH;
+  #assert sj_ack(session[..],SC_SCRATCH,true);#assert sj_ack(session[..],SC_STATE,true);
+  #assert sj_next(session[..])==SC_KEY;#assert sj_ack(session[..],SC_KEY,true);
+  #assert !sj_publish(session[..],out[..],false);
+  #assert !sj_start(session[..],password[..],salt[..],memory[..],1,false);
+}
+#test "reject malformed and overlapping calls without touching output" {
+  session:[1]ScryptJob;memory:[2048]u8;password:[1]u8;salt:[16]u8;out:[32]u8;out[0]=165;
+  #assert !sj_start(session[0..<0],password[..],salt[..],memory[..],1,false);
+  #assert !sj_start(session[..],password[..],salt[..],memory[..],1,true);
+  #assert !sj_start(session[..],password[..],salt[0..<15],memory[..],1,false);
+  #assert !sj_step(session[..],memory[..],1,false);
+  #assert !sj_cancel(session[..]);
+  #assert !sj_ack(session[..],SC_KEY,true);
+  #assert !sj_publish(session[..],out[..],false) && out[0]==165;
+  #assert sj_start(session[..],password[..],salt[..],memory[..],1,false);
+  #assert !sj_start(session[..],password[..],salt[..],memory[..],1,false);
+  #assert !sj_step(session[..],memory[0..<1024],1,false);
+  #assert session[0].policy.reason==SC_FAILURE;
+  #assert sj_next(session[..])==SC_SCRATCH;
+  #assert !sj_ack(session[..],SC_STATE,true);
+  failed:[1]ScryptJob;failed[0].active=true;failed[0].policy=sc_begin();
+  #assert !sj_start_result(failed[..],false) && sj_next(failed[..])==SC_SCRATCH;
+  #assert failed[0].policy.reason==SC_FAILURE;
+  #assert sj_ack(failed[..],SC_SCRATCH,true) && sj_ack(failed[..],SC_STATE,true);
+  #assert sj_next(failed[..])==SC_KEY && sj_ack(failed[..],SC_KEY,true);
+}
+
+
+#test "job guards, publication bounds and error outcomes" {
+  x:[1]ScryptJob;mem:[2048]u8;out:[32]u8;
+  #assert !sj_step(x[0..<0],mem[..],1,false);
+  #assert !sj_cancel(x[0..<0]);#assert sj_next(x[0..<0])==SJ_INVALID;
+  #assert !sj_ack(x[..],SJ_INVALID,true);
+  #assert !sj_ack(x[0..<0],SC_STATE,true);#assert !sj_publish(x[0..<0],out[..],false);
+  x[0].policy=sc_begin();#assert !sj_step(x[..],mem[..],1,false);
+  #assert !sj_cancel(x[..]) && sj_next(x[..])==SJ_INVALID && !sj_publish(x[..],out[..],false);
+  x[0].active=true;x[0].scratch_count=2048;x[0].policy=ScryptCleanup.{phase=SC_RUN,pending=0};
+  #assert !sj_step(x[..],mem[..],1,false) && !sj_cancel(x[..]) && sj_next(x[..])==SJ_INVALID;
+  x[0].policy=sc_stop(sc_begin(),SC_FAILURE);#assert !sj_step(x[..],mem[..],1,false);
+  #assert sj_next(x[..])==SC_SCRATCH;#assert sj_ack(x[..],SC_SCRATCH,true);
+  #assert sj_next(x[..])==SC_STATE;#assert sj_ack(x[..],SC_STATE,true);
+  #assert sj_next(x[..])==SC_KEY;#assert !sj_ack(x[..],0,true);
+  #assert sj_ack(x[..],SC_KEY,true) && sj_next(x[..])==0;
+  x[0].policy=sc_begin();#assert !sj_step(x[..],mem[..],1,true);
+  #assert x[0].policy.reason==SC_FAILURE;
+  x[0].policy=sc_begin();#assert !sj_step(x[..],mem[..],0,false);
+  #assert x[0].policy.reason==SC_FAILURE;
+  x[0].policy=sc_begin();#assert !sj_finish_result(x[..],false);
+  #assert x[0].policy.reason==SC_FAILURE;
+  x[0].policy=ScryptCleanup.{phase=SC_DONE,reason=SC_SUCCESS,pending=0};
+  #assert !sj_publish(x[..],out[..],true);#assert !sj_publish(x[..],out[0..<31],false);
+  #assert sj_output_admit(32,false) && sj_output_admit(CB_MAX_BYTES,false);
+  #assert !sj_output_admit(31,false) && !sj_output_admit(CB_MAX_BYTES+1,false) && !sj_output_admit(32,true);
+  #assert sj_publish(x[..],out[..],false);#assert !sj_cancel(x[..]) && sj_next(x[..])==SJ_PUBLISHED;
+  #assert !sj_ack(x[..],SJ_PUBLISHED,true);
+  x[0].policy=sc_begin();#assert sj_next(x[..])==SJ_RUNNING && !sj_ack(x[..],SJ_RUNNING,true);
+}
+
+SJ_INVALID :: -1; SJ_RUNNING :: -2; SJ_PUBLISHED :: -3;
+ScryptJob :: struct {policy:ScryptCleanup;secret:[1]Nip49Scrypt;key:[32]u8;scratch_count:int;active:bool;}
+// Caller initializes the session to zero, keeps it and scratch stable/disjoint,
+// passes NFKC UTF-8, and preserves the same scratch for every operation. A
+// false return can still leave cleanup pending; inspect sj_next in either case.
+sj_start :: (session:[]ScryptJob,password:[]u8,salt:[]u8,scratch:[]u8,log_n:int,overlap:bool)->bool #export_c {
+  if session.count!=1 || session[0].active || !nip49_scrypt_params(password.count,salt.count,scratch.count,log_n,overlap) {return false;}
+  session[0]=ScryptJob.{policy=sc_begin(),scratch_count=scratch.count,active=true};
+  ok:=nip49_scrypt_start(session[0].secret[..],password,salt,scratch,log_n,false);
+  return sj_start_result(session,ok);
+}
+sj_start_result :: (session:[]ScryptJob,ok:bool)->bool {
+  if !ok {session[0].policy=sc_stop(session[0].policy,SC_FAILURE);}
+  return ok;
+}
+sj_step :: (session:[]ScryptJob,scratch:[]u8,budget:int,overlap:bool)->bool #export_c {
+  if session.count!=1 {return false;}
+  if !session[0].active {return false;}
+  if !sc_valid(session[0].policy) {return false;}
+  if session[0].policy.phase!=SC_RUN {return false;}
+  if overlap {session[0].policy=sc_stop(session[0].policy,SC_FAILURE);return false;}
+  if scratch.count!=session[0].scratch_count {session[0].policy=sc_stop(session[0].policy,SC_FAILURE);return false;}
+  if !nip49_scrypt_step(session[0].secret[..],scratch,budget,false) {
+    session[0].policy=sc_stop(session[0].policy,SC_FAILURE);return false;
+  }
+  if session[0].secret[0].romix[0].phase==ROMIX_DONE {
+    ok:=nip49_scrypt_finish(session[0].secret[..],session[0].key[..],false);
+    return sj_finish_result(session,ok);
+  }
+  return true;
+}
+sj_finish_result :: (session:[]ScryptJob,ok:bool)->bool {
+  session[0].policy=sc_stop(session[0].policy,ifx ok then SC_SUCCESS else SC_FAILURE);
+  return ok;
+}
+// True means the request was processed; a prior failure may remain sticky.
+sj_cancel :: (session:[]ScryptJob)->bool #export_c {
+  if session.count!=1 {return false;}
+  if !session[0].active {return false;}
+  if !sc_valid(session[0].policy) {return false;}
+  if session[0].policy.phase==SC_PUBLISHED {return false;}
+  session[0].policy=sc_stop(session[0].policy,SC_CANCEL);return true;
+}
+sj_next :: (session:[]ScryptJob)->int #export_c {
+  if session.count!=1 {return SJ_INVALID;}
+  if !session[0].active {return SJ_INVALID;}
+  if !sc_valid(session[0].policy) {return SJ_INVALID;}
+  if session[0].policy.phase==SC_RUN {return SJ_RUNNING;}
+  if session[0].policy.phase==SC_PUBLISHED {return SJ_PUBLISHED;}
+  if session[0].policy.phase==SC_DONE {return 0;}
+  pending:=session[0].policy.pending;
+  if (pending & SC_SCRATCH)!=0 {return SC_SCRATCH;}
+  if pending==2 || pending==6 {return SC_STATE;}
+  return SC_KEY;
+}
+// Host calls only after real wiping of exactly the region returned by sj_next.
+sj_ack :: (session:[]ScryptJob,region:int,erased:bool)->bool #export_c {
+  if session.count!=1 {return false;}
+  if region<=0 {return false;}
+  if region!=sj_next(session) {return false;}
+  if !erased {return false;}
+  session[0].policy=sc_ack(session[0].policy,region,true);return true;
+}
+sj_output_admit :: (count:int,overlap:bool)->bool {return !overlap && count>=32 && count<=CB_MAX_BYTES;}
+// Publication copies the key; the host must erase the staged key after use.
+sj_publish :: (session:[]ScryptJob,out:[]u8,overlap:bool)->bool #export_c {
+  if session.count!=1 {return false;}
+  if !session[0].active {return false;}
+  if !sj_output_admit(out.count,overlap) {return false;}
+  next:=sc_publish(session[0].policy);if !sc_visible(next) || sc_visible(session[0].policy) {return false;}
+  session[0].policy=next;for i:0..<32 {out[i]=session[0].key[i];}return true;
+}
+
+#test "cleanup completion is not a wipe acknowledgment" {
+  x:[1]ScryptJob;x[0].active=true;
+  x[0].policy=ScryptCleanup.{phase=SC_DONE,reason=SC_FAILURE,pending=0};
+  #assert sj_next(x[..])==0 && !sj_ack(x[..],0,true);
+}
+
+#test "inactive and malformed sessions cannot run or publish" {
+  x:[1]ScryptJob;mem:[2048]u8;out:[32]u8;
+  x[0].policy=sc_begin();x[0].scratch_count=2048;
+  #assert !sj_step(x[..],mem[..],1,false) && x[0].policy.phase==SC_RUN;
+  x[0].policy=ScryptCleanup.{phase=SC_DONE,reason=SC_SUCCESS,pending=0};
+  #assert !sj_publish(x[..],out[..],false);
+  p:[1]u8;salt:[16]u8;x[0]=ScryptJob.{};
+  #assert sj_start(x[..],p[..],salt[..],mem[..],1,false);
+  x[0].policy.pending=0;
+  #assert !sj_step(x[..],mem[..],1,false) && sj_next(x[..])==SJ_INVALID;
+}
