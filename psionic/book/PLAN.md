@@ -39,6 +39,9 @@ DeepSeek R1-Distill-Qwen-1.5B CPU reference and a complete greedy greeting.
 [Chapters 70](ch070-learning-with-arrays.md) and
 [71](ch071-gradients-as-a-program.md) are runnable on the CPU: learning on
 simulated deadline data, first with hand-written gradients, then with a tape.
+[Chapter 164a](ch164a-learn-which-model-to-call.md) uses chapter 70's trainer
+to choose among three simulated models and to judge a new router from an old
+one's logs.
 The remaining chapters below are outlines, not implemented capabilities. A
 chapter ships with shared Coax library code, authored checks, independent
 native tests, source-linked examples and an exact supported scope. Coax
@@ -621,7 +624,7 @@ with synthetic probabilities (live traffic after 16 and 17), 158 after 16 and 17
 | 162. A decision in milliseconds | A small encoder with fixed decision heads (a ModernBERT-family model with local and global attention, GeGLU and quantized embedding rows, per-head temperatures) answering a typed question in milliseconds, with identical argmaxes and a stated distance from its reference, and the p50 and p99 latency at 512 tokens on CPU and GPU. |
 | 163. Distill Elephant into a small router | An encoder student trained on Elephant's answer distributions over owned synthetic requests, with temperatures fitted on a development split; promoted only above stated agreement with Elephant, calibration error and cheap-answer precision. |
 | 164. Shadow a new model, then promote it | A candidate model answering beside the current one on live traffic, both logged; promoted only within stated disagreement limits and with no regression in joined outcomes. Chapter 122 rolls out new builds of one model; this rolls out a different model. Candidates are immutable, activation is atomic by approved digest, and a deliberately worse candidate must leave the active one unchanged. |
-| 164a. Learn which model to call | First with full information: every candidate model runs on the same bounded tasks, results are scored independently, and a small logistic model or MLP learns to choose. Then with partial feedback, where only the chosen model's outcome is seen: a simulated router over three models with different strengths, costs and latency, whose true rewards the simulator knows but the learner does not. Naive, inverse-propensity and doubly robust estimates of a new policy's value are compared with the true value, including an action the old policy never tried, whose value the logs cannot recover. A small model trained in Psionic then improves how OpenAgents uses other models. |
+| [164a. Learn which model to call](ch164a-learn-which-model-to-call.md) — runnable: cpu-f64-route-v1, simulator only | First with full information: every candidate model runs on the same bounded tasks, results are scored independently, and a small logistic model or MLP learns to choose. Then with partial feedback, where only the chosen model's outcome is seen: a simulated router over three models with different strengths, costs and latency, whose true rewards the simulator knows but the learner does not. Naive, inverse-propensity and doubly robust estimates of a new policy's value are compared with the true value, including an action the old policy never tried, whose value the logs cannot recover. A small model trained in Psionic then improves how OpenAgents uses other models. |
 
 A probability is never permission: the consumer of each answer owns its
 threshold, abstention and interpretation, and these chapters make those

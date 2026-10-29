@@ -370,6 +370,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/model-router.coax",
+      "chapter": "psionic/book/ch164a-learn-which-model-to-call.md",
+      "stdout": "psionic/fixtures/model-router.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

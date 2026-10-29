@@ -51,6 +51,7 @@ run examples directly without the check command.
 | [57. DeepSeek’s front door](ch057-deepseeks-front-door.md) | Runnable: bounded recipe and stream protocol | Typed special boundaries, independent plain-run BPE, incremental UTF-8 and DSML tool events, explicit finish. |
 | [58. Execute DeepSeek V2-Lite](ch058-execute-deepseek-v2-lite.md) | Runnable: complete original BF16 CPU reference | Complete dense/MoE stack, compressed/expanded latent caches, atomic token commit, independent original generation and offline replay. |
 | [59. Routers that balance themselves](ch059-routers-that-balance-themselves.md) | Runnable: CPU wide routing equations | Selection-only correction, V3 grouped sigmoid and V4.1 square-root-softplus, deterministic ties and complete margin comparisons. |
+| [164a. Learn which model to call](ch164a-learn-which-model-to-call.md) | Runnable: cpu-f64-route-v1, simulated tasks and models | Route tasks among three models by learned success minus price, then judge a new router from an old one's logs with naive, direct, inverse-propensity and doubly robust estimates, and refuse when the logs never tried a model it calls. |
 | [165. A machine whose state is a trace](ch165-a-machine-whose-state-is-a-trace.md) | Runnable: bounded CPU reference interpreter | Admit and run a small integer stack machine whose four-token-per-step trace and SHA-256 digest identify the run; a refused run publishes nothing. |
 | [166. Attention as exact memory](ch166-attention-as-exact-memory.md) | Runnable: bounded CPU, integer scores | Parabolic keys and hard-max reads return exactly the latest write or refuse; the machine with attention as its only memory reproduces the interpreter's digest. |
 | [167. Arithmetic and branches from ReLU](ch167-arithmetic-and-branches-from-relu.md) | Runnable: bounded CPU, binary64 and binary32 | A gated ReLU layer computes integer products, steps, equality and selection exactly within ±2²⁶ in binary64; binary32 only while products stay under 2²⁴. |
@@ -58,7 +59,7 @@ run examples directly without the check command.
 | [169. A harness that catches the compiler](ch169-a-harness-that-catches-the-compiler.md) | Runnable: bounded CPU | Run every program through the evaluator, a plan interpreter and the weights; catch four planted compiler bugs and place each in the schedule or the emitter. |
 | [172. From hard-max to softmax](ch172-from-hard-max-to-softmax.md) | Runnable: bounded CPU, binary64/binary32/bfloat16 rounding | Prove softmax reads stay exact for any trace length once β ≥ ln(4V), and measure where binary32 and bfloat16 rounding breaks them. |
 
-Chapters 70–71 start learning from data on chapter 3's operations, chapters 41–48 start an independent gpt-oss branch, and 165–169 and 172 open Part XXIII (programs compiled into weights); chapters 14–40 other than 16 remain planned.
+Chapters 70–71 start learning from data on chapter 3's operations, 164a uses them to learn which model to call, chapters 41–48 start an independent gpt-oss branch, and 165–169 and 172 open Part XXIII (programs compiled into weights); chapters 14–40 other than 16 remain planned.
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
 sets the proposed full reading order: early Elephant/Mammoth and useful

@@ -1,0 +1,91 @@
+#import "Basic";
+#load "../lib/route.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+CONFIG :: TbConfig.{epochs=40,batch=16,rate=0.5,init_seed=1,shuffle_seed=2};
+// Each model: weights on length, code, difficulty and an irrelevant feature, then the bias.
+world_a :: ()->[15]f64 {return [15]f64.[-1,-3,-6,0,4, -0.5,2,-3,0,2, -0.5,0.5,-2.5,0,3.5];}
+// The same small and coder models, and a much worse large one.
+world_b :: ()->[15]f64 {w:=world_a();w[14]=0.5;return w;}
+
+// One logistic success model per model, on the rows where its outcome is known.
+// Full information: every row, with that model's outcome. Logs: only the rows
+// where the old policy chose it, with the logged outcome. False if a model has no rows.
+fit :: (x:[]f64,success:[]f64,logged:bool,actions:[]int,params:[]f64)->bool {
+    n:=x.count/4;y:[1500]f64;rows:[1500]int;order:[1500]int;
+    for k:0..<3 {
+        m:=n;
+        if !logged {for i:0..<n {y[i]=success[3*i+k];rows[i]=i;}}
+        else {for i:0..<n {y[i]=success[i];} m=rt_rows(actions,k,rows[..],false);}
+        if m==0 {return false;}
+        #assert tb_train(TbModel.{features=4,logistic=true},CONFIG,x,y[0..<n],rows[0..<m],params[5*k..<5*k+5],order[..],false).status==TbStatus.ok;
+    }
+    return true;
+}
+Judged :: struct {truth:f64;earned:f64;fitted:RtEstimate;average:RtEstimate;refused:RtStatus;actions:[1000]int;outcome:[1000]f64;}
+// Simulate 1000 tasks, log the old policy on them, and judge the router from the logs.
+judge :: (router:[]f64,tasks:u64,logs:u64,truth:[]f64,large:bool)->Judged {
+    x:[4000]f64;s:[3000]f64;p:[3000]f64;q:[3000]f64;score:[3000]f64;pr:[3000]f64;
+    target:[1000]int;r:[1000]f64;j:Judged;
+    #assert rt_simulate(tasks,truth,x[..],s[..],p[..],false)==RtStatus.ok && rt_price(x[..],q[..],false)==RtStatus.ok;
+    #assert rt_scores(router,x[..],score[..],false)==RtStatus.ok && rt_choose(score[..],q[..],target[..],false)==RtStatus.ok;
+    #assert rt_old(x[..],0.2,large,pr[..],false)==RtStatus.ok;
+    #assert rt_log(logs,pr[..],s[..],q[..],j.actions[..],j.outcome[..],r[..],false)==RtStatus.ok;
+    j.truth=rt_value(target[..],p[..],q[..]).value;
+    a:PsionicAccumulator;for v:r {a=psionic_ops_accumulate(a,v);}j.earned=psionic_ops_total(a)/1000;
+    model:[15]f64;
+    if !fit(x[..],j.outcome[..],true,j.actions[..],model[..]) {
+        j.refused=rt_estimate(target[..],j.actions[..],r[..],pr[..],score[..],q[..]).status;return j;
+    }
+    #assert rt_scores(model[..],x[..],score[..],false)==RtStatus.ok;
+    j.fitted=rt_estimate(target[..],j.actions[..],r[..],pr[..],score[..],q[..]);
+    #assert rt_average(j.actions[..],j.outcome[..],score[..],false)==RtStatus.ok;
+    j.average=rt_estimate(target[..],j.actions[..],r[..],pr[..],score[..],q[..]);
+    return j;
+}
+
+// book:begin example
+main :: () {
+    // Full information: every model ran on every training task.
+    a:=world_a();x:[6000]f64;s:[4500]f64;p:[4500]f64;router:[15]f64;pick:[1000]int;
+    #assert rt_simulate(164,a[..],x[..],s[..],p[..],false)==RtStatus.ok && fit(x[..],s[..],false,pick[..],router[..]);
+    tx:[4000]f64;tp:[3000]f64;q:[3000]f64;score:[3000]f64;best:[1000]int;
+    #assert rt_simulate(165,a[..],tx[..],s[0..<3000],tp[..],false)==RtStatus.ok && rt_price(tx[..],q[..],false)==RtStatus.ok;
+    #assert rt_scores(router[..],tx[..],score[..],false)==RtStatus.ok && rt_choose(score[..],q[..],pick[..],false)==RtStatus.ok;
+    #assert rt_choose(tp[..],q[..],best[..],false)==RtStatus.ok;
+    v:=[3]f64.[0,0,0];same:=0;count:=[3]int.[0,0,0];
+    for k:0..<3 {for i:0..<1000 {best[i]=k;} v[k]=rt_value(best[..],tp[..],q[..]).value;}
+    for i:0..<1000 {best[i]=cast(int)tx[4*i+1];}rule:=rt_value(best[..],tp[..],q[..]).value;
+    #assert rt_choose(tp[..],q[..],best[..],false)==RtStatus.ok;
+    for i:0..<1000 {count[pick[i]]+=1;if pick[i]==best[i] {same+=1;}}
+    print("1000 test tasks, expected reward per task (success minus price):\n");
+    print("  always small %, always coder %, always large %\n",r4(v[0]),r4(v[1]),r4(v[2]));
+    print("  old rule (code to the coder, the rest to small) %\n",r4(rule));
+    print("  learned router % (small %, coder %, large %)\n",r4(rt_value(pick[..],tp[..],q[..]).value),count[0],count[1],count[2]);
+    print("  best possible, from the true probabilities %; the router agrees on % tasks\n",r4(rt_value(best[..],tp[..],q[..]).value),same);
+
+    // Partial feedback: the old policy explored, and only its choice's outcome was logged.
+    j:=judge(router[..],166,167,a[..],true);f:=j.fitted;g:=j.average;
+    print("logs of the old policy exploring 20 percent, 1000 tasks:\n");
+    print("  the router's true value %; the old policy earned %\n",r4(j.truth),r4(j.earned));
+    print("  naive % (% matching rows), direct %, inverse propensity %, doubly robust %\n",r4(f.naive),f.matched,r4(f.direct),r4(f.ips),r4(f.dr));
+    print("  with per-model averages as the reward model: direct %, doubly robust %\n",r4(g.direct),r4(g.dr));
+    e:[6]PsionicAccumulator;e2:[6]PsionicAccumulator;
+    for seed:0..<20 {
+        k:=judge(router[..],cast(u64)(1000+seed),cast(u64)(2000+seed),a[..],true);
+        d:=[6]f64.[k.fitted.naive,k.fitted.direct,k.fitted.ips,k.fitted.dr,k.average.direct,k.average.dr];
+        for m:0..<6 {err:=d[m]-k.truth;e[m]=psionic_ops_accumulate(e[m],err);e2[m]=psionic_ops_accumulate(e2[m],err*err);}
+    }
+    names:=[6]string.["naive","direct","inverse propensity","doubly robust","direct, averages","doubly robust, averages"];
+    print("20 more logs, mean error and root mean square error:\n");
+    for m:0..<6 {print("  %: % and %\n",names[m],r4(psionic_ops_total(e[m])/20),r4(sqrt(psionic_ops_total(e2[m])/20)));}
+
+    // An old policy that never called the large model.
+    wb:=world_b();n:=judge(router[..],166,167,a[..],false);b:=judge(router[..],166,167,wb[..],false);
+    alike:=true;for i:0..<1000 {if n.actions[i]!=b.actions[i] || n.outcome[i]!=b.outcome[i] {alike=false;}}
+    print("logs of an old policy that never calls the large model: estimate status %\n",n.refused);
+    print("  a world with a worse large model logs the same: %; the router's true value there %, not %\n",alike,r4(b.truth),r4(n.truth));
+    w:=judge(router[..],166,167,wb[..],true);
+    print("  logs that do explore it see the difference: inverse propensity %\n",r4(w.fitted.ips));
+}
+// book:end example

@@ -1,0 +1,455 @@
+// Chapter 164a: learn which model to call. A simulator of tasks and three
+// models whose true success probabilities only it knows, published prices,
+// a router that picks the best expected reward, an old logging policy, and
+// the naive, direct, inverse-propensity and doubly robust estimates of a new
+// policy's value from logs that show only the chosen model's outcome.
+// Profile cpu-f64-route-v1: binary64, chapter 3's compensated accumulator for
+// every sum, three models, 1 to 4,096 tasks of four features.
+#load "tabular.coax";
+#authority;
+
+RtStatus :: enum u8 {ok;shape;capacity;alias;number;support;}
+RtValue :: struct {status:RtStatus;value:f64;}
+RtEstimate :: struct {status:RtStatus;matched:int;naive:f64;direct:f64;ips:f64;dr:f64;}
+
+RT_MODELS :: 3;
+RT_TASKS_MAX :: 4096;
+RT_COEF_MAX :: 64.0;
+RT_PER_SECOND :: 0.02;
+
+// Checks precede the implementation. Expected values are derived in chapter 164a.
+#test "tasks are 1 to 4,096 rows of four features, or triples per task" {
+    x:[16392]f64;
+    #assert rt_tasks(x[0..<4])==1 && rt_tasks(x[0..<16384])==4096 && rt_tasks(x[0..<8])==2;
+    #assert rt_tasks(x[0..<0])==-1 && rt_tasks(x[0..<16388])==-1 && rt_tasks(x[0..<6])==-1;
+    #assert rt_triples(x[0..<3])==1 && rt_triples(x[0..<12288])==4096 && rt_triples(x[0..<6])==2;
+    #assert rt_tasks(x[0..<16388])==-1 && rt_tasks(x[0..<16392])==-1;
+    #assert rt_triples(x[0..<0])==-1 && rt_triples(x[0..<12291])==-1 && rt_triples(x[0..<4])==-1;
+}
+#test "published prices: dollars per call plus 0.02 per second of latency" {
+    x:=[8]f64.[0,1,0.5,0, 1,0,0,0];p:[6]f64;
+    #assert rt_price(x[..],p[..],false)==RtStatus.ok;
+    #assert p[0]==0.001+0.02*0.3 && p[1]==0.01+0.02*0.8 && p[2]==0.1+0.02*2.0;
+    #assert p[3]==0.001+0.02*(0.3+0.5) && p[4]==0.01+0.02*(0.8+1.5) && p[5]==0.1+0.02*(2.0+4.0);
+    #assert rt_price(x[0..<6],p[..],false)==RtStatus.shape && rt_price(x[..],p[0..<5],false)==RtStatus.capacity;
+    #assert rt_price(x[..],p[..],true)==RtStatus.alias;
+    x[4]=TB_DOMAIN;#assert rt_price(x[..],p[..],false)==RtStatus.ok;
+    x[4]=-TB_DOMAIN;#assert rt_price(x[..],p[..],false)==RtStatus.ok;
+    x[4]=-2*TB_DOMAIN;#assert rt_price(x[..],p[..],false)==RtStatus.number;
+}
+#test "the simulator draws features, true probabilities and outcomes at fixed counters" {
+    t:=[15]f64.[1,2,3,4,5, 0,0,0,0,-1, 0,0,0,64,0];x:=[8]f64.[-7,-7,-7,-7,-7,-7,-7,-7];s:=[6]f64.[-7,-7,-7,-7,-7,-7];p:[6]f64;
+    #assert rt_simulate(9,t[..],x[..],s[..],p[..],false)==RtStatus.ok;
+    for i:0..<2 {
+        c:=cast(u64)(8*i);code:=0.0;if tb_bits(9,c+1)%5<2 {code=1;}
+        #assert x[4*i]==tb_uniform(9,c) && x[4*i+1]==code && x[4*i+2]==tb_uniform(9,c+2) && x[4*i+3]==2*tb_uniform(9,c+3)-1;
+        a:PsionicAccumulator;a=psionic_ops_accumulate(a,5);
+        for j:0..<4 {a=psionic_ops_accumulate(a,f64(j+1)*x[4*i+j]);}
+        #assert p[3*i]==tb_sigmoid(psionic_ops_total(a)) && p[3*i+1]==tb_sigmoid(-1) && p[3*i+2]==tb_sigmoid(64*x[4*i+3]);
+        for k:0..<3 {
+            want:=0.0;if tb_uniform(9,c+cast(u64)(4+k))<p[3*i+k] {want=1;}
+            #assert s[3*i+k]==want;
+        }
+    }
+    #assert rt_simulate(9,t[0..<14],x[..],s[..],p[..],false)==RtStatus.shape;
+    #assert rt_simulate(9,t[..],x[0..<6],s[..],p[..],false)==RtStatus.shape;
+    #assert rt_simulate(9,t[..],x[..],s[0..<5],p[..],false)==RtStatus.capacity;
+    #assert rt_simulate(9,t[..],x[..],s[..],p[0..<5],false)==RtStatus.capacity;
+    #assert rt_simulate(9,t[..],x[..],s[..],p[..],true)==RtStatus.alias;
+    t[14]=-64;#assert rt_simulate(9,t[..],x[..],s[..],p[..],false)==RtStatus.ok;
+    t[14]=64.5;#assert rt_simulate(9,t[..],x[..],s[..],p[..],false)==RtStatus.number;
+    t[14]=-64.5;#assert rt_simulate(9,t[..],x[..],s[..],p[..],false)==RtStatus.number;
+}
+#test "outcomes follow the true probabilities" {
+    t:=[15]f64.[0,0,0,0,-1.3862943611198906, 0,0,0,0,0, 0,0,0,0,2.1972245773362196];
+    x:[16384]f64;s:[12288]f64;p:[12288]f64;
+    #assert rt_simulate(164,t[..],x[..],s[..],p[..],false)==RtStatus.ok;
+    on:[3]int;code:=0;
+    for i:0..<4096 {for k:0..<3 {if s[3*i+k]==1 {on[k]+=1;}} if x[4*i+1]==1 {code+=1;}}
+    // 0.2, 0.5 and 0.9 over 4,096 tasks, within four standard deviations; 40 percent code.
+    #assert on[0]>=819-102 && on[0]<=819+102 && on[1]>=2048-128 && on[1]<=2048+128 && on[2]>=3686-77 && on[2]<=3686+77;
+    #assert code>=1638-125 && code<=1638+125;
+}
+#test "a draw equal to the probability is a failure, and a draw of 2 mod 5 is not code" {
+    // tb_sigmoid of this logit is exactly the uniform draw at seed 1, counter 4.
+    t:=[15]f64.[0,0,0,0,-0.22387154244125523, 0,0,0,0,0, 0,0,0,0,0];x:[4]f64;s:[3]f64;p:[3]f64;
+    #assert rt_simulate(1,t[..],x[..],s[..],p[..],false)==RtStatus.ok && p[0]==tb_uniform(1,4) && s[0]==0;
+    seed:=(cast(u64)0);while tb_bits(seed,1)%5!=2 {seed+=1;}
+    #assert rt_simulate(seed,t[..],x[..],s[..],p[..],false)==RtStatus.ok && x[1]==0;
+    seed=0;while tb_bits(seed,1)%5!=1 {seed+=1;}
+    #assert rt_simulate(seed,t[..],x[..],s[..],p[..],false)==RtStatus.ok && x[1]==1;
+}
+#test "success scores come from three logistic models" {
+    w:=[15]f64.[1,0,0,0,0.5, 0,1,0,0,0, 0,0,0,0,-2];x:=[8]f64.[2,3,0,0, -1,0,0,0];p:[6]f64;
+    #assert rt_scores(w[..],x[..],p[..],false)==RtStatus.ok;
+    #assert p[0]==tb_sigmoid(2.5) && p[1]==tb_sigmoid(3) && p[2]==tb_sigmoid(-2) && p[3]==tb_sigmoid(-0.5) && p[4]==tb_sigmoid(0);
+    #assert rt_scores(w[0..<14],x[..],p[..],false)==RtStatus.shape && rt_scores(w[..],x[0..<7],p[..],false)==RtStatus.shape;
+    #assert rt_scores(w[..],x[..],p[0..<5],false)==RtStatus.capacity && rt_scores(w[..],x[..],p[..],true)==RtStatus.alias;
+    w[14]=TB_DOMAIN;#assert rt_scores(w[..],x[..],p[..],false)==RtStatus.ok;
+    w[14]=-2*TB_DOMAIN;#assert rt_scores(w[..],x[..],p[..],false)==RtStatus.number;
+    w[14]=0;x[7]=2*TB_DOMAIN;#assert rt_scores(w[..],x[..],p[..],false)==RtStatus.number;
+}
+#test "the router picks the largest probability minus price; ties keep the cheaper index" {
+    p:=[9]f64.[0.5,0.6,0.9, 0.5,0.5,0.5, 0.2,0.3,0.4];q:=[9]f64.[0,0.05,0.5, 0,0,0, 0.1,0.1,0];a:[3]int;
+    #assert rt_choose(p[..],q[..],a[..],false)==RtStatus.ok && a[0]==1 && a[1]==0 && a[2]==2;
+    p[4]=0.5+1e-12;#assert rt_choose(p[..],q[..],a[..],false)==RtStatus.ok && a[1]==1;
+    p[5]=0.6;q[5]=0.1+1e-12;#assert rt_choose(p[..],q[..],a[..],false)==RtStatus.ok && a[1]==1;
+    #assert rt_choose(p[0..<8],q[..],a[..],false)==RtStatus.shape && rt_choose(p[..],q[0..<6],a[..],false)==RtStatus.shape;
+    #assert rt_choose(p[..],q[..],a[0..<2],false)==RtStatus.capacity && rt_choose(p[..],q[..],a[..],true)==RtStatus.alias;
+    p[0]=1;p[1]=0;#assert rt_choose(p[..],q[..],a[..],false)==RtStatus.ok && a[0]==0;
+    p[0]=1+1e-12;#assert rt_choose(p[..],q[..],a[..],false)==RtStatus.number;
+    p[0]=-1e-12;#assert rt_choose(p[..],q[..],a[..],false)==RtStatus.number;
+    p[0]=0;q[8]=2*TB_DOMAIN;#assert rt_choose(p[..],q[..],a[..],false)==RtStatus.number;
+    #assert rt_choose(p[0..<8],q[0..<8],a[..],false)==RtStatus.shape;
+    // The incumbent's price counts too: 0.6 - 0.2 loses to 0.5 - 0.
+    b:=[3]f64.[0.6,0.5,0.1];c:=[3]f64.[0.2,0,0];#assert rt_choose(b[..],c[..],a[..],false)==RtStatus.ok && a[0]==1;
+}
+#test "a policy's value is the mean true probability minus price of its choices" {
+    p:=[6]f64.[0.5,0.25,1, 0,0.75,0.125];q:=[6]f64.[0,0.125,0.5, 0.25,0.5,0];a:=[2]int.[2,1];
+    v:=rt_value(a[..],p[..],q[..]);#assert v.status==RtStatus.ok && v.value==0.375;
+    a[0]=0;#assert rt_value(a[..],p[..],q[..]).value==0.375;
+    a[0]=3;#assert rt_value(a[..],p[..],q[..]).status==RtStatus.shape;
+    a[0]=-1;#assert rt_value(a[..],p[..],q[..]).status==RtStatus.shape;
+    a[0]=0;#assert rt_value(a[0..<1],p[..],q[..]).status==RtStatus.shape && rt_value(a[..],p[..],q[0..<3]).status==RtStatus.shape;
+    p[0]=2;#assert rt_value(a[..],p[..],q[..]).status==RtStatus.number;
+    p[0]=0;q[5]=-2*TB_DOMAIN;#assert rt_value(a[..],p[..],q[..]).status==RtStatus.number;
+}
+#test "the old policy: code goes to the coder, the rest to the small model, plus exploration" {
+    x:=[8]f64.[0,1,0,0, 0,0,0,0];o:[6]f64;
+    #assert rt_old(x[..],0.2,true,o[..],false)==RtStatus.ok;
+    #assert o[0]==0.1 && o[1]==0.8 && o[2]==0.1 && o[3]==0.8 && o[4]==0.1 && o[5]==0.1;
+    #assert rt_old(x[..],0.2,false,o[..],false)==RtStatus.ok;
+    #assert o[0]==0.2 && o[1]==0.8 && o[2]==0 && o[3]==0.8 && o[4]==0.2 && o[5]==0;
+    #assert rt_old(x[..],0,true,o[..],false)==RtStatus.ok && o[0]==0 && o[1]==1 && o[3]==1 && o[5]==0;
+    #assert rt_old(x[..],1,true,o[..],false)==RtStatus.ok && o[1]==0 && o[2]==0.5;
+    #assert rt_old(x[..],1.0000000001,true,o[..],false)==RtStatus.shape && rt_old(x[..],-1e-12,true,o[..],false)==RtStatus.shape;
+    #assert rt_old(x[0..<7],0.2,true,o[..],false)==RtStatus.shape && rt_old(x[..],0.2,true,o[0..<5],false)==RtStatus.capacity;
+    #assert rt_old(x[..],0.2,true,o[..],true)==RtStatus.alias;
+    x[1]=0.5;#assert rt_old(x[..],0.2,true,o[..],false)==RtStatus.number;
+}
+#test "propensities: each in [0, 1], summing to exactly 1" {
+    p:=[6]f64.[0.8,0.1,0.1, 0,0,1];
+    #assert rt_props_ok(p[..]);
+    p[5]=1.0000000000000002;#assert !rt_props_ok(p[..]);
+    p[3]=-0.0000000000000002;#assert !rt_props_ok(p[..]);
+    p[3]=0;p[5]=0.9999999999999999;#assert !rt_props_ok(p[..]);
+    p[3]=1;p[5]=0;#assert rt_props_ok(p[..]);
+    p[0]=0.7;#assert !rt_props_ok(p[..]);p[0]=0.8;
+    p[3]=1.5;p[4]=-0.5;#assert !rt_props_ok(p[..]);
+}
+#test "logging draws one action at the counter equal to the task" {
+    pr:=[9]f64.[0.5,0.25,0.25, 0,1,0, 0,0,1];s:=[9]f64.[1,0,1, 0,1,1, 1,1,0];q:=[9]f64.[0.125,0.25,0.5, 0,0.25,0, 0,0,0.5];
+    a:[3]int;o:[3]f64;r:[3]f64;
+    #assert rt_log(3,pr[..],s[..],q[..],a[..],o[..],r[..],false)==RtStatus.ok;
+    u:=tb_uniform(3,0);want:=2;if u<0.5 {want=0;} else if u<0.75 {want=1;}
+    #assert a[0]==want && o[0]==s[want] && r[0]==s[want]-q[want];
+    #assert a[1]==1 && o[1]==1 && r[1]==0.75 && a[2]==2 && o[2]==0 && r[2]==-0.5;
+    #assert rt_log(3,pr[0..<8],s[..],q[..],a[..],o[..],r[..],false)==RtStatus.shape;
+    #assert rt_log(3,pr[..],s[0..<6],q[..],a[..],o[..],r[..],false)==RtStatus.shape;
+    #assert rt_log(3,pr[..],s[..],q[0..<6],a[..],o[..],r[..],false)==RtStatus.shape;
+    #assert rt_log(3,pr[..],s[..],q[..],a[0..<2],o[..],r[..],false)==RtStatus.capacity;
+    #assert rt_log(3,pr[..],s[..],q[..],a[..],o[0..<2],r[..],false)==RtStatus.capacity;
+    #assert rt_log(3,pr[..],s[..],q[..],a[..],o[..],r[0..<2],false)==RtStatus.capacity;
+    #assert rt_log(3,pr[..],s[..],q[..],a[..],o[..],r[..],true)==RtStatus.alias;
+    s[0]=0.5;#assert rt_log(3,pr[..],s[..],q[..],a[..],o[..],r[..],false)==RtStatus.number;
+    s[0]=1;q[8]=2*TB_DOMAIN;#assert rt_log(3,pr[..],s[..],q[..],a[..],o[..],r[..],false)==RtStatus.number;
+    q[8]=0.5;pr[8]=0.5;#assert rt_log(3,pr[..],s[..],q[..],a[..],o[..],r[..],false)==RtStatus.number;
+    #assert rt_log(3,pr[0..<8],s[0..<8],q[0..<8],a[..],o[..],r[..],false)==RtStatus.shape;
+}
+#test "a draw equal to a cumulative propensity goes to the next action" {
+    // The first seed whose draw u at counter 0 is at least 0.5, so 1 - u is exact.
+    seed:=(cast(u64)0);while tb_uniform(seed,0)<0.5 {seed+=1;}
+    u:=tb_uniform(seed,0);
+    pr:=[3]f64.[u,1-u,0];s:=[3]f64.[0,1,1];q:[3]f64;a:[1]int;o:[1]f64;r:[1]f64;
+    #assert rt_log(seed,pr[..],s[..],q[..],a[..],o[..],r[..],false)==RtStatus.ok && a[0]==1;
+    pr[0]=0;pr[1]=u;pr[2]=1-u;
+    #assert rt_log(seed,pr[..],s[..],q[..],a[..],o[..],r[..],false)==RtStatus.ok && a[0]==2;
+}
+#test "every drawn action had positive propensity, with roughly its frequency" {
+    x:[16384]f64;s:[12288]f64;p:[12288]f64;t:[15]f64;q:[12288]f64;pr:[12288]f64;
+    #assert rt_simulate(1,t[..],x[..],s[..],p[..],false)==RtStatus.ok && rt_price(x[..],q[..],false)==RtStatus.ok;
+    a:[4096]int;o:[4096]f64;r:[4096]f64;
+    #assert rt_old(x[..],0.2,false,pr[..],false)==RtStatus.ok && rt_log(2,pr[..],s[..],q[..],a[..],o[..],r[..],false)==RtStatus.ok;
+    rule:=0;for i:0..<4096 {#assert pr[3*i+a[i]]>0; if pr[3*i+a[i]]==0.8 {rule+=1;}}
+    #assert rule>=3277-102 && rule<=3277+102;
+}
+#test "logged rows of one action, in order" {
+    a:=[5]int.[2,0,2,1,2];o:[5]int;
+    #assert rt_rows(a[..],2,o[..],false)==3 && o[0]==0 && o[1]==2 && o[2]==4;
+    #assert rt_rows(a[..],1,o[..],false)==1 && o[0]==3 && rt_rows(a[0..<3],1,o[..],false)==0;
+    #assert rt_rows(a[..],2,o[0..<2],false)==-1 && rt_rows(a[..],2,o[0..<3],false)==3 && rt_rows(a[..],3,o[..],false)==-1 && rt_rows(a[..],-1,o[..],false)==-1;
+    #assert rt_rows(a[..],2,o[..],true)==-1;
+    a[1]=3;#assert rt_rows(a[..],2,o[..],false)==-1;
+    a[1]=-1;#assert rt_rows(a[..],2,o[..],false)==-1;
+}
+#test "per-action averages of logged outcomes; an action never logged has none" {
+    a:=[4]int.[0,1,0,2];o:=[4]f64.[1,0,0,1];p:[12]f64;
+    #assert rt_average(a[..],o[..],p[..],false)==RtStatus.ok;
+    for i:0..<4 {#assert p[3*i]==0.5 && p[3*i+1]==0 && p[3*i+2]==1;}
+    #assert rt_average(a[0..<3],o[0..<3],p[..],false)==RtStatus.support;
+    #assert rt_average(a[..],o[0..<3],p[..],false)==RtStatus.shape && rt_average(a[0..<0],o[0..<0],p[..],false)==RtStatus.shape;
+    #assert rt_average(a[..],o[..],p[0..<11],false)==RtStatus.capacity && rt_average(a[..],o[..],p[..],true)==RtStatus.alias;
+    o[2]=0.5;#assert rt_average(a[..],o[..],p[..],false)==RtStatus.number;
+    o[2]=0;a[3]=3;#assert rt_average(a[..],o[..],p[..],false)==RtStatus.shape;
+    a[3]=-1;#assert rt_average(a[..],o[..],p[..],false)==RtStatus.shape;
+    a[0]=1;a[2]=1;a[3]=2;#assert rt_average(a[..],o[..],p[..],false)==RtStatus.support;
+    many:[4097]int;zeros:[4097]f64;big:[12291]f64;
+    #assert rt_average(many[0..<1],zeros[0..<1],big[..],false)==RtStatus.support && rt_average(many[0..<4096],zeros[0..<4096],big[..],false)==RtStatus.support;
+    #assert rt_average(many[..],zeros[..],big[..],false)==RtStatus.shape;
+}
+#test "the four estimates, by hand" {
+    // Two tasks. Task 0 logged action 0 (propensity 0.5), task 1 action 2 (0.25).
+    t:=[2]int.[0,1];a:=[2]int.[0,2];r:=[2]f64.[0.75,-0.5];
+    pr:=[6]f64.[0.5,0.25,0.25, 0.25,0.5,0.25];m:=[6]f64.[0.5,0.5,0.5, 0.5,0.75,0.25];q:=[6]f64.[0,0,0, 0,0.25,0.5];
+    e:=rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]);
+    #assert e.status==RtStatus.ok && e.matched==1 && e.naive==0.75 && e.direct==(0.5+0.5)/2 && e.ips==0.75;
+    // dr = (0.5 + (0.75 - 0.5) / 0.5 + 0.5) / 2
+    #assert e.dr==0.75;
+    t[1]=2;e=rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]);
+    #assert e.matched==2 && e.naive==0.125 && e.direct==(0.5+(-0.25))/2 && e.ips==(1.5-2)/2 && e.dr==(0.5+0.5-0.25+(-0.5+0.25)/0.25)/2;
+    pr[5]=0;pr[4]=0.75;#assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.shape;
+    t[1]=1;e=rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]);#assert e.status==RtStatus.shape;
+    a[1]=1;e=rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]);#assert e.status==RtStatus.ok && e.matched==2;
+    t[1]=2;#assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.support;
+    t[1]=0;a[0]=1;a[1]=0;pr[0]=0.75;pr[1]=0;pr[2]=0.25;
+    #assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.shape;
+    a[0]=2;e=rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]);#assert e.status==RtStatus.ok && e.matched==1 && e.naive==-0.5;
+    t[0]=1;t[1]=0;#assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.support;
+    // Every new choice possible, none logged: nothing to average.
+    t[0]=0;t[1]=1;#assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.support;
+}
+#test "estimate admission" {
+    t:=[2]int.[0,0];a:=[2]int.[0,0];r:=[2]f64.[1,1];pr:=[6]f64.[1,0,0, 1,0,0];m:[6]f64;q:[6]f64;
+    #assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.ok;
+    #assert rt_estimate(t[0..<1],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.shape;
+    #assert rt_estimate(t[..],a[0..<1],r[..],pr[..],m[..],q[..]).status==RtStatus.shape;
+    #assert rt_estimate(t[..],a[..],r[0..<1],pr[..],m[..],q[..]).status==RtStatus.shape;
+    #assert rt_estimate(t[..],a[..],r[..],pr[0..<5],m[..],q[..]).status==RtStatus.shape;
+    #assert rt_estimate(t[..],a[..],r[..],pr[..],m[0..<3],q[..]).status==RtStatus.shape;
+    #assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[0..<3]).status==RtStatus.shape;
+    #assert rt_estimate(t[..],a[..],r[..],pr[0..<5],m[0..<5],q[0..<5]).status==RtStatus.shape;
+    t[0]=3;#assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.shape;
+    t[0]=0;a[0]=-1;#assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.shape;
+    a[0]=0;t[1]=3;#assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.shape;
+    t[1]=-1;#assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.shape;
+    t[1]=0;pr[5]=0.5;#assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.number;
+    pr[5]=0;r[1]=2*TB_DOMAIN;#assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.number;
+    r[1]=1;m[5]=1.5;#assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.number;
+    m[5]=0;q[5]=2*TB_DOMAIN;#assert rt_estimate(t[..],a[..],r[..],pr[..],m[..],q[..]).status==RtStatus.number;
+}
+
+rt_in3 :: (k:int)->bool {return k>=0 && k<RT_MODELS;}
+// The task count of a row-major table of four features, or -1.
+rt_tasks :: (x:[]f64)->int {
+    if x.count%4!=0 || x.count<4 || x.count/4>RT_TASKS_MAX {return -1;}
+    return x.count/4;
+}
+// The task count of a table with one value per task and model, or -1.
+rt_triples :: (t:[]f64)->int {
+    if t.count%RT_MODELS!=0 || t.count<RT_MODELS || t.count/RT_MODELS>RT_TASKS_MAX {return -1;}
+    return t.count/RT_MODELS;
+}
+rt_finite :: (t:[]f64)->bool {
+    for v:t {if !tb_in(v,-TB_DOMAIN,TB_DOMAIN) {return false;}}
+    return true;
+}
+rt_unit :: (t:[]f64)->bool {
+    for v:t {if !tb_in(v,0,1) {return false;}}
+    return true;
+}
+rt_binary :: (t:[]f64)->bool {
+    for v:t {if v!=0 && v!=1 {return false;}}
+    return true;
+}
+
+// book:begin price
+// Dollars per call, and seconds of latency at length 0 and per unit of length.
+rt_dollars :: (k:int)->f64 {
+    if k==0 {return 0.001;}
+    if k==1 {return 0.01;}
+    return 0.1;
+}
+rt_seconds :: (k:int,length:f64)->f64 {
+    if k==0 {return 0.3+0.5*length;}
+    if k==1 {return 0.8+1.5*length;}
+    return 2.0+4.0*length;
+}
+// Every model's price on every task: dollars plus 0.02 per second.
+rt_price :: (x:[]f64,out:[]f64,overlap:bool)->RtStatus #export_c {
+    n:=rt_tasks(x);
+    if n==-1 {return RtStatus.shape;}
+    if out.count<RT_MODELS*n {return RtStatus.capacity;}
+    if overlap {return RtStatus.alias;}
+    if !rt_finite(x) {return RtStatus.number;}
+    for i:0..<n {for k:0..<RT_MODELS {out[RT_MODELS*i+k]=rt_dollars(k)+RT_PER_SECOND*rt_seconds(k,x[4*i]);}}
+    return RtStatus.ok;
+}
+// book:end price
+
+// book:begin simulate
+// route-sim-v1. Task i draws length, code (40 percent), difficulty and an
+// irrelevant feature at counters 8i to 8i+3 (code when the draw is 0 or 1
+// mod 5), then model k's outcome at
+// 8i+4+k. `truth` holds each model's bias and four weights; only the
+// simulator reads it, and `prob` is kept for measuring, never for learning.
+rt_simulate :: (seed:u64,truth:[]f64,x:[]f64,success:[]f64,prob:[]f64,overlap:bool)->RtStatus #export_c {
+    n:=rt_tasks(x);
+    if truth.count!=5*RT_MODELS || n==-1 {return RtStatus.shape;}
+    if success.count<RT_MODELS*n || prob.count<RT_MODELS*n {return RtStatus.capacity;}
+    if overlap {return RtStatus.alias;}
+    for c:truth {if !tb_in(c,-RT_COEF_MAX,RT_COEF_MAX) {return RtStatus.number;}}
+    for i:0..<n {
+        c:=cast(u64)(8*i);v:=x[4*i..<4*i+4];
+        v[0]=tb_uniform(seed,c);v[1]=0;if tb_bits(seed,c+1)%5<2 {v[1]=1;}
+        v[2]=tb_uniform(seed,c+2);v[3]=2*tb_uniform(seed,c+3)-1;
+        for k:0..<RT_MODELS {
+            p:=tb_sigmoid(tb_output(TbModel.{features=4},truth[5*k..<5*k+5],v));
+            prob[RT_MODELS*i+k]=p;success[RT_MODELS*i+k]=0;
+            if tb_uniform(seed,c+cast(u64)(4+k))<p {success[RT_MODELS*i+k]=1;}
+        }
+    }
+    return RtStatus.ok;
+}
+// book:end simulate
+
+// book:begin route
+// Success probabilities from three logistic models, five parameters each,
+// laid out as chapter 70's: four weights, then the bias.
+rt_scores :: (params:[]f64,x:[]f64,out:[]f64,overlap:bool)->RtStatus #export_c {
+    n:=rt_tasks(x);
+    if params.count!=5*RT_MODELS || n==-1 {return RtStatus.shape;}
+    if out.count<RT_MODELS*n {return RtStatus.capacity;}
+    if overlap {return RtStatus.alias;}
+    if !rt_finite(params) || !rt_finite(x) {return RtStatus.number;}
+    for i:0..<n {for k:0..<RT_MODELS {
+        out[RT_MODELS*i+k]=tb_sigmoid(tb_output(TbModel.{features=4},params[5*k..<5*k+5],x[4*i..<4*i+4]));
+    }}
+    return RtStatus.ok;
+}
+// Each task goes to the model with the largest probability minus price.
+// A tie keeps the lower index, which is the cheaper model.
+rt_choose :: (prob:[]f64,price:[]f64,out:[]int,overlap:bool)->RtStatus #export_c {
+    n:=rt_triples(prob);
+    if n==-1 || price.count!=prob.count {return RtStatus.shape;}
+    if out.count<n {return RtStatus.capacity;}
+    if overlap {return RtStatus.alias;}
+    if !rt_unit(prob) || !rt_finite(price) {return RtStatus.number;}
+    for i:0..<n {
+        best:=0;
+        for k:1..<RT_MODELS {
+            if prob[RT_MODELS*i+k]-price[RT_MODELS*i+k]>prob[RT_MODELS*i+best]-price[RT_MODELS*i+best] {best=k;}
+        }
+        out[i]=best;
+    }
+    return RtStatus.ok;
+}
+// The expected reward of the choices: mean of probability minus price.
+rt_value :: (actions:[]int,prob:[]f64,price:[]f64)->RtValue #export_c {
+    n:=rt_triples(prob);
+    // A bad table makes n -1, which no count of actions matches.
+    if price.count!=prob.count || actions.count!=n {return RtValue.{status=RtStatus.shape};}
+    for k:actions {if !rt_in3(k) {return RtValue.{status=RtStatus.shape};}}
+    if !rt_unit(prob) || !rt_finite(price) {return RtValue.{status=RtStatus.number};}
+    a:PsionicAccumulator;
+    for i:0..<n {k:=RT_MODELS*i+actions[i];a=psionic_ops_accumulate(a,prob[k]-price[k]);}
+    return RtValue.{value=psionic_ops_total(a)/f64(n)};
+}
+// book:end route
+
+// book:begin log
+// The old router: code to the coder, everything else to the small model,
+// with probability `explore` shared among the other models it allows.
+rt_old :: (x:[]f64,explore:f64,large:bool,out:[]f64,overlap:bool)->RtStatus #export_c {
+    n:=rt_tasks(x);
+    if n==-1 || !tb_in(explore,0,1) {return RtStatus.shape;}
+    if out.count<RT_MODELS*n {return RtStatus.capacity;}
+    if overlap {return RtStatus.alias;}
+    for i:0..<n {if x[4*i+1]!=0 && x[4*i+1]!=1 {return RtStatus.number;}}
+    share:=explore;if large {share=explore/2;}
+    for i:0..<n {
+        o:=out[RT_MODELS*i..<RT_MODELS*i+RT_MODELS];
+        for k:0..<RT_MODELS {o[k]=share;}
+        o[cast(int)x[4*i+1]]=1-explore;
+        if !large {o[2]=0;}
+    }
+    return RtStatus.ok;
+}
+// Each task's propensities lie in [0, 1] and sum to exactly 1, added in order.
+rt_props_ok :: (props:[]f64)->bool {
+    if !rt_unit(props) {return false;}
+    for i:0..<props.count/RT_MODELS {if props[3*i]+props[3*i+1]+props[3*i+2]!=1 {return false;}}
+    return true;
+}
+// Draw one action per task at counter i, and keep only its outcome and reward.
+rt_log :: (seed:u64,props:[]f64,success:[]f64,price:[]f64,actions:[]int,outcome:[]f64,reward:[]f64,overlap:bool)->RtStatus #export_c {
+    n:=rt_triples(props);
+    if n==-1 || success.count!=props.count || price.count!=props.count {return RtStatus.shape;}
+    if actions.count<n || outcome.count<n || reward.count<n {return RtStatus.capacity;}
+    if overlap {return RtStatus.alias;}
+    if !rt_props_ok(props) || !rt_binary(success) || !rt_finite(price) {return RtStatus.number;}
+    for i:0..<n {
+        u:=tb_uniform(seed,cast(u64)i);p:=props[3*i..<3*i+3];
+        a:=2;if u<p[0] {a=0;} else if u<p[0]+p[1] {a=1;}
+        actions[i]=a;outcome[i]=success[3*i+a];reward[i]=success[3*i+a]-price[3*i+a];
+    }
+    return RtStatus.ok;
+}
+// book:end log
+
+// The logged rows of action k, in order. -1 for a bad action, short or overlapping output.
+rt_rows :: (actions:[]int,k:int,out:[]int,overlap:bool)->int #export_c {
+    if !rt_in3(k) || overlap {return -1;}
+    n:=0;
+    for a:actions {
+        if !rt_in3(a) {return -1;}
+        if a==k {n+=1;}
+    }
+    if out.count<n {return -1;}
+    n=0;
+    for i:0..<actions.count {if actions[i]==k {out[n]=i;n+=1;}}
+    return n;
+}
+// A reward model that ignores the task: each action's mean logged outcome.
+rt_average :: (actions:[]int,outcome:[]f64,out:[]f64,overlap:bool)->RtStatus #export_c {
+    n:=actions.count;
+    if n<1 || n>RT_TASKS_MAX || outcome.count!=n {return RtStatus.shape;}
+    if out.count<RT_MODELS*n {return RtStatus.capacity;}
+    if overlap {return RtStatus.alias;}
+    for a:actions {if !rt_in3(a) {return RtStatus.shape;}}
+    if !rt_binary(outcome) {return RtStatus.number;}
+    on:[3]int;seen:[3]int;
+    for i:0..<n {seen[actions[i]]+=1;on[actions[i]]+=cast(int)outcome[i];}
+    for k:0..<RT_MODELS {if seen[k]==0 {return RtStatus.support;}}
+    for i:0..<n {for k:0..<RT_MODELS {out[RT_MODELS*i+k]=f64(on[k])/f64(seen[k]);}}
+    return RtStatus.ok;
+}
+
+// book:begin estimate
+// A new deterministic policy `target`, judged from logs of the old one.
+// `model` is a reward model's success probability for every task and action.
+// naive: the mean reward of logged rows where the old choice matches the new.
+// direct: the reward model's mean for the new choices.
+// ips: matching rewards weighted by 1 / propensity, over all tasks.
+// dr: direct, corrected by the weighted residual of matching rows.
+// The new policy must choose only actions the old one could have taken.
+rt_estimate :: (target:[]int,actions:[]int,reward:[]f64,props:[]f64,model:[]f64,price:[]f64)->RtEstimate #export_c {
+    n:=rt_triples(props);
+    if target.count!=n || actions.count!=n || reward.count!=n || model.count!=props.count || price.count!=props.count {return RtEstimate.{status=RtStatus.shape};}
+    for i:0..<n {if !rt_in3(target[i]) || !rt_in3(actions[i]) {return RtEstimate.{status=RtStatus.shape};}}
+    if !rt_props_ok(props) || !rt_finite(reward) || !rt_unit(model) || !rt_finite(price) {return RtEstimate.{status=RtStatus.number};}
+    for i:0..<n {if props[3*i+actions[i]]==0 {return RtEstimate.{status=RtStatus.shape};}}
+    for i:0..<n {if props[3*i+target[i]]==0 {return RtEstimate.{status=RtStatus.support};}}
+    matched:=0;naive:PsionicAccumulator;direct:PsionicAccumulator;ips:PsionicAccumulator;dr:PsionicAccumulator;
+    for i:0..<n {
+        t:=3*i+target[i];q:=model[t]-price[t];
+        direct=psionic_ops_accumulate(direct,q);dr=psionic_ops_accumulate(dr,q);
+        if actions[i]!=target[i] {continue;}
+        matched+=1;naive=psionic_ops_accumulate(naive,reward[i]);
+        ips=psionic_ops_accumulate(ips,reward[i]/props[t]);
+        dr=psionic_ops_accumulate(dr,(reward[i]-q)/props[t]);
+    }
+    if matched==0 {return RtEstimate.{status=RtStatus.support};}
+    return RtEstimate.{matched=matched,naive=psionic_ops_total(naive)/f64(matched),direct=psionic_ops_total(direct)/f64(n),
+        ips=psionic_ops_total(ips)/f64(n),dr=psionic_ops_total(dr)/f64(n)};
+}
+// book:end estimate

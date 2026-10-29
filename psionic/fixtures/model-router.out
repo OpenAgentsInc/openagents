@@ -1,0 +1,19 @@
+1000 test tasks, expected reward per task (success minus price):
+  always small 0.412, always coder 0.6335, always large 0.6979
+  old rule (code to the coder, the rest to small) 0.6675
+  learned router 0.7663 (small 272, coder 324, large 404)
+  best possible, from the true probabilities 0.7692; the router agrees on 942 tasks
+logs of the old policy exploring 20 percent, 1000 tasks:
+  the router's true value 0.777; the old policy earned 0.655
+  naive 0.8542 (544 matching rows), direct 0.7898, inverse propensity 0.8103, doubly robust 0.7991
+  with per-model averages as the reward model: direct 0.6874, doubly robust 0.7987
+20 more logs, mean error and root mean square error:
+  naive: 0.0798 and 0.0811
+  direct: 0.0106 and 0.0348
+  inverse propensity: 0.0099 and 0.0627
+  doubly robust: 0.0075 and 0.0336
+  direct, averages: -0.0797 and 0.0812
+  doubly robust, averages: 0.0032 and 0.0308
+logs of an old policy that never calls the large model: estimate status support
+  a world with a worse large model logs the same: true; the router's true value there 0.5446, not 0.777
+  logs that do explore it see the difference: inverse propensity 0.5603
