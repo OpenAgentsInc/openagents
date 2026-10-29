@@ -220,7 +220,7 @@ static void visitor(const request *q, char ip[128]) {
 //   POST approve    (NIP-98, with payload) {challenge, kind}: the phone approves
 //   POST poll       (this site's pages)   {poll}: waiting, then the oa_session cookie once, and the
 //                                         page's Verse player (X-Verse-Player) moved to the phone's key -> player
-//   GET  me         (oa_session)          the session's npub and projects, as lines
+//   GET  me         (oa_session)          the session's npub and projects, as lines; A|1 an admin's
 //   POST logout     (this site's pages)   ends the session
 // Every POST is rate limited per address; challenges and poll tokens are never logged.
 static bool auth_route(const request *q) {
@@ -295,7 +295,12 @@ static bool auth_route(const request *q) {
     snprintf(headers, sizeof headers, PRIVATE_HEADERS "Set-Cookie: " SITE_COOKIE "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n");
   else snprintf(headers, sizeof headers, PRIVATE_HEADERS);
   bool lines = !strcmp(op, "me") && status == 200;
+  // A|1: the session's key is an admin's (admins.conf), so a realm shows its edit mode (eg-edit).
+  // The page only draws it; every write is checked again (player.c site_session).
+  char admin_pk[65], *with = NULL;
+  if (lines && admin_who(q, db, admin_pk) == 0 && (with = malloc(strlen(out) + 8))) { strcpy(with, out); strcat(with, "A|1\n"); out = with; }
   api_respond(q->fd, status, lines ? "text/plain; charset=utf-8" : "application/json", headers, out, strlen(out));
+  free(with);
   if (strcmp(op, "poll") || status != 200) api_log("auth %s %d%s%.8s", op, status, pubkey[0] ? " by " : "", pubkey);
   PQclear(r);
   return true;

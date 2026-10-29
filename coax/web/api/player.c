@@ -31,8 +31,9 @@
 //
 // Who asks: the X-Verse-Player key; a NIP-98 signed request (Authorization:
 // Nostr) adds that pubkey's account, and an admin's signature (OA_ADMIN_PUBKEYS)
-// is the site, which owns the built-in worlds. A bad signature, or one seen
-// before, is refused. The automation mark is the analytics one.
+// is the site, which owns the built-in worlds; so is an admin logged in on the
+// site (oa_session, site_session below). A bad signature, or one seen before,
+// is refused. The automation mark is the analytics one.
 #include "api.h"
 #include "nostr.h"
 #include <stdint.h>
@@ -94,6 +95,17 @@ static bool first_use(PGconn *db, const nostr_event *ev) {
   bool ok = PQresultStatus(r) == PGRES_COMMAND_OK && !strcmp(PQcmdTuples(r), "1");
   PQclear(r);
   return ok;
+}
+
+// An admin logged in on the site (/login's oa_session, admin.c admin_who) is
+// the site too, so an admin edits the built-in worlds from the page itself
+// (eg-edit: Everglade's edit mode). A write sent from another site's page
+// never counts, whatever cookie it carries.
+static bool site_session(const request *q, PGconn *db) {
+  char from[256], who[65];
+  const char *o = getenv("OA_API_ORIGIN");
+  if (!strcmp(q->method, "POST") && api_header(q, "Origin", from, sizeof from) && strcmp(from, o && *o ? o : "https://openagents.com")) return false;
+  return admin_who(q, db, who) == 0;
 }
 
 // Feedback (pt-feedback): POST /api/playtest/survey/answer, one answer
@@ -176,7 +188,7 @@ bool player_route(const request *q) {
     if (!first_use(db, &ev)) { api_json(q->fd, 401, "{\"error\":\"nip98: that signature was used already\"}"); return true; }
     memcpy(npub, ev.pubkey, sizeof npub);
     site = admin_is(npub);
-  }
+  } else if (site_session(q, db)) site = true;
 
   char *body = malloc(q->body_len + 3);
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
