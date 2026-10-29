@@ -1,5 +1,33 @@
 # Invariants
 
+## Psionic latent attention stages new rows and keeps rotary profiles distinct
+
+`psionic/lib/deepseek/mla*.coax` implements shared latent-attention CPU
+equations with F32 activations/caches, BF16 up-projection coefficients and
+compensated binary64 products/reductions. Compressed rows store normalized
+latent plus one shared rotary key; expanded rows store per-head non-rotary
+keys/values plus one shared rotary key. Queries/keys arrive already rotated.
+The cache form, shape, model identity and sequential prefix must match.
+
+Attention reads exactly the supplied immutable history prefix and returns a
+separate pending row. Public output and pending row publish together only
+after all heads/value projections succeed; history is never modified. Caller
+work/scores may change on failure. This permits a full decoder to stage every
+layer before committing a token. It is not itself a complete model decoder.
+
+`v2-rope.coax` separately owns the original V2-Lite adjacent-pair permutation,
+fixed YaRN frequencies (factor 40, original 4,096 positions, beta 32/1), and
+the two 0.707 mscale factors in attention scaling. It does not reuse R1's
+rotary layout. Rotary query/key outputs also publish together. Valid typed
+allocations/extents, immutable inputs and exclusive disjoint writable spans
+remain caller duties; C observes addresses only.
+
+Check: `psionic/tests/check_deepseek_v2_math.sh --mutate --jobs 8` covers
+independent full-prefix compressed/expanded fixtures and original-parameter
+YaRN vectors through position 163,839, native debug/release plain/ASan/UBSan,
+atomic failures and zero-survivor mutation. Scope and outstanding complete
+V2 execution gates: [component record](docs/verification/psionic-deepseek-v2-math-2026-10-29.md).
+
 ## Psionic DeepSeek routers separate selection bias from combination weights
 
 `psionic/lib/deepseek/router*.coax` owns `deepseek-router-cpu-wide-v1`:

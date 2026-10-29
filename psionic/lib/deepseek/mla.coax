@@ -1,0 +1,119 @@
+#load "mla-types.coax";
+#authority;
+#load "../../fixtures/deepseek/mla-goldens.coax";
+
+#test "MLA planning distinguishes compressed rows and expanded rows" {
+    s:=MlShape.{heads=16,nope=128,rope=64,value=128,latent=512,capacity=128};
+    a:=ml_plan(s,MlMode.compressed);b:=ml_plan(s,MlMode.expanded);
+    #assert a.status==DsStatus.ok && a.row==576 && b.row==4160 && a.output==2048 && a.scores==2048;
+    #assert a.begin[0]==0 && a.begin[1]==576 && a.begin[2]==8768 && a.begin[3]==16960 && a.begin[4]==19008 && a.floats==19008;
+}
+#test "MLA failures preserve both outputs including a late bad value projection" {
+    s:=MlShape.{heads=2,nope=2,rope=2,value=2,latent=3,capacity=5};w:=MLG_WEIGHTS;q:=MLG_QUERIES;z:=MLG_LATENTS;pe:=MLG_PE;
+    history:[1]f32;out:=[4]f32.[-7,-7,-7,-7];row:=[5]f32.[-9,-9,-9,-9,-9];work:[64]f32;scores:[10]f64;
+    w[w.count-2]=0x80;w[w.count-1]=0x7f;
+    #assert ml_attention(s,MlMode.compressed,w[..],q[0..<8],z[0..<3],pe[0..<2],history[0..<0],0,0.375,out[..],row[..],work[..],scores[..],false).status==DsStatus.number;
+    for v:out {#assert v==-7;}for v:row {#assert v==-9;}
+}
+#test "MLA shape bounds cover every minimum and maximum independently" {
+    s:=MlShape.{heads=1,nope=1,rope=2,value=1,latent=1,capacity=1};#assert ml_shape(s);
+    maxs:=MlShape.{heads=64,nope=256,rope=128,value=256,latent=1024,capacity=163840};#assert ml_shape(maxs);
+    for field:0..<12 {bad:=s;
+        if field==0 {bad.heads=0;}else if field==1 {bad.heads=65;}
+        else if field==2 {bad.nope=0;}else if field==3 {bad.nope=257;}
+        else if field==4 {bad.rope=1;}else if field==5 {bad.rope=130;}
+        else if field==6 {bad.value=0;}else if field==7 {bad.value=257;}
+        else if field==8 {bad.latent=0;}else if field==9 {bad.latent=1025;}
+        else if field==10 {bad.capacity=0;}else {bad.capacity=163841;}
+        #assert !ml_shape(bad) && ml_plan(bad,MlMode.compressed).status==DsStatus.shape;
+    }
+    s.rope=3;#assert !ml_shape(s);
+    #assert !ml_scale(-1) && !ml_scale(0) && ml_scale(64) && !ml_scale(65);
+}
+#test "MLA exact workspace intervals and all capacities are explicit" {
+    s:=MlShape.{heads=2,nope=2,rope=2,value=2,latent=3,capacity=5};w:=MLG_WEIGHTS;q:=MLG_QUERIES;z:=MLG_LATENTS;pe:=MLG_PE;
+    history:[6]f32;out:[4]f32;row:[5]f32;work:[21]f32;scores:[4]f64;p:=ml_plan(s,MlMode.compressed);
+    #assert p.floats==21;for i:0..<21 {work[i]=f32(i);}v:=ml_views(work[..],p);parts:=[4][]f32.[v.current,v.absorbed,v.context,v.attended];
+    for i:0..<4 {#assert parts[i].count==p.begin[i+1]-p.begin[i] && parts[i][0]==f32(p.begin[i]) && parts[i][parts[i].count-1]==f32(p.begin[i+1]-1);}
+    for field:0..<11 {a:=w[..];b:=q[0..<8];c:=z[0..<3];d:=pe[0..<2];h:=history[0..<0];o:=out[..];r:=row[..];f:=work[..];sc:=scores[0..<2];pos:=0;alias:=false;
+        if field==0 {a=w[0..<w.count-1];}else if field==1 {b=q[0..<7];}else if field==2 {c=z[0..<2];}else if field==3 {d=pe[0..<1];}
+        else if field==4 {h=history[0..<1];}else if field==5 {o=out[0..<3];}else if field==6 {r=row[0..<4];}else if field==7 {f=work[0..<20];}else if field==8 {sc=scores[0..<1];}else if field==9 {pos=-1;}else {alias=true;}
+        failed:=ml_attention(s,MlMode.compressed,a,b,c,d,h,pos,0.375,o,r,f,sc,alias);expected:=DsStatus.capacity;if field==0 {expected=DsStatus.weights;}else if field==9 {expected=DsStatus.state;}else if field==10 {expected=DsStatus.alias;}#assert failed.status==expected;
+    }
+    #assert ml_attention(s,MlMode.compressed,w[..],q[0..<8],z[0..<3],pe[0..<2],history[0..<0],5,0.375,out[..],row[..],work[..],scores[..],false).status==DsStatus.state;
+    #assert ml_attention(s,MlMode.compressed,w[..],q[0..<8],z[0..<3],pe[0..<2],history[0..<0],0,0.0,out[..],row[..],work[..],scores[..],false).status==DsStatus.number;
+    #assert ml_attention(s,MlMode.compressed,w[..],q[0..<8],z[0..<3],pe[0..<2],history[0..<5],1,0.375,out[..],row[..],work[..],scores[..],false).status==DsStatus.ok;
+    w[0]=0x80;w[1]=0x7f;#assert !ml_weights(w[..]);
+}
+#test "finite overflow in the last value row cannot publish earlier heads" {
+    s:=MlShape.{heads=2,nope=2,rope=2,value=2,latent=3,capacity=5};weights:[48]u8;
+    for i:21..<24 {weights[2*i]=0x7f;weights[2*i+1]=0x7f;}q:[8]f32;z:=[3]f32.[1,1,1];pe:[2]f32;history:[1]f32;out:=[4]f32.[7,7,7,7];row:=[5]f32.[9,9,9,9,9];work:[21]f32;scores:[2]f64;
+    r:=ml_attention(s,MlMode.compressed,weights[..],q[..],z[..],pe[..],history[0..<0],0,0.375,out[..],row[..],work[..],scores[..],false);
+    #assert r.status==DsStatus.arithmetic;for v:out {#assert v==7;}for v:row {#assert v==9;}
+}
+#test "one-head one-latent attention agrees in both storage forms" {
+    s:=MlShape.{heads=1,nope=1,rope=2,value=1,latent=1,capacity=1};w:=[4]u8.[0x80,0x3f,0,0x40];q:=[3]f32.[1,0,0];z:=[1]f32.[3];pe:[2]f32;history:[1]f32;out:[1]f32;row:[4]f32;work:[7]f32;scores:[1]f64;
+    for mode:0..<2 {r:=ml_attention(s,cast(MlMode)mode,w[..],q[..],z[..],pe[..],history[0..<0],0,0.5,out[..],row[..],work[..],scores[..],false);#assert r.status==DsStatus.ok && out[0]==6;}
+}
+
+ml_shape :: (s:MlShape)->bool {
+    return s.heads>=1 && s.heads<=64 && s.nope>=1 && s.nope<=256 && s.rope>=2 && s.rope/2<=64 && s.rope%2==0 && s.value>=1 && s.value<=256 && s.latent>=1 && s.latent<=1024 && s.capacity>=1 && s.capacity<=163840;
+}
+ml_plan :: (s:MlShape,mode:MlMode)->MlPlan #export_c {
+    if !ml_shape(s) {return MlPlan.{status=DsStatus.shape};}
+    p:=MlPlan.{row=(ifx mode==MlMode.compressed then s.latent else s.heads*(s.nope+s.value))+s.rope,output=s.heads*s.value,scores=s.heads*s.capacity};
+    p.begin[1]=p.row;p.begin[2]=p.begin[1]+s.heads*s.latent;p.begin[3]=p.begin[2]+s.heads*s.latent;p.begin[4]=p.begin[3]+p.output;p.floats=p.begin[4];return p;
+}
+ml_views :: (work:[]f32,p:MlPlan)->MlViews {return MlViews.{current=work[p.begin[0]..<p.begin[1]],absorbed=work[p.begin[1]..<p.begin[2]],context=work[p.begin[2]..<p.begin[3]],attended=work[p.begin[3]..<p.begin[4]]};}
+ml_weights :: (w:[]u8)->bool {for i:0..<w.count/2 {if !psionic_tensor_finite_bits(qm_bits(QmDtype.bf16,w,i)) {return false;}}return true;}
+ml_past :: (history:[]f32,current:[]f32,width:int,position:int,t:int,j:int)->f32 {
+    if t==position {return current[j];}return history[t*width+j];
+}
+ml_current :: (s:MlShape,mode:MlMode,w:[]u8,z:[]f32,pe:[]f32,row:[]f32)->DsStatus {
+    offset:=s.latent;
+    if mode==MlMode.compressed {for i:0..<s.latent {row[i]=z[i];}}
+    else {offset=s.heads*(s.nope+s.value);for i:0..<offset {acc:PsionicAccumulator;for j:0..<s.latent {acc=psionic_ops_accumulate(acc,f64(ds_bf(w,i*s.latent+j))*f64(z[j]));}v:=psionic_ops_total(acc);if !psionic_ops_fits_f32(v) {return DsStatus.arithmetic;}row[i]=f32(v);}}
+    for i:0..<s.rope {row[offset+i]=pe[i];}return DsStatus.ok;
+}
+ml_absorb :: (s:MlShape,w:[]u8,q:[]f32,out:[]f32)->DsStatus {
+    for head:0..<s.heads {for j:0..<s.latent {acc:PsionicAccumulator;
+        for i:0..<s.nope {at:=(head*(s.nope+s.value)+i)*s.latent+j;acc=psionic_ops_accumulate(acc,f64(q[head*(s.nope+s.rope)+i])*f64(ds_bf(w,at)));}
+        v:=psionic_ops_total(acc);if !psionic_ops_fits_f32(v) {return DsStatus.arithmetic;}out[head*s.latent+j]=f32(v);
+    }}return DsStatus.ok;
+}
+ml_score :: (s:MlShape,mode:MlMode,q:[]f32,absorbed:[]f32,history:[]f32,current:[]f32,position:int,head:int,t:int)->f64 {
+    width:=current.count;acc:PsionicAccumulator;
+    if mode==MlMode.compressed {for j:0..<s.latent {v:=ml_past(history,current,width,position,t,j);acc=psionic_ops_accumulate(acc,f64(absorbed[head*s.latent+j])*f64(v));}}
+    else {for j:0..<s.nope {v:=ml_past(history,current,width,position,t,head*(s.nope+s.value)+j);acc=psionic_ops_accumulate(acc,f64(q[head*(s.nope+s.rope)+j])*f64(v));}}
+    pe:=width-s.rope;for j:0..<s.rope {v:=ml_past(history,current,width,position,t,pe+j);acc=psionic_ops_accumulate(acc,f64(q[head*(s.nope+s.rope)+s.nope+j])*f64(v));}
+    return psionic_ops_total(acc);
+}
+// book:begin attention
+ml_attention :: (s:MlShape,mode:MlMode,w:[]u8,q:[]f32,z:[]f32,key_rope:[]f32,history:[]f32,position:int,scale:f64,out:[]f32,row:[]f32,work:[]f32,scores:[]f64,overlap:bool)->MlResult #export_c {
+    p:=ml_plan(s,mode);if p.status!=DsStatus.ok {return MlResult.{status=p.status};}
+    if position<0 || position>=s.capacity {return MlResult.{status=DsStatus.state};}
+    if w.count!=2*s.heads*(s.nope+s.value)*s.latent {return MlResult.{status=DsStatus.weights};}
+    if q.count!=s.heads*(s.nope+s.rope) || z.count!=s.latent || key_rope.count!=s.rope || history.count!=position*p.row || out.count<p.output || row.count<p.row || work.count<p.floats || scores.count<s.heads*(position+1) {return MlResult.{status=DsStatus.capacity};}
+    if overlap {return MlResult.{status=DsStatus.alias};}
+    if !ml_scale(scale) || !ml_weights(w) {return MlResult.{status=DsStatus.number};}
+    for v:q {if !ds_finite(v) {return MlResult.{status=DsStatus.number};}}
+    for v:z {if !ds_finite(v) {return MlResult.{status=DsStatus.number};}}
+    for v:key_rope {if !ds_finite(v) {return MlResult.{status=DsStatus.number};}}
+    for v:history {if !ds_finite(v) {return MlResult.{status=DsStatus.number};}}
+    views:=ml_views(work,p);current:=views.current;absorbed:=views.absorbed;context:=views.context;attended:=views.attended;
+    status:=ml_current(s,mode,w,z,key_rope,current);if status!=DsStatus.ok {return MlResult.{status=status};}
+    if mode==MlMode.compressed {status=ml_absorb(s,w,q,absorbed);if status!=DsStatus.ok {return MlResult.{status=status};}}
+    for head:0..<s.heads {
+        prob:=scores[head*(position+1)..<(head+1)*(position+1)];for t:0..<position+1 {prob[t]=ml_score(s,mode,q,absorbed,history,current,position,head,t)*scale;}den:=ds_exp_scores(prob);
+        dim:=ifx mode==MlMode.compressed then s.latent else s.value;
+        for j:0..<dim {acc:PsionicAccumulator;for t:0..<position+1 {at:=ifx mode==MlMode.compressed then j else head*(s.nope+s.value)+s.nope+j;v:=ml_past(history,current,p.row,position,t,at);acc=psionic_ops_accumulate(acc,prob[t]*f64(v));}
+            value:=psionic_ops_total(acc)/den;if !psionic_ops_fits_f32(value) {return MlResult.{status=DsStatus.arithmetic};}
+            if mode==MlMode.compressed {context[head*s.latent+j]=f32(value);}else {attended[head*s.value+j]=f32(value);}
+        }
+        if mode==MlMode.compressed {for j:0..<s.value {acc:PsionicAccumulator;for k:0..<s.latent {at:=(head*(s.nope+s.value)+s.nope+j)*s.latent+k;acc=psionic_ops_accumulate(acc,f64(ds_bf(w,at))*f64(context[head*s.latent+k]));}
+            value:=psionic_ops_total(acc);if !psionic_ops_fits_f32(value) {return MlResult.{status=DsStatus.arithmetic};}attended[head*s.value+j]=f32(value);}}
+    }
+    for i:0..<p.output {out[i]=attended[i];}for i:0..<p.row {row[i]=current[i];}return MlResult.{written=p.output,row_written=p.row};
+}
+// book:end attention
+ml_scale :: (x:f64)->bool {return x>0 && x<=64;}

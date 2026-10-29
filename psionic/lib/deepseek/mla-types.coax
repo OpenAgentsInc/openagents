@@ -1,0 +1,7 @@
+#load "math.coax";
+// Shared latent-attention equations, with already-rotated query/key inputs.
+MlMode :: enum u8 {compressed;expanded;}
+MlShape :: struct {heads:int;nope:int;rope:int;value:int;latent:int;capacity:int;}
+MlPlan :: struct {status:DsStatus;row:int;output:int;floats:int;scores:int;begin:[5]int;}
+MlResult :: struct {status:DsStatus;written:int;row_written:int;}
+MlViews :: struct {current:[]f32;absorbed:[]f32;context:[]f32;attended:[]f32;}

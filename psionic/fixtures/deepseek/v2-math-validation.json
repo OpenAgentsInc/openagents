@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "scope": "chapter 58 attention/rotary components; whole model incomplete",
+  "compiler": {
+    "version": "coax0 0.23.0",
+    "sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93"
+  },
+  "sources": {
+    "psionic/tests/deepseek-v2-math-runtime.coax": "f5d9b37d4a6563f56553cce0a85ffcc22cddb10cae207055d3ec554ee5e6fb36",
+    "psionic/lib/deepseek/mla.coax": "a6cb3892dfb1a9f47c18d5ef1b7c5bfb4d982e72e267e0db6fdb817f53e4d4ff",
+    "psionic/lib/deepseek/mla-types.coax": "4e084cf7ad0ed1be7e468f380d4e86e35da51a94e7431f9d0f4d57a1c2e03bbe",
+    "psionic/lib/deepseek/math.coax": "46c5191d9d0222b9a7283c6acef89c62995cbd27e6aadb04e67493ce14b0005d",
+    "psionic/lib/deepseek/types.coax": "d4e5f85516b38cf129ebe823d003e320180d47f1e3f0124732ada2878e8ef803",
+    "psionic/lib/qwen-matvec.coax": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae",
+    "psionic/lib/ops.coax": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+    "psionic/lib/ops-contract.coax": "8120be9d305264a9fc967dbf6d251da54120acc4b8151e28d747a11233b042a8",
+    "psionic/lib/tensor.coax": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+    "psionic/fixtures/deepseek/mla-goldens.coax": "44c68a2d15d68d967896f9e2d722cb4de8f37a62d14e00762c69db402365a9ca",
+    "psionic/lib/deepseek/v2-rope.coax": "6955eb9d48dcb939d7c2e5ba3a3d68902d396bb70ca361d5cd81f63c0b7aac9c",
+    "psionic/fixtures/deepseek/v2-rope-goldens.coax": "12355ce5d6f6a8b0821c058b4738bfe9af298aea46fd6612b2145b914dd6a55c",
+    "psionic/tests/deepseek_mla_oracle.py": "07b29426374b3f8e8a4f6379be1aa23d8dd07824aedd0e1efdb019b30c2f861c",
+    "psionic/tests/deepseek_v2_rope_oracle.py": "77f32440e5e3d67d5c55f4ce0208729dfec3361827c899107c74e70c9de9f15e",
+    "psionic/tests/deepseek_v2_math_native.c": "ddaad4b0326969665fe855f64b2b53beead8dac0c6096bfab39340529ece3d9d",
+    "psionic/tests/check_deepseek_v2_math.sh": "8076e94c95130501a6a26cdc50315ff1ad46b8bb65c051ce21714174c2ce93c3",
+    "psionic/platform/deepseek-v2-math-memory.c": "a1902c3e367ddcd60f900428b3fbab67747c75ebfb0fc375deb475e369c8c8d6",
+    "psionic/platform/deepseek-v2-math-memory.h": "9e732d095f73e5f59b901bc0148dcd31ea8a07e85d6fe548759de798a90ca10a",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/fixtures/deepseek/mla-goldens.h": "716c7f6619bc8c533ee0b771569a239effce01a8b1ee95eb5156a77fcbb24a78",
+    "psionic/fixtures/deepseek/mla-goldens.json": "2c85d84cb7ca1096ffbd484442b9da3d37ded10ffd63ed2ae9749d83b8c94b00",
+    "psionic/fixtures/deepseek/v2-rope-goldens.h": "18f16eaa51075c9666f5b85ea4527590ea262ea4a3f142dd7872ccb6277b8ea4",
+    "psionic/fixtures/deepseek/v2-rope-goldens.json": "826ef07a33cb8999383fa9b4a24e7a1c676d6a8fe654ae35573003adbd491cad"
+  },
+  "checks": {
+    "command": "psionic/tests/check_deepseek_v2_math.sh --mutate --jobs 8",
+    "coax_checks_per_mode": 55,
+    "modes": [
+      "debug",
+      "release"
+    ],
+    "native": [
+      "plain",
+      "ASan+UBSan"
+    ],
+    "native_flags": "-O0/-O3 -std=c11 -ffp-contract=off -fno-fast-math",
+    "mla_mutation": "782 mutants, 782 killed, 0 survived",
+    "rotary_mutation": "701 mutants, 701 killed, 0 survived",
+    "observed_owned_compressed_expanded_max_abs": 3.725290298461914e-09
+  }
+}

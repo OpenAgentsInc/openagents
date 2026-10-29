@@ -1,0 +1,64 @@
+#load "mla-types.coax";
+#authority;
+DvRotateResult :: struct {status:DsStatus;query_written:int;key_written:int;}
+#load "../../fixtures/deepseek/v2-rope-goldens.coax";
+
+#test "fixed V2 rotary widths shapes positions and every output capacity refuse before publication" {
+    #assert dv_rope_width(2) && dv_rope_width(128) && !dv_rope_width(0) && !dv_rope_width(1) && !dv_rope_width(3) && !dv_rope_width(130);
+    #assert dv_rotary_shape(1,1,2) && dv_rotary_shape(64,256,128) && !dv_rotary_shape(0,1,2) && !dv_rotary_shape(65,1,2) && !dv_rotary_shape(1,0,2) && !dv_rotary_shape(1,257,2);
+    q:=DVR_QUERY;k:=DVR_KEY;out:[22]f32;key:[8]f32;work:[30]f32;coeff:[8]f32;stage:[8]f32;
+    for i:0..<22 {out[i]=7;}for i:0..<8 {key[i]=9;coeff[i]=11;}
+    for field:0..<8 {heads:=2;nope:=3;rope:=8;pos:=731;qi:=q[..];ki:=k[..];qo:=out[..];ko:=key[..];w:=work[..];alias:=false;
+        if field==0 {heads=0;}else if field==1 {pos=-1;}else if field==2 {qi=q[0..<21];}else if field==3 {ki=k[0..<7];}else if field==4 {qo=out[0..<21];}else if field==5 {ko=key[0..<7];}else if field==6 {w=work[0..<29];}else {alias=true;}
+        r:=dv_rotary(heads,nope,rope,qi,ki,pos,qo,ko,w,alias);expected:=DsStatus.capacity;if field==0 {expected=DsStatus.shape;}else if field==1 {expected=DsStatus.state;}else if field==7 {expected=DsStatus.alias;}#assert r.status==expected;
+    }
+    #assert dv_yarn(3,0,coeff[..],stage[..],false).status==DsStatus.shape;
+    #assert dv_yarn(8,-1,coeff[..],stage[..],false).status==DsStatus.state && dv_yarn(8,163840,coeff[..],stage[..],false).status==DsStatus.state;
+    #assert dv_yarn(8,0,coeff[0..<7],stage[..],false).status==DsStatus.capacity && dv_yarn(8,0,coeff[..],stage[0..<7],false).status==DsStatus.capacity;
+    #assert dv_yarn(8,0,coeff[..],stage[..],true).status==DsStatus.alias;
+    #assert dv_attention_scale(0,2)==0 && dv_attention_scale(257,2)==0 && dv_attention_scale(1,3)==0;
+    #assert dv_attention_scale(1,2)>0 && dv_attention_scale(256,128)>0;
+    for v:out {#assert v==7;}for v:key {#assert v==9;}for v:coeff {#assert v==11;}
+}
+#test "V2 rotary finite overflow in either component preserves both public outputs" {
+    big:=f32_from_bits(0x7f7fffff);q:[3]f32;k:[2]f32;out:[3]f32;key:[2]f32;work:[5]f32;
+    for side:0..<2 {for negative:0..<2 {q[0]=0;q[1]=0;q[2]=0;k[0]=0;k[1]=0;b:=big;if negative==1 {b=-big;}
+        if side==0 {q[1]=big;q[2]=b;}else {k[0]=big;k[1]=b;}
+        for i:0..<3 {out[i]=7;}for i:0..<2 {key[i]=9;}
+        #assert dv_rotary(1,1,2,q[..],k[..],1,out[..],key[..],work[..],false).status==DsStatus.arithmetic;
+        for x:out {#assert x==7;}for x:key {#assert x==9;}
+    }}
+}
+dv_rope_width :: (rope:int)->bool {return rope>=2 && rope/2<=64 && rope%2==0;}
+dv_rotary_shape :: (heads:int,nope:int,rope:int)->bool {return heads>=1 && heads<=64 && nope>=1 && nope<=256 && dv_rope_width(rope);}
+dv_position :: (pos:int)->bool {return pos>=0 && pos<163840;}
+dv_attention_scale :: (nope:int,rope:int)->f64 #export_c {
+    if nope<1 || nope>256 || !dv_rope_width(rope) {return 0;}
+    m:=1+0.1*0.707*log(40.0);return m*m/sqrt(f64(nope+rope));
+}
+// book:begin yarn
+dv_yarn :: (rope:int,position:int,out:[]f32,stage:[]f32,overlap:bool)->DsResult #export_c {
+    if !dv_rope_width(rope) {return DsResult.{status=DsStatus.shape};}if !dv_position(position) {return DsResult.{status=DsStatus.state};}
+    if out.count<rope || stage.count<rope {return DsResult.{status=DsStatus.capacity};}if overlap {return DsResult.{status=DsStatus.alias};}
+    // For every admitted width, 0 <= lo < hi <= rope-1 under these fixed
+    // original constants. No singular/equality fallback is reachable.
+    lo:=floor(f64(rope)*log(4096.0/(32*2*3.141592653589793))/(2*log(10000.0)));
+    hi:=-floor(-f64(rope)*log(4096.0/(2*3.141592653589793))/(2*log(10000.0)));
+    for j:0..<rope/2 {ramp:=(f64(j)-lo)/(hi-lo);ramp=(abs(ramp)-abs(ramp-1)+1)/2;
+        extra:=exp(-log(10000.0)*f64(2*j)/f64(rope));frequency:=extra*(1-ramp)+(extra/40)*ramp;angle:=f64(position)*frequency;
+        stage[j]=f32(cos(angle));stage[rope/2+j]=f32(sin(angle));}
+    for j:0..<rope {out[j]=stage[j];}return DsResult.{written=rope};
+}
+// book:end yarn
+dv_rotary :: (heads:int,nope:int,rope:int,query:[]f32,key:[]f32,position:int,query_out:[]f32,key_out:[]f32,work:[]f32,overlap:bool)->DvRotateResult #export_c {
+    if !dv_rotary_shape(heads,nope,rope) {return DvRotateResult.{status=DsStatus.shape};}if !dv_position(position) {return DvRotateResult.{status=DsStatus.state};}
+    n:=heads*(nope+rope);if query.count!=n || key.count!=rope || query_out.count<n || key_out.count<rope || work.count<n+rope {return DvRotateResult.{status=DsStatus.capacity};}
+    if overlap {return DvRotateResult.{status=DsStatus.alias};}for x:query {if !ds_finite(x) {return DvRotateResult.{status=DsStatus.number};}}for x:key {if !ds_finite(x) {return DvRotateResult.{status=DsStatus.number};}}
+    coeff:[128]f32;temp:[128]f32;r:=dv_yarn(rope,position,coeff[..],temp[..],false);if r.status!=DsStatus.ok {return DvRotateResult.{status=r.status};}
+    for h:0..<heads {base:=h*(nope+rope);for j:0..<nope {work[base+j]=query[base+j];}
+        for j:0..<rope/2 {a:=f64(query[base+nope+2*j]);b:=f64(query[base+nope+2*j+1]);c:=f64(coeff[j]);s:=f64(coeff[rope/2+j]);u:=a*c-b*s;v:=b*c+a*s;
+            if !psionic_ops_fits_f32(u) || !psionic_ops_fits_f32(v) {return DvRotateResult.{status=DsStatus.arithmetic};}work[base+nope+j]=f32(u);work[base+nope+rope/2+j]=f32(v);}}
+    for j:0..<rope/2 {a:=f64(key[2*j]);b:=f64(key[2*j+1]);c:=f64(coeff[j]);s:=f64(coeff[rope/2+j]);u:=a*c-b*s;v:=b*c+a*s;
+        if !psionic_ops_fits_f32(u) || !psionic_ops_fits_f32(v) {return DvRotateResult.{status=DsStatus.arithmetic};}work[n+j]=f32(u);work[n+rope/2+j]=f32(v);}
+    for i:0..<n {query_out[i]=work[i];}for i:0..<rope {key_out[i]=work[n+i];}return DvRotateResult.{query_written=n,key_written=rope};
+}
