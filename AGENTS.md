@@ -68,6 +68,12 @@ apps/openagents-ios/build.sh                # the app, for the simulator
 coax/web/serve.sh apps/openagents-web       # the website with hot reload: http://127.0.0.1:8800/
 ```
 
+Keep iteration fast. Checks run while you work finish in minutes: test the
+units you touched, use small slices and fixtures, and run long gates in the
+background or in parallel rather than waiting on them. Never rerun a
+whole-model decision on original weights on the CPU as a routine check;
+compare against its recorded reference answer, or run it on the GPU path.
+
 The full iOS test command and TestFlight steps are in
 [apps/openagents-ios/README.md](apps/openagents-ios/README.md). Run the
 tests for what you touched, not everything.
