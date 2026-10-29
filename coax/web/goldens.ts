@@ -1,6 +1,6 @@
 // The playtest flow, walked in headless Chrome with WebGPU (no window opens,
-// nothing takes focus): the landing, ENTER as a guest, the galaxy, a click
-// on the Haunted House, the house; then every other realm in realms.json,
+// nothing takes focus): the landing, ENTER as a guest directly to the house,
+// then the galaxy and a click on the Haunted House; then every other realm in realms.json,
 // each opened from the galaxy (/verse/galaxy?realms=all, the arrows to its
 // world, ENTER), unlisted ones too, so a realm is walked before its launch;
 // then the pages of their own (the Garden) by their address. Each page must start (its engine says
@@ -217,6 +217,13 @@ try {
   await send("Page.navigate", { url: base + root + PAGES.landing.path })
   if (await arrive("landing")) {
     await key("Enter", "Enter", 13)   // ENTER: play now as a guest
+    // Current landing opens the house directly. Pinned demos preserve their
+    // historical landing-to-galaxy route; check the current direct route
+    // before separately exercising the galaxy's house selector below.
+    if (!root) {
+      await arrive("haunted-house")
+      await send("Page.navigate", { url: `${base}/verse/galaxy` })
+    }
     const galaxy = await arrive("galaxy")
     if (galaxy) {
       // The Haunted House's tag (orange words under its planet) moves with the
