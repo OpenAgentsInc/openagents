@@ -497,6 +497,15 @@ static void changed_files(const char *dir, text *files) {
   puts_(files, "]");
   free(out.p);
 }
+// Why git failed, as one of a few fixed words for the log (never git's own
+// text, which can name the repository).
+static const char *git_why(const text *out) {
+  static const char *known[] = {"Host key verification failed", "Permission denied", "Could not resolve", "Load key", "invalid format",
+                                "Connection timed out", "Connection refused", "Repository not found", "not found", "bad permissions", NULL};
+  for (int i = 0; known[i]; i++) if (out && out->p && strstr(out->p, known[i])) return known[i];
+  return "other";
+}
+
 // Rebase the turn's commit on main and push it. false: a conflict (the files are in *why).
 static bool push(const char *dir, text *why) {
   text out = {0};
@@ -537,15 +546,6 @@ static void end_turn(const char *slug, long long id, const char *status, const c
   api("POST", slug, "end", body.p, &out);
   say("turn %lld %s cost %.4f%s", id, status, cost, commit && *commit ? " committed" : "");
   free(body.p); free(out.p);
-}
-
-// Why git failed, as one of a few fixed words for the log (never git's own
-// text, which can name the repository).
-static const char *git_why(const text *out) {
-  static const char *known[] = {"Host key verification failed", "Permission denied", "Could not resolve", "Load key", "invalid format",
-                                "Connection timed out", "Connection refused", "Repository not found", "not found", "bad permissions", NULL};
-  for (int i = 0; known[i]; i++) if (out && out->p && strstr(out->p, known[i])) return known[i];
-  return "other";
 }
 
 // One turn from next's answer.
