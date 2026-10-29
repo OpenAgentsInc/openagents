@@ -3057,7 +3057,8 @@
       "blocks": [
         "secp-mult-base",
         "coax-run-copy-work",
-        "coax-mutation-scheduling"
+        "coax-mutation-scheduling",
+        "coax-check-string-lifetime"
       ]
     },
     {
@@ -3081,6 +3082,37 @@
         "Checked Coax authority policy, boundary/overflow tests and zero-survivor mutation; Python-free bootstrap and affected compiler tests",
         "The real fixed-base tables still compile through #run under an explicitly documented finite profile and match the independent pinned oracle",
         "Record selected policy and measured copy work in build evidence; update the book and explain remaining unmetered work honestly"
+      ],
+      "blocked_by": [
+        "coax-run-resource-inputs"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "coax-check-string-lifetime",
+      "parent": "compiler",
+      "title": "Own compile-time strings and release check temporaries",
+      "size": "L",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "The evaluator's byte-view-to-string cast in coax/src/eval.cpp::Evaluator::do_cast allocates new char[count+1] and stores only a Str descriptor; no owner releases that buffer. This remains present in main's 0.18.2 source (0c7ce1d9c26aa0105e4a16b460e35cb00ad87ef0). coax/lib/nostr/json.coax's inclusive input-boundary check casts approximately one MiB twice each time it runs. A frozen exhaustive event mutation using 0.17.0, SHA-256 867bf5549dc4d4b20f698415280e92a81491b29c2dc201eec911e9d7d3faeeb2, grew to approximately five GiB RSS after about 50 minutes; that is an observation of the legacy run, not a current-toolchain bound or completed mutation score. Aggregate slots exclude string bytes, so the new slot cap does not solve this lifetime or cumulative-allocation problem.\n\nGive interpreted strings explicit ownership: temporary cast snapshots must survive their actual uses and returned/sliced/aggregate copies, while frozen strings remain valid through code emission. Release nonescaping check/mutant temporaries at their correct lifetime boundary. Add a checked finite policy for owned string bytes and materialization work, with precise scope and failure accounting. Coax owns admission/accounting policy; native code owns allocation and transport. Preserve the current expression/statement step semantics, default budgets, Python-free build and target string semantics. This is not permission to waive expensive checks, skip cast-bearing graphs or claim a complete hostile-source/RSS sandbox. The conservative mutation scheduler must retain its existing fallback until a separately evidenced isolation proof permits any widening.",
+      "files": [
+        "coax/src/eval.cpp",
+        "coax/src/coax.h",
+        "coax/lib/compiler/",
+        "coax/tests/",
+        "coax/spec.md",
+        "coax/book/"
+      ],
+      "acceptance": [
+        "Actual byte-view casts, string slices, returned strings, aggregate fields, aliases and field defaults retain immutable snapshot bytes for every use; multiple frozen constants survive until emission in checked and release profiles, with ASan/UBSan tests for stale pointers and double frees",
+        "Repeated check and mutation invocations release nonescaping owned strings rather than retaining every cast until process exit; deterministic tracked live/peak owned bytes return to baseline, and a bounded stress run records RSS separately without claiming allocator-dependent RSS must fall to zero",
+        "Declare and enforce finite live/persistent string-byte and materialization-work limits before allocation/copy, including exact boundaries, overflow, failed/partial construction and shared-owner accounting; keep the original step/check/mutation defaults unchanged and distinguish remaining source/AST/metadata/host allocations",
+        "Checked Coax authority policy has real boundary and refusal checks with zero surviving reachable mutants; Python-free bootstrap and affected compiler tests pass without exclusions, equivalents, fabricated observations or budget waivers",
+        "The unchanged Nostr JSON boundary graph and actual event consumer compile and pass their authored checks under the documented finite profile; preserve the event mutation and crypto evidence as their original compiler/source observations",
+        "Preserve conservative mutation fallback for casts/shared state until full reference/selective outcome and killer-index parity, unentered-survivor cases and lifetime/failure-isolation tests justify any explicit widening; update spec, book and evidence without claiming general resource sandboxing"
       ],
       "blocked_by": [
         "coax-run-resource-inputs"
