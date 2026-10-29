@@ -200,6 +200,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/device-matvec.coax",
+      "chapter": "psionic/book/ch26-a-coax-compute-subset.md",
+      "stdout": "psionic/fixtures/device-matvec.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/device-plan.coax",
+      "chapter": "psionic/book/ch30-elephant-on-cuda.md",
+      "stdout": "psionic/fixtures/device-plan.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

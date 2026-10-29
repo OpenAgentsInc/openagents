@@ -1,0 +1,21 @@
+#import "Basic";
+#load "../lib/device/project.coax";
+
+// book:begin example
+// The chapter 26 kernels on the CPU: every work item of dv_matvec, then of
+// dv_reduce, in any order. The GPU runs the same source.
+main :: () {
+    rows:=4;cols:=256;groups:=cols/4;
+    w:[256]u64;x:[256]f32;partial:[64]f32;out:[4]f32;
+    one:u64=0x3f80;half:u64=0x3f00;
+    for r:0..<rows {
+        value:=one;if r%2==1 {value=half;}
+        for g:0..<groups {w[r*groups+g]=value|(value<<16)|(value<<32)|(value<<48);}
+    }
+    for c:0..<cols {x[c]=f32(c%8);}
+    for i:0..<rows*16 {dv_matvec(rows*16-1-i,rows,cols,w[..],x[..],partial[..]);}
+    for i:0..<rows {dv_reduce(i,rows,16,partial[..],out[..]);}
+    print("rows: % % % %\n",out[0],out[1],out[2],out[3]);
+    print("lane 0 of row 0 added groups 0, 16, 32 and 48: %\n",partial[0]);
+}
+// book:end example

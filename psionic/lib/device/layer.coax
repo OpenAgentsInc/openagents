@@ -1,0 +1,315 @@
+// The Elephant decision path, apart from projections, as coax cuda kernels.
+// DEVICE-F32-CHUNKED-v1: values are stored as f32; reductions over a row
+// (norms, dot products, softmax denominators) add in f64; the DeltaNet state
+// update is f32. Gates use the reference's stable sigmoid and softplus forms.
+// Every kernel writes each output from exactly one work item.
+#authority;
+
+dl_sigmoid :: (x:f64)->f64 {e:=exp(-abs(x));return exp((x-abs(x))/2)/(1+e);}
+dl_softplus :: (x:f64)->f64 {return (x+abs(x))/2+log(1+exp(-abs(x)));}
+
+DL_CHUNKS :: 16;
+// book:begin norm
+// Offset RMS norm in two kernels. Item row*16+chunk adds the squares of
+// one sixteenth of a row in f64; then item row*width+i adds the row's 16
+// partial sums in order and writes x / sqrt(mean(x^2) + epsilon) * (1 + scale).
+dl_squares :: (item:int,width:int,x:[]f32,partial:[]f64) #export_c {
+    n:=width/DL_CHUNKS;at:=(item/DL_CHUNKS)*width+(item%DL_CHUNKS)*n;part:=x[at..<at+n];sum:f64=0;
+    for i:0..<n {v:=f64(part[i]);sum+=v*v;}
+    partial[item]=sum;
+}
+dl_scale :: (item:int,width:int,epsilon:f32,x:[]f32,scale:[]f32,partial:[]f64,out:[]f32) #export_c {
+    row:=item/width;sums:=partial[row*DL_CHUNKS..<row*DL_CHUNKS+DL_CHUNKS];squares:f64=0;
+    for c:0..<DL_CHUNKS {squares+=sums[c];}
+    divisor:=sqrt(squares/f64(width)+f64(epsilon));
+    out[item]=f32(f64(x[item])/divisor*(1+f64(scale[item%width])));
+}
+// book:end norm
+// The residual x + y (rounded to f32) of one sixteenth of a row, and its squares.
+dl_add_squares :: (item:int,width:int,x:[]f32,y:[]f32,residual:[]f32,partial:[]f64) #export_c {
+    n:=width/DL_CHUNKS;at:=(item/DL_CHUNKS)*width+(item%DL_CHUNKS)*n;sum:f64=0;
+    for i:0..<n {v:=f32(f64(x[at+i])+f64(y[at+i]));residual[at+i]=v;sum+=f64(v)*f64(v);}
+    partial[item]=sum;
+}
+dl_add :: (item:int,x:[]f32,y:[]f32,out:[]f32) #export_c {out[item]=f32(f64(x[item])+f64(y[item]));}
+// SwiGLU: silu(gate) * up.
+dl_swiglu :: (item:int,gate:[]f32,up:[]f32,out:[]f32) #export_c {
+    g:=f64(gate[item]);out[item]=f32(g*dl_sigmoid(g)*f64(up[item]));
+}
+
+// book:begin conv
+// Channel `item` of the causal depthwise convolution over every token, from a
+// fresh (zero) history: silu(sum over the last four inputs times the weights).
+dl_conv :: (item:int,channels:int,tokens:int,input:[]f32,weight:[]f32,out:[]f32) #export_c {
+    w:=weight[4*item..<4*item+4];a:f32=0;b:f32=0;c:f32=0;
+    for t:0..<tokens {
+        d:=input[t*channels+item];
+        acc:=f64(a)*f64(w[0])+f64(b)*f64(w[1])+f64(c)*f64(w[2])+f64(d)*f64(w[3]);
+        out[t*channels+item]=f32(acc*dl_sigmoid(acc));
+        a=b;b=c;c=d;
+    }
+}
+// book:end conv
+
+// Token t, value head h (item t*heads+h): beta = sigmoid(b) and
+// decay = exp(-exp(A_log) * softplus(a + dt_bias)).
+dl_gates :: (item:int,heads:int,a:[]f32,b:[]f32,a_log:[]f32,dt:[]f32,beta:[]f32,decay:[]f32) #export_c {
+    h:=item%heads;
+    beta[item]=f32(dl_sigmoid(f64(b[item])));
+    decay[item]=f32(exp(-exp(f64(a_log[h]))*dl_softplus(f64(a[item])+f64(dt[h]))));
+}
+// Token t, key head k (item t*key_heads+k): the L2-normalized query, scaled
+// by 1/sqrt(dim), and key, from the convolved channels [q | k | v].
+dl_qk :: (item:int,key_heads:int,dim:int,channels:int,conv:[]f32,q:[]f32,k:[]f32) #export_c {
+    t:=item/key_heads;head:=item%key_heads;qb:=t*channels+head*dim;kb:=qb+key_heads*dim;
+    qs:f64=0;ks:f64=0;
+    for i:0..<dim {x:=f64(conv[qb+i]);y:=f64(conv[kb+i]);qs+=x*x;ks+=y*y;}
+    qdiv:=sqrt(qs+0.000001)*sqrt(f64(dim));kdiv:=sqrt(ks+0.000001);
+    for i:0..<dim {q[item*dim+i]=f32(f64(conv[qb+i])/qdiv);k[item*dim+i]=f32(f64(conv[kb+i])/kdiv);}
+}
+
+// book:begin scan
+// Value head h, column c (item h*128+c) of the gated delta rule over every
+// token, from a zero state. The state column lives in registers.
+dl_scan :: (item:int,tokens:int,heads:int,key_heads:int,channels:int,conv:[]f32,q:[]f32,k:[]f32,beta:[]f32,decay:[]f32,out:[]f32) #export_c {
+    h:=item/128;c:=item%128;kh:=h/(heads/key_heads);vbase:=key_heads*256+h*128+c;
+    state:[128]f32;
+    for t:0..<tokens {
+        kb:=(t*key_heads+kh)*128;kr:=k[kb..<kb+128];qr:=q[kb..<kb+128];
+        g:=decay[t*heads+h];memory:f32=0;
+        for r:0..<128 {state[r]=state[r]*g;memory+=state[r]*kr[r];}
+        delta:=(conv[t*channels+vbase]-memory)*beta[t*heads+h];
+        result:f32=0;
+        for r:0..<128 {state[r]+=kr[r]*delta;result+=qr[r]*state[r];}
+        out[(t*heads+h)*128+c]=result;
+    }
+}
+// book:end scan
+
+// Token t, value head h (item t*heads+h): RMS-normalize the head's 128
+// outputs, scale by gamma and gate by silu(z).
+dl_gate_norm :: (item:int,epsilon:f32,draft:[]f32,gamma:[]f32,z:[]f32,out:[]f32) #export_c {
+    base:=item*128;squares:f64=0;
+    for i:0..<128 {x:=f64(draft[base+i]);squares+=x*x;}
+    denom:=sqrt(squares/128+f64(epsilon));
+    for i:0..<128 {zv:=f64(z[base+i]);out[base+i]=f32(f64(draft[base+i])/denom*f64(gamma[i])*(zv*dl_sigmoid(zv)));}
+}
+
+// book:begin prepare
+// Token t, head h (item t*(heads+kv_heads)+h): offset RMS norm and rotary
+// positions for a query head (h < heads) or a key head. The query projection
+// interleaves [query | gate] per head; rope holds cos, sin pairs per token.
+dl_prepare :: (item:int,heads:int,kv_heads:int,qproj:[]f32,kproj:[]f32,qscale:[]f32,kscale:[]f32,rope:[]f32,q:[]f32,k:[]f32,epsilon:f32) #export_c {
+    n:=heads+kv_heads;t:=item/n;h:=item%n;
+    source:=qproj;at:=(t*heads+h)*512;scale:=qscale;target:=q;to:=(t*heads+h)*256;
+    if h>=heads {source=kproj;at=(t*kv_heads+h-heads)*256;scale=kscale;target=k;to=at;}
+    src:=source[at..<at+256];dst:=target[to..<to+256];
+    squares:f64=0;for i:0..<256 {x:=f64(src[i]);squares+=x*x;}
+    div:=sqrt(squares/256+f64(epsilon));
+    cs:=rope[t*64..<t*64+64];
+    for i:0..<32 {
+        x:=f64(f32(f64(src[i])/div*(1+f64(scale[i]))));y:=f64(f32(f64(src[32+i])/div*(1+f64(scale[32+i]))));
+        co:=f64(cs[2*i]);si:=f64(cs[2*i+1]);
+        dst[i]=f32(x*co-y*si);dst[32+i]=f32(y*co+x*si);
+    }
+    for i:64..<256 {dst[i]=f32(f64(src[i])/div*(1+f64(scale[i])));}
+}
+// book:end prepare
+
+// book:begin mask
+// Decision blocks: a token before `prefix` sees the prefix; a later token
+// sees every token. Within a block attention is bidirectional.
+dl_visible :: (t:int,s:int,prefix:int)->bool {return t>=prefix || s<prefix;}
+// book:end mask
+// Item (t*heads+h)*tokens+s: the scaled score of key s for query head h of
+// token t, or 0 where the mask hides it.
+dl_scores :: (item:int,tokens:int,prefix:int,heads:int,kv_heads:int,q:[]f32,k:[]f32,scores:[]f32) #export_c {
+    s:=item%tokens;th:=item/tokens;h:=th%heads;t:=th/heads;kv:=h/(heads/kv_heads);
+    value:f32=0;
+    if dl_visible(t,s,prefix) {
+        qb:=(t*heads+h)*256;kb:=(s*kv_heads+kv)*256;qr:=q[qb..<qb+256];kr:=k[kb..<kb+256];
+        sum:f64=0;for i:0..<256 {sum+=f64(qr[i])*f64(kr[i]);}
+        value=f32(sum/16);
+    }
+    scores[item]=value;
+}
+// Item t*heads+h: the first visible maximum score, the softmax denominator
+// and the maximum's key index, then every key's probability (0 where hidden).
+dl_softmax :: (item:int,tokens:int,prefix:int,heads:int,scores:[]f32,stats:[]f64,probs:[]f64) #export_c {
+    t:=item/heads;row:=scores[item*tokens..<item*tokens+tokens];p:=probs[item*tokens..<item*tokens+tokens];
+    best:=0;
+    for s:1..<tokens {if dl_visible(t,s,prefix) && row[s]>row[best] {best=s;}}
+    top:=f64(row[best]);sum:f64=0;
+    for s:0..<tokens {if dl_visible(t,s,prefix) {sum+=exp(f64(row[s])-top);}}
+    for s:0..<tokens {
+        value:f64=0;
+        if dl_visible(t,s,prefix) {value=exp(f64(row[s])-top)/sum;}
+        p[s]=value;
+    }
+    stats[3*item]=top;stats[3*item+1]=sum;stats[3*item+2]=f64(best);
+}
+// Item (t*heads+h)*256+i: dimension i of the attention output, gated by
+// sigmoid of the query projection's gate half.
+dl_attend :: (item:int,tokens:int,heads:int,kv_heads:int,probs:[]f64,v:[]f32,qproj:[]f32,out:[]f32) #export_c {
+    i:=item%256;th:=item/256;h:=th%heads;kv:=h/(heads/kv_heads);
+    p:=probs[th*tokens..<th*tokens+tokens];acc:f64=0;
+    for s:0..<tokens {acc+=p[s]*f64(v[(s*kv_heads+kv)*256+i]);}
+    out[item]=f32(acc*dl_sigmoid(f64(qproj[th*512+256+i])));
+}
+
+#test "gates use the stable sigmoid and softplus" {
+    #assert dl_sigmoid(0)==0.5 && dl_softplus(0)==log(2.0);
+    #assert abs(dl_sigmoid(2)-1/(1+exp(-2.0)))<1e-15 && abs(dl_sigmoid(-3)-1/(1+exp(3.0)))<1e-15;
+    #assert abs(dl_softplus(3)-log(1+exp(3.0)))<1e-14 && abs(dl_softplus(-2)-log(1+exp(-2.0)))<1e-15;
+}
+#test "offset norms scale each row by its own root mean square" {
+    // Two rows of width 32: row 0 is 2, row 1 is 1; scale cycles 0, 1, -0.5, 3.
+    x:[64]f32;scale:[32]f32;partial:[32]f64;out:[64]f32;
+    for i:0..<32 {x[i]=2;x[32+i]=1;scale[i]=([4]f32.[0,1,-0.5,3])[i%4];}
+    x[3]=-2;
+    for item:0..<32 {dl_squares(item,32,x[..],partial[..]);}
+    for c:0..<16 {#assert partial[c]==8 && partial[16+c]==2;}
+    for item:0..<32 {dl_scale(item,32,0,x[..],scale[..],partial[..],out[..]);}
+    for item:32..<64 {dl_scale(item,32,3,x[..],scale[..],partial[..],out[..]);}
+    #assert out[0]==1 && out[1]==2 && out[2]==0.5 && out[3]==-4 && out[31]==4;
+    #assert out[32]==0.5 && out[33]==1 && out[34]==0.25 && out[35]==2 && out[63]==2;
+    // The residual first: x + y rounded to f32, then its squares.
+    y:[64]f32;residual:[64]f32;
+    for i:0..<64 {y[i]=1;}y[63]=-2;
+    for item:0..<32 {dl_add_squares(item,32,x[..],y[..],residual[..],partial[..]);}
+    #assert residual[0]==3 && residual[3]==-1 && residual[32]==2 && residual[63]==-1;
+    #assert partial[0]==18 && partial[1]==10 && partial[15]==18 && partial[16]==8 && partial[31]==5;
+}
+#test "each square sum covers its own sixteenth of its own row" {
+    x:[96]f32;for i:0..<96 {x[i]=f32(i%7)-f32(i/32);}
+    partial:[48]f64;for item:0..<48 {dl_squares(item,32,x[..],partial[..]);}
+    for item:0..<48 {
+        a:=f64(x[2*item]);b:=f64(x[2*item+1]);
+        #assert partial[item]==a*a+b*b;
+    }
+    y:[96]f32;residual:[96]f32;for i:0..<96 {y[i]=0.5;}
+    for item:0..<48 {dl_add_squares(item,32,x[..],y[..],residual[..],partial[..]);}
+    for item:0..<48 {
+        a:=f64(x[2*item])+0.5;b:=f64(x[2*item+1])+0.5;
+        #assert partial[item]==a*a+b*b && residual[2*item]==f32(a);
+    }
+}
+#test "elementwise kernels add and gate" {
+    a:=[2]f32.[1.5,-2];b:=[2]f32.[2.25,0.5];out:[2]f32;
+    dl_add(0,a[..],b[..],out[..]);dl_add(1,a[..],b[..],out[..]);
+    #assert out[0]==3.75 && out[1]==-1.5;
+    dl_swiglu(0,a[..],b[..],out[..]);dl_swiglu(1,a[..],b[..],out[..]);
+    #assert out[0]==f32(1.5*dl_sigmoid(1.5)*2.25) && out[1]==f32(-2*dl_sigmoid(-2)*0.5);
+}
+#test "the convolution starts from zero history and slides by one token" {
+    // Two channels, five tokens; channel 1 has weights 1,2,3,4 (oldest first).
+    input:[10]f32;for t:0..<5 {input[2*t]=0;input[2*t+1]=f32(t+1);}
+    weight:=[8]f32.[0,0,0,0, 1,2,3,4];out:[10]f32;
+    dl_conv(0,2,5,input[..],weight[..],out[..]);dl_conv(1,2,5,input[..],weight[..],out[..]);
+    sums:=[5]f64.[4,11,20,30,40];
+    for t:0..<5 {#assert out[2*t]==0 && out[2*t+1]==f32(sums[t]*dl_sigmoid(sums[t]));}
+}
+#test "beta is a sigmoid and decay shrinks with the step size" {
+    a:=[4]f32.[0,1,-1,2];b:=[4]f32.[0,2,-3,1];a_log:=[2]f32.[0,0.5];dt:=[2]f32.[0,-1];beta:[4]f32;decay:[4]f32;
+    for i:0..<4 {dl_gates(i,2,a[..],b[..],a_log[..],dt[..],beta[..],decay[..]);}
+    #assert beta[0]==0.5 && beta[1]==f32(dl_sigmoid(2)) && beta[2]==f32(dl_sigmoid(-3)) && beta[3]==f32(dl_sigmoid(1));
+    #assert decay[0]==f32(exp(-log(2.0))) && decay[0]==0.5;
+    #assert decay[1]==f32(exp(-exp(0.5f64)*dl_softplus(0))) && decay[2]==f32(exp(-dl_softplus(-1))) && decay[3]==f32(exp(-exp(0.5f64)*dl_softplus(1)));
+}
+#test "queries and keys are L2-normalized per key head and queries are scaled" {
+    // Two tokens, two key heads of dimension 3: channels [q0 q1 | k0 k1 | v].
+    conv:=[28]f32.[1,2,2, 0,3,4, 2,3,6, 6,0,8, 7,7, 0,0,5, 4,4,2, 3,0,4, 0,0,1, 9,9];
+    q:[12]f32;k:[12]f32;
+    for i:0..<4 {dl_qk(i,2,3,14,conv[..],q[..],k[..]);}
+    s:=sqrt(3.0f64);
+    #assert q[0]==f32(1/(sqrt(9.000001f64)*s)) && q[2]==f32(2/(sqrt(9.000001f64)*s)) && q[4]==f32(3/(sqrt(25.000001f64)*s)) && q[3]==0;
+    #assert k[0]==f32(2/sqrt(49.000001f64)) && k[2]==f32(6/sqrt(49.000001f64)) && k[3]==f32(6/sqrt(100.000001f64)) && k[4]==0;
+    #assert q[8]==f32(5/(sqrt(25.000001f64)*s)) && q[9]==f32(4/(sqrt(36.000001f64)*s)) && q[11]==f32(2/(sqrt(36.000001f64)*s));
+    #assert k[6]==f32(3/sqrt(25.000001f64)) && k[8]==f32(4/sqrt(25.000001f64)) && k[11]==f32(1/sqrt(1.000001f64)) && k[9]==0;
+}
+#test "the delta rule decays, corrects toward the value and reads with the query" {
+    // Four value heads over two key heads (heads 2 and 3 use key head 1),
+    // three tokens. Key/query rows: token 0 e0, token 1 e1, token 2 e0.
+    channels:=1024;conv:[3072]f32;q:[768]f32;k:[768]f32;beta:[12]f32;decay:[12]f32;out:[1536]f32;
+    for t:0..<3 {for h:0..<4 {beta[t*4+h]=1;decay[t*4+h]=f32(0.5+0.125*f64(h+t));}}
+    beta[0]=0.5;
+    // Head 0 column 0 and head 3 column 127 see values 1, 0, 2 and -2, 0, 4.
+    conv[512]=1;conv[512+128]=3;conv[512+256]=5;conv[512+384]=7;conv[1024+512]=0;conv[2048+512]=2;conv[512+3*128+127]=-2;conv[2048+512+3*128+127]=4;
+    for kh:0..<2 {
+        b:=kh*128;
+        k[b]=1;q[b]=1;k[256+b+1]=1;q[256+b+1]=1;k[512+b]=1;q[512+b]=1;
+    }
+    q[256]=1; // token 1 also reads e0 of key head 0
+    for item:0..<512 {dl_scan(item,3,4,2,channels,conv[..],q[..],k[..],beta[..],decay[..],out[..]);}
+    // Head 0: token 0 stores half of 1 in row 0; token 1 writes row 1 with 0
+    // and reads row 0 after its decay of 0.625; token 2 corrects row 0 to 2.
+    #assert out[0]==0.5 && out[512]==0.3125 && out[1024]==2;
+    // Head 3 (key head 1): -2, then a row-1 write of 0 read back as 0, then 4.
+    #assert out[3*128+127]==-2 && out[512+3*128+127]==0 && out[1024+3*128+127]==4;
+    #assert out[1]==0 && out[128]==3 && out[256]==5 && out[384]==7 && out[1024+3*128+126]==0;
+}
+#test "the gated head norm uses gamma and silu of z" {
+    draft:[256]f32;gamma:[128]f32;z:[256]f32;out:[256]f32;
+    for i:0..<128 {draft[i]=2;draft[128+i]=-1;gamma[i]=f32(i%3+1);z[i]=1;z[128+i]=-2;}
+    dl_gate_norm(0,0,draft[..],gamma[..],z[..],out[..]);dl_gate_norm(1,3,draft[..],gamma[..],z[..],out[..]);
+    for i:0..<128 {
+        #assert out[i]==f32(f64(gamma[i])*dl_sigmoid(1));
+        #assert out[128+i]==f32(-0.5*f64(gamma[i])*(-2*dl_sigmoid(-2)));
+    }
+}
+#test "attention preparation normalizes, offsets and rotates the first 64 dimensions" {
+    // Two tokens, two query heads [query | gate] and two key heads; arrays are
+    // exactly the kernel's extents.
+    qproj:[2048]f32;kproj:[1024]f32;qs:[256]f32;ks:[256]f32;rope:[128]f32;q:[1024]f32;k:[1024]f32;
+    for r:0..<4 {for i:0..<256 {qproj[r*512+i]=f32(r+1);qproj[r*512+256+i]=99;kproj[r*256+i]=-f32(r+1);}}
+    for i:0..<256 {qs[i]=1;ks[i]=0.5;}
+    qs[0]=3;ks[33]=-2;qproj[1]=-1;qproj[37]=-1;
+    for i:0..<32 {rope[2*i]=1;rope[2*i+1]=0;rope[64+2*i]=0;rope[64+2*i+1]=1;}
+    for item:0..<8 {dl_prepare(item,2,2,qproj[..],kproj[..],qs[..],ks[..],rope[..],q[..],k[..],3);}
+    // Every row has a root mean square of its constant, plus epsilon 3.
+    d:=[4]f64.[sqrt(4.0f64),sqrt(7.0f64),sqrt(12.0f64),sqrt(19.0f64)];
+    #assert q[0]==f32(4/d[0]) && q[1]==f32(-2/d[0]) && q[2]==f32(2/d[0]) && q[255]==f32(2/d[0]) && q[32]==f32(2/d[0]) && q[33]==f32(2/d[0]) && q[37]==f32(-2/d[0]) && q[36]==f32(2/d[0]);
+    #assert k[32]==f32(-0.75) && k[1]==f32(-0.75);
+    #assert q[256]==f32(8/d[1]) && q[256+64]==f32(4/d[1]) && k[0]==f32(-1.5/d[0]) && k[33]==f32(1/d[0]) && k[256+255]==f32(-3/d[1]);
+    // Token 1 turns (x, y) into (-y, x).
+    x:=f64(f32(12/d[2]));y:=f64(f32(6/d[2]));
+    #assert q[512]==f32(-y) && q[512+32]==f32(x) && q[512+64]==f32(6/d[2]) && q[768+255]==f32(8/d[3]);
+    #assert k[512]==f32(4.5/d[2]) && k[512+32]==f32(-4.5/d[2]) && k[768+33]==f32(-6/d[3]) && k[768+64]==f32(-6/d[3]);
+}
+#forall "the decision mask: the prefix sees the prefix, later tokens see everything" t:0..<5, s:0..<5, prefix:0..<5 {
+    #assert dl_visible(t,s,prefix)==(ifx t<prefix then s<prefix else true);
+}
+#test "scores, softmax and attention honor the block mask, grouped heads and the gate" {
+    // Three tokens, prefix 1, four query heads over two key/value heads. Head
+    // 3's query is negative; key 1 is the largest, keys 0 and 2 tie.
+    q:[3072]f32;k:[1536]f32;v:[1536]f32;qproj:[6144]f32;scores:[36]f32;stats:[36]f64;out:[3072]f32;
+    sign:=[4]f32.[1,1,1,-1];size:=[3]f32.[1,3,1];
+    for t:0..<3 {for h:0..<4 {for i:0..<256 {q[(t*4+h)*256+i]=sign[h]*f32(h+1);}}}
+    for s:0..<3 {for kv:0..<2 {for i:0..<256 {k[(s*2+kv)*256+i]=size[s]*0.0625*f32(kv+1);v[(s*2+kv)*256+i]=f32(10*kv+s)+f32(i)/256;}}}
+    for t:0..<3 {for h:0..<4 {for i:0..<256 {qproj[(t*4+h)*512+256+i]=f32(t-h);}}}
+    for item:0..<36 {dl_scores(item,3,1,4,2,q[..],k[..],scores[..]);}
+    // Score of key s for head h of token t: sign (h+1) size(s) (kv+1).
+    for t:0..<3 {for h:0..<4 {for s:0..<3 {
+        expected:=sign[h]*f32(h+1)*size[s]*f32(h/2+1);if t<1 && s>=1 {expected=0;}
+        #assert scores[(t*4+h)*3+s]==expected;
+    }}}
+    probs:[36]f64;
+    for item:0..<12 {dl_softmax(item,3,1,4,scores[..],stats[..],probs[..]);}
+    for t:0..<3 {for h:0..<4 {
+        g:=f64(sign[h]*f32((h+1)*(h/2+1)));top:=g;sum:f64=1;best:f64=0;
+        if t>=1 && h<3 {top=3*g;sum=exp(-2*g)+1+exp(-2*g);best=1;}
+        if t>=1 && h==3 {sum=1+exp(2*g)+1;}
+        th:=t*4+h;
+        #assert stats[3*th]==top && stats[3*th+1]==sum && stats[3*th+2]==best;
+        for s:0..<3 {
+            expected:f64=0;if t>=1 || s<1 {expected=exp(f64(scores[th*3+s])-top)/sum;}
+            #assert probs[th*3+s]==expected;
+        }
+    }}
+    for item:0..<3072 {dl_attend(item,3,4,2,probs[..],v[..],qproj[..],out[..]);}
+    for t:0..<3 {for h:0..<4 {for i:0..<256 {if i%85==0 || i==255 {
+        th:=t*4+h;kv:=h/2;acc:f64=0;
+        for s:0..<3 {acc+=probs[th*3+s]*f64(v[(s*2+kv)*256+i]);}
+        #assert out[th*256+i]==f32(acc*dl_sigmoid(f64(t-h)));
+    }}}}
+}

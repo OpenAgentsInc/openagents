@@ -131,6 +131,24 @@ Coax checks, zero-survivor mutation, independent scalar bit fixtures and
 native debug/release plus sanitizer checks. See the
 [chapter 34 record](docs/verification/psionic-ch34-2026-10-29.md).
 
+## Psionic device kernels and plans own the device arithmetic and schedule
+
+`psionic/lib/device/project.coax` and `layer.coax` are `coax cuda` kernels:
+each output element belongs to exactly one work item, so a result does not
+depend on scheduling, and the same source compiled to C reproduces the device
+bit for bit except where the device math library's `exp` or `log` differs.
+`plan.coax` decides the workspace layout, which original weights stay resident
+and which stream through two slots, and every copy, wait, release and launch;
+`psionic/platform/cuda-host.c` executes those effects and decides nothing.
+Authentication, the session's borrowed weights and their lifetime remain the
+CPU session's (chapter 10); the host must keep a slot's previous launches
+complete before refilling it, which the plan's wait and release operations
+express. Check: `psionic/tests/check_device.sh` covers debug/release checks,
+zero-survivor mutation, CUDA emission and the device projection; the
+[chapter 26](docs/verification/psionic-ch26-2026-10-29.md) and
+[chapter 30](docs/verification/psionic-ch30-2026-10-29.md) records hold the
+device evidence and limits.
+
 ## Psionic complete model mapping publishes the layer stack together
 
 `psionic/lib/model-io/model-map.coax` binds the authenticated inventory's

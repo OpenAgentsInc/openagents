@@ -1,0 +1,20 @@
+#import "Basic";
+#load "../lib/device/plan.coax";
+
+// book:begin example
+// Chapter 30's schedule for the 86-token sample with a 14 GiB device budget.
+// Nothing runs: the plan is data that the host executes.
+main :: () {
+    ops:[1000]DpOp;stream:[96]bool;
+    budget:=14*1073741824;
+    plan:=dp_plan(86,49,budget,stream[..],ops[..]);
+    launches:=0;copies:=0;for i:0..<plan.ops {if ops[i].kind==DpOpKind.launch {launches+=1;} if ops[i].kind==DpOpKind.copy {copies+=1;}}
+    print("operations: %, launches: %, copies: %\n",plan.ops,launches,copies);
+    print("workspace: % bytes\n",plan.workspace);
+    print("resident: % bytes, streamed: % bytes in % feed-forward matrices\n",plan.resident,plan.streamed,plan.streamed_tensors);
+    print("streamed down projections, by layer:");for i:0..<32 {if stream[3*i+2] {print(" %",i);}}print("\n");
+    at:=0;while ops[at].kind!=DpOpKind.launch {at+=1;}
+    print("first operation: copy weight % into slot %\n",ops[0].tensor,ops[0].slot);
+    print("first launch: % over % work items\n",dp_kernel_name(cast(int)ops[at].kernel),ops[at].items);
+}
+// book:end example

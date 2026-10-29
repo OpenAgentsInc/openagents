@@ -1,0 +1,6 @@
+operations: 880, launches: 844, copies: 12
+workspace: 87122432 bytes
+resident: 14667538432 bytes, streamed: 1207959552 bytes in 12 feed-forward matrices
+streamed down projections, by layer: 0 2 4 8 10 12 16 18 20 24 26 28
+first operation: copy weight 13 into slot 0
+first launch: dl_squares over 1376 work items
