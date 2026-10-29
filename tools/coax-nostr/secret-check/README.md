@@ -4,6 +4,9 @@
 untrusted pending revalidation after the checked-cast and checked-arithmetic
 corrections. See the [arithmetic advisory](../../../docs/verification/2026-10-29-secret-audit-checked-arithmetic.md)
 and [cast advisory](../../../docs/verification/2026-10-29-secret-audit-checked-cast.md).
+The scalar-only profile was revalidated on the corrected policy
+([record](../../../docs/verification/2026-10-29-secret-scalar-revalidation.md)).
+It now refuses `cb_mask`. The aggregate profiles are not revalidated.
 
 This is an executable, conservative source/dataflow policy, not a new language
 annotation and not cryptographic admission. It uses the real Coax lexer, parser,
@@ -14,6 +17,7 @@ AST, a flow manifest or a list of purportedly safe callees as proof.
 coax/bin/coax test coax/lib/crypto/secret-flow.coax
 coax/bin/coax mutate coax/lib/crypto/secret-flow.coax
 python3 tools/coax-nostr/secret-check/test_secret.py
+python3 tools/coax-nostr/secret-check/test_revalidate.py
 python3 tools/coax-nostr/secret-check/check.py coax/lib/crypto/bytes.coax \
   --entry cb_ct_select64 --report /tmp/select-source-audit.json
 ```
@@ -81,7 +85,12 @@ optimized native masked-select comparisons against independent Python bit
 operations, and the real frontend/bridge/policy under ASan and UBSan. The expression
 nesting boundary also runs through actual parsed source, not only model fixtures.
 
-`cb_mask`, `cb_ct_select32` and `cb_ct_select64` pass this source profile.
+`cb_ct_select32` and `cb_ct_select64` pass this source profile. `cb_mask` no
+longer passes: it uses checked multiplication on a secret, which the
+arithmetic correction refuses. `test_revalidate.py` runs generated programs
+through the real tool. For every accepted program it scans the emitted checked
+and release C for guards that depend on an operand. It also runs each one
+checked and optimized against an independent evaluator.
 **The actual scalar multiplication implementation is explicitly refused.** Its
 arrays and loops require a later aggregate/public-loop analysis and real crypto
 closure integration. This slice clears neither the production secret

@@ -1,0 +1,61 @@
+{
+  "schema": "coax.secret-source-revalidation.v1",
+  "profile": "unsigned-scalar-source-v1",
+  "seed": 20261029,
+  "count": 400,
+  "compiler": "coax0 0.22.0",
+  "compiler_sha256": "6e385ae9e0d92cca16a8818ca11a9f5c594b19299958963c1812b272f1cc68b8",
+  "policy_sha256": "3e7385219a694808e7d55caca47a0abe631de07911062c4a1c29605d79c9bba8",
+  "driver_sha256": "bea826ca3d42d1aa13524769e9176dc564b48520323f8714f23100b1e7b63af8",
+  "audit_artifact_sha256": "09469be4d0d70a2cf617ae035c8cd03790523fd2e9b0936875ad93904974c02a",
+  "scope": "source policy plus emitted checked/release C of reached procedures; not object timing, optimizer, JIT or production-secret approval",
+  "actual_helpers": {
+    "cb_mask": {
+      "accepted": false,
+      "error": "unsupported",
+      "line": 139,
+      "emitted_checked_guard": "coax_mul_u64 on a secret operand"
+    },
+    "cb_ct_select32": {
+      "accepted": true,
+      "emitted_checked_and_release_guards": []
+    },
+    "cb_ct_select64": {
+      "accepted": true,
+      "emitted_checked_and_release_guards": []
+    }
+  },
+  "generated": {
+    "programs": 400,
+    "accepted": 257,
+    "executed_programs": 255,
+    "refusals": {
+      "secret-branch": 25,
+      "unsupported": 70,
+      "accepted": 257,
+      "secret-shift": 48
+    },
+    "executed_cases_per_mode": 8160,
+    "accepted_public_trap_programs_not_executed": 2,
+    "modes": [
+      "checked -O2",
+      "release -O2"
+    ],
+    "oracle": "Python big-integer evaluation; emitted-C guard scan",
+    "accepted_sources_sha256": "5af4e60b7148798af5e37111de44ec05cf851159a064cba0dc6cb5b700ec2e60"
+  },
+  "oracle_controls": {
+    "checked_add": "unsupported",
+    "checked_sub": "unsupported",
+    "checked_mul": "unsupported",
+    "division": "unsupported",
+    "compound_add": "unsupported",
+    "narrow_cast": "unsupported",
+    "widening_checked_cast": "unsupported",
+    "secret_shift_count": "secret-shift",
+    "secret_ifx": "secret-branch",
+    "secret_short_circuit": "secret-branch",
+    "secret_index": "secret-index",
+    "secret_if": "secret-branch"
+  }
+}
