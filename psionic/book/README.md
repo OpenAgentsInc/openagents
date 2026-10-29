@@ -20,8 +20,11 @@ run examples directly without the check command.
 | [1. Learning a number](ch01-learning-a-number.md) | Runnable: CPU | Train `prediction = weight * x`, check every loss, predict a held-out value, and refuse malformed work. |
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
-sets the future reading order and early Elephant/Mammoth delivery path. The
-[roadmap](../../docs/psionic/roadmap.md) lists future work. Planned language and
+sets the proposed full reading order: early Elephant/Mammoth and useful
+retrieval, then training/nanochat, vision, motion, speech, physics and composite models.
+Its prerequisite map lets independent branches start earlier than their
+position in the contents. The [roadmap](../../docs/psionic/roadmap.md) lists
+future work. Planned language and
 ML features are not runnable claims. Exact transcripts describe the current
 CPU arithmetic/printing profile; per-value tolerances state the numerical
 contract independently of formatting.

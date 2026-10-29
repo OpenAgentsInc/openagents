@@ -162,3 +162,34 @@ Apple CPU is the first local target; Metal is the proposed first accelerator.
 Linux CPU, CUDA, browser/Wasm, and multi-device execution each need their own
 ABI, numerical, resource, and lifecycle evidence. A successful Mac build does
 not qualify those targets.
+
+## Breadth grows from concrete operator families
+
+The [expanded book plan](../../psionic/book/PLAN.md) and
+[NVIDIA survey](nvidia-breadth.md) propose more than language models. Each
+branch extends the same library with explicit operators and representations:
+convolution/resampling and patch layout for vision; spectral/complex and
+spherical arithmetic for audio/fields; point neighborhoods and signed
+distances for geometry; codebooks/rotations/skeletons for motion; recurrent
+state and expert routing for new sequence architectures; diffusion/flow
+schedules and embodiment normalization for world/action models.
+
+Add each family through tiny independent examples before importing a complete
+checkpoint. Preprocessing, codecs, physical units, coordinate frames, timing
+and output interpretation belong in the model profile alongside tensor names.
+The host supplies decoding/device effects as needed; model decisions and
+numerical transforms remain Coax. Avoid forcing every modality into a text
+tokenizer or treating every persistent state as a KV cache.
+
+The early physical surrogate uses ordinary first-order supervised learning.
+Input/higher-order derivatives for PINNs require an explicit autodiff extension;
+codebooks, geometry queries and stochastic sampling likewise need stated
+differentiability rules. Frozen-feature training must identify the trainable
+head instead of implying gradients through the entire imported encoder.
+
+Model compatibility, backend qualification, training reproduction and consumer
+behavior are separate claims. A checkpoint can be imported without its full
+original corpus; a training recipe still needs permitted data and exact resume
+to become a reproducible chapter. Preserve weight, code, sample-data and
+training-data terms independently. The survey records concrete source
+inconsistencies to resolve when those proposed targets are selected.

@@ -20,6 +20,7 @@ refusals, and execution evidence throughout that progression.
 | [Research and lessons](research.md) | What we read in this repository's history, `~/work/psionic`, `~/work/ml-book`, and `coax/book/`; pinned sources and lessons. |
 | [Architecture and considerations](architecture.md) | What belongs in Coax, storage and numerical contracts, compiler limits, and the eventual backend boundary. |
 | [Starting point and roadmap](roadmap.md) | A concrete first change, a chapter sequence, dependencies, and acceptance gates. |
+| [NVIDIA breadth and target survey](nvidia-breadth.md) | Proposed retrieval, vision, motion, speech, physics, hybrid/MoE, world-model and robotics studies; pinned sources and data/terms distinctions. |
 | [Development process](process.md) | How prose, checks, library code, examples, and evidence move together. |
 
 The planning documents live here. The root [psionic/](../../psionic/README.md)
@@ -40,8 +41,11 @@ records the two ready starting points. [Elephant and Mammoth](model-targets.md) 
 real-weight targets, delivered ahead of general training work. The
 [nanochat study](nanochat.md) separates checkpoint inference, pretraining, SFT
 and reward training; [the book plan](../../psionic/book/PLAN.md) maps their
-reading order. Implementation readiness is the dependency graph, not chapter
-number.
+reading order. The expanded contents also proposes NVIDIA studies beyond
+language: retrieval, vision, motion, speech, scientific ML, world generation
+and robot policies. [The survey](nvidia-breadth.md) explains selection and
+qualifications. New breadth is proposed; this update adds no project issues.
+Implementation readiness is each branch's prerequisites, not chapter number.
 
 ## Where to start
 
@@ -53,8 +57,9 @@ predicts on a held-out input. The same Coax implementation runs through its
 authored checks and a compiled native host.
 
 The next milestone adds bounded tensor shape/storage admission and scalar CPU
-matrix operations. Subsequent chapters replace the hand-written gradient with
-autodiff over the shared operations, then build a byte-level language model.
+matrix operations. The early forward path then implements Elephant and Mammoth.
+The learning path replaces the hand-written gradient with autodiff over those
+same operations, then builds small physical and language models.
 The [roadmap](roadmap.md) specifies the boundaries of each step.
 
 ## Decisions for the first iteration

@@ -1,7 +1,8 @@
 # Starting point and roadmap
 
-Status: M0 implemented on the tested Apple LP64 CPU host; M1–M9 remain
-`planned`. [Run the first chapter](../../psionic/book/ch01-learning-a-number.md)
+Status, 2026-10-28: M0 is implemented on the tested Apple LP64 CPU host.
+Every later milestone and model study remains `planned`.
+[Run the first chapter](../../psionic/book/ch01-learning-a-number.md)
 or `psionic/check.sh`; [retained verification](../verification/psionic-m0-2026-10-28.md)
 records the scope. Later chapter titles are working names; gates determine
 completion, not a calendar or page count.
@@ -54,7 +55,9 @@ this first milestone.
 The owner priority is [native Elephant and Mammoth](model-targets.md), with
 shared foundations reused by the later [nanochat pipeline](nanochat.md).
 [The live Psionic project](https://openagents.com/projects/psionic) contains
-the dependency graph, acceptance checks, and stable issue slugs. Its source
+the existing decision/nanochat dependency graph, acceptance checks and stable
+issue slugs. The NVIDIA breadth and expanded contents below are proposals;
+this update does not add project issues. The existing queue source
 is [work/roadmap.json](../../apps/openagents-web/projects/psionic/work/roadmap.json).
 Future work is open; M0 alone is recorded complete.
 
@@ -79,29 +82,74 @@ A large-weight reference/target run records its actual machine, memory and
 compute admission when undertaken. No budget, deployment or model download is
 a prerequisite for starting the ready work.
 
-## The cumulative library and book
+## Proposed book order
 
-Milestone names remain the library's coverage map; their number is not delivery
-priority. [The book plan](../../psionic/book/PLAN.md) is the current reading
-order, including the early real-model case study and later nanochat chapters.
+The [full proposed table of contents](../../psionic/book/PLAN.md) now gives
+one outline per chapter, with prerequisite notes. Only chapter 1 is runnable;
+chapter numbers and part boundaries are provisional. The new
+[NVIDIA breadth survey](nvidia-breadth.md) records pinned candidate checkpoints,
+operator requirements, data studies and source-license qualifications.
 
-| Milestone | Dependencies | Result and completion gate |
+| Part | Chapters | Result the reader builds toward |
 | --- | --- | --- |
-| M0: learning a number — implemented | Current CPU subset | `psionic/check.sh`: exact first update, bounded training/held-out result, native refusals/aliases, sanitizers, listings and transcripts. |
-| M1: shapes and dense numerics | M0 | Bounded storage, dot/matmul/gather/reductions/normalization with independent oracles and per-operation numerics. Chapters 2–3. |
-| Early decision path | M1 plus pinned artifacts/tokenizer and the hybrid forward architecture | Original-weight Elephant, then Mammoth, text first. Independent masks, prefix-state forks, slot probabilities and complete real-weight requests. Chapters 10–14 can ship before chapters 4–9. |
-| M2: arrays, autodiff and SGD | M1 | A tiny classifier, analytic/finite-difference gradients, bounded tape/state and reproduction of the manual trainer. Chapters 4–5. |
-| M3: byte language model | M2 | A real byte vocabulary, fixed licensed splits, likelihood, named RNG and complete small training/generation. Chapters 6–7. |
-| M4: complete causal decoder | M3 | Causal attention/FFN, full gradients, full-versus-cached logits, causal isolation and a complete tiny training example. Chapters 8–9. |
-| M5: artifacts and resumable state | Forward artifact work starts after M1; optimizer/data-state work after M2 | Bounded safetensors/BF16 and exact model/tokenizer identity early; deterministic packing, RNG/optimizer/data-state resume later. Weight import does not depend on completing generic training. Chapters 10 and 19. |
-| M6: measured CPU behavior | Every concrete operation/workload as it appears | Fixed numerical and memory/latency observations before optimization; raw samples and honest failed budgets. Chapter 15. |
-| M7: native device execution | M1 operations and the explicit Coax compute milestone | Generated kernels actually run on a named device with CPU numerical oracles, bindings, limits and completion/lifetime checks. Decision inference is the first consumer. Chapter 16. |
-| M8: quantization and local inference | Original-weight model reference; M7 for device claims | Independent block vectors, partial-row refusal, separate identities and measured held-out numerical/quality/memory effects. Chapter 17. |
-| nanochat inference and gradients | Shared artifacts/tokenizer plus M4 | The pinned complete architecture, inert checkpoint export, exact tokenization, cached inference and every enabled feature's gradients. Chapter 18. |
-| nanochat pretraining | Its forward/backward profile, data/resume, exact AdamW/Muon groups and held-out checks | A tiny complete deterministic run first; measured one-device scale later. Upstream speedrun cost/speed is not inherited. Chapters 19–21. |
-| SFT and reward training | Pretraining, masked conversation data, independent evaluation and rollout/reward contracts | SFT first, then the specific pinned nanochat policy-gradient recipe; separate promotion/regression evidence. Chapters 22–23. |
-| Decision post-training | Qualified hybrid forward/backward plus shared optimizer/data/evaluation | Bounded trainable regions/adapters, cross-entropy/Brier/abstention, resume and held-out promotion; it need not wait for nanochat RL. Chapter 24. |
-| M9: serving, vision and distributed work | Qualified local models and explicit consumer/target contracts | Shared System One integration; separately qualified image handling; one actual homogeneous multi-device training topology. Chapters 25–26 extend integration topics; broader APIs and scale remain explicit follow-ups. |
+| I. Small numbers, real contracts | 1–3 | Scalar learning → bounded shapes/storage → dense CPU numerics. |
+| II. Open weights early | 4–11 | Weights/tokenizer → attention and Qwen hybrid → decision masks/state/readout → **Elephant, then Mammoth**. |
+| III. Measurable execution | 12–15 | CPU evidence, Coax-generated Metal, one quantization profile and optional CUDA backend. |
+| IV. Useful inference | 16–17 | Nemotron embeddings search the Coax book; Minitron continues text. |
+| V. Learning foundations | 18–23 | Arrays/autodiff → our own physical surrogate → byte LM → complete tiny trained decoder. |
+| VI. Data and optimization | 24–25 | Provenance, packing/resume and exact AdamW/Muon updates. |
+| VII. nanochat and post-training | 26–33 | Exact forward/backward → pretraining → SFT/tools; separately specified continued pretraining, preferences, nanochat rollouts and decision post-training. |
+| VIII. Vision and generative primitives | 34–37 | Image operations → C-RADIO features → older Cosmos image tokenizer → tiny diffusion/flow model. |
+| IX. Motion for Verse | 38–41 | Poses/codebooks → MotionBricks SOMA → explicit Verse animation integration. |
+| X. Speech | 42–44 | Audio/spectral features → FastConformer → Parakeet TDT transcription. |
+| XI. Scientific ML | 45–49 | Spectral layers/Darcy FNO; geometry/DoMINO; optional independent FourCastNet3 weather branch. |
+| XII. More sequence architectures | 50–53 | Tiny state-space → Nano hybrid → tiny MoE → Lightning. |
+| XIII. World models and policies | 54–58 | One Cosmos3-Edge path; separately, tiny imitation → conditional GR00T study → simulated control loop. |
+| XIV. Operate and scale | 59–60 | Shared System One serving and one real distributed-training topology. |
+| Optional laboratories | A–C | SmolLM2-135M import; Mini/Bolt assistant architectures; higher-order derivatives/PINNs. |
+
+The first NVIDIA application should be **semantic retrieval with Nemotron
+embeddings**. The preferred first major Verse ML demonstration is
+**MotionBricks-generated skeletal motion**. These follow the owner's urgent
+decision-model path. Small solver-generated physical learning can start
+immediately after autodiff, well before the large scientific checkpoints.
+
+## Delivery branches and their gates
+
+This is a dependency map, not a requirement to execute the fourteen parts
+serially. Library milestone labels M0–M9 retain their existing coverage meaning;
+the broader model studies extend that map without changing signed issue IDs.
+
+| Branch / existing milestone coverage | What it actually needs | Completion gate |
+| --- | --- | --- |
+| M0: scalar learning — implemented | Current tested CPU subset | `psionic/check.sh`, retained native/mutation/sanitizer/book evidence. |
+| M1: shapes and dense numerics | M0 | Bounded storage and independent dot/matmul/gather/reduction/normalization oracles. Chapters 2–3. |
+| Urgent decision inference | M1, bounded artifacts/tokenizer, exact Qwen hybrid and decision contract | Complete original-weight Elephant, then Mammoth; masks, prefix isolation, slot probabilities and real-weight request evidence. Chapters 4–11. |
+| M5: artifacts and resumable state | Artifact admission after M1; optimizer/data state once training exists | Early safetensors/BF16 with exact identities; later deterministic packing and model/optimizer/RNG/data-state resume. Chapters 4 and 24. |
+| M6–M8: performance, devices, quantization | Concrete operators and CPU references; original-weight evidence before quantization claims | Measured budgets, real generated-kernel execution, device lifetimes and separately qualified approximate profiles. Chapters 12–15 accompany decision work. |
+| NVIDIA retrieval / dense continuation | Shared forward operations/artifacts plus each target's tokenizer, masks and configuration | Token/intermediate/output reference checks plus held-out retrieval or full/cached logits. Chapters 16–17. |
+| M2–M4: generic learning | M1 → arrays/autodiff → byte LM and complete causal decoder gradients | Analytic/finite-difference checks and complete tiny training/held-out generation. Chapters 18–19 and 21–23. |
+| Early physical learning | Arrays/autodiff and a checked owned solver | Supervised surrogate, held-out initial conditions/parameters, one-step and rollout errors. Chapter 20; no language-model prerequisite. |
+| nanochat pipeline | Exact enabled forward/backward features, tokenizer, data/resume and AdamW/Muon | Tiny complete pretraining → SFT → pinned on-policy reward recipe; stage-specific numerical, gradient and held-out gates. Chapters 24–29 and 32. |
+| Additional post-training | Shared training/evaluation; specific data/objective contracts | Continued pretraining, preference/reward/DPO and decision adaptation are separate studies. Chapters 30–31 and 33; decision adaptation does not wait for nanochat RL. |
+| Vision | Shared forward core and exact image/patch/convolution operators; autodiff for trained heads | C-RADIO feature/retrieval checks; separately qualify the older Cosmos tokenizer and tiny diffusion/flow. Chapters 34–37. Elephant/Mammoth vision remains its own exact encoder/preprocessing profile. |
+| Verse motion | Shared attention, required codec operators, rotations/skeleton/codebooks | Complete SOMA root/pose/decoder trajectory references before Verse integration. Chapters 38–41; speech and physics do not block it. |
+| Speech | Shared convolution/attention and exact spectral/audio features | Parakeet encoder/decoder references and WER/CER; voice integration gets explicit timing/bounds. Chapters 42–44. |
+| Scientific ML | Shared training/spectral core for Darcy; geometry operators for DoMINO; spherical operators for weather | Solver comparisons, bounded datasets, exact preprocessing and physical evaluation. Chapters 45–49; DoMINO and FourCastNet3 are independent specialties. |
+| New language architectures | Dense inference and exact recurrence; explicit router/expert execution for MoE | Tiny state transitions and expert choices, then complete Nano/Lightning checkpoint evidence. Chapters 50–53; optional Mini/Bolt retain distinct profiles. |
+| World generation | Mature vision, exact codecs, temporal conditioning and diffusion/flow methods | One complete bounded Cosmos3-Edge path; reference agreement and physical quality are separate tests. Chapters 54–55. |
+| Robot policies | Shared vision/language, training/flow, embodiment normalization and tiny imitation | Conditional GR00T artifact selection and one simulated action/control-loop profile. Chapters 56–58; Cosmos execution is not a prerequisite. |
+| M9: integration and scale | A qualified model plus protocol consumer / a correct resumable trainer plus selected backend | Versioned shared System One integration / one actual homogeneous multi-device topology. Chapters 59–60 can start as their own prerequisites arrive. |
+
+Do not wait for a fast full-model CPU service before starting Metal compute.
+Likewise, choosing NVIDIA weights does not imply CUDA support or require CUDA
+for correctness. Coax owns arithmetic on each backend; native bindings provide
+platform effects. A reference runtime remains development tooling.
+
+The existing [project issue map](project.md) remains the executable work queue
+for its 38 tasks. When selecting a new breadth branch, create concrete issues
+from that branch's operator/data/checkpoint gates. This proposal creates no
+new issues, model downloads, hardware purchases or deployment requirements.
 
 ## What support means
 
@@ -114,8 +162,18 @@ GPU memory. Quantized outputs get their own approximation/quality gates.
 For nanochat, distinguish forward/checkpoint compatibility, tokenizer behavior,
 all enabled gradients, optimizer updates, whole pretraining, SFT and RL. The
 pinned speedrun has no standalone mid-training stage and runs SFT after base
-training; RL is separate. An arbitrary tiny GPT or a Python wrapper cannot
-close the native nanochat issues.
+training; RL is separate. Our proposed continued-pretraining and preference
+chapters are extensions with their own contracts. Nanochat's reward recipe
+does not depend on a separately trained reward model or establish generic PPO
+compatibility.
+
+For broader models, distinguish downloadable weights, reference-code terms,
+training recipes and usable data. The [NVIDIA survey](nvidia-breadth.md)
+records the C-RADIO code/weight distinction, MotionBricks sample-data limits,
+GR00T's unresolved card/license inconsistency, older/current Cosmos boundaries
+and restricted Nemotron pretraining data. The Darcy recipe is not a qualified
+pretrained artifact. A stable physical rollout, a transcription evaluation or
+an exact skeleton/action interface requires evidence beyond tensor execution.
 
 Keep M0 and the tiny complete decoder as cumulative regressions. Write each
 chapter from its running library result, and keep incomplete material labelled

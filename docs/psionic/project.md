@@ -70,3 +70,8 @@ bun coax/web/project/snapshot.ts --project psionic
 The project signing key stays in its existing per-project secret-file convention outside the repository, with private filesystem permissions. Never print or commit it. The public identity alone is in project.json. [QUEUE.md](../../coax/web/project/QUEUE.md) describes claims, plans, completion evidence and release. Current workers commit and push main; imported historical PR instructions do not override the agent contract.
 
 The M0 baseline links to [its verified pushed commit](https://github.com/OpenAgentsInc/openagents/commit/38eab9b9fe0326c333325ff5a05df400de1dd0e2) and [verification](../verification/psionic-m0-2026-10-28.md). No future model or training task is marked complete by publishing this plan.
+
+The [expanded proposed contents](../../psionic/book/PLAN.md) and
+[NVIDIA breadth survey](nvidia-breadth.md) extend the planning horizon. Their
+new studies have not been added to this signed queue; the existing task slugs
+and dependencies remain the issue map for the work already published.
