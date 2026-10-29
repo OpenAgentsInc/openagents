@@ -148,9 +148,21 @@ ff_ask_body :: (out: [] u8, f: [] Forest, c: int, lines: [] FfLine, question: st
 
 // The "text" of the server's answer, unescaped, into out; its length.
 ff_answer_text :: (body: string, out: [] u8) -> int {
-  key := "\"text\":\"";
+  // "text", then a colon and the opening quote, with or without spaces between (the server writes "text": ")
+  key := "\"text\"";
   i := 0; found := -1;
-  while i + key.count <= body.count { if body[i..<i + key.count] == key { found = i + key.count; break; } i += 1; }
+  while i + key.count <= body.count {
+    if body[i..<i + key.count] == key {
+      j := i + key.count;
+      while j < body.count && body[j] == ' ' { j += 1; }
+      if j < body.count && body[j] == ':' {
+        j += 1;
+        while j < body.count && body[j] == ' ' { j += 1; }
+        if j < body.count && body[j] == '"' { found = j + 1; break; }
+      }
+    }
+    i += 1;
+  }
   if found < 0 { return 0; }
   n := 0; i = found;
   while i < body.count && body[i] != '"' && n < out.count {
@@ -201,4 +213,7 @@ ff_has :: (text: string, part: string) -> bool {
   t: [64] u8;
   m := ff_answer_text("{\"text\":\"Oh, \\\"thank\\\" you!\\nTruly.\",\"model\":\"g\"}", t[..]);
   #assert cast(string) t[0..<m] == "Oh, \"thank\" you! Truly.";
+  // as the server writes it: a space after each colon
+  m = ff_answer_text("{\"text\": \"Oh, hello.\", \"model\": \"gemini\"}", t[..]);
+  #assert cast(string) t[0..<m] == "Oh, hello.";
 }
