@@ -1,0 +1,294 @@
+{
+  "schema": "coax.ecdh-fixed-serialization-evidence.v1",
+  "scope": "fixed source serialization and public fixture comparisons; whole-entry audit and production approval remain separate",
+  "source_sha256": {
+    "coax/lib/crypto/ecdh.coax": "2f6509d0bb427fa811c274838ad19aa6d1a22550663b62720d2cd595e4d35c39",
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/tests/nostr/ecdh_serialization_proof.py": "1abdf2e510fbbd7cee6a853e87742f62712344e026ee0b17f5a5a0f3b2eb8362",
+    "tools/coax-nostr/ecdh/prove_fused.py": "7b1e8888f1a6f7d89fb15a336978ed5fda7e54d300c9c412ea1a35d940f6da07",
+    "coax/tests/nostr/ecdh_vectors.py": "57490509c8a4566745b26e668434e21f032d2331bf6dbcb3797e8baacc581385",
+    "coax/tests/nostr/ecdh_wasm.c": "f7c06d724386c2d9ccfbc3cfb8bdeb61b679a7830d5f8c12f4486037acff5ec4",
+    "coax/tests/nostr/ecdh_wasm.cjs": "b14f9262f02aaa6080bf4b0be61692dc5b5ff9c4cbc85d3857053e4cdf1bcb31",
+    "coax/tests/nostr/ecdh_host.py": "02ca80af6da0a900efe613f9f8038ca43d41fe7f6c87fed879c38d3552e515c7",
+    "coax/tests/nostr/ecdh_host_fixture.c": "819007609d11f2ad5583607403ed5d7ad4b2294a8d81ae19fa70f4f2777ea0ec",
+    "coax/tests/nostr/ecdh_host_wasm.cjs": "1f5ec8170724f85b5fe60cb2648856f2b983f48a862a68da5a700991757968f2",
+    "coax/lib/crypto/platform/ecdh_host.c": "508a6e3f8a06869dd7741445457d8b52ed52aae542e6bb510159b61111cc2a2b",
+    "coax/lib/crypto/platform/ecdh_host.h": "9920a2210d2a249b4f4ad73423b8371a58e99639fca90eb13864c394853f04b9"
+  },
+  "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+  "source_checks": 107,
+  "full_path_steps": 19764417,
+  "high_window_steps": 19764636,
+  "mutation": {
+    "mutants": 1842,
+    "killed": 1842,
+    "survived": 0,
+    "log_sha256": "cce7bb6f6917956e01e781070e03697ccfb4665741952a6ffc7f04870698c80b"
+  },
+  "proof": {
+    "schema": "coax.ecdh-fixed-serialization-proof.v1",
+    "scope": "word-byte and public index lemmas; actual source and call correspondence require independent review",
+    "source_sha256": {
+      "coax/lib/crypto/ecdh.coax": "2f6509d0bb427fa811c274838ad19aa6d1a22550663b62720d2cd595e4d35c39",
+      "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd"
+    },
+    "script_sha256": "1abdf2e510fbbd7cee6a853e87742f62712344e026ee0b17f5a5a0f3b2eb8362",
+    "base_model_sha256": "15d72eb3b45bfe5cf62a968f70cf8f650f88eff360f44bd77c31d2e5c16d3d58",
+    "solver": "z3 5.3.2",
+    "solver_library": {
+      "path": "/opt/homebrew/Cellar/z3/5.3.2/lib/libz3.5.3.2.0.dylib",
+      "sha256": "bf9c9e020f19228523ee7bbf8595181328905158fe37e4ecead5f6cec9651be6"
+    },
+    "checks": [
+      {
+        "name": "word_byte_0",
+        "result": "unsat",
+        "smt_sha256": "4aed3b044b4ee793288a2c1cc69f6a5f2292673d8c787a1cc7b8c46cdd7cc25f"
+      },
+      {
+        "name": "word_byte_1",
+        "result": "unsat",
+        "smt_sha256": "1213e9606e0179114e02d6cdd77bfe62136406dea34e71a471a6fd9b04f75894"
+      },
+      {
+        "name": "word_byte_2",
+        "result": "unsat",
+        "smt_sha256": "c1759591822a450312ce46b3dd0d567818f7a4c6942cde9241d63a98504755d4"
+      },
+      {
+        "name": "word_byte_3",
+        "result": "unsat",
+        "smt_sha256": "b493c9588173bc87f2aa4bf4492b2781253035c742cf038d0bd7518e6fb083e4"
+      },
+      {
+        "name": "bounds_and_unique_positions",
+        "result": "unsat",
+        "smt_sha256": "5088dfcb7c4bef8ad8d4534d10c77882963c95353049762a974c12e9ce387edd"
+      },
+      {
+        "name": "single_loop_matches_word_and_byte_indices",
+        "result": "unsat",
+        "smt_sha256": "20d2534d786b64e4aa42c16f0be9434e273f1ac6280ec45ac8c044f91a3dadd3"
+      },
+      {
+        "name": "reversed_byte_index_control",
+        "result": "sat",
+        "smt_sha256": "67aa817d63e2d5cfbd031772fecf6a26c0af68c4f21bdefbddcffaf00615fd48"
+      }
+    ]
+  },
+  "fused_proof": {
+    "schema": "coax.ecdh-fused-proof.v1",
+    "scope": "integer lemmas and public chain exponent; manual source correspondence and caller closure remain separate",
+    "source_sha256": {
+      "coax/lib/crypto/ecdh.coax": "2f6509d0bb427fa811c274838ad19aa6d1a22550663b62720d2cd595e4d35c39",
+      "coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915",
+      "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+      "coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+      "coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+      "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "coax/lib/crypto/secp_mult_const.coax": "948b31ef93663792305347ca5f65e22259c5777e783edf7b9502b09033de622b",
+      "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+      "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd"
+    },
+    "script_sha256": "7b1e8888f1a6f7d89fb15a336978ed5fda7e54d300c9c412ea1a35d940f6da07",
+    "base_model_sha256": "15d72eb3b45bfe5cf62a968f70cf8f650f88eff360f44bd77c31d2e5c16d3d58",
+    "solver": "z3 5.3.2",
+    "solver_library": {
+      "path": "/opt/homebrew/Cellar/z3/5.3.2/lib/libz3.5.3.2.0.dylib",
+      "sha256": "bf9c9e020f19228523ee7bbf8595181328905158fe37e4ecead5f6cec9651be6"
+    },
+    "chain": [
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        1,
+        1,
+        0
+      ],
+      [
+        2,
+        3,
+        2
+      ],
+      [
+        3,
+        3,
+        2
+      ],
+      [
+        4,
+        2,
+        1
+      ],
+      [
+        5,
+        11,
+        5
+      ],
+      [
+        6,
+        22,
+        6
+      ],
+      [
+        7,
+        44,
+        7
+      ],
+      [
+        8,
+        88,
+        8
+      ],
+      [
+        9,
+        44,
+        7
+      ],
+      [
+        10,
+        3,
+        2
+      ],
+      [
+        11,
+        23,
+        6
+      ]
+    ],
+    "inverse_exponent_hex": "0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2d",
+    "checks": [
+      {
+        "name": "fused_canonical_range_and_congruence",
+        "result": "unsat",
+        "query_sha256": "d303e438ebcdaeda78c5c22deb15bcb17c065136fe23a701813b5a770701b28d"
+      },
+      {
+        "name": "incoming_carry_is_required",
+        "result": "sat",
+        "query_sha256": "fedd188a4776eee6966acbdbfaacce465ee8c67993a1522636cc5bd48cdd9bc5",
+        "witness": {
+          "fused_low": "0",
+          "fused_carry": "1"
+        }
+      },
+      {
+        "name": "product_first_fold_carry_and_residual",
+        "result": "unsat",
+        "query_sha256": "97cd2a3914c1804b122e4f159b895e3995e38e5e12b5444507922b66bea7c058"
+      },
+      {
+        "name": "add_first_fold_carry_and_residual",
+        "result": "unsat",
+        "query_sha256": "5321e34de940692c2217989f079129cee53ea309b4a8e9f8991412d0613f7e98"
+      },
+      {
+        "name": "schoolbook_wide_and_carry",
+        "result": "unsat",
+        "query_sha256": "064d3ab6c2636bf6799c4d52598f57cde2de804480a3a0cbdce836486284fa5f"
+      },
+      {
+        "name": "product_high_fold_identity",
+        "result": "unsat",
+        "query_sha256": "e50bd337c43dba2075e0e66c1b1e461f53540ab798ba24923228f60b2ebc3a19"
+      }
+    ]
+  },
+  "vectors": {
+    "source_graph": {
+      "coax/lib/crypto/ecdh.coax": "2f6509d0bb427fa811c274838ad19aa6d1a22550663b62720d2cd595e4d35c39",
+      "coax/lib/crypto/secp_mult_const.coax": "948b31ef93663792305347ca5f65e22259c5777e783edf7b9502b09033de622b",
+      "coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+      "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+      "coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+      "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+      "coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+      "coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915"
+    },
+    "oracle_sha256": "8c46f911b6821f9fc0de66a55d50b11325e364cf64afd95ca6ab0b7f2882201b",
+    "schema": "coax.ecdh-public-oracle.v1",
+    "scope": "public fixtures; no source-flow, hidden-copy, target or production approval",
+    "counts": {
+      "nip44": 35,
+      "wycheproof_valid": 473,
+      "wycheproof_invalid_x": 13,
+      "wycheproof_excluded": 266,
+      "invalid_scalar": 4,
+      "invalid_peer": 1,
+      "random": 256,
+      "seeded_default_hash": 1
+    },
+    "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+    "inputs": {
+      "coax/lib/crypto/ecdh.coax": "2f6509d0bb427fa811c274838ad19aa6d1a22550663b62720d2cd595e4d35c39",
+      "coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915",
+      "coax/tests/nostr/ecdh_vectors.py": "57490509c8a4566745b26e668434e21f032d2331bf6dbcb3797e8baacc581385",
+      "coax/tests/vectors/upstream/nip44/nip44.vectors.json": "269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040",
+      "coax/tests/vectors/upstream/wycheproof/ecdh_secp256k1_test.json": "049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae",
+      "coax/tests/nostr/ecdh_wasm.c": "f7c06d724386c2d9ccfbc3cfb8bdeb61b679a7830d5f8c12f4486037acff5ec4",
+      "coax/tests/nostr/ecdh_wasm.cjs": "b14f9262f02aaa6080bf4b0be61692dc5b5ff9c4cbc85d3857053e4cdf1bcb31"
+    },
+    "modes": [
+      {
+        "mode": "checked",
+        "native_cases": 783,
+        "native_failures": 0,
+        "native_artifact_sha256": "9ac55bde73645b83c797d1b6d5a87556d68274e4550a35451d699bd493462b57",
+        "wasm_artifact_sha256": "4d5005d2b17369181d8d2925cead2616ff7d5b1c013e61c5821ddb5ccf88dc03",
+        "wasm": {
+          "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+          "cases": 783,
+          "failures": 0
+        }
+      },
+      {
+        "mode": "release",
+        "native_cases": 783,
+        "native_failures": 0,
+        "native_artifact_sha256": "d20bcccb2cbbd45244e0005cf7768efb8e0f8595f5c82da9a73f800ed46ab87f",
+        "wasm_artifact_sha256": "501bee7d4746f6cad2b425db4a1ef52cafeb6458262e81e94a8459631bb8dc66",
+        "wasm": {
+          "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+          "cases": 783,
+          "failures": 0
+        }
+      }
+    ],
+    "fixtures_sha256": "40bc18ddcb966e7d7975d0d758d12df5519c5a21acdda60c15cc026f93a95d65"
+  },
+  "log_sha256": {
+    "checks": "eac809959f98593d3ca3497ef6972256b2a7add90f3d469c7f98cdd431e65bfd",
+    "host": "1c29356f4e10537548c57b7c07048dc7cc4acf795f833a73fde1b3fd7f9b286f",
+    "prior_frontend_capacity_refusal": "1b2039f3068e7a336d8a2961d46633304a496558e9f9418bd0810ce15d3b1f09"
+  },
+  "provisional_whole_entry": {
+    "accepted": false,
+    "error_name": "guard-obligations",
+    "visited_nodes": 168959,
+    "guards": [
+      {
+        "line": 239,
+        "column": 3,
+        "classification": "public-unproved",
+        "source_sha256": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484"
+      },
+      {
+        "line": 492,
+        "column": 5,
+        "classification": "public-unproved",
+        "source_sha256": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484"
+      }
+    ],
+    "report_sha256": "dc50cbcbc4417df8204bd495717e52c21d99bb9242d5dccff3979954d6f9b6f9",
+    "scope": "uncommitted provisional auditor, conditional on declared caller premises; raw refusal retained"
+  },
+  "independent_review": "manual byte, index, source and caller correspondence on exact hashes; no tests rerun or target approval"
+}

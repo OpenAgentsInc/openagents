@@ -51,8 +51,8 @@ ECDH_TEST_PEER :: [32]u8.[0x79,0xbe,0x66,0x7e,0xf9,0xdc,0xbb,0xac,0x55,0xa0,0x62
 }
 #test "high scalar byte reaches the independently computed raw x" {
   key:[32]u8;key[0]=1;peer:=ECDH_TEST_PEER;
-  want:=[8]u32.[0x8c28a97b,0xf8298bc0,0xd23d8c74,0x9452a32e,0x694b65e3,0x0a9472a3,0x954ab30f,0xe5324caa];work:[1]EcdhScratch;
-  #assert ecdh_stage(key[..],peer[..],work[..])==EC_OK;for i:0..<8 {#assert cb_load_be32(work[0].staged[..],i*4).value==want[i];}
+  want:=[4]u64.[0x8c28a97bf8298bc0,0xd23d8c749452a32e,0x694b65e30a9472a3,0x954ab30fe5324caa];work:[1]EcdhScratch;
+  #assert ecdh_stage(key[..],peer[..],work[..])==EC_OK;for i:0..<4 {#assert cb_load_be64(work[0].staged[..],i*8).value==want[i];}
 }
 #test "admitted signed digit and higher window use the full schedule" {
   g:=sg_generator();expected:=g;for i:0..<3 {expected=sg_double_valid(expected);}
@@ -72,13 +72,12 @@ ecdh_table :: (point:Sg32)->[9]Sg32 {
 }
 #test "table starts with infinity and the supplied point" {
   point:=sg32_from_point(sg_generator());table:=ecdh_table(point);inf:=sg32_infinity();
-  #assert (sg32_mask_equal(table[0].x,inf.x)&sg32_mask_equal(table[0].y,inf.y)&sg32_mask_equal(table[0].z,inf.z))==CB_MAX64;
-  #assert (sg32_mask_equal(table[1].x,point.x)&sg32_mask_equal(table[1].y,point.y)&sg32_mask_equal(table[1].z,point.z))==CB_MAX64;
+  #assert (sg32_mask_equal(table[0].x,inf.x)&sg32_mask_equal(table[0].y,inf.y)&sg32_mask_equal(table[0].z,inf.z)&sg32_mask_equal(table[1].x,point.x)&sg32_mask_equal(table[1].y,point.y)&sg32_mask_equal(table[1].z,point.z))==CB_MAX64;
 }
 #test "highest scalar window reaches its independent raw x" {
   key:[32]u8;key[0]=128;peer:=ECDH_TEST_PEER;
-  want:=[8]u32.[0xb23790a4,0x2be63e1b,0x251ad6c9,0x4fdef072,0x71ec0aad,0xa31db6c3,0xe8bd3204,0x3f8be384];work:[1]EcdhScratch;
-  #assert ecdh_stage(key[..],peer[..],work[..])==EC_OK;for i:0..<8 {#assert cb_load_be32(work[0].staged[..],i*4).value==want[i];}
+  want:=[4]u64.[0xb23790a42be63e1b,0x251ad6c94fdef072,0x71ec0aada31db6c3,0xe8bd32043f8be384];work:[1]EcdhScratch;
+  #assert ecdh_stage(key[..],peer[..],work[..])==EC_OK;for i:0..<4 {#assert cb_load_be64(work[0].staged[..],i*8).value==want[i];}
 }
 #test "group order scalar refuses and masks the staged result" {
   key:[32]u8;for i:0..<8 {stored:=cb_store_be32(key[..],i*4,SC_N.limbs[7-i]);}peer:=ECDH_TEST_PEER;work:[1]EcdhScratch;
@@ -111,7 +110,9 @@ ecdh_stage :: (secret:[]u8,peer:[]u8,work:[]EcdhScratch)->u32 #export_c {
   work[0].scalar=sc_select(valid,raw,sc_small(1));
   product:=ecdh_secret_math(work[0].scalar,point.value);work[0].shared=sg32_to_point(product.shared);
   work[0].affine.x=sg32_to_field(product.affine_x);
-  for i:0..<8 {stored:=cb_store_be32(work[0].staged[..],(7-i)*4,product.affine_x.limb[i]);}
+  // The fixed public loop indices cover the 32 staged bytes exactly once.
+  // Each source word is u32; no secret-dependent range check is needed.
+  for i:0..<32 {work[0].staged[31-i]=cast(u8)((product.affine_x.limb[i/4]>>((i%4)*8))&255);}
   mask:=cb_mask(valid);for i:0..<32 {work[0].staged[i]&=cast(u8)(mask&255);}
   return cast(u32)((valid^1)*EC_SCALAR);
 }

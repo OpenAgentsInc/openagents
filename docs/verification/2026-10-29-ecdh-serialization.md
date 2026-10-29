@@ -1,0 +1,9 @@
+# ECDH fixed-work serialization
+
+The ECDH stage now writes its eight 32-bit affine-x words through one fixed 32-iteration public loop. It writes byte `i` at `31-i`, takes word `i/4`, and shifts by `8*(i%4)`. For `i=4*w+b`, this equals the previous big-endian checked store at offset `4*(7-w)+3-b`. Every write is in the 32-byte staged array. The input word is `u32`, so the old helper's range check always succeeded on this call. The existing exported checked byte helper is unchanged.
+
+The [evidence](2026-10-29-ecdh-serialization.json) pins both sources, compiler, test inputs, solver and outcomes. A source-pinned model checks the four byte identities, full index bounds and uniqueness, and the single-loop mapping; its reversed-index negative control is satisfiable. Independent review checked the actual source and caller correspondence. This depends on the documented live, aligned, disjoint workspace and compiler/solver premises, and does not establish target lowering or timing.
+
+All 107 source checks pass under the unchanged budget; the generator-to-raw-x case uses 19,764,417 steps. Independent checked and release native and Wasm comparisons each pass 783 official, adapted and adversarial public fixtures; strict Wycheproof adaptation excludes 266 cases. Native and Wasm cleanup fixtures and native sanitizers pass. The complete ECDH authority mutation gate killed all 1,842 mutants with none surviving. The earlier graph and its evidence remain historical in the candidate report.
+
+A provisional, uncommitted classified-view auditor traversed this exact entry and returned `accepted=false` with two public-unproved field assertions. That result is neither an accepted whole-entry audit nor a proof of the guards. The cooperative explicit-buffer cleanup contract, hidden-copy erasure, object/JIT timing and production-secret use remain separate.
