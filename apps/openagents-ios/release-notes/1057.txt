@@ -1,0 +1,5 @@
+Sign in to openagents.com with your phone: tap SIGN IN at the top right, then Scan a code and point it at the code on openagents.com/signin, and tap Approve. Your computer signs in.
+
+On your project page, LINK A PHONE shows a code; scan it the same way and this phone works for that project. An invite link opened on the phone does the same.
+
+The phone's key stays on this phone and comes back after a reinstall.
