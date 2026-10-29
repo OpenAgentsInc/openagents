@@ -1,0 +1,286 @@
+// secp256k1: Y²=X³+7Z^6, affine x=X/Z²,y=Y/Z³.
+// Canonical Jacobian infinity is(1,1,0). All field inputs admit magnitude<=8.
+// Generic add-2007-bl/dbl-2009-l formulas plus unconditional masked exceptions:
+// https://www.hyperelliptic.org/EFD/g1p/auto-shortw-jacobian-0.html
+// Fixed source work is not target-level constant-time/security approval.
+#load "secp_field.coax";
+#authority;
+SgPoint :: struct { x: SecpField; y: SecpField; z: SecpField; }
+SgAffine :: struct { x: SecpField; y: SecpField; infinity: u64; }
+SgResult :: struct { value: SgPoint; ok: bool; }
+SgAffineResult :: struct { value: SgAffine; ok: bool; }
+SgEncoded :: struct { bytes: [33] u8; length: int; ok: bool; }
+SG_MAX_TABLE :: 256;
+SG_GX :: [10] u64.[49813400,10507973,42833311,57456440,50502652,60932801,33958236,49197398,41875932,1994649];
+SG_GY :: [10] u64.[51434680,32777214,21076420,19044885,16586676,58999338,38780864,51484022,41363107,1183414];
+
+#test "generator, double and add match independent2G and3G fixtures" {
+  g := sg_generator(); two: SgPoint; three: SgPoint;
+  two.x.limb = [10] u64.[7380709,50490967,63601338,19805116,6059918,24125238,5506793,32879809,60047853,3244319];
+  two.y.limb = [10] u64.[13624618,17590868,17699382,26528155,49804850,26950331,5783956,51177103,16688701,440410]; two.z.limb[0] = 1;
+  three.x.limb = [10] u64.[14694137,8144111,26937440,18222526,28651976,36131978,54851679,51134756,33657432,4082722];
+  three.y.limb = [10] u64.[12117618,41901409,36812491,40162056,40173737,42859733,36929122,60837951,51340077,926686]; three.z.limb[0] = 1;
+  #assert sg_valid_mask(g) == CB_MAX64 && sg_valid_mask(two) == CB_MAX64 && sg_valid_mask(three) == CB_MAX64;
+  doubled := sg_double(g); added := sg_add(g,g); next := sg_add(two,g);
+  #assert doubled.ok && added.ok && next.ok;
+  #assert sg_equal_mask(doubled.value,two) == CB_MAX64 && sg_equal_mask(added.value,two) == CB_MAX64;
+  #assert sg_equal_mask(next.value,three) == CB_MAX64;
+  affine := sg_to_affine(two); mixed := sg_mixed_add(g,affine.value);
+  #assert affine.ok && mixed.ok && sg_equal_mask(mixed.value,three) == CB_MAX64;
+}
+#test "all exceptional add and double cases preserve canonical infinity" {
+  g := sg_generator(); inf := sg_infinity(); negative := sg_negate(g);
+  #assert negative.ok && sg_valid_mask(inf) == CB_MAX64;
+  #assert sg_equal_mask(sg_add(g,inf).value,g) == CB_MAX64;
+  #assert sg_equal_mask(sg_add(inf,g).value,g) == CB_MAX64;
+  #assert sg_equal_mask(sg_add(inf,inf).value,inf) == CB_MAX64;
+  opposite := sg_add(g,negative.value); doubled := sg_double(inf);
+  #assert opposite.ok && doubled.ok && sg_equal_mask(opposite.value,inf) == CB_MAX64;
+  #assert sg_equal_mask(doubled.value,inf) == CB_MAX64 && sg_equal_mask(sg_negate(inf).value,inf) == CB_MAX64;
+  #assert opposite.value.x.limb[0] == 1 && opposite.value.y.limb[0] == 1 && opposite.value.z.limb[0] == 0;
+  #assert sg_equal_mask(g,inf) == 0 && sg_equal_mask(inf,g) == 0;
+  #assert sg_equal_mask(g,negative.value) == 0;
+}
+#forall "canonical infinity requires both coordinates and equality rejects aliases" x: 0..<3, y: 0..<3 {
+  point: SgPoint; point.x.limb[0] = cast(u64) x; point.y.limb[0] = cast(u64) y;
+  expected := ifx x == 1 && y == 1 then CB_MAX64 else cast(u64) 0;
+  #assert sg_valid_mask(point) == expected;
+  #assert sg_equal_mask(point,sg_infinity()) == expected && sg_equal_mask(sg_infinity(),point) == expected;
+}
+#test "scaled equal points and field aliases exercise coordinate normalization" {
+  g := sg_generator(); scale: SecpField; scale.limb[0] = 2;
+  scaled := g; scaled.x = sf_multiply(g.x,sf_square(scale)); scaled.y = sf_multiply(g.y,sf_multiply(sf_square(scale),scale)); scaled.z = scale;
+  #assert sg_valid_mask(scaled) == CB_MAX64 && sg_equal_mask(scaled,g) == CB_MAX64;
+  #assert sg_equal_mask(sg_add(scaled,g).value,sg_double(g).value) == CB_MAX64;
+  #assert sg_equal_mask(sg_add(scaled,scaled).value,sg_double(g).value) == CB_MAX64;
+  alias := g;
+  for i: 0..<10 { alias.x.limb[i] += SF_P[i]; alias.y.limb[i] += SF_P[i]; alias.z.limb[i] += SF_P[i]; }
+  normalized := sg_normalize(alias); finished := sg_finish(CB_MAX64,alias);
+  #assert finished.ok;
+  for i: 0..<10 {
+    #assert normalized.x.limb[i] == g.x.limb[i] && normalized.y.limb[i] == g.y.limb[i] && normalized.z.limb[i] == g.z.limb[i];
+    #assert finished.value.x.limb[i] == g.x.limb[i] && finished.value.y.limb[i] == g.y.limb[i] && finished.value.z.limb[i] == g.z.limb[i];
+  }
+}
+#test "invalid bounded points and affine flags refuse with infinity" {
+  bad: SgPoint; g := sg_generator(); inf := sg_infinity(); a: SgAffine;
+  #assert sg_valid_mask(bad) == 0 && sg_equal_mask(bad,bad) == 0;
+  #assert !sg_add(bad,g).ok && !sg_double(bad).ok && !sg_negate(bad).ok && !sg_to_affine(bad).ok;
+  #assert sg_equal_mask(sg_add(bad,g).value,inf) == CB_MAX64;
+  bad.x.limb[0] = 1; bad.z.limb[0] = 1; #assert sg_valid_mask(bad) == 0;
+  refused := sg_to_affine(bad); zero: SecpField;
+  #assert !refused.ok && refused.value.infinity == CB_MAX64;
+  #assert sf_equal_mask(refused.value.x,zero) == CB_MAX64 && sf_equal_mask(refused.value.y,zero) == CB_MAX64;
+  a.x = g.x; a.y = g.y; a.infinity = 1;
+  #assert sg_affine_valid_mask(a) == 0 && !sg_from_affine(a).ok && !sg_mixed_add(g,a).ok;
+  a = sg_affine_infinity(); #assert sg_from_affine(a).ok && sg_affine_valid_mask(a) == CB_MAX64;
+  #assert sg_equal_mask(sg_from_affine(a).value,inf) == CB_MAX64;
+  a.x.limb[0] = 1; #assert sg_affine_valid_mask(a) == 0;
+}
+#test "public compressed and x-only round trips include both parities and infinity" {
+  g := sg_generator(); encoded := sg_encode_public(g);
+  #assert encoded.ok && encoded.length == 33 && encoded.bytes[0] == 2;
+  point := sg_decode_public(encoded.bytes[..]); lift := sg_lift_x_public(encoded.bytes[1..<33]);
+  #assert point.ok && lift.ok && sg_equal_mask(point.value,g) == CB_MAX64 && sg_equal_mask(lift.value,g) == CB_MAX64;
+  encoded.bytes[0] = 3; negative := sg_decode_public(encoded.bytes[..]);
+  #assert negative.ok && sg_equal_mask(negative.value,sg_negate(g).value) == CB_MAX64;
+  infinite := sg_encode_public(sg_infinity());
+  #assert infinite.ok && infinite.length == 1 && infinite.bytes[0] == 0;
+  #assert sg_decode_public(infinite.bytes[0..<1]).ok;
+  bad: SgPoint; bad.x.limb[0] = 1; bad.x.limb[9] = 2097152; bad.z.limb[0] = 1;
+  refused := sg_encode_public(bad);
+  #assert !refused.ok && refused.length == 0;
+  for i: 0..<33 { #assert infinite.bytes[i] == 0 && refused.bytes[i] == 0; }
+}
+#test "public invalid lifts prefixes and lengths return only infinity" {
+  bytes: [34] u8; inf := sg_infinity();
+  #assert !sg_lift_x_public(bytes[0..<32]).ok;
+  #assert !sg_lift_x_public(bytes[..]).ok && !sg_lift_x_public(bytes[0..<0]).ok;
+  #assert sg_equal_mask(sg_lift_x_public(bytes[0..<0]).value,inf) == CB_MAX64;
+  #assert !sg_decode_public(bytes[..]).ok && !sg_decode_public(bytes[0..<0]).ok;
+  #assert sg_equal_mask(sg_decode_public(bytes[0..<0]).value,inf) == CB_MAX64;
+  #assert !sg_decode_public(bytes[0..<33]).ok;
+  bytes[0] = 1; #assert !sg_decode_public(bytes[0..<1]).ok;
+  bytes[0] = 4; #assert !sg_decode_public(bytes[0..<33]).ok;
+  for i: 0..<32 { bytes[i] = 255; }
+  bytes[27] = 254; bytes[30] = 252; bytes[31] = 47;
+  p := sg_lift_x_public(bytes[0..<32]); #assert !p.ok && sg_equal_mask(p.value,inf) == CB_MAX64;
+  bytes[31] = 48; #assert !sg_lift_x_public(bytes[0..<32]).ok;
+  for i: 0..<32 { bytes[i] = 255; }
+  #assert !sg_lift_x_public(bytes[0..<32]).ok;
+  for i: 0..<34 { bytes[i] = 0; } bytes[0] = 3;
+  odd_refusal := sg_decode_public(bytes[0..<33]);
+  #assert !odd_refusal.ok && sg_equal_mask(odd_refusal.value,inf) == CB_MAX64;
+}
+#test "public encoding reads parity from the first limb for odd and multilimb roots" {
+  g := sg_generator(); negative := sg_encode_public(sg_negate(g).value);
+  #assert negative.ok && negative.length == 33 && negative.bytes[0] == 3;
+  three := sg_add(sg_double(g).value,g).value; encoded := sg_encode_public(three);
+  #assert encoded.ok && encoded.length == 33 && encoded.bytes[0] == 2;
+}
+#forall "word equality includes every index bit" bit: 0..<64 {
+  value := cast(u64) 1 << bit;
+  #assert sg_word_equal(value,value) == CB_MAX64 && sg_word_equal(value,0) == 0 && sg_word_equal(0,value) == 0;
+}
+#test "word masks and point selection keep both complete alternatives" {
+  g := sg_generator(); inf := sg_infinity();
+  #assert sg_word_equal(0,0) == CB_MAX64 && sg_word_equal(CB_MAX64,0) == 0;
+  #assert sg_equal_mask(sg_choose(CB_MAX64,g,inf),g) == CB_MAX64;
+  #assert sg_equal_mask(sg_choose(0,g,inf),inf) == CB_MAX64;
+}
+#test "full-scan selection reports invalid selected points and missing indices" {
+  table: [3] SgPoint; table[0] = sg_generator(); table[1] = sg_double(table[0]).value;
+  #assert sg_pick(table[..],0).ok && sg_equal_mask(sg_pick(table[..],0).value,table[0]) == CB_MAX64;
+  #assert sg_pick(table[..],1).ok && sg_equal_mask(sg_pick(table[..],1).value,table[1]) == CB_MAX64;
+  #assert !sg_pick(table[..],2).ok && !sg_pick(table[..],3).ok && !sg_pick(table[..],CB_MAX64).ok;
+  #assert !sg_pick(table[0..<0],0).ok && sg_pick(table[0..<1],0).ok;
+  #assert sg_equal_mask(sg_pick(table[0..<0],0).value,sg_infinity()) == CB_MAX64;
+  large: [257] SgPoint; large[0] = table[0]; large[255] = table[0];
+  #assert !sg_pick(large[..],0).ok && sg_pick(large[0..<256],255).ok;
+}
+
+sg_word_equal :: (a: u64,b: u64) -> u64 {
+  diff := a ^ b; diff |= diff >> 32; diff |= diff >> 16; diff |= diff >> 8;
+  diff |= diff >> 4; diff |= diff >> 2; diff |= diff >> 1;
+  return cb_mask((diff & 1) ^ 1);
+}
+sg_field_choose :: (mask: u64,a: SecpField,b: SecpField) -> SecpField {
+  r: SecpField; for i: 0..<10 { r.limb[i] = cb_ct_select64(mask,a.limb[i],b.limb[i]); } return r;
+}
+sg_choose :: (mask: u64,a: SgPoint,b: SgPoint) -> SgPoint {
+  r: SgPoint; r.x = sg_field_choose(mask,a.x,b.x); r.y = sg_field_choose(mask,a.y,b.y); r.z = sg_field_choose(mask,a.z,b.z); return r;
+}
+sg_affine_choose :: (mask: u64,a: SgAffine,b: SgAffine) -> SgAffine {
+  r: SgAffine; r.x = sg_field_choose(mask,a.x,b.x); r.y = sg_field_choose(mask,a.y,b.y);
+  r.infinity = cb_ct_select64(mask,a.infinity,b.infinity); return r;
+}
+sg_twice :: (a: SecpField) -> SecpField { return sf_add(a,a); }
+sg_infinity :: () -> SgPoint #export_c { r: SgPoint; r.x.limb[0] = 1; r.y.limb[0] = 1; return r; }
+sg_affine_infinity :: () -> SgAffine { r: SgAffine; r.infinity = CB_MAX64; return r; }
+sg_generator :: () -> SgPoint #export_c { r: SgPoint; r.x.limb = SG_GX; r.y.limb = SG_GY; r.z.limb[0] = 1; return r; }
+sg_normalize :: (a: SgPoint) -> SgPoint {
+  r: SgPoint; r.x = sf_normalize(a.x); r.y = sf_normalize(a.y); r.z = sf_normalize(a.z); return r;
+}
+sg_canonical_infinity :: (a: SgPoint) -> SgPoint {
+  zero: SecpField; return sg_choose(sf_equal_mask(a.z,zero),sg_infinity(),a);
+}
+sg_finish :: (valid: u64,a: SgPoint) -> SgResult {
+  r: SgResult; r.value = sg_choose(valid,sg_canonical_infinity(sg_normalize(a)),sg_infinity()); r.ok = valid == CB_MAX64; return r;
+}
+sg_valid_mask :: (a: SgPoint) -> u64 #export_c {
+  zero: SecpField; one: SecpField; one.limb[0] = 1; seven: SecpField; seven.limb[0] = 7;
+  zz := sf_square(a.z); z6 := sf_multiply(sf_square(zz),zz);
+  curve := sf_equal_mask(sf_square(a.y),sf_add(sf_multiply(sf_square(a.x),a.x),sf_multiply(seven,z6)));
+  infinity := sf_equal_mask(a.z,zero);
+  canonical := sf_equal_mask(a.x,one) & sf_equal_mask(a.y,one);
+  return ((CB_MAX64 ^ infinity) & curve) | (infinity & canonical);
+}
+sg_affine_valid_mask :: (a: SgAffine) -> u64 {
+  zero: SecpField; seven: SecpField; seven.limb[0] = 7;
+  curve := sf_equal_mask(sf_square(a.y),sf_add(sf_multiply(sf_square(a.x),a.x),seven));
+  return (sg_word_equal(a.infinity,0) & curve) | (sg_word_equal(a.infinity,CB_MAX64) & sf_equal_mask(a.x,zero) & sf_equal_mask(a.y,zero));
+}
+sg_same_valid :: (a: SgPoint,b: SgPoint) -> u64 {
+  azz := sf_square(a.z); bzz := sf_square(b.z);
+  x := sf_equal_mask(sf_multiply(a.x,bzz),sf_multiply(b.x,azz));
+  y := sf_equal_mask(sf_multiply(a.y,sf_multiply(b.z,bzz)),sf_multiply(b.y,sf_multiply(a.z,azz)));
+  // At canonical infinity, X=Y=1 and Z=0. Both cross-products vanish for
+  // two infinities; against a finite point its nonzero Z makes them differ.
+  return x & y;
+}
+sg_equal_mask :: (a: SgPoint,b: SgPoint) -> u64 #export_c { return sg_valid_mask(a) & sg_valid_mask(b) & sg_same_valid(a,b); }
+
+// These kernels require valid points, and perform no curve validation branch.
+// Doubling is evaluated unconditionally as an add alternative, including at infinity.
+sg_double_valid :: (input: SgPoint) -> SgPoint {
+  p := sg_normalize(input); aa := sf_square(p.x); bb := sf_square(p.y); cc := sf_square(bb);
+  dd := sg_twice(sf_subtract(sf_subtract(sf_square(sf_add(p.x,bb)),aa),cc));
+  ee := sf_add(sg_twice(aa),aa); ff := sf_square(ee);
+  r: SgPoint; r.x = sf_subtract(ff,sg_twice(dd));
+  r.y = sf_subtract(sf_multiply(ee,sf_subtract(dd,r.x)),sg_twice(sg_twice(sg_twice(cc))));
+  r.z = sg_twice(sf_multiply(p.y,p.z)); return sg_canonical_infinity(r);
+}
+sg_add_valid :: (input_a: SgPoint,input_b: SgPoint) -> SgPoint {
+  a := sg_normalize(input_a); b := sg_normalize(input_b);
+  z1z1 := sf_square(a.z); z2z2 := sf_square(b.z);
+  u1 := sf_multiply(a.x,z2z2); u2 := sf_multiply(b.x,z1z1);
+  s1 := sf_multiply(a.y,sf_multiply(b.z,z2z2)); s2 := sf_multiply(b.y,sf_multiply(a.z,z1z1));
+  h := sf_subtract(u2,u1); ii := sf_square(sg_twice(h)); jj := sf_multiply(h,ii);
+  rr := sg_twice(sf_subtract(s2,s1)); vv := sf_multiply(u1,ii);
+  r: SgPoint; r.x = sf_subtract(sf_subtract(sf_square(rr),jj),sg_twice(vv));
+  r.y = sf_subtract(sf_multiply(rr,sf_subtract(vv,r.x)),sg_twice(sf_multiply(s1,jj)));
+  r.z = sf_multiply(sf_subtract(sf_subtract(sf_square(sf_add(a.z,b.z)),z1z1),z2z2),h);
+  zero: SecpField;
+  same := sf_equal_mask(h,zero) & sf_equal_mask(s1,s2);
+  r = sg_choose(same,sg_double_valid(a),r);
+  r = sg_choose(sf_equal_mask(a.z,zero),b,r);
+  r = sg_choose(sf_equal_mask(b.z,zero),a,r);
+  return sg_canonical_infinity(r);
+}
+sg_add :: (a: SgPoint,b: SgPoint) -> SgResult #export_c { return sg_finish(sg_valid_mask(a) & sg_valid_mask(b),sg_add_valid(a,b)); }
+sg_double :: (a: SgPoint) -> SgResult #export_c { return sg_finish(sg_valid_mask(a),sg_double_valid(a)); }
+sg_negate :: (a: SgPoint) -> SgResult #export_c {
+  r := a; r.y = sf_negate(a.y); return sg_finish(sg_valid_mask(a),r);
+}
+sg_from_affine_valid :: (a: SgAffine) -> SgPoint {
+  r: SgPoint; r.x = sf_normalize(a.x); r.y = sf_normalize(a.y); r.z.limb[0] = 1;
+  return sg_choose(sg_word_equal(a.infinity,CB_MAX64),sg_infinity(),r);
+}
+sg_from_affine :: (a: SgAffine) -> SgResult #export_c { return sg_finish(sg_affine_valid_mask(a),sg_from_affine_valid(a)); }
+sg_to_affine_valid :: (a: SgPoint) -> SgAffine {
+  inverse := sf_inverse(a.z).value; square := sf_square(inverse); zero: SecpField;
+  r: SgAffine; r.x = sf_multiply(a.x,square); r.y = sf_multiply(a.y,sf_multiply(square,inverse));
+  r.infinity = sf_equal_mask(a.z,zero); return r;
+}
+sg_to_affine :: (a: SgPoint) -> SgAffineResult #export_c {
+  valid := sg_valid_mask(a); r: SgAffineResult;
+  r.value = sg_affine_choose(valid,sg_to_affine_valid(a),sg_affine_infinity()); r.ok = valid == CB_MAX64; return r;
+}
+// Mixed addition shares the complete kernel; no faster incomplete shortcut.
+sg_mixed_add :: (a: SgPoint,b: SgAffine) -> SgResult #export_c {
+  return sg_finish(sg_valid_mask(a) & sg_affine_valid_mask(b),sg_add_valid(a,sg_from_affine_valid(b)));
+}
+// Every entry is scanned. Only the selected entry is curve-validated; all
+// supplied fields must satisfy the same magnitude precondition as every API.
+sg_pick :: (table: [] SgPoint,which: u64) -> SgResult #export_c {
+  r: SgResult; r.value = sg_infinity();
+  if table.count < 1 || table.count > SG_MAX_TABLE { return r; }
+  chosen := sg_infinity(); seen: u64;
+  for i: 0..<table.count {
+    match := sg_word_equal(which,cast(u64) i); chosen = sg_choose(match,table[i],chosen); seen |= match;
+  }
+  return sg_finish(seen & sg_valid_mask(chosen),chosen);
+}
+
+// These boundaries parse public transport points. Format lengths/prefixes are
+// public choices; field content still follows the full masked lift calculation.
+sg_lift_x_public :: (bytes: [] u8) -> SgResult #export_c {
+  r: SgResult; r.value = sg_infinity();
+  if bytes.count != 32 { return r; }
+  x := sf_load(bytes).value; canonical: [32] u8;
+  #assert sf_store(x,canonical[..]);
+  canonical_mask := cb_ct_equal(bytes,canonical[..]); seven: SecpField; seven.limb[0] = 7;
+  rhs := sf_add(sf_multiply(sf_square(x),x),seven); root := sf_sqrt(rhs).value;
+  valid := canonical_mask & sf_equal_mask(sf_square(root),rhs);
+  candidate: SgPoint; candidate.x = x; candidate.y = root; candidate.z.limb[0] = 1;
+  return sg_finish(valid,candidate);
+}
+sg_decode_public :: (bytes: [] u8) -> SgResult #export_c {
+  r: SgResult; r.value = sg_infinity();
+  if bytes.count == 1 { r.ok = bytes[0] == 0; return r; }
+  if bytes.count != 33 { return r; }
+  if bytes[0] != 2 && bytes[0] != 3 { return r; }
+  r = sg_lift_x_public(bytes[1..<33]);
+  r.value.y = sg_field_choose(cb_mask(cast(u64) bytes[0] & 1),sf_negate(r.value.y),r.value.y);
+  // A refused lift remains infinity, including after choosing odd parity.
+  r.value = sg_canonical_infinity(r.value); return r;
+}
+sg_encode_public :: (a: SgPoint) -> SgEncoded #export_c {
+  valid := sg_valid_mask(a); affine := sg_to_affine_valid(a); r: SgEncoded;
+  #assert sf_store(affine.x,r.bytes[1..<33]);
+  finite := valid & (CB_MAX64 ^ affine.infinity);
+  r.bytes[0] = cast(u8) ((2 | (affine.y.limb[0] & 1)) & finite);
+  for i: 1..<33 { r.bytes[i] = cast(u8) (cast(u64) r.bytes[i] & finite); }
+  r.length = cast(int) (cb_ct_select64(affine.infinity,1,33) & valid);
+  r.ok = valid == CB_MAX64; return r;
+}
