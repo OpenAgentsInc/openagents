@@ -16,7 +16,9 @@
 #
 # The page's first paint (its baked tables in project.wasm) and the commit
 # history are code: they move with the next release, which reads the relay
-# afresh. A release never needs to run for data.
+# afresh. A release never needs to run for data. A release promoting at the
+# same moment can put its own (minutes older) Markdown back; run this again
+# after it if the newest events matter.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../../.." && pwd)"
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
@@ -39,7 +41,8 @@ bun "$tools/list.ts" | sed 's/^/  /'
 files=(projects/index.md); for slug in "${slugs[@]}"; do files+=("projects/$slug/index.md"); done
 for b in $buckets; do
   for f in "${files[@]}"; do
-    gcloud storage cp "$tree/apps/openagents-web/$f" "gs://$b/$f" --content-type "text/markdown; charset=utf-8" --cache-control no-cache --quiet > /dev/null
+    gcloud storage cp "$tree/apps/openagents-web/$f" "gs://$b/$f" --content-type "text/markdown; charset=utf-8" --cache-control no-cache --quiet > /dev/null 2>&1 ||
+      { echo "publish-data: couldn't write gs://$b/$f" >&2; exit 1; }
   done
   if gcloud storage cp "gs://$b/llms-full.txt" "$out/llms-full.txt" --quiet > /dev/null 2>&1; then
     bun -e '
@@ -51,7 +54,8 @@ for b in $buckets; do
         if (files.includes(path)) { parts[i] = `${url}\n\n` + await Bun.file(`${site}/${path}`).text(); changed++ }
       }
       await Bun.write(file, parts.join(sep)); console.log(changed)' "$out/llms-full.txt" "$tree/apps/openagents-web" "${files[@]}" > "$out/n"
-    gcloud storage cp "$out/llms-full.txt" "gs://$b/llms-full.txt" --content-type "text/plain; charset=utf-8" --cache-control no-cache --quiet > /dev/null
+    gcloud storage cp "$out/llms-full.txt" "gs://$b/llms-full.txt" --content-type "text/plain; charset=utf-8" --cache-control no-cache --quiet > /dev/null 2>&1 ||
+      { echo "publish-data: couldn't write gs://$b/llms-full.txt" >&2; exit 1; }
   fi
   echo "  $b: ${#files[@]} files, $(cat "$out/n" 2>/dev/null || echo 0) llms-full.txt sections"
 done
@@ -61,5 +65,6 @@ for slug in "${slugs[@]}"; do
   want="$(grep -m1 '^Snapshot of the project' "$site/$slug/index.md")"
   got="$(curl -sf -H 'cache-control: no-cache' "https://openagents.com/projects/$slug/index.md" | grep -m1 '^Snapshot of the project' || true)"
   [[ "$got" == "$want" ]] || { echo "publish-data: https://openagents.com/projects/$slug/index.md answers \"$got\", not \"$want\"" >&2; exit 1; }
-  echo "publish-data $slug: live on https://openagents.com/projects/$slug/index.md (snapshot ${want#*taken })"
+  at="${want#*taken }"
+  echo "publish-data $slug: live on https://openagents.com/projects/$slug/index.md (snapshot ${at%% from*})"
 done
