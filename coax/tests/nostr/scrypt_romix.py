@@ -28,8 +28,6 @@ def reference(data,r,n):
 
 
 class View(C.Structure): _fields_=[('data',C.POINTER(C.c_uint8)),('count',C.c_int64)]
-class State(C.Structure): _fields_=[('x',C.c_uint8*1024),('r',C.c_int64),('n',C.c_int64),('index',C.c_int64),('phase',C.c_int64)]
-class StateView(C.Structure): _fields_=[('data',C.POINTER(State)),('count',C.c_int64)]
 
 
 def nip49_native(directory,romix,mode,flags):
@@ -37,17 +35,14 @@ def nip49_native(directory,romix,mode,flags):
     cfile.write_bytes(subprocess.run([str(COMPILER),'c',str(pbsource),'--library','--header',str(directory/'scrypt_pbkdf2.h'),*flags],capture_output=True,check=True).stdout)
     subprocess.run(['cc','-std=c11','-O2','-shared','-fPIC',str(cfile),'-o',str(lib)],check=True)
     pb=C.CDLL(str(lib)).scrypt_pbkdf2_one;pb.argtypes=[View,View,C.c_int64,View,C.c_bool];pb.restype=C.c_bool
-    romix.romix_start.argtypes=[StateView,View,View,C.c_int64,C.c_int64,C.c_bool];romix.romix_start.restype=C.c_bool
-    romix.romix_step.argtypes=[StateView,View,C.c_int64,C.c_bool];romix.romix_step.restype=C.c_bool
-    romix.romix_finish.argtypes=[StateView,View,C.c_bool];romix.romix_finish.restype=C.c_bool
     password=b'nostr';salt=bytes(range(16));expected=hashlib.scrypt(password,salt=salt,n=65536,r=8,p=1,dklen=32,maxmem=134217728)
     password_buf=(C.c_uint8*len(password)).from_buffer_copy(password);salt_buf=(C.c_uint8*16).from_buffer_copy(salt)
-    first=(C.c_uint8*1024)();mix=(C.c_uint8*1024)();last=(C.c_uint8*32)();memory=(C.c_uint8*(64*1024*1024))();state=State();view=StateView(C.pointer(state),1)
+    first=(C.c_uint8*1024)();mix=(C.c_uint8*1024)();last=(C.c_uint8*32)()
     start=time.monotonic()
     assert pb(View(password_buf,len(password)),View(salt_buf,16),1024,View(first,1024),False)
-    assert romix.romix_start(view,View(first,1024),View(memory,len(memory)),8,65536,False)
-    while state.phase!=3:assert romix.romix_step(view,View(memory,len(memory)),64,False)
-    assert romix.romix_finish(view,View(mix,1024),False)
+    for i,b in enumerate(first):romix.rm_input()[i]=b
+    assert romix.rm_large()==1
+    for i in range(1024):mix[i]=romix.rm_output()[i]
     assert pb(View(password_buf,len(password)),View(mix,1024),32,View(last,32),False)
     assert bytes(last)==expected
     print(mode,'NIP-49-size native scrypt matched hashlib; seconds',round(time.monotonic()-start,3),flush=True)

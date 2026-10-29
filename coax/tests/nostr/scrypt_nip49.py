@@ -13,21 +13,12 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[3]
 SOURCE=ROOT/'coax/lib/crypto/scrypt_nip49.coax';COMPILER=ROOT/'coax/bin/coax'
 class View(C.Structure): _fields_=[('data',C.POINTER(C.c_uint8)),('count',C.c_int64)]
-class Romix(C.Structure): _fields_=[('x',C.c_uint8*1024),('r',C.c_int64),('n',C.c_int64),('index',C.c_int64),('phase',C.c_int64)]
-class State(C.Structure): _fields_=[('romix',Romix*1),('password',C.c_uint8*1024),('password_count',C.c_int64),('phase',C.c_int64)]
-class StateView(C.Structure): _fields_=[('data',C.POINTER(State)),('count',C.c_int64)]
-
-
 def large_native(obj):
-    start=obj.nip49_scrypt_start;start.argtypes=[StateView,View,View,View,C.c_int64,C.c_bool];start.restype=C.c_bool
-    step=obj.nip49_scrypt_step;step.argtypes=[StateView,View,C.c_int64,C.c_bool];step.restype=C.c_bool
-    finish=obj.nip49_scrypt_finish;finish.argtypes=[StateView,View,C.c_bool];finish.restype=C.c_bool
     password=b'nostr';salt=bytes(range(16));expected=hashlib.scrypt(password,salt=salt,n=65536,r=8,p=1,dklen=32,maxmem=134217728)
-    p=(C.c_uint8*len(password)).from_buffer_copy(password);s=(C.c_uint8*16).from_buffer_copy(salt);memory=(C.c_uint8*(64*1024*1024))();out=(C.c_uint8*32)();state=State();v=StateView(C.pointer(state),1)
-    assert start(v,View(p,len(password)),View(s,16),View(memory,len(memory)),16,False)
-    while state.romix[0].phase!=3:assert step(v,View(memory,len(memory)),64,False)
-    assert finish(v,View(out,32),False) and bytes(out)==expected
-    print('NIP-49-size native scrypt matched hashlib',flush=True)
+    for i,b in enumerate(password):obj.sk_password()[i]=b
+    for i,b in enumerate(salt):obj.sk_salt()[i]=b
+    assert obj.sk_large()==1 and bytes(obj.sk_output()[:32])==expected
+    print('NIP-49-size native scrypt matched hashlib using generated state ABI',flush=True)
 
 
 def main():
