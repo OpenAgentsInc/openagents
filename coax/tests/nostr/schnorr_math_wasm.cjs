@@ -1,0 +1,4 @@
+const fs=require('fs'),assert=require('assert'),{WASI}=require('node:wasi');
+(async()=>{const wasi=new WASI({version:'preview1'});const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[2]),{wasi_snapshot_preview1:wasi.wasiImport});wasi.initialize(instance);const e=instance.exports;assert.equal(e.sm_refusal(),1);
+for(const c of JSON.parse(fs.readFileSync(process.argv[3],'utf8'))){for(const n of ['key','nonce','challenge'])new Uint8Array(e.memory.buffer,e['sm_'+n](),32).set(c[n]);for(let kp=0;kp<2;kp++)for(let np=0;np<2;np++){assert.equal(e.sm_run(kp,np),1);assert.equal(e.sm_valid(),BigInt(c.valid));assert.deepStrictEqual(Array.from(new Uint8Array(e.memory.buffer,e.sm_output(),32)),c.expected[kp*2+np]);}}
+console.log('Wasm: independent BIP-340 scalar equations passed');})().catch(e=>{console.error(e);process.exit(1)});

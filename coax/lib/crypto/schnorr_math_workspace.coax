@@ -1,0 +1,46 @@
+// Experimental BIP-340 scalar equation; not a complete signer.
+#load "schnorr_scalar_workspace.coax";
+#authority;
+#test "BIP-340 first official vector scalar equation" {
+  key:[32]u8;key[31]=3;
+  nonce:=[32]u8.[0x1d,0x2d,0xc1,0x65,0x2f,0xee,0x3a,0xd0,0x84,0x34,0x46,0x9f,0x9a,0xd3,0x05,0x36,0xa5,0x78,0x7f,0xec,0xcf,0xa3,0x08,0xe8,0xfb,0x39,0x6c,0x80,0x30,0xdd,0x1c,0x69];
+  challenge:=[32]u8.[0x6b,0xb6,0xb9,0x3a,0x91,0xf2,0xec,0xc0,0xcd,0x92,0x4f,0x4f,0x9b,0xaa,0xbb,0x5e,0x6e,0xb2,0x17,0x45,0xbb,0x00,0xf2,0xce,0xbd,0xaa,0xc9,0x08,0xbb,0x5d,0x86,0xce];
+  expected:=[32]u8.[0x25,0xf6,0x6a,0x4a,0x85,0xea,0x8b,0x71,0xe4,0x82,0xa7,0x4f,0x38,0x2d,0x2c,0xe5,0xeb,0xee,0xe8,0xfd,0xb2,0x17,0x2f,0x47,0x7d,0xf4,0x90,0x0d,0x31,0x05,0x36,0xc0];
+  work:[1]SignMath;out:[32]u8;
+  #assert sm_equation(key[..],nonce[..],challenge[..],0,1,work[..],false) && work[0].valid==1;
+  #assert ss_write(work[0].result,out[..]);for i:0..<32 {#assert out[i]==expected[i];}
+}
+#test "invalid key and zero reduced nonce remain masked and unpublishable" {
+  key:[32]u8;nonce:[32]u8;challenge:[32]u8;work:[1]SignMath;
+  #assert sm_equation(key[..],nonce[..],challenge[..],0,0,work[..],false) && work[0].valid==0;
+  key[31]=3;#assert sm_equation(key[..],nonce[..],challenge[..],0,0,work[..],false) && work[0].valid==0;#assert sc_equal(work[0].nonce,sc_small(1));
+  #assert ss_write(SC_N,nonce[..]);#assert sm_equation(key[..],nonce[..],challenge[..],0,0,work[..],false) && work[0].valid==0;
+  nonce[31]+=1;#assert sm_equation(key[..],nonce[..],challenge[..],0,0,work[..],false) && work[0].valid==1;
+}
+#test "scalar equation admission and parity switches" {
+  key:[32]u8;nonce:[32]u8;challenge:[32]u8;work:[1]SignMath;key[31]=3;nonce[31]=5;challenge[31]=2;
+  #assert sm_equation(key[..],nonce[..],challenge[..],0,0,work[..],false) && sc_equal(work[0].result,sc_small(11));
+  #assert sm_equation(key[..],nonce[..],challenge[..],1,0,work[..],false) && sc_equal(work[0].result,sc_negate(sc_small(1)));
+  #assert sm_equation(key[..],nonce[..],challenge[..],0,1,work[..],false) && sc_equal(work[0].result,sc_small(1));
+  #assert !sm_equation(key[0..<31],nonce[..],challenge[..],0,0,work[..],false);
+  #assert !sm_equation(key[..],nonce[0..<31],challenge[..],0,0,work[..],false);
+  #assert !sm_equation(key[..],nonce[..],challenge[0..<31],0,0,work[..],false);
+  #assert !sm_equation(key[..],nonce[..],challenge[..],2,0,work[..],false);
+  #assert !sm_equation(key[..],nonce[..],challenge[..],0,2,work[..],false);
+  #assert !sm_equation(key[..],nonce[..],challenge[..],0,0,work[0..<0],false);
+  #assert !sm_equation(key[..],nonce[..],challenge[..],0,0,work[..],true);
+}
+SignMath :: struct {key:[1]SignScalar;nonce:ScScalar;challenge:ScScalar;adjusted_key:ScScalar;adjusted_nonce:ScScalar;result:ScScalar;valid:u64;}
+// Views and caller-managed scratch are stable and mutually disjoint. Parities
+// refer to the corresponding key/nonce points; no point relation is verified.
+sm_equation :: (key:[]u8,nonce_hash:[]u8,challenge_hash:[]u8,key_odd:u64,nonce_odd:u64,work:[]SignMath,overlap:bool)->bool #export_c {
+  if work.count!=1 || key.count!=32 || nonce_hash.count!=32 || challenge_hash.count!=32 || key_odd>1 || nonce_odd>1 || overlap {return false;}
+  ok:=ss_key(key,work[0].key[..],false);if !ok {return ok;}
+  loaded:=sc_reduce_bytes(nonce_hash);challenged:=sc_reduce_bytes(challenge_hash);
+  bits:u32;for i:0..<8 {bits|=loaded.value.limbs[i];}
+  nonzero:=sc_zero_bit(bits)^1;
+  work[0].valid=work[0].key[0].valid & nonzero;
+  work[0].nonce=sc_select(nonzero,loaded.value,sc_small(1));work[0].challenge=challenged.value;
+  work[0].adjusted_key=ss_even(work[0].key[0].safe,key_odd);work[0].adjusted_nonce=ss_even(work[0].nonce,nonce_odd);
+  work[0].result=sc_add(work[0].adjusted_nonce,sc_mul(work[0].challenge,work[0].adjusted_key));return true;
+}
