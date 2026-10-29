@@ -1,0 +1,5 @@
+model: baselabs/mammoth-1
+layers: 48 linear, 16 full attention, width 5120
+vocabulary: 248320, tensors: 1184, shards: 2
+shard files: 54713608144 bytes
+86-token request: 42041344 state floats, 218486272 workspace floats

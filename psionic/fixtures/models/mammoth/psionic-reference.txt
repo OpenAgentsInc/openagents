@@ -1,0 +1,7 @@
+prepared tokens=86 prefix=49 suffix=37
+plan state=42041344 work=218486272 params=2640384 weight_bytes=54713608144
+authenticating original Mammoth
+phase open seconds=234.5 peak_rss_kib=53480404
+executing typed decision
+phase answer seconds=9113.0 peak_rss_kib=53949460 total_seconds=9347.6
+choice=yes p_yes=0.94461191 p_no=0.0553880904 slot_mass=0.472741322 confidence=0.889223819

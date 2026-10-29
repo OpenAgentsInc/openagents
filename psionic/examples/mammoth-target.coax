@@ -1,0 +1,16 @@
+#import "Basic";
+#load "../lib/decision-plan.coax";
+
+// book:begin example
+main :: () {
+    target:=ps_target(1,86);
+    #assert target.status==PsStatus.ok;
+    print("model: %\n",target.origin);
+    print("layers: % linear, % full attention, width %\n",target.shape.state.linear_layers,target.shape.state.full_layers,target.shape.linear.width);
+    print("vocabulary: %, tensors: %, shards: %\n",target.vocab,target.tensors,target.shards);
+    plan:=ps_plan(1,86,86,49);
+    #assert plan.status==PsPlanStatus.ok;
+    print("shard files: % bytes\n",plan.weight_bytes);
+    print("86-token request: % state floats, % workspace floats\n",plan.state,plan.work);
+}
+// book:end example

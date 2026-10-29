@@ -340,6 +340,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/mammoth-target.coax",
+      "chapter": "psionic/book/ch011-execute-mammoth.md",
+      "stdout": "psionic/fixtures/mammoth-target.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

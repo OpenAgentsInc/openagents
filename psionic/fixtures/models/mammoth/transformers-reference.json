@@ -1,0 +1,27 @@
+{
+  "torch": "2.14.1+cpu",
+  "transformers": "5.19.0",
+  "profile": "float32 eager CPU, one decoder layer resident at a time",
+  "decision": {
+    "logits": [
+      10.928954124450684,
+      8.092546463012695
+    ],
+    "probabilities": [
+      0.9446117877960205,
+      0.0553881898522377
+    ],
+    "slot_mass": 0.4727414846420288,
+    "hidden_first4": [
+      -6.678371429443359,
+      -6.5539960861206055,
+      7.489551544189453,
+      -7.631435394287109
+    ]
+  },
+  "prefix": 49,
+  "tokens": 86,
+  "layers": 64,
+  "seconds": 143.3,
+  "peak_rss_kib": 50913528
+}

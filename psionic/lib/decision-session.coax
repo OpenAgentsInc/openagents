@@ -83,6 +83,12 @@ ps_open :: (kind:u8,capacity:int,config:[]u8,tokenizer:[]u8,readout:[]u8,index:[
     enough:[760]P5Spec;
     #assert ps_open(0,1,bytes[..],bytes[..],bytes[..],bytes[0..<0],files[..],enough[..],bytes[..],memory,true).status==PsOpenStatus.alias;
     #assert ps_open(0,1,bytes[..],bytes[..],bytes[..],bytes[0..<0],files[..],enough[..],bytes[..],memory,false).status==PsOpenStatus.digest;
+    mammoth:[1184]P5Spec;two:=[2]PaFile.[files[0],files[0]];
+    #assert ps_open(1,1,bytes[..],bytes[..],bytes[..],bytes[..],files[..],mammoth[..],bytes[..],memory,false).status==PsOpenStatus.shape;
+    #assert ps_open(1,1,bytes[..],bytes[..],bytes[..],bytes[..],two[..],enough[..],bytes[..],memory,false).status==PsOpenStatus.shape;
+    #assert ps_open(1,16385,bytes[..],bytes[..],bytes[..],bytes[..],two[..],mammoth[..],bytes[..],memory,false).status==PsOpenStatus.shape;
+    #assert ps_open(1,1,bytes[..],bytes[..],bytes[..],bytes[..],two[..],mammoth[..],bytes[..],memory,true).status==PsOpenStatus.alias;
+    #assert ps_open(1,1,bytes[..],bytes[..],bytes[..],bytes[..],two[..],mammoth[..],bytes[..],memory,false).status==PsOpenStatus.digest;
 }
 #test "global embedding, head and final norm are independently checked" {
     s:=QeShape.{linear=QlShape.{width=2}};target:=PsTarget.{shape=s,vocab=4};

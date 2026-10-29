@@ -28,6 +28,7 @@ run examples directly without the check command.
 | [8. Decisions have a different mask](ch008-decisions-have-a-different-mask.md) | Runnable: bounded CPU | Compute bidirectional full-attention blocks and fork all live hybrid prefix state. |
 | [9. Read the options](ch009-read-the-options.md) | Runnable: bounded CPU | Compute temperature-scaled option probabilities, vocabulary slot mass and typed decision statistics. |
 | [10. Execute Elephant](ch010-execute-elephant.md) | Runnable: original weights, CPU | Authenticate Elephant and execute a typed text decision through its complete hybrid stack. |
+| [11. Execute Mammoth](ch011-execute-mammoth.md) | Runnable: original weights, CPU | Plan Mammoth's storage, authenticate both shards and execute the same typed text decision through all 64 layers. |
 | [12. Are the probabilities any good?](ch012-are-the-probabilities-any-good.md) | Runnable: CPU; original weights for the held-out run | Load the bundle's calibration (none: temperature 1.0), print the published answer JSON and measure accuracy, Brier score, calibration error and abstention on a frozen held-out set. |
 | [13. Qualify honestly](ch013-qualify-honestly.md) | Runnable: CPU | Freeze comparison policies by digest, bind results to the exact build, make the exit status the verdict, and find chapter 10's evidence unknown, not qualified. |
 | [16. Serve `/v1/systemone`](ch016-serve-systemone.md) | Runnable: loopback, toy and original Elephant, CPU | Answer NIP-DEC decision bodies over HTTP with typed refusals, deadlines, cancellation, busy refusals and the served model identity. |
@@ -54,7 +55,7 @@ run examples directly without the check command.
 | [169. A harness that catches the compiler](ch169-a-harness-that-catches-the-compiler.md) | Runnable: bounded CPU | Run every program through the evaluator, a plan interpreter and the weights; catch four planted compiler bugs and place each in the schedule or the emitter. |
 | [172. From hard-max to softmax](ch172-from-hard-max-to-softmax.md) | Runnable: bounded CPU, binary64/binary32/bfloat16 rounding | Prove softmax reads stay exact for any trace length once β ≥ ln(4V), and measure where binary32 and bfloat16 rounding breaks them. |
 
-Chapter 70 starts learning from data on chapter 3's operations, chapters 41–48 start an independent gpt-oss branch, and 165–169 and 172 open Part XXIII (programs compiled into weights); chapter 11 and chapters 14–40 other than 16 remain planned.
+Chapter 70 starts learning from data on chapter 3's operations, chapters 41–48 start an independent gpt-oss branch, and 165–169 and 172 open Part XXIII (programs compiled into weights); chapters 14–40 other than 16 remain planned.
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
 sets the proposed full reading order: early Elephant/Mammoth and useful

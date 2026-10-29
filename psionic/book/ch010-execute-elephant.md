@@ -171,6 +171,5 @@ intermediate layer and at model output. These comparisons apply to the recorded
 model revision, text input and arithmetic profile; they do not establish
 accuracy on arbitrary requests or multimodal support.
 
-The [next chapter](PLAN.md) proposes Mammoth and broader serving work. This
-chapter does not claim that Mammoth has completed the same end-to-end decision
-qualification.
+The [next chapter](ch011-execute-mammoth.md) runs the same decision on
+Mammoth with its own dimensions, shards and memory plan.

@@ -1,0 +1,42 @@
+// Exact caller storage for one pinned target, capacity and prepared request.
+#load "decision-answer.coax";
+#authority;
+PsPlanStatus :: enum u8 {ok;target;request;}
+PsPlan :: struct {status:PsPlanStatus;cause:int;tensors:int;layers:int;params:int;layer_work:int;norm:int;state:int;work:int;weight_bytes:int;}
+#test "the Elephant sample request needs its recorded state and exact workspace" {
+    p:=ps_plan(0,86,86,49);
+    #assert p.status==PsPlanStatus.ok && p.cause==0 && p.tensors==760 && p.layers==32 && p.params==1057280 && p.layer_work==49856 && p.norm==4096;
+    #assert p.state==14581760 && p.work==79134080 && p.weight_bytes==18819722392;
+}
+#test "Mammoth has its own layers, parameters, state and two-shard weight bytes" {
+    p:=ps_plan(1,86,86,49);
+    #assert p.status==PsPlanStatus.ok && p.tensors==1184 && p.layers==64 && p.params==2640384 && p.layer_work==62176 && p.norm==5120;
+    #assert p.state==42041344 && p.work==218486272 && p.weight_bytes==54713608144;
+    #assert ps_plan(1,128,86,49).state==42041344+16*2*42*4*256;
+    #assert ps_plan(1,86,85,48).work==218442112 && ps_plan(1,86,86,0).work==218385920 && ps_plan(1,86,1,0).work==214806400;
+}
+#test "plans refuse unknown targets, unbounded capacity and malformed requests" {
+    #assert ps_plan(2,86,86,49).status==PsPlanStatus.target && ps_plan(2,86,86,49).cause==cast(int)PsStatus.kind && ps_plan(2,86,86,49).state==0;
+    #assert ps_plan(1,0,1,0).status==PsPlanStatus.target && ps_plan(1,0,1,0).cause==cast(int)PsStatus.capacity;
+    #assert ps_plan(1,16385,1,0).status==PsPlanStatus.target;
+    for k:0..<5 {
+        tokens:=86;prefix:=49;
+        if k==0 {tokens=0;prefix=0;}if k==1 {tokens=87;}if k==2 {prefix=-1;}if k==3 {prefix=86;}if k==4 {tokens=-1;prefix=-2;}
+        r:=ps_plan(0,86,tokens,prefix);#assert r.status==PsPlanStatus.request && r.cause==0 && r.work==0 && r.state==0 && r.params==0;
+    }
+    #assert ps_plan(0,86,86,0).status==PsPlanStatus.ok && ps_plan(0,86,86,85).status==PsPlanStatus.ok && ps_plan(0,86,1,0).status==PsPlanStatus.ok;
+    #assert ps_plan(1,16384,16384,16383).status==PsPlanStatus.ok;
+}
+// book:begin plan
+ps_plan :: (kind:u8,capacity:int,tokens:int,prefix:int)->PsPlan #export_c {
+    target:=ps_target(kind,capacity);
+    if target.status!=PsStatus.ok {return PsPlan.{status=PsPlanStatus.target,cause=cast(int)target.status};}
+    if tokens<1 || tokens>capacity || prefix<0 || prefix>=tokens {return PsPlan.{status=PsPlanStatus.request};}
+    s:=target.shape;linear:=pma_params(s,false);full:=pma_params(s,true);
+    plan:=PsPlan.{tensors=target.tensors,layers=s.state.linear_layers+s.state.full_layers,layer_work=linear+full,norm=s.linear.width,state=qp_total(s.state)};
+    plan.params=s.state.linear_layers*linear+s.state.full_layers*full;
+    plan.work=qs_layout(QxModel.{shape=s,vocab=target.vocab},tokens,prefix).total;
+    for i:0..<target.shards {plan.weight_bytes+=target.shard[i].bytes;}
+    return plan;
+}
+// book:end plan

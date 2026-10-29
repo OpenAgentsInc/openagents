@@ -385,6 +385,17 @@ Check: `psionic/check.sh` covers debug/release checks, authority mutations,
 book examples and native plain/sanitized adapters. The chapter 10 verification
 record describes the independent original-weight comparisons and limits.
 
+## Psionic decision plans size caller storage for one pinned request
+
+`psionic/lib/decision-plan.coax` derives a pinned target's session workspace,
+state and request workspace from its own dimensions and shards, using the same
+layouts `ps_open` and `ps_answer` check. It refuses unknown targets, unbounded
+capacity and token or prefix counts that the request would refuse. A plan is
+arithmetic, not an allocation or an admission of host memory: checkpoint
+mapping, page cache and allocator behavior remain the caller's concern. Check:
+`psionic/check.sh` covers authority mutation and native plain/sanitized checks;
+the chapter 11 verification record gives the measured Mammoth run.
+
 ## Psionic token blocks stage model state through full-vocabulary readout
 
 `psionic/lib/qwen-tokens.coax` gathers original-format embedding rows, runs
