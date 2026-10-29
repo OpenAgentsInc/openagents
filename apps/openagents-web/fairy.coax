@@ -67,7 +67,7 @@ GRASS_BLADES_PHONE :: 32;  // and on a phone (8)
 GRASS_PATCHES :: 32;       // patches a side on a computer: out to 32 m
 GRASS_PATCHES_PHONE :: 18; // on a phone: out to 18 m
 
-WALLS :: 240;
+WALLS :: 480;               // a trunk and a crown a tree, the heart tree's, its roots, the stones, the valley's edge
 SPHERES :: 64;
 BOXES :: 120;
 TREES :: 190;              // x, z, height, canopy radius, hue
@@ -251,31 +251,98 @@ put6 :: (out: [] f32, i: int, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
 }
 
 // The player's walls and the camera's scenery, from the layout.
+// The player's walls are boxes over the ground where they stand (the
+// player's floor is flat; heights here are over the ground there): a box
+// whose top is under your feet is something to stand on.
+//   - each tree: its trunk, and its crown, a box inside the blobs whose top
+//     you land on, walk over and take off from;
+//   - the heart tree: its trunk, its canopy (the middle blob and the eight
+//     round it) and its five roots, three boxes along each;
+//   - the stones round the heart tree, and the valley's edge.
 build_scenery :: (s: [] Fairy) {
-  w := 0; sp := 0; bx := 0;
+  w := 0; bx := 0;
+  wl := s[0].walls[..];
   for t: 0..<s[0].tree_n {
     k := t * TREE_FLOATS;
     x := s[0].trees[k]; z := s[0].trees[k + 1]; h := s[0].trees[k + 2]; r := s[0].trees[k + 3];
     g := ground_at(s, x, z);
-    if w < WALLS { put6(s[0].walls[..], w, x - 0.35, 0, z - 0.35, x + 0.35, 9, z + 0.35); w += 1; }
+    if w < WALLS { put6(wl, w, x - 0.35, 0, z - 0.35, x + 0.35, h + r * 0.2, z + 0.35); w += 1; }
+    c := r * 0.78;
+    if w < WALLS { put6(wl, w, x - c, h + r * 0.2, z - c, x + c, h + r * 1.42, z + c); w += 1; }
     if sqrt(x * x + z * z) < 58 {
       if bx < BOXES { put6(s[0].boxes[..], bx, x - 0.3, g - 1, z - 0.3, x + 0.3, g + h, z + 0.3); bx += 1; }
     }
   }
-  // the heart tree's trunk
-  if w < WALLS { put6(s[0].walls[..], w, -2.2, 0, -2.2, 2.2, 30, 2.2); w += 1; }
+  // the heart tree (heart(): its trunk to 14.5 m, the canopy's blobs, the roots), over the ground at its foot
+  hg := ground_at(s, 0, 0);
+  if w < WALLS { put6(wl, w, -2.1, 0, -2.1, 2.1, 15 - hg, 2.1); w += 1; }
   if bx < BOXES { put6(s[0].boxes[..], bx, -2.2, -1, -2.2, 2.2, 16, 2.2); bx += 1; }
-  for k: 0..<4 {
-    a := f32(k) * 1.5708;
-    if sp < SPHERES { q := sp * 4; s[0].spheres[q] = cos(a) * 4; s[0].spheres[q + 1] = 19; s[0].spheres[q + 2] = sin(a) * 4; s[0].spheres[q + 3] = 6; sp += 1; }
+  // (the blobs round the middle one stand no higher than it, so its top is one floor and they are ledges off it)
+  mid := heart_blob(0);
+  mid_top := mid.y + mid.w * 0.37;
+  for k: 0..<9 {
+    b := heart_blob(k);
+    half := b.w * 0.36;
+    top := lo(b.y + b.w * 0.37, mid_top);
+    if w < WALLS { put6(wl, w, b.x - half, b.y - b.w * 0.28 - hg, b.z - half, b.x + half, top - hg, b.z + half); w += 1; }
+  }
+  for r: 0..<FF_ROOTS {
+    tx := FF_ROOT[r * 3]; tz := FF_ROOT[r * 3 + 1];
+    for i: 0..<3 {
+      f := 0.32 + f32(i) * 0.22;
+      x := tx * f; z := tz * f;
+      top := 1.25 - f32(i) * 0.2;
+      if w < WALLS { put6(wl, w, x - 0.45, 0, z - 0.45, x + 0.45, top, z + 0.45); w += 1; }
+    }
+  }
+  for k: 0..<7 {
+    p := heart_stone(k);
+    if p.ok && w < WALLS { put6(wl, w, p.x - 0.55, 0, p.z - 0.45, p.x + 0.55, 0.6, p.z + 0.45); w += 1; }
   }
   b := f32(FF_BOUND);
   if w + 4 <= WALLS {
-    put6(s[0].walls[..], w, -b - 2, 0, -b - 2, b + 2, 30, -b); put6(s[0].walls[..], w + 1, -b - 2, 0, b, b + 2, 30, b + 2);
-    put6(s[0].walls[..], w + 2, -b - 2, 0, -b, -b, 30, b); put6(s[0].walls[..], w + 3, b, 0, -b, b + 2, 30, b);
+    put6(wl, w, -b - 2, 0, -b - 2, b + 2, 80, -b); put6(wl, w + 1, -b - 2, 0, b, b + 2, 80, b + 2);
+    put6(wl, w + 2, -b - 2, 0, -b, -b, 80, b); put6(wl, w + 3, b, 0, -b, b + 2, 80, b);
     w += 4;
   }
-  s[0].wall_n = w; s[0].sphere_n = sp; s[0].box_n = bx;
+  s[0].wall_n = w; s[0].box_n = bx;
+}
+
+// The heart tree's canopy blob k: its centre (absolute) and size, as heart() draws it.
+HeartBlob :: struct { x: f32; y: f32; z: f32; w: f32; }
+heart_blob :: (k: int) -> HeartBlob {
+  a := f32(k) * 2.399;
+  rr := ifx k == 0 then 0.0f32 else 6.5f32 + hash1(f32(k), 1) * 2;
+  y := 18 + hash1(f32(k), 3) * 4 - ifx k == 0 then 0.0f32 else 2.0f32;
+  size := ifx k == 0 then 15.0f32 else 9.0f32 + hash1(f32(k), 7) * 3;
+  return HeartBlob.{x = cos(a) * rr, y = y, z = sin(a) * rr, w = size};
+}
+// The stone k round the heart tree, as props() places it (ok false: none there).
+Stone :: struct { ok: bool; x: f32; z: f32; a: f32; }
+heart_stone :: (k: int) -> Stone {
+  a := f32(k) * 0.9 + 0.2;
+  x := cos(a) * 15; z := sin(a) * 15;
+  return Stone.{ok = !(!open_ground(x, z, -3) && k % 2 == 0), x = x, z = z, a = a};
+}
+
+// The camera keeps out of the crowns near you and the heart tree's canopy:
+// they are the orbit's spheres (absolute), rebuilt each frame.
+camera_spheres :: (s: [] Fairy, feet: Point) {
+  sp := 0;
+  for k: 0..<9 {
+    b := heart_blob(k);
+    q := sp * 4; s[0].spheres[q] = b.x; s[0].spheres[q + 1] = b.y; s[0].spheres[q + 2] = b.z; s[0].spheres[q + 3] = b.w * 0.42; sp += 1;
+  }
+  for t: 0..<s[0].tree_n {
+    if sp >= SPHERES { break; }
+    k := t * TREE_FLOATS;
+    x := s[0].trees[k]; z := s[0].trees[k + 1];
+    dx := x - feet.x; dz := z - feet.z;
+    if dx * dx + dz * dz > 22 * 22 { continue; }
+    h := s[0].trees[k + 2]; r := s[0].trees[k + 3];
+    q := sp * 4; s[0].spheres[q] = x; s[0].spheres[q + 1] = ground_at(s, x, z) + h + r * 0.55; s[0].spheres[q + 2] = z; s[0].spheres[q + 3] = r * 1.05; sp += 1;
+  }
+  s[0].sphere_n = sp;
 }
 
 fairy_walls :: (s: [] Fairy) -> int #export_c { if !s[0].started { fairy_start(s); } return s[0].wall_n; }
@@ -463,11 +530,10 @@ heart :: (s: [] Fairy, u: [] f32) {
   bloom := f32(awake) / f32(FF_ROOTS);
   for k: 0..<9 {
     a := f32(k) * 2.399;
-    rr := ifx k == 0 then 0.0f32 else 6.5f32 + hash1(f32(k), 1) * 2;
-    y := 18 + hash1(f32(k), 3) * 4 - ifx k == 0 then 0.0f32 else 2.0f32;
-    size := ifx k == 0 then 15.0f32 else 9.0f32 + hash1(f32(k), 7) * 3;
+    b := heart_blob(k);
+    size := b.w;
     rose := ifx k % 2 == 0 then 1.0f32 else 0.0f32;
-    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(cos(a) * rr, y, sin(a) * rr), a, 0, size, size * 0.8, size,
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(b.x, b.y, b.z), a, 0, size, size * 0.8, size,
           lerp(0.3, 0.86, rose * (0.4 + 0.6 * bloom)), lerp(0.52, 0.52, rose), lerp(0.42, 0.66, rose * (0.4 + 0.6 * bloom)));
   }
   for r: 0..<FF_ROOTS {
@@ -559,9 +625,9 @@ props :: (s: [] Fairy) {
     shape(s, SHAPE_SPHERE, ifx lamp > 0.3 then LOOK_GLOW else LOOK_MATTE, v3(x, y, z), 0, 0, 0.28, 0.32, 0.28, 1.0 * k2, 0.8 * k2, 0.4 * k2);
   }
   for k: 0..<7 {
-    a := f32(k) * 0.9 + 0.2;
-    x := cos(a) * 15; z := sin(a) * 15;
-    if !open_ground(x, z, -3) && k % 2 == 0 { continue; }
+    st := heart_stone(k);
+    if !st.ok { continue; }
+    x := st.x; z := st.z; a := st.a;
     g := ground_at(s, x, z);
     shape(s, SHAPE_SPHERE, LOOK_STONE, v3(x, g + 0.2, z), a, 0, 1.4, 0.9, 1.1, 0.62, 0.6, 0.55);
   }
@@ -720,6 +786,7 @@ ground_room :: (s: [] Fairy, r: OrbitRay) -> f32 {
 camera_frame :: (s: [] Fairy, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
   speed := sqrt(vx * vx + vz * vz);
   o := verse_orbit_follow(s[0].orbit, feet, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
+  camera_spheres(s, feet);
   room := verse_orbit_room(o, s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6]);
   room = lo(room, ground_room(s, verse_orbit_ray(o)));
   o = verse_orbit_limit(o, room, dt);
@@ -785,7 +852,7 @@ phone :: (s: [] Fairy) -> bool { return s[0].touch || s[0].width / hi(s[0].dpr, 
 
 hint :: (s: [] Fairy) -> string {
   if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP RIGHT SIDE TO FLAP UP"; }
-  return "WASD MOVE · DRAG TURNS · SHIFT WALKS · SPACE FLAPS UP · HOLD SPACE TO HOVER";
+  return "WASD MOVE · DRAG TURNS · SPACE FLAPS UP · HOLD SPACE TO HOVER · SHIFT WALKS, IN THE AIR DIVES";
 }
 
 // A mood glyph over a creature: a face in a ring, its colour and mouth the mood.
@@ -975,7 +1042,9 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   u[U_SUN] = sun.x; u[U_SUN + 1] = sun.y; u[U_SUN + 2] = sun.z; u[U_SUN + 3] = ifx ph then 1.0f32 else 0.0f32;
   u[U_GROUND] = f32(CELLS); u[U_GROUND + 1] = f32(FF_CELL); u[U_GROUND + 2] = f32(FF_EDGE); u[U_GROUND + 3] = f32(FF_EDGE);
   // the grass round the camera's ground point, patch-snapped so it doesn't swim
-  gx := floor(shot.at.x / 2) * 2 - f32(side); gz := floor(shot.at.z / 2) * 2 - f32(side);
+  // the grass round your feet (the camera's look point is up in the air when you fly), and none once the eye is 30 m up
+  gx := floor(shown.x / 2) * 2 - f32(side); gz := floor(shown.z / 2) * 2 - f32(side);
+  if shot.eye.y - ground_at(s, shot.eye.x, shot.eye.z) > 30 { s[0].draws[g + 3] = 0; }
   u[U_GRASS] = gx; u[U_GRASS + 1] = gz; u[U_GRASS + 2] = f32(side); u[U_GRASS + 3] = f32(blades);
   u[U_GRASS2] = f32(side) - 1; u[U_GRASS2 + 1] = f32(FF_LEVEL); u[U_GRASS2 + 2] = f32(FF_PATH_HALF); u[U_GRASS2 + 3] = shown.x;
   // you part the grass where you stand
@@ -1058,6 +1127,38 @@ fairy_store_cap :: (k: int) -> int #export_c {
   #assert fairy_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1, 4);
   nv = fairy_frame(g[..], out[..], u[..], 1170, 2532, 3, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].forest[0].bloomed[0];
+}
+
+// What the player library (verse/player.coax) stands on: a wall whose top is
+// within STEP_UP (0.55 m) of your feet and under you. Its own tests cover the
+// landing and the pushing out; these check the boxes are where the trees are.
+top_under :: (g: [] Fairy, x: f32, z: f32, feet: f32) -> f32 {
+  out := 0.0f32;
+  for i: 0..<g[0].wall_n {
+    k := i * 6;
+    w := g[0].walls[k..<k + 6];
+    if x < w[0] || x > w[3] || z < w[2] || z > w[5] { continue; }
+    if w[4] <= feet + 0.55 && w[4] > out { out = w[4]; }
+  }
+  return out;
+}
+#test "trunks are solid and crowns are floors; the heart tree's canopy and the stones too" {
+  g: [1] Fairy;
+  fairy_start(g[..]);
+  #assert g[0].wall_n > g[0].tree_n * 2 + 20 && g[0].wall_n <= WALLS;
+  for t: 0..<g[0].tree_n {
+    k := t * TREE_FLOATS;
+    x := g[0].trees[k]; z := g[0].trees[k + 1]; h := g[0].trees[k + 2]; r := g[0].trees[k + 3];
+    // over its crown you stand on its top, which is inside the drawn blob (its top at h + 1.5 r)
+    #assert top_under(g[..], x + r * 0.5, z - r * 0.5, h + r * 1.42) >= h + r * 1.42 - 0.001;   // (or a neighbour's crown just over it)
+    #assert h + r * 1.42 < h + r * 0.55 + r * 0.95;
+    // under it, on the ground, nothing holds you up but the ground
+    #assert top_under(g[..], x + r * 0.5, z - r * 0.5, 0) == 0 || abs(x) < 20;
+  }
+  #assert top_under(g[..], 0, 0, 30) > 20;      // the heart tree's canopy
+  #assert top_under(g[..], 0, 0, 1) == 0;       // its trunk is a wall, not a step
+  st := heart_stone(1);
+  if st.ok { #assert near(top_under(g[..], st.x, st.z, 0.3), 0.6, 0.001); }
 }
 
 #test "trees keep off the trails, the stream and the glades" {
