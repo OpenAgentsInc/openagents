@@ -460,7 +460,7 @@ if (startsOnly) lanes.splice(0, lanes.length, ...Object.keys(PAGES).filter((n) =
   const answer = await fetch(want).then((r) => r.status).catch(() => 0)
   t.check(answer === 200, `${name}: ${want} answers (${answer || "no answer"})`)
   await t.send("Page.navigate", { url: want })
-  const ready = await t.until(async () => (await t.evaluate("location.href"))?.split(/[?#]/)[0] === want && (await t.evaluate("globalThis.coaxial?.ready === true")) === true, 20000)
+  const ready = await t.until(async () => (await t.evaluate("location.href"))?.split(/[?#]/)[0] === want.split(/[?#]/)[0] && (await t.evaluate("globalThis.coaxial?.ready === true")) === true, 20000)
   t.check(ready, `${name}: the engine started`)
   t.check(t.errors.length === 0, `${name}: no errors${t.errors.length ? ` (${t.errors.join("; ")})` : ""}`)
 } })))
