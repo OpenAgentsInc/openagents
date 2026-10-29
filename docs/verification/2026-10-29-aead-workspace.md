@@ -1,5 +1,7 @@
 # Experimental outer AEAD workspace
 
+**Update:** The subsequent [inner-workspace integration](2026-10-29-aead-inner-workspaces.md) supersedes this snapshot’s statements about the AEAD cipher and MAC still using the older entry points. Its remaining erasure and production limits still apply.
+
 This Coax slice moves the explicitly named outer XChaCha20-Poly1305 MAC input,
 Poly1305 one-time key, nonce-derived stream buffer, ciphertext and tag into a
 caller-owned `AeadScratch`. Results are staged in `AeadOperation`, and the
