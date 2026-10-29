@@ -1,0 +1,15 @@
+syntax = "proto3";
+package coax.test.presence;
+import "openagents/options/v1alpha1/options.proto";
+message Cases {
+  optional string strict = 1 [(openagents.options.v1alpha1.required_value) = true];
+  repeated uint32 bounded = 2 [(openagents.options.v1alpha1.required_value) = true, (openagents.options.v1alpha1.max_count) = 2];
+  oneof choice { string a = 3; string b = 4; }
+  optional string synthetic = 5;
+  repeated string free = 6;
+}
+message RequiredChoice {
+  oneof choice { string a = 1; string b = 2 [(openagents.options.v1alpha1.required_value) = true]; }
+}
+message InnerRequired { optional string value = 1 [(openagents.options.v1alpha1.required_value) = true]; }
+message NestedRequired { InnerRequired inner = 1 [(openagents.options.v1alpha1.required_value) = true]; }

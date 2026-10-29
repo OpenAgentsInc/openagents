@@ -1,0 +1,4 @@
+syntax = "proto3";
+package coax.test.presence;
+import "openagents/options/v1alpha1/options.proto";
+message Invalid { optional string x = 1 [(openagents.options.v1alpha1.max_count) = 1]; }

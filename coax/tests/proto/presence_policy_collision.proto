@@ -1,0 +1,3 @@
+syntax = "proto3";
+package coax.test.presence;
+message _pb_find {}

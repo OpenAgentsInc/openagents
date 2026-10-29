@@ -1,0 +1,18 @@
+{
+  "description": "Current declarations after reviewed validator-state and bounded-finder changes; the original reference remains frozen in import-baselines.json.",
+  "reference_prefix": "N",
+  "profiles": {
+    "proto/descriptors/block-agent.pb": "e7191943a5a7ef0f64d8ee3b9697281cc92966af36660c30d60f3f74cb1398fe",
+    "proto/descriptors/block-channel.pb": "1fb60cb069fe35e2540b689a3839ebab3c61c688fcbcc97f5e9a05065aef2ee9",
+    "proto/descriptors/block-identity.pb": "d7a045314c6621b4583e4ad8ab55b26b599fed9bb3a69e9894d5e03b9659d6ec",
+    "proto/descriptors/coax-foundation.pb": "e507d06115e12e25956a546a500c93c8b988372f8aa92c199a28b44b0a4e3f45",
+    "proto/descriptors/ios-home.pb": "83b9f99244ce1abf42ed286d6360369cb7a3cde4ddb599b1ff5d877b1c6aaf3b",
+    "proto/descriptors/metareal.pb": "1385c10848f159147869aeaf3f44ccd9a6733d8bae7cad76ef0080f51a16aa85",
+    "proto/descriptors/nostr-event.pb": "a723fa501b927bd54eaa409ba96dd7b841f7e6ddf08d755176722a390d19f36a",
+    "proto/descriptors/nostr.pb": "45446eafe2af54d8e723856800208fb9f6a71df35404eec07eb106e26a977a69",
+    "proto/descriptors/owned.pb": "88d8849e0154e782530486b01b4d89fe31166def6eef8b7a080904faf98cb246",
+    "proto/descriptors/phone-agent.pb": "ff0bbab7367c2e47432ea5c5e7006bd18a1e27d4dd80b845e0d07e14fcabec38",
+    "coax/tests/proto/types.pb": "bf2d2bb267b2b115f2a00cdc99d9de9fb560f16032e4bc276386d8fcd4f67b63",
+    "proto/descriptors/verse.pb": "a5e2219095c64bed08c290a8b18c27b75113d7430c0f798f05b5a885a73d456d"
+  }
+}

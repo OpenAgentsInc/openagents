@@ -29,6 +29,8 @@ PB_small :: (count:int)->bool {return count>=0 && count<=PB_MAX_BYTES;}
 PB_message_admitted :: (depth:int,count:int)->bool {return depth<=PB_MAX_DEPTH && PB_small(count);}
 PB_root_depth :: ()->int {return 0;}
 PB_default_fields :: ()->int {return PB_MAX_FIELDS;}
+PB_require_fields :: ()->bool {return true;}
+PB_partial_fields :: ()->bool {return false;}
 PB_cursor :: (count:int,at:int)->bool {return PB_small(count) && at>=0 && at<=count;}
 PB_fits :: (total:int,capacity:int)->bool {return PB_small(total) && total<=capacity;}
 PB_inputs :: (wire:int,capacity:int,data:int,text:int)->u32 {
@@ -71,6 +73,20 @@ PB_scan :: (wire:[] u8,at:int)->PB_Field {
     return PB_Field.{number=number,wt=wt,start=at,next=end,payload=wire[length.next..<end]};
   }
   f:=PB_scalar(wire,key.next,wt);f.number=number;f.wt=wt;f.start=at;return f;
+}
+// This searches to the first match, not the end of the message. Callers that
+// need whole-message validity must validate first. An error before a match
+// returns an empty field and reports no presence.
+PB_find :: (wire:[] u8,number:u32)->PB_Field {
+  pos:=0;
+  while true {
+    f:=PB_scan(wire,pos);
+    if f.error!=0 {return PB_Field.{error=f.error,done=true};}
+    if f.done {return PB_Field.{done=true};}
+    if f.number==number {return f;}
+    pos=f.next;
+  }
+  return PB_Field.{};
 }
 // Optional minimal-varint policy, used by closed resource readers. The normal
 // protobuf decoder still accepts legal non-minimal encodings.
@@ -143,10 +159,20 @@ PB_copy_checked :: (wire:[] u8,out:[] u8,overlap:bool)->PB_View {
 // @proto-runtime-checks
 #authority;
 
+#test "field search distinguishes presence absence and malformed input" {
+  wire:=[5]u8.[8,1,18,1,97];
+  a:=PB_find(wire[..],1);#assert a.error==0 && !a.done && a.number==1 && a.raw==1;
+  b:=PB_find(wire[..],2);#assert b.error==0 && !b.done && b.payload.count==1 && b.payload[0]==97;
+  missing:=PB_find(wire[..],3);#assert missing.error==0 && missing.done && missing.raw==0 && missing.payload.count==0;
+  empty:=PB_find(wire[0..<0],1);#assert empty.error==0 && empty.done;
+  bad:=[1]u8.[128];invalid:=PB_find(bad[..],1);#assert invalid.error==PB_WIRE && invalid.done && invalid.raw==0 && invalid.payload.count==0;
+  trailing:=[3]u8.[8,1,128];found:=PB_find(trailing[..],1);#assert found.error==0 && !found.done && found.raw==1;
+}
+
 #test "message admission preserves depth and foreign view bounds" {
   #assert PB_message_admitted(0,0) && PB_message_admitted(64,1048576);
   #assert !PB_message_admitted(65,0) && !PB_message_admitted(0,-1) && !PB_message_admitted(0,1048577);
-  #assert PB_root_depth()==0 && PB_default_fields()==524288;
+  #assert PB_root_depth()==0 && PB_default_fields()==524288 && PB_require_fields() && !PB_partial_fields();
 }
 
 #test "count admission includes both endpoints and rejects neighbors" {

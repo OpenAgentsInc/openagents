@@ -8,6 +8,7 @@ import ctypes as C
 import hashlib
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 import struct
@@ -35,15 +36,22 @@ def checked(args,**kw):
     if r.returncode:raise AssertionError(r.stderr.decode(errors='replace'))
     return r.stdout
 
-def normalize_generated_declarations(body,p):
+def validate_generated_declarations(body,p):
     admission=b'if !'+p+b'message_admitted(depth,wire.count) {return '+p+b'Check.{error='+p+b'LIMIT};}'
     original=b'if depth>'+p+b'MAX_DEPTH || wire.count<0 || wire.count>'+p+b'MAX_BYTES {return '+p+b'Check.{error='+p+b'LIMIT};}'
-    old_root=b'0,'+p+b'MAX_FIELDS'
-    root=p+b'root_depth(),'+p+b'default_fields()'
+    old_root=b'0,'+p+b'MAX_FIELDS';root=p+b'root_depth(),'+p+b'default_fields()'
     validators=body.count(b'__check :: (wire:[] u8,depth:int,budget:int,required:bool,canonical:bool)')
     if not validators or body.count(admission)!=validators or original in body or old_root in body or not body.count(root):
         raise ValueError('generated validator did not consistently use the shared admission policy')
-    return body.replace(admission,original).replace(root,old_root)
+    if root+b',true,' in body or root+b',false,' in body or b'depth+1,left,true,canonical)' in body or not body.count(p+b'require_fields()') or not body.count(p+b'partial_fields()'):
+        raise ValueError('generated validator did not consistently use strict and partial field policies')
+    if re.search(rb'if count_[a-zA-Z0-9_]+>0 \{return [^\n]*DUPLICATE',body):
+        raise ValueError('singular validator still uses an occurrence counter')
+    if re.search(rb'one_\d+:u32=0;|if one_\d+!=0 ',body):
+        raise ValueError('oneof validator still uses a numeric discriminator')
+    getter=re.compile(rb'f:=([A-Za-z0-9_]+)find\(msg\.wire,(\d+)\);return ([A-Za-z0-9_]+)\.\{value=([^\n]*?),present=!f\.done,error=f\.error\};\}')
+    old_getter=re.compile(rb'pos:=0;while pos<msg\.wire\.count \{f:=[A-Za-z0-9_]+scan\(msg\.wire,pos\);pos=f\.next;if f\.number==\d+ \{return [A-Za-z0-9_]+\.\{value=[^\n]*?,present=true\};\}\}\nreturn [A-Za-z0-9_]+\.\{\};\}')
+    if old_getter.search(body) or not getter.search(body): raise ValueError('generated getter did not use the shared finder')
 
 SOURCE='''
 #import_proto "NOSTR" as N;
@@ -311,20 +319,35 @@ main :: () {a:[4] u8;b:[4] u8;
 
     def test_schema_declaration_characterization(self):
         baseline=json.loads((ROOT/'coax/tests/proto/import-baselines.json').read_text())
+        current=json.loads((ROOT/'coax/tests/proto/presence-baselines.json').read_text())
+        self.assertEqual(set(current['profiles']),set(baseline['profiles']))
+        self.assertEqual(current['reference_prefix'],baseline['prefix'])
         for name,expected in baseline['profiles'].items():
             descriptor=ROOT/expected.get('descriptor_fixture',name)
             self.assertEqual(hashlib.sha256(descriptor.read_bytes()).hexdigest(),expected['descriptor_sha256'],name)
             source=checked([COAX,'proto',descriptor,'--prefix',baseline['prefix']])
             body=source.split(b'// @proto-descriptor-declarations\n',1)[1]
-            # Preserve the historical declaration fingerprint while checking
-            # that the shared admission refactor is the only emitted change.
+            # The historical baseline remains frozen. presence_compare.py
+            # independently checks the exact old-to-current transformation.
             p=baseline['prefix'].encode()+b'__pb_'
-            normalized=normalize_generated_declarations(body,p)
-            self.assertEqual(hashlib.sha256(normalized).hexdigest(),expected['declarations_sha256'],name)
+            validate_generated_declarations(body,p)
+            self.assertEqual(hashlib.sha256(body).hexdigest(),current['profiles'][name],name)
             admission=b'if !'+p+b'message_admitted(depth,wire.count) {return '+p+b'Check.{error='+p+b'LIMIT};}'
             old=b'if depth>'+p+b'MAX_DEPTH || wire.count<0 || wire.count>'+p+b'MAX_BYTES {return '+p+b'Check.{error='+p+b'LIMIT};}'
-            with self.assertRaises(ValueError): normalize_generated_declarations(body.replace(admission,old,1),p)
-            with self.assertRaises(ValueError): normalize_generated_declarations(body.replace(p+b'root_depth(),'+p+b'default_fields()',b'0,'+p+b'MAX_FIELDS',1),p)
+            with self.assertRaises(ValueError): validate_generated_declarations(body.replace(admission,old,1),p)
+            with self.assertRaises(ValueError): validate_generated_declarations(body.replace(p+b'root_depth(),'+p+b'default_fields()',b'0,'+p+b'MAX_FIELDS',1),p)
+            strict=p+b'root_depth(),'+p+b'default_fields(),'+p+b'require_fields(),'
+            if strict in body:
+                with self.assertRaises(ValueError): validate_generated_declarations(body.replace(strict,p+b'root_depth(),'+p+b'default_fields(),true,',1),p)
+            getter=re.search(rb'f:=([A-Za-z0-9_]+)find\(msg\.wire,(\d+)\);return ([A-Za-z0-9_]+)\.\{value=([^\n]*?),present=!f\.done,error=f\.error\};\}',body)
+            if getter:
+                prefix,number,typ,value=getter.groups()
+                legacy=b'pos:=0;while pos<msg.wire.count {f:='+prefix+b'scan(msg.wire,pos);pos=f.next;if f.number=='+number+b' {return '+typ+b'.{value='+value+b',present=true};}}\nreturn '+typ+b'.{};}'
+                with self.assertRaises(ValueError): validate_generated_declarations(body[:getter.start()]+legacy+body[getter.end():],p)
+            one=re.search(rb'one_(\d+):bool=false;',body)
+            if one:
+                legacy=b'one_'+one.group(1)+b':u32=0;'
+                with self.assertRaises(ValueError): validate_generated_declarations(body.replace(one.group(),legacy,1),p)
             self.assertNotIn(b'#authority;',source)
             self.assertNotIn(b'@proto-runtime-checks',source)
 

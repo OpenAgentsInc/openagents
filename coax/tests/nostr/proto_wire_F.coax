@@ -64,6 +64,14 @@
  b[0]=225;b[1]=128;b[2]=128;#assert F__pb_utf8(b[..]);
  #assert F__pb_utf8(c[0..<0]);
 }
+#test "protobuf field search retains bounded source semantics" {
+ a:=[5]u8.[8,1,18,1,97];x:=F__pb_find(a[..],1);#assert x.error==0 && !x.done && x.raw==1;
+ x=F__pb_find(a[..],2);#assert x.error==0 && !x.done && x.payload.count==1 && x.payload[0]==97;
+ x=F__pb_find(a[..],3);#assert x.error==0 && x.done && x.raw==0 && x.payload.count==0;
+ x=F__pb_find(a[0..<0],1);#assert x.error==0 && x.done && x.raw==0 && x.payload.count==0;
+ bad:=[1]u8.[128];x=F__pb_find(bad[..],1);#assert x.error==F__pb_WIRE && x.done && x.raw==0 && x.payload.count==0;
+ trailing:=[3]u8.[8,1,128];x=F__pb_find(trailing[..],1);#assert x.error==0 && !x.done && x.raw==1;
+}
 #test "protobuf varint size transitions" {
  #assert F__pb_vsize(0)==1 && F__pb_vsize(127)==1 && F__pb_vsize(128)==2;
  #assert F__pb_vsize(16383)==2 && F__pb_vsize(16384)==3 && F__pb_vsize(2097152)==4;
@@ -71,5 +79,5 @@
 #test "generated protobuf message admission and default budget" {
  #assert F__pb_message_admitted(0,0) && F__pb_message_admitted(64,1048576);
  #assert !F__pb_message_admitted(65,0) && !F__pb_message_admitted(0,-1) && !F__pb_message_admitted(0,1048577);
- #assert F__pb_root_depth()==0 && F__pb_default_fields()==524288;
+ #assert F__pb_root_depth()==0 && F__pb_default_fields()==524288 && F__pb_require_fields() && !F__pb_partial_fields();
 }
