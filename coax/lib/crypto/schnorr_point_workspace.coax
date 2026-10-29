@@ -1,0 +1,46 @@
+// Experimental fixed-base point/affine preparation for BIP-340 signing.
+// Secret-derived by-value and compiler copies are not covered by work erasure.
+#load "secp_mult_base_web.coax";
+#load "ecdh_fast.coax";
+#authority;
+#test "base point three has the published BIP-340 x coordinate" {
+  work:[1]SignPoint;
+  #assert sp_base(sc_small(3),work[..]);#assert work[0].finite==1 && work[0].odd==0;
+  expected:=[32]u8.[0xf9,0x30,0x8a,0x01,0x92,0x58,0xc3,0x10,0x49,0x34,0x4f,0x85,0xf8,0x9d,0x52,0x29,0xb5,0x31,0xc8,0x45,0x83,0x6f,0x99,0xb0,0x86,0x01,0xf1,0x13,0xbc,0xe0,0x36,0xf9];
+  out:[32]u8;#assert sp_x(work[..],out[..]);for i:0..<32 {#assert out[i]==expected[i];}
+}
+#test "base infinity is explicit, and finite affine normalization retains y" {
+  work:[1]SignPoint;
+  #assert sp_affine(sg_infinity(),work[..]) && work[0].finite==0;
+  #assert sp_affine(sg_generator(),work[..]) && work[0].finite==1 && work[0].odd==0;
+  expected:=sg32_from_point(sg_generator());#assert sg32_mask_equal(work[0].x,expected.x)==CB_MAX64 && sg32_mask_equal(work[0].y,expected.y)==CB_MAX64;
+  #assert sp_affine(sg_negate(sg_generator()).value,work[..]) && work[0].finite==1 && work[0].odd==1;
+}
+#test "affine preparation rejects invalid metadata" {
+  work:[1]SignPoint;out:[32]u8;work[0].finite=9;out[0]=165;
+  #assert !sp_base(sc_small(1),work[0..<0]);#assert !sp_affine(sg_generator(),work[0..<0]);
+  #assert !sp_x(work[0..<0],out[..]) && !sp_x(work[..],out[0..<31]);
+  #assert work[0].finite==9 && out[0]==165;
+}
+SignPoint :: struct {projective:Sg32;inverse:Sf32;z2:Sf32;z3:Sf32;x:Sf32;y:Sf32;finite:u64;odd:u64;}
+// The caller supplies canonical generated projective points and owns a stable,
+// disjoint workspace. This does not authenticate an arbitrary point.
+sp_affine :: (point:SgPoint,work:[]SignPoint)->bool {
+  if work.count!=1 {return false;}
+  work[0].projective=sg32_from_point(point);zero:Sf32;
+  work[0].finite=(sg32_mask_equal(work[0].projective.z,zero)^CB_MAX64)&1;
+  work[0].inverse=ef_inverse(work[0].projective.z);
+  work[0].z2=ef_field_mul(work[0].inverse,work[0].inverse);work[0].z3=ef_field_mul(work[0].z2,work[0].inverse);
+  work[0].x=ef_field_mul(work[0].projective.x,work[0].z2);work[0].y=ef_field_mul(work[0].projective.y,work[0].z3);
+  work[0].odd=cast(u64)(work[0].y.limb[0]&1);return true;
+}
+// Scalar is canonical and masked nonzero by the caller; table data are public.
+sp_base :: (scalar:ScScalar,work:[]SignPoint)->bool #export_c {
+  if work.count!=1 {return false;}return sp_affine(smb_multiply_web(scalar),work);
+}
+// Output must be valid, stable and disjoint from work; this internal helper
+// does not validate overlap or establish finite-point authority.
+sp_x :: (work:[]SignPoint,out:[]u8)->bool #export_c {
+  if work.count!=1 || !cb_span(out.count,0,32) {return false;}
+  for i:0..<8 {stored:=cb_store_be32(out,(7-i)*4,work[0].x.limb[i]);}return true;
+}
