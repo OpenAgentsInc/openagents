@@ -1,0 +1,2 @@
+mutation-scheduling full checks=8891 skipped=0 borrowed=0 strings=0 unstable=0
+749 mutants, 749 killed, 0 survived

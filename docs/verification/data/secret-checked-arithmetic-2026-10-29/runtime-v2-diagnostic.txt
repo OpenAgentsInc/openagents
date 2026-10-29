@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_checked_arithmetic.py", line 46, in <module>
+    if result.returncode==0 or expected_trap[case] not in result.stderr or (target=='native' and result.returncode!=-signal.SIGABRT):raise AssertionError((mode,target,case,result.returncode,result.stderr))
+                                                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ('checked', 'native', 6, -6, '/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_checked_arithmetic_fixture.coax:8: division by zero\n')

@@ -1,5 +1,10 @@
 # Scalar secret-path source audit
 
+**Security status:** historical scalar and aggregate audit acceptances are
+untrusted pending revalidation after the checked-cast and checked-arithmetic
+corrections. See the [arithmetic advisory](../../../docs/verification/2026-10-29-secret-audit-checked-arithmetic.md)
+and [cast advisory](../../../docs/verification/2026-10-29-secret-audit-checked-cast.md).
+
 This is an executable, conservative source/dataflow policy, not a new language
 annotation and not cryptographic admission. It uses the real Coax lexer, parser,
 source-load scanner and typed compiler source map. It does not accept a supplied

@@ -1,5 +1,11 @@
 # Secret-source audit checked-cast correction
 
+**Further security correction:** a separate defect affected checked arithmetic
+in the scalar-only profile as well as all three aggregate profiles. Historical
+secret-source audit acceptances are untrusted pending the
+[arithmetic correction](2026-10-29-secret-audit-checked-arithmetic.md) and
+exact-graph revalidation. The cast correction alone was not a complete audit.
+
 The legacy aggregate, public-view and larger-closure aggregate profiles
 accepted a secret-dependent checked narrowing cast. Coax emits a runtime
 range check for that cast in both checked and release native C: a secret

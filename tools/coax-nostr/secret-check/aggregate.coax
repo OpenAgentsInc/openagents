@@ -253,7 +253,7 @@ AG_binary :: (a:AgValue,b:AgValue,op:u32,memory:[]AgMemory,state:[]ScAudit,id:in
  r:=AgValue.{mask=AG_origin(a,memory)|AG_origin(b,memory),type=a.type};if a.type==-4 {r.type=b.type;}
  if (op==50 || op==51) && AG_origin(a,memory)!=0 {SC_fail(state,SC_BRANCH,id);}
  if (op==42 || op==43) && AG_origin(b,memory)!=0 {SC_fail(state,SC_SHIFT,id);}
- if (op==37 || op==38) && r.mask!=0 {SC_fail(state,SC_UNSUPPORTED,id);}
+ if op>=34 && op<=38 && r.mask!=0 {SC_fail(state,SC_UNSUPPORTED,id);}
  if op<34 || op>51 {SC_fail(state,SC_UNSUPPORTED,id);return r;}
  if op>=44 {r.type=-3;r.known=true;r.hi=1;}
  if a.known && b.known {
@@ -290,7 +290,7 @@ AG_expr :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[]
  // successfully evaluated the same source graph. No value or type is guessed.
  if n.kind==24 {if !memory[0].compiled_runs {SC_fail(state,SC_UNSUPPORTED,id);}return AgValue.{};}
  if n.kind==20 {slot:=AG_slot(env,n.name);if slot>=0 {return env[0].bindings[slot].value;}d:=AG_decl(nodes,roots,n.name,state);if nodes[d].kind!=65 {SC_fail(state,SC_CALL,id);return AgValue.{};}empty:[1]AgEnv;return AG_expr(nodes,values,roots,types,nodes[d].a,empty[..],memory,state,depth+1);}
- if n.kind==22 {a:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);r:=a;r.mask=AG_origin(a,memory);r.region=0;r.literal=0;if n.op!=35 && n.op!=52 {SC_fail(state,SC_UNSUPPORTED,id);return r;}
+ if n.kind==22 {a:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);r:=a;r.mask=AG_origin(a,memory);r.region=0;r.literal=0;if (n.op!=35 && n.op!=52) || (n.op==35 && r.mask!=0) {SC_fail(state,SC_UNSUPPORTED,id);return r;}
   if n.op==52 {r.type=-3;if a.known {r.lo=ifx a.hi==0 then 1 else 0;r.hi=ifx a.lo!=0 then 0 else 1;}}
   else {r.known=false;}return r;}
  if n.kind==23 {a:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);b:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,depth+1);return AG_binary(a,b,n.op,memory,state,id);}
@@ -333,7 +333,7 @@ AG_write :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,rhs:A
  target:=AG_expr(nodes,values,roots,types,id,env,memory,state,0);mask:=AG_origin(rhs,memory);
  if op<23 || op>33 {SC_fail(state,SC_UNSUPPORTED,id);return;}
  if (op==32 || op==33) && mask!=0 {SC_fail(state,SC_SHIFT,id);}
- if (op==27 || op==28) && (mask|AG_origin(target,memory))!=0 {SC_fail(state,SC_UNSUPPORTED,id);}
+ if op>=24 && op<=28 && (mask|AG_origin(target,memory))!=0 {SC_fail(state,SC_UNSUPPORTED,id);}
  root:=AG_target_root(nodes,id,state);slot:=AG_slot(env,nodes[root].name);if slot<0 {SC_fail(state,SC_CALL,id);return;}if env[0].bindings[slot].induction {SC_fail(state,ifx mask!=0 then SC_BRANCH else SC_UNSUPPORTED,id);return;}
  if slot<env[0].binding_floor || (target.region!=0 && target.region<=memory[0].protected_regions) {SC_fail(state,SC_UNSUPPORTED,id);return;}
  if nodes[id].kind==20 && target.view {SC_fail(state,SC_UNSUPPORTED,id);return;}

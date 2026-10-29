@@ -1,0 +1,71 @@
+{
+  "schema": "coax.secret-source-audit.v1",
+  "entry": "candidate",
+  "classification": "all entry parameters secret",
+  "profile": "aggregate-source-v1",
+  "accepted": true,
+  "compiler_sha256": "f335e7ec7b3f6d5966244a09aa8002b11b5ba607a1f673353c51effd9dab84a1",
+  "compiler": "coax0 0.22.0",
+  "compiler_run_steps": null,
+  "audit_artifact_sha256": "3c99462ecee4bb8ef8cd9a5fdf98d4fb39fb07644f1ef5eec38f9f73b6586e7b",
+  "audit_input_sha256": {
+    "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/frontend.coax": "570f71b622640f2a2f55fb4fe1a05b78a36a2f606bf5e288f2150a3ba1b0de0c",
+    "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/lexer.coax": "2a193c698aab87f24384bdd4443dc02d15a2a699cea5b371762392fc5925ad0b",
+    "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/parser.coax": "448318fa44d7935bebb0efcf1d6a55f77c39d1cc4450c18ed5ffbe4c55d36365",
+    "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/sources.coax": "a5cea55ef5f6efa502d15d9e0ddd462e3e1a5cffe0f25a8200873443c9df008d",
+    "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/sha256-memory.coax": "9c59475cf6744005e9a9bff7efa5c1fd1cf90c5323a7c52e818a166b0451433d",
+    "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "/private/tmp/coax-signer-audit-prereq/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/source-policy.coax": "e0822835f32f266d4ca97b26d47ea158ffc58bed62eb5096d3eeec1dc9c628c5",
+    "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/aggregate.coax": "60bac74d7d1ad97304827b15681daad41d1335c9bf6ff44d4937f516018022a8",
+    "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/secret-flow.coax": "208119c702a971e799baa13221b211b38665c0a7a34c52a2af3f453ac5588f4e",
+    "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/secret-types.coax": "e7a6a4632ab555ac12b3765d97bf18fcad5e18248f182889b31fb965682117e7",
+    "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_flow.coax": "b3b383a63aa7fffeaed0daf3bde6066c0c1e7f7e856c6a855f8c5c45fb2840d3",
+    "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_aggregate.coax": "2f7ecaa5620aa07a2f82c5bbdddebfb0d9f1bdd6878c58d4b0eacaca9c8eb8de",
+    "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_aggregate_cases.coax": "48eba5b22f959af9ce90160db248a2c339a4840182fca2c8e2c38107572306ba",
+    "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/bridge-aggregate.cpp": "4698b4db5bb6ce7fad7d2950ef87904fd64d1bfd1942a8d9848b0faa700840fa",
+    "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/check.py": "f8b6e850a3b1ad8b856f776e05c40756ffd7991779794c117ddc2d30a1114a61",
+    "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/aggregate.py": "57ec01caef34b96a8451931d41dbe0f096e4ffb765e319bb478edead54e6fe84"
+  },
+  "object_timing_approved": false,
+  "checked_runtime_guards_proved": false,
+  "aggregate_memory_loops_supported": true,
+  "compiler_profile": "native-c-checked-library",
+  "compiler_source_map_sha256": "065354bf8df98e84c07c136703c3a641599ab751d211193231799508cf45a5cf",
+  "source_sha256": {
+    "/private/tmp/secret-checked-add.coax": "84ec02862f8708fe9757065e30660676dcabb256593c630e97c278968d9cf462"
+  },
+  "resolved_type_sha256": "8a2bd1deb0d307a39db3f48921dbf42d3979ee5654e5d5b44b60757b66ca24f0",
+  "resolved_type_inventory": {
+    "schema": "coax.compiler-resolved-types.v1",
+    "functions": [
+      {
+        "unit": 0,
+        "name": "candidate",
+        "line": 1,
+        "variables": [
+          {
+            "name": "x",
+            "line": 1,
+            "role": "parameter",
+            "type": "u64"
+          }
+        ]
+      }
+    ]
+  },
+  "resolved_type_inventory_scope": "compiler-typed physical closure; only reached procedures flow-analyzed",
+  "error": 0,
+  "error_name": "accepted",
+  "file": "/private/tmp/secret-checked-add.coax",
+  "line": 0,
+  "column": 0,
+  "reached_procedures": 1,
+  "visited_nodes": 9,
+  "return_dependency_mask": 1,
+  "supported_algorithm_dataflow": true,
+  "source_status": "admitted-source",
+  "production_crypto_approved": false,
+  "authored_guard_obligations": []
+}

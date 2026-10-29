@@ -1,0 +1,326 @@
+{
+  "inputs": {
+    "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_checked_arithmetic_fixture.coax": "651793def3ad07ab4e087e98c33781f379ffe8967a31f4fef08638b7a9e953e1",
+    "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_checked_arithmetic_fixture.c": "7a915bf8dd95ef5b45020224c3c0281befca5a44e6a410052d8566d7bcbae4cd",
+    "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_checked_cast_wasm.cjs": "fac2a3de7b70ca8a84c3830e6fef6e5bf303cfd869131fa26cd4d24d65b5eee7",
+    "/private/tmp/codex-nostr-sign/coax/bin/coax": "f335e7ec7b3f6d5966244a09aa8002b11b5ba607a1f673353c51effd9dab84a1",
+    "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/secret-flow.coax": "3e7385219a694808e7d55caca47a0abe631de07911062c4a1c29605d79c9bba8",
+    "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/aggregate.coax": "3c49933150583c3828ab23eaed21dbe282c8273367f3aec787bf7889acce5df6",
+    "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/public-view-check/aggregate.coax": "391dfdbbc101f1f0ecff76b0e0c4cc850763b596bc2e335b8838df5dfe54895b",
+    "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/large-source-audit/aggregate.coax": "8f219d6692df6c34a14ee156c6a964f1215a8e5072b6b5bc6ac7ef0394df2be3"
+  },
+  "audit_inputs": {
+    "scalar": {
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/frontend.coax": "570f71b622640f2a2f55fb4fe1a05b78a36a2f606bf5e288f2150a3ba1b0de0c",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/lexer.coax": "2a193c698aab87f24384bdd4443dc02d15a2a699cea5b371762392fc5925ad0b",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/parser.coax": "448318fa44d7935bebb0efcf1d6a55f77c39d1cc4450c18ed5ffbe4c55d36365",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/sources.coax": "a5cea55ef5f6efa502d15d9e0ddd462e3e1a5cffe0f25a8200873443c9df008d",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/sha256-memory.coax": "9c59475cf6744005e9a9bff7efa5c1fd1cf90c5323a7c52e818a166b0451433d",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/source-policy.coax": "e0822835f32f266d4ca97b26d47ea158ffc58bed62eb5096d3eeec1dc9c628c5",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/secret-flow.coax": "3e7385219a694808e7d55caca47a0abe631de07911062c4a1c29605d79c9bba8",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/secret-types.coax": "e7a6a4632ab555ac12b3765d97bf18fcad5e18248f182889b31fb965682117e7",
+      "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_flow.coax": "17fb7be86bed9c44bb15cff5a7eae76c9bc98eb8657c2846ece2dc82a2512cd0",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/bridge.cpp": "dbd2ab727e8b178ce3d53fdbbd8c813de2adc8b2c427da0fd3728d6275f95316",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/check.py": "f8b6e850a3b1ad8b856f776e05c40756ffd7991779794c117ddc2d30a1114a61"
+    },
+    "legacy": {
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/frontend.coax": "570f71b622640f2a2f55fb4fe1a05b78a36a2f606bf5e288f2150a3ba1b0de0c",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/lexer.coax": "2a193c698aab87f24384bdd4443dc02d15a2a699cea5b371762392fc5925ad0b",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/parser.coax": "448318fa44d7935bebb0efcf1d6a55f77c39d1cc4450c18ed5ffbe4c55d36365",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/sources.coax": "a5cea55ef5f6efa502d15d9e0ddd462e3e1a5cffe0f25a8200873443c9df008d",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/sha256-memory.coax": "9c59475cf6744005e9a9bff7efa5c1fd1cf90c5323a7c52e818a166b0451433d",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/source-policy.coax": "e0822835f32f266d4ca97b26d47ea158ffc58bed62eb5096d3eeec1dc9c628c5",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/aggregate.coax": "3c49933150583c3828ab23eaed21dbe282c8273367f3aec787bf7889acce5df6",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/secret-flow.coax": "3e7385219a694808e7d55caca47a0abe631de07911062c4a1c29605d79c9bba8",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/secret-types.coax": "e7a6a4632ab555ac12b3765d97bf18fcad5e18248f182889b31fb965682117e7",
+      "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_flow.coax": "17fb7be86bed9c44bb15cff5a7eae76c9bc98eb8657c2846ece2dc82a2512cd0",
+      "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_aggregate.coax": "58c054b4bfb4e60626a30830acf566e1f772c29fc269113c9078fe771faa51ac",
+      "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_aggregate_cases.coax": "c352871a69fa5615754b863adbd570b0d3dd907ebcd1c811a03544bae8beea0a",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/bridge-aggregate.cpp": "4698b4db5bb6ce7fad7d2950ef87904fd64d1bfd1942a8d9848b0faa700840fa",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/check.py": "f8b6e850a3b1ad8b856f776e05c40756ffd7991779794c117ddc2d30a1114a61",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/aggregate.py": "57ec01caef34b96a8451931d41dbe0f096e4ffb765e319bb478edead54e6fe84"
+    },
+    "public": {
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/frontend.coax": "570f71b622640f2a2f55fb4fe1a05b78a36a2f606bf5e288f2150a3ba1b0de0c",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/lexer.coax": "2a193c698aab87f24384bdd4443dc02d15a2a699cea5b371762392fc5925ad0b",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/parser.coax": "448318fa44d7935bebb0efcf1d6a55f77c39d1cc4450c18ed5ffbe4c55d36365",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/sources.coax": "a5cea55ef5f6efa502d15d9e0ddd462e3e1a5cffe0f25a8200873443c9df008d",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/sha256-memory.coax": "9c59475cf6744005e9a9bff7efa5c1fd1cf90c5323a7c52e818a166b0451433d",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/source-policy.coax": "e0822835f32f266d4ca97b26d47ea158ffc58bed62eb5096d3eeec1dc9c628c5",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/public-view-check/aggregate.coax": "391dfdbbc101f1f0ecff76b0e0c4cc850763b596bc2e335b8838df5dfe54895b",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/secret-flow.coax": "3e7385219a694808e7d55caca47a0abe631de07911062c4a1c29605d79c9bba8",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/secret-types.coax": "e7a6a4632ab555ac12b3765d97bf18fcad5e18248f182889b31fb965682117e7",
+      "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_flow.coax": "17fb7be86bed9c44bb15cff5a7eae76c9bc98eb8657c2846ece2dc82a2512cd0",
+      "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_aggregate.coax": "58c054b4bfb4e60626a30830acf566e1f772c29fc269113c9078fe771faa51ac",
+      "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_aggregate_cases.coax": "c352871a69fa5615754b863adbd570b0d3dd907ebcd1c811a03544bae8beea0a",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/public-view-check/bridge-aggregate.cpp": "ac56e8d614612532900a62462a6089e4c0de6f2857c57d8c52a98cd8cfb5754c",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/public-view-check/check.py": "4a478426bcf468e5e4d319185bffce2b503ac62e3fc2ef4659cbb13d77656e6b",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/public-view-check/aggregate.py": "6e3babd692fdb5a3ea351b6abf50ed9d33aef6856a9857d868d37c716ac9078d"
+    },
+    "large": {
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/frontend.coax": "570f71b622640f2a2f55fb4fe1a05b78a36a2f606bf5e288f2150a3ba1b0de0c",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/lexer.coax": "2a193c698aab87f24384bdd4443dc02d15a2a699cea5b371762392fc5925ad0b",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/parser.coax": "448318fa44d7935bebb0efcf1d6a55f77c39d1cc4450c18ed5ffbe4c55d36365",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/compiler/sources.coax": "a5cea55ef5f6efa502d15d9e0ddd462e3e1a5cffe0f25a8200873443c9df008d",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/sha256-memory.coax": "9c59475cf6744005e9a9bff7efa5c1fd1cf90c5323a7c52e818a166b0451433d",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/secret-check/source-policy.coax": "e0822835f32f266d4ca97b26d47ea158ffc58bed62eb5096d3eeec1dc9c628c5",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/large-source-audit/aggregate.coax": "8f219d6692df6c34a14ee156c6a964f1215a8e5072b6b5bc6ac7ef0394df2be3",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/large-source-audit/inventory.coax": "68a30c50ca2b02308dd56d6416a8dbf04798ded7912dcfc1354f19462fbb8d85",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/secret-flow.coax": "3e7385219a694808e7d55caca47a0abe631de07911062c4a1c29605d79c9bba8",
+      "/private/tmp/coax-signer-audit-prereq/coax/lib/crypto/secret-types.coax": "e7a6a4632ab555ac12b3765d97bf18fcad5e18248f182889b31fb965682117e7",
+      "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_flow.coax": "17fb7be86bed9c44bb15cff5a7eae76c9bc98eb8657c2846ece2dc82a2512cd0",
+      "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_aggregate.coax": "58c054b4bfb4e60626a30830acf566e1f772c29fc269113c9078fe771faa51ac",
+      "/private/tmp/coax-signer-audit-prereq/coax/tests/nostr/secret_aggregate_cases.coax": "c352871a69fa5615754b863adbd570b0d3dd907ebcd1c811a03544bae8beea0a",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/large-source-audit/bridge-aggregate.cpp": "36425ae3a5733ba91b1c383f07a836f6525dc102e483aee8d1e1fff870d97bd3",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/large-source-audit/check.py": "811e7f65169eff6254e6509b7f84bb2fe111d6e85632c6a04457632b04257e4f",
+      "/private/tmp/coax-signer-audit-prereq/tools/coax-nostr/large-source-audit/aggregate.py": "ca48ee2e52c7e7abe3af910ef41aa915abcc63c314ce281386075a3815e8562f"
+    }
+  },
+  "target_tools": {
+    "cc": {
+      "path": "/usr/bin/cc",
+      "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba"
+    },
+    "clang": {
+      "path": "/opt/homebrew/Cellar/llvm/23.1.4/bin/clang-23",
+      "sha256": "5c51770b83a5407e507ad19fcfe1ec141deeb15f0d86312568915f3637f31f5a"
+    },
+    "node": {
+      "path": "/opt/homebrew/Cellar/node/26.12.1_1/bin/node",
+      "sha256": "92a0c4293164f55741d9b3fbf00bd61c50263ccfa847b583348f5eb5f64f6d08"
+    }
+  },
+  "results": [
+    [
+      "scalar",
+      "checked_add",
+      "unsupported"
+    ],
+    [
+      "scalar",
+      "checked_sub",
+      "unsupported"
+    ],
+    [
+      "scalar",
+      "checked_mul",
+      "unsupported"
+    ],
+    [
+      "scalar",
+      "checked_neg",
+      "unsupported"
+    ],
+    [
+      "scalar",
+      "compound",
+      "unsupported"
+    ],
+    [
+      "scalar",
+      "secret_shift",
+      "secret-shift"
+    ],
+    [
+      "scalar",
+      "secret_div",
+      "unsupported"
+    ],
+    [
+      "scalar",
+      "wrapping_add",
+      "accepted"
+    ],
+    [
+      "legacy",
+      "checked_add",
+      "unsupported"
+    ],
+    [
+      "legacy",
+      "checked_sub",
+      "unsupported"
+    ],
+    [
+      "legacy",
+      "checked_mul",
+      "unsupported"
+    ],
+    [
+      "legacy",
+      "checked_neg",
+      "unsupported"
+    ],
+    [
+      "legacy",
+      "compound",
+      "unsupported"
+    ],
+    [
+      "legacy",
+      "secret_shift",
+      "secret-shift"
+    ],
+    [
+      "legacy",
+      "secret_div",
+      "unsupported"
+    ],
+    [
+      "legacy",
+      "wrapping_add",
+      "accepted"
+    ],
+    [
+      "legacy",
+      "array_compound",
+      "unsupported"
+    ],
+    [
+      "public",
+      "checked_add",
+      "unsupported"
+    ],
+    [
+      "public",
+      "checked_sub",
+      "unsupported"
+    ],
+    [
+      "public",
+      "checked_mul",
+      "unsupported"
+    ],
+    [
+      "public",
+      "checked_neg",
+      "unsupported"
+    ],
+    [
+      "public",
+      "compound",
+      "unsupported"
+    ],
+    [
+      "public",
+      "secret_shift",
+      "secret-shift"
+    ],
+    [
+      "public",
+      "secret_div",
+      "unsupported"
+    ],
+    [
+      "public",
+      "wrapping_add",
+      "accepted"
+    ],
+    [
+      "public",
+      "array_compound",
+      "unsupported"
+    ],
+    [
+      "large",
+      "checked_add",
+      "unsupported"
+    ],
+    [
+      "large",
+      "checked_sub",
+      "unsupported"
+    ],
+    [
+      "large",
+      "checked_mul",
+      "unsupported"
+    ],
+    [
+      "large",
+      "checked_neg",
+      "unsupported"
+    ],
+    [
+      "large",
+      "compound",
+      "unsupported"
+    ],
+    [
+      "large",
+      "secret_shift",
+      "secret-shift"
+    ],
+    [
+      "large",
+      "secret_div",
+      "unsupported"
+    ],
+    [
+      "large",
+      "wrapping_add",
+      "accepted"
+    ],
+    [
+      "large",
+      "array_compound",
+      "unsupported"
+    ],
+    [
+      "checked",
+      "native",
+      10,
+      "passed"
+    ],
+    [
+      "checked",
+      "wasm",
+      10,
+      "passed"
+    ],
+    [
+      "checked",
+      "sha256",
+      {
+        "c": "98ba03b67c36d97fc4ac3ce8f35fd2dfa3a862c47da8ddb2a2e29fc83b4f5b8f",
+        "map": "6982705d36a8527c020450e38d343ed4d41013d75bbda88cef7be099090087c6",
+        "native": "9f1dc869d5f82b7d1b3cc711031db9cc7452ff567e2affd10eb17002ab1c64e5",
+        "wasm": "79aebed6c475b4f8ae639cbf07c717e76d3aca649c00768bd9122901094273e0"
+      }
+    ],
+    [
+      "release",
+      "native",
+      10,
+      "passed"
+    ],
+    [
+      "release",
+      "wasm",
+      10,
+      "passed"
+    ],
+    [
+      "release",
+      "sha256",
+      {
+        "c": "4981e0b88790c66015fb93576c4fd05694935d726a77221078adb97de155b8eb",
+        "map": "6982705d36a8527c020450e38d343ed4d41013d75bbda88cef7be099090087c6",
+        "native": "46741812f0ea59f3f8cdd708af3403a4c527ddd24c59c7733eccc987b8eccee2",
+        "wasm": "63f43b4b809fc82dd2ec46f8cba2d5ffdc8a0dbe4ddb5eaf30f69327a90dca52"
+      }
+    ]
+  ]
+}
