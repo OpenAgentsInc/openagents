@@ -926,7 +926,8 @@
         "crypto-secret-aggregate-closure",
         "crypto-secret-public-loop-summaries",
         "crypto-field-secret-guards",
-        "crypto-classified-root-audit"
+        "crypto-classified-root-audit",
+        "crypto-reviewed-guard-binding"
       ],
       "blocks": [
         "crypto-ecdh-xonly"
@@ -3300,7 +3301,8 @@
       ],
       "blocks": [
         "secp-mult-base",
-        "secp-mult-const"
+        "secp-mult-const",
+        "crypto-reviewed-guard-binding"
       ]
     },
     {
@@ -3319,6 +3321,23 @@
         "Affected full policy checks, full mutation with zero survivors and independent security review pass; record source, classification, profile and tool identities without target or production approval"
       ],
       "blocked_by": ["crypto-secret-aggregate-closure", "crypto-secret-public-loop-summaries"],
+      "blocks": ["secp-mult-const", "crypto-reviewed-guard-binding"]
+    },
+    {
+      "slug": "crypto-reviewed-guard-binding",
+      "parent": "m-assurance",
+      "title": "Bind reviewed field guard proofs to an exact classified source audit",
+      "size": "L",
+      "labels": ["nostr", "crypto", "coax"],
+      "body": "Provide an explicit fail-closed connection between the independently reviewed field guard proof and the exact classified variable-base source audit. Preserve the raw auditor result and its guard obligations; any separate decision is conditional on trusted manual source-to-model review and a public-peer caller premise. Hashing or rerunning arithmetic models alone does not establish source equivalence. Unknown proofs, source graphs, tools, compiler profiles, classifications, roots or guard sets must not act as waivers. No target, erasure or production-secret approval follows.",
+      "files": ["tools/coax-nostr/", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "A separate opt-in source-scope decision accepts only the exact reviewed root, full compiler and audit-tool profile, source and type identities, parameter classification, proof and solver identities, caller premises and complete guard set; the original accepted=false audit remains inspectable",
+        "Independently review source-to-model correspondence and the trusted registry or equivalent; state explicitly that manual review, caller public-peer classification and tool/runtime provenance are trust premises",
+        "Changed source, tool, profile, labels, proof, solver, missing or extra or duplicated guards, changed origin masks, arbitrary refusal and unsupported roots fail closed; negative tests and a positive real-source witness cover all admission predicates",
+        "Affected source checks and full mutation pass with zero survivors, without changing resource limits; record exact evidence and never claim target-wide timing, JIT, erasure or production approval"
+      ],
+      "blocked_by": ["crypto-field-secret-guards", "crypto-classified-root-audit"],
       "blocks": ["secp-mult-const"]
     }
   ]
