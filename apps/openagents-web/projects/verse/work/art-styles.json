@@ -787,6 +787,31 @@
         "as-phone-tier"
       ],
       "blocks": []
+    },
+    {
+      "slug": "as-botw-haze",
+      "parent": "as-painterly",
+      "title": "Coloured haze: teal in the middle distance, blue far off, no grey wash",
+      "size": "S",
+      "labels": [
+        "engine",
+        "painterly"
+      ],
+      "body": "Comparison round 1 against the Breath of the Wild references: our frames wash the distance to a pale grey-white (Everglade's HORIZON fog bleaches the gatehouse and the town behind it), where the reference's near world stays saturated and crisp, the middle distance goes teal and far ridges blue-violet. The haze's hue becomes a function of its share (teal where thin, the preset's blue at its cap), in verse/style.coax, used by the style fixture and Everglade, whose fog takes the painterly day's haze curve and colour.\n\nSpecification: `docs/verse/art-styles.md`, 4. Atmosphere: haze.",
+      "files": [
+        "verse/style.coax",
+        "apps/openagents-web/fixture.wgsl",
+        "apps/openagents-web/everglade.wgsl",
+        "apps/openagents-web/everglade.coax",
+        "docs/verse/art-styles.md"
+      ],
+      "acceptance": [
+        "coax test passes on verse/style.coax with checks pinning the teal and blue ends",
+        "Everglade's road in shows the far town teal-blue, not white; near colours unchanged",
+        "Goldens retaken from staging and released"
+      ],
+      "blocked_by": [],
+      "blocks": []
     }
   ]
 }

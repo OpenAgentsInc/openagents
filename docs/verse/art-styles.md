@@ -192,7 +192,8 @@ ridges stack like painted flats.
 f_dist   = 1 - exp(-density * max(d - start, 0))
 f_height = exp(-max(y - base_y, 0) / falloff)          // thinner higher up
 f        = min(f_dist * mix(1.0, f_height, 0.6), cap)
-haze     = mix(haze_colour, key_colour_in_haze, pow(saturate(dot(V, L)), 8) * 0.45)
+hue      = haze_colour * mix(teal, 1, smoothstep(0.15, cap, f))   // teal = (0.70, 1.00, 0.84)
+haze     = mix(hue, key_colour_in_haze, pow(saturate(dot(V, L)), 8) * 0.45)
 colour   = mix(colour, haze, f)
 ```
 
@@ -204,6 +205,12 @@ colour   = mix(colour, haze, f)
 | `falloff` | 60 m | 50 m | 40 m |
 | `haze_colour` | (0.56, 0.74, 0.90) | (0.78, 0.66, 0.74) | (0.10, 0.14, 0.27) |
 | key light in haze | (1.00, 0.90, 0.72) | (1.00, 0.62, 0.40) | (0.40, 0.48, 0.70) |
+
+The haze is coloured, never grey or white: where it is thin (the middle
+distance) its hue leans teal, and it turns to `haze_colour`'s blue as it
+thickens toward its cap, so the near world stays crisp and saturated, the
+middle distance goes teal and the far ridges blue, as Breath of the Wild's
+valleys do (`verse/style.coax` `verse_style_haze_hue`, added October 29).
 
 At 100 m by day the haze is 0.58, at 200 m 0.86, and it caps at 0.88 so
 far ridges still show as silhouettes. `base_y` is the realm's ground level

@@ -22,8 +22,19 @@ struct U {
 }
 @group(0) @binding(0) var<uniform> u: U;
 
-const HORIZON = vec3f(0.80, 0.86, 0.90);
-const ZENITH = vec3f(0.36, 0.56, 0.82);
+// The painterly day's haze and sky (verse/style-preset.coax, art-styles.md 4 and 5): the horizon
+// is the haze's colour, so the world meets the sky without a seam
+const HORIZON = vec3f(0.56, 0.74, 0.90);
+const ZENITH = vec3f(0.24, 0.48, 0.86);
+const HAZE_KEY = vec3f(1.00, 0.90, 0.72);   // the sun seen through the haze
+const HAZE_CAP = 0.88;
+// The haze over a surface d metres off at height y, looking along v: the style's curve from the
+// realm's start (u.sun.w) and density (u.eye.w), teal where thin and blue far off, warm toward the sun.
+fn haze_share(d: f32, y: f32) -> f32 { return verse_style_haze(d, y, u.eye.y - 2.5, u.sun.w, u.eye.w, HAZE_CAP, 60.0); }
+fn haze_colour(f: f32, v: vec3f) -> vec3f {
+  let h = vec3f(verse_style_haze_hue(HORIZON.x, 0.0, f, HAZE_CAP), verse_style_haze_hue(HORIZON.y, 1.0, f, HAZE_CAP), verse_style_haze_hue(HORIZON.z, 2.0, f, HAZE_CAP));
+  return mix(h, HAZE_KEY, verse_style_haze_glow(dot(v, normalize(u.sun.xyz))));
+}
 
 fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
   if (s.x <= 0.0) { return under; }
@@ -316,8 +327,8 @@ fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
   let sky = mix(vec3f(0.34, 0.31, 0.24), vec3f(0.56, 0.66, 0.80), n.y * 0.5 + 0.5);
   var c = base * (sky * 0.62 + vec3f(1.0, 0.94, 0.82) * lambert * 0.9 * shadow) * mix(0.75, 1.0, shadow);
   let d = length(u.eye.xyz - s.world);
-  let fog = 1.0 - exp(-max(d - u.sun.w, 0.0) * u.eye.w);
-  c = mix(c, HORIZON, clamp(fog, 0.0, 0.9));
+  let fog = haze_share(d, s.world.y);
+  c = mix(c, haze_colour(fog, (s.world - u.eye.xyz) / max(d, 0.001)), fog);
   return vec4f(plates(s.pos.xy, encode(c)), 1.0);
 }
 
@@ -796,8 +807,8 @@ fn water_fragment(i: WaterOut) -> WaterShade {
 fn water_halves(i: WaterOut) -> WaterShade {
   var s = water_fragment(i);
   let d = length(u.eye.xyz - i.world_depth.xyz);
-  let fog = clamp(1.0 - exp(-max(d - u.sun.w, 0.0) * u.eye.w), 0.0, 0.9);
-  let emit = s.emit * (1.0 - fog) + HORIZON * fog * (vec3f(1.0) - s.transmit);
+  let fog = haze_share(d, i.world_depth.y);
+  let emit = s.emit * (1.0 - fog) + haze_colour(fog, (i.world_depth.xyz - u.eye.xyz) / max(d, 0.001)) * fog * (vec3f(1.0) - s.transmit);
   let bed = WATER_BED * s.transmit;
   // a plate's cover: what of the scene under it a plate keeps
   let open = plates(i.clip.xy, vec3f(1.0)) - plates(i.clip.xy, vec3f(0.0));
@@ -814,7 +825,7 @@ fn water_halves(i: WaterOut) -> WaterShade {
 }
 
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -922,6 +933,22 @@ fn verse_style_haze_glow(l_vdl: f32) -> f32 {
   var l_a2: f32 = (l_a * l_a);
   var l_a4: f32 = (l_a2 * l_a2);
   return ((l_a4 * l_a4) * 0.449999988);
+}
+fn verse_style_haze_teal(l_ch: f32) -> f32 {
+  if ((l_ch < 0.5))
+  {
+    return 0.699999988;
+  }
+  if ((l_ch < 1.5))
+  {
+    return 1.0;
+  }
+  return 0.839999974;
+}
+fn verse_style_haze_hue(l_h: f32, l_ch: f32, l_f: f32, l_cap: f32) -> f32 {
+  var l_t: f32 = verse_style_haze_teal(l_ch);
+  var l_far: f32 = verse_style_soft_step(((0.150000006 + l_cap) * 0.5), ((l_cap - 0.150000006) * 0.5), l_f);
+  return (l_h * (l_t + ((1.0 - l_t) * l_far)));
 }
 fn verse_style_fog(l_c: f32, l_haze_c: f32, l_f: f32) -> f32 {
   var coax_t24: f32;

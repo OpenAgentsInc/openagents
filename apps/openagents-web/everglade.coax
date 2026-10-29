@@ -2093,10 +2093,10 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   u[6] = s[0].dpr;
   u[7] = horizon_y(shot, u, height);
   u[U_EYE] = shot.eye.x; u[U_EYE + 1] = shot.eye.y; u[U_EYE + 2] = shot.eye.z;
-  u[U_EYE + 3] = lerp(0.012, 0.004, s[0].lift);
+  u[U_EYE + 3] = lerp(0.011, 0.004, s[0].lift);   // the painterly day's haze density (art-styles.md 4)
   sun := unit_or(v3(0.45, 0.8, 0.32), v3(0, 1, 0));
   u[U_SUN] = sun.x; u[U_SUN + 1] = sun.y; u[U_SUN + 2] = sun.z;
-  u[U_SUN + 3] = lerp(40, 170, s[0].lift);
+  u[U_SUN + 3] = lerp(20, 170, s[0].lift);        // and where it starts
   u[U_GROUND] = f32(EG_CELLS); u[U_GROUND + 1] = f32(EG_CELL); u[U_GROUND + 2] = f32(EG_EDGE); u[U_GROUND + 3] = f32(EG_EDGE);
   paths(u);
 

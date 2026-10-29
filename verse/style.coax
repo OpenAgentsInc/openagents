@@ -112,6 +112,16 @@ verse_style_haze_glow :: (vdl:f32)->f32 #export_c {
 // with the key's glow mixed in) by the haze's share f.
 verse_style_fog :: (c:f32,haze_c:f32,f:f32)->f32 #export_c {return c+(haze_c-c)*st_sat(f);}
 
+// The haze's hue by its share (art-styles.md 4): teal where it is thin, the middle distance, turning
+// to the preset's blue as it thickens toward its cap, so far ridges step back teal, then blue, and
+// the haze never whitens what's near. One channel (0 red, 1 green, 2 blue) of the haze colour h.
+verse_style_haze_teal :: (ch:f32)->f32 #export_c {if ch<0.5f32 {return 0.70f32;} if ch<1.5f32 {return 1.0f32;} return 0.84f32;}
+verse_style_haze_hue :: (h:f32,ch:f32,f:f32,cap:f32)->f32 #export_c {
+ t:=verse_style_haze_teal(ch);
+ far:=verse_style_soft_step((0.15f32+cap)*0.5f32,(cap-0.15f32)*0.5f32,f);
+ return h*(t+(1.0f32-t)*far);
+}
+
 // ---- 5. Sky
 // The gradient from horizon (0) to zenith (1) by the view ray's elevation sine.
 verse_style_sky_t :: (up:f32)->f32 #export_c {return pow(st_max(up,0.000001f32),0.55f32);}
@@ -297,6 +307,16 @@ verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.715
  #assert verse_style_haze_glow(0.0f32)==0.0f32;
  #assert abs(verse_style_haze_glow(1.0f32)-0.45f32)<0.0001f32;
  #assert abs(verse_style_fog(0.2f32,0.8f32,0.5f32)-0.5f32)<0.0001f32;
+}
+#test "haze is teal in the middle distance and the preset's blue far off" {
+ // the day haze (0.56, 0.74, 0.90): thin, at a share of 0.15, it's teal (green the largest)
+ r:=verse_style_haze_hue(0.56f32,0.0f32,0.15f32,0.88f32); g:=verse_style_haze_hue(0.74f32,1.0f32,0.15f32,0.88f32); b:=verse_style_haze_hue(0.90f32,2.0f32,0.15f32,0.88f32);
+ #assert abs(r-0.392f32)<0.001f32 && g==0.74f32 && abs(b-0.756f32)<0.001f32;
+ #assert g>r && b>r;
+ // at its cap, the blue itself
+ #assert abs(verse_style_haze_hue(0.56f32,0.0f32,0.88f32,0.88f32)-0.56f32)<0.0001f32 && abs(verse_style_haze_hue(0.90f32,2.0f32,0.88f32,0.88f32)-0.90f32)<0.0001f32;
+ // and it turns steadily between
+ for i:0..<80 {f:=cast(f32)i*0.01f32; #assert verse_style_haze_hue(0.56f32,0.0f32,f+0.01f32,0.88f32)>=verse_style_haze_hue(0.56f32,0.0f32,f,0.88f32);}
 }
 #test "the sky runs horizon to zenith by elevation, with a 6 degree band" {
  #assert verse_style_sky_t(0.0f32)<0.001f32;
