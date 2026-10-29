@@ -59,7 +59,12 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 ```sh
 coax/build.sh test                          # compiler + every Coax suite
 coax/bin/coax test FILE                     # a file's checks
-coax/bin/coax mutate FILE                   # are the checks sharp?
+coax/bin/coax mutate FILE                   # are the checks sharp? parallel on every core
+coax/bin/coax mutate FILE --jobs N          # cap the workers (or COAX_MUTATE_JOBS=N)
+coax/bin/coax mutate FILE --shard I/N > I.rec  # one of N parts; then --merge 1.rec --merge 2.rec ...
+psionic/check.sh --only UNIT...             # just those Psionic units: checks, mutation, native, sanitizers, book
+psionic/check.sh                            # every Psionic unit: the release gate
+psionic/tests/check_elephant_slices.sh DIR  # Elephant original-weight slices against recorded references, ~15 s
 scripts/proto.sh check                      # schemas (needs PROTOC and PROTO_PYTHON)
 python3 verse/test_home.py               # the home against real protobuf
 verse/test_sanitized.sh                  # ASan/UBSan harness
@@ -73,6 +78,11 @@ units you touched, use small slices and fixtures, and run long gates in the
 background or in parallel rather than waiting on them. Never rerun a
 whole-model decision on original weights on the CPU as a routine check;
 compare against its recorded reference answer, or run it on the GPU path.
+For model code, the Elephant slices check one linear layer, one
+full-attention layer, the embedding and a readout chunk with the original
+weights in seconds. `coax mutate` gives the same report for any `--jobs` or
+shard split, so zero survivors stays the rule; name the units you touched with
+`--only` and leave the full `psionic/check.sh` for release.
 
 The full iOS test command and TestFlight steps are in
 [apps/openagents-ios/README.md](apps/openagents-ios/README.md). Run the

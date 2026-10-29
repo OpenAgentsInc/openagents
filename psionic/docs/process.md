@@ -73,8 +73,8 @@ teaching output and explicit expected statuses for deliberate failures.
 Use typed numeric fixtures and tolerance-aware comparisons for floating-point
 results; never normalize away unexpected failures or non-finite outputs.
 
-The current runner combines these kinds of checks. As the book grows, add
-targeted selection for the changed chapter or library module:
+The runner combines these kinds of checks, for every unit or for the units
+you name:
 
 ```text
 coax check/test        syntax, finite behavioral expectations, source graph
@@ -83,6 +83,52 @@ native debug/release  the actual generated library, ABI and numerical oracle
 native sanitizers     short storage, aliasing, bounds and lifetime witnesses
 book checks           manifest, source/listing identity, links, output, status
 ```
+
+### Fast iteration and the check budget
+
+Inner-loop checks finish in minutes. Check what you touched; run the whole
+gate once before release, not on every edit.
+
+```text
+psionic/check.sh --only UNIT...            the named units: Coax debug/release checks,
+                                           zero-survivor mutation, native debug/release
+                                           plain and ASan/UBSan, oracles and the book
+psionic/check.sh                           every unit: the release gate
+coax/bin/coax mutate FILE --jobs N         mutants in N processes (default: every core)
+coax/bin/coax mutate FILE --shard I/N      one of N disjoint parts; --merge joins them
+psionic/tests/check_elephant_slices.sh DIR original-weight slices of Elephant, ~15 s
+```
+
+A unit is a library path under `psionic/lib` without `.coax` (`text`,
+`model-io/layer-map`), a native harness name (`layer-map`, `rank5`) or a
+directory (`harmony`). Name every unit your change reaches: `--only` does not
+follow `#load` dependents. Tests and native harnesses run in parallel; each
+mutation run uses every job. `--jobs N` or `PSIONIC_JOBS` caps both when
+other agents share the machine, and `COAX_MUTATE_JOBS` caps `coax mutate`
+everywhere. Parallel and sharded mutation report exactly the serial result,
+so zero survivors still means zero survivors.
+
+Measured on coderos-4080 (i7-14700K, 28 threads) while other agents loaded
+the machine: `psionic/lib/text.coax`, 3,143 mutants, took 5 min 22 s with
+`--jobs 20` against 70 min 51 s with `--jobs 1` (13.2 times faster, the
+same report byte for byte). `--only moe` takes 17 s end to end and
+`--only model-io/layer-map` (3,486 mutants) 101 s. The compiler bootstrap,
+which mutates its own Coax modules, went from 32 min 56 s to 4 min 2 s.
+
+Whole-model original-weight decisions are not routine CPU checks: a decision
+over 86 tokens takes about 30 minutes on the CPU. Model-code changes are
+checked against the [Elephant slices](../fixtures/models/elephant/slices/slices.json):
+the embedding gather, linear layer 0, full-attention layer 3 and readout rows
+0–4,095 over five tokens, run with the original weights and compared with
+references recorded once from the Psionic CPU path. The tolerances were frozen
+before the references were recorded; linear layer 0's first token is also
+compared with the independent Transformers capture. The checker
+authenticates the safetensors header and all 32 byte ranges it reads (849
+MiB) against pins, so it needs the original directory but no full-file hash.
+Whole decisions run on the GPU path or are compared against recorded
+references such as the [chapter 10 record](../../docs/verification/psionic-ch10-2026-10-29.md).
+Re-recording slices (`--generate`) hashes the whole file first and is a
+contract change: review it like a tolerance change.
 
 `coax/bin/coax` is the existing compiler entry point; no package manager or
 new runtime language is required. Tests may use Python as tooling for an
