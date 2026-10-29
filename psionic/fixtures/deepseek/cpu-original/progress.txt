@@ -1,0 +1,69 @@
+prefill 1/6 10.750 s
+prefill 2/6 14.409 s
+prefill 3/6 11.232 s
+prefill 4/6 14.679 s
+prefill 5/6 12.079 s
+prefill 6/6 13.141 s
+decode 1 token 71486 10.385 s
+decode 2 token 11 11.274 s
+decode 3 token 279 9.905 s
+decode 4 token 1196 9.856 s
+decode 5 token 1101 7.209 s
+decode 6 token 1053 7.463 s
+decode 7 token 330 12.175 s
+decode 8 token 13048 10.866 s
+decode 9 token 1189 9.637 s
+decode 10 token 2938 7.035 s
+decode 11 token 594 5.253 s
+decode 12 token 264 5.460 s
+decode 13 token 11657 5.019 s
+decode 14 token 42113 5.035 s
+decode 15 token 13 5.013 s
+decode 16 token 358 5.067 s
+decode 17 token 1265 9.318 s
+decode 18 token 5889 8.995 s
+decode 19 token 304 6.646 s
+decode 20 token 264 6.256 s
+decode 21 token 8205 7.410 s
+decode 22 token 323 8.151 s
+decode 23 token 35287 8.076 s
+decode 24 token 11566 7.484 s
+decode 25 token 13 4.832 s
+decode 26 token 10696 9.085 s
+decode 27 token 1977 9.331 s
+decode 28 token 23811 9.296 s
+decode 29 token 1182 9.321 s
+decode 30 token 323 9.514 s
+decode 31 token 2548 9.701 s
+decode 32 token 1246 9.953 s
+decode 33 token 358 9.335 s
+decode 34 token 646 5.278 s
+decode 35 token 7789 5.672 s
+decode 36 token 1105 4.929 s
+decode 37 token 3351 6.292 s
+decode 38 token 13 6.374 s
+decode 39 token 55378 7.412 s
+decode 40 token 432 7.826 s
+decode 41 token 1787 6.139 s
+decode 42 token 83075 6.397 s
+decode 43 token 36067 5.110 s
+decode 44 token 1105 4.967 s
+decode 45 token 311 6.286 s
+decode 46 token 4332 8.177 s
+decode 47 token 1128 6.781 s
+decode 48 token 807 5.271 s
+decode 49 token 1184 5.642 s
+decode 50 token 1492 5.753 s
+decode 51 token 448 6.212 s
+decode 52 token 624 5.564 s
+decode 53 token 151649 9.662 s
+decode 54 token 271 10.403 s
+decode 55 token 9707 10.170 s
+decode 56 token 0 10.133 s
+decode 57 token 2585 14.876 s
+decode 58 token 646 15.407 s
+decode 59 token 358 10.536 s
+decode 60 token 7789 9.712 s
+decode 61 token 498 7.240 s
+decode 62 token 3351 5.584 s
+decode 63 token 30 8.605 s

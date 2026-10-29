@@ -1,5 +1,43 @@
 # Invariants
 
+## Psionic DeepSeek R1 distill owns a separate dense CPU profile
+
+`psionic/lib/deepseek/` implements `deepseek-r1-qwen2-cpu-wide-v1` for the
+pinned original R1-Distill-Qwen-1.5B BF16 artifact. Complete original-byte
+SHA-256 admission binds the reviewed 339-tensor header and intervals;
+the shared typed binder additionally checks complete payload coverage,
+unique names, disjoint ranges and every expected shape before publishing.
+Caller-supplied profiles require trustworthy pins. Borrowed immutable files,
+model/layer storage and their lifetime remain the caller’s responsibility.
+
+The decoder has learned RMS scales with epsilon 1e-6, biased Q/K/V,
+full split-half RoPE at theta 10,000, causal GQA, ordinary SiLU gate/up
+products and an independent vocabulary head. Products/reductions use the
+wide CPU profile with F32 stored activations. Every token stages all new
+KV rows, residual diagnostics and logits; failures preserve every public
+cache/output span. Private work may change. The caller owns sequential
+history, valid allocations, truthful extents, immutability and exclusive
+access; native C observes nested address overlap and performs effects.
+
+The separate original byte-BPE table reuses Unicode-17 NFC DATA and ranked
+merging, with the original letter-only split profile. Typed text history
+admits an optional first system message, alternating user/assistant turns
+and a final user, then inserts tokenizer BOS 151646 once, rather than the
+config’s conflicting 151643. Prior assistant reasoning is stripped after
+its last closing marker. Ordinary strings cannot insert control IDs.
+Public text/token outputs publish atomically. Decoding refuses model IDs
+with no tokenizer entry. Reasoning and final intervals remain separate;
+EOS, token/context limits and between-step cancellation remain distinct.
+There is no tool execution, sampling, GPU, service or V4.1 claim.
+
+Check: `psionic/tests/check_deepseek.sh` covers owned two-/three-layer dense
+oracles, original tokenizer/recipe vectors, native debug/release plain and
+ASan/UBSan checks, exact replay and book output. `psionic/check.sh --only
+deepseek --jobs 8` also runs the authority mutation roots. The retained
+original full-model comparison and current-source original slices, their
+actual build identities and limitations are in the
+[chapter 56 record](docs/verification/psionic-ch56-2026-10-29.md).
+
 ## Psionic original gpt-oss GPU sessions retain model state on device
 
 `psionic/lib/gptoss/device-*.coax` owns `gpt-oss-cuda-f32-v1`: original

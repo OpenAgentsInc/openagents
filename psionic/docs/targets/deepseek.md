@@ -57,6 +57,26 @@ The rest of the ladder comes from the support plan:
 - V3/R1: 671B.
 - V3.2: adds sparse indexing.
 
+## First rebuilt rung: R1 distill
+
+[Chapter 56](../../book/ch056-execute-a-deepseek-r1-distill.md) now provides
+`deepseek-r1-qwen2-cpu-wide-v1`: the original BF16
+R1-Distill-Qwen-1.5B at `ad9f0ae0864d7fbcd1cd905e3c6c5b069cc8b562`,
+with complete file authentication, all 28 Qwen2 layers, its own tokenizer,
+a bounded text-history recipe and greedy generation. The tokenizer’s BOS
+151646 takes precedence over the config’s conflicting 151643. Reasoning
+and final intervals stay separate.
+
+The retained six-token “Hi” prompt matches an owned independent full-prefix
+CPU reference on every logit and layer residual, and its greedy greeting
+finishes with EOS. This is one numerical reference request, not a quality
+corpus, upstream BF16 runtime parity, serving, GPU throughput or V2/V4
+support. The [verification record](../../../docs/verification/psionic-ch56-2026-10-29.md)
+binds the actual executed builds and later original-shaped slices.
+Routine checks use small owned models and recorded arrays; they do not
+repeat full original-model CPU execution. Chapter 57 remains the next
+DeepSeek recipe/streaming chapter.
+
 ## What the old work achieved
 
 - **Oracle capture.** One run on eight rented B200s cost $36.85. It produced

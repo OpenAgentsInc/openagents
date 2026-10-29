@@ -1,0 +1,4 @@
+Qwen2: 2 layers, 4 tokens, full vocabulary
+next token 2
+tokenizer BOS 151646, config BOS 151643
+reasoning and final have separate intervals

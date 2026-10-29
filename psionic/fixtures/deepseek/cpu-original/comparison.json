@@ -1,0 +1,24 @@
+{
+  "logits": {
+    "values": 151936,
+    "max_abs": 0.0,
+    "violations": 0,
+    "worst_index": 0,
+    "actual": 4.388886451721191,
+    "expected": 4.388886451721191
+  },
+  "greedy": [
+    71486,
+    71486
+  ],
+  "trace": {
+    "values": 86016,
+    "max_abs": 0.0,
+    "violations": 0,
+    "worst_index": 0,
+    "actual": 0.048563152551651,
+    "expected": 0.048563152551651
+  },
+  "passed": true,
+  "policy_sha256": "3a1ffe24997ca10a3a3b87b906d4f6782e486d76c1b0299788577f968586d998"
+}

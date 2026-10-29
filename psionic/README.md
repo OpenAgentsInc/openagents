@@ -153,3 +153,11 @@ temperature; it does not load calibration artifacts or serialize responses.
 Chapter 10 authenticates and executes a typed Elephant text decision on the CPU;
 see [execution progress](docs/model-execution-progress.md). Mammoth
 end-to-end qualification, autodiff, GPU execution and serving remain planned.
+
+Chapter [56: Execute a DeepSeek R1 distill](book/ch056-execute-a-deepseek-r1-distill.md)
+adds a bounded original BF16 Qwen2 CPU reference with its own pinned tokenizer,
+greedy continuation and separate reasoning/final intervals. Run
+`psionic/tests/check_deepseek.sh` for the offline debug/release, native/sanitized
+and book checks, or `psionic/check.sh --only deepseek --jobs 8` to include the
+zero-survivor authority mutation gates. The original full-model capture is
+retained; routine checks do not rerun it.

@@ -1,0 +1,95 @@
+#authority;
+#load "types.coax";
+#test "learned RMS uses 1e-6 and split-half rotation preserves all heads" {
+    x:=[4]f32.[1,2,3,4];scale:=[8]u8.[0x80,0x3f,0,0x40,0x80,0x3f,0,0x40];out:[4]f32;
+    #assert ds_rms(x[..],scale[..],out[..])==DsStatus.ok && abs(out[0]-0.36514834f32)<0.000001f32 && abs(out[1]-1.4605933f32)<0.000001f32;
+    rope:[4]f32;#assert ds_rope(4,1,rope[..])==DsStatus.ok;
+    #assert abs(rope[0]-0.5403023f32)<0.000001f32 && abs(rope[1]-0.99995f32)<0.000001f32;
+    #assert ds_rotate(4,x[..],rope[..])==DsStatus.ok;
+    #assert abs(x[0]+1.9841106f32)<0.000002f32 && abs(x[2]-2.462378f32)<0.000002f32;
+}
+ds_bf :: (bytes:[]u8,i:int)->f32 {return f32_from_bits(qm_bits(QmDtype.bf16,bytes,i));}
+ds_finite :: (x:f32)->bool {return psionic_tensor_finite_bits(f32_bits(x));}
+ds_rms :: (x:[]f32,scale:[]u8,out:[]f32)->DsStatus {
+    if x.count<1 || scale.count!=2*x.count || out.count<x.count {return DsStatus.capacity;}
+    sum:PsionicAccumulator;for a:x {if !ds_finite(a) {return DsStatus.number;}sum=psionic_ops_accumulate(sum,f64(a)*f64(a));}
+    den:=sqrt(psionic_ops_total(sum)/f64(x.count)+0.000001);
+    for i:0..<x.count {if !psionic_tensor_finite_bits(qm_bits(QmDtype.bf16,scale,i)) {return DsStatus.number;}w:=ds_bf(scale,i);v:=f64(x[i])/den*f64(w);if !psionic_ops_fits_f32(v) {return DsStatus.arithmetic;}out[i]=f32(v);}return DsStatus.ok;
+}
+ds_project :: (rows:int,cols:int,w:[]u8,x:[]f32,bias:[]u8,out:[]f32,stage:[]f32,scratch:[]f32)->DsStatus {
+    return ds_project_tiled(rows,cols,w,x,bias,out,stage,scratch,ds_tile_size());
+}
+ds_project_tiled :: (rows:int,cols:int,w:[]u8,x:[]f32,bias:[]u8,out:[]f32,stage:[]f32,scratch:[]f32,tile:int)->DsStatus {
+    if w.count!=2*rows*cols || x.count!=cols || out.count<rows || stage.count<rows || scratch.count<rows || (bias.count!=0 && bias.count!=2*rows) {return DsStatus.capacity;}
+    at:=0;while at<rows {remaining:=rows-at;n:=(remaining+tile-cast(int)abs(f64(remaining-tile)))/2;r:=qm_project(QmDtype.bf16,n,cols,w[2*at*cols..<2*(at+n)*cols],x,stage[at..<at+n],scratch[at..<at+n],false);if r.status!=QmStatus.ok {return ifx r.status==QmStatus.number then DsStatus.number else DsStatus.arithmetic;}at+=n;}
+    for i:0..<rows {v:=f64(stage[i]);if bias.count!=0 {if !psionic_tensor_finite_bits(qm_bits(QmDtype.bf16,bias,i)) {return DsStatus.number;}b:=ds_bf(bias,i);v+=f64(b);}if !psionic_ops_fits_f32(v) {return DsStatus.arithmetic;}stage[i]=f32(v);}
+    for i:0..<rows {out[i]=stage[i];}return DsStatus.ok;
+}
+ds_rope :: (head:int,position:int,out:[]f32)->DsStatus {
+    if head<2 || head/2>64 || head%2!=0 || position<0 || position>=16384 || out.count<head {return DsStatus.shape;}
+    for j:0..<head/2 {angle:=f64(position)*exp(-log(10000.0)*f64(2*j)/f64(head));out[j]=f32(cos(angle));out[head/2+j]=f32(sin(angle));}return DsStatus.ok;
+}
+ds_rotate :: (head:int,x:[]f32,rope:[]f32)->DsStatus {
+    for h:0..<x.count/head {for j:0..<head/2 {a:=h*head+j;b:=a+head/2;av:=f64(x[a]);bv:=f64(x[b]);c:=f64(rope[j]);s:=f64(rope[head/2+j]);u:=av*c-bv*s;v:=bv*c+av*s;if !psionic_ops_fits_f32(u) || !psionic_ops_fits_f32(v) {return DsStatus.arithmetic;}x[a]=f32(u);x[b]=f32(v);}}return DsStatus.ok;
+}
+ds_add :: (x:[]f32,y:[]f32)->DsStatus {for i:0..<x.count {v:=f64(x[i])+f64(y[i]);if !psionic_ops_fits_f32(v) {return DsStatus.arithmetic;}x[i]=f32(v);}return DsStatus.ok;}
+#test "RMS epsilon and all private math extents have discriminating boundaries" {
+    x:=[1]f32.[0.001];scale:=[2]u8.[0x80,0x3f];out:[2]f32;
+    #assert ds_rms(x[..],scale[..],out[0..<1])==DsStatus.ok && abs(out[0]-0.7071068f32)<0.0000002f32;
+    #assert ds_rms(x[0..<0],scale[..],out[..])==DsStatus.capacity;
+    #assert ds_rms(x[..],scale[0..<1],out[..])==DsStatus.capacity;
+    #assert ds_rms(x[..],scale[..],out[0..<0])==DsStatus.capacity;
+    rope:[130]f32;#assert ds_rope(2,0,rope[..])==DsStatus.ok && rope[0]==1 && rope[1]==0;
+    #assert ds_rope(128,16383,rope[0..<128])==DsStatus.ok;
+    #assert ds_rope(0,0,rope[..])==DsStatus.shape && ds_rope(1,0,rope[..])==DsStatus.shape;
+    #assert ds_rope(130,0,rope[..])==DsStatus.shape && ds_rope(3,0,rope[..])==DsStatus.shape;
+    #assert ds_rope(2,-1,rope[..])==DsStatus.shape && ds_rope(2,16384,rope[..])==DsStatus.shape;
+    #assert ds_rope(2,0,rope[0..<1])==DsStatus.shape;
+    #assert ds_rope(4,1,rope[..])==DsStatus.ok;v:=[8]f32.[1,2,3,4,-2,1,4,3];before:=v;#assert ds_rotate(4,v[..],rope[..])==DsStatus.ok;
+    for head:0..<2 {for j:0..<2 {a:=head*4+j;b:=a+2;#assert v[a]==f32(f64(before[a])*f64(rope[j])-f64(before[b])*f64(rope[2+j]));#assert v[b]==f32(f64(before[b])*f64(rope[j])+f64(before[a])*f64(rope[2+j]));}}
+    big:=[2]f32.[3.4028234663852886e38f32,3.4028234663852886e38f32];coeff:=[2]f32.[1,1];#assert ds_rotate(2,big[..],coeff[..])==DsStatus.arithmetic;
+}
+#test "BF16 projection biases finite bytes and residual overflow are explicit" {
+    bytes:=[8]u8.[0x80,0x3f,0,0x40,0x40,0x40,0x80,0x40];x:=[2]f32.[1,2];bias:=[4]u8.[0x80,0x3f,0,0xc0];out:[2]f32;stage:[2]f32;scratch:[2]f32;
+    #assert ds_project(2,2,bytes[..],x[..],bias[..],out[..],stage[..],scratch[..])==DsStatus.ok && out[0]==6 && out[1]==9;
+    #assert ds_project(2,2,bytes[0..<7],x[..],bias[..],out[..],stage[..],scratch[..])==DsStatus.capacity;
+    #assert ds_project(2,2,bytes[..],x[0..<1],bias[..],out[..],stage[..],scratch[..])==DsStatus.capacity;
+    #assert ds_project(2,2,bytes[..],x[..],bias[0..<3],out[..],stage[..],scratch[..])==DsStatus.capacity;
+    #assert ds_project(2,2,bytes[..],x[..],bias[..],out[0..<1],stage[..],scratch[..])==DsStatus.capacity;
+    #assert ds_project(2,2,bytes[..],x[..],bias[..],out[..],stage[0..<1],scratch[..])==DsStatus.capacity;
+    #assert ds_project(2,2,bytes[..],x[..],bias[..],out[..],stage[..],scratch[0..<1])==DsStatus.capacity;
+    bias[2]=0x80;bias[3]=0x7f;#assert ds_project(2,2,bytes[..],x[..],bias[..],out[..],stage[..],scratch[..])==DsStatus.number;
+    bytes[0]=0x80;bytes[1]=0x7f;#assert ds_project(2,2,bytes[..],x[..],bias[..],out[..],stage[..],scratch[..])==DsStatus.number;
+    a:=[2]f32.[3.4028234663852886e38f32,0];b:=[2]f32.[3.4028234663852886e38f32,0];#assert ds_add(a[..],b[..])==DsStatus.arithmetic;
+    a[0]=1;b[0]=2;#assert ds_add(a[..],b[..])==DsStatus.ok && a[0]==3 && a[1]==0;
+}
+DsNumber :: struct {status:DsStatus;value:f32;}
+ds_silu :: (g:f32,up:f32)->DsNumber {
+    e:=exp(-abs(f64(g)));negative:=cast(int)(f32_bits(g)>>31);sigmoid:=(f64(negative)*e+f64(1-negative))/(1+e);v:=f64(g)*sigmoid*f64(up);
+    if !psionic_ops_fits_f32(v) {return DsNumber.{status=DsStatus.arithmetic};}return DsNumber.{value=f32(v)};
+}
+ds_maximum :: (scores:[]f64)->int {best:=0;for i:1..<scores.count {if scores[i]>scores[best] {best=i;}}return best;}
+#test "stable SiLU covers both signs overflow and saturated sigmoid" {
+    #assert ds_silu(0,3).value==0 && ds_silu(1000,1).value==1000 && ds_silu(-1000,1).value==0;
+    #assert abs(ds_silu(1,2).value-1.4621172f32)<0.0000002f32;
+    #assert abs(ds_silu(-1,2).value+0.53788286f32)<0.0000002f32;
+    #assert ds_silu(3.4028234663852886e38f32,2).status==DsStatus.arithmetic;
+    scores:=[4]f64.[2,3,3,1];#assert ds_maximum(scores[..])==1;scores[0]=4;#assert ds_maximum(scores[..])==0;
+}
+
+ds_tile_size :: ()->int {return 32768;}
+#test "projection row windows cover a partial final tile and exact endpoints" {
+    #assert ds_tile_size()==32768;
+    data:=[6]u8.[0x80,0x3f,0,0x40,0x40,0x40];x:=[1]f32.[2];bias:[1]u8;out:[3]f32;stage:[3]f32;scratch:[3]f32;
+    for tile:1..<4 {#assert ds_project_tiled(3,1,data[..],x[..],bias[0..<0],out[..],stage[..],scratch[..],tile)==DsStatus.ok && out[0]==2 && out[1]==4 && out[2]==6;}
+}
+
+ds_exp_scores :: (scores:[]f64)->f64 {maximum:=scores[ds_maximum(scores)];denominator:PsionicAccumulator;for t:0..<scores.count {scores[t]=exp(scores[t]-maximum);denominator=psionic_ops_accumulate(denominator,scores[t]);}return psionic_ops_total(denominator);}
+#test "online score scaling remains finite for large equal offsets" {
+    scores:=[2]f64.[1000,999];den:=ds_exp_scores(scores[..]);#assert scores[0]==1 && abs(scores[1]-0.36787944117144233)<0.000000000000001 && abs(den-1.3678794411714423)<0.000000000000001;
+    scores[0]= -1000;scores[1]= -1001;#assert abs(ds_exp_scores(scores[..])-den)<0.000000000000001;
+}
+#test "a three-row projection admits exactly three BF16 biases" {
+    data:=[6]u8.[0x80,0x3f,0,0x40,0x40,0x40];x:=[1]f32.[2];bias:=[6]u8.[0,0x3f,0x80,0x3f,0x80,0xbf];out:[3]f32;stage:[3]f32;scratch:[3]f32;
+    #assert ds_project(3,1,data[..],x[..],bias[..],out[..],stage[..],scratch[..])==DsStatus.ok && out[0]==2.5f32 && out[1]==5 && out[2]==5;
+}

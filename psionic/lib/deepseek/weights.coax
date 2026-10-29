@@ -1,0 +1,114 @@
+#load "plan.coax";
+#load "../model-io/identity.coax";
+#authority;
+#load "../../fixtures/deepseek/tiny/model.coax";
+#load "../../fixtures/deepseek/original/targets.coax";
+DS_SLOT_NAMES :: [12]string.["input_layernorm.weight","post_attention_layernorm.weight","self_attn.q_proj.weight","self_attn.q_proj.bias","self_attn.k_proj.weight","self_attn.k_proj.bias","self_attn.v_proj.weight","self_attn.v_proj.bias","self_attn.o_proj.weight","mlp.gate_proj.weight","mlp.up_proj.weight","mlp.down_proj.weight"];
+#test "the fixed original target binds the tokenizer BOS separately from the config" {
+    s:=ds_original_shape(128);#assert s.layers==28 && s.width==1536 && s.hidden==8960 && s.head==128 && s.heads==12 && s.kv_heads==2 && s.vocab==151936;
+    #assert ds_original_shape(0).layers==0 && ds_original_shape(16385).layers==0;
+    #assert ds_original_files()==5 && ds_original_filename(3)=="model.safetensors" && ds_original_filename(4)=="r1.pst";
+    #assert ds_original_filename(-1)=="" && ds_original_filename(5)=="" && DS_SPECS.count==339;
+    buf:[100]u8;n:=ds_tensor_name(27,11,buf[..]);#assert cast(string)buf[0..<n]=="model.layers.27.mlp.down_proj.weight";
+}
+#test "fixed original admission refuses missing wrong and damaged bytes" {
+    empty:[1]u8;files:[5]DsFile;blocks:[28]DsBlock;draft:[28]DsBlock;out:[1]DsModel;
+    #assert ds_bind_original(8,files[..],blocks[..],draft[..],out[..],false).status==DsStatus.weights;
+    #assert ds_bind_original(0,files[..],blocks[..],draft[..],out[..],false).status==DsStatus.shape;
+    #assert ds_bind_original(8,files[0..<4],blocks[..],draft[..],out[..],false).status==DsStatus.weights;
+    #assert ds_bind_original(8,files[..],blocks[..],draft[..],out[..],true).status==DsStatus.alias;
+    #assert !ds_spec_valid(DsSpec.{rows=1,cols=1,rank=1,begin=0,end=2},2);
+    specs:=DS_SPECS;#assert ds_spec_find(specs[..],"model.norm.weight")>=0 && ds_spec_find(specs[..],"unknown")== -1;
+}
+ds_original_shape :: (capacity:int)->DsShape #export_c {if capacity<1 || capacity>16384 {return DsShape.{};}s:=DS_ORIGINAL_SHAPE;s.capacity=capacity;return s;}
+ds_original_files :: ()->int #export_c {return 5;}
+ds_original_filename :: (i:int)->string #export_c {if i<0 || i>=5 {return "";}return DS_PINS[i].name;}
+ds_tensor_name :: (layer:int,slot:int,out:[]u8)->int {
+    prefix:="model.layers.";for i:0..<prefix.count {out[i]=prefix[i];}n:=prefix.count;if layer>=10 {out[n]='0'+cast(u8)(layer/10);n+=1;}out[n]='0'+cast(u8)(layer%10);n+=1;out[n]='.';n+=1;
+    for c:DS_SLOT_NAMES[slot] {out[n]=c;n+=1;}return n;
+}
+ds_spec_valid :: (x:DsSpec,bytes:int)->bool {return x.rank>=1 && x.rank<=2 && x.rows>=1 && x.rows<=151936 && x.cols>=1 && x.cols<=8960 && (x.rank!=1 || x.cols==1) && x.begin>=8 && x.end<=bytes && x.end-x.begin==2*x.rows*x.cols;}
+ds_spec_find :: (specs:[]DsSpec,name:string)->int {for i:0..<specs.count {if specs[i].name==name {return i;}}return -1;}
+ds_expected :: (s:DsShape,slot:int)->DsSpec {
+    d:=s.width;h:=s.hidden;k:=s.kv_heads*s.head;
+    rows:=[12]int.[d,d,d,d,k,k,k,k,d,h,h,d];cols:=[12]int.[1,1,d,1,d,1,d,1,d,d,d,h];rank:=2;if slot==0 || slot==1 || slot==3 || slot==5 || slot==7 {rank=1;}return DsSpec.{rank=rank,rows=rows[slot],cols=cols[slot]};
+}
+ds_spec_matches :: (x:DsSpec,y:DsSpec)->bool {return x.rank==y.rank && x.rows==y.rows && x.cols==y.cols;}
+// book:begin bind
+ds_bind_profile :: (profile:DsProfile,files:[]DsFile,blocks:[]DsBlock,draft:[]DsBlock,out:[]DsModel,overlap:bool)->DsResult #export_c {
+    s:=profile.shape;pins:=profile.pins;specs:=profile.specs;if !ds_shape(s) {return DsResult.{status=DsStatus.shape};}
+    if overlap {return DsResult.{status=DsStatus.alias};}
+    if files.count<1 || files.count>5 || pins.count!=files.count || profile.weights<0 || profile.weights>=files.count || specs.count!=12*s.layers+3 {return DsResult.{status=DsStatus.weights};}
+    if blocks.count<s.layers || draft.count<s.layers || out.count<1 {return DsResult.{status=DsStatus.capacity};}
+    for i:0..<files.count {p:=pins[i];f:=files[i];if f.name!=p.name || f.data.count!=p.bytes || !pw_digest(f.data,p.sha) {return DsResult.{status=DsStatus.weights};}}
+    weights:=files[profile.weights].data;if profile.payload<8 {return DsResult.{status=DsStatus.weights};}covered:=0;
+    for i:0..<specs.count {x:=specs[i];if !ds_spec_valid(x,weights.count) {return DsResult.{status=DsStatus.format};}if x.begin<profile.payload {return DsResult.{status=DsStatus.weights};}covered+=x.end-x.begin;
+        for j:0..<i {y:=specs[j];if x.name==y.name || (x.begin<y.end && y.begin<x.end) {return DsResult.{status=DsStatus.weights};}}}
+    if covered!=weights.count-profile.payload {return DsResult.{status=DsStatus.weights};}
+    m:=DsModel.{shape=s};names:=[3]string.["model.embed_tokens.weight","model.norm.weight","lm_head.weight"];
+    for i:0..<3 {index:=ds_spec_find(specs,names[i]);if index<0 {return DsResult.{status=DsStatus.weights};}x:=specs[index];y:=DsSpec.{rank=2,rows=s.vocab,cols=s.width};if i==1 {y=DsSpec.{rank=1,rows=s.width,cols=1};}if !ds_spec_matches(x,y) {return DsResult.{status=DsStatus.weights};}m.p[i]=weights[x.begin..<x.end];}
+    for l:0..<s.layers {for slot:0..<12 {name:[100]u8;n:=ds_tensor_name(l,slot,name[..]);index:=ds_spec_find(specs,cast(string)name[0..<n]);if index<0 {return DsResult.{status=DsStatus.weights};}x:=specs[index];if !ds_spec_matches(x,ds_expected(s,slot)) {return DsResult.{status=DsStatus.weights};}draft[l].p[slot]=weights[x.begin..<x.end];}}
+    for l:0..<s.layers {blocks[l]=draft[l];}m.blocks=blocks[0..<s.layers];out[0]=m;return DsResult.{written=s.layers};
+}
+// book:end bind
+ds_bind_original :: (capacity:int,files:[]DsFile,blocks:[]DsBlock,draft:[]DsBlock,out:[]DsModel,overlap:bool)->DsResult #export_c {
+    pins:[5]DsArtifact;specs:[339]DsSpec;return ds_bind_profile(ds_original_profile(capacity,pins[..],specs[..]),files,blocks,draft,out,overlap);
+}
+#test "owned profile authenticates and binds every tensor atomically" {
+    data:=DS_TINY;pins:=DS_TINY_PINS;specs:=DS_TINY_SPECS;files:=[1]DsFile.[DsFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]DsBlock;draft:[2]DsBlock;out:[1]DsModel;profile:=DsProfile.{shape=DS_TINY_SHAPE,pins=pins[..],specs=specs[..],payload=DS_TINY_PAYLOAD};
+    r:=ds_bind_profile(profile,files[..],blocks[..],draft[..],out[..],false);#assert r.status==DsStatus.ok && r.written==2 && out[0].p[0].count==72 && blocks[1].p[11].count==48;
+    data[data.count-1]+=1;#assert ds_bind_profile(profile,files[..],blocks[..],draft[..],out[..],false).status==DsStatus.weights && out[0].p[0].count==72;
+    data[data.count-1]-=1;specs[1].name="missing";#assert ds_bind_profile(profile,files[..],blocks[..],draft[..],out[..],false).status==DsStatus.weights;
+}
+
+ds_original_profile :: (capacity:int,pins:[]DsArtifact,specs:[]DsSpec)->DsProfile #export_c {
+    if pins.count<5 || specs.count<339 {return DsProfile.{};}
+    for i:0..<5 {pins[i]=DS_PINS[i];}for i:0..<339 {specs[i]=DS_SPECS[i];}
+    return DsProfile.{shape=ds_original_shape(capacity),pins=pins[0..<5],specs=specs[0..<339],weights=3,payload=DS_ORIGINAL_PAYLOAD};
+}
+#test "the original profile copies the exact reviewed descriptor table" {
+    pins:[5]DsArtifact;specs:[339]DsSpec;p:=ds_original_profile(1,pins[..],specs[..]);#assert p.weights==3 && p.payload==38621 && p.shape.capacity==1 && p.pins.count==5 && p.specs.count==339;
+    for i:0..<5 {#assert pins[i].name==DS_PINS[i].name && pins[i].bytes==DS_PINS[i].bytes && pins[i].sha==DS_PINS[i].sha;}
+    for i:0..<339 {#assert specs[i].name==DS_SPECS[i].name && specs[i].rank==DS_SPECS[i].rank && specs[i].rows==DS_SPECS[i].rows && specs[i].cols==DS_SPECS[i].cols && specs[i].begin==DS_SPECS[i].begin && specs[i].end==DS_SPECS[i].end;}
+    #assert ds_original_profile(8,pins[0..<4],specs[..]).pins.count==0;
+    #assert ds_original_profile(8,pins[..],specs[0..<338]).pins.count==0;
+    #assert ds_original_shape(16384).capacity==16384 && ds_original_shape(1).capacity==1 && ds_original_shape(17).capacity==17;
+    #assert ds_original_filename(0)=="config.json";
+    name:[100]u8;n:=ds_tensor_name(10,0,name[..]);#assert cast(string)name[0..<n]=="model.layers.10.input_layernorm.weight";n=ds_tensor_name(20,1,name[..]);#assert cast(string)name[0..<n]=="model.layers.20.post_attention_layernorm.weight";
+}
+#test "tensor metadata bounds and shape equality discriminate every axis" {
+    x:=DsSpec.{rank=1,rows=1,cols=1,begin=8,end=10};#assert ds_spec_valid(x,10);
+    for field:0..<8 {y:=x;if field==0 {y.rank=0;}else if field==1 {y.rank=3;}else if field==2 {y.rows=0;}else if field==3 {y.rows=151937;y.end=303882;}else if field==4 {y.cols=0;}else if field==5 {y.rank=2;y.cols=8961;y.end=17930;}else if field==6 {y.cols=2;y.end=12;}else {y.begin=7;y.end=9;}#assert !ds_spec_valid(y,303882);}
+    x.rank=2;x.rows=151936;x.cols=8960;x.end=2722693128;#assert ds_spec_valid(x,2722693128);
+    x=DsSpec.{rank=1,rows=1,cols=1,begin=8,end=10};for field:0..<3 {y:=x;if field==0 {y.rank=2;}else if field==1 {y.rows=2;}else {y.cols=2;}#assert !ds_spec_matches(x,y);}
+}
+#test "compact authenticated payload exercises every publication and refusal" {
+    data:=DS_COMPACT;specs:=DS_TINY_SPECS;for i:0..<27 {specs[i].begin-=DS_TINY_PAYLOAD-8;specs[i].end-=DS_TINY_PAYLOAD-8;}
+    pins:=[5]DsArtifact.[DsArtifact.{name="owned",bytes=data.count,sha=DS_COMPACT_SHA},DsArtifact.{name="owned",bytes=data.count,sha=DS_COMPACT_SHA},DsArtifact.{name="owned",bytes=data.count,sha=DS_COMPACT_SHA},DsArtifact.{name="owned",bytes=data.count,sha=DS_COMPACT_SHA},DsArtifact.{name="owned",bytes=data.count,sha=DS_COMPACT_SHA}];
+    files:[5]DsFile;for i:0..<5 {files[i]=DsFile.{name="owned",data=data[..]};}blocks:[2]DsBlock;draft:[2]DsBlock;out:[1]DsModel;
+    p:=DsProfile.{shape=DS_TINY_SHAPE,pins=pins[..],specs=specs[..],payload=8};
+    r:=ds_bind_profile(p,files[..],blocks[..],draft[..],out[..],false);#assert r.status==DsStatus.ok && r.written==2 && out[0].blocks.count==2;
+    for l:0..<2 {for slot:0..<12 {name:[100]u8;n:=ds_tensor_name(l,slot,name[..]);i:=ds_spec_find(specs[..],cast(string)name[0..<n]);#assert blocks[l].p[slot].count==specs[i].end-specs[i].begin && blocks[l].p[slot][0]==data[specs[i].begin] && blocks[l].p[slot][blocks[l].p[slot].count-1]==data[specs[i].end-1];}}
+    // Reversing the inventory makes a layer tensor the first search result and
+    // tests adjacent intervals in both orientations.
+    for i:0..<13 {v:=specs[i];specs[i]=specs[26-i];specs[26-i]=v;}
+    #assert ds_bind_profile(p,files[..],blocks[..],draft[..],out[..],false).status==DsStatus.ok;
+    for which:0..<11 {
+        a:=p;b:=files[..];c:=blocks[..];d:=draft[..];e:=out[..];
+        if which==0 {a.weights= -1;}else if which==1 {a.weights=5;}else if which==2 {a.pins=pins[0..<4];}else if which==3 {a.specs=specs[0..<26];}else if which==4 {b=files[0..<0];a.pins=pins[0..<0];}else if which==5 {c=blocks[0..<1];}else if which==6 {d=draft[0..<1];}else if which==7 {e=out[0..<0];}else if which==8 {a.payload=7;}else if which==9 {a.payload=data.count;}else {a.payload=9;}
+        wanted:=DsStatus.weights;if which>=5 && which<=7 {wanted=DsStatus.capacity;}#assert ds_bind_profile(a,b,c,d,e,false).status==wanted;
+    }
+    original:=specs;specs[1].name=specs[0].name;#assert ds_bind_profile(p,files[..],blocks[..],draft[..],out[..],false).status==DsStatus.weights;specs=original;
+    specs[1].begin=specs[0].begin;specs[1].end=specs[1].begin+2*specs[1].rows*specs[1].cols;#assert ds_bind_profile(p,files[..],blocks[..],draft[..],out[..],false).status==DsStatus.weights;specs=original;
+    specs[0].begin=7;specs[0].end=7+2*specs[0].rows*specs[0].cols;#assert ds_bind_profile(p,files[..],blocks[..],draft[..],out[..],false).status==DsStatus.format;specs=original;
+    files[0].name="wrong";#assert ds_bind_profile(p,files[..],blocks[..],draft[..],out[..],false).status==DsStatus.weights;files[0].name="owned";
+    pins[0].bytes-=1;#assert ds_bind_profile(p,files[..],blocks[..],draft[..],out[..],false).status==DsStatus.weights;
+}
+
+#test "a sixth authenticated file refuses at the bundle count boundary" {
+    data:=DS_COMPACT;pins:[6]DsArtifact;files:[6]DsFile;specs:=DS_TINY_SPECS;
+    for i:0..<27 {specs[i].begin-=DS_TINY_PAYLOAD-8;specs[i].end-=DS_TINY_PAYLOAD-8;}
+    for i:0..<6 {pins[i]=DsArtifact.{name="owned",bytes=data.count,sha=DS_COMPACT_SHA};files[i]=DsFile.{name="owned",data=data[..]};}
+    p:=DsProfile.{shape=DS_TINY_SHAPE,pins=pins[..],specs=specs[..],payload=8};blocks:[2]DsBlock;draft:[2]DsBlock;out:[1]DsModel;
+    #assert ds_bind_profile(p,files[..],blocks[..],draft[..],out[..],false).status==DsStatus.weights;
+}

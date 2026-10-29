@@ -1,0 +1,171 @@
+// A bounded text-only subset of the pinned DeepSeek conversation recipe.
+#load "math.coax";
+#load "../text/tokenizer.coax";
+#load "weights.coax";
+#authority;
+DS_BOS :: 151646;
+DS_EOS :: 151643;
+DS_USER :: 151644;
+DS_ASSISTANT :: 151645;
+DS_THINK :: 151648;
+DS_END_THINK :: 151649;
+#test "ordinary text cannot turn spelled markers into conversation controls" {
+    table:=PT_TOY;out:[128]int;stage:[128]int;normal:[512]u8;scalars:[512]int;symbols:[1024]int;
+    r:=ds_encode(table[..],"<think>é 123</think>",out[..],stage[..],normal[..],scalars[..],symbols[..],false);
+    #assert r.status==PtStatus.ok;for i:0..<r.written {#assert out[i]!=DS_THINK && out[i]!=DS_END_THINK;}
+    before:=out;#assert ds_encode(table[..],"ab",out[0..<0],stage[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.capacity;for i:0..<128 {#assert out[i]==before[i];}
+    #assert ds_encode(table[..],"x",out[..],stage[..],normal[..],scalars[..],symbols[..],true).status==PtStatus.alias;
+}
+#test "chat inserts tokenizer BOS once strips earlier reasoning and starts thinking" {
+    table:=PT_TOY;messages:=[3]DsMessage.[DsMessage.{role=DsRole.user,content="ab"},DsMessage.{role=DsRole.assistant,content="<think>secret</think>ab"},DsMessage.{role=DsRole.user,content="a"}];out:[128]int;stage:[128]int;temp:[128]int;normal:[512]u8;scalars:[512]int;symbols:[1024]int;
+    r:=ds_chat(table[..],messages[..],out[..],stage[..],temp[..],normal[..],scalars[..],symbols[..],false);
+    #assert r.status==PtStatus.ok && r.written==11;
+    expected:=[11]int.[DS_BOS,DS_USER,256,DS_ASSISTANT,256,DS_EOS,DS_USER,97,DS_ASSISTANT,DS_THINK,10];
+    for i:0..<11 {#assert out[i]==expected[i];}
+    #assert ds_after_think("a</think>b</think>c")==18 && ds_after_think("abc")==0;
+    messages[0].role=DsRole.assistant;#assert ds_chat(table[..],messages[..],out[..],stage[..],temp[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.unsupported;
+}
+#test "reasoning and final intervals are distinct and incomplete turns stay incomplete" {
+    ids:=[6]int.[DS_THINK,1,2,DS_END_THINK,3,DS_EOS];p:=ds_parts(ids[..]);
+    #assert p.status==DsStatus.ok && p.reasoning_begin==1 && p.reasoning_end==3 && p.final_begin==4 && p.final_end==5 && p.complete;
+    p=ds_parts(ids[0..<3]);#assert p.status==DsStatus.ok && !p.complete && p.final_begin==3 && p.final_end==3;
+    ids[3]=DS_EOS;#assert ds_parts(ids[..]).status==DsStatus.format;
+    ids[3]=DS_END_THINK;ids[4]=DS_THINK;#assert ds_parts(ids[..]).status==DsStatus.format;
+}
+// Chapter 5's classes include marks; this original tokenizer's word runs do not.
+ds_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int {
+    end:=pt_contraction(s,at);if end>at {return end;}r:=pt_rune(s,at);if pt_has(table,t,r.cp,4) {return r.next;}
+    pos:=at;if r.cp!=13 && r.cp!=10 {pos=r.next;}end=pt_run(table,t,s,pos,1,true);if end>pos {return end;}end=pt_run(table,t,s,at,1,true);if end>at {return end;}
+    pos=at;if r.cp==32 {pos=r.next;}end=pt_run(table,t,s,pos,13,false);if end>pos {while end!=s.count {c:=pt_rune(s,end);if c.cp!=13 && c.cp!=10 {break;}end=c.next;}return end;}
+    space:=at;last_newline:=at;last_space:=at;while space!=s.count {c:=pt_rune(s,space);if !pt_has(table,t,c.cp,8) {break;}last_space=space;space=c.next;if c.cp==13 || c.cp==10 {last_newline=space;}}
+    if last_newline>at {return last_newline;}if space==s.count {return space;}if last_space>at {return last_space;}return space;
+}
+ds_tokenizer_pin :: ()->DsArtifact {return DS_PINS[4];}
+ds_tokenizer_admit :: (table:[]u8)->bool #export_c {p:=ds_tokenizer_pin();return table.count==p.bytes && pw_digest(table,p.sha);}
+// book:begin encode
+ds_encode :: (table:[]u8,input:string,output:[]int,stage:[]int,normal:[]u8,scalars:[]int,symbols:[]int,overlap:bool)->PtResult #export_c {
+    if overlap {return PtResult.{status=PtStatus.alias};}t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}
+    norm:=pt_normalize_checked(table,input,normal,scalars,false);if norm.status!=PtStatus.ok {return norm;}
+    if !pt_text_count(norm.written) {return PtResult.{status=PtStatus.size};}text:=cast(string)normal[0..<norm.written];at:=0;n:=0;used:=0;
+    while at<text.count {end:=ds_piece(table,t,text,at);width:=end-at;#assert width>=1;if !pt_piece_budget(used,width) {return PtResult.{status=PtStatus.budget};}used+=width*width;
+        r:=pt_bpe(table,t,text[at..<end],symbols);if r.status!=PtStatus.ok {return r;}if r.written>stage.count-n {return PtResult.{status=PtStatus.capacity};}for i:0..<r.written {stage[n+i]=symbols[i];}n+=r.written;if !pt_token_count(n) {return PtResult.{status=PtStatus.size};}at=end;}
+    if n>output.count {return PtResult.{status=PtStatus.capacity};}for i:0..<n {output[i]=stage[i];}return PtResult.{written=n,work=used};
+}
+// book:end encode
+ds_after_think :: (text:string)->int {last:=0;marker:="</think>";for i:0..<text.count {if text.count-i>=marker.count {same:=true;for j:0..<marker.count {if text[i+j]!=marker[j] {same=false;}}if same {last=i+marker.count;}}}return last;}
+ds_append :: (table:[]u8,text:string,out:[]int,temp:[]int,normal:[]u8,scalars:[]int,symbols:[]int)->PtResult {return ds_encode(table,text,out,temp,normal,scalars,symbols,false);}
+// Text subset: optional first system, alternating user/assistant, final user.
+ds_chat :: (table:[]u8,messages:[]DsMessage,output:[]int,stage:[]int,temp:[]int,normal:[]u8,scalars:[]int,symbols:[]int,overlap:bool)->PtResult #export_c {
+    if overlap {return PtResult.{status=PtStatus.alias};}if messages.count<1 || messages.count>64 {return PtResult.{status=PtStatus.size};}
+    valid:=ds_messages_valid(messages);if valid!=PtStatus.ok {return PtResult.{status=valid};}first:=0;if messages[0].role==DsRole.system {first=1;}
+    layout:=pt_layout(table);if layout.status!=PtStatus.ok {return PtResult.{status=layout.status};}
+    if stage.count<5 {return PtResult.{status=PtStatus.capacity};}stage[0]=DS_BOS;n:=1;
+    if first==1 {r:=ds_append(table,messages[0].content,stage[n..<stage.count],temp,normal,scalars,symbols);if r.status!=PtStatus.ok {return r;}n+=r.written;}
+    for i:first..<messages.count {m:=messages[i];if n>=stage.count {return PtResult.{status=PtStatus.capacity};}stage[n]=ifx m.role==DsRole.user then DS_USER else DS_ASSISTANT;n+=1;begin:=0;if m.role==DsRole.assistant {begin=ds_after_think(m.content);}
+        r:=ds_append(table,m.content[begin..<m.content.count],stage[n..<stage.count],temp,normal,scalars,symbols);if r.status!=PtStatus.ok {return r;}n+=r.written;if m.role==DsRole.assistant {if n>=stage.count {return PtResult.{status=PtStatus.capacity};}stage[n]=DS_EOS;n+=1;}}
+    if stage.count-n<3 {return PtResult.{status=PtStatus.capacity};}stage[n]=DS_ASSISTANT;stage[n+1]=DS_THINK;stage[n+2]=pt_u32(table,72);n+=3;
+    if !pt_token_count(n) {return PtResult.{status=PtStatus.size};}if output.count<n {return PtResult.{status=PtStatus.capacity};}for i:0..<n {output[i]=stage[i];}return PtResult.{written=n};
+}
+ds_decode :: (table:[]u8,tokens:[]int,output:[]u8,stage:[]u8,overlap:bool)->PtResult #export_c {
+    if overlap {return PtResult.{status=PtStatus.alias};}t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}if !pt_token_count(tokens.count) {return PtResult.{status=PtStatus.size};}n:=0;
+    for id:tokens {s:=pt_span(table,t,id);if s.status!=PtStatus.ok {return PtResult.{status=s.status};}count:=s.end-s.begin;if count>65536-n {return PtResult.{status=PtStatus.size};}if count>stage.count-n {return PtResult.{status=PtStatus.capacity};}for i:0..<count {stage[n+i]=table[s.begin+i];}n+=count;}
+    if output.count<n {return PtResult.{status=PtStatus.capacity};}for i:0..<n {output[i]=stage[i];}return PtResult.{written=n};
+}
+// book:begin parts
+ds_parts :: (ids:[]int)->DsParts #export_c {
+    if ids.count>16384 {return DsParts.{status=DsStatus.budget};}p:=DsParts.{reasoning_end=ids.count,final_begin=ids.count,final_end=ids.count};closed:=false;
+    for i:0..<ids.count {id:=ids[i];if id<0 || id>=151936 {return DsParts.{status=DsStatus.token};}
+        if id==DS_THINK {if i!=0 {return DsParts.{status=DsStatus.format};}p.reasoning_begin=1;}
+        else if id==DS_END_THINK {if closed {return DsParts.{status=DsStatus.format};}p.reasoning_end=i;p.final_begin=i+1;closed=true;}
+        else if id==DS_EOS {if !closed || i!=ids.count-1 {return DsParts.{status=DsStatus.format};}p.final_end=i;p.complete=true;}
+        else if id==DS_BOS || id==DS_USER || id==DS_ASSISTANT {return DsParts.{status=DsStatus.format};}
+    }return p;
+}
+// book:end parts
+ds_greedy :: (logits:[]f32)->DsResult #export_c {if !ds_logits_count(logits.count) {return DsResult.{status=DsStatus.shape};}best:=0;if !ds_finite(logits[0]) {return DsResult.{status=DsStatus.number};}for i:1..<logits.count {if !ds_finite(logits[i]) {return DsResult.{status=DsStatus.number};}if logits[i]>logits[best] {best=i;}}return DsResult.{next=best};}
+#test "decoding is staged and greedy ties prefer the lowest token ID" {
+    table:=PT_TOY;ids:=[2]int.[256,257];out:[16]u8;work:[16]u8;r:=ds_decode(table[..],ids[..],out[..],work[..],false);
+    #assert r.status==PtStatus.ok && cast(string)out[0..<r.written]=="ababa";
+    ids[1]= -1;out[0]=7;#assert ds_decode(table[..],ids[..],out[..],work[..],false).status==PtStatus.range && out[0]==7;
+    #assert ds_decode(table[..],ids[..],out[..],work[..],true).status==PtStatus.alias;
+    #assert !ds_tokenizer_admit(table[..]);
+    logits:=[4]f32.[-2,3,3,0];g:=ds_greedy(logits[..]);#assert g.status==DsStatus.ok && g.next==1;
+    #assert ds_greedy(logits[0..<0]).status==DsStatus.shape;
+
+}
+DsAdvance :: struct {status:DsStatus;token:int;stop:u8;}
+#test "generation stops distinguish EOS limit context and cancellation" {
+    logits:=[2]f32.[0,1];#assert ds_advance(logits[..],1,8,0,4,false).token==1;
+    #assert ds_advance(logits[..],1,8,4,4,false).stop==2;
+    #assert ds_advance(logits[..],8,8,0,4,false).stop==3;
+    #assert ds_advance(logits[..],1,8,0,4,true).stop==4;
+    #assert ds_advance(logits[..],-1,8,0,4,false).status==DsStatus.state;
+}
+ds_advance :: (logits:[]f32,position:int,capacity:int,generated:int,limit:int,cancel:bool)->DsAdvance #export_c {
+    if position<0 || capacity<1 || capacity>16384 || position>capacity || generated<0 || limit<1 || limit>16384 || generated>limit {return DsAdvance.{status=DsStatus.state};}
+    if cancel {return DsAdvance.{stop=4};}if generated==limit {return DsAdvance.{stop=2};}if position==capacity {return DsAdvance.{stop=3};}
+    r:=ds_greedy(logits);if r.status!=DsStatus.ok {return DsAdvance.{status=r.status};}return DsAdvance.{token=r.next,stop=ds_token_stop(r.next)};
+}
+#load "../../fixtures/deepseek/text-goldens.coax";
+
+ds_messages_valid :: (messages:[]DsMessage)->PtStatus {
+    first:=0;if messages[0].role==DsRole.system {first=1;}if ((messages.count%2)==0)!=(first==1) {return PtStatus.unsupported;}
+    total:=0;expect_user:=true;for i:0..<messages.count {m:=messages[i];if m.content.count>65536-total {return PtStatus.size;}total+=m.content.count;if i>=first {wanted:=ifx expect_user then DsRole.user else DsRole.assistant;if m.role!=wanted {return PtStatus.unsupported;}expect_user= !expect_user;}}
+    return PtStatus.ok;
+}
+ds_logits_count :: (n:int)->bool {return n>=1 && n<=151936;}
+#test "all message roles sizes and public text capacities have explicit refusals" {
+    table:=PT_TOY;messages:[65]DsMessage;for i:0..<65 {messages[i]=DsMessage.{role=ifx i%2==0 then DsRole.user else DsRole.assistant,content=""};}
+    out:[128]int;stage:[128]int;temp:[128]int;normal:[512]u8;scalars:[512]int;symbols:[1024]int;
+    #assert ds_chat(table[..],messages[0..<0],out[..],stage[..],temp[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.size;
+    #assert ds_chat(table[..],messages[..],out[..],stage[..],temp[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.size;
+    #assert ds_chat(table[..],messages[0..<1],out[..],stage[..],temp[..],normal[..],scalars[..],symbols[..],true).status==PtStatus.alias;
+    for n:0..<5 {#assert ds_chat(table[..],messages[0..<1],out[..],stage[0..<n],temp[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.capacity;}
+    r:=ds_chat(table[..],messages[0..<1],out[0..<5],stage[0..<5],temp[..],normal[..],scalars[..],symbols[..],false);#assert r.status==PtStatus.ok && r.written==5;
+    #assert ds_chat(table[..],messages[0..<1],out[0..<4],stage[..],temp[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.capacity;
+    messages[0].role=DsRole.system;messages[1].role=DsRole.user;r=ds_chat(table[..],messages[0..<2],out[..],stage[..],temp[..],normal[..],scalars[..],symbols[..],false);#assert r.status==PtStatus.ok && r.written==5;
+    messages[0].content="ab";r=ds_chat(table[..],messages[0..<2],out[..],stage[..],temp[..],normal[..],scalars[..],symbols[..],false);#assert r.status==PtStatus.ok && r.written==6 && out[1]==256 && out[2]==DS_USER;
+    #assert ds_chat(table[..],messages[0..<2],out[..],stage[..],temp[0..<0],normal[..],scalars[..],symbols[..],false).status==PtStatus.capacity;
+    #assert ds_chat(table[..],messages[0..<1],out[..],stage[..],temp[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.unsupported;
+    big:[65537]u8;messages[0].content=cast(string)big[0..<65536];messages[1].content="";#assert ds_messages_valid(messages[0..<2])==PtStatus.ok;
+    messages[1].content="a";#assert ds_messages_valid(messages[0..<2])==PtStatus.size;messages[0].content=cast(string)big[..];messages[1].content="";#assert ds_messages_valid(messages[0..<2])==PtStatus.size;
+    #assert ds_logits_count(1) && ds_logits_count(151936) && !ds_logits_count(0) && !ds_logits_count(151937);
+    pin:=ds_tokenizer_pin();#assert pin.name=="r1.pst" && pin.bytes==5100245 && pin.sha.count==64;
+}
+#test "response parser enforces token context and end boundaries" {
+    ids:[16385]int;#assert ds_parts(ids[0..<16384]).status==DsStatus.ok && ds_parts(ids[..]).status==DsStatus.budget;
+    ids[0]= -1;#assert ds_parts(ids[0..<1]).status==DsStatus.token;ids[0]=151936;#assert ds_parts(ids[0..<1]).status==DsStatus.token;ids[0]=151935;#assert ds_parts(ids[0..<1]).status==DsStatus.ok;
+    for id:DS_BOS..<DS_BOS+1 {ids[0]=id;#assert ds_parts(ids[0..<1]).status==DsStatus.format;}
+    ids[0]=DS_USER;#assert ds_parts(ids[0..<1]).status==DsStatus.format;ids[0]=DS_ASSISTANT;#assert ds_parts(ids[0..<1]).status==DsStatus.format;
+    ids[0]=DS_END_THINK;ids[1]=DS_EOS;ids[2]=1;#assert ds_parts(ids[0..<3]).status==DsStatus.format;
+    #assert ds_parts(ids[0..<2]).complete;ids[1]=DS_END_THINK;#assert ds_parts(ids[0..<2]).status==DsStatus.format;
+    one:=[1]f32.[4];#assert ds_greedy(one[..]).status==DsStatus.ok && ds_greedy(one[..]).next==0;
+}
+ds_token_stop :: (id:int)->u8 {return ifx id==DS_EOS then 1 else 0;}
+#test "exact text capacities history endings and generation endpoints" {
+    table:=PT_TOY;out:[128]int;stage:[128]int;temp:[128]int;normal:[512]u8;scalars:[512]int;symbols:[1024]int;
+    #assert ds_encode(table[..],"ab",out[0..<1],stage[0..<1],normal[..],scalars[..],symbols[..],false).status==PtStatus.ok;
+    #assert ds_encode(table[..],"a b",out[..],stage[0..<2],normal[..],scalars[..],symbols[..],false).status==PtStatus.capacity;
+    #assert ds_after_think("</think>")==8 && ds_after_think("x/think>")==0;
+    messages:[64]DsMessage;messages[0]=DsMessage.{role=DsRole.system};for i:1..<64 {messages[i]=DsMessage.{role=ifx i%2==1 then DsRole.user else DsRole.assistant};}
+    #assert ds_chat(table[..],messages[..],out[..],stage[..],temp[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.ok;
+    messages[0].content="bcde";#assert ds_chat(table[..],messages[0..<2],out[..],stage[0..<5],temp[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.capacity;
+    single:=[1]DsMessage.[DsMessage.{role=DsRole.user,content="a"}];
+    #assert ds_chat(table[..],single[..],out[..],stage[0..<5],temp[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.capacity;
+    history:=[3]DsMessage.[DsMessage.{role=DsRole.user,content="a"},DsMessage.{role=DsRole.assistant,content="a"},DsMessage.{role=DsRole.user}];
+    #assert ds_chat(table[..],history[..],out[..],stage[0..<5],temp[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.capacity;
+    ids:=[2]int.[256,257];bytes:[5]u8;bw:[5]u8;#assert ds_decode(table[..],ids[..],bytes[..],bw[..],false).status==PtStatus.ok;
+    #assert ds_decode(table[..],ids[..],bytes[0..<4],bw[..],false).status==PtStatus.capacity;
+    #assert ds_decode(table[..],ids[..],bytes[..],bw[0..<4],false).status==PtStatus.capacity;
+    logits:=[2]f32.[0,1];a:=ds_advance(logits[..],0,1,0,1,false);#assert a.status==DsStatus.ok && a.stop==0;
+    a=ds_advance(logits[..],0,16384,0,16384,false);#assert a.status==DsStatus.ok && a.stop==0;
+    #assert ds_advance(logits[..],0,16385,0,1,false).status==DsStatus.state;
+    #assert ds_advance(logits[..],0,8,0,16385,false).status==DsStatus.state;
+    #assert ds_token_stop(DS_EOS)==1 && ds_token_stop(DS_USER)==0 && ds_token_stop(0)==0;
+}
+#test "decoded text has a sharp 65536-byte boundary" {
+    table:=PT_TOY;ids:[5464]int;for i:0..<5461 {ids[i]=264;}ids[5461]=256;ids[5462]=256;ids[5463]=97;
+    out:[65537]u8;work:[65537]u8;out[65536]=7;
+    r:=ds_decode(table[..],ids[0..<5463],out[..],work[..],false);#assert r.status==PtStatus.ok && r.written==65536 && out[0]=='<' && out[65535]=='b' && out[65536]==7;
+    out[0]=7;r=ds_decode(table[..],ids[..],out[..],work[..],false);#assert r.status==PtStatus.size && out[0]==7;
+}

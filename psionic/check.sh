@@ -24,6 +24,13 @@ while [[ $# -gt 0 ]]; do
 done
 coax=${COAX:-$root/coax/bin/coax}
 cc=${COAX_CC:-cc}
+# A chapter-only request avoids unrelated oracle/package setup.
+if [[ ${#only[@]} -eq 1 ]]; then
+    chapter=${only[0]%.coax}; chapter=${chapter#psionic/lib/}
+    if [[ $chapter == deepseek || $chapter == deepseek/* ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek.sh --mutate --jobs "$jobs"
+    fi
+fi
 # The text fixtures pin Unicode 17.0.0; use a Python whose database matches.
 text_python=${PSIONIC_TEXT_PYTHON:-}
 if [[ -z $text_python ]]; then
@@ -142,16 +149,18 @@ picks_native() {
     done
     return 1
 }
-selected_coax=(); selected_native=(); gptoss=0
+selected_coax=(); selected_native=(); gptoss=0; deepseek=0
+picks_deepseek() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == deepseek || $n == deepseek/* ]]; }
 picks_gptoss() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gptoss || $n == gptoss/* ]]; }
 if [[ ${#only[@]} -eq 0 ]]; then
-    selected_coax=("${coax_units[@]}"); selected_native=("${native_units[@]}"); gptoss=1
+    selected_coax=("${coax_units[@]}"); selected_native=("${native_units[@]}"); gptoss=1; deepseek=1
 else
     for unit in "${coax_units[@]}"; do if picks_coax "$unit" "${only[@]}"; then selected_coax+=("$unit"); fi; done
     for unit in "${native_units[@]}"; do if picks_native "$unit" "${only[@]}"; then selected_native+=("$unit"); fi; done
     for n in "${only[@]}"; do
         hit=0
         if picks_gptoss "$n"; then hit=1; gptoss=1; fi
+        if picks_deepseek "$n"; then hit=1; deepseek=1; fi
         for unit in "${coax_units[@]}"; do if picks_coax "$unit" "$n"; then hit=1; fi; done
         for unit in "${native_units[@]}"; do if picks_native "$unit" "$n"; then hit=1; fi; done
         [[ $hit == 1 ]] || { echo "psionic/check.sh: no unit named '$n'" >&2; exit 2; }
@@ -224,6 +233,10 @@ if [[ $gptoss == 1 ]]; then
     phase "gpt-oss chapters"
 fi
 
+if [[ $deepseek == 1 ]]; then
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek.sh --mutate --jobs "$jobs"
+    phase "DeepSeek chapter 56"
+fi
 python3 -I psionic/tests/book.py --coax "$coax" --jobs "$jobs"
 phase book
 if [[ ${#only[@]} -gt 0 ]]; then

@@ -1,0 +1,18 @@
+#import "Basic";
+#load "../lib/deepseek.coax";
+// book:begin example
+main :: () {
+    data:=DS_TINY;blocks:[2]DsBlock;m:=ds_tiny_model(data[..],blocks[..]);p:=ds_plan(m.shape);
+    cache:[64]f32;floats:[148]f32;scores:[8]f64;logits:[9]f32;trace:[16]f32;
+    for t:0..<4 {
+        r:=ds_step(m,DS_TOKENS[t],t,cache[..],DsOutput.{logits=logits[..],trace=trace[..]},DsWork.{floats=floats[..],scores=scores[..]},false);
+        #assert r.status==DsStatus.ok;
+    }
+    next:=ds_greedy(logits[..]);#assert next.status==DsStatus.ok;
+    print("Qwen2: 2 layers, 4 tokens, full vocabulary\n");print("next token %\n",next.next);
+    print("tokenizer BOS %, config BOS %\n",DS_BOS,151643);
+    ids:=[5]int.[DS_THINK,1,DS_END_THINK,2,DS_EOS];parts:=ds_parts(ids[..]);
+    #assert parts.complete && parts.reasoning_end==2 && parts.final_begin==3;
+    print("reasoning and final have separate intervals\n");
+}
+// book:end example

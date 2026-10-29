@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "compiler": "coax0 0.23.0",
+  "coax_emission": "release",
+  "cflags": [
+    "-std=c11",
+    "-O3",
+    "-g",
+    "-ffp-contract=off",
+    "-fno-fast-math"
+  ],
+  "generated_c_sha256": "ac4a22d9c5f6fe30d486a669f38332352f25f6a56e805732c4019a7b6a925c68",
+  "executable_sha256": "ad5acf85cd625eecf25960390ea09e67a1b7bcc8085d9666115387169d27e048",
+  "scope": "authenticate original bundle with current binder; current head over retained final hidden state compared every logit exactly; original token-198 first-layer biased query versus independent bounded NumPy reference",
+  "kernel_sources": {
+    "psionic/lib/deepseek/math.coax": "d8eec3ad2aab5c10a29b739ca2c19f8a2ba9c10c213f5e186082d4b6b610bc25",
+    "psionic/lib/deepseek/model.coax": "cd4923719f338d00426e2bc72e1a28a60f8884375e97e292e633e973fa392757",
+    "psionic/lib/deepseek/weights.coax": "1ab3beb4d47a39a69f0eca080ccade04efaf197778b11c5c473dda6671bf2f8c",
+    "psionic/lib/deepseek/plan.coax": "c73ddf0b11d50d97ca027cc55a6f36ff0cf089b5a3b65812f4e0a3517ddb3466"
+  }
+}

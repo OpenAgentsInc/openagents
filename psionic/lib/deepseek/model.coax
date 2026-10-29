@@ -1,0 +1,114 @@
+#authority;
+#load "plan.coax";
+#load "math.coax";
+#load "../../fixtures/deepseek/tiny/model.coax";
+
+#test "every original-format layer matches the independent dense-prefix reference" {
+    data:=DS_TINY;blocks:[2]DsBlock;m:=ds_tiny_model(data[..],blocks[..]);cache:[64]f32;floats:[148]f32;scores:[8]f64;out:[10]f32;trace:[17]f32;
+    l0:=DS_LOGITS0;l1:=DS_LOGITS1;l2:=DS_LOGITS2;l3:=DS_LOGITS3;t0:=DS_TRACE0;t1:=DS_TRACE1;t2:=DS_TRACE2;t3:=DS_TRACE3;
+    refs:=[4][]f32.[l0[..],l1[..],l2[..],l3[..]];traces:=[4][]f32.[t0[..],t1[..],t2[..],t3[..]];
+    out[9]=-7;trace[16]=-9;
+    for t:0..<4 {r:=ds_step(m,DS_TOKENS[t],t,cache[..],DsOutput.{logits=out[..],trace=trace[..]},DsWork.{floats=floats[..],scores=scores[..]},false);
+        #assert r.status==DsStatus.ok && r.written==9 && r.next==t+1;
+        for i:0..<9 {#assert abs(out[i]-refs[t][i])<0.000002f32;}for i:0..<16 {#assert abs(trace[i]-traces[t][i])<0.000002f32;}
+    }#assert out[9]== -7 && trace[16]== -9;
+}
+#test "late model failure leaves public logits trace and every cache layer untouched" {
+    data:=DS_TINY;blocks:[2]DsBlock;m:=ds_tiny_model(data[..],blocks[..]);cache:[64]f32;floats:[148]f32;scores:[8]f64;out:=[9]f32.[7,7,7,7,7,7,7,7,7];trace:[16]f32;
+    for i:0..<64 {cache[i]=3;}m.p[2][0]=0x80;m.p[2][1]=0x7f;
+    r:=ds_step(m,1,0,cache[..],DsOutput.{logits=out[..],trace=trace[..]},DsWork.{floats=floats[..],scores=scores[..]},false);
+    #assert r.status==DsStatus.number;for a:cache {#assert a==3;}for a:out {#assert a==7;}for a:trace {#assert a==0;}
+}
+#test "token position shape alias and each workspace refuse before execution" {
+    data:=DS_TINY;blocks:[2]DsBlock;m:=ds_tiny_model(data[..],blocks[..]);cache:[64]f32;floats:[148]f32;scores:[8]f64;out:[9]f32;trace:[16]f32;o:=DsOutput.{logits=out[..],trace=trace[..]};w:=DsWork.{floats=floats[..],scores=scores[..]};
+    #assert ds_step(m,-1,0,cache[..],o,w,false).status==DsStatus.token;
+    #assert ds_step(m,9,0,cache[..],o,w,false).status==DsStatus.token;
+    #assert ds_step(m,0,-1,cache[..],o,w,false).status==DsStatus.state;
+    #assert ds_step(m,0,8,cache[..],o,w,false).status==DsStatus.state;
+    #assert ds_step(m,0,0,cache[..],o,w,true).status==DsStatus.alias;
+    #assert ds_step(m,0,0,cache[0..<63],o,w,false).status==DsStatus.capacity;
+    p:=ds_plan(m.shape);#assert p.floats<=148;
+    w.floats=floats[0..<p.floats-1];#assert ds_step(m,0,0,cache[..],o,w,false).status==DsStatus.capacity;
+    w.floats=floats[..];w.scores=scores[0..<7];#assert ds_step(m,0,0,cache[..],o,w,false).status==DsStatus.capacity;
+    w.scores=scores[..];o.logits=out[0..<8];#assert ds_step(m,0,0,cache[..],o,w,false).status==DsStatus.capacity;
+    o.logits=out[..];o.trace=trace[0..<15];#assert ds_step(m,0,0,cache[..],o,w,false).status==DsStatus.capacity;
+    m.p[1]=data[0..<0];#assert ds_step(m,0,0,cache[..],o,w,false).status==DsStatus.weights;
+}
+
+ds_model_valid :: (m:DsModel)->bool {
+    s:=m.shape;if !ds_shape(s) || m.blocks.count!=s.layers {return false;}d:=s.width;h:=s.hidden;k:=s.kv_heads*s.head;
+    if m.p[0].count!=2*s.vocab*d || m.p[1].count!=2*d || m.p[2].count!=2*s.vocab*d {return false;}
+    sizes:=[12]int.[d,d,d*d,d,k*d,k,k*d,k,d*d,h*d,h*d,d*h];
+    for block:m.blocks {for i:0..<12 {if block.p[i].count!=2*sizes[i] {return false;}}}return true;
+}
+// book:begin step
+ds_step :: (m:DsModel,token:int,position:int,cache:[]f32,out:DsOutput,work:DsWork,overlap:bool)->DsResult #export_c {
+    s:=m.shape;p:=ds_plan(s);if p.status!=DsStatus.ok {return DsResult.{status=p.status};}
+    if token<0 || token>=s.vocab {return DsResult.{status=DsStatus.token};}if position<0 || position>=s.capacity {return DsResult.{status=DsStatus.state};}
+    if !ds_model_valid(m) {return DsResult.{status=DsStatus.weights};}
+    if cache.count<p.cache || out.logits.count<s.vocab || (out.trace.count!=0 && out.trace.count<2*s.layers*s.width) || work.floats.count<p.floats || work.scores.count<p.scores {return DsResult.{status=DsStatus.capacity};}
+    if overlap {return DsResult.{status=DsStatus.alias};}
+    f:=work.floats;b:=p.begin;d:=s.width;h:=s.hidden;k:=s.kv_heads*s.head;
+    views:=ds_views(f,p);x:=views.x;normal:=views.normal;q:=views.q;key:=views.key;value:=views.value;attention:=views.attention;projected:=views.projected;gate:=views.gate;up:=views.up;activated:=views.activated;stage:=views.stage;scratch:=views.scratch;pending:=views.pending;trace:=views.trace;logits:=views.logits;rope:=views.rope;
+    for i:0..<d {if !psionic_tensor_finite_bits(qm_bits(QmDtype.bf16,m.p[0],token*d+i)) {return DsResult.{status=DsStatus.number};}x[i]=ds_bf(m.p[0],token*d+i);}
+    status:=ds_rope(s.head,position,rope);if status!=DsStatus.ok {return DsResult.{status=status};}empty:[1]u8;
+    for l:0..<s.layers {
+        a:=m.blocks[l].p;status=ds_rms(x,a[0],normal);if status!=DsStatus.ok {return DsResult.{status=status};}
+        status=ds_project(d,d,a[2],normal,a[3],q,stage,scratch);if status!=DsStatus.ok {return DsResult.{status=status};}
+        status=ds_project(k,d,a[4],normal,a[5],key,stage,scratch);if status!=DsStatus.ok {return DsResult.{status=status};}
+        status=ds_project(k,d,a[6],normal,a[7],value,stage,scratch);if status!=DsStatus.ok {return DsResult.{status=status};}
+        status=ds_rotate(s.head,q,rope);if status!=DsStatus.ok {return DsResult.{status=status};}status=ds_rotate(s.head,key,rope);if status!=DsStatus.ok {return DsResult.{status=status};}
+        for head:0..<s.heads {
+            kh:=head/(s.heads/s.kv_heads);scores:=work.scores;
+            for t:0..<position+1 {acc:PsionicAccumulator;for j:0..<s.head {v:=key[kh*s.head+j];if t<position {v=cache[(l*s.capacity+t)*2*k+kh*s.head+j];}if !ds_finite(v) {return DsResult.{status=DsStatus.number};}acc=psionic_ops_accumulate(acc,f64(q[head*s.head+j])*f64(v));}scores[t]=psionic_ops_total(acc)/sqrt(f64(s.head));}
+            den:=ds_exp_scores(scores[0..<position+1]);
+            for j:0..<s.head {acc:PsionicAccumulator;for t:0..<position+1 {v:=value[kh*s.head+j];if t<position {v=cache[(l*s.capacity+t)*2*k+k+kh*s.head+j];}if !ds_finite(v) {return DsResult.{status=DsStatus.number};}acc=psionic_ops_accumulate(acc,scores[t]*f64(v));}v:=psionic_ops_total(acc)/den;if !psionic_ops_fits_f32(v) {return DsResult.{status=DsStatus.arithmetic};}attention[head*s.head+j]=f32(v);}
+        }
+        for j:0..<k {pending[2*k*l+j]=key[j];pending[2*k*l+k+j]=value[j];}
+        status=ds_project(d,d,a[8],attention,empty[0..<0],projected,stage,scratch);if status!=DsStatus.ok {return DsResult.{status=status};}status=ds_add(x,projected);if status!=DsStatus.ok {return DsResult.{status=status};}for j:0..<d {trace[2*l*d+j]=x[j];}
+        status=ds_rms(x,a[1],normal);if status!=DsStatus.ok {return DsResult.{status=status};}
+        status=ds_project(h,d,a[9],normal,empty[0..<0],gate,stage,scratch);if status!=DsStatus.ok {return DsResult.{status=status};}status=ds_project(h,d,a[10],normal,empty[0..<0],up,stage,scratch);if status!=DsStatus.ok {return DsResult.{status=status};}
+        for j:0..<h {v:=ds_silu(gate[j],up[j]);if v.status!=DsStatus.ok {return DsResult.{status=v.status};}activated[j]=v.value;}
+        status=ds_project(d,h,a[11],activated,empty[0..<0],projected,stage,scratch);if status!=DsStatus.ok {return DsResult.{status=status};}status=ds_add(x,projected);if status!=DsStatus.ok {return DsResult.{status=status};}for j:0..<d {trace[(2*l+1)*d+j]=x[j];}
+    }
+    status=ds_rms(x,m.p[1],normal);if status!=DsStatus.ok {return DsResult.{status=status};}status=ds_project(s.vocab,d,m.p[2],normal,empty[0..<0],logits,stage,scratch);if status!=DsStatus.ok {return DsResult.{status=status};}
+    // Only a complete stack and vocabulary head may publish a token transition.
+    for l:0..<s.layers {for j:0..<2*k {cache[(l*s.capacity+position)*2*k+j]=pending[2*k*l+j];}}
+    for i:0..<s.vocab {out.logits[i]=logits[i];}if out.trace.count!=0 {for i:0..<2*s.layers*d {out.trace[i]=trace[i];}}
+    return DsResult.{written=s.vocab,next=position+1};
+}
+// book:end step
+
+DsViews :: struct {x:[]f32;normal:[]f32;q:[]f32;key:[]f32;value:[]f32;attention:[]f32;projected:[]f32;gate:[]f32;up:[]f32;activated:[]f32;stage:[]f32;scratch:[]f32;pending:[]f32;trace:[]f32;logits:[]f32;rope:[]f32;}
+ds_views :: (f:[]f32,p:DsPlan)->DsViews {b:=p.begin;return DsViews.{x=f[b[0]..<b[1]],normal=f[b[1]..<b[2]],q=f[b[2]..<b[3]],key=f[b[3]..<b[4]],value=f[b[4]..<b[5]],attention=f[b[5]..<b[6]],projected=f[b[6]..<b[7]],gate=f[b[7]..<b[8]],up=f[b[8]..<b[9]],activated=f[b[9]..<b[10]],stage=f[b[10]..<b[11]],scratch=f[b[11]..<b[12]],pending=f[b[12]..<b[13]],trace=f[b[13]..<b[14]],logits=f[b[14]..<b[15]],rope=f[b[15]..<b[16]]};}
+#test "every workspace view has its exact disjoint interval" {
+    f:[512]f32;for i:0..<512 {f[i]=f32(i);}p:=ds_plan(DS_TINY_SHAPE);v:=ds_views(f[..],p);
+    parts:=[16][]f32.[v.x,v.normal,v.q,v.key,v.value,v.attention,v.projected,v.gate,v.up,v.activated,v.stage,v.scratch,v.pending,v.trace,v.logits,v.rope];
+    for i:0..<16 {#assert parts[i].count==p.begin[i+1]-p.begin[i] && parts[i][0]==f32(p.begin[i]) && parts[i][parts[i].count-1]==f32(p.begin[i+1]-1);}
+}
+#load "../../fixtures/deepseek/wide/model.coax";
+#test "three layers and two KV heads match independent dense attention" {
+    data:=DS_WIDE;blocks:[3]DsBlock;m:=ds_wide_model(data[..],blocks[..]);p:=ds_plan(m.shape);cache:[240]f32;floats:[1024]f32;scores:[5]f64;out:[10]f32;trace:[97]f32;
+    l0:=DS_WIDE_LOGITS0;l1:=DS_WIDE_LOGITS1;l2:=DS_WIDE_LOGITS2;l3:=DS_WIDE_LOGITS3;t0:=DS_WIDE_TRACE0;t1:=DS_WIDE_TRACE1;t2:=DS_WIDE_TRACE2;t3:=DS_WIDE_TRACE3;
+    refs:=[4][]f32.[l0[..],l1[..],l2[..],l3[..]];traces:=[4][]f32.[t0[..],t1[..],t2[..],t3[..]];out[9]= -7;trace[96]= -9;
+    for t:0..<4 {r:=ds_step(m,DS_WIDE_TOKENS[t],t,cache[..],DsOutput.{logits=out[..],trace=trace[..]},DsWork.{floats=floats[0..<p.floats],scores=scores[..]},false);#assert r.status==DsStatus.ok;
+        for i:0..<9 {#assert abs(out[i]-refs[t][i])<0.000002f32;}for i:0..<96 {#assert abs(trace[i]-traces[t][i])<0.000002f32;}
+        for l:0..<3 {for pos:t+1..<5 {for j:0..<16 {#assert cache[(l*5+pos)*16+j]==0;}}}
+    }#assert out[9]== -7 && trace[96]== -9;
+    #assert ds_step(m,5,4,cache[..],DsOutput.{logits=out[..],trace=trace[..]},DsWork.{floats=floats[0..<p.floats],scores=scores[..]},false).status==DsStatus.ok;
+    #assert ds_step(m,1,0,cache[..],DsOutput.{logits=out[..],trace=trace[0..<95]},DsWork.{floats=floats[..],scores=scores[..]},false).status==DsStatus.capacity;
+    #assert ds_step(m,1,0,cache[..],DsOutput.{logits=out[..],trace=trace[0..<0]},DsWork.{floats=floats[0..<p.floats],scores=scores[..]},false).status==DsStatus.ok;
+    #assert ds_step(m,1,0,cache[..],DsOutput.{logits=out[..],trace=trace[0..<1]},DsWork.{floats=floats[..],scores=scores[..]},false).status==DsStatus.capacity;
+}
+#test "model metadata validates every parameter and layer before execution" {
+    data:=DS_TINY;blocks:[2]DsBlock;m:=ds_tiny_model(data[..],blocks[..]);#assert ds_model_valid(m);
+    original:=m;m.blocks=blocks[0..<1];#assert !ds_model_valid(m);m=original;m.shape.layers=0;#assert !ds_model_valid(m);m=original;
+    for slot:0..<12 {saved:=blocks[0].p[slot];blocks[0].p[slot]=data[0..<0];#assert !ds_model_valid(m);blocks[0].p[slot]=saved;}
+}
+
+#test "embedding finite admission checks the selected row first and last lanes" {
+    for lane:0..<2 {data:=DS_TINY;blocks:[2]DsBlock;m:=ds_tiny_model(data[..],blocks[..]);at:=8;if lane==1 {at=14;}m.p[0][at]=0x80;m.p[0][at+1]=0x7f;
+        cache:[64]f32;floats:[148]f32;scores:[8]f64;out:[9]f32;trace:[16]f32;
+        #assert ds_step(m,1,0,cache[..],DsOutput.{logits=out[..],trace=trace[..]},DsWork.{floats=floats[..],scores=scores[..]},false).status==DsStatus.number;
+    }
+}

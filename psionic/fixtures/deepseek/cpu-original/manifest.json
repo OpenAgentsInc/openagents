@@ -1,0 +1,130 @@
+{
+  "schema": 1,
+  "host": {
+    "system": "Linux",
+    "release": "6.18.49",
+    "machine": "x86_64",
+    "cpu": "Intel Core i7-14700K",
+    "memory_gib": 125
+  },
+  "reference": {
+    "python": "3.13.15",
+    "numpy": "2.4.4",
+    "openblas_threads": 4,
+    "mode": "owned full-prefix float64 products; float32 stored intermediates"
+  },
+  "candidate": {
+    "compiler": "coax0 0.23.0",
+    "cflags": [
+      "-std=c11",
+      "-O3",
+      "-g",
+      "-ffp-contract=off",
+      "-fno-fast-math"
+    ],
+    "coax_emission": "debug C with dynamic bounds; original arithmetic kernel",
+    "executable_sha256": "1fb397a19e0db60ab11e82a7b184716b36d4badd0424080a71414d35d54cdea4",
+    "generated_c_sha256": "2580e22721bcdb18d7e46fbe5028e8598fbd527b8f7d11dbe934994eae45ba56"
+  },
+  "scope": "one original prompt numerical comparison; complete greedy greeting; measurements under concurrent local checks, not a quiet benchmark",
+  "generation": {
+    "prompt_tokens": 6,
+    "generated_tokens": 64,
+    "stop": "eos",
+    "complete": true
+  },
+  "files": {
+    "cc.txt": {
+      "bytes": 219,
+      "sha256": "9ed454ec6d9bc002fcfaba8889826139226da5e2622af26f535f89a0f4271b43"
+    },
+    "comparison.json": {
+      "bytes": 488,
+      "sha256": "0a825c508f2ccc32d583fda341d42f384bae6429d68e2a2fb47990585b959cf7"
+    },
+    "compiler.txt": {
+      "bytes": 13,
+      "sha256": "7abef116fd266b7074ceb0641951c847a42cb50579199b829ad70d4b17cbcced"
+    },
+    "completion.txt": {
+      "bytes": 313,
+      "sha256": "69920ae4546155bc124865a590844d6181c458e3ecf6cf4814abe1b308bc73b9"
+    },
+    "executed.c.gz": {
+      "bytes": 46014,
+      "sha256": "b62ed92b84a19c45dfe010c4273cc7b9e142ccff4d792d68dfb2b3a3aafdcf13"
+    },
+    "final.txt": {
+      "bytes": 36,
+      "sha256": "21761a7201c6a6ea9a276d432478ef83708fcc41cb65c94daec9d1f0070c63d6"
+    },
+    "generated.i64": {
+      "bytes": 512,
+      "sha256": "180e2e8420288d3955f24a45a58d59b0d1d997d9d607e9791acc64c1bd8ce2e8"
+    },
+    "progress.txt": {
+      "bytes": 1934,
+      "sha256": "85093039a6b995e7cd0e023c16b05d929b7518cabede65961a5a86dfa88dcc8d"
+    },
+    "prompt-logits.f32.gz": {
+      "bytes": 553431,
+      "sha256": "e7efb88863c7792fbda0d1d45df9972ceb10f7d6d998cfc89a46aa49e21deda2"
+    },
+    "prompt-trace.f32.gz": {
+      "bytes": 319358,
+      "sha256": "d74207754ef151fbeb924b2b556d36dca7b5382ffb2867106ed50d760444900a"
+    },
+    "prompt.i64": {
+      "bytes": 48,
+      "sha256": "b7326ebbf0a108bc670bff6868bdbaf840f3a59b96464c44b3b254721f7769ef"
+    },
+    "reasoning.txt": {
+      "bytes": 242,
+      "sha256": "2a3efc8180ead6c31e75e7803681ed43aded33cb90f186a0b8090d235cd5bd0d"
+    },
+    "reference-logits.f32.gz": {
+      "bytes": 553431,
+      "sha256": "e7efb88863c7792fbda0d1d45df9972ceb10f7d6d998cfc89a46aa49e21deda2"
+    },
+    "reference-trace.f32.gz": {
+      "bytes": 319358,
+      "sha256": "d74207754ef151fbeb924b2b556d36dca7b5382ffb2867106ed50d760444900a"
+    },
+    "run.txt": {
+      "bytes": 304,
+      "sha256": "77cbefe1924668f1cd9fb5c8c813dfdfb14667d8843c6654f80c3839fdd86104"
+    },
+    "slice-query.f32.gz": {
+      "bytes": 5850,
+      "sha256": "7b8cf21b6120fa7a6f6d21fac7fd30bddf45cb5e4afc83b8e81420163a0bf4a1"
+    },
+    "slice-reference-query.f32.gz": {
+      "bytes": 5850,
+      "sha256": "7b8cf21b6120fa7a6f6d21fac7fd30bddf45cb5e4afc83b8e81420163a0bf4a1"
+    },
+    "slices-build.json": {
+      "bytes": 1044,
+      "sha256": "cb531cbc702b5115b12aab10c435aee0768614b8fa363f665cddbce8faec2655"
+    },
+    "slices-comparison.json": {
+      "bytes": 219,
+      "sha256": "fb51dfcc00bfee906d54aedb0a04d6a36bdce7c7adc6f7f4538fbfa311edba44"
+    },
+    "slices-generated.c.gz": {
+      "bytes": 49552,
+      "sha256": "34911b19ec01be22474aeca9b49027292f3cf32cfedd4b105533145ce1fcb431"
+    },
+    "slices.txt": {
+      "bytes": 148,
+      "sha256": "6a7ce9204b3b08ac867dc287acdd5efef6839ab6d745b59bb24fdae9852812cb"
+    },
+    "runtime-libraries.json": {
+      "bytes": 1099,
+      "sha256": "b35fe91002d1e89877e8c3326b85fd7049ed3ff6dfc81c51b97e8256025f381d"
+    },
+    "reference-build.json": {
+      "bytes": 1604,
+      "sha256": "96595627443938f221bc93191413222456436841d6caa8962f49666f9aaae424"
+    }
+  }
+}

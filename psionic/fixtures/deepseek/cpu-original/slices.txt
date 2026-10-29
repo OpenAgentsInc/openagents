@@ -1,0 +1,1 @@
+DeepSeek original slices: final 151936-row head matches retained logits bit for bit; original layer-0 biased query recorded; authenticated 31.302 s

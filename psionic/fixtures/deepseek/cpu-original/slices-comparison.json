@@ -1,0 +1,7 @@
+{
+  "values": 1536,
+  "max_abs": 0.0,
+  "violations": 0,
+  "passed": true,
+  "scope": "current Coax layer-0 original biased query versus owned NumPy; native current head compared all retained original logits exactly"
+}

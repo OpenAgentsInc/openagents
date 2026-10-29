@@ -1,0 +1,9 @@
+{
+  "ldd": "\tlinux-vdso.so.1 (0x00007dc3b2827000)\n\tlibm.so.6 => /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libm.so.6 (0x00007dc3b2702000)\n\tlibc.so.6 => /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6 (0x00007dc3b2400000)\n\t/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/ld-linux-x86-64.so.2 => /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib64/ld-linux-x86-64.so.2 (0x00007dc3b2829000)\n",
+  "sha256": {
+    "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libm.so.6": "95aafdf744c5bd6df251264d6a0b864159ba6f77c1f21997dd79dfb8ecc2e2bf",
+    "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6": "47462289165b3273a441819431453b13068aeecb718afa39d8c5f904e49f2519",
+    "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/ld-linux-x86-64.so.2": "5e6250bc71797bc3f75f8c3cee9d4f35e7ddd25ed07d8925ad9c2932d276182c",
+    "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib64/ld-linux-x86-64.so.2": "5e6250bc71797bc3f75f8c3cee9d4f35e7ddd25ed07d8925ad9c2932d276182c"
+  }
+}

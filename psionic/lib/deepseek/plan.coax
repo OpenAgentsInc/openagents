@@ -1,0 +1,34 @@
+#load "types.coax";
+#authority;
+#test "bounded Qwen2 plans include every pending layer and full cache" {
+    s:=DsShape.{layers=28,width=1536,hidden=8960,heads=12,kv_heads=2,head=128,vocab=151936,capacity=128};p:=ds_plan(s);
+    #assert p.status==DsStatus.ok && p.cache==1835008 && p.scores==128 && p.begin[17]==p.floats;
+    for i:0..<17 {#assert p.begin[i+1]>p.begin[i];}
+    s.capacity=16385;#assert ds_plan(s).status==DsStatus.shape;s.capacity=128;s.width=1535;#assert ds_plan(s).status==DsStatus.shape;
+    s.width=1536;s.kv_heads=5;#assert ds_plan(s).status==DsStatus.shape;
+}
+#test "all shape endpoints refuse before resource multiplication" {
+    s:=DsShape.{layers=1,width=2,hidden=1,heads=1,kv_heads=1,head=2,vocab=1,capacity=1};#assert ds_shape(s);
+    for field:0..<8 {x:=s;if field==0 {x.layers=0;}else if field==1 {x.width=0;}else if field==2 {x.hidden=0;}else if field==3 {x.heads=0;}else if field==4 {x.kv_heads=0;}else if field==5 {x.head=1;}else if field==6 {x.vocab=0;}else {x.capacity=0;}#assert !ds_shape(x);}
+}
+// book:begin plan
+ds_shape :: (s:DsShape)->bool {
+    if s.layers<1 || s.layers>28 || s.hidden<1 || s.hidden>8960 || s.heads<1 || s.heads>12 || s.kv_heads<1 || s.kv_heads>2 || s.head<2 || s.head/2>64 || s.head%2!=0 || s.vocab<1 || s.vocab>151936 || s.capacity<1 || s.capacity>16384 {return false;}
+    return s.width==s.heads*s.head && s.heads%s.kv_heads==0;
+}
+ds_plan :: (s:DsShape)->DsPlan #export_c {
+    if !ds_shape(s) {return DsPlan.{status=DsStatus.shape};}
+    d:=s.width;h:=s.hidden;k:=s.kv_heads*s.head;mx:=s.vocab+h+d;
+    sizes:=[17]int.[d,d,d,k,k,d,d,h,h,h,mx,mx,2*s.layers*k,2*s.layers*d,s.vocab,s.head,d];p:DsPlan;
+    for i:0..<17 {p.begin[i+1]=p.begin[i]+sizes[i];}
+    p.floats=p.begin[17];p.scores=s.capacity;p.cache=2*s.layers*s.capacity*k;return p;
+}
+// book:end plan
+#test "resource intervals have independent exact dimensions at unequal shapes" {
+    s:=DsShape.{layers=3,width=24,hidden=7,heads=3,kv_heads=1,head=8,vocab=5,capacity=9};p:=ds_plan(s);
+    expected:=[17]int.[24,24,24,8,8,24,24,7,7,7,36,36,48,144,5,8,24];
+    for i:0..<17 {#assert p.begin[i+1]-p.begin[i]==expected[i];}#assert p.cache==432 && p.scores==9;
+    s.layers=29;#assert !ds_shape(s);s.layers=28;s.hidden=8961;#assert !ds_shape(s);s.hidden=8960;
+    s.heads=13;s.width=104;#assert !ds_shape(s);s.heads=12;s.width=96;s.kv_heads=3;#assert !ds_shape(s);s.kv_heads=2;
+    s.head=130;s.width=1560;#assert !ds_shape(s);s.head=128;s.width=1536;s.vocab=151937;#assert !ds_shape(s);s.vocab=151936;s.capacity=16384;#assert ds_shape(s);
+}

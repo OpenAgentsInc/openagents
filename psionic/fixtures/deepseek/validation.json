@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "compiler": {
+    "version": "coax0 0.23.0",
+    "sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93"
+  },
+  "mutation": {
+    "model": {
+      "command": "coax/bin/coax mutate psionic/lib/deepseek/model.coax --jobs 8 --run-steps 2000000",
+      "report": "1231 mutants, 1231 killed, 0 survived",
+      "sources": {
+        "psionic/lib/deepseek/model.coax": "cd4923719f338d00426e2bc72e1a28a60f8884375e97e292e633e973fa392757",
+        "psionic/lib/deepseek/plan.coax": "c73ddf0b11d50d97ca027cc55a6f36ff0cf089b5a3b65812f4e0a3517ddb3466",
+        "psionic/lib/deepseek/types.coax": "d4e5f85516b38cf129ebe823d003e320180d47f1e3f0124732ada2878e8ef803",
+        "psionic/lib/qwen-matvec.coax": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae",
+        "psionic/lib/ops.coax": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+        "psionic/lib/ops-contract.coax": "8120be9d305264a9fc967dbf6d251da54120acc4b8151e28d747a11233b042a8",
+        "psionic/lib/tensor.coax": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+        "psionic/lib/deepseek/math.coax": "46c5191d9d0222b9a7283c6acef89c62995cbd27e6aadb04e67493ce14b0005d",
+        "psionic/fixtures/deepseek/tiny/model.coax": "c4f7e37643fe882f9d41c61f2cfe87b28e5a8dfea0d0a5343e3b95a9f5fd039a",
+        "psionic/fixtures/deepseek/wide/model.coax": "36b13f6b7f40d6eadf939bf7951e653ab1f5c3e58c03c112a561fd052c9b7335"
+      }
+    },
+    "text": {
+      "command": "coax/bin/coax mutate psionic/lib/deepseek/text.coax --jobs 16 --run-steps 2000000",
+      "report": "2789 mutants, 2789 killed, 0 survived",
+      "sources": {
+        "psionic/lib/deepseek/text.coax": "8ba0cfada1feccee79d9e044c5c963675bae5043c4bbce6498173cc9ad0c96dd",
+        "psionic/lib/deepseek/math.coax": "46c5191d9d0222b9a7283c6acef89c62995cbd27e6aadb04e67493ce14b0005d",
+        "psionic/lib/deepseek/types.coax": "d4e5f85516b38cf129ebe823d003e320180d47f1e3f0124732ada2878e8ef803",
+        "psionic/lib/qwen-matvec.coax": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae",
+        "psionic/lib/ops.coax": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+        "psionic/lib/ops-contract.coax": "8120be9d305264a9fc967dbf6d251da54120acc4b8151e28d747a11233b042a8",
+        "psionic/lib/tensor.coax": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+        "psionic/lib/text/tokenizer.coax": "b028b1b42d2f28605413d1340c3cfcda322bf52aed4574679f184d2e285b2027",
+        "psionic/lib/text/unicode.coax": "8d7a50b85f4fc9bf50a7522a005dc39c7d61499cc0116aa644ac47e5eacbf681",
+        "psionic/fixtures/text/ch05/toy.coax": "4eb8fbdb4f28b50e89615d3eebb872143e8e5cdfd8bc01e586869ad9ac7c6547",
+        "psionic/fixtures/text/ch05/goldens.coax": "ba5b630b1847f7f8250294574b2206d36559687c3eaf303dac188417416736b0",
+        "psionic/lib/deepseek/weights.coax": "1ab3beb4d47a39a69f0eca080ccade04efaf197778b11c5c473dda6671bf2f8c",
+        "psionic/lib/deepseek/plan.coax": "c73ddf0b11d50d97ca027cc55a6f36ff0cf089b5a3b65812f4e0a3517ddb3466",
+        "psionic/lib/model-io/identity.coax": "e05ecb80ef8b95c96b69b7a4aa13052ec486204caa60c9616f4c2f5f11a79f6d",
+        "psionic/lib/model-io/format.coax": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+        "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+        "coax/lib/crypto/bytes.coax": "f1427b0d05c28c4f64800b1a64b11125c8087ecd4edd573a2e3a706182f543a1",
+        "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+        "psionic/fixtures/deepseek/tiny/model.coax": "c4f7e37643fe882f9d41c61f2cfe87b28e5a8dfea0d0a5343e3b95a9f5fd039a",
+        "psionic/fixtures/deepseek/original/targets.coax": "5e6b7b02b91d5513555e8deed4b328a4cbf9afd9a9d3750aa3bc20cac76e5776",
+        "psionic/fixtures/deepseek/text-goldens.coax": "5c6bad70125275ecdf0ec7d3426ffec52d5c8155c4e936e5a163ed06ffc78c41"
+      }
+    }
+  },
+  "checks": {
+    "command": "psionic/tests/check_deepseek.sh",
+    "coax_checks_per_mode": 167,
+    "modes": [
+      "debug",
+      "release"
+    ],
+    "native": [
+      "plain",
+      "ASan+UBSan"
+    ],
+    "evidence": "original tokenizer/recipe vectors, two-/three-layer owned independent scalar references, exact cache replay and atomic failures"
+  },
+  "book": {
+    "programs": 25,
+    "runs": 50,
+    "source_linked_listings": 101,
+    "command": "python3 -I psionic/tests/book.py --coax coax/bin/coax --jobs 4"
+  },
+  "original": "cpu-original/manifest.json",
+  "dispatch": "psionic/check.sh --only deepseek was exercised with a mutation-command stub for wiring; the actual mutation gates above ran independently"
+}

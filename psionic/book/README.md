@@ -40,6 +40,7 @@ run examples directly without the check command.
 | [46. Execute gpt-oss-120b](ch046-execute-gpt-oss-120b.md) | Runnable: original CPU model and residency | The same engine, 36 layers and 128 experts, original shards and measured memory. |
 | [47. Let the small model guess](ch047-let-the-small-model-guess.md) | Runnable: serial CPU speculative profile | Standard acceptance/correction, block bonus, whole-cache rollback, prompt n-grams and original greedy parity. |
 | [48. Call a tool](ch048-call-a-tool.md) | Runnable: finite JSON-schema enum and granted tools | Mask before sampling, typed commentary handoffs, tool-role results and final-only display. |
+| [56. Execute a DeepSeek R1 distill](ch056-execute-a-deepseek-r1-distill.md) | Runnable: original BF16 CPU reference | Qwen2 execution, original tokenizer BOS and stripped-history recipe, greedy generation, separate reasoning/final intervals. |
 | [165. A machine whose state is a trace](ch165-a-machine-whose-state-is-a-trace.md) | Runnable: bounded CPU reference interpreter | Admit and run a small integer stack machine whose four-token-per-step trace and SHA-256 digest identify the run; a refused run publishes nothing. |
 | [166. Attention as exact memory](ch166-attention-as-exact-memory.md) | Runnable: bounded CPU, integer scores | Parabolic keys and hard-max reads return exactly the latest write or refuse; the machine with attention as its only memory reproduces the interpreter's digest. |
 

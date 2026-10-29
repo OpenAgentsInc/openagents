@@ -25,6 +25,8 @@ and a finite-schema tool round trip. Chapters
 [166](ch166-attention-as-exact-memory.md) open Part XXIII with a reference
 trace machine and attention as exact memory. **GPU execution and useful throughput are
 not complete.** The device sequence below is the next GPT-OSS delivery path.
+[Chapter 56](ch056-execute-a-deepseek-r1-distill.md) adds a bounded original
+DeepSeek R1-Distill-Qwen-1.5B CPU reference and a complete greedy greeting.
 The remaining chapters below are outlines, not implemented capabilities. A
 chapter ships with shared Coax library code, authored checks, independent
 native tests, source-linked examples and an exact supported scope. Coax
@@ -278,7 +280,7 @@ failure.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 56. Execute a DeepSeek R1 distill | R1-Distill-Qwen-1.5B through the shared dense path: the distill's own tokenizer, BOS from the tokenizer rather than the config, a template that strips earlier reasoning, and separate reasoning and final output. |
+| [56. Execute a DeepSeek R1 distill](ch056-execute-a-deepseek-r1-distill.md) — runnable: bounded original BF16 CPU reference | R1-Distill-Qwen-1.5B through the shared dense path: the distill's own tokenizer, BOS from the tokenizer rather than the config, a template that strips earlier reasoning, and separate reasoning and final output. |
 | 57. DeepSeek's front door | The recipe layer in Coax. Special tokens are inserted by boundary, never by spelling, so user or tool text that spells a marker stays text. Segments between specials encode independently. A streaming parser carries incomplete UTF-8 and multi-token delimiters across chunks in linear time and emits tool names and escaped arguments as they arrive. A stream that ends without a finish event is reported incomplete. |
 | 58. Execute DeepSeek V2-Lite | 16B total, 2.4B active: DeepSeek's latent attention (sharing chapter 52's math) with 64 routed and 2 shared experts, compared in compressed and expanded form with router and combine parity and cache continuation. Fits one Mac. |
 | 59. Routers that balance themselves | V3-style selection with a bias used only for choosing experts and unbiased scores for weighting, V4.1's square-root-softplus scores and route scale, explicit lowest-id tie rules, and router-margin records so near ties are visible in every comparison. |

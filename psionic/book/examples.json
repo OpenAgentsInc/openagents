@@ -240,6 +240,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/execute-deepseek.coax",
+      "chapter": "psionic/book/ch056-execute-a-deepseek-r1-distill.md",
+      "stdout": "psionic/fixtures/execute-deepseek.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

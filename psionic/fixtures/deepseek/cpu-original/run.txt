@@ -1,0 +1,5 @@
+model=DeepSeek-R1-Distill-Qwen-1.5B revision=ad9f0ae0864d7fbcd1cd905e3c6c5b069cc8b562 profile=deepseek-r1-qwen2-cpu-wide-v1
+auth_s=43.660234 prefill_s=76.291545 decode_s=497.801201 prompt=6 generated=64 stop=1 complete=1 cache_bytes=7340032 work_bytes=2456576
+final: 
+
+Hello! How can I assist you today?

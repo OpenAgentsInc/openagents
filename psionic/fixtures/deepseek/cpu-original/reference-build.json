@@ -1,0 +1,73 @@
+{
+  "Compilers": {
+    "c": {
+      "name": "gcc",
+      "linker": "ld.bfd",
+      "version": "15.2.0",
+      "commands": "gcc"
+    },
+    "cython": {
+      "name": "cython",
+      "linker": "cython",
+      "version": "3.2.4",
+      "commands": "cython"
+    },
+    "c++": {
+      "name": "gcc",
+      "linker": "ld.bfd",
+      "version": "15.2.0",
+      "commands": "g++"
+    }
+  },
+  "Machine Information": {
+    "host": {
+      "cpu": "x86_64",
+      "family": "x86_64",
+      "endian": "little",
+      "system": "linux"
+    },
+    "build": {
+      "cpu": "x86_64",
+      "family": "x86_64",
+      "endian": "little",
+      "system": "linux"
+    }
+  },
+  "Build Dependencies": {
+    "blas": {
+      "name": "blas",
+      "found": true,
+      "version": "3",
+      "detection method": "pkgconfig",
+      "include directory": "unknown",
+      "lib directory": "unknown",
+      "openblas configuration": "unknown",
+      "pc file directory": "/nix/store/2n65vbrxyh178683cziv1p46ri2bnw9r-blas-3-dev/lib/pkgconfig"
+    },
+    "lapack": {
+      "name": "lapack",
+      "found": true,
+      "version": "3",
+      "detection method": "pkgconfig",
+      "include directory": "unknown",
+      "lib directory": "unknown",
+      "openblas configuration": "unknown",
+      "pc file directory": "/nix/store/7wzwdsn7vz6nfn4izx36af7q10a5d1p5-lapack-3-dev/lib/pkgconfig"
+    }
+  },
+  "Python Information": {
+    "path": "python",
+    "version": "3.13"
+  },
+  "SIMD Extensions": {
+    "found": [
+      "X86_V2",
+      "X86_V3"
+    ],
+    "not found": [
+      "X86_V4",
+      "AVX512_ICL",
+      "AVX512_SPR"
+    ]
+  }
+}

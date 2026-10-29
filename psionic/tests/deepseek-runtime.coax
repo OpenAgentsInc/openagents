@@ -1,0 +1,10 @@
+#load "../lib/deepseek.coax";
+ds_test_model :: (data:[]u8,blocks:[]DsBlock)->DsModel #export_c {return ds_tiny_model(data,blocks);}
+ds_test_readout :: (m:DsModel,hidden:[]f32,normal:[]f32,out:[]f32,stage:[]f32,scratch:[]f32)->DsResult #export_c {
+    status:=ds_rms(hidden,m.p[1],normal);if status!=DsStatus.ok {return DsResult.{status=status};}empty:[1]u8;
+    status=ds_project(m.shape.vocab,m.shape.width,m.p[2],normal,empty[0..<0],out,stage,scratch);return DsResult.{status=status,written=ifx status==DsStatus.ok then m.shape.vocab else 0};
+}
+ds_test_query :: (m:DsModel,token:int,x:[]f32,normal:[]f32,out:[]f32,stage:[]f32,scratch:[]f32)->DsResult #export_c {
+    for i:0..<m.shape.width {x[i]=ds_bf(m.p[0],token*m.shape.width+i);}status:=ds_rms(x,m.blocks[0].p[0],normal);if status!=DsStatus.ok {return DsResult.{status=status};}
+    status=ds_project(m.shape.width,m.shape.width,m.blocks[0].p[2],normal,m.blocks[0].p[3],out,stage,scratch);return DsResult.{status=status,written=ifx status==DsStatus.ok then m.shape.width else 0};
+}

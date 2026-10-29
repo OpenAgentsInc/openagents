@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "profile": "deepseek-r1-qwen2-cpu-wide-v1",
+  "repository": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+  "revision": "ad9f0ae0864d7fbcd1cd905e3c6c5b069cc8b562",
+  "shape": {
+    "layers": 28,
+    "width": 1536,
+    "hidden": 8960,
+    "heads": 12,
+    "kv_heads": 2,
+    "head": 128,
+    "vocab": 151936,
+    "capacity": 128
+  },
+  "artifacts": [
+    {
+      "name": "config.json",
+      "bytes": 679,
+      "sha": "37bd455e9679d2959536270fed49d25cc7c290a64f6e52abb97c71345a9cee41"
+    },
+    {
+      "name": "tokenizer_config.json",
+      "bytes": 3071,
+      "sha": "8ac8c85fb242563c2260baec0909debd69d718af6a0b3d90e6cab62b4d341cd5"
+    },
+    {
+      "name": "tokenizer.json",
+      "bytes": 7031660,
+      "sha": "88145e3c3249adc2546ede277e9819d6e405e19072456e4b521cbc724bd60773"
+    },
+    {
+      "name": "model.safetensors",
+      "bytes": 3554214621,
+      "sha": "58858233513d76b8703e72eed6ce16807b523328188e13329257fb9594462945"
+    },
+    {
+      "name": "r1.pst",
+      "bytes": 5100245,
+      "sha": "431e00e6be54a8bb51003c661c8d78ab0bf53c552d604eeb7733603eef75906a"
+    }
+  ],
+  "tokenizer_bos": 151646,
+  "tokenizer_eos": 151643,
+  "config_bos": 151643,
+  "unicode": "17.0.0",
+  "tensor_count": 339
+}

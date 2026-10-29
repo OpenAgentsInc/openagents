@@ -1,0 +1,17 @@
+// deepseek-r1-qwen2-cpu-wide-v1. Host-owned storage, no runtime allocation.
+#load "../qwen-matvec.coax";
+DsStatus :: enum u8 {ok;shape;capacity;alias;number;arithmetic;weights;token;state;budget;format;}
+DsResult :: struct {status:DsStatus;written:int;next:int;}
+DsShape :: struct {layers:int;width:int;hidden:int;heads:int;kv_heads:int;head:int;vocab:int;capacity:int;}
+DsBlock :: struct {p:[12][]u8;}
+DsModel :: struct {shape:DsShape;p:[3][]u8;blocks:[]DsBlock;}
+DsPlan :: struct {status:DsStatus;cache:int;floats:int;scores:int;begin:[18]int;}
+DsWork :: struct {floats:[]f32;scores:[]f64;}
+DsOutput :: struct {logits:[]f32;trace:[]f32;}
+DsRole :: enum u8 {system;user;assistant;}
+DsMessage :: struct {role:DsRole;content:string;}
+DsParts :: struct {status:DsStatus;reasoning_begin:int;reasoning_end:int;final_begin:int;final_end:int;complete:bool;}
+DsArtifact :: struct {name:string;bytes:int;sha:string;}
+DsSpec :: struct {name:string;rank:int;rows:int;cols:int;begin:int;end:int;}
+DsFile :: struct {name:string;data:[]u8;}
+DsProfile :: struct {shape:DsShape;pins:[]DsArtifact;specs:[]DsSpec;weights:int;payload:int;}

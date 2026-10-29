@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "profile": "deepseek-r1-qwen2-cpu-wide-v1",
+  "scope": "original BF16 CPU arithmetic versus owned independent dense NumPy float64 products, float32 stored intermediates; not Torch BF16 or a quality corpus",
+  "request": "one user message: Hi; pinned generation prompt",
+  "logits_absolute": 0.0002,
+  "logits_relative": 0.00002,
+  "trace_absolute": 0.0002,
+  "trace_relative": 0.00002,
+  "require_same_greedy_token": true,
+  "cache_replay": "byte-identical on owned fixture",
+  "failure_exit": 1
+}
