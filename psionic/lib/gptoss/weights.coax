@@ -1,0 +1,268 @@
+// Fixed-original profiles: fingerprints authenticate the complete bytes; this
+// versioned descriptor table is part of the trusted target definition.
+#load "layout.coax";
+#load "../model-io/identity.coax";
+#authority;
+GArtifact :: struct {name:string;bytes:int;sha:string;header:int;}
+GSpec :: struct {name:string;dtype:u8;rank:int;dims:[4]int;begin:int;end:int;file:int;}
+GFile :: struct {name:string;data:[]u8;}
+GProfile :: struct {status:GStatus;shape:GShape;pins:[]GArtifact;specs:[]GSpec;}
+#load "../../fixtures/gptoss/original/targets.coax";
+
+#test "fixed model targets retain separate original dimensions and files" {
+    a:=g_original_shape(0,8);b:=g_original_shape(1,8);
+    #assert a.layers==24 && a.experts==32 && b.layers==36 && b.experts==128 && a.width==2880 && a.capacity==8 && b.capacity==8;
+    #assert g_original_files(0)==3 && g_original_files(1)==10 && g_original_files(2)==0;
+    #assert g_original_filename(0,2)=="original/model.safetensors" && g_original_filename(1,9)=="original/model.safetensors.index.json";
+    #assert g_original_filename(0,-1)=="" && g_original_filename(0,3)=="" && !g_shape(g_original_shape(2,8)) && !g_shape(g_original_shape(0,0));
+    name:[128]u8;n:=g_tensor_name(0,5,name[..]);#assert cast(string)name[0..<n]=="block.0.attn.sinks";
+    n=g_tensor_name(35,0,name[..]);#assert cast(string)name[0..<n]=="block.35.attn.norm.scale";
+}
+#test "owned fixed-original admission binds all tensors together" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    r:=g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false);
+    #assert r.status==GStatus.ok && r.written==2 && g_model_valid(out[0])==GStatus.ok && out[0].blocks.count==2 && out[0].p[1].count==64;
+    before:=out[0];pins[0].sha="bad";profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};r=g_bind_profile(profile,files[..],blocks[..],draft[..],out[..],false);
+    #assert r.status==GStatus.weights && out[0].p[0].count==before.p[0].count;
+    #assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],true).status==GStatus.alias;
+    #assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[0..<1],draft[..],out[..],false).status==GStatus.capacity;
+    #assert g_bind_original(2,8,files[..],blocks[..],draft[..],out[..],false).status==GStatus.shape;
+}
+
+g_original_shape :: (model:u8,capacity:int)->GShape #export_c {
+    if model>1 || !g_range(capacity,1,131072) {return GShape.{};}s:=G20_SHAPE;if model==1 {s=G120_SHAPE;}s.capacity=capacity;return s;
+}
+g_original_files :: (model:u8)->int #export_c {if model>1 {return 0;}return ifx model==0 then G20_ARTIFACTS.count else G120_ARTIFACTS.count;}
+g_original_filename :: (model:u8,index:int)->string #export_c {
+    n:=g_original_files(model);if index<0 || index>=n {return "";}return ifx model==0 then G20_ARTIFACTS[index].name else G120_ARTIFACTS[index].name;
+}
+g_profile :: (model:u8,capacity:int,pins:[]GArtifact,specs:[]GSpec)->GProfile #export_c {
+    shape:=g_original_shape(model,capacity);if !g_shape(shape) {return GProfile.{status=GStatus.shape};}
+    nf:=g_original_files(model);ns:=ifx model==0 then G20_SPECS.count else G120_SPECS.count;
+    if pins.count<nf || specs.count<ns {return GProfile.{status=GStatus.capacity};}
+    for i:0..<nf {pins[i]=ifx model==0 then G20_ARTIFACTS[i] else G120_ARTIFACTS[i];}
+    for i:0..<ns {specs[i]=ifx model==0 then G20_SPECS[i] else G120_SPECS[i];}
+    return GProfile.{shape=shape,pins=pins[0..<nf],specs=specs[0..<ns]};
+}
+g_tensor_name :: (layer:int,slot:int,out:[]u8)->int {
+    prefix:="block.";for i:0..<6 {out[i]=prefix[i];}n:=6;if layer>=10 {out[n]=cast(u8)(layer/10)+'0';n+=1;}out[n]=cast(u8)(layer%10)+'0';n+=1;out[n]='.';n+=1;
+    suffix:=G_SLOT_NAMES[slot];for c:suffix {out[n]=c;n+=1;}return n;
+}
+g_spec_find :: (specs:[]GSpec,name:string)->int {for i:0..<specs.count {if specs[i].name==name {return i;}}return -1;}
+g_spec_shape :: (x:GSpec,y:GSlot)->bool {if x.dtype!=y.dtype || x.rank!=y.rank {return false;}for i:0..<4 {if x.dims[i]!=y.dims[i] {return false;}}return true;}
+g_spec_bytes :: (x:GSpec)->int {
+    if x.dtype>1 || x.rank<1 || x.rank>4 {return -1;}n:=1;width:=ifx x.dtype==0 then 2 else 1;
+    for i:0..<4 {if i<x.rank {if !pw_count_fits(n,x.dims[i],width) {return -1;}n*=x.dims[i];}else if x.dims[i]!=0 {return -1;}}
+    return n*width;
+}
+// book:begin bind
+g_bind_trusted :: (s:GShape,pins:[]GArtifact,specs:[]GSpec,files:[]GFile,blocks:[]GBlock,draft:[]GBlock,out:[]GModel,overlap:bool)->GResult #export_c {
+    if !g_shape(s) {return GResult.{status=GStatus.shape};}
+    if !g_file_count(files.count) || pins.count!=files.count || specs.count!=15*s.layers+3 {return GResult.{status=GStatus.weights};}
+    if blocks.count<s.layers || draft.count<s.layers || out.count<1 {return GResult.{status=GStatus.capacity};}if overlap {return GResult.{status=GStatus.alias};}
+    total:=0;
+    for f:0..<files.count {
+        pin:=pins[f];file:=files[f];if !g_artifact_size(file.data.count,total) {return GResult.{status=GStatus.budget};}total+=file.data.count;
+        if file.name!=pin.name || file.data.count!=pin.bytes {return GResult.{status=GStatus.weights};}
+        if pin.header!=0 {header:=pw_header(file.data);if header.status!=PwStatus.ok || header.data!=pin.header {return GResult.{status=GStatus.weights};}}
+    }
+    for i:0..<specs.count {
+        x:=specs[i];if x.file<0 || x.file>=files.count {return GResult.{status=GStatus.weights};}pin:=pins[x.file];n:=g_spec_bytes(x);
+        if !g_spec_window(x,pin) {return GResult.{status=GStatus.weights};}
+        for j:0..<i {y:=specs[j];if x.name==y.name || (x.file==y.file && x.begin<y.end && y.begin<x.end) {return GResult.{status=GStatus.weights};}}
+    }
+    for f:0..<files.count {if pins[f].header!=0 {covered:=0;for x:specs {if x.file==f {covered+=x.end-x.begin;}}if covered!=pins[f].bytes-pins[f].header {return GResult.{status=GStatus.weights};}}}
+    m:=GModel.{shape=s};names:=[3]string.["embedding.weight","norm.scale","unembedding.weight"];
+    for i:0..<3 {
+        index:=g_spec_find(specs,names[i]);if index<0 {return GResult.{status=GStatus.weights};}x:=specs[index];expected:=GSlot.{rank=2,dims=[4]int.[s.vocab,s.width,0,0]};if i==1 {expected=GSlot.{rank=1,dims=[4]int.[s.width,0,0,0]};}
+        if !g_spec_shape(x,expected) {return GResult.{status=GStatus.weights};}m.p[i]=files[x.file].data[x.begin..<x.end];
+    }
+    for l:0..<s.layers {for slot:0..<15 {
+        name:[128]u8;n:=g_tensor_name(l,slot,name[..]);index:=g_spec_find(specs,cast(string)name[0..<n]);if index<0 {return GResult.{status=GStatus.weights};}x:=specs[index];
+        if !g_spec_shape(x,g_slot(s,slot)) {return GResult.{status=GStatus.weights};}draft[l].p[slot]=files[x.file].data[x.begin..<x.end];
+    }}
+    for l:0..<s.layers {blocks[l]=draft[l];}m.blocks=blocks[0..<s.layers];out[0]=m;return GResult.{written=s.layers,bytes=total};
+}
+// book:end bind
+g_artifact_size :: (count:int,total:int)->bool {return count>=1 && total>=0 && count<=137438953472-total;}
+g_authenticate :: (pins:[]GArtifact,files:[]GFile)->GResult #export_c {
+    if !g_file_count(files.count) || pins.count!=files.count {return GResult.{status=GStatus.weights};}total:=0;
+    for i:0..<files.count {
+        p:=pins[i];f:=files[i];if !g_artifact_size(f.data.count,total) {return GResult.{status=GStatus.budget};}total+=f.data.count;
+        if f.name!=p.name || f.data.count!=p.bytes || !pw_hex_digest(p.sha) {return GResult.{status=GStatus.weights};}
+        if !pw_digest(f.data,p.sha) {return GResult.{status=GStatus.weights};}
+    }
+    return GResult.{written=files.count,bytes=total};
+}
+g_bind_profile :: (profile:GProfile,files:[]GFile,blocks:[]GBlock,draft:[]GBlock,out:[]GModel,overlap:bool)->GResult #export_c {
+    if profile.status!=GStatus.ok {return GResult.{status=profile.status};}if overlap {return GResult.{status=GStatus.alias};}
+    r:=g_authenticate(profile.pins,files);if r.status!=GStatus.ok {return r;}
+    return g_bind_trusted(profile.shape,profile.pins,profile.specs,files,blocks,draft,out,overlap);
+}
+g_bind_original :: (model:u8,capacity:int,files:[]GFile,blocks:[]GBlock,draft:[]GBlock,out:[]GModel,overlap:bool)->GResult #export_c {
+    pins:[10]GArtifact;specs:[543]GSpec;profile:=g_profile(model,capacity,pins[..],specs[..]);
+    return g_bind_profile(profile,files,blocks,draft,out,overlap);
+}
+#test "original profile views retain every source descriptor" {
+    pins:[10]GArtifact;specs:[543]GSpec;
+    for model:0..<2 {
+        p:=g_profile(cast(u8)model,8,pins[..],specs[..]);#assert p.status==GStatus.ok && p.pins.count==g_original_files(cast(u8)model) && p.specs.count==15*p.shape.layers+3;
+        for i:0..<p.specs.count {expected:=ifx model==0 then G20_SPECS[i] else G120_SPECS[i];#assert p.specs[i].name==expected.name && p.specs[i].begin==expected.begin && p.specs[i].end==expected.end && p.specs[i].file==expected.file;}
+    }
+    #assert g_profile(0,8,pins[0..<2],specs[..]).status==GStatus.capacity && g_profile(1,8,pins[..],specs[0..<542]).status==GStatus.capacity;
+}
+#test "authentication and its failure boundary have independent published hashes" {
+    data:=[3]u8.[97,98,99];pins:=[1]GArtifact.[GArtifact.{name="abc",bytes=3,sha="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"}];files:=[1]GFile.[GFile.{name="abc",data=data[..]}];
+    #assert g_authenticate(pins[..],files[..]).status==GStatus.ok;data[2]=100;#assert g_authenticate(pins[..],files[..]).status==GStatus.weights;
+    #assert g_authenticate(pins[..],files[0..<0]).status==GStatus.weights;
+    #assert g_artifact_size(1,137438953471) && !g_artifact_size(1,137438953472) && !g_artifact_size(0,0) && !g_artifact_size(1,-1) && !g_artifact_size(1,137438953473);
+}
+
+g_file_count :: (n:int)->bool {return n>=1 && n<=16;}
+#test "original profile and artifact endpoints" {
+    #assert g_shape(g_original_shape(0,1)) && g_shape(g_original_shape(1,131072)) && g_original_shape(0,131073).capacity==0;
+    #assert g_original_filename(0,0)=="original/config.json" && g_original_filename(1,0)=="original/config.json";
+    #assert g_file_count(1) && g_file_count(16) && !g_file_count(0) && !g_file_count(17);
+    #assert g_artifact_size(137438953472,0) && !g_artifact_size(137438953473,0) && g_artifact_size(1,0);
+    name:[128]u8;n:=g_tensor_name(9,0,name[..]);#assert cast(string)name[0..<n]=="block.9.attn.norm.scale";
+    n=g_tensor_name(10,0,name[..]);#assert cast(string)name[0..<n]=="block.10.attn.norm.scale";
+    pins:[10]GArtifact;specs:[543]GSpec;r:=g_profile(0,1,pins[..],specs[..]);
+    for i:0..<3 {#assert r.pins[i].name==G20_ARTIFACTS[i].name && r.pins[i].bytes==G20_ARTIFACTS[i].bytes && r.pins[i].sha==G20_ARTIFACTS[i].sha && r.pins[i].header==G20_ARTIFACTS[i].header;}
+    for i:0..<363 {#assert r.specs[i].dtype==G20_SPECS[i].dtype && r.specs[i].rank==G20_SPECS[i].rank;for j:0..<4 {#assert r.specs[i].dims[j]==G20_SPECS[i].dims[j];}}
+}
+#test "descriptor arithmetic and full canonical shapes" {
+    x:=GSpec.{rank=1,dims=[4]int.[2,0,0,0]};#assert g_spec_bytes(x)==4; x.dtype=1;#assert g_spec_bytes(x)==2;x.dtype=2;#assert g_spec_bytes(x)== -1;
+    x=GSpec.{rank=4,dims=[4]int.[2,3,4,5]};#assert g_spec_bytes(x)==240;x.rank=0;#assert g_spec_bytes(x)== -1;x.rank=5;#assert g_spec_bytes(x)== -1;
+    x=GSpec.{rank=1,dims=[4]int.[0,0,0,0]};#assert g_spec_bytes(x)== -1;x.dims[0]=2;x.dims[1]=1;#assert g_spec_bytes(x)== -1;
+    x=GSpec.{rank=1,dims=[4]int.[137438953472,0,0,0]};#assert g_spec_bytes(x)== -1;
+    y:=GSlot.{rank=1,dims=[4]int.[2,0,0,0]};x=GSpec.{rank=1,dims=[4]int.[2,0,0,0]};#assert g_spec_shape(x,y);x.rank=2;#assert !g_spec_shape(x,y);x.rank=1;x.dtype=1;#assert !g_spec_shape(x,y);x.dtype=0;
+    for i:0..<4 {x.dims[i]+=1;#assert !g_spec_shape(x,y);x.dims[i]-=1;}
+    specs:=GOWN_SPECS;#assert g_spec_find(specs[..],"missing")== -1 && g_spec_find(specs[..],specs[0].name)==0;
+}
+
+#test "original descriptors refuse malformed case 0" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    files[0].name="bad";#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 1" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    pins[0].bytes-=1;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 2" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    pins[0].header=0;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 3" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    pins[0].header+=1;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 4" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    data[0]=0;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 5" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    specs[0].file=-1;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 6" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    specs[0].file=1;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 7" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    specs[0].rank=0;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 8" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    specs[0].begin=pins[0].header-1;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 9" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    specs[0].begin=pins[0].bytes;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 10" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    specs[0].end+=1;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 11" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    specs[0].name=specs[1].name;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 12" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    specs[1].begin=specs[0].begin;specs[1].end=specs[0].end;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 13" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    specs[0].name="missing";#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 14" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    specs[32].name="missing";#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 15" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    specs[0].dtype=1;specs[0].dims[0]*=2;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 16" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    specs[32].dtype=1;specs[32].dims[0]*=2;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 17" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    specs[0].rank=2;specs[0].dims[1]=1;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "original descriptors refuse malformed case 18" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    pins[0].header=-1;#assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+#test "binding capacities, publication and digest preflight" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    #assert g_bind_trusted(GShape.{},pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.shape;
+    #assert g_bind_trusted(GT_SHAPE,pins[0..<0],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+    #assert g_bind_trusted(GT_SHAPE,pins[..],specs[0..<32],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+    #assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[0..<1],out[..],false).status==GStatus.capacity;
+    #assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[0..<0],false).status==GStatus.capacity;
+    #assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.ok;
+    draft[0].p[0]=data[0..<0];#assert out[0].blocks[0].p[0].count==64 && out[0].shape.layers==2 && out[0].shape.capacity==8;
+    profile:=GProfile.{status=GStatus.token};#assert g_bind_profile(profile,files[..],blocks[..],draft[..],out[..],false).status==GStatus.token;
+    profile.status=GStatus.ok;#assert g_bind_profile(profile,files[..],blocks[..],draft[..],out[..],true).status==GStatus.alias;
+    files[0].name="bad";#assert g_authenticate(pins[..],files[..]).status==GStatus.weights;files[0].name="tiny.safetensors";pins[0].bytes-=1;#assert g_authenticate(pins[..],files[..]).status==GStatus.weights;
+}
+#test "coverage refuses an unclaimed payload byte" {
+    data:=GT_FILE;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;files:=[1]GFile.[GFile.{name="tiny.safetensors",data=data[..]}];blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;extra:[54013]u8;for i:0..<54012 {extra[i]=data[i];}files[0].data=extra[..];pins[0].bytes+=1;
+    #assert g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false).status==GStatus.weights;
+}
+
+g_spec_window :: (x:GSpec,pin:GArtifact)->bool {n:=g_spec_bytes(x);return pin.header!=0 && n>=1 && x.begin>=pin.header && x.begin<=pin.bytes-n && x.end==x.begin+n;}
+#test "single byte descriptor boundaries" {
+    x:=GSpec.{dtype=1,rank=1,dims=[4]int.[1,0,0,0],begin=8,end=9};pin:=GArtifact.{header=8,bytes=9};#assert g_spec_window(x,pin);x.begin=9;x.end=10;#assert !g_spec_window(x,pin);
+    x.begin=7;x.end=8;#assert !g_spec_window(x,pin);pin.header=0;#assert !g_spec_window(x,pin);
+}
+#test "unordered descriptors, sidecars and exact aggregate residency" {
+    data:=GT_FILE;pins:[2]GArtifact;initial:=GOWN_ARTIFACTS;pins[0]=initial[0];pins[1]=GArtifact.{name="abc",bytes=3,sha="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"};
+    abc:=[3]u8.[97,98,99];files:=[2]GFile.[GFile.{name="tiny.safetensors",data=data[..]},GFile.{name="abc",data=abc[..]}];specs:=GOWN_SPECS;blocks:[2]GBlock;draft:[2]GBlock;out:[1]GModel;
+    saved:=specs[0];specs[0]=specs[30];specs[30]=saved;
+    r:=g_bind_trusted(GT_SHAPE,pins[..],specs[..],files[..],blocks[..],draft[..],out[..],false);#assert r.status==GStatus.ok && r.bytes==54015;
+    hashes:=[2]GArtifact.[pins[1],pins[1]];parts:=[2]GFile.[files[1],files[1]];r=g_authenticate(hashes[..],parts[..]);#assert r.status==GStatus.ok && r.written==2 && r.bytes==6;
+    #assert g_authenticate(hashes[0..<1],parts[..]).status==GStatus.weights;
+}

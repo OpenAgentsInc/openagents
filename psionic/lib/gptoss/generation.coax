@@ -1,0 +1,43 @@
+#load "sampling.coax";
+#authority;
+GStop :: enum u8 {running;turn;call;limit;cancelled;}
+GGeneration :: struct {random:GSeed;remaining:int;stop:GStop;}
+GSampling :: struct {temperature:f64=1;top_k:int;top_p:f64=1;}
+GSampleWork :: struct {stage:[]f64;order:[]int;temporary:[]int;}
+GEmission :: struct {status:GStatus;token:int;state:GGeneration;}
+
+#test "streaming emits exactly one token and consumes exactly one counter" {
+    logits:=[3]f32.[1,4,2];mask:[1]u8;p:[3]f64;s:[3]f64;o:[3]int;t:[3]int;work:=GSampleWork.{stage=s[..],order=o[..],temporary=t[..]};
+    r:=gg_emit(logits[..],mask[0..<0],GSampling.{temperature=0},GGeneration.{remaining=2},false,p[..],work,false);
+    #assert r.status==GStatus.ok && r.token==1 && r.state.random.counter==1 && r.state.remaining==1 && r.state.stop==GStop.running;
+    r=gg_emit(logits[..],mask[0..<0],GSampling.{temperature=0},r.state,false,p[..],work,false);#assert r.status==GStatus.ok && r.state.stop==GStop.limit && r.state.remaining==0;
+    #assert gg_emit(logits[..],mask[0..<0],GSampling.{},r.state,false,p[..],work,false).status==GStatus.state;
+    #assert gg_emit(logits[..],mask[0..<0],GSampling.{},GGeneration.{remaining=0},false,p[..],work,false).status==GStatus.state;
+    cancelled:=gg_emit(logits[..],mask[0..<0],GSampling.{},GGeneration.{remaining=3},true,p[..],work,false);#assert cancelled.status==GStatus.ok && cancelled.state.stop==GStop.cancelled && cancelled.state.random.counter==0 && cancelled.state.remaining==3;
+    #assert gg_emit(logits[..],mask[0..<0],GSampling.{temperature=-1},GGeneration.{remaining=3},false,p[..],work,false).status==GStatus.shape;
+    #assert gg_emit(logits[..],mask[0..<0],GSampling.{},GGeneration.{remaining=3,random=GSeed.{counter=GS_LAST}},false,p[..],work,false).status==GStatus.state;
+    #assert gg_stop(200002)==GStop.turn && gg_stop(200012)==GStop.call && gg_stop(200007)==GStop.running && gg_stop(0)==GStop.running;
+}
+// book:begin emit
+gg_emit :: (logits:[]f32,mask:[]u8,options:GSampling,state:GGeneration,cancel:bool,probabilities:[]f64,work:GSampleWork,overlap:bool)->GEmission #export_c {
+    if state.stop!=GStop.running || state.remaining<1 || state.remaining>131072 {return GEmission.{status=GStatus.state};}
+    if cancel {next:=state;next.stop=GStop.cancelled;return GEmission.{state=next};}
+    draw:=gs_draw(state.random);if draw.status!=GStatus.ok {return GEmission.{status=draw.status};}
+    d:=gs_distribution(logits,mask,options.temperature,options.top_k,options.top_p,probabilities,work.stage,work.order,work.temporary,overlap);if d.status!=GStatus.ok {return GEmission.{status=d.status};}
+    pick:=gs_pick(probabilities[0..<logits.count],draw.value);#assert pick.status==GStatus.ok;
+    next:=gg_advance(state,pick.token,draw.next);
+    return GEmission.{token=pick.token,state=next};
+}
+// book:end emit
+gg_stop :: (token:int)->GStop #export_c {if token==200002 {return GStop.turn;}if token==200012 {return GStop.call;}return GStop.running;}
+
+gg_advance :: (state:GGeneration,token:int,random:GSeed)->GGeneration {
+    next:=state;next.random=random;next.remaining-=1;next.stop=gg_stop(token);if next.stop==GStop.running && next.remaining==0 {next.stop=GStop.limit;}return next;
+}
+#test "turn and call stops take precedence over token exhaustion" {
+    s:=GGeneration.{remaining=1};r:=GSeed.{seed=7,counter=4};
+    a:=gg_advance(s,200002,r);b:=gg_advance(s,200012,r);#assert a.stop==GStop.turn && b.stop==GStop.call && a.remaining==0 && a.random.seed==7 && a.random.counter==4;
+    x:=[1]f32.[0];p:[1]f64;f:[1]f64;o:[1]int;t:[1]int;m:[1]u8;w:=GSampleWork.{stage=f[..],order=o[..],temporary=t[..]};
+    #assert gg_emit(x[..],m[0..<0],GSampling.{},GGeneration.{remaining=131072},false,p[..],w,false).status==GStatus.ok;
+    #assert gg_emit(x[..],m[0..<0],GSampling.{},GGeneration.{remaining=131073},false,p[..],w,false).status==GStatus.state;
+}

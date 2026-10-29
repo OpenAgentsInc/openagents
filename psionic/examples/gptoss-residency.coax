@@ -1,0 +1,12 @@
+#import "Basic";
+#load "../lib/gptoss/weights.coax";
+// book:begin example
+main :: () {
+    a:=g_original_shape(0,256);b:=g_original_shape(1,256);small:=g_plan(a);large:=g_plan(b);
+    #assert small.status==GStatus.ok && large.status==GStatus.ok;
+    print("20b: % layers, % experts, % cache bytes at capacity 256\n",a.layers,a.experts,small.cache*4);
+    print("120b: % layers, % experts, % cache bytes at capacity 256\n",b.layers,b.experts,large.cache*4);
+    print("original parameter tensors: % / %\n",G20_SPECS.count,G120_SPECS.count);
+    print("same engine: BF16 dense rows and selected original MXFP4 experts\n");
+}
+// book:end example

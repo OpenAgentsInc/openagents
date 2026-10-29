@@ -1,0 +1,148 @@
+#load "types.coax";
+#authority;
+GShape :: struct {layers:int;experts:int;selected:int;vocab:int;width:int;hidden:int;heads:int;kv_heads:int;window:int=128;capacity:int;}
+GBlock :: struct {p:[15][]u8;}
+GModel :: struct {shape:GShape;p:[3][]u8;blocks:[]GBlock;}
+GPlan :: struct {status:GStatus;cache:int;floats:int;scores:int;sums:int;routes:int;begin:[18]int;}
+GOutput :: struct {logits:[]f32;trace:[]f32;routes:[]int;weights:[]f32;}
+GStep :: struct {status:GStatus;cause:int;written:int;next:int;macs:int;}
+GSlot :: struct {dtype:u8;rank:int;dims:[4]int;bytes:int;}
+G_SLOT_NAMES :: [15]string.["attn.norm.scale","attn.out.bias","attn.out.weight","attn.qkv.bias","attn.qkv.weight","attn.sinks","mlp.gate.bias","mlp.gate.weight","mlp.mlp1_bias","mlp.mlp2_bias","mlp.norm.scale","mlp.mlp1_weight.blocks","mlp.mlp1_weight.scales","mlp.mlp2_weight.blocks","mlp.mlp2_weight.scales"];
+
+#test "original shapes plan a window-bounded cache and full-context capacity" {
+    s:=GShape.{layers=24,experts=32,selected=4,vocab=201088,width=2880,hidden=2880,heads=64,kv_heads=8,capacity=131072};
+    #assert g_layer_capacity(s,0)==128 && g_layer_capacity(s,1)==131072;
+    p:=g_plan(s);#assert p.status==GStatus.ok && p.cache==12*1024*(128+131072) && p.scores==131072 && p.routes==96 && p.sums==2880;
+    #assert p.begin[17]==p.floats && p.begin[12]-p.begin[11]==24576 && p.begin[13]-p.begin[12]==138240;
+    #assert g_slot(s,11).bytes==265420800 && g_slot(s,12).bytes==16588800 && g_slot(s,13).dims[2]==90;
+    #assert g_slot(s,4).bytes==29491200 && g_slot(s,5).bytes==128;
+    s.layers=36;s.experts=128;p=g_plan(s);#assert p.status==GStatus.ok && p.cache==18*1024*(128+131072) && p.routes==144;
+    #assert g_slot(s,11).bytes==1061683200;
+    s.width=31;#assert g_plan(s).status==GStatus.shape;
+}
+g_shape :: (s:GShape)->bool {
+    return g_range(s.layers,1,36) && g_range(s.experts,1,128) && g_range(s.selected,1,4) && s.selected<=s.experts && g_range(s.vocab,1,201088) && g_multiple(s.width,256) && g_multiple(s.hidden,512) && g_range(s.heads,1,64) && g_range(s.kv_heads,1,8) && s.heads%s.kv_heads==0 && g_range(s.window,1,128) && g_range(s.capacity,1,131072);
+}
+g_layer_capacity :: (s:GShape,layer:int)->int {return ifx layer%2==0 then s.window else s.capacity;}
+g_cache_base :: (s:GShape,layer:int)->int {return (layer/2*(s.window+s.capacity)+layer%2*s.window)*2*s.kv_heads*64;}
+// book:begin plan
+g_plan :: (s:GShape)->GPlan #export_c {
+    if !g_shape(s) {return GPlan.{status=GStatus.shape};}if !g_mac_fits(s.vocab,s.width) {return GPlan.{status=GStatus.budget};}
+    d:=s.width;q:=s.heads*64;k:=s.kv_heads*64;h:=s.hidden;l:=s.layers;r:=s.vocab+2*h+q+2*k+d+s.experts;
+    lengths:=[17]int.[d,d,q+2*k,q,d,s.experts,2*h,h,d,d,3*q+k,2*k*l,2*d*l,l*s.selected,s.vocab,r,r];
+    p:=GPlan.{cache=g_cache_base(s,l),scores=s.capacity,sums=d,routes=l*s.selected};
+    for i:0..<17 {p.begin[i+1]=p.begin[i]+lengths[i];}p.floats=p.begin[17];return p;
+}
+// book:end plan
+g_slot :: (s:GShape,slot:int)->GSlot {
+    d:=s.width;h:=s.hidden;e:=s.experts;q:=s.heads*64;k:=s.kv_heads*64;result:GSlot;
+    if slot==0 || slot==1 || slot==10 {result.rank=1;result.dims[0]=d;}
+    else if slot==2 {result.rank=2;result.dims=[4]int.[d,q,0,0];}
+    else if slot==3 {result.rank=1;result.dims[0]=q+2*k;}
+    else if slot==4 {result.rank=2;result.dims=[4]int.[q+2*k,d,0,0];}
+    else if slot==5 {result.rank=1;result.dims[0]=s.heads;}
+    else if slot==6 {result.rank=1;result.dims[0]=e;}
+    else if slot==7 {result.rank=2;result.dims=[4]int.[e,d,0,0];}
+    else if slot==8 {result.rank=2;result.dims=[4]int.[e,2*h,0,0];}
+    else if slot==9 {result.rank=2;result.dims=[4]int.[e,d,0,0];}
+    else {result.dtype=1;result.rank=ifx slot%2==1 then 4 else 3;result.dims=[4]int.[e,ifx slot<13 then 2*h else d,ifx slot<13 then d/32 else h/32,ifx slot%2==1 then 16 else 0];}
+    n:=1;for i:0..<result.rank {n*=result.dims[i];}result.bytes=n*(ifx result.dtype==0 then 2 else 1);return result;
+}
+g_model_valid :: (m:GModel)->GStatus {
+    s:=m.shape;if m.blocks.count!=s.layers || m.p[0].count!=s.vocab*s.width*2 || m.p[1].count!=s.width*2 || m.p[2].count!=s.vocab*s.width*2 {return GStatus.weights;}
+    for l:0..<s.layers {for slot:0..<15 {if m.blocks[l].p[slot].count!=g_slot(s,slot).bytes {return GStatus.weights;}}}return GStatus.ok;
+}
+g_macs :: (s:GShape,position:int)->int #export_c {
+    if !g_shape(s) || position<0 || position>=s.capacity {return -1;}
+    q:=s.heads*64;k:=s.kv_heads*64;d:=s.width;h:=s.hidden;visible:=position+1;visible=gs_window(visible,s.window);
+    layers:=s.layers*((q+2*k)*d+d*q+s.experts*d+3*s.selected*d*h);
+    return s.vocab*d+layers+2*q*((s.layers+1)/2*visible+s.layers/2*(position+1));
+}
+
+#load "../../fixtures/gptoss/tiny/data.coax";
+#test "all original parameter spans have exact extents" {
+    data:=GT_FILE;blocks:[2]GBlock;m:=gt_model(data[..],blocks[..]);empty:[1]u8;
+    #assert g_model_valid(m)==GStatus.ok;
+    for i:0..<3 {bad:=m;bad.p[i]=empty[0..<0];#assert g_model_valid(bad)==GStatus.weights;}
+    bad:=m;bad.blocks=blocks[0..<1];#assert g_model_valid(bad)==GStatus.weights;
+    for i:0..<15 {saved:=blocks[0].p[i];blocks[0].p[i]=empty[0..<0];#assert g_model_valid(m)==GStatus.weights;blocks[0].p[i]=saved;}
+    #assert g_macs(m.shape,0)>0 && g_macs(m.shape,-1)== -1 && g_macs(m.shape,8)== -1 && g_macs(GShape.{},0)== -1;
+}
+
+g_range :: (n:int,lo:int,hi:int)->bool {return n>=lo && n<=hi;}
+g_multiple :: (n:int,blocks:int)->bool {return g_range(n/32,1,blocks) && n%32==0;}
+g_mac_fits :: (rows:int,columns:int)->bool {return rows<=G_MAC_LIMIT/columns;}
+gs_window :: (n:int,cap:int)->int {return (n+cap-cast(int)abs(f64(n-cap)))/2;}
+#test "shape helpers exercise all closed endpoints" {
+    #assert g_range(1,1,36) && g_range(36,1,36) && !g_range(0,1,36) && !g_range(37,1,36);
+    #assert g_multiple(32,256) && g_multiple(8192,256) && !g_multiple(31,256) && !g_multiple(8193,256) && !g_multiple(8224,256);
+    #assert g_mac_fits(1073741824,1) && !g_mac_fits(1073741825,1) && g_mac_fits(32768,32768) && !g_mac_fits(32769,32768);
+    #assert gs_window(3,2)==2 && gs_window(2,3)==2 && gs_window(2,2)==2;
+}
+#test "every cache segment and plan offset is counted exactly" {
+    s:=GT_SHAPE;p:=g_plan(s);lengths:=[17]int.[32,32,192,64,32,4,64,32,32,32,256,256,128,4,16,308,308];
+    for i:0..<17 {#assert p.begin[i+1]-p.begin[i]==lengths[i];}#assert p.floats==1792;
+    #assert g_cache_base(s,0)==0 && g_cache_base(s,1)==256 && g_cache_base(s,2)==1280 && g_cache_base(s,3)==1536;
+    #assert g_layer_capacity(s,2)==2 && g_layer_capacity(s,3)==8;
+    #assert g_macs(s,0)==29696 && g_macs(s,1)==29952 && g_macs(s,2)==30080 && g_macs(s,7)==30720;
+    s.layers=1;#assert g_macs(s,0)==15104 && g_macs(s,2)==15232;
+    s.width=8192;s.hidden=16384;s.vocab=131072;#assert g_plan(s).status==GStatus.ok;s.vocab=131073;#assert g_plan(s).status==GStatus.budget;
+}
+
+#test "all model dimension endpoints and divisibility" {
+    {s:=GT_SHAPE;s.layers=1;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.layers=36;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.layers=0;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.layers=37;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.experts=2;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.experts=128;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.experts=0;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.experts=129;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.experts=4;s.selected=1;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.experts=4;s.selected=4;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.experts=4;s.selected=0;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.experts=4;s.selected=5;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.vocab=1;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.vocab=201088;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.vocab=0;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.vocab=201089;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.width=32;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.width=8192;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.width=0;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.width=31;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.width=33;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.width=8193;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.width=8224;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.hidden=32;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.hidden=16384;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.hidden=0;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.hidden=31;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.hidden=33;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.hidden=16385;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.hidden=16416;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.heads=1;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.heads=64;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.heads=0;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.heads=65;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.heads=64;s.kv_heads=1;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.heads=64;s.kv_heads=8;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.heads=64;s.kv_heads=0;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.heads=64;s.kv_heads=9;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.window=1;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.window=128;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.window=0;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.window=129;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.capacity=1;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.capacity=131072;#assert g_shape(s);}
+    {s:=GT_SHAPE;s.capacity=0;#assert !g_shape(s);}
+    {s:=GT_SHAPE;s.capacity=131073;#assert !g_shape(s);}
+    s:=GT_SHAPE;s.experts=1;#assert !g_shape(s);s=GT_SHAPE;s.heads=3;s.kv_heads=2;#assert !g_shape(s);
+}
+
+#test "distinct hidden dimensions, odd stacks and all canonical slot axes" {
+    s:=GT_SHAPE;s.experts=1;s.selected=1;#assert g_shape(s);s.experts=8;s.selected=5;#assert !g_shape(s);s.selected=1;s.heads=63;s.kv_heads=9;#assert !g_shape(s);
+    s=GT_SHAPE;s.layers=3;s.selected=3;s.hidden=64;p:=g_plan(s);#assert p.routes==9 && p.begin[14]-p.begin[13]==9;
+    ranks:=[15]int.[1,1,2,1,2,1,1,2,2,2,1,4,3,4,3];
+    dims:=[15][4]int.[[4]int.[32,0,0,0],[4]int.[32,0,0,0],[4]int.[32,64,0,0],[4]int.[192,0,0,0],[4]int.[192,32,0,0],[4]int.[1,0,0,0],[4]int.[4,0,0,0],[4]int.[4,32,0,0],[4]int.[4,128,0,0],[4]int.[4,32,0,0],[4]int.[32,0,0,0],[4]int.[4,128,1,16],[4]int.[4,128,1,0],[4]int.[4,32,2,16],[4]int.[4,32,2,0]];
+    for i:0..<15 {slot:=g_slot(s,i);#assert slot.rank==ranks[i] && cast(int)slot.dtype==(ifx i>=11 then 1 else 0);for j:0..<4 {#assert slot.dims[j]==dims[i][j];}}
+}

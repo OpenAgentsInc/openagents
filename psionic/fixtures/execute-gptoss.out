@@ -1,0 +1,4 @@
+complete tiny model: 2 layers; 4 experts; 2 selected
+step: 16 logits; 29696 MACs; next position 1
+routes: 3 0 / 1 3
+greedy next token: 5; counter: 1; stopped at limit

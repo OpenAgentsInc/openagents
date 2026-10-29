@@ -1,0 +1,10 @@
+// Shared text record types; no tokenizer or execution dependency.
+HmRole :: enum u8 {system;developer;user;assistant;tool;}
+HmChannel :: enum u8 {none;analysis;commentary;final;}
+HmEnd :: enum u8 {message;turn;call;}
+HmStatus :: enum u8 {ok;size;capacity;alias;syntax;unsupported;incomplete;tokenizer;}
+HmMessage :: struct {role:HmRole;channel:HmChannel;ending:HmEnd;name:string;recipient:string;body:string;}
+HmRecord :: struct {role:HmRole;channel:HmChannel;ending:HmEnd;name_begin:int;name_end:int;recipient_begin:int;recipient_end:int;body_begin:int;body_end:int;}
+HmHeader :: struct {status:HmStatus;record:HmRecord;}
+HM_ROLES :: [4]string.["system","developer","user","assistant"];
+HM_CHANNELS :: [4]string.["","analysis","commentary","final"];

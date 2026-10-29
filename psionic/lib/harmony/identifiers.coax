@@ -1,0 +1,16 @@
+#load "types.coax";
+#authority;
+hm_ident :: (s:string)->bool {
+    if s.count<1 || s.count>64 {return false;}
+    for i:0..<s.count {c:=s[i];letter:=(c>='a' && c<='z') || (c>='A' && c<='Z') || c=='_';if !letter {if i==0 || !((c>='0' && c<='9') || c=='.' || c=='-') {return false;}}}return true;
+}
+hm_role :: (s:string)->int {for i:0..<4 {if s==HM_ROLES[i] {return i;}}return 4;}
+
+#test "Harmony role names and bounded ASCII identifiers are case sensitive" {
+    roles:=[4]string.["system","developer","user","assistant"];for i:0..<4 {#assert hm_role(roles[i])==i;}
+    #assert hm_role("Assistant")==4 && hm_role("functions.add")==4;
+    #assert hm_ident("a") && hm_ident("Z_0.-") && !hm_ident("") && !hm_ident("0a") && !hm_ident("a b");
+    s:[65]u8;for i:0..<65 {s[i]='a';}#assert hm_ident(cast(string)s[0..<64]) && !hm_ident(cast(string)s[..]);
+    alphabet:="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_";suffix:="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789.-";one:[1]u8;two:=[2]u8.[97,0];
+    for byte:0..<256 {one[0]=cast(u8)byte;two[1]=cast(u8)byte;start:=false;end:=false;for c:alphabet {if c==one[0] {start=true;}}for c:suffix {if c==one[0] {end=true;}}#assert hm_ident(cast(string)one[..])==start && hm_ident(cast(string)two[..])==end;}
+}

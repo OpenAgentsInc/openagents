@@ -160,6 +160,46 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/execute-gptoss.coax",
+      "chapter": "psionic/book/ch45-execute-gpt-oss-20b.md",
+      "stdout": "psionic/fixtures/execute-gptoss.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/gptoss-residency.coax",
+      "chapter": "psionic/book/ch46-execute-gpt-oss-120b.md",
+      "stdout": "psionic/fixtures/gptoss-residency.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/speculative-tokens.coax",
+      "chapter": "psionic/book/ch47-let-the-small-model-guess.md",
+      "stdout": "psionic/fixtures/speculative-tokens.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/call-a-tool.coax",
+      "chapter": "psionic/book/ch48-call-a-tool.md",
+      "stdout": "psionic/fixtures/call-a-tool.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

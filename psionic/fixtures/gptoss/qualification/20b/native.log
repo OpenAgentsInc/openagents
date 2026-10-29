@@ -1,0 +1,7 @@
+sampled speculative counts: 32803 16239 16494; target 32768 16384 16384; bound 1024; counter=196608
+authenticating target=0 files=3
+bound 60.015 seconds; peak_rss_bytes=13763674112
+step=0 seconds=5.198079 macs=3607339008 peak_rss_bytes=13768818688
+step=1 seconds=5.021025 macs=3607535616 peak_rss_bytes=13768851456
+fresh full-prefix replay equals retained cached step exactly
+model passes; peak_rss_bytes=13807075328

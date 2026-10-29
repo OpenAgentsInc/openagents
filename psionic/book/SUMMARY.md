@@ -17,10 +17,15 @@
 - [43. Attention with sinks and a window](ch43-attention-with-sinks-and-a-window.md)
 - [44. The harmony format](ch44-the-harmony-format.md)
 
+- [45. Execute gpt-oss-20b](ch45-execute-gpt-oss-20b.md)
+- [46. Execute gpt-oss-120b](ch46-execute-gpt-oss-120b.md)
+- [47. Let the small model guess](ch47-let-the-small-model-guess.md)
+- [48. Call a tool](ch48-call-a-tool.md)
+
 Proposed: [full table of contents and prerequisites](PLAN.md), from early
 Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–10, 12 and 41–44 are runnable. Chapter 11, chapters 13–40 and the
+Chapters 1–10, 12 and 41–48 are runnable. Chapter 11, chapters 13–40 and the
 remaining outlines remain proposed.

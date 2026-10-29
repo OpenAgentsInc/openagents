@@ -1,0 +1,89 @@
+{
+  "profile": "gpt-oss-cpu-wide-v1",
+  "compiler_sha256": "c5acf492faaef7ea8450245c44b454e69b208f83d9594e874be4d06eb3d3ae1a",
+  "compiler_version": "coax0 0.22.0",
+  "base_commit": "794ab5c8ad9e04243fca8940228c74ec252c4647",
+  "host": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "flags": [
+    "-std=c11",
+    "-O3",
+    "-ffp-contract=off",
+    "-fno-fast-math"
+  ],
+  "inputs": {
+    "psionic/lib/gptoss.coax": "a9b6798921b9c179d5478e2979655a17d1c5d29de1ea10b7a90fbbefcbe12292",
+    "psionic/lib/gptoss/model.coax": "3f6e6abf32574c9ef691a81254785cffd6f4399ce7571fe6bcd9301cf6c60315",
+    "psionic/lib/gptoss/math.coax": "5590576897587fcffc5dd8d885469d5c3494b3c0373ec9ff144deca00396e2f4",
+    "psionic/lib/qwen-matvec.coax": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae",
+    "psionic/lib/ops.coax": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+    "psionic/lib/ops-contract.coax": "8120be9d305264a9fc967dbf6d251da54120acc4b8151e28d747a11233b042a8",
+    "psionic/lib/tensor.coax": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+    "psionic/lib/gptoss-math.coax": "b98e58c19e3aef2a92cbbd59e8e72c8731fe3e5ce16dbb1e06cdce0f39b53716",
+    "psionic/fixtures/gptoss-math-vectors.coax": "9e811a76e0e7d5b1000a5b155735887131a93a4238b347b8ec05fdf1bddd8848",
+    "psionic/lib/mxfp4.coax": "10d0c47c439b773537f535b06c8a82b2a12b0d303acafbdcf369714a05714f93",
+    "psionic/fixtures/mxfp4-vectors.coax": "f72057f8e0ef5be7526e95fe5c9db12d42c41364b3f9b15ddbb5a228c9e7f620",
+    "psionic/lib/gptoss/layout.coax": "447c23f3df4e3c80653a53cf02df5ad8b175a9899bf9a9c85871fb8e7f9c0c27",
+    "psionic/lib/gptoss/types.coax": "1a26348048d196f10ede4cfe7032049c1a9c82e6dd42bffbd0b93c601b330010",
+    "psionic/fixtures/gptoss/tiny/data.coax": "637e7f0dfb66882e65cfdec6557098d4d4e03b396d392da511187c13c4d64dde",
+    "psionic/lib/moe.coax": "91da9b9dde8f5a538f909d77b08bdc8629cae34c10af0eb5db31831430dcbd9f",
+    "psionic/fixtures/moe-vectors.coax": "f71fc9a324c3f40a65235a2573f105d5b0d1157da66b0f76505318515cecfeff",
+    "psionic/lib/gptoss-attention.coax": "49fc5dbd5738c7c4319b04144ccd1ed714d47c1069a843d75bf8c9cd98c8bac7",
+    "psionic/fixtures/gptoss-attention-vectors.coax": "97743d724272fd81cd0b9264a8d41608b51fc33a670ed56adeaac48ab6091224",
+    "psionic/fixtures/gptoss/tiny/model.coax": "6de61085ce2cb0a159b0188d5f048838c8b64c432bd52373c926860661f2a436",
+    "psionic/lib/gptoss/weights.coax": "64949bf771e4b90b33947f4cb60761b0b47ebb8cfaa1f37aa5cbc9516ce59b71",
+    "psionic/lib/model-io/identity.coax": "e05ecb80ef8b95c96b69b7a4aa13052ec486204caa60c9616f4c2f5f11a79f6d",
+    "psionic/lib/model-io/format.coax": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "psionic/fixtures/gptoss/original/targets.coax": "4acf02c1b0d5bad9f342975a7083a5783ddd2e5c029f58b60e82479836bbdca9",
+    "psionic/lib/gptoss/generation.coax": "e9bd420c20c23bd2b7d1136a77a37cc3d51050b88ba4d9329c58c1138d33d9aa",
+    "psionic/lib/gptoss/sampling.coax": "467768aeb029985f8250851639016fb919c2dc97b94ff6a9b602343ff8a1c794",
+    "psionic/lib/harmony.coax": "f6251d4e94741ac6af27585d9985211ebfd7db380acf1b47940c0cc126de9e8f",
+    "psionic/lib/harmony/admission.coax": "4d2f912129f9f50063a8b0d7ff7e10073256f0a07a1131a451620d1b121c0a3f",
+    "psionic/fixtures/harmony/pins.coax": "4315c50f7ffa4aed4a7b273bbb1087a346060a7f694fb29cb9c34804884ab1d3",
+    "psionic/lib/harmony/messages.coax": "56d7c43034ab9530d85153269788e327183b4972d23f88a5bd5abdb18e444ea3",
+    "psionic/lib/harmony/tokenizer.coax": "cbb810f57b18df71ba4736df775ddf4eb6f6b6482d2c58b1d67f4816cacca4db",
+    "psionic/lib/text/tokenizer.coax": "b028b1b42d2f28605413d1340c3cfcda322bf52aed4574679f184d2e285b2027",
+    "psionic/lib/text/unicode.coax": "8d7a50b85f4fc9bf50a7522a005dc39c7d61499cc0116aa644ac47e5eacbf681",
+    "psionic/fixtures/text/ch05/toy.coax": "4eb8fbdb4f28b50e89615d3eebb872143e8e5cdfd8bc01e586869ad9ac7c6547",
+    "psionic/fixtures/text/ch05/goldens.coax": "ba5b630b1847f7f8250294574b2206d36559687c3eaf303dac188417416736b0",
+    "psionic/fixtures/harmony/toy.coax": "21f71494413bcb4a2a374bdb133ffcb9c7f1bc18ad96c5aeadf049a5091f1a49",
+    "psionic/fixtures/harmony/goldens.coax": "119e75d21e88fef9f87dedf62b40842f0ddc71fade73153979d4957ad6df8ad1",
+    "psionic/fixtures/harmony/messages.coax": "8aa00662549224f803e8d484d82ca04a6779642a5f86bb9197ccc9c27cd14357",
+    "psionic/lib/gptoss/speculation.coax": "b522bd2408a97bcb5d3f9a378a21906f43b68ffe3146e19d9be520d9b097d6a4",
+    "psionic/lib/gptoss/tools.coax": "3b774bb75c2f878aa598dbe44d6b36b88f2283d331e588190d3fea4c1fcae242",
+    "psionic/lib/gptoss/tool-schema.coax": "c0e75dae5e7212db23b9ed75d1957a9881606401c4d6a550a65c62f310bd8f3f",
+    "coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+    "psionic/platform/gptoss-memory.h": "7f17ba7df6f5d0404b2e3163551a207c9830841b5bf7c9aafdddb53bf8492321",
+    "psionic/platform/gptoss-memory.c": "dc382a6daf68ad9b0c2f83452fc972061278c3fdc5fe5a27070a93f637212c85",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/tests/gptoss_native.c": "9adcbe0cacbf8b20c1ee6850cc035708df2ab7b5781f9bc68ba310381814f437",
+    "psionic/tests/gptoss_lab.c": "4dd5f4e1b1f6fdb961996ff79bc83deb4756f17393d6330c6945c11fc86f1785",
+    "psionic/fixtures/harmony/gptoss.hst": "713aefbe74715ac78e32ad789ff6e6ad2d6d65372515462b76ab5ecaef8a0e7a"
+  },
+  "outputs": {
+    "gptoss.c": {
+      "sha256": "eb3bbb4f221b5bad880a54fc6a347c74422a48117819295e64c0eb08f243052c",
+      "bytes": 754674
+    },
+    "gptoss.h": {
+      "sha256": "b064ba4349de3f1f4fccd8b92e0bdde942ab1d52a1fb1566aae5932c6b1bad11",
+      "bytes": 51677
+    },
+    "gptoss-tiny.h": {
+      "sha256": "9ae08d7acd5e1c55b86781e4621883c7f0ceecc03a38cbe21b38a967d5d0984f",
+      "bytes": 15688
+    },
+    "native": {
+      "sha256": "0cffb3ea9317c22bd61693c4bc6d536e4585d4511dcc2e172d995beab08c3e1e",
+      "bytes": 311672
+    },
+    "lab": {
+      "sha256": "317a0f15df90e6d737f07d95feaf520dc6948c2dd6ea969674ce71927628921e",
+      "bytes": 335344
+    }
+  }
+}

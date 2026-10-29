@@ -1,0 +1,4 @@
+invalid high-logit token: masked before sampling
+granted commentary call: functions.add; result: 4
+analysis: excluded by the display gate
+resume with tool role: functions.add

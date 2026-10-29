@@ -1,0 +1,101 @@
+// gpt-oss-json-enum-v1: a finite root-object enum JSON schema. Canonical
+// serializations are supplied explicitly. Unsupported schemas are not widened.
+#load "types.coax";
+#load "../../../coax/lib/nostr/json.coax";
+#authority;
+GT_MASK_BUDGET :: 16777216;
+#test "finite schema admission requires complete flat JSON objects" {
+    a:=[2]string.["{\"city\":\"Chicago\"}","{\"city\":\"Paris\"}"];r:=gt_schema(a[..]);#assert r.status==GStatus.ok && r.written==2 && r.bytes==34;
+    bad:=[1]string.["[]"];#assert gt_schema(bad[..]).status==GStatus.weights;bad[0]="{\"x\":{}}";#assert gt_schema(bad[..]).status==GStatus.weights;
+    bad[0]="{\"x\":1,\"x\":2}";#assert gt_schema(bad[..]).status==GStatus.weights;bad[0]="{\"x\":1} garbage";#assert gt_schema(bad[..]).status==GStatus.weights;
+    bad[0]="{\"x\":true,\"n\":null,\"s\":\"a\\n\",\"i\":-2.5}";#assert gt_schema(bad[..]).status==GStatus.ok;
+    #assert gt_schema(a[0..<0]).status==GStatus.shape;
+}
+#test "token fragments may cross UTF-8 and escape boundaries" {
+    a:=[2]string.["{\"x\":\"é\"}","{\"x\":\"a\\n\"}"];
+    #assert gt_allowed("{\"x\":\"",a[0][6..<7],false,a[..]);
+    #assert gt_allowed(a[0][0..<7],a[0][7..<10],false,a[..]);
+    #assert gt_allowed("{\"x\":\"a\\","n\"}",false,a[..]);
+    #assert !gt_allowed("{\"x\":\"","bad",false,a[..]) && !gt_allowed("","",false,a[..]);
+    #assert gt_allowed(a[0],"",true,a[..]) && !gt_allowed("{", "",true,a[..]);
+}
+#test "masking removes an invalid high-logit token before it can be offered" {
+    a:=[1]string.["{\"x\":2}"];pieces:=[5]string.["{","{\"x\":","evil","}","2}"];mask:=[6]u8.[7,7,7,7,7,7];stage:=[5]u8.[7,7,7,7,7];
+    r:=gt_mask(a[..],"",pieces[..],mask[..],stage[..],false);#assert r.status==GStatus.ok && mask[0]==1 && mask[1]==1 && mask[2]==0 && mask[3]==0 && mask[4]==0 && mask[5]==7;
+    r=gt_mask(a[..],"{\"x\":",pieces[..],mask[..],stage[..],false);#assert r.status==GStatus.ok && mask[4]==1 && mask[2]==0;
+    #assert gt_mask(a[..],"",pieces[..],mask[0..<4],stage[..],false).status==GStatus.capacity;
+    #assert gt_mask(a[..],"",pieces[..],mask[..],stage[0..<4],false).status==GStatus.capacity;
+    #assert gt_mask(a[..],"",pieces[..],mask[..],stage[..],true).status==GStatus.alias;
+}
+gt_schema :: (alternatives:[]string)->GResult #export_c {
+    if !gt_variants(alternatives.count) {return GResult.{status=GStatus.shape};}total:=0;
+    for text:alternatives {if !gt_argument_size(text.count) {return GResult.{status=GStatus.shape};}total+=text.count;
+        j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return GResult.{status=GStatus.weights};}
+        keys:[16]string;count:=0;done:=false;
+        while !done {tok:=json_next(j[..]);if tok==JSON_OBJECT_END {done=true;}else if tok==JSON_STRING || tok==JSON_NUMBER || tok==JSON_TRUE || tok==JSON_FALSE || tok==JSON_NULL {
+            if j[0].depth!=1 {return GResult.{status=GStatus.weights};}
+            if j[0].key {key:=json_text(j[..]);if !gt_key(key) || count>=16 {return GResult.{status=GStatus.weights};}for i:0..<count {if keys[i]==key {return GResult.{status=GStatus.weights};}}keys[count]=key;count+=1;}
+        }else {return GResult.{status=GStatus.weights};}}
+        if json_next(j[..])!=JSON_END {return GResult.{status=GStatus.weights};}
+    }
+    return GResult.{written=alternatives.count,bytes=total};
+}
+gt_variants :: (n:int)->bool {return n>=1 && n<=16;}
+gt_argument_size :: (n:int)->bool {return n>=2 && n<=512;}
+gt_key :: (key:string)->bool {if key.count<1 || key.count>64 {return false;}for c:key {if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='_') {return false;}}return true;}
+// book:begin allowed
+gt_allowed :: (prefix:string,fragment:string,ending:bool,alternatives:[]string)->bool #export_c {
+    if ending && fragment.count!=0 {return false;}
+    if !ending && fragment.count==0 {return false;}
+    for text:alternatives {
+        n:=prefix.count+fragment.count;if n>text.count || (ending && n!=text.count) {continue;}
+        same:=true;for i:0..<prefix.count {if prefix[i]!=text[i] {same=false;break;}}
+        if same {for i:0..<fragment.count {if fragment[i]!=text[prefix.count+i] {same=false;break;}}}if same {return true;}
+    }return false;
+}
+// book:end allowed
+gt_mask :: (alternatives:[]string,prefix:string,pieces:[]string,out:[]u8,stage:[]u8,overlap:bool)->GResult #export_c {
+    schema:=gt_schema(alternatives);if schema.status!=GStatus.ok {return schema;}
+    if !gt_vocab(pieces.count) || !gt_prefix_size(prefix.count) || !gt_mask_budget(pieces.count,schema.bytes) {return GResult.{status=GStatus.budget};}
+    if out.count<pieces.count || stage.count<pieces.count {return GResult.{status=GStatus.capacity};}if overlap {return GResult.{status=GStatus.alias};}
+    for i:0..<pieces.count {if !gt_piece_size(pieces[i].count) {return GResult.{status=GStatus.weights};}stage[i]=0;
+        if gt_token_allowed(i,prefix,pieces[i],alternatives) {stage[i]=1;}
+    }
+    for i:0..<pieces.count {out[i]=stage[i];}return GResult.{written=pieces.count};
+}
+gt_vocab :: (n:int)->bool {return n>=1 && n<=201088;}
+
+gt_mask_budget :: (n:int,bytes:int)->bool {return n<=GT_MASK_BUDGET/bytes;}
+gt_prefix_size :: (n:int)->bool {return n>=0 && n<=512;}
+gt_piece_size :: (n:int)->bool {return n>=0 && n<=1024;}
+gt_token_allowed :: (id:int,prefix:string,piece:string,alternatives:[]string)->bool {if id<199998 {return gt_allowed(prefix,piece,false,alternatives);}if id==200012 {return gt_allowed(prefix,"",true,alternatives);}return false;}
+#test "schema sizes, prefix work and vocabulary have exact endpoints" {
+    #assert gt_variants(1) && gt_variants(16) && !gt_variants(0) && !gt_variants(17);
+    #assert gt_argument_size(2) && gt_argument_size(512) && !gt_argument_size(1) && !gt_argument_size(513);
+    #assert gt_prefix_size(0) && gt_prefix_size(512) && !gt_prefix_size(-1) && !gt_prefix_size(513);
+    #assert gt_piece_size(0) && gt_piece_size(1024) && !gt_piece_size(-1) && !gt_piece_size(1025);
+    #assert gt_vocab(1) && gt_vocab(201088) && !gt_vocab(0) && !gt_vocab(201089);
+    #assert gt_mask_budget(16777216,1) && !gt_mask_budget(16777217,1) && gt_mask_budget(2,8388608) && !gt_mask_budget(3,8388608);
+    a:=[1]string.["{}"];#assert gt_token_allowed(199997,"","{",a[..]) && !gt_token_allowed(199998,"","{",a[..]);
+    #assert gt_token_allowed(200012,"{}","",a[..]) && !gt_token_allowed(200012,"{","",a[..]) && !gt_token_allowed(200013,"{}","",a[..]);
+    #assert !gt_allowed("X","}",false,a[..]) && !gt_allowed("{","X",false,a[..]) && !gt_allowed("{","}",true,a[..]);
+    mask:[1]u8;stage:[1]u8;pieces:=[1]string.["{"];
+    #assert gt_mask(a[..],"",pieces[..],mask[..],stage[..],false).status==GStatus.ok && mask[0]==1;
+}
+#test "schema key names use an exhaustive ASCII alphabet and bounded lengths" {
+    alphabet:="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";one:[1]u8;
+    for byte:0..<256 {one[0]=cast(u8)byte;expected:=false;for c:alphabet {if c==one[0] {expected=true;}}#assert gt_key(cast(string)one[..])==expected;}
+    name:[65]u8;for i:0..<65 {name[i]='a';}#assert !gt_key("") && gt_key(cast(string)name[0..<64]) && !gt_key(cast(string)name[..]);
+}
+#test "flat object with 1 unique keys" {a:=[1]string.["{\"0\":false}"];#assert gt_schema(a[..]).status==GStatus.ok;}
+#test "flat object with 16 unique keys" {a:=[1]string.["{\"0\":false,\"1\":false,\"2\":false,\"3\":false,\"4\":false,\"5\":false,\"6\":false,\"7\":false,\"8\":false,\"9\":false,\"10\":false,\"11\":false,\"12\":false,\"13\":false,\"14\":false,\"15\":false}"];#assert gt_schema(a[..]).status==GStatus.ok;}
+#test "flat object with 17 unique keys" {a:=[1]string.["{\"0\":false,\"1\":false,\"2\":false,\"3\":false,\"4\":false,\"5\":false,\"6\":false,\"7\":false,\"8\":false,\"9\":false,\"10\":false,\"11\":false,\"12\":false,\"13\":false,\"14\":false,\"15\":false,\"16\":false}"];#assert gt_schema(a[..]).status==GStatus.weights;}
+
+#test "overlong fragments and each independent mask budget refuse" {
+    a:=[1]string.["{}"];#assert !gt_allowed("{}","x",false,a[..]);
+    piece:=[1]string.["{"];mask:[1]u8;stage:[1]u8;long:[513]u8;for i:0..<513 {long[i]=' ';}
+    #assert gt_mask(a[..],"",piece[0..<0],mask[..],stage[..],false).status==GStatus.budget;
+    #assert gt_mask(a[..],cast(string)long[..],piece[..],mask[..],stage[..],false).status==GStatus.budget;
+    text:[512]u8;text[0]='{';text[1]='}';for i:2..<512 {text[i]=' ';}large:=[1]string.[cast(string)text[..]];pieces:[32769]string;
+    #assert gt_mask(large[..],"",pieces[..],mask[..],stage[..],false).status==GStatus.budget;
+}

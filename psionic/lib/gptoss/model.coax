@@ -1,0 +1,158 @@
+#load "math.coax";
+#load "layout.coax";
+#load "../moe.coax";
+#load "../gptoss-attention.coax";
+#authority;
+GWork :: struct {floats:[]f32;scores:[]f64;sums:[]PsionicAccumulator;routes:[]int;}
+
+#test "sink attention supports full prefixes beyond the teaching chapter's 128" {
+    s:=GShape.{layers=2,experts=1,selected=1,vocab=1,width=32,hidden=32,heads=1,kv_heads=1,window=2,capacity=257};
+    q:[64]f32;k:[64]f32;v:[64]f32;sinks:[2]u8;cache:[32896]f32;pending:[128]f32;out:[64]f32;work:[256]f32;scores:[257]f64;
+    for t:0..<256 {cache[t*128+64]=2;}v[0]=2;
+    r:=g_attention(s,1,256,q[..],k[..],v[..],sinks[..],cache[..],pending[..],out[..],work[..],scores[..],false);
+    #assert r.status==GStatus.ok && r.written==64 && abs(out[0]-f32(514.0/258.0))<0.0000002f32 && pending[64]==2;
+    for i:0..<64 {#assert cache[256*128+i]==0;}
+    #assert g_attention(s,1,257,q[..],k[..],v[..],sinks[..],cache[..],pending[..],out[..],work[..],scores[..],false).status==GStatus.state;
+}
+
+g_attention :: (s:GShape,layer:int,position:int,q:[]f32,k:[]f32,v:[]f32,sinks:[]u8,cache:[]f32,pending:[]f32,out:[]f32,work:[]f32,scores:[]f64,overlap:bool)->GResult #export_c {
+    if !g_shape(s) || layer<0 || layer>=s.layers {return GResult.{status=GStatus.shape};}
+    if position<0 || position>=s.capacity {return GResult.{status=GStatus.state};}
+    qn:=s.heads*64;kn:=s.kv_heads*64;cap:=g_layer_capacity(s,layer);first:=0;
+    if layer%2==0 && position>=s.window {first=position+1-s.window;}visible:=position-first+1;
+    if q.count!=qn || k.count!=kn || v.count!=kn || sinks.count!=2*s.heads || cache.count<2*cap*kn || pending.count<2*kn || out.count<qn || work.count<3*qn+kn || scores.count<visible {return GResult.{status=GStatus.capacity};}
+    if overlap {return GResult.{status=GStatus.alias};}
+    if go_data(q)!=GoStatus.ok {return GResult.{status=GStatus.number};}if go_data(k)!=GoStatus.ok {return GResult.{status=GStatus.number};}if go_data(v)!=GoStatus.ok {return GResult.{status=GStatus.number};}if g_bytes_finite(sinks)!=GStatus.ok {return GResult.{status=GStatus.number};}
+    for t:first..<position {if go_data(ga_slot(cap,kn,t,cache))!=GoStatus.ok {return GResult.{status=GStatus.number};}}
+    end:=3*qn+kn;qr:=work[0..<qn];kr:=work[qn..<qn+kn];stage:=work[qn+kn..<end-qn];temporary:=work[end-qn..<end];
+    rope:[64]f32;yr:=go_yarn(position,1,rope[..]);#assert yr.status==GoStatus.ok;
+    rq:=go_rotate(s.heads,q,rope[..],qr,temporary,false);if rq.status!=GoStatus.ok {return GResult.{status=GStatus.arithmetic};}
+    rk:=go_rotate(s.kv_heads,k,rope[..],kr,temporary,false);if rk.status!=GoStatus.ok {return GResult.{status=GStatus.arithmetic};}
+    for h:0..<s.heads {
+        kh:=h/(s.heads/s.kv_heads);
+        for slot:0..<visible {t:=first+slot;key:=kr;if t<position {entry:=ga_slot(cap,kn,t,cache);key=entry[0..<kn];}dot:PsionicAccumulator;
+            for d:0..<64 {dot=psionic_ops_accumulate(dot,f64(qr[h*64+d])*f64(key[kh*64+d]));}scores[slot]=psionic_ops_total(dot)*0.125;
+        }
+        sink:=f64(g_bf(sinks,h));largest:=ga_max_index(scores[0..<visible],sink);maximum:=ifx largest<0 then sink else scores[largest];
+        denominator:PsionicAccumulator;denominator=psionic_ops_accumulate(denominator,exp(sink-maximum));
+        for slot:0..<visible {scores[slot]=exp(scores[slot]-maximum);denominator=psionic_ops_accumulate(denominator,scores[slot]);}total:=psionic_ops_total(denominator);
+        for d:0..<64 {acc:PsionicAccumulator;for slot:0..<visible {t:=first+slot;value:=v[kh*64+d];if t<position {entry:=ga_slot(cap,kn,t,cache);value=entry[kn+kh*64+d];}acc=psionic_ops_accumulate(acc,scores[slot]*f64(value));}
+            value:=psionic_ops_total(acc)/total;if !psionic_ops_fits_f32(value) {return GResult.{status=GStatus.arithmetic};}stage[h*64+d]=f32(value);
+        }
+    }
+    for i:0..<kn {pending[i]=kr[i];pending[kn+i]=v[i];}for i:0..<qn {out[i]=stage[i];}return GResult.{written=qn};
+}
+g_mat :: (rows:int,columns:int,data:[]u8)->GMatrix {return GMatrix.{rows=rows,columns=columns,data=data};}
+// book:begin forward
+g_forward :: (m:GModel,token:int,position:int,budget:int,cache:[]f32,out:GOutput,work:GWork,overlap:bool)->GStep #export_c {
+    s:=m.shape;p:=g_plan(s);if p.status!=GStatus.ok {return GStep.{status=p.status};}
+    if token<0 || token>=s.vocab {return GStep.{status=GStatus.token};}if position<0 || position>=s.capacity {return GStep.{status=GStatus.state};}
+    if g_model_valid(m)!=GStatus.ok {return GStep.{status=GStatus.weights};}
+    if cache.count<p.cache || work.floats.count<p.floats || work.scores.count<p.scores || work.sums.count<p.sums || work.routes.count<p.routes || out.logits.count<s.vocab || (out.trace.count!=0 && out.trace.count<g_trace_count(s.layers,s.width)) || (out.routes.count!=0 && out.routes.count<p.routes) || (out.weights.count!=0 && out.weights.count<p.routes) {return GStep.{status=GStatus.capacity};}
+    if overlap {return GStep.{status=GStatus.alias};}macs:=g_macs(s,position);if budget<macs {return GStep.{status=GStatus.budget};}
+    f:=work.floats;b:=p.begin;d:=s.width;h:=s.hidden;q:=s.heads*64;k:=s.kv_heads*64;
+    views:=g_views(f,p);x:=views.x;normal:=views.normal;qkv:=views.qkv;attention:=views.attention;projected:=views.projected;router:=views.router;up:=views.up;activated:=views.activated;expert:=views.expert;rms:=views.rms;awork:=views.awork;pending:=views.pending;traces:=views.traces;weights:=views.weights;logits:=views.logits;stage:=views.stage;scratch:=views.scratch;
+    embedding:=g_embedding(m,token);if g_bytes_finite(embedding)!=GStatus.ok {return GStep.{status=GStatus.number};}for i:0..<d {x[i]=g_bf(embedding,i);}
+    empty:[1]u8;
+    for l:0..<s.layers {
+        a:=m.blocks[l].p;r:=g_rms(x,a[0],normal,rms,false);if r.status!=GStatus.ok {return GStep.{status=r.status};}
+        r=g_project(g_mat(q+2*k,d,a[4]),normal,a[3],qkv,stage,scratch,false);if r.status!=GStatus.ok {return GStep.{status=r.status};}
+        base:=g_cache_base(s,l);r=g_attention(s,l,position,qkv[0..<q],qkv[q..<q+k],qkv[q+k..<q+2*k],a[5],cache[base..<g_cache_base(s,l+1)],pending[2*k*l..<2*k*(l+1)],attention,awork,work.scores,false);if r.status!=GStatus.ok {return GStep.{status=r.status};}
+        r=g_project(g_mat(d,q,a[2]),attention,a[1],projected,stage,scratch,false);if r.status!=GStatus.ok {return GStep.{status=r.status};}
+        for i:0..<d {value:=f64(x[i])+f64(projected[i]);if !psionic_ops_fits_f32(value) {return GStep.{status=GStatus.arithmetic};}x[i]=f32(value);traces[2*l*d+i]=x[i];}
+        r=g_rms(x,a[10],normal,rms,false);if r.status!=GStatus.ok {return GStep.{status=r.status};}
+        r=g_project(g_mat(s.experts,d,a[7]),normal,a[6],router,stage,scratch,false);if r.status!=GStatus.ok {return GStep.{status=r.status};}
+        route:=mo_route(router,s.selected);if route.status!=MoStatus.ok {return GStep.{status=GStatus.number};}
+        for i:0..<d {work.sums[i]=PsionicAccumulator.{};}
+        for slot:0..<s.selected {
+            id:=route.ids[slot];work.routes[l*s.selected+slot]=id;weights[l*s.selected+slot]=route.weights[slot];
+            count:=h*d;scales:=2*h*d/32;matrix:=GMatrix.{encoding=GEncoding.mxfp4,rows=2*h,columns=d,data=a[11][id*count..<(id+1)*count],scales=a[12][id*scales..<(id+1)*scales]};
+            r=g_project(matrix,normal,a[8][id*4*h..<(id+1)*4*h],up,stage,scratch,false);if r.status!=GStatus.ok {return GStep.{status=r.status};}
+            activation:=go_swiglu(up,activated,false);if activation.status!=GoStatus.ok {return GStep.{status=GStatus.arithmetic};}
+            count=d*h/2;scales=d*h/32;matrix=GMatrix.{encoding=GEncoding.mxfp4,rows=d,columns=h,data=a[13][id*count..<(id+1)*count],scales=a[14][id*scales..<(id+1)*scales]};
+            r=g_project(matrix,activated,a[9][id*2*d..<(id+1)*2*d],expert,stage,scratch,false);if r.status!=GStatus.ok {return GStep.{status=r.status};}
+            for i:0..<d {work.sums[i]=psionic_ops_accumulate(work.sums[i],f64(route.weights[slot])*f64(expert[i]));}
+        }
+        for i:0..<d {value:=f64(x[i])+psionic_ops_total(work.sums[i]);if !psionic_ops_fits_f32(value) {return GStep.{status=GStatus.arithmetic};}x[i]=f32(value);traces[(2*l+1)*d+i]=x[i];}
+    }
+    r:=g_rms(x,m.p[1],normal,rms,false);if r.status!=GStatus.ok {return GStep.{status=r.status};}
+    r=g_project(g_mat(s.vocab,d,m.p[2]),normal,empty[0..<0],logits,stage,scratch,false);if r.status!=GStatus.ok {return GStep.{status=r.status};}
+    // All layers and the vocabulary head succeeded. Publish the whole transition.
+    for l:0..<s.layers {base:=g_cache_base(s,l)+(position%g_layer_capacity(s,l))*2*k;for i:0..<2*k {cache[base+i]=pending[2*k*l+i];}}
+    for i:0..<s.vocab {out.logits[i]=logits[i];}
+    if out.trace.count!=0 {for i:0..<g_trace_count(s.layers,d) {out.trace[i]=traces[i];}}
+    if out.routes.count!=0 {for i:0..<p.routes {out.routes[i]=work.routes[i];}}
+    if out.weights.count!=0 {for i:0..<p.routes {out.weights[i]=weights[i];}}
+    return GStep.{written=s.vocab,next=position+1,macs=macs};
+}
+// book:end forward
+
+#load "../../fixtures/gptoss/tiny/model.coax";
+
+GViews :: struct {x:[]f32;normal:[]f32;qkv:[]f32;attention:[]f32;projected:[]f32;router:[]f32;up:[]f32;activated:[]f32;expert:[]f32;rms:[]f32;awork:[]f32;pending:[]f32;traces:[]f32;weights:[]f32;logits:[]f32;stage:[]f32;scratch:[]f32;}
+g_views :: (f:[]f32,p:GPlan)->GViews {b:=p.begin;return GViews.{x=f[b[0]..<b[1]],normal=f[b[1]..<b[2]],qkv=f[b[2]..<b[3]],attention=f[b[3]..<b[4]],projected=f[b[4]..<b[5]],router=f[b[5]..<b[6]],up=f[b[6]..<b[7]],activated=f[b[7]..<b[8]],expert=f[b[8]..<b[9]],rms=f[b[9]..<b[10]],awork=f[b[10]..<b[11]],pending=f[b[11]..<b[12]],traces=f[b[12]..<b[13]],weights=f[b[13]..<b[14]],logits=f[b[14]..<b[15]],stage=f[b[15]..<b[16]],scratch=f[b[16]..<b[17]]};}
+#test "every private model span has its own exact interval" {
+    f:[1792]f32;for i:0..<1792 {f[i]=f32(i);}p:=g_plan(GT_SHAPE);v:=g_views(f[..],p);
+    parts:=[17][]f32.[v.x,v.normal,v.qkv,v.attention,v.projected,v.router,v.up,v.activated,v.expert,v.rms,v.awork,v.pending,v.traces,v.weights,v.logits,v.stage,v.scratch];
+    for i:0..<17 {#assert parts[i].count==p.begin[i+1]-p.begin[i] && parts[i][0]==f32(p.begin[i]) && parts[i][parts[i].count-1]==f32(p.begin[i+1]-1);}
+}
+#test "grouped heads read distinct KV values across a window wrap" {
+    s:=GT_SHAPE;s.heads=4;s.kv_heads=2;q:[256]f32;k:[128]f32;v:[128]f32;cache:[512]f32;pending:[256]f32;out:[257]f32;work:[896]f32;scores:[2]f64;sinks:=[8]u8.[0,0,0,0,0,0,0,0];
+    for i:0..<128 {v[i]=f32(i+1);cache[256+128+i]=f32(2*(i+1));}out[256]=-7;
+    r:=g_attention(s,0,2,q[..],k[..],v[..],sinks[..],cache[..],pending[..],out[..],work[..],scores[..],false);
+    #assert r.status==GStatus.ok && r.written==256 && out[256]== -7;
+    for h:0..<4 {for i:0..<64 {#assert out[h*64+i]==f32(h/2*64+i+1);}}
+    for i:0..<128 {#assert pending[i]==0 && pending[128+i]==v[i] && cache[256+128+i]==f32(2*(i+1));}
+}
+#test "the largest first score supplies a numerically stable maximum" {
+    s:=GT_SHAPE;q:[64]f32;k:[64]f32;v:[64]f32;cache:[256]f32;pending:[128]f32;out:[64]f32;work:[256]f32;scores:[1]f64;sinks:[2]u8;q[0]=100000;k[0]=100000;v[0]=3;
+    r:=g_attention(s,0,0,q[..],k[..],v[..],sinks[..],cache[..],pending[..],out[..],work[..],scores[..],false);#assert r.status==GStatus.ok && out[0]==3;
+}
+#test "model refusal precedence covers every public and private capacity" {
+    data:=GT_FILE;blocks:[2]GBlock;m:=gt_model(data[..],blocks[..]);p:=g_plan(m.shape);cache:[1280]f32;logits:[16]f32;trace:[128]f32;routes:[4]int;weights:[4]f32;f:[1792]f32;sc:[8]f64;sums:[32]PsionicAccumulator;wr:[4]int;
+    out:=GOutput.{logits=logits[..],trace=trace[..],routes=routes[..],weights=weights[..]};w:=GWork.{floats=f[..],scores=sc[..],sums=sums[..],routes=wr[..]};budget:=g_macs(m.shape,0);
+    #assert g_forward(m,-1,0,budget,cache[..],out,w,false).status==GStatus.token;
+    #assert g_forward(m,16,0,budget,cache[..],out,w,false).status==GStatus.token;
+    #assert g_forward(m,0,-1,budget,cache[..],out,w,false).status==GStatus.state;
+    #assert g_forward(m,0,8,budget,cache[..],out,w,false).status==GStatus.state;
+    #assert g_forward(m,0,0,budget,cache[..],out,w,true).status==GStatus.alias;
+    #assert g_forward(m,0,0,budget-1,cache[..],out,w,false).status==GStatus.budget;
+    #assert g_forward(m,0,0,budget,cache[0..<1279],out,w,false).status==GStatus.capacity;
+    for field:0..<8 {
+        a:=out;b:=w;
+        if field==0 {a.logits=logits[0..<15];}else if field==1 {a.trace=trace[0..<127];}else if field==2 {a.routes=routes[0..<3];}else if field==3 {a.weights=weights[0..<3];}else if field==4 {b.floats=f[0..<1791];}else if field==5 {b.scores=sc[0..<7];}else if field==6 {b.sums=sums[0..<31];}else {b.routes=wr[0..<3];}
+        #assert g_forward(m,0,0,budget,cache[..],a,b,false).status==GStatus.capacity;
+    }
+    m.p[0]=data[0..<0];#assert g_forward(m,0,0,budget,cache[..],out,w,false).status==GStatus.weights;m.shape=GShape.{};#assert g_forward(m,0,0,budget,cache[..],out,w,false).status==GStatus.shape;
+}
+#test "optional diagnostics are absent rather than partially written" {
+    data:=GT_FILE;blocks:[2]GBlock;m:=gt_model(data[..],blocks[..]);cache:=GT_CACHE0;logits:[16]f32;emptyf:[1]f32;emptyi:[1]int;f:[1792]f32;sc:[8]f64;sums:[32]PsionicAccumulator;wr:[4]int;
+    out:=GOutput.{logits=logits[..],trace=emptyf[0..<0],routes=emptyi[0..<0],weights=emptyf[0..<0]};w:=GWork.{floats=f[..],scores=sc[..],sums=sums[..],routes=wr[..]};
+    r:=g_forward(m,1,0,g_macs(m.shape,0),cache[..],out,w,false);#assert r.status==GStatus.ok;
+    for i:0..<16 {#assert abs(logits[i]-GT_LOGITS0[i])<0.00002f32*(1+abs(GT_LOGITS0[i]));}
+    #assert emptyf[0]==0 && emptyi[0]==0;
+}
+#test "attention refuses each malformed extent before touching its outputs" {
+    s:=GT_SHAPE;q:[64]f32;k:[64]f32;v:[64]f32;cache:[256]f32;pending:[128]f32;out:[64]f32;work:[256]f32;scores:[1]f64;sinks:[2]u8;
+    #assert g_attention(s,-1,0,q[..],k[..],v[..],sinks[..],cache[..],pending[..],out[..],work[..],scores[..],false).status==GStatus.shape;
+    #assert g_attention(s,2,0,q[..],k[..],v[..],sinks[..],cache[..],pending[..],out[..],work[..],scores[..],false).status==GStatus.shape;
+    #assert g_attention(s,0,-1,q[..],k[..],v[..],sinks[..],cache[..],pending[..],out[..],work[..],scores[..],false).status==GStatus.state;
+    for field:0..<9 {
+        a:=q[..];b:=k[..];c:=v[..];d:=sinks[..];e:=cache[..];f:=pending[..];g:=out[..];h:=work[..];i:=scores[..];
+        if field==0 {a=q[0..<63];}else if field==1 {b=k[0..<63];}else if field==2 {c=v[0..<63];}else if field==3 {d=sinks[0..<1];}else if field==4 {e=cache[0..<255];}else if field==5 {f=pending[0..<127];}else if field==6 {g=out[0..<63];}else if field==7 {h=work[0..<255];}else {i=scores[0..<0];}
+        #assert g_attention(s,0,0,a,b,c,d,e,f,g,h,i,false).status==GStatus.capacity;
+    }
+    #assert g_attention(s,0,0,q[..],k[..],v[..],sinks[..],cache[..],pending[..],out[..],work[..],scores[..],true).status==GStatus.alias;
+}
+
+g_trace_count :: (layers:int,width:int)->int {return 2*layers*width;}
+g_embedding :: (m:GModel,token:int)->[]u8 {d:=m.shape.width;return m.p[0][2*token*d..<2*(token+1)*d];}
+#test "embedding rows have exact byte lengths and trace counts include odd stacks" {
+    data:=GT_FILE;blocks:[2]GBlock;m:=gt_model(data[..],blocks[..]);for t:0..<16 {row:=g_embedding(m,t);#assert row.count==64;for i:0..<64 {#assert row[i]==m.p[0][t*64+i];}}
+    #assert g_trace_count(3,32)==192 && g_trace_count(1,64)==128;
+}
+#test "even layer two slides while an odd layer reserves full capacity" {
+    s:=GT_SHAPE;s.layers=3;q:[64]f32;k:[64]f32;v:[64]f32;cache:[1024]f32;pending:[128]f32;out:[64]f32;work:[256]f32;scores:[8]f64;sinks:[2]u8;
+    #assert g_attention(s,1,0,q[..],k[..],v[..],sinks[..],cache[0..<1023],pending[..],out[..],work[..],scores[..],false).status==GStatus.capacity;
+    cache[64]=100;cache[192]=4;v[0]=2;r:=g_attention(s,2,2,q[..],k[..],v[..],sinks[..],cache[..],pending[..],out[..],work[..],scores[..],false);#assert r.status==GStatus.ok && out[0]==2;
+}

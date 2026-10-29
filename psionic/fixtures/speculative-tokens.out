@@ -1,0 +1,4 @@
+draft: 0 1; accepted prefix: 1
+committed: 0 2; second token drawn from the positive residual
+prompt n-gram draft: 4
+rollback: the complete cache, including overwritten ring slots

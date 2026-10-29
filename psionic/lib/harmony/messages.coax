@@ -1,16 +1,8 @@
 // Typed text-only Harmony messages. No tool execution or implicit history edits.
 #load "tokenizer.coax";
 #authority;
-HmRole :: enum u8 {system;developer;user;assistant;tool;}
-HmChannel :: enum u8 {none;analysis;commentary;final;}
-HmEnd :: enum u8 {message;turn;call;}
-HmStatus :: enum u8 {ok;size;capacity;alias;syntax;unsupported;incomplete;tokenizer;}
-HmMessage :: struct {role:HmRole;channel:HmChannel;ending:HmEnd;name:string;recipient:string;body:string;}
-HmRecord :: struct {role:HmRole;channel:HmChannel;ending:HmEnd;name_begin:int;name_end:int;recipient_begin:int;recipient_end:int;body_begin:int;body_end:int;}
+#load "identifiers.coax";
 HmResult :: struct {status:HmStatus;cause:PtStatus;written:int;bytes:int;consumed:int;stop:HmEnd;work:int;}
-HmHeader :: struct {status:HmStatus;record:HmRecord;}
-HM_ROLES :: [4]string.["system","developer","user","assistant"];
-HM_CHANNELS :: [4]string.["","analysis","commentary","final"];
 HM_SYSTEM_HEAD :: "You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\n\nReasoning: ";
 HM_SYSTEM_TAIL :: "\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.";
 
@@ -62,11 +54,6 @@ HM_SYSTEM_TAIL :: "\n\n# Valid channels: analysis, commentary, final. Channel mu
 }
 
 hm_message_count :: (n:int)->bool #export_c {return n>=0 && n<=64;}
-hm_ident :: (s:string)->bool {
-    if s.count<1 || s.count>64 {return false;}
-    for i:0..<s.count {c:=s[i];letter:=(c>='a' && c<='z') || (c>='A' && c<='Z') || c=='_';if !letter {if i==0 || !((c>='0' && c<='9') || c=='.' || c=='-') {return false;}}}return true;
-}
-hm_role :: (s:string)->int {for i:0..<4 {if s==HM_ROLES[i] {return i;}}return 4;}
 // book:begin metadata
 hm_metadata :: (role:u8,channel:u8,ending:u8,name:string,recipient:string)->bool {
     if role>4 || channel>3 || ending>2 {return false;}

@@ -1,0 +1,21 @@
+#import "Basic";
+#load "../lib/gptoss/model.coax";
+#load "../lib/gptoss/generation.coax";
+// book:begin example
+main :: () {
+    data:=GT_FILE;blocks:[2]GBlock;model:=gt_model(data[..],blocks[..]);plan:=g_plan(model.shape);
+    cache:[1280]f32;logits:[16]f32;trace:[128]f32;routes:[4]int;weights:[4]f32;
+    floats:[1792]f32;scores:[8]f64;sums:[32]PsionicAccumulator;work_routes:[4]int;
+    out:=GOutput.{logits=logits[..],trace=trace[..],routes=routes[..],weights=weights[..]};
+    work:=GWork.{floats=floats[..],scores=scores[..],sums=sums[..],routes=work_routes[..]};
+    step:=g_forward(model,1,0,g_macs(model.shape,0),cache[..],out,work,false);
+    #assert step.status==GStatus.ok && plan.cache==1280;
+    probabilities:[16]f64;stage:[16]f64;order:[16]int;temporary:[16]int;
+    sample:=gg_emit(logits[..],data[0..<0],GSampling.{temperature=0},GGeneration.{remaining=1},false,probabilities[..],GSampleWork.{stage=stage[..],order=order[..],temporary=temporary[..]},false);
+    #assert sample.status==GStatus.ok;
+    print("complete tiny model: % layers; % experts; % selected\n",model.shape.layers,model.shape.experts,model.shape.selected);
+    print("step: % logits; % MACs; next position %\n",step.written,step.macs,step.next);
+    print("routes: % % / % %\n",routes[0],routes[1],routes[2],routes[3]);
+    print("greedy next token: %; counter: %; stopped at limit\n",sample.token,sample.state.random.counter);
+}
+// book:end example

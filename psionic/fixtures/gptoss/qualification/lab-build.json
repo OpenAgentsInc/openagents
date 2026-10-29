@@ -1,0 +1,12 @@
+{
+  "profile": "gpt-oss-cpu-wide-v1",
+  "generated_c_sha256": "494ba1c701eafb3650e596ae9cf1bd9e632821ddd39af2293efdda567f9d75f3",
+  "executable_sha256": "843ad76d980daa2bb7720c8749451fc1f07ad01d37a7457347f2d7c52e6a3184",
+  "flags": [
+    "-std=c11",
+    "-O3",
+    "-ffp-contract=off",
+    "-fno-fast-math"
+  ],
+  "note": "Exact retained library translation and executable identity for original speculative/tool smoke observations. This preceded later admission checks, native overlap wrappers and identifier extraction; final-source checks run separately. Harness source snapshot was not retained at compilation."
+}

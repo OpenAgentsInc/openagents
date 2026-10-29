@@ -1,0 +1,59 @@
+#load "tool-schema.coax";
+#load "../harmony/identifiers.coax";
+#authority;
+GTool :: struct {name:string;arguments:[]string;}
+GCall :: struct {status:GStatus;choice:int;}
+GToolResponse :: struct {status:GStatus;message:HmMessage;}
+
+#test "only a granted named commentary handoff authorizes a tool" {
+    a:=[1]string.["{\"a\":2,\"b\":2}"];tool:=GTool.{name="functions.add",arguments=a[..]};text:="functions.add{\"a\":2,\"b\":2}";
+    r:=HmRecord.{role=HmRole.assistant,channel=HmChannel.commentary,ending=HmEnd.call,recipient_begin=0,recipient_end=13,body_begin=13,body_end=text.count};
+    #assert gt_authorize(tool,r,text,true).status==GStatus.ok && gt_authorize(tool,r,text,true).choice==0;
+    #assert gt_authorize(tool,r,text,false).status==GStatus.state;
+    r.channel=HmChannel.analysis;#assert gt_authorize(tool,r,text,true).status==GStatus.state;r.channel=HmChannel.commentary;
+    r.role=HmRole.user;#assert gt_authorize(tool,r,text,true).status==GStatus.state;r.role=HmRole.assistant;
+    r.ending=HmEnd.turn;#assert gt_authorize(tool,r,text,true).status==GStatus.state;r.ending=HmEnd.call;
+    tool.name="functions.other";#assert gt_authorize(tool,r,text,true).status==GStatus.token;tool.name="functions.add";
+    r.body_end-=1;#assert gt_authorize(tool,r,text,true).status==GStatus.token;r.body_end=text.count+1;#assert gt_authorize(tool,r,text,true).status==GStatus.capacity;
+}
+#test "analysis and tool messages never pass the end-user display gate" {
+    text:="privatefinal";r:=HmRecord.{role=HmRole.assistant,channel=HmChannel.analysis,ending=HmEnd.message,body_begin=0,body_end=7};out:=[8]u8.[7,7,7,7,7,7,7,7];
+    #assert gt_display(r,text,out[..],false).status==GStatus.state && out[0]==7;
+    r.channel=HmChannel.final;r.ending=HmEnd.turn;r.body_begin=7;r.body_end=text.count;
+    d:=gt_display(r,text,out[..],false);#assert d.status==GStatus.ok && d.written==5 && cast(string)out[0..<5]=="final" && out[5]==7;
+    r.role=HmRole.tool;#assert gt_display(r,text,out[..],false).status==GStatus.state;r.role=HmRole.assistant;
+    #assert gt_display(r,text,out[0..<4],false).status==GStatus.capacity && gt_display(r,text,out[..],true).status==GStatus.alias;
+    response:=gt_response("functions.add","4");#assert response.status==GStatus.ok && response.message.role==HmRole.tool && response.message.name=="functions.add" && response.message.body=="4" && response.message.ending==HmEnd.message;
+    #assert gt_response("assistant","4").status==GStatus.token;
+}
+// book:begin authorize
+gt_authorize :: (tool:GTool,record:HmRecord,bytes:string,granted:bool)->GCall #export_c {
+    if !granted || record.role!=HmRole.assistant || record.channel!=HmChannel.commentary || record.ending!=HmEnd.call {return GCall.{status=GStatus.state};}
+    if !gt_interval(record.recipient_begin,record.recipient_end,bytes.count) || !gt_interval(record.body_begin,record.body_end,bytes.count) {return GCall.{status=GStatus.capacity};}
+    if !hm_ident(tool.name) || tool.name=="all" || bytes[record.recipient_begin..<record.recipient_end]!=tool.name {return GCall.{status=GStatus.token};}
+    schema:=gt_schema(tool.arguments);if schema.status!=GStatus.ok {return GCall.{status=schema.status};}body:=bytes[record.body_begin..<record.body_end];
+    for i:0..<tool.arguments.count {if body==tool.arguments[i] {return GCall.{choice=i};}}return GCall.{status=GStatus.token};
+}
+// book:end authorize
+gt_interval :: (begin:int,end:int,size:int)->bool {return begin>=0 && end>=begin && end<=size;}
+// book:begin display
+gt_display :: (record:HmRecord,bytes:string,out:[]u8,overlap:bool)->GResult #export_c {
+    if record.role!=HmRole.assistant || record.channel!=HmChannel.final || record.ending!=HmEnd.turn || record.recipient_begin!=record.recipient_end {return GResult.{status=GStatus.state};}
+    if !gt_interval(record.body_begin,record.body_end,bytes.count) {return GResult.{status=GStatus.capacity};}n:=record.body_end-record.body_begin;
+    if out.count<n {return GResult.{status=GStatus.capacity};}if overlap {return GResult.{status=GStatus.alias};}
+    for i:0..<n {out[i]=bytes[record.body_begin+i];}return GResult.{written=n};
+}
+// book:end display
+gt_response :: (name:string,body:string)->GToolResponse #export_c {
+    if !hm_ident(name) || hm_role(name)!=4 || name=="all" || body.count>65536 {return GToolResponse.{status=GStatus.token};}
+    return GToolResponse.{message=HmMessage.{role=HmRole.tool,name=name,body=body}};
+}
+// Owned calculator fixture. This is local Coax arithmetic, not an external tool.
+GInteger :: struct {status:GStatus;value:int;}
+gt_add :: (a:int,b:int)->GInteger #export_c {if !gt_addend(a) || !gt_addend(b) {return GInteger.{status=GStatus.shape};}return GInteger.{value=a+b};}
+gt_addend :: (n:int)->bool {return n>= -1000000 && n<=1000000;}
+#test "owned calculator has directly checked results and limits" {
+    #assert gt_add(2,2).value==4 && gt_add(3,5).value==8 && gt_add(-1000000,1000000).value==0 && gt_add(1000000,-1000000).status==GStatus.ok;
+    #assert gt_add(-1000001,0).status==GStatus.shape && gt_add(0,1000001).status==GStatus.shape;
+    #assert gt_addend(-1000000) && gt_addend(1000000) && !gt_addend(-1000001) && !gt_addend(1000001);
+}

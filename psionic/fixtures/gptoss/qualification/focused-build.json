@@ -1,0 +1,38 @@
+{
+  "compiler_sha256": "c5acf492faaef7ea8450245c44b454e69b208f83d9594e874be4d06eb3d3ae1a",
+  "debug_flags": [
+    "-O0",
+    "-ffp-contract=off",
+    "-fno-fast-math"
+  ],
+  "release_flags": [
+    "-O3",
+    "-ffp-contract=off",
+    "-fno-fast-math"
+  ],
+  "native_modes": [
+    "plain",
+    "address,undefined sanitizers"
+  ],
+  "mutations": "not rerun; owner requested focused checks only",
+  "sources": {
+    "psionic/lib/gptoss/generation.coax": "e9bd420c20c23bd2b7d1136a77a37cc3d51050b88ba4d9329c58c1138d33d9aa",
+    "psionic/lib/gptoss/layout.coax": "447c23f3df4e3c80653a53cf02df5ad8b175a9899bf9a9c85871fb8e7f9c0c27",
+    "psionic/lib/gptoss/math.coax": "5590576897587fcffc5dd8d885469d5c3494b3c0373ec9ff144deca00396e2f4",
+    "psionic/lib/gptoss/model.coax": "3f6e6abf32574c9ef691a81254785cffd6f4399ce7571fe6bcd9301cf6c60315",
+    "psionic/lib/gptoss/sampling.coax": "467768aeb029985f8250851639016fb919c2dc97b94ff6a9b602343ff8a1c794",
+    "psionic/lib/gptoss/speculation.coax": "b522bd2408a97bcb5d3f9a378a21906f43b68ffe3146e19d9be520d9b097d6a4",
+    "psionic/lib/gptoss/tool-schema.coax": "c0e75dae5e7212db23b9ed75d1957a9881606401c4d6a550a65c62f310bd8f3f",
+    "psionic/lib/gptoss/tools.coax": "a9ab751087d42d0f59312f4c640073a795acd55c46e2a6c46f8a124eed16d997",
+    "psionic/lib/gptoss/types.coax": "1a26348048d196f10ede4cfe7032049c1a9c82e6dd42bffbd0b93c601b330010",
+    "psionic/lib/gptoss/weights.coax": "64949bf771e4b90b33947f4cb60761b0b47ebb8cfaa1f37aa5cbc9516ce59b71",
+    "psionic/lib/gptoss.coax": "a9b6798921b9c179d5478e2979655a17d1c5d29de1ea10b7a90fbbefcbe12292",
+    "psionic/lib/harmony/types.coax": "7a5b37d44630a2f99f9620d62661a4d014897fee4fade885d023084640e24d12",
+    "psionic/lib/harmony/identifiers.coax": "cd53ea7131f57bc5070a44d67e1be7ed6164864d1e246e0c35e626bebbfe1a4a",
+    "psionic/lib/harmony/messages.coax": "c83743ee63d77a9d0ccd1d858f54ff9aca9ae24ad18a11eff080d29cb2efdaf8",
+    "psionic/platform/gptoss-memory.c": "46b95a32fd575afa7292f5cac6b0e91af17bae78ad55fe4bafab1715924b9b76",
+    "psionic/platform/gptoss-memory.h": "70c520c4800d7dedc2c6dfcbfb2cca4cd52bc8b828a2b786190567796bd5a09d",
+    "psionic/tests/gptoss_native.c": "da0d0c3560e25d103291d23753f82b4f089f77cb5162238537e1f73ba01c5dee",
+    "psionic/tests/check_gptoss.sh": "7216730d2fbfc681625abcc99d81b040831dbbd1c18a08c3a39e3f5702ce6e00"
+  }
+}

@@ -1,0 +1,2 @@
+# Exact Safetensors header bytes include meaningful alignment padding.
+*.header.json binary

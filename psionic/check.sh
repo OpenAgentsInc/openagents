@@ -116,5 +116,6 @@ for mode in debug release; do
         done
     done
 done
+COAX="$coax" COAX_CC="$cc" psionic/tests/check_gptoss.sh
 python3 -I psionic/tests/book.py --coax "$coax"
 echo "Psionic completed chapters pass: Coax debug/release checks, zero-survivor mutation, native debug/release, ASan/UBSan and book"

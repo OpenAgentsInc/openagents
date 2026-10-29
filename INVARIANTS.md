@@ -1,5 +1,40 @@
 # Invariants
 
+## Psionic original gpt-oss execution and constrained continuations
+
+`psionic/lib/gptoss/` owns `gpt-oss-cpu-wide-v1`: fixed independently pinned
+20b/120b original BF16/MXFP4 profiles, complete SHA-256 admission and exact
+parameter intervals, compensated f64 products with f32 storage, all-layer
+staging and full-vocabulary readout. A model step commits cache and public
+diagnostics only after complete success; work may change. Even-layer cache
+storage stays window-bounded, while odd layers reserve the chosen full prefix.
+The caller supplies model identity, immutable live inputs, sequential history,
+truthful extents, valid allocations and exclusive disjoint writable storage.
+C observes addresses and performs effects, never model or grant decisions.
+
+Counter-based SplitMix64 sampling has explicit seed/counter progression,
+lowest-ID ties, temperature/top-k/top-p and pre-choice masks. Return, call,
+limit and between-step cancellation are distinct. Model and emission are
+separate transactions. Speculation uses standard acceptance/positive residuals,
+an all-match bonus and complete snapshots including overwritten ring entries.
+Its serial CPU measurements do not establish acceleration or a batched backend.
+
+`gpt-oss-json-enum-v1` is a finite root-object enum schema profile, not a
+universal schema compiler. Vocabulary masks enforce prefix membership before
+sampling; only a complete argument may offer call. A named commentary handoff
+still needs the host's grant. Tool results are typed messages. Only recipient-free
+assistant final turn bodies pass the display gate; analysis never does.
+Shared Harmony record/identifier types are independent of tokenizer execution.
+
+Check: `psionic/tests/check_gptoss.sh` runs focused changed-code checks, native
+plain/ASan/UBSan and exact book transcripts. Full mutation reruns were stopped
+at the owner's request on 2026-10-29; mutation slicing is separate work. Opt-in
+original runs and their exact build/scope limits are in the chapter
+[45](docs/verification/psionic-ch45-2026-10-29.md),
+[46](docs/verification/psionic-ch46-2026-10-29.md),
+[47](docs/verification/psionic-ch47-2026-10-29.md) and
+[48](docs/verification/psionic-ch48-2026-10-29.md) records.
+
 ## Psionic Harmony text separates ordinary bytes from control IDs
 
 `psionic/lib/harmony/` owns `gpt-oss-harmony-text-v1`: the pinned original

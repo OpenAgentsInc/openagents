@@ -1,0 +1,59 @@
+{
+  "numpy_version": "2.3.5",
+  "python_version": "3.12.14 (main, Aug 25 2026, 13:50:33) [Clang 22.1.3 ]",
+  "reference_source_sha256": "159745bc6d248d1cdcd425e33d74d81e5111a98582c312f6ef01dca4fe1b62a2",
+  "profile": "gpt-oss-cpu-wide-v1",
+  "reference": "owned NumPy whole-prefix layer traversal; float64 independent BLAS reductions; no upstream code executed",
+  "tokens": [
+    200006,
+    173781
+  ],
+  "tolerance_relative_plus_absolute": 0.0005,
+  "steps": [
+    {
+      "logits": {
+        "maximum_absolute_error": 0.0,
+        "maximum_scaled_error": 0.0,
+        "candidate_sha256": "3bbad7fe85c02c7280f9cb44e241d69c76da20891c743ab0c639f80852a754d5"
+      },
+      "trace": {
+        "maximum_absolute_error": 0.0,
+        "maximum_scaled_error": 0.0,
+        "candidate_sha256": "4488641fe5f75e2dbb0833ef9d15ec2c8ebbfb279f6e78d4c84a2e345c911934"
+      },
+      "routes": {
+        "exact": true,
+        "candidate_sha256": "827df14577286b4b5d96e20166c4a8f862aa8d2f40d135017eab3a4bf0930746"
+      },
+      "weights": {
+        "maximum_absolute_error": 0.0,
+        "maximum_scaled_error": 0.0,
+        "candidate_sha256": "707329fc25044276a88c65ba829b99430639b6a4517eb9a0b1b924e6469b41f9"
+      },
+      "top_token": 10620
+    },
+    {
+      "logits": {
+        "maximum_absolute_error": 0.0,
+        "maximum_scaled_error": 0.0,
+        "candidate_sha256": "4d2ba3c68ff4b7bb27f9a6fa5acd4d65a353228fe958b4d26e64cf404823d3b8"
+      },
+      "trace": {
+        "maximum_absolute_error": 0.0,
+        "maximum_scaled_error": 0.0,
+        "candidate_sha256": "bf58cefeeaccc6d52eb92f022343d8bc02e3c9a7763771a734bc8830f23d9c2b"
+      },
+      "routes": {
+        "exact": true,
+        "candidate_sha256": "f75209ca946cb092eb42b105591f8158723c110f332725eede5df61915e23d7e"
+      },
+      "weights": {
+        "maximum_absolute_error": 0.0,
+        "maximum_scaled_error": 0.0,
+        "candidate_sha256": "239b92f1d9c8d9739a4d0516707598716d1299bdc49a048c4b9122b23441d824"
+      },
+      "top_token": 200005
+    }
+  ],
+  "reference_seconds": 28.42208550000214
+}

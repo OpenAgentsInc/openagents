@@ -1,0 +1,16 @@
+#import "Basic";
+#load "../lib/gptoss/speculation.coax";
+// book:begin example
+main :: () {
+    target:=[9]f64.[1,0,0,0.25,0.25,0.5,0,0,1];draft:=[6]f64.[1,0,0,0,1,0];proposal:=[2]int.[0,1];uniforms:=[5]f64.[0,0,0.8,0.5,0.1];
+    emitted:[3]int;stage:[3]int;residual:[3]f64;scratch:[3]f64;
+    result:=gx_block(3,target[..],draft[..],proposal[..],uniforms[..],false,emitted[..],stage[..],residual[..],scratch[..],false);
+    #assert result.status==GStatus.ok && !result.bonus;
+    print("draft: 0 1; accepted prefix: %\n",result.accepted);
+    print("committed: % %; second token drawn from the positive residual\n",emitted[0],emitted[1]);
+    history:=[8]int.[1,2,3,1,2,4,1,2];print("prompt n-gram draft: %\n",gx_ngram(history[..],2));
+    live:=[4]f32.[1,2,3,4];saved:[4]f32;#assert gx_snapshot(live[..],saved[..],false).status==GStatus.ok;
+    live[0]=99;#assert gx_snapshot(saved[..],live[..],false).status==GStatus.ok && live[0]==1;
+    print("rollback: the complete cache, including overwritten ring slots\n");
+}
+// book:end example

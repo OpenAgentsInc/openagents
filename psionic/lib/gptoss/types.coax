@@ -1,0 +1,10 @@
+// Shared execution types; no effects or admission policy.
+GStatus :: enum u8 {ok;shape;capacity;alias;number;arithmetic;budget;token;weights;state;}
+GResult :: struct {status:GStatus;cause:int;written:int;bytes:int;}
+GEncoding :: enum u8 {bf16;mxfp4;}
+GMatrix :: struct {encoding:GEncoding;rows:int;columns:int;data:[]u8;scales:[]u8;}
+GProjection :: struct {status:GStatus;values:int;bytes:int;scales:int;}
+
+
+G_MAC_LIMIT :: 1073741824;
+G_ROW_TILE :: 32768;

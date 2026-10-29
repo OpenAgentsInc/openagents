@@ -1,0 +1,116 @@
+// Counter-based categorical sampling shared by original generation and tools.
+#load "../ops.coax";
+#load "types.coax";
+#authority;
+GS_MAX :: 201088;
+GS_LAST :: (cast(u64)18446744073709551615);
+GS_GOLDEN :: (cast(u64)0x9e3779b97f4a7c15);
+GSeed :: struct {seed:u64;counter:u64;}
+GDraw :: struct {status:GStatus;value:f64;next:GSeed;}
+GPick :: struct {status:GStatus;token:int;}
+
+#test "SplitMix64 counter zero has the published seed-zero word" {
+    #assert gs_bits(0,0)==(cast(u64)0xe220a8397b1dcdaf) && gs_bits(0,1)==(cast(u64)0x6e789e6aa1b965f4);
+    r:=gs_draw(GSeed.{});#assert r.status==GStatus.ok && r.value==0.8833108082136426 && r.next.counter==1 && r.next.seed==0;
+    #assert gs_draw(GSeed.{seed=4,counter=GS_LAST}).status==GStatus.state;
+}
+#test "categorical ties, masks, temperature, top-k and nucleus are explicit" {
+    x:=[4]f32.[0,0,0,0];p:=[5]f64.[-7,-7,-7,-7,-7];stage:[4]f64;order:[4]int;tmp:[4]int;mask:=[4]u8.[1,1,1,1];
+    r:=gs_distribution(x[..],mask[..],1,0,1,p[..],stage[..],order[..],tmp[..],false);
+    #assert r.status==GStatus.ok && r.written==4 && p[0]==0.25 && p[3]==0.25 && p[4]== -7;
+    #assert gs_pick(p[0..<4],0).token==0 && gs_pick(p[0..<4],0.25).token==1 && gs_pick(p[0..<4],0.999).token==3;
+    r=gs_distribution(x[..],mask[..],1,0,0.5,p[..],stage[..],order[..],tmp[..],false);#assert r.status==GStatus.ok && p[0]==0.5 && p[1]==0.5 && p[2]==0 && p[3]==0;
+    x[2]=2;x[3]=1;r=gs_distribution(x[..],mask[..],1,2,1,p[..],stage[..],order[..],tmp[..],false);#assert r.status==GStatus.ok && abs(p[2]-0.7310585786300049)<1e-14 && p[0]==0;
+    mask[2]=0;r=gs_distribution(x[..],mask[..],0,0,1,p[..],stage[..],order[..],tmp[..],false);#assert r.status==GStatus.ok && p[3]==1;
+    r=gs_distribution(x[..],mask[..],2,0,1,p[..],stage[..],order[..],tmp[..],false);#assert r.status==GStatus.ok && abs(p[3]-0.45186276187760605)<1e-14;
+}
+#test "sampling rejects invalid inputs without publishing" {
+    x:=[3]f32.[1,2,3];p:=[3]f64.[-7,-7,-7];s:[3]f64;o:[3]int;t:[3]int;m:[3]u8;
+    #assert gs_distribution(x[..],m[..],1,0,1,p[..],s[..],o[..],t[..],false).status==GStatus.token;
+    for i:0..<3 {m[i]=1;}
+    #assert gs_distribution(x[..],m[..],-1,0,1,p[..],s[..],o[..],t[..],false).status==GStatus.shape;
+    #assert gs_distribution(x[..],m[..],1,-1,1,p[..],s[..],o[..],t[..],false).status==GStatus.shape;
+    #assert gs_distribution(x[..],m[..],1,4,1,p[..],s[..],o[..],t[..],false).status==GStatus.shape;
+    #assert gs_distribution(x[..],m[..],1,0,0,p[..],s[..],o[..],t[..],false).status==GStatus.shape;
+    #assert gs_distribution(x[..],m[..],1,0,1.1,p[..],s[..],o[..],t[..],false).status==GStatus.shape;
+    #assert gs_distribution(x[0..<0],m[0..<0],1,0,1,p[..],s[..],o[..],t[..],false).status==GStatus.shape;
+    #assert gs_distribution(x[..],m[0..<2],1,0,1,p[..],s[..],o[..],t[..],false).status==GStatus.capacity;
+    #assert gs_distribution(x[..],m[..],1,0,1,p[0..<2],s[..],o[..],t[..],false).status==GStatus.capacity;
+    #assert gs_distribution(x[..],m[..],1,0,1,p[..],s[0..<2],o[..],t[..],false).status==GStatus.capacity;
+    #assert gs_distribution(x[..],m[..],1,0,1,p[..],s[..],o[0..<2],t[..],false).status==GStatus.capacity;
+    #assert gs_distribution(x[..],m[..],1,0,1,p[..],s[..],o[..],t[0..<2],false).status==GStatus.capacity;
+    #assert gs_distribution(x[..],m[..],1,0,1,p[..],s[..],o[..],t[..],true).status==GStatus.alias;
+    m[1]=2;#assert gs_distribution(x[..],m[..],1,0,1,p[..],s[..],o[..],t[..],false).status==GStatus.number;m[1]=1;
+    #assert p[0]== -7 && p[1]== -7 && p[2]== -7;
+    #assert gs_pick(p[..],0).status==GStatus.number && gs_pick(p[..],-1).status==GStatus.shape && gs_pick(p[..],1).status==GStatus.shape;
+    p=[3]f64.[0,0,0];#assert gs_pick(p[..],0).status==GStatus.number;
+}
+gs_bits :: (seed:u64,counter:u64)->u64 {
+    z:=add_wrap(seed,mul_wrap(GS_GOLDEN,add_wrap(counter,(cast(u64)1))));
+    z=mul_wrap(z^(z>>30),(cast(u64)0xbf58476d1ce4e5b9));z=mul_wrap(z^(z>>27),(cast(u64)0x94d049bb133111eb));return z^(z>>31);
+}
+gs_draw :: (state:GSeed)->GDraw #export_c {
+    if state.counter==GS_LAST {return GDraw.{status=GStatus.state};}
+    return GDraw.{value=f64(gs_bits(state.seed,state.counter)>>11)/9007199254740992.0,next=GSeed.{seed=state.seed,counter=state.counter+1}};
+}
+// book:begin distribution
+gs_distribution :: (logits:[]f32,mask:[]u8,temperature:f64,top_k:int,top_p:f64,out:[]f64,stage:[]f64,order:[]int,temporary:[]int,overlap:bool)->GResult #export_c {
+    n:=logits.count;
+    if !gs_size(n) || !(temperature>=0 && temperature<=100) || top_k<0 || top_k>n || !(top_p>0 && top_p<=1) {return GResult.{status=GStatus.shape};}
+    if (mask.count!=0 && mask.count!=n) || out.count<n || stage.count<n || order.count<n || temporary.count<n {return GResult.{status=GStatus.capacity};}if overlap {return GResult.{status=GStatus.alias};}
+    count:=0;
+    for i:0..<n {
+        if !psionic_tensor_finite_bits(f32_bits(logits[i])) || (mask.count!=0 && mask[i]>1) {return GResult.{status=GStatus.number};}
+        if mask.count==0 || mask[i]==1 {order[count]=i;count+=1;}stage[i]=0;
+    }
+    if count==0 {return GResult.{status=GStatus.token};}
+    // Stable merge sort, descending logit then ascending ID, O(V log V).
+    passes:=0;width:=1;while width<count {first:=0;while first<count {
+        mid:=gs_min(first+width,count);end:=gs_min(first+2*width,count);a:=first;b:=mid;
+        for dest:first..<end {left:=b==end;if a<mid && b<end {left=logits[order[a]]>=logits[order[b]];}
+            if left {temporary[dest]=order[a];a+=1;}else {temporary[dest]=order[b];b+=1;}}
+        first=end;
+    }for i:0..<count {order[i]=temporary[i];}width*=2;passes+=1;}
+    if temperature==0 {stage[order[0]]=1;}
+    else {
+        kept:=count;if top_k!=0 {kept=gs_min(kept,top_k);}maximum:=f64(logits[order[0]]);sum:PsionicAccumulator;
+        for i:0..<kept {v:=exp((f64(logits[order[i]])-maximum)/temperature);stage[order[i]]=v;sum=psionic_ops_accumulate(sum,v);}total:=psionic_ops_total(sum);
+        cumulative:PsionicAccumulator;take:=0;while psionic_ops_total(cumulative)<top_p*total {cumulative=psionic_ops_accumulate(cumulative,stage[order[take]]);take+=1;}
+        den:=psionic_ops_total(cumulative);for i:0..<take {stage[order[i]]/=den;}for i:take..<kept {stage[order[i]]=0;}
+    }
+    for i:0..<n {out[i]=stage[i];}return GResult.{written=n,cause=passes};
+}
+// book:end distribution
+gs_pick :: (probabilities:[]f64,uniform:f64)->GPick #export_c {
+    if !gs_size(probabilities.count) || !(uniform>=0 && uniform<1) {return GPick.{status=GStatus.shape};}
+    total:PsionicAccumulator;last:int;
+    for i:0..<probabilities.count {v:=probabilities[i];if !gs_probability(v) {return GPick.{status=GStatus.number};}total=psionic_ops_accumulate(total,v);if v>0 {last=i;}}
+    if !gs_mass(psionic_ops_total(total)) {return GPick.{status=GStatus.number};}
+    cumulative:PsionicAccumulator;for i:0..<probabilities.count {cumulative=psionic_ops_accumulate(cumulative,probabilities[i]);if uniform<psionic_ops_total(cumulative) {return GPick.{token=i};}}
+    return GPick.{token=last};
+}
+
+gs_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+#test "bounded minimum endpoints" {#assert gs_min(0,0)==0 && gs_min(3,7)==3 && gs_min(7,3)==3 && gs_min(201088,201088)==201088;}
+
+gs_size :: (n:int)->bool {return n>=1 && n<=GS_MAX;}
+gs_mass :: (n:f64)->bool {return abs(n-1)<0.000000000931322574615478515625;}
+#test "sampling size and mass endpoints" {
+    #assert gs_size(1) && gs_size(GS_MAX) && !gs_size(0) && !gs_size(GS_MAX+1);
+    #assert gs_mass(1) && !gs_mass(1+0.000000000931322574615478515625) && !gs_mass(1-0.000000000931322574615478515625);
+}
+#test "one token and uneven merge runs preserve stable score order" {
+    x:=[5]f32.[3,8,4,7,1];p:[5]f64;s:[5]f64;o:[5]int;t:[5]int;m:=[1]u8.[1];
+    r:=gs_distribution(x[..],m[0..<0],1,5,1,p[..],s[..],o[..],t[..],false);
+    #assert r.status==GStatus.ok && r.cause==3 && o[0]==1 && o[1]==3 && o[2]==2 && o[3]==0 && o[4]==4 && p[1]>p[3] && p[0]>p[4];
+    r=gs_distribution(x[0..<1],m[..],100,1,1,p[..],s[..],o[..],t[..],false);#assert r.status==GStatus.ok && r.cause==0 && p[0]==1 && gs_pick(p[0..<1],0.5).token==0;
+    x[0]=1000;x[1]=999;r=gs_distribution(x[0..<2],m[0..<0],1,1,1,p[..],s[..],o[..],t[..],false);#assert r.status==GStatus.ok && p[0]==1 && p[1]==0;
+    r=gs_distribution(x[0..<1],m[0..<0],1,0,1,p[..],s[..],o[..],t[..],false);#assert r.status==GStatus.ok && p[0]==1;
+    p=[5]f64.[1,0,0,0,0];#assert gs_pick(p[..],0.5).token==0;
+    p=[5]f64.[0,0.9999999999,0,0,0];#assert gs_pick(p[..],0.99999999999).token==1;
+    p[0]=2;#assert gs_pick(p[..],0).status==GStatus.number;
+    #assert gs_pick(p[0..<0],0).status==GStatus.shape;
+}
+
+gs_probability :: (v:f64)->bool {return v>=0 && v<=1;}
+#test "probability endpoints are closed" {#assert gs_probability(0) && gs_probability(1) && !gs_probability(-0.1) && !gs_probability(1.1);}

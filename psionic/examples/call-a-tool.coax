@@ -1,0 +1,19 @@
+#import "Basic";
+#load "../lib/gptoss/tools.coax";
+#load "../lib/gptoss/sampling.coax";
+// book:begin example
+main :: () {
+    alternatives:=[1]string.["{\"a\":2,\"b\":2}"];pieces:=[3]string.["{\"a\":","evil","{"];mask:[3]u8;mask_stage:[3]u8;
+    masked:=gt_mask(alternatives[..],"",pieces[..],mask[..],mask_stage[..],false);#assert masked.status==GStatus.ok;
+    logits:=[3]f32.[2,100,1];probabilities:[3]f64;stage:[3]f64;order:[3]int;temporary:[3]int;
+    sampled:=gs_distribution(logits[..],mask[..],0,0,1,probabilities[..],stage[..],order[..],temporary[..],false);#assert sampled.status==GStatus.ok && probabilities[1]==0;
+    print("invalid high-logit token: masked before sampling\n");
+    bytes:="functions.add{\"a\":2,\"b\":2}";record:=HmRecord.{role=HmRole.assistant,channel=HmChannel.commentary,ending=HmEnd.call,recipient_begin=0,recipient_end=13,body_begin=13,body_end=bytes.count};
+    tool:=GTool.{name="functions.add",arguments=alternatives[..]};call:=gt_authorize(tool,record,bytes,true);#assert call.status==GStatus.ok;
+    sum:=gt_add(2,2);response:=gt_response(tool.name,"4");#assert sum.status==GStatus.ok && response.status==GStatus.ok;
+    print("granted commentary call: %; result: %\n",tool.name,sum.value);
+    out:[32]u8;record.channel=HmChannel.analysis;#assert gt_display(record,bytes,out[..],false).status==GStatus.state;
+    print("analysis: excluded by the display gate\n");
+    print("resume with tool role: %\n",response.message.name);
+}
+// book:end example

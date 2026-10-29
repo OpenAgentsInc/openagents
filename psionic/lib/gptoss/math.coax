@@ -1,0 +1,131 @@
+// Original BF16/MXFP4 execution, under the named wide CPU profile.
+#load "../qwen-matvec.coax";
+#load "../gptoss-math.coax";
+#load "../mxfp4.coax";
+#authority;
+#load "layout.coax";
+
+#test "original matrix plans count payloads before multiplication" {
+    p:=g_projection(0,201088,2880);#assert p.status==GStatus.ok && p.values==579133440 && p.bytes==1158266880 && p.scales==0;
+    p=g_projection(1,5760,2880);#assert p.status==GStatus.ok && p.bytes==8294400 && p.scales==518400;
+    #assert g_projection(0,32768,32768).status==GStatus.ok && g_projection(0,32769,32768).status==GStatus.budget;
+    #assert g_projection(2,1,1).status==GStatus.shape && g_projection(0,0,1).status==GStatus.shape && g_projection(0,1,0).status==GStatus.shape;
+    #assert g_projection(0,201089,1).status==GStatus.shape && g_projection(0,1,32769).status==GStatus.shape;
+    #assert g_projection(1,1,31).status==GStatus.shape && g_projection(1,1,32).status==GStatus.ok;
+}
+#test "MXFP4 rows use original nibble order and add BF16 biases" {
+    packed:[32]u8;scale:=[2]u8.[127,128];for i:0..<16 {packed[i]=0x22;packed[16+i]=0xaa;}
+    x:[32]f32;for i:0..<32 {x[i]=f32(i+1);}
+    bias:=[4]u8.[0x80,0x3f,0,0x40];out:=[3]f32.[-7,-7,-7];stage:[2]f32;scratch:[2]f32;
+    m:=GMatrix.{encoding=GEncoding.mxfp4,rows=2,columns=32,data=packed[..],scales=scale[..]};
+    r:=g_project(m,x[..],bias[..],out[..],stage[..],scratch[..],false);
+    #assert r.status==GStatus.ok && r.written==2 && out[0]==529 && out[1]== -1054 && out[2]== -7;
+    scale[1]=253;out[0]=-7;out[1]=-7;#assert g_project(m,x[..],bias[..],out[..],stage[..],scratch[..],false).status==GStatus.number && out[0]== -7 && out[1]== -7;
+}
+#test "BF16 projection and late bias overflow publish atomically" {
+    w:=[8]u8.[0x80,0x3f,0,0x40,0x40,0x40,0x80,0x40];x:=[2]f32.[1,2];bias:=[4]u8.[0x80,0x3f,0,0xc0];out:=[3]f32.[-7,-7,-7];stage:[2]f32;scratch:[2]f32;empty:[1]u8;
+    m:=GMatrix.{rows=2,columns=2,data=w[..],scales=empty[0..<0]};r:=g_project(m,x[..],bias[..],out[..],stage[..],scratch[..],false);
+    #assert r.status==GStatus.ok && r.written==2 && out[0]==6 && out[1]==9 && out[2]== -7;
+    out[0]=-7;out[1]=-7;w[6]=0x7f;w[7]=0x7f;bias[2]=0x7f;bias[3]=0x7f;x[1]=1;
+    #assert g_project(m,x[..],bias[..],out[..],stage[..],scratch[..],false).status==GStatus.arithmetic && out[0]== -7 && out[1]== -7;
+}
+#test "RMS uses learned scale directly and a fixed epsilon inside the root" {
+    x:=[2]f32.[3,4];scale:=[4]u8.[0,0x40,0,0];out:=[3]f32.[-7,-7,-7];work:[2]f32;
+    r:=g_rms(x[..],scale[..],out[..],work[..],false);#assert r.status==GStatus.ok && r.written==2 && abs(out[0]-1.6970556f32)<0.000001f32 && out[1]==0 && out[2]== -7;
+    #assert g_rms(x[0..<0],scale[..],out[..],work[..],false).status==GStatus.shape;
+    #assert g_rms(x[..],scale[0..<3],out[..],work[..],false).status==GStatus.capacity;
+    #assert g_rms(x[..],scale[..],out[0..<1],work[..],false).status==GStatus.capacity;
+    #assert g_rms(x[..],scale[..],out[..],work[0..<1],false).status==GStatus.capacity;
+    #assert g_rms(x[..],scale[..],out[..],work[..],true).status==GStatus.alias;
+}
+
+g_projection :: (tag:u8,rows:int,columns:int)->GProjection #export_c {
+    if tag>1 || rows<1 || rows>201088 || columns<1 || columns>32768 {return GProjection.{status=GStatus.shape};}
+    if !g_mac_fits(rows,columns) {return GProjection.{status=GStatus.budget};}
+    values:=rows*columns;
+    if tag==1 {if columns%32!=0 {return GProjection.{status=GStatus.shape};}return GProjection.{values=values,bytes=values/2,scales=values/32};}
+    return GProjection.{values=values,bytes=values*2};
+}
+g_bf :: (bytes:[]u8,index:int)->f32 {return f32_from_bits(qm_bits(QmDtype.bf16,bytes,index));}
+g_bytes_finite :: (bytes:[]u8)->GStatus {for i:0..<bytes.count/2 {if !psionic_tensor_finite_bits(qm_bits(QmDtype.bf16,bytes,i)) {return GStatus.number;}}return GStatus.ok;}
+// book:begin project
+g_project :: (m:GMatrix,x:[]f32,bias:[]u8,out:[]f32,stage:[]f32,scratch:[]f32,overlap:bool)->GResult #export_c {
+    p:=g_projection(cast(u8)m.encoding,m.rows,m.columns);if p.status!=GStatus.ok {return GResult.{status=p.status};}
+    if m.data.count!=p.bytes || m.scales.count!=p.scales || x.count!=m.columns || (bias.count!=0 && bias.count!=2*m.rows) || out.count<m.rows || stage.count<m.rows || scratch.count<m.rows {return GResult.{status=GStatus.capacity};}
+    if overlap {return GResult.{status=GStatus.alias};}
+    if go_data(x)!=GoStatus.ok {return GResult.{status=GStatus.number};}if g_bytes_finite(bias)!=GStatus.ok {return GResult.{status=GStatus.number};}
+    if m.encoding==GEncoding.bf16 {
+        first:=0;
+        while first<m.rows {
+            count:=gs_window(m.rows-first,G_ROW_TILE);
+            r:=qm_project(QmDtype.bf16,count,m.columns,m.data[2*first*m.columns..<2*(first+count)*m.columns],x,stage[first..<first+count],scratch[first..<first+count],false);
+            if r.status!=QmStatus.ok {return GResult.{status=ifx r.status==QmStatus.number then GStatus.number else GStatus.arithmetic,cause=cast(int)r.status};}first+=count;
+        }
+    }else {
+        for scale:m.scales {if scale>252 {return GResult.{status=GStatus.number};}}
+        for row:0..<m.rows {
+            acc:PsionicAccumulator;
+            for group:0..<m.columns/32 {
+                base:=row*m.columns/32+group;power:=f64_from_bits((cast(u64)m.scales[base]+896)<<52);
+                for i:0..<16 {
+                    byte:=m.data[base*16+i];lo:=byte&15;hi:=byte>>4;
+                    a:=MX_E2M1[cast(int)(lo&7)]*power;if (lo&8)!=0 {a= -a;}
+                    b:=MX_E2M1[cast(int)(hi&7)]*power;if (hi&8)!=0 {b= -b;}
+                    acc=psionic_ops_accumulate(acc,a*f64(x[group*32+2*i]));acc=psionic_ops_accumulate(acc,b*f64(x[group*32+2*i+1]));
+                }
+            }
+            value:=psionic_ops_total(acc);if !psionic_ops_fits_f32(value) {return GResult.{status=GStatus.arithmetic};}stage[row]=f32(value);
+        }
+    }
+    for row:0..<m.rows {
+        value:=f64(stage[row]);if bias.count!=0 {value+=f64(g_bf(bias,row));}
+        if !psionic_ops_fits_f32(value) {return GResult.{status=GStatus.arithmetic};}stage[row]=f32(value);
+    }
+    for row:0..<m.rows {out[row]=stage[row];}return GResult.{written=m.rows};
+}
+// book:end project
+// book:begin norm
+g_rms :: (x:[]f32,scale:[]u8,out:[]f32,work:[]f32,overlap:bool)->GResult #export_c {
+    d:=x.count;if d<1 || d>8192 {return GResult.{status=GStatus.shape};}
+    if scale.count!=2*d || out.count<d || work.count<d {return GResult.{status=GStatus.capacity};}if overlap {return GResult.{status=GStatus.alias};}
+    if go_data(x)!=GoStatus.ok {return GResult.{status=GStatus.number};}if g_bytes_finite(scale)!=GStatus.ok {return GResult.{status=GStatus.number};}
+    sum:PsionicAccumulator;for v:x {sum=psionic_ops_accumulate(sum,f64(v)*f64(v));}divisor:=sqrt(psionic_ops_total(sum)/f64(d)+0.00001);
+    for i:0..<d {value:=f64(x[i])/divisor*f64(g_bf(scale,i));if !psionic_ops_fits_f32(value) {return GResult.{status=GStatus.arithmetic};}work[i]=f32(value);}
+    for i:0..<d {out[i]=work[i];}return GResult.{written=d};
+}
+// book:end norm
+#test "the vocabulary projection crosses a complete row tile without gaps" {
+    #assert G_MAC_LIMIT==1073741824 && G_ROW_TILE==32768;
+    data:[65538]u8;for i:0..<32769 {data[2*i]=0x80;data[2*i+1]=ifx i%2==0 then 0x3f else 0xbf;}
+    x:=[1]f32.[2];out:[32770]f32;stage:[32769]f32;scratch:[32769]f32;empty:[1]u8;out[32769]=-7;
+    r:=g_project(GMatrix.{rows=32769,columns=1,data=data[..],scales=empty[0..<0]},x[..],empty[0..<0],out[..],stage[..],scratch[..],false);
+    #assert r.status==GStatus.ok && r.written==32769 && out[32769]== -7;
+    for i:0..<32769 {#assert out[i]==(ifx i%2==0 then 2.0f32 else -2.0f32);}
+}
+
+#test "multi-block MXFP4 uses the second block and the finite scale endpoint" {
+    packed:[32]u8;scales:=[2]u8.[127,128];x:[64]f32;out:[1]f32;stage:[1]f32;scratch:[1]f32;empty:[1]u8;
+    for i:0..<32 {packed[i]=0x22;x[i]=f32(i+1);x[32+i]=f32(i+33);}
+    m:=GMatrix.{encoding=GEncoding.mxfp4,rows=1,columns=64,data=packed[..],scales=scales[..]};
+    r:=g_project(m,x[..],empty[0..<0],out[..],stage[..],scratch[..],false);#assert r.status==GStatus.ok && out[0]==3632;
+    scales[1]=252;for i:0..<64 {x[i]=0;}r=g_project(m,x[..],empty[0..<0],out[..],stage[..],scratch[..],false);#assert r.status==GStatus.ok && out[0]==0;
+}
+#test "projection validates every caller extent and bias word" {
+    w:=[2]u8.[0x80,0x3f];x:=[1]f32.[2];out:=[2]f32.[-7,-7];stage:[1]f32;scratch:[1]f32;empty:[1]u8;m:=GMatrix.{rows=1,columns=1,data=w[..],scales=empty[0..<0]};
+    #assert g_project(m,x[..],empty[0..<0],out[..],stage[..],scratch[..],true).status==GStatus.alias;
+    #assert g_project(m,x[0..<0],empty[0..<0],out[..],stage[..],scratch[..],false).status==GStatus.capacity;
+    #assert g_project(m,x[..],empty[..],out[..],stage[..],scratch[..],false).status==GStatus.capacity;
+    #assert g_project(m,x[..],empty[0..<0],out[0..<0],stage[..],scratch[..],false).status==GStatus.capacity;
+    #assert g_project(m,x[..],empty[0..<0],out[..],stage[0..<0],scratch[..],false).status==GStatus.capacity;
+    #assert g_project(m,x[..],empty[0..<0],out[..],stage[..],scratch[0..<0],false).status==GStatus.capacity;
+    m.data=w[0..<1];#assert g_project(m,x[..],empty[0..<0],out[..],stage[..],scratch[..],false).status==GStatus.capacity;m.data=w[..];m.scales=empty[..];#assert g_project(m,x[..],empty[0..<0],out[..],stage[..],scratch[..],false).status==GStatus.capacity;m.scales=empty[0..<0];
+    w[0]=0x80;w[1]=0x7f;r:=g_project(m,x[..],empty[0..<0],out[..],stage[..],scratch[..],false);#assert r.status==GStatus.number && r.cause==cast(int)QmStatus.number && out[0]== -7;
+    #assert g_bytes_finite(w[..])==GStatus.number;w[1]=0x3f;#assert g_bytes_finite(w[..])==GStatus.ok && g_bf(w[..],0)==1;
+}
+#test "RMS closed maximum extent and its next value" {
+    x:[8193]f32;scale:[16386]u8;out:[8193]f32;work:[8193]f32;
+    #assert g_rms(x[0..<8192],scale[0..<16384],out[..],work[..],false).status==GStatus.ok;
+    #assert g_rms(x[..],scale[..],out[..],work[..],false).status==GStatus.shape;
+}
+
+#test "scalar RMS is a valid nonempty vector" {x:=[1]f32.[2];s:=[2]u8.[0x80,0x3f];out:[1]f32;w:[1]f32;r:=g_rms(x[..],s[..],out[..],w[..],false);#assert r.status==GStatus.ok && abs(out[0]-0.99999875f32)<0.0000001f32;}

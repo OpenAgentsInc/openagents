@@ -1,0 +1,4 @@
+admitted target=0 bytes=13761314442 seconds=53.156457 peak_rss_bytes=13763231744
+forced named tool choice=functions.add schema=root-object-enum arguments={"a":2,"b":2} result=4 host_grant=yes
+final: 4
+tool roundtrip passes; analysis excluded by Coax display gate; peak_rss_bytes=13805191168

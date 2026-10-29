@@ -1,0 +1,1 @@
+{"embedding.weight":{"dtype":"BF16","shape":[201088,2880],"data_offsets":[0,1158266880]},"norm.scale":{"dtype":"BF16","shape":[2880],"data_offsets":[1158266880,1158272640]},"unembedding.weight":{"dtype":"BF16","shape":[201088,2880],"data_offsets":[1158272640,2316539520]}}

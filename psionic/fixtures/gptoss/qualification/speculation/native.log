@@ -1,0 +1,8 @@
+admitted target=0 bytes=13761314442 seconds=52.787681 peak_rss_bytes=13763215360
+admitted target=1 bytes=65248927631 seconds=298.556602 peak_rss_bytes=79011774464
+shared prefill tokens=7 seconds=72.918576
+target-alone tokens=6 seconds=35.883078
+speculation mode=20b requested_draft=1 target_batch=1 accepted=3 attempted=3 blocks=3 tokens=6 seconds=87.888263 baseline_seconds=35.883078 speedup=0.408281 greedy_exact=yes peak_rss_bytes=79191015424
+speculation mode=20b requested_draft=2 target_batch=1 accepted=4 attempted=4 blocks=2 tokens=6 seconds=114.242150 baseline_seconds=35.883078 speedup=0.314097 greedy_exact=yes peak_rss_bytes=79194226688
+speculation mode=20b requested_draft=4 target_batch=1 accepted=4 attempted=4 blocks=1 tokens=6 seconds=123.459869 baseline_seconds=35.883078 speedup=0.290646 greedy_exact=yes peak_rss_bytes=79194226688
+speculation mode=ngram requested_draft=4 target_batch=1 accepted=0 attempted=2 blocks=1 tokens=6 seconds=52.674723 baseline_seconds=35.883078 speedup=0.681220 greedy_exact=yes peak_rss_bytes=79194226688

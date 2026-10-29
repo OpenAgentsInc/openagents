@@ -20,6 +20,10 @@ attention, split-half YaRN, biased projection and the clamped expert activation.
 [Chapter 44](book/ch44-the-harmony-format.md) adds the original byte-rank
 tokenizer and typed Harmony rendering/parsing with exact completion stops.
 
+[Chapters 45–48](book/ch45-execute-gpt-oss-20b.md) execute both original gpt-oss models,
+add seeded generation, standard speculative verification and a constrained tool
+round trip. The supported CPU and finite-schema profiles state their limits.
+
 Start with [the book](book/README.md) and
 [Chapter 1: Learning a number](book/ch01-learning-a-number.md), then
 [Chapter 2: Shapes and storage](book/ch02-shapes-and-storage.md) and
@@ -53,6 +57,7 @@ coax/bin/coax run psionic/examples/attention-sinks.coax
 psionic/tests/check_gptoss_attention.sh
 coax/bin/coax run psionic/examples/harmony.coax
 psionic/tests/check_harmony.sh
+psionic/tests/check_gptoss.sh
 ```
 
 The check command builds the compiler if it is absent, runs authored Coax
@@ -66,6 +71,7 @@ credentials, or downloads at run time.
 
 | Path | Role |
 | --- | --- |
+| [lib/gptoss.coax](lib/gptoss.coax), [lib/gptoss/](lib/gptoss/) | Original 20b/120b admission and execution, seeded generation, speculative verification and constrained tools. |
 | [lib/harmony.coax](lib/harmony.coax) | Original-rank gpt-oss text tokenization, immutable table admission, typed message framing and strict full/completion parsing with atomic public output. |
 | [lib/gptoss-attention.coax](lib/gptoss-attention.coax), [lib/gptoss-math.coax](lib/gptoss-math.coax) | Bounded sink/window attention, split-half YaRN, biased projection and interleaved clamped SwiGLU under an explicit wide CPU profile. |
 | [lib/moe.coax](lib/moe.coax) | Bounded top-k selection, selected-only normalization and tiny resident affine expert mixtures with atomic output. |

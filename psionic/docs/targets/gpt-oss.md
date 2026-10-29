@@ -8,10 +8,13 @@ top-k router and tiny affine mixture.
 sink/window attention, split-half YaRN, biased projection and clamped SwiGLU.
 [Chapter 44](../../book/ch44-the-harmony-format.md) adds bounded original-rank
 text tokenization, typed Harmony framing and strict completion parsing.
-Full-model execution remains planned. No weights were downloaded, and no upstream
-setup, inference or tool code was run. Psionic would implement the behavior in
-Coax; Python stays reviewed reference and export tooling, never a runtime
-dependency. Part VII of the [book plan](../../book/PLAN.md) gives the
+[Chapters 45–46](../../book/ch45-execute-gpt-oss-20b.md) now execute both complete
+original checkpoints in Coax under `gpt-oss-cpu-wide-v1`, with independent dense
+references and seeded generation. [Chapter 47](../../book/ch47-let-the-small-model-guess.md)
+adds serial speculative verification; [chapter 48](../../book/ch48-call-a-tool.md)
+adds a finite JSON-schema enum profile and granted tool round trip. Full weights
+were downloaded as pinned data; upstream setup, inference and tool code were never
+executed. Python remains reference/export tooling, never a runtime dependency. Part VII of the [book plan](../../book/PLAN.md) gives the
 chapter sequence. The remaining sequence is proposed work, and it does not block
 [Elephant and Mammoth](model-targets.md).
 
@@ -24,9 +27,9 @@ chapter sequence. The remaining sequence is proposed work, and it does not block
 | [openai/gpt-oss-20b](https://huggingface.co/openai/gpt-oss-20b/tree/6cee5e81ee83917806bbde320786a8fb61efebee) | `6cee5e81ee83917806bbde320786a8fb61efebee` | Apache-2.0 card metadata |
 | [openai/gpt-oss-120b](https://huggingface.co/openai/gpt-oss-120b/tree/b5c939de8f754692c1647ca79fbf85e8c1e70f8a) | `b5c939de8f754692c1647ca79fbf85e8c1e70f8a` | Apache-2.0 card metadata |
 
-Admission must still pin each file's hash, the complete tensor inventory and
-the exact notices, as chapter 4 does for the decision models. A model card's
-license field alone is not artifact provenance.
+The [original manifest](../../fixtures/gptoss/original/pins.json) pins each complete
+file's SHA-256 and size. Retained source headers derive all 363/543 tensor
+descriptors; the upstream notices are retained alongside them.
 
 ## What the pinned sources specify
 
@@ -72,9 +75,8 @@ or a complete original MLP.
 The pinned README distinguishes `original/` files used by its Torch/Triton
 loader, converted Hugging Face files at the repository root, and its Metal
 conversion. The table's HF-root sizes are not original-file inventory pins.
-Original checkpoint admission must establish the `original/` files' own sizes,
-hashes and complete tensor-pair metadata. The chapter's synthetic original-format
-windows establish decoder behavior, not admission of a complete checkpoint.
+Chapter 45 authenticates those original files and binds their complete tensor
+pairs. Chapter 41's synthetic windows remain decoder evidence only.
 
 
 `quantization_config` names `mxfp4`. Attention, router, embeddings and the LM
@@ -153,7 +155,7 @@ window-bounded circular KV storage and split-half YaRN at absolute positions
 is separately limited to 128. The caller supplies the alternating layer shapes.
 Biased projection uses the shared kernel's bounded matrix budget; clamped
 interleaved SwiGLU accepts up to 16,384 pairs. Projection/expert weight binding,
-normalization and residual composition remain separate work.
+normalization and residual composition are implemented in chapter 45.
 
 The [owned scalar oracle](../../tests/gptoss_oracle.py) compares complete
 prefixes against cached execution, plus direct-power rotary and Decimal
@@ -163,7 +165,7 @@ activation results. Native debug/release and sanitizer gates cover 64/8 heads,
 The arithmetic is wide CPU with f32 storage; it does not claim original Torch
 float/BF16 parity, original checkpoint admission or complete generation.
 Chapter 44 now supplies the bounded Harmony text gate below; chapter 45
-still needs complete original-weight execution and intermediate/logit references.
+now supplies complete original-weight execution and intermediate/logit references.
 
 ## Chapter 44 implementation boundary
 

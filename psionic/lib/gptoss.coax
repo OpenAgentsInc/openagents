@@ -1,0 +1,7 @@
+// Public original gpt-oss CPU profile: model arithmetic and fixed-byte admission.
+#load "gptoss/model.coax";
+#load "gptoss/weights.coax";
+#load "gptoss/generation.coax";
+#load "harmony.coax";
+#load "gptoss/speculation.coax";
+#load "gptoss/tools.coax";

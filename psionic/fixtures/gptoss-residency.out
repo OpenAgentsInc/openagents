@@ -1,0 +1,4 @@
+20b: 24 layers, 32 experts, 18874368 cache bytes at capacity 256
+120b: 36 layers, 128 experts, 28311552 cache bytes at capacity 256
+original parameter tensors: 363 / 543
+same engine: BF16 dense rows and selected original MXFP4 experts
