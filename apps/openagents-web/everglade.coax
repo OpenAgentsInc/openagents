@@ -164,7 +164,7 @@ LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_WATER :
 LOOK_ROCK :: 10;
 // What glows at night (everglade.wgsl): a lamp's or the brazier's flame (its colour times how lit the
 // lamps are, blooming), and the window panes, whose glass glows warm.
-LOOK_FLAME :: 11; LOOK_WINDOW :: 12;
+LOOK_FLAME :: 13; LOOK_WINDOW :: 14;   // (11 and 12 are the planks and the sawn wood)
 KIT_MESHES :: 52;
 KIT_MESH :: [52] string.["Pine_5", "Pine_5_Leaves", "Pine_4", "Pine_4_Leaves", "CommonTree_3", "CommonTree_3_Leaves",
   "CommonTree_4", "CommonTree_4_Leaves", "Bush_Common_Flowers", "Fern_1", "Rock_Medium_1", "Rock_Medium_2",
@@ -1207,11 +1207,7 @@ city :: (s: [] Everglade, u: [] f32) {
     k := i * EG_BOX;
     x0 := EG_PROP[k]; z0 := EG_PROP[k + 1]; x1 := EG_PROP[k + 2]; z1 := EG_PROP[k + 3]; h := EG_PROP[k + 4];
     if i >= EG_RIVER { continue; }   // the river is the water's (verse/everglade/river.coax), drawn last
-    if i == EG_BOARD {
-      block(s, LOOK_MATTE, x0, z0, x1, z1, h, 0.5, 0.38, 0.24);
-      shape(s, SHAPE_BOX, LOOK_MATTE, v3((x0 + x1) / 2, ground_at(s, x0, z0) + 1.7, z0 - 0.02), 0, 0, x1 - x0 - 0.3, 0.9, 0.05, 0.92, 0.88, 0.76);
-      continue;
-    }
+    if i == EG_BOARD { notice_board(s, x0, z0, x1, z1, h); continue; }
     if i >= EG_STALL && i < EG_WAYSTONE { continue; }   // the kit's stalls (build_town)
     if i < EG_CRYPT && s[0].pack_ready { continue; }    // the waystone and the pillars are the kit's stone (landmarks)
     block(s, LOOK_STONE, x0, z0, x1, z1, h, 0.6, 0.6, 0.58);
@@ -1632,12 +1628,82 @@ lamp_posts :: (s: [] Everglade) {
     c := m.kind * 3;
     if m.kind == 0 {
       kit(s, group_of(M_CAULDRON), m.x, g, m.z, 0, 1.6);
-      shape(s, SHAPE_BOX, LOOK_FLAME, v3(m.x, g + 1.05, m.z), 0.4, 0, 0.55, 0.5, 0.55, LAMP_COLOUR[c], LAMP_COLOUR[c + 1], LAMP_COLOUR[c + 2]);
+      brazier_fire(s, m.x, g + 1.15, m.z);
     } else {
       shape(s, SHAPE_BOX, LOOK_MATTE, v3(m.x, g + m.up / 2 - 0.1, m.z), 0, 0, 0.12, m.up - 0.2, 0.12, 0.22, 0.15, 0.1);
       shape(s, SHAPE_BOX, LOOK_FLAME, v3(m.x, g + m.up, m.z), f32(i) * 0.7, 0, 0.24, 0.32, 0.24, LAMP_COLOUR[c], LAMP_COLOUR[c + 1], LAMP_COLOUR[c + 2]);
     }
   }
+}
+// The quest board: a timber notice board between the commons (+z) and the street (-z): two posts, a planked panel in a
+// frame, a little gabled roof of planks over it, and papers pinned on it, each its own size, tilt and
+// shade of parchment, one a red notice.
+NOTICES :: 7;
+NOTICE :: [28] f32.[-0.7, 0.25, 0.42, 0.55,   -0.15, 0.32, 0.36, 0.46,   0.4, 0.22, 0.44, 0.5,
+                    -0.55, -0.32, 0.38, 0.4,   0.0, -0.25, 0.3, 0.36,   0.52, -0.3, 0.4, 0.44,   0.82, 0.38, 0.22, 0.28];
+notice_board :: (s: [] Everglade, x0: f32, z0: f32, x1: f32, z1: f32, h: f32) {
+  g := ground_at(s, x0, z0);
+  mx := (x0 + x1) / 2; mz := (z0 + z1) / 2; w := x1 - x0;
+  for side: 0..<2 {
+    px := ifx side == 0 then x0 + 0.1 else x1 - 0.1;
+    shape(s, SHAPE_BOX, LOOK_WOOD, v3(px, g + h / 2, mz), 0, 0, 0.16, h, 0.16, 0.36, 0.25, 0.15);
+  }
+  ph := 1.25f32; py := g + 1.55;
+  shape(s, SHAPE_BOX, LOOK_PLANKS, v3(mx, py, mz), 0, 0, w - 0.3, ph, 0.08, 0.55, 0.4, 0.25);
+  shape(s, SHAPE_BOX, LOOK_WOOD, v3(mx, py + ph / 2 + 0.04, mz - 0.03), 0, 0, w - 0.1, 0.1, 0.14, 0.38, 0.26, 0.16);
+  shape(s, SHAPE_BOX, LOOK_WOOD, v3(mx, py - ph / 2 - 0.04, mz - 0.03), 0, 0, w - 0.1, 0.1, 0.14, 0.38, 0.26, 0.16);
+  for side: 0..<2 {
+    tilt := ifx side == 0 then 0.6f32 else -0.6f32;
+    shape(s, SHAPE_BOX, LOOK_PLANKS, v3(mx, g + h + 0.12, mz + (ifx side == 0 then -0.22f32 else 0.22f32)), 0, tilt, w + 0.2, 0.06, 0.55, 0.42, 0.24, 0.16);
+  }
+  // papers on both faces: the commons' (+z) and the street's (-z), mirrored
+  for face: 0..<2 {
+    dz := ifx face == 0 then 1.0f32 else -1.0f32;
+    for k: 0..<NOTICES {
+      o := k * 4;
+      red := k == 4;
+      shade := 0.86 + 0.08 * sin(f32(k) * 3.7);
+      nx := mx + NOTICE[o] * dz;
+      shape(s, SHAPE_BOX, LOOK_MATTE, v3(nx, py + NOTICE[o + 1], mz + 0.05 * dz), 0, 0.06 * sin(f32(k) * 2.1), NOTICE[o + 2], NOTICE[o + 3], 0.012,
+            ifx red then 0.72f32 else shade, ifx red then 0.24f32 else shade * 0.93, ifx red then 0.18f32 else shade * 0.76);
+      // its pin
+      shape(s, SHAPE_BOX, LOOK_MATTE, v3(nx, py + NOTICE[o + 1] + NOTICE[o + 3] * 0.4, mz + 0.065 * dz), 0, 0, 0.035, 0.035, 0.02, 0.62, 0.12, 0.1);
+    }
+  }
+}
+// The brazier's fire: a bed of coals, tongues of flame that lick up and sway, each its own height
+// and beat, the tall ones yellow and the short ones deep orange, and embers rising out of it, shrinking
+// as they cool.
+BRAZIER_TONGUES :: 7; BRAZIER_EMBERS :: 8;
+brazier_fire :: (s: [] Everglade, x: f32, y: f32, z: f32) {
+  t := cast(f32) s[0].time;
+  shape(s, SHAPE_BOX, LOOK_FLAME, v3(x, y, z), 0.4, 0, 0.62, 0.12, 0.62, 0.9, 0.28, 0.06);
+  for i: 0..<BRAZIER_TONGUES {
+    a := f32(i) * 2.39996;
+    r := ifx i == 0 then 0.0f32 else 0.11 + 0.09 * f32(i % 3);
+    beat := sin(t * (6.3 + f32(i) * 0.9) + f32(i) * 1.7) * 0.5 + sin(t * (11.1 + f32(i) * 1.3) + f32(i)) * 0.25;
+    h := (0.55 - r) * 2.0 * (1 + 0.32 * beat);
+    w := 0.2 + 0.08 * (1 - r * 3);
+    sway := 0.06 * sin(t * 3.1 + f32(i) * 2.2);
+    hot := clamp((h - 0.35) * 1.6, 0, 1);
+    shape(s, SHAPE_CONE, LOOK_FLAME, v3(x + cos(a) * r + sway, y + h / 2, z + sin(a) * r), a, sway * 1.5, w, h, w,
+          1.0, 0.3 + 0.4 * hot, 0.05 + 0.12 * hot);
+  }
+  for i: 0..<BRAZIER_EMBERS {
+    phase := t * (0.35 + 0.05 * f32(i % 4)) + f32(i) / f32(BRAZIER_EMBERS);
+    p := phase - floor(phase);
+    seed := f32(i) * 12.9898 + floor(phase) * 78.233;
+    jx := sin(seed) * 0.25; jz := cos(seed * 1.3) * 0.25;
+    rise := p * 2.6;
+    size := 0.05 * (1 - p);
+    if size < 0.008 { continue; }
+    shape(s, SHAPE_BOX, LOOK_FLAME, v3(x + jx + 0.15 * sin(t * 2 + f32(i)) * p, y + 0.3 + rise, z + jz), t + f32(i), 0.5, size, size, size, 1.0, 0.42, 0.1);
+  }
+}
+// How a flame's light breathes: the brazier's in two beats, a lantern's or a torch's faintly.
+lamp_flicker :: (t: f32, i: int, kind: int) -> f32 {
+  beat := sin(t * 9.1 + f32(i) * 2.3) * 0.6 + sin(t * 23.7 + f32(i)) * 0.4;
+  return 1 + beat * (ifx kind == 0 then 0.14f32 else 0.05f32);
 }
 // The lights: how lit the lamps are (none while the sun is up past 0.45, all once it is down or the
 // moon keys), and the nearest `cap` to the eye, the brazier first.
@@ -1667,7 +1733,8 @@ lamps :: (s: [] Everglade, u: [] f32, eye: Point, cap: int) {
     m := l[0];
     k := U_LIGHTS + n * 8; c := m.kind * 3;
     u[k] = m.x; u[k + 1] = ground_at(s, m.x, m.z) + m.up; u[k + 2] = m.z; u[k + 3] = m.reach;
-    u[k + 4] = LAMP_COLOUR[c]; u[k + 5] = LAMP_COLOUR[c + 1]; u[k + 6] = LAMP_COLOUR[c + 2]; u[k + 7] = LAMP_STRENGTH[m.kind];
+    u[k + 4] = LAMP_COLOUR[c]; u[k + 5] = LAMP_COLOUR[c + 1]; u[k + 6] = LAMP_COLOUR[c + 2];
+    u[k + 7] = LAMP_STRENGTH[m.kind] * lamp_flicker(cast(f32) s[0].time, best, m.kind);
     n += 1;
   }
   u[U_LIGHT_INFO] = f32(n); u[U_LIGHT_INFO + 1] = glow;
@@ -3134,6 +3201,11 @@ contains :: (text: string, part: string) -> bool {
   #assert m > 0 && n > 0 && c[0].clock == 0.5 && abs(u[STYLE_AT + SU_STYLE + 3] - 0.5) < 0.001;
 }
 
+#test "every look has its own number (everglade.wgsl's LOOK_*)" {
+  looks := [11] int.[LOOK_MATTE, LOOK_LEAVES, LOOK_STONE, LOOK_SKIN, LOOK_WATER, LOOK_KIT, LOOK_CARVED, LOOK_ROCK, LOOK_PLANKS, LOOK_WOOD, LOOK_FLAME];
+  for i: 0..<11 { for j: i + 1..<11 { #assert looks[i] != looks[j]; } }
+  #assert LOOK_WINDOW != LOOK_FLAME && LOOK_WINDOW != LOOK_WOOD && LOOK_WINDOW != LOOK_PLANKS && LOOK_WINDOW > 8;
+}
 #test "the lamps: a brazier, a lantern at each door, torches at the town's crossings off the squares; lit from dusk, full at night" {
   l: [1] Lamp;
   n := 0; torches := 0;

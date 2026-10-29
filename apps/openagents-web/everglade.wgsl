@@ -344,8 +344,8 @@ const PERSON_LOW = vec3f(-1.25, -0.25, -1.25);
 const PERSON_JOINTS = 65u;                         // verse/everglade/people-rig.coax PEOPLE_JOINTS
 const LOOK_CHARACTER = 8u;                         // the Ranger: textured, two bands and the stronger rim (spec 11)
 const LOOK_ROCK = 10u;                             // a kit rock (everglade.coax LOOK_ROCK): darker, mottled, mossy on top
-const LOOK_FLAME = 11u;                            // a lamp's flame: its colour, glowing as the lamps are lit
-const LOOK_WINDOW = 12u;                           // a window pane: the kit's, its glass glowing warm at night
+const LOOK_FLAME = 13u;                            // a lamp's flame: its colour, glowing as the lamps are lit
+const LOOK_WINDOW = 14u;                           // a window pane: the kit's, its glass glowing warm at night
 fn canopy_n(n: vec3f, blob: vec3f) -> vec3f {
   return normalize(vec3f(verse_style_canopy_normal(n.x, blob.x, CANOPY_MIX), verse_style_canopy_normal(n.y, blob.y, CANOPY_MIX), verse_style_canopy_normal(n.z, blob.z, CANOPY_MIX)));
 }
