@@ -29,8 +29,8 @@ EMOTES :: 6;
 EMOTE_LABEL :: [6] string.["SIT", "PLAY BOW", "ROLL OVER", "HOWL", "WAG", "SLEEP"];
 
 // The requests, one at a time, first wanted first.
-ASK_MINE :: 1; ASK_NEW :: 2; ASK_SAVE :: 4; ASK_AGENT :: 8; ASK_PLACE :: 16; ASK_GARDEN :: 32; ASK_MEMORIAL :: 64; ASK_NOTE :: 128; ASK_HIDE :: 256; ASK_VASES :: 512; ASK_VASE :: 1024; ASK_CLEAN :: 2048;
-ASK_KINDS :: 12;
+ASK_MINE :: 1; ASK_NEW :: 2; ASK_SAVE :: 4; ASK_AGENT :: 8; ASK_PLACE :: 16; ASK_GARDEN :: 32; ASK_MEMORIAL :: 64; ASK_NOTE :: 128; ASK_HIDE :: 256; ASK_VASES :: 512; ASK_VASE :: 1024; ASK_CLEAN :: 2048; ASK_REPORT :: 4096;
+ASK_KINDS :: 13;
 
 PV_NONE :: 0; PV_PET :: 1; PV_MEMORIAL :: 2;
 AGENT_NONE :: 0; AGENT_READING :: 1; AGENT_READY :: 2; AGENT_FAILED :: 3;
@@ -42,7 +42,10 @@ BUTTONS :: 48;
 // What a button does.
 B_OPEN :: 1; B_CLOSE :: 2; B_FIELD :: 3; B_PHOTOS :: 4; B_AGENT :: 5; B_PLAY :: 6; B_TAB :: 7; B_SLIDER :: 8; B_PATTERN :: 9;
 B_COAT :: 10; B_MARKS :: 11; B_EMOTE :: 12; B_MEMORIAL :: 13; B_SHARE :: 14; B_NOTE :: 15; B_SEND :: 16; B_HIDE :: 17;
-B_SKILL :: 18; B_DO :: 19; B_KIND :: 20; B_SLOT :: 21; B_PLACE_VASE :: 22; B_CLEAN :: 23;
+B_SKILL :: 18; B_DO :: 19; B_KIND :: 20; B_SLOT :: 21; B_PLACE_VASE :: 22; B_CLEAN :: 23; B_REPORT :: 24;
+// What a report is of (0031_villa_reports.sql), B_REPORT's arg: the kind times a million plus the note or line number.
+REPORT_MEMORIAL :: 0; REPORT_NOTE :: 1; REPORT_CHAT :: 2;
+REPORT_KIND_WORDS :: [3] string.["memorial", "note", "chat"];
 // The steps the analytics record (hc-analytics), as the face names them.
 EVS :: 8;
 EV_PET_MADE :: 0; EV_AVATAR :: 1; EV_EMOTE :: 2; EV_PLACED :: 3; EV_FETCH :: 4; EV_OBEY :: 5; EV_DIG :: 6; EV_FLOWER :: 7;
@@ -97,6 +100,7 @@ PetUi :: struct {
   m_story: [1200] u8; m_story_n: int; m_traits: [300] u8; m_traits_n: int; m_ach: [300] u8; m_ach_n: int;
   notes: int; n_num: [NOTES] int; n_name: [NOTES * 40] u8; n_name_n: [NOTES] int; n_text: [NOTES * NOTE_BYTES] u8; n_text_n: [NOTES] int;
   hide_n: int;
+  report_kind: int; report_ref: int;   // the report to send (REPORT_*; a note's or a chat line's number)
   typed: [NOTE_BYTES] u8; typed_n: int;
   toast: [120] u8; toast_n: int; toast_t: f32;
   evs: [EVS] int; ev_arg: [EVS] int; ev_n: int;   // steps for the analytics (EV_*), the face sends them
@@ -436,6 +440,7 @@ pet_url :: (p: [] PetUi, kind: int, out: [] u8) -> int {
   n := 0;
   if kind == ASK_MINE || kind == ASK_NEW { n = pet_put(out, 0, "/api/villa/pets"); }
   else if kind == ASK_VASES || kind == ASK_VASE { n = pet_put(out, 0, "/api/villa/vases"); }
+  else if kind == ASK_REPORT { n = pet_put(out, 0, "/api/villa/report"); }
   else if kind == ASK_CLEAN { n = pet_put(out, 0, "/api/villa/vases/"); n = pj_put_int(out, n, p[0].clean_n); n = pet_put(out, n, "/clean"); }
   else if kind == ASK_GARDEN { n = pet_put(out, 0, "/api/villa/garden"); }
   else if kind == ASK_MEMORIAL || kind == ASK_NOTE {
@@ -469,6 +474,12 @@ pet_body :: (p: [] PetUi, kind: int, out: [] u8) -> int {
     return pet_put(out, n, "}");
   }
   if kind == ASK_PLACE { return pet_put(out, 0, "{\"near\":40}"); }
+  if kind == ASK_REPORT {
+    rk := clamp_i(p[0].report_kind, 0, 2);
+    n := pet_put(out, 0, "{\"kind\":\""); n = pet_put(out, n, REPORT_KIND_WORDS[rk]); n = pet_put(out, n, "\",\"ref\":\"");
+    if rk == REPORT_MEMORIAL { n = pet_put(out, n, pet_s(p[0].m_slug[..], 8)); } else { n = pj_put_int(out, n, p[0].report_ref); }
+    return pet_put(out, n, "\"}");
+  }
   if kind == ASK_VASE {
     n := pet_put(out, 0, "{\"x\":"); n = pj_put_num(out, n, p[0].put_x);
     n = pet_put(out, n, ",\"z\":"); n = pj_put_num(out, n, p[0].put_z);
@@ -523,6 +534,10 @@ pet_answer :: (p: [] PetUi, kind: int, status: int, t: string) {
     return;
   }
   if kind == ASK_HIDE { if status == 200 { pet_take_notes(p, t); } return; }
+  if kind == ASK_REPORT {
+    pet_toast(p, ifx status == 200 then "Thank you: we'll look at it" else ifx status == 429 then "A little slower: try again later" else ifx status == 404 then "It isn't there any more" else "That report didn't send: try again");
+    return;
+  }
   if kind == ASK_VASES { if status == 200 { pet_take_vases(p, t); } p[0].vases_t = 0; return; }
   if kind == ASK_VASE {
     if status == 200 {
@@ -737,6 +752,10 @@ pet_pointer :: (p: [] PetUi, x: f32, y: f32, phase: int) -> bool {
     p[0].asks = p[0].asks | ASK_VASE; p[0].view = PV_NONE;
   }
   else if kind == B_CLEAN { p[0].clean_n = arg; p[0].asks = p[0].asks | ASK_CLEAN; }
+  else if kind == B_REPORT {
+    p[0].report_kind = arg / 1000000; p[0].report_ref = arg % 1000000;
+    p[0].asks = p[0].asks | ASK_REPORT;
+  }
   else if kind == B_HIDE {
     // the owner hides a note: the face sends it as a save of the note's state
     p[0].hide_n = arg; p[0].asks = p[0].asks | ASK_HIDE;
@@ -834,7 +853,9 @@ pet_draw_about :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f32)
   }
   y += 38 * k;
   m = btn(s, out, m, Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + bh}, "ADD PHOTOS OR A SHORT VIDEO", B_PHOTOS, 0, false);
-  y += bh + 8 * k;
+  y += bh + 4 * k;
+  m = pt_dim(out, m, "ONLY YOU SEE THEM: USED FOR THEIR AVATAR AND MEMORIAL, NEVER ANYTHING ELSE", x0, y + 7 * k, 6.5 * k, k);
+  y += 14 * k;
   // the files, a line each: name, then how far or what happened
   ft := pet_s(p[0].files[..], p[0].files_n);
   i := 0; line := 0;
@@ -929,7 +950,9 @@ pet_draw_memorial :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f
     return m;
   }
   big := 16 * k;
-  m = pt(out, m, pet_s(p[0].m_name[..], p[0].m_name_n), x0, y + big, big, k, 1); y += big + 14 * k;
+  m = pt(out, m, pet_s(p[0].m_name[..], p[0].m_name_n), x0, y + big, big, k, 1);
+  if !p[0].m_mine { m = btn(s, out, m, Box.{x0 = x1 - 64 * k, y0 = y, x1 = x1, y1 = y + 20 * k}, "REPORT", B_REPORT, REPORT_MEMORIAL * 1000000, false); }
+  y += big + 14 * k;
   if p[0].m_dates_n > 0 { m = pt_dim(out, m, pet_s(p[0].m_dates[..], p[0].m_dates_n), x0, y + 8 * k, 8 * k, k); y += 20 * k; }
   if p[0].m_line_n > 0 { m = wrapped(out, m, pet_s(p[0].m_line[..], p[0].m_line_n), x0, y + 9 * k, x1 - x0, 9 * k, k, 2, 0.95, yb[..]); y = yb[0]; }
   y += 6 * k;
@@ -947,6 +970,7 @@ pet_draw_memorial :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f
     who := pet_s(p[0].n_name[i * 40..<i * 40 + 40], p[0].n_name_n[i]);
     m = pt_dim(out, m, who, x0, y + 7 * k, 7 * k, k);
     if p[0].m_mine { m = btn(s, out, m, Box.{x0 = x1 - 54 * k, y0 = y - 4 * k, x1 = x1, y1 = y + 14 * k}, "HIDE", B_HIDE, p[0].n_num[i], false); }
+    else { m = btn(s, out, m, Box.{x0 = x1 - 64 * k, y0 = y - 4 * k, x1 = x1, y1 = y + 14 * k}, "REPORT", B_REPORT, REPORT_NOTE * 1000000 + p[0].n_num[i] % 1000000, false); }
     y += 13 * k;
     m = wrapped(out, m, pet_s(p[0].n_text[i * NOTE_BYTES..<(i + 1) * NOTE_BYTES], p[0].n_text_n[i]), x0, y + 8 * k, x1 - x0, 8 * k, k, 3, 0.88, yb[..]);
     y = yb[0];

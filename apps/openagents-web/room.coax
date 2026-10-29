@@ -30,6 +30,7 @@ RoomState :: struct {
   line_name: [ROOM_LINES * ROOM_NAME] u8; line_name_n: [ROOM_LINES] int;
   line_text: [ROOM_LINES * ROOM_TEXT] u8; line_text_n: [ROOM_LINES] int;
   line_mine: [ROOM_LINES] bool;
+  line_num: [ROOM_LINES] int;     // each line's number in its room (for a report)
   last: int;                      // the number of the last line read
   unread: int;                    // lines from others since the panel was last open
   heard: int;                     // lines from others in the last answer
@@ -199,6 +200,7 @@ room_take :: (s: [] RoomState, answer: string) -> int #export_c {
         where: [1] int;
         mn := world_field(t, i, "mine", where[..]);
         s[0].line_mine[slot] = where[0] >= 0 && t[where[0]..<where[0] + mn] == "true";
+        s[0].line_num[slot] = num;
         if !s[0].line_mine[slot] && s[0].joined { s[0].unread += 1; s[0].heard += 1; }
         s[0].last = num;
       }
@@ -234,6 +236,7 @@ room_line_name :: (s: [] RoomState, k: int) -> string #export_c {
   return cast(string) s[0].line_name[slot * ROOM_NAME..<slot * ROOM_NAME + s[0].line_name_n[slot]];
 }
 room_line_mine :: (s: [] RoomState, k: int) -> bool #export_c { return s[0].line_mine[(s[0].head + k) % ROOM_LINES]; }
+room_line_num :: (s: [] RoomState, k: int) -> int #export_c { return s[0].line_num[(s[0].head + k) % ROOM_LINES]; }
 room_line_text :: (s: [] RoomState, k: int) -> string #export_c {
   slot := (s[0].head + k) % ROOM_LINES;
   return cast(string) s[0].line_text[slot * ROOM_TEXT..<slot * ROOM_TEXT + s[0].line_text_n[slot]];
@@ -264,6 +267,7 @@ room_line_text :: (s: [] RoomState, k: int) -> string #export_c {
   a := "200\n{\"you\": {\"id\": \"p-1\", \"name\": \"Guest 0001\"}, \"last\": 9, \"others\": [{\"x\": 1.5, \"y\": 0, \"z\": -2, \"id\": \"p-2\", \"yaw\": 0.5, \"name\": \"Guest \\\"B\\\"\"}], \"messages\": [{\"n\": 8, \"at\": 1.0, \"mine\": false, \"name\": \"Kiki\", \"text\": \"hello\"}, {\"n\": 9, \"at\": 2.0, \"mine\": true, \"name\": \"Guest 0001\", \"text\": \"hi {there}\"}]}";
   #assert room_take(s[..], a) == 200;
   #assert s[0].others == 1 && room_other_name(s[..], 0) == "Guest \"B\"" && s[0].to[0] == 1.5 && s[0].to[2] == -2 && s[0].at[0] == 1.5;
+  #assert room_line_num(s[..], 0) == 8 && room_line_num(s[..], 1) == 9;
   #assert s[0].lines == 2 && room_line_name(s[..], 0) == "Kiki" && room_line_text(s[..], 1) == "hi {there}" && s[0].line_mine[1];
   #assert s[0].last == 9 && s[0].unread == 0;   // what was said before you came isn't unread
   b := "200\n{\"last\": 10, \"others\": [{\"id\": \"p-3\", \"name\": \"C\", \"x\": 9, \"y\": 0, \"z\": 9, \"yaw\": 0}, {\"id\": \"p-2\", \"name\": \"B\", \"x\": 3.5, \"y\": 0, \"z\": -2, \"yaw\": 0.5}], \"messages\": [{\"n\": 10, \"name\": \"C\", \"text\": \"boo\", \"mine\": false}]}";

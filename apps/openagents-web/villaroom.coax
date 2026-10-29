@@ -145,7 +145,10 @@ room_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
     lead := ifx o > 0 then cast(string) nm[0..<o] else "";
     nw := text_width(lead, cap);
     m = draw_text(out, m, lead, x0 + pad, base, cap, GAP, SPACE, ink(k, 0.85, SILVER_R, SILVER_G, SILVER_B), false, false);
-    cut := chat_fit(text, cap, room - nw);
+    rep := c[0].typing && !room_line_mine(r, j) && room_line_num(r, j) > 0;   // others' lines can be reported while the box is open
+    rw := ifx rep then 58 * k else 0.0f32;
+    if rep { m = btn(s, out, m, Box.{x0 = x0 + bw - pad - rw + 6 * k, y0 = base - cap - 5 * k, x1 = x0 + bw - pad * 0.5, y1 = base + 5 * k}, "REPORT", B_REPORT, REPORT_CHAT * 1000000 + room_line_num(r, j) % 1000000, false); }
+    cut := chat_fit(text, cap, room - nw - rw);
     shown_text := text[0..<cut];
     m = pt(out, m, shown_text, x0 + pad + nw, base, cap, k, ifx room_line_mine(r, j) then 0.7f32 else 0.95f32);
     if cut < text.count { m = pt_dim(out, m, "...", x0 + pad + nw + text_width(shown_text, cap), base, cap, k); }
@@ -187,5 +190,11 @@ room_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   #assert s[0].chat[0].n == 0 && s[0].chat[0].said == 1;
   #assert chat_key(s[..], 'T') && chat_key(s[..], -2) && !s[0].chat[0].send;   // nothing typed: nothing said
   #assert !chat_key(s[..], 'w');
+  s[0].pet[0].report_kind = REPORT_CHAT; s[0].pet[0].report_ref = 42;
+  rb: [200] u8;
+  rn := pet_body(s[0].pet[..], ASK_REPORT, rb[..]);
+  #assert cast(string) rb[0..<rn] == "{\"kind\":\"chat\",\"ref\":\"42\"}";
+  un := pet_url(s[0].pet[..], ASK_REPORT, rb[..]);
+  #assert cast(string) rb[0..<un] == "/api/villa/report" && pet_post(ASK_REPORT);
   #assert chat_fit("abcdef", 10, 1000) == 6 && chat_fit("abcdef", 10, text_width("abc...", 10)) == 3;
 }

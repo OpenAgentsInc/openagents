@@ -87,6 +87,52 @@ s, n = v("POST", "memorial/%s/notes" % pet["slug"], guest, {"text": "She was the
 check("villa: a note is left", s == 200 and n["notes"][-1]["text"] == "She was the best girl.", n)
 v("POST", "pets/%s/notes/%d/hide" % (pid, n["notes"][-1]["n"]), kiki)
 check("villa: the owner hides it", v("GET", "memorial/" + pet["slug"])[1]["notes"] == [])
+# Reports and the review queue (0031_villa_reports.sql).
+s, n2 = v("POST", "memorial/%s/notes" % pet["slug"], guest, {"text": "A note someone dislikes."})
+note2 = str(n2["notes"][-1]["n"])
+check("villa: a report needs a key", v("POST", "report", None, {"kind": "note", "ref": note2})[0] == 403)
+check("villa: a report of nothing is refused", v("POST", "report", kiki, {"kind": "note", "ref": "999999"})[0] == 404)
+r1, r2, r3 = villa_player(), villa_player(), villa_player()
+check("villa: a note is reported", v("POST", "report", r1, {"kind": "note", "ref": note2, "why": "rude"})[0] == 200)
+v("POST", "report", r1, {"kind": "note", "ref": note2})
+v("POST", "report", r2, {"kind": "note", "ref": note2})
+check("villa: two reports (one twice) don't hold it", any(x["text"] == "A note someone dislikes." for x in v("GET", "memorial/" + pet["slug"])[1]["notes"]))
+v("POST", "report", r3, {"kind": "note", "ref": note2})
+check("villa: three people's reports hold it", not any(x["text"] == "A note someone dislikes." for x in v("GET", "memorial/" + pet["slug"])[1]["notes"]))
+for who in (r1, r2, r3):
+    v("POST", "report", who, {"kind": "memorial", "ref": pet["slug"]})
+check("villa: reports never hide a memorial", v("GET", "memorial/" + pet["slug"])[0] == 200)
+hv = {"Content-Type": "application/json", "X-Verse-Player": guest}
+call("POST", "/api/playtest/chat/hecates-cemetery", json.dumps({"text": "a rude line"}).encode(), hv)
+line = str(json.loads(call("GET", "/api/playtest/chat/hecates-cemetery?after=0")[1])["last"])
+for who in (r1, r2, r3):
+    v("POST", "report", who, {"kind": "chat", "ref": line})
+said = json.loads(call("GET", "/api/playtest/chat/hecates-cemetery?after=0")[1])["messages"]
+check("villa: three reports hold a chat line", [m["text"] for m in said if str(m["n"]) == line] == ["This line is waiting to be looked at"], said)
+check("villa: the queue is for admins only", v("GET", "reports", kiki)[0] == 401)
+# an admin's session, as a login leaves one (test_private.py has taken the name signed())
+acookie = "oa_admin=" + "a" * 64
+sql("insert into analytics.admin_sessions (token_sha256, pubkey, created_ms, expires_ms) values (encode(sha256(convert_to('%s', 'UTF8')), 'hex'), '%s', 0, 99999999999999) on conflict do nothing"
+    % ("a" * 64, os.environ["OA_ADMIN_PUBKEYS"].split(",")[0]))
+
+
+def va(method, path):
+    status, raw, _ = call(method, "/api/villa/" + path, b"{}" if method == "POST" else None, {"Content-Type": "application/json", "Cookie": acookie})
+    return status, json.loads(raw)
+
+
+s, q = va("GET", "reports")
+kinds = sorted((x["kind"], x["reports"]) for x in q.get("open", []) if x["ref"] in (note2, pet["slug"], line))
+check("villa: an admin sees each reported thing once, with how many reported it", s == 200 and kinds == [("chat", 3), ("memorial", 3), ("note", 3)], q)
+check("villa: what the reviewer reads is what it said", any(x["kind"] == "note" and "dislikes" in x["shown"] and x["why"] == ["rude"] for x in q["open"]), q)
+check("villa: a kept note comes back", va("POST", "reports/note/%s/keep" % note2)[0] == 200
+      and any(x["text"] == "A note someone dislikes." for x in v("GET", "memorial/" + pet["slug"])[1]["notes"]))
+check("villa: a kept chat line comes back as it was", va("POST", "reports/chat/%s/keep" % line)[0] == 200
+      and [m["text"] for m in json.loads(call("GET", "/api/playtest/chat/hecates-cemetery?after=0")[1])["messages"] if str(m["n"]) == line] == ["a rude line"])
+v("POST", "report", r1, {"kind": "note", "ref": note2})
+check("villa: a removed note is gone", va("POST", "reports/note/%s/remove" % note2)[0] == 200
+      and not any(x["text"] == "A note someone dislikes." for x in v("GET", "memorial/" + pet["slug"])[1]["notes"]))
+check("villa: decided, it leaves the queue", not any(x["ref"] == note2 for x in va("GET", "reports")[1]["open"]))
 s, vpage = v("GET", "m/" + pet["slug"])
 check("villa: the share link names her and goes on to the realm", s == 200 and "Hecate, in Hecate&#39;s Cemetery" not in vpage
       and "Hecate, in Hecate's Cemetery" in vpage and "#m/" + pet["slug"] in vpage and "og:image" in vpage, vpage[:200])

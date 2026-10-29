@@ -20,6 +20,8 @@
 //   POST /api/villa/pets/<id>/notes/<n>/hide|show
 //   GET  /api/villa/vases                        the vases left in the garden and the field; POST one {x, z, yaw, flowers, plot}
 //   POST /api/villa/vases/<n>/clean              its maker cleans it up
+//   POST /api/villa/report {kind, ref, why}      a memorial, a note or a chat line reported (migrations/0031_villa_reports.sql)
+//   GET  /api/villa/reports                      a signed-in admin: the open reports; POST reports/<kind>/<ref>/remove|keep
 //   GET  /api/villa/m/<slug>                     the share link: a page with the memorial's card, on to the realm
 //
 // A write comes from this site's pages (Origin). Nothing anyone shared is logged.
@@ -250,7 +252,12 @@ bool villa_route(const request *q) {
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   const char *v[6] = {q->method, parts, body, key, env_or("OA_DROPS_PREFIX", "dev"), env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops")};
   bool vases = !strncmp(rest, "vases", 5) && (rest[5] == 0 || rest[5] == '/');
-  answer a = vases ? ask(db, Q("villa.vases_api($1, $2::text[], $3::jsonb, $4)"), 4, v)
+  bool reports = !strncmp(rest, "report", 6) && (rest[6] == 0 || rest[6] == '/' || (rest[6] == 's' && (rest[7] == 0 || rest[7] == '/')));
+  char admin[65] = "";
+  if (reports && rest[6] == 's' && admin_who(q, db, admin)) admin[0] = 0;   // the review queue: a signed-in admin only
+  const char *rv[5] = {q->method, parts, body, key, admin};
+  answer a = reports ? ask(db, Q("villa.reports_api($1, $2::text[], $3::jsonb, $4, $5)"), 5, rv)
+           : vases ? ask(db, Q("villa.vases_api($1, $2::text[], $3::jsonb, $4)"), 4, v)
                    : ask(db, Q("villa.api($1, $2::text[], $3::jsonb, $4, $5, $6)"), 6, v);
   free(body);
   if (a.status == 200 && a.all) {
