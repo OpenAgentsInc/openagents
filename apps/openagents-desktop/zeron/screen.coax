@@ -57,6 +57,7 @@ ZeronState :: struct {
   // the mode, and the Psionic engine with its buffers
   mode: int;                     // MODE_*
   lab: [1] Lab;                  // the Lab's routing (MODE_LAB)
+  gpu: [1] GpuSwitch;            // which model the shared GPU holds (gpu.coax)
   psionic: [1] PsEngine;
   // the open menu and the catalogs it shows, the attachments
   picker: [1] Picker;
@@ -166,7 +167,7 @@ zr_send :: (s: [] ZeronState, raw: string) -> bool {
   text := cast(string) raw[lo..<hi];
   n := at_take(t, text);
   if s[0].mode == MODE_PSIONIC {
-    if n == 0 { ps_send(s[0].psionic[..], s[0].session[..], text); return true; }
+    if n == 0 { zr_ps_send(s, text, text); return true; }
     why: [512] u8; wn: [1] int;
     msg := at_text_only(t, a, text, PS_MODEL, s[0].prompt[..], why[..], wn[..]);
     if msg.count == 0 {
@@ -176,7 +177,7 @@ zr_send :: (s: [] ZeronState, raw: string) -> bool {
       zr_fail(s, cast(string) why[0..<wn[0]]);
       return false;
     }
-    ps_send_as(s[0].psionic[..], s[0].session[..], text, msg);
+    zr_ps_send(s, text, msg);
     at_delivered(t);
     return true;
   }
@@ -187,7 +188,7 @@ zr_send :: (s: [] ZeronState, raw: string) -> bool {
       zr_fail(s, "The Lab doesn't take attachments yet. Pick a Claude model to send files.");
       return false;
     }
-    lab_send(s[0].lab[..], s[0].engine[..], s[0].session[..], text);
+    lab_send(s[0].lab[..], s[0].engine[..], s[0].psionic[..], s[0].gpu[..], s[0].session[..], text);
     return true;
   }
   e_send_as(s[0].engine[..], s[0].session[..], text, at_prompt(t, a, text, s[0].prompt[..]));
@@ -198,7 +199,15 @@ zr_fail :: (s: [] ZeronState, why: string) {
   c := s[0].composer[..];
   c[0].failure_n = e_copy(c[0].failure[..], 0, why);
 }
+// A Psionic message: gpt-oss-20b must be on the GPU first (the switch may be holding Elephant there).
+zr_ps_send :: (s: [] ZeronState, shown: string, text: string) {
+  p := s[0].psionic[..]; ss := s[0].session[..]; l := s[0].lab[..];
+  s_user(ss, shown);
+  if p[0].on { ps_configure(p); lab_door(l); p[0].hold = gs_want(s[0].gpu[..], ss, GS_GPTOSS, GT_PSIONIC, lab_url(l), ps_url(p)); }
+  ps_forward(p, ss, text);
+}
 zr_stop :: (s: [] ZeronState) {
+  if gs_stop(s[0].gpu[..], s[0].session[..]) { s[0].psionic[0].hold = false; }
   if s[0].mode == MODE_PSIONIC || zr_lab_psionic(s) { ps_stop(s[0].psionic[..], s[0].session[..]); return; }
   if s[0].mode == MODE_LAB && lab_stop(s[0].lab[..], s[0].session[..]) { return; }
   e_stop(s[0].engine[..], s[0].session[..]);
@@ -265,6 +274,7 @@ zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, d
     if s[0].prompt.count == 0 { s[0].prompt = s[0].own_prompt[..]; }
     e[0].att = s[0].att[..]; e[0].prompt = s[0].prompt;
     if !s[0].psionic[0].on { ps_init(s[0].psionic[..]); }
+    if !s[0].gpu[0].on { gs_init(s[0].gpu[..]); }
     t[0].seed = 1;
     zr_labels(s);
   }
@@ -280,7 +290,8 @@ zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, d
   if e[0].cat_gen != s[0].cat_gen { s[0].cat_gen = e[0].cat_gen; zr_catalogs(s); zr_labels(s); }   // the CLI listed its models
   s[0].psionic[0].access = e[0].access;
   ps_pump(s[0].psionic[..], ss, dt1);
-  lab_pump(s[0].lab[..], e, s[0].psionic[..], ss, dt1);
+  lab_pump(s[0].lab[..], e, s[0].psionic[..], s[0].gpu[..], ss, dt1);
+  lab_gpu_pump(s[0].lab[..], e, s[0].psionic[..], s[0].gpu[..], ss, dt1);
   // Send, Stop and the chips
   if c[0].clicked >= 0 { k := c[0].clicked; c[0].clicked = -1; zr_chip(s, k); }
   // a sent message joins the transcript as the user's bubble (and goes to Claude Code), and the view follows it
@@ -540,9 +551,9 @@ coaxial_zeron_attach :: (s: [] ZeronState, pool: [] u8, line: [] u8, arena: [] u
   e := s[0].engine[..];
   // the last five 64 KiB of the pool are the Psionic engine's, and before them the Lab's request, response and curl's stderr
   ps := pool.count - 5 * ZR_PS_BUF;
-  lab := ps - LAB_BODY - LAB_OUT - LAB_ERR;
+  lab := ps - LAB_BODY - LAB_OUT - LAB_ERR - GS_LOG;
   s_init(s[0].session[..], ifx lab > ZR_PS_BUF then pool[0..<lab] else pool);
-  if lab > ZR_PS_BUF { lab_attach(s[0].lab[..], pool[lab..<lab + LAB_BODY], pool[lab + LAB_BODY..<lab + LAB_BODY + LAB_OUT], pool[lab + LAB_BODY + LAB_OUT..<ps]); }
+  if lab > ZR_PS_BUF { lab_attach(s[0].lab[..], pool[lab..<lab + LAB_BODY], pool[lab + LAB_BODY..<lab + LAB_BODY + LAB_OUT], pool[lab + LAB_BODY + LAB_OUT..<ps - GS_LOG]); }
   e[0].line = line; e[0].arena = arena; e[0].out = out; e[0].scratch = scratch;
   e[0].p[0].handle = -1; e[0].probe = -1; e[0].pend = -1;
   e[0].cwd_n = e_set(e[0].cwd[..], 0, cwd);
@@ -553,6 +564,8 @@ coaxial_zeron_attach :: (s: [] ZeronState, pool: [] u8, line: [] u8, arena: [] u
   e_probe_start(e);
   p := s[0].psionic[..];
   ps_init(p);
+  gs_init(s[0].gpu[..]);
+  if lab > ZR_PS_BUF { gs_attach(s[0].gpu[..], pool[ps - GS_LOG..<ps]); }
   if ps > ZR_PS_BUF {
     b := ZR_PS_BUF;
     ps_attach(p, pool[ps..<ps + b], pool[ps + b..<ps + 2 * b], pool[ps + 2 * b..<ps + 3 * b], pool[ps + 3 * b..<ps + 4 * b], pool[ps + 4 * b..<ps + 5 * b], e_str(e[0].cwd[..], e[0].cwd_n));
@@ -666,7 +679,7 @@ coaxial_zeron_take_action :: (s: [] ZeronState) -> int #export_c {
   return a;
 }
 // The app is quitting: Claude Code's process group goes with it.
-coaxial_zeron_quit :: (s: [] ZeronState) #export_c { if s.count > 0 && s[0].engine[0].on { e_close(s[0].engine[..]); ps_close(s[0].psionic[..]); so_cancel(s[0].lab[0].call[..]); } }
+coaxial_zeron_quit :: (s: [] ZeronState) #export_c { if s.count > 0 && s[0].engine[0].on { e_close(s[0].engine[..]); ps_close(s[0].psionic[..]); so_cancel(s[0].lab[0].call[..]); gs_close(s[0].gpu[..]); } }
 coaxial_zeron_scroll_to :: (s: [] ZeronState, px: f32) #export_c { if s.count > 0 { s[0].want_scroll = ifx px < 0 then 0.0f32 else px; } }
 coaxial_zeron_cut :: (s: [] ZeronState) #export_c { if s.count > 0 { composer_cut_selection(s[0].composer[..]); } }
 coaxial_zeron_paste :: (s: [] ZeronState, text: string) #export_c {

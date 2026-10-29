@@ -137,6 +137,28 @@
       ]
     },
     {
+      "slug": "desk-gpu-swap",
+      "title": "One RTX 4080, two models: the app swaps Elephant and gpt-oss-20b on demand",
+      "parent": "desk-zeron-ui",
+      "size": "M",
+      "body": "coderos-4080's 16 GiB card holds elephant-1 (the Lab's router) or gpt-oss-20b (Psionic), not both. A small always-on switch there (psionic/platform/gpu-switch.py, systemd user unit psionic-gpu-switch) owns the card: use elephant, use gptoss, status; it stops only the server it started, waits for the requested one to bind and reports loading, ready or failed with the reason. The app asks it before a Psionic turn or a Lab decision, shows 'Loading gpt-oss-20b on the RTX 4080… N s' while a swap runs and sends when ready; a Lab message routed to Psionic loads gpt-oss-20b after Elephant decides and keeps it until the next Lab message. The app starts and cleans up its own ssh tunnels; Elephant's door can point at this Mac (PSIONIC_SYSTEMONE_HOST=local) with no swap.",
+      "files": [
+        "psionic/platform/gpu-switch.py",
+        "psionic/platform/psionic-gpu-switch.service",
+        "apps/openagents-desktop/zeron/gpu.coax",
+        "apps/openagents-desktop/zeron/lab.coax",
+        "apps/openagents-desktop/zeron/screen.coax",
+        "apps/openagents-desktop/zeron/psionic.coax",
+        "docs/desktop/coax-desktop.md"
+      ],
+      "acceptance": [
+        "coax test --library passes for gpu.coax, lab.coax and screen.coax: the switch's answers map to the loading chip with its seconds, ready sends, a failed load is an error chip (and a Psionic route falls back to Claude Code), Stop ends the wait",
+        "The switch runs on coderos-4080 as a systemd user unit, never runs both servers, never stops a process it didn't start, and survives a restart",
+        "Live on the GPU: a gpt-oss-20b Psionic turn with reasoning, a follow-up that uses it, a Lab message routed by Elephant, and swaps both ways with load times measured (--shot PNGs)",
+        "build.sh passes"
+      ]
+    },
+    {
       "slug": "desk-host",
       "title": "Mac host: a window that draws Coax HUD output with Metal",
       "parent": "desk-local-chat",

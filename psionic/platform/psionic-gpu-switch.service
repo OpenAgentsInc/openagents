@@ -1,0 +1,23 @@
+# The GPU switch (psionic/platform/gpu-switch.py) as a systemd user unit on
+# coderos-4080: it owns the RTX 4080 and keeps one of elephant-1 or
+# gpt-oss-20b loaded. Install:
+#   install -Dm755 psionic/platform/gpu-switch.py ~/.local/lib/psionic-gpu-switch/gpu-switch.py
+#   install -Dm644 psionic/platform/psionic-gpu-switch.service ~/.config/systemd/user/psionic-gpu-switch.service
+#   systemctl --user daemon-reload && systemctl --user enable --now psionic-gpu-switch
+# Linger is on for the user, so it starts at boot; Restart=always brings it
+# back after a crash, and stopping it stops the server it started.
+[Unit]
+Description=Psionic GPU switch: elephant-1 or gpt-oss-20b on the RTX 4080, one at a time
+
+[Service]
+ExecStart=/usr/bin/env python3 %h/.local/lib/psionic-gpu-switch/gpu-switch.py
+Environment=PATH=%h/.local/bin:%h/.nix-profile/bin:/etc/profiles/per-user/%u/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/run/wrappers/bin
+Restart=always
+RestartSec=3
+KillMode=control-group
+TimeoutStopSec=45
+StandardOutput=append:%h/psionic-gpu-switch.log
+StandardError=append:%h/psionic-gpu-switch.log
+
+[Install]
+WantedBy=default.target

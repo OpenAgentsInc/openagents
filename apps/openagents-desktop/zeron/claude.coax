@@ -38,7 +38,8 @@
 
 S_PARTS :: 768;
 P_USER :: 0; P_TEXT :: 1; P_THINK :: 2; P_TOOL :: 3; P_NOTICE :: 4;
-// The Lab's routing decision (lab.coax): its own group, the headline as its text, a TK_ROUTE chip.
+// The Lab's routing decision (lab.coax): its own group, the headline as its text, a TK_ROUTE chip;
+// also a model loading on the GPU (gpu.coax, tk TK_LOAD).
 P_ROUTE :: 5;
 S_DIFF_MAX :: 40;          // lines an edit's diff keeps a side (Zeron caps the chip's body too)
 
@@ -447,7 +448,7 @@ s_build :: (s: [] Session, ui: [] SUi, t: [] Transcript) {
     if p.kind == P_ROUTE {
       g := t_group(t, s_text_of(s, i));
       if g < 0 { break; }
-      ti := t_tool(t, g, Tool.{kind = TK_ROUTE, arg = p.arg, detail = p.detail, output = p.output, resolved = true});
+      ti := t_tool(t, g, Tool.{kind = ifx p.tk == TK_LOAD then TK_LOAD else TK_ROUTE, arg = p.arg, detail = p.detail, output = p.output, failed = p.failed, resolved = p.tk != TK_LOAD || p.resolved});
       if ti < 0 { break; }
       tu := ifx ti < T_TOOLS then ui[0].t_user[ti] else 0;
       t[0].tools[ti].open = tu == 1; ui[0].t_set[ti] = t[0].tools[ti].open;

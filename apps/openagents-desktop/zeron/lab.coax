@@ -21,15 +21,15 @@
 // engine in this build: its messages run on Claude Code, and the decision
 // says so.
 
-#load "psionic.coax";
+#load "gpu.coax";
 #load "../../../coax/lib/systemone/systemone.coax";
 
 LAB_TUNNEL :: "ssh -N -L 8790:127.0.0.1:8790 coderos-4080";
-LAB_START :: "cd ~/oa-lab-elephant && psionic/platform/serve.sh --elephant-gpu ~/models/elephant-1-b3f8a934 --port 8790 --capacity 512";
+LAB_START :: "systemctl --user start psionic-gpu-switch";   // the GPU switch (gpu.coax) starts Elephant
 LAB_MESSAGE_MAX :: 1200;        // bytes of the message Elephant reads (a question holds 512 tokens)
 LAB_TIMEOUT_S :: 30;
 
-LAB_IDLE :: 0; LAB_ASKING :: 1;
+LAB_IDLE :: 0; LAB_ASKING :: 1; LAB_LOADING :: 2;   // loading: Elephant is loading on the GPU (gpu.coax)
 
 // The agents a message can go to (the harness question's keys).
 LAB_CLAUDE :: "claude_code"; LAB_PSIONIC :: "psionic"; LAB_CODEX :: "codex";
@@ -68,7 +68,15 @@ lab_attach :: (l: [] Lab, body: [] u8, out: [] u8, err: [] u8) { l[0].body = bod
 lab_door :: (l: [] Lab) {
   if l[0].url_n > 0 { return; }
   v := cl_getenv(SO_PSIONIC_URL_ENV, l[0].url[..]);
-  l[0].url_n = ifx v.count > 0 then v.count else e_set(l[0].url[..], 0, SO_PSIONIC_URL);
+  if v.count > 0 { l[0].url_n = v.count; return; }
+  // the same secrets file as Psionic's (an app opened from Finder has no shell environment)
+  file: [4096] u8; home: [1024] u8; path: [1200] u8;
+  h := cl_getenv("HOME", home[..]);
+  nf := 0;
+  if h.count > 0 { np := e_set(path[..], e_set(path[..], 0, h), PS_SECRETS); nf = ps_read_file(e_str(path[..], np), file[..]); }
+  u := ps_env_value(cast(string) file[0..<nf], SO_PSIONIC_URL_ENV);
+  l[0].url_n = e_set(l[0].url[..], 0, ifx u.count > 0 then u else SO_PSIONIC_URL);
+  for k: 0..<file.count { file[k] = 0; }
 }
 lab_url :: (l: [] Lab) -> string { return ifx l[0].url_n > 0 then e_str(l[0].url[..], l[0].url_n) else SO_PSIONIC_URL; }
 
@@ -227,18 +235,26 @@ lab_problem :: (out: [] u8, r: SoResult, url: string) -> string {
 // ---------------------------------------------------------------- the turn
 
 // A Lab message: it joins the transcript, and Elephant is asked where it goes.
-lab_send :: (l: [] Lab, e: [] Engine, s: [] Session, text: string) {
+lab_send :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Session, text: string) {
   l[0].route = -1; l[0].via = 0; l[0].fallback = false;
-  if l[0].phase == LAB_ASKING || s[0].live { s_notice(s, N_ERROR, "Wait for this turn to finish, or stop it, before sending to the Lab again."); return; }
+  if l[0].phase != LAB_IDLE || s[0].live { s_notice(s, N_ERROR, "Wait for this turn to finish, or stop it, before sending to the Lab again."); return; }
   s_user(s, text);
   l[0].part = s[0].n - 1; l[0].secs = 0;
   l[0].codex = e[0].codex;
   if !e[0].on { return; }       // the checks: no process
   if l[0].body.count == 0 { lab_fail(s, "The Lab has no room for its request."); return; }
   lab_door(l);
+  // Elephant must be on the GPU first (the switch may be holding gpt-oss-20b there)
+  if p[0].on { ps_configure(p); }
+  if gs_want(g, s, GS_ELEPHANT, GT_LAB, lab_url(l), ps_url(p)) { l[0].phase = LAB_LOADING; return; }
+  lab_ask(l, s);
+}
+// Elephant is asked where the message goes.
+lab_ask :: (l: [] Lab, s: [] Session) {
   st: [1400] u8;
-  lab_body(l[0].q[..], l[0].body[..], lab_state(st[..], text, l[0].codex), l[0].codex);
+  lab_body(l[0].q[..], l[0].body[..], lab_state(st[..], s_text_of(s, l[0].part), l[0].codex), l[0].codex);
   body := so_finish(l[0].q[..]);
+  l[0].phase = LAB_IDLE; l[0].secs = 0;
   if body.count == 0 { lab_fail(s, l[0].q[0].problem); return; }
   c := SoClient.{url = lab_url(l), key_env = "", timeout_s = LAB_TIMEOUT_S};
   kb: [8] u8;
@@ -250,7 +266,7 @@ lab_fail :: (s: [] Session, why: string) { s_notice(s, N_ERROR, why); s_turn_end
 
 // Elephant answered (text, checked against the questions): the decision
 // joins the transcript and the message goes to its engine.
-lab_route :: (l: [] Lab, e: [] Engine, p: [] PsEngine, s: [] Session, text: string, round_ms: int) {
+lab_route :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Session, text: string, round_ms: int) {
   d := lab_read(text);
   if !d.ok { lab_fail(s, "Elephant's answer named a choice the Lab didn't offer."); return; }
   hb: [256] u8; db: [4096] u8; ib: [600] u8;
@@ -268,6 +284,9 @@ lab_route :: (l: [] Lab, e: [] Engine, p: [] PsEngine, s: [] Session, text: stri
   if d.harness == 1 {
     l[0].via = 1;
     p[0].effort = ifx d.effort < 2 then d.effort else 2;
+    // gpt-oss-20b must be on the GPU: the switch swaps Elephant out (it stays out until the next Lab message)
+    if p[0].on { ps_configure(p); }
+    p[0].hold = gs_want(g, s, GS_GPTOSS, GT_LAB_PSIONIC, lab_url(l), ps_url(p));
     ps_forward(p, s, s_text_of(s, l[0].part));
     return;
   }
@@ -299,8 +318,8 @@ lab_unanswered :: (l: [] Lab, s: [] Session) -> bool {
 
 // Stop while Elephant decides: curl goes, the turn ends.
 lab_stop :: (l: [] Lab, s: [] Session) -> bool {
-  if l[0].phase != LAB_ASKING { return false; }
-  so_cancel(l[0].call[..]);
+  if l[0].phase == LAB_IDLE { return false; }
+  if l[0].phase == LAB_ASKING { so_cancel(l[0].call[..]); }
   l[0].phase = LAB_IDLE;
   s[0].stopping = true;
   s_turn_end(s, false, "");
@@ -308,7 +327,7 @@ lab_stop :: (l: [] Lab, s: [] Session) -> bool {
 }
 
 // Each frame: what curl wrote; once done, the decision or the error chip.
-lab_pump :: (l: [] Lab, e: [] Engine, p: [] PsEngine, s: [] Session, dt: f32) {
+lab_pump :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Session, dt: f32) {
   // Psionic gave no answer: Claude Code takes the message (Sonnet, medium), after Psionic's chip
   if l[0].phase == LAB_IDLE && l[0].via == 1 && !l[0].fallback && lab_unanswered(l, s) {
     l[0].fallback = true;
@@ -324,7 +343,27 @@ lab_pump :: (l: [] Lab, e: [] Engine, p: [] PsEngine, s: [] Session, dt: f32) {
   round_ms := cast(int) (l[0].secs * 1000.0);
   if r.problem.count == 0 { r.problem = so_check(l[0].q[..], r.body); }
   if r.problem.count > 0 { pb: [1024] u8; lab_fail(s, lab_problem(pb[..], r, lab_url(l))); return; }
-  lab_route(l, e, p, s, r.body, round_ms);
+  lab_route(l, e, p, g, s, r.body, round_ms);
+}
+
+// A message waiting for its model on the GPU (gpu.coax): when the switch says
+// ready it goes on (Elephant decides, or gpt-oss-20b answers); a failed load
+// is an error chip (in the Lab, Claude Code then answers a Psionic route).
+lab_gpu_pump :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Session, dt: f32) {
+  if g[0].phase == GS_IDLE { return; }
+  r := gs_pump(g, s, dt);
+  if r == GS_PENDING { return; }
+  after := g[0].after; g[0].after = GT_NONE;
+  if after == GT_LAB {
+    if r == GS_GO { lab_ask(l, s); } else { l[0].phase = LAB_IDLE; lab_fail(s, gs_why(g)); }
+    return;
+  }
+  if after == GT_PSIONIC || after == GT_LAB_PSIONIC {
+    p[0].hold = false;
+    if r == GS_GO { ps_request(p, s); return; }
+    s_notice(s, N_OFFLINE, gs_why(g));
+    s_turn_end(s, false, "");
+  }
 }
 
 // ---------------------------------------------------------------- checks
@@ -386,11 +425,10 @@ LAB_TEST_ANSWER :: "{\"model\":\"elephant-1\",\"answers\":{\"harness\":{\"type\"
 
 #test "the decision joins the transcript as its own group, then the message goes to Claude Code" {
   pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
-  e: [1] Engine; l: [1] Lab;
-  lab_send(l[..], e[..], ss[..], "fix the failing test in coax/web");
+  e: [1] Engine; l: [1] Lab; p: [1] PsEngine; g: [1] GpuSwitch; gs_init(g[..]);
+  lab_send(l[..], e[..], p[..], g[..], ss[..], "fix the failing test in coax/web");
   #assert ss[0].n == 1 && ss[0].parts[0].kind == P_USER && ss[0].live && l[0].phase == LAB_IDLE;
-  p: [1] PsEngine;
-  lab_route(l[..], e[..], p[..], ss[..], LAB_TEST_ANSWER, 1900);
+  lab_route(l[..], e[..], p[..], g[..], ss[..], LAB_TEST_ANSWER, 1900);
   #assert ss[0].n == 2 && ss[0].parts[1].kind == P_ROUTE && ss[0].parts[1].tk == TK_ROUTE;
   #assert s_text_of(ss[..], 1) == "Routed to Claude Code · Sonnet 5.5 · Medium · 1.9 s" && ss[0].parts[1].detail == "elephant-1 · 1900 ms";
   // before the CLI has listed its models, Sonnet 5.5 lands on its family's curated row
@@ -401,7 +439,7 @@ LAB_TEST_ANSWER :: "{\"model\":\"elephant-1\",\"answers\":{\"harness\":{\"type\"
   #assert t[0].tools[0].kind == TK_ROUTE && tool_label(t[0].tools[0]) == "Routed by" && tool_detail(t[0].tools[0]) == "elephant-1 · 1900 ms";
   #assert s_has(t[0].tools[0].output, "claude_model  claude-sonnet-5-5 0.65");
   // the next message waits for this turn
-  lab_send(l[..], e[..], ss[..], "again");
+  lab_send(l[..], e[..], p[..], g[..], ss[..], "again");
   #assert ss[0].n == 3 && ss[0].parts[2].kind == P_NOTICE;
 }
 
@@ -416,7 +454,7 @@ LAB_TEST_ANSWER :: "{\"model\":\"elephant-1\",\"answers\":{\"harness\":{\"type\"
   wrong := SoResult.{status = 403, body = "{\"error\":{\"code\":\"not_admitted\",\"message\":\"the model is not served here\"}}", problem = "the API refused the request"};
   #assert lab_problem(out[..], wrong, url) == "Elephant refused the request (403 not_admitted): the model is not served here";
   gone := SoResult.{problem = "the server is unreachable", stderr = "curl: (7) Failed to connect"};
-  #assert lab_problem(out[..], gone, url) == "Elephant isn't reachable at http://127.0.0.1:8790/v1/systemone. Open the tunnel: ssh -N -L 8790:127.0.0.1:8790 coderos-4080 (on coderos-4080, if it isn't running: cd ~/oa-lab-elephant && psionic/platform/serve.sh --elephant-gpu ~/models/elephant-1-b3f8a934 --port 8790 --capacity 512)";
+  #assert lab_problem(out[..], gone, url) == "Elephant isn't reachable at http://127.0.0.1:8790/v1/systemone. Open the tunnel: ssh -N -L 8790:127.0.0.1:8790 coderos-4080 (on coderos-4080, if it isn't running: systemctl --user start psionic-gpu-switch)";
   odd := SoResult.{status = 200, body = "{\"answers\":{}}", problem = "a question has no answer"};
   #assert lab_problem(out[..], odd, url) == "Elephant refused the request (200): a question has no answer";
   // a failed routing ends the turn with its chip
@@ -430,23 +468,53 @@ LAB_TEST_PSIONIC :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\
 
 #test "routed to Psionic, gpt-oss-20b runs it; with no answer from Psionic, Claude Code takes it after Psionic's chip" {
   pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
-  e: [1] Engine; l: [1] Lab; p: [1] PsEngine;
+  e: [1] Engine; l: [1] Lab; p: [1] PsEngine; g: [1] GpuSwitch; gs_init(g[..]);
   // the CLI has listed its models (claude_discover): Sonnet 5.5 is a row
   abuf: [4096] u8; e_init(e[..]); e[0].q[0].ar[0].buf = abuf[..];
   e_take_models(e[..], CLAUDE_TEST_MODELS);
-  lab_send(l[..], e[..], ss[..], "hi");
-  lab_route(l[..], e[..], p[..], ss[..], LAB_TEST_PSIONIC, 1800);
+  lab_send(l[..], e[..], p[..], g[..], ss[..], "hi");
+  lab_route(l[..], e[..], p[..], g[..], ss[..], LAB_TEST_PSIONIC, 1800);
   #assert l[0].via == 1 && p[0].effort == 2 && p[0].turn == 1 && ss[0].live;
   #assert s_text_of(ss[..], 1) == "Routed to Psionic · gpt-oss-20b · High · 1.8 s";
-  lab_pump(l[..], e[..], p[..], ss[..], 0.016);
+  lab_pump(l[..], e[..], p[..], g[..], ss[..], 0.016);
   #assert !l[0].fallback;
   // Psionic's server is down: its chip, the turn ends, and Claude Code answers
   s_notice(ss[..], N_OFFLINE, "Psionic isn't reachable");
   s_turn_end(ss[..], false, "");
-  lab_pump(l[..], e[..], p[..], ss[..], 0.016);
+  lab_pump(l[..], e[..], p[..], g[..], ss[..], 0.016);
   #assert l[0].fallback && l[0].via == 0 && ss[0].live && e[0].cat[0].id[e[0].model] == "claude-sonnet-5-5" && e[0].effort == 1;
   // once
   s_turn_end(ss[..], false, "");
-  lab_pump(l[..], e[..], p[..], ss[..], 0.016);
+  lab_pump(l[..], e[..], p[..], g[..], ss[..], 0.016);
   #assert !ss[0].live;
+}
+
+#test "a Lab message waits while Elephant loads, then asks; a Psionic route waits for gpt-oss-20b; a failed load lets Claude Code answer" {
+  pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
+  e: [1] Engine; l: [1] Lab; p: [1] PsEngine; g: [1] GpuSwitch; gs_init(g[..]);
+  g[0].url_n = e_set(g[0].url[..], 0, GS_SWITCH_URL); g[0].host_n = e_set(g[0].host[..], 0, GS_HOST);
+  lab_send(l[..], e[..], p[..], g[..], ss[..], "hi");
+  // as gs_want would leave it, with the switch loading Elephant
+  l[0].phase = LAB_LOADING; g[0].model = GS_ELEPHANT; g[0].after = GT_LAB; g[0].phase = GS_ASKING;
+  #assert gs_on_line(g[..], ss[..], "loading elephant 40.0") == GS_PENDING && s_text_of(ss[..], 1) == "Loading Elephant on the RTX 4080… 40 s";
+  // Stop while loading ends the turn
+  #assert gs_stop(g[..], ss[..]) && lab_stop(l[..], ss[..]) && !ss[0].live && l[0].phase == LAB_IDLE;
+  // the switch fails: the Lab's error chip says why
+  lab_send(l[..], e[..], p[..], g[..], ss[..], "again");
+  l[0].phase = LAB_LOADING; g[0].part = -1; g[0].log_n = 0; g[0].after = GT_LAB;
+  #assert gs_on_line(g[..], ss[..], "failed elephant 2.0 the server exited (1): out of memory") == GS_FAIL;
+  g[0].phase = GS_IDLE;
+  after := g[0].after; g[0].after = GT_NONE;
+  #assert after == GT_LAB;
+  l[0].phase = LAB_IDLE; lab_fail(ss[..], gs_why(g[..]));
+  #assert !ss[0].live && ss[0].parts[ss[0].n - 1].notice == N_ERROR && s_has(s_text_of(ss[..], ss[0].n - 1), "couldn't load elephant on the rtx 4080: the server exited (1): out of memory");
+  // routed to Psionic while gpt-oss-20b loads, and the load fails: Psionic's offline chip, then Claude Code answers
+  lab_send(l[..], e[..], p[..], g[..], ss[..], "explain MXFP4 briefly");
+  lab_route(l[..], e[..], p[..], g[..], ss[..], LAB_TEST_PSIONIC, 1800);
+  #assert l[0].via == 1 && !p[0].hold && ss[0].live;
+  p[0].hold = true; g[0].model = GS_GPTOSS; g[0].after = GT_LAB_PSIONIC; g[0].part = -1; g[0].log_n = 0;
+  #assert gs_on_line(g[..], ss[..], "failed gptoss 5.0 the server exited (1): resident model admission failed") == GS_FAIL;
+  p[0].hold = false; s_notice(ss[..], N_OFFLINE, gs_why(g[..])); s_turn_end(ss[..], false, "");
+  lab_pump(l[..], e[..], p[..], g[..], ss[..], 0.016);
+  #assert l[0].fallback && l[0].via == 0 && ss[0].live;
 }

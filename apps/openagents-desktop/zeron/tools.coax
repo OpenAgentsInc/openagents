@@ -20,6 +20,8 @@ TK_THOUGHT :: 0; TK_EXEC :: 1; TK_READ :: 2; TK_EDIT :: 3; TK_SEARCH :: 4; TK_FE
 TK_WRITE :: 6; TK_GLOB :: 7; TK_WEB :: 8; TK_TODO :: 9; TK_MCP :: 10; TK_AGENT :: 11; TK_TOOL :: 12;
 // The Lab's routing decision (lab.coax): who decided, in how long, and every distribution.
 TK_ROUTE :: 13;
+// A model loading on the GPU before its message goes (gpu.coax): the switch's answers.
+TK_LOAD :: 14;
 
 // transcript.rs / changes.rs constants
 CHIP_CARD_HEIGHT :: 30.0;
@@ -78,6 +80,7 @@ tool_label :: (t: Tool) -> string {
   if t.kind == TK_AGENT { return "Agent"; }
   if t.kind == TK_TOOL { return "Tool"; }
   if t.kind == TK_ROUTE { return "Routed by"; }
+  if t.kind == TK_LOAD { return "GPU"; }
   return "Fetch";
 }
 tool_icon :: (t: Tool) -> int {
@@ -90,7 +93,7 @@ tool_icon :: (t: Tool) -> int {
   if t.kind == TK_GLOB { return ICON_FOLDER; }
   if t.kind == TK_TODO { return ICON_CHECKLIST; }
   if t.kind == TK_AGENT { return ICON_BOT; }
-  if t.kind == TK_MCP || t.kind == TK_TOOL || t.kind == TK_ROUTE { return ICON_WIDGET; }
+  if t.kind == TK_MCP || t.kind == TK_TOOL || t.kind == TK_ROUTE || t.kind == TK_LOAD { return ICON_WIDGET; }
   return ICON_GLOBAL;
 }
 // Whether the header shows a file badge (read, write and edit name a file).

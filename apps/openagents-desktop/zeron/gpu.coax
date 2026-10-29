@@ -1,0 +1,383 @@
+// The GPU switch's client (psionic/platform/gpu-switch.py on coderos-4080).
+//
+// One RTX 4080 holds elephant-1 (the Lab's router) or gpt-oss-20b (Psionic),
+// not both. Before a Lab decision or a Psionic turn the app asks the switch
+// for its model (POST /use/elephant or /use/gptoss). Already loaded: the
+// answer is "ready" and the message goes at once. Otherwise the transcript
+// shows "Loading gpt-oss-20b on the RTX 4080… 12 s" while the switch stops
+// the other server and loads this one, asking again each second, and the
+// message goes when it is ready; a failed load is an error chip with the
+// switch's reason. No switch (PSIONIC_HOST=none, or nothing answers once
+// the tunnel has had its chance): the message goes anyway, and the engine
+// says what is wrong.
+//
+// The app owns its tunnels: `ssh -N -L` children (the switch, Elephant's
+// door and gpt-oss's door, each only when its URL is on this Mac's
+// loopback), started on first use and killed at quit. A port someone else
+// already forwards makes that child exit (ExitOnForwardFailure), and the
+// existing forward serves.
+//
+// Configuration, from the environment or ~/work/.secrets/psionic-responses.env:
+//   PSIONIC_HOST            the GPU machine for tunnels and the switch (coderos-4080; none: neither)
+//   PSIONIC_SWITCH_URL      the switch through its tunnel (http://127.0.0.1:8792)
+//   PSIONIC_SYSTEMONE_HOST  where Elephant runs: local means this Mac (no tunnel, no swap)
+//   PSIONIC_SYSTEMONE_URL   Elephant's door (lab.coax), PSIONIC_URL gpt-oss's (psionic.coax)
+
+#load "psionic.coax";
+
+GS_ELEPHANT :: 0; GS_GPTOSS :: 1;
+GS_IDS :: [2] string.["elephant", "gptoss"];
+GS_NAMES :: [2] string.["Elephant", "gpt-oss-20b"];
+GS_REMOTE_PORTS :: [2] int.[8790, 8080];   // on the GPU machine's loopback
+GS_SWITCH_REMOTE :: 8791;
+GS_HOST :: "coderos-4080";
+GS_CARD :: "the RTX 4080";
+GS_SWITCH_URL :: "http://127.0.0.1:8792";
+GS_TUNNEL_GRACE :: 10.0;        // seconds a new tunnel gets before a refused connection means no switch
+GS_POLL :: 1.0;                 // seconds between asks while loading
+
+GS_IDLE :: 0; GS_ASKING :: 1; GS_WAIT :: 2;
+// what gs_pump says
+GS_PENDING :: 0; GS_GO :: 1; GS_FAIL :: 2;
+// who waits for it (lab.coax runs them)
+GT_NONE :: 0; GT_PSIONIC :: 1; GT_LAB :: 2; GT_LAB_PSIONIC :: 3;
+
+GsStatus :: struct {
+  state: string;                // ready | loading | failed | stopped
+  model: string;                // elephant | gptoss | -
+  secs: int;                    // whole seconds: the load's (ready) or so far (loading, failed)
+  reason: string;
+}
+
+GpuSwitch :: struct {
+  on: bool;                     // the host attached it (never in the checks)
+  configured: bool;
+  host: [64] u8; host_n: int;   // 0: no tunnels and no switch
+  elephant_local: bool;
+  url: [96] u8; url_n: int;     // the switch's base URL
+  tunnel: [3] int;              // ssh children: the switch, Elephant, gpt-oss (-1 none)
+  tunnel_age: f32;              // since the newest one started
+  h: int;                       // the curl asking, or -1
+  line: [160] u8; line_n: int;
+  phase: int;
+  model: int;
+  after: int;                   // GT_*: who waits
+  secs: f32;                    // since the ask began
+  wait: f32;                    // until the next ask
+  part: int;                    // the loading part, or -1
+  shown: int;                   // the whole second it shows
+  log: [] u8; log_n: int;       // the switch's answers, for the chip (GS_LOG bytes the host gives: gs_attach)
+  why: [320] u8; why_n: int;
+}
+
+GS_LOG :: 1024;
+gs_attach :: (g: [] GpuSwitch, buf: [] u8) { g[0].log = buf; g[0].on = true; }
+
+gs_init :: (g: [] GpuSwitch) {
+  g[0].h = -1; g[0].part = -1; g[0].shown = -1;
+  for i: 0..<3 { g[0].tunnel[i] = -1; }
+}
+
+// One answer line: "STATE MODEL SECONDS [REASON]".
+gs_parse :: (line: string) -> GsStatus {
+  r: GsStatus;
+  f: [4] string; nf := 0; i := 0;
+  while i < line.count && nf < 3 {
+    while i < line.count && line[i] == ' ' { i += 1; }
+    j := i; while j < line.count && line[j] != ' ' && line[j] != '\n' && line[j] != '\r' { j += 1; }
+    if j > i { f[nf] = cast(string) line[i..<j]; nf += 1; }
+    i = j;
+  }
+  while i < line.count && line[i] == ' ' { i += 1; }
+  e := line.count; while e > i && (line[e - 1] == '\n' || line[e - 1] == '\r' || line[e - 1] == ' ') { e -= 1; }
+  if nf < 3 { return r; }
+  r.state = f[0]; r.model = f[1];
+  for c: f[2] { if c == '.' { break; } if c >= '0' && c <= '9' { r.secs = r.secs * 10 + cast(int) (c - '0'); } }
+  if i < e { r.reason = cast(string) line[i..<e]; }
+  return r;
+}
+
+// "Loading gpt-oss-20b on the RTX 4080… 12 s", "Loaded … in 52 s", "Couldn't load …".
+gs_headline :: (out: [] u8, model: int, state: int, secs: int) -> string {
+  k := 0;
+  if state == GS_PENDING { k = e_set(out, k, "Loading "); }
+  else if state == GS_GO { k = e_set(out, k, "Loaded "); }
+  else { k = e_set(out, k, "Couldn't load "); }
+  k = e_set(out, k, GS_NAMES[model]); k = e_set(out, k, " on "); k = e_set(out, k, GS_CARD);
+  if state == GS_PENDING { k = e_set(out, k, "… "); k = put_int(out, k, secs); k = e_set(out, k, " s"); }
+  if state == GS_GO { k = e_set(out, k, " in "); k = put_int(out, k, secs); k = e_set(out, k, " s"); }
+  return cast(string) out[0..<k];
+}
+
+// ---------------------------------------------------------------- configuration
+
+gs_configure :: (g: [] GpuSwitch) {
+  if g[0].configured { return; }
+  g[0].configured = true;
+  file: [4096] u8; nf := 0;
+  home: [1024] u8; path: [1200] u8;
+  h := cl_getenv("HOME", home[..]);
+  if h.count > 0 { np := e_set(path[..], e_set(path[..], 0, h), PS_SECRETS); nf = ps_read_file(e_str(path[..], np), file[..]); }
+  text := cast(string) file[0..<nf];
+  vb: [256] u8;
+  v := cl_getenv("PSIONIC_HOST", vb[..]);
+  if v.count == 0 { v = ps_env_value(text, "PSIONIC_HOST"); }
+  if v.count == 0 { v = GS_HOST; }
+  if v != "none" && v != "off" { g[0].host_n = e_set(g[0].host[..], 0, v); }
+  u := cl_getenv("PSIONIC_SWITCH_URL", vb[..]);
+  if u.count == 0 { u = ps_env_value(text, "PSIONIC_SWITCH_URL"); }
+  if u.count == 0 { u = GS_SWITCH_URL; }
+  while u.count > 0 && u[u.count - 1] == '/' { u = cast(string) u[0..<u.count - 1]; }
+  g[0].url_n = e_set(g[0].url[..], 0, u);
+  eh := cl_getenv("PSIONIC_SYSTEMONE_HOST", vb[..]);
+  if eh.count == 0 { eh = ps_env_value(text, "PSIONIC_SYSTEMONE_HOST"); }
+  g[0].elephant_local = eh == "local" || eh == "localhost" || eh == "mac";
+  for k: 0..<file.count { file[k] = 0; }
+}
+
+// The port of a URL on this Mac's loopback ("" when it is elsewhere).
+gs_local_port :: (url: string) -> string {
+  rest := url;
+  if rest.count > 7 && rest[0..<7] == "http://" { rest = cast(string) rest[7..<rest.count]; }
+  if rest.count > 10 && rest[0..<10] == "127.0.0.1:" { rest = cast(string) rest[10..<rest.count]; }
+  else if rest.count > 10 && rest[0..<10] == "localhost:" { rest = cast(string) rest[10..<rest.count]; }
+  else { return ""; }
+  n := 0; while n < rest.count && rest[n] >= '0' && rest[n] <= '9' { n += 1; }
+  return cast(string) rest[0..<n];
+}
+
+gs_arg :: (h: int, s: string) -> bool { return gw_arg(h, s); }
+
+// Starts (or restarts) one tunnel: ssh -N -L LOCAL:127.0.0.1:REMOTE host.
+gs_tunnel :: (g: [] GpuSwitch, i: int, local: string, remote: int) {
+  if local.count == 0 { return; }
+  if g[0].tunnel[i] >= 0 {
+    if cxproc_wait(g[0].tunnel[i], 0) == CL_TIMEOUT { return; }   // still up
+    r := cxproc_release(g[0].tunnel[i]); g[0].tunnel[i] = -1;
+  }
+  h := cxproc_new();
+  if h < 0 { return; }
+  fw: [64] u8; num: [24] u8;
+  k := e_set(fw[..], 0, local); k = e_set(fw[..], k, ":127.0.0.1:"); k = e_set(fw[..], k, gw_digits(num[..], remote));
+  ok := gs_arg(h, "ssh") && gs_arg(h, "-N") && gs_arg(h, "-o") && gs_arg(h, "ExitOnForwardFailure=yes")
+     && gs_arg(h, "-o") && gs_arg(h, "BatchMode=yes") && gs_arg(h, "-o") && gs_arg(h, "ConnectTimeout=8")
+     && gs_arg(h, "-o") && gs_arg(h, "ServerAliveInterval=15") && gs_arg(h, "-o") && gs_arg(h, "ServerAliveCountMax=3")
+     && gs_arg(h, "-L") && gs_arg(h, e_str(fw[..], k)) && gs_arg(h, e_str(g[0].host[..], g[0].host_n));
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); return; }
+  r := cxproc_close_stdin(h);
+  g[0].tunnel[i] = h; g[0].tunnel_age = 0;
+}
+
+gs_tunnels :: (g: [] GpuSwitch, elephant_url: string, gptoss_url: string) {
+  gs_tunnel(g, 0, gs_local_port(e_str(g[0].url[..], g[0].url_n)), GS_SWITCH_REMOTE);
+  if !g[0].elephant_local { gs_tunnel(g, 1, gs_local_port(elephant_url), GS_REMOTE_PORTS[GS_ELEPHANT]); }
+  gs_tunnel(g, 2, gs_local_port(gptoss_url), GS_REMOTE_PORTS[GS_GPTOSS]);
+}
+
+// ---------------------------------------------------------------- asking
+
+// Asks for a model before a message goes: true when the message waits for
+// gs_pump, false when it can go now (no switch here, or Elephant on this Mac).
+gs_want :: (g: [] GpuSwitch, s: [] Session, model: int, after: int, elephant_url: string, gptoss_url: string) -> bool {
+  if !g[0].on { return false; }
+  gs_configure(g);
+  if g[0].host_n == 0 { return false; }
+  if model == GS_ELEPHANT && g[0].elephant_local { return false; }
+  gs_tunnels(g, elephant_url, gptoss_url);
+  gs_end_ask(g);
+  g[0].model = model; g[0].after = after; g[0].secs = 0; g[0].part = -1; g[0].shown = -1; g[0].log_n = 0; g[0].why_n = 0;
+  gs_ask(g);
+  return true;
+}
+
+gs_ask :: (g: [] GpuSwitch) {
+  g[0].phase = GS_ASKING; g[0].line_n = 0;
+  h := cxproc_new();
+  if h < 0 { g[0].phase = GS_WAIT; g[0].wait = GS_POLL; return; }
+  u: [320] u8;
+  k := e_set(u[..], 0, e_str(g[0].url[..], g[0].url_n)); k = e_set(u[..], k, "/use/"); k = e_set(u[..], k, GS_IDS[g[0].model]);
+  ok := gs_arg(h, "curl") && gs_arg(h, "-sS") && gs_arg(h, "--connect-timeout") && gs_arg(h, "3")
+     && gs_arg(h, "--max-time") && gs_arg(h, "10") && gs_arg(h, "-X") && gs_arg(h, "POST") && gs_arg(h, e_str(u[..], k));
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); g[0].phase = GS_WAIT; g[0].wait = GS_POLL; return; }
+  r := cxproc_close_stdin(h);
+  g[0].h = h;
+}
+gs_end_ask :: (g: [] GpuSwitch) {
+  if g[0].h >= 0 { r := cxproc_release(g[0].h); g[0].h = -1; }
+  g[0].phase = GS_IDLE;
+}
+
+gs_logline :: (g: [] GpuSwitch, text: string) {
+  if g[0].log.count == 0 { return; }
+  if g[0].log_n > 0 { g[0].log_n = e_set(g[0].log[..], g[0].log_n, "\n"); }
+  g[0].log_n = e_set(g[0].log[..], g[0].log_n, text);
+}
+
+// The loading part's headline (and its chip) for the state now.
+gs_show :: (g: [] GpuSwitch, s: [] Session, state: int, secs: int) {
+  hb: [128] u8;
+  text := gs_headline(hb[..], g[0].model, state, secs);
+  k := g[0].part;
+  if k < 0 {
+    k = s_part(s, P_ROUTE);
+    if k < 0 { return; }
+    g[0].part = k;
+    ab: [400] u8; ak := e_set(ab[..], 0, "POST "); ak = e_set(ab[..], ak, e_str(g[0].url[..], g[0].url_n));
+    ak = e_set(ab[..], ak, "/use/"); ak = e_set(ab[..], ak, GS_IDS[g[0].model]);
+    ak = e_set(ab[..], ak, "  (the GPU switch on "); ak = e_set(ab[..], ak, e_str(g[0].host[..], g[0].host_n)); ak = e_set(ab[..], ak, ")");
+    s[0].parts[k].tk = TK_LOAD;
+    s[0].parts[k].arg = s_put(s, e_str(ab[..], ak));
+  }
+  if k >= s[0].n { return; }
+  s[0].parts[k].n = 0;
+  s_append(s, k, text);
+  s[0].parts[k].resolved = state != GS_PENDING;
+  s[0].parts[k].failed = state == GS_FAIL;
+  db: [64] u8; dk := e_set(db[..], 0, GS_NAMES[g[0].model]); dk = e_set(db[..], dk, " · "); dk = put_int(db[..], dk, secs); dk = e_set(db[..], dk, " s");
+  s[0].parts[k].detail = s_put(s, e_str(db[..], dk));
+  if state != GS_PENDING { s[0].parts[k].output = s_put(s, e_str(g[0].log[..], g[0].log_n)); }
+  g[0].shown = secs;
+}
+
+// One answer from the switch: what the waiting message does now.
+gs_on_line :: (g: [] GpuSwitch, s: [] Session, line: string) -> int {
+  st := gs_parse(line);
+  if st.state.count == 0 { gs_logline(g, line); return gs_fail(g, s, "the GPU switch gave an answer the app doesn't read"); }
+  if st.model != GS_IDS[g[0].model] && st.state != "failed" {
+    // the card holds or loads the other one (someone asked for it since): ask again
+    gs_logline(g, line);
+    g[0].phase = GS_WAIT; g[0].wait = GS_POLL;
+    return GS_PENDING;
+  }
+  if st.state == "ready" {
+    if g[0].part >= 0 { gs_logline(g, line); gs_show(g, s, GS_GO, st.secs); }
+    return GS_GO;
+  }
+  if st.state == "loading" {
+    if g[0].log_n == 0 { gs_logline(g, line); }
+    g[0].phase = GS_WAIT; g[0].wait = GS_POLL;
+    if g[0].part < 0 || st.secs != g[0].shown { gs_show(g, s, GS_PENDING, st.secs); }
+    return GS_PENDING;
+  }
+  gs_logline(g, line);
+  return gs_fail(g, s, ifx st.reason.count > 0 then st.reason else line);
+}
+gs_fail :: (g: [] GpuSwitch, s: [] Session, why: string) -> int {
+  k := e_set(g[0].why[..], 0, "Couldn't load "); k = e_set(g[0].why[..], k, GS_NAMES[g[0].model]);
+  k = e_set(g[0].why[..], k, " on "); k = e_set(g[0].why[..], k, GS_CARD); k = e_set(g[0].why[..], k, ": "); k = e_set(g[0].why[..], k, why);
+  g[0].why_n = k;
+  gs_show(g, s, GS_FAIL, ifx g[0].shown > 0 then g[0].shown else 0);
+  return GS_FAIL;
+}
+gs_why :: (g: [] GpuSwitch) -> string { return e_str(g[0].why[..], g[0].why_n); }
+
+// Each frame while a message waits.
+gs_pump :: (g: [] GpuSwitch, s: [] Session, dt: f32) -> int {
+  if g[0].phase == GS_IDLE { return GS_PENDING; }
+  g[0].secs += dt; g[0].tunnel_age += dt;
+  if g[0].phase == GS_WAIT {
+    g[0].wait -= dt;
+    if g[0].wait > 0.0 { return GS_PENDING; }
+    gs_ask(g);
+    return GS_PENDING;
+  }
+  h := g[0].h;
+  if h < 0 { return GS_PENDING; }
+  for guard: 0..<8 {
+    n := cxproc_read_line(h, 0);
+    if n == CL_TIMEOUT { return GS_PENDING; }
+    if n < 0 && n != CL_TOO_LONG { break; }
+    if g[0].line_n == 0 { for i: 0..<n { if g[0].line_n < g[0].line.count { g[0].line[g[0].line_n] = cast(u8) cxproc_line_byte(h, i); g[0].line_n += 1; } } }
+  }
+  code := cxproc_wait(h, 1000);
+  r := cxproc_release(h); g[0].h = -1;
+  if code == 0 && g[0].line_n > 0 {
+    v := gs_on_line(g, s, e_str(g[0].line[..], g[0].line_n));
+    if v != GS_PENDING { g[0].phase = GS_IDLE; }
+    return v;
+  }
+  // nothing answered: a young tunnel gets its grace, then the message goes without the switch
+  if g[0].tunnel_age < GS_TUNNEL_GRACE { g[0].phase = GS_WAIT; g[0].wait = 0.5; return GS_PENDING; }
+  g[0].phase = GS_IDLE;
+  if g[0].part >= 0 { gs_logline(g, "the GPU switch stopped answering"); return gs_fail(g, s, "the GPU switch stopped answering"); }
+  return GS_GO;
+}
+
+// STOP while a message waits: the ask goes (the load goes on on the server).
+gs_stop :: (g: [] GpuSwitch, s: [] Session) -> bool {
+  if g[0].phase == GS_IDLE { return false; }
+  gs_end_ask(g);
+  k := g[0].part;
+  if k >= 0 && k < s[0].n { s[0].parts[k].resolved = true; s[0].changed = true; }
+  g[0].after = GT_NONE;
+  return true;
+}
+// Quit: the ask and the tunnels go.
+gs_close :: (g: [] GpuSwitch) {
+  gs_end_ask(g);
+  for i: 0..<3 { if g[0].tunnel[i] >= 0 { r := cxproc_release(g[0].tunnel[i]); g[0].tunnel[i] = -1; } }
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "the switch's answer lines read as state, model, seconds and reason" {
+  a := gs_parse("ready gptoss 52.0\n");
+  #assert a.state == "ready" && a.model == "gptoss" && a.secs == 52 && a.reason.count == 0;
+  b := gs_parse("loading elephant 12.7");
+  #assert b.state == "loading" && b.model == "elephant" && b.secs == 12;
+  c := gs_parse("failed gptoss 3.1 the server exited (1): resident model admission failed\n");
+  #assert c.state == "failed" && c.secs == 3 && c.reason == "the server exited (1): resident model admission failed";
+  d := gs_parse("stopped - 0");
+  #assert d.state == "stopped" && d.model == "-";
+  #assert gs_parse("nonsense").state.count == 0;
+  #assert gs_local_port("http://127.0.0.1:8089") == "8089" && gs_local_port("http://localhost:8790/v1/systemone") == "8790";
+  #assert gs_local_port("https://example.com/v1/systemone").count == 0;
+  hb: [128] u8;
+  #assert gs_headline(hb[..], GS_GPTOSS, GS_PENDING, 12) == "Loading gpt-oss-20b on the RTX 4080… 12 s";
+  #assert gs_headline(hb[..], GS_ELEPHANT, GS_GO, 87) == "Loaded Elephant on the RTX 4080 in 87 s";
+  #assert gs_headline(hb[..], GS_GPTOSS, GS_FAIL, 3) == "Couldn't load gpt-oss-20b on the RTX 4080";
+}
+
+#test "a load shows in the transcript with its seconds, and ready lets the message go; already loaded shows nothing" {
+  pool: [16384] u8; ss: [1] Session; s_init(ss[..], pool[..]);
+  g: [1] GpuSwitch; gs_init(g[..]); lb: [GS_LOG] u8; g[0].log = lb[..];
+  g[0].url_n = e_set(g[0].url[..], 0, GS_SWITCH_URL); g[0].host_n = e_set(g[0].host[..], 0, GS_HOST);
+  s_user(ss[..], "hi");
+  // already loaded: straight on, no part
+  g[0].model = GS_GPTOSS;
+  #assert gs_on_line(g[..], ss[..], "ready gptoss 52.0\n") == GS_GO && ss[0].n == 1;
+  // a swap: loading, then ready
+  #assert gs_on_line(g[..], ss[..], "loading gptoss 0.0") == GS_PENDING && ss[0].n == 2 && g[0].phase == GS_WAIT;
+  #assert ss[0].parts[1].kind == P_ROUTE && ss[0].parts[1].tk == TK_LOAD && !ss[0].parts[1].resolved;
+  #assert s_text_of(ss[..], 1) == "Loading gpt-oss-20b on the RTX 4080… 0 s";
+  #assert ss[0].parts[1].arg == "POST http://127.0.0.1:8792/use/gptoss  (the GPU switch on coderos-4080)";
+  #assert gs_on_line(g[..], ss[..], "loading gptoss 23.4") == GS_PENDING && s_text_of(ss[..], 1) == "Loading gpt-oss-20b on the RTX 4080… 23 s";
+  // someone asked for Elephant meanwhile: ask again
+  #assert gs_on_line(g[..], ss[..], "loading elephant 1.0") == GS_PENDING && g[0].phase == GS_WAIT;
+  #assert gs_on_line(g[..], ss[..], "ready gptoss 52.0") == GS_GO && ss[0].n == 2;
+  #assert s_text_of(ss[..], 1) == "Loaded gpt-oss-20b on the RTX 4080 in 52 s" && ss[0].parts[1].resolved && !ss[0].parts[1].failed;
+  #assert ss[0].parts[1].detail == "gpt-oss-20b · 52 s" && s_has(ss[0].parts[1].output, "loading gptoss 0.0\nloading elephant 1.0\nready gptoss 52.0");
+}
+
+#test "a failed load is a failed chip with the switch's reason; STOP ends the wait" {
+  pool: [16384] u8; ss: [1] Session; s_init(ss[..], pool[..]);
+  g: [1] GpuSwitch; gs_init(g[..]); lb: [GS_LOG] u8; g[0].log = lb[..];
+  g[0].url_n = e_set(g[0].url[..], 0, GS_SWITCH_URL); g[0].host_n = e_set(g[0].host[..], 0, GS_HOST);
+  s_user(ss[..], "hi");
+  g[0].model = GS_ELEPHANT;
+  #assert gs_on_line(g[..], ss[..], "loading elephant 0.0") == GS_PENDING;
+  #assert gs_on_line(g[..], ss[..], "failed elephant 4.2 port 8790 is held by (\"psionic-serve\",pid=12,fd=3), not by the switch") == GS_FAIL;
+  #assert gs_why(g[..]) == "Couldn't load Elephant on the RTX 4080: port 8790 is held by (\"psionic-serve\",pid=12,fd=3), not by the switch";
+  #assert s_text_of(ss[..], 1) == "Couldn't load Elephant on the RTX 4080" && ss[0].parts[1].failed && ss[0].parts[1].resolved;
+  // a load that never says loading fails with no earlier part: the chip still says why
+  ss2: [1] Session; pool2: [8192] u8; s_init(ss2[..], pool2[..]); s_user(ss2[..], "hi");
+  g[0].part = -1; g[0].log_n = 0; g[0].model = GS_GPTOSS;
+  #assert gs_on_line(g[..], ss2[..], "huh") == GS_FAIL && s_has(gs_why(g[..]), "doesn't read");
+  // STOP while waiting
+  g[0].part = -1; g[0].phase = GS_WAIT; g[0].after = GT_PSIONIC;
+  #assert gs_on_line(g[..], ss2[..], "loading gptoss 2.0") == GS_PENDING;
+  #assert gs_stop(g[..], ss2[..]) && g[0].phase == GS_IDLE && g[0].after == GT_NONE && ss2[0].parts[g[0].part].resolved;
+  #assert !gs_stop(g[..], ss2[..]);
+  // without the host (the checks) nothing waits
+  #assert !gs_want(g[..], ss2[..], GS_GPTOSS, GT_PSIONIC, "http://127.0.0.1:8790/v1/systemone", PS_DEFAULT_URL);
+}

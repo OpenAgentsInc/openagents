@@ -47,7 +47,8 @@ PS_EFFORT_NAMES :: [3] string.["Low", "Medium", "High"];
 // (docs/desktop/coax-desktop.md, "Psionic").
 // The tunnel's local port is the endpoint's (8080 unless PSIONIC_URL names another).
 PS_TUNNEL_HOST :: "127.0.0.1:8080 coderos-4080";
-PS_SERVE :: "ssh coderos-4080 'tmux new -d -s psionic-responses ~/psionic-responses/serve.sh'";
+// The GPU switch (gpu.coax) owns the card and starts the server; this brings the switch back.
+PS_SERVE :: "ssh coderos-4080 'systemctl --user start psionic-gpu-switch'";
 
 PS_ITEMS :: 128;
 PS_TOOL_REPLAY :: 1200;          // bytes of a tool's output the model gets back (2048 positions in all)
@@ -65,6 +66,7 @@ PS_TOOLS :: "[{\"type\":\"function\",\"name\":\"read_file\",\"description\":\"Re
 PsEngine :: struct {
   on: bool;                      // the host attached buffers (never in tests)
   configured: bool;
+  hold: bool;                    // the model is loading on the GPU (gpu.coax): the request waits for ps_request
   url: [512] u8; url_n: int;     // the base URL
   endpoint: [560] u8; endpoint_n: int;
   key: [160] u8; key_n: int;     // from the secrets file (0 when the environment has it)
@@ -304,7 +306,7 @@ ps_on_event :: (p: [] PsEngine, s: [] Session, name: string, data: string) -> in
 // A server code as the transcript says it.
 ps_explain :: (code: string) -> string {
   if code == "request_deadline_exceeded" { return "Psionic stopped this answer at its 120-second limit."; }
-  if code == "device_failed" { return "Psionic's GPU worker failed. Restart the server on coderos-4080 (tmux session psionic-responses)."; }
+  if code == "device_failed" { return "Psionic's GPU worker failed. Restart it on coderos-4080: ssh coderos-4080 'systemctl --user restart psionic-gpu-switch'"; }
   if code == "model_arithmetic_refused" { return "Psionic refused this answer: the model's arithmetic left its checked range."; }
   if code == "invalid_tool_arguments" || code == "invalid_tool_call" { return "gpt-oss-20b called a tool with arguments that don't fit it, so Psionic stopped the answer. Send again, or ask without needing files or commands."; }
   if code.count == 0 { return "Psionic failed to answer."; }
@@ -355,7 +357,7 @@ ps_forward :: (p: [] PsEngine, s: [] Session, text: string) {
     s_turn_end(s, true, "This message is too long for gpt-oss-20b's 2048-token context.");
     return;
   }
-  if !p[0].on { return; }
+  if !p[0].on || p[0].hold { return; }
   ps_request(p, s);
 }
 
@@ -441,7 +443,7 @@ ps_finish :: (p: [] PsEngine, s: [] Session, call: int) {
       return;
     }
     if status == 401 { s_turn_end(s, true, "The Psionic server refused the key. Put the key it was started with in ~/work/.secrets/psionic-responses.env as PSIONIC_API_KEY=..."); return; }
-    if status == 503 { s_turn_end(s, true, "Psionic's GPU worker is unavailable. Restart the server on coderos-4080 (tmux session psionic-responses)."); return; }
+    if status == 503 { s_turn_end(s, true, "Psionic's GPU worker is unavailable. Restart it on coderos-4080: ssh coderos-4080 'systemctl --user restart psionic-gpu-switch'"); return; }
     msg: [600] u8;
     k := e_set(msg[..], 0, "Psionic refused the request (HTTP ");
     num: [24] u8; k = e_set(msg[..], k, gw_digits(num[..], status));
@@ -516,7 +518,7 @@ ps_call_done :: (p: [] PsEngine, s: [] Session, output: string, failed: bool) {
   sent := output;
   if sent.count > PS_TOOL_REPLAY { sent = cast(string) output[0..<PS_TOOL_REPLAY]; }
   if !ps_call_output_item(p, e_str(p[0].call_id[..], p[0].call_id_n), sent) { s_turn_end(s, true, "The tool's output does not fit the conversation."); return; }
-  if !p[0].on { return; }
+  if !p[0].on || p[0].hold { return; }
   ps_request(p, s);
 }
 

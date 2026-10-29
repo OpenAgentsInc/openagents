@@ -117,12 +117,11 @@ How it works:
   nothing listening shows the tunnel command; Stop closes the connection.
   Config: `PSIONIC_URL` and `PSIONIC_API_KEY` from the environment or
   `~/work/.secrets/psionic-responses.env` (gitignored, chmod 600), default
-  `http://127.0.0.1:8080`. The server: `ssh coderos-4080 'tmux new -d -s
-  psionic-responses ~/psionic-responses/serve.sh'` (wraps
-  `psionic/serve-gptoss.sh` on port 8080 with the key from
-  `~/.config/psionic-responses.env`), then `ssh -N -L 8080:127.0.0.1:8080
-  coderos-4080`. gpt-oss-20b needs most of the 4080's 16 GB, so it cannot
-  run beside another resident model there. Flags `--mode claude|psionic`,
+  `http://127.0.0.1:8080`. The server, `~/psionic-responses/serve.sh` on
+  coderos-4080 (wraps `psionic/serve-gptoss.sh` on port 8080 with the key
+  from `~/.config/psionic-responses.env`), is started by the GPU switch
+  below, and the app opens the tunnel itself. gpt-oss-20b needs most of the
+  4080's 16 GB, so it cannot run beside another resident model there. Flags `--mode claude|psionic`,
   shot step `mode NAME`. Tests: `coax test --library zeron/psionic.coax`
   runs recorded streams (`zeron/fixtures/psionic-turns.sse`, recorded and
   turned into `psionic_fixture.coax` by `fixtures/psionic.py`).
@@ -180,7 +179,8 @@ How it works:
   so its messages run on Claude Code and the decision says so. Refusals
   (503 busy, 524 timeout, 413 too long, any other code) and an unreachable
   server are error chips; the unreachable one names the tunnel
-  (`ssh -N -L 8790:127.0.0.1:8790 coderos-4080`) and the start command.
+  (`ssh -N -L 8790:127.0.0.1:8790 coderos-4080`, which the app opens itself)
+  and how to start the GPU switch.
   `PSIONIC_SYSTEMONE_URL` names another door, `PSIONIC_SYSTEMONE_KEY` a key
   if one is ever needed (psionic-serve has none). The wire is HTTP through
   the tunnel, not a Nostr decision job: the body is the same NIP-DEC body,
@@ -188,6 +188,32 @@ How it works:
   round trip adds latency and a relay to a call the app makes per message.
   A five-question decision takes about 1.8 s on the server (the device
   plan was raised to 512 tokens per question for it).
+- One GPU, two models (`zeron/gpu.coax`, 2026-10-29). The RTX 4080 holds
+  elephant-1 (about 13.5 GiB resident plus 1.3 GiB pinned) or gpt-oss-20b
+  (about 13.9 GiB), not both, so a small switch on `coderos-4080` owns the
+  card: `psionic/platform/gpu-switch.py`, the systemd user unit
+  `psionic-gpu-switch` (Restart=always, linger on; `systemctl --user stop
+  psionic-gpu-switch` frees the card for a benchmark, `start` brings back
+  the last model), on 127.0.0.1:8791 with `POST /use/elephant`, `POST
+  /use/gptoss`, `POST /stop` and `GET /status` (one line: `ready gptoss
+  52.0`, `loading elephant 12.0`, `failed gptoss 3.1 REASON`). It stops
+  only servers it started; a port held by anything else is a failed load
+  that names the holder. Before a Psionic turn or a Lab decision the app
+  asks it for the model; when a swap is needed the transcript shows
+  "Loading gpt-oss-20b on the RTX 4080… 12 s" (a GPU chip with the
+  switch's answers) and the message goes once it is ready. Loads measured
+  2026-10-29: gpt-oss-20b 52 s (most of it compiling the server), Elephant
+  87 s (71 s reading its 18.8 GB checkpoint). A Lab message routed to
+  Psionic while gpt-oss-20b is loaded therefore waits about 87 s for
+  Elephant, 1.8 s for the decision and 52 s for gpt-oss-20b; gpt-oss-20b
+  then stays until the next Lab message, so Psionic follow-ups are
+  immediate. The app starts its own tunnels (`ssh -N -L` children it
+  kills at quit): the switch on 8792, Elephant on 8790 and gpt-oss on
+  `PSIONIC_URL`'s port (8089 here). `PSIONIC_HOST` (default coderos-4080,
+  `none` for no tunnels and no switch), `PSIONIC_SWITCH_URL`,
+  `PSIONIC_SYSTEMONE_URL` and `PSIONIC_SYSTEMONE_HOST=local` (Elephant on
+  this Mac: no tunnel, no swap) come from the environment or
+  `~/work/.secrets/psionic-responses.env`.
 - The HUD chat, its LAB and the Mammoth router (`chat.coax`, `router.coax`,
   `Router.swift`) stay in the tree and build, unshown.
 - Licenses and attribution: `apps/openagents-desktop/zeron/NOTICE`.
