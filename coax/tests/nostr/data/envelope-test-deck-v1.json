@@ -1,0 +1,12 @@
+{
+  "source": "Actual sealDeck output, locally decrypted through the three NIP44 layers with public throwaway scalars 1 and 2; no relay publication",
+  "legacy_lib_sha256": "1908c8af103622923df827428ccc941c87a5129b5ae1dcaac36f8ee534403f81",
+  "jcs_fixture_sha256": "0057fe5512c68adb442a46b1d48ea6d140eab35796e93c88646bfe3cbd4b0a25",
+  "inline_json": "{\"v\":\"coaxial.presentation.v1\",\"title\":\"Hello\",\"slides\":[{\"title\":\"Hello\",\"subtitle\":\"Sub\",\"bullets\":[\"one **two**\",\"three\"],\"notes\":\"a note\"},{\"title\":\"Second\",\"body\":\"Some body\"}]}",
+  "schema": "coaxial.presentation.v1",
+  "issued_at": 1700000000,
+  "retain_until": 1731536000,
+  "envelope_json": "{\"v\":\"openagents.artifact-envelope.v1\",\"requires\":[],\"artifact\":{\"digest\":\"sha256:31f0e9941da64dec653587f668942226e5aa282ce9be9404752c412e38dfdf89\",\"size\":182,\"media_type\":\"application/json\",\"schema\":\"coaxial.presentation.v1\"},\"inline\":{\"v\":\"coaxial.presentation.v1\",\"title\":\"Hello\",\"slides\":[{\"title\":\"Hello\",\"subtitle\":\"Sub\",\"bullets\":[\"one **two**\",\"three\"],\"notes\":\"a note\"},{\"title\":\"Second\",\"body\":\"Some body\"}]},\"issued_at\":1700000000,\"retain_until\":1731536000}",
+  "canonical_inline": "{\"slides\":[{\"bullets\":[\"one **two**\",\"three\"],\"notes\":\"a note\",\"subtitle\":\"Sub\",\"title\":\"Hello\"},{\"body\":\"Some body\",\"title\":\"Second\"}],\"title\":\"Hello\",\"v\":\"coaxial.presentation.v1\"}",
+  "digest": "sha256:31f0e9941da64dec653587f668942226e5aa282ce9be9404752c412e38dfdf89"
+}

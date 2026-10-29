@@ -9,7 +9,7 @@ to Coax. Like the crate, it ports the stream-json wire protocol of the
 
 | File | What |
 | --- | --- |
-| `fields.coax` | Field access and spec validation over `coax/lib/nostr/json.coax` |
+| `fields.coax` | Field access/spec validation over `json.coax`; approximate cost decoding explicitly opts into `json-f64.coax` |
 | `messages.coax` | Frame classification and the typed stream messages |
 | `control.coax` | Control frames the SDK writes, and readers for what the CLI sends |
 | `options.coax` | `QueryOptions`: CLI flags and environment |

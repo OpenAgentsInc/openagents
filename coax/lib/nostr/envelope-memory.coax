@@ -1,0 +1,12 @@
+// Physical address facts only. Callers own stable input and workspace spans.
+#load "envelope.coax";
+envelope_build :: (inline_json:string,schema:string,issued:int,retain:int,scratch:[]u8,out:[]u8)->ArtifactBuild #export_c {
+  overlap:=bytes_overlap(inline_json,scratch)||bytes_overlap(inline_json,out)||bytes_overlap(schema,scratch)||bytes_overlap(schema,out)||bytes_overlap(scratch,out);
+  return envelope_build_checked(inline_json,schema,issued,retain,scratch,out,overlap);
+}
+envelope_check_body :: (body:string,schema:string,scratch:[]u8)->ArtifactInfo #export_c {
+  return envelope_check_body_checked(body,schema,scratch,bytes_overlap(body,scratch)||bytes_overlap(schema,scratch));
+}
+envelope_check_observed :: (body:string,schema:string,wire_bytes:int,scratch:[]u8)->ArtifactInfo #export_c {
+  return envelope_check_observed_checked(body,schema,wire_bytes,scratch,bytes_overlap(body,scratch)||bytes_overlap(schema,scratch));
+}

@@ -16,6 +16,7 @@
 //   parent's own item decides whether that is allowed.
 
 #load "../../nostr/json.coax";
+#load "../../nostr/json-f64.coax";
 
 CL_LINE_MAX :: 1048576;    // one stream-json line, and the parser's limits for it
 

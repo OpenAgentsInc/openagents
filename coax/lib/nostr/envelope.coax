@@ -1,0 +1,301 @@
+// Selected inline artifact-envelope body profile. Caller supplies schema/time
+// policy and workspace. Building plaintext does not validate encrypted wire.
+#load "jcs.coax";
+#load "hex.coax";
+#load "../crypto/sha256.coax";
+#authority;
+AE_VERSION_ID :: "openagents.artifact-envelope.v1";
+AE_WIRE_MAX :: 1048576;
+AE_BODY_MAX :: 524288;
+AE_EXTRA_NODES :: 10;AE_EXTRA_KEYS :: 10;AE_EXTRA_KEY_BYTES :: 70;AE_EXTRA_WORK :: 22;
+AE_OK :: cast(u32)0;AE_LIMIT :: cast(u32)1;AE_JSON :: cast(u32)2;AE_SHAPE :: cast(u32)3;
+AE_VERSION :: cast(u32)4;AE_FEATURE :: cast(u32)5;AE_SCHEMA :: cast(u32)6;AE_DIGEST :: cast(u32)7;
+AE_SIZE :: cast(u32)8;AE_TIME :: cast(u32)9;AE_CAPACITY :: cast(u32)10;AE_ALIAS :: cast(u32)11;
+AE_WIRE :: cast(u32)12;AE_HASH :: cast(u32)13;
+ArtifactBuild :: struct {written:int;canonical_size:int;error:u32;}
+ArtifactInfo :: struct {inline_from:int;inline_to:int;canonical_size:int;issued_at:int;retain_until:int;wire_bytes:int;error:u32;}
+AE_TEST_INLINE :: "{\"v\":\"x\"}";
+AE_TEST_BODY :: "{\"v\":\"openagents.artifact-envelope.v1\",\"requires\":[],\"artifact\":{\"digest\":\"sha256:ead8b0e4e25c233a81aaac4223ee52cabcd6a21873abc5aaf5fe9886bdb132cf\",\"size\":9,\"media_type\":\"application/json\",\"schema\":\"x\"},\"inline\":{\"v\":\"x\"},\"issued_at\":0,\"retain_until\":1}";
+
+#test "build matches legacy field order and observed admission preserves original bytes" {
+  scratch:[128]u8;out:[512]u8;for i:0..<512 {out[i]=165;}
+  r:=envelope_build_checked(AE_TEST_INLINE,"x",0,1,scratch[..],out[..],false);
+  #assert r.error==AE_OK && r.canonical_size==9 && cast(string)out[0..<r.written]==AE_TEST_BODY;
+  #assert out[r.written]==165 && AE_TEST_INLINE=="{\"v\":\"x\"}";
+  info:=envelope_check_body_checked(AE_TEST_BODY,"x",scratch[..],false);
+  #assert info.error==AE_OK && info.canonical_size==9 && info.issued_at==0 && info.retain_until==1 && info.wire_bytes==0;
+  #assert AE_TEST_BODY[info.inline_from..<info.inline_to]==AE_TEST_INLINE;
+  info=envelope_check_observed_checked(AE_TEST_BODY,"x",AE_WIRE_MAX,scratch[..],false);
+  #assert info.error==AE_OK && info.wire_bytes==AE_WIRE_MAX;
+  #assert envelope_check_observed_checked(AE_TEST_BODY,"x",AE_WIRE_MAX+1,scratch[..],false).error==AE_WIRE;
+}
+#test "wrapper reservations agree with actual selected-consumer parsing" {
+  tree:[1]JcsTree;full:[1]JcsTree;decoded:[65536]u8;
+  #assert jcs_build(AE_TEST_INLINE,tree[..],decoded[..])==JCS_OK;
+  #assert jcs_build(AE_TEST_BODY,full[..],decoded[..])==JCS_OK;
+  #assert full[0].count==tree[0].count+10 && full[0].keys==tree[0].keys+10;
+  #assert full[0].used==tree[0].used+70 && full[0].work==tree[0].work+22;
+  #assert ae_depth(tree[..],0)==1 && ae_depth(full[..],0)==2;
+  #assert ae_inline_fits(2038,1014,65466,1048554,15);
+  #assert ae_inline_fits(1,0,0,0,1);
+  #assert !ae_inline_fits(2039,0,0,0,1) && !ae_inline_fits(1,1015,0,0,1);
+  #assert !ae_inline_fits(1,0,65467,0,1) && !ae_inline_fits(1,0,0,1048555,1);
+  #assert !ae_inline_fits(1,0,0,0,16) && !ae_inline_fits(0,0,0,0,1);
+}
+#test "independent size, string, wire, time and output observations refuse without inference" {
+  #assert ae_wire_admit(1)==AE_OK && ae_wire_admit(1048576)==AE_OK;
+  #assert ae_wire_admit(0)==AE_WIRE && ae_wire_admit(-1)==AE_WIRE && ae_wire_admit(1048577)==AE_WIRE;
+  #assert ae_string_fits(65536,65536) && !ae_string_fits(65537,1) && !ae_string_fits(1,65537);
+  #assert ae_string_fits(0,0);
+  #assert !ae_string_fits(-1,0) && !ae_string_fits(0,-1);
+  #assert ae_time_admit(0,1)==AE_OK && ae_time_admit(9007199254740990,9007199254740991)==AE_OK;
+  #assert ae_time_admit(-1,1)==AE_TIME && ae_time_admit(1,1)==AE_TIME && ae_time_admit(2,1)==AE_TIME;
+  #assert ae_time_admit(0,9007199254740992)==AE_TIME;
+  #assert ae_counts(524288,524288,524288,false)==AE_OK;
+  #assert ae_counts(0,0,0,false)==AE_OK;
+  #assert ae_counts(524289,1,1,false)==AE_LIMIT && ae_counts(-1,1,1,false)==AE_LIMIT;
+  #assert ae_counts(1,-1,1,false)==AE_CAPACITY && ae_counts(1,1,524289,false)==AE_CAPACITY;
+  #assert ae_counts(1,524289,1,false)==AE_CAPACITY && ae_counts(1,1,-1,false)==AE_CAPACITY;
+  #assert ae_counts(1,1,1,true)==AE_ALIAS;
+  #assert ae_canonical_admit(524288,524288)==AE_OK && ae_canonical_admit(524289,524288)==AE_LIMIT;
+  #assert ae_canonical_admit(-1,1)==AE_LIMIT && ae_canonical_admit(2,1)==AE_CAPACITY;
+  #assert ae_canonical_admit(0,0)==AE_OK && ae_canonical_admit(1,-1)==AE_CAPACITY && ae_canonical_admit(1,524289)==AE_CAPACITY;
+}
+#test "builder failures preserve its output and successful scratch is reset" {
+  out:[512]u8;scratch:[128]u8;for i:0..<512 {out[i]=165;}
+  #assert envelope_build_checked(AE_TEST_INLINE,"x",0,1,scratch[..],out[0..<AE_TEST_BODY.count-1],false).error==AE_CAPACITY;
+  #assert envelope_build_checked(AE_TEST_INLINE,"x",0,1,scratch[0..<8],out[..],false).error==AE_CAPACITY;
+  #assert envelope_build_checked(AE_TEST_INLINE,"",0,1,scratch[..],out[..],false).error==AE_SCHEMA;
+  #assert envelope_build_checked(AE_TEST_INLINE,"x",0,0,scratch[..],out[..],false).error==AE_TIME;
+  #assert envelope_build_checked(AE_TEST_INLINE,"x",0,1,scratch[..],out[..],true).error==AE_ALIAS;
+  #assert envelope_build_checked("[]","x",0,1,scratch[..],out[..],false).error==AE_SHAPE;
+  for b:out {#assert b==165;}
+  r:=envelope_build_checked(AE_TEST_INLINE,"x",0,1,scratch[..],out[0..<AE_TEST_BODY.count],false);#assert r.error==AE_OK;
+  for i:0..<9 {#assert scratch[i]==0;}
+}
+#test "closed fields, unsupported features and claimed digest cannot bypass admission" {
+  scratch:[512]u8;out:[512]u8;tree:[1]JcsTree;decoded:[65536]u8;
+  #assert envelope_check_body_checked(AE_TEST_BODY,"long",scratch[..],false).error==AE_SCHEMA;
+  #assert envelope_check_body_checked(AE_TEST_BODY,"y",scratch[..],false).error==AE_SCHEMA;
+  #assert envelope_check_body_checked(AE_TEST_BODY,"x",scratch[..],true).error==AE_ALIAS;
+  #assert envelope_check_body_checked(AE_TEST_BODY,"",scratch[..],false).error==AE_SCHEMA;
+  #assert envelope_check_body_checked("[]","x",scratch[..],false).error==AE_SHAPE;
+  #assert envelope_check_body_checked("!","x",scratch[..],false).error==AE_JSON;
+  #assert envelope_build_checked("!","x",0,1,scratch[..],out[..],false).error==AE_JSON;
+  #assert envelope_build_checked("{}","﷐",0,1,scratch[..],out[..],false).error==AE_SCHEMA;
+  #assert jcs_build(AE_TEST_BODY,tree[..],decoded[..])==JCS_OK;
+  #assert ae_member(tree[..],0,"missing")==-1;
+  digest:=ae_member(tree[..],ae_member(tree[..],0,"artifact"),"digest");
+  for i:0..<AE_TEST_BODY.count {out[i]=AE_TEST_BODY[i];}out[tree[0].nodes[digest].from]='0';
+  info:=envelope_check_body_checked(cast(string)out[0..<AE_TEST_BODY.count],"x",scratch[..],false);
+  #assert info.error==AE_DIGEST && info.canonical_size==0 && info.inline_from==0;
+  v:=ae_member(tree[..],0,"v");out[tree[0].nodes[v].from]='x';
+  #assert envelope_check_body_checked(cast(string)out[0..<AE_TEST_BODY.count],"x",scratch[..],false).error==AE_VERSION;
+  req:=ae_member(tree[..],0,"requires");at:=json_raw(out[..],0,AE_TEST_BODY[0..<tree[0].nodes[req].from]);
+  at=json_raw(out[..],at,"[\"new\"]");at=json_raw(out[..],at,AE_TEST_BODY[tree[0].nodes[req].from+2..<AE_TEST_BODY.count]);
+  #assert envelope_check_body_checked(cast(string)out[0..<at],"x",scratch[..],false).error==AE_FEATURE;
+  at=json_raw(out[..],0,AE_TEST_BODY[0..<AE_TEST_BODY.count-1]);at=json_raw(out[..],at,",\"meta\":{\"effect\":\"inert\"}}");
+  #assert envelope_check_body_checked(cast(string)out[0..<at],"x",scratch[..],false).error==AE_OK;
+  at=json_raw(out[..],0,AE_TEST_BODY[0..<AE_TEST_BODY.count-1]);at=json_raw(out[..],at,",\"meta\":false}");
+  #assert envelope_check_body_checked(cast(string)out[0..<at],"x",scratch[..],false).error==AE_SHAPE;
+  at=json_raw(out[..],0,AE_TEST_BODY[0..<AE_TEST_BODY.count-1]);at=json_raw(out[..],at,",\"effect\":true}");
+  #assert envelope_check_body_checked(cast(string)out[0..<at],"x",scratch[..],false).error==AE_FEATURE;
+}
+#test "depth and schema string budgets are exact before builder commitment" {
+  tree:[1]JcsTree;decoded:[65536]u8;
+  #assert jcs_build("0",tree[..],decoded[..])==JCS_OK && ae_depth(tree[..],0)==0;
+  tree[0]=JcsTree.{};#assert jcs_build("[[[0]]]",tree[..],decoded[..])==JCS_OK && ae_depth(tree[..],0)==3;
+  #assert ae_schema_count(65536) && !ae_schema_count(65537) && !ae_schema_count(0) && !ae_schema_count(-1);
+  digest:[70]u8;data:[1]u8;#assert ae_digest(data[..],digest[..])==AE_CAPACITY;
+  #assert ae_artifact_index("unknown")==-1;
+  #assert jcs_build("0",tree[..],decoded[..])==JCS_OK;
+  #assert !ae_text_is(tree[..],"0",0,"x",decoded[..]);
+  #assert envelope_check_body_checked("{\"requires\":[],\"artifact\":{},\"inline\":{},\"issued_at\":0,\"retain_until\":1}","x",decoded[..],false).error==AE_SHAPE;
+}
+#test "schema encoding budgets account for quotes without constructing giant fixtures" {
+  #assert ae_schema_encoded_fits(65538,65536) && !ae_schema_encoded_fits(65539,65536);
+  #assert ae_schema_encoded_fits(2,0) && !ae_schema_encoded_fits(1,0);
+  #assert ae_schema_ok("\0") && ae_schema_ok("é") && !ae_schema_ok("");
+}
+#test "consumer measures before workspace writes and resets canonical scratch after hashing" {
+  scratch:[128]u8;for i:0..<128 {scratch[i]=165;}
+  info:=envelope_check_body_checked(AE_TEST_BODY,"x",scratch[0..<8],false);#assert info.error==AE_CAPACITY;
+  for b:scratch {#assert b==165;}
+  info=envelope_check_body_checked(AE_TEST_BODY,"x",scratch[..],false);#assert info.error==AE_OK;
+  for i:0..<9 {#assert scratch[i]==0;}
+}
+#test "consumer enforces every required type and time before exposing metadata" {
+  tree:[1]JcsTree;decoded:[65536]u8;out:[1024]u8;scratch:[128]u8;
+  #assert jcs_build(AE_TEST_BODY,tree[..],decoded[..])==JCS_OK;
+  artifact:=ae_member(tree[..],0,"artifact");
+  names:=[13]string.["inline","artifact","size","issued_at","retain_until","issued_at","retain_until","v","schema","digest","media_type","requires","artifact"];
+  values:=[13]string.["null","{}","\"9\"","\"0\"","\"1\"","-1","0","0","0","0","0","{}","{\"size\":9,\"media_type\":\"application/json\",\"schema\":\"x\"}"];
+  errors:=[13]u32.[AE_FEATURE,AE_SHAPE,AE_SHAPE,AE_SHAPE,AE_SHAPE,AE_TIME,AE_TIME,AE_VERSION,AE_SCHEMA,AE_DIGEST,AE_FEATURE,AE_SHAPE,AE_SHAPE];
+  for i:0..<13 {
+    node:=ae_member(tree[..],0,names[i]);if node==-1 {node=ae_member(tree[..],artifact,names[i]);}
+    item:=tree[0].nodes[node];start:=item.from;end:=item.to;
+    if item.kind==JSON_STRING {start-=1;end+=1;}
+    if item.kind==JSON_OBJECT || item.kind==JSON_ARRAY {end=ae_raw_end(AE_TEST_BODY,start);}
+    at:=json_raw(out[..],0,AE_TEST_BODY[0..<start]);at=json_raw(out[..],at,values[i]);at=json_raw(out[..],at,AE_TEST_BODY[end..<AE_TEST_BODY.count]);
+    info:=envelope_check_body_checked(cast(string)out[0..<at],"x",scratch[..],false);
+    #assert info.error==errors[i] && info.inline_from==0 && info.inline_to==0 && info.canonical_size==0 && info.issued_at==0 && info.retain_until==0 && info.wire_bytes==0;
+  }
+}
+
+ae_wire_admit :: (observed:int)->u32 #export_c {
+  if observed<=0 || observed>AE_WIRE_MAX {return AE_WIRE;}return AE_OK;
+}
+ae_counts :: (raw:int,scratch:int,out:int,overlap:bool)->u32 #export_c {
+  if raw<0 || raw>AE_BODY_MAX {return AE_LIMIT;}
+  if scratch<0 || scratch>AE_BODY_MAX || out<0 || out>AE_BODY_MAX {return AE_CAPACITY;}
+  if overlap {return AE_ALIAS;}return AE_OK;
+}
+ae_canonical_admit :: (size:int,capacity:int)->u32 #export_c {
+  if size<0 || size>AE_BODY_MAX {return AE_LIMIT;}
+  if capacity<size || capacity>AE_BODY_MAX {return AE_CAPACITY;}return AE_OK;
+}
+ae_time_admit :: (issued:int,retain:int)->u32 #export_c {
+  if issued<0 || retain<=issued || retain>JA_SAFE {return AE_TIME;}return AE_OK;
+}
+ae_string_fits :: (raw:int,decoded:int)->bool #export_c {
+  return raw>=0 && decoded>=0 && raw<=JSON_MAX_STRING && decoded<=JSON_MAX_STRING;
+}
+ae_schema_count :: (count:int)->bool {return count>0 && count<=JSON_MAX_STRING;}
+ae_schema_encoded_fits :: (encoded:int,decoded:int)->bool {return encoded>=2 && ae_string_fits(encoded-2,decoded);}
+ae_schema_ok :: (schema:string)->bool {
+  if !ae_schema_count(schema.count) {return false;}
+  if !jcs_unicode_admit(schema) {return false;}
+  return ae_schema_encoded_fits(jcs_string_size(schema),schema.count);
+}
+ae_inline_fits :: (nodes:int,keys:int,key_bytes:int,work:int,depth:int)->bool #export_c {
+  return nodes>=1 && nodes<=JCS_MAX_NODES-AE_EXTRA_NODES && keys>=0 && keys<=JCS_MAX_KEYS-AE_EXTRA_KEYS && key_bytes>=0 && key_bytes<=JCS_KEY_BYTES-AE_EXTRA_KEY_BYTES && work>=0 && work<=JCS_MAX_WORK-AE_EXTRA_WORK && depth>=1 && depth<JSON_DEPTH;
+}
+ae_depth_mask :: (tree:[]JcsTree,node:int,level:int)->u32 {
+  kind:=tree[0].nodes[node].kind;
+  if kind!=JSON_OBJECT && kind!=JSON_ARRAY {return cast(u32)0;}
+  mask:=cast(u32)1<<level;child:=tree[0].nodes[node].child;
+  while child!=-1 {mask|=ae_depth_mask(tree,child,level+1);child=tree[0].nodes[child].next;}
+  return mask;
+}
+ae_depth :: (tree:[]JcsTree,node:int)->int {
+  mask:=ae_depth_mask(tree,node,0);depth:=0;
+  while mask>0 {depth+=1;mask>>=1;}return depth;
+}
+ae_same :: (a:string,b:string)->bool {
+  if a.count!=b.count {return false;}
+  for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;
+}
+ae_key :: (tree:[]JcsTree,node:int)->string {
+  value:=tree[0].nodes[node];return cast(string)tree[0].arena[value.key_from..<value.key_from+value.key_count];
+}
+ae_member :: (tree:[]JcsTree,parent:int,name:string)->int {
+  child:=tree[0].nodes[parent].child;
+  while child!=-1 {if ae_same(ae_key(tree,child),name) {return child;}child=tree[0].nodes[child].next;}
+  return -1;
+}
+ae_root_index :: (name:string)->int {
+  if ae_same(name,"v") {return 0;}if ae_same(name,"requires") {return 1;}
+  if ae_same(name,"artifact") {return 2;}if ae_same(name,"inline") {return 3;}
+  if ae_same(name,"issued_at") {return 4;}if ae_same(name,"retain_until") {return 5;}return -1;
+}
+ae_artifact_index :: (name:string)->int {
+  if ae_same(name,"digest") {return 0;}if ae_same(name,"size") {return 1;}
+  if ae_same(name,"media_type") {return 2;}if ae_same(name,"schema") {return 3;}return -1;
+}
+// Parent is an admitted object. Optional meta is inert; other semantic
+// extensions (including external ArtifactRef locators) are unsupported here.
+ae_fields :: (tree:[]JcsTree,parent:int,artifact:bool)->u32 {
+  seen:[6]bool;child:=tree[0].nodes[parent].child;
+  while child!=-1 {
+    name:=ae_key(tree,child);
+    if !artifact && ae_same(name,"meta") {
+      if tree[0].nodes[child].kind!=JSON_OBJECT {return AE_SHAPE;}
+    } else {
+      index:=ifx artifact then ae_artifact_index(name) else ae_root_index(name);
+      if index<0 {return AE_FEATURE;}seen[index]=true;
+    }
+    child=tree[0].nodes[child].next;
+  }
+  for i:0..<(ifx artifact then 4 else 6) {if !seen[i] {return AE_SHAPE;}}
+  return AE_OK;
+}
+ae_text_is :: (tree:[]JcsTree,body:string,node:int,expected:string,decoded:[]u8)->bool {
+  item:=tree[0].nodes[node];if item.kind!=JSON_STRING {return false;}
+  n:=json_unescape(body[item.from..<item.to],decoded);
+  return ae_same(cast(string)decoded[0..<n],expected);
+}
+ae_digest :: (canonical:[]u8,out:[]u8)->u32 {
+  if out.count!=71 {return AE_CAPACITY;}
+  digest:[32]u8;status:=sha256_hash_checked(canonical,digest[..],false);
+  if status!=SHA_OK {return AE_HASH;}
+  for i:0..<7 {out[i]="sha256:"[i];}
+  encoded:=hex_encode_checked(cast(string)digest[..],out[7..<71],false);
+  if encoded.error!=NC_OK {return AE_HASH;}return AE_OK;
+}
+ae_reset :: (scratch:[]u8,count:int) {for i:0..<count {scratch[i]=0;}}
+ae_raw_end :: (body:string,start:int)->int {
+  j:[1]Json;json_start(j[..],body[start..<body.count]);token:=json_next(j[..]);
+  skipped:=json_skip(j[..]);return start+j[0].at;
+}
+ae_build_emit :: (inline_json:string,schema:string,issued:int,retain:int,digest:string,size:int,out:[]u8,measure:bool)->int {
+  at:=jcs_raw(out,0,"{\"v\":\"openagents.artifact-envelope.v1\",\"requires\":[],\"artifact\":{\"digest\":",measure);
+  at=ifx measure then at+jcs_string_size(digest) else json_write_string(out,at,digest);
+  at=jcs_raw(out,at,",\"size\":",measure);at=ifx measure then at+jcs_int_size(size) else json_write_int(out,at,size);
+  at=jcs_raw(out,at,",\"media_type\":\"application/json\",\"schema\":",measure);
+  at=ifx measure then at+jcs_string_size(schema) else json_write_string(out,at,schema);
+  at=jcs_raw(out,at,"},\"inline\":",measure);at=jcs_raw(out,at,inline_json,measure);
+  at=jcs_raw(out,at,",\"issued_at\":",measure);at=ifx measure then at+jcs_int_size(issued) else json_write_int(out,at,issued);
+  at=jcs_raw(out,at,",\"retain_until\":",measure);at=ifx measure then at+jcs_int_size(retain) else json_write_int(out,at,retain);
+  return jcs_raw(out,at,"}",measure);
+}
+envelope_build_checked :: (inline_json:string,schema:string,issued:int,retain:int,scratch:[]u8,out:[]u8,overlap:bool)->ArtifactBuild #export_c {
+  error:=ae_counts(inline_json.count,scratch.count,out.count,overlap);if error!=AE_OK {return ArtifactBuild.{error=error};}
+  if !ae_schema_ok(schema) {return ArtifactBuild.{error=AE_SCHEMA};}
+  error=ae_time_admit(issued,retain);if error!=AE_OK {return ArtifactBuild.{error=error};}
+  tree:[1]JcsTree;decoded:[65536]u8;
+  parsed:=jcs_build(inline_json,tree[..],decoded[..]);if parsed!=JCS_OK {return ArtifactBuild.{error=AE_JSON};}
+  if tree[0].nodes[0].kind!=JSON_OBJECT {return ArtifactBuild.{error=AE_SHAPE};}
+  if !ae_inline_fits(tree[0].count,tree[0].keys,tree[0].used,tree[0].work,ae_depth(tree[..],0)) {return ArtifactBuild.{error=AE_LIMIT};}
+  size:=jcs_emit(tree[..],inline_json,0,scratch,0,true,decoded[..]);error=ae_canonical_admit(size,scratch.count);if error!=AE_OK {return ArtifactBuild.{error=error};}
+  written:=jcs_emit(tree[..],inline_json,0,scratch,0,false,decoded[..]);digest:[71]u8;
+  error=ae_digest(scratch[0..<written],digest[..]);ae_reset(scratch,written);if error!=AE_OK {return ArtifactBuild.{error=error};}
+  required:=ae_build_emit(inline_json,schema,issued,retain,cast(string)digest[..],size,out,true);
+  error=ae_canonical_admit(required,out.count);if error!=AE_OK {return ArtifactBuild.{error=error};}
+  count:=ae_build_emit(inline_json,schema,issued,retain,cast(string)digest[..],size,out,false);
+  return ArtifactBuild.{written=count,canonical_size=size};
+}
+envelope_check_body_checked :: (body:string,schema:string,scratch:[]u8,overlap:bool)->ArtifactInfo #export_c {
+  error:=ae_counts(body.count,scratch.count,scratch.count,overlap);if error!=AE_OK {return ArtifactInfo.{error=error};}
+  if !ae_schema_ok(schema) {return ArtifactInfo.{error=AE_SCHEMA};}
+  tree:[1]JcsTree;decoded:[65536]u8;
+  parsed:=jcs_build(body,tree[..],decoded[..]);if parsed!=JCS_OK {return ArtifactInfo.{error=AE_JSON};}
+  if tree[0].nodes[0].kind!=JSON_OBJECT {return ArtifactInfo.{error=AE_SHAPE};}
+  error=ae_fields(tree[..],0,false);if error!=AE_OK {return ArtifactInfo.{error=error};}
+  version:=ae_member(tree[..],0,"v");if !ae_text_is(tree[..],body,version,AE_VERSION_ID,decoded[..]) {return ArtifactInfo.{error=AE_VERSION};}
+  requires:=ae_member(tree[..],0,"requires");if tree[0].nodes[requires].kind!=JSON_ARRAY {return ArtifactInfo.{error=AE_SHAPE};}
+  if tree[0].nodes[requires].child!=-1 {return ArtifactInfo.{error=AE_FEATURE};}
+  artifact:=ae_member(tree[..],0,"artifact");inline_node:=ae_member(tree[..],0,"inline");
+  if tree[0].nodes[artifact].kind!=JSON_OBJECT {return ArtifactInfo.{error=AE_SHAPE};}
+  if tree[0].nodes[inline_node].kind==JSON_NULL {return ArtifactInfo.{error=AE_FEATURE};}
+  if tree[0].nodes[inline_node].kind!=JSON_OBJECT {return ArtifactInfo.{error=AE_SHAPE};}
+  error=ae_fields(tree[..],artifact,true);if error!=AE_OK {return ArtifactInfo.{error=error};}
+  schema_node:=ae_member(tree[..],artifact,"schema");if !ae_text_is(tree[..],body,schema_node,schema,decoded[..]) {return ArtifactInfo.{error=AE_SCHEMA};}
+  media:=ae_member(tree[..],artifact,"media_type");if !ae_text_is(tree[..],body,media,"application/json",decoded[..]) {return ArtifactInfo.{error=AE_FEATURE};}
+  size_node:=ae_member(tree[..],artifact,"size");issued_node:=ae_member(tree[..],0,"issued_at");retain_node:=ae_member(tree[..],0,"retain_until");
+  if tree[0].nodes[size_node].kind!=JSON_NUMBER || tree[0].nodes[issued_node].kind!=JSON_NUMBER || tree[0].nodes[retain_node].kind!=JSON_NUMBER {return ArtifactInfo.{error=AE_SHAPE};}
+  issued:=tree[0].nodes[issued_node].number;retain:=tree[0].nodes[retain_node].number;
+  error=ae_time_admit(issued,retain);if error!=AE_OK {return ArtifactInfo.{error=error};}
+  size:=jcs_emit(tree[..],body,inline_node,scratch,0,true,decoded[..]);
+  if tree[0].nodes[size_node].number!=size {return ArtifactInfo.{error=AE_SIZE};}
+  error=ae_canonical_admit(size,scratch.count);if error!=AE_OK {return ArtifactInfo.{error=error};}
+  written:=jcs_emit(tree[..],body,inline_node,scratch,0,false,decoded[..]);digest:[71]u8;
+  error=ae_digest(scratch[0..<written],digest[..]);ae_reset(scratch,written);if error!=AE_OK {return ArtifactInfo.{error=error};}
+  digest_node:=ae_member(tree[..],artifact,"digest");if !ae_text_is(tree[..],body,digest_node,cast(string)digest[..],decoded[..]) {return ArtifactInfo.{error=AE_DIGEST};}
+  start:=tree[0].nodes[inline_node].from;
+  return ArtifactInfo.{inline_from=start,inline_to=ae_raw_end(body,start),canonical_size=size,issued_at=issued,retain_until=retain};
+}
+envelope_check_observed_checked :: (body:string,schema:string,wire_bytes:int,scratch:[]u8,overlap:bool)->ArtifactInfo #export_c {
+  error:=ae_wire_admit(wire_bytes);if error!=AE_OK {return ArtifactInfo.{error=error};}
+  result:=envelope_check_body_checked(body,schema,scratch,overlap);
+  if result.error==AE_OK {result.wire_bytes=wire_bytes;}return result;
+}

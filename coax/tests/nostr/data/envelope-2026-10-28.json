@@ -1,0 +1,72 @@
+{
+  "compiler": "coax0 0.15.0",
+  "compiler_sha256": "35dcb1ff3633b4f33cd6e931565dc85f4928e530fc916a23c13dbb9ffe9b11ec",
+  "records": 283,
+  "seed": 3188,
+  "fixture_sha256": "a3f4b0e4adf6c4d928fe4a79627434caee7e8b8b9b4f5e41a64c2ae19e737873",
+  "legacy_digest": "sha256:31f0e9941da64dec653587f668942226e5aa282ce9be9404752c412e38dfdf89",
+  "legacy_canonical_bytes": 182,
+  "legacy_body_bytes": 468,
+  "oracle": {
+    "node": "v26.12.1",
+    "records": 210
+  },
+  "sources": {
+    "coax/lib/nostr/envelope.coax": "d9606fea2ce93ccb1f3f21ac203110ea7e2ac0c131244087f3bd8a9677ae3d8e",
+    "coax/lib/nostr/envelope-memory.coax": "1e6eb5a53ce4aded2efb5d7b2dd499f0399b84acdbe7476c364b8f433f8b6ab9",
+    "coax/tests/nostr/envelope.py": "b6d6b94dc1043f9e6af88162b39b29f0746c6b87fc4187e8eab1f8dc72b3add6",
+    "coax/tests/nostr/envelope_native.c": "102c5759a4662930e29cff55148ed3b6643fd086637e11c376700674df40e007",
+    "coax/tests/nostr/envelope_wasm.c": "185d06ed86507bafe5d0643aa8cd9c64b0a2ee2c29110e6ffa734f0b05c582f1",
+    "coax/tests/nostr/envelope_wasm.cjs": "8926879ac95e63ec42fb711cf6763d210b8e046cdb2e844ab47e91653db2fbbc",
+    "coax/tests/nostr/data/envelope-test-deck-v1.json": "b5dc5bbe39fc80076ee12c13e976b94317deae01ee935b2ee8ef2bfd61e7758f",
+    "coax/lib/nostr/jcs.coax": "387b558e0746d3d1d234edfd649e28b7f88b669f12e68c63eec94269a14ee1b1",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/nostr/hex.coax": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5",
+    "coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+    "coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+    "coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "coax/lib/nostr/json-f64.coax": "83cb53f0b43fc4e4d0c8563310d5b45bff6a04243fe53cf559e43b1a18cae37c",
+    "coax/lib/agent/claude/fields.coax": "e53f2d7132dc34737ea638c9a3e769036033cfc83e82c8bb7fc03c206307b1a4"
+  },
+  "results": [
+    {
+      "target": "wasm32-v8",
+      "node": "v26.12.1",
+      "records": 283,
+      "module_sha256": "67f7a63c44c030f989bffb0c61cd43de26dc62a31342bef29b7ce748d8e3779b",
+      "profile": "checked",
+      "wasm_compiler": "Homebrew clang version 23.1.4"
+    },
+    {
+      "target": "wasm32-v8",
+      "node": "v26.12.1",
+      "records": 283,
+      "module_sha256": "d3ad3c4c49be2c743f550809f0be20d2386e44a84ec2814fb6d03bc62da6b371",
+      "profile": "release",
+      "wasm_compiler": "Homebrew clang version 23.1.4"
+    },
+    {
+      "target": "native-arm64-asan-ubsan",
+      "profile": "checked",
+      "records": 283,
+      "observation": "283 records (130 builds with closure and short output, 153 checks), span/alias transactions passed"
+    },
+    {
+      "target": "native-arm64-asan-ubsan",
+      "profile": "release",
+      "records": 283,
+      "observation": "283 records (130 builds with closure and short output, 153 checks), span/alias transactions passed"
+    }
+  ],
+  "float_extraction": {
+    "original_commit": "069e2cb5a3",
+    "helper_and_checks_sha256": "00a541977c91979cada1cd9fc4e4f2d15df2d785dfa89f97c6add5e8dcdbdc73",
+    "byte_identical": true,
+    "envelope_imports_float_helper": false
+  },
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)"
+}
