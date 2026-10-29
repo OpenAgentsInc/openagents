@@ -480,6 +480,36 @@ handshakes are not evidence of correct execution. Each split earns its own
 parity evidence on the machines that ran it. Joining a public mesh, paying
 peers or offering Large 4 as a service each need owner approval.
 
+## XXI. A harness for Psionic models
+
+A harness turns a served model into an agent: it assembles each request, runs
+the tools the model asks for, keeps the session's history and decides when a
+turn is done. DeepSeek publishes its models, its serving system and
+[its harness](../docs/harness.md), and the three are designed together; this
+part builds the Psionic versions in Coax, on Part III's API and Part XIX's
+server. The default is the simplest loop that works. Every addition (a guard,
+a condenser, a plugin) earns its place with a measured gain on tasks it was not
+built from, and is removed otherwise.
+
+| Chapter | What we build and check |
+| --- | --- |
+| 144. The simplest loop | One agent loop over Psionic's API: assemble the request, stream the answer, run the tools it calls, repeat until nothing is owed. Turns and steps have exact boundaries, every turn has a deadline, and cancellation stops the model and the tools together. |
+| 145. Model-visible means logged | An append-only session log of durable events (turns, steps, user and assistant messages, tool calls and results); the model's history is derived from the log, so every request can be rebuilt byte for byte and replayed. The log format is versioned and old sessions still open. |
+| 146. Keep the prefix stable | Prompt assembly in a fixed order (system sections, tool schemas, then history) so each turn only appends to the model-visible bytes; request metadata stays outside the model's input. Measured against chapter 119's prefix cache: hit rate, prefill saved and time to first token across a long session. |
+| 147. Tools as typed capabilities | A tool registry whose schemas come from `proto/`, a guarded pipeline (before, run, after) with structured errors, arguments constrained by chapter 37 so a malformed call is never generated, and filesystem and process tools that share one execution world. |
+| 148. A sandbox and approvals | Spawned processes confined to declared roots and resources, an approval policy for anything outside them, per-tool timeouts and a guard against repeating the same failing call. No tool inherits the host's authority by default. |
+| 149. Condense the history | Older history replaced by one marked summary when the context fills, bracketed in the log so a crash leaves a visible record; tool results pruned by rule. Each condensation breaks the stable prefix, so it is scheduled to minimize recomputed prefill, and that cost is measured. |
+| 150. Programs as tool calls | A model-written program run once against host-provided functions in a bounded, sandboxed runtime, returning one structured result instead of many round trips; output, time and memory limits refuse rather than truncate. |
+| 151. Forks, subagents and jobs | A session forked at a turn boundary from its own log, reusing the parent's cached prefix state on the server; subagents with their own scope and budget; background jobs that outlive a turn; a goal that a session works toward across turns. |
+| 152. Plugins with owned lifecycles | Composition from ordered profiles; capabilities with a definition, a provider and consumers; every registration owned by the plugin that made it and revoked when it unloads; visible states (installed, enabled, admitted, active, failed, draining). Third-party plugins run in bounded Wasm, distributed as signed Nostr events. |
+| 153. Speak the protocols | An MCP client for external tools and resources, ACP for editors, native function tools over the Open Responses API, and System One decisions available to the loop as a tool. |
+| 154. Measure the harness | Benchmarks for the harness itself (opening a session, folding a long conversation, reconnecting a stream, continuing an agent) and end-to-end task suites with tokens, cost, cache hits and wall-clock per task, each change measured one at a time against the simplest loop. |
+| 155. Consent before sharing | No session content leaves the machine unless the person opts in, per session and revocably; attribution metadata is explicit and inspectable. DeepSeek's harness sends session-log suffixes to its API by default; Psionic's never does. |
+
+The harness is product logic, so it is Coax, with the host doing processes,
+files and network. Coder's own agent loop can consume these chapters; nothing
+here replaces its simple loop with more machinery.
+
 ## Optional laboratories
 
 | Appendix | Scope and entry point |
@@ -489,7 +519,7 @@ peers or offering Large 4 as a service each need owner approval.
 | C. Derivatives inside derivatives | Higher-order/input derivatives and a tiny PINN after 64–65; independent derivative and PDE-residual checks. |
 | D. Look inside a model | Bounded activation capture at named layers, logit lens over the residual stream, attention and recurrent-state inspection; doubles as the tool for localizing a reference mismatch in 10–11. |
 
-## Prerequisites, not a waiting list of 136 steps
+## Prerequisites, not a waiting list of 155 steps
 
 | Path | Prerequisites | First complete payoff |
 | --- | --- | --- |
@@ -516,6 +546,7 @@ peers or offering Large 4 as a service each need owner approval.
 | Large-scale serving | Measured need from 115 and 118; two or more devices | Disaggregation 125; tensor/expert parallelism 126. |
 | Voice / training scale | 12, 115 and the voice gate / a resumable trainer plus backend | Voice pipeline 127 and decision steering 128 / distributed training 129. |
 | Mesh inference | 130's two-stage parity, 22's measurements and network transport | Packages and placement 131–134 → experts and routing 135–137 → trust and verification 138–139 → Mesh-LLM interoperation 140 → DeepSeek V4.1 across stages 141 → Mistral Large 3 142 → Le Chonk 143. |
+| Harness | Part III's API; chapter 37's constrained decoding; chapter 119's prefix cache for the stable-prefix measurements | The simplest loop 144 → session log 145 → stable prefix 146 → tools, sandbox and condensation 147–149 → programs, forks and plugins 150–152 → protocols, measurement and consent 153–155. |
 
 ## Coax features each branch needs
 
