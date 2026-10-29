@@ -19,7 +19,7 @@ const KINDS = { locked: 0, open: 1, soon: 2 } as const
 // golden: what the release walk (goldens.ts) asks of the realm's page: the least share of
 // its pixels lit, how long it settles before its shot, how many 8 px blocks may differ.
 export type Golden = { lit: number; settle: number; blocks: number }
-export type Realm = { slug: string; title: string; description: string; alt: string; module: string; slot: string; slot_was?: string; card?: string; assets: string[]; golden: Golden }
+export type Realm = { slug: string; title: string; description: string; alt: string; module: string; slot: string; slot_was?: string; voice?: string; card?: string; assets: string[]; golden: Golden }
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
@@ -73,6 +73,7 @@ export function page(r: Realm): string {
   const url = `https://openagents.com/realm/${r.slug}`, t = esc(r.title), d = esc(r.description)
   const card = `https://openagents.com${r.card ?? "/verse/og-verse.jpg"}`
   const slot = ` data-realm="${r.slug}" data-slot="${r.slot}"` + (r.slot_was ? ` data-slot-was="${r.slot_was}"` : "")
+    + (r.voice ? ` data-voice="${r.voice}"` : "")
   const assets = r.assets.length ? ` data-assets="\n${r.assets.map((a) => `  ${a}`).join("\n")}"` : ""
   return `<!doctype html>
 <html lang="en">

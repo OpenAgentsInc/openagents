@@ -1,0 +1,59 @@
+// The keys every typed box on the site shares. ui.coax's fields have their
+// own caret and selection and keep these same keys; the boxes typed at their
+// end (the chat's, a private project's, the projects editor, the realm's and
+// the Verse's) ask tk_command what a key with Cmd or Ctrl means:
+//   A selects everything typed, C copies it, X cuts it;
+//   V is the browser's: its paste arrives as typed text;
+//   any other letter is the browser's too (Cmd+R, Cmd+L), never typed.
+// While everything is selected, typing or a paste replaces it, Backspace
+// empties the box, and any other key lets the selection go. A copy is
+// action TK_ACT_COPY with the text in the app's outbox; host.js puts it on
+// the clipboard inside the key event. A secret's box (a key) never copies.
+
+TK_KEY :: 0; TK_ALL :: 1; TK_COPY :: 2; TK_CUT :: 3; TK_BROWSER :: 4;
+TK_ACT_COPY :: 2;   // host.js: the outbox's text to the clipboard
+
+// What key means with mods (1 Shift, 2 Ctrl, 4 Alt, 8 Cmd): TK_KEY for a key
+// the box handles itself, else a command.
+tk_command :: (key: int, mods: int) -> int {
+  if key <= 0 || (mods & 10) == 0 { return TK_KEY; }
+  k := ifx key >= 'A' && key <= 'Z' then key + 32 else key;
+  if k == 'a' { return TK_ALL; }
+  if k == 'c' { return TK_COPY; }
+  if k == 'x' { return TK_CUT; }
+  return TK_BROWSER;
+}
+
+// Where Backspace leaves text typed at its end: Cmd takes it all, Alt or Ctrl
+// the last word (and the spaces after it), else the last character.
+tk_back :: (text: string, mods: int) -> int {
+  n := text.count;
+  if (mods & 8) != 0 { return 0; }
+  if (mods & 6) != 0 {
+    while n > 0 && text[n - 1] == ' ' { n -= 1; }
+    while n > 0 && text[n - 1] != ' ' { n -= 1; }
+    return n;
+  }
+  if n == 0 { return 0; }
+  n -= 1;
+  while n > 0 && (text[n] & 0xC0) == 0x80 { n -= 1; }   // a whole UTF-8 character
+  return n;
+}
+
+// The text into out for a copy: its length (at most out's).
+tk_copy :: (out: [] u8, text: string) -> int {
+  n := ifx text.count < out.count then text.count else out.count;
+  for i: 0..<n { out[i] = text[i]; }
+  return n;
+}
+
+#test "Cmd or Ctrl with A, C and X are the box's; other letters are the browser's" {
+  #assert tk_command('a', 8) == TK_ALL && tk_command('A', 9) == TK_ALL && tk_command('a', 2) == TK_ALL;
+  #assert tk_command('c', 8) == TK_COPY && tk_command('x', 2) == TK_CUT;
+  #assert tk_command('v', 8) == TK_BROWSER && tk_command('r', 8) == TK_BROWSER;
+  #assert tk_command('a', 0) == TK_KEY && tk_command('a', 1) == TK_KEY && tk_command(-3, 8) == TK_KEY;
+}
+#test "Backspace takes a character, Alt a word, Cmd the whole line" {
+  #assert tk_back("hello big world", 0) == 14 && tk_back("hello big world", 4) == 10 && tk_back("hello big  ", 4) == 6;
+  #assert tk_back("hello", 8) == 0 && tk_back("", 0) == 0 && tk_back("aé", 0) == 1;
+}

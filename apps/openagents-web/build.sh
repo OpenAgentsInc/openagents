@@ -19,6 +19,9 @@ splash=$!
   && python3 coax/web/wgsl.py verse/particle-motion.coax verse_particle_offset verse_particle_glow verse_particle_size --into apps/openagents-web/particles.wgsl \
   && python3 coax/web/wgsl.py verse/haunt-light.coax verse_haunt_bloom_share --into apps/openagents-web/particles.wgsl)
 m="$here/../../verse"
+# The voice engine for pages that talk (data-voice: the Haunted House), coax/web/voice.js.
+"$here/../../coax/web/voice/build.sh" "$here/build/voice.wasm" &
+voice=$!
 "$here/../../coax/web/wasm.sh" "$here/realm.coax" "$here/realm-face.c" "$here/build/realm.wasm" \
   "$m/haunt.coax" "$m/haunt-buffer.coax" "$m/player.coax" "$m/grid.coax" "$m/particles.coax" "$m/cinematic.coax" &
 realm=$!
@@ -79,6 +82,7 @@ wait "$admin"
 wait "$chat"
 wait "$splash"
 wait "$realm"
+wait "$voice"
 wait "$verse_app"
 wait "$garden"
 wait "$characters"

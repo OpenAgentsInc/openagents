@@ -874,6 +874,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
 
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) { track_drain(&track_state); return; }
   if (kind == 1) realm_type(realm_of(), (coax_string){(const char *)inbox, length});
+  if (kind == 50) realm_voice(realm_of(), (coax_string){(const char *)inbox, length});   // coax/web/voice.js
   if (kind == 4 && !opened) take_kept(length);   // restore_kept opens it with the house
 }
 EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { (void)state; return realm_wants_text(realm_of()) ? 1 : 0; }

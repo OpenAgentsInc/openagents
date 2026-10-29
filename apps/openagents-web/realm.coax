@@ -17,6 +17,7 @@
 
 #load "font.coax";
 #load "ui.coax";
+#load "textkeys.coax";
 #load "analytics.coax";
 #load "save.coax";
 #load "world.coax";
@@ -172,7 +173,9 @@ BTN_ASK :: BTN_OP + OPS; BTN_TEACH :: BTN_ASK + 1;   // the conversation's ASK a
 BTN_ACCEPT :: BTN_TEACH + 1; BTN_DECLINE :: BTN_TEACH + 2;   // an offered change
 BTN_CHAT :: BTN_DECLINE + 1; BTN_SAY :: BTN_CHAT + 1;          // the hotbar's CHAT, and the chat's SAY
 BTN_GFX :: BTN_SAY + 1;                                         // the hotbar's graphics: HIGH, MEDIUM, LOW
-BUTTONS :: BTN_GFX + 1;
+BTN_VOICE :: BTN_GFX + 1;                                       // the hotbar's VOICE: talk to the house
+BUTTONS :: BTN_VOICE + 1;
+ACT_VOICE :: 7;     // host.js (coax/web/voice.js): the outbox is "on" or "off"
 
 // Graphics (host.js): how many pixels the house is drawn with. HIGH every
 // device pixel, MEDIUM at most 1.5 a CSS pixel, LOW 1; phones start at MEDIUM.
@@ -195,6 +198,7 @@ Realm :: struct {
   moved_at: f32;        // when you first moved (-1 not yet)
   boxes: [BUTTONS] Box; shown: [BUTTONS] bool;     // where each button was last drawn
   typing: bool; typed: [TYPED_MAX] u8; typed_n: int;   // the typed box, open, and what's in it
+  typed_all: bool;                                      // Cmd+A: all of it selected (textkeys.coax)
   typing_for: int;      // TYPE_*: what the typed box is for
   // the conversation so far, a line each: "p " what you asked, "n " what they said
   memory: [MEMORY_LINES * (MEMORY_LINE + 3)] u8; memory_n: int; memory_lines: int;
@@ -202,10 +206,26 @@ Realm :: struct {
   op: int;              // the edit ASK_OP does
   pick_x: f32; pick_y: f32;              // where ASK_PICK picks, device pixels
   down_x: f32; down_y: f32; down_id: int; down_at: f32;   // a press that may be a click or tap
-  outbox: [160] u8; out_n: int; action: int;        // the host's: ACT_NAVIGATE and a URL, or ACT_QUALITY and its name
+  outbox: [TYPED_MAX] u8; out_n: int; action: int;        // the host's: ACT_NAVIGATE and a URL, or ACT_QUALITY and its name
   quality: int;         // the graphics in force, 0 HIGH, 1 MEDIUM, 2 LOW (the host says which at the start)
+  voice: bool;          // VOICE is on (coax/web/voice.js has the microphone)
+  voice_phase: [16] u8; voice_phase_n: int;     // what voice.js says it is doing: listening, hearing, thinking, replying...
+  voice_text: [400] u8; voice_n: int;           // and its caption: what it heard, or the reply as it is spoken
   hover: int;           // the button the mouse is over (-1 none)
   plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;   // this frame's plates
+}
+
+// What voice.js says (message 50): "phase|caption". "off" or "notice" means the microphone is off.
+realm_voice :: (r: [] Realm, text: string) #export_c {
+  split := 0;
+  while split < text.count && text[split] != '|' { split += 1; }
+  r[0].voice_phase_n = 0;
+  for i: 0..<split { if r[0].voice_phase_n < 16 { r[0].voice_phase[r[0].voice_phase_n] = text[i]; r[0].voice_phase_n += 1; } }
+  r[0].voice_n = 0;
+  i := split + 1;
+  while i < text.count && r[0].voice_n < 400 { r[0].voice_text[r[0].voice_n] = text[i]; r[0].voice_n += 1; i += 1; }
+  phase := cast(string) r[0].voice_phase[0..<r[0].voice_phase_n];
+  if phase == "off" || phase == "notice" { r[0].voice = false; }
 }
 
 realm_set_quality :: (r: [] Realm, q: int) #export_c { if q >= 0 && q < 3 { r[0].quality = q; } }
@@ -216,7 +236,7 @@ realm_reset :: (r: [] Realm) #export_c { r[0].press = -1; r[0].press_id = -1; r[
 // or a question or a lesson for whoever you're talking to (ASK, TEACH);
 // what's typed, and closing it.
 realm_ask_text :: (r: [] Realm) #export_c { realm_open_text(r, TYPE_SURVEY); }
-realm_open_text :: (r: [] Realm, kind: int) #export_c { r[0].typing = true; r[0].typing_for = kind; r[0].typed_n = 0; }
+realm_open_text :: (r: [] Realm, kind: int) #export_c { r[0].typing = true; r[0].typing_for = kind; r[0].typed_n = 0; r[0].typed_all = false; }
 realm_typing_for :: (r: [] Realm) -> int #export_c { return r[0].typing_for; }
 realm_typed :: (r: [] Realm) -> string #export_c { return cast(string) r[0].typed[0..<r[0].typed_n]; }
 realm_close_text :: (r: [] Realm) #export_c { r[0].typing = false; }
@@ -224,6 +244,7 @@ realm_wants_text :: (r: [] Realm) -> bool #export_c { return r[0].typing; }
 // Typed or pasted text (the host's field on a phone): printable bytes only.
 realm_type :: (r: [] Realm, text: string) #export_c {
   if !r[0].typing { return; }
+  if r[0].typed_all { r[0].typed_n = 0; r[0].typed_all = false; }
   for i: 0..<text.count {
     c := text[i];
     if c >= 32 && r[0].typed_n < TYPED_MAX { r[0].typed[r[0].typed_n] = c; r[0].typed_n += 1; }
@@ -305,6 +326,12 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
     if v.selected.count > 0 { edit_op(r, row_op(v, k)); }
     else if v.zone.count > 0 { edit_op(r, row_op(v, k)); }
   }
+  if b == BTN_VOICE {
+    r[0].voice = !r[0].voice;
+    r[0].out_n = put(r[0].outbox[..], 0, ifx r[0].voice then "on" else "off");
+    r[0].action = ACT_VOICE;
+    if r[0].voice { r[0].voice_phase_n = put(r[0].voice_phase[..], 0, "connecting"); r[0].voice_n = 0; }
+  }
   if b == BTN_GFX {
     names := QUALITY_NAMES;
     r[0].quality = (r[0].quality + 1) % 3;
@@ -356,16 +383,25 @@ edit_key :: (v: RealmView, key: int) -> int {
 // A key down (down) or up. Returns whether it was used. A key held down
 // repeats; only its first press acts.
 realm_key :: (r: [] Realm, v: RealmView, key: int, mods: int, down: bool) -> bool #export_c {
-  if (mods & (MOD_CTRL | MOD_META)) != 0 && down { return false; }
-  // The survey box takes every key while it's open.
-  if r[0].typing {
+  cmd := tk_command(key, mods);
+  // The survey box takes every key while it's open, but the browser's.
+  if r[0].typing && cmd != TK_BROWSER {
     if !down { return true; }
+    if cmd == TK_ALL { r[0].typed_all = r[0].typed_n > 0; return true; }
+    if cmd == TK_COPY || cmd == TK_CUT {
+      if !r[0].typed_all { return true; }
+      r[0].out_n = tk_copy(r[0].outbox[..], realm_typed(r)); r[0].action = TK_ACT_COPY;
+      if cmd == TK_CUT { r[0].typed_n = 0; r[0].typed_all = false; }
+      return true;
+    }
+    if key == KEY_BACKSPACE { r[0].typed_n = ifx r[0].typed_all then 0 else tk_back(realm_typed(r), mods); r[0].typed_all = false; return true; }
+    if key < 32 { r[0].typed_all = false; }
     if key == KEY_ESCAPE { realm_do(r, v, BTN_CANCEL); }
     else if key == KEY_ENTER { realm_do(r, v, BTN_SEND); }
-    else if key == KEY_BACKSPACE { realm_unType(r); }
     else if key >= 32 && key < 0x110000 { buf: [4] u8; n := utf8(buf[..], key); realm_type(r, cast(string) buf[0..<n]); }
     return true;
   }
+  if (mods & (MOD_CTRL | MOD_META)) != 0 && down { return false; }
   bit := hold_of(key);
   if !down {
     if key >= '1' && key <= '9' { r[0].held = r[0].held & (0x7fffffff - HOLD_PLACE); }
@@ -503,7 +539,7 @@ slot_box :: (r: [] Realm, i: int) -> Box {
   return Box.{x0 = x1 - w, y0 = y0, x1 = x1, y1 = y0 + h};
 }
 
-SLOTS :: 6;
+SLOTS :: 7;
 
 // The bottom of the HUD's top: the title, and on a phone the hotbar under it.
 top_bottom :: (r: [] Realm) -> f32 { return ifx phone(r) then slot_box(r, 0).y1 else title_box(r).y1; }
@@ -598,6 +634,32 @@ hud_button :: (r: [] Realm, out: [] f32, at: int, i: int, b: Box, label: string,
   }
   fit := lo(cap, (b.x1 - b.x0 - 8 * k) / hi(measure(label, GAP, SPACE, false), 0.001));
   return centred(d, out, vertices, label, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + fit * 0.5, fit, white(k, 0.9));
+}
+
+// The voice line by the hotbar while VOICE is on, or its last notice: what it
+// is doing, and what it heard or is saying.
+VOICE_WORDS :: [7] string.["connecting", "listening", "hearing", "thinking", "replying", "notice", "off"];
+VOICE_LABELS :: [7] string.["CONNECTING", "LISTENING", "HEARING YOU", "THINKING", "THE HOUSE", "VOICE", "VOICE"];
+draw_voice :: (r: [] Realm, out: [] f32, at: int) -> int {
+  phase := cast(string) r[0].voice_phase[0..<r[0].voice_phase_n];
+  text := cast(string) r[0].voice_text[0..<r[0].voice_n];
+  if !r[0].voice && !(phase == "notice" && text.count > 0) { return at; }
+  words := VOICE_WORDS; labels := VOICE_LABELS;
+  label := "VOICE";
+  for i: 0..<7 { if phase == words[i] { label = labels[i]; } }
+  k := r[0].dpr; d := r[0].dpr;
+  s0 := slot_box(r, 0); s1 := slot_box(r, SLOTS - 1);
+  h := 52 * k;
+  y0 := ifx phone(r) then s0.y1 + 10 * k else s0.y0 - 10 * k - h;
+  b := Box.{x0 = ifx phone(r) then s0.x0 else s0.x0 - 120 * k, y0 = y0, x1 = s1.x1, y1 = y0 + h};
+  plate(r, b, 0.88, LOOK_PLAIN);
+  v := draw_fit(d, out, at, label, b.x0 + 12 * k, b.y0 + 17 * k, 7 * k, GAP, SPACE, orange(k, 0.95), b.x1 - b.x0 - 24 * k);
+  if text.count > 0 {
+    used: [1] f32;
+    v = draw_wrapped(d, out, v, text, b.x0 + 12 * k, b.y0 + 33 * k, 8 * k, GAP, SPACE, white(k, 0.95),
+                     b.x1 - b.x0 - 24 * k, 14 * k, false, true, used[..]);
+  }
+  return v;
 }
 
 // Writes "MAKE IT YOURS  N / 8" (the steps done), or that it's complete, into buf.
@@ -960,7 +1022,9 @@ draw_ask :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) 
   empty := ifx kind == TYPE_ASK then "Type your question" else ifx kind == TYPE_TEACH then "Something true in this house they should know" else "Type here";
   shown := ifx text.count > 0 then text else empty;
   used: [1] f32;
-  vertices = draw_wrapped(k, out, vertices, shown, x, b.y0 + 38 * k, 8.5 * k, GAP, SPACE, white(k, ifx text.count > 0 then 0.9f32 else 0.4f32),
+  // all of it selected (Cmd+A) is drawn orange
+  vertices = draw_wrapped(k, out, vertices, shown, x, b.y0 + 38 * k, 8.5 * k, GAP, SPACE,
+                          ifx r[0].typed_all && text.count > 0 then orange(k, 0.95) else white(k, ifx text.count > 0 then 0.9f32 else 0.4f32),
                           b.x1 - x - 18 * k, 17 * k, false, true, used[..]);
   if sin(r[0].time * 6) > -0.2 {
     cx := x + ifx text.count > 0 then measure(last_line(text), GAP, SPACE, false) * 8.5 * k + 3 * k else 0.0f32;
@@ -1065,7 +1129,9 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
   vertices = hud_button(r, out, vertices, BTN_CHAT, slot_box(r, 3), "CHAT", "C", r[0].chat || v.unread > 0);
   labels := QUALITY_LABELS;
   vertices = hud_button(r, out, vertices, BTN_GFX, slot_box(r, 4), labels[r[0].quality % 3], "G", false);
-  vertices = hud_button(r, out, vertices, BTN_EXIT, slot_box(r, 5), "EXIT", "", false);
+  vertices = hud_button(r, out, vertices, BTN_VOICE, slot_box(r, 5), "VOICE", "", r[0].voice);
+  vertices = hud_button(r, out, vertices, BTN_EXIT, slot_box(r, 6), "EXIT", "", false);
+  vertices = draw_voice(r, out, vertices);
 
   // the house's notice, under the title
   if v.notice.count > 0 {
@@ -1475,6 +1541,28 @@ view :: () -> RealmView { v: RealmView; v.ready = true; v.title = "Foyer"; v.que
   #assert !realm_pointer(r[..], v, 320, 690, POINTER_MOVE, 1, 7);
 }
 
+#test "VOICE turns the microphone on and off through the host, and shows what it hears and says" {
+  r: [1] Realm; desk(r[..]); v := view();
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  before := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  b := r[0].boxes[BTN_VOICE]; x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
+  #assert r[0].shown[BTN_VOICE];
+  #assert realm_pointer(r[..], v, x, y, POINTER_DOWN, 0, 1) && realm_pointer(r[..], v, x, y, POINTER_UP, 0, 1);
+  #assert r[0].voice && r[0].action == ACT_VOICE && cast(string) r[0].outbox[0..<r[0].out_n] == "on";
+  r[0].action = 0;
+  realm_voice(r[..], "replying|The third door creaks if you ask it nicely.");
+  #assert r[0].voice && r[0].voice_n > 10;
+  after := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert after > before + 200;
+  realm_voice(r[..], "notice|Voice needs the microphone.");
+  #assert !r[0].voice;
+  #assert realm_pointer(r[..], v, x, y, POINTER_DOWN, 0, 1) && realm_pointer(r[..], v, x, y, POINTER_UP, 0, 1);
+  #assert r[0].voice && cast(string) r[0].outbox[0..<r[0].out_n] == "on";
+  r[0].action = 0;
+  #assert realm_pointer(r[..], v, x, y, POINTER_DOWN, 0, 1) && realm_pointer(r[..], v, x, y, POINTER_UP, 0, 1);
+  #assert !r[0].voice && cast(string) r[0].outbox[0..<r[0].out_n] == "off";
+}
+
 #test "GFX steps the graphics down and tells the host; G does too" {
   r: [1] Realm; desk(r[..]); v := view();
   realm_set_quality(r[..], 1);
@@ -1617,7 +1705,7 @@ plated :: (u: [] f32, b: Box) -> f32 {
   #assert realm_key(r[..], v, KEY_ESCAPE, 0, true) && realm_take(r[..]) == ASK_EDIT;
 }
 
-#test "the survey box takes typed text, Backspace a whole character, Enter sends, Escape closes" {
+#test "the survey box takes typed text, Backspace a whole character, Cmd+A and Cmd+C copy, Enter sends, Escape closes" {
   r: [1] Realm; desk(r[..]); v := view();
   realm_ask_text(r[..]);
   #assert realm_wants_text(r[..]);
@@ -1627,6 +1715,16 @@ plated :: (u: [] f32, b: Box) -> f32 {
   _ = realm_key(r[..], v, KEY_BACKSPACE, 0, true);
   #assert realm_typed(r[..]) == "Fun";
   #assert realm_take(r[..]) == 0;                 // W, E: typed, not walked or used
+  // Cmd+A and Cmd+C copy it, Cmd+R is the browser's, typing replaces a selection, Alt+Backspace a word
+  #assert !realm_key(r[..], v, 'r', MOD_META, true) && realm_typed(r[..]) == "Fun";
+  #assert realm_key(r[..], v, 'a', MOD_META, true) && realm_key(r[..], v, 'c', MOD_META, true);
+  #assert r[0].action == ACT_COPY && cast(string) r[0].outbox[0..<r[0].out_n] == "Fun";
+  r[0].action = 0;
+  #assert realm_key(r[..], v, 'W', 0, true) && realm_typed(r[..]) == "W";
+  realm_type(r[..], "e had fun");
+  #assert realm_key(r[..], v, KEY_BACKSPACE, MOD_ALT, true) && realm_typed(r[..]) == "We had ";
+  _ = realm_key(r[..], v, KEY_BACKSPACE, MOD_META, true);
+  realm_type(r[..], "Fun");
   _ = realm_key(r[..], v, KEY_ENTER, 0, true);
   #assert realm_take(r[..]) == ASK_SEND;
   _ = realm_key(r[..], v, KEY_ESCAPE, 0, true);

@@ -74,6 +74,7 @@ ChatState :: struct {
   back: f32; content: f32;       // device pixels the conversation is scrolled up from its end; its height
   hot: int; press: int; press_x: f32; press_y: f32; drag_y: f32; dragged: bool;
   typing: bool; focus: int;      // the field typed into: 0 the message, 1 the key
+  all: int;                      // Cmd+A: the field (focus + 1) whose text is all selected; 0 none (textkeys.coax)
   text: [CH_TEXT] u8; text_n: int;
   key: [CH_KEY] u8; key_n: int;
   listing: bool;                 // a phone: CHATS is open
@@ -82,7 +83,7 @@ ChatState :: struct {
   clip0: f32; clip1: f32;        // what's drawn is between these
   field: [4] f32;
   hit_box: [CH_HITS] Box; hit_id: [CH_HITS] int; hit_n: int;
-  outbox: [CH_URL] u8; out_n: int; action: int;
+  outbox: [CH_TEXT] u8; out_n: int; action: int;   // a URL, or a copy (TK_ACT_COPY) of what's typed
   md: [CH_MD] u8; md_n: int;
   data: [CH_DATA] u8; data_n: int;
   line_at: [CH_LINES] int; line_end: [CH_LINES] int; line_n: int;
@@ -641,7 +642,9 @@ ch_field :: (s: [] ChatState, out: [] f32, v0: int, fb: Box, p: Pen, which: int,
     v = put(out, v, typed[from..<typed.count], tx, base, BODY * d, white);
     caret_x = tx + ink_width(typed[from..<typed.count], BODY * d, GAP, SPACE, white) + 1.5 * d;
   }
-  if on && (cast(int) (s[0].time * 2)) % 2 == 0 {
+  if on && ch_all(s) && caret_x > tx + 2 * d && lit(out, v, tx - 1 * d, base - 4 * d, caret_x - 1 * d, base - 4 * d, 15 * d, 0.42 * p.fade, 2 * d,
+                                                    ink(p, INK_ORANGE).red, ink(p, INK_ORANGE).green, ink(p, INK_ORANGE).blue, MODE_STROKE) { v += 6; }
+  else if on && (cast(int) (s[0].time * 2)) % 2 == 0 {
     v = rule(out, v, caret_x, base - 11 * d, caret_x, base + 3 * d, ink(p, INK_ORANGE), p.fade);
   }
   ch_hit(s, fb, hfield);
@@ -977,6 +980,7 @@ ch_switch :: (s: [] ChatState, lab: bool) {
   s[0].asked_at = -1000;
 }
 ch_act :: (s: [] ChatState, target: int) {
+  s[0].all = 0;
   if target != H_FIELD && target != H_SEND && target != H_KFIELD && target != H_KSAVE && (target < H_MODEL || target >= H_MODEL + 3) && (target < H_EFFORT || target >= H_EFFORT + 5) { s[0].typing = false; }
   if target == H_HOME { ch_go(s, "/"); }
   else if target == H_SIGNIN { ch_go(s, "/login"); }
@@ -1043,6 +1047,7 @@ coaxial_chat_pointer :: (s: [] ChatState, x: f32, y: f32, phase: int, kind: int)
 
 // Typed or pasted text into the focused field; the key's takes no spaces or line breaks.
 ch_type :: (s: [] ChatState, text: string) {
+  if ch_all(s) { ch_set_n(s, 0); }
   for c: text {
     if s[0].focus == 1 {
       if c <= ' ' { continue; }
@@ -1055,23 +1060,31 @@ ch_type :: (s: [] ChatState, text: string) {
     }
   }
 }
-coaxial_chat_key :: (s: [] ChatState, key: int) -> bool #export_c {
+// Whether everything typed in the focused field is selected.
+ch_all :: (s: [] ChatState) -> bool { return s[0].typing && s[0].all == s[0].focus + 1 && ch_typed(s, s[0].focus).count > 0; }
+// The focused field cut to its first n bytes (a key's cut bytes wiped); the selection goes.
+ch_set_n :: (s: [] ChatState, n: int) {
+  if s[0].focus == 1 { for i: n..<s[0].key_n { s[0].key[i] = 0; } s[0].key_n = n; } else { s[0].text_n = n; }
+  s[0].all = 0;
+}
+coaxial_chat_key :: (s: [] ChatState, key: int, mods: int) -> bool #export_c {
   if s.count < 1 { return false; }
   d := hi(s[0].d, 1);
+  cmd := tk_command(key, mods);
+  if cmd == TK_BROWSER { return false; }
   if s[0].typing {
-    if key == K_ENTER { if s[0].focus == 1 { ch_save_key(s); } else { ch_send(s); } return true; }
-    if key == K_ESC { s[0].typing = false; return true; }
-    if key == K_BACK {
-      if s[0].focus == 1 {
-        if s[0].key_n > 0 { s[0].key_n -= 1; s[0].key[s[0].key_n] = 0; }
-      } else if s[0].text_n > 0 {
-        n := s[0].text_n - 1;
-        while n > 0 && (s[0].text[n] & 0xC0) == 0x80 { n -= 1; }   // a whole UTF-8 character
-        s[0].text_n = n;
-      }
+    if cmd == TK_ALL { s[0].all = s[0].focus + 1; return true; }
+    if cmd == TK_COPY || cmd == TK_CUT {
+      if !ch_all(s) || s[0].focus == 1 { return true; }   // a key never leaves in clear
+      s[0].out_n = tk_copy(s[0].outbox[..], ch_typed(s, s[0].focus)); s[0].action = TK_ACT_COPY;
+      if cmd == TK_CUT { ch_set_n(s, 0); }
       return true;
     }
-    if key >= 32 {
+    if key == K_BACK { ch_set_n(s, ifx ch_all(s) then 0 else tk_back(ch_typed(s, s[0].focus), mods)); return true; }
+    if key < 32 { s[0].all = 0; }   // a named key lets the selection go; typing replaces it
+    if key == K_ENTER { if s[0].focus == 1 { ch_save_key(s); } else { ch_send(s); } return true; }
+    if key == K_ESC { s[0].typing = false; return true; }
+    if key >= 32 && cmd == TK_KEY {
       buf: [4] u8;
       n := encode(cast(u32) key, buf[..], 0);
       ch_type(s, cast(string) buf[0..<n]);
@@ -1079,6 +1092,7 @@ coaxial_chat_key :: (s: [] ChatState, key: int) -> bool #export_c {
     }
     return false;
   }
+  if cmd != TK_KEY { return false; }
   if key == K_ESC && (s[0].keying || s[0].listing) { s[0].keying = false; s[0].listing = false; ch_wipe_key(s); return true; }
   if key == K_UP { s[0].back += 40 * d; return true; }
   if key == K_DOWN { s[0].back -= 40 * d; return true; }
@@ -1190,7 +1204,14 @@ ch_typed_in :: (s: [] ChatState, text: string) {
   ch_act(s[..], H_FIELD);
   #assert coaxial_chat_wants_text(s[..]);
   ch_typed_in(s[..], "say \"hi\"\nnow");
-  k2 := coaxial_chat_key(s[..], K_ENTER);
+  // Cmd+A and Cmd+C copy what's typed, Cmd+R is the browser's, typing replaces a selection
+  #assert !coaxial_chat_key(s[..], 'r', 8) && coaxial_chat_key(s[..], 'a', 8) && coaxial_chat_key(s[..], 'c', 8);
+  #assert s[0].action == TK_ACT_COPY && cast(string) s[0].outbox[0..<s[0].out_n] == "say \"hi\"\nnow";
+  coaxial_chat_action_done(s[..]);
+  #assert coaxial_chat_key(s[..], 'Q', 0) && cast(string) s[0].text[0..<s[0].text_n] == "Q";
+  #assert coaxial_chat_key(s[..], K_BACK, 8) && s[0].text_n == 0;
+  ch_typed_in(s[..], "say \"hi\"\nnow");
+  k2 := coaxial_chat_key(s[..], K_ENTER, 0);
   #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/chat/send";
   #assert cast(string) s[0].body[0..<s[0].body_n] == "{\"c\":\"7\",\"text\":\"say \\\"hi\\\"\\nnow\",\"model\":\"claude-opus-5-5\"}";
   coaxial_chat_posted(s[..], 5);
@@ -1242,7 +1263,7 @@ ch_typed_in :: (s: [] ChatState, text: string) {
   ch_act(s[..], H_KFIELD);
   ch_typed_in(s[..], " sk-ant-api03-abc\nWXYZ ");
   #assert cast(string) s[0].key[0..<s[0].key_n] == "sk-ant-api03-abcWXYZ" && s[0].text_n == 0;
-  k := coaxial_chat_key(s[..], K_ENTER);
+  k := coaxial_chat_key(s[..], K_ENTER, 0);
   #assert s[0].key_n == 0 && s[0].key[0] == 0;
   #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/chat/key" && cast(string) s[0].body[0..<s[0].body_n] == "{\"credential\":\"sk-ant-api03-abcWXYZ\"}";
   coaxial_chat_posted(s[..], 3);

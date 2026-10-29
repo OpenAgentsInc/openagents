@@ -12,6 +12,7 @@
         "module": "realm",
         "slot": "haunted-house",
         "slot_was": "realm",
+        "voice": "haunted-house",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
         "assets": [
           "data:/realm/haunted-house/assets/Haunt.pb",

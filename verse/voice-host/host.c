@@ -107,6 +107,9 @@ typedef struct {
 } account;
 static account accounts[64];
 static size_t naccounts;
+// Speakers metered at once (--max-speakers): with the free tier each, this caps a public host's
+// spend for the day, however many speaker ids a client invents.
+static size_t g_max_speakers = sizeof accounts / sizeof accounts[0];
 
 static uint32_t today(void) { return (uint32_t)(time(NULL) / 86400); }
 
@@ -116,7 +119,7 @@ static account *account_for(const char *id) {
       oa_voice_meter_day(accounts[i].m, today());
       return &accounts[i];
     }
-  if (naccounts == sizeof accounts / sizeof accounts[0]) return NULL;
+  if (naccounts >= g_max_speakers) return NULL;
   account *a = &accounts[naccounts];
   a->m = calloc(1, oa_voice_meter_size());
   if (!a->m) return NULL;
@@ -1041,6 +1044,7 @@ static void on_hello(session *s, const oa_voice_hello *h) {
   if (!s->speaker[0]) snprintf(s->speaker, sizeof s->speaker, "dev");
   // Dev host: Hello.token is not checked yet (never logged either).
   s->acct = account_for(s->speaker);
+  if (!s->acct) { send_error(s, OA_ERROR_LIMIT, "voice is busy: too many speakers today", ""); s->state = S_CLOSING; return; }
   s->v = calloc(1, oa_voice_size());
   s->fl = calloc(1, oa_voice_floor_size());
   if (!s->acct || !s->v || !s->fl) { send_error(s, OA_ERROR_INTERNAL, "out of memory", ""); s->state = S_CLOSING; return; }
@@ -1262,7 +1266,7 @@ static int listen_on(const char *spec, int *port_out) {
 static void usage(void) {
   fprintf(stderr,
           "usage: voice-host [--listen HOST:PORT] [--provider google|local] [--agent gemini|echo]\n"
-          "                  [--model NAME] [--project ID] [--budget-msat N] [--verbose]\n"
+          "                  [--model NAME] [--project ID] [--budget-msat N] [--max-speakers N] [--verbose]\n"
           "  default: --listen 127.0.0.1:8787 --provider google --agent gemini\n");
 }
 
@@ -1285,6 +1289,11 @@ int main(int argc, char **argv) {
     } else if (!strcmp(a, "--model") && v) { snprintf(g_speech.model, sizeof g_speech.model, "%s", v); i++; }
     else if (!strcmp(a, "--project") && v) { snprintf(g_speech.project, sizeof g_speech.project, "%s", v); i++; }
     else if (!strcmp(a, "--budget-msat") && v) { g_budget_msat = strtoull(v, NULL, 10); i++; }
+    else if (!strcmp(a, "--max-speakers") && v) {
+      size_t n = strtoull(v, NULL, 10);
+      g_max_speakers = n >= 1 && n <= sizeof accounts / sizeof accounts[0] ? n : g_max_speakers;
+      i++;
+    }
     else if (!strcmp(a, "--verbose")) g_verbose = true;
     else { usage(); return 2; }
   }
@@ -1342,7 +1351,9 @@ int main(int argc, char **argv) {
           fcntl(fd, F_SETFL, O_NONBLOCK);
           int one = 1;
           setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
-          setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
+#ifdef SO_NOSIGPIPE
+          setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);   // Linux has none: SIGPIPE is ignored (main)
+#endif
           session *s = calloc(1, sizeof *s);
           if (!s) { close(fd); continue; }
           s->fd = fd;

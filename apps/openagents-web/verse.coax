@@ -26,6 +26,7 @@
 
 #load "font.coax";
 #load "ui.coax";
+#load "textkeys.coax";
 #load "analytics.coax";
 #load "world.coax";
 #load "realms.coax";
@@ -158,6 +159,7 @@ VerseState :: struct {
   wants: int; want_out: int; want_id: int;   // WANT_* still to ask, the one out and its request id
   realm_total: int; counted: bool;          // how many realms the server has, once asked
   setup: bool; name: [NAME_MAX] u8; name_n: int; picks: [CHOICES] int; making: bool;
+  typed_all: bool;   // Cmd+A: all of the focused box (the email or the realm's name) is selected (textkeys.coax)
   // to the host: one request, the keyboard field, an action
   req_url: [REQ_URL] u8; req_url_n: int; req_body: [REQ_BODY] u8; req_body_n: int; req_flags: int; req_ready: bool;
   field: [4] f32;
@@ -209,11 +211,24 @@ email_byte :: (c: int) -> int {
 }
 
 email_type :: (s: [] VerseState, text: string) {
+  if s[0].typed_all { s[0].email_n = 0; s[0].typed_all = false; }
   for i: 0..<text.count {
     c := email_byte(cast(int) text[i]);
     if c >= 0 && s[0].email_n < EMAIL_MAX { s[0].email[s[0].email_n] = cast(u8) c; s[0].email_n += 1; }
   }
   s[0].typed_at = s[0].time; s[0].note = NOTE_NONE;
+}
+
+// Cmd or Ctrl with A, C or X in a focused box holding text (textkeys.coax):
+// whether it was one. Cutting empties the box through n.
+box_command :: (s: [] VerseState, cmd: int, text: string, n: [] int) -> bool {
+  if cmd == TK_ALL { s[0].typed_all = text.count > 0; return true; }
+  if cmd != TK_COPY && cmd != TK_CUT { return false; }
+  if s[0].typed_all {
+    act(s, TK_ACT_COPY, text);
+    if cmd == TK_CUT { n[0] = 0; s[0].typed_all = false; }
+  }
+  return true;
 }
 
 // ---- out to the host
@@ -317,8 +332,14 @@ verse_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool #expor
   // with a keyboard, typing goes into the box without a click first
   if !s[0].focused && key > 32 && key < 127 && mods & (MOD_CTRL | MOD_META) == 0 { focus(s, t); }
   if !s[0].focused { return false; }
+  n: [1] int; n[0] = s[0].email_n;
+  if box_command(s, tk_command(key, mods), email_text(s), n[..]) { s[0].email_n = n[0]; return true; }
+  if key == KEY_BACKSPACE {
+    s[0].email_n = ifx s[0].typed_all then 0 else tk_back(email_text(s), mods); s[0].typed_all = false;
+    s[0].typed_at = s[0].time; s[0].note = NOTE_NONE; return true;
+  }
+  if key < 32 { s[0].typed_all = false; }
   if key == KEY_ESCAPE { s[0].focused = false; return true; }
-  if key == KEY_BACKSPACE { if s[0].email_n > 0 { s[0].email_n -= 1; } s[0].typed_at = s[0].time; s[0].note = NOTE_NONE; return true; }
   if key > 0 && mods & (MOD_CTRL | MOD_META) == 0 {
     buf: [4] u8; buf[0] = cast(u8) (key & 127);
     if key < 127 { email_type(s, cast(string) buf[0..<1]); return true; }
@@ -542,7 +563,7 @@ realm_button :: (s: [] VerseState, t: [] Track) {
     open_realm(s, mine_text(s));
     return;
   }
-  s[0].setup = true; s[0].focused = true; s[0].typed_at = s[0].time;
+  s[0].setup = true; s[0].focused = true; s[0].typed_at = s[0].time; s[0].typed_all = false;
   track(t, "planet-setup");
 }
 
@@ -563,11 +584,12 @@ name_byte :: (c: int) -> int {
 }
 name_type :: (s: [] VerseState, text: string) {
   if s[0].making { return; }
+  if s[0].typed_all { s[0].name_n = 0; s[0].typed_all = false; }
   for i: 0..<text.count {
     c := name_byte(cast(int) text[i]);
     if c >= 0 && s[0].name_n < NAME_MAX { s[0].name[s[0].name_n] = cast(u8) c; s[0].name_n += 1; }
   }
-  s[0].focused = true; s[0].typed_at = s[0].time;
+  s[0].focused = true; s[0].typed_at = s[0].time; s[0].typed_all = false;
 }
 
 // The galaxy's keys: the setup's name box, ENTER to create, ESCAPE to close.
@@ -578,7 +600,10 @@ setup_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool {
   if key == KEY_ENTER { make_realm(s, t); return true; }
   if !s[0].focused && key > 32 && key < 127 && mods & (MOD_CTRL | MOD_META) == 0 { s[0].focused = true; }
   if !s[0].focused { return false; }
-  if key == KEY_BACKSPACE { if s[0].name_n > 0 { s[0].name_n -= 1; } s[0].typed_at = s[0].time; return true; }
+  n: [1] int; n[0] = s[0].name_n;
+  if box_command(s, tk_command(key, mods), name_text(s), n[..]) { s[0].name_n = n[0]; return true; }
+  if key == KEY_BACKSPACE { s[0].name_n = ifx s[0].typed_all then 0 else tk_back(name_text(s), mods); s[0].typed_all = false; s[0].typed_at = s[0].time; return true; }
+  if key < 32 { s[0].typed_all = false; }
   if key > 0 && key < 127 && mods & (MOD_CTRL | MOD_META) == 0 {
     buf: [4] u8; buf[0] = cast(u8) key;
     name_type(s, cast(string) buf[0..<1]);
@@ -875,7 +900,7 @@ draw_landing :: (s: [] VerseState, out: [] f32, at: int) -> int {
     from := 0;
     while from < text.count && measure(text[from..<text.count], GAP, SPACE, false) * cap > width { from += 1; }
     shown := text[from..<text.count];
-    vertices = write(d, out, vertices, shown, left, base, cap, GAP, SPACE, white(k, 0.97), false, false);
+    vertices = write(d, out, vertices, shown, left, base, cap, GAP, SPACE, ifx s[0].typed_all then ember(k, 0.97) else white(k, 0.97), false, false);
     since := s[0].time - s[0].typed_at;
     if focused && (s[0].still || since / 1.06 - floor(since / 1.06) < 0.5) {
       after := ifx shown.count > 0 then GAP * 0.6 else 0.0f32;
@@ -1041,7 +1066,7 @@ draw_setup :: (s: [] VerseState, out: [] f32, at: int) -> int {
   if text.count == 0 && !focused {
     vertices = write(d, out, vertices, "A NAME FOR YOUR REALM", left, base, cap, GAP, SPACE, white(k, 0.32), false, false);
   } else {
-    vertices = draw_fit(d, out, vertices, text, left, base, cap, GAP, SPACE, white(k, 0.97), f.x1 - f.x0 - 24 * k);
+    vertices = draw_fit(d, out, vertices, text, left, base, cap, GAP, SPACE, ifx s[0].typed_all then ember(k, 0.97) else white(k, 0.97), f.x1 - f.x0 - 24 * k);
     since := s[0].time - s[0].typed_at;
     if focused && (s[0].still || since / 1.06 - floor(since / 1.06) < 0.5) {
       x := floor(left + lo(measure(text, GAP, SPACE, false) * cap + GAP * 0.6 * cap, f.x1 - f.x0 - 24 * k)) + 0.5;
@@ -1232,6 +1257,13 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   #assert s[0].note == NOTE_BAD && !s[0].req_ready && !s[0].going;
   _ := verse_key(s[..], t[..], KEY_BACKSPACE, 0);
   #assert email_text(s[..]) == "notanemai" && s[0].note == NOTE_NONE;
+  // Cmd+A and Cmd+C copy it, Cmd+R is the browser's, typing replaces it, Cmd+Backspace empties it
+  #assert !verse_key(s[..], t[..], 'r', MOD_META) && email_text(s[..]) == "notanemai";
+  #assert verse_key(s[..], t[..], 'a', MOD_META) && verse_key(s[..], t[..], 'c', MOD_META);
+  #assert s[0].action == TK_ACT_COPY && cast(string) s[0].outbox[0..<s[0].out_n] == "notanemai";
+  s[0].action = 0;
+  #assert verse_key(s[..], t[..], 'q', 0) && email_text(s[..]) == "q";
+  #assert verse_key(s[..], t[..], KEY_BACKSPACE, MOD_META) && email_text(s[..]) == "";
 }
 
 #test "a returning player's email is filled in and joined again" {

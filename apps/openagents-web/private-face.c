@@ -48,8 +48,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   return n < 0 ? 0u : (uint32_t)n;
 }
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
-  (void)mods;
-  uint32_t used = coaxial_private_key(at(state), key) ? 1u : 0u;
+  uint32_t used = coaxial_private_key(at(state), key, mods) ? 1u : 0u;
   send_asks(state);
   return used;
 }

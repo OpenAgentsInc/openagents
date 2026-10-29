@@ -104,6 +104,7 @@
 
 import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
 import { startDrops } from "./drop.js";
+import { startVoice, ACT_VOICE } from "./voice.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 const app = (script && script.dataset.app) || "app";
@@ -1024,6 +1025,9 @@ function send(kind, text = "") {
 globalThis.coaxial = { send, ready: false };
 // A page that takes dropped files (data-drops: /projects, NEW PROJECT): drop.js uploads them, the app draws it.
 if (script?.dataset.drops) startDrops({ send });
+// A page that talks (data-voice: the route its voice host answers as): voice.js, on the app's VOICE.
+const voice = script?.dataset.voice
+  ? startVoice({ send, route: script.dataset.voice, wasmUrl: script.dataset.voiceWasm || "/build/voice.wasm" }) : null;
 
 // The location's hash, for an app that opens something by it (a link straight to it).
 function sendHash() {
@@ -1061,6 +1065,7 @@ function after(gesture, tap = false) {
     else if (code === 3) { if (location.hash.slice(1) !== text) history.replaceState(history.state, "", text ? `#${encodeURIComponent(text)}` : location.pathname + location.search); }
     else if (code === 4) keep(text);
     else if (code === 6) setQuality(text);
+    else if (code === ACT_VOICE && voice) voice.toggle(text === "on");
     else if (code === 5) { try { const p = JSON.parse(text); if (p && typeof p.key === "string") localStorage.setItem("verse.player", text); } catch {} }
     else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
   }

@@ -2,7 +2,11 @@
 #include "wav.h"
 #include "ws.h"
 #include "VoiceReply.h"
+#ifdef __APPLE__
 #include <CommonCrypto/CommonDigest.h>
+#else
+#include <openssl/sha.h>
+#endif
 #include <curl/curl.h>
 #include <errno.h>
 #include <math.h>
@@ -69,6 +73,40 @@ static pthread_mutex_t token_lock = PTHREAD_MUTEX_INITIALIZER;
 static char token[4096];
 static time_t token_at;
 
+static size_t collect(char *d, size_t sz, size_t nm, void *u) {
+  char *buf = u; size_t have = strlen(buf), n = sz * nm;
+  if (have + n < 4096) { memcpy(buf + have, d, n); buf[have + n] = 0; }
+  return n;
+}
+// The token of the machine's service account when OA_VOICE_TOKEN=metadata
+// (Cloud Run, GCE): the metadata server's JSON, its access_token field.
+static bool metadata_token(char *out, size_t cap) {
+  const char *how = getenv("OA_VOICE_TOKEN");
+  if (!how || strcmp(how, "metadata")) return false;
+  static char body[4096];
+  body[0] = 0;
+  CURL *c = curl_easy_init();
+  if (!c) return false;
+  struct curl_slist *h = curl_slist_append(NULL, "Metadata-Flavor: Google");
+  curl_easy_setopt(c, CURLOPT_URL, "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token");
+  curl_easy_setopt(c, CURLOPT_HTTPHEADER, h);
+  curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, collect);
+  curl_easy_setopt(c, CURLOPT_WRITEDATA, body);
+  curl_easy_setopt(c, CURLOPT_TIMEOUT, 5L);
+  bool ok = curl_easy_perform(c) == CURLE_OK;
+  curl_slist_free_all(h);
+  curl_easy_cleanup(c);
+  const char *k = ok ? strstr(body, "\"access_token\":\"") : NULL;
+  if (k) {
+    k += 16;
+    size_t n = 0;
+    while (k[n] && k[n] != '"' && n + 1 < cap) { out[n] = k[n]; n++; }
+    out[n] = 0;
+  }
+  memset(body, 0, sizeof body);
+  return k && out[0];
+}
+
 // Copies a current token into out. Refreshes when older than max_age seconds
 // (Google tokens last 60 minutes) or when `force`. The token is never printed.
 static bool get_token_aged(char *out, size_t cap, bool force, long max_age, char *err, size_t errcap) {
@@ -83,8 +121,10 @@ static bool get_token_aged(char *out, size_t cap, bool force, long max_age, char
     char fresh[4096] = "";
     char cmd[800];
     snprintf(cmd, sizeof cmd, "CLOUDSDK_CONFIG='%s' gcloud auth print-access-token 2>/dev/null", g_speech.gcloud_config);
-    FILE *p = popen(cmd, "r");
-    if (p) {
+    FILE *p = NULL;
+    if (metadata_token(fresh, sizeof fresh)) {
+      // On Google's machines (Cloud Run): the service's own account, from the metadata server.
+    } else if ((p = popen(cmd, "r"))) {
       size_t got = fread(fresh, 1, sizeof fresh - 1, p);
       fresh[got] = 0;
       pclose(p);
@@ -369,13 +409,22 @@ bool speech_recognize(speech_provider p, const int16_t *pcm, size_t n, char *out
 
 void speech_render_key(const char *profile, uint32_t revision, const char *text, uint8_t key[32]) {
   // SHA-256 over "<profile>\0<revision as 4 bytes LE><text>": unambiguous framing.
+  uint8_t r[4] = {(uint8_t)revision, (uint8_t)(revision >> 8), (uint8_t)(revision >> 16), (uint8_t)(revision >> 24)};
+#ifdef __APPLE__
   CC_SHA256_CTX c;
   CC_SHA256_Init(&c);
   CC_SHA256_Update(&c, profile, (CC_LONG)strlen(profile) + 1);
-  uint8_t r[4] = {(uint8_t)revision, (uint8_t)(revision >> 8), (uint8_t)(revision >> 16), (uint8_t)(revision >> 24)};
   CC_SHA256_Update(&c, r, 4);
   CC_SHA256_Update(&c, text, (CC_LONG)strlen(text));
   CC_SHA256_Final(key, &c);
+#else
+  SHA256_CTX c;
+  SHA256_Init(&c);
+  SHA256_Update(&c, profile, strlen(profile) + 1);
+  SHA256_Update(&c, r, 4);
+  SHA256_Update(&c, text, strlen(text));
+  SHA256_Final(key, &c);
+#endif
 }
 
 static int16_t *local_tone(const char *text, uint32_t rate, size_t *n) {
@@ -465,6 +514,14 @@ static const struct { const char *route; const char *instruction; } ROUTES[] = {
      "or plans and no access to anyone's work, so never invent projects, products, people, numbers or "
      "facts. When you don't know something, say so plainly and ask what they'd like to do. Use what was "
      "said earlier in this conversation."},
+    {"haunted-house",
+     "You are the voice of the Haunted House, a Verse realm in OpenAgents: a house at night with nine "
+     "haunts to set off, people to talk to, doors to open and a quest called Make it yours. A visitor "
+     "walking through it is talking to you out loud. Speak briefly: at most 30 words, in plain spoken "
+     "English, a little eerie but friendly, with no lists, markdown, emoji or code. You can't see where "
+     "they are or move anything yet, so never claim to have done something. If they want to know how to "
+     "play: they walk with the thumbs or W A S D, act with E or the USE button, and the map shows the "
+     "rooms. When you don't know, say so. Use what was said earlier in this conversation."},
 };
 
 bool speech_route_known(const char *route) {
