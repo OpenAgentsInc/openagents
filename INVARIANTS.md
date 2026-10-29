@@ -1,5 +1,19 @@
 # Invariants
 
+## Psionic rank-five original inventory and tensor access
+
+`psionic/lib/model-io/rank5.coax` validates every BF16/F32 tensor, retaining up
+to five dimensions and requiring unique names, disjoint ranges and complete
+payload coverage. Public inventory is published only after the entire file is
+valid. `access.coax` checks an expected name, dtype, shape, shard and byte range
+before returning an original byte view; finite bounded decoding stages output.
+Inspection does not authenticate the file. Callers must authenticate and retain
+immutable originals and metadata, and provide valid, disjoint writable storage.
+
+Check: `psionic/check.sh` includes authority mutation and native plain/sanitized
+checks. See the [rank-five record](docs/verification/psionic-rank5-2026-10-29.md)
+for exact evidence and the separate bundle-authentication boundary.
+
 ## Psionic text rotary positions are deterministic and staged
 
 `psionic/lib/qwen-rope.coax` generates text-only Qwen rotary coefficients with

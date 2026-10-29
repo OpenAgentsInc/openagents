@@ -1,0 +1,246 @@
+// original-weights-v2 inventory retains the complete rank-five shape.
+#load "reader.coax";
+#authority;
+P5Shape :: struct { rank:int; dims:[5]int; }
+P5Tensor :: struct { name:string; shape:P5Shape; dtype:PwDtype; elements:int; begin:int; end:int; shard:int; indexed:bool; }
+P5Parsed :: struct { status:PwStatus; tensor:P5Tensor; }
+
+#test "rank five keeps every axis and counts payload without overflow" {
+    s:=P5Shape.{rank=5,dims=[5]int.[2,3,2,2,4]};r:=p5_shape_size(s,PwDtype.bf16);
+    #assert r.status==PwStatus.ok && r.elements==96 && r.bytes==192;
+    for i:0..<5 {bad:=s;bad.dims[i]=0;#assert p5_shape_size(bad,PwDtype.bf16).status==PwStatus.shape;}
+    bad:=s;bad.rank=6;#assert p5_shape_size(bad,PwDtype.bf16).status==PwStatus.shape;
+    bad=s;bad.rank=-1;#assert p5_shape_size(bad,PwDtype.bf16).status==PwStatus.shape;
+    bad=s;bad.rank=4;#assert p5_shape_size(bad,PwDtype.bf16).status==PwStatus.shape;
+    bad=s;bad.dims[4]=34359738368;#assert p5_shape_size(bad,PwDtype.bf16).status==PwStatus.size;
+    #assert p5_shape_size(P5Shape.{},PwDtype.f32).bytes==4;
+}
+#test "rank five and scalar inventory publish completely and reject broken files" {
+    headers:=[8]string.[
+        "{\"vision\":{\"dtype\":\"BF16\",\"shape\":[1,1,1,1,1],\"data_offsets\":[0,2]},\"scalar\":{\"dtype\":\"F32\",\"shape\":[],\"data_offsets\":[2,6]}}",
+        "{\"vision\":{\"dtype\":\"BF16\",\"shape\":[1,1,1,1,1,1],\"data_offsets\":[0,2]}}",
+        "{\"vision\":{\"dtype\":\"BF16\",\"shape\":[1,1,1,1,0],\"data_offsets\":[0,2]}}",
+        "{\"vision\":{\"dtype\":\"BF16\",\"shape\":[1,1,1,1,1],\"data_offsets\":[1,3]}}",
+        "{\"vision\":{\"dtype\":\"F16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{\"vision\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]},\"vision\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{\"vision\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]},\"other\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{}"];
+    for k:0..<headers.count {
+        header:=headers[k];bytes:[512]u8;for i:0..<8 {bytes[i]=cast(u8)((cast(u64)header.count>>(i*8))&255);}
+        for i:0..<header.count {bytes[8+i]=header[i];}
+        size:=2;if k==0 {size=6;}out:=[3]P5Tensor.[P5Tensor.{name="sentinel"},P5Tensor.{name="sentinel"},P5Tensor.{name="sentinel"}];draft:[3]P5Tensor;
+        r:=p5_inspect_checked(bytes[0..<8+header.count+size],out[..],draft[..],false);
+        if k==0 {#assert r.status==PwStatus.ok && r.written==2 && r.bytes==6 && out[0].shape.rank==5 && out[0].shape.dims[4]==1 && out[1].shape.rank==0 && out[2].name=="sentinel";}
+        else {#assert r.status!=PwStatus.ok && r.written==0 && out[0].name=="sentinel";}
+    }
+}
+#test "inventory capacity and alias refusals preserve output" {
+    file:=CH04_MODEL_SAFETENSORS;out:=[3]P5Tensor.[P5Tensor.{name="sentinel"},P5Tensor.{name="sentinel"},P5Tensor.{name="sentinel"}];draft:[3]P5Tensor;
+    #assert p5_inspect_checked(file[..],out[0..<2],draft[..],false).status==PwStatus.capacity;
+    #assert p5_inspect_checked(file[..],out[..],draft[..],true).status==PwStatus.alias;
+    #assert out[0].name=="sentinel" && out[1].name=="sentinel" && out[2].name=="sentinel";
+    r:=p5_inspect_checked(file[..],out[..],draft[..],false);#assert r.status==PwStatus.ok && r.written==3 && out[1].shape.dims[1]==3;
+}
+
+p5_shape_size :: (s:P5Shape,dtype:PwDtype)->PwSize #export_c {
+    if !pw_dtype_known(cast(u8)dtype) {return PwSize.{status=PwStatus.unsupported};}
+    if s.rank<0 || s.rank>5 {return PwSize.{status=PwStatus.shape};}
+    for i:0..<5 {if i<s.rank {if s.dims[i]<=0 {return PwSize.{status=PwStatus.shape};}} else {if s.dims[i]!=0 {return PwSize.{status=PwStatus.shape};}}}
+    width:=pw_width(dtype);elements:=1;
+    for i:0..<s.rank {if !pw_count_fits(elements,s.dims[i],width) {return PwSize.{status=PwStatus.size};}elements*=s.dims[i];}
+    return PwSize.{elements=elements,bytes=elements*width};
+}
+p5_parse_tensor :: (j:[]Json,name:string)->P5Parsed {
+    if json_next(j)!=JSON_OBJECT {return P5Parsed.{status=PwStatus.schema};}
+    t:=json_next(j);tensor:=P5Tensor.{name=name};d:=false;s:=false;o:=false;
+    while t!=JSON_OBJECT_END {
+        if t!=JSON_STRING {return P5Parsed.{status=PwStatus.json};}
+        key:=json_text(j);if !pw_name(key) {return P5Parsed.{status=PwStatus.unsupported};}
+        if key=="dtype" {
+            if d {return P5Parsed.{status=PwStatus.duplicate};}d=true;
+            if json_next(j)!=JSON_STRING {return P5Parsed.{status=PwStatus.schema};}
+            dtype:=json_text(j);
+            if dtype!="BF16" {
+                if dtype!="F32" {return P5Parsed.{status=PwStatus.unsupported};}
+                tensor.dtype=PwDtype.f32;
+            }
+        } else if key=="shape" {
+            if s {return P5Parsed.{status=PwStatus.duplicate};}s=true;
+            if json_next(j)!=JSON_ARRAY {return P5Parsed.{status=PwStatus.schema};}
+            part:=json_next(j);
+            while part!=JSON_ARRAY_END {
+                if part!=JSON_NUMBER {return P5Parsed.{status=PwStatus.schema};}
+                if tensor.shape.rank>=5 {return P5Parsed.{status=PwStatus.shape};}
+                value:=pw_integer(json_text(j));if value.status!=PwStatus.ok {return P5Parsed.{status=value.status};}
+                tensor.shape.dims[tensor.shape.rank]=value.value;tensor.shape.rank+=1;part=json_next(j);
+            }
+        } else if key=="data_offsets" {
+            if o {return P5Parsed.{status=PwStatus.duplicate};}o=true;
+            if json_next(j)!=JSON_ARRAY || json_next(j)!=JSON_NUMBER {return P5Parsed.{status=PwStatus.schema};}
+            begin:=pw_integer(json_text(j));if begin.status!=PwStatus.ok {return P5Parsed.{status=begin.status};}
+            if json_next(j)!=JSON_NUMBER {return P5Parsed.{status=PwStatus.schema};}
+            end:=pw_integer(json_text(j));if end.status!=PwStatus.ok {return P5Parsed.{status=end.status};}
+            if json_next(j)!=JSON_ARRAY_END {return P5Parsed.{status=PwStatus.schema};}
+            tensor.begin=begin.value;tensor.end=end.value;
+        } else {return P5Parsed.{status=PwStatus.schema};}
+        t=json_next(j);
+    }
+    if !d || !s || !o {return P5Parsed.{status=PwStatus.schema};}
+    return P5Parsed.{tensor=tensor};
+}
+
+// Private append-only workspace. Payload spans are relative until admitted.
+p5_scan :: (file:[]u8,draft:[]P5Tensor,base:int,shard:int)->PwResult {
+    h:=pw_header(file);if h.status!=PwStatus.ok {return PwResult.{status=h.status};}
+    header:=file[8..<h.data];j:[1]Json;json_start_bounded(j[..],cast(string)header,header.count,header.count);
+    if json_next(j[..])!=JSON_OBJECT {return PwResult.{status=PwStatus.json};}
+    count:=base;covered:=0;meta:=false;t:=json_next(j[..]);
+    while t!=JSON_OBJECT_END {
+        if t!=JSON_STRING {return PwResult.{status=PwStatus.json};}
+        name:=json_text(j[..]);if !pw_name(name) {return PwResult.{status=PwStatus.unsupported};}
+        if name=="__metadata__" {
+            if meta {return PwResult.{status=PwStatus.duplicate};}meta=true;
+            status:=pw_metadata(j[..]);if status!=PwStatus.ok {return PwResult.{status=status};}
+        } else {
+            slot:=pw_slot(count,draft.count);if slot!=PwStatus.ok {return PwResult.{status=slot};}
+            parsed:=p5_parse_tensor(j[..],name);if parsed.status!=PwStatus.ok {return PwResult.{status=parsed.status};}
+            tensor:=parsed.tensor;size:=p5_shape_size(tensor.shape,tensor.dtype);
+            if size.status!=PwStatus.ok {return PwResult.{status=size.status};}
+            payload:=file.count-h.data;
+            if !pw_span(tensor.begin,tensor.end,size.bytes,payload) {return PwResult.{status=PwStatus.offsets};}
+            tensor.begin+=h.data;tensor.end+=h.data;tensor.elements=size.elements;tensor.shard=shard;
+            for i:0..<count {
+                if draft[i].name==name {return PwResult.{status=PwStatus.duplicate};}
+                if draft[i].shard==shard && tensor.begin<draft[i].end && draft[i].begin<tensor.end {return PwResult.{status=PwStatus.offsets};}
+            }
+            draft[count]=tensor;count+=1;covered+=size.bytes;
+        }
+        t=json_next(j[..]);
+    }
+    if json_next(j[..])!=JSON_END {return PwResult.{status=PwStatus.json};}
+    if count==base || covered!=file.count-h.data {return PwResult.{status=PwStatus.coverage};}
+    return PwResult.{written=count-base,bytes=covered};
+}
+p5_inspect_checked :: (file:[]u8,output:[]P5Tensor,draft:[]P5Tensor,overlap:bool)->PwResult #export_c {
+    if !pw_file_size(file.count) {return PwResult.{status=PwStatus.size};}
+    if output.count<1 || draft.count<1 {return PwResult.{status=PwStatus.capacity};}
+    if overlap {return PwResult.{status=PwStatus.alias};}
+    r:=p5_scan(file,draft,0,0);if r.status!=PwStatus.ok {return r;}
+    if output.count<r.written {return PwResult.{status=PwStatus.capacity};}
+    for i:0..<r.written {output[i]=draft[i];}
+    return r;
+}
+
+#test "rank5: the original fixture yields typed offsets without assuming header order" {
+    file:=CH04_MODEL_SAFETENSORS;out:[4]P5Tensor;draft:[4]P5Tensor;
+    r:=p5_inspect_checked(file[..],out[..],draft[..],false);
+    #assert r.status==PwStatus.ok && r.written==3 && r.bytes==22;
+    #assert out[0].name=="linear.bias" && out[0].dtype==PwDtype.f32 && out[0].elements==2;
+    #assert out[0].shape.rank==1 && out[0].shape.dims[0]==2 && out[0].shape.dims[1]==0;
+    #assert out[1].name=="linear.weight" && out[1].dtype==PwDtype.bf16 && out[1].elements==6;
+    #assert out[2].name=="scale" && out[2].shape.rank==0 && out[2].elements==1;
+    h:=pw_header(file[..]);#assert out[0].begin==h.data+14 && out[0].end==h.data+22;
+    #assert out[1].begin==h.data && out[1].end==h.data+12 && out[2].begin==h.data+12;
+    for i:0..<3 {#assert out[i].shard==0 && !out[i].indexed;}
+    #assert out[3].name=="";
+    before:=out;
+    short:=p5_inspect_checked(file[..],out[0..<2],draft[..],false);
+    #assert short.status==PwStatus.capacity && short.written==0 && short.bytes==0;
+    alias:=p5_inspect_checked(file[..],out[..],draft[..],true);
+    #assert alias.status==PwStatus.alias && alias.written==0;
+    for i:0..<4 {#assert out[i].name==before[i].name && out[i].begin==before[i].begin;}
+    #assert p5_inspect_checked(file[..],out[..],draft[0..<0],false).status==PwStatus.capacity;
+    #assert p5_inspect_checked(file[..],out[0..<0],draft[..],true).status==PwStatus.capacity;
+    #assert p5_inspect_checked(file[..],out[..],draft[0..<0],true).status==PwStatus.capacity;
+    #assert p5_inspect_checked(file[0..<9],out[..],draft[..],true).status==PwStatus.size;
+}
+#test "rank5: plain bounded names and nonnegative integer tokens have a strict profile" {
+    #assert pw_name("linear.weight") && !pw_name("");
+    #assert pw_plain("") && !pw_plain("a\\b") && !pw_plain("a\nb");
+    long:[129]u8;for i:0..<129 {long[i]='x';}
+    #assert pw_name(cast(string)long[0..<128]) && !pw_name(cast(string)long[..]);
+    long[0]=127;#assert !pw_name(cast(string)long[0..<1]);
+    #assert pw_integer("0").value==0 && pw_integer("137438953472").status==PwStatus.ok;
+    #assert pw_integer("137438953473").status==PwStatus.size;
+    bad:=[8]string.["","-0","-1","1.0","1e0","01","9223372036854775807","true"];
+    for s:bad {#assert pw_integer(s).status!=PwStatus.ok;}
+}
+#test "rank5: malformed and unsupported headers never publish partial inventory" {
+    headers:=[20]string.[
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[],\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"shape\":[1],\"data_offsets\":[0,2],\"dtype\":\"BF16\"},\"__metadata__\":{\"format\":\"pt\",\"note\":\"\"}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]},\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"dtype\":\"F16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[0],\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1,1,1,1,1],\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[2,0]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[-1,1]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,4]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2,2]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]},\"y\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{\"__metadata__\":{\"format\":1},\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{\"__metadata__\":{\"format\":\"pt\",\"format\":\"pt\"}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2],\"extra\":0}}",
+        "{\"\\u0078\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]},}",
+        "{\"__metadata__\":{},\"__metadata__\":{}}",
+        "{}"];
+    for c:0..<headers.count {
+        bytes:[512]u8;header:=headers[c];
+        for i:0..<8 {bytes[i]=cast(u8)((cast(u64)header.count>>(i*8))&255);}
+        for i:0..<header.count {bytes[8+i]=header[i];}
+        out:=[3]P5Tensor.[P5Tensor.{name="sentinel",elements=-7},P5Tensor.{name="sentinel",elements=-7},P5Tensor.{name="sentinel",elements=-7}];
+        draft:[3]P5Tensor;
+        r:=p5_inspect_checked(bytes[0..<10+header.count],out[..],draft[..],false);
+        if c<2 || c==7 {#assert r.status==PwStatus.ok && r.written==1 && r.bytes==2;}
+        else {
+            if c==2 || c==3 || c==14 || c==18 {#assert r.status==PwStatus.duplicate;}
+            if c==12 {#assert r.status==PwStatus.offsets;}
+            #assert r.status!=PwStatus.ok && r.written==0 && r.bytes==0;for t:out {#assert t.name=="sentinel" && t.elements == -7;}}
+    }
+}
+#test "rank5: gaps and unindexed trailing data are refused, and workspace bounds are real" {
+    file:=CH04_MODEL_SAFETENSORS;out:[4]P5Tensor;draft:[4]P5Tensor;
+    #assert p5_inspect_checked(file[..],out[..],draft[0..<2],false).status==PwStatus.capacity;
+    h:=pw_header(file[..]);
+    #assert p5_scan(file[0..<file.count-1],draft[..],0,0).status==PwStatus.offsets;
+    larger:[263]u8;for i:0..<file.count {larger[i]=file[i];}
+    #assert p5_scan(larger[..],draft[..],0,0).status==PwStatus.coverage;
+    #assert p5_scan(file[..],draft[..],0,1).status==PwStatus.ok && draft[0].shard==1;
+}
+
+#test "rank5: inventory and payload byte bounds include exact endpoints" {
+    #assert pw_plain(" ~");
+    #assert pw_slot(4095,4096)==PwStatus.ok && pw_slot(4096,4097)==PwStatus.size;
+    #assert pw_slot(-1,4)==PwStatus.size && pw_slot(4097,5000)==PwStatus.size;
+    #assert pw_slot(0,0)==PwStatus.capacity && pw_slot(2,2)==PwStatus.capacity;
+    #assert pw_slot(0,1)==PwStatus.ok;
+    #assert pw_span(0,1,1,1) && pw_span(1,2,1,2);
+    #assert !pw_span(-1,0,1,2) && !pw_span(0,0,0,2) && !pw_span(0,3,3,2);
+    #assert !pw_span(2,3,1,2) && !pw_span(0,2,1,2) && !pw_span(0,0,1,2);
+}
+#test "rank5: metadata count, duplicates and singleton inventories have independent boundaries" {
+    for n:63..<66 {
+        text:[2048]u8;at:=json_raw(text[..],0,"{\"__metadata__\":{");
+        for i:0..<n {
+            if i>0 {at=json_raw(text[..],at,",");}
+            at=json_raw(text[..],at,"\"k");at=json_write_int(text[..],at,i);
+            at=json_raw(text[..],at,"\":\"v\"");
+        }
+        at=json_raw(text[..],at,"},\"x\":{\"dtype\":\"BF16\",\"shape\":[],\"data_offsets\":[0,2]}}");
+        bytes:[2058]u8;for i:0..<8 {bytes[i]=cast(u8)((cast(u64)at>>(i*8))&255);}
+        for i:0..<at {bytes[8+i]=text[i];}
+        out:[1]P5Tensor;draft:[2]P5Tensor;
+        r:=p5_inspect_checked(bytes[0..<at+10],out[..],draft[0..<1],false);
+        if n<=64 {#assert r.status==PwStatus.ok && r.written==1;}
+        else {#assert r.status==PwStatus.size;}
+        if n==63 {
+            #assert p5_inspect_checked(bytes[0..<at+10],out[0..<0],draft[..],false).status==PwStatus.capacity;
+            draft[0]=P5Tensor.{name="previous",shard=0};
+            q:=p5_scan(bytes[0..<at+10],draft[..],1,1);
+            #assert q.status==PwStatus.ok && q.written==1 && q.bytes==2 && draft[1].name=="x";
+        }
+    }
+}

@@ -1,0 +1,72 @@
+// Immutable tensor views and bounded finite decoding for admitted model inventories.
+#load "rank5.coax";
+#load "../qwen-matvec.coax";
+#authority;
+PaFile :: struct {data:[]u8;}
+PaView :: struct {status:PwStatus;dtype:PwDtype;data:[]u8;elements:int;}
+#test "an admitted tensor has a precise original byte view" {
+    file:=CH04_MODEL_SAFETENSORS;inv:[3]P5Tensor;draft:[3]P5Tensor;
+    #assert p5_inspect_checked(file[..],inv[..],draft[..],false).status==PwStatus.ok;
+    sources:=[1]PaFile.[PaFile.{data=file[..]}];
+    s:=P5Shape.{rank=2,dims=[5]int.[2,3,0,0,0]};
+    v:=pa_view("linear.weight",s,PwDtype.bf16,inv[..],sources[..]);
+    #assert v.status==PwStatus.ok && v.elements==6 && v.data.count==12;
+    #assert v.data[0]==0x80 && v.data[1]==0x3f && v.data[10]==0xc0 && v.data[11]==0x40;
+    bad:=s;bad.dims[1]=2;#assert pa_view("linear.weight",bad,PwDtype.bf16,inv[..],sources[..]).status==PwStatus.manifest;
+    #assert pa_view("linear.weight",s,PwDtype.f32,inv[..],sources[..]).status==PwStatus.manifest;
+    #assert pa_view("missing",s,PwDtype.bf16,inv[..],sources[..]).status==PwStatus.manifest;
+    before:=inv;inv[1].shard=1;#assert pa_view("linear.weight",s,PwDtype.bf16,inv[..],sources[..]).status==PwStatus.manifest;
+    inv=before;inv[1].begin=-1;#assert pa_view("linear.weight",s,PwDtype.bf16,inv[..],sources[..]).status==PwStatus.offsets;
+    inv=before;inv[1].end=file.count+1;#assert pa_view("linear.weight",s,PwDtype.bf16,inv[..],sources[..]).status==PwStatus.offsets;
+    inv=before;inv[1].elements=1;#assert pa_view("linear.weight",s,PwDtype.bf16,inv[..],sources[..]).status==PwStatus.manifest;
+    inv=before;inv[2].name="linear.weight";#assert pa_view("linear.weight",s,PwDtype.bf16,inv[..],sources[..]).status==PwStatus.duplicate;
+}
+#test "bounded decoding stages finite original values and refuses without publication" {
+    bytes:=[6]u8.[128,63,0,64,64,64];view:=PaView.{data=bytes[..],elements=3};out:=[4]f32.[-7,-7,-7,-7];work:=[4]f32.[-9,-9,-9,-9];
+    r:=pa_decode(view,out[..],work[..],false);#assert r.status==PwStatus.ok && r.written==3 && out[0]==1 && out[1]==2 && out[2]==3 && out[3]==-7 && work[3]==-9;
+    out[0]=-7;out[1]=-7;out[2]=-7;bytes[4]=128;bytes[5]=127;
+    #assert pa_decode(view,out[..],work[..],false).status==PwStatus.number;for i:0..<3 {#assert out[i]==-7;}
+    #assert pa_decode(view,out[0..<2],work[..],false).status==PwStatus.capacity;
+    #assert pa_decode(view,out[..],work[..],true).status==PwStatus.alias;
+}
+pa_shape_equal :: (a:P5Shape,b:P5Shape)->bool {if a.rank!=b.rank {return false;}for i:0..<5 {if a.dims[i]!=b.dims[i] {return false;}}return true;}
+pa_counts_valid :: (inventory:int,files:int)->bool {return inventory>=1 && inventory<=PW_TENSORS_MAX && files>=1 && files<=PW_SHARDS_MAX;}
+pa_decode_valid :: (status:u8,dtype:u8,elements:int)->bool {return status==0 && pw_dtype_known(dtype) && elements>=1 && elements<=PW_WINDOW_MAX;}
+pa_view :: (name:string,shape:P5Shape,dtype:PwDtype,inventory:[]P5Tensor,files:[]PaFile)->PaView #export_c {
+    if !pw_name(name) || !pa_counts_valid(inventory.count,files.count) {return PaView.{status=PwStatus.manifest};}
+    expected:=p5_shape_size(shape,dtype);if expected.status!=PwStatus.ok {return PaView.{status=expected.status};}
+    found:=-1;for i:0..<inventory.count {if inventory[i].name==name {if found>=0 {return PaView.{status=PwStatus.duplicate};}found=i;}}
+    if found<0 {return PaView.{status=PwStatus.manifest};}
+    t:=inventory[found];if t.shard<0 || t.shard>=files.count || t.dtype!=dtype || t.elements!=expected.elements || !pa_shape_equal(t.shape,shape) {return PaView.{status=PwStatus.manifest};}
+    data:=files[t.shard].data;
+    if !pw_span(t.begin,t.end,expected.bytes,data.count) {return PaView.{status=PwStatus.offsets};}
+    return PaView.{dtype=dtype,data=data[t.begin..<t.end],elements=expected.elements};
+}
+pa_decode :: (view:PaView,out:[]f32,work:[]f32,overlap:bool)->PwResult #export_c {
+    if !pa_decode_valid(cast(u8)view.status,cast(u8)view.dtype,view.elements) {return PwResult.{status=PwStatus.range};}
+    width:=pw_width(view.dtype);if view.data.count!=view.elements*width || out.count<view.elements || work.count<view.elements {return PwResult.{status=PwStatus.capacity};}
+    if overlap {return PwResult.{status=PwStatus.alias};}
+    dtype:=cast(QmDtype)cast(u8)view.dtype;
+    for i:0..<view.elements {if !psionic_tensor_finite_bits(qm_bits(dtype,view.data,i)) {return PwResult.{status=PwStatus.number};}}
+    for i:0..<view.elements {work[i]=f32_from_bits(qm_bits(dtype,view.data,i));}
+    for i:0..<view.elements {out[i]=work[i];}return PwResult.{written=view.elements,bytes=view.data.count};
+}
+
+#test "view and decode bounds have independently observable endpoints" {
+    #assert pa_counts_valid(1,1) && pa_counts_valid(4096,16);
+    #assert !pa_counts_valid(0,1) && !pa_counts_valid(4097,1) && !pa_counts_valid(1,0) && !pa_counts_valid(1,17);
+    #assert pa_decode_valid(0,0,1) && pa_decode_valid(0,1,1048576);
+    #assert !pa_decode_valid(1,0,1) && !pa_decode_valid(0,2,1) && !pa_decode_valid(0,0,0) && !pa_decode_valid(0,0,1048577);
+    a:=P5Shape.{rank=5,dims=[5]int.[1,2,3,4,5]};b:=a;#assert pa_shape_equal(a,b);
+    b.rank=4;#assert !pa_shape_equal(a,b);for i:0..<5 {b=a;b.dims[i]+=1;#assert !pa_shape_equal(a,b);}
+    data:=[2]u8.[128,63];s:=P5Shape.{rank=1,dims=[5]int.[1,0,0,0,0]};
+    inv:=[2]P5Tensor.[P5Tensor.{name="x",shape=s,elements=1,end=2},P5Tensor.{name="y",shape=s,elements=1,end=2}];files:=[1]PaFile.[PaFile.{data=data[..]}];
+    v:=pa_view("x",s,PwDtype.bf16,inv[0..<1],files[..]);#assert v.status==PwStatus.ok && v.data.count==2;
+    inv[1].name="x";#assert pa_view("x",s,PwDtype.bf16,inv[..],files[..]).status==PwStatus.duplicate;inv[1].name="y";
+    inv[0].name="bad\\name";#assert pa_view("bad\\name",s,PwDtype.bf16,inv[0..<1],files[..]).status==PwStatus.manifest;inv[0].name="x";
+    view:=PaView.{data=data[..],elements=1};out:[1]f32;work:[1]f32;
+    #assert pa_decode(view,out[..],work[..],false).status==PwStatus.ok && out[0]==1;
+    #assert pa_decode(view,out[0..<0],work[..],false).status==PwStatus.capacity;
+    #assert pa_decode(view,out[..],work[0..<0],false).status==PwStatus.capacity;
+    data[0]=128;data[1]=127;out[0]=-7;#assert pa_decode(view,out[..],work[..],false).status==PwStatus.number && out[0]==-7;
+}

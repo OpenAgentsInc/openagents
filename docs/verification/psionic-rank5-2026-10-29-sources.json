@@ -1,0 +1,16 @@
+{
+  "coax/bin/coax": "5388de6c9c976ff6328fd2f4f4aa3433e28d529deaac5f78a74abaab39c52498",
+  "psionic/lib/model-io/rank5.coax": "b763f1b5077e1ab7b6b7f8ce43ed44bf17c597d7f4a6cf7a7f0b6fa1c69319e5",
+  "psionic/lib/model-io/access.coax": "e8d1f009052070d871111b86b8e987b64a08a8c484c174eba3585075828648b5",
+  "psionic/lib/model-io/reader.coax": "83ac499c1c3e39a2a8c6e2e4469c773dbf8566d3631241f11ea1423f4629a627",
+  "psionic/lib/model-io/format.coax": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+  "psionic/lib/qwen-matvec.coax": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae",
+  "psionic/platform/rank5-memory.c": "25fcd0e325f73f6314acf262080438d9434b1ebd3da33283abd7fff571a20689",
+  "psionic/platform/rank5-memory.h": "1d4262554ccd094afea4c4b10345c262037d292cd8dc57bfa772a774e52b96e0",
+  "psionic/platform/access-memory.c": "44a2aac6e0eef0ea4ccf4e2fe0de4ec586ae92bf2b4be42118aee910da8b5230",
+  "psionic/platform/access-memory.h": "a37b9345e1e01eefb846d76ef20bdd43c0beda201d995fa388480905c63f4097",
+  "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+  "psionic/tests/rank5.c": "9eda641ef4094a7df5ca5ed59e5203e2d658fd4afe90a01613cb068a221d9006",
+  "psionic/tests/access.c": "a9ed576ad7998ba3b0a81014c3cc63d5257381dd125515b15fcc0bbd50b9bca6",
+  "psionic/tests/elephant_inventory.c": "cdb90dfd6dcddeb8cb4f4acffd1abeb36a160890dd220e05c16ead32a68edfc1"
+}
