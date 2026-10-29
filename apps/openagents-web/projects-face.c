@@ -13,7 +13,7 @@ static coax_v_t_ProjectsState at(uint32_t state) { coax_v_t_ProjectsState s = {(
 // the host's page facts; the list's own messages are copied into its inbox.
 static coax_t_Track track_state;
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
-static uint8_t inbox[8192];
+static uint8_t inbox[65536];
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_ProjectsState) * 1000003u + _Alignof(coax_t_ProjectsState) * 31u
@@ -38,10 +38,9 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms,
 }
 
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
-  (void)mods;
   track_key(tr(), key, 0);
   track_drain(&track_state);
-  return coaxial_projects_key(at(state), key) ? 1u : 0u;
+  return coaxial_projects_key(at(state), key, mods) ? 1u : 0u;
 }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { (void)state; (void)mods; track_key_up(tr(), key); return 0u; }
 EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { (void)state; track_blur(tr()); }
@@ -69,6 +68,8 @@ EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) {
   memcpy(at(state).data->inbox.e, inbox, (size_t)length);
   coaxial_projects_hash(at(state), (int64_t)length);
 }
+EXPORT("coaxial_wants_text") uint32_t coaxial_wants_text(uint32_t state) { return coaxial_projects_wants_text(at(state)) ? 1u : 0u; }
+EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)at(state).data->field.e; }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)coaxial_projects_cursor(at(state)); }
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)coaxial_projects_action(at(state)); }
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)at(state).data->outbox.e; }

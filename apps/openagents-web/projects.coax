@@ -31,8 +31,10 @@ MODE_STROKE :: 0.0;
 GAP :: 0.34;
 SPACE :: 0.95;
 MAX_SHOWN :: 256;
-INBOX :: 8192;
-OUTBOX :: 160;
+INBOX :: 65536;
+OUTBOX :: 20032;
+EDIT_MAX :: 20000;   // the most one field holds (0020_project_review.sql allows 20000)
+MAX_REVIEW :: 1024;  // the review's rows
 
 // the rows' columns
 C_SLUG :: 0; C_NAME :: 1; C_DESC :: 2; C_CONTRIB :: 3; C_VIS :: 4; C_OPEN :: 5; C_READY :: 6; C_DONE :: 7;
@@ -41,8 +43,9 @@ C_WORKING :: 8; C_LAST :: 9; C_LAST_AT :: 10; C_PAGE :: 11; C_OWNER :: 12; C_MEM
 FILTER_AUTO :: 0; FILTER_MINE :: 1; FILTER_ALL :: 2;
 
 // input, as coax/web/host.js sends it
-K_ENTER :: -2; K_LEFT :: -4; K_RIGHT :: -5; K_UP :: -6; K_DOWN :: -7; K_HOME :: -8; K_END :: -9;
+K_ENTER :: -2; K_BACKSPACE :: -3; K_DELETE :: -12; K_LEFT :: -4; K_RIGHT :: -5; K_UP :: -6; K_DOWN :: -7; K_HOME :: -8; K_END :: -9;
 P_DOWN :: 0; P_MOVE :: 1; P_UP :: 2;
+MSG_TEXT :: 1;       // typed or pasted text
 MSG_VIEWER :: 3;     // the signed-in viewer's hex pubkey; empty: signed out
 MSG_DROPS :: 40;     // the drop's state (coax/web/host.js, data-drops): "S|signed|signer|dragging|note", then a file a line
 ACT_NAVIGATE :: 1;
@@ -50,10 +53,18 @@ ACT_HASH :: 3;       // the location's hash: "new" while the drop area is open
 ACT_PICK :: 20;      // open the browser's file picker
 ACT_SIGNIN :: 22;    // sign in with the browser's Nostr signer
 ACT_DRAFT :: 23;     // ask the agent to read the drop and draft the project
+MSG_REVIEW :: 41;    // the draft as rows to review (rc-review): see review_text
+MSG_VALUE :: 42;     // "row|its whole value", after ACT_EDIT
+ACT_EDIT :: 24;      // the outbox's row is being changed: send its whole value
+ACT_SAVE :: 25;      // "row|new value": keep the change
+ACT_PUBLISH :: 26;   // PUBLISH the reviewed draft
+ACT_DISCARD :: 27;   // DISCARD the drop
 K_ESCAPE :: -1;
 
 // what the pointer is on
 HIT_NONE :: -1; HIT_MINE :: -2; HIT_ALL :: -3; HIT_HOME :: -4; HIT_NEW :: -5; HIT_CLOSE :: -6; HIT_ZONE :: -7; HIT_SIGNIN :: -8; HIT_DRAFT :: -9;
+HIT_REVIEW :: -10; HIT_BACK :: -11; HIT_PUBLISH :: -12; HIT_DISCARD :: -13; HIT_YES :: -14; HIT_NO :: -15;
+HIT_SAVE :: -16; HIT_CANCEL :: -17; HIT_TEXT :: -18;
 
 ProjectsState :: struct {
   time: f32;
@@ -68,6 +79,15 @@ ProjectsState :: struct {
   viewer: [64] u8; viewer_n: int;
   drop_open: bool;                   // NEW PROJECT's drop area is in the list's place
   drops: [INBOX] u8; drops_n: int;   // the last MSG_DROPS
+  review_open: bool;                 // the draft's review is in the drop area's place
+  review: [INBOX] u8; review_n: int; // the last MSG_REVIEW
+  review_at: [MAX_REVIEW] int; review_rows: int;   // where each of its lines starts
+  scroll_l: f32; scroll_r: f32; point_x: f32;      // the review's columns, scrolled; where the pointer was
+  confirm: int;                      // HIT_PUBLISH or HIT_DISCARD while asking, else 0
+  edit_row: int;                     // the row being changed, plus one; 0: none
+  edit: [EDIT_MAX] u8; edit_n: int; caret: int; edit_top: int;
+  loaded: bool; saving: bool;        // its whole value has come; a save is on its way
+  field: [4] f32;                    // where the editor is, for the host's keyboard field
   inbox: [INBOX] u8;
   outbox: [OUTBOX] u8; out_n: int; action: int;
 }
@@ -563,7 +583,7 @@ drop_progress :: (status: string, permille: int) -> f32 {
   return 0;
 }
 
-DropLayout :: struct { panel: Box; close: Box; zone: Box; signin: Box; draft: Box; ask: Box; rows_top: f32; row_h: f32; fit: int; }
+DropLayout :: struct { panel: Box; close: Box; zone: Box; signin: Box; draft: Box; ask: Box; review: Box; rows_top: f32; row_h: f32; fit: int; }
 DRAFT_ROOM :: 86.0;
 drop_layout :: (l: Layout, d: f32, drafted: bool) -> DropLayout {
   p := Pen.{d = d, fade = 1, time = 0};
@@ -585,6 +605,7 @@ drop_layout :: (l: Layout, d: f32, drafted: bool) -> DropLayout {
   k.draft = Box.{x0 = b.x0 + 18 * d, y0 = b.y1 - 30 * d - DRAFT_ROOM * d + 6 * d, x1 = b.x1 - 18 * d, y1 = b.y1 - 30 * d};
   ac := 8 * d;
   k.ask = chip_box("READ MY DROP", b.x1 - 26 * d - chip_width("READ MY DROP", ac, p), b.y1 - 12 * d, ac, p);
+  k.review = chip_box("REVIEW", k.ask.x0 - 10 * d - chip_width("REVIEW", ac, p), b.y1 - 12 * d, ac, p);
   return k;
 }
 
@@ -698,6 +719,7 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
   }
   v = put(out, v, cast(string) fb[0..<fc], x, b.y1 - 14 * d, 6 * d, dim);
   if can_ask(text) { v = chip(out, v, "READ MY DROP", k.ask.x0, k.ask.y1 - 5 * d, 8 * d, ifx hot == HIT_DRAFT then white else orange, p); }
+  if can_review(text) { v = chip(out, v, "REVIEW", k.review.x0, k.review.y1 - 5 * d, 8 * d, ifx hot == HIT_REVIEW then white else orange, p); }
   if dr >= 0 { v = draw_draft(out, v, k.draft, p, text, dr, l.wide); }
   return frame(out, v, b, 10 * d, p);
 }
@@ -706,7 +728,12 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
 can_ask :: (text: string) -> bool {
   if !drop_flag(text, 1) || drop_kept(text) == 0 { return false; }
   r := draft_row(text);
-  return r < 0 || !same(field(text, r, 1), "reading");
+  return r < 0 || (!same(field(text, r, 1), "reading") && !same(field(text, r, 10), "1"));
+}
+// REVIEW shows once there is a draft to review ("D|ready|...", its 10th field 1 once published).
+can_review :: (text: string) -> bool {
+  r := draft_row(text);
+  return r >= 0 && same(field(text, r, 1), "ready");
 }
 
 // The draft, in short: what the agent made of the drop. rc-review shows all of it.
@@ -739,6 +766,7 @@ drop_hit :: (l: Layout, d: f32, text: string, x: f32, y: f32) -> int {
   k := drop_layout(l, d, draft_row(text) >= 0);
   if inside(k.close, x, y) { return HIT_CLOSE; }
   if can_ask(text) && inside(k.ask, x, y) { return HIT_DRAFT; }
+  if can_review(text) && inside(k.review, x, y) { return HIT_REVIEW; }
   if !drop_flag(text, 1) && drop_flag(text, 2) && inside(k.signin, x, y) { return HIT_SIGNIN; }
   if inside(k.zone, x, y) { return HIT_ZONE; }
   return HIT_NONE;
@@ -784,6 +812,11 @@ projects_frame :: (s: [] ProjectsState, table: string, out: [] f32, uniforms: []
   glass(uniforms, 0, l.header, 10 * d, 0.92);
   glass(uniforms, 1, l.list, 10 * d, 0.92);
   v := header(out, 0, l, p, m, signed_in(viewer), s[0].hot);
+  s[0].field = [4] f32.[0, 0, 0, 0];
+  if s[0].drop_open && s[0].review_open {
+    if s[0].edit_row > 0 { t := review_layout(l, d).text; s[0].field = [4] f32.[t.x0, t.y0, t.x1, t.y1]; }
+    return draw_review(out, v, s, l, p);
+  }
   if s[0].drop_open { return draw_drop(out, v, l, p, drops_of(s), s[0].hot); }
   return draw_list(out, v, l, p, table, viewer, m, order[..], n, s[0].scroll, s[0].hot, s[0].sel);
 }
@@ -797,6 +830,7 @@ hit :: (s: [] ProjectsState, table: string, x: f32, y: f32) -> int {
   if inside(l.newp, x, y) { return HIT_NEW; }
   if s[0].drop_open {
     if inside(l.home, x, y) { return HIT_HOME; }
+    if s[0].review_open { return review_hit(s, l, s[0].d, x, y); }
     return drop_hit(l, s[0].d, drops_of(s), x, y);
   }
   if inside(l.mine, x, y) { return HIT_MINE; }
@@ -830,6 +864,8 @@ choose :: (s: [] ProjectsState, filter: int) {
 }
 
 act :: (s: [] ProjectsState, table: string, target: int) {
+  if s[0].drop_open && s[0].review_open && target != HIT_NEW && target != HIT_HOME { review_act(s, target); return; }
+  if target == HIT_REVIEW { s[0].review_open = true; s[0].confirm = 0; s[0].edit_row = 0; s[0].hot = HIT_NONE; return; }
   if target == HIT_NEW { open_drop(s, !s[0].drop_open); }
   else if target == HIT_CLOSE { open_drop(s, false); }
   else if target == HIT_ZONE { ask_host(s, ACT_PICK); }
@@ -850,11 +886,12 @@ projects_pointer :: (s: [] ProjectsState, table: string, x: f32, y: f32, phase: 
     return true;
   }
   if phase == P_MOVE {
+    s[0].point_x = x;
     if kind == 0 { s[0].hot = hit(s, table, x, y); }
     if s[0].press != HIT_NONE || kind != 0 {
       // a finger drags the list
       if absf(y - s[0].press_y) > 10 * d || absf(x - s[0].press_x) > 10 * d { s[0].dragged = true; }
-      if s[0].dragged && kind != 0 { s[0].scroll -= y - s[0].drag_y; }
+      if s[0].dragged && kind != 0 { scroll_by(s, s[0].press_x, s[0].drag_y - y); }
       s[0].drag_y = y;
     }
     return true;
@@ -870,13 +907,27 @@ projects_pointer :: (s: [] ProjectsState, table: string, x: f32, y: f32, phase: 
   return true;
 }
 absf :: (x: f32) -> f32 { if x < 0 { return -x; } return x; }
+// The list, or in the review the column at x, scrolled by dy device pixels.
+scroll_by :: (s: [] ProjectsState, x: f32, dy: f32) {
+  if !(s[0].drop_open && s[0].review_open) { s[0].scroll += dy; return; }
+  if s[0].edit_row > 0 { return; }
+  if s[0].d > 0 && layout(s[0].width, s[0].height, s[0].d).wide && x > s[0].width * 0.5 { s[0].scroll_r += dy; } else { s[0].scroll_l += dy; }
+}
 
 // Keys: up and down choose a row, Enter opens it, m and a (or left and right) pick the filter.
-projects_key :: (s: [] ProjectsState, table: string, key: int) -> bool {
+projects_key :: (s: [] ProjectsState, table: string, key: int) -> bool { return projects_key_mods(s, table, key, 0); }
+projects_key_mods :: (s: [] ProjectsState, table: string, key: int, mods: int) -> bool {
   if s.count < 1 { return false; }
+  if s[0].drop_open && s[0].review_open {
+    if s[0].edit_row > 0 { return edit_key(s, key, mods); }
+    if key == K_ESCAPE { if s[0].confirm != 0 { s[0].confirm = 0; } else { s[0].review_open = false; } return true; }
+    if key == K_DOWN || key == K_UP { scroll_by(s, s[0].point_x, (ifx key == K_DOWN then 60.0f32 else -60.0f32) * hi(s[0].d, 1)); return true; }
+    return false;
+  }
   if s[0].drop_open {
     if key == K_ESCAPE { open_drop(s, false); return true; }
     if key == K_ENTER { ask_host(s, ACT_PICK); return true; }
+    if (key == 'r' || key == 'R') && can_review(drops_of(s)) { act(s, table, HIT_REVIEW); return true; }
     return false;
   }
   if key == 'n' || key == 'N' { open_drop(s, true); return true; }
@@ -906,6 +957,7 @@ projects_key :: (s: [] ProjectsState, table: string, key: int) -> bool {
 // The viewer: MSG_VIEWER with a hex pubkey from the inbox signs in; an empty one signs out.
 projects_message :: (s: [] ProjectsState, kind: int, length: int) {
   if s.count < 1 || length < 0 || length > INBOX { return; }
+  if kind == MSG_REVIEW || kind == MSG_VALUE || kind == MSG_TEXT { review_message(s, kind, length); return; }
   if kind == MSG_DROPS {
     for i: 0..<length { s[0].drops[i] = s[0].inbox[i]; }
     s[0].drops_n = length;
@@ -922,13 +974,15 @@ projects_message :: (s: [] ProjectsState, kind: int, length: int) {
 coaxial_projects_pointer :: (s: [] ProjectsState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
   return projects_pointer(s, PROJECTS_ROWS, x, y, phase, kind);
 }
-coaxial_projects_key :: (s: [] ProjectsState, key: int) -> bool #export_c { return projects_key(s, PROJECTS_ROWS, key); }
-coaxial_projects_wheel :: (s: [] ProjectsState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
+coaxial_projects_key :: (s: [] ProjectsState, key: int, mods: int) -> bool #export_c { return projects_key_mods(s, PROJECTS_ROWS, key, mods); }
+coaxial_projects_wheel :: (s: [] ProjectsState, dy: f32) #export_c { if s.count > 0 { scroll_by(s, s[0].point_x, dy * hi(s[0].d, 1)); } }
+coaxial_projects_wants_text :: (s: [] ProjectsState) -> bool #export_c { return s.count > 0 && s[0].drop_open && s[0].review_open && s[0].edit_row > 0; }
 coaxial_projects_message :: (s: [] ProjectsState, kind: int, length: int) #export_c { projects_message(s, kind, length); }
 // The location's hash, in the inbox: "new" opens the drop area, anything else closes it.
 projects_hash :: (s: [] ProjectsState, length: int) {
   if s.count < 1 || length < 0 || length > INBOX { return; }
   want := same(cast(string) s[0].inbox[0..<length], "new");
+  if !want { s[0].review_open = false; s[0].edit_row = 0; }
   if s[0].drop_open != want { s[0].drop_open = want; s[0].hot = HIT_NONE; }
 }
 coaxial_projects_hash :: (s: [] ProjectsState, length: int) #export_c { projects_hash(s, length); }
@@ -942,6 +996,356 @@ coaxial_projects_inbox_cap :: () -> int #export_c { return INBOX; }
 coaxial_projects_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
 coaxial_projects_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
 coaxial_projects_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---------------------------------------------------------------- REVIEW: the owner corrects the draft (rc-review)
+
+// MSG_REVIEW's lines: "V|state|edits|note|name" (state ready, saving, approved or discarded), then a
+// row each, "R|column|kind|label|preview": kind H a section, G a group (a milestone, a task), T a text,
+// B a yes or no, A a list's "add one". A row's number is its place after the V line.
+review_text :: (s: [] ProjectsState) -> string { return cast(string) s[0].review[0..<s[0].review_n]; }
+review_line :: (s: [] ProjectsState, r: int) -> string {
+  if r < 0 || r >= s[0].review_rows { return ""; }
+  a := s[0].review_at[r];
+  b := s[0].review_n;
+  if r + 1 < s[0].review_rows { b = s[0].review_at[r + 1] - 1; }
+  else if b > a && s[0].review[b - 1] == '\n' { b -= 1; }
+  if b < a { b = a; }
+  return cast(string) s[0].review[a..<b];
+}
+review_items :: (s: [] ProjectsState) -> int { return ifx s[0].review_rows > 1 then s[0].review_rows - 1 else 0; }
+item :: (s: [] ProjectsState, i: int) -> string { return review_line(s, i + 1); }
+item_kind :: (line: string) -> u8 { f := field(line, 0, 2); return ifx f.count > 0 then f[0] else cast(u8) '?'; }
+item_col :: (line: string) -> int { return ifx same(field(line, 0, 1), "1") then 1 else 0; }
+editable :: (kind: u8) -> bool { return kind == 'T' || kind == 'B' || kind == 'A'; }
+review_state :: (s: [] ProjectsState) -> string { return field(review_line(s, 0), 0, 1); }
+review_approved :: (s: [] ProjectsState) -> bool { return same(review_state(s), "approved"); }
+
+index_review :: (s: [] ProjectsState) {
+  n := 0;
+  if s[0].review_n > 0 { s[0].review_at[0] = 0; n = 1; }
+  for i: 0..<s[0].review_n {
+    if s[0].review[i] == '\n' && i + 1 < s[0].review_n && n < MAX_REVIEW { s[0].review_at[n] = i + 1; n += 1; }
+  }
+  s[0].review_rows = n;
+}
+
+item_h :: (kind: u8, d: f32) -> f32 {
+  if kind == 'H' { return 32 * d; }
+  if kind == 'G' { return 26 * d; }
+  if kind == 'A' { return 22 * d; }
+  return 44 * d;
+}
+
+ReviewLayout :: struct { panel: Box; back: Box; publish: Box; discard: Box; yes: Box; no: Box; save: Box; cancel: Box;
+                         col0: Box; col1: Box; text: Box; wide: bool; }
+review_layout :: (l: Layout, d: f32) -> ReviewLayout {
+  p := Pen.{d = d, fade = 1, time = 0};
+  k: ReviewLayout; b := l.list; cap := FILTER_CAP * d;
+  k.panel = b; k.wide = l.wide;
+  y := b.y0 + 24 * d;
+  x := b.x1 - 14 * d - chip_width("BACK", cap, p);
+  k.back = chip_box("BACK", x, y, cap, p);
+  x -= 8 * d + chip_width("DISCARD", cap, p);
+  k.discard = chip_box("DISCARD", x, y, cap, p);
+  x -= 8 * d + chip_width("PUBLISH", cap, p);
+  k.publish = chip_box("PUBLISH", x, y, cap, p);
+  cy := b.y0 + title_room(p) + 40 * d;
+  k.yes = chip_box("YES", b.x0 + 26 * d, cy, cap, p);
+  k.no = chip_box("NO", k.yes.x1 + 10 * d, cy, cap, p);
+  top := b.y0 + title_room(p) + 52 * d; bottom := b.y1 - 12 * d;
+  if l.wide {
+    mid := (b.x0 + b.x1) * 0.5;
+    k.col0 = Box.{x0 = b.x0 + 26 * d, y0 = top, x1 = mid - 14 * d, y1 = bottom};
+    k.col1 = Box.{x0 = mid + 14 * d, y0 = top, x1 = b.x1 - 26 * d, y1 = bottom};
+  } else {
+    k.col0 = Box.{x0 = b.x0 + 18 * d, y0 = top, x1 = b.x1 - 18 * d, y1 = bottom};
+    k.col1 = k.col0;
+  }
+  sy := top + 12 * d;
+  k.cancel = chip_box("CANCEL", b.x1 - 26 * d - chip_width("CANCEL", cap, p), sy, cap, p);
+  k.save = chip_box("SAVE", k.cancel.x0 - 10 * d - chip_width("SAVE", cap, p), sy, cap, p);
+  tall := ifx l.wide then 460.0f32 else 260.0f32;
+  k.text = Box.{x0 = b.x0 + 26 * d, y0 = top + 26 * d, x1 = b.x1 - 26 * d, y1 = lo(bottom, top + (26 + tall) * d)};
+  return k;
+}
+
+// Each column's rows from its top, scrolled; the narrow page is one column.
+col_of :: (k: ReviewLayout, line: string) -> int { return ifx k.wide then item_col(line) else 0; }
+col_box :: (k: ReviewLayout, c: int) -> Box { return ifx c == 1 then k.col1 else k.col0; }
+col_scroll :: (s: [] ProjectsState, c: int) -> f32 { return ifx c == 1 then s[0].scroll_r else s[0].scroll_l; }
+col_height :: (s: [] ProjectsState, k: ReviewLayout, c: int, d: f32) -> f32 {
+  h := 0.0f32;
+  for i: 0..<review_items(s) { line := item(s, i); if col_of(k, line) == c { h += item_h(item_kind(line), d); } }
+  return h;
+}
+clamp_review :: (s: [] ProjectsState, k: ReviewLayout, d: f32) {
+  s[0].scroll_l = clamp(s[0].scroll_l, 0, hi(0, col_height(s, k, 0, d) - box_h(k.col0) + 8 * d));
+  s[0].scroll_r = clamp(s[0].scroll_r, 0, hi(0, col_height(s, k, 1, d) - box_h(k.col1) + 8 * d));
+}
+
+// The row under (x, y), or -1.
+review_row_at :: (s: [] ProjectsState, k: ReviewLayout, d: f32, x: f32, y: f32) -> int {
+  ys := [2] f32.[0, 0];
+  for i: 0..<review_items(s) {
+    line := item(s, i); c := col_of(k, line); kind := item_kind(line);
+    cb := col_box(k, c); h := item_h(kind, d);
+    y0 := cb.y0 + ys[c] - col_scroll(s, c);
+    ys[c] += h;
+    if y0 < cb.y0 - 1 || y0 + h > cb.y1 + 1 { continue; }
+    if editable(kind) && x >= cb.x0 - 8 * d && x <= cb.x1 && y >= y0 && y < y0 + h { return i; }
+  }
+  return -1;
+}
+
+draw_item :: (out: [] f32, at: int, line: string, b: Box, p: Pen, lit_up: bool, open: bool) -> int {
+  d := p.d; v := at; kind := item_kind(line); label := field(line, 0, 3); preview := field(line, 0, 4);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT); pale := ink(p, INK_PALE);
+  w := box_w(b);
+  if kind == 'H' {
+    v = put_fit(out, v, label, b.x0, b.y0 + 20 * d, 8 * d, orange, w);
+    return rule(out, v, b.x0, b.y0 + 26 * d, b.x1, b.y0 + 26 * d, orange, 0.25 * p.fade);
+  }
+  if kind == 'G' { return put_fit(out, v, label, b.x0, b.y0 + 17 * d, 7.5 * d, pale, w); }
+  if kind == 'A' { return put_fit(out, v, label, b.x0, b.y0 + 14 * d, 6.5 * d, ifx lit_up then orange else faint, w); }
+  if lit_up && open { v = rule(out, v, b.x0 - 7 * d, b.y0 + 4 * d, b.x0 - 7 * d, b.y1 - 6 * d, orange, 0.9 * p.fade); }
+  v = put_fit(out, v, label, b.x0, b.y0 + 11 * d, 5.5 * d, ifx lit_up then orange else dim, w);
+  if preview.count == 0 { return put(out, v, "empty", b.x0, b.y0 + 24 * d, 6.5 * d, faint); }
+  return put_wrapped(out, v, preview, b.x0, b.y0 + 24 * d, 6.5 * d, white, w, 11 * d, 2);
+}
+
+draw_review :: (out: [] f32, at: int, s: [] ProjectsState, l: Layout, p: Pen) -> int {
+  d := p.d; k := review_layout(l, d); b := k.panel; hot := s[0].hot;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT); pale := ink(p, INK_PALE);
+  approved := review_approved(s);
+  v := titled(out, at, b, "REVIEW DRAFT", "", p);
+  cap := FILTER_CAP * d;
+  v = chip(out, v, "BACK", k.back.x0, k.back.y1 - 5 * d, cap, ifx hot == HIT_BACK then white else dim, p);
+  v = chip(out, v, "DISCARD", k.discard.x0, k.discard.y1 - 5 * d, cap, ifx hot == HIT_DISCARD || s[0].confirm == HIT_DISCARD then white else dim, p);
+  if !approved { v = chip(out, v, "PUBLISH", k.publish.x0, k.publish.y1 - 5 * d, cap, ifx hot == HIT_PUBLISH then white else orange, p); }
+  tx := b.x0 + 26 * d; ty := b.y0 + title_room(p) + 12 * d; tw := box_w(b) - 52 * d;
+  note := field(review_line(s, 0), 0, 3);
+  if s[0].confirm == HIT_PUBLISH {
+    v = put_fit(out, v, "Publish this project? Its key, page, roadmap and files go public.", tx, ty, 6.5 * d, white, tw);
+  } else if s[0].confirm == HIT_DISCARD {
+    v = put_fit(out, v, "Discard this drop? Its files leave the bucket and the draft is gone.", tx, ty, 6.5 * d, white, tw);
+  } else if approved {
+    v = put_wrapped(out, v, "Queued to publish. Nothing is public until the publisher runs.", tx, ty, 6.5 * d, pale, tw, 11 * d, 2);
+  } else if note.count > 0 {
+    v = put_wrapped(out, v, note, tx, ty, 6.5 * d, pale, tw, 11 * d, 2);
+  } else {
+    v = put_wrapped(out, v, ifx l.wide then "Click any field to change it. Nothing is public until you PUBLISH." else "Tap any field to change it. Nothing is public until you PUBLISH.",
+                    tx, ty, 6.5 * d, dim, tw, 11 * d, 2);
+  }
+  if s[0].confirm != 0 {
+    v = chip(out, v, "YES", k.yes.x0, k.yes.y1 - 5 * d, cap, ifx hot == HIT_YES then white else orange, p);
+    v = chip(out, v, "NO", k.no.x0, k.no.y1 - 5 * d, cap, ifx hot == HIT_NO then white else dim, p);
+  }
+  if s[0].edit_row > 0 { v = draw_editor(out, v, s, k, p); return frame(out, v, b, 10 * d, p); }
+  clamp_review(s, k, d);
+  ys := [2] f32.[0, 0];
+  for i: 0..<review_items(s) {
+    line := item(s, i); c := col_of(k, line); kind := item_kind(line);
+    cb := col_box(k, c); h := item_h(kind, d);
+    y0 := cb.y0 + ys[c] - col_scroll(s, c);
+    ys[c] += h;
+    if y0 < cb.y0 - 1 || y0 + h > cb.y1 + 1 { continue; }
+    v = draw_item(out, v, line, Box.{x0 = cb.x0, y0 = y0, x1 = cb.x1, y1 = y0 + h}, p, hot == i || s[0].sel == i, !approved);
+  }
+  if l.wide { mid := (b.x0 + b.x1) * 0.5; v = rule(out, v, mid, k.col0.y0, mid, k.col0.y1, dim, 0.1 * p.fade); }
+  if review_items(s) == 0 { v = put(out, v, "No draft yet.", k.col0.x0, k.col0.y0 + 20 * d, 7 * d, faint); }
+  return frame(out, v, b, 10 * d, p);
+}
+
+// ---- the editor: one field's text, its caret, SAVE and CANCEL
+
+edit_text :: (s: [] ProjectsState) -> string { return cast(string) s[0].edit[0..<s[0].edit_n]; }
+cont :: (b: u8) -> bool { return (cast(int) b & 0xC0) == 0x80; }
+prev_at :: (s: [] ProjectsState, i: int) -> int {
+  j := i - 1;
+  while j > 0 && cont(s[0].edit[j]) { j -= 1; }
+  return ifx j < 0 then 0 else j;
+}
+next_at :: (s: [] ProjectsState, i: int) -> int {
+  if i >= s[0].edit_n { return s[0].edit_n; }
+  j := i + 1;
+  while j < s[0].edit_n && cont(s[0].edit[j]) { j += 1; }
+  return j;
+}
+line_start :: (s: [] ProjectsState, i: int) -> int { j := i; while j > 0 && s[0].edit[j - 1] != '\n' { j -= 1; } return j; }
+line_end :: (s: [] ProjectsState, i: int) -> int { j := i; while j < s[0].edit_n && s[0].edit[j] != '\n' { j += 1; } return j; }
+on_char :: (s: [] ProjectsState, i: int, low: int) -> int { j := i; while j > low && j < s[0].edit_n && cont(s[0].edit[j]) { j -= 1; } return j; }
+
+edit_insert :: (s: [] ProjectsState, text: string) {
+  n := 0;
+  for i: 0..<text.count { if text[i] != '\r' { n += 1; } }
+  if n == 0 || s[0].edit_n + n > EDIT_MAX { return; }
+  c := s[0].caret;
+  i := s[0].edit_n - 1;
+  while i >= c { s[0].edit[i + n] = s[0].edit[i]; i -= 1; }
+  k := 0;
+  for j: 0..<text.count { if text[j] != '\r' { s[0].edit[c + k] = text[j]; k += 1; } }
+  s[0].edit_n += n; s[0].caret += n;
+}
+edit_cut :: (s: [] ProjectsState, a: int, b: int) {
+  if b <= a { return; }
+  for i: b..<s[0].edit_n { s[0].edit[i - (b - a)] = s[0].edit[i]; }
+  s[0].edit_n -= b - a;
+  s[0].caret = a;
+}
+
+open_edit :: (s: [] ProjectsState, i: int) {
+  line := item(s, i);
+  if review_approved(s) || !editable(item_kind(line)) { return; }
+  s[0].edit_row = i + 1; s[0].edit_n = 0; s[0].caret = 0; s[0].edit_top = 0; s[0].saving = false; s[0].loaded = false;
+  s[0].confirm = 0; s[0].hot = HIT_NONE;
+  s[0].out_n = put_int(s[0].outbox[..], 0, i);
+  s[0].action = ACT_EDIT;
+}
+close_edit :: (s: [] ProjectsState) { s[0].edit_row = 0; s[0].saving = false; s[0].hot = HIT_NONE; }
+save_edit :: (s: [] ProjectsState) {
+  if s[0].edit_row <= 0 || s[0].saving || !s[0].loaded { return; }
+  n := put_int(s[0].outbox[..], 0, s[0].edit_row - 1);
+  n += put_text(s[0].outbox[..], n, "|");
+  for i: 0..<s[0].edit_n { if n < OUTBOX { s[0].outbox[n] = s[0].edit[i]; n += 1; } }
+  s[0].out_n = n; s[0].action = ACT_SAVE; s[0].saving = true;
+}
+
+edit_key :: (s: [] ProjectsState, key: int, mods: int) -> bool {
+  shift := (mods & 1) != 0; command := (mods & 10) != 0;
+  c := s[0].caret;
+  if key == K_ESCAPE { close_edit(s); return true; }
+  if key == K_ENTER { if shift { edit_insert(s, "\n"); } else { save_edit(s); } return true; }
+  if key == K_BACKSPACE { if c > 0 { edit_cut(s, prev_at(s, c), c); } return true; }
+  if key == K_DELETE { if c < s[0].edit_n { edit_cut(s, c, next_at(s, c)); } return true; }
+  if key == K_LEFT { s[0].caret = prev_at(s, c); return true; }
+  if key == K_RIGHT { s[0].caret = next_at(s, c); return true; }
+  if key == K_HOME { s[0].caret = line_start(s, c); return true; }
+  if key == K_END { s[0].caret = line_end(s, c); return true; }
+  if key == K_UP {
+    ls := line_start(s, c);
+    if ls == 0 { s[0].caret = 0; return true; }
+    pls := line_start(s, ls - 1);
+    s[0].caret = on_char(s, pls + least(c - ls, ls - 1 - pls), pls);
+    return true;
+  }
+  if key == K_DOWN {
+    le := line_end(s, c);
+    if le >= s[0].edit_n { s[0].caret = s[0].edit_n; return true; }
+    ls := line_start(s, c); nls := le + 1;
+    s[0].caret = on_char(s, nls + least(c - ls, line_end(s, nls) - nls), nls);
+    return true;
+  }
+  if key >= 32 && !command && s[0].loaded {
+    b: [4] u8; n := encode(cast(u32) key, b[..], 0);
+    edit_insert(s, cast(string) b[0..<n]);
+    return true;
+  }
+  return false;
+}
+least :: (a: int, b: int) -> int { if a < b { return a; } return b; }
+
+draw_editor :: (out: [] f32, at: int, s: [] ProjectsState, k: ReviewLayout, p: Pen) -> int {
+  d := p.d; v := at; hot := s[0].hot; cap := FILTER_CAP * d;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT);
+  line := item(s, s[0].edit_row - 1);
+  v = put_fit(out, v, field(line, 0, 3), k.text.x0, k.save.y1 - 5 * d, 7 * d, orange, k.save.x0 - k.text.x0 - 12 * d);
+  v = chip(out, v, ifx s[0].saving then "SAVING" else "SAVE", k.save.x0, k.save.y1 - 5 * d, cap, ifx hot == HIT_SAVE then white else orange, p);
+  v = chip(out, v, "CANCEL", k.cancel.x0, k.cancel.y1 - 5 * d, cap, ifx hot == HIT_CANCEL then white else dim, p);
+  tb := k.text;
+  xs := [5] f32.[tb.x0, tb.x1, tb.x1, tb.x0, tb.x0];
+  ys := [5] f32.[tb.y0, tb.y0, tb.y1, tb.y1, tb.y0];
+  for e: 0..<4 { v = rule(out, v, xs[e], ys[e], xs[e + 1], ys[e + 1], dim, 0.35 * p.fade); }
+  hint := ifx item_kind(line) == 'B' then "yes or no.  Enter saves, Esc cancels." else
+          (ifx item_kind(line) == 'A' then "A new item at the list's end.  Enter saves, Esc cancels." else
+          "Enter saves, Shift+Enter starts a new line, Esc cancels. Emptied, a list's item leaves the list.");
+  v = put_fit(out, v, hint, tb.x0, tb.y1 + 14 * d, 6 * d, faint, box_w(tb));
+  if !s[0].loaded { return put(out, v, "...", tb.x0 + 10 * d, tb.y0 + 20 * d, 7 * d, dim); }
+  x := tb.x0 + 10 * d; w := box_w(tb) - 20 * d; tc := 7 * d; step := 13 * d;
+  fit := int(hi(1, (box_h(tb) - 12 * d) / step));
+  text := edit_text(s); caret := s[0].caret;
+  next: [1] int;
+  from := 0; n := 0; cl := -1; cfrom := 0; last := 0;
+  while from < text.count {
+    end := wrap_ink(text, from, w, tc, GAP, SPACE, white, next[..]);
+    nx := next[0]; if nx <= from { nx = text.count; }
+    if cl < 0 && caret >= from && caret < nx { cl = n; cfrom = from; }
+    last = from; n += 1; from = nx;
+  }
+  if cl < 0 {
+    if text.count > 0 && text[text.count - 1] != '\n' { cl = n - 1; cfrom = last; } else { cl = n; cfrom = text.count; }
+  }
+  if cl < s[0].edit_top { s[0].edit_top = cl; }
+  if cl >= s[0].edit_top + fit { s[0].edit_top = cl - fit + 1; }
+  top := s[0].edit_top;
+  base := tb.y0 + 18 * d;
+  from = 0; n = 0;
+  while from < text.count && n < top + fit {
+    end := wrap_ink(text, from, w, tc, GAP, SPACE, white, next[..]);
+    nx := next[0]; if nx <= from { nx = text.count; }
+    if n >= top { v = put(out, v, text[from..<end], x, base + step * cast(f32) (n - top), tc, white); }
+    n += 1; from = nx;
+  }
+  blink := p.time - floor(p.time);
+  if p.time >= 19.9 || blink < 0.6 {
+    cx := x + ink_width(text[cfrom..<caret], tc, GAP, SPACE, white);
+    cy := base + step * cast(f32) (cl - top);
+    v = rule(out, v, cx + 1 * d, cy - tc - 2 * d, cx + 1 * d, cy + 3 * d, orange, 0.9 * p.fade);
+  }
+  return v;
+}
+
+// What's under (x, y) in the review: a row's number, or a HIT_.
+review_hit :: (s: [] ProjectsState, l: Layout, d: f32, x: f32, y: f32) -> int {
+  k := review_layout(l, d);
+  if inside(k.back, x, y) { return HIT_BACK; }
+  if inside(k.discard, x, y) { return HIT_DISCARD; }
+  if !review_approved(s) && inside(k.publish, x, y) { return HIT_PUBLISH; }
+  if s[0].confirm != 0 && inside(k.yes, x, y) { return HIT_YES; }
+  if s[0].confirm != 0 && inside(k.no, x, y) { return HIT_NO; }
+  if s[0].edit_row > 0 {
+    if inside(k.save, x, y) { return HIT_SAVE; }
+    if inside(k.cancel, x, y) { return HIT_CANCEL; }
+    if inside(k.text, x, y) { return HIT_TEXT; }
+    return HIT_NONE;
+  }
+  return review_row_at(s, k, d, x, y);
+}
+
+review_act :: (s: [] ProjectsState, target: int) {
+  if target == HIT_BACK { if s[0].edit_row > 0 { close_edit(s); } else { s[0].review_open = false; s[0].confirm = 0; } }
+  else if target == HIT_PUBLISH || target == HIT_DISCARD { close_edit(s); s[0].confirm = ifx s[0].confirm == target then 0 else target; }
+  else if target == HIT_NO { s[0].confirm = 0; }
+  else if target == HIT_YES { ask_host(s, ifx s[0].confirm == HIT_PUBLISH then ACT_PUBLISH else ACT_DISCARD); s[0].confirm = 0; }
+  else if target == HIT_SAVE { save_edit(s); }
+  else if target == HIT_CANCEL { close_edit(s); }
+  else if target >= 0 { open_edit(s, target); }
+}
+
+review_message :: (s: [] ProjectsState, kind: int, length: int) {
+  if kind == MSG_REVIEW {
+    for i: 0..<length { s[0].review[i] = s[0].inbox[i]; }
+    s[0].review_n = length;
+    index_review(s);
+    state := review_state(s);
+    if same(state, "discarded") { s[0].review_open = false; s[0].edit_row = 0; s[0].confirm = 0; }
+    if s[0].saving && !same(state, "saving") {
+      s[0].saving = false;
+      if field(review_line(s, 0), 0, 3).count == 0 { s[0].edit_row = 0; }
+    }
+    return;
+  }
+  if kind == MSG_VALUE && s[0].edit_row > 0 {
+    text := cast(string) s[0].inbox[0..<length];
+    bar := 0;
+    while bar < text.count && text[bar] != '|' { bar += 1; }
+    if bar >= text.count || parse(text[0..<bar]) != s[0].edit_row - 1 { return; }
+    s[0].edit_n = 0; s[0].caret = 0;
+    edit_insert(s, text[bar + 1..<text.count]);
+    s[0].loaded = true;
+    return;
+  }
+  if kind == MSG_TEXT && s[0].edit_row > 0 && s[0].loaded && !s[0].saving { edit_insert(s, cast(string) s[0].inbox[0..<length]); }
+}
 
 // ---------------------------------------------------------------- checks
 
@@ -1231,4 +1635,108 @@ drop_message :: (s: [] ProjectsState, text: string) {
     dd := drop_layout(l, 2, true);
     #assert within(dd.draft, l.list) && dd.draft.y0 > dd.rows_top + dd.row_h && apart(dd.draft, dd.ask);
   }
+}
+
+REVIEW_FIXTURE :: "V|ready|0||Moon Villa\nR|0|H|CARD|\nR|0|T|Name|Moon Villa\nR|0|T|Design document|# Planetary Villa. A world on the Verse where two moons rise over a garden of glowing flowers.\nR|0|A|+ add a mechanic|\nR|1|H|ROADMAP|\nR|1|G|MILESTONE 1  Flowers|\nR|1|T|Title|Flowers\nR|1|B|Reuses an engine task|yes\n";
+
+send_to :: (s: [] ProjectsState, kind: int, text: string) {
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  projects_message(s, kind, text.count);
+}
+tap :: (s: [] ProjectsState, b: Box) -> bool {
+  x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
+  return projects_pointer(s, FIXTURE, x, y, P_DOWN, 0) && projects_pointer(s, FIXTURE, x, y, P_UP, 0);
+}
+outbox_is :: (s: [] ProjectsState, text: string) -> bool { return same(cast(string) s[0].outbox[0..<s[0].out_n], text); }
+
+#test "REVIEW shows every field; a field is changed and saved; PUBLISH and DISCARD ask first" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  sizes := [4] f32.[1440, 900, 390, 844];
+  for z: 0..<2 {
+    s: [1] ProjectsState;
+    w := sizes[z * 2] * 2; h := sizes[z * 2 + 1] * 2;
+    s[0].drop_open = true;
+    #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true) > 0;
+    drop_message(s[..], "S|1|0|0|\nF|notes.md|document|20|1000|kept|\nD|ready|Moon Villa|A world.|1|1|1|1|1||0\n");
+    #assert can_review(drops_of(s[..])) && can_ask(drops_of(s[..]));
+    l := layout(w, h, 2);
+    dl := drop_layout(l, 2, true);
+    #assert within(dl.review, l.list) && apart(dl.review, dl.ask) && apart(dl.review, dl.draft);
+    #assert tap(s[..], dl.review) && s[0].review_open;
+    send_to(s[..], MSG_REVIEW, REVIEW_FIXTURE);
+    #assert review_items(s[..]) == 8 && same(field(item(s[..], 1), 0, 3), "Name");
+    nv := projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true);
+    #assert nv > 600 && nv < MAX_VERTICES && on_canvas(out[..], nv, w, h, 2);
+    k := review_layout(l, 2);
+    #assert within(k.publish, l.list) && apart(k.publish, k.discard) && apart(k.discard, k.back) && within(k.text, l.list);
+    // a heading isn't a field; the name is
+    hy := k.col0.y0 + 10; ny := k.col0.y0 + 32 * 2 + 20;
+    #assert review_row_at(s[..], k, 2, k.col0.x0 + 20, hy) == -1 && review_row_at(s[..], k, 2, k.col0.x0 + 20, ny) == 1;
+    #assert tap(s[..], Box.{x0 = k.col0.x0 + 10, y0 = ny, x1 = k.col0.x0 + 30, y1 = ny + 2});
+    #assert s[0].action == ACT_EDIT && outbox_is(s[..], "1") && s[0].edit_row == 2 && !coaxial_projects_wants_text(s[..]) == false;
+    coaxial_projects_action_done(s[..]);
+    send_to(s[..], MSG_VALUE, "1|Moon Villa");
+    #assert s[0].loaded && s[0].edit_n == 10 && s[0].caret == 10;
+    send_to(s[..], MSG_TEXT, " II");
+    #assert projects_key_mods(s[..], FIXTURE, K_BACKSPACE, 0) && same(edit_text(s[..]), "Moon Villa I");
+    #assert projects_key_mods(s[..], FIXTURE, K_HOME, 0) && projects_key_mods(s[..], FIXTURE, 'A', 1) && same(edit_text(s[..]), "AMoon Villa I");
+    #assert projects_key_mods(s[..], FIXTURE, K_LEFT, 0) && projects_key_mods(s[..], FIXTURE, K_DELETE, 0) && same(edit_text(s[..]), "Moon Villa I");
+    #assert projects_key_mods(s[..], FIXTURE, K_END, 0) && projects_key_mods(s[..], FIXTURE, K_ENTER, 1) && same(edit_text(s[..]), "Moon Villa I\n");
+    #assert projects_key_mods(s[..], FIXTURE, K_UP, 0) && s[0].caret == 0 && projects_key_mods(s[..], FIXTURE, K_DOWN, 0) && s[0].caret == 13;
+    #assert projects_key_mods(s[..], FIXTURE, K_BACKSPACE, 0);
+    ev := projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true);
+    #assert ev > 300 && ev < MAX_VERTICES && on_canvas(out[..], ev, w, h, 2) && s[0].field[2] > s[0].field[0] && s[0].field[3] > s[0].field[1];
+    // Enter saves; a refusal keeps the editor open with the text
+    #assert projects_key_mods(s[..], FIXTURE, K_ENTER, 0) && s[0].action == ACT_SAVE && outbox_is(s[..], "1|Moon Villa I") && s[0].saving;
+    coaxial_projects_action_done(s[..]);
+    send_to(s[..], MSG_REVIEW, "V|ready|0|Not saved: that would leave no name|Moon Villa\nR|0|T|Name|Moon Villa\n");
+    #assert !s[0].saving && s[0].edit_row == 2 && same(edit_text(s[..]), "Moon Villa I");
+    #assert tap(s[..], k.save) && s[0].action == ACT_SAVE;
+    coaxial_projects_action_done(s[..]);
+    send_to(s[..], MSG_REVIEW, REVIEW_FIXTURE);
+    #assert s[0].edit_row == 0 && !coaxial_projects_wants_text(s[..]);
+    // PUBLISH asks first; NO and Escape take it back
+    #assert tap(s[..], k.publish) && s[0].confirm == HIT_PUBLISH && s[0].action == 0;
+    #assert tap(s[..], k.no) && s[0].confirm == 0;
+    #assert tap(s[..], k.publish) && tap(s[..], k.yes) && s[0].action == ACT_PUBLISH;
+    coaxial_projects_action_done(s[..]);
+    send_to(s[..], MSG_REVIEW, "V|approved|1||Moon Villa\nR|0|T|Name|Moon Villa I\n");
+    #assert hit(s[..], FIXTURE, (k.publish.x0 + k.publish.x1) * 0.5, (k.publish.y0 + k.publish.y1) * 0.5) != HIT_PUBLISH;
+    #assert tap(s[..], Box.{x0 = k.col0.x0 + 10, y0 = k.col0.y0 + 10, x1 = k.col0.x0 + 30, y1 = k.col0.y0 + 12}) && s[0].edit_row == 0;
+    #assert tap(s[..], k.discard) && s[0].confirm == HIT_DISCARD && projects_key(s[..], FIXTURE, K_ESCAPE) && s[0].confirm == 0 && s[0].review_open;
+    #assert tap(s[..], k.discard) && tap(s[..], k.yes) && s[0].action == ACT_DISCARD;
+    coaxial_projects_action_done(s[..]);
+    send_to(s[..], MSG_REVIEW, "V|discarded|0||\n");
+    #assert !s[0].review_open && s[0].drop_open;
+  }
+}
+
+#test "a long review scrolls each column, and the editor takes a long text" {
+  big: [INBOX] u8; n := put_text(big[..], 0, "V|ready|0||X\n");
+  for r: 0..<200 { n += put_text(big[..], n, ifx r % 2 == 0 then "R|0|T|Check|A check someone could run, with words enough to wrap onto a second line here.\n" else "R|1|T|Body|b\n"); }
+  s: [1] ProjectsState;
+  s[0].drop_open = true; s[0].review_open = true;
+  for i: 0..<n { s[0].inbox[i] = big[i]; }
+  projects_message(s[..], MSG_REVIEW, n);
+  #assert review_items(s[..]) == 200;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], 1440, 900, 1, 0, true) > 0;
+  s[0].point_x = 1300;
+  coaxial_projects_wheel(s[..], 100000);
+  coaxial_projects_wheel(s[..], -50);
+  v := projects_frame(s[..], FIXTURE, out[..], uniforms[..], 1440, 900, 1, 0, true);
+  #assert s[0].scroll_r > 0 && s[0].scroll_l == 0 && v > 600 && v < MAX_VERTICES && on_canvas(out[..], v, 1440, 900, 1);
+  k := review_layout(layout(1440, 900, 1), 1);
+  #assert s[0].scroll_r <= col_height(s[..], k, 1, 1);
+  open_edit(s[..], 0);
+  coaxial_projects_action_done(s[..]);
+  m := put_text(big[..], 0, "0|");
+  for r: 0..<300 { m += put_text(big[..], m, "Line of the design document, long enough to wrap. "); }
+  for i: 0..<m { s[0].inbox[i] = big[i]; }
+  projects_message(s[..], MSG_VALUE, m);
+  #assert s[0].loaded && s[0].edit_n == m - 2;
+  e := projects_frame(s[..], FIXTURE, out[..], uniforms[..], 1440, 900, 1, 0, true);
+  #assert e > 600 && e < MAX_VERTICES && on_canvas(out[..], e, 1440, 900, 1) && s[0].edit_top > 0;
 }

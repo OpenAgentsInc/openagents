@@ -68,7 +68,10 @@
 // /api/drops, private to who dropped them. Message 40 is their state, a line each: "S|signed|signer|
 // dragging|note" (signer: the browser has a Nostr signer), then "F|name|kind|bytes|permille|status|note"
 // per file (status queued, starting, uploading, scanning, kept, refused); message 3 the signed-in pubkey.
-// Action 20 opens the file picker; 22 signs in with the browser's Nostr signer (NIP-07, then NIP-98).
+// Action 20 opens the file picker; 22 signs in with the browser's Nostr signer (NIP-07, then NIP-98);
+// 23 asks for the draft ("D|..." in message 40). The review (rc-review): message 41 is the draft as rows,
+// "V|state|edits|note|name" then "R|column|kind|label|preview"; action 24 (a row) brings its whole value
+// as message 42 "row|value"; 25 "row|value" saves it; 26 PUBLISH; 27 DISCARD.
 // The WGSL has bg_vs/bg_fs (a full-screen pass) and fx_vs/fx_fs (the
 // vertices: one vec4f attribute per four floats), sharing one uniform buffer.
 //
