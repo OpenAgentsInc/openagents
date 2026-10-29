@@ -8,7 +8,12 @@
 // for a character goes to the character chat (/api/playtest/npc/ask) with the
 // browser's player key, so the character remembers that player; a browser
 // with no key yet is given one first (POST /api/playtest/player), which the
-// page keeps (action 5). The answer goes back to the page. It decides nothing. Every pointer is an offset into the host's
+// page keeps (action 5). The answer goes back to the page. An admin's voice
+// edits (everglade-voice.coax): the published list is asked for once
+// (GET /api/playtest/world/everglade, everyone), heard words go to the
+// server's selector (POST /api/playtest/realm/everglade/edit) and the new
+// list is published (POST /api/playtest/world/everglade); the server checks
+// both are an admin's. It lends the page a grid to walk the city again. It decides nothing. Every pointer is an offset into the host's
 // WebAssembly.Memory; the page's state is the host's (coaxial_state_size).
 #include "everglade.h"
 #include "Player.h"
@@ -31,6 +36,13 @@ static coax_t_Track track_state;
 #define NPC_URL "/api/playtest/npc/ask"
 #define PLAYER_URL "/api/playtest/player"
 static int32_t ask_id = -1, mint_id = -1;
+#define WORLD_URL "/api/playtest/world/everglade"
+#define EDIT_URL "/api/playtest/realm/everglade/edit"
+static int32_t world_id = -1, edit_id = -1, post_id = -1;
+static bool world_asked;
+static uint8_t reach_grid[400 * 400];
+static uint32_t reach_queue[400 * 400];
+static void edit_out(uint32_t state);
 static bool facts_seen, has_player, mint_tried;
 static void ask_out(uint32_t state);
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
@@ -89,10 +101,34 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
                            verse_player_act(player), player.vel.x, player.vel.z,
                            sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   ask_out(state);
+  edit_out(state);
   track_frame(tr(), dt, w, h, scale);
   if (n > 0) track_loaded(tr(), track_cstr("load-everglade"));
   track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
+}
+
+// The published edits once, then an admin's heard words and new list, one request each at a time.
+static void edit_out(uint32_t state) {
+  coax_t_Everglade *g = city(state);
+  if (facts_seen && !world_asked) {
+    world_asked = true;
+    world_id = coaxial_http((uint32_t)(uintptr_t)WORLD_URL, sizeof WORLD_URL - 1, 0, 0, 4);
+  }
+  int64_t n = everglade_edit_ask(at(state));
+  if (n > 0 && edit_id < 0) {
+    edit_id = coaxial_http((uint32_t)(uintptr_t)EDIT_URL, sizeof EDIT_URL - 1, (uint32_t)(uintptr_t)g->ev.ask.e, (uint32_t)n, 1 | 4);
+    everglade_edit_ask_sent(at(state));
+    if (edit_id < 0) { edit_id = -1; everglade_edit_answer(at(state), (coax_string){"0\n", 2}); }
+  }
+  n = everglade_edit_post(at(state));
+  if (n > 0 && post_id < 0) {
+    post_id = coaxial_http((uint32_t)(uintptr_t)WORLD_URL, sizeof WORLD_URL - 1, (uint32_t)(uintptr_t)g->ev.post.e, (uint32_t)n, 1 | 4);
+    everglade_edit_post_sent(at(state));
+    if (post_id < 0) { post_id = -1; everglade_edit_saved(at(state), 0); }
+  }
+  if (everglade_edit_wants_check(at(state)))
+    everglade_edit_check(at(state), (coax_v_u8){reach_grid, sizeof reach_grid}, (coax_v_u32){reach_queue, sizeof reach_queue / sizeof reach_queue[0]});
 }
 
 // The page's question, once the browser has a player key (or minting one failed).
@@ -165,6 +201,15 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
       everglade_keep_player(at(state), (coax_string){(const char *)inbox + 4, length - 4});
       has_player = true;
     }
+    return;
+  }
+  if (world_id >= 0 && kind == 512 + world_id) { world_id = -1; everglade_world(at(state), (coax_string){(const char *)inbox, length}); return; }
+  if (edit_id >= 0 && kind == 512 + edit_id) { edit_id = -1; everglade_edit_answer(at(state), (coax_string){(const char *)inbox, length}); return; }
+  if (post_id >= 0 && kind == 512 + post_id) {
+    post_id = -1;
+    int status = 0;
+    for (uint32_t i = 0; i < length && inbox[i] >= '0' && inbox[i] <= '9'; i++) status = status * 10 + (inbox[i] - '0');
+    everglade_edit_saved(at(state), status);
     return;
   }
   if (ask_id >= 0 && kind == 512 + ask_id) {

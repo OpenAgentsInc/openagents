@@ -105,3 +105,50 @@ first_try = make("a pond", {"piece": "pond"}, key=builder)
 second_try = make("another pond", key=builder)
 check("a player's set pieces come one at a time", first_try[0] == 200 and second_try[0] == 429 and make("a third pond")[0] == 200, (first_try, second_try))
 check("a player's piece is kept as theirs", sql("select count(*) from verse.sandbox_pieces s join verse.players p on p.id = s.player") == "1")
+
+# ---- an admin's spoken edit to a realm (eg-voice-edit, migrations/0045_realm_voice_edit.sql): the same
+# fake model, an admin only; the edit the page then publishes is an admin's write (test_realm_edit.py).
+admin_hex = os.environ["OA_ADMIN_PUBKEYS"].strip()
+for tok, pk in (("9" * 64, admin_hex), ("8" * 64, "7" * 64)):
+    sql(f"insert into signin.sessions (token_sha256, pubkey, created_ms, expires_ms) values (encode(sha256('{tok}'), 'hex'), '{pk}', 0, 9999999999999) on conflict do nothing")
+
+
+def voice_edit(sentence, answer=None, cookie="9" * 64, realm="everglade", origin=API):
+    if answer is not None:
+        piece_mode["text"] = answer if isinstance(answer, str) else json.dumps(answer)
+    h = {"Content-Type": "application/json"}
+    if cookie: h["Cookie"] = "oa_session=" + cookie
+    if origin: h["Origin"] = origin
+    time.sleep(1.6)   # one edit at a time per admin
+    s, raw, _ = call("POST", f"/api/playtest/realm/{realm}/edit", json.dumps({"sentence": sentence}).encode(), h)
+    return s, json.loads(raw)
+
+
+import time
+s, a = voice_edit("put two barrels here", {"edit": "place", "item": "barrel", "count": 2})
+check("voice edit: an admin's sentence becomes the edit the model picked", s == 200 and a == {"edit": "place", "item": "barrel", "count": 2, "model": "gemini-3.8-flash"}, (s, a))
+sent = piece_seen[-1]["body"]
+check("voice edit: the words are the model's only input from the admin", sent["contents"] == [{"role": "user", "parts": [{"text": "put two barrels here"}]}])
+schema = sent["generationConfig"]["responseSchema"]
+check("voice edit: under the realm's catalogue as enums",
+      schema["properties"]["edit"]["enum"] == ["place", "remove", "undo", "none"] and schema["properties"]["item"]["enum"] == ["crate", "barrel", "bench", "fence", "stall"], schema)
+coax_items = re.findall(r'"([^"]*)"', re.search(r'EG_EDIT_LABEL :: \[5\] string\.\[([^\]]*)\]', open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../verse/everglade/edits.coax")).read()).group(1))
+check("voice edit: the server's things are the page's (verse/everglade/edits.coax)", [x.lower() for x in coax_items] == schema["properties"]["item"]["enum"], coax_items)
+s, a = voice_edit("a hundred crates", {"edit": "place", "item": "crate", "count": 100, "colour": "red"})
+check("voice edit: a count is held to its range, other fields dropped", s == 200 and a == {"edit": "place", "item": "crate", "count": 6, "model": "gemini-3.8-flash"}, a)
+s, a = voice_edit("undo that", {"edit": "undo", "item": "crate"})
+check("voice edit: undo has no fields", s == 200 and a == {"edit": "undo", "model": "gemini-3.8-flash"}, a)
+s, a = voice_edit("place a dragon", {"edit": "place", "item": "dragon"})
+check("voice edit: a thing not in the catalogue is not an edit", s == 502, (s, a))
+s, a = voice_edit("what time is it", {"edit": "none"})
+check("voice edit: nothing fits", s == 422, (s, a))
+s, a = voice_edit("put a crate here", {"edit": "place", "item": "crate"}, cookie="8" * 64)
+check("voice edit: someone logged in who isn't an admin is refused", s == 403, (s, a))
+s, a = voice_edit("put a crate here", {"edit": "place", "item": "crate"}, cookie=None)
+check("voice edit: signed out is refused", s == 401, (s, a))
+s, a = voice_edit("put a crate here", {"edit": "place", "item": "crate"}, origin="https://evil.example")
+check("voice edit: another site's page is refused", s == 403, (s, a))
+s, a = voice_edit("put a crate here", {"edit": "place", "item": "crate"}, realm="ice-cream-man")
+check("voice edit: a realm without voice edits says so", s == 400, (s, a))
+check("voice edit: every sentence is kept with the admin who said it",
+      sql("select count(*) from verse.voice_edits where pubkey = '" + admin_hex + "'") == "5" and sql("select count(*) from verse.voice_edits where pubkey <> '" + admin_hex + "'") == "0")

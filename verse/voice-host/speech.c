@@ -522,6 +522,13 @@ static const struct { const char *route; const char *instruction; } ROUTES[] = {
      "they are or move anything yet, so never claim to have done something. If they want to know how to "
      "play: they walk with the thumbs or W A S D, act with E or the USE button, and the map shows the "
      "rooms. When you don't know, say so. Use what was said earlier in this conversation."},
+    // Everglade's voice edits (eg-voice-edit): an admin holds HOLD TO TALK and faces the realm's builder, so
+    // the page answers every turn (the edit it made) and this agent only speaks if a turn reaches it.
+    {"everglade",
+     "You are the builder of Everglade, a forest city in OpenAgents' Verse. An admin is changing the city "
+     "by voice. Speak briefly: at most 20 words, in plain spoken English, with no lists, markdown, emoji or "
+     "code. You can't see the city or change it yourself, so never claim to have done something; say they can "
+     "ask to place crates, barrels, benches, fences or stalls, remove one, or undo."},
 };
 
 bool speech_route_known(const char *route) {

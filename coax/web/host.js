@@ -62,7 +62,7 @@
 //       sessionStorage), fresh (1 when the tab id was just made), visitor (a random id for this
 //       browser, localStorage), now (Date.now()), nav (ms since the navigation), url, ref, ua, lang,
 //       tz, sw, sh, vw, vh, dpr, coarse, touch, gpu, hidden, webdriver, fcp, dcl, player and account (the
-//       playtest player's public id and account, "" none; never its key)
+//       playtest player's public id and account, "" none; never its key), voice (the page's data-voice route, "" none)
 //   601 hidden, 602 shown again, 603 the page is being left (the app's beacon goes in that turn),
 //   604 an error the page raised: message, file and line, a line each
 // and, on a page with data-drops (drop.js, /projects): files dropped on the page or picked go to
@@ -497,7 +497,7 @@ function pageFacts() {
     vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio || 1, coarse: matchMedia("(pointer: coarse)").matches ? 1 : 0,
     touch: navigator.maxTouchPoints || 0, gpu: navigator.gpu ? 1 : 0, hidden: document.hidden ? 1 : 0,
     webdriver: navigator.webdriver ? 1 : 0, fcp: fcp ? Math.round(fcp.startTime) : 0, dcl: nav ? Math.round(nav.domContentLoadedEventEnd) : 0,
-    player: player()?.id || "", account: player()?.account || "", realm: realmId, slot })
+    player: player()?.id || "", account: player()?.account || "", realm: realmId, slot, voice: script?.dataset.voice || "" })
     .map(([k, v]) => `${k}=${clean(v)}`).join("\n");
 }
 addEventListener("visibilitychange", () => send(document.hidden ? HIDDEN_KIND : SHOWN_KIND));
@@ -1223,7 +1223,7 @@ function after(gesture, tap = false) {
     else if (code === 3) { if (location.hash.slice(1) !== text) history.replaceState(history.state, "", text ? `#${encodeURIComponent(text)}` : location.pathname + location.search); }
     else if (code === 4) keep(text);
     else if (code === 6) setQuality(text);
-    else if (code === ACT_VOICE && voice) voice.toggle(text === "on");
+    else if (code === ACT_VOICE && voice) voice.toggle(text === "end" ? "end" : text === "on");
     else if (code === ACT_VOICE_TO && voice) voice.face(text);
     else if (code === ACT_VOICE_SAY && voice) voice.say(text);
     else if (code === 5) { try { const p = JSON.parse(text); if (p && typeof p.key === "string") localStorage.setItem("verse.player", text); } catch {} }

@@ -39,6 +39,7 @@ void chat_key(const request *q, const char *pubkey, bool member);   // KEY for a
 bool player_route(const request *q);      // player.c
 bool npc_route(const request *q);         // npc.c
 bool piece_route(const request *q);       // npc.c: the Sandbox's set pieces
+bool voice_edit_route(const request *q);  // npc.c: an admin's spoken edit to a realm (eg-voice-edit)
 bool private_route(const request *q);     // private.c
 bool room_route(const request *q);        // room.c
 bool drops_route(const request *q);       // drops.c

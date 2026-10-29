@@ -228,3 +228,81 @@ bool piece_route(const request *q) {
   free(request); free(asked);
   return true;
 }
+
+// ---- an admin's spoken edit to a realm (eg-voice-edit): POST /api/playtest/realm/<realm>/edit
+//   {sentence}  an admin only (admin_who: admins.conf, by site login or NIP-98)
+//   -> 200 {edit, item?, count?, model}; 400 no sentence or realm, 401/403, 422 nothing fits, 429, 502, 503
+// Gemini picks one edit from the realm's catalogue (migrations/0045_realm_voice_edit.sql) and SQL holds
+// the answer to it; the page does the edit and publishes the realm's world (an admin's write, checked there).
+//   OA_EDIT_URL    the generateContent URL (tests point it at a fake)
+//   OA_EDIT_MODEL  the model (gemini-3.8-flash)
+//   OA_EDIT_DAILY_CAP  voice edits a day across the server (2000)
+static void voice_edit_answer(int fd, const char *asked, const char *request) {
+  const char *model = getenv("OA_EDIT_MODEL"); if (!model || !*model) model = "gemini-3.8-flash";
+  buf b = {0};
+  double t0 = api_now_ms();
+  long status = ask_model("OA_EDIT_URL", model, request, &b);
+  char http[16], taken[16];
+  snprintf(http, sizeof http, "%ld", status);
+  snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));
+  PGconn *db = api_db_new();
+  const char *v[5] = {asked, http, b.p ? b.p : "", model, taken};
+  PGresult *r = db ? PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.voice_edit_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
+                                  5, NULL, v, NULL, NULL, 0) : NULL;
+  if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
+  else { api_log("voice edit: %s", db ? PQerrorMessage(db) : "no database"); api_json(fd, 503, "{\"error\":\"not kept\"}"); }
+  if (status != 200) api_log("voice edit: model answered %ld", status);
+  if (r) PQclear(r);
+  if (db) PQfinish(db);
+  free(b.p);
+}
+
+bool voice_edit_route(const request *q) {
+  static const char prefix[] = "/api/playtest/realm/";
+  if (strncmp(q->path, prefix, sizeof prefix - 1)) return false;
+  const char *realm = q->path + sizeof prefix - 1, *slash = strchr(realm, '/');
+  if (!slash || strcmp(slash, "/edit")) return false;
+  char name[33]; size_t n = (size_t)(slash - realm);
+  if (!n || n >= sizeof name) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
+  for (size_t i = 0; i < n; i++) if (!((realm[i] >= 'a' && realm[i] <= 'z') || realm[i] == '-')) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
+  memcpy(name, realm, n); name[n] = 0;
+  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a sentence\"}"); return true; }
+  PGconn *db = api_db();
+  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  char from[256], who[65];
+  const char *o = getenv("OA_API_ORIGIN");
+  if (api_header(q, "Origin", from, sizeof from) && strcmp(from, o && *o ? o : "https://openagents.com")) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
+  int denied = admin_who(q, db, who);
+  if (denied) { api_json(q->fd, denied, denied == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return true; }
+  char *body = malloc(q->body_len + 3);
+  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
+  const char *cap = getenv("OA_EDIT_DAILY_CAP");
+  const char *v[4] = {name, body, who, cap && *cap ? cap : "2000"};
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, jsonb_build_object('id', x->'id')::text "
+                                 "FROM verse.voice_edit_ask($1, $2::jsonb, $3, $4::int) x", 4, NULL, v, NULL, NULL, 0);
+  free(body);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
+    const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+    bool theirs = state && !strncmp(state, "22", 2);
+    if (!theirs) api_log("voice edit: %s", PQerrorMessage(db));
+    PQclear(r);
+    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not asked\"}");
+    return true;
+  }
+  int status = atoi(PQgetvalue(r, 0, 0));
+  if (status != 200) {
+    char out[160]; snprintf(out, sizeof out, "{\"error\":\"%s\"}", PQgetvalue(r, 0, 1));
+    PQclear(r);
+    api_json(q->fd, status, out);
+    return true;
+  }
+  char *request = strdup(PQgetvalue(r, 0, 2)), *asked = strdup(PQgetvalue(r, 0, 3));
+  PQclear(r);
+  signal(SIGCHLD, SIG_IGN);
+  pid_t pid = fork();
+  if (pid == 0) { voice_edit_answer(q->fd, asked, request); _exit(0); }
+  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  free(request); free(asked);
+  return true;
+}

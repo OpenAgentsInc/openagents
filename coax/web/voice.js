@@ -13,10 +13,16 @@
 // transcript here unanswered, the app asks the character as it does a typed
 // question, and its answer goes back to be spoken (action 9, the words).
 //
+// Push to talk (a realm's HOLD TO TALK, Everglade's voice edits): action 7
+// "on" while it's held, "end" when it's let go. Letting go closes the
+// microphone at once and ends the turn; the socket stays only until the
+// heard words are answered and spoken (or LET_GO_WAIT), then voice is off.
+//
 // The host is the oa-voice Cloud Run service by default (verse/voice-host/deploy.sh);
 // ?voice=ws://127.0.0.1:8787 uses a host on this computer (verse/voice-host/run.sh).
 export const VOICE_KIND = 50, ACT_VOICE = 7, ACT_VOICE_TO = 8, ACT_VOICE_SAY = 9;
 const ANSWER_WAIT = 20000;   // ms a heard question waits for the app's answer
+const LET_GO_WAIT = 20000;   // ms after push to talk is let go before voice is off whatever happens
 const DEFAULT_HOST = "wss://voice.openagents.com";   // Cloud Run oa-voice (verse/voice-host/deploy.sh)
 const OUT_RATE = 24000, AHEAD = 0.2;
 const EV = { TURN_START: 1, TURN_END: 2, BARGE_IN: 4, FORWARD: 8, DROPPED: 128, UNDERRUN: 256 };
@@ -67,12 +73,14 @@ export function startVoice({ send, route, wasmUrl }) {
   let running = false, welcomed = false, frame = 320, pending = new Float32Array(0), backoff = 0.5;
   let turn = "", turns = 0, speaking = false, ended = false, utterance = "", replyTurn = "", sent = 0, played = 0, playedAtStart = 0;
   let phase = "off", caption = "";
-  let facing = "", heardTurn = "", heardAt = 0;
+  let facing = "", heardTurn = "", heardAt = 0, letGo = 0;
   const enc = new TextEncoder(), dec = new TextDecoder();
 
   const show = (p, c = caption) => {
     if (p === phase && c === caption) return;
     phase = p; caption = c; send(VOICE_KIND, `${p}|${c.replace(/[\r\n|]+/g, " ")}`);
+    // Let go (push to talk): once the turn is answered and spoken, voice is off.
+    if (letGo && p === "listening") setTimeout(() => { if (letGo) off(); }, 0);
     // For checks and agents driving the page (coax/web/voice/browser-smoke.ts): what it says, in order.
     (globalThis.coaxialVoice ||= []).push(`${p}|${c}`);
   };
@@ -91,6 +99,7 @@ export function startVoice({ send, route, wasmUrl }) {
   }
 
   async function on() {
+    if (letGo) { clearTimeout(letGo); letGo = 0; off(); }
     if (running) return;
     running = true;
     show("connecting", "");
@@ -118,6 +127,7 @@ export function startVoice({ send, route, wasmUrl }) {
   }
 
   function off(notice = "") {
+    if (letGo) { clearTimeout(letGo); letGo = 0; }
     if (!running) return;
     running = false;
     if (turn) control(CONTROL.CANCEL, turn);
@@ -147,6 +157,15 @@ export function startVoice({ send, route, wasmUrl }) {
       show("connecting", "Voice needs a connection. Trying again…");
       setTimeout(connect, backoff * 1000); backoff = Math.min(backoff * 2, 10);
     };
+  }
+
+  // Push to talk let go: the microphone closes now and the turn ends; nothing heard yet, voice is off.
+  function release() {
+    if (!running) return;
+    mic?.getTracks().forEach((t) => t.stop()); mic = null; pending = new Float32Array(0);
+    if (!turn && !heardTurn) { off(); return; }
+    if (turn) { control(CONTROL.TURN_END, turn); turn = ""; show("thinking"); }
+    letGo = setTimeout(() => { letGo = 0; off(); }, LET_GO_WAIT);
   }
 
   // The microphone's samples, 128 at a time from the audio thread.
@@ -277,5 +296,5 @@ export function startVoice({ send, route, wasmUrl }) {
     show("thinking", caption);
   }
 
-  return { toggle: (want) => (want ? on() : off()), running: () => running, face, say };
+  return { toggle: (want) => (want === "end" ? release() : want ? on() : off()), running: () => running, face, say };
 }
