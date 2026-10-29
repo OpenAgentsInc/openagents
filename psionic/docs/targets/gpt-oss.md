@@ -1,10 +1,12 @@
 # gpt-oss as an inference target
 
-Read-only survey, 2026-10-29. No weights were downloaded, and no upstream
+Survey updated 2026-10-29. [Chapter 34](../../book/ch34-original-mxfp4-weights.md)
+now implements the bounded original-format CPU decoder. Full-model execution
+and Harmony remain planned. No weights were downloaded, and no upstream
 setup, inference or tool code was run. Psionic would implement the behavior in
 Coax; Python stays reviewed reference and export tooling, never a runtime
 dependency. Part VII of the [book plan](../../book/PLAN.md) gives the
-chapter sequence. It is proposed work, and it does not block
+chapter sequence. The remaining sequence is proposed work, and it does not block
 [Elephant and Mammoth](model-targets.md).
 
 ## Pins
@@ -29,7 +31,7 @@ license field alone is not artifact provenance.
 | Experts / selected per token | 32 / 4 | 128 / 4 | `config.json` |
 | Hidden, expert intermediate | 2880, 2880 | 2880, 2880 | `config.json` |
 | Query / KV heads, head dimension | 64 / 8, 64 | 64 / 8, 64 | `config.json` |
-| Root original safetensors bytes | 13.8 GB | 65.2 GB | Hugging Face file listing |
+| HF-root Safetensors bytes (converted layout) | 13.8 GB | 65.2 GB | Hugging Face file listing |
 
 Both use a vocabulary of 201,088, RMSNorm epsilon `1e-5`, untied embeddings,
 and attention biases. `layer_types` alternates sliding attention (window 128)
@@ -54,6 +56,14 @@ silently wrong.
 
 ## Weights are MXFP4 in the original files
 
+The pinned README distinguishes `original/` files used by its Torch/Triton
+loader, converted Hugging Face files at the repository root, and its Metal
+conversion. The table's HF-root sizes are not original-file inventory pins.
+Original checkpoint admission must establish the `original/` files' own sizes,
+hashes and complete tensor-pair metadata. The chapter's synthetic original-format
+windows establish decoder behavior, not admission of a complete checkpoint.
+
+
 `quantization_config` names `mxfp4`. Attention, router, embeddings and the LM
 head are not converted and stay BF16. Each MoE projection is stored as two
 tensors ([`gpt_oss/torch/weights.py`](https://github.com/openai/gpt-oss/blob/5681a6b6552635e7b29cde94a61ca6a7aee90ebd/gpt_oss/torch/weights.py)):
@@ -64,8 +74,10 @@ tensors ([`gpt_oss/torch/weights.py`](https://github.com/openai/gpt-oss/blob/568
 The torch reference upcasts these to BF16. For Psionic, MXFP4 is the
 **original** artifact format, so it belongs with chapter 4's original-weight
 admission. It is not a derived quantization profile with its own quality gate.
-An FP4 value times a power of two is exactly representable in `f32` over the
-admitted scale range, so exact decoding vectors are possible. A BF16
+The implemented finite-all-codes profile admits scales 0–252, preserves signed
+zero and subnormals, and refuses 253–255 before publication. Each admitted
+product is exactly representable in `f32`. Original checkpoint scale coverage
+is still a separate gate. A BF16
 conversion would be a separate, unoriginal artifact.
 
 ## The harmony format is required

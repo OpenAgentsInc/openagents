@@ -11,6 +11,8 @@ Chapter 6 executes a small causal dense attention block with a KV cache.
 Chapter 7 composes Qwen-style linear and full-attention layers with separate states.
 Chapter 8 adds decision blocks and forks their complete live hybrid state.
 Chapter 9 converts vocabulary logits to option probabilities and typed statistics.
+[Chapter 34](book/ch34-original-mxfp4-weights.md) starts the independent gpt-oss
+branch with an exact bounded decoder for its original MXFP4 byte groups.
 
 Start with [the book](book/README.md) and
 [Chapter 1: Learning a number](book/ch01-learning-a-number.md), then
@@ -37,6 +39,8 @@ coax/bin/coax run psionic/examples/attention.coax
 coax/bin/coax run psionic/examples/hybrid-sequence.coax
 coax/bin/coax run psionic/examples/decision-forks.coax
 coax/bin/coax run psionic/examples/read-options.coax
+coax/bin/coax run psionic/examples/original-mxfp4.coax
+psionic/tests/check_mxfp4.sh
 ```
 
 The check command builds the compiler if it is absent, runs authored Coax
@@ -50,6 +54,7 @@ credentials, or downloads at run time.
 
 | Path | Role |
 | --- | --- |
+| [lib/mxfp4.coax](lib/mxfp4.coax) | Original gpt-oss MXFP4 byte decoding: exact finite CPU values, shape/count/scale admission and unchanged output on refusal; separate from complete artifact admission. |
 | [lib/learn.coax](lib/learn.coax) | Checks first, admission, loss/gradient, fixed-rate SGD, prediction. |
 | [lib/tensor.coax](lib/tensor.coax) | Checked rank/shape/byte/stride metadata, indexing and staged finite-f32 copy. |
 | [lib/qwen-model.coax](lib/qwen-model.coax) | Ordered hybrid layers with staged complete-block state and activations; original-weight qualification is recorded in chapter 10. |

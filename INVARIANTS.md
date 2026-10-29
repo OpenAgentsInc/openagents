@@ -1,5 +1,23 @@
 # Invariants
 
+## Psionic original MXFP4 decoding admits complete finite windows
+
+`psionic/lib/mxfp4.coax` decodes the gpt-oss original-format low/high nibble
+pairs with one scale per 32 values. The `gpt-oss-mxfp4-f32-v1` profile admits
+positive complete rows, at most 1,048,576 output values and scale bytes 0–252.
+It validates all counts and scales and observed overlap before any output
+write. Admitted values are exact finite binary32, preserving signed zero and
+subnormals; spare output capacity is unchanged. This decoder does not
+inspect or authenticate files. Callers supply the correct tensor pairing,
+shape, provenance, valid disjoint storage, alignment, lifetime and exclusive
+access; the C adapter only observes addresses. Original checkpoint coverage
+and other numerical/back-end profiles require separate evidence.
+
+Check: `psionic/tests/check_mxfp4.sh` and the main `psionic/check.sh` cover
+Coax checks, zero-survivor mutation, independent scalar bit fixtures and
+native debug/release plus sanitizer checks. See the
+[chapter 34 record](docs/verification/psionic-ch34-2026-10-29.md).
+
 ## Psionic complete model mapping publishes the layer stack together
 
 `psionic/lib/model-io/model-map.coax` binds the authenticated inventory's

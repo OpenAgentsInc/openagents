@@ -110,6 +110,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/original-mxfp4.coax",
+      "chapter": "psionic/book/ch34-original-mxfp4-weights.md",
+      "stdout": "psionic/fixtures/original-mxfp4.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

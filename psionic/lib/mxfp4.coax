@@ -1,0 +1,87 @@
+// Bounded original gpt-oss MXFP4 byte pairs, independent of file admission.
+#load "../fixtures/mxfp4-vectors.coax";
+#authority;
+
+MxStatus :: enum u8 {ok;shape;limit;storage;capacity;alias;scale;}
+MxPlan :: struct {status:MxStatus;blocks:int;packed_bytes:int;values:int;}
+MxResult :: struct {status:MxStatus;written:int;}
+
+#test "whole 32-value blocks have exact bounded row layouts" {
+    p:=mx_plan(2,64);
+    #assert p.status==MxStatus.ok && p.blocks==4 && p.packed_bytes==64 && p.values==128;
+    p=mx_plan(1,32);#assert p.status==MxStatus.ok && p.blocks==1 && p.packed_bytes==16 && p.values==32;
+    p=mx_plan(32768,32);#assert p.status==MxStatus.ok && p.blocks==32768 && p.packed_bytes==524288 && p.values==1048576;
+    #assert mx_plan(1,1048576).status==MxStatus.ok;
+    #assert mx_plan(0,32).status==MxStatus.shape && mx_plan(-1,32).status==MxStatus.shape;
+    #assert mx_plan(1,0).status==MxStatus.shape && mx_plan(1,-32).status==MxStatus.shape;
+    #assert mx_plan(1,31).status==MxStatus.shape && mx_plan(1,33).status==MxStatus.shape;
+    #assert mx_plan(32769,32).status==MxStatus.limit && mx_plan(2,1048576).status==MxStatus.limit;
+    #assert mx_plan(1,1048608).status==MxStatus.limit;
+    #assert mx_plan(9223372036854775807,32).status==MxStatus.limit;
+    #assert mx_plan(1,9223372036854775776).status==MxStatus.limit;
+}
+#test "all admitted E2M1 codes and scales match the independent bit oracle" {
+    for scale:0..<253 {for code:0..<16 {
+        #assert mx_bits(cast(u8)code,cast(u8)scale)==MX_GOLD_BITS[scale*16+code];
+    }}
+}
+#test "packed bytes interleave low then high and each block uses its own scale" {
+    packed:=[32]u8.[0x10,0x32,0x54,0x76,0x98,0xba,0xdc,0xfe,0x10,0x32,0x54,0x76,0x98,0xba,0xdc,0xfe,0x10,0x32,0x54,0x76,0x98,0xba,0xdc,0xfe,0x10,0x32,0x54,0x76,0x98,0xba,0xdc,0xfe];
+    scales:=[2]u8.[127,128];out:[65]f32;for i:0..<65 {out[i]=-7;}
+    r:=mx_decode(1,64,packed[..],scales[..],out[..],false);
+    #assert r.status==MxStatus.ok && r.written==64 && out[64]==-7;
+    for i:0..<64 {code:=i%16;scale:=127+i/32;#assert f32_bits(out[i])==MX_GOLD_BITS[scale*16+code];}
+    exact:=mx_decode(2,32,packed[..],scales[..],out[0..<64],false);#assert exact.status==MxStatus.ok && exact.written==64;
+    #assert f32_bits(out[8])==0x80000000 && out[1]==0.5f32 && out[33]==1;
+}
+#test "refusals preserve the complete destination including unused capacity" {
+    packed:[32]u8;scales:=[3]u8.[127,127,127];out:[65]f32;for i:0..<65 {out[i]=-7;}
+    #assert mx_decode(1,31,packed[..],scales[0..<2],out[..],false).status==MxStatus.shape;
+    #assert mx_decode(32769,32,packed[..],scales[0..<2],out[..],false).status==MxStatus.limit;
+    #assert mx_decode(1,64,packed[0..<31],scales[0..<2],out[..],false).status==MxStatus.storage;
+    #assert mx_decode(1,32,packed[..],scales[0..<1],out[..],false).status==MxStatus.storage;
+    #assert mx_decode(1,64,packed[..],scales[0..<1],out[..],false).status==MxStatus.storage;
+    #assert mx_decode(1,64,packed[..],scales[..],out[..],false).status==MxStatus.storage;
+    #assert mx_decode(1,64,packed[..],scales[0..<2],out[0..<63],false).status==MxStatus.capacity;
+    #assert mx_decode(1,64,packed[..],scales[0..<2],out[..],true).status==MxStatus.alias;
+    for bad:253..<256 {scales[1]=cast(u8)bad;#assert mx_decode(1,64,packed[..],scales[0..<2],out[..],false).status==MxStatus.scale;}
+    for i:0..<65 {#assert out[i]==-7;}
+    scales[1]=252;#assert mx_decode(1,64,packed[..],scales[0..<2],out[..],false).status==MxStatus.ok;
+}
+
+// book:begin plan
+mx_plan :: (rows:int,columns:int)->MxPlan #export_c {
+    if rows<1 || columns<32 || columns%32!=0 {return MxPlan.{status=MxStatus.shape};}
+    per_row:=columns/32;
+    if rows>32768/per_row {return MxPlan.{status=MxStatus.limit};}
+    blocks:=rows*per_row;values:=blocks*32;
+    return MxPlan.{blocks=blocks,packed_bytes=blocks*16,values=values};
+}
+// book:end plan
+
+// Positive E2M1 magnitudes, exact in binary64.
+MX_E2M1 :: [8]f64.[0,0.5,1,1.5,2,3,4,6];
+// Internal: code is a nibble and scale was admitted before any output write.
+// book:begin bits
+mx_bits :: (code:u8,scale:u8)->u32 {
+    power:=f64_from_bits((cast(u64)scale+896)<<52);
+    magnitude:=f32(MX_E2M1[cast(int)(code&7)]*power);
+    return ((cast(u32)code&8)<<28)|f32_bits(magnitude);
+}
+// book:end bits
+
+// book:begin decode
+mx_decode :: (rows:int,columns:int,packed:[]u8,scales:[]u8,out:[]f32,overlap:bool)->MxResult #export_c {
+    p:=mx_plan(rows,columns);if p.status!=MxStatus.ok {return MxResult.{status=p.status};}
+    if packed.count!=p.packed_bytes || scales.count!=p.blocks {return MxResult.{status=MxStatus.storage};}
+    if out.count<p.values {return MxResult.{status=MxStatus.capacity};}
+    if overlap {return MxResult.{status=MxStatus.alias};}
+    for scale:scales {if scale>252 {return MxResult.{status=MxStatus.scale};}}
+    for i:0..<packed.count {
+        byte:=packed[i];scale:=scales[i/16];
+        out[2*i]=f32_from_bits(mx_bits(byte&15,scale));
+        out[2*i+1]=f32_from_bits(mx_bits(byte>>4,scale));
+    }
+    return MxResult.{written=p.values};
+}
+// book:end decode

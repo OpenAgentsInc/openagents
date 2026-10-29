@@ -1,0 +1,19 @@
+#import "Basic";
+#load "../lib/mxfp4.coax";
+
+// book:begin example
+main :: () {
+    packed:=[32]u8.[0x10,0x32,0x54,0x76,0x98,0xba,0xdc,0xfe,0x10,0x32,0x54,0x76,0x98,0xba,0xdc,0xfe,0x10,0x32,0x54,0x76,0x98,0xba,0xdc,0xfe,0x10,0x32,0x54,0x76,0x98,0xba,0xdc,0xfe];
+    scales:=[2]u8.[127,128];out:[64]f32;
+    result:=mx_decode(1,64,packed[..],scales[..],out[..],false);
+    #assert result.status==MxStatus.ok;
+    print("32 packed bytes + 2 scale bytes -> % f32 values\n",result.written);
+    print("first block: %, %, %, %\n",out[0],out[1],out[6],out[7]);
+    print("second block: %, %, %, %\n",out[32],out[33],out[38],out[39]);
+    #assert f32_bits(out[8])==0x80000000;
+    scales[1]=253;out[0]=-7;
+    refused:=mx_decode(1,64,packed[..],scales[..],out[..],false);
+    #assert refused.status==MxStatus.scale && refused.written==0 && out[0]==-7;
+    print("out-of-profile scale refused before publication\n");
+}
+// book:end example
