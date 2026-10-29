@@ -146,7 +146,8 @@ struct V {
     let t = clamp((length(v.place + vec2f(0.35 * r)) - 0.1 * r) / (0.9 * r), 0.0, 1.0);
     let lit = mix(vec3f(0.604, 0.592, 0.639), vec3f(0.235, 0.227, 0.275), t);
     let halo = 0.03 * (1.0 - smoothstep(0.8 * r, 2.0 * r, d)) * (1.0 - inside);
-    return vec4f((lit * inside + vec3f(0.93) * halo) * v.shape.z * u.fade, 1.0);
+    // tint: white for the faint grey worlds, warm for the Agent orb (verse.coax draw_guide)
+    return vec4f((lit * v.tint.rgb * inside + vec3f(0.93) * halo) * v.shape.z * u.fade, 1.0);
   }
   if (v.tint.a > 3.5) {
     // a sans glyph (font.coax draw_sans): place is the atlas coordinate, shape.x the em in pixels

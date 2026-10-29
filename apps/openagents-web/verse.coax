@@ -2,10 +2,14 @@
 // the galaxy after it (/verse/galaxy), ported from the playtest's Kiki flow
 // (aethyr-cpp frozen/kiki at revision 8, demo/kiki-2026-10-27b).
 //
-// The landing, as playtest.openagents.com drew it: CREATE YOUR WORLD over
+// The landing, as playtest.openagents.com drew it: A HAUNTED HOUSE PLAYTEST over
 // ENTER THE VERSE, the one line about the house, and PLAYTEST NOW, which
 // opens the Haunted House (/realms/haunted-house) directly. No email is asked for; one this browser gave the old
 // playtest is still joined again (POST /api/playtest/join, how "return").
+//
+// Under PLAYTEST NOW, the Agent orb (ptr-landing-guide): hold it to talk to
+// the playtest's guide (the voice host's `guide` route, through voice.js), let
+// go to hear it answer; its words show under it.
 //
 // The galaxy: the playtest's worlds turning on their orbits, from the realm
 // host's table (realms.json, written into realms.coax): an open world opens
@@ -106,7 +110,14 @@ BTN_HOUSE :: 3; BTN_CODING :: 4;
 BTN_REALM :: 5;                        // MAKE YOUR REALM, or YOUR REALM
 BTN_NAME :: 6; BTN_CHOICE :: 7;        // the setup: the name box, then a row per choice
 BTN_MAKE :: BTN_CHOICE + CHOICES; BTN_BACK :: BTN_MAKE + 1;
-BUTTONS :: BTN_BACK + 1;
+BTN_GUIDE :: BTN_BACK + 1;             // the landing's Agent orb: hold to talk to the guide
+BUTTONS :: BTN_GUIDE + 1;
+
+// The Agent orb's voice (coax/web/voice.js, the page's data-voice="guide"):
+// action 7 "on" while it's held and "end" when let go (push to talk); voice.js
+// says what it's doing as message 50, "phase|caption".
+ACT_VOICE :: 7; MSG_VOICE :: 50;
+GUIDE_TEXT :: 400;
 
 // A realm's setup, the demo's planet setup (aethyr-cpp tools/serve.py
 // PLANET_KINDS, PLANET_CHOICES): what the server keeps, and the words shown.
@@ -146,6 +157,9 @@ VerseState :: struct {
   going: bool; going_at: f32; join_id: int; answered: bool;
   orbs: [ORBS] Orb; orb_n: int; orb_id: int; seeded: bool; orb_acc: f32;
   hold: Orb; holding: bool; hold_at: f32;   // the orb being made under a press
+  // the Agent orb: held (push to talk) by pointer guide_id; what voice.js last said
+  guide_held: bool; guide_id: int; guide_on: bool; guide_at: f32;
+  guide_phase: [16] u8; guide_phase_n: int; guide_text: [GUIDE_TEXT] u8; guide_text_n: int;
   dt: f32;                   // this frame's seconds, for the orbs
   near: bool; near_x: f32; near_y: f32;    // the mouse, which the orbs drift toward (CSS pixels)
   bounced: [BOUNCED] int; bounced_n: int;  // pairs (a id * 65536 + b id) that have bounced once
@@ -327,6 +341,7 @@ verse_message :: (s: [] VerseState, t: [] Track, kind: int, bytes: string) #expo
   if kind == MSG_TEXT {
     return;
   }
+  if kind == MSG_VOICE { guide_said(s, bytes); return; }
   if kind == MSG_KEPT {
     n := 0;
     for i: 0..<bytes.count { c := email_byte(cast(int) bytes[i]); if c >= 0 && n < EMAIL_MAX { s[0].kept[n] = cast(u8) c; n += 1; } }
@@ -374,6 +389,7 @@ verse_pointer :: (s: [] VerseState, t: [] Track, x: f32, y: f32, phase: int, kin
   s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
   if galaxy && kind == 0 && !s[0].down { s[0].over = ifx b < 0 then planet_at(s, x, y) else -1; }
   if phase == POINTER_DOWN {
+    if b == BTN_GUIDE { guide_hold(s, t, id); return true; }
     if b >= 0 { s[0].press = b; s[0].press_id = id; return true; }
     if galaxy && s[0].setup { s[0].focused = false; return true; }
     if galaxy {
@@ -383,6 +399,10 @@ verse_pointer :: (s: [] VerseState, t: [] Track, x: f32, y: f32, phase: int, kin
     }
     // the landing: a press in the stars starts an orb, growing while held
     if !s[0].going { orb_hold(s, x, y); }
+    return true;
+  }
+  if s[0].guide_held && id == s[0].guide_id {
+    if phase == POINTER_UP || phase == POINTER_CANCEL { guide_let_go(s); }
     return true;
   }
   if s[0].press >= 0 && id == s[0].press_id {
@@ -427,7 +447,7 @@ verse_wants_text :: (s: [] VerseState) -> bool #export_c {
   return s[0].page == PAGE_LANDING && s[0].focused && !s[0].going;
 }
 verse_cursor :: (s: [] VerseState) -> int #export_c {
-  if s[0].hover >= 0 || s[0].press >= 0 { return 1; }
+  if s[0].hover >= 0 || s[0].press >= 0 || s[0].guide_held { return 1; }
   if s[0].page == PAGE_LANDING { return 2; }   // the playtest's crosshair over the orbs
   if s[0].page == PAGE_GALAXY && s[0].over >= 0 && realm_kind_at(s, s[0].over) == KIND_OPEN { return 1; }
   return 0;
@@ -445,11 +465,50 @@ verse_label :: (s: [] VerseState, x: f32, y: f32) -> string #export_c {
   if b >= BTN_CHOICE && b < BTN_CHOICE + CHOICES { return CHOICE_KEY[b - BTN_CHOICE]; }
   if b == BTN_MAKE { return "realm-make"; }
   if b == BTN_BACK { return "realm-back"; }
+  if b == BTN_GUIDE { return "guide"; }
   if s[0].page == PAGE_GALAXY && !s[0].setup { p := planet_at(s, x, y); if p >= 0 { return realm_id_at(s, p); } }
   return "";
 }
 verse_action :: (s: [] VerseState) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
 verse_action_done :: (s: [] VerseState) #export_c { for i: 0..<OUTBOX { s[0].outbox[i] = 0; } s[0].out_n = 0; }
+
+// ---- the Agent orb: hold to talk to the playtest's guide
+
+// A press on the orb turns the microphone on (inside the press, where the
+// browser lets a page ask for it); letting go ends the turn.
+guide_hold :: (s: [] VerseState, t: [] Track, id: int) {
+  if s[0].going { return; }
+  s[0].guide_held = true; s[0].guide_id = id; s[0].guide_at = s[0].time;
+  act(s, ACT_VOICE, "on");
+  if !s[0].guide_on { s[0].guide_on = true; if track_begin(t, "voice-on") { track_str(t, "to", "guide"); track_end(t); } }
+}
+guide_let_go :: (s: [] VerseState) {
+  s[0].guide_held = false; s[0].guide_id = -1;
+  act(s, ACT_VOICE, "end");
+}
+// What voice.js says: "phase|caption"; off (or a notice) means the microphone is off.
+guide_said :: (s: [] VerseState, text: string) {
+  split := 0;
+  while split < text.count && text[split] != '|' { split += 1; }
+  s[0].guide_phase_n = 0;
+  for i: 0..<split { if s[0].guide_phase_n < 16 { s[0].guide_phase[s[0].guide_phase_n] = text[i]; s[0].guide_phase_n += 1; } }
+  phase := cast(string) s[0].guide_phase[0..<s[0].guide_phase_n];
+  n := 0; i := split + 1;
+  while i < text.count && n < GUIDE_TEXT { s[0].guide_text[n] = text[i]; n += 1; i += 1; }
+  // a phase without words keeps the last reply on screen, so it can be read after it's spoken
+  if n > 0 || phase == "notice" || phase == "connecting" { s[0].guide_text_n = n; }
+  if phase == "off" || phase == "notice" { s[0].guide_on = false; }
+}
+guide_phase :: (s: [] VerseState) -> string { return cast(string) s[0].guide_phase[0..<s[0].guide_phase_n]; }
+// The words under the orb: what to do, or what it's doing.
+guide_label :: (s: [] VerseState) -> string {
+  p := guide_phase(s);
+  if s[0].guide_held && (p == "" || p == "off" || p == "notice" || p == "connecting") { return "CONNECTING"; }
+  if s[0].guide_held { return "LISTENING"; }
+  if p == "thinking" || p == "heard" { return "THINKING"; }
+  if p == "replying" { return "HOLD TO TALK AGAIN"; }
+  return "HOLD THE ORB TO ASK ME";
+}
 
 // ---- the galaxy's worlds (the playtest's map, app.js galaxy.bodies)
 
@@ -830,7 +889,7 @@ orb_kick :: (s: [] VerseState, i: int) {
 }
 orb_seed :: (s: [] VerseState, w: f32, h: f32) {
   s[0].seeded = true; s[0].orb_n = 4;
-  s[0].orbs[0] = new_orb(s, w * 0.5, h * 0.7, 24);
+  s[0].orbs[0] = new_orb(s, w * 0.2, h * 0.84, 24);   // clear of the Agent orb under the button
   s[0].orbs[1] = new_orb(s, w * 0.22, h * 0.32, 9);
   s[0].orbs[2] = new_orb(s, w * 0.78, h * 0.66, 7);
   s[0].orbs[3] = new_orb(s, w * 0.7, h * 0.22, 5);
@@ -980,10 +1039,10 @@ orb_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32) -> bool {
 
 TITLE :: "ENTER THE VERSE";
 TITLE_1 :: "ENTER"; TITLE_2 :: "THE VERSE";
-EYEBROW :: "CREATE YOUR WORLD";
+EYEBROW :: "A HAUNTED HOUSE PLAYTEST";
 column :: (s: [] VerseState) -> f32 { return lo(400 * s[0].dpr, s[0].width - 32 * s[0].dpr); }   // the realm setup's panel
-LEDE :: "Edit our haunted house. Can you make it scarier?";
-LEDE_1 :: "Edit our haunted house.";
+LEDE :: "Explore our haunted house. Can you make it scarier?";
+LEDE_1 :: "Explore our haunted house.";
 LEDE_2 :: "Can you make it scarier?";
 PLAY :: "PLAYTEST NOW";
 LOOK_HUD :: 4.0;   // verse.wgsl: the playtest's glass bar button (hud-button.js)
@@ -1001,7 +1060,8 @@ centred_sans :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, 
 // Where the hero's lines sit, as the playtest's CSS lays them out: a grid of
 // the eyebrow, the title, the lede and the button, gap 18, centred on the
 // screen (on a short screen no eyebrow, gap 10 and a 56-pixel button).
-Hero :: struct { eyebrow: f32; title: f32; title_cap: f32; title_lines: int; lede: f32; lines: int; lede_cap: f32; button: Box; low: bool; }
+Hero :: struct { eyebrow: f32; title: f32; title_cap: f32; title_lines: int; lede: f32; lines: int; lede_cap: f32; button: Box; low: bool;
+               orb_x: f32; orb_y: f32; orb_r: f32; orb_label: f32; }   // the Agent orb under the button, and its words
 hero :: (s: [] VerseState) -> Hero {
   k := s[0].dpr; w := s[0].width / k; h := s[0].height / k;
   o: Hero;
@@ -1018,7 +1078,9 @@ hero :: (s: [] VerseState) -> Hero {
   bw := lo(360, w - 64);
   eyebrow_h := ifx o.low then 0.0f32 else 13.0f32;
   title_h := font * 1.45 * cast(f32) o.title_lines; lede_h := 25.6 * cast(f32) o.lines;
-  total := eyebrow_h + (ifx o.low then 0.0f32 else gap) + title_h + gap + lede_h + gap + 8 + bh;
+  orb_r := ifx o.low then 16.0f32 else GUIDE_R;
+  orb_h := gap + 10 + orb_r * 2 + 26;   // the Agent orb and HOLD TO TALK under it
+  total := eyebrow_h + (ifx o.low then 0.0f32 else gap) + title_h + gap + lede_h + gap + 8 + bh + orb_h;
   top := ifx o.low then 36 + (h - 36 - total) * 0.5 else (h - total) * 0.5;
   y := top;
   o.eyebrow = (y + eyebrow_h * 0.5 + 4) * k;
@@ -1029,6 +1091,8 @@ hero :: (s: [] VerseState) -> Hero {
   y += lede_h + gap + 8;
   cx := w * 0.5;
   o.button = Box.{x0 = (cx - bw * 0.5) * k, y0 = y * k, x1 = (cx + bw * 0.5) * k, y1 = (y + bh) * k};
+  y += bh + gap + 10;
+  o.orb_x = cx * k; o.orb_y = (y + orb_r) * k; o.orb_r = orb_r * k; o.orb_label = (y + orb_r * 2 + 22) * k;
   o.lede_cap *= k;
   return o;
 }
@@ -1060,6 +1124,56 @@ draw_landing :: (s: [] VerseState, out: [] f32, at: int) -> int {
   plate(s, b, 1, LOOK_HUD + (ifx s[0].press == BTN_ENTER then 2.0f32 else ifx s[0].hover == BTN_ENTER then 1.0f32 else 0.0f32));
   cap := fit_cap(PLAY, (b.y1 - b.y0) * 0.26 * 0.86, WIDE * 0.62, b.x1 - b.x0 - 32 * k);
   vertices = centred(d, out, vertices, PLAY, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, WIDE * 0.62, ink(0.85 * k, 1, 1.6 * k, 0.97, 0.97, 0.98));
+  return draw_guide(s, out, vertices, o);
+}
+
+// The Agent orb: a warm sphere that breathes while you hold it or it speaks,
+// HOLD TO TALK under it, and what it last said under that.
+GUIDE_R :: 22.0;
+GUIDE_RED :: 1.9; GUIDE_GREEN :: 1.1; GUIDE_BLUE :: 0.55;   // tints the orb's grey to #ff8c1f's warmth
+CAPTION_LINES :: 4;
+draw_guide :: (s: [] VerseState, out: [] f32, at: int, o: Hero) -> int {
+  k := s[0].dpr; d := k; vertices := at;
+  p := guide_phase(s);
+  busy := s[0].guide_held || p == "replying" || p == "thinking" || p == "heard";
+  beat := ifx s[0].still || !busy then 0.0f32 else 0.5 + 0.5 * sin(s[0].time * (ifx s[0].guide_held then 7.0f32 else 4.0f32));
+  r := o.orb_r * (1 + 0.06 * beat);
+  // a glow behind it, then the sphere, then a thin ring
+  if tinted_dot(out, vertices, o.orb_x, o.orb_y, r * 0.9, 0.16 + 0.22 * beat, r * 1.4, 1, 0.55, 0.12) { vertices += 6; }
+  if tinted_dot(out, vertices, o.orb_x, o.orb_y, r, 1, r, GUIDE_RED, GUIDE_GREEN, GUIDE_BLUE) {
+    for v: 0..<6 { out[(vertices + v) * VERTEX_FLOATS + 11] = MODE_ORB; }
+    vertices += 6;
+  }
+  rr := r + 5 * k;
+  vertices = ring(out, vertices, o.orb_x, o.orb_y, rr, rr, 48, 0.5 * k, 0.35 + 0.4 * beat, 0.8 * k, 1, 0.62, 0.3);
+  hit := o.orb_r + 14 * k;   // a finger's reach around it
+  s[0].boxes[BTN_GUIDE] = Box.{x0 = o.orb_x - hit, y0 = o.orb_y - hit, x1 = o.orb_x + hit, y1 = o.orb_y + hit};
+  s[0].shown[BTN_GUIDE] = !s[0].going;
+  label := guide_label(s);
+  lc := fit_cap(label, 6.5 * k, WIDE, s[0].width - 32 * k);
+  vertices = centred(d, out, vertices, label, o.orb_x, o.orb_label, lc, WIDE, grey(k, 0.95, ifx busy then CONTENT else EYEBROW_GREY));
+  // what it said (or a notice), in the sans, a few lines
+  if s[0].guide_text_n > 0 {
+    cap := sans_cap(14) * k; em := sans_em(cap);
+    width := lo(420 * k, s[0].width - 32 * k);
+    text := cast(string) s[0].guide_text[0..<s[0].guide_text_n];
+    base := o.orb_label + 26 * k; line := 0; start := 0;
+    while start < text.count && line < CAPTION_LINES {
+      while start < text.count && text[start] == ' ' { start += 1; }
+      end := start; fit := start;
+      while end <= text.count {
+        if end == text.count || text[end] == ' ' {
+          if sans_width(cast(string) text[start..<end], em) > width && fit > start { break; }
+          fit = end;
+          if end == text.count { break; }
+        }
+        end += 1;
+      }
+      if fit == start { fit = text.count; }   // one word wider than the line: as it is
+      vertices = centred_sans(d, out, vertices, cast(string) text[start..<fit], o.orb_x, base, cap, sans_ink(0.82));
+      base += 22 * k; line += 1; start = fit;
+    }
+  }
   return vertices;
 }
 
@@ -1328,6 +1442,38 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
     e := s[0].boxes[BTN_ENTER];
     #assert e.x0 >= 32 * 2 - 1 && e.x1 <= w * 2 - 32 * 2 + 1 && e.y0 > h && e.y1 < h * 2;
     #assert u[5] == 1 && u[PANEL_AT + 6] == LOOK_HUD && s[0].orb_n == 4;
+  }
+}
+
+#test "the Agent orb under PLAYTEST NOW: held, the microphone is on; let go, the turn ends; its words show" {
+  for size: 0..<2 {
+    s: [1] VerseState; t: [1] Track;
+    w := ifx size == 0 then 390.0f32 else 1440.0f32; h := ifx size == 0 then 844.0f32 else 900.0f32;
+    page_at(s[..], t[..], PAGE_LANDING, w, h);
+    g := s[0].boxes[BTN_GUIDE]; e := s[0].boxes[BTN_ENTER];
+    #assert s[0].shown[BTN_GUIDE] && g.y0 > e.y1 && g.y1 < h * 2 && g.x0 > 0 && g.x1 < w * 2;
+    #assert guide_label(s[..]) == "HOLD THE ORB TO ASK ME";
+    x := (g.x0 + g.x1) * 0.5; y := (g.y0 + g.y1) * 0.5;
+    poke(s[..], t[..], x, y, POINTER_DOWN, 1, 7);
+    #assert s[0].action == ACT_VOICE && cast(string) s[0].outbox[0..<s[0].out_n] == "on" && s[0].guide_held && s[0].orb_n == 4 && !s[0].holding;
+    #assert batch_has(t[..], "\"ev\":\"voice-on\"") && batch_has(t[..], "\"to\":\"guide\"");
+    take_action(s[..]);
+    poke(s[..], t[..], x + 3, y, POINTER_MOVE, 1, 7);
+    #assert s[0].action == 0 && guide_label(s[..]) == "CONNECTING";
+    verse_message(s[..], t[..], MSG_VOICE, "listening|");
+    #assert guide_label(s[..]) == "LISTENING";
+    poke(s[..], t[..], x, y, POINTER_UP, 1, 7);
+    #assert s[0].action == ACT_VOICE && cast(string) s[0].outbox[0..<s[0].out_n] == "end" && !s[0].guide_held;
+    take_action(s[..]);
+    verse_message(s[..], t[..], MSG_VOICE, "replying|The Verse is worlds you walk into. The Haunted House is the first one, and it wants to be scarier.");
+    #assert guide_label(s[..]) != "LISTENING" && s[0].guide_text_n > 40;
+    out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+    n := verse_frame(s[..], t[..], out[..], u[..], w * 2, h * 2, 2, 0, true);
+    #assert n > 0 && n < MAX_VERTICES;
+    for v: 0..<n { vx := out[v * VERTEX_FLOATS]; #assert vx > -60 && vx < w * 2 + 60; }
+    // spoken, the reply stays to be read; off, the orb asks again
+    verse_message(s[..], t[..], MSG_VOICE, "off|");
+    #assert s[0].guide_text_n > 40 && guide_label(s[..]) == "HOLD THE ORB TO ASK ME" && !s[0].guide_on;
   }
 }
 
