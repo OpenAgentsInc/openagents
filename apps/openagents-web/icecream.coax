@@ -295,6 +295,13 @@ h_ring :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, width: f32, light:
   return n;
 }
 
+put_u64 :: (buf: [] u8, at: int, v: u64) -> int {
+  digits: [24] u8; n := 0; x := v;
+  while true { digits[n] = cast(u8) (48 + cast(int) (x % 10)); n += 1; x = x / 10; if x == 0 { break; } }
+  o := at;
+  while n > 0 && o < buf.count { n -= 1; buf[o] = digits[n]; o += 1; }
+  return o;
+}
 // "0:42.3", as world.cpp clockText.
 h_clock :: (buf: [] u8, at: int, seconds: f32) -> int {
   tenths := cast(int) floor(hi(seconds, 0) * 10);
@@ -465,7 +472,8 @@ h_draw_card :: (s: [] IceRealm, out: [] f32, at: int) -> int {
   k := s[0].dpr; w := s[0].width; h := s[0].height;
   n := at;
   title := "";
-  lines: [4] string; line_n := 0;
+  lines: [10] string; line_n := 0;
+  pool: [640] u8; at_pool := 0; from_pool := 0;
   buttons: [9] CardButton; button_n := 0;
   tour := cast(int) f[F_TOUR];
   buf: [48] u8; m := 0;
@@ -488,11 +496,17 @@ h_draw_card :: (s: [] IceRealm, out: [] f32, at: int) -> int {
     }
   } else if run_phase(s) == PH_TITLE {
     title = "The Ice Cream Man";
+    lines[0] = "You're stuck in an Airbnb that keeps going. Find three keys and get out before he scoops you.";
+    lines[1] = "Check-out is at 11. Don't let him in.";
+    line_n = 2;
     buttons[0] = CardButton.{label = "Help", act = A_TOUR * 256};
     buttons[1] = CardButton.{label = "Play", act = A_PLAY * 256, main = true};
     button_n = 2;
   } else if run_phase(s) == PH_MENU {
     title = "Paused";
+    at_pool = put(pool[..], 0, "House number "); at_pool = put_u64(pool[..], at_pool, s[0].seed);
+    lines[0] = cast(string) pool[0..<at_pool]; line_n = 1;
+    if f[F_NEXT_DIFFICULTY] != f[F_DIFFICULTY] { lines[1] = "Next run"; line_n = 2; }
     buttons[0] = CardButton.{label = "Help", act = A_TOUR * 256};
     buttons[1] = CardButton.{label = "Restart", act = A_NEW_HOUSE * 256};
     buttons[2] = CardButton.{label = "Resume", act = A_RESUME * 256, main = true};
@@ -507,6 +521,34 @@ h_draw_card :: (s: [] IceRealm, out: [] f32, at: int) -> int {
     won := f[F_WON] > 0;
     title = ifx status == ST_MELTED then "You melted him!" else ifx won then "You escaped!" else "Scooped!";
     keep := f[F_KEEP] > 0;
+    lines[0] = ifx status == ST_MELTED then "He's a puddle of vanilla on the carpet. The house is yours." else ifx status == ST_ESCAPED then "You burst out into the sunshine. He waves sadly from the window." else "He plopped you into a cone. Yuck.";
+    line_n = 1;
+    secs := cast(int) floor(hi(f[F_SECONDS], 0));
+    if status == ST_ESCAPED {
+      from_pool = at_pool; at_pool = put(pool[..], at_pool, "Your time: "); at_pool = h_clock(pool[..], at_pool, f[F_SECONDS]);
+      lines[line_n] = cast(string) pool[from_pool..<at_pool]; line_n += 1;
+      if f[F_NEW_BEST] > 0 { lines[line_n] = "New best!"; line_n += 1; }
+      else if f[F_BEST] > 0 {
+        from_pool = at_pool; at_pool = put(pool[..], at_pool, "Best: "); at_pool = h_clock(pool[..], at_pool, f[F_BEST]);
+        lines[line_n] = cast(string) pool[from_pool..<at_pool]; line_n += 1;
+      }
+    } else {
+      from_pool = at_pool; at_pool = put(pool[..], at_pool, "Time: "); at_pool = put_int(pool[..], at_pool, secs / 60);
+      at_pool = put(pool[..], at_pool, ifx secs % 60 < 10 then ":0" else ":"); at_pool = put_int(pool[..], at_pool, secs % 60);
+      lines[line_n] = cast(string) pool[from_pool..<at_pool]; line_n += 1;
+    }
+    from_pool = at_pool; at_pool = put(pool[..], at_pool, "Keys: "); at_pool = put_int(pool[..], at_pool, cast(int) f[F_RUN_KEYS]); at_pool = put(pool[..], at_pool, " of 3");
+    lines[line_n] = cast(string) pool[from_pool..<at_pool]; line_n += 1;
+    from_pool = at_pool; at_pool = put(pool[..], at_pool, "Hits taken: "); at_pool = put_int(pool[..], at_pool, cast(int) f[F_HITS]);
+    lines[line_n] = cast(string) pool[from_pool..<at_pool]; line_n += 1;
+    from_pool = at_pool;
+    if f[F_ACCURACY] >= 0 { at_pool = put(pool[..], at_pool, "Fudge accuracy: "); at_pool = put_int(pool[..], at_pool, cast(int) f[F_ACCURACY]); at_pool = put(pool[..], at_pool, "%"); }
+    else { at_pool = put(pool[..], at_pool, "Fudge accuracy: no squirts fired"); }
+    lines[line_n] = cast(string) pool[from_pool..<at_pool]; line_n += 1;
+    if f[F_MELTED_MINIONS] > 0 {
+      from_pool = at_pool; at_pool = put(pool[..], at_pool, "Minions melted: "); at_pool = put_int(pool[..], at_pool, cast(int) f[F_MELTED_MINIONS]);
+      lines[line_n] = cast(string) pool[from_pool..<at_pool]; line_n += 1;
+    }
     buttons[0] = CardButton.{label = ifx won then "Again" else "Again", act = A_NEW_HOUSE * 256, main = !keep};
     button_n = 1;
     if keep { buttons[button_n] = CardButton.{label = "Continue", act = A_KEEP * 256, main = true}; button_n += 1; }
@@ -518,12 +560,12 @@ h_draw_card :: (s: [] IceRealm, out: [] f32, at: int) -> int {
   tcap := h_fit_cap(title, 17 * k, cw - 2 * pad);
   lcap := ifx w < 640 * k then 8 * k else 9 * k;
   lh := lcap * 2.3;
-  wraps: [24] int; wrap_n := 0;
+  wraps: [48] int; wrap_n := 0;
   next: [1] int;
   for l: 0..<line_n {
     from := 0;
     t := lines[l];
-    while from < t.count && wrap_n < 22 {
+    while from < t.count && wrap_n < 46 {
       wk := h_white(k, 0.95); wk.scale = k;
       end := wrap_ink(t, from, cw - 2 * pad, lcap, GAP, SPACE, wk, next[..]);
       wraps[wrap_n] = l * 4096 + from; wraps[wrap_n + 1] = l * 4096 + end; wrap_n += 2;
@@ -688,6 +730,10 @@ h_playing_facts :: (f: [] f32) {
   b := s[0].boxes[1];
   #assert ice_pointer(s[..], b.x0 + 2, b.y0 + 2, POINTER_DOWN, 0, 1) == 0 && ice_pointer(s[..], b.x0 + 2, b.y0 + 2, POINTER_UP, 0, 1) == 0;
   #assert ice_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/verse/galaxy";
+  f[F_STATUS] = ST_ESCAPED; f[F_WON] = 1; f[F_SECONDS] = 187.4; f[F_BEST] = 150; f[F_RUN_KEYS] = 3; f[F_HITS] = 2; f[F_ACCURACY] = 64; f[F_MELTED_MINIONS] = 3;
+  n = ice_frame(s[..], out[..], u[..], 390, 844, 1, 0.016, true, f[..], 3);
+  #assert s[0].button_n == 2;
+  for i: 0..<s[0].plate_n { bb := s[0].plates[i]; #assert bb.x0 >= 0 && bb.x1 <= 390 && bb.y0 >= 0 && bb.y1 <= 844; }
   f[F_TOUR] = 3;
   n = ice_frame(s[..], out[..], u[..], 390, 844, 1, 0.016, true, f[..], 3);
   #assert s[0].main_act == A_TOUR_END * 256;
