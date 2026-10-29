@@ -1,0 +1,37 @@
+// Experimental raw XChaCha20 stream, without authentication or secret-use approval.
+#load "hchacha20.coax";
+#authority;
+
+#test "XChaCha draft A.3.2.1 first keystream block" {
+  key:[32]u8;nonce:[24]u8;for i:0..<32 {key[i]=cast(u8)(128+i);}
+  for i:0..<23 {nonce[i]=cast(u8)(64+i);}nonce[23]=88;
+  expected:=[64]u8.[0x11,0x31,0xce,0x9a,0x2a,0x20,0xae,0x0d,0x67,0xc8,0x93,0x5c,0x77,0x89,0xfa,0x10,0x25,0xc9,0xe5,0xbb,0x72,0x0f,0xb9,0x6f,0x11,0x35,0x4f,0xb9,0x7a,0xf0,0xbd,0x9a,0xad,0xec,0x08,0x63,0xba,0x60,0xca,0xc8,0x58,0x2c,0x48,0xf8,0x6c,0xdf,0xc4,0x8e,0xdd,0x46,0xa4,0x86,0x42,0xc5,0xde,0x62,0xcc,0xf1,0x1c,0x7b,0x21,0xbf,0x33,0x7d];
+  input:[64]u8;out:[65]u8;out[64]=165;
+  result:=xchacha20_xor_checked(key[..],nonce[..],0,input[..],out[..],false);
+  #assert result.error==CC_OK && result.written==64 && out[64]==165;
+  for i:0..<64 {#assert out[i]==expected[i];}
+}
+
+#test "XChaCha admission rejects bad metadata and preserves output" {
+  key:[33]u8;nonce:[25]u8;input:[65]u8;out:[65]u8;for i:0..<65 {out[i]=165;}
+  #assert xchacha20_xor_checked(key[0..<31],nonce[0..<24],0,input[..],out[..],false).error==CC_KEY;
+  #assert xchacha20_xor_checked(key[..],nonce[0..<24],0,input[..],out[..],false).error==CC_KEY;
+  #assert xchacha20_xor_checked(key[0..<32],nonce[0..<23],0,input[..],out[..],false).error==CC_NONCE;
+  #assert xchacha20_xor_checked(key[0..<32],nonce[..],0,input[..],out[..],false).error==CC_NONCE;
+  #assert xchacha20_xor_checked(key[0..<32],nonce[0..<24],0,input[..],out[0..<64],false).error==CC_OUTPUT;
+  #assert xchacha20_xor_checked(key[0..<32],nonce[0..<24],0,input[..],out[..],true).error==CC_ALIAS;
+  #assert xchacha20_xor_checked(key[0..<32],nonce[0..<24],0xffffffff,input[..],out[..],false).error==CC_COUNTER;
+  for v:out {#assert v==165;}
+}
+
+// Internal ABI: host adapters must validate views and supply the alias fact.
+// The subkey and intermediate blocks do not yet have proven erasure.
+xchacha20_xor_checked :: (key:[]u8,nonce:[]u8,counter:u32,input:[]u8,out:[]u8,overlap:bool)->ChaChaResult #export_c {
+  if key.count!=32 {return ChaChaResult.{error=CC_KEY};}
+  if nonce.count!=24 {return ChaChaResult.{error=CC_NONCE};}
+  error:=cc_admit(32,12,counter,input.count,out.count,overlap);
+  if error!=CC_OK {return ChaChaResult.{error=error};}
+  subkey:[32]u8;derived:=hchacha20_checked(key,nonce[0..<16],subkey[..],false);
+  short_nonce:[12]u8;for i:0..<8 {short_nonce[4+i]=nonce[16+i];}
+  return chacha20_xor_checked(subkey[..],short_nonce[..],counter,input,out,false);
+}
