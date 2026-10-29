@@ -83,7 +83,21 @@ out-of-extent public index ranges refuse. Public intervals are bounded; unknown
 numeric values do not become guessed constants. Constructor metadata is
 invalidated by any write through its region, including a view.
 
-Half-open range loops require known public bounds within 0–4,096. Induction
+The earlier implementation did not preserve that invalidation when copying a
+dirty aggregate into a fresh region. A public field write followed by a
+by-value helper call could therefore recover the old constructor field and skip
+a reachable unsafe callee. The correction clears copied constructor metadata
+when the source region is dirty. The earlier aggregate results below are
+historical evidence, not a general soundness claim; previously accepted paths
+must be revalidated against the corrected policy.
+Identity casts could separately erase that dirty-region provenance; the corrected
+profile conservatively refuses aggregate casts while retaining scalar casts.
+Public byte arithmetic could also use an out-of-range mathematical interval to
+skip a branch that release-mode wrapping reaches. The corrected profile loses
+such an interval rather than using it as a control-flow fact.
+
+Half-open range loops require known public bounds within 0–4,096 and must be
+nonempty for every possible bound in their intervals. Induction
 bindings cannot be written. `while`, collection loops, body returns, break,
 continue and unsupported control flow refuse. Public statement conditions must
 be known; public conditional expressions are conservatively analyzed on both
@@ -95,6 +109,9 @@ scalars and all outer aggregate regions with the union of incoming origins.
 This also covers direct-callee writes through known views. It may reject safe
 programs or retain an origin after a public overwrite; it never uses such an
 overwrite as an unaudited aggregate declassification.
+The earlier one-body analysis did not preserve zero-trip state; a possibly empty
+range could regain a scalar constant and skip a reachable branch. Such loops
+now refuse, rather than guessing the state after the loop.
 
 Transitive named callees are inspected with actual argument origins and public
 bounds. Foreign, indirect, unknown, recursive and shadowed calls refuse.

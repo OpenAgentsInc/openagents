@@ -45,6 +45,13 @@ class AggregateSource(unittest.TestCase):
          ('array_index',pair+'candidate :: (a:Pair,i:u64)->u64 {return a.words[cast(int)i];}',7),
          ('loop_bound',pair+'candidate :: (a:Pair)->u64 {r:u64;for i:0..<cast(int)a.words[0] {r+=1;}return r;}',6),
          ('copy_laundering',pair+'candidate :: (x:u64)->u64 {a:Pair;a.words[0]=x;b:=a;b.words[1]=0;return ifx b.words[0]==0 then 1 else 2;}',6),
+         ('dirty_literal_by_value','Pair :: struct {value:u64;} unsafe_vartime :: (x:u64)->u64 {return x;} helper :: (p:Pair,x:u64)->u64 {if p.value==0 {return x;}else {return unsafe_vartime(x);}} candidate :: (x:u64)->u64 {p:=Pair.{value=0};p.value=1;return helper(p,x);}',5),
+         ('dirty_literal_local_copy','Pair :: struct {value:u64;} unsafe_vartime :: (x:u64)->u64 {return x;} candidate :: (x:u64)->u64 {p:=Pair.{value=0};p.value=1;q:=p;if q.value==0 {return x;}else {return unsafe_vartime(x);}}',5),
+         ('dirty_literal_cast_copy','Pair :: struct {value:u64;} unsafe_vartime :: (x:u64)->u64 {return x;} helper :: (p:Pair,x:u64)->u64 {if p.value==0 {return x;}else {return unsafe_vartime(x);}} candidate :: (x:u64)->u64 {p:=Pair.{value=0};p.value=1;return helper(cast(Pair)p,x);}',5),
+         ('dirty_literal_array_cast','Pair :: struct {value:u64;} unsafe_vartime :: (x:u64)->u64 {return x;} candidate :: (x:u64)->u64 {p:=[1]Pair.[Pair.{value=0}];p[0].value=1;q:=cast([1]Pair)p;if q[0].value==0 {return x;}else {return unsafe_vartime(x);}}',5),
+         ('byte_wrap_branch','unsafe_vartime :: (x:u64)->u64 {return x+1;} candidate :: (x:u64)->u64 {v:=cast(u8)255;w:=v+cast(u8)1;if w==0 {return unsafe_vartime(x);}else {return x;}}',5),
+         ('dirty_literal_nested_copy','Pair :: struct {value:u64;} Box :: struct {inner:Pair;} unsafe_vartime :: (x:u64)->u64 {return x;} helper :: (p:Box,x:u64)->u64 {if p.inner.value==0 {return x;}else {return unsafe_vartime(x);}} candidate :: (x:u64)->u64 {p:=Box.{inner=Pair.{value=0}};p.inner.value=1;return helper(p,x);}',5),
+         ('dirty_literal_index','Pair :: struct {value:u64;} helper :: (p:Pair,x:u64)->u64 {a:=[1]u64.[x];return a[cast(int)p.value];} candidate :: (x:u64)->u64 {p:=Pair.{value=0};p.value=1;return helper(p,x);}',2),
          ('view_write','write :: (v:[]u64,x:u64)->bool {v[0]=x;return true;} candidate :: (x:u64)->u64 {a:[2]u64;v:=a[..];ok:=write(v,x);return ifx a[0]==0 then 1 else 2;}',6),
          ('whole_array_alias','candidate :: (x:u64)->u64 {a:[2]u64;v:[]u64=a[..];b:=[2]u64.[x,0];a=b;return ifx v[0]==0 then 1 else 2;}',6),
          ('loop_view_backedge','write :: (v:[]u64,x:u64)->bool {v[0]=x;return true;} candidate :: (x:u64)->u64 {a:[2]u64;v:=a[..];for i:0..<2 {if a[0]==0 {}ok:=write(v,x);}return x;}',6),
@@ -65,6 +72,7 @@ class AggregateSource(unittest.TestCase):
          ('truncated_public_branch','candidate :: (x:u64)->u64 {t:=cast,trunc(u8)256;if t==0 {return ifx x==0 then 1 else 2;}return x;}',5),
         ]
         for name,text,error in fixtures:self.case(name,text,error)
+        self.case('clean_literal_by_value','Pair :: struct {value:u64;} helper :: (p:Pair,x:u64)->u64 {if p.value==0 {return x;}else {return 1;}} candidate :: (x:u64)->u64 {p:=Pair.{value=0};return helper(p,x);}',0)
     def test_assertions_are_explicit_unresolved_source_hashed_obligations(self):
         r=self.case('secret_assert','candidate :: (x:u64)->u64 {#assert x!=0;return x;}',14)
         self.assertFalse(r['accepted']);self.assertTrue(r['supported_algorithm_dataflow']);self.assertEqual(r['source_status'],'analyzed-with-guard-obligations')
@@ -72,6 +80,45 @@ class AggregateSource(unittest.TestCase):
         guard=r['authored_guard_obligations'][0];self.assertEqual(guard['classification'],'secret-derived');self.assertEqual(guard['source_sha256'],r['source_sha256'][guard['file']])
         self.case('known_public_assert','candidate :: (x:u64)->u64 {#assert 1<2;return x;}',0)
         self.case('false_public_assert','candidate :: (x:u64)->u64 {#assert false;return x;}',5)
+    def test_dirty_literal_runtime_witness_and_broken_rule_control(self):
+        text='''Pair :: struct {value:u64;}
+unsafe_vartime :: (x:u64)->u64 {return x+1;}
+helper :: (p:Pair,x:u64)->u64 {if p.value==0 {return x;}else {return unsafe_vartime(x);}}
+candidate :: (x:u64)->u64 #export_c {p:=Pair.{value=0};p.value=1;return helper(p,x);}'''
+        for fixture,body in [('dirty_literal_witness',text),('dirty_literal_cast_witness',text.replace('helper(p,x);','helper(cast(Pair)p,x);'))]:
+            self.case(fixture,body,5);source=self.directory/(fixture+'.coax')
+            for name,flags in [('checked',[]),('release',['--release'])]:
+                c=self.directory/(fixture+'-'+name+'.c');c.write_text(run(COMPILER,'c',source,'--library',*flags).stdout)
+                artifact=self.directory/(fixture+'-'+name+'.dylib');run('cc','-std=c11','-O2','-shared','-fPIC',c,'-lm','-o',artifact)
+                lib=C.CDLL(str(artifact));lib.candidate.argtypes=[C.c_uint64];lib.candidate.restype=C.c_uint64
+                self.assertEqual(lib.candidate(7),8)
+        source=self.directory/'dirty_literal_witness.coax'
+        original=(self.tool.directory/'policy.c').read_text();line='    (l_result).literal = INT64_C(0);'
+        self.assertEqual(original.count(line),1);mutant=self.directory/'stale-literal-policy.c';mutant.write_text(original.replace(line,'    /* deliberately preserve a stale literal */',1))
+        obj=self.directory/'stale-literal-policy.o';run('cc','-std=c11','-O2','-fPIC','-c',mutant,'-o',obj)
+        artifact=self.directory/'stale-literal-policy.dylib';run('c++','-std=c++20','-O2','-shared','-fPIC','-I'+str(self.tool.directory),self.tool.directory/'frontend.o',obj,ROOT/'tools/coax-nostr/secret-check/bridge-aggregate.cpp','-o',artifact)
+        lib=C.CDLL(str(artifact));bridge=self.tool.lib.ag_bridge;lib.ag_bridge.argtypes=bridge.argtypes;lib.ag_bridge.restype=bridge.restype;self.tool.lib.ag_bridge=lib.ag_bridge
+        try:broken=self.tool.audit(source,'candidate')
+        finally:self.tool.lib.ag_bridge=bridge
+        self.assertEqual(broken['error'],0);self.observations.append({'case':'stale_literal_rule_reversion_detected','runtime_result':8,'expected_error':5,'broken_error':broken['error'],'mutant_c_sha256':metadata_sha(mutant)})
+    def test_byte_wrap_release_runtime_witness(self):
+        text='unsafe_vartime :: (x:u64)->u64 {return x+1;} candidate :: (x:u64)->u64 #export_c {v:=cast(u8)255;w:=v+cast(u8)1;if w==0 {return unsafe_vartime(x);}else {return x;}}'
+        self.case('byte_wrap_witness',text,5);source=self.directory/'byte_wrap_witness.coax'
+        c=self.directory/'byte-wrap.c';c.write_text(run(COMPILER,'c',source,'--library','--release').stdout)
+        artifact=self.directory/'byte-wrap.dylib';run('cc','-std=c11','-O2','-shared','-fPIC',c,'-lm','-o',artifact)
+        lib=C.CDLL(str(artifact));lib.candidate.argtypes=[C.c_uint64];lib.candidate.restype=C.c_uint64
+        self.assertEqual(lib.candidate(7),8)
+    def test_empty_loop_runtime_witnesses(self):
+        cases=[
+            ('zero_loop','unsafe_vartime :: (x:u64)->u64 {return x+1;} candidate :: (x:u64)->u64 #export_c {flag:u64=1;for i:0..<0 {flag=0;}if flag==0 {return x;}else {return unsafe_vartime(x);}}'),
+            ('possibly_empty_loop','unsafe_vartime :: (x:u64)->u64 {return x+1;} candidate :: (x:u64)->u64 #export_c {flag:u64=1;for i:0..<2 {flag=1;for j:0..<(1-i) {flag=0;}}if flag==0 {return x;}else {return unsafe_vartime(x);}}')]
+        for name,text in cases:
+            self.case(name,text,5);source=self.directory/(name+'.coax')
+            for mode,flags in [('checked',[]),('release',['--release'])]:
+                c=self.directory/(name+'-'+mode+'.c');c.write_text(run(COMPILER,'c',source,'--library',*flags).stdout)
+                artifact=self.directory/(name+'-'+mode+'.dylib');run('cc','-std=c11','-O2','-shared','-fPIC',c,'-lm','-o',artifact)
+                lib=C.CDLL(str(artifact));lib.candidate.argtypes=[C.c_uint64];lib.candidate.restype=C.c_uint64
+                self.assertEqual(lib.candidate(7),8)
     def test_actual_crypto_closures_and_public_only_exclusion(self):
         for file,entry,error in [('secp_scalar.coax','sc_mul',0),('secp_field.coax','sf_multiply',14),('secp_field.coax','sf_inverse',14),('secp_group.coax','sg_choose',0),('secp_field.coax','sf_inverse_vartime',8),('secp_group.coax','sg_decode_public',8)]:
             r=self.tool.audit(ROOT/'coax/lib/crypto'/file,entry);self.assertEqual(r['error'],error,(entry,r));self.assertFalse(r['production_crypto_approved']);self.assertTrue(r['source_sha256']);canonical=json.dumps(r['resolved_type_inventory'],sort_keys=True,separators=(',',':')).encode();self.assertEqual(r['resolved_type_sha256'],hashlib.sha256(canonical).hexdigest());self.observations.append({'case':entry,'report':r})

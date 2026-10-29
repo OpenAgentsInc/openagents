@@ -58,6 +58,9 @@ AG_resolved :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,p:ScNode,
 }
 AG_new :: (nodes:[]ScNode,values:[]u64,roots:[]int,value:AgValue,type:int,memory:[]AgMemory,state:[]ScAudit)->AgValue {
  result:=value;result.mask=AG_origin(value,memory);result.type=AG_type(nodes,roots,type,state);result.region=0;result.view=false;
+ // A copied or borrowed aggregate cannot recover facts from its original
+ // literal after any write through its source region, even a public write.
+ if value.region!=0 && memory[0].dirty[value.region] {result.literal=0;}
  if !AG_valid_type(nodes,values,roots,result.type,result.mask!=0,state,0) {SC_fail(state,SC_TYPE,0);return result;}
  if AG_primitive_name(result.type)=="" {n:=nodes[result.type];if n.kind==3 {if value.region==0 || value.extent<1 {SC_fail(state,SC_UNSUPPORTED,type);return result;}result.region=value.region;result.view=true;}
  else {if memory[0].used==4095 {SC_fail(state,SC_LIMIT,type);return result;}memory[0].used+=1;result.region=memory[0].used;memory[0].taint[result.region]=result.mask;if n.kind==2 {result.extent=AG_length(nodes,values,result.type,state);}}}
@@ -103,6 +106,9 @@ AG_binary :: (a:AgValue,b:AgValue,op:u32,memory:[]AgMemory,state:[]ScAudit,id:in
   else if op==50 {if a.lo!=0 && b.lo!=0 {r.lo=1;}else if a.hi==0 || b.hi==0 {r.hi=0;}}
   else if op==51 {if a.lo!=0 || b.lo!=0 {r.lo=1;}else if a.hi==0 && b.hi==0 {r.hi=0;}}
  }
+ // Byte arithmetic can wrap in release builds. Bounds outside the byte range
+ // cannot be used to eliminate a branch or establish an index.
+ if r.type==-5 && r.known && r.hi>255 {r.known=false;}
  return r;
 }
 AG_literal_field :: (nodes:[]ScNode,values:[]u64,id:int,field:ScNode,state:[]ScAudit,depth:int)->AgValue {
@@ -120,7 +126,7 @@ AG_expr :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[]
   if n.op==52 {r.type=-3;if a.known {r.lo=ifx a.hi==0 then 1 else 0;r.hi=ifx a.lo!=0 then 0 else 1;}}
   else {r.known=false;}return r;}
  if n.kind==23 {a:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);b:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,depth+1);return AG_binary(a,b,n.op,memory,state,id);}
- if n.kind==30 {r:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);r.mask=AG_origin(r,memory);r.region=0;r.type=AG_type(nodes,roots,n.d,state);if r.type==-5 && r.known && (r.lo<0 || r.hi>255) {r.known=false;}return r;}
+ if n.kind==30 {r:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);if AG_primitive_name(r.type)=="" {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}r.mask=AG_origin(r,memory);r.region=0;r.type=AG_type(nodes,roots,n.d,state);if r.type==-5 && r.known && (r.lo<0 || r.hi>255) {r.known=false;}return r;}
  if n.kind==31 {condition:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);if AG_origin(condition,memory)!=0 {SC_fail(state,SC_BRANCH,id);return AgValue.{};}
   a:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,depth+1);b:=AG_expr(nodes,values,roots,types,n.c,env,memory,state,depth+1);if condition.known && condition.lo==condition.hi {return ifx condition.lo!=0 then a else b;}return AG_union(a,b,memory);}
  if n.kind==25 {base:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);
@@ -190,11 +196,14 @@ AG_block :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[
   else if n.kind==47 {start:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);end:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,0);
    if (AG_origin(start,memory)|AG_origin(end,memory))!=0 {SC_fail(state,SC_BRANCH,at);break;}
    if !start.known || !end.known || !AG_interval(start.lo,end.hi) {SC_fail(state,SC_LIMIT,at);break;}
+   // The body is analyzed once; it cannot represent the unchanged state of a
+   // zero-trip execution. Refuse unless every admitted range is nonempty.
+   if start.hi>=end.lo {SC_fail(state,SC_UNSUPPORTED,at);break;}
    incoming:=cast(u64)0;for i:0..<env[0].count {incoming|=AG_origin(env[0].bindings[i].value,memory);}
    for i:0..<env[0].count {region:=env[0].bindings[i].value.region;if region!=0 {memory[0].taint[region]|=incoming;memory[0].dirty[region]=true;}}
    AG_loop_marks(nodes,n.c,env,memory,state,incoming,0);saved:=env[0].count;
    loop_type:=AG_resolved(nodes,values,roots,types,nodes[env[0].procedure],n,"loop",state);if loop_type!=-4 {SC_fail(state,SC_TYPE,at);break;}
-   loop:=AgValue.{type=loop_type,lo=start.lo,hi=ifx end.hi>start.lo then end.hi-1 else start.lo,known=true};AG_bind(env,n.name,loop,state,at);if env[0].count>saved {env[0].bindings[saved].induction=true;}
+   loop:=AgValue.{type=loop_type,lo=start.lo,hi=end.hi-1,known=true};AG_bind(env,n.name,loop,state,at);if env[0].count>saved {env[0].bindings[saved].induction=true;}
    part:=AG_block(nodes,values,roots,types,n.c,env,memory,state,depth+1);env[0].count=saved;if part.returned {SC_fail(state,SC_UNSUPPORTED,at);}
   }
   else {SC_fail(state,SC_UNSUPPORTED,at);}at=n.next;
