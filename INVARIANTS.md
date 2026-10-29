@@ -1,5 +1,16 @@
 # Invariants
 
+## Psionic complete model mapping publishes the layer stack together
+
+`psionic/lib/model-io/model-map.coax` binds the authenticated inventory's
+complete hybrid schedule, stages decoded parameter vectors and rebases layer
+views onto caller-owned storage. Public layers and parameters publish only
+after all layers bind; scratch may change on failure. Authentication, valid
+disjoint allocations, immutable file bytes and lifetimes remain caller duties.
+Check: `psionic/check.sh` covers authority mutation and native plain/sanitized
+checks; the [model-map record](docs/verification/psionic-model-map-2026-10-29.md)
+records the scope and original-file evidence.
+
 ## Psionic request blocks start fresh and publish atomically
 
 `psionic/lib/qwen-request.coax` executes a caller-specified token stream in

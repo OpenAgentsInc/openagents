@@ -1,0 +1,108 @@
+// Bind the complete ordered four-layer schedule with atomic publication.
+#load "layer-map.coax";
+#authority;
+PmaResult :: struct {status:PwStatus;written:int;parameters:int;}
+#test "all layers publish together and retain owned parameter storage" {
+    ls:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    fs:=QhShape.{width=2,hidden=1,capacity=1,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=ls,full=fs,state=QpShape.{linear_layers=3,full_layers=1,capacity=1,delta=ls.delta,attention=fs.attention}};
+    names:[53][128]u8;inventory:[53]P5Tensor;bytes:[302]u8;entry:=0;at:=0;
+    for layer:0..<4 {
+        needs:[14]PmNeed;n:=pm_needs(shape,pm_full(layer),needs[..]);
+        for i:0..<n {
+            len_name:=pm_name(layer,needs[i].suffix,names[entry][..]);z:=p5_shape_size(needs[i].shape,PwDtype.bf16);
+            inventory[entry]=P5Tensor.{name=cast(string)names[entry][0..<len_name],shape=needs[i].shape,elements=z.elements,begin=at,end=at+z.bytes};
+            word:=f32_bits(f32(entry+1))>>16;for j:0..<z.elements {bytes[at+2*j]=cast(u8)(word&255);bytes[at+2*j+1]=cast(u8)(word>>8);}
+            at+=z.bytes;entry+=1;
+        }
+    }
+    #assert entry==53 && at==302;files:=[1]PaFile.[PaFile.{data=bytes[..]}];layers:[5]QeLayer;params:[66]f32;stage:[65]f32;work:[27]f32;params[65]=-7;
+    #assert pma_params(shape,false)==19 && pma_params(shape,true)==8;
+    layers[0].kind=9;params[0]=-7;
+    #assert pma_bind(shape,inventory[..],files[..],layers[0..<3],params[..],stage[..],work[..],false).status==PwStatus.capacity;
+    #assert pma_bind(shape,inventory[..],files[..],layers[..],params[0..<64],stage[..],work[..],false).status==PwStatus.capacity;
+    #assert pma_bind(shape,inventory[..],files[..],layers[..],params[..],stage[0..<64],work[..],false).status==PwStatus.capacity;
+    #assert pma_bind(shape,inventory[..],files[..],layers[..],params[..],stage[..],work[0..<26],false).status==PwStatus.capacity;
+    #assert pma_bind(shape,inventory[..],files[..],layers[..],params[..],stage[..],work[..],true).status==PwStatus.alias;
+    badshape:=shape;badshape.state.linear_layers=2;#assert pma_bind(badshape,inventory[..],files[..],layers[..],params[..],stage[..],work[..],false).status==PwStatus.shape;
+    #assert pma_bind(shape,inventory[0..<0],files[..],layers[..],params[..],stage[..],work[..],true).status==PwStatus.manifest;
+    #assert pma_bind(shape,inventory[..],files[0..<0],layers[..],params[..],stage[..],work[..],false).status==PwStatus.manifest;
+    #assert layers[0].kind==9 && params[0]==-7;
+    r:=pma_bind(shape,inventory[..],files[..],layers[..],params[..],stage[..],work[..],false);
+    #assert r.status==PwStatus.ok && r.written==4 && r.parameters==65 && params[65]==-7;
+    #assert layers[0].kind==cast(u8)QeKind.linear && layers[3].kind==cast(u8)QeKind.full;
+    for i:0..<3 {
+        base:=i*19;value:=f32(i*14+1);w:=layers[i].linear;
+        #assert w.input_norm.count==2 && w.post_norm.count==2 && w.conv.count==12 && w.a_log.count==1 && w.dt.count==1 && w.delta_norm.count==1;
+        #assert w.input_norm[0]==value && w.post_norm[0]==value+1 && w.conv[0]==value+2 && w.a_log[0]==value+3 && w.dt[0]==value+4 && w.delta_norm[0]==value+5;
+        for j:0..<19 {params[base+j]=f32(1000+base+j);}
+        #assert w.input_norm[0]==f32(1000+base) && w.post_norm[0]==f32(1002+base) && w.conv[0]==f32(1004+base) && w.a_log[0]==f32(1016+base) && w.dt[0]==f32(1017+base) && w.delta_norm[0]==f32(1018+base);
+    }
+    w:=layers[3].full;#assert w.input_norm.count==2 && w.post_norm.count==2 && w.q_norm.count==2 && w.k_norm.count==2;
+    #assert w.input_norm[0]==43 && w.post_norm[0]==44 && w.q_norm[0]==45 && w.k_norm[0]==46;
+    for j:0..<8 {params[57+j]=f32(1057+j);}
+    #assert w.input_norm[0]==1057 && w.post_norm[0]==1059 && w.q_norm[0]==1061 && w.k_norm[0]==1063;
+    exact:=pma_bind(shape,inventory[..],files[..],layers[0..<4],params[0..<65],stage[..],work[..],false);#assert exact.status==PwStatus.ok;
+    weird:=shape;weird.linear.width=3;weird.full.attention.head_dim=4;#assert pma_params(weird,false)==21 && pma_params(weird,true)==14;
+    invalid:=shape;invalid.linear.width=0;#assert pma_bind(invalid,inventory[..],files[..],layers[..],params[..],stage[..],work[..],true).status==PwStatus.shape;
+    invalid=shape;invalid.linear.dtype=QmDtype.f32;invalid.full.dtype=QmDtype.f32;#assert pma_bind(invalid,inventory[..],files[..],layers[..],params[..],stage[..],work[..],true).status==PwStatus.shape;
+    #assert pma_bind(badshape,inventory[..],files[..],layers[..],params[..],stage[..],work[..],true).status==PwStatus.shape;
+    #assert pma_bind(shape,inventory[0..<1],files[..],layers[..],params[..],stage[..],work[..],true).status==PwStatus.alias;
+    many:[4097]P5Tensor;many_files:[17]PaFile;
+    #assert pma_bind(shape,many[0..<4096],files[..],layers[..],params[..],stage[..],work[..],true).status==PwStatus.alias;
+    #assert pma_bind(shape,many[..],files[..],layers[..],params[..],stage[..],work[..],true).status==PwStatus.manifest;
+    #assert pma_bind(shape,inventory[..],many_files[0..<16],layers[..],params[..],stage[..],work[..],true).status==PwStatus.alias;
+    #assert pma_bind(shape,inventory[..],many_files[..],layers[..],params[..],stage[..],work[..],true).status==PwStatus.manifest;
+    layers[0].kind=9;params[0]=-7;inventory[52].name="missing";
+    bad:=pma_bind(shape,inventory[..],files[..],layers[..],params[..],stage[..],work[..],false);
+    #assert bad.status==PwStatus.manifest && bad.written==0 && layers[0].kind==9 && params[0]==-7;
+}
+pma_params :: (s:QeShape,full:bool)->int {
+    d:=s.linear.width;
+    if full {return 2*d+2*s.full.attention.head_dim;}
+    return 2*d+4*pd_channels(s.linear.delta)+2*s.linear.delta.value_heads+s.linear.delta.value_dim;
+}
+pma_bind :: (shape:QeShape,inventory:[]P5Tensor,files:[]PaFile,layers:[]QeLayer,params:[]f32,stage:[]f32,work:[]f32,overlap:bool)->PmaResult #export_c {
+    if !qe_valid(shape) || shape.linear.dtype!=QmDtype.bf16 || shape.state.linear_layers!=3*shape.state.full_layers {return PmaResult.{status=PwStatus.shape};}
+    linear:=pma_params(shape,false);full:=pma_params(shape,true);n:=shape.state.linear_layers+shape.state.full_layers;
+    total:=shape.state.linear_layers*linear+shape.state.full_layers*full;
+    if layers.count<n || params.count<total || stage.count<total || work.count<linear+full {return PmaResult.{status=PwStatus.capacity};}
+    if inventory.count<1 || inventory.count>PW_TENSORS_MAX || files.count<1 || files.count>PW_SHARDS_MAX {return PmaResult.{status=PwStatus.manifest};}
+    if overlap {return PmaResult.{status=PwStatus.alias};}
+    drafts:[64]QeLayer;at:=0;
+    for i:0..<n {
+        count:=linear;if pm_full(i) {count=full;}
+        r:=pm_layer(shape,i,inventory,files,stage[at..<at+count],work[0..<count],false);
+        if r.status!=PwStatus.ok {return PmaResult.{status=r.status};}drafts[i]=r.layer;at+=count;
+    }
+    for i:0..<total {params[i]=stage[i];}
+    at=0;d:=shape.linear.width;c:=pd_channels(shape.linear.delta);h:=shape.linear.delta.value_heads;vd:=shape.linear.delta.value_dim;hd:=shape.full.attention.head_dim;
+    for i:0..<n {
+        layer:=drafts[i];
+        if !pm_full(i) {
+            w:=layer.linear;w.input_norm=params[at..<at+d];at+=d;w.post_norm=params[at..<at+d];at+=d;
+            w.conv=params[at..<at+4*c];at+=4*c;w.a_log=params[at..<at+h];at+=h;w.dt=params[at..<at+h];at+=h;w.delta_norm=params[at..<at+vd];at+=vd;layer.linear=w;
+        } else {
+            w:=layer.full;w.input_norm=params[at..<at+d];at+=d;w.post_norm=params[at..<at+d];at+=d;
+            w.q_norm=params[at..<at+hd];at+=hd;w.k_norm=params[at..<at+hd];at+=hd;layer.full=w;
+        }
+        layers[i]=layer;
+    }
+    return PmaResult.{written=n,parameters=total};
+}
+
+#test "a full layer leaves the next layer's parameter views at the next offset" {
+    ls:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    fs:=QhShape.{width=2,hidden=1,capacity=1,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=ls,full=fs,state=QpShape.{linear_layers=6,full_layers=2,capacity=1,delta=ls.delta,attention=fs.attention}};
+    names:[106][128]u8;inventory:[106]P5Tensor;bytes:[604]u8;entry:=0;at:=0;
+    for layer:0..<8 {needs:[14]PmNeed;n:=pm_needs(shape,pm_full(layer),needs[..]);for i:0..<n {
+        length:=pm_name(layer,needs[i].suffix,names[entry][..]);z:=p5_shape_size(needs[i].shape,PwDtype.bf16);
+        inventory[entry]=P5Tensor.{name=cast(string)names[entry][0..<length],shape=needs[i].shape,elements=z.elements,begin=at,end=at+z.bytes};
+        word:=f32_bits(f32(entry+1))>>16;for j:0..<z.elements {bytes[at+2*j]=cast(u8)(word&255);bytes[at+2*j+1]=cast(u8)(word>>8);}at+=z.bytes;entry+=1;
+    }}
+    #assert entry==106 && at==604;files:=[1]PaFile.[PaFile.{data=bytes[..]}];layers:[8]QeLayer;params:[130]f32;stage:[130]f32;work:[27]f32;
+    r:=pma_bind(shape,inventory[..],files[..],layers[..],params[..],stage[..],work[..],false);#assert r.status==PwStatus.ok && r.parameters==130;
+    #assert layers[4].linear.input_norm[0]==54 && layers[7].full.k_norm[0]==99;
+    params[65]=123;#assert layers[4].linear.input_norm[0]==123;
+}
