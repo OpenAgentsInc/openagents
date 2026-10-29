@@ -2,7 +2,7 @@
 
 The Verse playtest's galaxy at https://openagents.com/verse/galaxy, after the landing ([/verse](https://openagents.com/verse)).
 
-The playtest's worlds turn on their orbits around OpenAgents. Only the **Haunted House** (the orange one) opens: it goes to [/realm/haunted-house](https://openagents.com/realm/haunted-house). **Coding** is coming soon; Blue Rush, Big Brain, Everglade and The Grid are locked for the playtest.
+The playtest's worlds turn on their orbits around OpenAgents. The **Haunted House** (the orange one, with its CLICK TO ENTER tag) goes to [/realm/haunted-house](https://openagents.com/realm/haunted-house); The Grid, Everglade, Dead Gears, the Sandbox and Ice Cream Man open their realms too. Coding is coming later, and Blue Rush and Big Brain are locked.
 
 Players' own realms circle on the outer orbit, the newest eight, tinted by their kind (green forest, gold village, violet cemetery). Each one opens its own world: /realm/haunted-house#planet-… (see the realm page for how its owner publishes edits and accepts or declines changes others offer).
 

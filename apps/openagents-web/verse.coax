@@ -9,8 +9,8 @@
 //
 // The galaxy: the playtest's worlds turning on their orbits, from the realm
 // host's table (realms.json, written into realms.coax): an open world opens
-// its realm's page (/realm/<slug>), today the Haunted House. Coding is coming
-// soon and the rest are locked, as the playtest drew them. A world the table
+// its realm's page (/realm/<slug>); only the Haunted House has a tag under
+// it. Coding is coming later, and Blue Rush and Big Brain are locked. A world the table
 // doesn't list (the fixture realm) shows only with ?realms=all. Drag turns it. Players' own
 // realms (pt-planets) circle outside them, the newest REALMS, and each
 // opens its world (/realm/haunted-house#<id>); MAKE YOUR REALM sets one up
@@ -1120,15 +1120,11 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
   rw := measure(realm_label, GAP, SPACE, false) * 8 * k + 36 * k;
   vertices = plate_button(s, out, vertices, BTN_REALM, Box.{x0 = cx - rw * 0.5, y0 = 96 * k, x1 = cx + rw * 0.5, y1 = 124 * k}, realm_label, true);
 
-  // the tags under the worlds that answer (the house opens; Coding says when)
+  // the tag under the Haunted House, the world that opens
   tcap := ifx phone then 7 * k else 8 * k;
-  for which: 0..<2 {
-    if s[0].setup { break; }
-    p := ifx which == 0 then HOUSE else CODING;
-    i := ifx which == 0 then BTN_HOUSE else BTN_CODING;
-    if s[0].over == p { continue; }
-    label := "CODING · COMING SOON";
-    if which == 0 { label = ifx phone then "HAUNTED HOUSE · TAP TO ENTER" else "HAUNTED HOUSE · CLICK TO ENTER"; }
+  if !s[0].setup && s[0].over != HOUSE {
+    which := 0; p := HOUSE; i := BTN_HOUSE;
+    label := ifx phone then "HAUNTED HOUSE · TAP TO ENTER" else "HAUNTED HOUSE · CLICK TO ENTER";
     q := project(s, p);
     tw := measure(label, GAP, SPACE, false) * tcap + 24 * k;
     top := q.y + q.r * 1.5 + 6 * k;
@@ -1386,10 +1382,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   s: [1] VerseState; t: [1] Track;
   page_at(s[..], t[..], PAGE_GALAXY, 1440, 900);
   #assert batch_has(t[..], "\"ev\":\"map\"");
-  #assert s[0].shown[BTN_HOUSE] && s[0].shown[BTN_CODING];
-  click(s[..], t[..], s[0].boxes[BTN_CODING]);
-  redraw(s[..], t[..], 0.016);
-  #assert s[0].action == 0 && s[0].toast_n > 0 && batch_has(t[..], "\"planet\":\"coding\"");
+  #assert s[0].shown[BTN_HOUSE] && !s[0].shown[BTN_CODING];
   for p: 0..<PLANETS {
     if PLANET_KIND[p] == KIND_OPEN { continue; }
     q := project(s[..], p);
