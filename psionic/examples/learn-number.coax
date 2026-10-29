@@ -1,0 +1,21 @@
+// book:begin example
+#load "../lib/learn.coax";
+#import "Basic";
+
+main :: () {
+    xs := [2] f32.[1, 2]; ys := [2] f32.[2, 4];
+    trace: [17] f32; scratch: [17] f32;
+    // These four local arrays own disjoint storage, so overlap is false.
+    first := psionic_train_checked(xs[..], ys[..], 0, 1, trace[..], scratch[..], false);
+    #assert first.status == PsionicStatus.ok;
+    print("model: prediction = weight * x\n");
+    print("before: weight = 0, loss = %\n", trace[0]);
+    print("one update: weight = %, loss = %\n", first.weight, first.loss);
+    trained := psionic_train_checked(xs[..], ys[..], 0, 16, trace[..], scratch[..], false);
+    #assert trained.status == PsionicStatus.ok;
+    prediction := psionic_predict(trained.weight, 3);
+    #assert prediction.status == PsionicStatus.ok;
+    print("16 updates: weight = %, loss = %\n", trained.weight, trained.loss);
+    print("held-out: x = 3, prediction = %, target = 6\n", prediction.value);
+}
+// book:end example

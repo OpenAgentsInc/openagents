@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "examples": [
+    {
+      "source": "psionic/examples/learn-number.coax",
+      "chapter": "psionic/book/ch01-learning-a-number.md",
+      "stdout": "psionic/fixtures/learn-number.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "psionic/examples/refuse-capacity.coax",
+      "chapter": "psionic/book/ch01-learning-a-number.md",
+      "stdout": "psionic/fixtures/refuse-capacity.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    }
+  ]
+}

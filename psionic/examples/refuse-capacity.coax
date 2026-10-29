@@ -1,0 +1,12 @@
+#load "../lib/learn.coax";
+#import "Basic";
+
+main :: () {
+    xs := [2] f32.[1, 2]; ys := [2] f32.[2, 4];
+    trace := [1] f32.[-7]; scratch := [2] f32.[-9, -9];
+    r := psionic_train_checked(xs[..], ys[..], 0, 1, trace[..], scratch[..], false);
+    #assert r.status == PsionicStatus.capacity && r.written == 0;
+    #assert trace[0] == -7 && scratch[0] == -9 && scratch[1] == -9;
+    print("refused: one update needs two trace values\n");
+    print("trace and scratch unchanged\n");
+}

@@ -1,0 +1,5 @@
+model: prediction = weight * x
+before: weight = 0, loss = 10.0
+one update: weight = 1.25, loss = 1.40625
+16 updates: weight = 1.9999996, loss = 3.1974423e-13
+held-out: x = 3, prediction = 5.999999, target = 6

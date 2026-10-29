@@ -1,8 +1,9 @@
 # Architecture and considerations
 
-Status: proposed contracts. The [source survey](research.md) supplies their
-motivation; implementation must establish them with fresh checks and native
-evidence.
+Status: M0 implements the bounded scalar CPU learning path in
+[psionic/](../../psionic/README.md). Tensor, autodiff, artifact and accelerator
+contracts below remain proposed. The [source survey](research.md) supplies
+their motivation; each increment needs fresh checks and native evidence.
 
 ## One library with a small beginning
 
@@ -11,11 +12,11 @@ optimizers, model/data admission, and execution records in Coax. The book's
 examples use those modules. A small native host supplies storage and platform
 effects through generated C interfaces.
 
-Proposed layout once coding starts:
+Current layout, with future modules added as chapters require them:
 
 ```text
 psionic/
-  lib/          authored Coax; initially admission, dense operations, tiny model
+  lib/          authored Coax; admission and scalar model, dense operations later
   book/         chapters, contents, source references, example manifest
   examples/     small drivers that load the actual library
   platform/     C ABI host: allocation, files, clocks; device bindings later

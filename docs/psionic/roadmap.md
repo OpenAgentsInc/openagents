@@ -1,13 +1,16 @@
 # Starting point and roadmap
 
-Status: proposed sequence. Every milestone below is `planned`. Chapter titles
-are working names; gates determine completion, not a calendar or page count.
+Status: M0 implemented on the tested Apple LP64 CPU host; M1–M9 remain
+`planned`. [Run the first chapter](../../psionic/book/ch01-learning-a-number.md)
+or `psionic/check.sh`; [retained verification](../verification/psionic-m0-2026-10-28.md)
+records the scope. Later chapter titles are working names; gates determine
+completion, not a calendar or page count.
 
-## First change: learn one number
+## M0: learn one number
 
-Create the smallest `psionic/` library/book skeleton needed for chapter 1,
-"Learning a number." Explain the model `prediction = w * x`, mean squared
-error, a derivative, an update, and a held-out prediction. Use fixed data:
+The first [shared library](../../psionic/lib/learn.coax) and book chapter
+implement `prediction = w * x`, mean squared error, a derivative, an update,
+and a held-out prediction. They use fixed data:
 
 | Quantity | Value |
 | --- | --- |
@@ -54,7 +57,7 @@ the relevant earlier regressions.
 
 | Milestone / chapters | Depends on | Working result | Completion gate |
 | --- | --- | --- | --- |
-| M0 / 1. Learning a number | Current CPU subset | The one-parameter trainer above; minimal book/example verification. | Independent first update, bounded training and held-out result, native boundary checks. |
+| M0 / 1. Learning a number — implemented | Current CPU subset | The one-parameter trainer above; shared library, book, and example verification. | `psionic/check.sh`: independent first update and convergence, bounded training, native refusals/aliases, sanitizers, exact listings/transcripts. |
 | M1 / 2. Shapes and storage; 3. Numbers and matrices | M0 | Shared contiguous `f32` operations: indexing, dot, matrix multiply, addition, reductions, stable softmax and normalization as needed. | Overflow/capacity/alias refusals; independent tiny matrix and reduction oracles; per-op error contracts; M0 uses shared operations where applicable. |
 | M2 / 4. Learning with arrays; 5. Gradients as a program | M1 | A tiny linear classifier, then bounded reverse-mode autodiff and SGD over shared ops. | Analytic and finite-difference gradients; accumulation/detach/tape-limit tests; autodiff reproduces the manual example and learns on held-out cases. |
 | M3 / 6. Bytes and predictions; 7. A small language model | M2 | A 256-byte vocabulary and a trainable bigram model, with explicit token IDs and seeded sampling. | Fixed split/corpus/license; probability/loss checks, held-out loss against a declared baseline, exact RNG replay within the profile. Bytes are the actual vocabulary, not a placeholder BPE implementation. |

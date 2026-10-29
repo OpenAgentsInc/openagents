@@ -1,5 +1,22 @@
 # Invariants
 
+## Psionic's first trainer publishes only completed bounded work
+
+`psionic/lib/learn.coax` owns the one-parameter CPU model, its mean squared
+loss/analytic gradient, fixed `1/8` updates, prediction and admission. Its
+`#authority` checks cover 1–16 paired samples, 1–64 updates, two caller trace
+buffers, and finite input/target/weight magnitudes at most 16. The native
+adapter only observes span overlap. Input storage and the published loss
+trace stay unchanged on refusal; scratch can contain partial work after an
+update leaves the weight domain. C callers still own pointer validity and
+lifetime. This is a bounded learning example, not tensor, autodiff or GPU
+support, nor a claim that arbitrary admitted data has decreasing loss.
+
+Check: `psionic/check.sh` runs authored checks and a zero-survivor mutation
+gate, independent native oracles and real alias/non-finite/short-buffer cases
+in debug/release under ASan/UBSan, and exact book source/transcript/status
+checks. See `docs/verification/psionic-m0-2026-10-28.md` for evidence scope.
+
 ## Native debug maps and performance reports are scoped observations
 
 Coax 0.13.0 can map emitted C statements to original physical Coax files.

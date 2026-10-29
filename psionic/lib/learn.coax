@@ -1,0 +1,213 @@
+// M0: one scalar parameter, fixed-rate SGD, bounded caller-owned storage.
+#authority;
+
+PsionicStatus :: enum u8 { ok; shape; steps; capacity; alias; number; update; }
+PsionicStats :: struct { loss: f32; gradient: f32; }
+PsionicTraining :: struct { status: PsionicStatus; weight: f32; loss: f32; written: int; }
+PsionicPrediction :: struct { status: PsionicStatus; value: f32; }
+
+// Checks precede the implementation. Expected values are derived in chapter 1.
+#test "the first update has an exact independent oracle" {
+    x := [2] f32.[1, 2]; y := [2] f32.[2, 4];
+    m := psionic_moments(x[..], y[..], 0);
+    #assert m.loss == 10 && m.gradient == -10;
+    trace := [4] f32.[-7, -7, -7, -7]; scratch: [2] f32;
+    r := psionic_train_checked(x[..], y[..], 0, 1, trace[..], scratch[..], false);
+    #assert r.status == PsionicStatus.ok && r.written == 2;
+    #assert r.weight == 1.25f32 && r.loss == 1.40625f32;
+    #assert trace[0] == 10 && trace[1] == 1.40625f32 && trace[2] == -7 && trace[3] == -7;
+    #assert scratch[0] == 10 && scratch[1] == 1.40625f32;
+    p := psionic_predict(r.weight, 3);
+    #assert p.status == PsionicStatus.ok && p.value == 3.75f32;
+}
+
+#test "sixteen updates predict the held-out example within a declared bound" {
+    x := [2] f32.[1, 2]; y := [2] f32.[2, 4];
+    trace: [17] f32; scratch: [17] f32;
+    r := psionic_train_checked(x[..], y[..], 0, 16, trace[..], scratch[..], false);
+    #assert r.status == PsionicStatus.ok && r.written == 17;
+    #assert abs(r.weight - 2.0f32) <= 0.000001f32;
+    #assert r.loss <= 0.00000000001f32 && trace[16] == r.loss;
+    #assert trace[0] == 10;
+    for i: 1..<17 { #assert trace[i] <= trace[i - 1]; }
+    p := psionic_predict(r.weight, 3);
+    #assert p.status == PsionicStatus.ok && abs(p.value - 6.0f32) <= 0.000003f32;
+}
+
+#forall "count admission includes both endpoints" n: -1..<18, m: -1..<18 {
+    r := psionic_admit(n, m, 1, 2, 2, false);
+    if n >= 1 && n <= 16 && m == n { #assert r == PsionicStatus.ok; }
+    else { #assert r == PsionicStatus.shape; }
+}
+#forall "step admission includes both endpoints" steps: -1..<66 {
+    r := psionic_admit(2, 2, steps, 65, 65, false);
+    if steps >= 1 && steps <= 64 { #assert r == PsionicStatus.ok; }
+    else { #assert r == PsionicStatus.steps; }
+}
+#forall "each trace needs the initial loss and every update" steps: 1..<5, out: 0..<7, scratch: 0..<7 {
+    r := psionic_admit(2, 2, steps, out, scratch, false);
+    if out >= steps + 1 && scratch >= steps + 1 { #assert r == PsionicStatus.ok; }
+    else { #assert r == PsionicStatus.capacity; }
+}
+#test "admission precedence and signed metadata" {
+    #assert psionic_admit(0, 0, 0, 0, 0, true) == PsionicStatus.shape;
+    #assert psionic_admit(2, 2, 0, 0, 0, true) == PsionicStatus.steps;
+    #assert psionic_admit(2, 2, 1, 1, 2, true) == PsionicStatus.capacity;
+    #assert psionic_admit(2, 2, 1, 2, 1, true) == PsionicStatus.capacity;
+    #assert psionic_admit(2, 2, 1, -1, 2, false) == PsionicStatus.capacity;
+    #assert psionic_admit(2, 2, 1, 2, -1, false) == PsionicStatus.capacity;
+    #assert psionic_admit(2, 2, 1, 2, 2, true) == PsionicStatus.alias;
+    #assert psionic_admit(2, 2, 9223372036854775807, 2, 2, false) == PsionicStatus.steps;
+    #assert psionic_admit(9223372036854775807, 2, 1, 2, 2, false) == PsionicStatus.shape;
+}
+#test "number admission includes signs, subnormals and the exact limit" {
+    bits := [12] u32.[0, 0x80000000, 1, 0x80000001, 0x3f800000, 0xbf800000,
+        0x417fffff, 0xc17fffff, 0x41800000, 0xc1800000, 0x41800001, 0xc1800001];
+    for i: 0..<12 {
+        #assert psionic_number_bits(bits[i]) == (i < 10);
+        #assert psionic_number(f32_from_bits(bits[i])) == (i < 10);
+    }
+    bad := [8] u32.[0x7f800000, 0xff800000, 0x7fc00000, 0xffc00000,
+        0x7f800001, 0xff800001, 0x7f7fffff, 0xff7fffff];
+    for b: bad { #assert !psionic_number_bits(b); }
+}
+#test "malformed training leaves both caller spans untouched" {
+    x := [2] f32.[1, 2]; y := [2] f32.[2, 4];
+    for kind: 0..<7 {
+        trace := [3] f32.[-7, -7, -7]; scratch := [3] f32.[-9, -9, -9];
+        r: PsionicTraining;
+        if kind == 0 { r = psionic_train_checked(x[0..<0], y[..], 0, 1, trace[..], scratch[..], false); }
+        if kind == 1 { r = psionic_train_checked(x[..], y[0..<1], 0, 1, trace[..], scratch[..], false); }
+        if kind == 2 { r = psionic_train_checked(x[..], y[..], 0, 0, trace[..], scratch[..], false); }
+        if kind == 3 { r = psionic_train_checked(x[..], y[..], 0, 1, trace[0..<1], scratch[..], false); }
+        if kind == 4 { r = psionic_train_checked(x[..], y[..], 0, 1, trace[..], scratch[0..<1], false); }
+        if kind == 5 { r = psionic_train_checked(x[..], y[..], 0, 1, trace[..], scratch[..], true); }
+        if kind == 6 { r = psionic_train_checked(x[..], y[..], 17, 1, trace[..], scratch[..], false); }
+        expected := [7] PsionicStatus.[PsionicStatus.shape, PsionicStatus.shape, PsionicStatus.steps,
+            PsionicStatus.capacity, PsionicStatus.capacity, PsionicStatus.alias, PsionicStatus.number];
+        #assert r.status == expected[kind] && r.weight == 0 && r.loss == 0 && r.written == 0;
+        for v: trace { #assert v == -7; }
+        for v: scratch { #assert v == -9; }
+    }
+    for i: 0..<2 {
+        trace := [2] f32.[-7, -7]; scratch := [2] f32.[-9, -9];
+        x[i] = 17;
+        r := psionic_train_checked(x[..], y[..], 0, 1, trace[..], scratch[..], false);
+        #assert r.status == PsionicStatus.number && r.written == 0 && r.weight == 0 && r.loss == 0;
+        #assert trace[0] == -7 && trace[1] == -7 && scratch[0] == -9 && scratch[1] == -9;
+        x[i] = f32(i + 1); y[i] = -17;
+        q := psionic_train_checked(x[..], y[..], 0, 1, trace[..], scratch[..], false);
+        #assert q.status == PsionicStatus.number && q.written == 0 && q.weight == 0 && q.loss == 0;
+        #assert trace[0] == -7 && trace[1] == -7 && scratch[0] == -9 && scratch[1] == -9;
+        y[i] = f32((i + 1) * 2);
+    }
+}
+#test "an unstable update is refused before publication" {
+    x := [1] f32.[16]; y := [1] f32.[16];
+    trace := [3] f32.[-7, -7, -7]; scratch := [3] f32.[-9, -9, -9];
+    r := psionic_train_checked(x[..], y[..], 0, 2, trace[..], scratch[..], false);
+    #assert r.status == PsionicStatus.update && r.weight == 0 && r.loss == 0 && r.written == 0;
+    for v: trace { #assert v == -7; }
+    #assert scratch[0] == 256 && scratch[1] == -9 && scratch[2] == -9;
+}
+#test "a nonzero starting weight learns a second relation" {
+    x := [1] f32.[2]; y := [1] f32.[16];
+    trace := [4] f32.[-7, -7, -7, -7]; scratch: [4] f32;
+    r := psionic_train_checked(x[..], y[..], 4, 3, trace[..], scratch[..], false);
+    #assert r.status == PsionicStatus.ok && r.weight == 8 && r.loss == 0 && r.written == 4;
+    #assert trace[0] == 64 && trace[1] == 0 && trace[2] == 0 && trace[3] == 0;
+}
+#test "statistics and predictions use all samples and admit negative values" {
+    x := [3] f32.[-1, 0, 1]; y := [3] f32.[3, 1, -1];
+    m := psionic_moments(x[..], y[..], -1);
+    #assert m.loss == 1.6666666f32 && m.gradient == 1.3333334f32;
+    zero := [1] f32.[0]; target := [1] f32.[3];
+    n := psionic_moments(zero[..], target[..], 16);
+    #assert n.loss == 9 && n.gradient == 0;
+    for sign: -1..<2 {
+        p := psionic_predict(f32(sign) * 16.0f32, -16);
+        #assert p.status == PsionicStatus.ok && p.value == f32(sign) * -256.0f32;
+    }
+    p := psionic_predict(17, 1); q := psionic_predict(1, -17);
+    #assert p.status == PsionicStatus.number && p.value == 0;
+    #assert q.status == PsionicStatus.number && q.value == 0;
+}
+#test "maximum samples and updates execute, including signed zero" {
+    x: [16] f32; y: [16] f32; trace: [65] f32; scratch: [65] f32;
+    for i: 0..<16 { x[i] = 1; y[i] = -2; }
+    r := psionic_train_checked(x[..], y[..], -2, 64, trace[..], scratch[..], false);
+    #assert r.status == PsionicStatus.ok && r.weight == -2 && r.loss == 0 && r.written == 65;
+    for v: trace { #assert v == 0; }
+    p := psionic_predict(f32_from_bits(0x80000000), 1);
+    #assert p.status == PsionicStatus.ok && f32_bits(p.value) == 0x80000000;
+}
+
+
+#test "an update can leave the domain after several accepted steps" {
+    x := [1] f32.[3]; y := [1] f32.[16];
+    trace := [6] f32.[-7, -7, -7, -7, -7, -7];
+    scratch := [6] f32.[-9, -9, -9, -9, -9, -9];
+    r := psionic_train_checked(x[..], y[..], 0, 5, trace[..], scratch[..], false);
+    #assert r.status == PsionicStatus.update && r.weight == 0 && r.loss == 0 && r.written == 0;
+    for v: trace { #assert v == -7; }
+    #assert scratch[0] == 256 && scratch[1] == 400 && scratch[2] == 625;
+    #assert scratch[3] == 976.5625f32 && scratch[4] == 1525.87890625f32 && scratch[5] == -9;
+}
+
+// Admission and arithmetic are Coax; C observes only real storage overlap.
+psionic_admit :: (xs: int, ys: int, steps: int, trace: int, scratch: int, overlap: bool) -> PsionicStatus {
+    if xs < 1 || xs > 16 || ys != xs { return PsionicStatus.shape; }
+    if steps < 1 || steps > 64 { return PsionicStatus.steps; }
+    if trace < steps + 1 || scratch < steps + 1 { return PsionicStatus.capacity; }
+    if overlap { return PsionicStatus.alias; }
+    return PsionicStatus.ok;
+}
+psionic_number_bits :: (bits: u32) -> bool {
+    return (bits & 0x7fffffff) <= 0x41800000;
+}
+psionic_number :: (value: f32) -> bool { return psionic_number_bits(f32_bits(value)); }
+
+// Internal: caller has admitted equal nonempty spans and bounded values.
+// book:begin moments
+psionic_moments :: (xs: [] f32, ys: [] f32, weight: f32) -> PsionicStats {
+    loss: f32 = 0; gradient: f32 = 0;
+    for i: 0..<xs.count {
+        error := weight * xs[i] - ys[i];
+        loss += error * error;
+        gradient += 2.0f32 * xs[i] * error;
+    }
+    return PsionicStats.{loss = loss / f32(xs.count), gradient = gradient / f32(xs.count)};
+}
+// book:end moments
+
+// book:begin trainer
+psionic_train_checked :: (xs: [] f32, ys: [] f32, initial_weight: f32, steps: int,
+        trace: [] f32, scratch: [] f32, overlap: bool) -> PsionicTraining #export_c {
+    status := psionic_admit(xs.count, ys.count, steps, trace.count, scratch.count, overlap);
+    if status != PsionicStatus.ok { return PsionicTraining.{status = status}; }
+    if !psionic_number(initial_weight) { return PsionicTraining.{status = PsionicStatus.number}; }
+    for i: 0..<xs.count {
+        if !psionic_number(xs[i]) || !psionic_number(ys[i]) {
+            return PsionicTraining.{status = PsionicStatus.number};
+        }
+    }
+    weight := initial_weight;
+    stats := psionic_moments(xs, ys, weight);
+    scratch[0] = stats.loss;
+    for step: 0..<steps {
+        next := weight - 0.125f32 * stats.gradient;
+        if !psionic_number(next) { return PsionicTraining.{status = PsionicStatus.update}; }
+        weight = next;
+        stats = psionic_moments(xs, ys, weight);
+        scratch[step + 1] = stats.loss;
+    }
+    for i: 0..<steps + 1 { trace[i] = scratch[i]; }
+    return PsionicTraining.{status = PsionicStatus.ok, weight = weight, loss = stats.loss, written = steps + 1};
+}
+// book:end trainer
+psionic_predict :: (weight: f32, x: f32) -> PsionicPrediction #export_c {
+    if !psionic_number(weight) || !psionic_number(x) {
+        return PsionicPrediction.{status = PsionicStatus.number};
+    }
+    return PsionicPrediction.{status = PsionicStatus.ok, value = weight * x};
+}

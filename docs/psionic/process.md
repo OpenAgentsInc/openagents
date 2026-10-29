@@ -1,8 +1,9 @@
 # Development process
 
-Status: proposed workflow for implementation. This documentation change adds
-no executable Psionic runner. Commands containing `psionic/` below describe
-the future first milestone and must not be reported as having passed today.
+Status: M0 implements this workflow through [psionic/check.sh](../../psionic/check.sh).
+The runner checks the shared library, two examples, native boundaries, and
+source-linked book listings. Later target and performance work below remains
+proposed until its workload and evidence exist.
 
 ## The unit of progress
 
@@ -59,8 +60,8 @@ the native host to bypass a compiler limitation.
 
 ## A small local verification entry point
 
-Create a `psionic/check.sh` or equivalent entry point with M0. Keep its
-manifest explicit: every runnable example has a source path, supported build
+M0's `psionic/check.sh` uses an explicit [example manifest](../../psionic/book/examples.json):
+every runnable example has a source path, supported build
 modes, required tools, expected exit status, and comparison method. Every
 chapter says `planned`, `partial`, or `runnable` for its own contents;
 execution support is recorded separately by backend and profile.
@@ -72,8 +73,8 @@ teaching output and explicit expected statuses for deliberate failures.
 Use typed numeric fixtures and tolerance-aware comparisons for floating-point
 results; never normalize away unexpected failures or non-finite outputs.
 
-The future runner should combine these kinds of checks, with targeted
-selection for the changed chapter or library module:
+The M0 runner combines these kinds of checks. As the book grows, add
+targeted selection for the changed chapter or library module:
 
 ```text
 coax check/test        syntax, finite behavioral expectations, source graph
@@ -140,7 +141,7 @@ Before a chapter is called complete, list what ran and what did not. Put
 required owner taps, credentials, paid compute, device checks, or sign-offs
 in the workspace's `NEEDS_OWNER.md` with a concrete action and acceptance
 condition. Work that is entirely local and credential-free should continue
-without an owner dependency. This planning change needs no owner action.
+without an owner dependency. M0 needs no owner action.
 
 Integrate with the app, voice engine, or a future provider only through a
 real consumer's explicit boundary. Introduce cross-surface contracts in root
