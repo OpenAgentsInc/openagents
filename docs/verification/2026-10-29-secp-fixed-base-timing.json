@@ -1,0 +1,241 @@
+{
+  "artifact_bytes": 36602283,
+  "build_inputs": {
+    "native_flags": [
+      "-std=c11",
+      "-O2"
+    ],
+    "release": true,
+    "run_steps": 250000000
+  },
+  "compiler": "coax0 0.18.0",
+  "compiler_sha256": "4942904896b469e77840506319d5f1d09b5a35016a5c63f66fac6a022d0cbde0",
+  "generated_c_sha256": "62e7025224bbe9f12a30046e37e0fdb04df2e5825f526dbec0266a56bd5432a8",
+  "object_sha256": "479ee970ef1587b08b41c110320791668899131eb3988cc0d0d2bd442123c837",
+  "raw_retention": "CT01 raw rows and exact native object in ignored output directory; hashes retained here",
+  "runs": [
+    {
+      "coax": {
+        "acquisition_ns": 246117708375,
+        "clock_resolution_ns": 42,
+        "degenerate": false,
+        "fixture": 0,
+        "mean0": 246146.76923199673,
+        "mean1": 246045.243206003,
+        "minimum_clock_pair_ns": 0,
+        "n0": 500000,
+        "n1": 500000,
+        "raw_bytes": 9000012,
+        "status": 2,
+        "t": 0.6782043520724597,
+        "variance0": 8703209832.252266,
+        "variance1": 2501577905.9452233,
+        "warmup": 20000
+      },
+      "fixture": "web",
+      "independent": {
+        "degenerate": false,
+        "mean0": 246146.769232,
+        "mean1": 246045.243206,
+        "n0": 500000,
+        "n1": 500000,
+        "noise": [
+          {
+            "maximum_ns": 44518334,
+            "median_ns": 241166,
+            "minimum_ns": 207083,
+            "p99_ns": 333708,
+            "zero_ticks": 0
+          },
+          {
+            "maximum_ns": 16920416,
+            "median_ns": 241167,
+            "minimum_ns": 207042,
+            "p99_ns": 335292,
+            "zero_ticks": 0
+          }
+        ],
+        "status": 2,
+        "t": 0.6782043521142606,
+        "variance0": 8703209832.252216,
+        "variance1": 2501577905.945233
+      },
+      "raw_file": "web.bin",
+      "raw_sha256": "1f31ee58bab2dedf250c99694727083ed9eea6d9748882eac4455bd4b96fec58"
+    },
+    {
+      "coax": {
+        "acquisition_ns": 217000579709,
+        "clock_resolution_ns": 42,
+        "degenerate": false,
+        "fixture": 1,
+        "mean0": 216991.44827800413,
+        "mean1": 216967.31880200008,
+        "minimum_clock_pair_ns": 0,
+        "n0": 500000,
+        "n1": 500000,
+        "raw_bytes": 9000012,
+        "status": 2,
+        "t": 0.44316637597859965,
+        "variance0": 728056316.034256,
+        "variance1": 754230281.7331028,
+        "warmup": 20000
+      },
+      "fixture": "native",
+      "independent": {
+        "degenerate": false,
+        "mean0": 216991.448278,
+        "mean1": 216967.318802,
+        "n0": 500000,
+        "n1": 500000,
+        "noise": [
+          {
+            "maximum_ns": 5242959,
+            "median_ns": 208292,
+            "minimum_ns": 184208,
+            "p99_ns": 310500,
+            "zero_ticks": 0
+          },
+          {
+            "maximum_ns": 7441584,
+            "median_ns": 208167,
+            "minimum_ns": 184167,
+            "p99_ns": 310750,
+            "zero_ticks": 0
+          }
+        ],
+        "status": 2,
+        "t": 0.44316637590429914,
+        "variance0": 728056316.0342649,
+        "variance1": 754230281.7331027
+      },
+      "raw_file": "native.bin",
+      "raw_sha256": "9e0e0caf48d90ef35098e9e59a4588a137f5c2312195a783cb4fcef737407327"
+    },
+    {
+      "coax": {
+        "acquisition_ns": 31028833,
+        "clock_resolution_ns": 42,
+        "degenerate": false,
+        "fixture": 2,
+        "mean0": 15.316879999999971,
+        "mean1": 15.505072000000222,
+        "minimum_clock_pair_ns": 0,
+        "n0": 500000,
+        "n1": 500000,
+        "raw_bytes": 9000012,
+        "status": 2,
+        "t": -1.0663765299125234,
+        "variance0": 7547.214633495038,
+        "variance1": 8025.028064330824,
+        "warmup": 20000
+      },
+      "fixture": "fixed-control",
+      "independent": {
+        "degenerate": false,
+        "mean0": 15.31688,
+        "mean1": 15.505072,
+        "n0": 500000,
+        "n1": 500000,
+        "noise": [
+          {
+            "maximum_ns": 29791,
+            "median_ns": 0,
+            "minimum_ns": 0,
+            "p99_ns": 42,
+            "zero_ticks": 322596
+          },
+          {
+            "maximum_ns": 25042,
+            "median_ns": 0,
+            "minimum_ns": 0,
+            "p99_ns": 42,
+            "zero_ticks": 322341
+          }
+        ],
+        "status": 2,
+        "t": -1.0663765299111059,
+        "variance0": 7547.2146334948675,
+        "variance1": 8025.028064330945
+      },
+      "raw_file": "fixed-control.bin",
+      "raw_sha256": "927f8486835c248fbc3c5e0af26e53d02fcdc51b77867b58ee79385a798aed8b"
+    },
+    {
+      "coax": {
+        "acquisition_ns": 97221125,
+        "clock_resolution_ns": 42,
+        "degenerate": false,
+        "fixture": 3,
+        "mean0": 14.05717599999988,
+        "mean1": 149.23033600000088,
+        "minimum_clock_pair_ns": 0,
+        "n0": 500000,
+        "n1": 500000,
+        "raw_bytes": 9000012,
+        "status": 1,
+        "t": -345.4044462856482,
+        "variance0": 6891.631298167743,
+        "variance1": 69684.79416691636,
+        "warmup": 20000
+      },
+      "fixture": "branch-control",
+      "independent": {
+        "degenerate": false,
+        "mean0": 14.057176,
+        "mean1": 149.230336,
+        "n0": 500000,
+        "n1": 500000,
+        "noise": [
+          {
+            "maximum_ns": 30958,
+            "median_ns": 0,
+            "minimum_ns": 0,
+            "p99_ns": 42,
+            "zero_ticks": 337655
+          },
+          {
+            "maximum_ns": 54625,
+            "median_ns": 84,
+            "minimum_ns": 0,
+            "p99_ns": 292,
+            "zero_ticks": 168843
+          }
+        ],
+        "status": 1,
+        "t": -345.40444628564796,
+        "variance0": 6891.631298167621,
+        "variance1": 69684.79416691544
+      },
+      "raw_file": "branch-control.bin",
+      "raw_sha256": "7521c159d0674320819d4112f8b147bdd1ae02b69238ea41c5be870460dfac45"
+    }
+  ],
+  "samples_per_fixture": 1000000,
+  "schema": "coax.secp-fixed-base-timing.v1",
+  "scope": "first-order Welch observations of public fixed-zero versus seeded256-bit inputs on this named native target only; no source guard, object/JIT, independent audit, erasure or production-secret admission",
+  "seed": 20261029,
+  "sources": {
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+    "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+    "coax/lib/crypto/secp_mult_base.coax": "a82d9737aee8f0c45d6827880042e9b9ad22cd18bedde1ed6dad7b956fc1fe71",
+    "coax/lib/crypto/secp_mult_base_native.coax": "29ce049e0f5d92e46daf0c135fe29c61938d42cf4bcc4355354e2bce095867ce",
+    "coax/lib/crypto/secp_mult_base_web.coax": "72926e575923f4452d2f1257de994a3dde66f69d5b9f1cdb8c2a0811650a15af",
+    "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+    "coax/tests/nostr/secp_base_timing.c": "3c3a21b2acfb26a49bd0fbae929ffcf12dbec2a85d395adeaeb03055dcde93a1",
+    "coax/tests/nostr/secp_base_timing.coax": "1bfd9231d9d3853e3e0526e8bc9280e92f36d3635dc73c819f3859c60ab594af",
+    "coax/tests/nostr/secp_base_timing.py": "da73e8b9f62a61012ed06d3e85fdb72e804523da6f2bf696857da203b0fa683e",
+    "tools/coax-nostr/timing/fixtures.coax": "499667507b2faa5a24812b4b8decf210bb64329822fbb7d0d4fc926ebb79640f",
+    "tools/coax-nostr/timing/model.coax": "f9ee68c4e90d6db9f71569c79058eb60d7c1ce52271204785c1ef623ecfe95e3",
+    "tools/coax-nostr/timing/run.py": "1afcb114fe00f414670c08697d97f87b110736c24458ccd235c0a879a8a164cc"
+  },
+  "target": {
+    "architecture": "arm64",
+    "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+    "cpu": "Apple M5 Max",
+    "environment": "normal shared developer machine; no affinity/governor/process changes",
+    "os": "Darwin 25.4.0"
+  },
+  "threshold_abs_t": 10
+}

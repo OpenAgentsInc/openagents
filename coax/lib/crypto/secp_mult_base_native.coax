@@ -4,6 +4,9 @@
 #assert 8*32 == 256;
 #assert 256*size_of(SgPoint) <= 65536;
 #authority;
+#test "native comb profile remains eight teeth at spacing32" {
+  #assert smb_native_width() == 8 && smb_native_spacing() == 32;
+}
 #test "native table storage adapter preserves the active prefix" {
   table := smb_native_table(2,1);
   #assert sg_equal_mask(table[0],sg_infinity()) == CB_MAX64;
@@ -21,7 +24,9 @@ smb_native_table :: (width: int,spacing: int) -> [256] SgPoint {
   return table;
 }
 SMB_NATIVE_TABLE :: #run smb_native_table(8,32);
+smb_native_width :: () -> int { return 8; }
+smb_native_spacing :: () -> int { return 32; }
 smb_multiply_native :: (scalar: ScScalar) -> SgPoint #export_c {
   table := SMB_NATIVE_TABLE;
-  return smb_comb(scalar,table[..],8,32);
+  return smb_comb(scalar,table[..],smb_native_width(),smb_native_spacing());
 }

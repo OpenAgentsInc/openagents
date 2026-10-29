@@ -5,6 +5,9 @@
 #assert 7*37 >= 256 && 7*37 <= 288;
 #assert 128*size_of(SgPoint) <= 32768;
 #authority;
+#test "web comb profile remains seven teeth at spacing37" {
+  #assert smb_web_width() == 7 && smb_web_spacing() == 37;
+}
 #test "web table storage adapter preserves the active prefix" {
   table := smb_web_table(2,1);
   #assert sg_equal_mask(table[0],sg_infinity()) == CB_MAX64;
@@ -24,9 +27,11 @@ smb_web_table :: (width: int,spacing: int) -> [128] SgPoint {
   return table;
 }
 SMB_WEB_TABLE :: #run smb_web_table(7,37);
+smb_web_width :: () -> int { return 7; }
+smb_web_spacing :: () -> int { return 37; }
 smb_multiply_web :: (scalar: ScScalar) -> SgPoint #export_c {
   // Current mutable-view ABI requires a local copy of the immutable table.
   // This scratch copy contains public points and is part of the stack budget.
   table := SMB_WEB_TABLE;
-  return smb_comb(scalar,table[..],7,37);
+  return smb_comb(scalar,table[..],smb_web_width(),smb_web_spacing());
 }
