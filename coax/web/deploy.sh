@@ -81,11 +81,11 @@ for f in pages:
     # the bucket can't map to index.html on its own; upload.py serves it as HTML.
     if os.path.basename(f) == "index.html" and os.path.dirname(f):
         shutil.copy(os.path.join(site, f), os.path.join(site, os.path.dirname(f) + ".page"))
-# well-known/X.json is served at /.well-known/X as JSON (upload.py's .wellknown): the phone
-# app's universal links (docs/phone-sign-in.md) and nostr.json (NIP-05); other files keep their name.
+# well-known/apple-app-site-association.json is served without its extension, as JSON (upload.py's
+# .wellknown): the phone app's universal links (docs/phone-sign-in.md). Others keep their name (nostr.json, NIP-05).
 for f in sorted(os.listdir(os.path.join(app, "well-known"))) if os.path.isdir(os.path.join(app, "well-known")) else []:
     os.makedirs(os.path.join(site, ".well-known"), exist_ok=True)
-    shutil.copy(os.path.join(app, "well-known", f), os.path.join(site, ".well-known", f[:-5] + ".wellknown" if f.endswith(".json") else f))
+    shutil.copy(os.path.join(app, "well-known", f), os.path.join(site, ".well-known", f[:-5] + ".wellknown" if f == "apple-app-site-association.json" else f))
 # For agents: llms-full.txt is every public page's Markdown twin in one file, and sitemap.xml lists those pages.
 public = sorted(f for f in pages if f.endswith("index.md") and not f.startswith(("admin", "chat", "login", "projects" + os.sep + "private")))
 def url(f): return "https://openagents.com/" + os.path.dirname(f).replace(os.sep, "/")
