@@ -152,6 +152,10 @@ if not coder:
 check(s1 == 200 and b'data-app="private"' in b1 and b'data-page="2"' in b1, f"/signin is the sign-in page ({s1})")
 check(s2 == 200 and "json" in h2.get("content-type", "") and b"HQWSG26L43.com.openagents.app" in b2, f"the app's universal links are served as JSON ({s2}, {h2.get('content-type')})")
 check(s3 == 401 and "no-store" in h3.get("cache-control", ""), f"/api/auth/me signed out is 401 ({s3})")
+# /chat (docs/chat.md): the page, and its API refuses anyone signed out like the dashboard's.
+(s1, h1, b1), (s2, h2, b2) = fetch(["/chat", "/api/chat/state"])
+check(s1 == 200 and b'data-app="chat"' in b1, f"/chat is the chat page ({s1})")
+check(s2 == 401, f"/api/chat/state signed out is 401 ({s2})")
 print(f"smoke {base}{' via ' + via if via else ''}: " + ("passed" if not failed else f"{len(failed)} failed"))
 sys.exit(1 if failed else 0)
 PY
