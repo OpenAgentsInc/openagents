@@ -1,5 +1,118 @@
 # Coax Nostr epic: handoff
 
+## Stop handoff — 2026-10-29
+
+The owner asked for a stopping point and handoff. The previous execution
+update below is historical: the Nostr workers have stopped and released their
+claims. Use the live Nostr queue before taking work; it contains reopened tasks
+and signed notes that supersede older completion claims. Do not add sats.
+The phone sign-in worker owns iOS key custody, the oa-api sign-in challenge and
+phone-link endpoints, `/signin`, and its TestFlight build. Do not take those.
+The QR dependency #503d is on main (`78e2095bc1`); the phone fast path and the
+full NIP-46 work remain distinct.
+
+### Active validator issue #161a
+
+#161a remains claimed while the final full-reference event mutation gate is
+running. Do not mark it done until this gate, independent review and the other
+acceptance requirements have passed on the recorded inputs. The project
+publisher and final completion release must follow the normal queue process.
+
+The changed runtime rejects negative internal depth (`7ed6d17885`), and the
+generator removes only a per-message limit redundant with the shared 1 MiB
+cap (`8179746a5d`). The latter's Python-free bootstrap checks and fingerprints
+cap parity, and its scope, independent review and tests are documented in
+`docs/verification/2026-10-29-proto-generated-validator-review.md`. The full
+final FI reference run killed 3,162/3,162 mutants; final event/FI fixtures passed
+checked/release native, Wasm, ASan/UBSan and iOS Simulator, including protoc and
+independent signature controls. Projections compare borrowed original bytes and
+do not prove signatures, membership, identity, freshness or authorization.
+They require live, stable, physically valid borrowed storage. The event adapter
+has narrower JSON/tag limits than the generic descriptor; the FI adapter has
+narrower header, payload and audience limits. Nostr kind 0..65535 is enforced
+by the original event parser in this adapter, not by the generic uint32 DTO.
+
+Uncommitted projection sources and reproducible test fixtures are in
+`/tmp/codex-event-final` (base `8179746a5d`) and in the verified local archive
+`/Users/christopherdavid/.codex/handoffs/nostr-validator-161a-20261029/projections.tar.gz`
+(SHA-256 `08d3014cd9e6f0b283c5fc3fdc9f7ae39e4d10a766f7f1439c429daebd39e84b`).
+The adjacent README and manifest include recovery instructions and per-file
+hashes; this is not a remote backup. Key source/compiler hashes are
+`/tmp/coax-event-final-key-hashes.txt` and `/tmp/coax-fi-final-key-hashes.txt`.
+Logs: `/tmp/coax-event-final-reference.log`, `/tmp/coax-fi-final-reference.log`,
+`/tmp/coax-event-final-interop.log` and `/tmp/coax-fi-final-interop.log`. The
+first event run failed with 130 survivors in
+`/tmp/coax-required-policy-event-full-mutation.log`; do not present it as a
+pass. #ef04 tracks versioned numeric-range semantics; #5869 tracks ordinal
+error precedence (`LIMIT | WIRE` can be misreported as `DUPLICATE`). Both are
+separate from signature or authorization and remain open.
+
+### Store and project page
+
+Single-event public verified ingress is on main (`3a038c87ca`), and the scoped
+one-representation dedup policy is on main (`162749d294`). Neither is a full
+store. #8eb5 remains open and depends on #f539 verified-ID dedup and #966b
+trusted recovery. Two simultaneous real verifications exceeded the unchanged
+20M evaluator budget; never replace verification with a caller-supplied flag.
+Restore remains unavailable without a validated real rollback-resistant
+checkpoint and a cross-process publication fence. The unconnected recovery
+model is on main (`c1fe34e160`), not a real provider.
+
+#8eb5's original reindex mutation run failed 3,945/3,947; corrected test-only
+work has not passed a full rerun. Four other long gates were stopped on the
+owner's request, without results. The incomplete source/evidence is preserved
+in `/Users/christopherdavid/.codex/handoffs/nostr-store-8eb5-20261029-chwcgz2b/`
+(`nostr-store-8eb5.tar.gz` SHA-256
+`1fa1d74bee160bd3c9b27d09d243ef7cb5d91ffa7d8d2753a520f74384ae4aa8`);
+the adjacent README/manifest give recovery and per-file hashes. Do not assume
+the archive is merged, tested as a complete store, or remotely backed up.
+
+#0845 remains open: the project runner has a local WIP checkpoint
+`3d66c2c0dcd1de22a35e6cb3b5ac9bd1653aac90` and durable local bundle, source,
+logs and recovery instructions under
+`/Users/christopherdavid/.codex/handoffs/nostr-runner-0845-20261029`.
+Its handoff is `docs/handoffs/2026-10-29-project-runner-0845.md` in the
+preserved runner worktree. The original-order v3 mutation run was stopped at
+7,151/7,513 with 1,228 survivors; v6 was stopped at 125/7,691 with one
+survivor. V6's 209 checks and raw Fold native/Wasm matrix passed, but the
+real-worker overlay matrix had a harness error and its saved fix was not
+retested. Unicode formatting, slug validation, missing foreign roots and
+independent root caps have isolated fixes; do not claim they are shipped or
+mutation-qualified.
+
+### Audit and releases
+
+The secret-auditor's checked-cast and checked-arithmetic false acceptances
+were repaired conservatively on main (`582948bdac`, `c1d2f01448`) and their
+reference mutation evidence recorded (`124bf63997`, `2acd95f5a2`). Old
+aggregate and scalar secret-source acceptances remain suspended; affected
+tasks were reopened. The experimental signer uses a variable-time verifier on
+secret-derived candidate data before an independently justified publication
+boundary; #89db tracks that separate issue. No signer approval, key recovery,
+target timing or production-secret conclusion is established.
+
+An automatic cybersecurity review stopped the signer source-model investigation
+as a potential cybersecurity risk. #4828 was noted and released; do not treat
+that investigation as complete or bypass the restriction.
+
+The normal release queue was stopped after its in-flight release completed:
+`af1e47acdf` passed staging and production, log
+`/tmp/coax-held-51f4-claim-release.log`. `91aa0186d8` gates the Haunted House
+walk on a completed nonempty scene frame, and `238f697bec` updates the galaxy
+reference for the intentionally removed Coding tag; the earlier intermittent
+0.3%-lit production frame was not reproduced or proven. Both previous failures
+rolled back or stopped at staging, and thresholds were not loosened. No release
+process from this queue remains running. The remaining held claim/done release
+labels are in `/tmp/codex-nostr-release-queue.sh` after `51f4-claim`, with
+additional `966b-claim` and `f539-claim` in
+`/tmp/codex-nostr-extra-releases.txt`. Those are obligations, not completed
+releases. At this host each full release took about 15 minutes, not 15 seconds.
+Before resuming, verify the current main's compiler provenance; release one at
+a time and stop on the first failure. Never rerun unrelated code checks merely
+because another main commit arrived.
+
+
+
 On 2026-10-28 the owner moved the whole Coax Nostr epic (the `nostr`
 initiative on https://openagents.com/projects/coax) to the Codex chat that
 reviewed it (`codex://threads/01a1841b-45df-7ab0-ba74-2b5b3fc3d900`). That
@@ -7,7 +120,7 @@ chat owns the plan, the work file and the queue order from here. The Claude
 queue worker has stopped. The live-page worker (`claude-live-1`) finishes
 #c29a and then stops.
 
-## Current execution update
+## Historical execution update
 
 `codex-nostr` owns the taskmaster and root worker loop. Other active workers are
 `codex-nostr-codecs`, `codex-nostr-profiles` and `codex-nostr-vectors`; use the live
