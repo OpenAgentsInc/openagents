@@ -1,0 +1,688 @@
+// One edit layer every realm loads (byo-every-realm; docs/verse/realm-edit.md): the board of what
+// is in the realm, the settings (the tools visitors get) and the cards for what visitors propose,
+// lifted out of Build your own realm (apps/openagents-web/builder.coax, myrealm.coax) so a hand-built
+// realm and a made one edit the same way.
+//
+// The server decides everything (coax/web/api/migrations/0049_realm_edit.sql): GET
+// /api/playtest/realms/<slug> says the viewer's role, the board's rows and the tools the realm's code
+// honours. An owner or an admin gets EDIT; it opens one pane at a time (the panes rule,
+// verse/fairy-forest/README.md): THE BOARD (each row a checkbox; a tap switches it for everyone,
+// talking or typing revises the board through the model), SETTINGS (what visitors get) and the
+// cards waiting (ACCEPT or DECLINE). A visitor gets nothing from here but the realm's own tools.
+//
+// A realm keeps one RealmEdit in its state and wires a few hooks (redit_message, redit_key,
+// redit_pointer, redit_step, redit_hud, redit_take_action; apps/openagents-web/edit-face.h sends its
+// one request). It reads redit_row_on to switch its features, redit_tool for a visitor's tool, and
+// redit_changed when the server's answer changed the realm. Drawing uses font.coax (draw_text,
+// measure, Ink) and the realm's own `lit`; plates are left in plate_box for the realm's `plate`.
+// HTTP flags and fact_of are analytics.coax's.
+//   coax/bin/coax test verse/edit/edit_test.coax
+
+REDIT_ROWS :: 16; REDIT_KEY :: 32; REDIT_LABEL :: 48;
+REDIT_TOOLS :: 6; REDIT_CARDS :: 8; REDIT_WHO :: 16; REDIT_THING :: 16;
+REDIT_PLACED :: 64; REDIT_PLATES :: 8;
+REDIT_SLUG :: 64; REDIT_URL :: 200; REDIT_BODY :: 720; REDIT_TYPED :: 200; REDIT_NOTE :: 100; REDIT_OUT :: 32;
+REDIT_UNKNOWN :: 0; REDIT_VISITOR :: 1; REDIT_ADMIN :: 2; REDIT_OWNER :: 3;
+REDIT_SHUT :: 0; REDIT_BOARD :: 1; REDIT_SETTINGS :: 2; REDIT_CARDS_PANE :: 3;
+REQ_E_NONE :: 0; REQ_E_SPEC :: 1; REQ_E_SWITCH :: 2; REQ_E_SETTINGS :: 3; REQ_E_CARDS :: 4; REQ_E_DECIDE :: 5; REQ_E_REVISE :: 6; REQ_E_PLACE :: 7;
+// buttons: EDIT, the three tabs, TALK, TYPE IT, ACCEPT, DECLINE
+RB_EDIT :: 0; RB_TAB :: 1; RB_TALK :: 4; RB_TYPE :: 5; RB_ACCEPT :: 6; RB_DECLINE :: 7; RB_N :: 8;
+REDIT_MSG_TEXT :: 1; REDIT_MSG_VOICE :: 50; REDIT_FACTS :: 600;
+REDIT_ACT_VOICE :: 7; REDIT_ACT_VOICE_TO :: 8;
+REDIT_FACING :: "Realm editor";   // whom the voice host leaves our turns to: this layer answers
+REDIT_KEY_ESCAPE :: -1; REDIT_KEY_ENTER :: -2; REDIT_KEY_BACKSPACE :: -3;
+REDIT_TOOL_NAMES :: [REDIT_TOOLS] string.["build", "fly", "jump", "map", "talk", "voice"];
+REDIT_TOOL_WORDS :: [REDIT_TOOLS] string.["BUILD (WHAT THEY PLACE COMES TO YOU)", "FLY", "JUMP", "A MAP", "TALK TO CHARACTERS", "VOICE"];
+
+RBox :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+
+RealmEdit :: struct {
+  slug: [REDIT_SLUG] u8; slug_n: int;
+  ready: bool; failed: bool; changed: bool; version: int;
+  role: int; waiting: int;
+  tool_has: [REDIT_TOOLS] bool; tool_on: [REDIT_TOOLS] bool;
+  row_n: int; row_key: [REDIT_ROWS * REDIT_KEY] u8; row_key_n: [REDIT_ROWS] int;
+  row_label: [REDIT_ROWS * REDIT_LABEL] u8; row_label_n: [REDIT_ROWS] int; row_on: [REDIT_ROWS] bool;
+  placed_n: int; placed_thing: [REDIT_PLACED * REDIT_THING] u8; placed_thing_n: [REDIT_PLACED] int;
+  placed_x: [REDIT_PLACED] f32; placed_z: [REDIT_PLACED] f32; placed_yaw: [REDIT_PLACED] f32;
+  card_n: int; card_id: [REDIT_CARDS] int; card_who: [REDIT_CARDS * REDIT_WHO] u8; card_who_n: [REDIT_CARDS] int;
+  card_thing: [REDIT_CARDS * REDIT_THING] u8; card_thing_n: [REDIT_CARDS] int;
+  card_x: [REDIT_CARDS] f32; card_z: [REDIT_CARDS] f32; card_before: [REDIT_CARDS] int; card_after: [REDIT_CARDS] int;
+  // the screen
+  pane: int; time: f32; width: f32; height: f32; dpr: f32;
+  boxes: [RB_N] RBox; shown: [RB_N] bool; rows: [REDIT_ROWS] RBox; row_shown: [REDIT_ROWS] bool;
+  press: int; row_press: int; finger: int;
+  plate_n: int; plate_box: [REDIT_PLATES] RBox; plate_alpha: [REDIT_PLATES] f32; plate_look: [REDIT_PLATES] f32;
+  note: [REDIT_NOTE] u8; note_n: int; note_at: f32;
+  // talking and typing
+  voice: bool; held: bool; heard_due: bool; typing: bool; typed: [REDIT_TYPED] u8; typed_n: int;
+  caption: [REDIT_TYPED] u8; caption_n: int; faced: bool; want_voice: int;
+  // the one request in flight, and what to send next
+  req_url: [REDIT_URL] u8; req_url_n: int; req_body: [REDIT_BODY] u8; req_body_n: int; req_flags: int;
+  req_ready: bool; req_id: int; req_what: int; req_at: f32;
+  spec_due: bool; asked: bool; settings_due: bool; cards_due: bool;
+  switch_row: int; switch_on: bool; decide_due: int; revise: [REDIT_TYPED] u8; revise_n: int;
+  place_thing: [REDIT_THING] u8; place_thing_n: int; place_x: f32; place_z: f32; place_yaw: f32;
+  out: [REDIT_OUT] u8; out_n: int;
+}
+
+// ---- small helpers of its own (a realm's names stay its own)
+
+redit_lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+redit_hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+redit_least :: (a: int, b: int) -> int { if a < b { return a; } return b; }
+redit_put :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count { if n >= buf.count { return n; } buf[n] = text[i]; n += 1; }
+  return n;
+}
+redit_put_int :: (buf: [] u8, at: int, v: int) -> int {
+  if v < 0 { return redit_put_int(buf, redit_put(buf, at, "-"), -v); }
+  digits: [12] u8; k := 0; x := v;
+  while k == 0 || (x > 0 && k < 12) { digits[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  n := at;
+  while k > 0 && n < buf.count { k -= 1; buf[n] = digits[k]; n += 1; }
+  return n;
+}
+// a number with two decimals: -3.25
+redit_put_cm :: (buf: [] u8, at: int, v: f32) -> int {
+  n := at;
+  if v < 0 { n = redit_put(buf, n, "-"); }
+  c := cast(int) (redit_hi(v, -v) * 100 + 0.5);
+  n = redit_put_int(buf, n, c / 100);
+  n = redit_put(buf, n, ".");
+  if c % 100 < 10 { n = redit_put(buf, n, "0"); }
+  return redit_put_int(buf, n, c % 100);
+}
+redit_copy :: (buf: [] u8, text: string) -> int { n := redit_least(text.count, buf.count); for i: 0..<n { buf[i] = text[i]; } return n; }
+redit_line_end :: (text: string, from: int) -> int { e := from; while e < text.count && text[e] != '\n' { e += 1; } return e; }
+redit_word :: (line: string, k: int) -> string {
+  i := 0; w := 0;
+  while i < line.count {
+    while i < line.count && line[i] == ' ' { i += 1; }
+    e := i; while e < line.count && line[e] != ' ' { e += 1; }
+    if w == k { return line[i..<e]; }
+    w += 1; i = e;
+  }
+  return "";
+}
+// the rest of a line after word k
+redit_rest :: (line: string, k: int) -> string {
+  i := 0; w := 0;
+  while i < line.count && w < k {
+    while i < line.count && line[i] == ' ' { i += 1; }
+    while i < line.count && line[i] != ' ' { i += 1; }
+    w += 1;
+  }
+  while i < line.count && line[i] == ' ' { i += 1; }
+  return line[i..<line.count];
+}
+redit_int :: (w: string) -> int {
+  i := 0; neg := false; v := 0; digits := 0;
+  if i < w.count && w[i] == '-' { neg = true; i += 1; }
+  while i < w.count && w[i] >= '0' && w[i] <= '9' && digits < 9 { v = v * 10 + cast(int) (w[i] - '0'); i += 1; digits += 1; }
+  if digits == 0 { return -1; }
+  return ifx neg then -v else v;
+}
+redit_number :: (w: string) -> f32 {
+  i := 0; neg := false; v := 0.0f32; p_scale := 0.0f32;
+  if i < w.count && w[i] == '-' { neg = true; i += 1; }
+  while i < w.count {
+    c := w[i];
+    if c == '.' && p_scale == 0 { p_scale = 1; i += 1; continue; }
+    if c < '0' || c > '9' { break; }
+    if p_scale > 0 { p_scale = p_scale / 10; v += p_scale * cast(f32) (c - '0'); } else { v = v * 10 + cast(f32) (c - '0'); }
+    i += 1;
+  }
+  return ifx neg then -v else v;
+}
+redit_slug_ok :: (text: string) -> bool {
+  if text.count == 0 || text.count > 48 { return false; }
+  for i: 0..<text.count { c := text[i]; if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+redit_upper :: (buf: [] u8, n: int) { for i: 0..<n { if buf[i] >= 'a' && buf[i] <= 'z' { buf[i] -= 32; } } }
+
+// ---- what a realm reads
+
+redit_may :: (e: [] RealmEdit) -> bool { return e[0].role >= REDIT_ADMIN; }
+redit_key_of :: (e: [] RealmEdit, i: int) -> string { return cast(string) e[0].row_key[i * REDIT_KEY..<i * REDIT_KEY + e[0].row_key_n[i]]; }
+redit_label_of :: (e: [] RealmEdit, i: int) -> string { return cast(string) e[0].row_label[i * REDIT_LABEL..<i * REDIT_LABEL + e[0].row_label_n[i]]; }
+redit_row :: (e: [] RealmEdit, key: string) -> int { for i: 0..<e[0].row_n { if redit_key_of(e, i) == key { return i; } } return -1; }
+// Is a feature on: true until the server says it is off.
+redit_row_on :: (e: [] RealmEdit, key: string) -> bool { i := redit_row(e, key); return i < 0 || e[0].row_on[i]; }
+redit_tool_of :: (name: string) -> int { for i: 0..<REDIT_TOOLS { if REDIT_TOOL_NAMES[i] == name { return i; } } return -1; }
+// May whoever is here use a tool: an owner or admin always; a visitor while it is on.
+redit_tool :: (e: [] RealmEdit, name: string) -> bool {
+  t := redit_tool_of(name);
+  if t < 0 { return false; }
+  if redit_may(e) { return true; }
+  return !e[0].tool_has[t] || e[0].tool_on[t];
+}
+redit_placed_thing :: (e: [] RealmEdit, i: int) -> string { return cast(string) e[0].placed_thing[i * REDIT_THING..<i * REDIT_THING + e[0].placed_thing_n[i]]; }
+// The server changed the realm since the last time a realm asked: switch its features again.
+redit_changed :: (e: [] RealmEdit) -> bool { c := e[0].changed; e[0].changed = false; return c; }
+redit_typing :: (e: [] RealmEdit) -> bool { return e[0].typing; }
+redit_open :: (e: [] RealmEdit) -> bool { return e[0].pane != REDIT_SHUT; }
+
+redit_note :: (e: [] RealmEdit, text: string) { e[0].note_n = redit_copy(e[0].note[..], text); e[0].note_at = e[0].time; }
+
+// ---- starting
+
+redit_start :: (e: [] RealmEdit, slug: string) {
+  if !redit_slug_ok(slug) || cast(string) e[0].slug[0..<e[0].slug_n] == slug { return; }
+  e[0].slug_n = redit_copy(e[0].slug[..], slug);
+  e[0].req_id = -1; e[0].press = -1; e[0].row_press = -1; e[0].finger = -1; e[0].switch_row = -1; e[0].decide_due = 0;
+  e[0].spec_due = true;
+}
+
+// ---- the spec (verse.edit_spec), a line each
+
+redit_read :: (e: [] RealmEdit, text: string) -> bool {
+  got := false;
+  e[0].role = REDIT_VISITOR; e[0].waiting = 0; e[0].row_n = 0; e[0].placed_n = 0;
+  for i: 0..<REDIT_TOOLS { e[0].tool_has[i] = false; e[0].tool_on[i] = false; }
+  owner := false;
+  i := 0;
+  while i < text.count {
+    end := redit_line_end(text, i); line := text[i..<end]; i = end + 1;
+    head := redit_word(line, 0);
+    if head == "realm" { got = true; continue; }
+    if head == "owner" { owner = redit_word(line, 1) == "1"; continue; }
+    if head == "role" {
+      r := redit_word(line, 1);
+      e[0].role = ifx r == "owner" then REDIT_OWNER else ifx r == "admin" then REDIT_ADMIN else REDIT_VISITOR;
+      continue;
+    }
+    if head == "waiting" { e[0].waiting = redit_int(redit_word(line, 1)); if e[0].waiting < 0 { e[0].waiting = 0; } continue; }
+    if head == "tool" {
+      t := redit_tool_of(redit_word(line, 1));
+      if t >= 0 { e[0].tool_has[t] = true; e[0].tool_on[t] = redit_word(line, 2) == "1"; }
+      continue;
+    }
+    if head == "row" && e[0].row_n < REDIT_ROWS {
+      r := e[0].row_n;
+      e[0].row_key_n[r] = redit_copy(e[0].row_key[r * REDIT_KEY..<(r + 1) * REDIT_KEY], redit_word(line, 1));
+      e[0].row_on[r] = redit_word(line, 2) == "1";
+      e[0].row_label_n[r] = redit_copy(e[0].row_label[r * REDIT_LABEL..<(r + 1) * REDIT_LABEL], redit_rest(line, 3));
+      redit_upper(e[0].row_label[r * REDIT_LABEL..<(r + 1) * REDIT_LABEL], e[0].row_label_n[r]);
+      if e[0].row_key_n[r] > 0 { e[0].row_n = r + 1; }
+      continue;
+    }
+    if head == "placed" && e[0].placed_n < REDIT_PLACED {
+      p := e[0].placed_n;
+      e[0].placed_thing_n[p] = redit_copy(e[0].placed_thing[p * REDIT_THING..<(p + 1) * REDIT_THING], redit_word(line, 1));
+      e[0].placed_x[p] = redit_number(redit_word(line, 2)); e[0].placed_z[p] = redit_number(redit_word(line, 3));
+      e[0].placed_yaw[p] = redit_number(redit_word(line, 4));
+      e[0].placed_n = p + 1;
+    }
+  }
+  // a made realm's spec says owner 1 to its owner and admins before it says the role
+  if owner && e[0].role < REDIT_ADMIN { e[0].role = REDIT_ADMIN; }
+  if !redit_may(e) { e[0].pane = REDIT_SHUT; e[0].typing = false; }
+  return got;
+}
+
+// The board's rows after a revision ("plan ID" then "row ..." lines).
+redit_read_rows :: (e: [] RealmEdit, text: string) {
+  n := 0;
+  i := 0;
+  while i < text.count {
+    end := redit_line_end(text, i); line := text[i..<end]; i = end + 1;
+    if redit_word(line, 0) != "row" { continue; }
+    r := redit_row(e, redit_word(line, 1));
+    if r >= 0 { was := e[0].row_on[r]; e[0].row_on[r] = redit_word(line, 2) == "1"; if was != e[0].row_on[r] { n += 1; } }
+  }
+}
+
+// The cards: "P ID|WHO|THING|X|Z|YAW|BEFORE|AFTER".
+redit_read_cards :: (e: [] RealmEdit, p_body: string) {
+  e[0].card_n = 0;
+  i := 0;
+  while i < p_body.count && e[0].card_n < REDIT_CARDS {
+    end := redit_line_end(p_body, i); line := p_body[i..<end]; i = end + 1;
+    if line.count < 3 || line[0] != 'P' || line[1] != ' ' { continue; }
+    f: [8] string; k := 0; from := 2;
+    for j: 2..<line.count + 1 {
+      if j == line.count || line[j] == '|' { if k < 8 { f[k] = line[from..<j]; k += 1; } from = j + 1; }
+    }
+    if k < 8 { continue; }
+    c := e[0].card_n;
+    e[0].card_id[c] = redit_int(f[0]);
+    e[0].card_who_n[c] = redit_copy(e[0].card_who[c * REDIT_WHO..<(c + 1) * REDIT_WHO], f[1]);
+    e[0].card_thing_n[c] = redit_copy(e[0].card_thing[c * REDIT_THING..<(c + 1) * REDIT_THING], f[2]);
+    e[0].card_x[c] = redit_number(f[3]); e[0].card_z[c] = redit_number(f[4]);
+    e[0].card_before[c] = redit_int(f[6]); e[0].card_after[c] = redit_int(f[7]);
+    if e[0].card_id[c] > 0 { e[0].card_n = c + 1; }
+  }
+  e[0].waiting = e[0].card_n;
+}
+
+// ---- requests: one at a time (apps/openagents-web/edit-face.h sends it, then says its id)
+
+redit_busy :: (e: [] RealmEdit) -> bool { return e[0].req_ready || e[0].req_id >= 0; }
+redit_requested :: (e: [] RealmEdit, id: int) #export_c {
+  e[0].req_ready = false; e[0].req_id = id;
+  if id < 0 { if e[0].req_what == REQ_E_SPEC && !e[0].ready { e[0].failed = true; } e[0].req_what = REQ_E_NONE; }
+}
+redit_ask :: (e: [] RealmEdit, what: int, tail: string, body_n: int, p_post: bool) {
+  n := redit_put(e[0].req_url[..], 0, "/api/playtest/realms/");
+  n = redit_put(e[0].req_url[..], n, cast(string) e[0].slug[0..<e[0].slug_n]);
+  e[0].req_url_n = redit_put(e[0].req_url[..], n, tail);
+  e[0].req_body_n = body_n;
+  e[0].req_flags = (ifx p_post then HTTP_POST else 0) | HTTP_ANSWER | TRACK_KEY;
+  e[0].req_what = what; e[0].req_ready = true; e[0].req_at = e[0].time;
+}
+// A JSON string, its quotes and backslashes escaped, control bytes dropped.
+redit_quote :: (buf: [] u8, at: int, text: string) -> int {
+  n := redit_put(buf, at, "\"");
+  for i: 0..<text.count {
+    c := text[i];
+    if c < 32 { continue; }
+    if c == '"' || c == '\\' { n = redit_put(buf, n, "\\"); }
+    if n + 2 >= buf.count { break; }
+    buf[n] = c; n += 1;
+  }
+  return redit_put(buf, n, "\"");
+}
+redit_next :: (e: [] RealmEdit) {
+  if redit_busy(e) || e[0].slug_n == 0 { return; }
+  b := e[0].req_body[..];
+  if e[0].spec_due { e[0].spec_due = false; e[0].asked = true; redit_ask(e, REQ_E_SPEC, "", 0, false); return; }
+  if e[0].switch_row >= 0 {
+    r := e[0].switch_row; e[0].switch_row = -1;
+    n := redit_put(b, 0, "{\"row\":"); n = redit_quote(b, n, redit_key_of(e, r));
+    n = redit_put(b, n, ifx e[0].switch_on then ",\"on\":true}" else ",\"on\":false}");
+    redit_ask(e, REQ_E_SWITCH, "/switch", n, true);
+    return;
+  }
+  if e[0].settings_due {
+    e[0].settings_due = false;
+    n := redit_put(b, 0, "{\"tools\":{");
+    first := true;
+    for i: 0..<REDIT_TOOLS {
+      if !e[0].tool_has[i] { continue; }
+      if !first { n = redit_put(b, n, ","); }
+      first = false;
+      n = redit_quote(b, n, REDIT_TOOL_NAMES[i]); n = redit_put(b, n, ifx e[0].tool_on[i] then ":true" else ":false");
+    }
+    redit_ask(e, REQ_E_SETTINGS, "/settings", redit_put(b, n, "}}"), true);
+    return;
+  }
+  if e[0].revise_n > 0 {
+    n := redit_put(b, 0, "{\"prompt\":"); n = redit_quote(b, n, cast(string) e[0].revise[0..<e[0].revise_n]);
+    e[0].revise_n = 0;
+    redit_ask(e, REQ_E_REVISE, "/revise?as=lines", redit_put(b, n, "}"), true);
+    return;
+  }
+  if e[0].place_thing_n > 0 {
+    n := redit_put(b, 0, "{\"thing\":"); n = redit_quote(b, n, cast(string) e[0].place_thing[0..<e[0].place_thing_n]);
+    n = redit_put(b, n, ",\"x\":"); n = redit_put_cm(b, n, e[0].place_x);
+    n = redit_put(b, n, ",\"z\":"); n = redit_put_cm(b, n, e[0].place_z);
+    n = redit_put(b, n, ",\"yaw\":"); n = redit_put_cm(b, n, e[0].place_yaw);
+    e[0].place_thing_n = 0;
+    redit_ask(e, REQ_E_PLACE, "/place", redit_put(b, n, "}"), true);
+    return;
+  }
+  if e[0].decide_due != 0 && e[0].card_n > 0 {
+    accept := e[0].decide_due > 0; e[0].decide_due = 0;
+    tail: [48] u8;
+    n := redit_put(tail[..], 0, "/proposals/"); n = redit_put_int(tail[..], n, e[0].card_id[0]);
+    n = redit_put(tail[..], n, ifx accept then "/accept" else "/decline");
+    redit_ask(e, REQ_E_DECIDE, cast(string) tail[0..<n], 0, true);
+    redit_drop_card(e);
+    return;
+  }
+  if e[0].cards_due && redit_may(e) { e[0].cards_due = false; redit_ask(e, REQ_E_CARDS, "/proposals", 0, false); }
+}
+redit_drop_card :: (e: [] RealmEdit) {
+  for c: 0..<e[0].card_n - 1 {
+    d := c + 1;
+    e[0].card_id[c] = e[0].card_id[d]; e[0].card_x[c] = e[0].card_x[d]; e[0].card_z[c] = e[0].card_z[d];
+    e[0].card_before[c] = e[0].card_before[d]; e[0].card_after[c] = e[0].card_after[d];
+    e[0].card_who_n[c] = redit_copy(e[0].card_who[c * REDIT_WHO..<d * REDIT_WHO], cast(string) e[0].card_who[d * REDIT_WHO..<d * REDIT_WHO + e[0].card_who_n[d]]);
+    e[0].card_thing_n[c] = redit_copy(e[0].card_thing[c * REDIT_THING..<d * REDIT_THING], cast(string) e[0].card_thing[d * REDIT_THING..<d * REDIT_THING + e[0].card_thing_n[d]]);
+  }
+  if e[0].card_n > 0 { e[0].card_n -= 1; }
+  if e[0].waiting > 0 { e[0].waiting -= 1; }
+}
+
+// A thing placed by the realm (its own placing): an owner's or admin's goes in, a visitor's becomes a card.
+redit_place :: (e: [] RealmEdit, thing: string, x: f32, z: f32, yaw: f32) {
+  e[0].place_thing_n = redit_copy(e[0].place_thing[..], thing); e[0].place_x = x; e[0].place_z = z; e[0].place_yaw = yaw;
+}
+
+redit_status :: (text: string) -> int { return redit_int(text[0..<redit_line_end(text, 0)]); }
+redit_body :: (text: string) -> string { e := redit_line_end(text, 0); return ifx e + 1 <= text.count then text[e + 1..<text.count] else ""; }
+
+redit_answer :: (e: [] RealmEdit, text: string) {
+  what := e[0].req_what;
+  e[0].req_id = -1; e[0].req_what = REQ_E_NONE;
+  status := redit_status(text); p_body := redit_body(text);
+  if what == REQ_E_SPEC {
+    if status == 200 && redit_read(e, p_body) {
+      first := !e[0].ready;
+      e[0].ready = true; e[0].changed = true; e[0].version += 1;
+      if first && redit_may(e) && e[0].waiting > 0 { e[0].cards_due = true; }
+    } else if !e[0].ready { e[0].failed = true; }
+    return;
+  }
+  if what == REQ_E_SWITCH { if status != 200 { redit_note(e, "Not switched. Try again."); } e[0].spec_due = true; return; }
+  if what == REQ_E_SETTINGS { if status != 200 { redit_note(e, "Not saved. Try again."); } e[0].spec_due = true; return; }
+  if what == REQ_E_REVISE {
+    if status == 200 { redit_read_rows(e, p_body); redit_note(e, "The board is the realm now."); e[0].spec_due = true; }
+    else if status == 429 { redit_note(e, "One at a time: say it again in a moment."); }
+    else if status == 403 { redit_note(e, "Only its owner and admins change it."); }
+    else { redit_note(e, ifx p_body.count > 0 && p_body.count < 60 then p_body else "Not heard. Try again."); }
+    return;
+  }
+  if what == REQ_E_PLACE {
+    if status != 200 { redit_note(e, ifx status == 403 then "The owner hasn't let visitors build." else "Not placed. Try again."); return; }
+    if redit_may(e) { e[0].spec_due = true; } else { redit_note(e, "Sent to the owner."); }
+    return;
+  }
+  if what == REQ_E_CARDS { if status == 200 { redit_read_cards(e, p_body); } return; }
+  if what == REQ_E_DECIDE {
+    if status != 200 { redit_note(e, "That card was already decided."); }
+    e[0].cards_due = true; e[0].spec_due = true;
+  }
+}
+
+// ---- in from the host: true when it was this layer's
+
+redit_message :: (e: [] RealmEdit, kind: int, text: string) -> bool #export_c {
+  if kind == REDIT_FACTS { e[0].voice = fact_of(text, "voice").count > 0; return false; }
+  if kind >= HTTP_KIND && kind < HTTP_KIND + 8 && e[0].req_id >= 0 && kind - HTTP_KIND == e[0].req_id { redit_answer(e, text); return true; }
+  if kind == REDIT_MSG_TEXT && e[0].typing {
+    for i: 0..<text.count { if e[0].typed_n < REDIT_TYPED && text[i] >= 32 { e[0].typed[e[0].typed_n] = text[i]; e[0].typed_n += 1; } }
+    return true;
+  }
+  if kind == REDIT_MSG_VOICE && (e[0].held || e[0].heard_due) {
+    p_cut := 0; while p_cut < text.count && text[p_cut] != '|' { p_cut += 1; }
+    said := ifx p_cut + 1 <= text.count then text[p_cut + 1..<text.count] else "";
+    e[0].caption_n = redit_copy(e[0].caption[..], said);
+    if text[0..<p_cut] == "heard" && said.count > 0 { e[0].heard_due = false; redit_say(e, said); }
+    return true;
+  }
+  return false;
+}
+// Words for the board: the model revises it.
+redit_say :: (e: [] RealmEdit, p_words: string) {
+  if !redit_may(e) || p_words.count == 0 { return; }
+  e[0].revise_n = redit_copy(e[0].revise[..], p_words);
+  redit_note(e, "Revising the board.");
+}
+
+// ---- actions out (voice): the realm passes them on from its own p_outbox
+
+RAct :: struct { kind: int; n: int; }
+redit_take_action :: (e: [] RealmEdit, p_outbox: [] u8) -> RAct {
+  if e[0].want_voice == 0 { return RAct.{kind = 0, n = 0}; }
+  if !e[0].faced { e[0].faced = true; return RAct.{kind = REDIT_ACT_VOICE_TO, n = redit_put(p_outbox, 0, REDIT_FACING)}; }
+  w := e[0].want_voice; e[0].want_voice = 0;
+  return RAct.{kind = REDIT_ACT_VOICE, n = redit_put(p_outbox, 0, ifx w == 1 then "on" else "end")};
+}
+redit_talk_down :: (e: [] RealmEdit) {
+  if !e[0].voice || !redit_may(e) || e[0].held { return; }
+  e[0].held = true; e[0].want_voice = 1; e[0].caption_n = 0; e[0].note_n = 0; e[0].faced = false;
+}
+redit_talk_up :: (e: [] RealmEdit) {
+  if !e[0].held { return; }
+  e[0].held = false; e[0].heard_due = true; e[0].want_voice = 2;
+}
+
+// ---- toggles
+
+redit_switch :: (e: [] RealmEdit, r: int) {
+  if !redit_may(e) || r < 0 || r >= e[0].row_n || e[0].switch_row >= 0 { return; }
+  e[0].row_on[r] = !e[0].row_on[r];
+  e[0].switch_row = r; e[0].switch_on = e[0].row_on[r];
+  e[0].changed = true; e[0].version += 1;
+}
+redit_set_tool :: (e: [] RealmEdit, t: int) {
+  if !redit_may(e) || t < 0 || t >= REDIT_TOOLS || !e[0].tool_has[t] { return; }
+  e[0].tool_on[t] = !e[0].tool_on[t]; e[0].settings_due = true; e[0].changed = true;
+}
+redit_decide :: (e: [] RealmEdit, accept: bool) { if redit_may(e) && e[0].card_n > 0 && e[0].decide_due == 0 { e[0].decide_due = ifx accept then 1 else -1; } }
+redit_pane :: (e: [] RealmEdit, pane: int) {
+  if !redit_may(e) { return; }
+  e[0].pane = ifx e[0].pane == pane then REDIT_SHUT else pane;
+  e[0].typing = false;
+  if pane == REDIT_CARDS_PANE { e[0].cards_due = true; }
+}
+redit_toggle :: (e: [] RealmEdit) {
+  if e[0].pane != REDIT_SHUT { e[0].pane = REDIT_SHUT; e[0].typing = false; redit_talk_up(e); return; }
+  redit_pane(e, REDIT_BOARD);
+}
+redit_send_typed :: (e: [] RealmEdit) {
+  w := cast(string) e[0].typed[0..<e[0].typed_n];
+  e[0].typing = false;
+  if w.count > 0 { redit_say(e, w); e[0].caption_n = redit_copy(e[0].caption[..], w); }
+  e[0].typed_n = 0;
+}
+
+// Each frame: the clock and the next request.
+redit_step :: (e: [] RealmEdit, time: f32, width: f32, height: f32, dpr: f32) {
+  e[0].time = time; e[0].width = width; e[0].height = height; e[0].dpr = redit_hi(dpr, 0.5);
+  if e[0].note_n > 0 && time - e[0].note_at > 6 { e[0].note_n = 0; }
+  redit_next(e);
+}
+
+// ---- input: 0 not this layer's, 1 used, 2 typed text the host should send (the realm does nothing with it)
+
+redit_key :: (e: [] RealmEdit, key: int, p_down: bool) -> int {
+  if e[0].typing {
+    if !p_down { return 2; }
+    if key == REDIT_KEY_ENTER { redit_send_typed(e); return 1; }
+    if key == REDIT_KEY_ESCAPE { e[0].typing = false; e[0].typed_n = 0; return 1; }
+    if key == REDIT_KEY_BACKSPACE { if e[0].typed_n > 0 { e[0].typed_n -= 1; while e[0].typed_n > 0 && (e[0].typed[e[0].typed_n] & 0xC0) == 0x80 { e[0].typed_n -= 1; } } return 1; }
+    return 2;
+  }
+  if e[0].pane == REDIT_SHUT { return 0; }
+  if key == REDIT_KEY_ESCAPE && p_down { redit_toggle(e); return 1; }
+  return 0;
+}
+redit_inside :: (b: RBox, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+redit_button_at :: (e: [] RealmEdit, x: f32, y: f32) -> int { for i: 0..<RB_N { if e[0].shown[i] && redit_inside(e[0].boxes[i], x, y) { return i; } } return -1; }
+redit_row_at :: (e: [] RealmEdit, x: f32, y: f32) -> int { for i: 0..<REDIT_ROWS { if e[0].row_shown[i] && redit_inside(e[0].rows[i], x, y) { return i; } } return -1; }
+// Over the layer: the pane's plate or a button.
+redit_over :: (e: [] RealmEdit, x: f32, y: f32) -> bool {
+  if redit_button_at(e, x, y) >= 0 { return true; }
+  for i: 0..<e[0].plate_n { if redit_inside(e[0].plate_box[i], x, y) { return true; } }
+  return false;
+}
+redit_press :: (e: [] RealmEdit, b: int) {
+  if b == RB_EDIT { redit_toggle(e); return; }
+  if b >= RB_TAB && b < RB_TAB + 3 { p := b - RB_TAB + 1; if e[0].pane != p { redit_pane(e, p); } return; }
+  if b == RB_TYPE { e[0].typing = !e[0].typing; e[0].typed_n = 0; return; }
+  if b == RB_ACCEPT { redit_decide(e, true); return; }
+  if b == RB_DECLINE { redit_decide(e, false); }
+}
+redit_pointer :: (e: [] RealmEdit, x: f32, y: f32, phase: int, id: int) -> bool {
+  if !redit_may(e) { return false; }
+  if phase == 0 {
+    b := redit_button_at(e, x, y);
+    if b == RB_TALK { e[0].press = b; e[0].finger = id; redit_talk_down(e); return true; }
+    if b >= 0 { e[0].press = b; e[0].finger = id; return true; }
+    r := redit_row_at(e, x, y);
+    if r >= 0 { e[0].row_press = r; e[0].finger = id; return true; }
+    return redit_over(e, x, y);
+  }
+  if id != e[0].finger || (e[0].press < 0 && e[0].row_press < 0) { return phase != 1 && redit_over(e, x, y); }
+  if phase == 1 { return true; }
+  b := e[0].press; r := e[0].row_press;
+  e[0].press = -1; e[0].row_press = -1; e[0].finger = -1;
+  if b == RB_TALK { redit_talk_up(e); return true; }
+  if phase == 3 { return true; }
+  if b >= 0 && redit_button_at(e, x, y) == b { redit_press(e, b); }
+  if r >= 0 && redit_row_at(e, x, y) == r {
+    if e[0].pane == REDIT_BOARD { redit_switch(e, r); } else if e[0].pane == REDIT_SETTINGS { redit_set_tool(e, redit_settings_tool(e, r)); }
+  }
+  return true;
+}
+// The settings pane's r'th row is the r'th tool this realm honours.
+redit_settings_tool :: (e: [] RealmEdit, r: int) -> int {
+  k := 0;
+  for t: 0..<REDIT_TOOLS { if e[0].tool_has[t] { if k == r { return t; } k += 1; } }
+  return -1;
+}
+
+// ---- the look: Filament on the Verse HUD's plates (gold and parchment, as every realm's HUD)
+
+REDIT_GAP :: 0.5; REDIT_SPACE :: 1.2;
+redit_ink :: (k: f32, light: f32, r: f32, g: f32, b: f32) -> Ink {
+  return Ink.{core = 0.55 * k, light = light, glow = 1.2 * k, red = r, green = g, blue = b, mode = 0, scale = k};
+}
+redit_gold :: (k: f32, light: f32) -> Ink { return redit_ink(k, light, 0.80, 0.64, 0.36); }
+redit_parch :: (k: f32, light: f32) -> Ink { return redit_ink(k, light, 0.91, 0.863, 0.753); }
+redit_width :: (text: string, cap: f32) -> f32 { return measure(text, REDIT_GAP, REDIT_SPACE, false) * cap; }
+redit_plate :: (e: [] RealmEdit, b: RBox, p_alpha: f32, look: f32) {
+  if e[0].plate_n >= REDIT_PLATES { return; }
+  p := e[0].plate_n;
+  e[0].plate_box[p] = b; e[0].plate_alpha[p] = p_alpha; e[0].plate_look[p] = look; e[0].plate_n = p + 1;
+}
+redit_text :: (e: [] RealmEdit, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink, room: f32) -> int {
+  c := cap; w := redit_width(text, c);
+  if room > 0 && w > room { c = c * room / w; }
+  return draw_text(out, at, text, floor(x), floor(base), c, REDIT_GAP, REDIT_SPACE, k, false, false);
+}
+redit_button :: (e: [] RealmEdit, out: [] f32, at: int, b: int, p_box: RBox, label: string, on: bool) -> int {
+  k := e[0].dpr;
+  e[0].boxes[b] = p_box; e[0].shown[b] = true;
+  redit_plate(e, p_box, 0.88, ifx on || e[0].press == b then 2.0f32 else 1.0f32);
+  ts := 8.5 * k; room := p_box.x1 - p_box.x0 - 12 * k;
+  tw := redit_lo(redit_width(label, ts), room);
+  return redit_text(e, out, at, label, (p_box.x0 + p_box.x1 - tw) / 2, p_box.y1 - (p_box.y1 - p_box.y0 - ts) / 2, ts, redit_gold(k, 0.95), room);
+}
+redit_check :: (out: [] f32, at: int, x: f32, y: f32, size: f32, on: bool, k: f32) -> int {
+  n := at;
+  r := 0.8 * k; g := 0.9 * k;
+  if lit(out, n, x, y, x + size, y, r, 0.8, g, 0.80, 0.64, 0.36, 0) { n += 6; }
+  if lit(out, n, x + size, y, x + size, y + size, r, 0.8, g, 0.80, 0.64, 0.36, 0) { n += 6; }
+  if lit(out, n, x + size, y + size, x, y + size, r, 0.8, g, 0.80, 0.64, 0.36, 0) { n += 6; }
+  if lit(out, n, x, y + size, x, y, r, 0.8, g, 0.80, 0.64, 0.36, 0) { n += 6; }
+  if on {
+    if lit(out, n, x + size * 0.2, y + size * 0.55, x + size * 0.42, y + size * 0.78, 1.1 * k, 1.0, 1.4 * k, 0.91, 0.47, 0.17, 0) { n += 6; }
+    if lit(out, n, x + size * 0.42, y + size * 0.78, x + size * 0.82, y + size * 0.22, 1.1 * k, 1.0, 1.4 * k, 0.91, 0.47, 0.17, 0) { n += 6; }
+  }
+  return n;
+}
+
+// EDIT in the p_box the realm gives (an owner's or admin's only), and the open pane under it. Returns
+// the vertices drawn so far; the plates to draw are plate_box[0..<plate_n].
+redit_hud :: (e: [] RealmEdit, out: [] f32, at: int, anchor: RBox) -> int {
+  e[0].plate_n = 0;
+  for i: 0..<RB_N { e[0].shown[i] = false; }
+  for i: 0..<REDIT_ROWS { e[0].row_shown[i] = false; }
+  if !e[0].ready || !redit_may(e) { return at; }
+  k := e[0].dpr;
+  n := redit_button(e, out, at, RB_EDIT, anchor, ifx e[0].pane != REDIT_SHUT then "DONE" else "EDIT", e[0].pane != REDIT_SHUT);
+  if e[0].pane == REDIT_SHUT {
+    if e[0].waiting > 0 {
+      // the count of cards waiting, under EDIT
+      w: [24] u8; m := redit_put_int(w[..], 0, e[0].waiting); m = redit_put(w[..], m, " WAITING");
+      n = redit_text(e, out, n, cast(string) w[0..<m], anchor.x0, anchor.y1 + 14 * k, 6.5 * k, redit_parch(k, 0.9), 0);
+    }
+    return n;
+  }
+  p_phone := e[0].width < 640 * k;
+  pw := ifx p_phone then e[0].width - 24 * k else redit_lo(360 * k, e[0].width - 24 * k);
+  x0 := ifx p_phone then 12 * k else redit_hi(12 * k, anchor.x1 - pw);
+  y0 := anchor.y1 + 10 * k;
+  y1 := redit_lo(e[0].height - 12 * k, y0 + 520 * k);
+  x1 := x0 + pw;
+  redit_plate(e, RBox.{x0 = x0, y0 = y0, x1 = x1, y1 = y1}, 0.9, 0);
+  pad := 14 * k;
+  // the tabs: one pane at a time
+  tabs := [3] string.["THE BOARD", "SETTINGS", "WAITING"];
+  tw := (pw - 2 * pad - 2 * 6 * k) / 3;
+  for t: 0..<3 {
+    bx := x0 + pad + f32(t) * (tw + 6 * k);
+    label := tabs[t];
+    lab: [24] u8;
+    if t == 2 { m := redit_put_int(lab[..], 0, e[0].waiting); m = redit_put(lab[..], m, " WAITING"); label = cast(string) lab[0..<m]; }
+    n = redit_button(e, out, n, RB_TAB + t, RBox.{x0 = bx, y0 = y0 + pad, x1 = bx + tw, y1 = y0 + pad + 30 * k}, label, e[0].pane == t + 1);
+  }
+  y := y0 + pad + 30 * k + 18 * k;
+  room := pw - 2 * pad;
+  if e[0].pane == REDIT_BOARD { n = redit_board(e, out, n, x0 + pad, y, room, y1 - pad); }
+  else if e[0].pane == REDIT_SETTINGS { n = redit_settings(e, out, n, x0 + pad, y, room, y1 - pad); }
+  else { n = redit_cards(e, out, n, x0 + pad, y, room, y1 - pad); }
+  if e[0].note_n > 0 {
+    n = redit_text(e, out, n, cast(string) e[0].note[0..<e[0].note_n], x0 + pad, y1 - pad, 7 * k, redit_parch(k, 0.9), room);
+  }
+  return n;
+}
+
+redit_rows_at :: (e: [] RealmEdit, out: [] f32, at: int, i: int, label: string, on: bool, x: f32, y: f32, room: f32) -> int {
+  k := e[0].dpr; h := 26 * k; size := 13 * k;
+  e[0].rows[i] = RBox.{x0 = x - 4 * k, y0 = y, x1 = x + room, y1 = y + h}; e[0].row_shown[i] = true;
+  n := redit_check(out, at, x, y + (h - size) / 2, size, on, k);
+  return redit_text(e, out, n, label, x + size + 10 * k, y + (h + 8 * k) / 2, 8 * k, ifx on then redit_parch(k, 0.95) else redit_parch(k, 0.55), room - size - 10 * k);
+}
+
+// THE BOARD: what's in the realm now, a checkbox a row; HOLD TO TALK (on a page with a voice) and TYPE IT revise it.
+redit_board :: (e: [] RealmEdit, out: [] f32, at: int, x: f32, y: f32, room: f32, bottom: f32) -> int {
+  k := e[0].dpr;
+  n := at; yy := y;
+  if e[0].row_n == 0 { n = redit_text(e, out, n, "NOTHING HERE SWITCHES YET", x, yy + 10 * k, 8 * k, redit_parch(k, 0.8), room); yy += 26 * k; }
+  for i: 0..<e[0].row_n {
+    if yy + 26 * k > bottom - 90 * k { break; }
+    n = redit_rows_at(e, out, n, i, redit_label_of(e, i), e[0].row_on[i], x, yy, room);
+    yy += 28 * k;
+  }
+  yy += 10 * k;
+  if e[0].typing {
+    p_shown := cast(string) e[0].typed[0..<e[0].typed_n];
+    redit_plate(e, RBox.{x0 = x, y0 = yy, x1 = x + room, y1 = yy + 30 * k}, 0.95, 1);
+    n = redit_text(e, out, n, ifx p_shown.count > 0 then p_shown else "TYPE HOW IT SHOULD CHANGE, THEN ENTER", x + 8 * k, yy + 19 * k, 8 * k, redit_parch(k, ifx p_shown.count > 0 then 0.95f32 else 0.5f32), room - 16 * k);
+    yy += 38 * k;
+  } else if e[0].caption_n > 0 {
+    n = redit_text(e, out, n, cast(string) e[0].caption[0..<e[0].caption_n], x, yy + 10 * k, 7.5 * k, redit_parch(k, 0.85), room);
+    yy += 22 * k;
+  }
+  half := (room - 8 * k) / 2;
+  if e[0].voice {
+    n = redit_button(e, out, n, RB_TALK, RBox.{x0 = x, y0 = yy, x1 = x + half, y1 = yy + 32 * k}, ifx e[0].held then "LISTENING" else "HOLD TO TALK", e[0].held);
+    n = redit_button(e, out, n, RB_TYPE, RBox.{x0 = x + half + 8 * k, y0 = yy, x1 = x + room, y1 = yy + 32 * k}, ifx e[0].typing then "CANCEL" else "TYPE IT", e[0].typing);
+  } else {
+    n = redit_button(e, out, n, RB_TYPE, RBox.{x0 = x, y0 = yy, x1 = x + room, y1 = yy + 32 * k}, ifx e[0].typing then "CANCEL" else "TYPE HOW IT SHOULD CHANGE", e[0].typing);
+  }
+  return n;
+}
+
+// SETTINGS: the tools visitors get, those this realm's code honours.
+redit_settings :: (e: [] RealmEdit, out: [] f32, at: int, x: f32, y: f32, room: f32, bottom: f32) -> int {
+  k := e[0].dpr;
+  n := redit_text(e, out, at, "WHAT VISITORS GET", x, y + 10 * k, 8.5 * k, redit_gold(k, 0.95), room);
+  yy := y + 22 * k; r := 0;
+  for t: 0..<REDIT_TOOLS {
+    if !e[0].tool_has[t] { continue; }
+    if yy + 26 * k > bottom - 20 * k { break; }
+    n = redit_rows_at(e, out, n, r, REDIT_TOOL_WORDS[t], e[0].tool_on[t], x, yy, room);
+    yy += 28 * k; r += 1;
+  }
+  if r == 0 { n = redit_text(e, out, n, "VISITORS WALK AND LOOK; NOTHING ELSE TO GIVE HERE", x, yy + 10 * k, 7.5 * k, redit_parch(k, 0.8), room); }
+  return n;
+}
+
+// The first card waiting: who, what, where, the count before and after, ACCEPT and DECLINE.
+redit_cards :: (e: [] RealmEdit, out: [] f32, at: int, x: f32, y: f32, room: f32, bottom: f32) -> int {
+  k := e[0].dpr;
+  if e[0].card_n == 0 { return redit_text(e, out, at, ifx e[0].waiting > 0 then "READING THE CARDS" else "NOTHING WAITS", x, y + 10 * k, 8 * k, redit_parch(k, 0.8), room); }
+  line: [96] u8;
+  thing := cast(string) e[0].card_thing[0..<e[0].card_thing_n[0]];
+  m := redit_put(line[..], 0, cast(string) e[0].card_who[0..<e[0].card_who_n[0]]);
+  m = redit_put(line[..], m, " WANTS A "); m = redit_put(line[..], m, thing);
+  redit_upper(line[..], m);
+  n := redit_text(e, out, at, cast(string) line[0..<m], x, y + 10 * k, 8.5 * k, redit_gold(k, 0.95), room);
+  m = redit_put(line[..], 0, "AT "); m = redit_put_cm(line[..], m, e[0].card_x[0]); m = redit_put(line[..], m, ", "); m = redit_put_cm(line[..], m, e[0].card_z[0]);
+  n = redit_text(e, out, n, cast(string) line[0..<m], x, y + 30 * k, 7.5 * k, redit_parch(k, 0.9), room);
+  m = redit_put(line[..], 0, thing); m = redit_put(line[..], m, "S HERE: "); m = redit_put_int(line[..], m, e[0].card_before[0]);
+  m = redit_put(line[..], m, " TO "); m = redit_put_int(line[..], m, e[0].card_after[0]);
+  redit_upper(line[..], m);
+  n = redit_text(e, out, n, cast(string) line[0..<m], x, y + 48 * k, 7.5 * k, redit_parch(k, 0.9), room);
+  half := (room - 8 * k) / 2; yy := y + 64 * k;
+  n = redit_button(e, out, n, RB_ACCEPT, RBox.{x0 = x, y0 = yy, x1 = x + half, y1 = yy + 32 * k}, "ACCEPT", true);
+  return redit_button(e, out, n, RB_DECLINE, RBox.{x0 = x + half + 8 * k, y0 = yy, x1 = x + room, y1 = yy + 32 * k}, "DECLINE", false);
+}

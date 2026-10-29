@@ -12,7 +12,8 @@
 // (realms/fixture/assets/fixture.pack): trees, rocks, ferns, crates, barrels, a wagon, a fence, a
 // chest and an anvil. Lanterns are lights on posts; the flock circles whoever walks.
 //
-// The owner (the spec says "owner 1": the server decides) has SETTINGS, the tools visitors get,
+// The owner and admins (the server decides) get EDIT, the shared edit layer (verse/edit/edit.coax):
+// the board of what is here, a checkbox a row, revised by typing; SETTINGS, the tools visitors get;
 // and the cards for what visitors propose, each with ACCEPT and DECLINE. With BUILD on, a visitor's
 // placed thing is a proposal; the owner's goes in at once.
 //
@@ -29,6 +30,7 @@
 #load "font.coax";
 #load "ui.coax";
 #load "analytics.coax";
+#load "../../verse/edit/edit.coax";   // the board, settings and cards every realm shares
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 30000;
@@ -119,11 +121,11 @@ FOV :: 0.95; STICK :: 60.0; LAMP_HEIGHT :: 1.35;
 GRAVITY :: 14.0; JUMP_SPEED :: 6.0; FLY_HEIGHT :: 7.0;
 WAIT :: 30.0;
 // buttons
-BTN_BACK :: 0; BTN_SETTINGS :: 1; BTN_CARDS :: 2; BTN_BUILD :: 3; BTN_MAP :: 4; BTN_FLY :: 5; BTN_JUMP :: 6;
-BTN_ACCEPT :: 7; BTN_DECLINE :: 8; BTN_CLOSE :: 9; BTN_NEW :: 10;
+BTN_BACK :: 0; BTN_BUILD :: 3; BTN_MAP :: 4; BTN_FLY :: 5; BTN_JUMP :: 6;
+BTN_CLOSE :: 9; BTN_NEW :: 10;
 BUTTONS :: 11;
-PANE_NONE :: 0; PANE_SETTINGS :: 1; PANE_CARDS :: 2; PANE_BUILD :: 3;
-REQ_NONE :: 0; REQ_SPEC :: 1; REQ_SETTINGS :: 2; REQ_PLACE :: 3; REQ_CARDS :: 4; REQ_DECIDE :: 5;
+PANE_NONE :: 0; PANE_BUILD :: 3;
+REQ_NONE :: 0; REQ_SPEC :: 1; REQ_PLACE :: 3;
 
 MyRealm :: struct {
   started: bool;
@@ -167,14 +169,12 @@ MyRealm :: struct {
   rows: [TOOLS] Box; row_shown: [TOOLS] bool; cells: [THINGS] Box; cell_shown: [THINGS] bool; row_press: int; cell_press: int;
   plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;
   note: [NOTE] u8; note_n: int; note_at: f32;
-  // the owner's cards: "P ID|WHO|THING|X|Z|YAW|BEFORE|AFTER"
-  card_n: int; card_id: [CARDS] int; card_who: [CARDS * 16] u8; card_who_n: [CARDS] int; card_thing: [CARDS] int;
-  card_x: [CARDS] f32; card_z: [CARDS] f32; card_before: [CARDS] int; card_after: [CARDS] int;
   // the one request in flight, and the settings to send next
   req_url: [URL] u8; req_url_n: int; req_body: [BODY] u8; req_body_n: int; req_flags: int;
   req_ready: bool; req_id: int; req_what: int; req_at: f32;
-  settings_due: bool; cards_due: bool; spec_due: bool;
+  spec_due: bool;
   outbox: [OUTBOX] u8; out_n: int; action: int;
+  ed: [1] RealmEdit; ed_seen: int;   // the shared edit layer, and its version this realm laid out
 }
 
 realm_reset :: (s: [] MyRealm) {
@@ -363,17 +363,11 @@ take_answer :: (s: [] MyRealm, t: [] Track, text: string) {
     } else if !s[0].spec_ready { s[0].spec_failed = true; }
     return;
   }
-  if what == REQ_SETTINGS { if status != 200 { set_note(s, "Not saved. Try again."); } return; }
   if what == REQ_PLACE {
     if status != 200 { set_note(s, ifx status == 403 then "The owner hasn't let visitors build." else "Not placed. Try again."); return; }
     if s[0].owner { ask_spec(s); } else { set_note(s, "Sent to the owner."); }
     if track_begin(t, "realm-place") { track_bool(t, "owner", s[0].owner); track_end(t); }
     return;
-  }
-  if what == REQ_CARDS { if status == 200 { read_cards(s, body); } return; }
-  if what == REQ_DECIDE {
-    if status != 200 { set_note(s, "That card was already decided."); }
-    s[0].cards_due = true; ask_spec(s);
   }
 }
 
@@ -397,60 +391,6 @@ ask_spec :: (s: [] MyRealm) { if s[0].slug_n > 0 { s[0].spec_due = true; } }
 next_request :: (s: [] MyRealm) {
   if busy(s) || s[0].slug_n == 0 { return; }
   if !s[0].asked_spec || s[0].spec_due { s[0].asked_spec = true; s[0].spec_due = false; ask(s, REQ_SPEC, "", 0, false); return; }
-  if s[0].settings_due {
-    s[0].settings_due = false;
-    n := put(s[0].req_body[..], 0, "{\"tools\":{");
-    for i: 0..<TOOLS {
-      if i > 0 { n = put(s[0].req_body[..], n, ","); }
-      n = put(s[0].req_body[..], n, "\""); n = put(s[0].req_body[..], n, TOOL_NAMES[i]); n = put(s[0].req_body[..], n, "\":");
-      n = put(s[0].req_body[..], n, ifx s[0].tools[i] then "true" else "false");
-    }
-    n = put(s[0].req_body[..], n, "}}");
-    ask(s, REQ_SETTINGS, "/settings", n, true);
-    return;
-  }
-  if s[0].cards_due && s[0].owner { s[0].cards_due = false; ask(s, REQ_CARDS, "/proposals", 0, false); }
-}
-
-// ---- the owner's cards
-
-read_cards :: (s: [] MyRealm, body: string) {
-  s[0].card_n = 0;
-  i := 0;
-  while i < body.count && s[0].card_n < CARDS {
-    e := line_end(body, i); line := body[i..<e]; i = e + 1;
-    if !starts(line, "P ") { continue; }
-    f: [8] string; k := 0; from := 2;
-    for j: 2..<line.count + 1 {
-      if j == line.count || line[j] == '|' { if k < 8 { f[k] = line[from..<j]; k += 1; } from = j + 1; }
-    }
-    if k < 8 { continue; }
-    c := s[0].card_n;
-    t := thing_of(f[2]); if t < 0 { continue; }
-    at: [1] int;
-    s[0].card_id[c] = number_word(f[0]);
-    s[0].card_who_n[c] = copy_into(s[0].card_who[c * 16..<(c + 1) * 16], f[1]);
-    s[0].card_thing[c] = t;
-    at[0] = 0; s[0].card_x[c] = decimal_at(f[3], at[..]);
-    at[0] = 0; s[0].card_z[c] = decimal_at(f[4], at[..]);
-    s[0].card_before[c] = number_word(f[6]); s[0].card_after[c] = number_word(f[7]);
-    if s[0].card_id[c] > 0 { s[0].card_n = c + 1; }
-  }
-}
-decide :: (s: [] MyRealm, t: [] Track, accept: bool) {
-  if s[0].card_n == 0 || busy(s) { return; }
-  tail: [48] u8;
-  n := put(tail[..], 0, "/proposals/"); n = put_int(tail[..], n, s[0].card_id[0]); n = put(tail[..], n, ifx accept then "/accept" else "/decline");
-  ask(s, REQ_DECIDE, cast(string) tail[0..<n], 0, true);
-  if track_begin(t, "realm-decide") { track_bool(t, "accept", accept); track_end(t); }
-  // the card goes at once; the next shows
-  for c: 0..<s[0].card_n - 1 {
-    s[0].card_id[c] = s[0].card_id[c + 1]; s[0].card_thing[c] = s[0].card_thing[c + 1];
-    s[0].card_x[c] = s[0].card_x[c + 1]; s[0].card_z[c] = s[0].card_z[c + 1];
-    s[0].card_before[c] = s[0].card_before[c + 1]; s[0].card_after[c] = s[0].card_after[c + 1];
-    s[0].card_who_n[c] = copy_into(s[0].card_who[c * 16..<(c + 1) * 16], cast(string) s[0].card_who[(c + 1) * 16..<(c + 1) * 16 + s[0].card_who_n[c + 1]]);
-  }
-  s[0].card_n -= 1; s[0].waiting = hi_int(s[0].waiting - 1, 0);
 }
 
 // ---- the pack's catalog
@@ -793,10 +733,11 @@ leap :: (s: [] MyRealm) { if !s[0].flying && s[0].y <= 0.001 { s[0].vy = JUMP_SP
 fly :: (s: [] MyRealm) { if s[0].tools[TOOL_FLY] { s[0].flying = !s[0].flying; if !s[0].flying { s[0].vy = 0; } } }
 toggle_pane :: (s: [] MyRealm, pane: int) {
   s[0].pane = ifx s[0].pane == pane then PANE_NONE else pane;
-  if s[0].pane == PANE_CARDS { s[0].cards_due = true; }
 }
 realm_key :: (s: [] MyRealm, t: [] Track, key: int, down: bool) -> bool #export_c {
   begin(s);
+  used := redit_key(s[0].ed[..], key, down);
+  if used > 0 { return used == 1; }
   h := hold_of(key);
   if h != 0 { s[0].held = ifx down then s[0].held | h else s[0].held & (15 - h); return true; }
   if !down { return key == ' '; }
@@ -838,44 +779,34 @@ button_at :: (s: [] MyRealm, x: f32, y: f32) -> int {
   for i: 0..<BUTTONS { if s[0].shown[i] && inside(s[0].boxes[i], x, y) { return i; } }
   return -1;
 }
-row_at :: (s: [] MyRealm, x: f32, y: f32) -> int { for i: 0..<TOOLS { if s[0].row_shown[i] && inside(s[0].rows[i], x, y) { return i; } } return -1; }
 cell_at :: (s: [] MyRealm, x: f32, y: f32) -> int { for i: 0..<THINGS { if s[0].cell_shown[i] && inside(s[0].cells[i], x, y) { return i; } } return -1; }
 realm_label :: (s: [] MyRealm, x: f32, y: f32) -> string #export_c {
   b := button_at(s, x, y);
-  if b == BTN_BACK { return "galaxy"; } if b == BTN_SETTINGS { return "settings"; } if b == BTN_CARDS { return "cards"; }
+  if b == BTN_BACK { return "galaxy"; }
   if b == BTN_BUILD { return "build"; } if b == BTN_MAP { return "map"; } if b == BTN_FLY { return "fly"; } if b == BTN_JUMP { return "jump"; }
-  if b == BTN_ACCEPT { return "accept"; } if b == BTN_DECLINE { return "decline"; } if b == BTN_CLOSE { return "close"; } if b == BTN_NEW { return "new"; }
-  if row_at(s, x, y) >= 0 { return "tool"; } if cell_at(s, x, y) >= 0 { return "thing"; }
+  if b == BTN_CLOSE { return "close"; } if b == BTN_NEW { return "new"; }
+  if cell_at(s, x, y) >= 0 { return "thing"; }
   return "";
 }
 press_button :: (s: [] MyRealm, t: [] Track, b: int) {
   if b == BTN_BACK { leave(s); }
   if b == BTN_NEW { go_new(s); }
-  if b == BTN_SETTINGS { toggle_pane(s, PANE_SETTINGS); }
-  if b == BTN_CARDS { toggle_pane(s, PANE_CARDS); }
-  if b == BTN_BUILD { toggle_pane(s, PANE_BUILD); }
+  if b == BTN_BUILD { toggle_pane(s, PANE_BUILD); s[0].ed[0].pane = REDIT_SHUT; }
   if b == BTN_CLOSE { s[0].pane = PANE_NONE; }
   if b == BTN_MAP { s[0].map_open = !s[0].map_open; }
   if b == BTN_FLY { fly(s); }
   if b == BTN_JUMP { jump(s); }
-  if b == BTN_ACCEPT { decide(s, t, true); }
-  if b == BTN_DECLINE { decide(s, t, false); }
-}
-set_tool :: (s: [] MyRealm, t: [] Track, i: int) {
-  if !s[0].owner || i < 0 || i >= TOOLS { return; }
-  s[0].tools[i] = !s[0].tools[i];
-  if i == TOOL_FLY && !s[0].tools[i] { s[0].flying = false; }
-  if i == TOOL_MAP && !s[0].tools[i] { s[0].map_open = false; }
-  s[0].settings_due = true;
-  if track_begin(t, "realm-setting") { track_str(t, "tool", TOOL_NAMES[i]); track_bool(t, "on", s[0].tools[i]); track_end(t); }
 }
 realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   begin(s);
+  if s[0].press < 0 && s[0].cell_press < 0 && redit_pointer(s[0].ed[..], x, y, phase, id) {
+    if redit_open(s[0].ed[..]) { s[0].pane = PANE_NONE; }   // one pane at a time
+    return true;
+  }
   b := button_at(s, x, y);
   s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
   if phase == POINTER_DOWN {
     if b >= 0 { s[0].press = b; return true; }
-    r := row_at(s, x, y); if r >= 0 { s[0].row_press = r; return true; }
     c := cell_at(s, x, y); if c >= 0 { s[0].cell_press = c; return true; }
     // a mouse drag turns (first person: looks round, up and down); with a fixed camera it walks, as a thumb does
     if kind == 0 && s[0].camera != CAM_TOP && s[0].camera != CAM_SIDE { s[0].turning = true; s[0].turn_id = id; s[0].turn_x = x; s[0].turn_y = y; return true; }
@@ -885,11 +816,6 @@ realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: 
   if s[0].press >= 0 {
     if phase == POINTER_UP && b == s[0].press { press_button(s, t, b); }
     if phase != POINTER_MOVE { s[0].press = -1; }
-    return true;
-  }
-  if s[0].row_press >= 0 {
-    if phase == POINTER_UP && row_at(s, x, y) == s[0].row_press { set_tool(s, t, s[0].row_press); }
-    if phase != POINTER_MOVE { s[0].row_press = -1; }
     return true;
   }
   if s[0].cell_press >= 0 {
@@ -916,7 +842,11 @@ realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: 
   return false;
 }
 realm_cursor :: (s: [] MyRealm) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
-realm_action :: (s: [] MyRealm) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
+realm_action :: (s: [] MyRealm) -> int #export_c {
+  if s[0].action == 0 { e := redit_take_action(s[0].ed[..], s[0].outbox[..]); if e.kind != 0 { s[0].out_n = e.n; return e.kind; } }
+  a := s[0].action; s[0].action = 0; return a;
+}
+realm_wants_text :: (s: [] MyRealm) -> bool #export_c { return redit_typing(s[0].ed[..]); }
 realm_action_done :: (s: [] MyRealm) #export_c { s[0].out_n = 0; }
 
 // ---- the look
@@ -1058,17 +988,14 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
   n = write(d, out, n, title, tb.x0 + 14 * k, tb.y0 + 22 * k, fit_cap(title, 11 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, white(k, 0.97), false, false);
   n = write(d, out, n, sub, tb.x0 + 14 * k, tb.y0 + 39 * k, fit_cap(sub, 7.5 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, bronze(k, 0.9), false, false);
   n = pill(s, out, n, BTN_BACK, Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 36 * k}, "GALAXY", false);
-  // the owner's, under GALAXY: SETTINGS and the cards waiting
+  // the owner's and admins', under GALAXY: EDIT, and its pane (verse/edit/edit.coax)
   right := g + 46 * k;
-  if s[0].owner {
-    n = pill(s, out, n, BTN_SETTINGS, Box.{x0 = w - g - bw, y0 = right, x1 = w - g, y1 = right + 36 * k}, "SETTINGS", s[0].pane == PANE_SETTINGS);
-    right += 46 * k;
-    if s[0].waiting > 0 || s[0].pane == PANE_CARDS {
-      cb: [24] u8; cn := put_int(cb[..], 0, s[0].waiting); cn = put(cb[..], cn, " WAITING");
-      n = pill(s, out, n, BTN_CARDS, Box.{x0 = w - g - bw, y0 = right, x1 = w - g, y1 = right + 36 * k}, cast(string) cb[0..<cn], true);
-      right += 46 * k;
-    }
+  n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = w - g - bw, y0 = right, x1 = w - g, y1 = right + 36 * k});
+  for i: 0..<s[0].ed[0].plate_n {
+    pb := s[0].ed[0].plate_box[i];
+    shown_e := plate(s, Box.{x0 = pb.x0, y0 = pb.y0, x1 = pb.x1, y1 = pb.y1}, s[0].ed[0].plate_alpha[i], s[0].ed[0].plate_look[i]);
   }
+  if s[0].ed[0].plate_n > 0 { right += 46 * k; }
   if s[0].spec_failed && !s[0].spec_ready {
     n = pill(s, out, n, BTN_NEW, Box.{x0 = w * 0.5 - 110 * k, y0 = h * 0.5 - 22 * k, x1 = w * 0.5 + 110 * k, y1 = h * 0.5 + 22 * k}, "BUILD YOUR OWN REALM", true);
   }
@@ -1113,41 +1040,6 @@ draw_pane :: (s: [] MyRealm, out: [] f32, at: int, top: f32, bottom: f32) -> int
   x0 := w - g - pw; x1 := w - g;
   for i: 0..<TOOLS { s[0].row_shown[i] = false; }
   for i: 0..<THINGS { s[0].cell_shown[i] = false; }
-  if s[0].pane == PANE_SETTINGS {
-    row := 32 * k;
-    b := Box.{x0 = x0, y0 = top, x1 = x1, y1 = top + 44 * k + row * cast(f32) TOOLS + 8 * k};
-    shown_b := plate(s, b, 0.95, LOOK_PLAIN);
-    n = write(d, out, n, "VISITORS CAN", b.x0 + 14 * k, b.y0 + 26 * k, 8 * k, GAP, SPACE, bronze(k, 0.95), false, false);
-    for i: 0..<TOOLS {
-      rb := Box.{x0 = b.x0 + 6 * k, y0 = b.y0 + 40 * k + row * cast(f32) i, x1 = b.x1 - 6 * k, y1 = b.y0 + 40 * k + row * cast(f32) (i + 1)};
-      s[0].rows[i] = rb; s[0].row_shown[i] = true;
-      box := 15 * k;
-      n = checkbox(s, out, n, rb.x0 + 8 * k, (rb.y0 + rb.y1) * 0.5 - box * 0.5, box, s[0].tools[i]);
-      n = write(d, out, n, TOOL_WORDS[i], rb.x0 + 8 * k + box + 12 * k, (rb.y0 + rb.y1) * 0.5 + 4 * k, fit_cap(TOOL_WORDS[i], 8.5 * k, rb.x1 - rb.x0 - box - 30 * k), GAP, SPACE,
-                white(k, ifx s[0].tools[i] then 0.98f32 else 0.5f32), false, false);
-    }
-    return n;
-  }
-  if s[0].pane == PANE_CARDS {
-    b := Box.{x0 = x0, y0 = top, x1 = x1, y1 = top + 150 * k};
-    shown_b := plate(s, b, 0.95, LOOK_PLAIN);
-    if s[0].card_n == 0 {
-      line := ifx busy(s) then "LOOKING" else "NOTHING WAITING";
-      n = write(d, out, n, line, b.x0 + 14 * k, b.y0 + 30 * k, 8.5 * k, GAP, SPACE, white(k, 0.8), false, false);
-      return pill(s, out, n, BTN_CLOSE, Box.{x0 = b.x1 - 96 * k, y0 = b.y1 - 46 * k, x1 = b.x1 - 12 * k, y1 = b.y1 - 12 * k}, "CLOSE", false);
-    }
-    who: [24] u8; wn := put(who[..], 0, cast(string) s[0].card_who[0..<s[0].card_who_n[0]]); wn = put(who[..], wn, " WANTS"); upper(who[..], wn);
-    n = write(d, out, n, cast(string) who[0..<wn], b.x0 + 14 * k, b.y0 + 24 * k, 7.5 * k, GAP, SPACE, bronze(k, 0.95), false, false);
-    l1: [48] u8; m := put(l1[..], 0, "A "); m = put(l1[..], m, THING_WORDS[s[0].card_thing[0]]); m = put(l1[..], m, " AT ");
-    m = put_int(l1[..], m, cast(int) s[0].card_x[0]); m = put(l1[..], m, ", "); m = put_int(l1[..], m, cast(int) s[0].card_z[0]);
-    n = write(d, out, n, cast(string) l1[0..<m], b.x0 + 14 * k, b.y0 + 46 * k, fit_cap(cast(string) l1[0..<m], 10 * k, pw - 28 * k), GAP, SPACE, white(k, 0.98), false, false);
-    l2: [48] u8; q := put(l2[..], 0, THING_WORDS[s[0].card_thing[0]]); q = put(l2[..], q, "S "); q = put_int(l2[..], q, s[0].card_before[0]); q = put(l2[..], q, " -> "); q = put_int(l2[..], q, s[0].card_after[0]);
-    n = write(d, out, n, cast(string) l2[0..<q], b.x0 + 14 * k, b.y0 + 68 * k, 8 * k, GAP, SPACE, white(k, 0.7), false, false);
-    half := (pw - 36 * k) * 0.5;
-    n = pill(s, out, n, BTN_ACCEPT, Box.{x0 = b.x0 + 12 * k, y0 = b.y1 - 52 * k, x1 = b.x0 + 12 * k + half, y1 = b.y1 - 12 * k}, "ACCEPT", true);
-    n = pill(s, out, n, BTN_DECLINE, Box.{x0 = b.x1 - 12 * k - half, y0 = b.y1 - 52 * k, x1 = b.x1 - 12 * k, y1 = b.y1 - 12 * k}, "DECLINE", false);
-    return n;
-  }
   if s[0].pane == PANE_BUILD {
     cols := 4; cw := (pw - 24 * k) / cast(f32) cols; ch := 40 * k;
     ph := 40 * k + ch * 2 + 12 * k;
@@ -1202,6 +1094,12 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   if s[0].facts && s[0].slug_n == 0 && !s[0].spec_ready {
     if read_spec(s, SAMPLE) { s[0].spec_ready = true; lay_out(s); }
     if !s[0].entered && track_begin(t, "realm-enter") { s[0].entered = true; track_str(t, "slug", "built"); track_bool(t, "owner", false); track_end(t); }
+  }
+  if s[0].slug_n > 0 { redit_start(s[0].ed[..], slug_text(s)); }
+  redit_step(s[0].ed[..], s[0].time, width, height, s[0].dpr);
+  // the board changed the realm: read the spec again once the layer is done
+  if s[0].ed[0].version != s[0].ed_seen && !redit_busy(s[0].ed[..]) && s[0].ed[0].switch_row < 0 && s[0].ed[0].revise_n == 0 {
+    s[0].ed_seen = s[0].ed[0].version; ask_spec(s);
   }
   next_request(s);
   if s[0].req_id >= 0 && s[0].time - s[0].req_at > WAIT { s[0].req_id = -1; s[0].req_what = REQ_NONE; if !s[0].spec_ready { s[0].spec_failed = true; } }
@@ -1303,7 +1201,7 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   opened(s[..], t[..], "bare", EMPTY);
   #assert s[0].spec_ready && s[0].laid && realm_draw_count(s[..]) == 0 && s[0].people == 0 && s[0].lanterns == 0 && s[0].birds == 0 && s[0].water_r == 0;
   n := frame_of(s[..], t[..], 2560, 1600);
-  #assert !s[0].shown[BTN_BUILD] && !s[0].shown[BTN_MAP] && !s[0].shown[BTN_FLY] && !s[0].shown[BTN_JUMP] && !s[0].shown[BTN_SETTINGS];
+  #assert !s[0].shown[BTN_BUILD] && !s[0].shown[BTN_MAP] && !s[0].shown[BTN_FLY] && !s[0].shown[BTN_JUMP] && !s[0].ed[0].shown[RB_EDIT];
   #assert !realm_key(s[..], t[..], 'f', true) || !s[0].flying;
   k := realm_key(s[..], t[..], ' ', true);
   #assert s[0].y == 0 && s[0].vy == 0;
@@ -1343,50 +1241,46 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   #assert trees == 5 && leaves == 5;
 }
 
-#test "the owner's SETTINGS switch the tools visitors get and send them" {
+EDIT_SPEC :: "200\nrealm moonlit-marsh\nname Moonlit Marsh\nowner 1\ntool build 0\ntool fly 1\ntool map 0\nwaiting 1\nrole owner\nrow water 1 Large pond\nrow props:wagon 0 A wagon\n";
+edit_opened :: (s: [] MyRealm) { redit_requested(s[0].ed[..], 6); used := redit_message(s[0].ed[..], HTTP_KIND + 6, EDIT_SPEC); }
+#test "EDIT is the shared layer's: the board, SETTINGS and the cards, one pane at a time" {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "moonlit-marsh", SPEC);
   n := frame_of(s[..], t[..], 2560, 1600);
-  #assert s[0].shown[BTN_SETTINGS] && s[0].shown[BTN_CARDS] && s[0].shown[BTN_BUILD] && s[0].shown[BTN_FLY] && s[0].shown[BTN_JUMP] && !s[0].shown[BTN_MAP];
-  tap_box(s[..], t[..], s[0].boxes[BTN_SETTINGS]);
-  #assert s[0].pane == PANE_SETTINGS;
+  #assert s[0].ed[0].req_ready && cast(string) s[0].ed[0].req_url[0..<s[0].ed[0].req_url_n] == "/api/playtest/realms/moonlit-marsh";
+  edit_opened(s[..]);
   m := frame_of(s[..], t[..], 2560, 1600);
-  tap_box(s[..], t[..], s[0].rows[TOOL_MAP]);
-  #assert s[0].tools[TOOL_MAP] && s[0].settings_due;
+  #assert s[0].ed[0].shown[RB_EDIT] && s[0].shown[BTN_BUILD];
+  tap_box(s[..], t[..], Box.{x0 = s[0].ed[0].boxes[RB_EDIT].x0, y0 = s[0].ed[0].boxes[RB_EDIT].y0, x1 = s[0].ed[0].boxes[RB_EDIT].x1, y1 = s[0].ed[0].boxes[RB_EDIT].y1});
   m2 := frame_of(s[..], t[..], 2560, 1600);
-  #assert url_is(s[..], "/api/playtest/realms/moonlit-marsh/settings") && (s[0].req_flags & HTTP_POST) != 0;
-  #assert body_is(s[..], "{\"tools\":{\"build\":false,\"fly\":true,\"jump\":true,\"map\":true,\"talk\":true,\"voice\":false}}");
-  #assert s[0].shown[BTN_MAP];
-  // a visitor has no SETTINGS, and a row does nothing for them
+  #assert s[0].ed[0].pane == REDIT_BOARD && s[0].ed[0].row_shown[1] && s[0].pane == PANE_NONE;
+  // BUILD takes its place: one pane at a time
+  tap_box(s[..], t[..], s[0].boxes[BTN_BUILD]);
+  #assert s[0].pane == PANE_BUILD && s[0].ed[0].pane == REDIT_SHUT;
+  // a visitor has no EDIT
   q: [1] MyRealm; u: [1] Track;
   opened(q[..], u[..], "built", SAMPLE);
   n2 := frame_of(q[..], u[..], 2560, 1600);
-  #assert !q[0].owner && !q[0].shown[BTN_SETTINGS] && !q[0].shown[BTN_CARDS];
-  set_tool(q[..], u[..], TOOL_FLY);
-  #assert !q[0].tools[TOOL_FLY] && !q[0].settings_due;
+  #assert !q[0].owner && !q[0].ed[0].shown[RB_EDIT];
 }
-
-#test "the owner's cards: before and after, ACCEPT sends it and the next shows" {
+#test "a row switched on the board reads the realm again once the layer is done" {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "moonlit-marsh", SPEC);
   n := frame_of(s[..], t[..], 2560, 1600);
-  tap_box(s[..], t[..], s[0].boxes[BTN_CARDS]);
-  m := frame_of(s[..], t[..], 2560, 1600);
-  #assert s[0].pane == PANE_CARDS && url_is(s[..], "/api/playtest/realms/moonlit-marsh/proposals");
-  realm_requested(s[..], 3);
-  realm_message(s[..], t[..], HTTP_ANSWER_KIND + 3, "200\nP 12|Visitor 9a3f|barrel|2.5|-1|0.2|0|1\nP 11|Visitor 77c1|crate|4|4|0|1|2\n");
-  #assert s[0].card_n == 2 && s[0].card_id[0] == 12 && s[0].card_thing[0] == 1 && s[0].card_before[0] == 0 && s[0].card_after[0] == 1;
+  edit_opened(s[..]);
+  m := frame_of(s[..], t[..], 2560, 1600);   // read once more after the layer's first spec
+  realm_requested(s[..], 2); realm_message(s[..], t[..], HTTP_ANSWER_KIND + 2, "200\n" );
+  s[0].ed[0].cards_due = false; s[0].ed[0].req_ready = false; s[0].ed[0].req_id = -1;
+  redit_toggle(s[0].ed[..]);
+  redit_switch(s[0].ed[..], 1);
   m2 := frame_of(s[..], t[..], 2560, 1600);
-  #assert s[0].shown[BTN_ACCEPT] && s[0].shown[BTN_DECLINE];
-  tap_box(s[..], t[..], s[0].boxes[BTN_ACCEPT]);
-  #assert url_is(s[..], "/api/playtest/realms/moonlit-marsh/proposals/12/accept") && s[0].card_n == 1 && s[0].card_id[0] == 11 && s[0].waiting == 1;
-  realm_requested(s[..], 4);
-  realm_message(s[..], t[..], HTTP_ANSWER_KIND + 4, "200\n{\"state\":\"accepted\"}");
-  // the spec is read again (the crate goes in), then the cards
+  #assert s[0].ed[0].req_ready && cast(string) s[0].ed[0].req_body[0..<s[0].ed[0].req_body_n] == "{\"row\":\"props:wagon\",\"on\":true}" && !s[0].req_ready;
+  redit_requested(s[0].ed[..], 1); used := redit_message(s[0].ed[..], HTTP_KIND + 1, "200\n{}");
   m3 := frame_of(s[..], t[..], 2560, 1600);
-  #assert url_is(s[..], "/api/playtest/realms/moonlit-marsh");
+  redit_requested(s[0].ed[..], 1); used2 := redit_message(s[0].ed[..], HTTP_KIND + 1, EDIT_SPEC);
+  m4 := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].req_ready && url_is(s[..], "/api/playtest/realms/moonlit-marsh");
 }
-
 #test "BUILD: the owner places at once; a visitor's goes to the owner, only when building is on" {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "moonlit-marsh", SPEC);
@@ -1453,8 +1347,10 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "moonlit-marsh", SPEC);
   n := frame_of(s[..], t[..], 780, 1688);
-  tap_box(s[..], t[..], s[0].boxes[BTN_SETTINGS]);
+  edit_opened(s[..]);
+  redit_toggle(s[0].ed[..]);
   m := frame_of(s[..], t[..], 780, 1688);
+  #assert s[0].ed[0].plate_n > 0;
   for i: 0..<s[0].plate_n { #assert s[0].plates[i].x0 >= 0 && s[0].plates[i].x1 <= 780; }
 }
 

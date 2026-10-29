@@ -12,6 +12,7 @@
 #include "Player.h"
 #include "Grid.h"
 #include "analytics-face.h"
+#include "edit-face.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -33,6 +34,7 @@ static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 
 static coax_t_TheGrid *grid(uint32_t state) { return (coax_t_TheGrid *)(uintptr_t)state; }
 static coax_v_t_TheGrid at(uint32_t state) { return (coax_v_t_TheGrid){grid(state), 1}; }
+static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){grid(state)->ed.e, 1}; }
 static void start(uint32_t state) {
   if (!track_state.page_n) track_init(tr(), track_cstr("the-grid"));
   if (placed) return;
@@ -88,6 +90,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
                             verse_player_act(player), player.vel.x, player.vel.z,
                             sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   post_out(state);
+  edit_face_drain(ed(state));
   place_frame(state);
   track_frame(tr(), dt, w, h, scale);
   if (n > 0 && thegrid_draws(at(state)) > 0) track_loaded(tr(), track_cstr("load-the-grid"));
@@ -115,6 +118,7 @@ EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t 
   start(state);
   track_key(tr(), key, false);
   bool used = thegrid_key(at(state), key, mods);
+  edit_face_drain(ed(state));
   track_drain(&track_state);
   return used ? 1u : 0u;
 }
@@ -127,7 +131,7 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   start(state);
   track_pointer(tr(), x, y, phase, kind, (coax_string){"", 0});
   track_drain(&track_state);
-  if (thegrid_pointer(at(state), x, y, phase, kind, id)) return 1u;
+  if (thegrid_pointer(at(state), x, y, phase, kind, id)) { edit_face_drain(ed(state)); return 1u; }
   if (kind != 0) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return kind != 0 ? 1u : 0u;
 }
@@ -140,6 +144,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (length > sizeof inbox) return;
   start(state);
   if (place_message(state, kind, inbox, length)) return;
+  if (edit_face_message(ed(state), kind, (coax_string){(const char *)inbox, length}) && kind != 600) { edit_face_drain(ed(state)); return; }
   if (post_id >= 0 && kind == 512 + post_id) {
     post_id = -1;
     thegrid_post_answer(at(state), (coax_string){(const char *)inbox, length});

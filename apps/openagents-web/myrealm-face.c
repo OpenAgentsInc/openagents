@@ -4,6 +4,7 @@
 // pack's catalog (asset 0) and the scene drawn from it. It decides nothing.
 #include "myrealm.h"
 #include "analytics-face.h"
+#include "edit-face.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -13,6 +14,7 @@ static coax_t_MyRealm *state_at(uint32_t state) { return (coax_t_MyRealm *)(uint
 static coax_v_t_MyRealm at(uint32_t state) { return (coax_v_t_MyRealm){state_at(state), 1}; }
 static coax_t_Track track_state;
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
+static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){state_at(state)->ed.e, 1}; }
 static uint8_t inbox[16384];
 static uint8_t catalog[32768];
 
@@ -24,6 +26,7 @@ static void drain(uint32_t state) {
                               (uint32_t)(uintptr_t)s->req_body.e, (uint32_t)s->req_body_n, (int32_t)s->req_flags);
     realm_requested(at(state), id);
   }
+  edit_face_drain(ed(state));
   track_drain(&track_state);
 }
 
@@ -70,6 +73,7 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   drain(state);
   return used;
 }
+EXPORT("coaxial_wants_text") uint32_t coaxial_wants_text(uint32_t state) { return realm_wants_text(at(state)) ? 1u : 0u; }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)realm_cursor(at(state)); }
 
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
@@ -79,6 +83,8 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, int
   start_track();
   coax_string bytes = {(const char *)inbox, length};
   bool taken = track_message(tr(), kind, bytes);
+  if (kind != 600 && !taken && edit_face_message(ed(state), kind, bytes)) { drain(state); return; }
+  if (kind == 600) edit_face_message(ed(state), kind, bytes);
   if (kind == 600 || !taken) realm_message(at(state), tr(), kind, bytes);
   drain(state);
 }

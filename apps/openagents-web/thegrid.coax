@@ -21,6 +21,7 @@
 
 #load "font.coax";
 #load "analytics.coax";
+#load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "../../verse/camera.coax";
 #load "../../verse/terrain.coax";
 #load "place-orbit.coax";
@@ -168,6 +169,7 @@ TheGrid :: struct {
   walls: [WALLS * 6] f32; wall_n: int;
   galaxy_button: Box; button_finger: int; pressed: bool;
   outbox: [OUTBOX] u8; out_n: int; action: int;
+  ed: [1] RealmEdit;                       // the shared edit layer: the board switches robots and names
   plate_n: int;
   // the stations: which is near, which is open, its buttons, what an answer says
   near: int; panel: int; answer: int;
@@ -340,11 +342,15 @@ leave_to :: (s: [] TheGrid, url: string) {
   for i: 0..<url.count { if n < OUTBOX { s[0].outbox[n] = url[i]; n += 1; } }
   s[0].out_n = n; s[0].action = ACT_NAVIGATE;
 }
-thegrid_action :: (s: [] TheGrid) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
+thegrid_action :: (s: [] TheGrid) -> int #export_c {
+  if s[0].action == 0 { e := redit_take_action(s[0].ed[..], s[0].outbox[..]); if e.kind != 0 { s[0].out_n = e.n; return e.kind; } }
+  a := s[0].action; s[0].action = 0; return a;
+}
 thegrid_action_done :: (s: [] TheGrid) #export_c { s[0].out_n = 0; }
 
 thegrid_key :: (s: [] TheGrid, key: int, mods: int) -> bool #export_c {
   if !s[0].started { thegrid_start(s); }
+  if s[0].panel < 0 { used := redit_key(s[0].ed[..], key, true); if used > 0 { return used == 1; } }
   if s[0].panel >= 0 { return panel_key(s, key, mods); }
   if (key == 'e' || key == 'E') && s[0].near >= 0 { open_station(s, s[0].near); return true; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
@@ -356,6 +362,7 @@ thegrid_key :: (s: [] TheGrid, key: int, mods: int) -> bool #export_c {
 }
 
 thegrid_key_up :: (s: [] TheGrid, key: int, mods: int) -> bool #export_c {
+  if redit_typing(s[0].ed[..]) { return false; }
   b := hold_bit(key);
   if b == 0 { return false; }
   if s[0].held & b != 0 { s[0].held = s[0].held - b; }
@@ -371,6 +378,7 @@ in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && 
 thegrid_pointer :: (s: [] TheGrid, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { thegrid_start(s); }
   if kind != 0 { s[0].touch = true; }
+  if s[0].panel < 0 && redit_pointer(s[0].ed[..], x, y, phase, id) { return true; }
   if s[0].panel >= 0 { return panel_pointer(s, x, y, phase, id); }
   if phase == 0 && in_box(s[0].open_button, x, y) { s[0].panel_finger = id; return true; }
   if id == s[0].panel_finger {
@@ -410,7 +418,7 @@ open_station :: (s: [] TheGrid, i: int) {
 close_panel :: (s: [] TheGrid) { s[0].panel = -1; s[0].panel_finger = -1; }
 // While a panel is open you stand still; the suggestion box takes typing.
 thegrid_busy :: (s: [] TheGrid) -> bool #export_c { return s[0].panel >= 0; }
-thegrid_wants_text :: (s: [] TheGrid) -> bool #export_c { return s[0].panel == STATION_SUGGEST && s[0].sent != SENT_SENDING; }
+thegrid_wants_text :: (s: [] TheGrid) -> bool #export_c { return redit_typing(s[0].ed[..]) || (s[0].panel == STATION_SUGGEST && s[0].sent != SENT_SENDING); }
 
 press :: (s: [] TheGrid, b: int) {
   i := s[0].panel;
@@ -836,7 +844,7 @@ panel_view :: (s: [] TheGrid, out: [] f32, u: [] f32, at: int) -> int {
 hud :: (s: [] TheGrid, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32, you: Point) -> int {
   k := hi(s[0].dpr, 0.5);
   w := s[0].width; h := s[0].height;
-  n := ifx ready(s) then labels(s, out, u, 0, you) else 0;
+  n := ifx ready(s) && redit_row_on(s[0].ed[..], "names") then labels(s, out, u, 0, you) else 0;
   gutter := 16 * k;
   cap := 11 * k;
   title := "THE GRID";
@@ -853,6 +861,14 @@ hud :: (s: [] TheGrid, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, 
   s[0].galaxy_button = gb;
   plate(s, u, gb, 0.85, ifx s[0].pressed then 2.0f32 else 1.0f32);
   n = draw_text(out, n, word, gb.x0 + 16 * k, gb.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, INK_R, INK_G, INK_B), false, false);
+  // EDIT, left of GALAXY, for its owner and admins (verse/edit/edit.coax); a station's panel closes it
+  if s[0].panel >= 0 { s[0].ed[0].pane = REDIT_SHUT; }
+  ew := text_width("EDIT", 9 * k) + 32 * k;
+  n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = gb.x0 - 8 * k - ew, y0 = gb.y0, x1 = gb.x0 - 8 * k, y1 = gb.y1});
+  for i: 0..<s[0].ed[0].plate_n {
+    pb := s[0].ed[0].plate_box[i];
+    plate(s, u, Box.{x0 = pb.x0, y0 = pb.y0, x1 = pb.x1, y1 = pb.y1}, s[0].ed[0].plate_alpha[i], s[0].ed[0].plate_look[i]);
+  }
   s[0].open_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   for b: 0..<3 { s[0].buttons[b] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
   s[0].close_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
@@ -898,6 +914,8 @@ thegrid_frame :: (s: [] TheGrid, out: [] f32, u: [] f32, width: f32, height: f32
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
   s[0].time += f64(t);
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5);
+  redit_start(s[0].ed[..], "the-grid");
+  redit_step(s[0].ed[..], f32(s[0].time), width, height, s[0].dpr);
   feet := v3(fx, fy, fz);
   if !finite3(feet) { feet = s[0].feet; }
   s[0].feet = feet; s[0].face = face; s[0].act = act;
@@ -919,7 +937,7 @@ thegrid_frame :: (s: [] TheGrid, out: [] f32, u: [] f32, width: f32, height: f32
   clock := ifx s[0].golden then 2.0f32 else f32(s[0].time);
   r := 1;
   if ready(s) {
-    r = walk_patrols(s, clock);
+    if redit_row_on(s[0].ed[..], "robots") { r = walk_patrols(s, clock); }   // the board can switch them off
     pose(s, r, f32(FOREMAN_X), f32(FOREMAN_Z), f32(FOREMAN_YAW), f32(FOREMAN_SCALE), CLIP_IDLE, ifx s[0].golden then 0.0f32 else f32(s[0].time));
     r += 1;
     pose(s, r, feet.x, feet.z, face, 1, ifx walking then CLIP_WALK else CLIP_IDLE, ifx walking then s[0].walk_time else s[0].idle_time);
@@ -1038,6 +1056,33 @@ fake_data :: (out: [] u8) -> int {
   for i: 0..<4 { cx += u[U_VIEW + i] * p[i]; cy += u[U_VIEW + 4 + i] * p[i]; cw += u[U_VIEW + 12 + i] * p[i]; }
   #assert cw > 0 && abs(cx / cw) < 1 && abs(cy / cw) < 1;
   #assert u[U_EYE + 3] == 1.5 && u[U_FIELD + 2] == 4 && u[7] == 10;
+}
+
+#test "EDIT for its owner and admins only; the board switches the robots off for everyone" {
+  g: [1] TheGrid;
+  b: [2048] u8;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  n := fake_data(b[..]);
+  ok := thegrid_data(g[..], cast(string) b[0..<n]);
+  for i: 0..<4 { thegrid_arrived(g[..], true); }
+  m := thegrid_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].ed[0].req_ready && cast(string) g[0].ed[0].req_url[0..<g[0].ed[0].req_url_n] == "/api/playtest/realms/the-grid";
+  redit_requested(g[0].ed[..], 2);
+  used := redit_message(g[0].ed[..], HTTP_KIND + 2, "200\nrealm the-grid\nrole visitor\nowner 0\nrow robots 0 Robots walking their rounds\nrow names 1 Place names in the air\n");
+  m = thegrid_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].robot_n == 2 && !g[0].ed[0].shown[RB_EDIT];   // the Foreman and you; a visitor has no EDIT
+  a: [1] TheGrid;
+  ok2 := thegrid_data(a[..], cast(string) b[0..<n]);
+  for i: 0..<4 { thegrid_arrived(a[..], true); }
+  m = thegrid_frame(a[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  redit_requested(a[0].ed[..], 2);
+  used2 := redit_message(a[0].ed[..], HTTP_KIND + 2, "200\nrealm the-grid\nrole admin\nowner 1\nrow robots 1 Robots walking their rounds\n");
+  m = thegrid_frame(a[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  e := a[0].ed[0].boxes[RB_EDIT];
+  #assert a[0].robot_n == 4 && a[0].ed[0].shown[RB_EDIT] && e.x1 < a[0].galaxy_button.x0 && e.x0 > 0;
+  #assert thegrid_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 0, 0, 1) && thegrid_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 2, 0, 1);
+  #assert a[0].ed[0].pane == REDIT_BOARD;
 }
 
 #test "golden mode holds the robots at one moment" {
