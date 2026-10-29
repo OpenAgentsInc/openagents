@@ -27,6 +27,10 @@ final class Backend {
   private let lock = NSLock()
   private var next = 1
   private var effort = "high"
+  // Zeron's streaming (crates/engine/src/sessions.rs): every delta marks the state dirty, and the
+  // host pushes it at most every 120 ms (STREAM_COMMIT_MS) for the conversation last asked for.
+  private var dirty = false
+  private var lastShown = -1
   private var conversations: [Conversation] = []
   private var running: [Int: Process] = [:]
   private var partial: [Int: String] = [:]
@@ -55,7 +59,7 @@ final class Backend {
     if parts.count > 1 { for kv in parts[1].split(separator: "&") { let p = kv.split(separator: "=", maxSplits: 1); if p.count == 2 { query[String(p[0])] = String(p[1]) } } }
     let json = (body.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
     switch (post, path) {
-    case (false, "/api/chat/state"): return "200\n" + lines(shown: Int(query["c"] ?? "") ?? -1)
+    case (false, "/api/chat/state"): lastShown = Int(query["c"] ?? "") ?? -1; return "200\n" + lines(shown: lastShown)
     case (true, "/api/chat/send"): return send(json)
     case (true, "/api/chat/model"):
       if let c = find(json["c"]), let m = json["model"] as? String { c.model = m; save() }
@@ -73,6 +77,14 @@ final class Backend {
       return "400\n{\"error\": \"This app uses your own Claude Code login: run claude in a terminal to log in.\"}"
     default: return "404\n{\"error\": \"not found\"}"
     }
+  }
+
+  // The state as it now stands, once it has changed since the last push.
+  func pushed() -> String? {
+    lock.lock(); defer { lock.unlock() }
+    if !dirty { return nil }
+    dirty = false
+    return lines(shown: lastShown)
   }
 
   private func find(_ v: Any?) -> Conversation? {
@@ -155,6 +167,7 @@ final class Backend {
         }
       }
       t.working = ""
+      self.dirty = true
       self.save()
     }
     do { try p.run(); running[t.id] = p; t.status = "running"; t.working = "thinking" }
@@ -164,6 +177,7 @@ final class Backend {
   private func event(_ line: Data, conv c: Conversation, turn t: Turn) {
     guard let e = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { return }
     lock.lock(); defer { lock.unlock() }
+    dirty = true
     if t.status != "running" { return }
     switch e["type"] as? String {
     case "system":
@@ -211,6 +225,7 @@ final class Backend {
     let list = conversations.sorted { $0.updated > $1.updated }
     let shown = asked > 0 ? conversations.first { $0.id == asked } : (asked < 0 ? list.first : nil)
     let busy = conversations.contains { $0.busy }
+    if asked < 0, let c = shown { lastShown = c.id }
     var out = "Z|0|0|local||0|\(busy ? 1 : 0)|\(shown?.id ?? 0)|\(effort)\n"
     for c in list { out += "C|\(c.id)|\(cell(c.title))|\(c.model)|\(Backend.stamp.string(from: c.updated))|\(c.busy ? 1 : 0)\n" }
     if let c = shown {

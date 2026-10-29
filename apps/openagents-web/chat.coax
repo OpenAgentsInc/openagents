@@ -36,6 +36,7 @@ CH_HITS :: 128;
 CH_NOTE :: 300;
 CH_HTTP :: 512;            // + id: an HTTP answer (coax/web/host.js)
 CH_TYPED :: 1; CH_SHOWN :: 602;
+CH_PUSHED :: 603;          // the Mac app: the state pushed as it changes (a turn streaming), for the conversation shown
 CH_NAVIGATE :: 1;
 CH_BUSY :: 2.0;            // seconds between reads while a turn waits or runs
 CH_REFRESH :: 30.0;        // else
@@ -240,6 +241,16 @@ ch_post :: (s: [] ChatState, op: string, kind: int, k1: string, v1: string, k2: 
   s[0].body_n = ch_put(s[0].body[..], b, "}");
   s[0].post_kind = kind; s[0].post_id = -1;
 }
+// The conversation a pushed state shows: its Z line's column 7.
+ch_pushed_for :: (text: string) -> int {
+  if text.count < 2 || text[0] != 'Z' { return -1; }
+  col := 0; k := 0; at := 0;
+  while k < text.count && text[k] != '\n' { if text[k] == '|' { col += 1; if col == 7 { at = k + 1; } } k += 1; }
+  if at == 0 { return -1; }
+  v := 0; j := at;
+  while j < k && text[j] >= '0' && text[j] <= '9' { v = v * 10 + cast(int) (text[j] - '0'); j += 1; }
+  return v;
+}
 // The face sent them. A post's body is wiped once sent: a credential stays in the page no longer than that.
 coaxial_chat_asked :: (s: [] ChatState, id: int) #export_c { if s.count > 0 { s[0].ask_n = 0; s[0].ask_id = id; } }
 coaxial_chat_posted :: (s: [] ChatState, id: int) #export_c {
@@ -281,6 +292,14 @@ ch_int :: (t: string) -> int {
 }
 
 // An answer: "STATUS\n" then the body.
+// The state's lines, from an answer or pushed (CH_PUSHED).
+ch_take :: (s: [] ChatState, bytes: string, from: int) {
+  n := 0; i := from;
+  while i < bytes.count && n < CH_DATA { s[0].data[n] = bytes[i]; n += 1; i += 1; }
+  s[0].data_n = n; ch_index(s); s[0].status = 200;
+  // the newest conversation, shown when none was chosen
+  if s[0].shown < 0 { k := ch_int(ch_shown_id(s)); if k > 0 { s[0].shown = k; } }
+}
 ch_answer :: (s: [] ChatState, id: int, bytes: string) {
   i := 0; code := 0;
   while i < bytes.count && bytes[i] >= '0' && bytes[i] <= '9' { code = code * 10 + cast(int) (bytes[i] - '0'); i += 1; }
@@ -288,11 +307,7 @@ ch_answer :: (s: [] ChatState, id: int, bytes: string) {
   if id == s[0].ask_id {
     s[0].ask_id = -1;
     if code == 200 {
-      n := 0;
-      while i < bytes.count && n < CH_DATA { s[0].data[n] = bytes[i]; n += 1; i += 1; }
-      s[0].data_n = n; ch_index(s); s[0].status = 200;
-      // the newest conversation, shown when none was chosen
-      if s[0].shown < 0 { k := ch_int(ch_shown_id(s)); if k > 0 { s[0].shown = k; } }
+      ch_take(s, bytes, i);
     } else if code == 0 || code >= 500 {
       if s[0].status <= 0 { s[0].status = 599; }      // offline: what was shown stays
     } else {
@@ -1017,6 +1032,7 @@ coaxial_chat_message :: (s: [] ChatState, kind: int, length: int) #export_c {
   text := cast(string) s[0].inbox[0..<length];
   if kind >= CH_HTTP && kind < CH_HTTP + 8 { ch_answer(s, kind - CH_HTTP, text); return; }
   if kind == CH_TYPED { if s[0].typing { ch_type(s, text); } return; }
+  if kind == CH_PUSHED { if s[0].status == 200 && ch_pushed_for(text) == s[0].shown { ch_take(s, text, 0); } return; }
   if kind == CH_SHOWN && s[0].status == 200 { s[0].asked_at = -1000; }   // shown again: read the state now
 }
 coaxial_chat_hash :: (s: [] ChatState, length: int) #export_c { }
@@ -1206,4 +1222,18 @@ ch_typed_in :: (s: [] ChatState, text: string) {
   ch_loaded(s[..], out[..], u[..]);
   n := ch_fresh(s[..], out[..], u[..], 2880, 1800);
   #assert !ch_has_hit(s[..], H_EFFORT) && ch_has_hit(s[..], H_KEY);
+}
+
+#test "a pushed state replaces the lines only for the conversation shown" {
+  s: [1] ChatState;
+  out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  ch_loaded(s[..], out[..], u[..]);
+  push := "Z|0|0|local||0|1|7|high\nS|7|T|claude-opus-5-5|1\nU|21|running|Oct 28|claude-opus-5-5|local|And then?|Hel||writing|0\n";
+  for i: 0..<push.count { s[0].inbox[i] = push[i]; }
+  coaxial_chat_message(s[..], CH_PUSHED, push.count);
+  #assert ch_count(s[..], 'U') == 1 && ch_local(s[..]);
+  other := "Z|0|0|local||0|1|3|high\n";
+  for i: 0..<other.count { s[0].inbox[i] = other[i]; }
+  coaxial_chat_message(s[..], CH_PUSHED, other.count);
+  #assert ch_count(s[..], 'U') == 1;
 }

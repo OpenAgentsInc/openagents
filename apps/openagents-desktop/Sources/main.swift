@@ -199,6 +199,10 @@ final class App: NSObject, NSApplicationDelegate {
   var window: NSWindow!
   func applicationDidFinishLaunching(_ n: Notification) {
     chatState = dk_new(http)
+    Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { _ in
+      guard let lines = backend.pushed() else { return }
+      Array(lines.utf8).withUnsafeBufferPointer { dk_message(chatState, 603, $0.baseAddress, Int32($0.count)) }
+    }
     let menu = NSMenu(), item = NSMenuItem(), sub = NSMenu()
     sub.addItem(withTitle: "Quit OpenAgents", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
     item.submenu = sub; menu.addItem(item)
