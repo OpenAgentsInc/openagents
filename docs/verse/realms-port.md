@@ -45,6 +45,17 @@ Everglade. The tasks are in the Verse project under "Port the realms"
      and edit tools, one shared world `sandbox` on the server that anyone
      with a player key publishes to (`0029_sandbox_open.sql`). Its
      one-sentence set pieces are still to come.
+   - **Medieval Town folds into Everglade** (rl-medieval-town, decided
+     October 29). The demo's town (`~/work/aethyr-demo` `src/town.cpp`,
+     `docs/medieval-town.md`) is the layout of Hivemind's Modular Medieval
+     Town, a third-party pack, with each of its 8,087 pieces swapped for a
+     Quaternius one. Everglade is a medieval town walkable on foot, built
+     from the same CC0 kits from a layout of our own (eg-buildings), so a
+     second town would repeat it on a layout we don't own. What the demo's
+     town had that Everglade doesn't yet, its clock from day to a lamp-lit
+     night and a crowd of townsfolk wandering the streets, belong in
+     Everglade: the townsfolk with eg-people, the night with the engine's
+     lighting work. There is no Medieval Town realm.
 
 ## Sources (read only)
 
