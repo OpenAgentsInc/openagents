@@ -20,7 +20,7 @@ listings use `jai` Markdown fences.
 Throughput and device work in 14–21 begins as soon as it has concrete
 operations and CPU oracles. Neither generic training, gpt-oss, Mistral,
 DeepSeek, the mesh, a smaller imported model nor the NVIDIA branches blocks
-those two decision models. [Model targets](../../docs/psionic/model-targets.md)
+those two decision models. [Model targets](../docs/targets/model-targets.md)
 defines their exact architecture and acceptance gates.
 
 The contents give a reading order; they do not require finishing every earlier
@@ -28,8 +28,8 @@ part before starting a branch. The prerequisite map below governs that choice.
 Several chapters need Coax compiler features that do not exist yet; the
 [Coax feature map](#coax-features-each-branch-needs) names them so Psionic can
 act as their first real consumer.
-The [roadmap](../../docs/psionic/roadmap.md) sets delivery priorities, while the
-[NVIDIA survey](../../docs/psionic/nvidia-breadth.md) pins the proposed external
+The [roadmap](../docs/roadmap.md) sets delivery priorities, while the
+[NVIDIA survey](../docs/targets/nvidia-breadth.md) pins the proposed external
 targets and explains artifact, data and licensing qualifications. New breadth
 is proposed here; this revision does not add or renumber live project issues.
 
@@ -106,7 +106,7 @@ Elephant or Mammoth.
 
 ## V. An open reasoning model: gpt-oss
 
-OpenAI's [gpt-oss](../../docs/psionic/gpt-oss.md) is the first general
+OpenAI's [gpt-oss](../docs/targets/gpt-oss.md) is the first general
 assistant model in the plan: Apache-2.0 weights, a mixture-of-experts
 decoder and a structured response format built for tools and reasoning. It
 needs no training and no hybrid recurrence, only the forward core of I–II,
@@ -133,7 +133,7 @@ Text input is the whole scope. This part does not block Elephant or Mammoth.
 
 ## VI. Mistral models, from Ministral to Le Chonk
 
-[Mistral](../../docs/psionic/mistral.md) publishes a ladder of open models
+[Mistral](../docs/targets/mistral.md) publishes a ladder of open models
 whose architectures add one feature at a time on the way to Mistral Large 4
 ("Le Chonk"): 1T total and about 52B active parameters, 128 routed experts plus
 a shared expert, latent and sparse attention, FP8 weights and a built-in draft
@@ -162,7 +162,7 @@ Part XI. The NVFP4 variants are derived checkpoints for Blackwell GPUs, not orig
 
 DeepSeek publishes both open models and unusually detailed accounts of how it
 serves them. This part builds our own version of the
-[pre-reset DeepSeek V4.1 Flash work](../../docs/psionic/deepseek.md) in Coax:
+[pre-reset DeepSeek V4.1 Flash work](../docs/targets/deepseek.md) in Coax:
 the model ladder from a small distill to V4.1 Flash, V4.1's distinctive
 components, and the engine techniques behind its efficiency. Each technique
 is exact unless its profile says otherwise. The old Rust attempt ran V4.1 end
@@ -236,7 +236,7 @@ before longer runs rather than postponing provenance until this part.
 | 71. Post-train a decision model | Qualified hybrid backward/adapters, selected trainable regions, cross-entropy/Brier/abstention, resume and held-out promotion. |
 | 72. Distill Mammoth into Elephant | Mammoth's slot distributions as soft targets on a recorded request corpus; KL/cross-entropy over slots, held-out agreement and chapter 12's quality metrics, with Elephant's cost measured against Mammoth's. |
 
-The [nanochat study](../../docs/psionic/nanochat.md) is the compatibility
+The [nanochat study](../docs/targets/nanochat.md) is the compatibility
 contract. Its current speedrun trains a tokenizer and a base model and runs
 SFT; RL is a separate program. Chapter 70 depends on SFT and its own reward
 contracts, not on completing preference learning or continued pretraining.
@@ -343,7 +343,7 @@ control would be a separately authorized integration after simulation.
 
 This part turns a qualified model into a service that other people and
 agents depend on. It follows the production practice described in
-[Inference Engineering](../../docs/psionic/inference-engineering.md), but
+[Inference Engineering](../docs/serving/inference-engineering.md), but
 builds the infrastructure in Coax: admission, scheduling, routing, scaling,
 rollout and metering decide in Coax, with `#authority` files and
 zero-survivor mutation where they decide work, money or policy. The host
@@ -385,7 +385,7 @@ selected backend.
 A mesh pools memory and compute across machines that are loosely connected,
 over ordinary networks rather than device interconnects. Chapter 111 is the
 tightly coupled case in one machine or rack. The design follows the
-[Mesh-LLM lessons](../../docs/psionic/mesh.md) recorded before the reset, with
+[Mesh-LLM lessons](../docs/serving/mesh.md) recorded before the reset, with
 the trust rules from the earlier private-inference work. Coax decides
 placement, admission, routing, verification and price; the host provides
 transport, files and devices.

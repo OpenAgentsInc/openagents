@@ -35,7 +35,7 @@ retrieval, gpt-oss, Mistral and DeepSeek, then training/nanochat, vision,
 motion, speech, physics, composite models, production hosting and inference
 across a mesh.
 Its prerequisite map lets independent branches start earlier than their
-position in the contents. The [roadmap](../../docs/psionic/roadmap.md) lists
+position in the contents. The [roadmap](../docs/roadmap.md) lists
 future work. Planned language and
 ML features are not runnable claims. Exact transcripts describe the current
 CPU arithmetic/printing profile; per-value tolerances state the numerical

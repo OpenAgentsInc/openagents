@@ -4,7 +4,7 @@ Read-only study, 2026-10-29, of Philip Kiely, *Inference Engineering*
 (Baseten Books, 2026, ISBN 979-8-9943597-2-3; the PDF was last modified
 January 29, 2026). The book is distributed free, but its copyright page reserves all rights. These notes
 paraphrase its ideas and cite sections rather than copying text. Part XVII of
-the [book plan](../../psionic/book/PLAN.md) and several earlier chapters
+the [book plan](../../book/PLAN.md) and several earlier chapters
 take their production scope from it.
 
 The book describes serving with existing engines (vLLM, SGLang,

@@ -3,19 +3,19 @@
 The chapter 7 model path has three bounded Coax primitives and separately
 composed causal linear and full-attention layers. These are building blocks for
 the pinned Elephant and Mammoth checkpoints, not yet a complete model,
-decision service, or independently qualified upstream runtime. The existing [chapter 6](../../psionic/book/ch06-attention-without-training.md)
+decision service, or independently qualified upstream runtime. The existing [chapter 6](../book/ch06-attention-without-training.md)
 remains an educational dense block with its own different rotary convention.
 
-- [delta.coax](../../psionic/lib/delta.coax) implements width-four causal
+- [delta.coax](../lib/delta.coax) implements width-four causal
   depthwise convolution with SiLU and the grouped Q/K gated delta recurrence.
   Its caller supplies already projected Q/K/V, gate, beta, decay and norm
   inputs as one packed span. It stages and publishes convolution history,
   recurrent state and output together on success.
-- [qwen-attention.coax](../../psionic/lib/qwen-attention.coax) prepares
+- [qwen-attention.coax](../lib/qwen-attention.coax) prepares
   per-head query/gate, normalized key/value and partial split-half rotary
   coordinates; it then provides grouped, masked, sigmoid-gated attention.
   The caller supplies explicit positional coefficients and a mask.
-- [qwen-matvec.coax](../../psionic/lib/qwen-matvec.coax) projects original
+- [qwen-matvec.coax](../lib/qwen-matvec.coax) projects original
   unaligned little-endian BF16 or F32 rows against finite F32 input. It checks
   all original encodings, stages output and uses compensated binary64 products
   and accumulation. It accepts up to 32,768 rows and columns, enough for
@@ -41,15 +41,15 @@ truncates. Delta `A_log` above 80 is refused in this profile. Callers retain
 truthful extents, lifetime, alignment and exclusive access; C observes address
 ranges only.
 
-[The owned delta oracle](../../psionic/tests/delta_oracle.py) computes a
+[The owned delta oracle](../tests/delta_oracle.py) computes a
 three-token scalar reference with nonzero initial convolution and recurrent
-states. [The attention oracle](../../psionic/tests/qwen_attention_oracle.py)
+states. [The attention oracle](../tests/qwen_attention_oracle.py)
 checks split-half rotary preparation, grouped attention, masks and output
 gates. Native tests exercise actual storage, aliases and non-finite values.
-The [verification record](../verification/psionic-hybrid-2026-10-29.md)
+The [verification record](../../docs/verification/psionic-hybrid-2026-10-29.md)
 contains the precise test scope.
 
-[Chapter 7](../../psionic/book/ch07-a-hybrid-sequence-model.md) composes the
+[Chapter 7](../book/ch07-a-hybrid-sequence-model.md) composes the
 causal layers and documents their state. Still required are model tensor
 mapping, causal full-model execution, independent upstream layer comparisons,
 and general combined attention/recurrent state handling. Chapters 8–11 need

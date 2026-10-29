@@ -8,8 +8,8 @@ run scalar learning, bounded storage, CPU row/matrix numerics and original
 BF16/F32 artifact admission and bounded text requests in Psionic. All targets here are proposals; no NVIDIA implementation or
 original-training reproduction is claimed.
 
-The [proposed contents](../../psionic/book/PLAN.md) gives each study a place.
-The [roadmap](roadmap.md) distinguishes teaching order from delivery priority.
+The [proposed contents](../../book/PLAN.md) gives each study a place.
+The [roadmap](../roadmap.md) distinguishes teaching order from delivery priority.
 No new project issues are published by this update.
 
 ## What to select first
@@ -131,7 +131,7 @@ reproducing its published checkpoint or original training run.
 
 ## Shared architecture and evidence
 
-The [architecture](architecture.md) remains Coax-first. Native adapters handle
+The [architecture](../architecture.md) remains Coax-first. Native adapters handle
 files, storage and device effects; Coax owns parsing/admission, preprocessing,
 operators, model state and numerical execution. A Python/PyTorch reference is
 development tooling, not the shipped implementation. Choosing NVIDIA weights

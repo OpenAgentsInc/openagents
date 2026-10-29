@@ -16,7 +16,7 @@ first implementation of the optional parameter-count check; after refactoring
 its bounded sum, the current index validator was separately run against the
 same two real headers and index and passed all 1,184 entries and both totals.
 Independent SHA-256 checks matched both pinned Mammoth shard digests. The
-[model metadata and verification procedure](../psionic/original-bundles.md)
+[model metadata and verification procedure](../../psionic/docs/original-bundles.md)
 include reproducible manifests and original-file harnesses.
 
 These results establish original bytes and inventory admission, not model

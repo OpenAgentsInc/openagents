@@ -3,7 +3,7 @@
 Read-only survey, 2026-10-29. No weights were downloaded, and no upstream
 setup, inference or tool code was run. Psionic would implement the behavior in
 Coax; Python stays reviewed reference and export tooling, never a runtime
-dependency. Part V of the [book plan](../../psionic/book/PLAN.md) gives the
+dependency. Part V of the [book plan](../../book/PLAN.md) gives the
 chapter sequence. It is proposed work, and it does not block
 [Elephant and Mammoth](model-targets.md).
 

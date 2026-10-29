@@ -1,7 +1,7 @@
 # Inference across a mesh
 
 Planning note, 2026-10-29, for Part XVIII of the
-[book plan](../../psionic/book/PLAN.md). It carries forward two documents
+[book plan](../../book/PLAN.md). It carries forward two documents
 from before the reset and adds a review of Mesh-LLM at its current revision.
 Nothing was installed, joined or run.
 
@@ -38,7 +38,7 @@ From the earlier review, restated as Psionic rules (chapters 115–122):
    artifact, stage range and protocol version. The DeepSeek plan's list (four
    residual streams, KV and indexer source layers, chosen candidate blocks,
    Engram output) shows how much this can be. Mistral Large 4's layer-sharing
-   map (in [mistral.md](mistral.md)) has the same character.
+   map (in [mistral.md](../targets/mistral.md)) has the same character.
 3. **Stages own packages.** A stage fetches only its own tensors and the
    shared assets it needs, each verified against its digest.
 4. **The route waits for readiness.** Load downstream stages first, publish

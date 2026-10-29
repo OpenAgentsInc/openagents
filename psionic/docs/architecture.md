@@ -3,7 +3,7 @@
 Status: chapters 1–5 implement bounded scalar learning, contiguous CPU storage,
 `CPU-f32-wide-v1` numerics, `original-weights-v1` artifact admission and
 `qwen35-text-v1` text requests in
-[psionic/](../../psionic/README.md). Autodiff, full model execution and
+[psionic/](../README.md). Autodiff, full model execution and
 accelerator contracts below remain proposed.
 The [source survey](research.md) supplies their motivation; each increment
 needs fresh checks and native evidence.
@@ -41,7 +41,7 @@ synchronous, so buffers stay alive for the full call. Do not retain a borrowed
 view after its owner's lifetime or return a view into local scratch.
 
 Chapter 2 implements the shape/storage portion of these contracts in
-[lib/tensor.coax](../../psionic/lib/tensor.coax): rank 0–4, at most 1,048,576
+[lib/tensor.coax](../lib/tensor.coax): rank 0–4, at most 1,048,576
 elements, canonical zero inactive dimensions and checked row-major offsets.
 Its staged copy requires an exact logical input view and sufficient separate
 destination/scratch capacity; it accepts every finite binary32 value. Later
@@ -99,7 +99,7 @@ fixed-profile CPU replay, floating-point comparisons across devices, and model
 quality are separate contracts. Equal generated text is weak numerical
 evidence; teacher-forced intermediate tensors and logits localize errors.
 
-The implemented [chapter 3 profile](../../psionic/book/ch03-numbers-and-matrices.md)
+The implemented [chapter 3 profile](../book/ch03-numbers-and-matrices.md)
 uses explicit binary64 products/compensated reductions over binary32 storage;
 it does not alter M0's arithmetic. Add/sum/dot/matmul narrow once per output
 with a finite-range check. Masked softmax validates all logits and binary mask
@@ -186,8 +186,8 @@ not qualify those targets.
 
 ## Breadth grows from concrete operator families
 
-The [expanded book plan](../../psionic/book/PLAN.md) and
-[NVIDIA survey](nvidia-breadth.md) propose more than language models. Each
+The [expanded book plan](../book/PLAN.md) and
+[NVIDIA survey](targets/nvidia-breadth.md) propose more than language models. Each
 branch extends the same library with explicit operators and representations:
 convolution/resampling and patch layout for vision; spectral/complex and
 spherical arithmetic for audio/fields; point neighborhoods and signed
@@ -217,8 +217,8 @@ inconsistencies to resolve when those proposed targets are selected.
 
 ## Original artifacts before model-specific execution
 
-[Chapter 4](../../psionic/book/ch04-reading-original-weights.md) implements
-[model-io](../../psionic/lib/model-io/): byte-bounded Safetensors parsing,
+[Chapter 4](../book/ch04-reading-original-weights.md) implements
+[model-io](../lib/model-io/): byte-bounded Safetensors parsing,
 original BF16/F32 tensor intervals, exact original-byte SHA-256 identities,
 a complete HF shard-index subset and caller-pinned tensor manifests. This
 artifact profile has independent file/inventory budgets; decoding windows
@@ -235,8 +235,8 @@ resource qualification remain next.
 
 ## Text requests preserve original bytes and token boundaries
 
-[Chapter 5](../../psionic/book/ch05-text-becomes-a-model-request.md) implements
-[the text library](../../psionic/lib/text.coax): frozen tagged Base Labs
+[Chapter 5](../book/ch05-text-becomes-a-model-request.md) implements
+[the text library](../lib/text.coax): frozen tagged Base Labs
 choice/noul/score rendering, Unicode-17 NFC and split classes, original Qwen
 byte-BPE/added-token data, and complete branch token-prefix matching. Original
 tokenizer data and deterministic packed indexes are pinned together. A host

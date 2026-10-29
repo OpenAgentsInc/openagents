@@ -8,7 +8,7 @@ book's autodiff, language-model training, or nanochat pipeline chapters.
 Full model execution remains planned. Chapters 1–5 implement the bounded scalar
 trainer, storage/numerics, original-weight artifact admission and the
 `qwen35-text-v1` tokenizer/request profile. [The project queue](https://openagents.com/projects/psionic)
-and [roadmap](roadmap.md) define the actual dependencies and acceptance.
+and [roadmap](../roadmap.md) define the actual dependencies and acceptance.
 
 ## Evidence and pins
 
@@ -138,7 +138,7 @@ separate consumer work; calling Baseten is not native Psionic execution.
 
 ## Chapter 5 implementation scope
 
-The [text chapter](../../psionic/book/ch05-text-becomes-a-model-request.md)
+The [text chapter](../../book/ch05-text-becomes-a-model-request.md)
 now implements frozen tagged rendering and original tokenizer semantics under
 `qwen35-text-v1` budgets, using Unicode 17.0.0 and integer structured entries.
 Both pinned tokenizer originals had SHA-256

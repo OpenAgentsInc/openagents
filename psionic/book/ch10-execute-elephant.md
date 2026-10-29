@@ -91,7 +91,7 @@ or a network service.
 ## Try the original files
 
 Obtain the pinned `baselabs/elephant-1` revision described in the
-[original bundle record](../../docs/psionic/original-bundles.md), then place
+[original bundle record](../docs/original-bundles.md), then place
 its four named files together in a local directory. No weights are included in
 this repository. The following command compiles an owned C host harness and
 runs the Coax session, preparation and answer path. It does not download files.

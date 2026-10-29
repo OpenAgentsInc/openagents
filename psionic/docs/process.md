@@ -1,6 +1,6 @@
 # Development process
 
-Status: chapters 1–5 implement this workflow through [psionic/check.sh](../../psionic/check.sh).
+Status: chapters 1–5 implement this workflow through [psionic/check.sh](../check.sh).
 The runner checks the library units, six examples, native boundaries, and
 source-linked book listings. Later target and performance work below remains
 proposed until its workload and evidence exist.
@@ -60,7 +60,7 @@ the native host to bypass a compiler limitation.
 
 ## A small local verification entry point
 
-`psionic/check.sh` uses an explicit [example manifest](../../psionic/book/examples.json):
+`psionic/check.sh` uses an explicit [example manifest](../book/examples.json):
 every runnable example has a source path, supported build
 modes, required tools, expected exit status, and comparison method. Every
 chapter says `planned`, `partial`, or `runnable` for its own contents;

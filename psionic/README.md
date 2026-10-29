@@ -22,7 +22,7 @@ Start with [the book](book/README.md) and
 [Chapter 7: A hybrid sequence model](book/ch07-a-hybrid-sequence-model.md), then
 [Chapter 8: Decisions have a different mask](book/ch08-decisions-have-a-different-mask.md), then
 [Chapter 9: Read the options](book/ch09-read-the-options.md).
-[The design notes](../docs/psionic/README.md) explain the larger plan.
+[The design notes](docs/README.md) explain the larger plan.
 
 From the repository root:
 
@@ -118,5 +118,5 @@ see chapter 10 for the Elephant original-checkpoint qualification.
 Chapter 9 provides CPU slot readout given full-vocabulary logits and explicit
 temperature; it does not load calibration artifacts or serialize responses.
 Chapter 10 authenticates and executes a typed Elephant text decision on the CPU;
-see [execution progress](../docs/psionic/model-execution-progress.md). Mammoth
+see [execution progress](docs/model-execution-progress.md). Mammoth
 end-to-end qualification, autodiff, GPU execution and serving remain planned.

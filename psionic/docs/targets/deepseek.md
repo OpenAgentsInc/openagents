@@ -1,7 +1,7 @@
 # DeepSeek natively: what the pre-reset work teaches
 
 Planning note, 2026-10-29, for Part VII of the
-[book plan](../../psionic/book/PLAN.md) and chapter 13's qualification rules.
+[book plan](../../book/PLAN.md) and chapter 13's qualification rules.
 It condenses the pre-reset DeepSeek V4.1 Flash work, which ran from about
 October 12 to 23, 2026, in the old Rust Psionic. Read the sources with
 `git show 0b401561a0^:<path>`:

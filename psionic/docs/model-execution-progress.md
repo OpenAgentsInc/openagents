@@ -1,7 +1,7 @@
 # From checkpoint inventory to a hybrid block
 
 This records the original-weight building blocks used by
-[chapter 10](../../psionic/book/ch10-execute-elephant.md). Elephant text
+[chapter 10](../book/ch10-execute-elephant.md). Elephant text
 execution is exercised there; Mammoth end-to-end execution remains future work.
 
 The separate rank-five inventory and bundle code retains all five extents,
@@ -15,18 +15,18 @@ The new inventory's borrowed names and raw bytes must remain immutable and
 alive; its caller supplies and authenticates the trusted pins. Draft metadata
 may change on refusal but public inventory is only published after success.
 
-The [owned manifest tools](../../psionic/tests/elephant_manifest.py) and
-[Mammoth tool](../../psionic/tests/mammoth_manifest.py) require
+The [owned manifest tools](../tests/elephant_manifest.py) and
+[Mammoth tool](../tests/mammoth_manifest.py) require
 the pinned original size and SHA-256 before generating or checking the
-[Elephant inventory](../../psionic/fixtures/models/elephant/manifest.json) and
-[Mammoth inventory](../../psionic/fixtures/models/mammoth/manifest.json).
+[Elephant inventory](../fixtures/models/elephant/manifest.json) and
+[Mammoth inventory](../fixtures/models/mammoth/manifest.json).
 This small reviewable inventory is metadata, not checkpoint weights.
 `--header` produces an immutable C data table from that fixture for the
-[real-file harness](../../psionic/tests/elephant_bundle.c). The harness maps
+[real-file harness](../tests/elephant_bundle.c). The harness maps
 original bytes; Coax performs parsing, hashing and admission. Supplying an
 inventory generated from an unauthenticated file would not establish identity.
 
-The [hybrid block executor](../../psionic/lib/qwen-model.coax) runs an ordered
+The [hybrid block executor](../lib/qwen-model.coax) runs an ordered
 list of linear and full layers over one block. Linear layers advance once per
 token; full layers see every token in the block and the earlier KV prefix.
 It stages the linear state, the live prefix and new cache entries, and two
@@ -42,20 +42,20 @@ The native adapter observes nested aliases, but callers retain the pointer,
 extent, alignment, lifetime and exclusive access obligations. Those component
 checks alone do not establish original-weight numerical parity, resource
 feasibility, request serialization, or a serving API. The separate
-[chapter 10 record](../verification/psionic-ch10-2026-10-29.md) describes
+[chapter 10 record](../../docs/verification/psionic-ch10-2026-10-29.md) describes
 the real-model comparisons and their limits.
 
-The [layer mapper](../../psionic/lib/model-io/layer-map.coax) checks the exact
+The [layer mapper](../lib/model-io/layer-map.coax) checks the exact
 names and dimensions of the four-layer Qwen schedule before borrowing BF16
 matrices and decoding its small vectors. It does not authenticate the inventory;
 that must happen first. All 32 Elephant layers and all 64 Mammoth layers have
 been mapped from their original pinned inventories.
 
-The [token block](../../psionic/lib/qwen-tokens.coax) gathers original-format
+The [token block](../lib/qwen-tokens.coax) gathers original-format
 embeddings, runs the complete hybrid block, normalizes the final token, projects
 the entire vocabulary in bounded chunks and performs slot readout. It stages
 state until the full head and readout succeed. The separate
-[text rotary generator](../../psionic/lib/qwen-rope.coax) implements the pinned
+[text rotary generator](../lib/qwen-rope.coax) implements the pinned
 text-only theta and 64 rotated dimensions. Callers must bind the exact model,
 weights, tokenizer, slot IDs, positions and branch state; neither primitive
 is a complete decision request or service. The chapter composes these

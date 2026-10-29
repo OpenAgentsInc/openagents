@@ -66,8 +66,8 @@ For compatibility, keep four claims separate: model forward execution,
 checkpoint/tokenizer import, optimizer/update behavior, and whole-pipeline
 reproduction. Each has a different independent oracle and acceptance gate.
 
-The [book plan](../../psionic/book/PLAN.md) gives the reading order. The
-[OpenAgents issue seed](../../apps/openagents-web/projects/psionic/work/roadmap.json)
+The [book plan](../../book/PLAN.md) gives the reading order. The
+[OpenAgents issue seed](../../../apps/openagents-web/projects/psionic/work/roadmap.json)
 gives implementation dependencies and completion checks. Their ordering is
 intentional: urgent original-weight inference can ship while the teaching
 chapters for gradients and training are still being written.

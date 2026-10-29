@@ -62,7 +62,7 @@ have a different shared-prefix length, two, to demonstrate shrinking.
 
 ## Pin a renderer and tokenizer together
 
-Our early targets are [Elephant and Mammoth](../../docs/psionic/model-targets.md).
+Our early targets are [Elephant and Mammoth](../docs/targets/model-targets.md).
 Their pinned originals share the same `tokenizer.json` bytes: SHA-256
 `a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f`.
 We read both originals separately. The serving contract is OneJev

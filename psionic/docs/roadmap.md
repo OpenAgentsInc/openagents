@@ -4,14 +4,14 @@ Status, 2026-10-29: chapters 1–10 implement M0/M1, the artifact slice of M5,
 text requests, bounded Qwen-style layers and authenticated original-weight
 Elephant text decisions on the tested Apple LP64 CPU host. Mammoth and autodiff
 remain `planned`.
-[Run the first chapter](../../psionic/book/ch01-learning-a-number.md)
-or `psionic/check.sh`; [retained verification](../verification/psionic-m0-2026-10-28.md)
+[Run the first chapter](../book/ch01-learning-a-number.md)
+or `psionic/check.sh`; [retained verification](../../docs/verification/psionic-m0-2026-10-28.md)
 records the scope. Later chapter titles are working names; gates determine
 completion, not a calendar or page count.
 
 ## M0: learn one number
 
-The first [shared library](../../psionic/lib/learn.coax) and book chapter
+The first [shared library](../lib/learn.coax) and book chapter
 implement `prediction = w * x`, mean squared error, a derivative, an update,
 and a held-out prediction. They use fixed data:
 
@@ -54,30 +54,30 @@ this first milestone.
 
 ## Chapter 2: shapes and storage — implemented
 
-[The chapter](../../psionic/book/ch02-shapes-and-storage.md) and
-[shared tensor unit](../../psionic/lib/tensor.coax) admit contiguous `f32`
+[The chapter](../book/ch02-shapes-and-storage.md) and
+[shared tensor unit](../lib/tensor.coax) admit contiguous `f32`
 shapes of rank 0–4, canonical inactive dimensions, bounded element/byte counts,
 row-major strides and checked coordinates. A staged copy exercises exact
 logical input length, writable capacities, finite data, native span observations
 and unchanged storage on refusal. The 1,048,576-element cap is this teaching
 profile; larger model buffers need an explicitly qualified profile.
 
-[The verification record](../verification/psionic-ch02-2026-10-28.md) retains
+[The verification record](../../docs/verification/psionic-ch02-2026-10-28.md) retains
 Coax checks/mutation and actual native debug/release/sanitizer evidence. M1 is
 complete with chapter 3 below, under its explicit teaching-profile limits.
 
 ## Chapter 3: numbers and matrices — implemented
 
-[The chapter](../../psionic/book/ch03-numbers-and-matrices.md) implements
+[The chapter](../book/ch03-numbers-and-matrices.md) implements
 `CPU-f32-wide-v1`: binary32 storage, explicit binary64 products and compensated
 reductions, one checked narrowing per output, and staged publication. The
-[operation contracts](../../psionic/lib/ops-contract.coax) and
-[kernels](../../psionic/lib/ops.coax) cover add, row sum/dot, matmul/matvec,
+[operation contracts](../lib/ops-contract.coax) and
+[kernels](../lib/ops.coax) cover add, row sum/dot, matmul/matvec,
 row gather, binary-masked softmax, and unscaled RMSNorm/LayerNorm. Empty rows,
 invalid masks/indices, non-finite data and computed range failures have explicit
 refusals. Matmul work is capped at 1,048,576 multiply-add pairs.
 
-[The retained verification](../verification/psionic-ch03-2026-10-28.md) combines
+[The retained verification](../../docs/verification/psionic-ch03-2026-10-28.md) combines
 authored checks/mutation, independent Decimal(120) fixtures and real native
 storage/magnitude/limit cases. Learned affine normalization, broadcasting,
 strides, larger model resource profiles and new backends remain separate work.
@@ -86,15 +86,15 @@ Elephant/Mammoth priority remains unchanged.
 
 ## Chapter 4: reading original weights — implemented
 
-[The chapter](../../psionic/book/ch04-reading-original-weights.md) and
-[model-io units](../../psionic/lib/model-io/) implement `original-weights-v1`:
+[The chapter](../book/ch04-reading-original-weights.md) and
+[model-io units](../lib/model-io/) implement `original-weights-v1`:
 bounded original Safetensors BF16/F32 inventory, checked exact-byte SHA-256
 identities, complete single/sharded bundles, a bounded HF index subset and
 caller-pinned name/dtype/shape/shard manifests. Inventory admits large original
 tensors independently of the CPU execution cap; finite decoding stages windows
 of at most 1,048,576 values into shared numerical storage.
 
-[Verification](../verification/psionic-ch04-2026-10-29.md) covers owned original
+[Verification](../../docs/verification/psionic-ch04-2026-10-29.md) covers owned original
 files, malformed artifacts, digest/index/manifest mismatches, native aliases
 and all BF16 encodings in debug/release with sanitizer and mutation gates.
 The artifact slice of M5 is implemented; optimizer/RNG/data-state resume is
@@ -103,15 +103,15 @@ is the attention/forward core, using chapter 5's text contract below.
 
 ## Chapter 5: text becomes a model request — implemented
 
-[The chapter](../../psionic/book/ch05-text-becomes-a-model-request.md) and
-[text library](../../psionic/lib/text.coax) implement `qwen35-text-v1`: original
+[The chapter](../book/ch05-text-becomes-a-model-request.md) and
+[text library](../lib/text.coax) implement `qwen35-text-v1`: original
 Qwen tokenizer indexes, Unicode-17 NFC and ranked byte-BPE, 33 added literals,
 frozen tagged choice/noul/score requests, 256 one-token slot labels and exact
 shared-prefix/suffix metadata. Typed entry, byte/token/work and JSON budgets
 are explicit; integer structured JSON is supported without floating formatting.
 The pinned schema accepts score sizes 1–10, correcting the earlier 2–10 plan.
 
-[Verification](../verification/psionic-ch05-2026-10-29.md) retains independent
+[Verification](../../docs/verification/psionic-ch05-2026-10-29.md) retains independent
 Unicode/regex/BPE fixtures, actual original data, rendered-request/token IDs,
 mutation and native debug/release/sanitizer evidence. The evidence uses an
 owned oracle, not an executed upstream model runtime. Upstream reference
@@ -121,30 +121,30 @@ block; no training dependency has been added to the urgent decision-model path.
 
 ## Chapter 6: attention without training — implemented
 
-[The chapter](../../psionic/book/ch06-attention-without-training.md) and
-[attention library](../../psionic/lib/attention.coax) execute a bounded causal
+[The chapter](../book/ch06-attention-without-training.md) and
+[attention library](../lib/attention.coax) execute a bounded causal
 dense decoder block with learned RMS scaling, grouped-query attention,
 caller-supplied interleaved rotary tables, SwiGLU and an incremental KV cache.
 Independent full-sequence fixtures and native storage/refusal checks qualify
 this small CPU profile. It does not implement Qwen3.5's exact hybrid block or
 the decision mask. Chapter 7 and real-model qualification remain next.
 
-[Chapter 7](../../psionic/book/ch07-a-hybrid-sequence-model.md) composes
-model-specific causal linear and full-attention layers. [Its verification](../verification/psionic-ch07-2026-10-29.md)
+[Chapter 7](../book/ch07-a-hybrid-sequence-model.md) composes
+model-specific causal linear and full-attention layers. [Its verification](../../docs/verification/psionic-ch07-2026-10-29.md)
 scopes the small CPU references; original checkpoints, the decision mask and
 upstream runtime comparisons remain separate gates.
 
 ## Chapter 8: decision masks and snapshots — implemented
 
-[The chapter](../../psionic/book/ch08-decisions-have-a-different-mask.md)
+[The chapter](../book/ch08-decisions-have-a-different-mask.md)
 implements bidirectional full-attention blocks and snapshots of live recurrent,
 convolution and KV state. Whole-model branch isolation and original-weight
 request comparisons remain separate gates.
 
 ## Delivery priority: Elephant, then Mammoth
 
-The owner priority is [native Elephant and Mammoth](model-targets.md), with
-shared foundations reused by the later [nanochat pipeline](nanochat.md).
+The owner priority is [native Elephant and Mammoth](targets/model-targets.md), with
+shared foundations reused by the later [nanochat pipeline](targets/nanochat.md).
 [The live Psionic project](https://openagents.com/projects/psionic) contains
 the existing decision/nanochat dependency graph, acceptance checks and stable
 issue slugs. The NVIDIA breadth and expanded contents below are proposals;
@@ -181,10 +181,10 @@ a prerequisite for starting the ready work.
 
 ## Proposed book order
 
-The [full proposed table of contents](../../psionic/book/PLAN.md) now gives
+The [full proposed table of contents](../book/PLAN.md) now gives
 one outline per chapter, with prerequisite notes. Chapters 1–10 are runnable;
 chapter numbers and part boundaries are provisional. The new
-[NVIDIA breadth survey](nvidia-breadth.md) records pinned candidate checkpoints,
+[NVIDIA breadth survey](targets/nvidia-breadth.md) records pinned candidate checkpoints,
 operator requirements, data studies and source-license qualifications.
 
 | Part | Chapters | Result the reader builds toward |
@@ -212,7 +212,7 @@ operator requirements, data studies and source-license qualifications.
 Several chapters need Coax compiler features that do not exist yet: GPU
 compute and WGSL emission, jobs and threads, `f16`/`bf16`, numeric generics,
 SIMD, allocators and a Linux target. The plan's
-[Coax feature map](../../psionic/book/PLAN.md#coax-features-each-branch-needs)
+[Coax feature map](../book/PLAN.md#coax-features-each-branch-needs)
 names where each is needed and what Psionic does until it exists.
 
 The first NVIDIA application should be **semantic retrieval with Nemotron
@@ -279,7 +279,7 @@ does not depend on a separately trained reward model or establish generic PPO
 compatibility.
 
 For broader models, distinguish downloadable weights, reference-code terms,
-training recipes and usable data. The [NVIDIA survey](nvidia-breadth.md)
+training recipes and usable data. The [NVIDIA survey](targets/nvidia-breadth.md)
 records the C-RADIO code/weight distinction, MotionBricks sample-data limits,
 GR00T's unresolved card/license inconsistency, older/current Cosmos boundaries
 and restricted Nemotron pretraining data. The Darcy recipe is not a qualified

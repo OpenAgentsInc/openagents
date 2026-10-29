@@ -10,7 +10,7 @@ single-file or sharded bundle, decode a bounded BF16/F32 window and multiply
 an imported matrix using our existing numerical core. We preserve original
 bytes and tensor names; no converted private checkpoint is required.
 
-This is the first artifact slice toward [Elephant and Mammoth](../../docs/psionic/model-targets.md).
+This is the first artifact slice toward [Elephant and Mammoth](../docs/targets/model-targets.md).
 It does not execute those architectures yet. Their config interpretation,
 tokenizers, larger execution budgets, attention and reference parity remain
 separate chapters. The fixtures here are tiny originals authored in this
