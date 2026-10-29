@@ -1,0 +1,49 @@
+// Live smoke against Baseten's System One API (smoke.sh runs it). The
+// documented support ticket goes to elephant-1 and mammoth-1 with all three
+// question types, and each answer must pass so_check and route to billing.
+// Two refusals follow that spend no credit: a bad key (401) and a choice
+// with no criteria (422).
+
+#import "Basic";
+#load "systemone.coax";
+
+ticket :: (c: SoClient, model: string) -> bool {
+  buf: [4096] u8; out: [65536] u8; err: [4096] u8;
+  b: [1] SoBody;
+  so_begin(b[..], buf[..], model, "default");
+  so_state_text(b[..], "I was charged twice for my subscription. Please refund the duplicate charge.");
+  keys: [2] string; keys[0] = "billing"; keys[1] = "technical_support";
+  labels: [2] string; labels[0] = "Billing, payments, and refunds"; labels[1] = "Technical troubleshooting";
+  so_choice(b[..], "route", "Which team should handle this request?", keys[..], labels[..]);
+  so_noul(b[..], "refund", "Is the customer asking for a refund?");
+  levels: [3] string; levels[0] = "Routine request"; levels[1] = "Needs attention today"; levels[2] = "Immediate emergency";
+  so_score(b[..], "urgency", "How urgent is the request?", levels[..]);
+  t0 := cxproc_now_ms();
+  r := so_decide(c, b[..], out[..], err[..]);
+  ms := cxproc_now_ms() - t0;
+  if r.problem.count > 0 { print("%: % (status % %) %\n", model, r.problem, r.status, r.body, r.stderr); return false; }
+  ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  route := so_choice_of(ar[..], r.body, "route");
+  refund := so_noul_of(r.body, "refund");
+  urgency := so_score_of(r.body, "urgency");
+  print("%: route=% p=% refund=% urgency=% (level %) tokens=%/% %ms\n", model, route.choice, route.probability, refund.value, urgency.score, urgency.level, r.usage.input_tokens, r.usage.output_tokens, ms);
+  return route.choice == "billing" && refund.value > 0.9;
+}
+
+refusal :: (c: SoClient, raw: string, want: int) -> bool {
+  out: [8192] u8; err: [4096] u8;
+  r := so_post(c, raw, out[..], err[..]);
+  ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  print("refusal: status % error=%\n", r.status, so_error_of(ar[..], r.body));
+  return r.status == want && r.problem == "the API refused the request";
+}
+
+main :: () {
+  c: SoClient;
+  ok := ticket(c, SO_ELEPHANT);
+  ok = ticket(c, SO_MAMMOTH) && ok;
+  bad := c; bad.key_env = "SO_SMOKE_BAD_KEY";
+  ok = refusal(bad, "{\"model\":\"decision-models/baseten-elephant-9b-latest\",\"state\":\"x\",\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":\"?\"}}}", 401) && ok;
+  ok = refusal(c, "{\"model\":\"decision-models/baseten-elephant-9b-latest\",\"state\":\"x\",\"questions\":{\"q\":{\"type\":\"choice\",\"instructions\":\"?\"}}}", 422) && ok;
+  print("smoke: %\n", ifx ok then "ok" else "FAILED");
+}

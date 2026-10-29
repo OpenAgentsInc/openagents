@@ -1,0 +1,193 @@
+// Reading a System One response: {model, answers: {name: answer}, usage}.
+// so_check holds the response to the request that asked it, as strictly as
+// the gateway does: every question answered, with its own type, and every
+// probability a number in [0, 1] summing to one. The readers then borrow
+// from the response text.
+//
+//   choice  {"type":"choice","choice":KEY,"confidence":C,"probabilities":{KEY:P}}
+//   noul    {"type":"noul","noul":P}                       P is P(yes)
+//   score   {"type":"score","score":E,"confidence":C,
+//            "legend":{"0":LEVEL},"probabilities":{"0":P}} E is the expected level
+//
+// A choice's confidence is (max p - 1/k) / (1 - 1/k), how concentrated the
+// distribution is; it is not the chosen option's probability, which is
+// SoChoice.probability.
+
+#load "request.coax";
+#load "../agent/claude/fields.coax";
+
+SO_SUM_SLACK :: 0.001;
+
+SoChoice :: struct {
+  ok: bool;
+  choice: string;        // the option's key
+  probability: f64;      // of that option
+  confidence: f64;
+}
+
+SoScore :: struct {
+  ok: bool;
+  score: f64;            // expected level, 0 to levels - 1
+  confidence: f64;
+  level: int;            // the most probable level
+  levels: int;
+}
+
+SoUsage :: struct {
+  ok: bool;
+  input_tokens: int;     // the shared prefix once, plus each question
+  output_tokens: int;    // one per question
+}
+
+so_answer :: (text: string, name: string) -> ClSlice {
+  return cl_member(text, cl_member(text, cl_root(text), "answers"), name);
+}
+
+so_unit :: (p: JsonF64) -> bool { return p.ok && p.value >= 0.0 && p.value <= 1.0; }
+
+// A probabilities object with n members, each in [0, 1], summing to one.
+so_distribution :: (text: string, probs: ClSlice, n: int) -> bool {
+  if !probs.ok || probs.tok != JSON_OBJECT || cl_count(text[probs.from..<probs.to]) != n { return false; }
+  sum := 0.0;
+  for k: 0..<n {
+    p := cl_num_of(text, cl_element(text, probs, k));
+    if !so_unit(p) { return false; }
+    sum += p.value;
+  }
+  return sum > 1.0 - SO_SUM_SLACK && sum < 1.0 + SO_SUM_SLACK;
+}
+
+// What is wrong with text as the answer to b's questions, or "".
+so_check :: (b: [] SoBody, text: string) -> string {
+  root := cl_root(text);
+  if !root.ok || root.tok != JSON_OBJECT { return "the response is not a JSON object"; }
+  answers := cl_member(text, root, "answers");
+  if !answers.ok || answers.tok != JSON_OBJECT { return "the response has no answers"; }
+  for i: 0..<b[0].questions {
+    a := cl_member(text, answers, b[0].names[i]);
+    if !a.ok || a.tok != JSON_OBJECT { return "a question has no answer"; }
+    kind := b[0].kinds[i];
+    n := b[0].options[i];
+    type := cl_member(text, a, "type");
+    if kind == SoKind.noul {
+      if !cl_eq(text, type, "noul") { return "a noul answer has another type"; }
+      if !so_unit(cl_num_of(text, cl_member(text, a, "noul"))) { return "a noul answer is not a probability"; }
+    } else if kind == SoKind.choice {
+      if !cl_eq(text, type, "choice") { return "a choice answer has another type"; }
+      probs := cl_member(text, a, "probabilities");
+      if !so_distribution(text, probs, n) { return "a choice answer's probabilities are not a distribution over its options"; }
+      chosen := cl_member(text, a, "choice");
+      if !chosen.ok || chosen.tok != JSON_STRING { return "a choice answer names no option"; }
+      buf: [1024] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+      if !cl_member(text, probs, cl_text(ar[..], text, chosen)).ok { return "a choice answer names an option it has no probability for"; }
+      if !so_unit(cl_num_of(text, cl_member(text, a, "confidence"))) { return "a choice answer's confidence is not in [0, 1]"; }
+    } else {
+      if !cl_eq(text, type, "score") { return "a score answer has another type"; }
+      if !so_distribution(text, cl_member(text, a, "probabilities"), n) { return "a score answer's probabilities are not a distribution over its levels"; }
+      s := cl_num_of(text, cl_member(text, a, "score"));
+      if !s.ok || s.value < 0.0 || s.value > cast(f64) (n - 1) { return "a score answer is outside its levels"; }
+    }
+  }
+  return "";
+}
+
+// The probability of yes.
+so_noul_of :: (text: string, name: string) -> JsonF64 {
+  r: JsonF64;
+  a := so_answer(text, name);
+  if !cl_eq(text, cl_member(text, a, "type"), "noul") { return r; }
+  p := cl_num_of(text, cl_member(text, a, "noul"));
+  if !so_unit(p) { return r; }
+  return p;
+}
+
+// The chosen option. A key with escapes is decoded into ar.
+so_choice_of :: (ar: [] ClArena, text: string, name: string) -> SoChoice {
+  r: SoChoice;
+  a := so_answer(text, name);
+  if !cl_eq(text, cl_member(text, a, "type"), "choice") { return r; }
+  key := cl_text(ar, text, cl_member(text, a, "choice"));
+  if key.count == 0 { return r; }
+  p := cl_num_of(text, cl_member(text, cl_member(text, a, "probabilities"), key));
+  if !so_unit(p) { return r; }
+  c := cl_num_of(text, cl_member(text, a, "confidence"));
+  return SoChoice.{ok = true, choice = key, probability = p.value, confidence = ifx c.ok then c.value else 0.0};
+}
+
+// The probability of one option of a choice, or of level "0", "1" ... of a score.
+so_probability :: (text: string, name: string, option: string) -> JsonF64 {
+  r: JsonF64;
+  p := cl_num_of(text, cl_member(text, cl_member(text, so_answer(text, name), "probabilities"), option));
+  if !so_unit(p) { return r; }
+  return p;
+}
+
+so_score_of :: (text: string, name: string) -> SoScore {
+  r: SoScore;
+  a := so_answer(text, name);
+  if !cl_eq(text, cl_member(text, a, "type"), "score") { return r; }
+  s := cl_num_of(text, cl_member(text, a, "score"));
+  if !s.ok { return r; }
+  probs := cl_member(text, a, "probabilities");
+  n := ifx probs.ok && probs.tok == JSON_OBJECT then cl_count(text[probs.from..<probs.to]) else 0;
+  best := -1.0; level := 0;
+  for k: 0..<n {
+    p := cl_num_of(text, cl_element(text, probs, k));
+    if p.ok && p.value > best { best = p.value; level = k; }
+  }
+  c := cl_num_of(text, cl_member(text, a, "confidence"));
+  return SoScore.{ok = true, score = s.value, confidence = ifx c.ok then c.value else 0.0, level = level, levels = n};
+}
+
+so_usage :: (text: string) -> SoUsage {
+  r: SoUsage;
+  i := cl_int(text, "usage.input_tokens");
+  o := cl_int(text, "usage.output_tokens");
+  if !i.ok || !o.ok { return r; }
+  return SoUsage.{ok = true, input_tokens = i.value, output_tokens = o.value};
+}
+
+// An error response's message ({"error": ..., "error_type": ...}), or "".
+so_error_of :: (ar: [] ClArena, text: string) -> string { return cl_str(ar, text, "error"); }
+
+// ---- checks
+
+// Baseten's documented answer to SO_TEST_BODY.
+SO_TEST_ANSWER :: "{\"model\":\"decision-models/baseten-elephant-9b-latest\",\"answers\":{\"route\":{\"type\":\"choice\",\"choice\":\"billing\",\"confidence\":0.9984472837920018,\"probabilities\":{\"billing\":0.9992236418960009,\"technical_support\":0.0007763581039990197}},\"refund\":{\"type\":\"noul\",\"noul\":0.9900829878334823},\"urgency\":{\"type\":\"score\",\"score\":0.5125449725145267,\"confidence\":0.23118254122820991,\"legend\":{\"0\":\"Routine request\",\"1\":\"Needs attention today\",\"2\":\"Immediate emergency\"},\"probabilities\":{\"0\":0.5087426775022438,\"1\":0.4699696724809857,\"2\":0.021287650016770514}}},\"usage\":{\"input_tokens\":231,\"output_tokens\":3}}";
+
+so_near :: (a: f64, b: f64) -> bool { return a - b < 0.000000001 && b - a < 0.000000001; }
+
+#test "the documented answer passes the check and reads back" {
+  buf: [2048] u8; b: [1] SoBody;
+  body := so_test_ticket(b[..], buf[..]);
+  #assert so_check(b[..], SO_TEST_ANSWER) == "";
+  ab: [64] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  c := so_choice_of(ar[..], SO_TEST_ANSWER, "route");
+  #assert c.ok && c.choice == "billing" && so_near(c.probability, 0.9992236418960009) && so_near(c.confidence, 0.9984472837920018);
+  r := so_noul_of(SO_TEST_ANSWER, "refund");
+  #assert r.ok && so_near(r.value, 0.9900829878334823);
+  s := so_score_of(SO_TEST_ANSWER, "urgency");
+  #assert s.ok && so_near(s.score, 0.5125449725145267) && s.level == 0 && s.levels == 3;
+  #assert so_near(so_probability(SO_TEST_ANSWER, "urgency", "1").value, 0.4699696724809857);
+  #assert !so_probability(SO_TEST_ANSWER, "route", "sales").ok && !so_noul_of(SO_TEST_ANSWER, "route").ok;
+  u := so_usage(SO_TEST_ANSWER);
+  #assert u.ok && u.input_tokens == 231 && u.output_tokens == 3;
+}
+
+#test "the check refuses a missing answer, a wrong type, a bad distribution" {
+  buf: [2048] u8; b: [1] SoBody;
+  body := so_test_ticket(b[..], buf[..]);
+  #assert so_check(b[..], "{\"answers\":{}}") == "a question has no answer";
+  #assert so_check(b[..], "[]") == "the response is not a JSON object";
+  #assert so_check(b[..], "{\"error\":\"Authentication required.\"}") == "the response has no answers";
+  wrong := "{\"answers\":{\"route\":{\"type\":\"noul\",\"noul\":0.5}}}";
+  #assert so_check(b[..], wrong) == "a choice answer has another type";
+  skewed := "{\"answers\":{\"route\":{\"type\":\"choice\",\"choice\":\"billing\",\"confidence\":0.9,\"probabilities\":{\"billing\":0.9,\"technical_support\":0.3}}}}";
+  #assert so_check(b[..], skewed) == "a choice answer's probabilities are not a distribution over its options";
+  stray := "{\"answers\":{\"route\":{\"type\":\"choice\",\"choice\":\"sales\",\"confidence\":0.9,\"probabilities\":{\"billing\":0.9,\"technical_support\":0.1}}}}";
+  #assert so_check(b[..], stray) == "a choice answer names an option it has no probability for";
+  high := "{\"answers\":{\"route\":{\"type\":\"choice\",\"choice\":\"billing\",\"confidence\":0.9,\"probabilities\":{\"billing\":0.9,\"technical_support\":0.1}},\"refund\":{\"type\":\"noul\",\"noul\":1.5}}}";
+  #assert so_check(b[..], high) == "a noul answer is not a probability";
+  ab: [64] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  #assert so_error_of(ar[..], "{\n\t\"error\": \"Choice criteria must be an object\",\n\t\"error_type\": \"Validation\"\n}") == "Choice criteria must be an object";
+}
