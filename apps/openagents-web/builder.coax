@@ -1,0 +1,835 @@
+// Build your own realm (openagents.com/realms/new; docs/verse/realm-builder.md): the step after the
+// Haunted House. Hold TALK and say the world you want (the microphone is open only while it's
+// held: coax/web/voice.js push to talk, the voice host's speech to text), or type it. The words
+// go to the server's typed planner (POST /api/playtest/realms/plan, migrations/0048_realm_builder.sql),
+// which answers a board: the realm's name, its style, ground and time of day, and its features a
+// few words each, each with a box to check on or off. Talk again to change it. MAKE IT makes the
+// realm from only what is checked (POST /api/playtest/realms) and you are taken to it,
+// /realms/<slug>. Nothing here reads the words: the server's model does, and this page only
+// shows the board it answers and sends back which boxes are checked.
+//
+// The page draws everything (plates and words are verse.coax's look); builder.wgsl draws the sky,
+// the plates and the strokes; builder-face.c sends the page's requests and the analytics batches.
+//   coax/bin/coax test apps/openagents-web/builder.coax
+
+#load "font.coax";
+#load "ui.coax";
+#load "analytics.coax";
+
+VERTEX_FLOATS :: 16;
+MAX_VERTICES :: 30000;
+PLATES :: 16;          // builder.wgsl (verse.wgsl's) holds 16
+// width, height, time, fade, still, plates, dpr, 0; then per plate x0, y0, x1, y1, scale, alpha, look, 0
+PANEL_AT :: 8;
+UNIFORM_FLOATS :: PANEL_AT + PLATES * 8;
+
+MODE_STROKE :: 0.0;
+MODE_BAR :: 4.0;   // ui.coax's
+
+tinted_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, glow: f32, red: f32, green: f32, blue: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0 { return false; }
+  r := radius + glow;
+  a := [6] f32.[-r, r, r, -r, r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = x + a[v]; out[o + 1] = y + c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = 0; out[o + 5] = radius; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = MODE_STROKE;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+// ---- what the page keeps
+
+MSG_VOICE :: 50;          // voice.js: "phase|caption"
+HOST_FACTS :: 600;
+HTTP_ANSWER_KIND :: 512;  // + id: "STATUS\n" then the body
+ACT_VOICE :: 7; ACT_VOICE_TO :: 8; ACT_KEEP_PLAYER :: 5;
+VOICE_FACING :: "Realm builder";   // whom the voice host leaves our turns to: this page answers
+PLAN_URL :: "/api/playtest/realms/plan?as=lines";
+MAKE_URL :: "/api/playtest/realms?as=lines";
+PLAYER_URL :: "/api/playtest/player";
+REQ_NONE :: 0; REQ_PLAN :: 1; REQ_MAKE :: 2; REQ_PLAYER :: 3;
+PH_ASK :: 0; PH_PLANNING :: 1; PH_BOARD :: 2; PH_MAKING :: 3; PH_GOING :: 4;
+FEATS :: 28; KIND :: 12; LABEL :: 48; NAME :: 40; WORD :: 16;
+TYPED :: 400; CAPTION :: 200; NOTE :: 120; OUTBOX :: 512; BODY :: 1024; URL :: 128;
+BTN_TALK :: 0; BTN_TYPE :: 1; BTN_MAKE :: 2; BTN_BACK :: 3; BTN_SEND :: 4; BUTTONS :: 5;
+ROW :: 34.0;              // CSS pixels a feature's row takes
+WAIT :: 40.0;             // seconds a request may take before the page gives up on it
+
+Builder :: struct {
+  started: bool;
+  time: f32; width: f32; height: f32; dpr: f32; still: bool;
+  phase: int;
+  note: [NOTE] u8; note_n: int;
+  // the player key: a browser without one is given one (POST /api/playtest/player, kept by action 5)
+  has_player: bool; asked_player: bool;
+  // typing
+  typing: bool; typed: [TYPED] u8; typed_n: int;
+  field: [4] f32;
+  // voice: the page's data-voice, push to talk
+  voice: bool; faced: bool; held: bool; finger: int; key_held: bool;
+  vphase: [WORD] u8; vphase_n: int; caption: [CAPTION] u8; caption_n: int;
+  said: [TYPED] u8; said_n: int;
+  // the board
+  plan: int;
+  name: [NAME] u8; name_n: int;
+  style: [WORD] u8; style_n: int; ground: [WORD] u8; ground_n: int; tod: [WORD] u8; tod_n: int;
+  feat_n: int;
+  kind: [FEATS * KIND] u8; kind_n: [FEATS] int;
+  label: [FEATS * LABEL] u8; label_n: [FEATS] int;
+  on: [FEATS] bool;
+  // the one request in flight
+  req_url: [URL] u8; req_url_n: int; req_body: [BODY] u8; req_body_n: int; req_flags: int;
+  req_ready: bool; req_id: int; req_what: int; req_at: f32;
+  // the screen
+  boxes: [BUTTONS] Box; shown: [BUTTONS] bool; press: int; hover: int;
+  rows: [FEATS] Box; row_shown: [FEATS] bool; row_press: int;
+  list: Box; scroll: f32; content: f32; drag_id: int; drag_y: f32; dragged: bool;
+  plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;
+  outbox: [OUTBOX] u8; out_n: int; action: int;
+  want_voice: int;          // 1 on, 2 end: sent as the next action
+}
+
+builder_reset :: (s: [] Builder) {
+  s[0].started = true; s[0].press = -1; s[0].hover = -1; s[0].row_press = -1; s[0].finger = -1; s[0].drag_id = -1;
+  s[0].req_id = -1; s[0].plan = 0;
+}
+begin :: (s: [] Builder) { if !s[0].started { builder_reset(s); } }
+
+name_text :: (s: [] Builder) -> string { return cast(string) s[0].name[0..<s[0].name_n]; }
+kind_of :: (s: [] Builder, i: int) -> string { return cast(string) s[0].kind[i * KIND..<i * KIND + s[0].kind_n[i]]; }
+label_of :: (s: [] Builder, i: int) -> string { return cast(string) s[0].label[i * LABEL..<i * LABEL + s[0].label_n[i]]; }
+note_text :: (s: [] Builder) -> string { return cast(string) s[0].note[0..<s[0].note_n]; }
+typed_text :: (s: [] Builder) -> string { return cast(string) s[0].typed[0..<s[0].typed_n]; }
+caption_text :: (s: [] Builder) -> string { return cast(string) s[0].caption[0..<s[0].caption_n]; }
+said_text :: (s: [] Builder) -> string { return cast(string) s[0].said[0..<s[0].said_n]; }
+set_note :: (s: [] Builder, text: string) { s[0].note_n = put(s[0].note[..], 0, text[0..<least(text.count, NOTE)]); }
+on_count :: (s: [] Builder) -> int { n := 0; for i: 0..<s[0].feat_n { if s[0].on[i] { n += 1; } } return n; }
+is_tool :: (s: [] Builder, i: int) -> bool { return kind_of(s, i) == "tool"; }
+copy_into :: (buf: [] u8, text: string) -> int { n := least(text.count, buf.count); for i: 0..<n { buf[i] = text[i]; } return n; }
+
+// ---- the requests (builder-face.c sends one, then says its id)
+
+// A JSON string: quotes, backslashes and control characters escaped; at most limit bytes of text.
+json_quote :: (buf: [] u8, at: int, text: string, limit: int) -> int {
+  n := put(buf, at, "\"");
+  for i: 0..<least(text.count, limit) {
+    if n < 0 || n + 8 > buf.count { return -1; }
+    c := text[i];
+    if c == '"' || c == '\\' { buf[n] = '\\'; buf[n + 1] = c; n += 2; }
+    else if c < 32 { n = put(buf, n, " "); }
+    else { buf[n] = c; n += 1; }
+  }
+  return put(buf, n, "\"");
+}
+// The switches as the page shows them: [true,false,...]
+put_switches :: (s: [] Builder, buf: [] u8, at: int) -> int {
+  n := put(buf, at, "[");
+  for i: 0..<s[0].feat_n {
+    if i > 0 { n = put(buf, n, ","); }
+    n = put(buf, n, ifx s[0].on[i] then "true" else "false");
+  }
+  return put(buf, n, "]");
+}
+request :: (s: [] Builder, what: int, url: string, body_n: int) {
+  s[0].req_url_n = put(s[0].req_url[..], 0, url);
+  s[0].req_body_n = body_n; s[0].req_flags = HTTP_POST | HTTP_ANSWER | TRACK_KEY;
+  s[0].req_what = what; s[0].req_ready = true; s[0].req_at = s[0].time;
+}
+builder_requested :: (s: [] Builder, id: int) #export_c {
+  s[0].req_ready = false;
+  s[0].req_id = id;
+  if id < 0 { fail(s, "That didn't reach the server. Try again."); }
+}
+busy :: (s: [] Builder) -> bool { return s[0].req_ready || s[0].req_id >= 0; }
+fail :: (s: [] Builder, why: string) {
+  set_note(s, why);
+  s[0].req_id = -1; s[0].req_what = REQ_NONE;
+  s[0].phase = ifx s[0].feat_n > 0 || s[0].plan > 0 then PH_BOARD else PH_ASK;
+}
+
+// What was said or typed goes to the planner (with the board, to change it).
+ask_plan :: (s: [] Builder, t: [] Track, words: string, via: string) {
+  w := words[trim_from(words)..<trim_to(words)];
+  if w.count == 0 || busy(s) { return; }
+  s[0].said_n = copy_into(s[0].said[..], w);
+  n := put(s[0].req_body[..], 0, "{\"prompt\":");
+  n = json_quote(s[0].req_body[..], n, w, 300);
+  if s[0].plan > 0 && n > 0 {
+    n = put(s[0].req_body[..], n, ",\"plan\":"); n = put_int(s[0].req_body[..], n, s[0].plan);
+    n = put(s[0].req_body[..], n, ",\"on\":"); n = put_switches(s, s[0].req_body[..], n);
+  }
+  n = put(s[0].req_body[..], n, "}");
+  if n <= 0 { set_note(s, "That's too long. Say it shorter."); return; }
+  request(s, REQ_PLAN, PLAN_URL, n);
+  s[0].phase = PH_PLANNING; s[0].note_n = 0;
+  if track_begin(t, "builder-prompt") { track_str(t, "via", via); track_int(t, "chars", w.count); track_bool(t, "revise", s[0].plan > 0); track_end(t); }
+}
+
+make_it :: (s: [] Builder, t: [] Track) {
+  if s[0].plan <= 0 || busy(s) || s[0].phase != PH_BOARD { return; }
+  n := put(s[0].req_body[..], 0, "{\"plan\":");
+  n = put_int(s[0].req_body[..], n, s[0].plan);
+  n = put(s[0].req_body[..], n, ",\"on\":"); n = put_switches(s, s[0].req_body[..], n);
+  n = put(s[0].req_body[..], n, "}");
+  request(s, REQ_MAKE, MAKE_URL, n);
+  s[0].phase = PH_MAKING; s[0].note_n = 0;
+  if track_begin(t, "builder-make") { track_int(t, "n", s[0].feat_n); track_int(t, "on", on_count(s)); track_end(t); }
+}
+
+// ---- answers in
+
+line_end :: (text: string, from: int) -> int { e := from; while e < text.count && text[e] != '\n' { e += 1; } return e; }
+starts :: (text: string, head: string) -> bool { return text.count >= head.count && text[0..<head.count] == head; }
+number_of :: (text: string) -> int {
+  v := 0; i := 0;
+  while i < text.count && text[i] >= '0' && text[i] <= '9' && i < 9 { v = v * 10 + cast(int) (text[i] - '0'); i += 1; }
+  return ifx i > 0 then v else -1;
+}
+
+// The board's lines (verse.builder_lines): plan, name, style, ground, time, then "f FEATURE ON LABEL".
+read_board :: (s: [] Builder, body: string) -> bool {
+  plan := 0; n := 0;
+  i := 0;
+  while i < body.count {
+    e := line_end(body, i);
+    line := body[i..<e];
+    i = e + 1;
+    if starts(line, "plan ") { plan = number_of(line[5..<line.count]); continue; }
+    if starts(line, "name ") { s[0].name_n = copy_into(s[0].name[..], line[5..<line.count]); continue; }
+    if starts(line, "style ") { s[0].style_n = copy_into(s[0].style[..], line[6..<line.count]); continue; }
+    if starts(line, "ground ") { s[0].ground_n = copy_into(s[0].ground[..], line[7..<line.count]); continue; }
+    if starts(line, "time ") { s[0].tod_n = copy_into(s[0].tod[..], line[5..<line.count]); continue; }
+    if starts(line, "f ") && n < FEATS {
+      k := 2; while k < line.count && line[k] != ' ' { k += 1; }
+      if k + 2 >= line.count { continue; }
+      s[0].kind_n[n] = copy_into(s[0].kind[n * KIND..<(n + 1) * KIND], line[2..<k]);
+      s[0].on[n] = line[k + 1] == '1';
+      lab := ifx k + 3 < line.count then line[k + 3..<line.count] else "";
+      s[0].label_n[n] = copy_into(s[0].label[n * LABEL..<(n + 1) * LABEL], lab);
+      n += 1;
+    }
+  }
+  if plan <= 0 || s[0].name_n == 0 { return false; }
+  s[0].plan = plan; s[0].feat_n = n; s[0].scroll = 0;
+  return true;
+}
+
+answer_of :: (text: string) -> string { e := line_end(text, 0); return ifx e + 1 <= text.count then text[e + 1..<text.count] else ""; }
+status_of :: (text: string) -> int { return number_of(text[0..<line_end(text, 0)]); }
+// The server's few words for why not, as a sentence.
+say_why :: (s: [] Builder, status: int, body: string) {
+  if status == 0 || body.count == 0 || body.count > 80 || body[0] == '{' { fail(s, "That didn't reach the server. Try again."); return; }
+  buf: [NOTE] u8;
+  n := put(buf[..], 0, body);
+  if n > 0 && buf[0] >= 'a' && buf[0] <= 'z' { buf[0] -= 32; }
+  n = put(buf[..], n, ".");
+  fail(s, cast(string) buf[0..<n]);
+}
+
+take_answer :: (s: [] Builder, t: [] Track, text: string) {
+  what := s[0].req_what;
+  s[0].req_id = -1; s[0].req_what = REQ_NONE;
+  status := status_of(text); body := answer_of(text);
+  if what == REQ_PLAYER {
+    if status == 200 && body.count > 0 && body.count < OUTBOX && s[0].action == 0 {
+      s[0].out_n = put(s[0].outbox[..], 0, body); s[0].action = ACT_KEEP_PLAYER; s[0].has_player = true;
+    }
+    return;
+  }
+  if status != 200 { say_why(s, status, body); return; }
+  if what == REQ_PLAN {
+    if !read_board(s, body) { fail(s, "The board didn't come back. Try again."); return; }
+    s[0].phase = PH_BOARD;
+    if track_begin(t, "builder-board") { track_int(t, "n", s[0].feat_n); track_int(t, "on", on_count(s)); track_int(t, "plan", s[0].plan); track_end(t); }
+    return;
+  }
+  if what == REQ_MAKE {
+    // "slug S", "path P", "page 1|0": without a page (a dev server) the template opens it by its hash
+    slug := ""; path := ""; page := false;
+    i := 0;
+    while i < body.count {
+      e := line_end(body, i); line := body[i..<e]; i = e + 1;
+      if starts(line, "slug ") { slug = line[5..<line.count]; }
+      if starts(line, "path ") { path = line[5..<line.count]; }
+      if line == "page 1" { page = true; }
+    }
+    if slug.count == 0 || slug.count > 60 { fail(s, "The realm wasn't made. Try again."); return; }
+    if track_begin(t, "realm-made") { track_str(t, "slug", slug); track_bool(t, "page", page); track_end(t); }
+    n := 0;
+    if page && starts(path, "/realms/") { n = put(s[0].outbox[..], 0, path); }
+    else { n = put(s[0].outbox[..], 0, "/realms/built#"); n = put(s[0].outbox[..], n, slug); }
+    s[0].out_n = n; s[0].action = ACT_NAVIGATE; s[0].phase = PH_GOING;
+  }
+}
+
+builder_message :: (s: [] Builder, t: [] Track, kind: int, text: string) #export_c {
+  begin(s);
+  if kind == HOST_FACTS {
+    s[0].has_player = fact_of(text, "player").count > 0;
+    s[0].voice = fact_of(text, "voice").count > 0;
+    return;
+  }
+  if kind == MSG_TEXT && s[0].typing {
+    for i: 0..<text.count { if s[0].typed_n < TYPED && text[i] >= 32 { s[0].typed[s[0].typed_n] = text[i]; s[0].typed_n += 1; } }
+    return;
+  }
+  if kind == MSG_VOICE {
+    cut := 0; while cut < text.count && text[cut] != '|' { cut += 1; }
+    s[0].vphase_n = copy_into(s[0].vphase[..], text[0..<cut]);
+    cap := ifx cut + 1 <= text.count then text[cut + 1..<text.count] else "";
+    s[0].caption_n = copy_into(s[0].caption[..], cap);
+    if text[0..<cut] == "heard" && cap.count > 0 { ask_plan(s, t, cap, "voice"); }
+    return;
+  }
+  if kind >= HTTP_ANSWER_KIND && kind < HTTP_ANSWER_KIND + 8 && kind - HTTP_ANSWER_KIND == s[0].req_id { take_answer(s, t, text); }
+}
+
+// ---- input
+
+phone :: (s: [] Builder) -> bool { return s[0].width < 640 * s[0].dpr; }
+
+talk_down :: (s: [] Builder) {
+  if !s[0].voice || busy(s) || s[0].phase == PH_MAKING || s[0].phase == PH_GOING { return; }
+  s[0].held = true; s[0].want_voice = 1; s[0].note_n = 0; s[0].caption_n = 0;
+  if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "on"); s[0].action = ACT_VOICE; s[0].want_voice = 0; }
+}
+talk_up :: (s: [] Builder) {
+  if !s[0].held { return; }
+  s[0].held = false; s[0].want_voice = 2;
+  if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "end"); s[0].action = ACT_VOICE; s[0].want_voice = 0; }
+}
+open_typing :: (s: [] Builder) { if s[0].phase != PH_MAKING && s[0].phase != PH_GOING { s[0].typing = true; s[0].note_n = 0; } }
+send_typed :: (s: [] Builder, t: [] Track) {
+  if s[0].typed_n == 0 { return; }
+  ask_plan(s, t, typed_text(s), "typed");
+  if s[0].phase == PH_PLANNING { s[0].typing = false; s[0].typed_n = 0; }
+}
+toggle :: (s: [] Builder, t: [] Track, i: int) {
+  if i < 0 || i >= s[0].feat_n || s[0].phase != PH_BOARD { return; }
+  s[0].on[i] = !s[0].on[i];
+  if track_begin(t, "builder-toggle") { track_str(t, "feature", kind_of(s, i)); track_bool(t, "on", s[0].on[i]); track_end(t); }
+}
+go_back :: (s: [] Builder) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/verse/galaxy"); s[0].action = ACT_NAVIGATE; } }
+
+builder_key :: (s: [] Builder, t: [] Track, key: int, mods: int, down: bool) -> bool #export_c {
+  begin(s);
+  if s[0].typing {
+    if !down { return false; }
+    if key == KEY_ENTER { send_typed(s, t); return true; }
+    if key == KEY_ESCAPE { s[0].typing = false; return true; }
+    if key == KEY_BACKSPACE { s[0].typed_n = pop(s[0].typed[..], s[0].typed_n); return true; }
+    return false;
+  }
+  if key == ' ' {
+    if down && !s[0].key_held { s[0].key_held = true; talk_down(s); }
+    if !down && s[0].key_held { s[0].key_held = false; talk_up(s); }
+    return true;
+  }
+  if !down { return false; }
+  if key == 't' || key == 'T' { open_typing(s); return true; }
+  if key == KEY_ENTER && s[0].phase == PH_BOARD { make_it(s, t); return true; }
+  if key == KEY_ESCAPE { go_back(s); return true; }
+  return false;
+}
+builder_blur :: (s: [] Builder) #export_c { begin(s); s[0].key_held = false; talk_up(s); s[0].press = -1; s[0].row_press = -1; s[0].drag_id = -1; }
+
+button_at :: (s: [] Builder, x: f32, y: f32) -> int {
+  for i: 0..<BUTTONS { if s[0].shown[i] && inside(s[0].boxes[i], x, y) { return i; } }
+  return -1;
+}
+row_at :: (s: [] Builder, x: f32, y: f32) -> int {
+  if !inside(s[0].list, x, y) { return -1; }
+  for i: 0..<s[0].feat_n { if s[0].row_shown[i] && inside(s[0].rows[i], x, y) { return i; } }
+  return -1;
+}
+builder_label :: (s: [] Builder, x: f32, y: f32) -> string #export_c {
+  b := button_at(s, x, y);
+  if b == BTN_TALK { return "talk"; } if b == BTN_TYPE { return "type"; } if b == BTN_MAKE { return "make"; }
+  if b == BTN_BACK { return "galaxy"; } if b == BTN_SEND { return "send"; }
+  if row_at(s, x, y) >= 0 { return "feature"; }
+  return "";
+}
+builder_pointer :: (s: [] Builder, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  begin(s);
+  b := button_at(s, x, y);
+  s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
+  if phase == POINTER_DOWN {
+    if b == BTN_TALK { s[0].press = b; s[0].finger = id; talk_down(s); return true; }
+    if b >= 0 { s[0].press = b; return true; }
+    r := row_at(s, x, y);
+    if r >= 0 || inside(s[0].list, x, y) { s[0].row_press = r; s[0].drag_id = id; s[0].drag_y = y; s[0].dragged = false; return true; }
+    return false;
+  }
+  if s[0].press == BTN_TALK && id == s[0].finger {
+    if phase == POINTER_UP || phase == POINTER_CANCEL { talk_up(s); s[0].press = -1; s[0].finger = -1; }
+    return true;
+  }
+  if s[0].press >= 0 {
+    if phase == POINTER_UP && b == s[0].press {
+      if b == BTN_TYPE { open_typing(s); }
+      if b == BTN_MAKE { make_it(s, t); }
+      if b == BTN_BACK { go_back(s); }
+      if b == BTN_SEND { send_typed(s, t); }
+    }
+    if phase != POINTER_MOVE { s[0].press = -1; }
+    return true;
+  }
+  if s[0].drag_id == id && id >= 0 {
+    if phase == POINTER_MOVE {
+      dy := y - s[0].drag_y;
+      if abs(dy) > 6 * s[0].dpr || s[0].dragged { s[0].dragged = true; scroll_by(s, -dy); s[0].drag_y = y; }
+      return true;
+    }
+    if phase == POINTER_UP && !s[0].dragged { r := row_at(s, x, y); if r >= 0 && r == s[0].row_press { toggle(s, t, r); } }
+    s[0].drag_id = -1; s[0].row_press = -1;
+    return true;
+  }
+  return false;
+}
+scroll_by :: (s: [] Builder, dy: f32) {
+  room := s[0].list.y1 - s[0].list.y0;
+  s[0].scroll = clamp(s[0].scroll + dy, 0, hi(s[0].content - room, 0));
+}
+builder_wheel :: (s: [] Builder, dy: f32) #export_c { begin(s); scroll_by(s, dy * s[0].dpr); }
+builder_cursor :: (s: [] Builder) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
+builder_wants_text :: (s: [] Builder) -> bool #export_c { return s[0].typing; }
+builder_action :: (s: [] Builder) -> int #export_c {
+  if s[0].action == 0 && s[0].want_voice != 0 {
+    s[0].out_n = put(s[0].outbox[..], 0, ifx s[0].want_voice == 1 then "on" else "end");
+    s[0].action = ACT_VOICE; s[0].want_voice = 0;
+  }
+  a := s[0].action; s[0].action = 0; return a;
+}
+builder_action_done :: (s: [] Builder) #export_c { s[0].out_n = 0; }
+
+// ---- the look (verse.coax's)
+
+GAP :: 0.5; SPACE :: 1.2;
+PARCH_R :: 0.91; PARCH_G :: 0.863; PARCH_B :: 0.753;
+GOLD_R :: 0.80; GOLD_G :: 0.64; GOLD_B :: 0.36;
+EMBER_R :: 0.91; EMBER_G :: 0.47; EMBER_B :: 0.17;
+LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;
+white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARCH_R, PARCH_G, PARCH_B); }
+bronze :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, GOLD_R, GOLD_G, GOLD_B); }
+ember :: (k: f32, light: f32) -> Ink { return ink(0.6 * k, light, 1.6 * k, EMBER_R, EMBER_G, EMBER_B); }
+
+plate :: (s: [] Builder, b: Box, alpha: f32, look: f32) {
+  n := s[0].plate_n;
+  if n >= PLATES { return; }
+  s[0].plates[n] = b; s[0].plate_alpha[n] = alpha; s[0].plate_look[n] = look; s[0].plate_n = n + 1;
+}
+centred :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  w := measure(text, GAP, SPACE, false) * cap;
+  return write(d, out, at, text, x - w * 0.5, base, cap, GAP, SPACE, k, false, false);
+}
+fit_cap :: (text: string, cap: f32, width: f32) -> f32 { return lo(cap, width / hi(measure(text, GAP, SPACE, false), 0.001)); }
+upper :: (buf: [] u8, n: int) { for i: 0..<n { if buf[i] >= 'a' && buf[i] <= 'z' { buf[i] -= 32; } } }
+
+pill :: (s: [] Builder, out: [] f32, at: int, which: int, b: Box, text: string, bright: bool) -> int {
+  s[0].boxes[which] = b; s[0].shown[which] = true;
+  look: f32 = ifx bright then LOOK_LIT else LOOK_PLAIN;
+  if s[0].hover == which || s[0].press == which { look = LOOK_LIT + LOOK_HOVER; }
+  plate(s, b, 0.94, look);
+  k := s[0].dpr;
+  cap := fit_cap(text, 9.5 * k, b.x1 - b.x0 - 20 * k);
+  return centred(k, out, at, text, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, ifx bright then ember(k, 1) else white(k, 0.95));
+}
+
+// A checkbox: a square, and a tick when on.
+checkbox :: (s: [] Builder, out: [] f32, at: int, x: f32, y: f32, size: f32, on: bool) -> int {
+  k := s[0].dpr; n := at;
+  x1 := x + size; y1 := y + size;
+  tone := ifx on then 1.0f32 else 0.6f32;
+  r: f32 = ifx on then EMBER_R else GOLD_R; g: f32 = ifx on then EMBER_G else GOLD_G; b: f32 = ifx on then EMBER_B else GOLD_B;
+  if lit(out, n, x, y, x1, y, 0.7 * k, tone, 1.2 * k, r, g, b, MODE_STROKE) { n += 6; }
+  if lit(out, n, x1, y, x1, y1, 0.7 * k, tone, 1.2 * k, r, g, b, MODE_STROKE) { n += 6; }
+  if lit(out, n, x1, y1, x, y1, 0.7 * k, tone, 1.2 * k, r, g, b, MODE_STROKE) { n += 6; }
+  if lit(out, n, x, y1, x, y, 0.7 * k, tone, 1.2 * k, r, g, b, MODE_STROKE) { n += 6; }
+  if on {
+    if lit(out, n, x + size * 0.2, y + size * 0.52, x + size * 0.42, y + size * 0.76, 1.1 * k, 1.2, 2 * k, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { n += 6; }
+    if lit(out, n, x + size * 0.42, y + size * 0.76, x + size * 0.82, y + size * 0.24, 1.1 * k, 1.2, 2 * k, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { n += 6; }
+  }
+  return n;
+}
+
+style_words :: (style: string) -> string { if style == "painterly" { return "PAINTERLY"; } return "LOW POLY"; }
+
+// The board: the realm, then IN YOUR REALM and VISITORS CAN, a row each.
+draw_board :: (s: [] Builder, out: [] f32, at: int, area: Box) -> int {
+  k := s[0].dpr; d := k; n := at;
+  plate(s, area, 0.9, LOOK_PLAIN);
+  pad := 16 * k;
+  buf: [NAME + 8] u8;
+  tn := put(buf[..], 0, name_text(s)); upper(buf[..], tn);
+  title := cast(string) buf[0..<tn];
+  n = write(d, out, n, title, area.x0 + pad, area.y0 + 30 * k, fit_cap(title, 14 * k, area.x1 - area.x0 - 2 * pad), GAP, SPACE, white(k, 1), false, false);
+  sub: [80] u8;
+  m := put(sub[..], 0, style_words(cast(string) s[0].style[0..<s[0].style_n])); m = put(sub[..], m, " · ");
+  g0 := m; m = put(sub[..], m, cast(string) s[0].ground[0..<s[0].ground_n]); m = put(sub[..], m, " · ");
+  m = put(sub[..], m, cast(string) s[0].tod[0..<s[0].tod_n]); upper(sub[..], m);
+  line := cast(string) sub[0..<m];
+  n = write(d, out, n, line, area.x0 + pad, area.y0 + 50 * k, fit_cap(line, 7.5 * k, area.x1 - area.x0 - 2 * pad), GAP, SPACE, bronze(k, 0.9), false, false);
+  // the list, scrolled inside its box
+  s[0].list = Box.{x0 = area.x0, y0 = area.y0 + 64 * k, x1 = area.x1, y1 = area.y1 - 8 * k};
+  row := ROW * k; y := s[0].list.y0 - s[0].scroll;
+  heads := 0;
+  for pass: 0..<2 {
+    first := true;
+    for i: 0..<s[0].feat_n {
+      if is_tool(s, i) != (pass == 1) { continue; }
+      if first {
+        first = false;
+        head := ifx pass == 0 then "IN YOUR REALM" else "VISITORS CAN";
+        if y + 20 * k > s[0].list.y0 && y + 6 * k < s[0].list.y1 {
+          n = write(d, out, n, head, area.x0 + pad, y + 18 * k, 7 * k, GAP, SPACE, bronze(k, 0.75), false, false);
+        }
+        y += 26 * k; heads += 1;
+      }
+      b := Box.{x0 = area.x0 + pad * 0.5, y0 = y, x1 = area.x1 - pad * 0.5, y1 = y + row};
+      s[0].rows[i] = b;
+      s[0].row_shown[i] = b.y0 >= s[0].list.y0 - 1 && b.y1 <= s[0].list.y1 + 1;
+      if s[0].row_shown[i] {
+        box := 16 * k;
+        n = checkbox(s, out, n, b.x0 + pad * 0.5, (b.y0 + b.y1) * 0.5 - box * 0.5, box, s[0].on[i]);
+        lb: [LABEL] u8; ln := put(lb[..], 0, label_of(s, i)); upper(lb[..], ln);
+        words := cast(string) lb[0..<ln];
+        tx := b.x0 + pad * 0.5 + box + 12 * k;
+        n = write(d, out, n, words, tx, (b.y0 + b.y1) * 0.5 + 4.5 * k, fit_cap(words, 9 * k, b.x1 - tx - 8 * k), GAP, SPACE,
+                  white(k, ifx s[0].on[i] then 0.98f32 else 0.5f32), false, false);
+      }
+      y += row;
+    }
+  }
+  s[0].content = y + s[0].scroll - s[0].list.y0 + 8 * k;
+  if s[0].feat_n == 0 {
+    n = write(d, out, n, "EMPTY GROUND: TALK AGAIN TO ADD THINGS", area.x0 + pad, s[0].list.y0 + 24 * k, fit_cap("EMPTY GROUND: TALK AGAIN TO ADD THINGS", 8 * k, area.x1 - area.x0 - 2 * pad), GAP, SPACE, white(k, 0.6), false, false);
+  }
+  // more below or above: a faint line at the edge
+  if s[0].content > s[0].list.y1 - s[0].list.y0 + 2 {
+    if s[0].scroll > 1 && lit(out, n, area.x0 + pad, s[0].list.y0, area.x1 - pad, s[0].list.y0, 0.5 * k, 0.4, 1 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { n += 6; }
+    if s[0].scroll < s[0].content - (s[0].list.y1 - s[0].list.y0) - 1 && lit(out, n, area.x0 + pad, s[0].list.y1, area.x1 - pad, s[0].list.y1, 0.5 * k, 0.4, 1 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { n += 6; }
+  }
+  return n;
+}
+
+draw_builder :: (s: [] Builder, out: [] f32) -> int {
+  k := s[0].dpr; w := s[0].width; h := s[0].height; d := k;
+  ph := phone(s);
+  g := 16 * k;
+  n := 0;
+  // the title, and GALAXY
+  bw := 104 * k;
+  tb := Box.{x0 = g, y0 = g, x1 = w - g - bw - 10 * k, y1 = g + 44 * k};
+  plate(s, tb, 0.92, LOOK_PLAIN);
+  title := "BUILD YOUR OWN REALM";
+  n = write(d, out, n, title, tb.x0 + 14 * k, tb.y0 + 28 * k, fit_cap(title, 12 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, white(k, 0.98), false, false);
+  n = pill(s, out, n, BTN_BACK, Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 44 * k}, "GALAXY", false);
+
+  col := lo(w - 2 * g, 600 * k);
+  cx := w * 0.5; x0 := cx - col * 0.5; x1 := cx + col * 0.5;
+  // the bottom: TALK (held), TYPE, MAKE IT
+  bh := ifx ph then 56 * k else 60 * k;
+  bottom := h - g - bh;
+  board := s[0].phase == PH_BOARD || ((s[0].phase == PH_PLANNING || s[0].phase == PH_MAKING) && s[0].feat_n > 0 && s[0].plan > 0);
+  if s[0].typing {
+    // the typed line and SEND
+    fb := Box.{x0 = x0, y0 = bottom - 54 * k, x1 = x1 - 96 * k, y1 = bottom - 10 * k};
+    plate(s, fb, 0.96, LOOK_LIT);
+    s[0].field[0] = fb.x0; s[0].field[1] = fb.y0; s[0].field[2] = fb.x1; s[0].field[3] = fb.y1;
+    shown := ifx s[0].typed_n > 0 then typed_text(s) else "";
+    cap := 9 * k; room := fb.x1 - fb.x0 - 28 * k;
+    // the end of a long line stays in view
+    from := 0; while from < shown.count && measure(shown[from..<shown.count], GAP, SPACE, false) * cap > room { from += 1; }
+    n = write(d, out, n, shown[from..<shown.count], fb.x0 + 14 * k, (fb.y0 + fb.y1) * 0.5 + 4.5 * k, cap, GAP, SPACE, white(k, 1), false, false);
+    if s[0].typed_n == 0 { n = write(d, out, n, "TYPE THE WORLD YOU WANT", fb.x0 + 14 * k, (fb.y0 + fb.y1) * 0.5 + 4.5 * k, fit_cap("TYPE THE WORLD YOU WANT", cap, room), GAP, SPACE, white(k, 0.4), false, false); }
+    blink := s[0].still || sin(s[0].time * 6) > 0;
+    if blink {
+      cxr := fb.x0 + 14 * k + measure(shown[from..<shown.count], GAP, SPACE, false) * cap + 2 * k;
+      if lit(out, n, cxr, fb.y0 + 12 * k, cxr, fb.y1 - 12 * k, 0.6 * k, 0.9, 1 * k, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { n += 6; }
+    }
+    n = pill(s, out, n, BTN_SEND, Box.{x0 = x1 - 86 * k, y0 = fb.y0, x1 = x1, y1 = fb.y1}, "SEND", true);
+  } else { s[0].field[0] = 0; s[0].field[1] = 0; s[0].field[2] = 0; s[0].field[3] = 0; }
+
+  gap := 10 * k;
+  if board {
+    third := (col - 2 * gap) / 3;
+    n = pill(s, out, n, BTN_TALK, Box.{x0 = x0, y0 = bottom, x1 = x0 + third, y1 = bottom + bh}, ifx s[0].held then "LISTENING" else "HOLD TO TALK", s[0].held);
+    n = pill(s, out, n, BTN_TYPE, Box.{x0 = x0 + third + gap, y0 = bottom, x1 = x0 + 2 * third + gap, y1 = bottom + bh}, "TYPE", false);
+    n = pill(s, out, n, BTN_MAKE, Box.{x0 = x1 - third, y0 = bottom, x1 = x1, y1 = bottom + bh}, ifx s[0].phase == PH_MAKING then "MAKING" else "MAKE IT", true);
+  } else {
+    half := (col - gap) * 0.62;
+    n = pill(s, out, n, BTN_TALK, Box.{x0 = x0, y0 = bottom, x1 = x0 + half, y1 = bottom + bh}, ifx s[0].held then "LISTENING" else "HOLD TO TALK", true);
+    n = pill(s, out, n, BTN_TYPE, Box.{x0 = x0 + half + gap, y0 = bottom, x1 = x1, y1 = bottom + bh}, "TYPE IT", false);
+  }
+
+  // what's heard, a note, or what's happening, over the buttons
+  status := "";
+  buf: [CAPTION + 16] u8;
+  if s[0].held { status = ifx s[0].caption_n > 0 then caption_text(s) else "LISTENING"; }
+  else if s[0].phase == PH_PLANNING { status = ifx s[0].plan > 0 then "CHANGING THE BOARD" else "MAKING YOUR BOARD"; }
+  else if s[0].phase == PH_MAKING { status = "MAKING YOUR REALM"; }
+  else if s[0].phase == PH_GOING { status = "TAKING YOU THERE"; }
+  else if s[0].note_n > 0 { status = note_text(s); }
+  else if !s[0].voice && !s[0].typing && s[0].phase == PH_ASK { status = "TYPE THE WORLD YOU WANT"; }
+  if status.count > 0 {
+    m := put(buf[..], 0, status); upper(buf[..], m);
+    line := cast(string) buf[0..<m];
+    base := ifx s[0].typing then bottom - 66 * k else bottom - 16 * k;
+    pulse := ifx s[0].still then 1.0f32 else 0.75 + 0.25 * sin(s[0].time * 4);
+    lit_k := ifx s[0].phase == PH_PLANNING || s[0].phase == PH_MAKING then pulse else 0.9f32;
+    n = centred(d, out, n, line, cx, base, fit_cap(line, 8.5 * k, col), ifx s[0].note_n > 0 && s[0].phase != PH_PLANNING then ember(k, 0.95) else white(k, lit_k));
+  }
+
+  top := tb.y1 + 14 * k;
+  if board {
+    lift := ifx s[0].typing then 80 * k else 30 * k;
+    n = draw_board(s, out, n, Box.{x0 = x0, y0 = top, x1 = x1, y1 = bottom - lift});
+  } else {
+    for i: 0..<FEATS { s[0].row_shown[i] = false; }
+    s[0].list = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+    // what to do: one line each, and what was said last
+    mid := lo(top + (bottom - top) * 0.42, bottom - 140 * k);
+    ask := "SAY THE WORLD YOU WANT";
+    n = centred(d, out, n, ask, cx, mid, fit_cap(ask, 15 * k, col), white(k, 0.98));
+    hint := ifx ph then "HOLD THE BUTTON AND TALK" else "HOLD THE BUTTON OR SPACE AND TALK";
+    if !s[0].voice { hint = "TYPE IT BELOW"; }
+    n = centred(d, out, n, hint, cx, mid + 30 * k, fit_cap(hint, 8 * k, col), bronze(k, 0.85));
+    ex := "A FOGGY MOOR WITH A LIGHTHOUSE KEEPER AND BATS";
+    n = centred(d, out, n, ex, cx, mid + 58 * k, fit_cap(ex, 7 * k, col), white(k, 0.45));
+    if s[0].said_n > 0 && s[0].phase == PH_PLANNING {
+      sb: [TYPED + 4] u8; sm := put(sb[..], 0, said_text(s)); upper(sb[..], sm);
+      said := cast(string) sb[0..<sm];
+      n = centred(d, out, n, said, cx, mid + 90 * k, fit_cap(said, 8 * k, col), white(k, 0.75));
+    }
+  }
+  return n;
+}
+
+// ---- the frame
+
+builder_frame :: (s: [] Builder, t: [] Track, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  begin(s);
+  s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
+  s[0].time += clamp(dt, 0, 0.1);
+  // a browser without a player key is given one, once
+  if !s[0].has_player && !s[0].asked_player && !busy(s) && t[0].ready {
+    s[0].asked_player = true;
+    s[0].req_body_n = put(s[0].req_body[..], 0, "{}");
+    s[0].req_url_n = put(s[0].req_url[..], 0, PLAYER_URL);
+    s[0].req_flags = HTTP_POST | HTTP_ANSWER; s[0].req_what = REQ_PLAYER; s[0].req_ready = true; s[0].req_at = s[0].time;
+  }
+  // the voice host leaves our turns to this page (once it says it has voice)
+  if s[0].voice && !s[0].faced && s[0].action == 0 {
+    s[0].faced = true; s[0].out_n = put(s[0].outbox[..], 0, VOICE_FACING); s[0].action = ACT_VOICE_TO;
+  }
+  if s[0].req_id >= 0 && s[0].time - s[0].req_at > WAIT { fail(s, "That took too long. Try again."); }
+  s[0].plate_n = 0;
+  for i: 0..<BUTTONS { s[0].shown[i] = false; }
+  for i: 0..<UNIFORM_FLOATS { uniforms[i] = 0; }
+  uniforms[0] = width; uniforms[1] = height; uniforms[2] = ifx still then 20.0f32 else s[0].time;
+  uniforms[3] = ifx still then 1.0f32 else ease(s[0].time / 0.6);
+  uniforms[4] = ifx still then 1.0f32 else 0.0f32;
+  uniforms[6] = s[0].dpr;
+  n := draw_builder(s, out);
+  uniforms[5] = cast(f32) s[0].plate_n;
+  for i: 0..<s[0].plate_n {
+    o := PANEL_AT + i * 8; b := s[0].plates[i];
+    uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
+    uniforms[o + 4] = s[0].dpr; uniforms[o + 5] = s[0].plate_alpha[i]; uniforms[o + 6] = s[0].plate_look[i]; uniforms[o + 7] = 0;
+  }
+  return n;
+}
+
+coaxial_builder_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_builder_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_builder_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---- checks
+
+BOARD :: "200\nplan 41\nname Moonlit Marsh\nstyle painterly\nground forest\ntime night\nf water 1 Large pond\nf trees 1 20 dead trees\nf lanterns 0 6 gold lanterns\nf character 1 Old Mott, keeps the bridge\nf tool 1 Visitors can talk to characters\nf tool 0 Visitors can build\n";
+
+frame_of :: (s: [] Builder, t: [] Track, w: f32, h: f32, dpr: f32) -> int {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  return builder_frame(s, t, out[..], u[..], w, h, dpr, 0.016, false);
+}
+ready :: (s: [] Builder, t: [] Track, voice: bool) {
+  track_init(t, "realm-builder");
+  facts := ifx voice then "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/new\nplayer=p-1234\nvoice=haunted-house\n"
+           else "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/new\nplayer=p-1234\n";
+  t0 := track_message(t, HOST_FACTS, facts);
+  builder_message(s, t, HOST_FACTS, facts);
+}
+tap :: (s: [] Builder, t: [] Track, b: Box) {
+  x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
+  p1 := builder_pointer(s, t, x, y, POINTER_DOWN, 1, 4);
+  p2 := builder_pointer(s, t, x, y, POINTER_UP, 1, 4);
+}
+outbox_is :: (s: [] Builder, text: string) -> bool { return cast(string) s[0].outbox[0..<s[0].out_n] == text; }
+body_is :: (s: [] Builder, text: string) -> bool { return cast(string) s[0].req_body[0..<s[0].req_body_n] == text; }
+answer :: (s: [] Builder, t: [] Track, text: string) { id := 3; builder_requested(s, id); builder_message(s, t, HTTP_ANSWER_KIND + id, text); }
+
+#test "holding TALK opens the microphone only while it's held; the heard words go to the planner" {
+  s: [1] Builder; t: [1] Track;
+  ready(s[..], t[..], true);
+  n := frame_of(s[..], t[..], 2560, 1600, 2);
+  #assert n > 0 && builder_action(s[..]) == ACT_VOICE_TO && outbox_is(s[..], VOICE_FACING);
+  builder_action_done(s[..]);
+  b := s[0].boxes[BTN_TALK];
+  #assert s[0].shown[BTN_TALK];
+  down := builder_pointer(s[..], t[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 1, 9);
+  #assert s[0].held && builder_action(s[..]) == ACT_VOICE && outbox_is(s[..], "on");
+  builder_action_done(s[..]);
+  up := builder_pointer(s[..], t[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 1, 9);
+  #assert !s[0].held && builder_action(s[..]) == ACT_VOICE && outbox_is(s[..], "end");
+  builder_message(s[..], t[..], MSG_VOICE, "heard|a misty swamp with \"bats\"");
+  #assert s[0].phase == PH_PLANNING && s[0].req_ready && s[0].req_what == REQ_PLAN;
+  #assert cast(string) s[0].req_url[0..<s[0].req_url_n] == PLAN_URL && body_is(s[..], "{\"prompt\":\"a misty swamp with \\\"bats\\\"\"}");
+  #assert (s[0].req_flags & TRACK_KEY) != 0;
+}
+
+#test "Space holds to talk on a keyboard; without voice, the page asks for typing" {
+  s: [1] Builder; t: [1] Track;
+  ready(s[..], t[..], true);
+  n := frame_of(s[..], t[..], 2560, 1600, 2);
+  builder_action_done(s[..]); a0 := builder_action(s[..]);
+  #assert builder_key(s[..], t[..], ' ', 0, true) && s[0].held;
+  #assert builder_action(s[..]) == ACT_VOICE && outbox_is(s[..], "on");
+  #assert builder_key(s[..], t[..], ' ', 0, false) && !s[0].held && builder_action(s[..]) == ACT_VOICE && outbox_is(s[..], "end");
+  q: [1] Builder; u: [1] Track;
+  ready(q[..], u[..], false);
+  m := frame_of(q[..], u[..], 2560, 1600, 2);
+  b := q[0].boxes[BTN_TALK];
+  down := builder_pointer(q[..], u[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 1, 9);
+  #assert !q[0].held && builder_action(q[..]) != ACT_VOICE;
+}
+
+#test "typing is the fallback: TYPE, the words, Enter sends them" {
+  s: [1] Builder; t: [1] Track;
+  ready(s[..], t[..], false);
+  n := frame_of(s[..], t[..], 780, 1688, 2);
+  tap(s[..], t[..], s[0].boxes[BTN_TYPE]);
+  #assert builder_wants_text(s[..]);
+  builder_message(s[..], t[..], MSG_TEXT, "a sunny beachh");
+  #assert builder_key(s[..], t[..], KEY_BACKSPACE, 0, true) && typed_text(s[..]) == "a sunny beach";
+  m := frame_of(s[..], t[..], 780, 1688, 2);
+  #assert s[0].field[2] > s[0].field[0] && s[0].shown[BTN_SEND];
+  #assert builder_key(s[..], t[..], KEY_ENTER, 0, true) && s[0].phase == PH_PLANNING && !s[0].typing && body_is(s[..], "{\"prompt\":\"a sunny beach\"}");
+}
+
+#test "the board: the realm and a checkbox per feature; a tap switches one; talking again sends the switches" {
+  s: [1] Builder; t: [1] Track;
+  ready(s[..], t[..], true);
+  n := frame_of(s[..], t[..], 2560, 1600, 2);
+  builder_message(s[..], t[..], MSG_VOICE, "heard|a dark marsh");
+  answer(s[..], t[..], BOARD);
+  #assert s[0].phase == PH_BOARD && s[0].plan == 41 && name_text(s[..]) == "Moonlit Marsh" && s[0].feat_n == 6;
+  #assert label_of(s[..], 3) == "Old Mott, keeps the bridge" && kind_of(s[..], 4) == "tool" && s[0].on[0] && !s[0].on[2] && !s[0].on[5];
+  m := frame_of(s[..], t[..], 2560, 1600, 2);
+  #assert s[0].row_shown[0] && s[0].row_shown[5] && s[0].shown[BTN_MAKE];
+  // the tools come after the realm's features
+  #assert s[0].rows[4].y0 > s[0].rows[3].y1;
+  tap(s[..], t[..], s[0].rows[0]);
+  #assert !s[0].on[0];
+  tap(s[..], t[..], s[0].rows[2]);
+  #assert s[0].on[2];
+  builder_message(s[..], t[..], MSG_VOICE, "heard|no lanterns");
+  #assert body_is(s[..], "{\"prompt\":\"no lanterns\",\"plan\":41,\"on\":[false,true,true,true,true,false]}");
+}
+
+#test "MAKE IT sends the switches and goes to the realm" {
+  s: [1] Builder; t: [1] Track;
+  ready(s[..], t[..], true);
+  n := frame_of(s[..], t[..], 780, 1688, 2);
+  builder_message(s[..], t[..], MSG_VOICE, "heard|a dark marsh");
+  answer(s[..], t[..], BOARD);
+  m := frame_of(s[..], t[..], 780, 1688, 2);
+  builder_action_done(s[..]); a0 := builder_action(s[..]);
+  tap(s[..], t[..], s[0].boxes[BTN_MAKE]);
+  #assert s[0].phase == PH_MAKING && cast(string) s[0].req_url[0..<s[0].req_url_n] == MAKE_URL && body_is(s[..], "{\"plan\":41,\"on\":[true,true,false,true,true,false]}");
+  answer(s[..], t[..], "200\nslug moonlit-marsh\npath /realms/moonlit-marsh\npage 1\n");
+  #assert builder_action(s[..]) == ACT_NAVIGATE && outbox_is(s[..], "/realms/moonlit-marsh");
+  q: [1] Builder; u: [1] Track;
+  ready(q[..], u[..], true);
+  m2 := frame_of(q[..], u[..], 780, 1688, 2);
+  builder_message(q[..], u[..], MSG_VOICE, "heard|x");
+  answer(q[..], u[..], BOARD);
+  make_it(q[..], u[..]);
+  answer(q[..], u[..], "200\nslug moonlit-marsh\npath /realms/moonlit-marsh\npage 0\n");
+  a1 := builder_action(q[..]);
+  #assert outbox_is(q[..], "/realms/built#moonlit-marsh");
+}
+
+#test "an error is said in the server's words, and the board stays" {
+  s: [1] Builder; t: [1] Track;
+  ready(s[..], t[..], true);
+  n := frame_of(s[..], t[..], 2560, 1600, 2);
+  builder_message(s[..], t[..], MSG_VOICE, "heard|x");
+  answer(s[..], t[..], "429\none at a time");
+  #assert s[0].phase == PH_ASK && note_text(s[..]) == "One at a time.";
+  builder_message(s[..], t[..], MSG_VOICE, "heard|x");
+  answer(s[..], t[..], BOARD);
+  builder_message(s[..], t[..], MSG_VOICE, "heard|y");
+  answer(s[..], t[..], "0\n");
+  #assert s[0].phase == PH_BOARD && s[0].feat_n == 6 && note_text(s[..]) == "That didn't reach the server. Try again.";
+}
+
+#test "a long board scrolls on a phone and every row fits its width" {
+  s: [1] Builder; t: [1] Track;
+  ready(s[..], t[..], true);
+  n := frame_of(s[..], t[..], 780, 1300, 2);
+  builder_message(s[..], t[..], MSG_VOICE, "heard|x");
+  answer(s[..], t[..], "200\nplan 9\nname A Very Long Realm Name Indeed\nstyle lowpoly\nground meadow\ntime day\nf water 1 Large pond\nf trees 1 9 round trees\nf rocks 1 6 rocks\nf plants 1 10 ferns\nf lanterns 1 8 gold lanterns\nf flock 1 A flock of 7 crows\nf props 1 Crates\nf props 1 A wagon\nf character 1 Mira, the herbalist who knows the old roads\nf character 1 Bo, a fisher\nf tool 1 Visitors can jump\nf tool 1 A map for visitors\nf tool 0 Visitors can fly\nf tool 1 Visitors can talk to characters\n");
+  m := frame_of(s[..], t[..], 780, 1300, 2);
+  #assert s[0].content > s[0].list.y1 - s[0].list.y0;
+  #assert !s[0].row_shown[13];
+  for i: 0..<s[0].feat_n { #assert s[0].rows[i].x1 <= 780 - 16 * 2 + 1; }
+  builder_wheel(s[..], 2000);
+  m2 := frame_of(s[..], t[..], 780, 1300, 2);
+  #assert s[0].row_shown[13] && !s[0].row_shown[0];
+}
+
+#test "a browser without a player key is given one and keeps it" {
+  s: [1] Builder; t: [1] Track;
+  track_init(t[..], "realm-builder");
+  facts := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/new\nplayer=\n";
+  t0 := track_message(t[..], HOST_FACTS, facts);
+  builder_message(s[..], t[..], HOST_FACTS, facts);
+  n := frame_of(s[..], t[..], 2560, 1600, 2);
+  #assert s[0].req_ready && s[0].req_what == REQ_PLAYER && cast(string) s[0].req_url[0..<s[0].req_url_n] == PLAYER_URL;
+  answer(s[..], t[..], "200\n{\"key\":\"abc\",\"id\":\"p-1\",\"account\":null}");
+  #assert builder_action(s[..]) == ACT_KEEP_PLAYER && outbox_is(s[..], "{\"key\":\"abc\",\"id\":\"p-1\",\"account\":null}");
+}

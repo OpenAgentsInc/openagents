@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/thegrid.wasm, build/villa.wasm, build/private.wasm and build/chat.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/thegrid.wasm, build/villa.wasm, build/private.wasm and build/chat.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -65,6 +65,12 @@ fixture=$!
 # /realms/drop and every /projects/<slug>/realm: a project's first realm, its drop's models on a floor.
 "$here/../../coax/web/wasm.sh" "$here/droprealm.coax" "$here/droprealm-face.c" "$here/build/droprealm.wasm" &
 droprealm=$!
+# /realms/built and every /realms/<slug> made at /realms/new: a realm someone built (myrealm.coax).
+"$here/../../coax/web/wasm.sh" "$here/myrealm.coax" "$here/myrealm-face.c" "$here/build/myrealm.wasm" &
+myrealm=$!
+# /realms/new: build your own realm (docs/verse/realm-builder.md).
+"$here/../../coax/web/wasm.sh" "$here/builder.coax" "$here/builder-face.c" "$here/build/builder.wasm" &
+builder=$!
 # /realms/ice-cream-man: Ice Cream Man's house (verse/icecream/scene.coax, its own library) under its HUD.
 "$here/../../coax/web/wasm.sh" "$here/icecream.coax" "$here/icecream-face.c" "$here/build/icecream.wasm" "$m/icecream/scene.coax" &
 icecream=$!
@@ -116,6 +122,8 @@ wait "$garden"
 wait "$characters"
 wait "$fixture"
 wait "$droprealm"
+wait "$builder"
+wait "$myrealm"
 wait "$icecream"
 wait "$deadgears"
 wait "$everglade"

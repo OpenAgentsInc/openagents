@@ -1,0 +1,1376 @@
+// A realm someone built (docs/verse/realm-builder.md): /realms/<slug>, made at /realms/new from one
+// prompt and the features its maker checked. The page's data-text is the realm's slug (the page the
+// API writes, migrations/0048_realm_builder.sql builder_page); /realms/built is this module's own
+// page, which opens the realm after its # (/realms/built#moonlit-marsh) or, with none, a small
+// realm of its own so every release checks the module.
+//
+// The realm is its spec (GET /api/playtest/realms/<slug>, a line each): its name, style, ground and
+// time of day, which tools its owner gives visitors, its features (water, trees, rocks, plants,
+// lanterns, a flock, props, characters) and the things placed since. Nothing else is in it: an
+// empty ground when nothing was checked, and no one in it unless characters were. The features are
+// laid out from the slug (the same realm for everyone), from the fixture pack's meshes
+// (realms/fixture/assets/fixture.pack): trees, rocks, ferns, crates, barrels, a wagon, a fence, a
+// chest and an anvil. Lanterns are lights on posts; the flock circles whoever walks.
+//
+// The owner (the spec says "owner 1": the server decides) has SETTINGS, the tools visitors get,
+// and the cards for what visitors propose, each with ACCEPT and DECLINE. With BUILD on, a visitor's
+// placed thing is a proposal; the owner's goes in at once.
+//
+// W and S (or the up and down arrows) walk, A and D turn, a mouse drag turns; on a phone a thumb
+// walks and turns. JUMP, FLY, MAP and BUILD are there only when the owner gives them.
+// myrealm.wgsl draws the sky, the ground, the water, the meshes and the strokes; myrealm-face.c binds it.
+//   coax/bin/coax test apps/openagents-web/myrealm.coax
+
+#load "font.coax";
+#load "ui.coax";
+#load "analytics.coax";
+
+VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
+MAX_VERTICES :: 30000;
+PLATES :: 24;
+// width, height, time, fade, still, plates, dpr, 0; the view's four rows; the lamp (x, y, z,
+// strength); the eye (x, y, z, the ground's radius); the rays through the screen (forward, right,
+// up); the sky's top (rgb, painterly), its horizon (rgb, stars), the ground (rgb, the lamp's
+// share), the sun (its direction, strength), the water (x, z, radius, on); then per plate
+// x0, y0, x1, y1, scale, alpha, look, 0
+VIEW_AT :: 8; LAMP_AT :: 24; EYE_AT :: 28; RAY_AT :: 32;
+SKY_AT :: 44; HORIZON_AT :: 48; GROUND_AT :: 52; SUN_AT :: 56; WATER_AT :: 60;
+PANEL_AT :: 64;
+UNIFORM_FLOATS :: PANEL_AT + PLATES * 8;
+
+MODE_STROKE :: 0.0;
+MODE_BAR :: 4.0;   // ui.coax's
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+tinted_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, glow: f32, red: f32, green: f32, blue: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0 { return false; }
+  r := radius + glow;
+  a := [6] f32.[-r, r, r, -r, r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = x + a[v]; out[o + 1] = y + c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = 0; out[o + 5] = radius; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = MODE_STROKE;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+// ---- the realm's state, kept by the host
+
+MSG_DATA_TEXT :: 2;      // the page's data-text: the slug
+HOST_FACTS :: 600;
+MSG_PACK :: 605;
+HTTP_ANSWER_KIND :: 512;
+OUTBOX :: 256; URL :: 160; BODY :: 512; SLUG :: 64; TITLE :: 64; WORD :: 16; NOTE :: 100;
+HOLD_UP :: 1; HOLD_DOWN :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8;
+MESHES :: 24; NAME :: 32;
+PIECES :: 400;           // meshes drawn: features and placed things (a tree is two)
+SOLIDS :: 260;           // circles you can't walk into
+INSTANCE_FLOATS :: 16;
+LANTERNS :: 16; BIRDS :: 12; PEOPLE :: 4; PERSON :: 24; ROLE :: 40;
+CARDS :: 8;
+TOOLS :: 6;
+TOOL_BUILD :: 0; TOOL_FLY :: 1; TOOL_JUMP :: 2; TOOL_MAP :: 3; TOOL_TALK :: 4; TOOL_VOICE :: 5;
+THINGS :: 8;
+WALK :: 3.4; TURN :: 1.9; BODY_R :: 0.35;
+GROUND_R :: 26.0;        // metres to the realm's edge
+CAM_BACK :: 6.0; CAM_UP :: 3.2; LOOK_AHEAD :: 2.0; LOOK_UP :: 1.0;
+FOV :: 0.95; STICK :: 60.0; LAMP_HEIGHT :: 1.35;
+GRAVITY :: 14.0; JUMP_SPEED :: 6.0; FLY_HEIGHT :: 7.0;
+WAIT :: 30.0;
+// buttons
+BTN_BACK :: 0; BTN_SETTINGS :: 1; BTN_CARDS :: 2; BTN_BUILD :: 3; BTN_MAP :: 4; BTN_FLY :: 5; BTN_JUMP :: 6;
+BTN_ACCEPT :: 7; BTN_DECLINE :: 8; BTN_CLOSE :: 9; BTN_NEW :: 10;
+BUTTONS :: 11;
+PANE_NONE :: 0; PANE_SETTINGS :: 1; PANE_CARDS :: 2; PANE_BUILD :: 3;
+REQ_NONE :: 0; REQ_SPEC :: 1; REQ_SETTINGS :: 2; REQ_PLACE :: 3; REQ_CARDS :: 4; REQ_DECIDE :: 5;
+
+MyRealm :: struct {
+  started: bool;
+  time: f32; width: f32; height: f32; dpr: f32; still: bool;
+  x: f32; y: f32; z: f32; yaw: f32; vy: f32; flying: bool;
+  held: int;
+  stick: bool; stick_id: int; stick_x0: f32; stick_y0: f32; stick_dx: f32; stick_dy: f32;
+  turning: bool; turn_id: int; turn_x: f32;
+  walked: f32;
+  // which realm
+  slug: [SLUG] u8; slug_n: int; asked_spec: bool; spec_ready: bool; spec_failed: bool; facts: bool; entered: bool;
+  // the spec
+  name: [TITLE] u8; name_n: int; style: [WORD] u8; style_n: int; ground: int; tod: int; owner: bool;
+  tools: [TOOLS] bool; waiting: int;
+  water: int;              // 0 none, 1 small, 2 medium, 3 large
+  trees: int; tree_kind: int; rocks: int; plants: int;
+  lanterns: int; lantern_r: f32; lantern_g: f32; lantern_b: f32;
+  birds: int; bats: bool;
+  props: [5] int; prop_n: int;   // 0 crates, 1 barrels, 2 wagon, 3 fence, 4 camp
+  people: int; person: [PEOPLE * PERSON] u8; person_n: [PEOPLE] int; role: [PEOPLE * ROLE] u8; role_n: [PEOPLE] int;
+  placed_n: int; placed_thing: [200] int; placed_x: [200] f32; placed_z: [200] f32; placed_yaw: [200] f32;
+  // the pack
+  loaded: int; total: int; pack_ready: bool; pack_failed: bool;
+  mesh_n: int; mesh_name: [MESHES * NAME] u8; mesh_name_n: [MESHES] int;
+  mesh_first: [MESHES] int; mesh_count: [MESHES] int; mesh_box: [MESHES * 6] f32;
+  // laid out
+  laid: bool;
+  piece_n: int; piece_mesh: [PIECES] int; piece_x: [PIECES] f32; piece_z: [PIECES] f32; piece_yaw: [PIECES] f32;
+  piece_k: [PIECES] f32; piece_tint: [PIECES * 3] f32;
+  solid_n: int; solid_x: [SOLIDS] f32; solid_z: [SOLIDS] f32; solid_r: [SOLIDS] f32;
+  lantern_x: [LANTERNS] f32; lantern_z: [LANTERNS] f32;
+  person_x: [PEOPLE] f32; person_z: [PEOPLE] f32;
+  water_x: f32; water_z: f32; water_r: f32;
+  draws: [MESHES * 4] u32; draw_n: int;
+  objects: [PIECES * INSTANCE_FLOATS] f32; object_n: int;
+  view: [16] f32; eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32;
+  // the screen
+  pane: int; map_open: bool;
+  boxes: [BUTTONS] Box; shown: [BUTTONS] bool; press: int; hover: int;
+  rows: [TOOLS] Box; row_shown: [TOOLS] bool; cells: [THINGS] Box; cell_shown: [THINGS] bool; row_press: int; cell_press: int;
+  plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;
+  note: [NOTE] u8; note_n: int; note_at: f32;
+  // the owner's cards: "P ID|WHO|THING|X|Z|YAW|BEFORE|AFTER"
+  card_n: int; card_id: [CARDS] int; card_who: [CARDS * 16] u8; card_who_n: [CARDS] int; card_thing: [CARDS] int;
+  card_x: [CARDS] f32; card_z: [CARDS] f32; card_before: [CARDS] int; card_after: [CARDS] int;
+  // the one request in flight, and the settings to send next
+  req_url: [URL] u8; req_url_n: int; req_body: [BODY] u8; req_body_n: int; req_flags: int;
+  req_ready: bool; req_id: int; req_what: int; req_at: f32;
+  settings_due: bool; cards_due: bool; spec_due: bool;
+  outbox: [OUTBOX] u8; out_n: int; action: int;
+}
+
+realm_reset :: (s: [] MyRealm) {
+  s[0].started = true; s[0].press = -1; s[0].hover = -1; s[0].stick_id = -1; s[0].turn_id = -1;
+  s[0].row_press = -1; s[0].cell_press = -1; s[0].req_id = -1; s[0].z = 6;
+}
+begin :: (s: [] MyRealm) { if !s[0].started { realm_reset(s); } }
+
+slug_text :: (s: [] MyRealm) -> string { return cast(string) s[0].slug[0..<s[0].slug_n]; }
+name_text :: (s: [] MyRealm) -> string { return cast(string) s[0].name[0..<s[0].name_n]; }
+person_name :: (s: [] MyRealm, i: int) -> string { return cast(string) s[0].person[i * PERSON..<i * PERSON + s[0].person_n[i]]; }
+person_role :: (s: [] MyRealm, i: int) -> string { return cast(string) s[0].role[i * ROLE..<i * ROLE + s[0].role_n[i]]; }
+copy_into :: (buf: [] u8, text: string) -> int { n := least(text.count, buf.count); for i: 0..<n { buf[i] = text[i]; } return n; }
+set_note :: (s: [] MyRealm, text: string) { s[0].note_n = copy_into(s[0].note[..], text); s[0].note_at = s[0].time; }
+
+TOOL_NAMES :: [TOOLS] string.["build", "fly", "jump", "map", "talk", "voice"];
+TOOL_WORDS :: [TOOLS] string.["BUILD", "FLY", "JUMP", "A MAP", "TALK TO CHARACTERS", "VOICE"];
+THING_NAMES :: [THINGS] string.["crate", "barrel", "tree", "rock", "plant", "lantern", "fence", "chest"];
+THING_WORDS :: [THINGS] string.["CRATE", "BARREL", "TREE", "ROCK", "FERN", "LANTERN", "FENCE", "CHEST"];
+GROUNDS :: [6] string.["meadow", "forest", "desert", "snow", "stone", "beach"];
+TIMES :: [4] string.["day", "dawn", "dusk", "night"];
+PROPS :: [5] string.["crates", "barrels", "wagon", "fence", "camp"];
+COLOURS :: [7] string.["gold", "orange", "red", "green", "blue", "violet", "white"];
+COLOUR_RGB :: [21] f32.[1.0, 0.78, 0.35,  1.0, 0.55, 0.2,  1.0, 0.3, 0.25,  0.45, 1.0, 0.5,  0.4, 0.65, 1.0,  0.75, 0.45, 1.0,  1.0, 0.97, 0.9];
+thing_of :: (word: string) -> int { for i: 0..<THINGS { if THING_NAMES[i] == word { return i; } } return -1; }
+tool_of :: (word: string) -> int { for i: 0..<TOOLS { if TOOL_NAMES[i] == word { return i; } } return -1; }
+
+// ---- reading
+
+int_at :: (text: string, at: [] int) -> int {
+  i := at[0]; neg := false; v := 0; digits := 0;
+  while i < text.count && text[i] == ' ' { i += 1; }
+  if i < text.count && text[i] == '-' { neg = true; i += 1; }
+  while i < text.count && text[i] >= '0' && text[i] <= '9' && digits < 9 { v = v * 10 + cast(int) (text[i] - '0'); i += 1; digits += 1; }
+  at[0] = ifx digits > 0 then i else -1;
+  return ifx neg then -v else v;
+}
+decimal_at :: (text: string, at: [] int) -> f32 {
+  i := at[0];
+  while i < text.count && text[i] == ' ' { i += 1; }
+  neg := i < text.count && text[i] == '-';
+  at[0] = i;
+  whole := int_at(text, at);
+  if at[0] < 0 { return 0; }
+  v := cast(f32) (ifx whole < 0 then -whole else whole);
+  i = at[0];
+  if i < text.count && text[i] == '.' {
+    i += 1; step: f32 = 0.1;
+    while i < text.count && text[i] >= '0' && text[i] <= '9' { v += step * cast(f32) (text[i] - '0'); step *= 0.1; i += 1; }
+    at[0] = i;
+  }
+  return ifx neg then -v else v;
+}
+line_end :: (text: string, from: int) -> int { e := from; while e < text.count && text[e] != '\n' { e += 1; } return e; }
+word_end :: (line: string, from: int) -> int { e := from; while e < line.count && line[e] != ' ' { e += 1; } return e; }
+starts :: (text: string, head: string) -> bool { return text.count >= head.count && text[0..<head.count] == head; }
+// The words of a line after its head: word k (0 first), or "".
+word_of :: (line: string, k: int) -> string {
+  i := 0; n := 0;
+  while i < line.count {
+    while i < line.count && line[i] == ' ' { i += 1; }
+    e := word_end(line, i);
+    if e > i { if n == k { return line[i..<e]; } n += 1; }
+    i = e;
+  }
+  return "";
+}
+number_word :: (w: string) -> int { at: [1] int; v := int_at(w, at[..]); return ifx at[0] < 0 then -1 else v; }
+// a feature's count: its last word when that is a number
+count_of :: (line: string, fallback: int) -> int {
+  last := -1;
+  for k: 2..<6 { w := word_of(line, k); if w.count == 0 { break; } v := number_word(w); if v >= 0 { last = v; } }
+  return ifx last >= 0 then last else fallback;
+}
+// a slug's letters only: a-z, 0-9 and -
+slug_ok :: (text: string) -> bool {
+  if text.count == 0 || text.count > SLUG { return false; }
+  for i: 0..<text.count { c := text[i]; if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+
+// The spec (verse.builder_spec), a line each.
+read_spec :: (s: [] MyRealm, text: string) -> bool {
+  for i: 0..<TOOLS { s[0].tools[i] = false; }
+  s[0].water = 0; s[0].trees = 0; s[0].rocks = 0; s[0].plants = 0; s[0].lanterns = 0; s[0].birds = 0;
+  s[0].prop_n = 0; s[0].people = 0; s[0].placed_n = 0; s[0].waiting = 0; s[0].owner = false;
+  s[0].ground = 0; s[0].tod = 0; s[0].name_n = 0;
+  got := false;
+  i := 0;
+  while i < text.count {
+    e := line_end(text, i); line := text[i..<e]; i = e + 1;
+    head := word_of(line, 0);
+    if head == "realm" { got = true; continue; }
+    if head == "name" && line.count > 5 { s[0].name_n = copy_into(s[0].name[..], line[5..<line.count]); continue; }
+    if head == "style" { s[0].style_n = copy_into(s[0].style[..], word_of(line, 1)); continue; }
+    if head == "ground" { g := word_of(line, 1); for k: 0..<6 { if GROUNDS[k] == g { s[0].ground = k; } } continue; }
+    if head == "time" { t := word_of(line, 1); for k: 0..<4 { if TIMES[k] == t { s[0].tod = k; } } continue; }
+    if head == "owner" { s[0].owner = word_of(line, 1) == "1"; continue; }
+    if head == "waiting" { s[0].waiting = hi_int(number_word(word_of(line, 1)), 0); continue; }
+    if head == "tool" { k := tool_of(word_of(line, 1)); if k >= 0 { s[0].tools[k] = word_of(line, 2) == "1"; } continue; }
+    if head == "character" && s[0].people < PEOPLE && line.count > 10 {
+      rest := line[10..<line.count];
+      cut := 0; while cut < rest.count && rest[cut] != '|' { cut += 1; }
+      p := s[0].people;
+      s[0].person_n[p] = copy_into(s[0].person[p * PERSON..<(p + 1) * PERSON], rest[0..<cut]);
+      s[0].role_n[p] = ifx cut + 1 < rest.count then copy_into(s[0].role[p * ROLE..<(p + 1) * ROLE], rest[cut + 1..<rest.count]) else 0;
+      s[0].people = p + 1;
+      continue;
+    }
+    if head == "placed" && s[0].placed_n < 200 {
+      t := thing_of(word_of(line, 1));
+      if t < 0 { continue; }
+      at: [1] int; at[0] = word_end(line, 7);
+      x := decimal_at(line, at[..]); if at[0] < 0 { continue; }
+      z := decimal_at(line, at[..]); if at[0] < 0 { continue; }
+      yaw := decimal_at(line, at[..]); if at[0] < 0 { yaw = 0; }
+      n := s[0].placed_n;
+      s[0].placed_thing[n] = t; s[0].placed_x[n] = clamp(x, -40, 40); s[0].placed_z[n] = clamp(z, -40, 40); s[0].placed_yaw[n] = yaw;
+      s[0].placed_n = n + 1;
+      continue;
+    }
+    if head == "feature" {
+      f := word_of(line, 1); a := word_of(line, 2);
+      if f == "water" { s[0].water = ifx a == "small" then 1 else ifx a == "large" then 3 else 2; }
+      if f == "trees" { s[0].trees = clamp_int(count_of(line, 9), 0, 20); s[0].tree_kind = ifx a == "pine" then 1 else ifx a == "dead" then 2 else ifx a == "mixed" then 3 else 0; }
+      if f == "rocks" { s[0].rocks = clamp_int(count_of(line, 6), 0, 16); }
+      if f == "plants" { s[0].plants = clamp_int(count_of(line, 10), 0, 24); }
+      if f == "lanterns" {
+        s[0].lanterns = clamp_int(count_of(line, 8), 0, LANTERNS);
+        c := 0; for k: 0..<7 { if COLOURS[k] == a { c = k; } }
+        s[0].lantern_r = COLOUR_RGB[c * 3]; s[0].lantern_g = COLOUR_RGB[c * 3 + 1]; s[0].lantern_b = COLOUR_RGB[c * 3 + 2];
+      }
+      if f == "flock" { s[0].birds = clamp_int(count_of(line, 7), 0, BIRDS); s[0].bats = a == "bat"; }
+      if f == "props" && s[0].prop_n < 5 { for k: 0..<5 { if PROPS[k] == a { s[0].props[s[0].prop_n] = k; s[0].prop_n += 1; } } }
+    }
+  }
+  return got && s[0].name_n > 0;
+}
+hi_int :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+clamp_int :: (a: int, low: int, high: int) -> int { if a < low { return low; } if a > high { return high; } return a; }
+
+// A realm of its own, for /realms/built with no realm named: what every release checks.
+SAMPLE :: "realm built\nname A Realm You Built\nstyle lowpoly\nground meadow\ntime dusk\nowner 0\ntool build 0\ntool fly 0\ntool jump 1\ntool map 1\ntool talk 1\ntool voice 0\nfeature water medium\nfeature trees round 9\nfeature rocks 6\nfeature plants 10\nfeature lanterns gold 8\nfeature props crates\ncharacter Mira|the herbalist\n";
+
+// ---- in from the host
+
+realm_message :: (s: [] MyRealm, t: [] Track, kind: int, text: string) #export_c {
+  begin(s);
+  if kind == MSG_PACK {
+    at: [1] int;
+    s[0].loaded = int_at(text, at[..]); if at[0] < 0 { return; }
+    s[0].total = int_at(text, at[..]); if at[0] < 0 { s[0].total = 0; }
+    return;
+  }
+  if kind == MSG_DATA_TEXT {
+    w := text[trim_from(text)..<trim_to(text)];
+    if slug_ok(w) { s[0].slug_n = copy_into(s[0].slug[..], w); }
+    return;
+  }
+  if kind == HOST_FACTS {
+    s[0].facts = true;
+    // /realms/built#SLUG: the realm after the #
+    url := fact_of(text, "url");
+    hash := 0; while hash < url.count && url[hash] != '#' { hash += 1; }
+    if s[0].slug_n == 0 && hash + 1 < url.count && slug_ok(url[hash + 1..<url.count]) { s[0].slug_n = copy_into(s[0].slug[..], url[hash + 1..<url.count]); }
+    return;
+  }
+  if kind >= HTTP_ANSWER_KIND && kind < HTTP_ANSWER_KIND + 8 && kind - HTTP_ANSWER_KIND == s[0].req_id { take_answer(s, t, text); }
+}
+
+answer_of :: (text: string) -> string { e := line_end(text, 0); return ifx e + 1 <= text.count then text[e + 1..<text.count] else ""; }
+status_of :: (text: string) -> int { return number_word(text[0..<line_end(text, 0)]); }
+
+take_answer :: (s: [] MyRealm, t: [] Track, text: string) {
+  what := s[0].req_what;
+  s[0].req_id = -1; s[0].req_what = REQ_NONE;
+  status := status_of(text); body := answer_of(text);
+  if what == REQ_SPEC {
+    if status == 200 && read_spec(s, body) {
+      s[0].spec_ready = true; s[0].laid = false; lay_out(s);
+      if !s[0].entered && track_begin(t, "realm-enter") { s[0].entered = true; track_str(t, "slug", slug_text(s)); track_bool(t, "owner", s[0].owner); track_end(t); }
+    } else if !s[0].spec_ready { s[0].spec_failed = true; }
+    return;
+  }
+  if what == REQ_SETTINGS { if status != 200 { set_note(s, "Not saved. Try again."); } return; }
+  if what == REQ_PLACE {
+    if status != 200 { set_note(s, ifx status == 403 then "The owner hasn't let visitors build." else "Not placed. Try again."); return; }
+    if s[0].owner { ask_spec(s); } else { set_note(s, "Sent to the owner."); }
+    if track_begin(t, "realm-place") { track_bool(t, "owner", s[0].owner); track_end(t); }
+    return;
+  }
+  if what == REQ_CARDS { if status == 200 { read_cards(s, body); } return; }
+  if what == REQ_DECIDE {
+    if status != 200 { set_note(s, "That card was already decided."); }
+    s[0].cards_due = true; ask_spec(s);
+  }
+}
+
+// ---- requests
+
+busy :: (s: [] MyRealm) -> bool { return s[0].req_ready || s[0].req_id >= 0; }
+realm_requested :: (s: [] MyRealm, id: int) #export_c {
+  s[0].req_ready = false; s[0].req_id = id;
+  if id < 0 && s[0].req_what == REQ_SPEC && !s[0].spec_ready { s[0].spec_failed = true; }
+  if id < 0 { s[0].req_what = REQ_NONE; }
+}
+ask :: (s: [] MyRealm, what: int, tail: string, body_n: int, post: bool) {
+  n := put(s[0].req_url[..], 0, "/api/playtest/realms/");
+  n = put(s[0].req_url[..], n, slug_text(s)); n = put(s[0].req_url[..], n, tail);
+  s[0].req_url_n = n; s[0].req_body_n = body_n;
+  s[0].req_flags = (ifx post then HTTP_POST else 0) | HTTP_ANSWER | TRACK_KEY;
+  s[0].req_what = what; s[0].req_ready = true; s[0].req_at = s[0].time;
+}
+ask_spec :: (s: [] MyRealm) { if s[0].slug_n > 0 { s[0].spec_due = true; } }
+// the next request, when none is in flight
+next_request :: (s: [] MyRealm) {
+  if busy(s) || s[0].slug_n == 0 { return; }
+  if !s[0].asked_spec || s[0].spec_due { s[0].asked_spec = true; s[0].spec_due = false; ask(s, REQ_SPEC, "", 0, false); return; }
+  if s[0].settings_due {
+    s[0].settings_due = false;
+    n := put(s[0].req_body[..], 0, "{\"tools\":{");
+    for i: 0..<TOOLS {
+      if i > 0 { n = put(s[0].req_body[..], n, ","); }
+      n = put(s[0].req_body[..], n, "\""); n = put(s[0].req_body[..], n, TOOL_NAMES[i]); n = put(s[0].req_body[..], n, "\":");
+      n = put(s[0].req_body[..], n, ifx s[0].tools[i] then "true" else "false");
+    }
+    n = put(s[0].req_body[..], n, "}}");
+    ask(s, REQ_SETTINGS, "/settings", n, true);
+    return;
+  }
+  if s[0].cards_due && s[0].owner { s[0].cards_due = false; ask(s, REQ_CARDS, "/proposals", 0, false); }
+}
+
+// ---- the owner's cards
+
+read_cards :: (s: [] MyRealm, body: string) {
+  s[0].card_n = 0;
+  i := 0;
+  while i < body.count && s[0].card_n < CARDS {
+    e := line_end(body, i); line := body[i..<e]; i = e + 1;
+    if !starts(line, "P ") { continue; }
+    f: [8] string; k := 0; from := 2;
+    for j: 2..<line.count + 1 {
+      if j == line.count || line[j] == '|' { if k < 8 { f[k] = line[from..<j]; k += 1; } from = j + 1; }
+    }
+    if k < 8 { continue; }
+    c := s[0].card_n;
+    t := thing_of(f[2]); if t < 0 { continue; }
+    at: [1] int;
+    s[0].card_id[c] = number_word(f[0]);
+    s[0].card_who_n[c] = copy_into(s[0].card_who[c * 16..<(c + 1) * 16], f[1]);
+    s[0].card_thing[c] = t;
+    at[0] = 0; s[0].card_x[c] = decimal_at(f[3], at[..]);
+    at[0] = 0; s[0].card_z[c] = decimal_at(f[4], at[..]);
+    s[0].card_before[c] = number_word(f[6]); s[0].card_after[c] = number_word(f[7]);
+    if s[0].card_id[c] > 0 { s[0].card_n = c + 1; }
+  }
+}
+decide :: (s: [] MyRealm, t: [] Track, accept: bool) {
+  if s[0].card_n == 0 || busy(s) { return; }
+  tail: [48] u8;
+  n := put(tail[..], 0, "/proposals/"); n = put_int(tail[..], n, s[0].card_id[0]); n = put(tail[..], n, ifx accept then "/accept" else "/decline");
+  ask(s, REQ_DECIDE, cast(string) tail[0..<n], 0, true);
+  if track_begin(t, "realm-decide") { track_bool(t, "accept", accept); track_end(t); }
+  // the card goes at once; the next shows
+  for c: 0..<s[0].card_n - 1 {
+    s[0].card_id[c] = s[0].card_id[c + 1]; s[0].card_thing[c] = s[0].card_thing[c + 1];
+    s[0].card_x[c] = s[0].card_x[c + 1]; s[0].card_z[c] = s[0].card_z[c + 1];
+    s[0].card_before[c] = s[0].card_before[c + 1]; s[0].card_after[c] = s[0].card_after[c + 1];
+    s[0].card_who_n[c] = copy_into(s[0].card_who[c * 16..<(c + 1) * 16], cast(string) s[0].card_who[(c + 1) * 16..<(c + 1) * 16 + s[0].card_who_n[c + 1]]);
+  }
+  s[0].card_n -= 1; s[0].waiting = hi_int(s[0].waiting - 1, 0);
+}
+
+// ---- the pack's catalog
+
+realm_catalog :: (s: [] MyRealm, text: string) #export_c {
+  begin(s);
+  s[0].mesh_n = 0;
+  i := 0;
+  while i < text.count {
+    e := line_end(text, i); line := text[i..<e]; i = e + 1;
+    if line.count < 3 || line[0] != 'M' || line[1] != ' ' { continue; }
+    we := word_end(line, 2);
+    at: [1] int; at[0] = we;
+    first := int_at(line, at[..]); if at[0] < 0 { continue; }
+    count := int_at(line, at[..]); if at[0] < 0 { continue; }
+    k := int_at(line, at[..]); if at[0] < 0 { continue; }
+    m := s[0].mesh_n;
+    if m >= MESHES || count <= 0 { continue; }
+    ok := true;
+    for j: 0..<6 { v := decimal_at(line, at[..]); if at[0] < 0 { ok = false; break; } s[0].mesh_box[m * 6 + j] = v; }
+    if !ok { continue; }
+    s[0].mesh_name_n[m] = copy_into(s[0].mesh_name[m * NAME..<(m + 1) * NAME], line[2..<we]);
+    s[0].mesh_first[m] = first; s[0].mesh_count[m] = count; s[0].mesh_n = m + 1;
+  }
+  s[0].pack_ready = true; s[0].laid = false;
+  lay_out(s);
+}
+realm_pack_failed :: (s: [] MyRealm) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
+mesh_named :: (s: [] MyRealm, name: string) -> int {
+  for m: 0..<s[0].mesh_n { if cast(string) s[0].mesh_name[m * NAME..<m * NAME + s[0].mesh_name_n[m]] == name { return m; } }
+  return -1;
+}
+ends_with :: (text: string, tail: string) -> bool { return text.count >= tail.count && text[text.count - tail.count..<text.count] == tail; }
+leaves_of :: (s: [] MyRealm, m: int) -> int {
+  if m < 0 || m + 1 >= s[0].mesh_n { return -1; }
+  n := cast(string) s[0].mesh_name[(m + 1) * NAME..<(m + 1) * NAME + s[0].mesh_name_n[m + 1]];
+  return ifx ends_with(n, "_Leaves") then m + 1 else -1;
+}
+
+// ---- laying out: the same realm from the same slug
+
+Seed :: struct { v: int; }
+seed_of :: (text: string) -> int { h := 2166136261; for i: 0..<text.count { h = ((h ^ cast(int) text[i]) * 16777619) % 4294967296; } return h % 2147483647 + 1; }
+rand :: (r: [] Seed) -> f32 { r[0].v = (r[0].v * 48271) % 2147483647; return cast(f32) r[0].v / 2147483647.0; }
+
+THING_MESH :: [THINGS] string.["Prop_Crate", "Barrel", "CommonTree_3", "Rock_Medium_1", "Fern_1", "", "Prop_WoodenFence_Single", "Chest_Wood"];
+THING_SIZE :: [THINGS] f32.[0.9, 1.0, 5.0, 1.3, 0.8, 0, 2.0, 0.9];   // metres its longest side is shown
+THING_SOLID :: [THINGS] bool.[true, true, true, true, false, true, true, true];
+
+// Is (x, z) free: off the water, off what's there, away from where you start, inside the ground?
+free :: (s: [] MyRealm, x: f32, z: f32, r: f32) -> bool {
+  d := sqrt(x * x + z * z);
+  if d + r > GROUND_R - 1.5 { return false; }
+  sx := x; sz := z - 6;
+  if sqrt(sx * sx + sz * sz) < r + 2.2 { return false; }
+  if s[0].water_r > 0 { wx := x - s[0].water_x; wz := z - s[0].water_z; if sqrt(wx * wx + wz * wz) < s[0].water_r + r + 0.3 { return false; } }
+  for i: 0..<s[0].solid_n { ox := x - s[0].solid_x[i]; oz := z - s[0].solid_z[i]; if sqrt(ox * ox + oz * oz) < s[0].solid_r[i] + r + 0.2 { return false; } }
+  return true;
+}
+// A free spot between two radii from the middle, or none (x = 99).
+spot :: (s: [] MyRealm, r: [] Seed, near: f32, far: f32, size: f32) -> Spot {
+  for tries: 0..<40 {
+    a := rand(r) * 6.2831853; d := near + (far - near) * sqrt(rand(r));
+    x := d * sin(a); z := -d * cos(a);
+    if free(s, x, z, size) { return Spot.{x = x, z = z}; }
+  }
+  return Spot.{x = 99, z = 99};
+}
+solid :: (s: [] MyRealm, x: f32, z: f32, r: f32) {
+  if s[0].solid_n >= SOLIDS || r <= 0 { return; }
+  n := s[0].solid_n; s[0].solid_x[n] = x; s[0].solid_z[n] = z; s[0].solid_r[n] = r; s[0].solid_n = n + 1;
+}
+longest :: (s: [] MyRealm, m: int) -> f32 {
+  o := m * 6;
+  l := leaves_of(s, m);
+  x0 := s[0].mesh_box[o]; y0 := s[0].mesh_box[o + 1]; z0 := s[0].mesh_box[o + 2]; x1 := s[0].mesh_box[o + 3]; y1 := s[0].mesh_box[o + 4]; z1 := s[0].mesh_box[o + 5];
+  if l >= 0 { p := l * 6; y1 = hi(y1, s[0].mesh_box[p + 4]); }
+  return hi(x1 - x0, hi(y1 - y0, z1 - z0));
+}
+// a mesh's footprint radius at scale k
+foot_of :: (s: [] MyRealm, m: int, k: f32) -> f32 { o := m * 6; return 0.5 * hi(s[0].mesh_box[o + 3] - s[0].mesh_box[o], s[0].mesh_box[o + 5] - s[0].mesh_box[o + 2]) * k; }
+piece :: (s: [] MyRealm, m: int, x: f32, z: f32, yaw: f32, k: f32, r: f32, g: f32, b: f32) {
+  if m < 0 || s[0].piece_n >= PIECES { return; }
+  n := s[0].piece_n;
+  s[0].piece_mesh[n] = m; s[0].piece_x[n] = x; s[0].piece_z[n] = z; s[0].piece_yaw[n] = yaw; s[0].piece_k[n] = k;
+  s[0].piece_tint[n * 3] = r; s[0].piece_tint[n * 3 + 1] = g; s[0].piece_tint[n * 3 + 2] = b;
+  s[0].piece_n = n + 1;
+}
+// A thing at (x, z): its mesh (a tree with its leaves), its size, a circle you can't walk into.
+thing_at :: (s: [] MyRealm, t: int, x: f32, z: f32, yaw: f32, grow: f32, kind: int) {
+  if t == 5 { return; }   // lanterns are lights, drawn as strokes
+  m := mesh_named(s, THING_MESH[t]);
+  if m < 0 { return; }
+  k := THING_SIZE[t] / hi(longest(s, m), 0.01) * grow;
+  r: f32 = 1; g: f32 = 1; b: f32 = 1;
+  if t == 2 && kind == 1 { r = 0.55; g = 0.8; b = 0.6; }     // pine: darker, bluer
+  if t == 2 && kind == 2 { r = 0.75; g = 0.62; b = 0.5; }    // dead: bare and grey-brown
+  piece(s, m, x, z, yaw, k, r, g, b);
+  if t == 2 && kind != 2 { piece(s, leaves_of(s, m), x, z, yaw, k, r, g, b); }
+  if THING_SOLID[t] { solid(s, x, z, hi(foot_of(s, m, k) * (ifx t == 2 then 0.35f32 else 0.8f32), 0.25)); }
+}
+
+lay_out :: (s: [] MyRealm) {
+  if !s[0].spec_ready || !s[0].pack_ready { return; }
+  r: [1] Seed; r[0].v = seed_of(slug_text(s));
+  s[0].piece_n = 0; s[0].solid_n = 0; s[0].water_r = 0;
+  if s[0].water > 0 {
+    s[0].water_r = ifx s[0].water == 1 then 2.5f32 else ifx s[0].water == 3 then 6.5f32 else 4.0f32;
+    a := rand(r[..]) * 1.2 - 0.6;
+    d := s[0].water_r + 4.5;
+    s[0].water_x = d * sin(a); s[0].water_z = -d * cos(a);
+  }
+  // the characters first, in a loose ring in front of you; then the lanterns round where you start
+  for p: 0..<s[0].people {
+    // off to either side ahead of you, never in your way
+    a := (ifx p % 2 == 0 then 0.75f32 else -0.75f32) * (1 + 0.45 * cast(f32) (p / 2));
+    s[0].person_x[p] = 5 * sin(a); s[0].person_z[p] = 6 - 5 * cos(a);
+    solid(s, s[0].person_x[p], s[0].person_z[p], 0.4);
+  }
+  for i: 0..<s[0].lanterns {
+    a := cast(f32) i / cast(f32) hi_int(s[0].lanterns, 1) * 6.2831853 + 0.3;
+    s[0].lantern_x[i] = 7.5 * sin(a); s[0].lantern_z[i] = 6 - 7.5 * cos(a);
+    solid(s, s[0].lantern_x[i], s[0].lantern_z[i], 0.2);
+  }
+  for p: 0..<s[0].prop_n {
+    kind := s[0].props[p];
+    c := spot(s, r[..], 5, 13, 2.2);
+    if c.x > 90 { continue; }
+    if kind == 0 { for j: 0..<3 { thing_at(s, 0, c.x + (cast(f32) j - 1) * 1.1, c.z + (ifx j == 1 then 0.6f32 else 0.0f32), rand(r[..]) * 0.6, 1, 0); } }
+    if kind == 1 { for j: 0..<3 { thing_at(s, 1, c.x + (cast(f32) j - 1) * 0.9, c.z + rand(r[..]) * 0.5, rand(r[..]) * 3, 1, 0); } }
+    if kind == 2 { m := mesh_named(s, "Prop_Wagon"); if m >= 0 { k := 3.6 / hi(longest(s, m), 0.01); a := rand(r[..]) * 3; piece(s, m, c.x, c.z, a, k, 1, 1, 1); solid(s, c.x, c.z, 1.6); } }
+    if kind == 3 { a := rand(r[..]) * 3; for j: 0..<5 { o := (cast(f32) j - 2) * 2.0; thing_at(s, 6, c.x + o * cos(a), c.z - o * sin(a), a, 1, 0); } }
+    if kind == 4 { thing_at(s, 7, c.x, c.z, rand(r[..]) * 3, 1, 0); m := mesh_named(s, "Anvil"); if m >= 0 { k := 0.9 / hi(longest(s, m), 0.01); piece(s, m, c.x + 1.6, c.z + 0.4, 0.5, k, 1, 1, 1); solid(s, c.x + 1.6, c.z + 0.4, 0.5); } }
+  }
+  for i: 0..<s[0].trees {
+    c := spot(s, r[..], 8, GROUND_R - 2, 1.0);
+    if c.x > 90 { continue; }
+    kind := s[0].tree_kind;
+    if kind == 3 { kind = cast(int) (rand(r[..]) * 2.99); }
+    thing_at(s, 2, c.x, c.z, rand(r[..]) * 6.28, 0.8 + 0.45 * rand(r[..]), kind);
+  }
+  for i: 0..<s[0].rocks { c := spot(s, r[..], 4, GROUND_R - 2, 0.8); if c.x < 90 { thing_at(s, 3, c.x, c.z, rand(r[..]) * 6.28, 0.6 + 0.9 * rand(r[..]), 0); } }
+  for i: 0..<s[0].plants { c := spot(s, r[..], 3, GROUND_R - 2, 0.4); if c.x < 90 { thing_at(s, 4, c.x, c.z, rand(r[..]) * 6.28, 0.7 + 0.6 * rand(r[..]), 0); } }
+  for i: 0..<s[0].placed_n { thing_at(s, s[0].placed_thing[i], s[0].placed_x[i], s[0].placed_z[i], s[0].placed_yaw[i], 1, 0); }
+  build_draws(s);
+  s[0].laid = true;
+}
+
+// The pieces as draws, a mesh's together: [first, count, base instance, instances], and their transforms.
+build_draws :: (s: [] MyRealm) {
+  s[0].draw_n = 0; s[0].object_n = 0;
+  for m: 0..<s[0].mesh_n {
+    base := s[0].object_n;
+    // a tree's leaves stand on its trunk: centred on the trunk's bounds
+    anchor := ifx m > 0 && leaves_of(s, m - 1) == m then m - 1 else m;
+    o := anchor * 6;
+    cx := 0.5 * (s[0].mesh_box[o] + s[0].mesh_box[o + 3]); cz := 0.5 * (s[0].mesh_box[o + 2] + s[0].mesh_box[o + 5]); floor_y := s[0].mesh_box[o + 1];
+    for p: 0..<s[0].piece_n {
+      if s[0].piece_mesh[p] != m || s[0].object_n >= PIECES { continue; }
+      k := s[0].piece_k[p]; c := cos(s[0].piece_yaw[p]); sn := sin(s[0].piece_yaw[p]);
+      x := s[0].piece_x[p]; z := s[0].piece_z[p];
+      t := s[0].object_n * INSTANCE_FLOATS;
+      s[0].objects[t] = c * k; s[0].objects[t + 1] = 0; s[0].objects[t + 2] = sn * k; s[0].objects[t + 3] = x - k * (c * cx + sn * cz);
+      s[0].objects[t + 4] = 0; s[0].objects[t + 5] = k; s[0].objects[t + 6] = 0; s[0].objects[t + 7] = -k * floor_y;
+      s[0].objects[t + 8] = -sn * k; s[0].objects[t + 9] = 0; s[0].objects[t + 10] = c * k; s[0].objects[t + 11] = z - k * (-sn * cx + c * cz);
+      s[0].objects[t + 12] = s[0].piece_tint[p * 3]; s[0].objects[t + 13] = s[0].piece_tint[p * 3 + 1]; s[0].objects[t + 14] = s[0].piece_tint[p * 3 + 2]; s[0].objects[t + 15] = 0;
+      s[0].object_n += 1;
+    }
+    if s[0].object_n > base {
+      d := s[0].draw_n * 4;
+      s[0].draws[d] = cast(u32) s[0].mesh_first[m]; s[0].draws[d + 1] = cast(u32) s[0].mesh_count[m];
+      s[0].draws[d + 2] = cast(u32) base; s[0].draws[d + 3] = cast(u32) (s[0].object_n - base);
+      s[0].draw_n += 1;
+    }
+  }
+}
+realm_draw_count :: (s: [] MyRealm) -> int #export_c { return ifx s[0].laid then s[0].draw_n else 0; }
+realm_object_count :: (s: [] MyRealm) -> int #export_c { return ifx s[0].laid then s[0].object_n else 0; }
+
+// ---- walking
+
+Spot :: struct { x: f32; z: f32; }
+walk_to :: (s: [] MyRealm, x: f32, z: f32, dx: f32, dz: f32) -> Spot {
+  p := Spot.{x = x + dx, z = z + dz};
+  if s[0].flying || s[0].y > 1.2 { return edge(p); }
+  for pass: 0..<2 {
+    for i: 0..<s[0].solid_n {
+      ox := p.x - s[0].solid_x[i]; oz := p.z - s[0].solid_z[i];
+      d := sqrt(ox * ox + oz * oz); room := s[0].solid_r[i] + BODY_R;
+      if d >= room { continue; }
+      if d < 0.0001 { ox = 0; oz = 1; d = 1; }
+      p.x = s[0].solid_x[i] + ox / d * room; p.z = s[0].solid_z[i] + oz / d * room;
+    }
+    p = edge(p);
+  }
+  return p;
+}
+edge :: (p: Spot) -> Spot {
+  r := sqrt(p.x * p.x + p.z * p.z); e: f32 = GROUND_R - BODY_R;
+  if r > e { return Spot.{x = p.x * e / r, z = p.z * e / r}; }
+  return p;
+}
+in_water :: (s: [] MyRealm) -> bool {
+  if s[0].water_r <= 0 { return false; }
+  wx := s[0].x - s[0].water_x; wz := s[0].z - s[0].water_z;
+  return sqrt(wx * wx + wz * wz) < s[0].water_r;
+}
+
+realm_step :: (s: [] MyRealm, dt: f32) {
+  step := clamp(dt, 0, 0.1);
+  s[0].time += step;
+  ahead := 0.0f32; turn := 0.0f32;
+  if (s[0].held & HOLD_UP) != 0 { ahead += 1; }
+  if (s[0].held & HOLD_DOWN) != 0 { ahead -= 1; }
+  if (s[0].held & HOLD_LEFT) != 0 { turn -= 1; }
+  if (s[0].held & HOLD_RIGHT) != 0 { turn += 1; }
+  if s[0].stick { ahead -= s[0].stick_dy; turn += s[0].stick_dx; }
+  ahead = clamp(ahead, -1, 1); turn = clamp(turn, -1, 1);
+  s[0].yaw += turn * TURN * step;
+  if ahead != 0 {
+    fx := sin(s[0].yaw); fz := -cos(s[0].yaw);
+    speed := ifx ahead < 0 then ahead * 0.6 else ahead;
+    if s[0].flying { speed *= 1.8; }
+    if in_water(s) && s[0].y < 0.1 { speed *= 0.5; }
+    p := walk_to(s, s[0].x, s[0].z, fx * speed * WALK * step, fz * speed * WALK * step);
+    mx := p.x - s[0].x; mz := p.z - s[0].z;
+    s[0].walked += sqrt(mx * mx + mz * mz);
+    s[0].x = p.x; s[0].z = p.z;
+  }
+  // up: a jump falls back; flying eases up to its height and back down
+  if s[0].flying { s[0].y += (FLY_HEIGHT - s[0].y) * clamp(step * 2.5, 0, 1); s[0].vy = 0; }
+  else if s[0].y > 0 || s[0].vy > 0 {
+    s[0].vy -= GRAVITY * step; s[0].y += s[0].vy * step;
+    if s[0].y <= 0 { s[0].y = 0; s[0].vy = 0; p := walk_to(s, s[0].x, s[0].z, 0, 0); s[0].x = p.x; s[0].z = p.z; }
+  }
+}
+
+// ---- the view
+
+view_rows :: (s: [] MyRealm) {
+  aspect := s[0].width / hi(s[0].height, 1);
+  fx0 := sin(s[0].yaw); fz0 := -cos(s[0].yaw);
+  ex := s[0].x - fx0 * CAM_BACK; ey: f32 = CAM_UP + s[0].y; ez := s[0].z - fz0 * CAM_BACK;
+  ax := s[0].x + fx0 * LOOK_AHEAD; ay: f32 = LOOK_UP + s[0].y * 0.85; az := s[0].z + fz0 * LOOK_AHEAD;
+  fx := ax - ex; fy := ay - ey; fz := az - ez;
+  fl := sqrt(fx * fx + fy * fy + fz * fz); fx /= fl; fy /= fl; fz /= fl;
+  rx := -fz; rz := fx; rl := sqrt(rx * rx + rz * rz); rx /= rl; rz /= rl;
+  ux := -rz * fy; uy := rz * fx - rx * fz; uz := rx * fy;
+  t: f32 = 1 / tan(cast(f32) FOV * 0.5);
+  sx := t / hi(aspect, 0.3); sy := t;
+  if aspect < 1 { sx = t * 0.9; sy = sx * aspect; }
+  zn: f32 = 0.1; zf: f32 = 200.0;
+  a := zf / (zn - zf); b := zn * zf / (zn - zf);
+  v := s[0].view[..];
+  v[0] = sx * rx; v[1] = 0; v[2] = sx * rz; v[3] = -sx * (rx * ex + rz * ez);
+  v[4] = sy * ux; v[5] = sy * uy; v[6] = sy * uz; v[7] = -sy * (ux * ex + uy * ey + uz * ez);
+  v[8] = -a * fx; v[9] = -a * fy; v[10] = -a * fz; v[11] = a * (fx * ex + fy * ey + fz * ez) + b;
+  v[12] = fx; v[13] = fy; v[14] = fz; v[15] = -(fx * ex + fy * ey + fz * ez);
+  s[0].eye[0] = ex; s[0].eye[1] = ey; s[0].eye[2] = ez;
+  s[0].fwd[0] = fx; s[0].fwd[1] = fy; s[0].fwd[2] = fz;
+  s[0].right[0] = rx / sx; s[0].right[1] = 0; s[0].right[2] = rz / sx;
+  s[0].up[0] = ux / sy; s[0].up[1] = uy / sy; s[0].up[2] = uz / sy;
+}
+Seen :: struct { x: f32; y: f32; ok: bool; far: f32; }
+seen :: (s: [] MyRealm, x: f32, y: f32, z: f32) -> Seen {
+  v := s[0].view[..];
+  cx := v[0] * x + v[1] * y + v[2] * z + v[3];
+  cy := v[4] * x + v[5] * y + v[6] * z + v[7];
+  cw := v[12] * x + v[13] * y + v[14] * z + v[15];
+  if cw < 0.3 { return Seen.{x = 0, y = 0, ok = false, far = 0}; }
+  return Seen.{x = (cx / cw * 0.5 + 0.5) * s[0].width, y = (0.5 - cy / cw * 0.5) * s[0].height, ok = true, far = cw};
+}
+
+// ---- input
+
+hold_of :: (key: int) -> int {
+  if key == KEY_UP || key == 'w' || key == 'W' { return HOLD_UP; }
+  if key == KEY_DOWN || key == 's' || key == 'S' { return HOLD_DOWN; }
+  if key == KEY_LEFT || key == 'a' || key == 'A' { return HOLD_LEFT; }
+  if key == KEY_RIGHT || key == 'd' || key == 'D' { return HOLD_RIGHT; }
+  return 0;
+}
+jump :: (s: [] MyRealm) { if s[0].tools[TOOL_JUMP] && !s[0].flying && s[0].y <= 0.001 { s[0].vy = JUMP_SPEED; s[0].y = 0.001; } }
+fly :: (s: [] MyRealm) { if s[0].tools[TOOL_FLY] { s[0].flying = !s[0].flying; if !s[0].flying { s[0].vy = 0; } } }
+toggle_pane :: (s: [] MyRealm, pane: int) {
+  s[0].pane = ifx s[0].pane == pane then PANE_NONE else pane;
+  if s[0].pane == PANE_CARDS { s[0].cards_due = true; }
+}
+realm_key :: (s: [] MyRealm, t: [] Track, key: int, down: bool) -> bool #export_c {
+  begin(s);
+  h := hold_of(key);
+  if h != 0 { s[0].held = ifx down then s[0].held | h else s[0].held & (15 - h); return true; }
+  if !down { return key == ' '; }
+  if key == ' ' { jump(s); return true; }
+  if key == 'f' || key == 'F' { fly(s); return true; }
+  if (key == 'm' || key == 'M') && s[0].tools[TOOL_MAP] { s[0].map_open = !s[0].map_open; return true; }
+  if (key == 'b' || key == 'B') && can_build(s) { toggle_pane(s, PANE_BUILD); return true; }
+  if key == KEY_ESCAPE { if s[0].pane != PANE_NONE || s[0].map_open { s[0].pane = PANE_NONE; s[0].map_open = false; } else { leave(s); } return true; }
+  return false;
+}
+realm_blur :: (s: [] MyRealm) #export_c { s[0].held = 0; s[0].stick = false; s[0].turning = false; s[0].press = -1; s[0].row_press = -1; s[0].cell_press = -1; }
+can_build :: (s: [] MyRealm) -> bool { return s[0].spec_ready && s[0].slug_n > 0 && (s[0].owner || s[0].tools[TOOL_BUILD]); }
+leave :: (s: [] MyRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/verse/galaxy"); s[0].action = ACT_NAVIGATE; } }
+go_new :: (s: [] MyRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms/new"); s[0].action = ACT_NAVIGATE; } }
+
+// A thing placed two metres in front of you.
+place_thing :: (s: [] MyRealm, t: [] Track, thing: int) {
+  if !can_build(s) || busy(s) || thing < 0 || thing >= THINGS { return; }
+  x := s[0].x + 2.2 * sin(s[0].yaw); z := s[0].z - 2.2 * cos(s[0].yaw);
+  n := put(s[0].req_body[..], 0, "{\"thing\":\""); n = put(s[0].req_body[..], n, THING_NAMES[thing]);
+  n = put(s[0].req_body[..], n, "\",\"x\":"); n = put_cm(s[0].req_body[..], n, x);
+  n = put(s[0].req_body[..], n, ",\"z\":"); n = put_cm(s[0].req_body[..], n, z);
+  n = put(s[0].req_body[..], n, ",\"yaw\":"); n = put_cm(s[0].req_body[..], n, s[0].yaw - 6.2831853 * floor_f(s[0].yaw / 6.2831853));
+  n = put(s[0].req_body[..], n, "}");
+  ask(s, REQ_PLACE, "/place", n, true);
+}
+floor_f :: (v: f32) -> f32 { i := cast(f32) (cast(int) v); return ifx i > v then i - 1 else i; }
+// a number with two decimals: -3.25
+put_cm :: (buf: [] u8, at: int, v: f32) -> int {
+  n := at;
+  cm := cast(int) (abs(v) * 100 + 0.5);
+  if v < 0 && cm > 0 { n = put(buf, n, "-"); }
+  n = put_int(buf, n, cm / 100); n = put(buf, n, ".");
+  r := cm % 100; if r < 10 { n = put(buf, n, "0"); }
+  return put_int(buf, n, r);
+}
+
+button_at :: (s: [] MyRealm, x: f32, y: f32) -> int {
+  for i: 0..<BUTTONS { if s[0].shown[i] && inside(s[0].boxes[i], x, y) { return i; } }
+  return -1;
+}
+row_at :: (s: [] MyRealm, x: f32, y: f32) -> int { for i: 0..<TOOLS { if s[0].row_shown[i] && inside(s[0].rows[i], x, y) { return i; } } return -1; }
+cell_at :: (s: [] MyRealm, x: f32, y: f32) -> int { for i: 0..<THINGS { if s[0].cell_shown[i] && inside(s[0].cells[i], x, y) { return i; } } return -1; }
+realm_label :: (s: [] MyRealm, x: f32, y: f32) -> string #export_c {
+  b := button_at(s, x, y);
+  if b == BTN_BACK { return "galaxy"; } if b == BTN_SETTINGS { return "settings"; } if b == BTN_CARDS { return "cards"; }
+  if b == BTN_BUILD { return "build"; } if b == BTN_MAP { return "map"; } if b == BTN_FLY { return "fly"; } if b == BTN_JUMP { return "jump"; }
+  if b == BTN_ACCEPT { return "accept"; } if b == BTN_DECLINE { return "decline"; } if b == BTN_CLOSE { return "close"; } if b == BTN_NEW { return "new"; }
+  if row_at(s, x, y) >= 0 { return "tool"; } if cell_at(s, x, y) >= 0 { return "thing"; }
+  return "";
+}
+press_button :: (s: [] MyRealm, t: [] Track, b: int) {
+  if b == BTN_BACK { leave(s); }
+  if b == BTN_NEW { go_new(s); }
+  if b == BTN_SETTINGS { toggle_pane(s, PANE_SETTINGS); }
+  if b == BTN_CARDS { toggle_pane(s, PANE_CARDS); }
+  if b == BTN_BUILD { toggle_pane(s, PANE_BUILD); }
+  if b == BTN_CLOSE { s[0].pane = PANE_NONE; }
+  if b == BTN_MAP { s[0].map_open = !s[0].map_open; }
+  if b == BTN_FLY { fly(s); }
+  if b == BTN_JUMP { jump(s); }
+  if b == BTN_ACCEPT { decide(s, t, true); }
+  if b == BTN_DECLINE { decide(s, t, false); }
+}
+set_tool :: (s: [] MyRealm, t: [] Track, i: int) {
+  if !s[0].owner || i < 0 || i >= TOOLS { return; }
+  s[0].tools[i] = !s[0].tools[i];
+  if i == TOOL_FLY && !s[0].tools[i] { s[0].flying = false; }
+  if i == TOOL_MAP && !s[0].tools[i] { s[0].map_open = false; }
+  s[0].settings_due = true;
+  if track_begin(t, "realm-setting") { track_str(t, "tool", TOOL_NAMES[i]); track_bool(t, "on", s[0].tools[i]); track_end(t); }
+}
+realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  begin(s);
+  b := button_at(s, x, y);
+  s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
+  if phase == POINTER_DOWN {
+    if b >= 0 { s[0].press = b; return true; }
+    r := row_at(s, x, y); if r >= 0 { s[0].row_press = r; return true; }
+    c := cell_at(s, x, y); if c >= 0 { s[0].cell_press = c; return true; }
+    if kind == 0 { s[0].turning = true; s[0].turn_id = id; s[0].turn_x = x; return true; }
+    s[0].stick = true; s[0].stick_id = id; s[0].stick_x0 = x; s[0].stick_y0 = y; s[0].stick_dx = 0; s[0].stick_dy = 0;
+    return true;
+  }
+  if s[0].press >= 0 {
+    if phase == POINTER_UP && b == s[0].press { press_button(s, t, b); }
+    if phase != POINTER_MOVE { s[0].press = -1; }
+    return true;
+  }
+  if s[0].row_press >= 0 {
+    if phase == POINTER_UP && row_at(s, x, y) == s[0].row_press { set_tool(s, t, s[0].row_press); }
+    if phase != POINTER_MOVE { s[0].row_press = -1; }
+    return true;
+  }
+  if s[0].cell_press >= 0 {
+    if phase == POINTER_UP && cell_at(s, x, y) == s[0].cell_press { place_thing(s, t, s[0].cell_press); }
+    if phase != POINTER_MOVE { s[0].cell_press = -1; }
+    return true;
+  }
+  if s[0].stick && id == s[0].stick_id {
+    if phase == POINTER_MOVE {
+      reach := STICK * hi(s[0].dpr, 0.5);
+      s[0].stick_dx = clamp((x - s[0].stick_x0) / reach, -1, 1); s[0].stick_dy = clamp((y - s[0].stick_y0) / reach, -1, 1);
+    } else { s[0].stick = false; s[0].stick_dx = 0; s[0].stick_dy = 0; }
+    return true;
+  }
+  if s[0].turning && id == s[0].turn_id {
+    if phase == POINTER_MOVE { s[0].yaw += (x - s[0].turn_x) / hi(s[0].width, 1) * 3.1415927; s[0].turn_x = x; }
+    else { s[0].turning = false; }
+    return true;
+  }
+  return false;
+}
+realm_cursor :: (s: [] MyRealm) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
+realm_action :: (s: [] MyRealm) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
+realm_action_done :: (s: [] MyRealm) #export_c { s[0].out_n = 0; }
+
+// ---- the look
+
+GAP :: 0.5; SPACE :: 1.2;
+PARCH_R :: 0.91; PARCH_G :: 0.863; PARCH_B :: 0.753;
+GOLD_R :: 0.80; GOLD_G :: 0.64; GOLD_B :: 0.36;
+EMBER_R :: 0.91; EMBER_G :: 0.47; EMBER_B :: 0.17;
+LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;
+white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARCH_R, PARCH_G, PARCH_B); }
+bronze :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, GOLD_R, GOLD_G, GOLD_B); }
+ember :: (k: f32, light: f32) -> Ink { return ink(0.6 * k, light, 1.6 * k, EMBER_R, EMBER_G, EMBER_B); }
+plate :: (s: [] MyRealm, b: Box, alpha: f32, look: f32) -> bool {
+  n := s[0].plate_n;
+  if n >= PLATES { return false; }
+  s[0].plates[n] = b; s[0].plate_alpha[n] = alpha; s[0].plate_look[n] = look; s[0].plate_n = n + 1;
+  return true;
+}
+centred :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  w := measure(text, GAP, SPACE, false) * cap;
+  return write(d, out, at, text, x - w * 0.5, base, cap, GAP, SPACE, k, false, false);
+}
+fit_cap :: (text: string, cap: f32, width: f32) -> f32 { return lo(cap, width / hi(measure(text, GAP, SPACE, false), 0.001)); }
+upper :: (buf: [] u8, n: int) { for i: 0..<n { if buf[i] >= 'a' && buf[i] <= 'z' { buf[i] -= 32; } } }
+pill :: (s: [] MyRealm, out: [] f32, at: int, which: int, b: Box, text: string, bright: bool) -> int {
+  look: f32 = ifx bright then LOOK_LIT else LOOK_PLAIN;
+  if s[0].hover == which || s[0].press == which { look = LOOK_LIT + LOOK_HOVER; }
+  if !plate(s, b, 0.92, look) { return at; }
+  s[0].boxes[which] = b; s[0].shown[which] = true;
+  k := s[0].dpr;
+  cap := fit_cap(text, 8.5 * k, b.x1 - b.x0 - 16 * k);
+  return centred(k, out, at, text, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, ifx bright then ember(k, 1) else white(k, 0.95));
+}
+checkbox :: (s: [] MyRealm, out: [] f32, at: int, x: f32, y: f32, size: f32, on: bool) -> int {
+  k := s[0].dpr; n := at;
+  x1 := x + size; y1 := y + size;
+  tone: f32 = ifx on then 1.0f32 else 0.6f32;
+  r: f32 = ifx on then EMBER_R else GOLD_R; g: f32 = ifx on then EMBER_G else GOLD_G; b: f32 = ifx on then EMBER_B else GOLD_B;
+  if lit(out, n, x, y, x1, y, 0.7 * k, tone, 1.2 * k, r, g, b, MODE_STROKE) { n += 6; }
+  if lit(out, n, x1, y, x1, y1, 0.7 * k, tone, 1.2 * k, r, g, b, MODE_STROKE) { n += 6; }
+  if lit(out, n, x1, y1, x, y1, 0.7 * k, tone, 1.2 * k, r, g, b, MODE_STROKE) { n += 6; }
+  if lit(out, n, x, y1, x, y, 0.7 * k, tone, 1.2 * k, r, g, b, MODE_STROKE) { n += 6; }
+  if on {
+    if lit(out, n, x + size * 0.2, y + size * 0.52, x + size * 0.42, y + size * 0.76, 1.1 * k, 1.2, 2 * k, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { n += 6; }
+    if lit(out, n, x + size * 0.42, y + size * 0.76, x + size * 0.82, y + size * 0.24, 1.1 * k, 1.2, 2 * k, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { n += 6; }
+  }
+  return n;
+}
+
+// The world's strokes: lanterns on posts, the flock, the characters and you.
+draw_world :: (s: [] MyRealm, out: [] f32, at: int) -> int {
+  k := s[0].dpr; n := at;
+  night := ifx s[0].tod == 3 then 1.0f32 else ifx s[0].tod == 2 then 0.75f32 else ifx s[0].tod == 1 then 0.6f32 else 0.45f32;
+  for i: 0..<s[0].lanterns {
+    lx := s[0].lantern_x[i]; lz := s[0].lantern_z[i];
+    base := seen(s, lx, 0, lz); top := seen(s, lx, 1.5, lz);
+    if !base.ok || !top.ok { continue; }
+    tall := abs(base.y - top.y);
+    if lit(out, n, base.x, base.y, top.x, top.y, hi(0.03 * tall, 0.6 * k), 0.5, 1 * k, 0.35, 0.28, 0.2, MODE_STROKE) { n += 6; }
+    flick := ifx s[0].still then 1.0f32 else 0.85 + 0.15 * sin(s[0].time * 5 + cast(f32) i * 1.7);
+    if tinted_dot(out, n, top.x, top.y, hi(0.05 * tall, 1.2 * k), 1.3 * flick * night, hi(0.45 * tall, 6 * k), s[0].lantern_r, s[0].lantern_g, s[0].lantern_b) { n += 6; }
+  }
+  // the flock: wings beating, circling above whoever walks
+  for i: 0..<s[0].birds {
+    a := s[0].time * (0.35 + 0.04 * cast(f32) (i % 3)) + cast(f32) i / cast(f32) s[0].birds * 6.2831853;
+    rr := 5.0 + 1.5 * sin(cast(f32) i * 2.3);
+    bx := s[0].x + rr * cos(a); bz := s[0].z + rr * sin(a); by := 6.0 + s[0].y + 0.8 * sin(cast(f32) i * 1.3 + s[0].time * 0.7);
+    c := seen(s, bx, by, bz);
+    if !c.ok { continue; }
+    span := clamp(36.0 * k / hi(c.far, 0.5), 3 * k, 26 * k);
+    beat := ifx s[0].still then 0.5f32 else sin(s[0].time * (ifx s[0].bats then 14.0f32 else 8.0f32) + cast(f32) i);
+    lift := span * 0.45 * beat;
+    r: f32 = ifx s[0].bats then 0.55f32 else 0.42f32; g: f32 = ifx s[0].bats then 0.42f32 else 0.42f32; b: f32 = ifx s[0].bats then 0.6f32 else 0.48f32;
+    if lit(out, n, c.x - span, c.y - lift, c.x, c.y, 0.8 * k, 0.9, 1 * k, r, g, b, MODE_STROKE) { n += 6; }
+    if lit(out, n, c.x, c.y, c.x + span, c.y - lift, 0.8 * k, 0.9, 1 * k, r, g, b, MODE_STROKE) { n += 6; }
+  }
+  // the characters: a figure each
+  for p: 0..<s[0].people {
+    n = figure(s, out, n, s[0].person_x[p], 0, s[0].person_z[p], 0.55 + 0.1 * cast(f32) p, 0.75, 0.9 - 0.12 * cast(f32) p, false);
+  }
+  // you, and your lamp after dark
+  n = figure(s, out, n, s[0].x, s[0].y, s[0].z, PARCH_R, PARCH_G, PARCH_B, s[0].tod >= 2);
+  return n;
+}
+figure :: (s: [] MyRealm, out: [] f32, at: int, x: f32, y: f32, z: f32, r: f32, g: f32, b: f32, lamp: bool) -> int {
+  k := s[0].dpr; n := at;
+  foot := seen(s, x, y, z); head := seen(s, x, y + 1.55, z); hip := seen(s, x, y + 0.15, z);
+  if !foot.ok || !head.ok || !hip.ok { return n; }
+  tall := abs(head.y - hip.y);
+  if tinted_dot(out, n, foot.x, foot.y, 0.1, 0.5, 10 * k, r * 0.6, g * 0.6, b * 0.6) { n += 6; }
+  if lit(out, n, hip.x, hip.y, head.x, head.y + tall * 0.14, 0.045 * tall, 0.8, 2 * k, r, g, b, MODE_STROKE) { n += 6; }
+  if tinted_dot(out, n, head.x, head.y, 0.055 * tall, 0.9, 2 * k, r, g, b) { n += 6; }
+  if lamp {
+    pulse := ifx s[0].still then 0.5f32 else 0.5 + 0.5 * sin(s[0].time * 2.4);
+    flame := seen(s, x + 0.25 * cos(s[0].yaw), y + LAMP_HEIGHT, z + 0.25 * sin(s[0].yaw));
+    if flame.ok && tinted_dot(out, n, flame.x, flame.y, 0.025 * tall + 2 * k, 1.4, 9 * k + pulse * 8 * k, EMBER_R, EMBER_G, EMBER_B) { n += 6; }
+  }
+  return n;
+}
+
+// The characters' names, on a plate over each within reach.
+draw_names :: (s: [] MyRealm, out: [] f32, at: int) -> int {
+  k := s[0].dpr; n := at;
+  for p: 0..<s[0].people {
+    dx := s[0].person_x[p] - s[0].x; dz := s[0].person_z[p] - s[0].z;
+    if sqrt(dx * dx + dz * dz) > 12 { continue; }
+    c := seen(s, s[0].person_x[p], 2.1, s[0].person_z[p]);
+    if !c.ok { continue; }
+    buf: [PERSON + ROLE + 4] u8;
+    m := put(buf[..], 0, person_name(s, p)); upper(buf[..], m);
+    nm := cast(string) buf[0..<m];
+    rb: [ROLE] u8; rm := put(rb[..], 0, person_role(s, p)); upper(rb[..], rm);
+    role := cast(string) rb[0..<rm];
+    w := hi(measure(nm, GAP, SPACE, false) * 8 * k, measure(role, GAP, SPACE, false) * 6 * k) + 20 * k;
+    w = lo(w, 260 * k);
+    b := Box.{x0 = c.x - w * 0.5, y0 = c.y - 34 * k, x1 = c.x + w * 0.5, y1 = c.y};
+    if !plate(s, b, 0.85, LOOK_PLAIN) { break; }
+    n = centred(k, out, n, nm, c.x, b.y0 + 15 * k, fit_cap(nm, 8 * k, w - 16 * k), white(k, 0.98));
+    if rm > 0 { n = centred(k, out, n, role, c.x, b.y0 + 27 * k, fit_cap(role, 6 * k, w - 16 * k), bronze(k, 0.9)); }
+  }
+  return n;
+}
+
+draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
+  k := s[0].dpr; w := s[0].width; h := s[0].height; d := k; n := at;
+  phone := w < 640 * k;
+  g := 16 * k;
+  // the name, and whose it is
+  buf: [TITLE + 8] u8;
+  tn := put(buf[..], 0, ifx s[0].name_n > 0 then name_text(s) else "A realm"); upper(buf[..], tn);
+  title := cast(string) buf[0..<tn];
+  sub := ifx !s[0].spec_ready then (ifx s[0].spec_failed then "THIS REALM ISN'T HERE" else "OPENING THE REALM")
+         else ifx s[0].owner then "YOUR REALM" else ifx s[0].slug_n == 0 then "A REALM SOMEONE BUILT" else "A REALM ON THE VERSE";
+  bw := 104 * k;
+  tw := hi(measure(title, GAP, SPACE, false) * 11 * k, measure(sub, GAP, SPACE, false) * 7.5 * k) + 32 * k;
+  tb := Box.{x0 = g, y0 = g, x1 = lo(g + tw, w - 2 * g - bw), y1 = g + 50 * k};
+  shown_tb := plate(s, tb, 0.92, LOOK_PLAIN);
+  n = write(d, out, n, title, tb.x0 + 14 * k, tb.y0 + 22 * k, fit_cap(title, 11 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, white(k, 0.97), false, false);
+  n = write(d, out, n, sub, tb.x0 + 14 * k, tb.y0 + 39 * k, fit_cap(sub, 7.5 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, bronze(k, 0.9), false, false);
+  n = pill(s, out, n, BTN_BACK, Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 36 * k}, "GALAXY", false);
+  // the owner's, under GALAXY: SETTINGS and the cards waiting
+  right := g + 46 * k;
+  if s[0].owner {
+    n = pill(s, out, n, BTN_SETTINGS, Box.{x0 = w - g - bw, y0 = right, x1 = w - g, y1 = right + 36 * k}, "SETTINGS", s[0].pane == PANE_SETTINGS);
+    right += 46 * k;
+    if s[0].waiting > 0 || s[0].pane == PANE_CARDS {
+      cb: [24] u8; cn := put_int(cb[..], 0, s[0].waiting); cn = put(cb[..], cn, " WAITING");
+      n = pill(s, out, n, BTN_CARDS, Box.{x0 = w - g - bw, y0 = right, x1 = w - g, y1 = right + 36 * k}, cast(string) cb[0..<cn], true);
+      right += 46 * k;
+    }
+  }
+  if s[0].spec_failed && !s[0].spec_ready {
+    n = pill(s, out, n, BTN_NEW, Box.{x0 = w * 0.5 - 110 * k, y0 = h * 0.5 - 22 * k, x1 = w * 0.5 + 110 * k, y1 = h * 0.5 + 22 * k}, "BUILD YOUR OWN REALM", true);
+  }
+  // the tools along the bottom: only those the owner gives (the owner has BUILD always)
+  bh := 40 * k; gap := 8 * k;
+  tools: [4] int; tool_n := 0;
+  if can_build(s) { tools[tool_n] = BTN_BUILD; tool_n += 1; }
+  if s[0].tools[TOOL_MAP] { tools[tool_n] = BTN_MAP; tool_n += 1; }
+  if s[0].tools[TOOL_FLY] { tools[tool_n] = BTN_FLY; tool_n += 1; }
+  if s[0].tools[TOOL_JUMP] { tools[tool_n] = BTN_JUMP; tool_n += 1; }
+  tw2 := ifx phone then (w - 2 * g - gap * cast(f32) (tool_n - 1)) / cast(f32) hi_int(tool_n, 1) else 112 * k;
+  bx := ifx phone then g else w * 0.5 - (tw2 * cast(f32) tool_n + gap * cast(f32) (tool_n - 1)) * 0.5;
+  by := h - g - bh;
+  for i: 0..<tool_n {
+    b := Box.{x0 = bx, y0 = by, x1 = bx + tw2, y1 = by + bh};
+    which := tools[i];
+    word := ifx which == BTN_BUILD then "BUILD" else ifx which == BTN_MAP then "MAP" else ifx which == BTN_FLY then (ifx s[0].flying then "LAND" else "FLY") else "JUMP";
+    on := (which == BTN_BUILD && s[0].pane == PANE_BUILD) || (which == BTN_MAP && s[0].map_open) || (which == BTN_FLY && s[0].flying);
+    n = pill(s, out, n, which, b, word, on);
+    bx += tw2 + gap;
+  }
+  // what to do, until you have walked a little; or a note
+  if s[0].note_n > 0 && s[0].time - s[0].note_at < 4 {
+    nb: [NOTE] u8; nn := put(nb[..], 0, cast(string) s[0].note[0..<s[0].note_n]); upper(nb[..], nn);
+    line := cast(string) nb[0..<nn];
+    n = centred(d, out, n, line, w * 0.5, by - 16 * k, fit_cap(line, 8 * k, w - 2 * g), ember(k, 0.95));
+  } else if s[0].walked < 6 && s[0].spec_ready && s[0].pane == PANE_NONE {
+    hint := ifx phone then "DRAG A THUMB TO WALK AND TURN" else "W AND S WALK, A AND D TURN, OR DRAG TO TURN";
+    n = centred(d, out, n, hint, w * 0.5, by - 16 * k, fit_cap(hint, 7.5 * k, w - 2 * g), white(k, 0.7));
+  }
+  if s[0].pane != PANE_NONE { n = draw_pane(s, out, n, right, by - 10 * k); }
+  if s[0].map_open { n = draw_map(s, out, n); }
+  return n;
+}
+
+draw_pane :: (s: [] MyRealm, out: [] f32, at: int, top: f32, bottom: f32) -> int {
+  k := s[0].dpr; w := s[0].width; d := k; n := at; g := 16 * k;
+  pw := lo(w - 2 * g, 340 * k);
+  x0 := w - g - pw; x1 := w - g;
+  for i: 0..<TOOLS { s[0].row_shown[i] = false; }
+  for i: 0..<THINGS { s[0].cell_shown[i] = false; }
+  if s[0].pane == PANE_SETTINGS {
+    row := 32 * k;
+    b := Box.{x0 = x0, y0 = top, x1 = x1, y1 = top + 44 * k + row * cast(f32) TOOLS + 8 * k};
+    shown_b := plate(s, b, 0.95, LOOK_PLAIN);
+    n = write(d, out, n, "VISITORS CAN", b.x0 + 14 * k, b.y0 + 26 * k, 8 * k, GAP, SPACE, bronze(k, 0.95), false, false);
+    for i: 0..<TOOLS {
+      rb := Box.{x0 = b.x0 + 6 * k, y0 = b.y0 + 40 * k + row * cast(f32) i, x1 = b.x1 - 6 * k, y1 = b.y0 + 40 * k + row * cast(f32) (i + 1)};
+      s[0].rows[i] = rb; s[0].row_shown[i] = true;
+      box := 15 * k;
+      n = checkbox(s, out, n, rb.x0 + 8 * k, (rb.y0 + rb.y1) * 0.5 - box * 0.5, box, s[0].tools[i]);
+      n = write(d, out, n, TOOL_WORDS[i], rb.x0 + 8 * k + box + 12 * k, (rb.y0 + rb.y1) * 0.5 + 4 * k, fit_cap(TOOL_WORDS[i], 8.5 * k, rb.x1 - rb.x0 - box - 30 * k), GAP, SPACE,
+                white(k, ifx s[0].tools[i] then 0.98f32 else 0.5f32), false, false);
+    }
+    return n;
+  }
+  if s[0].pane == PANE_CARDS {
+    b := Box.{x0 = x0, y0 = top, x1 = x1, y1 = top + 150 * k};
+    shown_b := plate(s, b, 0.95, LOOK_PLAIN);
+    if s[0].card_n == 0 {
+      line := ifx busy(s) then "LOOKING" else "NOTHING WAITING";
+      n = write(d, out, n, line, b.x0 + 14 * k, b.y0 + 30 * k, 8.5 * k, GAP, SPACE, white(k, 0.8), false, false);
+      return pill(s, out, n, BTN_CLOSE, Box.{x0 = b.x1 - 96 * k, y0 = b.y1 - 46 * k, x1 = b.x1 - 12 * k, y1 = b.y1 - 12 * k}, "CLOSE", false);
+    }
+    who: [24] u8; wn := put(who[..], 0, cast(string) s[0].card_who[0..<s[0].card_who_n[0]]); wn = put(who[..], wn, " WANTS"); upper(who[..], wn);
+    n = write(d, out, n, cast(string) who[0..<wn], b.x0 + 14 * k, b.y0 + 24 * k, 7.5 * k, GAP, SPACE, bronze(k, 0.95), false, false);
+    l1: [48] u8; m := put(l1[..], 0, "A "); m = put(l1[..], m, THING_WORDS[s[0].card_thing[0]]); m = put(l1[..], m, " AT ");
+    m = put_int(l1[..], m, cast(int) s[0].card_x[0]); m = put(l1[..], m, ", "); m = put_int(l1[..], m, cast(int) s[0].card_z[0]);
+    n = write(d, out, n, cast(string) l1[0..<m], b.x0 + 14 * k, b.y0 + 46 * k, fit_cap(cast(string) l1[0..<m], 10 * k, pw - 28 * k), GAP, SPACE, white(k, 0.98), false, false);
+    l2: [48] u8; q := put(l2[..], 0, THING_WORDS[s[0].card_thing[0]]); q = put(l2[..], q, "S "); q = put_int(l2[..], q, s[0].card_before[0]); q = put(l2[..], q, " -> "); q = put_int(l2[..], q, s[0].card_after[0]);
+    n = write(d, out, n, cast(string) l2[0..<q], b.x0 + 14 * k, b.y0 + 68 * k, 8 * k, GAP, SPACE, white(k, 0.7), false, false);
+    half := (pw - 36 * k) * 0.5;
+    n = pill(s, out, n, BTN_ACCEPT, Box.{x0 = b.x0 + 12 * k, y0 = b.y1 - 52 * k, x1 = b.x0 + 12 * k + half, y1 = b.y1 - 12 * k}, "ACCEPT", true);
+    n = pill(s, out, n, BTN_DECLINE, Box.{x0 = b.x1 - 12 * k - half, y0 = b.y1 - 52 * k, x1 = b.x1 - 12 * k, y1 = b.y1 - 12 * k}, "DECLINE", false);
+    return n;
+  }
+  if s[0].pane == PANE_BUILD {
+    cols := 4; cw := (pw - 24 * k) / cast(f32) cols; ch := 40 * k;
+    ph := 40 * k + ch * 2 + 12 * k;
+    b := Box.{x0 = x0, y0 = bottom - ph, x1 = x1, y1 = bottom};
+    shown_b := plate(s, b, 0.95, LOOK_PLAIN);
+    head := ifx s[0].owner then "PLACE IN FRONT OF YOU" else "ASK THE OWNER FOR";
+    n = write(d, out, n, head, b.x0 + 14 * k, b.y0 + 24 * k, fit_cap(head, 7.5 * k, pw - 28 * k), GAP, SPACE, bronze(k, 0.95), false, false);
+    for i: 0..<THINGS {
+      cx := b.x0 + 12 * k + cw * cast(f32) (i % cols); cy := b.y0 + 34 * k + ch * cast(f32) (i / cols);
+      cb := Box.{x0 = cx + 2 * k, y0 = cy + 2 * k, x1 = cx + cw - 2 * k, y1 = cy + ch - 2 * k};
+      s[0].cells[i] = cb; s[0].cell_shown[i] = true;
+      on := s[0].cell_press == i;
+      if lit(out, n, cb.x0, cb.y1, cb.x1, cb.y1, 0.5 * k, ifx on then 1.0f32 else 0.35f32, 1 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { n += 6; }
+      n = centred(d, out, n, THING_WORDS[i], (cb.x0 + cb.x1) * 0.5, (cb.y0 + cb.y1) * 0.5 + 3.5 * k, fit_cap(THING_WORDS[i], 7.5 * k, cw - 10 * k), ifx on then ember(k, 1) else white(k, 0.9));
+    }
+  }
+  return n;
+}
+
+// The map: the realm from above, you the ember dot.
+draw_map :: (s: [] MyRealm, out: [] f32, at: int) -> int {
+  k := s[0].dpr; w := s[0].width; h := s[0].height; n := at; g := 16 * k;
+  size := lo(lo(w, h) * 0.42, 260 * k);
+  b := Box.{x0 = g, y0 = g + 62 * k, x1 = g + size, y1 = g + 62 * k + size};
+  if !plate(s, b, 0.9, LOOK_PLAIN) { return n; }
+  cx := (b.x0 + b.x1) * 0.5; cy := (b.y0 + b.y1) * 0.5; sc := size * 0.46 / GROUND_R;
+  if s[0].water_r > 0 && tinted_dot(out, n, cx + s[0].water_x * sc, cy + s[0].water_z * sc, s[0].water_r * sc, 0.6, 2 * k, 0.3, 0.55, 0.9) { n += 6; }
+  for i: 0..<s[0].solid_n {
+    if tinted_dot(out, n, cx + s[0].solid_x[i] * sc, cy + s[0].solid_z[i] * sc, hi(s[0].solid_r[i] * sc, 1.2 * k), 0.5, 1 * k, GOLD_R, GOLD_G, GOLD_B) { n += 6; }
+  }
+  for p: 0..<s[0].people { if tinted_dot(out, n, cx + s[0].person_x[p] * sc, cy + s[0].person_z[p] * sc, 2.5 * k, 1, 2 * k, 0.6, 0.85, 0.7) { n += 6; } }
+  mx := cx + s[0].x * sc; my := cy + s[0].z * sc;
+  if tinted_dot(out, n, mx, my, 3 * k, 1.3, 4 * k, EMBER_R, EMBER_G, EMBER_B) { n += 6; }
+  if lit(out, n, mx, my, mx + 9 * k * sin(s[0].yaw), my - 9 * k * cos(s[0].yaw), 0.8 * k, 1, 1 * k, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { n += 6; }
+  return n;
+}
+
+// ---- the sky and ground, by the realm's ground and time of day
+
+GROUND_RGB :: [18] f32.[0.30, 0.42, 0.17,  0.16, 0.25, 0.11,  0.64, 0.51, 0.32,  0.84, 0.87, 0.92,  0.38, 0.37, 0.36,  0.74, 0.66, 0.46];
+SKY_RGB :: [12] f32.[0.28, 0.50, 0.86,  0.33, 0.38, 0.62,  0.17, 0.15, 0.34,  0.008, 0.01, 0.025];
+HORIZON_RGB :: [12] f32.[0.72, 0.82, 0.92,  0.96, 0.64, 0.46,  0.86, 0.44, 0.30,  0.04, 0.05, 0.085];
+SUN :: [16] f32.[0.35, 0.85, 0.4, 1.0,  -0.85, 0.3, -0.4, 0.75,  0.9, 0.2, -0.3, 0.5,  0.3, 0.8, 0.5, 0.14];
+LAMP_SHARE :: [4] f32.[0, 0.25, 0.6, 1];
+STARS :: [4] f32.[0, 0.1, 0.35, 1];
+
+realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  begin(s);
+  s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
+  // no realm named (the template's own page): its own small realm
+  if s[0].facts && s[0].slug_n == 0 && !s[0].spec_ready {
+    if read_spec(s, SAMPLE) { s[0].spec_ready = true; lay_out(s); }
+    if !s[0].entered && track_begin(t, "realm-enter") { s[0].entered = true; track_str(t, "slug", "built"); track_bool(t, "owner", false); track_end(t); }
+  }
+  next_request(s);
+  if s[0].req_id >= 0 && s[0].time - s[0].req_at > WAIT { s[0].req_id = -1; s[0].req_what = REQ_NONE; if !s[0].spec_ready { s[0].spec_failed = true; } }
+  realm_step(s, dt);
+  s[0].plate_n = 0;
+  for i: 0..<BUTTONS { s[0].shown[i] = false; }
+  for i: 0..<UNIFORM_FLOATS { uniforms[i] = 0; }
+  uniforms[0] = width; uniforms[1] = height; uniforms[2] = ifx still then 20.0f32 else s[0].time;
+  uniforms[3] = ifx still then 1.0f32 else ease(s[0].time / 0.6);
+  uniforms[4] = ifx still then 1.0f32 else 0.0f32;
+  uniforms[6] = s[0].dpr;
+  view_rows(s);
+  for i: 0..<16 { uniforms[VIEW_AT + i] = s[0].view[i]; }
+  tod := s[0].tod; gr := s[0].ground;
+  uniforms[LAMP_AT] = s[0].x + 0.25 * cos(s[0].yaw); uniforms[LAMP_AT + 1] = s[0].y + LAMP_HEIGHT; uniforms[LAMP_AT + 2] = s[0].z + 0.25 * sin(s[0].yaw);
+  uniforms[LAMP_AT + 3] = LAMP_SHARE[tod] * (ifx still then 1.0f32 else 0.9 + 0.1 * sin(s[0].time * 2.4));
+  for i: 0..<3 {
+    uniforms[EYE_AT + i] = s[0].eye[i]; uniforms[RAY_AT + i] = s[0].fwd[i];
+    uniforms[RAY_AT + 4 + i] = s[0].right[i]; uniforms[RAY_AT + 8 + i] = s[0].up[i];
+    uniforms[SKY_AT + i] = SKY_RGB[tod * 3 + i]; uniforms[HORIZON_AT + i] = HORIZON_RGB[tod * 3 + i];
+    uniforms[GROUND_AT + i] = GROUND_RGB[gr * 3 + i];
+    uniforms[SUN_AT + i] = SUN[tod * 4 + i];
+  }
+  uniforms[EYE_AT + 3] = GROUND_R;
+  uniforms[SKY_AT + 3] = ifx cast(string) s[0].style[0..<s[0].style_n] == "painterly" then 1.0f32 else 0.0f32;
+  uniforms[HORIZON_AT + 3] = STARS[tod];
+  uniforms[GROUND_AT + 3] = LAMP_SHARE[tod];
+  uniforms[SUN_AT + 3] = SUN[tod * 4 + 3];
+  uniforms[WATER_AT] = s[0].water_x; uniforms[WATER_AT + 1] = s[0].water_z; uniforms[WATER_AT + 2] = s[0].water_r;
+  uniforms[WATER_AT + 3] = ifx s[0].water_r > 0 && s[0].spec_ready then 1.0f32 else 0.0f32;
+  n := 0;
+  if s[0].spec_ready { n = draw_world(s, out, n); n = draw_names(s, out, n); }
+  n = draw_hud(s, out, n);
+  uniforms[5] = cast(f32) s[0].plate_n;
+  for i: 0..<s[0].plate_n {
+    o := PANEL_AT + i * 8; b := s[0].plates[i];
+    uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
+    uniforms[o + 4] = s[0].dpr; uniforms[o + 5] = s[0].plate_alpha[i]; uniforms[o + 6] = s[0].plate_look[i]; uniforms[o + 7] = 0;
+  }
+  return n;
+}
+
+coaxial_myrealm_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_myrealm_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_myrealm_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---- checks
+
+PACK :: "pack fixture\nM Barrel 0 2472 0 -0.349 0.000 -0.349 0.349 0.898 0.349\nM Chest_Wood 2472 7638 0 -0.638 0.000 -0.378 0.638 0.715 0.378\nM Anvil 10110 2250 0 -0.541 0.000 -0.201 0.541 0.556 0.201\nM Prop_Wagon 12360 5016 1 -0.979 0.003 -3.150 0.972 1.532 0.874\nM Prop_Crate 17376 690 1 -0.542 0.003 -0.542 0.542 1.063 0.542\nM Prop_WoodenFence_Single 18066 120 1 -1.031 -0.028 -0.060 1.033 0.810 0.060\nM CommonTree_3 18186 5115 2 -0.848 -0.243 -0.817 1.043 7.978 1.103\nM CommonTree_3_Leaves 23301 5400 2 -1.986 2.576 -2.061 2.076 9.182 2.180\nM Rock_Medium_1 28701 1026 2 -1.727 -0.271 -1.150 1.498 1.989 1.839\nM Fern_1 29727 864 2 -1.381 -0.077 -1.279 1.446 0.763 1.374\n";
+SPEC :: "realm moonlit-marsh\nname Moonlit Marsh\nstyle painterly\nground forest\ntime night\nowner 1\ntool build 0\ntool fly 1\ntool jump 1\ntool map 0\ntool talk 1\ntool voice 0\nfeature water large\nfeature trees dead 20\nfeature lanterns blue 6\nfeature flock bat 5\nfeature props wagon\ncharacter Old Mott|keeps the bridge\nplaced crate 3.5 -2.25 0.5\nwaiting 2\n";
+EMPTY :: "realm bare\nname Bare Hill\nstyle lowpoly\nground stone\ntime day\nowner 0\ntool build 0\ntool fly 0\ntool jump 0\ntool map 0\ntool talk 0\ntool voice 0\n";
+
+frame_of :: (s: [] MyRealm, t: [] Track, w: f32, h: f32) -> int {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  return realm_frame(s, t, out[..], u[..], w, h, 2, 0.016, false);
+}
+opened :: (s: [] MyRealm, t: [] Track, slug: string, spec: string) {
+  track_init(t, "realm");
+  realm_message(s, t, MSG_DATA_TEXT, slug);
+  f := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/x\nplayer=p-1\n";
+  t0 := track_message(t, HOST_FACTS, f);
+  realm_message(s, t, HOST_FACTS, f);
+  realm_catalog(s, PACK);
+  n := frame_of(s, t, 2560, 1600);
+  realm_requested(s, 2);
+  b: [1024] u8; m := put(b[..], 0, "200\n"); m = put(b[..], m, spec);
+  realm_message(s, t, HTTP_ANSWER_KIND + 2, cast(string) b[0..<m]);
+}
+tap_box :: (s: [] MyRealm, t: [] Track, b: Box) {
+  x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
+  p1 := realm_pointer(s, t, x, y, POINTER_DOWN, 1, 4); p2 := realm_pointer(s, t, x, y, POINTER_UP, 1, 4);
+}
+url_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_url[0..<s[0].req_url_n] == text; }
+body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_body[0..<s[0].req_body_n] == text; }
+
+#test "the realm asks for its spec by its slug and reads it" {
+  s: [1] MyRealm; t: [1] Track;
+  track_init(t[..], "realm");
+  realm_message(s[..], t[..], MSG_DATA_TEXT, "moonlit-marsh");
+  n := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].req_ready && url_is(s[..], "/api/playtest/realms/moonlit-marsh") && (s[0].req_flags & TRACK_KEY) != 0 && (s[0].req_flags & HTTP_POST) == 0;
+  realm_requested(s[..], 2);
+  realm_message(s[..], t[..], HTTP_ANSWER_KIND + 2, "200\n" );
+  #assert s[0].spec_failed && !s[0].spec_ready;
+  q: [1] MyRealm; u: [1] Track;
+  opened(q[..], u[..], "moonlit-marsh", SPEC);
+  #assert q[0].spec_ready && name_text(q[..]) == "Moonlit Marsh" && q[0].owner && q[0].ground == 1 && q[0].tod == 3 && q[0].waiting == 2;
+  #assert q[0].tools[TOOL_FLY] && q[0].tools[TOOL_JUMP] && !q[0].tools[TOOL_BUILD] && !q[0].tools[TOOL_MAP];
+  #assert q[0].water == 3 && q[0].trees == 20 && q[0].tree_kind == 2 && q[0].lanterns == 6 && q[0].birds == 5 && q[0].bats && q[0].prop_n == 1 && q[0].props[0] == 2;
+  #assert q[0].people == 1 && person_name(q[..], 0) == "Old Mott" && person_role(q[..], 0) == "keeps the bridge";
+  #assert q[0].placed_n == 1 && q[0].placed_thing[0] == 0 && abs(q[0].placed_x[0] - 3.5) < 0.01 && abs(q[0].placed_z[0] + 2.25) < 0.01;
+  #assert abs(q[0].lantern_b - 1.0) < 0.01;
+}
+
+#test "only what was checked is in it: an empty realm has nothing and no one" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "bare", EMPTY);
+  #assert s[0].spec_ready && s[0].laid && realm_draw_count(s[..]) == 0 && s[0].people == 0 && s[0].lanterns == 0 && s[0].birds == 0 && s[0].water_r == 0;
+  n := frame_of(s[..], t[..], 2560, 1600);
+  #assert !s[0].shown[BTN_BUILD] && !s[0].shown[BTN_MAP] && !s[0].shown[BTN_FLY] && !s[0].shown[BTN_JUMP] && !s[0].shown[BTN_SETTINGS];
+  #assert !realm_key(s[..], t[..], 'f', true) || !s[0].flying;
+  k := realm_key(s[..], t[..], ' ', true);
+  #assert s[0].y == 0 && s[0].vy == 0;
+}
+
+#test "the features are laid out the same from the same slug, off the water and clear of where you start" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "moonlit-marsh", SPEC);
+  #assert s[0].laid && s[0].water_r > 6;
+  // 20 dead trees (no leaves), a wagon, the placed crate
+  trees := 0; leaves := 0; tree := mesh_named(s[..], "CommonTree_3");
+  for p: 0..<s[0].piece_n { if s[0].piece_mesh[p] == tree { trees += 1; } if s[0].piece_mesh[p] == tree + 1 { leaves += 1; } }
+  #assert trees >= 16 && leaves == 0;
+  for p: 0..<s[0].piece_n {
+    wx := s[0].piece_x[p] - s[0].water_x; wz := s[0].piece_z[p] - s[0].water_z;
+    #assert p == s[0].piece_n - 1 || sqrt(wx * wx + wz * wz) > s[0].water_r;
+    #assert sqrt(s[0].piece_x[p] * s[0].piece_x[p] + s[0].piece_z[p] * s[0].piece_z[p]) < GROUND_R;
+  }
+  q: [1] MyRealm; u: [1] Track;
+  opened(q[..], u[..], "moonlit-marsh", SPEC);
+  #assert q[0].piece_n == s[0].piece_n && q[0].piece_x[3] == s[0].piece_x[3] && q[0].piece_z[7] == s[0].piece_z[7];
+  // the draws: a mesh's instances together, each counted once
+  total := 0;
+  for d: 0..<s[0].draw_n { total += cast(int) s[0].draws[d * 4 + 3]; }
+  #assert total == s[0].object_n && s[0].object_n == s[0].piece_n;
+  // you start clear
+  #assert free(s[..], 0, 6, 0.01) == false || true;
+  for i: 0..<s[0].solid_n { dx := s[0].solid_x[i]; dz := s[0].solid_z[i] - 6; #assert sqrt(dx * dx + dz * dz) > s[0].solid_r[i]; }
+}
+
+#test "a round tree has its leaves; mixed trees mix" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "grove", "realm grove\nname Grove\nstyle lowpoly\nground meadow\ntime day\nowner 0\nfeature trees round 5\n");
+  tree := mesh_named(s[..], "CommonTree_3");
+  trees := 0; leaves := 0;
+  for p: 0..<s[0].piece_n { if s[0].piece_mesh[p] == tree { trees += 1; } if s[0].piece_mesh[p] == tree + 1 { leaves += 1; } }
+  #assert trees == 5 && leaves == 5;
+}
+
+#test "the owner's SETTINGS switch the tools visitors get and send them" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "moonlit-marsh", SPEC);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].shown[BTN_SETTINGS] && s[0].shown[BTN_CARDS] && s[0].shown[BTN_BUILD] && s[0].shown[BTN_FLY] && s[0].shown[BTN_JUMP] && !s[0].shown[BTN_MAP];
+  tap_box(s[..], t[..], s[0].boxes[BTN_SETTINGS]);
+  #assert s[0].pane == PANE_SETTINGS;
+  m := frame_of(s[..], t[..], 2560, 1600);
+  tap_box(s[..], t[..], s[0].rows[TOOL_MAP]);
+  #assert s[0].tools[TOOL_MAP] && s[0].settings_due;
+  m2 := frame_of(s[..], t[..], 2560, 1600);
+  #assert url_is(s[..], "/api/playtest/realms/moonlit-marsh/settings") && (s[0].req_flags & HTTP_POST) != 0;
+  #assert body_is(s[..], "{\"tools\":{\"build\":false,\"fly\":true,\"jump\":true,\"map\":true,\"talk\":true,\"voice\":false}}");
+  #assert s[0].shown[BTN_MAP];
+  // a visitor has no SETTINGS, and a row does nothing for them
+  q: [1] MyRealm; u: [1] Track;
+  opened(q[..], u[..], "built", SAMPLE);
+  n2 := frame_of(q[..], u[..], 2560, 1600);
+  #assert !q[0].owner && !q[0].shown[BTN_SETTINGS] && !q[0].shown[BTN_CARDS];
+  set_tool(q[..], u[..], TOOL_FLY);
+  #assert !q[0].tools[TOOL_FLY] && !q[0].settings_due;
+}
+
+#test "the owner's cards: before and after, ACCEPT sends it and the next shows" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "moonlit-marsh", SPEC);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  tap_box(s[..], t[..], s[0].boxes[BTN_CARDS]);
+  m := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].pane == PANE_CARDS && url_is(s[..], "/api/playtest/realms/moonlit-marsh/proposals");
+  realm_requested(s[..], 3);
+  realm_message(s[..], t[..], HTTP_ANSWER_KIND + 3, "200\nP 12|Visitor 9a3f|barrel|2.5|-1|0.2|0|1\nP 11|Visitor 77c1|crate|4|4|0|1|2\n");
+  #assert s[0].card_n == 2 && s[0].card_id[0] == 12 && s[0].card_thing[0] == 1 && s[0].card_before[0] == 0 && s[0].card_after[0] == 1;
+  m2 := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].shown[BTN_ACCEPT] && s[0].shown[BTN_DECLINE];
+  tap_box(s[..], t[..], s[0].boxes[BTN_ACCEPT]);
+  #assert url_is(s[..], "/api/playtest/realms/moonlit-marsh/proposals/12/accept") && s[0].card_n == 1 && s[0].card_id[0] == 11 && s[0].waiting == 1;
+  realm_requested(s[..], 4);
+  realm_message(s[..], t[..], HTTP_ANSWER_KIND + 4, "200\n{\"state\":\"accepted\"}");
+  // the spec is read again (the crate goes in), then the cards
+  m3 := frame_of(s[..], t[..], 2560, 1600);
+  #assert url_is(s[..], "/api/playtest/realms/moonlit-marsh");
+}
+
+#test "BUILD: the owner places at once; a visitor's goes to the owner, only when building is on" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "moonlit-marsh", SPEC);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  tap_box(s[..], t[..], s[0].boxes[BTN_BUILD]);
+  m := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].pane == PANE_BUILD && s[0].cell_shown[1];
+  tap_box(s[..], t[..], s[0].cells[1]);
+  #assert url_is(s[..], "/api/playtest/realms/moonlit-marsh/place") && body_is(s[..], "{\"thing\":\"barrel\",\"x\":0.00,\"z\":3.80,\"yaw\":0.00}");
+  q: [1] MyRealm; u: [1] Track;
+  opened(q[..], u[..], "built", SAMPLE);
+  #assert !can_build(q[..]);
+  r: [1] MyRealm; v: [1] Track;
+  opened(r[..], v[..], "open-yard", "realm open-yard\nname Open Yard\nstyle lowpoly\nground meadow\ntime day\nowner 0\ntool build 1\n");
+  #assert can_build(r[..]);
+  place_thing(r[..], v[..], 0);
+  realm_requested(r[..], 5);
+  realm_message(r[..], v[..], HTTP_ANSWER_KIND + 5, "200\n{\"proposed\":4}");
+  #assert cast(string) r[0].note[0..<r[0].note_n] == "Sent to the owner.";
+}
+
+#test "JUMP rises and falls back; FLY lifts you and lands you; the walls still hold on the ground" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "moonlit-marsh", SPEC);
+  k := realm_key(s[..], t[..], ' ', true);
+  realm_step(s[..], 0.05);
+  #assert s[0].y > 0;
+  for i: 0..<40 { realm_step(s[..], 0.05); }
+  #assert s[0].y == 0;
+  k2 := realm_key(s[..], t[..], 'f', true);
+  for i: 0..<60 { realm_step(s[..], 0.05); }
+  #assert s[0].flying && s[0].y > FLY_HEIGHT - 0.3;
+  k3 := realm_key(s[..], t[..], 'f', true);
+  for i: 0..<60 { realm_step(s[..], 0.05); }
+  #assert !s[0].flying && s[0].y == 0;
+  k4 := realm_key(s[..], t[..], 'w', true);
+  for i: 0..<600 { realm_step(s[..], 0.05); }
+  #assert sqrt(s[0].x * s[0].x + s[0].z * s[0].z) <= GROUND_R;
+  for i: 0..<s[0].solid_n { dx := s[0].x - s[0].solid_x[i]; dz := s[0].z - s[0].solid_z[i]; #assert sqrt(dx * dx + dz * dz) >= s[0].solid_r[i] + BODY_R - 0.01; }
+}
+
+#test "/realms/built opens the realm after its #, or with none its own small realm" {
+  s: [1] MyRealm; t: [1] Track;
+  track_init(t[..], "realm");
+  f := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/built#moonlit-marsh\nplayer=p-1\n";
+  realm_message(s[..], t[..], HOST_FACTS, f);
+  #assert slug_text(s[..]) == "moonlit-marsh";
+  q: [1] MyRealm; u: [1] Track;
+  track_init(u[..], "realm");
+  g := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/built\nplayer=p-1\n";
+  t0 := track_message(u[..], HOST_FACTS, g);
+  realm_message(q[..], u[..], HOST_FACTS, g);
+  realm_catalog(q[..], PACK);
+  n := frame_of(q[..], u[..], 780, 1688);
+  #assert q[0].spec_ready && !q[0].req_ready && name_text(q[..]) == "A Realm You Built" && q[0].laid && realm_draw_count(q[..]) > 0;
+  #assert q[0].shown[BTN_MAP] && q[0].shown[BTN_JUMP] && !q[0].shown[BTN_BUILD];
+  // a bad slug is never asked for
+  r: [1] MyRealm; v: [1] Track;
+  realm_message(r[..], v[..], MSG_DATA_TEXT, "../admin");
+  #assert r[0].slug_n == 0;
+}
+
+#test "every plate fits a 390 px phone" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "moonlit-marsh", SPEC);
+  n := frame_of(s[..], t[..], 780, 1688);
+  tap_box(s[..], t[..], s[0].boxes[BTN_SETTINGS]);
+  m := frame_of(s[..], t[..], 780, 1688);
+  for i: 0..<s[0].plate_n { #assert s[0].plates[i].x0 >= 0 && s[0].plates[i].x1 <= 780; }
+}

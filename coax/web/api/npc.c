@@ -95,6 +95,13 @@ static long ask_model(const char *url_env, const char *model, const char *reques
   return status;
 }
 
+long npc_ask_model(const char *url_env, const char *model, const char *request, char **body) {
+  buf b = {0};
+  long status = ask_model(url_env, model, request, &b);
+  *body = b.p;
+  return status;
+}
+
 // In the child: asks the model, keeps the answer, answers the page.
 static void answer(int fd, const char *asked, const char *request) {
   const char *model = getenv("OA_NPC_MODEL"); if (!model || !*model) model = "gemini-3.8-flash";

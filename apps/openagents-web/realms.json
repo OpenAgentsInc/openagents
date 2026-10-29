@@ -137,6 +137,19 @@
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/fixture/assets/fixture.pack"]
       } },
+    { "id": "built", "name": "A REALM YOU BUILT", "kind": "open", "listed": false, "orbit": { "r": 0.24, "a": 4.6, "size": 0.024 },
+      "realm": {
+        "slug": "built",
+        "style": "lowpoly",
+        "clock": "fixed:0.5",
+        "title": "A Realm You Built",
+        "description": "A realm someone built from one prompt at /realms/new: only the features they kept, and the tools its owner gives visitors.",
+        "alt": "Enter the Verse",
+        "module": "myrealm",
+        "slot": "built",
+        "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
+        "assets": ["pack:/realms/fixture/assets/fixture.pack"]
+      } },
     { "id": "sandbox", "name": "SANDBOX", "kind": "open", "listed": false, "orbit": { "r": 0.36, "a": 1.25, "size": 0.03 },
       "realm": {
         "slug": "sandbox",

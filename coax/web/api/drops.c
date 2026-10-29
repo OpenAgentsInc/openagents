@@ -1169,6 +1169,10 @@ bool drops_route(const request *q) {
 
 // The bucket's part for villa.c (Planetary Villa's pet files share this private bucket).
 bool drops_token(char *out, size_t cap) { return token(out, cap); }
+bool drops_site_write(const char *name, const char *type, const char *data) {
+  char tok[4096];
+  return token(tok, sizeof tok) && site_put(tok, name, type, data);
+}
 bool drops_open_upload(const char *object, const char *type, const char *bytes, const char *from, char *out, size_t cap) {
   return open_upload(object, type, bytes, from, out, cap);
 }

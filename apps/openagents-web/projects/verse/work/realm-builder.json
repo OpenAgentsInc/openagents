@@ -1,0 +1,111 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "verse",
+  "initiative": {
+    "slug": "realm-builder",
+    "title": "Build your own realm",
+    "body": "After the Haunted House, a visitor builds their own realm from one voice prompt: the agent answers with a short board of features, the visitor checks the ones they want, and the realm is made from only those and published without a deploy. The owner decides everything visitors get, and accepts or declines what others propose (Kiki's notes, October 29).",
+    "spec": "docs/verse/realm-builder.md",
+    "labels": ["realm-builder"]
+  },
+  "milestones": [
+    {
+      "slug": "byo-realm",
+      "title": "Build your own realm",
+      "body": "Prompt, board, make, and you are in your world: desktop and phone."
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "byo-planner",
+      "parent": "byo-realm",
+      "title": "A typed planner turns a spoken prompt into a feature board",
+      "size": "M",
+      "labels": ["realm-builder", "api"],
+      "body": "POST /api/playtest/realms/plan {prompt, board?}: Gemini on Vertex AI with a response schema of a fixed catalogue of what the made-realm engine draws today (ground, time of day, style, water, trees, rocks, plants, lanterns, a flock, props, characters with names and roles, and the visitor tools). The server holds the answer to the catalogue; nothing matches the prompt's words. Talking again revises the board.",
+      "files": ["coax/web/api/realms.c", "coax/web/api/migrations/0048_realm_builder.sql"],
+      "acceptance": [
+        "An answer outside the catalogue is held to it or refused (API tests with a fake model)",
+        "A production smoke with the real model returns a board for a spoken-style prompt"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "byo-board",
+      "parent": "byo-realm",
+      "title": "/realms/new: hold to talk, the board, check features on or off, MAKE IT",
+      "size": "M",
+      "labels": ["realm-builder", "web"],
+      "body": "A Coaxial page: one HOLD TO TALK button (the microphone only while held, the voice host's speech to text), typing as the fallback, the board as a short list with a checkbox each, talk again to revise, one button to make it.",
+      "files": ["apps/openagents-web/builder.coax", "apps/openagents-web/builder-face.c", "apps/openagents-web/realms/new/"],
+      "acceptance": ["The board is legible on a 390 px phone and on a desktop (headless shots)", "coax test builder.coax passes"],
+      "blocked_by": ["byo-planner"]
+    },
+    {
+      "slug": "byo-generate",
+      "parent": "byo-realm",
+      "title": "Make the realm from only the checked features, live at /realms/<slug> with no deploy",
+      "size": "M",
+      "labels": ["realm-builder", "api"],
+      "body": "POST /api/playtest/realms: the checked board becomes a realm owned by the visitor's player key (and account when logged in; a guest claims it by logging in), its page written into the site's bucket, kept through staging deploys and releases.",
+      "files": ["coax/web/api/realms.c", "coax/web/upload.py", "coax/web/release.sh"],
+      "acceptance": ["API tests: owner, slug, page written to the bucket", "A made realm opens at /realms/<slug> on production"],
+      "blocked_by": ["byo-planner"]
+    },
+    {
+      "slug": "byo-realm-module",
+      "parent": "byo-realm",
+      "title": "The made realm: empty but for what was checked; characters only if checked",
+      "size": "L",
+      "labels": ["realm-builder", "web", "engine"],
+      "body": "A realm module (myrealm.coax) that reads the realm's spec from the server and draws its ground, sky, water, trees, rocks, lanterns, flock, props and characters, with the visitor tools the owner allows.",
+      "files": ["apps/openagents-web/myrealm.coax", "apps/openagents-web/myrealm-face.c", "apps/openagents-web/myrealm.wgsl"],
+      "acceptance": ["coax test myrealm.coax passes", "A realm without characters has none; one with them has only those"],
+      "blocked_by": ["byo-generate"]
+    },
+    {
+      "slug": "byo-settings",
+      "parent": "byo-realm",
+      "title": "The owner's settings pane: which tools visitors get, checked on the server",
+      "size": "S",
+      "labels": ["realm-builder", "web", "api"],
+      "body": "Owner only, from one SETTINGS pane (the panes rule: only that pane): build, fly, jump, map, talk, voice. The server refuses anyone else's change.",
+      "files": ["apps/openagents-web/myrealm.coax", "coax/web/api/realms.c"],
+      "acceptance": ["A non-owner's settings change is a 403 (API test)", "A tool switched off is gone for visitors"],
+      "blocked_by": ["byo-realm-module"]
+    },
+    {
+      "slug": "byo-proposals",
+      "parent": "byo-realm",
+      "title": "Others' changes reach the owner as ACCEPT or DECLINE cards",
+      "size": "S",
+      "labels": ["realm-builder", "web", "api"],
+      "body": "A visitor who builds in someone else's realm proposes the change; the owner sees each one as a card with what it was before and after, and ACCEPT or DECLINE. Nothing changes the realm until the owner accepts.",
+      "files": ["apps/openagents-web/myrealm.coax", "coax/web/api/realms.c"],
+      "acceptance": ["API tests: a proposal waits, accept places it, decline doesn't, only the owner decides"],
+      "blocked_by": ["byo-realm-module"]
+    },
+    {
+      "slug": "byo-from-house",
+      "parent": "byo-realm",
+      "title": "The Haunted House moves you on to Build your own realm",
+      "size": "S",
+      "labels": ["realm-builder", "web"],
+      "body": "When the Haunted House's quest is complete, BUILD YOUR OWN REALM takes the visitor to /realms/new.",
+      "files": ["apps/openagents-web/realm.coax"],
+      "acceptance": ["The button shows only after the quest is complete and goes to /realms/new"],
+      "blocked_by": ["byo-board"]
+    },
+    {
+      "slug": "byo-analytics",
+      "parent": "byo-realm",
+      "title": "Analytics for each step: prompt, board, toggles, made, entered",
+      "size": "S",
+      "labels": ["realm-builder", "analytics"],
+      "body": "builder-prompt, builder-board, builder-toggle, builder-make, realm-made and world-enter in the made realm, sent as every page's events are; team and admins are marked as the analytics contract says and never counted.",
+      "files": ["apps/openagents-web/builder.coax", "apps/openagents-web/myrealm.coax"],
+      "acceptance": ["The events reach /api/analytics/events in a headless run"],
+      "blocked_by": ["byo-board"]
+    }
+  ]
+}
