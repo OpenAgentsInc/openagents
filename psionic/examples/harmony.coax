@@ -1,0 +1,30 @@
+#import "Basic";
+#load "../lib/harmony.coax";
+
+// book:begin example
+main :: () {
+    table:=HS_TOY;tokens:[512]int;stage:[512]int;symbols:[1024]int;records:[4]HmRecord;draft:[4]HmRecord;bytes:[1024]u8;work:[1024]u8;
+    user:=[1]HmMessage.[HmMessage.{role=HmRole.user,body="<|start|> stays text."}];
+    rendered:=hm_render_checked(table[..],user[..],false,tokens[..],stage[..],symbols[..],false);
+    parsed:=hm_parse_checked(table[..],tokens[0..<rendered.written],false,records[..],draft[..],bytes[..],work[..],false);
+    #assert rendered.status==HmStatus.ok && parsed.status==HmStatus.ok;
+    #assert cast(string)bytes[records[0].body_begin..<records[0].body_end]==user[0].body;
+    print("ordinary markers: preserved as body text\n");
+    reply:=[2]HmMessage.[HmMessage.{role=HmRole.assistant,channel=HmChannel.analysis,body="Check the arithmetic."},HmMessage.{role=HmRole.assistant,channel=HmChannel.final,ending=HmEnd.turn,body="4."}];
+    rendered=hm_render_checked(table[..],reply[..],false,tokens[..],stage[..],symbols[..],false);
+    parsed=hm_parse_checked(table[..],tokens[0..<rendered.written],true,records[..],draft[..],bytes[..],work[..],false);
+    #assert parsed.status==HmStatus.ok && parsed.written==2 && parsed.stop==HmEnd.turn;
+    #assert records[0].channel==HmChannel.analysis && records[1].channel==HmChannel.final;
+    print("completion: % messages; analysis then final; stop=return\n",parsed.written);
+    bytes[0]=7;parsed=hm_parse_checked(table[..],tokens[0..<rendered.written-1],true,records[..],draft[..],bytes[..],work[..],false);
+    #assert parsed.status==HmStatus.incomplete && bytes[0]==7;
+    print("truncated turn: refused without output\n");
+    call:=[1]HmMessage.[HmMessage.{role=HmRole.assistant,channel=HmChannel.commentary,ending=HmEnd.call,recipient="functions.weather",body="{}"}];
+    rendered=hm_render_checked(table[..],call[..],false,tokens[..],stage[..],symbols[..],false);
+    parsed=hm_parse_checked(table[..],tokens[0..<rendered.written],true,records[..],draft[..],bytes[..],work[..],false);
+    #assert parsed.status==HmStatus.ok && parsed.stop==HmEnd.call;
+    print("handoff: %; stop=call\n",cast(string)bytes[records[0].recipient_begin..<records[0].recipient_end]);
+    system:=hm_system_checked(1,bytes[..],work[..],false);#assert system.status==PtStatus.ok;
+    print("reasoning: medium\n");
+}
+// book:end example

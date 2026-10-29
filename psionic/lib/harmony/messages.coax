@@ -1,0 +1,301 @@
+// Typed text-only Harmony messages. No tool execution or implicit history edits.
+#load "tokenizer.coax";
+#authority;
+HmRole :: enum u8 {system;developer;user;assistant;tool;}
+HmChannel :: enum u8 {none;analysis;commentary;final;}
+HmEnd :: enum u8 {message;turn;call;}
+HmStatus :: enum u8 {ok;size;capacity;alias;syntax;unsupported;incomplete;tokenizer;}
+HmMessage :: struct {role:HmRole;channel:HmChannel;ending:HmEnd;name:string;recipient:string;body:string;}
+HmRecord :: struct {role:HmRole;channel:HmChannel;ending:HmEnd;name_begin:int;name_end:int;recipient_begin:int;recipient_end:int;body_begin:int;body_end:int;}
+HmResult :: struct {status:HmStatus;cause:PtStatus;written:int;bytes:int;consumed:int;stop:HmEnd;work:int;}
+HmHeader :: struct {status:HmStatus;record:HmRecord;}
+HM_ROLES :: [4]string.["system","developer","user","assistant"];
+HM_CHANNELS :: [4]string.["","analysis","commentary","final"];
+HM_SYSTEM_HEAD :: "You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\n\nReasoning: ";
+HM_SYSTEM_TAIL :: "\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.";
+
+#test "three reasoning efforts preserve the pinned default system template" {
+    out:[256]u8;work:[256]u8;efforts:=[3]string.["low","medium","high"];
+    for e:0..<3 {r:=hm_system_checked(e,out[..],work[..],false);#assert r.status==PtStatus.ok && r.written==HM_SYSTEM_HEAD.count+efforts[e].count+HM_SYSTEM_TAIL.count;#assert cast(string)out[HM_SYSTEM_HEAD.count..<HM_SYSTEM_HEAD.count+efforts[e].count]==efforts[e];}
+    #assert hm_system_checked(-1,out[..],work[..],false).status==PtStatus.range && hm_system_checked(3,out[..],work[..],false).status==PtStatus.range;
+    #assert hm_system_checked(0,out[0..<1],work[..],false).status==PtStatus.capacity;
+    #assert hm_system_checked(0,out[..],work[0..<1],false).status==PtStatus.capacity;
+    #assert hm_system_checked(0,out[..],work[..],true).status==PtStatus.alias;
+}
+#test "framing inserts controls while body markers stay ordinary text" {
+    table:=HS_TOY;messages:=[2]HmMessage.[HmMessage.{role=HmRole.user,body="<|start|>"},HmMessage.{role=HmRole.assistant,channel=HmChannel.final,ending=HmEnd.turn,body="hello"}];
+    tokens:[128]int;stage:[128]int;symbols:[1024]int;
+    r:=hm_render_checked(table[..],messages[..],true,tokens[..],stage[..],symbols[..],false);
+    #assert r.status==HmStatus.ok && tokens[0]==200006 && tokens[r.written-10]==200006;
+    // The last ten tokens are the start control plus the ordinary assistant role.
+    #assert tokens[r.written-1]==116;
+    records:[2]HmRecord;draft:[2]HmRecord;bytes:[256]u8;work:[256]u8;
+    p:=hm_parse_checked(table[..],tokens[0..<r.written-10],false,records[..],draft[..],bytes[..],work[..],false);
+    #assert p.status==HmStatus.ok && p.written==2 && p.consumed==r.written-10;
+    #assert records[0].role==HmRole.user && records[1].role==HmRole.assistant && records[1].channel==HmChannel.final && records[1].ending==HmEnd.turn;
+    #assert cast(string)bytes[records[0].body_begin..<records[0].body_end]=="<|start|>";
+    #assert cast(string)bytes[records[1].body_begin..<records[1].body_end]=="hello";
+}
+#test "completion continues after end but stops at return or call" {
+    table:=HS_TOY;tokens:=[4]int.[200008,65,200007,200006];
+    records:[2]HmRecord;draft:[2]HmRecord;out:[128]u8;work:[128]u8;
+    out[0]=7;#assert hm_parse_checked(table[..],tokens[..],true,records[..],draft[..],out[..],work[..],false).status==HmStatus.incomplete && out[0]==7;
+    tokens[2]=200002;p:=hm_parse_checked(table[..],tokens[..],true,records[..],draft[..],out[..],work[..],false);
+    #assert p.status==HmStatus.ok && p.written==1 && p.consumed==3 && p.stop==HmEnd.turn && records[0].role==HmRole.assistant && records[0].body_end-records[0].body_begin==1;
+    tokens[2]=200012;#assert hm_parse_checked(table[..],tokens[..],true,records[..],draft[..],out[..],work[..],false).status==HmStatus.syntax;
+}
+#test "header grammar supports recipient before or after channel without duplicates" {
+    a:="assistant to=pythonanalysis";b:="assistantanalysis to=python";
+    x:=hm_header(a,0,19,a.count);y:=hm_header(b,0,9,b.count);
+    #assert x.status==HmStatus.ok && y.status==HmStatus.ok && x.record.channel==HmChannel.analysis && y.record.channel==HmChannel.analysis;
+    #assert a[x.record.recipient_begin..<x.record.recipient_end]=="python" && b[y.record.recipient_begin..<y.record.recipient_end]=="python";
+    #assert hm_header("assistant",0,0,9).status==HmStatus.syntax;
+    #assert hm_header("assistant to=xanalysis to=y",0,14,26).status==HmStatus.syntax;
+    #assert hm_header("userbad",0,4,7).status==HmStatus.unsupported;
+}
+#test "endings require assistant authority and a named handoff" {
+    #assert hm_metadata(3,1,0,"","") && hm_metadata(3,3,1,"","") && hm_metadata(3,2,2,"","python");
+    #assert !hm_metadata(0,0,1,"","") && !hm_metadata(2,0,2,"","python") && !hm_metadata(3,0,2,"","");
+    #assert !hm_metadata(3,0,0,"","python") && !hm_metadata(3,0,1,"","python") && !hm_metadata(3,0,0,"","all");
+    #assert hm_metadata(4,2,0,"functions.lookup","assistant") && !hm_metadata(4,0,0,"assistant","");
+    #assert !hm_metadata(5,0,0,"","") && !hm_metadata(0,4,0,"","") && !hm_metadata(0,0,3,"","") && !hm_metadata(0,0,0,"name","");
+}
+
+hm_message_count :: (n:int)->bool #export_c {return n>=0 && n<=64;}
+hm_ident :: (s:string)->bool {
+    if s.count<1 || s.count>64 {return false;}
+    for i:0..<s.count {c:=s[i];letter:=(c>='a' && c<='z') || (c>='A' && c<='Z') || c=='_';if !letter {if i==0 || !((c>='0' && c<='9') || c=='.' || c=='-') {return false;}}}return true;
+}
+hm_role :: (s:string)->int {for i:0..<4 {if s==HM_ROLES[i] {return i;}}return 4;}
+// book:begin metadata
+hm_metadata :: (role:u8,channel:u8,ending:u8,name:string,recipient:string)->bool {
+    if role>4 || channel>3 || ending>2 {return false;}
+    if role==4 {if !hm_ident(name) || hm_role(name)!=4 {return false;}}else if name.count!=0 {return false;}
+    if recipient.count!=0 {if !hm_ident(recipient) || recipient=="all" {return false;}}
+    if ending==2 {return role==3 && recipient.count>0;}
+    if ending==1 {return role==3 && recipient.count==0;}
+    return role!=3 || recipient.count==0;
+}// book:end metadata
+// book:begin system
+hm_system_checked :: (effort:int,out:[]u8,work:[]u8,overlap:bool)->PtResult #export_c {
+    if effort<0 || effort>2 {return PtResult.{status=PtStatus.range};}if overlap {return PtResult.{status=PtStatus.alias};}
+    efforts:=[3]string.["low","medium","high"];parts:=[3]string.[HM_SYSTEM_HEAD,efforts[effort],HM_SYSTEM_TAIL];n:=HM_SYSTEM_HEAD.count+efforts[effort].count+HM_SYSTEM_TAIL.count;
+    if out.count<n || work.count<n {return PtResult.{status=PtStatus.capacity};}p:=0;
+    for part:parts {for c:part {work[p]=c;p+=1;}}
+    for i:0..<n {out[i]=work[i];}return PtResult.{written=n};
+}// book:end system
+hm_push :: (stage:[]int,n:int,id:int)->HmStatus {if !pt_token_count(n+1) {return HmStatus.size;}if n>=stage.count {return HmStatus.capacity;}stage[n]=id;return HmStatus.ok;}
+// book:begin preflight
+hm_preflight :: (messages:[]HmMessage,completion:bool)->HmResult {
+    total:=0;
+    for m:messages {
+        if !hm_metadata(cast(u8)m.role,cast(u8)m.channel,cast(u8)m.ending,m.name,m.recipient) {return HmResult.{status=HmStatus.syntax};}
+        if !pt_text_count(m.body.count) {return HmResult.{status=HmStatus.size};}
+        role:=m.name;if m.role!=HmRole.tool {role=HM_ROLES[cast(int)m.role];}
+        total+=role.count+m.body.count+HM_CHANNELS[cast(int)m.channel].count;
+        if m.recipient.count!=0 {total+=4+m.recipient.count;}
+        if !pt_text_count(total) {return HmResult.{status=HmStatus.size};}
+    }
+    if completion {total+=9;}if !pt_text_count(total) {return HmResult.{status=HmStatus.size};}
+    return HmResult.{bytes=total};
+}
+// book:end preflight
+// book:begin render
+hm_render_checked :: (table:[]u8,messages:[]HmMessage,completion:bool,out:[]int,stage:[]int,symbols:[]int,overlap:bool)->HmResult #export_c {
+    if !hm_message_count(messages.count) {return HmResult.{status=HmStatus.size};}if overlap {return HmResult.{status=HmStatus.alias};}
+    input:=hm_preflight(messages,completion);if input.status!=HmStatus.ok {return input;}
+    t:=hs_layout(table);if t.status!=PtStatus.ok {return HmResult.{status=HmStatus.tokenizer,cause=t.status};}
+    n:=0;used:=0;
+    for m:messages {
+        control:=hm_push(stage,n,200006);if control!=HmStatus.ok {return HmResult.{status=control};}n+=1;
+        role:=m.name;if m.role!=HmRole.tool {role=HM_ROLES[cast(int)m.role];}
+        recipient:[68]u8;prefix:=" to=";for i:0..<4 {recipient[i]=prefix[i];}for i:0..<m.recipient.count {recipient[4+i]=m.recipient[i];}
+        texts:=[4]string.[role,ifx m.recipient.count==0 then "" else cast(string)recipient[0..<4+m.recipient.count],HM_CHANNELS[cast(int)m.channel],m.body];
+        for part:0..<4 {
+            if part==2 && m.channel!=HmChannel.none {s:=hm_push(stage,n,200005);if s!=HmStatus.ok {return HmResult.{status=s};}n+=1;}
+            if part==3 {s:=hm_push(stage,n,200008);if s!=HmStatus.ok {return HmResult.{status=s};}n+=1;}
+            r:=hs_append(table,t,texts[part],stage[n..<stage.count],symbols,used);if r.status!=PtStatus.ok {return HmResult.{status=HmStatus.tokenizer,cause=r.status};}n+=r.written;used=r.work;
+        }
+        end:=ifx m.ending==HmEnd.message then 200007 else ifx m.ending==HmEnd.turn then 200002 else 200012;
+        s:=hm_push(stage,n,end);if s!=HmStatus.ok {return HmResult.{status=s};}n+=1;
+    }
+    if completion {
+        s:=hm_push(stage,n,200006);if s!=HmStatus.ok {return HmResult.{status=s};}n+=1;
+        r:=hs_append(table,t,"assistant",stage[n..<stage.count],symbols,used);if r.status!=PtStatus.ok {return HmResult.{status=HmStatus.tokenizer,cause=r.status};}n+=r.written;used=r.work;
+    }
+    if !pt_token_count(n) {return HmResult.{status=HmStatus.size};}if out.count<n {return HmResult.{status=HmStatus.capacity};}
+    for i:0..<n {out[i]=stage[i];}return HmResult.{written=n,bytes=input.bytes,work=used};
+}
+// book:end render
+hm_space :: (s:string)->int {p:=0;while p<s.count {if s[p]==' ' {return p;}p+=1;}return p;}
+hm_header :: (bytes:string,begin:int,channel:int,end:int)->HmHeader {
+    head:=bytes[begin..<channel];role_end:=hm_space(head);role:=hm_role(head[0..<role_end]);record:=HmRecord.{role=cast(HmRole)role};
+    if role==4 {if !hm_ident(head[0..<role_end]) {return HmHeader.{status=HmStatus.syntax};}record.name_begin=begin;record.name_end=begin+role_end;}
+    tail:=head[role_end..<head.count];
+    if tail.count!=0 {if tail.count<5 || tail[0..<4]!=" to=" {return HmHeader.{status=HmStatus.syntax};}record.recipient_begin=begin+role_end+4;record.recipient_end=channel;}
+    if channel<end {
+        text:=bytes[channel..<end];split:=hm_space(text);name:=text[0..<split];found:=0;
+        for i:1..<4 {if name==HM_CHANNELS[i] {found=i;}}if found==0 {return HmHeader.{status=HmStatus.unsupported};}record.channel=cast(HmChannel)found;
+        if split<text.count {if record.recipient_end!=0 || text.count-split<5 || text[split..<split+4]!=" to=" {return HmHeader.{status=HmStatus.syntax};}record.recipient_begin=channel+split+4;record.recipient_end=end;}
+    }
+    return HmHeader.{record=record};
+}
+hm_copy_token :: (table:[]u8,t:PtLayout,id:int,work:[]u8,n:int)->PtResult {
+    span:=pt_span(table,t,id);if span.status!=PtStatus.ok {return PtResult.{status=span.status};}width:=span.end-span.begin;
+    if width>work.count-n {return PtResult.{status=PtStatus.capacity};}if !pt_text_count(n+width) {return PtResult.{status=PtStatus.size};}
+    for i:0..<width {work[n+i]=table[span.begin+i];}return PtResult.{written=width};
+}
+// book:begin parse
+hm_parse_checked :: (table:[]u8,tokens:[]int,completion:bool,out:[]HmRecord,draft:[]HmRecord,bytes:[]u8,work:[]u8,overlap:bool)->HmResult #export_c {
+    if !pt_token_count(tokens.count) {return HmResult.{status=HmStatus.size};}if overlap {return HmResult.{status=HmStatus.alias};}
+    t:=hs_layout(table);if t.status!=PtStatus.ok {return HmResult.{status=HmStatus.tokenizer,cause=t.status};}
+    at:=0;n:=0;count:=0;stop:=HmEnd.message;
+    while at<tokens.count {
+        if !hm_message_count(count+1) {return HmResult.{status=HmStatus.size};}
+        begin:=n;
+        if tokens[at]==200006 {at+=1;}else if completion && count==0 {
+            if work.count<9 {return HmResult.{status=HmStatus.capacity};}for c:"assistant" {work[n]=c;n+=1;}
+        }else {return HmResult.{status=HmStatus.syntax};}
+        channel:=-1;
+        while true {
+            if at==tokens.count {return HmResult.{status=HmStatus.incomplete};}id:=tokens[at];at+=1;
+            if id==200008 {break;}
+            if id==200005 {if channel!=-1 {return HmResult.{status=HmStatus.syntax};}channel=n;}
+            else {
+                if id>=199998 {if !hs_special_valid(id) {return HmResult.{status=HmStatus.tokenizer,cause=PtStatus.range};}return HmResult.{status=HmStatus.unsupported};}
+                r:=hm_copy_token(table,t,id,work,n);if r.status!=PtStatus.ok {return HmResult.{status=HmStatus.tokenizer,cause=r.status};}n+=r.written;
+            }
+            if n-begin>256 {return HmResult.{status=HmStatus.size};}
+        }
+        if channel==n {return HmResult.{status=HmStatus.syntax};}if channel== -1 {channel=n;}
+        header:=hm_header(cast(string)work[0..<n],begin,channel,n);if header.status!=HmStatus.ok {return HmResult.{status=header.status};}record:=header.record;record.body_begin=n;
+        while true {
+            if at==tokens.count {return HmResult.{status=HmStatus.incomplete};}id:=tokens[at];at+=1;
+            if id==200007 || id==200002 || id==200012 {record.ending=ifx id==200007 then HmEnd.message else ifx id==200002 then HmEnd.turn else HmEnd.call;break;}
+            if id>=199998 {if !hs_special_valid(id) {return HmResult.{status=HmStatus.tokenizer,cause=PtStatus.range};}return HmResult.{status=HmStatus.unsupported};}
+            r:=hm_copy_token(table,t,id,work,n);if r.status!=PtStatus.ok {return HmResult.{status=HmStatus.tokenizer,cause=r.status};}n+=r.written;
+        }
+        record.body_end=n;body:=cast(string)work[record.body_begin..<record.body_end];valid:=pt_utf8_validate(body);if valid!=PtStatus.ok {return HmResult.{status=HmStatus.tokenizer,cause=valid};}
+        name:=cast(string)work[record.name_begin..<record.name_end];recipient:=cast(string)work[record.recipient_begin..<record.recipient_end];
+        if !hm_metadata(cast(u8)record.role,cast(u8)record.channel,cast(u8)record.ending,name,recipient) {return HmResult.{status=HmStatus.syntax};}
+        if count>=draft.count {return HmResult.{status=HmStatus.capacity};}draft[count]=record;count+=1;
+// book:begin stop
+        if completion && record.ending!=HmEnd.message {stop=record.ending;break;}
+// book:end stop
+    }
+    if completion && stop==HmEnd.message {return HmResult.{status=HmStatus.incomplete};}
+// book:begin publish
+    if out.count<count || bytes.count<n {return HmResult.{status=HmStatus.capacity};}
+    for i:0..<n {bytes[i]=work[i];}for i:0..<count {out[i]=draft[i];}
+    return HmResult.{written=count,bytes=n,consumed=at,stop=stop};
+// book:end publish
+}
+// book:end parse
+
+#load "../../fixtures/harmony/messages.coax";
+#test "identifier and message-count bounds admit their exact endpoints" {
+    #assert hm_message_count(0) && hm_message_count(64) && !hm_message_count(-1) && !hm_message_count(65);
+    name:[65]u8;for i:0..<65 {name[i]='a';}
+    #assert hm_ident(cast(string)name[0..<64]) && !hm_ident(cast(string)name[..]) && !hm_ident("");
+    #assert hm_ident("aZ09_.-") && hm_ident("_") && !hm_ident("9abc") && !hm_ident(".abc") && !hm_ident("-abc");
+    bad:=[8]string.["a/","a:","a ","a@","a[","a`","a{","é"];for s:bad {#assert !hm_ident(s);}
+    good:=[8]string.["a","z","A","Z","a0","a9","a_","a-"];for s:good {#assert hm_ident(s);}
+    #assert !hm_metadata(4,0,0,"","") && !hm_metadata(3,0,0,"","a/");
+}
+#test "logical decoded bytes are counted before tokenization" {
+    body:[1024]u8;messages:[64]HmMessage;for i:0..<64 {messages[i]=HmMessage.{role=HmRole.user,body=cast(string)body[..]};}
+    #assert hm_preflight(messages[..],false).status==HmStatus.size;
+    for i:0..<64 {messages[i].body=cast(string)body[0..<1020];}
+    p:=hm_preflight(messages[..],false);#assert p.status==HmStatus.ok && p.bytes==65536;
+    #assert hm_preflight(messages[..],true).status==HmStatus.size;
+    messages[0].role=HmRole.tool;messages[0].name="x";p=hm_preflight(messages[0..<1],false);#assert p.status==HmStatus.ok && p.bytes==1021;
+    messages[0].name="";#assert hm_preflight(messages[0..<1],false).status==HmStatus.syntax;
+}
+#test "render capacities and invalid input never publish staged tokens" {
+    table:=HS_TOY;messages:=[1]HmMessage.[HmMessage.{role=HmRole.user,body="a"}];out:[16]int;stage:[32]int;symbols:[1024]int;
+    for i:0..<16 {out[i]=-7;}
+    r:=hm_render_checked(table[..],messages[..],false,out[..],stage[..],symbols[..],false);#assert r.status==HmStatus.ok && r.written==8;
+    r=hm_render_checked(table[..],messages[..],false,out[0..<8],stage[..],symbols[..],false);#assert r.status==HmStatus.ok && r.written==8;
+    for i:0..<16 {out[i]=-7;}
+    #assert hm_render_checked(table[..],messages[..],false,out[0..<7],stage[..],symbols[..],false).status==HmStatus.capacity;
+    #assert hm_render_checked(table[..],messages[..],false,out[..],stage[0..<0],symbols[..],false).status==HmStatus.capacity;
+    #assert hm_render_checked(table[..],messages[..],false,out[..],stage[0..<1],symbols[..],false).status==HmStatus.tokenizer;
+    #assert hm_render_checked(table[..],messages[..],false,out[..],stage[0..<5],symbols[..],false).status==HmStatus.capacity;
+    #assert hm_render_checked(table[..],messages[..],false,out[..],stage[0..<6],symbols[..],false).status==HmStatus.tokenizer;
+    #assert hm_render_checked(table[..],messages[..],false,out[..],stage[0..<7],symbols[..],false).status==HmStatus.capacity;
+    #assert hm_render_checked(table[..],messages[..],false,out[..],stage[..],symbols[0..<0],false).status==HmStatus.tokenizer;
+    #assert hm_render_checked(table[..],messages[..],false,out[..],stage[..],symbols[..],true).status==HmStatus.alias;
+    #assert hm_render_checked(table[0..<0],messages[..],false,out[..],stage[..],symbols[..],false).cause==PtStatus.artifact;
+    messages[0].ending=HmEnd.turn;#assert hm_render_checked(table[..],messages[..],false,out[..],stage[..],symbols[..],false).status==HmStatus.syntax;
+    messages[0].ending=HmEnd.message;bad:=[1]u8.[255];messages[0].body=cast(string)bad[..];
+    #assert hm_render_checked(table[..],messages[..],false,out[..],stage[..],symbols[..],false).cause==PtStatus.utf8;
+    for v:out {#assert v==-7;}
+}
+#test "parser capacity refusals leave bytes and metadata intact" {
+    table:=HS_TOY;tokens:=[8]int.[200006,117,115,101,114,200008,65,200007];records:[2]HmRecord;draft:[2]HmRecord;bytes:[16]u8;work:[32]u8;
+    records[0].body_end=-7;bytes[0]=7;
+    #assert hm_parse_checked(table[..],tokens[..],false,records[0..<0],draft[..],bytes[..],work[..],false).status==HmStatus.capacity;
+    #assert hm_parse_checked(table[..],tokens[..],false,records[..],draft[0..<0],bytes[..],work[..],false).status==HmStatus.capacity;
+    #assert hm_parse_checked(table[..],tokens[..],false,records[..],draft[..],bytes[0..<4],work[..],false).status==HmStatus.capacity;
+    #assert hm_parse_checked(table[..],tokens[..],false,records[..],draft[..],bytes[..],work[0..<4],false).cause==PtStatus.capacity;
+    #assert hm_parse_checked(table[..],tokens[..],true,records[..],draft[..],bytes[..],work[..],false).status==HmStatus.incomplete;
+    #assert hm_parse_checked(table[..],tokens[..],false,records[..],draft[..],bytes[..],work[..],true).status==HmStatus.alias;
+    #assert hm_parse_checked(table[0..<0],tokens[..],false,records[..],draft[..],bytes[..],work[..],false).cause==PtStatus.artifact;
+    #assert records[0].body_end== -7 && bytes[0]==7;
+    p:=hm_parse_checked(table[..],tokens[..],false,records[0..<1],draft[0..<1],bytes[0..<5],work[0..<5],false);#assert p.status==HmStatus.ok && p.bytes==5 && p.written==1 && records[1].body_end==0 && cast(string)bytes[0..<5]=="userA";
+}
+#test "malformed headers and non-assistant stops refuse complete input" {
+    table:=HS_TOY;tokens:=[8]int.[200006,117,115,101,114,200008,65,200002];records:[2]HmRecord;draft:[2]HmRecord;bytes:[64]u8;work:[64]u8;
+    #assert hm_parse_checked(table[..],tokens[..],false,records[..],draft[..],bytes[..],work[..],false).status==HmStatus.syntax;
+    tokens[0]=65;#assert hm_parse_checked(table[..],tokens[..],false,records[..],draft[..],bytes[..],work[..],false).status==HmStatus.syntax;
+    tokens[0]=200006;tokens[4]=200005;#assert hm_parse_checked(table[..],tokens[..],false,records[..],draft[..],bytes[..],work[..],false).status==HmStatus.syntax;
+    tokens[3]=200005;#assert hm_parse_checked(table[..],tokens[..],false,records[..],draft[..],bytes[..],work[..],false).status==HmStatus.syntax;
+    tokens[3]=200003;#assert hm_parse_checked(table[..],tokens[..],false,records[..],draft[..],bytes[..],work[..],false).status==HmStatus.unsupported;
+    tokens[3]=201088;#assert hm_parse_checked(table[..],tokens[..],false,records[..],draft[..],bytes[..],work[..],false).cause==PtStatus.range;
+    tokens[3]=-1;#assert hm_parse_checked(table[..],tokens[..],false,records[..],draft[..],bytes[..],work[..],false).cause==PtStatus.range;
+    implicit:=[3]int.[200008,255,200002];#assert hm_parse_checked(table[..],implicit[..],true,records[..],draft[..],bytes[..],work[..],false).cause==PtStatus.utf8;
+    implicit[1]=200003;#assert hm_parse_checked(table[..],implicit[..],true,records[..],draft[..],bytes[..],work[..],false).status==HmStatus.unsupported;
+    implicit[1]=201088;#assert hm_parse_checked(table[..],implicit[..],true,records[..],draft[..],bytes[..],work[..],false).cause==PtStatus.range;
+    implicit[1]=-1;#assert hm_parse_checked(table[..],implicit[..],true,records[..],draft[..],bytes[..],work[..],false).cause==PtStatus.range;
+}
+#test "header and message limits refuse before publishing malformed excess" {
+    table:=HS_TOY;tokens:[260]int;records:[65]HmRecord;draft:[65]HmRecord;bytes:[512]u8;work:[512]u8;
+    for i:0..<65 {tokens[4*i]=200006;tokens[4*i+1]=117;tokens[4*i+2]=200008;tokens[4*i+3]=200007;}
+    records[64].body_end=-7;
+    p:=hm_parse_checked(table[..],tokens[0..<256],false,records[..],draft[..],bytes[..],work[..],false);
+    #assert p.status==HmStatus.ok && p.written==64 && records[64].body_end== -7;
+    bytes[0]=7;#assert hm_parse_checked(table[..],tokens[..],false,records[..],draft[..],bytes[..],work[..],false).status==HmStatus.size && bytes[0]==7;
+    for i:1..<258 {tokens[i]=97;}tokens[0]=200006;tokens[258]=200008;tokens[259]=200007;
+    #assert hm_parse_checked(table[..],tokens[..],false,records[..],draft[..],bytes[..],work[..],false).status==HmStatus.size;
+    tokens[257]=200008;tokens[258]=200007;
+    #assert hm_parse_checked(table[..],tokens[0..<259],false,records[..],draft[..],bytes[..],work[..],false).status==HmStatus.syntax;
+    implicit:=[2]int.[200008,200002];
+    #assert hm_parse_checked(table[..],implicit[..],true,records[..],draft[..],bytes[..],work[0..<8],false).status==HmStatus.capacity;
+    p=hm_parse_checked(table[..],implicit[..],true,records[0..<1],draft[0..<1],bytes[0..<9],work[0..<9],false);#assert p.status==HmStatus.ok && p.bytes==9 && p.written==1;
+}
+#test "single-letter recipients and malformed header separators remain distinct" {
+    #assert hm_metadata(3,0,2,"","p") && !hm_metadata(3,0,2,"","all") && !hm_metadata(3,0,2,"","a/");
+    a:="assistant to=p";b:="assistantanalysis to=p";
+    x:=hm_header(a,0,a.count,a.count);y:=hm_header(b,0,9,b.count);
+    #assert x.status==HmStatus.ok && y.status==HmStatus.ok && a[x.record.recipient_begin..<x.record.recipient_end]=="p" && b[y.record.recipient_begin..<y.record.recipient_end]=="p";
+    #assert hm_header("assistant xxxx",0,14,14).status==HmStatus.syntax;
+    #assert hm_header("assistantanalysis to=",0,9,21).status==HmStatus.syntax;
+    #assert hm_header("assistant to=xanalysis to=y",0,14,27).status==HmStatus.syntax;
+    #assert hm_header("assistantanalysis xxxx",0,9,22).status==HmStatus.syntax;
+    #assert hm_space(" abc")==0 && hm_space("abc")==3;
+}
+#test "system template publishes every byte with exact capacity" {
+    out:[256]u8;work:[256]u8;r:=hm_system_checked(0,out[..],work[..],false);n:=r.written;
+    #assert r.status==PtStatus.ok && cast(string)out[0..<HM_SYSTEM_HEAD.count]==HM_SYSTEM_HEAD && cast(string)out[n-HM_SYSTEM_TAIL.count..<n]==HM_SYSTEM_TAIL;
+    #assert hm_system_checked(0,out[0..<n],work[0..<n],false).status==PtStatus.ok;
+    #assert hm_system_checked(0,out[0..<n-1],work[..],false).status==PtStatus.capacity;
+    #assert hm_system_checked(0,out[..],work[0..<n-1],false).status==PtStatus.capacity;
+    stage:[16384]int;#assert hm_push(stage[..],16383,65)==HmStatus.ok && stage[16383]==65 && hm_push(stage[..],16384,65)==HmStatus.size;
+}
+#test "only the first completion header can omit the explicit assistant role" {
+    table:=HS_TOY;tokens:=[6]int.[200008,65,200007,200008,66,200002];records:[2]HmRecord;draft:[2]HmRecord;bytes:[64]u8;work:[64]u8;
+    #assert hm_parse_checked(table[..],tokens[..],true,records[..],draft[..],bytes[..],work[..],false).status==HmStatus.syntax;
+    bare:=[2]int.[200008,200002];#assert hm_parse_checked(table[..],bare[..],false,records[..],draft[..],bytes[..],work[..],false).status==HmStatus.syntax;
+    unsupported:=[3]int.[199998,200008,200002];#assert hm_parse_checked(table[..],unsupported[..],true,records[..],draft[..],bytes[..],work[..],false).status==HmStatus.unsupported;
+    unsupported[0]=200008;unsupported[1]=199998;#assert hm_parse_checked(table[..],unsupported[..],true,records[..],draft[..],bytes[..],work[..],false).status==HmStatus.unsupported;
+}

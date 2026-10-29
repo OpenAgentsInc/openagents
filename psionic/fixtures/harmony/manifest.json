@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "profile": "gpt-oss-harmony-text-v1",
+  "format": "HST7",
+  "gpt_oss_revision": "5681a6b6552635e7b29cde94a61ca6a7aee90ebd",
+  "harmony_revision": "abd677f7ac962629c808197caa1feb9e3e95d2b0",
+  "original_url": "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken",
+  "original_sha256": "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d",
+  "unicode": "17.0.0",
+  "pattern": "[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]*[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]+[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|\\p{N}{1,3}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n/]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+",
+  "ordinary_ranks": 199998,
+  "pair_records": 446189,
+  "property_ranges": 2385,
+  "vocabulary_entries": 201088,
+  "highest_id": 201087,
+  "sections": [
+    199998,
+    446189,
+    2385,
+    0,
+    0,
+    199998,
+    1397670
+  ],
+  "files": {
+    "o200k_base.tiktoken.gz": {
+      "bytes": 1694486,
+      "sha256": "9326eb6d6d962283c48a3e2564caf0383f60ffd2836d286fbf45db0c26970bfc"
+    },
+    "gptoss.hst": {
+      "bytes": 10975886,
+      "sha256": "713aefbe74715ac78e32ad789ff6e6ad2d6d65372515462b76ab5ecaef8a0e7a"
+    },
+    "toy.hst": {
+      "bytes": 42855,
+      "sha256": "c47f4b163b27ddc9a33dcfc318e02efd4c65f58ffcd7e4548988bceda812930a"
+    },
+    "toy.coax": {
+      "bytes": 101195,
+      "sha256": "21f71494413bcb4a2a374bdb133ffcb9c7f1bc18ad96c5aeadf049a5091f1a49"
+    },
+    "pins.coax": {
+      "bytes": 251,
+      "sha256": "4315c50f7ffa4aed4a7b273bbb1087a346060a7f694fb29cb9c34804884ab1d3"
+    }
+  }
+}

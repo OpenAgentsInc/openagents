@@ -6,7 +6,9 @@ now implements the bounded original-format CPU decoder;
 top-k router and tiny affine mixture.
 [Chapter 43](../../book/ch43-attention-with-sinks-and-a-window.md) adds bounded
 sink/window attention, split-half YaRN, biased projection and clamped SwiGLU.
-Full-model execution and Harmony remain planned. No weights were downloaded, and no upstream
+[Chapter 44](../../book/ch44-the-harmony-format.md) adds bounded original-rank
+text tokenization, typed Harmony framing and strict completion parsing.
+Full-model execution remains planned. No weights were downloaded, and no upstream
 setup, inference or tool code was run. Psionic would implement the behavior in
 Coax; Python stays reviewed reference and export tooling, never a runtime
 dependency. Part VII of the [book plan](../../book/PLAN.md) gives the
@@ -160,5 +162,33 @@ activation results. Native debug/release and sanitizer gates cover 64/8 heads,
 [verification record](../../../docs/verification/psionic-ch36-2026-10-29.md).
 The arithmetic is wide CPU with f32 storage; it does not claim original Torch
 float/BF16 parity, original checkpoint admission or complete generation.
-Chapter 44's harmony framing is the next independent branch gate; chapter 45
+Chapter 44 now supplies the bounded Harmony text gate below; chapter 45
 still needs complete original-weight execution and intermediate/logit references.
+
+## Chapter 44 implementation boundary
+
+[The harmony format](../../book/ch44-the-harmony-format.md) implements
+`gpt-oss-harmony-text-v1`. Coax admits an immutable, SHA-256-pinned HST7 table
+built deterministically from the original o200k rank bytes; the separate split
+pattern uses Unicode-17 category tables and preserves bytes without NFC. The
+shared chapter 5 BPE loop uses every original concatenated rank pair, plus a
+whole-piece byte lookup. Ordinary text never scans for special literals.
+
+Typed system/developer/user/assistant/tool messages preserve supplied history,
+with a pinned default low/medium/high reasoning template. Parsing supports
+analysis/commentary/final, recipients before or after channels, complete
+transcripts and open-assistant completions, stopping exactly on return/call.
+Control IDs enter through structured framing, not text fields. Public tokens,
+decoded bytes and record intervals publish only after success. Bounds include
+64 messages, 16,384 IDs, 65,536 decoded bytes and 64-byte ASCII identifiers.
+
+The [retained fixtures](../../fixtures/harmony/README.md) pin all 199,998
+ordinary ranks and the model-specific special range through ID 201,087;
+generic Harmony's extra ID 201,088 is outside this model profile. The
+[owned oracle](../../tests/harmony_oracle.py) and native sanitizer gate cover
+original IDs, exact framing, terminal consumption, UTF-8 joining and atomic
+refusals. See the [chapter 44 record](../../../docs/verification/psionic-ch44-2026-10-29.md).
+This does not qualify complete upstream renderer/Unicode-version parity,
+multimodal or optional header extensions, incremental stream parsing, tool
+execution, original-weight model execution or sampling. Chapter 45 joins these
+primitives with generation; chapter 48 owns tool-call integration.

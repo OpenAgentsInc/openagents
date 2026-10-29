@@ -1,0 +1,191 @@
+// Owned source-contract framing and independent token references.
+#test "independent typed Harmony render and full parse 0" {
+    table:=HS_TOY;tokens:[2048]int;stage:[2048]int;symbols:[1024]int;bytes:[4096]u8;work:[4096]u8;records:[8]HmRecord;draft:[8]HmRecord;
+    messages:=[1]HmMessage.[HmMessage.{}];
+    expected:=[10]int.[200006,97,115,115,105,115,116,97,110,116];
+    r:=hm_render_checked(table[..],messages[0..<0],true,tokens[..],stage[..],symbols[..],false);
+    #assert r.status==HmStatus.ok && r.written==10 && r.bytes==9 && r.work==81;
+    for i:0..<r.written {#assert tokens[i]==expected[i];}
+    p:=hm_parse_checked(table[..],tokens[0..<0],false,records[..],draft[..],bytes[..],work[..],false);
+    #assert p.status==HmStatus.ok && p.written==0 && p.consumed==0 && p.bytes==0;
+}
+#test "independent typed Harmony render and full parse 1" {
+    table:=HS_TOY;tokens:[2048]int;stage:[2048]int;symbols:[1024]int;bytes:[4096]u8;work:[4096]u8;records:[8]HmRecord;draft:[8]HmRecord;
+    messages:=[3]HmMessage.[HmMessage.{role=cast(HmRole)0,channel=cast(HmChannel)0,ending=cast(HmEnd)0,name="",recipient="",body="You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\n\nReasoning: low\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message."},HmMessage.{role=cast(HmRole)1,channel=cast(HmChannel)0,ending=cast(HmEnd)0,name="",recipient="",body="# Instructions\n\nAnswer the user's questions like a robot."},HmMessage.{role=cast(HmRole)2,channel=cast(HmChannel)0,ending=cast(HmEnd)0,name="",recipient="",body="What is the capital of the largest country in the world?"}];
+    expected:=[338]int.[200006,115,121,115,116,101,109,200008,89,111,117,32,97,114,101,32,67,104,97,116,71,80,84,44,32,97,32,108,97,114,103,101,32,108,97,110,103,117,97,103,101,32,109,111,100,101,108,32,116,114,97,105,110,101,100,32,98,121,32,79,112,101,110,65,73,46,10,75,110,111,119,108,101,100,103,101,32,99,117,116,111,102,102,58,32,50,48,50,52,45,48,54,10,10,82,101,97,115,111,110,105,110,103,58,32,108,111,119,10,10,35,32,86,97,108,105,100,32,99,104,97,110,110,101,108,115,58,32,97,110,97,108,121,115,105,115,44,32,99,111,109,109,101,110,116,97,114,121,44,32,102,105,110,97,108,46,32,67,104,97,110,110,101,108,32,109,117,115,116,32,98,101,32,105,110,99,108,117,100,101,100,32,102,111,114,32,101,118,101,114,121,32,109,101,115,115,97,103,101,46,200007,200006,100,101,118,101,108,111,112,101,114,200008,35,32,73,110,115,116,114,117,99,116,105,111,110,115,10,10,65,110,115,119,101,114,32,116,258,32,117,115,101,114,263,32,113,117,101,115,116,105,111,110,115,32,108,105,107,101,32,97,32,114,111,98,111,116,46,200007,200006,117,115,101,114,200008,87,104,97,116,32,105,115,32,116,258,32,99,97,112,105,116,97,108,32,111,102,32,116,258,32,108,97,114,103,101,115,116,32,99,111,117,110,116,114,121,32,105,110,32,116,258,32,119,111,114,108,100,63,200007,200006,97,115,115,105,115,116,97,110,116];
+    r:=hm_render_checked(table[..],messages[0..<3],true,tokens[..],stage[..],symbols[..],false);
+    #assert r.status==HmStatus.ok && r.written==338 && r.bytes==333 && r.work==2207;
+    for i:0..<r.written {#assert tokens[i]==expected[i];}
+    p:=hm_parse_checked(table[..],tokens[0..<328],false,records[..],draft[..],bytes[..],work[..],false);
+    #assert p.status==HmStatus.ok && p.written==3 && p.consumed==328 && p.bytes==324;
+    #assert records[0].role==cast(HmRole)0 && records[0].channel==cast(HmChannel)0 && records[0].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[0].name_begin..<records[0].name_end]=="";
+    #assert cast(string)bytes[records[0].recipient_begin..<records[0].recipient_end]=="";
+    #assert cast(string)bytes[records[0].body_begin..<records[0].body_end]=="You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\n\nReasoning: low\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.";
+    #assert records[1].role==cast(HmRole)1 && records[1].channel==cast(HmChannel)0 && records[1].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[1].name_begin..<records[1].name_end]=="";
+    #assert cast(string)bytes[records[1].recipient_begin..<records[1].recipient_end]=="";
+    #assert cast(string)bytes[records[1].body_begin..<records[1].body_end]=="# Instructions\n\nAnswer the user's questions like a robot.";
+    #assert records[2].role==cast(HmRole)2 && records[2].channel==cast(HmChannel)0 && records[2].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[2].name_begin..<records[2].name_end]=="";
+    #assert cast(string)bytes[records[2].recipient_begin..<records[2].recipient_end]=="";
+    #assert cast(string)bytes[records[2].body_begin..<records[2].body_end]=="What is the capital of the largest country in the world?";
+}
+#test "independent typed Harmony render and full parse 2" {
+    table:=HS_TOY;tokens:[2048]int;stage:[2048]int;symbols:[1024]int;bytes:[4096]u8;work:[4096]u8;records:[8]HmRecord;draft:[8]HmRecord;
+    messages:=[3]HmMessage.[HmMessage.{role=cast(HmRole)0,channel=cast(HmChannel)0,ending=cast(HmEnd)0,name="",recipient="",body="You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message."},HmMessage.{role=cast(HmRole)1,channel=cast(HmChannel)0,ending=cast(HmEnd)0,name="",recipient="",body="# Instructions\n\nAnswer the user's questions like a robot."},HmMessage.{role=cast(HmRole)2,channel=cast(HmChannel)0,ending=cast(HmEnd)0,name="",recipient="",body="What is the capital of the largest country in the world?"}];
+    expected:=[341]int.[200006,115,121,115,116,101,109,200008,89,111,117,32,97,114,101,32,67,104,97,116,71,80,84,44,32,97,32,108,97,114,103,101,32,108,97,110,103,117,97,103,101,32,109,111,100,101,108,32,116,114,97,105,110,101,100,32,98,121,32,79,112,101,110,65,73,46,10,75,110,111,119,108,101,100,103,101,32,99,117,116,111,102,102,58,32,50,48,50,52,45,48,54,10,10,82,101,97,115,111,110,105,110,103,58,32,109,101,100,105,117,109,10,10,35,32,86,97,108,105,100,32,99,104,97,110,110,101,108,115,58,32,97,110,97,108,121,115,105,115,44,32,99,111,109,109,101,110,116,97,114,121,44,32,102,105,110,97,108,46,32,67,104,97,110,110,101,108,32,109,117,115,116,32,98,101,32,105,110,99,108,117,100,101,100,32,102,111,114,32,101,118,101,114,121,32,109,101,115,115,97,103,101,46,200007,200006,100,101,118,101,108,111,112,101,114,200008,35,32,73,110,115,116,114,117,99,116,105,111,110,115,10,10,65,110,115,119,101,114,32,116,258,32,117,115,101,114,263,32,113,117,101,115,116,105,111,110,115,32,108,105,107,101,32,97,32,114,111,98,111,116,46,200007,200006,117,115,101,114,200008,87,104,97,116,32,105,115,32,116,258,32,99,97,112,105,116,97,108,32,111,102,32,116,258,32,108,97,114,103,101,115,116,32,99,111,117,110,116,114,121,32,105,110,32,116,258,32,119,111,114,108,100,63,200007,200006,97,115,115,105,115,116,97,110,116];
+    r:=hm_render_checked(table[..],messages[0..<3],true,tokens[..],stage[..],symbols[..],false);
+    #assert r.status==HmStatus.ok && r.written==341 && r.bytes==336 && r.work==2240;
+    for i:0..<r.written {#assert tokens[i]==expected[i];}
+    p:=hm_parse_checked(table[..],tokens[0..<331],false,records[..],draft[..],bytes[..],work[..],false);
+    #assert p.status==HmStatus.ok && p.written==3 && p.consumed==331 && p.bytes==327;
+    #assert records[0].role==cast(HmRole)0 && records[0].channel==cast(HmChannel)0 && records[0].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[0].name_begin..<records[0].name_end]=="";
+    #assert cast(string)bytes[records[0].recipient_begin..<records[0].recipient_end]=="";
+    #assert cast(string)bytes[records[0].body_begin..<records[0].body_end]=="You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.";
+    #assert records[1].role==cast(HmRole)1 && records[1].channel==cast(HmChannel)0 && records[1].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[1].name_begin..<records[1].name_end]=="";
+    #assert cast(string)bytes[records[1].recipient_begin..<records[1].recipient_end]=="";
+    #assert cast(string)bytes[records[1].body_begin..<records[1].body_end]=="# Instructions\n\nAnswer the user's questions like a robot.";
+    #assert records[2].role==cast(HmRole)2 && records[2].channel==cast(HmChannel)0 && records[2].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[2].name_begin..<records[2].name_end]=="";
+    #assert cast(string)bytes[records[2].recipient_begin..<records[2].recipient_end]=="";
+    #assert cast(string)bytes[records[2].body_begin..<records[2].body_end]=="What is the capital of the largest country in the world?";
+}
+#test "independent typed Harmony render and full parse 3" {
+    table:=HS_TOY;tokens:[2048]int;stage:[2048]int;symbols:[1024]int;bytes:[4096]u8;work:[4096]u8;records:[8]HmRecord;draft:[8]HmRecord;
+    messages:=[3]HmMessage.[HmMessage.{role=cast(HmRole)0,channel=cast(HmChannel)0,ending=cast(HmEnd)0,name="",recipient="",body="You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\n\nReasoning: high\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message."},HmMessage.{role=cast(HmRole)1,channel=cast(HmChannel)0,ending=cast(HmEnd)0,name="",recipient="",body="# Instructions\n\nAnswer the user's questions like a robot."},HmMessage.{role=cast(HmRole)2,channel=cast(HmChannel)0,ending=cast(HmEnd)0,name="",recipient="",body="What is the capital of the largest country in the world?"}];
+    expected:=[339]int.[200006,115,121,115,116,101,109,200008,89,111,117,32,97,114,101,32,67,104,97,116,71,80,84,44,32,97,32,108,97,114,103,101,32,108,97,110,103,117,97,103,101,32,109,111,100,101,108,32,116,114,97,105,110,101,100,32,98,121,32,79,112,101,110,65,73,46,10,75,110,111,119,108,101,100,103,101,32,99,117,116,111,102,102,58,32,50,48,50,52,45,48,54,10,10,82,101,97,115,111,110,105,110,103,58,32,104,105,103,104,10,10,35,32,86,97,108,105,100,32,99,104,97,110,110,101,108,115,58,32,97,110,97,108,121,115,105,115,44,32,99,111,109,109,101,110,116,97,114,121,44,32,102,105,110,97,108,46,32,67,104,97,110,110,101,108,32,109,117,115,116,32,98,101,32,105,110,99,108,117,100,101,100,32,102,111,114,32,101,118,101,114,121,32,109,101,115,115,97,103,101,46,200007,200006,100,101,118,101,108,111,112,101,114,200008,35,32,73,110,115,116,114,117,99,116,105,111,110,115,10,10,65,110,115,119,101,114,32,116,258,32,117,115,101,114,263,32,113,117,101,115,116,105,111,110,115,32,108,105,107,101,32,97,32,114,111,98,111,116,46,200007,200006,117,115,101,114,200008,87,104,97,116,32,105,115,32,116,258,32,99,97,112,105,116,97,108,32,111,102,32,116,258,32,108,97,114,103,101,115,116,32,99,111,117,110,116,114,121,32,105,110,32,116,258,32,119,111,114,108,100,63,200007,200006,97,115,115,105,115,116,97,110,116];
+    r:=hm_render_checked(table[..],messages[0..<3],true,tokens[..],stage[..],symbols[..],false);
+    #assert r.status==HmStatus.ok && r.written==339 && r.bytes==334 && r.work==2216;
+    for i:0..<r.written {#assert tokens[i]==expected[i];}
+    p:=hm_parse_checked(table[..],tokens[0..<329],false,records[..],draft[..],bytes[..],work[..],false);
+    #assert p.status==HmStatus.ok && p.written==3 && p.consumed==329 && p.bytes==325;
+    #assert records[0].role==cast(HmRole)0 && records[0].channel==cast(HmChannel)0 && records[0].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[0].name_begin..<records[0].name_end]=="";
+    #assert cast(string)bytes[records[0].recipient_begin..<records[0].recipient_end]=="";
+    #assert cast(string)bytes[records[0].body_begin..<records[0].body_end]=="You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\n\nReasoning: high\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.";
+    #assert records[1].role==cast(HmRole)1 && records[1].channel==cast(HmChannel)0 && records[1].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[1].name_begin..<records[1].name_end]=="";
+    #assert cast(string)bytes[records[1].recipient_begin..<records[1].recipient_end]=="";
+    #assert cast(string)bytes[records[1].body_begin..<records[1].body_end]=="# Instructions\n\nAnswer the user's questions like a robot.";
+    #assert records[2].role==cast(HmRole)2 && records[2].channel==cast(HmChannel)0 && records[2].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[2].name_begin..<records[2].name_end]=="";
+    #assert cast(string)bytes[records[2].recipient_begin..<records[2].recipient_end]=="";
+    #assert cast(string)bytes[records[2].body_begin..<records[2].body_end]=="What is the capital of the largest country in the world?";
+}
+#test "independent typed Harmony render and full parse 4" {
+    table:=HS_TOY;tokens:[2048]int;stage:[2048]int;symbols:[1024]int;bytes:[4096]u8;work:[4096]u8;records:[8]HmRecord;draft:[8]HmRecord;
+    messages:=[3]HmMessage.[HmMessage.{role=cast(HmRole)2,channel=cast(HmChannel)0,ending=cast(HmEnd)0,name="",recipient="",body="Literal <|start|> must stay text. é ≠ é"},HmMessage.{role=cast(HmRole)3,channel=cast(HmChannel)1,ending=cast(HmEnd)0,name="",recipient="",body="Let us compare."},HmMessage.{role=cast(HmRole)3,channel=cast(HmChannel)3,ending=cast(HmEnd)1,name="",recipient="",body="42."}];
+    expected:=[108]int.[200006,117,115,101,114,200008,76,105,116,101,114,97,108,32,60,124,115,116,97,114,116,124,62,32,109,117,115,116,32,115,116,97,121,32,116,101,120,116,46,32,101,204,129,32,226,137,160,32,195,169,200007,200006,97,115,115,105,115,116,97,110,116,200005,97,110,97,108,121,115,105,115,200008,76,101,116,32,117,115,32,99,111,109,112,97,114,101,46,200007,200006,97,115,115,105,115,116,97,110,116,200005,102,105,110,97,108,200008,52,50,46,200002];
+    r:=hm_render_checked(table[..],messages[0..<3],false,tokens[..],stage[..],symbols[..],false);
+    #assert r.status==HmStatus.ok && r.written==108 && r.bytes==97 && r.work==559;
+    for i:0..<r.written {#assert tokens[i]==expected[i];}
+    p:=hm_parse_checked(table[..],tokens[0..<108],false,records[..],draft[..],bytes[..],work[..],false);
+    #assert p.status==HmStatus.ok && p.written==3 && p.consumed==108 && p.bytes==97;
+    #assert records[0].role==cast(HmRole)2 && records[0].channel==cast(HmChannel)0 && records[0].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[0].name_begin..<records[0].name_end]=="";
+    #assert cast(string)bytes[records[0].recipient_begin..<records[0].recipient_end]=="";
+    #assert cast(string)bytes[records[0].body_begin..<records[0].body_end]=="Literal <|start|> must stay text. é ≠ é";
+    #assert records[1].role==cast(HmRole)3 && records[1].channel==cast(HmChannel)1 && records[1].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[1].name_begin..<records[1].name_end]=="";
+    #assert cast(string)bytes[records[1].recipient_begin..<records[1].recipient_end]=="";
+    #assert cast(string)bytes[records[1].body_begin..<records[1].body_end]=="Let us compare.";
+    #assert records[2].role==cast(HmRole)3 && records[2].channel==cast(HmChannel)3 && records[2].ending==cast(HmEnd)1;
+    #assert cast(string)bytes[records[2].name_begin..<records[2].name_end]=="";
+    #assert cast(string)bytes[records[2].recipient_begin..<records[2].recipient_end]=="";
+    #assert cast(string)bytes[records[2].body_begin..<records[2].body_end]=="42.";
+}
+#test "independent typed Harmony render and full parse 5" {
+    table:=HS_TOY;tokens:[2048]int;stage:[2048]int;symbols:[1024]int;bytes:[4096]u8;work:[4096]u8;records:[8]HmRecord;draft:[8]HmRecord;
+    messages:=[3]HmMessage.[HmMessage.{role=cast(HmRole)3,channel=cast(HmChannel)2,ending=cast(HmEnd)2,name="",recipient="functions.weather",body="{\"city\":\"Tokyo\"}"},HmMessage.{role=cast(HmRole)4,channel=cast(HmChannel)2,ending=cast(HmEnd)0,name="functions.weather",recipient="assistant",body="{\"temperature\":20}"},HmMessage.{role=cast(HmRole)3,channel=cast(HmChannel)3,ending=cast(HmEnd)1,name="",recipient="",body="20°C ☀"}];
+    expected:=[147]int.[200006,97,115,115,105,115,116,97,110,116,32,116,111,61,102,117,110,99,116,105,111,110,115,46,119,101,97,116,258,114,200005,99,111,109,109,101,110,116,97,114,121,200008,123,34,99,105,116,121,34,58,34,84,111,107,121,111,34,125,200012,200006,102,117,110,99,116,105,111,110,115,46,119,101,97,116,258,114,32,116,111,61,97,115,115,105,115,116,97,110,116,200005,99,111,109,109,101,110,116,97,114,121,200008,123,34,116,101,109,112,101,114,97,116,117,114,101,34,58,50,48,125,200007,200006,97,115,115,105,115,116,97,110,116,200005,102,105,110,97,108,200008,50,48,194,176,67,32,226,152,128,200002];
+    r:=hm_render_checked(table[..],messages[0..<3],false,tokens[..],stage[..],symbols[..],false);
+    #assert r.status==HmStatus.ok && r.written==147 && r.bytes==137 && r.work==1035;
+    for i:0..<r.written {#assert tokens[i]==expected[i];}
+    p:=hm_parse_checked(table[..],tokens[0..<147],false,records[..],draft[..],bytes[..],work[..],false);
+    #assert p.status==HmStatus.ok && p.written==3 && p.consumed==147 && p.bytes==137;
+    #assert records[0].role==cast(HmRole)3 && records[0].channel==cast(HmChannel)2 && records[0].ending==cast(HmEnd)2;
+    #assert cast(string)bytes[records[0].name_begin..<records[0].name_end]=="";
+    #assert cast(string)bytes[records[0].recipient_begin..<records[0].recipient_end]=="functions.weather";
+    #assert cast(string)bytes[records[0].body_begin..<records[0].body_end]=="{\"city\":\"Tokyo\"}";
+    #assert records[1].role==cast(HmRole)4 && records[1].channel==cast(HmChannel)2 && records[1].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[1].name_begin..<records[1].name_end]=="functions.weather";
+    #assert cast(string)bytes[records[1].recipient_begin..<records[1].recipient_end]=="assistant";
+    #assert cast(string)bytes[records[1].body_begin..<records[1].body_end]=="{\"temperature\":20}";
+    #assert records[2].role==cast(HmRole)3 && records[2].channel==cast(HmChannel)3 && records[2].ending==cast(HmEnd)1;
+    #assert cast(string)bytes[records[2].name_begin..<records[2].name_end]=="";
+    #assert cast(string)bytes[records[2].recipient_begin..<records[2].recipient_end]=="";
+    #assert cast(string)bytes[records[2].body_begin..<records[2].body_end]=="20°C ☀";
+}
+#test "independent typed Harmony render and full parse 6" {
+    table:=HS_TOY;tokens:[2048]int;stage:[2048]int;symbols:[1024]int;bytes:[4096]u8;work:[4096]u8;records:[8]HmRecord;draft:[8]HmRecord;
+    messages:=[4]HmMessage.[HmMessage.{role=cast(HmRole)0,channel=cast(HmChannel)0,ending=cast(HmEnd)0,name="",recipient="",body=""},HmMessage.{role=cast(HmRole)1,channel=cast(HmChannel)0,ending=cast(HmEnd)0,name="",recipient="",body=""},HmMessage.{role=cast(HmRole)2,channel=cast(HmChannel)0,ending=cast(HmEnd)0,name="",recipient="",body=""},HmMessage.{role=cast(HmRole)3,channel=cast(HmChannel)0,ending=cast(HmEnd)1,name="",recipient="",body=""}];
+    expected:=[40]int.[200006,115,121,115,116,101,109,200008,200007,200006,100,101,118,101,108,111,112,101,114,200008,200007,200006,117,115,101,114,200008,200007,200006,97,115,115,105,115,116,97,110,116,200008,200002];
+    r:=hm_render_checked(table[..],messages[0..<4],false,tokens[..],stage[..],symbols[..],false);
+    #assert r.status==HmStatus.ok && r.written==40 && r.bytes==28 && r.work==214;
+    for i:0..<r.written {#assert tokens[i]==expected[i];}
+    p:=hm_parse_checked(table[..],tokens[0..<40],false,records[..],draft[..],bytes[..],work[..],false);
+    #assert p.status==HmStatus.ok && p.written==4 && p.consumed==40 && p.bytes==28;
+    #assert records[0].role==cast(HmRole)0 && records[0].channel==cast(HmChannel)0 && records[0].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[0].name_begin..<records[0].name_end]=="";
+    #assert cast(string)bytes[records[0].recipient_begin..<records[0].recipient_end]=="";
+    #assert cast(string)bytes[records[0].body_begin..<records[0].body_end]=="";
+    #assert records[1].role==cast(HmRole)1 && records[1].channel==cast(HmChannel)0 && records[1].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[1].name_begin..<records[1].name_end]=="";
+    #assert cast(string)bytes[records[1].recipient_begin..<records[1].recipient_end]=="";
+    #assert cast(string)bytes[records[1].body_begin..<records[1].body_end]=="";
+    #assert records[2].role==cast(HmRole)2 && records[2].channel==cast(HmChannel)0 && records[2].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[2].name_begin..<records[2].name_end]=="";
+    #assert cast(string)bytes[records[2].recipient_begin..<records[2].recipient_end]=="";
+    #assert cast(string)bytes[records[2].body_begin..<records[2].body_end]=="";
+    #assert records[3].role==cast(HmRole)3 && records[3].channel==cast(HmChannel)0 && records[3].ending==cast(HmEnd)1;
+    #assert cast(string)bytes[records[3].name_begin..<records[3].name_end]=="";
+    #assert cast(string)bytes[records[3].recipient_begin..<records[3].recipient_end]=="";
+    #assert cast(string)bytes[records[3].body_begin..<records[3].body_end]=="";
+}
+#test "independent implicit assistant completion 0" {
+    table:=HS_TOY;bytes:[4096]u8;work:[4096]u8;records:[8]HmRecord;draft:[8]HmRecord;
+    tokens:=[63]int.[200005,97,110,97,108,121,115,105,115,200008,83,104,111,114,116,32,114,101,97,115,111,110,105,110,103,46,200007,200006,97,115,115,105,115,116,97,110,116,200005,102,105,110,97,108,200008,70,105,110,97,108,32,97,110,115,119,101,114,58,32,52,50,46,200002,201088];
+    p:=hm_parse_checked(table[..],tokens[..],true,records[..],draft[..],bytes[..],work[..],false);
+    #assert p.status==HmStatus.ok && p.written==2 && p.consumed==62 && p.stop==cast(HmEnd)1;
+    #assert records[0].role==cast(HmRole)3 && records[0].channel==cast(HmChannel)1 && records[0].ending==cast(HmEnd)0;
+    #assert cast(string)bytes[records[0].name_begin..<records[0].name_end]=="";
+    #assert cast(string)bytes[records[0].recipient_begin..<records[0].recipient_end]=="";
+    #assert cast(string)bytes[records[0].body_begin..<records[0].body_end]=="Short reasoning.";
+    #assert records[1].role==cast(HmRole)3 && records[1].channel==cast(HmChannel)3 && records[1].ending==cast(HmEnd)1;
+    #assert cast(string)bytes[records[1].name_begin..<records[1].name_end]=="";
+    #assert cast(string)bytes[records[1].recipient_begin..<records[1].recipient_end]=="";
+    #assert cast(string)bytes[records[1].body_begin..<records[1].body_end]=="Final answer: 42.";
+}
+#test "independent implicit assistant completion 1" {
+    table:=HS_TOY;bytes:[4096]u8;work:[4096]u8;records:[8]HmRecord;draft:[8]HmRecord;
+    tokens:=[32]int.[32,116,111,61,112,121,116,104,111,110,200005,97,110,97,108,121,115,105,115,200008,112,114,105,110,116,40,50,43,50,41,200012,200006];
+    p:=hm_parse_checked(table[..],tokens[..],true,records[..],draft[..],bytes[..],work[..],false);
+    #assert p.status==HmStatus.ok && p.written==1 && p.consumed==31 && p.stop==cast(HmEnd)2;
+    #assert records[0].role==cast(HmRole)3 && records[0].channel==cast(HmChannel)1 && records[0].ending==cast(HmEnd)2;
+    #assert cast(string)bytes[records[0].name_begin..<records[0].name_end]=="";
+    #assert cast(string)bytes[records[0].recipient_begin..<records[0].recipient_end]=="python";
+    #assert cast(string)bytes[records[0].body_begin..<records[0].body_end]=="print(2+2)";
+}
+#test "independent implicit assistant completion 2" {
+    table:=HS_TOY;bytes:[4096]u8;work:[4096]u8;records:[8]HmRecord;draft:[8]HmRecord;
+    tokens:=[35]int.[200005,99,111,109,109,101,110,116,97,114,121,32,116,111,61,102,117,110,99,116,105,111,110,115,46,108,111,111,107,117,112,200008,123,125,200012];
+    p:=hm_parse_checked(table[..],tokens[..],true,records[..],draft[..],bytes[..],work[..],false);
+    #assert p.status==HmStatus.ok && p.written==1 && p.consumed==35 && p.stop==cast(HmEnd)2;
+    #assert records[0].role==cast(HmRole)3 && records[0].channel==cast(HmChannel)2 && records[0].ending==cast(HmEnd)2;
+    #assert cast(string)bytes[records[0].name_begin..<records[0].name_end]=="";
+    #assert cast(string)bytes[records[0].recipient_begin..<records[0].recipient_end]=="functions.lookup";
+    #assert cast(string)bytes[records[0].body_begin..<records[0].body_end]=="{}";
+}
+#test "independent implicit assistant completion 3" {
+    table:=HS_TOY;bytes:[4096]u8;work:[4096]u8;records:[8]HmRecord;draft:[8]HmRecord;
+    tokens:=[2]int.[200008,200002];
+    p:=hm_parse_checked(table[..],tokens[..],true,records[..],draft[..],bytes[..],work[..],false);
+    #assert p.status==HmStatus.ok && p.written==1 && p.consumed==2 && p.stop==cast(HmEnd)1;
+    #assert records[0].role==cast(HmRole)3 && records[0].channel==cast(HmChannel)0 && records[0].ending==cast(HmEnd)1;
+    #assert cast(string)bytes[records[0].name_begin..<records[0].name_end]=="";
+    #assert cast(string)bytes[records[0].recipient_begin..<records[0].recipient_end]=="";
+    #assert cast(string)bytes[records[0].body_begin..<records[0].body_end]=="";
+}

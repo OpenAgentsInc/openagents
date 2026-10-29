@@ -30,10 +30,10 @@ run examples directly without the check command.
 | [10. Execute Elephant](ch10-execute-elephant.md) | Runnable: original weights, CPU | Authenticate Elephant and execute a typed text decision through its complete hybrid stack. |
 | [41. Original MXFP4 weights](ch41-original-mxfp4-weights.md) | Runnable: bounded CPU format decoder | Decode original gpt-oss packed groups exactly, with independent bit oracles and atomic refusals. |
 | [42. A few experts, then a router](ch42-a-few-experts-then-a-router.md) | Runnable: bounded CPU router and tiny affine experts | Select and normalize top-k routes, dispatch by resident expert ID and publish a checked weighted mixture. |
-
 | [43. Attention with sinks and a window](ch43-attention-with-sinks-and-a-window.md) | Runnable: gpt-oss-attention-cpu-wide-v1 | Compute per-head sink attention with a bounded ring, split-half YaRN, biased projection and clamped expert activation. |
+| [44. The harmony format](ch44-the-harmony-format.md) | Runnable: gpt-oss-harmony-text-v1 | Encode original byte ranks, frame typed messages with reasoning effort and parse strict complete replies with exact turn/handoff stops. |
 
-Chapters 41–43 start an independent gpt-oss branch; chapters 11–40 remain planned.
+Chapters 41–44 start an independent gpt-oss branch; chapters 11–40 remain planned.
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
 sets the proposed full reading order: early Elephant/Mammoth and useful

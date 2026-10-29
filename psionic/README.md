@@ -17,6 +17,8 @@ branch with an exact bounded decoder for its original MXFP4 byte groups.
 and a complete tiny affine mixture with explicit resident budgets.
 [Chapter 43](book/ch43-attention-with-sinks-and-a-window.md) adds sink/window
 attention, split-half YaRN, biased projection and the clamped expert activation.
+[Chapter 44](book/ch44-the-harmony-format.md) adds the original byte-rank
+tokenizer and typed Harmony rendering/parsing with exact completion stops.
 
 Start with [the book](book/README.md) and
 [Chapter 1: Learning a number](book/ch01-learning-a-number.md), then
@@ -49,6 +51,8 @@ coax/bin/coax run psionic/examples/few-experts.coax
 psionic/tests/check_moe.sh
 coax/bin/coax run psionic/examples/attention-sinks.coax
 psionic/tests/check_gptoss_attention.sh
+coax/bin/coax run psionic/examples/harmony.coax
+psionic/tests/check_harmony.sh
 ```
 
 The check command builds the compiler if it is absent, runs authored Coax
@@ -62,6 +66,7 @@ credentials, or downloads at run time.
 
 | Path | Role |
 | --- | --- |
+| [lib/harmony.coax](lib/harmony.coax) | Original-rank gpt-oss text tokenization, immutable table admission, typed message framing and strict full/completion parsing with atomic public output. |
 | [lib/gptoss-attention.coax](lib/gptoss-attention.coax), [lib/gptoss-math.coax](lib/gptoss-math.coax) | Bounded sink/window attention, split-half YaRN, biased projection and interleaved clamped SwiGLU under an explicit wide CPU profile. |
 | [lib/moe.coax](lib/moe.coax) | Bounded top-k selection, selected-only normalization and tiny resident affine expert mixtures with atomic output. |
 | [lib/mxfp4.coax](lib/mxfp4.coax) | Original gpt-oss MXFP4 byte decoding: exact finite CPU values, shape/count/scale admission and unchanged output on refusal; separate from complete artifact admission. |

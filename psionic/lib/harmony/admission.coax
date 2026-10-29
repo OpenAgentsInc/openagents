@@ -1,0 +1,10 @@
+// Once-per-immutable-table artifact admission, separate from per-request work.
+#load "../model-io/identity.coax";
+#load "../../fixtures/harmony/pins.coax";
+#authority;
+#test "an empty table cannot impersonate the original gpt-oss vocabulary" {
+    table:[1]u8;#assert !hs_admit(table[0..<0]);
+}
+// book:begin admit
+hs_admit :: (table:[]u8)->bool #export_c {return pw_digest(table,HS_TABLE_SHA);}
+// book:end admit

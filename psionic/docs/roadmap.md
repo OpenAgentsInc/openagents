@@ -10,6 +10,9 @@ adds bounded top-k routing and tiny resident affine mixtures.
 attention, split-half YaRN, a bounded biased projection and clamped activation
 under a named wide CPU profile. Original full-size projection/block execution,
 checkpoint binding and complete gpt-oss execution remain planned.
+[Chapter 44](../book/ch44-the-harmony-format.md) now adds the original byte-rank
+tokenizer, reasoning-effort templates and typed Harmony render/parse gates.
+This is a bounded Unicode-17 text profile, not tool execution or generation.
 [Run the first chapter](../book/ch01-learning-a-number.md)
 or `psionic/check.sh`; [retained verification](../../docs/verification/psionic-m0-2026-10-28.md)
 records the scope. Later chapter titles are working names; gates determine
@@ -191,7 +194,7 @@ a prerequisite for starting the ready work.
 
 The [full proposed table of contents](../book/PLAN.md) now gives
 one outline per chapter, with prerequisite notes. Chapters 1–10 and the
-independent MXFP4/router/attention chapters 41–43 are runnable;
+independent MXFP4/router/attention/Harmony chapters 41–44 are runnable;
 chapter numbers and part boundaries are provisional. The new
 [NVIDIA breadth survey](targets/nvidia-breadth.md) records pinned candidate checkpoints,
 operator requirements, data studies and source-license qualifications.

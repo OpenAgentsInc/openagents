@@ -1,5 +1,36 @@
 # Invariants
 
+## Psionic Harmony text separates ordinary bytes from control IDs
+
+`psionic/lib/harmony/` owns `gpt-oss-harmony-text-v1`: the pinned original
+o200k byte ranks, a separate case-sensitive split pattern and Unicode-17
+properties, without NFC normalization. The original-derived HST7 table is
+SHA-256-admitted once and retained immutable; layout parsing is not identity
+admission. The existing byte-BPE loop is shared through an independent pair
+index and whole-piece lookup. Ordinary text cannot introduce formatting IDs.
+
+Typed messages preserve supplied history. The three reasoning efforts use the
+pinned default system template. Complete parsing recognizes all supported
+roles/channels and recipients on either side of a channel; completion mode
+continues past message ends and consumes the first return/call, leaving trailing
+tokens untouched. Only assistant messages may return or call, with a named
+recipient required for calls. Unsupported extensions and malformed input refuse.
+Public token arrays, decoded bytes and byte-interval records publish atomically;
+workspaces may change. No tool execution or display policy is granted.
+
+Bounds are 64 messages, 16,384 IDs, 65,536 logical decoded bytes, 64-byte ASCII
+identifiers, 256-byte headers, 1,024-byte pieces and a 16,777,216 sum-of-squares
+piece budget. The model profile ends at ID 201,087; generic Harmony
+ID 201,088 is outside it. Valid allocation/extents/alignment, input/table
+immutability, lifetime and exclusive writable access remain caller duties.
+C observes nested overlaps only. Incremental parsing, optional header and
+multimodal extensions and whole-model execution remain separate gates.
+
+Check: `psionic/tests/check_harmony.sh` and the main `psionic/check.sh` cover
+owned original-rank/regex/heap oracles, debug/release, zero-survivor authority
+mutation, native plain/ASan/UBSan and exact book output. See the
+[chapter 44 record](docs/verification/psionic-ch44-2026-10-29.md).
+
 ## Psionic gpt-oss attention preserves sink mass and visible cache history
 
 `gptoss-attention.coax` and `gptoss-math.coax` implement

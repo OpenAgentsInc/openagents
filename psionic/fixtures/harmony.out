@@ -1,0 +1,5 @@
+ordinary markers: preserved as body text
+completion: 2 messages; analysis then final; stop=return
+truncated turn: refused without output
+handoff: functions.weather; stop=call
+reasoning: medium

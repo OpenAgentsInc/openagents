@@ -1,0 +1,3 @@
+// Public gpt-oss-harmony-text-v1 composition root; implementation units own checks.
+#load "harmony/admission.coax";
+#load "harmony/messages.coax";

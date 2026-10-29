@@ -140,6 +140,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/harmony.coax",
+      "chapter": "psionic/book/ch44-the-harmony-format.md",
+      "stdout": "psionic/fixtures/harmony.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
