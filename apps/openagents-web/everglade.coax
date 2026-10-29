@@ -58,25 +58,52 @@ SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
 SLOTS :: [5] int.[0, 400, 72, 48, 1640];
 SLOT_AT :: [5] int.[0, 0, 400, 472, 520];
 SHAPE_OBJECTS :: 2160;
-// The kit's instances after the shapes: a group each, a tree kind (its
-// trunk and its leaves, two meshes drawn over the same instances) or a
-// small thing (a bush, a fern, two rocks).
-KIT_GROUPS :: 8;
+// The kit's instances after the shapes, a group each: a tree kind (its
+// trunk and its leaves, two meshes drawn over the same instances), a small
+// thing of the undergrowth (a bush, a fern, two rocks), then one per piece
+// of the town. The forest's eight groups are chosen again every frame; the
+// town's are laid once, at the start (build_town).
 KIT_TREES :: 4;
-KIT_CAP :: 80;            // instances a group may draw
+KIT_FOREST :: 8;          // the groups the forest fills each frame
+KIT_CAP :: 80;            // a forest group's instances
 KIT_AT :: SHAPE_OBJECTS;
-OBJECTS :: SHAPE_OBJECTS + KIT_GROUPS * KIT_CAP;
+KIT_GROUPS :: KIT_MESHES - KIT_TREES;
+// The town's pieces' instances, a group each, from mesh 12 on.
+TOWN_CAP :: [40] int.[
+  260, 200, 20, 140, 220, 200, 8, 330, 20, 140,
+  16, 12, 760, 300, 100, 6, 4, 8, 16, 30,
+  24, 12, 40, 24, 24, 12, 10, 4, 6, 6,
+  8, 3, 6, 12, 4, 2, 40, 6, 8, 20
+];
+TOWN_OBJECTS :: 3061;     // the sum of TOWN_CAP
+OBJECTS :: SHAPE_OBJECTS + KIT_FOREST * KIT_CAP + TOWN_OBJECTS;
 OBJECT_FLOATS :: 16;
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_WATER :: 4; LOOK_KIT :: 5;
-KIT_MESHES :: 12;
-KIT_MESH :: [12] string.["Pine_5", "Pine_5_Leaves", "Pine_4", "Pine_4_Leaves", "CommonTree_3", "CommonTree_3_Leaves",
-                         "CommonTree_4", "CommonTree_4_Leaves", "Bush_Common_Flowers", "Fern_1", "Rock_Medium_1", "Rock_Medium_2"];
+KIT_MESHES :: 52;
+KIT_MESH :: [52] string.["Pine_5", "Pine_5_Leaves", "Pine_4", "Pine_4_Leaves", "CommonTree_3", "CommonTree_3_Leaves",
+  "CommonTree_4", "CommonTree_4_Leaves", "Bush_Common_Flowers", "Fern_1", "Rock_Medium_1", "Rock_Medium_2",
+  "Wall_Plaster_Straight", "Wall_Plaster_Window_Wide_Round", "Wall_Plaster_Door_Round", "Wall_Plaster_WoodGrid",
+  "Wall_UnevenBrick_Straight", "Wall_UnevenBrick_Window_Wide_Round", "Wall_UnevenBrick_Door_Round", "Window_Wide_Round1",
+  "Door_1_Round", "Corner_Exterior_Wood", "Roof_RoundTiles_6x8", "Roof_Tower_RoundTiles", "Roof_Log", "Floor_WoodDark",
+  "Floor_Brick", "Prop_Chimney", "Stair_Interior_Solid", "Stall_Empty", "FarmCrate_Apple", "Barrel", "Crate_Wooden",
+  "Table_Large", "Chair_1", "Bench", "Mug", "Shelf_Arch", "Bag", "Anvil", "WeaponStand", "Sword_Bronze", "Shield_Wooden",
+  "Cauldron", "Dummy", "Banner_1", "Peg_Rack", "Chalice", "Roof_Front_Brick6", "Scroll_1", "Stairs_Exterior_Platform",
+  "Prop_WoodenFence_Single"];
+// The town's meshes by name.
+M_PLASTER :: 12; M_PLASTER_WINDOW :: 13; M_PLASTER_DOOR :: 14; M_PLASTER_GRID :: 15;
+M_BRICK :: 16; M_BRICK_WINDOW :: 17; M_BRICK_DOOR :: 18; M_WINDOW :: 19; M_DOOR :: 20; M_CORNER :: 21;
+M_ROOF :: 22; M_TOWER_ROOF :: 23; M_LOG :: 24; M_FLOOR_WOOD :: 25; M_FLOOR_BRICK :: 26; M_CHIMNEY :: 27; M_STAIR :: 28;
+M_STALL :: 29; M_APPLES :: 30; M_BARREL :: 31; M_CRATE :: 32; M_TABLE :: 33; M_CHAIR :: 34; M_BENCH :: 35; M_MUG :: 36;
+M_SHELF :: 37; M_BAG :: 38; M_ANVIL :: 39; M_WEAPONS :: 40; M_SWORD :: 41; M_SHIELD :: 42; M_CAULDRON :: 43; M_DUMMY :: 44;
+M_BANNER :: 45; M_PEGS :: 46; M_CHALICE :: 47; M_GABLE :: 48; M_SCROLL :: 49; M_STEP :: 50; M_FENCE :: 51;
+STOREY :: 3.12;           // a kit wall's height
+WALL_FACE :: 0.09;        // how far a wall's outer face stands from its origin (its local +z)
 // The shapes' five draws, then a draw per kit mesh.
 DRAWS :: 5 + KIT_MESHES;
 MSG_PACK :: 605;          // the host's pack progress: "LOADED TOTAL"
 
-WALLS :: 64;           // the player's walls (player.coax WALL numbers each)
-BOXES :: 64;           // the camera's boxes (camera.coax BOX numbers each)
+WALLS :: 128;          // the player's walls (player.coax WALL numbers each)
+BOXES :: 128;          // the camera's boxes (camera.coax BOX numbers each)
 TREES :: 1500;         // the forest: x, z, size, yaw, kind each
 TREE_FLOATS :: 5;
 SMALLS :: 900;         // the undergrowth along the tree line: the same five numbers
@@ -130,7 +157,9 @@ Everglade :: struct {
   identity_first: int; pack_ready: bool; pack_failed: bool;
   pack_loaded: int; pack_total: int;
   kit_used: [KIT_GROUPS] int;
+  group_at: [KIT_GROUPS] int; group_cap: [KIT_GROUPS] int;
   kit_triangles: int;       // the kit triangles the last frame drew
+  forest_triangles: int;    // of which the forest's
   shadow_n: int;
   plate_n: int;
 }
@@ -192,6 +221,13 @@ everglade_start :: (s: [] Everglade) {
   s[0].map_finger = -1;
   build_scenery(s);
   plant_forest(s);
+  at := KIT_AT;
+  for g: 0..<KIT_GROUPS {
+    cap := ifx g < KIT_FOREST then KIT_CAP else TOWN_CAP[g - KIT_FOREST];
+    s[0].group_at[g] = at; s[0].group_cap[g] = cap; s[0].kit_used[g] = 0;
+    at += cap;
+  }
+  build_town(s);
 }
 
 // The player's walls (every solid, from the floor up) and the camera's
@@ -343,6 +379,23 @@ everglade_warp :: (s: [] Everglade) -> bool #export_c { w := s[0].warp; s[0].war
 everglade_hash :: (s: [] Everglade, hash: string) #export_c {
   if !s[0].started { everglade_start(s); }
   if hash == "above" || hash == "map" { s[0].above = true; s[0].lift = 1; return; }
+  for b: 0..<EG_BUILDINGS {
+    if !EG_INTERIOR[b] || hash != EG_ROOM_ID[b] { continue; }
+    r := room_of(s, b);
+    // far enough in that the camera behind you stays in the room
+    v := lo(hi(r.depth * 0.5, 5.2), r.depth - 1.5);
+    // and off to one side when the door is on the middle line, clear of its open leaf
+    k := b * EG_BOX;
+    d := everglade_door(b);
+    mid := ifx d.side < 2 then (EG_BUILDING[k] + EG_BUILDING[k + 2]) / 2 else (EG_BUILDING[k + 1] + EG_BUILDING[k + 3]) / 2;
+    u := ifx abs(d.along - mid) < 1.5 then 1.8f32 else 0.0f32;
+    x := r.fx + r.vx * v + r.ux * u; z := r.fz + r.vz * v + r.uz * u;
+    s[0].spawn = v3(x, 0, z); s[0].spawn_face = r.face;
+    s[0].feet = v3(x, ground_at(s, x, z), z);
+    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].warp = true; s[0].above = false; s[0].lift = 0;
+    return;
+  }
   for p: 0..<EG_PLACES {
     if hash != EG_PLACE_ID[p] { continue; }
     px := EG_PLACE[p * 2]; pz := EG_PLACE[p * 2 + 1];
@@ -488,54 +541,12 @@ block :: (s: [] Everglade, look: int, x0: f32, z0: f32, x1: f32, z1: f32, h: f32
   shape(s, SHAPE_BOX, look, v3((x0 + x1) / 2, g + (h - 1) / 2, (z0 + z1) / 2), 0, 0, x1 - x0, h + 1, z1 - z0, red, green, blue);
 }
 
-// A gable roof over a footprint: a box turned a quarter on its long axis,
-// half of it showing above the walls.
-roof :: (s: [] Everglade, x0: f32, z0: f32, x1: f32, z1: f32, h: f32, red: f32, green: f32, blue: f32) {
-  g := ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
-  w := x1 - x0; d := z1 - z0;
-  along_x := w >= d;
-  span := ifx along_x then d else w;
-  side := span * 0.5 * 1.4142 + 0.3;
-  centre := v3((x0 + x1) / 2, g + h, (z0 + z1) / 2);
-  if along_x {
-    shape(s, SHAPE_BOX, LOOK_MATTE, centre, f32(PI) / 2, f32(PI) / 4, side, side, w + 0.6, 0.42, 0.36, 0.33);
-  } else {
-    shape(s, SHAPE_BOX, LOOK_MATTE, centre, 0, f32(PI) / 4, side, side, d + 0.6, 0.42, 0.36, 0.33);
-  }
-}
-
 city :: (s: [] Everglade, u: [] f32) {
-  // The palisade: timber walls and their towers.
-  for i: 0..<EG_PALISADE_N {
-    k := i * EG_BOX;
-    tall := EG_PALISADE[k + 4] > 5;
-    block(s, LOOK_MATTE, EG_PALISADE[k], EG_PALISADE[k + 1], EG_PALISADE[k + 2], EG_PALISADE[k + 3], EG_PALISADE[k + 4],
-          ifx tall then 0.46f32 else 0.52f32, ifx tall then 0.4f32 else 0.45f32, ifx tall then 0.34f32 else 0.38f32);
-  }
-  // The buildings: grey walls and a darker roof; houses lighter, landmarks warmer.
-  for b: 0..<EG_BUILDINGS {
-    k := b * EG_BOX;
-    x0 := EG_BUILDING[k]; z0 := EG_BUILDING[k + 1]; x1 := EG_BUILDING[k + 2]; z1 := EG_BUILDING[k + 3]; h := EG_BUILDING[k + 4];
-    house := b >= EG_HOUSES;
-    wall := ifx house then 0.72f32 else 0.66f32;
-    if b == EG_OBSERVATORY || b == EG_MAGES {
-      block(s, LOOK_STONE, x0, z0, x1, z1, h, wall, wall, wall * 1.03);
-      g := ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
-      shape(s, SHAPE_CONE, LOOK_MATTE, v3((x0 + x1) / 2, g + h + 2, (z0 + z1) / 2), 0, 0, (x1 - x0) * 1.2, 4, (z1 - z0) * 1.2, 0.4, 0.36, 0.42);
-      if b == EG_OBSERVATORY {
-        shape(s, SHAPE_SPHERE, LOOK_STONE, v3((x0 + x1) / 2, g + h + 4.5, (z0 + z1) / 2), 0, 0, 3, 3, 3, 0.75, 0.75, 0.8);
-      }
-    } else {
-      block(s, LOOK_STONE, x0, z0, x1, z1, h - 2.5, wall, wall * 0.98, wall * 0.95);
-      roof(s, x0, z0, x1, z1, h - 2.5, 0.42, 0.36, 0.33);
-    }
-    // The door: a dark slab on the wall facing its door spot.
-    dx := EG_DOOR[b * 2]; dz := EG_DOOR[b * 2 + 1];
-    g := ground_at(s, dx, dz);
-    across := dx < x0 || dx > x1;
-    wx := clamp(dx, x0, x1); wz := clamp(dz, z0, z1);
-    shape(s, SHAPE_BOX, LOOK_MATTE, v3(wx, g + 1.1, wz), 0, 0, ifx across then 0.25f32 else 1.4f32, 2.2, ifx across then 1.4f32 else 0.25f32, 0.22, 0.16, 0.1);
-  }
+  // The palisade and the buildings are the kit's (build_town); the
+  // observatory's dome is the engine's sphere, as the kits have none.
+  ob := EG_OBSERVATORY * EG_BOX;
+  ox := (EG_BUILDING[ob] + EG_BUILDING[ob + 2]) / 2; oz := (EG_BUILDING[ob + 1] + EG_BUILDING[ob + 3]) / 2;
+  shape(s, SHAPE_SPHERE, LOOK_STONE, v3(ox, ground_at(s, ox, oz) + f32(STOREY) * f32(OBSERVATORY_STOREYS), oz), 0, 0, 7.4, 7.4, 7.4, 0.78, 0.78, 0.82);
   // The commons: the fountain, the quest board.
   g := ground_at(s, 0, 0);
   shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(0, g + 0.3, 0), 0, 0, 6, 0.9, 6, 0.7, 0.68, 0.64);
@@ -561,17 +572,275 @@ city :: (s: [] Everglade, u: [] f32) {
       shape(s, SHAPE_BOX, LOOK_MATTE, v3((x0 + x1) / 2, ground_at(s, x0, z0) + 1.7, z0 - 0.02), 0, 0, x1 - x0 - 0.3, 0.9, 0.05, 0.92, 0.88, 0.76);
       continue;
     }
-    if i >= EG_STALL && i < EG_WAYSTONE {
-      block(s, LOOK_MATTE, x0, z0, x1, z1, 1.0, 0.55, 0.42, 0.28);
-      tint := [9] f32.[0.78, 0.3, 0.26,  0.3, 0.5, 0.72,  0.86, 0.72, 0.3];
-      c := (i - EG_STALL) % 3;
-      shape(s, SHAPE_BOX, LOOK_MATTE, v3((x0 + x1) / 2, ground_at(s, x0, z0) + h, (z0 + z1) / 2), 0, 0, x1 - x0 + 0.4, 0.12, z1 - z0 + 0.6, tint[c * 3], tint[c * 3 + 1], tint[c * 3 + 2]);
-      continue;
-    }
+    if i >= EG_STALL && i < EG_WAYSTONE { continue; }   // the kit's stalls (build_town)
     block(s, LOOK_STONE, x0, z0, x1, z1, h, 0.6, 0.6, 0.58);
   }
   br := EG_BRIDGE;
   shape(s, SHAPE_BOX, LOOK_MATTE, v3((br[0] + br[2]) / 2, ground_at(s, 88, -11.5) + 0.1, (br[1] + br[3]) / 2), 0, 0, br[2] - br[0], 0.4, br[3] - br[1], 0.5, 0.38, 0.24);
+}
+
+// ---- the town, laid once from the plan out of the Medieval Village and
+// Fantasy Props kits (docs/verse/everglade.md, "Kit pieces").
+
+OBSERVATORY_STOREYS :: 4;
+// How many storeys of wall a building has: the towers by their height,
+// the temple three, a building 8 m or taller two, the rest one.
+storeys :: (b: int) -> int {
+  h := EG_BUILDING[b * EG_BOX + 4];
+  if b == EG_OBSERVATORY { return OBSERVATORY_STOREYS; }
+  if b == EG_MAGES { return 3; }
+  if b == EG_TEMPLE { return 3; }
+  return ifx h >= 8 then 2 else 1;
+}
+brick :: (b: int) -> bool { return b == EG_SMITHY || b == EG_MAGES || b == EG_TEMPLE || b == EG_OBSERVATORY; }
+
+// A side of a footprint: where it runs and which way is out. Sides as
+// plan.coax everglade_door numbers them: 0 low z, 1 high z, 2 low x, 3 high x.
+Side :: struct { ax: f32; az: f32; bx: f32; bz: f32; nx: f32; nz: f32; yaw: f32; }
+side_of :: (x0: f32, z0: f32, x1: f32, z1: f32, w: int) -> Side {
+  q: Side;
+  if w == 0 { q = Side.{ax = x0, az = z0, bx = x1, bz = z0, nx = 0, nz = -1, yaw = f32(PI)}; }
+  else if w == 1 { q = Side.{ax = x0, az = z1, bx = x1, bz = z1, nx = 0, nz = 1, yaw = 0}; }
+  else if w == 2 { q = Side.{ax = x0, az = z0, bx = x0, bz = z1, nx = -1, nz = 0, yaw = -f32(PI) / 2}; }
+  else { q = Side.{ax = x1, az = z0, bx = x1, bz = z1, nx = 1, nz = 0, yaw = f32(PI) / 2}; }
+  return q;
+}
+
+// A building's walls from the kit's 2 m modules, storey on storey: on the
+// ground a door where the plan's is (open on a walk-in building) and
+// windows between plain walls, above them windows and timber; a post at
+// each corner; then its roof.
+building :: (s: [] Everglade, b: int) {
+  k := b * EG_BOX;
+  x0 := EG_BUILDING[k]; z0 := EG_BUILDING[k + 1]; x1 := EG_BUILDING[k + 2]; z1 := EG_BUILDING[k + 3];
+  g := ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
+  n := storeys(b);
+  stone := brick(b);
+  door := everglade_door(b);
+  open := EG_INTERIOR[b];
+  for w: 0..<4 {
+    q := side_of(x0, z0, x1, z1, w);
+    reach_m := abs(q.bx - q.ax) + abs(q.bz - q.az);
+    modules := cast(int) (reach_m / f32(EG_MODULE) + 0.5);
+    ux := (q.bx - q.ax) / reach_m; uz := (q.bz - q.az) / reach_m;
+    for i: 0..<modules {
+      t := (f32(i) + 0.5) * f32(EG_MODULE);
+      cx := q.ax + ux * t - q.nx * f32(WALL_FACE); cz := q.az + uz * t - q.nz * f32(WALL_FACE);
+      along := ifx w < 2 then q.ax + ux * t else q.az + uz * t;
+      for f: 0..<n {
+        y := g + f32(f) * f32(STOREY);
+        is_door := f == 0 && w == door.side && abs(along - door.along) < 0.01;
+        m := 0;
+        window := (i % 2 == 1) && i != modules - 1;
+        if is_door { m = ifx stone then M_BRICK_DOOR else M_PLASTER_DOOR; }
+        else if window { m = ifx stone then M_BRICK_WINDOW else M_PLASTER_WINDOW; }
+        else if f > 0 && !stone { m = M_PLASTER_GRID; }
+        else { m = ifx stone then M_BRICK else M_PLASTER; }
+        piece(s, m, cx, y, cz, q.yaw, 1, 1, 1);
+        if window { piece(s, M_WINDOW, cx, y, cz, q.yaw, 1, 1, 1); }
+        if is_door {
+          // The leaf hangs on the doorway's left post: shut, or swung in on a walk-in building.
+          hx := cx - ux * 0.53; hz := cz - uz * 0.53;
+          leaf := ifx open then q.yaw + f32(PI) / 2 else q.yaw;
+          piece(s, M_DOOR, hx, y, hz, leaf, 1, 1, 1);
+        }
+      }
+    }
+    // a post up each corner
+    for f: 0..<n { piece(s, M_CORNER, q.ax, g + f32(f) * f32(STOREY), q.az, 0, 1.6, 1, 1.6); }
+  }
+  top := g + f32(n) * f32(STOREY);
+  w := x1 - x0; d := z1 - z0;
+  if b == EG_MAGES {
+    r := (hi(w, d) + 0.9) / 5.66;
+    piece(s, M_TOWER_ROOF, (x0 + x1) / 2, top + 0.57 * r, (z0 + z1) / 2, 0, r, r, r);
+    return;
+  }
+  if b == EG_OBSERVATORY { return; }   // its dome is drawn by city()
+  // The roof: the kit's 6x8 tiles stretched over the footprint, its ridge along the long side.
+  long_z := d >= w;
+  span := ifx long_z then w else d;
+  run := ifx long_z then d else w;
+  sx := (span + 0.8) / 8.24; sz := (run + 0.8) / 9.68; sy := sx * 0.85;
+  piece(s, M_ROOF, (x0 + x1) / 2, top + 0.78 * sy, (z0 + z1) / 2, ifx long_z then 0.0f32 else f32(PI) / 2, sx, sy, sz);
+  // The gables: the kit's brick-and-plaster fronts closing each end under the ridge.
+  gx := span / 6.7; gy := 5.4 * sy / 4.38;
+  for e: 0..<2 {
+    w2 := ifx long_z then e else 2 + e;
+    q := side_of(x0, z0, x1, z1, w2);
+    piece(s, M_GABLE, (q.ax + q.bx) / 2 - q.nx * f32(WALL_FACE), top, (q.az + q.bz) / 2 - q.nz * f32(WALL_FACE), q.yaw, gx, gy, 1);
+  }
+}
+
+// A walk-in building's floor, and what's in it: a frame whose u runs
+// along the door's wall and v from it into the room.
+Room :: struct { fx: f32; fz: f32; ux: f32; uz: f32; vx: f32; vz: f32; width: f32; depth: f32; y: f32; face: f32; }
+room_of :: (s: [] Everglade, b: int) -> Room {
+  k := b * EG_BOX;
+  x0 := EG_BUILDING[k]; z0 := EG_BUILDING[k + 1]; x1 := EG_BUILDING[k + 2]; z1 := EG_BUILDING[k + 3];
+  d := everglade_door(b);
+  q := side_of(x0, z0, x1, z1, d.side);
+  r: Room;
+  r.vx = -q.nx; r.vz = -q.nz;
+  r.ux = r.vz; r.uz = -r.vx;
+  r.fx = (q.ax + q.bx) / 2; r.fz = (q.az + q.bz) / 2;
+  r.width = abs(q.bx - q.ax) + abs(q.bz - q.az);
+  r.depth = ifx d.side < 2 then z1 - z0 else x1 - x0;
+  r.y = ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
+  r.face = yaw_of(r.vx, r.vz);
+  return r;
+}
+// A piece in a room at (u, v), up off the floor by y, turned by yaw from facing in.
+put :: (s: [] Everglade, r: Room, m: int, u: f32, v: f32, y: f32, yaw: f32) {
+  piece(s, m, r.fx + r.ux * u + r.vx * v, r.y + y, r.fz + r.uz * u + r.vz * v, r.face + yaw, 1, 1, 1);
+}
+BACK :: 3.1415927;   // a piece facing the door
+furnish :: (s: [] Everglade, b: int) {
+  r := room_of(s, b);
+  k := b * EG_BOX;
+  x0 := EG_BUILDING[k]; z0 := EG_BUILDING[k + 1]; x1 := EG_BUILDING[k + 2]; z1 := EG_BUILDING[k + 3];
+  floor_mesh := ifx b == EG_TEMPLE then M_FLOOR_BRICK else M_FLOOR_WOOD;
+  for i: 0..<cast(int) ((x1 - x0) / 2 + 0.5) {
+    for j: 0..<cast(int) ((z1 - z0) / 2 + 0.5) { piece(s, floor_mesh, x0 + 1 + f32(i) * 2, r.y + 0.03, z0 + 1 + f32(j) * 2, 0, 1, 1, 1); }
+  }
+  W := r.width / 2 - 1.2; D := r.depth - 1.0;
+  if b == EG_INN {
+    for t: 0..<4 {
+      u := ifx t % 2 == 0 then -W * 0.5 else W * 0.5;
+      v := ifx t < 2 then r.depth * 0.38 else r.depth * 0.66;
+      put(s, r, M_TABLE, u, v, 0, f32(PI) / 2);
+      for c: 0..<4 {
+        cu := ifx c % 2 == 0 then -0.85f32 else 0.85f32;
+        cv := ifx c < 2 then -1.65f32 else 1.65f32;
+        put(s, r, M_CHAIR, u + cu, v + cv, 0, ifx c < 2 then 0.0f32 else f32(PI));
+      }
+      put(s, r, M_MUG, u + 0.2, v - 0.3, 0.81, 0); put(s, r, M_MUG, u - 0.25, v + 0.5, 0.81, 1.0);
+    }
+    put(s, r, M_CHIMNEY, 0, D + 0.5, 0, BACK);                      // the hearth
+    put(s, r, M_BENCH, -W * 0.5, D - 0.8, 0, BACK); put(s, r, M_BENCH, W * 0.5, D - 0.8, 0, BACK);
+    for c: 0..<3 { put(s, r, M_BARREL, W, 1.4 + f32(c) * 0.8, 0, 0); }
+    put(s, r, M_STAIR, -W - 0.3, D - 0.2, 0, BACK);
+    return;
+  }
+  if b == EG_STORE {
+    for c: 0..<3 { put(s, r, M_SHELF, (f32(c) - 1) * 2.6, D + 0.6, 0, BACK); }
+    put(s, r, M_TABLE, 0, r.depth * 0.45, 0, BACK);                  // the counter
+    put(s, r, M_BAG, -0.6, r.depth * 0.45, 0.81, 0);
+    put(s, r, M_BARREL, -W, 1.4, 0, 0); put(s, r, M_BARREL, -W, 2.3, 0, 0); put(s, r, M_CRATE, W, 1.5, 0, 0.3); put(s, r, M_CRATE, W, 2.6, 0, -0.2);
+    return;
+  }
+  if b == EG_SMITHY {
+    put(s, r, M_ANVIL, 0, r.depth * 0.7, 0, f32(PI) / 2);
+    put(s, r, M_CHIMNEY, -W + 0.2, D + 0.4, 0, BACK);               // the forge
+    put(s, r, M_WEAPONS, W - 0.5, D, 0, BACK);
+    put(s, r, M_SWORD, W - 0.9, D - 0.3, 0.2, BACK); put(s, r, M_SHIELD, W - 0.1, D - 0.3, 0.3, BACK);
+    put(s, r, M_BARREL, W, 1.4, 0, 0);
+    return;
+  }
+  if b == EG_ALCHEMIST {
+    put(s, r, M_CAULDRON, 0, r.depth * 0.72, 0, 0);
+    put(s, r, M_SHELF, -1.5, D + 0.6, 0, BACK); put(s, r, M_SHELF, 1.5, D + 0.6, 0, BACK);
+    put(s, r, M_TABLE, W - 0.2, r.depth * 0.5, 0, f32(PI) / 2);
+    put(s, r, M_SCROLL, W - 0.2, r.depth * 0.5, 0.81, 0.4);
+    return;
+  }
+  if b == EG_FIGHTERS {
+    for c: 0..<3 { put(s, r, M_DUMMY, (f32(c) - 1) * 3, r.depth * 0.55, 0, BACK); }
+    put(s, r, M_WEAPONS, -W + 0.4, D, 0, BACK); put(s, r, M_WEAPONS, W - 0.4, D, 0, BACK);
+    put(s, r, M_BANNER, -2, D + 0.7, 0.4, BACK); put(s, r, M_BANNER, 2, D + 0.7, 0.4, BACK);
+    put(s, r, M_BENCH, 0, 1.6, 0, 0);
+    return;
+  }
+  if b == EG_RANGERS {
+    put(s, r, M_PEGS, 0, D + 0.8, 1.5, BACK); put(s, r, M_PEGS, 2, D + 0.8, 1.5, BACK);
+    put(s, r, M_TABLE, 0, r.depth * 0.72, 0, 0);
+    put(s, r, M_BAG, -W + 0.3, D - 0.2, 0, 0.5); put(s, r, M_BAG, -W + 1.1, D - 0.2, 0, -0.4);
+    put(s, r, M_CRATE, W - 0.2, D - 0.2, 0, 0.2); put(s, r, M_BENCH, 0, r.depth * 0.72 - 1.3, 0, 0);
+    return;
+  }
+  if b == EG_TEMPLE {
+    for row: 0..<4 {
+      v := 3.0 + f32(row) * 2.4;
+      put(s, r, M_BENCH, -3, v, 0, BACK); put(s, r, M_BENCH, 3, v, 0, BACK);
+    }
+    put(s, r, M_TABLE, 0, D - 1.2, 0, BACK);                        // the altar
+    put(s, r, M_CHALICE, 0, D - 1.2, 0.81, 0);
+    put(s, r, M_BANNER, -3.5, D + 0.7, 0.4, BACK); put(s, r, M_BANNER, 3.5, D + 0.7, 0.4, BACK);
+  }
+}
+
+// The palisade: upright logs along each wall, a log across each gate's
+// top, and the gate towers in brick under round roofs.
+POST :: 0.62;   // metres between posts
+palisade :: (s: [] Everglade) {
+  for i: 0..<EG_PALISADE_N {
+    k := i * EG_BOX;
+    x0 := EG_PALISADE[k]; z0 := EG_PALISADE[k + 1]; x1 := EG_PALISADE[k + 2]; z1 := EG_PALISADE[k + 3]; h := EG_PALISADE[k + 4];
+    if h > 5 {
+      // A tower: four brick walls two storeys high (a 2 m module stretched to its side) and a round roof.
+      g := ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
+      for w: 0..<4 {
+        q := side_of(x0, z0, x1, z1, w);
+        reach_m := abs(q.bx - q.ax) + abs(q.bz - q.az);
+        cx := (q.ax + q.bx) / 2 - q.nx * f32(WALL_FACE); cz := (q.az + q.bz) / 2 - q.nz * f32(WALL_FACE);
+        for f: 0..<2 { piece(s, ifx f == 1 then M_BRICK_WINDOW else M_BRICK, cx, g - 0.2 + f32(f) * f32(STOREY), cz, q.yaw, reach_m / 2, 1, 1); }
+      }
+      r := (hi(x1 - x0, z1 - z0) + 0.8) / 5.66;
+      piece(s, M_TOWER_ROOF, (x0 + x1) / 2, g - 0.2 + 2 * f32(STOREY) + 0.57 * r, (z0 + z1) / 2, 0, r, r, r);
+      continue;
+    }
+    along_x := x1 - x0 > z1 - z0;
+    reach_m := ifx along_x then x1 - x0 else z1 - z0;
+    posts := cast(int) (reach_m / f32(POST));
+    for j: 0..<posts {
+      t := (f32(j) + 0.5) * reach_m / f32(posts);
+      x := ifx along_x then x0 + t else (x0 + x1) / 2;
+      z := ifx along_x then (z0 + z1) / 2 else z0 + t;
+      tall := h + 0.25 * f32((j * 7) % 3) / 2;
+      log_post(s, x, ground_at(s, x, z) - 0.3, z, tall + 0.3);
+    }
+  }
+  // A log across the top of each gate, from tower to tower.
+  for gte: 0..<EG_GATES {
+    gx := EG_GATE[gte * 4]; gz := EG_GATE[gte * 4 + 1]; gw := EG_GATE[gte * 4 + 2];
+    along_z := EG_GATE[gte * 4 + 3] > 0.5;
+    sz := (gw + 1.6) / 10.7;
+    y := ground_at(s, gx, gz) + 5.6;
+    piece(s, M_LOG, gx, y - 4.545 * 0.6, gz, ifx along_z then 0.0f32 else f32(PI) / 2, 0.6, 0.6, sz);
+  }
+}
+// The kit's log stood on end: its reach_m (local z, 10.7 m) made the post's height.
+log_post :: (s: [] Everglade, x: f32, base: f32, z: f32, tall: f32) {
+  t := 0.52f32;                 // its thickness is 1.15 m times this
+  h := tall / 10.7;
+  // local x across, local z up, local y (the log's middle at 4.545 m) toward -z
+  rows := [12] f32.[t, 0, 0, x,   0, 0, h, base + 5.35 * h,   0, -t, 0, z + 4.545 * t];
+  kit_rows(s, group_of(M_LOG), rows[..]);
+}
+
+// The market's stalls along Market Street, each facing it, with fruit in front.
+stalls :: (s: [] Everglade) {
+  for i: EG_STALL..<EG_WAYSTONE {
+    k := i * EG_BOX;
+    x := (EG_PROP[k] + EG_PROP[k + 2]) / 2; z := (EG_PROP[k + 1] + EG_PROP[k + 3]) / 2;
+    north := z > 0;
+    g := ground_at(s, x, z);
+    piece(s, M_STALL, x, g, z, ifx north then f32(PI) else 0.0f32, 1.55, 1, 1.55);
+    front := ifx north then -1.0f32 else 1.0f32;
+    piece(s, M_APPLES, x - 0.5, g + 1.0, z + front * 0.2, 0, 1, 1, 1);
+    piece(s, M_BARREL, x + 1.9, g, z, 0, 1, 1, 1);
+  }
+}
+
+build_town :: (s: [] Everglade) {
+  palisade(s);
+  for b: 0..<EG_BUILDINGS {
+    building(s, b);
+    if EG_INTERIOR[b] { furnish(s, b); }
+  }
+  stalls(s);
+  // The town crier's banner by the quest board.
+  piece(s, M_BANNER, 8.6, ground_at(s, 8.6, -5), -5, f32(PI) * 1.5, 1, 1, 1);
 }
 
 // ---- the forest, each frame: the trees in view, the nearest of each kind
@@ -588,18 +857,27 @@ in_view :: (u: [] f32, x: f32, y: f32, z: f32, r: f32) -> bool {
 }
 
 // A kit instance: turned by yaw, scaled by size, standing at x, z on the ground.
-kit :: (s: [] Everglade, group: int, x: f32, y: f32, z: f32, yaw: f32, size: f32) {
+kit :: (s: [] Everglade, group: int, x: f32, y: f32, z: f32, yaw: f32, size: f32) { kit3(s, group, x, y, z, yaw, size, size, size); }
+// One with its own scale on each of its axes (sx across, sy up, sz along its local z).
+kit3 :: (s: [] Everglade, group: int, x: f32, y: f32, z: f32, yaw: f32, sx: f32, sy: f32, sz: f32) {
+  c := cos(yaw); sn := sin(yaw);
+  rows := [12] f32.[c * sx, 0, sn * sz, x,   0, sy, 0, y,   -sn * sx, 0, c * sz, z];
+  kit_rows(s, group, rows[..]);
+}
+kit_rows :: (s: [] Everglade, group: int, rows: [] f32) {
+  if group < 0 || group >= KIT_GROUPS { return; }
   n := s[0].kit_used[group];
-  if n >= KIT_CAP { return; }
+  if n >= s[0].group_cap[group] { return; }
   s[0].kit_used[group] = n + 1;
-  o := (KIT_AT + group * KIT_CAP + n) * OBJECT_FLOATS;
-  c := cos(yaw) * size; sn := sin(yaw) * size;
-  s[0].objects[o] = c; s[0].objects[o + 1] = 0; s[0].objects[o + 2] = sn; s[0].objects[o + 3] = x;
-  s[0].objects[o + 4] = 0; s[0].objects[o + 5] = size; s[0].objects[o + 6] = 0; s[0].objects[o + 7] = y;
-  s[0].objects[o + 8] = -sn; s[0].objects[o + 9] = 0; s[0].objects[o + 10] = c; s[0].objects[o + 11] = z;
+  o := (s[0].group_at[group] + n) * OBJECT_FLOATS;
+  for i: 0..<12 { s[0].objects[o + i] = rows[i]; }
   s[0].objects[o + 12] = 1; s[0].objects[o + 13] = 1; s[0].objects[o + 14] = 1;
   s[0].objects[o + 15] = f32(SHAPE_MESH + 8 * LOOK_KIT);
 }
+// The group a mesh is drawn over: a tree's trunk and leaves share theirs.
+group_of :: (m: int) -> int { return ifx m < 2 * KIT_TREES then m / 2 else m - KIT_TREES; }
+// A town piece by its mesh.
+piece :: (s: [] Everglade, m: int, x: f32, y: f32, z: f32, yaw: f32, sx: f32, sy: f32, sz: f32) { kit3(s, group_of(m), x, y, z, yaw, sx, sy, sz); }
 
 // A far tree's cone: a pine dark and narrow, a broadleaf rounder and lighter.
 far_tree :: (s: [] Everglade, x: f32, base: f32, z: f32, size: f32, yaw: f32, kind: int) {
@@ -613,7 +891,7 @@ far_tree :: (s: [] Everglade, x: f32, base: f32, z: f32, size: f32, yaw: f32, ki
 
 KIT_BUCKETS :: 12;
 forest :: (s: [] Everglade, u: [] f32, eye: Point) {
-  for g: 0..<KIT_GROUPS { s[0].kit_used[g] = 0; }
+  for g: 0..<KIT_FOREST { s[0].kit_used[g] = 0; }
   kit_on := s[0].pack_ready;
   reach := ifx phone(s) then f32(KIT_NEAR_PHONE) else f32(KIT_NEAR);
   cap := ifx phone(s) then KIT_CAP_PHONE else KIT_CAP;
@@ -968,15 +1246,16 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
     s[0].draws[d + 2] = cast(u32) (ifx kind == 0 then 0 else EG_CELLS * EG_CELLS + SLOT_AT[kind]);
     s[0].draws[d + 3] = cast(u32) (ifx kind == 0 then EG_CELLS * EG_CELLS else s[0].counts[kind]);
   }
-  s[0].kit_triangles = 0;
+  s[0].kit_triangles = 0; s[0].forest_triangles = 0;
   for m: 0..<KIT_MESHES {
-    group := ifx m < 2 * KIT_TREES then m / 2 else m - KIT_TREES;
+    group := group_of(m);
     d := (5 + m) * 4;
     s[0].draws[d] = cast(u32) s[0].kit_first[m];
     s[0].draws[d + 1] = cast(u32) s[0].kit_count[m];
-    s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + KIT_AT + group * KIT_CAP);
+    s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + s[0].group_at[group]);
     s[0].draws[d + 3] = cast(u32) s[0].kit_used[group];
     s[0].kit_triangles += s[0].kit_count[m] / 3 * s[0].kit_used[group];
+    if group < KIT_FOREST { s[0].forest_triangles += s[0].kit_count[m] / 3 * s[0].kit_used[group]; }
   }
 
   u[0] = width; u[1] = height; u[2] = f32(s[0].time); u[3] = 1; u[4] = ifx still then 1.0f32 else 0.0f32;
@@ -1010,7 +1289,14 @@ everglade_store_cap :: (k: int) -> int #export_c {
 #test "the uniforms and shape slots line up with everglade.wgsl's" {
   #assert UNIFORM_FLOATS % 4 == 0;
   #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && UNIFORM_FLOATS == 344;
-  #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS && KIT_AT + KIT_GROUPS * KIT_CAP == OBJECTS;
+  #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
+  total := 0;
+  for g: 0..<KIT_GROUPS - KIT_FOREST { total += TOWN_CAP[g]; }
+  #assert total == TOWN_OBJECTS && KIT_GROUPS - KIT_FOREST == 40;
+  #assert KIT_MESH[M_FENCE] == "Prop_WoodenFence_Single" && KIT_MESH[M_ROOF] == "Roof_RoundTiles_6x8" && KIT_MESH[M_CHALICE] == "Chalice";
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  #assert g[0].group_at[KIT_GROUPS - 1] + g[0].group_cap[KIT_GROUPS - 1] == OBJECTS;
   for k: 2..<5 { #assert SLOT_AT[k] == SLOT_AT[k - 1] + SLOTS[k - 1]; }
   #assert EG_LINKS <= PATHS && EG_SQUARES <= SQUARES;
 }
@@ -1023,7 +1309,12 @@ everglade_store_cap :: (k: int) -> int #export_c {
   #assert n > 0 && n <= MAX_VERTICES;
   for k: 1..<5 { #assert g[0].counts[k] < SLOTS[k]; }
   #assert g[0].tree_n > 600 && g[0].small_n > 150;
-  #assert g[0].counts[SHAPE_BOX] > EG_PALISADE_N + 2 * EG_BUILDINGS;
+  // The town is the kit's: every piece within its group, none crowded out.
+  for t: KIT_FOREST..<KIT_GROUPS { #assert g[0].kit_used[t] < g[0].group_cap[t]; }
+  #assert g[0].kit_used[group_of(M_PLASTER)] + g[0].kit_used[group_of(M_BRICK)] > 150;
+  #assert g[0].kit_used[group_of(M_LOG)] > 600 && g[0].kit_used[group_of(M_FLOOR_WOOD)] > 150;
+  #assert g[0].kit_used[group_of(M_ROOF)] == EG_BUILDINGS - 2 && g[0].kit_used[group_of(M_TOWER_ROOF)] == 9;
+  #assert g[0].kit_used[group_of(M_DOOR)] == EG_BUILDINGS && g[0].kit_used[group_of(M_STALL)] == 6;
   #assert g[0].wall_n == EG_SOLIDS && g[0].box_n > EG_PALISADE_N + EG_BUILDINGS;
   p := [4] f32.[0, 1.6, -84, 1];
   cw := 0.0f32; cx := 0.0f32; cy := 0.0f32;
@@ -1046,7 +1337,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
   for t: 0..<g[0].small_n {
     #assert woods_all_round(g[0].smalls[t * TREE_FLOATS], g[0].smalls[t * TREE_FLOATS + 1], 0.79);
     k := cast(int) g[0].smalls[t * TREE_FLOATS + 4];
-    #assert k >= KIT_TREES && k < KIT_GROUPS;
+    #assert k >= KIT_TREES && k < KIT_FOREST;
   }
   // Every 6 m square of deep woods (not near the open ground, nor the river) holds a tree.
   holes := 0; squares := 0;
@@ -1106,11 +1397,11 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
       g[0].orbit.yaw = f32(turn) * f32(PI) / 2;
       n := everglade_frame(g[..], out[..], u[..], 390, 844, 3, 1.0 / 60.0, false, spots[p * 2], 0, spots[p * 2 + 1], 0, 0, 0, 0, false, 0, 0, 0, 0);
       for k: 0..<KIT_TREES { #assert g[0].kit_used[k] <= KIT_CAP_PHONE; }
-      most = hi_i(most, g[0].kit_triangles);
+      most = hi_i(most, g[0].forest_triangles);
       for k: 1..<5 { #assert g[0].counts[k] < SLOTS[k]; }
     }
   }
-  // The kit's share of a phone's frame stays under 700,000 triangles.
+  // The forest's kit share of a phone's frame stays under 700,000 triangles.
   #assert most > 0 && most < 700000;
 }
 
@@ -1168,6 +1459,23 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   #assert !everglade_warp(g[..]);
   everglade_hash(g[..], "above");
   #assert g[0].above && g[0].lift == 1;
+  // Inside a building you can walk into: past its doorway, facing in.
+  everglade_hash(g[..], "in-inn");
+  #assert everglade_warp(g[..]) && !g[0].above;
+  inn := everglade_spawn(g[..]);
+  #assert inn.x > -22 && inn.x < -6 && inn.z > -44 && inn.z < -30;
+  // Every room's spawn is well inside its walls, with five metres back to the door for the camera.
+  for b: 0..<EG_BUILDINGS {
+    if !EG_INTERIOR[b] { continue; }
+    everglade_hash(g[..], EG_ROOM_ID[b]);
+    #assert everglade_warp(g[..]);
+    at := everglade_spawn(g[..]);
+    k := b * EG_BOX;
+    #assert at.x > EG_BUILDING[k] + 1 && at.x < EG_BUILDING[k + 2] - 1;
+    #assert at.z > EG_BUILDING[k + 1] + 1 && at.z < EG_BUILDING[k + 3] - 1;
+    r := room_of(g[..], b);
+    #assert (at.x - r.fx) * r.vx + (at.z - r.fz) * r.vz >= 5;
+  }
   for p: 0..<EG_PLACES {
     everglade_hash(g[..], EG_PLACE_ID[p]);
     #assert everglade_warp(g[..]);

@@ -1,7 +1,8 @@
 # Everglade, the forest city
 
 Status: plan and blockout, October 28, 2026 (eg-design); the forest and
-its paths, October 29 (eg-forest). The blockout is
+its paths, October 29 (eg-forest); the kit buildings and seven
+interiors, October 29 (eg-buildings). The city is
 walkable at https://openagents.com/realm/everglade (not on the galaxy until
 eg-launch; `/verse/galaxy?realms=all` shows it). The order of the work after
 this is in [realms-port.md](realms-port.md).
@@ -204,8 +205,9 @@ backs into them, so the only ways out of the city are the trails.
 - **Along the tree line:** `Bush_Common_Flowers`, `Fern_1`,
   `Rock_Medium_1` and `_2`.
 - **The pack:** `verse/packs/everglade.json`, compiled to
-  `realm/everglade/assets/everglade.pack` (1.8 MB, budget 3 MB) with
-  `licences.md`. It also carries 1,024 identity indices (`"identity"`), so
+  `realm/everglade/assets/everglade.pack` (4.3 MB, budget 5 MB) with
+  `licences.md`; it carries the town's 44 Medieval Village and Fantasy
+  Props pieces as well as the forest's. It also carries 1,024 identity indices (`"identity"`), so
   the city's shapes, drawn from the vertex index alone, share the pack's
   index buffer.
 - **The phone:** each frame the trees in view and nearer than 55 m (42 m on
@@ -234,8 +236,39 @@ The checks (`plan.coax`):
 - **The ground** is level under each building and square, rises into the
   forest, and no street or trail climbs steeper than 1 in 5.
 
+## The buildings
+
+Each building is put together from its footprint in `plan.coax`, in
+`building()` in `everglade.coax`:
+
+- **Walls:** the kit's 2 m plaster modules (brick for the smithy, the
+  temple, the mages' tower and the observatory), one or more 3.1 m storeys,
+  with arched windows along each wall, timber corner posts and a door on the
+  side its door faces. Walk-in buildings' doors stand open.
+- **Roofs:** `Roof_RoundTiles_6x8` stretched over the footprint with its
+  ridge along the long side, and a brick-and-plaster gable at each end; the
+  mages' tower has the tower roof and the observatory its dome.
+- **The palisade:** rows of logs, with brick towers either side of each
+  gate and a log lintel over it.
+- **The market stalls** are the kit's stall with crates of apples.
+- **Rooms:** the inn, the general store, the smithy, the alchemist, the
+  fighters' hall, the rangers' lodge and the temple can be walked into
+  (`EG_INTERIOR` in `plan.coax`). Each has a floor and its furniture:
+  the inn's tables, chairs, mugs, hearth, benches, barrels and stair; the
+  store's shelves and counter; the smithy's anvil, forge and weapon stand;
+  the alchemist's cauldron and shelves; the fighters' dummies, racks and
+  banners; the rangers' pegs, table and packs; the temple's benches and
+  altar. The plan gives each walk-in building four walls with a doorway
+  1.9 m wide and checks every room is reachable through it and that the
+  wall beside the doorway is shut. `#in-inn`, `#in-store`, `#in-smithy`,
+  `#in-alchemist`, `#in-fighters`, `#in-rangers` and `#in-temple` start you
+  inside, far enough in that the camera stays in the room.
+- **Draw cost:** every kit piece of the town is one instance of one of
+  the pack's meshes; the checks hold each mesh's count under its cap and
+  the town within 3,061 pieces.
+
 ## What's next
 
-eg-buildings (the kit buildings and the interiors above), eg-people,
+eg-people,
 eg-quests, eg-companion and eg-launch, in that order
 ([realms-port.md](realms-port.md)).
