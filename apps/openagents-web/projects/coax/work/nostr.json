@@ -3655,6 +3655,22 @@
       "blocks": ["crypto-ecdh-xonly"]
     },
     {
+      "slug": "proto-nostr-numeric-ranges",
+      "parent": "m-projections",
+      "title": "Enforce declared Nostr numeric ranges in protobuf consumers",
+      "size": "L",
+      "labels": ["nostr", "coax", "protocol"],
+      "body": "Nostr Event.kind documents 0..65535 but the uint32 descriptor alone admits larger values; the current event projection independently applies the narrower original-event parser and is not an authority grant. Define explicit, versioned numeric range semantics where needed and enforce them in generated Coax validation, with clear compatibility behavior for old descriptors and unknown fields. Audit related Nostr kind fields and separate generic DTO validation from event or identity verification.",
+      "files": ["proto/", "coax/lib/proto/", "coax/tests/proto/", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Document and implement unambiguous inclusive numeric range constraints for the affected schema fields; legacy descriptors without such constraints keep their documented behavior and unknown options fail closed where necessary",
+        "Exercise 0, 65535 and 65536 for event and relevant filter kinds plus malformed, signedness, duplicate, noncanonical and nested cases; distinguish generated validation from projection checks and signature authority",
+        "Protoc descriptor interoperability, checked/release native and Wasm, affected iOS paths, Python-free bootstrap, full changed authority mutation without survivors and independent source review pass with exact graph identities"
+      ],
+      "blocked_by": ["proto-generated-checks"],
+      "blocks": []
+    },
+    {
       "slug": "proto-generated-checks",
       "parent": "m-projections",
       "title": "Check generated protobuf validators in real Coax consumers",
