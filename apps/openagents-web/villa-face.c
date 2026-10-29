@@ -56,6 +56,11 @@ static bool facts_seen, has_player, minted;
 static int32_t mint_ask = -1;
 static char mint_record[200]; static uint32_t mint_n;
 static uint8_t action_out[256]; static uint32_t action_n; static int32_t action_kind;
+// Who else is here, and the chat (villaroom.coax, room.coax): where you are posted about every second.
+static int32_t room_ask = -1, say_ask = -1;
+static double room_at = -10, room_asked_at;
+static char room_url_buf[120], say_url_buf[120];
+static uint8_t room_body[256], say_body[1400];
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 static figs_view fv(void) { return (figs_view){figs, 1}; }
@@ -138,6 +143,30 @@ static void pet_requests(uint32_t state) {
   pet_ask = id; pet_kind = kind; pet_asked_at = now;
 }
 
+static void room_requests(uint32_t state, float dt) {
+  coax_t_Villa *v = villa(state);
+  coax_v_t_RoomState rs = {&v->room.e[0], 1};
+  room_ease(rs, dt);
+  if (!facts_seen || !has_player) return;
+  coax_t_Chat *c = &v->chat.e[0];
+  if (c->send && say_ask < 0) {
+    c->send = false;
+    int64_t un = room_url(villa_room_name(), true, (coax_v_u8){(uint8_t *)say_url_buf, sizeof say_url_buf});
+    coax_string sid = {(const char *)track_state.sid.e, track_state.sid_n};
+    int64_t bn = room_chat_body(villa_chat_line(at(state)), sid, (coax_v_u8){say_body, sizeof say_body});
+    if (un > 0 && bn > 0) say_ask = coaxial_http((uint32_t)(uintptr_t)say_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)say_body, (uint32_t)bn, 1 | 4 | 8);
+  }
+  if (room_ask >= 0 && now - room_asked_at < 10) return;
+  if (now - room_at < 1.0) return;
+  room_at = now;
+  int64_t un = room_url(villa_room_name(), false, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
+  coax_t_Point feet = v->feet;
+  int64_t bn = room_presence_body(feet.x, feet.y, feet.z, v->face, v->room.e[0].last, (coax_v_u8){room_body, sizeof room_body});
+  if (un <= 0 || bn <= 0) return;
+  room_ask = coaxial_http((uint32_t)(uintptr_t)room_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)room_body, (uint32_t)bn, 1 | 4 | 8);
+  room_asked_at = now;
+}
+
 // The figures where the page left them: you (0) on your feet, the dog (1) where it walks.
 static void pose(uint32_t state, float dt) {
   coax_t_Villa *v = villa(state);
@@ -178,6 +207,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   pet_look(state);
   pose(state, dt);
   pet_requests(state);
+  room_requests(state, dt);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_villa_max_vertices() * coaxial_villa_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_villa_uniform_floats()};
   int64_t n = villa_draw(at(state), out, u, w, h, scale, sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
@@ -216,7 +246,7 @@ EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(uint32_
 
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
   start(state);
-  track_key(tr(), key, false);
+  track_key(tr(), key, villa_wants_text(at(state)));
   bool used = villa_key(at(state), key, mods);
   track_drain(&track_state);
   return used ? 1u : 0u;
@@ -266,6 +296,18 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     pet_ask = -1;
     uint32_t b; int st = http_status(length, &b);
     villa_pet_answer(at(state), pet_kind, st, (coax_string){(const char *)inbox + b, length - b});
+    return;
+  }
+  if (room_ask >= 0 && kind == 512 + room_ask) {
+    room_ask = -1;
+    int64_t st = room_take((coax_v_t_RoomState){&villa(state)->room.e[0], 1}, (coax_string){(const char *)inbox, length});
+    if (st == 403) has_player = false, minted = false;
+    return;
+  }
+  if (say_ask >= 0 && kind == 512 + say_ask) {
+    say_ask = -1;
+    uint32_t b; villa_chat_said(at(state), http_status(length, &b));
+    room_at = -10;
     return;
   }
   if (kind >= 512 && kind < 520) return;

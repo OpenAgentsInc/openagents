@@ -36,6 +36,7 @@
 #load "../../verse/particles.coax";
 #load "villapet.coax";
 #load "villaplay.coax";
+#load "villaroom.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 16000;
@@ -151,6 +152,9 @@ Villa :: struct {
   pet: [1] PetUi;
   // Playing: fetch, sit, stay and come, digging, flowers and vases (villaplay.coax).
   play: [1] Play;
+  // Who else is here, and the chat (villaroom.coax).
+  room: [1] RoomState;
+  chat: [1] Chat;
 }
 
 // ---- the layout (metres; +z north, +x east)
@@ -400,6 +404,7 @@ skip_flight :: (s: [] Villa) -> bool {
 villa_key :: (s: [] Villa, key: int, mods: int) -> bool #export_c {
   if !s[0].started { villa_start(s); }
   if skip_flight(s) { return true; }
+  if chat_key(s, key) { return true; }
   if pet_key(s[0].pet[..], key) { s[0].held = 0; return true; }
   if play_key(s, key) { return true; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
@@ -989,6 +994,7 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
     old_stones(s);
     pet_stones(s);
     play_draw(s);
+    room_draw(s);
   }
   figures(s, u);
   particles(s);
@@ -1016,7 +1022,7 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
   u[U_GROUND] = f32(CELLS); u[U_GROUND + 1] = f32(CELL); u[U_GROUND + 2] = f32(EDGE); u[U_GROUND + 3] = f32(EDGE);
   paths(u);
   n := hud(s, out, u, move_on, ox, oy, pad_x, pad_y);
-  if !villa_busy(s) { n = play_hud(s, out, u, n); n = pet_draw(s, out, u, n); } else { s[0].pet[0].buttons = 0; }
+  if !villa_busy(s) { n = play_hud(s, out, u, n); n = pet_draw(s, out, u, n); n = room_hud(s, out, u, n); } else { s[0].pet[0].buttons = 0; }
   u[5] = f32(s[0].plate_n);
   return n;
 }
@@ -1031,8 +1037,8 @@ villa_pet_body :: (s: [] Villa, kind: int, out: [] u8) -> int #export_c { return
 villa_pet_answer :: (s: [] Villa, kind: int, status: int, t: string) #export_c { pet_answer(s[0].pet[..], kind, status, t); }
 villa_pet_files :: (s: [] Villa, t: string) #export_c { s[0].pet[0].files_n = pet_copy(s[0].pet[0].files[..], t); }
 villa_pet_scanned :: (s: [] Villa, t: string) #export_c { pet_take(s[0].pet[..], t, false); }
-villa_typed :: (s: [] Villa, t: string) #export_c { pet_typed(s[0].pet[..], t); }
-villa_wants_text :: (s: [] Villa) -> bool #export_c { return s[0].pet[0].focus != -1 && s[0].pet[0].view != PV_NONE; }
+villa_typed :: (s: [] Villa, t: string) #export_c { if s[0].chat[0].typing { chat_typed(s[0].chat[..], t); } else { pet_typed(s[0].pet[..], t); } }
+villa_wants_text :: (s: [] Villa) -> bool #export_c { return s[0].chat[0].typing || s[0].pet[0].focus != -1 && s[0].pet[0].view != PV_NONE; }
 villa_hash :: (s: [] Villa, t: string) #export_c {
   if !s[0].started { villa_start(s); }
   if t.count == 10 && t[0] == 'm' && t[1] == '/' { pet_open_memorial(s[0].pet[..], t[2..<10]); }

@@ -1,0 +1,191 @@
+// Others in Hecate's Cemetery, and its chat (hc-presence, hc-chat): the
+// rooms every realm has (room.coax; coax/web/api/room.c), the room named
+// "hecates-cemetery". The face posts where you are about every second and
+// hands the answer to room_take; this file draws who else is here, each a
+// shadow like you with a glowing companion at their heel and their name over
+// them, and a chat box like Horse Isle's in the corner: the last lines said,
+// Enter to type, Enter again to say it.
+
+#load "room.coax";
+
+VILLA_ROOM :: "hecates-cemetery";
+CHAT_BYTES :: 280;
+DO_CHAT :: 7; DO_SAY :: 8;   // B_DO's: start typing, say what's typed (phones)
+
+Chat :: struct {
+  typing: bool;
+  buf: [CHAT_BYTES] u8; n: int;
+  send: bool;          // a line to say: the face sends it and clears this
+  said: int;           // lines you've said (the face's count, for its analytics)
+}
+
+chat_text :: (c: [] Chat) -> string { return cast(string) c[0].buf[0..<c[0].n]; }
+
+chat_typed :: (c: [] Chat, t: string) {
+  for ch: t { if ch >= 32 && c[0].n < CHAT_BYTES { c[0].buf[c[0].n] = ch; c[0].n += 1; } }
+}
+chat_backspace :: (c: [] Chat) {
+  while c[0].n > 0 { c[0].n -= 1; if c[0].buf[c[0].n] & 0xC0 != 0x80 { break; } }
+}
+chat_say :: (c: [] Chat) {
+  if c[0].n == 0 { c[0].typing = false; return; }
+  c[0].send = true; c[0].typing = false;
+}
+
+// A key for the chat: Enter (or T) starts typing; typing, Enter says it and Esc puts it away.
+chat_key :: (s: [] Villa, key: int) -> bool {
+  c := s[0].chat[..];
+  if c[0].typing {
+    if key == -1 { c[0].typing = false; return true; }
+    if key == -2 { chat_say(c); return true; }
+    if key == -3 { chat_backspace(c); return true; }
+    return true;   // letters come as typed text; the keys walk nobody
+  }
+  if s[0].pet[0].view != PV_NONE { return false; }
+  if key == -2 || key == 't' || key == 'T' { c[0].typing = true; s[0].held = 0; return true; }
+  return false;
+}
+
+// What the face does with the answer to a line said.
+villa_chat_said :: (s: [] Villa, status: int) #export_c {
+  if status == 200 { s[0].chat[0].n = 0; s[0].chat[0].said += 1; return; }
+  pet_toast(s[0].pet[..], ifx status == 429 then "A little slower: wait a moment" else "That didn't reach the others: try again");
+}
+villa_chat_line :: (s: [] Villa) -> string #export_c { return chat_text(s[0].chat[..]); }
+villa_room_name :: () -> string #export_c { return VILLA_ROOM; }
+
+// Who else is here, drawn in the scene: a shadow, and a pale companion at its heel.
+room_draw :: (s: [] Villa) {
+  r := s[0].room[..];
+  t := effect_time(s);
+  for i: 0..<r[0].others {
+    x := r[0].at[i * 4]; z := r[0].at[i * 4 + 2]; yaw := r[0].at[i * 4 + 3];
+    g := ground_at(s, x, z);
+    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + 0.62, z), yaw, 0, 0.34, 1.0, 0.24, 0.03, 0.03, 0.045);
+    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + 1.22, z), yaw, 0, 0.42, 0.26, 0.26, 0.03, 0.03, 0.045);
+    ball(s, LOOK_MATTE, v3(x, g + 1.5, z), 0.13, 0.03, 0.03, 0.045);
+    // the companion: behind and to the side, bobbing as it trots
+    side := v3(cos(yaw + 2.4), 0, sin(yaw + 2.4));
+    dx := x + side.x * 0.9; dz := z + side.z * 0.9;
+    dg := ground_at(s, dx, dz) + 0.03 * abs(sin(t * 6 + f32(i)));
+    shape(s, SHAPE_BALL, LOOK_GLOW, v3(dx, dg + 0.36, dz), yaw, 0, 0.6, 0.26, 0.24, 0.88, 0.9, 1.0);
+    hx := dx + cos(yaw) * 0.34; hz := dz + sin(yaw) * 0.34;
+    ball(s, LOOK_GLOW, v3(hx, dg + 0.52, hz), 0.12, 0.9, 0.92, 1.0);
+    for l: 0..<4 {
+      fb := ifx l < 2 then 0.2f32 else -0.2f32; lr := ifx l % 2 == 0 then 0.09f32 else -0.09f32;
+      lx := dx + cos(yaw) * fb - sin(yaw) * lr; lz := dz + sin(yaw) * fb + cos(yaw) * lr;
+      shape(s, SHAPE_CYLINDER, LOOK_GLOW, v3(lx, dg + 0.14, lz), yaw, 0, 0.06, 0.28, 0.06, 0.85, 0.88, 1.0);
+    }
+  }
+}
+
+// Where a point in the garden is on the screen (the view the uniforms hold); false behind you.
+screen_at :: (u: [] f32, p: Point, w: f32, h: f32, xy: [] f32) -> bool {
+  cx := u[U_VIEW] * p.x + u[U_VIEW + 1] * p.y + u[U_VIEW + 2] * p.z + u[U_VIEW + 3];
+  cy := u[U_VIEW + 4] * p.x + u[U_VIEW + 5] * p.y + u[U_VIEW + 6] * p.z + u[U_VIEW + 7];
+  cw := u[U_VIEW + 12] * p.x + u[U_VIEW + 13] * p.y + u[U_VIEW + 14] * p.z + u[U_VIEW + 15];
+  if !(cw > 0.2) { return false; }
+  xy[0] = (1 + cx / cw) * 0.5 * w; xy[1] = (1 - cy / cw) * 0.5 * h;
+  return xy[0] > -50 && xy[0] < w + 50 && xy[1] > -50 && xy[1] < h + 50;
+}
+
+// The bytes of t that fit in room at cap, cut at a character.
+chat_fit :: (t: string, cap: f32, room: f32) -> int {
+  n := t.count;
+  if text_width(t, cap) <= room { return n; }
+  while n > 0 {
+    n -= 1;
+    while n > 0 && t[n] & 0xC0 == 0x80 { n -= 1; }
+    if text_width(t[0..<n], cap) + text_width("...", cap) <= room { return n; }
+  }
+  return 0;
+}
+
+// Names over the others, and the chat box. After pet_draw (whose field box this can take).
+room_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
+  r := s[0].room[..]; c := s[0].chat[..]; p := s[0].pet[..];
+  k := hi(s[0].dpr, 0.5); w := s[0].width; h := s[0].height;
+  m := n;
+  tag := 7 * k;
+  for i: 0..<r[0].others {
+    x := r[0].at[i * 4]; z := r[0].at[i * 4 + 2];
+    xy: [2] f32;
+    if !screen_at(u, v3(x, ground_at(s, x, z) + 1.95, z), w, h, xy[..]) { continue; }
+    name := room_other_name(r, i);
+    m = pt(out, m, name, xy[0] - text_width(name, tag) / 2, xy[1], tag, k, 0.8);
+  }
+  if p[0].view != PV_NONE && !c[0].typing { return m; }
+  ph := phone(s);
+  cap := 7.5 * k; row := 15 * k; pad := 10 * k;
+  bw := ifx ph then (ifx c[0].typing then w - 32 * k else w - 32 * k - text_width("BRING YOUR PET", 9 * k) - 36 * k - 8 * k) else lo(390 * k, w * 0.32);
+  shown := ifx ph then (ifx c[0].typing then 3 else 1) else ROOM_LINES;
+  lines := lo(f32(r[0].lines), f32(shown));
+  head := ifx r[0].others > 0 then 1 else 0;
+  bh := pad * 2 + (lines + f32(head)) * row + 26 * k;
+  x0 := 16 * k;
+  hint_left := (w - lo(text_width(hint(s), 7.5 * k), w - 56 * k)) / 2 - 12 * k;   // the hint line along the bottom
+  lift := ifx x0 + bw > hint_left - 8 * k then 7.5 * k + 20 * k + 10 * k else 0.0f32;
+  y0 := ifx ph then 16 * k + 11 * k + 24 * k + 8 * k else h - 16 * k - bh - lift;
+  b := Box.{x0 = x0, y0 = y0, x1 = x0 + bw, y1 = y0 + bh};
+  plate(s, u, b, ifx c[0].typing then 0.85f32 else 0.6f32, 0);
+  base := y0 + pad + cap;
+  if head > 0 {
+    line: [40] u8;
+    o := pj_put_int(line[..], 0, r[0].others + 1);
+    o = pet_put(line[..], o, " HERE NOW");
+    if o > 0 { m = pt_dim(out, m, cast(string) line[0..<o], x0 + pad, base, cap * 0.9, k); }
+    base += row;
+  }
+  from := r[0].lines - cast(int) lines;
+  room := bw - 2 * pad;
+  for j: from..<r[0].lines {
+    name := room_line_name(r, j); text := room_line_text(r, j);
+    nm: [48] u8;
+    o := pet_put(nm[..], 0, name); o = pet_put(nm[..], o, ": ");
+    lead := ifx o > 0 then cast(string) nm[0..<o] else "";
+    nw := text_width(lead, cap);
+    m = draw_text(out, m, lead, x0 + pad, base, cap, GAP, SPACE, ink(k, 0.85, SILVER_R, SILVER_G, SILVER_B), false, false);
+    cut := chat_fit(text, cap, room - nw);
+    shown_text := text[0..<cut];
+    m = pt(out, m, shown_text, x0 + pad + nw, base, cap, k, ifx room_line_mine(r, j) then 0.7f32 else 0.95f32);
+    if cut < text.count { m = pt_dim(out, m, "...", x0 + pad + nw + text_width(shown_text, cap), base, cap, k); }
+    base += row;
+  }
+  // the line you type
+  ib := Box.{x0 = x0 + pad * 0.6, y0 = b.y1 - 26 * k - pad * 0.4, x1 = b.x1 - pad * 0.6, y1 = b.y1 - pad * 0.4};
+  ty := (ib.y0 + ib.y1 + cap) / 2;
+  if c[0].typing {
+    m = outline(out, m, ib, k, 0.6);
+    p[0].field_box = ib;
+    send_w := ifx ph then 56 * k else 0.0f32;
+    t := chat_text(c);
+    // the end of what's typed, if it runs long
+    st := 0;
+    while st < t.count && text_width(t[st..<t.count], cap) > ib.x1 - ib.x0 - 20 * k - send_w { st += 1; while st < t.count && t[st] & 0xC0 == 0x80 { st += 1; } }
+    shown_t := t[st..<t.count];
+    if t.count == 0 { m = pt_dim(out, m, ifx ph then "SAY SOMETHING" else "SAY SOMETHING · ENTER SAYS IT · ESC CLOSES", ib.x0 + 8 * k, ty, cap, k); }
+    else { m = pt(out, m, shown_t, ib.x0 + 8 * k, ty, cap, k, 1); }
+    caret := ib.x0 + 8 * k + text_width(shown_t, cap) + 2 * k;
+    if caret < ib.x1 - send_w && sin(f32(s[0].time) * 6) > 0 { m = pt(out, m, "|", caret, ty, cap, k, 0.9); }
+    if ph { m = btn(s, out, m, Box.{x0 = ib.x1 - send_w, y0 = ib.y0, x1 = ib.x1, y1 = ib.y1}, "SAY", B_DO, DO_SAY, false); }
+  } else {
+    m = btn(s, out, m, ib, ifx ph then "CHAT" else "ENTER TO CHAT", B_DO, DO_CHAT, false);
+  }
+  return m;
+}
+
+#test "typing a line, saying it, and the keys it takes" {
+  s: [1] Villa;
+  villa_start(s[..]);
+  #assert !s[0].chat[0].typing && chat_key(s[..], -2) && s[0].chat[0].typing;
+  chat_typed(s[0].chat[..], "hello\nthere");
+  #assert chat_text(s[0].chat[..]) == "hellothere";
+  #assert chat_key(s[..], 'w') && chat_key(s[..], -3) && chat_text(s[0].chat[..]) == "hellother";
+  #assert chat_key(s[..], -2) && s[0].chat[0].send && !s[0].chat[0].typing;
+  s[0].chat[0].send = false;   // the face took it
+  villa_chat_said(s[..], 200);
+  #assert s[0].chat[0].n == 0 && s[0].chat[0].said == 1;
+  #assert chat_key(s[..], 'T') && chat_key(s[..], -2) && !s[0].chat[0].send;   // nothing typed: nothing said
+  #assert !chat_key(s[..], 'w');
+  #assert chat_fit("abcdef", 10, 1000) == 6 && chat_fit("abcdef", 10, text_width("abc...", 10)) == 3;
+}

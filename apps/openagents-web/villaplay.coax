@@ -78,6 +78,8 @@ play_do :: (s: [] Villa, what: int) {
     p[0].bag[flower_kind(i)] += 1;
     return;
   }
+  if what == DO_CHAT { s[0].chat[0].typing = true; s[0].held = 0; return; }
+  if what == DO_SAY { chat_say(s[0].chat[..]); return; }
   if what == DO_VASE {
     if p[0].bag[0] + p[0].bag[1] + p[0].bag[2] == 0 { pet_toast(p, "Pick glowing flowers in the field first (E)"); return; }
     p[0].view = PV_VASE; p[0].focus = -1;
