@@ -1,0 +1,23 @@
+{
+  "slug": "openagents-desktop",
+  "name": "OpenAgents Desktop",
+  "description": "A Mac app in Coax for your coding agents: first a Claude chat that runs on your own Claude Code login, then Claude Code and Codex side by side, talking to each other.",
+  "relay": "wss://relay.openagents.com",
+  "repo": {
+    "d": "openagents",
+    "name": "OpenAgents",
+    "description": "The OpenAgents monorepo: the apps, the protocol, Coax and the Grid.",
+    "web": "https://github.com/OpenAgentsInc/openagents",
+    "clone": "https://github.com/OpenAgentsInc/openagents.git",
+    "euc": "0aa2d953dd48f0d402ea7c826bad90b2548524c2"
+  },
+  "path": "apps/openagents-desktop/",
+  "contributions": "open",
+  "license": "Apache-2.0",
+  "owner": "Chris",
+  "pubkey": "75b7f23762e03acb12e68cdb864e85b3bad89e08bf513583ef47e6637c2b0c89",
+  "maintainers": [
+    "9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a",
+    "1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"
+  ]
+}

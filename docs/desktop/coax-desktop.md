@@ -45,7 +45,7 @@ AppKit window + Metal  ──  Coax UI (compiled to C)  ──  Coax engine (C)
                                                          └── codex app-server (JSON-RPC, stdio)
 ```
 
-- **Host:** a thin Swift/AppKit shell, `apps/openagents-mac/`. It owns the
+- **Host:** a thin Swift/AppKit shell, `apps/openagents-desktop/`. It owns the
   window, the Metal layer, input, the clipboard, file dialogs and the menu bar,
   and it calls into Coax compiled to C. It contains no product logic, just as
   `host.js` contains none on the web.
@@ -184,7 +184,7 @@ visible is drawn by Coax.
 
 ## Open questions for the owner
 
-1. **Name and bundle:** is it "OpenAgents" with `com.openagents.mac`, or does
+1. **Name and bundle:** is it "OpenAgents" with `com.openagents.desktop`, or does
    it keep the old desktop bundle id?
 2. **Where Codex sees the room:** a stdio MCP server per session (as above), or
    one long-lived local MCP server shared by all sessions?
