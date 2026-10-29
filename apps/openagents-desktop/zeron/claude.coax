@@ -60,6 +60,8 @@ Session :: struct {
   turns: int;
   changed: bool;            // since the transcript was last built
   asking: int;              // the part asking to approve a call, or -1
+  cost: f64;                // the conversation's cost so far (USD), from the last result
+  turn_ms: int;             // the last turn's duration (ms)
 }
 
 s_init :: (s: [] Session, pool: [] u8) { s[0].pool = pool; s[0].np = 0; s[0].n = 0; s[0].asking = -1; }
@@ -301,6 +303,8 @@ s_on_message :: (s: [] Session, ar: [] ClArena, m: ClMessage) {
   if m.kind == ClKind.result {
     why := cl_str(ar, l, "result");
     if why.count == 0 { why = cl_str(ar, l, "errors.0"); }
+    c := cl_num(l, "total_cost_usd"); if c.ok { s[0].cost = c.value; }
+    d := cl_int(l, "duration_ms"); if d.ok { s[0].turn_ms = d.value; }
     s_turn_end(s, cl_bool(l, "is_error").value || m.result != ClResultKind.success, why);
   }
 }
@@ -766,6 +770,7 @@ s_test_feed :: (s: [] Session, q: [] ClQuery, lines: [] string) {
   fx := CLAUDE_FIXTURE;
   s_test_feed(s[..], q[..], fx[..]);
   #assert !s[0].live && !s[0].noticed;
+  #assert s[0].cost > 0.0041 && s[0].cost < 0.0042 && s[0].turn_ms > 0;
   kinds: [32] int; n := 0;
   for k: 0..<s[0].n { if n < 32 { kinds[n] = s[0].parts[k].kind; n += 1; } }
   // the message, Bash ls and cat, the thought, Read, Grep, Edit, the failed cat, then the answer
@@ -937,5 +942,5 @@ s_test_feed :: (s: [] Session, q: [] ClQuery, lines: [] string) {
   }
   #assert picked == 4 && cl_session_id(q[..]) == "dfc3d0c7-79e7-4d09-b940-c3ad305b7492";
   #assert s[0].parts[1].kind == P_TOOL && s[0].parts[1].tk == TK_EDIT && s[0].parts[1].resolved && !s[0].parts[1].failed;
-  #assert !s[0].live && s[0].n == 2;
+  #assert !s[0].live && s[0].n == 2 && s[0].cost > 0.0041 && s[0].cost < 0.0042;
 }
