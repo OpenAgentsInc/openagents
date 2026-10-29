@@ -13,10 +13,14 @@ full NIP-46 work remain distinct.
 
 ### Active validator issue #161a
 
-#161a remains claimed while the final full-reference event mutation gate is
-running. Do not mark it done until this gate, independent review and the other
-acceptance requirements have passed on the recorded inputs. The project
-publisher and final completion release must follow the normal queue process.
+#161a remains claimed while a full-reference event mutation gate is running.
+The prior final run failed: 4,301/4,302 mutants killed; the surviving change
+made `N_SignedEvent_decode` require minimal wire encoding. A new test covers
+a valid non-minimal envelope: 195/195 checks pass and an isolated diagnostic
+kills that mutant, but that diagnostic is not a full mutation pass. A fresh
+full-reference run is required on the changed test source. Do not mark it done
+until that gate, independent review and the other acceptance requirements pass.
+The project publisher and final completion release must follow the normal queue process.
 
 The changed runtime rejects negative internal depth (`7ed6d17885`), and the
 generator removes only a per-message limit redundant with the shared 1 MiB
@@ -34,12 +38,15 @@ by the original event parser in this adapter, not by the generic uint32 DTO.
 
 Uncommitted projection sources and reproducible test fixtures are in
 `/tmp/codex-event-final` (base `8179746a5d`) and in the verified local archive
-`/Users/christopherdavid/.codex/handoffs/nostr-validator-161a-20261029/projections.tar.gz`
-(SHA-256 `08d3014cd9e6f0b283c5fc3fdc9f7ae39e4d10a766f7f1439c429daebd39e84b`).
+`/Users/christopherdavid/.codex/handoffs/nostr-validator-161a-20261029/projections-envelope-check.tar.gz`
+(SHA-256 `fc663357726b43cf5ce568ccc459a5aa0150febfb6468ce0595ab92395b6e2f8`).
 The adjacent README and manifest include recovery instructions and per-file
 hashes; this is not a remote backup. Key source/compiler hashes are
-`/tmp/coax-event-final-key-hashes.txt` and `/tmp/coax-fi-final-key-hashes.txt`.
-Logs: `/tmp/coax-event-final-reference.log`, `/tmp/coax-fi-final-reference.log`,
+the older `/tmp/coax-event-final-key-hashes.txt` and `/tmp/coax-fi-final-key-hashes.txt`;
+the updated event source SHA-256 is
+`1946d02e0cd1cbf2e816ad3b2e7e0e773a3118c1a93e7686da6bec9ce4ce8c29`.
+Logs: `/tmp/coax-event-envelope-reference.log` (running),
+`/tmp/coax-event-final-reference.log` (failed), `/tmp/coax-fi-final-reference.log`,
 `/tmp/coax-event-final-interop.log` and `/tmp/coax-fi-final-interop.log`. The
 first event run failed with 130 survivors in
 `/tmp/coax-required-policy-event-full-mutation.log`; do not present it as a
