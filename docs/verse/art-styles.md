@@ -136,8 +136,10 @@ colour += rim * rim_colour
   is 2 to 4 px at 1440×900.
 - Strength 0.30 for the world and 0.45 for characters. The colour is the key
   light's, warmed: by day (1.00, 0.84, 0.60), at dusk and dawn (1.00, 0.62,
-  0.40), and at night the moon's silver (0.70, 0.78, 0.95) at 0.6 of the
-  strength.
+  0.40), and at night a moonlit blue (0.34, 0.42, 0.70) at 0.35 of the
+  strength, kept under the moon's own key so it outlines without frosting.
+- Not on the ground: terrain has no silhouette, and a rim on it lights the
+  whole grazing meadow (at night a silver sheen between the grass blades).
 - It is a light term, so it fogs with the surface and never draws over the sky.
 
 ### 3. Shadows and ambient
@@ -228,12 +230,17 @@ the sky without a seam.
   elevation (from the ray, not the screen row, so it stays put as the camera
   pitches), plus a 6° band at the horizon lifted 15% toward `haze_colour`.
   By day the zenith is (0.24, 0.48, 0.86) and the horizon equals the haze.
-  At dusk the zenith is (0.20, 0.24, 0.52) and the horizon (0.95, 0.62,
-  0.48). At night the zenith is (0.012, 0.018, 0.05) and the horizon equals
+  At dusk the zenith is a teal (0.04, 0.20, 0.38) and the horizon a
+  cream-gold (0.85, 0.55, 0.26); where they meet the blend keeps the
+  saturation its two ends have there, so the sky runs teal, cream, gold and
+  never greys between them. At night the zenith is (0.012, 0.018, 0.05) and the horizon equals
   the haze.
 - **Sun or moon**: a disc (0.53°, drawn at 2° for readability) with a two-term
   halo, `exp(-k(1-cosθ))` with k = 900 and 60, the wide term coloured like
-  the key light in haze.
+  the key light in haze. Round the sun the halo paints that colour over the
+  sky (mixed, up to 0.9) rather than adding it, since the tone curve whitens
+  anything added: at dusk the haze key is a deep orange (1.00, 0.34, 0.08),
+  so the sky goes orange round the sun. Round the moon it is added.
 - **Clouds**: one dome layer at 1,500 m. The shape is 2 octaves of value noise
   at 1/2,000 and 1/700 per metre, cut by `smoothstep(0.48, 0.62, n)`. They
   are shaded in two tones, the lit top (1.0, 0.98, 0.95) by day and the
@@ -440,7 +447,8 @@ visitor's local time, and a realm with its own moon puts it in with
 dusk or dawn (1.00, 0.66, 0.40) at 0.85.
 
 Dusk and dawn were retuned on October 29 after a comparison with Breath of
-the Wild, whose dusk stays saturated and warm: orange and pink light on the
+the Wild, whose dusk stays saturated and warm (the sky in section 5; the haze
+an apricot (0.90, 0.60, 0.38)): orange and pink light on the
 lit faces, deep-teal shadows (not grey-violet), a brighter ambient (sky
 (0.58, 0.52, 0.60) at 0.68) so a shadowed road stays a colour, and the haze
 a warm peach that starts at 45 m, so the near and middle distance stay clear.
@@ -455,7 +463,12 @@ ambient is (0.04, 0.055, 0.12), exposure 0.95 (2.4 before), a blue-black sky
 blue, capped at 0.6, so the middle distance isn't milky. A realm's own lamps
 light the night (Everglade: lanterns at the doors, torches at the town's
 crossings, a brazier on the commons, each pooling its light on the ground and
-walls from dusk and full at night).
+walls from dusk and full at night). What stands near the eye keeps its form
+and colour, so a figure is never a black cut-out: a soft cool moon fill
+(0.10, 0.13, 0.26) times the stars' share, from above and the moon's side,
+fading out between 12 and 30 m, full on characters and half on props and
+walls (Everglade `scene_fs`). The lamps warm both on top of it. The night
+rim is a moonlit blue kept under the key (section 2).
 
 A realm with a real moon (Hecate's) keeps its own moon direction and phase.
 The preset gives colours and strengths, and the realm gives where the light is.

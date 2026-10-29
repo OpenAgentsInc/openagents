@@ -110,13 +110,22 @@ fn stars(d: vec3f) -> f32 {
 // haze, the sun or moon with its two-term halo, and soft two-tone clouds drifting with the wind.
 fn sky(d: vec3f, l: vec3f) -> vec3f {
   let up = d.y;
-  var c = mix(st(13u).xyz, st(12u).xyz, verse_style_sky_t(up));
+  // horizon to zenith; a warm horizon under a teal zenith greys where they meet, so the blend keeps
+  // the saturation its two ends have there (teal, cream, gold: not grey)
+  let h = st(13u).xyz; let z = st(12u).xyz; let t = verse_style_sky_t(up);
+  var c = mix(h, z, t);
+  let gain = verse_style_chroma_gain(saturation(c), mix(saturation(h), saturation(z), t), 1.0);
+  let cy = verse_style_luma(c.x, c.y, c.z);
+  c = max(vec3f(cy) + (c - vec3f(cy)) * gain, vec3f(0.0));
   c = mix(c, st(10u).xyz, verse_style_sky_band(up, st(12u).w));
   let ct = dot(d, l);
   let moon = st(1u).w > 0.5;
   let disc = smoothstep(cos(st(14u).x * 1.15), cos(st(14u).x * 0.85), ct);
   let halo = verse_style_halo(ct, st(14u).y) * 0.5 + verse_style_halo(ct, st(14u).z) * 0.25;
-  c += select(st(11u).xyz, st(0u).xyz, moon) * halo * select(1.0, 0.5, moon);
+  // round the sun the sky takes the haze key's colour (painted over, not added: added, the tone
+  // curve whitens it; at dusk it is deep orange), round the moon its light is added
+  if (moon) { c += st(0u).xyz * halo * 0.5; }
+  else { c = mix(c, st(11u).xyz * 1.5, clamp(halo * 1.1, 0.0, 0.9)); }
   c = mix(c, select(vec3f(1.0, 0.97, 0.88) * 4.0, vec3f(0.85, 0.88, 1.0) * 1.6, moon), disc);
   let cl = st(15u); let c2 = st(16u);
   if (up > 0.01 && cl.x > 0.0) {
@@ -704,7 +713,19 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
   }
   if (s.look == LOOK_WINDOW && s.dye.y > 0.75) { return glass(s, front); }
   let lit = verse_style_contact(map_lit(s.world, n), 1.0 - shadow, st(4u).w);
-  var res = paint(base, n, s.world, lit, s.look == LOOK_CHARACTER || s.look == 3u, true);
+  var res = paint(base, n, s.world, lit, s.look == LOOK_CHARACTER || s.look == 3u, s.look != 99u);
+  let figure = s.look == LOOK_CHARACTER || s.look == 3u;
+  if (figure || s.look == 5u || s.look == LOOK_PLANKS || s.look == LOOK_WOOD) {
+    // the night's fill (the owner, October 29: at night the Ranger and the stalls read as black
+    // cut-outs): what stands near the eye keeps its form and colour under a soft cool moon fill,
+    // from above and the side the moon is on, fading out past 30 m so the far night stays dark;
+    // a figure gets it full, a prop or wall half; the lamps warm both on top (lamp_light)
+    let night = st(14u).w;
+    let near = 1.0 - smoothstep(12.0, 30.0, length(u.eye.xyz - s.world));
+    let face = 0.55 + 0.25 * n.y + 0.2 * max(dot(n, st(1u).xyz), 0.0);
+    let fill = vec3f(0.10, 0.13, 0.26) * night * near * face * select(0.5, 1.7, figure);
+    res.light = vec4f(res.light.rgb + base * fill, res.light.a);
+  }
   if (s.look == LOOK_WINDOW) {
     // a lit room's light on its window's frame and sill
     let spill = s.dye.x * u.light_info.y;

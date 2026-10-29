@@ -126,10 +126,11 @@ painterly_key :: (i: int) -> StyleKey {
   k: StyleKey;
   night := i == 0; day := i == 2;
   if night {
-    // the moon is the key: (0.62, 0.70, 0.95) at 0.35; its rim is silver at 0.6 of the strength
+    // the moon is the key: (0.62, 0.70, 0.95) at 0.16; its rim a moonlit blue at 0.35 of the strength,
+    // under the key (a silver rim as bright as the moon frosted every grazing meadow and treetop white)
     // (the owner, October 29: night truly dark, as the Haunted House's: a deep blue-black sky, a low
     // ambient, strong contrast, no grey or lavender lift; the realm's lamps light it)
-    k = sk_light(0.62, 0.70, 0.95, 0.16, 0.70, 0.78, 0.95, 0.6);
+    k = sk_light(0.62, 0.70, 0.95, 0.16, 0.34, 0.42, 0.70, 0.35);
     k.tint_r = 0.36; k.tint_g = 0.42; k.tint_b = 0.70;
     k.sky_r = 0.04; k.sky_g = 0.055; k.sky_b = 0.12; k.ambient = 1.0;
     k.ground_r = 0.02; k.ground_g = 0.02; k.ground_b = 0.03;
@@ -161,11 +162,13 @@ painterly_key :: (i: int) -> StyleKey {
     k.sky_r = 0.58; k.sky_g = 0.52; k.sky_b = 0.60; k.ambient = 0.68;
     k.ground_r = 0.36; k.ground_g = 0.28; k.ground_b = 0.20;
     k.haze_start = 45; k.haze_density = 0.009; k.haze_cap = 0.72; k.haze_falloff = 50;
-    k.haze_r = 0.96; k.haze_g = 0.68; k.haze_b = 0.56;
-    k.hkey_r = 1.00; k.hkey_g = 0.62; k.hkey_b = 0.40;
-    k.zenith_r = 0.20; k.zenith_g = 0.24; k.zenith_b = 0.52;
-    k.horizon_r = 0.95; k.horizon_g = 0.62; k.horizon_b = 0.48;
-    k.cloud_r = 1.0; k.cloud_g = 0.80; k.cloud_b = 0.66;              // between
+    // the sky as Breath of the Wild paints it (the owner, October 29: dawn and dusk were pale): a teal
+    // zenith, a cream-gold band at the horizon, deep orange round the sun, the haze apricot
+    k.haze_r = 0.90; k.haze_g = 0.60; k.haze_b = 0.38;
+    k.hkey_r = 1.00; k.hkey_g = 0.34; k.hkey_b = 0.08;
+    k.zenith_r = 0.04; k.zenith_g = 0.20; k.zenith_b = 0.38;
+    k.horizon_r = 0.85; k.horizon_g = 0.55; k.horizon_b = 0.26;
+    k.cloud_r = 1.0; k.cloud_g = 0.70; k.cloud_b = 0.48;              // between
     k.exposure = 2.0; k.shaft_weight = 0.32;                          // between
   }
   return k;
@@ -395,14 +398,14 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert verse_style_at(p, 0.5, o[..]);
   #assert sp_near(o[SU_TINT], 0.52) && sp_near(o[SU_TINT + 1], 0.58) && sp_near(o[SU_TINT + 2], 0.86) && sp_near(o[SU_TINT + 3], 0.35);
 }
-#test "the rim's colour is the key's, warmed, by clock: day, dusk and dawn, the moon's silver at 0.6" {
+#test "the rim's colour is the key's, warmed, by clock: day, dusk and dawn, the moon's blue at 0.35" {
   day := verse_style_preset(STYLE_PAINTERLY, 0); o: [STYLE_FLOATS] f32;
   #assert verse_style_at(day, 0.5, o[..]);
   #assert sp_near(o[SU_RIM], 1.00) && sp_near(o[SU_RIM + 1], 0.84) && sp_near(o[SU_RIM + 2], 0.60) && sp_near(o[SU_RIM + 3], 0.30) && sp_near(o[SU_RIM2], 0.45);
   #assert verse_style_at(day, 0.25, o[..]);
   #assert sp_near(o[SU_RIM], 1.00) && sp_near(o[SU_RIM + 1], 0.62) && sp_near(o[SU_RIM + 2], 0.40);
   #assert verse_style_at(day, 0.0, o[..]);
-  #assert sp_near(o[SU_RIM], 0.70) && sp_near(o[SU_RIM + 1], 0.78) && sp_near(o[SU_RIM + 2], 0.95) && sp_near(o[SU_RIM + 3], 0.18) && sp_near(o[SU_RIM2], 0.27);
+  #assert sp_near(o[SU_RIM], 0.34) && sp_near(o[SU_RIM + 1], 0.42) && sp_near(o[SU_RIM + 2], 0.70) && sp_near(o[SU_RIM + 3], 0.105) && sp_near(o[SU_RIM2], 0.1575);
 }
 #test "the painterly preset holds the spec's shading numbers" {
   p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
@@ -460,17 +463,17 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert o[SU_KEY_DIR + 3] == 0 && sp_near(o[SU_KEY_DIR + 1], sin(60 * DEG)) && o[SU_SUN + 3] == 0;
   #assert verse_style_at(p, 0.75, o[..]);
   #assert sp_near(o[SU_KEY + 1], 0.66) && sp_near(o[SU_KEY + 3], 0.85) && sp_near(o[SU_HAZE], 45) && sp_near(o[SU_HAZE + 1], 0.009) && sp_near(o[SU_HAZE + 3], 50);
-  #assert sp_near(o[SU_TINT], 0.36) && sp_near(o[SU_TINT + 1], 0.58) && sp_near(o[SU_HORIZON], 0.95) && sp_near(o[SU_RIM + 1], 0.62);
+  #assert sp_near(o[SU_TINT], 0.36) && sp_near(o[SU_TINT + 1], 0.58) && sp_near(o[SU_HORIZON], 0.85) && sp_near(o[SU_RIM + 1], 0.62);
   #assert sp_near(o[SU_KEY_DIR + 1], sin(20 * DEG)) && o[SU_KEY_DIR + 3] == 0;
   dusk_x := o[SU_KEY_DIR];
   #assert verse_style_at(p, 0.25, o[..]);
-  #assert sp_near(o[SU_KEY + 1], 0.66) && sp_near(o[SU_HAZE_COLOUR], 0.96) && sp_near(o[SU_HAZE_KEY + 1], 0.62);
+  #assert sp_near(o[SU_KEY + 1], 0.66) && sp_near(o[SU_HAZE_COLOUR], 0.90) && sp_near(o[SU_HAZE_KEY + 1], 0.34);
   #assert abs(o[SU_KEY_DIR] - dusk_x) > 0.5;   // the sun rises on one side and sets on the other
   #assert verse_style_at(p, 0.0, o[..]);
   #assert sp_near(o[SU_KEY], 0.62) && sp_near(o[SU_KEY + 2], 0.95) && sp_near(o[SU_KEY + 3], 0.16);
   #assert sp_near(o[SU_HAZE], 30) && sp_near(o[SU_HAZE + 1], 0.010) && sp_near(o[SU_HAZE + 2], 0.6) && sp_near(o[SU_HAZE + 3], 40);
   #assert sp_near(o[SU_HAZE_COLOUR + 2], 0.09) && sp_near(o[SU_ZENITH + 2], 0.022) && sp_near(o[SU_TONE], 0.95) && sp_near(o[SU_SHAFTS + 2], 0.12);
-  #assert sp_near(o[SU_RIM], 0.70) && sp_near(o[SU_RIM + 3], 0.18) && sp_near(o[SU_RIM2], 0.27);
+  #assert sp_near(o[SU_RIM], 0.34) && sp_near(o[SU_RIM + 3], 0.105) && sp_near(o[SU_RIM2], 0.1575);
   // the moon is the key at midnight, up in the sky, and the stars are out
   #assert o[SU_KEY_DIR + 3] == 1 && o[SU_KEY_DIR + 1] > 0 && o[SU_SUN + 3] == 1;
   #assert verse_style_at(p, 1.0, o[..]) && sp_near(o[SU_KEY], 0.62) && sp_near(o[SU_STYLE + 3], 0);
