@@ -587,7 +587,7 @@ def grow_checks():
         proj = [e for e in before if e["kind"] == 30621 and e["pubkey"] == pk][-1]
         check("grow: the design notes are a comment on the project, its 30621 event named beside its address",
               tag(note, "A") == [["A", f"30621:{pk}:moon-villa", "wss://relay.openagents.com"]] and tag(note, "K") == [["K", "30621"]]
-              and tag(note, "E") == [["E", proj["id"], "wss://relay.openagents.com", pk]] and tag(note, "e") == [["e", proj["id"], "wss://relay.openagents.com", pk]]
+              and tag(note, "E") == [] and tag(note, "e") == [["e", proj["id"], "wss://relay.openagents.com", pk]]
               and len(tag(note, "a")) == 1
               and note["content"].startswith("# Fireflies") and "## Open questions\n\n- How many fireflies?" in note["content"], note)
         check("grow: the order keeps every rank and puts the new issues after them",
