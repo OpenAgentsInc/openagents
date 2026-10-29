@@ -1,0 +1,175 @@
+// Verification arithmetic: ALL scalars, points, digits and table indices here
+// must be public. Variable work/indexing is intentional. Never use for signing,
+// key generation or ECDH; suffixes document a boundary, not a taint proof.
+#load "secp_group.coax";
+#load "secp_scalar.coax";
+#authority;
+SmWnaf :: struct { digits: [257] int; length: int; ok: bool; }
+SM_BITS :: 257;
+SM_P_WINDOW :: 5;
+SM_P_TABLE :: 8;
+SM_G_WINDOW :: 2;
+
+#test "shared full-width scalar arithmetic has independent modular anchors" {
+  one := sc_small(1); two := sc_small(2); negative := sc_negate(one);
+  #assert sc_is_zero(sc_normalize(SC_N)) && sc_overflow(SC_N);
+  #assert sc_equal(sc_mul(negative,negative),one);
+  #assert sc_equal(sc_sub(one,two),negative) && sc_is_zero(sc_add(negative,one));
+}
+#test "compile-time generator alternatives are valid opposite points" {
+  generated := sm_generator_table_vartime();
+  #assert sg_equal_mask(generated[0],SM_G_TABLE[0]) == CB_MAX64 && sg_equal_mask(generated[1],SM_G_TABLE[1]) == CB_MAX64;
+  #assert sg_equal_mask(SM_G_TABLE[0],sg_generator()) == CB_MAX64;
+  #assert sg_equal_mask(SM_G_TABLE[1],sg_negate(sg_generator()).value) == CB_MAX64;
+  #assert sg_equal_mask(sg_add(SM_G_TABLE[0],SM_G_TABLE[1]).value,sg_infinity()) == CB_MAX64;
+}
+#test "public odd table covers P through 15P and handles infinity" {
+  table := sm_odd_table_vartime(sg_generator());
+  #assert sg_equal_mask(table[0],sg_generator()) == CB_MAX64;
+  step := sg_double_valid(sg_generator()); expected := sg_generator();
+  for i: 0..<8 { #assert sg_equal_mask(table[i],expected) == CB_MAX64; expected = sg_add_valid(expected,step); }
+  infinite := sm_odd_table_vartime(sg_infinity());
+  for i: 0..<8 { #assert sg_equal_mask(infinite[i],sg_infinity()) == CB_MAX64; }
+}
+#test "joint public digit length is exact for zero, distinct terms and bit256" {
+  g: SmWnaf; p: SmWnaf; #assert sm_joint_length_vartime(g,p) == 0;
+  g.digits[0] = 1; #assert sm_joint_length_vartime(g,p) == 1;
+  p.digits[7] = -3; #assert sm_joint_length_vartime(g,p) == 8;
+  #assert sm_joint_length_vartime(p,g) == 8;
+  g.digits[256] = 1; #assert sm_joint_length_vartime(g,p) == 257;
+}
+#test "public wNAF refuses unsupported windows and zero is empty" {
+  #assert !sm_wnaf_vartime(sc_small(1),1).ok && !sm_wnaf_vartime(sc_small(1),6).ok;
+  zero := sm_wnaf_vartime(ScScalar.{},5); #assert zero.ok && zero.length == 0;
+  for i: 0..<257 { #assert zero.digits[i] == 0; }
+}
+#forall "public small wNAF reconstructs and has spaced bounded odd digits" width: 2..<6, value: 0..<40 {
+  encoded := sm_wnaf_vartime(sc_small(cast(u32) value),width);
+  #assert encoded.ok; reconstructed := 0; factor := 1; last := -5;
+  for i: 0..<10 {
+    digit := encoded.digits[i]; reconstructed += digit * factor; factor *= 2;
+    if digit != 0 {
+      absolute := ifx digit < 0 then -digit else digit;
+      #assert absolute % 2 == 1 && absolute < (1 << (width-1));
+      #assert i-last >= width; last = i;
+    }
+  }
+  #assert reconstructed == value && encoded.length == last+1 || (value == 0 && encoded.length == 0);
+  for i: 10..<257 { #assert encoded.digits[i] == 0; }
+}
+#forall "public recoding retains every scalar bit and does not shift words backwards" bit: 0..<256 {
+  scalar: ScScalar; scalar.limbs[bit/32] = cast(u32) 1 << (bit%32);
+  encoded := sm_wnaf_vartime(scalar,5);
+  #assert encoded.ok && encoded.length == bit+1;
+  for i: 0..<257 { #assert encoded.digits[i] == ifx i == bit then 1 else 0; }
+}
+#forall "recoding carry stops at each non-maximal next word" word: 1..<8, width: 2..<6 {
+  input: ScScalar; for i: 0..<word { input.limbs[i] = cast(u32) 4294967295; }
+  input.limbs[word] = 7; encoded := sm_wnaf_vartime(input,width); top := word*32+3;
+  #assert encoded.ok && encoded.length == top+1;
+  for i: 0..<257 {
+    expected := ifx i == 0 then -1 else ifx i == top then 1 else 0;
+    #assert encoded.digits[i] == expected;
+  }
+}
+#test "public recoding preserves the exact integer and a 257th carry bit" {
+  #assert sm_wnaf_vartime(SC_N,2).length == 257;
+  minus_one := sc_negate(sc_small(1)); two := sm_wnaf_vartime(minus_one,2); five := sm_wnaf_vartime(minus_one,5);
+  #assert two.length == 257 && two.digits[256] == 1 && two.digits[0] == 0;
+  #assert five.length == 257 && five.digits[256] == 1 && five.digits[6] == 5;
+  raw: ScScalar; for i: 0..<8 { raw.limbs[i] = cast(u32) 4294967295; }
+  carry := sm_wnaf_vartime(raw,5);
+  #assert carry.length == 257 && carry.digits[0] == -1 && carry.digits[256] == 1;
+  for i: 1..<256 { #assert carry.digits[i] == 0; }
+}
+#test "public dual multiply combines both terms and refuses invalid bounded points" {
+  g := sg_generator(); result := ecmult_vartime(sc_small(1),g,sc_small(1));
+  #assert result.ok && sg_equal_mask(result.value,sg_double_valid(g)) == CB_MAX64;
+  zero := ecmult_vartime(sc_small(0),g,sc_small(0)); #assert zero.ok && sg_equal_mask(zero.value,sg_infinity()) == CB_MAX64;
+  only_g := ecmult_vartime(sc_small(3),sg_infinity(),sc_small(7));
+  #assert only_g.ok && sg_equal_mask(only_g.value,sg_add_valid(sg_double_valid(g),g)) == CB_MAX64;
+  bad: SgPoint; refused := ecmult_vartime(sc_small(0),bad,sc_small(0));
+  #assert !refused.ok && sg_equal_mask(refused.value,sg_infinity()) == CB_MAX64;
+}
+
+#test "public negative window5 digit selects and negates the last odd multiple" {
+  g := sg_generator(); expected := g;
+  for i: 0..<4 { expected = sg_double_valid(expected); } expected = sg_add_valid(expected,g);
+  result := ecmult_vartime(sc_small(0),g,sc_small(17));
+  #assert result.ok && sg_equal_mask(result.value,expected) == CB_MAX64;
+  infinite := ecmult_vartime(sc_small(0),sg_infinity(),sc_small(17));
+  #assert infinite.ok && sg_equal_mask(infinite.value,sg_infinity()) == CB_MAX64;
+}
+
+// 9 words retain the carry into bit256 while subtracting a negative digit.
+// Every addition is <=2^32+15 (u64); positive digits never exceed low word.
+// Width is public metadata2..5; signed odd digits have magnitude<2^(w-1).
+// Recode the EXACT unsigned256-bit input. Group multiplication reduces by
+// the group order mathematically, so no separate scalar normalization is needed.
+sm_wnaf_vartime :: (input: ScScalar,width: int) -> SmWnaf #export_c {
+  result: SmWnaf; if width < 2 || width > 5 { return result; }
+  words: [9] u32;
+  for i: 0..<8 { words[i] = input.limbs[i]; }
+  radix := 1 << width; half := radix/2;
+  for bit: 0..<SM_BITS {
+    digit := 0;
+    if (words[0]&1) != 0 {
+      digit = cast(int) (words[0]&cast(u32) (radix-1));
+      if (digit&half) != 0 { digit -= radix; }
+      // Positive d never exceeds the low word; negative d adds at most15.
+      // This signed64 difference is therefore in0..2^32+14, without wrap.
+      first := cast(u64) (cast(int) words[0]-digit);
+      words[0] = cast(u32) (first&SC_WORD); carry := first>>32;
+      for i: 1..<9 {
+        wide := cast(u64) words[i]+carry;
+        words[i] = cast(u32) (wide&SC_WORD); carry = wide>>32;
+      }
+      result.length = bit+1;
+    }
+    result.digits[bit] = digit;
+    for i: 0..<8 { words[i] = (words[i]>>1) | (words[i+1]<<31); }
+    // The extra word is at most1; its shifted value is exactly zero.
+    words[8] = 0;
+  }
+  result.ok = true; return result;
+}
+// A deliberately small signed G table is actually generated during #run,
+// under the existing aggregate100k budget. Window2 costs more online adds
+// than a larger G table; there is no performance/secret-safety claim.
+sm_generator_table_vartime :: () -> [2] SgPoint {
+  table: [2] SgPoint; table[0] = sg_generator(); table[1] = table[0];
+  table[1].y = sf_negate(table[1].y); return table;
+}
+SM_G_TABLE :: #run sm_generator_table_vartime();
+// Input is already curve-valid; group kernels normalize bounded coordinates.
+sm_odd_table_vartime :: (point: SgPoint) -> [8] SgPoint {
+  table: [8] SgPoint; table[0] = point; twice := sg_double_valid(point);
+  for i: 1..<8 { table[i] = sg_add_valid(table[i-1],twice); } return table;
+}
+// Highest occupied public digit, including the possible bit256 carry.
+sm_joint_length_vartime :: (g_digits: SmWnaf,p_digits: SmWnaf) -> int {
+  length := 0;
+  for bit: 0..<SM_BITS {
+    if (g_digits.digits[bit] | p_digits.digits[bit]) != 0 { length = bit+1; }
+  }
+  return length;
+}
+ecmult_vartime :: (a: ScScalar,point: SgPoint,b: ScScalar) -> SgResult #export_c {
+  if sg_valid_mask(point) != CB_MAX64 { return SgResult.{value=sg_infinity()}; }
+  table := sm_odd_table_vartime(point);
+  g_digits := sm_wnaf_vartime(a,SM_G_WINDOW); p_digits := sm_wnaf_vartime(b,SM_P_WINDOW);
+  length := sm_joint_length_vartime(g_digits,p_digits);
+  result := sg_infinity();
+  for round: 0..<length {
+    bit := length-1-round; result = sg_double_valid(result);
+    gd := g_digits.digits[bit]; pd := p_digits.digits[bit];
+    if gd != 0 { index := ifx gd == -1 then 1 else 0; result = sg_add_valid(result,SM_G_TABLE[index]); }
+    if pd != 0 {
+      absolute := ifx pd < 1 then -pd else pd; selected := table[(absolute-1)/2];
+      // pd is nonzero here: pd<1 means negative.
+      if pd < 1 { selected = sg_negate(selected).value; }
+      result = sg_add_valid(result,selected);
+    }
+  }
+  return SgResult.{value=result,ok=true};
+}
