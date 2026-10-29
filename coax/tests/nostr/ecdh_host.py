@@ -6,7 +6,7 @@ def run(*args):subprocess.run([str(x) for x in args],check=True)
 with tempfile.TemporaryDirectory(prefix='coax-ecdh-host-') as tmp:
  d=pathlib.Path(tmp)
  for mode,flags in [('checked',[]),('release',['--release'])]:
-  a=d/'ecdh.c';z=d/'zeroize.c';run(C,'c',ROOT/'coax/lib/crypto/ecdh.coax','--library','--header',d/'ecdh.h','-o',a,*flags);run(C,'c',ROOT/'coax/lib/crypto/zeroize.coax','--library','--header',d/'zeroize-policy.h','-o',z,*flags)
+  a=d/'ecdh.c';z=d/'zeroize.c';run(C,'c',ROOT/'coax/lib/crypto/ecdh_owned_adapter.coax','--library','--header',d/'ecdh.h','-o',a,*flags);run(C,'c',ROOT/'coax/lib/crypto/zeroize.coax','--library','--header',d/'zeroize-policy.h','-o',z,*flags)
   sources=[a,z,P/'zeroize.c',P/'ecdh_host.c',T/'ecdh_host_fixture.c'];common=['-std=c11','-DCOAX_ECDH_TEST_EFFECT','-I'+str(d),'-I'+str(P)]
   for name,opts in [('native',['-O2']),('asan',['-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer'])]:
    exe=d/(mode+'-'+name);run('cc',*common,*opts,*sources,'-lm','-o',exe);run(exe);print(mode,name,'cleanup fixture passed',flush=True)

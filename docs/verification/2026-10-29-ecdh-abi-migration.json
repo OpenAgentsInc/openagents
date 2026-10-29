@@ -1,0 +1,5713 @@
+{
+  "schema": "coax.ecdh-abi-migration-evidence.v1",
+  "scope": "experimental controlled public build and conditional source audit; no physical erasure, target timing or production approval",
+  "source_sha256": {
+    "coax/lib/crypto/ecdh.coax": "8bd78fccaa462d832e5c89621ac2159c78aa8035d4f13568783f3d195ad07c28",
+    "coax/lib/crypto/ecdh_owned_adapter.coax": "e52c179ee19e4b038fe924e3ea25c0b7c05bb940f7f6555e82bc564dcefc0d55",
+    "coax/lib/crypto/platform/ecdh_host.c": "bbbc2e8e2bb2e85173556ad79a9cf57476798b655f84565226b7a47a57bd00f2",
+    "coax/lib/crypto/platform/ecdh_owned.c": "b1c57dedeb78080cc15b9b7391d861d4cb7064e67cdc3150bd1055006a69a2ff",
+    "coax/lib/crypto/platform/ecdh_owned.h": "5b3aff2c6f207fccc900d8f4db7d25104055d271ced7b93e0f8df0e85b723720",
+    "coax/tests/nostr/ecdh_host.py": "4dcc118a6c0acd5f512d101468cfeb6083716e2a311d3f36a2e8f0e0d77385d8",
+    "coax/tests/nostr/ecdh_owned.py": "516a4b8558d9ae1fbdf9536a57aa74cc67aeef13020c0e53a35d288d9e1c5649",
+    "coax/tests/nostr/ecdh_owned_vectors.py": "5cc9b88b975865adefefd812cbb5fdf5436cfe02bed9eed383a65da8fb9975c3",
+    "coax/tests/nostr/ecdh_owned_exports.py": "eef3ede9340a9d3e5cc81d212194bf1ef7ad23f39c8b354771da2e65e9df17e8",
+    "coax/tests/nostr/ecdh_owned_manifest_test.py": "a7f8304d312c5734b51fcbde0d214f6b5b97a78eb702516abbde4e8c9dd16784",
+    "coax/tests/nostr/ecdh_owned_public_wasm.cjs": "f7ca7eef34465d326b1c896a9e7f2174b9cee78a27b0279cbdd91b6756411d4b",
+    "coax/tests/nostr/ecdh_owned_public_link.py": "b738947b3b384fbf9af0fd4f4a40c7c0b019acf5b7ede3e549eb2b70562a4c39",
+    "coax/tests/nostr/ecdh_public_guards.py": "751b93b0a836317a69b07e8af22e8ee82a7b33593adfb0d94e93ee54b0d8861d",
+    "coax/tests/nostr/ecdh_public_guards_wasm.c": "69ba4c3058bac2222f2996a174ec4e82b7f5ef132f40a69f0dceaf740ab16ce9",
+    "coax/tests/nostr/ecdh_vectors.py": "a2216e01472dbf6dc65edb5d2eb7d4f97f938d4ceac0473ae299acf513ac280c",
+    "coax/tests/nostr/ecdh_wasm.c": "e95b2599748ed923ea7aab99077d455f27be0d0602f3fe92aa195f9b28f762f5",
+    "tools/coax-nostr/ecdh-owned/build.py": "d4eb3cc7e3916b7e23e5b20fe922a850bc81233d6617a36c81c9027fd98d336a",
+    "tools/coax-nostr/ecdh-owned/test_publication.py": "06b407ad4a996c13e1cac7c8d2e71abc1492a4534021ada95d8003ded5bbb6d1",
+    "tools/coax-nostr/ecdh-owned-guards/check.py": "067d03a9153054c391d8f9a291ecfec2d8d9b57d893b5c9d8428f8b214794305",
+    "tools/coax-nostr/ecdh-owned-guards/policy.coax": "5829577cc9d7786d4170c19a5fdd4f151eee4767a6c02728635a4b58ff5b04e1",
+    "tools/coax-nostr/ecdh-owned-guards/prove.py": "814e429e50414b60bb21b2e6de3e24ec0a58bd09a9b4d8daf59b1985d3a9d8f9",
+    "tools/coax-nostr/ecdh-owned-guards/run.py": "00a4d0e2abde0d1650f9d6b5158de936feecca4a03d6e3ac822bb5a135184d5c",
+    "tools/coax-nostr/ecdh-owned-guards/test_binding.py": "0627ae1e607f5140b14334942a9136883bdee38087f6c9519dd8a6205a7d3b9a",
+    "docs/verification/2026-10-29-ecdh-owned-migration-audit.json": "8c9071dc55ac70e9a82142b1e8b832ca29cf8805fbd1d5be5532eac1053741d2",
+    "docs/verification/2026-10-29-ecdh-owned-migration-proof.json": "5255415450a74987136b47932ce11f0590270c22b032979e07c84c6a553eac82",
+    "docs/verification/2026-10-29-ecdh-owned-migration-review.md": "ec09dfe7352060b957a04c42a140e96415ecb39f60d1a862dd5f5fb71b847275"
+  },
+  "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+  "checks": {
+    "source": 107,
+    "source_mutants": 1842,
+    "source_killed": 1842,
+    "source_survived": 0,
+    "binding": 2,
+    "binding_mutants": 35,
+    "binding_killed": 35,
+    "binding_survived": 0,
+    "binding_python_tests": 13
+  },
+  "builds": [
+    {
+      "target": "native",
+      "profile": "checked",
+      "manifest_sha256": "d95c5bfccf3422cc47e1a4b4426b68cc08a563ea86a1bcae766c28de833440f5",
+      "artifact_sha256": "40c36aa00ad282a90a4af72590a89684fc5029f4c3f5ea593bd93153709adea9",
+      "public_header_sha256": "5b3aff2c6f207fccc900d8f4db7d25104055d271ced7b93e0f8df0e85b723720",
+      "exports": [
+        "coax_ecdh_owned_acquire",
+        "coax_ecdh_owned_cancel",
+        "coax_ecdh_owned_close",
+        "coax_ecdh_owned_collect",
+        "coax_ecdh_owned_retry",
+        "coax_ecdh_owned_start"
+      ]
+    },
+    {
+      "target": "native",
+      "profile": "release",
+      "manifest_sha256": "ee0b3511ff00235449db0f5d0fc03ae71b4207381020758e3eea57bcf5d87203",
+      "artifact_sha256": "ecebe18364c128ea2600d9442df55c95d9a24438649b1e842c3836eacc0320b9",
+      "public_header_sha256": "5b3aff2c6f207fccc900d8f4db7d25104055d271ced7b93e0f8df0e85b723720",
+      "exports": [
+        "coax_ecdh_owned_acquire",
+        "coax_ecdh_owned_cancel",
+        "coax_ecdh_owned_close",
+        "coax_ecdh_owned_collect",
+        "coax_ecdh_owned_retry",
+        "coax_ecdh_owned_start"
+      ]
+    },
+    {
+      "target": "wasm",
+      "profile": "checked",
+      "manifest_sha256": "8b66548bbecea6d9208058e521d09a731d528505e424a1c4fe8885ae766e4c9c",
+      "artifact_sha256": "aa198dd06a4908222e793ef756edeace6a9c4100efc80713e4b36a1083aa6f1a",
+      "public_header_sha256": "5b3aff2c6f207fccc900d8f4db7d25104055d271ced7b93e0f8df0e85b723720",
+      "exports": [
+        "_initialize",
+        "coax_ecdh_owned_acquire",
+        "coax_ecdh_owned_cancel",
+        "coax_ecdh_owned_close",
+        "coax_ecdh_owned_collect",
+        "coax_ecdh_owned_retry",
+        "coax_ecdh_owned_start",
+        "free",
+        "malloc",
+        "memory"
+      ]
+    },
+    {
+      "target": "wasm",
+      "profile": "release",
+      "manifest_sha256": "02176cddae8f2fdfdf10a1a1d3ceac2ae0be7773b2f97968307714a4c77744b0",
+      "artifact_sha256": "1365c5a1d8f414f74f6c92f84117e3a2baa37924252331acf12d5724b324b8e4",
+      "public_header_sha256": "5b3aff2c6f207fccc900d8f4db7d25104055d271ced7b93e0f8df0e85b723720",
+      "exports": [
+        "_initialize",
+        "coax_ecdh_owned_acquire",
+        "coax_ecdh_owned_cancel",
+        "coax_ecdh_owned_close",
+        "coax_ecdh_owned_collect",
+        "coax_ecdh_owned_retry",
+        "coax_ecdh_owned_start",
+        "free",
+        "malloc",
+        "memory"
+      ]
+    }
+  ],
+  "public_oracle": {
+    "schema": "coax.ecdh-owned-oracle.v1",
+    "scope": "public correctness of an experimental owner; no target or production approval",
+    "counts": {
+      "nip44": 35,
+      "wycheproof_valid": 473,
+      "wycheproof_invalid_x": 13,
+      "wycheproof_excluded": 266,
+      "invalid_scalar": 4,
+      "invalid_peer": 1,
+      "random": 256,
+      "seeded_default_hash": 1
+    },
+    "modes": [
+      {
+        "mode": "checked",
+        "native_cases": 783,
+        "native_failures": 0,
+        "native_artifact_sha256": "40c36aa00ad282a90a4af72590a89684fc5029f4c3f5ea593bd93153709adea9",
+        "wasm_artifact_sha256": "aa198dd06a4908222e793ef756edeace6a9c4100efc80713e4b36a1083aa6f1a",
+        "wasm": {
+          "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+          "cases": 783,
+          "failures": 0
+        }
+      },
+      {
+        "mode": "release",
+        "native_cases": 783,
+        "native_failures": 0,
+        "native_artifact_sha256": "ecebe18364c128ea2600d9442df55c95d9a24438649b1e842c3836eacc0320b9",
+        "wasm_artifact_sha256": "1365c5a1d8f414f74f6c92f84117e3a2baa37924252331acf12d5724b324b8e4",
+        "wasm": {
+          "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+          "cases": 783,
+          "failures": 0
+        }
+      }
+    ],
+    "fixtures_sha256": "40bc18ddcb966e7d7975d0d758d12df5519c5a21acdda60c15cc026f93a95d65",
+    "inputs": {
+      "$REPO/coax/lib/crypto/ecdh_owned_adapter.coax": "e52c179ee19e4b038fe924e3ea25c0b7c05bb940f7f6555e82bc564dcefc0d55",
+      "$REPO/coax/lib/crypto/zeroize.coax": "158c6a3eb2c8139a1ac6059201dc26aae052b358cab580121335f774235df16c",
+      "$REPO/coax/lib/crypto/ecdh_lifecycle.coax": "567b504931a37333f7933ca11f06904a94ac3fb929bdcaae0388e89364fa4eba",
+      "$REPO/coax/lib/crypto/platform/ecdh_owned.c": "b1c57dedeb78080cc15b9b7391d861d4cb7064e67cdc3150bd1055006a69a2ff",
+      "$REPO/coax/lib/crypto/platform/ecdh_owned.h": "5b3aff2c6f207fccc900d8f4db7d25104055d271ced7b93e0f8df0e85b723720",
+      "$REPO/coax/lib/crypto/platform/zeroize.c": "7f1767b1bd35a577a43b0c076e561fb7737f2bbe31bc89e903064bd457b9081a",
+      "$REPO/coax/tests/nostr/ecdh_owned_vectors.py": "5cc9b88b975865adefefd812cbb5fdf5436cfe02bed9eed383a65da8fb9975c3",
+      "$REPO/coax/tests/nostr/ecdh_owned_wasm.c": "74804d0e3ce4931565f7f32aa898b48afbcf16055604bd672b3df4c2027b3a0a",
+      "$REPO/coax/tests/nostr/ecdh_owned_wasm.cjs": "1a5fde18d987bf0a76f8789b9d764b8106d5326b58717f3091984f3b5dcdf40b",
+      "$REPO/coax/tests/nostr/ecdh_owned_public_wasm.cjs": "f7ca7eef34465d326b1c896a9e7f2174b9cee78a27b0279cbdd91b6756411d4b",
+      "$REPO/coax/tests/vectors/upstream/nip44/nip44.vectors.json": "269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040",
+      "$REPO/coax/tests/vectors/upstream/wycheproof/ecdh_secp256k1_test.json": "049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae",
+      "$REPO/tools/coax-nostr/fuzz/.cache/build/libsecp_oracle.dylib": "8c46f911b6821f9fc0de66a55d50b11325e364cf64afd95ca6ab0b7f2882201b",
+      "$REPO/coax/bin/coax": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+      "$REPO/coax/lib/crypto/ecdh.coax": "8bd78fccaa462d832e5c89621ac2159c78aa8035d4f13568783f3d195ad07c28",
+      "$REPO/coax/lib/crypto/secp_mult_const.coax": "948b31ef93663792305347ca5f65e22259c5777e783edf7b9502b09033de622b",
+      "$REPO/coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+      "$REPO/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "$REPO/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "$REPO/coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+      "$REPO/coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+      "$REPO/coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+      "$REPO/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+      "$REPO/coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915",
+      "/tmp/coax-ecdh-final-v5-native-checked/manifest.json": "d95c5bfccf3422cc47e1a4b4426b68cc08a563ea86a1bcae766c28de833440f5",
+      "/tmp/coax-ecdh-final-v5-native-checked/libcoax_ecdh_owned.dylib": "40c36aa00ad282a90a4af72590a89684fc5029f4c3f5ea593bd93153709adea9",
+      "/tmp/coax-ecdh-final-v5-wasm-checked/manifest.json": "8b66548bbecea6d9208058e521d09a731d528505e424a1c4fe8885ae766e4c9c",
+      "/tmp/coax-ecdh-final-v5-wasm-checked/coax_ecdh_owned.wasm": "aa198dd06a4908222e793ef756edeace6a9c4100efc80713e4b36a1083aa6f1a",
+      "/tmp/coax-ecdh-final-v5-native-release/manifest.json": "ee0b3511ff00235449db0f5d0fc03ae71b4207381020758e3eea57bcf5d87203",
+      "/tmp/coax-ecdh-final-v5-native-release/libcoax_ecdh_owned.dylib": "ecebe18364c128ea2600d9442df55c95d9a24438649b1e842c3836eacc0320b9",
+      "/tmp/coax-ecdh-final-v5-wasm-release/manifest.json": "02176cddae8f2fdfdf10a1a1d3ceac2ae0be7773b2f97968307714a4c77744b0",
+      "/tmp/coax-ecdh-final-v5-wasm-release/coax_ecdh_owned.wasm": "1365c5a1d8f414f74f6c92f84117e3a2baa37924252331acf12d5724b324b8e4"
+    }
+  },
+  "exports_probe": {
+    "schema": "coax.ecdh-owner-export-probe.v1",
+    "scope": "export surface only; no target timing, ownership or production approval",
+    "modes": [
+      {
+        "mode": "checked",
+        "native_symbols": [
+          "coax_ecdh_owned_acquire",
+          "coax_ecdh_owned_cancel",
+          "coax_ecdh_owned_close",
+          "coax_ecdh_owned_collect",
+          "coax_ecdh_owned_retry",
+          "coax_ecdh_owned_start"
+        ],
+        "wasm_exports": [
+          "_initialize",
+          "coax_ecdh_owned_acquire",
+          "coax_ecdh_owned_cancel",
+          "coax_ecdh_owned_close",
+          "coax_ecdh_owned_collect",
+          "coax_ecdh_owned_retry",
+          "coax_ecdh_owned_start",
+          "free",
+          "malloc",
+          "memory"
+        ],
+        "native_sha256": "40c36aa00ad282a90a4af72590a89684fc5029f4c3f5ea593bd93153709adea9",
+        "wasm_sha256": "aa198dd06a4908222e793ef756edeace6a9c4100efc80713e4b36a1083aa6f1a",
+        "negative_controls": "raw bridge exposed when protection is removed"
+      },
+      {
+        "mode": "release",
+        "native_symbols": [
+          "coax_ecdh_owned_acquire",
+          "coax_ecdh_owned_cancel",
+          "coax_ecdh_owned_close",
+          "coax_ecdh_owned_collect",
+          "coax_ecdh_owned_retry",
+          "coax_ecdh_owned_start"
+        ],
+        "wasm_exports": [
+          "_initialize",
+          "coax_ecdh_owned_acquire",
+          "coax_ecdh_owned_cancel",
+          "coax_ecdh_owned_close",
+          "coax_ecdh_owned_collect",
+          "coax_ecdh_owned_retry",
+          "coax_ecdh_owned_start",
+          "free",
+          "malloc",
+          "memory"
+        ],
+        "native_sha256": "ecebe18364c128ea2600d9442df55c95d9a24438649b1e842c3836eacc0320b9",
+        "wasm_sha256": "1365c5a1d8f414f74f6c92f84117e3a2baa37924252331acf12d5724b324b8e4",
+        "negative_controls": "raw bridge exposed when protection is removed"
+      }
+    ],
+    "inputs": {
+      "$REPO/coax/bin/coax": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+      "$REPO/coax/lib/crypto/platform/ecdh_owned.c": "b1c57dedeb78080cc15b9b7391d861d4cb7064e67cdc3150bd1055006a69a2ff",
+      "$REPO/coax/lib/crypto/platform/ecdh_owned.h": "5b3aff2c6f207fccc900d8f4db7d25104055d271ced7b93e0f8df0e85b723720",
+      "$REPO/coax/lib/crypto/platform/zeroize.c": "7f1767b1bd35a577a43b0c076e561fb7737f2bbe31bc89e903064bd457b9081a",
+      "$REPO/coax/tests/nostr/ecdh_owned_exports.py": "eef3ede9340a9d3e5cc81d212194bf1ef7ad23f39c8b354771da2e65e9df17e8",
+      "$REPO/coax/lib/crypto/ecdh_owned_adapter.coax": "e52c179ee19e4b038fe924e3ea25c0b7c05bb940f7f6555e82bc564dcefc0d55",
+      "$REPO/coax/lib/crypto/ecdh.coax": "8bd78fccaa462d832e5c89621ac2159c78aa8035d4f13568783f3d195ad07c28",
+      "$REPO/coax/lib/crypto/secp_mult_const.coax": "948b31ef93663792305347ca5f65e22259c5777e783edf7b9502b09033de622b",
+      "$REPO/coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+      "$REPO/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "$REPO/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "$REPO/coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+      "$REPO/coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+      "$REPO/coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+      "$REPO/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+      "$REPO/coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915",
+      "$REPO/coax/lib/crypto/zeroize.coax": "158c6a3eb2c8139a1ac6059201dc26aae052b358cab580121335f774235df16c",
+      "$REPO/coax/lib/crypto/ecdh_lifecycle.coax": "567b504931a37333f7933ca11f06904a94ac3fb929bdcaae0388e89364fa4eba"
+    }
+  },
+  "raw_audit": {
+    "schema": "coax.secret-source-audit.v1",
+    "entry": "ecdh_stage",
+    "classification": "explicit whole-parameter classification",
+    "profile": "aggregate-source-v1",
+    "accepted": false,
+    "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+    "compiler": "coax0 0.22.0",
+    "compiler_run_steps": null,
+    "audit_artifact_sha256": "43e869a2721b6eb71e434ac2c24a35297f034d44c66f25da3574b9a37fda5eb4",
+    "audit_input_sha256": {
+      "$REPO/tools/coax-nostr/secret-check/frontend.coax": "570f71b622640f2a2f55fb4fe1a05b78a36a2f606bf5e288f2150a3ba1b0de0c",
+      "$REPO/coax/lib/compiler/lexer.coax": "2a193c698aab87f24384bdd4443dc02d15a2a699cea5b371762392fc5925ad0b",
+      "$REPO/coax/lib/compiler/parser.coax": "448318fa44d7935bebb0efcf1d6a55f77c39d1cc4450c18ed5ffbe4c55d36365",
+      "$REPO/coax/lib/compiler/sources.coax": "a5cea55ef5f6efa502d15d9e0ddd462e3e1a5cffe0f25a8200873443c9df008d",
+      "$REPO/coax/lib/crypto/sha256-memory.coax": "9c59475cf6744005e9a9bff7efa5c1fd1cf90c5323a7c52e818a166b0451433d",
+      "$REPO/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+      "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "$REPO/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+      "$REPO/tools/coax-nostr/secret-check/source-policy.coax": "e0822835f32f266d4ca97b26d47ea158ffc58bed62eb5096d3eeec1dc9c628c5",
+      "$REPO/tools/coax-nostr/public-view-check/aggregate.coax": "a01cf12169831c2892d1dbaf0d36c0e408b71da388e2b0d18704c656c8535794",
+      "$REPO/coax/lib/crypto/secret-flow.coax": "208119c702a971e799baa13221b211b38665c0a7a34c52a2af3f453ac5588f4e",
+      "$REPO/coax/lib/crypto/secret-types.coax": "e7a6a4632ab555ac12b3765d97bf18fcad5e18248f182889b31fb965682117e7",
+      "$REPO/coax/tests/nostr/secret_flow.coax": "b3b383a63aa7fffeaed0daf3bde6066c0c1e7f7e856c6a855f8c5c45fb2840d3",
+      "$REPO/coax/tests/nostr/secret_aggregate.coax": "6e87fcd53c8955bb1ce5f1dff6a57b57055fd6813461be07357da46f77afbd7a",
+      "$REPO/coax/tests/nostr/secret_aggregate_cases.coax": "b99853d36c10cedf11c195856d7d56032c3f8bd7a59a9d0b030350e09f55adc7",
+      "$REPO/tools/coax-nostr/public-view-check/bridge-aggregate.cpp": "ac56e8d614612532900a62462a6089e4c0de6f2857c57d8c52a98cd8cfb5754c",
+      "$REPO/tools/coax-nostr/public-view-check/check.py": "4a478426bcf468e5e4d319185bffce2b503ac62e3fc2ef4659cbb13d77656e6b",
+      "$REPO/tools/coax-nostr/public-view-check/aggregate.py": "6e3babd692fdb5a3ea351b6abf50ed9d33aef6856a9857d868d37c716ac9078d"
+    },
+    "object_timing_approved": false,
+    "checked_runtime_guards_proved": false,
+    "aggregate_memory_loops_supported": true,
+    "compiler_profile": "native-c-checked-library",
+    "compiler_source_map_sha256": "b93351a48cdbdbba5250787e2bab040125ea7e659247b3ad403983dfdc8f6c41",
+    "source_sha256": {
+      "$REPO/coax/lib/crypto/ecdh.coax": "8bd78fccaa462d832e5c89621ac2159c78aa8035d4f13568783f3d195ad07c28",
+      "$REPO/coax/lib/crypto/secp_mult_const.coax": "948b31ef93663792305347ca5f65e22259c5777e783edf7b9502b09033de622b",
+      "$REPO/coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+      "$REPO/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "$REPO/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "$REPO/coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+      "$REPO/coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+      "$REPO/coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+      "$REPO/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+      "$REPO/coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915"
+    },
+    "resolved_type_sha256": "f1fff1b2a59a44de648f16f9ad9615170cf45c65de1330579d2afe755f1fa1f6",
+    "resolved_type_inventory": {
+      "schema": "coax.compiler-resolved-types.v1",
+      "functions": [
+        {
+          "unit": 0,
+          "name": "ecdh_admit",
+          "line": 63,
+          "variables": [
+            {
+              "name": "secret_len",
+              "line": 63,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "peer_len",
+              "line": 63,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "capacity",
+              "line": 63,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "present",
+              "line": 63,
+              "role": "parameter",
+              "type": "bool"
+            },
+            {
+              "name": "aligned",
+              "line": 63,
+              "role": "parameter",
+              "type": "bool"
+            },
+            {
+              "name": "overlap",
+              "line": 63,
+              "role": "parameter",
+              "type": "bool"
+            }
+          ]
+        },
+        {
+          "unit": 0,
+          "name": "ecdh_table",
+          "line": 68,
+          "variables": [
+            {
+              "name": "point",
+              "line": 68,
+              "role": "parameter",
+              "type": "Sg32"
+            },
+            {
+              "name": "table",
+              "line": 69,
+              "role": "local",
+              "type": "[9] Sg32"
+            },
+            {
+              "name": "i",
+              "line": 70,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 0,
+          "name": "ecdh_multiply_admitted",
+          "line": 88,
+          "variables": [
+            {
+              "name": "input",
+              "line": 88,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "peer",
+              "line": 88,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "point",
+              "line": 89,
+              "role": "local",
+              "type": "Sg32"
+            },
+            {
+              "name": "table",
+              "line": 89,
+              "role": "local",
+              "type": "[9] Sg32"
+            },
+            {
+              "name": "digits",
+              "line": 90,
+              "role": "local",
+              "type": "SmcDigits"
+            },
+            {
+              "name": "result",
+              "line": 90,
+              "role": "local",
+              "type": "Sg32"
+            },
+            {
+              "name": "round",
+              "line": 91,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "bit",
+              "line": 92,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "selected",
+              "line": 93,
+              "role": "local",
+              "type": "Sg32"
+            }
+          ]
+        },
+        {
+          "unit": 0,
+          "name": "ecdh_secret_math",
+          "line": 99,
+          "variables": [
+            {
+              "name": "input",
+              "line": 99,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "peer",
+              "line": 99,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "result",
+              "line": 100,
+              "role": "local",
+              "type": "EcdhMath"
+            },
+            {
+              "name": "inverse",
+              "line": 101,
+              "role": "local",
+              "type": "Sf32"
+            }
+          ]
+        },
+        {
+          "unit": 0,
+          "name": "ecdh_stage",
+          "line": 104,
+          "variables": [
+            {
+              "name": "secret",
+              "line": 104,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "peer",
+              "line": 104,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "work",
+              "line": 104,
+              "role": "parameter",
+              "type": "[] EcdhScratch"
+            },
+            {
+              "name": "point",
+              "line": 106,
+              "role": "local",
+              "type": "SgResult"
+            },
+            {
+              "name": "raw",
+              "line": 107,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "wide",
+              "line": 107,
+              "role": "local",
+              "type": "[9] u32"
+            },
+            {
+              "name": "bits",
+              "line": 107,
+              "role": "local",
+              "type": "u32"
+            },
+            {
+              "name": "i",
+              "line": 108,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "word",
+              "line": 108,
+              "role": "local",
+              "type": "u32"
+            },
+            {
+              "name": "valid",
+              "line": 109,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "product",
+              "line": 111,
+              "role": "local",
+              "type": "EcdhMath"
+            },
+            {
+              "name": "i",
+              "line": 115,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "mask",
+              "line": 116,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 116,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 1,
+          "name": "smc_recode",
+          "line": 104,
+          "variables": [
+            {
+              "name": "input",
+              "line": 104,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "scalar",
+              "line": 105,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "result",
+              "line": 105,
+              "role": "local",
+              "type": "SmcDigits"
+            },
+            {
+              "name": "carry",
+              "line": 105,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 106,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "value",
+              "line": 107,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "mask",
+              "line": 109,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 1,
+          "name": "smc_table",
+          "line": 116,
+          "variables": [
+            {
+              "name": "point",
+              "line": 116,
+              "role": "parameter",
+              "type": "Sg32"
+            },
+            {
+              "name": "table",
+              "line": 117,
+              "role": "local",
+              "type": "[9] Sg32"
+            },
+            {
+              "name": "i",
+              "line": 118,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 1,
+          "name": "smc_pick",
+          "line": 122,
+          "variables": [
+            {
+              "name": "table",
+              "line": 122,
+              "role": "parameter",
+              "type": "[] Sg32"
+            },
+            {
+              "name": "which",
+              "line": 122,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "chosen",
+              "line": 123,
+              "role": "local",
+              "type": "Sg32"
+            },
+            {
+              "name": "i",
+              "line": 124,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "mask",
+              "line": 125,
+              "role": "local",
+              "type": "u32"
+            },
+            {
+              "name": "point",
+              "line": 125,
+              "role": "local",
+              "type": "Sg32"
+            },
+            {
+              "name": "limb",
+              "line": 126,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 1,
+          "name": "smc_signed",
+          "line": 134,
+          "variables": [
+            {
+              "name": "point",
+              "line": 134,
+              "role": "parameter",
+              "type": "Sg32"
+            },
+            {
+              "name": "negative",
+              "line": 134,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "zero",
+              "line": 135,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "neg",
+              "line": 135,
+              "role": "local",
+              "type": "Sg32"
+            }
+          ]
+        },
+        {
+          "unit": 1,
+          "name": "smc_peer_bounded",
+          "line": 140,
+          "variables": [
+            {
+              "name": "peer",
+              "line": 140,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "i",
+              "line": 141,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "limit",
+              "line": 142,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 1,
+          "name": "smc_multiply",
+          "line": 150,
+          "variables": [
+            {
+              "name": "input",
+              "line": 150,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "peer",
+              "line": 150,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "refused",
+              "line": 151,
+              "role": "local",
+              "type": "SgResult"
+            },
+            {
+              "name": "valid",
+              "line": 152,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "admitted",
+              "line": 152,
+              "role": "local",
+              "type": "SgPoint"
+            },
+            {
+              "name": "table",
+              "line": 153,
+              "role": "local",
+              "type": "[9] Sg32"
+            },
+            {
+              "name": "digits",
+              "line": 153,
+              "role": "local",
+              "type": "SmcDigits"
+            },
+            {
+              "name": "result",
+              "line": 154,
+              "role": "local",
+              "type": "Sg32"
+            },
+            {
+              "name": "round",
+              "line": 155,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "bit",
+              "line": 156,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "at",
+              "line": 157,
+              "role": "local",
+              "type": "int"
+            },
+            {
+              "name": "selected",
+              "line": 158,
+              "role": "local",
+              "type": "Sg32"
+            },
+            {
+              "name": "finished",
+              "line": 163,
+              "role": "local",
+              "type": "SgResult"
+            }
+          ]
+        },
+        {
+          "unit": 2,
+          "name": "sg32_from_field",
+          "line": 31,
+          "variables": [
+            {
+              "name": "a",
+              "line": 31,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "r",
+              "line": 32,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "i",
+              "line": 33,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "at",
+              "line": 34,
+              "role": "local",
+              "type": "int"
+            },
+            {
+              "name": "word",
+              "line": 34,
+              "role": "local",
+              "type": "int"
+            },
+            {
+              "name": "shift",
+              "line": 34,
+              "role": "local",
+              "type": "int"
+            },
+            {
+              "name": "v",
+              "line": 34,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 2,
+          "name": "sg32_to_field",
+          "line": 40,
+          "variables": [
+            {
+              "name": "a",
+              "line": 40,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "r",
+              "line": 41,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "i",
+              "line": 42,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "at",
+              "line": 43,
+              "role": "local",
+              "type": "int"
+            },
+            {
+              "name": "word",
+              "line": 43,
+              "role": "local",
+              "type": "int"
+            },
+            {
+              "name": "shift",
+              "line": 43,
+              "role": "local",
+              "type": "int"
+            },
+            {
+              "name": "v",
+              "line": 44,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 2,
+          "name": "sg32_from_point",
+          "line": 49,
+          "variables": [
+            {
+              "name": "p",
+              "line": 49,
+              "role": "parameter",
+              "type": "SgPoint"
+            }
+          ]
+        },
+        {
+          "unit": 2,
+          "name": "sg32_to_point",
+          "line": 50,
+          "variables": [
+            {
+              "name": "p",
+              "line": 50,
+              "role": "parameter",
+              "type": "Sg32"
+            }
+          ]
+        },
+        {
+          "unit": 2,
+          "name": "sg32_mask_equal",
+          "line": 51,
+          "variables": [
+            {
+              "name": "a",
+              "line": 51,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "b",
+              "line": 51,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "difference",
+              "line": 52,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 52,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 2,
+          "name": "sg32_choose_field",
+          "line": 54,
+          "variables": [
+            {
+              "name": "mask",
+              "line": 54,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "a",
+              "line": 54,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "b",
+              "line": 54,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "r",
+              "line": 55,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "m",
+              "line": 55,
+              "role": "local",
+              "type": "u32"
+            },
+            {
+              "name": "i",
+              "line": 55,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 2,
+          "name": "sg32_choose",
+          "line": 57,
+          "variables": [
+            {
+              "name": "mask",
+              "line": 57,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "a",
+              "line": 57,
+              "role": "parameter",
+              "type": "Sg32"
+            },
+            {
+              "name": "b",
+              "line": 57,
+              "role": "parameter",
+              "type": "Sg32"
+            }
+          ]
+        },
+        {
+          "unit": 2,
+          "name": "sg32_infinity",
+          "line": 58,
+          "variables": [
+            {
+              "name": "r",
+              "line": 58,
+              "role": "local",
+              "type": "Sg32"
+            }
+          ]
+        },
+        {
+          "unit": 2,
+          "name": "sg32_canonical_infinity",
+          "line": 59,
+          "variables": [
+            {
+              "name": "p",
+              "line": 59,
+              "role": "parameter",
+              "type": "Sg32"
+            },
+            {
+              "name": "zero",
+              "line": 59,
+              "role": "local",
+              "type": "Sf32"
+            }
+          ]
+        },
+        {
+          "unit": 2,
+          "name": "sg32_double",
+          "line": 60,
+          "variables": [
+            {
+              "name": "p",
+              "line": 60,
+              "role": "parameter",
+              "type": "Sg32"
+            },
+            {
+              "name": "aa",
+              "line": 61,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "bb",
+              "line": 61,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "cc",
+              "line": 61,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "q",
+              "line": 62,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "dd",
+              "line": 62,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "ee",
+              "line": 63,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "ff",
+              "line": 63,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "r",
+              "line": 64,
+              "role": "local",
+              "type": "Sg32"
+            },
+            {
+              "name": "eightcc",
+              "line": 65,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "yz",
+              "line": 67,
+              "role": "local",
+              "type": "Sf32"
+            }
+          ]
+        },
+        {
+          "unit": 2,
+          "name": "sg32_add",
+          "line": 69,
+          "variables": [
+            {
+              "name": "a",
+              "line": 69,
+              "role": "parameter",
+              "type": "Sg32"
+            },
+            {
+              "name": "b",
+              "line": 69,
+              "role": "parameter",
+              "type": "Sg32"
+            },
+            {
+              "name": "z1z1",
+              "line": 70,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "z2z2",
+              "line": 70,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "u1",
+              "line": 71,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "u2",
+              "line": 71,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "s1",
+              "line": 72,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "s2",
+              "line": 72,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "h",
+              "line": 73,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "twoh",
+              "line": 73,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "ii",
+              "line": 73,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "jj",
+              "line": 73,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "diff",
+              "line": 74,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "rr",
+              "line": 74,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "vv",
+              "line": 74,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "r",
+              "line": 75,
+              "role": "local",
+              "type": "Sg32"
+            },
+            {
+              "name": "t",
+              "line": 76,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "zsum",
+              "line": 77,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "zero",
+              "line": 78,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "same",
+              "line": 78,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_word_equal",
+          "line": 142,
+          "variables": [
+            {
+              "name": "a",
+              "line": 142,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "b",
+              "line": 142,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "diff",
+              "line": 143,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_field_choose",
+          "line": 147,
+          "variables": [
+            {
+              "name": "mask",
+              "line": 147,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "a",
+              "line": 147,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "b",
+              "line": 147,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "r",
+              "line": 148,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "i",
+              "line": 148,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_choose",
+          "line": 150,
+          "variables": [
+            {
+              "name": "mask",
+              "line": 150,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "a",
+              "line": 150,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "b",
+              "line": 150,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "r",
+              "line": 151,
+              "role": "local",
+              "type": "SgPoint"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_affine_choose",
+          "line": 153,
+          "variables": [
+            {
+              "name": "mask",
+              "line": 153,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "a",
+              "line": 153,
+              "role": "parameter",
+              "type": "SgAffine"
+            },
+            {
+              "name": "b",
+              "line": 153,
+              "role": "parameter",
+              "type": "SgAffine"
+            },
+            {
+              "name": "r",
+              "line": 154,
+              "role": "local",
+              "type": "SgAffine"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_twice",
+          "line": 157,
+          "variables": [
+            {
+              "name": "a",
+              "line": 157,
+              "role": "parameter",
+              "type": "SecpField"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_infinity",
+          "line": 158,
+          "variables": [
+            {
+              "name": "r",
+              "line": 158,
+              "role": "local",
+              "type": "SgPoint"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_affine_infinity",
+          "line": 159,
+          "variables": [
+            {
+              "name": "r",
+              "line": 159,
+              "role": "local",
+              "type": "SgAffine"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_generator",
+          "line": 160,
+          "variables": [
+            {
+              "name": "r",
+              "line": 160,
+              "role": "local",
+              "type": "SgPoint"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_normalize",
+          "line": 161,
+          "variables": [
+            {
+              "name": "a",
+              "line": 161,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "r",
+              "line": 162,
+              "role": "local",
+              "type": "SgPoint"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_canonical_infinity",
+          "line": 164,
+          "variables": [
+            {
+              "name": "a",
+              "line": 164,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "zero",
+              "line": 165,
+              "role": "local",
+              "type": "SecpField"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_finish",
+          "line": 167,
+          "variables": [
+            {
+              "name": "valid",
+              "line": 167,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "a",
+              "line": 167,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "r",
+              "line": 168,
+              "role": "local",
+              "type": "SgResult"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_valid_mask",
+          "line": 170,
+          "variables": [
+            {
+              "name": "a",
+              "line": 170,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "zero",
+              "line": 171,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "one",
+              "line": 171,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "seven",
+              "line": 171,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "zz",
+              "line": 172,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "z6",
+              "line": 172,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "curve",
+              "line": 173,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "infinity",
+              "line": 174,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "canonical",
+              "line": 175,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_affine_valid_mask",
+          "line": 178,
+          "variables": [
+            {
+              "name": "a",
+              "line": 178,
+              "role": "parameter",
+              "type": "SgAffine"
+            },
+            {
+              "name": "zero",
+              "line": 179,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "seven",
+              "line": 179,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "curve",
+              "line": 180,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_same_valid",
+          "line": 183,
+          "variables": [
+            {
+              "name": "a",
+              "line": 183,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "b",
+              "line": 183,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "azz",
+              "line": 184,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "bzz",
+              "line": 184,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "x",
+              "line": 185,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "y",
+              "line": 186,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_equal_mask",
+          "line": 191,
+          "variables": [
+            {
+              "name": "a",
+              "line": 191,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "b",
+              "line": 191,
+              "role": "parameter",
+              "type": "SgPoint"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_double_valid",
+          "line": 195,
+          "variables": [
+            {
+              "name": "input",
+              "line": 195,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "p",
+              "line": 196,
+              "role": "local",
+              "type": "SgPoint"
+            },
+            {
+              "name": "aa",
+              "line": 196,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "bb",
+              "line": 196,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "cc",
+              "line": 196,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "dd",
+              "line": 197,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "ee",
+              "line": 198,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "ff",
+              "line": 198,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "r",
+              "line": 199,
+              "role": "local",
+              "type": "SgPoint"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_add_valid",
+          "line": 203,
+          "variables": [
+            {
+              "name": "input_a",
+              "line": 203,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "input_b",
+              "line": 203,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "a",
+              "line": 204,
+              "role": "local",
+              "type": "SgPoint"
+            },
+            {
+              "name": "b",
+              "line": 204,
+              "role": "local",
+              "type": "SgPoint"
+            },
+            {
+              "name": "z1z1",
+              "line": 205,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "z2z2",
+              "line": 205,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "u1",
+              "line": 206,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "u2",
+              "line": 206,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "s1",
+              "line": 207,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "s2",
+              "line": 207,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "h",
+              "line": 208,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "ii",
+              "line": 208,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "jj",
+              "line": 208,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "rr",
+              "line": 209,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "vv",
+              "line": 209,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "r",
+              "line": 210,
+              "role": "local",
+              "type": "SgPoint"
+            },
+            {
+              "name": "zero",
+              "line": 213,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "same",
+              "line": 214,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_add",
+          "line": 220,
+          "variables": [
+            {
+              "name": "a",
+              "line": 220,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "b",
+              "line": 220,
+              "role": "parameter",
+              "type": "SgPoint"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_double",
+          "line": 221,
+          "variables": [
+            {
+              "name": "a",
+              "line": 221,
+              "role": "parameter",
+              "type": "SgPoint"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_negate",
+          "line": 222,
+          "variables": [
+            {
+              "name": "a",
+              "line": 222,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "r",
+              "line": 223,
+              "role": "local",
+              "type": "SgPoint"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_from_affine_valid",
+          "line": 225,
+          "variables": [
+            {
+              "name": "a",
+              "line": 225,
+              "role": "parameter",
+              "type": "SgAffine"
+            },
+            {
+              "name": "r",
+              "line": 226,
+              "role": "local",
+              "type": "SgPoint"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_from_affine",
+          "line": 229,
+          "variables": [
+            {
+              "name": "a",
+              "line": 229,
+              "role": "parameter",
+              "type": "SgAffine"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_to_affine_valid",
+          "line": 230,
+          "variables": [
+            {
+              "name": "a",
+              "line": 230,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "inverse",
+              "line": 231,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "square",
+              "line": 231,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "zero",
+              "line": 231,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "r",
+              "line": 232,
+              "role": "local",
+              "type": "SgAffine"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_to_affine",
+          "line": 235,
+          "variables": [
+            {
+              "name": "a",
+              "line": 235,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "valid",
+              "line": 236,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "r",
+              "line": 236,
+              "role": "local",
+              "type": "SgAffineResult"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_mixed_add",
+          "line": 240,
+          "variables": [
+            {
+              "name": "a",
+              "line": 240,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "b",
+              "line": 240,
+              "role": "parameter",
+              "type": "SgAffine"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_pick",
+          "line": 245,
+          "variables": [
+            {
+              "name": "table",
+              "line": 245,
+              "role": "parameter",
+              "type": "[] SgPoint"
+            },
+            {
+              "name": "which",
+              "line": 245,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "r",
+              "line": 246,
+              "role": "local",
+              "type": "SgResult"
+            },
+            {
+              "name": "chosen",
+              "line": 248,
+              "role": "local",
+              "type": "SgPoint"
+            },
+            {
+              "name": "seen",
+              "line": 248,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 249,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "match",
+              "line": 250,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_lift_x_public",
+          "line": 257,
+          "variables": [
+            {
+              "name": "bytes",
+              "line": 257,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "r",
+              "line": 258,
+              "role": "local",
+              "type": "SgResult"
+            },
+            {
+              "name": "x",
+              "line": 260,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "canonical",
+              "line": 260,
+              "role": "local",
+              "type": "[32] u8"
+            },
+            {
+              "name": "canonical_mask",
+              "line": 262,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "seven",
+              "line": 262,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "rhs",
+              "line": 263,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "root",
+              "line": 263,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "valid",
+              "line": 264,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "candidate",
+              "line": 265,
+              "role": "local",
+              "type": "SgPoint"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_decode_public",
+          "line": 268,
+          "variables": [
+            {
+              "name": "bytes",
+              "line": 268,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "r",
+              "line": 269,
+              "role": "local",
+              "type": "SgResult"
+            }
+          ]
+        },
+        {
+          "unit": 3,
+          "name": "sg_encode_public",
+          "line": 278,
+          "variables": [
+            {
+              "name": "a",
+              "line": 278,
+              "role": "parameter",
+              "type": "SgPoint"
+            },
+            {
+              "name": "valid",
+              "line": 279,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "affine",
+              "line": 279,
+              "role": "local",
+              "type": "SgAffine"
+            },
+            {
+              "name": "r",
+              "line": 279,
+              "role": "local",
+              "type": "SgEncoded"
+            },
+            {
+              "name": "finite",
+              "line": 281,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 283,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_carry",
+          "line": 218,
+          "variables": [
+            {
+              "name": "digits",
+              "line": 218,
+              "role": "parameter",
+              "type": "[] u64"
+            },
+            {
+              "name": "i",
+              "line": 220,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "carry",
+              "line": 221,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "carry",
+              "line": 225,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_normalize",
+          "line": 229,
+          "variables": [
+            {
+              "name": "value",
+              "line": 229,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "r",
+              "line": 230,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "carry",
+              "line": 234,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "candidate",
+              "line": 242,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "choose",
+              "line": 244,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 245,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_load",
+          "line": 248,
+          "variables": [
+            {
+              "name": "bytes",
+              "line": 248,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "r",
+              "line": 249,
+              "role": "local",
+              "type": "SecpFieldResult"
+            },
+            {
+              "name": "i",
+              "line": 251,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "at",
+              "line": 252,
+              "role": "local",
+              "type": "int"
+            },
+            {
+              "name": "digit",
+              "line": 252,
+              "role": "local",
+              "type": "int"
+            },
+            {
+              "name": "shift",
+              "line": 252,
+              "role": "local",
+              "type": "int"
+            },
+            {
+              "name": "value",
+              "line": 253,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_store",
+          "line": 261,
+          "variables": [
+            {
+              "name": "value",
+              "line": 261,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "bytes",
+              "line": 261,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "r",
+              "line": 263,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "i",
+              "line": 264,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "at",
+              "line": 265,
+              "role": "local",
+              "type": "int"
+            },
+            {
+              "name": "digit",
+              "line": 265,
+              "role": "local",
+              "type": "int"
+            },
+            {
+              "name": "shift",
+              "line": 265,
+              "role": "local",
+              "type": "int"
+            },
+            {
+              "name": "word",
+              "line": 266,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_load_strict",
+          "line": 273,
+          "variables": [
+            {
+              "name": "bytes",
+              "line": 273,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "r",
+              "line": 274,
+              "role": "local",
+              "type": "SecpFieldResult"
+            },
+            {
+              "name": "canonical",
+              "line": 276,
+              "role": "local",
+              "type": "[32] u8"
+            },
+            {
+              "name": "stored",
+              "line": 277,
+              "role": "local",
+              "type": "bool"
+            },
+            {
+              "name": "same",
+              "line": 278,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 280,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_add",
+          "line": 283,
+          "variables": [
+            {
+              "name": "a",
+              "line": 283,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "b",
+              "line": 283,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "x",
+              "line": 284,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "y",
+              "line": 284,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "i",
+              "line": 285,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_negate",
+          "line": 288,
+          "variables": [
+            {
+              "name": "a",
+              "line": 288,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "x",
+              "line": 289,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "i",
+              "line": 292,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_subtract",
+          "line": 295,
+          "variables": [
+            {
+              "name": "a",
+              "line": 295,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "b",
+              "line": 295,
+              "role": "parameter",
+              "type": "SecpField"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_equal_mask",
+          "line": 296,
+          "variables": [
+            {
+              "name": "a",
+              "line": 296,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "b",
+              "line": 296,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "x",
+              "line": 297,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "y",
+              "line": 297,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "diff",
+              "line": 297,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 298,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_debug_valid",
+          "line": 302,
+          "variables": [
+            {
+              "name": "d",
+              "line": 302,
+              "role": "parameter",
+              "type": "SecpFieldDebug"
+            },
+            {
+              "name": "i",
+              "line": 304,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "mask",
+              "line": 305,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "candidate",
+              "line": 310,
+              "role": "local",
+              "type": "SecpField"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_debug_normalize",
+          "line": 316,
+          "variables": [
+            {
+              "name": "d",
+              "line": 316,
+              "role": "parameter",
+              "type": "SecpFieldDebug"
+            },
+            {
+              "name": "r",
+              "line": 318,
+              "role": "local",
+              "type": "SecpFieldDebug"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_debug_add",
+          "line": 320,
+          "variables": [
+            {
+              "name": "a",
+              "line": 320,
+              "role": "parameter",
+              "type": "SecpFieldDebug"
+            },
+            {
+              "name": "b",
+              "line": 320,
+              "role": "parameter",
+              "type": "SecpFieldDebug"
+            },
+            {
+              "name": "x",
+              "line": 321,
+              "role": "local",
+              "type": "SecpFieldDebug"
+            },
+            {
+              "name": "y",
+              "line": 321,
+              "role": "local",
+              "type": "SecpFieldDebug"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_debug_negate",
+          "line": 324,
+          "variables": [
+            {
+              "name": "a",
+              "line": 324,
+              "role": "parameter",
+              "type": "SecpFieldDebug"
+            },
+            {
+              "name": "x",
+              "line": 325,
+              "role": "local",
+              "type": "SecpFieldDebug"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_bound_product_ok",
+          "line": 329,
+          "variables": [
+            {
+              "name": "a",
+              "line": 329,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "b",
+              "line": 329,
+              "role": "parameter",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_bound_sum_ok",
+          "line": 330,
+          "variables": [
+            {
+              "name": "a",
+              "line": 330,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "b",
+              "line": 330,
+              "role": "parameter",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_bound_product",
+          "line": 331,
+          "variables": [
+            {
+              "name": "a",
+              "line": 331,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "b",
+              "line": 331,
+              "role": "parameter",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_bound_sum",
+          "line": 332,
+          "variables": [
+            {
+              "name": "a",
+              "line": 332,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "b",
+              "line": 332,
+              "role": "parameter",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_mul_budget",
+          "line": 333,
+          "variables": [
+            {
+              "name": "bounds",
+              "line": 333,
+              "role": "parameter",
+              "type": "SfMulBounds"
+            },
+            {
+              "name": "i",
+              "line": 334,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_mul_bounds",
+          "line": 339,
+          "variables": [
+            {
+              "name": "magnitude",
+              "line": 339,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "r",
+              "line": 340,
+              "role": "local",
+              "type": "SfMulBounds"
+            },
+            {
+              "name": "m",
+              "line": 342,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_radix_carry",
+          "line": 381,
+          "variables": [
+            {
+              "name": "digits",
+              "line": 381,
+              "role": "parameter",
+              "type": "[] u64"
+            },
+            {
+              "name": "i",
+              "line": 383,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_multiply",
+          "line": 389,
+          "variables": [
+            {
+              "name": "a",
+              "line": 389,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "b",
+              "line": 389,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "x",
+              "line": 390,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "y",
+              "line": 390,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "product",
+              "line": 390,
+              "role": "local",
+              "type": "[20] u64"
+            },
+            {
+              "name": "i",
+              "line": 391,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "j",
+              "line": 391,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "r",
+              "line": 394,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "fold",
+              "line": 394,
+              "role": "local",
+              "type": "[12] u64"
+            },
+            {
+              "name": "i",
+              "line": 395,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "i",
+              "line": 397,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "q",
+              "line": 398,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 402,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "q0",
+              "line": 404,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "q1",
+              "line": 405,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "carry",
+              "line": 409,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_square",
+          "line": 413,
+          "variables": [
+            {
+              "name": "a",
+              "line": 413,
+              "role": "parameter",
+              "type": "SecpField"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_square_count_valid",
+          "line": 480,
+          "variables": [
+            {
+              "name": "count",
+              "line": 480,
+              "role": "parameter",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_chain_step_valid",
+          "line": 481,
+          "variables": [
+            {
+              "name": "step",
+              "line": 481,
+              "role": "parameter",
+              "type": "SfChainStep"
+            },
+            {
+              "name": "index",
+              "line": 481,
+              "role": "parameter",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_square_n",
+          "line": 484,
+          "variables": [
+            {
+              "name": "a",
+              "line": 484,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "count",
+              "line": 484,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "r",
+              "line": 486,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "i",
+              "line": 486,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_chain_prefix",
+          "line": 488,
+          "variables": [
+            {
+              "name": "a",
+              "line": 488,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "cache",
+              "line": 489,
+              "role": "local",
+              "type": "SfChainState"
+            },
+            {
+              "name": "i",
+              "line": 490,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "step",
+              "line": 491,
+              "role": "local",
+              "type": "SfChainStep"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_inverse",
+          "line": 497,
+          "variables": [
+            {
+              "name": "a",
+              "line": 497,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "cache",
+              "line": 498,
+              "role": "local",
+              "type": "SfChainState"
+            },
+            {
+              "name": "power9",
+              "line": 499,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "power45",
+              "line": 500,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "r",
+              "line": 501,
+              "role": "local",
+              "type": "SecpFieldResult"
+            },
+            {
+              "name": "zero",
+              "line": 503,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "valid",
+              "line": 506,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_inverse_vartime",
+          "line": 511,
+          "variables": [
+            {
+              "name": "a",
+              "line": 511,
+              "role": "parameter",
+              "type": "SecpField"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_sqrt",
+          "line": 512,
+          "variables": [
+            {
+              "name": "a",
+              "line": 512,
+              "role": "parameter",
+              "type": "SecpField"
+            },
+            {
+              "name": "cache",
+              "line": 513,
+              "role": "local",
+              "type": "SfChainState"
+            },
+            {
+              "name": "root",
+              "line": 514,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "valid",
+              "line": 515,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "negative",
+              "line": 516,
+              "role": "local",
+              "type": "SecpField"
+            },
+            {
+              "name": "odd",
+              "line": 516,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "r",
+              "line": 517,
+              "role": "local",
+              "type": "SecpFieldResult"
+            },
+            {
+              "name": "i",
+              "line": 518,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_exponent_step",
+          "line": 524,
+          "variables": [
+            {
+              "name": "a",
+              "line": 524,
+              "role": "parameter",
+              "type": "SfExponent"
+            },
+            {
+              "name": "squares",
+              "line": 524,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "b",
+              "line": 524,
+              "role": "parameter",
+              "type": "SfExponent"
+            },
+            {
+              "name": "r",
+              "line": 526,
+              "role": "local",
+              "type": "SfExponent"
+            },
+            {
+              "name": "i",
+              "line": 527,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "carry",
+              "line": 528,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "j",
+              "line": 529,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "word",
+              "line": 530,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "carry",
+              "line": 535,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "j",
+              "line": 536,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "word",
+              "line": 537,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_exponent_prefix",
+          "line": 542,
+          "variables": [
+            {
+              "name": "cache",
+              "line": 543,
+              "role": "local",
+              "type": "SfExponentState"
+            },
+            {
+              "name": "i",
+              "line": 544,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "step",
+              "line": 545,
+              "role": "local",
+              "type": "SfChainStep"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_exponent_inverse",
+          "line": 551,
+          "variables": [
+            {
+              "name": "cache",
+              "line": 552,
+              "role": "local",
+              "type": "SfExponentState"
+            },
+            {
+              "name": "power9",
+              "line": 553,
+              "role": "local",
+              "type": "SfExponent"
+            },
+            {
+              "name": "power45",
+              "line": 554,
+              "role": "local",
+              "type": "SfExponent"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_exponent_sqrt",
+          "line": 557,
+          "variables": [
+            {
+              "name": "cache",
+              "line": 558,
+              "role": "local",
+              "type": "SfExponentState"
+            },
+            {
+              "name": "zero",
+              "line": 558,
+              "role": "local",
+              "type": "SfExponent"
+            }
+          ]
+        },
+        {
+          "unit": 4,
+          "name": "sf_exponent_matches",
+          "line": 561,
+          "variables": [
+            {
+              "name": "exponent",
+              "line": 561,
+              "role": "parameter",
+              "type": "SfExponent"
+            },
+            {
+              "name": "root_mode",
+              "line": 561,
+              "role": "parameter",
+              "type": "bool"
+            },
+            {
+              "name": "expected",
+              "line": 562,
+              "role": "local",
+              "type": "[8] u32"
+            },
+            {
+              "name": "i",
+              "line": 562,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "i",
+              "line": 565,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_span",
+          "line": 98,
+          "variables": [
+            {
+              "name": "total",
+              "line": 98,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "at",
+              "line": 98,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "n",
+              "line": 98,
+              "role": "parameter",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_load_word",
+          "line": 102,
+          "variables": [
+            {
+              "name": "data",
+              "line": 102,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "at",
+              "line": 102,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "width",
+              "line": 102,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "big",
+              "line": 102,
+              "role": "parameter",
+              "type": "bool"
+            },
+            {
+              "name": "result",
+              "line": 103,
+              "role": "local",
+              "type": "CbU64"
+            },
+            {
+              "name": "value",
+              "line": 105,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 106,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "index",
+              "line": 107,
+              "role": "local",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_store_word",
+          "line": 113,
+          "variables": [
+            {
+              "name": "out",
+              "line": 113,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "at",
+              "line": 113,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "value",
+              "line": 113,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "width",
+              "line": 113,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "big",
+              "line": 113,
+              "role": "parameter",
+              "type": "bool"
+            },
+            {
+              "name": "i",
+              "line": 116,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "index",
+              "line": 117,
+              "role": "local",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_load_be32",
+          "line": 122,
+          "variables": [
+            {
+              "name": "data",
+              "line": 122,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "at",
+              "line": 122,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "loaded",
+              "line": 123,
+              "role": "local",
+              "type": "CbU64"
+            },
+            {
+              "name": "result",
+              "line": 123,
+              "role": "local",
+              "type": "CbU32"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_load_le32",
+          "line": 126,
+          "variables": [
+            {
+              "name": "data",
+              "line": 126,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "at",
+              "line": 126,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "loaded",
+              "line": 127,
+              "role": "local",
+              "type": "CbU64"
+            },
+            {
+              "name": "result",
+              "line": 127,
+              "role": "local",
+              "type": "CbU32"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_load_be64",
+          "line": 130,
+          "variables": [
+            {
+              "name": "data",
+              "line": 130,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "at",
+              "line": 130,
+              "role": "parameter",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_load_le64",
+          "line": 131,
+          "variables": [
+            {
+              "name": "data",
+              "line": 131,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "at",
+              "line": 131,
+              "role": "parameter",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_store_be32",
+          "line": 132,
+          "variables": [
+            {
+              "name": "out",
+              "line": 132,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "at",
+              "line": 132,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "value",
+              "line": 132,
+              "role": "parameter",
+              "type": "u32"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_store_le32",
+          "line": 133,
+          "variables": [
+            {
+              "name": "out",
+              "line": 133,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "at",
+              "line": 133,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "value",
+              "line": 133,
+              "role": "parameter",
+              "type": "u32"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_store_be64",
+          "line": 134,
+          "variables": [
+            {
+              "name": "out",
+              "line": 134,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "at",
+              "line": 134,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "value",
+              "line": 134,
+              "role": "parameter",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_store_le64",
+          "line": 135,
+          "variables": [
+            {
+              "name": "out",
+              "line": 135,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "at",
+              "line": 135,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "value",
+              "line": 135,
+              "role": "parameter",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_mask",
+          "line": 139,
+          "variables": [
+            {
+              "name": "bit",
+              "line": 139,
+              "role": "parameter",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_ct_select64",
+          "line": 140,
+          "variables": [
+            {
+              "name": "mask",
+              "line": 140,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "a",
+              "line": 140,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "b",
+              "line": 140,
+              "role": "parameter",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_ct_select32",
+          "line": 141,
+          "variables": [
+            {
+              "name": "mask",
+              "line": 141,
+              "role": "parameter",
+              "type": "u32"
+            },
+            {
+              "name": "a",
+              "line": 141,
+              "role": "parameter",
+              "type": "u32"
+            },
+            {
+              "name": "b",
+              "line": 141,
+              "role": "parameter",
+              "type": "u32"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_ct_equal",
+          "line": 142,
+          "variables": [
+            {
+              "name": "a",
+              "line": 142,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "b",
+              "line": 142,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "diff",
+              "line": 145,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 146,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_copy_checked",
+          "line": 151,
+          "variables": [
+            {
+              "name": "source",
+              "line": 151,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "out",
+              "line": 151,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "overlap",
+              "line": 151,
+              "role": "parameter",
+              "type": "bool"
+            },
+            {
+              "name": "i",
+              "line": 154,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 5,
+          "name": "cb_select_checked",
+          "line": 157,
+          "variables": [
+            {
+              "name": "mask",
+              "line": 157,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "a",
+              "line": 157,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "b",
+              "line": 157,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "out",
+              "line": 157,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "overlap_a",
+              "line": 157,
+              "role": "parameter",
+              "type": "bool"
+            },
+            {
+              "name": "overlap_b",
+              "line": 157,
+              "role": "parameter",
+              "type": "bool"
+            },
+            {
+              "name": "i",
+              "line": 160,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 6,
+          "name": "sf32_fold_total",
+          "line": 46,
+          "variables": [
+            {
+              "name": "input",
+              "line": 46,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "top",
+              "line": 46,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "r",
+              "line": 47,
+              "role": "local",
+              "type": "Sf32Fold"
+            },
+            {
+              "name": "wide",
+              "line": 47,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "carry",
+              "line": 48,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 6,
+          "name": "sf32_canonical_total",
+          "line": 58,
+          "variables": [
+            {
+              "name": "input",
+              "line": 58,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "folded",
+              "line": 59,
+              "role": "local",
+              "type": "Sf32Fold"
+            },
+            {
+              "name": "mask",
+              "line": 59,
+              "role": "local",
+              "type": "u32"
+            },
+            {
+              "name": "r",
+              "line": 59,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "i",
+              "line": 60,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 6,
+          "name": "sf32_add_total",
+          "line": 63,
+          "variables": [
+            {
+              "name": "a",
+              "line": 63,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "b",
+              "line": 63,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "r",
+              "line": 64,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "carry",
+              "line": 64,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 65,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "wide",
+              "line": 65,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "folded",
+              "line": 67,
+              "role": "local",
+              "type": "Sf32Fold"
+            }
+          ]
+        },
+        {
+          "unit": 6,
+          "name": "sf32_mul_total",
+          "line": 70,
+          "variables": [
+            {
+              "name": "a",
+              "line": 70,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "b",
+              "line": 70,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "product",
+              "line": 71,
+              "role": "local",
+              "type": "[16] u32"
+            },
+            {
+              "name": "i",
+              "line": 72,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "carry",
+              "line": 73,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "j",
+              "line": 74,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "wide",
+              "line": 74,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "r",
+              "line": 77,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "carry",
+              "line": 77,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "previous",
+              "line": 77,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 78,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "high",
+              "line": 79,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "wide",
+              "line": 79,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "top",
+              "line": 82,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "folded",
+              "line": 82,
+              "role": "local",
+              "type": "Sf32Fold"
+            }
+          ]
+        },
+        {
+          "unit": 7,
+          "name": "sf32_equal",
+          "line": 46,
+          "variables": [
+            {
+              "name": "a",
+              "line": 46,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "b",
+              "line": 46,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "difference",
+              "line": 47,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 47,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 7,
+          "name": "sf32_fold_top",
+          "line": 49,
+          "variables": [
+            {
+              "name": "input",
+              "line": 49,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "top",
+              "line": 49,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "r",
+              "line": 50,
+              "role": "local",
+              "type": "Sf32Fold"
+            },
+            {
+              "name": "carry",
+              "line": 50,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 51,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "extra",
+              "line": 53,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "wide",
+              "line": 54,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 7,
+          "name": "sf32_canonical",
+          "line": 59,
+          "variables": [
+            {
+              "name": "input",
+              "line": 59,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "folded",
+              "line": 60,
+              "role": "local",
+              "type": "Sf32Fold"
+            },
+            {
+              "name": "mask",
+              "line": 60,
+              "role": "local",
+              "type": "u32"
+            },
+            {
+              "name": "r",
+              "line": 60,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "i",
+              "line": 61,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 7,
+          "name": "sf32_add",
+          "line": 64,
+          "variables": [
+            {
+              "name": "a",
+              "line": 64,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "b",
+              "line": 64,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "r",
+              "line": 65,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "carry",
+              "line": 65,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 66,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "wide",
+              "line": 66,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "folded",
+              "line": 69,
+              "role": "local",
+              "type": "Sf32Fold"
+            }
+          ]
+        },
+        {
+          "unit": 7,
+          "name": "sf32_sub",
+          "line": 72,
+          "variables": [
+            {
+              "name": "a",
+              "line": 72,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "b",
+              "line": 72,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "r",
+              "line": 73,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "borrow",
+              "line": 73,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 74,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "wide",
+              "line": 74,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "mask",
+              "line": 75,
+              "role": "local",
+              "type": "u32"
+            },
+            {
+              "name": "carry",
+              "line": 75,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 76,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "wide",
+              "line": 76,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 7,
+          "name": "sf32_mul",
+          "line": 79,
+          "variables": [
+            {
+              "name": "a",
+              "line": 79,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "b",
+              "line": 79,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "product",
+              "line": 80,
+              "role": "local",
+              "type": "[16] u32"
+            },
+            {
+              "name": "i",
+              "line": 81,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "carry",
+              "line": 82,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "j",
+              "line": 83,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "wide",
+              "line": 83,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "r",
+              "line": 86,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "carry",
+              "line": 86,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "previous",
+              "line": 86,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 87,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "high",
+              "line": 88,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "wide",
+              "line": 88,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "top",
+              "line": 91,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "folded",
+              "line": 91,
+              "role": "local",
+              "type": "Sf32Fold"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_small",
+          "line": 88,
+          "variables": [
+            {
+              "name": "value",
+              "line": 88,
+              "role": "parameter",
+              "type": "u32"
+            },
+            {
+              "name": "result",
+              "line": 88,
+              "role": "local",
+              "type": "ScScalar"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_zero_bit",
+          "line": 89,
+          "variables": [
+            {
+              "name": "word",
+              "line": 89,
+              "role": "parameter",
+              "type": "u32"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_is_zero",
+          "line": 90,
+          "variables": [
+            {
+              "name": "a",
+              "line": 90,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "bits",
+              "line": 90,
+              "role": "local",
+              "type": "u32"
+            },
+            {
+              "name": "i",
+              "line": 90,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_equal",
+          "line": 91,
+          "variables": [
+            {
+              "name": "a",
+              "line": 91,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "b",
+              "line": 91,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "bits",
+              "line": 91,
+              "role": "local",
+              "type": "u32"
+            },
+            {
+              "name": "i",
+              "line": 91,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_select",
+          "line": 92,
+          "variables": [
+            {
+              "name": "bit",
+              "line": 92,
+              "role": "parameter",
+              "type": "u64"
+            },
+            {
+              "name": "a",
+              "line": 92,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "b",
+              "line": 92,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "mask",
+              "line": 93,
+              "role": "local",
+              "type": "u32"
+            },
+            {
+              "name": "result",
+              "line": 93,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "i",
+              "line": 94,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_subtract_n",
+          "line": 96,
+          "variables": [
+            {
+              "name": "a",
+              "line": 96,
+              "role": "parameter",
+              "type": "[9] u32"
+            },
+            {
+              "name": "result",
+              "line": 97,
+              "role": "local",
+              "type": "ScDifference"
+            },
+            {
+              "name": "borrow",
+              "line": 97,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 98,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "wide",
+              "line": 99,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_reduce9",
+          "line": 104,
+          "variables": [
+            {
+              "name": "a",
+              "line": 104,
+              "role": "parameter",
+              "type": "[9] u32"
+            },
+            {
+              "name": "difference",
+              "line": 105,
+              "role": "local",
+              "type": "ScDifference"
+            },
+            {
+              "name": "original",
+              "line": 105,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "i",
+              "line": 105,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_normalize",
+          "line": 108,
+          "variables": [
+            {
+              "name": "a",
+              "line": 108,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "wide",
+              "line": 108,
+              "role": "local",
+              "type": "[9] u32"
+            },
+            {
+              "name": "i",
+              "line": 108,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_overflow",
+          "line": 109,
+          "variables": [
+            {
+              "name": "a",
+              "line": 109,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "wide",
+              "line": 110,
+              "role": "local",
+              "type": "[9] u32"
+            },
+            {
+              "name": "i",
+              "line": 110,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_secret_valid",
+          "line": 112,
+          "variables": [
+            {
+              "name": "a",
+              "line": 112,
+              "role": "parameter",
+              "type": "ScScalar"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_reduce_bytes",
+          "line": 113,
+          "variables": [
+            {
+              "name": "bytes",
+              "line": 113,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "raw",
+              "line": 115,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "i",
+              "line": 115,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_load",
+          "line": 118,
+          "variables": [
+            {
+              "name": "bytes",
+              "line": 118,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "loaded",
+              "line": 119,
+              "role": "local",
+              "type": "ScLoad"
+            },
+            {
+              "name": "invalid",
+              "line": 120,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_store",
+          "line": 123,
+          "variables": [
+            {
+              "name": "a",
+              "line": 123,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "bytes",
+              "line": 123,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "i",
+              "line": 125,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "stored",
+              "line": 125,
+              "role": "local",
+              "type": "bool"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_add",
+          "line": 127,
+          "variables": [
+            {
+              "name": "a",
+              "line": 127,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "b",
+              "line": 127,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "x",
+              "line": 128,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "y",
+              "line": 128,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "sum",
+              "line": 128,
+              "role": "local",
+              "type": "[9] u32"
+            },
+            {
+              "name": "carry",
+              "line": 128,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 129,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "wide",
+              "line": 129,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_sub",
+          "line": 132,
+          "variables": [
+            {
+              "name": "a",
+              "line": 132,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "b",
+              "line": 132,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "x",
+              "line": 133,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "y",
+              "line": 133,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "result",
+              "line": 133,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "borrow",
+              "line": 133,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 134,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "wide",
+              "line": 134,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "mask",
+              "line": 135,
+              "role": "local",
+              "type": "u32"
+            },
+            {
+              "name": "carry",
+              "line": 135,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 136,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "wide",
+              "line": 136,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_negate",
+          "line": 139,
+          "variables": [
+            {
+              "name": "a",
+              "line": 139,
+              "role": "parameter",
+              "type": "ScScalar"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_montgomery",
+          "line": 140,
+          "variables": [
+            {
+              "name": "a",
+              "line": 140,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "b",
+              "line": 140,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "t",
+              "line": 143,
+              "role": "local",
+              "type": "[17] u32"
+            },
+            {
+              "name": "i",
+              "line": 144,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "carry",
+              "line": 145,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "j",
+              "line": 146,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "wide",
+              "line": 146,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 151,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "factor",
+              "line": 152,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "first",
+              "line": 155,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "carry",
+              "line": 155,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "j",
+              "line": 156,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "wide",
+              "line": 156,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "k",
+              "line": 157,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "wide",
+              "line": 157,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "reduced",
+              "line": 160,
+              "role": "local",
+              "type": "[9] u32"
+            },
+            {
+              "name": "i",
+              "line": 160,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_mul",
+          "line": 162,
+          "variables": [
+            {
+              "name": "a",
+              "line": 162,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "b",
+              "line": 162,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "x",
+              "line": 163,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "y",
+              "line": 163,
+              "role": "local",
+              "type": "ScScalar"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_inverse",
+          "line": 165,
+          "variables": [
+            {
+              "name": "a",
+              "line": 165,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "x",
+              "line": 166,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "base",
+              "line": 166,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "one",
+              "line": 166,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "acc",
+              "line": 166,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "round",
+              "line": 169,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "bit",
+              "line": 170,
+              "role": "local",
+              "type": "int"
+            },
+            {
+              "name": "product",
+              "line": 170,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "choose",
+              "line": 171,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_window",
+          "line": 175,
+          "variables": [
+            {
+              "name": "a",
+              "line": 175,
+              "role": "parameter",
+              "type": "ScScalar"
+            },
+            {
+              "name": "offset",
+              "line": 175,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "width",
+              "line": 175,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "value",
+              "line": 177,
+              "role": "local",
+              "type": "u32"
+            },
+            {
+              "name": "i",
+              "line": 177,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "at",
+              "line": 177,
+              "role": "local",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 8,
+          "name": "sc_evaluate",
+          "line": 182,
+          "variables": [
+            {
+              "name": "op",
+              "line": 182,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "a",
+              "line": 182,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "b",
+              "line": 182,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "out",
+              "line": 182,
+              "role": "parameter",
+              "type": "[] u8"
+            },
+            {
+              "name": "x",
+              "line": 184,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "y",
+              "line": 184,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "result",
+              "line": 184,
+              "role": "local",
+              "type": "ScScalar"
+            },
+            {
+              "name": "inverse",
+              "line": 189,
+              "role": "local",
+              "type": "ScInverse"
+            }
+          ]
+        },
+        {
+          "unit": 10,
+          "name": "ef_finish",
+          "line": 37,
+          "variables": [
+            {
+              "name": "folded",
+              "line": 37,
+              "role": "parameter",
+              "type": "Sf32Fold"
+            },
+            {
+              "name": "candidate",
+              "line": 38,
+              "role": "local",
+              "type": "Sf32Fold"
+            },
+            {
+              "name": "mask",
+              "line": 39,
+              "role": "local",
+              "type": "u32"
+            },
+            {
+              "name": "r",
+              "line": 39,
+              "role": "local",
+              "type": "Sf32"
+            }
+          ]
+        },
+        {
+          "unit": 10,
+          "name": "ef_field_add",
+          "line": 50,
+          "variables": [
+            {
+              "name": "a",
+              "line": 50,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "b",
+              "line": 50,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "r",
+              "line": 51,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "carry",
+              "line": 51,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 52,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "wide",
+              "line": 52,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 10,
+          "name": "ef_field_mul",
+          "line": 55,
+          "variables": [
+            {
+              "name": "a",
+              "line": 55,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "b",
+              "line": 55,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "product",
+              "line": 56,
+              "role": "local",
+              "type": "[16] u32"
+            },
+            {
+              "name": "i",
+              "line": 57,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "carry",
+              "line": 58,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "wide",
+              "line": 58,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "r",
+              "line": 69,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "carry",
+              "line": 69,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "previous",
+              "line": 69,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "i",
+              "line": 70,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "high",
+              "line": 70,
+              "role": "local",
+              "type": "u64"
+            },
+            {
+              "name": "wide",
+              "line": 70,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 10,
+          "name": "ef_double",
+          "line": 73,
+          "variables": [
+            {
+              "name": "p",
+              "line": 73,
+              "role": "parameter",
+              "type": "Sg32"
+            },
+            {
+              "name": "aa",
+              "line": 74,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "bb",
+              "line": 74,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "cc",
+              "line": 74,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "q",
+              "line": 75,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "dd",
+              "line": 75,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "ee",
+              "line": 76,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "ff",
+              "line": 76,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "r",
+              "line": 77,
+              "role": "local",
+              "type": "Sg32"
+            },
+            {
+              "name": "eightcc",
+              "line": 78,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "yz",
+              "line": 80,
+              "role": "local",
+              "type": "Sf32"
+            }
+          ]
+        },
+        {
+          "unit": 10,
+          "name": "ef_add",
+          "line": 82,
+          "variables": [
+            {
+              "name": "a",
+              "line": 82,
+              "role": "parameter",
+              "type": "Sg32"
+            },
+            {
+              "name": "b",
+              "line": 82,
+              "role": "parameter",
+              "type": "Sg32"
+            },
+            {
+              "name": "z1z1",
+              "line": 83,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "z2z2",
+              "line": 83,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "u1",
+              "line": 84,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "u2",
+              "line": 84,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "s1",
+              "line": 85,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "s2",
+              "line": 85,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "h",
+              "line": 86,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "twoh",
+              "line": 86,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "ii",
+              "line": 86,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "jj",
+              "line": 86,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "diff",
+              "line": 87,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "rr",
+              "line": 87,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "vv",
+              "line": 87,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "r",
+              "line": 88,
+              "role": "local",
+              "type": "Sg32"
+            },
+            {
+              "name": "t",
+              "line": 89,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "zsum",
+              "line": 90,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "zero",
+              "line": 91,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "same",
+              "line": 91,
+              "role": "local",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "unit": 10,
+          "name": "ef_schedule_valid",
+          "line": 97,
+          "variables": [
+            {
+              "name": "chain",
+              "line": 97,
+              "role": "parameter",
+              "type": "[12] SfChainStep"
+            },
+            {
+              "name": "i",
+              "line": 98,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 10,
+          "name": "ef_square_n",
+          "line": 106,
+          "variables": [
+            {
+              "name": "a",
+              "line": 106,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "count",
+              "line": 106,
+              "role": "parameter",
+              "type": "int"
+            },
+            {
+              "name": "r",
+              "line": 108,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "i",
+              "line": 108,
+              "role": "loop",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "unit": 10,
+          "name": "ef_inverse",
+          "line": 110,
+          "variables": [
+            {
+              "name": "a",
+              "line": 110,
+              "role": "parameter",
+              "type": "Sf32"
+            },
+            {
+              "name": "cache",
+              "line": 111,
+              "role": "local",
+              "type": "[13] Sf32"
+            },
+            {
+              "name": "i",
+              "line": 112,
+              "role": "loop",
+              "type": "int"
+            },
+            {
+              "name": "step",
+              "line": 113,
+              "role": "local",
+              "type": "SfChainStep"
+            },
+            {
+              "name": "power9",
+              "line": 116,
+              "role": "local",
+              "type": "Sf32"
+            },
+            {
+              "name": "power45",
+              "line": 117,
+              "role": "local",
+              "type": "Sf32"
+            }
+          ]
+        }
+      ]
+    },
+    "resolved_type_inventory_scope": "compiler-typed physical closure; only reached procedures flow-analyzed",
+    "classification_manifest_sha256": "9aee819cbf42c91cc59cb8347e16d1d364ebf50e6421aa8380da6a43338e588f",
+    "classified_parameters": [
+      {
+        "name": "secret",
+        "type": "[] u8",
+        "classification": "secret",
+        "view": {
+          "element_type": "u8",
+          "extent": 32,
+          "access": "read"
+        }
+      },
+      {
+        "name": "peer",
+        "type": "[] u8",
+        "classification": "public",
+        "view": {
+          "element_type": "u8",
+          "extent": 32,
+          "access": "read"
+        }
+      },
+      {
+        "name": "work",
+        "type": "[] EcdhScratch",
+        "classification": "public",
+        "view": {
+          "element_type": "EcdhScratch",
+          "extent": 1,
+          "access": "write"
+        }
+      }
+    ],
+    "classification_assumption": "caller-supplied; public parameters must be public at the actual call boundary",
+    "error": 14,
+    "error_name": "guard-obligations",
+    "file": "$REPO/coax/lib/crypto/ecdh.coax",
+    "line": 0,
+    "column": 0,
+    "reached_procedures": 61,
+    "visited_nodes": 168959,
+    "return_dependency_mask": 1,
+    "supported_algorithm_dataflow": true,
+    "source_status": "analyzed-with-guard-obligations",
+    "production_crypto_approved": false,
+    "view_assumption": "caller supplies live aligned fixed-extent views, mutually disjoint from each other and all other reachable storage, with declared access and initial classifications and no concurrent mutation throughout the invocation",
+    "public_only_scope": "all reached public-only bodies and transitive effects are analyzed; no declassification from names",
+    "authored_guard_obligations": [
+      {
+        "node": 7186,
+        "line": 239,
+        "column": 3,
+        "origin_mask": 0,
+        "kind": "authored-assertion",
+        "file": "$REPO/coax/lib/crypto/secp_field.coax",
+        "source_sha256": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+        "classification": "public-unproved"
+      },
+      {
+        "node": 8991,
+        "line": 492,
+        "column": 5,
+        "origin_mask": 0,
+        "kind": "authored-assertion",
+        "file": "$REPO/coax/lib/crypto/secp_field.coax",
+        "source_sha256": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+        "classification": "public-unproved"
+      }
+    ]
+  },
+  "conditional_source_decision": {
+    "schema": "coax.reviewed-guard-decision.v1",
+    "source_scope_accepted": true,
+    "conditional": true,
+    "trust_premises": [
+      "the reviewed outer launcher itself is a trusted code anchor; its hash is recorded but cannot self-authenticate",
+      "reviewed local verifier and registry code",
+      "reviewed exact byte-load and field-chain source-to-model correspondence, including the manual multiply post-fold bound",
+      "caller supplies a public peer and secret scalar with live, aligned, initialized, exclusive and disjoint fixed-extent views",
+      "pinned compiler, native toolchain, Python, solver, stable files and local operating system"
+    ],
+    "launcher_sha256": "00a4d0e2abde0d1650f9d6b5158de936feecca4a03d6e3ac822bb5a135184d5c",
+    "inner_sha256": "067d03a9153054c391d8f9a291ecfec2d8d9b57d893b5c9d8428f8b214794305",
+    "registry_sha256": "5829577cc9d7786d4170c19a5fdd4f151eee4767a6c02728635a4b58ff5b04e1",
+    "target_timing_approved": false,
+    "erasure_approved": false,
+    "production_crypto_approved": false
+  },
+  "old_registry_refusal": {
+    "source_scope_accepted": false,
+    "conditional": true,
+    "reason": "inner registry refused",
+    "target_timing_approved": false,
+    "erasure_approved": false,
+    "production_crypto_approved": false
+  },
+  "log_sha256": {
+    "source_checks": "eac809959f98593d3ca3497ef6972256b2a7add90f3d469c7f98cdd431e65bfd",
+    "source_mutation": "dc976d6eef92232e21eff1e3855d4f55103cbded24d7ee88faa66a039266721e",
+    "binding_mutation": "5ed51dd22cc0dbd74a4bc285771d9ea8869498254fd2a7749c664637dcc7abc3",
+    "binding_tests": "d99df649eefdef4cae84977bb7848b5fabcf161f4930ba08689c1a34e329e07c",
+    "legacy_host": "a12a91b885eb30192eca89e490a75c8deb33ce2fd3442bb06e9153c8483c3d44",
+    "owner_host_injected": "50e4cfe7687b30f04cc55786825f946be81e82e9d0bd03bea8adf31317ff9820",
+    "owner_host_direct": "9228a60df98339934076acef2a829c9010897893250e20d5a1ce9b14c3c05ad6",
+    "stage_oracle": "9fa6d1bb171c091a81c7cf2969e5bde1e46a42fd25cad6c76163a3e5ab7d790f",
+    "peer_oracle": "f8c7abfe12d84c55d811b0bdc766ef0c260af8f5852ff75ce2f3546ff88724b9",
+    "public_oracle": "2fb87eb7ec5b4d6fcbc2be79ed4fdaf168f753624eeafc5a1dd90a46ef6d77ec",
+    "export_controls": "69bcd12f2e6beb1e611f7bc9eebeb343df2ad22be4818032bb04f77c046fef2d",
+    "foreign_manifest_refusal": "bdb0c05a8f24af5579691113e07888a49d4a39bb8ab7b56b0850c2fc7012e1e5",
+    "relocated_consumers": "2ebe3b7a21f2a818256bd21baf3473fef3c8ef37c3257cdf98fc99074fc3d974",
+    "publication_unit": "24cefc2bc38a1c71e18591075993695fc72546b32ff6b5baab3d98032ce96fb5",
+    "manifest_unit": "fb184ea57734512b1f088f9181209901b9cd46df3eb7eaa2500ea9e48dde20b5"
+  },
+  "historical_failures": [
+    "earlier public-artifact harness did not bind manifest inputs to the current source graph; fixed and foreign-identity control now refuses",
+    "earlier native dylib recorded a removed temporary install path and a linked consumer failed; @rpath is now checked and relocated C/C++ consumers pass",
+    "earlier scrubbed builder environment could not locate wasm-ld; fixed tool path and recorded linker hash"
+  ],
+  "limitations": [
+    "only the controlled new artifacts have the reviewed export surface; arbitrary adapter builds and old binaries can expose legacy behavior",
+    "external callers, stable live exclusive buffers, process lifetime and synchronous whole-region wipe remain premises",
+    "Wasm host can read and modify linear memory; no malicious-host isolation",
+    "raw source audit remains refused; conditional source decision covers the stage and reviewed adapter, not the C host",
+    "no hidden-copy erasure, target/JIT timing, crash or production-secret approval"
+  ],
+  "host_fixture_header_note": {
+    "tested_sha256": "2ae99c9747da306110cb407264a436f366f55ce0c22ef5d91623064e78101d89",
+    "current_sha256": "5b3aff2c6f207fccc900d8f4db7d25104055d271ced7b93e0f8df0e85b723720",
+    "scope": "subsequent header change adds only C++ linkage guards; current published native artifacts passed relocated C and C++ consumer tests"
+  }
+}

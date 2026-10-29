@@ -5,11 +5,11 @@ import secp_field as field,secp_group as group
 from scalar_candidate import Scalar
 from secp_field_mul import file_sha
 from oracle import raw_ecdh,lift_x,point_mul,P,N,NativeOracle,DEFAULT_LIBRARY
-ROOT=field.ROOT;SOURCE=ROOT/'coax/lib/crypto/ecdh.coax'
+ROOT=field.ROOT;SOURCE=ROOT/'coax/lib/crypto/ecdh_owned_adapter.coax'
 class Work(C.Structure):_fields_=[('scalar',Scalar),('shared',group.Point),('affine',group.Affine),('staged',C.c_uint8*32)]
-class WV(C.Structure):_fields_=[('data',C.POINTER(Work)),('count',C.c_int64)]
-def call(lib,key,peer):
- a=(C.c_uint8*32).from_buffer_copy(key);b=(C.c_uint8*32).from_buffer_copy(peer);w=Work();C.memset(C.byref(w),0xa5,C.sizeof(w));status=lib.ecdh_stage(field.View(a,32),field.View(b,32),WV(C.pointer(w),1));return status,bytes(w.staged)
+def verify_required_inputs(manifest,required):
+ inputs=manifest.get('inputs')
+ return isinstance(inputs,dict) and bool(required) and all(inputs.get(path)==digest for path,digest in required.items())
 def main():
  assert C.sizeof(Work)==472;oracle=NativeOracle(DEFAULT_LIBRARY);rows=[];counts={'nip44':0,'wycheproof_valid':0,'wycheproof_invalid_x':0,'wycheproof_excluded':0,'invalid_scalar':0,'invalid_peer':0,'random':0,'seeded_default_hash':0}
  def add(k,p,status,raw):rows.append((k,p,status,raw))
@@ -34,19 +34,31 @@ def main():
  rng=random.Random(20261029)
  for i in range(256):
   k=rng.randrange(1,N);q=rng.randrange(1,N);pub=oracle.point(q.to_bytes(32,'big'));a=k.to_bytes(32,'big');b=pub[1:33];raw=oracle.ecdh(a,b);assert raw==raw_ecdh(a,b);point=lift_x(int.from_bytes(b,'big'));opposite=(point[0],(-point[1])%P);assert point_mul(k,point)[0]==point_mul(k,opposite)[0]==int.from_bytes(raw,'big');add(a,b,0,raw);counts['random']+=1
- paths=[SOURCE,ROOT/'coax/lib/crypto/zeroize.coax',ROOT/'coax/lib/crypto/ecdh_lifecycle.coax',ROOT/'coax/lib/crypto/platform/ecdh_owned.c',ROOT/'coax/lib/crypto/platform/ecdh_owned.h',ROOT/'coax/lib/crypto/platform/zeroize.c',ROOT/'coax/tests/nostr/ecdh_owned_vectors.py',ROOT/'coax/tests/nostr/ecdh_owned_wasm.c',ROOT/'coax/tests/nostr/ecdh_owned_wasm.cjs',source_vectors,corpus,DEFAULT_LIBRARY,field.COMPILER]
+ public=os.environ.get('COAX_ECDH_PUBLIC_PREFIX')
+ paths=[SOURCE,ROOT/'coax/lib/crypto/zeroize.coax',ROOT/'coax/lib/crypto/ecdh_lifecycle.coax',ROOT/'coax/lib/crypto/platform/ecdh_owned.c',ROOT/'coax/lib/crypto/platform/ecdh_owned.h',ROOT/'coax/lib/crypto/platform/zeroize.c',ROOT/'coax/tests/nostr/ecdh_owned_vectors.py',ROOT/'coax/tests/nostr/ecdh_owned_wasm.c',ROOT/'coax/tests/nostr/ecdh_owned_wasm.cjs',ROOT/'coax/tests/nostr/ecdh_owned_public_wasm.cjs',source_vectors,corpus,DEFAULT_LIBRARY,field.COMPILER]
  hashes={str(p):file_sha(p) for p in paths};report={'schema':'coax.ecdh-owned-oracle.v1','scope':'public correctness of an experimental owner; no target or production approval','counts':counts,'modes':[]}
  with tempfile.TemporaryDirectory(prefix='coax-ecdh-owned-vectors-') as td:
   d=pathlib.Path(td);fixture=d/'cases.bin';fixture.write_bytes(b''.join(k+p+bytes([status])+raw for k,p,status,raw in rows));report['fixtures_sha256']=file_sha(fixture)
   for mode,flags in [('checked',[]),('release',['--release'])]:
-   sources=[]
-   for name,src in [('ecdh','ecdh.coax'),('zeroize-policy','zeroize.coax'),('ecdh_lifecycle','ecdh_lifecycle.coax')]:
+   sources=[];required={str(p):file_sha(p) for p in [field.COMPILER,ROOT/'coax/provenance.sh',ROOT/'coax/lib/crypto/platform/zeroize.c',ROOT/'coax/lib/crypto/platform/ecdh_owned.c',ROOT/'coax/lib/crypto/platform/ecdh_owned.h',ROOT/'tools/coax-nostr/ecdh-owned/build.py']}
+   for name,src in [('ecdh','ecdh_owned_adapter.coax'),('zeroize-policy','zeroize.coax'),('ecdh_lifecycle','ecdh_lifecycle.coax')]:
     c=d/(name+'.c');mapping=d/(name+'-map.json');field.run(field.COMPILER,'c',ROOT/'coax/lib/crypto'/src,'--library','--header',d/(name+'.h'),'--source-map',mapping,'-o',c,*flags);sources.append(c)
     for path,digest in json.loads(mapping.read_text())['source_hashes'].items():
      if file_sha(pathlib.Path(path))!=digest or path in hashes and hashes[path]!=digest:raise AssertionError('source map drift')
-     hashes[path]=digest
+     hashes[path]=digest;required[path]=digest
    sources.extend([ROOT/'coax/lib/crypto/platform/zeroize.c',ROOT/'coax/lib/crypto/platform/ecdh_owned.c']);common=['-std=c11','-O2','-I'+str(d),'-I'+str(ROOT/'coax/lib/crypto/platform')]
-   libpath=d/(mode+'.dylib');field.run('cc',*common,'-shared','-fPIC',*sources,'-lm','-o',libpath);lib=C.CDLL(str(libpath))
+   if public:
+    nd=pathlib.Path(public+'-native-'+mode);wd=pathlib.Path(public+'-wasm-'+mode)
+    for target,directory in [('native',nd),('wasm',wd)]:
+     manifest=directory/'manifest.json';meta=json.loads(manifest.read_text());artifact=directory/('libcoax_ecdh_owned.dylib' if target=='native' else 'coax_ecdh_owned.wasm')
+     assert meta['target']==target and meta['profile']==mode and file_sha(artifact)==meta['artifact_sha256'] and file_sha(directory/'ecdh_owned.h')==meta['public_header_sha256']
+     assert verify_required_inputs(meta,required),(target,mode,'artifact source identity mismatch')
+     for path,digest in meta['inputs'].items():assert file_sha(pathlib.Path(path))==digest,(path,'manifest drift')
+     hashes[str(manifest)]=file_sha(manifest);hashes[str(artifact)]=file_sha(artifact)
+    libpath=nd/'libcoax_ecdh_owned.dylib'
+   else:
+    libpath=d/(mode+'.dylib');field.run('cc',*common,'-shared','-fPIC','-fvisibility=hidden',*sources,'-lm','-o',libpath)
+   lib=C.CDLL(str(libpath))
    lib.coax_ecdh_owned_acquire.restype=C.c_uint64;lib.coax_ecdh_owned_start.argtypes=[C.c_uint64,C.c_void_p,C.c_int64,C.c_void_p,C.c_int64];lib.coax_ecdh_owned_start.restype=C.c_uint32;lib.coax_ecdh_owned_collect.argtypes=[C.c_uint64,C.c_void_p,C.c_int64];lib.coax_ecdh_owned_collect.restype=C.c_uint32;lib.coax_ecdh_owned_close.argtypes=[C.c_uint64];lib.coax_ecdh_owned_close.restype=C.c_uint32
    for i,(k,p,status,raw) in enumerate(rows):
     a=(C.c_uint8*32).from_buffer_copy(k);b=(C.c_uint8*32).from_buffer_copy(p);out=(C.c_uint8*32)(*[0xa5]*32);h=lib.coax_ecdh_owned_acquire();assert h
@@ -55,8 +67,10 @@ def main():
     assert got==status,(mode,i,got,status)
     assert bytes(out)==(raw if status==0 else bytes([0xa5])*32),(mode,i,'output')
     assert bytes(a)==k and bytes(b)==p and lib.coax_ecdh_owned_close(h)==0,(mode,i,'ownership')
-   wasm=d/(mode+'.wasm');field.run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes',*common,*sources,ROOT/'coax/tests/nostr/ecdh_owned_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm)
-   w=json.loads(field.run('node',ROOT/'coax/tests/nostr/ecdh_owned_wasm.cjs',wasm,fixture,timeout=1800).stdout);report['modes'].append({'mode':mode,'native_cases':len(rows),'native_failures':0,'native_artifact_sha256':file_sha(libpath),'wasm_artifact_sha256':file_sha(wasm),'wasm':w})
+   if public:wasm=wd/'coax_ecdh_owned.wasm';wasm_driver=ROOT/'coax/tests/nostr/ecdh_owned_public_wasm.cjs'
+   else:
+    wasm=d/(mode+'.wasm');field.run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes',*common,*sources,ROOT/'coax/tests/nostr/ecdh_owned_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm);wasm_driver=ROOT/'coax/tests/nostr/ecdh_owned_wasm.cjs'
+   w=json.loads(field.run('node',wasm_driver,wasm,fixture,timeout=1800).stdout);report['modes'].append({'mode':mode,'native_cases':len(rows),'native_failures':0,'native_artifact_sha256':file_sha(libpath),'wasm_artifact_sha256':file_sha(wasm),'wasm':w})
  for name,digest in hashes.items():assert file_sha(pathlib.Path(name))==digest,name
  report['inputs']=hashes;oracle.close();print(json.dumps(report,indent=2))
 if __name__=='__main__':main()

@@ -1,0 +1,6 @@
+// Private build bridge for the owned host. Build artifacts must hide this
+// symbol and ship only the explicitly versioned owner API.
+#load "ecdh.coax";
+ecdh_stage_bridge :: (secret:[]u8,peer:[]u8,work:[]EcdhScratch)->u32 #export_c {
+ return ecdh_stage(secret,peer,work);
+}

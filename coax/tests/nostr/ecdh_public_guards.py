@@ -5,7 +5,7 @@ import secp_field as field
 from ecdh_vectors import Work,WV
 from oracle import P,lift_x,G
 from secp_field_mul import file_sha
-ROOT=field.ROOT;SOURCE=ROOT/'coax/lib/crypto/ecdh.coax'
+ROOT=field.ROOT;SOURCE=ROOT/'coax/lib/crypto/ecdh_owned_adapter.coax'
 def main():
  rng=random.Random(462026);values={0,1,2,P-1,P,P+1,(1<<256)-1,G[0]}
  values.update(1<<i for i in range(256));values.update(((1<<256)-1)^(1<<i) for i in range(256));values.update(rng.getrandbits(256) for _ in range(256))
@@ -20,9 +20,9 @@ def main():
   for mode,flags in [('checked',[]),('release',['--release'])]:
    c=d/(mode+'.c');h=d/'ecdh.h';source_map=d/(mode+'-map.json');field.run(field.COMPILER,'c',SOURCE,'--library','--source-map',source_map,'--header',h,'-o',c,*flags)
    meta=json.loads(source_map.read_text());assert meta['sources']==list(meta['source_hashes']);assert {str(pathlib.Path(p).resolve().relative_to(ROOT)):x for p,x in meta['source_hashes'].items()}==graph
-   libpath=d/(mode+'.dylib');field.run('cc','-std=c11','-O2','-shared','-fPIC',c,'-lm','-o',libpath);lib=C.CDLL(str(libpath));lib.ecdh_stage.argtypes=[field.View,field.View,WV];lib.ecdh_stage.restype=C.c_uint32
+   libpath=d/(mode+'.dylib');field.run('cc','-std=c11','-O2','-shared','-fPIC',c,'-lm','-o',libpath);lib=C.CDLL(str(libpath));lib.ecdh_stage_bridge.argtypes=[field.View,field.View,WV];lib.ecdh_stage_bridge.restype=C.c_uint32
    for i,(k,p,status,want) in enumerate(rows):
-    a=(C.c_uint8*32).from_buffer_copy(k);b=(C.c_uint8*32).from_buffer_copy(p);w=Work();C.memset(C.byref(w),0xa5,C.sizeof(w));actual=lib.ecdh_stage(field.View(a,32),field.View(b,32),WV(C.pointer(w),1));assert actual==status,(mode,i,actual,status)
+    a=(C.c_uint8*32).from_buffer_copy(k);b=(C.c_uint8*32).from_buffer_copy(p);w=Work();C.memset(C.byref(w),0xa5,C.sizeof(w));actual=lib.ecdh_stage_bridge(field.View(a,32),field.View(b,32),WV(C.pointer(w),1));assert actual==status,(mode,i,actual,status)
     if status==2:assert C.string_at(C.byref(w),C.sizeof(w))==bytes([0xa5])*C.sizeof(w),(mode,i,'refusal work')
     else:assert bytes(w.staged)==want,(mode,i,'raw x')
    wasm=d/(mode+'.wasm');field.run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(d),c,ROOT/'coax/tests/nostr/ecdh_public_guards_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm)

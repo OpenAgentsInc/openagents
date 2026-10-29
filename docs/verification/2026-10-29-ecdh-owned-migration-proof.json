@@ -1,0 +1,122 @@
+{
+  "schema": "coax.ecdh-public-guards-proof.v1",
+  "scope": "pinned byte-load and chain models plus replayed normalization query; source and caller correspondence require independent manual review",
+  "source_sha256": {
+    "$REPO/coax/lib/crypto/ecdh.coax": "8bd78fccaa462d832e5c89621ac2159c78aa8035d4f13568783f3d195ad07c28",
+    "$REPO/coax/lib/crypto/secp_mult_const.coax": "948b31ef93663792305347ca5f65e22259c5777e783edf7b9502b09033de622b",
+    "$REPO/coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+    "$REPO/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+    "$REPO/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+    "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "$REPO/coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+    "$REPO/coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+    "$REPO/coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+    "$REPO/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+    "$REPO/coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915"
+  },
+  "audit_report_sha256": "8c9071dc55ac70e9a82142b1e8b832ca29cf8805fbd1d5be5532eac1053741d2",
+  "reference_report_sha256": "90ce9200475505374f53c9e5315f1125e6193ac7f4514a67418ac222081a0410",
+  "reference_model_sha256": "15d72eb3b45bfe5cf62a968f70cf8f650f88eff360f44bd77c31d2e5c16d3d58",
+  "script_sha256": "814e429e50414b60bb21b2e6de3e24ec0a58bd09a9b4d8daf59b1985d3a9d8f9",
+  "solver": "z3 5.3.2",
+  "solver_library": {
+    "path": "/opt/homebrew/Cellar/z3/5.3.2/lib/libz3.5.3.2.0.dylib",
+    "sha256": "bf9c9e020f19228523ee7bbf8595181328905158fe37e4ecead5f6cec9651be6"
+  },
+  "chain": [
+    [
+      0,
+      1,
+      0
+    ],
+    [
+      1,
+      1,
+      0
+    ],
+    [
+      2,
+      3,
+      2
+    ],
+    [
+      3,
+      3,
+      2
+    ],
+    [
+      4,
+      2,
+      1
+    ],
+    [
+      5,
+      11,
+      5
+    ],
+    [
+      6,
+      22,
+      6
+    ],
+    [
+      7,
+      44,
+      7
+    ],
+    [
+      8,
+      88,
+      8
+    ],
+    [
+      9,
+      44,
+      7
+    ],
+    [
+      10,
+      3,
+      2
+    ],
+    [
+      11,
+      23,
+      6
+    ]
+  ],
+  "checks": [
+    {
+      "name": "normalize_guard_and_word_bounds",
+      "result": "unsat",
+      "query_sha256": "ab507bab978d4bd571fa129d34864b878a425ece5e4dbe460ea3466cd6536d91"
+    },
+    {
+      "name": "byte_load_is_bounded_and_exact",
+      "result": "unsat",
+      "query_sha256": "66d9f87d524aa84978151e6942322e4ccf5bea1fa2069f402e89b8369672aad0"
+    },
+    {
+      "name": "omitted_load_mask_breaks_bound",
+      "result": "sat",
+      "query_sha256": "7c62e05dacd12b0be5e3095d86f00a6187b87aec9276c1605e483bad51a45320",
+      "witness": {
+        "unmasked_byte": "252"
+      }
+    },
+    {
+      "name": "all_chain_steps_admitted",
+      "result": "unsat",
+      "query_sha256": "198bd9f88fd631e663f17f276e9e36c93298431eb898ec4842bbe7ceb418cfb1"
+    },
+    {
+      "name": "invalid_first_chain_index_control",
+      "result": "sat",
+      "query_sha256": "bc6140599aec94fd19f5cb35a7e02ab980bfac31ce689a1ab9d24ea37709a733",
+      "witness": {
+        "chain_index": "0",
+        "chain_left": "1"
+      }
+    }
+  ]
+}

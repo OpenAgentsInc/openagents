@@ -1,6 +1,9 @@
 #ifndef COAX_ECDH_OWNED_H
 #define COAX_ECDH_OWNED_H
 #include <stdint.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 /* Experimental one-slot owner. Handles are transferable bearer values: an
  * authorized caller must keep its handle private and serialize its own use.
  * Input and output storage must be truthful, live, exclusive, stable and
@@ -33,10 +36,19 @@
 #define COAX_ECDH_OWNED_CANCELLED 6u
 #define COAX_ECDH_OWNED_EFFECT 7u
 #define COAX_ECDH_OWNED_BUSY 8u
-uint64_t coax_ecdh_owned_acquire(void);
-uint32_t coax_ecdh_owned_start(uint64_t handle,const uint8_t *secret,int64_t secret_len,const uint8_t *peer,int64_t peer_len);
-uint32_t coax_ecdh_owned_collect(uint64_t handle,uint8_t *output,int64_t capacity);
-uint32_t coax_ecdh_owned_retry(uint64_t handle);
-uint32_t coax_ecdh_owned_cancel(uint64_t handle);
-uint32_t coax_ecdh_owned_close(uint64_t handle);
+#if defined(__GNUC__)
+#define COAX_ECDH_OWNED_API __attribute__((visibility("default")))
+#else
+#define COAX_ECDH_OWNED_API
+#endif
+COAX_ECDH_OWNED_API uint64_t coax_ecdh_owned_acquire(void);
+COAX_ECDH_OWNED_API uint32_t coax_ecdh_owned_start(uint64_t handle,const uint8_t *secret,int64_t secret_len,const uint8_t *peer,int64_t peer_len);
+COAX_ECDH_OWNED_API uint32_t coax_ecdh_owned_collect(uint64_t handle,uint8_t *output,int64_t capacity);
+COAX_ECDH_OWNED_API uint32_t coax_ecdh_owned_retry(uint64_t handle);
+COAX_ECDH_OWNED_API uint32_t coax_ecdh_owned_cancel(uint64_t handle);
+COAX_ECDH_OWNED_API uint32_t coax_ecdh_owned_close(uint64_t handle);
+#undef COAX_ECDH_OWNED_API
+#ifdef __cplusplus
+}
+#endif
 #endif

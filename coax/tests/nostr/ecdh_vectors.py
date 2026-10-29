@@ -5,11 +5,11 @@ import secp_field as field,secp_group as group
 from scalar_candidate import Scalar
 from secp_field_mul import file_sha
 from oracle import raw_ecdh,lift_x,point_mul,P,N,NativeOracle,DEFAULT_LIBRARY
-ROOT=field.ROOT;SOURCE=ROOT/'coax/lib/crypto/ecdh.coax'
+ROOT=field.ROOT;SOURCE=ROOT/'coax/lib/crypto/ecdh_owned_adapter.coax'
 class Work(C.Structure):_fields_=[('scalar',Scalar),('shared',group.Point),('affine',group.Affine),('staged',C.c_uint8*32)]
 class WV(C.Structure):_fields_=[('data',C.POINTER(Work)),('count',C.c_int64)]
 def call(lib,key,peer):
- a=(C.c_uint8*32).from_buffer_copy(key);b=(C.c_uint8*32).from_buffer_copy(peer);w=Work();C.memset(C.byref(w),0xa5,C.sizeof(w));status=lib.ecdh_stage(field.View(a,32),field.View(b,32),WV(C.pointer(w),1));return status,bytes(w.staged)
+ a=(C.c_uint8*32).from_buffer_copy(key);b=(C.c_uint8*32).from_buffer_copy(peer);w=Work();C.memset(C.byref(w),0xa5,C.sizeof(w));status=lib.ecdh_stage_bridge(field.View(a,32),field.View(b,32),WV(C.pointer(w),1));return status,bytes(w.staged)
 def main():
  assert C.sizeof(Work)==472;oracle=NativeOracle(DEFAULT_LIBRARY);rows=[];counts={'nip44':0,'wycheproof_valid':0,'wycheproof_invalid_x':0,'wycheproof_excluded':0,'invalid_scalar':0,'invalid_peer':0,'random':0,'seeded_default_hash':0}
  def add(k,p,status,raw):rows.append((k,p,status,raw))
@@ -42,7 +42,7 @@ def main():
   for mode,flags in [('checked',[]),('release',['--release'])]:
    c=d/(mode+'.c');header=d/'ecdh.h';source_map=d/(mode+'-map.json');field.run(field.COMPILER,'c',SOURCE,'--library','--source-map',source_map,'--header',header,'-o',c,*flags)
    metadata=json.loads(source_map.read_text());assert metadata['sources']==list(metadata['source_hashes']);assert {str(pathlib.Path(p).resolve().relative_to(ROOT)):h for p,h in metadata['source_hashes'].items()}==graph
-   libpath=d/(mode+'.dylib');field.run('cc','-std=c11','-O2','-shared','-fPIC',c,'-lm','-o',libpath);lib=C.CDLL(str(libpath));lib.ecdh_stage.argtypes=[field.View,field.View,WV];lib.ecdh_stage.restype=C.c_uint32
+   libpath=d/(mode+'.dylib');field.run('cc','-std=c11','-O2','-shared','-fPIC',c,'-lm','-o',libpath);lib=C.CDLL(str(libpath));lib.ecdh_stage_bridge.argtypes=[field.View,field.View,WV];lib.ecdh_stage_bridge.restype=C.c_uint32
    for i,(k,p,status,raw) in enumerate(rows):
     actual,out=call(lib,k,p);assert actual==status,(mode,i,actual,status)
     if status!=2:assert out==raw,(mode,i)

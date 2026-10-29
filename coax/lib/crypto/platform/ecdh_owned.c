@@ -62,7 +62,7 @@ uint32_t coax_ecdh_owned_start(uint64_t h,const uint8_t *secret,int64_t sn,const
  }
  slot.secret=secret;slot.peer=peer;
  coax_t_ElChange c=el_begin(slot.policy,h);if(c.status){unlock_slot();return incomplete();}slot.policy=c.slot;
- uint32_t result=ecdh_stage((coax_v_u8){(uint8_t *)secret,32},(coax_v_u8){(uint8_t *)peer,32},(coax_v_t_EcdhScratch){&slot.work,1});
+ uint32_t result=ecdh_stage_bridge((coax_v_u8){(uint8_t *)secret,32},(coax_v_u8){(uint8_t *)peer,32},(coax_v_t_EcdhScratch){&slot.work,1});
  if(!result)memcpy(slot.staged,slot.work.staged.e,32);
  slot.outcome=result;
  c=el_stop(slot.policy,h,result?1:0);if(c.status!=2){unlock_slot();return incomplete();}slot.policy=c.slot;

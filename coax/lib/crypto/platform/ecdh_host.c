@@ -26,7 +26,7 @@ uint32_t coax_ecdh_raw(const uint8_t *secret,int64_t secret_len,const uint8_t *p
  int alias=!present || overlaps(work,sizeof *work,secret,32)||overlaps(work,sizeof *work,peer,32)||overlaps(work,sizeof *work,output,32)||overlaps(output,32,secret,32)||overlaps(output,32,peer,32)||overlaps(secret,32,peer,32);
  uint32_t admission=ecdh_admit(secret_len,peer_len,capacity,present,aligned,alias);
  if(admission)return admission;
- uint32_t status=ecdh_stage((coax_v_u8){(uint8_t *)secret,32},(coax_v_u8){(uint8_t *)peer,32},(coax_v_t_EcdhScratch){work,1});
+ uint32_t status=ecdh_stage_bridge((coax_v_u8){(uint8_t *)secret,32},(coax_v_u8){(uint8_t *)peer,32},(coax_v_t_EcdhScratch){work,1});
  if(!status)memcpy(output,work->staged.e,32);
  if(ECDH_ZERO(work,sizeof *work,0,sizeof *work)){
   if(!status)(void)ECDH_ZERO(output,32,0,32);

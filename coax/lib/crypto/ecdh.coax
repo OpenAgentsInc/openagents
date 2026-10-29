@@ -101,7 +101,7 @@ ecdh_secret_math :: (input:ScScalar,peer:SgPoint)->EcdhMath {
   inverse:=ef_inverse(result.shared.z);
   result.affine_x=ef_field_mul(result.shared.x,ef_field_mul(inverse,inverse));return result;
 }
-ecdh_stage :: (secret:[]u8,peer:[]u8,work:[]EcdhScratch)->u32 #export_c {
+ecdh_stage :: (secret:[]u8,peer:[]u8,work:[]EcdhScratch)->u32 {
   if secret.count!=32 || peer.count!=32 || work.count!=1 {return EC_LENGTH;}
   point:=sg_lift_x_public(peer);if !point.ok {return EC_PEER;}
   raw:ScScalar;wide:[9]u32;bits:u32;
