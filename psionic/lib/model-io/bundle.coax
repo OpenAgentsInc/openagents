@@ -1,0 +1,190 @@
+// The expected pins come from the caller's trusted manifest, not the input index.
+#load "reader.coax";
+#load "identity.coax";
+#authority;
+// book:begin manifest
+PwIdentity :: struct { origin:string; revision:string; config_sha:string; tokenizer_sha:string; index_sha:string; }
+PwShard :: struct { name:string; data:[]u8; size:int; sha:string; }
+PwSpec :: struct { name:string; shape:PsionicShape; dtype:PwDtype; shard:int; }
+// book:end manifest
+
+#test "bundle budgets and safe shard basenames have exact boundaries" {
+    #assert pw_bundle_counts(1,1,1,1,1,1,0);
+    #assert pw_bundle_counts(16,4096,4096,4096,1048576,67108864,1048576);
+    #assert !pw_bundle_counts(0,1,1,1,1,1,0) && !pw_bundle_counts(17,1,1,1,1,1,0);
+    #assert !pw_bundle_counts(1,0,1,1,1,1,0) && !pw_bundle_counts(1,4097,5000,5000,1,1,0);
+    #assert !pw_bundle_counts(1,2,1,2,1,1,0) && !pw_bundle_counts(1,2,2,1,1,1,0);
+    #assert !pw_bundle_counts(1,1,1,1,0,1,0) && !pw_bundle_counts(1,1,1,1,1048577,1,0);
+    #assert !pw_bundle_counts(1,1,1,1,1,0,0) && !pw_bundle_counts(1,1,1,1,1,67108865,0);
+    #assert !pw_bundle_counts(1,1,1,1,1,1,-1) && !pw_bundle_counts(1,1,1,1,1,1,1048577);
+    #assert pw_basename("a.safetensors") && pw_basename("model-00001-of-00002.safetensors");
+    bad:=[9]string.[".safetensors","../a.safetensors","a/b.safetensors","a:b.safetensors","a\\b.safetensors","/a.safetensors",":a.safetensors","a.bin","a.safetensorS"];
+    for name:bad {#assert !pw_basename(name);}
+    #assert !pw_basename(".hidden.safetensors") && pw_basename("a..b.safetensors");
+    #assert pw_ends(".safetensors",".safetensors") && !pw_ends("safetensors",".safetensors");
+    inv:[1]PwTensor;#assert pw_find(inv[..],"missing")==-1 && pw_find(inv[0..<0],"")==-1;
+    sizes:=[3]PwShard.[PwShard.{size=68719476736},PwShard.{size=68719476736},PwShard.{size=10}];
+    r:=pw_sizes(sizes[0..<2]);#assert r.status==PwStatus.ok && r.bytes==137438953472;
+    #assert pw_sizes(sizes[..]).status==PwStatus.size;
+    sizes[1].size-=9;#assert pw_sizes(sizes[..]).status==PwStatus.size;
+    sizes[0].size=9;#assert pw_sizes(sizes[0..<1]).status==PwStatus.size;
+    sizes[0].size=68719476737;#assert pw_sizes(sizes[0..<1]).status==PwStatus.size;
+    sizes[0].size=10;#assert pw_sizes(sizes[0..<1]).bytes==10;
+    #assert pw_has_index(1) && !pw_has_index(0);
+}
+#test "all original bytes and expected inventory bind before bundle publication" {
+    config:=CH04_CONFIG_JSON;tokenizer:=CH04_TOKENIZER_JSON;file:=CH04_MODEL_SAFETENSORS;index:=CH04_MODEL_SAFETENSORS_INDEX_JSON;
+    id:=PwIdentity.{origin="owned",revision="v1",config_sha=CH04_CONFIG_JSON_SHA,tokenizer_sha=CH04_TOKENIZER_JSON_SHA};
+    shards:=[1]PwShard.[PwShard.{name="model.safetensors",data=file[..],size=file.count,sha=CH04_MODEL_SAFETENSORS_SHA}];
+    specs:=[3]PwSpec.[PwSpec.{name="scale"},PwSpec.{name="linear.weight",shape=PsionicShape.{rank=2,dims=[4]int.[2,3,0,0]}},PwSpec.{name="linear.bias",dtype=PwDtype.f32,shape=PsionicShape.{rank=1,dims=[4]int.[2,0,0,0]}}];
+    out:[4]PwTensor;draft:[4]PwTensor;
+    r:=pw_bundle_checked(id,config[..],tokenizer[..],index[0..<0],shards[..],specs[..],out[..],draft[..],false);
+    #assert r.status==PwStatus.ok && r.written==3 && r.bytes==22;
+    #assert out[0].name=="scale" && out[1].name=="linear.weight" && out[2].name=="linear.bias" && out[3].name=="";
+    for kind:0..<15 {
+        pin:=id;saved:=specs;files:=shards;cfg:=config;overlap:=false;
+        if kind==0 {pin.origin="";}if kind==1 {pin.revision="";}if kind==2 {pin.config_sha="bad";}
+        if kind==3 {cfg[0]=0;}if kind==4 {files[0].size-=1;}if kind==5 {files[0].sha=CH04_CONFIG_JSON_SHA;}
+        if kind==6 {saved[1].shape.dims[1]=2;}if kind==7 {saved[1].name="missing";}
+        if kind==8 {saved[1]=saved[0];}if kind==9 {overlap=true;}
+        if kind==10 {saved[0].shard=1;}if kind==11 {saved[0].dtype=PwDtype.f32;}
+        if kind==12 {saved[0].name="missing";}if kind==13 {files[0].name="bad.bin";}
+        if kind==14 {pin.index_sha=CH04_CONFIG_JSON_SHA;}
+        before:=out;q:=pw_bundle_checked(pin,cfg[..],tokenizer[..],index[0..<0],files[..],saved[..],out[..],draft[..],overlap);
+        #assert q.status!=PwStatus.ok && q.written==0 && q.bytes==0;
+        for i:0..<4 {#assert out[i].name==before[i].name && out[i].begin==before[i].begin;}
+    }
+}
+#test "two original shards and a complete index agree by name, not header order" {
+    config:=CH04_CONFIG_JSON;tokenizer:=CH04_TOKENIZER_JSON;a:=CH04_MODEL_00001_OF_00002_SAFETENSORS;b:=CH04_MODEL_00002_OF_00002_SAFETENSORS;index:=CH04_MODEL_SAFETENSORS_INDEX_JSON;
+    id:=PwIdentity.{origin="owned",revision="v1",config_sha=CH04_CONFIG_JSON_SHA,tokenizer_sha=CH04_TOKENIZER_JSON_SHA,index_sha=CH04_MODEL_SAFETENSORS_INDEX_JSON_SHA};
+    shards:=[2]PwShard.[PwShard.{name="model-00001-of-00002.safetensors",data=a[..],size=a.count,sha=CH04_MODEL_00001_OF_00002_SAFETENSORS_SHA},PwShard.{name="model-00002-of-00002.safetensors",data=b[..],size=b.count,sha=CH04_MODEL_00002_OF_00002_SAFETENSORS_SHA}];
+    specs:=[3]PwSpec.[PwSpec.{name="scale",shard=1},PwSpec.{name="linear.weight",shape=PsionicShape.{rank=2,dims=[4]int.[2,3,0,0]}},PwSpec.{name="linear.bias",shard=1,dtype=PwDtype.f32,shape=PsionicShape.{rank=1,dims=[4]int.[2,0,0,0]}}];
+    out:[3]PwTensor;draft:[3]PwTensor;
+    r:=pw_bundle_checked(id,config[..],tokenizer[..],index[..],shards[..],specs[..],out[..],draft[..],false);
+    #assert r.status==PwStatus.ok && r.written==3 && r.bytes==22;
+    #assert out[0].shard==1 && out[1].shard==0 && out[2].shard==1;
+    #assert pw_bundle_checked(id,config[..],tokenizer[..],index[0..<0],shards[..],specs[..],out[..],draft[..],false).status==PwStatus.manifest;
+    shards[1].name=shards[0].name;
+    #assert pw_bundle_checked(id,config[..],tokenizer[..],index[..],shards[..],specs[..],out[..],draft[..],false).status==PwStatus.duplicate;
+}
+#test "index duplicates, omissions, unknown names and wrong shards are refused" {
+    cases:=[16]string.[
+        "{\"metadata\":{\"total_size\":4},\"weight_map\":{\"x\":\"a.safetensors\",\"y\":\"b.safetensors\"}}",
+        "{\"weight_map\":{\"y\":\"b.safetensors\",\"x\":\"a.safetensors\"}}",
+        "{\"weight_map\":{\"x\":\"b.safetensors\",\"y\":\"b.safetensors\"}}",
+        "{\"weight_map\":{\"x\":\"a.safetensors\"}}",
+        "{\"weight_map\":{\"x\":\"a.safetensors\",\"z\":\"b.safetensors\"}}",
+        "{\"weight_map\":{\"x\":\"a.safetensors\",\"x\":\"a.safetensors\"}}",
+        "{\"metadata\":{\"total_size\":3},\"weight_map\":{\"x\":\"a.safetensors\",\"y\":\"b.safetensors\"}}",
+        "{\"metadata\":{\"total_size\":4},\"metadata\":{\"total_size\":4}}",
+        "{\"weight_map\":{},\"weight_map\":{}}",
+        "{\"metadata\":{\"total_size\":4}}",
+        "{\"metadata\":{\"total_size\":-1},\"weight_map\":{}}",
+        "{\"weight_map\":{\"x\":1}}",
+        "{\"weight_map\":[]}","{\"extra\":{}}","{} trailing","[]"];
+    shards:=[2]PwShard.[PwShard.{name="a.safetensors"},PwShard.{name="b.safetensors"}];
+    for i:0..<cases.count {
+        inv:=[2]PwTensor.[PwTensor.{name="x"},PwTensor.{name="y",shard=1}];
+        status:=pw_index(cases[i],shards[..],inv[..],4);
+        if i<2 {#assert status==PwStatus.ok && inv[0].indexed && inv[1].indexed;}
+        else {#assert status!=PwStatus.ok;}
+        if i==5 || i==7 || i==8 {#assert status==PwStatus.duplicate;}
+    }
+    a:=PsionicShape.{rank=4,dims=[4]int.[1,2,3,4]};b:=a;
+    #assert pw_same_shape(a,b);b.rank=3;#assert !pw_same_shape(a,b);b=a;
+    for i:0..<4 {b.dims[i]+=1;#assert !pw_same_shape(a,b);b=a;}
+}
+
+pw_bundle_counts :: (files:int,tensors:int,output:int,draft:int,config:int,tokenizer:int,index:int)->bool #export_c {
+    return files>=1 && files<=PW_SHARDS_MAX && tensors>=1 && tensors<=PW_TENSORS_MAX && output>=tensors && draft>=tensors && config>=1 && config<=PW_HEADER_MAX && tokenizer>=1 && tokenizer<=67108864 && index>=0 && index<=PW_HEADER_MAX;
+}
+pw_has_index :: (n:int)->bool {return n>0;}
+pw_sizes :: (sizes:[]PwShard)->PwResult {
+    total:=0;
+    for shard:sizes {
+        size:=shard.size;
+        if !pw_file_size(size) {return PwResult.{status=PwStatus.size};}
+        if size>PW_BUNDLE_MAX-total {return PwResult.{status=PwStatus.size};}total+=size;
+    }
+    return PwResult.{bytes=total};
+}
+pw_ends :: (s:string,suffix:string)->bool {
+    if s.count<suffix.count {return false;}
+    return s[s.count-suffix.count..<s.count]==suffix;
+}
+pw_basename :: (s:string)->bool {
+    if !pw_name(s) {return false;}
+    if s[0]=='.' {return false;}
+    for c:s {if c=='/' || c==':' {return false;}}
+    return pw_ends(s,".safetensors");
+}
+pw_find :: (inventory:[]PwTensor,name:string)->int {
+    for i:0..<inventory.count {if inventory[i].name==name {return i;}}return -1;
+}
+pw_same_shape :: (a:PsionicShape,b:PsionicShape)->bool {
+    if a.rank!=b.rank {return false;}
+    for i:0..<4 {if a.dims[i]!=b.dims[i] {return false;}}return true;
+}
+// A bounded HF weight_map must cover the entire admitted inventory exactly once.
+pw_index :: (text:string,shards:[]PwShard,inventory:[]PwTensor,payload:int)->PwStatus {
+    j:[1]Json;json_start_bounded(j[..],text,text.count,text.count);
+    if json_next(j[..])!=JSON_OBJECT {return PwStatus.json;}
+    map:=false;meta:=false;total:=payload;mapped:=0;t:=json_next(j[..]);
+    while t!=JSON_OBJECT_END {
+        if t!=JSON_STRING {return PwStatus.json;}key:=json_text(j[..]);
+        if key=="metadata" {
+            if meta {return PwStatus.duplicate;}meta=true;
+            if json_next(j[..])!=JSON_OBJECT {return PwStatus.schema;}
+            key_token:=json_next(j[..]);if json_text(j[..])!="total_size" {return PwStatus.schema;}
+            if json_next(j[..])!=JSON_NUMBER {return PwStatus.schema;}
+            n:=pw_integer(json_text(j[..]));if n.status!=PwStatus.ok {return n.status;}total=n.value;
+            if json_next(j[..])!=JSON_OBJECT_END {return PwStatus.schema;}
+        } else if key=="weight_map" {
+            if map {return PwStatus.duplicate;}map=true;
+            if json_next(j[..])!=JSON_OBJECT {return PwStatus.schema;}
+            part:=json_next(j[..]);
+            while part!=JSON_OBJECT_END {
+                if part!=JSON_STRING {return PwStatus.json;}name:=json_text(j[..]);
+                at:=pw_find(inventory,name);if at<0 {return PwStatus.manifest;}
+                if inventory[at].indexed {return PwStatus.duplicate;}
+                if json_next(j[..])!=JSON_STRING {return PwStatus.schema;}
+                if json_text(j[..])!=shards[inventory[at].shard].name {return PwStatus.manifest;}
+                inventory[at].indexed=true;mapped+=1;part=json_next(j[..]);
+            }
+        } else {return PwStatus.schema;}
+        t=json_next(j[..]);
+    }
+    if json_next(j[..])!=JSON_END {return PwStatus.json;}
+    if !map || mapped!=inventory.count || total!=payload {return PwStatus.manifest;}return PwStatus.ok;
+}
+// book:begin bundle
+pw_bundle_checked :: (id:PwIdentity,config:[]u8,tokenizer:[]u8,index:[]u8,shards:[]PwShard,specs:[]PwSpec,output:[]PwTensor,draft:[]PwTensor,overlap:bool)->PwResult #export_c {
+    if !pw_bundle_counts(shards.count,specs.count,output.count,draft.count,config.count,tokenizer.count,index.count) {return PwResult.{status=PwStatus.size};}
+    if overlap {return PwResult.{status=PwStatus.alias};}
+    if !pw_name(id.origin) || !pw_name(id.revision) {return PwResult.{status=PwStatus.manifest};}
+    if !pw_digest(config,id.config_sha) || !pw_digest(tokenizer,id.tokenizer_sha) {return PwResult.{status=PwStatus.digest};}
+    if index.count==0 {
+        if shards.count!=1 || id.index_sha!="" {return PwResult.{status=PwStatus.manifest};}
+    } else {if !pw_digest(index,id.index_sha) {return PwResult.{status=PwStatus.digest};}}
+    budget:=pw_sizes(shards);if budget.status!=PwStatus.ok {return budget;}
+    count:=0;payload:=0;
+    for i:0..<shards.count {
+        s:=shards[i];
+        if !pw_basename(s.name) || s.size!=s.data.count {return PwResult.{status=PwStatus.manifest};}
+        for k:0..<i {if shards[k].name==s.name {return PwResult.{status=PwStatus.duplicate};}}
+        if !pw_digest(s.data,s.sha) {return PwResult.{status=PwStatus.digest};}
+        r:=pw_scan(s.data,draft,count,i);if r.status!=PwStatus.ok {return r;}count+=r.written;payload+=r.bytes;
+    }
+    if count!=specs.count {return PwResult.{status=PwStatus.manifest};}
+    inventory:=draft[0..<count];
+    if pw_has_index(index.count) {status:=pw_index(cast(string)index,shards,inventory,payload);if status!=PwStatus.ok {return PwResult.{status=status};}}
+    for i:0..<specs.count {
+        s:=specs[i];at:=pw_find(inventory,s.name);if at<0 {return PwResult.{status=PwStatus.manifest};}
+        for k:0..<i {if specs[k].name==s.name {return PwResult.{status=PwStatus.duplicate};}}
+        t:=inventory[at];if s.shard!=t.shard || s.dtype!=t.dtype || !pw_same_shape(s.shape,t.shape) {return PwResult.{status=PwStatus.manifest};}
+    }
+    for i:0..<specs.count {output[i]=inventory[pw_find(inventory,specs[i].name)];}
+    return PwResult.{written=count,bytes=payload};
+}
+// book:end bundle

@@ -40,6 +40,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/read-weights.coax",
+      "chapter": "psionic/book/ch04-reading-original-weights.md",
+      "stdout": "psionic/fixtures/read-weights.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

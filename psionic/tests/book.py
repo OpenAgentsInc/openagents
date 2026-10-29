@@ -33,6 +33,14 @@ def check():
     for doc in docs:
         text = doc.read_text()
         assert text.endswith("\n") and text.count("```") % 2 == 0, f"bad structure: {doc}"
+        in_block = False
+        for line in text.splitlines():
+            if line.startswith("```"):
+                if not in_block:
+                    assert line in ("```jai", "```shell"), f"book fence must be jai or shell: {doc}: {line}"
+                else:
+                    assert line == "```", f"bad closing fence: {doc}: {line}"
+                in_block = not in_block
         for label, href in re.findall(r"\[([^\]]+)\]\(([^)]+)\)", text):
             parsed = urlparse(href)
             if not parsed.scheme and parsed.path:

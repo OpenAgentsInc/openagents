@@ -1,8 +1,9 @@
 # Architecture and considerations
 
-Status: chapters 1–3 implement bounded scalar learning, contiguous CPU storage
-and the `CPU-f32-wide-v1` numerical profile in [psionic/](../../psionic/README.md).
-Autodiff, artifact and accelerator contracts below remain proposed.
+Status: chapters 1–4 implement bounded scalar learning, contiguous CPU storage,
+`CPU-f32-wide-v1` numerics and `original-weights-v1` artifact admission in
+[psionic/](../../psionic/README.md). Autodiff, full model execution and
+accelerator contracts below remain proposed.
 The [source survey](research.md) supplies their motivation; each increment
 needs fresh checks and native evidence.
 
@@ -212,3 +213,20 @@ original corpus; a training recipe still needs permitted data and exact resume
 to become a reproducible chapter. Preserve weight, code, sample-data and
 training-data terms independently. The survey records concrete source
 inconsistencies to resolve when those proposed targets are selected.
+
+## Original artifacts before model-specific execution
+
+[Chapter 4](../../psionic/book/ch04-reading-original-weights.md) implements
+[model-io](../../psionic/lib/model-io/): byte-bounded Safetensors parsing,
+original BF16/F32 tensor intervals, exact original-byte SHA-256 identities,
+a complete HF shard-index subset and caller-pinned tensor manifests. This
+artifact profile has independent file/inventory budgets; decoding windows
+remain bounded by the CPU element cap. Raw bytes stay immutable and alive
+while names borrow their headers. Complete inventory publication and finite
+float decoding use separate caller workspaces. The native adapter observes
+all nested ranges but performs no parsing, hashing or model policy.
+
+Config and tokenizer bytes are identity-bound opaque sidecars here. Expected
+pins must come from a trusted caller; matching hashes and revision labels
+do not authenticate provenance. Actual Elephant/Mammoth configuration,
+tokenization, architecture execution and resource qualification remain next.

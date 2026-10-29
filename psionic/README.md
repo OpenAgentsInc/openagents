@@ -4,12 +4,14 @@ Psionic is a machine-learning library written in Coax, built one runnable book
 chapter at a time. The first milestone trains a one-parameter model on
 `[1, 2] → [2, 4]`, then predicts for an unseen input `3`. Chapter 2 adds
 bounded shapes, row-major indexing and a staged copy into caller-owned storage.
-Chapter 3 adds checked CPU numerical operations over that storage.
+Chapter 3 adds checked CPU numerical operations over that storage. Chapter 4
+reads original BF16/F32 weight files and complete pinned shard bundles.
 
 Start with [the book](book/README.md) and
 [Chapter 1: Learning a number](book/ch01-learning-a-number.md), then
 [Chapter 2: Shapes and storage](book/ch02-shapes-and-storage.md) and
-[Chapter 3: Numbers and matrices](book/ch03-numbers-and-matrices.md).
+[Chapter 3: Numbers and matrices](book/ch03-numbers-and-matrices.md), then
+[Chapter 4: Reading original weights](book/ch04-reading-original-weights.md).
 [The design notes](../docs/psionic/README.md) explain the larger plan.
 
 From the repository root:
@@ -19,13 +21,14 @@ psionic/check.sh
 coax/bin/coax run psionic/examples/learn-number.coax
 coax/bin/coax run psionic/examples/shape-storage.coax
 coax/bin/coax run psionic/examples/numbers-matrices.coax
+coax/bin/coax run psionic/examples/read-weights.coax
 ```
 
 The check command builds the compiler if it is absent, runs authored Coax
 checks in debug/release and the authority mutation gates, compares independent
 native numerical oracles in debug/release with and without ASan/UBSan, and
 verifies book listings, local links, example output and exit status. It uses
-a C11 compiler and Python 3 for book tooling and independent Decimal fixtures.
+a C11 compiler and Python 3 for book tooling and independent Decimal/owned-artifact fixtures.
 Neither the library nor its examples require Python, models, services,
 credentials, or downloads at run time.
 
@@ -34,6 +37,9 @@ credentials, or downloads at run time.
 | [lib/learn.coax](lib/learn.coax) | Checks first, admission, loss/gradient, fixed-rate SGD, prediction. |
 | [lib/tensor.coax](lib/tensor.coax) | Checked rank/shape/byte/stride metadata, indexing and staged finite-f32 copy. |
 | [lib/ops-contract.coax](lib/ops-contract.coax) | Operation shapes, typed view counts, epsilon rules and matrix-work admission. |
+| [lib/model-io/](lib/model-io/) | original-weights-v1 prefix/shape admission, JSON inventory, streaming SHA-256 identities, shard-index/manifest checks and finite window decoding. |
+| [platform/weights-memory.h](platform/weights-memory.h) | Native artifact interface; observes all writable/nested read-only spans. |
+| [tests/weights.c](tests/weights.c), [tests/weights_fixtures.py](tests/weights_fixtures.py) | Actual original single/sharded files, independent hashes/encodings, malformed inputs, aliases and atomic float refusal. |
 | [lib/ops.coax](lib/ops.coax) | Add, row sums/dots, matmul/matvec, gather, masked softmax, unscaled RMSNorm/LayerNorm; f32 storage with compensated f64 reductions. |
 | [platform/ops-memory.h](platform/ops-memory.h) | Native operations wrapper; typed span observations include integer indices and byte masks. |
 | [platform/tensor-memory.h](platform/tensor-memory.h) | Native tensor caller interface, alongside generated `tensor.h`; its C adapter observes addresses through shared [spans.h](platform/spans.h). |
@@ -59,5 +65,13 @@ implements the named `CPU-f32-wide-v1` profile for bounded rows/matrices, with
 a 1,048,576 multiply-add budget per matmul. It validates finite inputs before
 staging; arithmetic overflow may dirty scratch while preserving destination.
 [Its chapter](book/ch03-numbers-and-matrices.md) defines exact shapes, masks,
-normalization, precision and error contracts. Autodiff, model import, GPU
+normalization, precision and error contracts. Chapter 4 adds the separate `original-weights-v1` artifact profile: rank 0–4
+BF16/F32 originals, 64-GiB files, 128-GiB weight bundles, 16 shards, 4,096
+tensors, 1-MiB headers/indexes and finite decode windows of at most 1,048,576
+values. Metadata may describe larger tensors without expanding them. Caller
+pins bind original sidecar/shard hashes and complete name/dtype/shape inventory;
+labels alone do not authenticate provenance. Metadata drafts may change on
+refusal; public inventory and both decoded float spans have explicit atomic
+publication contracts. See [chapter 4](book/ch04-reading-original-weights.md)
+for exact profile and lifetime obligations. Autodiff, full model execution, GPU
 execution and serving remain planned.

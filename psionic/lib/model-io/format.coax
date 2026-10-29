@@ -1,0 +1,143 @@
+// original-weights-v1: byte/shape admission independent of execution's tensor cap.
+#load "../tensor.coax";
+#authority;
+PW_FILE_MAX :: 68719476736;
+PW_HEADER_MAX :: 1048576;
+PW_TENSORS_MAX :: 4096;
+PW_SHARDS_MAX :: 16;
+PW_BUNDLE_MAX :: 137438953472;
+PW_WINDOW_MAX :: 1048576;
+PW_NAME_MAX :: 128;
+
+// book:begin types
+PwStatus :: enum u8 { ok; size; capacity; alias; json; schema; unsupported; duplicate; shape; offsets; coverage; manifest; digest; number; range; }
+PwDtype :: enum u8 { bf16; f32; }
+PwTensor :: struct { name: string; shape: PsionicShape; dtype: PwDtype; elements: int; begin: int; end: int; shard: int; indexed: bool; }
+PwSize :: struct { status: PwStatus; elements: int; bytes: int; }
+PwHeader :: struct { status: PwStatus; data: int; }
+PwResult :: struct { status: PwStatus; written: int; bytes: int; }
+PwWord :: struct { status: PwStatus; bits: u32; }
+// book:end types
+
+#test "file and header bounds include exact endpoints without allocation" {
+    #assert pw_file_size(10) && pw_file_size(68719476736);
+    #assert !pw_file_size(9) && !pw_file_size(68719476737) && !pw_file_size(-1);
+    #assert !pw_file_size(9223372036854775807);
+    #assert pw_header_size(2, 10) && pw_header_size(1048576, 1048584);
+    #assert !pw_header_size(1, 10) && !pw_header_size(1048577, 1048585);
+    #assert !pw_header_size(3, 10) && !pw_header_size(18446744073709551615, 10);
+}
+#test "rank, dimension and dtype bounds precede shape products" {
+    #assert pw_count_fits(1,68719476736,1) && !pw_count_fits(1,68719476737,1);
+    #assert !pw_count_fits(0,1,1) && !pw_count_fits(1,0,1) && !pw_count_fits(1,1,0);
+    scalar := pw_shape_size(PsionicShape.{}, PwDtype.bf16);
+    #assert scalar.status == PwStatus.ok && scalar.elements == 1 && scalar.bytes == 2;
+    other := pw_shape_size(PsionicShape.{rank=2, dims=[4]int.[2,3,0,0]}, PwDtype.f32);
+    #assert other.status == PwStatus.ok && other.elements == 6 && other.bytes == 24;
+    #assert !pw_dtype_known(2) && !pw_dtype_known(255) && pw_dtype_known(0) && pw_dtype_known(1);
+    for rank: -1..<6 {
+        s := PsionicShape.{rank=rank};
+        for i:0..<4 { if i<rank {s.dims[i]=1;} }
+        r := pw_shape_size(s,PwDtype.bf16);
+        if rank>=0 && rank<=4 {#assert r.status==PwStatus.ok && r.elements==1 && r.bytes==2;}
+        else {#assert r.status==PwStatus.shape && r.elements==0 && r.bytes==0;}
+    }
+    for axis:0..<4 {
+        s := PsionicShape.{rank=4,dims=[4]int.[1,1,1,1]};s.dims[axis]=34359738368;
+        r:=pw_shape_size(s,PwDtype.bf16);#assert r.status==PwStatus.ok && r.bytes==68719476736;
+        s.dims[axis]+=1;q:=pw_shape_size(s,PwDtype.bf16);#assert q.status==PwStatus.size && q.elements==0 && q.bytes==0;
+        s.dims[axis]=17179869184;f:=pw_shape_size(s,PwDtype.f32);#assert f.status==PwStatus.ok && f.bytes==68719476736;
+        s.dims[axis]+=1;g:=pw_shape_size(s,PwDtype.f32);#assert g.status==PwStatus.size;
+        s.dims[axis]=0;#assert pw_shape_size(s,PwDtype.bf16).status==PwStatus.shape;
+        s.dims[axis]=-1;#assert pw_shape_size(s,PwDtype.bf16).status==PwStatus.shape;
+        s.dims[axis]=9223372036854775807;#assert pw_shape_size(s,PwDtype.bf16).status==PwStatus.size;
+        dirty:=PsionicShape.{};dirty.dims[axis]=1;#assert pw_shape_size(dirty,PwDtype.bf16).status==PwStatus.shape;
+    }
+}
+#test "little-endian prefix and word vectors are independent byte expectations" {
+    file := [12]u8.[2,0,0,0,0,0,0,0,123,125,128,63];
+    h:=pw_header(file[..]);#assert h.status==PwStatus.ok && h.data==10;
+    for n:0..<10 {#assert pw_header(file[0..<n]).status==PwStatus.size;}
+    file[7]=128;#assert pw_header(file[..]).status==PwStatus.size;file[7]=0;
+    file[8]=32;#assert pw_header(file[..]).status==PwStatus.schema;file[8]=123;
+    b:=pw_word(file[..],10,2);
+    #assert pw_word(file[10..<12],0,2).status==PwStatus.ok;#assert b.status==PwStatus.ok && b.bits==0x3f80;
+    bytes:=[7]u8.[165,0,0,128,63,0,128];
+    f:=pw_word(bytes[..],1,4);#assert f.status==PwStatus.ok && f.bits==0x3f800000;
+    for at:-1..<9 {
+        r:=pw_word(bytes[..],at,2);
+        if at>=0 && at<=5 {#assert r.status==PwStatus.ok;}
+        else {#assert r.status==PwStatus.offsets && r.bits==0;}
+    }
+    #assert pw_word(bytes[..],0,3).status==PwStatus.unsupported;
+    #assert pw_word(bytes[..],0,0).status==PwStatus.unsupported;
+    #assert pw_word(bytes[..],9223372036854775807,4).status==PwStatus.offsets;
+}
+#test "BF16 bit extension preserves signs, subnormals and exceptional encodings" {
+    words:=[12]u16.[0,0x8000,1,0x8001,0x3f80,0xc020,0x7f7f,0xff7f,0x7f80,0xff80,0x7fc1,0xff81];
+    bits:=[12]u32.[0,0x80000000,0x00010000,0x80010000,0x3f800000,0xc0200000,
+        0x7f7f0000,0xff7f0000,0x7f800000,0xff800000,0x7fc10000,0xff810000];
+    for i:0..<12 {
+        #assert pw_bf16_bits(words[i])==bits[i];
+        #assert psionic_tensor_finite_bits(bits[i])==(i<8);
+    }
+}
+#test "window bounds use subtraction and do not overflow" {
+    #assert pw_window(8,0,8,8,8) && pw_window(8,7,1,1,1);
+    #assert pw_window(34359738368,34359738367,1,1,1);
+    #assert !pw_window(8,-1,1,8,8) && !pw_window(8,0,0,8,8);
+    #assert !pw_window(8,8,1,8,8) && !pw_window(8,0,9,9,9);
+    #assert !pw_window(8,0,8,7,8) && !pw_window(8,0,8,8,7);
+    #assert pw_window(1048576,0,1048576,1048576,1048576);
+    #assert !pw_window(1048577,0,1048577,1048577,1048577);
+    #assert !pw_window(8,9223372036854775807,1,8,8);
+    #assert !pw_window(8,0,9223372036854775807,8,8);
+}
+
+pw_file_size :: (n:int)->bool {return n>=10 && n<=PW_FILE_MAX;}
+pw_header_size :: (n:u64,file:int)->bool {return n>=2 && n<=PW_HEADER_MAX && n<=cast(u64)(file-8);}
+pw_dtype_known :: (tag:u8)->bool {return tag<=1;}
+pw_width :: (dtype:PwDtype)->int {if dtype==PwDtype.bf16 {return 2;}return 4;}
+// book:begin header
+pw_header :: (file:[]u8)->PwHeader #export_c {
+    if !pw_file_size(file.count) {return PwHeader.{status=PwStatus.size};}
+    length:u64=0;
+    for i:0..<8 {length |= cast(u64)file[i] << (i*8);}
+    if !pw_header_size(length,file.count) {return PwHeader.{status=PwStatus.size};}
+    if file[8]!='{' {return PwHeader.{status=PwStatus.schema};}
+    return PwHeader.{data=8+cast(int)length};
+}
+// book:end header
+pw_count_fits :: (elements:int,extent:int,width:int)->bool {
+    if elements<1 || extent<1 || width<1 {return false;}
+    return extent<=PW_FILE_MAX/width/elements;
+}
+pw_shape_size :: (s:PsionicShape,dtype:PwDtype)->PwSize #export_c {
+    if !pw_dtype_known(cast(u8)dtype) {return PwSize.{status=PwStatus.unsupported};}
+    if s.rank<0 || s.rank>4 {return PwSize.{status=PwStatus.shape};}
+    for i:0..<4 {
+        if i<s.rank {if s.dims[i]<=0 {return PwSize.{status=PwStatus.shape};}}
+        else {if s.dims[i]!=0 {return PwSize.{status=PwStatus.shape};}}
+    }
+    width:=pw_width(dtype);elements:=1;
+    for i:0..<s.rank {
+        if !pw_count_fits(elements,s.dims[i],width) {return PwSize.{status=PwStatus.size};}
+        elements*=s.dims[i];
+    }
+    return PwSize.{elements=elements,bytes=elements*width};
+}
+// book:begin bf16
+pw_bf16_bits :: (word:u16)->u32 #export_c {return cast(u32)word << 16;}
+pw_word :: (data:[]u8,at:int,width:int)->PwWord #export_c {
+    if width!=2 && width!=4 {return PwWord.{status=PwStatus.unsupported};}
+    if at<0 || width>data.count || at>data.count-width {return PwWord.{status=PwStatus.offsets};}
+    bits:u32=0;
+    for i:0..<width {bits |= cast(u32)data[at+i] << (i*8);}
+    return PwWord.{bits=bits};
+}
+// book:end bf16
+pw_window :: (elements:int,first:int,count:int,output:int,scratch:int)->bool #export_c {
+    if first<0 || count<1 || count>PW_WINDOW_MAX || count>elements {return false;}
+    if first>elements-count || output<count || scratch<count {return false;}
+    return true;
+}

@@ -1,5 +1,39 @@
 # Invariants
 
+## Psionic original-weight admission binds complete immutable byte inventories
+
+`psionic/lib/model-io/` owns `original-weights-v1`: rank 0–4 BF16/F32
+Safetensors inventories with exact positive shape/byte intervals, no overlap
+or unindexed payload, unique names, bounded JSON and explicit unsupported
+refusals. Limits are 64 GiB per raw weight file, 128 GiB per weight bundle,
+16 shards, 4,096 tensors, 1 MiB per header/index and 128-byte printable
+unescaped ASCII identifiers. Header metadata has at most 64 string pairs.
+These artifact budgets are separate from CPU execution budgets.
+
+Bundle admission binds exact original config/tokenizer/index/shard SHA-256
+hashes and shard sizes to caller-provided trusted pins, complete expected
+name/dtype/canonical-shape/shard inventory and exact shard-index coverage.
+Labels/hashes do not authenticate their source or establish model semantics.
+Names borrow immutable original headers; callers retain those bytes unchanged
+and alive until the descriptors die. Full inventory is published only on
+success; drafts may change on refusal. Config/tokenizer remain opaque bytes.
+
+Decoding reparses the file, validates a named window of at most 1,048,576
+values, and checks every selected encoding for finiteness before converting
+BF16/F32 to F32 scratch and then destination. Every refusal preserves BOTH
+float spans and reports zero written/bytes; metadata workspaces may change.
+Success preserves unused writable capacity. Native wrappers observe all
+writable spans against each other and every nested read-only view; pointer
+validity, truthful extents, alignment, immutability, lifetime and exclusive
+access remain caller obligations. There is no concurrent transaction claim.
+
+Check: `psionic/check.sh` runs the authority/import closure in debug/release
+with zero-survivor mutation, independent owned original-file/hash fixtures,
+all BF16 encodings and F32 representation/alias/truncation cases under native
+debug/release and ASan/UBSan, plus earlier chapters and the book gate. See
+`docs/verification/psionic-ch04-2026-10-29.md`. These checks do not qualify
+full Elephant/Mammoth execution, every Safetensors dtype or a larger backend.
+
 ## Psionic CPU numerical operations publish only complete admitted results
 
 `psionic/lib/ops-contract.coax` owns `CPU-f32-wide-v1` operation/resource

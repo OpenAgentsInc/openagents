@@ -489,5 +489,5 @@ one of the equal softmax scores: the allowed entry should become one and the
 other exact zero. Finally, place an out-of-range index at the end of a gather
 request and verify that neither writable buffer changes.
 
-Next we will read original weight artifacts. The bounded numerical operations
+Next, [read original weight artifacts](ch04-reading-original-weights.md). The bounded numerical operations
 remain shared library code as real-model architecture and tokenizer work begins.

@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "profile": "original-weights-v1",
+  "origin": "openagents-owned-ch04-fixture",
+  "revision": "owned-v1",
+  "provenance": "Deterministic numerical fixtures authored in this repository; no external weights.",
+  "config_sha256": "9bd0b4d76ff4d502a8c2f0bb511988dee19e2d49fa99697c73c37b2a8fa18257",
+  "tokenizer_sha256": "33e276d0824b478cc3c57448c1df74cd3725e66bf387b337c22b1ed1dc103dd3",
+  "artifacts": {
+    "config.json": {
+      "bytes": 57,
+      "sha256": "9bd0b4d76ff4d502a8c2f0bb511988dee19e2d49fa99697c73c37b2a8fa18257"
+    },
+    "tokenizer.json": {
+      "bytes": 52,
+      "sha256": "33e276d0824b478cc3c57448c1df74cd3725e66bf387b337c22b1ed1dc103dd3"
+    },
+    "model.safetensors": {
+      "bytes": 262,
+      "sha256": "860b1c16a29249d366ef83a04ba4cf293ee252e79051123416586926fa3eb6e7"
+    },
+    "model-00001-of-00002.safetensors": {
+      "bytes": 124,
+      "sha256": "ac04abf13df4cb00d3eee1da63258f55bf70b93033f40cf9026e51d428bbbb4f"
+    },
+    "model-00002-of-00002.safetensors": {
+      "bytes": 178,
+      "sha256": "dce155c2af90af8f01abf13caf5da1c9a1ae9e161a9a76e50698353c9e236a78"
+    },
+    "model.safetensors.index.json": {
+      "bytes": 228,
+      "sha256": "4291e4dbc5c7c79ad1c595ae8d39995805b799a467b27e9f65aa93c070e7b98a"
+    }
+  },
+  "tensors": [
+    {
+      "name": "linear.weight",
+      "dtype": "BF16",
+      "shape": [
+        2,
+        3
+      ],
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "name": "linear.bias",
+      "dtype": "F32",
+      "shape": [
+        2
+      ],
+      "values": [
+        0.5,
+        -0.5
+      ]
+    },
+    {
+      "name": "scale",
+      "dtype": "BF16",
+      "shape": [],
+      "values": [
+        2
+      ]
+    }
+  ]
+}

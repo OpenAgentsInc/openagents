@@ -1,0 +1,240 @@
+// Strict original-weights-v1 profile over the shared RFC 8259 tokenizer.
+#load "format.coax";
+#load "../../../coax/lib/nostr/json.coax";
+#load "../../fixtures/models/ch04/fixtures.coax";
+#authority;
+PwInteger :: struct { status:PwStatus; value:int; }
+PwParsed :: struct { status:PwStatus; tensor:PwTensor; }
+
+#test "the original fixture yields typed offsets without assuming header order" {
+    file:=CH04_MODEL_SAFETENSORS;out:[4]PwTensor;draft:[4]PwTensor;
+    r:=pw_inspect_checked(file[..],out[..],draft[..],false);
+    #assert r.status==PwStatus.ok && r.written==3 && r.bytes==22;
+    #assert out[0].name=="linear.bias" && out[0].dtype==PwDtype.f32 && out[0].elements==2;
+    #assert out[0].shape.rank==1 && out[0].shape.dims[0]==2 && out[0].shape.dims[1]==0;
+    #assert out[1].name=="linear.weight" && out[1].dtype==PwDtype.bf16 && out[1].elements==6;
+    #assert out[2].name=="scale" && out[2].shape.rank==0 && out[2].elements==1;
+    h:=pw_header(file[..]);#assert out[0].begin==h.data+14 && out[0].end==h.data+22;
+    #assert out[1].begin==h.data && out[1].end==h.data+12 && out[2].begin==h.data+12;
+    for i:0..<3 {#assert out[i].shard==0 && !out[i].indexed;}
+    #assert out[3].name=="";
+    before:=out;
+    short:=pw_inspect_checked(file[..],out[0..<2],draft[..],false);
+    #assert short.status==PwStatus.capacity && short.written==0 && short.bytes==0;
+    alias:=pw_inspect_checked(file[..],out[..],draft[..],true);
+    #assert alias.status==PwStatus.alias && alias.written==0;
+    for i:0..<4 {#assert out[i].name==before[i].name && out[i].begin==before[i].begin;}
+    #assert pw_inspect_checked(file[..],out[..],draft[0..<0],false).status==PwStatus.capacity;
+    #assert pw_inspect_checked(file[..],out[0..<0],draft[..],true).status==PwStatus.capacity;
+    #assert pw_inspect_checked(file[..],out[..],draft[0..<0],true).status==PwStatus.capacity;
+    #assert pw_inspect_checked(file[0..<9],out[..],draft[..],true).status==PwStatus.size;
+}
+#test "plain bounded names and nonnegative integer tokens have a strict profile" {
+    #assert pw_name("linear.weight") && !pw_name("");
+    #assert pw_plain("") && !pw_plain("a\\b") && !pw_plain("a\nb");
+    long:[129]u8;for i:0..<129 {long[i]='x';}
+    #assert pw_name(cast(string)long[0..<128]) && !pw_name(cast(string)long[..]);
+    long[0]=127;#assert !pw_name(cast(string)long[0..<1]);
+    #assert pw_integer("0").value==0 && pw_integer("137438953472").status==PwStatus.ok;
+    #assert pw_integer("137438953473").status==PwStatus.size;
+    bad:=[8]string.["","-0","-1","1.0","1e0","01","9223372036854775807","true"];
+    for s:bad {#assert pw_integer(s).status!=PwStatus.ok;}
+}
+#test "malformed and unsupported headers never publish partial inventory" {
+    headers:=[20]string.[
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[],\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"shape\":[1],\"data_offsets\":[0,2],\"dtype\":\"BF16\"},\"__metadata__\":{\"format\":\"pt\",\"note\":\"\"}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]},\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"dtype\":\"F16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[0],\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1,1,1,1,1],\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[2,0]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[-1,1]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,4]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2,2]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]},\"y\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{\"__metadata__\":{\"format\":1},\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{\"__metadata__\":{\"format\":\"pt\",\"format\":\"pt\"}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2],\"extra\":0}}",
+        "{\"\\u0078\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]}}",
+        "{\"x\":{\"dtype\":\"BF16\",\"shape\":[1],\"data_offsets\":[0,2]},}",
+        "{\"__metadata__\":{},\"__metadata__\":{}}",
+        "{}"];
+    for c:0..<headers.count {
+        bytes:[512]u8;header:=headers[c];
+        for i:0..<8 {bytes[i]=cast(u8)((cast(u64)header.count>>(i*8))&255);}
+        for i:0..<header.count {bytes[8+i]=header[i];}
+        out:=[3]PwTensor.[PwTensor.{name="sentinel",elements=-7},PwTensor.{name="sentinel",elements=-7},PwTensor.{name="sentinel",elements=-7}];
+        draft:[3]PwTensor;
+        r:=pw_inspect_checked(bytes[0..<10+header.count],out[..],draft[..],false);
+        if c<2 {#assert r.status==PwStatus.ok && r.written==1 && r.bytes==2;}
+        else {
+            if c==2 || c==3 || c==14 || c==18 {#assert r.status==PwStatus.duplicate;}
+            if c==12 {#assert r.status==PwStatus.offsets;}
+            #assert r.status!=PwStatus.ok && r.written==0 && r.bytes==0;for t:out {#assert t.name=="sentinel" && t.elements == -7;}}
+    }
+}
+#test "gaps and unindexed trailing data are refused, and workspace bounds are real" {
+    file:=CH04_MODEL_SAFETENSORS;out:[4]PwTensor;draft:[4]PwTensor;
+    #assert pw_inspect_checked(file[..],out[..],draft[0..<2],false).status==PwStatus.capacity;
+    h:=pw_header(file[..]);
+    #assert pw_scan(file[0..<file.count-1],draft[..],0,0).status==PwStatus.offsets;
+    larger:[263]u8;for i:0..<file.count {larger[i]=file[i];}
+    #assert pw_scan(larger[..],draft[..],0,0).status==PwStatus.coverage;
+    #assert pw_scan(file[..],draft[..],0,1).status==PwStatus.ok && draft[0].shard==1;
+}
+
+#test "inventory and payload byte bounds include exact endpoints" {
+    #assert pw_plain(" ~");
+    #assert pw_slot(4095,4096)==PwStatus.ok && pw_slot(4096,4097)==PwStatus.size;
+    #assert pw_slot(-1,4)==PwStatus.size && pw_slot(4097,5000)==PwStatus.size;
+    #assert pw_slot(0,0)==PwStatus.capacity && pw_slot(2,2)==PwStatus.capacity;
+    #assert pw_slot(0,1)==PwStatus.ok;
+    #assert pw_span(0,1,1,1) && pw_span(1,2,1,2);
+    #assert !pw_span(-1,0,1,2) && !pw_span(0,0,0,2) && !pw_span(0,3,3,2);
+    #assert !pw_span(2,3,1,2) && !pw_span(0,2,1,2) && !pw_span(0,0,1,2);
+}
+#test "metadata count, duplicates and singleton inventories have independent boundaries" {
+    for n:63..<66 {
+        text:[2048]u8;at:=json_raw(text[..],0,"{\"__metadata__\":{");
+        for i:0..<n {
+            if i>0 {at=json_raw(text[..],at,",");}
+            at=json_raw(text[..],at,"\"k");at=json_write_int(text[..],at,i);
+            at=json_raw(text[..],at,"\":\"v\"");
+        }
+        at=json_raw(text[..],at,"},\"x\":{\"dtype\":\"BF16\",\"shape\":[],\"data_offsets\":[0,2]}}");
+        bytes:[2058]u8;for i:0..<8 {bytes[i]=cast(u8)((cast(u64)at>>(i*8))&255);}
+        for i:0..<at {bytes[8+i]=text[i];}
+        out:[1]PwTensor;draft:[2]PwTensor;
+        r:=pw_inspect_checked(bytes[0..<at+10],out[..],draft[0..<1],false);
+        if n<=64 {#assert r.status==PwStatus.ok && r.written==1;}
+        else {#assert r.status==PwStatus.size;}
+        if n==63 {
+            #assert pw_inspect_checked(bytes[0..<at+10],out[0..<0],draft[..],false).status==PwStatus.capacity;
+            draft[0]=PwTensor.{name="previous",shard=0};
+            q:=pw_scan(bytes[0..<at+10],draft[..],1,1);
+            #assert q.status==PwStatus.ok && q.written==1 && q.bytes==2 && draft[1].name=="x";
+        }
+    }
+}
+pw_slot :: (count:int,capacity:int)->PwStatus {
+    if count<0 || count>=PW_TENSORS_MAX {return PwStatus.size;}
+    if count>=capacity {return PwStatus.capacity;}return PwStatus.ok;
+}
+pw_span :: (begin:int,end:int,size:int,payload:int)->bool {
+    if size<1 || size>payload || begin<0 {return false;}
+    return begin<=payload-size && end==begin+size;
+}
+
+pw_plain :: (s:string)->bool {
+    if s.count>PW_NAME_MAX {return false;}
+    for c:s {if c<32 || c>126 || c=='\\' {return false;}}
+    return true;
+}
+pw_name :: (s:string)->bool {return s.count>0 && pw_plain(s);}
+pw_integer :: (s:string)->PwInteger {
+    if s.count==0 {return PwInteger.{status=PwStatus.schema};}
+    if s[0]=='-' {return PwInteger.{status=PwStatus.schema};}
+    n:=json_int(s);if !n.ok {return PwInteger.{status=PwStatus.schema};}
+    if n.value>PW_BUNDLE_MAX {return PwInteger.{status=PwStatus.size};}
+    return PwInteger.{value=n.value};
+}
+pw_metadata :: (j:[]Json)->PwStatus {
+    if json_next(j)!=JSON_OBJECT {return PwStatus.schema;}
+    keys:[64]string;n:=0;t:=json_next(j);
+    while t!=JSON_OBJECT_END {
+        if t!=JSON_STRING {return PwStatus.json;}
+        key:=json_text(j);if !pw_name(key) {return PwStatus.unsupported;}
+        if n>=64 {return PwStatus.size;}
+        for i:0..<n {if keys[i]==key {return PwStatus.duplicate;}}
+        keys[n]=key;n+=1;
+        if json_next(j)!=JSON_STRING {return PwStatus.schema;}
+        if !pw_plain(json_text(j)) {return PwStatus.unsupported;}
+        t=json_next(j);
+    }
+    return PwStatus.ok;
+}
+pw_parse_tensor :: (j:[]Json,name:string)->PwParsed {
+    if json_next(j)!=JSON_OBJECT {return PwParsed.{status=PwStatus.schema};}
+    t:=json_next(j);tensor:=PwTensor.{name=name};d:=false;s:=false;o:=false;
+    while t!=JSON_OBJECT_END {
+        if t!=JSON_STRING {return PwParsed.{status=PwStatus.json};}
+        key:=json_text(j);if !pw_name(key) {return PwParsed.{status=PwStatus.unsupported};}
+        if key=="dtype" {
+            if d {return PwParsed.{status=PwStatus.duplicate};}d=true;
+            if json_next(j)!=JSON_STRING {return PwParsed.{status=PwStatus.schema};}
+            dtype:=json_text(j);
+            if dtype!="BF16" {
+                if dtype!="F32" {return PwParsed.{status=PwStatus.unsupported};}
+                tensor.dtype=PwDtype.f32;
+            }
+        } else if key=="shape" {
+            if s {return PwParsed.{status=PwStatus.duplicate};}s=true;
+            if json_next(j)!=JSON_ARRAY {return PwParsed.{status=PwStatus.schema};}
+            part:=json_next(j);
+            while part!=JSON_ARRAY_END {
+                if part!=JSON_NUMBER {return PwParsed.{status=PwStatus.schema};}
+                if tensor.shape.rank>=4 {return PwParsed.{status=PwStatus.shape};}
+                value:=pw_integer(json_text(j));if value.status!=PwStatus.ok {return PwParsed.{status=value.status};}
+                tensor.shape.dims[tensor.shape.rank]=value.value;tensor.shape.rank+=1;part=json_next(j);
+            }
+        } else if key=="data_offsets" {
+            if o {return PwParsed.{status=PwStatus.duplicate};}o=true;
+            if json_next(j)!=JSON_ARRAY || json_next(j)!=JSON_NUMBER {return PwParsed.{status=PwStatus.schema};}
+            begin:=pw_integer(json_text(j));if begin.status!=PwStatus.ok {return PwParsed.{status=begin.status};}
+            if json_next(j)!=JSON_NUMBER {return PwParsed.{status=PwStatus.schema};}
+            end:=pw_integer(json_text(j));if end.status!=PwStatus.ok {return PwParsed.{status=end.status};}
+            if json_next(j)!=JSON_ARRAY_END {return PwParsed.{status=PwStatus.schema};}
+            tensor.begin=begin.value;tensor.end=end.value;
+        } else {return PwParsed.{status=PwStatus.schema};}
+        t=json_next(j);
+    }
+    if !d || !s || !o {return PwParsed.{status=PwStatus.schema};}
+    return PwParsed.{tensor=tensor};
+}
+
+// Private append-only workspace. Payload spans are relative until admitted.
+pw_scan :: (file:[]u8,draft:[]PwTensor,base:int,shard:int)->PwResult {
+    h:=pw_header(file);if h.status!=PwStatus.ok {return PwResult.{status=h.status};}
+    header:=file[8..<h.data];j:[1]Json;json_start_bounded(j[..],cast(string)header,header.count,header.count);
+    if json_next(j[..])!=JSON_OBJECT {return PwResult.{status=PwStatus.json};}
+    count:=base;covered:=0;meta:=false;t:=json_next(j[..]);
+    while t!=JSON_OBJECT_END {
+        if t!=JSON_STRING {return PwResult.{status=PwStatus.json};}
+        name:=json_text(j[..]);if !pw_name(name) {return PwResult.{status=PwStatus.unsupported};}
+        if name=="__metadata__" {
+            if meta {return PwResult.{status=PwStatus.duplicate};}meta=true;
+            status:=pw_metadata(j[..]);if status!=PwStatus.ok {return PwResult.{status=status};}
+        } else {
+            slot:=pw_slot(count,draft.count);if slot!=PwStatus.ok {return PwResult.{status=slot};}
+            parsed:=pw_parse_tensor(j[..],name);if parsed.status!=PwStatus.ok {return PwResult.{status=parsed.status};}
+            tensor:=parsed.tensor;size:=pw_shape_size(tensor.shape,tensor.dtype);
+            if size.status!=PwStatus.ok {return PwResult.{status=size.status};}
+            payload:=file.count-h.data;
+            if !pw_span(tensor.begin,tensor.end,size.bytes,payload) {return PwResult.{status=PwStatus.offsets};}
+            tensor.begin+=h.data;tensor.end+=h.data;tensor.elements=size.elements;tensor.shard=shard;
+            for i:0..<count {
+                if draft[i].name==name {return PwResult.{status=PwStatus.duplicate};}
+                if draft[i].shard==shard && tensor.begin<draft[i].end && draft[i].begin<tensor.end {return PwResult.{status=PwStatus.offsets};}
+            }
+            draft[count]=tensor;count+=1;covered+=size.bytes;
+        }
+        t=json_next(j[..]);
+    }
+    if json_next(j[..])!=JSON_END {return PwResult.{status=PwStatus.json};}
+    if count==base || covered!=file.count-h.data {return PwResult.{status=PwStatus.coverage};}
+    return PwResult.{written=count-base,bytes=covered};
+}
+// book:begin inspect
+pw_inspect_checked :: (file:[]u8,output:[]PwTensor,draft:[]PwTensor,overlap:bool)->PwResult #export_c {
+    if !pw_file_size(file.count) {return PwResult.{status=PwStatus.size};}
+    if output.count<1 || draft.count<1 {return PwResult.{status=PwStatus.capacity};}
+    if overlap {return PwResult.{status=PwStatus.alias};}
+    r:=pw_scan(file,draft,0,0);if r.status!=PwStatus.ok {return r;}
+    if output.count<r.written {return PwResult.{status=PwStatus.capacity};}
+    for i:0..<r.written {output[i]=draft[i];}
+    return r;
+}
+// book:end inspect

@@ -1,0 +1,39 @@
+#load "../lib/model-io/weights.coax";
+#load "../lib/ops.coax";
+#import "Basic";
+
+// book:begin example
+main :: () {
+    // These byte-exact owned originals are checked against the files on disk.
+    file:=CH04_MODEL_SAFETENSORS;config:=CH04_CONFIG_JSON;tokenizer:=CH04_TOKENIZER_JSON;
+    id:=PwIdentity.{origin="openagents-owned-ch04-fixture",revision="owned-v1",
+        config_sha=CH04_CONFIG_JSON_SHA,tokenizer_sha=CH04_TOKENIZER_JSON_SHA};
+    shards:=[1]PwShard.[PwShard.{name="model.safetensors",data=file[..],size=file.count,sha=CH04_MODEL_SAFETENSORS_SHA}];
+    specs:=[3]PwSpec.[PwSpec.{name="scale"},
+        PwSpec.{name="linear.weight",shape=PsionicShape.{rank=2,dims=[4]int.[2,3,0,0]}},
+        PwSpec.{name="linear.bias",dtype=PwDtype.f32,shape=PsionicShape.{rank=1,dims=[4]int.[2,0,0,0]}}];
+    inventory:[3]PwTensor;draft:[3]PwTensor;
+    admitted:=pw_bundle_checked(id,config[..],tokenizer[..],file[0..<0],shards[..],specs[..],inventory[..],draft[..],false);
+    #assert admitted.status==PwStatus.ok && admitted.written==3 && admitted.bytes==22;
+    print("original bundle: % tensors, % payload bytes; identities match\n",admitted.written,admitted.bytes);
+
+    weights:[6]f32;stage:[6]f32;
+    decoded:=pw_decode_checked(file[..],"linear.weight",0,6,weights[..],stage[..],inventory[..],draft[..],false);
+    #assert decoded.status==PwStatus.ok && decoded.written==6 && weights[0]==1 && weights[5]==6;
+    print("BF16 [2,3]: first = %, last = %\n",weights[0],weights[5]);
+    x:=[3]f32.[1,-1,2];out:[2]f32;scratch:[2]f32;ids:[1]int;mask:[1]u8;
+    product:=psionic_ops_checked(PsionicRequest.{op=PsionicOp.matmul,rows=2,width=3,columns=1},
+        weights[..],x[..],ids[0..<0],mask[0..<0],out[..],scratch[..],false);
+    #assert product.status==PsionicOpStatus.ok && out[0]==5 && out[1]==11;
+    print("imported matvec [1,-1,2]: [%, %]\n",out[0],out[1]);
+    bias:=pw_decode_checked(file[..],"linear.bias",0,2,out[..],scratch[..],inventory[..],draft[..],false);
+    #assert bias.status==PwStatus.ok && out[0]==0.5 && out[1]==-0.5;
+    print("unaligned F32 bias: [%, %]\n",out[0],out[1]);
+    scale:=pw_decode_checked(file[..],"scale",0,1,out[..],scratch[..],inventory[..],draft[..],false);
+    #assert scale.status==PwStatus.ok && out[0]*3==6;
+    print("imported scalar: 3 * % = %\n",out[0],out[0]*3);
+    refused:=pw_decode_checked(file[..],"missing",0,1,out[..],scratch[..],inventory[..],draft[..],false);
+    #assert refused.status==PwStatus.manifest && refused.written==0 && out[0]==2 && scratch[0]==2;
+    print("refused: missing tensor; float destination and scratch unchanged\n");
+}
+// book:end example

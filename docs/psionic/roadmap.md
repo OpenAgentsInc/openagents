@@ -1,8 +1,8 @@
 # Starting point and roadmap
 
-Status, 2026-10-28: chapters 1–3 implement M0/M1 on the tested Apple LP64 CPU
-host, including the bounded `CPU-f32-wide-v1` numerical profile. Artifact
-import, autodiff and later model studies remain `planned`.
+Status, 2026-10-29: chapters 1–4 implement M0/M1 and the artifact slice of M5
+on the tested Apple LP64 CPU host, including `CPU-f32-wide-v1` numerics and
+`original-weights-v1` import. Autodiff and full model execution remain `planned`.
 [Run the first chapter](../../psionic/book/ch01-learning-a-number.md)
 or `psionic/check.sh`; [retained verification](../verification/psionic-m0-2026-10-28.md)
 records the scope. Later chapter titles are working names; gates determine
@@ -80,8 +80,25 @@ refusals. Matmul work is capped at 1,048,576 multiply-add pairs.
 authored checks/mutation, independent Decimal(120) fixtures and real native
 storage/magnitude/limit cases. Learned affine normalization, broadcasting,
 strides, larger model resource profiles and new backends remain separate work.
-Next is chapter 4's bounded original-weight reader; the Elephant/Mammoth
-priority remains unchanged.
+Chapter 4's bounded original-weight reader is now implemented below; the
+Elephant/Mammoth priority remains unchanged.
+
+## Chapter 4: reading original weights — implemented
+
+[The chapter](../../psionic/book/ch04-reading-original-weights.md) and
+[model-io units](../../psionic/lib/model-io/) implement `original-weights-v1`:
+bounded original Safetensors BF16/F32 inventory, checked exact-byte SHA-256
+identities, complete single/sharded bundles, a bounded HF index subset and
+caller-pinned name/dtype/shape/shard manifests. Inventory admits large original
+tensors independently of the CPU execution cap; finite decoding stages windows
+of at most 1,048,576 values into shared numerical storage.
+
+[Verification](../verification/psionic-ch04-2026-10-29.md) covers owned original
+files, malformed artifacts, digest/index/manifest mismatches, native aliases
+and all BF16 encodings in debug/release with sanitizer and mutation gates.
+The artifact slice of M5 is implemented; optimizer/RNG/data-state resume is
+still planned. Real Elephant/Mammoth checkpoints are not yet qualified. Next
+is chapter 5's exact tokenizer/prompt contract, then the forward core.
 
 ## Delivery priority: Elephant, then Mammoth
 
@@ -92,13 +109,14 @@ the existing decision/nanochat dependency graph, acceptance checks and stable
 issue slugs. The NVIDIA breadth and expanded contents below are proposals;
 this update does not add project issues. The existing queue source
 is [work/roadmap.json](../../apps/openagents-web/projects/psionic/work/roadmap.json).
-The signed queue records M0 complete; chapters 2–3 now implement M1 in source.
+The signed queue records M0 complete; chapters 2–3 implement M1 and chapter 4
+implements the artifact slice of M5 in source.
 This change does not publish issue-status updates.
 
 | Priority | Work | Must finish first |
 | --- | --- | --- |
-| Now | Pin both model bundles/nanochat, reference contracts and license/provenance; start bounded artifact reading over the shared CPU core. | Chapters 1–3 are shipped. Each real model still needs its own larger execution/resource profile. |
-| Next | Safetensors/BF16, exact Qwen tokenizer/decision prompts, independent reference capture, and model-specific numerical extensions. | Each task's data/math prerequisites; no training subsystem. |
+| Now | Pin both model bundles/nanochat, reference contracts and license/provenance; qualify pinned real artifacts with chapter 4 and implement tokenization over the shared CPU core. | Chapters 1–4 are shipped. Each real model still needs its own larger execution/resource profile. |
+| Next | Qualify original model artifacts, exact Qwen tokenizer/decision prompts, independent reference capture, and model-specific numerical extensions. | Each task's data/math prerequisites; no training subsystem. |
 | Next | Qwen3.5 dense blocks, block-bidirectional full attention, causal DeltaNet, complete prefix forks and slot readout. | Shared operations/artifacts and exact prompt/state fixtures. |
 | First real model | Complete original-weight Elephant text decisions. | All hybrid layers, exact renderer/readout, bounded state and independent full-model oracles. |
 | Immediately after | Complete original-weight Mammoth using the same engine. | Elephant implementation, Mammoth-specific dimensions, shards, memory and real-weight evidence. |
@@ -119,7 +137,7 @@ a prerequisite for starting the ready work.
 ## Proposed book order
 
 The [full proposed table of contents](../../psionic/book/PLAN.md) now gives
-one outline per chapter, with prerequisite notes. Chapters 1–3 are runnable;
+one outline per chapter, with prerequisite notes. Chapters 1–4 are runnable;
 chapter numbers and part boundaries are provisional. The new
 [NVIDIA breadth survey](nvidia-breadth.md) records pinned candidate checkpoints,
 operator requirements, data studies and source-license qualifications.
@@ -159,7 +177,7 @@ the broader model studies extend that map without changing signed issue IDs.
 | M0: scalar learning — implemented | Current tested CPU subset | `psionic/check.sh`, retained native/mutation/sanitizer/book evidence. |
 | M1: bounded CPU foundations — implemented | M0 | Chapters 2–3 ship shape/storage and add/sum/dot/matmul/gather/masked-softmax/unscaled-normalization operations. Exact small fixtures, Decimal references, resource gates and native debug/release/sanitizer evidence qualify the named CPU teaching profile. |
 | Urgent decision inference | M1, bounded artifacts/tokenizer, exact Qwen hybrid and decision contract | Complete original-weight Elephant, then Mammoth; masks, prefix isolation, slot probabilities and real-weight request evidence. Chapters 4–11. |
-| M5: artifacts and resumable state | Artifact admission after M1; optimizer/data state once training exists | Early safetensors/BF16 with exact identities; later deterministic packing and model/optimizer/RNG/data-state resume. Chapters 4 and 24. |
+| M5: artifacts implemented; resumable state planned | Artifact admission after M1; optimizer/data state once training exists | Chapter 4 implements bounded Safetensors/BF16/F32 and exact identities; later deterministic packing and model/optimizer/RNG/data-state resume. Chapters 4 and 24. |
 | M6–M8: performance, devices, quantization | Concrete operators and CPU references; original-weight evidence before quantization claims | Measured budgets, real generated-kernel execution, device lifetimes and separately qualified approximate profiles. Chapters 12–15 accompany decision work. |
 | NVIDIA retrieval / dense continuation | Shared forward operations/artifacts plus each target's tokenizer, masks and configuration | Token/intermediate/output reference checks plus held-out retrieval or full/cached logits. Chapters 16–17. |
 | M2–M4: generic learning | M1 → arrays/autodiff → byte LM and complete causal decoder gradients | Analytic/finite-difference checks and complete tiny training/held-out generation. Chapters 18–19 and 21–23. |

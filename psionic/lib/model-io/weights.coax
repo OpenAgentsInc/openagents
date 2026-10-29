@@ -1,0 +1,52 @@
+#load "bundle.coax";
+#authority;
+
+#test "original BF16 matrices, scalars and unaligned F32 biases decode exactly" {
+    file:=CH04_MODEL_SAFETENSORS;out:=[7]f32.[-7,-7,-7,-7,-7,-7,-7];scratch:=out;
+    inventory:[3]PwTensor;draft:[3]PwTensor;
+    r:=pw_decode_checked(file[..],"linear.weight",0,6,out[..],scratch[..],inventory[..],draft[..],false);
+    #assert r.status==PwStatus.ok && r.written==6 && r.bytes==12;
+    for i:0..<6 {#assert out[i]==f32(i+1) && scratch[i]==out[i];}#assert out[6]==-7 && scratch[6]==-7;
+    r=pw_decode_checked(file[..],"linear.weight",4,2,out[..],scratch[..],inventory[..],draft[..],false);
+    #assert r.status==PwStatus.ok && out[0]==5 && out[1]==6 && out[2]==3;
+    r=pw_decode_checked(file[..],"scale",0,1,out[..],scratch[..],inventory[..],draft[..],false);
+    #assert r.status==PwStatus.ok && r.written==1 && r.bytes==2 && out[0]==2;
+    r=pw_decode_checked(file[..],"linear.bias",0,2,out[..],scratch[..],inventory[..],draft[..],false);
+    #assert r.status==PwStatus.ok && r.bytes==8 && out[0]==0.5 && out[1]==-0.5;
+}
+#test "every decoding refusal preserves both float spans" {
+    for kind:0..<8 {
+        file:=CH04_MODEL_SAFETENSORS;out:=[6]f32.[-9,-8,-7,-6,-5,-4];scratch:=out;
+        inventory:[3]PwTensor;draft:[3]PwTensor;name:="linear.weight";first:=0;count:=6;overlap:=false;
+        if kind==0 {name="missing";}if kind==1 {first=1;}if kind==2 {count=0;}
+        if kind==3 {overlap=true;}if kind==4 {file[0]=0;}
+        if kind==5 || kind==6 {h:=pw_header(file[..]);at:=h.data;if kind==6 {at+=10;}file[at]=128;file[at+1]=127;}
+        if kind==7 {name="linear.bias";count=2;h:=pw_header(file[..]);file[h.data+20]=128;file[h.data+21]=127;}
+        r:=pw_decode_checked(file[..],name,first,count,out[..],scratch[..],inventory[..],draft[..],overlap);
+        #assert r.status!=PwStatus.ok && r.written==0 && r.bytes==0;
+        if kind==5 || kind==6 || kind==7 {#assert r.status==PwStatus.number;}
+        for i:0..<6 {#assert out[i]==f32(i-9) && scratch[i]==f32(i-9);}
+    }
+}
+
+pw_float_bits :: (file:[]u8,at:int,dtype:PwDtype)->u32 {
+    word:=pw_word(file,at,pw_width(dtype));
+    if dtype==PwDtype.bf16 {return pw_bf16_bits(cast(u16)word.bits);}return word.bits;
+}
+// book:begin decode
+// Metadata workspaces may change on refusal. Float output AND scratch do not.
+pw_decode_checked :: (file:[]u8,name:string,first:int,count:int,output:[]f32,scratch:[]f32,inventory:[]PwTensor,draft:[]PwTensor,overlap:bool)->PwResult #export_c {
+    if overlap {return PwResult.{status=PwStatus.alias};}
+    r:=pw_inspect_checked(file,inventory,draft,false);if r.status!=PwStatus.ok {return r;}
+    at:=pw_find(inventory[0..<r.written],name);if at<0 {return PwResult.{status=PwStatus.manifest};}
+    tensor:=inventory[at];
+    if !pw_window(tensor.elements,first,count,output.count,scratch.count) {return PwResult.{status=PwStatus.range};}
+    width:=pw_width(tensor.dtype);begin:=tensor.begin+first*width;
+    for i:0..<count {
+        if !psionic_tensor_finite_bits(pw_float_bits(file,begin+i*width,tensor.dtype)) {return PwResult.{status=PwStatus.number};}
+    }
+    for i:0..<count {scratch[i]=f32_from_bits(pw_float_bits(file,begin+i*width,tensor.dtype));}
+    for i:0..<count {output[i]=scratch[i];}
+    return PwResult.{written=count,bytes=count*width};
+}
+// book:end decode

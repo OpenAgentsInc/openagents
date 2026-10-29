@@ -1,0 +1,62 @@
+// Exact original-byte identities via the existing checked streaming SHA-256 API.
+#load "format.coax";
+#load "../../../coax/lib/crypto/sha256.coax";
+#authority;
+
+#test "digest text and streaming bounds are explicit" {
+    #assert pw_hex_digest("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !pw_hex_digest("") && !pw_hex_digest("abc");
+    text:[65]u8;for i:0..<65 {text[i]='0';}
+    #assert pw_hex_digest(cast(string)text[0..<64]) && !pw_hex_digest(cast(string)text[..]);
+    bad:=[6]u8.['/',':','`','g','A',0];
+    for c:bad {text[0]=c;#assert !pw_hex_digest(cast(string)text[0..<64]);}text[0]='0';
+    text[63]='g';#assert !pw_hex_digest(cast(string)text[0..<64]);
+    #assert pw_hash_limits(0,1) && pw_hash_limits(68719476736,1048576);
+    #assert !pw_hash_limits(-1,1) && !pw_hash_limits(68719476737,1);
+    #assert !pw_hash_limits(0,0) && !pw_hash_limits(0,1048577);
+}
+#test "independent published hashes survive chunk boundaries and detect changed bytes" {
+    data:=[3]u8.[97,98,99];
+    empty:="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    abc:="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    #assert pw_digest(data[0..<0],empty) && pw_digest(data[..],abc);
+    for chunk:1..<5 {#assert pw_digest_chunks(data[..],abc,chunk);}
+    #assert !pw_digest(data[..],empty) && !pw_digest(data[..],"abc");
+    #assert !pw_digest_chunks(data[..],abc,0) && !pw_digest_chunks(data[..],abc,1048577);
+    changed:[64]u8;
+    for pos:0..<64 {
+        for i:0..<64 {changed[i]=abc[i];}
+        if changed[pos]=='0' {changed[pos]='1';} else {changed[pos]='0';}
+        #assert !pw_digest(data[..],cast(string)changed[..]);
+    }
+    data[2]=100;#assert !pw_digest(data[..],abc);
+}
+
+pw_hex_digest :: (s:string)->bool {
+    if s.count!=64 {return false;}
+    for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+    return true;
+}
+pw_hash_limits :: (count:int,chunk:int)->bool {return count>=0 && count<=PW_FILE_MAX && chunk>=1 && chunk<=CB_MAX_BYTES;}
+// Private configurable chunks let checks exercise the same loop with tiny data.
+// book:begin digest
+pw_digest_chunks :: (data:[]u8,expected:string,chunk:int)->bool {
+    if !pw_hash_limits(data.count,chunk) || !pw_hex_digest(expected) {return false;}
+    state:[112]u8;digest:[32]u8;
+    ok:=sha256_init(state[..])==SHA_OK;
+    chunks:=data.count/chunk;
+    for i:0..<chunks {
+        at:=i*chunk;
+        ok=ok && sha256_update_checked(state[..],data[at..<at+chunk],false)==SHA_OK;
+    }
+    tail:=chunks*chunk;
+    ok=ok && sha256_update_checked(state[..],data[tail..<data.count],false)==SHA_OK;
+    ok=ok && sha256_final_checked(state[..],digest[..],false)==SHA_OK;
+    digits:="0123456789abcdef";
+    for i:0..<32 {
+        if expected[i*2]!=digits[digest[i]>>4] || expected[i*2+1]!=digits[digest[i]&15] {return false;}
+    }
+    return ok;
+}
+pw_digest :: (data:[]u8,expected:string)->bool #export_c {return pw_digest_chunks(data,expected,CB_MAX_BYTES);}
+// book:end digest
