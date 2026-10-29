@@ -105,13 +105,17 @@ EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uin
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_everglade_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_everglade_uniform_floats(); }
 
+// golden mode (goldens.ts): the frame runs still, so the clock holds at noon and the river and leaves hold one moment
+static bool golden;
+EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
+
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
   start(state);
   coax_t_Everglade *g = city(state);
   width = w; height = h; dpr = scale;
   dt = dt < 0 ? 0 : dt > 0.1f ? 0.1f : dt;
-  now += dt;
+  if (!golden) now += dt;
   everglade_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
   if (everglade_warp(at(state))) {
     coax_t_Point spawn = everglade_spawn(at(state));
@@ -155,7 +159,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_t_Vec3 feet = verse_player_feet(player);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_everglade_max_vertices() * coaxial_everglade_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_everglade_uniform_floats()};
-  int64_t n = everglade_frame(at(state), out, u, w, h, scale, dt, still != 0, feet.x, feet.y, feet.z, verse_player_face(player),
+  int64_t n = everglade_frame(at(state), out, u, w, h, scale, dt, still != 0 || golden, feet.x, feet.y, feet.z, verse_player_face(player),
                            verse_player_act(player), player.vel.x, player.vel.z,
                            sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   if (n > 0) {
