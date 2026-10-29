@@ -84,4 +84,5 @@ test("aggregate traversal work is tracked separately from existing step semantic
   expect(tasks.get("coax-run-copy-work").body).toContain("does not charge")
   expect(tasks.get("coax-run-copy-work").body).toContain("preserving the existing counter")
   expect(tasks.get("coax-run-copy-work").acceptance.join(" ")).toContain("aggregate assignments")
+  expect(tasks.get("coax-run-copy-work").acceptance.join(" ")).toContain("contains_view")
 })

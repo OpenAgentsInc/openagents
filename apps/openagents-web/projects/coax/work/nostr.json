@@ -3076,7 +3076,7 @@
         "coax/spec.md"
       ],
       "acceptance": [
-        "Bound cumulative element visits for deep copies and aggregate assignments, including nested values, retained constants and failure/cleanup paths, without changing the existing step counter or check/mutation budgets",
+        "Bound cumulative element visits for deep copies, aggregate assignments, contains_view traversal and struct initialization, including nested values, retained constants and failure/cleanup paths, without changing the existing step counter or check/mutation budgets",
         "Checked Coax authority policy, boundary/overflow tests and zero-survivor mutation; Python-free bootstrap and affected compiler tests",
         "The real fixed-base tables still compile through #run under an explicitly documented finite profile and match the independent pinned oracle",
         "Record selected policy and measured copy work in build evidence; update the book and explain remaining unmetered work honestly"
