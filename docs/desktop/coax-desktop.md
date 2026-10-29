@@ -62,9 +62,13 @@ How it works:
   search, the rows), the access chip the access menu (Supervised, Auto-accept
   edits, Full access with a check, then Plan mode and its switch). Keys as
   Zeron's: arrows, Enter, Escape, Home/End, Tab, type to filter; a press
-  outside closes. What they offer is data (`PkCatalog`): Claude's is Zeron's
-  model cache (13 models, default "Default (recommended)" with no `--model`,
-  `set_model` mid-session) and its ladder Low to Ultrathink (default High;
+  outside closes. What they offer is data (`PkCatalog`): Claude's is built as
+  Zeron builds it (`harness/src/claude/catalog.rs`): its seven curated rows,
+  then the models the installed CLI's initialize answer lists (new ids only,
+  aliases skipped, dated snapshots folded, the CLI's default first). The CLI
+  starts once PATH is known, ahead of the first message, to get that answer;
+  until then the first row is the CLI's default unnamed (no `--model`).
+  `set_model` changes it mid-session and its ladder Low to Ultrathink (default High;
   Ultracode is xhigh plus `{"ultracode":true}` settings, Ultrathink no
   `--effort` and an "Ultrathink:" opener, X-High falls back to Max where a
   model lacks it; a new level restarts with `--resume`); access Full access

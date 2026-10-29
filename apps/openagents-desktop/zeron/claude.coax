@@ -519,12 +519,16 @@ ACC_FULL :: 0; ACC_EDITS :: 1; ACC_SUPERVISED :: 2;
 ACCESS_NAMES :: [3] string.["Full access", "Auto-accept edits", "Supervised"];
 ACCESS_DESCS :: [3] string.["Run commands and edits without asking.", "Apply edits, ask before other actions.", "Ask before commands and file changes."];
 
-// Zeron's Claude catalog (its model cache: the CLI's models with their
-// effort ladders) and effort levels. The first row is the CLI's own
-// default (no --model). Ultracode runs at xhigh with ultracode on in the
-// settings; Ultrathink sends no --effort and opens the message with
-// "Ultrathink:" (harness/src/claude/effort.rs to_effort); X-High falls
-// back to Max on a model without it.
+// Zeron's Claude catalog (harness/src/claude/catalog.rs): its curated rows
+// (static_models: labels, descriptions, effort ladders), then what the
+// installed CLI's initialize answer lists (with_discovered_models: each
+// concrete model id not curated yet, with its displayName, description and
+// supportedEffortLevels; aliases skipped, dated snapshots folded into their
+// curated row, the CLI's default moved first). Until the CLI has answered,
+// the first row is its default unnamed (no --model). Ultracode runs at xhigh
+// with ultracode on in the settings; Ultrathink sends no --effort and opens
+// the message with "Ultrathink:" (to_effort); X-High falls back to Max on a
+// model without it.
 // The Lab's router names three models and five efforts (lab.coax); a
 // decision lands on the catalog's model with that id (or its family) and on
 // the level of the same index.
@@ -538,19 +542,23 @@ LV_XHIGH :: 3; LV_MAX :: 4; LV_ULTRACODE :: 5; LV_ULTRATHINK :: 6;
 LADDER_FULL :: 127; LADDER_NO_ULTRACODE :: 95; LADDER_CLASSIC :: 23;   // all; less Ultracode; low, medium, high, max
 CLAUDE_TINT :: Rgba.{r = 0.851, g = 0.467, b = 0.341, a = 1};          // #d97757, the mark's brand tone
 claude_catalog :: () -> PkCatalog {
+  c := claude_curated();
+  for k: 0..<c.n { j := c.n - k; c.id[j] = c.id[j - 1]; c.label[j] = c.label[j - 1]; c.desc[j] = c.desc[j - 1]; c.ladder[j] = c.ladder[j - 1]; }
+  c.n += 1;
+  c.id[0] = ""; c.label[0] = "Default (recommended)"; c.desc[0] = ""; c.ladder[0] = LADDER_FULL;
+  return c;
+}
+// static_models, in its order.
+claude_curated :: () -> PkCatalog {
   c := PkCatalog.{provider = "Claude", icon = ICON_CLAUDE_14, tint = CLAUDE_TINT, levels = 7, default_level = 2,
                   access = 3, full_access = 2, plan = true};
-  ids := [13] string.["", "claude-fable-5-1", "claude-fable-5", "claude-opus-5-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5",
-                      "claude-haiku-4-5", "opus", "claude-sonnet-5-5", "claude-opus-5", "claude-opus-4-6", "claude-sonnet-4-6"];
-  names := [13] string.["Default (recommended)", "Fable 5.1", "Fable 5", "Opus 5.5", "Opus 4.8", "Opus 4.7", "Sonnet 5",
-                        "Haiku 4.5", "Opus 5.5", "Sonnet 5.5", "Opus 5", "Opus 4.6", "Sonnet 4.6"];
-  descs := [13] string.["Haiku 5.5", "Most intelligent model for building agents", "Previous generation Fable", "Best for everyday, complex tasks",
-                        "Previous generation Opus", "Older generation Opus", "Balanced speed and intelligence", "Fastest model for everyday tasks",
-                        "", "Most efficient for simpler tasks", "Best for everyday, complex tasks", "", "Efficient for routine tasks"];
-  ladders := [13] int.[LADDER_FULL, LADDER_FULL, LADDER_FULL, LADDER_FULL, LADDER_FULL, LADDER_NO_ULTRACODE, LADDER_NO_ULTRACODE,
-                       0, LADDER_FULL, LADDER_FULL, LADDER_FULL, LADDER_CLASSIC, LADDER_CLASSIC];
-  c.n = 13;
-  for k: 0..<13 { c.id[k] = ids[k]; c.label[k] = names[k]; c.desc[k] = descs[k]; c.ladder[k] = ladders[k]; }
+  ids := [7] string.["claude-fable-5-1", "claude-fable-5", "claude-opus-5-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5", "claude-haiku-4-5"];
+  names := [7] string.["Fable 5.1", "Fable 5", "Opus 5.5", "Opus 4.8", "Opus 4.7", "Sonnet 5", "Haiku 4.5"];
+  descs := [7] string.["Most intelligent model for building agents", "Previous generation Fable", "Best for everyday, complex tasks",
+                       "Previous generation Opus", "Older generation Opus", "Balanced speed and intelligence", "Fastest model for everyday tasks"];
+  ladders := [7] int.[LADDER_FULL, LADDER_FULL, LADDER_FULL, LADDER_FULL, LADDER_NO_ULTRACODE, LADDER_NO_ULTRACODE, 0];
+  c.n = 7;
+  for k: 0..<7 { c.id[k] = ids[k]; c.label[k] = names[k]; c.desc[k] = descs[k]; c.ladder[k] = ladders[k]; }
   lids := CLAUDE_LEVEL_IDS; lnames := CLAUDE_LEVEL_NAMES;
   for k: 0..<7 { c.level_id[k] = lids[k]; c.level_label[k] = lnames[k]; }
   // the menu's order: Supervised, Auto-accept edits, Full access
@@ -558,6 +566,75 @@ claude_catalog :: () -> PkCatalog {
   order := [3] int.[ACC_SUPERVISED, ACC_EDITS, ACC_FULL];
   for k: 0..<3 { c.access_label[k] = names3[order[k]]; c.access_desc[k] = descs3[order[k]]; c.access_value[k] = order[k]; }
   return c;
+}
+// A copy of text in the pool (the catalog's strings outlive the CLI's line).
+claude_keep :: (pool: [] u8, at: [] int, text: string) -> string {
+  if at[0] + text.count > pool.count { return ""; }
+  from := at[0];
+  for i: 0..<text.count { pool[from + i] = text[i]; }
+  at[0] = from + text.count;
+  return cast(string) pool[from..<at[0]];
+}
+// "claude-haiku-4-5-20251001" -> "claude-haiku-4-5" (else "").
+claude_snapshot_base :: (id: string) -> string {
+  if id.count < 10 || id[id.count - 9] != '-' { return ""; }
+  for i: id.count - 8..<id.count { if id[i] < '0' || id[i] > '9' { return ""; } }
+  return cast(string) id[0..<id.count - 9];
+}
+claude_find :: (c: [] PkCatalog, id: string) -> int { for k: 0..<c[0].n { if c[0].id[k] == id { return k; } } return -1; }
+// The catalog from the CLI's initialize answer (with_discovered_models),
+// its strings kept in pool. Whether the answer listed a model.
+claude_discover :: (c: [] PkCatalog, ar: [] ClArena, response: string, pool: [] u8, at: [] int) -> bool {
+  c[0] = claude_curated();
+  at[0] = 0;
+  models := cl_at(response, "models");
+  if !models.ok || models.tok != JSON_ARRAY { return false; }
+  valid := false; first := -1;
+  lids := CLAUDE_LEVEL_IDS;
+  for i: 0..<PK_MODELS * 2 {
+    v := cl_element(response, models, i);
+    if !v.ok { break; }
+    entry := cl_json(response, v);
+    id := cl_str(ar, entry, "resolvedModel");
+    if id.count == 0 { id = cl_str(ar, entry, "value"); }
+    if id.count == 0 { continue; }
+    bare := ifx id.count > 4 && cast(string) id[id.count - 4..<id.count] == "[1m]" then cast(string) id[0..<id.count - 4] else id;
+    if bare == "default" || bare == "opus" || bare == "sonnet" || bare == "haiku" || bare == "fable" { continue; }
+    valid = true;
+    base := claude_snapshot_base(id);
+    if base.count > 0 && claude_find(c, base) >= 0 { id = base; }
+    // a long-context variant of a listed model is that model (the picker's fold)
+    if bare != id && claude_find(c, bare) >= 0 { id = bare; }
+    k := claude_find(c, id);
+    if k < 0 && c[0].n < PK_MODELS {
+      k = c[0].n;
+      label := cl_str(ar, entry, "displayName");
+      c[0].id[k] = claude_keep(pool, at, id);
+      c[0].label[k] = claude_keep(pool, at, ifx label.count > 0 then label else id);
+      c[0].desc[k] = claude_keep(pool, at, cl_str(ar, entry, "description"));
+      if c[0].id[k].count == 0 { continue; }        // the pool is full
+      bits := 0;
+      levels := cl_at(entry, "supportedEffortLevels");
+      for j: 0..<8 {
+        lv := cl_element(entry, levels, j);
+        if !lv.ok { break; }
+        name := cl_text(ar, entry, lv);
+        for l: 0..<5 { if name == lids[l] { bits |= 1 << l; } }
+      }
+      if (bits & (1 << LV_XHIGH)) != 0 { bits |= (1 << LV_ULTRACODE) | (1 << LV_ULTRATHINK); }
+      c[0].ladder[k] = bits;
+      c[0].n += 1;
+    }
+    if k >= 0 && cl_str(ar, entry, "value") == "default" { first = k; }
+  }
+  if !valid { c[0] = claude_catalog(); return false; }
+  // the CLI's default first
+  if first > 0 {
+    id := c[0].id[first]; label := c[0].label[first]; desc := c[0].desc[first]; ladder := c[0].ladder[first];
+    for j: 0..<first { k := first - j; c[0].id[k] = c[0].id[k - 1]; c[0].label[k] = c[0].label[k - 1]; c[0].desc[k] = c[0].desc[k - 1]; c[0].ladder[k] = c[0].ladder[k - 1]; }
+    c[0].id[0] = id; c[0].label[0] = label; c[0].desc[0] = desc; c[0].ladder[0] = ladder;
+  }
+  return true;
 }
 // The catalog's model with this id, else the first of its family
 // ("claude-haiku-5-5" lands on Haiku 4.5 when there is no 5.5), else Default.
@@ -597,7 +674,10 @@ Engine :: struct {
   pend: int;                         // a user part waiting for initialize, or -1
   model: int; effort: int; access: int;            // chosen (the catalog's model and level, ACC_*)
   plan: bool;                        // plan mode
-  cat: [1] PkCatalog;                // claude_catalog
+  cat: [1] PkCatalog;                // claude_catalog, then the CLI's (claude_discover)
+  cat_pool: [2048] u8; cat_at: [1] int;            // the discovered rows' strings
+  cat_gen: int;                      // counts catalog changes (the screen copies it for the menus)
+  warmed: bool;                      // the CLI was started once ahead of the first message, for its models
   run_effort: [24] u8; run_n: int;   // what the running CLI was started with (its --effort, "+" for ultracode)
   // the message owed to the CLI (its text for Claude, chips as labels) and
   // the attachments whose images go with it
@@ -678,7 +758,9 @@ e_probe_done :: (e: [] Engine) {
 
 // Starts the CLI for the chosen model, effort and access (resuming the
 // conversation's session when it has one). Whether it started.
-e_start :: (e: [] Engine, s: [] Session) -> bool {
+e_start :: (e: [] Engine, s: [] Session) -> bool { return e_launch(e, s, false); }
+// warm: ahead of any message (for the CLI's model list), quiet if it fails.
+e_launch :: (e: [] Engine, s: [] Session, warm: bool) -> bool {
   if e[0].p[0].handle >= 0 { cl_close(e[0].p[..]); }
   e[0].q[0] = ClQuery.{};
   q := e[0].q[..];
@@ -702,6 +784,7 @@ e_start :: (e: [] Engine, s: [] Session) -> bool {
   why := cl_start(q, e[0].p[..], "", true, e[0].scratch);
   if why.count > 0 {
     e[0].p[0].handle = -1;
+    if warm { return false; }
     if why == "claude executable not found" || e[0].claude_n == 0 && why == "failed to spawn claude process" {
       s_notice(s, N_INSTALL, "Install it in Terminal, then send again: curl -fsSL https://claude.ai/install.sh | bash");
     } else { s_notice(s, N_ERROR, why); }
@@ -849,6 +932,19 @@ e_permission :: (e: [] Engine, s: [] Session, ev: ClEvent) {
   s[0].parts[s[0].asking].input = s_put(s, ev.request.input);
 }
 
+// The CLI's models become the catalog; the chosen model stays chosen (the
+// unnamed default is the CLI's default, now first).
+e_take_models :: (e: [] Engine, response: string) {
+  was := e[0].cat[0].id[e[0].model];
+  unnamed := was.count == 0;
+  wid: [96] u8; wn := e_set(wid[..], 0, was);
+  c: [1] PkCatalog;
+  if !claude_discover(c[..], e[0].q[0].ar[..], response, e[0].cat_pool[..], e[0].cat_at[..]) { return; }
+  e[0].cat[0] = c[0];
+  k := ifx unnamed then 0 else claude_find(e[0].cat[..], e_str(wid[..], wn));
+  e[0].model = ifx k < 0 then 0 else k;
+  e[0].cat_gen += 1;
+}
 // Each frame: the probe, then what the CLI wrote (at most a batch of lines).
 e_pump :: (e: [] Engine, s: [] Session) {
   if !e[0].on { return; }
@@ -856,12 +952,17 @@ e_pump :: (e: [] Engine, s: [] Session) {
   if !e[0].running && e[0].pend >= 0 && s[0].live {
     if !e_start(e, s) { e[0].pend = -1; return; }
   }
+  // once PATH is known, the CLI starts ahead of the first message: its
+  // initialize answer lists the account's models (Zeron's model probe), and
+  // the first message finds it ready
+  if !e[0].running && !e[0].warmed && e[0].claude_n > 0 { e[0].warmed = true; b := e_launch(e, s, true); }
   if !e[0].running || s[0].asking >= 0 { return; }
   for guard: 0..<200 {
     ev := cl_poll(e[0].q[..], e[0].p[..], 0);
     if ev.kind == ClEventKind.idle { return; }
     if ev.kind == ClEventKind.initialized {
       e[0].ready = true;
+      e_take_models(e, ev.response.response);
       if e[0].pend >= 0 { e_deliver(e); e[0].pend = -1; }
       continue;
     }
@@ -884,6 +985,7 @@ e_pump :: (e: [] Engine, s: [] Session) {
       if why.count == 0 { why = "Claude Code stopped before answering."; }
       e_close(e);
       e[0].pend = -1;
+      if !s[0].live { return; }          // the warm CLI went (signed out, say): the first message starts it again and says why
       s_turn_end(s, !s[0].stopping, why);
       return;
     }
@@ -891,6 +993,34 @@ e_pump :: (e: [] Engine, s: [] Session) {
 }
 
 // ---------------------------------------------------------------- checks
+
+// Claude Code 2.1.312's initialize answer on a Max account (models only, abridged to the fields read).
+CLAUDE_TEST_MODELS :: "{\"models\":[{\"value\":\"default\",\"resolvedModel\":\"claude-haiku-5-5\",\"displayName\":\"Default (recommended)\",\"description\":\"Haiku 5.5\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"opus\",\"resolvedModel\":\"claude-opus-5-5\",\"displayName\":\"Opus 5.5\",\"description\":\"For complex work and everyday tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"fable\",\"resolvedModel\":\"claude-fable-5-1\",\"displayName\":\"Fable 5.1\",\"description\":\"For your toughest challenges\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"sonnet\",\"resolvedModel\":\"claude-sonnet-5-5\",\"displayName\":\"Sonnet 5.5\",\"description\":\"Most efficient for simpler tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"haiku\",\"resolvedModel\":\"claude-haiku-5-5\",\"displayName\":\"Haiku 5.5\",\"description\":\"Fastest for quick answers\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-haiku-4-5-20251001\",\"resolvedModel\":\"claude-haiku-4-5-20251001\",\"displayName\":\"Haiku 4.5\",\"description\":\"Fastest for quick answers\"},{\"value\":\"claude-sonnet-5\",\"resolvedModel\":\"claude-sonnet-5\",\"displayName\":\"Sonnet 5\",\"description\":\"Efficient for routine tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-opus-5\",\"resolvedModel\":\"claude-opus-5\",\"displayName\":\"Opus 5\",\"description\":\"Best for everyday, complex tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-fable-5\",\"resolvedModel\":\"claude-fable-5\",\"displayName\":\"Fable 5\",\"description\":\"Most capable for your hardest and longest-running tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-opus-4-8\",\"resolvedModel\":\"claude-opus-4-8\",\"displayName\":\"Opus 4.8\",\"description\":\"Best for everyday, complex tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-opus-4-7\",\"resolvedModel\":\"claude-opus-4-7\",\"displayName\":\"Opus 4.7\",\"description\":\"Best for everyday, complex tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-opus-4-6\",\"resolvedModel\":\"claude-opus-4-6\",\"displayName\":\"Opus 4.6\",\"description\":\"Best for everyday, complex tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"max\"]},{\"value\":\"claude-sonnet-4-6\",\"resolvedModel\":\"claude-sonnet-4-6\",\"displayName\":\"Sonnet 4.6\",\"description\":\"Efficient for routine tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"max\"]}]}";
+
+#test "the CLI's models join Zeron's curated rows: one row a model, its default first, the chosen model kept" {
+  abuf: [4096] u8; ar := [1] ClArena.[ClArena.{buf = abuf[..]}];
+  pool: [2048] u8; at: [1] int; c: [1] PkCatalog;
+  #assert claude_discover(c[..], ar[..], CLAUDE_TEST_MODELS, pool[..], at[..]);
+  #assert c[0].n == 12 && c[0].id[0] == "claude-haiku-5-5" && c[0].label[0] == "Default (recommended)" && c[0].desc[0] == "Haiku 5.5";
+  #assert c[0].label[1] == "Fable 5.1" && c[0].label[3] == "Opus 5.5" && c[0].id[7] == "claude-haiku-4-5" && c[0].ladder[7] == 0;
+  #assert c[0].id[8] == "claude-sonnet-5-5" && c[0].label[8] == "Sonnet 5.5" && c[0].ladder[8] == LADDER_FULL;
+  #assert c[0].label[10] == "Opus 4.6" && c[0].ladder[10] == LADDER_CLASSIC && c[0].label[11] == "Sonnet 4.6";
+  for i: 0..<c[0].n { for j: i + 1..<c[0].n { #assert c[0].label[i] != c[0].label[j] && c[0].id[i] != c[0].id[j]; } }
+  // a long-context default lands on its curated row, moved first under its own name
+  ar[0].at = 0;
+  #assert claude_discover(c[..], ar[..], "{\"models\":[{\"value\":\"default\",\"resolvedModel\":\"claude-opus-5-5[1m]\",\"displayName\":\"Default (recommended)\"},{\"value\":\"opus\",\"resolvedModel\":\"claude-opus-5-5\"}]}", pool[..], at[..]);
+  #assert c[0].n == 7 && c[0].id[0] == "claude-opus-5-5" && c[0].label[0] == "Opus 5.5" && c[0].label[1] == "Fable 5.1";
+  #assert !claude_discover(c[..], ar[..], "{\"models\":[]}", pool[..], at[..]) && c[0].n == 8 && c[0].id[0] == "";
+  // the engine keeps what was chosen: the unnamed default is the CLI's, a named model stays by id
+  e: [1] Engine; e_init(e[..]);
+  abuf2: [4096] u8; e[0].q[0].ar[0].buf = abuf2[..];
+  #assert e[0].cat[0].n == 8 && e[0].model == 0;
+  e_take_models(e[..], CLAUDE_TEST_MODELS);
+  #assert e[0].cat_gen == 1 && e[0].model == 0 && e[0].cat[0].id[0] == "claude-haiku-5-5";
+  e[0].model = 3;   // Opus 5.5
+  e_take_models(e[..], CLAUDE_TEST_MODELS);
+  #assert e[0].cat[0].id[e[0].model] == "claude-opus-5-5";
+}
 
 // A recorded line as the engine's reader classifies it, reading only what
 // the mapping uses (its type, a result's subtype, its parent): the SDK's

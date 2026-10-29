@@ -393,7 +393,8 @@ LAB_TEST_ANSWER :: "{\"model\":\"elephant-1\",\"answers\":{\"harness\":{\"type\"
   lab_route(l[..], e[..], p[..], ss[..], LAB_TEST_ANSWER, 1900);
   #assert ss[0].n == 2 && ss[0].parts[1].kind == P_ROUTE && ss[0].parts[1].tk == TK_ROUTE;
   #assert s_text_of(ss[..], 1) == "Routed to Claude Code · Sonnet 5.5 · Medium · 1.9 s" && ss[0].parts[1].detail == "elephant-1 · 1900 ms";
-  #assert e[0].cat[0].id[e[0].model] == "claude-sonnet-5-5" && e[0].effort == 1 && ss[0].live;
+  // before the CLI has listed its models, Sonnet 5.5 lands on its family's curated row
+  #assert e[0].cat[0].id[e[0].model] == "claude-sonnet-5" && e[0].effort == 1 && ss[0].live;
   t: [1] Transcript; ui: [1] SUi;
   s_build(ss[..], ui[..], t[..]);
   #assert t[0].ng == 1 && t[0].nt == 1 && t[0].groups[0].summary == "Routed to Claude Code · Sonnet 5.5 · Medium · 1.9 s" && !t[0].groups[0].open;
@@ -430,6 +431,9 @@ LAB_TEST_PSIONIC :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\
 #test "routed to Psionic, gpt-oss-20b runs it; with no answer from Psionic, Claude Code takes it after Psionic's chip" {
   pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
   e: [1] Engine; l: [1] Lab; p: [1] PsEngine;
+  // the CLI has listed its models (claude_discover): Sonnet 5.5 is a row
+  abuf: [4096] u8; e_init(e[..]); e[0].q[0].ar[0].buf = abuf[..];
+  e_take_models(e[..], CLAUDE_TEST_MODELS);
   lab_send(l[..], e[..], ss[..], "hi");
   lab_route(l[..], e[..], p[..], ss[..], LAB_TEST_PSIONIC, 1800);
   #assert l[0].via == 1 && p[0].effort == 2 && p[0].turn == 1 && ss[0].live;

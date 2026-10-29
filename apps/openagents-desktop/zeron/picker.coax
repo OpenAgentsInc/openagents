@@ -733,7 +733,7 @@ test_catalog :: () -> PkCatalog {
                   access = 3, full_access = 2, plan = true};
   c.id[0] = ""; c.label[0] = "Default (recommended)"; c.ladder[0] = 31;
   c.id[1] = "claude-opus-5-5"; c.label[1] = "Opus 5.5"; c.desc[1] = "Best for everyday, complex tasks"; c.ladder[1] = 31;
-  c.id[2] = "opus"; c.label[2] = "Opus 5.5"; c.ladder[2] = 31;
+  c.id[2] = "claude-sonnet-5-5"; c.label[2] = "Sonnet 5.5"; c.desc[2] = "Most efficient for simpler tasks"; c.ladder[2] = 31;
   c.id[3] = "claude-haiku-4-5"; c.label[3] = "Haiku 4.5"; c.ladder[3] = 0;
   names := [5] string.["Low", "Medium", "High", "X-High", "Max"];
   ids := [5] string.["low", "medium", "high", "xhigh", "max"];
@@ -771,7 +771,7 @@ test_catalog :: () -> PkCatalog {
   pk_open(p[..], PK_MODEL, cat[..], sel, 600, 600, 200, 32, 880, false);
   #assert !p[0].below;   // in a chat the menu opens above
   #assert pk_key(p[..], cat[..], sel, KEY_ENTER, 0) && p[0].list && p[0].active == 0;
-  #assert pk_text(p[..], cat[..], "OPUS");
+  #assert pk_text(p[..], cat[..], "5.5");
   rows: [PK_MODELS] int;
   #assert pk_rows(p[..], cat[..], rows[..]) == 2 && rows[0] == 1 && rows[1] == 2 && p[0].active == 0;
   #assert pk_text(p[..], cat[..], "x") && pk_rows(p[..], cat[..], rows[..]) == 0 && p[0].active == -1;
@@ -781,7 +781,9 @@ test_catalog :: () -> PkCatalog {
   #assert pk_key(p[..], cat[..], sel, KEY_ENTER, 0) && p[0].list;
   #assert pk_key(p[..], cat[..], sel, KEY_ESCAPE, 0) && !p[0].list && pk_is_open(p[..]) && p[0].qn == 0;
   // the descriptions: only for rows sharing a name
-  #assert pk_ambiguous(cat[..], 1) && !pk_ambiguous(cat[..], 0);
+  #assert !pk_ambiguous(cat[..], 1) && !pk_ambiguous(cat[..], 0);
+  cat[0].label[2] = "Opus 5.5";
+  #assert pk_ambiguous(cat[..], 1) && pk_ambiguous(cat[..], 2);
 }
 
 #test "the access menu: arrows move over the modes and Plan mode, Enter picks and closes, or flips Plan mode" {

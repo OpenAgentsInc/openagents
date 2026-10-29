@@ -61,6 +61,7 @@ ZeronState :: struct {
   // the open menu and the catalogs it shows, the attachments
   picker: [1] Picker;
   cats: [MODE_COUNT] PkCatalog;
+  cat_gen: int;                    // the engine's catalog these copy
   att: [1] Attachments;
   own_store: [256] u8;           // the attachments' bytes until the host attaches its store
   prompt: [] u8;                 // a message as its engine reads it (the store's last 512 KiB)
@@ -276,6 +277,7 @@ zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, d
   s[0].atlas[0].frame += 1;
   // the engines: what Claude Code (or curl, for Psionic) wrote since the last frame
   e_pump(e, ss);
+  if e[0].cat_gen != s[0].cat_gen { s[0].cat_gen = e[0].cat_gen; zr_catalogs(s); zr_labels(s); }   // the CLI listed its models
   s[0].psionic[0].access = e[0].access;
   ps_pump(s[0].psionic[..], ss, dt1);
   lab_pump(s[0].lab[..], e, s[0].psionic[..], ss, dt1);
@@ -868,8 +870,8 @@ zr_test_screen :: (s: [] ZeronState) {
   #assert coaxial_zeron_key(s[..], KEY_ENTER, 0) && c[0].model_label == "Fable 5.1" && !p[0].list;
   // typing searches the list
   #assert coaxial_zeron_key(s[..], KEY_ENTER, 0) && p[0].list;
-  coaxial_zeron_text(s[..], "sonnet 4");
-  #assert coaxial_zeron_key(s[..], KEY_ENTER, 0) && c[0].model_label == "Sonnet 4.6" && c[0].effort_label == "High";
+  coaxial_zeron_text(s[..], "sonnet");
+  #assert coaxial_zeron_key(s[..], KEY_ENTER, 0) && c[0].model_label == "Sonnet 5" && c[0].effort_label == "X-High";
   // a press on its chip closes it, and goes nowhere else
   #assert coaxial_zeron_pointer(s[..], px, py, 0, 1, 0) && !pk_is_open(p) && c[0].open == -1;
   #assert !coaxial_zeron_pointer(s[..], px, py, 2, 1, 0);
@@ -888,7 +890,7 @@ zr_test_screen :: (s: [] ZeronState) {
   n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
   #assert coaxial_zeron_take_action(s[..]) == HOST_ATTACH && coaxial_zeron_take_action(s[..]) == HOST_NONE;
   #assert coaxial_zeron_choose_named(s[..], CH_MODEL, "haiku") && c[0].model_label == "Haiku 4.5" && c[0].no_effort && c[0].effort_label == "";
-  #assert coaxial_zeron_choose_named(s[..], CH_MODEL, "opus") && s[0].engine[0].model == 8;
+  #assert coaxial_zeron_choose_named(s[..], CH_MODEL, "opus") && c[0].model_label == "Opus 5.5" && s[0].engine[0].model == 3;
   coaxial_zeron_text(s[..], "hi");
   #assert c[0].n == 2 && coaxial_zeron_key(s[..], -3, 0) && c[0].n == 1;
   // Enter sends: the message joins the transcript as a bubble, the turn runs

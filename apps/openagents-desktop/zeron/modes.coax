@@ -66,7 +66,7 @@ mode_option_label :: (mode: int, which: int, i: int) -> string {
 }
 
 #test "each mode lists its own choices" {
-  #assert mode_option_count(MODE_CLAUDE, CH_MODEL) == 13 && mode_option_label(MODE_CLAUDE, CH_MODEL, 3) == "Opus 5.5";
+  #assert mode_option_count(MODE_CLAUDE, CH_MODEL) == 8 && mode_option_label(MODE_CLAUDE, CH_MODEL, 3) == "Opus 5.5";
   #assert mode_option_count(MODE_PSIONIC, CH_MODEL) == 1 && mode_option_label(MODE_PSIONIC, CH_MODEL, 0) == "gpt-oss-20b";
   #assert mode_option_count(MODE_PSIONIC, CH_EFFORT) == 3 && mode_option_label(MODE_PSIONIC, CH_EFFORT, 2) == "High";
   #assert mode_option_label(MODE_PSIONIC, CH_EFFORT, 3) == "" && mode_option_label(MODE_CLAUDE, CH_EFFORT, 6) == "Ultrathink";
