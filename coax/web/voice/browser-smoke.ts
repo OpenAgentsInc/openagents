@@ -5,7 +5,9 @@
 // TALK=NAME: first turn to Mortimer, near where you arrive in the yard, and
 // press E to talk to him; NAME must then answer, through the same character
 // chat as a typed question, and the voice host must speak it as NAME.
-//   [TALK=NAME] bun coax/web/voice/browser-smoke.ts PAGE_URL [FIXTURE.wav]
+// OFF=1: VOICE is never tapped (with TALK, after a conversation starts):
+// nothing may ask for the microphone or open a voice socket.
+//   [TALK=NAME] [OFF=1] bun coax/web/voice/browser-smoke.ts PAGE_URL [FIXTURE.wav]
 // PAGE_URL is the Haunted House, with ?voice=ws://127.0.0.1:8787 for a host on this Mac.
 import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -40,10 +42,13 @@ try {
   const send = (method: string, params: any = {}) => new Promise<any>(r => { pending.set(++id, r); ws.send(JSON.stringify({ id, method, params })) })
   const value = async (js: string) => (await send("Runtime.evaluate", { expression: js, returnByValue: true })).result?.result?.value
   await send("Runtime.enable")
+  await send("Page.enable")   // without it the scripts below never run
   await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: false })
   // One speaker id for every run: the host meters speakers per day (--max-speakers), and a fresh
   // profile's random id would take a visitor's place each time.
   await send("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem("verse.voice.speaker", "web-5e0e0e0e0e0e") } catch {}` })
+  // What asks for the microphone or opens a voice socket, counted (OFF=1).
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => { globalThis.micAsks = 0; const md = MediaDevices.prototype, g = md.getUserMedia; md.getUserMedia = function (c) { globalThis.micAsks++; return g.call(this, c) }; globalThis.voiceSockets = 0; const W = globalThis.WebSocket; globalThis.WebSocket = class extends W { constructor(u, p) { super(u, p); if (String(u).includes("voice")) globalThis.voiceSockets++ } } })()` })
   await send("Page.navigate", { url })
   for (let i = 0; i < 60 && !(await value("!!globalThis.coaxial?.ready")); i++) await Bun.sleep(500)
   await Bun.sleep(3000)
@@ -58,6 +63,13 @@ try {
     }
     for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key: "e", code: "KeyE", text: type === "keyDown" ? "e" : undefined, windowsVirtualKeyCode: 69 })
     await Bun.sleep(800)
+  }
+  if (process.env.OFF) {
+    await Bun.sleep(5000)
+    const n = await value("[globalThis.micAsks, globalThis.voiceSockets]")
+    console.log(`voice off: ${n?.[0]} microphone asks, ${n?.[1]} voice sockets`)
+    ok = n?.[0] === 0 && n?.[1] === 0
+    throw "done"
   }
   // VOICE, the hotbar's sixth slot of seven (realm.coax slot_box on a 1440x900 desk).
   const x = W - 16 - 4 - 1 * (76 + 12) - 38, y = H - 16 - 4 - 20
@@ -76,6 +88,8 @@ try {
   if (who) console.log(`  spoken by ${who}`)
   ok = said.some((s) => (s.startsWith("heard|") || s.startsWith("thinking|")) && s.length > 9) && said.some((s) => s.startsWith("replying|") && s.length > 12) && (!talk || who === talk)
   ws.close()
+} catch (e) {
+  if (e !== "done") throw e
 } finally {
   proc.kill()
   rmSync(profile, { recursive: true, force: true })
