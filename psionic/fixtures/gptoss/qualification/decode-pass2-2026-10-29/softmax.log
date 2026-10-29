@@ -1,0 +1,21 @@
+softmax visible=128 variant=0 repeat=0 milliseconds=0.064922
+softmax visible=128 variant=1 repeat=0 milliseconds=0.028102
+softmax visible=128 variant=0 repeat=1 milliseconds=0.065085
+softmax visible=128 variant=1 repeat=1 milliseconds=0.028045
+softmax visible=128 variant=0 repeat=2 milliseconds=0.064768
+softmax visible=128 variant=1 repeat=2 milliseconds=0.028074
+softmax visible=128 variant=0 repeat=3 milliseconds=0.064886
+softmax visible=128 variant=1 repeat=3 milliseconds=0.028851
+softmax visible=128 variant=0 repeat=4 milliseconds=0.065162
+softmax visible=128 variant=1 repeat=4 milliseconds=0.028093
+softmax visible=1025 variant=0 repeat=0 milliseconds=0.527123
+softmax visible=1025 variant=1 repeat=0 milliseconds=0.205862
+softmax visible=1025 variant=0 repeat=1 milliseconds=0.527142
+softmax visible=1025 variant=1 repeat=1 milliseconds=0.208406
+softmax visible=1025 variant=0 repeat=2 milliseconds=0.526714
+softmax visible=1025 variant=1 repeat=2 milliseconds=0.206195
+softmax visible=1025 variant=0 repeat=3 milliseconds=0.528730
+softmax visible=1025 variant=1 repeat=3 milliseconds=0.205869
+softmax visible=1025 variant=0 repeat=4 milliseconds=0.527213
+softmax visible=1025 variant=1 repeat=4 milliseconds=0.206710
+all active scores and untouched tails: bitwise equal

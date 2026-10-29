@@ -4,10 +4,10 @@ import argparse, json, math, re, statistics
 from pathlib import Path
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('log',type=Path);p.add_argument('out',type=Path);a=p.parse_args();text=a.log.read_text()
+    p=argparse.ArgumentParser();p.add_argument('log',type=Path);p.add_argument('out',type=Path);p.add_argument('--before-label',default='before: checked signed-64 decode indexing');p.add_argument('--after-label',default='after: admitted unsigned-32 decode indexing');a=p.parse_args();text=a.log.read_text()
     assert 'all paired full caches, logits, traces and expert IDs: bitwise equal' in text
     assert 'all greedy generated IDs and stops: bitwise equal' in text
-    result=dict(profile='gpt-oss-cuda-f32-v1',model='original-20b',context_capacity=2048,concurrency=1,clock='host monotonic',variants={'0':'before: checked signed-64 decode indexing','1':'after: admitted unsigned-32 decode indexing'},cases={})
+    result=dict(profile='gpt-oss-cuda-f32-v1',model='original-20b',context_capacity=2048,concurrency=1,clock='host monotonic',variants={'0':a.before_label,'1':a.after_label},cases={})
     for case in ('paired','greedy'):
         rows=[]
         pattern=rf'{case} repeat=(-?\d+) variant=(\d) input=(\d+) (?:forced_)?output=(\d+) prefill=([\d.]+) decode=([\d.]+) tok_s=([\d.]+)'

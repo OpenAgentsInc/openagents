@@ -4,7 +4,7 @@
 #authority;
 GD_BUFFERS :: 47;
 GD_RESERVE :: 134217728;
-GD_NAMES :: [44]string.["gk_begin","gk_clear","gk_embed","gk_norm_part","gk_norm","gk_bf_part","gk_bf_finish","gk_mx_part","gk_mx_finish","gk_residual","gk_activate","gk_route","gk_mix","gk_rotate","gk_scores","gk_softmax","gk_context_part","gk_context_finish","gk_flags_part","gk_flags_finish","gk_publish","gk_advance","gk_argmax_part","gk_choose","gk_batch_embed","gk_batch_norm_part","gk_batch_norm","gk_batch_bf_part","gk_batch_finish","gk_batch_route","gk_group","gk_group_prefix","gk_batch_mx_part","gk_batch_residual","gk_batch_mix","gk_batch_rotate","gk_batch_scores","gk_batch_softmax","gk_batch_context_part","gk_copy","gk_batch_shadow","gk_publish_batch","gk_advance_many",""];
+GD_NAMES :: [46]string.["gk_begin","gk_clear","gk_embed","gk_norm_part","gk_norm","gk_bf_part","gk_bf_finish","gk_mx_part","gk_mx_finish","gk_residual","gk_activate","gk_route","gk_mix","gk_rotate","gk_scores","gk_softmax","gk_context_part","gk_context_finish","gk_flags_part","gk_flags_finish","gk_publish","gk_advance","gk_argmax_part","gk_choose","gk_batch_embed","gk_batch_norm_part","gk_batch_norm","gk_batch_bf_part","gk_batch_finish","gk_batch_route","gk_group","gk_group_prefix","gk_batch_mx_part","gk_batch_residual","gk_batch_mix","gk_batch_rotate","gk_batch_scores","gk_batch_softmax","gk_batch_context_part","gk_copy","gk_batch_shadow","gk_publish_batch","gk_advance_many","gk_softmax_prepare","gk_softmax_divide",""];
 GDPlan :: struct {status:GStatus;weights:int;workspace:int;total:int;flags:int;files:int;upload:[16]int;counts:[47]int;width:[47]int;batch:int;max_ops:int;max_args:int;}
 GDRef :: struct {buffer:int;offset:int;count:int;elem:int=1;}
 GDParam :: struct {file:int;begin:int;bytes:int;device:int;}
@@ -40,7 +40,7 @@ gd_plan :: (s:GShape,pins:[]GArtifact,free_bytes:int,budget:int)->GDPlan #export
     for i:0..<GD_BUFFERS {if p.counts[i]>4294967295 {return GDPlan.{status=GStatus.capacity};}p.workspace+=p.counts[i]*p.width[i];}p.total=p.weights+p.workspace+GD_RESERVE;
     if budget<p.total || free_bytes<p.total {return GDPlan.{status=GStatus.budget};}return p;
 }
-gd_kernel_name :: (kind:int)->string #export_c {if kind<0 || kind>=43 {return "";}return GD_NAMES[kind];}
+gd_kernel_name :: (kind:int)->string #export_c {if kind<0 || kind>=45 {return "";}return GD_NAMES[kind];}
 gd_all :: (p:GDPlan,slot:int)->GDRef {return GDRef.{buffer=16+slot,count=p.counts[slot],elem=p.width[slot]};}
 gd_slice :: (p:GDPlan,slot:int,begin:int,count:int)->GDRef {return GDRef.{buffer=16+slot,offset=begin*p.width[slot],count=count,elem=p.width[slot]};}
 gd_weight :: (params:[]GDParam,index:int,elem:int)->GDRef {p:=params[index];return GDRef.{buffer=0,offset=p.device,count=p.bytes/elem,elem=elem};}
@@ -58,7 +58,7 @@ gd_params :: (profile:GProfile,out:[]GDParam)->GResult #export_c {
 }
 gd_emit :: (w:GDWriter,kind:int,items:int,ni:int,nv:int,ints:GDScalars,views:GDViews)->GDWriter {
     result:=w;if result.result.status!=GStatus.ok {return result;}
-    if kind<0 || kind>=43 || items<1 || items>4294967295 || ni<0 || ni>8 || nv<0 || nv>16 {result.result.status=GStatus.shape;return result;}
+    if kind<0 || kind>=45 || items<1 || items>4294967295 || ni<0 || ni>8 || nv<0 || nv>16 {result.result.status=GStatus.shape;return result;}
     if result.result.ops>=w.ops.count || ni+nv>w.args.count-result.result.args {result.result.status=GStatus.capacity;return result;}
     scalars:=[8]int.[ints.a,ints.b,ints.c,ints.d,ints.e,ints.f,ints.g,ints.h];refs:=[16]GDRef.[views.a,views.b,views.c,views.d,views.e,views.f,views.g,views.h,views.i,views.j,views.k,views.l,views.m,views.n,views.o,views.p];
     for i:0..<nv {if !gd_ref_fits(w.plan,refs[i]) {result.result.status=GStatus.capacity;return result;}}
@@ -94,7 +94,8 @@ gd_program :: (s:GShape,p:GDPlan,params:[]GDParam,position:int,token:int,choose:
         rotations:=(s.heads+s.kv_heads)*32;w=gd_emit(w,13,rotations,3,4,GDScalars.{a=s.heads,b=s.kv_heads,c=position},GDViews.{a=qkv,b=gd_all(p,25),c=pending,d=gd_flags(w,rotations)});w.result.flags+=rotations;
         first:=0;if layer%2==0 && position>=s.window {first=position+1-s.window;}visible:=position-first+1;cap:=g_layer_capacity(s,layer);scalars:=GDScalars.{a=s.heads,b=s.kv_heads,c=position,d=first,e=cap,f=s.capacity,g=8};
         w=gd_emit(w,14,s.heads*visible,6,4,scalars,GDViews.{a=qkv,b=cache,c=pending,d=gd_all(p,11)});
-        w=gd_emit(w,15,s.heads,2,3,GDScalars.{a=visible,b=s.capacity},GDViews.{a=gd_weight(params,base+5,2),b=gd_all(p,11),c=gd_flags(w,s.heads)});w.result.flags+=s.heads;
+        w=gd_emit(w,43,s.heads,2,4,GDScalars.{a=visible,b=s.capacity},GDViews.{a=gd_weight(params,base+5,2),b=gd_all(p,11),c=gd_all(p,10),d=gd_flags(w,s.heads)});w.result.flags+=s.heads;
+        w=gd_emit(w,44,s.heads*visible,2,2,GDScalars.{a=visible,b=s.capacity},GDViews.{a=gd_all(p,10),b=gd_all(p,11)});
         w=gd_emit(w,16,q*8,7,4,scalars,GDViews.{a=gd_all(p,11),b=cache,c=pending,d=gd_all(p,9)});
         w=gd_emit(w,17,q,2,3,GDScalars.{a=q,b=8},GDViews.{a=gd_all(p,9),b=attention,c=gd_flags(w,q)});w.result.flags+=q;
         w=gd_bf(w,d,q,gd_weight(params,base+2,8),gd_weight(params,base+1,2),attention,projected);
@@ -121,12 +122,12 @@ gd_program :: (s:GShape,p:GDPlan,params:[]GDParam,position:int,token:int,choose:
     pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
     p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);#assert p.status==GStatus.ok;
     ops:[192]GDOp;args:[4608]GDArg;r:=gd_program(GT_SHAPE,p,params[..],0,1,true,4,ops[..],args[..]);#assert r.status==GStatus.ok && r.flags<p.flags && r.ops>40 && r.args>200;
-    seen:[24]int;for i:0..<r.ops {op:=ops[i];seen[op.kind]+=1;#assert op.items>0 && gd_kernel_name(op.kind)!="" && op.block==gd_block(op.kind);for j:0..<op.count {a:=args[op.first+j];if a.view {#assert gd_ref_fits(p,a.ref);}}}
-    for i:0..<24 {#assert seen[i]>0;}
+    seen:[45]int;for i:0..<r.ops {op:=ops[i];seen[op.kind]+=1;#assert op.items>0 && gd_kernel_name(op.kind)!="" && op.block==gd_block(op.kind);for j:0..<op.count {a:=args[op.first+j];if a.view {#assert gd_ref_fits(p,a.ref);}}}
+    for i:0..<24 {if i!=15 {#assert seen[i]>0;}}#assert seen[15]==0 && seen[43]==GT_SHAPE.layers && seen[44]==GT_SHAPE.layers;
     #assert gd_program(GT_SHAPE,p,params[..],8,1,true,4,ops[..],args[..]).status==GStatus.state;
     #assert gd_program(GT_SHAPE,p,params[..],0,16,true,4,ops[..],args[..]).status==GStatus.state;
     #assert gd_program(GT_SHAPE,p,params[..],0,1,true,4,ops[0..<191],args[..]).status==GStatus.capacity;
-    #assert gd_kernel_name(-1)=="" && gd_kernel_name(43)=="";
+    #assert gd_kernel_name(-1)=="" && gd_kernel_name(45)=="";
 }
 // Called at admission, never per token. Coefficients keep chapter 43's exact
 // authored YaRN construction while every application of them runs on device.
@@ -134,11 +135,11 @@ gd_rope :: (capacity:int,out:[]f32)->GResult #export_c {
     if capacity<1 || capacity>4096 {return GResult.{status=GStatus.shape};}if out.count<capacity*64 {return GResult.{status=GStatus.capacity};}
     first:=0;for batch:0..<(capacity+127)/128 {count:=gs_window(capacity-first,128);r:=go_yarn(first,count,out[first*64..<(first+count)*64]);if r.status!=GoStatus.ok {return GResult.{status=GStatus.arithmetic};}first+=count;}return GResult.{written=capacity*64};
 }
-gd_kernel_count :: ()->int #export_c {return 43;}
+gd_kernel_count :: ()->int #export_c {return 45;}
 #test "device coefficient admission covers multiple bounded rotary batches" {
     out:[8257]f32;one:[64]f32;out[8256]=-7;
     r:=gd_rope(129,out[..]);s:=go_yarn(128,1,one[..]);#assert r.status==GStatus.ok && r.written==8256 && out[8256]== -7 && s.status==GoStatus.ok;
-    for i:0..<64 {#assert out[8192+i]==one[i];}#assert gd_kernel_count()==43;
+    for i:0..<64 {#assert out[8192+i]==one[i];}#assert gd_kernel_count()==45;
     #assert gd_rope(0,out[..]).status==GStatus.shape && gd_rope(4097,out[..]).status==GStatus.shape && gd_rope(129,out[0..<8255]).status==GStatus.capacity;
 }
 
@@ -176,3 +177,11 @@ gd_preflight :: (profile:GProfile,free_bytes:int,budget:int)->GDPlan #export_c {
 // per thread. A 128-thread block permits three resident blocks instead of
 // one 256-thread block. This is dispatch policy, not a host-side heuristic.
 gd_block :: (kind:int)->int {return ifx kind==7 || kind==32 then 128 else 256;}
+
+#test "decode softmax stages preserve scratch lifetime and valid divisions" {
+    pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
+    p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);ops:[192]GDOp;args:[4608]GDArg;r:=gd_program(GT_SHAPE,p,params[..],3,1,true,4,ops[..],args[..]);#assert r.status==GStatus.ok;
+    found:=0;for i:0..<r.ops {if ops[i].kind==43 {a:=ops[i].first;#assert args[a+4].ref.buffer==26 && args[a+4].ref.elem==8 && args[a+4].ref.count==64;
+        #assert ops[i+1].kind==44 && ops[i+1].items==ops[i].items*args[a].value;found+=1;}}
+    #assert found==GT_SHAPE.layers && gd_kernel_name(43)=="gk_softmax_prepare" && gd_kernel_name(44)=="gk_softmax_divide";
+}

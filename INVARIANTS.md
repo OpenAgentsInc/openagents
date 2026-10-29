@@ -159,6 +159,10 @@ BF16/MXFP4 coefficient bytes relocate unchanged into aligned resident intervals,
 f32 lane products and ordered f64 reductions feed the complete CUDA decoder.
 Single-token and batched packed products use admitted tensor-relative u32
 offsets with unchanged lane/fold arithmetic and view bounds.
+Decode attention reuses the admitted 64-query/8-KV layouts. Decode softmax
+keeps its ordered per-head f64 denominator in no-longer-live norm scratch, then
+performs each original f64 division independently in the next ordered kernel.
+There is no reciprocal substitution or change to sink mass/reduction order.
 Coax admits shapes, byte budgets, tensor-relative u32 index bounds, all kernel
 views and the ordered launch program; C performs effects. The native session
 has no automatic CPU fallback. Authentication and upload happen once.

@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "checkout_base": "2626150e987d6346b9ad6966e27d33621b881574",
+  "baseline_product_commit": "8e6304adf0330899a30adc82103d3e3935954001",
+  "profile": "gpt-oss-cuda-f32-v1",
+  "hardware": "NVIDIA GeForce RTX 4080, 16 GiB",
+  "original_revision": "6cee5e81ee83917806bbde320786a8fb61efebee",
+  "native_compiler": "GCC 15.2.0",
+  "flags": [
+    "-std=c11",
+    "-O3",
+    "-g",
+    "-ffp-contract=off",
+    "-fno-fast-math"
+  ],
+  "host_coax_sha256": "c5acf492faaef7ea8450245c44b454e69b208f83d9594e874be4d06eb3d3ae1a",
+  "artifacts_sha256": {
+    "model-speed2": "90ec73fdd0056612991710a837f2bee9222544840023b59bf883ed1df05f7e4e",
+    "profile": "34ed39d48b0eb0d09d8a043f42e7cc26776506df6df9d1a44a6159a241538106",
+    "responses-server": "44af39977b973214daafc566ea033a0c5f85b7fa2f599190c0d1485018ccde33",
+    "baseline-host.so": "081b8d3a2ecf8b949b57473ad3df27f4b845f5053d70375d1083dbbcbc790f6b",
+    "device-host.c": "fb918afefd27888c136b3e9fc053fba6a0cda8bc3cbb53da2c45937a7e6b05dc",
+    "speed-host.c": "ce386b44fec91fd5daba8516b1c9e7e831101fedd8c6e330c7ca4e0c4b23199c",
+    "baseline.cu": "a1dffdf4cc769adc945fd501bf71855d37e581c4b8eea3b64aa13b367a18021c",
+    "candidate.cu": "72df8e2ef7ee4f5342697087df1d09822956ac7671b6677d45bf2a311b6b8759",
+    "/tmp/psionic-gptoss-gpu.z4KpOS/coax": "0634fac1dc50a9eb2c9bf18e51486b567d996dcdfe47e9d66112c847f010eb46",
+    "device-host.h": "c90eb1771b23b15e3d19f5ec4da4ab928fc2ac7d6a11ba5f0e7e3082a374530c",
+    "speed-host.h": "ea106a209f1ac3b9b9152e11a8bcda06b276fe3bd2cdb4c0accce2503b4d5ee2"
+  },
+  "sources_sha256": {
+    "psionic/lib/gptoss/device-kernels.coax": "5ac4d2948b9a0d98dd893c9ae06837bcc412eaaff8545cdd61354042af682613",
+    "psionic/lib/gptoss/device-plan.coax": "567c9b7b45246e99f8b4a51ff235b56a3eeefcce67c30b263b75bc84e0dc1d53",
+    "psionic/fixtures/gptoss/decode-attention.coax": "9845366b736c714b38ce46779b870c301ea5c33bd8b3eb5cc148befbd70bbd2a",
+    "psionic/platform/gptoss-device.c": "303a4b5345ceb6db878e1b50d27ca9e0928a4da4576e8846b1d296a2691e0093",
+    "psionic/tests/gptoss_speed.c": "311afd493fb555d9e4006c933be4ce3ea5a284fbda4d770f204566dad9c125cc",
+    "psionic/tests/gptoss_softmax_bench.c": "0ddb669e8653a5393190564ab98403e4a098951fb8bb1dc598e61f0323607b97",
+    "psionic/tests/responses_speed.py": "7b30f4bf59a4d73e1941d9cce8bd8e3687d404ddd32becc13cb04adf35fe80b9",
+    "psionic/platform/responses-server.c": "757fed14c688064d4982d1f81f7fc85cb2025a46ee4382aacbd15bb91e68743f",
+    "psionic/platform/gptoss-device.h": "7a989ef16ff5da90a2317899e9310f41450e9e21527aaf608a0a7b186288a892",
+    "psionic/platform/cuda-host.c": "42e519a37b62f8bf3aafb0cce758a5925c788ac1408e8c2040784f8ac596dde6",
+    "psionic/platform/cuda-host.h": "69886ee8c42b0a0e227ef1b6dc2bd3fbbef22eb36177801f06941182e8edacf0"
+  },
+  "baseline_kernel_source_sha256": "fd74c871735407269af0fa1d29c14cf112deec58e54cad3bcf12544ed0572976",
+  "notes": [
+    "Baseline shared translation uses -shared -fPIC -Wl,-Bsymbolic and its unchanged original gd_program.",
+    "Baseline module has two unused empty lookup-compatibility exports; baseline program never launches them.",
+    "C test wrapper chooses actual Coax program/module pairs; production contains no such selector.",
+    "Profiling was compiled with PSIONIC_DEVICE_TEST. Its intermediate harness source snapshot was not archived; only the executable/host/module identities and log are retained. It is used for hotspot clues, not final speed claims.",
+    "The paired and serving builds use the recorded current source identities.",
+    "No new numerical profile, approximate division, CPU fallback or altered output limit."
+  ]
+}

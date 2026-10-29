@@ -107,3 +107,25 @@ limits are in the [decode-speed record](../../docs/verification/psionic-decode-s
 Both numerical and backend profiles retain their identity: this change removes
 address overhead rather than changing the model's arithmetic. Prefill, matrix
 hardware, graph replay and concurrent scheduling remain separate measurements.
+
+## Move the next bottleneck
+
+The [performance notebook](../docs/serving/performance.md) records the process
+and the broader optimization backlog. After packed products improved, a bounded
+profile put sequential softmax normalization ahead of the remaining decode
+attention address work.
+
+We retain each head's sink, maximum, exponentials and ordered f64 denominator.
+One kernel stores that denominator in norm scratch whose previous values are
+already dead. The next ordered kernel distributes the original independent
+f64 divisions across the device. It does not replace division with a rounded
+reciprocal. The following attention kernels cannot read an unfinished row.
+The single-token attention path also reuses prefill's checked 64-query/8-KV
+address layout, including the wrapped window and pending current row.
+
+Two entry points bring the generated module to 45 kernels, with the same
+workspace size. Tiny native/Coax checks and full original-model comparisons
+retain bit-identical state and greedy IDs. The
+[second-pass record](../../docs/verification/psionic-decode-pass2-2026-10-29.md)
+separates component profiling, paired core rates and actual Responses latency.
+Prefill and all remaining numerical/scheduling experiments keep their own gates.

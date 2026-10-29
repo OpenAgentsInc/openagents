@@ -127,3 +127,12 @@ python3 psionic/tests/responses_speed.py http://127.0.0.1:8080 --out /tmp/respon
 
 The tool runs one warm-up and five requests, retains every timing sample, and
 checks the generated state by digest. It prints no reasoning or answer content.
+
+The [performance notebook and backlog](performance.md) explains the measurement
+process, rejected experiments and prioritized next optimizations.
+
+The [second pass](../../../docs/verification/psionic-decode-pass2-2026-10-29.md)
+keeps exact softmax divisions but distributes them over the device and reuses
+prefill's decode-attention layout. Current short greedy decode is 62.453 IDs/s;
+the 128-ID SSE request is 54.481 IDs/s end to end. Prefill and first-visible
+latency remain separate targets in the notebook.
