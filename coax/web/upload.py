@@ -66,6 +66,13 @@ for root, cache in (("assets", "public, max-age=31536000, immutable"), ("site", 
     todo = [(n, p) for n, p in files(os.path.join(stage, root)) if have.get(object_name(n, site)) != md5(p) and not (site and os.path.exists(os.path.join(stage, "assets", n)))]
     sent += list(pool.map(lambda np: put(np[0], np[1], cache, site), todo))
 keep = {object_name(n, True) for n, _ in files(os.path.join(stage, "site"))}
-stale = [n for n in have if n not in keep and n.startswith(prefix)]
+# Projects published from a drop (coax/web/api/drops.c, rc-publish) are written into the bucket by
+# the API, never by a build: their pages, files and the lists stay.
+published = ["projects/published.txt", "projects/published-slugs.txt"]
+if "projects/published-slugs.txt" in have:
+    req = urllib.request.Request(api + "/o/" + urllib.parse.quote("projects/published-slugs.txt", safe="") + "?alt=media", headers=auth)
+    with urllib.request.urlopen(req, timeout=30) as r:
+        published += [f"projects/{s}/" for s in r.read().decode().split() if s]
+stale = [n for n in have if n not in keep and n.startswith(prefix) and not any(n == p.rstrip("/") or (p.endswith("/") and n.startswith(p)) for p in published)]
 list(pool.map(lambda n: call(api + "/o/" + urllib.parse.quote(n, safe=""), "DELETE"), stale))
 print(f"  sent {len(sent)}, removed {len(stale)}, unchanged {len(keep) - len(sent)}")

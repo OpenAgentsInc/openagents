@@ -212,6 +212,12 @@ async function loadEngine(bytes, generation) {
   installedGeneration = generation;
   invalidateScene();
   if (script?.dataset.text) send(2, script.dataset.text);
+  // data-lines="KIND:URL": a text file the app reads as message KIND, fetched fresh each load
+  // (/projects: 43:/projects/published.txt, the projects published from a drop since the build).
+  if (script?.dataset.lines && location.protocol !== "file:") {
+    const [kind, url] = script.dataset.lines.split(/:(.*)/);
+    fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.text() : ""), () => "").then((t) => { if (t) send(Number(kind), t); });
+  }
   for (const a of assets) if (a.done) deliver(a); // a new build gets what the last one had
   sendHash();
   // The page's scripts may talk to the app from now (action 0: ready).

@@ -106,9 +106,14 @@ if $stage; then
   { gcloud storage cp "gs://$prod_bucket/*.html" "gs://$prod_bucket/*.md" "gs://$prod_bucket/releases/$stamp/" --quiet > /dev/null 2>&1 || true
     echo "$commit $stamp" | gcloud storage cp - "gs://$prod_bucket/releases/$stamp/COMMIT" --quiet > /dev/null; } &
   backup=$!
-  gcloud storage rsync -r "gs://$staging_bucket" "gs://$prod_bucket" --exclude '.*\.(html|md)$|^releases/|^demo/|^demo-releases/' --quiet > /dev/null
+  # Projects published from a drop on staging (coax/web/api/drops.c) stay on staging: production has its own.
+  published='^projects/published(-slugs)?\.txt$'
+  for s in $(gcloud storage cat "gs://$staging_bucket/projects/published-slugs.txt" 2>/dev/null | grep -E '^[a-z0-9][a-z0-9-]{0,63}$' || true); do
+    published+="|^projects/$s(/|\$)"
+  done
+  gcloud storage rsync -r "gs://$staging_bucket" "gs://$prod_bucket" --exclude ".*\.(html|md)\$|^releases/|^demo/|^demo-releases/|$published" --quiet > /dev/null
   wait $backup
-  gcloud storage rsync -r "gs://$staging_bucket" "gs://$prod_bucket" --exclude '^releases/|^demo/|^demo-releases/' --quiet > /dev/null
+  gcloud storage rsync -r "gs://$staging_bucket" "gs://$prod_bucket" --exclude "^releases/|^demo/|^demo-releases/|$published" --quiet > /dev/null
   lap promote "$t"
 else
   echo "$commit $stamp" | gcloud storage cp - "gs://$prod_bucket/releases/$stamp/COMMIT" --quiet > /dev/null

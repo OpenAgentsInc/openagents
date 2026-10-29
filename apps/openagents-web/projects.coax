@@ -59,6 +59,9 @@ ACT_SIGNIN :: 22;    // sign in with the browser's Nostr signer
 ACT_DRAFT :: 23;     // ask the agent to read the drop and draft the project
 MSG_REVIEW :: 41;    // the draft as rows to review (rc-review): see review_text
 MSG_VALUE :: 42;     // "row|its whole value", after ACT_EDIT
+MSG_PUBLISHED :: 43; // /projects/published.txt (host.js, data-lines): rows like PROJECTS_ROWS, projects
+                     // published from a drop since this build (coax/web/api/drops.c, rc-publish)
+TABLE_CAP :: 16384;
 ACT_EDIT :: 24;      // the outbox's row is being changed: send its whole value
 ACT_SAVE :: 25;      // "row|new value": keep the change
 ACT_PUBLISH :: 26;   // PUBLISH the reviewed draft
@@ -85,6 +88,7 @@ ProjectsState :: struct {
   drops: [INBOX] u8; drops_n: int;   // the last MSG_DROPS
   review_open: bool;                 // the draft's review is in the drop area's place
   review: [INBOX] u8; review_n: int; // the last MSG_REVIEW
+  table: [TABLE_CAP] u8; table_n: int;   // PROJECTS_ROWS with the projects published since the build (MSG_PUBLISHED)
   review_at: [MAX_REVIEW] int; review_rows: int;   // where each of its lines starts
   scroll_l: f32; scroll_r: f32; point_x: f32;      // the review's columns, scrolled; where the pointer was
   confirm: int;                      // HIT_PUBLISH or HIT_DISCARD while asking, else 0
@@ -790,7 +794,34 @@ ask_host :: (s: [] ProjectsState, action: int) { s[0].out_n = 0; s[0].action = a
 
 coaxial_projects_frame :: (s: [] ProjectsState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32,
                            dt: f32, still: bool) -> int #export_c {
-  return projects_frame(s, PROJECTS_ROWS, out, uniforms, width, height, dpr, dt, still);
+  return projects_frame(s, table_of(s), out, uniforms, width, height, dpr, dt, still);
+}
+// The list to draw: the build's, with what was published since in front of it.
+table_of :: (s: [] ProjectsState) -> string {
+  if s[0].table_n > 0 { return cast(string) s[0].table[0..<s[0].table_n]; }
+  return PROJECTS_ROWS;
+}
+// MSG_PUBLISHED: each whole row (14 fields) whose slug and owner the build's list doesn't have, newest
+// first, then the build's rows. A row that doesn't fit is left out; an empty file leaves the build's list.
+published_message :: (s: [] ProjectsState, length: int) {
+  text := cast(string) s[0].inbox[0..<length];
+  n := 0;
+  for r: 0..<rows(text) {
+    a := row_start(text, r); b := a;
+    while b < text.count && text[b] != '\n' { b += 1; }
+    line := text[a..<b];
+    bars := 0;
+    for i: 0..<line.count { if line[i] == '|' { bars += 1; } }
+    if bars != 13 || field(line, 0, 0).count == 0 || field(line, 0, 12).count != 64 { continue; }
+    known := false;
+    for k: 0..<rows(PROJECTS_ROWS) {
+      if same(field(PROJECTS_ROWS, k, 0), field(line, 0, 0)) && same(field(PROJECTS_ROWS, k, 12), field(line, 0, 12)) { known = true; }
+    }
+    if known || n + line.count + 1 + PROJECTS_ROWS.count > TABLE_CAP { continue; }
+    n += put_text(s[0].table[..], n, line); n += put_text(s[0].table[..], n, "\n");
+  }
+  if n == 0 { s[0].table_n = 0; return; }
+  s[0].table_n = n + put_text(s[0].table[..], n, PROJECTS_ROWS);
 }
 
 projects_frame :: (s: [] ProjectsState, table: string, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32,
@@ -964,6 +995,7 @@ projects_key_mods :: (s: [] ProjectsState, table: string, key: int, mods: int) -
 projects_message :: (s: [] ProjectsState, kind: int, length: int) {
   if s.count < 1 || length < 0 || length > INBOX { return; }
   if kind == MSG_REVIEW || kind == MSG_VALUE || kind == MSG_TEXT { review_message(s, kind, length); return; }
+  if kind == MSG_PUBLISHED { published_message(s, length); return; }
   if kind == MSG_DROPS {
     for i: 0..<length { s[0].drops[i] = s[0].inbox[i]; }
     s[0].drops_n = length;
@@ -988,9 +1020,9 @@ projects_message :: (s: [] ProjectsState, kind: int, length: int) {
 }
 
 coaxial_projects_pointer :: (s: [] ProjectsState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
-  return projects_pointer(s, PROJECTS_ROWS, x, y, phase, kind);
+  return projects_pointer(s, table_of(s), x, y, phase, kind);
 }
-coaxial_projects_key :: (s: [] ProjectsState, key: int, mods: int) -> bool #export_c { return projects_key_mods(s, PROJECTS_ROWS, key, mods); }
+coaxial_projects_key :: (s: [] ProjectsState, key: int, mods: int) -> bool #export_c { return projects_key_mods(s, table_of(s), key, mods); }
 coaxial_projects_wheel :: (s: [] ProjectsState, dy: f32) #export_c { if s.count > 0 { scroll_by(s, s[0].point_x, dy * hi(s[0].d, 1)); } }
 coaxial_projects_wants_text :: (s: [] ProjectsState) -> bool #export_c { return s.count > 0 && s[0].drop_open && s[0].review_open && s[0].edit_row > 0; }
 coaxial_projects_message :: (s: [] ProjectsState, kind: int, length: int) #export_c { projects_message(s, kind, length); }
@@ -1015,7 +1047,7 @@ coaxial_projects_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; 
 
 // ---------------------------------------------------------------- REVIEW: the owner corrects the draft (rc-review)
 
-// MSG_REVIEW's lines: "V|state|edits|note|name" (state ready, saving, approved or discarded), then a
+// MSG_REVIEW's lines: "V|state|edits|note|name" (state ready, saving, approved, published or discarded), then a
 // row each, "R|column|kind|label|preview": kind H a section, G a group (a milestone, a task), T a text,
 // B a yes or no, A a list's "add one". A row's number is its place after the V line.
 review_text :: (s: [] ProjectsState) -> string { return cast(string) s[0].review[0..<s[0].review_n]; }
@@ -1034,7 +1066,7 @@ item_kind :: (line: string) -> u8 { f := field(line, 0, 2); return ifx f.count >
 item_col :: (line: string) -> int { return ifx same(field(line, 0, 1), "1") then 1 else 0; }
 editable :: (kind: u8) -> bool { return kind == 'T' || kind == 'B' || kind == 'A'; }
 review_state :: (s: [] ProjectsState) -> string { return field(review_line(s, 0), 0, 1); }
-review_approved :: (s: [] ProjectsState) -> bool { return same(review_state(s), "approved"); }
+review_approved :: (s: [] ProjectsState) -> bool { return same(review_state(s), "approved") || same(review_state(s), "published"); }
 
 index_review :: (s: [] ProjectsState) {
   n := 0;
@@ -1144,7 +1176,7 @@ draw_review :: (out: [] f32, at: int, s: [] ProjectsState, l: Layout, p: Pen) ->
     v = put_fit(out, v, "Publish this project? Its key, page, roadmap and files go public.", tx, ty, 6.5 * d, white, tw);
   } else if s[0].confirm == HIT_DISCARD {
     v = put_fit(out, v, "Discard this drop? Its files leave the bucket and the draft is gone.", tx, ty, 6.5 * d, white, tw);
-  } else if approved {
+  } else if approved && note.count == 0 {
     v = put_wrapped(out, v, "Queued to publish. Nothing is public until the publisher runs.", tx, ty, 6.5 * d, pale, tw, 11 * d, 2);
   } else if note.count > 0 {
     v = put_wrapped(out, v, note, tx, ty, 6.5 * d, pale, tw, 11 * d, 2);
@@ -1452,6 +1484,24 @@ FIXTURE :: "coax|Coax|A language.|open|public|71|16|8|claude-live-1, codex-coax|
   for i: 0..<bad.count { s[0].inbox[i] = bad[i]; }
   projects_message(s[..], MSG_ME, bad.count);
   #assert s[0].viewer_n == 0;
+}
+
+#test "a project published since the build joins the list in front; one it has, a broken row and an empty file don't" {
+  s: [1] ProjectsState;
+  row := "moon-villa|Moon Villa|A villa.|open|public|3|3|0||1793300000|10-29 09:00|/projects/moon-villa|a11ce00000000000000000000000000000000000000000000000000000000002|b0b0000000000000000000000000000000000000000000000000000000000002\n";
+  had := field(PROJECTS_ROWS, 0, 0);
+  text: [1024] u8;
+  n := put_text(text[..], 0, row);
+  n += put_text(text[..], n, "broken|row\n");
+  n += put_text(text[..], n, field(PROJECTS_ROWS, 0, 0)); n += put_text(text[..], n, "|x|x|open|public|0|0|0||0|x|/x|");
+  n += put_text(text[..], n, field(PROJECTS_ROWS, 0, 12)); n += put_text(text[..], n, "|\n");
+  for i: 0..<n { s[0].inbox[i] = text[i]; }
+  projects_message(s[..], MSG_PUBLISHED, n);
+  t := table_of(s[..]);
+  #assert rows(t) == rows(PROJECTS_ROWS) + 1;
+  #assert same(field(t, 0, 0), "moon-villa") && same(field(t, 1, 0), had);
+  projects_message(s[..], MSG_PUBLISHED, 0);
+  #assert same(table_of(s[..]), PROJECTS_ROWS);
 }
 
 #test "the viewer arrives by message, and a bad one signs out" {

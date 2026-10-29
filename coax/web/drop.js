@@ -68,7 +68,7 @@ export function startDrops({ send }) {
   function pushReview() {
     const d = draft?.draft;
     fields = d && draft.status === "ready" ? flatten(d) : [];
-    const state = reviewState || (draft?.approved ? "approved" : "ready");
+    const state = reviewState || (draft?.published ? "published" : draft?.approved ? "approved" : "ready");
     const lines = [`V|${state}|${draft?.edits || 0}|${clean(reviewNote).slice(0, 160)}|${clean(d?.card?.name).slice(0, 80)}`];
     let room = 60000;
     for (const f of fields) {
@@ -103,7 +103,7 @@ export function startDrops({ send }) {
     try {
       const [s, x] = await post(`/api/drops/${dropId}/${what}`, {});
       if (s !== 200) reviewNote = x.error || "refused";
-      else if (what === "publish") draft = x;
+      else if (what === "publish") { draft = x; if (x.published) reviewNote = `Live at openagents.com${x.published.page}`; }
       else { dropId = ""; draft = null; files.length = 0; reviewState = "discarded"; pushReview(); reviewState = ""; push(); return; }
     } catch { reviewNote = "no answer"; }
     pushReview(); push();
