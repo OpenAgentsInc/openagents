@@ -47,7 +47,7 @@ built on:
   runs on **Coaxial**, the Coax web framework ([design](coax/web.md),
   tools in [`coax/web/`](coax/web/)). Coax compiles to WebAssembly, a small
   generic host draws with WebGPU, and every visible thing on a page is Coax.
-  - [`/realm/haunted-house`](https://openagents.com/realm/haunted-house):
+  - [`/realms/haunted-house`](https://openagents.com/realms/haunted-house):
     the Verse engine's Haunted House realm in the browser, the same Coax as
     on iOS.
   - [`/projects`](https://openagents.com/projects) lists projects.

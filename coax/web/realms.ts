@@ -2,11 +2,11 @@
 // the site builds from it (docs/verse/realm-host.md):
 //
 //   apps/openagents-web/realms.coax           the galaxy's worlds (verse.coax loads it)
-//   apps/openagents-web/realm/<slug>/index.html  each realm's page: its module, assets and save slot
+//   apps/openagents-web/realms/<slug>/index.html  each realm's page: its module, assets and save slot
 //
 // Adding a realm is data: a world with a realm in realms.json, its module
 // (<module>.coax, <module>-face.c, <module>.wgsl, built by build.sh) and
-// its realm/<slug>/index.md. The build runs this first; --check fails when
+// its realms/<slug>/index.md. The build runs this first; --check fails when
 // the written files are behind the table, without writing.
 //
 //   bun coax/web/realms.ts           write
@@ -63,14 +63,14 @@ export function coax(list: World[]): string {
     `PLANET_A :: ${col("f32", (w) => num(w.orbit.a))};`,
     `PLANET_SIZE :: ${col("f32", (w) => num(w.orbit.size))};`,
     `PLANET_LISTED :: ${col("bool", (w) => String(w.listed !== false))};`,
-    `PLANET_PATH :: ${col("string", (w) => lit(w.realm ? `/realm/${w.realm.slug}` : ""))};`,
+    `PLANET_PATH :: ${col("string", (w) => lit(w.realm ? `/realms/${w.realm.slug}` : ""))};`,
     "",
   ].join("\n")
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")
 export function page(r: Realm): string {
-  const url = `https://openagents.com/realm/${r.slug}`, t = esc(r.title), d = esc(r.description)
+  const url = `https://openagents.com/realms/${r.slug}`, t = esc(r.title), d = esc(r.description)
   const card = `https://openagents.com${r.card ?? "/verse/og-verse.jpg"}`
   const slot = ` data-realm="${r.slug}" data-slot="${r.slot}"` + (r.slot_was ? ` data-slot-was="${r.slot_was}"` : "")
     + (r.voice ? ` data-voice="${r.voice}"` : "")
@@ -98,7 +98,7 @@ export function page(r: Realm): string {
 <meta name="twitter:image" content="${card}">
 <meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="alternate" type="text/markdown" href="/realm/${r.slug}/index.md">
+<link rel="alternate" type="text/markdown" href="/realms/${r.slug}/index.md">
 <script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
 <style>
 html,body{margin:0;height:100%;background:#000;color:#ededed}
@@ -115,7 +115,7 @@ a{color:#ff8c1f}
 <body>
 <canvas id="coaxial" aria-hidden="true"></canvas>
 <main>
-<h1>${t}</h1><p><a href="/realm/${r.slug}/index.md">${t}</a></p>
+<h1>${t}</h1><p><a href="/realms/${r.slug}/index.md">${t}</a></p>
 </main>
 <script type="module" src="/coaxial/host.js" data-app="${r.module}"${slot}${assets}></script>
 </body>
@@ -127,7 +127,7 @@ if (import.meta.main) {
   const check = process.argv.includes("--check")
   const list = worlds()
   const out: [string, string][] = [[join(SITE, "realms.coax"), coax(list)]]
-  for (const w of list) if (w.realm) out.push([join(SITE, "realm", w.realm.slug, "index.html"), page(w.realm)])
+  for (const w of list) if (w.realm) out.push([join(SITE, "realms", w.realm.slug, "index.html"), page(w.realm)])
   const behind: string[] = []
   for (const [file, text] of out) {
     if (existsSync(file) && readFileSync(file, "utf8") === text) continue
@@ -135,6 +135,6 @@ if (import.meta.main) {
     mkdirSync(join(file, ".."), { recursive: true })
     writeFileSync(file, text)
   }
-  for (const w of list) if (w.realm && !existsSync(join(SITE, "realm", w.realm.slug, "index.md"))) behind.push(`realm/${w.realm.slug}/index.md (write it by hand)`)
+  for (const w of list) if (w.realm && !existsSync(join(SITE, "realms", w.realm.slug, "index.md"))) behind.push(`realms/${w.realm.slug}/index.md (write it by hand)`)
   if (behind.length) { console.error(`realms.ts: behind realms.json:\n  ${behind.join("\n  ")}${check ? "\n  run: bun coax/web/realms.ts" : ""}`); process.exit(1) }
 }

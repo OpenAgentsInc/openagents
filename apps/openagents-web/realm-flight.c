@@ -1,4 +1,4 @@
-// The Haunted House's fly-over (verse/cinematic.coax): /realm/haunted-house#flyover
+// The Haunted House's fly-over (verse/cinematic.coax): /realms/haunted-house#flyover
 // flies round the house, cuts inside to the parlour's candles and back out
 // with a flash of lightning behind the cut, and hands the view back to your
 // camera. Any key or a tap skips it. Included by realm-face.c.

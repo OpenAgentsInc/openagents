@@ -59,10 +59,11 @@ def check(ok, what):
 
 pages = ["/projects", "/projects/index.md", "/projects/coax/demo"] + [p for slug in sys.argv[5].split() for p in (f"/projects/{slug}", f"/projects/{slug}/index.md")]
 check(all(f"/projects/{slug}" in pages for slug in ("coax", "verse", "planetary-villa")), f"the project pages: {sys.argv[5].strip()}")
-moved = ["/project/coax", "/project/coax/index.md", "/project/verse/index.md"]   # the old addresses: 301 to /projects/*
+moved = ["/project/coax", "/project/coax/index.md", "/project/verse/index.md",   # the old addresses: 301 to /projects/* and /realms/*
+         "/realm/haunted-house", "/realm/everglade?from=playtest", "/realm/haunted-house/index.md", "/realm/everglade/og.jpg", "/realm/hecates-cemetery/card.jpg"]
 extra = [("/llms.txt", {200}), ("/index.md", {200}), ("/v1/projects", {401, 403}), ("/docs", {200, 301, 302, 308})] if coder else [("/" + uuid.uuid4().hex, {404})]
 verse = ["/verse", "/verse/index.md", "/verse/galaxy", "/verse/galaxy/index.md"]   # the playtest's landing and galaxy
-first = fetch(["/", ("/", "GET", "http"), "/realm/haunted-house", "/realm/haunted-house/index.md"] + pages + moved + [p for p, _ in extra] + verse)
+first = fetch(["/", ("/", "GET", "http"), "/realms/haunted-house", "/realms/haunted-house/index.md"] + pages + moved + [p for p, _ in extra] + verse)
 (s, h, page), redirect, house, house_md = first[:4]
 s_pages = first[4:4 + len(pages)]
 s_moved = first[4 + len(pages):4 + len(pages) + len(moved)]
@@ -104,16 +105,16 @@ for path, (s, h, body) in zip(pages, s_pages):
     if path.count("/") == 2 and not path.endswith(".md"):
         slug = path.rsplit("/", 1)[1]
         check(re.search(rb'data-text="[0-9a-f]{64} ' + slug.encode() + rb'"', body) is not None, f"{path} names its project")
-# The old /project/* addresses move for good to /projects/*, path kept.
+# The old /project/* and /realm/* addresses move for good to /projects/* and /realms/*, path and query kept.
 for path, (s, h, _) in zip(moved, s_moved):
-    want = "/projects/" + path[len("/project/"):]
+    want = re.sub(r"^/(project|realm)/", lambda m: f"/{m.group(1)}s/", path)
     where = h.get("location", "")
     check(s == 301 and where in (want, f"https://{host}{want}"), f"{path} moves to {want} ({s} {where})")
 # The Haunted House: its page, its Markdown, and every asset it names (the
 # house's document, geometry and sheets; sounds and their loop).
-check(house[0] == 200 and b'data-app="realm"' in house[2], f"/realm/haunted-house ({house[0]})")
-check(house_md[0] == 200, f"/realm/haunted-house/index.md ({house_md[0]})")
-check(len(urls) >= 16, f"/realm/haunted-house names its assets ({len(urls)})")
+check(house[0] == 200 and b'data-app="realm"' in house[2], f"/realms/haunted-house ({house[0]})")
+check(house_md[0] == 200, f"/realms/haunted-house/index.md ({house_md[0]})")
+check(len(urls) >= 16, f"/realms/haunted-house names its assets ({len(urls)})")
 for u, (s, h, _) in zip(urls, got[len(files):]):
     check(s == 200 and "immutable" in h.get("cache-control", ""), f"{u} ({s})")
 for (path, want), (s, _, body) in zip(extra, s_extra):

@@ -1,4 +1,4 @@
-// The fixture realm (openagents.com/realm/fixture): the realm host's test
+// The fixture realm (openagents.com/realms/fixture): the realm host's test
 // world (docs/verse/realm-host.md). It is a realm like any other: its own
 // module (this file and fixture-face.c), its own page written from
 // realms.json, a world on the galaxy (unlisted: /verse/galaxy?realms=all
@@ -634,7 +634,7 @@ outbox_is :: (s: [] Fixture, text: string) -> bool { return cast(string) s[0].ou
 
 #test "a visit is counted and kept in the realm's own slot" {
   s: [1] Fixture;
-  fixture_message(s[..], HOST_FACTS, "tab=1\nrealm=fixture\nslot=fixture\nurl=https://openagents.com/realm/fixture");
+  fixture_message(s[..], HOST_FACTS, "tab=1\nrealm=fixture\nslot=fixture\nurl=https://openagents.com/realms/fixture");
   #assert s[0].visits == 1 && cast(string) s[0].slot[0..<s[0].slot_n] == "fixture";
   tick(s[..], 0.016);
   #assert fixture_action(s[..]) == ACT_KEEP && outbox_is(s[..], "fixture-save 1 0 0 1");

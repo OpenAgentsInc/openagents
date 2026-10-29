@@ -12,7 +12,7 @@ import { join } from "node:path"
 
 const origin = process.argv[2]
 if (!origin) { console.error("usage: bun coax/web/api/saves.ts ORIGIN"); process.exit(2) }
-const page = origin + "/realm/haunted-house"
+const page = origin + "/realms/haunted-house"
 const chrome = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 const email = `saves-smoke+${Date.now()}@openagents.com`
 

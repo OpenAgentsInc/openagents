@@ -1,4 +1,4 @@
-// The characters realm, openagents.com/realm/characters: the Verse
+// The characters realm, openagents.com/realms/characters: the Verse
 // engine's figures (verse/figure.coax) in a night garden, drawn by
 // characters.wgsl. Two shadow visitors (soft silhouettes, black, fuzzy at
 // the edge and lit only at the rim), a lit one to compare, a dog and a fox;
@@ -7,7 +7,7 @@
 // person's WAVE, BOW, CHEER, SHRUG, DANCE; an animal's SIT, LIE, DIG,
 // FETCH, BOW, WAG), played over its gait, and its SHAPE: a slider for each
 // of its build's numbers, its pattern and its colours. An agent sets the
-// same through the link: /realm/characters#motion=<a motion document>, or
+// same through the link: /realms/characters#motion=<a motion document>, or
 // #shape=<a shape> (figure.coax verse_figure_shape_read) for the chosen
 // figure; each is checked, and the page says why if it is refused. Drag
 // turns the view, the wheel zooms.

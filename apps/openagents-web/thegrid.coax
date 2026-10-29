@@ -1,4 +1,4 @@
-// The Grid, openagents.com/realm/the-grid: the bare Verse world the demo
+// The Grid, openagents.com/realms/the-grid: the bare Verse world the demo
 // opened on (aethyr-demo src/grid_world.cpp), its own art from the demo's
 // scene, packed by verse/tools/pack_grid.py. A floor of lines out to 264 m
 // fading into the black field; the stations by the start (the Pylon
@@ -49,7 +49,7 @@ DRAWS :: 4;
 WALLS :: 16;           // the player's walls (player.coax WALL numbers each)
 GATE_X :: 9.0; GATE_Z :: 1.0; GATE_R :: 1.0;   // the Everglade gate's portal, and how near is through it
 GALAXY :: "/verse/galaxy";
-EVERGLADE :: "/realm/everglade";
+EVERGLADE :: "/realms/everglade";
 ACT_NAVIGATE :: 1;     // host.js: go to the outbox's URL
 OUTBOX :: 64;
 

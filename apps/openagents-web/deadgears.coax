@@ -1,4 +1,4 @@
-// Dead Gears, openagents.com/realm/dead-gears: the ship survival game, ported
+// Dead Gears, openagents.com/realms/dead-gears: the ship survival game, ported
 // from aethyr-demo's src/dead_gears.cpp. The rules are verse/deadgears/
 // (ecs.coax, arena.coax, rules.coax: every system and check of the demo);
 // this file is the page over them: the ship's hull as the demo built it, the
@@ -1577,11 +1577,11 @@ tag_end :: () -> int { return SAVE_TAG.count + 1; }
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   for i: 0..<400 { n = frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.05); }
   #assert s[0].deck_hour > 18;
-  #assert query_number("https://openagents.com/realm/dead-gears?hour=17.25&spawn=200", "hour") == 17.25;
-  #assert query_number("https://openagents.com/realm/dead-gears?hour=17.25&spawn=200", "spawn") == 200;
-  #assert query_number("https://openagents.com/realm/dead-gears?xhour=3", "hour") < 0;
+  #assert query_number("https://openagents.com/realms/dead-gears?hour=17.25&spawn=200", "hour") == 17.25;
+  #assert query_number("https://openagents.com/realms/dead-gears?hour=17.25&spawn=200", "spawn") == 200;
+  #assert query_number("https://openagents.com/realms/dead-gears?xhour=3", "hour") < 0;
   p: [1] DeadGears;
-  deadgears_message(p[..], HOST_PAGE, "tab=1\nurl=https://openagents.com/realm/dead-gears?hour=18.4");
+  deadgears_message(p[..], HOST_PAGE, "tab=1\nurl=https://openagents.com/realms/dead-gears?hour=18.4");
   n = frame(p[..], 1280, 800, 1, 0.016);
   #assert abs(p[0].deck_hour - 18.4) < 0.01 && night_level(18.4) > night_level(15.5);
 }

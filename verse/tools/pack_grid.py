@@ -3,7 +3,7 @@ scene: assets/verse/grid/lander3-scene.json at 437ff8ef72 (the scene the
 demo's tools/import_grid.py imported; sha256 checked below).
 
   git show 437ff8ef72d637ca198dd47404c34ece64a303f7:assets/verse/grid/lander3-scene.json > scene.json
-  pack_grid.py scene.json apps/openagents-web/realm/the-grid/assets
+  pack_grid.py scene.json apps/openagents-web/realms/the-grid/assets
 
 Everything is the art's flat colours, unlit, written as the display values
 the demo drew (its linear tints through the sRGB curve). Four files:

@@ -240,16 +240,16 @@ Bodies are JSON. "Owner" is `Authorization: Bearer $VERSE_OWNER_TOKEN`.
 
 openagents.com: one load balancer, `coaxial-openagents-web-staging` (136.69.24.60).
 Host rule openagents.com → path matcher `production`: `/`, `/index.html`,
-`/favicon.svg`, `/projects`, `/build/*`, `/coaxial/*`, `/realm/*`,
+`/favicon.svg`, `/projects`, `/build/*`, `/coaxial/*`, `/realms/*`,
 `/projects/*` → backend bucket `coaxial-openagents-web`; `/project*` → 301 to
-`/projects*`; everything else → backend service `coaxial-coder` (the old
+`/projects*` and `/realm*` → 301 to `/realms*`; everything else → backend service `coaxial-coder` (the old
 Cloud Run `coder`). staging.openagents.com → matcher `staging`, default the
 staging bucket. On production, `coaxial-coder` answers 404 under `/api/`
 and 303 at `/admin`, so `/api/` and `/admin/analytics` are free for new rules.
 
 ## 5. What openagents.com already covers
 
-`/realm/haunted-house` (`apps/openagents-web/realm.coax`, `realm-face.c`,
+`/realms/haunted-house` (`apps/openagents-web/realm.coax`, `realm-face.c`,
 `metareal/haunt*.coax`, `player.coax`, `grid.coax`): walking (keys, mouse
 look, two thumbs), jump, run, zoom, doors, the nine haunts and HAUNTS FOUND,
 talking to characters (scripted lines, a hint), the map, views, sounds, the

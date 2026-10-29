@@ -28,37 +28,37 @@ voice=$!
 "$here/../../coax/web/wasm.sh" "$here/realm.coax" "$here/realm-face.c" "$here/build/realm.wasm" \
   "$m/haunt.coax" "$m/haunt-buffer.coax" "$m/player.coax" "$m/grid.coax" "$m/particles.coax" "$m/cinematic.coax" "$m/setpiece.coax" &
 realm=$!
-# /realm/garden: the engine's world pieces (camera, terrain, throwing,
+# /realms/garden: the engine's world pieces (camera, terrain, throwing,
 # arranging) in an open-air realm, with the player and thumbs as their own libraries.
 "$here/../../coax/web/wasm.sh" "$here/garden.coax" "$here/garden-face.c" "$here/build/garden.wasm" \
   "$m/player.coax" "$m/grid.coax" &
 garden=$!
-# /realm/everglade: the forest city's blockout (verse/everglade/plan.coax), with the player and thumbs.
+# /realms/everglade: the forest city's blockout (verse/everglade/plan.coax), with the player and thumbs.
 "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/everglade-face.c" "$here/build/everglade.wasm" \
   "$m/player.coax" "$m/grid.coax" &
 everglade=$!
-# /realm/the-grid: the bare Verse world from the demo's scene (verse/tools/pack_grid.py), with the player and thumbs.
+# /realms/the-grid: the bare Verse world from the demo's scene (verse/tools/pack_grid.py), with the player and thumbs.
 "$here/../../coax/web/wasm.sh" "$here/thegrid.coax" "$here/thegrid-face.c" "$here/build/thegrid.wasm" \
   "$m/player.coax" "$m/grid.coax" &
 thegrid=$!
-# /realm/hecates-cemetery: Planetary Villa's first expansion (verse/planetary-villa/README.md),
+# /realms/hecates-cemetery: Planetary Villa's first expansion (verse/planetary-villa/README.md),
 # with the player, thumbs and figures (villafig.coax: the engine's figures and motions) as libraries.
 "$here/../../coax/web/wasm.sh" "$here/villa.coax" "$here/villa-face.c" "$here/build/villa.wasm" \
   "$m/player.coax" "$m/grid.coax" "$here/villafig.coax" &
 villa=$!
-# /realm/fixture: the realm host's test world, the smallest realm module.
+# /realms/fixture: the realm host's test world, the smallest realm module.
 "$here/../../coax/web/wasm.sh" "$here/fixture.coax" "$here/fixture-face.c" "$here/build/fixture.wasm" &
 fixture=$!
-# /realm/drop and every /projects/<slug>/realm: a project's first realm, its drop's models on a floor.
+# /realms/drop and every /projects/<slug>/realm: a project's first realm, its drop's models on a floor.
 "$here/../../coax/web/wasm.sh" "$here/droprealm.coax" "$here/droprealm-face.c" "$here/build/droprealm.wasm" &
 droprealm=$!
-# /realm/ice-cream-man: Ice Cream Man's house (verse/icecream/scene.coax, its own library) under its HUD.
+# /realms/ice-cream-man: Ice Cream Man's house (verse/icecream/scene.coax, its own library) under its HUD.
 "$here/../../coax/web/wasm.sh" "$here/icecream.coax" "$here/icecream-face.c" "$here/build/icecream.wasm" "$m/icecream/scene.coax" &
 icecream=$!
-# /realm/dead-gears: the ship survival game (verse/deadgears/rules.coax, loaded by the page).
+# /realms/dead-gears: the ship survival game (verse/deadgears/rules.coax, loaded by the page).
 "$here/../../coax/web/wasm.sh" "$here/deadgears.coax" "$here/deadgears-face.c" "$here/build/deadgears.wasm" &
 deadgears=$!
-# /realm/characters: the engine's figures (verse/figure.coax).
+# /realms/characters: the engine's figures (verse/figure.coax).
 "$here/../../coax/web/wasm.sh" "$here/characters.coax" "$here/characters-face.c" "$here/build/characters.wasm" &
 characters=$!
 # /verse and /verse/galaxy: the playtest's landing and galaxy.

@@ -1,4 +1,4 @@
-// The Garden, openagents.com/realm/garden: a small open-air Verse realm that
+// The Garden, openagents.com/realms/garden: a small open-air Verse realm that
 // shows the engine's world pieces at work. You walk it with the engine's
 // controller (verse/player.coax, linked as its own library, as the realm
 // links it) and see it through the free orbit (verse/camera.coax Orbit),

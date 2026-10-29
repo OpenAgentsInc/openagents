@@ -1,5 +1,5 @@
 // The Sandbox's set pieces (rl-sandbox-pieces), played on a live host in
-// headless Chrome (no window opens, no sound): a guest opens /realm/sandbox,
+// headless Chrome (no window opens, no sound): a guest opens /realms/sandbox,
 // presses B and P, types "a flock of birds follows me" and MAKE; the piece
 // comes from the real selector, is published to the shared Sandbox at once
 // (its log names it), and Z takes it back in one step, which DONE publishes.
@@ -60,7 +60,7 @@ try {
   await send("Page.navigate", { url: origin + "/404.html" })
   await Bun.sleep(800)
   await js(`document.cookie = "verse-automation=sandbox-pieces-flow; path=/"; 1`)
-  await send("Page.navigate", { url: origin + "/realm/sandbox" })
+  await send("Page.navigate", { url: origin + "/realms/sandbox" })
   await Bun.sleep(10000)
   await shot("1-sandbox")
   await key("b", 600); await key("p", 400)

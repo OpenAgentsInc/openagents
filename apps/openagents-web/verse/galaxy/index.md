@@ -2,9 +2,9 @@
 
 The Verse playtest's galaxy at https://openagents.com/verse/galaxy, after the landing ([/verse](https://openagents.com/verse)).
 
-The playtest's worlds turn on their orbits around OpenAgents. The **Haunted House** (the orange one, with its CLICK TO ENTER tag) goes to [/realm/haunted-house](https://openagents.com/realm/haunted-house); The Grid, Everglade, Dead Gears, the Sandbox and Ice Cream Man open their realms too. Coding is coming later, and Blue Rush and Big Brain are locked.
+The playtest's worlds turn on their orbits around OpenAgents. The **Haunted House** (the orange one, with its CLICK TO ENTER tag) goes to [/realms/haunted-house](https://openagents.com/realms/haunted-house); The Grid, Everglade, Dead Gears, the Sandbox and Ice Cream Man open their realms too. Coding is coming later, and Blue Rush and Big Brain are locked.
 
-Players' own realms circle on the outer orbit, the newest eight, tinted by their kind (green forest, gold village, violet cemetery). Each one opens its own world: /realm/haunted-house#planet-… (see the realm page for how its owner publishes edits and accepts or declines changes others offer).
+Players' own realms circle on the outer orbit, the newest eight, tinted by their kind (green forest, gold village, violet cemetery). Each one opens its own world: /realms/haunted-house#planet-… (see the realm page for how its owner publishes edits and accepts or declines changes others offer).
 
 **Make your realm**, under GALAXY, sets one up: a name, its kind, look, view and time of day, then **Create** (or Enter). A browser with no player key gets one first and keeps it; the realm is made on the server (`POST /api/playtest/planets`) and its world opens. Back on the galaxy the button reads **Your realm** and reopens it.
 

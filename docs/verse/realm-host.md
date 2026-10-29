@@ -13,7 +13,7 @@ A realm is four things, and nothing else is shared:
 
 All four are named in `apps/openagents-web/realms.json`. `coax/web/realms.ts`
 writes `apps/openagents-web/realms.coax` (the galaxy's table, loaded by
-`verse.coax`) and `realm/<slug>/index.html` (the realm's page) from it; the
+`verse.coax`) and `realms/<slug>/index.html` (the realm's page) from it; the
 build runs it first, and `bun coax/web/realms.ts --check` fails when the
 written files are behind the table. Don't edit the written files.
 
@@ -22,7 +22,7 @@ written files are behind the table. Don't edit the written files.
 ```json
 { "id": "house", "name": "HAUNTED HOUSE", "kind": "open", "orbit": { "r": 0.15, "a": 0, "size": 0.028 },
   "realm": { "slug": "haunted-house", "title": "Haunted House", "description": "...", "alt": "...",
-             "module": "realm", "slot": "haunted-house", "slot_was": "realm", "assets": ["data:/realm/haunted-house/assets/Haunt.pb", "..."] } }
+             "module": "realm", "slot": "haunted-house", "slot_was": "realm", "assets": ["data:/realms/haunted-house/assets/Haunt.pb", "..."] } }
 ```
 
 | Field | What |
@@ -32,7 +32,7 @@ written files are behind the table. Don't edit the written files.
 | `kind` | `open` (a click opens the realm), `soon` or `locked`. An open world must have a `realm`. |
 | `listed` | `false` keeps it off the galaxy unless the galaxy's URL has `?realms=all` (the fixture realm; a realm before its launch). Default `true`. |
 | `orbit` | `r` the orbit's radius and `size` the planet's, both as shares of the galaxy's size (the playtest's orbits are 0.15 to 0.46); `a` its angle in radians. Pick an orbit the galaxy already draws (`ORBITS` in `verse.coax`) or one clear of the others. |
-| `realm.slug` | The page: `/realm/<slug>`. |
+| `realm.slug` | The page: `/realms/<slug>`. Its old address, `/realm/<slug>` (before October 29), answers 301 to it at the load balancer, path and query kept. |
 | `realm.title`, `description`, `alt` | The page's title, its description and its link-preview text. |
 | `realm.module` | The module: `apps/openagents-web/<module>.coax`, `<module>-face.c` and `<module>.wgsl`, built to `build/<module>.wasm` by a line in `build.sh`. Two realms may share a module (the page tells it which realm it is). |
 | `realm.slot` | The save slot (below). Unique across realms. |
@@ -42,7 +42,7 @@ written files are behind the table. Don't edit the written files.
 | `realm.uploads` | What the page's file picker takes (`image/*,video/*`): the page gets `data-uploads`, and its action 30 picks files and sends them to this site's admit/upload/scan protocol (`coax/web/uploads.js`; Planetary Villa's pets). |
 | `realm.golden` | What the release walk asks of the page (below): `lit`, the least share of its pixels lit (the fixture 0.015, the Haunted House 0.03); `settle`, milliseconds to wait before its shot; `blocks`, how many 8 px blocks may differ from its golden. |
 
-Each realm also needs `realm/<slug>/index.md`, written by hand: the page as
+Each realm also needs `realms/<slug>/index.md`, written by hand: the page as
 text for agents, search engines and screen readers. The generator refuses a
 realm without one.
 
@@ -87,17 +87,17 @@ separate files; Ice Cream Man, Dead Gears and Everglade use packs.
   to it, 512 by default), the `licences` (name, licence, URL each), the
   `meshes` by name and the `sounds` (name, file, licence).
 - **Compiler**: `python3 verse/tools/pack_realm.py verse/packs/<realm>.json
-  apps/openagents-web/realm/<slug>/assets/<realm>.pack
-  apps/openagents-web/realm/<slug>/licences.md`. It refuses a pack over its
+  apps/openagents-web/realms/<slug>/assets/<realm>.pack
+  apps/openagents-web/realms/<slug>/licences.md`. It refuses a pack over its
   budget, an asset without a licence, a mesh it can't find and a texture
   layer shared by two licences. A mesh takes its kit's licence from its SCN4
   kind; a layer the licence of the meshes that use it; a sound names its own.
   The format is in the compiler's header.
-- **Licences**: the compiler writes `realm/<slug>/licences.md` (every
+- **Licences**: the compiler writes `realms/<slug>/licences.md` (every
   asset, its kind and licence) and puts the same in the pack's catalog; the
   realm shows them (the fixture's panel) and links the file from its
   `index.md`. Commit both with the pack.
-- **On the page**: one asset, `pack:/realm/<slug>/assets/<realm>.pack`. It
+- **On the page**: one asset, `pack:/realms/<slug>/assets/<realm>.pack`. It
   stands for four assets in its place: 0 the catalog (`data`), 1 the
   vertices (`storage`), 2 the indices (`index`), 3 the layers (`layers`); its
   sounds are added by name for `coaxial_sounds`. While it streams the realm
@@ -158,6 +158,6 @@ change) and release again.
 1. Its module: `<module>.coax` with checks, `<module>-face.c`, `<module>.wgsl`; a `wasm.sh` line in `build.sh`.
 2. Its pack: `verse/packs/<realm>.json`, compiled with `pack_realm.py` (above).
 3. Its world in `realms.json`: listed `false` until launch, assets `pack:...`.
-4. `realm/<slug>/index.md`, linking its `licences.md`.
+4. `realms/<slug>/index.md`, linking its `licences.md`.
 5. `bun coax/web/realms.ts`, `coax test <module>.coax`, a headless shot, and its golden (the release walk, above).
 6. At launch: `listed` true (the galaxy's golden changes; approve it).

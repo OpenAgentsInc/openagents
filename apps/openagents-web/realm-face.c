@@ -7,7 +7,7 @@
 // frame, in the order the phone's frame does. Every pointer is an offset
 // into the host's WebAssembly.Memory.
 //
-// The page's assets (realm/haunted-house/index.html data-assets), in order:
+// The page's assets (realms/haunted-house/index.html data-assets), in order:
 // 0 the house's document (Haunt.pb, into memory here), 1 its vertices and
 // 2 its indices (GPU buffers), 3 its texture sheets (a GPU texture array);
 // the sounds come by name.
@@ -173,7 +173,7 @@ static int64_t item_mesh[5];
 static coax_t_Track track_state;
 static coax_t_RealmSeen seen;
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
-static const char *link = "https://openagents.com/realm/haunted-house";
+static const char *link = "https://openagents.com/realms/haunted-house";
 
 // The set piece asked for (-1 none waiting), its parts' ids, and what the
 // publish says it was.
@@ -342,7 +342,7 @@ static void open_house(void) {
     if (!verse_haunt_draw_range(meshes[i].first, meshes[i].count, index_count)) { failed = true; return; }
   rebuild_walls();
   if (house.world_id.count == 7 && !memcmp(house.world_id.data, "sandbox", 7)) {
-    sandbox = true; save_world = "sandbox"; link = "https://openagents.com/realm/sandbox"; items = sandbox_items;
+    sandbox = true; save_world = "sandbox"; link = "https://openagents.com/realms/sandbox"; items = sandbox_items;
     house.quest = 8;   // no quest here: done, and the HUD shows none
     world_open(text("sandbox"));
   }

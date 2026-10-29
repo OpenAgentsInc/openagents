@@ -10,7 +10,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 const origin = process.argv[2]
-const page = process.argv[3] ?? "/realm/haunted-house"
+const page = process.argv[3] ?? "/realms/haunted-house"
 if (!origin) { console.error("usage: bun coax/web/api/flow.ts ORIGIN [PAGE_PATH]"); process.exit(2) }
 
 // Runs in the page: same origin, the browser's own fetch.

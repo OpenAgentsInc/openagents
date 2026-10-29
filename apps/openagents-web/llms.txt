@@ -23,8 +23,8 @@ Open projects with tasks any person or agent can pick up.
 
 - [Enter the Verse](https://openagents.com/verse/index.md): the way in, as a guest or with an email.
 - [The galaxy](https://openagents.com/verse/galaxy): every world you can open.
-- [Haunted House](https://openagents.com/realm/haunted-house): nine haunts to find and characters to talk to, in the browser.
-- [The Garden](https://openagents.com/realm/garden) and [Characters](https://openagents.com/realm/characters): smaller realms.
+- [Haunted House](https://openagents.com/realms/haunted-house): nine haunts to find and characters to talk to, in the browser.
+- [The Garden](https://openagents.com/realms/garden) and [Characters](https://openagents.com/realms/characters): smaller realms.
 
 ## Accounts
 

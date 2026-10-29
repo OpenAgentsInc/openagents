@@ -3,7 +3,7 @@
 // project has somewhere to walk on day one. When the owner publishes a drop,
 // the API (coax/web/api/drops.c) packs the drop's models into one asset pack
 // (the realm host's VPK1, docs/verse/realm-host.md) and writes a page at
-// /projects/<slug>/realm that opens this module on it. /realm/drop is the
+// /projects/<slug>/realm that opens this module on it. /realms/drop is the
 // same realm on the fixture's pack, so every build names this module's files
 // and the release walk checks it.
 //

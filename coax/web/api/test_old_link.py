@@ -12,7 +12,7 @@ def old_link(query):
     return r.status, r.getheader("Location")
 
 
-R = "https://openagents.com/realm/haunted-house?from=playtest"
+R = "https://openagents.com/realms/haunted-house?from=playtest"
 check("a shared planet opens that world", old_link("?visit=planet-06258408&planet=forest&name=Kiki") == (301, R + "#planet-06258408"))
 check("a link with no world opens the Haunted House", old_link("") == (301, R))
 check("the house's own id is the house", old_link("?visit=haunted-house") == (301, R))

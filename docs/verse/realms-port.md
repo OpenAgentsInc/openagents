@@ -1,6 +1,6 @@
 # Porting the realms
 
-Status: plan, October 28. The Haunted House is live at /realm/haunted-house.
+Status: plan, October 28. The Haunted House is live at /realms/haunted-house.
 This plan brings the demo's other worlds to openagents.com in Coax and builds
 Everglade. The tasks are in the Verse project under "Port the realms"
 (https://openagents.com/projects/verse).
@@ -8,7 +8,7 @@ Everglade. The tasks are in the Verse project under "Port the realms"
 ## Order
 
 1. **One realm page for every world.**
-   - `/realm/<slug>` loads any realm's world module, assets, HUD and save
+   - `/realms/<slug>` loads any realm's world module, assets, HUD and save
      slot, and the galaxy opens each one.
    - An asset pack compiler streams kit art in on entry.
    - The release walk opens every realm.
@@ -40,7 +40,7 @@ Everglade. The tasks are in the Verse project under "Port the realms"
    - Players can't edit it.
 5. **Later:** the Sandbox, the Grid and Medieval Town. Medieval Town may
    fold into Everglade.
-   - The Sandbox is at /realm/sandbox (rl-sandbox): a world document
+   - The Sandbox is at /realms/sandbox (rl-sandbox): a world document
      (`verse/tools/pack_sandbox.py`) played by the Haunted House's engine
      and edit tools, one shared world `sandbox` on the server that anyone
      with a player key publishes to (`0029_sandbox_open.sql`).
@@ -55,7 +55,7 @@ Everglade. The tasks are in the Verse project under "Port the realms"
      in the same file lays the piece out in front of you, as one undo step
      and one publish. The Sandbox's own engine (`verse/haunt.coax`) draws
      it, and the flock flies round whoever is walking.
-   - The Grid is at /realm/the-grid (rl-grid), on the galaxy where its
+   - The Grid is at /realms/the-grid (rl-grid), on the galaxy where its
      locked planet was: the demo's own Grid scene (`lander3-scene.json`)
      packed by `verse/tools/pack_grid.py` into storage buffers that
      `thegrid.wgsl` draws unlit, lines as screen-space quads and the robots

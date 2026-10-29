@@ -492,7 +492,7 @@ def realm_checks():
               abs(p4[0] - 100) < 1e-3 and abs(p4[5] - 1) < 1e-4 and c4 == bytes([255, 255, 255, 1]), (p4, c4))
     page = bucket["site"].get("projects/lantern-garden/realm", {}).get("data", b"")
     check("realm: its page opens the first-realm module on the pack, named for the project",
-          b'data-realm-of="lantern-garden"' in page and b'data-name="Lantern Garden"' in page and b'fetch("/realm/drop"' in page
+          b'data-realm-of="lantern-garden"' in page and b'data-name="Lantern Garden"' in page and b'fetch("/realms/drop"' in page
           and b"/realm/realm.pack" in page and bucket["site"].get("projects/lantern-garden/realm/index.html", {}).get("data") == page
           and b'<p><a href="/projects/lantern-garden/realm/index.md">A first realm</a></p>' in page, page[:200])
     rmd = bucket["site"].get("projects/lantern-garden/realm/index.md", {}).get("data", b"").decode()

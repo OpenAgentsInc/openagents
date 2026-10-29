@@ -1,5 +1,5 @@
 // The Dead Gears page's frame budget, in WebAssembly (dg-creatures): the
-// page as /realm/dead-gears?spawn=200 runs it, the wave and 200 more mutants
+// page as /realms/dead-gears?spawn=200 runs it, the wave and 200 more mutants
 // closing in while you fire, each frame stepping the rules and writing every
 // box, light and the HUD (deadgears.coax deadgears_frame). As bench.c, the
 // same frames play several times and each keeps its fastest run; the mean
@@ -32,7 +32,7 @@ int main(void) {
   coax_v_f32 o = {out, 24000 * 16}, u = {uniforms, coaxial_deadgears_uniform_floats()};
   for (int run = 0; run < RUNS; run++) {
     memset(&page, 0, sizeof page);
-    deadgears_message(view(), 600, str("tab=1\nurl=https://openagents.com/realm/dead-gears?spawn=200"));
+    deadgears_message(view(), 600, str("tab=1\nurl=https://openagents.com/realms/dead-gears?spawn=200"));
     deadgears_key(view(), 'f', 0);
     for (int i = 0; i < 10; i++) deadgears_frame(view(), o, u, 1280, 800, 1, 1.0f / 60, false);
     for (int i = 0; i < FRAMES; i++) {

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Haunted House · OpenAgents</title>
+<meta name="description" content="The Haunted House, a Verse realm you walk through in the browser: nine haunts to find, characters to talk to, doors to open. The same Coax code as the OpenAgents iOS app.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="OpenAgents">
+<meta property="og:title" content="Haunted House">
+<meta property="og:description" content="The Haunted House, a Verse realm you walk through in the browser: nine haunts to find, characters to talk to, doors to open. The same Coax code as the OpenAgents iOS app.">
+<meta property="og:url" content="https://openagents.com/realms/haunted-house">
+<meta property="og:image" content="https://openagents.com/verse/og-verse.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Enter the Verse: edit our haunted house. Can you make it scarier?">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Haunted House">
+<meta name="twitter:description" content="The Haunted House, a Verse realm you walk through in the browser: nine haunts to find, characters to talk to, doors to open. The same Coax code as the OpenAgents iOS app.">
+<meta name="twitter:image" content="https://openagents.com/verse/og-verse.jpg">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate" type="text/markdown" href="/realms/haunted-house/index.md">
+<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
+<style>
+html,body{margin:0;height:100%;background:#000;color:#ededed}
+body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
+canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+canvas[data-cursor=pointer]{cursor:pointer}
+main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
+html:not(.gpu) body{overflow:auto}
+a{color:#ff8c1f}
+/* When the GPU draws the page, the text stays for agents, search engines and screen readers only. */
+.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
+</style>
+</head>
+<body>
+<canvas id="coaxial" aria-hidden="true"></canvas>
+<main>
+<h1>Haunted House</h1><p><a href="/realms/haunted-house/index.md">Haunted House</a></p>
+</main>
+<script type="module" src="/coaxial/host.js" data-app="realm" data-realm="haunted-house" data-slot="haunted-house" data-slot-was="realm" data-voice="haunted-house" data-assets="
+  data:/realms/haunted-house/assets/Haunt.pb
+  storage:/realms/haunted-house/assets/Haunt.vertices
+  index:/realms/haunted-house/assets/Haunt.indices
+  layers:/realms/haunted-house/assets/haunt-layer0.jpg|/realms/haunted-house/assets/haunt-layer1.jpg|/realms/haunted-house/assets/haunt-layer2.jpg|/realms/haunted-house/assets/haunt-layer18.jpg|/realms/haunted-house/assets/haunt-layer19.jpg|/realms/haunted-house/assets/haunt-layer20.jpg|/realms/haunted-house/assets/haunt-layer21.jpg|/realms/haunted-house/assets/haunt-layer22.jpg|/realms/haunted-house/assets/haunt-layer24.jpg|/realms/haunted-house/assets/haunt-layer26.jpg|/realms/haunted-house/assets/haunt-layer27.jpg|/realms/haunted-house/assets/haunt-layer28.jpg
+  sound:boo=/realms/haunted-house/assets/haunt-boo.mp3
+  sound:boom=/realms/haunted-house/assets/haunt-boom.mp3
+  sound:bubble=/realms/haunted-house/assets/haunt-bubble.mp3
+  sound:chime=/realms/haunted-house/assets/haunt-chime.mp3
+  sound:click=/realms/haunted-house/assets/haunt-click.mp3
+  sound:creak=/realms/haunted-house/assets/haunt-creak.mp3
+  sound:hiss=/realms/haunted-house/assets/haunt-hiss.mp3
+  sound:jump=/realms/haunted-house/assets/haunt-jump.mp3
+  sound:land=/realms/haunted-house/assets/haunt-land.mp3
+  sound:slam=/realms/haunted-house/assets/haunt-slam.mp3
+  sound:step_grass_1=/realms/haunted-house/assets/haunt-step_grass_1.mp3
+  sound:step_grass_2=/realms/haunted-house/assets/haunt-step_grass_2.mp3
+  sound:step_grass_3=/realms/haunted-house/assets/haunt-step_grass_3.mp3
+  sound:step_metal_1=/realms/haunted-house/assets/haunt-step_metal_1.mp3
+  sound:step_metal_2=/realms/haunted-house/assets/haunt-step_metal_2.mp3
+  sound:step_metal_3=/realms/haunted-house/assets/haunt-step_metal_3.mp3
+  sound:step_stone_1=/realms/haunted-house/assets/haunt-step_stone_1.mp3
+  sound:step_stone_2=/realms/haunted-house/assets/haunt-step_stone_2.mp3
+  sound:step_stone_3=/realms/haunted-house/assets/haunt-step_stone_3.mp3
+  sound:step_wood_1=/realms/haunted-house/assets/haunt-step_wood_1.mp3
+  sound:step_wood_2=/realms/haunted-house/assets/haunt-step_wood_2.mp3
+  sound:step_wood_3=/realms/haunted-house/assets/haunt-step_wood_3.mp3
+  sound:thunder=/realms/haunted-house/assets/haunt-thunder.mp3
+  loop:/realms/haunted-house/assets/haunt-wind_loop.mp3
+  particles:/particles.wgsl"></script>
+</body>
+</html>

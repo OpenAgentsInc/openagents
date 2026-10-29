@@ -1,4 +1,4 @@
-// A Verse realm on the web, drawn by Coax: openagents.com/realm/haunted-house
+// A Verse realm on the web, drawn by Coax: openagents.com/realms/haunted-house
 // first. The world is the Verse engine's own code, unchanged from the iOS app:
 // verse/haunt.coax plays the Haunted House, player.coax walks you through
 // it and grid.coax reads a phone's thumbs, and realm-face.c binds them for

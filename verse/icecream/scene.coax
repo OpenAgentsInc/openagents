@@ -1,4 +1,4 @@
-// Ice Cream Man's scene for the realm (/realm/ice-cream-man): the seed's
+// Ice Cream Man's scene for the realm (/realms/ice-cream-man): the seed's
 // house from mesh.coax and every moving thing world.cpp draws (the kid, the
 // Ice Cream Man, his minions, keys, drops, shots, clouds and the bits
 // flying), packed for the GPU, with play.coax's loop driving the rules. Its

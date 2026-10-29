@@ -11,7 +11,7 @@ Tooling only: it runs on this machine and ships a JPEG.
 
 SHOT is a screenshot taken with coax/web/shot.ts; the crop keeps the HUD out.
 It needs Pillow (pip install pillow, in a venv). /verse/og-verse.jpg came from
-a 2000x1100 shot of /realm/haunted-house with --crop 150,112,1850,1004.
+a 2000x1100 shot of /realms/haunted-house with --crop 150,112,1850,1004.
 """
 import argparse, os, re
 from PIL import Image, ImageChops, ImageDraw, ImageFilter

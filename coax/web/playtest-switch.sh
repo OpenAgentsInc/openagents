@@ -35,7 +35,7 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 # The old map, exactly as it is today: everything to the demo's backend.
 old_map() { printf 'name: %s\ndefaultService: %s/%s\n' "$map" "$B" "$old"; }
 # The moved map. /haunt.html (a shared world, ?visit=ID) goes to the API,
-# which answers 301 to /realm/haunted-house#ID; /api/ still reaches the old
+# which answers 301 to /realms/haunted-house#ID; /api/ still reaches the old
 # service, so tabs already open keep recording until the last import; the
 # dashboard pages move to /admin/analytics; everything else to $to.
 moved_map() {
@@ -79,8 +79,8 @@ smoke() {   # old|moved: every address answers as it should. The edge's front en
     checks=("/|301 https://openagents.com$to?from=playtest"
             "/kiki/index.html|301 https://openagents.com$to?from=playtest"
             "/home.html?x=1|301 https://openagents.com$to?from=playtest"
-            "/haunt.html|301 https://openagents.com/realm/haunted-house?from=playtest"
-            "/haunt.html?visit=planet-06258408&planet=forest|301 https://openagents.com/realm/haunted-house?from=playtest#planet-06258408"
+            "/haunt.html|301 https://openagents.com/realms/haunted-house?from=playtest"
+            "/haunt.html?visit=planet-06258408&planet=forest|301 https://openagents.com/realms/haunted-house?from=playtest#planet-06258408"
             "/analytics.html|301 https://openagents.com/admin/analytics"
             "/api/config|200 ")
   fi

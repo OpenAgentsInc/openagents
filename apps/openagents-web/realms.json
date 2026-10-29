@@ -1,6 +1,6 @@
 {
   "v": "openagents.realms.v1",
-  "about": "Every world on the galaxy and every realm page. coax/web/realms.ts writes realms.coax (the galaxy's table) and realm/<slug>/index.html from it. docs/verse/realm-host.md is the contract.",
+  "about": "Every world on the galaxy and every realm page. coax/web/realms.ts writes realms.coax (the galaxy's table) and realms/<slug>/index.html from it. docs/verse/realm-host.md is the contract.",
   "worlds": [
     { "id": "oa", "name": "OPENAGENTS", "kind": "locked", "orbit": { "r": 0, "a": 0, "size": 0.075 } },
     { "id": "house", "name": "HAUNTED HOUSE", "kind": "open", "orbit": { "r": 0.15, "a": 0, "size": 0.028 },
@@ -15,34 +15,34 @@
         "voice": "haunted-house",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
         "assets": [
-          "data:/realm/haunted-house/assets/Haunt.pb",
-          "storage:/realm/haunted-house/assets/Haunt.vertices",
-          "index:/realm/haunted-house/assets/Haunt.indices",
-          "layers:/realm/haunted-house/assets/haunt-layer0.jpg|/realm/haunted-house/assets/haunt-layer1.jpg|/realm/haunted-house/assets/haunt-layer2.jpg|/realm/haunted-house/assets/haunt-layer18.jpg|/realm/haunted-house/assets/haunt-layer19.jpg|/realm/haunted-house/assets/haunt-layer20.jpg|/realm/haunted-house/assets/haunt-layer21.jpg|/realm/haunted-house/assets/haunt-layer22.jpg|/realm/haunted-house/assets/haunt-layer24.jpg|/realm/haunted-house/assets/haunt-layer26.jpg|/realm/haunted-house/assets/haunt-layer27.jpg|/realm/haunted-house/assets/haunt-layer28.jpg",
-          "sound:boo=/realm/haunted-house/assets/haunt-boo.mp3",
-          "sound:boom=/realm/haunted-house/assets/haunt-boom.mp3",
-          "sound:bubble=/realm/haunted-house/assets/haunt-bubble.mp3",
-          "sound:chime=/realm/haunted-house/assets/haunt-chime.mp3",
-          "sound:click=/realm/haunted-house/assets/haunt-click.mp3",
-          "sound:creak=/realm/haunted-house/assets/haunt-creak.mp3",
-          "sound:hiss=/realm/haunted-house/assets/haunt-hiss.mp3",
-          "sound:jump=/realm/haunted-house/assets/haunt-jump.mp3",
-          "sound:land=/realm/haunted-house/assets/haunt-land.mp3",
-          "sound:slam=/realm/haunted-house/assets/haunt-slam.mp3",
-          "sound:step_grass_1=/realm/haunted-house/assets/haunt-step_grass_1.mp3",
-          "sound:step_grass_2=/realm/haunted-house/assets/haunt-step_grass_2.mp3",
-          "sound:step_grass_3=/realm/haunted-house/assets/haunt-step_grass_3.mp3",
-          "sound:step_metal_1=/realm/haunted-house/assets/haunt-step_metal_1.mp3",
-          "sound:step_metal_2=/realm/haunted-house/assets/haunt-step_metal_2.mp3",
-          "sound:step_metal_3=/realm/haunted-house/assets/haunt-step_metal_3.mp3",
-          "sound:step_stone_1=/realm/haunted-house/assets/haunt-step_stone_1.mp3",
-          "sound:step_stone_2=/realm/haunted-house/assets/haunt-step_stone_2.mp3",
-          "sound:step_stone_3=/realm/haunted-house/assets/haunt-step_stone_3.mp3",
-          "sound:step_wood_1=/realm/haunted-house/assets/haunt-step_wood_1.mp3",
-          "sound:step_wood_2=/realm/haunted-house/assets/haunt-step_wood_2.mp3",
-          "sound:step_wood_3=/realm/haunted-house/assets/haunt-step_wood_3.mp3",
-          "sound:thunder=/realm/haunted-house/assets/haunt-thunder.mp3",
-          "loop:/realm/haunted-house/assets/haunt-wind_loop.mp3",
+          "data:/realms/haunted-house/assets/Haunt.pb",
+          "storage:/realms/haunted-house/assets/Haunt.vertices",
+          "index:/realms/haunted-house/assets/Haunt.indices",
+          "layers:/realms/haunted-house/assets/haunt-layer0.jpg|/realms/haunted-house/assets/haunt-layer1.jpg|/realms/haunted-house/assets/haunt-layer2.jpg|/realms/haunted-house/assets/haunt-layer18.jpg|/realms/haunted-house/assets/haunt-layer19.jpg|/realms/haunted-house/assets/haunt-layer20.jpg|/realms/haunted-house/assets/haunt-layer21.jpg|/realms/haunted-house/assets/haunt-layer22.jpg|/realms/haunted-house/assets/haunt-layer24.jpg|/realms/haunted-house/assets/haunt-layer26.jpg|/realms/haunted-house/assets/haunt-layer27.jpg|/realms/haunted-house/assets/haunt-layer28.jpg",
+          "sound:boo=/realms/haunted-house/assets/haunt-boo.mp3",
+          "sound:boom=/realms/haunted-house/assets/haunt-boom.mp3",
+          "sound:bubble=/realms/haunted-house/assets/haunt-bubble.mp3",
+          "sound:chime=/realms/haunted-house/assets/haunt-chime.mp3",
+          "sound:click=/realms/haunted-house/assets/haunt-click.mp3",
+          "sound:creak=/realms/haunted-house/assets/haunt-creak.mp3",
+          "sound:hiss=/realms/haunted-house/assets/haunt-hiss.mp3",
+          "sound:jump=/realms/haunted-house/assets/haunt-jump.mp3",
+          "sound:land=/realms/haunted-house/assets/haunt-land.mp3",
+          "sound:slam=/realms/haunted-house/assets/haunt-slam.mp3",
+          "sound:step_grass_1=/realms/haunted-house/assets/haunt-step_grass_1.mp3",
+          "sound:step_grass_2=/realms/haunted-house/assets/haunt-step_grass_2.mp3",
+          "sound:step_grass_3=/realms/haunted-house/assets/haunt-step_grass_3.mp3",
+          "sound:step_metal_1=/realms/haunted-house/assets/haunt-step_metal_1.mp3",
+          "sound:step_metal_2=/realms/haunted-house/assets/haunt-step_metal_2.mp3",
+          "sound:step_metal_3=/realms/haunted-house/assets/haunt-step_metal_3.mp3",
+          "sound:step_stone_1=/realms/haunted-house/assets/haunt-step_stone_1.mp3",
+          "sound:step_stone_2=/realms/haunted-house/assets/haunt-step_stone_2.mp3",
+          "sound:step_stone_3=/realms/haunted-house/assets/haunt-step_stone_3.mp3",
+          "sound:step_wood_1=/realms/haunted-house/assets/haunt-step_wood_1.mp3",
+          "sound:step_wood_2=/realms/haunted-house/assets/haunt-step_wood_2.mp3",
+          "sound:step_wood_3=/realms/haunted-house/assets/haunt-step_wood_3.mp3",
+          "sound:thunder=/realms/haunted-house/assets/haunt-thunder.mp3",
+          "loop:/realms/haunted-house/assets/haunt-wind_loop.mp3",
           "particles:/particles.wgsl"
         ]
       } },
@@ -59,11 +59,11 @@
         "slot": "the-grid",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
         "assets": [
-          "data:/realm/the-grid/assets/grid.data",
-          "storage:/realm/the-grid/assets/grid.vertices",
-          "storage:/realm/the-grid/assets/grid.lines",
-          "storage:/realm/the-grid/assets/grid.bones",
-          "index:/realm/the-grid/assets/grid.indices"
+          "data:/realms/the-grid/assets/grid.data",
+          "storage:/realms/the-grid/assets/grid.vertices",
+          "storage:/realms/the-grid/assets/grid.lines",
+          "storage:/realms/the-grid/assets/grid.bones",
+          "index:/realms/the-grid/assets/grid.indices"
         ]
       } },
     { "id": "everglade", "name": "EVERGLADE", "kind": "open", "orbit": { "r": 0.34, "a": 4.2, "size": 0.032 },
@@ -72,11 +72,11 @@
         "title": "Everglade",
         "description": "Everglade, the forest city in a forest you leave only by its trails: walk its streets and rooms, talk to its people, who remember you, and take quests from the board out to the deep wood, the ruins and the river crossing. One of them earns a flock of birds that follows you.",
         "alt": "Everglade, the forest city: take a quest from the board",
-        "card": "/realm/everglade/og.jpg",
+        "card": "/realms/everglade/og.jpg",
         "module": "everglade",
         "slot": "everglade",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realm/everglade/assets/everglade.pack"]
+        "assets": ["pack:/realms/everglade/assets/everglade.pack"]
       } },
     { "id": "deadgears", "name": "DEAD GEARS", "kind": "open", "orbit": { "r": 0.3, "a": 2.9, "size": 0.03 },
       "realm": {
@@ -87,7 +87,7 @@
         "module": "deadgears",
         "slot": "dead-gears",
         "golden": { "lit": 0.05, "settle": 3000, "blocks": 6 },
-        "assets": ["index:/realm/dead-gears/assets/DeadGears.indices"]
+        "assets": ["index:/realms/dead-gears/assets/DeadGears.indices"]
       } },
     { "id": "fixture", "name": "FIXTURE REALM", "kind": "open", "listed": false, "orbit": { "r": 0.26, "a": 1.9, "size": 0.026 },
       "realm": {
@@ -98,7 +98,7 @@
         "module": "fixture",
         "slot": "fixture",
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realm/fixture/assets/fixture.pack"]
+        "assets": ["pack:/realms/fixture/assets/fixture.pack"]
       } },
     { "id": "drop", "name": "A FIRST REALM", "kind": "open", "listed": false, "orbit": { "r": 0.22, "a": 5.2, "size": 0.024 },
       "realm": {
@@ -109,7 +109,7 @@
         "module": "droprealm",
         "slot": "drop",
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realm/fixture/assets/fixture.pack"]
+        "assets": ["pack:/realms/fixture/assets/fixture.pack"]
       } },
     { "id": "sandbox", "name": "SANDBOX", "kind": "open", "listed": false, "orbit": { "r": 0.36, "a": 1.25, "size": 0.03 },
       "realm": {
@@ -121,22 +121,22 @@
         "slot": "sandbox",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
         "assets": [
-          "data:/realm/sandbox/assets/Sandbox.pb",
-          "storage:/realm/haunted-house/assets/Haunt.vertices",
-          "index:/realm/haunted-house/assets/Haunt.indices",
-          "layers:/realm/haunted-house/assets/haunt-layer0.jpg|/realm/haunted-house/assets/haunt-layer1.jpg|/realm/haunted-house/assets/haunt-layer2.jpg|/realm/haunted-house/assets/haunt-layer18.jpg|/realm/haunted-house/assets/haunt-layer19.jpg|/realm/haunted-house/assets/haunt-layer20.jpg|/realm/haunted-house/assets/haunt-layer21.jpg|/realm/haunted-house/assets/haunt-layer22.jpg|/realm/haunted-house/assets/haunt-layer24.jpg|/realm/haunted-house/assets/haunt-layer26.jpg|/realm/haunted-house/assets/haunt-layer27.jpg|/realm/haunted-house/assets/haunt-layer28.jpg",
-          "sound:click=/realm/haunted-house/assets/haunt-click.mp3",
-          "sound:jump=/realm/haunted-house/assets/haunt-jump.mp3",
-          "sound:land=/realm/haunted-house/assets/haunt-land.mp3",
-          "sound:step_grass_1=/realm/haunted-house/assets/haunt-step_grass_1.mp3",
-          "sound:step_grass_2=/realm/haunted-house/assets/haunt-step_grass_2.mp3",
-          "sound:step_grass_3=/realm/haunted-house/assets/haunt-step_grass_3.mp3",
-          "sound:step_stone_1=/realm/haunted-house/assets/haunt-step_stone_1.mp3",
-          "sound:step_stone_2=/realm/haunted-house/assets/haunt-step_stone_2.mp3",
-          "sound:step_stone_3=/realm/haunted-house/assets/haunt-step_stone_3.mp3",
-          "sound:step_wood_1=/realm/haunted-house/assets/haunt-step_wood_1.mp3",
-          "sound:step_wood_2=/realm/haunted-house/assets/haunt-step_wood_2.mp3",
-          "sound:step_wood_3=/realm/haunted-house/assets/haunt-step_wood_3.mp3",
+          "data:/realms/sandbox/assets/Sandbox.pb",
+          "storage:/realms/haunted-house/assets/Haunt.vertices",
+          "index:/realms/haunted-house/assets/Haunt.indices",
+          "layers:/realms/haunted-house/assets/haunt-layer0.jpg|/realms/haunted-house/assets/haunt-layer1.jpg|/realms/haunted-house/assets/haunt-layer2.jpg|/realms/haunted-house/assets/haunt-layer18.jpg|/realms/haunted-house/assets/haunt-layer19.jpg|/realms/haunted-house/assets/haunt-layer20.jpg|/realms/haunted-house/assets/haunt-layer21.jpg|/realms/haunted-house/assets/haunt-layer22.jpg|/realms/haunted-house/assets/haunt-layer24.jpg|/realms/haunted-house/assets/haunt-layer26.jpg|/realms/haunted-house/assets/haunt-layer27.jpg|/realms/haunted-house/assets/haunt-layer28.jpg",
+          "sound:click=/realms/haunted-house/assets/haunt-click.mp3",
+          "sound:jump=/realms/haunted-house/assets/haunt-jump.mp3",
+          "sound:land=/realms/haunted-house/assets/haunt-land.mp3",
+          "sound:step_grass_1=/realms/haunted-house/assets/haunt-step_grass_1.mp3",
+          "sound:step_grass_2=/realms/haunted-house/assets/haunt-step_grass_2.mp3",
+          "sound:step_grass_3=/realms/haunted-house/assets/haunt-step_grass_3.mp3",
+          "sound:step_stone_1=/realms/haunted-house/assets/haunt-step_stone_1.mp3",
+          "sound:step_stone_2=/realms/haunted-house/assets/haunt-step_stone_2.mp3",
+          "sound:step_stone_3=/realms/haunted-house/assets/haunt-step_stone_3.mp3",
+          "sound:step_wood_1=/realms/haunted-house/assets/haunt-step_wood_1.mp3",
+          "sound:step_wood_2=/realms/haunted-house/assets/haunt-step_wood_2.mp3",
+          "sound:step_wood_3=/realms/haunted-house/assets/haunt-step_wood_3.mp3",
           "particles:/particles.wgsl"
         ]
       } },
@@ -148,9 +148,9 @@
         "alt": "The kid in the Ice Cream Man's house: find three keys and get out before he scoops you",
         "module": "icecream",
         "slot": "ice-cream-man",
-        "card": "/realm/ice-cream-man/og.jpg",
+        "card": "/realms/ice-cream-man/og.jpg",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
-        "assets": ["index:/realm/ice-cream-man/assets/IceCream.indices"]
+        "assets": ["index:/realms/ice-cream-man/assets/IceCream.indices"]
       } },
     { "id": "villa", "name": "PLANETARY VILLA", "kind": "open", "listed": false, "orbit": { "r": 0.42, "a": 5.6, "size": 0.034 },
       "realm": {
@@ -161,9 +161,9 @@
         "module": "villa",
         "slot": "hecates-cemetery",
         "uploads": "image/*,video/*",
-        "card": "/realm/hecates-cemetery/card.jpg",
+        "card": "/realms/hecates-cemetery/card.jpg",
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
-        "assets": ["index:/realm/hecates-cemetery/assets/Villa.indices", "particles:/particles.wgsl"]
+        "assets": ["index:/realms/hecates-cemetery/assets/Villa.indices", "particles:/particles.wgsl"]
       } }
   ]
 }

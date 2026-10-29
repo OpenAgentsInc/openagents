@@ -34,7 +34,7 @@ native kernel, is separate work.
 | The browser host | `coax/web/host.js`: WebGPU, the frame clock, state in one `WebAssembly.Memory`, code and shader swaps, the dev error note, the `?probe` frame readback | Works for apps with one uniform block and one vertex stream |
 | Coax → Wasm | `coax/web/wasm.sh`: `coax c` → clang wasm32-wasip1 → wasm-ld; dev (`-O1`, parallel) and release (`-O2`) | The splash is 24 KB (release) |
 | Dev server | `coax/web/serve.c` + `serve.sh` (`coax serve`): static files, a watcher, rebuilds, `/coaxial/live` | Measured: an engine rebuild in 118–135 ms, shader and page messages, compiler errors with the `.coax` location |
-| Realm host | `apps/openagents-web/realms.json` (every galaxy world and realm page), `coax/web/realms.ts` (writes `realms.coax` and `realm/<slug>/index.html`), host.js `data-realm`/`data-slot` (a save slot per realm), `fixture.coax` (the smallest realm), `pack:URL` assets (a realm's asset pack, `verse/tools/pack_realm.py`) | The contract a realm follows: [docs/verse/realm-host.md](../docs/verse/realm-host.md) |
+| Realm host | `apps/openagents-web/realms.json` (every galaxy world and realm page), `coax/web/realms.ts` (writes `realms.coax` and `realms/<slug>/index.html`), host.js `data-realm`/`data-slot` (a save slot per realm), `fixture.coax` (the smallest realm), `pack:URL` assets (a realm's asset pack, `verse/tools/pack_realm.py`) | The contract a realm follows: [docs/verse/realm-host.md](../docs/verse/realm-host.md) |
 | Staging deploy | `coax/web/deploy.sh APP SERVICE` (`coax deploy`, for now): release build, content-named wasm/shader/host files, a direct parallel upload of only what changed to the app's bucket (`upload.py`). `cdn.sh` (one time) puts Cloud CDN and a load balancer in front of the bucket; `deploy.sh --server` builds the static server image once for the Cloud Run fallback, which mounts the same bucket | A deploy takes about 1.2 s (0.4 s build, 0.8 s upload); staging.openagents.com |
 
 Not built: `coax wgsl` (shaders are hand-written WGSL for now), the
@@ -303,7 +303,7 @@ Skipping staging takes `--skip-staging --yes-skip-staging`, for emergencies.
 
 **Routing.** One global load balancer (`coaxial-openagents-web-staging`, IP 136.69.24.60) serves both hosts:
 - staging.openagents.com goes to the staging bucket;
-- openagents.com sends `/`, `/favicon.svg`, `/build/*`, `/coaxial/*`, `/realm/*`, `/projects` and `/projects/*` to the production bucket, answers the old `/project/*` with a 301 to `/projects/*` (path kept; both hosts), and sends everything else to the Cloud Run `coder` service until it is retired ([deprecation plan](../docs/2026-10-28-coder-service-deprecation.md)).
+- openagents.com sends `/`, `/favicon.svg`, `/build/*`, `/coaxial/*`, `/realms/*`, `/projects` and `/projects/*` to the production bucket, answers the old `/project/*` with a 301 to `/projects/*` and the old `/realm` and `/realm/*` with a 301 to `/realms/*` (path and query kept; a hash such as `#commons` is the browser's and survives the move; both hosts), and sends everything else to the Cloud Run `coder` service until it is retired ([deprecation plan](../docs/2026-10-28-coder-service-deprecation.md)).
 
 Moving a route off `coder` is one path rule. DNS for openagents.com is a single A record at Cloudflare. The records it replaced (Cloud Run's four A and four AAAA) are kept in `~/work/.secrets/openagents-com-dns-before-coaxial.json`.
 

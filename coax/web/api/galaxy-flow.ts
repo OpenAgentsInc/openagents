@@ -63,7 +63,7 @@ try {
     await send("Page.navigate", { url: origin + "/404.html" })
     await Bun.sleep(800)
     await js(`localStorage.setItem("verse.player", ${JSON.stringify(JSON.stringify(player))}); document.cookie = "verse-automation=galaxy-flow; path=/"; 1`)
-    await send("Page.navigate", { url: origin + "/realm/haunted-house#" + world })
+    await send("Page.navigate", { url: origin + "/realms/haunted-house#" + world })
     await Bun.sleep(9000)
   }
 
@@ -87,7 +87,7 @@ try {
   const url = await js("location.href")
   const kept = JSON.parse((await js(`localStorage.getItem("verse.player")`)) || "null")
   const pid = String(url).split("#")[1] ?? ""
-  check("a guest sets up a realm and its world opens", String(url).includes("/realm/haunted-house#planet-") && kept?.key, url)
+  check("a guest sets up a realm and its world opens", String(url).includes("/realms/haunted-house#planet-") && kept?.key, url)
   const mine = await api("GET", "planets/mine", undefined, kept?.key)
   check("the server keeps it as theirs, named as typed", mine.body.planet?.id === pid && mine.body.planet?.name === "Flow Den", mine.body)
   const list = await api("GET", "planets?after=" + Math.max(0, mine.body.planet.n - 1))

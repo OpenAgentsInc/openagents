@@ -4,7 +4,7 @@ Status: plan and blockout, October 28, 2026 (eg-design); the forest and
 its paths, October 29 (eg-forest); the kit buildings and seven
 interiors, October 29 (eg-buildings); its people, who talk and remember
 you, October 29 (eg-people). The city is
-walkable at https://openagents.com/realm/everglade (not on the galaxy until
+walkable at https://openagents.com/realms/everglade (not on the galaxy until
 eg-launch; `/verse/galaxy?realms=all` shows it). The order of the work after
 this is in [realms-port.md](realms-port.md).
 The previous Everglade, on the Rust engine, is kept for parity in
@@ -236,7 +236,7 @@ than 6.5 m from the flock. Each bird keeps its last ten places (one every
 
 ## The blockout
 
-`/realm/everglade` (module `everglade`, save slot `everglade`) is the plan
+`/realms/everglade` (module `everglade`, save slot `everglade`) is the plan
 as grey boxes at full size, built on the realm host
 ([realm-host.md](realm-host.md)):
 
@@ -269,7 +269,7 @@ backs into them, so the only ways out of the city are the trails.
 - **Along the tree line:** `Bush_Common_Flowers`, `Fern_1`,
   `Rock_Medium_1` and `_2`.
 - **The pack:** `verse/packs/everglade.json`, compiled to
-  `realm/everglade/assets/everglade.pack` (4.3 MB, budget 5 MB) with
+  `realms/everglade/assets/everglade.pack` (4.3 MB, budget 5 MB) with
   `licences.md`; it carries the town's 44 Medieval Village and Fantasy
   Props pieces as well as the forest's. It also carries 1,024 identity indices (`"identity"`), so
   the city's shapes, drawn from the vertex index alone, share the pack's

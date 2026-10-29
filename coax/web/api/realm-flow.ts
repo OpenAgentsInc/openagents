@@ -65,7 +65,7 @@ try {
     await send("Page.navigate", { url: origin + "/404.html" })
     await Bun.sleep(800)
     await js(`localStorage.setItem("verse.player", ${JSON.stringify(JSON.stringify(player))}); document.cookie = "verse-automation=realm-flow; path=/"; 1`)
-    await send("Page.navigate", { url: origin + "/realm/haunted-house#" + world })
+    await send("Page.navigate", { url: origin + "/realms/haunted-house#" + world })
     await Bun.sleep(9000)
   }
 

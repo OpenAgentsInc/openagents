@@ -70,12 +70,12 @@ const PAGES: Record<string, Page> = { landing: { path: "/verse", lit: 0.004, set
 // Every realm, and the open worlds in the order the galaxy's arrows step
 // through them with ?realms=all (realms.json's order).
 const table = worlds(), open = table.filter((w) => w.kind === "open" && w.realm)
-for (const w of open) PAGES[w.realm!.slug] = { path: `/realm/${w.realm!.slug}`, ...w.realm!.golden }
+for (const w of open) PAGES[w.realm!.slug] = { path: `/realms/${w.realm!.slug}`, ...w.realm!.golden }
 // Realms the galaxy doesn't list yet: with no golden, their shot waits in pending/ (golden-policy.ts).
 const unlisted = new Set(open.filter((w) => w.listed === false).map((w) => w.realm!.slug))
 const pendingDir = process.env.GOLDENS_PENDING || join(goldens, "pending")
 // Pages of their own the galaxy doesn't open (not in realms.json), walked by their address.
-const BY_ADDRESS: Record<string, Page> = { garden: { path: "/realm/garden", lit: 0.5, settle: 3000, blocks: 6 } }
+const BY_ADDRESS: Record<string, Page> = { garden: { path: "/realms/garden", lit: 0.5, settle: 3000, blocks: 6 } }
 for (const [name, page] of Object.entries(BY_ADDRESS)) PAGES[name] ??= page
 type Name = string
 
@@ -188,7 +188,7 @@ async function compareInputs(name: string, at: string): Promise<string> {
   let page: unknown = BY_ADDRESS[name] ?? (name === "landing" || name === "galaxy" ? PAGES[name] : null), listed: unknown = null
   if (table && !page) {
     const w = (JSON.parse(new TextDecoder().decode(table)).worlds as World[]).find((w) => w.kind === "open" && w.realm?.slug === name)
-    page = w ? { path: `/realm/${name}`, ...w.realm!.golden } : null; listed = w?.listed ?? null
+    page = w ? { path: `/realms/${name}`, ...w.realm!.golden } : null; listed = w?.listed ?? null
   }
   return sha(JSON.stringify([golden ? sha(golden) : null, self ? sha(self) : null, page, listed, BLOCK, SHADE]))
 }

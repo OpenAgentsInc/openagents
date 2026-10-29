@@ -473,13 +473,13 @@ TRACK_DISCLOSURE :: "We save what you do here, including what you say and type, 
   t: [1] Track;
   track_init(t[..], "haunt");
   #assert !track_begin(t[..], "click");   // nothing before the facts
-  facts := "tab=0123456789abcdef\nfresh=1\nvisitor=fedcba9876543210\nnow=1793200000000\nnav=812.5\nua=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36\nlang=en-US\ntz=America/Chicago\nsw=1512\nsh=982\nvw=1280\nvh=800\ndpr=2\ncoarse=0\ntouch=0\ngpu=1\nurl=https://openagents.com/realm/haunted-house?utm_source=x\nref=https://news.ycombinator.com/item?id=1\nhidden=0\nwebdriver=0";
+  facts := "tab=0123456789abcdef\nfresh=1\nvisitor=fedcba9876543210\nnow=1793200000000\nnav=812.5\nua=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36\nlang=en-US\ntz=America/Chicago\nsw=1512\nsh=982\nvw=1280\nvh=800\ndpr=2\ncoarse=0\ntouch=0\ngpu=1\nurl=https://openagents.com/realms/haunted-house?utm_source=x\nref=https://news.ycombinator.com/item?id=1\nhidden=0\nwebdriver=0";
   #assert track_message(t[..], HOST_PAGE, facts);
   #assert t[0].count == 2 && cast(string) t[0].sid[0..<t[0].sid_n] == "c0123456789abcdef";
   body := cast(string) t[0].buf[0..<t[0].buf_n];
   #assert text_has(body, "{\"ev\":\"session-start\",\"page\":\"haunt\",\"ct\":1793200000000,\"p\":{\"pid\":\"fedcba9876543210\",\"rev\":\"coaxial\",\"os\":\"macOS\",\"browser\":\"Chrome 152\"");
   #assert text_has(body, "\"dpr\":2,\"lang\":\"en-US\",\"tz\":\"America/Chicago\",\"gpu\":true,\"ref\":\"news.ycombinator.com\"");
-  #assert text_has(body, "{\"ev\":\"page-view\",\"page\":\"haunt\",\"ct\":1793200000000,\"p\":{\"pid\":\"fedcba9876543210\",\"from\":\"news.ycombinator.com\",\"path\":\"/realm/haunted-house\",\"q\":\"utm_source=x\"");
+  #assert text_has(body, "{\"ev\":\"page-view\",\"page\":\"haunt\",\"ct\":1793200000000,\"p\":{\"pid\":\"fedcba9876543210\",\"from\":\"news.ycombinator.com\",\"path\":\"/realms/haunted-house\",\"q\":\"utm_source=x\"");
   track_world(t[..], "haunted-house");
   track_frame(t[..], 0.5, 2560, 1600, 2);
   track_loaded(t[..], "load-engine");

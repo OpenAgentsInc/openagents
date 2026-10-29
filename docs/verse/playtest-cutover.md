@@ -44,8 +44,8 @@ project `openagentsgemini`, the automation account:
 
 openagents.com is a different load balancer (`coaxial-openagents-web-staging`,
 136.69.24.60, certificate map with openagents.com and staging.openagents.com).
-`/verse`, `/verse/galaxy`, `/realm/*`, `/admin/analytics` go to the site's
-bucket and `/api/*` to Cloud Run `oa-api` there.
+`/verse`, `/verse/galaxy`, `/realms/*`, `/admin/analytics` go to the site's
+bucket and `/api/*` to Cloud Run `oa-api` there; the old `/realm/*` answers 301 to `/realms/*`, path, query and hash kept.
 
 ## 2. Why the URL map and not DNS
 
@@ -71,8 +71,8 @@ so the dashboard tells arrivals from the old host apart.
 | Old address on playtest.openagents.com | Answer | New address |
 | --- | --- | --- |
 | `/`, `/index.html`, `/kiki/…` (the Kiki landing), `/home.html` | 301 (URL map), query dropped | `/verse?from=playtest` (the landing; its galaxy is `/verse/galaxy`, reached from it) |
-| `/haunt.html` (the Haunted House; the Share link) | 301 from `oa-api` (`/api/playtest/old-link`) | `/realm/haunted-house?from=playtest` |
-| `/haunt.html?visit=ID&planet=…` (a shared or invited world) | 301 from `oa-api` | `/realm/haunted-house?from=playtest#ID` (that world; the realm page's hash names it). IDs are `[a-z0-9-]{1,64}`; anything else opens the house |
+| `/haunt.html` (the Haunted House; the Share link) | 301 from `oa-api` (`/api/playtest/old-link`) | `/realms/haunted-house?from=playtest` |
+| `/haunt.html?visit=ID&planet=…` (a shared or invited world) | 301 from `oa-api` | `/realms/haunted-house?from=playtest#ID` (that world; the realm page's hash names it). IDs are `[a-z0-9-]{1,64}`; anything else opens the house |
 | `/analytics.html`, `/feedback.html` | 301 (URL map) | `/admin/analytics` |
 | `/api/*` | still the old service | unchanged, so tabs already open keep saving and recording until the last import (section 5) |
 | everything else (`/grid.html`, `/town.html`, other labs) | 301 (URL map) | `/verse?from=playtest` (not ported) |
@@ -190,8 +190,8 @@ alternative if the owner prefers that the old map is never edited.
 
 Every check passed in the settled passes: `/`, `/kiki/index.html` and
 `/home.html?x=1` → `/verse?from=playtest`; `/haunt.html` →
-`/realm/haunted-house?from=playtest`; `/haunt.html?visit=planet-06258408…` →
-`/realm/haunted-house?from=playtest#planet-06258408`; `/analytics.html` →
+`/realms/haunted-house?from=playtest`; `/haunt.html?visit=planet-06258408…` →
+`/realms/haunted-house?from=playtest#planet-06258408`; `/analytics.html` →
 `/admin/analytics`; `/api/config` 200 from the old service. Both targets draw
 in headless Chrome (the landing at 390 px, the shared world's house at
 1280 px).
@@ -230,7 +230,7 @@ on `aethyr-demo-00003-z68`, and https://playtest.openagents.com/ answers 200.
    `source`).
 3. On a phone and a desktop: openagents.com/verse → ENTER (guest) → the
    galaxy → the Haunted House, and an email entry.
-4. An old shared world opens: https://openagents.com/realm/haunted-house#planet-06258408.
+4. An old shared world opens: https://openagents.com/realms/haunted-house#planet-06258408.
 5. That guests' progress on the old host doesn't follow them (section 5) is
    acceptable.
 6. Which target: main's `/verse`, or a pinned demo (`/demo/playtest/verse`).

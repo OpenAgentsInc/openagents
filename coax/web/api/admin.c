@@ -305,8 +305,9 @@ static void overview(out_buf *o, PGconn *db, const char *const *f) {
   section(o, db, "WHERE THEY CAME FROM", "", "FROM|SESSIONS", KEPT
     "SELECT coalesce(nullif(p->>'ref', ''), 'direct'), count(*)::text FROM e WHERE ev = 'session-start' "
     "GROUP BY 1 ORDER BY count(*) DESC LIMIT 15", 4, f);
+  // A realm's old address (/realm/<slug>, before October 29) counts with its new one (/realms/<slug>).
   section(o, db, "PAGES", "", "PAGE|VIEWS", KEPT
-    "SELECT coalesce(nullif(p->>'path', ''), page), count(*)::text FROM e WHERE ev IN ('page-view', 'landing') "
+    "SELECT regexp_replace(coalesce(nullif(p->>'path', ''), page), '^/realm(/|$)', '/realms\\1'), count(*)::text FROM e WHERE ev IN ('page-view', 'landing') "
     "GROUP BY 1 ORDER BY count(*) DESC LIMIT 15", 4, f);
   section(o, db, "PLACES", "", "COUNTRY|PLACE|SESSIONS", KEPT
     "SELECT coalesce(x.region, '?'), coalesce(initcap(x.city), '') || coalesce(', ' || x.subdivision, ''), count(*)::text "

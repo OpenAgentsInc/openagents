@@ -284,7 +284,7 @@ static void share(const request *q, PGconn *db, const char *slug) {
   PGresult *r = PQexecParams(db, "SELECT name, line, born, died FROM villa.pets WHERE slug = $1 AND status = 'placed'", 1, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     PQclear(r);
-    const char *gone = "<!doctype html><meta charset=utf-8><title>Hecate's Cemetery</title><main><h1>Hecate's Cemetery</h1><a href=\"/realm/hecates-cemetery/\">Hecate's Cemetery</a></main>";
+    const char *gone = "<!doctype html><meta charset=utf-8><title>Hecate's Cemetery</title><main><h1>Hecate's Cemetery</h1><a href=\"/realms/hecates-cemetery/\">Hecate's Cemetery</a></main>";
     api_respond(q->fd, 404, "text/html; charset=utf-8", NULL, gone, strlen(gone));
     return;
   }
@@ -297,12 +297,12 @@ static void share(const request *q, PGconn *db, const char *slug) {
   snprintf(title, sizeof title, "%s, in Hecate's Cemetery", name);
   char dd[300]; html(dd, sizeof dd, dates);
   snprintf(desc, sizeof desc, "%s%s", dd, *line ? line : "A memorial in the moonlit garden of Planetary Villa.");
-  snprintf(to, sizeof to, "/realm/hecates-cemetery/#m/%s", slug);
+  snprintf(to, sizeof to, "/realms/hecates-cemetery/#m/%s", slug);
   snprintf(page, sizeof page,
            "<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\">"
            "<title>%s</title><meta name=description content=\"%s\">"
            "<meta property=og:title content=\"%s\"><meta property=og:description content=\"%s\">"
-           "<meta property=og:image content=\"%s/realm/hecates-cemetery/card.jpg\"><meta property=og:url content=\"%s/api/villa/m/%s\">"
+           "<meta property=og:image content=\"%s/realms/hecates-cemetery/card.jpg\"><meta property=og:url content=\"%s/api/villa/m/%s\">"
            "<meta name=twitter:card content=summary_large_image><meta http-equiv=refresh content=\"0;url=%s\"></head>"
            "<body style=\"background:#05070d;color:#cfd8ee\"><main><h1>%s</h1><a href=\"%s\">%s</a></main></body></html>",
            title, desc, title, desc, origin(), origin(), slug, to, name, to, title);

@@ -4,16 +4,16 @@
 //
 // The landing, as playtest.openagents.com drew it: CREATE YOUR WORLD over
 // ENTER THE VERSE, the one line about the house, and PLAYTEST NOW, which
-// opens the Haunted House (/realm/haunted-house) directly. No email is asked for; one this browser gave the old
+// opens the Haunted House (/realms/haunted-house) directly. No email is asked for; one this browser gave the old
 // playtest is still joined again (POST /api/playtest/join, how "return").
 //
 // The galaxy: the playtest's worlds turning on their orbits, from the realm
 // host's table (realms.json, written into realms.coax): an open world opens
-// its realm's page (/realm/<slug>); only the Haunted House has a tag under
+// its realm's page (/realms/<slug>); only the Haunted House has a tag under
 // it. Coding is coming later, and Blue Rush and Big Brain are locked. A world the table
 // doesn't list (the fixture realm) shows only with ?realms=all. Drag turns it. Players' own
 // realms (pt-planets) circle outside them, the newest REALMS, and each
-// opens its world (/realm/haunted-house#<id>); MAKE YOUR REALM sets one up
+// opens its world (/realms/haunted-house#<id>); MAKE YOUR REALM sets one up
 // (a name, its kind, look, view and time of day) on the server
 // (/api/playtest/planets), or YOUR REALM opens the one you have.
 //
@@ -524,7 +524,7 @@ verse_facts :: (s: [] VerseState, facts: string) #export_c {
 
 open_realm :: (s: [] VerseState, id: string) {
   if s[0].next_n > 0 || s[0].action != 0 || !world_id_ok(id) { return; }
-  n := put(s[0].next[..], 0, "/realm/haunted-house#");
+  n := put(s[0].next[..], 0, "/realms/haunted-house#");
   s[0].next_n = put(s[0].next[..], n, id);
   s[0].answered = true; s[0].going_at = s[0].time;
 }
@@ -1338,7 +1338,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   click(s[..], t[..], s[0].boxes[BTN_ENTER]);
   #assert batch_has(t[..], "\"ev\":\"start\"") && batch_has(t[..], "\"how\":\"guest\"") && !s[0].req_ready;
   redraw(s[..], t[..], 0.016);
-  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/haunted-house";
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/haunted-house";
   take_action(s[..]);
   click(s[..], t[..], s[0].boxes[BTN_ENTER]);
   redraw(s[..], t[..], 0.016);
@@ -1396,12 +1396,12 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   poke(s[..], t[..], q.x, q.y, POINTER_DOWN, 0, 1);
   poke(s[..], t[..], q.x, q.y, POINTER_UP, 0, 1);
   redraw(s[..], t[..], 0.016);
-  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/haunted-house";
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/haunted-house";
   #assert batch_has(t[..], "\"open\":true");
 }
 
 #test "every open world opens its own realm page; an unlisted one only with realms=all" {
-  #assert PLANET_ID[HOUSE] == "house" && PLANET_ID[CODING] == "coding" && PLANET_PATH[HOUSE] == "/realm/haunted-house";
+  #assert PLANET_ID[HOUSE] == "house" && PLANET_ID[CODING] == "coding" && PLANET_PATH[HOUSE] == "/realms/haunted-house";
   fixture := -1;
   for p: 0..<PLANETS {
     #assert (PLANET_KIND[p] == KIND_OPEN) == (PLANET_PATH[p].count > 0);
@@ -1418,7 +1418,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
     poke(s[..], t[..], q.x, q.y, POINTER_DOWN, 0, 1);
     poke(s[..], t[..], q.x, q.y, POINTER_UP, 0, 1);
     redraw(s[..], t[..], 0.016);
-    #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/fixture";
+    #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/fixture";
   }
 }
 
@@ -1442,7 +1442,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
     #assert verse_key(s[..], t[..], KEY_RIGHT, 0) && s[0].over == HOUSE;
     #assert verse_key(s[..], t[..], KEY_ENTER, 0);
     redraw(s[..], t[..], 0.016);
-    #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/haunted-house";
+    #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/haunted-house";
   }
 }
 
@@ -1503,11 +1503,11 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   poke(s[..], t[..], q.x, q.y, POINTER_DOWN, 0, 1);
   poke(s[..], t[..], q.x, q.y, POINTER_UP, 0, 1);
   frame(s[..], t[..], 0.016);
-  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/haunted-house#planet-b";
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/haunted-house#planet-b";
   take_action(s[..]);
   click(s[..], t[..], s[0].boxes[BTN_REALM]);
   frame(s[..], t[..], 0.016);
-  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/haunted-house#planet-mine1";
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/haunted-house#planet-mine1";
 }
 
 #test "a guest with no key makes a realm: a key first, kept, then the realm, then it opens" {
@@ -1540,7 +1540,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   verse_requested(s[..], 2);
   verse_message(s[..], t[..], HTTP_KIND + 2, "200\n{\"id\": \"planet-feed\", \"n\": 5, \"name\": \"Ann's Den\"}");
   frame(s[..], t[..], 0.016);
-  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/haunted-house#planet-feed";
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/haunted-house#planet-feed";
   #assert batch_has(t[..], "planet-create") && !batch_has(t[..], "k-secret");
 }
 
