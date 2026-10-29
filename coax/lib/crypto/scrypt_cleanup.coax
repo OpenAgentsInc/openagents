@@ -1,0 +1,98 @@
+// Lifecycle policy for a future NIP-49 scrypt adapter. Effects are reported
+// by the host; this file alone does not erase memory or run scrypt.
+#authority;
+
+#test "success is withheld until both registered regions are erased" {
+  s:=sc_begin();#assert s.phase==SC_RUN;
+  #assert !sc_visible(s);
+  s=sc_stop(s,SC_SUCCESS);#assert s.phase==SC_CLEAN && s.reason==SC_SUCCESS;
+  #assert !sc_visible(s);
+  s=sc_ack(s,SC_SCRATCH,false);#assert s.pending==3 && !sc_visible(s);
+  s=sc_ack(s,SC_SCRATCH,true);#assert s.pending==2 && !sc_visible(s);
+  s=sc_ack(s,SC_STATE,true);#assert s.phase==SC_DONE && s.pending==0 && !sc_visible(s);
+  #assert sc_ack(s,SC_STATE,true).phase==SC_DONE;
+  #assert sc_visible(sc_publish(s));
+  cancelled:=sc_stop(s,SC_CANCEL);#assert cancelled.phase==SC_CLEAN && cancelled.pending==SC_KEY && !sc_visible(sc_publish(cancelled));
+  cancelled=sc_ack(cancelled,SC_KEY,true);#assert cancelled.phase==SC_DONE && !sc_visible(cancelled);
+  #assert sc_stop(sc_publish(s),SC_FAILURE).reason==SC_SUCCESS;
+}
+#test "failure and cancellation never expose a result" {
+  for reason:SC_FAILURE..<(SC_CANCEL+1) {
+    s:=sc_stop(sc_begin(),reason);#assert s.pending==7 && !sc_visible(s);
+    s=sc_ack(s,SC_STATE,true);#assert s.pending==5 && s.phase==SC_CLEAN;
+    s=sc_ack(s,SC_SCRATCH,true);#assert s.phase==SC_CLEAN && s.pending==4;
+    s=sc_ack(s,SC_KEY,true);#assert s.phase==SC_DONE && !sc_visible(s);
+  }
+}
+#test "invalid transitions and states fail closed" {
+  s:=sc_begin();#assert sc_valid(s);
+  #assert sc_ack(s,SC_SCRATCH,true).phase==SC_RUN;
+  #assert !sc_visible(sc_publish(s));
+  #assert sc_stop(s,0).phase==SC_RUN;
+  #assert sc_stop(s,SC_CANCEL+1).phase==SC_RUN;
+  s=sc_stop(s,SC_SUCCESS);
+  #assert sc_stop(s,SC_SUCCESS).reason==SC_SUCCESS;
+  cancelled:=sc_stop(s,SC_CANCEL);#assert cancelled.reason==SC_CANCEL && cancelled.pending==7;
+  cancelled=sc_ack(cancelled,SC_STATE,true);cancelled=sc_ack(cancelled,SC_SCRATCH,true);cancelled=sc_ack(cancelled,SC_KEY,true);#assert !sc_visible(cancelled);
+  failed:=sc_stop(s,SC_FAILURE);#assert failed.reason==SC_FAILURE;
+  #assert sc_stop(failed,SC_SUCCESS).reason==SC_FAILURE;
+  #assert sc_stop(failed,SC_CANCEL).reason==SC_FAILURE;
+  #assert sc_ack(s,0,true).pending==3;
+  #assert sc_ack(s,3,true).pending==3;
+  s=sc_ack(s,SC_STATE,true);#assert sc_ack(s,SC_STATE,true).pending==1;
+  bad:=ScryptCleanup.{phase=SC_CLEAN,reason=0,pending=1};
+  #assert sc_ack(bad,SC_SCRATCH,true).pending==1;
+  malformed:=ScryptCleanup.{phase=SC_DONE,reason=SC_SUCCESS,pending=1};
+  #assert !sc_valid(malformed) && !sc_visible(malformed);
+  #assert sc_publish(malformed).phase==SC_DONE;
+  malformed=ScryptCleanup.{phase=SC_CLEAN,reason=SC_SUCCESS,pending=0};#assert !sc_valid(malformed);
+  malformed=ScryptCleanup.{phase=SC_RUN,reason=SC_SUCCESS,pending=3};#assert !sc_valid(malformed);
+  malformed=ScryptCleanup.{phase=SC_RUN,reason=0,pending=2};#assert !sc_valid(malformed);
+  malformed=ScryptCleanup.{phase=SC_DONE,reason=0,pending=0};#assert !sc_valid(malformed);
+  malformed=ScryptCleanup.{phase=SC_DONE,reason=4,pending=0};#assert !sc_valid(malformed);
+  malformed=ScryptCleanup.{phase=0,reason=0,pending=0};#assert !sc_valid(malformed);
+  malformed=ScryptCleanup.{phase=SC_CLEAN,reason=SC_FAILURE,pending=8};#assert !sc_valid(malformed);
+  malformed=ScryptCleanup.{phase=SC_CLEAN,reason=SC_FAILURE,pending=1};#assert sc_valid(malformed);
+  malformed=ScryptCleanup.{phase=SC_CLEAN,reason=SC_SUCCESS,pending=4};#assert !sc_valid(malformed);
+  malformed=ScryptCleanup.{phase=SC_PUBLISHED,reason=SC_FAILURE,pending=0};#assert !sc_valid(malformed) && !sc_visible(malformed);
+  malformed=ScryptCleanup.{phase=SC_PUBLISHED,reason=SC_SUCCESS,pending=1};#assert !sc_valid(malformed) && !sc_visible(malformed);
+  malformed=ScryptCleanup.{phase=SC_CLEAN,reason=SC_SUCCESS,pending=0};#assert sc_publish(malformed).phase==SC_CLEAN;
+  malformed=ScryptCleanup.{phase=SC_DONE,reason=0,pending=0};#assert sc_publish(malformed).phase==SC_DONE;
+  malformed=ScryptCleanup.{phase=SC_DONE,reason=SC_FAILURE,pending=0};#assert sc_publish(malformed).phase==SC_DONE;
+}
+
+SC_RUN :: 1; SC_CLEAN :: 2; SC_DONE :: 3; SC_PUBLISHED :: 4;
+SC_SUCCESS :: 1; SC_FAILURE :: 2; SC_CANCEL :: 3;
+SC_SCRATCH :: 1; SC_STATE :: 2; SC_KEY :: 4;
+ScryptCleanup :: struct {phase:int;reason:int;pending:int;}
+sc_begin :: ()->ScryptCleanup #export_c {return ScryptCleanup.{phase=SC_RUN,pending=3};}
+sc_valid :: (s:ScryptCleanup)->bool #export_c {
+  if s.phase==SC_RUN {return s.reason==0 && s.pending==3;}
+  if s.reason<SC_SUCCESS || s.reason>SC_CANCEL {return false;}
+  if s.phase==SC_CLEAN {
+    if s.pending<1 || s.pending>7 {return false;}
+    if s.reason==SC_SUCCESS && s.pending>3 {return false;}
+    return true;
+  }
+  if s.phase==SC_DONE {return s.pending==0;}
+  return s.phase==SC_PUBLISHED && s.reason==SC_SUCCESS && s.pending==0;
+}
+sc_stop :: (s:ScryptCleanup,reason:int)->ScryptCleanup #export_c {
+  if !sc_valid(s) || reason<SC_SUCCESS || reason>SC_CANCEL {return s;}
+  if s.phase==SC_RUN {return ScryptCleanup.{phase=SC_CLEAN,reason=reason,pending=ifx reason==SC_SUCCESS then 3 else 7};}
+  if (s.phase==SC_CLEAN || s.phase==SC_DONE) && s.reason==SC_SUCCESS && reason!=SC_SUCCESS {next:=s;next.reason=reason;next.pending+=SC_KEY;next.phase=SC_CLEAN;return next;}
+  return s;
+}
+sc_ack :: (s:ScryptCleanup,region:int,erased:bool)->ScryptCleanup #export_c {
+  if !sc_valid(s) || s.phase!=SC_CLEAN || !erased {return s;}
+  if region!=SC_SCRATCH && region!=SC_STATE && region!=SC_KEY {return s;}
+  if (s.pending & region)==0 {return s;}
+  next:=s;next.pending-=region;
+  if next.pending==0 {next.phase=SC_DONE;}
+  return next;
+}
+sc_publish :: (s:ScryptCleanup)->ScryptCleanup #export_c {
+  if !sc_valid(s) || s.phase!=SC_DONE || s.reason!=SC_SUCCESS {return s;}
+  next:=s;next.phase=SC_PUBLISHED;return next;
+}
+sc_visible :: (s:ScryptCleanup)->bool #export_c {return sc_valid(s) && s.phase==SC_PUBLISHED;}
