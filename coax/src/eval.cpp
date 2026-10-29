@@ -493,6 +493,9 @@ struct Evaluator {
     switch (e->kind) {
       case ExprKind::ident: {
         if (e->constant) {
+          // A frozen aggregate constant is read in place: an element read
+          // (FONT[i]) must not copy the whole array first.
+          if (e->constant->evaluated == 2 && e->constant->expr->kind == ExprKind::ct_value) return e->constant->expr->ct;
           Value v = constant(e->constant);
           if (failed) return nullptr;
           if (e->constant->expr->kind == ExprKind::ct_value) return e->constant->expr->ct;

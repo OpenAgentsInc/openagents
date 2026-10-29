@@ -34,6 +34,24 @@ class TraversalTests(unittest.TestCase):
             self.assertEqual(deps.returncode,0,deps.stderr)
             self.assertGreater(json.loads(deps.stdout)['aggregate_traversal_limit'], 1000000)
 
+    def test_constant_array_elements_are_read_in_place(self):
+        # T[i] reads the frozen constant; it does not copy all of T first.
+        text = '''make :: ()->[10000]u8 { a:[10000]u8; a[7]=3; return a; }
+T :: #run make();
+read_many :: ()->int { total:=0; for i:0..<1000 { total+=cast(int)T[i]; } return total; }
+A :: #run read_many();
+#assert A==3;
+main :: () {}
+'''
+        with tempfile.TemporaryDirectory(prefix='coax-traversal-const-') as d:
+            source = Path(d) / 'case.coax'; source.write_text(text)
+            report = Path(d) / 'timings.json'
+            result = subprocess.run([str(COMPILER),'check',str(source),'--run-steps','250000000',
+                                     '--timings',str(report)],capture_output=True,text=True,timeout=120)
+            self.assertEqual(result.returncode,0,result.stderr)
+            # making and freezing T copies it a few times; 1000 reads add nothing like 1000 copies
+            self.assertLess(json.loads(report.read_text())['aggregate_traversal_work'],100000)
+
     def test_real_frontend_and_check_refuse_then_recover(self):
         function = """copy_until_limit :: ()->int { a:[32768]u8; total:=0;
           for i:0..<4096 { copy:=a; total+=cast(int)copy[0]; } return total; }"""
