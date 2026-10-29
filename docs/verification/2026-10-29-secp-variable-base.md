@@ -123,7 +123,7 @@ data and binary are in `coax/bin/nostr-variable-base-timing-v4`. None of these
 experiments establishes constant-time or production-secret approval; all alarms
 are retained without filtering.
 
-The aggregate source audit did not complete: it refused at its existing262,144
+The earlier aggregate source audit did not complete: it refused at its existing262,144
 visit limit after nine reached procedures and identified an existing
 secret-derived authored assertion in `sf_normalize`
 ([refusal report](2026-10-29-secp-mult-const-source-refusal.json)). The
@@ -131,8 +131,15 @@ subsequent selector-test snapshot reproduced the same refusal and guard
 obligation ([report](2026-10-29-secp-mult-const-source-refusal-v2.json)); the
 current high-bit-test snapshot also refuses at the same bound
 ([report](2026-10-29-secp-mult-const-source-refusal-v3.json)). The
-follow-up #f07b addresses sound bounded public-loop/callee analysis without a
-limit waiver. This refusal is not source-flow approval; guard discharge,
+follow-up #f07b added bounded public-loop/callee analysis without a limit waiver.
+The repaired auditor subsequently analyzed the complete `smc_multiply` source
+closure in the native-C checked-library profile: 97,203 visits, 43 reached
+procedures and three secret-derived authored assertions. The result is
+`analyzed-with-guard-obligations` with `accepted=false`; the unresolved guards
+are `secp_field.coax:239` and `secp_field32.coax:70,92`. The
+[source report](2026-10-29-secp-variable-base-source-reaudit.json) records the
+exact source, compiler, audit-tool and type identities. These observations are
+not source admission or proof that the assertions are unreachable. Guard discharge,
 compiler/object/JIT inspection, independent security review, device evidence,
 erasure and production-secret admission remain separate gates.
 
