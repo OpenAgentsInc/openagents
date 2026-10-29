@@ -1,7 +1,8 @@
 // Admin routes for openagents.com/admin/analytics (pt-dashboard). Never
 // WorkOS: an admin is a Nostr public key in OA_ADMIN_PUBKEYS (admins.conf).
-// Until the phone sign-in exists, the admin signs a NIP-98 request on their
-// own machine (sign.c, admin-login.sh) and this file checks it (nostr.c,
+// An admin logged in on the site with the phone (/login, the oa_session
+// cookie) is an admin here too. From a machine, the admin signs a NIP-98
+// request (sign.c, admin-login.sh) and this file checks it (nostr.c,
 // BIP-340 via libsecp256k1 for now):
 //
 //   GET /api/admin/login?auth=<base64 event>   the event signs GET <origin>/api/admin/login;
@@ -104,8 +105,34 @@ static int who_is(const request *q, PGconn *db, char who[65]) {
   return status;
 }
 
+// Else the phone sign-in's site session (/login, oa_session, Path=/) for a key in admins.conf:
+// logged in on the site is logged in here.
+static int site_who(const request *q, PGconn *db, char who[65]) {
+  int s = who_is(q, db, who);
+  if (s != 401) return s;
+  char cookies[4096], token[65]; size_t n = 0;
+  if (!api_header(q, "Cookie", cookies, sizeof cookies)) return 401;
+  for (const char *c = strstr(cookies, "oa_session="); c; c = strstr(c + 1, "oa_session=")) {
+    if (c != cookies && c[-1] != ' ' && c[-1] != ';') continue;
+    c += 11;
+    while (n < 64 && isxdigit((unsigned char)c[n])) { token[n] = c[n]; n++; }
+    break;
+  }
+  token[n] = 0;
+  if (n != 64) return 401;
+  const char *v[1] = {token};
+  PGresult *r = PQexecParams(db, "SELECT signin.session($1)", 1, NULL, v, NULL, NULL, 0);
+  int status = 401;
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0)) {
+    snprintf(who, 65, "%s", PQgetvalue(r, 0, 0));
+    status = is_admin(who) ? 0 : 403;
+  }
+  PQclear(r);
+  return status;
+}
+
 // The same check for other routes (chat.c): 0 an admin (pubkey in who), else 401 or 403.
-int admin_who(const request *q, PGconn *db, char who[65]) { return who_is(q, db, who); }
+int admin_who(const request *q, PGconn *db, char who[65]) { return site_who(q, db, who); }
 
 static void refuse(int fd, int status) {
   api_json(fd, status, status == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}");
@@ -406,7 +433,7 @@ bool admin_route(const request *q) {
   bool queue = !strncmp(q->path, "/api/admin/reports", 18) && (q->path[18] == 0 || q->path[18] == '/');
   if (strcmp(q->path, "/api/admin/analytics") && !queue) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return true; }
   char who[65];
-  int status = who_is(q, db, who);
+  int status = site_who(q, db, who);
   if (status) { refuse(q->fd, status); return true; }
   if (queue) review(q, db, who);
   else reports(q, db);

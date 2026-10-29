@@ -73,3 +73,14 @@ check("an admin's signed request works once", call("GET", "/api/admin/analytics?
       and call("GET", "/api/admin/analytics?view=overview", headers=h)[0] == 401)
 call("GET", "/api/admin/logout", headers={"Cookie": token})
 check("signed out: the session is gone", call("GET", reports, headers={"Cookie": token})[0] == 401)
+
+# ---- logged in on the site with the phone (/login, oa_session): an admin's key opens the dashboard, anyone else's doesn't
+admin_hex = os.environ["OA_ADMIN_PUBKEYS"].strip()
+for tok, pk in (("a" * 64, admin_hex), ("b" * 64, "c" * 64)):
+    sql(f"insert into signin.sessions (token_sha256, pubkey, created_ms, expires_ms) values (encode(sha256('{tok}'), 'hex'), '{pk}', 0, 9999999999999) on conflict do nothing")
+status, body, _ = call("GET", reports, headers={"Cookie": "oa_session=" + "a" * 64})
+check("an admin logged in on the site sees the dashboard", status == 200 and b"Sessions" in body, (status, body[:120]))
+status, body, _ = call("GET", "/api/admin/reports", headers={"Cookie": "oa_session=" + "a" * 64})
+check("and the review queue", status == 200, (status, body[:120]))
+status, body, _ = call("GET", reports, headers={"Cookie": "oa_session=" + "b" * 64})
+check("someone else logged in on the site: admins only", status == 403 and b"Sessions" not in body, (status, body[:120]))

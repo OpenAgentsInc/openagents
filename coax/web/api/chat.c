@@ -147,30 +147,8 @@ static int runner_who(const request *q, PGconn *db) {
   PQclear(r);
   return once ? 0 : 401;
 }
-// The admin sign-in (admin.c), else the phone sign-in's site session (/signin, oa_session) for a key in admins.conf.
-static int chat_who(const request *q, PGconn *db, char who[65]) {
-  int s = admin_who(q, db, who);
-  if (s != 401) return s;
-  char cookies[4096], token[65]; size_t n = 0;
-  if (!api_header(q, "Cookie", cookies, sizeof cookies)) return 401;
-  for (const char *c = strstr(cookies, "oa_session="); c; c = strstr(c + 1, "oa_session=")) {
-    if (c != cookies && c[-1] != ' ' && c[-1] != ';') continue;
-    c += 11;
-    while (n < 64 && isxdigit((unsigned char)c[n])) { token[n] = c[n]; n++; }
-    break;
-  }
-  token[n] = 0;
-  if (n != 64) return 401;
-  const char *v[1] = {token};
-  PGresult *r = PQexecParams(db, "SELECT signin.session($1)", 1, NULL, v, NULL, NULL, 0);
-  int status = 401;
-  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0)) {
-    snprintf(who, 65, "%s", PQgetvalue(r, 0, 0));
-    status = admin_is(who) ? 0 : 403;
-  }
-  PQclear(r);
-  return status;
-}
+// The admin sign-in or the phone sign-in's site session, for a key in admins.conf (admin.c).
+static int chat_who(const request *q, PGconn *db, char who[65]) { return admin_who(q, db, who); }
 
 // Set in a KEY child for a project member, whom private.c has checked: chat.api keeps their credential too.
 static bool keys_for_member;
