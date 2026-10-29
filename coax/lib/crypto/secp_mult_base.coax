@@ -1,0 +1,156 @@
+// Fixed-work comb arithmetic. The table builder is public compile-time work;
+// the online path scans every table entry through smb_pick_generated.
+// Unlike sg_pick this private selector admits no untrusted point/table input.
+// Secret approval
+// still requires authored-guard discharge and target/object/JIT review.
+#load "secp_group.coax";
+#load "secp_scalar.coax";
+#authority;
+
+#test "comb profile boundaries are independently admitted" {
+  #assert smb_profile_valid(1,1) && smb_profile_valid(8,64);
+  #assert !smb_profile_valid(0,1) && !smb_profile_valid(9,1);
+  #assert !smb_profile_valid(1,0) && !smb_profile_valid(1,65);
+}
+#test "comb profile admission is bounded before writing a borrowed table" {
+  out: [4] SgPoint; out[0] = sg_generator();
+  #assert !smb_generate(out[..],0,1) && !smb_generate(out[..],9,1);
+  #assert !smb_generate(out[..],2,0) && !smb_generate(out[..],2,65);
+  #assert !smb_generate(out[0..<3],2,1) && !smb_generate(out[0..<0],1,1);
+  #assert sg_equal_mask(out[0],sg_generator()) == CB_MAX64;
+}
+#test "two-tooth public generation records every subset including infinity" {
+  out: [4] SgPoint; #assert smb_generate(out[..],2,1);
+  g := sg_generator(); two := sg_double_valid(g);
+  #assert sg_equal_mask(out[0],sg_infinity()) == CB_MAX64;
+  #assert sg_equal_mask(out[1],g) == CB_MAX64;
+  #assert sg_equal_mask(out[2],two) == CB_MAX64;
+  #assert sg_equal_mask(out[3],sg_add_valid(g,two)) == CB_MAX64;
+}
+#test "public generator spacing controls each tooth without changing base" {
+  out: [4] SgPoint; #assert smb_generate(out[..],2,2);
+  g := sg_generator(); four := sg_double_valid(sg_double_valid(g));
+  #assert sg_equal_mask(out[1],g) == CB_MAX64;
+  #assert sg_equal_mask(out[2],four) == CB_MAX64;
+  #assert sg_equal_mask(out[3],sg_add_valid(g,four)) == CB_MAX64;
+}
+#test "one-tooth generation writes both entries" {
+  out: [2] SgPoint; #assert smb_generate(out[..],1,64);
+  #assert sg_equal_mask(out[0],sg_infinity()) == CB_MAX64;
+  #assert sg_equal_mask(out[1],sg_generator()) == CB_MAX64;
+}
+#forall "comb bit gathering includes padding and every public position" tooth: 0..<8, row: 0..<32 {
+  scalar: [9] u32; scalar[(row+tooth*32)/32] = cast(u32) 1 << ((row+tooth*32)%32);
+  #assert smb_index(scalar,8,32,row) == cast(u64) 1 << tooth;
+}
+#test "web comb gathers only zero padding beyond scalar bit255" {
+  scalar: [9] u32; scalar[7] = 0x80000000;
+  #assert smb_index(scalar,7,37,33) == cast(u64) 1 << 6;
+  for row: 34..<37 { #assert smb_index(scalar,7,37,row) == 0; }
+}
+#test "generated-point selection matches checked full scan including infinity" {
+  table: [4] SgPoint; #assert smb_generate(table[..],2,1);
+  for index: 0..<4 {
+    selected := smb_pick_generated(table[..],cast(u64) index);
+    checked := sg_pick(table[..],cast(u64) index);
+    #assert checked.ok && sg_equal_mask(selected,checked.value) == CB_MAX64;
+    #assert sg_valid_mask(selected) == CB_MAX64;
+    for limb: 0..<10 {
+      bound := ifx limb == 9 then SF_MASK22 else SF_MASK26;
+      #assert selected.x.limb[limb] <= bound && selected.y.limb[limb] <= bound && selected.z.limb[limb] <= bound;
+    }
+  }
+  #assert sg_equal_mask(smb_pick_generated(table[..],4),sg_infinity()) == CB_MAX64;
+  #assert sg_equal_mask(smb_pick_generated(table[..],CB_MAX64),sg_infinity()) == CB_MAX64;
+  #assert sg_equal_mask(smb_pick_generated(table[0..<0],0),sg_infinity()) == CB_MAX64;
+}
+#test "generated selector reads a non-infinity first entry" {
+  table: [1] SgPoint; table[0] = sg_generator();
+  #assert sg_equal_mask(smb_pick_generated(table[..],0),sg_generator()) == CB_MAX64;
+}
+#forall "generated selector equality scans all64 digit bits" bit: 0..<64 {
+  table: [1] SgPoint; table[0] = sg_generator();
+  #assert sg_equal_mask(smb_pick_generated(table[..],cast(u64) 1 << bit),sg_infinity()) == CB_MAX64;
+}
+#test "fixed comb consumes the lower row and every tooth" {
+  table: [4] SgPoint; #assert smb_generate(table[..],2,2);
+  values := [4] u32.[0,1,4,5];
+  for k: 0..<4 {
+    got := smb_comb(sc_small(values[k]),table[..],2,2);
+    #assert sg_equal_mask(got,table[k]) == CB_MAX64;
+  }
+}
+#test "fixed comb consumes the higher row and both row sums" {
+  table: [4] SgPoint; #assert smb_generate(table[..],2,2);
+  values := [4] u32.[2,8,10,15]; expected: [4] SgPoint;
+  expected[0] = sg_double_valid(table[1]); expected[1] = sg_double_valid(table[2]);
+  expected[2] = sg_double_valid(table[3]); expected[3] = sg_add_valid(expected[2],table[3]);
+  for k: 0..<4 {
+    #assert sg_equal_mask(smb_comb(sc_small(values[k]),table[..],2,2),expected[k]) == CB_MAX64;
+  }
+}
+
+// Caller owns valid, live writable storage. Refusal leaves it unchanged.
+// width/spacing are PUBLIC configuration, never scalar-derived.
+smb_profile_valid :: (width: int,spacing: int) -> bool {
+  return width >= 1 && width <= 8 && spacing >= 1 && spacing <= 64;
+}
+smb_generate :: (out: [] SgPoint,width: int,spacing: int) -> bool #export_c {
+  if !smb_profile_valid(width,spacing) { return false; }
+  count := 1 << width;
+  if out.count != count { return false; }
+  out[0] = sg_infinity(); out[1] = sg_generator();
+  basis := sg_generator(); period := 1;
+  for tooth: 1..<width {
+    for row: 0..<spacing { basis = sg_double_valid(basis); }
+    period *= 2; out[period] = basis;
+    for index: 1..<period { out[period+index] = sg_add_valid(out[index],basis); }
+  }
+  return true;
+}
+// Preconditions are owned by the fixed-profile wrappers: width1..8,
+// spacing1..64, all positions<288 and canonical generated table length2^width.
+// The extra zero limb makes web positions256..258 ordinary public indexing.
+smb_index :: (scalar: [9] u32,width: int,spacing: int,row: int) -> u64 {
+  index: u64;
+  for tooth: 0..<width {
+    position := row+tooth*spacing;
+    bit := (scalar[position/32] >> (position%32)) & 1;
+    index |= cast(u64) bit << tooth;
+  }
+  return index;
+}
+// PRIVATE: only canonical, valid, magnitude1 points from the actual Coax
+// generator may enter. No external point admission is performed here. Every
+// entry is visited and selected with the existing group equality/choice masks.
+// A missing digit produces canonical infinity; fixed wrappers prove its range
+// by gathering exactly width bits. The empty span is test-only refusal behavior.
+smb_pick_generated :: (table: [] SgPoint,which: u64) -> SgPoint {
+  chosen := sg_infinity();
+  for index: 0..<table.count {
+    mask := sg_word_equal(which,cast(u64) index);
+    point := table[index];
+    for limb: 0..<10 {
+      // sg_word_equal already passes the complete mask through value_barrier.
+      // These are the same unsigned XOR/AND choices as cb_ct_select64, with
+      // the opaque mask shared across the30 public coordinate limbs.
+      chosen.x.limb[limb] ^= (chosen.x.limb[limb] ^ point.x.limb[limb]) & mask;
+      chosen.y.limb[limb] ^= (chosen.y.limb[limb] ^ point.y.limb[limb]) & mask;
+      chosen.z.limb[limb] ^= (chosen.z.limb[limb] ^ point.z.limb[limb]) & mask;
+    }
+  }
+  return chosen;
+}
+smb_comb :: (input: ScScalar,table: [] SgPoint,width: int,spacing: int) -> SgPoint {
+  scalar := sc_normalize(input); extended: [9] u32;
+  for limb: 0..<8 { extended[limb] = scalar.limbs[limb]; }
+  // The first PUBLIC row starts at infinity. Select it directly instead of
+  // evaluating an unnecessary infinity double/add pair.
+  result := smb_pick_generated(table,smb_index(extended,width,spacing,spacing-1));
+  for round: 1..<spacing {
+    result = sg_double_valid(result);
+    selected := smb_pick_generated(table,smb_index(extended,width,spacing,spacing-1-round));
+    result = sg_add_valid(result,selected);
+  }
+  return result;
+}

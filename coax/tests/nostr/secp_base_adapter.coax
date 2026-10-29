@@ -1,0 +1,13 @@
+// Test-only aggregate adapter, with both actual compile-time generated tables.
+#load "../../lib/crypto/secp_mult_base_web.coax";
+#load "../../lib/crypto/secp_mult_base_native.coax";
+// Public test inventory only. Secret multiplication never indexes either
+// immutable table this way; it uses the full scan in smb_comb.
+smb_table_entry_public :: (native: bool,index: int) -> SgPoint #export_c {
+  if native {
+    if index < 0 || index >= 256 { return sg_infinity(); }
+    return SMB_NATIVE_TABLE[index];
+  }
+  if index < 0 || index >= 128 { return sg_infinity(); }
+  return SMB_WEB_TABLE[index];
+}

@@ -1,0 +1,9 @@
+// Public interpreter-cost probe ONLY. No #run declaration and no claim that
+// compile-time table generation has passed the aggregate build budget.
+#load "../../lib/crypto/secp_mult_base.coax";
+#test "public web comb generator cost probe" {
+  table: [128] SgPoint;
+  #assert smb_generate(table[..],7,37);
+  #assert sg_equal_mask(table[0],sg_infinity()) == CB_MAX64;
+  #assert sg_equal_mask(table[1],sg_generator()) == CB_MAX64;
+}

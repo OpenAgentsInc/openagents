@@ -1,0 +1,27 @@
+// Native profile: 256 canonical Jacobian entries, 61440 bytes on LP64.
+#load "secp_mult_base.coax";
+#assert size_of(SgPoint) == 240;
+#assert 8*32 == 256;
+#assert 256*size_of(SgPoint) <= 65536;
+#authority;
+#test "native table storage adapter preserves the active prefix" {
+  table := smb_native_table(2,1);
+  #assert sg_equal_mask(table[0],sg_infinity()) == CB_MAX64;
+  #assert sg_equal_mask(table[1],sg_generator()) == CB_MAX64;
+  #assert sg_equal_mask(table[2],sg_double_valid(sg_generator())) == CB_MAX64;
+  #assert table[4].x.limb[0] == 0 && table[255].z.limb[0] == 0;
+}
+#test "native compiled table drives the complete online path" {
+  #assert sg_equal_mask(smb_multiply_native(sc_small(1)),sg_generator()) == CB_MAX64;
+}
+// Private PUBLIC-generation helper: width1..8 and spacing1..64.
+smb_native_table :: (width: int,spacing: int) -> [256] SgPoint {
+  table: [256] SgPoint;
+  #assert smb_generate(table[0..<1 << width],width,spacing);
+  return table;
+}
+SMB_NATIVE_TABLE :: #run smb_native_table(8,32);
+smb_multiply_native :: (scalar: ScScalar) -> SgPoint #export_c {
+  table := SMB_NATIVE_TABLE;
+  return smb_comb(scalar,table[..],8,32);
+}

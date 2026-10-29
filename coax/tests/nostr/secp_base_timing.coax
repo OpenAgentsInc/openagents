@@ -1,0 +1,13 @@
+// Public deterministic timing fixtures only. No identities or key custody.
+#load "secp_base_adapter.coax";
+#load "../../../tools/coax-nostr/timing/fixtures.coax";
+smb_control_fixed :: (input: ScScalar) -> SgPoint #export_c {
+  empty: [] u64; result: SgPoint;
+  word := cast(u64) input.limbs[0] | cast(u64) input.limbs[1] << 32;
+  result.x.limb[0] = ct_fixed(word,empty); return result;
+}
+smb_control_branch :: (input: ScScalar) -> SgPoint #export_c {
+  empty: [] u64; result: SgPoint;
+  word := cast(u64) input.limbs[0] | cast(u64) input.limbs[1] << 32;
+  result.x.limb[0] = ct_branch(word,empty); return result;
+}
