@@ -1,0 +1,130 @@
+// Experimental bounded Poly1305. Each key is one-time and must never be
+// reused across messages. No production secret-use approval.
+#load "bytes.coax";
+#authority;
+
+#test "RFC 8439 section 2.5.2 authentication tag" {
+  key:=[32]u8.[0x85,0xd6,0xbe,0x78,0x57,0x55,0x6d,0x33,0x7f,0x44,0x52,0xfe,0x42,0xd5,0x06,0xa8,0x01,0x03,0x80,0x8a,0xfb,0x0d,0xb2,0xfd,0x4a,0xbf,0xf6,0xaf,0x41,0x49,0xf5,0x1b];
+  expected:=[16]u8.[0xa8,0x06,0x1d,0xc1,0x30,0x51,0x36,0xc6,0xc2,0x2b,0x8b,0xaf,0x0c,0x01,0x27,0xa9];
+  text:="Cryptographic Forum Research Group";msg:[34]u8;
+  for i:0..<34 {msg[i]=text[i];}
+  out:[17]u8;out[16]=165;
+  #assert poly1305_checked(key[..],msg[..],out[..],false);
+  for i:0..<16 {#assert out[i]==expected[i];}
+  #assert out[16]==165;
+}
+
+#test "admission bounds, full blocks and high key bits" {
+  #assert poly_admit(32,0,16,false);
+  #assert poly_admit(32,CB_MAX_BYTES,CB_MAX_BYTES,false);
+  #assert !poly_admit(32,CB_MAX_BYTES+1,16,false);
+  #assert !poly_admit(32,0,CB_MAX_BYTES+1,false);
+  #assert !poly_admit(32,-1,16,false);
+  key:[32]u8;msg:[17]u8;out:[16]u8;
+  for i:0..<32 {key[i]=255;}for i:0..<17 {msg[i]=cast(u8)i;}
+  want16:=[16]u8.[0xb7,0xf9,0x39,0x4e,0xc0,0x02,0x40,0x51,0xc0,0xff,0x39,0x48,0xb4,0xf0,0x27,0x33];
+  want17:=[16]u8.[0xc6,0x73,0xb5,0x58,0x84,0xa6,0xce,0xb1,0x39,0x9d,0xb1,0xdd,0xca,0x78,0x82,0x00];
+  want15:=[16]u8.[0xb7,0xf9,0x21,0x7f,0xc5,0x02,0x28,0x82,0xc5,0xff,0x21,0x79,0xb9,0xf0,0x0f,0x2c];
+  #assert poly1305_checked(key[..],msg[0..<15],out[..],false);
+  for i:0..<16 {#assert out[i]==want15[i];}
+  #assert poly1305_checked(key[..],msg[0..<16],out[..],false);
+  for i:0..<16 {#assert out[i]==want16[i];}
+  #assert poly1305_checked(key[..],msg[..],out[..],false);
+  for i:0..<16 {#assert out[i]==want17[i];}
+}
+
+#test "canonical reduction and carry propagation at modulus boundaries" {
+  m:=POLY_BASE_MASK;
+  below:=[5]u64.[m-5,m,m,m,m];equal:=[5]u64.[m-4,m,m,m,m];
+  above:=[5]u64.[m-3,m,m,m,m];
+  actual:=poly_reduce(below);for i:0..<5 {#assert actual[i]==below[i];}
+  actual=poly_reduce(equal);for i:0..<5 {#assert actual[i]==0;}
+  one:=[5]u64.[1,0,0,0,0];actual=poly_reduce(above);for i:0..<5 {#assert actual[i]==one[i];}
+  carries:=[5]u64.[m-1,m,m,m,cast(u64)13421773*(m+1)+m];
+  wanted:=[5]u64.[4,1,0,0,0];actual=poly_normalize(carries);for i:0..<5 {#assert actual[i]==wanted[i];}
+}
+
+#test "RFC 8439 appendix A.3 vector 8 reduces a full accumulator" {
+  key:[32]u8;key[0]=1;msg:[48]u8;out:[16]u8;
+  for i:0..<16 {msg[i]=255;msg[16+i]=254;msg[32+i]=1;}
+  msg[16]=251;
+  #assert poly1305_checked(key[..],msg[..],out[..],false);
+  for v:out {#assert v==0;}
+}
+
+#test "a full accumulator equal to p is reduced before the tag" {
+  key:[32]u8;key[0]=1;msg:[32]u8;out:[16]u8;
+  for i:0..<32 {msg[i]=255;}msg[16]=252;
+  #assert poly1305_checked(key[..],msg[..],out[..],false);
+  for v:out {#assert v==0;}
+}
+
+#test "empty message returns s and invalid requests preserve output" {
+  key:[33]u8;for i:16..<32 {key[i]=cast(u8)i;}
+  msg:[1]u8;out:[17]u8;for i:0..<17 {out[i]=165;}
+  #assert !poly1305_checked(key[0..<31],msg[..],out[..],false);
+  #assert !poly1305_checked(key[..],msg[..],out[..],false);
+  #assert !poly1305_checked(key[0..<32],msg[..],out[0..<15],false);
+  #assert !poly1305_checked(key[0..<32],msg[..],out[..],true);
+  for v:out {#assert v==165;}
+  #assert poly1305_checked(key[0..<32],msg[0..<0],out[0..<16],false);
+  for i:0..<16 {#assert out[i]==key[16+i];}
+  #assert out[16]==165;
+}
+
+POLY_BASE_MASK :: cast(u64)0x3ffffff;
+
+poly_admit :: (key:int,msg:int,capacity:int,overlap:bool)->bool {
+  return key==32 && msg>=0 && msg<=CB_MAX_BYTES && capacity>=16 && capacity<=CB_MAX_BYTES && !overlap;
+}
+
+poly_carry :: (input:[5]u64)->[5]u64 {
+  product:=input;
+  for i:0..<5 {
+    carry:=product[i]>>26;product[i]&=POLY_BASE_MASK;
+    if i==4 {product[0]+=carry*5;} else {product[i+1]+=carry;}
+  }
+  return product;
+}
+poly_normalize :: (input:[5]u64)->[5]u64 {
+  first:=poly_carry(input);second:=poly_carry(first);return poly_carry(second);
+}
+poly_reduce :: (h:[5]u64)->[5]u64 {
+  reduced:=h;reduced[0]+=5;
+  for i:0..<4 {carry:=reduced[i]>>26;reduced[i]&=POLY_BASE_MASK;reduced[i+1]+=carry;}
+  overflow:=reduced[4]>>26;reduced[4]&=POLY_BASE_MASK;
+  mask:=sub_wrap(cast(u64)0,overflow);result:=h;
+  for i:0..<5 {result[i]=(reduced[i]&mask)|(h[i]^(h[i]&mask));}
+  return result;
+}
+
+// Internal ABI: views and overlap must be checked by the caller. Stack
+// temporaries have no proven erasure or machine-code timing guarantees.
+poly1305_checked :: (key:[]u8,msg:[]u8,out:[]u8,overlap:bool)->bool #export_c {
+  if !poly_admit(key.count,msg.count,out.count,overlap) {return false;}
+  clamped:[16]u8;for i:0..<16 {clamped[i]=key[i];}
+  clamped[3]&=15;clamped[7]&=15;clamped[11]&=15;clamped[15]&=15;
+  clamped[4]&=252;clamped[8]&=252;clamped[12]&=252;
+  r:[5]u64;h:[5]u64;
+  for bit:0..<128 {r[bit/26]|=cast(u64)((clamped[bit/8]>>(bit%8))&1)<<(bit%26);}
+  at:=0;
+  while at<msg.count {
+    remaining:=msg.count-at;length:=16;if (remaining-1)/16==0 {length=remaining;}
+    block:[17]u8;for i:0..<length {block[i]=msg[at+i];}block[length]=1;
+    for bit:0..<130 {h[bit/26]+=cast(u64)((block[bit/8]>>(bit%8))&1)<<(bit%26);}
+    product:[5]u64;
+    for i:0..<5 {for j:0..<5 {
+      index:=i+j;factor:=cast(u64)1;if index>=5 {index-=5;factor=5;}
+      product[index]+=h[i]*r[j]*factor;
+    }}
+    h=poly_normalize(product);at+=length;
+  }
+  h=poly_reduce(h);
+  carry:=cast(u64)0;
+  for i:0..<16 {
+    value:=cast(u64)0;
+    for j:0..<8 {bit:=i*8+j;value|=((h[bit/26]>>(bit%26))&1)<<j;}
+    sum:=value+cast(u64)key[16+i]+carry;out[i]=cast(u8)(sum&255);carry=sum>>8;
+  }
+  return true;
+}

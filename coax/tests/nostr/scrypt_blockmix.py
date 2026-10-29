@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Independent byte/block model for bounded RFC 7914 BlockMix."""
+if not __debug__: raise SystemExit('tests require Python assertions')
 import ctypes as C
 import hashlib
 import importlib.util

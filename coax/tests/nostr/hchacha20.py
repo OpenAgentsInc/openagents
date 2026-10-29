@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Compare emitted HChaCha20 with an independent round-state model."""
+if not __debug__: raise SystemExit('tests require Python assertions')
 import ctypes as C
 import hashlib
 import json

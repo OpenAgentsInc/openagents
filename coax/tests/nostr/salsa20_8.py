@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Independent arithmetic oracle for the checked and release native core."""
+if not __debug__: raise SystemExit('tests require Python assertions')
 import ctypes
 import hashlib
 import random
