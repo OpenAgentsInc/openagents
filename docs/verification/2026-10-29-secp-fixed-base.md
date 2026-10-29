@@ -131,8 +131,10 @@ against pinned libsecp, and sanitizer and guard checks. The
 [correctness report](2026-10-29-secp-fixed-base-correctness.json) retains
 source, compiler and artifact hashes, compiler resource counters, native
 stack and object sections, and Wasm engine and stack settings. The combined
-table build took166,665,133 evaluator steps, with a peak38,376 tracked slots
-and7,264 containers. The subsequent profile-accessor refactor passed both
+table build took166,665,133 evaluator steps, with frontend-evaluation peaks of
+38,376 tracked slots and7,264 containers. The driver samples these peaks before
+authority checks, so they are not peaks for the entire compiler invocation.
+The subsequent profile-accessor refactor passed both
 75-check wrapper suites and a focused runner covering all768 table-mode
 entries,517 boundary scalars per profile/mode, one seeded random scalar per
 profile/mode, Wasm guards and native sanitizer checks. Its distinct
