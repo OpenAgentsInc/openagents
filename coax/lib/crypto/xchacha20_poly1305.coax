@@ -1,0 +1,123 @@
+// Experimental bounded XChaCha20-Poly1305. No production secret-use approval.
+#load "xchacha20.coax";
+#load "poly1305.coax";
+#authority;
+
+#test "XChaCha20-Poly1305 draft A.3.1 seal and open" {
+  key:[32]u8;nonce:[24]u8;for i:0..<32 {key[i]=cast(u8)(128+i);}
+  for i:0..<24 {nonce[i]=cast(u8)(64+i);}
+  aad:=[12]u8.[0x50,0x51,0x52,0x53,0xc0,0xc1,0xc2,0xc3,0xc4,0xc5,0xc6,0xc7];
+  text:="Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.";
+  msg:[114]u8;for i:0..<114 {msg[i]=text[i];}
+  expected:=[130]u8.[0xbd,0x6d,0x17,0x9d,0x3e,0x83,0xd4,0x3b,0x95,0x76,0x57,0x94,0x93,0xc0,0xe9,0x39,0x57,0x2a,0x17,0x00,0x25,0x2b,0xfa,0xcc,0xbe,0xd2,0x90,0x2c,0x21,0x39,0x6c,0xbb,0x73,0x1c,0x7f,0x1b,0x0b,0x4a,0xa6,0x44,0x0b,0xf3,0xa8,0x2f,0x4e,0xda,0x7e,0x39,0xae,0x64,0xc6,0x70,0x8c,0x54,0xc2,0x16,0xcb,0x96,0xb7,0x2e,0x12,0x13,0xb4,0x52,0x2f,0x8c,0x9b,0xa4,0x0d,0xb5,0xd9,0x45,0xb1,0x1b,0x69,0xb9,0x82,0xc1,0xbb,0x9e,0x3f,0x3f,0xac,0x2b,0xc3,0x69,0x48,0x8f,0x76,0xb2,0x38,0x35,0x65,0xd3,0xff,0xf9,0x21,0xf9,0x66,0x4c,0x97,0x63,0x7d,0xa9,0x76,0x88,0x12,0xf6,0x15,0xc6,0x8b,0x13,0xb5,0x2e,0xc0,0x87,0x59,0x24,0xc1,0xc7,0x98,0x79,0x47,0xde,0xaf,0xd8,0x78,0x0a,0xcf,0x49];
+  out:[131]u8;out[130]=165;
+  #assert xcp_seal(key[..],nonce[..],aad[..],msg[..],out[..],false);
+  for i:0..<130 {#assert out[i]==expected[i];}#assert out[130]==165;
+  plain:[115]u8;plain[114]=165;
+  #assert xcp_open(key[..],nonce[..],aad[..],out[0..<130],plain[..],false);
+  for i:0..<114 {#assert plain[i]==msg[i];}#assert plain[114]==165;
+}
+
+#test "XChaCha20-Poly1305 rejects bad tags and sizes transactionally" {
+  key:[32]u8;nonce:[24]u8;aad:[1]u8;msg:[17]u8;box:[33]u8;out:[18]u8;
+  #assert xcp_seal(key[..],nonce[..],aad[..],msg[..],box[..],false);
+  for i:0..<18 {out[i]=165;}box[32]^=1;
+  #assert !xcp_open(key[..],nonce[..],aad[..],box[..],out[..],false);
+  #assert !xcp_open(key[..],nonce[..],aad[..],box[0..<15],out[..],false);
+  #assert !xcp_open(key[..],nonce[..],aad[..],box[..],out[0..<16],false);
+  #assert !xcp_seal(key[0..<31],nonce[..],aad[..],msg[..],box[..],false);
+  #assert !xcp_seal(key[..],nonce[0..<23],aad[..],msg[..],box[..],false);
+  #assert !xcp_seal(key[..],nonce[..],aad[..],msg[..],box[0..<32],false);
+  #assert !xcp_seal(key[..],nonce[..],aad[..],msg[..],box[..],true);
+  for v:out {#assert v==165;}
+}
+
+#test "XChaCha20-Poly1305 admission bounds and phase failures" {
+  #assert xcp_admit(32,24,0,0,16,false,true);
+  #assert xcp_admit(32,24,1024,4096,4112,false,true);
+  #assert xcp_admit(32,24,0,16,0,false,false);
+  #assert xcp_admit(32,24,1024,4112,4096,false,false);
+  #assert xcp_admit(32,24,0,0,CB_MAX_BYTES,false,true);
+  #assert xcp_admit(32,24,0,16,CB_MAX_BYTES,false,false);
+  #assert !xcp_admit(31,24,0,0,16,false,true);
+  #assert !xcp_admit(32,23,0,0,16,false,true);
+  #assert !xcp_admit(32,24,-1,0,16,false,true);
+  #assert !xcp_admit(32,24,1025,0,16,false,true);
+  #assert !xcp_admit(32,24,0,-1,16,false,true);
+  #assert !xcp_admit(32,24,0,4097,4113,false,true);
+  #assert !xcp_admit(32,24,0,0,CB_MAX_BYTES+1,false,true);
+  #assert !xcp_admit(32,24,0,15,0,false,false);
+  #assert !xcp_admit(32,24,0,4113,4097,false,false);
+  #assert !xcp_admit(32,24,0,17,0,false,false);
+  #assert !xcp_admit(32,24,0,16,CB_MAX_BYTES+1,false,false);
+  #assert !xcp_admit(32,24,0,0,16,true,true);
+  key:[32]u8;badkey:[31]u8;nonce:[24]u8;aad:[1]u8;cipher:[1]u8;tag:[16]u8;
+  #assert !xcp_tag(badkey[..],nonce[..],aad[..],cipher[..],tag[..]);
+  #assert !xcp_tag(key[..],nonce[..],aad[..],cipher[..],tag[0..<15]);
+  out:[17]u8;for i:0..<17 {out[i]=165;}
+  #assert !xcp_commit(cipher[..],tag[..],out[..],CC_KEY,true);
+  #assert !xcp_commit(cipher[..],tag[..],out[..],CC_OK,false);
+  for v:out {#assert v==165;}
+  box:[17]u8;#assert !xcp_finish_open(key[..],nonce[..],box[..],out[..],tag[..],false);
+  for v:out {#assert v==165;}
+}
+
+XCP_MAX_AAD :: 1024; XCP_MAX_TEXT :: 4096;
+
+xcp_admit :: (key:int,nonce:int,aad:int,text:int,capacity:int,overlap:bool,seal:bool)->bool {
+  if key!=32 || nonce!=24 || aad<0 || aad>XCP_MAX_AAD || overlap {return false;}
+  if seal {
+    if text<0 || text>XCP_MAX_TEXT {return false;}
+    return capacity>=text+16 && capacity<=CB_MAX_BYTES;
+  }
+  if text<16 || text>XCP_MAX_TEXT+16 {return false;}
+  return capacity>=text-16 && capacity<=CB_MAX_BYTES;
+}
+
+// Internal composition: metadata and alias facts have been checked. The
+// one-time key and stack buffers do not yet have proven erasure.
+xcp_tag :: (key:[]u8,nonce:[]u8,aad:[]u8,cipher:[]u8,tag:[]u8)->bool {
+  zero:[32]u8;polykey:[32]u8;
+  stream:=xchacha20_xor_checked(key,nonce,0,zero[..],polykey[..],false);
+  data:[5168]u8;at:=0;
+  for b:aad {data[at]=b;at+=1;}
+  while at%16!=0 {at+=1;}
+  for b:cipher {data[at]=b;at+=1;}
+  while at%16!=0 {at+=1;}
+  a:=cb_store_le64(data[..],at,cast(u64)aad.count);at+=8;
+  b:=cb_store_le64(data[..],at,cast(u64)cipher.count);at+=8;
+  ok:=poly1305_checked(polykey[..],data[0..<at],tag,false);
+  return stream.error==CC_OK && ok;
+}
+
+xcp_commit :: (cipher:[]u8,tag:[]u8,out:[]u8,status:u32,tag_ok:bool)->bool {
+  if status!=CC_OK || !tag_ok {return false;}
+  for i:0..<cipher.count {out[i]=cipher[i];}
+  for i:0..<16 {out[cipher.count+i]=tag[i];}
+  return true;
+}
+
+xcp_finish_open :: (key:[]u8,nonce:[]u8,box:[]u8,out:[]u8,tag:[]u8,tag_ok:bool)->bool {
+  if !tag_ok {return false;}
+  n:=box.count-16;
+  if cb_ct_equal(tag,box[n..<box.count])!=CB_MAX64 {return false;}
+  result:=xchacha20_xor_checked(key,nonce,1,box[0..<n],out,false);
+  return result.error==CC_OK;
+}
+
+// Internal ABI: valid views and all input/output alias observations are the
+// caller's responsibility. Public APIs need a checked host memory adapter.
+xcp_seal :: (key:[]u8,nonce:[]u8,aad:[]u8,msg:[]u8,out:[]u8,overlap:bool)->bool #export_c {
+  if !xcp_admit(key.count,nonce.count,aad.count,msg.count,out.count,overlap,true) {return false;}
+  cipher:[4096]u8;tag:[16]u8;
+  stream:=xchacha20_xor_checked(key,nonce,1,msg,cipher[0..<msg.count],false);
+  ok:=xcp_tag(key,nonce,aad,cipher[0..<msg.count],tag[..]);
+  return xcp_commit(cipher[0..<msg.count],tag[..],out,stream.error,ok);
+}
+
+xcp_open :: (key:[]u8,nonce:[]u8,aad:[]u8,box:[]u8,out:[]u8,overlap:bool)->bool #export_c {
+  if !xcp_admit(key.count,nonce.count,aad.count,box.count,out.count,overlap,false) {return false;}
+  n:=box.count-16;tag:[16]u8;
+  ok:=xcp_tag(key,nonce,aad,box[0..<n],tag[..]);
+  return xcp_finish_open(key,nonce,box,out,tag[..],ok);
+}
