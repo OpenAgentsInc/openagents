@@ -1,9 +1,13 @@
 // Character chat for the Verse playtest (pt-chat-endpoint): the demo's
 // POST /api/npc/ask (aethyr-cpp tools/npc_chat.py) as
 //
-//   POST /api/playtest/npc/ask  {npc: {name, role, knowledge, greet}, world, history: [{from, text}], question}
+//   POST /api/playtest/npc/ask  {npc: {name, role, knowledge, greet}, world, history: [{from, text}], question,
+//                                controls?, visit?}  (X-Verse-Player: the browser's player key, optional)
 //                               -> 200 {text, model}; 400 without a question; 503 {error} when there is
 //                               no answer (the page then says its own lines, as the demo's does)
+// With a player key a character remembers that player: what they said to it
+// on earlier visits goes into its prompt (migrations/0031_npc_memory.sql
+// verse.npc_ask).
 //
 // The prompt, the memory and the day's cap are SQL's (migrations/0005_verse_npc.sql
 // verse.npc_request, verse.npc_answer, which also keeps every question and
@@ -114,9 +118,11 @@ bool npc_route(const request *q) {
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   const char *cap = getenv("OA_NPC_DAILY_CAP");
-  const char *v[2] = {body, cap && *cap ? cap : "2000"};
+  char key[160] = "";
+  api_header(q, "X-Verse-Player", key, sizeof key);
+  const char *v[3] = {body, cap && *cap ? cap : "2000", key};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, (x - 'request' - 'status')::text "
-                                 "FROM verse.npc_request($1::jsonb, $2::int) x", 2, NULL, v, NULL, NULL, 0);
+                                 "FROM verse.npc_ask($1::jsonb, $2::int, $3) x", 3, NULL, v, NULL, NULL, 0);
   free(body);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);

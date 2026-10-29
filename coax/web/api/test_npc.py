@@ -72,4 +72,43 @@ status, a = ask({"question": "one too many"})
 check("the day's answers are capped across the server", status == 503 and "used up" in a["error"], a)
 status, raw, _ = call("GET", "/api/playtest/health")
 check("the service answered other requests meanwhile", status == 200)
+
+# Characters who remember you (eg-people, migrations/0031_npc_memory.sql): with a
+# player key, what that player told a character on an earlier visit is in its prompt.
+sql("delete from verse.npc_day")
+status, raw, _ = call("POST", "/api/playtest/player", b"{}", {"Content-Type": "application/json"})
+wren = json.loads(raw)
+
+
+def ask_as(key, visit, question, npc="Innkeeper"):
+    body = {"npc": {"name": npc, "role": "the innkeeper"}, "world": "Everglade", "visit": visit, "question": question,
+            "controls": "W A S D walk, E talks to whoever is near."}
+    headers = {"Content-Type": "application/json"}
+    if key:
+        headers["X-Verse-Player"] = key
+    status, raw, _ = call("POST", "/api/playtest/npc/ask", json.dumps(body).encode(), headers)
+    return status, seen[-1]["body"]["systemInstruction"]["parts"][0]["text"]
+
+
+status, system = ask_as(wren["key"], "visit-1", "I'm Wren, and blackberry pie is my favourite.")
+check("a world names its own controls: no Haunted House edit mode in Everglade",
+      status == 200 and "E talks to whoever is near." in system and "B opens edit mode" not in system, system)
+check("a first meeting has nothing to remember", "talked with you before" not in system, system)
+check("the log keeps who asked and on which visit",
+      sql("select player||'|'||visit from verse.npc_log order by id desc limit 1") == wren["id"] + "|visit-1")
+status, system = ask_as(wren["key"], "visit-1", "What's good tonight?")
+check("on the same visit the conversation is the page's own history, not memory", "talked with you before" not in system, system)
+status, system = ask_as(wren["key"], "visit-2", "Remember me?")
+check("on a later visit the character is told what the player said before, oldest first",
+      "This player has talked with you before, on earlier visits." in system
+      and system.index("They said: I'm Wren, and blackberry pie is my favourite.") < system.index("They said: What's good tonight?")
+      and "You answered: Mortimer, at your service." in system, system)
+status, system = ask_as(None, "visit-3", "Remember me?")
+check("without a player key nobody is remembered", status == 200 and "talked with you before" not in system, system)
+status, raw, _ = call("POST", "/api/playtest/player", b"{}", {"Content-Type": "application/json"})
+other = json.loads(raw)
+status, system = ask_as(other["key"], "visit-4", "Remember me?")
+check("one player's words are never told to another", "Wren" not in system and "talked with you before" not in system, system)
+status, system = ask_as(wren["key"], "visit-5", "Hello", npc="Smith")
+check("each character remembers only what was said to it", "talked with you before" not in system, system)
 fake.shutdown()

@@ -2,7 +2,8 @@
 
 Status: plan and blockout, October 28, 2026 (eg-design); the forest and
 its paths, October 29 (eg-forest); the kit buildings and seven
-interiors, October 29 (eg-buildings). The city is
+interiors, October 29 (eg-buildings); its people, who talk and remember
+you, October 29 (eg-people). The city is
 walkable at https://openagents.com/realm/everglade (not on the galaxy until
 eg-launch; `/verse/galaxy?realms=all` shows it). The order of the work after
 this is in [realms-port.md](realms-port.md).
@@ -133,9 +134,24 @@ meshes. Where a kit has no piece, the line says what is assembled instead.
 
 ## Where characters stand
 
-Each character's day starts at a spot in the plan (`EG_SPOT`: x, z, facing);
-eg-people gives them names, schedules and memory. Every spot is checked to
-be in the open and reachable on foot.
+Each character's day starts at a spot in the plan (`EG_SPOT`: x, z, facing).
+Every spot is checked to be in the open and reachable on foot.
+
+## The people (eg-people)
+
+`verse/everglade/people.coax` names whoever stands at each spot and gives
+them a role, a greeting and what everyone in the city knows of it; the cats
+are cats, who talk as cats would. Walk up to one (2.8 m) and press E, or tap
+TALK: you type, and the question goes to the site's character chat
+(`/api/playtest/npc/ask`) with the conversation so far, the city's controls
+(so nobody explains the Haunted House's edit mode) and this visit's stamp.
+They remember you: the server keeps every question and answer with the
+player key that asked it (`coax/web/api/migrations/0031_npc_memory.sql`), and
+a character is told what that player said to it, and what it answered, on
+their earlier visits, the last twelve exchanges, oldest first. Nothing one
+player said reaches another, and each character remembers only its own
+conversations. A browser without a player key is given one when it first
+talks. They stand at their spots all day for now; schedules are for later.
 
 | Who | Where |
 | --- | --- |

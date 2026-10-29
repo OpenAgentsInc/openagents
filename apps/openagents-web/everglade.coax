@@ -23,6 +23,12 @@
 // #above opens on the map view. Nobody can change the city: there is no
 // editing here.
 //
+// Its people (eg-people, verse/everglade/people.coax) stand at the plan's
+// spots. Walk up to one and press E (or tap TALK) to talk: you type, they
+// answer as themselves through the character chat, and they remember you
+// (the server keeps what you told each of them, per player). The face sends
+// the question this file writes (everglade_ask) and hands back the answer.
+//
 // The player walks on a flat floor and is drawn at the ground's height
 // where it stands, as in the Garden; the ground is verse/terrain.coax's.
 // everglade.wgsl draws a ground of cells (store 0, its heights), every
@@ -35,6 +41,7 @@
 #load "analytics.coax";
 #load "../../verse/camera.coax";
 #load "../../verse/everglade/plan.coax";
+#load "../../verse/everglade/people.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
 MAX_VERTICES :: 30000;
@@ -101,6 +108,15 @@ WALL_FACE :: 0.09;        // how far a wall's outer face stands from its origin 
 // The shapes' five draws, then a draw per kit mesh.
 DRAWS :: 5 + KIT_MESHES;
 MSG_PACK :: 605;          // the host's pack progress: "LOADED TOTAL"
+MSG_FACTS :: 600;         // the host's page facts, a line each (now=, player=)
+ACT_PLAYER :: 5;          // host.js: keep the outbox as the browser's playtest player
+OUTBOX :: 1024;
+TALK_NEAR :: 2.8;         // metres: near enough to talk
+TALK_LINES :: 8;          // the conversation kept for the next question
+LINE_BYTES :: 300;
+TYPED :: 200;
+ASK_BYTES :: 8192;
+ANSWER_WAIT :: 30.0;      // seconds before an unanswered question is given up
 
 WALLS :: 128;          // the player's walls (player.coax WALL numbers each)
 BOXES :: 128;          // the camera's boxes (camera.coax BOX numbers each)
@@ -115,7 +131,7 @@ SMALL_NEAR :: 34.0;
 
 HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 16; HOLD_JUMP :: 32;
 HOLD_TURN_LEFT :: 64; HOLD_TURN_RIGHT :: 128; HOLD_TILT_UP :: 256; HOLD_TILT_DOWN :: 512;
-KEY_ESCAPE :: -1; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
+KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_BACKSPACE :: -3; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
 
 LOOK_DRAG :: 0.0055;
 WHEEL_ZOOM :: 0.006;
@@ -162,6 +178,17 @@ Everglade :: struct {
   forest_triangles: int;    // of which the forest's
   shadow_n: int;
   plate_n: int;
+  // talking: who is near, who you talk to, what was said and what you type
+  near: int; talk: int;
+  line_npc: [TALK_LINES] bool; line_len: [TALK_LINES] int; line_text: [TALK_LINES * LINE_BYTES] u8; line_n: int;
+  typed: [TYPED] u8; typed_n: int;
+  waiting: bool; waited: f32;
+  ask: [ASK_BYTES] u8; ask_n: int;          // a question for the face to send
+  visit: [24] u8; visit_n: int;             // this visit's stamp: the page facts' now
+  talk_button: Box; bye_button: Box; talk_finger: int;
+  field: [4] f32;
+  prompt: [64] u8; prompt_n: int; head: [64] u8; head_n: int;
+  outbox: [OUTBOX] u8; out_n: int; action: int;
 }
 
 // ---- small things
@@ -219,6 +246,7 @@ everglade_start :: (s: [] Everglade) {
   s[0].feet = v3(s[0].spawn.x, ground_at(s, s[0].spawn.x, s[0].spawn.z), s[0].spawn.z);
   s[0].orbit = verse_orbit_start(s[0].feet, 0);
   s[0].map_finger = -1;
+  s[0].near = -1; s[0].talk = -1; s[0].talk_finger = -1;
   build_scenery(s);
   plant_forest(s);
   at := KIT_AT;
@@ -362,6 +390,7 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
 }
 everglade_pack_failed :: (s: [] Everglade) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
 everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
+  if kind == MSG_FACTS { take_visit(s, text); return; }
   if kind != MSG_PACK { return; }
   loaded := whole_at(text, 0);
   total := whole_at(text, word_end(text, 0));
@@ -396,6 +425,17 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c {
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     return;
   }
+  // A person's name ("marta", "old-tam"): beside them, facing them, near enough to talk.
+  for i: 0..<EG_SPOTS {
+    if !is_person_slug(hash, EG_PERSON[i]) { continue; }
+    f := EG_SPOT[i * 3 + 2];
+    x := EG_SPOT[i * 3] + sin(f) * 1.6; z := EG_SPOT[i * 3 + 1] + cos(f) * 1.6;
+    s[0].spawn = v3(x, 0, z); s[0].spawn_face = wrap_angle(f + f32(PI));
+    s[0].feet = v3(x, ground_at(s, x, z), z);
+    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].warp = true; s[0].above = false; s[0].lift = 0;
+    return;
+  }
   for p: 0..<EG_PLACES {
     if hash != EG_PLACE_ID[p] { continue; }
     px := EG_PLACE[p * 2]; pz := EG_PLACE[p * 2 + 1];
@@ -416,6 +456,17 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c {
   }
 }
 
+// A person's name as a hash: lowercase, a space a dash ("Old Tam": "old-tam").
+is_person_slug :: (hash: string, name: string) -> bool {
+  if hash.count != name.count { return false; }
+  for i: 0..<name.count {
+    c := name[i];
+    want := ifx c == ' ' then cast(u8) '-' else ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+    if hash[i] != want { return false; }
+  }
+  return true;
+}
+
 // ---- the controls
 
 hold_bit :: (key: int) -> int {
@@ -434,6 +485,8 @@ hold_bit :: (key: int) -> int {
 
 everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if !s[0].started { everglade_start(s); }
+  if s[0].talk >= 0 { return talk_key(s, key, mods); }
+  if (key == 'e' || key == 'E') && s[0].near >= 0 && !s[0].above { talk_to(s, s[0].near); return true; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
   if key == 'm' || key == 'M' { s[0].above = !s[0].above; return true; }
@@ -451,7 +504,7 @@ everglade_key_up :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-everglade_blur :: (s: [] Everglade) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].map_finger = -1; }
+everglade_blur :: (s: [] Everglade) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].map_finger = -1; s[0].talk_finger = -1; }
 
 in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 
@@ -459,6 +512,7 @@ in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && 
 // finger is the face's (the sticks), so this says it isn't used.
 everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { everglade_start(s); }
+  if talk_pointer(s, x, y, phase, id) { return true; }
   if kind != 0 {
     s[0].touch = true;
     if phase == 0 && in_box(s[0].map_button, x, y) { s[0].map_finger = id; return true; }
@@ -506,6 +560,156 @@ everglade_controls :: (s: [] Everglade, dt: f32, dyaw: f32, dpitch: f32) #export
 }
 
 everglade_player_theta :: (s: [] Everglade) -> f32 #export_c { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
+
+// ---- talking (eg-people)
+
+// The page facts' now=: this visit's stamp, so the server tells this visit's
+// words from an earlier visit's.
+take_visit :: (s: [] Everglade, text: string) {
+  i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e];
+    i = e + 1;
+    if line.count < 5 || line[0..<4] != "now=" { continue; }
+    n := 0;
+    for k: 4..<line.count { if n < 24 && line[k] >= '0' && line[k] <= '9' { s[0].visit[n] = line[k]; n += 1; } }
+    s[0].visit_n = n;
+  }
+}
+
+// The nearest person within TALK_NEAR of you, or -1.
+nearest :: (s: [] Everglade, you: Point) -> int {
+  best := -1; most := f32(TALK_NEAR);
+  for i: 0..<EG_SPOTS {
+    d := flat_gap(v3(EG_SPOT[i * 3], 0, EG_SPOT[i * 3 + 1]), you);
+    if d < most { most = d; best = i; }
+  }
+  return best;
+}
+
+add_line :: (s: [] Everglade, npc: bool, text: string) {
+  if s[0].line_n == TALK_LINES {
+    for k: 1..<TALK_LINES {
+      s[0].line_npc[k - 1] = s[0].line_npc[k]; s[0].line_len[k - 1] = s[0].line_len[k];
+      for b: 0..<LINE_BYTES { s[0].line_text[(k - 1) * LINE_BYTES + b] = s[0].line_text[k * LINE_BYTES + b]; }
+    }
+    s[0].line_n -= 1;
+  }
+  k := s[0].line_n;
+  n := 0;
+  for i: 0..<text.count { if n < LINE_BYTES { s[0].line_text[k * LINE_BYTES + n] = text[i]; n += 1; } }
+  s[0].line_npc[k] = npc; s[0].line_len[k] = n;
+  s[0].line_n = k + 1;
+}
+line_of :: (s: [] Everglade, k: int) -> string { return cast(string) s[0].line_text[k * LINE_BYTES..<k * LINE_BYTES + s[0].line_len[k]]; }
+typed_text :: (s: [] Everglade) -> string { return cast(string) s[0].typed[0..<s[0].typed_n]; }
+
+talk_to :: (s: [] Everglade, i: int) {
+  if i < 0 || i >= EG_SPOTS { return; }
+  s[0].talk = i; s[0].line_n = 0; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0;
+  s[0].held = 0;
+  add_line(s, true, EG_GREET[i]);
+}
+end_talk :: (s: [] Everglade) { s[0].talk = -1; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0; }
+
+// What you typed goes to the face as a question, with the conversation so far.
+send_typed :: (s: [] Everglade) {
+  if s[0].talk < 0 || s[0].waiting || s[0].typed_n == 0 { return; }
+  lines: [TALK_LINES] EgLine;
+  for k: 0..<s[0].line_n { lines[k] = EgLine.{npc = s[0].line_npc[k], text = line_of(s, k)}; }
+  n := eg_ask_body(s[0].ask[..], s[0].talk, lines[0..<s[0].line_n], typed_text(s), cast(string) s[0].visit[0..<s[0].visit_n]);
+  if n == 0 { return; }
+  s[0].ask_n = n;
+  add_line(s, false, typed_text(s));
+  s[0].typed_n = 0;
+  s[0].waiting = true; s[0].waited = 0;
+}
+
+// A key while you talk: it types, Enter says it, Backspace takes a letter
+// back, Esc ends the conversation. Keys with Ctrl or Cmd are the browser's.
+talk_key :: (s: [] Everglade, key: int, mods: int) -> bool {
+  if key == KEY_ESCAPE { end_talk(s); return true; }
+  if key == KEY_ENTER { send_typed(s); return true; }
+  if key == KEY_BACKSPACE {
+    n := s[0].typed_n;
+    while n > 0 { n -= 1; if (s[0].typed[n] & 0xC0) != 0x80 { break; } }
+    s[0].typed_n = n;
+    return true;
+  }
+  if (mods & 10) != 0 { return false; }
+  if key < 32 || key == 127 { return key >= 0; }
+  // the code point as UTF-8, if it fits
+  c := key; n := s[0].typed_n;
+  size := ifx c < 0x80 then 1 else ifx c < 0x800 then 2 else ifx c < 0x10000 then 3 else 4;
+  if n + size > TYPED { return true; }
+  if size == 1 { s[0].typed[n] = cast(u8) c; }
+  if size == 2 { s[0].typed[n] = cast(u8) (0xC0 | (c >> 6)); s[0].typed[n + 1] = cast(u8) (0x80 | (c & 63)); }
+  if size == 3 { s[0].typed[n] = cast(u8) (0xE0 | (c >> 12)); s[0].typed[n + 1] = cast(u8) (0x80 | ((c >> 6) & 63)); s[0].typed[n + 2] = cast(u8) (0x80 | (c & 63)); }
+  if size == 4 {
+    s[0].typed[n] = cast(u8) (0xF0 | (c >> 18)); s[0].typed[n + 1] = cast(u8) (0x80 | ((c >> 12) & 63));
+    s[0].typed[n + 2] = cast(u8) (0x80 | ((c >> 6) & 63)); s[0].typed[n + 3] = cast(u8) (0x80 | (c & 63));
+  }
+  s[0].typed_n = n + size;
+  return true;
+}
+
+// TALK (a phone's way to start) and BYE: pressed and lifted on them.
+talk_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
+  if phase == 0 && (in_box(s[0].talk_button, x, y) || in_box(s[0].bye_button, x, y)) { s[0].talk_finger = id; return true; }
+  if id != s[0].talk_finger { return false; }
+  if phase == 2 {
+    if s[0].talk >= 0 && in_box(s[0].bye_button, x, y) { end_talk(s); }
+    else if s[0].talk < 0 && s[0].near >= 0 && in_box(s[0].talk_button, x, y) { talk_to(s, s[0].near); }
+  }
+  if phase >= 2 { s[0].talk_finger = -1; }
+  return true;
+}
+
+// The face's side: the question to send (its bytes in ask), that it went,
+// and the answer ("STATUS\n" then the server's JSON).
+everglade_ask :: (s: [] Everglade) -> int #export_c { return s[0].ask_n; }
+everglade_ask_sent :: (s: [] Everglade) #export_c { s[0].ask_n = 0; }
+
+// The "text" of the server's answer, unescaped, into out; its length.
+answer_text :: (body: string, out: [] u8) -> int {
+  key := "\"text\":\"";
+  i := 0; found := -1;
+  while i + key.count <= body.count { if body[i..<i + key.count] == key { found = i + key.count; break; } i += 1; }
+  if found < 0 { return 0; }
+  n := 0; i = found;
+  while i < body.count && body[i] != '"' && n < out.count {
+    c := body[i];
+    if c == '\\' && i + 1 < body.count {
+      e := body[i + 1];
+      if e == 'u' { out[n] = '\''; n += 1; i += 6; continue; }   // a rare escape: a stand-in
+      out[n] = ifx e == 'n' || e == 't' || e == 'r' then cast(u8) ' ' else e; n += 1; i += 2; continue;
+    }
+    out[n] = c; n += 1; i += 1;
+  }
+  return n;
+}
+everglade_answer :: (s: [] Everglade, reply: string) #export_c {
+  if s[0].talk < 0 || !s[0].waiting { return; }
+  s[0].waiting = false;
+  ok := reply.count > 4 && reply[0..<4] == "200\n";
+  text: [LINE_BYTES] u8;
+  n := ifx ok then answer_text(reply[4..<reply.count], text[..]) else 0;
+  if n > 0 { add_line(s, true, cast(string) text[0..<n]); return; }
+  add_line(s, true, ifx eg_is_cat(s[0].talk) then "Mrrp." else "Hm? Say that again, I didn't catch it.");
+}
+
+// The face mints a player key when the browser has none; the page keeps it.
+everglade_keep_player :: (s: [] Everglade, record: string) #export_c {
+  if s[0].action != 0 || record.count > OUTBOX { return; }
+  for i: 0..<record.count { s[0].outbox[i] = record[i]; }
+  s[0].out_n = record.count; s[0].action = ACT_PLAYER;
+}
+everglade_action :: (s: [] Everglade) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
+everglade_action_done :: (s: [] Everglade) #export_c { s[0].out_n = 0; }
+
+// While you talk, the phone's keyboard comes up over the typed line.
+everglade_wants_text :: (s: [] Everglade) -> bool #export_c { return s[0].talk >= 0; }
 
 // ---- the scene
 
@@ -1171,6 +1375,88 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
   return m;
 }
 
+// The prompt over the hint when someone is near.
+join_into :: (out: [] u8, a: string, b: string) -> int {
+  n := 0;
+  for i: 0..<a.count { if n < out.count { out[n] = a[i]; n += 1; } }
+  for i: 0..<b.count { if n < out.count { out[n] = b[i]; n += 1; } }
+  return n;
+}
+talk_prompt :: (s: [] Everglade) -> string {
+  if s[0].near < 0 { return ""; }
+  s[0].prompt_n = join_into(s[0].prompt[..], ifx phone(s) then "TALK TO " else "E · TALK TO ", EG_PERSON[s[0].near]);
+  return cast(string) s[0].prompt[0..<s[0].prompt_n];
+}
+
+// The conversation, along the bottom: who you talk to, the last thing they
+// said, what you are typing, and BYE.
+conversation :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  gutter := 16 * k;
+  pw := lo(w - 2 * gutter, 760 * k);
+  x0 := (w - pw) / 2; x1 := x0 + pw;
+  cap := 8.5 * k; lead := cap * 2.1;
+  i := s[0].talk;
+  // the last thing they said, wrapped to at most four lines
+  said := "";
+  for q: 0..<s[0].line_n { if s[0].line_npc[q] { said = line_of(s, q); } }
+  inner := pw - 32 * k;
+  starts: [5] int; ends: [5] int; lines := 0; from := 0;
+  next: [1] int;
+  while from < said.count && lines < 4 {
+    e := wrap(said, from, inner / cap, GAP, SPACE, false, next[..]);
+    starts[lines] = from; ends[lines] = e; lines += 1;
+    if next[0] <= from { break; }
+    from = next[0];
+  }
+  if s[0].waiting { lines = hi_i(lines, 1); }
+  ph := 30 * k + cap + 14 * k + f32(hi_i(lines, 1)) * lead + 12 * k + cap + 26 * k;
+  y0 := h - gutter - ph;
+  plate(s, u, Box.{x0 = x0, y0 = y0, x1 = x1, y1 = h - gutter}, 0.9, 0);
+  n := at;
+  s[0].head_n = join_into(s[0].head[..], EG_PERSON[i], " · ");
+  s[0].head_n += join_into(s[0].head[s[0].head_n..<64], EG_SPOT_NAME[i], "");
+  head := cast(string) s[0].head[0..<s[0].head_n];
+  y := y0 + 18 * k + cap;
+  n = draw_text(out, n, head, x0 + 16 * k, y, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  // BYE, top right of the panel
+  bw := text_width("BYE", 8 * k) + 28 * k;
+  bb := Box.{x0 = x1 - 10 * k - bw, y0 = y0 + 8 * k, x1 = x1 - 10 * k, y1 = y0 + 8 * k + 34 * k};
+  s[0].bye_button = bb;
+  plate(s, u, bb, 0.85, ifx s[0].talk_finger >= 0 then 2.0f32 else 1.0f32);
+  n = draw_text(out, n, "BYE", bb.x0 + 14 * k, bb.y1 - 13 * k, 8 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  y += 14 * k;
+  for q: 0..<lines {
+    y += lead;
+    if q < said.count && ends[q] > starts[q] && !(s[0].waiting && q == 0 && said.count == 0) {
+      n = draw_text(out, n, said[starts[q]..<ends[q]], x0 + 16 * k, y, cap, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+    }
+  }
+  // what you type, or how to
+  y += 12 * k + cap + 4 * k;
+  fx0 := x0 + 12 * k; fy0 := y - cap - 10 * k; fx1 := x1 - 12 * k; fy1 := y + 10 * k;
+  s[0].field[0] = fx0; s[0].field[1] = fy0; s[0].field[2] = fx1 - fx0; s[0].field[3] = fy1 - fy0;
+  if s[0].waiting {
+    dots := ifx (cast(int) (s[0].time * 3)) % 3 == 0 then "." else ifx (cast(int) (s[0].time * 3)) % 3 == 1 then ". ." else ". . .";
+    n = draw_text(out, n, dots, x0 + 16 * k, y, cap, GAP, SPACE, ink(k, 0.7, PARCH_R, PARCH_G, PARCH_B), false, false);
+  } else if s[0].typed_n > 0 {
+    typed := typed_text(s);
+    tc := cap;
+    tw := text_width(typed, tc);
+    // the end of a long line stays in view
+    shown := typed; skip := 0;
+    while tw > inner - 2 * tc && skip < typed.count { skip += 1; while skip < typed.count && (typed[skip] & 0xC0) == 0x80 { skip += 1; } shown = typed[skip..<typed.count]; tw = text_width(shown, tc); }
+    n = draw_text(out, n, shown, x0 + 16 * k, y, tc, GAP, SPACE, ink(k, 0.95, 1, 1, 1), false, false);
+    cx := x0 + 16 * k + tw + 3 * k;
+    if (cast(int) (s[0].time * 2)) % 2 == 0 && lit(out, n, cx, y, cx, y - tc, 0.6 * k, 0.9, 1.2 * k, 1, 1, 1, 0) { n += 6; }
+  } else {
+    help := ifx phone(s) then "TYPE TO SAY SOMETHING" else "TYPE TO SAY SOMETHING · ENTER SAYS IT · ESC ENDS";
+    n = draw_text(out, n, help, x0 + 16 * k, y, cap * 0.85, GAP, SPACE, ink(k, 0.6, PARCH_R, PARCH_G, PARCH_B), false, false);
+  }
+  return n;
+}
+
 hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32, you: Point) -> int {
   k := hi(s[0].dpr, 0.5);
   w := s[0].width; h := s[0].height;
@@ -1191,6 +1477,9 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   s[0].map_button = mb;
   plate(s, u, mb, 0.85, ifx s[0].above then 2.0f32 else 1.0f32);
   n = draw_text(out, n, word, mb.x0 + 16 * k, mb.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  s[0].talk_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  s[0].bye_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  if s[0].talk >= 0 { return conversation(s, out, u, n); }
   line := hint(s);
   hs := 7.5 * k;
   room := w - 2 * gutter - 24 * k;
@@ -1199,6 +1488,16 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   y1 := h - gutter;
   plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - hs - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
   n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, hs, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+  // Someone near: E (or TALK, on a phone) talks to them.
+  if s[0].near >= 0 && !s[0].above {
+    ask := talk_prompt(s);
+    ts := 9 * k;
+    aw := text_width(ask, ts) + 32 * k;
+    tb := Box.{x0 = (w - aw) / 2, y0 = y1 - hs - 76 * k, x1 = (w + aw) / 2, y1 = y1 - hs - 34 * k};
+    s[0].talk_button = tb;
+    plate(s, u, tb, 0.85, ifx s[0].talk_finger >= 0 then 2.0f32 else 1.0f32);
+    n = draw_text(out, n, ask, tb.x0 + 16 * k, tb.y1 - 15 * k, ts, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  }
   if move_on {
     r := 46 * k;
     for i: 0..<32 {
@@ -1269,13 +1568,18 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   u[U_GROUND] = f32(EG_CELLS); u[U_GROUND + 1] = f32(EG_CELL); u[U_GROUND + 2] = f32(EG_EDGE); u[U_GROUND + 3] = f32(EG_EDGE);
   paths(u);
 
-  n := hud(s, out, u, move_on && !s[0].above, ox, oy, pad_x, pad_y, shown);
+  s[0].near = ifx s[0].above || s[0].talk >= 0 then -1 else nearest(s, feet);
+  if s[0].waiting {
+    s[0].waited += t;
+    if s[0].waited > f32(ANSWER_WAIT) { s[0].ask_n = 0; everglade_answer(s, "0\n"); }
+  }
+  n := hud(s, out, u, move_on && !s[0].above && s[0].talk < 0, ox, oy, pad_x, pad_y, shown);
   u[5] = f32(s[0].plate_n);
   return n;
 }
 
-// While the map shows, you stand still.
-everglade_busy :: (s: [] Everglade) -> bool #export_c { return s[0].above; }
+// While the map shows, or while you talk, you stand still.
+everglade_busy :: (s: [] Everglade) -> bool #export_c { return s[0].above || s[0].talk >= 0; }
 
 // Nothing draws until the pack is in: its index buffer holds the shapes' indices too.
 everglade_draws :: (s: [] Everglade) -> int #export_c { return ifx s[0].pack_ready then DRAWS else 0; }
@@ -1480,6 +1784,15 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
     everglade_hash(g[..], EG_PLACE_ID[p]);
     #assert everglade_warp(g[..]);
   }
+  // A person's name: beside them, near enough to talk.
+  everglade_hash(g[..], "old-tam");
+  #assert everglade_warp(g[..]);
+  tam := everglade_spawn(g[..]);
+  #assert flat_gap(tam, v3(EG_SPOT[20 * 3], 0, EG_SPOT[20 * 3 + 1])) < f32(TALK_NEAR) && nearest(g[..], tam) == 20;
+  for i: 0..<EG_SPOTS {
+    everglade_hash(g[..], ifx i == 5 then "marta" else "nobody");
+    if i == 5 { #assert everglade_warp(g[..]) && nearest(g[..], everglade_spawn(g[..])) == 5; }
+  }
 }
 
 #test "a click on MAP lifts the camera; a drag elsewhere turns it" {
@@ -1501,4 +1814,91 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   g[0].touch = true;
   #assert text_width(hint(g[..]), 6.5 * 3) < 1170 - 96;
   #assert where(v3(33, 0, 1)) == "THE MARKET" && where(v3(0, 0, -86)) == "THE ROAD IN";
+}
+
+#test "walk up to someone and press E: you type, they answer through the character chat, and E ends nothing else" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  everglade_message(g[..], MSG_FACTS, "tab=x\nnow=1730000000123\nplayer=p-1\n");
+  #assert cast(string) g[0].visit[0..<g[0].visit_n] == "1730000000123";
+  // far from everyone: E is nobody's
+  n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].near == -1 && !everglade_key(g[..], 'e', 0) && g[0].talk == -1;
+  // by the inn's door, Marta is near
+  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, -2.2, 0, -37, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].near == 5 && talk_prompt(g[..]) == "E · TALK TO Marta";
+  #assert everglade_key(g[..], 'E', 0) && g[0].talk == 5 && everglade_busy(g[..]) && everglade_wants_text(g[..]);
+  #assert g[0].line_n == 1 && g[0].line_npc[0] && line_of(g[..], 0) == EG_GREET[5];
+  // while you talk, W and D type
+  for c: "I'm Wren, I love pie" { #assert everglade_key(g[..], cast(int) c, 0); }
+  #assert everglade_key(g[..], KEY_BACKSPACE, 0) && typed_text(g[..]) == "I'm Wren, I love pi";
+  #assert !everglade_key(g[..], 'r', 8);   // Cmd+R is the browser's
+  #assert everglade_key(g[..], 'e', 0) && everglade_key(g[..], KEY_ENTER, 0);
+  #assert g[0].waiting && g[0].typed_n == 0 && g[0].line_n == 2 && line_of(g[..], 1) == "I'm Wren, I love pie";
+  body := cast(string) g[0].ask[0..<everglade_ask(g[..])];
+  #assert body.count > 0 && contains(body, "\"name\":\"Marta\"") && contains(body, "\"visit\":\"1730000000123\"");
+  #assert contains(body, "\"question\":\"I'm Wren, I love pie\"") && contains(body, "\"history\":[{\"from\":\"npc\"");
+  everglade_ask_sent(g[..]);
+  #assert everglade_ask(g[..]) == 0;
+  // nothing more is sent while one is out
+  for c: "more" { k := everglade_key(g[..], cast(int) c, 0); }
+  k := everglade_key(g[..], KEY_ENTER, 0);
+  #assert everglade_ask(g[..]) == 0 && typed_text(g[..]) == "more";
+  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, -2.2, 0, -37, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert n > 0 && g[0].near == -1;
+  everglade_answer(g[..], "200\n{\"text\":\"Wren! Pie's \\\"fresh\\\"\\ntonight.\",\"model\":\"m\"}");
+  #assert !g[0].waiting && g[0].line_n == 3 && line_of(g[..], 2) == "Wren! Pie's \"fresh\" tonight.";
+  // no answer: they say their own line
+  typed := everglade_key(g[..], KEY_ENTER, 0);
+  everglade_answer(g[..], "503\n{\"error\":\"busy\"}");
+  #assert line_of(g[..], g[0].line_n - 1) == "Hm? Say that again, I didn't catch it.";
+  // Esc ends it, and you can walk again
+  #assert everglade_key(g[..], KEY_ESCAPE, 0) && g[0].talk == -1 && !everglade_busy(g[..]);
+}
+
+#test "a phone taps TALK and BYE; a cat answers as a cat when the server can't; an unanswered question is given up" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  g[0].touch = true;
+  // the errand cat by the fountain
+  n := everglade_frame(g[..], out[..], u[..], 1170, 2532, 3, 0.016, false, -3.6, 0, 3.2, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].near == 4 && talk_prompt(g[..]) == "TALK TO Pebble";
+  tb := g[0].talk_button;
+  #assert tb.x1 > tb.x0 && tb.x1 <= 1170 && tb.y1 <= 2532;
+  #assert everglade_pointer(g[..], (tb.x0 + tb.x1) / 2, (tb.y0 + tb.y1) / 2, 0, 1, 7);
+  #assert everglade_pointer(g[..], (tb.x0 + tb.x1) / 2, (tb.y0 + tb.y1) / 2, 2, 1, 7) && g[0].talk == 4;
+  n = everglade_frame(g[..], out[..], u[..], 1170, 2532, 3, 0.016, false, -3.6, 0, 3.2, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].field[2] > 0 && g[0].field[1] + g[0].field[3] <= 2532 && g[0].field[0] >= 0;
+  k := everglade_key(g[..], 'h', 0); k = everglade_key(g[..], 'i', 0); k = everglade_key(g[..], KEY_ENTER, 0);
+  everglade_answer(g[..], "0\n");
+  #assert line_of(g[..], g[0].line_n - 1) == "Mrrp.";
+  k = everglade_key(g[..], 'h', 0); k = everglade_key(g[..], KEY_ENTER, 0);
+  n = everglade_frame(g[..], out[..], u[..], 1170, 2532, 3, 0.25, false, -3.6, 0, 3.2, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].waiting;
+  g[0].waited = f32(ANSWER_WAIT) - 0.1;
+  n = everglade_frame(g[..], out[..], u[..], 1170, 2532, 3, 0.25, false, -3.6, 0, 3.2, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert !g[0].waiting && everglade_ask(g[..]) == 0;
+  bb := g[0].bye_button;
+  #assert bb.x1 > bb.x0 && bb.x1 <= 1170;
+  #assert everglade_pointer(g[..], (bb.x0 + bb.x1) / 2, (bb.y0 + bb.y1) / 2, 0, 1, 8);
+  #assert everglade_pointer(g[..], (bb.x0 + bb.x1) / 2, (bb.y0 + bb.y1) / 2, 2, 1, 8) && g[0].talk == -1;
+  // a minted player key is kept by the page (action 5)
+  everglade_keep_player(g[..], "{\"key\":\"k\",\"id\":\"p-2\"}");
+  #assert everglade_action(g[..]) == ACT_PLAYER && cast(string) g[0].outbox[0..<g[0].out_n] == "{\"key\":\"k\",\"id\":\"p-2\"}";
+}
+
+#test "a conversation keeps its last lines, oldest dropped" {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  talk_to(g[..], 11);
+  for i: 0..<12 { add_line(g[..], i % 2 == 0, ifx i == 11 then "the last" else "a line"); }
+  #assert g[0].line_n == TALK_LINES && line_of(g[..], TALK_LINES - 1) == "the last";
+}
+
+contains :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
 }
