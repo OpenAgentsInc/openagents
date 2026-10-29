@@ -1022,7 +1022,8 @@
       "blocked_by": [
         "secp-mult-const",
         "crypto-secure-zero",
-        "crypto-public-view-audit"
+        "crypto-public-view-audit",
+        "crypto-ecdh-fixed-serialization"
       ],
       "blocks": [
         "nip44-v2",
@@ -3398,7 +3399,7 @@
         "Run affected full authority checks and mutation with zero survivors, independent adversarial checked/release native and Wasm oracles, exceptional cases and a timing probe with a positive control; record review and limitations"
       ],
       "blocked_by": ["crypto-field-secret-guards", "crypto-classified-root-audit", "crypto-reviewed-guard-binding"],
-      "blocks": ["secp-mult-const", "crypto-public-peer-guard-binding"]
+      "blocks": ["secp-mult-const", "crypto-public-peer-guard-binding", "crypto-ecdh-fixed-serialization"]
     },
     {
       "slug": "crypto-public-peer-guard-binding",
@@ -3431,8 +3432,24 @@
         "Independent adversarial tests cover public and secret flips, wrong or unknown extents, aliases and overlaps, view writes and escape, nested public calls and transitive taint, joins, loops, early returns and forbidden callees without increasing audit limits",
         "Analyze the exact source-hashed ECDH entry with its stated host and caller premises, retaining all guards and refusals; affected full checks, zero-survivor mutation and independent review pass without claiming target timing, hidden-copy erasure or production approval"
       ],
-      "blocked_by": ["crypto-classified-root-audit", "crypto-secret-public-loop-summaries"],
+      "blocked_by": ["crypto-classified-root-audit", "crypto-secret-public-loop-summaries", "crypto-ecdh-fixed-serialization"],
       "blocks": ["crypto-ecdh-xonly"]
+    },
+    {
+      "slug": "crypto-ecdh-fixed-serialization",
+      "parent": "m-assurance",
+      "title": "Serialize ECDH field words without secret-derived source branches",
+      "size": "M",
+      "labels": ["nostr", "crypto", "coax"],
+      "body": "The provisional classified-view audit reaches the actual ECDH entry and refuses the secret-derived width check in cb_store_word at bytes.coax:115, called when serializing a 32-bit field word. Investigate a fixed-work source-first serializer for this exact path, preserving the existing checked byte helper, ECDH output and failure contracts. A range argument alone is not permission to waive the actual source branch. No target timing, hidden-copy erasure or production-secret approval follows.",
+      "files": ["coax/lib/crypto/ecdh.coax", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Independently prove and review exact big-endian serialization equivalence for every 32-bit word and valid destination index, with no secret-derived branch or index in the changed source; preserve the exported checked byte helper and existing ECDH success, refusal and cleanup behavior",
+        "Run the actual changed-source full-path check within its existing budget, independent checked/release native and Wasm raw-x vectors and cleanup fixtures, and all affected authority mutation gates with zero survivors",
+        "Record exact source, test, compiler and target identities and review limits; do not claim the whole ECDH source audit, target timing, erasure or production approval until their independent gates pass"
+      ],
+      "blocked_by": ["crypto-total-secret-field"],
+      "blocks": ["crypto-public-view-audit", "crypto-ecdh-xonly"]
     }
   ]
 }
