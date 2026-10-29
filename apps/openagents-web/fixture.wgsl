@@ -89,7 +89,7 @@ const HEAD = vec4f(-0.3, 1.62, -1.8, 0.17);
 const LANTERN = vec4f(-2.3, 0.16, 1.9, 0.16);         // a glowing orb on the ground: all its light blooms (spec 6)
 const POND = vec4f(0.7, 0.0, 2.7, 1.5);              // centre x, -, z, radius; 1.9 m deep in the middle
 const GRASS = vec4f(-3.4, 0.0, 2.2, 1.6);
-const RIDGE_Z = vec3f(60.0, 140.0, 260.0);
+const RIDGE_Z = vec3f(60.0, 115.0, 260.0);
 struct Hit { t: f32, n: vec3f, albedo: vec3f, kind: f32, id: f32 }   // kind 0 none, 1 matte, 2 water, 3 character, 4 emissive (albedo is its light); id: which thing (outlines)
 fn st(i: u32) -> vec4f { return u.style[i]; }
 fn sphere_t(o: vec3f, d: vec3f, s: vec4f) -> f32 {
@@ -137,14 +137,20 @@ fn capsule_n(p: vec3f, a: vec3f, b: vec3f) -> vec3f {
 }
 fn ridge_h(x: f32, i: i32) -> f32 {
   let f = f32(i);
-  var bases = array<f32, 3>(9.0, 22.0, 44.0);
+  var bases = array<f32, 3>(9.0, 21.0, 44.0);
   let base = bases[i];
   let s = 12.0 * (1.0 + f * f);   // nearer ridges are narrower in metres, so all three read alike on screen
-  return base * (0.72 + 0.18 * sin(x / s + f * 1.7) + 0.08 * sin(x / (0.37 * s) + 0.6 + f));
+  // the two near ridges open in a valley ahead, so the horizon there is the far ridge and the
+  // far ground: the band the style check reads the haze from (art-styles.md 15)
+  var gaps = array<vec2f, 3>(vec2f(14.0, 30.0), vec2f(24.0, 48.0), vec2f(0.0, 0.0));
+  let g = gaps[i];
+  let open = select(1.0, smoothstep(g.x, g.y, abs(x)), g.y > 0.0);
+  return open * base * (0.72 + 0.18 * sin(x / s + f * 1.7) + 0.08 * sin(x / (0.37 * s) + 0.6 + f));
 }
 fn ridge_slope(x: f32, i: i32) -> f32 { return (ridge_h(x + 0.5, i) - ridge_h(x - 0.5, i)); }
 fn ridge_albedo(i: i32) -> vec3f {
-  var a = array<vec3f, 3>(vec3f(0.09, 0.20, 0.06), vec3f(0.08, 0.18, 0.08), vec3f(0.08, 0.16, 0.10));
+  // each farther flat painted a little bluer and paler under its haze, as the eye expects of a stack
+  var a = array<vec3f, 3>(vec3f(0.09, 0.20, 0.06), vec3f(0.08, 0.17, 0.12), vec3f(0.34, 0.42, 0.50));
   return a[i];
 }
 // The scene, nearest first. shadow: only whether anything is in the way, and how near the miss (soft edges).
