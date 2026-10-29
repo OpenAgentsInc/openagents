@@ -972,6 +972,120 @@
         "All five roots can be woken and the heart tree blooms; headless shot of the bloom"
       ],
       "blocked_by": []
+    },
+    {
+      "slug": "eg-ruleset",
+      "parent": "eg",
+      "title": "Rulesets a realm opts into: SRD 5e in Everglade",
+      "size": "M",
+      "labels": [
+        "realms",
+        "everglade",
+        "rules"
+      ],
+      "body": "The owner: \"we need D&D ruleset spells like thats a ruleset some worlds can have.\" A realm opts into a ruleset in realms.json (`\"ruleset\": \"srd5\"`); the page carries it (data-ruleset, the page facts' ruleset= line) and the realm reads it. A shared Coax module, `verse/rules/srd5.coax`: seeded dice, the spell definitions (level, range, area, damage type and dice, save), objects' armor class and hit points by material and size (SRD 5.2.1 Breaking Objects), damage types with objects' immunities, resistance and vulnerability, and the conditions the spells need. A realm without a ruleset gets none of it. Everglade opts in.\n\nPrevious engine: `verse/everglade/previous/destructible-buildings.md` (Damage model), `0b401561a0^:crates/verse-world/src/spells/dice.rs`.",
+      "files": [
+        "verse/rules/",
+        "apps/openagents-web/realms.json",
+        "coax/web/realms.ts",
+        "coax/web/host.js"
+      ],
+      "acceptance": [
+        "realms.json ruleset reaches the page; Everglade says srd5 and other realms say nothing",
+        "verse/rules/srd5.coax checks: dice are seeded and in range, the object table matches the SRD, immunities hold",
+        "coax test passes on the files touched"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "eg-spells",
+        "eg-destruct"
+      ]
+    },
+    {
+      "slug": "eg-spells",
+      "parent": "eg",
+      "title": "Everglade: the old spell hotbar (Meteor Swarm, Thunderbolt, Mega Thunderbolt, Water Orb)",
+      "size": "M",
+      "labels": [
+        "realms",
+        "everglade",
+        "spells"
+      ],
+      "body": "The owner: \"bring in my hotbar with the spells.\" The previous engine's Everglade bar with destruction on (`0b401561a0^:crates/verse-zone-everglade/src/zones/everglade/hotbar.rs` DEV_ORDER, `demolition/meteor.rs`): Meteor Swarm (six meteors on a 6 m ring, 20d6 fire and 20d6 bludgeoning a blast, 4 m blasts, 2.5 s cast), the Thunderbolt (20d10 lightning, 3.4 m, 1.2 s cast), the Mega Thunderbolt (100d10, 0.5 s cast) and the Water Lab's Water Orb. Number keys pick a spell, a click or tap at a target casts it, Esc or right click cancels; a ring shows where it lands. Falling meteors with fire trails, impact flash, scorch and smoke; a branching bolt from the clouds with a flash. The bar in today's UI: few buttons, short words.",
+      "files": [
+        "verse/rules/",
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade-face.c",
+        "apps/openagents-web/everglade.wgsl",
+        "docs/verse/everglade.md"
+      ],
+      "acceptance": [
+        "Keys 1 to 4 pick, a click casts; on a phone a tap on a slot then a tap on the ground casts",
+        "Shots of the bar, a meteor swarm landing and a bolt",
+        "coax test passes on the files touched"
+      ],
+      "blocked_by": [
+        "eg-ruleset"
+      ],
+      "blocks": [
+        "eg-break-live"
+      ]
+    },
+    {
+      "slug": "eg-destruct",
+      "parent": "eg",
+      "title": "Everglade breaks: kit pieces with object hit points, chunks with physics, structural collapse",
+      "size": "L",
+      "labels": [
+        "realms",
+        "everglade",
+        "destruction"
+      ],
+      "body": "The owner: \"everglade must be destructible like it was in previous engine.\" Every kit piece of the town (walls, posts, roofs, gables, doors, windows, the palisade, stalls, crates, barrels, fences, furniture) has the ruleset's object armor class and hit points. At zero it breaks into chunks that fall with rigid-body physics and settle as debris; what it held up falls (upper storeys need the section under them, a roof its walls: `verse/everglade/previous/destructible-buildings.md`, Everglade's town). Budgets keep the frame rate (chunks capped, sleep, a phone tier). Nothing a player breaks is shared; a broken building grows back after 60 s of rest with you 30 m away, and R rebuilds the town at once.",
+      "files": [
+        "verse/rules/",
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade-face.c",
+        "apps/openagents-web/everglade.wgsl",
+        "docs/verse/everglade.md",
+        "verse/demolish.coax"
+      ],
+      "acceptance": [
+        "A spell at a cottage breaks its walls into chunks and the roof falls",
+        "Chunks sleep on the ground; at most the budget's chunks live",
+        "R and regrowth stand the town back up",
+        "coax test passes on the files touched"
+      ],
+      "blocked_by": [
+        "eg-ruleset"
+      ],
+      "blocks": [
+        "eg-break-live"
+      ]
+    },
+    {
+      "slug": "eg-break-live",
+      "parent": "eg",
+      "title": "Everglade: Meteor Swarm and the Thunderbolt break houses on openagents.com",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade",
+        "destruction"
+      ],
+      "body": "Verify on production, headless: cast at a house, it collapses, and the frame rate holds. Shots of the hotbar, a meteor swarm hitting a house, lightning, the collapse and the debris.",
+      "files": [
+        "docs/verse/everglade.md"
+      ],
+      "acceptance": [
+        "Headless production shots of a house collapsing under both spells",
+        "Frame times during a collapse recorded in docs/verse/everglade.md"
+      ],
+      "blocked_by": [
+        "eg-spells",
+        "eg-destruct"
+      ],
+      "blocks": []
     }
   ]
 }
