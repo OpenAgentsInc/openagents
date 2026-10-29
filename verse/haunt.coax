@@ -12,7 +12,10 @@ HauntEntity :: struct {
 HauntRect :: struct { x0:f32; z0:f32; x1:f32; z1:f32; }
 HauntArea :: struct { id:string; name:string; rect:HauntRect; room:bool; dark:bool; surface:int; }
 HauntLight :: struct { pos:HauntPoint; color:HauntPoint; radius:f32; flicker:f32; intensity:f32; parent:string; mount:HauntPoint; }
-HauntPerson :: struct { doc:HH_Person; pos:HauntPoint; id:string; name:string; role:string; knowledge:string; brain:string; }
+HauntPerson :: struct { doc:HH_Person; pos:HauntPoint; id:string; name:string; role:string; knowledge:string; brain:string;
+ startled:f64 = -100;   // when a haunt went off near them (the startle plays from it)
+ home_yaw:f32; homed:bool;   // the way they face when nobody is near (taken from the house, or after an edit)
+}
 HauntAction :: struct { op:string; target:string; name:string; text:string; at:HauntPoint; size:HauntPoint; value:f32; duration:f32; delay:f32; volume:f32; flat:bool; }
 HauntZone :: struct { id:string; name:string; pos:HauntPoint; half:HauntPoint; radius:f32; sphere:bool; once:bool; first:int; count:int; entered:bool; }
 HauntEvent :: struct { action:HauntAction; due:f64; done:bool; }
@@ -189,6 +192,7 @@ verse_haunt_advance :: (s:Haunt,t:f64,player:HauntPoint,eye:HauntPoint,heading:f
   z:=s.zones[i];inside:=hh_inside(z,hh_p(player.x,player.y+1,player.z));bit:=cast(u32)1<<i;
   if inside && hh_can_fire((s.fired&bit)!=0,z.once,z.entered) {
    next.fired=next.fired|bit;next.dirty=true;
+   next=hh_startle(next,z.pos,t);
    for j:0..<z.count {if next.pending_count<next.pending.count {next.pending[next.pending_count]=HauntEvent.{action=s.actions[z.first+j],due=t+cast(f64)s.actions[z.first+j].delay};next.pending_count+=1;}}
   }
   next.zones[i].entered=inside;
@@ -222,8 +226,7 @@ verse_haunt_instances :: (s:Haunt,t:f64,out:[]HauntInstance,draws:[]HauntDraw)->
    if e.motion==6 && hh_len(e.pos,s.player)>110 {continue;}
    if base>=out.count{return 0;}if e.motion==7 {e=hh_flocked(s,e,t);}e=hh_animated(e,t);
    if e.motion==6 {e.yaw+=sin(cast(f32)t*0.6+e.pos.x)*0.008;}
-   c:=cos(e.yaw)*e.scale;sn:=sin(e.yaw)*e.scale;
-   v:HauntInstance;v.rows=[12]f32.[c,0,sn,e.pos.x,0,e.scale,0,e.pos.y,-sn,0,c,e.pos.z];v.material=[4]f32.[e.tint.x,e.tint.y,e.tint.z,e.glow];
+   v:=hh_life_instance(e,hh_person_life(s,i,t));
    if i==s.selected && s.editing {v.material[3]+=0.35;}out[base]=v;base+=1;
   }
   // Your house figure, the guide and the ghost's sparkle are world art.
@@ -586,6 +589,106 @@ hh_atan2 :: (y:f32,x:f32)->f32 {
  angle:=ratio*(0.99997726+rr*(-0.33262347+rr*(0.19354346+rr*(-0.11643287+rr*(0.05265332+rr* -0.01172120)))));
  if ay>ax{angle=1.57079633-angle;}if x<0{angle=3.14159265-angle;}if y<0{angle=-angle;}return angle;
 }
+// ---- the characters' life: idle variety, looking at you, gestures, startles.
+// The house's people are whole meshes (no joints, so verse/motion.coax's
+// keyframes don't apply): their life is a lean, a sway, a bob and a turn of the
+// whole body, chosen here from time, who they are and what is going on.
+HauntLife :: struct { yaw:f32; pitch:f32; roll:f32; lift:f32; stretch:f32; }
+LIFE_LOOK :: 3.5;      // seconds between idle glances
+LIFE_NEAR :: 4.0;      // metres: within this they turn to you
+LIFE_STARTLE :: 0.9;   // seconds a startle lasts
+LIFE_HEARD :: 7.0;     // metres: a haunt this close startles them
+// A deterministic share in [0, 1) for person `index` in time slot `slot`.
+hh_life_hash :: (index:int,slot:int,salt:int)->f32 {n:=index*7919+slot*104729+salt*31337+12345;if n<0{n=-n;}m:=(n*n/7+n*13)%1000;return cast(f32)m/1000;}
+#test "idle: they breathe and shift their weight, and glance about at their own times" {
+ a:=verse_haunt_life(0,1,false,false,-1,false);b:=verse_haunt_life(0,1.8,false,false,-1,false);
+ #assert a.stretch!=b.stretch && a.roll!=b.roll && abs(a.roll)<=0.04 && abs(a.stretch)<=0.013;
+ // two people glance differently at the same moment
+ c:=verse_haunt_life(1,1,false,false,-1,false);#assert c.yaw!=a.yaw || c.roll!=a.roll;
+ // the same person at the same time does the same thing (no randomness)
+ d:=verse_haunt_life(0,1,false,false,-1,false);#assert d.yaw==a.yaw && d.lift==a.lift;
+ // glances stay small: they look about, never spin round
+ for k:0..<40 {g:=verse_haunt_life(k%5,cast(f32)k*0.9,false,false,-1,false);#assert abs(g.yaw)<=0.81 && g.lift>=0 && g.lift<=0.09;}
+}
+#test "some glances come with a fidget: a little hop, at their own slots" {
+ hops:=0;for slot:0..<40 {g:=verse_haunt_life(2,cast(f32)slot*LIFE_LOOK+0.6,false,false,-1,false);if g.lift>0.03{hops+=1;}}
+ #assert hops>0 && hops<40;
+}
+#test "near you they stop glancing; in a conversation they nod and gesture" {
+ n:=verse_haunt_life(0,2,true,false,-1,false);#assert n.yaw==0 && n.lift==0 && n.pitch>0;
+ t1:=verse_haunt_life(0,2,true,true,-1,false);t2:=verse_haunt_life(0,2.3,true,true,-1,false);
+ #assert t1.yaw==0 && t1.pitch!=t2.pitch && abs(t1.pitch)<=0.1 && (t1.roll!=t2.roll);
+}
+#test "a startle: up and back with a shiver, then over" {
+ s:=verse_haunt_life(0,5,false,false,0.2,false);#assert s.lift>0.1 && s.pitch< -0.05;
+ e:=verse_haunt_life(0,5,false,false,LIFE_STARTLE+0.1,false);i:=verse_haunt_life(0,5,false,false,-1,false);#assert e.lift==i.lift && e.pitch==i.pitch;
+ // a startle beats a conversation's nod
+ t:=verse_haunt_life(0,5,true,true,0.2,false);#assert t.lift>0.1;
+}
+#test "walking, they keep their glance and hop still: only the sway and breath" {
+ w:=verse_haunt_life(2,cast(f32)3*LIFE_LOOK+0.6,false,false,-1,true);#assert w.yaw==0 && w.lift==0 && w.pitch==0;
+}
+verse_haunt_life :: (index:int,t:f32,near:bool,talking:bool,startle:f32,moving:bool)->HauntLife #export_c {
+ out:HauntLife;phase:=cast(f32)index*1.7;
+ out.stretch=0.012*sin(t*1.9+phase);
+ out.roll=0.035*sin(t*0.45+phase);
+ if startle>=0 && startle<LIFE_STARTLE {
+  u:=startle/LIFE_STARTLE;up:=hh_min(u*2,1);
+  out.lift=0.22*sin(up*3.14159265);out.pitch= -0.2*(1-u);out.roll+=0.08*sin(startle*40)*(1-u);return out;
+ }
+ if moving {return out;}
+ if talking {
+  out.pitch=0.06*sin(t*4.2+phase)+0.02;out.roll+=0.04*sin(t*2.3+phase);out.lift=0.02*abs(sin(t*4.2+phase));return out;
+ }
+ if near {out.pitch=0.03;return out;}
+ slot:=cast(int)floor((t+phase)/LIFE_LOOK);frac:=(t+phase)/LIFE_LOOK-cast(f32)slot;
+ was:=(hh_life_hash(index,slot-1,1)-0.5)*1.1;now:=(hh_life_hash(index,slot,1)-0.5)*1.1;
+ k:=hh_clamp(frac*4,0,1);k=k*k*(3-2*k);out.yaw=was+(now-was)*k;
+ if hh_life_hash(index,slot,2)>0.7 && frac<0.35 {hop:=sin(frac/0.35*3.14159265);out.lift=0.08*hop;out.yaw+=0.25*hop*sin(frac*40);}
+ return out;
+}
+#test "a life's lean and sway turn the whole figure about its feet" {
+ e:HauntEntity;e.pos=hh_p(1,0,2);e.scale=1;e.tint=hh_p(1,1,1);
+ still:=hh_life_instance(e,HauntLife.{});plain:=hh_instance(e);
+ for k:0..<12 {#assert abs(still.rows[k]-plain.rows[k])<0.00001;}
+ lean:=hh_life_instance(e,HauntLife.{pitch=0.3});
+ // the head (0, 1, 0 in the mesh) goes forward (+z, the way they face) and stays as high as it can
+ #assert lean.rows[2*4+1]>0.29 && lean.rows[1*4+1]<1 && lean.rows[1*4+1]>0.95;
+ up:=hh_life_instance(e,HauntLife.{lift=0.2});#assert abs(up.rows[7]-0.2)<0.00001;
+}
+hh_life_instance :: (e:HauntEntity,l:HauntLife)->HauntInstance {
+ yaw:=e.yaw+l.yaw;c:=cos(yaw);sn:=sin(yaw);cp:=cos(l.pitch);sp:=sin(l.pitch);cr:=cos(l.roll);sr:=sin(l.roll);s:=e.scale;sy:=e.scale*(1+l.stretch);
+ v:HauntInstance;
+ v.rows=[12]f32.[(c*cr+sn*sp*sr)*s,(-c*sr+sn*sp*cr)*sy,sn*cp*s,e.pos.x,
+                  cp*sr*s,cp*cr*sy,-sp*s,e.pos.y+l.lift,
+                  (-sn*cr+c*sp*sr)*s,(sn*sr+c*sp*cr)*sy,c*cp*s,e.pos.z];
+ v.material=[4]f32.[e.tint.x,e.tint.y,e.tint.z,e.glow];return v;
+}
+#test "a person near you turns to you, smoothly, and back to their own way when you go" {
+ meshes:[1]HauntMesh;es:[1]HauntEntity;es[0].id="mort";es[0].pos=hh_p(0,0,0);es[0].yaw=0;es[0].scale=1;
+ ps:[1]HauntPerson;ps[0].id="mort";ps[0].brain="stays";
+ s:Haunt;s.ok=true;s.meshes=meshes[..];s.mesh_count=1;s.entities=es[..];s.entity_count=1;s.people=ps[..];s.people_count=1;
+ s.player=hh_p(3,0,0);   // to their right: yaw pi/2
+ n:=hh_people_step(s,0.05);#assert n.entities[0].yaw>0.05 && n.entities[0].yaw<1.5;
+ for k:0..<40 {n=hh_people_step(n,0.05);}#assert abs(n.entities[0].yaw-1.5707963)<0.05;
+ n.player=hh_p(30,0,0);for k:0..<60 {n=hh_people_step(n,0.05);}#assert abs(n.entities[0].yaw)<0.05;
+}
+#test "a haunt going off startles the people near it, not those far away" {
+ ps:[2]HauntPerson;ps[0].id="a";ps[0].pos=hh_p(0,0,0);ps[1].id="b";ps[1].pos=hh_p(40,0,0);
+ s:Haunt;s.people=ps[..];s.people_count=2;
+ n:=hh_startle(s,hh_p(2,0,1),12.5);#assert n.people[0].startled==12.5 && n.people[1].startled== -100;
+}
+hh_startle :: (s:Haunt,at:HauntPoint,t:f64)->Haunt {next:=s;for k:0..<s.people_count {if hh_len(hh_person_position(s,k),hh_p(at.x,hh_person_position(s,k).y,at.z))<LIFE_HEARD{next.people[k].startled=t;}}return next;}
+// What person entity `entity` does this frame (none for anything else, and nothing while editing).
+hh_person_life :: (s:Haunt,entity:int,t:f64)->HauntLife {
+ none:HauntLife;if s.editing || s.people_count==0 {return none;}e:=s.entities[entity];person:=hh_person_index(s,e.id);if person<0{return none;}
+ p:=s.people[person];distance:=hh_len(e.pos,s.player);
+ moving:=p.brain=="townsfolk" || (p.brain=="follower" && distance>1.8) || (p.brain=="critter" && distance<4);
+ since:=ifx p.startled>0 then cast(f32)(t-p.startled) else -1;
+ return verse_haunt_life(person,cast(f32)t,distance<LIFE_NEAR,s.talking==person,since,moving && s.talking!=person);
+}
+hh_wrap :: (a:f32)->f32 {r:=a;while r>3.14159265{r-=6.2831853;}while r< -3.14159265{r+=6.2831853;}return r;}
+hh_turn_to :: (yaw:f32,want:f32,dt:f32)->f32 {return yaw+hh_wrap(want-yaw)*hh_min(1,dt*5);}
 hh_people_step :: (s:Haunt,dt:f32)->Haunt {
  next:=s;
  for i:0..<s.people_count {p:=s.people[i];entity:=hh_find(s,p.id);if entity<0{continue;}e:=s.entities[entity];if e.hidden{continue;}
@@ -593,7 +696,12 @@ hh_people_step :: (s:Haunt,dt:f32)->Haunt {
   if p.brain=="follower" && distance>1.8{move=true;}
   if p.brain=="critter" && distance<4 {target=hh_p(e.pos.x*2-s.player.x,e.pos.y,e.pos.z*2-s.player.z);move=true;}
   if p.brain=="townsfolk" {target=hh_p(p.pos.x+sin(cast(f32)s.time*0.2+cast(f32)i)*2,p.pos.y,p.pos.z+cos(cast(f32)s.time*0.2+cast(f32)i)*2);move=true;}
-  if s.talking==i || p.brain=="guard" || move {e.yaw=hh_atan2(target.x-e.pos.x,target.z-e.pos.z);}
+  if !p.homed || s.editing {next.people[i].home_yaw=e.yaw;next.people[i].homed=true;}
+  facing:=hh_atan2(target.x-e.pos.x,target.z-e.pos.z);
+  if move {e.yaw=facing;}
+  else if s.editing {}
+  else if s.talking==i || p.brain=="guard" || distance<LIFE_NEAR {e.yaw=hh_turn_to(e.yaw,facing,dt);}
+  else {e.yaw=hh_turn_to(e.yaw,next.people[i].home_yaw,dt);}
   if s.talking!=i && move {dx:=target.x-e.pos.x;dz:=target.z-e.pos.z;length:=sqrt(dx*dx+dz*dz);if length>0.1 {desired:=hh_p(e.pos.x+dx/length*dt,e.pos.y,e.pos.z+dz/length*dt);e.pos=verse_haunt_constrain(s,e.pos,desired);}}
   next.entities[entity]=e;
  }return next;
