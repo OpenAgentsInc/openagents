@@ -219,7 +219,18 @@ ff_mood :: (f: [] Forest, c: int) -> int {
   return MOOD_WORRIED;
 }
 
-ff_says :: (f: [] Forest, c: int) -> string { return FF_SAYS[c * 3 + ff_mood(f, c)]; }
+// What each says once the heart tree has bloomed: the ending.
+FF_AFTER :: [5] string.[
+  "THE HEART TREE IS IN BLOOM. MOSSBANK HAS NEVER SMELLED SO SWEET.",
+  "RIBBIT! THE WHOLE VALLEY IS SINGING WITH US NOW.",
+  "EVERY LANTERN IN THE FOREST IS LIT. I'M NOT AFRAID ANY MORE.",
+  "HOME, AND ROSES ALL ROUND IT. THE FOREST OWES YOU, LITTLE ONE.",
+  "THE HEART TREE IS AWAKE. THE STONES WILL REMEMBER WHAT YOU DID."
+];
+ff_says :: (f: [] Forest, c: int) -> string {
+  if f[0].heart { return FF_AFTER[c]; }
+  return FF_SAYS[c * 3 + ff_mood(f, c)];
+}
 
 ff_roots_awake :: (f: [] Forest) -> int {
   n := 0;
@@ -350,6 +361,7 @@ ff_progress_count :: (f: [] Forest) -> int {
   #assert !f[0].heart;
   ff_step(f[..], 6.1);
   #assert f[0].heart && f[0].news == FF_NEWS_HEART;
+  #assert ff_says(f[..], 4) == FF_AFTER[4];   // after the ending, no one asks you to wake it
   #assert ff_restored(f[..], 55, 55, 30) == 1 && ff_restored(f[..], -55, -55, 30) == 1;
   // kept and opened again: the heart has bloomed, quietly
   b: [FF_PROGRESS_BYTES] u8;
