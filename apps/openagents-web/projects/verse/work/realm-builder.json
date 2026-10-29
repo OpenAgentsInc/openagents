@@ -20,6 +20,11 @@
       "slug": "byo-next",
       "title": "Build your own realm: what's rough",
       "body": "Follow-ups from the first version (October 29): talk, looks, speed, and the paths not yet tested."
+    },
+    {
+      "slug": "byo-every-realm",
+      "title": "Every realm edits the same way",
+      "body": "Editing any realm on any planet works like Build your own realm: the design board from a voice prompt, the owner's settings pane, and accept or decline for others' changes (owner, October 29)."
     }
   ],
   "tasks": [
@@ -351,6 +356,81 @@
         "bun test coax/web/realms.test.ts passes"
       ],
       "blocked_by": []
+    },
+    {
+      "slug": "edit-shared",
+      "parent": "byo-every-realm",
+      "title": "One edit layer every realm loads",
+      "size": "L",
+      "labels": [
+        "realm-builder",
+        "web",
+        "api"
+      ],
+      "body": "Lift the builder's board, settings pane and proposal cards out of myrealm.coax into a shared module (verse/edit/*.coax plus one face hook) that any realm page loads. Owners and admins of a realm get EDIT; the board describes the realm as it is now (its features and pieces), and talking revises it: check a feature on or off and the realm changes.",
+      "files": [],
+      "acceptance": [
+        "A hand-built realm and a made realm both open the same edit layer",
+        "coax tests for the shared module"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "edit-owners",
+      "parent": "byo-every-realm",
+      "title": "Owners for every realm, not only made ones",
+      "size": "S",
+      "labels": [
+        "realm-builder",
+        "web",
+        "api"
+      ],
+      "body": "Every realm in realms.json has an owner (account) and admins; the server decides who may edit, settle proposals and change settings for any realm slug.",
+      "files": [],
+      "acceptance": [
+        "API tests: owner and admin may, others get 403, for a hand-built realm slug"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "edit-everglade",
+      "parent": "byo-every-realm",
+      "title": "Everglade edits through the shared layer",
+      "size": "M",
+      "labels": [
+        "realm-builder",
+        "web",
+        "api"
+      ],
+      "body": "Everglade's edit mode and voice edits move onto the shared layer: board, settings, proposals. Voice edits keep working.",
+      "files": [],
+      "acceptance": [
+        "An admin revises Everglade from the board; a visitor's change arrives as a card"
+      ],
+      "blocked_by": [
+        "edit-shared",
+        "edit-owners"
+      ]
+    },
+    {
+      "slug": "edit-all-realms",
+      "parent": "byo-every-realm",
+      "title": "Every other realm gets the shared edit layer",
+      "size": "M",
+      "labels": [
+        "realm-builder",
+        "web",
+        "api"
+      ],
+      "body": "Hecate's Cemetery, the Grid, Fairy Forest, Dead Gears, Ice Cream Man, the Haunted House and made realms all load it (replaces grid-edit and hc-edit).",
+      "files": [],
+      "acceptance": [
+        "Each realm shows EDIT to its owner and admins in a headless run"
+      ],
+      "blocked_by": [
+        "edit-shared",
+        "edit-owners"
+      ]
     }
   ]
 }
