@@ -55,6 +55,71 @@ expansion this session focuses on.
 - **Stay:** a placed vase stays until someone cleans it up. Its flowers decay
   over time.
 
+## The details the tasks build to
+
+Each mechanic above, as the project's tasks build it. Kiki's words come first;
+where these details go further than she said, she corrects them.
+
+- **Arrival:** Planetary Villa is a planet on the galaxy map. Choosing it plays
+  a short flight through space to Hecate's Cemetery. You can skip it, and it
+  ends at the garden's gate with control handed to you.
+- **The garden:** paths between tombstone plots, with room for at least 64
+  tombstones (more as pets arrive), hedges, trees, benches, a fountain and a
+  gate into the open field. Every path is walkable.
+- **The art kit:** a small set of low-poly models in one look: tombstones of a
+  few shapes with room for a name and a line, beds, hedges, trees, gates,
+  benches, the fountain, path pieces and the field's edge. Every model's
+  source and licence is written next to it.
+- **Light:** the moon is the only key light, dim and blue, with soft shadows
+  and a light outline on shapes and paths so they read in the dark.
+- **Camera:** over the shoulder, orbiting freely, with zoom, on keyboard,
+  mouse and touch. It doesn't pass through tombstones or hedges.
+- **You:** a soft-edged shadow with a light trail of particles while you move.
+- **Telling us about your pet:** write about it and add photos or a short
+  video. Uploads are private to you, limited in size and type, and you can
+  delete them. They are used only for your pet: its avatar and its memorial
+  page. The upload screen says so.
+- **The avatar:** an agent reads what you shared and sets the dog's breed and
+  shape, size, proportions, coat colours and pattern, ears, tail and the
+  details that made it yours. Each choice is shown, and you can change any of
+  it by hand in the editor, with sliders and swatches, watching the pet turn
+  and move.
+- **Emotes:** six to start: sit, play bow, roll over, howl, wag and sleep. The
+  agent makes new ones from a sentence ("she always spun twice before lying
+  down").
+- **Skills:** chosen when you make the pet and saved with it: fetch, obedience
+  (sit, stay, come) and digging holes. Each one has an action in the field.
+- **Tombstones:** when you press play, your pet's tombstone takes a plot for
+  every visitor to see: its name, dates and a line, its achievements if it was
+  competitive, and its most loved traits and stories. Walking up to one shows
+  its name, its line and a link to its memorial.
+- **Memorial pages:** one template for every pet: its avatar, what you shared
+  when you made it, then stories, achievements and loved traits, then comments
+  from anyone. The owner edits the page and can remove comments. Each memorial
+  has a short link with a share card (the pet in moonlight) that opens for
+  someone who isn't logged in.
+- **Play:** throw a ball in the field and a dog with fetch runs for it and
+  brings it back. Your pet follows you through the garden, and you can visit
+  any tombstone and open its memorial.
+- **Together:** you see other visitors' shadows and their pets move in real
+  time. A room holds a bounded number of visitors. The chat box sits in a
+  corner like Horse Isle's, with each visitor's name and the pet they brought;
+  messages are limited in length and moderated.
+- **Flowers:** three kinds grow and glow in the field. Picked ones go in your
+  basket and grow back after a while. The arrangement you make is saved with
+  the vase, and a placed vase stays for everyone.
+- **The first visit:** a tutorial, one tip at a time, takes you from landing
+  to making your pet, playing fetch, picking flowers and placing the vase by
+  the tombstone.
+- **Analytics:** each step is recorded on the openagents.com analytics: the
+  galaxy choice, the flight, the pet made, emotes, fetch, flowers, the vase
+  and memorial shares.
+- **Safety:** uploads, memorial text, comments and chat can be reported and
+  removed by their owner, and reports go to a review queue. Grief is
+  personal: nothing a visitor shares is used for anything but their pet.
+- **Launch:** Kiki plays the whole expansion and signs off before it opens to
+  everyone.
+
 ## How it's built
 
 The roadmap is on the project page as tasks, grouped into milestones:
