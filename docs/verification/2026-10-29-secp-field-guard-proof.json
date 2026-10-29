@@ -1,0 +1,187 @@
+{
+  "schema": "coax.field-guard-witnesses.v1",
+  "scope": "conditional math and native arithmetic witnesses; not a production-secret approval",
+  "compiler": "coax0 0.22.0",
+  "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+  "compiler_provenance_helper_sha256": "11ca13285a0eb007a22263df31f648a6b08b85473f1f24e9d78e933e43e6940a",
+  "compiler_provenance_record_sha256": "e16a06ef2cfc0d4abf3a64398a0b42ca03994b7bede6c65debeb15a1e933860f",
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "host": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "adapter_sha256": "60fee8381af6585918b05c8eec3535274dfbbf426081d07e2af1993d7adadbbd",
+  "sanitizer_sha256": "4f9f6f473dc9e83ac09fa45ee249b7d3b76fe028405963fc1e47a618a156f93a",
+  "proof_sha256": "8f7a94b977a9d8ccd6493829dc00d79b0579355bdbe457a0fc4e937d027ead3f",
+  "witness_sha256": "2083b14b54b86cc83d3dafc86476d7ccd9bb98893f67d2ef7310058dc62493ab",
+  "seed": 4405,
+  "modes": {
+    "checked": {
+      "c_sha256": "712b34e557edab6d9db191da18039f06941fe74c9260a3e18ff4c58f73dc707c",
+      "artifact_sha256": "c1e609ae4c201730a392d884dab0635a1162cb958f2fb9480c8da18de599308a",
+      "sanitized_artifact_sha256": "6da4c92420674028f7595212e66dd9c6e448c2a169e4f8bf7ea9e31f4558be26",
+      "address_sanitizer": true,
+      "undefined_sanitizer": true,
+      "source_map_sha256": "d6fdd91147040b2a7ed3b0e2b6fba3c907fa2c3e189f37b9bce63219d885f4c7",
+      "source_sha256": {
+        "coax/tests/nostr/field_guard_adapter.coax": "60fee8381af6585918b05c8eec3535274dfbbf426081d07e2af1993d7adadbbd",
+        "coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+        "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+        "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484"
+      },
+      "normalization_cases": 524,
+      "field_pairs": 548,
+      "invalid_add_exit": -6,
+      "invalid_add_diagnostic": "secp_field32.coax:70: assertion failed",
+      "invalid_normalize_exit": -6
+    },
+    "release": {
+      "c_sha256": "3cad7ce02a78e827fd9690f27f7b3a837fd1fdc6aeb40764bffdb5ccd0f5ec3e",
+      "artifact_sha256": "5f95035ebaa1b407e3e94a8f5a8dc93cb6e91db0848e3207e7d038b8997927c7",
+      "sanitized_artifact_sha256": "7f58736e4073dbd81d57712d4c5a73203f51587efb3dc66abb3978c828817acc",
+      "address_sanitizer": true,
+      "undefined_sanitizer": true,
+      "source_map_sha256": "d6fdd91147040b2a7ed3b0e2b6fba3c907fa2c3e189f37b9bce63219d885f4c7",
+      "source_sha256": {
+        "coax/tests/nostr/field_guard_adapter.coax": "60fee8381af6585918b05c8eec3535274dfbbf426081d07e2af1993d7adadbbd",
+        "coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+        "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+        "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484"
+      },
+      "normalization_cases": 524,
+      "field_pairs": 548,
+      "invalid_add_exit": -6,
+      "invalid_add_diagnostic": "secp_field32.coax:70: assertion failed",
+      "invalid_normalize_exit": 0
+    }
+  },
+  "proof": {
+    "schema": "coax.field-guard-math.v1",
+    "scope": "conditional arithmetic models; source-to-model, callers, target and production gates remain separate",
+    "source_sha256": {
+      "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+      "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "coax/lib/crypto/secp_group32.coax": "b4e11a4626ba2b7be823078dc8495b800ecd9f579366d706cdd4e421b18f437b",
+      "coax/lib/crypto/secp_mult_base.coax": "a82d9737aee8f0c45d6827880042e9b9ad22cd18bedde1ed6dad7b956fc1fe71",
+      "coax/lib/crypto/secp_mult_base_web.coax": "3ca9989b48ff368d1511fe9d81e4f91ec9f8f93d4099c6cf4cf0aa31fd391220",
+      "coax/lib/crypto/secp_mult_base_native.coax": "5aa9f59a44265e5e812d3081dbd663f1690eaea3482221c7584a90e76adfb8c6",
+      "coax/lib/crypto/secp_mult_const.coax": "60957c9aacf9412b82b56083bf3c02e8159a3f18ec62e5f847b305844201d0cf",
+      "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+      "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd"
+    },
+    "script_sha256": "8f7a94b977a9d8ccd6493829dc00d79b0579355bdbe457a0fc4e937d027ead3f",
+    "solver": "z3 5.3.2",
+    "solver_library": {
+      "path": "/opt/homebrew/Cellar/z3/5.3.2/lib/libz3.5.3.2.0.dylib",
+      "sha256": "bf9c9e020f19228523ee7bbf8595181328905158fe37e4ecead5f6cec9651be6"
+    },
+    "python": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+    "host": "macOS-26.4-arm64-arm-64bit-Mach-O",
+    "checks": [
+      {
+        "name": "normalize_guard_and_word_bounds",
+        "result": "unsat",
+        "query_sha256": "ab507bab978d4bd571fa129d34864b878a425ece5e4dbe460ea3466cd6536d91"
+      },
+      {
+        "name": "widened_magnitude_breaks_carry_bound",
+        "result": "sat",
+        "query_sha256": "0b6ce2b9a6d8d357f1a38fbfbebc5e58b2896a891cb8b1f25e4328cee80be108",
+        "witness": {
+          "norm_9_2": "0",
+          "norm_9_4": "0",
+          "norm_9_1": "0",
+          "norm_9_6": "0",
+          "norm_9_5": "0",
+          "norm_9_9": "33554432",
+          "norm_9_8": "0",
+          "norm_9_0": "0",
+          "norm_9_7": "0",
+          "norm_9_3": "0"
+        }
+      },
+      {
+        "name": "add_guard_and_limb_identity",
+        "result": "unsat",
+        "query_sha256": "1a419d464ddfba972b5113c507337b05089f64b649f5bcaa3f4bfb7e5925bfb4"
+      },
+      {
+        "name": "noncanonical_add_guard_counterexample",
+        "result": "sat",
+        "query_sha256": "902b12a4f4ab46f087d309ae39eee4886750843f0d5d64363357ce399a9f857d",
+        "witness": {
+          "add_invalid_b": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+          "add_invalid_a": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+        }
+      },
+      {
+        "name": "fold_top_identity_and_word_bounds",
+        "result": "unsat",
+        "query_sha256": "d812716c9ff2feb7ac0ac19aff91381512a3d01d68ba6555c635a2ce2a517a0d"
+      },
+      {
+        "name": "schoolbook_word_bound",
+        "result": "unsat",
+        "query_sha256": "bb0786c81093437f04a75de2e0f62b1a4f19b2ee9dd4c6acd40f0d47d392d851"
+      },
+      {
+        "name": "first_product_fold_identity",
+        "result": "unsat",
+        "query_sha256": "770f75bd2dc2e443d19b9c7aa12d39511cfe2b06d1e19146430148db5e4806db"
+      },
+      {
+        "name": "multiply_second_fold_guard",
+        "result": "unsat",
+        "query_sha256": "42e89d38289d94fe2646ebb98e429f5b9f6999e21d533e65c223ee4da9b0a449"
+      },
+      {
+        "name": "one_fold_is_not_sufficient",
+        "result": "sat",
+        "query_sha256": "9f9e2ad5d20d57ad7249d7a5361b0ee285ccd8ebffe6818e20f334a9e39c37fd",
+        "witness": {
+          "product_low": "115792089237316195423570985008687907853269984665640564039457584007908925002906",
+          "product_high": "26959940534423639367258949949567626958177063271088932684057008401541"
+        }
+      },
+      {
+        "name": "canonicalize_256_bit_input",
+        "result": "unsat",
+        "query_sha256": "3d3e12b4eae40a04611f9abb7f6ce9736f553c91a4ded8f7673c59cd17acb2f3"
+      },
+      {
+        "name": "subtraction_canonical_closure",
+        "result": "unsat",
+        "query_sha256": "a27dd4a1b4a2d96d82e7ba72828e9e0503c3987426c65555ba094687c926bdcc"
+      },
+      {
+        "name": "subtraction_limb_identity",
+        "result": "unsat",
+        "query_sha256": "5645f41fb6fb1c4053cf916fc1e21a443177b6102e99fb80c7da4edab18856cb"
+      },
+      {
+        "name": "canonical_26_to_32_bit_packing",
+        "result": "unsat",
+        "query_sha256": "70bb5fbebb2d795e74a5d5533fc3968ee66e53dcbc7a8974b5443d5d1bdcc77c"
+      },
+      {
+        "name": "canonical_input_packing_stays_canonical",
+        "result": "unsat",
+        "query_sha256": "8452a4a7fb9bfb9f96434d48ceaf4e06bd2ab42aa7bc35694dddf4cbbf521dd1"
+      },
+      {
+        "name": "signed_digit_carry_is_bit",
+        "result": "unsat",
+        "query_sha256": "c1410880443ec7a345d2161e6f7d1f1980d975d24e136f3ecddbdbd84bf9bebf"
+      },
+      {
+        "name": "word_equality_is_complete_mask",
+        "result": "unsat",
+        "query_sha256": "f1afe96306b359a926bab3c403c84c196f58d9011e912d4a7042fef080408c09"
+      },
+      {
+        "name": "complete_mask_selects_one_input",
+        "result": "unsat",
+        "query_sha256": "28efb6d8e031311080b35c8456f2d5a8b603326c50ccdcd684085bba869911ab"
+      }
+    ]
+  },
+  "changed_source_refused": true
+}

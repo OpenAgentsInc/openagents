@@ -1,0 +1,15 @@
+// Public test adapter for conditional field arithmetic proof witnesses.
+#load "../../lib/crypto/secp_field32.coax";
+#load "../../lib/crypto/secp_field.coax";
+field_guard_normalize :: (input:[]u64,output:[]u64)->bool #export_c {
+ if input.count!=10 || output.count!=10 {return false;}a:SecpField;for i:0..<10 {a.limb[i]=input[i];}
+ r:=sf_normalize(a);for i:0..<10 {output[i]=r.limb[i];}return true;
+}
+field_guard_add32 :: (left:[]u32,right:[]u32,output:[]u32)->bool #export_c {
+ if left.count!=8 || right.count!=8 || output.count!=8 {return false;}a:Sf32;b:Sf32;for i:0..<8 {a.limb[i]=left[i];b.limb[i]=right[i];}
+ r:=sf32_add(a,b);for i:0..<8 {output[i]=r.limb[i];}return true;
+}
+field_guard_mul32 :: (left:[]u32,right:[]u32,output:[]u32)->bool #export_c {
+ if left.count!=8 || right.count!=8 || output.count!=8 {return false;}a:Sf32;b:Sf32;for i:0..<8 {a.limb[i]=left[i];b.limb[i]=right[i];}
+ r:=sf32_mul(a,b);for i:0..<8 {output[i]=r.limb[i];}return true;
+}
