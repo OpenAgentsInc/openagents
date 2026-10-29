@@ -1,0 +1,62 @@
+// The Lab's router: a user's message and this Mac's environment (the OS,
+// the app, the hardware, which agent CLIs are installed) go to Mammoth
+// (Baseten's mammoth-1, coax/lib/systemone), which says which agent should
+// take it, how sure it is, how hard the request is, and the reasoning effort
+// and model to run it with. The host shows the decision; nothing runs yet.
+
+#load "../../coax/lib/systemone/systemone.coax";
+
+ROUTE_HARNESSES :: [3] string.["claude_code", "codex", "other"];
+ROUTE_HARNESS_LABELS :: [3] string.[
+  "Claude Code, Anthropic's coding agent CLI: strong at reading, writing and refactoring code, running commands, and long careful tasks",
+  "Codex, OpenAI's coding agent CLI: strong at code changes, terminal work and quick fixes",
+  "Neither: another agent, or no coding agent is needed (small talk, a plain question, or neither CLI is installed)"];
+ROUTE_LEVELS :: [5] string.["Trivial: a one-line answer", "Easy: a short answer or a small edit", "Moderate: a few files or steps",
+                            "Hard: many files, debugging or design", "Very hard: a long, open-ended or risky task"];
+ROUTE_EFFORTS :: [5] string.["low", "medium", "high", "xhigh", "max"];
+ROUTE_EFFORT_LABELS :: [5] string.["Low: answer directly, little thinking", "Medium: some thought", "High: careful reasoning",
+                                   "Extra high: deep reasoning for hard problems", "Max: the most reasoning, for the hardest tasks"];
+ROUTE_CLAUDE :: [3] string.["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"];
+ROUTE_CLAUDE_LABELS :: [3] string.["Haiku 5.5: fastest and cheapest, for simple requests", "Sonnet 5.5: balanced, for everyday work",
+                                   "Opus 5.5: the most capable, for hard or important work"];
+
+// The request: state is the JSON object {"message": ..., "environment": {...}}.
+route_body :: (b: [] SoBody, buf: [] u8, state: string) {
+  harnesses := ROUTE_HARNESSES; harness_labels := ROUTE_HARNESS_LABELS; levels := ROUTE_LEVELS;
+  efforts := ROUTE_EFFORTS; effort_labels := ROUTE_EFFORT_LABELS; claude := ROUTE_CLAUDE; claude_labels := ROUTE_CLAUDE_LABELS;
+  so_begin(b, buf, SO_MAMMOTH, "");
+  so_state_json(b, state);
+  so_choice(b, "harness", "Which agent should handle the user's message? Only choose an agent the environment says is installed.",
+            harnesses[..], harness_labels[..]);
+  so_score(b, "difficulty", "How hard is the user's request to do well?", levels[..]);
+  so_choice(b, "effort", "How much reasoning should the agent spend on this request? Hard requests need more.", efforts[..], effort_labels[..]);
+  so_choice(b, "claude_model", "If Claude Code handles it, which model fits the request?", claude[..], claude_labels[..]);
+  so_noul(b, "local_work", "Does the request need to read or change files, or run commands, on this Mac?");
+}
+
+// Asks Mammoth. The checked response goes in out and its length is returned;
+// on a failure the reason goes in out and its length is returned negated.
+coaxial_route :: (state: string, out: [] u8, scratch: [] u8, err: [] u8) -> int #export_c {
+  buf: [16384] u8;
+  b: [1] SoBody;
+  route_body(b[..], buf[..], state);
+  c: SoClient;
+  r := so_decide(c, b[..], scratch, err);
+  text := ifx r.problem.count > 0 then r.problem else r.body;
+  if r.problem.count > 0 && r.stderr.count > 0 { text = r.stderr; }
+  n := 0;
+  while n < text.count && n < out.count { out[n] = text[n]; n += 1; }
+  return ifx r.problem.count > 0 then -n else n;
+}
+
+#test "the router asks Mammoth five typed questions about the message and the Mac" {
+  buf: [16384] u8;
+  b: [1] SoBody;
+  route_body(b[..], buf[..], "{\"message\":\"fix the failing test in coax/web\",\"environment\":{\"os\":\"macOS 26.4\",\"agents\":{\"claude_code\":{\"installed\":true},\"codex\":{\"installed\":true}}}}");
+  body := so_finish(b[..]);
+  #assert b[0].problem.count == 0 && body.count > 0 && b[0].questions == 5;
+  #assert json_valid(body);
+  ok := "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\"claude_code\",\"confidence\":0.8,\"probabilities\":{\"claude_code\":0.85,\"codex\":0.1,\"other\":0.05}},\"difficulty\":{\"type\":\"score\",\"score\":2.4,\"confidence\":0.5,\"legend\":{\"0\":\"a\",\"1\":\"b\",\"2\":\"c\",\"3\":\"d\",\"4\":\"e\"},\"probabilities\":{\"0\":0.05,\"1\":0.1,\"2\":0.3,\"3\":0.4,\"4\":0.15}},\"effort\":{\"type\":\"choice\",\"choice\":\"high\",\"confidence\":0.4,\"probabilities\":{\"low\":0.05,\"medium\":0.2,\"high\":0.5,\"xhigh\":0.2,\"max\":0.05}},\"claude_model\":{\"type\":\"choice\",\"choice\":\"claude-opus-5-5\",\"confidence\":0.6,\"probabilities\":{\"claude-haiku-5-5\":0.05,\"claude-sonnet-5-5\":0.25,\"claude-opus-5-5\":0.7}},\"local_work\":{\"type\":\"noul\",\"noul\":0.97}}}";
+  #assert so_check(b[..], ok).count == 0;
+  #assert so_check(b[..], "{\"answers\":{}}").count > 0;
+}

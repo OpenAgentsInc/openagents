@@ -18,3 +18,6 @@ int32_t dk_wants_text(void *state);
 int32_t dk_cursor(void *state);
 // A navigation chat.coax asked for (its outbox), copied into url; 0 when none.
 int32_t dk_take_action(void *state, uint8_t *url, int32_t cap);
+// Mammoth's routing decision (router.coax): state is {"message", "environment"} JSON; the
+// checked response goes in out and its length is returned, or a reason and its length negated.
+int32_t dk_route(const uint8_t *state, int32_t length, uint8_t *out, int32_t cap);

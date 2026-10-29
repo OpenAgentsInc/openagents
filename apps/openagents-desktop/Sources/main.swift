@@ -129,7 +129,7 @@ final class ChatView: MTKView, MTKViewDelegate {
     cmd.commit()
   }
 
-  // --shot PATH [--click X,Y]: draw offscreen (clicking at device pixel X,Y after half a second) for a second and a half, write the last frame as a PNG, quit.
+  // --shot PATH [--click X,Y] [--type TEXT] [--frames N]: draw offscreen (clicking at device pixel X,Y, then typing TEXT and Enter) for a second and a half, write the last frame as a PNG, quit.
   func shot(_ path: String, width: Int, height: Int) {
     let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorPixelFormat, width: width, height: height, mipmapped: false)
     d.usage = [.renderTarget, .shaderRead]; d.storageMode = .shared
@@ -137,14 +137,18 @@ final class ChatView: MTKView, MTKViewDelegate {
     let pass = MTLRenderPassDescriptor()
     pass.colorAttachments[0].texture = target; pass.colorAttachments[0].loadAction = .clear; pass.colorAttachments[0].storeAction = .store
     var frames = 0
+    let last = CommandLine.arguments.firstIndex(of: "--frames").flatMap { Int(CommandLine.arguments[$0 + 1]) } ?? 90
     Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { timer in
       frames += 1
       if frames == 30, let i = CommandLine.arguments.firstIndex(of: "--click"), i + 1 < CommandLine.arguments.count {
         let xy = CommandLine.arguments[i + 1].split(separator: ",").compactMap { Float($0) }
         if xy.count == 2 { _ = dk_pointer(chatState, xy[0], xy[1], 0); _ = dk_pointer(chatState, xy[0], xy[1], 2) }
       }
+      if frames == 45, let i = CommandLine.arguments.firstIndex(of: "--type"), i + 1 < CommandLine.arguments.count {
+        self.typed(CommandLine.arguments[i + 1]); _ = dk_key(chatState, -2)
+      }
       self.render(pass, size: CGSize(width: width, height: height), dpr: 2) { cmd in
-        guard frames == 90 else { return }
+        guard frames == last else { return }
         timer.invalidate()
         cmd.addCompletedHandler { _ in
           DispatchQueue.main.async {
@@ -202,6 +206,7 @@ final class ChatView: MTKView, MTKViewDelegate {
 final class App: NSObject, NSApplicationDelegate {
   var window: NSWindow!
   func applicationDidFinishLaunching(_ n: Notification) {
+    Router.loadKey()
     chatState = dk_new(http)
     Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { _ in
       guard let lines = backend.pushed() else { return }
@@ -231,6 +236,16 @@ final class App: NSObject, NSApplicationDelegate {
     NSApp.activate(ignoringOtherApps: true)
   }
   func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { true }
+}
+
+// --route TEXT: Mammoth's decision for TEXT on this Mac, printed; no window (a live check of the Lab's router).
+if let i = CommandLine.arguments.firstIndex(of: "--route"), i + 1 < CommandLine.arguments.count {
+  Router.loadKey()
+  let done = DispatchSemaphore(value: 0)
+  var code: Int32 = 0
+  Router.decide(CommandLine.arguments[i + 1]) { json, ok in print(json); code = ok ? 0 : 1; done.signal() }
+  done.wait()
+  exit(code)
 }
 
 let app = NSApplication.shared

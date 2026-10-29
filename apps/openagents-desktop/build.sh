@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds OpenAgents.app for this Mac (docs/desktop/coax-desktop.md): chat.coax
-# compiled to C with the C face, chat.wgsl's passes in Metal, and the AppKit
+# compiled to C with the C face, the Lab's router (router.coax, Mammoth), chat.wgsl's passes in Metal, and the AppKit
 # host in Swift.
 #   apps/openagents-desktop/build.sh [--open]
 set -euo pipefail
@@ -13,8 +13,12 @@ mkdir -p "$work/c" "$app/Contents/MacOS" "$app/Contents/Resources"
 cflags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -I"$work/c" -I"$here")
 /usr/bin/clang "${cflags[@]}" -c "$work/c/chat.c" -o "$work/c/chat.o"
 /usr/bin/clang "${cflags[@]}" -c "$here/face.c" -o "$work/c/face.o"
+"$repo/coax/bin/coax" c "$here/router.coax" --library --header "$work/c/router.h" > "$work/c/router.c"
+/usr/bin/clang "${cflags[@]}" -c "$work/c/router.c" -o "$work/c/router.o"
+/usr/bin/clang "${cflags[@]}" -c "$here/route-face.c" -o "$work/c/route-face.o"
+/usr/bin/clang "${cflags[@]}" -c "$repo/coax/platform/process-native.c" -o "$work/c/process.o"
 xcrun -sdk macosx metal "$here/Shaders.metal" -o "$app/Contents/Resources/default.metallib"
-xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*.swift "$work/c/chat.o" "$work/c/face.o" \
+xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*.swift "$work/c/chat.o" "$work/c/face.o" "$work/c/router.o" "$work/c/route-face.o" "$work/c/process.o" \
   -framework AppKit -framework Metal -framework MetalKit -framework CoreText -o "$app/Contents/MacOS/OpenAgents"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
 codesign --force --sign - "$app" >/dev/null

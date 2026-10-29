@@ -67,9 +67,10 @@ final class Backend {
       let text = (json["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
       if text.isEmpty { return "400\n{\"error\": \"nothing to send\"}" }
       if lab.busy { return "409\n{\"error\": \"a turn is still running\"}" }
-      let t = Turn(id: next, text: text, model: lab.model); next += 1
+      let t = Turn(id: next, text: text, model: "mammoth-1"); next += 1
+      t.status = "running"; t.working = "routing"
       lab.turns.append(t); lab.updated = Date(); save()
-      start(lab, t)
+      route(t)
       return "200\n{\"turn\": \(t.id)}"
     case (true, "/api/lab/stop"):
       if let t = lab.turns.last(where: { $0.status == "queued" || $0.status == "running" }) {
@@ -127,6 +128,18 @@ final class Backend {
     save()
     start(c, t)
     return "200\n{\"c\": \(c.id), \"turn\": \(t.id), \"model\": \"\(model)\"}"
+  }
+
+  // The Lab: Mammoth decides where the message goes, and the decision is the answer (no harness runs yet).
+  private func route(_ t: Turn) {
+    Router.decide(t.text) { [weak self] json, ok in
+      guard let self else { return }
+      self.lock.lock(); defer { self.lock.unlock() }
+      if t.status != "running" { return }
+      t.answer = json; t.status = ok ? "done" : "failed"; t.working = ""
+      if !ok { t.error = "the router didn't answer" }
+      self.dirty = true; self.save()
+    }
   }
 
   // ---- the claude CLI, on the user's own login
