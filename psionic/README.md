@@ -9,6 +9,7 @@ reads original BF16/F32 weight files and complete pinned shard bundles.
 Chapter 5 renders typed text decisions and tokenizes original Qwen data.
 Chapter 6 executes a small causal dense attention block with a KV cache.
 Chapter 7 composes Qwen-style linear and full-attention layers with separate states.
+Chapter 8 adds decision blocks and forks their complete live hybrid state.
 
 Start with [the book](book/README.md) and
 [Chapter 1: Learning a number](book/ch01-learning-a-number.md), then
@@ -17,7 +18,8 @@ Start with [the book](book/README.md) and
 [Chapter 4: Reading original weights](book/ch04-reading-original-weights.md), then
 [Chapter 5: Text becomes a model request](book/ch05-text-becomes-a-model-request.md), then
 [Chapter 6: Attention without training](book/ch06-attention-without-training.md), then
-[Chapter 7: A hybrid sequence model](book/ch07-a-hybrid-sequence-model.md).
+[Chapter 7: A hybrid sequence model](book/ch07-a-hybrid-sequence-model.md), then
+[Chapter 8: Decisions have a different mask](book/ch08-decisions-have-a-different-mask.md).
 [The design notes](../docs/psionic/README.md) explain the larger plan.
 
 From the repository root:
@@ -31,6 +33,7 @@ coax/bin/coax run psionic/examples/read-weights.coax
 coax/bin/coax run psionic/examples/text-request.coax
 coax/bin/coax run psionic/examples/attention.coax
 coax/bin/coax run psionic/examples/hybrid-sequence.coax
+coax/bin/coax run psionic/examples/decision-forks.coax
 ```
 
 The check command builds the compiler if it is absent, runs authored Coax
@@ -46,6 +49,7 @@ credentials, or downloads at run time.
 | --- | --- |
 | [lib/learn.coax](lib/learn.coax) | Checks first, admission, loss/gradient, fixed-rate SGD, prediction. |
 | [lib/tensor.coax](lib/tensor.coax) | Checked rank/shape/byte/stride metadata, indexing and staged finite-f32 copy. |
+| [lib/qwen-decision.coax](lib/qwen-decision.coax), [lib/qwen-prefix.coax](lib/qwen-prefix.coax) | Bidirectional full-attention blocks and isolated snapshots of complete live hybrid state. |
 | [lib/qwen-linear-layer.coax](lib/qwen-linear-layer.coax), [lib/qwen-full-layer.coax](lib/qwen-full-layer.coax) | Bounded causal Qwen-style linear and full-attention layers with staged model state. |
 | [lib/attention.coax](lib/attention.coax) | Bounded dense causal block, grouped-query attention, rotary positions and cache execution. |
 | [platform/attention-memory.h](platform/attention-memory.h), [tests/attention.c](tests/attention.c) | Address observations and native independent forward/cache checks. |
@@ -102,5 +106,8 @@ bounded and do not qualify an actual model. See [chapter 6](book/ch06-attention-
 Chapter 7 implements single-token Qwen-style layers and a small hybrid example;
 complete checkpoint execution and model behavior remain unqualified. See
 [chapter 7](book/ch07-a-hybrid-sequence-model.md).
+Chapter 8 evaluates a bidirectional full-attention block and forks convolution,
+recurrent and live KV state. The fork compares a caller-bound model identity;
+full-checkpoint and end-to-end decision qualification are still planned.
 Autodiff, full model execution, GPU
 execution and serving remain planned.

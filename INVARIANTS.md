@@ -1,5 +1,25 @@
 # Invariants
 
+## Psionic decision blocks fork all live hybrid prefix state
+
+`psionic/lib/qwen-decision.coax` prepares every Q/K/V row in a current block
+before full attention. Queries see every prior-prefix and current-block key;
+sibling blocks are processed from separate snapshots. DeltaNet remains causal.
+The full block stages outputs and new KV entries until the entire block succeeds.
+
+`psionic/lib/qwen-prefix.coax` snapshots all convolution histories and recurrent
+matrices plus the live KV prefix of every full-attention layer. It requires an
+exact shape and matching nonzero caller-supplied 32-byte model identity; it does
+not authenticate that identity or the source history. Destination publication
+is atomic on success, scratch may be dirty on refusal, and unused KV tails are
+left untouched. Caller pointer, extent, alignment, state identity, lifetime and
+exclusive-access obligations remain explicit; C observes address ranges only.
+
+Check: `psionic/check.sh` includes independent nonzero block/fork fixtures,
+debug/release zero-survivor mutation and native plain/sanitized checks. See
+[chapter 8 verification](docs/verification/psionic-ch08-2026-10-29.md) for the
+CoderOS CPU scope and remaining whole-model and upstream-reference gates.
+
 ## Psionic Qwen-style causal layers publish complete state transitions
 
 `psionic/lib/qwen-block.coax`, `qwen-linear-layer.coax` and

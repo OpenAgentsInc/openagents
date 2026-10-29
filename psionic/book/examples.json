@@ -80,6 +80,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/decision-forks.coax",
+      "chapter": "psionic/book/ch08-decisions-have-a-different-mask.md",
+      "stdout": "psionic/fixtures/decision-forks.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

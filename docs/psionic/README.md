@@ -1,6 +1,6 @@
 # Psionic in Coax
 
-Status, 2026-10-29: chapters 1–7 implement M0/M1, bounded original-weight
+Status, 2026-10-29: chapters 1–8 implement M0/M1, bounded original-weight
 artifacts, text requests and small causal Qwen-style layers on the tested CPU host. Autodiff and full model execution
 remain proposed. The
 [Coax library and book](../../psionic/README.md) train a bounded scalar CPU model
@@ -75,8 +75,7 @@ shard/index/manifest admission and bounded finite decoding.
 [Chapter 5](../../psionic/book/ch05-text-becomes-a-model-request.md) now implements
 the frozen text renderer, Unicode-17 NFC, original-Qwen byte-BPE and shared
 token-prefix layout under explicit budgets. [Chapter 6](../../psionic/book/ch06-attention-without-training.md) adds a small causal attention block. [Chapter 7](../../psionic/book/ch07-a-hybrid-sequence-model.md) composes
-causal Qwen-style linear and full-attention layers; real-checkpoint and decision
-qualification remain next.
+causal Qwen-style linear and full-attention layers. [Chapter 8](../../psionic/book/ch08-decisions-have-a-different-mask.md) adds decision blocks and hybrid state forks; real-checkpoint qualification remains next.
 The learning path replaces the hand-written gradient with autodiff over those
 same operations, then builds small physical and language models.
 The [roadmap](roadmap.md) specifies the boundaries of each step.

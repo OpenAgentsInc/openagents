@@ -1,0 +1,32 @@
+#load "../lib/qwen-decision.coax";
+#load "../lib/qwen-linear-layer.coax";
+#load "../lib/qwen-prefix.coax";
+#import "Basic";
+// book:begin example
+main :: () {
+    linear:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    full:=QhShape.{width=2,hidden=1,capacity=3,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    bytes:[16]u8;norm:[2]f32;conv:[12]f32;scalar:[1]f32;gain:=[1]f32.[1];
+    lw:=QlWeights.{input_norm=norm[..],post_norm=norm[..],conv=conv[..],a_log=scalar[..],dt=scalar[..],delta_norm=gain[..],qkv=bytes[0..<12],z=bytes[0..<4],a=bytes[0..<4],b=bytes[0..<4],mixer_out=bytes[0..<4],gate=bytes[0..<4],up=bytes[0..<4],down=bytes[0..<4]};
+    fw:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=norm[..],k_norm=norm[..],q=bytes[..],k=bytes[0..<8],v=bytes[0..<8],mixer_out=bytes[0..<8],gate=bytes[0..<4],up=bytes[0..<4],down=bytes[0..<4]};
+    shape:=QpShape.{linear_layers=1,full_layers=1,capacity=3,delta=linear.delta,attention=full.attention};id:[32]u8;id[0]=1;
+    state:[22]f32;state[9]=4;prefix:=[4]f32.[1,2,3,4];linear_out:[4]f32;rope:=[4]f32.[1,0,1,0];out:[4]f32;work:[200]f32;
+    for t:0..<2 {
+        r:=ql_step(linear,lw,prefix[t*2..<(t+1)*2],state[0..<9],state[9..<10],linear_out[t*2..<(t+1)*2],work[..],false);#assert r.status==QlStatus.ok;
+    }
+    p:=qd_block(full,fw,linear_out[..],rope[..],0,2,state[10..<22],out[..],work[..],false);#assert p.status==QhStatus.ok;
+    #assert state[9]==1;print("prefix: [%, %, %, %], recurrent state %\n",out[0],out[1],out[2],out[3],state[9]);
+    claim:=QpClaim.{model=id,prefix=2,shape=shape};a:[22]f32;b:[22]f32;scratch:[18]f32;
+    fa:=qp_fork(shape,id,claim,state[..],a[..],scratch[..],false);fb:=qp_fork(shape,id,claim,state[..],b[..],scratch[..],false);
+    #assert fa.status==QpStatus.ok && fb.status==QpStatus.ok && fa.written==18;
+    suffix:=[4]f32.[5,6,-1,-2];one_rope:=rope[0..<2];tmp:[2]f32;
+    for branch:0..<2 {
+        fork:=a[..];if branch==1 {fork=b[..];}
+        l:=ql_step(linear,lw,suffix[branch*2..<(branch+1)*2],fork[0..<9],fork[9..<10],tmp[..],work[..],false);#assert l.status==QlStatus.ok;
+        f:=qd_block(full,fw,tmp[..],one_rope,2,1,fork[10..<22],out[0..<2],work[..],false);#assert f.status==QhStatus.ok;
+        print("branch %: [%, %], recurrent state %\n",branch,out[0],out[1],fork[9]);
+    }
+    #assert state[9]==1 && a[9]==0.5f32 && b[9]==0.5f32;
+    print("shared prefix unchanged: %; independent forks: 2\n",state[9]);
+}
+// book:end example

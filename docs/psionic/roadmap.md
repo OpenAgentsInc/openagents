@@ -1,6 +1,6 @@
 # Starting point and roadmap
 
-Status, 2026-10-29: chapters 1–7 implement M0/M1, the artifact slice of M5,
+Status, 2026-10-29: chapters 1–8 implement M0/M1, the artifact slice of M5,
 text requests and bounded causal Qwen-style layers on the tested Apple LP64 CPU
 host. Autodiff and full model execution remain `planned`.
 [Run the first chapter](../../psionic/book/ch01-learning-a-number.md)
@@ -133,6 +133,13 @@ model-specific causal linear and full-attention layers. [Its verification](../ve
 scopes the small CPU references; original checkpoints, the decision mask and
 upstream runtime comparisons remain separate gates.
 
+## Chapter 8: decision masks and snapshots — implemented
+
+[The chapter](../../psionic/book/ch08-decisions-have-a-different-mask.md)
+implements bidirectional full-attention blocks and snapshots of live recurrent,
+convolution and KV state. Whole-model branch isolation and original-weight
+request comparisons remain separate gates.
+
 ## Delivery priority: Elephant, then Mammoth
 
 The owner priority is [native Elephant and Mammoth](model-targets.md), with
@@ -148,7 +155,7 @@ This change does not publish issue-status updates.
 
 | Priority | Work | Must finish first |
 | --- | --- | --- |
-| Now | Pin both model bundles/nanochat, reference contracts and license/provenance; qualify pinned real artifacts with chapter 4 and extend model-specific reference capture and attention over the shared CPU core. | Chapters 1–7 are shipped in bounded CPU profiles. Each real model still needs its own larger execution/resource profile. |
+| Now | Pin both model bundles/nanochat, reference contracts and license/provenance; qualify pinned real artifacts with chapter 4 and extend model-specific reference capture and attention over the shared CPU core. | Chapters 1–8 are shipped in bounded CPU profiles. Each real model still needs its own larger execution/resource profile. |
 | Next | Qualify original model artifacts, exact Qwen tokenizer/decision prompts, independent reference capture, and model-specific numerical extensions. | Each task's data/math prerequisites; no training subsystem. |
 | Next | Qwen3.5 dense blocks, block-bidirectional full attention, causal DeltaNet, complete prefix forks and slot readout. | Shared operations/artifacts and exact prompt/state fixtures. |
 | First real model | Complete original-weight Elephant text decisions. | All hybrid layers, exact renderer/readout, bounded state and independent full-model oracles. |
@@ -170,7 +177,7 @@ a prerequisite for starting the ready work.
 ## Proposed book order
 
 The [full proposed table of contents](../../psionic/book/PLAN.md) now gives
-one outline per chapter, with prerequisite notes. Chapters 1–7 are runnable;
+one outline per chapter, with prerequisite notes. Chapters 1–8 are runnable;
 chapter numbers and part boundaries are provisional. The new
 [NVIDIA breadth survey](nvidia-breadth.md) records pinned candidate checkpoints,
 operator requirements, data studies and source-license qualifications.

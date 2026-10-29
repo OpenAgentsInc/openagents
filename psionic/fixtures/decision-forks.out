@@ -1,0 +1,4 @@
+prefix: [1.0, 2.0, 3.0, 4.0], recurrent state 1.0
+branch 0: [5.0, 6.0], recurrent state 0.5
+branch 1: [-1.0, -2.0], recurrent state 0.5
+shared prefix unchanged: 1.0; independent forks: 2

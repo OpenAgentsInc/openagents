@@ -1,0 +1,86 @@
+// Fork all live hybrid state at a decision-prefix boundary.
+#load "delta.coax";
+#load "qwen-attention.coax";
+#authority;
+QpShape :: struct {linear_layers:int;full_layers:int;capacity:int;delta:PdShape;attention:QfShape;}
+QpClaim :: struct {model:[32]u8;prefix:int;shape:QpShape;}
+QpStatus :: enum u8 {ok;shape;identity;capacity;alias;number;}
+QpResult :: struct {status:QpStatus;written:int;claim:QpClaim;}
+#test "a fork copies recurrence, convolution and only live KV prefixes" {
+    s:=QpShape.{linear_layers=2,full_layers=2,capacity=3,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=0,epsilon=1}};
+    id:[32]u8;id[0]=1;claim:=QpClaim.{model=id,prefix=2,shape=s};src:[44]f32;dest:[44]f32;work:[36]f32;
+    for i:0..<44 {src[i]=f32(i+1);dest[i]=-7;}
+    r:=qp_fork(s,id,claim,src[..],dest[..],work[..],false);
+    #assert r.status==QpStatus.ok && r.written==36 && r.claim.prefix==2 && r.claim.model[0]==1;
+    for i:0..<20 {#assert dest[i]==src[i];}
+    for i:20..<28 {#assert dest[i]==src[i];}for i:28..<32 {#assert dest[i]==-7;}
+    for i:32..<40 {#assert dest[i]==src[i];}for i:40..<44 {#assert dest[i]==-7;}
+}
+#test "a wrong identity or undersized fork never changes destination" {
+    s:=QpShape.{linear_layers=1,full_layers=1,capacity=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=0,epsilon=1}};
+    id:[32]u8;id[0]=1;claim:=QpClaim.{model=id,prefix=1,shape=s};src:[14]f32;dest:[14]f32;work:[14]f32;for i:0..<14 {dest[i]=-7;}
+    wrong:=id;wrong[1]=1;#assert qp_fork(s,wrong,claim,src[..],dest[..],work[..],false).status==QpStatus.identity;
+    #assert qp_fork(s,id,claim,src[0..<13],dest[..],work[..],false).status==QpStatus.capacity;
+    #assert qp_fork(s,id,claim,src[..],dest[..],work[..],true).status==QpStatus.alias;
+    for x:dest {#assert x==-7;}
+}
+qp_valid :: (s:QpShape)->bool {
+    return s.linear_layers>=0 && s.linear_layers<=48 && s.full_layers>=0 && s.full_layers<=16 && s.linear_layers+s.full_layers>0 && qf_token_count(s.capacity) && pd_valid(s.delta) && qf_valid(s.attention);
+}
+qp_same_shape :: (a:QpShape,b:QpShape)->bool {
+    return a.linear_layers==b.linear_layers && a.full_layers==b.full_layers && a.capacity==b.capacity &&
+        a.delta.key_heads==b.delta.key_heads && a.delta.value_heads==b.delta.value_heads && a.delta.key_dim==b.delta.key_dim && a.delta.value_dim==b.delta.value_dim && f32_bits(a.delta.epsilon)==f32_bits(b.delta.epsilon) &&
+        a.attention.heads==b.attention.heads && a.attention.kv_heads==b.attention.kv_heads && a.attention.head_dim==b.attention.head_dim && a.attention.rotary_dim==b.attention.rotary_dim && f32_bits(a.attention.epsilon)==f32_bits(b.attention.epsilon);
+}
+qp_identity :: (a:[32]u8,b:[32]u8)->bool {
+    any:=false;for i:0..<32 {if a[i]!=b[i] {return false;}if a[i]!=0 {any=true;}}return any;
+}
+qp_index :: (base:int,index:int)->int {return base+index;}
+qp_linear_count :: (s:QpShape)->int {return 3*pd_channels(s.delta)+pd_states(s.delta);}
+qp_full_count :: (s:QpShape)->int {return 2*s.capacity*s.attention.kv_heads*s.attention.head_dim;}
+qp_live_full :: (s:QpShape,prefix:int)->int {return 2*prefix*s.attention.kv_heads*s.attention.head_dim;}
+qp_total :: (s:QpShape)->int {return s.linear_layers*qp_linear_count(s)+s.full_layers*qp_full_count(s);}
+qp_live :: (s:QpShape,prefix:int)->int {return s.linear_layers*qp_linear_count(s)+s.full_layers*qp_live_full(s,prefix);}
+// book:begin fork
+qp_fork :: (shape:QpShape,model:[32]u8,source:QpClaim,src:[]f32,dst:[]f32,scratch:[]f32,overlap:bool)->QpResult #export_c {
+    if !qp_valid(shape) {return QpResult.{status=QpStatus.shape};}
+    if !qp_same_shape(shape,source.shape) || !qp_identity(model,source.model) {return QpResult.{status=QpStatus.identity};}
+    if source.prefix<0 || source.prefix>shape.capacity {return QpResult.{status=QpStatus.capacity};}
+    total:=qp_total(shape);live:=qp_live(shape,source.prefix);
+    if src.count!=total || dst.count<total || scratch.count<live {return QpResult.{status=QpStatus.capacity};}
+    if overlap {return QpResult.{status=QpStatus.alias};}
+    linear:=shape.linear_layers*qp_linear_count(shape);full:=qp_full_count(shape);prefix:=qp_live_full(shape,source.prefix);
+    for i:0..<linear {if !psionic_tensor_finite_bits(f32_bits(src[i])) {return QpResult.{status=QpStatus.number};}scratch[i]=src[i];}
+    for layer:0..<shape.full_layers {base:=linear+layer*full;target:=linear+layer*prefix;for i:0..<prefix {if !psionic_tensor_finite_bits(f32_bits(src[qp_index(base,i)])) {return QpResult.{status=QpStatus.number};}scratch[target+i]=src[base+i];}}
+    for i:0..<linear {dst[i]=scratch[i];}
+    for layer:0..<shape.full_layers {base:=linear+layer*full;target:=linear+layer*prefix;for i:0..<prefix {dst[base+i]=scratch[target+i];}}
+    return QpResult.{written=live,claim=source};
+}
+// book:end fork
+#test "snapshot dimensions, live counts and every shape identity field are explicit" {
+    s:=QpShape.{linear_layers=1,full_layers=1,capacity=3,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=0,epsilon=1}};
+    #assert qp_index(4,2)==6 && qp_valid(s) && qp_linear_count(s)==10 && qp_full_count(s)==12 && qp_live_full(s,2)==8 && qp_total(s)==22 && qp_live(s,2)==18;
+    bad:=s;bad.linear_layers=0;#assert qp_valid(bad);bad=s;bad.full_layers=0;#assert qp_valid(bad);
+    bad=s;bad.linear_layers=0;bad.full_layers=0;#assert !qp_valid(bad);bad=s;bad.linear_layers=-1;#assert !qp_valid(bad);
+    bad=s;bad.full_layers=-1;#assert !qp_valid(bad);bad=s;bad.linear_layers=48;bad.full_layers=16;#assert qp_valid(bad);
+    bad=s;bad.linear_layers=49;#assert !qp_valid(bad);bad=s;bad.full_layers=17;#assert !qp_valid(bad);
+    bad=s;bad.capacity=0;#assert !qp_valid(bad);bad=s;bad.delta.key_heads=0;#assert !qp_valid(bad);bad=s;bad.attention.heads=0;#assert !qp_valid(bad);
+    #assert qp_same_shape(s,s);
+    bad=s;bad.linear_layers=2;#assert !qp_same_shape(s,bad);bad=s;bad.full_layers=2;#assert !qp_same_shape(s,bad);bad=s;bad.capacity=2;#assert !qp_same_shape(s,bad);
+    bad=s;bad.delta.key_heads=2;#assert !qp_same_shape(s,bad);bad=s;bad.delta.value_heads=2;#assert !qp_same_shape(s,bad);
+    bad=s;bad.delta.key_dim=2;#assert !qp_same_shape(s,bad);bad=s;bad.delta.value_dim=2;#assert !qp_same_shape(s,bad);bad=s;bad.delta.epsilon=2;#assert !qp_same_shape(s,bad);
+    bad=s;bad.attention.heads=2;#assert !qp_same_shape(s,bad);bad=s;bad.attention.kv_heads=2;#assert !qp_same_shape(s,bad);
+    bad=s;bad.attention.head_dim=4;#assert !qp_same_shape(s,bad);bad=s;bad.attention.rotary_dim=2;#assert !qp_same_shape(s,bad);bad=s;bad.attention.epsilon=2;#assert !qp_same_shape(s,bad);
+}
+#test "nonempty model identities and prefix boundary checks do not publish" {
+    s:=QpShape.{linear_layers=1,full_layers=1,capacity=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=0,epsilon=1}};
+    zero:[32]u8;#assert !qp_identity(zero,zero);id:=zero;id[31]=2;#assert qp_identity(id,id);
+    for i:0..<32 {other:=id;other[i]=1;#assert !qp_identity(id,other);}
+    claim:=QpClaim.{model=id,prefix=0,shape=s};src:[14]f32;dest:[14]f32;work:[14]f32;
+    #assert qp_fork(s,id,claim,src[..],dest[..],work[0..<10],false).status==QpStatus.ok;
+    claim.prefix=-1;#assert qp_fork(s,id,claim,src[..],dest[..],work[..],false).status==QpStatus.capacity;
+    claim.prefix=2;#assert qp_fork(s,id,claim,src[..],dest[..],work[..],false).status==QpStatus.capacity;
+    claim.prefix=1;#assert qp_fork(s,id,claim,src[..],dest[0..<13],work[..],false).status==QpStatus.capacity;
+    #assert qp_fork(s,id,claim,src[..],dest[..],work[0..<13],false).status==QpStatus.capacity;
+    bad:=claim;bad.shape.capacity=2;#assert qp_fork(s,id,bad,src[..],dest[..],work[..],false).status==QpStatus.identity;
+}

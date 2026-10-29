@@ -8,8 +8,9 @@
 - [5. Text becomes a model request](ch05-text-becomes-a-model-request.md)
 - [6. Attention without training](ch06-attention-without-training.md)
 - [7. A hybrid sequence model](ch07-a-hybrid-sequence-model.md)
+- [8. Decisions have a different mask](ch08-decisions-have-a-different-mask.md)
 
 Proposed: [full table of contents and prerequisites](PLAN.md), from early
 Elephant/Mammoth through nanochat pretraining/post-training, NVIDIA retrieval,
 vision, motion, speech, scientific ML, world generation and robot policies.
-The seven chapters linked above are runnable; later chapters remain proposed.
+The eight chapters linked above are runnable; later chapters remain proposed.

@@ -1,0 +1,94 @@
+// Block-bidirectional full attention over an earlier cached prefix.
+#load "qwen-full-layer.coax";
+#authority;
+QdLayout :: struct {norm:int;temp:int;prepare:int;prepared:int;attend:int;att_out:int;att_work:int;mixed:int;draft:int;block:int;total:int;}
+#test "a block publishes all current keys only after both residuals finish" {
+    s:=QhShape.{width=2,hidden=1,capacity=2,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    matrix:[16]u8;norm:[2]f32;rope:=[4]f32.[1,0,1,0];
+    w:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=norm[..],k_norm=norm[..],q=matrix[..],k=matrix[0..<8],v=matrix[0..<8],mixer_out=matrix[0..<8],gate=matrix[0..<4],up=matrix[0..<4],down=matrix[0..<4]};
+    x:=[4]f32.[1,2,3,4];cache:=[8]f32.[7,7,7,7,7,7,7,7];out:=[5]f32.[-7,-7,-7,-7,-7];work:[200]f32;
+    r:=qd_block(s,w,x[..],rope[..],0,2,cache[..],out[..],work[..],false);
+    #assert r.status==QhStatus.ok && r.written==4 && out[0]==1 && out[1]==2 && out[2]==3 && out[3]==4 && out[4]==-7;
+    for v:cache {#assert v==0;}
+}
+#test "late failure leaves the whole block and cache unchanged" {
+    s:=QhShape.{width=2,hidden=1,capacity=2,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    matrix:[16]u8;bad:=[4]u8.[0,0,0x80,0x7f];norm:[2]f32;rope:=[4]f32.[1,0,1,0];
+    w:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=norm[..],k_norm=norm[..],q=matrix[..],k=matrix[0..<8],v=matrix[0..<8],mixer_out=matrix[0..<8],gate=matrix[0..<4],up=matrix[0..<4],down=bad[..]};
+    x:=[4]f32.[1,2,3,4];cache:=[8]f32.[7,7,7,7,7,7,7,7];out:=[4]f32.[-7,-7,-7,-7];work:[200]f32;
+    r:=qd_block(s,w,x[..],rope[..],0,2,cache[..],out[..],work[..],false);
+    #assert r.status==QhStatus.number && r.written==0;for v:cache {#assert v==7;}for v:out {#assert v==-7;}
+}
+qd_block_valid :: (start:int,count:int,capacity:int)->bool {
+    if start<0 || count<1 || count>capacity {return false;}
+    return start<=capacity-count;
+}
+qd_layout :: (s:QhShape,start:int,count:int)->QdLayout {
+    q:=s.attention.heads*s.attention.head_dim;p:QdLayout;p.temp=s.width;p.prepare=p.temp+2*q+s.width;
+    p.prepared=p.prepare+qf_input_count(s.attention);p.attend=p.prepared+count*qf_output_count(s.attention);
+    p.att_out=p.attend+qf_attend_count(s.attention,start+count);p.att_work=p.att_out+q;
+    p.mixed=p.att_work+q;p.draft=p.mixed+s.width;p.block=p.draft+count*s.width;p.total=p.block+qb_work_count(s.width,s.hidden);return p;
+}
+// book:begin block
+qd_block :: (s:QhShape,w:QhWeights,x:[]f32,rope:[]f32,start:int,count:int,cache:[]f32,out:[]f32,work:[]f32,overlap:bool)->QhResult #export_c {
+    if !qh_valid(s) {return QhResult.{status=QhStatus.shape};}
+    if !qd_block_valid(start,count,s.capacity) {return QhResult.{status=QhStatus.capacity};}
+    d:=s.width;f:=s.hidden;q:=s.attention.heads*s.attention.head_dim;k:=s.attention.kv_heads*s.attention.head_dim;dim:=s.attention.head_dim;rot:=s.attention.rotary_dim;tokens:=start+count;
+    p:=qd_layout(s,start,count);one:=qf_output_count(s.attention);
+    if !qh_weights_valid(s,w) || x.count!=count*d || rope.count!=count*rot || cache.count!=qh_cache_count(s) || out.count<count*d || work.count<p.total {return QhResult.{status=QhStatus.capacity};}
+    if overlap {return QhResult.{status=QhStatus.alias};}
+    norm:=work[p.norm..<p.temp];temp:=work[p.temp..<p.prepare];prep:=work[p.prepare..<p.prepared];prepared:=work[p.prepared..<p.attend];
+    attend:=work[p.attend..<p.att_out];att_out:=work[p.att_out..<p.att_work];att_work:=work[p.att_work..<p.mixed];mixed:=work[p.mixed..<p.draft];draft:=work[p.draft..<p.block];block:=work[p.block..<p.total];
+    kstart:=2*q;vstart:=kstart+k;scalebase:=vstart+k;
+    for t:0..<count {
+        row:=x[t*d..<(t+1)*d];br:=qb_begin(d,s.attention.epsilon,row,w.input_norm,norm,temp,false);if br.status!=QmStatus.ok {return QhResult.{status=qh_mstatus(br.status)};}
+        qr:=qm_project(s.dtype,kstart,d,w.q,norm,prep[0..<kstart],temp,false);if qr.status!=QmStatus.ok {return QhResult.{status=qh_mstatus(qr.status)};}
+        kr:=qm_project(s.dtype,k,d,w.k,norm,prep[kstart..<vstart],temp,false);if kr.status!=QmStatus.ok {return QhResult.{status=qh_mstatus(kr.status)};}
+        vr:=qm_project(s.dtype,k,d,w.v,norm,prep[vstart..<scalebase],temp,false);if vr.status!=QmStatus.ok {return QhResult.{status=qh_mstatus(vr.status)};}
+        for i:0..<dim {prep[scalebase+i]=w.q_norm[i];prep[scalebase+dim+i]=w.k_norm[i];}
+        for i:0..<rot {prep[qh_rope_offset(scalebase,dim)+i]=rope[t*rot+i];}
+        pr:=qf_prepare(s.attention,prep,prepared[t*one..<(t+1)*one],false);if pr.status!=QfStatus.ok {return QhResult.{status=qh_fstatus(pr.status)};}
+    }
+    for t:0..<tokens {
+        for i:0..<k {
+            key:f32=0;value:f32=0;
+            if t<start {key=cache[t*2*k+i];value=cache[t*2*k+k+i];}
+            else {row:=(t-start)*one;key=prepared[row+2*q+i];value=prepared[row+2*q+k+i];}
+            attend[2*q+t*k+i]=key;attend[2*q+tokens*k+t*k+i]=value;
+        }
+    }
+    mask:[16384]u8;for i:0..<tokens {mask[i]=1;}
+    for t:0..<count {
+        for i:0..<2*q {attend[i]=prepared[t*one+i];}
+        ar:=qf_attend(s.attention,tokens,attend,mask[0..<tokens],att_out,att_work,false);if ar.status!=QfStatus.ok {return QhResult.{status=qh_fstatus(ar.status)};}
+        mr:=qm_project(s.dtype,d,q,w.mixer_out,att_out,mixed,temp,false);if mr.status!=QmStatus.ok {return QhResult.{status=qh_mstatus(mr.status)};}
+        end:=qb_finish(s.dtype,d,f,s.attention.epsilon,x[t*d..<(t+1)*d],mixed,w.post_norm,w.gate,w.up,w.down,draft[t*d..<(t+1)*d],block,false);if end.status!=QmStatus.ok {return QhResult.{status=qh_mstatus(end.status)};}
+    }
+    for t:0..<count {for i:0..<k {cache[(start+t)*2*k+i]=prepared[t*one+2*q+i];cache[(start+t)*2*k+k+i]=prepared[t*one+2*q+k+i];}}
+    for i:0..<count*d {out[i]=draft[i];}return QhResult.{written=count*d};
+}
+// book:end block
+
+#load "../fixtures/hybrid/qwen-decision-vectors.coax";
+#test "block endpoints and workspace layout are explicit" {
+    #assert qd_block_valid(0,1,3) && qd_block_valid(0,3,3) && qd_block_valid(2,1,3);
+    #assert !qd_block_valid(-1,1,3) && !qd_block_valid(0,0,3) && !qd_block_valid(0,4,3) && !qd_block_valid(2,2,3);
+    s:=QhShape.{width=3,hidden=2,capacity=3,attention=QfShape.{heads=2,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=0.125f32},dtype=QmDtype.f32};
+    p:=qd_layout(s,0,2);#assert p.norm==0 && p.temp==3 && p.prepare==14 && p.prepared==32 && p.attend==56;
+    #assert p.att_out==72 && p.att_work==76 && p.mixed==80 && p.draft==83 && p.block==89 && p.total==109;
+    #assert qd_layout(s,2,1).total==98;
+}
+#test "block admission checks every view before touching state" {
+    s:=QhShape.{width=2,hidden=1,capacity=2,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    matrix:[16]u8;norm:[2]f32;rope:=[4]f32.[1,0,1,0];
+    w:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=norm[..],k_norm=norm[..],q=matrix[..],k=matrix[0..<8],v=matrix[0..<8],mixer_out=matrix[0..<8],gate=matrix[0..<4],up=matrix[0..<4],down=matrix[0..<4]};
+    x:=[4]f32.[1,2,3,4];cache:[8]f32;out:[4]f32;work:[72]f32;
+    #assert qd_layout(s,0,2).total==72 && qd_block(s,w,x[..],rope[..],0,2,cache[..],out[..],work[..],false).status==QhStatus.ok;
+    #assert qd_block(s,w,x[0..<3],rope[..],0,2,cache[..],out[..],work[..],false).status==QhStatus.capacity;
+    #assert qd_block(s,w,x[..],rope[0..<3],0,2,cache[..],out[..],work[..],false).status==QhStatus.capacity;
+    #assert qd_block(s,w,x[..],rope[..],0,2,cache[0..<7],out[..],work[..],false).status==QhStatus.capacity;
+    #assert qd_block(s,w,x[..],rope[..],0,2,cache[..],out[0..<3],work[..],false).status==QhStatus.capacity;
+    #assert qd_block(s,w,x[..],rope[..],0,2,cache[..],out[..],work[0..<71],false).status==QhStatus.capacity;
+    #assert qd_block(s,w,x[..],rope[..],0,2,cache[..],out[..],work[..],true).status==QhStatus.alias;
+    bad:=w;bad.q_norm=norm[0..<1];#assert qd_block(s,bad,x[..],rope[..],0,2,cache[..],out[..],work[..],false).status==QhStatus.capacity;
+}
