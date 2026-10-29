@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/private.wasm and build/chat.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm and build/chat.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -19,7 +19,8 @@ splash=$!
   && python3 coax/web/wgsl.py verse/haunt-light.coax verse_haunt_ambient verse_haunt_attenuate verse_haunt_shade verse_haunt_moon_dir verse_haunt_moonlight verse_haunt_shadow_reach verse_haunt_shadow_edge verse_haunt_night verse_haunt_bloom_share verse_haunt_glow --into apps/openagents-web/realm.wgsl \
   && python3 coax/web/wgsl.py verse/look.coax verse_outline_depth verse_outline_crease verse_outline_strength verse_outline_ink --into apps/openagents-web/realm.wgsl \
   && python3 coax/web/wgsl.py verse/particle-motion.coax verse_particle_offset verse_particle_glow verse_particle_size --into apps/openagents-web/particles.wgsl \
-  && python3 coax/web/wgsl.py verse/haunt-light.coax verse_haunt_bloom_share --into apps/openagents-web/particles.wgsl)
+  && python3 coax/web/wgsl.py verse/haunt-light.coax verse_haunt_bloom_share --into apps/openagents-web/particles.wgsl \
+  && python3 coax/web/wgsl.py verse/look.coax verse_outline_depth verse_outline_crease --into apps/openagents-web/villa.wgsl)
 m="$here/../../verse"
 # The voice engine for pages that talk (data-voice: the Haunted House), coax/web/voice.js.
 "$here/../../coax/web/voice/build.sh" "$here/build/voice.wasm" &
@@ -36,6 +37,11 @@ garden=$!
 "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/everglade-face.c" "$here/build/everglade.wasm" \
   "$m/player.coax" "$m/grid.coax" &
 everglade=$!
+# /realm/hecates-cemetery: Planetary Villa's first expansion (verse/planetary-villa/README.md),
+# with the player, thumbs and figures (villafig.coax: the engine's figures and motions) as libraries.
+"$here/../../coax/web/wasm.sh" "$here/villa.coax" "$here/villa-face.c" "$here/build/villa.wasm" \
+  "$m/player.coax" "$m/grid.coax" "$here/villafig.coax" &
+villa=$!
 # /realm/fixture: the realm host's test world, the smallest realm module.
 "$here/../../coax/web/wasm.sh" "$here/fixture.coax" "$here/fixture-face.c" "$here/build/fixture.wasm" &
 fixture=$!
@@ -92,3 +98,4 @@ wait "$fixture"
 wait "$icecream"
 wait "$deadgears"
 wait "$everglade"
+wait "$villa"

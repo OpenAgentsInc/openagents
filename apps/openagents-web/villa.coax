@@ -1,0 +1,1171 @@
+// Hecate's Cemetery, openagents.com/realm/hecates-cemetery: the first
+// expansion of Planetary Villa, Kiki's world on the Verse
+// (verse/planetary-villa/README.md). A moonlit memorial garden you walk with
+// a glowing white dog: tombstone plots along garden paths, hedges, cypresses
+// and a fountain, and through the east gate an open field.
+//
+// Choosing Planetary Villa on the galaxy opens this page, and the visit
+// starts with a flight (verse/cinematic.coax): out in space toward the
+// planet, then a cut down through the night over the garden to its south
+// gate, where the camera is handed to you. A key, a click or a tap skips it.
+//
+// The look: low-poly shapes, each face lit flat; the moon the only key
+// light, dim and blue, standing still in the sky in the real moon's phase
+// now; a pale outline on shapes and path edges so they read in the dark
+// (villa.wgsl's post pass, verse/look.coax); and what glows (the dog)
+// blooms. You are a shadow: an all-black figure with fuzzy edges and a
+// light trail of particles while you move (verse/particles.coax).
+//
+// You walk with the engine's controller (verse/player.coax) and see it from
+// the free orbit over your shoulder (verse/camera.coax), which turns with a
+// drag, the arrow keys or your right thumb, zooms with the wheel and pulls
+// in where a tombstone, a hedge or a tree is in the way. The ground and
+// the paths are verse/terrain.coax's; the dog follows you by the paths.
+//
+// This file is the page: the layout, the controls, the flight, the HUD and
+// what the scene draws (villa.wgsl). villa-face.c binds it for the browser,
+// runs the player, and poses the figures (villafig.coax) between its calls:
+// villa_controls, the player's step, villa_step, the figures, villa_draw.
+//   coax/bin/coax test apps/openagents-web/villa.coax --steps 80000000
+
+#load "font.coax";
+#load "analytics.coax";
+#load "../../verse/camera.coax";
+#load "../../verse/throw.coax";
+#load "../../verse/cinematic.coax";
+#load "../../verse/particles.coax";
+
+VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
+MAX_VERTICES :: 16000;
+PLATES :: 16;
+// The uniforms (villa.wgsl U): width, height, time, fade; still, plates,
+// dpr, horizon; the view's four rows; the eye and how much of space shows;
+// the flash; the plates (x0, y0, x1, y1, then scale, alpha, look, 0 each,
+// where particles.wgsl reads them too); toward the moon and its phase; the
+// moonlight's strength and the lit share of the disc; the ground (cells a
+// side, cell size, its west and south edge); SHADOWS blobs (x, z, radius,
+// strength); PATHS pieces (ax, az, bx, bz), their count and half width.
+U_VIEW :: 8; U_EYE :: 24; U_FLASH :: 28; U_PLATE :: 32;
+U_MOON :: U_PLATE + PLATES * 8;
+U_SKY :: U_MOON + 4;
+U_GROUND :: U_SKY + 4;
+U_SHADOW :: U_GROUND + 4;
+SHADOWS :: 16;
+U_PATH :: U_SHADOW + SHADOWS * 4;
+PATHS :: 48;
+U_PATH_INFO :: U_PATH + PATHS * 4;
+UNIFORM_FLOATS :: U_PATH_INFO + 4;
+
+// The ground: CELLS a side of CELL metres, centred on the origin.
+CELLS :: 64;
+CELL :: 1.5;
+GROUND_POINTS :: (CELLS + 1) * (CELLS + 1);
+EDGE :: -48.0;
+BOUND :: 45.0;
+PATH_HALF :: 0.9;
+
+// The shapes villa.wgsl draws, and how many of each a frame holds: the
+// ground's cell, a box, a sphere, a cylinder, a cone, and a ball (a
+// coarser sphere, for the figures' joints).
+SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4; SHAPE_BALL :: 5;
+KINDS :: 6;
+SHAPE_VERTICES :: [6] int.[6, 36, 960, 192, 96, 288];
+SLOTS :: [6] int.[0, 300, 90, 360, 90, 420];
+SLOT_AT :: [6] int.[0, 0, 300, 390, 750, 840];
+OBJECTS :: 1260;
+OBJECT_FLOATS :: 16;   // rows r0, r1, r2 (an affine map from the unit shape), colour, and kind + 8 * look
+// Looks (villa.wgsl): how a surface takes the moon.
+LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_IRON :: 3; LOOK_WATER :: 4; LOOK_GLOW :: 5;
+LOOK_SHADOW :: 6; LOOK_BLOOM :: 7; LOOK_PLANET :: 8; LOOK_SOIL :: 9; LOOK_EYE :: 10;
+DRAWS :: 6;
+
+WALLS :: 160;          // the player's walls (player.coax: min x, y, z, max x, y, z each)
+SPHERES :: 64;         // the camera's round scenery
+BOXES :: 160;          // and its boxes
+FIGS :: 4;             // figures drawn: you, your dog, and room for two more
+FIG_BONES :: 32;
+BONE_FLOATS :: 8;
+
+HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 16; HOLD_JUMP :: 32;
+HOLD_TURN_LEFT :: 64; HOLD_TURN_RIGHT :: 128; HOLD_TILT_UP :: 256; HOLD_TILT_DOWN :: 512;
+KEY_ESCAPE :: -1; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
+LOOK_DRAG :: 0.0055;
+WHEEL_ZOOM :: 0.006;
+
+// The HUD's colours: moon-pale text and a cold silver line.
+PALE_R :: 0.82; PALE_G :: 0.86; PALE_B :: 0.95;
+SILVER_R :: 0.62; SILVER_G :: 0.7; SILVER_B :: 0.88;
+GAP :: 0.5; SPACE :: 1.2;
+
+Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+
+Villa :: struct {
+  started: bool;
+  time: f64;
+  width: f32; height: f32; dpr: f32;
+  touch: bool;
+  still: bool;              // reduced motion: no flight
+  golden: bool;             // the release walk's shot: what moves on its own holds still
+  wall_ms: f64;             // the browser's clock (for the moon's phase)
+  orbit: Orbit;
+  held: int;
+  drag_on: bool; drag_id: int; drag_x: f32; drag_y: f32; drag_travel: f32;
+  look_yaw: f32; look_pitch: f32;
+  key_x: f32; key_y: f32; run: bool; jump: bool;
+  // You, as the player last left you, on the ground.
+  feet: Point; face: f32; act: int; speed: f32;
+  shot: Shot;
+  // Your dog.
+  fetch: Fetch;
+  pet_still: bool;          // the face says it plays a motion that keeps it where it is
+  // The flight in (verse/cinematic.coax), and where it is this frame.
+  flight: Flight;
+  flight_begun: bool;
+  fl_active: bool;          // the flight has the camera (flying, or handing back)
+  fl_flying: bool;          // still flying: input skips it
+  fl_take: int;             // the take on screen: 0 space, 1 the garden, -1 handing back or over
+  fl_t: f32;                // seconds since it started
+  skip_ask: bool;           // a key or a press asked to skip it; the face takes it
+  live: Shot;               // the camera you have, which the flight hands back to
+  skip: Box;                // the SKIP button while it flies
+  // The figures the face posed this frame: bones, how many, a bound each.
+  bones: [FIGS * FIG_BONES * BONE_FLOATS] f32;
+  bone_n: [FIGS] int;
+  bound: [FIGS * 4] f32;
+  // Particles (verse/particles.coax emitters), for the face to hand the host.
+  emitters: [VERSE_EMITTERS * VERSE_EMITTER_FLOATS] f32;
+  emitter_n: int;
+  // The scene.
+  heights: [GROUND_POINTS] f32;
+  objects: [OBJECTS * OBJECT_FLOATS] f32;
+  counts: [KINDS] int;
+  draws: [DRAWS * 4] u32;
+  walls: [WALLS * 6] f32; wall_n: int; block_n: int;
+  spheres: [SPHERES * 4] f32; sphere_n: int;
+  boxes: [BOXES * 6] f32; box_n: int;
+  shadow_n: int;
+  plate_n: int;
+}
+
+// ---- the layout (metres; +z north, +x east)
+//
+// The garden is walled, 42 by 42, from x -38 to 4. A plaza with the
+// fountain is at its middle (-17, 0); the avenue runs north from the south
+// gate through it, the cross path east to the field gate, a ring path
+// runs inside the wall and two lanes cut the plots. 64 tombstone plots sit
+// in four blocks of sixteen. The field is open grass east of the gate, a
+// loop path through it.
+GARDEN_X0 :: -38.0; GARDEN_X1 :: 4.0; GARDEN_Z0 :: -21.0; GARDEN_Z1 :: 21.0;
+PLAZA_X :: -17.0; PLAZA_Z :: 0.0;
+GATE_X :: -17.0;          // the south gate, in the wall at GARDEN_Z0
+FIELD_GATE_Z :: 0.0;      // the field gate, in the wall at GARDEN_X1
+GATE_HALF :: 1.6;         // half a gateway's width
+
+NODES :: 30;
+NODE_XZ :: [60] f32.[
+  -17, 4.5,  -13.82, 3.18,  -12.5, 0,  -13.82, -3.18,  -17, -4.5,  -20.18, -3.18,  -21.5, 0,  -20.18, 3.18,
+  -17, -18,  -17, -28,  -17, 18,  -35.5, 0,  1.5, 0,  4, 0,  10, 0,
+  -35.5, -18,  1.5, -18,  1.5, 18,  -35.5, 18,
+  -26.5, -18,  -26.5, 0,  -26.5, 18,  -7.5, -18,  -7.5, 0,  -7.5, 18,
+  20, 9,  32, 7,  37, -6,  24, -13,  14, -9
+];
+LINKS :: 39;
+LINK_AB :: [78] int.[
+  0, 1,  1, 2,  2, 3,  3, 4,  4, 5,  5, 6,  6, 7,  7, 0,
+  4, 8,  8, 9,  0, 10,
+  6, 20,  20, 11,  2, 23,  23, 12,  12, 13,  13, 14,
+  15, 19,  19, 8,  8, 22,  22, 16,  16, 12,  12, 17,  17, 24,  24, 10,  10, 21,  21, 18,  18, 11,  11, 15,
+  19, 20,  20, 21,  22, 23,  23, 24,
+  14, 25,  25, 26,  26, 27,  27, 28,  28, 29,  29, 14
+];
+// Level ground: the garden is a terrace (terrain.coax FLAT: x, z, radius, level).
+FLATS :: [24] f32.[-27, -10, 11, 0,  -27, 10, 11, 0,  -7, -10, 11, 0,  -7, 10, 11, 0,  -17, 0, 9, 0,  -17, -26, 5, 0];
+
+// The plots: x of each column, z of each row (north rows, then south).
+PLOT_COLUMNS :: [8] f32.[-32.5, -29.5, -23.5, -20.5, -13.5, -10.5, -4.5, -1.5];
+PLOT_ROWS :: [8] f32.[5.75, 9.0, 12.25, 15.5, -5.75, -9.0, -12.25, -15.5];
+PLOTS :: 64;
+
+// Cypresses (tall cones) and round trees: x, z, height, radius, kind (0 cypress, 1 round).
+TREES :: 26;
+TREE :: [130] f32.[
+  -36.4, 20, 5.2, 0.9, 0,   -36.4, -20, 5.0, 0.9, 0,   3, 20, 5.4, 0.9, 0,   3, -20, 5.1, 0.9, 0,
+  -19.6, -19.8, 4.6, 0.8, 0,  -14.4, -19.8, 4.6, 0.8, 0,  -26.5, 20.2, 4.8, 0.85, 0,  -7.5, 20.2, 4.8, 0.85, 0,
+  -37.2, -9, 4.4, 0.7, 0,   -37.2, 9, 4.4, 0.7, 0,
+  8, 13, 2.6, 1.6, 1,   8, -13, 2.6, 1.6, 1,
+  14, 18, 3.2, 2.2, 1,   26, 20, 3.6, 2.4, 1,   40, 14, 3.0, 2.0, 1,   43, -2, 3.4, 2.3, 1,   38, -20, 3.1, 2.1, 1,
+  22, -24, 3.5, 2.4, 1,   9, -22, 3.0, 2.0, 1,   30, -8, 2.7, 1.9, 1,
+  12, 26, 6, 1.0, 0,   20, 28, 6.4, 1.1, 0,   33, 27, 5.8, 1.0, 0,   44, 22, 6.2, 1.0, 0,  45, -18, 6.0, 1.0, 0,  28, -29, 6.2, 1.0, 0
+];
+// Hedges: min x, z, max x, z, height (beside the plaza and along the lanes' ends).
+HEDGES :: 8;
+HEDGE :: [40] f32.[
+  -24.2, 2.6, -22.6, 3.4, 1.0,   -11.4, 2.6, -9.8, 3.4, 1.0,
+  -24.2, -3.4, -22.6, -2.6, 1.0, -11.4, -3.4, -9.8, -2.6, 1.0,
+  -33.8, -2.3, -28.5, -1.5, 1.1, -33.8, 1.5, -28.5, 2.3, 1.1,
+  -5.5, -2.3, -0.3, -1.5, 1.1,   -5.5, 1.5, -0.3, 2.3, 1.1
+];
+// Benches round the plaza: x, z, the way they face.
+BENCHES :: 4;
+// Inside the plaza ring, on the diagonals, each facing the fountain.
+BENCH :: [12] f32.[-14.95, 2.05, -2.3562, -19.05, 2.05, 2.3562, -19.05, -2.05, 0.7854, -14.95, -2.05, -0.7854];
+// Stones at the field's edge: x, z, size.
+EDGE_STONES :: 14;
+EDGE_STONE :: [42] f32.[
+  41, 18, 0.7,  43.5, 10, 0.6,  44, 2, 0.8,  43.6, -7, 0.6,  42, -14, 0.7,  36, -25, 0.6,  26, -30, 0.8,
+  16, -29, 0.6,  9, -28, 0.7,  8, 28, 0.6,  16, 31, 0.8,  27, 32, 0.6,  36, 30, 0.7,  42, 26, 0.6
+];
+SPAWN_X :: -17.0; SPAWN_Z :: -26.0;   // outside the south gate, facing north
+DOG_X :: -18.6; DOG_Z :: -27.0;
+FOUNTAIN_R :: 1.9;
+
+// The flight in: through space to the planet, then down to the south gate.
+PLANET_X :: -17.0; PLANET_Y :: -40.0; PLANET_Z :: 120.0; PLANET_R :: 32.0;
+FLIGHT_CUT :: 3.4;      // seconds: the cut from space to the garden
+FLASH :: 0.55;          // seconds the cut's flash takes to fade
+GOLDEN_TIME :: 2.0;
+GOLDEN_PHASE :: 0.4;    // golden mode's moon: a waxing gibbous
+
+// ---- small things
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  size := sqrt(dx * dx + dy * dy);
+  if size <= 0 { return false; }
+  ux := dx / size; uy := dy / size;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, size + r, size + r, -r, size + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = size; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+ink :: (k: f32, light: f32, red: f32, green: f32, blue: f32) -> Ink {
+  i: Ink;
+  i.core = 0.55 * k; i.light = light; i.glow = 1.2 * k; i.red = red; i.green = green; i.blue = blue; i.mode = 0; i.scale = k;
+  return i;
+}
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+put6 :: (out: [] f32, i: int, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
+  k := i * 6;
+  if k + 6 > out.count { return; }
+  out[k] = a; out[k + 1] = b; out[k + 2] = c; out[k + 3] = d; out[k + 4] = e; out[k + 5] = f;
+}
+in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+no_box :: () -> Box { return Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
+
+// ---- the moon
+
+// The moon's phase at a moment (milliseconds since 1970): 0 new, 0.5 full,
+// from the mean new moon of 6 January 2000 18:14 UTC and the mean synodic month.
+villa_moon_phase :: (ms: f64) -> f32 #export_c {
+  if !(ms > 0) { return f32(GOLDEN_PHASE); }
+  days := ms / 86400000.0 - 10957.0;
+  age := (days - 5.7597) / 29.530588853;
+  return f32(age - floor(age));
+}
+// How much of the disc is lit at that phase, 0 to 1.
+villa_moon_lit :: (phase: f32) -> f32 #export_c { return (1 - cos(phase * f32(TAU))) * 0.5; }
+// The moon stands still in the sky, north-east and about 34 degrees up.
+moon_dir :: () -> Point { return unit_or(v3(0.42, 0.56, 0.71), v3(0, 1, 0)); }
+
+// ---- the page's state
+
+coaxial_villa_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_villa_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_villa_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+ground :: () -> Ground { g: Ground; g.n = CELLS; g.cell = CELL; g.west = EDGE; g.south = EDGE; g.rim_from = 40; g.rim = 0.02; return g; }
+ground_at :: (s: [] Villa, x: f32, z: f32) -> f32 { return verse_terrain_height(ground(), s[0].heights[..], x, z); }
+
+villa_start :: (s: [] Villa) {
+  s[0].started = true;
+  nodes := NODE_XZ; links := LINK_AB; flats := FLATS;
+  ok := verse_terrain_build(ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), flats[..]);
+  s[0].feet = v3(f32(SPAWN_X), ground_at(s, f32(SPAWN_X), f32(SPAWN_Z)), f32(SPAWN_Z));
+  s[0].orbit = verse_orbit_start(s[0].feet, 0);
+  s[0].shot = verse_orbit_shot(s[0].orbit);
+  s[0].fetch.dog = verse_follower_place(ground(), s[0].heights[..], f32(DOG_X), f32(DOG_Z), 0);
+  s[0].fetch.ball = verse_ball_place(ground(), s[0].heights[..], f32(SPAWN_X) + 1.2, f32(SPAWN_Z) + 3, 0.12);
+  s[0].fetch.ball.held = 99;   // put away until fetch is played (a skill, later)
+  build_scenery(s);
+}
+
+// The player's walls (on its flat floor) and the camera's scenery (on the ground).
+add_block :: (s: [] Villa, x0: f32, z0: f32, x1: f32, z1: f32, height: f32, camera: bool) {
+  if s[0].wall_n < WALLS { put6(s[0].walls[..], s[0].wall_n, x0, 0, z0, x1, height, z1); s[0].wall_n += 1; }
+  if camera && s[0].box_n < BOXES {
+    g := ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
+    put6(s[0].boxes[..], s[0].box_n, x0, g - 1, z0, x1, g + height, z1); s[0].box_n += 1;
+  }
+}
+add_round :: (s: [] Villa, x: f32, y: f32, z: f32, r: f32) {
+  if s[0].sphere_n >= SPHERES { return; }
+  k := s[0].sphere_n * 4;
+  s[0].spheres[k] = x; s[0].spheres[k + 1] = y; s[0].spheres[k + 2] = z; s[0].spheres[k + 3] = r;
+  s[0].sphere_n += 1;
+}
+
+// A plot's tombstone place: its column and row.
+plot_x :: (p: int) -> f32 { return PLOT_COLUMNS[p % 8]; }
+plot_z :: (p: int) -> f32 { return PLOT_ROWS[(p / 8) % 8]; }
+
+build_scenery :: (s: [] Villa) {
+  s[0].wall_n = 0; s[0].box_n = 0; s[0].sphere_n = 0;
+  for t: 0..<TREES {
+    x := TREE[t * 5]; z := TREE[t * 5 + 1]; h := TREE[t * 5 + 2]; r := TREE[t * 5 + 3];
+    g := ground_at(s, x, z);
+    add_block(s, x - 0.3, z - 0.3, x + 0.3, z + 0.3, h, true);
+    add_round(s, x, g + h * 0.6, z, r * 0.9);
+  }
+  for i: 0..<HEDGES {
+    k := i * 5;
+    add_block(s, HEDGE[k], HEDGE[k + 1], HEDGE[k + 2], HEDGE[k + 3], HEDGE[k + 4], true);
+  }
+  // The fountain and the benches.
+  add_block(s, f32(PLAZA_X) - f32(FOUNTAIN_R), f32(PLAZA_Z) - f32(FOUNTAIN_R), f32(PLAZA_X) + f32(FOUNTAIN_R), f32(PLAZA_Z) + f32(FOUNTAIN_R), 1.4, true);
+  for b: 0..<BENCHES {
+    x := BENCH[b * 3]; z := BENCH[b * 3 + 1];
+    add_block(s, x - 0.55, z - 0.55, x + 0.55, z + 0.55, 0.5, false);
+  }
+  // Every plot's stone, so the camera keeps out of them and you walk round them.
+  for p: 0..<PLOTS {
+    x := plot_x(p); z := plot_z(p);
+    add_block(s, x - 0.42, z + 0.45, x + 0.42, z + 0.8, 1.0, true);
+  }
+  s[0].block_n = s[0].wall_n;
+  // The wall round the garden, with its two gateways.
+  w := 0.35f32; h := 1.0f32;
+  x0 := f32(GARDEN_X0); x1 := f32(GARDEN_X1); z0 := f32(GARDEN_Z0); z1 := f32(GARDEN_Z1);
+  gx := f32(GATE_X); gz := f32(FIELD_GATE_Z); gh := f32(GATE_HALF);
+  add_block(s, x0 - w, z0 - w, gx - gh, z0 + w, h, true);
+  add_block(s, gx + gh, z0 - w, x1 + w, z0 + w, h, true);
+  add_block(s, x0 - w, z1 - w, x1 + w, z1 + w, h, true);
+  add_block(s, x0 - w, z0, x0 + w, z1, h, true);
+  add_block(s, x1 - w, z0, x1 + w, gz - gh, h, true);
+  add_block(s, x1 - w, gz + gh, x1 + w, z1, h, true);
+  // The edge of the world.
+  b := f32(BOUND);
+  add_block(s, -b - 2, -b - 2, b + 2, -b, 9, false); add_block(s, -b - 2, b, b + 2, b + 2, 9, false);
+  add_block(s, -b - 2, -b, -b, b, 9, false); add_block(s, b, -b, b + 2, b, 9, false);
+}
+
+villa_walls :: (s: [] Villa) -> int #export_c { if !s[0].started { villa_start(s); } return s[0].wall_n; }
+villa_spawn :: (s: [] Villa) -> Point #export_c { return v3(f32(SPAWN_X), 0, f32(SPAWN_Z)); }
+
+// ---- the controls
+
+hold_bit :: (key: int) -> int {
+  if key == 'w' || key == 'W' { return HOLD_FORWARD; }
+  if key == 's' || key == 'S' { return HOLD_BACK; }
+  if key == 'a' || key == 'A' { return HOLD_LEFT; }
+  if key == 'd' || key == 'D' { return HOLD_RIGHT; }
+  if key == KEY_SHIFT { return HOLD_RUN; }
+  if key == ' ' { return HOLD_JUMP; }
+  if key == KEY_LEFT { return HOLD_TURN_LEFT; }
+  if key == KEY_RIGHT { return HOLD_TURN_RIGHT; }
+  if key == KEY_UP { return HOLD_TILT_UP; }
+  if key == KEY_DOWN { return HOLD_TILT_DOWN; }
+  return 0;
+}
+
+// The flight owns the camera now (flying, or handing back).
+flying :: (s: [] Villa) -> bool { return s[0].fl_flying; }
+villa_busy :: (s: [] Villa) -> bool #export_c { return s[0].fl_active; }
+
+skip_flight :: (s: [] Villa) -> bool {
+  if !flying(s) { return false; }
+  s[0].skip_ask = true; s[0].fl_flying = false; s[0].fl_take = -1;
+  return true;
+}
+
+villa_key :: (s: [] Villa, key: int, mods: int) -> bool #export_c {
+  if !s[0].started { villa_start(s); }
+  if skip_flight(s) { return true; }
+  if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
+  if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
+  b := hold_bit(key);
+  if b == 0 { return false; }
+  s[0].held = s[0].held | b;
+  return true;
+}
+
+villa_key_up :: (s: [] Villa, key: int, mods: int) -> bool #export_c {
+  b := hold_bit(key);
+  if b == 0 { return false; }
+  if s[0].held & b != 0 { s[0].held = s[0].held - b; }
+  return true;
+}
+
+villa_blur :: (s: [] Villa) #export_c { s[0].held = 0; s[0].drag_on = false; }
+
+// A mouse drag turns the camera. While the flight flies, any press skips it.
+// A finger is the face's (the sticks): this says it isn't used.
+villa_pointer :: (s: [] Villa, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if !s[0].started { villa_start(s); }
+  if kind != 0 { s[0].touch = true; }
+  if phase == 0 && skip_flight(s) { return true; }
+  if villa_busy(s) { return true; }
+  if kind != 0 { return false; }
+  k := hi(s[0].dpr, 0.5);
+  if phase == 0 { s[0].drag_on = true; s[0].drag_id = id; s[0].drag_x = x; s[0].drag_y = y; s[0].drag_travel = 0; return true; }
+  if !s[0].drag_on || id != s[0].drag_id { return false; }
+  if phase == 1 {
+    s[0].look_yaw -= (x - s[0].drag_x) / k * f32(LOOK_DRAG);
+    s[0].look_pitch -= (y - s[0].drag_y) / k * f32(LOOK_DRAG);
+    s[0].drag_travel += (abs(x - s[0].drag_x) + abs(y - s[0].drag_y)) / k;
+    s[0].drag_x = x; s[0].drag_y = y;
+    return true;
+  }
+  s[0].drag_on = false;
+  return true;
+}
+
+villa_wheel :: (s: [] Villa, dy: f32) #export_c {
+  if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
+}
+
+axis :: (held: int, plus: int, minus: int) -> f32 {
+  a := 0.0f32;
+  if held & plus != 0 { a += 1; }
+  if held & minus != 0 { a -= 1; }
+  return a;
+}
+
+// Before the player moves: what the keys say and the camera's turn, so you
+// walk the way the camera looks. dyaw and dpitch are a thumb's turn.
+villa_controls :: (s: [] Villa, dt: f32, dyaw: f32, dpitch: f32) #export_c {
+  if !s[0].started { villa_start(s); }
+  h := s[0].held;
+  s[0].key_x = axis(h, HOLD_RIGHT, HOLD_LEFT);
+  s[0].key_y = axis(h, HOLD_FORWARD, HOLD_BACK);
+  s[0].run = h & HOLD_RUN != 0;
+  s[0].jump = h & HOLD_JUMP != 0;
+  if villa_busy(s) { s[0].key_x = 0; s[0].key_y = 0; s[0].run = false; s[0].jump = false; s[0].look_yaw = 0; s[0].look_pitch = 0; return; }
+  o := verse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
+  o = verse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
+  s[0].orbit = o;
+  s[0].look_yaw = 0; s[0].look_pitch = 0;
+}
+
+villa_player_theta :: (s: [] Villa) -> f32 #export_c { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
+
+// ---- the flight
+
+flight_keys :: () -> Flight {
+  f := verse_flight_new();
+  px := f32(PLANET_X); py := f32(PLANET_Y); pz := f32(PLANET_Z);
+  f = verse_flight_key(f, 0, v3(px + 14, py + 18, pz - 190), v3(px, py, pz), false, EASE_LINEAR);
+  f = verse_flight_key(f, 3.2, v3(px + 3, py + 12, pz - 64), v3(px, py + 22, pz), false, EASE_IN);
+  f = verse_flight_key(f, f32(FLIGHT_CUT), v3(-17, 70, -95), v3(-17, 0, -4), true, EASE_LINEAR);
+  f = verse_flight_key(f, 6.0, v3(-24, 24, -54), v3(-17, 1, -14), false, EASE_SMOOTH);
+  f = verse_flight_key(f, 8.6, v3(-17, 2.7, -32.2), v3(-17, 1.5, -23), false, EASE_SMOOTH);
+  return f;
+}
+
+// Space shows while the first take flies (until the cut).
+in_space :: (s: [] Villa) -> bool { return s[0].fl_active && s[0].fl_take == 0; }
+flash_now :: (s: [] Villa) -> f32 {
+  if !s[0].fl_active { return 0; }
+  t := s[0].fl_t - f32(FLIGHT_CUT);
+  if t < 0 || t > f32(FLASH) { return 0; }
+  return 1 - t / f32(FLASH);
+}
+// Where the flight is this frame, and the shot it shows.
+villa_flight :: (s: [] Villa, active: bool, flying_now: bool, take: int, t: f32, ex: f32, ey: f32, ez: f32, ax: f32, ay: f32, az: f32) #export_c {
+  s[0].fl_active = active; s[0].fl_flying = flying_now; s[0].fl_take = take; s[0].fl_t = t;
+  shot := Shot.{eye = v3(ex, ey, ez), at = v3(ax, ay, az)};
+  if finite3(shot.eye) && finite3(shot.at) { s[0].shot = shot; }
+}
+// The face asks: whether to fly at all (reduced motion and the release walk don't), and a skip.
+villa_fly_wanted :: (s: [] Villa) -> bool #export_c { return !s[0].still && !s[0].golden; }
+villa_take_skip :: (s: [] Villa) -> bool #export_c { a := s[0].skip_ask; s[0].skip_ask = false; return a; }
+villa_live :: (s: [] Villa) -> Shot #export_c { return s[0].live; }
+
+// ---- a frame's step: the flight, the camera, the dog
+
+// After the player moved: you are at feet (on its flat floor) facing face,
+// doing act, moving vx, vz.
+villa_step :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32) #export_c {
+  if !s[0].started { villa_start(s); }
+  t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  s[0].time += f64(t);
+  feet := v3(fx, fy, fz);
+  if !finite3(feet) { feet = v3(s[0].feet.x, 0, s[0].feet.z); }
+  shown := v3(feet.x, feet.y + ground_at(s, feet.x, feet.z), feet.z);
+  s[0].feet = shown; s[0].face = face; s[0].act = act;
+  speed := sqrt(vx * vx + vz * vz);
+  s[0].speed = ifx finite(speed) then speed else 0.0f32;
+  s[0].live = camera_frame(s, shown, vx, vz, t);
+  if !s[0].flight_begun {
+    s[0].flight_begun = true;
+    s[0].flight = verse_flight_start(flight_keys(), s[0].time, !villa_fly_wanted(s));
+  }
+  if s[0].skip_ask { s[0].skip_ask = false; s[0].flight = verse_flight_skip(s[0].flight, s[0].time); }
+  f := s[0].flight; now := s[0].time;
+  s[0].shot = verse_flight_shot(f, now, s[0].live);
+  s[0].fl_active = verse_flight_active(f, now); s[0].fl_flying = verse_flight_flying(f, now);
+  s[0].fl_take = verse_flight_take(f, now); s[0].fl_t = f32(now - f.start);
+  // the dog keeps by you, going round the scenery; it stays put while it sits or digs
+  if !s[0].pet_still {
+    nodes := NODE_XZ; links := LINK_AB;
+    s[0].fetch = verse_fetch_step_among(s[0].fetch, ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), shown, t, s[0].walls[0..<s[0].block_n * 6]);
+  } else {
+    s[0].fetch.dog.vel = v3(0, 0, 0); s[0].fetch.dog.walking = false;
+  }
+}
+
+ground_room :: (s: [] Villa, r: OrbitRay) -> f32 {
+  lifted := add(r.from, v3(0, -0.5, 0));
+  return verse_terrain_ray(ground(), s[0].heights[..], lifted, r.dir, r.far);
+}
+
+camera_frame :: (s: [] Villa, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
+  speed := sqrt(vx * vx + vz * vz);
+  o := verse_orbit_follow(s[0].orbit, feet, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
+  room := verse_orbit_room(o, s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6]);
+  room = lo(room, ground_room(s, verse_orbit_ray(o)));
+  o = verse_orbit_limit(o, room, dt);
+  s[0].orbit = o;
+  return verse_orbit_shot(o);
+}
+
+// Where the face poses the figures: 0 you, 1 your dog.
+villa_dog :: (s: [] Villa) -> Follower #export_c { return s[0].fetch.dog; }
+villa_you_speed :: (s: [] Villa) -> f32 #export_c { return ifx villa_busy(s) then 0.0f32 else s[0].speed; }
+villa_set_pet_still :: (s: [] Villa, still: bool) #export_c { s[0].pet_still = still; }
+// The face's posed bones for figure i: n of them, and their bound.
+villa_bones_at :: (s: [] Villa, i: int) -> int #export_c { return i * FIG_BONES * BONE_FLOATS; }
+villa_set_bones :: (s: [] Villa, i: int, n: int) #export_c { if i >= 0 && i < FIGS { s[0].bone_n[i] = clamp_int(n, 0, FIG_BONES); } }
+clamp_int :: (a: int, low: int, high: int) -> int { if a < low { return low; } if a > high { return high; } return a; }
+
+// ---- the scene's shapes
+
+// A shape at centre with its three axes as given (the unit shape's x, y and
+// z, each already scaled): the affine map the shader reads.
+shape_axes :: (s: [] Villa, kind: int, look: int, centre: Point, c0: Point, c1: Point, c2: Point, red: f32, green: f32, blue: f32) {
+  if kind < 1 || kind >= KINDS { return; }
+  n := s[0].counts[kind];
+  if n >= SLOTS[kind] { return; }
+  s[0].counts[kind] = n + 1;
+  o := (SLOT_AT[kind] + n) * OBJECT_FLOATS;
+  s[0].objects[o] = c0.x; s[0].objects[o + 1] = c1.x; s[0].objects[o + 2] = c2.x; s[0].objects[o + 3] = centre.x;
+  s[0].objects[o + 4] = c0.y; s[0].objects[o + 5] = c1.y; s[0].objects[o + 6] = c2.y; s[0].objects[o + 7] = centre.y;
+  s[0].objects[o + 8] = c0.z; s[0].objects[o + 9] = c1.z; s[0].objects[o + 10] = c2.z; s[0].objects[o + 11] = centre.z;
+  s[0].objects[o + 12] = red; s[0].objects[o + 13] = green; s[0].objects[o + 14] = blue;
+  s[0].objects[o + 15] = f32(kind + 8 * look);
+}
+
+// A shape turned yaw about +y then tilt about its own +x, sized sx, sy, sz.
+shape :: (s: [] Villa, kind: int, look: int, centre: Point, yaw: f32, tilt: f32, sx: f32, sy: f32, sz: f32,
+          red: f32, green: f32, blue: f32) {
+  cy := cos(yaw); sy_ := sin(yaw); ct := cos(tilt); st := sin(tilt);
+  shape_axes(s, kind, look, centre, v3(cy * sx, 0, -sy_ * sx), v3(sy_ * st * sy, ct * sy, cy * st * sy), v3(sy_ * ct * sz, -st * sz, cy * ct * sz), red, green, blue);
+}
+
+// A cylinder or a ball from a to b, radius r: a figure's bone.
+limb :: (s: [] Villa, kind: int, look: int, a: Point, b: Point, r: f32, red: f32, green: f32, blue: f32) {
+  d := sub(b, a);
+  size := length(d);
+  if !(size > 0.0001) { return; }
+  up := times(d, 1 / size);
+  side := unit_or(cross(up, ifx abs(up.y) < 0.9 then v3(0, 1, 0) else v3(1, 0, 0)), v3(1, 0, 0));
+  other := cross(side, up);
+  shape_axes(s, kind, look, mix(a, b, 0.5), times(side, r * 2), times(up, size), times(other, r * 2), red, green, blue);
+}
+ball :: (s: [] Villa, look: int, at: Point, r: f32, red: f32, green: f32, blue: f32) {
+  shape(s, SHAPE_BALL, look, at, 0, 0, r * 2, r * 2, r * 2, red, green, blue);
+}
+
+shadow :: (s: [] Villa, u: [] f32, x: f32, z: f32, radius: f32, strength: f32) {
+  n := s[0].shadow_n;
+  if n >= SHADOWS { return; }
+  k := U_SHADOW + n * 4;
+  u[k] = x; u[k + 1] = z; u[k + 2] = radius; u[k + 3] = strength;
+  s[0].shadow_n = n + 1;
+}
+
+// The art kit: tombstones of four shapes, each with a darker plaque where
+// its name goes; trees; hedges; the wall and its gateways; benches; the
+// fountain; the field's edge stones. Every piece is drawn here from the
+// engine's shapes (box, sphere, cylinder, cone): no outside models.
+STONE_R :: 0.5; STONE_G :: 0.53; STONE_B :: 0.58;
+
+// A tombstone of kind k standing at x, z facing south (toward -z).
+tombstone :: (s: [] Villa, k: int, x: f32, z: f32, worn: f32) {
+  g := ground_at(s, x, z);
+  r := f32(STONE_R) * worn; gr := f32(STONE_G) * worn; b := f32(STONE_B) * worn;
+  face := f32(PI);
+  plaque := v3(0.2 * worn, 0.22 * worn, 0.26 * worn);
+  if k == 0 {   // a slab with a round top
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.36, z), face, 0, 0.7, 0.72, 0.14, r, gr, b);
+    shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 0.72, z), face, f32(PI) / 2, 0.7, 0.14, 0.7, r, gr, b);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.55, z - 0.075), face, 0, 0.46, 0.28, 0.02, plaque.x, plaque.y, plaque.z);
+  } else if k == 1 {   // a cross on a plinth
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.1, z), face, 0, 0.62, 0.2, 0.3, r * 0.9, gr * 0.9, b * 0.9);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.68, z), face, 0, 0.16, 1.0, 0.14, r, gr, b);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.88, z), face, 0, 0.58, 0.15, 0.14, r, gr, b);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.1, z - 0.16), face, 0, 0.4, 0.12, 0.02, plaque.x, plaque.y, plaque.z);
+  } else if k == 2 {   // a small obelisk
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.12, z), face, 0, 0.5, 0.24, 0.5, r * 0.9, gr * 0.9, b * 0.9);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.68, z), face, 0, 0.3, 0.9, 0.3, r, gr, b);
+    shape(s, SHAPE_CONE, LOOK_STONE, v3(x, g + 1.23, z), f32(PI) / 4, 0, 0.42, 0.22, 0.42, r, gr, b);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.7, z - 0.155), face, 0, 0.2, 0.32, 0.02, plaque.x, plaque.y, plaque.z);
+  } else {   // a broad stone with a gabled top
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.3, z), face, 0, 0.86, 0.6, 0.16, r, gr, b);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.6, z), f32(PI) / 4, 0, 0.0, 0.0, 0.0, r, gr, b);
+    shape_axes(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.6, z), v3(0.43, 0.3, 0), v3(-0.43, 0.3, 0), v3(0, 0, 0.16), r, gr, b);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.36, z - 0.085), face, 0, 0.56, 0.26, 0.02, plaque.x, plaque.y, plaque.z);
+  }
+}
+
+// A plot: its low stone kerb and the bed before the stone.
+plot_bed :: (s: [] Villa, x: f32, z: f32) {
+  g := ground_at(s, x, z);
+  shape(s, SHAPE_BOX, LOOK_SOIL, v3(x, g + 0.04, z - 0.35), 0, 0, 0.9, 0.1, 1.5, 0.11, 0.1, 0.1);
+  shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.06, z - 0.35), 0, 0, 1.04, 0.07, 1.64, 0.36, 0.38, 0.42);
+}
+
+tree_draw :: (s: [] Villa, u: [] f32, t: int) {
+  x := TREE[t * 5]; z := TREE[t * 5 + 1]; h := TREE[t * 5 + 2]; r := TREE[t * 5 + 3]; kind := cast(int) TREE[t * 5 + 4];
+  g := ground_at(s, x, z);
+  v := 0.92 + 0.08 * sin(f32(t) * 2.3);
+  if kind == 0 {
+    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + 0.4, z), 0, 0, 0.26, 0.9, 0.26, 0.2, 0.15, 0.12);
+    shape(s, SHAPE_CONE, LOOK_LEAVES, v3(x, g + h * 0.5 + 0.4, z), f32(t), 0, r * 2, h, r * 2, 0.09 * v, 0.17 * v, 0.14 * v);
+    shape(s, SHAPE_CONE, LOOK_LEAVES, v3(x, g + h * 0.32 + 0.4, z), f32(t) + 0.4, 0, r * 2.3, h * 0.6, r * 2.3, 0.08 * v, 0.15 * v, 0.12 * v);
+  } else {
+    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + h * 0.5 - 0.2, z), 0, 0, 0.36, h + 0.4, 0.36, 0.22, 0.16, 0.12);
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x, g + h + r * 0.55, z), f32(t), 0, r * 2, r * 1.6, r * 2, 0.12 * v, 0.2 * v, 0.16 * v);
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x + r * 0.45, g + h + r * 0.15, z - r * 0.3), 0, 0, r * 1.3, r * 1.1, r * 1.3, 0.13, 0.22, 0.17);
+  }
+  shadow(s, u, x, z, r * 1.4, 0.5);
+}
+
+// A gateway: two pillars with caps and a lintel across, along the x axis
+// (along_x) or the z axis.
+gateway :: (s: [] Villa, x: f32, z: f32, along_x: bool) {
+  g := ground_at(s, x, z);
+  for side: 0..<2 {
+    sign := ifx side == 0 then 1.0f32 else -1.0f32;
+    px := ifx along_x then x + sign * (f32(GATE_HALF) + 0.25) else x;
+    pz := ifx along_x then z else z + sign * (f32(GATE_HALF) + 0.25);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(px, g + 1.2, pz), 0, 0, 0.55, 2.4, 0.55, 0.42, 0.44, 0.5);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(px, g + 2.47, pz), 0, 0, 0.68, 0.14, 0.68, 0.46, 0.48, 0.54);
+    shape(s, SHAPE_SPHERE, LOOK_STONE, v3(px, g + 2.72, pz), 0, 0, 0.36, 0.36, 0.36, 0.48, 0.5, 0.56);
+  }
+  w := 2 * f32(GATE_HALF) + 1.0;
+  shape(s, SHAPE_BOX, LOOK_IRON, v3(x, g + 2.15, z), ifx along_x then 0.0f32 else f32(PI) / 2, 0, w, 0.12, 0.12, 0.08, 0.09, 0.11);
+  // an iron arch over the lintel, in short straight bars
+  r := w * 0.42;
+  for k: 0..<8 {
+    a0 := f32(PI) * f32(k) / 8; a1 := f32(PI) * f32(k + 1) / 8;
+    o0 := r * cos(a0); o1 := r * cos(a1);
+    p0 := ifx along_x then v3(x + o0, g + 2.15 + r * 0.55 * sin(a0), z) else v3(x, g + 2.15 + r * 0.55 * sin(a0), z + o0);
+    p1 := ifx along_x then v3(x + o1, g + 2.15 + r * 0.55 * sin(a1), z) else v3(x, g + 2.15 + r * 0.55 * sin(a1), z + o1);
+    limb(s, SHAPE_CYLINDER, LOOK_IRON, p0, p1, 0.04, 0.08, 0.09, 0.11);
+  }
+}
+
+// The wall: low stone, coped, in runs between its corners and gateways.
+wall_run :: (s: [] Villa, x0: f32, z0: f32, x1: f32, z1: f32) {
+  cx := (x0 + x1) / 2; cz := (z0 + z1) / 2;
+  g := ground_at(s, cx, cz);
+  shape(s, SHAPE_BOX, LOOK_STONE, v3(cx, g + 0.45, cz), 0, 0, x1 - x0, 1.1, z1 - z0, 0.36, 0.37, 0.41);
+  shape(s, SHAPE_BOX, LOOK_STONE, v3(cx, g + 1.04, cz), 0, 0, x1 - x0 + 0.12, 0.1, z1 - z0 + 0.12, 0.42, 0.43, 0.48);
+}
+
+bench :: (s: [] Villa, x: f32, z: f32, yaw: f32) {
+  g := ground_at(s, x, z);
+  ahead := v3(sin(yaw), 0, cos(yaw));
+  right := v3(cos(yaw), 0, -sin(yaw));
+  shape(s, SHAPE_BOX, LOOK_MATTE, v3(x, g + 0.45, z), yaw, 0, 1.6, 0.08, 0.45, 0.24, 0.18, 0.14);
+  shape(s, SHAPE_BOX, LOOK_MATTE, add(v3(x, g + 0.78, z), times(ahead, -0.22)), yaw, -0.15, 1.6, 0.5, 0.06, 0.24, 0.18, 0.14);
+  for side: 0..<2 {
+    sign := ifx side == 0 then 1.0f32 else -1.0f32;
+    shape(s, SHAPE_BOX, LOOK_IRON, add(v3(x, g + 0.22, z), times(right, 0.68 * sign)), yaw, 0, 0.07, 0.45, 0.42, 0.07, 0.08, 0.1);
+  }
+}
+
+fountain :: (s: [] Villa) {
+  x := f32(PLAZA_X); z := f32(PLAZA_Z); g := ground_at(s, x, z);
+  r := f32(FOUNTAIN_R);
+  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 0.3, z), 0, 0, r * 2, 0.6, r * 2, 0.44, 0.46, 0.52);
+  shape(s, SHAPE_CYLINDER, LOOK_WATER, v3(x, g + 0.55, z), 0, 0, r * 2 - 0.4, 0.04, r * 2 - 0.4, 0.12, 0.2, 0.34);
+  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 0.95, z), 0, 0, 0.38, 1.3, 0.38, 0.46, 0.48, 0.54);
+  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 1.62, z), 0, 0, 1.3, 0.16, 1.3, 0.48, 0.5, 0.56);
+  shape(s, SHAPE_CYLINDER, LOOK_WATER, v3(x, g + 1.71, z), 0, 0, 1.1, 0.03, 1.1, 0.14, 0.22, 0.36);
+  shape(s, SHAPE_SPHERE, LOOK_STONE, v3(x, g + 1.95, z), 0, 0, 0.34, 0.42, 0.34, 0.5, 0.52, 0.58);
+}
+
+edge_stone :: (s: [] Villa, i: int) {
+  x := EDGE_STONE[i * 3]; z := EDGE_STONE[i * 3 + 1]; k := EDGE_STONE[i * 3 + 2];
+  g := ground_at(s, x, z);
+  shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + k * 0.3, z), f32(i) * 0.9, 0.12 * sin(f32(i)), k * 1.3, k * 0.9, k, 0.32, 0.33, 0.36);
+}
+
+// The whole kit laid out.
+scenery :: (s: [] Villa, u: [] f32) {
+  for t: 0..<TREES { tree_draw(s, u, t); }
+  for i: 0..<HEDGES {
+    k := i * 5;
+    x0 := HEDGE[k]; z0 := HEDGE[k + 1]; x1 := HEDGE[k + 2]; z1 := HEDGE[k + 3]; h := HEDGE[k + 4];
+    g := ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
+    shape(s, SHAPE_BOX, LOOK_LEAVES, v3((x0 + x1) / 2, g + h / 2 - 0.2, (z0 + z1) / 2), 0, 0, x1 - x0, h + 0.4, z1 - z0, 0.1, 0.19, 0.14);
+  }
+  x0 := f32(GARDEN_X0); x1 := f32(GARDEN_X1); z0 := f32(GARDEN_Z0); z1 := f32(GARDEN_Z1);
+  gx := f32(GATE_X); gz := f32(FIELD_GATE_Z); gh := f32(GATE_HALF) + 0.55; w := 0.3f32;
+  wall_run(s, x0 - w, z0 - w, gx - gh, z0 + w); wall_run(s, gx + gh, z0 - w, x1 + w, z0 + w);
+  wall_run(s, x0 - w, z1 - w, x1 + w, z1 + w); wall_run(s, x0 - w, z0 + w, x0 + w, z1 - w);
+  wall_run(s, x1 - w, z0 + w, x1 + w, gz - gh); wall_run(s, x1 - w, gz + gh, x1 + w, z1 - w);
+  gateway(s, gx, z0, true);
+  gateway(s, x1, gz, false);
+  for b: 0..<BENCHES { bench(s, BENCH[b * 3], BENCH[b * 3 + 1], BENCH[b * 3 + 2]); }
+  fountain(s);
+  for i: 0..<EDGE_STONES { edge_stone(s, i); }
+  // The plots: every one has its bed; the stones are the pets'.
+  for p: 0..<PLOTS { plot_bed(s, plot_x(p), plot_z(p)); }
+}
+
+// Old stones without names, from before the pets came: one in each block's
+// corner plot, so the garden reads as a cemetery on the first visit.
+OLD_STONES :: [4] int.[0, 7, 60, 59];
+old_stones :: (s: [] Villa) {
+  for i: 0..<4 { p := OLD_STONES[i]; tombstone(s, i, plot_x(p), plot_z(p) + 0.62, 0.75); }
+}
+
+// The planet, seen from space in the flight's first take: a dark world
+// under the moon, a glint where the garden is.
+planet :: (s: [] Villa) {
+  c := v3(f32(PLANET_X), f32(PLANET_Y), f32(PLANET_Z));
+  r := f32(PLANET_R);
+  shape(s, SHAPE_SPHERE, LOOK_PLANET, c, 0.4, 0.2, r * 2, r * 2, r * 2, 0.1, 0.13, 0.22);
+  spot := add(c, times(unit_or(v3(0.05, 0.75, -0.66), v3(0, 1, 0)), r * 1.002));
+  ball(s, LOOK_BLOOM, spot, 0.55, 0.75, 0.82, 1.0);
+}
+
+// The figures the face posed: you a shadow, your dog glowing white. A
+// bone is a cylinder between its ends with a ball at each.
+REGION_EYE :: 7; REGION_NOSE :: 8;
+figures :: (s: [] Villa, u: [] f32) {
+  for f: 0..<FIGS {
+    n := s[0].bone_n[f];
+    if n <= 0 { continue; }
+    if f == 0 && in_space(s) { continue; }
+    glowing := f == 1;
+    for i: 0..<n {
+      o := (f * FIG_BONES + i) * BONE_FLOATS;
+      a := v3(s[0].bones[o], s[0].bones[o + 1], s[0].bones[o + 2]);
+      packed := s[0].bones[o + 3];
+      region := cast(int) floor(packed / 1000);
+      ra := packed - 1000 * f32(region);
+      b := v3(s[0].bones[o + 4], s[0].bones[o + 5], s[0].bones[o + 6]);
+      rb := s[0].bones[o + 7];
+      if !finite3(a) || !finite3(b) { continue; }
+      look := ifx glowing then LOOK_GLOW else LOOK_SHADOW;
+      red := 0.01f32; green := 0.012f32; blue := 0.02f32;
+      if glowing { red = 0.92; green = 0.95; blue = 1.0; }
+      if glowing && (region == REGION_EYE || region == REGION_NOSE) { look = LOOK_EYE; red = 0.05; green = 0.07; blue = 0.12; }
+      if length(sub(b, a)) > 0.002 { limb(s, SHAPE_CYLINDER, look, a, b, (ra + rb) * 0.5, red, green, blue); }
+      ball(s, look, a, ra, red, green, blue);
+      ball(s, look, b, rb, red, green, blue);
+    }
+    k := f * 4;
+    shadow(s, u, s[0].bound[k], s[0].bound[k + 2], ifx glowing then 0.5f32 else 0.45f32, ifx glowing then 0.35f32 else 0.6f32);
+  }
+}
+
+// ---- the camera's view as clip-space rows (WebGPU: depth 0 near to 1 far)
+
+NEAR :: 0.1; FAR :: 260.0;
+view_fy :: (width: f32, height: f32) -> f32 { aspect := width / hi(height, 1); return clamp(aspect * 1.25, 0.95, 1.9); }
+view :: (shot: Shot, width: f32, height: f32, u: [] f32, at: int) {
+  f := unit_or(sub(shot.at, shot.eye), v3(0, 0, 1));
+  r := unit_or(cross(f, v3(0, 1, 0)), v3(1, 0, 0));
+  up := cross(r, f);
+  aspect := width / hi(height, 1);
+  fy := view_fy(width, height);
+  fx := fy / aspect;
+  depth := f32(FAR / (FAR - NEAR));
+  e := shot.eye;
+  rows := [16] f32.[
+    r.x * fx, r.y * fx, r.z * fx, -dot(r, e) * fx,
+    up.x * fy, up.y * fy, up.z * fy, -dot(up, e) * fy,
+    f.x * depth, f.y * depth, f.z * depth, (-dot(f, e) - f32(NEAR)) * depth,
+    f.x, f.y, f.z, -dot(f, e)
+  ];
+  for i: 0..<16 { u[at + i] = rows[i]; }
+}
+
+horizon_y :: (shot: Shot, u: [] f32, height: f32) -> f32 {
+  f := sub(shot.at, shot.eye); f.y = 0;
+  far := add(shot.eye, times(unit_or(f, v3(0, 0, 1)), 1000));
+  cy := u[U_VIEW + 4] * far.x + u[U_VIEW + 5] * far.y + u[U_VIEW + 6] * far.z + u[U_VIEW + 7];
+  cw := u[U_VIEW + 12] * far.x + u[U_VIEW + 13] * far.y + u[U_VIEW + 14] * far.z + u[U_VIEW + 15];
+  if !(cw > 0.001) { return 0; }
+  return (1 - cy / cw) * 0.5 * height;
+}
+
+paths :: (u: [] f32) {
+  n := 0;
+  for i: 0..<LINKS {
+    if n >= PATHS { break; }
+    a := LINK_AB[i * 2]; b := LINK_AB[i * 2 + 1];
+    k := U_PATH + n * 4;
+    u[k] = NODE_XZ[a * 2]; u[k + 1] = NODE_XZ[a * 2 + 1]; u[k + 2] = NODE_XZ[b * 2]; u[k + 3] = NODE_XZ[b * 2 + 1];
+    n += 1;
+  }
+  u[U_PATH_INFO] = f32(n); u[U_PATH_INFO + 1] = f32(PATH_HALF);
+}
+
+// ---- particles: a light trail round you while you move
+
+particles :: (s: [] Villa) {
+  s[0].emitter_n = 0;
+  if in_space(s) { return; }
+  out := s[0].emitters[..];
+  you := s[0].feet;
+  moving := clamp((s[0].speed - 0.3) / 3.0, 0, 1);
+  if moving > 0 {
+    behind := v3(-sin(s[0].face) * 0.35, 0, -cos(s[0].face) * 0.35);
+    p := add(you, add(behind, v3(0, 0.9, 0)));
+    if verse_emitter_put(out, s[0].emitter_n, p.x, p.y, p.z, 0.55, 0.55, 0.62, 1.0, 0.6, 2, 16 + 40 * moving, 0.05, 1.4, 7.1) { s[0].emitter_n += 1; }
+  }
+  // a faint shimmer that always hangs round you, so the visitor reads as a guest
+  if verse_emitter_put(out, s[0].emitter_n, you.x, you.y + 1.0, you.z, 0.7, 0.45, 0.5, 0.9, 0.8, 2, 10, 0.035, 0.6, 3.3) { s[0].emitter_n += 1; }
+  // fireflies over the field
+  if verse_emitter_put(out, s[0].emitter_n, 22, ground_at(s, 22, 0) + 0.9, 0, 16, 0.6, 0.75, 0.95, 0.9, 2, 64, 0.05, 0.5, 11.0) { s[0].emitter_n += 1; }
+}
+villa_emitter_count :: (s: [] Villa) -> int #export_c { return s[0].emitter_n; }
+villa_particles_per :: () -> int #export_c { return VERSE_PARTICLES_PER; }
+
+// ---- the HUD
+
+plate :: (s: [] Villa, u: [] f32, b: Box, alpha: f32, look: f32) {
+  n := s[0].plate_n;
+  if n >= PLATES { return; }
+  k := U_PLATE + n * 8;
+  u[k] = b.x0; u[k + 1] = b.y0; u[k + 2] = b.x1; u[k + 3] = b.y1;
+  u[k + 4] = s[0].dpr; u[k + 5] = alpha; u[k + 6] = look; u[k + 7] = 0;
+  s[0].plate_n = n + 1;
+}
+
+phone :: (s: [] Villa) -> bool { return s[0].touch || s[0].width / hi(s[0].dpr, 0.5) < 700; }
+
+hint :: (s: [] Villa) -> string {
+  if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS"; }
+  return "WASD WALK · DRAG OR ARROWS TURN THE CAMERA · WHEEL ZOOMS · SHIFT RUNS";
+}
+
+// The flight's HUD: the place's name fading in over the descent, and SKIP.
+flight_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
+  s[0].skip = no_box();
+  if !flying(s) { return n; }
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  m := n;
+  t := s[0].fl_t;
+  a := clamp((t - 4.2) / 1.2, 0, 1) * clamp((8.4 - t) / 0.8, 0, 1);
+  if a > 0.01 {
+    cap := lo(26 * k, w / 16);
+    title := "HECATE'S CEMETERY";
+    m = draw_text(out, m, title, (w - text_width(title, cap)) / 2, h * 0.3, cap, GAP, SPACE, ink(k, 0.95 * a, PALE_R, PALE_G, PALE_B), false, false);
+    small := cap * 0.42;
+    over := "PLANETARY VILLA";
+    m = draw_text(out, m, over, (w - text_width(over, small)) / 2, h * 0.3 - cap - 14 * k, small, GAP, SPACE, ink(k, 0.8 * a, SILVER_R, SILVER_G, SILVER_B), false, false);
+  }
+  cap := 9 * k;
+  word := ifx phone(s) then "SKIP" else "SKIP · ANY KEY";
+  bw := text_width(word, cap) + 36 * k; bh := 40 * k;
+  b := Box.{x0 = w - 16 * k - bw, y0 = h - 16 * k - bh, x1 = w - 16 * k, y1 = h - 16 * k};
+  s[0].skip = b;
+  plate(s, u, b, 0.8, 1);
+  m = draw_text(out, m, word, (b.x0 + b.x1 - text_width(word, cap)) / 2, (b.y0 + b.y1 + cap) / 2, cap, GAP, SPACE, ink(k, 0.9, PALE_R, PALE_G, PALE_B), false, false);
+  return m;
+}
+
+hud :: (s: [] Villa, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int {
+  s[0].skip = no_box();
+  if villa_busy(s) { return flight_hud(s, out, u, 0); }
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  n := 0;
+  gutter := 16 * k;
+  cap := 11 * k;
+  title := "HECATE'S CEMETERY";
+  tw := text_width(title, cap);
+  plate(s, u, Box.{x0 = gutter, y0 = gutter, x1 = gutter + tw + 28 * k, y1 = gutter + cap + 24 * k}, 0.78, 0);
+  n = draw_text(out, n, title, gutter + 14 * k, gutter + 12 * k + cap, cap, GAP, SPACE, ink(k, 0.92, PALE_R, PALE_G, PALE_B), false, false);
+  line := hint(s);
+  small := 7.5 * k;
+  room := w - 2 * gutter - 24 * k;
+  lw := text_width(line, small);
+  if lw > room { small = small * room / lw; lw = room; }
+  y1 := h - gutter;
+  plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - small - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.7, 0);
+  n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, small, GAP, SPACE, ink(k, 0.82, PALE_R, PALE_G, PALE_B), false, false);
+  if move_on {
+    r := 46 * k;
+    for i: 0..<32 {
+      a0 := f32(i) * f32(TAU) / 32; a1 := f32(i + 1) * f32(TAU) / 32;
+      if lit(out, n, ox + cos(a0) * r, oy + sin(a0) * r, ox + cos(a1) * r, oy + sin(a1) * r, 0.8 * k, 0.5, 1.5 * k, PALE_R, PALE_G, PALE_B, 0) { n += 6; }
+    }
+    kx := ox + pad_x * r; ky := oy - pad_y * r;
+    if lit(out, n, kx - 0.01, ky, kx + 0.01, ky, 14 * k, 0.8, 6 * k, SILVER_R, SILVER_G, SILVER_B, 0) { n += 6; }
+  }
+  return n;
+}
+
+// ---- the frame's drawing
+
+effect_time :: (s: [] Villa) -> f32 { return ifx s[0].golden then f32(GOLDEN_TIME) else f32(s[0].time); }
+
+// After villa_step and the figures: fills the HUD's vertices and the
+// uniforms, lays out the scene, and returns the vertex count. A thumb on
+// the move stick is drawn from move_on, ox, oy and the pad.
+villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32,
+               move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c {
+  if !s[0].started { villa_start(s); }
+  if u.count < UNIFORM_FLOATS { return 0; }
+  s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5);
+  for k: 0..<KINDS { s[0].counts[k] = 0; }
+  s[0].shadow_n = 0; s[0].plate_n = 0;
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  space := in_space(s);
+  if space {
+    planet(s);
+  } else {
+    scenery(s, u);
+    old_stones(s);
+  }
+  figures(s, u);
+  particles(s);
+  for kind: 0..<KINDS {
+    d := kind * 4;
+    s[0].draws[d] = 0;
+    s[0].draws[d + 1] = cast(u32) SHAPE_VERTICES[kind];
+    s[0].draws[d + 2] = cast(u32) (ifx kind == 0 then 0 else CELLS * CELLS + SLOT_AT[kind]);
+    count := s[0].counts[kind];
+    if kind == 0 { count = ifx space then 0 else CELLS * CELLS; }
+    s[0].draws[d + 3] = cast(u32) count;
+  }
+  shot := s[0].shot;
+  u[0] = width; u[1] = height; u[2] = effect_time(s); u[3] = 1; u[4] = ifx s[0].still then 1.0f32 else 0.0f32;
+  u[6] = s[0].dpr;
+  view(shot, width, height, u, U_VIEW);
+  u[7] = horizon_y(shot, u, height);
+  u[U_EYE] = shot.eye.x; u[U_EYE + 1] = shot.eye.y; u[U_EYE + 2] = shot.eye.z; u[U_EYE + 3] = ifx space then 1.0f32 else 0.0f32;
+  u[U_FLASH] = flash_now(s);
+  md := moon_dir();
+  phase := ifx s[0].golden then f32(GOLDEN_PHASE) else villa_moon_phase(s[0].wall_ms);
+  u[U_MOON] = md.x; u[U_MOON + 1] = md.y; u[U_MOON + 2] = md.z; u[U_MOON + 3] = phase;
+  shown := villa_moon_lit(phase);
+  u[U_SKY] = 0.55 + 0.45 * shown; u[U_SKY + 1] = shown;
+  u[U_GROUND] = f32(CELLS); u[U_GROUND + 1] = f32(CELL); u[U_GROUND + 2] = f32(EDGE); u[U_GROUND + 3] = f32(EDGE);
+  paths(u);
+  n := hud(s, out, u, move_on, ox, oy, pad_x, pad_y);
+  u[5] = f32(s[0].plate_n);
+  return n;
+}
+
+villa_draws :: (s: [] Villa) -> int #export_c { return DRAWS; }
+villa_store_cap :: (k: int) -> int #export_c {
+  if k == 0 { return GROUND_POINTS * 4; }
+  return OBJECTS * OBJECT_FLOATS * 4;
+}
+
+// ---- checks
+
+frame :: (s: [] Villa, out: [] f32, u: [] f32, dt: f32, x: f32, z: f32, face: f32) -> int {
+  villa_step(s, dt, x, 0, z, face, 0, 0, 0);
+  return villa_draw(s, out, u, 1280, 800, 1, false, 0, 0, 0, 0);
+}
+
+#test "the uniforms fit and line up with villa.wgsl's" {
+  #assert UNIFORM_FLOATS % 4 == 0;
+  #assert U_PLATE == 32 && U_MOON == 160 && U_GROUND == 168 && U_SHADOW == 172 && U_PATH == 236 && U_PATH_INFO == 428 && UNIFORM_FLOATS == 432;
+  #assert SLOT_AT[KINDS - 1] + SLOTS[KINDS - 1] == OBJECTS;
+  for k: 2..<KINDS { #assert SLOT_AT[k] == SLOT_AT[k - 1] + SLOTS[k - 1]; }
+  #assert LINKS <= PATHS && NODES * 2 == NODE_XZ.count && NODES <= 48;
+}
+
+// The flight as the face flies it, for the checks: space until the cut, then the garden.
+fly :: (s: [] Villa, t: f32) {
+  take := ifx t < f32(FLIGHT_CUT) then 0 else ifx t < 8.6 then 1 else -1;
+  villa_flight(s, t < 9.5, t < 8.6, take, t, -17, 20, -60, -17, 0, 0);
+}
+
+#test "the flight: space first (the planet, no ground), a cut to the garden with a flash, and SKIP" {
+  s: [1] Villa;
+  out: [3000 * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  #assert villa_fly_wanted(s[..]);
+  fly(s[..], 0.5);
+  n := villa_draw(s[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
+  #assert villa_busy(s[..]) && in_space(s[..]) && u[U_EYE + 3] == 1;
+  #assert s[0].draws[3] == 0 && s[0].counts[SHAPE_SPHERE] == 1;   // no ground, only the planet
+  #assert s[0].skip.x1 > s[0].skip.x0 && n > 0;
+  fly(s[..], f32(FLIGHT_CUT) + 0.1);
+  n = villa_draw(s[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
+  #assert !in_space(s[..]) && u[U_FLASH] > 0 && s[0].draws[3] == CELLS * CELLS;
+  // walking keys do nothing while it flies
+  #assert villa_key(s[..], 'w', 0) || true;
+  villa_controls(s[..], 0.1, 0, 0);
+  #assert s[0].key_y == 0;
+  // over: the HUD is yours again, no SKIP
+  fly(s[..], 10);
+  n = villa_draw(s[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
+  #assert !villa_busy(s[..]) && s[0].skip.x1 == s[0].skip.x0;
+}
+
+#test "a key, a click or a tap skips the flight; reduced motion and golden mode never fly" {
+  s: [1] Villa;
+  villa_start(s[..]);
+  fly(s[..], 1);
+  #assert villa_key(s[..], 'x', 0) && villa_take_skip(s[..]) && !villa_take_skip(s[..]);
+  fly(s[..], 2);
+  #assert villa_pointer(s[..], 300, 500, 0, 1, 4) && villa_take_skip(s[..]);
+  r: [1] Villa;
+  r[0].still = true;
+  #assert !villa_fly_wanted(r[..]);
+  g: [1] Villa;
+  g[0].golden = true;
+  out: [3000 * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  n := villa_draw(g[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
+  #assert !villa_fly_wanted(g[..]) && u[U_MOON + 3] == f32(GOLDEN_PHASE) && n > 0;
+}
+
+#test "the real flight: from space it lands at the south gate and hands the camera to you" {
+  s: [1] Villa;
+  out: [3000 * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  #assert in_space(s[..]) && villa_busy(s[..]);
+  for i: 0..<15 { villa_step(s[..], 0.25, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0); }
+  #assert !in_space(s[..]) && villa_busy(s[..]);
+  for i: 0..<28 { villa_step(s[..], 0.25, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0); }
+  #assert !villa_busy(s[..]);
+  #assert flat_length(sub(s[0].shot.eye, v3(f32(SPAWN_X), 0, f32(SPAWN_Z)))) < 8;
+  // a skip halfway hands back within a second
+  t: [1] Villa;
+  for i: 0..<8 { villa_step(t[..], 0.25, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0); }
+  #assert villa_key(t[..], 'q', 0);
+  for i: 0..<5 { villa_step(t[..], 0.25, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0); }
+  #assert !villa_busy(t[..]);
+}
+
+#test "the moon's phase is the real one" {
+  // 2024-04-08 18:21 UTC was a new moon; 2024-04-23 23:49 UTC a full one.
+  #assert villa_moon_phase(1712600460000.0) < 0.03 || villa_moon_phase(1712600460000.0) > 0.97;
+  #assert near(villa_moon_phase(1713916140000.0), 0.5, 0.03);
+  #assert near(villa_moon_lit(0.5), 1, 0.0001) && near(villa_moon_lit(0), 0, 0.0001);
+  // it stands above the horizon, and the night is never black
+  #assert moon_dir().y > 0.4;
+}
+
+#test "the garden: 64 plots off the paths, scenery off the paths, you start on the path at the gate" {
+  nodes := NODE_XZ; links := LINK_AB;
+  for p: 0..<PLOTS {
+    x := plot_x(p); z := plot_z(p);
+    #assert x > f32(GARDEN_X0) + 1 && x < f32(GARDEN_X1) - 1 && z > f32(GARDEN_Z0) + 1 && z < f32(GARDEN_Z1) - 1;
+    // the stone, and the bed in front of it, stand clear of every path
+    #assert verse_path_nearest(nodes[..], links[..], x, z + 0.62).d > f32(PATH_HALF) + 0.5;
+    #assert verse_path_nearest(nodes[..], links[..], x, z - 0.35).d > f32(PATH_HALF) + 0.3;
+    for q: 0..<p { #assert abs(plot_x(q) - x) > 2.5 || abs(plot_z(q) - z) > 2.5; }
+  }
+  for t: 0..<TREES { #assert verse_path_nearest(nodes[..], links[..], TREE[t * 5], TREE[t * 5 + 1]).d > f32(PATH_HALF) + 0.5; }
+  for i: 0..<HEDGES {
+    k := i * 5;
+    for a: 0..<5 { for c: 0..<3 {
+      x := lerp(HEDGE[k], HEDGE[k + 2], f32(a) / 4); z := lerp(HEDGE[k + 1], HEDGE[k + 3], f32(c) / 2);
+      #assert verse_path_nearest(nodes[..], links[..], x, z).d > f32(PATH_HALF) + 0.1;
+    } }
+  }
+  #assert verse_path_nearest(nodes[..], links[..], f32(SPAWN_X), f32(SPAWN_Z)).d < 0.01;
+  // the paths go through both gateways
+  #assert verse_path_nearest(nodes[..], links[..], f32(GATE_X), f32(GARDEN_Z0)).d < 0.01;
+  #assert verse_path_nearest(nodes[..], links[..], f32(GARDEN_X1), f32(FIELD_GATE_Z)).d < 0.01;
+}
+
+#test "you walk in by the south gate and out into the field; the garden is level, the field rolls" {
+  s: [1] Villa;
+  villa_start(s[..]);
+  // nothing walls the avenue from the gate to the plaza, nor the cross path to the field
+  for i: 0..<40 {
+    z := -27.0 + f32(i) * 0.5;
+    for w: 0..<s[0].wall_n {
+      k := w * 6;
+      inside := f32(GATE_X) > s[0].walls[k] - 0.3 && f32(GATE_X) < s[0].walls[k + 3] + 0.3 && z > s[0].walls[k + 2] - 0.3 && z < s[0].walls[k + 5] + 0.3;
+      #assert !inside;
+    }
+  }
+  for i: 0..<30 {
+    x := -10.0 + f32(i) * 1.0;
+    for w: 0..<s[0].wall_n {
+      k := w * 6;
+      inside := x > s[0].walls[k] - 0.3 && x < s[0].walls[k + 3] + 0.3 && 0 > s[0].walls[k + 2] - 0.3 && 0 < s[0].walls[k + 5] + 0.3;
+      #assert !inside;
+    }
+  }
+  #assert near(ground_at(s[..], -27, 8), 0, 0.05) && near(ground_at(s[..], -7, -12), 0, 0.05);
+  lowest := 1000.0f32; highest := -1000.0f32;
+  for i: 0..<8 { h := ground_at(s[..], 12 + f32(i) * 4, 22); lowest = lo(lowest, h); highest = hi(highest, h); }
+  #assert highest - lowest > 0.4;
+  #assert s[0].wall_n < WALLS && s[0].box_n < BOXES && s[0].sphere_n < SPHERES;
+}
+
+#test "the camera keeps out of the tombstones and the hedges" {
+  s: [1] Villa;
+  villa_start(s[..]);
+  s[0].still = true;
+  // stand south of a plot's stone with the camera looking north over you: it pulls in short of the stone
+  p := 12;
+  spot := v3(plot_x(p), 0, plot_z(p) + 2.2);
+  s[0].orbit = verse_orbit_start(spot, f32(PI));
+  shot := verse_orbit_shot(s[0].orbit);
+  for i: 0..<60 { shot = camera_frame(s[..], spot, 0, 0, 1.0 / 20.0); }
+  stone := v3(plot_x(p), shot.eye.y, plot_z(p) + 0.62);
+  #assert abs(shot.eye.z - stone.z) > 0.2 || abs(shot.eye.x - stone.x) > 0.45;
+  #assert shot.eye.y > ground_at(s[..], shot.eye.x, shot.eye.z) + 0.3;
+}
+
+#test "the scene fits: the garden, the old stones, you and the dog" {
+  s: [1] Villa;
+  s[0].still = true;
+  out: [3000 * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  // two posed figures' worth of bones
+  for f: 0..<2 {
+    for i: 0..<30 {
+      o := (f * FIG_BONES + i) * BONE_FLOATS;
+      s[0].bones[o] = -17; s[0].bones[o + 1] = 0.5 + f32(i) * 0.02; s[0].bones[o + 2] = -26; s[0].bones[o + 3] = 0.05 + 1000 * f32(i % 9);
+      s[0].bones[o + 4] = -17; s[0].bones[o + 5] = 0.6 + f32(i) * 0.02; s[0].bones[o + 6] = -26; s[0].bones[o + 7] = 0.04;
+    }
+    villa_set_bones(s[..], f, 30);
+  }
+  n := frame(s[..], out[..], u[..], 1.0 / 60.0, f32(SPAWN_X), f32(SPAWN_Z), 0);
+  #assert n > 0;
+  for k: 1..<KINDS { #assert s[0].counts[k] < SLOTS[k]; }
+  #assert s[0].counts[SHAPE_BALL] >= 120 && s[0].counts[SHAPE_CYLINDER] > 60;
+  #assert u[U_SKY] >= 0.55 && u[5] >= 2;
+  #assert villa_emitter_count(s[..]) >= 2;
+}
+
+#test "the hint fits a phone" {
+  s: [1] Villa;
+  s[0].touch = true;
+  #assert text_width(hint(s[..]), 7.5 * 3) < 1170 - 96;
+}

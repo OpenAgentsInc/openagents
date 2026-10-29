@@ -95,6 +95,17 @@
         "card": "/realm/ice-cream-man/og.jpg",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
         "assets": ["index:/realm/ice-cream-man/assets/IceCream.indices"]
+      } },
+    { "id": "villa", "name": "PLANETARY VILLA", "kind": "open", "listed": false, "orbit": { "r": 0.42, "a": 5.6, "size": 0.034 },
+      "realm": {
+        "slug": "hecates-cemetery",
+        "title": "Hecate's Cemetery",
+        "description": "Hecate's Cemetery, the first expansion of Planetary Villa on the Verse: a moonlit memorial garden you walk with a glowing companion, its tombstones along garden paths and an open field beyond the gate.",
+        "alt": "Planetary Villa: Hecate's Cemetery, a moonlit memorial garden",
+        "module": "villa",
+        "slot": "hecates-cemetery",
+        "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
+        "assets": ["index:/realm/hecates-cemetery/assets/Villa.indices", "particles:/particles.wgsl"]
       } }
   ]
 }

@@ -58,13 +58,13 @@ verse_flight_new :: () -> Flight #export_c { f: Flight; return f; }
 // A key `at` seconds into the flight (after the last key; others are
 // refused), the camera at eye looking at `at`. A cut jumps to it; otherwise
 // the flight comes to it from the key before, eased as `ease` says.
-verse_flight_key :: (f: Flight, at: f32, eye: Point, look: Point, cut: bool, ease: int) -> Flight #export_c {
+verse_flight_key :: (f: Flight, at: f32, eye: Point, look: Point, cut: bool, easing: int) -> Flight #export_c {
   if f.count >= FLIGHT_KEYS || !finite(at) || at < 0 { return f; }
   if f.count > 0 && at <= f.keys[f.count - 1].at { return f; }
   s := Shot.{eye = eye, at = look};
   if !fl_finite(s) { return f; }
   next := f;
-  next.keys[f.count] = FlightKey.{at = at, shot = s, cut = cut || f.count == 0, ease = ease};
+  next.keys[f.count] = FlightKey.{at = at, shot = s, cut = cut || f.count == 0, ease = easing};
   next.count = f.count + 1;
   return next;
 }
