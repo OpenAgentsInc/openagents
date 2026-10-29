@@ -1,0 +1,1507 @@
+// Dead Gears' rules on the entity system (ecs.coax), ported from
+// aethyr-demo's src/dead_gears_rules.cpp: waves of mutants, the cutter and
+// its three modes (Sever, Head, Core), reloads, cover, telekinetic Lift and
+// Throw, Stun, the support engineer, the brute's bolts, repairs at the
+// reactor, and the swept collisions that keep a thrown crate or a bolt from
+// passing through cover (#19, #80). No drawing here: a page reads the
+// entities and the event log, and sends actions.
+//
+// Every mutant, part, bolt, beam, crate, cover block, you, the support
+// engineer and the reactor is an entity; their values are columns (one
+// element per slot) in a Store the host or a test owns, bound into a Game
+// of views (dg_bind). The rules are eight fixed-step systems in the
+// original model's order: clock, cargo, weapon, repair, fire, mutants,
+// bolts and support. dg_frame runs a frame untimed; a host that times each
+// system calls dg_frame_begin, dg_run per system per step, dg_step_end and
+// dg_frame_end itself (deadgears/bench.c does).
+//
+// The host's memory starts as zeros: dg_setup writes every default.
+//   coax/bin/coax test --library verse/deadgears/rules.coax --steps 4000000000
+
+#load "ecs.coax";
+#load "arena.coax";
+
+DG_CAP :: 512;       // entity slots in a Store (the rules have no caps of their own)
+DG_EVENTS :: 256;    // events kept a frame
+DG_SYSTEMS :: 8;
+
+// Components
+C_POS :: 1; C_VEL :: 2; C_HEALTH :: 4; C_TEAM :: 8; C_LIFE :: 16; C_MUTANT :: 32; C_COVER :: 64;
+C_CARGO :: 128; C_BOLT :: 256; C_BEAM :: 512; C_ENGINEER :: 1024; C_SUPPORT :: 2048; C_REACTOR :: 4096; C_USE :: 8192;
+
+// Phases of the fight
+FIGHT :: 0; REPAIR :: 1; WON :: 2; LOST :: 3;
+// Cutter modes
+SEVER :: 0; HEAD :: 1; CORE :: 2;
+// Mutant types
+CRAWLER :: 0; REAVER :: 1; BRUTE :: 2; SKITTER :: 3; HOUND :: 4; TYPES :: 5;
+// Teams
+TEAM_PLAYER :: 1; TEAM_ALLY :: 2; TEAM_HOSTILE :: 3;
+
+// Events, for sounds, effects and the HUD
+EV_SHOT :: 1; EV_HURT :: 2; EV_KILLED :: 3; EV_BEAMED :: 4; EV_RELOADING :: 5; EV_DRY_FIRE :: 6;
+EV_WAVE :: 7; EV_REPAIRED :: 8; EV_LIFTED :: 9; EV_THROWN :: 10; EV_STUNNED :: 11; EV_CARGO_STRUCK :: 12;
+EV_BOLT_FIRED :: 13; EV_BOLT_STRUCK :: 14; EV_ENDED :: 15;
+
+// The systems, in the order they run each fixed step
+S_CLOCK :: 0; S_CARGO :: 1; S_WEAPON :: 2; S_REPAIR :: 3; S_FIRE :: 4; S_MUTANTS :: 5; S_BOLTS :: 6; S_SUPPORT :: 7;
+SYSTEM_NAMES :: [8] string.["dg.clock", "dg.cargo", "dg.weapon", "dg.repair", "dg.fire", "dg.mutants", "dg.bolts", "dg.support"];
+
+// The mutant prefabs: hp, speed, size, damage, head hp
+TYPE_HP :: [5] f32.[45, 85, 180, 24, 65];
+TYPE_SPEED :: [5] f32.[2.4, 1.65, 1, 3.1, 2.8];
+TYPE_SIZE :: [5] f32.[0.7, 1, 1.5, 0.36, 1.05];
+TYPE_DAMAGE :: [5] f32.[9, 15, 23, 5, 13];
+TYPE_HEAD :: [5] f32.[40, 40, 70, 40, 40];
+// The layout: covers (x, z, w, d, h), loose cargo (x, z, kind), each wave's spawn mix
+COVERS :: [35] f32.[-5, 3, 3.2, 1.3, 1.15, 5, 3, 3.2, 1.3, 1.15, -4, -5, 2.6, 1.4, 1.15, 4, -5, 2.6, 1.4, 1.15,
+                    -8, -12, 2, 3, 1.6, 8, -12, 2, 3, 1.6, 0, -17, 3.8, 2.8, 1.1];
+CARGO_AT :: [18] f32.[-1.2, 5, 0, 1.2, 3, 1, -8, 6, 2, 6, 0, 0, 0, -8, 1, -3, -13, 2];
+WAVE_MIX :: [9] int.[2, 0, 1, 4, 0, 1, 4, 2, 4];
+CARGO_DAMAGE :: [3] f32.[100, 125, 85];
+// The support engineer's repair: alone it takes this long (you take 2.5 s),
+// from a spot this far beside and in front of the reactor's centre.
+ALLY_REPAIR_TIME :: 7.5; ALLY_REPAIR_SIDE :: 1.4; ALLY_REPAIR_FRONT :: 2.1;
+CHARACTER_RADIUS :: 0.3;
+CHARACTER_HEIGHT :: 1.8;
+REACH :: 0.9;        // closest two characters' centres come
+
+Mutant :: struct {
+  kind: int;
+  speed: f32 = 1; size: f32 = 1; damage: f32 = 10;   // from the type's prefab
+  head_hp: f32 = 40;
+  severed: bool; headless: bool;
+  attack: f32 = 0.8; flash: f32; stun: f32; lunge: f32;
+  air: f32;        // height a detached part is still dropping from
+  part: int = -1;  // a detached head (1) or claw (0)
+  seq: int;        // spawn order in the wave
+}
+Cover :: struct { w: f32 = 1; d: f32 = 1; h: f32 = 1; }
+Cargo :: struct { kind: int; held: bool; thrown: bool; }
+Beam :: struct { from: Point; to: Point; ally: bool; }
+
+Input :: struct {
+  aim_x: f32; aim_z: f32 = -1;   // where the camera looks, on the deck
+  firing: bool; repairing: bool;
+}
+
+State :: struct {
+  time: f32;
+  ammo: int = 12; reserve: int = 72;
+  reload: f32; cooldown: f32;
+  cover: bool;
+  mode: int;
+  wave: int; repairs: int; kills: int;
+  paused: bool;
+  phase: int;
+  psi: f32 = 100; power_at: f32 = -100; stun_cooldown: f32; pulse: f32;
+  ally_time: f32;
+  held: int = -1;
+  next_seq: int;
+  skip: bool;      // no fighting this step (paused, over, or repairing)
+}
+
+Event :: struct { kind: int; who: int; n: int; amount: f32; at: Point; to: Point; flag: bool; }
+
+// Everything a fight is, as storage. A host allocates one (zeros) and
+// binds it; a test declares one.
+Store :: struct {
+  gen: [DG_CAP] int; live: [DG_CAP] bool; mask: [DG_CAP] int; dropping: [DG_CAP] int;
+  doomed: [DG_CAP] bool; free: [DG_CAP] int; n: [4] int;
+  pos: [DG_CAP] Point; yaw: [DG_CAP] f32; scale: [DG_CAP] f32; vel: [DG_CAP] Point;
+  hp: [DG_CAP] f32; hp_max: [DG_CAP] f32; hurt_at: [DG_CAP] f32; team: [DG_CAP] int; ttl: [DG_CAP] f32;
+  mutant: [DG_CAP] Mutant; cover: [DG_CAP] Cover; cargo: [DG_CAP] Cargo; bolt: [DG_CAP] f32; beam: [DG_CAP] Beam;
+  radius: [DG_CAP] f32; progress: [DG_CAP] f32;
+  st: [1] State; input: [1] Input; clock: [1] Clock;
+  arena: [1] Arena; nav: [1] Nav;
+  events: [DG_EVENTS] Event; ev: [2] int;
+  names: [DG_SYSTEMS] string; phases: [DG_SYSTEMS] int; last: [DG_SYSTEMS] f64; mean: [DG_SYSTEMS] f64;
+  runs: [DG_SYSTEMS] int; systems: [1] int;
+}
+
+Game :: struct {
+  e: Entities;
+  pos: [] Point; yaw: [] f32; scale: [] f32; vel: [] Point;
+  hp: [] f32; hp_max: [] f32; hurt_at: [] f32; team: [] int; ttl: [] f32;
+  mutant: [] Mutant; cover: [] Cover; cargo: [] Cargo; bolt: [] f32; beam: [] Beam;
+  radius: [] f32; progress: [] f32;
+  st: [] State; input: [] Input; clock: [] Clock;
+  arena: [] Arena; nav: [] Nav;
+  events: [] Event; ev: [] int;
+  stats: Stats;
+}
+
+dg_bind :: (s: [] Store) -> Game {
+  g: Game;
+  g.e = Entities.{gen = s[0].gen[..], live = s[0].live[..], mask = s[0].mask[..], dropping = s[0].dropping[..],
+                  doomed = s[0].doomed[..], free = s[0].free[..], n = s[0].n[..]};
+  g.pos = s[0].pos[..]; g.yaw = s[0].yaw[..]; g.scale = s[0].scale[..]; g.vel = s[0].vel[..];
+  g.hp = s[0].hp[..]; g.hp_max = s[0].hp_max[..]; g.hurt_at = s[0].hurt_at[..]; g.team = s[0].team[..]; g.ttl = s[0].ttl[..];
+  g.mutant = s[0].mutant[..]; g.cover = s[0].cover[..]; g.cargo = s[0].cargo[..]; g.bolt = s[0].bolt[..]; g.beam = s[0].beam[..];
+  g.radius = s[0].radius[..]; g.progress = s[0].progress[..];
+  g.st = s[0].st[..]; g.input = s[0].input[..]; g.clock = s[0].clock[..];
+  g.arena = s[0].arena[..]; g.nav = s[0].nav[..];
+  g.events = s[0].events[..]; g.ev = s[0].ev[..];
+  g.stats = Stats.{name = s[0].names[..], phase = s[0].phases[..], last = s[0].last[..], mean = s[0].mean[..],
+                   runs = s[0].runs[..], n = s[0].systems[..]};
+  return g;
+}
+
+// ---- small helpers
+
+slot_of :: (e: int) -> int { return ecs_index(e); }
+direction :: (ax: f32, az: f32) -> Point {
+  d := sqrt(ax * ax + az * az);
+  if d > 0.0001 { return v3(ax / d, 0, az / d); }
+  return v3(0, 0, -1);
+}
+segment_distance :: (a: Point, b: Point, p: Point) -> f32 {
+  x := b.x - a.x; z := b.z - a.z; d := x * x + z * z;
+  t: f32 = 0;
+  if d != 0 { t = clamp(((p.x - a.x) * x + (p.z - a.z) * z) / d, 0, 1); }
+  return sqrt((a.x + t * x - p.x) * (a.x + t * x - p.x) + (a.z + t * z - p.z) * (a.z + t * z - p.z));
+}
+emit :: (g: Game, ev: Event) {
+  if g.ev[0] < g.events.count { g.events[g.ev[0]] = ev; g.ev[0] += 1; } else { g.ev[1] += 1; }
+}
+// How many events of kind this frame.
+dg_events :: (g: Game, kind: int) -> int {
+  n := 0;
+  for i: 0..<g.ev[0] { if g.events[i].kind == kind { n += 1; } }
+  return n;
+}
+alive_mutant :: (g: Game, i: int) -> bool { return ecs_match(g.e, i, C_MUTANT | C_HEALTH, 0) && g.hp[i] > 0; }
+mutant_radius :: (m: Mutant) -> f32 { return hi(0.08, m.size * 0.3); }
+
+dg_player :: (g: Game) -> int { return ecs_first(g.e, C_ENGINEER); }
+dg_support :: (g: Game) -> int { return ecs_first(g.e, C_SUPPORT); }
+dg_reactor :: (g: Game) -> int { return ecs_first(g.e, C_REACTOR); }
+dg_player_pos :: (g: Game) -> Point {
+  p := dg_player(g);
+  if p == ECS_NONE { return v3(0, 0, 9); }
+  return g.pos[slot_of(p)];
+}
+dg_health :: (g: Game) -> f32 {
+  p := dg_player(g);
+  if !ecs_has(g.e, p, C_HEALTH) { return 0; }
+  return g.hp[slot_of(p)];
+}
+dg_reactor_pos :: (g: Game) -> Point { return g.pos[slot_of(dg_reactor(g))]; }
+dg_repair_progress :: (g: Game) -> f32 { return g.progress[slot_of(dg_reactor(g))]; }
+dg_alive_mutants :: (g: Game) -> int {
+  n := 0;
+  for i: 0..<ecs_high(g.e) { if alive_mutant(g, i) { n += 1; } }
+  return n;
+}
+dg_mutants :: (g: Game) -> int { return ecs_count_of(g.e, C_MUTANT); }
+
+dg_blocked :: (g: Game, x: f32, z: f32, r: f32) -> bool { return arena_blocked(g.arena, x, z, r, 0); }
+dg_wall_ray :: (g: Game, a: Point, b: Point) -> bool { return arena_wall_ray(g.arena, a, b); }
+dg_near_cover :: (g: Game, p: Point) -> bool {
+  for i: 0..<ecs_high(g.e) {
+    if !ecs_match(g.e, i, C_COVER | C_POS, 0) { continue; }
+    c := g.cover[i]; t := g.pos[i];
+    if abs(p.x - t.x) < c.w / 2 + 1.3 && abs(p.z - t.z) < c.d / 2 + 1.3 { return true; }
+  }
+  return false;
+}
+
+// ---- spawning (the prefabs)
+
+new_entity :: (g: Game, bits: int) -> int {
+  e := ecs_create(g.e);
+  if e == ECS_NONE { return e; }
+  i := slot_of(e);
+  ecs_add(g.e, e, bits);
+  g.pos[i] = v3(0, 0, 0); g.yaw[i] = 0; g.scale[i] = 1; g.vel[i] = v3(0, 0, 0);
+  g.hp[i] = 100; g.hp_max[i] = 100; g.hurt_at[i] = -100; g.team[i] = 0; g.ttl[i] = 0;
+  blank_m: Mutant; g.mutant[i] = blank_m;
+  blank_c: Cover; g.cover[i] = blank_c;
+  blank_o: Cargo; g.cargo[i] = blank_o;
+  g.bolt[i] = 3;
+  blank_b: Beam; g.beam[i] = blank_b;
+  g.radius[i] = 1.5; g.progress[i] = 0;
+  return e;
+}
+
+dg_spawn_mutant :: (g: Game, kind: int, x: f32, z: f32, part: int) -> int {
+  e := new_entity(g, C_POS | C_HEALTH | C_TEAM | C_MUTANT);
+  if e == ECS_NONE { return e; }
+  i := slot_of(e);
+  k := kind;
+  if k < 0 { k = 0; }
+  if k >= TYPES { k = TYPES - 1; }
+  g.pos[i] = v3(x, 0, z);
+  g.team[i] = TEAM_HOSTILE;
+  g.hp[i] = TYPE_HP[k]; g.hp_max[i] = TYPE_HP[k];
+  m: Mutant;
+  m.kind = k; m.speed = TYPE_SPEED[k]; m.size = TYPE_SIZE[k]; m.damage = TYPE_DAMAGE[k]; m.head_hp = TYPE_HEAD[k];
+  m.part = part;
+  m.seq = g.st[0].next_seq;
+  g.st[0].next_seq += 1;
+  g.mutant[i] = m;
+  g.scale[i] = m.size;
+  return e;
+}
+
+spawn_cargo :: (g: Game, x: f32, z: f32, kind: int) -> int {
+  e := new_entity(g, C_POS | C_VEL | C_CARGO);
+  if e != ECS_NONE { g.pos[slot_of(e)] = v3(x, 0.3, z); g.cargo[slot_of(e)].kind = kind; }
+  return e;
+}
+
+dg_spawn_bolt :: (g: Game, at: Point, v: Point) -> int {
+  e := new_entity(g, C_POS | C_VEL | C_BOLT);
+  if e != ECS_NONE { g.pos[slot_of(e)] = v3(at.x, 1, at.z); g.vel[slot_of(e)] = v; g.bolt[slot_of(e)] = 3; }
+  return e;
+}
+
+add_beam :: (g: Game, from: Point, to: Point, ttl: f32, ally: bool) {
+  e := new_entity(g, C_BEAM | C_LIFE);
+  if e != ECS_NONE { g.beam[slot_of(e)] = Beam.{from = from, to = to, ally = ally}; g.ttl[slot_of(e)] = ttl; }
+  emit(g, Event.{kind = EV_BEAMED, at = from, to = to, flag = ally});
+}
+
+destroy_all :: (g: Game, now: bool, bits: int) {
+  for i: 0..<ecs_high(g.e) {
+    if !ecs_match(g.e, i, bits, 0) { continue; }
+    e := ecs_at(g.e, i);
+    if now { ecs_destroy_now(g.e, e); } else { ecs_destroy(g.e, e); }
+  }
+}
+
+// ---- the rules
+
+active :: (g: Game) -> bool { return !g.st[0].paused && g.st[0].phase != WON && g.st[0].phase != LOST; }
+
+dg_damage :: (g: Game, n: f32, from: Point) {
+  if g.st[0].phase != FIGHT { return; }
+  p := slot_of(dg_player(g));
+  g.hp[p] = hi(0, g.hp[p] - n);
+  g.hurt_at[p] = g.st[0].time;
+  emit(g, Event.{kind = EV_HURT, amount = n, at = from});
+  if g.hp[p] == 0 {
+    g.st[0].phase = LOST;
+    g.st[0].cover = false;
+    emit(g, Event.{kind = EV_ENDED, flag = false});
+  }
+}
+
+dg_hit :: (g: Game, e: int, n: f32) {
+  if g.st[0].phase != FIGHT || !ecs_has(g.e, e, C_HEALTH | C_MUTANT) { return; }
+  i := slot_of(e);
+  if g.hp[i] == 0 { return; }
+  g.hp[i] = hi(0, g.hp[i] - n);
+  g.mutant[i].flash = 0.12;
+  if g.hp[i] != 0 { return; }
+  g.st[0].kills += 1;
+  emit(g, Event.{kind = EV_KILLED, who = e, n = g.mutant[i].kind, at = g.pos[i]});
+  if dg_alive_mutants(g) == 0 {
+    g.st[0].phase = REPAIR;
+    destroy_all(g, false, C_BOLT);
+    g.st[0].cover = false;
+  }
+}
+
+dg_head_hit :: (g: Game, e: int) {
+  if !ecs_has(g.e, e, C_HEALTH | C_MUTANT) || g.hp[slot_of(e)] <= 0 || g.st[0].phase != FIGHT { return; }
+  i := slot_of(e);
+  g.mutant[i].head_hp -= 40;
+  if g.mutant[i].head_hp <= 0 && !g.mutant[i].headless {
+    g.mutant[i].headless = true;
+    if g.mutant[i].kind == REAVER || g.mutant[i].kind == BRUTE {
+      // Spawn before killing the parent: live parts keep the wave going.
+      at := g.pos[i];
+      size := g.mutant[i].size;
+      for part: 0..<2 {
+        child := dg_spawn_mutant(g, SKITTER, at.x, at.z, part);
+        if child == ECS_NONE { continue; }
+        c := slot_of(child);
+        for k: 0..<8 {
+          ang := (ifx part == 1 then 1.0f32 else -1.0f32) * f32(PI) / 2 + f32(k) * f32(PI) / 4;
+          x := at.x + sin(ang) * 0.65; z := at.z + cos(ang) * 0.65;
+          if !dg_blocked(g, x, z, 0.15) { g.pos[c].x = x; g.pos[c].z = z; break; }
+        }
+        g.mutant[c].air = ifx part == 1 then size * 1.7 else size * 0.8;
+      }
+    }
+    dg_hit(g, e, g.hp[i]);
+  } else {
+    dg_hit(g, e, 40);
+  }
+}
+
+// The mutant the cutter would hit along aim from p, or ECS_NONE.
+dg_target :: (g: Game, p: Point, ax: f32, az: f32, range: f32, spread: f32) -> int {
+  dir := direction(ax, az);
+  best := ECS_NONE; best_score: f32 = 1000000000;
+  for i: 0..<ecs_high(g.e) {
+    if !alive_mutant(g, i) { continue; }
+    t := g.pos[i];
+    x := t.x - p.x; z := t.z - p.z; d := flat(t, p);
+    along := x * dir.x + z * dir.z;
+    lateral := abs(x * dir.z - z * dir.x);
+    if along > 0 && d < range && lateral < 0.65 + d * spread {
+      score := lateral / (d + 0.1);
+      if score < best_score && !dg_wall_ray(g, p, t) { best_score = score; best = ecs_at(g.e, i); }
+    }
+  }
+  return best;
+}
+
+dg_begin_reload :: (g: Game) -> bool {
+  s := g.st[0];
+  if s.reload != 0 || s.ammo == 12 || s.reserve == 0 || s.phase != FIGHT { return false; }
+  g.st[0].reload = 1.35;
+  emit(g, Event.{kind = EV_RELOADING});
+  return true;
+}
+
+// Fires once if ready (also what holding Fire does each step).
+dg_fire :: (g: Game) {
+  s := g.st[0];
+  if s.paused || s.phase != FIGHT || s.reload != 0 || s.cooldown != 0 { return; }
+  if s.ammo == 0 {
+    if !dg_begin_reload(g) {
+      g.st[0].cooldown = 0.3;   // the trigger clicks on an empty cutter
+      emit(g, Event.{kind = EV_DRY_FIRE});
+    }
+    return;
+  }
+  g.st[0].ammo -= 1;
+  g.st[0].cooldown = 0.24;
+  p := dg_player_pos(g);
+  dir := direction(g.input[0].aim_x, g.input[0].aim_z);
+  t := dg_target(g, p, g.input[0].aim_x, g.input[0].aim_z, 29, 0.25);
+  end := v3(p.x + dir.x * 24, 1.3, p.z + dir.z * 24);
+  if t != ECS_NONE {
+    m := g.mutant[slot_of(t)];
+    tp := g.pos[slot_of(t)];
+    end = v3(tp.x, m.size * (ifx s.mode == HEAD then 1.7f32 else ifx s.mode == SEVER then 0.55f32 else 1.3f32), tp.z);
+  }
+  add_beam(g, v3(p.x, 1.35, p.z), end, 0.1, false);
+  emit(g, Event.{kind = EV_SHOT, flag = t != ECS_NONE, at = v3(p.x, 1.35, p.z), to = end});
+  if t == ECS_NONE { return; }
+  ti := slot_of(t);
+  if s.mode == HEAD { dg_head_hit(g, t); }
+  else if s.mode == SEVER && !g.mutant[ti].severed {
+    g.mutant[ti].severed = true;
+    dg_hit(g, t, 30);
+  } else {
+    dg_hit(g, t, ifx g.mutant[ti].kind == BRUTE && !g.mutant[ti].severed then 18.0f32 else 40.0f32);
+  }
+}
+
+dg_toggle_cover :: (g: Game) -> bool {
+  g.st[0].cover = !g.st[0].cover && dg_near_cover(g, dg_player_pos(g));
+  return g.st[0].cover;
+}
+
+dg_cycle_mode :: (g: Game) {
+  m := g.st[0].mode;
+  g.st[0].mode = ifx m == SEVER then HEAD else ifx m == HEAD then CORE else SEVER;
+}
+
+dg_can_power :: (g: Game) -> bool { return !g.st[0].paused && (g.st[0].phase == FIGHT || g.st[0].phase == REPAIR); }
+
+dg_held_alive :: (g: Game) -> bool { return ecs_alive(g.e, g.st[0].held); }
+
+// What lift would pick up now, or ECS_NONE.
+dg_grab_target :: (g: Game) -> int {
+  p := dg_player_pos(g);
+  dir := direction(g.input[0].aim_x, g.input[0].aim_z);
+  chosen := ECS_NONE; score: f32 = 1000000000;
+  for i: 0..<ecs_high(g.e) {
+    if !ecs_match(g.e, i, C_CARGO | C_POS, 0) { continue; }
+    t := g.pos[i];
+    x := t.x - p.x; z := t.z - p.z; d := flat(t, p);
+    along := x * dir.x + z * dir.z; lateral := abs(x * dir.z - z * dir.x);
+    if d < 9 && along > -0.5 && lateral < 1 + d * 0.5 && d + lateral < score && !dg_wall_ray(g, p, t) {
+      chosen = ecs_at(g.e, i); score = d + lateral;
+    }
+  }
+  return chosen;
+}
+
+dg_throw_held :: (g: Game) -> bool {
+  if !dg_can_power(g) || !dg_held_alive(g) { return false; }
+  e := g.st[0].held;
+  i := slot_of(e);
+  p := dg_player_pos(g);
+  dir := direction(g.input[0].aim_x, g.input[0].aim_z);
+  t := dg_target(g, p, g.input[0].aim_x, g.input[0].aim_z, 21, 0.4);
+  g.st[0].held = ECS_NONE;
+  g.cargo[i].held = false; g.cargo[i].thrown = true;
+  op := g.pos[i];
+  if t != ECS_NONE {
+    tp := g.pos[slot_of(t)];
+    d := flat(op, tp);
+    time := hi(0.1, d / 18);
+    y := g.mutant[slot_of(t)].size * 0.8;
+    g.vel[i] = v3((tp.x - op.x) / time, (y - op.y) / time + 4.9 * time, (tp.z - op.z) / time);
+  } else {
+    g.vel[i] = v3(dir.x * 18, 0.8, dir.z * 18);
+  }
+  g.st[0].power_at = g.st[0].time;
+  emit(g, Event.{kind = EV_THROWN, at = op});
+  return true;
+}
+
+// Lifts the crate you look at, or throws what you hold.
+dg_lift :: (g: Game) -> bool {
+  if !dg_can_power(g) { return false; }
+  if dg_held_alive(g) { return dg_throw_held(g); }
+  if g.st[0].psi < 15 { return false; }
+  chosen := dg_grab_target(g);
+  if chosen == ECS_NONE { return false; }
+  p := dg_player_pos(g);
+  dir := direction(g.input[0].aim_x, g.input[0].aim_z);
+  i := slot_of(chosen);
+  g.st[0].held = chosen;
+  g.cargo[i].held = true; g.cargo[i].thrown = false;
+  g.vel[i] = v3(0, 0, 0);
+  g.pos[i] = v3(p.x + dir.x * 2, 1.7, p.z + dir.z * 2);
+  g.st[0].psi -= 15;
+  g.st[0].power_at = g.st[0].time;
+  emit(g, Event.{kind = EV_LIFTED, at = g.pos[i]});
+  return true;
+}
+
+dg_stun :: (g: Game) -> bool {
+  s := g.st[0];
+  if !dg_can_power(g) || s.psi < 35 || s.stun_cooldown > 0 { return false; }
+  g.st[0].psi -= 35;
+  g.st[0].power_at = s.time;
+  g.st[0].stun_cooldown = 3;
+  g.st[0].pulse = 0.65;
+  p := dg_player_pos(g);
+  dir := direction(g.input[0].aim_x, g.input[0].aim_z);
+  caught := 0;
+  for i: 0..<ecs_high(g.e) {
+    if !alive_mutant(g, i) { continue; }
+    t := g.pos[i];
+    d := flat(p, t);
+    along := (t.x - p.x) * dir.x + (t.z - p.z) * dir.z;
+    if d < 10 && (d < 1 || along / d > 0.4) && !dg_wall_ray(g, p, t) {
+      g.mutant[i].stun = hi(g.mutant[i].stun, ifx g.mutant[i].kind == BRUTE then 1.8f32 else 3.0f32);
+      g.mutant[i].lunge = 0;
+      g.mutant[i].flash = 0.18;
+      caught += 1;
+    }
+  }
+  emit(g, Event.{kind = EV_STUNNED, at = p, n = caught});
+  return true;
+}
+
+// ---- characters as bodies (#19, #80)
+
+// From `from` toward `to`, round every other character's circle (REACH
+// across), sliding along them; then out of any it still stands in. As the
+// demo's physics::World::pushCharacters, the characters being you, the
+// support engineer and every standing mutant.
+push_characters :: (g: Game, self: int, from: Point, to: Point, yaw: f32) -> Point {
+  at := from;
+  rx := to.x - from.x; rz := to.z - from.z;
+  reach := f32(REACH);
+  for pass: 0..<3 {
+    length2 := rx * rx + rz * rz;
+    if length2 < 0.000000000001 { break; }
+    first: f32 = 2; hit_x: f32 = 0; hit_z: f32 = 0;
+    for i: 0..<ecs_high(g.e) {
+      if i == self || !is_body(g, i) { continue; }
+      o := g.pos[i];
+      if abs(o.y - from.y) >= f32(CHARACTER_HEIGHT) { continue; }
+      dx := at.x - o.x; dz := at.z - o.z;
+      c := dx * dx + dz * dz - reach * reach; b := 2 * (dx * rx + dz * rz);
+      if c < 0 || b >= 0 { continue; }
+      disc := b * b - 4 * length2 * c;
+      if disc < 0 { continue; }
+      t := (-b - sqrt(disc)) / (2 * length2);
+      if t >= 0 && t <= 1 && t < first { first = t; hit_x = o.x; hit_z = o.z; }
+    }
+    if first > 1 { at.x += rx; at.z += rz; break; }
+    at.x += rx * first; at.z += rz * first;
+    nx := at.x - hit_x; nz := at.z - hit_z; nl := sqrt(nx * nx + nz * nz);
+    if nl > 0.000001 { nx = nx / nl; nz = nz / nl; }
+    lx := rx * (1 - first); lz := rz * (1 - first);
+    into := lo(0, lx * nx + lz * nz);
+    rx = lx - nx * into; rz = lz - nz * into;
+    at.x += nx * 0.0001; at.z += nz * 0.0001;
+  }
+  at.y = to.y;
+  for i: 0..<ecs_high(g.e) {
+    if i == self || !is_body(g, i) { continue; }
+    o := g.pos[i];
+    if abs(o.y - at.y) >= f32(CHARACTER_HEIGHT) { continue; }
+    dx := at.x - o.x; dz := at.z - o.z; dd := sqrt(dx * dx + dz * dz);
+    if dd >= reach { continue; }
+    nx := ifx dd > 0.0001 then dx / dd else -sin(yaw);
+    nz := ifx dd > 0.0001 then dz / dd else -cos(yaw);
+    at.x = o.x + nx * reach; at.z = o.z + nz * reach;
+  }
+  return at;
+}
+
+is_body :: (g: Game, i: int) -> bool {
+  m := g.e.mask[i];
+  if !g.e.live[i] { return false; }
+  if (m & (C_ENGINEER | C_SUPPORT)) != 0 { return true; }
+  return (m & (C_MUTANT | C_HEALTH)) == C_MUTANT | C_HEALTH && g.hp[i] > 0;
+}
+
+// A character walks by (dx, dz): round the other characters, then along the
+// covers and walls, sliding where it meets them, and stays on the deck.
+walk_body :: (g: Game, i: int, dx: f32, dz: f32, radius: f32) {
+  p := g.pos[i];
+  want := push_characters(g, i, p, v3(p.x + dx, p.y, p.z + dz), g.yaw[i]);
+  to := arena_walk(g.arena, p, v3(want.x - p.x, 0, want.z - p.z), radius);
+  g.pos[i].x = clamp(to.x, -14.5, 14.5);
+  g.pos[i].z = clamp(to.z, -22, 12);
+}
+
+// ---- the systems, in the order the rules ran in the original model
+
+clock_system :: (g: Game, dt: f32) {
+  g.st[0].skip = !active(g);
+  if g.st[0].skip { return; }
+  g.st[0].time += dt;
+  for i: 0..<ecs_high(g.e) {
+    if !ecs_match(g.e, i, C_LIFE, 0) { continue; }
+    g.ttl[i] -= dt;
+    if g.ttl[i] <= 0 { ecs_destroy(g.e, ecs_at(g.e, i)); }
+  }
+  g.st[0].pulse = hi(0, g.st[0].pulse - dt);
+  g.st[0].stun_cooldown = hi(0, g.st[0].stun_cooldown - dt);
+  if dg_held_alive(g) {
+    g.st[0].psi = hi(0, g.st[0].psi - dt * 2);
+    if g.st[0].psi == 0 {
+      g.cargo[slot_of(g.st[0].held)].held = false;
+      g.st[0].held = ECS_NONE;
+    }
+  } else if g.st[0].time - g.st[0].power_at > 0.7 {
+    g.st[0].psi = lo(100, g.st[0].psi + dt * 9);
+  }
+}
+
+cargo_system :: (g: Game, dt: f32) {
+  if g.st[0].skip { return; }
+  p := dg_player_pos(g);
+  dir := direction(g.input[0].aim_x, g.input[0].aim_z);
+  for i: 0..<ecs_high(g.e) {
+    if !ecs_match(g.e, i, C_CARGO | C_POS | C_VEL, 0) { continue; }
+    if g.cargo[i].held {
+      g.pos[i] = v3(p.x + dir.x * 2, 1.7 + sin(g.st[0].time * 3) * 0.08, p.z + dir.z * 2);
+      continue;
+    }
+    pos := g.pos[i]; v := g.vel[i];
+    previous := pos;
+    v.y -= 9.8 * dt;
+    // Swept against the covers and walls (#19), so a fast throw cannot pass
+    // through thin cover between two steps: it stops where it meets them
+    // and bounces back. (The crate is a 0.2 m sphere resting on its height.)
+    motion := v3(v.x * dt, 0, v.z * dt);
+    t := arena_sweep(g.arena, v3(pos.x, pos.y + 0.21, pos.z), 0.2, motion);
+    if t <= 1 {
+      travel := sqrt(motion.x * motion.x + motion.z * motion.z);
+      k := ifx travel > 0 then hi(0, t - 0.01 / travel) else 0.0f32;
+      pos.x += motion.x * k; pos.z += motion.z * k;
+      v.x *= -0.25; v.z *= -0.25;
+      g.cargo[i].thrown = false;
+    } else {
+      pos.x += motion.x; pos.z += motion.z;
+    }
+    pos.y += v.y * dt;
+    if g.cargo[i].thrown {
+      for j: 0..<ecs_high(g.e) {
+        if !ecs_match(g.e, j, C_MUTANT | C_POS | C_HEALTH, 0) || g.hp[j] == 0 { continue; }
+        m := g.mutant[j]; mt := g.pos[j];
+        if pos.y > m.size * 2 + 0.3 || segment_distance(previous, pos, mt) > 0.25 + m.size * 0.35 || dg_wall_ray(g, previous, mt) { continue; }
+        g.mutant[j].stun = hi(m.stun, ifx m.kind == BRUTE then 1.8f32 else 2.5f32);
+        g.mutant[j].lunge = 0;
+        emit(g, Event.{kind = EV_CARGO_STRUCK, at = pos});
+        kind := g.cargo[i].kind;
+        if kind < 0 { kind = 0; }
+        if kind > 2 { kind = 2; }
+        dg_hit(g, ecs_at(g.e, j), CARGO_DAMAGE[kind]);
+        g.cargo[i].thrown = false;
+        v.x *= 0.12; v.z *= 0.12; v.y = 1;
+        break;
+      }
+    }
+    if pos.y < 0.3 {
+      pos.y = 0.3; v.y = 0;
+      v.x *= 0.75; v.z *= 0.75;
+      if sqrt(v.x * v.x + v.z * v.z) < 1 { g.cargo[i].thrown = false; }
+    }
+    if abs(pos.x) > 15 { pos.x = clamp(pos.x, -15, 15); v.x *= -0.3; g.cargo[i].thrown = false; }
+    if pos.z < -23 || pos.z > 13 { pos.z = clamp(pos.z, -23, 13); v.z *= -0.3; g.cargo[i].thrown = false; }
+    g.pos[i] = pos; g.vel[i] = v;
+  }
+}
+
+weapon_system :: (g: Game, dt: f32) {
+  if g.st[0].skip { return; }
+  p := dg_player_pos(g);
+  if g.st[0].cover && !dg_near_cover(g, p) { g.st[0].cover = false; }
+  me := dg_player(g);
+  if ecs_has(g.e, me, C_HEALTH) && g.st[0].time - g.hurt_at[slot_of(me)] > 5 { g.hp[slot_of(me)] = lo(100, g.hp[slot_of(me)] + dt * 5); }
+  g.st[0].cooldown = hi(0, g.st[0].cooldown - dt);
+  if g.st[0].reload != 0 {
+    g.st[0].reload = hi(0, g.st[0].reload - dt);
+    if g.st[0].reload == 0 {
+      n := 12 - g.st[0].ammo;
+      if g.st[0].reserve < n { n = g.st[0].reserve; }
+      g.st[0].ammo += n; g.st[0].reserve -= n;
+    }
+  }
+}
+
+// The support engineer walks toward goal, round the covers on the walking
+// grid, jogging when it is far, as a body (#80).
+walk_support :: (g: Game, i: int, goal_at: Point, dt: f32) {
+  a := g.pos[i];
+  goal := v3(goal_at.x, 0, goal_at.z);
+  gap := flat(a, goal);
+  if gap <= 0.3 { return; }
+  to := nav_head_for(g.nav, g.arena, 1, a, goal);
+  x := to.x - a.x; z := to.z - a.z; l := sqrt(x * x + z * z);
+  if l <= 0.001 { return; }
+  step := lo((ifx gap > 6 then 4.5f32 else 3.0f32) * dt, gap);
+  x = x / l * step; z = z / l * step;
+  walk_body(g, i, x, z, f32(CHARACTER_RADIUS));
+  g.yaw[i] = atan2(x, z);
+}
+
+// Where the support engineer repairs from: beside the reactor's front, on
+// whichever side it is nearer.
+repair_spot :: (g: Game) -> Point {
+  r := dg_reactor_pos(g); a := g.pos[slot_of(dg_support(g))];
+  left := v3(r.x - f32(ALLY_REPAIR_SIDE), 0, r.z + f32(ALLY_REPAIR_FRONT));
+  right := v3(r.x + f32(ALLY_REPAIR_SIDE), 0, r.z + f32(ALLY_REPAIR_FRONT));
+  return ifx flat(a, left) <= flat(a, right) then left else right;
+}
+
+// The support engineer is at the reactor, repairing (the repair phase).
+dg_support_repairing :: (g: Game) -> bool {
+  ally := dg_support(g);
+  return ally != ECS_NONE && g.st[0].phase == REPAIR && flat(g.pos[slot_of(ally)], repair_spot(g)) < 0.45;
+}
+
+support_repair :: (g: Game, r: int, dt: f32) {
+  ally := dg_support(g);
+  if ally == ECS_NONE { return; }
+  i := slot_of(ally);
+  spot := repair_spot(g); rp := dg_reactor_pos(g);
+  walk_support(g, i, spot, dt);
+  if dg_support_repairing(g) {
+    g.yaw[i] = atan2(rp.x - g.pos[i].x, rp.z - g.pos[i].z);
+    g.progress[r] = lo(1, g.progress[r] + dt / f32(ALLY_REPAIR_TIME));
+  }
+}
+
+start_wave :: (g: Game, now: bool) {
+  g.st[0].wave += 1;
+  g.st[0].phase = FIGHT;
+  destroy_all(g, now, C_MUTANT);
+  destroy_all(g, now, C_BOLT);
+  destroy_all(g, now, C_CARGO);
+  g.st[0].next_seq = 0;
+  g.st[0].ammo = 12; g.st[0].reserve = 72;
+  me := dg_player(g);
+  if ecs_has(g.e, me, C_HEALTH) { g.hp[slot_of(me)] = lo(100, g.hp[slot_of(me)] + 30); }
+  r := dg_reactor(g);
+  if ecs_has(g.e, r, C_USE) { g.progress[slot_of(r)] = 0; }
+  g.st[0].held = ECS_NONE;
+  g.st[0].psi = 100;
+  count := 3 + g.st[0].wave * 2;
+  for i: 0..<count {
+    side: f32 = ifx i % 2 == 1 then 1.0f32 else -1.0f32;
+    e := dg_spawn_mutant(g, WAVE_MIX[i % 9], side * (8 + f32(i % 3) * 2), -21 + f32(i % 3) * 2, -1);
+    if e != ECS_NONE { g.mutant[slot_of(e)].attack = 1 + f32(i) * 0.35; }
+  }
+  for c: 0..<6 { e := spawn_cargo(g, CARGO_AT[c * 3], CARGO_AT[c * 3 + 1], int(CARGO_AT[c * 3 + 2])); }
+  emit(g, Event.{kind = EV_WAVE, n = g.st[0].wave});
+}
+
+repair_system :: (g: Game, dt: f32) {
+  if g.st[0].skip || g.st[0].phase != REPAIR { return; }
+  g.st[0].skip = true;   // no fighting while repairing
+  r := slot_of(dg_reactor(g));
+  if g.input[0].repairing && flat(dg_player_pos(g), g.pos[r]) < g.radius[r] {
+    g.progress[r] = lo(1, g.progress[r] + dt / 2.5);
+  }
+  support_repair(g, r, dt);
+  if g.progress[r] >= 1 {
+    g.st[0].repairs += 1;
+    emit(g, Event.{kind = EV_REPAIRED, n = g.st[0].repairs});
+    if g.st[0].repairs == 3 {
+      g.st[0].phase = WON;
+      emit(g, Event.{kind = EV_ENDED, flag = true});
+    } else {
+      start_wave(g, false);
+    }
+  }
+}
+
+fire_system :: (g: Game, dt: f32) {
+  if !g.st[0].skip && g.input[0].firing { dg_fire(g); }
+}
+
+mutant_system :: (g: Game, dt: f32) {
+  if g.st[0].skip { return; }
+  p := dg_player_pos(g);
+  firing := g.input[0].firing;
+  // The mutants in spawn order, so pushing apart plays the same after a load.
+  order: [DG_CAP] int; n := 0;
+  for i: 0..<ecs_high(g.e) {
+    if !alive_mutant(g, i) { continue; }
+    k := n;
+    while k > 0 && g.mutant[order[k - 1]].seq > g.mutant[i].seq { order[k] = order[k - 1]; k -= 1; }
+    order[k] = i;
+    n += 1;
+  }
+  for o: 0..<n {
+    i := order[o];
+    m := g.mutant[i];
+    e := g.pos[i];
+    m.flash = hi(0, m.flash - dt);
+    m.attack -= dt;
+    if m.air > 0 { m.air = hi(0, m.air - dt * 3.5); g.mutant[i] = m; continue; }
+    if m.stun > 0 { m.stun = hi(0, m.stun - dt); g.mutant[i] = m; continue; }
+    m.lunge = hi(0, m.lunge - dt);
+    d := flat(e, p);
+    g.yaw[i] = atan2(p.x - e.x, p.z - e.z);
+    if m.kind == HOUND && d > 1.8 && d < 5 && m.attack <= 0 { m.lunge = 0.4; m.attack = 1.5; }
+    if d > 1.2 {
+      speed := m.speed * (ifx m.severed then 0.38f32 else 1.0f32) * (ifx m.lunge > 0 then 2.0f32 else 1.0f32);
+      x := p.x - e.x; z := p.z - e.z;
+      // Round the covers on the walking grid when they stand between.
+      to := nav_head_for(g.nav, g.arena, 0, e, p);
+      if to.x != p.x || to.z != p.z {
+        x = to.x - e.x; z = to.z - e.z;
+        g.yaw[i] = atan2(x, z);
+      } else if m.kind == HOUND && d > 4 {
+        x += cos(g.st[0].time + f32(m.seq)) * 1.4;
+        z += sin(g.st[0].time + f32(m.seq)) * 1.4;
+      }
+      l := sqrt(x * x + z * z);
+      if l == 0 { l = 1; }
+      g.mutant[i] = m;
+      walk_body(g, i, x / l * speed * dt, z / l * speed * dt, mutant_radius(m));
+      e = g.pos[i];
+    }
+    if d < 1.6 && m.attack <= 0 {
+      m.attack = ifx m.kind == SKITTER then 0.8f32 else 1.2f32;
+      g.mutant[i] = m;
+      dg_damage(g, m.damage * (ifx g.st[0].cover && !firing then 0.35f32 else 1.0f32), e);
+    } else if m.kind == BRUTE && d < 19 && m.attack <= 0 && !dg_wall_ray(g, e, p) {
+      m.attack = 2.8;
+      g.mutant[i] = m;
+      b := dg_spawn_bolt(g, e, v3((p.x - e.x) / d * 7, 0, (p.z - e.z) / d * 7));
+      emit(g, Event.{kind = EV_BOLT_FIRED, at = v3(e.x, 1, e.z)});
+    } else {
+      g.mutant[i] = m;
+    }
+  }
+}
+
+bolt_system :: (g: Game, dt: f32) {
+  if g.st[0].skip { return; }
+  p := dg_player_pos(g);
+  firing := g.input[0].firing;
+  for i: 0..<ecs_high(g.e) {
+    if !ecs_match(g.e, i, C_BOLT | C_POS | C_VEL, 0) { continue; }
+    g.bolt[i] -= dt;
+    // Swept (#80), as thrown cargo is: a 0.1 m sphere along the step's
+    // motion, so a fast bolt cannot pass through thin cover between two
+    // steps. It stops where it meets them, unless it meets you first.
+    from := g.pos[i]; v := g.vel[i];
+    motion := v3(v.x * dt, 0, v.z * dt);
+    t := arena_sweep(g.arena, v3(from.x, 0.11, from.z), 0.1, motion);
+    wall := t <= 1;
+    k := ifx wall then t else 1.0f32;
+    end := v3(from.x + motion.x * k, from.y, from.z + motion.z * k);
+    if segment_distance(from, end, p) < 0.6 {
+      g.pos[i] = end;
+      emit(g, Event.{kind = EV_BOLT_STRUCK, at = end, flag = true});
+      dg_damage(g, ifx g.st[0].cover && !firing then 4.0f32 else 17.0f32, end);
+      ecs_destroy(g.e, ecs_at(g.e, i));
+      continue;
+    }
+    g.pos[i] = end;
+    if wall {
+      emit(g, Event.{kind = EV_BOLT_STRUCK, at = end, flag = false});
+      ecs_destroy(g.e, ecs_at(g.e, i));
+      continue;
+    }
+    if g.bolt[i] <= 0 { ecs_destroy(g.e, ecs_at(g.e, i)); }
+  }
+}
+
+// The support engineer keeps near you and, while it sees a mutant, gets
+// behind cover from it, walking round the covers on the grid.
+move_support :: (g: Game, dt: f32) {
+  ally := dg_support(g);
+  if ally == ECS_NONE { return; }
+  i := slot_of(ally);
+  a := g.pos[i]; p := dg_player_pos(g);
+  threat := v3(0, 0, 0);
+  nearest: f32 = 17;
+  sees := false;
+  for j: 0..<ecs_high(g.e) {
+    if !ecs_match(g.e, j, C_MUTANT | C_POS | C_HEALTH, 0) { continue; }
+    d := flat(g.pos[j], a);
+    if g.hp[j] != 0 && g.mutant[j].part < 0 && d < nearest && !dg_wall_ray(g, a, g.pos[j]) { nearest = d; threat = g.pos[j]; sees = true; }
+  }
+  goal: [1] Point; goal[0] = a;
+  if !(sees && nav_find_cover(g.nav, g.arena, a, p, threat, 5, goal[..])) && flat(a, p) > 3.5 {
+    l := flat(a, p);
+    goal[0] = v3(p.x + (a.x - p.x) / l * 2.5, 0, p.z + (a.z - p.z) / l * 2.5);
+  }
+  walk_support(g, i, goal[0], dt);
+  if sees { g.yaw[i] = atan2(threat.x - g.pos[i].x, threat.z - g.pos[i].z); }
+}
+
+support_system :: (g: Game, dt: f32) {
+  if g.st[0].skip { return; }
+  move_support(g, dt);
+  g.st[0].ally_time -= dt;
+  if g.st[0].ally_time > 0 { return; }
+  g.st[0].ally_time = 1.7;
+  ally := dg_support(g);
+  if ally == ECS_NONE { return; }
+  a := g.pos[slot_of(ally)];
+  best := ECS_NONE; best_d: f32 = 1000000000;
+  for j: 0..<ecs_high(g.e) {
+    if !ecs_match(g.e, j, C_MUTANT | C_POS | C_HEALTH, 0) { continue; }
+    d := flat(g.pos[j], a);
+    if g.hp[j] != 0 && d < 17 && d < best_d && !dg_wall_ray(g, a, g.pos[j]) { best = ecs_at(g.e, j); best_d = d; }
+  }
+  if best != ECS_NONE {
+    to := g.pos[slot_of(best)];
+    add_beam(g, v3(a.x, 1.4, a.z), v3(to.x, 1.1, to.z), 0.12, true);
+    dg_hit(g, best, 14);
+  }
+}
+
+// Runs system id for one fixed step of dt.
+dg_run :: (g: Game, id: int, dt: f32) {
+  if id == S_CLOCK { clock_system(g, dt); }
+  else if id == S_CARGO { cargo_system(g, dt); }
+  else if id == S_WEAPON { weapon_system(g, dt); }
+  else if id == S_REPAIR { repair_system(g, dt); }
+  else if id == S_FIRE { fire_system(g, dt); }
+  else if id == S_MUTANTS { mutant_system(g, dt); }
+  else if id == S_BOLTS { bolt_system(g, dt); }
+  else if id == S_SUPPORT { support_system(g, dt); }
+}
+
+// ---- frames
+
+// A frame begins: the event log and the systems' frame times start again,
+// and the clock says how many fixed steps the frame covers (returned).
+dg_frame_begin :: (g: Game, frame_dt: f32) -> int {
+  g.ev[0] = 0; g.ev[1] = 0;
+  ecs_stats_frame(g.stats);
+  g.clock[0] = ecs_clock_frame(g.clock[0], frame_dt);
+  return g.clock[0].steps;
+}
+dg_step_end :: (g: Game) { ecs_flush(g.e); }
+dg_frame_end :: (g: Game) { ecs_flush(g.e); ecs_stats_end(g.stats); }
+
+// One frame, untimed: every fixed step runs every system, then flushes.
+dg_frame :: (g: Game, frame_dt: f32) {
+  steps := dg_frame_begin(g, frame_dt);
+  for s: 0..<steps {
+    for id: 0..<DG_SYSTEMS { dg_run(g, id, g.clock[0].dt); }
+    dg_step_end(g);
+  }
+  dg_frame_end(g);
+}
+
+// ---- setup
+
+build_arena :: (g: Game) {
+  a := arena_hull();
+  for i: 0..<ecs_high(g.e) {
+    if !ecs_match(g.e, i, C_COVER | C_POS, 0) { continue; }
+    c := g.cover[i];
+    a = arena_cover(a, g.pos[i].x, g.pos[i].z, c.w, c.d, c.h);
+  }
+  g.arena[0] = a;
+  nav_bake(g.nav, g.arena);
+}
+
+// Starts over: wave 1, full health and ammo (you stay where you are).
+dg_reset :: (g: Game) {
+  keep := dg_player_pos(g);
+  me := dg_player(g);
+  yaw := ifx me == ECS_NONE then 0.0f32 else g.yaw[slot_of(me)];
+  destroy_all(g, true, C_BEAM);
+  g.st[0] = State.{};
+  if me != ECS_NONE {
+    g.hp[slot_of(me)] = 100; g.hurt_at[slot_of(me)] = -100;
+    g.pos[slot_of(me)] = keep; g.yaw[slot_of(me)] = yaw;
+  }
+  start_wave(g, true);
+  ecs_flush(g.e);
+}
+
+// The arena, you, the support engineer and the reactor, and the first wave.
+dg_setup :: (g: Game) {
+  ecs_clear(g.e);
+  for i: 0..<g.e.free.count { g.e.free[i] = 0; }
+  g.st[0] = State.{};
+  g.input[0] = Input.{};
+  g.clock[0] = Clock.{};
+  g.ev[0] = 0; g.ev[1] = 0;
+  g.stats.n[0] = 0;
+  for k: 0..<DG_SYSTEMS { id := ecs_system(g.stats, SYSTEM_NAMES[k], ECS_FIXED); }
+  for c: 0..<7 {
+    e := new_entity(g, C_POS | C_COVER);
+    if e == ECS_NONE { continue; }
+    g.pos[slot_of(e)] = v3(COVERS[c * 5], 0, COVERS[c * 5 + 1]);
+    g.cover[slot_of(e)] = Cover.{w = COVERS[c * 5 + 2], d = COVERS[c * 5 + 3], h = COVERS[c * 5 + 4]};
+  }
+  build_arena(g);
+  me := new_entity(g, C_POS | C_HEALTH | C_TEAM | C_ENGINEER);
+  if me != ECS_NONE { g.pos[slot_of(me)] = v3(0, 0, 9); g.yaw[slot_of(me)] = f32(PI); g.team[slot_of(me)] = TEAM_PLAYER; }
+  ally := new_entity(g, C_POS | C_TEAM | C_SUPPORT);
+  if ally != ECS_NONE { g.pos[slot_of(ally)] = v3(-2.2, 0, 8); g.yaw[slot_of(ally)] = f32(PI); g.team[slot_of(ally)] = TEAM_ALLY; }
+  r := new_entity(g, C_POS | C_USE | C_REACTOR);
+  if r != ECS_NONE { g.pos[slot_of(r)] = v3(0, 0, -17); g.radius[slot_of(r)] = 3; }
+  dg_reset(g);
+}
+
+// ---- saving: a fight is its Store, so a save is a copy and plays on
+// exactly as the original (the walking grid and its flows are pure
+// functions of the boxes and goals, and copied with it).
+
+dg_copy :: (from: Game, to: Game) {
+  for i: 0..<from.e.gen.count {
+    to.e.gen[i] = from.e.gen[i]; to.e.live[i] = from.e.live[i]; to.e.mask[i] = from.e.mask[i];
+    to.e.dropping[i] = from.e.dropping[i]; to.e.doomed[i] = from.e.doomed[i]; to.e.free[i] = from.e.free[i];
+    to.pos[i] = from.pos[i]; to.yaw[i] = from.yaw[i]; to.scale[i] = from.scale[i]; to.vel[i] = from.vel[i];
+    to.hp[i] = from.hp[i]; to.hp_max[i] = from.hp_max[i]; to.hurt_at[i] = from.hurt_at[i]; to.team[i] = from.team[i];
+    to.ttl[i] = from.ttl[i]; to.mutant[i] = from.mutant[i]; to.cover[i] = from.cover[i]; to.cargo[i] = from.cargo[i];
+    to.bolt[i] = from.bolt[i]; to.beam[i] = from.beam[i]; to.radius[i] = from.radius[i]; to.progress[i] = from.progress[i];
+  }
+  for i: 0..<from.e.n.count { to.e.n[i] = from.e.n[i]; }
+  to.st[0] = from.st[0]; to.input[0] = from.input[0]; to.clock[0] = from.clock[0];
+  to.arena[0] = from.arena[0]; to.nav[0] = from.nav[0];
+}
+
+same_point :: (a: Point, b: Point) -> bool { return a.x == b.x && a.y == b.y && a.z == b.z; }
+same_mutant :: (a: Mutant, b: Mutant) -> bool {
+  return a.kind == b.kind && a.speed == b.speed && a.size == b.size && a.damage == b.damage && a.head_hp == b.head_hp &&
+         a.severed == b.severed && a.headless == b.headless && a.attack == b.attack && a.flash == b.flash &&
+         a.stun == b.stun && a.lunge == b.lunge && a.air == b.air && a.part == b.part && a.seq == b.seq;
+}
+same_state :: (a: State, b: State) -> bool {
+  return a.time == b.time && a.ammo == b.ammo && a.reserve == b.reserve && a.reload == b.reload && a.cooldown == b.cooldown &&
+         a.cover == b.cover && a.mode == b.mode && a.wave == b.wave && a.repairs == b.repairs && a.kills == b.kills &&
+         a.paused == b.paused && a.phase == b.phase && a.psi == b.psi && a.power_at == b.power_at &&
+         a.stun_cooldown == b.stun_cooldown && a.pulse == b.pulse && a.ally_time == b.ally_time && a.held == b.held &&
+         a.next_seq == b.next_seq;
+}
+
+// Two fights are the same: the State and every live entity, field by field.
+dg_same :: (a: Game, b: Game) -> bool {
+  if !same_state(a.st[0], b.st[0]) || ecs_high(a.e) != ecs_high(b.e) || ecs_count(a.e) != ecs_count(b.e) { return false; }
+  for i: 0..<ecs_high(a.e) {
+    if a.e.live[i] != b.e.live[i] { return false; }
+    if !a.e.live[i] { continue; }
+    if a.e.gen[i] != b.e.gen[i] || a.e.mask[i] != b.e.mask[i] { return false; }
+    if !same_point(a.pos[i], b.pos[i]) || a.yaw[i] != b.yaw[i] || !same_point(a.vel[i], b.vel[i]) { return false; }
+    if a.hp[i] != b.hp[i] || a.hurt_at[i] != b.hurt_at[i] || a.ttl[i] != b.ttl[i] || a.bolt[i] != b.bolt[i] { return false; }
+    if !same_mutant(a.mutant[i], b.mutant[i]) || a.progress[i] != b.progress[i] { return false; }
+    if a.cargo[i].kind != b.cargo[i].kind || a.cargo[i].held != b.cargo[i].held || a.cargo[i].thrown != b.cargo[i].thrown { return false; }
+  }
+  return true;
+}
+
+// ---- the C face's calls: a host holds one Store and passes it as a view
+
+verse_dg_setup :: (s: [] Store) #export_c { dg_setup(dg_bind(s)); }
+verse_dg_input :: (s: [] Store, px: f32, pz: f32, firing: bool, repairing: bool, ax: f32, az: f32) #export_c {
+  g := dg_bind(s);
+  me := dg_player(g);
+  if me != ECS_NONE { g.pos[slot_of(me)] = v3(px, 0, pz); }
+  g.input[0] = Input.{aim_x = ax, aim_z = az, firing = firing, repairing = repairing};
+}
+// n more mutants, laid out as the 200-mutant check lays them out.
+verse_dg_spawn_crowd :: (s: [] Store, n: int) #export_c {
+  g := dg_bind(s);
+  for k: 0..<n { e := dg_spawn_mutant(g, k % TYPES, -14 + f32(k % 28), -20 + f32(k / 28) * 0.5, -1); }
+}
+verse_dg_frame :: (s: [] Store, frame_dt: f32) #export_c { dg_frame(dg_bind(s), frame_dt); }
+verse_dg_frame_begin :: (s: [] Store, frame_dt: f32) -> int #export_c { return dg_frame_begin(dg_bind(s), frame_dt); }
+verse_dg_run :: (s: [] Store, id: int) #export_c { g := dg_bind(s); dg_run(g, id, g.clock[0].dt); }
+verse_dg_step_end :: (s: [] Store) #export_c { dg_step_end(dg_bind(s)); }
+verse_dg_frame_end :: (s: [] Store) #export_c { dg_frame_end(dg_bind(s)); }
+verse_dg_timed :: (s: [] Store, id: int, ms: f64) #export_c { ecs_stats_add(dg_bind(s).stats, id, ms); }
+verse_dg_systems :: () -> int #export_c { return DG_SYSTEMS; }
+verse_dg_alive :: (s: [] Store) -> int #export_c { return dg_alive_mutants(dg_bind(s)); }
+verse_dg_entities :: (s: [] Store) -> int #export_c { return ecs_count(dg_bind(s).e); }
+verse_dg_phase :: (s: [] Store) -> int #export_c { return s[0].st[0].phase; }
+
+// ---- checks: every check of the demo's tests/dead-gears-test.cpp
+
+ME :: Point.{x = 0, y = 0, z = 9};
+
+tick :: (g: Game, p: Point, firing: bool, repairing: bool, ax: f32, az: f32, dt: f32) {
+  g.pos[slot_of(dg_player(g))] = p;
+  g.input[0] = Input.{aim_x = ax, aim_z = az, firing = firing, repairing = repairing};
+  dg_frame(g, dt);
+}
+tk :: (g: Game, p: Point) { tick(g, p, false, false, 0, -1, 0.05); }
+place :: (g: Game, p: Point, ax: f32, az: f32) {
+  g.pos[slot_of(dg_player(g))] = p;
+  g.input[0].aim_x = ax; g.input[0].aim_z = az;
+}
+// The n-th mutant (slot order), or ECS_NONE.
+nth_mutant :: (g: Game, n: int) -> int {
+  k := 0;
+  for i: 0..<ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) { if k == n { return ecs_at(g.e, i); } k += 1; } }
+  return ECS_NONE;
+}
+clear_mutants :: (g: Game) {
+  for i: 0..<ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) { ecs_destroy_now(g.e, ecs_at(g.e, i)); } }
+}
+kill_all :: (g: Game) {
+  for i: 0..<ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) { dg_hit(g, ecs_at(g.e, i), 999); } }
+}
+dist_to :: (g: Game, e: int, p: Point) -> f32 { return flat(g.pos[slot_of(e)], p); }
+// The first live mutant you can see, as the demo's tests aimed.
+visible :: (g: Game, p: Point) -> int {
+  for i: 0..<ecs_high(g.e) { if alive_mutant(g, i) && !dg_wall_ray(g, p, g.pos[i]) { return ecs_at(g.e, i); } }
+  return ECS_NONE;
+}
+fight_wave :: (g: Game, p: Point) -> int {
+  most := 0;
+  for k: 0..<2400 {
+    if g.st[0].phase != FIGHT { break; }
+    e := visible(g, p);
+    if e != ECS_NONE { tick(g, p, true, false, g.pos[slot_of(e)].x - p.x, g.pos[slot_of(e)].z - p.z, 0.05); }
+    else { tk(g, p); }
+    if dg_mutants(g) > most { most = dg_mutants(g); }
+  }
+  return most;
+}
+repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -1, 0.05); } }
+
+#test "waves and severing" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  #assert dg_mutants(g) == 5;
+  kinds: [5] bool; distinct := 0;
+  for n: 0..<5 {
+    e := nth_mutant(g, n);
+    if !kinds[g.mutant[slot_of(e)].kind] { kinds[g.mutant[slot_of(e)].kind] = true; distinct += 1; }
+    #assert !dg_blocked(g, g.pos[slot_of(e)].x, g.pos[slot_of(e)].z, 0.3);
+  }
+  #assert distinct == 4;
+  brute := nth_mutant(g, 0);
+  b := slot_of(brute);
+  #assert g.mutant[b].kind == BRUTE;
+  g.pos[b] = v3(0, 0, 0);
+  place(g, ME, 0, -1);
+  dg_fire(g);
+  #assert g.mutant[b].severed && g.hp[b] == 150;
+  before := g.pos[b].z;
+  tk(g, ME);
+  #assert g.pos[b].z - before <= 1 * 0.38 * 0.05 + 0.0001;
+  g.st[0].cooldown = 0;
+  g.st[0].mode = CORE;
+  hp := g.hp[b];
+  dg_fire(g);
+  #assert g.hp[b] == hp - 40;
+}
+
+#test "ammo, reload, cover and pause" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  place(g, ME, 0, 1);
+  g.st[0].ammo = 1;
+  dg_fire(g);
+  #assert g.st[0].ammo == 0;
+  g.st[0].cooldown = 0;
+  dg_fire(g);
+  #assert g.st[0].reload > 0;
+  for k: 0..<30 { tk(g, ME); }
+  #assert g.st[0].ammo == 12 && g.st[0].reserve == 60;
+  place(g, ME, 0, -1);
+  #assert !dg_toggle_cover(g);
+  place(g, v3(-5, 0, 4.5), 0, -1);
+  #assert dg_toggle_cover(g);
+  #assert dg_wall_ray(g, v3(8, 0, -16), v3(8, 0, -8));
+  #assert !dg_wall_ray(g, v3(4, 0, -8), v3(4, 0, -2));   // low cover permits peeking
+  g.st[0].paused = true;
+  copy: [1] Store; c := dg_bind(copy[..]);
+  dg_copy(g, c);
+  tick(g, v3(-5, 0, 4.5), true, false, 0, -1, 100);
+  #assert dg_same(g, c);
+}
+
+#test "waves, repairs and loss" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  for wave: 1..<4 {
+    #assert g.st[0].wave == wave;
+    kill_all(g);
+    #assert g.st[0].phase == REPAIR;
+    tick(g, ME, false, true, 0, -1, 0.05);
+    #assert dg_repair_progress(g) == 0;   // too far from the reactor
+    repair(g);
+  }
+  #assert g.st[0].phase == WON && g.st[0].repairs == 3;
+  dg_reset(g);
+  dg_damage(g, 100, v3(0, 0, 0));
+  #assert g.st[0].phase == LOST;
+  kill_all(g);
+  #assert g.st[0].phase == LOST;   // ally fire cannot overwrite a loss
+  dg_reset(g);
+  #assert g.st[0].phase == FIGHT && dg_health(g) == 100;
+}
+
+#test "a shooting run clears a wave" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  most := fight_wave(g, ME);
+  #assert g.st[0].phase == REPAIR && g.st[0].kills == 5 && dg_health(g) > 0;
+}
+
+#test "three waves to victory" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  for wave: 0..<3 {
+    most := fight_wave(g, ME);
+    #assert g.st[0].phase == REPAIR;
+    repair(g);
+  }
+  #assert g.st[0].phase == WON && g.st[0].kills == 21;
+}
+
+#test "a headshot drops a reaver's head and claw, which crawl on" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 100;
+  clear_mutants(g);
+  parent := dg_spawn_mutant(g, REAVER, 0, 3, -1);
+  g.st[0].mode = HEAD;
+  place(g, ME, 0, -1);
+  dg_fire(g);
+  p := slot_of(parent);
+  #assert g.hp[p] == 0 && g.mutant[p].headless && g.st[0].phase == FIGHT;
+  parts: [2] int; n := 0;
+  for i: 0..<ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) && g.mutant[i].kind == SKITTER { #assert n < 2; parts[n] = ecs_at(g.e, i); n += 1; } }
+  #assert n == 2;
+  for k: 0..<2 { q := slot_of(parts[k]); #assert g.mutant[q].air > 0 && !dg_blocked(g, g.pos[q].x, g.pos[q].z, 0.15); }
+  count := dg_mutants(g);
+  dg_head_hit(g, parent);
+  #assert dg_mutants(g) == count;
+  before: [2] f32;
+  for k: 0..<2 { before[k] = dist_to(g, parts[k], ME); }
+  for k: 0..<30 { tk(g, ME); }
+  for k: 0..<2 { #assert g.mutant[slot_of(parts[k])].air == 0 && dist_to(g, parts[k], ME) < before[k]; }
+  dg_hit(g, parts[0], 999);
+  #assert g.st[0].phase == FIGHT;
+  dg_hit(g, parts[1], 999);
+  #assert g.st[0].phase == REPAIR;
+}
+
+#test "an animal's headshot kills it outright" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  clear_mutants(g);
+  hound := dg_spawn_mutant(g, HOUND, 0, 2, -1);
+  dg_head_hit(g, hound);
+  #assert g.hp[slot_of(hound)] == 0 && dg_mutants(g) == 1 && g.st[0].phase == REPAIR;
+}
+
+#test "lift and throw" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 100;
+  clear_mutants(g);
+  brute := dg_spawn_mutant(g, BRUTE, 0, 1, -1);
+  b := slot_of(brute);
+  g.mutant[b].attack = 100;
+  place(g, ME, 0, -1);
+  #assert dg_lift(g);
+  #assert g.st[0].psi == 85;
+  object := g.st[0].held;
+  o := slot_of(object);
+  #assert g.cargo[o].held;
+  tk(g, v3(1, 0, 9));
+  #assert g.pos[o].x == 1 && g.pos[o].z == 7 && g.pos[o].y > 1.6;
+  tk(g, ME);
+  #assert dg_throw_held(g);
+  #assert !dg_held_alive(g) && g.cargo[o].thrown;
+  for k: 0..<30 { if !g.cargo[o].thrown { break; } tk(g, ME); }
+  #assert g.hp[b] == 80 && g.mutant[b].stun > 0 && !g.cargo[o].thrown;
+  #assert finite3(g.pos[o]);
+}
+
+#test "stun, and pause freezes everything" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 100;
+  clear_mutants(g);
+  hound := dg_spawn_mutant(g, HOUND, 0, 3, -1);
+  h := slot_of(hound);
+  g.mutant[h].lunge = 0.4;
+  place(g, ME, 0, -1);
+  #assert dg_stun(g);
+  #assert g.st[0].psi == 65 && g.mutant[h].lunge == 0;
+  #assert !dg_stun(g);
+  z := g.pos[h].z;
+  for k: 0..<20 { tk(g, ME); }
+  #assert g.pos[h].z == z && dg_health(g) == 100;
+  g.st[0].paused = true;
+  copy: [1] Store; c := dg_bind(copy[..]);
+  dg_copy(g, c);
+  tick(g, ME, false, false, 0, -1, 100);
+  #assert dg_same(g, c);
+  #assert !dg_lift(g);
+  g.st[0].paused = false;
+  for k: 0..<90 { tk(g, ME); }
+  #assert g.mutant[h].stun == 0 && g.st[0].psi > 65 && g.st[0].psi <= 100;
+}
+
+#test "failed grabs cost nothing" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  place(g, v3(0, 0, 12), 0, 1);
+  #assert !dg_lift(g) && g.st[0].psi == 100;
+  place(g, ME, 0, -1);
+  g.st[0].psi = 10;
+  #assert !dg_lift(g) && !dg_stun(g) && !dg_held_alive(g);
+}
+
+#test "a headshot playthrough has no cap on mutants" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].mode = HEAD;
+  g.st[0].ally_time = 1000;
+  most := 0;
+  for wave: 0..<3 {
+    m := fight_wave(g, ME);
+    if m > most { most = m; }
+    #assert g.st[0].phase == REPAIR;
+    repair(g);
+  }
+  #assert g.st[0].phase == WON && g.st[0].kills > 21;
+}
+
+spawn_crowd :: (g: Game) {
+  for k: 0..<200 { e := dg_spawn_mutant(g, k % TYPES, -14 + f32(k % 28), -20 + f32(k / 28) * 0.5, -1); }
+}
+
+#test "no fixed caps: 205 mutants at once" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  spawn_crowd(g);
+  #assert dg_alive_mutants(g) == 205;
+  tk(g, ME);
+  #assert dg_mutants(g) == 205;
+}
+
+#test "200 mutants closing in while you fire: the same start plays the same" {
+  sa: [1] Store; a := dg_bind(sa[..]); dg_setup(a);
+  sb: [1] Store; b := dg_bind(sb[..]); dg_setup(b);
+  spawn_crowd(a); spawn_crowd(b);
+  for k: 0..<20 { tick(a, ME, true, false, 0, -1, 1.0 / 60); tick(b, ME, true, false, 0, -1, 1.0 / 60); }
+  #assert dg_same(a, b) && dg_alive_mutants(a) > 150;
+}
+
+#test "events reach the HUD" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  b := slot_of(nth_mutant(g, 0));
+  g.pos[b] = v3(0, 0, 0);
+  tick(g, ME, true, false, 0, -1, 0.05);
+  shots := 0; hits := 0;
+  for i: 0..<g.ev[0] { if g.events[i].kind == EV_SHOT { shots += 1; if g.events[i].flag { hits += 1; } } }
+  #assert shots == 1 && hits == 1 && dg_events(g, EV_SHOT) == 1;
+}
+
+// Mutants walk round the cover between them and you, never into it.
+#test "mutants path round cover" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  clear_mutants(g);
+  // Behind the tall cover at (-8, -12) (2 x 3 m, 1.6 m high), you in front.
+  me := v3(-8, 0, -8.4);
+  e := dg_spawn_mutant(g, REAVER, -8, -15.4, -1);
+  reached := false; inside := false;
+  frames := 0;
+  while frames < 200 && !reached {
+    tk(g, me);
+    frames += 1;
+    if !ecs_alive(g.e, e) { break; }
+    reached = dist_to(g, e, me) < 1.7;
+    if dg_blocked(g, g.pos[slot_of(e)].x, g.pos[slot_of(e)].z, 0.05) { inside = true; }
+  }
+  #assert reached && !inside;
+  #assert f32(frames) * 0.05 < 7;   // about 8 m round at 1.65 m/s
+}
+
+// The support engineer follows you, and gets behind cover from a mutant it sees.
+#test "the support engineer follows and takes cover" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  clear_mutants(g);
+  ally := dg_support(g);
+  for k: 0..<80 { tk(g, v3(8, 0, 6)); }
+  #assert dist_to(g, ally, v3(8, 0, 6)) < 3.6;
+  me := v3(-5, 0, 6);
+  m := dg_spawn_mutant(g, REAVER, -5, -4, -1);
+  for k: 0..<80 { g.mutant[slot_of(m)].stun = 10; tk(g, me); }
+  a := g.pos[slot_of(ally)]; t := g.pos[slot_of(m)];
+  #assert !arena_sight(g.arena, v3(t.x, 1.3, t.z), v3(a.x, 1.0, a.z));
+  #assert dist_to(g, ally, me) < 6;
+}
+
+// After a wave the support engineer walks to the reactor, round the covers,
+// and repairs beside you; alone it finishes the repair. A save mid-repair
+// plays on exactly as the original (#39).
+#test "the support engineer repairs" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  kill_all(g);
+  #assert g.st[0].phase == REPAIR;
+  ally := dg_support(g);
+  inside := false;
+  frames := 0;
+  while frames < 400 && !dg_support_repairing(g) {
+    tk(g, ME);
+    frames += 1;
+    if dg_blocked(g, g.pos[slot_of(ally)].x, g.pos[slot_of(ally)].z, 0.05) { inside = true; }
+  }
+  #assert dg_support_repairing(g) && !inside;
+  #assert f32(frames) * 0.05 < 12;   // about 26 m, jogging then walking
+  #assert dist_to(g, ally, dg_reactor_pos(g)) < 3;
+  before := dg_repair_progress(g);
+  for k: 0..<20 { tk(g, ME); }
+  #assert dg_repair_progress(g) > before + 0.1 && dg_repair_progress(g) < before + 0.2;   // a third of your speed
+  sb: [1] Store; b := dg_bind(sb[..]);
+  dg_copy(g, b);
+  for k: 0..<40 { tk(g, ME); tk(b, ME); }
+  #assert dg_same(g, b) && dg_support_repairing(b);
+  for k: 0..<200 { if g.st[0].wave != 1 { break; } tk(g, ME); }
+  #assert g.st[0].wave == 2 && g.st[0].repairs == 1 && !dg_support_repairing(g);
+  // With you at the reactor too it goes faster than you alone (2.5 s).
+  sh: [1] Store; h := dg_bind(sh[..]); dg_setup(h);
+  kill_all(h);
+  for k: 0..<400 { if dg_support_repairing(h) { break; } tk(h, ME); }
+  ticks := 0;
+  while ticks < 60 && h.st[0].wave == 1 { tick(h, v3(0, 0, -14.2), false, true, 0, -1, 0.05); ticks += 1; }
+  #assert h.st[0].repairs == 1 && ticks < 50;
+}
+
+// Mutants are character bodies (#19): a crowd closing on you keeps apart
+// and never stands inside you, and a save mid-fight plays on exactly.
+#test "mutants keep apart" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  clear_mutants(g);
+  g.st[0].ally_time = 1000000000;   // the support engineer holds its fire
+  me := v3(0, 0, 6);
+  for k: 0..<8 {
+    e := dg_spawn_mutant(g, ifx k % 2 == 1 then REAVER else CRAWLER, -3 + f32(k) * 0.1, -1 + f32(k % 3) * 0.05, -1);
+    g.mutant[slot_of(e)].attack = 1000000000;   // they close in but do not hit
+  }
+  closest: f32 = 1000000000; near_you: f32 = 1000000000;
+  for f: 0..<160 {
+    tk(g, me);
+    for i: 0..<ecs_high(g.e) {
+      if !ecs_match(g.e, i, C_MUTANT, 0) { continue; }
+      near_you = lo(near_you, flat(g.pos[i], me));
+      if f > 20 { for j: i + 1..<ecs_high(g.e) { if ecs_match(g.e, j, C_MUTANT, 0) { closest = lo(closest, flat(g.pos[i], g.pos[j])); } } }
+    }
+  }
+  #assert closest > f32(REACH) - 0.05;
+  #assert near_you > f32(REACH) - 0.05;
+  for i: 0..<ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) { #assert flat(g.pos[i], me) < 4; } }   // still round you
+  sb: [1] Store; b := dg_bind(sb[..]);
+  dg_copy(g, b);
+  for k: 0..<40 { tk(g, me); tk(b, me); }
+  #assert dg_same(g, b);
+}
+
+// A throw too fast to step through cover is swept (#19): it stops at the
+// cover's face rather than passing through it.
+#test "a fast throw meets cover" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  clear_mutants(g);
+  crate := slot_of(ecs_first(g.e, C_CARGO));
+  g.cargo[crate].thrown = true;
+  // The low cover at (-5, 3) spans z 2.35 .. 3.65; 300 m/s is 5 m a step.
+  g.pos[crate] = v3(-5, 0.6, 5);
+  g.vel[crate] = v3(0, 0, -300);
+  tk(g, v3(-5, 0, 6));
+  #assert g.pos[crate].z > 3.65;
+}
+
+#forall "a thrown crate never passes through cover, however fast and from wherever" k: 0..<24 {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  clear_mutants(g);
+  crate := slot_of(ecs_first(g.e, C_CARGO));
+  g.cargo[crate].thrown = true;
+  speed := 20 + f32(k) * 40;
+  x := -6.4 + f32(k % 6) * 0.55;
+  g.pos[crate] = v3(x, 0.4 + f32(k % 4) * 0.15, 5);
+  g.vel[crate] = v3(0, 0, -speed);
+  for f: 0..<6 { tk(g, v3(9, 0, 9)); #assert g.pos[crate].z > 3.65 + 0.19 || g.pos[crate].y > 1.15; }
+}
+
+// A brute's bolt is swept too (#80): one too fast to step through cover
+// stops at the cover's face and does not reach you behind it.
+#test "a fast bolt meets cover" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  clear_mutants(g);
+  // The low cover at (-5, 3) spans z 2.35 .. 3.65; you stand behind it.
+  me := v3(-5, 0, 1);
+  b := dg_spawn_bolt(g, v3(-5, 1, 6), v3(0, 0, -300));   // 5 m a step
+  hp := dg_health(g);
+  tk(g, me);
+  struck := 0; wall := 0;
+  for i: 0..<g.ev[0] { if g.events[i].kind == EV_BOLT_STRUCK { if g.events[i].flag { struck += 1; } else { wall += 1; } } }
+  #assert !ecs_alive(g.e, b);
+  #assert wall == 1 && struck == 0;
+  #assert dg_health(g) == hp;
+  // In the open the same bolt meets you, even passing you within a step.
+  sh: [1] Store; h := dg_bind(sh[..]); dg_setup(h);
+  clear_mutants(h);
+  c := dg_spawn_bolt(h, v3(8, 1, 10), v3(0, 0, -300));
+  tk(h, v3(8, 0, 6));
+  hits := 0;
+  for i: 0..<h.ev[0] { if h.events[i].kind == EV_BOLT_STRUCK && h.events[i].flag { hits += 1; } }
+  #assert hits == 1 && !ecs_alive(h.e, c);
+}
+
+#forall "a bolt never reaches you through cover, whatever its speed" k: 0..<20 {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  clear_mutants(g);
+  me := v3(-5.6 + f32(k % 5) * 0.3, 0, 1.4);
+  b := dg_spawn_bolt(g, v3(me.x, 1, 6 + f32(k % 3)), v3(0, 0, -(7 + f32(k) * 30)));
+  for f: 0..<20 { tk(g, me); }
+  #assert dg_health(g) == 100;
+}
+
+// The support engineer is a body that moves like one (#80): walking into
+// you it goes round you rather than into you, and it slides along cover.
+#test "the support engineer moves as a body" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  clear_mutants(g);
+  ally := dg_support(g);
+  me := v3(0, 0, 6);
+  g.pos[slot_of(ally)] = v3(0, 0, 9);
+  tk(g, me);
+  closest: f32 = 1000000000;
+  inside := false;
+  for k: 0..<120 {
+    tk(g, me);
+    closest = lo(closest, dist_to(g, ally, me));
+    if dg_blocked(g, g.pos[slot_of(ally)].x, g.pos[slot_of(ally)].z, 0.05) { inside = true; }
+  }
+  #assert closest > f32(REACH) - 0.05;
+  #assert !inside;
+  sb: [1] Store; b := dg_bind(sb[..]);
+  dg_copy(g, b);
+  for k: 0..<40 { tk(g, v3(6, 0, -2)); tk(b, v3(6, 0, -2)); }
+  #assert dg_same(g, b);
+}
+
+#test "a full store refuses spawns instead of overwriting" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  n := 0;
+  for k: 0..<DG_CAP { if dg_spawn_mutant(g, k % TYPES, 0, -10, -1) != ECS_NONE { n += 1; } }
+  #assert ecs_count(g.e) == DG_CAP && n < DG_CAP;
+  tk(g, ME);
+  #assert ecs_count(g.e) <= DG_CAP;
+}

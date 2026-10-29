@@ -1,0 +1,383 @@
+// A small entity system for Dead Gears (and any realm that wants one),
+// ported from aethyr-demo's src/ecs (docs/ecs.md) to what Coax has today:
+// no heap, no generics, no procedure values. So the parts are these.
+//
+// Entities are handles: a 20-bit slot index and a 12-bit generation.
+// ecs_create reuses a free slot and destroying bumps its generation, so a
+// stale handle never reaches the slot's next owner. ecs_destroy is
+// deferred: the entity stays visible until ecs_flush, so a system may
+// destroy what it is walking. ecs_remove_later defers a component removal
+// the same way.
+//
+// Components are bits in a per-slot mask. Their values live in the world's
+// own columns (views, one element per slot) that the world declares beside
+// its Entities; ecs_match says whether slot i has every bit of `all` and no
+// bit of `none`. Walking slots 0..<ecs_high in order is the ordered view
+// (saves, replays, determinism) and the only one there is.
+//
+// Systems run in the order the world calls them; ecs_clock_frame says how
+// many fixed 1/60 s steps a frame covers (capped for a stalled frame), and
+// Stats keeps each system's last and smoothed milliseconds, read off the
+// host's clock, for the stats overlay and the frame budget.
+//
+// All storage is the host's (or a test's): Entities and Stats are views,
+// so passing them copies only the views and every write reaches the store.
+//   coax/bin/coax test --library verse/deadgears/ecs.coax
+
+ECS_INDEX_BITS :: 20;
+ECS_INDEX_MASK :: 1048575;   // (1 << 20) - 1
+ECS_GEN_MASK :: 4095;        // 12 bits
+ECS_NONE :: -1;              // no entity
+
+// Slot bookkeeping. n[0] is the high-water slot count, n[1] how many slots
+// are free, n[2] how many are alive, n[3] how many are waiting to be
+// destroyed at the next flush.
+Entities :: struct {
+  gen: [] int;
+  live: [] bool;
+  mask: [] int;
+  dropping: [] int;   // component bits to clear at the next flush
+  doomed: [] bool;
+  free: [] int;       // free slot indices, a stack
+  n: [] int;
+}
+
+ecs_index :: (e: int) -> int { return e & ECS_INDEX_MASK; }
+ecs_generation :: (e: int) -> int { return (e >> ECS_INDEX_BITS) & ECS_GEN_MASK; }
+ecs_handle :: (index: int, generation: int) -> int { return ((generation & ECS_GEN_MASK) << ECS_INDEX_BITS) | index; }
+
+ecs_capacity :: (w: Entities) -> int { return w.gen.count; }
+ecs_high :: (w: Entities) -> int { return w.n[0]; }
+ecs_count :: (w: Entities) -> int { return w.n[2]; }
+
+ecs_clear :: (w: Entities) {
+  for i: 0..<w.gen.count { w.gen[i] = 0; w.live[i] = false; w.mask[i] = 0; w.dropping[i] = 0; w.doomed[i] = false; }
+  for i: 0..<w.n.count { w.n[i] = 0; }
+}
+
+ecs_alive :: (w: Entities, e: int) -> bool {
+  if e < 0 { return false; }
+  i := ecs_index(e);
+  return i < w.n[0] && w.live[i] && w.gen[i] == ecs_generation(e);
+}
+
+// The handle of the live entity in slot i, or ECS_NONE.
+ecs_at :: (w: Entities, i: int) -> int {
+  if i < 0 || i >= w.n[0] || !w.live[i] { return ECS_NONE; }
+  return ecs_handle(i, w.gen[i]);
+}
+
+// A new entity with no components, or ECS_NONE when every slot is in use.
+ecs_create :: (w: Entities) -> int {
+  i := -1;
+  if w.n[1] > 0 {
+    w.n[1] -= 1;
+    i = w.free[w.n[1]];
+  } else if w.n[0] < w.gen.count {
+    i = w.n[0];
+    w.n[0] += 1;
+    w.gen[i] = 0;
+  } else {
+    return ECS_NONE;
+  }
+  w.live[i] = true; w.mask[i] = 0; w.dropping[i] = 0; w.doomed[i] = false;
+  w.n[2] += 1;
+  return ecs_handle(i, w.gen[i]);
+}
+
+ecs_destroy_now :: (w: Entities, e: int) {
+  if !ecs_alive(w, e) { return; }
+  i := ecs_index(e);
+  if w.doomed[i] { w.n[3] -= 1; }
+  w.live[i] = false; w.mask[i] = 0; w.dropping[i] = 0; w.doomed[i] = false;
+  w.gen[i] = (w.gen[i] + 1) & ECS_GEN_MASK;
+  w.free[w.n[1]] = i;
+  w.n[1] += 1;
+  w.n[2] -= 1;
+}
+
+// Destroyed at the next ecs_flush; until then it is alive and visible.
+ecs_destroy :: (w: Entities, e: int) {
+  if !ecs_alive(w, e) { return; }
+  i := ecs_index(e);
+  if !w.doomed[i] { w.doomed[i] = true; w.n[3] += 1; }
+}
+
+ecs_pending_destroy :: (w: Entities, e: int) -> bool { return ecs_alive(w, e) && w.doomed[ecs_index(e)]; }
+
+// Destroys what was doomed and clears what was dropped, in slot order.
+ecs_flush :: (w: Entities) {
+  if w.n[3] == 0 {
+    for i: 0..<w.n[0] { if w.dropping[i] != 0 { w.mask[i] = w.mask[i] & bits_not(w.dropping[i]); w.dropping[i] = 0; } }
+    return;
+  }
+  for i: 0..<w.n[0] {
+    if w.live[i] && w.doomed[i] { ecs_destroy_now(w, ecs_handle(i, w.gen[i])); }
+    else if w.dropping[i] != 0 { w.mask[i] = w.mask[i] & bits_not(w.dropping[i]); w.dropping[i] = 0; }
+  }
+}
+
+// x with every bit flipped (Coax has no unary ~ yet): -x - 1.
+bits_not :: (x: int) -> int { return -x - 1; }
+
+ecs_has :: (w: Entities, e: int, bits: int) -> bool { return ecs_alive(w, e) && (w.mask[ecs_index(e)] & bits) == bits; }
+ecs_add :: (w: Entities, e: int, bits: int) { if ecs_alive(w, e) { i := ecs_index(e); w.mask[i] = w.mask[i] | bits; w.dropping[i] = w.dropping[i] & bits_not(bits); } }
+ecs_remove :: (w: Entities, e: int, bits: int) { if ecs_alive(w, e) { i := ecs_index(e); w.mask[i] = w.mask[i] & bits_not(bits); } }
+ecs_remove_later :: (w: Entities, e: int, bits: int) { if ecs_alive(w, e) { i := ecs_index(e); w.dropping[i] = w.dropping[i] | bits; } }
+
+// Slot i is alive, has every bit of all and none of none.
+ecs_match :: (w: Entities, i: int, all: int, none: int) -> bool {
+  m := w.mask[i];
+  return w.live[i] && (m & all) == all && (m & none) == 0;
+}
+
+// How many live entities have every bit of all.
+ecs_count_of :: (w: Entities, all: int) -> int {
+  n := 0;
+  for i: 0..<w.n[0] { if ecs_match(w, i, all, 0) { n += 1; } }
+  return n;
+}
+
+// The first (lowest slot) live entity with every bit of all, or ECS_NONE.
+ecs_first :: (w: Entities, all: int) -> int {
+  for i: 0..<w.n[0] { if ecs_match(w, i, all, 0) { return ecs_handle(i, w.gen[i]); } }
+  return ECS_NONE;
+}
+
+// ---- the clock: fixed steps
+
+ECS_FIXED_DT :: 0.016666668;
+
+Clock :: struct {
+  dt: f32 = 0.016666668;   // the fixed step
+  frame_dt: f32;           // this frame, after the cap
+  max_frame_dt: f32 = 0.1; // a stalled frame covers no more than this
+  max_steps: int = 8;      // nor more fixed steps than this
+  acc: f64;                // time not yet stepped
+  alpha: f32;              // how far into the next step the frame ends
+  now: f64;                // seconds of frames
+  fixed_now: f64;          // seconds of fixed steps
+  frame: int;              // frames so far
+  steps: int;              // this frame's fixed steps
+}
+
+// The clock after a frame of frame_dt seconds; its steps is how many fixed
+// steps the world runs this frame.
+ecs_clock_frame :: (c: Clock, frame_dt: f32) -> Clock {
+  next := c;
+  d := frame_dt;
+  if !(d > 0) { d = 0; }
+  if d > c.max_frame_dt { d = c.max_frame_dt; }
+  next.frame_dt = d;
+  next.now = c.now + f64(d);
+  next.frame = c.frame + 1;
+  next.acc = c.acc + f64(d);
+  next.steps = 0;
+  // As the demo's World::frame: a hair of slack, so 0.05 s is three steps of 1/60.
+  while next.acc + 0.0000001 >= f64(c.dt) && next.steps < c.max_steps {
+    next.acc = next.acc - f64(c.dt);
+    if next.acc < 0 { next.acc = 0; }
+    next.steps += 1;
+    next.fixed_now += f64(c.dt);
+  }
+  if next.steps == c.max_steps && next.acc > f64(c.dt) { next.acc = f64(c.dt); }
+  next.alpha = f32(next.acc / f64(c.dt));
+  return next;
+}
+
+// ---- systems and their timing
+
+ECS_PRE :: 0;     // input, once a frame
+ECS_FIXED :: 1;   // the rules, every fixed step
+ECS_UPDATE :: 2;  // once a frame
+ECS_POST :: 3;
+ECS_RENDER :: 4;
+
+// One element per system, in the order the world runs them. n[0] is how
+// many there are.
+Stats :: struct {
+  name: [] string;
+  phase: [] int;
+  last: [] f64;   // ms, the last frame (every fixed step of it summed)
+  mean: [] f64;   // ms, smoothed
+  runs: [] int;   // calls so far
+  n: [] int;
+}
+
+ecs_system :: (s: Stats, name: string, phase: int) -> int {
+  id := s.n[0];
+  if id >= s.name.count { return -1; }
+  s.name[id] = name; s.phase[id] = phase; s.last[id] = 0; s.mean[id] = 0; s.runs[id] = 0;
+  s.n[0] += 1;
+  return id;
+}
+
+// A new frame: every system's frame time starts again at zero.
+ecs_stats_frame :: (s: Stats) { for i: 0..<s.n[0] { s.last[i] = 0; } }
+
+// A system ran for ms milliseconds.
+ecs_stats_add :: (s: Stats, id: int, ms: f64) {
+  if id < 0 || id >= s.n[0] { return; }
+  s.last[id] += ms;
+  s.runs[id] += 1;
+}
+
+// The frame is over: fold each system's frame into its smoothed mean.
+ecs_stats_end :: (s: Stats) {
+  for i: 0..<s.n[0] {
+    if s.runs[i] <= 1 { s.mean[i] = s.last[i]; }
+    else { s.mean[i] = s.mean[i] * 0.9 + s.last[i] * 0.1; }
+  }
+}
+
+ecs_stats_total :: (s: Stats) -> f64 {
+  t: f64 = 0;
+  for i: 0..<s.n[0] { t += s.last[i]; }
+  return t;
+}
+
+ecs_stats_find :: (s: Stats, name: string) -> int {
+  for i: 0..<s.n[0] { if s.name[i] == name { return i; } }
+  return -1;
+}
+
+// ---- checks
+
+TEST_CAP :: 64;
+TestStore :: struct {
+  gen: [TEST_CAP] int; live: [TEST_CAP] bool; mask: [TEST_CAP] int; dropping: [TEST_CAP] int;
+  doomed: [TEST_CAP] bool; free: [TEST_CAP] int; n: [4] int;
+  hp: [TEST_CAP] f32;
+}
+test_world :: (s: [] TestStore) -> Entities {
+  return Entities.{gen = s[0].gen[..], live = s[0].live[..], mask = s[0].mask[..], dropping = s[0].dropping[..],
+                   doomed = s[0].doomed[..], free = s[0].free[..], n = s[0].n[..]};
+}
+T_POS :: 1; T_VEL :: 2; T_TAG :: 4; T_HP :: 8;
+
+#test "entities and generations: a stale handle never reaches a slot's next owner" {
+  st: [1] TestStore; w := test_world(st[..]);
+  a := ecs_create(w); b := ecs_create(w);
+  #assert a != b && ecs_alive(w, a) && ecs_alive(w, b) && ecs_count(w) == 2;
+  #assert ecs_index(a) == 0 && ecs_index(b) == 1 && ecs_generation(a) == 0;
+  ecs_add(w, a, T_POS);
+  ecs_destroy_now(w, a);
+  #assert !ecs_alive(w, a) && ecs_count(w) == 1;
+  c := ecs_create(w);
+  #assert ecs_index(c) == ecs_index(a) && ecs_generation(c) == ecs_generation(a) + 1;
+  ecs_add(w, c, T_POS);
+  #assert ecs_has(w, c, T_POS) && !ecs_has(w, a, T_POS);
+  #assert !ecs_alive(w, ECS_NONE);
+  ecs_destroy(w, a);
+  ecs_flush(w);
+  #assert ecs_alive(w, c);
+}
+
+#test "the generation wraps at 12 bits and the slot is still told apart" {
+  st: [1] TestStore; w := test_world(st[..]);
+  e := ecs_create(w);
+  for k: 0..<4096 { ecs_destroy_now(w, e); e = ecs_create(w); }
+  #assert ecs_index(e) == 0 && ecs_generation(e) == 0 && ecs_alive(w, e) && ecs_high(w) == 1;
+}
+
+#test "full: create says so instead of overwriting" {
+  st: [1] TestStore; w := test_world(st[..]);
+  for k: 0..<TEST_CAP { #assert ecs_create(w) != ECS_NONE; }
+  #assert ecs_create(w) == ECS_NONE && ecs_count(w) == TEST_CAP;
+}
+
+#test "a destroy while walking waits for the flush" {
+  st: [1] TestStore; w := test_world(st[..]);
+  es: [10] int;
+  for k: 0..<10 { es[k] = ecs_create(w); ecs_add(w, es[k], T_HP); st[0].hp[ecs_index(es[k])] = f32(k); }
+  visited := 0;
+  for i: 0..<ecs_high(w) {
+    if !ecs_match(w, i, T_HP, 0) { continue; }
+    visited += 1;
+    if int(st[0].hp[i]) % 2 == 1 { ecs_destroy(w, ecs_at(w, i)); }
+  }
+  #assert visited == 10 && ecs_count_of(w, T_HP) == 10 && ecs_pending_destroy(w, es[1]);
+  ecs_flush(w);
+  #assert ecs_count_of(w, T_HP) == 5 && ecs_count(w) == 5;
+  for i: 0..<ecs_high(w) { if ecs_match(w, i, T_HP, 0) { #assert int(st[0].hp[i]) % 2 == 0; } }
+}
+
+#test "views: every bit of all and none of none, in slot order" {
+  st: [1] TestStore; w := test_world(st[..]);
+  both := 0; only := 0; untagged := 0;
+  for k: 0..<60 {
+    e := ecs_create(w);
+    ecs_add(w, e, T_POS);
+    if k % 3 == 0 { ecs_add(w, e, T_VEL); both += 1; if k % 5 != 0 { untagged += 1; } } else { only += 1; }
+    if k % 5 == 0 { ecs_add(w, e, T_TAG); }
+  }
+  seen := 0; noVel := 0; plain := 0; last := -1; ordered := true;
+  for i: 0..<ecs_high(w) {
+    if ecs_match(w, i, T_POS | T_VEL, 0) { seen += 1; if i <= last { ordered = false; } last = i; }
+    if ecs_match(w, i, T_POS, T_VEL) { noVel += 1; }
+    if ecs_match(w, i, T_POS | T_VEL, T_TAG) { plain += 1; }
+  }
+  #assert seen == both && noVel == only && plain == untagged && ordered;
+  #assert ecs_count_of(w, T_HP) == 0 && ecs_first(w, T_HP) == ECS_NONE && ecs_first(w, T_VEL) == ecs_handle(0, 0);
+}
+
+#test "a removal later waits for the flush; adding again cancels it" {
+  st: [1] TestStore; w := test_world(st[..]);
+  e := ecs_create(w); f := ecs_create(w);
+  ecs_add(w, e, T_POS | T_VEL); ecs_add(w, f, T_POS | T_VEL);
+  ecs_remove_later(w, e, T_VEL); ecs_remove_later(w, f, T_VEL);
+  ecs_add(w, f, T_VEL);
+  #assert ecs_has(w, e, T_VEL);
+  ecs_flush(w);
+  #assert !ecs_has(w, e, T_VEL) && ecs_has(w, e, T_POS) && ecs_has(w, f, T_VEL);
+  ecs_remove(w, f, T_POS);
+  #assert !ecs_has(w, f, T_POS) && ecs_has(w, f, T_VEL);
+}
+
+#test "adding while walking: the new entities are not visited in that pass" {
+  st: [1] TestStore; w := test_world(st[..]);
+  for k: 0..<8 { ecs_add(w, ecs_create(w), T_HP); }
+  visited := 0;
+  high := ecs_high(w);
+  for i: 0..<high { if ecs_match(w, i, T_HP, 0) { visited += 1; ecs_add(w, ecs_create(w), T_HP); } }
+  #assert visited == 8 && ecs_count_of(w, T_HP) == 16;
+}
+
+#test "the clock: three fixed steps in 0.05 s, half-steps add up, a stall is capped" {
+  c: Clock;
+  c = ecs_clock_frame(c, 0.05);
+  #assert c.steps == 3 && c.frame == 1;
+  c = ecs_clock_frame(c, 1.0 / 120);
+  n := c.steps;
+  c = ecs_clock_frame(c, 1.0 / 120);
+  #assert n + c.steps == 1;
+  c.max_frame_dt = 0.05;
+  c = ecs_clock_frame(c, 100);
+  #assert c.steps == 3 && c.frame == 4 && c.frame_dt == 0.05;
+  c = ecs_clock_frame(c, -1);
+  #assert c.steps == 0 && c.alpha >= 0 && c.alpha < 1;
+}
+
+#forall "the clock never runs more steps than the cap, nor loses time under it" k: 0..<40 {
+  c: Clock;
+  total := 0;
+  for f: 0..<20 { c = ecs_clock_frame(c, f32(k) * 0.004); total += c.steps; #assert c.steps <= c.max_steps; }
+  covered := f64(total) * f64(c.dt) + c.acc;
+  #assert abs(covered - c.now) < 0.001 || k * 4 > 100;
+}
+
+#test "per-system timing: each system's frame, summed over steps, and smoothed" {
+  names: [4] string; phase: [4] int; last: [4] f64; mean: [4] f64; runs: [4] int; n: [1] int;
+  s := Stats.{name = names[..], phase = phase[..], last = last[..], mean = mean[..], runs = runs[..], n = n[..]};
+  a := ecs_system(s, "dg.clock", ECS_FIXED); b := ecs_system(s, "dg.mutants", ECS_FIXED);
+  #assert a == 0 && b == 1 && ecs_stats_find(s, "dg.mutants") == 1 && ecs_stats_find(s, "none") == -1;
+  ecs_stats_frame(s);
+  ecs_stats_add(s, a, 0.25); ecs_stats_add(s, a, 0.25); ecs_stats_add(s, b, 1);
+  ecs_stats_end(s);
+  #assert s.last[a] == 0.5 && s.mean[b] == 1 && ecs_stats_total(s) == 1.5;
+  ecs_stats_frame(s);
+  ecs_stats_add(s, b, 2);
+  ecs_stats_end(s);
+  #assert abs(s.mean[b] - 1.1) < 0.000001 && s.last[a] == 0;
+  #assert ecs_system(s, "c", ECS_UPDATE) == 2 && ecs_system(s, "d", ECS_UPDATE) == 3 && ecs_system(s, "e", ECS_UPDATE) == -1;
+}

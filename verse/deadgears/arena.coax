@@ -1,0 +1,490 @@
+// The Dead Gears arena's collision and walking grid, for the rules
+// (rules.coax): the hull walls and cover blocks as boxes, and the queries
+// the demo asked of its physics::World and ai::NavGrid.
+//
+//   arena_blocked   a small sphere resting on the deck meets a wall or cover
+//   arena_sight     nothing stands between two points (3D, so low cover lets
+//                   you look over it)
+//   arena_sweep     how far a sphere moves before it meets a wall or cover,
+//                   so a fast crate or bolt cannot step through thin cover
+//   arena_walk      a character's circle walks, sliding along what it meets
+//   nav_*           a 0.5 m walking grid, flow fields to a goal (Dijkstra) and
+//                   the next corner to head for round the covers
+//
+// Every query is a pure function of the boxes (and the grid of them), so a
+// restored fight moves exactly as the original.
+//   coax/bin/coax test --library verse/deadgears/arena.coax
+
+#load "../space.coax";
+
+BOXES :: 16;
+Box :: struct { lo: Point; hi: Point; }
+Arena :: struct { boxes: [BOXES] Box; n: int; }
+
+arena_add :: (a: Arena, low: Point, high: Point) -> Arena {
+  next := a;
+  if a.n < BOXES { next.boxes[a.n] = Box.{lo = low, hi = high}; next.n = a.n + 1; }
+  return next;
+}
+
+// The four hull walls; the covers are added after (arena_add).
+arena_hull :: () -> Arena {
+  a: Arena;
+  a = arena_add(a, v3(-16.2, -0.2, -24), v3(-15.8, 6, 14));
+  a = arena_add(a, v3(15.8, -0.2, -24), v3(16.2, 6, 14));
+  a = arena_add(a, v3(-16, -0.2, -24.2), v3(16, 6, -23.8));
+  a = arena_add(a, v3(-16, -0.2, 13.8), v3(16, 6, 14.2));
+  return a;
+}
+
+arena_cover :: (a: Arena, x: f32, z: f32, w: f32, d: f32, h: f32) -> Arena {
+  return arena_add(a, v3(x - w / 2, -0.2, z - d / 2), v3(x + w / 2, h, z + d / 2));
+}
+
+flat :: (a: Point, b: Point) -> f32 { return sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z)); }
+
+sphere_meets :: (b: Box, c: Point, r: f32) -> bool {
+  q := v3(clamp(c.x, b.lo.x, b.hi.x), clamp(c.y, b.lo.y, b.hi.y), clamp(c.z, b.lo.z, b.hi.z));
+  g := sub(c, q);
+  return dot(g, g) < r * r;
+}
+
+// A sphere of radius r resting just above `height` at (x, z) meets a wall or
+// a cover whose top is higher and whose footprint is within r.
+arena_blocked :: (a: [] Arena, x: f32, z: f32, r: f32, height: f32) -> bool {
+  rr := hi(r, 0.001);
+  c := v3(x, height + rr + 0.01, z);
+  for i: 0..<a[0].n { if sphere_meets(a[0].boxes[i], c, rr) { return true; } }
+  return false;
+}
+
+// Where along p + d * t (t in 0..1) the segment enters box b grown by g on
+// every side; 2 when it misses or starts inside.
+enter :: (b: Box, g: f32, p: Point, d: Point) -> f32 {
+  t0: f32 = 0; t1: f32 = 1;
+  inside := true;
+  for axis: 0..<3 {
+    o := ifx axis == 0 then p.x else ifx axis == 1 then p.y else p.z;
+    v := ifx axis == 0 then d.x else ifx axis == 1 then d.y else d.z;
+    low := (ifx axis == 0 then b.lo.x else ifx axis == 1 then b.lo.y else b.lo.z) - g;
+    high := (ifx axis == 0 then b.hi.x else ifx axis == 1 then b.hi.y else b.hi.z) + g;
+    if o < low || o > high { inside = false; }
+    if abs(v) < 0.0000001 {
+      if o < low || o > high { return 2; }
+    } else {
+      ta := (low - o) / v; tb := (high - o) / v;
+      if ta > tb { swap := ta; ta = tb; tb = swap; }
+      if ta > t0 { t0 = ta; }
+      if tb < t1 { t1 = tb; }
+      if t0 > t1 { return 2; }
+    }
+  }
+  if inside { return 2; }
+  return t0;
+}
+
+// Nothing (wall or cover) stands on the segment from p to q.
+arena_sight :: (a: [] Arena, p: Point, q: Point) -> bool {
+  d := sub(q, p);
+  for i: 0..<a[0].n {
+    b := a[0].boxes[i];
+    if p.x >= b.lo.x && p.x <= b.hi.x && p.y >= b.lo.y && p.y <= b.hi.y && p.z >= b.lo.z && p.z <= b.hi.z { return false; }
+    if enter(b, 0, p, d) <= 1 { return false; }
+  }
+  return true;
+}
+
+// Sight at chest height (1.3 m) across the deck: low cover lets you peek.
+arena_wall_ray :: (a: [] Arena, p: Point, q: Point) -> bool {
+  return !arena_sight(a, v3(p.x, 1.3, p.z), v3(q.x, 1.3, q.z));
+}
+
+// How far (0..1) a sphere of radius r at c moves along motion before it
+// meets a wall or cover; more than 1 when it never does. A box the sphere
+// already stands in does not hold it (it can always move out).
+arena_sweep :: (a: [] Arena, c: Point, r: f32, motion: Point) -> f32 {
+  best: f32 = 2;
+  for i: 0..<a[0].n {
+    t := enter(a[0].boxes[i], r, c, motion);
+    if t < best { best = t; }
+  }
+  return best;
+}
+
+// ---- walking: a circle on the deck
+
+// Out of every box the circle stands in, by the shortest way.
+push_out :: (a: [] Arena, p: Point, r: f32) -> Point {
+  q := p;
+  for i: 0..<a[0].n {
+    b := a[0].boxes[i];
+    if b.hi.y < 0.55 { continue; }
+    x0 := b.lo.x - r; x1 := b.hi.x + r; z0 := b.lo.z - r; z1 := b.hi.z + r;
+    if q.x <= x0 || q.x >= x1 || q.z <= z0 || q.z >= z1 { continue; }
+    left := q.x - x0; right := x1 - q.x; back := q.z - z0; front := z1 - q.z;
+    least := lo(lo(left, right), lo(back, front));
+    if least == left { q.x = x0 - 0.0005; }
+    else if least == right { q.x = x1 + 0.0005; }
+    else if least == back { q.z = z0 - 0.0005; }
+    else { q.z = z1 + 0.0005; }
+  }
+  return q;
+}
+
+// Feet at p walking by (move.x, move.z), a circle of radius r: up to three
+// slides along the faces it meets. Covers are taller than a step, so every
+// box blocks.
+arena_walk :: (a: [] Arena, p: Point, move: Point, r: f32) -> Point {
+  at := p;
+  m := v3(move.x, 0, move.z);
+  for pass: 0..<3 {
+    if m.x * m.x + m.z * m.z < 0.0000000001 { break; }
+    first: f32 = 2; axis := -1;
+    for i: 0..<a[0].n {
+      b := a[0].boxes[i];
+      if b.hi.y < 0.55 { continue; }
+      x0 := b.lo.x - r; x1 := b.hi.x + r; z0 := b.lo.z - r; z1 := b.hi.z + r;
+      t0: f32 = 0; t1: f32 = 1; hit_axis := -1; ok := true;
+      if abs(m.x) < 0.0000001 { if at.x <= x0 || at.x >= x1 { ok = false; } }
+      else {
+        ta := (x0 - at.x) / m.x; tb := (x1 - at.x) / m.x;
+        if ta > tb { s := ta; ta = tb; tb = s; }
+        if ta > t0 { t0 = ta; hit_axis = 0; }
+        if tb < t1 { t1 = tb; }
+      }
+      if ok {
+        if abs(m.z) < 0.0000001 { if at.z <= z0 || at.z >= z1 { ok = false; } }
+        else {
+          ta := (z0 - at.z) / m.z; tb := (z1 - at.z) / m.z;
+          if ta > tb { s := ta; ta = tb; tb = s; }
+          if ta > t0 { t0 = ta; hit_axis = 2; }
+          if tb < t1 { t1 = tb; }
+        }
+      }
+      if !ok || t0 > t1 || t0 >= 1 || hit_axis < 0 { continue; }
+      if t0 < first { first = t0; axis = hit_axis; }
+    }
+    if axis < 0 { at = add(at, m); break; }
+    k := hi(first - 0.0005 / hi(sqrt(m.x * m.x + m.z * m.z), 0.0001), 0);
+    at = add(at, times(m, k));
+    left := times(m, 1 - first);
+    if axis == 0 { m = v3(0, 0, left.z); } else { m = v3(left.x, 0, 0); }
+  }
+  return push_out(a, at, r);
+}
+
+// ---- the walking grid
+
+NAV_CELL :: 0.5;
+NAV_X0 :: -16.0;
+NAV_Z0 :: -24.0;
+NAV_NX :: 64;
+NAV_NZ :: 76;
+NAV_CELLS :: 4864;      // NAV_NX * NAV_NZ
+NAV_CLEAR :: 0.38;      // the agent's radius (0.3) and a margin from walls
+NAV_FAR :: 1000000.0;   // no way
+
+Flow :: struct {
+  cost: [NAV_CELLS] f32;
+  goal: int = -1;       // the goal cell, -1 none
+  key_x: f32 = 1000000000;
+  key_z: f32 = 1000000000;
+}
+
+Nav :: struct {
+  walk: [NAV_CELLS] bool;
+  heap: [NAV_CELLS] s32;
+  slot: [NAV_CELLS] s32;   // where each cell is in the heap, -1 out of it
+  flows: [2] Flow;         // 0 to you (the mutants), 1 where the support engineer heads
+  ready: bool;
+  bakes: int;
+}
+
+nav_cell_x :: (c: int) -> int { return c % NAV_NX; }
+nav_cell_z :: (c: int) -> int { return c / NAV_NX; }
+nav_centre :: (c: int) -> Point {
+  return v3(f32(NAV_X0) + (f32(nav_cell_x(c)) + 0.5) * f32(NAV_CELL), 0, f32(NAV_Z0) + (f32(nav_cell_z(c)) + 0.5) * f32(NAV_CELL));
+}
+nav_cell_at :: (p: Point) -> int {
+  if !finite(p.x) || !finite(p.z) { return -1; }
+  cx := int(floor((p.x - f32(NAV_X0)) / f32(NAV_CELL)));
+  cz := int(floor((p.z - f32(NAV_Z0)) / f32(NAV_CELL)));
+  if cx < 0 || cz < 0 || cx >= NAV_NX || cz >= NAV_NZ { return -1; }
+  return cz * NAV_NX + cx;
+}
+
+// A cell is walkable when the agent's circle at its centre meets no box.
+nav_bake :: (n: [] Nav, a: [] Arena) {
+  for c: 0..<NAV_CELLS {
+    p := nav_centre(c);
+    open := true;
+    for i: 0..<a[0].n {
+      b := a[0].boxes[i];
+      if b.hi.y < 0.55 { continue; }
+      qx := clamp(p.x, b.lo.x, b.hi.x); qz := clamp(p.z, b.lo.z, b.hi.z);
+      if (p.x - qx) * (p.x - qx) + (p.z - qz) * (p.z - qz) < f32(NAV_CLEAR) * f32(NAV_CLEAR) { open = false; break; }
+    }
+    n[0].walk[c] = open;
+  }
+  for f: 0..<2 { n[0].flows[f].goal = -1; n[0].flows[f].key_x = 1000000000; n[0].flows[f].key_z = 1000000000; }
+  n[0].ready = true;
+  n[0].bakes += 1;
+}
+
+// The straight line a -> b keeps the agent's circle clear of every box.
+nav_straight :: (a: [] Arena, p: Point, q: Point) -> bool {
+  d := v3(q.x - p.x, 0, q.z - p.z);
+  for i: 0..<a[0].n {
+    b := a[0].boxes[i];
+    if b.hi.y < 0.55 { continue; }
+    flatb := Box.{lo = v3(b.lo.x, -1, b.lo.z), hi = v3(b.hi.x, 1, b.hi.z)};
+    s := v3(p.x, 0, p.z);
+    g := f32(NAV_CLEAR) - 0.01;
+    if s.x > flatb.lo.x - g && s.x < flatb.hi.x + g && s.z > flatb.lo.z - g && s.z < flatb.hi.z + g { return false; }
+    if enter(flatb, g, s, d) <= 1 { return false; }
+  }
+  return true;
+}
+
+// The walkable cell nearest p within radius r, or -1.
+nav_nearest :: (n: [] Nav, p: Point, r: f32) -> int {
+  c := nav_cell_at(p);
+  if c >= 0 && n[0].walk[c] { return c; }
+  reach := int(floor(r / f32(NAV_CELL))) + 1;
+  cx := int(floor((p.x - f32(NAV_X0)) / f32(NAV_CELL)));
+  cz := int(floor((p.z - f32(NAV_Z0)) / f32(NAV_CELL)));
+  best := -1; bestd: f32 = r * r;
+  for dz: -reach..<reach + 1 {
+    for dx: -reach..<reach + 1 {
+      x := cx + dx; z := cz + dz;
+      if x < 0 || z < 0 || x >= NAV_NX || z >= NAV_NZ { continue; }
+      k := z * NAV_NX + x;
+      if !n[0].walk[k] { continue; }
+      q := nav_centre(k);
+      dd := (q.x - p.x) * (q.x - p.x) + (q.z - p.z) * (q.z - p.z);
+      if dd <= bestd { if dd < bestd || best < 0 || k < best { best = k; bestd = dd; } }
+    }
+  }
+  return best;
+}
+
+// The neighbour step from cell c in direction k (0..7) and its length; -1
+// when it leaves the grid, is not walkable, or cuts a blocked corner.
+NAV_DX :: [8] int.[1, -1, 0, 0, 1, 1, -1, -1];
+NAV_DZ :: [8] int.[0, 0, 1, -1, 1, -1, 1, -1];
+nav_step :: (n: [] Nav, c: int, k: int) -> int {
+  x := nav_cell_x(c) + NAV_DX[k]; z := nav_cell_z(c) + NAV_DZ[k];
+  if x < 0 || z < 0 || x >= NAV_NX || z >= NAV_NZ { return -1; }
+  to := z * NAV_NX + x;
+  if !n[0].walk[to] { return -1; }
+  if k >= 4 {
+    if !n[0].walk[nav_cell_z(c) * NAV_NX + x] || !n[0].walk[z * NAV_NX + nav_cell_x(c)] { return -1; }
+  }
+  return to;
+}
+
+heap_less :: (n: [] Nav, f: int, a: int, b: int) -> bool {
+  ca := n[0].flows[f].cost[a]; cb := n[0].flows[f].cost[b];
+  return ca < cb || (ca == cb && a < b);
+}
+heap_swap :: (n: [] Nav, i: int, j: int) {
+  a := n[0].heap[i]; b := n[0].heap[j];
+  n[0].heap[i] = b; n[0].heap[j] = a;
+  n[0].slot[int(b)] = s32(i); n[0].slot[int(a)] = s32(j);
+}
+heap_up :: (n: [] Nav, f: int, at: int) {
+  i := at;
+  while i > 0 {
+    parent := (i - 1) / 2;
+    if !heap_less(n, f, int(n[0].heap[i]), int(n[0].heap[parent])) { break; }
+    heap_swap(n, i, parent);
+    i = parent;
+  }
+}
+heap_down :: (n: [] Nav, f: int, size: int) {
+  i := 0;
+  while true {
+    l := i * 2 + 1; r := l + 1; m := i;
+    if l < size && heap_less(n, f, int(n[0].heap[l]), int(n[0].heap[m])) { m = l; }
+    if r < size && heap_less(n, f, int(n[0].heap[r]), int(n[0].heap[m])) { m = r; }
+    if m == i { break; }
+    heap_swap(n, i, m);
+    i = m;
+  }
+}
+
+// Fills flow f with every cell's walking distance to the cell nearest goal
+// (within 1.5 m); cells more than max_cost metres away stay unreached.
+// False when the goal is off the grid.
+nav_flow_to :: (n: [] Nav, f: int, goal: Point, max_cost: f32) -> bool {
+  for c: 0..<NAV_CELLS { n[0].flows[f].cost[c] = f32(NAV_FAR); n[0].slot[c] = -1; }
+  g := nav_nearest(n, goal, 1.5);
+  n[0].flows[f].goal = g;
+  if g < 0 { return false; }
+  n[0].flows[f].cost[g] = 0;
+  size := 1;
+  n[0].heap[0] = s32(g); n[0].slot[g] = 0;
+  while size > 0 {
+    c := int(n[0].heap[0]);
+    size -= 1;
+    n[0].slot[c] = -2;
+    if size > 0 { heap_swap(n, 0, size); n[0].slot[c] = -2; heap_down(n, f, size); }
+    here := n[0].flows[f].cost[c];
+    if here > max_cost { break; }
+    for k: 0..<8 {
+      to := nav_step(n, c, k);
+      if to < 0 || n[0].slot[to] == -2 { continue; }
+      cost := here + ifx k < 4 then f32(NAV_CELL) else f32(NAV_CELL) * 1.4142135;
+      if cost >= n[0].flows[f].cost[to] { continue; }
+      n[0].flows[f].cost[to] = cost;
+      if n[0].slot[to] < 0 { n[0].heap[size] = s32(to); n[0].slot[to] = s32(size); size += 1; }
+      heap_up(n, f, int(n[0].slot[to]));
+    }
+  }
+  return true;
+}
+
+// The neighbour of c lowest on flow f (the first of equals), or -1 when c
+// is lowest.
+nav_downhill :: (n: [] Nav, f: int, c: int) -> int {
+  best := -1; low := n[0].flows[f].cost[c];
+  for k: 0..<8 {
+    to := nav_step(n, c, k);
+    if to < 0 { continue; }
+    if n[0].flows[f].cost[to] < low { low = n[0].flows[f].cost[to]; best = to; }
+  }
+  return best;
+}
+
+// Where to head from `from` along flow f: the farthest cell downhill, up to
+// look metres, that a straight line reaches. False when from has no way.
+nav_flow_ahead :: (n: [] Nav, a: [] Arena, f: int, from: Point, look: f32, out: [] Point) -> bool {
+  if n[0].flows[f].goal < 0 { return false; }
+  c := nav_nearest(n, from, 1.0);
+  if c < 0 || n[0].flows[f].cost[c] >= f32(NAV_FAR) { return false; }
+  best := c; cur := c;
+  steps := int(look / f32(NAV_CELL) * 1.5);
+  for s: 0..<steps {
+    if cur == n[0].flows[f].goal { break; }
+    next := nav_downhill(n, f, cur);
+    if next < 0 { break; }
+    cur = next;
+    if best != c && !nav_straight(a, from, nav_centre(cur)) { break; }
+    best = cur;
+  }
+  out[0] = nav_centre(best);
+  return true;
+}
+
+// Where to head from `from` for goal: straight there when the line is
+// clear, else along flow f round the covers. The flow is rebuilt only when
+// the goal moves to another metre, and is a pure function of that metre.
+nav_head_for :: (n: [] Nav, a: [] Arena, f: int, from: Point, goal: Point) -> Point {
+  if !n[0].ready || nav_straight(a, from, goal) { return goal; }
+  kx := floor(goal.x + 0.5); kz := floor(goal.z + 0.5);
+  if kx != n[0].flows[f].key_x || kz != n[0].flows[f].key_z {
+    n[0].flows[f].key_x = kx; n[0].flows[f].key_z = kz;
+    ok := nav_flow_to(n, f, v3(kx, 0, kz), 80);
+  }
+  to: [1] Point;
+  if !nav_flow_ahead(n, a, f, from, 4, to[..]) || flat(to[0], from) < 0.05 { return goal; }
+  return to[0];
+}
+
+// A spot within `around` metres of anchor, reachable on the grid, that the
+// threat cannot see (from 1.3 m to 1.0 m up), costing least to walk to from
+// `from` and staying near anchor. False when there is none.
+nav_find_cover :: (n: [] Nav, a: [] Arena, from: Point, anchor: Point, threat: Point, around: f32, out: [] Point) -> bool {
+  if !n[0].ready { return false; }
+  best: f32 = 1000000000000;
+  eye := v3(threat.x, threat.y + 1.3, threat.z);
+  ring: f32 = 1;
+  while ring <= around {
+    count := int(ring * 6);
+    for i: 0..<count {
+      ang := 2 * f32(PI) * f32(i) / f32(count);
+      p := v3(anchor.x + sin(ang) * ring, anchor.y, anchor.z + cos(ang) * ring);
+      c := nav_nearest(n, p, 0.5);
+      if c < 0 { continue; }
+      q := nav_centre(c);
+      if arena_sight(a, eye, v3(q.x, q.y + 1.0, q.z)) { continue; }
+      cost := flat(q, from) + 0.5 * flat(q, anchor);
+      if cost < best { best = cost; out[0] = q; }
+    }
+    ring += 1;
+  }
+  return best < 1000000000000;
+}
+
+// ---- checks, on the Dead Gears deck
+
+test_deck :: () -> Arena {
+  a := arena_hull();
+  a = arena_cover(a, -5, 3, 3.2, 1.3, 1.15); a = arena_cover(a, 5, 3, 3.2, 1.3, 1.15);
+  a = arena_cover(a, -4, -5, 2.6, 1.4, 1.15); a = arena_cover(a, 4, -5, 2.6, 1.4, 1.15);
+  a = arena_cover(a, -8, -12, 2, 3, 1.6); a = arena_cover(a, 8, -12, 2, 3, 1.6);
+  a = arena_cover(a, 0, -17, 3.8, 2.8, 1.1);
+  return a;
+}
+
+#test "blocked: a small sphere on the deck meets cover and walls, not open floor" {
+  deck: [1] Arena; deck[0] = test_deck(); a := deck[..];
+  #assert a[0].n == 11;
+  #assert arena_blocked(a, -5, 3, 0.3, 0) && arena_blocked(a, -6.7, 3, 0.3, 0) && !arena_blocked(a, -7, 3, 0.3, 0);
+  #assert arena_blocked(a, 15.9, 0, 0.1, 0) && !arena_blocked(a, 0, 9, 0.3, 0);
+  #assert !arena_blocked(a, -5, 3, 0.1, 1.2);   // resting on top of the low cover
+}
+
+#test "sight: tall cover hides, low cover lets you peek over" {
+  deck: [1] Arena; deck[0] = test_deck(); a := deck[..];
+  #assert arena_wall_ray(a, v3(8, 0, -16), v3(8, 0, -8));
+  #assert !arena_wall_ray(a, v3(4, 0, -8), v3(4, 0, -2));
+  #assert !arena_sight(a, v3(-5, 1.0, 1), v3(-5, 1.0, 6)) && arena_sight(a, v3(-5, 1.3, 1), v3(-5, 1.3, 6));
+  #assert arena_sight(a, v3(0, 1.3, 9), v3(0, 1.3, -10));
+}
+
+#test "sweep: a fast sphere stops at the face of thin cover" {
+  deck: [1] Arena; deck[0] = test_deck(); a := deck[..];
+  t := arena_sweep(a, v3(-5, 0.81, 5), 0.2, v3(0, 0, -5));
+  #assert t > 0 && t < 1;
+  #assert 5 - 5 * t >= 3.65 + 0.19;
+  #assert arena_sweep(a, v3(-5, 0.81, 9), 0.2, v3(0, 0, 1)) > 1;
+  #assert arena_sweep(a, v3(-5, 1.6, 5), 0.2, v3(0, 0, -5)) > 1;   // over the low cover
+}
+
+#forall "walking never ends inside cover, whichever way you push" k: 0..<36 {
+  deck: [1] Arena; deck[0] = test_deck(); a := deck[..];
+  ang := f32(k) * f32(TAU) / 36;
+  p := v3(-5 + sin(ang) * 2.2, 0, 3 + cos(ang) * 2.2);
+  for s: 0..<40 { p = arena_walk(a, p, v3(-sin(ang) * 0.2, 0, -cos(ang) * 0.2 + 0.03), 0.3); }
+  #assert !arena_blocked(a, p.x, p.z, 0.28, 0);
+}
+
+#test "walking into a cover face slides along it" {
+  deck: [1] Arena; deck[0] = test_deck(); a := deck[..];
+  p := arena_walk(a, v3(-5, 0, 4.5), v3(0.5, 0, -1), 0.3);
+  #assert p.z > 3.65 + 0.29 && p.x > -4.6;
+}
+
+#test "the flow field leads round the tall cover, and the next corner is in sight" {
+  deck: [1] Arena; deck[0] = test_deck(); a := deck[..];
+  nav: [1] Nav; n := nav[..];
+  nav_bake(n, a);
+  #assert !n[0].walk[nav_cell_at(v3(-8, 0, -12))] && n[0].walk[nav_cell_at(v3(0, 0, 9))];
+  me := v3(-8, 0, -8.4);
+  #assert !nav_straight(a, v3(-8, 0, -15.4), me) && nav_straight(a, v3(0, 0, 9), v3(0, 0, 5));
+  #assert nav_flow_to(n, 0, me, 80);
+  from := v3(-8, 0, -15.4);
+  c := n[0].flows[0].cost[nav_cell_at(from)];
+  #assert c > 7 && c < 12;
+  p := from;
+  for s: 0..<80 {
+    to := nav_head_for(n, a, 0, p, me);
+    step := sub(to, p);
+    l := flat_length(step);
+    if l < 0.3 { p = to; break; }
+    p = arena_walk(a, p, times(step, 0.3 / l), 0.3);
+    #assert !arena_blocked(a, p.x, p.z, 0.05, 0);
+  }
+  #assert flat(p, me) < 0.5;
+}

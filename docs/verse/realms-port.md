@@ -23,6 +23,14 @@ Everglade. The tasks are in the Verse project under "Port the realms"
      frame.
    - Then the demo's rules and their tests, the ship, the creatures, the
      controls and the day-to-dusk lighting.
+   - The entity system and the rules are in `verse/deadgears/`: `ecs.coax`
+     (handles, component bits, deferred destroys, the fixed-step clock and
+     per-system timing), `arena.coax` (the deck's boxes, swept spheres,
+     sliding walks, the walking grid and its flow fields) and `rules.coax`
+     (every system and every check of the demo's `dead-gears-test.cpp`).
+     `coax/bin/coax test --library verse/deadgears/rules.coax --steps 4000000000`
+     runs them; `verse/deadgears/bench.sh` builds them to WebAssembly and
+     holds 200 mutants to 2 ms a frame.
 4. **Everglade**, the forest city.
    - The demo only had it as a plan, and the old Rust repo had a glade with
      a workshop, so this is a new build.
