@@ -78,3 +78,10 @@ test("real fixed-base compile-time generation waits for bounded work inputs", ()
   expect(tasks.get("coax-run-resource-inputs").body).toContain("check/mutation budget waivers")
   expect(tasks.get("coax-run-resource-inputs").body).toContain("live aggregate-storage budget")
 })
+
+test("aggregate traversal work is tracked separately from existing step semantics", () => {
+  expect(reaches("coax-run-copy-work", "coax-run-resource-inputs")).toBe(true)
+  expect(tasks.get("coax-run-copy-work").body).toContain("does not charge")
+  expect(tasks.get("coax-run-copy-work").body).toContain("preserving the existing counter")
+  expect(tasks.get("coax-run-copy-work").acceptance.join(" ")).toContain("aggregate assignments")
+})

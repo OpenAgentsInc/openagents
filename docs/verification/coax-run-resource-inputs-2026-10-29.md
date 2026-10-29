@@ -50,3 +50,11 @@ containers, in checked and release compiler profiles. Its independent correctnes
 Wasm and mutation evidence belongs to the fixed-base task and must pass before
 that task is resolved. No secret-safety or constant-time claim follows from the
 compiler budget.
+
+The existing step counter does not charge each element traversed by deep
+aggregate cloning or assignment. A probe that zero-initialized 10,000 bytes
+and copied them 100 times reported 10,912 steps and a 20,000-slot peak under
+the unchanged 100,000-step default. Thus the work input and live-storage cap
+do not by themselves bound cumulative copy work in proportion to the selected
+steps. `coax-run-copy-work` tracks a separate traversal limit; until then this
+is not a complete hostile-source CPU or memory sandbox.

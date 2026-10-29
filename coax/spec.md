@@ -534,7 +534,7 @@ Limits for the bootstrap:
 
 | Resource | Limit and diagnostic |
 | --- | --- |
-| Evaluation work | 100,000 steps by default across one compilation; `--run-steps N` selects 1 through 250,000,000. Each evaluated expression or statement and each array element created counts; E0400. |
+| Evaluation work | 100,000 steps by default across one compilation; `--run-steps N` selects 1 through 250,000,000. Each evaluated expression or statement and each zero-initialized array element counts; E0400. |
 | Aggregate storage | At most 1,048,576 live aggregate-vector capacity slots and 131,072 live aggregate containers, independently of the work limit and in every profile; E0400. |
 | Active interpreted calls | 64, E0403; call sites are printed as bounded source notes. |
 | Active constant dependencies | 64, E0403; type-resolution dependencies also stop at 64, E0347. |
@@ -564,6 +564,9 @@ unreachable cycle may continue consuming budget until then. Its tracking is not
 a bound on total compiler RSS, syntax trees, strings, allocator metadata, host
 I/O or generated output.
 
+Aggregate deep copies and assignment traversal are currently not charged per
+element by the step counter. The live-storage cap limits simultaneous storage,
+not cumulative copy operations; a separate traversal budget remains planned.
 The work budget counts interpreted work, not parsing, every compiler allocation
 or total wall time. It is not a complete hostile-source resource sandbox.
 Memoized constants and folded `#run` sites are not re-executed. Host pointers

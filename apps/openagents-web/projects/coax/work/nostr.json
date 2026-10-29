@@ -3055,8 +3055,36 @@
         "coax-debug-only-fields"
       ],
       "blocks": [
-        "secp-mult-base"
+        "secp-mult-base",
+        "coax-run-copy-work"
       ]
+    },
+    {
+      "slug": "coax-run-copy-work",
+      "parent": "compiler",
+      "title": "Bound deep aggregate copy work during compile time",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "The existing expression/statement and zero-initialization step counter does not charge the elements traversed by aggregate clone or assignment. For example a 10000-byte array copied 100 times completes under the default 100000-step profile at 10912 reported steps, even though it copies one million elements. The independent live-slot cap bounds simultaneous storage, not cumulative copy work. Add a separate deterministic checked aggregate traversal budget, preserving the existing counter and its default semantics; document this as a new independent boundary, not a total RSS or wall-time sandbox.",
+      "files": [
+        "coax/src/eval.cpp",
+        "coax/lib/compiler/budget.coax",
+        "coax/tests/",
+        "coax/spec.md"
+      ],
+      "acceptance": [
+        "Bound cumulative element visits for deep copies and aggregate assignments, including nested values, retained constants and failure/cleanup paths, without changing the existing step counter or check/mutation budgets",
+        "Checked Coax authority policy, boundary/overflow tests and zero-survivor mutation; Python-free bootstrap and affected compiler tests",
+        "The real fixed-base tables still compile through #run under an explicitly documented finite profile and match the independent pinned oracle",
+        "Record selected policy and measured copy work in build evidence; update the book and explain remaining unmetered work honestly"
+      ],
+      "blocked_by": [
+        "coax-run-resource-inputs"
+      ],
+      "blocks": []
     }
   ]
 }

@@ -695,7 +695,7 @@ spin.coax:5:21: error[E0400]: compile-time evaluation exceeded 100000 steps
 ```
 
 A *step* is one expression or statement the evaluator visits. Creating
-an array counts too, one step per element, so a table can't dodge the
+a zero-initialized array counts too, one step per element, so a table can't dodge the
 budget by being one big declaration:
 
 ```jai
@@ -736,7 +736,10 @@ the limits and the errors that go with them:
 `--run-steps N` is a build input shared by all compile-time sites. It does not
 change `coax test --steps`, mutation or native optimization. `coax deps`
 records the selected limit; `--timings FILE` records work and tracked peaks once evaluation starts.
-The separate storage limits cover aggregate vectors, not all compiler memory.
+Deep copies and aggregate assignment do not yet charge a step per traversed
+element. The storage limit counts live vectors, not cumulative copy work; a
+separate traversal budget is planned. The storage limits do not cover all
+compiler memory.
 Views keep their storage alive, and cycles are cleared at compilation teardown;
 an unreachable cycle can use budget until then.
 
