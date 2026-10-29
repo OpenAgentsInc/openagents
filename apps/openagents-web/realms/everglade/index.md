@@ -38,7 +38,7 @@ Take one, go where it says (the step you are on and how far it is show under EVE
 - `#quest-board` starts you at the quest board.
 - A link can start you beside someone, near enough to talk: `#marta`, `#old-tam`, `#pebble` and so on, by their name.
 - A link can start you at a place: `#commons`, `#market`, `#guilds`, `#temple`, `#observatory`, `#inn`, `#road`, `#deep-wood`, `#ruins`, `#crypt`, `#river`, `#gate`, `#north-gate`; inside a building: `#in-inn`, `#in-store`, `#in-smithy`, `#in-alchemist`, `#in-fighters`, `#in-rangers`, `#in-temple`; `#above` opens on the map.
-- Nobody can change Everglade: there is no editing here.
+- Players can't change Everglade. An admin logged in at /login gets HOLD TO TALK at the bottom middle (hold V, or press and hold on a phone) and edits by voice: "put two barrels here", "remove that", "undo". Everyone sees the edits.
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
 ## How it is made

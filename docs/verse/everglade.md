@@ -11,8 +11,9 @@ The previous Everglade, on the Rust engine, is kept for parity in
 [`verse/everglade/previous/`](../../verse/everglade/previous/README.md): its map and specifications.
 
 Everglade is a conventional MMORPG hub in the woods: where players gather,
-get quests and set out from. It is the same for everyone and nobody can
-change it, so quests and characters can rely on it. The brief is the
+get quests and set out from. It is the same for everyone and players can't
+change it, so quests and characters can rely on it. Only an admin can,
+by voice (below), and every change is kept as the realm's published edits. The brief is the
 Everglade section of `~/work/aethyr-demo/docs/realms.md`; the shape and the
 paper map come from the old OpenAgents Everglade (`0b401561a0^:docs/verse/everglade.md`),
 a glade around a commons grown into a small town. This plan keeps its
@@ -229,7 +230,8 @@ than 6.5 m from the flock. Each bird keeps its last ten places (one every
   quest areas and back (eg-quests); earn the bird-flock companion
   (eg-companion); see the whole city from above (MAP).
 - **Can't:** edit anything. No building, placing, removing, painting or
-  terrain tools; no player-made objects stay in the city. Everglade stays
+  terrain tools; no player-made objects stay in the city. An admin
+  (`admins.conf`, logged in at /login) is the one exception: see Voice edits. Everglade stays
   put so quests can rely on it; making things is the Sandbox's job. No
   fighting inside the walls. The world ends at its edge, and past the
   trails' ends the forest and the river keep you to the ways out.
@@ -395,3 +397,21 @@ Each building is put together from its footprint in `plan.coax`, in
 ## What's next
 
 eg-launch ([realms-port.md](realms-port.md)).
+
+## Voice edits (admins only, eg-edit)
+
+An admin sees one HOLD TO TALK button at the bottom middle (hold V on a
+computer, press and hold on a phone). The mic is open only while it is held.
+The voice host hears the sentence and the page sends it to
+`POST /api/playtest/realm/everglade/edit`, which checks admin_who and asks
+Gemini for one edit under a response schema of the realm's catalogue
+(`migrations/0045_realm_voice_edit.sql`): place 1 to 6 of crate, barrel,
+bench, fence or stall in front of you, remove the nearest placed thing, or
+undo. No words are matched. The page does the edit
+(`verse/everglade/edits.coax`, `apps/openagents-web/everglade-voice.coax`),
+refuses a place that blocks a street or overlaps a building, warns if a
+door, spot or gate is no longer reachable, and publishes the edits as
+Everglade's world (`POST /api/playtest/world/everglade`, admin site session
+only). Everyone sees them. `POST /api/playtest/world/everglade/reset` puts
+the designed city back; every version is kept in the realm's log. The
+switch is per realm: `"voice": "everglade"` in `apps/openagents-web/realms.json`.
