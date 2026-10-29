@@ -325,8 +325,8 @@ before longer runs rather than postponing provenance until this part.
 | 82. Supervised conversations and tools | Assistant/tool loss masks and validation; bounded Nemotron-Agentic-v1/OpenCodeReasoning subsets with provenance and base-skill regression. |
 | 83. Continued pretraining and task adaptation | A separately specified domain workload, data mixture, retention checks and promotion criteria. This is a Psionic extension, not a stage claimed from the pinned nanochat speedrun. |
 | 84. Preferences and reward models | HelpSteer3 pairwise data, ranking/reward losses and an optional separately specified DPO experiment; held-out comparisons and reward-model limitations. |
-| 85. Learn from rollouts | The pinned nanochat on-policy, mean-centered-reward recipe; bounded rollouts, independent gradient/reward checks and held-out task results. |
-| 86. Post-train a decision model | Qualified hybrid backward/adapters, selected trainable regions, cross-entropy/Brier/abstention, resume and held-out promotion. |
+| 85. Learn from rollouts | The pinned nanochat on-policy, mean-centered-reward recipe; bounded rollouts, independent gradient/reward checks and held-out task results. Rollouts come from chapter 181's environments. |
+| 86. Post-train a decision model | Qualified hybrid backward/adapters, selected trainable regions, cross-entropy/Brier/abstention, resume and held-out promotion. Promotion passes both of chapter 180's decision and probability gates. |
 | 87. Distill Mammoth into Elephant | Mammoth's slot distributions as soft targets on a recorded request corpus; KL/cross-entropy over slots, held-out agreement and chapter 12's quality metrics, with Elephant's cost measured against Mammoth's. |
 
 The [nanochat study](../docs/targets/nanochat.md) is the compatibility
@@ -533,7 +533,7 @@ built from, and is removed otherwise.
 | 151. Forks, subagents and jobs | A session forked at a turn boundary from its own log, reusing the parent's cached prefix state on the server; subagents with their own scope and budget; background jobs that outlive a turn; a goal that a session works toward across turns. |
 | 152. Plugins with owned lifecycles | Composition from ordered profiles; capabilities with a definition, a provider and consumers; every registration owned by the plugin that made it and revoked when it unloads; visible states (installed, enabled, admitted, active, failed, draining). Third-party plugins run in bounded Wasm, distributed as signed Nostr events. |
 | 153. Speak the protocols | An MCP client for external tools and resources, ACP for editors, native function tools over the Open Responses API, and System One decisions available to the loop as a tool. |
-| 154. Measure the harness | Benchmarks for the harness itself (opening a session, folding a long conversation, reconnecting a stream, continuing an agent) and end-to-end task suites with tokens, cost, cache hits and wall-clock per task, each change measured one at a time against the simplest loop. |
+| 154. Measure the harness | Benchmarks for the harness itself (opening a session, folding a long conversation, reconnecting a stream, continuing an agent) and end-to-end task suites with tokens, cost, cache hits and wall-clock per task, each change measured one at a time against the simplest loop. Results report through chapters 178–180. |
 | 155. Consent before sharing | No session content leaves the machine unless the person opts in, per session and revocably; attribution metadata is explicit and inspectable. DeepSeek's harness sends session-log suffixes to its API by default; Psionic's never does. |
 
 The harness is product logic, so it is Coax, with the host doing processes,
@@ -558,7 +558,7 @@ after 16 and 17, 159 and 160 after 19 and 20, and 161 to 164 after Part III.
 | 161. Read a bounded ONNX graph | A Coax reader for a fixed opset and a small set of operators, mapping anonymous initializers to named tensors by walking the graph and refusing anything outside the set; first consumers are a static-embedding model and a tiny image classifier. |
 | 162. A decision in milliseconds | A small encoder with fixed decision heads (a ModernBERT-family model with local and global attention, GeGLU and quantized embedding rows, per-head temperatures) answering a typed question in milliseconds, with identical argmaxes and a stated distance from its reference, and the p50 and p99 latency at 512 tokens on CPU and GPU. |
 | 163. Distill Elephant into a small router | An encoder student trained on Elephant's answer distributions over owned synthetic requests, with temperatures fitted on a development split; promoted only above stated agreement with Elephant, calibration error and cheap-answer precision. |
-| 164. Shadow a new model, then promote it | A candidate model answering beside the current one on live traffic, both logged; promoted only within stated disagreement limits and with no regression in joined outcomes. Chapter 122 rolls out new builds of one model; this rolls out a different model. |
+| 164. Shadow a new model, then promote it | A candidate model answering beside the current one on live traffic, both logged; promoted only within stated disagreement limits and with no regression in joined outcomes. Chapter 122 rolls out new builds of one model; this rolls out a different model. Candidates are immutable, activation is atomic by approved digest, and a deliberately worse candidate must leave the active one unchanged. |
 
 A probability is never permission: the consumer of each answer owns its
 threshold, abstention and interpretation, and these chapters make those
@@ -588,7 +588,7 @@ is computation inside a model that can be verified, not a faster computer.
 | 171. Decode in logarithmic time | A convex-hull lookup that replaces the linear scan over the trace, checked equal to it with comparison counts; wall-clock figures come only from running the weights, never from an interpreter standing in for them. |
 | 172. From hard-max to softmax | The analytic bound on how far softmax can stray from hard-max, then real softmax execution under chapter 27's attention profile, measuring the trace length and number format at which exactness breaks. |
 | 173. Exact replay as a verification class | Full replay and window spot checks that name the first divergent step, tamper fixtures for each digest, and a verdict (exact replay, failed, unverifiable) used by the mesh's re-execution checks (21, 139) and the GPU kernels' acceptance (29–30). |
-| 174. Can gradient descent learn exact execution? | Students trained on verified traces and scored by their first divergent token and by held-out program families at two, four and eight times the training length, never by loss alone; the pre-reset attempts all failed (0 of 2 exact at best), and the chapter reports whatever this one finds. |
+| 174. Can gradient descent learn exact execution? | Students trained on verified traces and scored by their first divergent token and by held-out program families at two, four and eight times the training length, never by loss alone; the pre-reset attempts all failed (0 of 2 exact at best), and the chapter reports whatever this one finds. Its training rows are admitted by chapter 186. |
 | 175. A frozen exact core with a learned interface | A compiled module behind fixed interface tokens, with a trained controller that prepares its inputs and reads its outputs, judged by replay acceptance on held-out programs: learning does the routing, the compiled core keeps the exactness. |
 | 176. Composable weight modules | Two digest-pinned compiled modules linked into one, with composition that must replay exactly, conformance cases, and a label for how a user can check a module: exact replay, deterministic tests, statistical evidence or none. |
 | 177. Pay for verified work | A run that pays its contributors for traces a validator has replayed: the worker's capability declared only after a digest-checked self-test, worker and validator on different devices and both paid, receipts before settlement, per-payout and daily caps under owner approval, settled in Bitcoin through the wallet outside Psionic; counts include only real, verified payments. |
@@ -597,6 +597,37 @@ Every claim in this part names the path that produced it, reports partial
 exactness as partial, uses benchmarks that are what their names say, and ships
 the check that would falsify it. Verified traces are also training data whose
 labels are provably correct; chapter 174 tests how far that helps.
+
+## XXIV. Measure, then improve
+
+Systems that improve themselves need a measurement they cannot fool. This part
+rebuilds the pre-reset Gym as library code, then the loops that use it:
+fitting settings on recorded answers, searching policies, reflective prompt
+evolution, model judges, and outcomes turned into training rows
+([notes](../docs/self-improvement.md)). The prior is sobering: ten pre-reset
+prompt-optimization attempts produced no measured win, while fitting settings
+on recorded answers and choosing a configuration per task did. Every loop
+here keeps its held-out data unread until its choice is written down, never
+lets a component grade its own work, and keeps an addition only with a
+measured gain over the simplest baseline. 178 to 180 can start right after 12.
+
+| Chapter | What we build and check |
+| --- | --- |
+| 178. A suite is three digests | Items with their partitions, the question set and the gate each carry a digest; results go to an append-only store with a receipt chain, and a locked partition can be read once. Rewording a question changes only the question digest; a run over different items is refused as a comparison. |
+| 179. How far a metric moves by itself | The noise floor from seed blocks and a task-clustered paired bootstrap, and a headroom check that refuses a partition already at its ceiling; reproduced on an Elephant suite before any optimization claims a gain. |
+| 180. Gates that can say unverifiable | Comparison gates as `#authority` Coax: a decision gate requiring a gain beyond the noise floor, a probability gate that ranks log loss and confident errors above calibration error and accuracy, and an evaluation gate where cost and time can block a result but never earn one; verdicts are passed, failed or unverifiable. Chapters 12, 156 and 157 report through them. |
+| 181. Environments with checkers | A task, a checker, a budget and a replay as one record; the checker must fail on empty work and pass on the reference solution before the environment is admitted; rollouts use Psionic-served models. |
+| 182. Fit settings on recorded answers | Thresholds, cut points and weights fitted from answers already recorded, with zero model calls: midpoint candidates, acceptance only when strictly better on the fit set and on grouped cross-validation; the first optimization to try, before any text changes. |
+| 183. Search a policy, cheapest first | Policies as digested manifests, operators named for what they do, successive halving across tiers from replay to full measurement, a per-task Pareto frontier, and the held-out read only after the winner is written down. |
+| 184. Reflective prompt evolution | GEPA in Coax: candidates whose fields are fixed by the seed, per-instance Pareto sampling, a reflector served by Psionic that is never the grader, refusal of a malformed reflection, a check that the answer space did not drift, and a canary proving the candidate reached the model. Measured honestly against chapter 182's settings fitting. |
+| 185. Judges are components | Elephant or Mammoth inside a search as a pinned judge or router: agreement with real outcomes measured, a grader whose identity differs from the student's and the reflector's, cost per judgment recorded, and a teacher's opinion never stored as a label. |
+| 186. Outcomes become training rows | Decision outcomes and verified traces admitted with their replay verdicts; labels from diffs and checks, never from an agent's own summary; an exposure ledger across artifacts so held-out groups are never trained on; splits by time. These rows feed chapters 85 to 87, 163 and 174. |
+| 187. Is the loop improving? | Cost per accepted result per cycle on a fixed set, an ablation for every component, a complexity ledger, and shared budgets for proposer, student and grader; a loop that does not improve is reported as such. |
+
+The loops improve the system around the weights first (settings, prompts,
+routers, harness configuration); weight updates follow only when both the
+decision and probability gates pass, since the pre-reset fine-tuning raised
+accuracy while making confidence worse.
 
 ## Optional laboratories
 
@@ -607,7 +638,7 @@ labels are provably correct; chapter 174 tests how far that helps.
 | C. Derivatives inside derivatives | Higher-order/input derivatives and a tiny PINN after 64–65; independent derivative and PDE-residual checks. |
 | D. Look inside a model | Bounded activation capture at named layers, logit lens over the residual stream, attention and recurrent-state inspection; doubles as the tool for localizing a reference mismatch in 10–11. |
 
-## Prerequisites, not a waiting list of 177 steps
+## Prerequisites, not a waiting list of 187 steps
 
 | Path | Prerequisites | First complete payoff |
 | --- | --- | --- |
@@ -637,6 +668,7 @@ labels are provably correct; chapter 174 tests how far that helps.
 | Harness | Part III's API; chapter 37's constrained decoding; chapter 119's prefix cache for the stable-prefix measurements | The simplest loop 144 → session log 145 → stable prefix 146 → tools, sandbox and condensation 147–149 → programs, forks and plugins 150–152 → protocols, measurement and consent 153–155. |
 | Decisions in production | 12 and 16–17 for calibration, thresholds and outcomes; 19–21 for Pylon checks; Part III for the encoder branch | Own calibration 156 → cost thresholds 157 → outcomes and drift 158; Pylon self-check 159 → honest-distance limits 160; ONNX 161 → millisecond encoder 162 → distilled router 163 → shadow promotion 164. |
 | Programs compiled into weights | 1–3 and 6; 75 and 150 for the learned chapters; the wallet and Pylon mesh for 177 | Trace machine 165 → exact memory and arithmetic 166–167 → compiler and harness 168–169 → interpreter or baked program, fast decode, softmax limits 170–172 → replay verification 173 → learned execution and a frozen core 174–175 → composable modules 176 → paid verified work 177. |
+| Measure, then improve | 12, then 144, 158 and 173 | Suites, noise floors and gates 178–180 → environments, settings fitting and policy search 181–183 → prompt evolution and judges 184–185 → outcomes as rows and loop accounting 186–187. |
 
 ## Coax features each branch needs
 
