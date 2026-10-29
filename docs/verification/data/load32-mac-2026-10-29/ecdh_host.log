@@ -1,0 +1,12 @@
+checked native cleanup fixture passed
+checked asan cleanup fixture passed
+(node:96147) ExperimentalWarning: WASI is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Wasm host cleanup fixture passed
+checked Wasm cleanup fixture passed
+release native cleanup fixture passed
+release asan cleanup fixture passed
+(node:96932) ExperimentalWarning: WASI is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Wasm host cleanup fixture passed
+release Wasm cleanup fixture passed

@@ -1,0 +1,10 @@
+checked iOS simulator vector and refusal ce15ae37338cd88e60f55b4bf91e04fc6af01c873ace73614c69cb13cf1dd006
+(node:94711) ExperimentalWarning: WASI is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Wasm: 1018 independent Poly1305 inputs passed
+checked 1018 independent cases and workspace wipes; C 130b8d33881fd6b9e306d9298e249005abccc3e98e803bfd63bf93284ac58943 Wasm 43da1e3e23575f1f856201067058b34872e081452049bf75061757b938e84be1
+release iOS simulator vector and refusal c19acce11f57b65644e5ea26443463993e0d85f0b7c94f9919d2c1d5deb59372
+(node:94823) ExperimentalWarning: WASI is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Wasm: 1018 independent Poly1305 inputs passed
+release 1018 independent cases and workspace wipes; C 10730354d58959ddabd38f4c09b144f65e9e3a11d3861420c68bd53033df2835 Wasm ebdd508e1f73df767937e1e6ff6efd27c46415d92ed10c3c87a78baa0da13155

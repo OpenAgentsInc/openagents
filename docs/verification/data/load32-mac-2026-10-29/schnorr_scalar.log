@@ -1,0 +1,10 @@
+checked iOS Simulator scalar/parity/refusal 67f690fdb93fb238673f2b7a7b343116392b806c906c462900142c02b184dd45
+(node:96437) ExperimentalWarning: WASI is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Wasm: independent scalar admission/parity inputs passed
+checked 1007 independent cases, both parities and workspace wipes; C fc0d3f55725e25b3b1b28770029b2f089fe1bca880a834e358b42ee3f2fe90d5 Wasm 4f0596c3de70a4a20621646e9b53a8c676a9125a4a48e32dda7741ed498bb8c2
+release iOS Simulator scalar/parity/refusal fd669d76f9b58fe9a3bea2e3398ad57c8ed2d67531d13895d43790bccde8fbab
+(node:96665) ExperimentalWarning: WASI is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Wasm: independent scalar admission/parity inputs passed
+release 1007 independent cases, both parities and workspace wipes; C 1411c01a9b07a58d2b8d13e61e608ffc7758c35cd862fd719791574909f7d2d6 Wasm 9251c6495a2eafdaa4592c2f45ab3cbcf2eda0c7a1df3505a89d71d077eb0aab

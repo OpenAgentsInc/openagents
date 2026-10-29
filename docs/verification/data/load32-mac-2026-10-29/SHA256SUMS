@@ -1,0 +1,16 @@
+4e8b16db7ccee07520d9c5f3aa2f181d751bc0cf29b7b9b6735cc9c7785dc432  docs/verification/data/load32-mac-2026-10-29/chacha-retry.log
+2a54fcb81000b59b07f4ae105d86c6fa5b828c5794f74c9e9619fc0270d560d6  docs/verification/data/load32-mac-2026-10-29/ecdh-retry-report.json
+6ea63641e2a1519e13e6a4eca1b2c19e53eced99a78053757ccbcf4c43f93b8e  docs/verification/data/load32-mac-2026-10-29/ecdh_host.log
+38aed6cf5003b2c451028f90936f02a3601373cd05874eb04335221da4d37bce  docs/verification/data/load32-mac-2026-10-29/hchacha20.log
+27d57d979ddd4915e1e58986041b1dd89c9176edce938e2384d130dda899fe54  docs/verification/data/load32-mac-2026-10-29/pbkdf2_workspace.log
+621dbd0685168cb43e49c4751310401cefe0ab04f272cf7710ac76fbf9ef50ac  docs/verification/data/load32-mac-2026-10-29/poly1305.log
+ab39f711dc53a318f478e1e66b8e037f6f539a73abfe51bfcb7e8565f049eaa3  docs/verification/data/load32-mac-2026-10-29/poly1305_workspace.log
+c6031c47f25d568ac57275d8660ff62155ab47678e4303459148d115f4dd00cd  docs/verification/data/load32-mac-2026-10-29/schnorr-report.json
+3f7ee95e1894a1973ae5e8beb65b7e4af9c1055b6ef97bc58c3fc0094cce61e3  docs/verification/data/load32-mac-2026-10-29/schnorr-retry.log
+6f79220afe960b91e979e8130e760addb3d4b1f738a04961c3a14293d98ba1c7  docs/verification/data/load32-mac-2026-10-29/schnorr_scalar.log
+fcd910b8dcdc2bbfff66e0c86514309634a5700a511a234756d237478eee066d  docs/verification/data/load32-mac-2026-10-29/scrypt_blockmix.log
+5a9d8d27fbc3c725086292c61a5fca47ba42d34a213c4d0dcb53c821a2028fb6  docs/verification/data/load32-mac-2026-10-29/scrypt_pbkdf2.log
+ecfb2b777c7854da477c68a6e60154412462ba25b01621c83aec9831ee8b6d35  docs/verification/data/load32-mac-2026-10-29/sha256.log
+b8d0e217714afefe3b2bb8b5f30e54811b20c1c7d7e509d5367ca812998ff3c5  docs/verification/data/load32-mac-2026-10-29/sha256_workspace.log
+693ef01ca66f9152c07b73fb2c2b6677d628167c952d50672686c581d4df3cb5  docs/verification/data/load32-mac-2026-10-29/xchacha20.log
+d102ed898e4b03f3587f7823d8ea6dc3d23473befe5423be0c101086dbba5510  docs/verification/data/load32-mac-2026-10-29/xchacha20_workspace.log

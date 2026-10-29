@@ -1,0 +1,8 @@
+(node:94254) ExperimentalWarning: WASI is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Wasm: 1027 independent Poly1305 inputs passed
+checked 1027 independent cases; C sha256 aa750fe62ededb72dbed07857360f30f5044dc90e6e16158ef222a7841839c4d Wasm sha256 dd89b18b239c7d258f5961ce12ceacd33ad0bd967df88f01b87dca730b096174
+(node:94313) ExperimentalWarning: WASI is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Wasm: 1027 independent Poly1305 inputs passed
+release 1027 independent cases; C sha256 d85f6a8accfc9351c2732bfb1526de6efd1f45ecc9fa25384c3f11645f050a7a Wasm sha256 b183a8dbaef3e38d22abd29914f87b8bc791767f425cd5d41241328ddf811984

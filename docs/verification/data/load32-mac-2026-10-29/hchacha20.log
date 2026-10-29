@@ -1,0 +1,8 @@
+(node:93798) ExperimentalWarning: WASI is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Wasm: 1002 independent HChaCha20 inputs passed
+checked native: 1002 passed; C sha256 3007b0260bea01612eb879453d9c4e2a8e97c3e8e64381c6cb2370ff6f8a2508 Wasm sha256 31ee79a2a2cc9297cc82816dbac009380f0cb8b98c7ec545ea1b6eceea0c37c8
+(node:93854) ExperimentalWarning: WASI is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Wasm: 1002 independent HChaCha20 inputs passed
+release native: 1002 passed; C sha256 9c23939ffcea4bc57abf4b45699ffdcac4beb80023ba45a54e7ec2936f76bd95 Wasm sha256 34f4bb40a9225c8007238f0e0be6fb5bb774e6e2862bfd158214e9cd61b8069e

@@ -1,0 +1,18 @@
+F..
+======================================================================
+FAIL: test_actual_wasm_oracle_and_performance_gate (__main__.ChaCha.test_actual_wasm_oracle_and_performance_gate)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/codex-nostr-mac-092b/coax/tests/nostr/chacha20.py", line 99, in test_actual_wasm_oracle_and_performance_gate
+    if label=='release':self.assertGreaterEqual(evidence['median_mb_per_second'],250,'release Wasm throughput gate')
+                        ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 81.93229344455692 not greater than or equal to 250 : release Wasm throughput gate
+
+----------------------------------------------------------------------
+Ran 3 tests in 17.997s
+
+FAILED (failures=1)
+checked: 269 Wasm oracle records, median 75.75 MB/s
+release: 269 Wasm oracle records, median 81.93 MB/s
+checked: 269 independent records and native refusal/alias boundaries passed
+release: 269 independent records and native refusal/alias boundaries passed
