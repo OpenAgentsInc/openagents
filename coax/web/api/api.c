@@ -71,7 +71,7 @@ static void send_all(int fd, const void *data, size_t n) {
 
 static const char *reason(int status) {
   switch (status) {
-    case 200: return "OK"; case 204: return "No Content"; case 303: return "See Other";
+    case 200: return "OK"; case 204: return "No Content"; case 301: return "Moved Permanently"; case 303: return "See Other";
     case 400: return "Bad Request"; case 401: return "Unauthorized"; case 403: return "Forbidden";
     case 404: return "Not Found"; case 405: return "Method Not Allowed"; case 409: return "Conflict"; case 413: return "Payload Too Large"; case 429: return "Too Many Requests";
     case 500: return "Internal Server Error";
@@ -223,6 +223,22 @@ static void health(int fd) {
   api_json(fd, 200, json);
 }
 
+// The old playtest's shared links (pt-cutover-plan, docs/verse/playtest-cutover.md):
+// playtest.openagents.com/haunt.html?visit=ID reaches here rewritten to
+// /api/playtest/old-link and moves for good to that world on the realm page,
+// whose hash names it; a link with no world opens the Haunted House.
+static void old_link(const request *q) {
+  char id[80], loc[256];
+  api_query(q, "visit", id, sizeof id);
+  bool ok = id[0] && strlen(id) <= 64;
+  for (const char *c = id; ok && *c; c++) ok = (*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '-';
+  if (ok && !strcmp(id, "haunted-house")) ok = false;
+  char head[300];
+  snprintf(loc, sizeof loc, "https://openagents.com/realm/haunted-house?from=playtest%s%s", ok ? "#" : "", ok ? id : "");
+  snprintf(head, sizeof head, "Location: %s\r\n", loc);
+  api_respond(q->fd, 301, "text/plain", head, "", 0);
+}
+
 static void handle(client *cl, char *head_end, size_t body_len) {
   request q = {0};
   q.fd = cl->fd;
@@ -237,6 +253,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (mark) { *mark = 0; q.query = q.target + (mark - q.path) + 1; }
   else q.query = "";
   if (!strcmp(q.path, "/api/playtest/health")) { health(cl->fd); return; }
+  if (!strcmp(q.path, "/api/playtest/old-link") && !strcmp(q.method, "GET")) { old_link(&q); return; }
   if (analytics_route(&q)) return;
   if (npc_route(&q)) return;
   if (room_route(&q)) return;
