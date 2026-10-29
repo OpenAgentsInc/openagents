@@ -111,7 +111,7 @@ lengths only. `--verbose` adds the text and every applied or dropped decision.
 | `echo` agent | Replies "You said: TRANSCRIPT" (two sentences with `local` speech, so the sentence path runs offline) |
 
 The agent's instruction comes from `Hello.route` through one table,
-`ROUTES` in `speech.c`. Today it has one row, `foreman`: the Foreman, an
+`ROUTES` in `speech.c`. Its rows: `haunted-house` (the house's VOICE), `everglade` (its voice edits), `guide` (the Agent orb on the /verse landing, the playtest's guide: what the playtest, the Verse and the Haunted House are for), and `foreman`: the Foreman, an
 agent standing by the start of the Grid in OpenAgents' Verse (a
 world built in Coax), who speaks at most 30 words of plain spoken English,
 says what it doesn't know instead of inventing projects or facts, and uses

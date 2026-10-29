@@ -45,6 +45,8 @@ coax/web/voice/build.sh "$stage/voice.wasm"
 bun coax/web/voice/smoke.ts "$stage/voice.wasm" "wss://${url#https://}" "$here/fixtures/hello-foreman.wav" haunted-house
 # Facing a character, as the house does in a conversation: the page's answer is spoken as them.
 FACE=Mortimer bun coax/web/voice/smoke.ts "$stage/voice.wasm" "wss://${url#https://}" "$here/fixtures/hello-foreman.wav" haunted-house
+# The Agent orb on the /verse landing, the playtest's guide (ptr-landing-guide).
+bun coax/web/voice/smoke.ts "$stage/voice.wasm" "wss://${url#https://}" "$here/fixtures/hello-foreman.wav" guide
 # The name the site and the app use (a Cloud Run domain mapping; Cloudflare CNAME to ghs.googlehosted.com).
 bun coax/web/voice/smoke.ts "$stage/voice.wasm" wss://voice.openagents.com "$here/fixtures/hello-foreman.wav" haunted-house
 echo "voice: deployed $image at wss://${url#https://}"
