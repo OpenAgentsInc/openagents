@@ -918,7 +918,8 @@
         "secp-group",
         "crypto-ct-timing-harness",
         "crypto-secret-lint",
-        "crypto-secret-aggregate-closure"
+        "crypto-secret-aggregate-closure",
+        "crypto-secret-public-loop-summaries"
       ],
       "blocks": [
         "crypto-ecdh-xonly"
@@ -3174,7 +3175,9 @@
       "blocked_by": [
         "crypto-secret-aggregate-closure"
       ],
-      "blocks": []
+      "blocks": [
+        "secp-mult-const"
+      ]
     }
   ]
 }

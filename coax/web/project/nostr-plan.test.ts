@@ -83,6 +83,7 @@ test("public-loop audit scalability preserves the existing secret and resource g
   const task = tasks.get("crypto-secret-public-loop-summaries")
   expect(task).toBeDefined()
   expect(reaches(task.slug, "crypto-secret-aggregate-closure")).toBe(true)
+  expect(reaches("secp-mult-const", task.slug)).toBe(true)
   expect(task.body).toContain("smc_multiply")
   expect(task.body).toContain("Do not raise or waive existing audit limits")
   expect(task.body).toContain("cannot authorize production paths")
