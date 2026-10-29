@@ -1,0 +1,119 @@
+// Bounded absolute URI syntax, not DNS/TLS/network or identity authorization.
+// Original bytes are never normalized; ranges borrow the caller's input.
+#authority;
+URI_HTTPS :: 1;URI_HTTP :: 2;URI_WSS :: 3;
+UriParts :: struct {ok:bool;scheme:int;host_from:int;host_to:int;port:int;path_from:int;path_to:int;has_query:bool;query_from:int;}
+
+#test "scheme IDs and refusal metadata are part of this bounded API" {
+ #assert URI_HTTPS==1 && URI_HTTP==2 && URI_WSS==3;
+ p:=uri_parse("bad");#assert !p.ok && p.scheme==0 && p.host_from==0 && p.host_to==0 && p.port==0 && p.path_from==0 && p.path_to==0 && !p.has_query && p.query_from==0;
+ #assert !uri_dns("a-") && !uri_dns("-a") && !uri_dns("a.-test");
+}
+
+#forall "ASCII character classes follow fixed public alphabets" value:0..<256 {
+ letters:="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";digits:="0123456789";
+ alpha:=false;digit:=false;for b:letters {if b==cast(u8)value {alpha=true;}}for b:digits {if b==cast(u8)value {digit=true;}}
+ #assert uri_alpha(cast(u8)value)==alpha && uri_digit(cast(u8)value)==digit;
+}
+#test "prefix matching is bounded even at an exact scheme with no authority" {
+ #assert uri_prefix("https://","https://") && uri_prefix("https://a","https://");
+ #assert !uri_prefix("https:/","https://") && !uri_prefix("httpx://","https://");
+ #assert uri_prefix("","") && uri_prefix("x","");
+ #assert !uri_prefix("Xttps://","https://");
+}
+#test "all three exact schemes preserve host port path and first query ranges" {
+ s:="https://Issuer.example:8443/a%20b?x=1?y=2";p:=uri_parse(s);
+ #assert p.ok && p.scheme==URI_HTTPS && p.port==8443;
+ #assert s[p.host_from..<p.host_to]=="Issuer.example" && s[p.path_from..<p.path_to]=="/a%20b";
+ #assert p.has_query && s[p.query_from..<s.count]=="x=1?y=2";
+ p=uri_parse("http://localhost");#assert p.ok && p.scheme==URI_HTTP && p.port==80 && p.host_from==7 && p.host_to==16 && p.path_from==16 && p.path_to==16 && !p.has_query && p.query_from==0;
+ p=uri_parse("wss://relay.example?x");#assert p.ok && p.scheme==URI_WSS && p.port==443 && p.path_from==19 && p.path_to==19 && p.query_from==20;
+ p=uri_parse("https://a:65535/");#assert p.ok && p.port==65535;
+ p=uri_parse("https://a:1?");#assert p.ok && p.port==1 && p.has_query && p.query_from==12;
+ p=uri_parse("https://a");#assert p.ok && p.port==443 && p.host_from==8 && p.host_to==9;
+ p=uri_parse("https://a:443");#assert p.ok && p.port==443 && p.path_from==13;
+}
+#test "authority rejects aliases credentials IP literals invalid labels and ports" {
+ #assert !uri_parse("").ok && !uri_parse("https://").ok && !uri_parse("ftp://a.test").ok && !uri_parse("HTTPS://a.test").ok;
+ #assert !uri_parse("https://user@a.test").ok && !uri_parse("https://a.test#x").ok && !uri_parse("https://a.test\\x").ok;
+ #assert !uri_parse("https://[::1]/").ok && !uri_parse("https://127.0.0.1/").ok && !uri_parse("https://0x7f000001/").ok && !uri_parse("https://2130706433/").ok;
+ #assert !uri_parse("https://a..test").ok && !uri_parse("https://-a.test").ok && !uri_parse("https://a-.test").ok && !uri_parse("https://a.test.").ok && !uri_parse("https://a_test").ok;
+ #assert !uri_parse("https://a:").ok && !uri_parse("https://a:0").ok && !uri_parse("https://a:01").ok && !uri_parse("https://a:65536").ok && !uri_parse("https://a:4:43").ok && !uri_parse("https://a:443x").ok;
+}
+#test "path percent escapes and visible bytes are explicit and never decoded" {
+ #assert uri_parse("wss://a.test/a%2fb%FF?q=x%20y").ok;
+ #assert !uri_parse("wss://a.test/%").ok && !uri_parse("wss://a.test/%2").ok && !uri_parse("wss://a.test/%GG").ok;
+ #assert !uri_parse("wss://a.test/%00").ok && !uri_parse("wss://a.test/%1F").ok && !uri_parse("wss://a.test/%7f").ok && !uri_parse("wss://a.test/%5c").ok;
+ #assert !uri_parse("wss://a.test/a b").ok && !uri_parse("wss://a.test/é").ok && !uri_parse("wss://a.test/<").ok;
+ #assert !uri_parse("wss://a.test/?#x").ok;
+ #assert uri_parse("wss://a/%2F").ok && !uri_parse("wss://a/%3G").ok && !uri_parse("wss://a/%41<").ok;
+}
+#test "URI total and DNS label limits are exact" {
+ data:[2049]u8;prefix:="https://a.test/";for i:0..<2049 {data[i]='a';}for i:0..<prefix.count {data[i]=prefix[i];}
+ #assert uri_parse(cast(string)data[0..<2048]).ok && !uri_parse(cast(string)data[..]).ok;
+ label:[64]u8;for i:0..<64 {label[i]='a';}
+ #assert uri_dns(cast(string)label[0..<63]) && !uri_dns(cast(string)label[..]);
+ #assert !uri_dns("") && uri_dns("a-b.test") && uri_dns("a1.test") && !uri_dns("a.1") && !uri_dns(".");
+ #assert !uri_dns("_a.test");
+ dns:[254]u8;for i:0..<254 {dns[i]='a';}dns[63]='.';dns[127]='.';dns[191]='.';
+ #assert uri_dns(cast(string)dns[0..<253]) && !uri_dns(cast(string)dns[..]);
+ middle:[69]u8;for i:0..<64 {middle[i]='a';}middle[64]='.';for i:0..<4 {middle[65+i]="test"[i];}
+ #assert !uri_dns(cast(string)middle[..]);
+}
+#forall "hex digits have exact values or a refusal" value:0..<256 {
+ upper:="0123456789ABCDEF";lower:="0123456789abcdef";expected:=-1;
+ for i:0..<16 {if upper[i]==cast(u8)value || lower[i]==cast(u8)value {expected=i;}}
+ #assert uri_hex(cast(u8)value)==expected;
+}
+
+uri_alpha :: (b:u8)->bool {return (b>=65 && b<=90)||(b>=97 && b<=122);}
+uri_digit :: (b:u8)->bool {return b>=48 && b<=57;}
+uri_prefix :: (text:string,prefix:string)->bool {
+ if text.count<prefix.count {return false;}for i:0..<prefix.count {if text[i]!=prefix[i] {return false;}}return true;
+}
+uri_hex :: (b:u8)->int {
+ if uri_digit(b) {return cast(int)b-48;}if b>=65 && b<=70 {return cast(int)b-55;}if b>=97 && b<=102 {return cast(int)b-87;}return -1;
+}
+uri_path_byte :: (b:u8)->bool {
+ if uri_alpha(b)||uri_digit(b) {return true;}
+ for allowed:":/?@!$&'()*+,;=-._~" {if b==allowed {return true;}}return false;
+}
+uri_dns :: (host:string)->bool {
+ if host.count<1 || host.count>253 {return false;}
+ start:=0;
+ for i:0..<host.count {
+  b:=host[i];if b==46 {
+   if i==start || i-start>63 || host[start]==45 || host[i-1]==45 {return false;}start=i+1;
+  }else if !uri_alpha(b) && !uri_digit(b) && b!=45 {return false;}
+ }
+ // Alphabetic final-label start also refuses alternate numeric IP spellings.
+ if start==host.count || host.count-start>63 {return false;}
+ return uri_alpha(host[start]) && host[host.count-1]!=45;
+}
+uri_parse :: (text:string)->UriParts #export_c {
+ bad:UriParts;if text.count>2048 {return bad;}
+ p:UriParts;
+ if uri_prefix(text,"https://") {p.scheme=URI_HTTPS;p.host_from=8;p.port=443;}
+ else if uri_prefix(text,"http://") {p.scheme=URI_HTTP;p.host_from=7;p.port=80;}
+ else if uri_prefix(text,"wss://") {p.scheme=URI_WSS;p.host_from=6;p.port=443;}
+ else {return bad;}
+ at:=p.host_from;
+ while at<text.count && text[at]!=47 && text[at]!=63 && text[at]!=58 {at+=1;}
+ p.host_to=at;if !uri_dns(text[p.host_from..<at]) {return bad;}
+ if at<text.count && text[at]==58 {
+  at+=1;if at==text.count || text[at]==48 {return bad;}p.port=0;
+  while at<text.count && text[at]!=47 && text[at]!=63 {
+   if !uri_digit(text[at]) {return bad;}p.port=p.port*10+cast(int)text[at]-48;if p.port>65535 {return bad;}at+=1;
+  }
+  if p.port==0 {return bad;}
+ }
+ p.path_from=at;p.path_to=text.count;
+ while at<text.count {
+  b:=text[at];if b==63 && !p.has_query {p.has_query=true;p.query_from=at+1;p.path_to=at;}
+  if b==37 {
+   if text.count-at<3 {return bad;}a:=uri_hex(text[at+1]);c:=uri_hex(text[at+2]);if a<2 || c<0 {return bad;}
+   decoded:=a*16+c;if decoded==127 || decoded==92 {return bad;}at+=3;
+  }else {if !uri_path_byte(b) {return bad;}at+=1;}
+ }
+ p.ok=true;return p;
+}

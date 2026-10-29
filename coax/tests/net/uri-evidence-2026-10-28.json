@@ -1,0 +1,41 @@
+{
+  "case_count": 463,
+  "cases_sha256": "9bc026887183519a502588a2391b12f35012613a49aa29ac1c5a229760b090bf",
+  "compiler": "coax0 0.16.0",
+  "compiler_sha256": "46d332386114ff213a2083440469332742915ea99b2506a9619730420fda2719",
+  "modes": [
+    {
+      "binary_sha256": "9f8f95110be8d9b6eff7ff62b50ba55667a2a7d46a3694c62c57aaac1f3f15db",
+      "generated_c_sha256": "1b97c144530ed430d0e9900bcfe94cd44a1c9f60c774177b293128c9b342b9f4",
+      "mode": "checked"
+    },
+    {
+      "binary_sha256": "1ecaa2e31aa79c2e738d86f4f02b23367d21b3859f1b514747d366623b86a90d",
+      "generated_c_sha256": "da1c3f942088b5a17c7bbcc42657346c838141f82470e42d22a05d8d3757f485",
+      "mode": "release"
+    }
+  ],
+  "sanitizer": {
+    "binary_sha256": "7ed2dbe499413a4cb2a776f1f35d24a20cc5ceae126c58a60a345cd42e2189a4",
+    "cases": 463
+  },
+  "schema": "coax.absolute-dns-uri-v1.evidence",
+  "scope": "Selected syntax only, no DNS/TLS/SSRF/identity authorization",
+  "source_sha256": "a64721f594454734e06352ecec04dce1ccb3dbb16b5364f15d4e9978ce3f3691",
+  "wasm": [
+    {
+      "artifact_sha256": "0e37270b7a20a0bca13df29fd791741ea3675e016ba1c5b891d07aff6ad6a2bf",
+      "cases": 463,
+      "engine": "Bun1.4.0",
+      "failures": 0,
+      "mode": "checked"
+    },
+    {
+      "artifact_sha256": "681471416c40d96014538445cadcc7e9130a2f8d6e6b8a40973d97a0ad29728d",
+      "cases": 463,
+      "engine": "Bun1.4.0",
+      "failures": 0,
+      "mode": "release"
+    }
+  ]
+}
