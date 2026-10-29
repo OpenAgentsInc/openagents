@@ -66,6 +66,9 @@ is proposed here; this revision does not add or renumber live project issues.
 | 1. Learning a number — runnable | Learn `y = 2x`; derive the loss and gradient, verify the first update, and predict a held-out value. |
 | [2. Shapes and storage](ch002-shapes-and-storage.md) — runnable | Admit bounded dimensions, caller-owned buffers, scratch and aliases; refuse malformed work before publishing output. |
 | [3. Numbers and matrices](ch003-numbers-and-matrices.md) — runnable | Dot/matmul, gather, stable reductions, softmax and normalization, with independent numerical contracts. |
+| 2a. A tensor is a view of memory | Admitted ranks, strides, slicing, transposes, broadcasting, contiguous and noncontiguous layouts, zero-element tensors, storage ownership, and mutation and alias tracking. Every view's offsets are proved, and a mutation that would corrupt a saved value for backward is detected. Framework track. |
+| 3a. A standard library of tensor operators | Elementwise arithmetic and comparisons, reductions, indexed selection and updates, concatenation, sorting and top-k, matrix operations, convolution, pooling, interpolation and losses, each with a CPU reference, shape and dtype inference, and gradient coverage where differentiable. A machine-readable operator manifest records each operator's shapes, dtypes, backends, numerical profile and differentiation status, so support is measured, not inferred from running one architecture. Framework track. |
+| 3b. One tensor, several devices and dtypes | Device placement, transfers, copy and ownership rules, dtype promotion, CPU, CUDA and Metal memory, synchronization, and seeded random tensors including dropout. One tensor program runs on every supported device with its numerical differences reported; nothing ever falls back to the CPU silently. Framework track. |
 
 ## II. Open weights early: Elephant and Mammoth
 
@@ -75,6 +78,7 @@ on the shared numerics in I and supplies the forward primitives reused later.
 | Chapter | What we build and check |
 | --- | --- |
 | [4. Reading original weights](ch004-reading-original-weights.md) — runnable | Bounded original-weights-v1 Safetensors/shard-index parsing, exact identities, BF16/F32 window decoding and typed manifests; complete inventory and malformed-artifact refusals. |
+| 4a. Models travel between frameworks | Safetensors writing as well as reading, named parameter maps, DLPack tensor exchange starting from contiguous CPU tensors, a stable C ABI, and explicit checkpoint conversion rules; with 161a, a bounded ONNX import and export subset. Pickled `.pt` files are refused, never executed. An external model is imported, trained further and exported as a portable inference artifact without running its original framework. Framework track. |
 | [5. Text becomes a model request](ch005-text-becomes-a-model-request.md) — runnable | qwen35-text-v1: frozen Base Labs rendering, Unicode-17 NFC, original Qwen byte-BPE tables, special tokens and exact shared-prefix layouts; explicit resource and structured-entry bounds. |
 | [6. Attention without training](ch006-attention-without-training.md) — runnable | A bounded dense causal block, interleaved rotary tables, grouped-query attention and caches; full-sequence versus incremental results. |
 | [7. A hybrid sequence model](ch007-a-hybrid-sequence-model.md) — runnable: bounded causal CPU profile | Qwen-style dense blocks, causal convolution and Gated DeltaNet state transitions alongside causal full attention; upstream and real-weight qualification remain separate. |
@@ -149,6 +153,8 @@ checks; llama.cpp itself is a benchmark comparator, never a dependency.
 | 25. Many questions at once | Batched suffix forks from one prefix snapshot, proven equal to the sequential forks of chapter 8; reuse of prefix state across requests keyed by model identity and exact token prefix, with bounded eviction. |
 | [26. A Coax compute subset](ch026-a-coax-compute-subset.md) — runnable: `coax cuda`, BF16 projection kernels on an RTX 4080 | The compiler's missing buffer, integer index, bounded loop, work-item and binding subset, proven on one small matrix-vector kernel: generated source compiles, real device execution matches the CPU oracle, negative admission refuses. |
 | 26a. A tensor program becomes an execution plan | A small typed intermediate representation for straight-line tensor programs (matrix products, elementwise operations, reductions and normalization, views, reshapes and gathers, with shapes, strides, dtypes, placement and explicit buffer reads, writes and aliases), executed three ways: interpreted with the CPU procedures, as a static plan with reusable workspace, and lowered to chapter 26's compute subset. One feed-forward block expressed once and run all three ways, checked for numerical agreement under the declared profile, refusal of invalid aliases, measured peak memory, and invalidation of a cached plan when a shape, layout, compiler version or device changes. Fusion (29) and differentiation (71, 74) reuse it; each new abstraction arrives with a model that needs it. |
+| 26b. Compile a general tensor program | 26a's IR with bounded dynamic shapes: symbolic dimensions, shape guards, specialization, a compilation cache and declared control-flow constructs. One model compiles once for several batch sizes, and the chapter states exactly when recompilation is required. Framework track. |
+| 26c. Add your own operator | Public operator registration: name, input and output schema, shape and dtype inference, alias effects, CPU reference, GPU lowering, backward rule and optional batching rule. A custom fused activation or normalization is added without modifying Psionic's core and is tested in inference, training and compilation. Without this, every new architecture is an engine project. Framework track. |
 | 27. Attention in tiles | Online-softmax attention over key/value tiles that never materializes the full score matrix, with chunked prefill. The changed reduction order gets its own named profile and stated tolerance against the CPU reference, and the block-bidirectional mask, sinks and windows must still hold. Grouped-query attention loads each key/value head once for every query head that shares it. |
 | 28. DeltaNet in chunks | Whole-prompt Gated DeltaNet prefill in chunks (the WY form: the chunk's triangular system solved by forward substitution, state carried in f32 between chunks), proven equal within a named profile to chapter 7's token-by-token recurrence, with state snapshots at chunk boundaries that chapter 8's forks and speculative rollback can reuse. |
 | 29. Fuse and replay | Fused device operations (normalization with its scale, gate and up projections with their activation, expert routing, a recurrent step with its cache write), each admitted only when its buffers provably do not overlap, and a decode or prefill step recorded once and replayed as a device graph; each fusion keeps its unfused result within tolerance. |
@@ -325,12 +331,17 @@ Part XX.
 | 70. Learning with arrays | A small supervised path on one dataset: a line with several inputs, logistic regression, then one hidden layer, each compared with a constant predictor and a handwritten rule, with explicit gradients and SGD. The project predicts whether a request finishes before its deadline from a controlled simulator (prompt length, queue depth, model choice, memory headroom), later from chapter 14's measurements. Feature scaling, grouped train/validation/test splits, regularization, class imbalance and threshold choice are measured, and one case shows the larger model losing. It can follow chapter 3 directly. |
 | 71. Gradients as a program | A bounded reverse-mode tape, saved values, accumulation and parameter identity; analytic and finite-difference checks. |
 | 71a. Make a model fail, then find out why | A working classifier broken on purpose (gradients that accumulate across steps, targets paired with the wrong examples, a loss mask that includes padding, a learning rate too large, initialization that makes hidden units identical, a training-only random operation left on at evaluation), and diagnostics for each: activation distributions, gradient norms, update sizes, train and validation curves, and overfitting one small batch first. Each fault must produce a diagnostic that points at it, and repairing it must restore the expected behavior. |
+| 71b. Differentiate any tensor program | General reverse mode over 26a's IR: vector-Jacobian rules per operator, shared subexpressions, a parameter used more than once, unused gradients, custom derivatives, gradient-mode control and saved-tensor lifetimes. 71's tape stays the teaching version; this is the permanent one. An MLP built from registered operators, including a custom one, trains with checked gradients. Framework track. |
+| 71c. Transform functions, not just tensors | `grad`, `value_and_grad`, `vjp`, `jvp`, `vmap`, Jacobians, Hessian-vector products and their composition. Per-example gradients and Jacobians are computed without a hand-written loop and checked against explicit calculation; robotics, differentiable physics and batched optimization use them. Framework track. |
 | 72. Learn a physical system | A supervised oscillator or cooling surrogate from our own deterministic solver; held-out parameters, one-step error and repeated rollout stability. |
 | 72a. A grid world that learns, plans and recovers | A headless grid or 2D navigation scene with obstacles, goals and resettable state. An exact planner supplies demonstrations for a small policy, which then collects labels on the states it actually visits (DAgger); a second route plans with chapter 72's learned model, executes one action and replans, and shows the optimizer exploiting the model's errors. Whole episodes on held-out maps and parameters, completion, collisions, recovery and computation per decision, with tiny cases checked against exhaustive search. A Verse character that navigates and recovers follows from here. |
 | 73. Bytes and a small language model | A real byte vocabulary, bigram likelihood, fixed licensed splits, named RNG and complete tiny training/generation. |
 | 74. Differentiate a decoder | Backward operations for the complete causal attention/FFN path; causal isolation and gradient coverage. |
+| 74a. Compile the backward pass | Differentiate the IR itself, plan saved activations, choose recomputation, fuse backward operations and compile the optimizer update. Eager and compiled training agree on loss, gradients and updates over several steps, with memory and time measured. Framework track. |
 | 75. Train the whole tiny decoder | A complete small transformer with training, held-out likelihood and generation; keep it as a permanent regression. |
 | 75a. Train within a memory budget | Where training memory goes (parameters, gradients, optimizer state, saved activations and workspace, each with its own lifetime), gradient accumulation with correct loss normalization and update timing, activation checkpointing that recomputes chosen blocks, and a precision policy per operation (storage, multiplication, accumulation, gradients, optimizer state) with loss scaling. The tiny decoder trained under a fixed memory cap three ways, with gradients and updates against the reference, random-number replay for recomputed operations, measured savings and extra time, and overflow and underflow fixtures. |
+| 75b. Models are compositions of modules | `Module` and `Parameter`, named submodules and parameter trees, persistent and non-persistent buffers, train and eval modes, initialization, freezing and parameter sharing. The gate: someone who has never worked on Psionic builds an MLP, a CNN, a small residual network and a transformer from the documented public API without touching runtime code. Framework track. |
+| 75c. One trainer for every model | One model, loss and optimizer interface with epochs and steps, gradient clipping and accumulation, validation, schedulers, callbacks and cancellation; an image classifier and a tiny language model train through the same interface. Framework track. |
 
 Chapter 72 needs 70–71, not language-model training. It is our first physics
 chapter, much earlier than pretrained geometry or weather models. It uses
@@ -342,8 +353,11 @@ a separate extension in appendix C.
 | Chapter | What we build and check |
 | --- | --- |
 | 76. Data and resumable state | Provenance, disjoint splits, document packing, model/optimizer/RNG/data counters and exact resume under a named profile. Splits are made by task, session or time, never by row: repeated episodes, paraphrases and near-duplicates stay in one split, preprocessing is fitted on training data only, and planted leakage (including a feature known only after the outcome) must be detected. |
+| 76a. Feed the accelerator | Indexed and streaming datasets, samplers, batching and collation, shuffling, transforms, workers, prefetching, pinned host memory, backpressure and resumable iterator state; a reproducible image and text pipeline, with the GPU time lost to loading measured. Framework track. |
+| 76b. A checkpoint holds the whole experiment | A versioned record of parameters, optimizer and scheduler state, RNG, data position, precision policy, compilation identity and provenance. Training interrupted at a chosen step resumes and reproduces the declared continuation profile; 129c restores it into a different shard layout. Framework track. |
 | 77. Learn a tokenizer | Deterministic byte-BPE training in Coax with explicit tie rules and a pinned pretokenization pattern (nanochat's two-digit number groups); the trained table round-trips through chapter 5's encoder, and an independent oracle reproduces the merges. |
 | 78. AdamW, then Muon | Independent update derivations, parameter groups, precision and the exact pinned nanochat optimizer behavior. |
+| 78a. Optimizers are reusable components | One optimizer interface for SGD with momentum, AdamW and Muon, schedulers, parameter groups, weight decay and complete state serialization; optimizers swap on an unchanged model, each update checked against an independent calculation. Framework track. |
 
 Data admission begins with the first trainer. These chapters consolidate it
 before longer runs rather than postponing provenance until this part.
@@ -355,6 +369,9 @@ before longer runs rather than postponing provenance until this part.
 | 79. Execute nanochat exactly | Pinned BPE/conversation rules, inert checkpoint export, every enabled forward feature and cached inference. |
 | 80. Differentiate nanochat | Gradients for every enabled feature; tiny independent comparisons and complete parameter coverage. |
 | 81. A complete pretraining run | Tokenizer training from 77, initialization, schedules, accumulation, token budgets, packing, resume and held-out loss/bits-per-byte; tiny first, measured scale later. The same budget spent two ways (a smaller model trained longer against a larger one trained for fewer steps), including the deployed inference cost. |
+| 81a. Train a whole model on one GPU | GPU forward and backward, gradient accumulation and optimizer updates on device, BF16 and FP32 policies, and the backward kernels inference never needed: matrix products, normalization, attention and convolution gradients. An MLP, a CNN and a tiny transformer train on the RTX 4080 with all trainable state on the device between steps, and a 10–50M-parameter decoder runs a complete training job with no PyTorch, no unintended CPU fallback and independently verified gradients. Framework track. |
+| 81b. Profile a training step | Operator-level CPU and GPU timing, kernel launches, GPU idle time, transfers, allocation lifetimes, peak activations, backward cost and compile cost; one bottleneck found, fixed and its improvement measured. Framework track. |
+| 81c. Train the same model eager and compiled | Whole-step compilation with bounded dynamic batches, fusion, activation liveness and the optimizer step; the same model, data order and RNG policy compared on gradients, updates, final metrics, memory, compile cost and steady-state speed. Framework track. |
 | 82. Supervised conversations and tools | Assistant/tool loss masks and validation; bounded Nemotron-Agentic-v1/OpenCodeReasoning subsets with provenance and base-skill regression. |
 | 83. Continued pretraining and task adaptation | A separately specified domain workload, data mixture, retention checks and promotion criteria. This is a Psionic extension, not a stage claimed from the pinned nanochat speedrun. |
 | 84. Preferences and reward models | HelpSteer3 pairwise data, ranking/reward losses and an optional separately specified DPO experiment; held-out comparisons and reward-model limitations. |
@@ -497,6 +514,9 @@ model serving one decision at a time leaves out.
 | 127. A pipeline of models | A compound voice workload (voice activity, transcription, decision model, speech) with each stage scaled separately in one cluster, an end-to-end latency budget per stage and a measured cost for each network hop. |
 | 128. A decision model steers voice | Elephant as the voice engine's `decisions:<model>` decider: proposals pass the existing never-awaited gate (clamping, confidence floor, epoch and deadline fences, recorded drop reasons); a slow or absent model can only fail to steer, never stall a frame. |
 | 129. Train across devices | One real homogeneous topology: gradient collectives (shared with 119), sharding/resume, numerical comparisons and measured scaling. |
+| 129a. A tensor spread over devices | A device mesh, replicated, sharded and partially reduced layouts, collectives, placement propagation and redistribution; one operation runs under several layouts and matches a single-device reference. Framework track. |
+| 129b. Data-parallel training | Gradient buckets, all-reduce, accumulation boundaries, communication overlapped with computation, and handling a failed rank; one and two devices compared on gradient semantics, throughput and restart. Framework track. |
+| 129c. Fully sharded training | Sharded parameters, gradients and optimizer state, prefetching all-gather and reduce-scatter, and checkpoints restored into a different shard layout; a model whose training state exceeds one GPU's memory trains and resumes. Framework track. |
 
 Serving can begin after the first qualified decision model and an actual
 consumer contract. Chapter 128 is the first consumer: it needs 12's published
@@ -592,6 +612,7 @@ with synthetic probabilities (live traffic after 16 and 17), 158 after 16 and 17
 | 159. A Pylon checks itself before serving | A read-only doctor and a self-check against shipped reference decisions that the Pylon must pass before it advertises a slot; an update that would change the served model identity is refused unless declared. |
 | 160. How far apart may two honest answers be? | A distance between two machines' answer distributions (centred log probabilities), measured for honest pairs across backends and for cheap substitutes (a quantized copy, another runtime, a sibling model), with round and strike limits set between them; fresh seeded items with no answer key, the checked subset chosen after answers arrive. |
 | 161. Read a bounded ONNX graph | A Coax reader for a fixed opset and a small set of operators, mapping anonymous initializers to named tensors by walking the graph and refusing anything outside the set; first consumers are a static-embedding model and a tiny image classifier. |
+| 161a. Write a bounded ONNX graph | Export of 4a's portable inference subset as ONNX, re-read by 161 and by an independent checker, so a model trained in Psionic leaves as an inert artifact. Framework track. |
 | 162. A decision in milliseconds | A small encoder with fixed decision heads (a ModernBERT-family model with local and global attention, GeGLU and quantized embedding rows, per-head temperatures) answering a typed question in milliseconds, with identical argmaxes and a stated distance from its reference, and the p50 and p99 latency at 512 tokens on CPU and GPU. |
 | 163. Distill Elephant into a small router | An encoder student trained on Elephant's answer distributions over owned synthetic requests, with temperatures fitted on a development split; promoted only above stated agreement with Elephant, calibration error and cheap-answer precision. |
 | 164. Shadow a new model, then promote it | A candidate model answering beside the current one on live traffic, both logged; promoted only within stated disagreement limits and with no regression in joined outcomes. Chapter 122 rolls out new builds of one model; this rolls out a different model. Candidates are immutable, activation is atomic by approved digest, and a deliberately worse candidate must leave the active one unchanged. |
@@ -667,11 +688,66 @@ advance (164, 180).
 | 186. Outcomes become training rows | Decision outcomes and verified traces admitted with their replay verdicts; labels from diffs and checks, never from an agent's own summary; an exposure ledger across artifacts so held-out groups are never trained on; splits by time. These rows feed chapters 85 to 87, 163 and 174. |
 | 187. Is the loop improving? | Cost per accepted result per cycle on a fixed set, an ablation for every component, a complexity ledger, and shared budgets for proposer, student and grader; a loop that does not improve is reported as such. |
 | 188. An agent optimizes a Psionic kernel | First a conventional bounded autotuner over tile and workgroup sizes, vector widths and a few fusion choices; then a harness agent proposing new implementations inside chapter 26's compute subset for a normalization kernel or a small gated feed-forward block. The agent receives the reference operation and its input contract, compilation, correctness results, profiler measurements and a fixed budget; the evaluator and its independent tests are outside its writable scope, with held-out shapes, awkward dimensions, extreme values and memory checks. A winner must keep the declared numerical behavior and improve measured performance on the declared workload, with its source, compiler identity, device, memory and timings kept. The whole search cost, failures included, is reported, and a run that finds nothing is still a result. |
+| 189. Can someone use Psionic instead of PyTorch? | An externally consumable package: public APIs, operator documentation, examples, diagnostics and reproducible benchmarks, and a command that audits a proposed model (its operators, dtypes, gradients and backends) before allocating large GPU memory. Three published PyTorch tutorials (a classifier, a convolutional model and a transformer training example) are rebuilt with public APIs only, recording model-specific lines, unsupported operations, runtime modifications, effort, cold-start compile time, throughput, memory and final quality. The gate is zero engine modifications for an ordinary new model; each one needed names a missing public abstraction, which is then added. |
 
 The loops improve the system around the weights first (settings, prompts,
 routers, harness configuration); weight updates follow only when both the
 decision and probability gates pass, since the pre-reset fine-tuning raised
 accuracy while making confidence worse.
+
+## A framework, not only engines
+
+Most of this plan teaches how to run and train particular architectures. To
+replace PyTorch inside OpenAgents, Psionic also has to make a new
+architecture easy to write. The rows marked "Framework track" above add that.
+Their graduation requirement is one sentence:
+
+> A developer defines, trains, fine-tunes, evaluates, saves, exports and
+> deploys a new neural network entirely in Coax and Psionic, on CPU and GPU,
+> without installing or importing PyTorch.
+
+That is a concrete decision for OpenAgents' own workflows. Replacing PyTorch
+as everyone's ecosystem needs far more operators, tools, hardware and
+integrations, and is not claimed.
+
+**The tensor IR is the center.** One representation, 26a's, carries a model
+from Coax source to eager execution (3a), differentiation (71b, 71c), compiled
+forward and backward programs (26b, 74a, 81c), custom operators (26c),
+distributed layouts (129a) and exported artifacts (4a, 161a). Because Coax is
+compiled and typed, Psionic derives these from the program instead of tracing
+it at run time, as PyTorch has to. Every special model implementation should
+contribute reusable operators to this path where it can.
+
+**Four acceptance projects** (each reports the quality reached and the
+resources used; divergence from a PyTorch reference is measured, not assumed
+harmless):
+
+| Project | Path | Gate |
+| --- | --- | --- |
+| Train from scratch | A small MLP on MNIST, then ResNet-18 on CIFAR-10 (2a–3b, 71b, 75b–75c, 76a, 78a, 81a) | Raw dataset to a saved model that reloads independently |
+| A language model without PyTorch | A 10–50M-parameter decoder with tokenization, batched mixed-precision training, checkpoints, compiled backward and inference (74a, 75a, 76b, 81a–81c) | A full RTX 4080 run with tokens per second, peak memory, a loss curve and an independently implemented PyTorch baseline |
+| Import, fine-tune, serve | A published model read from inert tensors, LoRA adapters trained in Psionic, the adapter saved and served (4a, 86, 116) | Original model to useful adaptation to deployed inference, with PyTorch needed for nothing |
+| Train across GPUs and recover | Replicated, then sharded training, interrupted and restored (76b, 129a–129c) | Verified synchronization, declared numerical consistency, correct resume and measured scaling |
+
+**Order.**
+1. **A usable framework:** tensor semantics, modules, general autodiff,
+   custom operators, optimizers and a data loader. Graduation: a new MLP and
+   CNN train without modifying the runtime.
+2. **Competitive single-GPU training:** unified IR and compiled autodiff,
+   GPU backward kernels, whole-step training, mixed precision and profiling.
+   Graduation: a small language model trains end to end on the 4080 with a
+   reproducible PyTorch comparison.
+3. **PyTorch leaves OpenAgents:** import and export, LoRA fine-tuning,
+   reproducible checkpoints and deployment. Graduation: the selected internal
+   training and deployment workflows need no PyTorch installation.
+4. **Broader adoption:** distributed tensors, sharded training, public model
+   packages and compatibility tests (189).
+
+After the current gpt-oss delivery milestones, this track is proposed to take
+priority over adding more large pretrained targets. Executing another
+architecture proves compatibility; letting a developer define and train a new
+one proves the framework. A Python frontend is out of scope: AGENTS.md keeps
+Python to tooling. The stable C ABI and DLPack (4a) let others build one.
 
 ## Optional laboratories
 
@@ -688,6 +764,7 @@ accuracy while making confidence worse.
 | --- | --- | --- |
 | Urgent decisions | 1–3, then 4–9 | Elephant 10, Mammoth 11, published semantics 12; Metal 26–31 advances alongside. |
 | A first model of your own | 1–3 | Deadline prediction 70 → gradients 71 → failure diagnosis 71a; a grid-world policy 72a after 72. |
+| A framework, not only engines | 2–3 and 26a; 71 and 75 for training; 30 and 26 for the GPU; 129 for distribution | Tensors and operators 2a–3b → modules, autodiff and custom operators 75b, 71b–71c, 26c → trainer, data, optimizers 75c, 76a, 78a → GPU training and compilation 81a–81c, 26b, 74a → checkpoints and interchange 76b, 4a, 161a → distribution 129a–129c → can someone use it 189. |
 | Live decision API | 10–11 and 13; an owner-approved host | Timing 14 → resident model 15 → `/v1/systemone` 16 → running live 17 → measured optimizations 18. |
 | First Pylon mesh | Part III's API and `coax/lib/nostr` | A Pylon answering decisions 19 → the API fanning out 20 → receipts and checks 21. |
 | Decision throughput | 10 and 22; Coax jobs for the second half of 24 | Byte-identical parallel CPU 24; batched forks and prefix reuse 25. |
@@ -734,6 +811,16 @@ case and its verification gate, and stays planned until the feature runs.
 | SIMD lanes (`for_simd`) and vector/matrix types ([ch11](../../coax/book/ch11-data-layout.md)) | 22–24, 93–96 | Scalar loops; measure before asking. |
 | Pointers, dynamic arrays and allocators ([ch06](../../coax/book/ch06-memory.md)) | 22, 25 caches, 46, 64 and 135 expert paging, 76 | Host-owned views with explicit capacities. |
 | A qualified Linux target ([ch18](../../coax/book/ch18-targets.md)) and asynchronous I/O with deadlines and cancellation ([ch23](../../coax/book/ch23-asynchronous-work.md)) | 16–21, 30, 116–129 on hosted machines, 130–143 on mixed peers | Apple CPU and Metal only. |
+
+For the framework track, six of these block everything else: safe
+tensor-shaped dynamic storage and views (pointers, dynamic arrays and
+allocators); generic numerical procedures and the narrow float types; GPU
+matrix instructions, reductions and synchronization; a typed tensor IR the
+compiler can see; jobs, asynchronous device effects and buffer lifetimes;
+and qualified Linux and accelerator targets. Coax GPU work should be driven
+by a training consumer as well as an inference one, or Psionic can tune twenty
+architectures for inference without ever gaining a general GPU training
+backend.
 
 Stable issue slugs describe existing work; chapter numbers are provisional.
 When a branch is selected, split it into concrete issues with the same
