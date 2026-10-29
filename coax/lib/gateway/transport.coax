@@ -1,0 +1,174 @@
+// The streaming HTTP transport: curl as a child (coax/platform/process-native.c,
+// through the Claude SDK's process bindings; link that file), as
+// coax/lib/systemone/transport.coax runs it, but read as it arrives and
+// without blocking, so a UI's frame loop can poll it (gw_poll). The body
+// goes on curl's stdin; curl prints the status line and headers (-i), then
+// the body unbuffered (-N), one line at a time. The key never passes
+// through curl's arguments: curl reads it from the environment variable
+// named key_env (--variable) and expands it into the Authorization header
+// itself. When the caller has the key from a file (key_value), it goes into
+// that variable in the child's environment only, never into an argument or a
+// log. Closing the stream (gw_close) kills curl, which closes the
+// connection: a server that watches for disconnects stops its work.
+// Part of the gateways (docs/coder/microcoder.md, row 1).
+
+#load "sse.coax";
+#load "../agent/claude/transport.coax";
+
+GwClient :: struct {
+  url: string;                   // the full endpoint, e.g. http://127.0.0.1:8080/v1/responses
+  key_env: string;               // the variable curl reads the key from
+  key_value: string;             // "" when the variable is already in this process's environment
+  scheme: string = "Bearer";
+  curl: string = "curl";         // found on PATH; needs curl 8.3 or later (--variable)
+  connect_timeout_s: int = 5;
+  max_time_s: int = 300;
+}
+
+GwStream :: struct {
+  h: int = -1;
+  status: int;                   // the HTTP status, once its line came (0 before)
+  in_headers: bool;              // reading the status line and headers
+  ended: bool;                   // curl's output is over
+  exit: int;                     // curl's exit status once ended (0 is a whole response)
+  bytes: int;                    // body bytes so far
+}
+
+GW_IDLE :: 0;                    // nothing new yet
+GW_LINE :: 1;                    // a body line (text)
+GW_END :: 2;                     // the response is over: see status and exit
+
+GwRead :: struct {
+  kind: int;
+  text: string;
+}
+
+gw_name_ok :: (s: string) -> bool {
+  if s.count == 0 { return false; }
+  for c: s { if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') { return false; } }
+  return true;
+}
+gw_part :: (h: int, field: int, s: string) -> bool {
+  for c: s { if c == 0 || cxproc_push(h, field, cast(int) c) != 0 { return false; } }
+  return true;
+}
+gw_arg :: (h: int, s: string) -> bool { return gw_part(h, CL_FIELD_ARG, s) && cxproc_end(h, CL_FIELD_ARG) == 0; }
+gw_digits :: (out: [] u8, v: int) -> string {
+  n := 0; x := v;
+  if x <= 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  tmp: [24] u8; k := 0;
+  while x > 0 && k < 24 { tmp[k] = cast(u8) ('0' + x % 10); x /= 10; k += 1; }
+  while k > 0 { k -= 1; out[n] = tmp[k]; n += 1; }
+  return cast(string) out[0..<n];
+}
+
+// Starts the request: POST body to c.url with the extra headers ("Name:
+// value" each). What went wrong, or "" (st is then live until gw_close).
+gw_start :: (c: GwClient, body: string, headers: [] string, st: [] GwStream) -> string {
+  st[0] = GwStream.{};
+  if !gw_name_ok(c.key_env) { return "key_env must be a plain variable name"; }
+  if c.key_value.count == 0 {
+    for ch: c.key_env { k := cxproc_getenv_push(cast(int) ch); }
+    if cxproc_getenv() <= 0 { return "the API key is not set"; }
+  }
+  for ch: c.key_value { if ch < 33 || ch > 126 { return "the API key holds a character a header cannot"; } }
+  if body.count == 0 { return "no request body"; }
+  h := cxproc_new();
+  if h < 0 { return "no process slot is free"; }
+  num: [24] u8; num2: [24] u8;
+  ok := gw_arg(h, c.curl) && gw_arg(h, "-sS") && gw_arg(h, "-N") && gw_arg(h, "-i");
+  ok = ok && gw_arg(h, "--connect-timeout") && gw_arg(h, gw_digits(num[..], c.connect_timeout_s));
+  ok = ok && gw_arg(h, "--max-time") && gw_arg(h, gw_digits(num2[..], c.max_time_s));
+  ok = ok && gw_arg(h, "--variable") && gw_part(h, CL_FIELD_ARG, "%") && gw_arg(h, c.key_env);
+  ok = ok && gw_arg(h, "--expand-header") && gw_part(h, CL_FIELD_ARG, "Authorization: ") && gw_part(h, CL_FIELD_ARG, c.scheme)
+          && gw_part(h, CL_FIELD_ARG, " {{") && gw_part(h, CL_FIELD_ARG, c.key_env) && gw_arg(h, "}}");
+  ok = ok && gw_arg(h, "-H") && gw_arg(h, "Content-Type: application/json");
+  ok = ok && gw_arg(h, "-H") && gw_arg(h, "Accept: text/event-stream");
+  ok = ok && gw_arg(h, "-H") && gw_arg(h, "Expect:");
+  for x: headers { ok = ok && gw_arg(h, "-H") && gw_arg(h, x); }
+  ok = ok && gw_arg(h, "--data-binary") && gw_arg(h, "@-");
+  ok = ok && gw_arg(h, "--") && gw_arg(h, c.url);
+  if c.key_value.count > 0 {
+    ok = ok && gw_part(h, CL_FIELD_ENV, c.key_env) && gw_part(h, CL_FIELD_ENV, "=") && gw_part(h, CL_FIELD_ENV, c.key_value) && cxproc_end(h, CL_FIELD_ENV) == 0;
+  }
+  if !ok { x := cxproc_release(h); return "an argument holds a zero byte or does not fit"; }
+  e := cxproc_spawn(h);
+  if e != 0 { x := cxproc_release(h); return ifx e == 2 then "curl not found" else "failed to start curl"; }
+  for ch: body { if cxproc_write(h, cast(int) ch) != 0 { x := cxproc_release(h); return "failed to write the request to curl"; } }
+  if cxproc_flush(h) != 0 || cxproc_close_stdin(h) != 0 { x := cxproc_release(h); return "failed to write the request to curl"; }
+  st[0].h = h; st[0].in_headers = true; st[0].exit = -1;
+  return "";
+}
+
+// The status of an "HTTP/1.1 200 OK" line, or 0.
+gw_status_of :: (line: string) -> int {
+  if line.count < 10 || line[0..<5] != "HTTP/" { return 0; }
+  i := 5;
+  while i < line.count && line[i] != ' ' { i += 1; }
+  i += 1;
+  v := 0; n := 0;
+  while i < line.count && n < 3 && line[i] >= '0' && line[i] <= '9' { v = v * 10 + cast(int) (line[i] - '0'); i += 1; n += 1; }
+  return ifx n == 3 then v else 0;
+}
+
+// The next body line, copied into line (lines longer than it are cut), or
+// GW_IDLE when nothing has come yet, or GW_END once curl is done. The
+// status line and headers are read here and never returned; an interim
+// "100 Continue" block is skipped.
+gw_poll :: (st: [] GwStream, line: [] u8) -> GwRead {
+  if st[0].h < 0 || st[0].ended { return GwRead.{kind = GW_END}; }
+  for guard: 0..<64 {
+    n := cxproc_read_line(st[0].h, 0);
+    if n == CL_TIMEOUT { return GwRead.{kind = GW_IDLE}; }
+    if n == CL_TOO_LONG { continue; }
+    if n < 0 {
+      st[0].ended = true;
+      st[0].exit = cxproc_wait(st[0].h, 2000);
+      return GwRead.{kind = GW_END};
+    }
+    k := ifx n < line.count then n else line.count;
+    for i: 0..<k { line[i] = cast(u8) cxproc_line_byte(st[0].h, i); }
+    text := cast(string) line[0..<k];
+    if st[0].in_headers {
+      s := gw_status_of(text);
+      if s > 0 { st[0].status = s; continue; }
+      if k == 0 && st[0].status > 0 {
+        if st[0].status == 100 { st[0].status = 0; continue; }
+        st[0].in_headers = false;
+      }
+      continue;
+    }
+    st[0].bytes += n + 1;
+    return GwRead.{kind = GW_LINE, text = text};
+  }
+  return GwRead.{kind = GW_IDLE};
+}
+
+// curl's stderr (what it said when it failed), into out.
+gw_stderr :: (st: [] GwStream, out: [] u8) -> string {
+  if st[0].h < 0 { return ""; }
+  n := cxproc_stderr_count(st[0].h);
+  if n > out.count { n = out.count; }
+  for i: 0..<n { out[i] = cast(u8) cxproc_stderr_byte(st[0].h, i); }
+  while n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r' || out[n - 1] == ' ') { n -= 1; }
+  return cast(string) out[0..<n];
+}
+
+// Ends the request: curl and its connection go (a stream still running is cut off).
+gw_close :: (st: [] GwStream) {
+  if st[0].h < 0 { return; }
+  x := cxproc_release(st[0].h);
+  st[0].h = -1; st[0].ended = true;
+}
+
+// Whether curl could not reach the server at all (exit 6, 7: no host, no
+// connection; 28 during connect is a timeout and is reported as such).
+gw_unreachable :: (st: [] GwStream) -> bool { return st[0].status == 0 && (st[0].exit == 6 || st[0].exit == 7); }
+
+#test "status lines" {
+  #assert gw_status_of("HTTP/1.1 200 OK") == 200 && gw_status_of("HTTP/1.1 503 Service Unavailable") == 503;
+  #assert gw_status_of("HTTP/2 404 ") == 404 && gw_status_of("data: x") == 0 && gw_status_of("HTTP/1.1 OK") == 0;
+  d: [24] u8;
+  #assert gw_digits(d[..], 300) == "300" && gw_digits(d[..], 0) == "0";
+  #assert gw_name_ok("PSIONIC_API_KEY") && !gw_name_ok("A B") && !gw_name_ok("");
+}

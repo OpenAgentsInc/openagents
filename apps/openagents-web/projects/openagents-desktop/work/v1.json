@@ -93,6 +93,27 @@
       ]
     },
     {
+      "slug": "desk-psionic-mode",
+      "title": "Claude or Psionic: chat with our own gpt-oss-20b through the Responses API",
+      "parent": "desk-zeron-ui",
+      "size": "M",
+      "body": "A Claude | Psionic mode on the Zeron chat. Psionic chats with our own gpt-oss-20b through the Psionic Responses API (POST /v1/responses, streamed): the harness rides on the model chip as in Zeron (mark plus model), a conversation keeps its mode and an empty one can switch; Psionic's chips show gpt-oss-20b and effort Low/Medium/High, the access chip gates its tools (read file, list folder, run command). The streaming client, SSE reader and curl transport go in coax/lib/gateway/; the key comes from PSIONIC_API_KEY or ~/work/.secrets/psionic-responses.env, never an argument or a log. Multi-turn replays the prior output items; busy (503 worker_busy), context limit, unreachable and Stop are handled. The modes and each chip's choices are data a picker reads (zeron/modes.coax).",
+      "files": [
+        "apps/openagents-desktop/zeron/",
+        "apps/openagents-desktop/Sources/Zeron.swift",
+        "apps/openagents-desktop/icons/psionic-mark.svg",
+        "coax/lib/gateway/",
+        "docs/desktop/coax-desktop.md"
+      ],
+      "acceptance": [
+        "coax test --library passes for the SSE reader, the transport and psionic.coax, whose recorded streams (no keys) map to transcript parts, replay, tool calls and the busy, context, unauthorized, cut and Stop paths",
+        "The mode chip matches Zeron's harness chip in a side-by-side render, with the measured difference reported",
+        "A --shot shows a Psionic turn with its reasoning, a follow-up that uses the prior turn, Stop mid-stream, and the busy and unreachable messages",
+        "A Claude Haiku turn still works after the change",
+        "build.sh passes"
+      ]
+    },
+    {
       "slug": "desk-host",
       "title": "Mac host: a window that draws Coax HUD output with Metal",
       "parent": "desk-local-chat",

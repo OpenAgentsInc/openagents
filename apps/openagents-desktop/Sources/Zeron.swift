@@ -304,12 +304,14 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   // The chat's engine: the user's own Claude Code in --cwd PATH (default the
   // home folder), or Zeron's demo conversation with --demo; --model
   // opus|sonnet|haiku, --effort low|medium|high|xhigh|max and --access
-  // full|edits|supervised preset the composer's chips.
+  // full|edits|supervised preset the composer's chips; --mode claude|psionic
+  // the chat's mode (zeron/modes.coax; the effort then counts in its list).
   func configure(_ args: [String]) {
     func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
     if args.contains("--demo") { zr_demo(state); return }
     let cwd = value("--cwd").map { ($0 as NSString).expandingTildeInPath } ?? NSHomeDirectory()
     Array(cwd.utf8).withUnsafeBufferPointer { zr_attach(state, $0.baseAddress, Int32($0.count)) }
+    if let m = value("--mode")?.lowercased(), let i = ["claude", "psionic"].firstIndex(of: m) { zr_choose(state, 4, Int32(i)) }
     for (flag, which, names) in [("--model", 1, ["opus", "sonnet", "haiku"]), ("--effort", 2, ["low", "medium", "high", "xhigh", "max"]),
                                  ("--access", 3, ["full", "edits", "supervised"])] {
       if let v = value(flag)?.lowercased(), let i = names.firstIndex(of: v) { zr_choose(state, Int32(which), Int32(i)) }
@@ -403,6 +405,8 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     case "model", "effort", "access":
       let names = ["model": ["opus", "sonnet", "haiku"], "effort": ["low", "medium", "high", "xhigh", "max"], "access": ["full", "edits", "supervised"]][verb]!
       if let i = names.firstIndex(of: arg.lowercased()) { zr_choose(state, verb == "model" ? 1 : verb == "effort" ? 2 : 3, Int32(i)) }
+    case "mode":
+      if let i = ["claude", "psionic"].firstIndex(of: arg.lowercased()) { zr_choose(state, 4, Int32(i)) }
     case "wait" where nums.count == 1: return (CACurrentMediaTime() + Double(nums[0]), false)
     case "waitidle": return (CACurrentMediaTime() + Double(nums.first ?? 300), true)
     case "scroll" where nums.count == 1: zr_scroll_to(state, nums[0])

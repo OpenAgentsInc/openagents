@@ -6,13 +6,17 @@
 // under it as Zeron docks it in a chat. The composer's chips pick the model
 // and effort and the access (each click takes the next: Zeron opens a menu
 // there), Send turns into Stop while the turn runs, and Stop or Escape
-// interrupts it. Zeron's demo conversation stays as a fixture (--demo, and
+// interrupts it. The model chip also carries the chat's mode (modes.coax):
+// Claude, or Psionic, our own gpt-oss-20b through the Psionic Responses API
+// (psionic.coax); an empty chat changes mode when the chip passes the last
+// model of one, and a conversation keeps its mode. Zeron's demo
+// conversation stays as a fixture (--demo, and
 // the transcript-fixture capture's `fixture` step). The host
 // (Sources/Zeron.swift, through zeron-face.c) builds the atlas from the
 // fonts and icons listed here, gives the engine its buffers and working
 // folder, then each frame asks for the vertices. Based on Zeron by Wing, MIT.
 
-#load "claude.coax";
+#load "modes.coax";
 
 ZR_MAX_VERTICES :: 200000;
 ZR_COLUMN_PAD :: 16.0;
@@ -46,14 +50,40 @@ ZeronState :: struct {
   since_build: f32;              // seconds since the transcript was rebuilt
   host_action: int;              // HOST_*, until the host takes it
   own_pool: [4096] u8;           // the conversation's text until the host attaches its pool
+  // the mode, and the Psionic engine with its buffers
+  mode: int;                     // MODE_*
+  psionic: [1] PsEngine;
 }
+// The Psionic engine's buffers, carved from the end of the host's pool:
+// curl's lines, decoded strings, the request body, an event's data, the replay.
+ZR_PS_BUF :: 65536;
 
 zr_labels :: (s: [] ZeronState) {
   c := s[0].composer[..]; e := s[0].engine[..];
   models := MODEL_NAMES; efforts := EFFORT_NAMES; access := ACCESS_NAMES;
   // the demo keeps the capture's chip (the chat's model id, nothing else)
-  if s[0].demo { c[0].model_label = ""; c[0].effort_label = ""; c[0].access_label = ""; return; }
-  c[0].model_label = models[e[0].model]; c[0].effort_label = efforts[e[0].effort]; c[0].access_label = access[e[0].access];
+  if s[0].demo { c[0].model_label = ""; c[0].effort_label = ""; c[0].access_label = ""; c[0].brand = 0; return; }
+  brands := MODE_BRANDS;
+  c[0].brand = brands[s[0].mode];
+  c[0].access_label = access[e[0].access];
+  if s[0].mode == MODE_PSIONIC { c[0].model_label = PS_MODEL; c[0].effort_label = mode_option_label(MODE_PSIONIC, CH_EFFORT, s[0].psionic[0].effort); return; }
+  c[0].model_label = models[e[0].model]; c[0].effort_label = efforts[e[0].effort];
+}
+// Changes an empty chat's mode (a conversation keeps its own); whether it changed.
+zr_set_mode :: (s: [] ZeronState, mode: int) -> bool {
+  if mode < 0 || mode >= MODE_COUNT || (!zr_empty(s) && mode != s[0].mode) || s[0].demo { return false; }
+  s[0].mode = mode;
+  zr_labels(s);
+  return true;
+}
+// A message, Stop and the pump go to the chat's engine.
+zr_send :: (s: [] ZeronState, text: string) {
+  if s[0].mode == MODE_PSIONIC { ps_send(s[0].psionic[..], s[0].session[..], text); return; }
+  e_send(s[0].engine[..], s[0].session[..], text);
+}
+zr_stop :: (s: [] ZeronState) {
+  if s[0].mode == MODE_PSIONIC { ps_stop(s[0].psionic[..], s[0].session[..]); return; }
+  e_stop(s[0].engine[..], s[0].session[..]);
 }
 // The demo conversation, as the transcript-fixture capture opens it.
 zr_demo :: (s: [] ZeronState) {
@@ -72,10 +102,18 @@ zr_empty :: (s: [] ZeronState) -> bool { return !s[0].demo && s[0].session[0].n 
 zr_chip :: (s: [] ZeronState, which: int) {
   c := s[0].composer[..]; e := s[0].engine[..]; ss := s[0].session[..];
   if which == CH_SEND {
-    if ss[0].live && c[0].n == 0 { e_stop(e, ss); } else { composer_submit(c); }
+    if ss[0].live && c[0].n == 0 { zr_stop(s); } else { composer_submit(c); }
   }
-  else if which == CH_MODEL { e_set_model(e, (e[0].model + 1) % 3); }
-  else if which == CH_EFFORT { e[0].effort = (e[0].effort + 1) % 5; }
+  else if which == CH_MODEL {
+    // Claude's models, then (an empty chat) Psionic's gpt-oss-20b, then Claude again
+    if s[0].mode == MODE_PSIONIC { if zr_set_mode(s, MODE_CLAUDE) { e_set_model(e, 0); } }
+    else if e[0].model < 2 { e_set_model(e, e[0].model + 1); }
+    else if !zr_set_mode(s, MODE_PSIONIC) { e_set_model(e, 0); }
+  }
+  else if which == CH_EFFORT {
+    if s[0].mode == MODE_PSIONIC { s[0].psionic[0].effort = (s[0].psionic[0].effort + 1) % 3; }
+    else { e[0].effort = (e[0].effort + 1) % 5; }
+  }
   else if which == CH_ACCESS { e_set_access(e, (e[0].access + 1) % 3); }
   zr_labels(s);
 }
@@ -109,7 +147,8 @@ zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, d
     s[0].want_scroll = -1;
     if ss[0].pool.count == 0 { s_init(ss, s[0].own_pool[..]); }
     ss[0].asking = -1;
-    e[0].effort = 2;   // High, Zeron's default
+    if !e[0].on { e[0].effort = 2; }   // High, Zeron's default (attach sets it before the host's flags)
+    if !s[0].psionic[0].on { ps_init(s[0].psionic[..]); }
     t[0].seed = 1;
     zr_labels(s);
   }
@@ -119,8 +158,10 @@ zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, d
   c[0].since += dt1;
   c[0].clock += dt1;
   s[0].atlas[0].frame += 1;
-  // the engine: what Claude Code wrote since the last frame
+  // the engines: what Claude Code (or curl, for Psionic) wrote since the last frame
   e_pump(e, ss);
+  s[0].psionic[0].access = e[0].access;
+  ps_pump(s[0].psionic[..], ss, dt1);
   // Send, Stop and the chips
   if c[0].clicked >= 0 { k := c[0].clicked; c[0].clicked = -1; zr_chip(s, k); }
   // a sent message joins the transcript as the user's bubble (and goes to Claude Code), and the view follows it
@@ -128,12 +169,14 @@ zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, d
     s[0].seen_sent = c[0].sent;
     text := cast(string) c[0].last[0..<c[0].last_n];
     if s[0].demo { t_user(t, t_pool(t, text)); }
-    else { e_send(e, ss, text); s[0].since_build = ZR_COALESCE; }
+    else { zr_send(s, text); s[0].since_build = ZR_COALESCE; }
     t[0].pinned = true;
   }
   // a notice's buttons
   if t[0].action != A_NONE {
-    if t[0].action == A_ALLOW || t[0].action == A_DENY { e_answer(e, ss, t[0].action == A_ALLOW); }
+    if t[0].action == A_ALLOW || t[0].action == A_DENY {
+      if s[0].mode == MODE_PSIONIC { ps_answer(s[0].psionic[..], ss, t[0].action == A_ALLOW); } else { e_answer(e, ss, t[0].action == A_ALLOW); }
+    }
     else { s[0].host_action = ifx t[0].action == A_INSTALL then HOST_INSTALL else HOST_LOGIN; }
     t[0].action = A_NONE;
   }
@@ -227,7 +270,7 @@ coaxial_zeron_wheel :: (s: [] ZeronState, dy: f32) -> bool #export_c {
 coaxial_zeron_key :: (s: [] ZeronState, key_code: int, mods: int) -> bool #export_c {
   if s.count < 1 { return false; }
   // Escape stops a running turn (Enter never does: it sends, and the CLI queues it)
-  if key_code == KEY_ESCAPE && mods == 0 && s[0].session[0].live && !s[0].demo { e_stop(s[0].engine[..], s[0].session[..]); return true; }
+  if key_code == KEY_ESCAPE && mods == 0 && s[0].session[0].live && !s[0].demo { zr_stop(s); return true; }
   return composer_key(s[0].composer[..], s[0].atlas[..], key_code, mods);
 }
 // Typing: text with no range (replaces the selection or the composition).
@@ -309,24 +352,66 @@ coaxial_zeron_fixture :: (s: [] ZeronState, open: bool) #export_c {
 coaxial_zeron_attach :: (s: [] ZeronState, pool: [] u8, line: [] u8, arena: [] u8, out: [] u8, scratch: [] u8, cwd: string) #export_c {
   if s.count < 1 { return; }
   e := s[0].engine[..];
-  s_init(s[0].session[..], pool);
+  // the last five 64 KiB of the pool are the Psionic engine's
+  ps := pool.count - 5 * ZR_PS_BUF;
+  s_init(s[0].session[..], ifx ps > ZR_PS_BUF then pool[0..<ps] else pool);
   e[0].line = line; e[0].arena = arena; e[0].out = out; e[0].scratch = scratch;
   e[0].p[0].handle = -1; e[0].probe = -1; e[0].pend = -1;
   e[0].cwd_n = e_set(e[0].cwd[..], 0, cwd);
+  e[0].effort = 2;
   e[0].on = true;
   e_probe_start(e);
+  p := s[0].psionic[..];
+  ps_init(p);
+  if ps > ZR_PS_BUF {
+    b := ZR_PS_BUF;
+    ps_attach(p, pool[ps..<ps + b], pool[ps + b..<ps + 2 * b], pool[ps + 2 * b..<ps + 3 * b], pool[ps + 3 * b..<ps + 4 * b], pool[ps + 4 * b..<ps + 5 * b], e_str(e[0].cwd[..], e[0].cwd_n));
+  }
 }
 // The demo conversation (--demo).
 coaxial_zeron_demo :: (s: [] ZeronState) #export_c { if s.count > 0 { zr_demo(s); } }
-// Picks a chip's choice: which 1 model (0 Opus, 1 Sonnet, 2 Haiku), 2 effort (0 Low .. 4 Max), 3 access (0 Full access, 1 Auto-accept edits, 2 Supervised).
+// Picks a chip's choice among the mode's (coaxial_zeron_option_*): which 1
+// model (Claude: 0 Opus, 1 Sonnet, 2 Haiku; Psionic: 0 gpt-oss-20b), 2
+// effort (Claude: 0 Low .. 4 Max; Psionic: 0 Low, 1 Medium, 2 High), 3 access
+// (0 Full access, 1 Auto-accept edits, 2 Supervised), 4 the mode (MODE_*,
+// an empty chat only).
 coaxial_zeron_choose :: (s: [] ZeronState, which: int, index: int) #export_c {
   if s.count < 1 || index < 0 { return; }
   e := s[0].engine[..];
-  if which == CH_MODEL && index < 3 { e_set_model(e, index); }
-  if which == CH_EFFORT && index < 5 { e[0].effort = index; }
-  if which == CH_ACCESS && index < 3 { e_set_access(e, index); }
+  if which == CH_MODE { b := zr_set_mode(s, index); return; }
+  if index >= mode_option_count(s[0].mode, which) { return; }
+  if s[0].mode == MODE_PSIONIC {
+    if which == CH_EFFORT { s[0].psionic[0].effort = index; }
+  } else {
+    if which == CH_MODEL { e_set_model(e, index); }
+    if which == CH_EFFORT { e[0].effort = index; }
+  }
+  if which == CH_ACCESS { e_set_access(e, index); }
   zr_labels(s);
 }
+// The chips' choices for the chat's mode, for a picker menu (which as for
+// coaxial_zeron_choose): how many, each label, the chosen one.
+coaxial_zeron_option_count :: (s: [] ZeronState, which: int) -> int #export_c { if s.count < 1 { return 0; } return mode_option_count(s[0].mode, which); }
+coaxial_zeron_option_label :: (s: [] ZeronState, which: int, i: int, out: [] u8) -> int #export_c {
+  if s.count < 1 { return 0; }
+  l := mode_option_label(s[0].mode, which, i);
+  n := ifx l.count < out.count then l.count else out.count;
+  for k: 0..<n { out[k] = l[k]; }
+  return n;
+}
+coaxial_zeron_option_selected :: (s: [] ZeronState, which: int) -> int #export_c {
+  if s.count < 1 { return -1; }
+  e := s[0].engine[..];
+  if which == CH_MODE { return s[0].mode; }
+  if which == CH_ACCESS { return e[0].access; }
+  if s[0].mode == MODE_PSIONIC { return ifx which == CH_MODEL then 0 else ifx which == CH_EFFORT then s[0].psionic[0].effort else -1; }
+  return ifx which == CH_MODEL then e[0].model else ifx which == CH_EFFORT then e[0].effort else -1;
+}
+// The chat's mode (MODE_*), and whether it can still change (the chat is empty).
+coaxial_zeron_mode :: (s: [] ZeronState) -> int #export_c { if s.count < 1 { return 0; } return s[0].mode; }
+coaxial_zeron_mode_open :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && zr_empty(s); }
+// Each mode's mark (an icon index; 0 the Claude mark in its brand tone).
+coaxial_zeron_mode_brand :: (mode: int) -> int #export_c { brands := MODE_BRANDS; return ifx mode >= 0 && mode < MODE_COUNT then brands[mode] else 0; }
 // Whether a turn is running (the --shot steps wait on it).
 coaxial_zeron_live :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && s[0].session[0].live; }
 // What the host should do for a notice's button (HOST_LOGIN: Terminal running `claude /login`; HOST_INSTALL: the install line), once.
@@ -336,7 +421,7 @@ coaxial_zeron_take_action :: (s: [] ZeronState) -> int #export_c {
   return a;
 }
 // The app is quitting: Claude Code's process group goes with it.
-coaxial_zeron_quit :: (s: [] ZeronState) #export_c { if s.count > 0 && s[0].engine[0].on { e_close(s[0].engine[..]); } }
+coaxial_zeron_quit :: (s: [] ZeronState) #export_c { if s.count > 0 && s[0].engine[0].on { e_close(s[0].engine[..]); ps_close(s[0].psionic[..]); } }
 coaxial_zeron_scroll_to :: (s: [] ZeronState, px: f32) #export_c { if s.count > 0 { s[0].want_scroll = ifx px < 0 then 0.0f32 else px; } }
 coaxial_zeron_cut :: (s: [] ZeronState) #export_c { if s.count > 0 { composer_cut_selection(s[0].composer[..]); } }
 coaxial_zeron_paste :: (s: [] ZeronState, text: string) #export_c {
@@ -586,4 +671,48 @@ zr_test_screen :: (s: [] ZeronState) {
   name: [32] u8;
   #assert coaxial_zeron_icon_name(2, name[..]) == 11 && coaxial_zeron_icon_count() == ICON_COUNT && coaxial_zeron_font_size(5) == 12.5;
   #assert coaxial_zeron_glyph_code(0) == 32 && coaxial_zeron_glyph_code(95) == 0x2026;
+}
+
+#test "the model chip carries the mode: an empty chat passes from Claude's models to gpt-oss-20b on Psionic and back; a conversation keeps its mode" {
+  s: [1] ZeronState;
+  zr_test_screen(s[..]);
+  out: [200000] f32;
+  n := coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  c := s[0].composer[..]; t := s[0].transcript[..];
+  #assert coaxial_zeron_mode(s[..]) == MODE_CLAUDE && c[0].brand == 0 && coaxial_zeron_mode_open(s[..]);
+  // Opus, Sonnet, Haiku, then Psionic's model, its mark and its own efforts
+  for k: 0..<3 {
+    px := (c[0].chip_x[CH_MODEL] + 3) * 2; py := (c[0].chip_y[CH_MODEL] + 3) * 2;
+    #assert coaxial_zeron_pointer(s[..], px, py, 0, 1, 0);
+    n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  }
+  #assert coaxial_zeron_mode(s[..]) == MODE_PSIONIC && c[0].model_label == "gpt-oss-20b" && c[0].effort_label == "Medium" && c[0].brand == ICON_PSIONIC;
+  #assert coaxial_zeron_option_count(s[..], CH_MODEL) == 1 && coaxial_zeron_option_count(s[..], CH_EFFORT) == 3 && coaxial_zeron_option_selected(s[..], CH_EFFORT) == 1;
+  buf: [32] u8;
+  #assert coaxial_zeron_option_label(s[..], CH_EFFORT, 2, buf[..]) == 4 && cast(string) buf[0..<4] == "High";
+  #assert coaxial_zeron_option_label(s[..], CH_MODE, 1, buf[..]) == 7 && coaxial_zeron_mode_brand(MODE_PSIONIC) == ICON_PSIONIC;
+  ex := (c[0].chip_x[CH_EFFORT] + 3) * 2; ey := (c[0].chip_y[CH_EFFORT] + 3) * 2;
+  #assert coaxial_zeron_pointer(s[..], ex, ey, 0, 1, 0);
+  n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  #assert c[0].effort_label == "High" && s[0].psionic[0].effort == 2 && s[0].engine[0].effort == 2;
+  // the next press goes back to Claude's first model
+  #assert coaxial_zeron_pointer(s[..], (c[0].chip_x[CH_MODEL] + 3) * 2, (c[0].chip_y[CH_MODEL] + 3) * 2, 0, 1, 0);
+  n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  #assert coaxial_zeron_mode(s[..]) == MODE_CLAUDE && c[0].model_label == "Opus 5.5" && c[0].effort_label == "High" && c[0].brand == 0;
+  coaxial_zeron_choose(s[..], CH_MODE, MODE_PSIONIC);
+  coaxial_zeron_choose(s[..], CH_EFFORT, 0);
+  #assert coaxial_zeron_mode(s[..]) == MODE_PSIONIC && c[0].effort_label == "Low";
+  // a message: the chat is Psionic's now, and stays so
+  coaxial_zeron_text(s[..], "hi");
+  #assert coaxial_zeron_key(s[..], -2, 0);
+  n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  #assert coaxial_zeron_live(s[..]) && t[0].rows[0].kind == R_USER && s[0].psionic[0].turn == 1 && !coaxial_zeron_mode_open(s[..]);
+  coaxial_zeron_choose(s[..], CH_MODE, MODE_CLAUDE);
+  #assert coaxial_zeron_mode(s[..]) == MODE_PSIONIC;
+  // Stop (the docked chip is Psionic's too)
+  #assert c[0].model_label == "gpt-oss-20b" && c[0].brand == ICON_PSIONIC;
+  sx := (c[0].chip_x[CH_SEND] + 14) * 2; sy := (c[0].chip_y[CH_SEND] + 14) * 2;
+  #assert coaxial_zeron_pointer(s[..], sx, sy, 0, 1, 0);
+  n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  #assert !coaxial_zeron_live(s[..]) && t[0].notices[t[0].rows[1].notice].kind == N_STOPPED;
 }

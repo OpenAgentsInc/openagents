@@ -1,0 +1,736 @@
+// The chat's second engine: our own gpt-oss-20b through the Psionic
+// Responses API (psionic/docs/serving/responses.md, the
+// psionic-gptoss-responses-v1 profile). POST /v1/responses, streamed as
+// semantic SSE over a curl child (coax/lib/gateway: transport.coax, sse.coax),
+// polled from the frame loop without blocking (ps_pump), like claude.coax.
+//
+// The profile is stateless: store is false and previous_response_id is
+// refused, so every request replays the conversation's items in full: each
+// user message, then the complete output items of each answer (reasoning,
+// function calls, messages) as the server sent them in response.completed,
+// and the outputs of the calls the app ran. Completed prior-turn reasoning
+// is dropped from the replay (the profile removes it before rendering the
+// prompt anyway); the current turn's reasoning stays through its tool calls.
+// Items the server marked incomplete are never replayed (it refuses them).
+// The model has 2048 positions for the prompt and the answer: when the
+// server says the replay no longer fits (context_length_exceeded), the
+// oldest turn leaves the replay and the request goes again.
+//
+// What streams becomes the same parts the Claude engine makes: reasoning
+// deltas a thought (Zeron's thinking group), output text deltas Markdown,
+// a completed function call a tool chip, errors Zeron's danger chip.
+//
+// Tools: three local function tools (read_file, list_folder, run_command),
+// executed by the app as child processes in the chat's folder under the
+// access chip's rule (Full access runs them; Auto-accept edits runs the
+// reads and asks before a command; Supervised asks for each), their output
+// sent back as function_call_output. The server executes nothing.
+//
+// Endpoint and key: PSIONIC_URL and PSIONIC_API_KEY from the environment,
+// else from ~/work/.secrets/psionic-responses.env (KEY=value lines, kept
+// chmod 600); the default endpoint is http://127.0.0.1:8080; PSIONIC_TOOLS=off
+// leaves the tools out. The key goes
+// to curl through its environment only (never an argument, never logged).
+
+#load "claude.coax";
+#load "../../../coax/lib/gateway/transport.coax";
+#load "psionic_fixture.coax";
+
+PS_MODEL :: "gpt-oss-20b";
+PS_DEFAULT_URL :: "http://127.0.0.1:8080";
+PS_KEY_ENV :: "PSIONIC_API_KEY";
+PS_SECRETS :: "/work/.secrets/psionic-responses.env";   // under $HOME
+PS_MAX_OUTPUT :: 512;            // the profile's ceiling (default 256): reasoning shares it
+PS_EFFORT_IDS :: [3] string.["low", "medium", "high"];
+PS_EFFORT_NAMES :: [3] string.["Low", "Medium", "High"];
+// How to bring the server up, for the transcript when it can't be reached
+// (docs/desktop/coax-desktop.md, "Psionic").
+// The tunnel's local port is the endpoint's (8080 unless PSIONIC_URL names another).
+PS_TUNNEL_HOST :: "127.0.0.1:8080 coderos-4080";
+PS_SERVE :: "ssh coderos-4080 'tmux new -d -s psionic-responses ~/psionic-responses/serve.sh'";
+
+PS_ITEMS :: 128;
+PS_TOOL_REPLAY :: 1200;          // bytes of a tool's output the model gets back (2048 positions in all)
+PS_TOOL_SHOW :: 6000;            // bytes the chip keeps
+PS_TOOL_SECONDS :: 60;
+
+// A replayed item: a user message, an output item, a call's output.
+PI_USER :: 0; PI_OUTPUT :: 1; PI_REASONING :: 2; PI_CALL_OUTPUT :: 3;
+PsItem :: struct { at: int; n: int; turn: int; kind: int; }
+
+// The three tools (flat object schemas, as the profile admits).
+PT_READ :: 0; PT_LIST :: 1; PT_RUN :: 2;
+PS_TOOLS :: "[{\"type\":\"function\",\"name\":\"read_file\",\"description\":\"Read a text file on the user's Mac (its first 6000 bytes).\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"A path, absolute or relative to the working folder\"}},\"required\":[\"path\"]}},{\"type\":\"function\",\"name\":\"list_folder\",\"description\":\"List a folder on the user's Mac.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"A path, absolute or relative to the working folder\"}},\"required\":[\"path\"]}},{\"type\":\"function\",\"name\":\"run_command\",\"description\":\"Run a shell command (zsh) in the working folder on the user's Mac and return its output.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The command line\"}},\"required\":[\"command\"]}}]";
+
+PsEngine :: struct {
+  on: bool;                      // the host attached buffers (never in tests)
+  configured: bool;
+  url: [512] u8; url_n: int;     // the base URL
+  endpoint: [560] u8; endpoint_n: int;
+  key: [160] u8; key_n: int;     // from the secrets file (0 when the environment has it)
+  key_from_env: bool;
+  effort: int;                   // index into PS_EFFORT_IDS
+  access: int;                   // ACC_* (claude.coax)
+  tools: bool;                   // offer the local tools
+  cwd: string;
+  // the replay
+  hist: [] u8; nh: int;
+  items: [PS_ITEMS] PsItem; ni: int;
+  turn: int; first_turn: int;
+  // the request in flight
+  st: [1] GwStream;
+  sse: [1] GwSse; sse_name: [96] u8;
+  line: [] u8; body: [] u8; sse_data: [] u8;
+  ar: [1] ClArena;
+  streaming: bool;
+  answered: bool;                // a terminal event came
+  pending_call: int;             // the completed response's function call (its item), or -1
+  errbody: [2048] u8; nerr: int; // a refusal's JSON body
+  // the tool call being run or asked about
+  call_part: int;                // its part, or -1
+  call_kind: int;
+  call_id: [96] u8; call_id_n: int;
+  call_h: int;
+  call_out: [PS_TOOL_SHOW] u8; call_n: int;
+  call_secs: f32;
+  dropped: int;                  // turns left out of the replay to fit the context
+  stderr: [1024] u8;
+}
+
+ps_init :: (p: [] PsEngine) {
+  p[0].call_part = -1; p[0].call_h = -1; p[0].st[0].h = -1; p[0].pending_call = -1; p[0].effort = 1; p[0].tools = true;
+}
+// Gives the engine its buffers: curl's lines, decoded strings, the request
+// body, an SSE event's data, the replay. Without them (tests) a message only
+// joins the transcript.
+ps_attach :: (p: [] PsEngine, line: [] u8, arena: [] u8, body: [] u8, sse_data: [] u8, hist: [] u8, cwd: string) {
+  p[0].line = line; p[0].body = body; p[0].sse_data = sse_data; p[0].hist = hist;
+  p[0].ar[0] = ClArena.{buf = arena};
+  p[0].cwd = cwd;
+  p[0].on = true;
+}
+
+// ---------------------------------------------------------------- configuration
+
+// KEY=value (an optional "export ", optional quotes) for one name, from an env file's text.
+ps_env_value :: (text: string, name: string) -> string {
+  i := 0;
+  while i < text.count {
+    j := i; while j < text.count && text[j] != '\n' { j += 1; }
+    l := cast(string) text[i..<j];
+    i = j + 1;
+    while l.count > 0 && (l[0] == ' ' || l[0] == '\t') { l = cast(string) l[1..<l.count]; }
+    if l.count > 7 && l[0..<7] == "export " { l = cast(string) l[7..<l.count]; }
+    if l.count <= name.count || l[0..<name.count] != name || l[name.count] != '=' { continue; }
+    v := cast(string) l[name.count + 1..<l.count];
+    while v.count > 0 && (v[v.count - 1] == ' ' || v[v.count - 1] == '\r' || v[v.count - 1] == '\t') { v = cast(string) v[0..<v.count - 1]; }
+    if v.count >= 2 && (v[0] == '"' || v[0] == '\'') && v[v.count - 1] == v[0] { v = cast(string) v[1..<v.count - 1]; }
+    return v;
+  }
+  return "";
+}
+
+// The endpoint and key, once: the environment first, then the secrets file.
+ps_configure :: (p: [] PsEngine) {
+  if p[0].configured { return; }
+  p[0].configured = true;
+  buf: [512] u8;
+  u := cl_getenv("PSIONIC_URL", buf[..]);
+  for ch: PS_KEY_ENV { r := cxproc_getenv_push(cast(int) ch); }
+  p[0].key_from_env = cxproc_getenv() > 0;
+  file: [4096] u8; nf := 0;
+  if u.count == 0 || !p[0].key_from_env {
+    home: [1024] u8; path: [1200] u8;
+    h := cl_getenv("HOME", home[..]);
+    np := e_set(path[..], e_set(path[..], 0, h), PS_SECRETS);
+    nf = ps_read_file(e_str(path[..], np), file[..]);
+  }
+  text := cast(string) file[0..<nf];
+  if u.count == 0 { u = ps_env_value(text, "PSIONIC_URL"); }
+  if u.count == 0 { u = PS_DEFAULT_URL; }
+  while u.count > 0 && u[u.count - 1] == '/' { u = cast(string) u[0..<u.count - 1]; }
+  p[0].url_n = e_set(p[0].url[..], 0, u);
+  p[0].endpoint_n = e_set(p[0].endpoint[..], e_set(p[0].endpoint[..], 0, u), "/v1/responses");
+  if !p[0].key_from_env { p[0].key_n = e_set(p[0].key[..], 0, ps_env_value(text, PS_KEY_ENV)); }
+  // PSIONIC_TOOLS=off: text and reasoning only (no tool definitions spend the context)
+  tb: [16] u8;
+  tools := cl_getenv("PSIONIC_TOOLS", tb[..]);
+  if tools.count == 0 { tools = ps_env_value(text, "PSIONIC_TOOLS"); }
+  if tools == "off" || tools == "0" || tools == "false" { p[0].tools = false; }
+  for k: 0..<file.count { file[k] = 0; }
+}
+// A small file's bytes (cat as a child, at most two seconds), or 0.
+ps_read_file :: (path: string, out: [] u8) -> int {
+  h := cxproc_new();
+  if h < 0 { return 0; }
+  if !(cl_push(h, CL_FIELD_ARG, "/bin/cat") && cl_push(h, CL_FIELD_ARG, "--") && cl_push(h, CL_FIELD_ARG, path)) || cxproc_spawn(h) != 0 { r := cxproc_release(h); return 0; }
+  n := 0;
+  for guard: 0..<256 {
+    k := cxproc_read_line(h, 2000);
+    if k < 0 { break; }
+    for i: 0..<k { if n < out.count - 1 { out[n] = cast(u8) cxproc_line_byte(h, i); n += 1; } }
+    if n < out.count - 1 { out[n] = '\n'; n += 1; }
+  }
+  r := cxproc_release(h);
+  return n;
+}
+
+ps_url :: (p: [] PsEngine) -> string { return e_str(p[0].url[..], p[0].url_n); }
+// The port of http://host:port (80 when it names none).
+ps_port_of :: (url: string) -> string {
+  i := 0;
+  if url.count > 7 && url[0..<7] == "http://" { i = 7; }
+  while i < url.count && url[i] != ':' && url[i] != '/' { i += 1; }
+  if i >= url.count || url[i] != ':' { return "80"; }
+  j := i + 1;
+  while j < url.count && url[j] >= '0' && url[j] <= '9' { j += 1; }
+  return cast(string) url[i + 1..<j];
+}
+
+// ---------------------------------------------------------------- the replay
+
+ps_hist_put :: (p: [] PsEngine, kind: int, json: string) -> bool {
+  if p[0].ni >= PS_ITEMS || p[0].nh + json.count > p[0].hist.count {
+    if !ps_forget_turn(p) { return false; }
+    return ps_hist_put(p, kind, json);
+  }
+  at := p[0].nh;
+  for k: 0..<json.count { p[0].hist[at + k] = json[k]; }
+  p[0].nh += json.count;
+  p[0].items[p[0].ni] = PsItem.{at = at, n = json.count, turn = p[0].turn, kind = kind};
+  p[0].ni += 1;
+  return true;
+}
+ps_item :: (p: [] PsEngine, k: int) -> string { im := p[0].items[k]; return cast(string) p[0].hist[im.at..<im.at + im.n]; }
+// Removes the oldest turn's items from the store (it is full); whether one went.
+ps_forget_turn :: (p: [] PsEngine) -> bool {
+  if p[0].ni == 0 || p[0].items[0].turn >= p[0].turn { return false; }
+  old := p[0].items[0].turn;
+  k := 0; while k < p[0].ni && p[0].items[k].turn == old { k += 1; }
+  base := ifx k < p[0].ni then p[0].items[k].at else p[0].nh;
+  for i: base..<p[0].nh { p[0].hist[i - base] = p[0].hist[i]; }
+  p[0].nh -= base;
+  for i: k..<p[0].ni { p[0].items[i - k] = p[0].items[i]; p[0].items[i - k].at -= base; }
+  p[0].ni -= k;
+  if p[0].first_turn <= old { p[0].first_turn = old + 1; }
+  return true;
+}
+
+// The request: the profile's fields, the tools, then the replay.
+ps_body :: (p: [] PsEngine, out: [] u8) -> string {
+  o: [1] ClOut; o[0] = ClOut.{buf = out};
+  efforts := PS_EFFORT_IDS;
+  cl_put(o[..], "{\"model\":\""); cl_put(o[..], PS_MODEL);
+  cl_put(o[..], "\",\"stream\":true,\"store\":false,\"max_output_tokens\":"); cl_put_int(o[..], PS_MAX_OUTPUT);
+  cl_put(o[..], ",\"reasoning\":{\"effort\":\""); cl_put(o[..], efforts[p[0].effort]); cl_put(o[..], "\"}");
+  cl_put(o[..], ",\"instructions\":");
+  ins: [1400] u8;
+  k := e_set(ins[..], 0, "You are gpt-oss-20b on OpenAgents' own Psionic engine, chatting in the OpenAgents Mac app. Answer in Markdown.");
+  if p[0].tools {
+    k = e_set(ins[..], k, " Use the tools only when the request needs the user's files or a command. Working folder: ");
+    k = e_set(ins[..], k, ifx p[0].cwd.count > 0 then p[0].cwd else "~");
+  }
+  cl_put_string(o[..], e_str(ins[..], k));
+  if p[0].tools { cl_put(o[..], ",\"tools\":"); cl_put(o[..], PS_TOOLS); cl_put(o[..], ",\"tool_choice\":\"auto\""); }
+  cl_put(o[..], ",\"input\":[");
+  first := true;
+  for i: 0..<p[0].ni {
+    im := p[0].items[i];
+    if im.turn < p[0].first_turn { continue; }
+    if im.kind == PI_REASONING && im.turn != p[0].turn { continue; }
+    if !first { cl_put(o[..], ","); }
+    first = false;
+    cl_put(o[..], ps_item(p, i));
+  }
+  cl_put(o[..], "]}");
+  if o[0].failed { return ""; }
+  return cast(string) out[0..<o[0].len];
+}
+
+ps_user_item :: (p: [] PsEngine, text: string) -> bool {
+  buf: [20000] u8;
+  o: [1] ClOut; o[0] = ClOut.{buf = buf[..]};
+  cl_put(o[..], "{\"type\":\"message\",\"role\":\"user\",\"content\":"); cl_put_string(o[..], text); cl_put(o[..], "}");
+  if o[0].failed { return false; }
+  return ps_hist_put(p, PI_USER, cast(string) buf[0..<o[0].len]);
+}
+ps_call_output_item :: (p: [] PsEngine, call_id: string, output: string) -> bool {
+  buf: [4096] u8;
+  o: [1] ClOut; o[0] = ClOut.{buf = buf[..]};
+  cl_put(o[..], "{\"type\":\"function_call_output\",\"call_id\":"); cl_put_string(o[..], call_id);
+  cl_put(o[..], ",\"output\":"); cl_put_string(o[..], output); cl_put(o[..], "}");
+  if o[0].failed { return false; }
+  return ps_hist_put(p, PI_CALL_OUTPUT, cast(string) buf[0..<o[0].len]);
+}
+
+// ---------------------------------------------------------------- the stream into parts
+
+// One SSE event. Returns the function call to run once the response
+// completed (its item index in the store), or -1.
+ps_on_event :: (p: [] PsEngine, s: [] Session, name: string, data: string) -> int {
+  p[0].ar[0].at = 0;
+  ar := p[0].ar[..];
+  if name == "response.reasoning_text.delta" || name == "response.reasoning.delta" { s_delta(s, P_THINK, cl_str(ar, data, "delta")); return -1; }
+  if name == "response.output_text.delta" { s_delta(s, P_TEXT, cl_str(ar, data, "delta")); return -1; }
+  if name == "response.completed" || name == "response.incomplete" {
+    p[0].answered = true;
+    out := cl_raw(data, "response.output");
+    call := -1;
+    for i: 0..<cl_count(out) {
+      item := cl_json(out, cl_item(out, i));
+      ty := cl_str(ar, item, "type");
+      if cl_str(ar, item, "status") != "completed" { continue; }
+      kind := ifx ty == "reasoning" then PI_REASONING else PI_OUTPUT;
+      if !ps_hist_put(p, kind, item) { continue; }
+      if ty == "function_call" && call < 0 { call = p[0].ni - 1; }
+    }
+    if name == "response.incomplete" && call < 0 {
+      s_turn_end(s, true, "gpt-oss-20b used its whole output budget (512 tokens) before it finished. Ask for less, or set the effort lower.");
+      return -1;
+    }
+    return call;
+  }
+  if name == "response.failed" || name == "error" {
+    p[0].answered = true;
+    why := cl_str(ar, data, "response.error.message");
+    if why.count == 0 { why = cl_str(ar, data, "error.message"); }
+    if why.count == 0 { why = cl_str(ar, data, "message"); }
+    s_turn_end(s, true, ps_explain(why));
+    return -1;
+  }
+  return -1;
+}
+
+// A server code as the transcript says it.
+ps_explain :: (code: string) -> string {
+  if code == "request_deadline_exceeded" { return "Psionic stopped this answer at its 120-second limit."; }
+  if code == "device_failed" { return "Psionic's GPU worker failed. Restart the server on coderos-4080 (tmux session psionic-responses)."; }
+  if code == "model_arithmetic_refused" { return "Psionic refused this answer: the model's arithmetic left its checked range."; }
+  if code == "invalid_tool_arguments" || code == "invalid_tool_call" { return "gpt-oss-20b called a tool with arguments that don't fit it, so Psionic stopped the answer. Send again, or ask without needing files or commands."; }
+  if code.count == 0 { return "Psionic failed to answer."; }
+  return code;
+}
+
+// A completed function call: its chip, and whether it may run without asking.
+ps_call_part :: (p: [] PsEngine, s: [] Session, item_json: string) -> int {
+  ar := p[0].ar[..]; ar[0].at = 0;
+  name := cl_str(ar, item_json, "name");
+  args := cl_str(ar, item_json, "arguments");
+  call_id := cl_str(ar, item_json, "call_id");
+  k := s_part(s, P_TOOL);
+  if k < 0 { return -1; }
+  sp := SPart.{kind = P_TOOL, at = s[0].np, id = s_put(s, call_id), input = s_put(s, args)};
+  q: [1] ClArena; qb: [8192] u8; q[0] = ClArena.{buf = qb[..]};
+  if name == "read_file" { sp.tk = TK_READ; sp.arg = s_put(s, cl_str(q[..], args, "path")); p[0].call_kind = PT_READ; }
+  else if name == "list_folder" { sp.tk = TK_GLOB; sp.arg = s_put(s, cl_str(q[..], args, "path")); p[0].call_kind = PT_LIST; }
+  else if name == "run_command" { sp.tk = TK_EXEC; sp.arg = s_put(s, cl_str(q[..], args, "command")); sp.detail = s_single(s, sp.arg); p[0].call_kind = PT_RUN; }
+  else { sp.tk = TK_TOOL; sp.detail = s_put(s, name); sp.arg = sp.input; p[0].call_kind = -1; }
+  s[0].parts[k] = sp;
+  p[0].call_id_n = e_set(p[0].call_id[..], 0, call_id);
+  p[0].call_part = k;
+  s[0].changed = true;
+  return k;
+}
+// Whether the access chip lets a call run without asking.
+ps_may_run :: (access: int, kind: int) -> bool {
+  if access == ACC_FULL { return true; }
+  if access == ACC_EDITS { return kind == PT_READ || kind == PT_LIST; }
+  return false;
+}
+
+// ---------------------------------------------------------------- the engine
+
+// The user sent a message on Psionic: it joins the transcript and the replay, and the request goes.
+ps_send :: (p: [] PsEngine, s: [] Session, text: string) {
+  s_user(s, text);
+  p[0].turn += 1;
+  if p[0].hist.count == 0 { return; }   // no buffers (a check without the host): it only joins the transcript
+  if !ps_user_item(p, text) {
+    s_turn_end(s, true, "This message is too long for gpt-oss-20b's 2048-token context.");
+    return;
+  }
+  if !p[0].on { return; }
+  ps_request(p, s);
+}
+
+ps_request :: (p: [] PsEngine, s: [] Session) {
+  if !p[0].on { return; }
+  ps_configure(p);
+  if !p[0].key_from_env && p[0].key_n == 0 {
+    s_turn_end(s, true, "No Psionic key. Put the server's key in ~/work/.secrets/psionic-responses.env as PSIONIC_API_KEY=... (chmod 600), then send again.");
+    return;
+  }
+  body := ps_body(p, p[0].body);
+  if body.count == 0 { ps_drop_or_fail(p, s); return; }
+  c := GwClient.{url = e_str(p[0].endpoint[..], p[0].endpoint_n), key_env = PS_KEY_ENV};
+  if !p[0].key_from_env { c.key_value = e_str(p[0].key[..], p[0].key_n); }
+  gw_sse_init(p[0].sse[..], p[0].sse_name[..], p[0].sse_data);
+  none: [1] string;
+  why := gw_start(c, body, none[0..<0], p[0].st[..]);
+  if why.count > 0 { s_turn_end(s, true, why); return; }
+  p[0].streaming = true; p[0].answered = false; p[0].nerr = 0; p[0].pending_call = -1;
+}
+
+// The replay is too big for the model: the oldest turn leaves it and the
+// request goes again; with only this turn left, the turn fails.
+ps_drop_or_fail :: (p: [] PsEngine, s: [] Session) {
+  oldest := p[0].turn;
+  for i: 0..<p[0].ni { if p[0].items[i].turn >= p[0].first_turn && p[0].items[i].turn < oldest { oldest = p[0].items[i].turn; } }
+  if oldest < p[0].turn {
+    p[0].first_turn = oldest + 1; p[0].dropped += 1;
+    ps_request(p, s);
+    return;
+  }
+  s_turn_end(s, true, "This turn no longer fits gpt-oss-20b's 2048-token context (the prompt and room for a 512-token answer). Start a new chat or ask for something shorter.");
+}
+
+ps_unreachable_text :: (p: [] PsEngine, out: [] u8) -> string {
+  k := e_set(out, 0, "Nothing answers at ");
+  k = e_set(out, k, ps_url(p));
+  k = e_set(out, k, ". Open the tunnel in Terminal: ssh -N -L ");
+  k = e_set(out, k, ps_port_of(ps_url(p)));
+  k = e_set(out, k, ":");
+  k = e_set(out, k, PS_TUNNEL_HOST);
+  k = e_set(out, k, " (if the server is down too: ");
+  k = e_set(out, k, PS_SERVE);
+  k = e_set(out, k, ")");
+  return e_str(out, k);
+}
+
+// The request is over (curl ended): a refusal, an unreachable server, a cut stream, or the answer's follow-up.
+ps_finish :: (p: [] PsEngine, s: [] Session, call: int) {
+  st := p[0].st[..];
+  status := st[0].status;
+  unreachable := gw_unreachable(st);
+  why := gw_stderr(st, p[0].stderr[..]);
+  exit := st[0].exit;
+  gw_close(st);
+  p[0].streaming = false;
+  if s[0].stopping || !s[0].live { return; }
+  if unreachable {
+    msg: [600] u8;
+    s_notice(s, N_OFFLINE, ps_unreachable_text(p, msg[..]));
+    s_turn_end(s, false, "");
+    return;
+  }
+  if status == 0 && (exit == 52 || exit == 56) {
+    // the tunnel took the connection, but nothing answers behind it
+    msg: [600] u8;
+    k := e_set(msg[..], 0, "The tunnel at ");
+    k = e_set(msg[..], k, ps_url(p));
+    k = e_set(msg[..], k, " is open, but no server answers behind it. Start it on coderos-4080 in Terminal: ");
+    k = e_set(msg[..], k, PS_SERVE);
+    s_notice(s, N_OFFLINE, e_str(msg[..], k));
+    s_turn_end(s, false, "");
+    return;
+  }
+  if status != 200 {
+    eb := cast(string) p[0].errbody[0..<p[0].nerr];
+    p[0].ar[0].at = 0;
+    code := cl_str(p[0].ar[..], eb, "error.code");
+    if status == 400 && code == "context_length_exceeded" { ps_drop_or_fail(p, s); return; }
+    if status == 503 && code == "worker_busy" {
+      s_notice(s, N_BUSY, "Psionic is answering another request (it runs one at a time). Send again when it's done.");
+      s_turn_end(s, false, "");
+      return;
+    }
+    if status == 401 { s_turn_end(s, true, "The Psionic server refused the key. Put the key it was started with in ~/work/.secrets/psionic-responses.env as PSIONIC_API_KEY=..."); return; }
+    if status == 503 { s_turn_end(s, true, "Psionic's GPU worker is unavailable. Restart the server on coderos-4080 (tmux session psionic-responses)."); return; }
+    msg: [600] u8;
+    k := e_set(msg[..], 0, "Psionic refused the request (HTTP ");
+    num: [24] u8; k = e_set(msg[..], k, gw_digits(num[..], status));
+    if status == 0 { k = e_set(msg[..], 0, "Psionic did not answer"); if why.count > 0 { k = e_set(msg[..], k, ": "); k = e_set(msg[..], k, why); } }
+    else { k = e_set(msg[..], k, ")"); if code.count > 0 { k = e_set(msg[..], k, ": "); k = e_set(msg[..], k, code); } }
+    s_turn_end(s, true, e_str(msg[..], k));
+    return;
+  }
+  if !p[0].answered {
+    s_turn_end(s, true, ifx exit == 28 then "Psionic's answer timed out." else "The connection to Psionic closed before the answer finished.");
+    return;
+  }
+  if call >= 0 { ps_call(p, s, call); return; }
+  if s[0].live { s_turn_end(s, false, ""); }
+}
+
+// A call the model made: its chip, then it runs or asks.
+ps_call :: (p: [] PsEngine, s: [] Session, item: int) {
+  k := ps_call_part(p, s, ps_item(p, item));
+  if k < 0 { s_turn_end(s, true, "The transcript is full."); return; }
+  if p[0].call_kind < 0 { ps_call_done(p, s, "There is no such tool.", true); return; }
+  if ps_may_run(p[0].access, p[0].call_kind) { ps_run(p, s); return; }
+  buf: [600] u8;
+  names := [3] string.["read_file", "list_folder", "run_command"];
+  n := e_set(buf[..], 0, names[p[0].call_kind]);
+  n = e_set(buf[..], n, ": ");
+  n = e_set(buf[..], n, s[0].parts[k].arg);
+  s_notice(s, N_ASK, e_str(buf[..], n));
+  s[0].asking = s[0].n - 1;
+}
+// The approval chip's answer.
+ps_answer :: (p: [] PsEngine, s: [] Session, allow: bool) {
+  k := s[0].asking;
+  if k < 0 { return; }
+  s[0].asking = -1;
+  if k < s[0].n && s[0].parts[k].kind == P_NOTICE {
+    for j: k..<s[0].n - 1 { s[0].parts[j] = s[0].parts[j + 1]; }
+    s[0].n -= 1; s[0].changed = true;
+  }
+  if allow { ps_run(p, s); } else { ps_call_done(p, s, "The user denied this.", true); }
+}
+
+// Runs the call as a child: head, ls, or the user's login zsh, in the chat's folder.
+ps_run :: (p: [] PsEngine, s: [] Session) {
+  arg := s[0].parts[p[0].call_part].arg;
+  if !p[0].on { return; }
+  h := cxproc_new();
+  if h < 0 { ps_call_done(p, s, "No process slot is free.", true); return; }
+  ok := true;
+  if p[0].call_kind == PT_READ { ok = cl_push(h, CL_FIELD_ARG, "/bin/sh") && cl_push(h, CL_FIELD_ARG, "-c") && cl_push(h, CL_FIELD_ARG, "exec 2>&1; head -c 6000 -- \"$1\"") && cl_push(h, CL_FIELD_ARG, "sh") && cl_push(h, CL_FIELD_ARG, arg); }
+  else if p[0].call_kind == PT_LIST { ok = cl_push(h, CL_FIELD_ARG, "/bin/sh") && cl_push(h, CL_FIELD_ARG, "-c") && cl_push(h, CL_FIELD_ARG, "exec 2>&1; ls -la -- \"${1:-.}\"") && cl_push(h, CL_FIELD_ARG, "sh") && cl_push(h, CL_FIELD_ARG, arg); }
+  else {
+    script: [8192] u8;
+    n := e_set(script[..], e_set(script[..], 0, "exec 2>&1 </dev/null\n"), arg);
+    ok = cl_push(h, CL_FIELD_ARG, "/bin/zsh") && cl_push(h, CL_FIELD_ARG, "-lc") && cl_push(h, CL_FIELD_ARG, e_str(script[..], n));
+  }
+  ok = ok && cl_push(h, CL_FIELD_ENV, "BROWSER=/usr/bin/true") && cl_push(h, CL_FIELD_UNSET, PS_KEY_ENV);
+  if p[0].cwd.count > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, p[0].cwd); }
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); ps_call_done(p, s, "The tool failed to start.", true); return; }
+  r := cxproc_close_stdin(h);
+  p[0].call_h = h; p[0].call_n = 0; p[0].call_secs = 0;
+}
+
+// The call's output: on its chip, and back to the model, which then answers.
+ps_call_done :: (p: [] PsEngine, s: [] Session, output: string, failed: bool) {
+  k := p[0].call_part;
+  if k >= 0 && k < s[0].n {
+    s[0].parts[k].output = s_put(s, output); s[0].parts[k].failed = failed; s[0].parts[k].resolved = true;
+    s[0].changed = true;
+  }
+  p[0].call_part = -1;
+  sent := output;
+  if sent.count > PS_TOOL_REPLAY { sent = cast(string) output[0..<PS_TOOL_REPLAY]; }
+  if !ps_call_output_item(p, e_str(p[0].call_id[..], p[0].call_id_n), sent) { s_turn_end(s, true, "The tool's output does not fit the conversation."); return; }
+  if !p[0].on { return; }
+  ps_request(p, s);
+}
+
+// Each frame: the tool child, then what curl wrote (a batch of lines).
+ps_pump :: (p: [] PsEngine, s: [] Session, dt: f32) {
+  if !p[0].on { return; }
+  if p[0].call_h >= 0 { ps_pump_call(p, s, dt); return; }
+  if !p[0].streaming { return; }
+  for guard: 0..<400 {
+    r := gw_poll(p[0].st[..], p[0].line);
+    if r.kind == GW_IDLE { return; }
+    if r.kind == GW_END { ps_finish(p, s, p[0].pending_call); p[0].pending_call = -1; return; }
+    if p[0].st[0].status != 200 {
+      for c: r.text { if p[0].nerr < p[0].errbody.count { p[0].errbody[p[0].nerr] = c; p[0].nerr += 1; } }
+      continue;
+    }
+    ev := gw_sse_line(p[0].sse[..], r.text);
+    if !ev.ready { continue; }
+    if ev.truncated { continue; }
+    c := ps_on_event(p, s, ev.name, ev.data);
+    if c >= 0 { p[0].pending_call = c; }
+  }
+}
+ps_pump_call :: (p: [] PsEngine, s: [] Session, dt: f32) {
+  h := p[0].call_h;
+  p[0].call_secs += dt;
+  for guard: 0..<200 {
+    n := cxproc_read_line(h, 0);
+    if n == CL_TIMEOUT {
+      if p[0].call_secs < cast(f32) PS_TOOL_SECONDS { return; }
+      ps_call_append(p, "\n(stopped after 60 seconds)");
+      r := cxproc_release(h); p[0].call_h = -1;
+      ps_call_done(p, s, cast(string) p[0].call_out[0..<p[0].call_n], true);
+      return;
+    }
+    if n < 0 && n != CL_TOO_LONG { break; }
+    if p[0].call_n > 0 { ps_call_append(p, "\n"); }
+    for i: 0..<n { if p[0].call_n < p[0].call_out.count { p[0].call_out[p[0].call_n] = cast(u8) cxproc_line_byte(h, i); p[0].call_n += 1; } }
+  }
+  if p[0].call_h < 0 { return; }
+  status := cxproc_wait(h, 2000);
+  r := cxproc_release(h); p[0].call_h = -1;
+  if status != 0 {
+    buf: [40] u8; num: [24] u8;
+    k := e_set(buf[..], 0, ifx p[0].call_n > 0 then "\nExit code " else "Exit code ");
+    k = e_set(buf[..], k, gw_digits(num[..], status));
+    ps_call_append(p, e_str(buf[..], k));
+  }
+  if p[0].call_n == 0 { ps_call_append(p, "(no output)"); }
+  ps_call_done(p, s, cast(string) p[0].call_out[0..<p[0].call_n], status != 0);
+}
+ps_call_append :: (p: [] PsEngine, text: string) {
+  for c: text { if p[0].call_n < p[0].call_out.count { p[0].call_out[p[0].call_n] = c; p[0].call_n += 1; } }
+}
+
+// STOP: curl goes, which closes the connection (the server frees its worker), or the tool child goes.
+ps_stop :: (p: [] PsEngine, s: [] Session) {
+  if !s[0].live { return; }
+  s[0].stopping = true;
+  if s[0].asking >= 0 { s[0].asking = -1; }
+  gw_close(p[0].st[..]); p[0].streaming = false; p[0].pending_call = -1;
+  if p[0].call_h >= 0 { r := cxproc_release(p[0].call_h); p[0].call_h = -1; }
+  if p[0].call_part >= 0 && p[0].call_part < s[0].n { s[0].parts[p[0].call_part].resolved = true; s[0].parts[p[0].call_part].failed = true; }
+  p[0].call_part = -1;
+  s_turn_end(s, false, "");
+}
+ps_close :: (p: [] PsEngine) {
+  gw_close(p[0].st[..]); p[0].streaming = false;
+  if p[0].call_h >= 0 { r := cxproc_release(p[0].call_h); p[0].call_h = -1; }
+}
+
+// ---------------------------------------------------------------- checks
+
+PsTest :: struct { hist: [65536] u8; arena: [65536] u8; data: [65536] u8; pool: [65536] u8; }
+ps_test_setup :: (p: [] PsEngine, s: [] Session, b: [] PsTest) {
+  ps_init(p);
+  p[0].hist = b[0].hist[..]; p[0].ar[0] = ClArena.{buf = b[0].arena[..]}; p[0].sse_data = b[0].data[..];
+  p[0].cwd = "/tmp/demo";
+  s_init(s, b[0].pool[..]);
+}
+// Recorded lines through the SSE reader into the engine; the call the response completed with, or -1.
+ps_test_feed :: (p: [] PsEngine, s: [] Session, lines: [] string) -> int {
+  gw_sse_init(p[0].sse[..], p[0].sse_name[..], p[0].sse_data);
+  p[0].answered = false;
+  call := -1;
+  for l: lines {
+    ev := gw_sse_line(p[0].sse[..], l);
+    if ev.ready && !ev.truncated { c := ps_on_event(p, s, ev.name, ev.data); if c >= 0 { call = c; } }
+  }
+  return call;
+}
+// curl ended with this status and body.
+ps_test_end :: (p: [] PsEngine, s: [] Session, status: int, body: string, call: int) {
+  p[0].st[0].status = status; p[0].st[0].exit = 0;
+  p[0].nerr = 0;
+  for c: body { p[0].errbody[p[0].nerr] = c; p[0].nerr += 1; }
+  ps_finish(p, s, call);
+}
+ps_contains :: (text: string, needle: string) -> int {
+  n := 0;
+  if needle.count == 0 || needle.count > text.count { return 0; }
+  for i: 0..<text.count - needle.count + 1 { if cast(string) text[i..<i + needle.count] == needle { n += 1; } }
+  return n;
+}
+
+#test "a recorded gpt-oss-20b stream folds into Zeron's parts: its reasoning a thought, its answer Markdown" {
+  p: [1] PsEngine; s: [1] Session; b: [1] PsTest;
+  ps_test_setup(p[..], s[..], b[..]);
+  ps_send(p[..], s[..], "In one sentence: what is a GPU?");
+  #assert s[0].live && p[0].ni == 1 && p[0].items[0].kind == PI_USER;
+  fx := PSIONIC_TEXT;
+  call := ps_test_feed(p[..], s[..], fx[..]);
+  #assert call < 0 && p[0].answered && s[0].live;
+  ps_test_end(p[..], s[..], 200, "", call);
+  #assert !s[0].live && !s[0].noticed;
+  // the message, the thought, the answer; nothing else
+  #assert s[0].n == 3 && s[0].parts[1].kind == P_THINK && s[0].parts[2].kind == P_TEXT;
+  #assert s_text_of(s[..], 1).count > 10 && s_text_of(s[..], 2).count > 10;
+  // the store keeps the completed output as sent: the reasoning and the message
+  #assert p[0].ni == 3 && p[0].items[1].kind == PI_REASONING && p[0].items[2].kind == PI_OUTPUT;
+  p[0].ar[0].at = 0;
+  msg := ps_item(p[..], 2);
+  #assert cl_str(p[0].ar[..], msg, "type") == "message" && cl_str(p[0].ar[..], msg, "content.0.text") == s_text_of(s[..], 2);
+  // the transcript: a bubble, the thinking group, the Markdown
+  t: [1] Transcript; a: [1] Atlas; ui: [1] SUi;
+  md_test_atlas(a[..]);
+  for k: 0..<ICON_COUNT { a[0].icons[k] = GpIcon.{x = 0, y = 0, w = 36, h = 36}; }
+  s_build(s[..], ui[..], t[..]);
+  #assert t[0].rows[0].kind == R_USER && t[0].rows[1].kind == R_GROUP && t[0].groups[0].summary == "Thought process" && t[0].rows[t[0].nr - 1].kind == R_MD;
+}
+
+#test "the next turn replays the prior output without its reasoning; a call becomes a chip, asked about, its output replayed" {
+  p: [1] PsEngine; s: [1] Session; b: [1] PsTest;
+  ps_test_setup(p[..], s[..], b[..]);
+  ps_send(p[..], s[..], "In one sentence: what is a GPU?");
+  fx := PSIONIC_TEXT;
+  ps_test_end(p[..], s[..], 200, "", ps_test_feed(p[..], s[..], fx[..]));
+  p[0].ar[0].at = 0;
+  reasoning_id := cl_str(p[0].ar[..], ps_item(p[..], 1), "id");
+  message_id := cl_str(p[0].ar[..], ps_item(p[..], 2), "id");
+  rid: [128] u8; mid: [128] u8;
+  r1 := e_str(rid[..], e_set(rid[..], 0, reasoning_id)); m1 := e_str(mid[..], e_set(mid[..], 0, message_id));
+  ps_send(p[..], s[..], "List the folder /tmp/demo with your tool.");
+  body: [65536] u8;
+  q := ps_body(p[..], body[..]);
+  #assert q.count > 0 && ps_contains(q, m1) == 1 && ps_contains(q, r1) == 0 && ps_contains(q, "\"role\":\"user\"") == 2;
+  #assert ps_contains(q, "\"store\":false") == 1 && ps_contains(q, "\"effort\":\"medium\"") == 1 && ps_contains(q, "\"name\":\"run_command\"") == 1;
+  #assert ps_contains(q, "Working folder: /tmp/demo") == 1 && ps_contains(q, "previous_response_id") == 0;
+  // the recorded call (the fixture server's owned weather tool, which the app doesn't have)
+  fc := PSIONIC_CALL;
+  call := ps_test_feed(p[..], s[..], fc[..]);
+  #assert call >= 0;
+  p[0].access = ACC_SUPERVISED;
+  ps_test_end(p[..], s[..], 200, "", call);
+  k := s[0].n - 1;
+  #assert s[0].parts[k].kind == P_TOOL && s[0].parts[k].tk == TK_TOOL && s[0].parts[k].detail == "weather" && s[0].parts[k].failed && s[0].parts[k].output == "There is no such tool.";
+  #assert p[0].items[p[0].ni - 1].kind == PI_CALL_OUTPUT && s[0].live;
+  q = ps_body(p[..], body[..]);
+  p[0].ar[0].at = 0;
+  call_id := cl_str(p[0].ar[..], ps_item(p[..], call), "call_id");
+  #assert call_id.count > 0 && ps_contains(q, call_id) == 2 && ps_contains(q, "function_call_output") == 1;
+  // this turn's reasoning stays through its tool call; the first turn's is gone
+  current := 0;
+  for i: 0..<p[0].ni { if p[0].items[i].kind == PI_REASONING && p[0].items[i].turn == p[0].turn { current += 1; } }
+  #assert current == 1 && ps_contains(q, r1) == 0 && ps_contains(q, "\"type\":\"reasoning\"") == current;
+  // a list_folder call under Supervised asks; Deny goes back to the model as the call's output
+  item := "{\"id\":\"fc_1\",\"type\":\"function_call\",\"status\":\"completed\",\"name\":\"list_folder\",\"call_id\":\"call_7\",\"arguments\":\"{\\\"path\\\":\\\"/tmp/demo\\\"}\"}";
+  ok := ps_hist_put(p[..], PI_OUTPUT, item);
+  ps_call(p[..], s[..], p[0].ni - 1);
+  #assert s[0].live && s[0].asking >= 0 && s[0].parts[s[0].asking].notice == N_ASK && s_text_of(s[..], s[0].asking) == "list_folder: /tmp/demo";
+  k = p[0].call_part;
+  #assert k > 0 && s[0].parts[k].tk == TK_GLOB && s[0].parts[k].arg == "/tmp/demo" && !s[0].parts[k].resolved;
+  ps_answer(p[..], s[..], false);
+  #assert s[0].asking < 0 && s[0].parts[k].resolved && s[0].parts[k].failed && s[0].parts[k].output == "The user denied this.";
+  q = ps_body(p[..], body[..]);
+  #assert ps_contains(q, "\"call_id\":\"call_7\"") == 2 && ps_contains(q, "The user denied this.") == 1;
+  // the access chip's rule
+  #assert ps_may_run(ACC_FULL, PT_RUN) && ps_may_run(ACC_EDITS, PT_LIST) && !ps_may_run(ACC_EDITS, PT_RUN) && !ps_may_run(ACC_SUPERVISED, PT_READ);
+}
+
+#test "busy, a context that no longer fits, a refused key, a cut stream and Stop each read as Zeron's chips" {
+  p: [1] PsEngine; s: [1] Session; b: [1] PsTest;
+  ps_test_setup(p[..], s[..], b[..]);
+  ps_send(p[..], s[..], "hi");
+  ps_test_end(p[..], s[..], 503, "{\"error\":{\"type\":\"server_error\",\"code\":\"worker_busy\",\"param\":null,\"message\":\"worker_busy\"}}", -1);
+  #assert !s[0].live && s[0].parts[s[0].n - 1].notice == N_BUSY;
+  // the oldest turn leaves the replay first; with only this turn left the turn fails
+  ps_send(p[..], s[..], "again");
+  ctx := "{\"error\":{\"type\":\"invalid_request_error\",\"code\":\"context_length_exceeded\",\"param\":\"input\",\"message\":\"context_length_exceeded\"}}";
+  ps_test_end(p[..], s[..], 400, ctx, -1);
+  #assert s[0].live && p[0].first_turn == 2 && p[0].dropped == 1;
+  ps_test_end(p[..], s[..], 400, ctx, -1);
+  #assert !s[0].live && s[0].parts[s[0].n - 1].notice == N_ERROR && s_has(s_text_of(s[..], s[0].n - 1), "2048-token context");
+  ps_send(p[..], s[..], "key");
+  ps_test_end(p[..], s[..], 401, "{\"error\":{\"code\":\"invalid_api_key\"}}", -1);
+  #assert s[0].parts[s[0].n - 1].notice == N_SIGNED_OUT || s_has(s_text_of(s[..], s[0].n - 1), "refused the key");
+  ps_send(p[..], s[..], "cut");
+  ps_test_end(p[..], s[..], 200, "", -1);
+  #assert !s[0].live && s_has(s_text_of(s[..], s[0].n - 1), "closed before the answer");
+  ps_send(p[..], s[..], "stop me");
+  s_delta(s[..], P_TEXT, "Once");
+  ps_stop(p[..], s[..]);
+  #assert !s[0].live && s[0].parts[s[0].n - 1].notice == N_STOPPED;
+  // after Stop, curl's end changes nothing
+  n := s[0].n;
+  ps_test_end(p[..], s[..], 200, "", -1);
+  #assert s[0].n == n;
+  #assert ps_explain("request_deadline_exceeded") == "Psionic stopped this answer at its 120-second limit.";
+}
+
+#test "configuration: the env file's values, the tunnel's port, a full store forgets the oldest turn" {
+  text := "# psionic\nexport PSIONIC_URL=\"http://127.0.0.1:8089\"\nPSIONIC_API_KEY=abc123abc123abc123\n";
+  #assert ps_env_value(text, "PSIONIC_URL") == "http://127.0.0.1:8089" && ps_env_value(text, "PSIONIC_API_KEY") == "abc123abc123abc123";
+  #assert ps_env_value(text, "PSIONIC") == "" && ps_env_value("PSIONIC_API_KEY_X=1", "PSIONIC_API_KEY") == "";
+  #assert ps_port_of("http://127.0.0.1:8089") == "8089" && ps_port_of("http://localhost") == "80" && ps_port_of(PS_DEFAULT_URL) == "8080";
+  p: [1] PsEngine; hist: [256] u8;
+  ps_init(p[..]); p[0].hist = hist[..];
+  p[0].turn = 1; ok := ps_hist_put(p[..], PI_USER, "{\"a\":1111111111111111111111111111111111111111111111111111111111111111111}");
+  p[0].turn = 2; ok = ps_hist_put(p[..], PI_USER, "{\"b\":2222222222222222222222222222222222222222222222222222222222222222222}");
+  p[0].turn = 3; ok = ps_hist_put(p[..], PI_USER, "{\"c\":3333333333333333333333333333333333333333333333333333333333333333333}");
+  p[0].turn = 4; ok = ps_hist_put(p[..], PI_USER, "{\"d\":4444444444444444444444444444444444444444444444444444444444444444444}");
+  #assert ok && p[0].ni == 3 && p[0].first_turn == 2 && ps_item(p[..], 0)[2] == 'b' && ps_item(p[..], 2)[2] == 'd';
+}

@@ -68,6 +68,36 @@ How it works:
   zeron/claude.coax` runs a scrubbed recorded stream
   (`zeron/fixtures/claude-tools.jsonl`, regenerated with `fixture.py`)
   through the mapping.
+- Claude | Psionic: a chat runs on Claude (above) or on Psionic, our own
+  gpt-oss-20b through the Psionic Responses API (`zeron/psionic.coax`). As in
+  Zeron the harness rides on the model chip: its mark (the OpenAgents power
+  symbol for Psionic) and model; on an empty chat the model chip cycles Opus,
+  Sonnet, Haiku, then gpt-oss-20b; a conversation keeps its mode. Psionic's
+  effort chip is Low, Medium, High (the request's `reasoning.effort`); the
+  access chip gates its three tools (read_file, list_folder, run_command):
+  Full access runs all, Auto-accept edits runs the two that read and asks for
+  run_command, Supervised asks for each. The modes and each chip's choices
+  are tables in `zeron/modes.coax` (exported as `coaxial_zeron_option_*`,
+  `coaxial_zeron_mode*` for a picker; a new mode is a new row). Requests go
+  through `coax/lib/gateway/` (`sse.coax`, the event-stream reader;
+  `transport.coax`, streaming curl polled each frame, the key passed only
+  through curl's environment, never an argument), the first two pieces of
+  microcoder's gateway row; the rest of that row is not done. Each turn
+  replays the whole conversation (prior reasoning dropped; tool results
+  capped at 1200 bytes); past the server's context the oldest turn is
+  dropped and the turn retried. 503 `worker_busy` shows "Psionic is busy";
+  nothing listening shows the tunnel command; Stop closes the connection.
+  Config: `PSIONIC_URL` and `PSIONIC_API_KEY` from the environment or
+  `~/work/.secrets/psionic-responses.env` (gitignored, chmod 600), default
+  `http://127.0.0.1:8080`. The server: `ssh coderos-4080 'tmux new -d -s
+  psionic-responses ~/psionic-responses/serve.sh'` (wraps
+  `psionic/serve-gptoss.sh` on port 8080 with the key from
+  `~/.config/psionic-responses.env`), then `ssh -N -L 8080:127.0.0.1:8080
+  coderos-4080`. gpt-oss-20b needs most of the 4080's 16 GB, so it cannot
+  run beside another resident model there. Flags `--mode claude|psionic`,
+  shot step `mode NAME`. Tests: `coax test --library zeron/psionic.coax`
+  runs recorded streams (`zeron/fixtures/psionic-turns.sse`, recorded and
+  turned into `psionic_fixture.coax` by `fixtures/psionic.py`).
 - `zeron/transcript.coax` (with `markdown.coax` and `tools.coax`) is Zeron's
   chat transcript (`crates/ui/src/transcript.rs`, `render.rs`'s Markdown and
   code blocks, `changes.rs`'s diff rows) showing a fixed demo conversation,

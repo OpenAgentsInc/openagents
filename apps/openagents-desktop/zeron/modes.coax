@@ -1,0 +1,50 @@
+// The chat's modes: which engine answers a conversation. Claude is the
+// user's own Claude Code (claude.coax); Psionic is our own gpt-oss-20b
+// through the Psionic Responses API (psionic.coax). A conversation keeps
+// its mode; an empty one can change it. In Zeron the harness is picked
+// with the model (pickers.rs HarnessModelPicker: the chip shows the
+// harness's brand mark beside the model, its menu has a rail of brand
+// marks), so here the model chip carries the mode: its mark and its model,
+// and the choices listed for each chip come from the mode (these tables;
+// screen.coax exports them as coaxial_zeron_option_*). A new mode is a new
+// row in each table and a branch where screen.coax routes send, stop and
+// the pump. Based on Zeron by Wing, MIT.
+
+#load "psionic.coax";
+
+MODE_CLAUDE :: 0; MODE_PSIONIC :: 1;
+MODE_COUNT :: 2;
+MODE_NAMES :: [MODE_COUNT] string.["Claude", "Psionic"];
+// The model chip's mark per mode (Composer.brand: 0 the Claude mark).
+MODE_BRANDS :: [MODE_COUNT] int.[0, ICON_PSIONIC];
+CH_MODE :: 4;                    // coaxial_zeron_choose's which for the mode
+
+// How many choices a chip has in a mode, and each one's label.
+mode_option_count :: (mode: int, which: int) -> int {
+  if which == CH_MODE { return MODE_COUNT; }
+  if mode == MODE_PSIONIC {
+    if which == CH_MODEL { return 1; }
+    if which == CH_EFFORT { return 3; }
+  } else {
+    if which == CH_MODEL { return 3; }
+    if which == CH_EFFORT { return 5; }
+  }
+  if which == CH_ACCESS { return 3; }
+  return 0;
+}
+mode_option_label :: (mode: int, which: int, i: int) -> string {
+  if i < 0 || i >= mode_option_count(mode, which) { return ""; }
+  names := MODE_NAMES; models := MODEL_NAMES; efforts := EFFORT_NAMES; ps_efforts := PS_EFFORT_NAMES; access := ACCESS_NAMES;
+  if which == CH_MODE { return names[i]; }
+  if which == CH_ACCESS { return access[i]; }
+  if mode == MODE_PSIONIC { return ifx which == CH_MODEL then PS_MODEL else ps_efforts[i]; }
+  return ifx which == CH_MODEL then models[i] else efforts[i];
+}
+
+#test "each mode lists its own choices" {
+  #assert mode_option_count(MODE_CLAUDE, CH_MODEL) == 3 && mode_option_label(MODE_CLAUDE, CH_MODEL, 2) == "Haiku 5.5";
+  #assert mode_option_count(MODE_PSIONIC, CH_MODEL) == 1 && mode_option_label(MODE_PSIONIC, CH_MODEL, 0) == "gpt-oss-20b";
+  #assert mode_option_count(MODE_PSIONIC, CH_EFFORT) == 3 && mode_option_label(MODE_PSIONIC, CH_EFFORT, 2) == "High";
+  #assert mode_option_label(MODE_PSIONIC, CH_EFFORT, 3) == "" && mode_option_label(MODE_CLAUDE, CH_EFFORT, 3) == "X-High";
+  #assert mode_option_label(MODE_PSIONIC, CH_MODE, 1) == "Psionic" && mode_option_label(MODE_PSIONIC, CH_ACCESS, 1) == "Auto-accept edits";
+}

@@ -1,0 +1,108 @@
+// Server-sent events, read a line at a time (the WHATWG event-stream rules,
+// as the old crates/inference sse.rs reads them): "field: value" lines, one
+// space after the colon dropped; data lines join with a newline; a line
+// starting with a colon is a comment; a blank line dispatches the event
+// when it has data; id and retry are read and ignored; a field with no
+// colon has an empty value. Nothing allocates: the event's name and data
+// live in the caller's buffers and stay valid until the next line.
+// Part of the gateways (docs/coder/microcoder.md, row 1).
+
+GwSse :: struct {
+  name: [] u8; nn: int;          // the event field ("" is "message")
+  data: [] u8; nd: int;
+  has_data: bool;
+  overflow: bool;                // the event did not fit its buffers (dispatched truncated, flagged)
+  spent: bool;                   // the last line dispatched: clear before the next
+}
+
+GwSseEvent :: struct {
+  ready: bool;                   // an event was dispatched by this line
+  name: string;
+  data: string;
+  truncated: bool;
+}
+
+gw_sse_init :: (s: [] GwSse, name_buf: [] u8, data_buf: [] u8) {
+  s[0] = GwSse.{name = name_buf, data = data_buf};
+}
+
+gw_sse_clear :: (s: [] GwSse) { s[0].nn = 0; s[0].nd = 0; s[0].has_data = false; s[0].overflow = false; s[0].spent = false; }
+
+gw_sse_append :: (buf: [] u8, at: int, text: string) -> int {
+  k := at;
+  for c: text { if k >= buf.count { return -1; } buf[k] = c; k += 1; }
+  return k;
+}
+
+// One line, without its line ending (a trailing \r is dropped here too).
+gw_sse_line :: (s: [] GwSse, raw: string) -> GwSseEvent {
+  if s[0].spent { gw_sse_clear(s); }
+  line := raw;
+  if line.count > 0 && line[line.count - 1] == '\r' { line = cast(string) line[0..<line.count - 1]; }
+  if line.count == 0 {
+    if !s[0].has_data { gw_sse_clear(s); return GwSseEvent.{}; }
+    s[0].spent = true;
+    ev := GwSseEvent.{ready = true, truncated = s[0].overflow};
+    ev.name = ifx s[0].nn > 0 then cast(string) s[0].name[0..<s[0].nn] else "message";
+    ev.data = cast(string) s[0].data[0..<s[0].nd];
+    return ev;
+  }
+  if line[0] == ':' { return GwSseEvent.{}; }
+  colon := -1;
+  for i: 0..<line.count { if line[i] == ':' { colon = i; break; } }
+  field := line; value := "";
+  if colon >= 0 {
+    field = cast(string) line[0..<colon];
+    v := colon + 1;
+    if v < line.count && line[v] == ' ' { v += 1; }
+    value = cast(string) line[v..<line.count];
+  }
+  if field == "data" {
+    at := s[0].nd;
+    if s[0].has_data { at = gw_sse_append(s[0].data, at, "\n"); }
+    if at >= 0 { at = gw_sse_append(s[0].data, at, value); }
+    if at < 0 { s[0].overflow = true; } else { s[0].nd = at; }
+    s[0].has_data = true;
+  } else if field == "event" {
+    n := gw_sse_append(s[0].name, 0, value);
+    if n < 0 { s[0].overflow = true; } else { s[0].nn = n; }
+  }
+  return GwSseEvent.{};
+}
+
+#test "an event stream: named events, joined data lines, comments, the blank line dispatching" {
+  s: [1] GwSse; name: [64] u8; data: [256] u8;
+  gw_sse_init(s[..], name[..], data[..]);
+  e := gw_sse_line(s[..], ": keep-alive");
+  #assert !e.ready;
+  e = gw_sse_line(s[..], "event: response.output_text.delta");
+  e = gw_sse_line(s[..], "data: {\"delta\":\"Hel\"}\r");
+  #assert !e.ready;
+  e = gw_sse_line(s[..], "");
+  #assert e.ready && e.name == "response.output_text.delta" && e.data == "{\"delta\":\"Hel\"}";
+  // the name does not carry over; two data lines join; no space after the colon is kept as is
+  e = gw_sse_line(s[..], "data:one");
+  e = gw_sse_line(s[..], "data:  two");
+  e = gw_sse_line(s[..], "id: 7");
+  e = gw_sse_line(s[..], "");
+  #assert e.ready && e.name == "message" && e.data == "one\n two";
+  // a blank line with no data dispatches nothing; a field with no colon is empty
+  e = gw_sse_line(s[..], "event: lonely");
+  e = gw_sse_line(s[..], "");
+  #assert !e.ready;
+  e = gw_sse_line(s[..], "data");
+  e = gw_sse_line(s[..], "");
+  #assert e.ready && e.data == "" && e.name == "message";
+}
+
+#test "an event too large for its buffer is flagged, and the next one reads whole" {
+  s: [1] GwSse; name: [8] u8; data: [8] u8;
+  gw_sse_init(s[..], name[..], data[..]);
+  e := gw_sse_line(s[..], "data: 0123456789");
+  e = gw_sse_line(s[..], "");
+  #assert e.ready && e.truncated;
+  e = gw_sse_line(s[..], "event: ok");
+  e = gw_sse_line(s[..], "data: 42");
+  e = gw_sse_line(s[..], "");
+  #assert e.ready && !e.truncated && e.name == "ok" && e.data == "42";
+}

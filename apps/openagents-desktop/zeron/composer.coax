@@ -68,11 +68,12 @@ ICON_CHEVRON :: 3; ICON_TERMINAL :: 4; ICON_DOCUMENT :: 5; ICON_PEN :: 6; ICON_M
 ICON_GLOBAL :: 8; ICON_THOUGHT :: 9; ICON_COPY :: 10; ICON_WRAP :: 11; ICON_RUST :: 12; ICON_CHEVRON_RIGHT :: 13;
 ICON_DOCUMENT_ADD :: 14; ICON_FOLDER :: 15; ICON_CHECKLIST :: 16; ICON_BOT :: 17; ICON_WIDGET :: 18;
 ICON_DANGER :: 19; ICON_STOP :: 20;
-ICON_COUNT :: 21;
-ICON_NAMES :: [21] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
+ICON_PSIONIC :: 21;        // the Psionic mode's mark: the OpenAgents power symbol, monochrome
+ICON_COUNT :: 22;
+ICON_NAMES :: [22] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
                            "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right",
-                           "document-add", "folder-with-files", "checklist", "bot", "widget", "danger-triangle", "stop"];
-ICON_SIZES :: [21] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11];
+                           "document-add", "folder-with-files", "checklist", "bot", "widget", "danger-triangle", "stop", "psionic-mark"];
+ICON_SIZES :: [22] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16];
 
 COMPOSER_TEXT :: 8000;
 COMPOSER_LINES :: 1024;
@@ -141,6 +142,7 @@ Composer :: struct {
   // The chat it drives (screen.coax sets these): the chips' labels ("" for
   // the defaults above), and whether a run is live (Send becomes Stop).
   model_label: string; effort_label: string; access_label: string;
+  brand: int;                   // the model chip's mark: 0 the Claude mark in its brand tone, else an icon in the muted tone (Zeron's monochrome marks)
   running: bool;
   // Where the actions were last drawn (logical px), for presses: CH_SEND,
   // CH_MODEL, CH_EFFORT, CH_ACCESS; and the one a press hit, until the
@@ -156,6 +158,11 @@ composer_chip_hit :: (c: [] Composer, x: f32, y: f32) -> int {
     if c[0].chip_w[k] > 0 && x >= c[0].chip_x[k] && x < c[0].chip_x[k] + c[0].chip_w[k] && y >= c[0].chip_y[k] && y < c[0].chip_y[k] + c[0].chip_h[k] { return k; }
   }
   return -1;
+}
+// The model chip's mark (harness_brand_icon): Claude's keeps its brand tone, the others take text_muted.
+paint_brand :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme, d: f32, x: f32, y: f32) -> int {
+  if c[0].brand <= 0 { return paint_icon(out, at, a, d, ICON_CLAUDE, x, y, CHIP_ICON, CHIP_ICON, th.claude); }
+  return paint_icon(out, at, a, d, c[0].brand, x, y, CHIP_ICON, CHIP_ICON, th.muted);
 }
 model_label_of :: (c: [] Composer) -> string { return ifx c[0].model_label.count > 0 then c[0].model_label else ifx c[0].docked then CHAT_MODEL_LABEL else MODEL_LABEL; }
 effort_label_of :: (c: [] Composer) -> string { return ifx c[0].effort_label.count > 0 then c[0].effort_label else EFFORT_LABEL; }
@@ -847,7 +854,7 @@ paint_composer :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme,
   clh: f32 = CHIP_TEXT_SIZE * 1.618034;   // GPUI's default line height, phi
   // Taffy rounds each layout box to whole logical pixels (GPUI layouts with rounding on)
   cly := row_mid - CHIP_HEIGHT / 2 + round_half_toward_zero((CHIP_HEIGHT - clh) / 2);   // centered in the chip, rounded within it
-  v = paint_icon(out, v, a, d, ICON_CLAUDE, mx + MODEL_CHIP_PAD, chip_top + (CHIP_HEIGHT - CHIP_ICON) / 2, CHIP_ICON, CHIP_ICON, th.claude);
+  v = paint_brand(out, v, c, a, th, d, mx + MODEL_CHIP_PAD, chip_top + (CHIP_HEIGHT - CHIP_ICON) / 2);
   lx := mx + MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP;
   v = paint_text(out, v, a, d, FONT_CHIP, ml, lx, cly, clh, opacity(th.text, 0.9));
   ex := lx + chip_label_width(a, ml) + CHIP_GAP;
@@ -877,7 +884,7 @@ paint_chat_chip :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme
   mx := send_x - ACTION_PRIMARY_GAP - cw;
   clh: f32 = CHIP_TEXT_SIZE * 1.618034;
   cly := row_mid - CHIP_HEIGHT / 2 + round_half_toward_zero((CHIP_HEIGHT - clh) / 2);   // centered in the chip, rounded within it
-  v := paint_icon(out, at, a, d, ICON_CLAUDE, mx + MODEL_CHIP_PAD, row_mid - CHIP_ICON / 2, CHIP_ICON, CHIP_ICON, th.claude);
+  v := paint_brand(out, at, c, a, th, d, mx + MODEL_CHIP_PAD, row_mid - CHIP_ICON / 2);
   ml := model_label_of(c);
   lx := mx + MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP;
   v = paint_text(out, v, a, d, FONT_CHIP, ml, lx, cly, clh, opacity(th.text, 0.9));

@@ -52,6 +52,8 @@ H_GROUP :: 1; H_CHIP :: 2; H_WRAP :: 3; H_COPY :: 4; H_ACTION :: 5;
 // Claude Code missing (Install); and a quiet "Stopped" line under a turn
 // the user stopped.
 N_ERROR :: 0; N_SIGNED_OUT :: 1; N_LIMIT :: 2; N_INSTALL :: 3; N_STOPPED :: 4; N_ASK :: 5;
+// Psionic's (psionic.coax): its one worker is busy; its server can't be reached.
+N_BUSY :: 6; N_OFFLINE :: 7;
 TNotice :: struct { kind: int; text: string; }
 T_NOTICES :: 64;
 // What a notice's button asks of the screen (t.action, until it takes it).
@@ -572,6 +574,8 @@ t_notice_label :: (kind: int) -> string {
   if kind == N_LIMIT { return "Limit reached"; }
   if kind == N_INSTALL { return "Claude Code isn't installed"; }
   if kind == N_ASK { return "Approval needed"; }
+  if kind == N_BUSY { return "Psionic is busy"; }
+  if kind == N_OFFLINE { return "Psionic isn't reachable"; }
   return "Error";
 }
 t_notice_button :: (t: [] Transcript, a: [] Atlas, th: Theme, k: int, which: int, label: string, x: f32, y: f32, accent: Rgba, muted: Rgba) -> f32 {
@@ -589,7 +593,7 @@ lay_notice :: (t: [] Transcript, a: [] Atlas, th: Theme, k: int, x: f32, y: f32,
     q := t_plain(t, a, x + 1 + 11 + 8, y, 18, FONT_TOOL, th.faint, "Stopped", true);
     return 18;
   }
-  warn := n.kind == N_ASK;
+  warn := n.kind == N_ASK || n.kind == N_BUSY;
   accent := hex(ifx warn then WARNING else DANGER, 1);
   muted := hex(ifx warn then WARNING_MUTED else DANGER_MUTED, 1);
   inner := w - 2 * NOTICE_PAD;
