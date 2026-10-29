@@ -53,6 +53,7 @@ test("refuses a painterly realm whose WGSL has no style block", () => {
   writeFileSync(join(site, "everglade.wgsl"), "// no block\n")
   writeFileSync(join(site, "villa.wgsl"), `${STYLE_BLOCK} (x) by coax/web/wgsl.py; do not edit\n// ---- end generated\n`)
   writeFileSync(join(site, "fairy.wgsl"), `${STYLE_BLOCK} (x) by coax/web/wgsl.py; do not edit\n// ---- end generated\n`)
+  writeFileSync(join(site, "waterlab.wgsl"), `${STYLE_BLOCK} (x) by coax/web/wgsl.py; do not edit\n// ---- end generated\n`)
   expect(check(() => {}, { site, styleBlock: true })).toThrow(/everglade.wgsl has no style block/)
   writeFileSync(join(site, "everglade.wgsl"), `${STYLE_BLOCK} (x) by coax/web/wgsl.py; do not edit\n// ---- end generated\n`)
   expect(check(() => {}, { site, styleBlock: true })).not.toThrow()

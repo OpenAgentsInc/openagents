@@ -1,0 +1,928 @@
+// Water for Verse, phase W4: the spectral sea. A port of the previous
+// engine's `physics::water::{spectrum, fft}` (`git show
+// 0b401561a0^:crates/physics/src/water/spectrum.rs`, `fft.rs` and
+// `spectrum_tests.rs`) and of `verse-pbr`'s baked low-tier tile
+// (`crates/verse-pbr/src/water/tile.rs`), after Tessendorf ("Simulating
+// Ocean Water", SIGGRAPH 2001 course notes):
+//
+// - Spectrum: JONSWAP (Hasselmann et al. 1973) from the wind speed and
+//   fetch, with the TMA depth factor (Bouws et al. 1985) and the dispersion
+//   relation w^2 = g k tanh(k h), so shallow water slows and shortens waves.
+// - Directional spreading: cos^2s(theta / 2) (Longuet-Higgins et al. 1963)
+//   with Hasselmann et al.'s (1980) frequency-dependent s and Horvath's
+//   (DigiPro 2015) swell term and normalization.
+// - Amplitudes: each lattice mode's height is the spectrum integrated over
+//   its cell with a seeded phase and no random magnitude, so a tile's
+//   variance is the spectrum's integral (Parseval).
+// - Time: every mode's frequency is snapped to a whole multiple of 2 PI over
+//   the loop, and its phase is the integer (harmonic * tick) mod period, so a
+//   tick reproduces its tile bit for bit and the tile repeats exactly (W1's
+//   deterministic clock).
+// - Cascades: up to three tiles, each 5.3 times smaller, split the
+//   wavenumbers into bands; cascade 0 is the gameplay band at 64^2 texels on
+//   every tier, which `wsp_field` samples for physics.
+// - Choppiness: horizontal displacement D = sum i k^ h~ e^{ik.x} times
+//   lambda; the Jacobian of x + D falls under one where crests sharpen,
+//   which is where whitecaps form (wsp_foam_step keeps the foam field).
+// - The inverse FFT: radix-2 Cooley-Tukey over rows and columns, f32.
+//
+// Everything with a length lives in the records here (Coax has no
+// growable arrays): a synth holds at most WSP_MAX_MODES modes over its
+// cascades and tiles are at most WSP_MAX_SIZE texels a side. Procedures
+// take views of one record ([] Synth) so nothing large is copied.
+//   coax/bin/coax test --library verse/water-spectrum.coax --steps 2000000000
+
+#load "water.coax";
+
+WSP_GAMEPLAY_SIZE :: 64;      // the gameplay band's grid side
+WSP_GAMEPLAY_CUT :: 16.0;     // cascade 0 holds waves of at least patch / 16 m
+WSP_RATIO :: 5.3;             // each cascade's tile is this many times smaller
+WSP_MAX_CASCADES :: 3;
+WSP_MAX_PERIOD :: 131072;     // the longest loop, ticks (2^17)
+WSP_GAMMA :: 3.3;             // JONSWAP's peak enhancement
+WSP_MAX_SIZE :: 128;          // the largest tile side here
+WSP_MAX_TEXELS :: 16384;      // WSP_MAX_SIZE^2
+WSP_MAX_MODES :: 16384;       // modes over all of a synth's cascades
+
+// A seeded wave spectrum and the controls a sea state sets.
+Spectrum :: struct {
+  seed: u64 = 1;
+  wind_speed: f64 = 8.0;        // 10 m above the water, m/s
+  wind: f64 = 0.0;              // the way the waves travel, rad about +Y (0 is +z)
+  fetch: f64 = 20000.0;         // m of open water the wind has blown over
+  peak_wavelength: f64 = 0.0;   // m, or 0 for JONSWAP's own
+  amplitude: f64 = 1.0;         // scales every height
+  choppiness: f64 = 0.8;        // the horizontal displacement's lambda
+  spread: f64 = 1.0;            // 1 a wind sea's spread, 0 a narrow swell's
+  standing: f64 = 0.0;          // share of the energy against the wind, 0 to 0.5
+  time_scale: f64 = 1.0;
+  depth: f64 = 200.0;           // m, for dispersion and the TMA factor
+  patch: f64 = 0.0;             // cascade 0's tile, m, or 0 for eight peak wavelengths
+  period: u64 = 30720;          // the loop, ticks (120 * 256)
+  tick: f64 = 0.008333333333333333;
+}
+
+Cascade :: struct {
+  patch: f64;     // the tile's side, m
+  size: int;      // texels along a side
+  low: f64;       // the band, low <= |k| < high, rad/m
+  high: f64;
+}
+
+wsp_shortest :: (c: Cascade) -> f64 { return TAU_D / c.high; }
+
+atan2_d :: (y: f64, x: f64) -> f64 {
+  if x > 0.0 { return atan_d(y / x); }
+  if x < 0.0 { return ifx y >= 0.0 then atan_d(y / x) + PI_D else atan_d(y / x) - PI_D; }
+  if y > 0.0 { return PI_D / 2.0; }
+  if y < 0.0 { return -PI_D / 2.0; }
+  return 0.0;
+}
+tanh_d :: (x: f64) -> f64 {
+  if x > 20.0 { return 1.0; }
+  if x < -20.0 { return -1.0; }
+  e := exp(2.0 * x);
+  return (e - 1.0) / (e + 1.0);
+}
+cosh_d :: (x: f64) -> f64 { e := exp(x); return 0.5 * (e + 1.0 / e); }
+
+// Whether every control is finite and in range.
+positive_d :: (v: f64) -> bool { return is_finite(v) && v > 0.0; }
+wsp_valid :: (s: Spectrum) -> bool {
+  if !(is_finite(s.wind_speed) && s.wind_speed >= 0.0) || !is_finite(s.wind) || !positive_d(s.fetch) { return false; }
+  if !(is_finite(s.peak_wavelength) && s.peak_wavelength >= 0.0) || !(is_finite(s.amplitude) && s.amplitude >= 0.0) { return false; }
+  if !(is_finite(s.choppiness) && s.choppiness >= 0.0) || !(s.spread >= 0.0 && s.spread <= 1.0) { return false; }
+  if !(s.standing >= 0.0 && s.standing <= 0.5) || !positive_d(s.time_scale) || !positive_d(s.depth) { return false; }
+  if !(is_finite(s.patch) && s.patch >= 0.0) || s.period < 1 || s.period > WSP_MAX_PERIOD || !positive_d(s.tick) { return false; }
+  return true;
+}
+
+wsp_direction :: (s: Spectrum) -> D2 { return d2(sin(s.wind), cos(s.wind)); }
+
+// The angular frequency of wavenumber k over this depth, rad/s.
+wsp_dispersion :: (s: Spectrum, k: f64) -> f64 { return sqrt(WATER_G * k * tanh_d(fmin(k * s.depth, 20.0))); }
+
+// dw/dk at k, m/s.
+wsp_group :: (s: Spectrum, k: f64, omega: f64) -> f64 {
+  kh := k * s.depth;
+  sech2 := ifx kh > 20.0 then 0.0 else 1.0 / (cosh_d(kh) * cosh_d(kh));
+  return WATER_G * (tanh_d(fmin(kh, 20.0)) + kh * sech2) / (2.0 * fmax(omega, 0.000000001));
+}
+
+// The wavenumber of angular frequency omega over this depth (Newton's method
+// from above the root), rad/m.
+wsp_wavenumber :: (s: Spectrum, omega: f64) -> f64 {
+  h := s.depth;
+  w2 := omega * omega;
+  k := fmax(w2 / WATER_G, omega / sqrt(WATER_G * h));
+  for i: 0..<30 {
+    t := tanh_d(fmin(k * h, 20.0));
+    f := WATER_G * k * t - w2;
+    df := WATER_G * (t + k * h * (1.0 - t * t));
+    next := k - f / fmax(df, 0.000000000001);
+    if abs(next - k) <= 0.000000000000001 * k { return next; }
+    k = next;
+  }
+  return k;
+}
+
+// The peak's angular frequency: JONSWAP's 22 (g^2 / (U F))^(1/3), or the set
+// peak wavelength's.
+wsp_peak_omega :: (s: Spectrum) -> f64 {
+  if s.peak_wavelength > 0.0 { return wsp_dispersion(s, TAU_D / s.peak_wavelength); }
+  u := fmax(s.wind_speed, 0.1);
+  return 22.0 * pow(WATER_G * WATER_G / (u * s.fetch), 1.0 / 3.0);
+}
+wsp_peak :: (s: Spectrum) -> f64 { return TAU_D / wsp_wavenumber(s, wsp_peak_omega(s)); }
+wsp_patch :: (s: Spectrum) -> f64 {
+  if s.patch > 0.0 { return s.patch; }
+  return fclamp(8.0 * wsp_peak(s), 32.0, 2048.0);
+}
+
+// S(w), m^2 s: JONSWAP times the TMA factor times the amplitude squared.
+wsp_jonswap :: (s: Spectrum, omega: f64) -> f64 {
+  if omega <= 0.000001 || s.wind_speed <= 0.0 { return 0.0; }
+  wp := wsp_peak_omega(s);
+  alpha := 0.076 * pow(s.wind_speed * s.wind_speed / (s.fetch * WATER_G), 0.22);
+  sigma := ifx omega <= wp then 0.07 else 0.09;
+  r := exp(-(omega - wp) * (omega - wp) / (2.0 * sigma * sigma * wp * wp));
+  q := wp / omega;
+  e := alpha * WATER_G * WATER_G / pow(omega, 5.0) * exp(-1.25 * q * q * q * q) * pow(WSP_GAMMA, r);
+  // Kitaigorodskii's depth factor in Thompson and Vincent's form.
+  wh := omega * sqrt(s.depth / WATER_G);
+  tma := 1.0;
+  if wh <= 1.0 { tma = 0.5 * wh * wh; } else if wh < 2.0 { tma = 1.0 - 0.5 * (2.0 - wh) * (2.0 - wh); }
+  return e * tma * s.amplitude * s.amplitude;
+}
+
+// ln Gamma(x) for x > 0, Lanczos (g = 7, nine terms).
+WSP_LANCZOS :: [9] f64.[0.9999999999998099, 676.5203681218851, -1259.1392167224028, 771.3234287776531,
+  -176.6150291621406, 12.507343278686905, -0.13857109526572012, 0.000009984369578019572, 0.00000015056327351493116];
+ln_gamma :: (x_in: f64) -> f64 {
+  if x_in < 0.5 { return log(PI_D / sin(PI_D * x_in)) - ln_gamma(1.0 - x_in); }
+  x := x_in - 1.0;
+  a := WSP_LANCZOS[0];
+  t := x + 7.5;
+  for i: 1..<9 { a += WSP_LANCZOS[i] / (x + f64(i)); }
+  return 0.5 * log(TAU_D) + (x + 0.5) * log(t) - t + log(a);
+}
+
+// D(theta; w), normalized over the circle, theta rad off the wind.
+wsp_spreading :: (s: Spectrum, theta: f64, omega: f64) -> f64 {
+  wp := wsp_peak_omega(s);
+  r := omega / wp;
+  e := 0.0;
+  if r <= 1.0 { e = 6.97 * pow(r, 4.06); } else {
+    mu := -2.33 - 1.45 * (s.wind_speed * wp / WATER_G - 1.17);
+    e = 9.77 * pow(r, mu);
+  }
+  narrow := 1.0 - s.spread;
+  e += 16.0 * tanh_d(wp / omega) * narrow * narrow;
+  e = fclamp(e, 0.001, 200.0);
+  q := exp((2.0 * e - 1.0) * 0.6931471805599453 + 2.0 * ln_gamma(e + 1.0) - ln_gamma(2.0 * e + 1.0)) / PI_D;
+  return q * pow(abs(cos(theta * 0.5)), 2.0 * e);
+}
+
+// E(k), m^4: the energy per unit area of wavenumber, `standing` of it
+// turned against the wind.
+wsp_density :: (s: Spectrum, k: D2) -> f64 {
+  length := sqrt(k.x * k.x + k.y * k.y);
+  if length <= 0.000000001 { return 0.0; }
+  omega := wsp_dispersion(s, length);
+  w := wsp_direction(s);
+  theta := atan2_d(w.x * k.y - w.y * k.x, w.x * k.x + w.y * k.y);
+  spread := (1.0 - s.standing) * wsp_spreading(s, theta, omega);
+  if s.standing > 0.0 { spread += s.standing * wsp_spreading(s, theta + PI_D, omega); }
+  return wsp_jonswap(s, omega) * spread * wsp_group(s, length, omega) / length;
+}
+
+// The significant wave height 4 sqrt(m0), m.
+wsp_significant_height :: (s: Spectrum) -> f64 {
+  wp := wsp_peak_omega(s);
+  from := 0.2 * wp; to := 12.0 * wp; steps := 4000;
+  dw := (to - from) / f64(steps);
+  m0 := 0.0;
+  for i: 0..<steps { m0 += wsp_jonswap(s, from + (f64(i) + 0.5) * dw) * dw; }
+  return 4.0 * sqrt(m0);
+}
+
+// Cascade c of `count`: cascade 0 the gameplay band at 64 texels, each next
+// WSP_RATIO times smaller at `size`, the last running to its Nyquist limit.
+wsp_cascade :: (s: Spectrum, count_in: int, size: int, c: int) -> Cascade {
+  count := clamp_i(count_in, 1, WSP_MAX_CASCADES);
+  patch := wsp_patch(s);
+  low := 0.0;
+  out: Cascade;
+  for i: 0..<count {
+    cut := ifx i == 0 then WSP_GAMEPLAY_CUT else (ifx i + 1 < count then f64(size / 4) else f64(size / 2 - 1));
+    out = Cascade.{patch = patch, size = ifx i == 0 then WSP_GAMEPLAY_SIZE else size, low = low, high = TAU_D * cut / patch};
+    if i == c { return out; }
+    low = out.high;
+    patch /= WSP_RATIO;
+  }
+  return out;
+}
+
+clamp_i :: (v: int, low: int, high: int) -> int { if v < low { return low; } if v > high { return high; } return v; }
+
+wsp_tick_at :: (s: Spectrum, time: f64) -> u64 { return cast(u64) fmax(floor(time / s.tick + 0.000001), 0.0); }
+
+// A seeded uniform value in [0, 1) for one lattice mode: SplitMix64 over the
+// seed, the cascade and the mode's integer wave vector.
+wsp_mode_random :: (seed: u64, cascade: int, n: int, m: int) -> f64 {
+  z := seed ^ mul_wrap(cast(u64) cascade, 0xd6e8feb86659fd93) ^ mul_wrap(cast,trunc(u64) n, 0x9e3779b97f4a7c15) ^ mul_wrap(cast,trunc(u64) m, 0xc2b2ae3d27d4eb4f);
+  z = add_wrap(z, 0x9e3779b97f4a7c15);
+  z = mul_wrap(z ^ (z >> 30), 0xbf58476d1ce4e5b9);
+  z = mul_wrap(z ^ (z >> 27), 0x94d049bb133111eb);
+  return f64((z ^ (z >> 31)) >> 11) / 9007199254740992.0;
+}
+
+// The inverse FFT.
+
+// Inverse transforms of one power-of-two size, n x n, unnormalized:
+// x[j] = sum X[n] e^{+2 PI i n j / N}.
+Fft2 :: struct {
+  n: int;
+  cos: [64] f32;      // e^{+2 PI i j / n}, j < n / 2
+  sin: [64] f32;
+  reverse: [128] int; // each index's bit reversal
+}
+
+wsp_fft :: (n: int) -> Fft2 {
+  f: Fft2;
+  f.n = n;
+  bits := 0;
+  while (1 << bits) < n { bits += 1; }
+  for j: 0..<n / 2 {
+    a := TAU_D * f64(j) / f64(n);
+    f.cos[j] = f32(cos(a)); f.sin[j] = f32(sin(a));
+  }
+  for i: 0..<n {
+    r := 0;
+    for b: 0..<bits { if (i >> b) & 1 == 1 { r |= 1 << (bits - 1 - b); } }
+    f.reverse[i] = r;
+  }
+  return f;
+}
+
+// Transforms every column of the n x n grid at `at` (row-major): rows into
+// bit-reversed order, then butterflies that combine two whole rows.
+wsp_fft_columns :: (f: [] Fft2, re: [] f32, im: [] f32, at: int) {
+  n := f[0].n;
+  for i: 0..<n {
+    j := f[0].reverse[i];
+    if i < j {
+      for c: 0..<n {
+        a := at + i * n + c; b := at + j * n + c;
+        t := re[a]; re[a] = re[b]; re[b] = t;
+        t = im[a]; im[a] = im[b]; im[b] = t;
+      }
+    }
+  }
+  size := 2;
+  while size <= n {
+    half := size / 2;
+    step := n / size;
+    start := 0;
+    while start < n {
+      for j: 0..<half {
+        wr := f[0].cos[j * step]; wi := f[0].sin[j * step];
+        a0 := at + (start + j) * n;
+        b0 := a0 + half * n;
+        for c: 0..<n {
+          a := a0 + c; b := b0 + c;
+          tr := wr * re[b] - wi * im[b];
+          ti := wr * im[b] + wi * re[b];
+          re[b] = re[a] - tr; im[b] = im[a] - ti;
+          re[a] += tr; im[a] += ti;
+        }
+      }
+      start += size;
+    }
+    size *= 2;
+  }
+}
+
+wsp_transpose :: (v: [] f32, at: int, n: int) {
+  for i: 0..<n {
+    for j: i + 1..<n {
+      a := at + i * n + j; b := at + j * n + i;
+      t := v[a]; v[a] = v[b]; v[b] = t;
+    }
+  }
+}
+
+// Replaces the n x n grid (re, im from `at`) with its inverse transform.
+wsp_fft_inverse :: (f: [] Fft2, re: [] f32, im: [] f32, at: int) {
+  n := f[0].n;
+  wsp_fft_columns(f, re, im, at);
+  wsp_transpose(re, at, n); wsp_transpose(im, at, n);
+  wsp_fft_columns(f, re, im, at);
+  wsp_transpose(re, at, n); wsp_transpose(im, at, n);
+}
+
+// The synth: a spectrum's cascades ready to transform.
+
+Mode :: struct {
+  n: int; m: int;           // the integer wave vector, cycles per tile along x and z
+  h0r: f32; h0i: f32;       // h0(k), m
+  hmr: f32; hmi: f32;       // conj(h0(-k))
+  kx: f32; kz: f32; inv: f32; // the wave vector (rad/m) and 1 / |k|
+  harmonic: u64;            // the angular frequency in multiples of 2 PI / period
+}
+
+Synth :: struct {
+  spectrum: Spectrum;
+  count: int;                         // cascades
+  cascades: [WSP_MAX_CASCADES] Cascade;
+  first: [4] int;                     // cascade c's modes are first[c] ..< first[c + 1]
+  modes: [WSP_MAX_MODES] Mode;
+  fft: Fft2;                          // for the render cascades' size
+  gameplay: Fft2;                     // for cascade 0's 64
+  significant: f64;                   // m
+  shoal: f64;                         // the wavenumber a renderer shoals the band by, rad/m
+  ok: bool;
+}
+
+// The spectrum integrated over lattice cell (n, m), 4 x 4 points.
+wsp_cell :: (s: Spectrum, n: int, m: int, dk: f64) -> f64 {
+  sum := 0.0;
+  for a: 0..<4 {
+    for b: 0..<4 {
+      sum += wsp_density(s, d2((f64(n) + (f64(a) + 0.5) / 4.0 - 0.5) * dk, (f64(m) + (f64(b) + 0.5) / 4.0 - 0.5) * dk));
+    }
+  }
+  return sum / 16.0 * dk * dk;
+}
+
+// Whether lattice point (n, m) is in cascade c's band.
+wsp_in_band :: (c: Cascade, n: int, m: int) -> bool {
+  dk := TAU_D / c.patch;
+  length := sqrt(f64(n * n + m * m)) * dk;
+  half := c.size / 2;
+  return !(n == 0 && m == 0) && length >= c.low && length < c.high && n > -half && n < half && m > -half && m < half;
+}
+
+// `count` cascades of `size` texels (a power of two, 16 to WSP_MAX_SIZE).
+// Refuses (ok false) an invalid spectrum or size, or more modes than fit.
+wsp_synth :: (out: [] Synth, s: Spectrum, count_in: int, size: int) {
+  out[0].ok = false;
+  if !wsp_valid(s) || size < 16 || size > WSP_MAX_SIZE || (size & (size - 1)) != 0 { return; }
+  count := clamp_i(count_in, 1, WSP_MAX_CASCADES);
+  out[0].spectrum = s;
+  out[0].count = count;
+  span := f64(s.period) * s.tick;
+  total := 0;
+  for c: 0..<count {
+    cascade := wsp_cascade(s, count, size, c);
+    out[0].cascades[c] = cascade;
+    out[0].first[c] = total;
+    dk := TAU_D / cascade.patch;
+    reach := cast(int) -floor(-cascade.high / dk);
+    for m: -reach..<reach + 1 {
+      for n: -reach..<reach + 1 {
+        if !wsp_in_band(cascade, n, m) { continue; }
+        if total >= WSP_MAX_MODES { return; }
+        e := wsp_cell(s, n, m, dk);
+        ph := wsp_mode_random(s.seed, c, n, m) * TAU_D;
+        a := sqrt(e * 0.5);
+        em := wsp_cell(s, -n, -m, dk);
+        phm := wsp_mode_random(s.seed, c, -n, -m) * TAU_D;
+        am := sqrt(em * 0.5);
+        length := sqrt(f64(n * n + m * m)) * dk;
+        omega := wsp_dispersion(s, length) * s.time_scale;
+        h := round_d(omega * span / TAU_D);
+        out[0].modes[total] = Mode.{n = n, m = m, h0r = f32(a * cos(ph)), h0i = f32(a * sin(ph)),
+          hmr = f32(am * cos(phm)), hmi = -f32(am * sin(phm)),
+          kx = f32(f64(n) * dk), kz = f32(f64(m) * dk), inv = f32(1.0 / length),
+          harmonic = ifx h < 1.0 then 1 else cast(u64) h};
+        total += 1;
+      }
+    }
+  }
+  out[0].first[count] = total;
+  out[0].fft = wsp_fft(size);
+  out[0].gameplay = wsp_fft(WSP_GAMEPLAY_SIZE);
+  out[0].significant = wsp_significant_height(s);
+  out[0].shoal = fmin(wsp_wavenumber(s, wsp_peak_omega(s)), out[0].cascades[0].high);
+  out[0].ok = true;
+}
+
+wsp_mode_count :: (s: [] Synth, c: int) -> int { return s[0].first[c + 1] - s[0].first[c]; }
+
+// The height variance cascade c's modes carry, sum |h0|^2 * 2... as the
+// Rust: 2 (h0r^2 + h0i^2) a mode, m^2.
+wsp_variance :: (s: [] Synth, c: int) -> f64 {
+  v := 0.0;
+  for i: s[0].first[c]..<s[0].first[c + 1] {
+    md := s[0].modes[i];
+    v += 2.0 * (f64(md.h0r) * f64(md.h0r) + f64(md.h0i) * f64(md.h0i));
+  }
+  return v;
+}
+
+Evolved :: struct { hr: f32; hi: f32; vr: f32; vi: f32; }
+
+// h~(k, t) and dh~/dt for mode i at a tick.
+wsp_evolve :: (s: [] Synth, i: int, tick: u64) -> Evolved {
+  period := s[0].spectrum.period;
+  md := s[0].modes[i];
+  j := (md.harmonic % period) * (tick % period) % period;
+  a := TAU_D * f64(j) / f64(period);
+  c := f32(cos(a)); sn := f32(sin(a));
+  // h0 e^{-i theta} + conj(h0(-k)) e^{+i theta}
+  pr := md.h0r * c + md.h0i * sn; pi := md.h0i * c - md.h0r * sn;
+  mr := md.hmr * c - md.hmi * sn; mi := md.hmi * c + md.hmr * sn;
+  omega := f32(TAU_D * f64(md.harmonic) / (f64(period) * s[0].spectrum.tick));
+  return Evolved.{hr = pr + mr, hi = pi + mi, vr = omega * (pi - mi), vi = omega * (mr - pr)};
+}
+
+wrap_i :: (v: int, n: int) -> int { r := v % n; if r < 0 { r += n; } return r; }
+
+// One tick of a cascade, size x size each, row-major along x with z down the
+// rows: texel (i, j) is the rest point (i, j) * patch / size.
+Tile :: struct {
+  size: int;
+  height: [WSP_MAX_TEXELS] f32;
+  dx: [WSP_MAX_TEXELS] f32;
+  dz: [WSP_MAX_TEXELS] f32;
+  sx: [WSP_MAX_TEXELS] f32;      // dh/dx
+  sz: [WSP_MAX_TEXELS] f32;      // dh/dz
+  jacobian: [WSP_MAX_TEXELS] f32; // of x + D: under one where crests sharpen
+  scratch: [8 * WSP_MAX_TEXELS] f32;
+}
+
+// Cascade c at `tick` into the tile.
+wsp_tile :: (s: [] Synth, c: int, tick: u64, t: [] Tile) {
+  n := s[0].cascades[c].size;
+  nn := n * n;
+  lambda := f32(s[0].spectrum.choppiness);
+  for i: 0..<8 * nn { t[0].scratch[i] = 0; }
+  // Pairs packed as A + iB: (h, dx), (dz, sx), (sz, jxx), (jzz, jxz).
+  for i: s[0].first[c]..<s[0].first[c + 1] {
+    e := wsp_evolve(s, i, tick);
+    md := s[0].modes[i];
+    k := wrap_i(md.m, n) * n + wrap_i(md.n, n);
+    ux := md.kx * md.inv * lambda; uz := md.kz * md.inv * lambda;
+    dxr := -ux * e.hi; dxi := ux * e.hr;
+    dzr := -uz * e.hi; dzi := uz * e.hr;
+    sxr := -md.kx * e.hi; sxi := md.kx * e.hr;
+    szr := -md.kz * e.hi; szi := md.kz * e.hr;
+    jxxr := -ux * md.kx * e.hr; jxxi := -ux * md.kx * e.hi;
+    jzzr := -uz * md.kz * e.hr; jzzi := -uz * md.kz * e.hi;
+    jxzr := -ux * md.kz * e.hr; jxzi := -ux * md.kz * e.hi;
+    t[0].scratch[k] = e.hr - dxi;        t[0].scratch[nn + k] = e.hi + dxr;
+    t[0].scratch[2 * nn + k] = dzr - sxi; t[0].scratch[3 * nn + k] = dzi + sxr;
+    t[0].scratch[4 * nn + k] = szr - jxxi; t[0].scratch[5 * nn + k] = szi + jxxr;
+    t[0].scratch[6 * nn + k] = jzzr - jxzi; t[0].scratch[7 * nn + k] = jzzi + jxzr;
+  }
+  fft := ifx n == WSP_GAMEPLAY_SIZE then s[0].gameplay else s[0].fft;
+  fv: [1] Fft2; fv[0] = fft;
+  re := t[0].scratch[..];
+  for p: 0..<4 { wsp_fft_pair(fv[..], re, 2 * p * nn, (2 * p + 1) * nn, nn); }
+  t[0].size = n;
+  for i: 0..<nn {
+    t[0].height[i] = re[i]; t[0].dx[i] = re[nn + i];
+    t[0].dz[i] = re[2 * nn + i]; t[0].sx[i] = re[3 * nn + i];
+    t[0].sz[i] = re[4 * nn + i];
+    jxx := re[5 * nn + i]; jzz := re[6 * nn + i]; jxz := re[7 * nn + i];
+    t[0].jacobian[i] = (1 + jxx) * (1 + jzz) - jxz * jxz;
+  }
+}
+
+// The inverse transform of the pair whose real part starts at `ra` and
+// imaginary part at `ia` in one array (each nn long).
+wsp_fft_pair :: (f: [] Fft2, v: [] f32, ra: int, ia: int, nn: int) {
+  wsp_fft_inverse(f, v[ra..<ra + nn], v[ia..<ia + nn], 0);
+}
+
+// One tick of the gameplay band at 64^2: displacement and the water's
+// velocity at each rest point.
+Field :: struct {
+  patch: f64;
+  size: int;
+  tick: u64;            // folded
+  significant: f64;
+  shoal: f64;
+  // per texel: x, height, z displacement (m), then velocity x, y, z (m/s)
+  texels: [6 * WSP_GAMEPLAY_SIZE * WSP_GAMEPLAY_SIZE] f32;
+  scratch: [6 * WSP_GAMEPLAY_SIZE * WSP_GAMEPLAY_SIZE] f32;
+}
+
+wsp_field :: (s: [] Synth, tick: u64, f: [] Field) {
+  n := WSP_GAMEPLAY_SIZE;
+  nn := n * n;
+  lambda := f32(s[0].spectrum.choppiness);
+  for i: 0..<6 * nn { f[0].scratch[i] = 0; }
+  for i: s[0].first[0]..<s[0].first[1] {
+    e := wsp_evolve(s, i, tick);
+    md := s[0].modes[i];
+    k := wrap_i(md.m, n) * n + wrap_i(md.n, n);
+    ux := md.kx * md.inv * lambda; uz := md.kz * md.inv * lambda;
+    dxr := -ux * e.hi; dxi := ux * e.hr;
+    dzr := -uz * e.hi; dzi := uz * e.hr;
+    vxr := -ux * e.vi; vxi := ux * e.vr;
+    vzr := -uz * e.vi; vzi := uz * e.vr;
+    // (h, dx), (dz, vy), (vx, vz)
+    f[0].scratch[k] = e.hr - dxi; f[0].scratch[nn + k] = e.hi + dxr;
+    f[0].scratch[2 * nn + k] = dzr - e.vi; f[0].scratch[3 * nn + k] = dzi + e.vr;
+    f[0].scratch[4 * nn + k] = vxr - vzi; f[0].scratch[5 * nn + k] = vxi + vzr;
+  }
+  fv: [1] Fft2; fv[0] = s[0].gameplay;
+  v := f[0].scratch[..];
+  for p: 0..<3 { wsp_fft_pair(fv[..], v, 2 * p * nn, (2 * p + 1) * nn, nn); }
+  f[0].patch = s[0].cascades[0].patch;
+  f[0].size = n;
+  f[0].tick = tick % s[0].spectrum.period;
+  f[0].significant = s[0].significant;
+  f[0].shoal = s[0].shoal;
+  for t: 0..<nn {
+    f[0].texels[6 * t] = v[nn + t]; f[0].texels[6 * t + 1] = v[t]; f[0].texels[6 * t + 2] = v[2 * nn + t];
+    f[0].texels[6 * t + 3] = v[4 * nn + t]; f[0].texels[6 * t + 4] = v[3 * nn + t]; f[0].texels[6 * t + 5] = v[5 * nn + t];
+  }
+}
+
+FieldSample :: struct { dx: f64; height: f64; dz: f64; vx: f64; vy: f64; vz: f64; }
+
+// The bilinear sample at rest point (x, z), as a renderer's filter reads it.
+wsp_field_sample :: (f: [] Field, x: f64, z: f64) -> FieldSample {
+  n := f[0].size;
+  u := x / f[0].patch * f64(n); v := z / f[0].patch * f64(n);
+  fu := floor(u); fv := floor(v);
+  tu := u - fu; tv := v - fv;
+  i0 := wrap_i(cast(int) fu, n); j0 := wrap_i(cast(int) fv, n);
+  i1 := (i0 + 1) % n; j1 := (j0 + 1) % n;
+  o: [6] f64;
+  for c: 0..<6 {
+    a := f64(f[0].texels[6 * (j0 * n + i0) + c]); b := f64(f[0].texels[6 * (j0 * n + i1) + c]);
+    d := f64(f[0].texels[6 * (j1 * n + i0) + c]); e := f64(f[0].texels[6 * (j1 * n + i1) + c]);
+    o[c] = (a * (1.0 - tu) + b * tu) * (1.0 - tv) + (d * (1.0 - tu) + e * tu) * tv;
+  }
+  return FieldSample.{dx = o[0], height = o[1], dz = o[2], vx = o[3], vy = o[4], vz = o[5]};
+}
+
+// The surface's height over world point (x, z): the rest point whose
+// displaced position lands there, by fixed-point iteration (as W1 inverts its
+// Gerstner waves), then its height.
+wsp_surface_height :: (f: [] Field, x: f64, z: f64) -> f64 {
+  px := x; pz := z;
+  for i: 0..<INVERSIONS + 3 {
+    a := wsp_field_sample(f, px, pz);
+    px = x - a.dx; pz = z - a.dz;
+  }
+  return wsp_field_sample(f, px, pz).height;
+}
+
+// The foam field (whitecaps, after Dupuy and Bruneton 2012): foam is made
+// where the Jacobian falls under `threshold` and decays by `decay` a second,
+// so whitecaps linger behind the crests that broke. Coverage follows Monahan
+// and O Muircheartaigh's (1980) power law of the wind speed through
+// `threshold`: wsp_whitecap_threshold.
+// Monahan's share of the sea that is white at wind speed U (m/s), and the
+// Jacobian under which that share of the tile lies (its mean less z standard
+// deviations, z the normal quantile, Abramowitz and Stegun 26.2.23).
+wsp_whitecap_cover :: (wind_speed: f64) -> f64 { return fclamp(0.00000384 * pow(fmax(wind_speed, 0.0), 3.41), 0.0, 0.3); }
+wsp_whitecap_threshold :: (t: [] Tile, wind_speed: f64) -> f32 {
+  w := wsp_whitecap_cover(wind_speed);
+  if w <= 0.00001 { return -1000.0; }
+  nn := t[0].size * t[0].size;
+  mean := 0.0; sq := 0.0;
+  for i: 0..<nn { j := f64(t[0].jacobian[i]); mean += j; sq += j * j; }
+  mean /= f64(nn);
+  sd := sqrt(fmax(sq / f64(nn) - mean * mean, 0.0));
+  q := sqrt(-2.0 * log(w));
+  z := q - (2.515517 + 0.802853 * q + 0.010328 * q * q) / (1.0 + 1.432788 * q + 0.189269 * q * q + 0.001308 * q * q * q);
+  return f32(mean - z * sd);
+}
+wsp_foam_step :: (foam: [] f32, t: [] Tile, threshold: f32, decay: f32, dt: f32) {
+  nn := t[0].size * t[0].size;
+  keep := exp(-decay * dt);
+  for i: 0..<nn {
+    made := clamp_f((threshold - t[0].jacobian[i]) * 10, 0, 1);
+    v := foam[i] * keep;
+    foam[i] = ifx made > v then made else v;
+  }
+}
+clamp_f :: (v: f32, low: f32, high: f32) -> f32 { if v < low { return low; } if v > high { return high; } return v; }
+
+// Shallow water and surf: the wave's shoaling gain and whether it breaks.
+// Over depth h a wave of wavenumber k (deep water) shortens to
+// wsp_wavenumber's k(h); its height grows by the shoaling coefficient
+// sqrt(cg_deep / cg(h)) (energy flux conserved), and it breaks where its
+// height passes McCowan's (1894) 0.78 of the depth.
+Surf :: struct { k: f64; gain: f64; breaking: f64; }
+wsp_surf :: (deep_k: f64, height: f64, depth: f64) -> Surf {
+  omega := sqrt(WATER_G * deep_k);
+  shallow := Spectrum.{depth = fmax(depth, 0.01)};
+  k := wsp_wavenumber(shallow, omega);
+  cg := wsp_group(shallow, k, omega);
+  cg0 := 0.5 * omega / deep_k;
+  gain := sqrt(cg0 / fmax(cg, 0.000001));
+  h := height * gain;
+  return Surf.{k = k, gain = gain, breaking = fclamp(h / (0.78 * fmax(depth, 0.01)) - 0.8, 0.0, 1.0) * 5.0};
+}
+
+// The baked tile for the phone (tile.rs): one tick of a short-wave sea from
+// half a metre to the tile's 8 m, its slopes scaled to WSP_TILE_RMS, with a
+// mip chain 64 down to 1. Each texel is four floats: the mean slope x and z,
+// the slope variance the averaging lost (Toksvig 2005), and 0.
+WSP_TILE_TEXELS :: 64;
+WSP_TILE_METERS :: 8.0;
+WSP_TILE_RMS :: 0.085;
+WSP_TILE_LEVELS :: 7;
+WSP_TILE_FLOATS :: 4 * 5461;    // 64^2 + 32^2 + ... + 1 texels
+wsp_tile_spectrum :: () -> Spectrum {
+  return Spectrum.{seed = 0x2545f491, wind_speed = 6.0, wind = 0.6, peak_wavelength = 2.5, spread = 1.0, choppiness = 0.0, patch = WSP_TILE_METERS};
+}
+// The level's first float in the baked tile.
+wsp_tile_level_at :: (level: int) -> int {
+  at := 0; side := WSP_TILE_TEXELS;
+  for l: 0..<level { at += side * side * 4; side /= 2; }
+  return at;
+}
+wsp_bake_tile :: (s: [] Synth, t: [] Tile, out: [] f32) {
+  wsp_synth(s, wsp_tile_spectrum(), 1, WSP_TILE_TEXELS);
+  wsp_tile(s, 0, 0, t);
+  nn := WSP_TILE_TEXELS * WSP_TILE_TEXELS;
+  sum := 0.0;
+  for i: 0..<nn { sum += f64(t[0].sx[i]) * f64(t[0].sx[i]) + f64(t[0].sz[i]) * f64(t[0].sz[i]); }
+  scale := f32(WSP_TILE_RMS / fmax(sqrt(sum / f64(nn)), 0.000000001));
+  for i: 0..<nn {
+    x := t[0].sx[i] * scale; z := t[0].sz[i] * scale;
+    out[4 * i] = x; out[4 * i + 1] = z; out[4 * i + 2] = x * x + z * z; out[4 * i + 3] = 0;
+  }
+  // Each next level the mean of four, slot 2 the mean squared slope for now.
+  side := WSP_TILE_TEXELS; at := 0;
+  for l: 1..<WSP_TILE_LEVELS {
+    half := side / 2;
+    next := at + side * side * 4;
+    for r: 0..<half {
+      for c: 0..<half {
+        for q: 0..<3 {
+          a := out[at + 4 * ((2 * r) * side + 2 * c) + q] + out[at + 4 * ((2 * r) * side + 2 * c + 1) + q]
+            + out[at + 4 * ((2 * r + 1) * side + 2 * c) + q] + out[at + 4 * ((2 * r + 1) * side + 2 * c + 1) + q];
+          out[next + 4 * (r * half + c) + q] = a * 0.25;
+        }
+        out[next + 4 * (r * half + c) + 3] = 0;
+      }
+    }
+    side = half; at = next;
+  }
+  // Slot 2 becomes the variance lost: the mean square less the square mean.
+  for i: 0..<WSP_TILE_FLOATS / 4 {
+    m := out[4 * i] * out[4 * i] + out[4 * i + 1] * out[4 * i + 1];
+    lost := out[4 * i + 2] - m;
+    out[4 * i + 2] = ifx lost > 0 then lost else 0;
+  }
+}
+
+// ---- the old tests (spectrum_tests.rs, fft.rs), and the tile's
+
+wsp_sea :: (wind_speed: f64, fetch: f64, seed: u64) -> Spectrum {
+  return Spectrum.{seed = seed, wind_speed = wind_speed, fetch = fetch, wind = 0.4};
+}
+
+#test "the transform matches the direct sum" {
+  for n: [4] int.[2, 4, 16, 32] {
+    state: u32 = 0x12345678;
+    re0: [1024] f32; im0: [1024] f32;
+    for i: 0..<n * n {
+      state = add_wrap(mul_wrap(state, 1664525), 1013904223);
+      re0[i] = f32(state >> 8) / 16777216.0 - 0.5;
+      state = add_wrap(mul_wrap(state, 1664525), 1013904223);
+      im0[i] = f32(state >> 8) / 16777216.0 - 0.5;
+    }
+    re := re0; im := im0;
+    f: [1] Fft2; f[0] = wsp_fft(n);
+    wsp_fft_inverse(f[..], re[..], im[..], 0);
+    for y: 0..<n {
+      for x: 0..<n {
+        sr := 0.0; si := 0.0;
+        for v: 0..<n {
+          for u: 0..<n {
+            a := TAU_D * f64((u * x + v * y) % n) / f64(n);
+            r := f64(re0[v * n + u]); i := f64(im0[v * n + u]);
+            sr += r * cos(a) - i * sin(a);
+            si += r * sin(a) + i * cos(a);
+          }
+        }
+        #assert abs(sr - f64(re[y * n + x])) < 0.001 && abs(si - f64(im[y * n + x])) < 0.001;
+      }
+    }
+  }
+}
+
+// The spectrum integrated over a cascade's band on a lattice `fine` times
+// finer than the modes', m^2.
+band_integral :: (s: Spectrum, c: Cascade, fine: int) -> f64 {
+  dk := TAU_D / c.patch;
+  reach := cast(int) -floor(-c.high / dk);
+  sum := 0.0;
+  for m: -reach..<reach + 1 {
+    for n: -reach..<reach + 1 {
+      if !wsp_in_band(c, n, m) { continue; }
+      for a: 0..<fine {
+        for b: 0..<fine {
+          sum += wsp_density(s, d2((f64(n) + (f64(a) + 0.5) / f64(fine) - 0.5) * dk, (f64(m) + (f64(b) + 0.5) / f64(fine) - 0.5) * dk));
+        }
+      }
+    }
+  }
+  return sum / f64(fine * fine) * dk * dk;
+}
+
+tile_variance :: (t: [] Tile) -> f64 {
+  nn := t[0].size * t[0].size;
+  mean := 0.0;
+  for i: 0..<nn { mean += f64(t[0].height[i]); }
+  mean /= f64(nn);
+  v := 0.0;
+  for i: 0..<nn { d := f64(t[0].height[i]) - mean; v += d * d; }
+  return v / f64(nn);
+}
+
+// Each tile's height variance is the spectrum's integral over its band: the
+// modes' within 1%, cascade 0's at each tick within 2%, each cascade's mean
+// over the loop within 2%, and the whole surface's within 2%. Calm,
+// moderate, storm and choppy narrow seas.
+variance_case :: (sp: Spectrum, count: int, size: int) -> bool {
+  synth: [1] Synth; tile: [1] Tile;
+  wsp_synth(synth[..], sp, count, size);
+  if !synth[0].ok { return false; }
+  ticks: [8] u64;
+  for i: 0..<8 { ticks[i] = (cast(u64) i * 0x9e3779b9 + 977) % sp.period; }
+  totals: [8] f64;
+  whole := 0.0;
+  for c: 0..<synth[0].count {
+    integral := band_integral(sp, synth[0].cascades[c], 8);
+    whole += integral;
+    if !(integral > 0.0) || abs(wsp_variance(synth[..], c) / integral - 1.0) >= 0.01 { return false; }
+    mean := 0.0;
+    for tick, i: ticks {
+      wsp_tile(synth[..], c, tick, tile[..]);
+      v := tile_variance(tile[..]);
+      if c == 0 && abs(v / integral - 1.0) >= 0.02 { return false; }
+      totals[i] += v;
+      mean += v / 8.0;
+    }
+    // Eight ticks, not the old 32 (the evaluator's budget): the short
+    // cascades' interference averages out more slowly.
+    if abs(mean / integral - 1.0) >= (ifx c == 0 then 0.02 else 0.06) { return false; }
+  }
+  for total: totals { if abs(total / whole - 1.0) >= 0.04 { return false; } }
+  return true;
+}
+
+// Each tile's height variance is the spectrum's integral over its band: the
+// modes' within 1%, cascade 0's at each tick within 2%, each cascade's mean
+// over the loop, and the whole surface's. Calm, moderate, storm and choppy
+// narrow seas (the old test's; 64 texels where it had 128 for the moderate).
+#test "tile variance matches the spectrum integral: calm" { #assert variance_case(wsp_sea(4.0, 5000.0, 1), 2, 64); }
+#test "tile variance matches the spectrum integral: moderate" { #assert variance_case(wsp_sea(9.0, 40000.0, 2), 3, 64); }
+#test "tile variance matches the spectrum integral: storm" { #assert variance_case(wsp_sea(18.0, 200000.0, 3), 2, 64); }
+#test "tile variance matches the spectrum integral: choppy and narrow" {
+  sp := wsp_sea(12.0, 80000.0, 4); sp.choppiness = 1.2; sp.spread = 0.3;
+  #assert variance_case(sp, 3, 64);
+}
+
+tiles_equal :: (a: [] Tile, b: [] Tile) -> bool {
+  for i: 0..<a[0].size * a[0].size {
+    if a[0].height[i] != b[0].height[i] || a[0].dx[i] != b[0].dx[i] || a[0].sz[i] != b[0].sz[i] || a[0].jacobian[i] != b[0].jacobian[i] { return false; }
+  }
+  return true;
+}
+
+// A tile repeats exactly on its period, and the same seed and tick give the
+// same tile from a fresh synth; another seed or tick does not. The gameplay
+// band is cascade 0's modes on the same grid.
+#test "tiles loop and reproduce" {
+  sp := wsp_sea(10.0, 50000.0, 7);
+  a: [1] Synth; b: [1] Synth; other: [1] Synth;
+  wsp_synth(a[..], sp, 2, 64); wsp_synth(b[..], sp, 2, 64);
+  o := sp; o.seed = 8;
+  wsp_synth(other[..], o, 2, 64);
+  t0: [1] Tile; t1: [1] Tile; t2: [1] Tile;
+  for c: 0..<2 {
+    wsp_tile(a[..], c, 4321, t0[..]);
+    wsp_tile(a[..], c, 4321 + sp.period * 3, t1[..]);
+    wsp_tile(b[..], c, 4321, t2[..]);
+    #assert tiles_equal(t0[..], t1[..]) && tiles_equal(t0[..], t2[..]);
+    wsp_tile(other[..], c, 4321, t2[..]);
+    #assert t0[0].height[5] != t2[0].height[5];
+    wsp_tile(a[..], c, 4322, t2[..]);
+    #assert t0[0].height[5] != t2[0].height[5];
+  }
+  f: [1] Field; g: [1] Field;
+  wsp_field(a[..], 99, f[..]);
+  wsp_field(a[..], 99 + sp.period, g[..]);
+  for i: 0..<6 * 64 * 64 { #assert f[0].texels[i] == g[0].texels[i]; }
+  wsp_tile(a[..], 0, 99, t0[..]);
+  for t: 0..<64 * 64 {
+    #assert abs(f[0].texels[6 * t + 1] - t0[0].height[t]) < 0.0001;
+    #assert abs(f[0].texels[6 * t] - t0[0].dx[t]) < 0.0001;
+    #assert abs(f[0].texels[6 * t + 2] - t0[0].dz[t]) < 0.0001;
+  }
+}
+
+// Fetch-limited growth: the significant height follows
+// g H / U^2 = 1.6e-3 (g F / U^2)^(1/2) within 30%, the spreading integrates
+// to one, and shallow water slows long waves.
+#test "the spectrum has its published shape" {
+  us := [3] f64.[5.0, 10.0, 20.0];
+  fs := [3] f64.[10000.0, 50000.0, 100000.0];
+  for u, i: us {
+    expected := 0.0016 * sqrt(WATER_G * fs[i] / (u * u)) * u * u / WATER_G;
+    #assert abs(wsp_significant_height(wsp_sea(u, fs[i], 1)) / expected - 1.0) < 0.3;
+    s := wsp_sea(u, fs[i], 1);
+    for r: [4] f64.[0.6, 1.0, 1.7, 4.0] {
+      omega := wsp_peak_omega(s) * r;
+      steps := 4000;
+      total := 0.0;
+      for k: 0..<steps { total += wsp_spreading(s, -PI_D + (f64(k) + 0.5) * TAU_D / f64(steps), omega) * TAU_D / f64(steps); }
+      #assert abs(total - 1.0) < 0.001;
+    }
+  }
+  shallow := Spectrum.{depth = 2.0};
+  k := 0.1;
+  #assert abs(wsp_dispersion(shallow, k) - sqrt(WATER_G * k * tanh_d(0.2))) < 0.000000000001;
+  #assert abs(wsp_wavenumber(shallow, wsp_dispersion(shallow, k)) - k) < 0.000000001;
+}
+
+// Choppy displacement moves water toward the crests: the Jacobian falls where
+// the surface is high, and averages one.
+#test "crests sharpen" {
+  sp := wsp_sea(16.0, 150000.0, 5); sp.choppiness = 1.4;
+  synth: [1] Synth; tile: [1] Tile;
+  wsp_synth(synth[..], sp, 1, 64);
+  wsp_tile(synth[..], 0, 500, tile[..]);
+  nn := 64 * 64;
+  mh := 0.0; mj := 0.0;
+  for i: 0..<nn { mh += f64(tile[0].height[i]); mj += f64(tile[0].jacobian[i]); }
+  mh /= f64(nn); mj /= f64(nn);
+  cov := 0.0;
+  for i: 0..<nn { cov += (f64(tile[0].height[i]) - mh) * (f64(tile[0].jacobian[i]) - mj); }
+  #assert cov / f64(nn) < 0.0;
+  #assert abs(mj - 1.0) < 0.05;
+  // Whitecaps form where crests sharpen, and fade after.
+  foam: [4096] f32;
+  threshold := wsp_whitecap_threshold(tile[..], 16.0);
+  wsp_foam_step(foam[..], tile[..], threshold, 0.5, 1.0 / 60.0);
+  white := 0;
+  for i: 0..<nn { if tile[0].jacobian[i] < threshold { white += 1; } }
+  cover := f64(white) / f64(nn);
+  #assert cover > 0.5 * wsp_whitecap_cover(16.0) && cover < 2.0 * wsp_whitecap_cover(16.0);
+  calm := tile; for i: 0..<nn { calm[0].jacobian[i] = 1; }
+  sum0 := 0.0; for v: foam { sum0 += f64(v); }
+  wsp_foam_step(foam[..], calm[..], threshold, 0.5, 1.0);
+  sum1 := 0.0; for v: foam { sum1 += f64(v); }
+  #assert sum1 < sum0 * 0.7 && sum1 > 0.0;
+}
+
+// The spectral surface for physics: a tick folds on the period, the height
+// over a displaced rest point is that rest point's, and the band's vertical
+// velocity is the height's rate of change.
+#test "the spectral surface is deterministic and consistent" {
+  sp := wsp_sea(9.0, 30000.0, 11);
+  synth: [1] Synth;
+  wsp_synth(synth[..], sp, 1, 64);
+  f: [1] Field; g: [1] Field;
+  wsp_field(synth[..], 37, f[..]);
+  wsp_field(synth[..], 37 + 2 * sp.period, g[..]);
+  #assert f[0].tick == 37 && g[0].tick == 37;
+  a := wsp_field_sample(f[..], 12.0, 7.5);
+  b := wsp_field_sample(g[..], 12.0, 7.5);
+  #assert a.height == b.height && a.vy == b.vy;
+  #assert abs(wsp_surface_height(f[..], 12.0 + a.dx, 7.5 + a.dz) - a.height) < 0.005;
+  wsp_field(synth[..], 36, g[..]);
+  before := wsp_field_sample(g[..], 12.0, 7.5).height;
+  wsp_field(synth[..], 38, g[..]);
+  after := wsp_field_sample(g[..], 12.0, 7.5).height;
+  rate := (after - before) / (2.0 * sp.tick);
+  #assert abs(rate - a.vy) < 0.02 + 0.02 * abs(rate);
+}
+
+// Shallow water shortens waves and raises them toward the shore, and they
+// break near McCowan's limit; deep water leaves them alone.
+#test "waves shoal and break in shallow water" {
+  k := TAU_D / 20.0;
+  deep := wsp_surf(k, 0.5, 200.0);
+  #assert abs(deep.k / k - 1.0) < 0.001 && abs(deep.gain - 1.0) < 0.01 && deep.breaking == 0.0;
+  mid := wsp_surf(k, 0.5, 1.0);
+  #assert mid.k > 1.5 * k && mid.gain > 1.0 && mid.breaking == 0.0;
+  shore := wsp_surf(k, 0.5, 0.5);
+  #assert shore.k > mid.k && shore.gain > mid.gain && shore.breaking > 0.0;
+}
+
+// The baked tile: its base level's slopes have the set RMS, the levels
+// halve, and the lost variance grows as the levels coarsen.
+#test "the phone's baked tile" {
+  synth: [1] Synth; tile: [1] Tile;
+  out: [WSP_TILE_FLOATS] f32;
+  wsp_bake_tile(synth[..], tile[..], out[..]);
+  sum := 0.0;
+  for i: 0..<4096 { sum += f64(out[4 * i]) * f64(out[4 * i]) + f64(out[4 * i + 1]) * f64(out[4 * i + 1]); #assert out[4 * i + 2] < 0.000001; }
+  #assert abs(sqrt(sum / 4096.0) - WSP_TILE_RMS) < 0.0001;
+  #assert wsp_tile_level_at(6) == 4 * 5460;
+  #assert out[wsp_tile_level_at(3) + 2] > 0.0;
+  #assert abs(out[wsp_tile_level_at(6)]) < 0.01 && out[wsp_tile_level_at(6) + 2] > out[wsp_tile_level_at(1) + 2];
+}

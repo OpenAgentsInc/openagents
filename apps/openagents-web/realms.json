@@ -152,6 +152,19 @@
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/fixture/assets/fixture.pack"]
       } },
+    { "id": "waterlab", "name": "WATER LAB", "kind": "open", "listed": false, "orbit": { "r": 0.28, "a": 3.3, "size": 0.022 },
+      "realm": {
+        "slug": "waterlab",
+        "style": "painterly",
+        "clock": "fixed:0.5",
+        "title": "Water Lab",
+        "description": "The water system's test scene: a spectral sea breaking on a beach, in the painted water look.",
+        "alt": "Enter the Verse",
+        "module": "waterlab",
+        "slot": "waterlab",
+        "golden": { "lit": 0.5, "settle": 3000, "blocks": 6 },
+        "assets": []
+      } },
     { "id": "drop", "name": "A FIRST REALM", "kind": "open", "listed": false, "orbit": { "r": 0.22, "a": 5.2, "size": 0.024 },
       "realm": {
         "slug": "drop",

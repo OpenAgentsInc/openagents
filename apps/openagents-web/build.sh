@@ -30,7 +30,7 @@ foliage_fns="verse_style_canopy_axis verse_style_canopy_normal verse_style_canop
 for w in fixture everglade; do
   (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $foliage_fns --into "apps/openagents-web/$w.wgsl")
 done
-for w in villa fairy; do
+for w in villa fairy waterlab; do
   (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns --into "apps/openagents-web/$w.wgsl")
 done
 # Fairy Forest's painterly shading (verse/paint.coax).
@@ -67,6 +67,9 @@ villa=$!
 # /realms/fixture: the realm host's test world, the smallest realm module.
 "$here/../../coax/web/wasm.sh" "$here/fixture.coax" "$here/fixture-face.c" "$here/build/fixture.wasm" &
 fixture=$!
+# /realms/waterlab: the water system's test scene (docs/verse/water.md), the spectral sea in Coax.
+"$here/../../coax/web/wasm.sh" "$here/waterlab.coax" "$here/waterlab-face.c" "$here/build/waterlab.wasm" &
+waterlab=$!
 # /realms/drop and every /projects/<slug>/realm: a project's first realm, its drop's models on a floor.
 "$here/../../coax/web/wasm.sh" "$here/droprealm.coax" "$here/droprealm-face.c" "$here/build/droprealm.wasm" &
 droprealm=$!
@@ -126,6 +129,7 @@ wait "$verse_app"
 wait "$garden"
 wait "$characters"
 wait "$fixture"
+wait "$waterlab"
 wait "$droprealm"
 wait "$builder"
 wait "$myrealm"

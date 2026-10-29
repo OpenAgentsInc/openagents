@@ -5,9 +5,10 @@ of its specification, [verse/everglade/previous/water.md](../../verse/everglade/
 (copied from `0b401561a0^`; see its phased plan). Done: W1 (the physics),
 W2 (the shader, on the Coax WebGPU renderer), W3 adapted to today's
 Everglade (its river, swimming and floats) and, from W6, the ripple field
-with your wake and splash, and most of W5 (below). The rest has a task each
-under `verse-water` (#c278): W3's rest (the ponds, the weir, NPC swimming,
-rowboat props), W4, the rest of W6, and W7 to W11.
+with your wake and splash, most of W5 (below) and W4 (the spectral sea,
+in the water lab, below). The rest has a task each under `verse-water`
+(#c278): W3's rest (the ponds, the weir, NPC swimming, rowboat props), the
+rest of W6, and W7 to W11.
 
 ## W1: the physics (done)
 
@@ -257,3 +258,74 @@ Rowboats, wakes from other bodies and the rest of W6 are not started.
 ```sh
 coax/bin/coax test --library verse/everglade/river.coax --steps 2000000000
 ```
+
+## W4: the spectral sea (done)
+
+[`verse/water-spectrum.coax`](../../verse/water-spectrum.coax) is a port of
+the previous engine's `physics::water::{spectrum, fft}` and `verse-pbr`'s
+baked tile (`git show 0b401561a0^:crates/physics/src/water/spectrum.rs`,
+`fft.rs`, `spectrum_tests.rs`, `crates/verse-pbr/src/water/tile.rs`), with
+the same formulas and constants:
+
+- **Spectrum.** JONSWAP from wind speed and fetch with the TMA depth
+  factor, the finite-depth dispersion relation, Hasselmann's
+  frequency-dependent `cos^2s(theta/2)` spreading with Horvath's swell term
+  and a standing share, the significant height.
+- **Synthesis.** Each lattice mode's amplitude is the spectrum integrated
+  over its cell (variance by Parseval, not a draw), a seeded phase, and a
+  frequency snapped to a whole multiple of 2 PI over the loop, so its phase
+  is an integer counter on W1's clock: a tick reproduces its tile bit for
+  bit and the loop folds. A radix-2 inverse FFT (f32) makes height,
+  choppy displacement, slopes and the Jacobian per tile.
+- **Cascades by tier.** Up to three tiles 5.3 times smaller each split the
+  wavenumbers into bands; cascade 0 is the gameplay band at 64^2
+  (`wsp_field`: displacement and the water's velocity, sampled bilinearly,
+  with `wsp_surface_height` inverting the displacement as W1 does).
+- **The phone's baked tile.** `wsp_bake_tile`: one tick of a half-metre to
+  8 m sea, slopes scaled to 0.085 RMS, with a mip chain whose third channel
+  is the slope variance the averaging lost (Toksvig).
+- **Whitecaps and the foam field.** `wsp_foam_step` makes foam where the
+  Jacobian falls under a threshold set so the share of white water is
+  Monahan's `3.84e-6 U^3.41` for the wind, and lets it decay.
+- **Shallow water and surf.** `wsp_surf`: a wave's wavenumber over depth,
+  its shoaling gain (energy flux kept) and how far it is past McCowan's
+  0.78 breaking limit.
+
+The old tests are ported as checks (the FFT against the direct sum, tile
+variance against the spectrum's integral for four seas, loops and
+reproduction, the published shape, sharpening crests, the gameplay band's
+consistency), plus the surf and the baked tile. To fit the evaluator's
+budget they use 64-texel tiles (the old moderate sea used 128), 8 ticks
+(32) and an 8 by 8 band integral (12 by 12), so the short cascades' mean
+over the loop is held to 6% (2%) and the whole surface to 4% (2%).
+
+```sh
+coax/bin/coax test --library verse/water-spectrum.coax --steps 2000000000
+```
+
+Not ported: the old `Field` cache (a caller keeps its own tile), the
+`water_fft_cost` example (W11 measures the lab instead), and the
+WaveSet's spectral mode in `verse/water.coax`: Everglade's 4 m river has
+no fetch for a spectral sea, so it keeps its Gerstner waves.
+
+### The water lab (/realms/waterlab)
+
+Where the water system shows what Everglade has no place for: an unlisted
+realm ([`waterlab.coax`](../../apps/openagents-web/waterlab.coax),
+`waterlab-face.c`, `waterlab.wgsl`) with no assets, one traced pass. A sea
+to the horizon on a 7 m/s wind (`?wind=`) breaks on a sloping beach, in the
+painted look of the river (depth bands, the painted sky in Fresnel on a
+calmer normal, sparkles, white paint for whitecaps, surf and the waterline)
+under BotW's hazy teal air. Each frame the CPU synthesizes the tiles at the
+water's tick and packs them into the uniform block as half floats: cascade
+0's height, foam and slopes, and the finer cascade's slopes on a desktop or
+the baked tile on a phone (`?tier=phone` forces it). Toward the beach the
+shader shoals the band (`shoal_gain`), integrates the shallow wavenumber
+across the beach for the surf's phase, and paints the crests past McCowan's
+limit white. `?t=` holds a moment (goldens hold 12 s); `?yaw=`, `?pitch=`,
+`?dist=` place the view.
+
+Measured headless on this Mac (Apple GPU, `frametime.ts`): 0.71 ms GPU per
+frame at 390x844, 1.59 ms at 1440x900 at device pixel ratio 2, with the
+CPU's synthesis inside a 1.7 ms frame. W11 takes the phone numbers on real
+devices.

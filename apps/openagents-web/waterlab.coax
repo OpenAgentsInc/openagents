@@ -1,0 +1,300 @@
+// The water lab (openagents.com/realms/waterlab): the water system's test
+// scene (docs/verse/water.md), for what has no home in Everglade. An
+// unlisted realm with no assets: waterlab.wgsl's bg_fs traces a sea to the
+// horizon breaking on a sloping beach, in the painted water look (the
+// Everglade river's preset, docs/verse/art-styles.md 12), under a hazy sky.
+//
+// W4, the spectral sea (verse/water-spectrum.coax): a JONSWAP sea with
+// directional spreading synthesized by the CPU FFT each frame on the water's
+// deterministic clock (120 ticks a second, the loop folded), cascades by
+// tier: the desktop draws the gameplay band (cascade 0, 64^2) and a finer
+// cascade 5.3 times smaller; the phone draws cascade 0 and the baked tile
+// (wsp_bake_tile) in place of the finer cascade. Whitecaps come from the
+// foam field (wsp_foam_step on cascade 0's Jacobian, Monahan's coverage for
+// the wind); shallow water shortens and steepens the waves toward the beach
+// and they break into surf (wsp_surf, McCowan's limit).
+//
+// The tiles ride in the uniform block as half floats, two to a word
+// (UW_*): cascade 0's height and foam, its slopes; the fine slopes.
+//
+// The URL: ?wind=M/S (8), ?t=SECONDS (a fixed moment), ?yaw=, ?pitch=,
+// ?dist= (the camera's orbit), ?tier=phone (the phone's cascades on any
+// screen). Drag or the arrows turn the camera, the wheel or W/S zooms.
+
+#load "../../verse/water-spectrum.coax";
+
+VERTEX_FLOATS :: 16;
+MAX_VERTICES :: 6;
+HOST_FACTS :: 600;
+KEY_LEFT :: -3; KEY_RIGHT :: -4; KEY_UP :: -1; KEY_DOWN :: -2;
+
+// The uniforms, floats.
+U_SIZE :: 0;      // width, height, time (s), fade
+U_MODE :: 4;      // still, phone (1), scene, dpr
+U_EYE :: 8;       // x, y, z, tan of half the vertical field
+U_FWD :: 12;      // forward xyz, 0
+U_RIGHT :: 16;    // right xyz, 0
+U_UP :: 20;       // up xyz, 0
+U_SUN :: 24;      // toward the sun xyz, strength
+U_SEA :: 28;      // level, cascade 0's patch (m), the fine patch (m), choppiness
+U_WIND :: 32;     // wind direction x, z, wind speed, significant height
+U_BEACH :: 36;    // where the beach meets the still water (z, m), its slope, the peak's deep wavenumber, the peak's omega
+U_PACK :: 40;     // scales the half floats were packed by: height, slope, fine slope, 0
+U_TILES :: 44;    // then the words: cascade 0 (2 a texel), then the fine tile (1 a texel)
+TILE_N :: 64;
+TILE_WORDS :: 3 * TILE_N * TILE_N;
+UNIFORM_FLOATS :: U_TILES + TILE_WORDS;
+
+Waterlab :: struct {
+  started: bool;
+  time: f64;            // s since the page opened, or the fixed moment
+  fixed: f64;           // ?t= (-1: the clock runs)
+  golden: bool;
+  phone_forced: bool;
+  yaw: f32; pitch: f32; dist: f32;
+  held: int;            // arrows held, bits
+  dragging: bool; last_x: f32; last_y: f32;
+  wind: f64;
+  spectrum: Spectrum;
+  built: bool;          // the synths for the current wind and tier
+  built_phone: bool;
+  synth: [1] Synth;     // cascade 0 (and the desktop's fine cascade)
+  tile: [1] Tile;
+  foam: [4096] f32;     // the foam field over cascade 0
+  baked: [WSP_TILE_FLOATS] f32;
+  baked_ready: bool;
+  last_tick: u64;
+  have_tick: bool;
+  counted: bool;
+}
+
+hi_f32 :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+
+waterlab_reset :: (s: [] Waterlab) {
+  s[0].started = true;
+  s[0].fixed = -1;
+  s[0].yaw = 0.35; s[0].pitch = 0.16; s[0].dist = 14;
+  s[0].wind = 7;
+}
+
+// Half floats (IEEE binary16), rounded to nearest, for packing tiles.
+half_bits :: (v: f32) -> u32 {
+  b := f32_bits(v);
+  sign := (b >> 16) & 0x8000;
+  e := cast(int) ((b >> 23) & 0xff) - 127 + 15;
+  m := b & 0x7fffff;
+  if e <= 0 {
+    if e < -10 { return sign; }
+    m = m | 0x800000;
+    shift := cast(u32) (14 - e);
+    r := m >> shift;
+    if (m >> (shift - 1)) & 1 == 1 { r += 1; }
+    return sign | r;
+  }
+  if e >= 31 { return sign | 0x7bff; }
+  r := (cast(u32) e << 10) | (m >> 13);
+  if (m >> 12) & 1 == 1 { r += 1; }
+  if r >= 0x7c00 { r = 0x7bff; }
+  return sign | r;
+}
+pack2 :: (a: f32, b: f32) -> f32 { return f32_from_bits(half_bits(a) | (half_bits(b) << 16)); }
+
+// The sea for the wind: a moderate fetch, swell-free, choppy.
+lab_spectrum :: (wind: f64) -> Spectrum {
+  return Spectrum.{seed = 17, wind_speed = wind, wind = 3.1, fetch = 60000.0, choppiness = 0.9, spread = 0.85, depth = 40.0};
+}
+
+lab_build :: (s: [] Waterlab, phone: bool) {
+  s[0].spectrum = lab_spectrum(s[0].wind);
+  wsp_synth(s[0].synth[..], s[0].spectrum, ifx phone then 1 else 2, TILE_N);
+  s[0].built = s[0].synth[0].ok;
+  s[0].built_phone = phone;
+  for i: 0..<4096 { s[0].foam[i] = 0; }
+  s[0].have_tick = false;
+  if phone && !s[0].baked_ready {
+    // the baked tile needs its own synth for a moment; rebuild the sea after
+    wsp_bake_tile(s[0].synth[..], s[0].tile[..], s[0].baked[..]);
+    s[0].baked_ready = true;
+    wsp_synth(s[0].synth[..], s[0].spectrum, 1, TILE_N);
+  }
+}
+
+// Steps the camera and writes the sea's tiles for this tick.
+waterlab_frame :: (s: [] Waterlab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  if s.count < 1 || u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !s[0].started { waterlab_reset(s); }
+  phone := s[0].phone_forced || width / hi_f32(dpr, 0.5) < 600;
+  if !s[0].built || s[0].built_phone != phone { lab_build(s, phone); }
+  if !s[0].built { return 0; }
+  step := clamp_f(dt, 0, 0.1);
+  if s[0].fixed >= 0 { s[0].time = s[0].fixed; } else if !(still || s[0].golden) { s[0].time += f64(step); }
+  if s[0].golden && s[0].fixed < 0 { s[0].time = 12.0; }
+  turn := 1.2 * step;
+  if s[0].held & 1 != 0 { s[0].yaw -= turn; }
+  if s[0].held & 2 != 0 { s[0].yaw += turn; }
+  if s[0].held & 4 != 0 { s[0].dist = clamp_f(s[0].dist * (1 - step), 3, 120); }
+  if s[0].held & 8 != 0 { s[0].dist = clamp_f(s[0].dist * (1 + step), 3, 120); }
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  u[U_SIZE] = width; u[U_SIZE + 1] = height; u[U_SIZE + 2] = f32(s[0].time); u[U_SIZE + 3] = 1;
+  u[U_MODE] = ifx still then 1.0f32 else 0.0f32; u[U_MODE + 1] = ifx phone then 1.0f32 else 0.0f32; u[U_MODE + 3] = dpr;
+  // The camera orbits a point on the water just off the beach, looking out to sea (-z).
+  cy := cos(s[0].pitch); sy := sin(s[0].pitch);
+  fx := -sin(s[0].yaw) * cy; fz := -cos(s[0].yaw) * cy; fy := -sy;
+  tx := 0.0f32; ty := 0.0f32; tz := -6.0f32;
+  ex := tx - fx * s[0].dist; ey := hi_f32(ty - fy * s[0].dist, 0.6); ez := tz - fz * s[0].dist;
+  u[U_EYE] = ex; u[U_EYE + 1] = ey; u[U_EYE + 2] = ez; u[U_EYE + 3] = 0.55;
+  u[U_FWD] = fx; u[U_FWD + 1] = fy; u[U_FWD + 2] = fz;
+  rl := sqrt(fx * fx + fz * fz);
+  rx := -fz / rl; rz := fx / rl;
+  u[U_RIGHT] = rx; u[U_RIGHT + 2] = rz;
+  u[U_UP] = -(rz * fy); u[U_UP + 1] = rz * fx - rx * fz; u[U_UP + 2] = rx * fy;
+  // a low afternoon sun ahead and to the right, for the glitter path
+  se := 0.32; sa := 2.75;
+  u[U_SUN] = f32(cos(se) * sin(sa)); u[U_SUN + 1] = f32(sin(se)); u[U_SUN + 2] = f32(cos(se) * cos(sa)); u[U_SUN + 3] = 1;
+  sp := s[0].spectrum;
+  c0 := s[0].synth[0].cascades[0];
+  u[U_SEA] = 0; u[U_SEA + 1] = f32(c0.patch);
+  u[U_SEA + 2] = ifx phone then f32(WSP_TILE_METERS) else f32(s[0].synth[0].cascades[1].patch);
+  u[U_SEA + 3] = f32(sp.choppiness);
+  w := wsp_direction(sp);
+  u[U_WIND] = f32(w.x); u[U_WIND + 1] = f32(w.y); u[U_WIND + 2] = f32(sp.wind_speed); u[U_WIND + 3] = f32(s[0].synth[0].significant);
+  u[U_BEACH] = 2; u[U_BEACH + 1] = 0.035;
+  wp := wsp_peak_omega(sp);
+  u[U_BEACH + 2] = f32(wp * wp / WATER_G); u[U_BEACH + 3] = f32(wp);
+  // The tick (W1's clock), and the tiles at it.
+  tick := wsp_tick_at(sp, s[0].time);
+  fresh := !s[0].have_tick || tick != s[0].last_tick;
+  folded := tick % sp.period;
+  wsp_tile(s[0].synth[..], 0, folded, s[0].tile[..]);
+  if fresh {
+    gap := ifx s[0].have_tick && tick > s[0].last_tick then f32(tick - s[0].last_tick) * f32(sp.tick) else 0.0f32;
+    if !s[0].have_tick && s[0].fixed >= 0 {
+      // a fixed moment: the foam the last four seconds would have left
+      for k: 0..<8 {
+        back := ifx tick > cast(u64) (8 - k) * 60 then tick - cast(u64) (8 - k) * 60 else 0;
+        wsp_tile(s[0].synth[..], 0, back % sp.period, s[0].tile[..]);
+        wsp_foam_step(s[0].foam[..], s[0].tile[..], wsp_whitecap_threshold(s[0].tile[..], sp.wind_speed), 0.6, 0.5);
+      }
+      wsp_tile(s[0].synth[..], 0, folded, s[0].tile[..]);
+    }
+    wsp_foam_step(s[0].foam[..], s[0].tile[..], wsp_whitecap_threshold(s[0].tile[..], sp.wind_speed), 0.6, gap);
+    s[0].last_tick = tick; s[0].have_tick = true;
+  }
+  nn := TILE_N * TILE_N;
+  hs := 0.0f32; ss := 0.0f32;
+  for i: 0..<nn {
+    hs = hi_f32(hs, abs(s[0].tile[0].height[i]));
+    ss = hi_f32(ss, hi_f32(abs(s[0].tile[0].sx[i]), abs(s[0].tile[0].sz[i])));
+  }
+  hs = hi_f32(hs, 0.001); ss = hi_f32(ss, 0.001);
+  u[U_PACK] = hs; u[U_PACK + 1] = ss;
+  for i: 0..<nn {
+    u[U_TILES + 2 * i] = pack2(s[0].tile[0].height[i] / hs, s[0].foam[i]);
+    u[U_TILES + 2 * i + 1] = pack2(s[0].tile[0].sx[i] / ss, s[0].tile[0].sz[i] / ss);
+  }
+  fine := U_TILES + 2 * nn;
+  if phone {
+    u[U_PACK + 2] = 0.5;
+    for i: 0..<nn { u[fine + i] = pack2(s[0].baked[4 * i] / 0.5, s[0].baked[4 * i + 1] / 0.5); }
+  } else {
+    wsp_tile(s[0].synth[..], 1, folded, s[0].tile[..]);
+    fs := 0.001f32;
+    for i: 0..<nn { fs = hi_f32(fs, hi_f32(abs(s[0].tile[0].sx[i]), abs(s[0].tile[0].sz[i]))); }
+    u[U_PACK + 2] = fs;
+    for i: 0..<nn { u[fine + i] = pack2(s[0].tile[0].sx[i] / fs, s[0].tile[0].sz[i] / fs); }
+  }
+  return 0;
+}
+
+// Input.
+key_bit :: (key: int) -> int {
+  if key == KEY_LEFT || key == 'a' || key == 'A' { return 1; }
+  if key == KEY_RIGHT || key == 'd' || key == 'D' { return 2; }
+  if key == KEY_UP || key == 'w' || key == 'W' { return 4; }
+  if key == KEY_DOWN || key == 's' || key == 'S' { return 8; }
+  return 0;
+}
+waterlab_key :: (s: [] Waterlab, key: int, down: bool) -> bool #export_c {
+  if !s[0].started { waterlab_reset(s); }
+  b := key_bit(key);
+  if b == 0 { return false; }
+  if down { s[0].held |= b; } else { s[0].held = s[0].held & (15 - b); }
+  return true;
+}
+waterlab_blur :: (s: [] Waterlab) #export_c { s[0].held = 0; s[0].dragging = false; }
+waterlab_pointer :: (s: [] Waterlab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if !s[0].started { waterlab_reset(s); }
+  if phase == 0 { s[0].dragging = true; s[0].last_x = x; s[0].last_y = y; return true; }
+  if phase == 1 && s[0].dragging {
+    s[0].yaw -= (x - s[0].last_x) * 0.004;
+    s[0].pitch = clamp_f(s[0].pitch + (y - s[0].last_y) * 0.003, -0.6, 1.2);
+    s[0].last_x = x; s[0].last_y = y;
+    return true;
+  }
+  if phase >= 2 { s[0].dragging = false; }
+  return false;
+}
+waterlab_wheel :: (s: [] Waterlab, dy: f32) #export_c { s[0].dist = clamp_f(s[0].dist * (1 + dy * 0.001), 3, 120); }
+waterlab_golden :: (s: [] Waterlab, on: bool) #export_c { if !s[0].started { waterlab_reset(s); } s[0].golden = on; }
+
+// The page facts (message 600): the URL's query.
+fact :: (facts: string, key: string) -> string {
+  i := 0;
+  while i < facts.count {
+    e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if e - i > key.count && facts[i + key.count] == '=' && facts[i..<i + key.count] == key { return facts[i + key.count + 1..<e]; }
+    i = e + 1;
+  }
+  return "";
+}
+// The decimal after `key` in the URL's query (?key=V), or `otherwise`.
+query_number :: (url: string, key: string, otherwise: f64) -> f64 {
+  i := 0;
+  while i < url.count && url[i] != '?' { i += 1; }
+  while i < url.count && url[i] != '#' {
+    i += 1;
+    e := i; while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+    if e - i > key.count + 1 && url[i..<i + key.count] == key && url[i + key.count] == '=' {
+      v := 0.0; sign := 1.0; scale := 0.0; any := false;
+      for j: i + key.count + 1..<e {
+        c := url[j];
+        if c == '-' && j == i + key.count + 1 { sign = -1; continue; }
+        if c == '.' && scale == 0.0 { scale = 1; continue; }
+        if c < '0' || c > '9' { return otherwise; }
+        any = true;
+        if scale > 0.0 { scale *= 0.1; v += f64(c - '0') * scale; } else { v = v * 10 + f64(c - '0'); }
+      }
+      return ifx any then sign * v else otherwise;
+    }
+    i = e;
+  }
+  return otherwise;
+}
+query_word :: (url: string, pair: string) -> bool {
+  i := 0;
+  while i < url.count && url[i] != '?' { i += 1; }
+  while i < url.count && url[i] != '#' {
+    i += 1;
+    e := i; while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+    if url[i..<e] == pair { return true; }
+    i = e;
+  }
+  return false;
+}
+waterlab_message :: (s: [] Waterlab, kind: int, text: string) #export_c {
+  if !s[0].started { waterlab_reset(s); }
+  if kind != HOST_FACTS || s[0].counted { return; }
+  s[0].counted = true;
+  url := fact(text, "url");
+  s[0].fixed = query_number(url, "t", -1);
+  s[0].wind = fclamp(query_number(url, "wind", 7), 0.5, 30);
+  s[0].yaw = f32(query_number(url, "yaw", 0.35));
+  s[0].pitch = f32(fclamp(query_number(url, "pitch", 0.16), -0.6, 1.2));
+  s[0].dist = f32(fclamp(query_number(url, "dist", 14), 3, 120));
+  s[0].phone_forced = query_word(url, "tier=phone");
+  s[0].built = false;
+}
+
+coaxial_waterlab_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_waterlab_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_waterlab_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
