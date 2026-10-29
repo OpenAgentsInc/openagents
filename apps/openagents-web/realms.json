@@ -55,12 +55,12 @@
       "realm": {
         "slug": "everglade",
         "title": "Everglade",
-        "description": "Everglade, the forest city, as a walkable grey-box blockout: the palisade and its gates, the commons and fountain, the market, the inn, the guild halls, the temple and observatory, and the trails out to the deep wood, the ruins, the crypt and the river crossing.",
+        "description": "Everglade, the forest city, as a walkable grey-box blockout in a forest you leave only by its trails: the palisade and its gates, the commons and fountain, the market, the inn, the guild halls, the temple and observatory, and the trails out to the deep wood, the ruins, the crypt and the river crossing.",
         "alt": "Enter the Verse: walk Everglade, the forest city",
         "module": "everglade",
         "slot": "everglade",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
-        "assets": ["index:/realm/everglade/assets/Everglade.indices"]
+        "assets": ["pack:/realm/everglade/assets/everglade.pack"]
       } },
     { "id": "deadgears", "name": "DEAD GEARS", "kind": "open", "orbit": { "r": 0.3, "a": 2.9, "size": 0.03 },
       "realm": {

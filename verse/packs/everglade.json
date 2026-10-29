@@ -1,0 +1,14 @@
+{
+  "pack": "everglade",
+  "title": "Everglade",
+  "budget": 3000000,
+  "scene": "~/work/aethyr-cpp/build-native/native-root/assets/scene.bin",
+  "layers": "~/work/aethyr-cpp/assets/layer{n}",
+  "texture_size": 512,
+  "identity": 1024,
+  "licences": {
+    "quaternius-stylized-nature": { "name": "Quaternius Stylized Nature MegaKit", "licence": "CC0 1.0 Universal", "url": "https://quaternius.com/" }
+  },
+  "meshes": ["Pine_5", "Pine_5_Leaves", "Pine_4", "Pine_4_Leaves", "CommonTree_3", "CommonTree_3_Leaves", "CommonTree_4", "CommonTree_4_Leaves",
+             "Bush_Common_Flowers", "Fern_1", "Rock_Medium_1", "Rock_Medium_2"]
+}

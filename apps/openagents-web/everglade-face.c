@@ -3,7 +3,8 @@
 // links it) and verse/grid.coax reads a phone's thumbs. Once a frame it
 // passes values between them in order: the page's controls, the player's
 // step among the city's walls, then the page's frame with where you
-// ended up. It decides nothing. Every pointer is an offset into the host's
+// ended up, after the city keeps you out of the woods (everglade_hold).
+// The pack's catalog (asset 0) goes to the page. It decides nothing. Every pointer is an offset into the host's
 // WebAssembly.Memory; the page's state is the host's (coaxial_state_size).
 #include "everglade.h"
 #include "Player.h"
@@ -20,6 +21,7 @@ static bool placed;
 static double now;
 static float width, height, dpr;
 static uint8_t inbox[16384];
+static uint8_t catalog[16384];
 static coax_t_Track track_state;
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 
@@ -61,7 +63,15 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   player.theta = everglade_player_theta(at(state));
   sticks = verse_sticks_used(sticks);
   int64_t walls = everglade_walls(at(state));
+  coax_t_Vec3 was = player.pos;
   player = verse_player_advance_among(player, dt, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6});
+  coax_t_Point kept = everglade_hold(at(state), was.x, was.z, player.pos.x, player.pos.z);
+  if (kept.x != player.pos.x || kept.z != player.pos.z) {
+    if (kept.x != player.pos.x) player.vel.x = 0;
+    if (kept.z != player.pos.z) player.vel.z = 0;
+    player.pos.x = kept.x; player.pos.z = kept.z;
+    player.prev_pos = player.pos;
+  }
   coax_t_Vec3 feet = verse_player_feet(player);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_everglade_max_vertices() * coaxial_everglade_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_everglade_uniform_floats()};
@@ -110,7 +120,18 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inb
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
+  everglade_message(at(state), kind, (coax_string){(const char *)inbox, length});
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) track_drain(&track_state);
+}
+
+EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes) {
+  (void)state;
+  return i == 0 && bytes <= sizeof catalog ? (uint32_t)(uintptr_t)catalog : 0u;
+}
+EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) {
+  start(state);
+  if (i == 0 && bytes > 0 && bytes <= sizeof catalog) everglade_catalog(at(state), (coax_string){(const char *)catalog, bytes});
+  if (i >= 0 && i <= 3 && bytes == 0) everglade_pack_failed(at(state));
 }
 
 EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) {

@@ -1,6 +1,7 @@
 # Everglade, the forest city
 
-Status: plan and blockout, October 28, 2026 (eg-design). The blockout is
+Status: plan and blockout, October 28, 2026 (eg-design); the forest and
+its paths, October 29 (eg-forest). The blockout is
 walkable at https://openagents.com/realm/everglade (not on the galaxy until
 eg-launch; `/verse/galaxy?realms=all` shows it). The order of the work after
 this is in [realms-port.md](realms-port.md).
@@ -177,15 +178,41 @@ as grey boxes at full size, built on the realm host
 - `verse/everglade/plan.coax`: the layout and its checks.
 - `apps/openagents-web/everglade.coax`, `everglade-face.c`, `everglade.wgsl`:
   the realm. It draws the ground and streets (`verse/terrain.coax`), the
-  palisade, every building as a box with a gable roof, the props, a forest
-  ring of cones past the walls, the characters as plain figures and cats,
-  and each place's name as you come near. The free orbit
+  palisade, every building as a box with a gable roof, the props, the
+  forest (below), the characters as plain figures and cats, and each
+  place's name as you come near. The free orbit
   (`verse/camera.coax`) follows you and keeps out of the walls; walking is
   `verse/player.coax` among the plan's solids, thumbs `verse/grid.coax`.
 - M or MAP lifts the camera over the whole city; `#above` opens there, and a
   place's id in the hash starts you at it (`#commons`, `#market`, `#guilds`,
   `#temple`, `#observatory`, `#inn`, `#road`, `#deep-wood`, `#ruins`,
   `#crypt`, `#river`, `#gate`, `#north-gate`).
+
+## The forest
+
+Past a 6 m apron of open grass round the palisade, everything is woods
+(`everglade_in_woods` in `plan.coax`) but the trails, 3 m either side of
+their middle, and six clearings where they end: the stables, where you
+arrive on the road in, the deep wood's waystone, the ruins, the crypt and
+the river's far bank. You can't walk into the woods and the camera never
+backs into them, so the only ways out of the city are the trails.
+
+- **Trees:** one every 4.2 m, jittered, wherever the woods are, with a
+  metre clear of open ground round each trunk and none on the river (about
+  a thousand). Four kinds from Stylized Nature: `Pine_5`, `Pine_4`,
+  `CommonTree_3`, `CommonTree_4`, each with its `_Leaves`.
+- **Along the tree line:** `Bush_Common_Flowers`, `Fern_1`,
+  `Rock_Medium_1` and `_2`.
+- **The pack:** `verse/packs/everglade.json`, compiled to
+  `realm/everglade/assets/everglade.pack` (1.8 MB, budget 3 MB) with
+  `licences.md`. It also carries 1,024 identity indices (`"identity"`), so
+  the city's shapes, drawn from the vertex index alone, share the pack's
+  index buffer.
+- **The phone:** each frame the trees in view and nearer than 55 m (42 m on
+  a phone) are the kit's, at most 80 of each kind (40 on a phone), nearest
+  first; the rest are a cone each. The checks hold a phone's kit
+  triangles under 700,000 from the road, the gates and the trails, every
+  way it looks.
 
 The checks (`plan.coax`):
 
@@ -201,12 +228,14 @@ The checks (`plan.coax`):
   door, every character, every path node, every gate, the quest board, the
   stalls, every trail's end and the river's far bank.
 - **The palisade keeps you in** but for its four gates.
+- **The woods keep you to the trails:** no cell in the woods is reachable,
+  straight out from each wall the forest stops you inside the apron, the
+  far bank is reached by the bridge and every trail stays open to its end.
 - **The ground** is level under each building and square, rises into the
   forest, and no street or trail climbs steeper than 1 in 5.
 
 ## What's next
 
-eg-forest (a real forest ring you can't walk out of but by the trails),
 eg-buildings (the kit buildings and the interiors above), eg-people,
 eg-quests, eg-companion and eg-launch, in that order
 ([realms-port.md](realms-port.md)).

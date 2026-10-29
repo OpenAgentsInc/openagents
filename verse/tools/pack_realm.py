@@ -28,6 +28,8 @@ The catalog is text, a line each:
   M NAME FIRST COUNT K X0 Y0 Z0 X1 Y1 Z1   a mesh: its indices, licence, bounds (metres)
   T LAYER SOURCE K                a texture layer and its licence
   S NAME K                        a sound and its licence
+  I FIRST COUNT                   identity indices (0, 1, ... COUNT-1) for shapes the realm's shader
+                                  draws from the vertex index alone (manifest "identity": COUNT)
 Vertices are the Haunted House's (realm.wgsl): 48 bytes, position, normal,
 uv, colour with its layer in the alpha byte, then 12 zero bytes; the layer
 is the pack's own (0 first).
@@ -138,13 +140,17 @@ def build(manifest_path):
         lic = licence_of(s.get("licence"), f"sound {s['name']}")
         entries.append((KIND_SOUND, lic, s["name"], home(s["file"]).read_bytes()))
         sound_lines.append(f"S {s['name']} {lic}")
+    identity_lines = []
+    if int(m.get("identity", 0)) > 0:
+        identity_lines.append(f"I {len(indices)} {int(m['identity'])}")
+        indices += list(range(int(m["identity"])))
     vbytes = bytes(vertices)
     ibytes = struct.pack(f"<{len(indices)}I", *indices)
     budget = int(m["budget"])
     def catalog(total):
         lines = [f"pack {m['pack']}", f"budget {budget}", f"bytes {total}"]
         lines += [f"L {k} {licences[key]['name']}|{licences[key]['licence']}|{licences[key]['url']}" for k, key in enumerate(keys)]
-        return ("\n".join(lines + mesh_lines + layer_lines + sound_lines) + "\n").encode()
+        return ("\n".join(lines + mesh_lines + identity_lines + layer_lines + sound_lines) + "\n").encode()
     # The catalog names the file's size, which depends on the catalog: settle it.
     total = 0
     for _ in range(4):

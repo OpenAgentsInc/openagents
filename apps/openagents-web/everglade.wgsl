@@ -2,7 +2,9 @@
 // comes from everglade.coax: the view, the eye and the fog, the sun, the
 // ground's heights (store 0) and each object's place, size, colour and shape
 // (store 1), the shadows, the streets, the paved squares and the HUD's
-// plates and strokes.
+// plates and strokes. The kit's meshes come from the realm's pack: its
+// vertices (pack_realm.py: 48 bytes, position, normal, uv, colour with its
+// layer in the top byte) and its texture layers.
 
 struct U {
   size: vec2f, time: f32, fade: f32, still: f32, plates: f32, k: f32, horizon: f32,
@@ -58,8 +60,12 @@ fn encode(c: vec3f) -> vec3f { return pow(clamp(c, vec3f(0.0), vec3f(1.0)), vec3
 }
 
 struct Obj { r0: vec4f, r1: vec4f, r2: vec4f, colour: vec4f }
-@group(1) @binding(0) var<storage, read> heights: array<f32>;
-@group(1) @binding(1) var<storage, read> objects: array<Obj>;
+@group(1) @binding(0) var<storage, read> vertices: array<u32>;
+@group(1) @binding(1) var<storage, read> heights: array<f32>;
+@group(1) @binding(2) var<storage, read> objects: array<Obj>;
+@group(1) @binding(3) var sheets: texture_2d_array<f32>;
+@group(1) @binding(4) var sheet: sampler;
+fn word(i: u32) -> f32 { return bitcast<f32>(vertices[i]); }
 
 struct S {
   @builtin(position) pos: vec4f,
@@ -67,6 +73,8 @@ struct S {
   @location(1) normal: vec3f,
   @location(2) tint: vec3f,
   @location(3) @interpolate(flat) look: u32,
+  @location(4) uv: vec2f,
+  @location(5) @interpolate(flat) slice: u32,
 }
 
 fn quad(v: u32) -> vec2f {
@@ -155,15 +163,27 @@ fn clip(w: vec3f) -> vec4f {
     o.normal = normal;
     o.tint = vec3f(0.30, 0.50, 0.20);
     o.look = 99u;
+    o.uv = vec2f(0.0);
+    o.slice = 0u;
     return o;
   }
   let m = objects[instance - n * n];
   let kind = u32(m.colour.w) % 8u;
   var v: Vert;
+  var tint = m.colour.rgb;
+  o.uv = vec2f(0.0);
+  o.slice = 0u;
   switch kind {
     case 1u: { v = box_vertex(id); }
     case 2u: { v = sphere_vertex(id); }
     case 3u: { v = cylinder_vertex(id); }
+    case 5u: {
+      let b = id * 12u;
+      v = Vert(vec3f(word(b), word(b + 1u), word(b + 2u)), vec3f(word(b + 3u), word(b + 4u), word(b + 5u)));
+      o.uv = vec2f(word(b + 6u), word(b + 7u));
+      o.slice = vertices[b + 8u] >> 24u;
+      tint = unpack4x8unorm(vertices[b + 8u]).rgb * m.colour.rgb;
+    }
     default: { v = cone_vertex(id); }
   }
   let p = vec4f(v.p, 1.0);
@@ -175,7 +195,7 @@ fn clip(w: vec3f) -> vec4f {
   o.pos = clip(w);
   o.world = w;
   o.normal = normalize(normal + vec3f(0.0, 0.00001, 0.0));
-  o.tint = m.colour.rgb;
+  o.tint = tint;
   o.look = u32(m.colour.w) / 8u;
   return o;
 }
@@ -211,9 +231,16 @@ fn shade_shadows(p: vec2f) -> f32 {
   return s;
 }
 
-@fragment fn scene_fs(s: S) -> @location(0) vec4f {
+@fragment fn scene_fs(s: S, @builtin(front_facing) front: bool) -> @location(0) vec4f {
+  let tex = textureSample(sheets, sheet, s.uv, s.slice);
   var n = normalize(s.normal);
   var base = s.tint;
+  if (s.look == 5u) {
+    // A kit mesh: its texture, cut out where the leaves' layer is clear; both sides of a leaf lit.
+    if (tex.a < 0.35) { discard; }
+    base = tex.rgb * s.tint;
+    if (!front) { n = -n; }
+  }
   let xz = s.world.xz;
   var shadow = 1.0;
   if (s.look == 99u) {

@@ -274,6 +274,30 @@ inside_walls :: (box: [] f32, i: int) -> bool {
   return box[k] > -63.6 && box[k + 2] < 63.6 && box[k + 1] > -55.6 && box[k + 3] < 59.6;
 }
 
+// ---- the woods: past a clear apron round the palisade the forest stands
+// too thick to walk into, but for the trails (EG_TRAIL_FREE either side of
+// a link's middle: its 3 m and a verge) and the clearings where they end.
+// The realm plants its trees only in the woods and keeps you out of them.
+EG_APRON :: 6.0;        // metres of open grass outside the palisade
+EG_TRAIL_FREE :: 3.0;
+EG_CLEARINGS :: 6;
+// x, z, radius each: the stables, where you arrive, the deep wood's
+// waystone, the ruins, the crypt and the river's far bank.
+EG_CLEARING :: [18] f32.[
+  14, -70, 11,    0, -88, 7,    -91, 20, 9,    22, 94, 12,    66, 92, 9,    93, -13, 8
+];
+
+everglade_in_woods :: (x: f32, z: f32) -> bool {
+  a := f32(EG_APRON);
+  if x > -65.25 - a && x < 65.25 + a && z > -57.5 - a && z < 61.25 + a { return false; }
+  for c: 0..<EG_CLEARINGS {
+    dx := x - EG_CLEARING[c * 3]; dz := z - EG_CLEARING[c * 3 + 1]; r := EG_CLEARING[c * 3 + 2];
+    if dx * dx + dz * dz < r * r { return false; }
+  }
+  nodes := EG_NODE_XZ; links := EG_LINK_AB;
+  return verse_path_nearest(nodes[..], links[..], x, z).d >= f32(EG_TRAIL_FREE);
+}
+
 // ---- reachability: a grid over the walkable ground, filled from the spawn
 
 EG_REACH_CELL :: 0.5;
@@ -294,7 +318,13 @@ everglade_open :: (grid: [] u8) {
   solids: [EG_SOLIDS * EG_BOX] f32;
   n := everglade_solids(solids[..]);
   pad := f32(EG_RADIUS) + f32(EG_REACH_CELL) * 0.71;
-  for c: 0..<EG_REACH_N * EG_REACH_N { grid[c] = 1; }
+  for j: 0..<EG_REACH_N {
+    for i: 0..<EG_REACH_N {
+      x := f32(EG_REACH_WEST) + (f32(i) + 0.5) * f32(EG_REACH_CELL);
+      z := f32(EG_REACH_WEST) + (f32(j) + 0.5) * f32(EG_REACH_CELL);
+      grid[j * EG_REACH_N + i] = 1; if everglade_in_woods(x, z) { grid[j * EG_REACH_N + i] = 0; }
+    }
+  }
   for s: 0..<n {
     k := s * EG_BOX;
     i0 := cast(int) floor((solids[k] - pad - f32(EG_REACH_WEST)) / f32(EG_REACH_CELL));
@@ -416,7 +446,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   grid: [EG_REACH_N * EG_REACH_N] u8;
   queue: [EG_REACH_N * EG_REACH_N] u32;
   count := everglade_reach(grid[..], queue[..]);
-  #assert count > 100000;
+  #assert count > 60000;
   for b: 0..<EG_BUILDINGS { #assert reached(grid[..], EG_DOOR[b * 2], EG_DOOR[b * 2 + 1]); }
   for b: 0..<EG_BUILDINGS { #assert box_gap(bld[..], b, EG_DOOR[b * 2], EG_DOOR[b * 2 + 1]) <= 1.01; }
   for s: 0..<EG_SPOTS { #assert reached(grid[..], EG_SPOT[s * 3], EG_SPOT[s * 3 + 1]); }
@@ -425,8 +455,31 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   // The quest board, the stalls and the trails' ends are reachable from beside them.
   #assert reached(grid[..], 6.2, -6.4) && reached(grid[..], 32, 3.5) && reached(grid[..], 32, -3.5);
   #assert reached(grid[..], -88, 22) && reached(grid[..], 22, 95) && reached(grid[..], 66, 89.5) && reached(grid[..], 96, -16);
-  // Beyond the river is reached only by the bridge: without it the far bank is cut off.
-  #assert reached(grid[..], 95, 40);
+}
+
+#test "the woods keep you to the trails: past the apron only a trail or a clearing is open" {
+  grid: [EG_REACH_N * EG_REACH_N] u8;
+  queue: [EG_REACH_N * EG_REACH_N] u32;
+  count := everglade_reach(grid[..], queue[..]);
+  #assert count > 60000;
+  nodes := EG_NODE_XZ; links := EG_LINK_AB;
+  deep := 0;
+  for j: 0..<EG_REACH_N {
+    for i: 0..<EG_REACH_N {
+      x := f32(EG_REACH_WEST) + (f32(i) + 0.5) * f32(EG_REACH_CELL);
+      z := f32(EG_REACH_WEST) + (f32(j) + 0.5) * f32(EG_REACH_CELL);
+      if everglade_in_woods(x, z) { deep += 1; #assert grid[j * EG_REACH_N + i] == 0; }
+    }
+  }
+  // Most of what lies outside the walls is forest.
+  #assert deep > 60000;
+  // Straight out from each wall, between the gates, the forest stops you within the apron.
+  #assert !reached(grid[..], -40, -64.5) && !reached(grid[..], 40, 69) && !reached(grid[..], 72.5, 30) && !reached(grid[..], -72.5, -30);
+  #assert reached(grid[..], -40, -60) && reached(grid[..], 70, 30);
+  // The far bank is reached by the bridge, and the forest beyond it is not.
+  #assert reached(grid[..], 96, -16) && !reached(grid[..], 95, 40);
+  // Each trail stays open from its gate to its end.
+  #assert reached(grid[..], -80, 4) && reached(grid[..], 44, 74) && reached(grid[..], 80, -4) && reached(grid[..], 0, -98);
 }
 
 #test "the palisade keeps you in but for its gates" {

@@ -1,15 +1,16 @@
 # Everglade
 
-Everglade, the forest city, at https://openagents.com/realm/everglade. This is its blockout: the whole city in grey boxes at its real size, so it can be walked and judged before it is built from the art kits. The plan is https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/everglade.md and its map https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/everglade-map.svg.
+Everglade, the forest city, at https://openagents.com/realm/everglade. This is its blockout: the whole city in grey boxes at its real size, so it can be walked and judged before it is built from the art kits, standing in a forest of kit trees. The plan is https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/everglade.md and its map https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/everglade-map.svg.
 
 ## What is here
 
-- The road in from the south, past the stables, to the South Gate in a timber palisade. Three more gates lead out: west to the deep wood, east to the river crossing, north to the ruins and the crypt.
+- The road in from the south, past the stables, to the South Gate in a timber palisade. Three more gates lead out: east to the deep wood, west to the river crossing, north to the ruins and the crypt.
 - The commons in the middle: the fountain, the quest board and the town crier.
-- The market to the east: six stalls, the general store, the smithy and the alchemist.
+- The market to the west: six stalls, the general store, the smithy and the alchemist.
 - The inn on Inn Street, between the gate and the commons.
-- Guild Row to the west: the fighters' hall and the rangers' lodge; the mages' tower stands to the north-west.
+- Guild Row to the east: the fighters' hall and the rangers' lodge; the mages' tower stands to the north-east.
 - Temple Hill to the north: the temple and the observatory.
+- The forest all round: past a strip of open grass outside the walls the trees stand too thick to walk into, so the only ways out are the trails, to clearings at the stables, the deep wood's waystone, the ruins, the crypt and the river's far bank. Bushes, ferns and rocks line the trees' edge.
 - Where each of the city's characters will stand, as plain figures: gate guards, the stable hand, the crier, the innkeeper, the shopkeepers, the smith, the alchemist, the guild masters, the priest, the astronomer, and three cats.
 
 Names float over each place as you come near. The city is about 130 metres across inside its walls: half a minute's walk from the South Gate to the temple.
@@ -26,4 +27,4 @@ Names float over each place as you come near. The city is about 130 metres acros
 
 - `verse/everglade/plan.coax` is the city's layout: the palisade, every building and prop as a box, the streets and trails, the squares, where each character stands, and the checks that everything is reachable on foot, nothing overlaps and the paths connect.
 - `apps/openagents-web/everglade.coax` draws it and the HUD, `everglade-face.c` binds it for the browser, `everglade.wgsl` shades it. The ground and paths are `verse/terrain.coax`, the camera `verse/camera.coax`, walking `verse/player.coax`, and a phone's thumbs `verse/grid.coax`, as in the Garden.
-- Nothing is downloaded but the page, its code and a 4 KB index list. The art comes later from the CC0 Quaternius kits (Stylized Nature, Medieval Village, Fantasy Props).
+- The forest's trees, bushes, ferns and rocks are from the CC0 Quaternius Stylized Nature kit, in one asset pack (`everglade.pack`, about 1.8 MB) streamed when you enter; the full list is [licences.md](licences.md). `verse/tools/pack_realm.py` compiles it from `verse/packs/everglade.json`. The trees nearest you are the kit's; farther ones are simple cones, so a phone keeps its frame rate. The buildings come next from the Medieval Village and Fantasy Props kits.
