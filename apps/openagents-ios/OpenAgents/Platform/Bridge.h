@@ -14,3 +14,5 @@
 #include "HauntBuffer.h"
 #include "Hud.h"
 #include "voice.h"
+#include "PhoneSignin.h"
+#include "NostrSign.h"

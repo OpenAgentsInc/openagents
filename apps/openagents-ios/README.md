@@ -78,6 +78,32 @@ WebSocket, never to Google. In the simulator the host defaults to
 yet, so voice on a device needs one set this way. No login, chat or FM code is
 restored; the Grid has no buildings or other players yet.
 
+## Sign in to openagents.com
+
+SIGN IN, top right, shows the phone's Nostr key (an npub) and scans or
+pastes a code. The key is made on first use and kept in the Keychain
+(service `com.openagents.app.nostr`, account `nsec-v1`, this device only,
+not synced), so it stays across reinstalls like the wallet seed; it is a
+software key signed with in app memory by libsecp256k1
+(`Vendor/secp256k1/`, `OpenAgents/Platform/NostrSign.c`), not the Secure
+Enclave. `verse/phone-signin.coax` (`#authority`) decides which codes the
+phone signs for: `https://openagents.com/signin#c=…` (sign that browser in),
+`/signin#link=…` (LINK A PHONE on a project page) and
+`/projects/<slug>#invite=…` (a member invite), on openagents.com or
+staging.openagents.com, opened as `openagents://HOST/…`, a universal link,
+a scan or a paste. Every one asks first; Approve sends a NIP-98 signed POST
+to `/api/auth/approve` or `/api/private/<slug>/claim`.
+
+```sh
+# the fake-server flow and BIP-340 vectors; sign ad hoc so the Keychain works in the simulator
+xcodebuild -project apps/openagents-ios/OpenAgents.xcodeproj -scheme OpenAgents \
+  -destination 'platform=iOS Simulator,name=OpenAgents iPhone' -derivedDataPath apps/openagents-ios/build \
+  CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= -parallel-testing-enabled NO \
+  -only-testing:OpenAgentsUITests/SignInUITests test
+# a real code against a real server (opens it through the system, approves, prints the result)
+TEST_RUNNER_OA_SIGNIN_CODE='https://staging.openagents.com/signin#c=…' xcodebuild … -only-testing:OpenAgentsUITests/SignInLiveUITests test
+```
+
 ## Engine measurements and debugging
 
 Debug generation writes original Coax line information and source maps beside

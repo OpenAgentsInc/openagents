@@ -1,0 +1,518 @@
+// Signing in to openagents.com with the phone (coax/web/api: /api/auth/approve
+// and /api/private/<slug>/claim). Swift hands this file the text the phone
+// scanned, was pasted or was opened with, and the numbers and hex strings of
+// the key and the clock. This file decides whether the text is one of ours
+// and for which host, and writes the request: its URL, its body, the NIP-01
+// serialization whose SHA-256 is the event id, the NIP-98 event, and what to
+// say about the answer. Swift does the hashing, the signature (libsecp256k1),
+// the Keychain and the network. The secret never comes here; the code's
+// secret does, and nothing here keeps or prints it.
+//   coax/bin/coax test verse/phone-signin.coax
+//   coax/bin/coax mutate verse/phone-signin.coax
+#import "Basic";
+#load "../coax/lib/nostr/nip19-core.coax";
+#authority;
+
+SIGNIN_NONE :: 0;     // not one of ours
+SIGNIN_SIGNIN :: 1;   // /signin#c=<64 hex>: sign this browser in
+SIGNIN_LINK :: 2;     // /signin#link=<64 hex>: add this phone's key to the member who showed it
+SIGNIN_INVITE :: 3;   // /projects/<slug>#invite=<64 hex>: the invited member's key becomes this phone's too
+
+// One parsed code: where it goes and what it carries, as offsets into the text.
+SigninCode :: struct {
+  kind: int;
+  local: bool;                    // http on 127.0.0.1 or localhost (Debug builds only)
+  host_at: int; host_n: int;
+  slug_at: int; slug_n: int;
+  secret_at: int; secret_n: int;
+}
+
+// Character classes, each checked over every byte below.
+si_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+si_hexdigit :: (c: u8) -> bool { return si_digit(c) || (c >= 'a' && c <= 'f'); }
+si_slugchar :: (c: u8) -> bool { return si_digit(c) || (c >= 'a' && c <= 'z') || c == '-'; }
+si_space :: (c: u8) -> bool { return c == ' ' || c == '\n' || c == '\r' || c == '\t'; }
+// A byte a URL we write may hold: printable ASCII, no space, quote or backslash.
+si_urlchar :: (c: u8) -> bool { return c > 32 && c < 127 && c != '"' && c != '\\'; }
+
+// word at text[at..], at >= 0.
+si_starts :: (text: string, at: int, word: string) -> bool {
+  if at + word.count > text.count { return false; }
+  return text[at..<at + word.count] == word;
+}
+// The rest of text from at is exactly 64 lowercase hex digits.
+si_hex64 :: (text: string, at: int) -> bool {
+  if at + 64 != text.count { return false; }
+  for i: at..<text.count { if !si_hexdigit(text[i]) { return false; } }
+  return true;
+}
+// Where word first starts in text, or -1.
+si_find :: (text: string, word: string) -> int {
+  k := 0;
+  while k + word.count <= text.count {
+    if text[k..<k + word.count] == word { return k; }
+    k += 1;
+  }
+  return -1;
+}
+// The scheme's length: https:// and openagents:// (posted over https), http:// (local hosts only); else 0.
+si_scheme :: (t: string) -> int {
+  if si_starts(t, 0, "https://") { return 8; }
+  if si_starts(t, 0, "openagents://") { return 13; }
+  if si_starts(t, 0, "http://") { return 7; }
+  return 0;
+}
+// 127.0.0.1:PORT or localhost:PORT, PORT 1 to 5 digits.
+si_local :: (host: string) -> bool {
+  if !si_starts(host, 0, "127.0.0.1:") && !si_starts(host, 0, "localhost:") { return false; }
+  // both prefixes are 10 bytes
+  if host.count < 11 || host.count > 15 { return false; }
+  for i: 10..<host.count { if !si_digit(host[i]) { return false; } }
+  return true;
+}
+
+// The text's code, or kind SIGNIN_NONE. debug admits the local hosts.
+verse_signin_parse :: (raw: [] u8, debug: bool) -> SigninCode #export_c {
+  none: SigninCode;
+  all := cast(string) raw;
+  a := 0; b := all.count;
+  while a < b && si_space(all[a]) { a += 1; }
+  while b > a && si_space(all[b - 1]) { b -= 1; }
+  t := all[a..<b];
+  at := si_scheme(t);
+  if at == 0 { return none; }
+  h := at;
+  while h < t.count && t[h] != '/' { h += 1; }
+  host := t[at..<h];
+  r: SigninCode;
+  r.local = debug && si_local(host);
+  ours := host == "openagents.com" || host == "staging.openagents.com";
+  if !ours && !r.local { return none; }
+  if at == 7 && !r.local { return none; }   // plain http only to this machine
+  r.host_at = a + at; r.host_n = host.count;
+  p := h;
+  if si_starts(t, p, "/signin") {
+    p += 7;
+    if si_starts(t, p, "/#") { p += 1; }
+    if si_starts(t, p, "#c=") { r.kind = SIGNIN_SIGNIN; p += 3; }
+    else if si_starts(t, p, "#link=") { r.kind = SIGNIN_LINK; p += 6; }
+    else { return none; }
+  } else if si_starts(t, p, "/projects/") {
+    p += 10;
+    s := p;
+    while p < t.count && si_slugchar(t[p]) { p += 1; }
+    n := p - s;
+    if n < 1 || n > 64 || t[s] == '-' { return none; }
+    r.slug_at = a + s; r.slug_n = n;
+    if si_starts(t, p, "/#") { p += 1; }
+    if !si_starts(t, p, "#invite=") { return none; }
+    r.kind = SIGNIN_INVITE; p += 8;
+  } else { return none; }
+  if !si_hex64(t, p) { return none; }
+  r.secret_at = a + p; r.secret_n = 64;
+  return r;
+}
+
+// text into buf at at; -1 when at is -1 already or it doesn't fit, so writes chain.
+si_put :: (buf: [] u8, at: int, text: string) -> int {
+  if at < 0 || at + text.count > buf.count { return -1; }
+  for i: 0..<text.count { buf[at + i] = text[i]; }
+  return at + text.count;
+}
+// n >= 0 in decimal, the same way.
+si_num :: (buf: [] u8, at: int, n: int) -> int {
+  digits: [20] u8; k := 0; x := n;
+  if x == 0 { digits[0] = '0'; k = 1; }
+  while x > 0 { digits[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  if at < 0 || at + k > buf.count { return -1; }
+  for i: 0..<k { buf[at + i] = digits[k - 1 - i]; }
+  return at + k;
+}
+si_part :: (raw: [] u8, at: int, n: int) -> string { return cast(string) raw[at..<at + n]; }
+
+// What the confirmation sheet asks.
+verse_signin_question :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c {
+  if c.kind == SIGNIN_SIGNIN {
+    o := si_put(out, 0, "Sign in to ");
+    o = si_put(out, o, si_part(raw, c.host_at, c.host_n));
+    return si_put(out, o, "?");
+  }
+  if c.kind == SIGNIN_LINK {
+    o := si_put(out, 0, "Link this phone to your project on ");
+    o = si_put(out, o, si_part(raw, c.host_at, c.host_n));
+    return si_put(out, o, "?");
+  }
+  if c.kind == SIGNIN_INVITE { return si_put(out, 0, "Link this phone to the project you were invited to?"); }
+  return -1;
+}
+
+// The URL the signed request goes to.
+verse_signin_url :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c {
+  if c.kind == SIGNIN_NONE { return -1; }
+  o := si_put(out, 0, ifx c.local then "http://" else "https://");
+  o = si_put(out, o, si_part(raw, c.host_at, c.host_n));
+  if c.kind == SIGNIN_INVITE {
+    o = si_put(out, o, "/api/private/");
+    o = si_put(out, o, si_part(raw, c.slug_at, c.slug_n));
+    return si_put(out, o, "/claim");
+  }
+  return si_put(out, o, "/api/auth/approve");
+}
+
+// The body, byte for byte (its SHA-256 goes in the payload tag).
+verse_signin_body :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c {
+  if c.kind == SIGNIN_NONE { return -1; }
+  secret := si_part(raw, c.secret_at, c.secret_n);
+  if c.kind == SIGNIN_INVITE {
+    o := si_put(out, 0, "{\"token\":\"");
+    o = si_put(out, o, secret);
+    return si_put(out, o, "\"}");
+  }
+  o := si_put(out, 0, "{\"challenge\":\"");
+  o = si_put(out, o, secret);
+  return si_put(out, o, ifx c.kind == SIGNIN_SIGNIN then "\",\"kind\":\"signin\"}" else "\",\"kind\":\"link\"}");
+}
+
+// Hex that is exactly n lowercase digits.
+si_is_hex :: (text: string, n: int) -> bool {
+  if text.count != n { return false; }
+  for c: text { if !si_hexdigit(c) { return false; } }
+  return true;
+}
+// A URL we wrote: 1 to 600 bytes of si_urlchar, so it needs no escaping in JSON.
+si_plain :: (text: string) -> bool {
+  if text.count < 1 || text.count > 600 { return false; }
+  for c: text { if !si_urlchar(c) { return false; } }
+  return true;
+}
+si_tags :: (buf: [] u8, at: int, url: string, payload: string) -> int {
+  o := si_put(buf, at, "[[\"u\",\"");
+  o = si_put(buf, o, url);
+  o = si_put(buf, o, "\"],[\"method\",\"POST\"],[\"payload\",\"");
+  o = si_put(buf, o, payload);
+  return si_put(buf, o, "\"]]");
+}
+
+// NIP-01: [0,pubkey,created_at,27235,tags,""], whose SHA-256 is the event id.
+verse_signin_serial :: (pubkey: [] u8, created_at: int, url: [] u8, payload: [] u8, out: [] u8) -> int #export_c {
+  pk := cast(string) pubkey; u := cast(string) url; pl := cast(string) payload;
+  if !si_is_hex(pk, 64) || !si_is_hex(pl, 64) || !si_plain(u) || created_at < 0 { return -1; }
+  o := si_put(out, 0, "[0,\"");
+  o = si_put(out, o, pk);
+  o = si_put(out, o, "\",");
+  o = si_num(out, o, created_at);
+  o = si_put(out, o, ",27235,");
+  o = si_tags(out, o, u, pl);
+  return si_put(out, o, ",\"\"]");
+}
+
+// The signed event (NIP-98 kind 27235), for "Authorization: Nostr <base64>".
+verse_signin_event :: (id: [] u8, pubkey: [] u8, created_at: int, url: [] u8, payload: [] u8, sig: [] u8, out: [] u8) -> int #export_c {
+  ih := cast(string) id; pk := cast(string) pubkey; u := cast(string) url; pl := cast(string) payload; sg := cast(string) sig;
+  if !si_is_hex(ih, 64) || !si_is_hex(pk, 64) || !si_is_hex(pl, 64) || !si_is_hex(sg, 128) || !si_plain(u) || created_at < 0 { return -1; }
+  o := si_put(out, 0, "{\"id\":\"");
+  o = si_put(out, o, ih);
+  o = si_put(out, o, "\",\"pubkey\":\"");
+  o = si_put(out, o, pk);
+  o = si_put(out, o, "\",\"created_at\":");
+  o = si_num(out, o, created_at);
+  o = si_put(out, o, ",\"kind\":27235,\"tags\":");
+  o = si_tags(out, o, u, pl);
+  o = si_put(out, o, ",\"content\":\"\",\"sig\":\"");
+  o = si_put(out, o, sg);
+  return si_put(out, o, "\"}");
+}
+
+// A JSON answer's "name" (a member's name, 1 to 60 bytes), or "" when there is none or it needs unescaping.
+si_name :: (body: string) -> string {
+  k := si_find(body, "\"name\":\"");
+  if k < 0 { return ""; }
+  a := k + 8; b := a;
+  while b < body.count && body[b] != '"' {
+    if body[b] == '\\' || body[b] < 32 { return ""; }
+    b += 1;
+  }
+  if b == body.count || b - a > 60 { return ""; }
+  return body[a..<b];
+}
+
+// What to say after the server answered (status 0: no answer at all).
+verse_signin_result :: (kind: int, status: int, body: [] u8, out: [] u8) -> int #export_c {
+  if status == 200 {
+    if kind == SIGNIN_SIGNIN { return si_put(out, 0, "Signed in. Look at your computer."); }
+    name := si_name(cast(string) body);
+    if name.count == 0 { return si_put(out, 0, "This phone is linked to your project."); }
+    o := si_put(out, 0, "This phone is linked to your project as ");
+    o = si_put(out, o, name);
+    return si_put(out, o, ".");
+  }
+  if status == 404 { return si_put(out, 0, "That code was used or has expired."); }
+  if status == 429 { return si_put(out, 0, "Too many tries; wait a minute."); }
+  if status == 0 { return si_put(out, 0, "Couldn't reach openagents.com. Check the connection and try again."); }
+  o := si_put(out, 0, "Not signed in: the server answered ");
+  o = si_num(out, o, status);
+  return si_put(out, o, ".");
+}
+
+// The phone's public key (32 bytes, x-only) as an npub, for showing; -1 if it isn't 32 bytes.
+verse_signin_npub :: (pubkey: [] u8, out: [] u8) -> int #export_c {
+  if pubkey.count != 32 { return -1; }
+  r := nip19_encode_checked(N19_NPUB, cast(string) pubkey, out, false);
+  if r.error != NC_OK { return -1; }
+  return r.written;
+}
+
+// ---- checks
+
+SECRET :: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+PUB :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+
+// Test text: up to three strings joined, as bytes.
+Tx :: struct { b: [800] u8; n: int; }
+tx :: (a: string, b: string, c: string) -> Tx {
+  r: Tx;
+  r.n = si_put(r.b[..], 0, a); r.n = si_put(r.b[..], r.n, b); r.n = si_put(r.b[..], r.n, c);
+  return r;
+}
+si_text :: (raw: [] u8, at: int, n: int) -> string { return cast(string) raw[at..<at + n]; }
+kind_of :: (a: string, b: string, c: string, debug: bool) -> int { t := tx(a, b, c); return verse_signin_parse(t.b[0..<t.n], debug).kind; }
+
+#test "a sign-in code on production and staging" {
+  t := tx("https://openagents.com/signin#c=", SECRET, "");
+  c := verse_signin_parse(t.b[0..<t.n], false);
+  #assert c.kind == SIGNIN_SIGNIN && !c.local;
+  #assert si_text(t.b[..], c.host_at, c.host_n) == "openagents.com";
+  #assert si_text(t.b[..], c.secret_at, c.secret_n) == SECRET;
+  s := tx("openagents://staging.openagents.com/signin#c=", SECRET, "");
+  d := verse_signin_parse(s.b[0..<s.n], false);
+  #assert d.kind == SIGNIN_SIGNIN && si_text(s.b[..], d.host_at, d.host_n) == "staging.openagents.com";
+  #assert kind_of("  https://openagents.com/signin#c=", SECRET, "\n", false) == SIGNIN_SIGNIN;
+  #assert kind_of("https://openagents.com/signin/#c=", SECRET, "", false) == SIGNIN_SIGNIN;
+}
+
+#test "link and invite codes" {
+  #assert kind_of("https://openagents.com/signin#link=", SECRET, "", false) == SIGNIN_LINK;
+  i := tx("https://openagents.com/projects/ab-12#invite=", SECRET, "");
+  c := verse_signin_parse(i.b[0..<i.n], false);
+  #assert c.kind == SIGNIN_INVITE && si_text(i.b[..], c.slug_at, c.slug_n) == "ab-12";
+  #assert si_text(i.b[..], c.secret_at, 64) == SECRET;
+  #assert kind_of("https://openagents.com/projects/ab-12/#invite=", SECRET, "", false) == SIGNIN_INVITE;
+}
+
+#test "everything else is not ours" {
+  #assert kind_of("", "", "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/signin", "", "", false) == SIGNIN_NONE;
+  #assert kind_of("https://evil.com/signin#c=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com.evil.com/signin#c=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://xopenagents.com/signin#c=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("http://openagents.com/signin#c=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("ftp://openagents.com/signin#c=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/signin#c=", SECRET, "0", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/signin#c=", "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef", "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/signin#c=0123", "", "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/signin?c=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/signinx#c=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/signin#invite=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/projects/#invite=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/projects/Ab#invite=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/projects/-ab#invite=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/projects/a/b#invite=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/projects/ab#c=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/projects/ab#invite=", SECRET, "", false) == SIGNIN_INVITE;
+  #assert kind_of("https://openagents.com/projects/a0123456789012345678901234567890123456789012345678901234567890123#invite=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://127.0.0.1:8080/signin#c=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://127.0.0.1:8080/signin#c=", SECRET, "", true) == SIGNIN_SIGNIN;
+}
+
+#test "local hosts only in debug, only over http" {
+  #assert kind_of("http://127.0.0.1:8810/signin#c=", SECRET, "", false) == SIGNIN_NONE;
+  t := tx("http://127.0.0.1:8810/signin#c=", SECRET, "");
+  c := verse_signin_parse(t.b[0..<t.n], true);
+  #assert c.kind == SIGNIN_SIGNIN && c.local;
+  o := tx("openagents://localhost:9/signin#c=", SECRET, "");
+  #assert verse_signin_parse(o.b[0..<o.n], true).local;
+  #assert !verse_signin_parse(o.b[0..<o.n], false).local;
+  #assert kind_of("http://localhost/signin#c=", SECRET, "", true) == SIGNIN_NONE;
+  #assert kind_of("http://localhost:/signin#c=", SECRET, "", true) == SIGNIN_NONE;
+  #assert kind_of("http://localhost:12345/signin#c=", SECRET, "", true) == SIGNIN_SIGNIN;
+  #assert kind_of("http://localhost:123456/signin#c=", SECRET, "", true) == SIGNIN_NONE;
+  #assert kind_of("http://localhost:8a/signin#c=", SECRET, "", true) == SIGNIN_NONE;
+  #assert kind_of("http://staging.openagents.com/signin#c=", SECRET, "", true) == SIGNIN_NONE;
+}
+
+#test "urls and bodies" {
+  buf: [600] u8;
+  t := tx("openagents://staging.openagents.com/signin#c=", SECRET, "");
+  c := verse_signin_parse(t.b[0..<t.n], false);
+  n := verse_signin_url(t.b[0..<t.n], c, buf[..]);
+  #assert cast(string) buf[0..<n] == "https://staging.openagents.com/api/auth/approve";
+  n = verse_signin_body(t.b[0..<t.n], c, buf[..]);
+  w := tx("{\"challenge\":\"", SECRET, "\",\"kind\":\"signin\"}");
+  #assert cast(string) buf[0..<n] == cast(string) w.b[0..<w.n];
+  l := tx("https://openagents.com/signin#link=", SECRET, "");
+  n = verse_signin_body(l.b[0..<l.n], verse_signin_parse(l.b[0..<l.n], false), buf[..]);
+  w = tx("{\"challenge\":\"", SECRET, "\",\"kind\":\"link\"}");
+  #assert cast(string) buf[0..<n] == cast(string) w.b[0..<w.n];
+  i := tx("https://openagents.com/projects/ab-12#invite=", SECRET, "");
+  ci := verse_signin_parse(i.b[0..<i.n], false);
+  n = verse_signin_url(i.b[0..<i.n], ci, buf[..]);
+  #assert cast(string) buf[0..<n] == "https://openagents.com/api/private/ab-12/claim";
+  n = verse_signin_body(i.b[0..<i.n], ci, buf[..]);
+  w = tx("{\"token\":\"", SECRET, "\"}");
+  #assert cast(string) buf[0..<n] == cast(string) w.b[0..<w.n];
+  d := tx("http://127.0.0.1:8810/signin#c=", SECRET, "");
+  n = verse_signin_url(d.b[0..<d.n], verse_signin_parse(d.b[0..<d.n], true), buf[..]);
+  #assert cast(string) buf[0..<n] == "http://127.0.0.1:8810/api/auth/approve";
+  none: SigninCode;
+  #assert verse_signin_url(t.b[0..<t.n], none, buf[..]) == -1 && verse_signin_body(t.b[0..<t.n], none, buf[..]) == -1;
+  #assert verse_signin_question(t.b[0..<t.n], none, buf[..]) == -1;
+}
+
+#test "the question names the host" {
+  buf: [200] u8;
+  t := tx("https://staging.openagents.com/signin#c=", SECRET, "");
+  n := verse_signin_question(t.b[0..<t.n], verse_signin_parse(t.b[0..<t.n], false), buf[..]);
+  #assert cast(string) buf[0..<n] == "Sign in to staging.openagents.com?";
+  l := tx("https://openagents.com/signin#link=", SECRET, "");
+  n = verse_signin_question(l.b[0..<l.n], verse_signin_parse(l.b[0..<l.n], false), buf[..]);
+  #assert cast(string) buf[0..<n] == "Link this phone to your project on openagents.com?";
+  i := tx("https://openagents.com/projects/ab#invite=", SECRET, "");
+  n = verse_signin_question(i.b[0..<i.n], verse_signin_parse(i.b[0..<i.n], false), buf[..]);
+  #assert cast(string) buf[0..<n] == "Link this phone to the project you were invited to?";
+}
+
+#test "the serialization and the event" {
+  buf: [1200] u8;
+  u := tx("https://openagents.com/api/auth/approve", "", "");
+  pk := tx(PUB, "", ""); pl := tx(SECRET, "", ""); sg := tx(SECRET, SECRET, "");
+  n := verse_signin_serial(pk.b[0..<pk.n], 1700000000, u.b[0..<u.n], pl.b[0..<pl.n], buf[..]);
+  w := tx("[0,\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",1700000000,27235,[[\"u\",\"https://openagents.com/api/auth/approve\"],[\"method\",\"POST\"],[\"payload\",\"",
+          SECRET, "\"]],\"\"]");
+  #assert cast(string) buf[0..<n] == cast(string) w.b[0..<w.n];
+  n = verse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 0, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]);
+  e := tx("{\"id\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":0,\"kind\":27235,\"tags\":[[\"u\",\"https://openagents.com/api/auth/approve\"],[\"method\",\"POST\"],[\"payload\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]],\"content\":\"\",\"sig\":\"",
+          SECRET, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
+  #assert cast(string) buf[0..<n] == cast(string) e.b[0..<e.n];
+  up := tx("F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9", "", "");
+  #assert verse_signin_serial(up.b[0..<up.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], buf[..]) == -1;
+  #assert verse_signin_serial(pk.b[0..<pk.n], -1, u.b[0..<u.n], pl.b[0..<pl.n], buf[..]) == -1;
+  q := tx("https://x/\"a", "", "");
+  #assert verse_signin_serial(pk.b[0..<pk.n], 1, q.b[0..<q.n], pl.b[0..<pl.n], buf[..]) == -1;
+  sp := tx("https://x/ a", "", "");
+  #assert verse_signin_serial(pk.b[0..<pk.n], 1, sp.b[0..<sp.n], pl.b[0..<pl.n], buf[..]) == -1;
+  #assert verse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], pl.b[0..<pl.n], buf[..]) == -1;
+  #assert verse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], -1, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]) == -1;
+  small: [10] u8;
+  #assert verse_signin_serial(pk.b[0..<pk.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], small[..]) == -1;
+  #assert verse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], small[..]) == -1;
+}
+
+#test "what the phone says after" {
+  buf: [200] u8;
+  a := tx("{\"ok\":true,\"kind\":\"signin\"}", "", "");
+  n := verse_signin_result(SIGNIN_SIGNIN, 200, a.b[0..<a.n], buf[..]);
+  #assert cast(string) buf[0..<n] == "Signed in. Look at your computer.";
+  b := tx("{\"ok\":true,\"kind\":\"link\",\"name\":\"Ada\"}", "", "");
+  n = verse_signin_result(SIGNIN_LINK, 200, b.b[0..<b.n], buf[..]);
+  #assert cast(string) buf[0..<n] == "This phone is linked to your project as Ada.";
+  n = verse_signin_result(SIGNIN_LINK, 200, a.b[0..<a.n], buf[..]);
+  #assert cast(string) buf[0..<n] == "This phone is linked to your project.";
+  c := tx("{\"ok\":true,\"name\":\"A\\\"x\"}", "", "");
+  n = verse_signin_result(SIGNIN_INVITE, 200, c.b[0..<c.n], buf[..]);
+  #assert cast(string) buf[0..<n] == "This phone is linked to your project.";
+  n = verse_signin_result(SIGNIN_INVITE, 404, a.b[0..<0], buf[..]);
+  #assert cast(string) buf[0..<n] == "That code was used or has expired.";
+  n = verse_signin_result(SIGNIN_SIGNIN, 429, a.b[0..<0], buf[..]);
+  #assert cast(string) buf[0..<n] == "Too many tries; wait a minute.";
+  n = verse_signin_result(SIGNIN_SIGNIN, 500, a.b[0..<0], buf[..]);
+  #assert cast(string) buf[0..<n] == "Not signed in: the server answered 500.";
+  n = verse_signin_result(SIGNIN_SIGNIN, 0, a.b[0..<0], buf[..]);
+  #assert cast(string) buf[0..<n] == "Couldn't reach openagents.com. Check the connection and try again.";
+}
+
+// The classes over every byte, against the characters they name.
+in_set :: (c: int, set: string) -> bool { for x: set { if cast(int) x == c { return true; } } return false; }
+#forall "hex digits" c: 0..<256 { #assert si_hexdigit(cast(u8) c) == in_set(c, "0123456789abcdef"); }
+#forall "digits" c: 0..<256 { #assert si_digit(cast(u8) c) == in_set(c, "0123456789"); }
+#forall "slug bytes" c: 0..<256 { #assert si_slugchar(cast(u8) c) == in_set(c, "abcdefghijklmnopqrstuvwxyz0123456789-"); }
+#forall "space" c: 0..<256 { #assert si_space(cast(u8) c) == in_set(c, " \n\r\t"); }
+#forall "url bytes" c: 0..<256 { #assert si_urlchar(cast(u8) c) == (c >= 33 && c <= 126 && c != 34 && c != 92); }
+
+#test "the small readers" {
+  #assert si_starts("abc", 0, "abc") && si_starts("abc", 2, "c") && !si_starts("abc", 2, "cd") && si_starts("abc", 3, "");
+  #assert si_find("abc", "c") == 2 && si_find("abc", "abc") == 0 && si_find("abc", "x") == -1 && si_find("ab", "abc") == -1;
+  #assert si_hex64(SECRET, 0) && !si_hex64(SECRET, 1);
+  h := tx("x", SECRET, "");
+  #assert si_hex64(cast(string) h.b[0..<h.n], 1) && !si_hex64(cast(string) h.b[0..<h.n], 0);
+  buf: [3] u8;
+  #assert si_put(buf[..], 0, "abc") == 3 && si_put(buf[..], 1, "abc") == -1 && si_put(buf[..], -1, "") == -1;
+  #assert si_put(buf[..], 1, "bc") == 3 && buf[0] == 'a' && buf[2] == 'c';
+  #assert si_num(buf[..], 0, 999) == 3 && cast(string) buf[0..<3] == "999" && si_num(buf[..], 0, 1000) == -1;
+  #assert si_num(buf[..], 2, 0) == 3 && buf[2] == '0' && si_num(buf[..], -1, 5) == -1 && si_num(buf[..], 3, 7) == -1;
+  #assert si_num(buf[..], 1, 42) == 3 && cast(string) buf[1..<3] == "42";
+  #assert si_scheme("https://") == 8 && si_scheme("openagents://") == 13 && si_scheme("http://") == 7 && si_scheme("http:/") == 0;
+  #assert si_local("localhost:1") && si_local("127.0.0.1:65535") && !si_local("localhost:") && !si_local("localhost:123456");
+  #assert !si_local("localhost:1:") && !si_local("localhost:a") && !si_local("localhost1:1") && !si_local("127.0.0.2:1");
+  #assert si_plain("a") && !si_plain("") && !si_plain("a b") && !si_plain("a\"") && !si_plain("a\\");
+  long := tx(SECRET, SECRET, SECRET);   // 192
+  l4: Tx; l4.n = si_put(l4.b[..], 0, cast(string) long.b[0..<192]); l4.n = si_put(l4.b[..], l4.n, cast(string) long.b[0..<192]);
+  l4.n = si_put(l4.b[..], l4.n, cast(string) long.b[0..<192]); l4.n = si_put(l4.b[..], l4.n, cast(string) long.b[0..<24]);
+  #assert l4.n == 600 && si_plain(cast(string) l4.b[0..<600]) && !si_plain(cast(string) l4.b[0..<0]);
+  l4.n = si_put(l4.b[..], l4.n, "x");
+  #assert l4.n == 601 && !si_plain(cast(string) l4.b[0..<601]);
+}
+
+#test "edges of a code" {
+  #assert kind_of(" https://openagents.com/signin#c=", SECRET, "", false) == SIGNIN_SIGNIN;
+  #assert kind_of("\t\r\n https://openagents.com/signin#c=", SECRET, "\t\r", false) == SIGNIN_SIGNIN;
+  #assert kind_of("x https://openagents.com/signin#c=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com", "", "", false) == SIGNIN_NONE;
+  #assert kind_of("openagents.com/signin#c=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/projects/ab", "", "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/projects/a#invite=", SECRET, "", false) == SIGNIN_INVITE;
+  #assert kind_of("https://openagents.com/projects/a-#invite=", SECRET, "", false) == SIGNIN_INVITE;
+  #assert kind_of("https://openagents.com/projects/a012345678901234567890123456789012345678901234567890123456789012#invite=", SECRET, "", false) == SIGNIN_INVITE;
+  #assert kind_of("https://openagents.com/projects/a.b#invite=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("https://openagents.com/signin/x#c=", SECRET, "", false) == SIGNIN_NONE;
+  #assert kind_of("openagents://127.0.0.1:1/signin#c=", SECRET, "", false) == SIGNIN_NONE;
+  t := tx("  http://localhost:7/projects/ab#invite=", SECRET, "");
+  c := verse_signin_parse(t.b[0..<t.n], true);
+  #assert c.kind == SIGNIN_INVITE && c.local && c.host_at == 9 && c.host_n == 11 && c.slug_at == 30 && c.slug_n == 2 && c.secret_at == 40 && c.secret_n == 64;
+  o := tx(" openagents://openagents.com/signin#link=", SECRET, "");
+  d := verse_signin_parse(o.b[0..<o.n], true);
+  #assert d.kind == SIGNIN_LINK && !d.local && d.host_at == 14 && d.secret_at == 41;
+}
+
+#test "every field of the event is checked" {
+  buf: [1200] u8;
+  u := tx("https://openagents.com/api/auth/approve", "", "");
+  pk := tx(PUB, "", ""); pl := tx(SECRET, "", ""); sg := tx(SECRET, SECRET, "");
+  bad := tx("0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef", "", "");
+  #assert verse_signin_serial(pk.b[0..<pk.n], 0, u.b[0..<u.n], pl.b[0..<pl.n], buf[..]) > 0;
+  #assert verse_signin_serial(pk.b[0..<pk.n], 0, u.b[0..<u.n], bad.b[0..<bad.n], buf[..]) == -1;
+  #assert verse_signin_serial(pk.b[0..<pk.n], 0, u.b[0..<0], pl.b[0..<pl.n], buf[..]) == -1;
+  #assert verse_signin_event(bad.b[0..<bad.n], pk.b[0..<pk.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]) == -1;
+  #assert verse_signin_event(pl.b[0..<pl.n], bad.b[0..<bad.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]) == -1;
+  #assert verse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 1, u.b[0..<u.n], bad.b[0..<bad.n], sg.b[0..<sg.n], buf[..]) == -1;
+  #assert verse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 1, u.b[0..<0], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]) == -1;
+}
+
+#test "the member's name in an answer" {
+  #assert si_name("\"name\":\"Ada\"}") == "Ada";
+  #assert si_name("{\"name\":\"Ada Lovelace\"}") == "Ada Lovelace";
+  #assert si_name("{\"name\":\"Ada") == "" && si_name("{\"name\":\"A\tb\"}") == "" && si_name("{\"nam\":\"A\"}") == "";
+  #assert si_name("{\"name\":\"123456789012345678901234567890123456789012345678901234567890\"}") == "123456789012345678901234567890123456789012345678901234567890";
+  #assert si_name("{\"name\":\"1234567890123456789012345678901234567890123456789012345678901\"}") == "";
+  #assert si_name("{\"name\":\"\r\"}") == "" && si_name("{\"name\":\" \"}") == " ";
+}
+
+#test "the npub of a key" {
+  // NIP-19's example key, 7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e
+  key := [32] u8.[126, 126, 156, 66, 169, 27, 254, 241, 159, 169, 41, 229, 253, 161, 183, 46, 14, 188, 26, 76, 17, 65, 103, 62, 39, 148, 35, 77, 134, 173, 223, 78];
+  out: [100] u8;
+  n := verse_signin_npub(key[..], out[..]);
+  #assert cast(string) out[0..<n] == "npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg";
+  #assert verse_signin_npub(key[0..<31], out[..]) == -1;
+  small: [20] u8;
+  #assert verse_signin_npub(key[..], small[..]) == -1;
+}

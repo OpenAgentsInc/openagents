@@ -6,7 +6,7 @@ import CoreImage.CIFilterBuiltins
 // the balance and activity, sending, receiving and a payment's details.
 // SparkHost does the work; verse/wallet.coax decides each send.
 
-private enum Look {
+enum Look {
     static let ink = UIColor(white: 1, alpha: 0.92)
     static let dim = UIColor(white: 1, alpha: 0.55)
     static let line = UIColor(white: 1, alpha: 0.28)

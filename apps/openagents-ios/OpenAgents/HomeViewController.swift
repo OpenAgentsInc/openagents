@@ -27,6 +27,8 @@ final class HomeViewController: UIViewController {
     private let balanceLabel = UILabel()
     private let walletButton = UIButton(type: .custom)
     private var walletTask: Task<Void, Never>?
+    /// Sign in to openagents.com with this phone (SignIn/): always shown, top right.
+    private let signInButton = UIButton(type: .custom)
     /// Voice: the toggle, level and caption (Voice/VoiceBar.swift).
     private let voice = VoiceBar()
     private var gridHandle: Int64 = 0
@@ -78,6 +80,7 @@ final class HomeViewController: UIViewController {
             startElement = element
             setUpBalance()
             setUpVoice()
+            setUpSignIn()
             setUpGrid()
             // The overview and the dolly down play once, on the first launch;
             // after that the app opens on the camera behind you.
@@ -90,7 +93,7 @@ final class HomeViewController: UIViewController {
             housePortal.isHidden = true
             housePortal.addAction(UIAction { [weak self] _ in self?.enterHouse() }, for: .touchUpInside)
             view.addSubview(housePortal)
-            view.accessibilityElements = [element]
+            view.accessibilityElements = [element, signInButton]
             if seen, inGrid { arrive() }
             NotificationCenter.default.addObserver(self, selector: #selector(suspend), name: UIApplication.willResignActiveNotification, object: nil)
             NotificationCenter.default.addObserver(self, selector: #selector(background), name: UIApplication.didEnterBackgroundNotification, object: nil)
@@ -182,6 +185,37 @@ final class HomeViewController: UIViewController {
             voice.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             voice.heightAnchor.constraint(equalToConstant: 170),
         ])
+    }
+    private func setUpSignIn() {
+        signInButton.translatesAutoresizingMaskIntoConstraints = false
+        signInButton.setTitle("SIGN IN", for: .normal)
+        signInButton.titleLabel?.font = UIFont(name: "Michroma", size: 10) ?? .systemFont(ofSize: 10, weight: .semibold)
+        signInButton.setTitleColor(UIColor(white: 1, alpha: 0.7), for: .normal)
+        signInButton.contentEdgeInsets = UIEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
+        signInButton.accessibilityIdentifier = "signin.open"
+        signInButton.accessibilityLabel = "Sign in to openagents.com"
+        signInButton.addAction(UIAction { [weak self] _ in self?.openSignIn() }, for: .touchUpInside)
+        view.addSubview(signInButton)
+        NSLayoutConstraint.activate([
+            signInButton.topAnchor.constraint(equalTo: balanceLabel.bottomAnchor, constant: 10),
+            signInButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -2),
+        ])
+    }
+    private func openSignIn() {
+        let sheet = UINavigationController(rootViewController: SignInViewController())
+        sheet.overrideUserInterfaceStyle = .dark
+        sheet.view.tintColor = .white
+        present(sheet, animated: true)
+    }
+    /// A sign-in code or project link opened from outside (a URL, a universal link).
+    func openSignInCode(_ text: String) {
+        guard isViewLoaded, view.window != nil else { pendingCode = text; return }
+        SignInRouter.open(text, from: self)
+    }
+    private var pendingCode: String?
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if let code = pendingCode { pendingCode = nil; SignInRouter.open(code, from: self) }
     }
     private func refreshBalance() {
         guard walletTask == nil, balanceLabel.superview != nil else { return }
@@ -312,7 +346,7 @@ final class HomeViewController: UIViewController {
         stage = .arriving(verse_camera_dolly_start(from, now, UIAccessibility.isReduceMotionEnabled))
         trackedTouch = nil
         element.accessibilityValue = "arriving"
-        view.accessibilityElements = [element] + [youElement].compactMap { cast == nil ? nil : $0 }
+        view.accessibilityElements = [element] + [youElement].compactMap { cast == nil ? nil : $0 } + [signInButton]
         UIAccessibility.post(notification: .screenChanged, argument: element)
         NSLog("OpenAgents: arriving in the Grid")
     }
@@ -323,7 +357,7 @@ final class HomeViewController: UIViewController {
         sticks = verse_sticks_reset(); gridTouches = [:]
         view.isMultipleTouchEnabled = true
         balanceLabel.isHidden = false; walletButton.isHidden = false; voice.isHidden = false
-        view.accessibilityElements = ([gridElement, youElement, danceElement, walletButton, housePortal].compactMap { $0 }.filter { $0 !== youElement || cast != nil }) + voice.accessibleParts
+        view.accessibilityElements = ([gridElement, youElement, danceElement, walletButton, housePortal].compactMap { $0 }.filter { $0 !== youElement || cast != nil }) + voice.accessibleParts + [signInButton]
         UIAccessibility.post(notification: .screenChanged, argument: gridElement)
         NSLog("OpenAgents: entered the Grid")
     }

@@ -1,0 +1,99 @@
+import UIKit
+
+/// Where sign-in codes arrive (a scan, a paste, an opened link) and the
+/// screens that ask before the phone signs anything.
+enum SignInRouter {
+    /// Shows the approval sheet for text if it's one of our codes; false if it isn't.
+    @discardableResult
+    static func open(_ text: String, from presenter: UIViewController) -> Bool {
+        guard let code = PhoneSignIn(text) else { return false }
+        var top = presenter
+        while let shown = top.presentedViewController { top = shown }
+        if let sheet = top as? ApproveSignInViewController { sheet.dismiss(animated: false) }
+        let sheet = ApproveSignInViewController(code: code)
+        let nav = UINavigationController(rootViewController: sheet)
+        nav.overrideUserInterfaceStyle = .dark
+        nav.view.tintColor = .white
+        top.present(nav, animated: true)
+        return true
+    }
+}
+
+/// Your key and the ways in: scan a code, or paste a link.
+final class SignInViewController: WalletForm {
+    private let npub = Look.label("", .monospacedSystemFont(ofSize: 13, weight: .regular))
+    private let note = Look.label("", .preferredFont(forTextStyle: .footnote), Look.dim)
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = "Sign in"
+        navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+        let about = Look.label("Scan the code on openagents.com/signin to sign in there, or the LINK A PHONE code on your project page.", .preferredFont(forTextStyle: .body), Look.dim)
+        let keyTitle = Look.label("Your key", .preferredFont(forTextStyle: .headline))
+        npub.accessibilityIdentifier = "signin.npub"; npub.lineBreakMode = .byCharWrapping
+        note.accessibilityIdentifier = "signin.note"
+        let copy = Look.button("Copy", "signin.copy")
+        copy.addAction(UIAction { [weak self] _ in
+            guard let self, let text = self.npub.text, text.hasPrefix("npub1") else { return }
+            UIPasteboard.general.string = text
+            self.note.text = "Copied."
+        }, for: .touchUpInside)
+        let scan = Look.button("Scan a code", "signin.scan", primary: true)
+        scan.addAction(UIAction { [weak self] _ in
+            let scanner = ScannerViewController { code in self?.take(code) }
+            self?.present(scanner, animated: true)
+        }, for: .touchUpInside)
+        let paste = Look.button("Paste a link", "signin.paste")
+        paste.addAction(UIAction { [weak self] _ in self?.take(UIPasteboard.general.string ?? "") }, for: .touchUpInside)
+        let keyNote = Look.label("This key is made on this phone and stays in its Keychain. It signs only after you approve.", .preferredFont(forTextStyle: .footnote), Look.dim)
+        let stack = Look.stack([about, scan, paste, note, keyTitle, npub, copy, keyNote], spacing: 14)
+        stack.setCustomSpacing(28, after: note)
+        column.addArrangedSubview(stack)
+        do { npub.text = try PhoneSignIn.npub() } catch { npub.text = error.localizedDescription }
+    }
+
+    private func take(_ text: String) {
+        if !SignInRouter.open(text, from: self) {
+            note.text = "That isn't an openagents.com sign-in code or project link."
+        } else { note.text = "" }
+    }
+}
+
+/// "Sign in to openagents.com?" with Approve and Cancel; then what happened.
+final class ApproveSignInViewController: WalletForm {
+    private let code: PhoneSignIn
+    private let question = Look.label("", Look.title(17))
+    private let result = Look.label("", .preferredFont(forTextStyle: .body))
+    private let approve = Look.button("Approve", "signin.approve", primary: true)
+    private let cancel = Look.button("Cancel", "signin.cancel")
+    init(code: PhoneSignIn) { self.code = code; super.init(nibName: nil, bundle: nil) }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = code.kind == .signin ? "Sign in" : "Link this phone"
+        question.text = code.question; question.accessibilityIdentifier = "signin.question"
+        result.accessibilityIdentifier = "signin.result"
+        let detail = Look.label(code.kind == .signin
+            ? "Approve only if you just opened the sign-in page yourself. The phone signs with its key and the page signs in as you."
+            : "Approve only if the code came from your own project page or an invite sent to you. This phone's key becomes one of your keys for that project.",
+            .preferredFont(forTextStyle: .footnote), Look.dim)
+        approve.addAction(UIAction { [weak self] _ in self?.go() }, for: .touchUpInside)
+        cancel.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
+        let buttons = UIStackView(arrangedSubviews: [cancel, approve]); buttons.spacing = 12; buttons.distribution = .fillEqually
+        let stack = Look.stack([question, detail, buttons, result], spacing: 18)
+        column.addArrangedSubview(stack)
+    }
+
+    private func go() {
+        busy(approve) { [weak self] in
+            guard let self else { return }
+            self.cancel.isEnabled = false
+            let said = await self.code.approve()
+            self.result.text = said
+            UIAccessibility.post(notification: .announcement, argument: said)
+            self.approve.isHidden = true
+            self.cancel.setTitle("Done", for: .normal); self.cancel.accessibilityIdentifier = "signin.done"; self.cancel.isEnabled = true
+        }
+    }
+}

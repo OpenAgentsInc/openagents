@@ -31,6 +31,10 @@ for pair in voice:VoiceEngine voice-wire:VoiceWire voice-floor:VoiceFloor voice-
   "$compiler" c "verse/${pair%%:*}.coax" --library --header "$out/${pair##*:}.h" > "$out/${pair##*:}.c.tmp"
   mv "$out/${pair##*:}.c.tmp" "$out/${pair##*:}.c"
 done
+# Phone sign-in (verse/phone-signin.coax, #authority): which codes the phone
+# signs for and the NIP-98 request it writes.
+"$compiler" c verse/phone-signin.coax --library --header "$out/PhoneSignin.h" > "$out/PhoneSignin.c.tmp"
+mv "$out/PhoneSignin.c.tmp" "$out/PhoneSignin.c"
 "$compiler" metal verse/light.coax > "$out/HomeShaders.txt.tmp"
 "$compiler" metal verse/haunt-light.coax >> "$out/HomeShaders.txt.tmp"
 cat apps/openagents-ios/OpenAgents/Platform/Stages.metal >> "$out/HomeShaders.txt.tmp"
