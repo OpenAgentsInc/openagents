@@ -94,8 +94,8 @@ verse_path_nearest :: (nodes: [] f32, links: [] int, x: f32, z: f32) -> Near #ex
     size := dx * dx + dz * dz;
     t := ifx size > 0.000001 then clamp01(((x - ax) * dx + (z - az) * dz) / size) else 0.0f32;
     px := ax + dx * t; pz := az + dz * t;
-    d2 := (x - px) * (x - px) + (z - pz) * (z - pz);
-    if d2 < most { most = d2; best.x = px; best.z = pz; best.link = i; }
+    gap2 := (x - px) * (x - px) + (z - pz) * (z - pz);
+    if gap2 < most { most = gap2; best.x = px; best.z = pz; best.link = i; }
   }
   if best.link >= 0 { best.d = sqrt(most); }
   return best;
@@ -120,8 +120,8 @@ shaped :: (g: Ground, nodes: [] f32, links: [] int, close: [] int, half: f32, fl
     size := dx * dx + dz * dz;
     t := ifx size > 0.000001 then clamp01(((x - ax) * dx + (z - az) * dz) / size) else 0.0f32;
     px := ax + dx * t; pz := az + dz * t;
-    d2 := (x - px) * (x - px) + (z - pz) * (z - pz);
-    if d2 < most { most = d2; bx = px; bz = pz; found = true; }
+    gap2 := (x - px) * (x - px) + (z - pz) * (z - pz);
+    if gap2 < most { most = gap2; bx = px; bz = pz; found = true; }
   }
   if found {
     k := smooth(half + 0.2, half + 0.2 + f32(PATH_BLEND), sqrt(most));
