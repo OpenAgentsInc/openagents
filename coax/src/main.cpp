@@ -334,7 +334,7 @@ static int usage() {
           "       coax layout  file.coax\n"
           "       coax deps    file.coax                           JSON source/descriptor inputs\n"
           "       coax test    file.coax [--steps N]\n"
-          "       coax mutate  file.coax\n"
+          "       coax mutate  file.coax [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
           "       coax explain CODE | --all [--markdown]\n"
           "       coax version\n"
           "       coax status [--json]\n"
@@ -403,6 +403,7 @@ static int main_impl(int argc, char **argv) {
   const char *input = nullptr;
   std::string out, header, proto_prefix;
   EmitOptions opts;
+  bool mutation_reference = false, mutation_stats = false, mutation_trace = false;
   bool keep_c = false;
   bool run_steps_seen = false;
   uint64_t steps = TEST_STEPS;
@@ -438,6 +439,9 @@ static int main_impl(int argc, char **argv) {
       }
     }
     else if (a == "--prefix" && i + 1 < argc && cmd == "proto") proto_prefix = argv[++i];
+    else if (a == "--mutation-reference" && cmd == "mutate") mutation_reference = true;
+    else if (a == "--mutation-stats" && cmd == "mutate") mutation_stats = true;
+    else if (a == "--mutation-trace" && cmd == "mutate") mutation_trace = true;
     else if (a == "--keep-c") keep_c = true;
     else if (a == "--json") g_json_errors = true;
     else if (a == "--lib" || a == "--library") opts.library = true;
@@ -473,7 +477,7 @@ static int main_impl(int argc, char **argv) {
     Arena arena;
     File file;
     if (!front_end(input, &src, &arena, &file, opts, opts.library ? 1 : 2, false)) return 1;
-    return cmd == "test" ? test_command(&file, steps) : mutate_command(&arena, &file);
+    return cmd == "test" ? test_command(&file, steps) : mutate_command(&arena, &file, mutation_reference, mutation_stats, mutation_trace);
   }
   std::string text;
   if (cmd == "check") return compile(input, opts, Output::none, &text, opts.library ? 1 : 2) ? 0 : 1;

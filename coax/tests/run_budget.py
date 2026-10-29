@@ -79,6 +79,18 @@ class RunBudgetTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('original input budget is inclusive', r.stdout)
 
+    def test_failed_constant_clone_restores_cycle_state(self):
+        source = ("make :: () -> [500000] u8 { a:[500000] u8; return a; } "
+                  "A :: #run make(); "
+                  '#test "fails allocation" { big:[400000] u8; copy:=A; #assert big[0]==copy[0]; } '
+                  '#test "later constant read" { #assert A[0]==0; } main :: () {}')
+        r = self.invoke(source, 'test', '--run-steps', '250000000')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('error[E0400]', r.stderr)
+        self.assertNotIn('error[E0402]', r.stderr)
+        self.assertIn('ok   #test later constant read', r.stdout)
+        self.assertIn('2 checks, 1 passed, 1 failed', r.stdout)
+
     def test_nested_allocation_refuses_in_all_profiles(self):
         source = 'f :: () -> int { a:[1500][1500] u8; return cast(int) a[0][0]; } A :: #run f(); main :: () {}'
         for profile in ((), ('--release',)):
@@ -91,7 +103,7 @@ class RunBudgetTests(unittest.TestCase):
         # stage-zero seeds. ASan/UBSan detect invalid lifetime accounting.
         directory = Path(self.tmp.name)
         objects = []
-        for name in ('budget', 'lexer', 'parser', 'checker', 'sources'):
+        for name in ('budget', 'mutation-schedule', 'lexer', 'parser', 'checker', 'sources'):
             obj = directory / (name + '.o')
             subprocess.run(['cc', '-std=c11', '-O1', '-g', '-fsanitize=address,undefined',
                             '-c', str(ROOT / 'bootstrap' / (name + '.c')), '-o', str(obj)],

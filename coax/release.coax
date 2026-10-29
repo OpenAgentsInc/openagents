@@ -1,9 +1,9 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.18.2";
+IMPLEMENTATION_VERSION :: "0.19.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [95]ReleaseFeature.[
+CATALOGUE :: [96]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -95,6 +95,7 @@ CATALOGUE :: [95]ReleaseFeature.[
   ReleaseFeature.{id="debug.source",section="Capabilities",name="Native source debugging",meaning="Original-file line maps and optional LLDB names; optimized values and generated-code limits remain",status="partial",introduced="0.13.0"},
   ReleaseFeature.{id="borrow.local",section="Capabilities",name="E0383 local-borrow diagnostics",meaning="Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked",status="works",introduced="0.13.0"},
   ReleaseFeature.{id="release.status",section="Capabilities",name="Release/status generation",meaning="Canonical Coax catalogue, CLI status and build/publication drift gate",status="works",introduced="0.14.0"},
+  ReleaseFeature.{id="tools.mutation-scheduling",section="Capabilities",name="Conservative mutation scheduling",meaning="Runs all mutants with isolated check scheduling and full-run fallback",status="works",introduced="0.19.0"},
   ReleaseFeature.{id="tools.differential",section="Capabilities",name="Differential conformance tooling",meaning="Optional bounded evaluator/native tests with independent oracle and reduced witnesses",status="partial",introduced="0.14.0"},
   ReleaseFeature.{id="ownership.full",section="Capabilities",name="General ownership",meaning="Transfer, destruction and complete region/lifetime rules remain planned",status="designed",introduced=""},
   ReleaseFeature.{id="target.apple",section="Capabilities",name="Apple C11 host",meaning="Tested Apple LP64 host; target support requires runtime/ABI/debugging evidence",status="partial",introduced=""},

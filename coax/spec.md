@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.18.2**. Status inventory schema: **1**.
+Current compiler: **coax0 0.19.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -620,6 +620,23 @@ refund_ok :: (paid: int, refund: int) -> bool {
   mutation sites. A reviewer may mark a line `// mutant: equivalent`
   when no input can observe the change; surviving mutants there are counted
   apart. Exemptions require human justification; they are not solver results.
+
+Mutation starts by running every check and recording which procedures it actually
+entered. For a graph whose checks can be isolated, a mutant runs the checks
+that entered its owning procedure; all statically reachable mutation sites
+are still generated, including those no baseline check entered. Such a mutant
+survives unless another rule rejects the run. The per-check mutant budget is
+the greater of 10,000 steps and ten times that check's baseline steps.
+
+The compiler falls back to running every check per mutant if aggregate types
+can contain views, a string cast or unknown graph element may allocate
+long-lived storage, or baseline tracked storage changes. This relies on current
+constants, defaults and `#run` expressions being folded before mutation; new
+lazy evaluation or shared mutable state requires revisiting isolation. Host
+allocation failures and external resource pressure are not modeled as a
+deterministic equivalence guarantee. `--mutation-reference` requests the full
+runner; `--mutation-stats` and `--mutation-trace` expose scheduling counts
+and each mutant's first killing check for comparison.
 
 These gates do not prove a program correct. Execution coverage is not branch
 coverage or a connection between an output and its assertion. Quantification

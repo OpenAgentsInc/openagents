@@ -290,11 +290,20 @@ struct Evaluator {
     }
     CtFrame empty;
     bool done = c->evaluated == 2;
+    // Allocation limits may throw through expr/clone. Restore the transient
+    // cycle marker before another check or mutant can observe it.
+    struct Guard {
+      ConstDecl *constant;
+      uint32_t &depth;
+      uint8_t previous;
+      bool finished = false;
+      ~Guard() { if (!finished) constant->evaluated = previous; --depth; }
+    } guard{c, dependency_depth, c->evaluated};
     c->evaluated = 1;
     Value result = expr(c->expr, empty, false);
     if (!failed && !done) freeze(c->expr, result, c->loc);
     c->evaluated = 2;
-    dependency_depth--;
+    guard.finished = true;
     return result;
   }
 

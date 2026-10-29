@@ -9,23 +9,33 @@
 #include "coax.h"
 #ifdef COAX_BOOTSTRAP_IMPORTER
 #include "sources.h"
+#include "mutation-schedule.h"
 #endif
 
 #include <algorithm>
 #include <functional>
 
 namespace coax {
+// The Coax policy's closed type/expr observations use this ABI mapping.
+static_assert((uint8_t)TypeKind::invalid == 0 && (uint8_t)TypeKind::string_ == 5 &&
+              (uint8_t)TypeKind::struct_ == 8 && (uint8_t)TypeKind::array == 10 &&
+              (uint8_t)TypeKind::view == 11 && (uint8_t)ExprKind::cast == 14 &&
+              (uint8_t)ExprKind::ct_value == 17, "mutation scheduling kind ABI");
 
 static constexpr uint64_t TEST_STEPS = 20000000;
 
 // Runs every check in order. Failures print as diagnostics with the check's
 // name and, for a #forall, the counterexample. verbose: one line per check.
-static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::vector<uint64_t> *steps = nullptr, int32_t *failures = nullptr) {
+static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::vector<uint64_t> *steps = nullptr, int32_t *failures = nullptr,
+                           std::vector<std::vector<const ProcDecl *>> *paths = nullptr, bool *unstable = nullptr) {
   bool ok = true;
   std::vector<const ProcDecl *> executed;
   if (failures) *failures = 0;
   for (CheckDecl *c : file->checks) {
+    const auto slots = file->ct_memory->slots, containers = file->ct_memory->containers;
     CheckOutcome r = run_check(file, c, max_steps);
+    if (paths) paths->push_back(r.executed);
+    if (unstable && MS_storage_changed(slots, containers, file->ct_memory->slots, file->ct_memory->containers)) *unstable = true;
     if (steps) steps->push_back(r.steps);
     executed.insert(executed.end(), r.executed.begin(), r.executed.end());
     const char *kind = c->forall ? "#forall" : "#test";
@@ -85,6 +95,7 @@ struct Mutant {
   Loc loc;
   std::string what;
   std::function<void()> apply, undo;
+  const ProcDecl *owner = nullptr;
 };
 
 struct Mutator {
@@ -256,21 +267,86 @@ static bool marked_equivalent(const Source *src, Loc loc) {
   return false;
 }
 
-static int mutate_command(Arena *arena, File *file) {
+// Conservative facts for scheduling. Views held inside aggregate storage can
+// form cycles that survive a check; byte-view-to-string casts allocate storage
+// whose lifetime currently reaches beyond the check. Either requires the full
+// reference runner, regardless of whether this particular baseline leaked.
+static bool mutation_borrowed_type(Type t, std::vector<Type> &seen) {
+  if (!t) return true;
+  uint32_t action = MS_type_action((uint32_t)t->kind);
+  if (action == 1 || action == 4) return true;
+  if (action == 0) return false;
+  if (std::find(seen.begin(), seen.end(), t) != seen.end()) return false;
+  seen.push_back(t);
+  if (action == 2) return mutation_borrowed_type(t->elem, seen);
+  if (action == 3) {
+    if (!t->struct_decl) return true;
+    for (const Field &field : t->struct_decl->fields)
+      if (mutation_borrowed_type(field.type, seen)) return true;
+  }
+  return false;
+}
+static bool mutation_borrowed_aggregate(const File *file) {
+  std::vector<Type> seen;
+  for (const StructDecl *decl : file->structs)
+    if (mutation_borrowed_type(decl->type, seen)) return true;
+  for (Type t : all_composite_types()) {
+    if (!t) return true;
+    uint32_t action = MS_type_action((uint32_t)t->kind);
+    if (action == 4 || (action == 2 && mutation_borrowed_type(t, seen))) return true;
+  }
+  return false;
+}
+static bool mutation_allocates_string(const Expr *e) {
+  if (!e) return false;
+  if (!e->type || MS_string_cast((uint32_t)e->kind, (uint32_t)e->type->kind)) return true;
+  if (mutation_allocates_string(e->lhs) || mutation_allocates_string(e->rhs) || mutation_allocates_string(e->third)) return true;
+  for (const Expr *arg : e->args) if (mutation_allocates_string(arg)) return true;
+  for (const FieldInit &f : e->fields) if (mutation_allocates_string(f.value)) return true;
+  return false;
+}
+static bool mutation_allocates_string(const Stmt *s) {
+  if (!s) return false;
+  if (mutation_allocates_string(s->expr) || mutation_allocates_string(s->expr2) || mutation_allocates_string(s->target)) return true;
+  for (const Stmt *child : s->body) if (mutation_allocates_string(child)) return true;
+  return mutation_allocates_string(s->then_) || mutation_allocates_string(s->else_);
+}
+static bool mutation_allocates_string(const File *file) {
+  for (const ProcDecl *p : file->procs) if (mutation_allocates_string(p->body)) return true;
+  for (const CheckDecl *c : file->checks) {
+    if (mutation_allocates_string(c->proc->body)) return true;
+    for (const Binding &b : c->domains)
+      if (mutation_allocates_string(b.lo) || mutation_allocates_string(b.hi)) return true;
+  }
+  return false;
+}
+
+static int mutate_command(Arena *arena, File *file, bool reference, bool stats, bool trace) {
   if (file->checks.count == 0) {
     fprintf(stderr, "coax: %s has no #test or #forall to mutate against\n", file->src->path.c_str());
     return 1;
   }
   std::vector<uint64_t> base;
-  if (!run_all_checks(file, TEST_STEPS, false, &base)) {
+  std::vector<std::vector<const ProcDecl *>> paths;
+  bool unstable = false;
+  if (!run_all_checks(file, TEST_STEPS, false, &base, nullptr, &paths, &unstable)) {
     fprintf(stderr, "coax: the checks fail before any mutation; make them pass first\n");
     return 1;
   }
   Mutator m{arena};
   for (const CheckDecl *c : file->checks) m.calls(c->proc->body);
   // Mutate in source order, procedure by procedure.
-  for (ProcDecl *p : file->procs)
-    if (std::find(m.reached.begin(), m.reached.end(), p) != m.reached.end()) m.stmt(p->body);
+  for (ProcDecl *p : file->procs) {
+    if (std::find(m.reached.begin(), m.reached.end(), p) == m.reached.end()) continue;
+    size_t first = m.mutants.size();
+    m.stmt(p->body);
+    for (size_t i = first; i < m.mutants.size(); ++i) m.mutants[i].owner = p;
+  }
+  bool borrowed = mutation_borrowed_aggregate(file);
+  bool strings = mutation_allocates_string(file);
+  bool selective = MS_selective(reference, borrowed, strings, unstable);
+  uint64_t invocations = 0, skipped = 0;
+  size_t mutant_index = 0;
   std::vector<const Mutant *> survivors;
   size_t equivalent = 0;
   for (const Mutant &mu : m.mutants) {
@@ -278,10 +354,18 @@ static int mutate_command(Arena *arena, File *file) {
     bool killed = false;
     // A mutant that loops forever is killed by a budget well above what the
     // unmutated check needed.
+    int32_t killer = -1;
     for (int32_t i = 0; i < file->checks.count && !killed; i++) {
+      const auto &path = paths[(size_t)i];
+      bool entered = !mu.owner || std::find(path.begin(), path.end(), mu.owner) != path.end();
+      if (!MS_run(selective, entered)) { ++skipped; continue; }
       uint64_t budget = std::max<uint64_t>(10000, base[(size_t)i] * 10);
+      ++invocations;
       killed = !run_check(file, file->checks[i], budget).passed;
+      if (killed) killer = i;
     }
+    if (trace) fprintf(stderr, "mutation-outcome %zu %d\n", mutant_index, killer);
+    ++mutant_index;
     mu.undo();
     if (killed) continue;
     if (marked_equivalent(file->src, mu.loc)) equivalent++;
@@ -306,6 +390,9 @@ static int mutate_command(Arena *arena, File *file) {
   if (equivalent) printf(", %zu marked equivalent", equivalent);
   printf("\n");
   if (m.mutants.empty()) printf("no reachable mutation sites\n");
+  if (stats) fprintf(stderr, "mutation-scheduling %s checks=%llu skipped=%llu borrowed=%d strings=%d unstable=%d\n",
+                     selective ? "selective" : "full", (unsigned long long)invocations,
+                     (unsigned long long)skipped, borrowed, strings, unstable);
   return survivors.empty() && unreached.empty() && !m.mutants.empty() ? 0 : 1;
 }
 

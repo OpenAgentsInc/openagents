@@ -28,11 +28,12 @@ trap 'rm -rf "$work"' EXIT
   printf ')COAX_FP";\n'
 } > "$work/proto_runtime.inc"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/budget.c -o "$work/seed-budget.o"
+"${CC:-cc}" "${c_flags[@]}" -c bootstrap/mutation-schedule.c -o "$work/seed-mutation-schedule.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/lexer.c -o "$work/seed-lexer.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/parser.c -o "$work/seed-parser.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/checker.c -o "$work/seed-checker.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/sources.c -o "$work/seed-sources.o"
-"${CXX:-c++}" "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I bootstrap -I "$work" -o "$work/stage0" src/main.cpp "$work/seed-budget.o" "$work/seed-lexer.o" "$work/seed-parser.o" "$work/seed-checker.o" "$work/seed-sources.o"
+"${CXX:-c++}" "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I bootstrap -I "$work" -o "$work/stage0" src/main.cpp "$work/seed-mutation-schedule.o" "$work/seed-budget.o" "$work/seed-lexer.o" "$work/seed-parser.o" "$work/seed-checker.o" "$work/seed-sources.o"
 gate() {
   if "$@" > "$work/gate.log" 2>&1; then return 0; fi
   cat "$work/gate.log" >&2
@@ -48,6 +49,11 @@ gate "$work/stage0" mutate lib/compiler/budget.coax
 "$work/stage0" c lib/compiler/budget.coax --library --header "$work/budget.h" > "$work/budget.c"
 cmp bootstrap/budget.c "$work/budget.c"
 cmp bootstrap/budget.h "$work/budget.h"
+gate "$work/stage0" test lib/compiler/mutation-schedule.coax
+gate "$work/stage0" mutate lib/compiler/mutation-schedule.coax
+"$work/stage0" c lib/compiler/mutation-schedule.coax --library --header "$work/mutation-schedule.h" > "$work/mutation-schedule.c"
+cmp bootstrap/mutation-schedule.c "$work/mutation-schedule.c"
+cmp bootstrap/mutation-schedule.h "$work/mutation-schedule.h"
 gate "$work/stage0" test lib/compiler/lexer.coax
 gate "$work/stage0" mutate lib/compiler/lexer.coax
 "$work/stage0" c lib/compiler/lexer.coax --library --header "$work/lexer.h" > "$work/lexer.c"
@@ -91,6 +97,10 @@ gate "$work/coax" test lib/compiler/budget.coax
 "$work/coax" c lib/compiler/budget.coax --library --header "$work/final-budget.h" > "$work/final-budget.c"
 cmp bootstrap/budget.c "$work/final-budget.c"
 cmp bootstrap/budget.h "$work/final-budget.h"
+gate "$work/coax" test lib/compiler/mutation-schedule.coax
+"$work/coax" c lib/compiler/mutation-schedule.coax --library --header "$work/final-mutation-schedule.h" > "$work/final-mutation-schedule.c"
+cmp bootstrap/mutation-schedule.c "$work/final-mutation-schedule.c"
+cmp bootstrap/mutation-schedule.h "$work/final-mutation-schedule.h"
 gate "$work/coax" test lib/compiler/lexer.coax
 gate "$work/coax" test lib/compiler/parser.coax
 gate "$work/coax" test lib/compiler/checker.coax

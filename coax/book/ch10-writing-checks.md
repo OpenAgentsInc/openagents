@@ -692,9 +692,24 @@ The changes `coax mutate` makes are the ones that cause real bugs:
 - the condition of an `if` or `while`, negated
 - an assignment or a call, removed
 
-Only code that some check reaches is mutated. A mutant that loops forever
-doesn't hang the run: each mutant gets ten times the steps the unmutated
-check used, and running out counts as a kill.
+The compiler mutates every site statically reachable from a check, even if a
+baseline run never enters it. Such a mutant can survive. A mutant that loops
+forever doesn't hang the run: each check gets ten times its unmutated steps,
+with a minimum of 10,000, and running out counts as a kill.
+
+To avoid repeating independent work, Coax records which procedures each
+baseline check entered and can skip a check for a mutant in an unentered
+procedure. It keeps the complete mutant set. If the graph can retain views
+or allocate strings across checks, contains unknown elements, or changes
+tracked storage during the baseline, it runs the full check suite for every
+mutant instead. This depends on constants, defaults and `#run` expressions
+being folded before mutation; future shared or lazy state needs a new review.
+External memory pressure and host allocation failure are outside this
+deterministic isolation model.
+
+Use `coax mutate split.coax --mutation-reference` to force the full runner.
+`--mutation-stats` reports check counts and fallback facts;
+`--mutation-trace` reports the first killing check for each mutant.
 
 To kill a survivor, write the check that would have caught it. Restore
 the two assertions for persons 1 and 2 (that's Listing 10-1 again):

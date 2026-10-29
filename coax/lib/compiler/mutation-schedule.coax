@@ -1,0 +1,37 @@
+// Conservative mutation scheduling policy. Native code observes the typed
+// graph and actual baseline calls; this policy makes the scheduling decision.
+#authority;
+
+#forall "unsafe facts or a requested reference always run the full suite" reference:bool, borrowed:bool, strings:bool, unstable:bool {
+ #assert MS_selective(reference,borrowed,strings,unstable)==(!reference && !borrowed && !strings && !unstable);
+}
+#forall "only a proven independent check may be skipped" selective:bool, entered:bool {
+ #assert MS_run(selective,entered)==(!selective || entered);
+}
+
+MS_selective :: (reference:bool,borrowed_aggregate:bool,string_allocation:bool,unstable_storage:bool)->bool #export_c {
+ return !reference && !borrowed_aggregate && !string_allocation && !unstable_storage;
+}
+MS_run :: (selective:bool,entered:bool)->bool #export_c {return !selective || entered;}
+
+// TypeKind values are a versioned bridge to the checked native type graph.
+// 0 scalar, 1 contains a view, 2 descend array, 3 descend struct, 4 refuse.
+#forall "type observation has a closed action for every kind" kind:0..<16 {
+ expected:=ifx kind==0 || kind>=12 then 4 else ifx kind==11 then 1 else ifx kind==10 then 2 else ifx kind==8 then 3 else 0;
+ #assert MS_type_action(cast(u32)kind)==cast(u32)expected;
+}
+#forall "string allocation observation includes unknown expressions" expr:0..<20, ty:0..<13 {
+ #assert MS_string_cast(cast(u32)expr,cast(u32)ty)==(expr>=18 || ty==0 || ty>=12 || (expr==14 && ty==5));
+}
+#forall "tracked storage changes disable isolation" a:0..<3,b:0..<3,c:0..<3,d:0..<3 {
+ #assert MS_storage_changed(cast(u64)a,cast(u64)b,cast(u64)c,cast(u64)d)==(a!=c || b!=d);
+}
+MS_type_action :: (kind:u32)->u32 #export_c {
+ if kind==0 || kind>=12 {return 4;}
+ if kind==11 {return 1;} if kind==10 {return 2;} if kind==8 {return 3;}
+ return 0;
+}
+MS_string_cast :: (expr:u32,ty:u32)->bool #export_c {return expr>=18 || ty==0 || ty>=12 || (expr==14 && ty==5);}
+MS_storage_changed :: (before_slots:u64,before_containers:u64,after_slots:u64,after_containers:u64)->bool #export_c {
+ return before_slots!=after_slots || before_containers!=after_containers;
+}
