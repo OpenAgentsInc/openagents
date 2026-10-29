@@ -325,6 +325,91 @@
       ],
       "blocked_by": [],
       "blocks": []
+    },
+    {
+      "slug": "verse-water-w2",
+      "parent": "engine-everglade-parity",
+      "title": "Water W2: the water shader on WebGPU",
+      "size": "L",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "Phase W2 of verse-water (#c278), released by the owner 2026-10-29: port the previous engine's water.wgsl v1 (git show 32e4d59fc2:crates/verse-pbr/src/water/, the W2 commit of #10774) and its CPU side to the Coax WebGPU renderer: the Gerstner mesh, Schlick Fresnel, sky reflection, per-channel Beer-Lambert absorption over baked depth, baked shore foam, GGX sun glints, Henyey-Greenstein crest scattering, two-phase flow-advected detail and the presets (Jerlov water types). Driven by verse/water.coax's WaveSet and FlowGrid on the same deterministic clock: the shader's angles come from the integer phase counters. Desktop and phone quality levels (the old High/Medium and Low).",
+      "files": [
+        "verse/water-look.coax",
+        "apps/openagents-web/everglade.wgsl",
+        "coax/web/host.js",
+        "docs/verse/water.md"
+      ],
+      "acceptance": [
+        "The shader's Gerstner displacement matches verse/water.coax's water_at_rest within a millimetre (a #test on the CPU mirror)",
+        "Presets parse and stay in range (#test)",
+        "coax test passes on the files touched",
+        "Drawn in a realm on openagents.com at desktop and phone, inside the frame budget"
+      ],
+      "blocked_by": [
+        "verse-water-w1"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "verse-water-w3",
+      "parent": "engine-everglade-parity",
+      "title": "Water W3: Everglade's river uses the water system",
+      "size": "L",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "Phase W3 of verse-water (#c278), adapted to today's Everglade (verse/everglade/plan.coax: a 4 m river the length of the world, one bridge at the river crossing). The river becomes a W1 river body with its level profile and generated flow field (water_flow_river), drawn with W2; its bed is carved into the ground; the player wades and swims (verse/player.coax keeps its land speeds), holds breath under water, and ducks and lily pads float on it by buoyancy. plan.coax's reachability checks say deliberately what the river now allows.",
+      "files": [
+        "verse/everglade/plan.coax",
+        "verse/everglade/river.coax",
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade-face.c",
+        "docs/verse/everglade.md",
+        "docs/verse/water.md"
+      ],
+      "acceptance": [
+        "coax test passes on plan.coax, the river and everglade.coax",
+        "The river is drawn with the W2 shader at /realms/everglade#river on desktop and phone, inside the phone triangle budget",
+        "Wading and swimming work; breath runs out under water; floating props ride the surface",
+        "The reachability checks record whether swimming across is allowed"
+      ],
+      "blocked_by": [
+        "verse-water-w2"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "verse-water-w6-ripples",
+      "parent": "engine-everglade-parity",
+      "title": "Water W6 (part): ripples, your wake and splash",
+      "size": "M",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "From phase W6 of verse-water (#c278), only the ripple field and the player's wake and splash: expanding rings from where you wade, swim or land in the river, foam riding young rings, as the old water.wgsl's ripple terms. Kelvin wakes of boats, debris, rowboats and spray stay for later.",
+      "files": [
+        "verse/water-look.coax",
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade.wgsl",
+        "docs/verse/water.md"
+      ],
+      "acceptance": [
+        "Ripples spread and fade (#test)",
+        "Walking into or swimming in the river leaves rings, landing in it splashes",
+        "coax test passes on the files touched"
+      ],
+      "blocked_by": [
+        "verse-water-w3"
+      ],
+      "blocks": []
     }
   ]
 }
