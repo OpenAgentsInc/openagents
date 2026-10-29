@@ -108,6 +108,9 @@
 // same map: a WGSL with caster_vs gets the shadow map, caster_vs draws into it (group 0 only, no
 // fragment), and bg_fs reads it as group 2 (group 1 empty):
 //   coaxial_caster_vertices(state), coaxial_caster_instances(state)  what caster_vs draws (0: none)
+// A traced bg_fs that writes @builtin(frag_depth) puts its depth in the scene's buffer. Grass, when the
+// WGSL has grass_vs/grass_fs (bg's groups), draws right after bg_fs, depth-tested and written:
+//   coaxial_grass_instances(state)  blades to draw, one triangle (3 vertices) each (0: none)
 // Particles, optionally: particles:URL names a shader module of their own (particle_vs/particle_fs,
 // group 0 the uniforms, group 1 binding 0 the emitters), drawn after the scene, added, depth-tested:
 //   coaxial_particle_cap(), coaxial_particles(state), coaxial_particle_bytes(state)
@@ -616,8 +619,14 @@ async function loadShaders() {
   const lit = post ? [{ format: "rgba16float" }, { format: "rgba16float" }] : [{ format }];
   const sceneGroups = scene ? [gpu.layout, sceneLayout(), ...(shadows ? [shadowLayout()] : [])] : [];
   const bgLayout = casters ? device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, emptyLayout(), shadowLayout()] }) : layout;
-  const [bg, fx, sc, sh, bl, po, ca] = await Promise.all([
-    device.createRenderPipelineAsync({ layout: bgLayout, ...flat, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: lit } }),
+  // A traced scene whose bg_fs writes @builtin(frag_depth) puts its depth in the buffer, so what
+  // draws after it (grass) hides behind what it traced.
+  const bgDepth = scene && /@builtin\(frag_depth\)/.test(code) ? { depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "always" } } : flat;
+  // Grass (docs/verse/art-styles.md 8), when the WGSL has grass_vs and grass_fs: coaxial_grass_instances(state)
+  // blades of one triangle each, instanced from their cells' hashes (no buffer), drawn after bg_fs with bg's groups.
+  const grassy = scene && /fn\s+grass_vs\b/.test(code) && !!engine?.exports.coaxial_grass_instances;
+  const [bg, fx, sc, sh, bl, po, ca, gr] = await Promise.all([
+    device.createRenderPipelineAsync({ layout: bgLayout, ...bgDepth, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: lit } }),
     device.createRenderPipelineAsync({
       layout, ...(post ? {} : flat),
       // one vec4f attribute per four floats of the app's vertex, in order
@@ -652,8 +661,13 @@ async function loadShaders() {
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less", depthBias: 2, depthBiasSlopeScale: 2 },
     }) : null,
+    grassy ? device.createRenderPipelineAsync({
+      layout: bgLayout, vertex: { module, entryPoint: "grass_vs" }, fragment: { module, entryPoint: "grass_fs", targets: lit },
+      primitive: { topology: "triangle-list", cullMode: "none" },
+      depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less" },
+    }) : null,
   ]);
-  gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; gpu.bloom = bl; gpu.post = po; gpu.caster = ca; // swapped whole, at the next frame
+  gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; gpu.bloom = bl; gpu.post = po; gpu.caster = ca; gpu.grass = gr; // swapped whole, at the next frame
   gpu.particles = sc ? await particlePipeline(post) : null;
   [gpu.waterTransmit, gpu.waterEmit] = sc && /fn\s+water_vs\b/.test(code) ? await waterPipelines(module, sceneGroups, post) : [null, null];
   return true;
@@ -1154,6 +1168,8 @@ function frame(now) {
   pass.setBindGroup(0, gpu.bindGroup);
   if (gpu.caster) { pass.setBindGroup(1, gpu.emptyGroup); pass.setBindGroup(2, gpu.shadowGroup); }
   pass.setPipeline(gpu.bg); pass.draw(3);
+  const blades = gpu.grass ? x.coaxial_grass_instances(arena.state) : 0;
+  if (blades) { pass.setPipeline(gpu.grass); pass.draw(3, blades); }
   if (draws) {
     pass.setPipeline(gpu.scene);
     if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);

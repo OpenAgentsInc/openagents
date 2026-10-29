@@ -163,6 +163,55 @@ verse_style_cloud_lit :: (n:f32,toward:f32)->f32 #export_c {return st_sat((n-tow
 // Clouds fade into the horizon band: none under 0.01 of elevation sine, all by 0.16, at most 0.92.
 verse_style_cloud_fade :: (up:f32)->f32 #export_c {return verse_style_soft_step(0.085f32,0.075f32,up)*0.92f32;}
 
+// ---- 8. Grass and wind (art-styles.md 8): blades instanced from a hash of their cell, bent by one
+// wind every realm and the foliage's sway share.
+// The gust at (x, z) metres: value noise at `scale` (1/25 per metre) moving with the wave, -1 to 1.
+verse_style_gust :: (x:f32,z:f32,t:f32,wx:f32,wz:f32,speed:f32,scale:f32)->f32 #export_c {
+ return 2.0f32*verse_style_noise((x-wx*speed*t)*scale,(z-wz*speed*t)*scale)-1.0f32;
+}
+// The wind's bend (radians) where the wave's phase coordinate (metres along the wind) is `along`:
+// A (0.6 sin(k along - w t) + 0.4 gust), wavelength 12 m, moving 3 m/s, A 0.30 rad.
+verse_style_wind :: (along:f32,gust:f32,t:f32,amp:f32,wavelength:f32,speed:f32)->f32 #export_c {
+ k:=6.2831853f32/st_max(wavelength,0.001f32);
+ return amp*(0.6f32*sin(k*along-k*speed*t)+0.4f32*gust);
+}
+// How far a point `share` of the way up a blade (or a canopy over its tree's height) moves for a bend
+// theta: with the square of its height, so the base stays put.
+verse_style_bend :: (theta:f32,height:f32,share:f32)->f32 #export_c {return sin(theta)*height*share*share;}
+// The bent blade's normal tilts toward the light by its bend, up to `most` (20 degrees) at the full
+// bend: the bands that roll across a field. Signed: a blade bent away from the light darkens.
+verse_style_grass_tilt :: (theta:f32,amp:f32,tilt_most:f32)->f32 #export_c {return tilt_most*st_max(-1.0f32,st_min(1.0f32,theta/st_max(amp,0.0001f32)));}
+// A blade's height from its hash h (0 to 1): 0.35 to 0.60 m.
+verse_style_blade_height :: (h:f32,low:f32,high:f32)->f32 #export_c {return low+(high-low)*st_sat(h);}
+// How much of a blade stands at distance d from the eye: all of it to 6 m inside the radius (32 m,
+// 18 on a phone), shrinking to nothing at the radius, so the field has no edge.
+verse_style_grass_fade :: (d:f32,radius:f32,fade:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(radius-fade*0.5f32,fade*0.5f32,d);}
+// How many blades the realm draws in the half disc ahead of the eye: a square 2 radius across and
+// one radius deep, at the density (24 a square metre, 8 on a phone).
+verse_style_grass_blades :: (radius:f32,density:f32)->f32 #export_c {return 2.0f32*radius*radius*density;}
+// The mask: a blade's share of its height by its distance past a masked shape's edge (a path, a
+// plot, a floor): none on it, all of it 0.25 m clear of it.
+verse_style_grass_clear :: (past:f32)->f32 #export_c {return verse_style_soft_step(0.125f32,0.125f32,past);}
+// The distance from (x, z) to the segment a..b: a capsule's mask is this less its radius.
+verse_style_segment :: (x:f32,z:f32,ax:f32,az:f32,bx:f32,bz:f32)->f32 #export_c {
+ ux:=bx-ax; uz:=bz-az; px:=x-ax; pz:=z-az;
+ h:=st_sat((px*ux+pz*uz)/st_max(ux*ux+uz*uz,0.000001f32));
+ dx:=px-ux*h; dz:=pz-uz*h;
+ return sqrt(dx*dx+dz*dz);
+}
+// A mover parts the grass: a blade within `radius` (0.7 m) leans away, fully at the mover, by this share.
+verse_style_part :: (d:f32,radius:f32)->f32 #export_c {return st_sat(1.0f32-d/st_max(radius,0.001f32));}
+// One channel of a blade's tip: the ground's colour lifted 15% and warmed (the brush stroke's lifted
+// end), red and green up, blue held.
+verse_style_tip :: (c:f32,ch:f32,lift:f32)->f32 #export_c {
+ if ch<0.5f32 {return c*(1.0f32+lift*1.3f32);} if ch<1.5f32 {return c*(1.0f32+lift);} return c;
+}
+// One channel's hue jitter for a blade with hash h: red and blue apart by up to `jitter` (4%), green held.
+verse_style_jitter :: (c:f32,ch:f32,h:f32,jitter:f32)->f32 #export_c {
+ j:=(h*2.0f32-1.0f32)*jitter;
+ if ch<0.5f32 {return c*(1.0f32+j);} if ch<1.5f32 {return c;} return c*(1.0f32-j);
+}
+
 // ---- 9. Tone
 // The tone curve: 1 - exp(-c exposure).
 verse_style_tone :: (c:f32,exposure:f32)->f32 #export_c {return 1.0f32-exp(-st_max(c,0.0f32)*exposure);}
@@ -419,4 +468,41 @@ verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.715
  #assert abs(verse_style_shaft_fade(1.175f32,0.5f32,0.35f32)-0.5f32)<0.0001f32;
  #assert verse_style_shaft_fade(0.5f32,-0.35f32,0.35f32)==0.0f32 && verse_style_shaft_fade(-3.0f32,0.5f32,0.35f32)==0.0f32;
  for i:0..<50 {o:=cast(f32)i*0.01f32; #assert verse_style_shaft_fade(1.0f32+o+0.01f32,0.5f32,0.35f32)<=verse_style_shaft_fade(1.0f32+o,0.5f32,0.35f32);}
+}
+#test "wind: 0.30 rad, a 12 m wave at 3 m/s with a gust, the base still and the tip bent with height squared" {
+ // the wave alone (no gust): its crest 3 m along at t 0, there again 4 s later 12 m on
+ #assert abs(verse_style_wind(3.0f32,0.0f32,0.0f32,0.30f32,12.0f32,3.0f32)-0.18f32)<0.0001f32;
+ #assert abs(verse_style_wind(15.0f32,0.0f32,4.0f32,0.30f32,12.0f32,3.0f32)-0.18f32)<0.001f32;
+ #assert abs(verse_style_wind(3.0f32,0.0f32,1.0f32,0.30f32,12.0f32,3.0f32)-0.0f32)<0.001f32;
+ // never past A
+ for i:0..<100 {g:=cast(f32)i*0.02f32-1.0f32; #assert abs(verse_style_wind(cast(f32)i*0.37f32,g,1.3f32,0.30f32,12.0f32,3.0f32))<=0.30001f32;}
+ // the gust stays in -1..1 and moves with the wave
+ for i:0..<100 {x:=cast(f32)i*0.9f32; g:=verse_style_gust(x,2.0f32,0.5f32,0.8f32,0.6f32,3.0f32,0.04f32); #assert g>=-1.0f32 && g<=1.0f32;}
+ #assert abs(verse_style_gust(10.0f32,5.0f32,0.0f32,0.8f32,0.6f32,3.0f32,0.04f32)-verse_style_gust(10.0f32+2.4f32,5.0f32+1.8f32,1.0f32,0.8f32,0.6f32,3.0f32,0.04f32))<0.0001f32;
+ #assert verse_style_bend(0.3f32,0.5f32,0.0f32)==0.0f32;
+ #assert abs(verse_style_bend(0.3f32,0.5f32,1.0f32)-sin(0.3f32)*0.5f32)<0.00001f32;
+ #assert abs(verse_style_bend(0.3f32,0.5f32,0.5f32)-sin(0.3f32)*0.5f32*0.25f32)<0.00001f32;
+ // the normal tilts toward the light by up to 20 degrees at the full bend, away when bent back
+ #assert abs(verse_style_grass_tilt(0.30f32,0.30f32,0.349066f32)-0.349066f32)<0.0001f32;
+ #assert abs(verse_style_grass_tilt(-0.15f32,0.30f32,0.349066f32)+0.174533f32)<0.0001f32;
+ #assert verse_style_grass_tilt(0.9f32,0.30f32,0.349066f32)==0.349066f32;
+}
+#test "blades: 0.35 to 0.60 m, 24 a square metre to 32 m (8 to 18 on a phone), shrinking over the last 6 m" {
+ #assert verse_style_blade_height(0.0f32,0.35f32,0.60f32)==0.35f32 && verse_style_blade_height(1.0f32,0.35f32,0.60f32)==0.60f32;
+ #assert verse_style_grass_fade(10.0f32,32.0f32,6.0f32)==1.0f32 && verse_style_grass_fade(26.0f32,32.0f32,6.0f32)==1.0f32;
+ #assert abs(verse_style_grass_fade(29.0f32,32.0f32,6.0f32)-0.5f32)<0.0001f32 && verse_style_grass_fade(32.0f32,32.0f32,6.0f32)==0.0f32;
+ #assert verse_style_grass_fade(12.0f32,18.0f32,6.0f32)==1.0f32 && verse_style_grass_fade(18.0f32,18.0f32,6.0f32)==0.0f32;
+ #assert verse_style_grass_blades(32.0f32,24.0f32)==49152.0f32 && verse_style_grass_blades(18.0f32,8.0f32)==5184.0f32;
+}
+#test "no blade on a masked path; all of them 0.25 m clear; movers part them within 0.7 m" {
+ #assert verse_style_grass_clear(-0.5f32)==0.0f32 && verse_style_grass_clear(0.0f32)==0.0f32 && verse_style_grass_clear(0.25f32)==1.0f32;
+ #assert abs(verse_style_segment(0.0f32,3.0f32,-2.0f32,0.0f32,2.0f32,0.0f32)-3.0f32)<0.0001f32;
+ #assert abs(verse_style_segment(5.0f32,0.0f32,-2.0f32,0.0f32,2.0f32,0.0f32)-3.0f32)<0.0001f32;
+ #assert verse_style_part(0.0f32,0.7f32)==1.0f32 && verse_style_part(0.7f32,0.7f32)==0.0f32 && abs(verse_style_part(0.35f32,0.7f32)-0.5f32)<0.0001f32;
+}
+#test "a blade's tip is 15% lighter and warmer, and its hue jitters 4% at most" {
+ #assert abs(verse_style_tip(0.4f32,1.0f32,0.15f32)-0.46f32)<0.0001f32 && verse_style_tip(0.1f32,2.0f32,0.15f32)==0.1f32;
+ #assert verse_style_tip(0.3f32,0.0f32,0.15f32)/0.3f32>verse_style_tip(0.4f32,1.0f32,0.15f32)/0.4f32;
+ #assert abs(verse_style_jitter(0.5f32,0.0f32,1.0f32,0.04f32)-0.52f32)<0.0001f32 && abs(verse_style_jitter(0.5f32,2.0f32,1.0f32,0.04f32)-0.48f32)<0.0001f32;
+ #assert verse_style_jitter(0.5f32,1.0f32,0.3f32,0.04f32)==0.5f32 && verse_style_jitter(0.5f32,0.0f32,0.5f32,0.04f32)==0.5f32;
 }

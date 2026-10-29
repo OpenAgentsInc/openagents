@@ -140,6 +140,7 @@ Fixture :: struct {
   pitch: f32;                // ?pitch=: radians up from the fixture's own view (the sky mustn't slide)
   sun_az: f32; sun_up: f32;  // ?sun=AZ&sunup=EL (degrees; AZ about +y from +z, the eye looks down -z): the key put
                              // there, to show what the clock's own sun can't (shafts through the tree); 0 up: the clock's
+  blades: int;               // grass blades this frame (fixture.wgsl grass_vs): the preset's half disc ahead of the eye
   mask: bool;                // ?probe=shadow: draw where the shadow band falls, for the style check
 }
 
@@ -396,6 +397,8 @@ CASTERS :: 8; CASTER_SEGMENTS :: 24; CASTER_RINGS :: 13;
 CASTER_VERTICES :: CASTER_SEGMENTS * CASTER_RINGS * 6;
 fixture_caster_instances :: (s: [] Fixture) -> int #export_c { return ifx s[0].paint == STYLE_PAINTERLY then CASTERS else 0; }
 fixture_caster_vertices :: (s: [] Fixture) -> int #export_c { return ifx s[0].paint == STYLE_PAINTERLY then CASTER_VERTICES else 0; }
+// The grass (art-styles.md 8): one triangle a blade, placed by grass_vs from its cell's hash.
+fixture_grass_instances :: (s: [] Fixture) -> int #export_c { return s[0].blades; }
 
 // ---- the view: an eye above the floor's near edge, looking at its middle
 
@@ -708,6 +711,10 @@ fixture_frame :: (s: [] Fixture, out: [] f32, uniforms: [] f32, width: f32, heig
     for i: 0..<16 { uniforms[VIEW_AT + i] = 0; }
     uniforms[VIEW_AT] = s[0].pitch;
     if verse_style_at(verse_style_preset(s[0].paint, tier), s[0].clock, uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]) { uniforms[7] = ifx s[0].mask then 2.0f32 else 1.0f32; }
+    // the grass: a square 2 radius across and one deep ahead of the eye at the density (verse_style_grass_blades);
+    // none in the shadow probe's mask
+    g := uniforms[STYLE_AT + SU_GRASS + 1];
+    s[0].blades = ifx s[0].mask then 0 else cast(int) (2 * g * g * uniforms[STYLE_AT + SU_GRASS]);
     if s[0].sun_up != 0 && uniforms[STYLE_AT + SU_KEY_DIR + 3] < 0.5 {
       e := s[0].sun_up; a := s[0].sun_az;
       uniforms[STYLE_AT + SU_KEY_DIR] = cos(e) * sin(a); uniforms[STYLE_AT + SU_KEY_DIR + 1] = sin(e); uniforms[STYLE_AT + SU_KEY_DIR + 2] = cos(e) * cos(a);
@@ -883,6 +890,23 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
   #assert abs(query_decimal("https://x/realms/fixture?pitch=-0.1", "pitch=") + 0.1) < 0.0001;
   #assert query_decimal("https://x/realms/fixture?style=painterly", "pitch=") == 0 && query_decimal("https://x/realms/fixture?pitch=x", "pitch=") == 0;
   #assert !query_has("https://x/realms/fixture?style=painterly#probe=shadow", "probe=shadow") && !query_has("https://x/realms/fixture?probe=shadowy", "probe=shadow");
+}
+#test "the painterly fixture draws 24 blades a square metre to 32 m, 8 to 18 m on a phone, none in the probe or lowpoly" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] Fixture;
+  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?style=painterly\nclock=fixed:0.5");
+  #assert fixture_frame(s[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
+  #assert fixture_grass_instances(s[..]) == 49152;
+  #assert fixture_frame(s[..], out[..], u[..], 1170, 2532, 3, 0.016, true) > 0;
+  #assert fixture_grass_instances(s[..]) == 5184;
+  m: [1] Fixture;
+  fixture_message(m[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?style=painterly&probe=shadow\nclock=fixed:0.5");
+  #assert fixture_frame(m[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
+  #assert fixture_grass_instances(m[..]) == 0;
+  l: [1] Fixture;
+  fixture_message(l[..], HOST_FACTS, "url=https://openagents.com/realms/fixture\nclock=fixed:0.5");
+  #assert fixture_frame(l[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
+  #assert fixture_grass_instances(l[..]) == 0;
 }
 #test "?sun= and ?sunup= put the day's key where a check needs it (behind the tree), and nothing else" {
   s: [1] Fixture;

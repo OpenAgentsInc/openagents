@@ -825,7 +825,7 @@ fn water_halves(i: WaterOut) -> WaterShade {
 }
 
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -1025,16 +1025,16 @@ fn verse_style_luma(l_r: f32, l_g: f32, l_b: f32) -> f32 {
   return (((0.212599993 * l_r) + (0.715200007 * l_g)) + (0.0722000003 * l_b));
 }
 fn verse_style_bloom_share(l_lum: f32, l_threshold: f32, l_knee: f32) -> f32 {
-  var coax_t32: f32;
-  var coax_t33: f32;
+  var coax_t40: f32;
+  var coax_t41: f32;
   if ((l_lum <= 0.0))
   {
     return 0.0;
   }
   var l_k: f32 = coax_p_st_max(l_knee, 9.99999975e-06);
-  coax_t32 = coax_p_st_max(((l_lum - l_threshold) + l_k), 0.0);
-  coax_t33 = (2.0 * l_k);
-  var l_q: f32 = coax_p_st_min(coax_t32, coax_t33);
+  coax_t40 = coax_p_st_max(((l_lum - l_threshold) + l_k), 0.0);
+  coax_t41 = (2.0 * l_k);
+  var l_q: f32 = coax_p_st_min(coax_t40, coax_t41);
   return coax_p_st_min((coax_p_st_max(((l_q * l_q) / (4.0 * l_k)), (l_lum - l_threshold)) / l_lum), 1.0);
 }
 fn verse_style_bloom_mix(l_c: f32, l_bloom: f32, l_mix: f32) -> f32 {
@@ -1164,39 +1164,116 @@ fn verse_style_contact(l_cast_lit: f32, l_blob: f32, l_strength: f32) -> f32 {
   return coax_p_st_min(l_cast_lit, (1.0 - (l_strength * coax_p_st_sat(l_blob))));
 }
 fn verse_style_shaft_source(l_cos_t: f32) -> f32 {
-  var coax_t34: f32;
-  var coax_t35: f32;
-  coax_t34 = (-24.0);
-  coax_t35 = coax_p_st_max((1.0 - l_cos_t), 0.0);
-  return exp((coax_t34 * coax_t35));
+  var coax_t42: f32;
+  var coax_t43: f32;
+  coax_t42 = (-24.0);
+  coax_t43 = coax_p_st_max((1.0 - l_cos_t), 0.0);
+  return exp((coax_t42 * coax_t43));
 }
 fn verse_style_shaft_fade(l_x: f32, l_y: f32, l_margin: f32) -> f32 {
-  var coax_t36: f32;
-  var coax_t37: f32;
-  coax_t36 = coax_p_st_max((-l_x), (l_x - 1.0));
-  coax_t37 = coax_p_st_max((-l_y), (l_y - 1.0));
-  var l_out: f32 = coax_p_st_max(coax_p_st_max(coax_t36, coax_t37), 0.0);
+  var coax_t44: f32;
+  var coax_t45: f32;
+  coax_t44 = coax_p_st_max((-l_x), (l_x - 1.0));
+  coax_t45 = coax_p_st_max((-l_y), (l_y - 1.0));
+  var l_out: f32 = coax_p_st_max(coax_p_st_max(coax_t44, coax_t45), 0.0);
   return (1.0 - verse_style_soft_step((l_margin * 0.5), (l_margin * 0.5), l_out));
 }
 fn verse_style_shaft_tap(l_i: f32, l_decay: f32) -> f32 {
   return pow(coax_p_st_max(l_decay, 9.99999997e-07), l_i);
 }
 fn verse_style_shaft_total(l_n: f32, l_decay: f32) -> f32 {
-  var coax_t38: f32;
-  var coax_t39: f32;
+  var coax_t46: f32;
+  var coax_t47: f32;
   if ((abs((1.0 - l_decay)) < 9.99999997e-07))
   {
     return l_n;
   }
-  coax_t38 = (1.0 - pow(coax_p_st_max(l_decay, 9.99999997e-07), l_n));
-  coax_t39 = (1.0 - l_decay);
-  return (coax_t38 / coax_t39);
+  coax_t46 = (1.0 - pow(coax_p_st_max(l_decay, 9.99999997e-07), l_n));
+  coax_t47 = (1.0 - l_decay);
+  return (coax_t46 / coax_t47);
 }
 fn verse_style_shaft(l_sum: f32, l_total: f32, l_weight: f32, l_fade: f32) -> f32 {
-  var coax_t40: f32;
-  var coax_t41: f32;
-  coax_t40 = ((l_sum / coax_p_st_max(l_total, 9.99999997e-07)) * l_weight);
-  coax_t41 = coax_p_st_sat(l_fade);
-  return (coax_t40 * coax_t41);
+  var coax_t48: f32;
+  var coax_t49: f32;
+  coax_t48 = ((l_sum / coax_p_st_max(l_total, 9.99999997e-07)) * l_weight);
+  coax_t49 = coax_p_st_sat(l_fade);
+  return (coax_t48 * coax_t49);
+}
+fn verse_style_gust(l_x: f32, l_z: f32, l_t: f32, l_wx: f32, l_wz: f32, l_speed: f32, l_scale: f32) -> f32 {
+  return ((2.0 * verse_style_noise(((l_x - ((l_wx * l_speed) * l_t)) * l_scale), ((l_z - ((l_wz * l_speed) * l_t)) * l_scale))) - 1.0);
+}
+fn verse_style_wind(l_along: f32, l_gust: f32, l_t: f32, l_amp: f32, l_wavelength: f32, l_speed: f32) -> f32 {
+  var coax_t32: f32;
+  var coax_t33: f32;
+  var l_k: f32 = (6.28318548 / coax_p_st_max(l_wavelength, 0.00100000005));
+  coax_t32 = (0.600000024 * sin(((l_k * l_along) - ((l_k * l_speed) * l_t))));
+  coax_t33 = (0.400000006 * l_gust);
+  return (l_amp * (coax_t32 + coax_t33));
+}
+fn verse_style_bend(l_theta: f32, l_height: f32, l_share: f32) -> f32 {
+  return (((sin(l_theta) * l_height) * l_share) * l_share);
+}
+fn verse_style_grass_tilt(l_theta: f32, l_amp: f32, l_tilt_most: f32) -> f32 {
+  var coax_t34: f32;
+  var coax_t35: f32;
+  coax_t34 = (-1.0);
+  coax_t35 = coax_p_st_min(1.0, (l_theta / coax_p_st_max(l_amp, 9.99999975e-05)));
+  return (l_tilt_most * coax_p_st_max(coax_t34, coax_t35));
+}
+fn verse_style_blade_height(l_h: f32, l_low: f32, l_high: f32) -> f32 {
+  var coax_t36: f32;
+  var coax_t37: f32;
+  coax_t36 = (l_high - l_low);
+  coax_t37 = coax_p_st_sat(l_h);
+  return (l_low + (coax_t36 * coax_t37));
+}
+fn verse_style_grass_fade(l_d: f32, l_radius: f32, l_fade: f32) -> f32 {
+  return (1.0 - verse_style_soft_step((l_radius - (l_fade * 0.5)), (l_fade * 0.5), l_d));
+}
+fn verse_style_grass_blades(l_radius: f32, l_density: f32) -> f32 {
+  return (((2.0 * l_radius) * l_radius) * l_density);
+}
+fn verse_style_grass_clear(l_past: f32) -> f32 {
+  return verse_style_soft_step(0.125, 0.125, l_past);
+}
+fn verse_style_segment(l_x: f32, l_z: f32, l_ax: f32, l_az: f32, l_bx: f32, l_bz: f32) -> f32 {
+  var coax_t38: f32;
+  var coax_t39: f32;
+  var l_ux: f32 = (l_bx - l_ax);
+  var l_uz: f32 = (l_bz - l_az);
+  var l_px: f32 = (l_x - l_ax);
+  var l_pz: f32 = (l_z - l_az);
+  coax_t38 = ((l_px * l_ux) + (l_pz * l_uz));
+  coax_t39 = coax_p_st_max(((l_ux * l_ux) + (l_uz * l_uz)), 9.99999997e-07);
+  var l_h: f32 = coax_p_st_sat((coax_t38 / coax_t39));
+  var l_dx: f32 = (l_px - (l_ux * l_h));
+  var l_dz: f32 = (l_pz - (l_uz * l_h));
+  return sqrt(((l_dx * l_dx) + (l_dz * l_dz)));
+}
+fn verse_style_part(l_d: f32, l_radius: f32) -> f32 {
+  return coax_p_st_sat((1.0 - (l_d / coax_p_st_max(l_radius, 0.00100000005))));
+}
+fn verse_style_tip(l_c: f32, l_ch: f32, l_lift: f32) -> f32 {
+  if ((l_ch < 0.5))
+  {
+    return (l_c * (1.0 + (l_lift * 1.29999995)));
+  }
+  if ((l_ch < 1.5))
+  {
+    return (l_c * (1.0 + l_lift));
+  }
+  return l_c;
+}
+fn verse_style_jitter(l_c: f32, l_ch: f32, l_h: f32, l_jitter: f32) -> f32 {
+  var l_j: f32 = (((l_h * 2.0) - 1.0) * l_jitter);
+  if ((l_ch < 0.5))
+  {
+    return (l_c * (1.0 + l_j));
+  }
+  if ((l_ch < 1.5))
+  {
+    return l_c;
+  }
+  return (l_c * (1.0 - l_j));
 }
 // ---- end generated

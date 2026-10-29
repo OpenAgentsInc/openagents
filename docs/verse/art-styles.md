@@ -314,6 +314,22 @@ the sky without a seam.
 - **Budget**: grass costs at most 2.5 ms of a desktop frame and 3 ms of a
   phone's. If the realm's frame budget is missed, the phone tier halves the
   density before the radius.
+- **Built** (October 29, as-wind-grass): `verse/style.coax` holds the wind
+  (`verse_style_wind`, `_gust`, `_bend`, shared with the foliage's sway), the
+  blade numbers (`_blade_height`, `_grass_fade`, `_grass_blades`), the mask
+  (`_grass_clear`: none on a masked shape, all 0.25 m clear of it;
+  `_segment` for a capsule or a path), the parting (`_part`), the tilt, the
+  tip and the jitter. host.js draws a WGSL's `grass_vs`/`grass_fs` right
+  after `bg_fs`, `coaxial_grass_instances(state)` triangles, depth-tested; a
+  traced `bg_fs` that writes `@builtin(frag_depth)` hides the blades behind
+  what it traced. A realm draws the half disc ahead of the eye: a square two
+  radii across and one deep (49,152 blades on desktop, 5,184 on a phone). The
+  blade's root is the meadow's colour in the blades' shade (0.78 of it), as
+  is the soil between them, and the rim skips blades (a field seen edge on
+  would be all rim). The style fixture's ground is now a meadow with a dirt
+  path behind the shapes and an earth bank round the pond; its main pass
+  costs 0.17 ms more at 1440×900 and 0.10 ms more on a 390×844 phone canvas
+  (M-series, headless).
 
 ### 9. Palette and tone
 

@@ -63,6 +63,7 @@ EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)fixture_draw_count(at(state)); }
 EXPORT("coaxial_caster_vertices") uint32_t coaxial_caster_vertices(uint32_t state) { return (uint32_t)fixture_caster_vertices(at(state)); }
 EXPORT("coaxial_caster_instances") uint32_t coaxial_caster_instances(uint32_t state) { return (uint32_t)fixture_caster_instances(at(state)); }
+EXPORT("coaxial_grass_instances") uint32_t coaxial_grass_instances(uint32_t state) { return (uint32_t)fixture_grass_instances(at(state)); }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 1u; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { (void)k; return (uint32_t)sizeof(((coax_t_Fixture *)0)->objects); }
 EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { (void)k; return (uint32_t)(uintptr_t)state_at(state)->objects.e; }

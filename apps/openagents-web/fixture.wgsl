@@ -60,17 +60,20 @@ fn stars(p: vec2f) -> f32 {
 // With the post pass (host.js postLayouts) everything draws light and, in alpha, the share
 // of it that blooms; lowpoly blooms nothing and post_fs passes it through as drawn.
 struct Lit { @location(0) light: vec4f, @location(1) aux: vec4f }
-@fragment fn bg_fs(@builtin(position) pos: vec4f) -> Lit {
+// bg_fs also writes the traced scene's depth (host.js: a bg_fs with frag_depth), so the grass drawn
+// after it hides behind the sphere, the cube and the tree; everything else is at the far plane.
+struct Bg { @location(0) light: vec4f, @location(1) aux: vec4f, @builtin(frag_depth) depth: f32 }
+@fragment fn bg_fs(@builtin(position) pos: vec4f) -> Bg {
   let p = pos.xy;
   if (u.painted > 0.5) {
     let c = paint(p);
-    return Lit(c, vec4f(shaft_glow, 0.0, 0.0, 0.0));   // aux.r: the sky's glow the light shafts blur
+    return Bg(c, vec4f(shaft_glow, 0.0, 0.0, 0.0), paint_depth);   // aux.r: the sky's glow the light shafts blur
   }
   let c = vec2f(0.5, 0.58) * u.size;
   let r = length((p - c) / max(u.size.y, 1.0));
   var sky = vec3f(0.012, 0.013, 0.02) + vec3f(0.035, 0.036, 0.045) * exp(-r * r * 6.0);
   sky += vec3f(stars(p)) * u.fade;
-  return Lit(vec4f(panels(p, sky), 0.0), vec4f(0.0));
+  return Bg(vec4f(panels(p, sky), 0.0), vec4f(0.0), 1.0);
 }
 // ---- the style fixture (fixture.coax, ?style=painterly): a fixed scene traced
 // here and shaded with the style's own functions (verse/style.coax, the
@@ -89,7 +92,12 @@ const BODY = vec4f(-0.3, 0.0, -1.8, 0.24);           // a figure: capsule from y
 const HEAD = vec4f(-0.3, 1.62, -1.8, 0.17);
 const LANTERN = vec4f(-2.3, 0.16, 1.9, 0.16);         // a glowing orb on the ground: all its light blooms (spec 6)
 const POND = vec4f(0.7, 0.0, 2.7, 1.5);              // centre x, -, z, radius; 1.9 m deep in the middle
-const GRASS = vec4f(-3.4, 0.0, 2.2, 1.6);
+const GRASS = vec4f(-3.4, 0.0, 2.2, 1.6);             // a lusher clump in the meadow
+// The dirt path across the meadow behind the shapes, two segments (x, z each end) and its half width:
+// the grass's mask (spec 8), with the pond. No blade grows on either.
+const PATH0 = vec4f(-16.0, -3.6, 2.0, -5.2);
+const PATH1 = vec4f(2.0, -5.2, 16.0, -8.4);
+const PATH_W = 0.6;
 const RIDGE_Z = vec3f(60.0, 115.0, 260.0);
 struct Hit { t: f32, n: vec3f, albedo: vec3f, kind: f32, id: f32 }   // kind 0 none, 1 matte, 2 water, 3 character, 4 emissive (albedo is its light); id: which thing (outlines)
 fn st(i: u32) -> vec4f { return u.style[i]; }
@@ -196,8 +204,11 @@ fn trace(o: vec3f, d: vec3f) -> Hit {
       let pond = length(p.xz - POND.xz) / POND.w;
       let grass = length(p.xz - GRASS.xz) / GRASS.w;
       if (pond < 1.0) { h = Hit(tg, vec3f(0.0, 1.0, 0.0), vec3f(1.9 * (1.0 - pond * pond)), 2.0, 10.0); }
-      else if (grass < 1.0) { h = Hit(tg, vec3f(0.0, 1.0, 0.0), vec3f(0.15, 0.33, 0.05), 1.0, 10.0); }
-      else { h = Hit(tg, vec3f(0.0, 1.0, 0.0), mix(vec3f(0.21, 0.29, 0.08), vec3f(0.27, 0.22, 0.10), 0.5 + 0.5 * sin(p.x * 0.21 + p.z * 0.13)), 1.0, 10.0); }
+      else {
+        // the soil between the blades is the meadow's colour in their shade; the path is bare earth
+        let bare = 1.0 - grass_mask(p.xz);
+        h = Hit(tg, vec3f(0.0, 1.0, 0.0), mix(meadow(p.xz) * ROOT, path_albedo(p.xz), bare), 1.0, 10.0);
+      }
     }
   }
   return h;
@@ -355,7 +366,8 @@ fn shade(h: Hit, o: vec3f, d: vec3f) -> vec3f {
     c = banded(a, dark, bright, band);
     let rs = select(st(2u).w, st(3u).x, character);
     // the rim is the key's light: a cast shadow takes it too
-    c += st(2u).xyz * verse_style_rim(dot(n, -d), ndl, st(3u).y, st(3u).z, rs) * lit;
+    // (not on a blade: a field seen edge on would all be rim)
+    c += st(2u).xyz * verse_style_rim(dot(n, -d), ndl, st(3u).y, st(3u).z, rs) * lit * select(1.0, 0.0, h.id == 12.0);
   }
   // the haze, the same for everything (spec 4)
   let hz = st(9u);
@@ -398,9 +410,21 @@ fn screen_at(d: vec3f) -> vec3f {
 }
 // The light shafts' source (art-styles.md 6): the sky's glow toward the key light, set where paint draws sky.
 var<private> shaft_glow: f32 = 0.0;
+// The traced hit's depth for bg_fs (1, the far plane, for the sky): the same projection grass_vs draws with.
+var<private> paint_depth: f32 = 1.0;
+const NEAR = 0.1;
+const FAR = 2000.0;
+fn eye_basis() -> mat3x3<f32> {             // right, up, forward: ray's camera
+  let a = -0.11942 + u.r0.x;
+  let fwd = vec3f(0.0, sin(a), -cos(a));
+  let right = normalize(cross(fwd, vec3f(0.0, 1.0, 0.0)));
+  return mat3x3<f32>(right, cross(right, fwd), fwd);
+}
+fn depth_at(z: f32) -> f32 { return FAR / (FAR - NEAR) * (1.0 - NEAR / max(z, NEAR)); }
 fn paint(p: vec2f) -> vec4f {
   let d = ray(p);
   let h = trace(EYE, d);
+  if (h.kind > 0.5) { paint_depth = depth_at(h.t * dot(d, eye_basis()[2])); }
   if (u.painted > 1.5) {
     // ?probe=shadow, for the style check: red where a lit surface (matte, water, character) is in the
     // shadow band, green its id over 16, blue 1 on every such surface the haze has taken under 0.35 of;
@@ -433,6 +457,79 @@ fn paint(p: vec2f) -> vec4f {
   // linear light and the share of it that blooms; post_fs blooms, tones and encodes it
   let b = st(19u);
   return vec4f(c, select(verse_style_bloom_share(verse_style_luma(c.x, c.y, c.z), b.x, b.y), 1.0, h.kind > 3.5));
+}
+// ---- the grass (spec 8): one tapered triangle a blade, instanced from a hash of its cell (no buffer of
+// blades), 24 a square metre to 32 m ahead of the eye (8 to 18 m on a phone), shrinking over the last
+// 6 m. Its colour is the meadow's under it, the root in the blades' own shade and the tip 15% lighter
+// and warmer; its normal the ground's up, tilted toward the light as the wind bends it.
+const ROOT = 0.78;                             // a blade's root, and the soil between, in the blades' shade
+fn meadow(q: vec2f) -> vec3f {               // the meadow's painted colour: yellow-green to mid-green, broad strokes
+  let lush = 1.0 - smoothstep(0.6, 1.0, length(q - GRASS.xz) / GRASS.w);
+  let t = 0.5 + 0.5 * sin(q.x * 0.21 + q.y * 0.13);
+  return mix(mix(vec3f(0.22, 0.38, 0.04), vec3f(0.10, 0.25, 0.04), t * 0.7), vec3f(0.09, 0.26, 0.03), lush * 0.7);
+}
+fn path_albedo(q: vec2f) -> vec3f { return mix(vec3f(0.30, 0.21, 0.10), vec3f(0.26, 0.20, 0.11), 0.5 + 0.5 * sin(q.x * 0.17)); }
+fn grass_mask(q: vec2f) -> f32 {           // 1 where grass grows: none on the path or in the pond
+  let path = min(verse_style_segment(q.x, q.y, PATH0.x, PATH0.y, PATH0.z, PATH0.w), verse_style_segment(q.x, q.y, PATH1.x, PATH1.y, PATH1.z, PATH1.w)) - PATH_W;
+  let pond = length(q - POND.xz) - POND.w;
+  return verse_style_grass_clear(path) * verse_style_grass_clear(pond);
+}
+struct G {
+  @builtin(position) pos: vec4f,
+  @location(0) world: vec3f,
+  @location(1) n: vec3f,
+  @location(2) albedo: vec3f,
+}
+@vertex fn grass_vs(@builtin(vertex_index) v: u32, @builtin(instance_index) i: u32) -> G {
+  var o: G;
+  o.pos = vec4f(0.0); o.world = vec3f(0.0); o.n = vec3f(0.0, 1.0, 0.0); o.albedo = vec3f(0.0);
+  let g = st(22u); let g2 = st(23u); let w = st(24u); let w2 = st(25u);
+  let per = max(u32(g.x), 1u); let r = g.y; let side = u32(2.0 * r);
+  let cell = i / per; let b = f32(i % per);
+  let c = vec2f(f32(cell % side) - r + EYE.x, EYE.z - 1.0 - f32(cell / side));
+  let k = c + vec2f(b * 7.13, b * -3.71);
+  let q = c + vec2f(hash(k), hash(k + vec2f(19.1, 7.7)));
+  let dist = length(q - EYE.xz);
+  let tall = verse_style_blade_height(hash(k + vec2f(3.3, 41.9)), g.w, g2.x) * verse_style_grass_fade(dist, r, g.z) * grass_mask(q);
+  if (tall < 0.02) { return o; }                       // none here: a point, nothing drawn
+  // the wind, frozen at t = 0 under still (goldens, reduced motion)
+  let t = select(u.time, 0.0, u.still > 0.5);
+  let wd = vec2f(w2.x, w2.y);
+  let theta = verse_style_wind(dot(q, wd), verse_style_gust(q.x, q.y, t, wd.x, wd.y, w.z, w.w), t, w.x, w.y, w.z);
+  // a mover (the figure) parts the blades within 0.7 m: they lean away from it
+  let away = q - BODY.xz;
+  let part = verse_style_part(length(away), w2.w);
+  let lean = wd * verse_style_bend(theta, tall, 1.0) + normalize(away + vec2f(0.0001)) * tall * 0.85 * part;
+  let ang = hash(k + vec2f(5.9, 13.3)) * 6.2831853;
+  let across = vec3f(cos(ang), 0.0, sin(ang)) * g2.y * 0.5;
+  var world = vec3f(q.x, 0.0, q.y);
+  let base = meadow(q);
+  let hj = hash(k + vec2f(31.7, 2.9));
+  let a = vec3f(verse_style_jitter(base.x, 0.0, hj, g2.w), verse_style_jitter(base.y, 1.0, hj, g2.w), verse_style_jitter(base.z, 2.0, hj, g2.w));
+  if (v == 0u) { world -= across; o.albedo = a * ROOT; }
+  else if (v == 1u) { world += across; o.albedo = a * ROOT; }
+  else {
+    world += vec3f(lean.x, sqrt(max(tall * tall - dot(lean, lean), tall * tall * 0.15)), lean.y);
+    o.albedo = vec3f(verse_style_tip(a.x, 0.0, g2.z), verse_style_tip(a.y, 1.0, g2.z), verse_style_tip(a.z, 2.0, g2.z));
+  }
+  // the normal: up, tilted toward the light by the bend (the bright bands rolling across the field)
+  let l = st(1u).xyz;
+  let lx = normalize(vec2f(l.x, l.z) + vec2f(0.0001));
+  let tilt = verse_style_grass_tilt(theta, w.x, w2.z);
+  o.n = normalize(vec3f(lx.x * sin(tilt), cos(tilt), lx.y * sin(tilt)));
+  let e = eye_basis(); let rel = world - EYE;
+  let aspect = u.size.x / max(u.size.y, 1.0); let tv = max(0.36, 0.5 / aspect);
+  let z = dot(rel, e[2]);
+  o.pos = vec4f(dot(rel, e[0]) / (tv * aspect), dot(rel, e[1]) / tv, FAR / (FAR - NEAR) * (z - NEAR), z);
+  o.world = world;
+  return o;
+}
+@fragment fn grass_fs(g: G) -> Lit {
+  let d = normalize(g.world - EYE);
+  let h = Hit(length(g.world - EYE), normalize(g.n), g.albedo, 1.0, 12.0);
+  let c = shade(h, EYE, d);
+  let b = st(19u);
+  return Lit(vec4f(c, verse_style_bloom_share(verse_style_luma(c.x, c.y, c.z), b.x, b.y)), vec4f(0.0));
 }
 // ---- the pack's meshes: its vertices (pack_realm.py: the Haunted House's 48
 // bytes, position, normal, uv, colour with its layer in the top byte), a
@@ -617,7 +714,7 @@ fn verse_outline_crease(l_facing: f32) -> f32 {
 }
 // ---- end generated
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -817,16 +914,16 @@ fn verse_style_luma(l_r: f32, l_g: f32, l_b: f32) -> f32 {
   return (((0.212599993 * l_r) + (0.715200007 * l_g)) + (0.0722000003 * l_b));
 }
 fn verse_style_bloom_share(l_lum: f32, l_threshold: f32, l_knee: f32) -> f32 {
-  var coax_t32: f32;
-  var coax_t33: f32;
+  var coax_t40: f32;
+  var coax_t41: f32;
   if ((l_lum <= 0.0))
   {
     return 0.0;
   }
   var l_k: f32 = coax_p_st_max(l_knee, 9.99999975e-06);
-  coax_t32 = coax_p_st_max(((l_lum - l_threshold) + l_k), 0.0);
-  coax_t33 = (2.0 * l_k);
-  var l_q: f32 = coax_p_st_min(coax_t32, coax_t33);
+  coax_t40 = coax_p_st_max(((l_lum - l_threshold) + l_k), 0.0);
+  coax_t41 = (2.0 * l_k);
+  var l_q: f32 = coax_p_st_min(coax_t40, coax_t41);
   return coax_p_st_min((coax_p_st_max(((l_q * l_q) / (4.0 * l_k)), (l_lum - l_threshold)) / l_lum), 1.0);
 }
 fn verse_style_bloom_mix(l_c: f32, l_bloom: f32, l_mix: f32) -> f32 {
@@ -956,39 +1053,116 @@ fn verse_style_contact(l_cast_lit: f32, l_blob: f32, l_strength: f32) -> f32 {
   return coax_p_st_min(l_cast_lit, (1.0 - (l_strength * coax_p_st_sat(l_blob))));
 }
 fn verse_style_shaft_source(l_cos_t: f32) -> f32 {
-  var coax_t34: f32;
-  var coax_t35: f32;
-  coax_t34 = (-24.0);
-  coax_t35 = coax_p_st_max((1.0 - l_cos_t), 0.0);
-  return exp((coax_t34 * coax_t35));
+  var coax_t42: f32;
+  var coax_t43: f32;
+  coax_t42 = (-24.0);
+  coax_t43 = coax_p_st_max((1.0 - l_cos_t), 0.0);
+  return exp((coax_t42 * coax_t43));
 }
 fn verse_style_shaft_fade(l_x: f32, l_y: f32, l_margin: f32) -> f32 {
-  var coax_t36: f32;
-  var coax_t37: f32;
-  coax_t36 = coax_p_st_max((-l_x), (l_x - 1.0));
-  coax_t37 = coax_p_st_max((-l_y), (l_y - 1.0));
-  var l_out: f32 = coax_p_st_max(coax_p_st_max(coax_t36, coax_t37), 0.0);
+  var coax_t44: f32;
+  var coax_t45: f32;
+  coax_t44 = coax_p_st_max((-l_x), (l_x - 1.0));
+  coax_t45 = coax_p_st_max((-l_y), (l_y - 1.0));
+  var l_out: f32 = coax_p_st_max(coax_p_st_max(coax_t44, coax_t45), 0.0);
   return (1.0 - verse_style_soft_step((l_margin * 0.5), (l_margin * 0.5), l_out));
 }
 fn verse_style_shaft_tap(l_i: f32, l_decay: f32) -> f32 {
   return pow(coax_p_st_max(l_decay, 9.99999997e-07), l_i);
 }
 fn verse_style_shaft_total(l_n: f32, l_decay: f32) -> f32 {
-  var coax_t38: f32;
-  var coax_t39: f32;
+  var coax_t46: f32;
+  var coax_t47: f32;
   if ((abs((1.0 - l_decay)) < 9.99999997e-07))
   {
     return l_n;
   }
-  coax_t38 = (1.0 - pow(coax_p_st_max(l_decay, 9.99999997e-07), l_n));
-  coax_t39 = (1.0 - l_decay);
-  return (coax_t38 / coax_t39);
+  coax_t46 = (1.0 - pow(coax_p_st_max(l_decay, 9.99999997e-07), l_n));
+  coax_t47 = (1.0 - l_decay);
+  return (coax_t46 / coax_t47);
 }
 fn verse_style_shaft(l_sum: f32, l_total: f32, l_weight: f32, l_fade: f32) -> f32 {
-  var coax_t40: f32;
-  var coax_t41: f32;
-  coax_t40 = ((l_sum / coax_p_st_max(l_total, 9.99999997e-07)) * l_weight);
-  coax_t41 = coax_p_st_sat(l_fade);
-  return (coax_t40 * coax_t41);
+  var coax_t48: f32;
+  var coax_t49: f32;
+  coax_t48 = ((l_sum / coax_p_st_max(l_total, 9.99999997e-07)) * l_weight);
+  coax_t49 = coax_p_st_sat(l_fade);
+  return (coax_t48 * coax_t49);
+}
+fn verse_style_gust(l_x: f32, l_z: f32, l_t: f32, l_wx: f32, l_wz: f32, l_speed: f32, l_scale: f32) -> f32 {
+  return ((2.0 * verse_style_noise(((l_x - ((l_wx * l_speed) * l_t)) * l_scale), ((l_z - ((l_wz * l_speed) * l_t)) * l_scale))) - 1.0);
+}
+fn verse_style_wind(l_along: f32, l_gust: f32, l_t: f32, l_amp: f32, l_wavelength: f32, l_speed: f32) -> f32 {
+  var coax_t32: f32;
+  var coax_t33: f32;
+  var l_k: f32 = (6.28318548 / coax_p_st_max(l_wavelength, 0.00100000005));
+  coax_t32 = (0.600000024 * sin(((l_k * l_along) - ((l_k * l_speed) * l_t))));
+  coax_t33 = (0.400000006 * l_gust);
+  return (l_amp * (coax_t32 + coax_t33));
+}
+fn verse_style_bend(l_theta: f32, l_height: f32, l_share: f32) -> f32 {
+  return (((sin(l_theta) * l_height) * l_share) * l_share);
+}
+fn verse_style_grass_tilt(l_theta: f32, l_amp: f32, l_tilt_most: f32) -> f32 {
+  var coax_t34: f32;
+  var coax_t35: f32;
+  coax_t34 = (-1.0);
+  coax_t35 = coax_p_st_min(1.0, (l_theta / coax_p_st_max(l_amp, 9.99999975e-05)));
+  return (l_tilt_most * coax_p_st_max(coax_t34, coax_t35));
+}
+fn verse_style_blade_height(l_h: f32, l_low: f32, l_high: f32) -> f32 {
+  var coax_t36: f32;
+  var coax_t37: f32;
+  coax_t36 = (l_high - l_low);
+  coax_t37 = coax_p_st_sat(l_h);
+  return (l_low + (coax_t36 * coax_t37));
+}
+fn verse_style_grass_fade(l_d: f32, l_radius: f32, l_fade: f32) -> f32 {
+  return (1.0 - verse_style_soft_step((l_radius - (l_fade * 0.5)), (l_fade * 0.5), l_d));
+}
+fn verse_style_grass_blades(l_radius: f32, l_density: f32) -> f32 {
+  return (((2.0 * l_radius) * l_radius) * l_density);
+}
+fn verse_style_grass_clear(l_past: f32) -> f32 {
+  return verse_style_soft_step(0.125, 0.125, l_past);
+}
+fn verse_style_segment(l_x: f32, l_z: f32, l_ax: f32, l_az: f32, l_bx: f32, l_bz: f32) -> f32 {
+  var coax_t38: f32;
+  var coax_t39: f32;
+  var l_ux: f32 = (l_bx - l_ax);
+  var l_uz: f32 = (l_bz - l_az);
+  var l_px: f32 = (l_x - l_ax);
+  var l_pz: f32 = (l_z - l_az);
+  coax_t38 = ((l_px * l_ux) + (l_pz * l_uz));
+  coax_t39 = coax_p_st_max(((l_ux * l_ux) + (l_uz * l_uz)), 9.99999997e-07);
+  var l_h: f32 = coax_p_st_sat((coax_t38 / coax_t39));
+  var l_dx: f32 = (l_px - (l_ux * l_h));
+  var l_dz: f32 = (l_pz - (l_uz * l_h));
+  return sqrt(((l_dx * l_dx) + (l_dz * l_dz)));
+}
+fn verse_style_part(l_d: f32, l_radius: f32) -> f32 {
+  return coax_p_st_sat((1.0 - (l_d / coax_p_st_max(l_radius, 0.00100000005))));
+}
+fn verse_style_tip(l_c: f32, l_ch: f32, l_lift: f32) -> f32 {
+  if ((l_ch < 0.5))
+  {
+    return (l_c * (1.0 + (l_lift * 1.29999995)));
+  }
+  if ((l_ch < 1.5))
+  {
+    return (l_c * (1.0 + l_lift));
+  }
+  return l_c;
+}
+fn verse_style_jitter(l_c: f32, l_ch: f32, l_h: f32, l_jitter: f32) -> f32 {
+  var l_j: f32 = (((l_h * 2.0) - 1.0) * l_jitter);
+  if ((l_ch < 0.5))
+  {
+    return (l_c * (1.0 + l_j));
+  }
+  if ((l_ch < 1.5))
+  {
+    return l_c;
+  }
+  return (l_c * (1.0 - l_j));
 }
 // ---- end generated
