@@ -35,7 +35,34 @@ them.
 | --- | --- | --- | --- |
 | #0af2 crypto-secret-lint | done | `fc59b9c7a1` | Scalar policy revalidated on the rebuilt compiler: 41/41 checks; reference mutation 749/749 (8,891 checks, nothing skipped); `test_secret.py` 7/7; new `test_revalidate.py`: 400 generated programs, 257 accepted, emitted-C guard scan and checked/-O2 execution, 12 refused controls. Finding: the corrected policy refuses `cb_mask` (checked multiply on a secret), and `test_secret.py` had still asserted acceptance. `docs/verification/2026-10-29-secret-scalar-revalidation.md` |
 | #0af1 server-nip98-session | skipped (signed note) | — | Overlaps the phone sign-in worker's oa-api endpoints. Needs a taskmaster or owner decision |
-| #2ff9 nostr-proto-adapters | done | (this commit) | The event and FI projections from #161a meet the round-trip, mismatch and forged-authority criteria. On Linux: Coax checks 195/195 and 210/210; protoc, checked/release native, ASan/UBSan and Wasm fixtures pass; FI reference mutation 3,162/3,162. The event mutation rerun was stopped at 546/4,306, which is not a pass; #161a's 4,306/4,306 on the same source stands. HOST stays with #3d81. `docs/verification/2026-10-29-proto-adapters.md` |
+| #2ff9 nostr-proto-adapters | done | `5bb765142a` | The event and FI projections from #161a meet the round-trip, mismatch and forged-authority criteria. On Linux: Coax checks 195/195 and 210/210; protoc, checked/release native, ASan/UBSan and Wasm fixtures pass; FI reference mutation 3,162/3,162. The event mutation rerun was stopped at 546/4,306, which is not a pass; #161a's 4,306/4,306 on the same source stands. HOST stays with #3d81. `docs/verification/2026-10-29-proto-adapters.md` |
+| #092b crypto-byte-load32-total | open, released | `5768ad2d86` | `cb_load_be32/le32` now use a fixed four-byte `u32` accumulator with no checked cast. ABI unchanged. Evidence: checks 13/13; reference mutation 146/146; z3 30 unsat proofs and 8 sat controls; 6,216 vectors on each of checked/release native and Wasm; an independent review; Coax checks of all 16 direct callers. **Open:** the callers' Python target suites (SHA-256, ChaCha/XChaCha, Poly1305, PBKDF2, scrypt, ECDH, Schnorr) need the Mac (`xcrun`, Homebrew LLVM, the fuzz build cache). `docs/verification/2026-10-29-load32-total.md` |
+
+### Why the other ready tasks are not taken (2026-10-29)
+
+- **#4828:** stopped by the automatic cybersecurity review. Not resumed.
+- **#0af1:** overlaps the phone sign-in worker. It needs a taskmaster or owner
+  decision.
+- **#0845:** depends on the unshipped #c969 draft (`project-verified.coax`,
+  `project-verify-queue.coax`, `project-scope.coax`) and the runner WIP. Both
+  exist only in the Mac archives, not on main or on this host.
+- **#f539:** acceptance needs deletion and tombstones from the store owner,
+  #8eb5. #8eb5 waits on #f539 and #966b, and its WIP is archived on the Mac.
+  That is a dependency loop for the taskmaster to break. One option is to
+  land the store skeleton first.
+- **#966b:** acceptance needs an actual, independently trusted
+  rollback-resistant checkpoint provider. Choosing and provisioning it is an
+  owner decision. Only the mock-provider half could be done here.
+- **#89db:** acceptance needs source-bound secret-flow evidence for the
+  signer's self-verifier. That is the kind of signer source-model analysis the
+  review stopped under #4828. It needs an owner decision before anyone takes
+  it.
+- **#ef04, #5869:** both change the generated protobuf importer. Their
+  acceptance needs the affected iOS consumers built and run
+  (`verse/home.coax`'s generated configuration codecs), and this host has no
+  Xcode. Their designs (`docs/research/nostr-proto-*-design.md`) are drafts,
+  not accepted API decisions. They are best done on the Mac, or after the
+  owner accepts a Linux-only partial.
 
 ## Stop handoff — 2026-10-29
 
