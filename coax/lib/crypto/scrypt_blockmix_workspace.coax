@@ -1,0 +1,60 @@
+// Experimental caller-owned BlockMix/Salsa words; host must erase the complete
+// workspace. Scalar, compiler and register copies remain outside this claim.
+#load "scrypt_blockmix.coax";
+#authority;
+
+#test "owned BlockMix matches the existing path at every supported r" {
+  input:[1024]u8;out:[1025]u8;reference:[1024]u8;work:[1]BlockmixWorkspace;
+  for i:0..<1024 {input[i]=cast(u8)(i%251);}out[1024]=165;
+  for r:1..<9 {
+    n:=r*128;#assert scrypt_blockmix(input[0..<n],reference[0..<n],r,false);
+    #assert blockmix_owned(input[0..<n],work[..],out[0..<n],r,false);
+    for i:0..<n {#assert out[i]==reference[i];}
+  }
+  #assert out[1024]==165;
+}
+#test "owned BlockMix refusal preserves output and preexisting workspace" {
+  input:[128]u8;out:[128]u8;work:[1]BlockmixWorkspace;work[0].x[0]=42;
+  for i:0..<128 {out[i]=165;}
+  #assert !blockmix_owned(input[0..<127],work[..],out[..],1,false);
+  #assert !blockmix_owned(input[..],work[0..<0],out[..],1,false);
+  #assert !blockmix_owned(input[..],work[..],out[0..<127],1,false);
+  #assert !blockmix_owned(input[..],work[..],out[..],1,true);
+  #assert work[0].x[0]==42;for v:out {#assert v==165;}
+}
+BlockmixWorkspace :: struct {x:[16]u32;initial:[16]u32;}
+bmw_salsa :: (work:[]BlockmixWorkspace) {
+  for i:0..<16 {work[0].initial[i]=work[0].x[i];}
+  for round:0..<4 {
+    work[0].x[4]^=rotl(add_wrap(work[0].x[0],work[0].x[12]),7); work[0].x[8]^=rotl(add_wrap(work[0].x[4],work[0].x[0]),9);
+    work[0].x[12]^=rotl(add_wrap(work[0].x[8],work[0].x[4]),13); work[0].x[0]^=rotl(add_wrap(work[0].x[12],work[0].x[8]),18);
+    work[0].x[9]^=rotl(add_wrap(work[0].x[5],work[0].x[1]),7); work[0].x[13]^=rotl(add_wrap(work[0].x[9],work[0].x[5]),9);
+    work[0].x[1]^=rotl(add_wrap(work[0].x[13],work[0].x[9]),13); work[0].x[5]^=rotl(add_wrap(work[0].x[1],work[0].x[13]),18);
+    work[0].x[14]^=rotl(add_wrap(work[0].x[10],work[0].x[6]),7); work[0].x[2]^=rotl(add_wrap(work[0].x[14],work[0].x[10]),9);
+    work[0].x[6]^=rotl(add_wrap(work[0].x[2],work[0].x[14]),13); work[0].x[10]^=rotl(add_wrap(work[0].x[6],work[0].x[2]),18);
+    work[0].x[3]^=rotl(add_wrap(work[0].x[15],work[0].x[11]),7); work[0].x[7]^=rotl(add_wrap(work[0].x[3],work[0].x[15]),9);
+    work[0].x[11]^=rotl(add_wrap(work[0].x[7],work[0].x[3]),13); work[0].x[15]^=rotl(add_wrap(work[0].x[11],work[0].x[7]),18);
+    work[0].x[1]^=rotl(add_wrap(work[0].x[0],work[0].x[3]),7); work[0].x[2]^=rotl(add_wrap(work[0].x[1],work[0].x[0]),9);
+    work[0].x[3]^=rotl(add_wrap(work[0].x[2],work[0].x[1]),13); work[0].x[0]^=rotl(add_wrap(work[0].x[3],work[0].x[2]),18);
+    work[0].x[6]^=rotl(add_wrap(work[0].x[5],work[0].x[4]),7); work[0].x[7]^=rotl(add_wrap(work[0].x[6],work[0].x[5]),9);
+    work[0].x[4]^=rotl(add_wrap(work[0].x[7],work[0].x[6]),13); work[0].x[5]^=rotl(add_wrap(work[0].x[4],work[0].x[7]),18);
+    work[0].x[11]^=rotl(add_wrap(work[0].x[10],work[0].x[9]),7); work[0].x[8]^=rotl(add_wrap(work[0].x[11],work[0].x[10]),9);
+    work[0].x[9]^=rotl(add_wrap(work[0].x[8],work[0].x[11]),13); work[0].x[10]^=rotl(add_wrap(work[0].x[9],work[0].x[8]),18);
+    work[0].x[12]^=rotl(add_wrap(work[0].x[15],work[0].x[14]),7); work[0].x[13]^=rotl(add_wrap(work[0].x[12],work[0].x[15]),9);
+    work[0].x[14]^=rotl(add_wrap(work[0].x[13],work[0].x[12]),13); work[0].x[15]^=rotl(add_wrap(work[0].x[14],work[0].x[13]),18);
+  }
+  for i:0..<16 {work[0].x[i]=add_wrap(work[0].x[i],work[0].initial[i]);}
+}
+// Valid, stable, mutually disjoint views and truthful alias facts are required.
+blockmix_owned :: (input:[]u8,work:[]BlockmixWorkspace,out:[]u8,r:int,overlap:bool)->bool #export_c {
+  if work.count!=1 || !blockmix_admit(input.count,out.count,r,overlap) {return false;}
+  n:=128*r;
+  for j:0..<16 {work[0].x[j]=cb_load_le32(input,n-64+j*4).value;}
+  for i:0..<2*r {
+    for j:0..<16 {work[0].x[j]^=cb_load_le32(input,i*64+j*4).value;}
+    bmw_salsa(work);
+    block:=i/2;if i%2==1 {block+=r;}
+    for j:0..<16 {stored:=cb_store_le32(out,block*64+j*4,work[0].x[j]);}
+  }
+  return true;
+}
