@@ -111,10 +111,10 @@ GROUND_R :: 26.0;        // metres to the realm's edge
 CAM_BACK :: 6.0; CAM_UP :: 3.2; LOOK_AHEAD :: 2.0; LOOK_UP :: 1.0;
 CAM_THIRD :: 0; CAM_FIRST :: 1; CAM_TOP :: 2; CAM_SIDE :: 3;
 CAMERA_NAMES :: [4] string.["third", "first", "top", "side"];
-HAZE_FROM :: [4] f32.[0, 0, 14, 26];      // metres from the eye before the haze starts: a far camera sees as near
+HAZE_FROM :: [4] f32.[0, 0, 14, 12];      // metres from the eye before the haze starts: a far camera sees as near
 EYE_HEIGHT :: 1.6; PITCH_MAX :: 1.2;      // first person: metres up, how far it looks up or down (radians)
 TOP_UP :: 17.0; TOP_BACK :: 10.0;         // top-down: the camera this far up and this far south of you
-SIDE_BACK :: 30.0; SIDE_UP :: 8.0; SIDE_HALF :: 6.0;   // 2D: the camera's distance, height, and half the view's height (metres)
+SIDE_BACK :: 15.0; SIDE_UP :: 6.1; SIDE_LOOK :: 4.0; SIDE_HALF :: 6.0;   // 2D: the camera's distance, height, and half the view's height (metres)
 FOV :: 0.95; STICK :: 60.0; LAMP_HEIGHT :: 1.35;
 GRAVITY :: 14.0; JUMP_SPEED :: 6.0; FLY_HEIGHT :: 7.0;
 WAIT :: 30.0;
@@ -737,7 +737,7 @@ view_rows :: (s: [] MyRealm) {
     ax = ex + fx0 * cp; ay = ey + sin(s[0].pitch); az = ez + fz0 * cp;
   }
   if cam == CAM_TOP { ex = s[0].x; ey = s[0].y * 0.5 + TOP_UP; ez = s[0].z + TOP_BACK; ax = s[0].x; ay = s[0].y * 0.5; az = s[0].z; }
-  if cam == CAM_SIDE { ex = s[0].x; ey = SIDE_UP; ez = s[0].z + SIDE_BACK; ax = s[0].x; ay = 1.5; az = s[0].z; }
+  if cam == CAM_SIDE { ex = s[0].x; ey = SIDE_UP; ez = s[0].z + SIDE_BACK; ax = s[0].x; ay = SIDE_LOOK; az = s[0].z; }
   s[0].ortho = cam == CAM_SIDE;
   fx := ax - ex; fy := ay - ey; fz := az - ez;
   fl := sqrt(fx * fx + fy * fy + fz * fz); fx /= fl; fy /= fl; fz /= fl;
@@ -1096,6 +1096,9 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
     n = centred(d, out, n, line, w * 0.5, by - 16 * k, fit_cap(line, 8 * k, w - 2 * g), ember(k, 0.95));
   } else if s[0].walked < 6 && s[0].spec_ready && s[0].pane == PANE_NONE {
     hint := ifx phone then "DRAG A THUMB TO WALK AND TURN" else "W AND S WALK, A AND D TURN, OR DRAG TO TURN";
+    if s[0].camera == CAM_FIRST && !phone { hint = "W AND S WALK, A AND D TURN, DRAG TO LOOK"; }
+    if s[0].camera == CAM_TOP { hint = ifx phone then "DRAG A THUMB TO WALK" else "W, A, S AND D WALK, OR DRAG"; }
+    if s[0].camera == CAM_SIDE { hint = ifx phone then "DRAG LEFT OR RIGHT TO WALK, UP TO JUMP" else "A AND D WALK, W OR SPACE JUMPS"; }
     n = centred(d, out, n, hint, w * 0.5, by - 16 * k, fit_cap(hint, 7.5 * k, w - 2 * g), white(k, 0.7));
   }
   if s[0].pane != PANE_NONE { n = draw_pane(s, out, n, right, by - 10 * k); }
