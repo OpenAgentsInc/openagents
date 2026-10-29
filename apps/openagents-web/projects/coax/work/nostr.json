@@ -1010,6 +1010,23 @@
       "blocks": ["schnorr-sign"]
     },
     {
+      "slug": "schnorr-self-verification-boundary",
+      "parent": "m3-sign-ecdh",
+      "title": "Protect unpublished signer self-verification",
+      "size": "L",
+      "labels": ["nostr", "crypto", "secp256k1", "coax"],
+      "body": "The experimental signer passes secret-derived unpublished candidate R and s to a variable-time verifier before result publication and cleanup. Provide fixed-work self-verification or an independently reviewed explicit declassification and release protocol covering valid, invalid, failed and cleanup-pending candidates. Do not infer publicity from intended later success or publish unverified data. Preserve actual BIP-340 verification, message/key/candidate binding, refusal, wiping and the Nostr 32-byte wrapper; do not trust a caller-supplied success flag.",
+      "files": ["coax/lib/crypto/", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Enumerate return, cancellation, fault and publication paths and classify staged inputs before and after release; no unreleased candidate reaches variable-time control or addresses unless its exact reviewed release policy permits that observation",
+        "Successful and failing official and adversarial BIP-340 cases, tampered R/s/key/message, invalid key or nonce, mismatched messages and fault or cleanup-pending cases pass checked/release native and Wasm and relevant iOS targets",
+        "The actual self-verifier and lifecycle have source-bound secret-flow evidence, full authority mutation with zero survivors, independent review and exact source/compiler/tool identities",
+        "Fixed-work designs include target behavior assessment and positive-control timing and address probes; declassification designs explain observations of failed and successful candidates. Preserve the 20M check cap and disclose target and production limits"
+      ],
+      "blocked_by": ["schnorr-fast-verify", "crypto-secure-zero"],
+      "blocks": ["schnorr-sign"]
+    },
+    {
       "slug": "schnorr-sign",
       "parent": "m3-sign-ecdh",
       "title": "BIP-340 signing with auxiliary randomness",
@@ -1032,6 +1049,7 @@
         "schnorr-verify",
         "schnorr-fast-verify",
         "crypto-secret-audit-large-closure",
+        "schnorr-self-verification-boundary",
         "crypto-secure-zero"
       ],
       "blocks": [
