@@ -952,7 +952,9 @@ draw_orbs :: (s: [] VerseState, out: [] f32, at: int, dt: f32) -> int {
   k := hi(s[0].dpr, 0.5); w := s[0].width / k; h := s[0].height / k;
   if !s[0].seeded { orb_seed(s, w, h); }
   s[0].orb_acc = lo(s[0].orb_acc + clamp(dt, 0, 0.1), 0.1);
-  while s[0].orb_acc >= 1.0 / 60.0 { s[0].orb_acc -= 1.0 / 60.0; orb_step(s, w, h); }
+  // still (reduced motion, or the release walk's golden): they move only while a press makes one
+  moving := !s[0].still || s[0].holding;
+  while s[0].orb_acc >= 1.0 / 60.0 { s[0].orb_acc -= 1.0 / 60.0; if moving { orb_step(s, w, h); } }
   vertices := at;
   for e: 0..<s[0].spark_n {
     p := s[0].sparks[e];

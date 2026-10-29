@@ -40,13 +40,18 @@ EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return 
 // Which page: 0 the landing, 1 the galaxy (data-page).
 EXPORT("coaxial_page") void coaxial_page(uint32_t state, int32_t page) { verse_page(at(state), page); }
 
+// Golden mode (the release walk, coax/web/goldens.ts): drawn as if still, so
+// the landing's orbs hold their first places and the stars don't twinkle.
+static uint32_t golden;
+EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0u; }
+
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms,
                        float width, float height, float dpr, float dt, uint32_t still) {
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_verse_max_vertices() * coaxial_verse_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_verse_uniform_floats()};
   start_track(state);
-  int64_t n = verse_frame(at(state), tr(), out, u, width, height, dpr, dt, still != 0);
+  int64_t n = verse_frame(at(state), tr(), out, u, width, height, dpr, dt, still != 0 || golden != 0u);
   track_frame(tr(), dt, width, height, dpr);
   if (n > 0) track_loaded(tr(), track_cstr("load-landing"));
   drain(state);
