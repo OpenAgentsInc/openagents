@@ -1,0 +1,87 @@
+// AEAD workspace/result lifecycle. Host-reported wipes are trusted effects;
+// the policy alone does not erase memory or perform authenticated encryption.
+#authority;
+
+#test "success is published only after workspace cleanup" {
+  s:=ac_begin();#assert ac_next(s)==AC_RUNNING;
+  s=ac_stop(s,AC_SUCCESS);#assert ac_next(s)==AC_WORK;
+  #assert ac_ack(s,AC_WORK,false).pending==1;
+  s=ac_ack(s,AC_WORK,true);#assert ac_next(s)==AC_READY && !ac_visible(s);
+  published:=ac_publish(s);#assert ac_visible(published) && ac_next(published)==AC_PUBLISHED;
+  #assert !ac_visible(ac_publish(ac_stop(s,AC_CANCEL)));
+  #assert ac_next(ac_stop(s,AC_CANCEL))==AC_STAGE;
+}
+#test "failure and cancellation require both regions and stay sticky" {
+  for reason:AC_FAILURE..<(AC_CANCEL+1) {
+    s:=ac_stop(ac_begin(),reason);#assert ac_next(s)==AC_WORK;
+    s=ac_ack(s,AC_WORK,true);#assert ac_next(s)==AC_STAGE;
+    s=ac_ack(s,AC_STAGE,true);#assert ac_next(s)==AC_READY && !ac_visible(ac_publish(s));
+    #assert ac_stop(s,AC_SUCCESS).reason==reason;
+  }
+  s:=ac_stop(ac_begin(),AC_SUCCESS);s=ac_stop(s,AC_FAILURE);
+  #assert s.pending==3 && s.reason==AC_FAILURE;
+  #assert ac_stop(s,AC_CANCEL).reason==AC_FAILURE;
+}
+#test "invalid states and acknowledgments cannot be promoted" {
+  s:=ac_begin();#assert ac_valid(s) && !ac_visible(ac_publish(s));
+  #assert ac_ack(s,AC_WORK,true).phase==AC_RUN;
+  #assert ac_stop(s,0).phase==AC_RUN && ac_stop(s,4).phase==AC_RUN;
+  s=ac_stop(s,AC_SUCCESS);
+  #assert ac_ack(s,0,true).pending==1 && ac_ack(s,AC_STAGE,true).pending==1;
+  malformed:=AeadCleanup.{phase=AC_CLEAN,reason=AC_SUCCESS,pending=2};
+  #assert !ac_valid(malformed) && ac_next(malformed)==AC_INVALID && !ac_visible(ac_publish(malformed));
+  malformed=AeadCleanup.{phase=AC_FINISHED,reason=AC_SUCCESS,pending=1};#assert !ac_valid(malformed) && ac_publish(malformed).phase==AC_FINISHED;
+  malformed=AeadCleanup.{phase=AC_CLEAN,reason=0,pending=1};#assert ac_ack(malformed,AC_INVALID,true).pending==1;
+  malformed=AeadCleanup.{phase=AC_PUBLISH,reason=AC_FAILURE,pending=0};#assert !ac_valid(malformed);
+  malformed=AeadCleanup.{phase=AC_RUN,reason=AC_SUCCESS,pending=0};#assert !ac_valid(malformed);
+  malformed=AeadCleanup.{phase=AC_CLEAN,reason=AC_FAILURE,pending=4};#assert !ac_valid(malformed);
+  malformed=AeadCleanup.{phase=AC_CLEAN,reason=AC_FAILURE,pending=1};#assert !ac_valid(malformed) && ac_next(malformed)==AC_INVALID;
+  malformed.reason=AC_CANCEL;#assert !ac_valid(malformed);
+  malformed=AeadCleanup.{phase=AC_FINISHED,reason=0,pending=0};#assert !ac_valid(malformed) && ac_publish(malformed).phase==AC_FINISHED;
+  malformed=AeadCleanup.{phase=AC_FINISHED,reason=4,pending=0};#assert !ac_valid(malformed);
+  malformed=AeadCleanup.{phase=0,reason=AC_SUCCESS,pending=0};#assert !ac_valid(malformed);
+  malformed=AeadCleanup.{phase=AC_PUBLISH,reason=AC_SUCCESS,pending=1};#assert !ac_valid(malformed);
+  malformed=AeadCleanup.{phase=AC_CLEAN,reason=AC_SUCCESS,pending=0};#assert ac_publish(malformed).phase==AC_CLEAN;
+  malformed=AeadCleanup.{phase=AC_FINISHED,reason=AC_FAILURE,pending=0};#assert ac_publish(malformed).phase==AC_FINISHED;
+}
+
+AC_RUN :: 1; AC_CLEAN :: 2; AC_FINISHED :: 3; AC_PUBLISH :: 4;
+AC_SUCCESS :: 1; AC_FAILURE :: 2; AC_CANCEL :: 3;
+AC_WORK :: 1; AC_STAGE :: 2; AC_INVALID :: -1; AC_RUNNING :: -2; AC_READY :: 0; AC_PUBLISHED :: -3;
+AeadCleanup :: struct {phase:int;reason:int;pending:int;}
+ac_begin :: ()->AeadCleanup #export_c {return AeadCleanup.{phase=AC_RUN};}
+ac_valid :: (s:AeadCleanup)->bool #export_c {
+  if s.phase==AC_RUN {return s.reason==0 && s.pending==0;}
+  if s.reason<AC_SUCCESS || s.reason>AC_CANCEL {return false;}
+  if s.phase==AC_CLEAN {
+    if s.reason==AC_SUCCESS {return s.pending==1;}
+    return s.pending==2 || s.pending==3;
+  }
+  if s.phase==AC_FINISHED {return s.pending==0;}
+  return s.phase==AC_PUBLISH && s.pending==0 && s.reason==AC_SUCCESS;
+}
+ac_stop :: (s:AeadCleanup,reason:int)->AeadCleanup #export_c {
+  if !ac_valid(s) || reason<AC_SUCCESS || reason>AC_CANCEL {return s;}
+  if s.phase==AC_RUN {return AeadCleanup.{phase=AC_CLEAN,reason=reason,pending=ifx reason==AC_SUCCESS then 1 else 3};}
+  if (s.phase==AC_CLEAN || s.phase==AC_FINISHED) && s.reason==AC_SUCCESS && reason!=AC_SUCCESS {
+    next:=s;next.phase=AC_CLEAN;next.reason=reason;next.pending+=AC_STAGE;return next;
+  }
+  return s;
+}
+ac_next :: (s:AeadCleanup)->int #export_c {
+  if !ac_valid(s) {return AC_INVALID;}
+  if s.phase==AC_RUN {return AC_RUNNING;}
+  if s.phase==AC_PUBLISH {return AC_PUBLISHED;}
+  if s.phase==AC_FINISHED {return AC_READY;}
+  if (s.pending & AC_WORK)!=0 {return AC_WORK;}return AC_STAGE;
+}
+ac_ack :: (s:AeadCleanup,region:int,erased:bool)->AeadCleanup #export_c {
+  if !ac_valid(s) || s.phase!=AC_CLEAN {return s;}
+  if !erased || region!=ac_next(s) {return s;}
+  next:=s;next.pending-=region;if next.pending==0 {next.phase=AC_FINISHED;}return next;
+}
+ac_publish :: (s:AeadCleanup)->AeadCleanup #export_c {
+  if !ac_valid(s) || s.phase!=AC_FINISHED || s.reason!=AC_SUCCESS {return s;}
+  next:=s;next.phase=AC_PUBLISH;return next;
+}
+ac_visible :: (s:AeadCleanup)->bool #export_c {return ac_valid(s) && s.phase==AC_PUBLISH;}
