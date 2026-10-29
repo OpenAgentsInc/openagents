@@ -690,6 +690,15 @@ lay_group :: (t: [] Transcript, a: [] Atlas, th: Theme, g: int, x: f32, y: f32, 
   ry := y + TOOL_GROUP_HEADER_HEIGHT + CHIPS_TOP_PAD;
   rail := ink(0.12);
   buf: [64] ToolLine;
+  // A group that is one thought says "Thought process" once: its text sits
+  // under the header, with no chip repeating the name (Zeron nests a second
+  // "Thought process" chip here; we don't).
+  if grp.tools == 1 && t[0].tools[grp.tool0].kind == TK_THOUGHT {
+    tool := t[0].tools[grp.tool0];
+    cx := x + ACTIVITY_GUTTER_WIDTH + ACTIVITY_TEXT_GAP;
+    n := thought_lines(tool.arg, buf[..]);
+    return ry - y + lay_detail_lines(t, a, tool.arg, buf[..], n, cx, ry, FONT_TOOL, th.faint);
+  }
   for k: 0..<grp.tools {
     tool := t[0].tools[grp.tool0 + k];
     rh := tool_row_height(tool);
@@ -1075,6 +1084,24 @@ t_row_of :: (t: [] Transcript, kind: int, n: int) -> int {
   red := 0;
   for k: 0..<t[0].nbox { if t[0].boxes[k].kind == TI_ICON && t[0].boxes[k].icon == ICON_TERMINAL && t[0].boxes[k].fill.r > 0.95 && t[0].boxes[k].fill.g < 0.5 { red += 1; } }
   #assert red == 1;
+}
+
+#test "a group of one thought says Thought process once, its text under the header" {
+  t: [1] Transcript; a: [1] Atlas;
+  t_test_setup(t[..], a[..]);
+  t_reset(t[..]);
+  t_user(t[..], "hi");
+  t_entry(t[..]);
+  g := t_group(t[..], "Thought process");
+  k := t_tool(t[..], g, Tool.{kind = TK_THOUGHT, arg = "Just say hello back.", resolved = true});
+  t_set_open(t[..], g, -1, true);
+  t_layout(t[..], a[..], zeron_dark(), 292, 736, 145);
+  // the header, 2, then the thought's line: less than a chip row would take, no icon
+  h := t[0].rows[t[0].nr - 1].h;
+  #assert h > 26 + 2 && h < 26 + 2 + 32;
+  icons := 0;
+  for b: 0..<t[0].nbox { if t[0].boxes[b].kind == TI_ICON && t[0].boxes[b].icon == ICON_THOUGHT { icons += 1; } }
+  #assert icons == 0;
 }
 
 #test "clicks on a header open its group, on a chip its detail; hovering lights them" {
