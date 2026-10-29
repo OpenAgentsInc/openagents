@@ -45,7 +45,7 @@ PV_BUSY :: 2.0;            // seconds between reads of the conversation while a 
 PV_NOTE :: 200;
 PV_HTTP :: 512;            // + id: an HTTP answer (coax/web/host.js)
 PV_TYPED :: 1; PV_PAGE_TEXT :: 2; PV_SHOWN :: 602;
-PV_NAVIGATE :: 1; PV_SET_HASH :: 3;
+PV_NAVIGATE :: 1; PV_SET_HASH :: 3; PV_KEEP_PLAYER :: 5;
 PV_REFRESH :: 30.0;        // seconds between reads of the state
 PV_FRESH :: 75.0;          // an answer this old or newer is LIVE
 POST_MESSAGE :: 1; POST_REDEEM :: 2; POST_LOGOUT :: 3; POST_ASK :: 4; POST_STOP :: 5; POST_UNDO :: 6; POST_AGREE :: 7;
@@ -329,7 +329,7 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
   if kind == POST_POLL {
     s[0].polled_at = s[0].time;
     if code == 404 { s[0].code_state = CODE_EXPIRED; }
-    else if code == 200 && pv_has(bytes, "signed-in") { s[0].code_state = CODE_DONE; s[0].me_status = -1; }
+    else if code == 200 && pv_has(bytes, "signed-in") { s[0].code_state = CODE_DONE; s[0].me_status = -1; pv_keep_player(s, bytes, i); }
     else if code == 200 && pv_has(bytes, "linked") { s[0].code_state = CODE_DONE; }
     return;
   }
@@ -386,6 +386,26 @@ pv_value :: (bytes: string, from: int, key: string) -> string {
     k += 1;
   }
   return "";
+}
+// A signed-in poll's Verse player ({key, id, account}: the browser's player key, now
+// on the phone's account): kept as the browser's playtest player (host action 5).
+pv_keep_player :: (s: [] PrivateState, bytes: string, from: int) {
+  key := "\"player\"";
+  k := from;
+  while k + key.count <= bytes.count && bytes[k..<k + key.count] != key { k += 1; }
+  a := k + key.count;
+  while a < bytes.count && (bytes[a] == ' ' || bytes[a] == ':') { a += 1; }
+  if a >= bytes.count || bytes[a] != '{' { return; }
+  b := a;
+  while b < bytes.count && bytes[b] != '}' { b += 1; }
+  if b >= bytes.count || b + 1 - a > PV_URL { return; }
+  s[0].out_n = pv_put(s[0].outbox[..], 0, bytes[a..<b + 1]); s[0].action = PV_KEEP_PLAYER;
+}
+// The face's HTTP flags for the waiting POST: 4 answer wanted, 1 POST; a poll also
+// sends the browser's playtest player key (8), which a signed-in poll moves to the phone's key.
+coaxial_private_post_flags :: (s: [] PrivateState) -> int #export_c {
+  if s.count < 1 { return 5; }
+  return ifx s[0].post_kind == POST_POLL then 13 else 5;
 }
 // The challenge's answer: its URL into the QR, its poll token kept for polling.
 pv_got_code :: (s: [] PrivateState, code: int, bytes: string, i: int) {
@@ -1613,11 +1633,16 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
   coaxial_private_posted(s[..], 3);
   pv_answer(s[..], 3, "200\n{\"state\": \"waiting\"}");
   #assert s[0].code_state == CODE_SHOWN;
+  #assert s[0].action == 0;
   s[0].time += 2.1;
   n = pv_fresh(s[..], out[..], u[..], 390, 844);
   coaxial_private_posted(s[..], 4);
-  pv_answer(s[..], 4, "200\n{\"npub\": \"npub1xyz\", \"state\": \"signed-in\"}");
+  #assert coaxial_private_post_flags(s[..]) == 13;
+  pv_answer(s[..], 4, "200\n{\"npub\": \"npub1xyz\", \"state\": \"signed-in\", \"player\": {\"id\": \"p1\", \"key\": \"kkkkkkkkkkkkkkkkkkkkkkkk\", \"account\": \"n-ab\"}}");
   #assert s[0].code_state == CODE_DONE && s[0].me_status == -1;
+  // the browser's Verse player, now the phone's, is kept (host action 5)
+  #assert s[0].action == PV_KEEP_PLAYER && cast(string) s[0].outbox[0..<s[0].out_n] == "{\"id\": \"p1\", \"key\": \"kkkkkkkkkkkkkkkkkkkkkkkk\", \"account\": \"n-ab\"}";
+  coaxial_private_action_done(s[..]);
   n = pv_fresh(s[..], out[..], u[..], 390, 844);
   #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/auth/me";
   coaxial_private_asked(s[..], 5);

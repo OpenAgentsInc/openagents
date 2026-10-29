@@ -12,7 +12,7 @@ IMPORT("coaxial_http") int32_t coaxial_http(uint32_t url, uint32_t url_len, uint
 
 static coax_v_t_PrivateState at(uint32_t state) { return (coax_v_t_PrivateState){(coax_t_PrivateState *)(uintptr_t)state, 1}; }
 
-// What private.coax asks for, once there's a free slot (flag 4: answer wanted; 1: POST).
+// What private.coax asks for, once there's a free slot (flag 4: answer wanted; 1: POST; 8: the player key).
 static void send_asks(uint32_t state) {
   coax_t_PrivateState *s = at(state).data;
   if (s->qr_want) {   // a phone code's URL: its QR module grid (coax/lib/qr)
@@ -24,7 +24,8 @@ static void send_asks(uint32_t state) {
     if (id >= 0) coaxial_private_asked(at(state), id);
   }
   if (s->post_n > 0) {
-    int32_t id = coaxial_http((uint32_t)(uintptr_t)s->post.e, (uint32_t)s->post_n, (uint32_t)(uintptr_t)s->body.e, (uint32_t)s->body_n, 5);
+    int32_t id = coaxial_http((uint32_t)(uintptr_t)s->post.e, (uint32_t)s->post_n, (uint32_t)(uintptr_t)s->body.e, (uint32_t)s->body_n,
+                               (int32_t)coaxial_private_post_flags(at(state)));
     if (id >= 0) coaxial_private_posted(at(state), id);
   }
 }

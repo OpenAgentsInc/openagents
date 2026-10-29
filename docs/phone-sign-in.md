@@ -22,6 +22,15 @@ later (`apps/openagents-web/projects/coax/work/nostr.json`).
    pubkey. `GET /api/auth/me` gives the npub and the projects that key
    belongs to; `POST /api/auth/logout` ends it.
 
+The poll also sends the browser's Verse player key (`X-Verse-Player`, from
+localStorage `verse.player`) when it has one. When the poll signs the page in,
+that key moves to the phone's pubkey by the rules of `POST /api/playtest/signin`
+(its worlds, realm, saves and sessions come along; a key already on another
+pubkey's account stays there and the page gets a fresh one), and the answer's
+`player` (`{key, id, account}`) is kept as `verse.player`
+(`migrations/0022_signin_verse_player.sql`). The approved challenge stands in
+for the signature, so the browser needs no key of its own.
+
 Challenges are good once, for five minutes. Only SHA-256 of challenges, poll
 tokens and sessions is stored. Challenge, poll and invite values travel only
 in URL fragments and request bodies, never in a path or query, so they don't
@@ -56,7 +65,7 @@ its owner's linked phone key; its key setup is unchanged for now.
 
 | Piece | Where |
 | --- | --- |
-| Rules and storage | `coax/web/api/migrations/0019_phone_signin.sql` (`signin.api`, the `projects.api` wrapper) |
+| Rules and storage | `coax/web/api/migrations/0019_phone_signin.sql` (`signin.api`, the `projects.api` wrapper), `0022_signin_verse_player.sql` (the Verse player) |
 | Routes | `coax/web/api/private.c` (`auth_route`, `claim`, `link`) |
 | Checks | `coax/web/api/test_private_phone.py` (run by `coax/web/api/test.sh`) |
 | Page | `apps/openagents-web/private.coax` page 2 (`/signin`) and LINK A PHONE on page 0 |

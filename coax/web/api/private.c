@@ -218,7 +218,8 @@ static void visitor(const request *q, char ip[128]) {
 // ---- signing in with the phone (/api/auth/<op>, signin.api in migrations/0019_phone_signin.sql)
 //   POST challenge  (this site's pages)   a new challenge for /signin's QR, and the page's poll token
 //   POST approve    (NIP-98, with payload) {challenge, kind}: the phone approves
-//   POST poll       (this site's pages)   {poll}: waiting, then the oa_session cookie once
+//   POST poll       (this site's pages)   {poll}: waiting, then the oa_session cookie once, and the
+//                                         page's Verse player (X-Verse-Player) moved to the phone's key -> player
 //   GET  me         (oa_session)          the session's npub and projects, as lines
 //   POST logout     (this site's pages)   ends the session
 // Every POST is rate limited per address; challenges and poll tokens are never logged.
@@ -259,8 +260,16 @@ static bool auth_route(const request *q) {
     memcpy(pubkey, ev.pubkey, sizeof pubkey);
   }
   cookie_named(q, SITE_COOKIE, site);
-  char who[400];
-  snprintf(who, sizeof who, "{\"pubkey\":\"%s\",\"site\":\"%s\",\"origin\":\"%.200s\"}", pubkey, site, origin());
+  // the poll's Verse player (host flag 8): signed in with the phone's key too (migration 0022)
+  char player[160] = "";
+  if (!strcmp(op, "poll") && api_header(q, "X-Verse-Player", player, sizeof player)) {
+    size_t n = strlen(player);
+    bool fine = n >= 20 && n <= 128;
+    for (size_t i = 0; fine && i < n; i++) fine = isalnum((unsigned char)player[i]) || player[i] == '_' || player[i] == '-';
+    if (!fine) player[0] = 0;
+  }
+  char who[600];
+  snprintf(who, sizeof who, "{\"pubkey\":\"%s\",\"site\":\"%s\",\"player\":\"%s\",\"origin\":\"%.200s\"}", pubkey, site, player, origin());
   char *body = malloc(q->body_len + 3);
   if (!body) { api_respond(q->fd, 503, "application/json", PRIVATE_HEADERS, "{\"error\":\"memory\"}", 18); return true; }
   if (post && q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");

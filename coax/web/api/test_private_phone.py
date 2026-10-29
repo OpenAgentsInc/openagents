@@ -208,6 +208,46 @@ sess2 = cookie_of(h, "oa_session")
 s, b, h = site("POST", "logout", {}, cookie=sess2)
 check("/api/auth/logout ends it and clears the cookie", s == 200 and "Max-Age=0" in h.get("Set-Cookie", "") and site("GET", "me", cookie=sess2)[0] == 401)
 
+# ---- the Verse player: /signin's poll signs the browser's player key in with the phone's key (0022)
+def poll_as(poll, key):
+    h = {"X-Forwarded-For": "10.1.0.21", "Origin": API, "Content-Type": "application/json", "X-Verse-Player": key}
+    s, b, hd = call("POST", "/api/auth/poll", json.dumps({"poll": poll}).encode(), h)
+    return s, json.loads(b)
+
+
+def signed_in_page(key, keyfile=PHONE_KEY):
+    s, c, _ = site("POST", "challenge", {}, xff="10.1.0.21")
+    phone(keyfile, "/api/auth/approve", {"challenge": c["challenge"], "kind": "signin"}, xff="10.1.0.22")
+    return poll_as(c["poll"], key)
+
+
+s, guest = pt("POST", "player", {})
+gw = pt("POST", "worlds", {}, key=guest["key"])[1]["id"]
+s, c, _ = site("POST", "challenge", {}, xff="10.1.0.21")
+check("while the phone hasn't approved, the poll moves no player", poll_as(c["poll"], guest["key"]) == (200, {"state": "waiting"})
+      and sql(f"select coalesce(account, '-') from verse.players where id = '{guest['id']}'") == "-")
+phone(PHONE_KEY, "/api/auth/approve", {"challenge": c["challenge"], "kind": "signin"}, xff="10.1.0.22")
+s, b = poll_as(c["poll"], guest["key"])
+check("the poll signs the page's Verse player in with the phone's key: same key, the pubkey's account",
+      s == 200 and b["state"] == "signed-in" and b["player"] == {"key": guest["key"], "id": guest["id"], "account": "n-" + PHONE}, (s, b))
+check("its worlds moved to that account", sql(f"select owner_account from verse.worlds where id = '{gw}'") == "n-" + PHONE
+      and pt("GET", "player", key=guest["key"])[1]["account"] == "n-" + PHONE)
+s, b = signed_in_page(guest["key"])
+check("signing in again keeps the same player", s == 200 and b["player"]["key"] == guest["key"], (s, b))
+s, other = pt("POST", "player", {})
+s, b = signed_in_page(other["key"], STRANGER_KEY)
+theirs = b["player"]["account"]
+check("another phone signs another player in to its own account", s == 200 and b["player"]["key"] == other["key"] and theirs not in ("n-" + PHONE, ""), (s, b))
+s, b = signed_in_page(other["key"])
+check("a player on another pubkey's account stays there: the page gets a fresh key on the phone's",
+      s == 200 and b["player"]["key"] != other["key"] and b["player"]["account"] == "n-" + PHONE
+      and pt("GET", "player", key=other["key"])[1]["account"] == theirs, (s, b))
+s, b = signed_in_page("not a key!")
+check("a malformed player key is ignored", s == 200 and b["state"] == "signed-in" and "player" not in b, (s, b))
+s, c, _ = site("POST", "challenge", {}, xff="10.1.0.21")
+s, b = poll_as(c["poll"], guest["key"])
+check("a sign-in nobody approved never touches the player", b == {"state": "waiting"})
+
 # ---- rate limits and logs
 codes = [site("POST", "challenge", {}, xff="203.0.113.77, 10.9.9.9")[0] for _ in range(12)]
 check("challenges are limited to 10 a minute per address", codes.count(200) == 10 and codes[-1] == 429, codes)
