@@ -946,7 +946,7 @@ fn verse_paint_sparkle(l_rdl: f32) -> f32 {
 }
 // ---- end generated
 
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -996,12 +996,37 @@ fn verse_style_shade(l_albedo: f32, l_shadow_light: f32, l_lit_light: f32, l_ban
   coax_t7 = coax_p_st_sat(l_band);
   return (l_albedo * (l_shadow_light + (coax_t6 * coax_t7)));
 }
-fn verse_style_ambient(l_ny: f32, l_sky: f32, l_ground: f32, l_scale: f32) -> f32 {
+fn verse_style_cool(l_c: f32, l_tint: f32, l_tint_lum: f32, l_amount: f32) -> f32 {
   var coax_t8: f32;
   var coax_t9: f32;
-  coax_t8 = (l_sky - l_ground);
-  coax_t9 = coax_p_st_sat(((l_ny * 0.5) + 0.5));
-  return ((l_ground + (coax_t8 * coax_t9)) * l_scale);
+  var coax_t10: f32;
+  var coax_t11: f32;
+  coax_t9 = coax_p_st_max(l_tint, 9.99999997e-07);
+  coax_t10 = coax_p_st_max(l_tint_lum, 9.99999997e-07);
+  coax_t8 = (coax_t9 / coax_t10);
+  coax_t11 = coax_p_st_max(l_amount, 0.0);
+  return (l_c * pow(coax_t8, coax_t11));
+}
+fn verse_style_keep_value(l_c: f32, l_before: f32, l_after: f32) -> f32 {
+  var coax_t12: f32;
+  var coax_t13: f32;
+  coax_t12 = (l_c * l_before);
+  coax_t13 = coax_p_st_max(l_after, 9.99999997e-07);
+  return (coax_t12 / coax_t13);
+}
+fn verse_style_banded(l_shadow_c: f32, l_lit_c: f32, l_band: f32) -> f32 {
+  var coax_t14: f32;
+  var coax_t15: f32;
+  coax_t14 = (l_lit_c - l_shadow_c);
+  coax_t15 = coax_p_st_sat(l_band);
+  return (l_shadow_c + (coax_t14 * coax_t15));
+}
+fn verse_style_ambient(l_ny: f32, l_sky: f32, l_ground: f32, l_scale: f32) -> f32 {
+  var coax_t16: f32;
+  var coax_t17: f32;
+  coax_t16 = (l_sky - l_ground);
+  coax_t17 = coax_p_st_sat(((l_ny * 0.5) + 0.5));
+  return ((l_ground + (coax_t16 * coax_t17)) * l_scale);
 }
 fn verse_style_dab(l_rdl: f32, l_cut: f32, l_strength: f32) -> f32 {
   return select(0.0, l_strength, (l_rdl >= l_cut));
@@ -1012,16 +1037,16 @@ fn verse_style_rim(l_ndv: f32, l_ndl: f32, l_start: f32, l_full: f32, l_strength
   return ((l_edge * (0.349999994 + (0.649999976 * coax_p_st_sat((l_ndl + 0.300000012))))) * l_strength);
 }
 fn verse_style_haze(l_d: f32, l_y: f32, l_base_y: f32, l_start: f32, l_density: f32, l_cap: f32, l_falloff: f32) -> f32 {
-  var coax_t12: f32;
-  var coax_t13: f32;
-  var coax_t14: f32;
-  var coax_t15: f32;
-  coax_t12 = (-l_density);
-  coax_t13 = coax_p_st_max((l_d - l_start), 0.0);
-  var l_dist: f32 = (1.0 - exp((coax_t12 * coax_t13)));
-  coax_t14 = (-coax_p_st_max((l_y - l_base_y), 0.0));
-  coax_t15 = coax_p_st_max(l_falloff, 0.00100000005);
-  var l_height: f32 = exp((coax_t14 / coax_t15));
+  var coax_t20: f32;
+  var coax_t21: f32;
+  var coax_t22: f32;
+  var coax_t23: f32;
+  coax_t20 = (-l_density);
+  coax_t21 = coax_p_st_max((l_d - l_start), 0.0);
+  var l_dist: f32 = (1.0 - exp((coax_t20 * coax_t21)));
+  coax_t22 = (-coax_p_st_max((l_y - l_base_y), 0.0));
+  coax_t23 = coax_p_st_max(l_falloff, 0.00100000005);
+  var l_height: f32 = exp((coax_t22 / coax_t23));
   return coax_p_st_min((l_dist * (1.0 + ((l_height - 1.0) * 0.600000024))), l_cap);
 }
 fn verse_style_haze_glow(l_vdl: f32) -> f32 {
@@ -1031,11 +1056,11 @@ fn verse_style_haze_glow(l_vdl: f32) -> f32 {
   return ((l_a4 * l_a4) * 0.449999988);
 }
 fn verse_style_fog(l_c: f32, l_haze_c: f32, l_f: f32) -> f32 {
-  var coax_t16: f32;
-  var coax_t17: f32;
-  coax_t16 = (l_haze_c - l_c);
-  coax_t17 = coax_p_st_sat(l_f);
-  return (l_c + (coax_t16 * coax_t17));
+  var coax_t24: f32;
+  var coax_t25: f32;
+  coax_t24 = (l_haze_c - l_c);
+  coax_t25 = coax_p_st_sat(l_f);
+  return (l_c + (coax_t24 * coax_t25));
 }
 fn verse_style_sky_t(l_up: f32) -> f32 {
   return pow(coax_p_st_max(l_up, 9.99999997e-07), 0.550000012);
@@ -1044,11 +1069,11 @@ fn verse_style_sky_band(l_up: f32, l_lift: f32) -> f32 {
   return (l_lift * (1.0 - coax_p_st_sat((abs(l_up) / 0.104500003))));
 }
 fn verse_style_halo(l_cos_t: f32, l_k: f32) -> f32 {
-  var coax_t18: f32;
-  var coax_t19: f32;
-  coax_t18 = (-l_k);
-  coax_t19 = coax_p_st_max((1.0 - l_cos_t), 0.0);
-  return exp((coax_t18 * coax_t19));
+  var coax_t26: f32;
+  var coax_t27: f32;
+  coax_t26 = (-l_k);
+  coax_t27 = coax_p_st_max((1.0 - l_cos_t), 0.0);
+  return exp((coax_t26 * coax_t27));
 }
 fn verse_style_tone(l_c: f32, l_exposure: f32) -> f32 {
   return (1.0 - exp(((-coax_p_st_max(l_c, 0.0)) * l_exposure)));
@@ -1063,16 +1088,16 @@ fn verse_style_luma(l_r: f32, l_g: f32, l_b: f32) -> f32 {
   return (((0.212599993 * l_r) + (0.715200007 * l_g)) + (0.0722000003 * l_b));
 }
 fn verse_style_bloom_share(l_lum: f32, l_threshold: f32, l_knee: f32) -> f32 {
-  var coax_t20: f32;
-  var coax_t21: f32;
+  var coax_t28: f32;
+  var coax_t29: f32;
   if ((l_lum <= 0.0))
   {
     return 0.0;
   }
   var l_k: f32 = coax_p_st_max(l_knee, 9.99999975e-06);
-  coax_t20 = coax_p_st_max(((l_lum - l_threshold) + l_k), 0.0);
-  coax_t21 = (2.0 * l_k);
-  var l_q: f32 = coax_p_st_min(coax_t20, coax_t21);
+  coax_t28 = coax_p_st_max(((l_lum - l_threshold) + l_k), 0.0);
+  coax_t29 = (2.0 * l_k);
+  var l_q: f32 = coax_p_st_min(coax_t28, coax_t29);
   return coax_p_st_min((coax_p_st_max(((l_q * l_q) / (4.0 * l_k)), (l_lum - l_threshold)) / l_lum), 1.0);
 }
 fn verse_style_bloom_mix(l_c: f32, l_bloom: f32, l_mix: f32) -> f32 {
@@ -1086,12 +1111,18 @@ fn verse_style_shadow_reach(l_phone: f32) -> f32 {
   return 60.0;
 }
 fn verse_style_shadow_snap(l_x: f32, l_reach: f32, l_size: f32) -> f32 {
-  var coax_t10: f32;
-  var coax_t11: f32;
-  coax_t10 = (2.0 * l_reach);
-  coax_t11 = coax_p_st_max(l_size, 1.0);
-  var l_texel: f32 = (coax_t10 / coax_t11);
+  var coax_t18: f32;
+  var coax_t19: f32;
+  coax_t18 = (2.0 * l_reach);
+  coax_t19 = coax_p_st_max(l_size, 1.0);
+  var l_texel: f32 = (coax_t18 / coax_t19);
   return (floor(((l_x / l_texel) + 0.5)) * l_texel);
+}
+fn verse_style_shadow_across(l_x: f32, l_reach: f32) -> f32 {
+  return (l_x / coax_p_st_max(l_reach, 0.00100000005));
+}
+fn verse_style_shadow_depth(l_along: f32, l_reach: f32) -> f32 {
+  return (0.5 - (l_along / (4.0 * coax_p_st_max(l_reach, 0.00100000005))));
 }
 fn verse_style_shadow_taps(l_phone: f32) -> f32 {
   if ((l_phone > 0.5))

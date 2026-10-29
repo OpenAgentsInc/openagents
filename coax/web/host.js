@@ -104,6 +104,10 @@
 //   coaxial_water_draws(state)  how many of the last draws are water (water_vs, waterPipelines)
 // The WGSL's scene_vs/scene_fs read group 1: the storage assets, then the stores, then the texture
 // and its sampler, in that order. A WGSL with shadow_vs/shadow_fs also gets a shadow map (shadowLayout).
+// A traced scene (a realm whose bg_fs draws the world, the style fixture) puts its own casters in the
+// same map: a WGSL with caster_vs gets the shadow map, caster_vs draws into it (group 0 only, no
+// fragment), and bg_fs reads it as group 2 (group 1 empty):
+//   coaxial_caster_vertices(state), coaxial_caster_instances(state)  what caster_vs draws (0: none)
 // Particles, optionally: particles:URL names a shader module of their own (particle_vs/particle_fs,
 // group 0 the uniforms, group 1 binding 0 the emitters), drawn after the scene, added, depth-tested:
 //   coaxial_particle_cap(), coaxial_particles(state), coaxial_particle_bytes(state)
@@ -607,11 +611,13 @@ async function loadShaders() {
   gpu.scene3d = scene;
   const flat = scene ? { depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "always" } } : {};
   const shadows = scene && /fn\s+shadow_vs\b/.test(code);
+  const casters = scene && /fn\s+caster_vs\b/.test(code);
   const post = scene && /fn\s+post_fs\b/.test(code);
   const lit = post ? [{ format: "rgba16float" }, { format: "rgba16float" }] : [{ format }];
   const sceneGroups = scene ? [gpu.layout, sceneLayout(), ...(shadows ? [shadowLayout()] : [])] : [];
-  const [bg, fx, sc, sh, bl, po] = await Promise.all([
-    device.createRenderPipelineAsync({ layout, ...flat, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: lit } }),
+  const bgLayout = casters ? device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, emptyLayout(), shadowLayout()] }) : layout;
+  const [bg, fx, sc, sh, bl, po, ca] = await Promise.all([
+    device.createRenderPipelineAsync({ layout: bgLayout, ...flat, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: lit } }),
     device.createRenderPipelineAsync({
       layout, ...(post ? {} : flat),
       // one vec4f attribute per four floats of the app's vertex, in order
@@ -641,8 +647,13 @@ async function loadShaders() {
       layout: device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, postLayouts().post] }),
       vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "post_fs", targets: [{ format }] },
     }) : null,
+    casters ? device.createRenderPipelineAsync({
+      layout, vertex: { module, entryPoint: "caster_vs" },
+      primitive: { topology: "triangle-list", cullMode: "none" },
+      depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less", depthBias: 2, depthBiasSlopeScale: 2 },
+    }) : null,
   ]);
-  gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; gpu.bloom = bl; gpu.post = po; // swapped whole, at the next frame
+  gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; gpu.bloom = bl; gpu.post = po; gpu.caster = ca; // swapped whole, at the next frame
   gpu.particles = sc ? await particlePipeline(post) : null;
   [gpu.waterTransmit, gpu.waterEmit] = sc && /fn\s+water_vs\b/.test(code) ? await waterPipelines(module, sceneGroups, post) : [null, null];
   return true;
@@ -821,6 +832,14 @@ function sceneLayout() {
 // The shadow map, when the WGSL has shadow_vs/shadow_fs: the scene drawn first from its key
 // light into a depth texture (2048 square, 1024 on a phone), which scene_fs reads as group 2:
 // the map, then a comparison sampler.
+// An empty group, for a pipeline that skips group 1 (bg_fs reading the shadow map as group 2).
+function emptyLayout() {
+  if (!gpu.emptyLayout) {
+    gpu.emptyLayout = gpu.device.createBindGroupLayout({ entries: [] });
+    gpu.emptyGroup = gpu.device.createBindGroup({ layout: gpu.emptyLayout, entries: [] });
+  }
+  return gpu.emptyLayout;
+}
 function shadowLayout() {
   if (gpu.shadowLayout) return gpu.shadowLayout;
   const { device } = gpu, size = matchMedia("(pointer: coarse)").matches ? 1024 : 2048;
@@ -1118,16 +1137,22 @@ function frame(now) {
     pass.setBindGroup(1, gpu.sceneGroup); pass.setIndexBuffer(gpu.index, "uint32");
     for (let i = 0; i < draws - wet; i++) drawOne(pass, i);
   };
-  if (draws && gpu.shadow) {
+  const cast = gpu.caster && x.coaxial_caster_instances ? [x.coaxial_caster_vertices(arena.state), x.coaxial_caster_instances(arena.state)] : [0, 0];
+  if ((draws && gpu.shadow) || gpu.caster) {
+    // cleared every frame even with nothing to cast, so a traced scene never reads a stale map
     const shade = encoder.beginRenderPass({ colorAttachments: [],
       depthStencilAttachment: { view: gpu.shadowMap.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } });
-    shade.setBindGroup(0, gpu.bindGroup); shade.setPipeline(gpu.shadow); drawScene(shade); shade.end();
+    shade.setBindGroup(0, gpu.bindGroup);
+    if (draws && gpu.shadow) { shade.setPipeline(gpu.shadow); drawScene(shade); }
+    if (cast[0] && cast[1]) { shade.setPipeline(gpu.caster); shade.draw(cast[0], cast[1]); }
+    shade.end();
   }
   const target = (view) => ({ view, loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } });
   const screen = () => target(context.getCurrentTexture().createView());
   let pass = encoder.beginRenderPass({ colorAttachments: post ? [target(gpu.light.createView()), target(gpu.aux.createView())] : [screen()],
     ...(gpu.scene ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: post ? "store" : "discard" } } : {}) });
   pass.setBindGroup(0, gpu.bindGroup);
+  if (gpu.caster) { pass.setBindGroup(1, gpu.emptyGroup); pass.setBindGroup(2, gpu.shadowGroup); }
   pass.setPipeline(gpu.bg); pass.draw(3);
   if (draws) {
     pass.setPipeline(gpu.scene);

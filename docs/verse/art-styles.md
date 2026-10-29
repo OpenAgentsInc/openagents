@@ -112,9 +112,9 @@ soft_step(e, x) = smoothstep(e - s, e + s, x)
 - **Three bands**: shadow (0), mid (0.55), lit (1.0). Edges at w = 0.20 and
   0.58, softness s = 0.06 (the blend spans 0.12 of w). Two bands (one edge at
   0.40, s = 0.08) for characters (below).
-- **Colour**: `albedo * mix(shadow_tint * ambient, key_colour * key_strength
-  + ambient, band)`. The shadow band is never black: it's the albedo under
-  the tinted ambient (section 3).
+- **Colour**: `mix(cool(albedo * shadow_tint * ambient), albedo * (key_colour
+  * key_strength + ambient), band)`. The shadow band is never black: it's the
+  albedo under the tinted ambient, cooled (section 3).
 - **No specular** on matte surfaces. Wet, metal or glass surfaces get one
   hard-edged highlight: `step(0.92, dot(R, L))` at 0.35 strength, so it
   reads as a dab of paint rather than a gloss.
@@ -142,17 +142,40 @@ colour += rim * rim_colour
 
 ### 3. Shadows and ambient
 
-- **Real shadows**: the host's shadow map (`shadow_vs`/`shadow_fs`,
-  `host.js shadowLayout`: 2048² desktop, 1024² phone) from the key light,
-  filtered soft: 9-tap Poisson PCF with a 2.5-texel radius on desktop, 4 taps
-  on a phone. The term multiplies `w` before banding, so a cast shadow falls
-  into the shadow band with the same soft edge as the terminator.
+- **Real shadows**: the host's shadow map (`host.js shadowLayout`: 2048²
+  desktop, 1024² phone) from the key light, filtered soft: 9-tap Poisson PCF
+  with a 2.5-texel radius on desktop, 4 taps on a phone. The term multiplies
+  `w` before banding, so a cast shadow falls into the shadow band with the
+  same soft edge as the terminator. A realm of meshes draws its draws into it
+  with `shadow_vs`/`shadow_fs`; a traced scene (the style fixture) draws its
+  shapes with `caster_vs` (`coaxial_caster_vertices`/`_instances`) and reads
+  the map in `bg_fs`. The map covers the eye's near 60 m (40 m on a phone),
+  its middle snapped to whole texels, its depth twice the reach either way
+  (`verse_style_shadow_reach`, `_snap`, `_across`, `_depth`, `_tap`).
+- **The rim is the key's light**: a cast shadow takes it too (the rim term
+  is multiplied by the shadow map's term).
 - **Blob shadows stay** under movers (the player, pets, NPCs) as contact
   shadows at 0.35 strength, under the cast shadow.
 - **Tint**: shadows take `shadow_tint`, which is blue or violet by
   construction: by day (0.52, 0.58, 0.86), at dusk (0.58, 0.48, 0.82), and at
   night (0.36, 0.42, 0.70). The blue channel is always the largest and no
   channel is below 0.35.
+- **Cool, warm albedos too** (decided October 29): albedo × tint × ambient
+  alone keeps a warm surface warm in shadow (the fixture's olive ground stays
+  blue-smallest), so the shadow band's colour then takes the tint's hue once
+  more and keeps its luminance:
+
+  ```
+  s    = albedo * shadow_tint * ambient
+  m    = s * pow(shadow_tint / luma(shadow_tint), cool)    // cool = 1.5
+  cool(s) = m * luma(s) / luma(m)
+  ```
+
+  A multiply, not a mix: mixing a warm colour toward blue passes through
+  grey, while this turns olive ground teal and brown ground slate, still
+  ground, never grey or black. `cool` is the preset's (`SU_SHADOW.w`, 1.5 for
+  painterly, 0 for lowpoly), in `verse/style.coax` `verse_style_cool` and
+  `verse_style_keep_value`.
 - **Ambient** is a hemisphere, sky colour above and a warm bounce below:
   by day sky (0.55, 0.66, 0.84) and ground (0.45, 0.40, 0.30), at 0.55 of the
   key; at night sky (0.14, 0.18, 0.34) and ground (0.06, 0.06, 0.08).
@@ -399,11 +422,14 @@ Two checks, both headless (`bun coax/web/shot.ts`, never a visible browser):
    | Fine detail: RMS of luminance minus its 5×5 box blur | ≤ 0.035 |
    | Dark ink: share of pixels darker than 0.4× their 3×3 neighbourhood mean | ≤ 0.2% |
    | Near black: share with sRGB luminance < 0.03 | ≤ 0.5% by day, ≤ 2% at night |
-   | Shadow hue: the darkest 15% of scene pixels, mean colour | blue ≥ red and ≥ green |
+   | Shadow hue: per surface (the `?probe=shadow` mask: its id, the shadow band, surfaces the haze has taken under 0.35 of), its mean colour in the shadow band against the same surface lit | blue share b/(r+g+b) at least 0.02 higher; HSV saturation at least 0.05 (never grey) |
    | Saturation: mean HSV saturation of scene pixels | 0.22 to 0.60 |
    | Haze: the band of rows just under the horizon, mean colour | within ΔE 12 of the preset's haze; luminance spread ≤ 0.08 |
    | Bands: luminance histogram of the largest lit object (`?probe` id) | at least two peaks, 0.15 apart |
 
+   A realm draws the shadow mask for the shadow-hue row at its address plus
+   `&probe=shadow`: red where a surface is in the shadow band, green its id
+   over 16, blue on every surface measured (the style fixture draws it).
    It runs in the release walk for every painterly realm; a failure stops
    the release like a golden does. Lowpoly and photoreal get their own
    rows when they get presets.

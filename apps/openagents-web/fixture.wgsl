@@ -201,42 +201,81 @@ fn trace(o: vec3f, d: vec3f) -> Hit {
   }
   return h;
 }
-// How much of the key reaches p: 1 lit, 0 in shadow, soft over how near the ray passes a sphere.
-fn sphere_shade(o: vec3f, d: vec3f, s: vec4f) -> f32 {
-  let oc = s.xyz - o; let b = dot(oc, d);
-  if (b <= 0.0 || dot(oc, oc) < s.w * s.w) { return 1.0; }   // behind, or a proxy's own surface
-  let miss = sqrt(max(dot(oc, oc) - b * b, 0.0)) - s.w;
-  return clamp(miss / (0.08 * b + 0.02) + 0.5, 0.0, 1.0);
+// ---- the key light's shadow map (spec 3; host.js shadowLayout, caster_vs): the scene's shapes
+// drawn from the key light into a depth map round the eye (verse_style_shadow_reach: 60 m, 40 on a
+// phone), its middle snapped to whole texels so shadows hold still, and read back here with the
+// style's Poisson taps (9 at 2.5 texels, 4 on a phone), so a cast shadow has the terminator's soft edge.
+const CASTER_SEGMENTS = 24u;
+const CASTER_RINGS = 13u;                            // odd: no ring on a capsule's equator
+fn caster(i: u32) -> vec4f {                         // centre, radius (the cube: its half size)
+  var c = array<vec4f, 8>(SPHERE, CUBE, vec4f(3.9, 2.7, -2.6, 1.15), vec4f(3.25, 2.3, -2.3, 0.8), vec4f(4.5, 2.35, -2.9, 0.85),
+    vec4f(TRUNK.x, 0.95, TRUNK.z, TRUNK.w), vec4f(BODY.x, 0.77, BODY.z, BODY.w), HEAD);
+  return c[i];
 }
-fn shadow(p: vec3f, l: vec3f) -> f32 {
-  var s = sphere_shade(p, l, SPHERE);
-  for (var i = 0; i < 3; i++) { s = min(s, sphere_shade(p, l, canopy(i))); }
-  s = min(s, sphere_shade(p, l, HEAD));
-  s = min(s, sphere_shade(p, l, vec4f(BODY.x, 0.55, BODY.z, BODY.w)));
-  s = min(s, sphere_shade(p, l, vec4f(BODY.x, 1.0, BODY.z, BODY.w)));
-  s = min(s, sphere_shade(p, l, vec4f(TRUNK.x, 0.6, TRUNK.z, TRUNK.w)));
-  s = min(s, sphere_shade(p, l, vec4f(TRUNK.x, 1.4, TRUNK.z, TRUNK.w)));
-  s = min(s, cube_shade(p, l));
+fn caster_stretch(i: u32) -> f32 {                   // a capsule's straight half length (trunk, body)
+  var h = array<f32, 8>(0.0, 0.0, 0.0, 0.0, 0.0, 0.77, 0.53, 0.0);
+  return h[i];
+}
+struct Light { ax: vec3f, ay: vec3f, l: vec3f, mx: f32, my: f32, reach: f32 }
+fn light_space() -> Light {
+  let l = st(1u).xyz;
+  let ax = select(vec3f(1.0, 0.0, 0.0), normalize(cross(vec3f(0.0, 1.0, 0.0), l)), abs(l.y) < 0.999);
+  let ay = cross(l, ax);
+  let reach = verse_style_shadow_reach(st(31u).z);
+  let size = max(st(21u).x, 1.0);
+  let c = vec3f(EYE.x, 0.0, EYE.z);
+  return Light(ax, ay, l, verse_style_shadow_snap(dot(c, ax), reach, size), verse_style_shadow_snap(dot(c, ay), reach, size), reach);
+}
+fn shadow_place(w: vec3f, k: Light) -> vec3f {       // -1..1 across the map, and depth
+  return vec3f(verse_style_shadow_across(dot(w, k.ax) - k.mx, k.reach), verse_style_shadow_across(dot(w, k.ay) - k.my, k.reach),
+    verse_style_shadow_depth(dot(w - vec3f(k.mx * k.ax + k.my * k.ay), k.l), k.reach));
+}
+@vertex fn caster_vs(@builtin(vertex_index) v: u32, @builtin(instance_index) i: u32) -> @builtin(position) vec4f {
+  var corner = array(vec2u(0u, 0u), vec2u(1u, 0u), vec2u(1u, 1u), vec2u(0u, 0u), vec2u(1u, 1u), vec2u(0u, 1u));
+  let s = caster(i);
+  var w = s.xyz;
+  if (i == 1u) {
+    // the cube: six faces of two triangles, turned as it is traced
+    if (v < 36u) {
+      let f = v / 6u; let a = f / 2u; let k = corner[v % 6u];
+      var q = vec3f(0.0);
+      q[a] = select(-1.0, 1.0, (f & 1u) == 1u);
+      q[(a + 1u) % 3u] = f32(k.x) * 2.0 - 1.0;
+      q[(a + 2u) % 3u] = f32(k.y) * 2.0 - 1.0;
+      w = s.xyz + turn(q * s.w, 0.5);
+    }
+  } else {
+    let quad = v / 6u; let k = corner[v % 6u];
+    let ring = min(quad / CASTER_SEGMENTS + k.y, CASTER_RINGS);
+    let th = 3.14159265 * f32(ring) / f32(CASTER_RINGS);
+    let ph = 6.2831853 * f32(quad % CASTER_SEGMENTS + k.x) / f32(CASTER_SEGMENTS);
+    w = s.xyz + vec3f(sin(th) * cos(ph), cos(th), sin(th) * sin(ph)) * s.w;
+    w.y += select(-1.0, 1.0, ring * 2u < CASTER_RINGS) * caster_stretch(i);
+  }
+  let q = shadow_place(w, light_space());
+  return vec4f(q.xy, q.z, 1.0);
+}
+@group(2) @binding(0) var shadow_map: texture_depth_2d;
+@group(2) @binding(1) var shadow_cmp: sampler_comparison;
+// How much of the key reaches p (normal n): 1 lit, 0 in shadow, the map's taps averaged.
+fn map_lit(p: vec3f, n: vec3f) -> f32 {
+  if (st(21u).x < 1.0) { return 1.0; }               // a style without a map (lowpoly)
+  let q = shadow_place(p + n * 0.05, light_space());
+  let uv = vec2f(0.5 + 0.5 * q.x, 0.5 - 0.5 * q.y);
+  if (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0))) { return 1.0; }
+  let texel = 1.0 / f32(textureDimensions(shadow_map).x);
+  let phone = st(31u).z; let taps = st(21u).y; let r = st(21u).z;
+  var lit = 0.0;
+  for (var k = 0.0; k < taps; k += 1.0) {
+    let o = vec2f(verse_style_shadow_tap(k, phone, 0.0), verse_style_shadow_tap(k, phone, 1.0));
+    lit += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + o * r * texel, q.z - 0.0004);
+  }
+  return lit / max(taps, 1.0);
+}
+fn shadow(p: vec3f, n: vec3f) -> f32 {
   // the figure moves in a realm, so it keeps a contact blob under it (spec 3), under the cast shadow
   let blob = 1.0 - smoothstep(0.15, 0.55, length(p.xz - BODY.xz)) * step(p.y, 0.02);
-  return verse_style_contact(s, blob, st(4u).w);
-}
-// The cube's shadow, soft the way the map's filter is: the nearest the ray toward the key passes the
-// cube's surface, against how far it has come, by the same rule as sphere_shade.
-fn cube_box(p: vec3f) -> f32 {
-  let q = abs(turn(p - CUBE.xyz, -0.5)) - vec3f(CUBE.w);
-  return length(max(q, vec3f(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
-}
-fn cube_shade(p: vec3f, l: vec3f) -> f32 {
-  var s = 1.0;
-  var t = 0.02;
-  for (var i = 0; i < 28; i++) {
-    let d = cube_box(p + l * t);
-    s = min(s, clamp(d / (0.08 * t + 0.02) + 0.5, 0.0, 1.0));
-    if (s <= 0.0 || t > 12.0) { break; }
-    t += clamp(d, 0.05, 1.0);
-  }
-  return s;
+  return verse_style_contact(map_lit(p, n), blob, st(4u).w);
 }
 fn sky(d: vec3f, l: vec3f) -> vec3f {
   let up = d.y;
@@ -251,16 +290,34 @@ fn sky(d: vec3f, l: vec3f) -> vec3f {
   c = mix(c, select(vec3f(1.0, 0.97, 0.88) * 4.0, vec3f(0.85, 0.88, 1.0) * 1.6, moon), disc);
   return c;
 }
+// A banded surface (spec 1 and 3): the albedo under the tinted ambient in the shadow band, given the
+// tint's hue once more at the preset's amount with its value kept (painterly shadows are cool, warm
+// albedos too), and under the key plus ambient in the lit one, mixed by the band.
+fn banded(a: vec3f, dark: vec3f, bright: vec3f, band: f32) -> vec3f {
+  let s = a * dark;
+  let t = st(4u).xyz;
+  let tl = verse_style_luma(t.x, t.y, t.z);
+  let k = st(21u).w;
+  let m = vec3f(verse_style_cool(s.x, t.x, tl, k), verse_style_cool(s.y, t.y, tl, k), verse_style_cool(s.z, t.z, tl, k));
+  let y = verse_style_luma(s.x, s.y, s.z); let ym = verse_style_luma(m.x, m.y, m.z);
+  let cool = vec3f(verse_style_keep_value(m.x, y, ym), verse_style_keep_value(m.y, y, ym), verse_style_keep_value(m.z, y, ym));
+  let l = a * bright;
+  return vec3f(verse_style_banded(cool.x, l.x, band), verse_style_banded(cool.y, l.y, band), verse_style_banded(cool.z, l.z, band));
+}
+// Where a surface sits in the bands: the wrapped key times the shadow map, three bands (two for a character).
+fn surface_band(h: Hit, lit: f32) -> f32 {
+  let w = verse_style_wrap(dot(h.n, st(1u).xyz)) * lit;
+  return select(verse_style_bands(w, st(7u).x, st(7u).y, st(7u).z, st(7u).w), verse_style_bands2(w, st(8u).x, st(8u).y), h.kind > 2.5);
+}
 fn shade(h: Hit, o: vec3f, d: vec3f) -> vec3f {
   if (h.kind > 3.5) { return h.albedo; }
   let p = o + d * h.t;
   let l = st(1u).xyz;
   let n = h.n;
   let ndl = dot(n, l);
-  let lit = shadow(p + n * 0.01, l);
   let character = h.kind > 2.5;
-  let w = verse_style_wrap(ndl) * lit;
-  let band = select(verse_style_bands(w, st(7u).x, st(7u).y, st(7u).z, st(7u).w), verse_style_bands2(w, st(8u).x, st(8u).y), character);
+  let lit = shadow(p, n);
+  let band = surface_band(h, lit);
   let key = st(0u).xyz * st(0u).w;
   let amb = vec3f(verse_style_ambient(n.y, st(5u).x, st(6u).x, st(5u).w), verse_style_ambient(n.y, st(5u).y, st(6u).y, st(5u).w), verse_style_ambient(n.y, st(5u).z, st(6u).z, st(5u).w));
   let dark = st(4u).xyz * amb;
@@ -273,14 +330,15 @@ fn shade(h: Hit, o: vec3f, d: vec3f) -> vec3f {
     let sh = st(27u); let md = st(28u); let dp = st(29u);
     let s1 = smoothstep(sh.w - dp.w, sh.w + dp.w, depth); let s2 = smoothstep(md.w - dp.w, md.w + dp.w, depth);
     a = mix(mix(sh.xyz, md.xyz, s1), dp.xyz, s2);
-    c = vec3f(verse_style_shade(a.x, dark.x, bright.x, band), verse_style_shade(a.y, dark.y, bright.y, band), verse_style_shade(a.z, dark.z, bright.z, band));
+    c = banded(a, dark, bright, band);
     let r = reflect(d, n);
     let f = 0.02 + 0.98 * pow(1.0 - max(dot(-d, n), 0.0), 5.0);
     c = mix(c, sky(r, l), f);
   } else {
-    c = vec3f(verse_style_shade(a.x, dark.x, bright.x, band), verse_style_shade(a.y, dark.y, bright.y, band), verse_style_shade(a.z, dark.z, bright.z, band));
+    c = banded(a, dark, bright, band);
     let rs = select(st(2u).w, st(3u).x, character);
-    c += st(2u).xyz * verse_style_rim(dot(n, -d), ndl, st(3u).y, st(3u).z, rs);
+    // the rim is the key's light: a cast shadow takes it too
+    c += st(2u).xyz * verse_style_rim(dot(n, -d), ndl, st(3u).y, st(3u).z, rs) * lit;
   }
   // the haze, the same for everything (spec 4)
   let hz = st(9u);
@@ -309,6 +367,14 @@ fn ray(p: vec2f) -> vec3f {
 fn paint(p: vec2f) -> vec4f {
   let d = ray(p);
   let h = trace(EYE, d);
+  if (u.painted > 1.5) {
+    // ?probe=shadow, for the style check: red where a lit surface (matte, water, character) is in the
+    // shadow band, green its id over 16, blue 1 on every such surface the haze has taken under 0.35 of;
+    // black for sky, what glows, and what the haze has taken
+    let wp = EYE + d * h.t; let hz = st(9u);
+    if (h.kind < 0.5 || h.kind > 3.5 || verse_style_haze(h.t, wp.y, 0.0, hz.x, hz.y, hz.z, hz.w) >= 0.35) { return vec4f(0.0); }
+    return vec4f(select(0.0, 1.0, surface_band(h, shadow(wp, h.n)) < 0.5), h.id / 16.0, 1.0, 0.0);
+  }
   var c = vec3f(0.0);
   if (h.kind == 0.0) {
     c = sky(d, st(1u).xyz);
@@ -409,7 +475,7 @@ struct Step { v: vec4f }
 @group(1) @binding(5) var post_lin: sampler;
 @fragment fn post_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let light = textureLoad(post_light, vec2i(pos.xy), 0).rgb;
-  if (u.painted < 0.5) { return vec4f(light, 1.0); }
+  if (u.painted < 0.5 || u.painted > 1.5) { return vec4f(light, 1.0); }   // lowpoly, or the shadow probe's mask as drawn
   let uv = pos.xy / u.size;
   let b = textureSampleLevel(post_quarter, post_lin, uv, 0.0).rgb * 0.55 + textureSampleLevel(post_eighth, post_lin, uv, 0.0).rgb * 0.45;
   let m = st(19u).z;
@@ -494,7 +560,7 @@ fn verse_outline_crease(l_facing: f32) -> f32 {
 }
 // ---- end generated
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -544,12 +610,37 @@ fn verse_style_shade(l_albedo: f32, l_shadow_light: f32, l_lit_light: f32, l_ban
   coax_t7 = coax_p_st_sat(l_band);
   return (l_albedo * (l_shadow_light + (coax_t6 * coax_t7)));
 }
-fn verse_style_ambient(l_ny: f32, l_sky: f32, l_ground: f32, l_scale: f32) -> f32 {
+fn verse_style_cool(l_c: f32, l_tint: f32, l_tint_lum: f32, l_amount: f32) -> f32 {
   var coax_t8: f32;
   var coax_t9: f32;
-  coax_t8 = (l_sky - l_ground);
-  coax_t9 = coax_p_st_sat(((l_ny * 0.5) + 0.5));
-  return ((l_ground + (coax_t8 * coax_t9)) * l_scale);
+  var coax_t10: f32;
+  var coax_t11: f32;
+  coax_t9 = coax_p_st_max(l_tint, 9.99999997e-07);
+  coax_t10 = coax_p_st_max(l_tint_lum, 9.99999997e-07);
+  coax_t8 = (coax_t9 / coax_t10);
+  coax_t11 = coax_p_st_max(l_amount, 0.0);
+  return (l_c * pow(coax_t8, coax_t11));
+}
+fn verse_style_keep_value(l_c: f32, l_before: f32, l_after: f32) -> f32 {
+  var coax_t12: f32;
+  var coax_t13: f32;
+  coax_t12 = (l_c * l_before);
+  coax_t13 = coax_p_st_max(l_after, 9.99999997e-07);
+  return (coax_t12 / coax_t13);
+}
+fn verse_style_banded(l_shadow_c: f32, l_lit_c: f32, l_band: f32) -> f32 {
+  var coax_t14: f32;
+  var coax_t15: f32;
+  coax_t14 = (l_lit_c - l_shadow_c);
+  coax_t15 = coax_p_st_sat(l_band);
+  return (l_shadow_c + (coax_t14 * coax_t15));
+}
+fn verse_style_ambient(l_ny: f32, l_sky: f32, l_ground: f32, l_scale: f32) -> f32 {
+  var coax_t16: f32;
+  var coax_t17: f32;
+  coax_t16 = (l_sky - l_ground);
+  coax_t17 = coax_p_st_sat(((l_ny * 0.5) + 0.5));
+  return ((l_ground + (coax_t16 * coax_t17)) * l_scale);
 }
 fn verse_style_dab(l_rdl: f32, l_cut: f32, l_strength: f32) -> f32 {
   return select(0.0, l_strength, (l_rdl >= l_cut));
@@ -560,16 +651,16 @@ fn verse_style_rim(l_ndv: f32, l_ndl: f32, l_start: f32, l_full: f32, l_strength
   return ((l_edge * (0.349999994 + (0.649999976 * coax_p_st_sat((l_ndl + 0.300000012))))) * l_strength);
 }
 fn verse_style_haze(l_d: f32, l_y: f32, l_base_y: f32, l_start: f32, l_density: f32, l_cap: f32, l_falloff: f32) -> f32 {
-  var coax_t12: f32;
-  var coax_t13: f32;
-  var coax_t14: f32;
-  var coax_t15: f32;
-  coax_t12 = (-l_density);
-  coax_t13 = coax_p_st_max((l_d - l_start), 0.0);
-  var l_dist: f32 = (1.0 - exp((coax_t12 * coax_t13)));
-  coax_t14 = (-coax_p_st_max((l_y - l_base_y), 0.0));
-  coax_t15 = coax_p_st_max(l_falloff, 0.00100000005);
-  var l_height: f32 = exp((coax_t14 / coax_t15));
+  var coax_t20: f32;
+  var coax_t21: f32;
+  var coax_t22: f32;
+  var coax_t23: f32;
+  coax_t20 = (-l_density);
+  coax_t21 = coax_p_st_max((l_d - l_start), 0.0);
+  var l_dist: f32 = (1.0 - exp((coax_t20 * coax_t21)));
+  coax_t22 = (-coax_p_st_max((l_y - l_base_y), 0.0));
+  coax_t23 = coax_p_st_max(l_falloff, 0.00100000005);
+  var l_height: f32 = exp((coax_t22 / coax_t23));
   return coax_p_st_min((l_dist * (1.0 + ((l_height - 1.0) * 0.600000024))), l_cap);
 }
 fn verse_style_haze_glow(l_vdl: f32) -> f32 {
@@ -579,11 +670,11 @@ fn verse_style_haze_glow(l_vdl: f32) -> f32 {
   return ((l_a4 * l_a4) * 0.449999988);
 }
 fn verse_style_fog(l_c: f32, l_haze_c: f32, l_f: f32) -> f32 {
-  var coax_t16: f32;
-  var coax_t17: f32;
-  coax_t16 = (l_haze_c - l_c);
-  coax_t17 = coax_p_st_sat(l_f);
-  return (l_c + (coax_t16 * coax_t17));
+  var coax_t24: f32;
+  var coax_t25: f32;
+  coax_t24 = (l_haze_c - l_c);
+  coax_t25 = coax_p_st_sat(l_f);
+  return (l_c + (coax_t24 * coax_t25));
 }
 fn verse_style_sky_t(l_up: f32) -> f32 {
   return pow(coax_p_st_max(l_up, 9.99999997e-07), 0.550000012);
@@ -592,11 +683,11 @@ fn verse_style_sky_band(l_up: f32, l_lift: f32) -> f32 {
   return (l_lift * (1.0 - coax_p_st_sat((abs(l_up) / 0.104500003))));
 }
 fn verse_style_halo(l_cos_t: f32, l_k: f32) -> f32 {
-  var coax_t18: f32;
-  var coax_t19: f32;
-  coax_t18 = (-l_k);
-  coax_t19 = coax_p_st_max((1.0 - l_cos_t), 0.0);
-  return exp((coax_t18 * coax_t19));
+  var coax_t26: f32;
+  var coax_t27: f32;
+  coax_t26 = (-l_k);
+  coax_t27 = coax_p_st_max((1.0 - l_cos_t), 0.0);
+  return exp((coax_t26 * coax_t27));
 }
 fn verse_style_tone(l_c: f32, l_exposure: f32) -> f32 {
   return (1.0 - exp(((-coax_p_st_max(l_c, 0.0)) * l_exposure)));
@@ -611,16 +702,16 @@ fn verse_style_luma(l_r: f32, l_g: f32, l_b: f32) -> f32 {
   return (((0.212599993 * l_r) + (0.715200007 * l_g)) + (0.0722000003 * l_b));
 }
 fn verse_style_bloom_share(l_lum: f32, l_threshold: f32, l_knee: f32) -> f32 {
-  var coax_t20: f32;
-  var coax_t21: f32;
+  var coax_t28: f32;
+  var coax_t29: f32;
   if ((l_lum <= 0.0))
   {
     return 0.0;
   }
   var l_k: f32 = coax_p_st_max(l_knee, 9.99999975e-06);
-  coax_t20 = coax_p_st_max(((l_lum - l_threshold) + l_k), 0.0);
-  coax_t21 = (2.0 * l_k);
-  var l_q: f32 = coax_p_st_min(coax_t20, coax_t21);
+  coax_t28 = coax_p_st_max(((l_lum - l_threshold) + l_k), 0.0);
+  coax_t29 = (2.0 * l_k);
+  var l_q: f32 = coax_p_st_min(coax_t28, coax_t29);
   return coax_p_st_min((coax_p_st_max(((l_q * l_q) / (4.0 * l_k)), (l_lum - l_threshold)) / l_lum), 1.0);
 }
 fn verse_style_bloom_mix(l_c: f32, l_bloom: f32, l_mix: f32) -> f32 {
@@ -634,12 +725,18 @@ fn verse_style_shadow_reach(l_phone: f32) -> f32 {
   return 60.0;
 }
 fn verse_style_shadow_snap(l_x: f32, l_reach: f32, l_size: f32) -> f32 {
-  var coax_t10: f32;
-  var coax_t11: f32;
-  coax_t10 = (2.0 * l_reach);
-  coax_t11 = coax_p_st_max(l_size, 1.0);
-  var l_texel: f32 = (coax_t10 / coax_t11);
+  var coax_t18: f32;
+  var coax_t19: f32;
+  coax_t18 = (2.0 * l_reach);
+  coax_t19 = coax_p_st_max(l_size, 1.0);
+  var l_texel: f32 = (coax_t18 / coax_t19);
   return (floor(((l_x / l_texel) + 0.5)) * l_texel);
+}
+fn verse_style_shadow_across(l_x: f32, l_reach: f32) -> f32 {
+  return (l_x / coax_p_st_max(l_reach, 0.00100000005));
+}
+fn verse_style_shadow_depth(l_along: f32, l_reach: f32) -> f32 {
+  return (0.5 - (l_along / (4.0 * coax_p_st_max(l_reach, 0.00100000005))));
 }
 fn verse_style_shadow_taps(l_phone: f32) -> f32 {
   if ((l_phone > 0.5))

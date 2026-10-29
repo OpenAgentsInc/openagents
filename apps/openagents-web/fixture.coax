@@ -137,6 +137,7 @@ Fixture :: struct {
   view: [16] f32;            // clip = rows · world
   // the style fixture: ?style= in the page's URL (STYLE_*, -1 none) and its clock
   paint: int; clock: f32; day: StyleClock; day_from: f32;   // the clock now, how it runs, and when it was read
+  mask: bool;                // ?probe=shadow: draw where the shadow band falls, for the style check
 }
 
 fixture_reset :: (s: [] Fixture) {
@@ -211,6 +212,7 @@ fixture_message :: (s: [] Fixture, kind: int, text: string) #export_c {
   if kind != HOST_FACTS || s[0].counted { return; }
   s[0].counted = true;
   s[0].paint = style_query(fact_line(text, "url"));
+  s[0].mask = s[0].paint >= 0 && query_has(fact_line(text, "url"), "probe=shadow");
   s[0].day = verse_style_clock(fact_line(text, "clock"), fact_line(text, "now"), fact_line(text, "day"));
   s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
   // the style fixture is a test view: it doesn't count as a visit or keep anything
@@ -231,6 +233,18 @@ style_query :: (url: string) -> int {
     i = e;
   }
   return -1;
+}
+// Whether a URL's query holds `pair` (probe=shadow).
+query_has :: (url: string, pair: string) -> bool {
+  i := 0;
+  while i < url.count && url[i] != '?' { i += 1; }
+  while i < url.count && url[i] != '#' {
+    i += 1;
+    e := i; while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+    if url[i..<e] == pair { return true; }
+    i = e;
+  }
+  return false;
 }
 // A key=value line's value ("" none).
 fact_line :: (facts: string, key: string) -> string {
@@ -353,6 +367,14 @@ place :: (s: [] Fixture) {
 }
 fixture_pack_failed :: (s: [] Fixture) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
 fixture_draw_count :: (s: [] Fixture) -> int #export_c { return ifx s[0].pack_ready && s[0].paint < 0 then s[0].draw_n else 0; }
+// The style fixture's shadow casters (fixture.wgsl caster_vs, host.js): the sphere, the cube, the
+// tree's three canopies and trunk, the figure's body and head, each a 24 by 13 latitude-longitude
+// mesh of two triangles a quad (the cube its first 36), drawn into the key light's shadow map. A
+// painterly preset only: lowpoly has no shadow map (blob shadows under movers).
+CASTERS :: 8; CASTER_SEGMENTS :: 24; CASTER_RINGS :: 13;
+CASTER_VERTICES :: CASTER_SEGMENTS * CASTER_RINGS * 6;
+fixture_caster_instances :: (s: [] Fixture) -> int #export_c { return ifx s[0].paint == STYLE_PAINTERLY then CASTERS else 0; }
+fixture_caster_vertices :: (s: [] Fixture) -> int #export_c { return ifx s[0].paint == STYLE_PAINTERLY then CASTER_VERTICES else 0; }
 
 // ---- the view: an eye above the floor's near edge, looking at its middle
 
@@ -661,7 +683,7 @@ fixture_frame :: (s: [] Fixture, out: [] f32, uniforms: [] f32, width: f32, heig
     if !still { s[0].clock = verse_style_clock_at(s[0].day, s[0].time - s[0].day_from); }
     // the preset for this canvas (a phone's tier under 600 css px wide), at the clock
     tier := ifx width / s[0].dpr < 600 then STYLE_PHONE else STYLE_DESKTOP;
-    if verse_style_at(verse_style_preset(s[0].paint, tier), s[0].clock, uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]) { uniforms[7] = 1; }
+    if verse_style_at(verse_style_preset(s[0].paint, tier), s[0].clock, uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]) { uniforms[7] = ifx s[0].mask then 2.0f32 else 1.0f32; }
   }
   uniforms[5] = cast(f32) s[0].plate_n;
   for i: 0..<s[0].plate_n {
@@ -800,6 +822,14 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
   // the preset at dawn: the key is the dusk/dawn key, the clock rides along
   #assert abs(u[STYLE_AT + SU_KEY + 1] - 0.72) < 0.001 && abs(u[STYLE_AT + SU_STYLE + 3] - 0.25) < 0.001;
   #assert u[STYLE_AT + SU_SHADOW] == 2048;
+  // its shapes cast into the key light's shadow map; the realm's own view casts nothing
+  #assert fixture_caster_instances(s[..]) == 8 && fixture_caster_vertices(s[..]) == 24 * 13 * 6;
+  t: [1] Fixture;
+  #assert fixture_caster_instances(t[..]) == 0 && fixture_caster_vertices(t[..]) == 0;
+  // ?probe=shadow draws the shadow band's mask for the style check (painted 2)
+  m: [1] Fixture;
+  fixture_message(m[..], HOST_FACTS, "realm=fixture\nslot=fixture\nurl=https://openagents.com/realms/fixture?style=painterly&probe=shadow\nclock=fixed:0.5");
+  #assert m[0].mask && fixture_frame(m[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0 && u[7] == 2;
   press_key(s[..], 'd', true);
   for i: 0..<10 { step_by(s[..], 0.05); }
   #assert s[0].x == 0 && fixture_action(s[..]) == 0;
@@ -820,6 +850,8 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
   #assert u[7] == 0 && u[STYLE_AT + SU_KEY] == 0;
   #assert style_query("https://x/realms/fixture?a=1&style=painterly#top") == STYLE_PAINTERLY;
   #assert style_query("https://x/realms/fixture#style=painterly") == -1;
+  #assert query_has("https://x/realms/fixture?style=painterly&probe=shadow", "probe=shadow");
+  #assert !query_has("https://x/realms/fixture?style=painterly#probe=shadow", "probe=shadow") && !query_has("https://x/realms/fixture?probe=shadowy", "probe=shadow");
 }
 #test "?clock=cycle turns the style fixture's day: a quarter in twelve minutes" {
   s: [1] Fixture;
