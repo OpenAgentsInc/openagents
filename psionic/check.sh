@@ -166,11 +166,12 @@ picks_native() {
     done
     return 1
 }
-selected_coax=(); selected_native=(); gptoss=0; deepseek=0
+selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0
 picks_deepseek() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == deepseek || $n == deepseek/* ]]; }
+picks_qualify() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == qualify || $n == qualify-elephant ]]; }
 picks_gptoss() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gptoss || $n == gptoss/* ]]; }
 if [[ ${#only[@]} -eq 0 ]]; then
-    selected_coax=("${coax_units[@]}"); selected_native=("${native_units[@]}"); gptoss=1; deepseek=1
+    selected_coax=("${coax_units[@]}"); selected_native=("${native_units[@]}"); gptoss=1; deepseek=1; qualify=1
 else
     for unit in "${coax_units[@]}"; do if picks_coax "$unit" "${only[@]}"; then selected_coax+=("$unit"); fi; done
     for unit in "${native_units[@]}"; do if picks_native "$unit" "${only[@]}"; then selected_native+=("$unit"); fi; done
@@ -178,6 +179,7 @@ else
         hit=0
         if picks_gptoss "$n"; then hit=1; gptoss=1; fi
         if picks_deepseek "$n"; then hit=1; deepseek=1; fi
+        if picks_qualify "$n"; then hit=1; qualify=1; fi
         for unit in "${coax_units[@]}"; do if picks_coax "$unit" "$n"; then hit=1; fi; done
         for unit in "${native_units[@]}"; do if picks_native "$unit" "$n"; then hit=1; fi; done
         [[ $hit == 1 ]] || { echo "psionic/check.sh: no unit named '$n'" >&2; exit 2; }
@@ -248,6 +250,12 @@ if [[ $gptoss == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_gptoss.sh
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_gptoss_device.sh
     phase "gpt-oss chapters"
+fi
+
+# Chapter 13's qualification gate has its own runner; --only qualify selects it.
+if [[ $qualify == 1 ]]; then
+    COAX="$coax" COAX_CC="$cc" psionic/tests/qualify.sh
+    phase "qualification (chapter 13)"
 fi
 
 if [[ $deepseek == 1 ]]; then
