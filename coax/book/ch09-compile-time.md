@@ -725,6 +725,7 @@ the limits and the errors that go with them:
 | --- | --- | --- |
 | Evaluation work in one compile | 100,000 steps by default; `--run-steps N` selects up to 250,000,000 | `E0400` |
 | Live aggregate storage | 1,572,864 vector capacity slots and 131,072 containers | `E0400` |
+| Owned cast-string storage | 67,108,864 live bytes per compile; 268,435,456 materialized bytes per frontend evaluation or individual check | `E0400` |
 | Nested compile-time calls | 64 | `E0403` |
 | Constants depending on constants | 64 deep | `E0403` |
 | Overflow or division by zero | Always an error, in debug and release | `E0407` |
@@ -735,7 +736,13 @@ the limits and the errors that go with them:
 
 `--run-steps N` is a build input shared by all compile-time sites. It does not
 change `coax test --steps`, mutation or native optimization. `coax deps`
-records the selected limit; `--timings FILE` records frontend evaluation work and peaks before authority checks.
+records the selected limits; `--timings FILE` records frontend evaluation work
+and tracked peaks before authority checks. A byte-view-to-string cast creates
+an owned compile-time snapshot. Copies and slices share it; a frozen result
+keeps it through code emission. Each snapshot charges its length plus a
+terminator to live bytes and materialization work. Releasing its last owner
+returns the live bytes; cumulative work stays charged until that evaluation or
+check ends. Source strings and allocator metadata are outside these limits.
 Deep copies, aggregate assignment, view detection and struct initialization
 do not yet charge a step per traversed element. The storage limit counts live vectors, not cumulative copy work; a
 separate traversal budget is planned. The storage limits do not cover all

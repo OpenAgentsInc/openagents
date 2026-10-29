@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.19.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.20.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -136,6 +136,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | Native source debugging | Original-file line maps and optional LLDB names; optimized values and generated-code limits remain | partial | 0.13.0 |
 | E0383 local-borrow diagnostics | Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked | works | 0.13.0 |
 | Release/status generation | Canonical Coax catalogue, CLI status and build/publication drift gate | works | 0.14.0 |
+| Bounded interpreted string snapshots | Owned cast snapshots with finite live bytes and materialization work | works | 0.20.0 |
 | Conservative mutation scheduling | Runs all mutants with isolated check scheduling and full-run fallback | works | 0.19.0 |
 | Differential conformance tooling | Optional bounded evaluator/native tests with independent oracle and reduced witnesses | partial | 0.14.0 |
 | General ownership | Transfer, destruction and complete region/lifetime rules remain planned | designed | — |

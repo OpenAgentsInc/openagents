@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.19.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.20.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -536,6 +536,7 @@ Limits for the bootstrap:
 | --- | --- |
 | Evaluation work | 100,000 steps by default across one compilation; `--run-steps N` selects 1 through 250,000,000. Each evaluated expression or statement and each zero-initialized array element counts; E0400. |
 | Aggregate storage | At most 1,572,864 live aggregate-vector capacity slots and 131,072 live aggregate containers, independently of the work limit and in every profile; E0400. |
+| Cast-string snapshots | At most 67,108,864 live owned bytes per compilation and 268,435,456 materialized bytes per frontend evaluation or individual check; E0400. Each cast charges its output length plus one terminator. |
 | Active interpreted calls | 64, E0403; call sites are printed as bounded source notes. |
 | Active constant dependencies | 64, E0403; type-resolution dependencies also stop at 64, E0347. |
 | Constant cycles | E0340 for type dependencies; E0402 for a value cycle reached through a procedure. |
@@ -554,15 +555,21 @@ The optional decimal `--run-steps N` applies to all compile commands, including
 `coax test --steps`, mutation budgets, native optimization or arithmetic.
 Zero, signed, malformed, repeated or above-maximum inputs are refused before
 source evaluation. `coax deps` records the selected limit and fixed storage
-limits; `--timings` records steps consumed and tracked peak slots/containers for
-frontend evaluation only, before authority checks begin.
+limits, including the string limits; `--timings` records steps and tracked peak
+aggregate and owned string bytes for frontend evaluation only, before authority
+checks begin.
 
 The independent storage limit counts actual allocated vector capacity, including
 nested copies and retained constants, and releases it with the last owner or
 view. The evaluator also clears view cycles when the compilation ends; an
-unreachable cycle may continue consuming budget until then. Its tracking is not
-a bound on total compiler RSS, syntax trees, strings, allocator metadata, host
-I/O or generated output.
+unreachable cycle may continue consuming budget until then. Interpreted
+byte-view-to-string casts own immutable snapshots. Copies, slices, aggregate
+fields and returned values share that owner; folded strings remain owned until
+compilation ends. Live byte accounting includes the terminator once per owner,
+and the work limit charges each successful materialization even after its owner
+is released. Source literals and other strings, metadata, syntax trees, host
+I/O, and generated output are not covered. An aggregate cycle holding a string
+may retain it until compilation ends; these limits do not bound total RSS.
 
 Aggregate deep copies, assignment, view detection and struct-initialization
 traversal are currently not charged per element by the step counter. The live-storage cap limits simultaneous storage,

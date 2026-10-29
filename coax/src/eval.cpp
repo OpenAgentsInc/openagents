@@ -15,6 +15,15 @@ CtStorage::CtStorage(std::shared_ptr<CtMemory> memory)
     : std::vector<Value, CtAllocator<Value>>(CtAllocator<Value>(memory)), owner(std::move(memory)) {}
 CtStorage::~CtStorage() { owner->release_container(); }
 
+CtString::CtString(std::shared_ptr<CtMemory> memory, size_t n)
+    : owner(std::move(memory)), size(n) {
+  owner->take_string(size);
+  try { bytes.reset(new char[size]); }
+  catch (...) { owner->release_string(size); throw; }
+}
+CtString::~CtString() { owner->release_string(size); }
+
+
 // A view can retain another aggregate, including a long chain of them. The
 // last owner may disappear at scope exit or during cycle cleanup. Queue raw
 // storage intrusively so releasing children never recurses on the host stack.
@@ -51,6 +60,11 @@ void CtMemory::take_slots(size_t n) {
   if (!CB_admit(slots, n, max_slots())) throw CtLimit{};
   slots += n;
   if (slots > peak_slots) peak_slots = slots;
+}
+void CtMemory::take_string(size_t n) {
+  if (!CB_admit(string_bytes, n, CB_string_live_limit())) throw CtStringLimit{};
+  string_bytes += n;
+  if (string_bytes > string_peak_bytes) string_peak_bytes = string_bytes;
 }
 void CtMemory::take_container() {
   if (!CB_admit(containers, 1, max_containers())) throw CtLimit{};
@@ -117,6 +131,7 @@ bool fits_type(Type t, __int128 v) {
 struct Evaluator {
   File *file;
   uint64_t steps = 0, max_steps = CB_default_steps();
+  uint64_t string_work = 0;
   uint32_t dependency_depth = 0;
   Loc current_loc{};
   bool failed = false;
@@ -246,6 +261,20 @@ struct Evaluator {
       err(loc, "E0409", "a compile-time result cannot contain a view; views borrow memory that exists only while compiling");
       return;
     }
+    // Prepare all fallible ownership and aggregate copies before touching the
+    // syntax node; a limit or host-allocation failure must leave it intact.
+    Value *saved = nullptr;
+    switch (value.type->kind) {
+      case TypeKind::integer: case TypeKind::bool_: case TypeKind::enum_:
+      case TypeKind::floating: break;
+      case TypeKind::string_:
+        if (value.string_owner) file->frozen_values.push_back(std::make_unique<Value>(value));
+        break;
+      default:
+        file->frozen_values.push_back(std::make_unique<Value>(clone(value)));
+        saved = file->frozen_values.back().get();
+        break;
+    }
     e->type = value.type;
     e->lhs = e->rhs = e->third = nullptr;
     switch (value.type->kind) {
@@ -253,11 +282,11 @@ struct Evaluator {
       case TypeKind::bool_: e->kind = ExprKind::bool_lit; e->int_value = value.bits; break;
       case TypeKind::enum_: e->kind = ExprKind::enum_value; e->int_value = value.bits; break;
       case TypeKind::floating: e->kind = ExprKind::float_lit; e->float_value = value.f; break;
-      case TypeKind::string_: e->kind = ExprKind::string_lit; e->text = value.s; break;
+      case TypeKind::string_:
+        e->kind = ExprKind::string_lit; e->text = value.s; break;
       default:
         e->kind = ExprKind::ct_value;
-        file->frozen_values.push_back(std::make_unique<Value>(clone(value)));
-        e->ct = file->frozen_values.back().get();
+        e->ct = saved;
         break;
     }
   }
@@ -268,6 +297,11 @@ struct Evaluator {
       err(d->loc, "E0402", "compile-time cycle in the defaults of struct '" + to_std(d->name) + "'");
       return;
     }
+    struct Guard {
+      StructDecl *decl;
+      bool finished = false;
+      ~Guard() { if (!finished) decl->defaults = 0; }
+    } guard{d};
     d->defaults = 1;
     for (Field &f : d->fields) {
       if (!f.init || failed) continue;
@@ -275,7 +309,7 @@ struct Evaluator {
       Value v = expr(f.init, empty, false);
       freeze(f.init, v, f.init->loc);
     }
-    d->defaults = 2;
+    if (!failed) { d->defaults = 2; guard.finished = true; }
   }
 
   Value constant(ConstDecl *c) {
@@ -383,13 +417,19 @@ struct Evaluator {
     Type to = e->type, from = v.type;
     if (from == to) return v;
     if (to == &T_STRING) {
-      // Compile-time bytes have no address; copy them into memory that lives
-      // as long as the compiler, so a frozen string can still be emitted.
-      char *bytes = new char[(size_t)v.count + 1];
-      for (int64_t i = 0; i < v.count; i++) bytes[i] = (char)(*v.agg)[(size_t)(v.offset + i)].bits;
+      // Snapshot once, share it through string copies and slices, and charge
+      // both retained bytes and materialization work before copying.
+      if (v.count < 0 || (uint64_t)v.count > INT32_MAX) throw CtStringLimit{};
+      size_t size = (size_t)v.count + 1;
+      if (!CB_admit(string_work, size, CB_string_work_limit())) throw CtStringLimit{};
+      auto storage = std::make_shared<CtString>(file->ct_memory, size);
+      string_work += size;
+      for (int64_t i = 0; i < v.count; i++) storage->bytes[(size_t)i] = (char)(*v.agg)[(size_t)(v.offset + i)].bits;
+      storage->bytes[(size_t)v.count] = 0;
       Value s;
       s.type = &T_STRING;
-      s.s = Str{bytes, (int32_t)v.count};
+      s.s = Str{storage->bytes.get(), (int32_t)v.count};
+      s.string_owner = std::move(storage);
       return s;
     }
     if (is_float(to)) {
@@ -1024,8 +1064,9 @@ CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps) {
   evaluator.quiet = true;
   evaluator.max_steps = max_steps;
   try { return evaluator.check(check); }
+  catch (const CtStringLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time string storage or work limit exceeded"); }
   catch (const CtLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate storage limit exceeded"); }
-  catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate allocation failed"); }
+  catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time allocation failed"); }
   CheckOutcome out; out.passed = false; out.loc = evaluator.fail_loc;
   out.code = evaluator.fail_code; out.message = evaluator.fail_message; return out;
 }
@@ -1034,8 +1075,9 @@ bool evaluate(File *file, uint64_t max_steps, uint64_t *used) {
   Evaluator evaluator{file};
   evaluator.max_steps = max_steps;
   try { bool ok = evaluator.run(); if (used) *used = evaluator.steps; return ok; }
+  catch (const CtStringLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time string storage or work limit exceeded"); }
   catch (const CtLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate storage limit exceeded"); }
-  catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate allocation failed"); }
+  catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time allocation failed"); }
   if (used) *used = evaluator.steps;
   return false;
 }

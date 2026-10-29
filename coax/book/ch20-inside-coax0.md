@@ -1,7 +1,7 @@
 # 20. Inside coax0
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.19.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.20.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 
 The driver embeds the version and status from a generated header. The authored

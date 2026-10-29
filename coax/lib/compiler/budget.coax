@@ -4,11 +4,21 @@ CB_MAX_RUN_STEPS :: 250000000;
 CB_DEFAULT_RUN_STEPS :: 100000;
 CB_MAX_SLOTS :: 1572864;
 CB_MAX_CONTAINERS :: 131072;
+CB_MAX_STRING_LIVE :: 67108864;
+CB_MAX_STRING_WORK :: 268435456;
 
 #test "published defaults and storage limits are exact" {
  #assert CB_default_steps()==100000;
  #assert CB_slot_limit()==1572864;
  #assert CB_container_limit()==131072;
+}
+#test "string storage and materialization limits are finite" {
+ #assert CB_string_live_limit()==67108864;
+ #assert CB_string_work_limit()==268435456;
+ #assert CB_admit(67108863,1,CB_string_live_limit());
+ #assert !CB_admit(67108864,1,CB_string_live_limit());
+ #assert CB_admit(268435455,1,CB_string_work_limit());
+ #assert !CB_admit(268435456,1,CB_string_work_limit());
 }
 #test "work input accepts decimal limits and refuses invalid values" {
  #assert CB_parse_steps("1")==1;
@@ -53,3 +63,6 @@ CB_admit :: (current:u64,extra:u64,maximum:u64)->bool #export_c {
 CB_default_steps :: ()->u64 #export_c {return CB_DEFAULT_RUN_STEPS;}
 CB_slot_limit :: ()->u64 #export_c {return CB_MAX_SLOTS;}
 CB_container_limit :: ()->u64 #export_c {return CB_MAX_CONTAINERS;}
+
+CB_string_live_limit :: ()->u64 #export_c {return CB_MAX_STRING_LIVE;}
+CB_string_work_limit :: ()->u64 #export_c {return CB_MAX_STRING_WORK;}

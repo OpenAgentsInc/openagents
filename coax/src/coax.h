@@ -183,12 +183,15 @@ const std::vector<Type> &all_composite_types();  // arrays and views, in creatio
 // reach a target executable.
 
 struct CtLimit {};
+struct CtStringLimit {};
 struct CtStorage;
+struct CtString;
 struct CtMemory {
   // Counts vector capacity slots and aggregate containers, not total RSS.
   static uint64_t max_slots() { return CB_slot_limit(); }
   static uint64_t max_containers() { return CB_container_limit(); }
   uint64_t slots = 0, containers = 0, peak_slots = 0, peak_containers = 0;
+  uint64_t string_bytes = 0, string_peak_bytes = 0;
   std::vector<std::weak_ptr<CtStorage>> stores;
   CtStorage *pending = nullptr;
   bool draining = false;
@@ -198,6 +201,8 @@ struct CtMemory {
   void take_slots(size_t n);
   void release_slots(size_t n) noexcept { slots -= n; }
   void take_container();
+  void take_string(size_t n);
+  void release_string(size_t n) noexcept { string_bytes -= n; }
   void release_container() noexcept { --containers; }
 };
 template<class T> struct CtAllocator {
@@ -218,6 +223,13 @@ template<class T> struct CtAllocator {
   template<class U> bool operator==(const CtAllocator<U> &o) const noexcept { return memory == o.memory; }
   template<class U> bool operator!=(const CtAllocator<U> &o) const noexcept { return !(*this == o); }
 };
+struct CtString {
+  std::shared_ptr<CtMemory> owner;
+  std::unique_ptr<char[]> bytes;
+  size_t size;
+  CtString(std::shared_ptr<CtMemory> memory, size_t n);
+  ~CtString();
+};
 struct Value;
 struct CtStorage : std::vector<Value, CtAllocator<Value>> {
   std::shared_ptr<CtMemory> owner;
@@ -231,6 +243,7 @@ struct Value {
   uint64_t bits = 0;  // integers (two's complement bit pattern), bool, enum
   double f = 0;       // f32 values are stored rounded to float
   Str s;
+  std::shared_ptr<CtString> string_owner;  // owned cast snapshot, shared by slices
   std::shared_ptr<CtStorage> agg;  // struct fields, array elements, view storage
   int64_t offset = 0, count = 0;            // view: window into agg
 };
