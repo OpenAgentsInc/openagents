@@ -63,5 +63,8 @@ witnesses, the complete identity projection mutation run killed 3,159/3,159
 mutants with no equivalence waivers. The root projection source for that run
 was SHA-256 `fa887723059edbb2d4632f0b14aecbefab83a5a276b3638ba04d7fee71bce0fd`;
 this is an uncommitted experimental unverified consumer and not a signature decision.
-The event projection and an additional full reference-mode identity run remain
-open; this evidence does not close the task.
+A full reference-mode identity run also killed 3,159/3,159 mutants; its
+retained log SHA-256 is
+`e1ac49c6b6e9992dd69cd79c793a2e209de3c3609e1de77048342c802435bb8f`.
+The event projection gate remains open, so this evidence does not close the
+task.
