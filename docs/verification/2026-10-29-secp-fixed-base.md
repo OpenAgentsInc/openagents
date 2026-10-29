@@ -119,7 +119,7 @@ Work in progress: the72 core check groups pass under the unchanged check
 budget. An initial mutation run killed1,164 of1,168 mutants; profile-boundary
 and first-entry checks were strengthened, and the rerun killed all1,168.
 Initial wrapper mutation exposed three profile-argument survivors; explicit
-profile checks were added and both wrapper mutations are running again.
+profile checks were added, and both wrapper reruns killed all1,173 mutants.
 Cost-probe success has not been reported as an actual `#run` success.
 
 The source before the wrapper profile-accessor refactor passed the full
@@ -142,8 +142,7 @@ profile/mode, Wasm guards and native sanitizer checks. Its distinct
 source hashes. The revised source subsequently passed the complete
 100,000-random-scalar runner in both native and Wasm modes; its separate
 [full report](2026-10-29-secp-fixed-base-correctness-profile-v2.json) retains
-the revised source, binary, and resource measurements. Wrapper mutation
-remains a separate gate.
+the revised source, binary, and resource measurements.
 
 Separately, compiler0.18.1 SHA-256
 `9d84212147091b1db4fed183a736571f96d13129a6e808ed04cf81116f218c23`
