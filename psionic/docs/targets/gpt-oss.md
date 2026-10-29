@@ -3,8 +3,10 @@
 Survey updated 2026-10-29. [Chapter 34](../../book/ch34-original-mxfp4-weights.md)
 now implements the bounded original-format CPU decoder;
 [chapter 35](../../book/ch35-a-few-experts-then-a-router.md) adds a bounded
-top-k router and tiny affine mixture. Full-model execution
-and Harmony remain planned. No weights were downloaded, and no upstream
+top-k router and tiny affine mixture.
+[Chapter 36](../../book/ch36-attention-with-sinks-and-a-window.md) adds bounded
+sink/window attention, split-half YaRN, biased projection and clamped SwiGLU.
+Full-model execution and Harmony remain planned. No weights were downloaded, and no upstream
 setup, inference or tool code was run. Psionic would implement the behavior in
 Coax; Python stays reviewed reference and export tooling, never a runtime
 dependency. Part VII of the [book plan](../../book/PLAN.md) gives the
@@ -136,3 +138,27 @@ running the candidate: tokens, MXFP4 decode vectors, per-layer intermediates
 logits, full versus cached results, harmony render/parse round trips, and
 schema-constrained tool calls. The 20b model does not qualify the 120b
 model. Text is the only modality.
+
+## Chapter 36 implementation boundary
+
+[Attention with sinks and a window](../../book/ch36-attention-with-sinks-and-a-window.md)
+now provides `gpt-oss-attention-cpu-wide-v1` in
+[`gptoss-attention.coax`](../../lib/gptoss-attention.coax) and
+[`gptoss-math.coax`](../../lib/gptoss-math.coax). Projected f32 Q/K/V execution
+uses 64-wide heads, 1–64 query heads, 1–8 KV heads, per-query-head sink logits,
+window-bounded circular KV storage and split-half YaRN at absolute positions
+0–131,071. Sliding capacity equals the window, at most 128; full causal capacity
+is separately limited to 128. The caller supplies the alternating layer shapes.
+Biased projection uses the shared kernel's bounded matrix budget; clamped
+interleaved SwiGLU accepts up to 16,384 pairs. Projection/expert weight binding,
+normalization and residual composition remain separate work.
+
+The [owned scalar oracle](../../tests/gptoss_oracle.py) compares complete
+prefixes against cached execution, plus direct-power rotary and Decimal
+activation results. Native debug/release and sanitizer gates cover 64/8 heads,
+128-token expiry, aliases and atomic refusals. See the
+[verification record](../../../docs/verification/psionic-ch36-2026-10-29.md).
+The arithmetic is wide CPU with f32 storage; it does not claim original Torch
+float/BF16 parity, original checkpoint admission or complete generation.
+Chapter 37's harmony framing is the next independent branch gate; chapter 38
+still needs complete original-weight execution and intermediate/logit references.

@@ -1,0 +1,157 @@
+// gpt-oss pinned rotary, biased projection and activation; wide CPU profile.
+#load "ops.coax";
+#authority;
+GoStatus :: enum u8 {ok;shape;range;capacity;alias;number;arithmetic;}
+GoResult :: struct {status:GoStatus;cause:int;written:int;clamped:int;}
+
+#test "YaRN positions admit the complete bounded original context" {
+    #assert go_range(0,1) && go_range(131071,1) && go_range(130944,128);
+    #assert !go_range(-1,1) && !go_range(131072,1) && !go_range(0,0) && !go_range(0,129) && !go_range(131071,2);
+    out:[65]f32;out[64]=-7;
+    r:=go_yarn(0,1,out[..]);#assert r.status==GoStatus.ok && r.written==64 && out[64]==-7;
+    #assert abs(f64(out[0])-1.3465735902799727)<0.0000001 && out[1]==0;
+    #assert go_yarn(-1,1,out[..]).status==GoStatus.range;
+    #assert go_yarn(0,1,out[0..<63]).status==GoStatus.capacity;
+}
+#test "split halves rotate together and late overflow preserves output" {
+    x:[64]f32;c:[64]f32;out:[65]f32;work:[64]f32;
+    for i:0..<64 {out[i]=-7;}out[64]=-9;x[0]=3;x[32]=4;
+    for i:0..<32 {c[2*i]=0;c[2*i+1]=1;}
+    r:=go_rotate(1,x[..],c[..],out[..],work[..],false);
+    #assert r.status==GoStatus.ok && r.written==64 && out[0]==-4 && out[32]==3 && out[64]==-9;
+    for i:0..<64 {out[i]=-7;}x[31]=f32_from_bits(0x7f7fffff);c[62]=2;
+    #assert go_rotate(1,x[..],c[..],out[..],work[..],false).status==GoStatus.arithmetic;
+    for i:0..<64 {#assert out[i]==-7;}
+    #assert go_rotate(0,x[..],c[..],out[..],work[..],false).status==GoStatus.shape;
+    #assert go_rotate(65,x[..],c[..],out[..],work[..],false).status==GoStatus.shape;
+    #assert go_rotate(1,x[0..<63],c[..],out[..],work[..],false).status==GoStatus.capacity;
+    #assert go_rotate(1,x[..],c[0..<63],out[..],work[..],false).status==GoStatus.capacity;
+    #assert go_rotate(1,x[..],c[..],out[0..<63],work[..],false).status==GoStatus.capacity;
+    #assert go_rotate(1,x[..],c[..],out[..],work[0..<63],false).status==GoStatus.capacity;
+    #assert go_rotate(1,x[..],c[..],out[..],work[..],true).status==GoStatus.alias;
+}
+#test "SwiGLU has interleaved gates an asymmetric clamp and a plus one" {
+    x:=[12]f32.[0,0,1,-1,-8,2,8,0,7,8,-1,-8];out:[7]f32;out[6]=-7;
+    r:=go_swiglu(x[..],out[..],false);#assert r.status==GoStatus.ok && r.written==6 && out[0]==0 && out[1]==0 && out[6]==-7;
+    #assert abs(f64(out[2])+0.000029299337777)<0.00000001;
+    #assert abs(f64(out[3])-6.999953127460425)<0.000002;
+    #assert abs(f64(out[4])-55.9996250196834)<0.00002;
+    #assert abs(f64(out[5])-0.9252254044030722)<0.000001;
+    #assert go_swiglu(x[0..<0],out[..],false).status==GoStatus.shape;
+    #assert go_swiglu(x[0..<3],out[..],false).status==GoStatus.shape;
+    #assert go_swiglu(x[..],out[0..<5],false).status==GoStatus.capacity;
+    #assert go_swiglu(x[..],out[..],true).status==GoStatus.alias;
+}
+#test "biased linear stages both matrix multiplication and addition" {
+    a:=[4]f32.[1,2,3,4];x:=[2]f32.[2,-1];b:=[2]f32.[3,-2];out:=[3]f32.[-7,-7,-7];work:[6]f32;
+    r:=go_project(2,2,a[..],x[..],b[..],out[..],work[..],false);
+    #assert r.status==GoStatus.ok && r.written==2 && out[0]==3 && out[1]==0 && out[2]==-7;
+    #assert go_project(0,2,a[..],x[..],b[..],out[..],work[..],false).status==GoStatus.shape;
+    #assert go_project(2,2,a[0..<3],x[..],b[..],out[..],work[..],false).status==GoStatus.capacity;
+    #assert go_project(2,2,a[..],x[0..<1],b[..],out[..],work[..],false).status==GoStatus.capacity;
+    #assert go_project(2,2,a[..],x[..],b[0..<1],out[..],work[..],false).status==GoStatus.capacity;
+    #assert go_project(2,2,a[..],x[..],b[..],out[0..<1],work[..],false).status==GoStatus.capacity;
+    #assert go_project(2,2,a[..],x[..],b[..],out[..],work[0..<5],false).status==GoStatus.capacity;
+    #assert go_project(2,2,a[..],x[..],b[..],out[..],work[..],true).status==GoStatus.alias;
+    out[0]=-7;out[1]=-7;a[3]=f32_from_bits(0x7f7fffff);x[1]=2;
+    r=go_project(2,2,a[..],x[..],b[..],out[..],work[..],false);
+    #assert r.status==GoStatus.arithmetic && r.cause==cast(int)PsionicOpStatus.arithmetic && r.written==0 && out[0]==-7 && out[1]==-7;
+    a[3]=0;b[1]=f32_from_bits(0x7f7fffff);a[2]=b[1];x[0]=1;
+    #assert go_project(2,2,a[..],x[..],b[..],out[..],work[..],false).status==GoStatus.arithmetic && out[0]==-7;
+}
+
+go_range :: (start:int,count:int)->bool {return start>=0 && count>=1 && count<=128 && count<=131072-start;}
+go_data :: (a:[]f32)->GoStatus {for v:a {if !psionic_tensor_finite_bits(f32_bits(v)) {return GoStatus.number;}}return GoStatus.ok;}
+// book:begin yarn
+go_yarn :: (start:int,count:int,out:[]f32)->GoResult #export_c {
+    if !go_range(start,count) {return GoResult.{status=GoStatus.range};}
+    if out.count<64*count {return GoResult.{status=GoStatus.capacity};}
+    low:=32*log(4096.0/(32*2*3.141592653589793))/log(150000.0);
+    high:=32*log(4096.0/(2*3.141592653589793))/log(150000.0);
+    concentration:=1+0.1*log(32.0);
+    for p:0..<count {for i:0..<32 {
+        ramp:=(f64(i)-low)/(high-low);
+        ramp=(ramp+abs(ramp))/2;
+        ramp=1-(1-ramp+abs(1-ramp))/2;
+        frequency:=exp(-log(150000.0)*f64(2*i)/64);
+        angle:=f64(start+p)*frequency*(1-ramp+ramp/32);
+        out[p*64+2*i]=f32(cos(angle)*concentration);
+        out[p*64+2*i+1]=f32(sin(angle)*concentration);
+    }}
+    return GoResult.{written=64*count};
+}
+// book:end yarn
+// book:begin rotate
+go_rotate :: (heads:int,x:[]f32,c:[]f32,out:[]f32,work:[]f32,overlap:bool)->GoResult #export_c {
+    if heads<1 || heads>64 {return GoResult.{status=GoStatus.shape};}
+    n:=heads*64;
+    if x.count!=n || c.count!=64 || out.count<n || work.count<n {return GoResult.{status=GoStatus.capacity};}
+    if overlap {return GoResult.{status=GoStatus.alias};}
+    if go_data(x)!=GoStatus.ok {return GoResult.{status=GoStatus.number};}
+    if go_data(c)!=GoStatus.ok {return GoResult.{status=GoStatus.number};}
+    for h:0..<heads {for i:0..<32 {
+        a:=f64(x[h*64+i]);b:=f64(x[h*64+32+i]);co:=f64(c[2*i]);si:=f64(c[2*i+1]);
+        left:=a*co-b*si;right:=b*co+a*si;
+        if !psionic_ops_fits_f32(left) || !psionic_ops_fits_f32(right) {return GoResult.{status=GoStatus.arithmetic};}
+        work[h*64+i]=f32(left);work[h*64+32+i]=f32(right);
+    }}
+    for i:0..<n {out[i]=work[i];}return GoResult.{written=n};
+}
+// book:end rotate
+go_pairs :: (n:int)->bool {return n>=1 && n<=16384;}
+// book:begin swiglu
+go_swiglu :: (pairs:[]f32,out:[]f32,overlap:bool)->GoResult #export_c {
+    n:=pairs.count/2;
+    if !go_pairs(n) || pairs.count%2!=0 {return GoResult.{status=GoStatus.shape};}
+    if out.count<n {return GoResult.{status=GoStatus.capacity};}
+    if overlap {return GoResult.{status=GoStatus.alias};}
+    if go_data(pairs)!=GoStatus.ok {return GoResult.{status=GoStatus.number};}
+    clamped:=0;
+    for i:0..<n {
+        raw:=f64(pairs[2*i]);gate:=raw;if raw>7 {gate=7;clamped+=1;}
+        linear:=f64(pairs[2*i+1]);if linear>7 {linear=7;clamped+=1;}if linear< -7 {linear=-7;clamped+=1;}
+        z:=1.702*gate;sigmoid:=exp((z-abs(z))/2)/(1+exp(-abs(z)));
+        out[i]=f32(gate*sigmoid*(linear+1));
+    }
+    return GoResult.{written=n,clamped=clamped};
+}
+// book:end swiglu
+// book:begin project
+go_project :: (rows:int,columns:int,a:[]f32,x:[]f32,bias:[]f32,out:[]f32,work:[]f32,overlap:bool)->GoResult #export_c {
+    request:=PsionicRequest.{op=PsionicOp.matmul,rows=rows,width=columns,columns=1};plan:=psionic_ops_plan(request);
+    if plan.status!=PsionicOpStatus.ok {return GoResult.{status=GoStatus.shape};}
+    if a.count!=plan.a || x.count!=columns || bias.count!=rows || out.count<rows || work.count<3*rows {return GoResult.{status=GoStatus.capacity};}
+    if overlap {return GoResult.{status=GoStatus.alias};}
+    w:=work[0..<3*rows];mat:=w[0..<rows];scratch:=w[rows..<w.count-rows];stage:=w[w.count-rows..<w.count];indices:[1]int;mask:[1]u8;
+    m:=psionic_ops_checked(request,a,x,indices[0..<0],mask[0..<0],mat,scratch,false);
+    if m.status!=PsionicOpStatus.ok {return GoResult.{status=GoStatus.arithmetic,cause=cast(int)m.status};}
+    b:=psionic_ops_checked(PsionicRequest.{rows=1,width=rows},mat,bias,indices[0..<0],mask[0..<0],stage,scratch,false);
+    if b.status!=PsionicOpStatus.ok {return GoResult.{status=GoStatus.arithmetic,cause=cast(int)b.status};}
+    for i:0..<rows {out[i]=stage[i];}return GoResult.{written=rows};
+}
+// book:end project
+
+#load "../fixtures/gptoss-math-vectors.coax";
+#test "multi-position rotary generation preserves row strides and start offsets" {
+    out:[128]f32;single:[64]f32;r:=go_yarn(4095,2,out[..]);s:=go_yarn(4096,1,single[..]);
+    #assert r.status==GoStatus.ok && r.written==128 && s.status==GoStatus.ok;
+    for i:0..<64 {#assert out[64+i]==single[i];}
+}
+#test "maximum head count and a right-only overflow are independent boundaries" {
+    x:[4096]f32;c:[64]f32;out:[4096]f32;work:[4096]f32;
+    for i:0..<32 {c[2*i]=1;}
+    x[4095]=3;r:=go_rotate(64,x[..],c[..],out[..],work[..],false);
+    #assert r.status==GoStatus.ok && r.written==4096 && out[4095]==3;
+    x[63]=f32_from_bits(0x7f7fffff);c[62]=2;c[63]=0;
+    #assert go_rotate(1,x[0..<64],c[..],out[..],work[..],false).status==GoStatus.arithmetic;
+}
+#test "pair count limits and a single active gate retain exact capacities" {
+    #assert go_pairs(1) && go_pairs(16384) && !go_pairs(0) && !go_pairs(16385);
+    x:=[2]f32.[1,0];out:=[1]f32.[-7];r:=go_swiglu(x[..],out[..],false);
+    #assert r.status==GoStatus.ok && r.written==1 && out[0]>0.84f32 && out[0]<0.85f32;
+}
+#test "three-row biased projection works with exact storage extents" {
+    a:=[3]f32.[2,3,4];x:=[1]f32.[2];b:=[3]f32.[-1,0,1];out:[3]f32;work:[9]f32;
+    r:=go_project(3,1,a[..],x[..],b[..],out[..],work[..],false);
+    #assert r.status==GoStatus.ok && r.written==3 && out[0]==3 && out[1]==6 && out[2]==9;
+}

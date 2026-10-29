@@ -31,7 +31,9 @@ run examples directly without the check command.
 | [34. Original MXFP4 weights](ch34-original-mxfp4-weights.md) | Runnable: bounded CPU format decoder | Decode original gpt-oss packed groups exactly, with independent bit oracles and atomic refusals. |
 | [35. A few experts, then a router](ch35-a-few-experts-then-a-router.md) | Runnable: bounded CPU router and tiny affine experts | Select and normalize top-k routes, dispatch by resident expert ID and publish a checked weighted mixture. |
 
-Chapters 34–35 start an independent gpt-oss branch; chapters 11–33 remain planned.
+| [36. Attention with sinks and a window](ch36-attention-with-sinks-and-a-window.md) | Runnable: gpt-oss-attention-cpu-wide-v1 | Compute per-head sink attention with a bounded ring, split-half YaRN, biased projection and clamped expert activation. |
+
+Chapters 34–36 start an independent gpt-oss branch; chapters 11–33 remain planned.
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
 sets the proposed full reading order: early Elephant/Mammoth and useful

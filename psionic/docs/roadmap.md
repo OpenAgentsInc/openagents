@@ -5,8 +5,11 @@ text requests, bounded Qwen-style layers and authenticated original-weight
 Elephant text decisions on the tested Apple LP64 CPU host. Mammoth and autodiff
 remain `planned`. The independent [chapter 34 format decoder](../book/ch34-original-mxfp4-weights.md)
 now implements bounded original MXFP4 bytes. [Chapter 35](../book/ch35-a-few-experts-then-a-router.md)
-adds bounded top-k routing and tiny resident affine mixtures; complete gpt-oss
-execution remains planned.
+adds bounded top-k routing and tiny resident affine mixtures.
+[Chapter 36](../book/ch36-attention-with-sinks-and-a-window.md) adds sink/window
+attention, split-half YaRN, a bounded biased projection and clamped activation
+under a named wide CPU profile. Original full-size projection/block execution,
+checkpoint binding and complete gpt-oss execution remain planned.
 [Run the first chapter](../book/ch01-learning-a-number.md)
 or `psionic/check.sh`; [retained verification](../../docs/verification/psionic-m0-2026-10-28.md)
 records the scope. Later chapter titles are working names; gates determine
@@ -188,7 +191,7 @@ a prerequisite for starting the ready work.
 
 The [full proposed table of contents](../book/PLAN.md) now gives
 one outline per chapter, with prerequisite notes. Chapters 1–10 and the
-independent MXFP4/router chapters 34–35 are runnable;
+independent MXFP4/router/attention chapters 34–36 are runnable;
 chapter numbers and part boundaries are provisional. The new
 [NVIDIA breadth survey](targets/nvidia-breadth.md) records pinned candidate checkpoints,
 operator requirements, data studies and source-license qualifications.

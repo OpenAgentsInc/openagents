@@ -15,6 +15,7 @@ trap 'rm -rf "$out"' EXIT
 python3 -I psionic/tests/ops_oracle.py > "$out/ops-oracle.h"
 python3 -I psionic/tests/mxfp4_oracle.py --header > "$out/mxfp4-oracle.h"
 python3 -I psionic/tests/moe_oracle.py --header > "$out/moe-oracle.h"
+python3 -I psionic/tests/gptoss_oracle.py --header > "$out/gptoss-oracle.h"
 python3 -I psionic/tests/weights_fixtures.py --header > "$out/weights-fixtures.h"
 # The weights root checks/mutates every imported model-io unit plus JSON/SHA-256.
 python3 -I psionic/tests/text_fixtures.py
@@ -34,7 +35,7 @@ python3 -I psionic/tests/elephant_reference_fixture.py
 python3 -I psionic/tests/elephant_reference_fixture.py --check-output psionic/fixtures/models/elephant/psionic-reference.txt
 python3 -I psionic/tests/session_fixture.py
 python3 -I psionic/tests/prepare_oracle.py --header > "$out/prepare-golden.h"
-for unit in moe mxfp4 learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle; do
+for unit in gptoss-math gptoss-attention moe mxfp4 learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle; do
     "$coax" test "psionic/lib/$unit.coax"
     "$coax" test "psionic/lib/$unit.coax" --release
     "$coax" mutate "psionic/lib/$unit.coax"
@@ -43,7 +44,7 @@ for mode in debug release; do
     flags=()
     opt=-O0
     if [[ $mode == release ]]; then flags+=(--release); opt=-O2; fi
-    for unit in moe mxfp4 learn tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout rank5 rank5-bundle access layer-map model-map; do
+    for unit in gptoss-attention moe mxfp4 learn tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout rank5 rank5-bundle access layer-map model-map; do
         source="psionic/lib/$unit.coax"
         if [[ $unit == weights ]]; then source=psionic/lib/model-io/weights.coax; fi
         if [[ $unit == rank5 ]]; then source=psionic/lib/model-io/rank5.coax; fi
@@ -53,6 +54,7 @@ for mode in debug release; do
         if [[ $unit == model-map ]]; then source=psionic/lib/model-io/model-map.coax; fi
         "$coax" c "$source" --library --header "$out/$unit.h" "${flags[@]}" > "$out/$unit.c"
         case "$unit" in
+            gptoss-attention) adapter=psionic/platform/gptoss-attention-memory.c; harness=psionic/tests/gptoss_attention.c ;;
             moe) adapter=psionic/platform/moe-memory.c; harness=psionic/tests/moe.c ;;
             mxfp4) adapter=psionic/platform/mxfp4-memory.c; harness=psionic/tests/mxfp4.c ;;
             learn) adapter=psionic/platform/memory.c; harness=psionic/tests/native.c ;;

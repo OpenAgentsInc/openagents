@@ -1,0 +1,145 @@
+// gpt-oss projected Q/K/V attention: sink denominator, split-half YaRN, ring KV.
+#load "gptoss-math.coax";
+#authority;
+GaShape :: struct {heads:int;kv_heads:int;window:int;capacity:int;}
+GaPlan :: struct {status:GoStatus;q:int;kv:int;cache:int;work:int;}
+GaResult :: struct {status:GoStatus;written:int;next:int;}
+
+#test "equal logits expose the sink denominator and window expiry" {
+    q:[64]f32;k:[64]f32;v:[64]f32;sinks:[1]f32;cache:[512]f32;out:[65]f32;work:[256]f32;
+    out[64]=-7;
+    for mode:0..<2 {
+        shape:=GaShape.{heads=1,kv_heads=1,window=ifx mode==0 then 2 else 0,capacity=ifx mode==0 then 2 else 4};
+        for p:0..<4 {
+            v[0]=f32(3*(p+1));r:=ga_step(shape,p,q[..],k[..],v[..],sinks[..],cache[..],out[..],work[..],false);
+            #assert r.status==GoStatus.ok && r.written==64 && r.next==p+1 && out[64]==-7;
+            expected:=f32(3*(p+1))/2;
+            if mode==0 && p>1 {expected=f32(6*p+3)/3;}
+            #assert out[0]==expected && out[1]==0;
+        }
+    }
+}
+#test "shape and position plans bound before multiplying" {
+    p:=ga_plan(GaShape.{heads=64,kv_heads=8,window=128,capacity=128});
+    #assert p.status==GoStatus.ok && p.q==4096 && p.kv==512 && p.cache==131072 && p.work==12800;
+    s:=GaShape.{heads=1,kv_heads=1,capacity=1};
+    #assert ga_plan(s).status==GoStatus.ok && ga_position(s,0) && !ga_position(s,1) && !ga_position(s,-1);
+    s.window=1;#assert ga_position(s,131071) && !ga_position(s,131072);
+    #assert ga_first(s,131071)==131071;
+    s.window=128;s.capacity=128;#assert ga_first(s,127)==0 && ga_first(s,128)==1;
+    s.heads=0;#assert ga_plan(s).status==GoStatus.shape;s.heads=65;#assert ga_plan(s).status==GoStatus.shape;
+    s.heads=3;s.kv_heads=2;#assert ga_plan(s).status==GoStatus.shape;
+    s.heads=1;s.kv_heads=0;#assert ga_plan(s).status==GoStatus.shape;
+    s.heads=64;s.kv_heads=9;#assert ga_plan(s).status==GoStatus.shape;
+    s.kv_heads=1;s.capacity=0;#assert ga_plan(s).status==GoStatus.shape;
+    s.capacity=129;#assert ga_plan(s).status==GoStatus.shape;s.capacity=128;s.window=-1;#assert ga_plan(s).status==GoStatus.shape;
+    s.window=129;#assert ga_plan(s).status==GoStatus.shape;s.window=127;#assert ga_plan(s).status==GoStatus.shape;
+}
+#test "each span refuses before publishing cache or context" {
+    s:=GaShape.{heads=1,kv_heads=1,capacity=1};q:[64]f32;k:[64]f32;v:[64]f32;sink:[1]f32;cache:[128]f32;out:[64]f32;work:[256]f32;
+    for i:0..<128 {cache[i]=-7;}for i:0..<64 {out[i]=-9;}
+    #assert ga_step(GaShape.{},0,q[..],k[..],v[..],sink[..],cache[..],out[..],work[..],false).status==GoStatus.shape;
+    #assert ga_step(s,1,q[..],k[..],v[..],sink[..],cache[..],out[..],work[..],false).status==GoStatus.range;
+    #assert ga_step(s,0,q[0..<63],k[..],v[..],sink[..],cache[..],out[..],work[..],false).status==GoStatus.capacity;
+    #assert ga_step(s,0,q[..],k[0..<63],v[..],sink[..],cache[..],out[..],work[..],false).status==GoStatus.capacity;
+    #assert ga_step(s,0,q[..],k[..],v[0..<63],sink[..],cache[..],out[..],work[..],false).status==GoStatus.capacity;
+    #assert ga_step(s,0,q[..],k[..],v[..],sink[0..<0],cache[..],out[..],work[..],false).status==GoStatus.capacity;
+    #assert ga_step(s,0,q[..],k[..],v[..],sink[..],cache[0..<127],out[..],work[..],false).status==GoStatus.capacity;
+    #assert ga_step(s,0,q[..],k[..],v[..],sink[..],cache[..],out[0..<63],work[..],false).status==GoStatus.capacity;
+    #assert ga_step(s,0,q[..],k[..],v[..],sink[..],cache[..],out[..],work[0..<255],false).status==GoStatus.capacity;
+    #assert ga_step(s,0,q[..],k[..],v[..],sink[..],cache[..],out[..],work[..],true).status==GoStatus.alias;
+    q[63]=f32_from_bits(0x7f7fffff);
+    #assert ga_step(s,0,q[..],k[..],v[..],sink[..],cache[..],out[..],work[..],false).status==GoStatus.arithmetic;
+    q[63]=0;k[63]=f32_from_bits(0x7f7fffff);
+    #assert ga_step(s,0,q[..],k[..],v[..],sink[..],cache[..],out[..],work[..],false).status==GoStatus.arithmetic;
+    for x:cache {#assert x==-7;}for x:out {#assert x==-9;}
+}
+
+// book:begin plan
+ga_plan :: (s:GaShape)->GaPlan #export_c {
+    if s.heads<1 || s.heads>64 || s.kv_heads<1 || s.kv_heads>8 || s.heads%s.kv_heads!=0 || s.capacity<1 || s.capacity>128 || s.window<0 {return GaPlan.{status=GoStatus.shape};}
+    if s.window!=0 && s.capacity!=s.window {return GaPlan.{status=GoStatus.shape};}
+    q:=s.heads*64;kv:=s.kv_heads*64;
+    return GaPlan.{q=q,kv=kv,cache=2*s.capacity*kv,work=3*q+kv};
+}
+// book:end plan
+ga_position :: (s:GaShape,p:int)->bool {return p>=0 && p<131072 && (s.window!=0 || p<s.capacity);}
+ga_first :: (s:GaShape,p:int)->int {return ifx s.window!=0 && p>=s.window then p+1-s.window else 0;}
+
+ga_slot :: (capacity:int,kv:int,t:int,cache:[]f32)->[]f32 {
+    base:=(t%capacity)*2*kv;return cache[base..<base+2*kv];
+}
+ga_max_index :: (scores:[]f64,sink:f64)->int {
+    best:=-1;maximum:=sink;
+    for i:0..<scores.count {if scores[i]>maximum {best=i;maximum=scores[i];}}
+    return best;
+}
+
+ga_step :: (s:GaShape,position:int,q:[]f32,k:[]f32,v:[]f32,sinks:[]f32,cache:[]f32,out:[]f32,work:[]f32,overlap:bool)->GaResult #export_c {
+    plan:=ga_plan(s);if plan.status!=GoStatus.ok {return GaResult.{status=plan.status};}
+    if !ga_position(s,position) {return GaResult.{status=GoStatus.range};}
+    if q.count!=plan.q {return GaResult.{status=GoStatus.capacity};}
+    if k.count!=plan.kv {return GaResult.{status=GoStatus.capacity};}
+    if v.count!=plan.kv {return GaResult.{status=GoStatus.capacity};}
+    if sinks.count!=s.heads {return GaResult.{status=GoStatus.capacity};}
+    if cache.count<plan.cache {return GaResult.{status=GoStatus.capacity};}
+    if out.count<plan.q {return GaResult.{status=GoStatus.capacity};}
+    if work.count<plan.work {return GaResult.{status=GoStatus.capacity};}
+    if overlap {return GaResult.{status=GoStatus.alias};}
+    if go_data(q)!=GoStatus.ok {return GaResult.{status=GoStatus.number};}
+    if go_data(k)!=GoStatus.ok {return GaResult.{status=GoStatus.number};}
+    if go_data(v)!=GoStatus.ok {return GaResult.{status=GoStatus.number};}
+    if go_data(sinks)!=GoStatus.ok {return GaResult.{status=GoStatus.number};}
+    first:=ga_first(s,position);visible:=position-first+1;
+    for t:first..<position {if go_data(ga_slot(s.capacity,plan.kv,t,cache))!=GoStatus.ok {return GaResult.{status=GoStatus.number};}}
+    start:=plan.q+plan.kv;end:=plan.work-plan.q;
+    qr:=work[0..<plan.q];kr:=work[plan.q..<start];stage:=work[start..<end];temporary:=work[end..<plan.work];
+    rope:[64]f32;rotary:=go_yarn(position,1,rope[..]);#assert rotary.status==GoStatus.ok;
+    rq:=go_rotate(s.heads,q,rope[..],qr,temporary,false);if rq.status!=GoStatus.ok {return GaResult.{status=rq.status};}
+    rk:=go_rotate(s.kv_heads,k,rope[..],kr,temporary,false);if rk.status!=GoStatus.ok {return GaResult.{status=rk.status};}
+// book:begin softmax
+    for h:0..<s.heads {
+        kh:=h/(s.heads/s.kv_heads);scores:[128]f64;
+        for slot:0..<visible {
+            t:=first+slot;
+            key:=kr;if t<position {entry:=ga_slot(s.capacity,plan.kv,t,cache);key=entry[0..<plan.kv];}
+            dot:PsionicAccumulator;for d:0..<64 {dot=psionic_ops_accumulate(dot,f64(qr[h*64+d])*f64(key[kh*64+d]));}
+            scores[slot]=psionic_ops_total(dot)*0.125;
+        }
+        largest:=ga_max_index(scores[0..<visible],f64(sinks[h]));
+        maximum:=ifx largest<0 then f64(sinks[h]) else scores[largest];
+        denominator:PsionicAccumulator;denominator=psionic_ops_accumulate(denominator,exp(f64(sinks[h])-maximum));
+        for slot:0..<visible {scores[slot]=exp(scores[slot]-maximum);denominator=psionic_ops_accumulate(denominator,scores[slot]);}
+        total:=psionic_ops_total(denominator);
+        for d:0..<64 {
+            sum:PsionicAccumulator;
+            for slot:0..<visible {
+                t:=first+slot;
+                value:=v[kh*64+d];if t<position {entry:=ga_slot(s.capacity,plan.kv,t,cache);value=entry[plan.kv+kh*64+d];}
+                sum=psionic_ops_accumulate(sum,scores[slot]*f64(value));
+            }
+            stage[h*64+d]=f32(psionic_ops_total(sum)/total);
+        }
+    }
+// book:end softmax
+// book:begin publish
+    base:=(position%s.capacity)*2*plan.kv;
+    for i:0..<plan.kv {cache[base+i]=kr[i];cache[base+plan.kv+i]=v[i];}
+    for i:0..<plan.q {out[i]=stage[i];}
+    return GaResult.{written=plan.q,next=position+1};
+// book:end publish
+}
+
+#load "../fixtures/gptoss-attention-vectors.coax";
+#test "independent plan refusals and deterministic maximum ties" {
+    #assert ga_plan(GaShape.{heads=9,kv_heads=9,capacity=1}).status==GoStatus.shape;
+    #assert ga_plan(GaShape.{heads=1,kv_heads=1,capacity=129}).status==GoStatus.shape;
+    scores:=[4]f64.[-1,0,2,2];#assert ga_max_index(scores[..],2)==-1 && ga_max_index(scores[..],0)==2;
+    #assert ga_max_index(scores[0..<2],0)==-1 && ga_max_index(scores[0..<2],-2)==1;
+}
+#test "huge finite scores subtract the maximum before exponentiation" {
+    s:=GaShape.{heads=1,kv_heads=1,capacity=1};q:[64]f32;k:[64]f32;v:[64]f32;sinks:[1]f32;cache:[128]f32;out:[64]f32;work:[256]f32;
+    q[0]=1000;k[0]=1000;v[0]=3;
+    r:=ga_step(s,0,q[..],k[..],v[..],sinks[..],cache[..],out[..],work[..],false);
+    #assert r.status==GoStatus.ok && out[0]==3;
+}

@@ -1,5 +1,32 @@
 # Invariants
 
+## Psionic gpt-oss attention preserves sink mass and visible cache history
+
+`gptoss-attention.coax` and `gptoss-math.coax` implement
+`gpt-oss-attention-cpu-wide-v1`: 64-wide heads, 1–64 query/1–8 KV heads,
+learned per-query-head sink logits in the denominator with no value, split-half
+YaRN and a ring bounded by its sliding window. Sliding capacity equals the
+window, at most 128, with absolute positions 0–131,071; full causal capacity
+is separately bounded to 128. Only visible old cache entries are read.
+Shape, position, exact input spans, writable capacities, address observation
+and finite data are checked before publication. Rotation failure preserves
+public cache and output; work may change. Success leaves unused public tails
+unchanged. Caller duties include valid aligned allocations, truthful extents,
+immutable inputs, exclusive access and matching shape/model/sequential history.
+
+Math helpers stage split-half rotation and bounded biased projection; the
+interleaved expert activation validates all pairs before writing and uses an
+upper-only gate clamp, two-sided linear clamp, alpha 1.702 and a plus-one
+linear term. Clamp diagnostics count changed lanes. Wide CPU arithmetic with
+f32 storage is separate from original Torch/BF16 parity. Original checkpoint
+binding, full-size projections, block composition and generation remain
+separate qualification gates.
+
+Check: `psionic/tests/check_gptoss_attention.sh` and the main
+`psionic/check.sh` include independent scalar references, debug/release and
+zero-survivor mutation plus native plain/ASan/UBSan gates. See the
+[chapter 36 record](docs/verification/psionic-ch36-2026-10-29.md).
+
 ## Psionic bounded top-k mixtures preserve route and output semantics
 
 `psionic/lib/moe.coax` implements `cpu-topk-affine-v1`: 1–128 finite logits,

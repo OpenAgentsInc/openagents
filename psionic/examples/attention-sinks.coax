@@ -1,0 +1,26 @@
+#import "Basic";
+#load "../lib/gptoss-attention.coax";
+
+// book:begin example
+main :: () {
+    q:[64]f32;k:[64]f32;v:[64]f32;sinks:[1]f32;cache:[512]f32;out:[64]f32;work:[256]f32;
+    for mode:0..<2 {
+        shape:=GaShape.{heads=1,kv_heads=1,window=ifx mode==0 then 2 else 0,capacity=ifx mode==0 then 2 else 4};
+        if mode==0 {print("window two:");}else {print("full causal:");}
+        for p:0..<4 {
+            v[0]=f32(3*(p+1));r:=ga_step(shape,p,q[..],k[..],v[..],sinks[..],cache[..],out[..],work[..],false);
+            #assert r.status==GoStatus.ok && r.next==p+1;
+            print(" %",out[0]);
+        }
+        print("\n");
+    }
+    rotary:[64]f32;yr:=go_yarn(0,1,rotary[..]);#assert yr.status==GoStatus.ok;
+    print("YaRN at zero: cos > 1 = %, sin = %\n",rotary[0]>1,rotary[1]);
+    pairs:=[4]f32.[1,-1,8,0];activated:[2]f32;
+    ar:=go_swiglu(pairs[..],activated[..],false);#assert ar.status==GoStatus.ok;
+    print("SwiGLU linear -1: %; clamped lanes: %\n",activated[0],ar.clamped);
+    out[0]=-7;r:=ga_step(GaShape.{heads=1,kv_heads=1,capacity=4},4,q[..],k[..],v[..],sinks[..],cache[..],out[..],work[..],false);
+    #assert r.status==GoStatus.range && out[0]==-7;
+    print("full cache exhausted: refused without output\n");
+}
+// book:end example

@@ -1,0 +1,5 @@
+window two: 1.5 3.0 5.0 7.0
+full causal: 1.5 3.0 4.5 6.0
+YaRN at zero: cos > 1 = true, sin = 0.0
+SwiGLU linear -1: 0.0; clamped lanes: 1
+full cache exhausted: refused without output
