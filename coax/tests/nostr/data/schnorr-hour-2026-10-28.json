@@ -1,0 +1,134 @@
+{
+  "acceptance_hour": true,
+  "artifacts": [
+    {
+      "artifact_sha256": "5352fcd0d793e7a93452fc34a02992d46f3c7d1750cb742144bf23c84311c397",
+      "flags": [
+        "-std=c11",
+        "-O2",
+        "-shared",
+        "-fPIC"
+      ],
+      "generated_c_sha256": "ba43dd508c3389aa670b09b098c4ecaebededc024d15630922b61bd46ec0ef9d",
+      "mode": "checked"
+    },
+    {
+      "artifact_sha256": "7dad25ab506b60d6a4ddb4f4ce9380a7b9b993b59b0c4cc5a06d4ec7e83b5739",
+      "flags": [
+        "-std=c11",
+        "-O2",
+        "-shared",
+        "-fPIC"
+      ],
+      "generated_c_sha256": "67a12cc89a1934b9316df88c49d6e9b8aa745eb51acaf9d9dc86aa0155295bd3",
+      "mode": "release"
+    }
+  ],
+  "budgets": {
+    "checkpoint_seconds": 30,
+    "max_cases": 4000000,
+    "max_generated_message_bytes": 4097,
+    "max_samples_per_profile": 4096,
+    "max_temporary_bytes": 33554432
+  },
+  "cases": 1743107,
+  "categories": {
+    "changed-message": 145259,
+    "long-public": 145259,
+    "official": 145259,
+    "public-bit": 145259,
+    "r-boundary": 145259,
+    "random-signature": 145258,
+    "s-boundary": 145259,
+    "short-signature": 145259,
+    "signature-bit": 145259,
+    "valid": 435777
+  },
+  "check_inputs_at_build": {
+    "coax/tests/nostr/make_schnorr_fixtures.py": "8cd7df841eafaf7cb5a642a10e8ce1d4d62063300d63ddb223f8c4911de48975",
+    "coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+    "coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756"
+  },
+  "compiler": "coax0 0.15.0",
+  "compiler_sha256": "35dcb1ff3633b4f33cd6e931565dc85f4928e530fc916a23c13dbb9ffe9b11ec",
+  "corpus_sha256": "a2a60d3ca92e76c0779bed113b80798490735f88f17558aeb597874ab1b2aa84",
+  "elapsed_seconds": 3600.002915457997,
+  "expected": {
+    "invalid": 1238521,
+    "valid": 504586
+  },
+  "failures": 0,
+  "finished_utc": "2026-10-29T02:48:43.568504+00:00",
+  "historical_source_snapshot_commit": "1f850e97ed4c9952b09606af88716f136319c7b6",
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "native_profiles": {
+    "checked": {
+      "general_calls": 1743107,
+      "maximum_seconds": 0.03415858300286345,
+      "nostr_calls": 102536,
+      "seconds": 2179.0294410231
+    },
+    "release": {
+      "general_calls": 1743107,
+      "maximum_seconds": 0.0320070419984404,
+      "nostr_calls": 102536,
+      "seconds": 1178.8498622342595
+    }
+  },
+  "native_target": "arm64-apple-darwin25.4.0",
+  "nostr_cases": 102536,
+  "official_message_lengths": [
+    0,
+    1,
+    17,
+    32,
+    100
+  ],
+  "official_rows": 19,
+  "official_sha256": "34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d",
+  "oracle_artifact_sha256": "8c46f911b6821f9fc0de66a55d50b11325e364cf64afd95ca6ab0b7f2882201b",
+  "oracle_source_commit": "6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d",
+  "regression_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "regressions_path": "/tmp/coax-schnorr-verify-hour-regressions.jsonl",
+  "requested_seconds": 3600,
+  "retained_regressions": "coax/tests/nostr/data/schnorr-regressions-2026-10-28.jsonl",
+  "run_start_git_head": "830346dd383fb8ab7873511e59c146d00398bd20",
+  "runtime_source_snapshot_commit": "79e21a704078ab877d98b87263f390862e8bf087",
+  "schema": "coax.schnorr-hour.v1",
+  "scope": "public BIP340/general-byte verification correctness; no signing, constant-time, erasure, physical-device or production-secret approval",
+  "seed": 202610290340,
+  "source_snapshot_note": "The historical local snapshot was created during the run to name its exact source bytes. The reachable snapshot was rebased after completion and contains identical runtime/check bytes. Neither snapshot is claimed to have existed when the run began; retained file hashes bind the executed source.",
+  "source_was_uncommitted_at_run_start": true,
+  "sources": {
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/schnorr.coax": "f90f2a3fca5f65bf0c32d22897b30c192e16946c3890a286e4a2922880ed1757",
+    "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+    "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+    "coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+    "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "coax/tests/nostr/schnorr_hour.py": "aacf7f574bc0261599a29a57fbd1b75fbf2b5662778498fe885aa504f26dee01",
+    "coax/tests/nostr/schnorr_support.py": "cef8d4f3fb5a1fbfd99053bfa0423621bf19f0ffe42c364fba611a1ae5ef1f5c",
+    "coax/tests/nostr/secp_field.py": "e2449aa8475c32d4fbcfe17fea520b3fb502555897412e7d1a82b2bb4d93143f",
+    "tools/coax-nostr/fuzz/UPSTREAM.json": "dfc511b8c6ab64e780f52bf9e4ce77c8273b96edd64827459f37c1e9b8bbf33e",
+    "tools/coax-nostr/fuzz/oracle.c": "552eee1f5dfe5c275b141750bd8df255b437cefd0b6529cb719455d60465fe47",
+    "tools/coax-nostr/fuzz/oracle.py": "d690d0f5e5318e96fc6c6c5f56ce87af5543d90d8acb8f53abc67381d7626cd9"
+  },
+  "started_utc": "2026-10-29T01:48:43.529428+00:00",
+  "state": "passed",
+  "temporary_bytes": 538716,
+  "timing_first4096_general_quantiles": {
+    "checked": {
+      "p50": 0.0019302080036140978,
+      "p95": 0.0022144580143503845,
+      "p99": 0.0024068329948931932
+    },
+    "release": {
+      "p50": 0.0010331670055165887,
+      "p95": 0.0012342080008238554,
+      "p99": 0.0013874159776605666
+    }
+  },
+  "timing_scope": "ctypes C call plus FFI; excludes argument copying and borrowed-input comparisons"
+}
