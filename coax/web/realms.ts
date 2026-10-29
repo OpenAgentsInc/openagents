@@ -19,12 +19,24 @@ const KINDS = { locked: 0, open: 1, soon: 2 } as const
 // golden: what the release walk (goldens.ts) asks of the realm's page: the least share of
 // its pixels lit, how long it settles before its shot, how many 8 px blocks may differ.
 export type Golden = { lit: number; settle: number; blocks: number }
-export type Realm = { slug: string; title: string; description: string; alt: string; module: string; slot: string; slot_was?: string; voice?: string; uploads?: string; card?: string; assets: string[]; golden: Golden }
+// style: the realm's art style (docs/verse/art-styles.md); zones: parts of it drawn in another;
+// clock: how its time of day runs (cycle, fixed:T with T 0 midnight to 1, or real: the visitor's time).
+export const STYLES = ["lowpoly", "painterly", "photoreal"] as const
+export type Style = (typeof STYLES)[number]
+export type Zone = { id: string; style?: Style }
+export type Realm = { slug: string; title: string; description: string; alt: string; module: string; slot: string; slot_was?: string; voice?: string; uploads?: string; card?: string; style: Style; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
-/** The table, checked: unique ids, slugs and slots; an open world has a realm and a realm a module. */
-export function worlds(file = join(SITE, "realms.json")): World[] {
+export const CLOCK = /^(cycle|real|fixed:(0(\.\d{1,4})?|1(\.0{1,4})?))$/
+// What wgsl.py writes into a realm's WGSL from the style presets: a painterly or photoreal
+// realm draws with it. Required once verse/style.coax exists (as-presets).
+export const STYLE_BLOCK = "// ---- generated: verse/style.coax"
+const STYLE_SOURCE = join(import.meta.dir, "../../verse/style.coax")
+/** The table, checked: unique ids, slugs and slots; an open world has a realm and a realm a module,
+ *  a style, its zones' ids once each, and a clock; a painterly or photoreal realm's WGSL has the style block. */
+export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; styleBlock?: boolean } = {}): World[] {
+  const site = opts.site ?? SITE, styleBlock = opts.styleBlock ?? existsSync(STYLE_SOURCE)
   const list: World[] = JSON.parse(readFileSync(file, "utf8")).worlds
   const seen = new Set<string>()
   const once = (what: string) => { if (seen.has(what)) throw new Error(`realms.json: ${what} twice`); seen.add(what) }
@@ -39,6 +51,18 @@ export function worlds(file = join(SITE, "realms.json")): World[] {
     if (!ID.test(r.slug) || !ID.test(r.slot) || !/^[a-z][a-z0-9-]{0,31}$/.test(r.module)) throw new Error(`realms.json: ${w.id}: slug, slot or module`)
     once(`slug ${r.slug}`); once(`slot ${r.slot}`)
     if (r.slot_was) once(`slot ${r.slot_was}`)
+    if (!STYLES.includes(r.style)) throw new Error(`realms.json: ${r.slug}: style is one of ${STYLES.join(", ")}, not ${JSON.stringify(r.style)}`)
+    const zones = new Set<string>()
+    for (const z of r.zones ?? []) {
+      if (!ID.test(z?.id) || (z.style !== undefined && !STYLES.includes(z.style))) throw new Error(`realms.json: ${r.slug}: zone ${JSON.stringify(z?.id)}: an id and a style (${STYLES.join(", ")})`)
+      if (zones.has(z.id)) throw new Error(`realms.json: ${r.slug}: zone ${z.id} twice`)
+      zones.add(z.id)
+    }
+    if (typeof r.clock !== "string" || !CLOCK.test(r.clock)) throw new Error(`realms.json: ${r.slug}: clock is cycle, real or fixed:T (T 0 to 1), not ${JSON.stringify(r.clock)}`)
+    if (styleBlock && [r.style, ...(r.zones ?? []).map((z) => z.style)].some((st) => st === "painterly" || st === "photoreal")) {
+      const wgsl = join(site, `${r.module}.wgsl`)
+      if (!existsSync(wgsl) || !readFileSync(wgsl, "utf8").includes(STYLE_BLOCK)) throw new Error(`realms.json: ${r.slug} is drawn ${r.style === "lowpoly" ? "partly painterly or photoreal" : r.style} but ${r.module}.wgsl has no style block (coax/web/wgsl.py verse/style.coax ... --into it)`)
+    }
     for (const a of r.assets) if (!/^[a-z]+:\S+$/.test(a)) throw new Error(`realms.json: ${r.slug}: asset ${a}`)
     const g = r.golden
     if (!g || !(g.lit > 0 && g.lit < 1) || !(g.settle >= 0 && g.settle <= 20000) || !(Number.isInteger(g.blocks) && g.blocks >= 0)) throw new Error(`realms.json: ${r.slug}: golden needs lit (0 to 1), settle (ms) and blocks`)
@@ -64,6 +88,10 @@ export function coax(list: World[]): string {
     `PLANET_SIZE :: ${col("f32", (w) => num(w.orbit.size))};`,
     `PLANET_LISTED :: ${col("bool", (w) => String(w.listed !== false))};`,
     `PLANET_PATH :: ${col("string", (w) => lit(w.realm ? `/realms/${w.realm.slug}` : ""))};`,
+    "// Its art style (docs/verse/art-styles.md; a world without a realm is lowpoly) and its clock.",
+    "STYLE_LOWPOLY :: 0; STYLE_PAINTERLY :: 1; STYLE_PHOTOREAL :: 2;",
+    `PLANET_STYLE :: ${col("int", (w) => `STYLE_${(w.realm?.style ?? "lowpoly").toUpperCase()}`)};`,
+    `PLANET_CLOCK :: ${col("string", (w) => lit(w.realm?.clock ?? ""))};`,
     "",
   ].join("\n")
 }
@@ -75,6 +103,8 @@ export function page(r: Realm): string {
   const slot = ` data-realm="${r.slug}" data-slot="${r.slot}"` + (r.slot_was ? ` data-slot-was="${r.slot_was}"` : "")
     + (r.voice ? ` data-voice="${r.voice}"` : "")
     + (r.uploads ? ` data-uploads="${esc(r.uploads)}"` : "")
+    + ` data-style="${r.style}" data-clock="${r.clock}"`
+    + (r.zones?.length ? ` data-zones="${r.zones.map((z) => `${z.id}:${z.style ?? r.style}`).join(" ")}"` : "")
   const assets = r.assets.length ? ` data-assets="\n${r.assets.map((a) => `  ${a}`).join("\n")}"` : ""
   return `<!doctype html>
 <html lang="en">

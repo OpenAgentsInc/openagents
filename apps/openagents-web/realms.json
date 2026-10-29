@@ -6,6 +6,8 @@
     { "id": "house", "name": "HAUNTED HOUSE", "kind": "open", "orbit": { "r": 0.15, "a": 0, "size": 0.028 },
       "realm": {
         "slug": "haunted-house",
+        "style": "lowpoly",
+        "clock": "fixed:0.0",
         "title": "Haunted House",
         "description": "The Haunted House, a Verse realm you walk through in the browser: nine haunts to find, characters to talk to, doors to open. The same Coax code as the OpenAgents iOS app.",
         "alt": "Enter the Verse: edit our haunted house. Can you make it scarier?",
@@ -52,6 +54,8 @@
     { "id": "grid", "name": "THE GRID", "kind": "open", "orbit": { "r": 0.3, "a": 5.4, "size": 0.036 },
       "realm": {
         "slug": "the-grid",
+        "style": "lowpoly",
+        "clock": "fixed:0.0",
         "title": "The Grid",
         "description": "The Grid, the bare Verse world: a floor of lines out to the dark, the Pylon terminal, the help desk, the Game Lab and the gym, robots walking their rounds with the Foreman by the start, and the gate to Everglade.",
         "alt": "Enter the Verse: walk the Grid",
@@ -69,6 +73,8 @@
     { "id": "everglade", "name": "EVERGLADE", "kind": "open", "orbit": { "r": 0.34, "a": 4.2, "size": 0.032 },
       "realm": {
         "slug": "everglade",
+        "style": "painterly",
+        "clock": "cycle",
         "title": "Everglade",
         "description": "Everglade, the forest city in a forest you leave only by its trails: walk its streets and rooms, talk to its people, who remember you, and take quests from the board out to the deep wood, the ruins and the river crossing. One of them earns a flock of birds that follows you.",
         "alt": "Everglade, the forest city: take a quest from the board",
@@ -82,6 +88,8 @@
     { "id": "deadgears", "name": "DEAD GEARS", "kind": "open", "orbit": { "r": 0.3, "a": 2.9, "size": 0.03 },
       "realm": {
         "slug": "dead-gears",
+        "style": "lowpoly",
+        "clock": "cycle",
         "title": "Dead Gears",
         "description": "Dead Gears, a Verse realm in the browser: hold a ship's hold against three waves of crawlers, hounds, reavers and brutes with a cutter that severs limbs, telekinetic lift and stun, and a support engineer, then repair the reactor between waves.",
         "alt": "Enter the Verse: hold the ship in Dead Gears",
@@ -93,6 +101,8 @@
     { "id": "fixture", "name": "FIXTURE REALM", "kind": "open", "listed": false, "orbit": { "r": 0.26, "a": 1.9, "size": 0.026 },
       "realm": {
         "slug": "fixture",
+        "style": "lowpoly",
+        "clock": "fixed:0.5",
         "title": "Fixture Realm",
         "description": "The realm host's test world: its own module, its own save slot and its own asset pack, opened from the galaxy like any realm.",
         "alt": "Enter the Verse",
@@ -104,6 +114,8 @@
     { "id": "drop", "name": "A FIRST REALM", "kind": "open", "listed": false, "orbit": { "r": 0.22, "a": 5.2, "size": 0.024 },
       "realm": {
         "slug": "drop",
+        "style": "lowpoly",
+        "clock": "fixed:0.5",
         "title": "A First Realm",
         "description": "Where a project made from a drop first opens: the models someone dropped, stood on an empty floor for you to walk among.",
         "alt": "Enter the Verse",
@@ -115,6 +127,8 @@
     { "id": "sandbox", "name": "SANDBOX", "kind": "open", "listed": false, "orbit": { "r": 0.36, "a": 1.25, "size": 0.03 },
       "realm": {
         "slug": "sandbox",
+        "style": "lowpoly",
+        "clock": "fixed:0.0",
         "title": "Sandbox",
         "description": "The Sandbox, open ground in the Verse that everyone builds on together: press B to edit, move, paint or copy what's there or place crates, barrels, lamps, trees and rocks, and what you build is published for everyone.",
         "alt": "Enter the Verse: build on the Sandbox's open ground",
@@ -144,6 +158,8 @@
     { "id": "icecream", "name": "ICE CREAM MAN", "kind": "open", "listed": true, "orbit": { "r": 0.22, "a": 3.7, "size": 0.026 },
       "realm": {
         "slug": "ice-cream-man",
+        "style": "lowpoly",
+        "clock": "fixed:0.5",
         "title": "Ice Cream Man",
         "description": "Ice Cream Man, a Verse realm in the browser: find three keys and escape a seeded house before the Ice Cream Man scoops you, played on the same Coax code as the game's rules.",
         "alt": "The kid in the Ice Cream Man's house: find three keys and get out before he scoops you",
@@ -156,6 +172,8 @@
     { "id": "villa", "name": "PLANETARY VILLA", "kind": "open", "listed": false, "orbit": { "r": 0.42, "a": 5.6, "size": 0.034 },
       "realm": {
         "slug": "hecates-cemetery",
+        "style": "painterly",
+        "clock": "fixed:0.0",
         "title": "Hecate's Cemetery",
         "description": "Hecate's Cemetery, the first expansion of Planetary Villa on the Verse: a moonlit memorial garden you walk with a glowing companion, its tombstones along garden paths and an open field beyond the gate.",
         "alt": "Planetary Villa: Hecate's Cemetery, a moonlit memorial garden",

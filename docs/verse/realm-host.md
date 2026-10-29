@@ -15,7 +15,7 @@ All four are named in `apps/openagents-web/realms.json`. `coax/web/realms.ts`
 writes `apps/openagents-web/realms.coax` (the galaxy's table, loaded by
 `verse.coax`) and `realms/<slug>/index.html` (the realm's page) from it; the
 build runs it first, and `bun coax/web/realms.ts --check` fails when the
-written files are behind the table. Don't edit the written files.
+written files are behind the table or the table breaks a rule below (`bun test coax/web/realms.test.ts`). Don't edit the written files.
 
 ## 1. The table entry
 
@@ -38,9 +38,11 @@ written files are behind the table. Don't edit the written files.
 | `realm.slot` | The save slot (below). Unique across realms. |
 | `realm.slot_was` | A slot this realm used before, read once when its own is empty. The Haunted House kept its saves under `realm` (its module's name) before slots existed. |
 | `realm.assets` | The page's `data-assets` (host.js): `pack:` (the realm's asset pack, below), or `data:`, `storage:`, `index:`, `layers:`, `sound:` and `loop:` one file each; and `particles:/particles.wgsl` for particles. |
-
 | `realm.uploads` | What the page's file picker takes (`image/*,video/*`): the page gets `data-uploads`, and its action 30 picks files and sends them to this site's admit/upload/scan protocol (`coax/web/uploads.js`; Planetary Villa's pets). |
 | `realm.golden` | What the release walk asks of the page (below): `lit`, the least share of its pixels lit (the fixture 0.015, the Haunted House 0.03); `settle`, milliseconds to wait before its shot; `blocks`, how many 8 px blocks may differ from its golden. |
+| `realm.style` | Required: the realm's art style, `lowpoly`, `painterly` or `photoreal` ([art-styles.md](art-styles.md)). The page gets `data-style` and the facts `style=`; `realms.coax` has `PLANET_STYLE`. Once `verse/style.coax` exists, a painterly or photoreal realm's `<module>.wgsl` must hold its generated block (`// ---- generated: verse/style.coax`). |
+| `realm.zones` | Optional: the parts drawn in another style, `[{ "id": "crypt", "style": "painterly" }]`; an id once each, a zone without a style takes the realm's. The page gets `data-zones="crypt:painterly"` and the facts `zone.crypt=painterly`. |
+| `realm.clock` | Required: how its time of day runs: `cycle` (the day turns), `fixed:T` (always T, 0 midnight to 1, 0.5 noon) or `real` (the visitor's local time). The page gets `data-clock` and the facts `clock=`; `?clock=T` in the URL pins it to `fixed:T` for shots and goldens. `realms.coax` has `PLANET_CLOCK`. |
 
 Each realm also needs `realms/<slug>/index.md`, written by hand: the page as
 text for agents, search engines and screen readers. The generator refuses a
@@ -182,7 +184,7 @@ for an admin only and publishes the list as the realm's world.
 
 1. Its module: `<module>.coax` with checks, `<module>-face.c`, `<module>.wgsl`; a `wasm.sh` line in `build.sh`.
 2. Its pack: `verse/packs/<realm>.json`, compiled with `pack_realm.py` (above).
-3. Its world in `realms.json`: listed `false` until launch, assets `pack:...`.
+3. Its world in `realms.json`: listed `false` until launch, assets `pack:...`, its `style` and `clock`.
 4. `realms/<slug>/index.md`, linking its `licences.md`.
 5. `bun coax/web/realms.ts`, `coax test <module>.coax`, a headless shot, and its golden (the release walk, above).
 6. At launch: `listed` true (the galaxy's golden changes; approve it).

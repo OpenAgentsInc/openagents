@@ -62,7 +62,10 @@
 //       sessionStorage), fresh (1 when the tab id was just made), visitor (a random id for this
 //       browser, localStorage), now (Date.now()), nav (ms since the navigation), url, ref, ua, lang,
 //       tz, sw, sh, vw, vh, dpr, coarse, touch, gpu, hidden, webdriver, fcp, dcl, player and account (the
-//       playtest player's public id and account, "" none; never its key), voice (the page's data-voice route, "" none)
+//       playtest player's public id and account, "" none; never its key), voice (the page's data-voice route, "" none),
+//       style (the realm's art style, data-style: lowpoly, painterly or photoreal; "" not a realm), zone.<id>
+//       (a zone's style, data-zones "id:style ...") and clock (data-clock: cycle, real or fixed:T; the URL's
+//       ?clock=T, T from 0 to 1, pins it to fixed:T for shots)
 //   601 hidden, 602 shown again, 603 the page is being left (the app's beacon goes in that turn),
 //   604 an error the page raised: message, file and line, a line each
 // and, on a page with data-drops (drop.js, /projects): files dropped on the page or picked go to
@@ -488,6 +491,14 @@ function kept(store, key) {
   try { const v = store.getItem(key); if (v) return [v, false]; const n = randomId(); store.setItem(key, n); return [n, true]; }
   catch { return [randomId(), true]; }   // storage refused (a private window): this page only
 }
+// The realm's style, zones and clock (docs/verse/art-styles.md, The style field).
+function styleFacts() {
+  const d = script?.dataset || {}, out = { style: d.style || "" };
+  for (const z of (d.zones || "").split(/\s+/)) { const [id, st] = z.split(":"); if (id && st) out[`zone.${id}`] = st; }
+  const pin = new URLSearchParams(location.search).get("clock");
+  out.clock = pin !== null && /^(0(\.\d{1,4})?|1(\.0{1,4})?)$/.test(pin) ? `fixed:${pin}` : d.clock || "";
+  return out;
+}
 function pageFacts() {
   const [tab, fresh] = kept(sessionStorage, "coaxial.tab"), [visitor] = kept(localStorage, "coaxial.visitor");
   let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch {}
@@ -498,7 +509,7 @@ function pageFacts() {
     vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio || 1, coarse: matchMedia("(pointer: coarse)").matches ? 1 : 0,
     touch: navigator.maxTouchPoints || 0, gpu: navigator.gpu ? 1 : 0, hidden: document.hidden ? 1 : 0,
     webdriver: navigator.webdriver ? 1 : 0, fcp: fcp ? Math.round(fcp.startTime) : 0, dcl: nav ? Math.round(nav.domContentLoadedEventEnd) : 0,
-    player: player()?.id || "", account: player()?.account || "", realm: realmId, slot, voice: script?.dataset.voice || "" })
+    player: player()?.id || "", account: player()?.account || "", realm: realmId, slot, voice: script?.dataset.voice || "", ...styleFacts() })
     .map(([k, v]) => `${k}=${clean(v)}`).join("\n");
 }
 addEventListener("visibilitychange", () => send(document.hidden ? HIDDEN_KIND : SHOWN_KIND));
@@ -1206,7 +1217,7 @@ function send(kind, text = "") {
   x.coaxial_message(arena.state, kind, bytes.length);
   after(false);
 }
-globalThis.coaxial = { send, ready: false, sceneReady: false };
+globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts() };
 // A page that takes dropped files (data-drops: /projects, NEW PROJECT): drop.js uploads them, the app draws it.
 if (script?.dataset.drops) startDrops({ send });
 // A page that sends files to this site (data-uploads: what its picker takes): uploads.js, on the app's action 30.

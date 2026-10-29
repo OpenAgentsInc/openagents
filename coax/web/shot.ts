@@ -1,6 +1,6 @@
 // Screenshot a Coaxial page with WebGPU in headless Chrome: no window opens and
 // nothing takes focus. Agents never open a visible browser for checks.
-//   bun coax/web/shot.ts URL OUT.png [WIDTHxHEIGHT] [WAIT_MS] [--eval JS]
+//   bun coax/web/shot.ts URL OUT.png [WIDTHxHEIGHT] [WAIT_MS] [--eval JS]   (prints what JS returns)
 // It waits WAIT_MS of real time (the pages animate in), then captures.
 import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -30,7 +30,12 @@ try {
   await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: w < 600 })
   await send("Page.navigate", { url })
   await Bun.sleep(Number(wait))
-  if (script) { await send("Runtime.evaluate", { expression: script, awaitPromise: true }); await Bun.sleep(500) }
+  if (script) {
+    // a value the script returns is printed (a page's facts, a probe's numbers)
+    const v = (await send("Runtime.evaluate", { expression: script, awaitPromise: true, returnByValue: true }))?.result?.result?.value
+    if (v !== undefined) console.log(typeof v === "string" ? v : JSON.stringify(v))
+    await Bun.sleep(500)
+  }
   const shot = await send("Page.captureScreenshot", { format: "png" })
   writeFileSync(out, Buffer.from(shot.result.data, "base64"))
   console.log(out)
