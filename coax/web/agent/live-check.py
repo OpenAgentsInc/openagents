@@ -68,7 +68,8 @@ def session():
         return None
     s, b, h = http("POST", f"{ORIGIN}/projects/{SLUG}/api/redeem", json.dumps({"token": inv["token"]}).encode(),
                    {"Origin": ORIGIN, "Content-Type": "application/json"})
-    return h.get("Set-Cookie", "").split("oa_project=", 1)[1].split(";", 1)[0] if s == 200 else None
+    c = next((v for k, v in h.items() if k.lower() == "set-cookie" and "oa_project=" in v), "")
+    return c.split("oa_project=", 1)[1].split(";", 1)[0] if s == 200 and c else None
 
 
 def page(op, body, cookie):

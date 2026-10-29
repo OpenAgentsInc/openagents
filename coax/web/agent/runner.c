@@ -502,7 +502,7 @@ static bool push(const char *dir, text *why) {
   text out = {0};
   for (int attempt = 0; attempt < 3; attempt++) {
     out.n = 0;
-    if (git(dir, &out, "fetch", "--depth", "50", "origin", "main", NULL)) { puts_(why, "the repository could not be reached"); free(out.p); return false; }
+    if (git(dir, &out, "fetch", "--depth", "50", "origin", "main", NULL)) { say("push: git failed: %s", git_why(&out)); puts_(why, "the repository could not be reached"); free(out.p); return false; }
     if (git(dir, &out, "rebase", "FETCH_HEAD", NULL, NULL, NULL, NULL)) {
       text conflict = {0};
       git(dir, &conflict, "diff", "--name-only", "--diff-filter=U", NULL, NULL, NULL);
@@ -539,6 +539,15 @@ static void end_turn(const char *slug, long long id, const char *status, const c
   free(body.p); free(out.p);
 }
 
+// Why git failed, as one of a few fixed words for the log (never git's own
+// text, which can name the repository).
+static const char *git_why(const text *out) {
+  static const char *known[] = {"Host key verification failed", "Permission denied", "Could not resolve", "Load key", "invalid format",
+                                "Connection timed out", "Connection refused", "Repository not found", "not found", "bad permissions", NULL};
+  for (int i = 0; known[i]; i++) if (out && out->p && strstr(out->p, known[i])) return known[i];
+  return "other";
+}
+
 // One turn from next's answer.
 static void one_turn(const char *slug, const char *next) {
   const char *tj; size_t tn;
@@ -562,6 +571,7 @@ static void one_turn(const char *slug, const char *next) {
     if (!has_repo || !*revert) { end_turn(slug, id, "done", "\"\"", "\"\"", NULL, NULL, NULL, 0); goto out; }
     if (git7(dir, &out, "clone", "--depth", "1", "--branch", "main", url, co) ||
         git(co, &out, "fetch", "--depth", "2", "origin", revert, NULL)) {
+      say("turn %lld: git failed: %s", id, git_why(&out));
       end_turn(slug, id, "failed", "\"\"", "\"the repository could not be reached\"", NULL, NULL, NULL, 0); goto out;
     }
     snprintf(cmsg, sizeof cmsg, "agent turn %lld: undo turn %lld", id, jint(turn_json, "undo_of"));
@@ -582,6 +592,7 @@ static void one_turn(const char *slug, const char *next) {
   // an ask: a fresh checkout (or an empty directory when the project links no repository)
   if (has_repo) {
     if (git7(dir, &out, "clone", "--depth", "1", "--branch", "main", url, co)) {
+      say("turn %lld: git failed: %s", id, git_why(&out));
       end_turn(slug, id, "failed", "\"\"", "\"the repository could not be reached\"", NULL, NULL, NULL, 0); goto out;
     }
   } else mkdir(co, 0700);
