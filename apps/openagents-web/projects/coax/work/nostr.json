@@ -543,7 +543,8 @@
       ],
       "blocks": [
         "secp-field-mul",
-        "crypto-field-secret-guards"
+        "crypto-field-secret-guards",
+        "crypto-raw-peer-admission"
       ]
     },
     {
@@ -674,7 +675,8 @@
         "secp-mult-verify",
         "secp-mult-base",
         "secp-mult-const",
-        "crypto-secret-aggregate-closure"
+        "crypto-secret-aggregate-closure",
+        "crypto-raw-peer-admission"
       ]
     },
     {
@@ -3215,6 +3217,23 @@
       ]
     },
     {
+      "slug": "crypto-raw-peer-admission",
+      "parent": "m-assurance",
+      "title": "Bound raw peer coordinates before variable-base field arithmetic",
+      "size": "M",
+      "labels": ["nostr", "crypto", "coax"],
+      "body": "Establish a fail-closed raw-coordinate admission boundary at the actual exported variable-base entry before any field arithmetic. Preserve the public ABI and behavior for already admitted bounded points; explicitly specify the result for oversized raw limbs. Peer coordinate admission does not authorize secret use, ECDH, target timing, or production.",
+      "files": ["coax/lib/crypto/", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Every coordinate limb is bounded before validity or normalization arithmetic, including eager evaluation; oversized inputs deterministically refuse without running those operations",
+        "Preserve ABI and bounded-peer behavior; document exact oversized failure semantics and independently review admission and boundary assumptions",
+        "Coax boundary tests and independent adversarial checked and release native and Wasm tests cover each coordinate and limb boundary, malformed bounded points and normal valid inputs",
+        "Affected full authority mutation gates have zero survivors and source, compiler, targets and test identities are recorded without target-wide or production-secret approval"
+      ],
+      "blocked_by": ["secp-field-repr", "secp-group"],
+      "blocks": ["crypto-field-secret-guards"]
+    },
+    {
       "slug": "crypto-field-secret-guards",
       "parent": "m-assurance",
       "title": "Discharge reachable field guard obligations with bound proofs",
@@ -3240,7 +3259,8 @@
       "blocked_by": [
         "secp-field-repr",
         "crypto-secret-aggregate-closure",
-        "crypto-secret-public-loop-summaries"
+        "crypto-secret-public-loop-summaries",
+        "crypto-raw-peer-admission"
       ],
       "blocks": [
         "secp-mult-base",
