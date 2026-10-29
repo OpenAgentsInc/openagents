@@ -38,6 +38,9 @@ test("verification ships before signing; authoritative live rows require local v
   expect(reaches("claim-from-page", "coord-fenced-claims")).toBe(true)
 })
 test("production secrets and retirement wait for independent evidence and recoverable cutover", () => {
+  for (const consumer of ["secp-mult-base", "secp-mult-const", "crypto-secret-codegen"]) {
+    expect(reaches(consumer, "crypto-secret-aggregate-closure")).toBe(true)
+  }
   for (const gate of ["crypto-independent-review", "crypto-target-conformance", "crypto-secure-zero", "crypto-secret-codegen"]) {
     expect(reaches("nostr-production-cutover", gate)).toBe(true)
   }

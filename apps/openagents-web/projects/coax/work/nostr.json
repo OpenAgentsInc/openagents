@@ -2994,21 +2994,21 @@
     {
       "slug": "crypto-secret-aggregate-closure",
       "parent": "m-assurance",
-      "title": "Admit actual crypto aggregate and public-loop secret paths",
+      "title": "Analyze actual crypto aggregate paths and guard obligations",
       "size": "L",
       "labels": [
         "nostr",
         "coax",
         "crypto"
       ],
-      "body": "Extend the conservative scalar/straight-line source checker to typed aggregate fields, fixed arrays, public bounded loops, assignments and transitive calls needed by real crypto. Boundary secret/public classifications are explicit inputs bound to actual parsed/type-checked source; never trust a hand-authored flow proof. Unsupported flow remains refused. Source policy does not prove inserted guards, generated objects, JIT timing or secure erasure.",
+      "body": "Extend the conservative scalar/straight-line source checker to typed aggregate fields, fixed arrays, public bounded loops, assignments and transitive calls needed by real crypto. Boundary secret/public classifications are explicit inputs bound to actual parsed/type-checked source; never trust a hand-authored flow proof. Unsupported flow remains refused. Source policy does not prove inserted guards, generated objects, JIT timing or secure erasure. Authored secret-derived assertions are explicit source-hashed guard obligations; supported algorithm-flow analysis is distinct from full secret-path admission. Unproved guards keep full admission false and must be discharged by generated-code/security review.",
       "files": [
         "tools/coax-nostr/secret-check/",
         "coax/tests/nostr/",
         "docs/verification/"
       ],
       "acceptance": [
-        "Actual selected sf_multiply/sf_inverse, sc_mul and masked group-selection source closures pass; their full source/type identity is recorded, with public-only decode/vartime helpers excluded from secret callers",
+        "Actual selected sf_multiply/sf_inverse, sc_mul and masked group-selection source closures are analyzed without unsupported-flow gaps; exact source/type identity and every authored guard obligation are recorded. Any unproved guard yields analyzed-with-guard-obligations, never full secret-path admission; public-only decode/vartime helpers remain excluded from secret callers",
         "Secret array indices/loop bounds/field branches, aggregate laundering, unknown side effects and transitive _vartime fixtures refuse; unsigned masked arithmetic executes in checked/optimized modes",
         "The supported constructs and explicit output declassifications are inspectable; unknown types/aliases/callees reject, zero surviving policy mutants, and source-policy evidence is never advertised as target-wide constant time"
       ],

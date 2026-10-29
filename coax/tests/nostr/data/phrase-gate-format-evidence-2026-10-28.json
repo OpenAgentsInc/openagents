@@ -1,0 +1,54 @@
+{
+  "compiler": "coax0 0.16.0",
+  "compiler_sha256": "46d332386114ff213a2083440469332742915ea99b2506a9619730420fda2719",
+  "fixture_sha256": "de751670e9a33cf7c6e454849bd165c854e54e9f25448a2dbd1a0db1b284723c",
+  "modes": [
+    {
+      "binary_sha256": "c9521775bd4b9473b63ae4588e781fc600d1bf38852a41eb4e1a363d008ee087",
+      "bounded_steps": 206,
+      "generated_c_sha256": "fc0330c303ffea87514e5743cdfa22ebf4f3be7fdb0e925e619e75b7aace47e9",
+      "master_prk_keys_ciphertext_tag_match": true,
+      "mode": "checked",
+      "pbkdf2_rounds": 210000
+    },
+    {
+      "binary_sha256": "597e0f12bf4decb4133788007484a7db087d1d3c1cecad7106a417411aab413b",
+      "bounded_steps": 206,
+      "generated_c_sha256": "0cb12799dd3020d1e36ae0ca0faf062a604eb5bb8378c30fa4c3af99dc4db977",
+      "master_prk_keys_ciphertext_tag_match": true,
+      "mode": "release",
+      "pbkdf2_rounds": 210000
+    }
+  ],
+  "primitive_source_sha256": {
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/chacha20-memory.coax": "5e9fca66e5d75aae130f12f46c9b8439e7d5470d7c2fc70158d64d604e1aa78b",
+    "coax/lib/crypto/chacha20.coax": "c959d92c0603b615cded026015b6eade4f7c6fec4845dea888bafd4b4bbfbc07",
+    "coax/lib/crypto/hkdf-memory.coax": "0ff0ce001391fdf5eae773f671882263253459d53112217d45e7ee2ff3d9b794",
+    "coax/lib/crypto/hkdf.coax": "b345a77f19af185903d9b8cefa6e3f50959f75dbb4d4784830358023e70068e8",
+    "coax/lib/crypto/hmac-memory.coax": "bf4fd57e7a56c3223034e92e21d0f35c174fe3e5745f3af2703322e912210822",
+    "coax/lib/crypto/hmac.coax": "b8a73c54d4f0b14b05e93942a3ecca3730accf9ca3ff4617274192e2a8470685",
+    "coax/lib/crypto/pbkdf2-memory.coax": "398a187b4e0dd8f32c2ad62d90418d156e8171f7ee9b08a16031d94a0d94de68",
+    "coax/lib/crypto/pbkdf2.coax": "7302038002cf2eac67c8b9bcd143295bb794e2eb951aec9208ee2340d1cd8df0",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "coax/tests/nostr/hkdf_rfc.coax": "cdd3bd4623f7dc536be8b5b4a1ad2592ac22e684866281af26c596e9d7077092",
+    "coax/tests/nostr/hmac_rfc.coax": "bc4a8ce471ac564f8d65e41293506f3ce504748124a8a9b45bacf02c9d92b5f7",
+    "coax/tests/nostr/pbkdf2_rfc.coax": "75dd81927cdaf3e121ab3b8ae3bb6dd6f97885f5f43c405c4cb0167694ff2ec4"
+  },
+  "reviewed_format_sha256": "788ee8b398ae1f854c4d871200d0636e94bff9db30c8d3da2c8c6619277cc1e7",
+  "reviewer": "codex-nostr-codecs; non-author internal format review; not independent production security approval",
+  "schema": "coax.phrase-gate-draft-primitive-evidence.v1",
+  "scope": "Public reference fixture only, not a product gate codec, secure erasure or production approval",
+  "test_source_sha256": {
+    "coax/tests/nostr/phrase_gate_format.test.ts": "43492ff424f468376c3388e61137ddee1b14495efb4238a07d0adbf315a6040b",
+    "coax/tests/nostr/phrase_gate_primitives.py": "2caced1ff1ad25e5f14f7d8e8f9a0aa653ef79d8cfdb4b3e55bda946c21db60f",
+    "coax/tests/nostr/phrase_gate_reference.ts": "383dfbd528d0cad2d981a666d6bd351afe9c009a6e5e36cf678b1f8918ee22e9"
+  },
+  "tests": {
+    "native_cc": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+    "node": "v26.12.1",
+    "node_cases": 5,
+    "python": "Python 3.15.1"
+  }
+}

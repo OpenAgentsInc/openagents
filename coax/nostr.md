@@ -188,7 +188,18 @@ generated-code audit: it must handle actual typed field/scalar/group closures,
 reject secret controls/indices and unknown effects, and retain source identities.
 Boundary classifications are inputs to check, never an authored substitute for
 dataflow analysis. Compiler-inserted guards and optimized/JIT behavior still
-require their separate target evidence.
+require their separate target evidence. Authored secret-derived assertions are
+also source-hashed obligations: a completed supported-flow analysis with such
+obligations cannot report full secret-path admission. Their discharge belongs
+to the generated-code/range/security review gates.
+
+The presentation phrase-gate format review is in
+[`docs/protocol/2026-10-28-phrase-gate-v2.md`](../docs/protocol/2026-10-28-phrase-gate-v2.md),
+with its [non-author review and fixture evidence](../docs/verification/coax-phrase-gate-format-2026-10-28.md).
+It leaves current AES-GCM behavior and entry bytes unchanged. Test-only v2
+implementation is separate from production approval, dual-reader rollout and
+event/recipient authority; the legacy cheap-check oracle and reused-phrase
+limits are explicit.
 
 ## 5. Host effects and key custody
 
