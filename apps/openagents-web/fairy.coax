@@ -59,6 +59,7 @@ OBJECT_FLOATS :: 16;
 // Looks (fairy.wgsl): how a surface takes the light and the fade.
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_GLOW :: 4; LOOK_WING :: 5;
 LOOK_CLOTH :: 6; LOOK_RIDGE :: 7; LOOK_BARK :: 8; LOOK_SPARK :: 9;   // her own light: glows, and the fade never dims it
+MINE :: 128;   // added to a shape's code when it is hers: what is near the lens fades, but never she
 // The draws: the ground and four shapes, the grass, then the water (last: the host draws it after the rest).
 DRAWS :: 7;
 GRASS_DRAW :: 5;
@@ -125,6 +126,7 @@ Fairy :: struct {
   near_creature: int;
   sparks: [18 * 4] f32; spark_next: int; spark_clock: f32;
   taps: int;   // Space presses not yet taken by the face: each is one wing beat
+  mine: bool;  // shapes now laid out are her own: the near fade (fairy.wgsl) leaves them be
 }
 
 // ---- small things
@@ -581,7 +583,7 @@ shape :: (s: [] Fairy, kind: int, look: int, centre: Point, yaw: f32, tilt: f32,
   s[0].objects[o + 4] = c0.y; s[0].objects[o + 5] = c1.y; s[0].objects[o + 6] = c2.y; s[0].objects[o + 7] = centre.y;
   s[0].objects[o + 8] = c0.z; s[0].objects[o + 9] = c1.z; s[0].objects[o + 10] = c2.z; s[0].objects[o + 11] = centre.z;
   s[0].objects[o + 12] = red; s[0].objects[o + 13] = green; s[0].objects[o + 14] = blue;
-  s[0].objects[o + 15] = f32(kind + 8 * look);
+  s[0].objects[o + 15] = f32(kind + 8 * look) + (ifx s[0].mine then f32(MINE) else 0.0f32);
 }
 
 // A shape whose long axis runs from a to b (a cylinder or a cone, its tip at b).
@@ -826,7 +828,7 @@ oriented :: (s: [] Fairy, kind: int, look: int, centre: Point, c0: Point, c1: Po
   s[0].objects[o + 4] = c0.y; s[0].objects[o + 5] = c1.y; s[0].objects[o + 6] = c2.y; s[0].objects[o + 7] = centre.y;
   s[0].objects[o + 8] = c0.z; s[0].objects[o + 9] = c1.z; s[0].objects[o + 10] = c2.z; s[0].objects[o + 11] = centre.z;
   s[0].objects[o + 12] = red; s[0].objects[o + 13] = green; s[0].objects[o + 14] = blue;
-  s[0].objects[o + 15] = f32(kind + 8 * look);
+  s[0].objects[o + 15] = f32(kind + 8 * look) + (ifx s[0].mine then f32(MINE) else 0.0f32);
 }
 
 // The figure's measures, from her feet (m).
@@ -863,6 +865,28 @@ fairy_wing :: (feet: Point, face: f32, pair: int, side: f32, beat: f32) -> Wing 
   return w;
 }
 
+// A soft limb from a to b: three overlapping ellipsoids along it, wide at a
+// and narrowing to b, so it reads as a rounded, tapered arm or leg (not a stick).
+soft :: (s: [] Fairy, a: Point, b: Point, wa: f32, wb: f32, side: Point, c: Point) {
+  d := sub(b, a);
+  l := length(d);
+  if !(l > 0.0001) { return; }
+  along := times(d, 1 / l);
+  across := unit_or(cross(along, side), v3(0, 0, 1));
+  for i: 0..<3 {
+    f := (f32(i) + 0.5) / 3;
+    w := lerp(wa, wb, f);
+    ellipsoid(s, LOOK_SKIN, add(a, times(d, f)), times(along, l * 0.8), times(across, w), w, c);
+  }
+}
+// An ellipsoid with axes a1 and a2 (their lengths its sizes) and a third,
+// w across both, turned so its faces point out (oriented() needs a
+// right-handed frame, else the light falls on its inside).
+ellipsoid :: (s: [] Fairy, look: int, centre: Point, a1: Point, a2: Point, w: f32, c: Point) {
+  a0 := times(unit_or(cross(a1, a2), v3(0, 1, 0)), w);
+  oriented(s, SHAPE_SPHERE, look, centre, a0, a1, a2, c.x, c.y, c.z);
+}
+
 // You: a small fairy with a round face, pointed ears and copper hair in a
 // bun, a gold bodice over a coral dress with a petal hem, and two pairs of
 // glowing, veined wings on her upper back that beat with each flap.
@@ -883,7 +907,9 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
   petal := v3(1.0, 0.62, 0.46);    // the hem and sleeves: peach
   hair := v3(0.9, 0.36, 0.2);      // copper
   hip := add(base, v3(0, f32(FAIRY_HIP), 0));
-  // legs: a thigh and a calf, the knee bent when the leg swings back or she flies
+  // legs: a soft thigh and calf tapering to the ankle, the knee bent when the
+  // leg swings back or she flies, in pointed leaf shoes with a curled toe
+  shoe := v3(0.36, 0.62, 0.3);
   for side: 0..<2 {
     sign := ifx side == 0 then 1.0f32 else -1.0f32;
     top := add(hip, times(right, 0.075 * sign));
@@ -893,11 +919,16 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
     knee := add(top, times(down, 0.3));
     shin := add(times(ahead, sin(a - bend)), v3(0, -cos(a - bend), 0));
     ankle := add(knee, times(shin, 0.27));
-    limb(s, SHAPE_CYLINDER, LOOK_SKIN, top, knee, 0.1, skin.x, skin.y, skin.z);
-    shape(s, SHAPE_SPHERE, LOOK_SKIN, knee, face, 0, 0.09, 0.09, 0.09, skin.x, skin.y, skin.z);
-    limb(s, SHAPE_CONE, LOOK_SKIN, add(ankle, times(shin, -0.04)), add(knee, times(shin, -0.06)), 0.1, skin.x, skin.y, skin.z);
-    // a leaf slipper, pointed
-    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(ankle, add(times(ahead, 0.04), v3(0, -0.01, 0))), face, 0.25, 0.09, 0.07, 0.19, 0.5, 0.3, 0.16);
+    soft(s, top, knee, 0.105, 0.075, right, skin);
+    soft(s, knee, ankle, 0.078, 0.05, right, skin);
+    // the shoe: along her foot (ahead, tipped with the shin when she points it in flight)
+    toe_dir := unit_or(add(ahead, times(shin, ifx flying then 0.9f32 else 0.15f32)), ahead);
+    heel := add(ankle, v3(0, -0.035, 0));
+    ellipsoid(s, LOOK_CLOTH, add(heel, times(toe_dir, 0.05)), v3(0, 0.075, 0), times(toe_dir, 0.2), 0.085, shoe);
+    tip := add(heel, add(times(toe_dir, 0.14), v3(0, 0.012, 0)));
+    limb(s, SHAPE_CONE, LOOK_CLOTH, tip, add(tip, add(times(toe_dir, 0.07), v3(0, 0.05, 0))), 0.045, shoe.x * 0.9, shoe.y * 0.9, shoe.z * 0.9);
+    // a cuff of petals at the ankle
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(ankle, v3(0, 0.02, 0)), face, 0, 0.09, 0.045, 0.09, petal.x, petal.y, petal.z);
   }
   // the dress: a rose bell, a hem of petals, a leaf bodice and a gold sash
   shape(s, SHAPE_CONE, LOOK_CLOTH, add(base, v3(0, 0.72, 0)), face, 0, 0.56, 0.5, 0.52, rose.x, rose.y, rose.z);
@@ -911,21 +942,25 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
   shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(base, v3(0, 1.08, 0)), face, 0, 0.27, 0.12, 0.21, leaf.x, leaf.y, leaf.z);
   shape(s, SHAPE_CYLINDER, LOOK_CLOTH, add(base, v3(0, 0.88, 0)), face, 0, 0.27, 0.05, 0.22, 0.3, 0.7, 0.34);
   limb(s, SHAPE_CYLINDER, LOOK_SKIN, add(base, v3(0, 1.1, 0)), add(base, v3(0, 1.2, 0)), 0.07, skin.x, skin.y, skin.z);
-  // arms: a puffed sleeve, the upper arm, the forearm and a hand; out to the sides in the air
+  // arms: a puffed sleeve, a soft arm tapering to the wrist, and a small hand
+  // (a palm and a thumb); out to the sides in the air
   for side: 0..<2 {
     sign := ifx side == 0 then 1.0f32 else -1.0f32;
     shoulder := add(add(base, v3(0, f32(FAIRY_SHOULDER), 0)), times(right, 0.15 * sign));
-    shape(s, SHAPE_SPHERE, LOOK_CLOTH, shoulder, face, 0, 0.13, 0.11, 0.12, petal.x, petal.y, petal.z);
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, shoulder, face, 0, 0.14, 0.12, 0.13, petal.x, petal.y, petal.z);
     swing_a := ifx flying then 0.0f32 else -swing * 0.7;
     spread := ifx flying then 0.75f32 + 0.15f32 * sin(t * 3) else 0.18f32;
     upper := unit_or(add(add(times(ahead, sin(swing_a)), v3(0, -cos(spread) * cos(swing_a), 0)), times(right, sin(spread) * sign)), v3(0, -1, 0));
-    elbow := add(shoulder, times(upper, 0.22));
+    elbow := add(shoulder, times(upper, 0.21));
     fore := unit_or(add(upper, add(times(ahead, 0.35), v3(0, ifx flying then 0.3f32 else 0.0f32, 0))), upper);
-    wrist := add(elbow, times(fore, 0.2));
-    limb(s, SHAPE_CYLINDER, LOOK_SKIN, shoulder, elbow, 0.07, skin.x, skin.y, skin.z);
-    shape(s, SHAPE_SPHERE, LOOK_SKIN, elbow, face, 0, 0.065, 0.065, 0.065, skin.x, skin.y, skin.z);
-    limb(s, SHAPE_CONE, LOOK_SKIN, add(wrist, times(fore, 0.03)), add(elbow, times(fore, -0.05)), 0.075, skin.x, skin.y, skin.z);
-    shape(s, SHAPE_SPHERE, LOOK_SKIN, add(wrist, times(fore, 0.03)), face, 0, 0.07, 0.08, 0.06, skin.x, skin.y, skin.z);
+    wrist := add(elbow, times(fore, 0.19));
+    soft(s, shoulder, elbow, 0.07, 0.056, ahead, skin);
+    soft(s, elbow, wrist, 0.056, 0.04, ahead, skin);
+    // the hand: a palm flat to her side, the thumb forward
+    palm := add(wrist, times(fore, 0.045));
+    ellipsoid(s, LOOK_SKIN, palm, times(fore, 0.085), times(ahead, 0.07), 0.04, skin);
+    thumb := add(wrist, add(times(fore, 0.03), times(ahead, 0.035)));
+    limb(s, SHAPE_CONE, LOOK_SKIN, thumb, add(thumb, add(times(ahead, 0.03), times(fore, 0.03))), 0.026, skin.x, skin.y, skin.z);
   }
   // the head and face
   head := add(base, v3(0, f32(FAIRY_HEAD), 0));
@@ -1272,7 +1307,9 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   for k: 0..<5 { s[0].counts[k] = 0; }
   s[0].shadow_n = 0; s[0].plate_n = 0;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  s[0].mine = true;
   fairy_figure(s, u, shown, face, s[0].stride, act, s[0].air, flap);
+  s[0].mine = false;
   sparkle(s, shown, face, speed > 0.6 || s[0].air > 0.2, t);
   creatures(s, u, shown);
   heart(s, u);

@@ -115,6 +115,23 @@ fn faded(c: vec3f, r: f32) -> vec3f {
   return mix(mix(grey, c, 0.45), c, r);
 }
 
+// The faded world at a place: still drained and cool, but in broken washes
+// and dabs of value (light straw, blue-grey shadow) instead of one flat tone.
+fn faded_at(c: vec3f, r: f32, world: vec3f) -> vec3f {
+  if (r >= 1.0) { return c; }
+  let q = world.xz + vec2f(world.y * 0.7, -world.y * 0.4);
+  let broad = noise(q * 0.07);
+  let mid = noise(q * 0.31 + vec2f(7.0, 3.0));
+  let dab = noise(q * 1.9 + vec2f(1.0, 5.0));
+  let l = dot(c, vec3f(0.3, 0.55, 0.15));
+  let value = 0.52 + 0.72 * smoothstep(0.2, 0.8, broad) + 0.4 * (mid - 0.5) + 0.3 * (dab - 0.5);
+  let warm = smoothstep(0.3, 0.7, noise(q * 0.045 + vec2f(3.0, 9.0)));
+  let tone = mix(vec3f(0.74, 0.86, 1.08), vec3f(1.06, 0.97, 0.76), warm);
+  let grey = vec3f(l) * tone * 0.86 * value;
+  let kept = mix(grey, c * value, 0.38);
+  return mix(kept, c, r);
+}
+
 // The haze over a surface at world seen from the eye.
 // It starts HAZE_FROM past the shared curve's own start, so the near and
 // middle distance stay crisp, and it shifts from teal to blue-violet far off.
@@ -329,7 +346,8 @@ fn wind_bend(xz: vec2f) -> f32 {
   let c1 = vec3f(m.r0.y, m.r1.y, m.r2.y);
   let c2 = vec3f(m.r0.z, m.r1.z, m.r2.z);
   let normal = cross(c1, c2) * v.n.x + cross(c2, c0) * v.n.y + cross(c0, c1) * v.n.z;
-  let look = u32(m.colour.w) / 8u;
+  let code = u32(m.colour.w);
+  let look = (code % 128u) / 8u;
   // canopies breathe in the wind, the top more than the bottom
   if (look == 1u && kind == 2u && length(c1) > 1.0) {
     w = vec3f(w.x + WIND.x * wind_bend(w.xz) * 0.25 * (v.p.y + 0.5), w.y, w.z + WIND.y * wind_bend(w.xz) * 0.25 * (v.p.y + 0.5));
@@ -338,7 +356,7 @@ fn wind_bend(xz: vec2f) -> f32 {
   o.world = w;
   o.normal = normalize(normal + vec3f(0.0, 0.00001, 0.0));
   o.tint = m.colour.rgb;
-  o.look = look;
+  o.look = look + select(0u, 32u, code >= 128u);   // + 32: hers (fairy.coax MINE)
   o.local = v.p;
   return o;
 }
@@ -425,22 +443,37 @@ fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> ve
   var character = false;
   var glow = 0.0;
   var keep = false;
-  if (s.look == 99u) {
+  // hers (look + 32) or not; anything else within about 1.6 m of the lens
+  // dissolves (an ordered dither), so nothing near blots out the view
+  var look = s.look;
+  if (look >= 32u && look < 98u) { look -= 32u; }
+  else if (look < 32u) {
+    // (and, further out, anything nearer the lens than she is, so a cap or
+    // a trunk between you and the camera never blots her or the way out)
+    let near = distance(s.world, u.eye.xyz);
+    let clear = max(1.6, distance(u.eye.xz, vec2f(u.grass2.w, u.you_z)));
+    if (near < clear) {
+      let p = vec2u(s.pos.xy) % 4u;
+      let bayer = array(0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+      if (smoothstep(clear * 0.8, clear, near) * 16.0 <= bayer[p.y * 4u + p.x] + 0.5) { discard; }
+    }
+  }
+  if (look == 99u) {
     base = ground_colour(xz);
     // the banks: sand where the ground dips to the water
     base = mix(base, vec3f(0.58, 0.46, 0.26), smoothstep(u.grass2.y + 0.5, u.grass2.y - 0.1, s.world.y));
     shadow = blob_shadows(xz);
-  } else if (s.look == 98u) {
+  } else if (look == 98u) {
     base = ground_colour(xz) * mix(0.78, 1.2, s.tint.x) * (0.94 + 0.12 * s.tint.y);
     base = mix(base, base * vec3f(1.2, 1.08, 0.7), s.tint.x * 0.6);
     shadow = blob_shadows(xz);
-  } else if (s.look == 3u || s.look == 6u) {
+  } else if (look == 3u || look == 6u) {
     character = true; keep = true;
-  } else if (s.look == 4u) {
+  } else if (look == 4u) {
     glow = 1.0;
-  } else if (s.look == 9u) {
+  } else if (look == 9u) {
     glow = 1.0; keep = true;
-  } else if (s.look == 5u) {
+  } else if (look == 5u) {
     // a wing: veins fanning from its root, a bright rim, and between them a
     // thin membrane the light shows through (every other pixel of it drawn)
     let q = s.local.xy * 2.0;
@@ -453,16 +486,16 @@ fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> ve
     if (solid < 0.5 && (cell.x + cell.y) % 2u == 0u) { discard; }
     base = mix(base * 0.8, mix(base, vec3f(1.0), 0.55), solid);
     glow = 0.8; keep = true;
-  } else if (s.look == 7u) {
+  } else if (look == 7u) {
     keep = true;
-  } else if (s.look == 8u) {
+  } else if (look == 8u) {
     // bark: moss in patches up the trunk, darker toward its foot
     let moss = smoothstep(0.35, 0.75, noise(vec2f(s.world.x + s.world.z, s.world.y * 1.3) * 1.7));
     base = mix(base, vec3f(0.26, 0.40, 0.12), moss * 0.7);
     base *= mix(0.5, 1.0, smoothstep(-0.5, 0.05, s.local.y));
   }
   let r = restored(xz);
-  if (!keep) { base = faded(base, r.x); }
+  if (!keep) { base = faded_at(base, r.x, s.world); }
   var c = vec3f(0.0);
   var share = 0.0;
   if (glow > 0.0) {
