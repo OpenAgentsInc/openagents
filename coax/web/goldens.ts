@@ -149,6 +149,7 @@ try {
   let id = 0
   const pending = new Map<number, (v: any) => void>()
   let errors: string[] = []
+  let startupNetworkFailures: string[] = []
   const inflight = new Set<string>()
   let quietSince = Date.now()
   ws.addEventListener("message", (e) => {
@@ -163,6 +164,8 @@ try {
       if (p.request.postData) take(p.request.postData)
       else if (p.request.hasPostData) send("Network.getRequestPostData", { requestId: p.requestId }).then((r) => r.result?.postData && take(r.result.postData))
     }
+    if (m.method === "Network.loadingFailed" && !p.canceled) startupNetworkFailures.push(p.errorText ?? "network failure")
+    if (m.method === "Network.responseReceived" && p.response.status >= 500) startupNetworkFailures.push(`HTTP ${p.response.status}`)
     if (m.method === "Network.loadingFinished" || m.method === "Network.loadingFailed") { if (inflight.delete(p.requestId) && !inflight.size) quietSince = Date.now() }
   })
   const send = (method: string, params: any = {}) => new Promise<any>((r) => { pending.set(++id, r); ws.send(JSON.stringify({ id, method, params })) })
@@ -262,10 +265,15 @@ try {
   if (!root) for (const [k, w] of open.entries()) {
     const slug = w.realm!.slug
     if (slug === "haunted-house") continue
+    errors = []; startupNetworkFailures = []
     await send("Page.navigate", { url: `${base}/verse/galaxy?realms=all` })
     const ready = await until(async () => (await evaluate("location.pathname")) === "/verse/galaxy" && (await evaluate("globalThis.coaxial?.ready === true")) === true, 20000)
     check(ready, `${slug}: the galaxy started, to open it from`)
-    if (!ready) continue
+    if (!ready) {
+      const state = await evaluate("({path:location.pathname,document:document.readyState,host:typeof globalThis.coaxial,ready:globalThis.coaxial?.ready === true})")
+      console.log(`  info   ${slug}: startup failure ${JSON.stringify({ state, errors: errors.slice(-8), network: startupNetworkFailures.slice(-8), inflight: inflight.size })}`)
+      continue
+    }
     await Bun.sleep(1000)
     errors = []
     for (let i = 0; i <= k; i++) await key("ArrowRight", "ArrowRight", 39)
