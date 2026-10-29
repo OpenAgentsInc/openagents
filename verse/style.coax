@@ -280,7 +280,18 @@ verse_style_canopy_open :: (n:f32,gap:f32)->f32 #export_c {return ifx n<gap then
 verse_style_near_reach :: (on_phone:f32)->f32 #export_c {return ifx on_phone>0.5f32 then 6.0f32 else 7.0f32;}
 verse_style_near_blades :: (reach:f32,density:f32)->f32 #export_c {return 4.0f32*reach*reach*density;}
 verse_style_near_width :: (d:f32,reach:f32)->f32 #export_c {return 1.0f32+1.4f32*(1.0f32-st_sat(d/st_max(reach,0.001f32)));}
+// The cap on how far the shadow tint and the light may grey a surface: its saturation (chroma over
+// value) kept to at least `keep` of its albedo's; the gain to put on its distance from grey (1 when it
+// is saturated enough, never more than 2.5).
+verse_style_chroma_gain :: (have:f32,albedo:f32,keep:f32)->f32 #export_c {
+ if have<0.0001f32 {return 1.0f32;}
+ return st_min(2.5f32,st_max(1.0f32,albedo*keep/have));
+}
 
+#test "the chroma cap: a greyed shadow gets back to 0.7 of its albedo's saturation, never past 2.5 times; a saturated one is left" {
+ #assert abs(verse_style_chroma_gain(0.2f32,0.6f32,0.7f32)-2.1f32)<0.0001f32;
+ #assert verse_style_chroma_gain(0.5f32,0.6f32,0.7f32)==1.0f32 && verse_style_chroma_gain(0.05f32,0.9f32,0.7f32)==2.5f32 && verse_style_chroma_gain(0.0f32,0.6f32,0.7f32)==1.0f32;
+}
 #test "the near ring: 7 m (6 on a phone), 4 r2 blades a density, 2.4 times as wide at the eye and 1 at the reach" {
  #assert verse_style_near_reach(0.0f32)==7.0f32 && verse_style_near_reach(1.0f32)==6.0f32;
  #assert verse_style_near_blades(7.0f32,32.0f32)==6272.0f32;

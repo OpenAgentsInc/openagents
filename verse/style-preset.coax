@@ -127,17 +127,19 @@ painterly_key :: (i: int) -> StyleKey {
   night := i == 0; day := i == 2;
   if night {
     // the moon is the key: (0.62, 0.70, 0.95) at 0.35; its rim is silver at 0.6 of the strength
-    k = sk_light(0.62, 0.70, 0.95, 0.35, 0.70, 0.78, 0.95, 0.6);
+    // (the owner, October 29: night truly dark, as the Haunted House's: a deep blue-black sky, a low
+    // ambient, strong contrast, no grey or lavender lift; the realm's lamps light it)
+    k = sk_light(0.62, 0.70, 0.95, 0.16, 0.70, 0.78, 0.95, 0.6);
     k.tint_r = 0.36; k.tint_g = 0.42; k.tint_b = 0.70;
-    k.sky_r = 0.14; k.sky_g = 0.18; k.sky_b = 0.34; k.ambient = 1.0;
-    k.ground_r = 0.06; k.ground_g = 0.06; k.ground_b = 0.08;
-    k.haze_start = 12; k.haze_density = 0.016; k.haze_cap = 0.85; k.haze_falloff = 40;
-    k.haze_r = 0.10; k.haze_g = 0.14; k.haze_b = 0.27;
-    k.hkey_r = 0.40; k.hkey_g = 0.48; k.hkey_b = 0.70;
-    k.zenith_r = 0.012; k.zenith_g = 0.018; k.zenith_b = 0.05;
-    k.horizon_r = 0.10; k.horizon_g = 0.14; k.horizon_b = 0.27;
-    k.cloud_r = 0.30; k.cloud_g = 0.34; k.cloud_b = 0.46;           // between
-    k.exposure = 2.4; k.shaft_weight = 0.20;
+    k.sky_r = 0.04; k.sky_g = 0.055; k.sky_b = 0.12; k.ambient = 1.0;
+    k.ground_r = 0.02; k.ground_g = 0.02; k.ground_b = 0.03;
+    k.haze_start = 30; k.haze_density = 0.010; k.haze_cap = 0.6; k.haze_falloff = 40;
+    k.haze_r = 0.025; k.haze_g = 0.04; k.haze_b = 0.09;
+    k.hkey_r = 0.30; k.hkey_g = 0.36; k.hkey_b = 0.55;
+    k.zenith_r = 0.004; k.zenith_g = 0.007; k.zenith_b = 0.022;
+    k.horizon_r = 0.03; k.horizon_g = 0.05; k.horizon_b = 0.10;
+    k.cloud_r = 0.10; k.cloud_g = 0.12; k.cloud_b = 0.18;
+    k.exposure = 0.95; k.shaft_weight = 0.12;
   } else if day {
     k = sk_light(1.00, 0.95, 0.85, 1.0, 1.00, 0.84, 0.60, 1.0);
     k.tint_r = 0.52; k.tint_g = 0.58; k.tint_b = 0.86;
@@ -151,13 +153,15 @@ painterly_key :: (i: int) -> StyleKey {
     k.cloud_r = 1.0; k.cloud_g = 0.98; k.cloud_b = 0.95;
     k.exposure = 1.6; k.shaft_weight = 0.44;
   } else {
-    // dawn and dusk
-    k = sk_light(1.00, 0.72, 0.48, 0.75, 1.00, 0.70, 0.45, 1.0);
-    k.tint_r = 0.58; k.tint_g = 0.48; k.tint_b = 0.82;
-    k.sky_r = 0.42; k.sky_g = 0.44; k.sky_b = 0.62; k.ambient = 0.55;  // between
-    k.ground_r = 0.30; k.ground_g = 0.26; k.ground_b = 0.22;           // between
-    k.haze_start = 20; k.haze_density = 0.013; k.haze_cap = 0.88; k.haze_falloff = 50;
-    k.haze_r = 0.78; k.haze_g = 0.66; k.haze_b = 0.74;
+    // dawn and dusk, as Breath of the Wild keeps them (the comparison round of October 29): saturated
+    // and warm, orange and pink light on the lit faces, deep-teal shadows (not grey-violet), the
+    // ambient bright enough that a shadowed road stays a colour, and the haze a warm peach only far off
+    k = sk_light(1.00, 0.66, 0.40, 0.85, 1.00, 0.62, 0.40, 1.0);
+    k.tint_r = 0.36; k.tint_g = 0.58; k.tint_b = 0.72;
+    k.sky_r = 0.58; k.sky_g = 0.52; k.sky_b = 0.60; k.ambient = 0.68;
+    k.ground_r = 0.36; k.ground_g = 0.28; k.ground_b = 0.20;
+    k.haze_start = 45; k.haze_density = 0.009; k.haze_cap = 0.72; k.haze_falloff = 50;
+    k.haze_r = 0.96; k.haze_g = 0.68; k.haze_b = 0.56;
     k.hkey_r = 1.00; k.hkey_g = 0.62; k.hkey_b = 0.40;
     k.zenith_r = 0.20; k.zenith_g = 0.24; k.zenith_b = 0.52;
     k.horizon_r = 0.95; k.horizon_g = 0.62; k.horizon_b = 0.48;
@@ -207,7 +211,7 @@ verse_style_preset :: (style: int, tier: int) -> StylePreset {
     p.sun_disc = 1.0 * DEG; p.halo_near = 900; p.halo_wide = 60;    // drawn at 2 degrees across
     p.cloud_cover = 0.35; p.cloud_height = 1500; p.cloud_drift = 3; p.cloud_octaves = ifx on_phone then 1.0 else 2.0;
     p.cloud_scale1 = 1.0 / 2000.0; p.cloud_scale2 = 1.0 / 700.0; p.cloud_cut_lo = 0.48; p.cloud_cut_hi = 0.62; p.cloud_under = 1.4;
-    p.toned = 1; p.saturation = 1.10; p.black_lift = 0.035;
+    p.toned = 1; p.saturation = 1.10; p.black_lift = 0.006;   // (0.035 milked every frame grey: the owner, October 29)
     p.bloom_threshold = 0.85; p.bloom_knee = 0.25; p.bloom_mix = ifx on_phone then 0.22 else 0.30;
     p.shaft_samples = ifx on_phone then 12.0 else 24.0; p.shaft_decay = 0.94; p.shaft_margin = 0.35;
     p.shadow_size = ifx on_phone then 1024.0 else 2048.0; p.shadow_taps = ifx on_phone then 4.0 else 9.0; p.shadow_radius = 2.5;
@@ -396,7 +400,7 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert verse_style_at(day, 0.5, o[..]);
   #assert sp_near(o[SU_RIM], 1.00) && sp_near(o[SU_RIM + 1], 0.84) && sp_near(o[SU_RIM + 2], 0.60) && sp_near(o[SU_RIM + 3], 0.30) && sp_near(o[SU_RIM2], 0.45);
   #assert verse_style_at(day, 0.25, o[..]);
-  #assert sp_near(o[SU_RIM], 1.00) && sp_near(o[SU_RIM + 1], 0.70) && sp_near(o[SU_RIM + 2], 0.45);
+  #assert sp_near(o[SU_RIM], 1.00) && sp_near(o[SU_RIM + 1], 0.62) && sp_near(o[SU_RIM + 2], 0.40);
   #assert verse_style_at(day, 0.0, o[..]);
   #assert sp_near(o[SU_RIM], 0.70) && sp_near(o[SU_RIM + 1], 0.78) && sp_near(o[SU_RIM + 2], 0.95) && sp_near(o[SU_RIM + 3], 0.18) && sp_near(o[SU_RIM2], 0.27);
 }
@@ -407,7 +411,7 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert p.char_edge == 0.40 && p.char_soft == 0.08;
   #assert p.rim_world == 0.30 && p.rim_char == 0.45 && p.rim_start == 0.38 && p.rim_full == 0.12;
   #assert p.dab_cut == 0.92 && p.dab_strength == 0.35 && p.blob == 0.35;
-  #assert p.saturation == 1.10 && p.black_lift == 0.035 && p.outline_max == 0.35;
+  #assert p.saturation == 1.10 && p.black_lift == 0.006 && p.outline_max == 0.35;
   #assert p.bloom_threshold == 0.85 && p.bloom_knee == 0.25 && p.bloom_mix == 0.30;
   #assert p.wind_amp == 0.30 && p.wind_wavelength == 12 && p.wind_speed == 3;
   #assert sp_near(p.wind_x * p.wind_x + p.wind_z * p.wind_z, 1);
@@ -455,17 +459,17 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert sp_near(o[SU_ZENITH + 2], 0.86) && sp_near(o[SU_TONE], 1.6) && sp_near(o[SU_RIM + 3], 0.30) && sp_near(o[SU_SHAFTS + 2], 0.44);
   #assert o[SU_KEY_DIR + 3] == 0 && sp_near(o[SU_KEY_DIR + 1], sin(60 * DEG)) && o[SU_SUN + 3] == 0;
   #assert verse_style_at(p, 0.75, o[..]);
-  #assert sp_near(o[SU_KEY + 1], 0.72) && sp_near(o[SU_KEY + 3], 0.75) && sp_near(o[SU_HAZE + 1], 0.013) && sp_near(o[SU_HAZE + 3], 50);
-  #assert sp_near(o[SU_TINT], 0.58) && sp_near(o[SU_TINT + 1], 0.48) && sp_near(o[SU_HORIZON], 0.95) && sp_near(o[SU_RIM + 1], 0.70);
+  #assert sp_near(o[SU_KEY + 1], 0.66) && sp_near(o[SU_KEY + 3], 0.85) && sp_near(o[SU_HAZE], 45) && sp_near(o[SU_HAZE + 1], 0.009) && sp_near(o[SU_HAZE + 3], 50);
+  #assert sp_near(o[SU_TINT], 0.36) && sp_near(o[SU_TINT + 1], 0.58) && sp_near(o[SU_HORIZON], 0.95) && sp_near(o[SU_RIM + 1], 0.62);
   #assert sp_near(o[SU_KEY_DIR + 1], sin(20 * DEG)) && o[SU_KEY_DIR + 3] == 0;
   dusk_x := o[SU_KEY_DIR];
   #assert verse_style_at(p, 0.25, o[..]);
-  #assert sp_near(o[SU_KEY + 1], 0.72) && sp_near(o[SU_HAZE_COLOUR], 0.78) && sp_near(o[SU_HAZE_KEY + 1], 0.62);
+  #assert sp_near(o[SU_KEY + 1], 0.66) && sp_near(o[SU_HAZE_COLOUR], 0.96) && sp_near(o[SU_HAZE_KEY + 1], 0.62);
   #assert abs(o[SU_KEY_DIR] - dusk_x) > 0.5;   // the sun rises on one side and sets on the other
   #assert verse_style_at(p, 0.0, o[..]);
-  #assert sp_near(o[SU_KEY], 0.62) && sp_near(o[SU_KEY + 2], 0.95) && sp_near(o[SU_KEY + 3], 0.35);
-  #assert sp_near(o[SU_HAZE], 12) && sp_near(o[SU_HAZE + 1], 0.016) && sp_near(o[SU_HAZE + 2], 0.85) && sp_near(o[SU_HAZE + 3], 40);
-  #assert sp_near(o[SU_HAZE_COLOUR + 2], 0.27) && sp_near(o[SU_ZENITH + 2], 0.05) && sp_near(o[SU_TONE], 2.4) && sp_near(o[SU_SHAFTS + 2], 0.20);
+  #assert sp_near(o[SU_KEY], 0.62) && sp_near(o[SU_KEY + 2], 0.95) && sp_near(o[SU_KEY + 3], 0.16);
+  #assert sp_near(o[SU_HAZE], 30) && sp_near(o[SU_HAZE + 1], 0.010) && sp_near(o[SU_HAZE + 2], 0.6) && sp_near(o[SU_HAZE + 3], 40);
+  #assert sp_near(o[SU_HAZE_COLOUR + 2], 0.09) && sp_near(o[SU_ZENITH + 2], 0.022) && sp_near(o[SU_TONE], 0.95) && sp_near(o[SU_SHAFTS + 2], 0.12);
   #assert sp_near(o[SU_RIM], 0.70) && sp_near(o[SU_RIM + 3], 0.18) && sp_near(o[SU_RIM2], 0.27);
   // the moon is the key at midnight, up in the sky, and the stars are out
   #assert o[SU_KEY_DIR + 3] == 1 && o[SU_KEY_DIR + 1] > 0 && o[SU_SUN + 3] == 1;

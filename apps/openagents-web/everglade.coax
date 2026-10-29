@@ -92,7 +92,12 @@ STYLE_AT :: U_WATER + WATER_FLOATS;
 // Then where no grass grows (art-styles.md 8): the buildings' and the props' footprints, x0, z0, x1, z1.
 SOLIDS :: 32;
 U_SOLID :: STYLE_AT + STYLE_FLOATS;
-UNIFORM_FLOATS :: U_SOLID + SOLIDS * 4;
+// Then the lamps (lamps()): count, how lit they are (0 by day to 1 at night), 0, 0; then each lamp
+// x, y, z, reach (m) and r, g, b, strength, the nearest LIGHTS to the eye (LIGHTS_PHONE on a phone).
+U_LIGHT_INFO :: U_SOLID + SOLIDS * 4;
+LIGHTS :: 16; LIGHTS_PHONE :: 8;
+U_LIGHTS :: U_LIGHT_INFO + 4;
+UNIFORM_FLOATS :: U_LIGHTS + LIGHTS * 8;
 
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4; SHAPE_MESH :: 5; SHAPE_SKINNED :: 6;
 SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
@@ -141,6 +146,9 @@ LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_WATER :
 // The kit's rocks (Rock_Medium_1 and _2: the undergrowth's and the waystone's): the kit's texture, darkened
 // and mottled, moss on their tops (everglade.wgsl LOOK_ROCK), so a sunlit face isn't the brightest thing about.
 LOOK_ROCK :: 10;
+// What glows at night (everglade.wgsl): a lamp's or the brazier's flame (its colour times how lit the
+// lamps are, blooming), and the window panes, whose glass glows warm.
+LOOK_FLAME :: 11; LOOK_WINDOW :: 12;
 KIT_MESHES :: 52;
 KIT_MESH :: [52] string.["Pine_5", "Pine_5_Leaves", "Pine_4", "Pine_4_Leaves", "CommonTree_3", "CommonTree_3_Leaves",
   "CommonTree_4", "CommonTree_4_Leaves", "Bush_Common_Flowers", "Fern_1", "Rock_Medium_1", "Rock_Medium_2",
@@ -1485,12 +1493,96 @@ kit_rows :: (s: [] Everglade, group: int, rows: [] f32) {
   for i: 0..<12 { s[0].objects[o + i] = rows[i]; }
   s[0].objects[o + 12] = 1; s[0].objects[o + 13] = 1; s[0].objects[o + 14] = 1;
   rock := group == group_of(10) || group == group_of(11);
-  s[0].objects[o + 15] = f32(SHAPE_MESH + 8 * (ifx rock then LOOK_ROCK else LOOK_KIT));
+  look := ifx rock then LOOK_ROCK else ifx group == group_of(M_WINDOW) then LOOK_WINDOW else LOOK_KIT;
+  s[0].objects[o + 15] = f32(SHAPE_MESH + 8 * look);
 }
 // The group a mesh is drawn over: a tree's trunk and leaves share theirs.
 group_of :: (m: int) -> int { return ifx m < 2 * KIT_TREES then m / 2 else m - KIT_TREES; }
 // A town piece by its mesh.
 piece :: (s: [] Everglade, m: int, x: f32, y: f32, z: f32, yaw: f32, sx: f32, sy: f32, sz: f32) { kit3(s, group_of(m), x, y, z, yaw, sx, sy, sz); }
+
+// ---- the lamps (the owner, October 29: night as dark as the Haunted House's, lit by its lights): a
+// lantern on a post at each building's door, a torch beside the streets at each crossing in the town,
+// and a brazier on the commons. Each pools its light on the ground and the walls round it (everglade.wgsl
+// lamp_light) from dusk, full at night; the nearest LIGHTS to the eye are lit, and every one is drawn.
+LAMP_BRAZIER :: [3] f32.[-5, 5.5, 10];       // x, z, reach (m)
+LAMP_DOOR_REACH :: 8.0; LAMP_TORCH_REACH :: 9.0;
+LAMP_TOWN :: 70.0;                              // torches only at the crossings within the town
+// Lamp i: x, y (its flame's height above the ground), z, reach; kind 0 brazier, 1 lantern, 2 torch;
+// false past the last.
+Lamp :: struct { x: f32; z: f32; up: f32; reach: f32; kind: int; }
+lamp_at :: (i: int, out: [] Lamp) -> bool {
+  if i == 0 { out[0] = Lamp.{x = LAMP_BRAZIER[0], z = LAMP_BRAZIER[1], up = 1.2, reach = LAMP_BRAZIER[2], kind = 0}; return true; }
+  if i <= EG_BUILDINGS {
+    b := i - 1;
+    out[0] = Lamp.{x = EG_DOOR[b * 2], z = EG_DOOR[b * 2 + 1], up = 2.3, reach = LAMP_DOOR_REACH, kind = 1}; return true;
+  }
+  k := i - 1 - EG_BUILDINGS;
+  if k >= EG_NODES { return false; }
+  x := EG_NODE_XZ[k * 2] + f32(EG_PATH_HALF) + 0.6; z := EG_NODE_XZ[k * 2 + 1];
+  out[0] = Lamp.{x = x, z = z, up = 2.1, reach = LAMP_TORCH_REACH, kind = 2};
+  if abs(x) > LAMP_TOWN || abs(z) > LAMP_TOWN { out[0].kind = -1; }
+  for q: 0..<EG_SQUARES {
+    dx := EG_NODE_XZ[k * 2] - EG_SQUARE[q * 4]; dz := EG_NODE_XZ[k * 2 + 1] - EG_SQUARE[q * 4 + 1];
+    if dx * dx + dz * dz < EG_SQUARE[q * 4 + 2] * EG_SQUARE[q * 4 + 2] { out[0].kind = -1; }
+  }
+  return true;
+}
+LAMP_COLOUR :: [9] f32.[1.0, 0.46, 0.16,   1.0, 0.66, 0.32,   1.0, 0.52, 0.2];
+LAMP_STRENGTH :: [3] f32.[2.6, 1.8, 2.2];
+// Their posts and flames, once the pack is in (the brazier is the kit's cauldron).
+lamp_posts :: (s: [] Everglade) {
+  if !s[0].pack_ready { return; }
+  l: [1] Lamp;
+  i := 0;
+  while lamp_at(i, l[..]) {
+    m := l[0];
+    i += 1;
+    if m.kind < 0 { continue; }
+    g := ground_at(s, m.x, m.z);
+    c := m.kind * 3;
+    if m.kind == 0 {
+      kit(s, group_of(M_CAULDRON), m.x, g, m.z, 0, 1.6);
+      shape(s, SHAPE_BOX, LOOK_FLAME, v3(m.x, g + 1.05, m.z), 0.4, 0, 0.55, 0.5, 0.55, LAMP_COLOUR[c], LAMP_COLOUR[c + 1], LAMP_COLOUR[c + 2]);
+    } else {
+      shape(s, SHAPE_BOX, LOOK_MATTE, v3(m.x, g + m.up / 2 - 0.1, m.z), 0, 0, 0.12, m.up - 0.2, 0.12, 0.22, 0.15, 0.1);
+      shape(s, SHAPE_BOX, LOOK_FLAME, v3(m.x, g + m.up, m.z), f32(i) * 0.7, 0, 0.24, 0.32, 0.24, LAMP_COLOUR[c], LAMP_COLOUR[c + 1], LAMP_COLOUR[c + 2]);
+    }
+  }
+}
+// The lights: how lit the lamps are (none while the sun is up past 0.45, all once it is down or the
+// moon keys), and the nearest `cap` to the eye, the brazier first.
+lamp_glow :: (sun_y: f32, moon: bool) -> f32 { return ifx moon then 1.0f32 else clamp((0.45 - sun_y) / 0.4, 0, 1); }
+lamps :: (s: [] Everglade, u: [] f32, eye: Point, cap: int) {
+  glow := lamp_glow(u[STYLE_AT + SU_KEY_DIR + 1], u[STYLE_AT + SU_KEY_DIR + 3] > 0.5);
+  for k: 0..<4 + LIGHTS * 8 { u[U_LIGHT_INFO + k] = 0; }
+  if !s[0].pack_ready || glow <= 0 { return; }
+  taken: [64] bool;
+  for k: 0..<64 { taken[k] = false; }
+  l: [1] Lamp;
+  n := 0;
+  while n < cap && n < LIGHTS {
+    best := -1; best_d := 1000000.0f32; i := 0;
+    while lamp_at(i, l[..]) {
+      m := l[0];
+      if m.kind >= 0 && i < 64 && !taken[i] {
+        dx := m.x - eye.x; dz := m.z - eye.z;
+        d := ifx m.kind == 0 then -1.0f32 else dx * dx + dz * dz;
+        if d < best_d { best_d = d; best = i; }
+      }
+      i += 1;
+    }
+    if best < 0 { break; }
+    taken[best] = true;
+    _ := lamp_at(best, l[..]);
+    m := l[0];
+    k := U_LIGHTS + n * 8; c := m.kind * 3;
+    u[k] = m.x; u[k + 1] = ground_at(s, m.x, m.z) + m.up; u[k + 2] = m.z; u[k + 3] = m.reach;
+    u[k + 4] = LAMP_COLOUR[c]; u[k + 5] = LAMP_COLOUR[c + 1]; u[k + 6] = LAMP_COLOUR[c + 2]; u[k + 7] = LAMP_STRENGTH[m.kind];
+    n += 1;
+  }
+  u[U_LIGHT_INFO] = f32(n); u[U_LIGHT_INFO + 1] = glow;
+}
 
 // The deep wood's waystone and the ruins' pillars, once the pack is in: the kit's painted rock stood
 // up to each one's footprint and height, so they read as standing stones, not grey boxes. After the
@@ -2184,6 +2276,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   city(s, u);
   forest(s, u, shot.eye);
   landmarks(s);
+  lamp_posts(s);
   edit_draw(s);
   first := cast(u32) hi_i(s[0].identity_first, 0);
   for kind: 0..<5 {
@@ -2253,6 +2346,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   far := cast(int) (2 * gr) * cast(int) (2 * gr) * cast(int) u[STYLE_AT + SU_GRASS];
   ring := ifx u[STYLE_AT + SU_FOLIAGE + 3] > 0 then cast(int) (2 * reach) * cast(int) (2 * reach) * cast(int) u[STYLE_AT + SU_FOLIAGE + 3] else 0;
   s[0].grass_n = ifx s[0].pack_ready && s[0].lift < 0.01 then far + ring else 0;
+  lamps(s, u, shot.eye, ifx phone(s) then LIGHTS_PHONE else LIGHTS);
   u[U_GROUND] = f32(EG_CELLS); u[U_GROUND + 1] = f32(EG_CELL); u[U_GROUND + 2] = f32(EG_EDGE); u[U_GROUND + 3] = f32(EG_EDGE);
   paths(u);
 
@@ -2306,7 +2400,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
 
 #test "the uniforms and shape slots line up with everglade.wgsl's" {
   #assert UNIFORM_FLOATS % 4 == 0;
-  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 504 && STYLE_AT == 828 && U_SOLID == 956 && UNIFORM_FLOATS == 1084;
+  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 504 && STYLE_AT == 828 && U_SOLID == 956 && U_LIGHT_INFO == 1084 && U_LIGHTS == 1088 && UNIFORM_FLOATS == 1216;
   #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
   total := 0;
   for g: 0..<KIT_GROUPS - KIT_FOREST { total += TOWN_CAP[g]; }
@@ -2856,4 +2950,15 @@ contains :: (text: string, part: string) -> bool {
   #assert c[0].day.mode == STYLE_CLOCK_CYCLE;
   n := everglade_frame(c[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, true, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert m > 0 && n > 0 && c[0].clock == 0.5 && abs(u[STYLE_AT + SU_STYLE + 3] - 0.5) < 0.001;
+}
+
+#test "the lamps: a brazier, a lantern at each door, torches at the town's crossings off the squares; lit from dusk, full at night" {
+  l: [1] Lamp;
+  n := 0; torches := 0;
+  while lamp_at(n, l[..]) { if l[0].kind == 2 { torches += 1; } n += 1; }
+  #assert n == 1 + EG_BUILDINGS + EG_NODES && torches > 8 && torches < EG_NODES;
+  #assert lamp_at(0, l[..]) && l[0].kind == 0 && lamp_at(1, l[..]) && l[0].kind == 1 && l[0].x == EG_DOOR[0];
+  // the commons' ring of crossings sits on the commons: no torch there
+  #assert lamp_at(1 + EG_BUILDINGS, l[..]) && l[0].kind == -1;
+  #assert lamp_glow(0.8, false) == 0 && lamp_glow(0.0, false) == 1 && lamp_glow(0.8, true) == 1 && abs(lamp_glow(0.25, false) - 0.5) < 0.0001;
 }

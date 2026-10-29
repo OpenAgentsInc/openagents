@@ -135,8 +135,8 @@ colour += rim * rim_colour
   (N·V = 0.38) and is full at 83° (0.12). On a 1.8 m figure 8 m away that
   is 2 to 4 px at 1440×900.
 - Strength 0.30 for the world and 0.45 for characters. The colour is the key
-  light's, warmed: by day (1.00, 0.84, 0.60), at dusk and dawn (1.00, 0.70,
-  0.45), and at night the moon's silver (0.70, 0.78, 0.95) at 0.6 of the
+  light's, warmed: by day (1.00, 0.84, 0.60), at dusk and dawn (1.00, 0.62,
+  0.40), and at night the moon's silver (0.70, 0.78, 0.95) at 0.6 of the
   strength.
 - It is a light term, so it fogs with the surface and never draws over the sky.
 
@@ -157,7 +157,7 @@ colour += rim * rim_colour
 - **Blob shadows stay** under movers (the player, pets, NPCs) as contact
   shadows at 0.35 strength, under the cast shadow.
 - **Tint**: shadows take `shadow_tint`, which is blue or violet by
-  construction: by day (0.52, 0.58, 0.86), at dusk (0.58, 0.48, 0.82), and at
+  construction: by day (0.52, 0.58, 0.86), at dusk a deep teal (0.36, 0.58, 0.72), and at
   night (0.36, 0.42, 0.70). The blue channel is always the largest and no
   channel is below 0.35.
 - **Cool, warm albedos too** (decided October 29): albedo × tint × ambient
@@ -199,12 +199,12 @@ colour   = mix(colour, haze, f)
 
 | | day | dusk/dawn | night |
 | --- | --- | --- | --- |
-| `start` | 20 m | 20 m | 12 m |
-| `density` (desktop) | 0.011 /m | 0.013 /m | 0.016 /m |
-| `cap` | 0.88 | 0.88 | 0.85 |
+| `start` | 20 m | 45 m | 30 m |
+| `density` (desktop) | 0.011 /m | 0.009 /m | 0.010 /m |
+| `cap` | 0.88 | 0.72 | 0.6 |
 | `falloff` | 60 m | 50 m | 40 m |
-| `haze_colour` | (0.56, 0.74, 0.90) | (0.78, 0.66, 0.74) | (0.10, 0.14, 0.27) |
-| key light in haze | (1.00, 0.90, 0.72) | (1.00, 0.62, 0.40) | (0.40, 0.48, 0.70) |
+| `haze_colour` | (0.56, 0.74, 0.90) | (0.96, 0.68, 0.56) | (0.025, 0.04, 0.09) |
+| key light in haze | (1.00, 0.90, 0.72) | (1.00, 0.62, 0.40) | (0.30, 0.36, 0.55) |
 
 The haze is coloured, never grey or white: where it is thin (the middle
 distance) its hue leans teal, and it turns to `haze_colour`'s blue as it
@@ -354,7 +354,8 @@ the sky without a seam.
   albedo except what glows and Hecate's shadow visitor.
 - **Tone**: `1 - exp(-c * exposure)` (the curve Hecate's uses) with exposure
   1.6 by day and 2.4 at night. Then saturation goes up 1.10 around luminance,
-  and blacks are lifted 0.035 (`c = 0.035 + 0.965 * c`) before encoding.
+  and blacks are lifted 0.006 (`c = 0.006 + 0.994 * c`) before encoding (0.035
+  until October 29, which milked every frame grey).
   Every painterly realm gets a post pass (`post_fs`) for this.
 - **Outlines**: none in ink. Painterly separates shapes by value and colour.
   The outline pass (`verse/look.coax`) is allowed only in its light form, a
@@ -434,9 +435,27 @@ sets on the other. `verse_style_clock` reads the page's facts (`clock`,
 minutes and the same for every visitor (it counts from 1970), `real` is the
 visitor's local time, and a realm with its own moon puts it in with
 `verse_style_own_moon`. Below
-−6° the moon is the key, with key strength 0.35 and its own colour (0.62,
+−6° the moon is the key, with key strength 0.16 and its own colour (0.62,
 0.70, 0.95). Key colours: by day (1.00, 0.95, 0.85) at strength 1.0, and at
-dusk or dawn (1.00, 0.72, 0.48) at 0.75.
+dusk or dawn (1.00, 0.66, 0.40) at 0.85.
+
+Dusk and dawn were retuned on October 29 after a comparison with Breath of
+the Wild, whose dusk stays saturated and warm: orange and pink light on the
+lit faces, deep-teal shadows (not grey-violet), a brighter ambient (sky
+(0.58, 0.52, 0.60) at 0.68) so a shadowed road stays a colour, and the haze
+a warm peach that starts at 45 m, so the near and middle distance stay clear.
+A surface's saturation is also capped from below
+(`verse_style_chroma_gain`): the shadow tint and the light may take it down
+to no less than 0.7 of its albedo's saturation.
+
+Night was made truly dark the same day (the owner: "It shouldn't be that
+weirdly bright"), as the Haunted House's is: the moon keys at 0.16, the sky
+ambient is (0.04, 0.055, 0.12), exposure 0.95 (2.4 before), a blue-black sky
+(zenith (0.004, 0.007, 0.022)), and the haze starts at 30 m in near-black
+blue, capped at 0.6, so the middle distance isn't milky. A realm's own lamps
+light the night (Everglade: lanterns at the doors, torches at the town's
+crossings, a brazier on the commons, each pooling its light on the ground and
+walls from dusk and full at night).
 
 A realm with a real moon (Hecate's) keeps its own moon direction and phase.
 The preset gives colours and strengths, and the realm gives where the light is.
@@ -597,6 +616,20 @@ sunlit face isn't the brightest thing in the frame. The shadow map's taps
 reach 1.6 times the preset's and the average is firmed (`smoothstep(0.1,
 0.75)`), so the edges are soft without the map's stair-steps and a thin
 caster keeps its shade. Phone, deep wood, 390×844 at 3×: 3.4 ms GPU p50.
+
+**Built** (October 29, the night and the lamps): Everglade lights its night
+with lamps (`lamp_at`, `lamps`, `lamp_posts`): a lantern on a post at each
+building's door, a torch beside the street at each crossing in the town, and a
+brazier (the kit's cauldron) on the commons. The nearest 16 to the eye (8 on a
+phone) go to the shader (`U_LIGHT_INFO`, `U_LIGHTS`), each pooling `(1 -
+(d/reach)²)²` of its warm colour on the ground and the walls, wrapped a little
+round each surface; how lit they are follows the key (none while the sun is
+above 0.45, all once the moon keys). The flames glow and bloom. The window
+panes are marked (`LOOK_WINDOW`) to glow warm at night, but the kit's panes
+mostly sit in the window walls' own meshes, so few glow yet: that is the next
+step. The commons' paving and the streets' dirt are darker and richer than
+before (0.42 to 0.52 grey and 0.47 to 0.58 brown), so a sunlit square isn't the
+palest thing in the frame.
 
 ## Order of the work
 

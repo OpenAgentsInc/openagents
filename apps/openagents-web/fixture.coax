@@ -855,7 +855,7 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
   #assert fixture_frame(s[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
   #assert u[7] == 1;
   // the preset at dawn: the key is the dusk/dawn key, the clock rides along
-  #assert abs(u[STYLE_AT + SU_KEY + 1] - 0.72) < 0.001 && abs(u[STYLE_AT + SU_STYLE + 3] - 0.25) < 0.001;
+  #assert abs(u[STYLE_AT + SU_KEY + 1] - 0.66) < 0.001 && abs(u[STYLE_AT + SU_STYLE + 3] - 0.25) < 0.001;
   #assert u[STYLE_AT + SU_SHADOW] == 2048;
   // its shapes cast into the key light's shadow map; the realm's own view casts nothing
   #assert fixture_caster_instances(s[..]) == 8 && fixture_caster_vertices(s[..]) == 24 * 13 * 6;
@@ -914,7 +914,7 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   #assert fixture_frame(s[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
   #assert abs(u[STYLE_AT + SU_KEY_DIR + 1] - cast(f32) sin(7 * DEG)) < 0.0001 && abs(u[STYLE_AT + SU_KEY_DIR + 2] - cast(f32) (cos(7 * DEG) * cos(158 * DEG))) < 0.0001;
-  #assert abs(u[STYLE_AT + SU_KEY + 1] - 0.72) < 0.001;
+  #assert abs(u[STYLE_AT + SU_KEY + 1] - 0.66) < 0.001;
   n: [1] Fixture;
   fixture_message(n[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?style=painterly&clock=0.75\nclock=fixed:0.75");
   #assert fixture_frame(n[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;

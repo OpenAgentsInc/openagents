@@ -21,6 +21,8 @@ struct U {
   water: WaterU,   // the river's waves, look and mesh (verse/water-look.coax W_* rows)
   style: array<vec4f, 32>,  // the painterly preset at the clock (verse/style-preset.coax SU_*: row = SU / 4)
   solid: array<vec4f, 32>,  // where no grass grows: the buildings' and props' footprints (x0, z0, x1, z1)
+  light_info: vec4f,        // the lamps lit, how lit (0 by day to 1 at night) (everglade.coax lamps)
+  lights: array<vec4f, 32>,  // each lamp: x, y, z, reach; r, g, b, strength
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -338,6 +340,8 @@ const LOOK_FAR_CANOPY = 6u;                        // a far tree's cone, lit as 
 const LOOK_CANOPY = 7u;                            // a kit tree's leaves, lit as a blob
 const LOOK_CHARACTER = 8u;                         // the Ranger: textured, two bands and the stronger rim (spec 11)
 const LOOK_ROCK = 10u;                             // a kit rock (everglade.coax LOOK_ROCK): darker, mottled, mossy on top
+const LOOK_FLAME = 11u;                            // a lamp's flame: its colour, glowing as the lamps are lit
+const LOOK_WINDOW = 12u;                           // a window pane: the kit's, its glass glowing warm at night
 fn canopy_n(n: vec3f, blob: vec3f) -> vec3f {
   return normalize(vec3f(verse_style_canopy_normal(n.x, blob.x, CANOPY_MIX), verse_style_canopy_normal(n.y, blob.y, CANOPY_MIX), verse_style_canopy_normal(n.z, blob.z, CANOPY_MIX)));
 }
@@ -475,7 +479,7 @@ struct Shade { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(
   let q = shadow_place(v.world, light_space());
   o.pos = vec4f(q.xy, q.z, 1.0);
   o.uv = v.uv; o.slice = v.slice;
-  o.cut = select(0u, 1u, v.look == 5u || v.look == LOOK_CANOPY || v.look == LOOK_CHARACTER || v.look == LOOK_ROCK);
+  o.cut = select(0u, 1u, v.look == 5u || v.look == LOOK_CANOPY || v.look == LOOK_CHARACTER || v.look == LOOK_ROCK || v.look == LOOK_WINDOW);
   return o;
 }
 @fragment fn shadow_fs(v: Shade) {
@@ -547,7 +551,7 @@ fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
   var n = normalize(s.normal);
   var base = s.tint;
   var shadow = 1.0;
-  if (s.look == 5u || s.look == LOOK_CANOPY || s.look == LOOK_CHARACTER || s.look == LOOK_ROCK) {
+  if (s.look == 5u || s.look == LOOK_CANOPY || s.look == LOOK_CHARACTER || s.look == LOOK_ROCK || s.look == LOOK_WINDOW) {
     // A kit mesh: its texture, cut out where the leaves' layer is clear; both sides of a leaf lit
     // (a canopy's blob normal already faces out, so it keeps it).
     if (tex.a < 0.35) { discard; }
@@ -574,7 +578,7 @@ fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
       let sq = u.square[q];
       if (sq.z <= 0.0) { break; }
       let paved = 1.0 - smoothstep(sq.z - 0.3, sq.z + 0.3, length(xz - sq.xy));
-      let stone = mix(vec3f(0.56, 0.53, 0.47), vec3f(0.66, 0.63, 0.56), noise(xz * 1.7)) * (0.9 + 0.12 * noise(xz * 9.0));
+      let stone = mix(vec3f(0.42, 0.40, 0.36), vec3f(0.52, 0.49, 0.43), noise(xz * 1.7)) * (0.9 + 0.12 * noise(xz * 9.0));
       base = mix(base, stone, paved);
     }
     let d = path_distance(xz);
@@ -582,7 +586,7 @@ fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
     let edge = 1.0 - smoothstep(half - 0.12, half + 0.12, d);
     if (edge > 0.0) {
       let grit = noise(xz * 5.0) * 0.5 + noise(xz * 13.0) * 0.5;
-      let dirt = mix(vec3f(0.55, 0.46, 0.33), vec3f(0.68, 0.6, 0.46), grit);
+      let dirt = mix(vec3f(0.47, 0.36, 0.23), vec3f(0.58, 0.46, 0.31), grit);
       base = mix(base, dirt, edge);
     }
     // the river's bed: silt and stones under the water, darker the deeper,
@@ -605,9 +609,21 @@ fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
   }
   // the shapes' and the ground's colours are written as they show on screen (sRGB); the light works in
   // linear, as the kit's textures (sampled sRGB) already are
-  if (s.look != 5u && s.look != LOOK_CANOPY && s.look != LOOK_CHARACTER && s.look != LOOK_ROCK) { base = pow(max(base, vec3f(0.0)), vec3f(2.2)); }
+  if (s.look != 5u && s.look != LOOK_CANOPY && s.look != LOOK_CHARACTER && s.look != LOOK_ROCK && s.look != LOOK_WINDOW) { base = pow(max(base, vec3f(0.0)), vec3f(2.2)); }
+  if (s.look == LOOK_FLAME) {
+    // a flame: its colour as light, dim by day, bright and blooming once the lamps are lit
+    let glow = u.light_info.y;
+    let f = base * (0.35 + 7.0 * glow) * (0.85 + 0.3 * noise(vec2f(u.time * 6.0, s.world.y * 9.0 + s.world.x)));
+    return Lit(vec4f(f, select(0.0, 0.9, glow > 0.05)), vec4f(0.0));
+  }
   let lit = verse_style_contact(map_lit(s.world, n), 1.0 - shadow, st(4u).w);
-  return paint(base, n, s.world, lit, s.look == LOOK_CHARACTER || s.look == 3u, true);
+  var res = paint(base, n, s.world, lit, s.look == LOOK_CHARACTER || s.look == 3u, true);
+  if (s.look == LOOK_WINDOW && tex.b > tex.r - 0.02) {
+    // a window's glass, lit from inside once the lamps are
+    let glow = u.light_info.y;
+    res.light = vec4f(res.light.rgb + vec3f(1.0, 0.6, 0.24) * 2.4 * glow, select(res.light.a, 0.8, glow > 0.05));
+  }
+  return res;
 }
 // The painterly light (spec 1 to 4): the wrapped key times what of it reaches (lit: the shadow map and
 // the movers' blobs) in three soft bands (two for a character), the shadow band the albedo under the
@@ -621,6 +637,11 @@ fn paint(base: vec3f, n: vec3f, world: vec3f, lit: f32, character: bool, rim: bo
   let key = st(0u).xyz * st(0u).w;
   let amb = vec3f(verse_style_ambient(n.y, st(5u).x, st(6u).x, st(5u).w), verse_style_ambient(n.y, st(5u).y, st(6u).y, st(5u).w), verse_style_ambient(n.y, st(5u).z, st(6u).z, st(5u).w));
   var c = banded(base, st(4u).xyz * amb, key + amb, band);
+  c += base * lamp_light(world, n);
+  // the shadow tint and the light may grey a surface only so far: 0.7 of its albedo's saturation stays
+  let gain = verse_style_chroma_gain(saturation(c), saturation(base), 0.7);
+  let cy = verse_style_luma(c.x, c.y, c.z);
+  c = max(vec3f(cy) + (c - vec3f(cy)) * gain, vec3f(0.0));
   let rs = select(st(2u).w, st(3u).x, character);
   if (rim) { c += st(2u).xyz * verse_style_rim(dot(n, -v), dot(n, l), st(3u).y, st(3u).z, rs) * lit; }
   c += water_caustics(world, n) * base * key * lit;   // light the water focuses on what lies under it
@@ -630,6 +651,26 @@ fn paint(base: vec3f, n: vec3f, world: vec3f, lit: f32, character: bool, rim: bo
   let b = st(19u);
   return Lit(vec4f(c, verse_style_bloom_share(verse_style_luma(c.x, c.y, c.z), b.x, b.y)), vec4f(verse_style_shaft_source(dot(v, l)) * fog, 0.0, 0.0, 0.0));
 }
+// The lamps' light at p (normal n): each pools within its reach, (1 - (d/reach)^2)^2, wrapped round
+// the surface a little so the ground under a lamp lights all round it; none by day.
+fn lamp_light(p: vec3f, n: vec3f) -> vec3f {
+  let glow = u.light_info.y;
+  if (glow <= 0.0) { return vec3f(0.0); }
+  var sum = vec3f(0.0);
+  let count = u32(u.light_info.x);
+  for (var i = 0u; i < 16u; i++) {
+    if (i >= count) { break; }
+    let at = u.lights[i * 2u]; let c = u.lights[i * 2u + 1u];
+    let delta = at.xyz - p;
+    let d = length(delta);
+    if (d >= at.w) { continue; }
+    let k = 1.0 - (d * d) / (at.w * at.w);
+    let face = max(0.15, (dot(n, delta / max(d, 0.001)) + 0.3) / 1.3);
+    sum += c.rgb * c.w * k * k * face;
+  }
+  return sum * glow;
+}
+fn saturation(c: vec3f) -> f32 { let hi = max(c.x, max(c.y, c.z)); return (hi - min(c.x, min(c.y, c.z))) / max(hi, 0.0001); }
 // A banded surface (spec 1 and 3): the shadow band takes the tint's hue once more at the preset's
 // amount with its value kept (painterly shadows are cool, warm albedos too); the lit band the key.
 fn banded(a: vec3f, dark: vec3f, bright: vec3f, band: f32) -> vec3f {
@@ -1603,7 +1644,7 @@ struct G {
 }
 
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter, verse_style_canopy_axis, verse_style_canopy_normal, verse_style_canopy_sway, verse_style_canopy_open, verse_style_near_reach, verse_style_near_blades, verse_style_near_width) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter, verse_style_canopy_axis, verse_style_canopy_normal, verse_style_canopy_sway, verse_style_canopy_open, verse_style_near_reach, verse_style_near_blades, verse_style_near_width, verse_style_chroma_gain) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -2083,5 +2124,12 @@ fn verse_style_near_blades(l_reach: f32, l_density: f32) -> f32 {
 }
 fn verse_style_near_width(l_d: f32, l_reach: f32) -> f32 {
   return (1.0 + (1.39999998 * (1.0 - coax_p_st_sat((l_d / coax_p_st_max(l_reach, 0.00100000005))))));
+}
+fn verse_style_chroma_gain(l_have: f32, l_albedo: f32, l_keep: f32) -> f32 {
+  if ((l_have < 9.99999975e-05))
+  {
+    return 1.0;
+  }
+  return coax_p_st_min(2.5, coax_p_st_max(1.0, ((l_albedo * l_keep) / l_have)));
 }
 // ---- end generated
