@@ -329,7 +329,8 @@ and the answer body are the ones above: `sv_stage` in
 exactly as `sv_answers` does, the host runs the device plan, and `sv_read`
 applies chapter 10's readout to the last token's logits. The plan and its
 residency come from [plan.coax](../lib/device/plan.coax), opened once for the
-largest admitted request (`--capacity`, at most 128 tokens). The C in
+largest admitted request (`--capacity`, 128 tokens by default and at most
+512, `DP_MAX_TOKENS`). The C in
 [elephant-gpu.c](../platform/elephant-gpu.c) loads modules, places buffers,
 launches and waits, and nothing else.
 
@@ -357,6 +358,16 @@ That is p_yes 0.757202773 against chapter 10's 0.757196285, a difference of
 6.5e-6, inside chapter 30's frozen 0.0005. A client that hung up after 50 or
 80 ms was cancelled 3 to 4 ms later, and the next request answered the same.
 With `--deadline-ms 60` both requests were refused 524 `timeout` at 64 ms.
+
+A decision request that carries real context needs more than 128 tokens:
+the Mac app's Lab (chapter 17's first caller) asks five questions about a
+message, and each rendered question is 200 to 300 tokens. With
+`--capacity 512` the larger workspace leaves less room for weights, so the
+plan streams more feed-forward matrices: 13.29 GiB resident and 1.50 GiB
+pinned for streaming. Chapter 10's sample still answers p_yes 0.757202773,
+bit for bit the 128-token result, in 147 to 175 ms. The Lab's five questions
+take about 1.8 seconds together. Prompts longer than 128 tokens use the same
+kernels; they have not been compared against the CPU reference.
 
 ## What the checks establish
 

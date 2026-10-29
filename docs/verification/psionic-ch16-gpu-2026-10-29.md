@@ -90,3 +90,19 @@ fixed before the numbers above were taken.
   cache will shorten.
 - The server checks a decision between layers, so cancelling takes up to one
   layer, about 5 ms.
+
+## Addendum: 512 tokens per decision
+
+`DP_MAX_TOKENS` in `psionic/lib/device/plan.coax` raises the device plan's
+bound from 128 to 512 tokens. `serve-host.c` takes `--capacity` up to 512
+for `--elephant-gpu`. `coax test psionic/lib/device/plan.coax`: 43 checks
+pass. `coax mutate` was not rerun: the change names the bound and does not
+add logic.
+
+Served with `--capacity 512` on the same card (otherwise idle): placed
+13.29 GiB resident and 1.50 GiB pinned for streaming (plan budget 13.96 GiB),
+ready after 71.5 s of authentication. Chapter 10's sample answered p_yes
+0.757202773, identical to the 128-token placement, in 147, 149 and 175 ms
+on the server. A five-question request of 200 to 300 tokens per question
+(the Mac app's Lab) answered in 1.70 to 1.84 s. Long prompts have not been
+compared against the CPU reference.

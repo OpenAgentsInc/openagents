@@ -347,7 +347,7 @@ int main(int argc, char **argv) {
 #ifndef PSIONIC_SERVE_GPU
     if (gpu) { fprintf(stderr, "psionic-serve: built without the CUDA host; build with serve-build.sh OUT release plain gpu\n"); return 2; }
 #endif
-    if (gpu && capacity > 128) { fprintf(stderr, "psionic-serve: the device plan takes at most 128 tokens\n"); return 2; }
+    if (gpu && capacity > 512) { fprintf(stderr, "psionic-serve: the device plan takes at most 512 tokens\n"); return 2; }
     if (toy == (elephant != NULL) || (elephant && !table) || (delay && !toy)) {
         fprintf(stderr, "usage: psionic-serve (--toy | --elephant DIR | --elephant-gpu DIR) --table FILE [--port N] [--read-ms N] [--deadline-ms N] [--capacity N]\n"); return 2;
     }
