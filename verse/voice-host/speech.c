@@ -588,6 +588,15 @@ static void split_append(splitter *sp, const char *t) {
   split_more(sp, false);
 }
 
+void speech_split(const char *text, speech_sentence_fn on_sentence, void *ctx) {
+  static splitter sp;   // main thread only (a page's answer)
+  memset(&sp, 0, sizeof sp);
+  sp.on_sentence = on_sentence;
+  sp.ctx = ctx;
+  split_append(&sp, text);
+  split_more(&sp, true);
+}
+
 // Server-sent events from streamGenerateContent?alt=sse: each "data: {...}"
 // line is one GenerateContentResponse chunk.
 static void sse_event(splitter *sp, const char *json) {

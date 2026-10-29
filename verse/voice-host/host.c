@@ -296,6 +296,7 @@ typedef struct utter {
   const char *plan;
   uint64_t gap_us;           // playback gaps: audio that wasn't ready in time
   bool quiet;                // a barged reply going on quietly until the barge-in's words decide
+  char who[129];             // who says it: the page's character (Route "facing"), else "" for the route
   struct utter *next;
 } utter;
 
@@ -312,6 +313,13 @@ typedef struct {
   uint32_t in_rate, out_rate;
   bool observe;
   char route[129], speaker[129];
+  // Whom the page says this speaker faces (a client Route, reason "facing"):
+  // "" while nobody, and the route's own agent answers. While someone, the
+  // page answers each final transcript with that character's own words (the
+  // same character chat as typed questions) in a client Speech for the turn.
+  char facing[129];
+  uint32_t page_turn_no;   // the final transcript the page answers next (0: none)
+  char page_turn[65];
   const speech_profile *prof;
   account *acct;
   oa_voice *v;             // the host's own engine for this session
@@ -791,11 +799,11 @@ static void send_speech(session *s, const utter *u) {
   oa_voice_msg m = {.kind = OA_MSG_SPEECH};
   m.u.speech.has_utterance = true;
   m.u.speech.utterance.id = B(u->id);
-  m.u.speech.utterance.speaker = B(s->route);
+  m.u.speech.utterance.speaker = B(u->who[0] ? u->who : s->route);
   m.u.speech.utterance.text = B(u->text);
   m.u.speech.utterance.interruptible = true;
   m.u.speech.has_speaker = true;
-  m.u.speech.speaker.id = B(s->route);
+  m.u.speech.speaker.id = B(u->who[0] ? u->who : s->route);
   m.u.speech.speaker.role = OA_SPEAKER_ROLE_AGENT;
   m.u.speech.speaker.profile = B(s->prof->id);
   m.u.speech.speaker.profile_revision = s->prof->revision;
@@ -1128,6 +1136,13 @@ static void deliver_final(session *s, uint32_t turn_no, const char *turn, const 
     send_turn_event(s, turn, OA_TURN_PHASE_ENDED, NULL, 0);
     return;
   }
+  // Facing a character: the page answers (on_page_speech), not the route's agent.
+  if (s->facing[0]) {
+    stop_agent(s);
+    s->page_turn_no = turn_no;
+    snprintf(s->page_turn, sizeof s->page_turn, "%s", turn);
+    return;
+  }
   job *j = calloc(1, sizeof *j);
   if (!j) { send_error(s, OA_ERROR_INTERNAL, "out of memory", turn); return; }
   j->kind = JOB_AGENT;
@@ -1368,6 +1383,60 @@ static void on_control(session *s, const oa_voice_control *c) {
   }
 }
 
+// The page says whom this speaker faces (Route: target, reason "facing"),
+// by explicit binding, never from the words; "" faces nobody again.
+static void on_route(session *s, const oa_voice_route *r) {
+  if (has_nul(r->target) || r->target.len >= sizeof s->facing) { send_error(s, OA_ERROR_PROTOCOL, "bad Route target", ""); return; }
+  copy_bytes(s->facing, sizeof s->facing, r->target);
+  if (!s->facing[0]) s->page_turn_no = 0;
+  logf_("%s: facing %s", s->sid, s->facing[0] ? s->facing : "nobody");
+}
+
+static void collect_sentence(void *ctx, const char *sentence) {
+  job *e = ctx;
+  session *s = session_by_serial(e->session);
+  if (!s) return;
+  snprintf(e->text, sizeof e->text, "%s", sentence);
+  on_reply_sentence(s, e);
+}
+
+// The page's answer to the final transcript it was given (a client Speech:
+// utterance.text, turn): spoken as the character it faces, sentence by
+// sentence through the same synthesis and meter as the agent's replies.
+static void on_page_speech(session *s, const oa_voice_speech *sp) {
+  oa_voice_bytes t = sp->has_utterance ? sp->utterance.text : (oa_voice_bytes){0};
+  if (!s->page_turn_no || sp->turn.len != strlen(s->page_turn) || memcmp(sp->turn.ptr, s->page_turn, sp->turn.len)) {
+    send_error(s, OA_ERROR_PROTOCOL, "Speech for a turn the page doesn't answer", "");
+    return;
+  }
+  uint32_t turn_no = s->page_turn_no;
+  s->page_turn_no = 0;
+  if (turn_no <= s->dropped_upto) return;   // barged or cancelled meanwhile
+  if (!t.len || has_nul(t) || t.len > MAX_TEXT) {
+    send_error(s, OA_ERROR_PROTOCOL, "bad Speech text", s->page_turn);
+    send_turn_event(s, s->page_turn, OA_TURN_PHASE_ENDED, NULL, 0);
+    return;
+  }
+  static job e;
+  memset(&e, 0, sizeof e);
+  e.kind = JOB_SENTENCE;
+  e.session = s->serial;
+  e.turn_no = turn_no;
+  snprintf(e.turn, sizeof e.turn, "%s", s->page_turn);
+  e.ok = true;
+  e.started = now_ms();
+  char text[MAX_TEXT + 1];
+  copy_bytes(text, sizeof text, t);
+  speech_split(text, collect_sentence, &e);
+  utter *u = utter_by_turn(s, turn_no);
+  logf_("%s: %s %s answers (%zu bytes)", s->sid, s->page_turn, s->facing[0] ? s->facing : "the page", strlen(text));
+  if (!u) { send_turn_event(s, s->page_turn, OA_TURN_PHASE_ENDED, NULL, 0); return; }
+  snprintf(u->who, sizeof u->who, "%s", s->facing);
+  if (!u->text_done && u->overflow[0]) { u->seg[u->nseg].end = strlen(u->text); synthesize(s, u, u->nseg, u->overflow); }
+  u->text_done = true;
+  pump_speech(s, now_ms());
+}
+
 static void on_frame(session *s, const uint8_t *p, size_t n) {
   oa_voice_msg m;
   memset(&m, 0, sizeof m);
@@ -1392,6 +1461,8 @@ static void on_frame(session *s, const uint8_t *p, size_t n) {
     break;
   }
   case OA_MSG_FEATURES: break;  // client-side features: accepted, not used yet
+  case OA_MSG_ROUTE: on_route(s, &m.u.route); break;
+  case OA_MSG_SPEECH: on_page_speech(s, &m.u.speech); break;
   case OA_MSG_HELLO: send_error(s, OA_ERROR_PROTOCOL, "Hello was already received", ""); break;
   default: send_error(s, OA_ERROR_PROTOCOL, "a client may not send this frame", ""); break;
   }

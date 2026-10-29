@@ -158,6 +158,7 @@ ASK_PICK :: 512;       // pick what's under (pick_x, pick_y)
 ASK_OP :: 1024;        // an edit, `op` (OP_*)
 ASK_ACCEPT :: 2048;    // the owner keeps the newest offered change
 ASK_DECLINE :: 4096;   // or turns it down
+ASK_VOICE :: 8192;     // VOICE heard a question (realm_heard): in a conversation, ask them
 
 // Edits (ASK_OP): to the picked thing, to the nearest zone, and undo.
 OP_LEFT :: 0; OP_RIGHT :: 1; OP_AWAY :: 2; OP_NEAR :: 3; OP_TURN :: 4; OP_BIGGER :: 5; OP_SMALLER :: 6; OP_DELETE :: 7;
@@ -180,6 +181,8 @@ BTN_VOICE :: BTN_GFX + 1;                                       // the hotbar's 
 BTN_PIECE :: BTN_VOICE + 1;                                     // edit mode's MAKE A SET PIECE (the Sandbox)
 BUTTONS :: BTN_PIECE + 1;
 ACT_VOICE :: 7;     // host.js (coax/web/voice.js): the outbox is "on" or "off"
+ACT_VOICE_TO :: 8;  // voice.js: whom you face, the outbox a character's name ("" nobody)
+ACT_VOICE_SAY :: 9; // voice.js: speak the outbox, their answer to what VOICE heard
 
 // Graphics (host.js): how many pixels the house is drawn with. HIGH every
 // device pixel, MEDIUM at most 1.5 a CSS pixel, LOW 1; phones start at MEDIUM.
@@ -215,6 +218,8 @@ Realm :: struct {
   voice: bool;          // VOICE is on (coax/web/voice.js has the microphone)
   voice_phase: [16] u8; voice_phase_n: int;     // what voice.js says it is doing: listening, hearing, thinking, replying...
   voice_text: [400] u8; voice_n: int;           // and its caption: what it heard, or the reply as it is spoken
+  heard: [400] u8; heard_n: int; heard_no: int; // the last question VOICE heard whole, and how many so far
+  voice_to: [48] u8; voice_to_n: int;           // whom voice.js was last told you face
   hover: int;           // the button the mouse is over (-1 none)
   plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;   // this frame's plates
 }
@@ -230,6 +235,30 @@ realm_voice :: (r: [] Realm, text: string) #export_c {
   while i < text.count && r[0].voice_n < 400 { r[0].voice_text[r[0].voice_n] = text[i]; r[0].voice_n += 1; i += 1; }
   phase := cast(string) r[0].voice_phase[0..<r[0].voice_phase_n];
   if phase == "off" || phase == "notice" { r[0].voice = false; }
+  if phase == "heard" && r[0].voice_n > 0 {
+    r[0].heard_n = 0;
+    for j: 0..<r[0].voice_n { r[0].heard[j] = r[0].voice_text[j]; }
+    r[0].heard_n = r[0].voice_n; r[0].heard_no += 1;
+    r[0].asks |= ASK_VOICE;
+  }
+}
+realm_heard :: (r: [] Realm) -> string #export_c { return cast(string) r[0].heard[0..<r[0].heard_n]; }
+
+// Every frame: whom you're talking to ("" nobody), told to voice.js when it
+// changes and the host's outbox is free, so VOICE answers as them.
+realm_voice_to :: (r: [] Realm, who: string) #export_c {
+  if r[0].action != 0 || seen_same(r[0].voice_to[..], r[0].voice_to_n, who) { return; }
+  r[0].voice_to_n = tw_copy(r[0].voice_to[..], 0, who);
+  r[0].out_n = put(r[0].outbox[..], 0, cast(string) r[0].voice_to[0..<r[0].voice_to_n]);
+  r[0].action = ACT_VOICE_TO;
+}
+// Their answer to what VOICE heard, for voice.js to speak; false while the
+// outbox is busy (the face tries again next frame).
+realm_voice_say :: (r: [] Realm, words: string) -> bool #export_c {
+  if r[0].action != 0 { return false; }
+  r[0].out_n = put(r[0].outbox[..], 0, words);
+  r[0].action = ACT_VOICE_SAY;
+  return true;
 }
 
 realm_set_quality :: (r: [] Realm, q: int) #export_c { if q >= 0 && q < 3 { r[0].quality = q; } }
@@ -335,7 +364,7 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
     r[0].voice = !r[0].voice;
     r[0].out_n = put(r[0].outbox[..], 0, ifx r[0].voice then "on" else "off");
     r[0].action = ACT_VOICE;
-    if r[0].voice { r[0].voice_phase_n = put(r[0].voice_phase[..], 0, "connecting"); r[0].voice_n = 0; }
+    if r[0].voice { r[0].voice_phase_n = put(r[0].voice_phase[..], 0, "connecting"); r[0].voice_n = 0; r[0].voice_to_n = -1; }   // whom you face, told again
   }
   if b == BTN_GFX {
     names := QUALITY_NAMES;
@@ -644,15 +673,17 @@ hud_button :: (r: [] Realm, out: [] f32, at: int, i: int, b: Box, label: string,
 
 // The voice line by the hotbar while VOICE is on, or its last notice: what it
 // is doing, and what it heard or is saying.
-VOICE_WORDS :: [7] string.["connecting", "listening", "hearing", "thinking", "replying", "notice", "off"];
-VOICE_LABELS :: [7] string.["CONNECTING", "LISTENING", "HEARING YOU", "THINKING", "THE HOUSE", "VOICE", "VOICE"];
-draw_voice :: (r: [] Realm, out: [] f32, at: int) -> int {
+VOICE_WORDS :: [8] string.["connecting", "listening", "hearing", "heard", "thinking", "replying", "notice", "off"];
+VOICE_LABELS :: [8] string.["CONNECTING", "LISTENING", "HEARING YOU", "THINKING", "THINKING", "THE HOUSE", "VOICE", "VOICE"];
+// talking: whom you're talking to, who answers instead of the house.
+draw_voice :: (r: [] Realm, out: [] f32, at: int, talking: string) -> int {
   phase := cast(string) r[0].voice_phase[0..<r[0].voice_phase_n];
   text := cast(string) r[0].voice_text[0..<r[0].voice_n];
   if !r[0].voice && !(phase == "notice" && text.count > 0) { return at; }
   words := VOICE_WORDS; labels := VOICE_LABELS;
   label := "VOICE";
-  for i: 0..<7 { if phase == words[i] { label = labels[i]; } }
+  for i: 0..<8 { if phase == words[i] { label = labels[i]; } }
+  if phase == "replying" && talking.count > 0 { label = talking; }
   k := r[0].dpr; d := r[0].dpr;
   s0 := slot_box(r, 0); s1 := slot_box(r, SLOTS - 1);
   h := 52 * k;
@@ -1156,7 +1187,7 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
   vertices = hud_button(r, out, vertices, BTN_GFX, slot_box(r, sh + 4), labels[r[0].quality % 3], "G", false);
   if !v.no_voice { vertices = hud_button(r, out, vertices, BTN_VOICE, slot_box(r, 5), "VOICE", "", r[0].voice); }
   vertices = hud_button(r, out, vertices, BTN_EXIT, slot_box(r, ifx v.no_voice && phone(r) then 5 else 6), "EXIT", "", false);
-  vertices = draw_voice(r, out, vertices);
+  vertices = draw_voice(r, out, vertices, v.talking);
 
   // the house's notice, under the title
   if v.notice.count > 0 {
@@ -1237,6 +1268,8 @@ RealmSeen :: struct {
   editing: bool; map: bool; typing: bool; camera: int;
   with: [48] u8; with_n: int;
   said: [80] u8; said_n: int;
+  heard_no: int;                      // VOICE's questions recorded
+  voice: [16] u8; voice_n: int;       // VOICE's phase last frame
 }
 seen_same :: (buf: [] u8, n: int, text: string) -> bool {
   m := ifx text.count < buf.count then text.count else buf.count;
@@ -1300,6 +1333,28 @@ realm_track :: (r: [] Realm, s: [] RealmSeen, t: [] Track, v: RealmView, camera:
   if r[0].typing != s[0].typing {
     s[0].typing = r[0].typing;
     if r[0].typing && r[0].typing_for == TYPE_SURVEY && track_begin(t, "survey-show") { track_str(t, "q", "how it went"); track_str(t, "world", HAUNT_WORLD); track_end(t); }
+  }
+  realm_track_voice(r, s, t, v);
+}
+// The playtest's voice events: voice-on when VOICE has the microphone and
+// the host (ok) or gave up (not ok), voice for each question it heard, with
+// whom it was for: the person you're talking to, else the house.
+realm_track_voice :: (r: [] Realm, s: [] RealmSeen, t: [] Track, v: RealmView) {
+  to := ifx v.talking.count > 0 then v.talking else "house";
+  phase := cast(string) r[0].voice_phase[0..<r[0].voice_phase_n];
+  if !seen_same(s[0].voice[..], s[0].voice_n, phase) {
+    was := cast(string) s[0].voice[0..<s[0].voice_n];
+    if was == "connecting" && (phase == "listening" || phase == "notice" || phase == "off") && track_begin(t, "voice-on") {
+      track_str(t, "to", to); track_bool(t, "ok", phase == "listening"); track_str(t, "world", HAUNT_WORLD); track_end(t);
+    }
+    s[0].voice_n = tw_copy(s[0].voice[..], 0, phase);
+  }
+  if r[0].heard_no != s[0].heard_no {
+    s[0].heard_no = r[0].heard_no;
+    if track_begin(t, "voice") {
+      track_str(t, "to", to); track_str(t, "world", HAUNT_WORLD);
+      track_words(t, cast(string) r[0].heard[0..<r[0].heard_n]); track_end(t);
+    }
   }
 }
 // The survey's answer, sent: the words, with consent (the box says they're saved).
@@ -1927,6 +1982,44 @@ plated :: (u: [] f32, b: Box) -> f32 {
   body = cast(string) t[0].buf[0..<t[0].buf_n];
   #assert text_has(body, "\"ev\":\"place\"") && text_has(body, "{\"step\":3,\"n\":8}") && text_has(body, "\"ev\":\"edit-open\"");
   #assert text_has(body, "{\"camera\":1}") && text_has(body, "\"text\":\"It was spooky\",\"consent\":true");
+}
+
+#test "VOICE's events: voice-on with ok, and each question heard with whom it was for" {
+  r: [1] Realm; desk(r[..]); v := view();
+  t: [1] Track; s: [1] RealmSeen;
+  track_init(t[..], "haunt");
+  #assert track_message(t[..], HOST_PAGE, "tab=00000000000000aa\nfresh=1\nvisitor=00000000000000bb\nnow=1793200000000\nnav=10\nua=x\nvw=1280\nvh=800\ndpr=2");
+  realm_voice(r[..], "connecting|");
+  realm_track(r[..], s[..], t[..], v, 0);
+  realm_voice(r[..], "listening|");
+  realm_track(r[..], s[..], t[..], v, 0);
+  v.talking = "Mortimer";
+  realm_voice(r[..], "heard|Where is the key?");
+  #assert realm_take(r[..]) == ASK_VOICE && realm_heard(r[..]) == "Where is the key?";
+  realm_track(r[..], s[..], t[..], v, 0);
+  body := cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert text_has(body, "\"ev\":\"voice-on\"") && text_has(body, "{\"to\":\"house\",\"ok\":true,\"world\":\"haunted-house\"}");
+  #assert text_has(body, "{\"to\":\"Mortimer\",\"world\":\"haunted-house\",\"text\":\"Where is the key?\",\"consent\":true}");
+  realm_voice(r[..], "connecting|");
+  realm_track(r[..], s[..], t[..], v, 0);
+  realm_voice(r[..], "notice|Voice needs the microphone.");
+  realm_track(r[..], s[..], t[..], v, 0);
+  body = cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert text_has(body, "{\"to\":\"Mortimer\",\"ok\":false,\"world\":\"haunted-house\"}");
+}
+
+#test "VOICE answers as whom you talk to: voice.js is told who, and speaks their answer" {
+  r: [1] Realm; desk(r[..]);
+  realm_voice_to(r[..], "Mortimer");
+  #assert r[0].action == ACT_VOICE_TO && cast(string) r[0].outbox[0..<r[0].out_n] == "Mortimer";
+  #assert !realm_voice_say(r[..], "Under the rug.");   // the outbox is busy
+  r[0].action = 0;
+  realm_voice_to(r[..], "Mortimer");
+  #assert r[0].action == 0;                             // told once
+  #assert realm_voice_say(r[..], "Under the rug.") && r[0].action == ACT_VOICE_SAY;
+  r[0].action = 0;
+  realm_voice_to(r[..], "");
+  #assert r[0].action == ACT_VOICE_TO && r[0].out_n == 0;
 }
 
 #test "an offered change shows its owner who and what, and ACCEPT and DECLINE ask for them" {

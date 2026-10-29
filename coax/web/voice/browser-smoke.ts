@@ -2,7 +2,10 @@
 // microphone plays a recorded question, a real click turns VOICE on, and the
 // page must hear it and play the house's reply. Nothing is heard on this
 // Mac (--mute-audio) and no window opens.
-//   bun coax/web/voice/browser-smoke.ts PAGE_URL [FIXTURE.wav]
+// TALK=NAME: first E, which talks to whoever is near where you arrive
+// (Mortimer, in the yard); NAME must then answer, through the same character
+// chat as a typed question, and the voice host must speak it as NAME.
+//   [TALK=NAME] bun coax/web/voice/browser-smoke.ts PAGE_URL [FIXTURE.wav]
 // PAGE_URL is the Haunted House, with ?voice=ws://127.0.0.1:8787 for a host on this Mac.
 import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -39,6 +42,11 @@ try {
   await send("Page.navigate", { url })
   for (let i = 0; i < 60 && !(await value("!!globalThis.coaxial?.ready")); i++) await Bun.sleep(500)
   await Bun.sleep(3000)
+  const talk = process.env.TALK ?? ""
+  if (talk) {
+    for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key: "e", code: "KeyE", text: type === "keyDown" ? "e" : undefined, windowsVirtualKeyCode: 69 })
+    await Bun.sleep(800)
+  }
   // VOICE, the hotbar's sixth slot of seven (realm.coax slot_box on a 1440x900 desk).
   const x = W - 16 - 4 - 1 * (76 + 12) - 38, y = H - 16 - 4 - 20
   for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 })
@@ -52,7 +60,9 @@ try {
     await Bun.sleep(250)
   }
   for (const s of said) console.log(`  ${s}`)
-  ok = said.some((s) => s.startsWith("thinking|") && s.length > 12) && said.some((s) => s.startsWith("replying|") && s.length > 12)
+  const who = (await value("globalThis.coaxialVoiceWho || ''")) ?? ""
+  if (who) console.log(`  spoken by ${who}`)
+  ok = said.some((s) => (s.startsWith("heard|") || s.startsWith("thinking|")) && s.length > 9) && said.some((s) => s.startsWith("replying|") && s.length > 12) && (!talk || who === talk)
   ws.close()
 } finally {
   proc.kill()

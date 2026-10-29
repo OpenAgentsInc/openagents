@@ -64,6 +64,9 @@ bool speech_agent_stream(speech_agent a, const char *route, const speech_exchang
                          const char *transcript, speech_sentence_fn on_sentence, void *ctx, const volatile int *cancel,
                          char *out, size_t cap, char *err, size_t errcap);
 
+// Cuts finished text (a reply the page wrote) into sentences with the same
+// rule as a streamed reply, calling on_sentence for each on this thread.
+void speech_split(const char *text, speech_sentence_fn on_sentence, void *ctx);
 // Is there an agent instruction for this route (the ROUTES table in speech.c)?
 bool speech_route_known(const char *route);
 

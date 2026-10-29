@@ -91,6 +91,26 @@ EXPORT("vw_control") uint32_t vw_control(uint32_t kind, uint32_t turn, uint32_t 
   return (uint32_t)oa_voice_encode(out, sizeof out, &m);
 }
 
+// Route: whom the speaker faces, the target in vw_text (target bytes; 0 for
+// nobody). The page's own binding (a conversation), never read from speech.
+EXPORT("vw_route") uint32_t vw_route(uint32_t target) {
+  oa_voice_msg m = {.kind = OA_MSG_ROUTE};
+  m.u.route.target = at(0, target);
+  m.u.route.reason = (oa_voice_bytes){(const uint8_t *)"facing", 6};
+  return (uint32_t)oa_voice_encode(out, sizeof out, &m);
+}
+
+// Speech: the page's answer for the host to speak, vw_text holding the turn
+// it answers (turn bytes) then the words (text bytes, at most 600).
+EXPORT("vw_say") uint32_t vw_say(uint32_t turn, uint32_t words) {
+  oa_voice_msg m = {.kind = OA_MSG_SPEECH};
+  m.u.speech.has_utterance = true;
+  m.u.speech.utterance.id = at(0, turn);   // required; the host names the utterance it speaks
+  m.u.speech.utterance.text = at(turn, words);
+  m.u.speech.turn = at(0, turn);
+  return (uint32_t)oa_voice_encode(out, sizeof out, &m);
+}
+
 // Audio for the turn in vw_text (turn bytes): the last uplink frame (from 0),
 // or count pre-roll samples from offset (from 1).
 EXPORT("vw_audio") uint32_t vw_audio(uint32_t turn, int from, uint32_t offset, uint32_t count) {
@@ -130,14 +150,16 @@ EXPORT("vw_field") double vw_field(int i) {
 }
 
 // The decoded frame's strings, copied into vw_text: 0 its text (a transcript,
-// a reply, an error), 1 the utterance, 2 the turn. Returns the length.
+// a reply, an error), 1 the utterance, 2 the turn, 3 who speaks (Speech).
+// Returns the length.
 EXPORT("vw_string") uint32_t vw_string(int i) {
   oa_voice_bytes b = {0};
   switch (got.kind) {
   case OA_MSG_TURN_EVENT: b = i == 0 ? got.u.turn_event.text : i == 2 ? got.u.turn_event.turn : b; break;
   case OA_MSG_SPEECH:
     b = i == 0 && got.u.speech.has_utterance ? got.u.speech.utterance.text
-      : i == 1 && got.u.speech.has_utterance ? got.u.speech.utterance.id : i == 2 ? got.u.speech.turn : b;
+      : i == 1 && got.u.speech.has_utterance ? got.u.speech.utterance.id : i == 2 ? got.u.speech.turn
+      : i == 3 && got.u.speech.has_speaker ? got.u.speech.speaker.id : b;
     break;
   case OA_MSG_CONTROL: b = i == 1 ? got.u.control.utterance : i == 2 ? got.u.control.turn : b; break;
   case OA_MSG_AUDIO: b = i == 1 ? got.u.audio.utterance : i == 2 ? got.u.audio.turn : b; break;

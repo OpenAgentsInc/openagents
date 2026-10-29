@@ -177,6 +177,16 @@ is not built yet. `JOB_RECOGNIZE`/`JOB_FINAL`/`JOB_TAIL` in `host.c` and
    by the host's clock: `Control SPEECH_END`, then `TurnEvent ENDED`. The
    host logs any playback gap (audio not ready in time). Replies queue if one
    is already playing.
+   **Facing a character.** A page in a conversation (the Haunted House
+   talking to Mortimer) sends a client `Route` whose `target` is that
+   character and `reason` is `facing`, by its own binding, never from the
+   words; an empty target faces nobody again. While a character is faced the
+   host sends `TurnEvent FINAL` and stops there: the page asks the character
+   (the same `/api/playtest/npc/ask` as a typed question) and sends a client
+   `Speech` with `turn` and `utterance.text` (at most 600 bytes), which the
+   host cuts into sentences, meters, renders and speaks exactly as an agent
+   reply, its `Speech.speaker` the character. A `Speech` for any other turn
+   is a `PROTOCOL` error.
 6. `Control BARGE_IN` stops reply audio at once, cuts the engine's epoch
    (adopting the client's epoch if it is ahead), bumps the floor's epoch,
    stops the streaming agent call, discards replies (and sentences still

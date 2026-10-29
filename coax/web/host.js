@@ -111,7 +111,7 @@
 import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
 import { startDrops } from "./drop.js";
 import { startUploads } from "./uploads.js";
-import { startVoice, ACT_VOICE } from "./voice.js";
+import { startVoice, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 const app = (script && script.dataset.app) || "app";
@@ -1223,6 +1223,8 @@ function after(gesture, tap = false) {
     else if (code === 4) keep(text);
     else if (code === 6) setQuality(text);
     else if (code === ACT_VOICE && voice) voice.toggle(text === "on");
+    else if (code === ACT_VOICE_TO && voice) voice.face(text);
+    else if (code === ACT_VOICE_SAY && voice) voice.say(text);
     else if (code === 5) { try { const p = JSON.parse(text); if (p && typeof p.key === "string") localStorage.setItem("verse.player", text); } catch {} }
     else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
   }

@@ -26,6 +26,10 @@
 // error, the day's answers used up, nothing back in NPC_WAIT seconds) the
 // house's own lines answer (verse_haunt_ask). What you TEACH a character is
 // added to what they know and kept with the house's save.
+// A question VOICE heard (realm_heard) in a conversation goes the same way,
+// and their answer, theirs or the house's lines, is spoken (realm_voice_say);
+// voice.js is told whom you face (realm_voice_to), so the voice host leaves
+// those turns to this page instead of answering as the house.
 //
 // The Sandbox's set pieces (rl-sandbox-pieces): in edit mode MAKE A SET
 // PIECE (P) takes one sentence to the server's selector
@@ -147,6 +151,10 @@ static uint8_t npc_body[12288];
 static char taught[TAUGHT][4096];  // what characters were taught: their knowledge points here
 static int64_t talking_was = -1;   // the conversation the realm remembers
 static coax_string greet;          // what they said first
+static bool npc_spoken;            // the question out was heard by VOICE: speak the answer
+static char say_text[1024];        // the answer for voice.js, until the host's outbox takes it
+static size_t say_n;
+static bool say_waiting;
 
 // Edit mode's hotbar: short names (the HUD's) and the house's mesh for each.
 typedef struct { const char *label, *name, *mesh; } Item;
@@ -545,20 +553,32 @@ static void follow_talk(void) {
   talking_was = house.talking;
   realm_forget(realm_of());
   npc_ask = -1;
+  npc_spoken = false;
   int64_t typing_for = realm_typing_for(realm_of());
   if (realm_wants_text(realm_of()) && (typing_for == 1 || typing_for == 2)) realm_close_text(realm_of());
   greet = house.talking >= 0 ? house.reply : (coax_string){"", 0};
   if (house.talking >= 0) realm_remember(realm_of(), true, greet);
 }
 
+// Their answer, spoken when VOICE asked it.
+static void npc_say(coax_string words) {
+  if (!npc_spoken) return;
+  npc_spoken = false;
+  say_n = words.count < (int64_t)sizeof say_text ? (size_t)words.count : sizeof say_text;
+  memcpy(say_text, words.data, say_n);
+  say_waiting = say_n > 0;
+}
+
 // The house's own lines answer.
 static void npc_scripted(void) {
   house = verse_haunt_ask(house, (coax_string){question, (int64_t)question_n});
   if (house.talking >= 0) realm_remember(realm_of(), true, house.reply);
+  npc_say(house.reply);
   follow_talk();   // "bye" ends it
 }
 
-static void ask_npc(coax_string typed) {
+static void ask_npc(coax_string typed, bool spoken) {
+  npc_spoken = spoken;
   if (house.talking < 0 || house.talking >= house.people_count) return;
   question_n = typed.count < (int64_t)sizeof question ? (size_t)typed.count : sizeof question;
   memcpy(question, typed.data, question_n);
@@ -583,7 +603,7 @@ static void take_answer(uint32_t length) {
   bool ok = false;
   if (status == 200 && house.talking == npc_who) {
     int64_t n = realm_npc_text((coax_string){nl + 1, (int64_t)(p + length - nl - 1)}, (coax_v_u8){(uint8_t *)answer_text, sizeof answer_text});
-    if (n > 0) { house.reply = (coax_string){answer_text, n}; realm_remember(realm_of(), true, house.reply); ok = true; }
+    if (n > 0) { house.reply = (coax_string){answer_text, n}; realm_remember(realm_of(), true, house.reply); npc_say(house.reply); ok = true; }
   }
   realm_track_ask(tr(), people[npc_who].name, (coax_string){question, (int64_t)question_n}, ok);
   if (!ok && house.talking == npc_who) npc_scripted();
@@ -707,7 +727,7 @@ static void send_typed(void) {
   if (kind == 4) { ask_piece(typed); return; }
   if (house.talking < 0) return;
   if (kind == 2) teach(house.talking, typed);
-  else ask_npc(typed);
+  else ask_npc(typed, false);
 }
 
 #include "realm-flight.c"
@@ -732,6 +752,8 @@ static void take_asks(void) {
     realm_remember(realm_of(), true, house.reply);
   }
   if (asks & 8) house = verse_haunt_talk(house, -1, 0);
+  // VOICE heard a question: in a conversation, theirs to answer (the voice host answers the rest as the house).
+  if ((asks & 8192) && house.talking >= 0) ask_npc(realm_heard(realm_of()), true);
   // Walked away: the conversation ends.
   if (house.talking >= 0 && !verse_haunt_reach(house, house.talking)) house = verse_haunt_talk(house, -1, 0);
   follow_talk();
@@ -772,6 +794,8 @@ static void step(float dt) {
   house = verse_haunt_advance(house, now, point(feet), point(eye), player.theta, distance, player.on_ground);
   take_asks();
   npc_waited();
+  realm_voice_to(r, house.talking >= 0 && house.talking < house.people_count ? people[house.talking].name : (coax_string){"", 0});
+  if (say_waiting && realm_voice_say(r, (coax_string){say_text, (int64_t)say_n})) say_waiting = false;
   piece_waited();
   // A step of the quest is kept at once; other changes at most every 1.5 s.
   static int64_t quest_kept = -1;

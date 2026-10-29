@@ -7,11 +7,16 @@
 //
 // The app turns voice on and off with action 7 ("on" or "off"); message 50
 // tells it what to show: "phase|caption", phase one of off, connecting,
-// listening, hearing, thinking, replying, notice.
+// listening, hearing, heard (the turn's final words), thinking, replying,
+// notice. In a conversation the app names whom you face (action 8, the
+// character's name, "" for nobody): the host then sends each final
+// transcript here unanswered, the app asks the character as it does a typed
+// question, and its answer goes back to be spoken (action 9, the words).
 //
 // The host is the oa-voice Cloud Run service by default (verse/voice-host/deploy.sh);
 // ?voice=ws://127.0.0.1:8787 uses a host on this computer (verse/voice-host/run.sh).
-export const VOICE_KIND = 50, ACT_VOICE = 7;
+export const VOICE_KIND = 50, ACT_VOICE = 7, ACT_VOICE_TO = 8, ACT_VOICE_SAY = 9;
+const ANSWER_WAIT = 20000;   // ms a heard question waits for the app's answer
 const DEFAULT_HOST = "wss://voice.openagents.com";   // Cloud Run oa-voice (verse/voice-host/deploy.sh)
 const OUT_RATE = 24000, AHEAD = 0.2;
 const EV = { TURN_START: 1, TURN_END: 2, BARGE_IN: 4, FORWARD: 8, DROPPED: 128, UNDERRUN: 256 };
@@ -62,6 +67,7 @@ export function startVoice({ send, route, wasmUrl }) {
   let running = false, welcomed = false, frame = 320, pending = new Float32Array(0), backoff = 0.5;
   let turn = "", turns = 0, speaking = false, ended = false, utterance = "", replyTurn = "", sent = 0, played = 0, playedAtStart = 0;
   let phase = "off", caption = "";
+  let facing = "", heardTurn = "", heardAt = 0;
   const enc = new TextEncoder(), dec = new TextDecoder();
 
   const show = (p, c = caption) => {
@@ -132,6 +138,7 @@ export function startVoice({ send, route, wasmUrl }) {
       backoff = 0.5;
       const [a, b] = strings(speaker, route);
       out(x.vw_hello(a, b, OUT_RATE));
+      if (facing) { const [t] = strings(facing); out(x.vw_route(t)); }
     };
     s.onmessage = (e) => { if (e.data instanceof ArrayBuffer) receive(new Uint8Array(e.data)); };
     s.onclose = () => {
@@ -158,6 +165,7 @@ export function startVoice({ send, route, wasmUrl }) {
       uplink();
     }
     feed();
+    if (heardTurn && Date.now() - heardAt > ANSWER_WAIT) { heardTurn = ""; if (phase === "heard" || phase === "thinking") show("listening", ""); }
   }
 
   function uplink() {
@@ -220,10 +228,14 @@ export function startVoice({ send, route, wasmUrl }) {
     else if (kind === MSG.TURN_EVENT) {
       const p = x.vw_field(0), text = string(0);
       if (p === PHASE.PARTIAL && !speaking) show("hearing", text);
-      else if (p === PHASE.FINAL) show("thinking", text);
-      else if ((p === PHASE.ENDED || p === PHASE.INTERRUPTED) && !speaking && phase === "thinking") show("listening", "");
+      else if (p === PHASE.FINAL) {
+        // Facing someone, the host leaves this turn for the app to answer.
+        if (facing) { heardTurn = string(2); heardAt = Date.now(); }
+        show("heard", text);
+      } else if ((p === PHASE.ENDED || p === PHASE.INTERRUPTED) && !speaking && (phase === "thinking" || phase === "heard")) show("listening", "");
     } else if (kind === MSG.SPEECH) {
       const epoch = x.vw_field(3), text = string(0), utt = string(1), t = string(2);
+      globalThis.coaxialVoiceWho = string(3);   // who speaks: the house's route, or the character you face (checks)
       if (epoch && epoch < x.vw_epoch()) return;
       if (speaking && utt && utt === utterance) { show("replying", text); return; }
       if (epoch) x.vw_set_epoch(epoch);
@@ -239,9 +251,29 @@ export function startVoice({ send, route, wasmUrl }) {
       else if (k === CONTROL.PING) control(CONTROL.PONG);
     } else if (kind === MSG.ERROR) {
       console.warn("voice host:", string(0));
-      show(phase === "thinking" ? "listening" : phase, WORDS[x.vw_field(0)] || "Voice hit a problem. Try again.");
+      show(phase === "thinking" || phase === "heard" ? "listening" : phase, WORDS[x.vw_field(0)] || "Voice hit a problem. Try again.");
     }
   }
 
-  return { toggle: (want) => (want ? on() : off()), running: () => running };
+  // Whom the app says you face; the host hears it at once, and again on every connection.
+  function face(name) {
+    if (name === facing) return;
+    facing = name; heardTurn = "";
+    if (x && ws?.readyState === 1) { const [t] = strings(name); out(x.vw_route(t)); }
+  }
+
+  // The app's answer to the heard question: the turn, then up to 600 bytes of words.
+  function say(words) {
+    if (!running || !heardTurn || !welcomed || ws?.readyState !== 1) return;
+    const t = enc.encode(heardTurn).slice(0, 64);
+    let w = enc.encode(words.replace(/\s+/g, " ").trim());
+    if (w.length > 600) { let n = 600; while (n && (w[n] & 0xc0) === 0x80) n--; w = w.slice(0, n); }
+    heardTurn = "";
+    if (!w.length) return;
+    u8(x.vw_text(), t.length).set(t); u8(x.vw_text() + t.length, w.length).set(w);
+    out(x.vw_say(t.length, w.length));
+    show("thinking", caption);
+  }
+
+  return { toggle: (want) => (want ? on() : off()), running: () => running, face, say };
 }

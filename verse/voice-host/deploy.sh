@@ -43,6 +43,8 @@ echo "voice: $url/health ok"
 # One spoken turn through the browser's engine (voice.wasm), as the Haunted House talks to it.
 coax/web/voice/build.sh "$stage/voice.wasm"
 bun coax/web/voice/smoke.ts "$stage/voice.wasm" "wss://${url#https://}" "$here/fixtures/hello-foreman.wav" haunted-house
+# Facing a character, as the house does in a conversation: the page's answer is spoken as them.
+FACE=Mortimer bun coax/web/voice/smoke.ts "$stage/voice.wasm" "wss://${url#https://}" "$here/fixtures/hello-foreman.wav" haunted-house
 # The name the site and the app use (a Cloud Run domain mapping; Cloudflare CNAME to ghs.googlehosted.com).
 bun coax/web/voice/smoke.ts "$stage/voice.wasm" wss://voice.openagents.com "$here/fixtures/hello-foreman.wav" haunted-house
 echo "voice: deployed $image at wss://${url#https://}"
