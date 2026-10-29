@@ -1,0 +1,64 @@
+// Public BIP-340 verification. Variable-time throughout: never pass secrets.
+// Prepared records and mathematical helper results are internal data, NOT
+// verified authority. Only the complete byte-view entry performs verification.
+#load "secp_mult.coax";
+#load "sha256.coax";
+#load "../../tests/nostr/schnorr_checks.coax";
+#authority;
+SV_MAX_MESSAGE :: 1048576;
+SV_TAG_HASH :: #run S_hash("BIP0340/challenge");
+SvPrepared :: struct { s: ScScalar; negative_e: ScScalar; point: SgPoint; r: SecpField; ready: bool; }
+
+sv_lengths_vartime :: (message_count: int,public_count: int,signature_count: int) -> bool {
+  return message_count >= 0 && message_count <= SV_MAX_MESSAGE && public_count == 32 && signature_count == 64;
+}
+// Signature-r || public-key || message is fed as separate borrowed chunks.
+// The local state, tag hash and output cannot overlap caller-owned inputs.
+sv_challenge_vartime :: (message: [] u8,public_key: [] u8,r: [] u8) -> ScLoad {
+  if r.count != 32 || !sv_lengths_vartime(message.count,public_key.count,64) { return ScLoad.{}; }
+  digest := SV_TAG_HASH; tag: [32] u8; out: [32] u8; state: [112] u8;
+  status := sha256_emit(digest.words[..],tag[..]); if status != SHA_OK { return ScLoad.{}; }
+  status = sha256_init(state[..]); if status != SHA_OK { return ScLoad.{}; }
+  status = sha256_update_checked(state[..],tag[..],false); if status != SHA_OK { return ScLoad.{}; }
+  status = sha256_update_checked(state[..],tag[..],false); if status != SHA_OK { return ScLoad.{}; }
+  status = sha256_update_checked(state[..],r,false); if status != SHA_OK { return ScLoad.{}; }
+  status = sha256_update_checked(state[..],public_key,false); if status != SHA_OK { return ScLoad.{}; }
+  status = sha256_update_checked(state[..],message,false); if status != SHA_OK { return ScLoad.{}; }
+  status = sha256_final_checked(state[..],out[..],false); if status != SHA_OK { return ScLoad.{}; }
+  return sc_reduce_bytes(out[..]);
+}
+// ready means preparation succeeded, not that this signature is valid.
+sv_prepare_vartime :: (message: [] u8,public_key: [] u8,signature: [] u8) -> SvPrepared {
+  result: SvPrepared;
+  if !sv_lengths_vartime(message.count,public_key.count,signature.count) { return result; }
+  r := sf_load_strict(signature[0..<32]); s := sc_load(signature[32..<64]);
+  if !r.ok || !s.ok { return result; }
+  point := sg_lift_x_public(public_key); if !point.ok { return result; }
+  challenge := sv_challenge_vartime(message,public_key,signature[0..<32]); if !challenge.ok { return result; }
+  return SvPrepared.{s=s.value,negative_e=sc_negate(challenge.value),point=point.value,r=r.value,ready=true};
+}
+sv_prepare_nostr_vartime :: (event_id: [] u8,public_key: [] u8,signature: [] u8) -> SvPrepared {
+  if event_id.count != 32 { return SvPrepared.{}; }
+  return sv_prepare_vartime(event_id,public_key,signature);
+}
+// Inputs come from the canonical affine conversion below. Refusals and
+// infinity have a nonzero infinity flag, so they cannot pass this comparison.
+sv_affine_matches_vartime :: (r: SecpField,affine: SgAffine) -> bool {
+  return affine.infinity == 0 && (affine.y.limb[0]&1) == 0 && sf_equal_mask(r,affine.x) == CB_MAX64;
+}
+// This is only a mathematical equation comparison over internal data. A forged
+// prepared record is NOT a verified signature. It stays non-exported.
+sv_prepared_matches_vartime :: (prepared: SvPrepared) -> bool {
+  if !prepared.ready { return false; }
+  result := ecmult_vartime(prepared.s,prepared.point,prepared.negative_e);
+  // Group APIs map every refusal to canonical infinity; affine conversion
+  // preserves a nonzero infinity flag, which the comparison rejects.
+  affine := sg_to_affine(result.value);
+  return sv_affine_matches_vartime(prepared.r,affine.value);
+}
+schnorr_verify_vartime :: (message: [] u8,public_key: [] u8,signature: [] u8) -> bool #export_c {
+  return sv_prepared_matches_vartime(sv_prepare_vartime(message,public_key,signature));
+}
+nostr_verify_vartime :: (event_id: [] u8,public_key: [] u8,signature: [] u8) -> bool #export_c {
+  return sv_prepared_matches_vartime(sv_prepare_nostr_vartime(event_id,public_key,signature));
+}

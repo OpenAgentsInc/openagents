@@ -1,0 +1,48 @@
+// Real component/equation checks. Full positive signatures run in emitted
+// native/Wasm artifacts; the interpreter retains its default20M budget.
+#load "schnorr_fixtures.coax";
+#authority;
+#test "public verification lengths have exact metadata bounds" {
+  #assert sv_lengths_vartime(0,32,64) && sv_lengths_vartime(SV_MAX_MESSAGE,32,64);
+  #assert !sv_lengths_vartime(-1,32,64) && !sv_lengths_vartime(SV_MAX_MESSAGE+1,32,64);
+  #assert !sv_lengths_vartime(1,31,64) && !sv_lengths_vartime(1,33,64);
+  #assert !sv_lengths_vartime(1,32,63) && !sv_lengths_vartime(1,32,65);
+}
+#test "public challenge metadata is checked before reading views" {
+  bytes: [33] u8;
+  #assert !sv_challenge_vartime(bytes[0..<0],bytes[0..<31],bytes[0..<32]).ok;
+  #assert !sv_challenge_vartime(bytes[0..<0],bytes[0..<32],bytes[0..<31]).ok;
+  #assert !sv_challenge_vartime(bytes[0..<0],bytes[..],bytes[0..<32]).ok;
+  #assert !sv_challenge_vartime(bytes[0..<0],bytes[0..<32],bytes[..]).ok;
+}
+#test "both public entries reject malformed lengths without a full equation" {
+  bytes: [64] u8;
+  #assert !schnorr_verify_vartime(bytes[0..<0],bytes[0..<31],bytes[..]);
+  #assert !schnorr_verify_vartime(bytes[0..<0],bytes[0..<32],bytes[0..<63]);
+  #assert !nostr_verify_vartime(bytes[0..<31],bytes[0..<32],bytes[..]);
+  #assert !nostr_verify_vartime(bytes[0..<32],bytes[0..<31],bytes[..]);
+}
+#test "real small public equation succeeds and readiness never grants authority" {
+  prepared: SvPrepared; prepared.s = sc_small(1); prepared.negative_e = sc_small(1);
+  prepared.point = sg_generator(); prepared.ready = true;
+  twice := sg_to_affine(sg_double_valid(sg_generator())); prepared.r = twice.value.x;
+  #assert sv_prepared_matches_vartime(prepared);
+  prepared.ready = false; #assert !sv_prepared_matches_vartime(prepared);
+}
+#test "real public equations reject infinity, invalid points and odd y" {
+  prepared: SvPrepared; prepared.ready = true; prepared.point = sg_generator();
+  #assert !sv_prepared_matches_vartime(prepared);
+  prepared.point = sg_negate(sg_generator()).value; prepared.negative_e = sc_small(1); prepared.r = prepared.point.x;
+  #assert !sv_prepared_matches_vartime(prepared);
+  prepared.point = SgPoint.{}; #assert !sv_prepared_matches_vartime(prepared);
+}
+#test "affine equation comparison checks x, parity and finite flag independently" {
+  three := sg_to_affine(sg_add_valid(sg_double_valid(sg_generator()),sg_generator()));
+  #assert (three.value.y.limb[0]&1) == 0 && (three.value.y.limb[1]&1) == 1;
+  #assert sv_affine_matches_vartime(three.value.x,three.value);
+  one: SecpField; one.limb[0] = 1; wrong := sf_add(three.value.x,one);
+  #assert !sv_affine_matches_vartime(wrong,three.value);
+  three.value.infinity = 1; #assert !sv_affine_matches_vartime(three.value.x,three.value);
+  three.value.infinity = CB_MAX64; #assert !sv_affine_matches_vartime(three.value.x,three.value);
+}
+
