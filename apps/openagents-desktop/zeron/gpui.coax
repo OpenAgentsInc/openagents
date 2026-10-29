@@ -1,0 +1,308 @@
+// GPUI's drawing model in Coax, for the Zeron-fork UI (docs/desktop/coax-desktop.md).
+// GPUI (zeronsh/zui, the renderer Zeron draws with) paints a frame as
+// primitives: quads (a rounded rect with a fill and a border), drop shadows
+// (a gaussian-blurred rounded rect) and monochrome sprites (glyphs and SVG
+// icons, alpha masks in an atlas, tinted). These are the same three, written
+// as vertices for apps/openagents-desktop/Zeron.metal, which ports GPUI's
+// fragment shaders. Layout is in logical pixels; a primitive's bounds snap to
+// device pixels the way GPUI's window.rs does (snap_bounds, cover_bounds).
+//
+// The host is GPUI's platform layer: it rasterizes Zeron's font (Geist) with
+// CoreText exactly as gpui_macos/text_system.rs does (four subpixel x
+// positions, the font-smoothing dilation picked from the text's luminance)
+// and Zeron's SVG icons at twice their device size, into one atlas, and
+// gives Coax each font's metrics and each icon's tile (gp_font_*, gp_icon).
+// Based on Zeron by Wing, MIT.
+
+GP_VERTEX_FLOATS :: 20;
+GP_QUAD :: 0.0; GP_SHADOW :: 1.0; GP_SPRITE :: 2.0;
+GP_SUBPIXEL :: 4;           // gpui text_system.rs SUBPIXEL_VARIANTS_X
+GP_DILATIONS :: 5;          // gpui_macos glyph_dilation_for_color: levels 0..4
+GP_SVG_SCALE :: 2.0;        // gpui svg_renderer.rs SMOOTH_SVG_SCALE_FACTOR
+GP_FONTS :: 2;
+GP_ICONS :: 8;
+
+// The glyphs the atlas holds, in order: ASCII 32..126, then these.
+GP_EXTRA :: [3] u32.[0x2026, 0x2022, 0x00A0];   // … • no-break space
+GP_GLYPHS :: 98;
+
+Rgba :: struct { r: f32; g: f32; b: f32; a: f32; }
+
+// One font as the host rasterized it: its size, ascent and descent (logical
+// px), each glyph's advance and the kerning of each pair (logical px), and
+// where its cells are: cell device pixels square, the pen at (pen_x, pen_y)
+// in a cell, the first cell at y0, cols cells to a row. A cell's index is
+// (dilation * GP_SUBPIXEL + subpixel) * GP_GLYPHS + glyph.
+GpFont :: struct {
+  size: f32; ascent: f32; descent: f32;
+  cell: f32; pen_x: f32; pen_y: f32; y0: f32; cols: int;
+  advance: [GP_GLYPHS] f32;
+  kern: [9604] f32;          // GP_GLYPHS * GP_GLYPHS
+}
+
+// An icon's tile in the atlas (device pixels, at GP_SVG_SCALE times its size).
+GpIcon :: struct { x: f32; y: f32; w: f32; h: f32; }
+
+Atlas :: struct {
+  width: f32; height: f32;
+  fonts: [GP_FONTS] GpFont;
+  icons: [GP_ICONS] GpIcon;
+  ready: bool;
+}
+
+// ---------------------------------------------------------------- colors
+
+rgba :: (r: f32, g: f32, b: f32, a: f32) -> Rgba { return Rgba.{r = r, g = g, b = b, a = a}; }
+// #rrggbb
+hex :: (v: int, a: f32) -> Rgba {
+  return Rgba.{r = cast(f32) ((v >> 16) & 255) / 255, g = cast(f32) ((v >> 8) & 255) / 255, b = cast(f32) (v & 255) / 255, a = a};
+}
+// GPUI's Hsla::opacity: the alpha times o.
+opacity :: (c: Rgba, o: f32) -> Rgba { return Rgba.{r = c.r, g = c.g, b = c.b, a = c.a * o}; }
+// A color over another, as one opaque color (zeron theme.rs flatten).
+flatten :: (top: Rgba, under: Rgba) -> Rgba {
+  a := top.a;
+  return Rgba.{r = top.r * a + under.r * (1 - a), g = top.g * a + under.g * (1 - a), b = top.b * a + under.b * (1 - a), a = 1};
+}
+// gpui_macos glyph_dilation_for_color: CoreGraphics thickens light text more.
+dilation :: (c: Rgba) -> int {
+  l := 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  level := cast(int) floor(4 * l + 0.5);
+  if level < 0 { return 0; }
+  if level > 4 { return 4; }
+  return level;
+}
+
+// ---------------------------------------------------------------- snapping
+
+ceil :: (v: f32) -> f32 { return -floor(-v); }
+
+// gpui util.rs round_half_toward_zero, and the device-pixel snaps on it.
+round_half_toward_zero :: (v: f32) -> f32 {
+  m := ceil(abs(v) - 0.5);
+  return ifx v < 0 then -m else m;
+}
+snap :: (v: f32, d: f32) -> f32 { return round_half_toward_zero(v * d); }
+snap_stroke :: (v: f32, d: f32) -> f32 {
+  if v == 0 { return 0; }
+  s := snap(v, d);
+  return ifx s < 1 then 1.0f32 else s;
+}
+
+// ---------------------------------------------------------------- vertices
+
+// Six vertices over the device rectangle (x0, y0)-(x1, y1), all carrying the
+// primitive's bounds and paint; a sprite's uv runs from (u0, v0) to (u1, v1).
+emit :: (out: [] f32, at: int, x0: f32, y0: f32, x1: f32, y1: f32, kind: f32, blur: f32,
+         bx: f32, by: f32, bw: f32, bh: f32, radius: f32, border: f32,
+         u0: f32, v0: f32, u1: f32, v1: f32, fill: Rgba, edge: Rgba) -> int {
+  if at < 0 || (at + 6) * GP_VERTEX_FLOATS > out.count { return at; }
+  xs := [6] f32.[x0, x1, x1, x0, x1, x0];
+  ys := [6] f32.[y0, y0, y1, y0, y1, y1];
+  us := [6] f32.[u0, u1, u1, u0, u1, u0];
+  vs := [6] f32.[v0, v0, v1, v0, v1, v1];
+  for k: 0..<6 {
+    o := (at + k) * GP_VERTEX_FLOATS;
+    out[o] = xs[k]; out[o + 1] = ys[k]; out[o + 2] = kind; out[o + 3] = blur;
+    out[o + 4] = bx; out[o + 5] = by; out[o + 6] = bw; out[o + 7] = bh;
+    out[o + 8] = radius; out[o + 9] = border; out[o + 10] = us[k]; out[o + 11] = vs[k];
+    out[o + 12] = fill.r; out[o + 13] = fill.g; out[o + 14] = fill.b; out[o + 15] = fill.a;
+    out[o + 16] = edge.r; out[o + 17] = edge.g; out[o + 18] = edge.b; out[o + 19] = edge.a;
+  }
+  return at + 6;
+}
+
+// GPUI paint_quad: a rect of logical bounds, corner radius and border width,
+// snapped to device pixels.
+paint_quad :: (out: [] f32, at: int, d: f32, x: f32, y: f32, w: f32, h: f32, radius: f32, border: f32, fill: Rgba, edge: Rgba) -> int {
+  if fill.a <= 0 && (border <= 0 || edge.a <= 0) { return at; }
+  x0 := snap(x, d); y0 := snap(y, d);
+  x1 := snap(x + w, d); y1 := snap(y + h, d);
+  if x1 < x0 { x1 = x0; }
+  if y1 < y0 { y1 = y0; }
+  return emit(out, at, x0, y0, x1, y1, GP_QUAD, 0, x0, y0, x1 - x0, y1 - y0, radius * d, snap_stroke(border, d), 0, 0, 0, 0, fill, edge);
+}
+
+// GPUI paint_shadows for one BoxShadow under an element of logical bounds and
+// radius: offset, blur radius, spread and color as in Tailwind's shadows.
+paint_shadow :: (out: [] f32, at: int, d: f32, x: f32, y: f32, w: f32, h: f32, radius: f32,
+                 dx: f32, dy: f32, blur: f32, spread: f32, color: Rgba) -> int {
+  if color.a <= 0 { return at; }
+  sx := x + dx - spread; sy := y + dy - spread;
+  x0 := floor(sx * d); y0 := floor(sy * d);
+  x1 := ceil((sx + w + 2 * spread) * d); y1 := ceil((sy + h + 2 * spread) * d);
+  b := blur * d;
+  m := 3 * b;
+  return emit(out, at, x0 - m, y0 - m, x1 + m, y1 + m, GP_SHADOW, b, x0, y0, x1 - x0, y1 - y0, radius * d, 0, 0, 0, 0, 0, color, color);
+}
+
+// A tinted alpha mask: device rectangle, atlas tile in texels.
+paint_sprite :: (out: [] f32, at: int, a: [] Atlas, x0: f32, y0: f32, x1: f32, y1: f32,
+                 tx: f32, ty: f32, tw: f32, th: f32, color: Rgba) -> int {
+  if color.a <= 0 || a[0].width <= 0 { return at; }
+  W := a[0].width; H := a[0].height;
+  return emit(out, at, x0, y0, x1, y1, GP_SPRITE, 0, x0, y0, x1 - x0, y1 - y0, 0, 0,
+              tx / W, ty / H, (tx + tw) / W, (ty + th) / H, color, color);
+}
+
+// GPUI paint_svg: an icon of logical size centered in a logical box. The
+// tile is GP_SVG_SCALE times the device size, drawn at half.
+paint_icon :: (out: [] f32, at: int, a: [] Atlas, d: f32, icon: int, x: f32, y: f32, w: f32, h: f32, color: Rgba) -> int {
+  if icon < 0 || icon >= GP_ICONS { return at; }
+  t := a[0].icons[icon];
+  if t.w <= 0 { return at; }
+  bx := snap(x, d); by := snap(y, d); bw := snap(x + w, d) - bx; bh := snap(y + h, d) - by;
+  sw := t.w / GP_SVG_SCALE; sh := t.h / GP_SVG_SCALE;
+  ox := round_half_toward_zero(bx + bw / 2 - sw / 2);
+  oy := round_half_toward_zero(by + bh / 2 - sh / 2);
+  return paint_sprite(out, at, a, ox, oy, ox + ceil(sw), oy + ceil(sh), t.x, t.y, t.w, t.h, color);
+}
+
+// ---------------------------------------------------------------- text
+
+Rune :: struct { code: u32; len: int; }
+
+// The code point at byte i of UTF-8 text; a malformed byte reads as itself.
+rune_at :: (text: string, i: int) -> Rune {
+  b := cast(u32) text[i];
+  if b < 0x80 { return Rune.{code = b, len = 1}; }
+  n := ifx b >= 0xF0 then 4 else ifx b >= 0xE0 then 3 else 2;
+  if b < 0xC0 || i + n > text.count { return Rune.{code = b, len = 1}; }
+  mask: u32 = ifx n == 2 then 31 else ifx n == 3 then 15 else 7;
+  c := b & mask;
+  for k: 1..<n { c = (c << 6) | (cast(u32) text[i + k] & 63); }
+  return Rune.{code = c, len = n};
+}
+
+// A code point's glyph in the atlas, or -1.
+glyph_of :: (code: u32) -> int {
+  if code >= 32 && code <= 126 { return cast(int) code - 32; }
+  extra := GP_EXTRA;
+  for k: 0..<3 { if extra[k] == code { return 95 + k; } }
+  return -1;
+}
+
+// The pen position after each glyph of text: CoreText's advances and kerning,
+// as GPUI's shaped line places them. Returns the width (logical px).
+text_width :: (f: GpFont, text: string) -> f32 {
+  x: f32 = 0; prev := -1; i := 0;
+  while i < text.count {
+    r := rune_at(text, i); i += r.len;
+    g := glyph_of(r.code);
+    if g < 0 { g = glyph_of('?'); }
+    if prev >= 0 { x += f.kern[prev * GP_GLYPHS + g]; }
+    x += f.advance[g]; prev = g;
+  }
+  return x;
+}
+
+// The pen x at byte offset `upto` of text (logical px from the start).
+text_x :: (f: GpFont, text: string, upto: int) -> f32 {
+  n := ifx upto < text.count then upto else text.count;
+  return text_width(f, cast(string) text[0..<n]);
+}
+
+// The byte offset in text nearest the logical x.
+text_offset :: (f: GpFont, text: string, x: f32) -> int {
+  pen: f32 = 0; prev := -1; i := 0;
+  while i < text.count {
+    r := rune_at(text, i);
+    g := glyph_of(r.code);
+    if g < 0 { g = glyph_of('?'); }
+    k := ifx prev >= 0 then f.kern[prev * GP_GLYPHS + g] else 0.0f32;
+    step := k + f.advance[g];
+    if x < pen + step * 0.5 { return i; }
+    pen += step; prev = g; i += r.len;
+  }
+  return text.count;
+}
+
+// GPUI's line paint: glyphs of font slot `font` from logical (x, top) in a
+// line box of line_height, the baseline centered as gpui line.rs does
+// (top + (line_height - ascent - descent) / 2 + ascent). Each glyph's origin
+// snaps to a quarter device pixel in x and a whole one in y, as
+// window.rs paint_glyph does, and draws the cell rasterized for that
+// subpixel and for the color's dilation.
+paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: string, x: f32, top: f32, line_height: f32, color: Rgba) -> int {
+  if font < 0 || font >= GP_FONTS || !a[0].ready { return at; }
+  f := a[0].fonts[font];
+  baseline := top + (line_height - f.ascent - f.descent) / 2 + f.ascent;
+  level := dilation(color);
+  v := at; pen := x; prev := -1; i := 0;
+  sub := cast(f32) GP_SUBPIXEL;
+  while i < text.count {
+    r := rune_at(text, i); i += r.len;
+    g := glyph_of(r.code);
+    if g < 0 { g = glyph_of('?'); }
+    if prev >= 0 { pen += f.kern[prev * GP_GLYPHS + g]; }
+    qx := round_half_toward_zero(pen * d * sub) / sub;
+    qy := round_half_toward_zero(baseline * d);
+    variant := cast(int) ((qx - floor(qx)) * sub);
+    ox := floor(qx); oy := qy;
+    if r.code != ' ' && r.code != 0xA0 {
+      cell := (level * GP_SUBPIXEL + variant) * GP_GLYPHS + g;
+      tx := cast(f32) (cell % f.cols) * f.cell;
+      ty := f.y0 + cast(f32) (cell / f.cols) * f.cell;
+      v = paint_sprite(out, v, a, ox - f.pen_x, oy - f.pen_y, ox - f.pen_x + f.cell, oy - f.pen_y + f.cell, tx, ty, f.cell, f.cell, color);
+    }
+    pen += f.advance[g]; prev = g;
+  }
+  return v;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "colors, opacity and flattening are GPUI's" {
+  c := hex(0xe8e8ea, 1);
+  #assert abs(c.r - 232.0 / 255.0) < 0.0001 && c.a == 1;
+  #assert opacity(c, 0.35).a == 0.35;
+  w := flatten(rgba(1, 1, 1, 0.1), hex(0x000000, 1));
+  #assert abs(w.r - 0.1) < 0.0001 && w.a == 1;
+  #assert dilation(hex(0xe8e8ea, 1)) == 4 && dilation(hex(0x060606, 1)) == 0 && dilation(hex(0xa9a9ae, 1)) == 3;
+}
+#test "bounds snap half toward zero, strokes to at least a device pixel" {
+  #assert round_half_toward_zero(2.5) == 2 && round_half_toward_zero(2.51) == 3 && round_half_toward_zero(-2.5) == -2;
+  #assert snap(10.25, 2) == 20 && snap(10.3, 2) == 21;
+  #assert snap_stroke(0.25, 2) == 1 && snap_stroke(1, 2) == 2 && snap_stroke(0, 2) == 0;
+}
+#test "a quad is six vertices carrying its snapped bounds, radius and border" {
+  out: [120] f32;
+  n := paint_quad(out[..], 0, 2, 10, 20, 100, 50, 26, 1, hex(0x343438, 1), rgba(1, 1, 1, 0.1));
+  #assert n == 6;
+  #assert out[4] == 20 && out[5] == 40 && out[6] == 200 && out[7] == 100 && out[8] == 52 && out[9] == 2;
+  #assert out[0] == 20 && out[GP_VERTEX_FLOATS * 2] == 220 && out[GP_VERTEX_FLOATS * 2 + 1] == 140;
+  #assert paint_quad(out[..], 0, 2, 0, 0, 10, 10, 0, 0, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0)) == 0;
+  #assert paint_quad(out[..], 18, 2, 0, 0, 10, 10, 0, 0, hex(0, 1), hex(0, 1)) == 18;   // no room
+}
+#test "a shadow covers three blurs past its spread bounds" {
+  out: [120] f32;
+  n := paint_shadow(out[..], 0, 2, 0, 0, 100, 50, 26, 0, 10, 15, -3, rgba(0, 0, 0, 0.1));
+  #assert n == 6 && out[2] == GP_SHADOW && out[3] == 30;
+  #assert out[4] == 6 && out[5] == 26 && out[6] == 188 && out[7] == 88;
+  #assert out[0] == 6 - 90;
+}
+#test "text measures with advances and kerning, and finds offsets" {
+  f: GpFont;
+  for g: 0..<GP_GLYPHS { f.advance[g] = 7; }
+  f.kern[glyph_of('A') * GP_GLYPHS + glyph_of('V')] = -1;
+  #assert text_width(f, "AV") == 13 && text_width(f, "VA") == 14;
+  #assert text_width(f, "a…") == 14;   // the ellipsis is one glyph
+  #assert text_x(f, "abc", 2) == 14 && text_x(f, "abc", 9) == 21;
+  #assert text_offset(f, "abc", 0) == 0 && text_offset(f, "abc", 4) == 1 && text_offset(f, "abc", 100) == 3;
+  #assert glyph_of(' ') == 0 && glyph_of('~') == 94 && glyph_of(0x2026) == 95 && glyph_of(0x4e00) == -1;
+}
+#test "a glyph lands on a quarter device pixel, in the cell for its subpixel and dilation" {
+  a: [1] Atlas;
+  a[0].width = 1024; a[0].height = 1024; a[0].ready = true;
+  a[0].fonts[0].size = 14; a[0].fonts[0].ascent = 13; a[0].fonts[0].descent = 3;
+  a[0].fonts[0].cell = 48; a[0].fonts[0].pen_x = 8; a[0].fonts[0].pen_y = 36; a[0].fonts[0].cols = 20;
+  for g: 0..<GP_GLYPHS { a[0].fonts[0].advance[g] = 7.1; }
+  out: [240] f32;
+  n := paint_text(out[..], 0, a[..], 2, 0, "ab", 10.1, 0, 22.75, hex(0x000000, 1));
+  #assert n == 12;
+  // 'a' at x 20.2 device: quantized 20.25, variant 1; baseline 2 * (3.375 + 13) = 32.75, rounded 33
+  #assert out[0] == 20 - 8 && out[1] == 33 - 36;
+  cell := (0 * GP_SUBPIXEL + 1) * GP_GLYPHS + glyph_of('a');
+  #assert abs(out[10] - cast(f32) (cell % 20) * 48 / 1024) < 0.00001;
+  #assert paint_text(out[..], 0, a[..], 2, 0, " ", 0, 0, 20, hex(0, 1)) == 0;   // a space draws nothing
+}

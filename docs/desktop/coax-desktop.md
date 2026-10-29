@@ -1,12 +1,56 @@
 # OpenAgents for Mac, in Coax (spec, draft)
 
-Written 2026-10-28. Status: proposal. Nothing is built yet.
+Written 2026-10-28; updated 2026-10-29. Status: `apps/openagents-desktop/`
+builds and opens on a new chat screen whose composer is drawn as Zeron draws
+it (below). The rest of this spec is still a proposal.
 
 A native Mac app where Claude Code and Codex work side by side in one window,
 and can talk to each other. The UI follows the old OpenAgents desktop app (the
 Rust/GPUI fork of Zeron that `0b401561a0` removed) closely in layout and
-behaviour, but it is drawn with our HUD components, and the app itself (UI and
-engine) is Coax.
+behaviour, and the app itself (UI and engine) is Coax.
+
+## The UI is forked from Zeron (2026-10-29)
+
+We are moving off the HUD look. The UI is rebuilt from
+[Zeron](https://github.com/zeronsh/zeron) (Rust/GPUI, by Wing, MIT; a local
+clone is at `~/work/zeron`), one component at a time, each matched pixel for
+pixel against a render of Zeron itself. Based on Zeron by Wing, MIT.
+
+How it works:
+
+- `apps/openagents-desktop/zeron/gpui.coax` is GPUI's drawing model in Coax:
+  quads (rounded rect, fill, border), drop shadows (blurred rounded rect) and
+  monochrome sprites (glyphs and SVG icons from an atlas), snapped to device
+  pixels the way GPUI's `window.rs` snaps them, text placed on quarter-pixel
+  x positions with CoreText's advances and kerning. `Zeron.metal` ports GPUI's
+  `quad_fragment`, `shadow_fragment` and `monochrome_sprite_fragment`.
+- The Swift host (`Sources/Zeron.swift`) is GPUI's platform layer: it
+  rasterizes Geist (Zeron's font, bundled under `fonts/` with its OFL) exactly
+  as `gpui_macos/text_system.rs` does (four subpixel offsets, the
+  font-smoothing dilation picked from the text color's luminance) and Zeron's
+  SVG icons at twice their device size, into one atlas, and hands Coax the
+  metrics (`zeron-face.c`).
+- `zeron/composer.coax` is Zeron's composer (`crates/ui/src/composer.rs` and
+  the chips of `pickers.rs`) in its expanded new-chat form, in Zeron Dark on
+  the opaque surface. `zeron/screen.coax` is the new chat screen: the canvas
+  and the composer where Zeron's new chat puts it. It is connected to
+  nothing: typing, the caret, Backspace and Delete (with Alt and Cmd),
+  the arrows, wrapping, growing and the placeholder work; Enter clears.
+- The app opens on that screen. The HUD chat, LAB and router
+  (`chat.coax`, `router.coax`) stay in the tree and build, unshown.
+- Licenses and attribution: `apps/openagents-desktop/zeron/NOTICE`.
+
+Component one, the composer, against Zeron's own render (1320x880 at scale 2,
+sidebar collapsed, one project): every pixel of the text, caret, pill, border,
+shadow and chips is identical; Zeron's three SVG icons, rasterized here by
+CoreSVG rather than resvg, differ at their antialiased edges (0.2% of the
+composer region's pixels, at most 24 of 255 in a channel). Not yet drawn: the
+project and device selectors above the composer, the titlebar, the
+microphone (Zeron hides it while dictation is off), the pickers' menus, and
+hover states.
+
+Rebuild and look: `apps/openagents-desktop/build.sh --open`; an offscreen PNG:
+`build/OpenAgents.app/Contents/MacOS/OpenAgents --shot out.png [--click X,Y] [--type TEXT]`.
 
 ## What came before
 
@@ -118,8 +162,9 @@ Rules:
 ### The UI, first version
 
 The layout follows the old app's feature inventory §1.1–1.8, cut to the basics
-and drawn with HUD components (thin orange frames, the vector font, black
-background).
+and drawn with the Zeron-fork components (above), not the HUD's. Labels below
+in capitals were written for the HUD; they take Zeron's wording as each
+component is ported.
 
 - **Window:** 1320×880 (minimum 900×600), inset title bar, traffic lights at
   {14, 15}.

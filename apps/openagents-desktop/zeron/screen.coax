@@ -1,0 +1,134 @@
+// The Mac app's new chat screen, the first piece of the Zeron-fork UI
+// (docs/desktop/coax-desktop.md): Zeron Dark's canvas, empty but for the
+// composer where Zeron's new chat places it, centered in a 768px column.
+// The host (Sources/Zeron.swift, through zeron-face.c) builds the atlas from
+// the fonts and icons listed here, then each frame asks for the vertices.
+// Based on Zeron by Wing, MIT.
+
+#load "composer.coax";
+
+ZR_MAX_VERTICES :: 60000;
+// Where Zeron's new-chat composer sits: (viewport - height) / 2, less this
+// (measured from Zeron at 1320x880: the pill's top at 368).
+ZR_HERO_LIFT :: 12.0;
+ZR_COLUMN_PAD :: 16.0;
+
+ZeronState :: struct {
+  ready: bool;
+  width: f32; height: f32; d: f32;
+  atlas: [1] Atlas;
+  composer: [1] Composer;
+  pointer_in: bool;              // the pointer is over the composer (the I-beam)
+}
+
+zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int {
+  if !s[0].ready { s[0].ready = true; s[0].composer[0].focused = true; }
+  d := ifx dpr < 1 then 1.0f32 else dpr;
+  s[0].width = width; s[0].height = height; s[0].d = d;
+  dt1 := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].composer[0].since += dt1;
+  th := zeron_dark();
+  w := width / d; h := height / d;
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, th.shell, th.shell);
+  column := ifx w < COMPOSER_MAX_WIDTH then w else COMPOSER_MAX_WIDTH;
+  cw := column - 2 * ZR_COLUMN_PAD;
+  x := (w - cw) / 2;
+  // the height decides the top: wrap first at this width
+  if s[0].atlas[0].ready { composer_wrap(s[0].composer[..], s[0].atlas[0].fonts[FONT_INPUT], cw - 34); }
+  ch := composer_height(s[0].composer[0].lines);
+  y := (h - ch) / 2 - ZR_HERO_LIFT;
+  return paint_composer(out, v, s[0].composer[..], s[0].atlas[..], th, d, x, y, cw);
+}
+
+// ---------------------------------------------------------------- the host's calls
+
+coaxial_zeron_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c {
+  if s.count < 1 || width < 1 || height < 1 { return 0; }
+  return zr_frame(s, out, width, height, dpr, dt);
+}
+// phase 0 down, 1 move, 2 up; device pixels.
+coaxial_zeron_pointer :: (s: [] ZeronState, x: f32, y: f32, phase: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
+  c := s[0].composer[..];
+  lx := x / d; ly := y / d;
+  s[0].pointer_in = lx >= c[0].x && lx < c[0].x + c[0].w && ly >= c[0].y && ly < c[0].y + c[0].h;
+  if phase == 0 { return composer_press(c, s[0].atlas[..], lx, ly); }
+  return false;
+}
+coaxial_zeron_key :: (s: [] ZeronState, key: int, mods: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  return composer_key(s[0].composer[..], key, mods);
+}
+coaxial_zeron_text :: (s: [] ZeronState, text: string) #export_c {
+  if s.count < 1 || !s[0].composer[0].focused { return; }
+  composer_insert(s[0].composer[..], text);
+}
+coaxial_zeron_wants_text :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && s[0].composer[0].focused; }
+coaxial_zeron_cursor :: (s: [] ZeronState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].pointer_in then 1 else 0; }
+coaxial_zeron_max_vertices :: () -> int #export_c { return ZR_MAX_VERTICES; }
+coaxial_zeron_vertex_floats :: () -> int #export_c { return GP_VERTEX_FLOATS; }
+
+// What the atlas holds: the glyphs, the fonts (size, weight), the icons (name, size).
+coaxial_zeron_glyph_count :: () -> int #export_c { return GP_GLYPHS; }
+coaxial_zeron_glyph_code :: (g: int) -> int #export_c {
+  if g < 95 { return g + 32; }
+  extra := GP_EXTRA;
+  return ifx g - 95 < 3 then cast(int) extra[g - 95] else 63;
+}
+coaxial_zeron_font_count :: () -> int #export_c { return GP_FONTS; }
+coaxial_zeron_font_size :: (k: int) -> f32 #export_c { sizes := FONT_SIZES; return ifx k >= 0 && k < 2 then sizes[k] else 14.0f32; }
+coaxial_zeron_font_weight :: (k: int) -> int #export_c { weights := FONT_WEIGHTS; return ifx k >= 0 && k < 2 then weights[k] else 0; }
+coaxial_zeron_icon_count :: () -> int #export_c { return 3; }
+coaxial_zeron_icon_size :: (i: int) -> f32 #export_c { sizes := ICON_SIZES; return ifx i >= 0 && i < 3 then sizes[i] else 16.0f32; }
+coaxial_zeron_icon_name :: (i: int, out: [] u8) -> int #export_c {
+  if i < 0 || i >= 3 { return 0; }
+  names := ICON_NAMES;
+  n := ifx names[i].count < out.count then names[i].count else out.count;
+  for k: 0..<n { out[k] = names[i][k]; }
+  return n;
+}
+
+// The host's measurements of a font: header is ascent, descent, cell,
+// pen x, pen y, first cell's y, columns; then the advances and kerning.
+coaxial_zeron_set_font :: (s: [] ZeronState, slot: int, header: [] f32, advance: [] f32, kern: [] f32) #export_c {
+  if s.count < 1 || slot < 0 || slot >= GP_FONTS || header.count < 7 || advance.count < GP_GLYPHS || kern.count < GP_GLYPHS * GP_GLYPHS { return; }
+  sizes := FONT_SIZES;
+  s[0].atlas[0].fonts[slot].size = sizes[slot];
+  s[0].atlas[0].fonts[slot].ascent = header[0]; s[0].atlas[0].fonts[slot].descent = header[1];
+  s[0].atlas[0].fonts[slot].cell = header[2]; s[0].atlas[0].fonts[slot].pen_x = header[3]; s[0].atlas[0].fonts[slot].pen_y = header[4];
+  s[0].atlas[0].fonts[slot].y0 = header[5]; s[0].atlas[0].fonts[slot].cols = cast(int) header[6];
+  for g: 0..<GP_GLYPHS { s[0].atlas[0].fonts[slot].advance[g] = advance[g]; }
+  for k: 0..<GP_GLYPHS * GP_GLYPHS { s[0].atlas[0].fonts[slot].kern[k] = kern[k]; }
+}
+coaxial_zeron_set_icon :: (s: [] ZeronState, i: int, x: f32, y: f32, w: f32, h: f32) #export_c {
+  if s.count < 1 || i < 0 || i >= GP_ICONS { return; }
+  s[0].atlas[0].icons[i] = GpIcon.{x = x, y = y, w = w, h = h};
+}
+coaxial_zeron_set_atlas :: (s: [] ZeronState, width: f32, height: f32) #export_c {
+  if s.count < 1 { return; }
+  s[0].atlas[0].width = width; s[0].atlas[0].height = height; s[0].atlas[0].ready = width > 0 && height > 0;
+}
+
+#test "the screen opens focused on the empty composer, centered as Zeron's new chat" {
+  s: [1] ZeronState;
+  header := [7] f32.[13, 3, 64, 12, 44, 0, 64];
+  adv: [GP_GLYPHS] f32;
+  for g: 0..<GP_GLYPHS { adv[g] = 7; }
+  kern: [9604] f32;
+  for k: 0..<2 { coaxial_zeron_set_font(s[..], k, header[..], adv[..], kern[..]); }
+  for i: 0..<3 { coaxial_zeron_set_icon(s[..], i, 0, 0, 36, 36); }
+  coaxial_zeron_set_atlas(s[..], 4096, 2048);
+  out: [60000] f32;
+  n := coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  #assert n > 6 && coaxial_zeron_wants_text(s[..]);
+  c := s[0].composer[..];
+  #assert c[0].x == 292 && c[0].y == 368 && c[0].w == 736 && c[0].h == 120;
+  coaxial_zeron_text(s[..], "hi");
+  #assert c[0].n == 2 && coaxial_zeron_key(s[..], -3, 0) && c[0].n == 1;
+  #assert !coaxial_zeron_pointer(s[..], 10, 10, 0) && !coaxial_zeron_wants_text(s[..]);
+  #assert coaxial_zeron_pointer(s[..], 700, 800, 0) && coaxial_zeron_cursor(s[..]) == 1;
+  #assert coaxial_zeron_glyph_code(0) == 32 && coaxial_zeron_glyph_code(95) == 0x2026;
+  name: [32] u8;
+  #assert coaxial_zeron_icon_name(2, name[..]) == 11;
+}

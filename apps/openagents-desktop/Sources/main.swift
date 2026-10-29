@@ -221,16 +221,19 @@ final class App: NSObject, NSApplicationDelegate {
     window.title = "OpenAgents"
     window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
     window.minSize = NSSize(width: 900, height: 600)
-    window.backgroundColor = .black
-    window.contentView = ChatView(frame: window.contentRect(forFrameRect: window.frame))
+    // The Zeron-fork chat screen (Zeron.swift); the HUD's ChatView stays in the tree, unshown.
+    window.backgroundColor = NSColor(red: 13 / 255, green: 13 / 255, blue: 13 / 255, alpha: 1)
+    window.contentView = ZeronView(frame: window.contentRect(forFrameRect: window.frame))
     window.center()
-    window.makeKeyAndOrderFront(nil)
-    window.makeFirstResponder(window.contentView)
     let args = CommandLine.arguments
+    // --shot draws offscreen; the window never shows.
+    if !args.contains("--shot") { window.makeKeyAndOrderFront(nil) }
+    window.makeFirstResponder(window.contentView)
     if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
-      let view = window.contentView as! ChatView
+      let view = window.contentView as! ZeronView
       view.isPaused = true
-      view.shot(args[i + 1], width: 2640, height: 1760)
+      let size = args.firstIndex(of: "--size").flatMap { j in j + 1 < args.count ? args[j + 1].split(separator: ",").compactMap { Int($0) } : nil } ?? [2640, 1760]
+      view.shot(args[i + 1], width: size.count == 2 ? size[0] : 2640, height: size.count == 2 ? size[1] : 1760)
       return
     }
     NSApp.activate(ignoringOtherApps: true)
