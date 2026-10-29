@@ -3549,7 +3549,7 @@
         "Run affected source checks and full mutation with zero survivors, independent adversarial controls and security review; document runtime trust and never claim target-wide timing, JIT, erasure or production approval"
       ],
       "blocked_by": ["crypto-public-view-audit", "crypto-field-secret-guards", "crypto-ecdh-fixed-serialization"],
-      "blocks": ["crypto-ecdh-xonly"]
+      "blocks": ["crypto-ecdh-xonly", "crypto-ecdh-export-migration"]
     },
     {
       "slug": "crypto-ecdh-owned-lifecycle",
@@ -3565,7 +3565,7 @@
         "Test prefixed dirty workspace, malformed metadata and aliases, prior-use and retry sequences, invalid peer and scalar, injected wipe failures and recovery, cancellation and concurrent misuse under checked/release native and Wasm and relevant sanitizers; retain unchanged arithmetic and source-audit evidence",
         "Run affected Coax checks and full mutation with zero survivors, independent adversarial tests and security review; record exact identities and limits without claiming hidden copies, target timing or production approval"
       ],
-      "blocked_by": ["crypto-secure-zero"],
+      "blocked_by": ["crypto-secure-zero", "crypto-ecdh-export-migration"],
       "blocks": ["crypto-ecdh-xonly"]
     },
     {
@@ -3583,6 +3583,23 @@
       ],
       "blocked_by": [],
       "blocks": ["nostr-proto-adapters"]
+    },
+    {
+      "slug": "crypto-ecdh-export-migration",
+      "parent": "m-assurance",
+      "title": "Migrate the ECDH ABI to an owned boundary",
+      "size": "L",
+      "labels": ["nostr", "crypto", "coax"],
+      "body": "The experimental raw stage is externally exported and the old caller-workspace wrapper can return metadata refusal or cleanup pending with prefilled or previously used storage not yet wiped. An owned-slot prototype cannot by itself close those exposed paths. Design and implement an explicit ABI migration or actual internal visibility boundary, with a documented compatibility break and full source-bound revalidation. Do not infer the absence of external callers from repository search, write to unadmitted memory, weaken cleanup acceptance, or claim target, hidden-copy erasure or production approval.",
+      "files": ["coax/lib/crypto/ecdh.coax", "coax/lib/crypto/platform/", "coax/tests/nostr/", "tools/coax-nostr/ecdh-public-guards/", "docs/verification/"],
+      "acceptance": [
+        "Inventory internal callers and every exported native and Wasm entry; document the explicit ABI migration and compatibility consequences, and verify that no legacy raw stage or caller-workspace path remains externally exposed in the new public build",
+        "Preserve arithmetic and checked behavior on the internal path, regenerate the exact classified source audit and separately reviewed guard binding for its changed graph, and retain the old refusal and historical evidence",
+        "Check native symbol tables, generated headers and Wasm exports with negative controls; migrate tests and declared consumers to the owned boundary and independently review every remaining accessible error and pending return",
+        "Run affected full Coax checks and zero-survivor mutation, independent official/adapted raw-x vectors on checked/release native and Wasm, cleanup/adversarial fixtures and security review; record exact identities and scope without claiming target timing, hidden-copy erasure or production approval"
+      ],
+      "blocked_by": ["crypto-ecdh-public-guards"],
+      "blocks": ["crypto-ecdh-owned-lifecycle"]
     }
   ]
 }
