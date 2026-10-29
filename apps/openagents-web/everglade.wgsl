@@ -1,4 +1,5 @@
-// Everglade's three passes: the sky, the scene and the HUD. Every number
+// Everglade's three passes: the sky, the scene (with the river's water in
+// two blended halves after it) and the HUD. Every number
 // comes from everglade.coax: the view, the eye and the fog, the sun, the
 // ground's heights (store 0) and each object's place, size, colour and shape
 // (store 1), the shadows, the streets, the paved squares and the HUD's
@@ -17,6 +18,7 @@ struct U {
   path_info: vec4f,
   square: array<vec4f, 4>,
   plate: array<vec4f, 64>,
+  water: WaterU,   // the river's waves, look and mesh (verse/water-look.coax W_* rows)
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -64,8 +66,9 @@ struct Obj { r0: vec4f, r1: vec4f, r2: vec4f, colour: vec4f }
 @group(1) @binding(1) var<storage, read> heights: array<f32>;
 @group(1) @binding(2) var<storage, read> objects: array<Obj>;
 @group(1) @binding(3) var<storage, read> pose: array<vec4f>;   // the Ranger's joints: three rows each
-@group(1) @binding(4) var sheets: texture_2d_array<f32>;
-@group(1) @binding(5) var sheet: sampler;
+@group(1) @binding(4) var<storage, read> water_nodes: array<f32>;   // the river's baked nodes (verse/water-look.coax)
+@group(1) @binding(5) var sheets: texture_2d_array<f32>;
+@group(1) @binding(6) var sheet: sampler;
 fn word(i: u32) -> f32 { return bitcast<f32>(vertices[i]); }
 
 struct S {
@@ -283,6 +286,12 @@ fn shade_shadows(p: vec2f) -> f32 {
       let dirt = mix(vec3f(0.55, 0.46, 0.33), vec3f(0.68, 0.6, 0.46), grit);
       base = mix(base, dirt, edge);
     }
+    // the river's bed: silt and stones under the water, darker the deeper,
+    // and wet earth where the bank meets it
+    let under = water_over(xz);
+    let mud = mix(vec3f(0.27, 0.22, 0.15), vec3f(0.36, 0.3, 0.2), noise(xz * 2.3)) * (0.85 + 0.25 * noise(xz * 11.0));
+    let wet = smoothstep(-0.02, 0.25, under);
+    base = mix(base, mud * (1.0 - 0.45 * smoothstep(0.3, 2.0, under)), wet);
     shadow = shade_shadows(xz);
   } else if (s.look == 1u) {
     base *= 0.8 + 0.35 * noise(s.world.xy * 3.1 + s.world.zx * 2.3);
@@ -324,4 +333,471 @@ struct V {
   let g = d / max(v.shape.w, 1.0);
   let halo = exp(-5.0 * g * g) * 0.28;
   return vec4f(v.tint.rgb * (core + halo) * v.shape.z * u.fade, 1.0);
+}
+
+// ---- water (phase W2 of docs/verse/water.md): a port of the previous
+// engine's shared water.wgsl (git show 32e4d59fc2:crates/verse-pbr/src/water/
+// water.wgsl), with this realm's sky, sun, light and fog as its hooks (the
+// old imported renderer's, imported.wgsl). It implements public techniques:
+//
+// - Gerstner waves (Fournier and Reeves 1986, in Finch's GPU Gems 2004 form)
+//   from verse/water.coax's own terms: each angle's constant part comes from
+//   the integer phase counter in f64 on the CPU (water_look_angles).
+// - Schlick's Fresnel (1994) at an index of 1.33, with Snell's window and
+//   total internal reflection from below.
+// - Sky reflection blurred by roughness and the pixel's footprint; sun
+//   glints from GGX (Walter et al. 2007) with the height-correlated Smith
+//   visibility (Heitz 2014), faded with distance by tier.
+// - Crest scattering with the Henyey-Greenstein phase function (1941).
+// - Per-channel Beer-Lambert absorption over the baked depth, from Jerlov's
+//   water types (Marine Optics, 1976).
+// - Shore foam from the baked distance transform; two-phase flow-map
+//   advection of the detail and the foam (Vlachos, Portal 2, 2010).
+//
+// The mesh is the river's baked node grid (store 3, WATER_NODE floats a
+// node: x, level, z, depth, shore, flow x, flow z, white water), a patch an
+// instance, its quads sampled between the nodes. Each patch draws twice
+// after the scene, depth-tested and not written (host.js): water_transmit_fs
+// multiplies what lies behind by the surface's per-channel transmittance,
+// then water_emit_fs adds what it reflects, scatters and foams.
+//
+// This realm draws into a gamma-encoded target (encode), so the transmitted
+// half multiplies by the encoded transmittance, which is exact for a
+// product, and the emitted half adds the encoded difference it makes over a
+// dim bed (WATER_BED), which is close where a bed shows and exact where the
+// water hides it.
+
+struct WaterU {
+  waves: array<vec4f, 16>,
+  detail: array<vec4f, 32>,
+  ripples: array<vec4f, 24>,
+  params: vec4f,    // time, detail count, ripple count, wave count
+  absorb: vec4f,
+  scatter: vec4f,   // in-scatter rgb, foam
+  body: vec4f,      // roughness, swell gain, eye inside, crest scattering
+  rest: vec4f,      // shore band, pixel angle, sun disc, metres along a node
+  control: vec4f,   // detail waves, glint fade, foam octaves, 1
+  grid: vec4f,      // nodes across, nodes along, quads across a patch, quads along a patch
+  grid2: vec4f,     // nodes along a patch, patches
+  frame: vec4f,     // the first node's x, z, the way along (rad about +Y from +z), metres across a node
+}
+
+const WATER_IOR: f32 = 1.33;
+const WATER_F0: f32 = 0.0200593;          // ((n - 1) / (n + 1))^2
+const WATER_RIPPLE_SPEED: f32 = 1.1;
+const WATER_FLOW_PERIOD: f32 = 1.6;
+const WATER_DRY: f32 = 0.6;
+const WATER_SUN = vec3f(1.0, 0.94, 0.82);
+const WATER_SUN_E: f32 = 2.8274;          // the sun's illuminance: scene_fs's 0.9 times PI
+const WATER_BED: f32 = 0.15;              // the linear radiance a lit bed under the water has, about
+
+fn water_host_sky(dir: vec3f, level: f32) -> vec3f {
+  let up = clamp(dir.y, 0.0, 1.0);
+  let sharp = mix(HORIZON, ZENITH, smoothstep(0.0, 0.55, up));
+  let blurred = mix(HORIZON, ZENITH, 0.55);
+  return mix(sharp, blurred, level * level);
+}
+fn water_host_sun() -> vec4f { return vec4f(normalize(u.sun.xyz), 1.0); }
+fn water_host_sun_light() -> vec3f { return WATER_SUN * WATER_SUN_E; }
+fn water_host_light(world: vec3f, n: vec3f) -> vec3f {
+  let sky = mix(vec3f(0.34, 0.31, 0.24), vec3f(0.56, 0.66, 0.80), n.y * 0.5 + 0.5);
+  return sky * 0.62 + WATER_SUN * 0.9 * max(dot(n, normalize(u.sun.xyz)), 0.0) * shade_shadows(world.xz);
+}
+
+fn water_node(k: u32, f: u32) -> f32 { return water_nodes[k * 8u + f]; }
+// A point's place among the nodes (u across, v along), for a straight
+// course: the frame row says where the first node is and which way the rows run.
+fn water_uv(xz: vec2f) -> vec2f {
+  let t = vec2f(sin(u.water.frame.z), cos(u.water.frame.z));
+  let side = vec2f(-t.y, t.x);
+  let d = xz - u.water.frame.xy;
+  return vec2f(dot(d, side) / max(u.water.frame.w, 1e-3), dot(d, t) / max(u.water.rest.w, 1e-3));
+}
+// How deep the water stands over ground at xz (m; 0 where there is none).
+fn water_over(xz: vec2f) -> f32 {
+  if (u.water.grid.x < 2.0 || u.water.frame.w <= 0.0) { return 0.0; }
+  let uv = water_uv(xz);
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > u.water.grid.x - 1.0 || uv.y > u.water.grid.y - 1.0) { return 0.0; }
+  return max(water_rest(uv).depth, 0.0);
+}
+struct WaterRest { pos: vec3f, depth: f32, shore: f32, flow: vec2f, foam: f32 }
+// The baked grid between its nodes: u across, v along, in node units.
+fn water_rest(uv: vec2f) -> WaterRest {
+  let cols = u32(u.water.grid.x);
+  let rows = u32(u.water.grid.y);
+  let a = clamp(uv, vec2f(0.0), vec2f(f32(cols - 1u), f32(rows - 1u)));
+  let i = min(u32(floor(a.x)), cols - 2u);
+  let j = min(u32(floor(a.y)), rows - 2u);
+  let f = a - vec2f(f32(i), f32(j));
+  let k00 = j * cols + i;
+  let k10 = k00 + 1u;
+  let k01 = k00 + cols;
+  let k11 = k01 + 1u;
+  var o: WaterRest;
+  var v: array<f32, 8>;
+  for (var c = 0u; c < 8u; c++) {
+    v[c] = mix(mix(water_node(k00, c), water_node(k10, c), f.x), mix(water_node(k01, c), water_node(k11, c), f.x), f.y);
+  }
+  o.pos = vec3f(v[0], v[1], v[2]);
+  o.depth = v[3];
+  o.shore = v[4];
+  o.flow = vec2f(v[5], v[6]);
+  o.foam = v[7];
+  return o;
+}
+
+fn water_shoal(k: f32, depth: f32) -> f32 { return sqrt(tanh(clamp(k * depth, 0.0, 10.0))); }
+
+// The Gerstner displacement (xyz, m) of rest point p0 and how tightly the
+// waves squeeze the surface there (w, crests near one).
+fn water_gerstner(p0: vec2f, depth: f32, scale: f32) -> vec4f {
+  var d = vec3f(0.0);
+  var squeeze = 0.0;
+  let count = i32(u.water.params.w);
+  let gain = u.water.body.y * scale;
+  for (var i = 0; i < 8; i++) {
+    if (i >= count) { break; }
+    let a = u.water.waves[i * 2];
+    let c = u.water.waves[i * 2 + 1];
+    let k = a.z;
+    let amp = a.w * gain * water_shoal(k, depth);
+    let theta = k * dot(a.xy, p0) + c.y;
+    let co = cos(theta);
+    let s = sin(theta);
+    d.x += c.x * amp * a.x * co;
+    d.z += c.x * amp * a.y * co;
+    d.y += amp * s;
+    squeeze += c.x * amp * k * s;
+  }
+  return vec4f(d, squeeze);
+}
+// The waves' slope at p0 (dh/dx, dh/dz) and the squeeze's change of the normal's y (Finch 2004, eq. 12).
+fn water_gerstner_slope(p0: vec2f, depth: f32, scale: f32) -> vec3f {
+  var g = vec3f(0.0);
+  let count = i32(u.water.params.w);
+  let gain = u.water.body.y * scale;
+  for (var i = 0; i < 8; i++) {
+    if (i >= count) { break; }
+    let a = u.water.waves[i * 2];
+    let c = u.water.waves[i * 2 + 1];
+    let k = a.z;
+    let wa = k * a.w * gain * water_shoal(k, depth);
+    let theta = k * dot(a.xy, p0) + c.y;
+    let co = cos(theta);
+    g.x += a.x * wa * co;
+    g.y += a.y * wa * co;
+    g.z += c.x * wa * sin(theta);
+  }
+  return g;
+}
+
+struct WaterOut {
+  @builtin(position) clip: vec4f,
+  @location(0) world_depth: vec4f,   // the displaced position, the depth under it at rest
+  @location(1) rest_flow: vec4f,     // the rest position on the plane, the flow (m/s)
+  @location(2) look: vec4f,          // white water, 0, crest squeeze, shore distance (m)
+  @location(3) extra: vec4f,         // 0, height over the level (m)
+}
+
+// A patch an instance; its quads are sampled between the baked nodes, and a
+// quad whose four corners stand above the water is dry ground and not drawn.
+@vertex fn water_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) piece: u32) -> WaterOut {
+  var o: WaterOut;
+  let qa = u32(u.water.grid.z);
+  let ql = u32(u.water.grid.w);
+  let quad_id = id / 6u;
+  let c = quad(id % 6u);
+  let qx = quad_id % qa;
+  let qz = quad_id / qa;
+  let across = (u.water.grid.x - 1.0) / f32(qa);
+  let along = u.water.grid2.x / f32(ql);
+  let base = f32(piece) * u.water.grid2.x;
+  let uv = vec2f((f32(qx) + c.x) * across, base + (f32(qz) + c.y) * along);
+  var low = 1000.0;
+  for (var k = 0u; k < 4u; k++) {
+    let corner = vec2f(f32(qx + (k & 1u)) * across, base + f32(qz + (k >> 1u)) * along);
+    low = min(low, -water_rest(corner).depth);
+  }
+  let r = water_rest(uv);
+  if (low > WATER_DRY || quad_id >= qa * ql) {
+    o.clip = vec4f(0.0, 0.0, 2.0, 1.0);
+    return o;
+  }
+  let wave = water_gerstner(r.pos.xz, r.depth, 1.0);
+  let world = r.pos + wave.xyz;
+  o.clip = clip(world);
+  o.world_depth = vec4f(world, r.depth);
+  o.rest_flow = vec4f(r.pos.xz, r.flow);
+  o.look = vec4f(r.foam, 0.0, wave.w, r.shore);
+  o.extra = vec4f(0.0, world.y - r.pos.y, 0.0, 0.0);
+  return o;
+}
+
+// ---- detail: what bends the normal but never moves the surface
+
+// pcg3d (Jarzynski and Olano, "Hash Functions for GPU Rendering", JCGT 2020) on the cell's corner.
+fn water_hash(p: vec3f) -> f32 {
+  var v = bitcast<vec3u>(vec3i(p)) * 1664525u + 1013904223u;
+  v.x += v.y * v.z;
+  v.y += v.z * v.x;
+  v.z += v.x * v.y;
+  v = v ^ (v >> vec3u(16u));
+  v.x += v.y * v.z;
+  return f32(v.x >> 8u) / 16777215.0;
+}
+fn water_noise(p: vec3f) -> f32 {
+  let i = floor(p);
+  let f = fract(p);
+  let s = f * f * (3.0 - 2.0 * f);
+  let a = water_hash(i);
+  let b = water_hash(i + vec3f(1.0, 0.0, 0.0));
+  let c = water_hash(i + vec3f(0.0, 1.0, 0.0));
+  let d = water_hash(i + vec3f(1.0, 1.0, 0.0));
+  let e = water_hash(i + vec3f(0.0, 0.0, 1.0));
+  let g = water_hash(i + vec3f(1.0, 0.0, 1.0));
+  let h = water_hash(i + vec3f(0.0, 1.0, 1.0));
+  let k = water_hash(i + vec3f(1.0, 1.0, 1.0));
+  return mix(mix(mix(a, b, s.x), mix(c, d, s.x), s.y), mix(mix(e, g, s.x), mix(h, k, s.x), s.y), s.z);
+}
+
+// The analytic detail waves' slope at p, each faded once it is shorter than a
+// few of the pixel's footprint (m), and the slope variance the faded waves
+// would have added (z), which becomes roughness (after Toksvig 2005).
+fn water_detail_waves(p: vec2f, footprint: f32, gain: f32) -> vec3f {
+  var g = vec2f(0.0);
+  var lost = 0.0;
+  let t = u.water.params.x;
+  let n = min(i32(u.water.control.x), i32(u.water.params.y));
+  for (var i = 0; i < 16; i++) {
+    if (i >= n) { break; }
+    let a = u.water.detail[i * 2];
+    let b = u.water.detail[i * 2 + 1];
+    let k = a.z;
+    let slope = a.w * k * gain;
+    let keep = clamp(b.z / (6.0 * max(footprint, 1e-4)) - 0.5, 0.0, 1.0);
+    let theta = k * dot(a.xy, p) - b.x * t + b.y;
+    g += a.xy * (slope * keep * cos(theta));
+    lost += 0.5 * slope * slope * (1.0 - keep * keep);
+  }
+  return vec3f(g, lost);
+}
+
+// A pixel's footprint on the surface (m): the eye's distance times the
+// pixel's angle, stretched along the view at grazing angles.
+fn water_footprint(v: vec3f, distance: f32) -> f32 {
+  let size = max(distance * u.water.rest.y, 1e-4);
+  return size * sqrt(1.0 / max(abs(v.y), 0.08));
+}
+
+// Detail carried along the flow in two phases half a cycle apart, blended
+// so neither phase's reset shows (Vlachos 2010). Still water stands.
+fn water_flow_detail(p: vec2f, flow: vec2f, footprint: f32) -> vec3f {
+  if (length(flow) <= 0.02) { return water_detail_waves(p, footprint, 1.0); }
+  let t = u.water.params.x;
+  let phase_a = fract(t / WATER_FLOW_PERIOD);
+  let phase_b = fract(t / WATER_FLOW_PERIOD + 0.5);
+  let da = water_detail_waves(p - flow * phase_a * WATER_FLOW_PERIOD, footprint, 1.4);
+  let db = water_detail_waves(p - flow * phase_b * WATER_FLOW_PERIOD + vec2f(3.7, 1.3), footprint, 1.4);
+  let wa = 1.0 - abs(2.0 * phase_a - 1.0);
+  return da * wa + db * (1.0 - wa);
+}
+
+// The ripples' slope at p: damped wave packets riding expanding rings.
+fn water_ripples(p: vec2f) -> vec2f {
+  var g = vec2f(0.0);
+  let t = u.water.params.x;
+  let count = i32(u.water.params.z);
+  let k = 6.2831853 / 0.45;
+  for (var i = 0; i < 24; i++) {
+    if (i >= count) { break; }
+    let r = u.water.ripples[i];
+    let age = t - r.z;
+    let to = p - r.xy;
+    let dist = length(to);
+    let x = dist - WATER_RIPPLE_SPEED * age;
+    let envelope = exp(-x * x / 0.18) * exp(-age * 1.1) / (1.0 + 1.5 * dist);
+    g += to / max(dist, 1e-3) * (r.w * envelope * k * cos(k * x));
+  }
+  return g;
+}
+// Foam riding the rings of young ripples.
+fn water_ripple_foam(p: vec2f) -> f32 {
+  var foam = 0.0;
+  let t = u.water.params.x;
+  let count = i32(u.water.params.z);
+  for (var i = 0; i < 24; i++) {
+    if (i >= count) { break; }
+    let r = u.water.ripples[i];
+    let age = t - r.z;
+    let x = distance(p, r.xy) - WATER_RIPPLE_SPEED * age;
+    foam = max(foam, exp(-x * x / 0.08) * exp(-age * 1.6) * clamp(r.w * 25.0, 0.0, 1.0));
+  }
+  return foam;
+}
+
+// Foam's mottled cover: one octave on a phone, two above, carried along the flow in two phases.
+fn water_foam_noise(p: vec2f, flow: vec2f) -> f32 {
+  let t = u.water.params.x;
+  let phase_a = fract(t / WATER_FLOW_PERIOD);
+  let phase_b = fract(t / WATER_FLOW_PERIOD + 0.5);
+  let wa = 1.0 - abs(2.0 * phase_a - 1.0);
+  let pa = p - flow * phase_a * WATER_FLOW_PERIOD;
+  let pb = p - flow * phase_b * WATER_FLOW_PERIOD + vec2f(5.3, 2.9);
+  var a = water_noise(vec3f(pa * 1.3, t * 0.25));
+  var b = water_noise(vec3f(pb * 1.3, t * 0.25));
+  if (u.water.control.z > 1.5) {
+    a = a * 0.6 + 0.4 * water_noise(vec3f(pa * 4.1 + vec2f(t * 0.07, 0.0), t * 0.5));
+    b = b * 0.6 + 0.4 * water_noise(vec3f(pb * 4.1 + vec2f(t * 0.07, 0.0), t * 0.5));
+  }
+  return a * wa + b * (1.0 - wa);
+}
+
+// ---- optics
+
+fn water_fresnel(c: f32) -> f32 {
+  let m = clamp(1.0 - c, 0.0, 1.0);
+  let m2 = m * m;
+  return WATER_F0 + (1.0 - WATER_F0) * m2 * m2 * m;
+}
+fn water_cos_refracted(ci: f32) -> f32 { return sqrt(max(1.0 - (1.0 - ci * ci) / (WATER_IOR * WATER_IOR), 0.0)); }
+// Beer-Lambert through `depth` m seen at cosine ci: the path runs along the refracted ray.
+fn water_transmittance(depth: f32, ci: f32) -> vec3f {
+  let path = max(depth, 0.0) / max(water_cos_refracted(ci), 0.05);
+  return exp(-u.water.absorb.rgb * path);
+}
+// Light scattered back toward the eye from inside the water, under the sun and sky.
+fn water_inscatter() -> vec3f {
+  let sun = water_host_sun();
+  let sky = water_host_sky(vec3f(0.0, 1.0, 0.0), 1.0);
+  let lit = water_host_sun_light() * (sun.w * max(sun.y, 0.0) / 3.14159265);
+  return u.water.scatter.rgb * (lit + sky);
+}
+fn water_sky_roughness(roughness: f32, footprint: f32) -> f32 {
+  return clamp(sqrt(roughness) + 0.15 * log2(1.0 + footprint * 4.0), 0.0, 1.0);
+}
+fn water_ggx(noh: f32, a2: f32) -> f32 {
+  let d = noh * noh * (a2 - 1.0) + 1.0;
+  return a2 / (3.14159265 * d * d);
+}
+fn water_smith(nov: f32, nol: f32, a2: f32) -> f32 {
+  let gv = nol * sqrt(nov * nov * (1.0 - a2) + a2);
+  let gl = nov * sqrt(nol * nol * (1.0 - a2) + a2);
+  return 0.5 / max(gv + gl, 1e-6);
+}
+// The sun's glint per unit illuminance: GGX widened by the sun's disc, fading by the tier's distance.
+fn water_glint(n: vec3f, v: vec3f, l: vec3f, roughness: f32, disc: f32, distance: f32) -> f32 {
+  let nol = dot(n, l);
+  let nov = max(dot(n, v), 1e-3);
+  if (nol <= 0.0) { return 0.0; }
+  let h = normalize(l + v);
+  let fade_at = max(u.water.control.y, 1.0);
+  let far = smoothstep(0.4 * fade_at, fade_at, distance);
+  let a = min(roughness * roughness + disc * 0.5 + far * 0.08, 1.0);
+  let a2 = a * a;
+  let spec = water_ggx(max(dot(n, h), 0.0), a2) * water_smith(nov, nol, a2) * water_fresnel(max(dot(v, h), 0.0));
+  return spec * nol * (1.0 - 0.75 * far);
+}
+// Sun through a thin crest toward an eye looking into it (Henyey-Greenstein, g = 0.6).
+fn water_crest_scatter(v: vec3f, l: vec3f, n: vec3f, height: f32, squeeze: f32) -> vec3f {
+  let strength = u.water.body.w;
+  if (strength <= 0.0) { return vec3f(0.0); }
+  let g = 0.6;
+  let cos_theta = dot(-l, v);
+  let hg = (1.0 - g * g) / (4.0 * 3.14159265 * pow(1.0 + g * g - 2.0 * g * cos_theta, 1.5));
+  let thin = clamp(height * 2.0, 0.0, 1.0) * clamp(squeeze * 1.5 + 0.2, 0.0, 1.0);
+  let side = clamp(1.0 - n.y * 0.6 + dot(n, v) * 0.4, 0.0, 1.0);
+  let through = exp(-u.water.absorb.rgb * (1.0 - 0.6 * thin));
+  return u.water.scatter.rgb * through * hg * thin * side * strength * 12.0;
+}
+// The foam: a lace along the shore, the crests the waves squeeze, white water and young ripples.
+fn water_foam(rest: vec2f, shore: f32, crest: f32, extra: f32, noise: f32) -> f32 {
+  let band = max(u.water.rest.x, 0.05);
+  var foam = (1.0 - smoothstep(0.0, band, shore)) * smoothstep(0.3, 0.62, noise + 0.15 * (1.0 - shore / band));
+  foam = max(foam, smoothstep(0.62, 0.95, crest) * smoothstep(0.35, 0.7, noise));
+  foam = max(foam, clamp(extra, 0.0, 1.0) * smoothstep(0.25, 0.65, noise + 0.25 * extra));
+  foam = max(foam, water_ripple_foam(rest) * smoothstep(0.2, 0.6, noise));
+  return clamp(foam * u.water.scatter.w, 0.0, 1.0);
+}
+
+struct WaterShade { emit: vec3f, transmit: vec3f }
+
+// The surface seen from below: Snell's window, total internal reflection outside it.
+fn water_below(n: vec3f, v: vec3f, path: f32, slope: f32) -> WaterShade {
+  var o: WaterShade;
+  let ci = clamp(dot(v, -n), 0.0, 1.0);
+  let st2 = WATER_IOR * WATER_IOR * (1.0 - ci * ci);
+  var reflectance = 1.0;
+  if (st2 < 1.0) { reflectance = water_fresnel(sqrt(1.0 - st2)); }
+  let fog = water_inscatter() * 2.4;
+  let shimmer = 1.1 + 1.6 * clamp(slope, 0.0, 0.6);
+  let trans = exp(-u.water.absorb.rgb * path);
+  o.emit = fog * shimmer * reflectance * trans + fog * (vec3f(1.0) - trans);
+  o.transmit = trans * (1.0 - reflectance);
+  return o;
+}
+
+fn water_fragment(i: WaterOut) -> WaterShade {
+  let world = i.world_depth.xyz;
+  let rest = i.rest_flow.xy;
+  let flow = i.rest_flow.zw;
+  let depth = i.world_depth.w;
+  let v = normalize(u.eye.xyz - world);
+  let eye_distance = distance(u.eye.xyz, world);
+  let footprint = water_footprint(v, eye_distance);
+  // the normal, and the roughness its lost detail adds
+  let swell = water_gerstner_slope(rest, depth, 1.0);
+  let detail = water_flow_detail(rest, flow, footprint);
+  let slope = swell.xy + detail.xy + water_ripples(rest);
+  let n = normalize(vec3f(-slope.x, 1.0 - swell.z, -slope.y));
+  let roughness = clamp(sqrt(u.water.body.x * u.water.body.x + detail.z), 0.02, 0.6);
+  if (u.eye.y < world.y) {
+    if (u.water.body.z > 0.5) { return water_below(n, v, eye_distance, length(slope)); }
+    var none: WaterShade;
+    none.emit = vec3f(0.0);
+    none.transmit = vec3f(1.0);
+    return none;
+  }
+  var o: WaterShade;
+  let nov = max(dot(n, v), 1e-3);
+  let fresnel = water_fresnel(nov);
+  let sky = water_host_sky(reflect(-v, n), water_sky_roughness(roughness, footprint));
+  let l = water_host_sun().xyz;
+  let light = water_host_sun_light() * shade_shadows(world.xz);
+  let glint = water_glint(n, v, l, roughness, u.water.rest.z, eye_distance) * light;
+  let crest = water_crest_scatter(v, l, n, i.extra.y, i.look.z) * light;
+  let noise = water_foam_noise(rest, flow);
+  let foam = water_foam(rest, i.look.w, i.look.z, i.look.x, noise);
+  let foam_rgb = vec3f(0.9, 0.94, 0.95) * water_host_light(world, vec3f(0.0, 1.0, 0.0));
+  // the column under the surface: its in-scatter, and what of the bed comes through
+  let ci = clamp(v.y, 0.0, 1.0);
+  let through = water_transmittance(depth, ci);
+  let body = water_inscatter() * (vec3f(1.0) - through);
+  let clear = sky * fresnel + glint + crest + body * (1.0 - fresnel);
+  // thin water at the very edge fades out instead of ending in a line
+  let edge = smoothstep(-0.05, 0.12, depth);
+  let cover = foam * smoothstep(-0.08, 0.0, depth);
+  o.emit = clear * edge * (1.0 - cover) + foam_rgb * cover;
+  o.transmit = mix(vec3f(1.0), through * (1.0 - fresnel), edge) * (1.0 - cover);
+  return o;
+}
+
+// The fogged surface, with the HUD's plates over it, as the two halves blend it.
+fn water_halves(i: WaterOut) -> WaterShade {
+  var s = water_fragment(i);
+  let d = length(u.eye.xyz - i.world_depth.xyz);
+  let fog = clamp(1.0 - exp(-max(d - u.sun.w, 0.0) * u.eye.w), 0.0, 0.9);
+  let emit = s.emit * (1.0 - fog) + HORIZON * fog * (vec3f(1.0) - s.transmit);
+  let bed = WATER_BED * s.transmit;
+  // a plate's cover: what of the scene under it a plate keeps
+  let open = plates(i.clip.xy, vec3f(1.0)) - plates(i.clip.xy, vec3f(0.0));
+  var o: WaterShade;
+  o.transmit = mix(vec3f(1.0), encode(s.transmit), open);
+  o.emit = max(encode(bed + emit) - encode(bed), vec3f(0.0)) * open;
+  return o;
+}
+@fragment fn water_transmit_fs(i: WaterOut) -> @location(0) vec4f {
+  return vec4f(clamp(water_halves(i).transmit, vec3f(0.0), vec3f(1.0)), 1.0);
+}
+@fragment fn water_emit_fs(i: WaterOut) -> @location(0) vec4f {
+  return vec4f(water_halves(i).emit, 0.0);
 }

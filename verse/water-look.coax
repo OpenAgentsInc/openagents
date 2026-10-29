@@ -1,0 +1,516 @@
+// Water for Verse, phase W2: the CPU side of the water shader. A port of
+// the previous engine's `verse_pbr::water` at its W2 commit (`git show
+// 32e4d59fc2:crates/verse-pbr/src/water/`: terms.rs, frame.rs, preset.rs,
+// bake.rs, mod.rs), feeding the WGSL port of its water.wgsl
+// (apps/openagents-web/everglade.wgsl, the "water" section). The look never
+// feeds back into the physics of verse/water.coax.
+//
+// - The swell: a body's WaveSet as the shader reads it. Each term's angle
+//   is k D.p0 - 2 PI n / P + phi; water_look_angles sums the last two in
+//   f64 from the integer phase counter n (water_phases' counter, advanced
+//   smoothly between ticks) and wraps them into [-PI, PI), so the shader
+//   adds only k D.p0 in f32 and loses nothing to a long-running clock.
+//   water_look_displace is the shader's water_gerstner in f32, the mirror
+//   the checks hold to water_at_rest.
+// - Presets: how a body looks, with absorption from Jerlov's water types
+//   (Marine Optics, 1976), K_d at 650, 550 and 450 nm for red, green and
+//   blue; the in-scatter colour, foam, roughness and shore band are the old
+//   engine's tuning, copied from assets/verse/water/presets/*.toml.
+// - Detail: sixteen short waves that bend the normal and never move the
+//   surface (Water::set_detail), and the tier's control vector.
+// - The bake: a grid of nodes over a body (rest position, level, depth at
+//   rest, shore distance, current), with the shore distance an exact
+//   Euclidean distance transform of the dry nodes (Felzenszwalb and
+//   Huttenlocher, "Distance Transforms of Sampled Functions", 2012), here
+//   with a spacing per axis.
+// - The uniform block: WATER_FLOATS numbers the shader's WaterU reads.
+//
+//   coax/bin/coax test --library verse/water-look.coax --steps 500000000
+
+#load "water.coax";
+
+PI_F :: 3.14159265;
+TAU_F :: 6.2831853;
+WATER_LOOK_DETAIL :: 16;    // detail waves (frame.rs MAX_DETAIL)
+WATER_LOOK_RIPPLES :: 24;   // ripples a frame carries (frame.rs MAX_RIPPLES)
+WATER_RIPPLE_LIFE :: 4.0;   // s a ripple lives
+WATER_RIPPLE_SPEED :: 1.1;  // m/s its ring spreads
+WATER_DRY :: 0.6;           // a node this far above the water is dry ground (frame.rs DRY)
+
+// ---- the uniform block (everglade.wgsl WaterU), in floats from its start
+W_WAVES :: 0;               // 8 terms x 2 rows: dir x, dir z, k, amplitude; q, angle, omega, 0
+W_DETAIL :: 64;             // 16 waves x 2 rows: dir x, dir z, k, amplitude; omega, phase, wavelength, 0
+W_RIPPLES :: 192;           // 24 rows: x, z, start, strength
+W_PARAMS :: 288;            // time, detail count, ripple count, wave count
+W_ABSORB :: 292;            // absorption rgb (1/m), 0
+W_SCATTER :: 296;           // in-scatter rgb, foam amount
+W_BODY :: 300;              // roughness, swell gain, 1 when the eye is in the water, crest scattering
+W_REST :: 304;              // shore band (m), the pixel's angle (rad), the sun's disc (rad), metres along a node
+W_CONTROL :: 308;           // the tier: detail waves, glint fade (m), foam octaves, 1
+W_GRID :: 312;              // nodes across, nodes along, quads across a patch, quads along a patch
+W_GRID2 :: 316;             // nodes along a patch, patches, 0, 0
+W_FRAME :: 320;             // where the nodes lie: the first node's x, z, the way along (rad about +Y from +z), metres across a node
+WATER_FLOATS :: 324;
+WATER_NODE :: 8;            // a node: x, level, z, depth, shore, flow x, flow z, white water
+
+// ---- presets
+
+Jerlov :: enum u8 { I; IA; IB; II; III; C1; C3; C5; C7; C9; }
+
+// K_d at 650, 550 and 450 nm, 1/m (preset.rs Jerlov::absorption).
+JERLOV_KD :: [30] f32.[
+  0.36, 0.064, 0.019,   0.37, 0.067, 0.022,   0.37, 0.069, 0.026,   0.38, 0.077, 0.047,   0.42, 0.10, 0.085,
+  0.45, 0.12, 0.13,     0.48, 0.16, 0.22,     0.52, 0.22, 0.34,     0.60, 0.31, 0.55,     0.70, 0.43, 0.85
+];
+
+WaterPreset :: struct {
+  jerlov: Jerlov;
+  absorb_r: f32; absorb_g: f32; absorb_b: f32;     // 1/m, linear rgb
+  scatter_r: f32; scatter_g: f32; scatter_b: f32;  // the water's own colour
+  foam: f32;            // how much foam forms, 0 to 1
+  roughness: f32;       // the calm surface's
+  shore_band: f32;      // m of foam along the shore
+  crest_scatter: f32;   // sun through thin crests, 0 to 1
+}
+
+WATER_PRESETS :: 7;
+WATER_PRESET_NAME :: [7] string.["cove", "lake", "marsh", "ocean", "pond", "pool", "river"];
+// Each: the Jerlov type, scatter rgb, foam, roughness, shore band, crest scatter (the TOML files).
+WATER_PRESET_TYPE :: [7] Jerlov.[Jerlov.II, Jerlov.C3, Jerlov.C9, Jerlov.IB, Jerlov.C5, Jerlov.I, Jerlov.C3];
+WATER_PRESET_LOOK :: [49] f32.[
+  0.016, 0.085, 0.10,   0.85, 0.035, 1.2,  0.6,
+  0.020, 0.060, 0.050,  0.5,  0.03,  0.8,  0.4,
+  0.030, 0.032, 0.014,  0.3,  0.05,  0.4,  0.0,
+  0.010, 0.050, 0.085,  0.8,  0.04,  1.6,  0.7,
+  0.018, 0.045, 0.030,  0.4,  0.03,  0.6,  0.2,
+  0.012, 0.050, 0.060,  0.3,  0.02,  0.25, 0.0,
+  0.016, 0.055, 0.050,  0.9,  0.04,  0.5,  0.2
+];
+WATER_RIVER :: 6;
+
+water_preset :: (i: int) -> WaterPreset {
+  p: WaterPreset;
+  if i < 0 || i >= WATER_PRESETS { return p; }
+  j := WATER_PRESET_TYPE[i];
+  t := cast(int) cast(u8) j;
+  p.jerlov = j;
+  p.absorb_r = JERLOV_KD[t * 3]; p.absorb_g = JERLOV_KD[t * 3 + 1]; p.absorb_b = JERLOV_KD[t * 3 + 2];
+  k := i * 7;
+  p.scatter_r = WATER_PRESET_LOOK[k]; p.scatter_g = WATER_PRESET_LOOK[k + 1]; p.scatter_b = WATER_PRESET_LOOK[k + 2];
+  p.foam = WATER_PRESET_LOOK[k + 3]; p.roughness = WATER_PRESET_LOOK[k + 4];
+  p.shore_band = WATER_PRESET_LOOK[k + 5]; p.crest_scatter = WATER_PRESET_LOOK[k + 6];
+  return p;
+}
+
+water_preset_named :: (name: string) -> int {
+  for i: 0..<WATER_PRESETS { if WATER_PRESET_NAME[i] == name { return i; } }
+  return -1;
+}
+
+unit_f :: (v: f32) -> bool { return v >= 0 && v <= 1; }
+plus_f :: (v: f32) -> bool { return v == v && v >= 0 && v < 1000000.0; }
+
+// What Preset::parse refuses: a value out of range.
+water_preset_valid :: (p: WaterPreset) -> bool {
+  return plus_f(p.absorb_r) && plus_f(p.absorb_g) && plus_f(p.absorb_b)
+    && plus_f(p.scatter_r) && plus_f(p.scatter_g) && plus_f(p.scatter_b)
+    && unit_f(p.foam) && unit_f(p.roughness) && unit_f(p.crest_scatter) && plus_f(p.shore_band);
+}
+
+// ---- the swell
+
+// The angle of each term less k D.p0 at `tick` plus `fraction` of a tick,
+// wrapped into [-PI, PI) (terms.rs Swell::angles_at). At a whole tick this is
+// phi - 2 PI n / P with n water_phases' counter.
+water_look_angles :: (s: WaveSet, tick: u64, fraction: f64, out: [] f32) {
+  folded := tick % s.period;
+  for i: 0..<s.count {
+    w := s.waves[i];
+    count := f64((w.harmonic % s.period) * folded % s.period);
+    steps := count + f64(w.harmonic) * fraction;
+    a := w.phase - TAU_D * steps / f64(s.period) + PI_D;
+    a = a - TAU_D * floor(a / TAU_D);
+    out[i] = cast(f32) a - f32(PI_F);
+  }
+}
+
+// The same at `time` seconds on the set's clock.
+water_look_angles_at :: (s: WaveSet, time: f64, out: [] f32) {
+  ticks := fmax(time / s.tick, 0.0);
+  whole := floor(ticks);
+  water_look_angles(s, cast(u64) whole, ticks - whole, out);
+}
+
+tanh_f :: (x: f32) -> f32 { e := exp(2 * x); return (e - 1) / (e + 1); }
+
+// The share of a wave's height left over water `depth` deep, sqrt(tanh(k d)):
+// one in deep water. Visual only (the physics is deep water). The argument
+// stops at 10, where tanh is one in f32, as the shader's does.
+water_shoal :: (k: f32, depth: f32) -> f32 {
+  x := k * depth;
+  if !(x > 0) { return 0; }
+  if x > 10 { x = 10; }
+  return sqrt(tanh_f(x));
+}
+
+// A term as the shader reads it (two rows of the uniform).
+WaterTerm :: struct { dx: f32; dz: f32; k: f32; amplitude: f32; q: f32; omega: f32; }
+
+water_look_term :: (s: WaveSet, i: int) -> WaterTerm {
+  w := s.waves[i];
+  return WaterTerm.{dx = cast(f32) w.direction.x, dz = cast(f32) w.direction.y, k = cast(f32) water_wavenumber(w),
+    amplitude = cast(f32) w.amplitude, q = cast(f32) wave_q(s.steepness, s.count, w), omega = cast(f32) water_omega(s, i)};
+}
+
+WaterMove :: struct { x: f32; y: f32; z: f32; squeeze: f32; }
+
+// The Gerstner displacement of rest point (x, z) at `angles`, each amplitude
+// scaled by `gain` and the shallow-water factor over `depth` (negative: deep
+// water): the shader's water_gerstner, in f32.
+water_look_displace :: (s: WaveSet, angles: [] f32, x: f32, z: f32, depth: f32, gain: f32) -> WaterMove {
+  m: WaterMove;
+  for i: 0..<s.count {
+    t := water_look_term(s, i);
+    shoal := ifx depth < 0 then 1.0f32 else water_shoal(t.k, depth);
+    amp := t.amplitude * gain * shoal;
+    theta := t.k * (t.dx * x + t.dz * z) + angles[i];
+    co := cos(theta); sn := sin(theta);
+    m.x += t.q * amp * t.dx * co;
+    m.z += t.q * amp * t.dz * co;
+    m.y += amp * sn;
+    m.squeeze += t.q * amp * t.k * sn;
+  }
+  return m;
+}
+
+// A swell like a wind sea (terms.rs wind_sea): `count` terms around `wind`
+// (radians about +Y toward which they travel; 0 is +z), the longest `longest`
+// m and each 0.71 of the one before, turned a little off the wind to
+// alternate sides, amplitude `height` x 1.1% of the wavelength, steepness
+// 0.75, on 120 ticks a second that loop each hour.
+golden :: (i: int) -> f64 { v := f64(i) * 0.618034; return v - floor(v); }
+
+water_wind_sea :: (wind: f64, longest: f64, height: f64, count_in: int) -> WaveSetResult {
+  count := ifx count_in > MAX_WAVES then MAX_WAVES else count_in;
+  wavelength := fmax(longest, 0.5);
+  waves: [MAX_WAVES] Wave;
+  for i: 0..<count {
+    side := ifx i % 2 == 0 then 1.0 else -1.0;
+    turn := wind + side * (0.18 + 0.11 * f64(i)) * golden(i + 1);
+    waves[i] = water_wave(d2(sin(turn), cos(turn)), wavelength * 0.011 * height, wavelength, golden(i + 7) * TAU_D);
+    wavelength *= 0.71;
+  }
+  return water_waves(1.0 / 120.0, 120 * 3600, 0.75, waves[0..<count]);
+}
+
+// ---- detail
+
+// Sixteen waves from `shortest` to `longest` m around `wind`, each `slope`
+// steep (amplitude over wavelength), spread wider than the swell
+// (Water::set_detail). Writes the uniform's detail rows at `at`.
+water_look_detail :: (u: [] f32, at: int, wind: f32, shortest: f32, longest: f32, slope: f32) {
+  n := WATER_LOOK_DETAIL;
+  ratio := pow(hi_f(shortest, 0.02) / hi_f(longest, shortest), 1.0 / f32(n - 1));
+  wavelength := hi_f(longest, shortest);
+  for i: 0..<n {
+    turn := wind + (cast(f32) golden(i + 3) - 0.5) * 2.4;
+    k := f32(TAU_F) / hi_f(wavelength, 0.001);
+    r := at + W_DETAIL + i * 8;
+    u[r] = sin(turn); u[r + 1] = cos(turn); u[r + 2] = k; u[r + 3] = wavelength * slope;
+    u[r + 4] = sqrt(f32(WATER_G) * k); u[r + 5] = cast(f32) golden(i + 11) * f32(TAU_F); u[r + 6] = wavelength; u[r + 7] = 0;
+    wavelength *= ratio;
+  }
+  u[at + W_PARAMS + 1] = f32(n);
+}
+
+hi_f :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+lo_f :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+
+// What a tier draws (mod.rs control): analytic detail waves, the distance
+// over which glints fade (m), foam noise octaves, and 1. The old Low tier
+// read a baked normal tile; the phone here takes six analytic waves instead
+// (the realm host has no texture of its own for it).
+water_look_control :: (u: [] f32, at: int, phone: bool) {
+  r := at + W_CONTROL;
+  if phone { u[r] = 6; u[r + 1] = 120; u[r + 2] = 1; u[r + 3] = 1; return; }
+  u[r] = 16; u[r + 1] = 400; u[r + 2] = 2; u[r + 3] = 1;
+}
+
+// A body's swell rows and look at `time` s: the terms and their angles
+// now, the preset's optics.
+water_look_body :: (u: [] f32, at: int, s: WaveSet, time: f64, p: WaterPreset, gain: f32, eye_inside: bool) {
+  angles: [MAX_WAVES] f32;
+  water_look_angles_at(s, time, angles[..]);
+  for i: 0..<MAX_WAVES {
+    r := at + W_WAVES + i * 8;
+    for k: 0..<8 { u[r + k] = 0; }
+    if i >= s.count { continue; }
+    t := water_look_term(s, i);
+    u[r] = t.dx; u[r + 1] = t.dz; u[r + 2] = t.k; u[r + 3] = t.amplitude;
+    u[r + 4] = t.q; u[r + 5] = angles[i]; u[r + 6] = t.omega;
+  }
+  u[at + W_PARAMS] = cast(f32) (time - 3600.0 * floor(time / 3600.0));
+  u[at + W_PARAMS + 3] = f32(s.count);
+  u[at + W_ABSORB] = p.absorb_r; u[at + W_ABSORB + 1] = p.absorb_g; u[at + W_ABSORB + 2] = p.absorb_b;
+  u[at + W_SCATTER] = p.scatter_r; u[at + W_SCATTER + 1] = p.scatter_g; u[at + W_SCATTER + 2] = p.scatter_b; u[at + W_SCATTER + 3] = p.foam;
+  u[at + W_BODY] = p.roughness; u[at + W_BODY + 1] = gain; u[at + W_BODY + 2] = ifx eye_inside then 1.0f32 else 0.0f32;
+  u[at + W_BODY + 3] = p.crest_scatter;
+  u[at + W_REST] = p.shore_band; u[at + W_REST + 2] = 0.03;
+}
+
+// ---- the bake
+
+// The squared distance transform of one line (bake.rs transform), with the
+// samples `step` apart: for each q, the least (step (q - p))^2 + f(p), from
+// the lower envelope of the parabolas rooted at each p. `v` and `z` are
+// scratch, n and n + 1 long.
+edt_line :: (f: [] f64, out: [] f64, v: [] int, z: [] f64, step: f64) {
+  n := f.count;
+  if n == 0 { return; }
+  k := 0;
+  v[0] = 0;
+  z[0] = -1.0 / 0.0;
+  z[1] = 1.0 / 0.0;
+  for q: 1..<n {
+    s := edt_meet(f, q, v[k], step);
+    while s <= z[k] { k -= 1; s = edt_meet(f, q, v[k], step); }
+    k += 1;
+    v[k] = q;
+    z[k] = s;
+    z[k + 1] = 1.0 / 0.0;
+  }
+  k = 0;
+  for q: 0..<n {
+    while z[k + 1] < f64(q) * step { k += 1; }
+    d := (f64(q) - f64(v[k])) * step;
+    out[q] = d * d + f[v[k]];
+  }
+}
+
+// Where the parabolas rooted at p and q meet, in metres along the line.
+edt_meet :: (f: [] f64, q: int, p: int, step: f64) -> f64 {
+  a := f64(q) * step; b := f64(p) * step;
+  return ((f[q] + a * a) - (f[p] + b * b)) / (2.0 * (a - b));
+}
+
+EDT_MAX :: 1024;   // the most nodes along one side (bake.rs MAX_SIDE)
+
+// The distance from each node of a cols x rows grid (node (c, r) is
+// wet[r * cols + c]) to the nearest node that is not wet, nodes `across` m
+// apart along a row and `along` m between rows: zero for dry nodes, and
+// 1000 m (frame.rs OPEN_WATER) when nothing is dry. Separable: along rows,
+// then along columns of the result (bake.rs shore_distance).
+water_shore_distance :: (cols: int, rows: int, wet: [] bool, across: f64, along: f64, out: [] f32) {
+  #assert cols <= EDT_MAX && rows <= EDT_MAX && wet.count >= cols * rows && out.count >= cols * rows;
+  far := 1000000000000.0;
+  d: [EDT_MAX * 16] f64;
+  big := cols * rows <= EDT_MAX * 16;
+  #assert big;
+  for k: 0..<cols * rows { d[k] = ifx wet[k] then far else 0.0; }
+  line: [EDT_MAX] f64; done: [EDT_MAX] f64; v: [EDT_MAX] int; z: [EDT_MAX + 1] f64;
+  for r: 0..<rows {
+    for c: 0..<cols { line[c] = d[r * cols + c]; }
+    edt_line(line[0..<cols], done[0..<cols], v[..], z[..], across);
+    for c: 0..<cols { d[r * cols + c] = done[c]; }
+  }
+  for c: 0..<cols {
+    for r: 0..<rows { line[r] = d[r * cols + c]; }
+    edt_line(line[0..<rows], done[0..<rows], v[..], z[..], along);
+    for r: 0..<rows { d[r * cols + c] = done[r]; }
+  }
+  for k: 0..<cols * rows {
+    out[k] = ifx d[k] >= far * 0.5 then 1000.0f32 else cast(f32) sqrt(d[k]);
+  }
+}
+
+// ---- ripples (phase W6's ripple field)
+
+// The ripples' height at (x, z) at `time` (frame.rs ripple_profile, as the
+// shader's water_ripples integrates its slope): damped packets riding
+// expanding rings, a ripple a row of x, z, start, strength.
+water_ripple_height :: (ripples: [] f32, count: int, x: f32, z: f32, time: f32) -> f32 {
+  h := 0.0f32;
+  k := f32(TAU_F) / 0.45;
+  for i: 0..<count {
+    r := i * 4;
+    age := time - ripples[r + 2];
+    if age < 0 || age > f32(WATER_RIPPLE_LIFE) { continue; }
+    dx := x - ripples[r]; dz := z - ripples[r + 1];
+    dist := sqrt(dx * dx + dz * dz);
+    s := dist - f32(WATER_RIPPLE_SPEED) * age;
+    envelope := exp(-s * s / 0.18) * exp(-age * 1.1) / (1 + 1.5 * dist);
+    h += ripples[r + 3] * envelope * sin(k * s);
+  }
+  return h;
+}
+
+// Adds a ripple at (x, z), now, of `strength` m: into a free row, or over
+// the oldest when every row is young (frame.rs Water::add_ripple).
+water_add_ripple :: (ripples: [] f32, x: f32, z: f32, time: f32, strength: f32) {
+  n := ripples.count / 4;
+  pick := 0; oldest := 1000000000.0f32;
+  for i: 0..<n {
+    start := ripples[i * 4 + 2];
+    if ripples[i * 4 + 3] <= 0 || time - start > f32(WATER_RIPPLE_LIFE) { pick = i; break; }
+    if start < oldest { oldest = start; pick = i; }
+  }
+  ripples[pick * 4] = x; ripples[pick * 4 + 1] = z; ripples[pick * 4 + 2] = time; ripples[pick * 4 + 3] = strength;
+}
+
+// The live ripples into the uniform block.
+water_look_ripples :: (u: [] f32, at: int, ripples: [] f32, time: f32) {
+  n := 0;
+  for i: 0..<ripples.count / 4 {
+    if n >= WATER_LOOK_RIPPLES { break; }
+    if ripples[i * 4 + 3] <= 0 || time - ripples[i * 4 + 2] > f32(WATER_RIPPLE_LIFE) { continue; }
+    for k: 0..<4 { u[at + W_RIPPLES + n * 4 + k] = ripples[i * 4 + k]; }
+    n += 1;
+  }
+  u[at + W_PARAMS + 2] = f32(n);
+}
+
+// ---- checks
+
+#test "the f32 mirror lands on the physics surface (terms.rs the_mirror_matches_the_physics_surface)" {
+  for which: 0..<2 {
+    r := ifx which == 0 then water_seeded(7, 1.0 / 120.0, 120 * 60, 6, d2(1.0, 0.3), 9.0, 0.12, 0.5)
+                         else water_seeded(11, 1.0 / 120.0, 120 * 600, 8, d2(-0.4, 1.0), 14.0, 0.3, 0.5);
+    #assert r.error == WaveError.none;
+    set := r.set;
+    body := water_with_waves(water_ocean(0, 0.0), set);
+    ticks := [5] u64.[0, 1, 977, 120 * 600 + 3, 9000000];
+    pts := [6] f32.[0, 0,   3.5, -7.25,   -40, 22];
+    for t: ticks {
+      angles: [MAX_WAVES] f32;
+      water_look_angles(set, t, 0.0, angles[..]);
+      phases := water_phases(set, t);
+      for p: 0..<3 {
+        x := pts[p * 2]; z := pts[p * 2 + 1];
+        d := water_look_displace(set, angles[..], x, z, -1, 1);
+        exact := water_at_rest(set, d2(f64(x), f64(z)), phases);
+        #assert abs(f64(d.y) - exact.height) < 0.001;
+        #assert d2_len(d2_sub(d2(f64(d.x), f64(d.z)), exact.horizontal)) < 0.001;
+        // and the gameplay surface over the displaced point is the same height
+        s := water_body_sample(body, f64(x + d.x), f64(z + d.z), t);
+        #assert s.found && abs(s.height - f64(d.y)) < 0.001;
+      }
+    }
+  }
+}
+
+#test "between ticks the angles move on smoothly (terms.rs fractions_of_a_tick_interpolate)" {
+  r := water_wind_sea(0.25, 22.0, 1.0, 8);
+  #assert r.error == WaveError.none;
+  a: [MAX_WAVES] f32; b: [MAX_WAVES] f32; mid: [MAX_WAVES] f32; at: [MAX_WAVES] f32;
+  water_look_angles(r.set, 10, 0.0, a[..]);
+  water_look_angles(r.set, 11, 0.0, b[..]);
+  water_look_angles(r.set, 10, 0.5, mid[..]);
+  for i: 0..<r.set.count {
+    #assert abs(turn_f(mid[i], a[i]) - 0.5 * turn_f(b[i], a[i])) < 0.0001;
+    #assert mid[i] >= -f32(PI_F) - 0.0001 && mid[i] < f32(PI_F) + 0.0001;
+  }
+  water_look_angles_at(r.set, 10.5 / 120.0, at[..]);
+  for i: 0..<r.set.count { #assert abs(turn_f(at[i], mid[i])) < 0.00001; }
+}
+
+turn_f :: (x: f32, y: f32) -> f32 {
+  d := x - y + f32(PI_F);
+  d = d - f32(TAU_F) * floor(d / f32(TAU_F));
+  return d - f32(PI_F);
+}
+
+#test "the wind sea never loops: its summed Q k A stays the set's 0.75 (terms.rs the_wind_sea_never_loops)" {
+  r := water_wind_sea(1.0, 30.0, 2.0, 8);
+  #assert r.error == WaveError.none && r.set.count == 8;
+  sum := 0.0f32;
+  for i: 0..<r.set.count { t := water_look_term(r.set, i); sum += t.q * t.k * t.amplitude; }
+  #assert abs(sum - 0.75) < 0.0001;
+}
+
+#test "the presets parse and stay in range, with Jerlov's absorption" {
+  for i: 0..<WATER_PRESETS {
+    p := water_preset(i);
+    #assert water_preset_valid(p);
+    #assert water_preset_named(WATER_PRESET_NAME[i]) == i;
+    // red goes first in every natural water
+    #assert p.absorb_r > p.absorb_g;
+  }
+  #assert water_preset_named("lava") == -1 && water_preset_named("river") == WATER_RIVER;
+  r := water_preset(WATER_RIVER);
+  #assert r.jerlov == Jerlov.C3 && r.absorb_r == 0.48 && r.absorb_g == 0.16 && r.absorb_b == 0.22 && r.foam == 0.9;
+  bad := r; bad.foam = 1.5;
+  #assert !water_preset_valid(bad);
+  // clearer water passes more light through a metre of it
+  #assert water_preset(water_preset_named("pool")).absorb_b < water_preset(water_preset_named("marsh")).absorb_b;
+}
+
+#test "shoaling: deep water keeps the whole wave, a dry bed none" {
+  #assert abs(water_shoal(1, 100) - 1) < 0.00001 && water_shoal(1, 0) == 0 && water_shoal(1, -2) == 0;
+  #assert water_shoal(2, 0.1) < water_shoal(2, 0.4) && water_shoal(2, 0.4) < 1;
+  #assert abs(tanh_f(0.5) - 0.46211716) < 0.00001;
+}
+
+#test "the shore distance is the exact Euclidean distance to the nearest dry node" {
+  cols := 9; rows := 7;
+  wet: [63] bool;
+  for k: 0..<63 { wet[k] = true; }
+  wet[3 * cols + 0] = false;      // one dry node on the left edge
+  wet[6 * cols + 8] = false;      // and one in the far corner
+  out: [63] f32;
+  water_shore_distance(cols, rows, wet[..], 0.5, 1.0, out[..]);
+  for r: 0..<rows {
+    for c: 0..<cols {
+      a := sqrt(sq_f(f32(c) * 0.5) + sq_f(f32(r - 3)));
+      b := sqrt(sq_f(f32(c - 8) * 0.5) + sq_f(f32(r - 6)));
+      #assert abs(out[r * cols + c] - lo_f(a, b)) < 0.0001;
+    }
+  }
+  all: [63] bool;
+  for k: 0..<63 { all[k] = true; }
+  water_shore_distance(cols, rows, all[..], 0.5, 1.0, out[..]);
+  #assert out[30] == 1000;
+}
+
+sq_f :: (x: f32) -> f32 { return x * x; }
+
+#test "ripples spread and fade (frame.rs ripples_spread_and_fade)" {
+  rip: [8 * 4] f32;
+  water_add_ripple(rip[..], 0, 0, 1.0, 0.02);
+  // The ring is a metre out after about 0.9 s, and nearly gone by the end of its life.
+  ring := 0.0f32; centre := 0.0f32;
+  for k: 0..<40 {
+    d := f32(k) * 0.05;
+    ring = hi_f(ring, abs(water_ripple_height(rip[..], 8, 0.9 + d * 0.0, 0, 1.0 + 0.82)));
+  }
+  centre = abs(water_ripple_height(rip[..], 8, 0.0, 0, 1.0 + 0.82));
+  #assert ring > centre;
+  early := 0.0f32; late := 0.0f32;
+  for k: 0..<200 {
+    x := f32(k) * 0.03;
+    early = hi_f(early, abs(water_ripple_height(rip[..], 8, x, 0, 1.3)));
+    late = hi_f(late, abs(water_ripple_height(rip[..], 8, x, 0, 4.6)));
+  }
+  #assert late < early * 0.1 && early > 0.001;
+  // past its life it is nothing, and its row is reused first
+  #assert water_ripple_height(rip[..], 8, 0.5, 0, 6.0) == 0;
+  water_add_ripple(rip[..], 5, 5, 6.0, 0.01);
+  #assert rip[0] == 5 && rip[3] == 0.01;
+  u: [WATER_FLOATS] f32;
+  water_look_ripples(u[..], 0, rip[..], 6.5);
+  #assert u[W_PARAMS + 2] == 1 && u[W_RIPPLES] == 5;
+}
+
+#test "the uniform block: terms, detail and tier in their rows" {
+  u: [WATER_FLOATS] f32;
+  r := water_wind_sea(0.3, 3.0, 0.4, 4);
+  water_look_body(u[..], 0, r.set, 12.25, water_preset(WATER_RIVER), 1, false);
+  water_look_detail(u[..], 0, 0.3, 0.12, 2.4, 0.016);
+  water_look_control(u[..], 0, true);
+  #assert u[W_PARAMS] == 12.25 && u[W_PARAMS + 1] == 16 && u[W_PARAMS + 3] == 4;
+  #assert u[W_WAVES + 4 * 8 + 2] == 0 && u[W_WAVES + 2] > 2;
+  #assert abs(u[W_DETAIL + 6] - 2.4) < 0.0001 && abs(u[W_DETAIL + 15 * 8 + 6] - 0.12) < 0.0001;
+  #assert u[W_CONTROL] == 6 && u[W_CONTROL + 1] == 120;
+  water_look_control(u[..], 0, false);
+  #assert u[W_CONTROL] == 16 && u[W_CONTROL + 2] == 2;
+  #assert WATER_FLOATS % 4 == 0 && W_FRAME + 4 == WATER_FLOATS;
+}

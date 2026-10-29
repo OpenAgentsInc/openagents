@@ -2,8 +2,11 @@
 
 Water is being ported from the previous Rust engine to Coax in the phases
 of its specification, [verse/everglade/previous/water.md](../../verse/everglade/previous/water.md)
-(copied from `0b401561a0^`; see its phased plan). Only phase W1 is done.
-The other phases wait on the owner (project task `verse-water`, #c278).
+(copied from `0b401561a0^`; see its phased plan). Done: W1 (the physics),
+W2 (the shader, on the Coax WebGPU renderer), W3 adapted to today's
+Everglade (its river, swimming and floats) and, from W6, the ripple field
+with your wake and splash. W4, W5 and the rest of W6 are not started
+(project task `verse-water`, #c278).
 
 ## W1: the physics (done)
 
@@ -68,8 +71,95 @@ coax/bin/coax test --library verse/rigid.coax
 - Coax has no `acos` or `atan` intrinsic, so rigid.coax defines `acos_d`
   and `atan_d` (checked against `cos` and `tan`).
 
-## Next
+## W2: the look (done)
 
-W2 (the water shader), W3 (Everglade's swimmable water), and the later
-phases are in the specification's phase table. None has started; they wait
-on the owner.
+The old W2 (`git show 03b7bbe2b0`: `assets/shaders/water.wgsl` v1 and
+`crates/verse-world/src/water/{terms,presets,frame,shore}.rs`) on the
+Coax WebGPU renderer (`coax/web/host.js`):
+
+- [`verse/water-look.coax`](../../verse/water-look.coax) is the CPU half:
+  the seven presets (Jerlov absorption, in-scatter, foam, roughness, shore
+  band, crest scattering), each wave's term and the angle constant from
+  W1's integer phase counters in f64 so the GPU's f32 never sees a large
+  phase, the f32 mirror of the surface the shader draws (checked against
+  `water_body_sample` within a millimetre), shoaling, the wind sea, the 16
+  analytic detail waves, the tiers (phone: 6 detail waves, glints fade at
+  120 m, one foam octave; desktop: 16, 400 m, two), the exact Euclidean
+  shore distance the shore foam reads, and the uniform block
+  (`WATER_FLOATS` numbers, `W_*` rows).
+- `apps/openagents-web/everglade.wgsl` (the water section) is the GPU
+  half: the Gerstner mesh over baked nodes, Fresnel, the sky reflection
+  blurred by roughness and pixel footprint, Beer-Lambert absorption over
+  the baked depth, in-scatter, GGX glints, crest scattering, the shore,
+  crest and white-water foam, flow-advected detail, ripples, and the view
+  from under the surface (Snell's window). A host's sky, sun and shadows
+  come in through four small hooks, as the old `water_host_*` functions.
+- The renderer draws water last, in two halves over the scene with its
+  depth: a multiplied transmittance, then the added light (`host.js`
+  `waterPipelines`; a page names how many of its last draws are water with
+  `coaxial_water_draws`). The page's target is gamma-encoded, so the
+  transmittance half multiplies by the encoded transmittance (exact for a
+  product) and the light half adds the difference it makes over a mid bed.
+- Deterministic time: the water's clock is W1's tick (120 a second), and
+  the shader's waves are the body's `WaveSet`, so what you see is what the
+  physics and the swimmer read.
+
+Not ported, and why: the Low tier's baked normal tile (the phone draws 6
+analytic detail waves instead; no texture pipeline is needed), the
+`capture` example and its golden PNGs (the realm's golden screenshot
+covers it), the GLES path (the Coax renderer is WebGPU only), and
+screen-space refraction (the bed comes through by absorption only).
+
+```sh
+coax/bin/coax test --library verse/water-look.coax --steps 500000000
+```
+
+## W3: Everglade's river (done, adapted)
+
+The old W3 put ponds, a weir and rowboats in an older Everglade. Today's
+Everglade has one 4 m river along x = 88, crossed by the river trail's
+bridge, so W3 is that river (docs/verse/everglade.md, "The river"):
+
+- `verse/everglade/plan.coax` carves its bed: a level that falls south and
+  stays 0.2 m under the lowest ground beside it, a V 2.2 m deep at the
+  middle, and banks that climb one in one to the ground (a ravine in the
+  south woods). The bridge's deck spans the cut; you walk over it.
+- [`verse/everglade/river.coax`](../../verse/everglade/river.coax) is one
+  W1 river body on that level profile with a current from
+  `water_flow_river` round the bridge's two piles, a gentle wind sea, and
+  the nodes the shader draws (13 across, 209 along; the bed's depth and
+  shore distance baked from the carved ground). It is its own library: the
+  realm's face passes values between it, the page and the controller.
+- The swimmer (the old `physics::water::medium` and `verse-world`'s
+  breath): ground, wading past 0.4 m, swimming past 1.25 m or off the
+  bed, diving with the eye under; a swimmer settles at the float line, an
+  idle diver rises at 0.6 m/s. Half speed wading and swimming (SRD 5.2.1),
+  a sixth less each Exhaustion level; `verse/player.coax`'s walk and run
+  speeds are unchanged on land (its new `pace` is 1 there). Breath: a
+  minute (the Ranger's Constitution is +0), then an Exhaustion level
+  every 6 s; the sixth puts you on the nearer bank. No jumping afloat; the
+  current carries a swimmer. C dives.
+- Floats: three ducks paddling round their stretch of the glade against
+  the current and six lily pads on their stems, W1 rigid bodies on
+  `water_apply`'s buoyancy and drag.
+- Swimming across is allowed: a glade either side of the bridge opens the
+  river from z = -40 to 12, so the far bank is reached by water as well as
+  by the bridge. Up and down the river past it the forest closes in. The
+  plan's reachability and slope checks say so.
+
+Not ported, because today's Everglade has none of them: the ponds, the
+weir and its plunge pool, rowboats, townsfolk swimming and underwater
+combat. You swim with the walk clip (there is no swim clip yet), and a
+phone has no dive button yet.
+
+## W6: ripples (done; the rest of W6 is not)
+
+`water_look_ripples` puts 24 expanding rings in the uniform block (the old
+`frame.rs` ripple field); the shader bends the normal by them and draws a
+foam rim on young ones. In Everglade you splash where you come into the
+water and leave a ring every 0.35 s you move through it, weaker diving.
+Rowboats, wakes from other bodies and the rest of W6 are not started.
+
+```sh
+coax/bin/coax test --library verse/everglade/river.coax --steps 2000000000
+```

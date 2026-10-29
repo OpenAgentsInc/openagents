@@ -94,6 +94,7 @@
 //   coaxial_stores(), coaxial_store_cap(k), coaxial_store(state, k), coaxial_store_bytes(state, k)
 //                             memory copied each frame to storage buffers
 //   coaxial_sounds(state), coaxial_sounds_len(state)  sounds to play now, a line each: NAME GAIN PAN
+//   coaxial_water_draws(state)  how many of the last draws are water (water_vs, waterPipelines)
 // The WGSL's scene_vs/scene_fs read group 1: the storage assets, then the stores, then the texture
 // and its sampler, in that order. A WGSL with shadow_vs/shadow_fs also gets a shadow map (shadowLayout).
 // Particles, optionally: particles:URL names a shader module of their own (particle_vs/particle_fs,
@@ -622,11 +623,32 @@ async function loadShaders() {
   ]);
   gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; gpu.bloom = bl; gpu.post = po; // swapped whole, at the next frame
   gpu.particles = sc ? await particlePipeline(post) : null;
+  [gpu.waterTransmit, gpu.waterEmit] = sc && /fn\s+water_vs\b/.test(code) ? await waterPipelines(module, sceneGroups, post) : [null, null];
   return true;
   } finally {
     shaderLoads -= 1;
     invalidateScene();
   }
+}
+
+// Water, when the WGSL has water_vs, water_transmit_fs and water_emit_fs: the app's last
+// coaxial_water_draws(state) draws are water, drawn after the scene in two halves each, depth-tested
+// and not written: the first multiplies what lies behind by its colour (per-channel transmittance),
+// the second adds its own (docs/verse/water.md).
+async function waterPipelines(module, groups, post) {
+  const { device, format } = gpu;
+  const keep = { operation: "add", srcFactor: "zero", dstFactor: "one" };
+  const half = (entryPoint, color) => device.createRenderPipelineAsync({
+    layout: device.createPipelineLayout({ bindGroupLayouts: groups }),
+    vertex: { module, entryPoint: "water_vs" },
+    fragment: { module, entryPoint, targets: post
+      ? [{ format: "rgba16float", blend: { color, alpha: keep } }, { format: "rgba16float", writeMask: 0 }]
+      : [{ format, blend: { color, alpha: keep } }] },
+    primitive: { topology: "triangle-list", cullMode: "none" },
+    depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "less" },
+  });
+  return Promise.all([half("water_transmit_fs", { operation: "add", srcFactor: "zero", dstFactor: "src" }),
+    half("water_emit_fs", { operation: "add", srcFactor: "one", dstFactor: "one" })]);
 }
 
 // The particles' own module and pipeline; a page without one, or one that doesn't compile, draws none.
@@ -1069,9 +1091,11 @@ function frame(now) {
   const post = gpu.post && gpu.postGroup;
   const encoder = device.createCommandEncoder();
   const list = draws ? new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), draws * 4) : null;
+  const wet = draws && gpu.waterTransmit && x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(arena.state), draws) : 0;
+  const drawOne = (pass, i) => { if (list[i * 4 + 1] && list[i * 4 + 3]) pass.drawIndexed(list[i * 4 + 1], list[i * 4 + 3], list[i * 4], 0, list[i * 4 + 2]); };
   const drawScene = (pass) => {
     pass.setBindGroup(1, gpu.sceneGroup); pass.setIndexBuffer(gpu.index, "uint32");
-    for (let i = 0; i < draws; i++) if (list[i * 4 + 1] && list[i * 4 + 3]) pass.drawIndexed(list[i * 4 + 1], list[i * 4 + 3], list[i * 4], 0, list[i * 4 + 2]);
+    for (let i = 0; i < draws - wet; i++) drawOne(pass, i);
   };
   if (draws && gpu.shadow) {
     const shade = encoder.beginRenderPass({ colorAttachments: [],
@@ -1088,6 +1112,10 @@ function frame(now) {
     pass.setPipeline(gpu.scene);
     if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
     drawScene(pass);
+    for (let i = draws - wet; i < draws; i++) {
+      pass.setPipeline(gpu.waterTransmit); drawOne(pass, i);
+      pass.setPipeline(gpu.waterEmit); drawOne(pass, i);
+    }
     const sparks = gpu.particles ? x.coaxial_particle_instances(arena.state) : 0;
     const bytes = sparks ? Math.min(x.coaxial_particle_bytes(arena.state), gpu.particleBuffer.size) & ~3 : 0;
     if (bytes) {
