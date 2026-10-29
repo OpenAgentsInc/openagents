@@ -64,7 +64,7 @@ fn under_panel(p: vec2f) -> bool {
   let r2 = dot(p.corner, p.corner);
   if (r2 >= 1.0 || under_panel(p.pos.xy)) { discard; }
   let a = exp(-r2 * 4.0) * (1.0 - r2);
-  return vec4f(p.color * a, 0.0);
+  return vec4f(p.color * a, verse_haunt_bloom_share(max(p.color.r, max(p.color.g, p.color.b)), 1.0) * a);
 }
 
 // ---- generated: verse/particle-motion.coax (verse_particle_offset, verse_particle_glow, verse_particle_size) by coax/web/wgsl.py; do not edit
@@ -199,5 +199,30 @@ fn verse_particle_size(l_kind: f32, l_seed: f32, l_i: f32, l_t: f32, l_speed: f3
     return (l_size * (1.0 - (l_a * 0.600000024)));
   }
   return (l_size * (0.699999988 + (0.600000024 * verse_particle_hash(l_seed, l_i, 6.0))));
+}
+// ---- end generated
+// ---- generated: verse/haunt-light.coax (verse_haunt_bloom_share) by coax/web/wgsl.py; do not edit
+fn coax_p_hl_min(l_a: f32, l_b: f32) -> f32 {
+  if ((l_a < l_b))
+  {
+    return l_a;
+  }
+  return l_b;
+}
+fn coax_p_hl_max(l_a: f32, l_b: f32) -> f32 {
+  if ((l_a > l_b))
+  {
+    return l_a;
+  }
+  return l_b;
+}
+fn verse_haunt_bloom_share(l_peak: f32, l_glow: f32) -> f32 {
+  var coax_t4: f32;
+  var coax_t5: f32;
+  var l_own: f32 = coax_p_hl_min(0.899999976, (coax_p_hl_max(0.0, l_glow) * 0.800000012));
+  coax_t4 = coax_p_hl_max(0.0, (l_peak - 1.0));
+  coax_t5 = (l_peak + 0.5);
+  var l_past: f32 = coax_p_hl_min(1.0, (coax_t4 / coax_t5));
+  return (l_own + (((1.0 - l_own) * l_past) * 0.600000024));
 }
 // ---- end generated

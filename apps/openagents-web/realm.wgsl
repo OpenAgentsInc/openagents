@@ -195,7 +195,7 @@ struct Step { v: vec4f }
     var c = vec3f(0.0);
     for (var k = 0; k < 4; k++) {
       let t = textureSampleLevel(bloom_src, bloom_lin, uv + (vec2f(f32(k & 1), f32(k >> 1u)) * 2.0 - 1.0) * texel, 0.0);
-      c += t.rgb * t.a;
+      c += t.rgb * min(t.a, 1.0);
     }
     return vec4f(c * 0.25, 1.0);
   }
