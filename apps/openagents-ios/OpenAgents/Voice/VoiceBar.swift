@@ -21,7 +21,7 @@ final class VoiceBar: UIView {
         #if targetEnvironment(simulator)
         return "ws://127.0.0.1:8787" // the Mac's voice host: verse/voice-host/run.sh
         #else
-        return nil
+        return "wss://voice.openagents.com" // Cloud Run oa-voice: verse/voice-host/deploy.sh
         #endif
     }
     /// `-OAVoiceHost ws://…` on launch, or the long press; else the simulator default.

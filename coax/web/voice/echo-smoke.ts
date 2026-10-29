@@ -2,7 +2,9 @@
 // then, a second into the reply, a barge-in whose turn is the reply's own
 // audio played back into the mic. The host must take that turn for the
 // reply's echo and say the reply again from where it was cut, not answer it.
-//   bun coax/web/voice/echo-smoke.ts WASM [ws://127.0.0.1:8787 | wss://...] [FIXTURE.wav] [ROUTE]
+// QUIET=1: the echo opens a turn but never barges in (the engine judged it
+// too weak to interrupt): the host must not answer it, and the reply plays on.
+//   [QUIET=1] bun coax/web/voice/echo-smoke.ts WASM [ws://127.0.0.1:8787 | wss://...] [FIXTURE.wav] [ROUTE]
 const [wasmPath, host = "ws://127.0.0.1:8787", wav = "verse/voice-host/fixtures/hello-foreman.wav", route = "haunted-house"] = process.argv.slice(2)
 const wasi = new Proxy({}, { get: (_, n) => (n === "proc_exit" ? () => { throw new Error("exit") } : () => 52) })
 const { instance } = await WebAssembly.instantiate(await Bun.file(wasmPath).arrayBuffer(), { wasi_snapshot_preview1: wasi })
@@ -56,8 +58,8 @@ for (let at = 0; at < total && !ended; at += frame) {
 }
 while (echo.length < 24000 && Date.now() - t0 < 30000) await Bun.sleep(20)
 // A second in, the mic catches the speaker: a barge-in, then that second as a turn.
-x.vw_set_epoch(x.vw_epoch() + 1)
-{ const [t] = strings("q-1"); send(x.vw_control(3, t, 0, 24000, Date.now())) }
+const quiet = !!process.env.QUIET
+if (!quiet) { x.vw_set_epoch(x.vw_epoch() + 1); const [t] = strings("q-1"); send(x.vw_control(3, t, 0, 24000, Date.now())) }
 echoSent = true
 const mic = new Int16Array(16000 + 16000)   // the second at 16 kHz, then a second of silence
 for (let i = 0; i < 16000; i++) mic[i] = echo[Math.floor(i * 1.5)] ?? 0
@@ -78,6 +80,8 @@ ws.close()
 const [first = "", ...again] = [...said.values()]
 console.log(`asked "${heard[0] ?? ""}"\nreply "${first}"\nmic heard "${heard[1] ?? ""}"\nthen said ${again.map((t) => `"${t}"`).join(", ") || "nothing"}, ${(audioAfterEcho / 24000).toFixed(2)} s of audio`)
 // Resumed: the reply's own words again (a tail of the first reply), with audio.
-const ok = first.length > 0 && again.length > 0 && again.every((t) => first.endsWith(t) || first.includes(t)) && audioAfterEcho > 12000
+const ok = quiet
+  ? first.length > 0 && again.length === 0 && audioAfterEcho > 12000   // no answer to the echo; the reply went on
+  : first.length > 0 && again.length > 0 && again.every((t) => first.endsWith(t) || first.includes(t)) && audioAfterEcho > 12000
 console.log(ok ? "echo smoke: ok" : "echo smoke: FAILED")
 process.exit(ok ? 0 : 1)

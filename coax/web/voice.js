@@ -12,7 +12,7 @@
 // The host is the oa-voice Cloud Run service by default (verse/voice-host/deploy.sh);
 // ?voice=ws://127.0.0.1:8787 uses a host on this computer (verse/voice-host/run.sh).
 export const VOICE_KIND = 50, ACT_VOICE = 7;
-const DEFAULT_HOST = "wss://oa-voice-ezxz4mgdsq-uc.a.run.app";   // verse/voice-host/deploy.sh
+const DEFAULT_HOST = "wss://voice.openagents.com";   // Cloud Run oa-voice (verse/voice-host/deploy.sh)
 const OUT_RATE = 24000, AHEAD = 0.2;
 const EV = { TURN_START: 1, TURN_END: 2, BARGE_IN: 4, FORWARD: 8, DROPPED: 128, UNDERRUN: 256 };
 const MSG = { WELCOME: 2, AUDIO: 3, CONTROL: 4, TURN_EVENT: 5, SPEECH: 6, ERROR: 9 };

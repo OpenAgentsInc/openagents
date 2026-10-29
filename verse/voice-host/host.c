@@ -161,6 +161,7 @@ typedef struct job {
   char text[MAX_TEXT + 1];   // in: transcript (AGENT) or sentence (TTS); out: transcript (STT)
   char reply[MAX_TEXT + 1];  // out (AGENT)
   volatile int cancel;       // AGENT: set by the main thread to stop the stream
+  int tries;                 // AGENT: retried once when the call failed before any reply
   bool ok, cached;
   uint64_t started;
   char err[300];
@@ -352,6 +353,12 @@ typedef struct {
   int cut_rendered;           // sentences rendered; the rest are still text
   uint64_t cut_at;            // now_ms() of the cut; 0: nothing kept
   int cut_resumes;            // resumes in a row, so an echo can't cut it forever
+  // Turns that started while a reply played and never barged in: the phone's
+  // own engine judged them too weak to interrupt, so they are the reply's
+  // echo or the room, not someone talking (deliver_final drops them).
+  uint32_t quiet[8];
+  int nquiet;
+  uint64_t spoke_at;          // now_ms() when the last reply finished playing here
 } session;
 
 static session *sessions[MAX_SESSIONS];
@@ -501,6 +508,12 @@ static void start_turn(session *s, const oa_voice_control *c) {
   }
   warm();
   s->turn_no++;
+  // Over the reply (the phone plays a little behind this host's clock, so just
+  // after it too): quiet until a barge-in says otherwise.
+  if ((s->speaking || (s->spoke_at && now_ms() - s->spoke_at < 600)) && g_provider == PROVIDER_GOOGLE) {
+    if (s->nquiet == 8) { memmove(s->quiet, s->quiet + 1, sizeof s->quiet[0] * 7); s->nquiet--; }
+    s->quiet[s->nquiet++] = s->turn_no;
+  }
   snprintf(s->turn, sizeof s->turn, "%s", turn);
   s->turn_open = true;
   s->tn = 0;
@@ -698,6 +711,13 @@ static void on_uplink_audio(session *s, const oa_voice_audio *a) {
   maybe_recognize(s);
 }
 
+// Whether turn_no was quiet (see session.quiet), forgetting it.
+static bool take_quiet(session *s, uint32_t turn_no) {
+  for (int i = 0; i < s->nquiet; i++)
+    if (s->quiet[i] == turn_no) { s->quiet[i] = s->quiet[--s->nquiet]; return true; }
+  return false;
+}
+
 static void clear_cut(session *s) {
   free(s->cut_pcm);
   s->cut_pcm = NULL; s->cut_n = 0; s->cut_at = 0; s->cut_resumes = 0;
@@ -776,6 +796,7 @@ static void send_speech(session *s, const utter *u) {
 }
 
 static void end_utterance(session *s, utter *u) {
+  if (u->started) s->spoke_at = now_ms();
   if (u->started)
     logf_("%s: %s %s spoken: %zu samples in %d sentence(s), gaps %llu ms", s->sid, u->turn, u->id, u->n, u->nseg,
           (unsigned long long)(u->gap_us / 1000));
@@ -1032,6 +1053,11 @@ static void resume_cut(session *s, uint32_t turn_no, const char *turn) {
 
 static void deliver_final(session *s, uint32_t turn_no, const char *turn, const char *text) {
   s->t_final = now_ms();
+  if (take_quiet(s, turn_no)) {
+    logf_("%s: %s heard over the reply without a barge-in, so not taken: %s", s->sid, turn, text);
+    send_turn_event(s, turn, OA_TURN_PHASE_ENDED, NULL, 0);
+    return;
+  }
   if (is_echo(s, text)) {
     logf_("%s: %s heard %s", s->sid, turn, text);
     resume_cut(s, turn_no, turn);
@@ -1110,6 +1136,18 @@ static void on_job_done(job *j) {
     on_reply_sentence(s, j);
     break;
   case JOB_AGENT: {
+    if (!j->ok && !j->reply[0] && !j->cancel && j->tries == 0 && s->agent == j) {
+      // A dropped connection before any reply: once more, before saying so.
+      job *again = malloc(sizeof *again);
+      if (again) {
+        *again = *j;
+        again->tries = 1; again->ok = false; again->err[0] = 0; again->next = NULL;
+        logf_("%s: %s agent failed (%s); trying again", s->sid, j->turn, j->err);
+        s->agent = again;
+        submit(again);
+        break;
+      }
+    }
     if (s->agent == j) s->agent = NULL;
     utter *u = utter_by_turn(s, j->turn_no);
     logf_("%s: %s agent reply in %llu ms (%zu bytes)", s->sid, j->turn, (unsigned long long)(now_ms() - j->started), strlen(j->reply));
@@ -1219,6 +1257,7 @@ static void on_control(session *s, const oa_voice_control *c) {
     break;
   }
   case OA_CONTROL_BARGE_IN:
+    (void)take_quiet(s, s->turn_no);   // loud enough to interrupt: someone talking (or an echo is_echo will catch)
     if (c->played_samples) s->played_samples = c->played_samples;
     cut_speech(s, c->media_epoch, true);
     break;
