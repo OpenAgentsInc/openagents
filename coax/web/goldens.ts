@@ -30,6 +30,8 @@
 //   bun coax/web/goldens.ts BASE --starts         # brief: each page by its address answers and its engine starts, no errors
 //   bun coax/web/goldens.ts BASE --root /demo/N   # a pinned demo's pages
 //   bun coax/web/goldens.ts BASE --unchanged-against https://openagents.com --since COMMIT [--full]
+//   bun coax/web/goldens.ts BASE --only landing,galaxy   # compare only these pages (golden-check.sh)
+//   bun coax/web/goldens.ts BASE --report FILE    # also write the failures as JSON (release.sh's hold-back)
 //
 // A golden is coax/web/goldens/NAME.png at 1280x800, NAME a realm's slug for
 // a realm; what a realm's page must light, how long it settles and how many
@@ -48,37 +50,30 @@ import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync, mkdirSync
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { inflateSync } from "node:zlib"
-import { worlds, type World } from "./realms"
-import { missingGolden } from "./golden-policy"
+import { type World } from "./realms"
+import { goldenPages, type Page } from "./golden-pages"
+import { classify, missingGolden } from "./golden-policy"
 
 const W = 1280, H = 800, BLOCK = Number(process.env.BLOCK ?? 8), SHADE = Number(process.env.SHADE ?? 8)
 const args = process.argv.slice(2)
 const flag = (n: string) => args.includes(`--${n}`)
 const value = (n: string, d = "") => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d }
 const base = (args[0] ?? "").replace(/\/$/, ""), root = value("root"), update = flag("update"), walkOnly = flag("walk") || flag("starts"), startsOnly = flag("starts")
-if (!base.startsWith("http")) { console.error("usage: bun coax/web/goldens.ts BASE [--update] [--walk] [--root /demo/NAME] [--starts] [--unchanged-against ORIGIN --since COMMIT] [--full]"); process.exit(2) }
+if (!base.startsWith("http")) { console.error("usage: bun coax/web/goldens.ts BASE [--update] [--walk] [--root /demo/NAME] [--starts] [--unchanged-against ORIGIN --since COMMIT] [--full] [--only NAME,NAME] [--report FILE]"); process.exit(2) }
 const goldens = join(import.meta.dir, "goldens")
 const contract: Record<string, string[]> = JSON.parse(readFileSync(join(import.meta.dir, "analytics-contract.json"), "utf8"))
 const sent = new Set<string>()
-// The least each page draws: the share of pixels lit (a channel over 40).
-// The landing and the galaxy are words and stars on black; the house, a dark night,
-// lights about 6% (its loading screen, or one that failed, under 1%).
-// blocks: how many of its blocks may change against its golden.
-type Page = { path: string; lit: number; settle: number; blocks: number }
-const PAGES: Record<string, Page> = { landing: { path: "/verse", lit: 0.004, settle: 2500, blocks: 4 },
-  galaxy: { path: "/verse/galaxy", lit: 0.01, settle: 2500, blocks: 8 } }
-// Every realm, and the open worlds in the order the galaxy's arrows step
-// through them with ?realms=all (realms.json's order).
-const table = worlds(), open = table.filter((w) => w.kind === "open" && w.realm)
-for (const w of open) PAGES[w.realm!.slug] = { path: `/realms/${w.realm!.slug}`, ...w.realm!.golden }
-// Realms the galaxy doesn't list yet: with no golden, their shot waits in pending/ (golden-policy.ts).
-const unlisted = new Set(open.filter((w) => w.listed === false).map((w) => w.realm!.slug))
+// The pages and their numbers (golden-pages.ts): the least share of pixels
+// each lights (the landing and the galaxy are words and stars on black; the
+// house, a dark night, lights about 6%, its loading screen or one that failed
+// under 1%), how long it settles, how many of its blocks may change.
+// --only NAME,NAME compares only those pages with their goldens (golden-check.sh):
+// the lanes that reach them still run, and every page they reach must start and draw.
+const { pages: PAGES, byAddress: BY_ADDRESS, open, unlisted } = goldenPages()
+const only = new Set(value("only").split(",").filter(Boolean))
+for (const n of only) if (!PAGES[n]) { console.error(`goldens: --only names no page ${n}`); process.exit(2) }
+const wanted = (name: string) => !only.size || only.has(name)
 const pendingDir = process.env.GOLDENS_PENDING || join(goldens, "pending")
-// Pages of their own the galaxy doesn't open (not in realms.json), walked by their address.
-const BY_ADDRESS: Record<string, Page> = { garden: { path: "/realms/garden", lit: 0.5, settle: 3000, blocks: 6 } }
-// The style fixture (docs/verse/art-styles.md): the fixture realm in the painterly preset at each clock key.
-for (const c of ["0", "0.25", "0.5", "0.75"]) BY_ADDRESS[`fixture-painterly-${c}`] = { path: `/realms/fixture?style=painterly&clock=${c}`, lit: 0.5, settle: 3000, blocks: 6 }
-for (const [name, page] of Object.entries(BY_ADDRESS)) PAGES[name] ??= page
 type Name = string
 
 // ---- PNG: Chrome's screenshots (8-bit RGB or RGBA, not interlaced) to RGBA
@@ -326,7 +321,7 @@ class Tab {
     this.check(this.errors.length === 0, `${name}: no errors${this.errors.length ? ` (${this.errors.join("; ")})` : ""}`)
     this.errors = []
     this.check(share >= page.lit, `${name}: draws (${(share * 100).toFixed(1)}% lit, at least ${(page.lit * 100).toFixed(1)}%)`)
-    if (walkOnly) return image
+    if (walkOnly || !wanted(name)) return image
     if (skipping(name)) {
       // the files it fetched once started must be the same bytes too, or it is compared after all
       const changed = await differs(await this.fetched())
@@ -370,7 +365,8 @@ type Lane = { name: string; run: (t: Tab) => Promise<void> }
 const lanes: Lane[] = []
 // The journey: the landing, ENTER into the house, the galaxy, a click on the
 // Haunted House, and the house's analytics contract (its own lane, first).
-lanes.push({ name: "journey", run: async (t) => {
+const journey = ["landing", "galaxy", "haunted-house"].some(wanted)
+if (journey) lanes.push({ name: "journey", run: async (t) => {
   await t.send("Page.navigate", { url: base + root + PAGES.landing.path })
   if (!(await t.arrive("landing"))) return
   await t.key("Enter", "Enter", 13)   // ENTER: play now as a guest
@@ -440,12 +436,12 @@ const byAddress = async (t: Tab, slug: string, k: number) => {
 }
 if (!root) for (const [k, w] of open.entries()) {
   const slug = w.realm!.slug
-  if (slug === "haunted-house") continue
+  if (slug === "haunted-house" || !wanted(slug)) continue
   lanes.push({ name: slug, run: (t) => skipping(slug) ? byAddress(t, slug, k) : fromGalaxy(t, slug, k) })
 }
 // Pages of their own, by their address.
 if (!root) for (const name of Object.keys(BY_ADDRESS)) {
-  if (open.some((w) => w.realm!.slug === name)) continue
+  if (open.some((w) => w.realm!.slug === name) || !wanted(name)) continue
   lanes.push({ name, run: async (t) => {
     await t.send("Page.navigate", { url: base + PAGES[name].path })
     t.errors = []
@@ -490,7 +486,7 @@ try {
     }
     t.ws.close()
   }))
-  if (!root && !startsOnly && !allSent.size) { console.log("  FAIL  analytics contract: no analytics batch was sent"); failed.push("analytics contract: no analytics batch was sent") }
+  if (!root && !startsOnly && journey && !allSent.size) { console.log("  FAIL  analytics contract: no analytics batch was sent"); failed.push("analytics contract: no analytics batch was sent") }
 } finally {
   for (const { proc, profile } of procs) { proc.kill(); rmSync(profile, { recursive: true, force: true }) }
 }
@@ -500,4 +496,12 @@ if (reference && since) console.log(skipped.length
   : `goldens: every page compared with its golden (none unchanged since ${since})`)
 if (reference && since && compared.size) console.log(`goldens: compared in full: ${[...compared].map(([n, why]) => `${n} (${why})`).join("; ")}`)
 console.log(`goldens ${base}${root}: ` + (failed.length ? `${failed.length} failed` : update ? "updated" : "passed") + ` in ${((Date.now() - t0) / 1000).toFixed(1)} s (${Math.min(POOL, lanes.length)} ${CHROMES ? "Chromes" : "tabs"})`)
+// --report FILE: the failures as JSON for release.sh's hold-back. golden: the
+// pages whose only failures are their golden comparisons (each named with its
+// path); other: every other failure (a page that doesn't start, errors, draws
+// nothing, a missing analytics event), which a release never ships past.
+const report = value("report")
+if (report) {
+  writeFileSync(report, JSON.stringify({ base, failed, ...classify(failed, PAGES) }, null, 2) + "\n")
+}
 process.exit(failed.length ? 1 : 0)

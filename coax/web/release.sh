@@ -31,9 +31,23 @@
 # by its address and must start, show no errors and draw. The walk names
 # every page it skipped and why; GOLDENS_FULL=1 (or --full-walk) compares
 # every page. Production's thorough walk takes every page by its route.
-# A visual change fails the goldens until approved: look at the shot it
-# printed, then `bun coax/web/goldens.ts https://staging.openagents.com
-# --update` and commit coax/web/goldens/ with the change. A realm not yet
+# A page that fails only its golden comparison is held back, not the release
+# (2026-10-29, #12605): production keeps that page's current HTML (the files
+# it names are named by their content and never removed, so it still
+# answers), every other page and all data ship, and the run prints HELD BACK
+# with the likeliest breaking commit (golden-pages.ts: the newest since
+# production's release touching the page's own inputs, else shared ones such
+# as host.js) and lists the pages in releases/<time>/HELD. When that commit is
+# the one being released, the rest still ships and the run exits 3. Any
+# other failure (a page that doesn't start, errors, draws nothing, the
+# analytics contract, the HTTP smoke) still stops the release before
+# production. A visual change is its author's to approve, in its own commit:
+# look at the shot it printed, then `bun coax/web/goldens.ts
+# https://staging.openagents.com --update` and commit coax/web/goldens/ with
+# the change; golden-check.sh --commit HASH catches it before the push, in
+# about a minute. Never approve someone else's page to get a release through.
+# Data needs no release: project pages read their relay live, and
+# coax/web/project/publish-data.sh refreshes their Markdown (seconds). A realm not yet
 # listed on the galaxy (realms.json listed: false) with no golden doesn't
 # block: it must start, show no errors and draw, and its shot waits in
 # coax/web/goldens/pending/ ("NEW REALM ...") for approval.
@@ -227,11 +241,29 @@ if $stage; then
   # Pages unchanged since production's newest live release, if it was staged, skip their golden comparison.
   unchanged=()
   [[ -n "$full_walk" || "$passed" != *" staged "* ]] || unchanged=(--unchanged-against https://openagents.com --since "${passed%% *}")
-  GOLDENS_FULL="${full_walk:-${GOLDENS_FULL:-}}" GOLDENS_PENDING="$repo/coax/web/goldens/pending" bun "$tree/coax/web/goldens.ts" https://staging.openagents.com ${unchanged[@]+"${unchanged[@]}"} ||
-    { echo "release $commit: staging's pages don't start, draw, match their goldens or send the analytics contract; production is untouched" >&2; exit 1; }
+  report="$(mktemp -d)/goldens.json"
+  if ! GOLDENS_FULL="${full_walk:-${GOLDENS_FULL:-}}" GOLDENS_PENDING="$repo/coax/web/goldens/pending" bun "$tree/coax/web/goldens.ts" https://staging.openagents.com ${unchanged[@]+"${unchanged[@]}"} --report "$report"; then
+    # Only golden comparisons failed: those pages are held back, the rest ships.
+    # Anything else (a page that doesn't start, errors, draws nothing, a missing analytics event) stops the release.
+    held_names="$(bun -e 'const r = JSON.parse(await Bun.file(process.argv[1]).text()); if (r.other.length || !r.golden.length) process.exit(1); console.log(r.golden.map((g) => g.name).join(" "))' "$report" 2>/dev/null)" ||
+      { echo "release $commit: staging's pages don't start, draw or send the analytics contract; production is untouched" >&2; exit 1; }
+    hold="$(cd "$tree/coax/web" && bun golden-pages.ts objects $held_names)"
+    # The likeliest break: the newest commit since production's release that touched the page's own inputs, else shared ones.
+    range="$full~50..$full"; [[ -z "$passed" ]] || range="${passed%% *}..$full"
+    while IFS=$'\t' read -r name hash author why subject; do
+      echo "HELD BACK $name: it doesn't match its golden; production keeps its current page, everything else ships"
+      if [[ -n "$hash" ]]; then
+        echo "  likeliest break: ${hash:0:10} ($author, $why inputs): $subject"
+        [[ "$hash" != "$full" ]] || held_mine+="$name "
+      else
+        echo "  $subject"
+      fi
+    done < <(cd "$tree/coax/web" && bun golden-pages.ts blame "$range" $held_names)
+    echo "  the commit's author fixes the page or approves its look: bun coax/web/goldens.ts https://staging.openagents.com --update, look at the shot, commit coax/web/goldens/"
+  fi
   lap goldens "$t"
 fi
-$prod || { echo "release $commit: staging only, done in $(secs $(( $(now) - start ))) s"; exit 0; }
+$prod || { echo "release $commit: staging only, done in $(secs $(( $(now) - start ))) s${held_names:+; would hold back $held_names}"; exit 0; }
 if ! $stage; then
   t=$(now); "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web > /dev/null; lap build "$t"
 fi
@@ -253,9 +285,13 @@ if $stage; then
   for s in $(gcloud storage cat "gs://$staging_bucket/projects/published-slugs.txt" 2>/dev/null | grep -E '^[a-z0-9][a-z0-9-]{0,63}$' || true); do
     published+="|^projects/$s(/|\$)"
   done
+  # Held-back pages keep production's current bytes: their HTML isn't copied.
+  # Their files are named by their content and never removed, so they still answer.
+  [[ -z "${hold:-}" ]] || published+="|$hold"
   gcloud storage rsync -r "gs://$staging_bucket" "gs://$prod_bucket" --exclude ".*\.(html|md)\$|^releases/|^demo/|^demo-releases/|$published" --quiet > /dev/null
   wait $backup
   gcloud storage rsync -r "gs://$staging_bucket" "gs://$prod_bucket" --exclude "^releases/|^demo/|^demo-releases/|$published" --quiet > /dev/null
+  [[ -z "${held_names:-}" ]] || echo "$held_names" | gcloud storage cp - "gs://$prod_bucket/releases/$stamp/HELD" --quiet > /dev/null || true
   lap promote "$t"
 else
   echo "$commit $stamp" | gcloud storage cp - "gs://$prod_bucket/releases/$stamp/COMMIT" --quiet > /dev/null
@@ -277,4 +313,9 @@ lap "prod ${check#--}" "$t"
 # This release went live after its walk and smoke: the next one may build on it.
 echo "$full $stamp $($stage && echo staged || echo unstaged) $($thorough && echo thorough || echo fast)" | gcloud storage cp - "gs://$prod_bucket/releases/$stamp/PASSED" --quiet > /dev/null ||
   echo "release $commit: couldn't write releases/$stamp/PASSED; the next release walks in full" >&2
-echo "release $commit: live on openagents.com in $(secs $(( $(now) - start ))) s (rollback: coax/web/rollback.sh $stamp)"
+echo "release $commit: live on openagents.com in $(secs $(( $(now) - start ))) s (rollback: coax/web/rollback.sh $stamp)${held_names:+; held back: $held_names}"
+# The commit released broke a page itself: the rest is live, but say so with a failure.
+if [[ -n "${held_mine:-}" ]]; then
+  echo "release $commit: this commit changed how ${held_mine% } look(s) without updating the golden(s); those pages were held back" >&2
+  exit 3
+fi

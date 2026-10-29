@@ -11,3 +11,19 @@ export function missingGolden(name: string, unlisted: boolean, pendingDir: strin
   return { fail: false, pending,
     line: `NEW REALM ${name}: no golden yet, approve with \`bun coax/web/goldens.ts ${base} --update\`, look at ${pending} and commit coax/web/goldens/${name}.png` }
 }
+
+// A walk's failures, for release.sh's hold-back: golden, the pages whose
+// golden comparison failed (or that have none and must), each with its path;
+// other, every other failure (doesn't start, errors, draws nothing, the
+// analytics contract), which no release ships past. A page in both is held
+// back and still stops the release, through its other failure.
+export type Failures = { golden: { name: string; path: string }[]; other: string[] }
+
+export function classify(failed: string[], pages: Record<string, { path: string }>): Failures {
+  const golden = new Map<string, string>(), other: string[] = []
+  for (const f of failed) {
+    const m = /^([a-z0-9.-]+): (matches its golden \(|no golden )/.exec(f)
+    if (m && pages[m[1]]) golden.set(m[1], pages[m[1]].path); else other.push(f)
+  }
+  return { golden: [...golden].map(([name, path]) => ({ name, path })), other }
+}
