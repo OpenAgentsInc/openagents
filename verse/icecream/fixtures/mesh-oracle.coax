@@ -1,0 +1,57 @@
+// What the demo's C++ models (~/work/aethyr-demo/src/icecream/mesh.cpp) give: vertex
+// counts and bounds, written by verse/icecream/test-mesh.sh --table. Do not edit.
+
+OracleHouse :: struct { seed: u64; difficulty: s32; yellow: f32; rooms: int; count: int; first_room: int; hash: u64; lo: V3; hi: V3; }
+OraclePart :: struct { kind: s32; index: s32; count: int; hash: u64; lo: V3; hi: V3; }
+
+ORACLE_HOUSES :: [10] OracleHouse.[
+  OracleHouse.{seed = 0, difficulty = 0, yellow = 0.000000, rooms = 16, count = 112548, first_room = 7128, hash = 0x195cb5bb44de90d0, lo = V3.{x = 0.000000, y = -0.100000, z = 0.000000}, hi = V3.{x = 40.000000, y = 2.700000, z = 40.000000}},
+  OracleHouse.{seed = 0, difficulty = 1, yellow = 1.000000, rooms = 49, count = 244038, first_room = 4710, hash = 0xdd91a871e3d3e760, lo = V3.{x = 0.000000, y = -0.100000, z = 0.000000}, hi = V3.{x = 70.000000, y = 2.700000, z = 70.000000}},
+  OracleHouse.{seed = 1, difficulty = 0, yellow = 0.000000, rooms = 16, count = 112548, first_room = 7128, hash = 0xba767dd63b60e588, lo = V3.{x = 0.000000, y = -0.100000, z = 0.000000}, hi = V3.{x = 40.000000, y = 2.700000, z = 40.000000}},
+  OracleHouse.{seed = 2, difficulty = 0, yellow = 0.000000, rooms = 16, count = 112548, first_room = 6648, hash = 0x316b76540979e86, lo = V3.{x = 0.000000, y = -0.100000, z = 0.000000}, hi = V3.{x = 40.000000, y = 2.700000, z = 40.000000}},
+  OracleHouse.{seed = 3, difficulty = 0, yellow = 0.000000, rooms = 16, count = 112548, first_room = 7128, hash = 0x5792e7c3e629d4a4, lo = V3.{x = 0.000000, y = -0.100000, z = 0.000000}, hi = V3.{x = 40.000000, y = 2.700000, z = 40.000000}},
+  OracleHouse.{seed = 3, difficulty = 0, yellow = 0.300000, rooms = 16, count = 112548, first_room = 7128, hash = 0xad76b5ac347923f0, lo = V3.{x = 0.000000, y = -0.100000, z = 0.000000}, hi = V3.{x = 40.000000, y = 2.700000, z = 40.000000}},
+  OracleHouse.{seed = 7, difficulty = 3, yellow = 1.000000, rooms = 16, count = 80076, first_room = 4818, hash = 0x7d016979e3bd55c3, lo = V3.{x = 0.000000, y = -0.100000, z = 0.000000}, hi = V3.{x = 40.000000, y = 2.700000, z = 40.000000}},
+  OracleHouse.{seed = 12, difficulty = 3, yellow = 1.000000, rooms = 16, count = 78780, first_room = 4710, hash = 0x18d527bb480be087, lo = V3.{x = 0.000000, y = -0.100000, z = 0.000000}, hi = V3.{x = 40.000000, y = 2.700000, z = 40.000000}},
+  OracleHouse.{seed = 42, difficulty = 3, yellow = 1.000000, rooms = 16, count = 79716, first_room = 4530, hash = 0x568a24accdc79113, lo = V3.{x = 0.000000, y = -0.100000, z = 0.000000}, hi = V3.{x = 40.000000, y = 2.700000, z = 40.000000}},
+  OracleHouse.{seed = 1234567, difficulty = 3, yellow = 1.000000, rooms = 16, count = 79296, first_room = 4482, hash = 0x87101f85e53eadb7, lo = V3.{x = 0.000000, y = -0.100000, z = 0.000000}, hi = V3.{x = 40.000000, y = 2.700000, z = 40.000000}}];
+
+ORACLE_PARTS :: [38] OraclePart.[
+  OraclePart.{kind = 0, index = 0, count = 108, hash = 0xf2e2d07ea57555f7, lo = V3.{x = -0.400000, y = 0.800000, z = -0.200000}, hi = V3.{x = 0.400000, y = 1.550000, z = 0.220000}},
+  OraclePart.{kind = 0, index = 1, count = 252, hash = 0xb81d06f53832995b, lo = V3.{x = -0.300000, y = 1.570000, z = -0.280000}, hi = V3.{x = 0.300000, y = 2.120000, z = 0.280000}},
+  OraclePart.{kind = 0, index = 2, count = 72, hash = 0x125342b36336354b, lo = V3.{x = -0.130000, y = -0.720000, z = -0.130000}, hi = V3.{x = 0.130000, y = 0.000000, z = 0.130000}},
+  OraclePart.{kind = 0, index = 3, count = 72, hash = 0x47f45849667e6a03, lo = V3.{x = -0.190000, y = -0.800000, z = -0.200000}, hi = V3.{x = 0.190000, y = 0.000000, z = 0.240000}},
+  OraclePart.{kind = 0, index = 4, count = 1704, hash = 0xa087f68b0a09e245, lo = V3.{x = -0.670000, y = 0.755000, z = -0.653202}, hi = V3.{x = 0.670000, y = 2.070000, z = 0.653202}},
+  OraclePart.{kind = 0, index = 5, count = 132, hash = 0xd49b29fcd3b2959b, lo = V3.{x = -0.130000, y = -0.850000, z = -0.120000}, hi = V3.{x = 0.130000, y = 0.000000, z = 0.220000}},
+  OraclePart.{kind = 0, index = 6, count = 288, hash = 0x77248290d7b23b0d, lo = V3.{x = -0.114127, y = -0.870000, z = -0.114127}, hi = V3.{x = 0.114127, y = 0.000000, z = 0.114127}},
+  OraclePart.{kind = 0, index = 7, count = 3108, hash = 0x30e8145063c0c26d, lo = V3.{x = -0.700000, y = 1.630000, z = -0.657236}, hi = V3.{x = 0.700000, y = 2.750000, z = 0.668748}},
+  OraclePart.{kind = 0, index = 8, count = 1008, hash = 0x52e852df9233fde7, lo = V3.{x = -0.600000, y = 2.095000, z = -0.615000}, hi = V3.{x = 0.600000, y = 3.345000, z = 0.535000}},
+  OraclePart.{kind = 0, index = 9, count = 396, hash = 0xf1fc356b112f49d3, lo = V3.{x = -0.210000, y = -0.300000, z = -0.050000}, hi = V3.{x = 0.210000, y = 0.460000, z = 0.050000}},
+  OraclePart.{kind = 0, index = 10, count = 192, hash = 0xf588af28a82fab5, lo = V3.{x = -0.475528, y = -0.500000, z = -0.475528}, hi = V3.{x = 0.475528, y = 0.500000, z = 0.475528}},
+  OraclePart.{kind = 0, index = 11, count = 192, hash = 0xf634f34d05fb0585, lo = V3.{x = -0.475528, y = -0.500000, z = -0.475528}, hi = V3.{x = 0.475528, y = 0.500000, z = 0.475528}},
+  OraclePart.{kind = 0, index = 12, count = 192, hash = 0x9720e1c60b5b6a2d, lo = V3.{x = -0.475528, y = -0.500000, z = -0.475528}, hi = V3.{x = 0.475528, y = 0.500000, z = 0.475528}},
+  OraclePart.{kind = 0, index = 13, count = 36, hash = 0x65a3ad245b88b709, lo = V3.{x = -0.040000, y = -0.040000, z = -0.130000}, hi = V3.{x = 0.040000, y = 0.040000, z = 0.130000}},
+  OraclePart.{kind = 0, index = 14, count = 30, hash = 0xc2dcfc34e75ee335, lo = V3.{x = -0.500000, y = 0.000000, z = -0.475528}, hi = V3.{x = 0.500000, y = 0.000000, z = 0.475528}},
+  OraclePart.{kind = 0, index = 15, count = 30, hash = 0x82df5ae4db29e8f, lo = V3.{x = -0.500000, y = 0.000000, z = -0.475528}, hi = V3.{x = 0.500000, y = 0.000000, z = 0.475528}},
+  OraclePart.{kind = 0, index = 16, count = 144, hash = 0x13982582c3d6ccc5, lo = V3.{x = -0.600000, y = 0.000000, z = -0.600000}, hi = V3.{x = 0.600000, y = 1.600000, z = 0.600000}},
+  OraclePart.{kind = 0, index = 17, count = 540, hash = 0x149c41fbe6d37e9, lo = V3.{x = -0.171190, y = -0.005000, z = -0.162812}, hi = V3.{x = 0.171190, y = 0.680000, z = 0.163878}},
+  OraclePart.{kind = 0, index = 18, count = 96, hash = 0x7b307a9f4243b895, lo = V3.{x = -0.120000, y = -0.120000, z = -0.175000}, hi = V3.{x = 0.120000, y = 0.120000, z = 0.175000}},
+  OraclePart.{kind = 0, index = 19, count = 192, hash = 0x9720e1c60b5b6a2d, lo = V3.{x = -0.475528, y = -0.500000, z = -0.475528}, hi = V3.{x = 0.475528, y = 0.500000, z = 0.475528}},
+  OraclePart.{kind = 0, index = 20, count = 216, hash = 0x3c658ab1f30164f1, lo = V3.{x = -0.500000, y = 0.000000, z = -0.500000}, hi = V3.{x = 0.500000, y = 2.200000, z = 0.500000}},
+  OraclePart.{kind = 0, index = 21, count = 30, hash = 0x82df5ae4db29e8f, lo = V3.{x = -0.500000, y = 0.000000, z = -0.475528}, hi = V3.{x = 0.500000, y = 0.000000, z = 0.475528}},
+  OraclePart.{kind = 1, index = 0, count = 276, hash = 0x9d55d4bc3af9bd55, lo = V3.{x = -0.130000, y = -0.120000, z = -0.150000}, hi = V3.{x = 0.130000, y = 0.330000, z = 0.750000}},
+  OraclePart.{kind = 1, index = 1, count = 192, hash = 0x49eb744f512cfdb9, lo = V3.{x = -0.200000, y = -0.200000, z = -0.100000}, hi = V3.{x = 0.200000, y = 0.200000, z = 0.680000}},
+  OraclePart.{kind = 1, index = 2, count = 396, hash = 0xc9df00fca74e5b75, lo = V3.{x = -0.165000, y = -0.300000, z = 0.075000}, hi = V3.{x = 0.165000, y = 0.165000, z = 0.125000}},
+  OraclePart.{kind = 1, index = 3, count = 432, hash = 0x30f33130a59710eb, lo = V3.{x = -0.045000, y = -0.045000, z = -0.100000}, hi = V3.{x = 0.045000, y = 0.290000, z = 1.090000}},
+  OraclePart.{kind = 1, index = 4, count = 1200, hash = 0x945da151be3eae75, lo = V3.{x = -0.161500, y = -0.153596, z = -0.350000}, hi = V3.{x = 0.161500, y = 0.153596, z = 2.650000}},
+  OraclePart.{kind = 1, index = 5, count = 168, hash = 0xfbdde6247cf68a8d, lo = V3.{x = -0.120000, y = -0.300000, z = -0.150000}, hi = V3.{x = 0.120000, y = 0.170000, z = 0.595000}},
+  OraclePart.{kind = 1, index = 6, count = 276, hash = 0xc9cec84563ae4945, lo = V3.{x = -0.210000, y = -0.199722, z = -0.200000}, hi = V3.{x = 0.210000, y = 0.350000, z = 0.825000}},
+  OraclePart.{kind = 1, index = 7, count = 516, hash = 0x6c5b8bed6f25eb57, lo = V3.{x = -0.104616, y = -0.110000, z = -0.550000}, hi = V3.{x = 0.104616, y = 0.110000, z = 1.854616}},
+  OraclePart.{kind = 2, index = 0, count = 216, hash = 0x89e1efade18faef1, lo = V3.{x = -0.220000, y = 0.000000, z = -0.220000}, hi = V3.{x = 0.220000, y = 1.010000, z = 0.220000}},
+  OraclePart.{kind = 2, index = 1, count = 216, hash = 0xe13d0db6b15e2719, lo = V3.{x = -0.220000, y = 0.000000, z = -0.220000}, hi = V3.{x = 0.220000, y = 1.010000, z = 0.220000}},
+  OraclePart.{kind = 2, index = 2, count = 216, hash = 0x9dc2a6663d5569b1, lo = V3.{x = -0.220000, y = 0.000000, z = -0.220000}, hi = V3.{x = 0.220000, y = 1.010000, z = 0.220000}},
+  OraclePart.{kind = 3, index = 0, count = 36, hash = 0xed30065940ddef85, lo = V3.{x = -0.040000, y = -0.040000, z = -0.130000}, hi = V3.{x = 0.040000, y = 0.040000, z = 0.130000}},
+  OraclePart.{kind = 3, index = 1, count = 36, hash = 0x9432a96130fb3fd5, lo = V3.{x = -0.040000, y = -0.040000, z = -0.130000}, hi = V3.{x = 0.040000, y = 0.040000, z = 0.130000}},
+  OraclePart.{kind = 3, index = 2, count = 36, hash = 0x69849f4a9673d895, lo = V3.{x = -0.040000, y = -0.040000, z = -0.130000}, hi = V3.{x = 0.040000, y = 0.040000, z = 0.130000}},
+  OraclePart.{kind = 3, index = 3, count = 36, hash = 0xc9aed9f3d9281225, lo = V3.{x = -0.040000, y = -0.040000, z = -0.130000}, hi = V3.{x = 0.040000, y = 0.040000, z = 0.130000}},
+  OraclePart.{kind = 3, index = 4, count = 36, hash = 0xd6f98f35a0aa3bd1, lo = V3.{x = -0.040000, y = -0.040000, z = -0.130000}, hi = V3.{x = 0.040000, y = 0.040000, z = 0.130000}}];
