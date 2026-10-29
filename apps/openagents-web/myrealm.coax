@@ -16,8 +16,13 @@
 // and the cards for what visitors propose, each with ACCEPT and DECLINE. With BUILD on, a visitor's
 // placed thing is a proposal; the owner's goes in at once.
 //
-// W and S (or the up and down arrows) walk, A and D turn, a mouse drag turns; on a phone a thumb
-// walks and turns. JUMP, FLY, MAP and BUILD are there only when the owner gives them.
+// The camera is the maker's (the spec's "camera", chosen at /realms/new; 0049_realm_builder_setup.sql):
+//   third  behind you (W and S walk, A and D turn, a mouse drag turns; on a phone a thumb walks and turns)
+//   first  at eye height, your figure unseen; the same keys, and a drag looks round and up and down
+//   top    high above at a fixed angle, north up: W, A, S and D (or a thumb, or a drag) walk that way
+//   side   2D: side-on with an orthographic camera; A and D walk left and right, W or Space jumps
+//          (always, as a 2D realm needs), and you walk through things rather than round them
+// JUMP, FLY, MAP and BUILD are there only when the owner gives them.
 // myrealm.wgsl draws the sky, the ground, the water, the meshes and the strokes; myrealm-face.c binds it.
 //   coax/bin/coax test apps/openagents-web/myrealm.coax
 
@@ -104,6 +109,12 @@ THINGS :: 8;
 WALK :: 3.4; TURN :: 1.9; BODY_R :: 0.35;
 GROUND_R :: 26.0;        // metres to the realm's edge
 CAM_BACK :: 6.0; CAM_UP :: 3.2; LOOK_AHEAD :: 2.0; LOOK_UP :: 1.0;
+CAM_THIRD :: 0; CAM_FIRST :: 1; CAM_TOP :: 2; CAM_SIDE :: 3;
+CAMERA_NAMES :: [4] string.["third", "first", "top", "side"];
+HAZE_FROM :: [4] f32.[0, 0, 14, 26];      // metres from the eye before the haze starts: a far camera sees as near
+EYE_HEIGHT :: 1.6; PITCH_MAX :: 1.2;      // first person: metres up, how far it looks up or down (radians)
+TOP_UP :: 17.0; TOP_BACK :: 10.0;         // top-down: the camera this far up and this far south of you
+SIDE_BACK :: 30.0; SIDE_UP :: 8.0; SIDE_HALF :: 6.0;   // 2D: the camera's distance, height, and half the view's height (metres)
 FOV :: 0.95; STICK :: 60.0; LAMP_HEIGHT :: 1.35;
 GRAVITY :: 14.0; JUMP_SPEED :: 6.0; FLY_HEIGHT :: 7.0;
 WAIT :: 30.0;
@@ -118,6 +129,7 @@ MyRealm :: struct {
   started: bool;
   time: f32; width: f32; height: f32; dpr: f32; still: bool;
   x: f32; y: f32; z: f32; yaw: f32; vy: f32; flying: bool;
+  camera: int; pitch: f32; turn_y: f32; ortho: bool;
   held: int;
   stick: bool; stick_id: int; stick_x0: f32; stick_y0: f32; stick_dx: f32; stick_dy: f32;
   turning: bool; turn_id: int; turn_x: f32;
@@ -249,7 +261,8 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
   for i: 0..<TOOLS { s[0].tools[i] = false; }
   s[0].water = 0; s[0].trees = 0; s[0].rocks = 0; s[0].plants = 0; s[0].lanterns = 0; s[0].birds = 0;
   s[0].prop_n = 0; s[0].people = 0; s[0].placed_n = 0; s[0].waiting = 0; s[0].owner = false;
-  s[0].ground = 0; s[0].tod = 0; s[0].name_n = 0;
+  was := s[0].camera;
+  s[0].ground = 0; s[0].tod = 0; s[0].name_n = 0; s[0].camera = CAM_THIRD;
   got := false;
   i := 0;
   while i < text.count {
@@ -261,6 +274,7 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
     if head == "ground" { g := word_of(line, 1); for k: 0..<6 { if GROUNDS[k] == g { s[0].ground = k; } } continue; }
     if head == "time" { t := word_of(line, 1); for k: 0..<4 { if TIMES[k] == t { s[0].tod = k; } } continue; }
     if head == "owner" { s[0].owner = word_of(line, 1) == "1"; continue; }
+    if head == "camera" { c := word_of(line, 1); for k: 0..<4 { if CAMERA_NAMES[k] == c { s[0].camera = k; } } continue; }
     if head == "waiting" { s[0].waiting = hi_int(number_word(word_of(line, 1)), 0); continue; }
     if head == "tool" { k := tool_of(word_of(line, 1)); if k >= 0 { s[0].tools[k] = word_of(line, 2) == "1"; } continue; }
     if head == "character" && s[0].people < PEOPLE && line.count > 10 {
@@ -299,6 +313,8 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
       if f == "props" && s[0].prop_n < 5 { for k: 0..<5 { if PROPS[k] == a { s[0].props[s[0].prop_n] = k; s[0].prop_n += 1; } } }
     }
   }
+  // 2D faces right when it starts; a realm read again keeps your way
+  if s[0].camera == CAM_SIDE && was != CAM_SIDE { s[0].yaw = 1.5707963; s[0].pitch = 0; }
   return got && s[0].name_n > 0;
 }
 hi_int :: (a: int, b: int) -> int { return ifx a > b then a else b; }
@@ -653,7 +669,28 @@ realm_step :: (s: [] MyRealm, dt: f32) {
   if (s[0].held & HOLD_RIGHT) != 0 { turn += 1; }
   if s[0].stick { ahead -= s[0].stick_dy; turn += s[0].stick_dx; }
   ahead = clamp(ahead, -1, 1); turn = clamp(turn, -1, 1);
-  s[0].yaw += turn * TURN * step;
+  if s[0].camera == CAM_TOP || s[0].camera == CAM_SIDE {
+    // the screen's way: right is east, up is north (2D: only left and right; up jumps)
+    dx := turn; dz := ifx s[0].camera == CAM_SIDE then 0.0f32 else -ahead;
+    if s[0].camera == CAM_SIDE && ahead > 0.5 { leap(s); }
+    m := sqrt(dx * dx + dz * dz);
+    if m > 0.01 {
+      if m > 1 { dx /= m; dz /= m; }
+      s[0].yaw = turn_of(dx, -dz);
+      speed: f32 = ifx s[0].flying then 1.8f32 else 1.0f32;
+      if in_water(s) && s[0].y < 0.1 { speed *= 0.5; }
+      p := walk_to(s, s[0].x, s[0].z, dx * speed * WALK * step, dz * speed * WALK * step);
+      if s[0].camera == CAM_SIDE {
+        // 2D: along the lane, to the realm's edge
+        e: f32 = GROUND_R - BODY_R; lim := sqrt(hi(e * e - s[0].z * s[0].z, 0));
+        p = Spot.{x = clamp(s[0].x + dx * speed * WALK * step, -lim, lim), z = s[0].z};
+      }
+      mx := p.x - s[0].x; mz := p.z - s[0].z;
+      s[0].walked += sqrt(mx * mx + mz * mz);
+      s[0].x = p.x; s[0].z = p.z;
+    }
+    ahead = 0;
+  } else { s[0].yaw += turn * TURN * step; }
   if ahead != 0 {
     fx := sin(s[0].yaw); fz := -cos(s[0].yaw);
     speed := ifx ahead < 0 then ahead * 0.6 else ahead;
@@ -668,17 +705,40 @@ realm_step :: (s: [] MyRealm, dt: f32) {
   if s[0].flying { s[0].y += (FLY_HEIGHT - s[0].y) * clamp(step * 2.5, 0, 1); s[0].vy = 0; }
   else if s[0].y > 0 || s[0].vy > 0 {
     s[0].vy -= GRAVITY * step; s[0].y += s[0].vy * step;
-    if s[0].y <= 0 { s[0].y = 0; s[0].vy = 0; p := walk_to(s, s[0].x, s[0].z, 0, 0); s[0].x = p.x; s[0].z = p.z; }
+    if s[0].y <= 0 { s[0].y = 0; s[0].vy = 0; if s[0].camera != CAM_SIDE { p := walk_to(s, s[0].x, s[0].z, 0, 0); s[0].x = p.x; s[0].z = p.z; } }
   }
 }
 
 // ---- the view
 
+// The angle of (x, y), radians (-pi to pi), as realm.coax's turn_of: a heading from a way to walk.
+turn_of :: (y: f32, x: f32) -> f32 {
+  ax := abs(x); ay := abs(y);
+  if ax == 0 && ay == 0 { return 0; }
+  t := ifx ay > ax then ax / ay else ay / ax;
+  u := t * t;
+  a := t * (0.9998660 + u * (-0.3302995 + u * (0.1801410 + u * (-0.0851330 + u * 0.0208351))));
+  if ay > ax { a = 1.5707963 - a; }
+  if x < 0 { a = 3.14159265 - a; }
+  if y < 0 { a = -a; }
+  return a;
+}
+
 view_rows :: (s: [] MyRealm) {
   aspect := s[0].width / hi(s[0].height, 1);
   fx0 := sin(s[0].yaw); fz0 := -cos(s[0].yaw);
+  // the eye and what it looks at, by the camera
   ex := s[0].x - fx0 * CAM_BACK; ey: f32 = CAM_UP + s[0].y; ez := s[0].z - fz0 * CAM_BACK;
   ax := s[0].x + fx0 * LOOK_AHEAD; ay: f32 = LOOK_UP + s[0].y * 0.85; az := s[0].z + fz0 * LOOK_AHEAD;
+  cam := s[0].camera;
+  if cam == CAM_FIRST {
+    ex = s[0].x; ey = s[0].y + EYE_HEIGHT; ez = s[0].z;
+    cp := cos(s[0].pitch);
+    ax = ex + fx0 * cp; ay = ey + sin(s[0].pitch); az = ez + fz0 * cp;
+  }
+  if cam == CAM_TOP { ex = s[0].x; ey = s[0].y * 0.5 + TOP_UP; ez = s[0].z + TOP_BACK; ax = s[0].x; ay = s[0].y * 0.5; az = s[0].z; }
+  if cam == CAM_SIDE { ex = s[0].x; ey = SIDE_UP; ez = s[0].z + SIDE_BACK; ax = s[0].x; ay = 1.5; az = s[0].z; }
+  s[0].ortho = cam == CAM_SIDE;
   fx := ax - ex; fy := ay - ey; fz := az - ez;
   fl := sqrt(fx * fx + fy * fy + fz * fz); fx /= fl; fy /= fl; fz /= fl;
   rx := -fz; rz := fx; rl := sqrt(rx * rx + rz * rz); rx /= rl; rz /= rl;
@@ -686,6 +746,8 @@ view_rows :: (s: [] MyRealm) {
   t: f32 = 1 / tan(cast(f32) FOV * 0.5);
   sx := t / hi(aspect, 0.3); sy := t;
   if aspect < 1 { sx = t * 0.9; sy = sx * aspect; }
+  // 2D: orthographic, SIDE_HALF metres above and below the middle (a phone sees as wide as tall)
+  if s[0].ortho { sy = 1 / SIDE_HALF; sx = sy / hi(aspect, 0.3); if aspect < 1 { sx = 1 / SIDE_HALF; sy = sx * aspect; } }
   zn: f32 = 0.1; zf: f32 = 200.0;
   a := zf / (zn - zf); b := zn * zf / (zn - zf);
   v := s[0].view[..];
@@ -693,6 +755,12 @@ view_rows :: (s: [] MyRealm) {
   v[4] = sy * ux; v[5] = sy * uy; v[6] = sy * uz; v[7] = -sy * (ux * ex + uy * ey + uz * ez);
   v[8] = -a * fx; v[9] = -a * fy; v[10] = -a * fz; v[11] = a * (fx * ex + fy * ey + fz * ez) + b;
   v[12] = fx; v[13] = fy; v[14] = fz; v[15] = -(fx * ex + fy * ey + fz * ez);
+  if s[0].ortho {
+    // depth runs straight along the view, and nothing shrinks with distance
+    d := 1 / (zf - zn);
+    v[8] = fx * d; v[9] = fy * d; v[10] = fz * d; v[11] = -(fx * ex + fy * ey + fz * ez + zn) * d;
+    v[12] = 0; v[13] = 0; v[14] = 0; v[15] = 1;
+  }
   s[0].eye[0] = ex; s[0].eye[1] = ey; s[0].eye[2] = ez;
   s[0].fwd[0] = fx; s[0].fwd[1] = fy; s[0].fwd[2] = fz;
   s[0].right[0] = rx / sx; s[0].right[1] = 0; s[0].right[2] = rz / sx;
@@ -705,7 +773,9 @@ seen :: (s: [] MyRealm, x: f32, y: f32, z: f32) -> Seen {
   cy := v[4] * x + v[5] * y + v[6] * z + v[7];
   cw := v[12] * x + v[13] * y + v[14] * z + v[15];
   if cw < 0.3 { return Seen.{x = 0, y = 0, ok = false, far = 0}; }
-  return Seen.{x = (cx / cw * 0.5 + 0.5) * s[0].width, y = (0.5 - cy / cw * 0.5) * s[0].height, ok = true, far = cw};
+  // 2D: things are as big as at the distance a perspective view would show this much
+  far := ifx s[0].ortho then SIDE_HALF / tan(cast(f32) FOV * 0.5) else cw;
+  return Seen.{x = (cx / cw * 0.5 + 0.5) * s[0].width, y = (0.5 - cy / cw * 0.5) * s[0].height, ok = true, far = far};
 }
 
 // ---- input
@@ -717,7 +787,8 @@ hold_of :: (key: int) -> int {
   if key == KEY_RIGHT || key == 'd' || key == 'D' { return HOLD_RIGHT; }
   return 0;
 }
-jump :: (s: [] MyRealm) { if s[0].tools[TOOL_JUMP] && !s[0].flying && s[0].y <= 0.001 { s[0].vy = JUMP_SPEED; s[0].y = 0.001; } }
+jump :: (s: [] MyRealm) { if s[0].tools[TOOL_JUMP] || s[0].camera == CAM_SIDE { leap(s); } }
+leap :: (s: [] MyRealm) { if !s[0].flying && s[0].y <= 0.001 { s[0].vy = JUMP_SPEED; s[0].y = 0.001; } }
 fly :: (s: [] MyRealm) { if s[0].tools[TOOL_FLY] { s[0].flying = !s[0].flying; if !s[0].flying { s[0].vy = 0; } } }
 toggle_pane :: (s: [] MyRealm, pane: int) {
   s[0].pane = ifx s[0].pane == pane then PANE_NONE else pane;
@@ -805,7 +876,8 @@ realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: 
     if b >= 0 { s[0].press = b; return true; }
     r := row_at(s, x, y); if r >= 0 { s[0].row_press = r; return true; }
     c := cell_at(s, x, y); if c >= 0 { s[0].cell_press = c; return true; }
-    if kind == 0 { s[0].turning = true; s[0].turn_id = id; s[0].turn_x = x; return true; }
+    // a mouse drag turns (first person: looks round, up and down); with a fixed camera it walks, as a thumb does
+    if kind == 0 && s[0].camera != CAM_TOP && s[0].camera != CAM_SIDE { s[0].turning = true; s[0].turn_id = id; s[0].turn_x = x; s[0].turn_y = y; return true; }
     s[0].stick = true; s[0].stick_id = id; s[0].stick_x0 = x; s[0].stick_y0 = y; s[0].stick_dx = 0; s[0].stick_dy = 0;
     return true;
   }
@@ -832,7 +904,11 @@ realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: 
     return true;
   }
   if s[0].turning && id == s[0].turn_id {
-    if phase == POINTER_MOVE { s[0].yaw += (x - s[0].turn_x) / hi(s[0].width, 1) * 3.1415927; s[0].turn_x = x; }
+    if phase == POINTER_MOVE {
+      s[0].yaw += (x - s[0].turn_x) / hi(s[0].width, 1) * 3.1415927; s[0].turn_x = x;
+      if s[0].camera == CAM_FIRST { s[0].pitch = clamp(s[0].pitch - (y - s[0].turn_y) / hi(s[0].height, 1) * 2.0, -PITCH_MAX, PITCH_MAX); }
+      s[0].turn_y = y;
+    }
     else { s[0].turning = false; }
     return true;
   }
@@ -921,7 +997,8 @@ draw_world :: (s: [] MyRealm, out: [] f32, at: int) -> int {
     n = figure(s, out, n, s[0].person_x[p], 0, s[0].person_z[p], 0.55 + 0.1 * cast(f32) p, 0.75, 0.9 - 0.12 * cast(f32) p, false);
   }
   // you, and your lamp after dark
-  n = figure(s, out, n, s[0].x, s[0].y, s[0].z, PARCH_R, PARCH_G, PARCH_B, s[0].tod >= 2);
+  // (first person: you are the camera, so no figure)
+  if s[0].camera != CAM_FIRST { n = figure(s, out, n, s[0].x, s[0].y, s[0].z, PARCH_R, PARCH_G, PARCH_B, s[0].tod >= 2); }
   return n;
 }
 figure :: (s: [] MyRealm, out: [] f32, at: int, x: f32, y: f32, z: f32, r: f32, g: f32, b: f32, lamp: bool) -> int {
@@ -1145,6 +1222,8 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
     uniforms[SUN_AT + i] = SUN[tod * 4 + i];
   }
   uniforms[EYE_AT + 3] = GROUND_R;
+  uniforms[RAY_AT + 3] = ifx s[0].ortho then 1.0f32 else 0.0f32;   // 2D: every pixel's ray is the same, from its own place
+  uniforms[RAY_AT + 7] = HAZE_FROM[s[0].camera];
   uniforms[SKY_AT + 3] = ifx cast(string) s[0].style[0..<s[0].style_n] == "painterly" then 1.0f32 else 0.0f32;
   uniforms[HORIZON_AT + 3] = STARS[tod];
   uniforms[GROUND_AT + 3] = LAMP_SHARE[tod];
@@ -1373,4 +1452,91 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   tap_box(s[..], t[..], s[0].boxes[BTN_SETTINGS]);
   m := frame_of(s[..], t[..], 780, 1688);
   for i: 0..<s[0].plate_n { #assert s[0].plates[i].x0 >= 0 && s[0].plates[i].x1 <= 780; }
+}
+
+FIRST :: "realm eyes\nname Eyes\nstyle lowpoly\nground meadow\ntime day\ncamera first\nowner 0\ntool jump 0\n";
+TOP :: "realm above\nname Above\nstyle lowpoly\nground meadow\ntime day\ncamera top\nowner 0\ntool jump 0\nfeature trees round 9\n";
+SIDE :: "realm flat\nname Flat\nstyle painterly\nground desert\ntime dusk\ncamera side\nowner 0\ntool jump 0\nfeature trees round 9\nfeature rocks 6\n";
+
+#test "the camera is the spec's: none said is third person, behind you" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "moonlit-marsh", SPEC);
+  #assert s[0].camera == CAM_THIRD && !s[0].ortho;
+  n := frame_of(s[..], t[..], 2560, 1600);
+  // behind you and above
+  #assert s[0].eye[1] > CAM_UP - 0.01 && s[0].eye[2] > s[0].z && s[0].view[15] != 1;
+}
+
+#test "first person: the eye at your eyes, no figure of you, a drag looks round and up" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "eyes", FIRST);
+  #assert s[0].camera == CAM_FIRST;
+  n := frame_of(s[..], t[..], 2560, 1600);
+  #assert abs(s[0].eye[1] - EYE_HEIGHT) < 0.01 && abs(s[0].eye[0] - s[0].x) < 0.01 && abs(s[0].eye[2] - s[0].z) < 0.01;
+  // nothing is drawn of you: the only strokes are the HUD's (a third-person realm draws more)
+  q: [1] MyRealm; u: [1] Track;
+  opened(q[..], u[..], "eyes", "realm eyes\nname Eyes\nstyle lowpoly\nground meadow\ntime day\ncamera third\nowner 0\ntool jump 0\n");
+  m := frame_of(q[..], u[..], 2560, 1600);
+  #assert m > n;
+  yaw := s[0].yaw;
+  d := realm_pointer(s[..], t[..], 1280, 800, POINTER_DOWN, 0, 1);
+  mv := realm_pointer(s[..], t[..], 1480, 600, POINTER_MOVE, 0, 1);
+  up := realm_pointer(s[..], t[..], 1480, 600, POINTER_UP, 0, 1);
+  #assert s[0].yaw > yaw && s[0].pitch > 0.1;
+  for i: 0..<20 { m2 := realm_pointer(s[..], t[..], 1480, 600, POINTER_DOWN, 0, 2); m3 := realm_pointer(s[..], t[..], 1480, -4000, POINTER_MOVE, 0, 2); m4 := realm_pointer(s[..], t[..], 1480, 0, POINTER_UP, 0, 2); }
+  #assert s[0].pitch <= PITCH_MAX;
+  f := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].fwd[1] > 0.5;
+}
+
+#test "top-down: high above at a fixed angle; the keys walk the screen's way" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "above", TOP);
+  #assert s[0].camera == CAM_TOP;
+  n := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].eye[1] > TOP_UP - 0.01 && abs(s[0].eye[0] - s[0].x) < 0.01;
+  f0 := s[0].fwd[1];
+  x0 := s[0].x; z0 := s[0].z;
+  k := realm_key(s[..], t[..], 'd', true);
+  for i: 0..<10 { realm_step(s[..], 0.05); }
+  k2 := realm_key(s[..], t[..], 'd', false);
+  #assert s[0].x > x0 + 1 && abs(s[0].z - z0) < 0.01 && abs(s[0].yaw - 1.5707963) < 0.01;
+  k3 := realm_key(s[..], t[..], 'w', true);
+  for i: 0..<10 { realm_step(s[..], 0.05); }
+  #assert s[0].z < z0 - 1 && abs(s[0].yaw) < 0.01;
+  m := frame_of(s[..], t[..], 2560, 1600);
+  // the camera didn't turn with you
+  #assert abs(s[0].fwd[1] - f0) < 0.001 && abs(s[0].fwd[0]) < 0.001;
+  // a mouse drag walks, as a thumb does
+  d := realm_pointer(s[..], t[..], 1280, 800, POINTER_DOWN, 0, 1);
+  #assert s[0].stick && !s[0].turning;
+}
+
+#test "2D: side-on and orthographic; left and right only, up jumps without the jump tool" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "flat", SIDE);
+  #assert s[0].camera == CAM_SIDE && abs(s[0].yaw - 1.5707963) < 0.01;
+  n := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].ortho && s[0].view[15] == 1 && s[0].view[12] == 0 && n > 0;
+  // something on the left and the right of you is as big wherever it stands back
+  a := seen(s[..], s[0].x - 2, 1, s[0].z); b := seen(s[..], s[0].x - 2, 1, s[0].z - 10);
+  #assert a.ok && b.ok && abs(a.x - b.x) < 0.5;
+  z0 := s[0].z; x0 := s[0].x;
+  k := realm_key(s[..], t[..], 'a', true);
+  for i: 0..<10 { realm_step(s[..], 0.05); }
+  k2 := realm_key(s[..], t[..], 'a', false);
+  #assert s[0].x < x0 - 1 && s[0].z == z0 && s[0].yaw < 0;
+  k3 := realm_key(s[..], t[..], 'w', true);
+  realm_step(s[..], 0.05);
+  k4 := realm_key(s[..], t[..], 'w', false);
+  #assert s[0].y > 0 && s[0].z == z0;
+  for i: 0..<40 { realm_step(s[..], 0.05); }
+  #assert s[0].y == 0;
+  k5 := realm_key(s[..], t[..], ' ', true);
+  realm_step(s[..], 0.05);
+  #assert s[0].y > 0;
+  // walking a long way stays on the realm, in its lane
+  k6 := realm_key(s[..], t[..], 'd', true);
+  for i: 0..<400 { realm_step(s[..], 0.05); }
+  #assert s[0].z == z0 && sqrt(s[0].x * s[0].x + s[0].z * s[0].z) <= GROUND_R;
 }

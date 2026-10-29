@@ -9,7 +9,8 @@ struct U {
   r0: vec4f, r1: vec4f, r2: vec4f, r3: vec4f,  // the view: clip = rows · world
   lamp: vec4f,                                 // the lamp: where (metres), strength
   eye: vec4f,                                  // the eye (metres), then the floor's radius
-  fwd: vec4f, rx: vec4f, uy: vec4f,            // a pixel's ray: fwd + ndc.x · rx + ndc.y · uy
+  fwd: vec4f, rx: vec4f, uy: vec4f,            // a pixel's ray: fwd + ndc.x · rx + ndc.y · uy; fwd.w 1: orthographic
+                                               // (2D: every ray is fwd, from eye + ndc.x · rx + ndc.y · uy); rx.w: metres before haze
   sky: vec4f,                                  // the sky's top, then 1 for painterly
   horizon: vec4f,                              // the horizon, then the stars' share
   ground: vec4f,                               // the ground's colour, then the lamp's share
@@ -93,11 +94,14 @@ fn daylight(n: vec3f) -> vec3f {
 @fragment fn bg_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let p = pos.xy;
   let ndc = vec2f(p.x / u.size.x * 2.0 - 1.0, 1.0 - p.y / u.size.y * 2.0);
-  let ray = u.fwd.xyz + ndc.x * u.rx.xyz + ndc.y * u.uy.xyz;
+  let off = ndc.x * u.rx.xyz + ndc.y * u.uy.xyz;
+  let ortho = u.fwd.w > 0.5;
+  let ray = select(u.fwd.xyz + off, u.fwd.xyz, ortho);
+  let org = select(u.eye.xyz, u.eye.xyz + off, ortho);
   let sky = sky_of(ray, p);
   let down = ray.y < -0.0001;
-  let t = select(1000.0, -u.eye.y / min(ray.y, -0.0001), down);
-  let hit = u.eye.xyz + ray * min(t, 1000.0);
+  let t = select(1000.0, -org.y / min(ray.y, -0.0001), down);
+  let hit = org + ray * min(t, 1000.0);
   let r = length(hit.xz);
   // the ground: its colour, broken up (brushed when painterly), lit by the sun and your lamp
   let big = noise(hit.xz * 0.18); let fine = noise(hit.xz * 1.7);
@@ -116,7 +120,7 @@ fn daylight(n: vec3f) -> vec3f {
   }
   ground += vec3f(1.0, 0.62, 0.28) * lamp_near(hit, vec3f(0.0, 1.0, 0.0)) * 0.55 * u.ground.w;
   // the realm's edge fades into the horizon's haze
-  let haze = clamp(1.0 - exp(-t * 0.018), 0.0, 1.0);
+  let haze = clamp(1.0 - exp(-max(t - u.rx.w, 0.0) * 0.018), 0.0, 1.0);
   ground = mix(ground, u.horizon.rgb, haze * 0.85);
   let edge = select(0.0, 1.0 - smoothstep(u.eye.w - 3.0, u.eye.w + 6.0, r), down);
   let c = mix(sky, mix(u.horizon.rgb, ground, edge), select(0.0, 1.0, down)) * u.fade;
@@ -161,7 +165,7 @@ struct S {
   let n = normalize(s.normal);
   var lit = daylight(n);
   lit += vec3f(1.0, 0.62, 0.28) * lamp_near(s.world, n) * 1.6 * u.ground.w;
-  let far = length(s.world - u.eye.xyz);
+  let far = max(length(s.world - u.eye.xyz) - u.rx.w, 0.0);
   let haze = clamp(1.0 - exp(-far * 0.018), 0.0, 1.0);
   let c = mix(tex.rgb * s.tint * lit, u.horizon.rgb, haze * 0.85) * u.fade;
   return vec4f(panels(s.pos.xy, c), 1.0);
