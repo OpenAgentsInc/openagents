@@ -180,7 +180,7 @@ verse_haunt_advance :: (s:Haunt,t:f64,player:HauntPoint,eye:HauntPoint,heading:f
  next:=s;next.time=t;next.player=player;next.eye=eye;next.heading=heading;next.sound_count=0;
  if !s.ok{return next;}
  next=hh_people_step(next,hh_clamp(cast(f32)(t-s.time),0,0.1));
- next=hh_flock_follow(next,s,player,hh_clamp(cast(f32)(t-s.time),0,0.1));
+ next=hh_flock_follow(next,s,hh_p(player.x-sin(heading)*2.5,player.y,player.z-cos(heading)*2.5),hh_clamp(cast(f32)(t-s.time),0,0.1));
  // Walked in: at the orange light, or anywhere in the room it is in (the
  // light's 1.4 m reach misses a player who comes through the door's left side).
  light:=hh_p(8,0,21.6);
@@ -350,8 +350,9 @@ verse_haunt_put :: (s:Haunt,mesh:int,id:string,name:string,at:HauntPoint,yaw:f32
  if !hh_entity_ok(e,s.mesh_count){return next;}
  next.entities[next.entity_count]=e;next.entity_count+=1;next.dirty=true;return next;
 }
-// The flock's middle eases after whoever walks (about 1.6 of the way a
-// second); one far off, or the first, is put with them at once.
+// The flock's middle eases after whoever walks, to 2.5 m ahead of them (clear
+// of the camera behind), about 1.6 of the way a second; one far off, or
+// the first, is put there at once.
 hh_flock_follow :: (next:Haunt,s:Haunt,player:HauntPoint,dt:f32)->Haunt {
  out:=next;
  if !s.flock_on || hh_len(s.flock,player)>30 {out.flock=player;out.flock_on=true;return out;}
@@ -368,7 +369,7 @@ hh_flocked :: (s:Haunt,e:HauntEntity,t:f64)->HauntEntity {
 #test "a flock follows you: its middle eases after you, a bird flies round it" {
  s:Haunt;s.ok=true;
  s=verse_haunt_advance(s,0,hh_p(10,0,10),hh_p(10,1.6,10),0,0,true);
- #assert s.flock_on && s.flock.x==10 && s.flock.z==10;   // the first frame: with you at once
+ #assert s.flock_on && s.flock.x==10 && s.flock.z==7.5;   // the first frame: just ahead of you at once
  s=verse_haunt_advance(s,0.1,hh_p(12,0,10),hh_p(12,1.6,10),0,0,true);
  #assert abs(s.flock.x-10.32)<0.001;                     // then after you, a little each frame
  for k:0..<60 {s=verse_haunt_advance(s,0.2+cast(f64)k*0.1,hh_p(12,0,10),hh_p(12,1.6,10),0,0,true);}
@@ -376,7 +377,7 @@ hh_flocked :: (s:Haunt,e:HauntEntity,t:f64)->HauntEntity {
  s=verse_haunt_advance(s,7,hh_p(80,0,10),hh_p(80,1.6,10),0,0,true);
  #assert s.flock.x==80;                                  // gone far: waiting there
  e:HauntEntity;e.pos=hh_p(2,3,0);e.motion=7;e.scale=1;
- for t:[3]f64.[0,1.5,4] {d:=hh_flocked(s,e,t);dx:=d.pos.x-80;dz:=d.pos.z-10;r:=sqrt(dx*dx+dz*dz);#assert r>1.6 && r<2.4 && d.pos.y>2.7 && d.pos.y<3.3;}
+ for t:[3]f64.[0,1.5,4] {d:=hh_flocked(s,e,t);dx:=d.pos.x-80;dz:=d.pos.z-7.5;r:=sqrt(dx*dx+dz*dz);#assert r>1.6 && r<2.4 && d.pos.y>2.7 && d.pos.y<3.3;}
  #assert hh_flocked(s,e,0).pos.x!=hh_flocked(s,e,2).pos.x;   // it flies
 }
 #test "a set piece's part is placed whole, a bird anywhere, the rest on the walk" {

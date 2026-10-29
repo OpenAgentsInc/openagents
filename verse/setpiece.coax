@@ -184,7 +184,7 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
     for i: 0..<q.count {
       a := (cast(f32) i + sp_next(r[..]) * 0.6f32) / cast(f32) q.count * TAU;
       ring := 1.8f32 + sp_next(r[..]) * 1.6f32;
-      n = sp_put(out, n, mesh, cos(a) * ring, 2.4f32 + sp_next(r[..]) * 1.4f32, sin(a) * ring, 0, ifx mesh == MESH_BAT then 0.9f32 else 1.1f32 + sp_next(r[..]) * 0.3f32,
+      n = sp_put(out, n, mesh, cos(a) * ring, 3.0f32 + sp_next(r[..]) * 1.2f32, sin(a) * ring, 0, ifx mesh == MESH_BAT then 0.9f32 else 1.1f32 + sp_next(r[..]) * 0.3f32,
                  1, 1, 1, 0, MOTION_FLOCK, false);
     }
   }
@@ -195,7 +195,7 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
       a := turn + cast(f32) i / cast(f32) q.count * TAU;
       lx := cx + cos(a) * reach; lz := cz + sin(a) * reach;
       // a glowing ball at head height that bobs and turns; it lights in its own colour, not its mesh's
-      n = sp_put(out, n, MESH_LANTERN, lx, 1.1f32, lz, a, 0.22f32, COLOUR_RGB[c], COLOUR_RGB[c + 1], COLOUR_RGB[c + 2], 1.0f32, MOTION_BOB, false);
+      n = sp_put(out, n, MESH_LANTERN, lx, 1.1f32, lz, a, 0.22f32, COLOUR_RGB[c], COLOUR_RGB[c + 1], COLOUR_RGB[c + 2], 0.45f32, MOTION_BOB, false);   // glow enough to bloom, not to bleach the colour
     }
   }
   if q.piece == PIECE_GROVE {
@@ -284,7 +284,7 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
     o := i * PLACE_FLOATS;
     ring := sqrt(out[o + 1] * out[o + 1] + out[o + 3] * out[o + 3]);
     #assert out[o] == cast(f32) MESH_CROW && out[o + 10] == cast(f32) MOTION_FLOCK && out[o + 11] == 0;   // flies, never in your way
-    #assert ring >= 1.8 && ring <= 3.4 && out[o + 2] >= 2.4 && out[o + 2] <= 3.8;   // places round them, not the world's
+    #assert ring >= 1.8 && ring <= 3.4 && out[o + 2] >= 3.0 && out[o + 2] <= 4.2;   // places round them, not the world's
   }
   bats: [PLACES_MAX * PLACE_FLOATS] f32;
   #assert verse_piece_layout(SetPiece.{piece = PIECE_FLOCK, count = 3, kind = 1}, 42, 0, 0, 0, bats[..]) == 3 && bats[0] == cast(f32) MESH_BAT;
@@ -321,7 +321,7 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
   for i: 0..<n {
     o := i * PLACE_FLOATS;
     dx := out[o + 1]; dz := out[o + 3] - 5.0;
-    #assert out[o] == cast(f32) MESH_LANTERN && abs(sqrt(dx * dx + dz * dz) - 3.0) < 0.01 && out[o + 9] == 1.0 && out[o + 10] == cast(f32) MOTION_BOB && out[o + 11] == 0;
+    #assert out[o] == cast(f32) MESH_LANTERN && abs(sqrt(dx * dx + dz * dz) - 3.0) < 0.01 && out[o + 9] == 0.45 && out[o + 10] == cast(f32) MOTION_BOB && out[o + 11] == 0;
     #assert out[o + 6] == 0.45 && out[o + 7] == 1 && out[o + 8] == 0.45;   // green
   }
 }
