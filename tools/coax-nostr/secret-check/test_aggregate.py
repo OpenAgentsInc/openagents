@@ -50,6 +50,9 @@ class AggregateSource(unittest.TestCase):
          ('dirty_literal_cast_copy','Pair :: struct {value:u64;} unsafe_vartime :: (x:u64)->u64 {return x;} helper :: (p:Pair,x:u64)->u64 {if p.value==0 {return x;}else {return unsafe_vartime(x);}} candidate :: (x:u64)->u64 {p:=Pair.{value=0};p.value=1;return helper(cast(Pair)p,x);}',5),
          ('dirty_literal_array_cast','Pair :: struct {value:u64;} unsafe_vartime :: (x:u64)->u64 {return x;} candidate :: (x:u64)->u64 {p:=[1]Pair.[Pair.{value=0}];p[0].value=1;q:=cast([1]Pair)p;if q[0].value==0 {return x;}else {return unsafe_vartime(x);}}',5),
          ('byte_wrap_branch','unsafe_vartime :: (x:u64)->u64 {return x+1;} candidate :: (x:u64)->u64 {v:=cast(u8)255;w:=v+cast(u8)1;if w==0 {return unsafe_vartime(x);}else {return x;}}',5),
+         ('memo_public_then_secret','helper :: (v:u64)->u64 {return ifx v==0 then 1 else 2;} candidate :: (x:u64)->u64 {a:=helper(0);return helper(x)+a;}',6),
+         ('memo_clean_then_dirty','Pair :: struct {value:u64;} unsafe_vartime :: (x:u64)->u64 {return x;} helper :: (p:Pair,x:u64)->u64 {if p.value==0 {return x;}else {return unsafe_vartime(x);}} candidate :: (x:u64)->u64 {p:=Pair.{value=0};a:=helper(p,x);p.value=1;return helper(p,a);}',5),
+         ('memo_transitive_vartime','unsafe_vartime :: (x:u64)->u64 {return x;} helper :: (x:u64)->u64 {return unsafe_vartime(x);} candidate :: (x:u64)->u64 {return helper(x);}',8),
          ('dirty_literal_nested_copy','Pair :: struct {value:u64;} Box :: struct {inner:Pair;} unsafe_vartime :: (x:u64)->u64 {return x;} helper :: (p:Box,x:u64)->u64 {if p.inner.value==0 {return x;}else {return unsafe_vartime(x);}} candidate :: (x:u64)->u64 {p:=Box.{inner=Pair.{value=0}};p.inner.value=1;return helper(p,x);}',5),
          ('dirty_literal_index','Pair :: struct {value:u64;} helper :: (p:Pair,x:u64)->u64 {a:=[1]u64.[x];return a[cast(int)p.value];} candidate :: (x:u64)->u64 {p:=Pair.{value=0};p.value=1;return helper(p,x);}',2),
          ('view_write','write :: (v:[]u64,x:u64)->bool {v[0]=x;return true;} candidate :: (x:u64)->u64 {a:[2]u64;v:=a[..];ok:=write(v,x);return ifx a[0]==0 then 1 else 2;}',6),
@@ -119,6 +122,11 @@ candidate :: (x:u64)->u64 #export_c {p:=Pair.{value=0};p.value=1;return helper(p
                 artifact=self.directory/(name+'-'+mode+'.dylib');run('cc','-std=c11','-O2','-shared','-fPIC',c,'-lm','-o',artifact)
                 lib=C.CDLL(str(artifact));lib.candidate.argtypes=[C.c_uint64];lib.candidate.restype=C.c_uint64
                 self.assertEqual(lib.candidate(7),8)
+    def test_summary_invalidation_and_guard_context(self):
+        self.case('summary_original_callee','helper :: (x:u64)->u64 {return x|1;} candidate :: (x:u64)->u64 {return helper(x);}',0)
+        self.case('summary_changed_callee','unsafe_vartime :: (x:u64)->u64 {return x;} helper :: (x:u64)->u64 {return unsafe_vartime(x);} candidate :: (x:u64)->u64 {return helper(x);}',8)
+        r=self.case('summary_guard_context','helper :: (x:u64)->u64 {#assert x!=0;return x;} candidate :: (x:u64)->u64 {a:=helper(1);return helper(x)+a;}',14)
+        self.assertEqual(len(r['authored_guard_obligations']),1);self.assertEqual(r['authored_guard_obligations'][0]['origin_mask'],1)
     def test_actual_crypto_closures_and_public_only_exclusion(self):
         for file,entry,error in [('secp_scalar.coax','sc_mul',0),('secp_field.coax','sf_multiply',14),('secp_field.coax','sf_inverse',14),('secp_group.coax','sg_choose',0),('secp_field.coax','sf_inverse_vartime',8),('secp_group.coax','sg_decode_public',8)]:
             r=self.tool.audit(ROOT/'coax/lib/crypto'/file,entry);self.assertEqual(r['error'],error,(entry,r));self.assertFalse(r['production_crypto_approved']);self.assertTrue(r['source_sha256']);canonical=json.dumps(r['resolved_type_inventory'],sort_keys=True,separators=(',',':')).encode();self.assertEqual(r['resolved_type_sha256'],hashlib.sha256(canonical).hexdigest());self.observations.append({'case':entry,'report':r})
