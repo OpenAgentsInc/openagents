@@ -1,6 +1,6 @@
 # The realm host
 
-Status: built, October 28 (rl-realm-host, rl-asset-packs). Every Verse realm on
+Status: built, October 28 (rl-realm-host, rl-asset-packs, rl-realm-goldens). Every Verse realm on
 openagents.com opens the same way, from one table. Ice Cream Man, Dead
 Gears and Everglade are built on it ([realms-port.md](realms-port.md)).
 
@@ -38,6 +38,8 @@ written files are behind the table. Don't edit the written files.
 | `realm.slot` | The save slot (below). Unique across realms. |
 | `realm.slot_was` | A slot this realm used before, read once when its own is empty. The Haunted House kept its saves under `realm` (its module's name) before slots existed. |
 | `realm.assets` | The page's `data-assets` (host.js): `pack:` (the realm's asset pack, below), or `data:`, `storage:`, `index:`, `layers:`, `sound:` and `loop:` one file each; and `particles:/particles.wgsl` for particles. |
+
+| `realm.golden` | What the release walk asks of the page (below): `lit`, the least share of its pixels lit (the fixture 0.015, the Haunted House 0.03); `settle`, milliseconds to wait before its shot; `blocks`, how many 8 px blocks may differ from its golden. |
 
 Each realm also needs `realm/<slug>/index.md`, written by hand: the page as
 text for agents, search engines and screen readers. The generator refuses a
@@ -131,8 +133,24 @@ the world name, schema and CRC).
 The galaxy (`verse.coax`) draws `realms.coax`'s worlds in order, then
 players' own realms on the outer orbit. An open world is drawn lit, its
 name and OPEN show under the pointer, and a click goes to its page
-(`PLANET_PATH`). The Haunted House and Coding keep their tags. A world the
+(`PLANET_PATH`). Without a pointer, LEFT and RIGHT step through the open
+worlds it shows (the table's order, then players' realms) and ENTER opens the
+one chosen. The Haunted House and Coding keep their tags. A world the
 table doesn't list shows only at `/verse/galaxy?realms=all`.
+
+## The release walk
+
+`coax/web/goldens.ts` (run by `release.sh` on staging, then on production)
+walks the landing, the galaxy and the Haunted House, then opens **every other
+realm in the table from the galaxy**: `/verse/galaxy?realms=all`, RIGHT to its
+world, ENTER. Each realm's page must arrive, start (`coaxial.ready`), report
+no error (a pack or asset that fails says so), light at least its
+`golden.lit`, and on staging match `coax/web/goldens/<slug>.png`. A realm that
+is blank, broken or changed fails the release before production. A new
+realm's golden: release to staging (it fails with "no golden"), then
+`bun coax/web/goldens.ts https://staging.openagents.com --update`, look at
+`coax/web/goldens/<slug>.png`, commit it (and only the goldens you meant to
+change) and release again.
 
 ## Adding a realm
 
@@ -140,5 +158,5 @@ table doesn't list shows only at `/verse/galaxy?realms=all`.
 2. Its pack: `verse/packs/<realm>.json`, compiled with `pack_realm.py` (above).
 3. Its world in `realms.json`: listed `false` until launch, assets `pack:...`.
 4. `realm/<slug>/index.md`, linking its `licences.md`.
-5. `bun coax/web/realms.ts`, `coax test <module>.coax`, a headless shot, and its golden (`coax/web/goldens.ts`).
+5. `bun coax/web/realms.ts`, `coax test <module>.coax`, a headless shot, and its golden (the release walk, above).
 6. At launch: `listed` true (the galaxy's golden changes; approve it).

@@ -1,6 +1,8 @@
 // The playtest flow, walked in headless Chrome with WebGPU (no window opens,
 // nothing takes focus): the landing, ENTER as a guest, the galaxy, a click
-// on the Haunted House, the house. Each page must start (its engine says
+// on the Haunted House, the house; then every other realm in realms.json,
+// each opened from the galaxy (/verse/galaxy?realms=all, the arrows to its
+// world, ENTER), unlisted ones too, so a realm is walked before its launch. Each page must start (its engine says
 // ready, nothing reports an error or throws) and draw (enough lit pixels),
 // and looks like its golden screenshot. It closes the gap the HTTP smoke
 // leaves: a page that answers 200 but doesn't start, or draws nothing.
@@ -17,7 +19,9 @@
 //   bun coax/web/goldens.ts BASE --walk           # walk only: starts, draws, the flow goes through
 //   bun coax/web/goldens.ts BASE --root /demo/N   # a pinned demo's pages
 //
-// A golden is coax/web/goldens/NAME.png at 1280x800. A page differs when
+// A golden is coax/web/goldens/NAME.png at 1280x800, NAME a realm's slug for
+// a realm; what a realm's page must light, how long it settles and how many
+// blocks may change are its "golden" in realms.json. A page differs when
 // more of its 8 px blocks changed than the page allows (a block changed
 // when its mean differs by more than SHADE in a channel; 16,000 blocks a
 // page). Blocks that move on their own (the house's candles, the galaxy's
@@ -30,6 +34,7 @@ import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync, mkdirSync
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { inflateSync } from "node:zlib"
+import { worlds } from "./realms"
 
 const W = 1280, H = 800, BLOCK = Number(process.env.BLOCK ?? 8), SHADE = Number(process.env.SHADE ?? 8)
 const args = process.argv.slice(2)
@@ -44,10 +49,14 @@ const sent = new Set<string>()
 // The landing and the galaxy are words and stars on black; the house, a dark night,
 // lights about 6% (its loading screen, or one that failed, under 1%).
 // blocks: how many of its blocks may change against its golden.
-const PAGES = { landing: { path: "/verse", lit: 0.004, settle: 2500, blocks: 4 },
-  galaxy: { path: "/verse/galaxy", lit: 0.01, settle: 2500, blocks: 8 },
-  "haunted-house": { path: "/realm/haunted-house", lit: 0.03, settle: 3000, blocks: 6 } } as const
-type Name = keyof typeof PAGES
+type Page = { path: string; lit: number; settle: number; blocks: number }
+const PAGES: Record<string, Page> = { landing: { path: "/verse", lit: 0.004, settle: 2500, blocks: 4 },
+  galaxy: { path: "/verse/galaxy", lit: 0.01, settle: 2500, blocks: 8 } }
+// Every realm, and the open worlds in the order the galaxy's arrows step
+// through them with ?realms=all (realms.json's order).
+const table = worlds(), open = table.filter((w) => w.kind === "open" && w.realm)
+for (const w of open) PAGES[w.realm!.slug] = { path: `/realm/${w.realm!.slug}`, ...w.realm!.golden }
+type Name = string
 
 // ---- PNG: Chrome's screenshots (8-bit RGB or RGBA, not interlaced) to RGBA
 type Image = { w: number; h: number; px: Uint8Array }
@@ -223,6 +232,20 @@ try {
         }
       }
     }
+  }
+  // Every other realm, opened from the galaxy with the keyboard (a pinned demo has only the house).
+  if (!root) for (const [k, w] of open.entries()) {
+    const slug = w.realm!.slug
+    if (slug === "haunted-house") continue
+    await send("Page.navigate", { url: `${base}/verse/galaxy?realms=all` })
+    const ready = await until(async () => (await evaluate("location.pathname")) === "/verse/galaxy" && (await evaluate("globalThis.coaxial?.ready === true")) === true, 20000)
+    check(ready, `${slug}: the galaxy started, to open it from`)
+    if (!ready) continue
+    await Bun.sleep(1000)
+    errors = []
+    for (let i = 0; i <= k; i++) await key("ArrowRight", "ArrowRight", 39)
+    await key("Enter", "Enter", 13)
+    await arrive(slug)
   }
   if (!root && !sent.size) check(false, "analytics contract: no analytics batch was sent")
   ws.close()

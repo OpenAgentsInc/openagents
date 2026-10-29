@@ -12,6 +12,7 @@
         "module": "realm",
         "slot": "haunted-house",
         "slot_was": "realm",
+        "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
         "assets": [
           "data:/realm/haunted-house/assets/Haunt.pb",
           "storage:/realm/haunted-house/assets/Haunt.vertices",
@@ -57,6 +58,7 @@
         "alt": "Enter the Verse",
         "module": "fixture",
         "slot": "fixture",
+        "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realm/fixture/assets/fixture.pack"]
       } }
   ]

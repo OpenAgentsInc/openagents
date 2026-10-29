@@ -311,7 +311,7 @@ press_button :: (s: [] VerseState, t: [] Track, b: int) {
 
 // A key: a code point, or a named key below zero (ui.coax KEY_*).
 verse_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool #export_c {
-  if s[0].page == PAGE_GALAXY { return setup_key(s, t, key, mods); }
+  if s[0].page == PAGE_GALAXY { return setup_key(s, t, key, mods) || world_key(s, t, key); }
   if s[0].page != PAGE_LANDING || s[0].going { return false; }
   if key == KEY_ENTER { if s[0].focused || s[0].email_n > 0 { submit(s, t); } else { enter(s, t); } return true; }
   // with a keyboard, typing goes into the box without a click first
@@ -583,6 +583,23 @@ setup_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool {
     buf: [4] u8; buf[0] = cast(u8) key;
     name_type(s, cast(string) buf[0..<1]);
     return true;
+  }
+  return false;
+}
+
+// The galaxy without a pointer: LEFT and RIGHT step through the open worlds
+// it shows (the table's order, then players' realms), ENTER opens the one
+// chosen, as a click on it would.
+world_key :: (s: [] VerseState, t: [] Track, key: int) -> bool {
+  if s[0].setup { return false; }
+  if key == KEY_ENTER && s[0].over >= 0 { pick(s, t, s[0].over, "key"); return true; }
+  if key != KEY_LEFT && key != KEY_RIGHT { return false; }
+  n := PLANETS + s[0].realm_n;
+  step := ifx key == KEY_RIGHT then 1 else n - 1;
+  p := ifx s[0].over >= 0 then s[0].over else ifx key == KEY_RIGHT then n - 1 else 0;
+  for i: 0..<n {
+    p = (p + step) % n;
+    if planet_shown(s, p) && realm_kind_at(s, p) == KIND_OPEN { s[0].over = p; return true; }
   }
   return false;
 }
@@ -1275,6 +1292,30 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
     poke(s[..], t[..], q.x, q.y, POINTER_UP, 0, 1);
     redraw(s[..], t[..], 0.016);
     #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/fixture";
+  }
+}
+
+#test "without a pointer, the arrows choose an open world and ENTER opens it" {
+  for all: 0..<2 {
+    s: [1] VerseState; t: [1] Track;
+    if all == 1 { verse_facts(s[..], "url=https://openagents.com/verse/galaxy?realms=all"); }
+    page_at(s[..], t[..], PAGE_GALAXY, 1440, 900);
+    seen := 0; last := -1;
+    for i: 0..<PLANETS + 2 {
+      #assert verse_key(s[..], t[..], KEY_RIGHT, 0);
+      p := s[0].over;
+      #assert p >= 0 && realm_kind_at(s[..], p) == KIND_OPEN && planet_shown(s[..], p);
+      if p > last { seen += 1; last = p; }
+    }
+    open := 0;
+    for p: 0..<PLANETS { if PLANET_KIND[p] == KIND_OPEN && (PLANET_LISTED[p] || all == 1) { open += 1; } }
+    #assert seen == open;
+    #assert verse_key(s[..], t[..], KEY_LEFT, 0) && verse_key(s[..], t[..], KEY_RIGHT, 0);
+    s[0].over = -1;
+    #assert verse_key(s[..], t[..], KEY_RIGHT, 0) && s[0].over == HOUSE;
+    #assert verse_key(s[..], t[..], KEY_ENTER, 0);
+    redraw(s[..], t[..], 0.016);
+    #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/haunted-house";
   }
 }
 

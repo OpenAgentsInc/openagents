@@ -16,8 +16,11 @@ import { join } from "node:path"
 
 const SITE = join(import.meta.dir, "../../apps/openagents-web")
 const KINDS = { locked: 0, open: 1, soon: 2 } as const
-type Realm = { slug: string; title: string; description: string; alt: string; module: string; slot: string; slot_was?: string; assets: string[] }
-type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
+// golden: what the release walk (goldens.ts) asks of the realm's page: the least share of
+// its pixels lit, how long it settles before its shot, how many 8 px blocks may differ.
+export type Golden = { lit: number; settle: number; blocks: number }
+export type Realm = { slug: string; title: string; description: string; alt: string; module: string; slot: string; slot_was?: string; assets: string[]; golden: Golden }
+export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
 /** The table, checked: unique ids, slugs and slots; an open world has a realm and a realm a module. */
@@ -37,6 +40,8 @@ export function worlds(file = join(SITE, "realms.json")): World[] {
     once(`slug ${r.slug}`); once(`slot ${r.slot}`)
     if (r.slot_was) once(`slot ${r.slot_was}`)
     for (const a of r.assets) if (!/^[a-z]+:\S+$/.test(a)) throw new Error(`realms.json: ${r.slug}: asset ${a}`)
+    const g = r.golden
+    if (!g || !(g.lit > 0 && g.lit < 1) || !(g.settle >= 0 && g.settle <= 20000) || !(Number.isInteger(g.blocks) && g.blocks >= 0)) throw new Error(`realms.json: ${r.slug}: golden needs lit (0 to 1), settle (ms) and blocks`)
   }
   return list
 }
