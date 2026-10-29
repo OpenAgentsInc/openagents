@@ -1,0 +1,51 @@
+{
+  "addresses_per_mode": 8534,
+  "candidate_scenarios_per_mode": 43,
+  "cases_sha256": "240a862fd984f71922dff2bc6131439e5533643168fad8bdf9002d28819c5b0d",
+  "compiler": "coax0 0.16.0",
+  "compiler_sha256": "46d332386114ff213a2083440469332742915ea99b2506a9619730420fda2719",
+  "modes": [
+    {
+      "binary_sha256": "51a97bfff13578656ab260c744c8b2b5c1fbd9704a3f2752b778aceeef3637c6",
+      "generated_c_sha256": "c49e501abb2aa7b0af7cc2e492c6dce34717f39d5c797f34b8d1140205be9a09",
+      "mode": "checked"
+    },
+    {
+      "binary_sha256": "748b80ecc00389575a9d13da191baa02ee41bce212ad436531a4db76f9dcbab9",
+      "generated_c_sha256": "d8e11ec453654c36686a5b99422dcedf78b9b093ae0c86aa4ada63817cbcfd38",
+      "mode": "release"
+    }
+  ],
+  "sanitizer": {
+    "addresses": 8534,
+    "binary_sha256": "3213ddd0c2d8b7ef2b1d58047e2caa66ee344cc1d05063a09bc462530d1e5a24",
+    "scenarios": 43
+  },
+  "schema": "coax.fi-candidate-policy.v1.evidence",
+  "scope": "Typed candidate policy only; no signature verification, live network enforcement, full AssertionPolicyId or identity grant",
+  "sources": {
+    "coax/lib/net/uri.coax": "a64721f594454734e06352ecec04dce1ccb3dbb16b5364f15d4e9978ce3f3691",
+    "coax/lib/nostr/block/fi-addresses.coax": "5e14ed0ebe986e77d5e21346c8d142d75bcfdacfbcc9c7a31792c19f104f4dd9",
+    "coax/lib/nostr/block/fi-jwks.coax": "65deb2e9958db9a5eb5b2d7a7373a52df21c86389243c11cff22e7a92ac4a5ce",
+    "coax/lib/nostr/block/fi-policy.coax": "ce60dca52da63c28b0e8b06799129cb6f651acfe766355933394d3ea56397652"
+  },
+  "time_comparisons": 8192,
+  "wasm": [
+    {
+      "addresses": 8534,
+      "artifact_sha256": "9d18806da2389ac94ca1999d7fcc0952b87cbbc2188d57efcd23770bb820c9f6",
+      "engine": "Bun1.4.0",
+      "failures": 0,
+      "mode": "checked",
+      "scenarios": 43
+    },
+    {
+      "addresses": 8534,
+      "artifact_sha256": "cdc082b182a05fa5d4f99c5c224ee4bac5970a53ac2c0a6c2e0999423b60cc31",
+      "engine": "Bun1.4.0",
+      "failures": 0,
+      "mode": "release",
+      "scenarios": 43
+    }
+  ]
+}

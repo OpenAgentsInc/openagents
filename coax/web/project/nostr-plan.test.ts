@@ -60,3 +60,13 @@ test("decoder mutation coverage remains a separate gate from structural policy",
   for (const slug of ["nostr-event", "nostr-jcs", "fi-jws-verifier"]) expect(reaches(slug, "nostr-json-parser-checks")).toBe(true)
   expect(tasks.get("nostr-json").status).toBe("resolved")
 })
+
+test("FI selects one asymmetric profile before crypto and actual transport integration", () => {
+  const task = tasks.get("fi-jws-verifier")
+  expect(task.body).toContain("RS256 only")
+  expect(task.body).toContain("fi-rs256-policy-v1")
+  expect(task.body).toContain("grants no identity authority")
+  expect(task.acceptance.join(" ")).toContain("Full AssertionPolicyId")
+  expect(task.acceptance.join(" ")).toContain("Real key-source adapters")
+  expect(reaches("fi-jws-verifier", "fi-jwks-policy")).toBe(true)
+})

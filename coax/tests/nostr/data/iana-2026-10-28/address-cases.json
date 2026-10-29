@@ -1,0 +1,1028 @@
+[
+  {
+    "address": "0.0.0.0",
+    "hex": "00000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "0.255.255.255",
+    "hex": "00ffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "1.0.0.0",
+    "hex": "01000000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "0.0.0.1",
+    "hex": "00000001",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "10.0.0.0",
+    "hex": "0a000000",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "10.255.255.255",
+    "hex": "0affffff",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "9.255.255.255",
+    "hex": "09ffffff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "11.0.0.0",
+    "hex": "0b000000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "100.64.0.0",
+    "hex": "64400000",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "100.127.255.255",
+    "hex": "647fffff",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "100.63.255.255",
+    "hex": "643fffff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "100.128.0.0",
+    "hex": "64800000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "127.0.0.0",
+    "hex": "7f000000",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "127.255.255.255",
+    "hex": "7fffffff",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "126.255.255.255",
+    "hex": "7effffff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "128.0.0.0",
+    "hex": "80000000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "169.254.0.0",
+    "hex": "a9fe0000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "169.254.255.255",
+    "hex": "a9feffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "169.253.255.255",
+    "hex": "a9fdffff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "169.255.0.0",
+    "hex": "a9ff0000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "172.16.0.0",
+    "hex": "ac100000",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "172.31.255.255",
+    "hex": "ac1fffff",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "172.15.255.255",
+    "hex": "ac0fffff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "172.32.0.0",
+    "hex": "ac200000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "192.0.0.0",
+    "hex": "c0000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.0.0.255",
+    "hex": "c00000ff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "191.255.255.255",
+    "hex": "bfffffff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "192.0.1.0",
+    "hex": "c0000100",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "192.0.0.7",
+    "hex": "c0000007",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.0.0.8",
+    "hex": "c0000008",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.0.0.9",
+    "hex": "c0000009",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.0.0.10",
+    "hex": "c000000a",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.0.0.11",
+    "hex": "c000000b",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.0.0.170",
+    "hex": "c00000aa",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.0.0.169",
+    "hex": "c00000a9",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.0.0.171",
+    "hex": "c00000ab",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.0.0.172",
+    "hex": "c00000ac",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.0.2.0",
+    "hex": "c0000200",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.0.2.255",
+    "hex": "c00002ff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.0.1.255",
+    "hex": "c00001ff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "192.0.3.0",
+    "hex": "c0000300",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "192.31.196.0",
+    "hex": "c01fc400",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.31.196.255",
+    "hex": "c01fc4ff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.31.195.255",
+    "hex": "c01fc3ff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "192.31.197.0",
+    "hex": "c01fc500",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "192.52.193.0",
+    "hex": "c034c100",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.52.193.255",
+    "hex": "c034c1ff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.52.192.255",
+    "hex": "c034c0ff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "192.52.194.0",
+    "hex": "c034c200",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "192.88.99.0",
+    "hex": "c0586300",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.88.99.255",
+    "hex": "c05863ff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.88.98.255",
+    "hex": "c05862ff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "192.88.100.0",
+    "hex": "c0586400",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "192.88.99.2",
+    "hex": "c0586302",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.88.99.1",
+    "hex": "c0586301",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.88.99.3",
+    "hex": "c0586303",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.168.0.0",
+    "hex": "c0a80000",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "192.168.255.255",
+    "hex": "c0a8ffff",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "192.167.255.255",
+    "hex": "c0a7ffff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "192.169.0.0",
+    "hex": "c0a90000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "192.175.48.0",
+    "hex": "c0af3000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.175.48.255",
+    "hex": "c0af30ff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "192.175.47.255",
+    "hex": "c0af2fff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "192.175.49.0",
+    "hex": "c0af3100",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "198.18.0.0",
+    "hex": "c6120000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "198.19.255.255",
+    "hex": "c613ffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "198.17.255.255",
+    "hex": "c611ffff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "198.20.0.0",
+    "hex": "c6140000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "198.51.100.0",
+    "hex": "c6336400",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "198.51.100.255",
+    "hex": "c63364ff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "198.51.99.255",
+    "hex": "c63363ff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "198.51.101.0",
+    "hex": "c6336500",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "203.0.113.0",
+    "hex": "cb007100",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "203.0.113.255",
+    "hex": "cb0071ff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "203.0.112.255",
+    "hex": "cb0070ff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "203.0.114.0",
+    "hex": "cb007200",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "240.0.0.0",
+    "hex": "f0000000",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "255.255.255.255",
+    "hex": "ffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "239.255.255.255",
+    "hex": "efffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "255.255.255.254",
+    "hex": "fffffffe",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "::1",
+    "hex": "00000000000000000000000000000001",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "::",
+    "hex": "00000000000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "::2",
+    "hex": "00000000000000000000000000000002",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "::ffff:0.0.0.0",
+    "hex": "00000000000000000000ffff00000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "::ffff:255.255.255.255",
+    "hex": "00000000000000000000ffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "::fffe:ffff:ffff",
+    "hex": "00000000000000000000fffeffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "::1:0:0:0",
+    "hex": "00000000000000000001000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "64:ff9b::",
+    "hex": "0064ff9b000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "64:ff9b::ffff:ffff",
+    "hex": "0064ff9b0000000000000000ffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "64:ff9a:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "0064ff9affffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "64:ff9b::1:0:0",
+    "hex": "0064ff9b000000000000000100000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "64:ff9b:1::",
+    "hex": "0064ff9b000100000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "64:ff9b:1:ffff:ffff:ffff:ffff:ffff",
+    "hex": "0064ff9b0001ffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "64:ff9b:0:ffff:ffff:ffff:ffff:ffff",
+    "hex": "0064ff9b0000ffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "64:ff9b:2::",
+    "hex": "0064ff9b000200000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "100::",
+    "hex": "01000000000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "100::ffff:ffff:ffff:ffff",
+    "hex": "0100000000000000ffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "ff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "00ffffffffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "100:0:0:1::",
+    "hex": "01000000000000010000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "100::1:ffff:ffff:ffff:ffff",
+    "hex": "0100000000000001ffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "100:0:0:2::",
+    "hex": "01000000000000020000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001::",
+    "hex": "20010000000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:1ff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "200101ffffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2000:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "2000ffffffffffffffffffffffffffff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "2001:200::",
+    "hex": "20010200000000000000000000000000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "2001:0:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "20010000ffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:1::",
+    "hex": "20010001000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:1::1",
+    "hex": "20010001000000000000000000000001",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:1::2",
+    "hex": "20010001000000000000000000000002",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:1::3",
+    "hex": "20010001000000000000000000000003",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:1::4",
+    "hex": "20010001000000000000000000000004",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:2::",
+    "hex": "20010002000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:2:0:ffff:ffff:ffff:ffff:ffff",
+    "hex": "200100020000ffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:1:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "20010001ffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:2:1::",
+    "hex": "20010002000100000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:3::",
+    "hex": "20010003000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:3:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "20010003ffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:2:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "20010002ffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:4::",
+    "hex": "20010004000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:4:112::",
+    "hex": "20010004011200000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:4:112:ffff:ffff:ffff:ffff:ffff",
+    "hex": "200100040112ffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:4:111:ffff:ffff:ffff:ffff:ffff",
+    "hex": "200100040111ffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:4:113::",
+    "hex": "20010004011300000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:10::",
+    "hex": "20010010000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:1f:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "2001001fffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:f:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "2001000fffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:20::",
+    "hex": "20010020000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:2f:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "2001002fffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:30::",
+    "hex": "20010030000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:3f:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "2001003fffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:40::",
+    "hex": "20010040000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:db8::",
+    "hex": "20010db8000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:db8:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "20010db8ffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:db7:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "20010db7ffffffffffffffffffffffff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "2001:db9::",
+    "hex": "20010db9000000000000000000000000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "2002::",
+    "hex": "20020000000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "2002ffffffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2001:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "2001ffffffffffffffffffffffffffff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "2003::",
+    "hex": "20030000000000000000000000000000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "2620:4f:8000::",
+    "hex": "2620004f800000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2620:4f:8000:ffff:ffff:ffff:ffff:ffff",
+    "hex": "2620004f8000ffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2620:4f:7fff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "2620004f7fffffffffffffffffffffff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "2620:4f:8001::",
+    "hex": "2620004f800100000000000000000000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "3fff::",
+    "hex": "3fff0000000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "3fff0fffffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "3ffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "3ffeffffffffffffffffffffffffffff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "3fff:1000::",
+    "hex": "3fff1000000000000000000000000000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "5f00::",
+    "hex": "5f000000000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "5f00:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "5f00ffffffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "5eff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "5effffffffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "5f01::",
+    "hex": "5f010000000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "fc00::",
+    "hex": "fc000000000000000000000000000000",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "fdffffffffffffffffffffffffffffff",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "fbff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "fbffffffffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "fe00::",
+    "hex": "fe000000000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "fe80::",
+    "hex": "fe800000000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "febfffffffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "fe7f:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "hex": "fe7fffffffffffffffffffffffffffff",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "fec0::",
+    "hex": "fec00000000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "8.8.8.8",
+    "hex": "08080808",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "1.1.1.1",
+    "hex": "01010101",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "223.255.255.255",
+    "hex": "dfffffff",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "224.0.0.0",
+    "hex": "e0000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "2000::",
+    "hex": "20000000000000000000000000000000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "2001:4860:4860::8888",
+    "hex": "20014860486000000000000000008888",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "2606:4700:4700::1111",
+    "hex": "26064700470000000000000000001111",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "3fff:ffff::",
+    "hex": "3fffffff000000000000000000000000",
+    "public": true,
+    "mesh": false
+  },
+  {
+    "address": "4000::",
+    "hex": "40000000000000000000000000000000",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "fdff:ffff::",
+    "hex": "fdffffff000000000000000000000000",
+    "public": false,
+    "mesh": true
+  },
+  {
+    "address": "::ffff:10.0.0.1",
+    "hex": "00000000000000000000ffff0a000001",
+    "public": false,
+    "mesh": false
+  },
+  {
+    "address": "64:ff9b::a00:1",
+    "hex": "0064ff9b00000000000000000a000001",
+    "public": false,
+    "mesh": false
+  }
+]

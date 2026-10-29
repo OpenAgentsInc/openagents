@@ -1,0 +1,248 @@
+// Candidate policy only: no result from this module grants identity authority.
+// Bounded JWS parsing, signature verification and fresh NIP-42 remain required.
+#load "../../net/uri.coax";
+#authority;
+FI_CANDIDATE :: 0;FI_UNAVAILABLE :: 1;FI_REJECTED :: 2;
+FI_DEDICATED :: 1;FI_ACCESS_TOKEN :: 2;
+FI_SAFE_TIME :: 9007199254740991;
+FiCommunity :: struct {host:string;audience:string;issuers:[]string;}
+FiIssuer :: struct {
+ issuer:string;jwks_uri:string;transport:int;token_class:int;
+ maximum_age:int;skew:int;connection_lifetime:int;refresh:int;hard_deadline:int;
+ marker_name:string;owner_values:[]string;client_values:[]string;
+ allow_client:bool;noncollision:bool;
+}
+FiSelection :: struct {status:int;community:int;issuer:int;}
+FiHeader :: struct {algorithm:string;typ:string;kid:string;}
+FiClaims :: struct {
+ issuer:string;subject:string;audiences:[]string;key:string;
+ has_iat:bool;iat:int;has_exp:bool;exp:int;has_nbf:bool;nbf:int;
+ has_owner:bool;owner:string;client_id:string;marker:string;
+}
+
+#test "selection is exact and validates community policy before issuer lookup" {
+ names:=[1]string.["https://issuer.test"];
+ communities:=[1]FiCommunity.[FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[..]}];
+ issuers:[1]FiIssuer;issuers[0].issuer="https://issuer.test";issuers[0].jwks_uri="https://keys.test/keys";issuers[0].transport=1;issuers[0].token_class=1;
+ issuers[0].maximum_age=300;issuers[0].connection_lifetime=60;issuers[0].refresh=30;issuers[0].hard_deadline=600;
+ s:=fi_select(communities[..],issuers[..],"relay.test","https://issuer.test");#assert s.status==FI_CANDIDATE && s.community==0 && s.issuer==0;
+ #assert fi_select(communities[..],issuers[..],"Relay.test","https://issuer.test").status==FI_UNAVAILABLE;
+ #assert fi_select(communities[..],issuers[..],"relay.test","https://issuer.test/").status==FI_REJECTED;
+ #assert fi_select(communities[0..<0],issuers[..],"relay.test","https://issuer.test").status==FI_UNAVAILABLE;
+ #assert fi_select(communities[..],issuers[0..<0],"relay.test","https://issuer.test").status==FI_UNAVAILABLE;
+ names[0]="https://other.test";
+ #assert fi_select(communities[..],issuers[..],"relay.test","https://issuer.test").status==FI_REJECTED;
+ #assert fi_select(communities[..],issuers[0..<0],"relay.test","https://issuer.test").status==FI_REJECTED;
+}
+#test "token class and algorithm have no permissive fallbacks" {
+ p:FiIssuer;p.token_class=1;h:=FiHeader.{algorithm="RS256",typ="nip-fi+jwt",kid="k"};
+ c:FiClaims;c.key="0000000000000000000000000000000000000000000000000000000000000000";
+ #assert fi_token_class(p,h,c);h.algorithm="HS256";#assert !fi_token_class(p,h,c);h.algorithm="none";#assert !fi_token_class(p,h,c);h.algorithm="RS256";
+ h.typ="JWT";#assert !fi_token_class(p,h,c);h.typ="";#assert !fi_token_class(p,h,c);h.typ="at+jwt";#assert !fi_token_class(p,h,c);
+ h.typ="nip-fi-agent+jwt";#assert !fi_token_class(p,h,c);c.has_owner=true;c.owner=c.key;#assert !fi_token_class(p,h,c);
+ c.owner="1000000000000000000000000000000000000000000000000000000000000000";#assert fi_token_class(p,h,c);
+ h.typ="nip-fi+jwt";#assert !fi_token_class(p,h,c);c.has_owner=false;#assert fi_token_class(p,h,c);
+ p.token_class=0;#assert !fi_token_class(p,h,c);
+ p.token_class=2;h.typ="nip-fi-agent+jwt";#assert !fi_token_class(p,h,c);h.typ="at+jwt";
+ owners:=[1]string.["human"];clients:=[1]string.["service"];p.owner_values=owners[..];p.client_values=clients[..];c.marker="human";
+ #assert !fi_token_class(p,h,c);c.client_id="mobile";#assert fi_token_class(p,h,c);
+ c.marker="service";#assert !fi_token_class(p,h,c);p.allow_client=true;p.noncollision=true;#assert fi_token_class(p,h,c);
+ c.has_owner=true;#assert !fi_token_class(p,h,c);c.has_owner=false;c.marker="unknown";#assert !fi_token_class(p,h,c);
+}
+#test "claim presence, audience and integer NumericDate boundaries are explicit" {
+ p:FiIssuer;p.issuer="https://issuer.test";p.maximum_age=10;p.skew=2;
+ a:FiCommunity;a.audience="wss://relay.test";aud:=[1]string.[a.audience];
+ c:FiClaims;c.issuer=p.issuer;c.subject="opaque";c.audiences=aud[..];c.key="0000000000000000000000000000000000000000000000000000000000000000";c.has_iat=true;c.iat=100;c.has_exp=true;c.exp=200;
+ #assert fi_claims_candidate(p,a,c,100) && fi_claims_candidate(p,a,c,98) && !fi_claims_candidate(p,a,c,97);
+ #assert fi_claims_candidate(p,a,c,109) && !fi_claims_candidate(p,a,c,110);
+ c.exp=100;#assert !fi_claims_candidate(p,a,c,100);c.exp=200;
+ c.has_nbf=true;c.nbf=102;#assert fi_claims_candidate(p,a,c,100);c.nbf=103;#assert !fi_claims_candidate(p,a,c,100);c.has_nbf=false;
+ c.has_iat=false;#assert !fi_claims_candidate(p,a,c,100);c.has_iat=true;c.has_exp=false;#assert !fi_claims_candidate(p,a,c,100);c.has_exp=true;
+ c.subject="";#assert !fi_claims_candidate(p,a,c,100);c.subject="opaque";c.issuer="https://other.test";#assert !fi_claims_candidate(p,a,c,100);c.issuer=p.issuer;
+ aud[0]="wss://other.test";#assert !fi_claims_candidate(p,a,c,100);aud[0]=a.audience;
+ c.key="ABC";#assert !fi_claims_candidate(p,a,c,100);
+ #assert fi_time_value(0) && fi_time_value(9007199254740991) && !fi_time_value(-1) && !fi_time_value(9007199254740992);
+ #assert fi_time_bounds(9007199254740991,9007199254740991,9007199254740991,false,0,1,0)==false;
+}
+
+
+#test "visible byte and lowercase key predicates inspect all positions and limits" {
+ #assert !fi_visible("",1) && fi_visible("!~",2) && !fi_visible("abc",2);
+ del:=[1]u8.[127];#assert !fi_visible(" ",1) && !fi_visible(cast(string)del[..],1) && !fi_visible("é",2);
+ #assert !fi_visible(" a",2) && !fi_visible("a ",2);
+ key:[64]u8;for i:0..<64 {key[i]='0';}
+ for b:"0123456789abcdef" {key[0]=b;#assert fi_key(cast(string)key[..]);}
+ for b:"/G`g:" {key[0]=b;#assert !fi_key(cast(string)key[..]);}
+ key[0]='0';key[63]='G';#assert !fi_key(cast(string)key[..]);
+ #assert !fi_key(cast(string)key[0..<63]);
+ sets:=[3]string.["a","b","c"];
+ #assert fi_set(sets[..],3,1) && !fi_set(sets[..],2,1) && !fi_set(sets[0..<0],3,1);
+ sets[0]="";#assert !fi_set(sets[..],3,1);sets[0]="b";#assert !fi_set(sets[..],3,1);
+ sets[0]="a";#assert fi_contains(sets[..],"a") && fi_contains(sets[..],"c") && !fi_contains(sets[..],"d");
+}
+#test "key sources select exact schemes and prohibit mesh query even empty" {
+ #assert fi_source_uri("https://keys.test/jwks?version=1",1);
+ #assert fi_source_uri("http://keys.local/jwks",2);
+ #assert !fi_source_uri("http://keys.local/jwks?",2) && !fi_source_uri("http://keys.local/jwks?q",2);
+ #assert !fi_source_uri("wss://keys.test/jwks",1) && !fi_source_uri("https://keys.test/jwks",2);
+ #assert !fi_source_uri("http://keys.test/jwks",1) && !fi_source_uri("https://keys.test",0);
+ #assert !fi_source_uri("https://keys.test",3) && !fi_source_uri("bad",1);
+}
+#test "issuer lifetime and refresh configuration has exact finite local caps" {
+ p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=1;p.maximum_age=1;p.connection_lifetime=1;p.refresh=1;p.hard_deadline=2;
+ #assert fi_issuer_config(p);
+ p.issuer="http://issuer.test";#assert !fi_issuer_config(p);p.issuer="https://issuer.test?";#assert !fi_issuer_config(p);p.issuer="bad";#assert !fi_issuer_config(p);p.issuer="https://issuer.test";
+ p.jwks_uri="http://keys.test";#assert !fi_issuer_config(p);p.jwks_uri="https://keys.test";
+ p.maximum_age=0;#assert !fi_issuer_config(p);p.maximum_age=31536000;#assert fi_issuer_config(p);p.maximum_age=31536001;#assert !fi_issuer_config(p);p.maximum_age=1;
+ p.connection_lifetime=0;#assert !fi_issuer_config(p);p.connection_lifetime=31536000;#assert fi_issuer_config(p);p.connection_lifetime=31536001;#assert !fi_issuer_config(p);p.connection_lifetime=1;
+ p.skew=-1;#assert !fi_issuer_config(p);p.skew=300;#assert fi_issuer_config(p);p.skew=301;#assert !fi_issuer_config(p);p.skew=0;
+ p.refresh=0;#assert !fi_issuer_config(p);p.refresh=2;#assert !fi_issuer_config(p);p.refresh=1;p.hard_deadline=31536000;#assert fi_issuer_config(p);p.hard_deadline=31536001;#assert !fi_issuer_config(p);
+ p.refresh=31536000;p.hard_deadline=31536001;#assert !fi_issuer_config(p);p.refresh=31536001;#assert !fi_issuer_config(p);
+ p.refresh=1;p.hard_deadline=2;p.marker_name="marker";#assert !fi_issuer_config(p);p.marker_name="";
+ vals:=[1]string.["value"];p.owner_values=vals[..];#assert !fi_issuer_config(p);p.owner_values=vals[0..<0];p.client_values=vals[..];#assert !fi_issuer_config(p);p.client_values=vals[0..<0];
+ p.allow_client=true;#assert !fi_issuer_config(p);p.allow_client=false;p.noncollision=true;#assert !fi_issuer_config(p);p.noncollision=false;
+ p.token_class=0;#assert !fi_issuer_config(p);p.token_class=3;#assert !fi_issuer_config(p);
+}
+#test "access classification configuration cannot have absent overlapping or oversized marker sets" {
+ p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=1;p.connection_lifetime=1;p.refresh=1;p.hard_deadline=2;
+ owners:=[9]string.["a","b","c","d","e","f","g","h","i"];clients:=[1]string.["z"];
+ p.marker_name="type";p.owner_values=owners[0..<8];p.client_values=clients[..];#assert fi_issuer_config(p);
+ p.owner_values=owners[..];#assert !fi_issuer_config(p);p.owner_values=owners[0..<8];clients[0]="a";#assert !fi_issuer_config(p);clients[0]="z";
+ p.client_values=clients[0..<0];#assert !fi_issuer_config(p);p.client_values=clients[..];p.owner_values=owners[0..<0];#assert !fi_issuer_config(p);p.owner_values=owners[0..<8];
+ p.allow_client=true;#assert !fi_issuer_config(p);p.noncollision=true;#assert fi_issuer_config(p);
+ p.marker_name="";#assert !fi_issuer_config(p);p.marker_name="type";
+ data:[129]u8;for i:0..<129 {data[i]='a';}p.marker_name=cast(string)data[0..<128];#assert fi_issuer_config(p);p.marker_name=cast(string)data[..];#assert !fi_issuer_config(p);
+ p.marker_name="type";owners[0]=cast(string)data[0..<128];#assert fi_issuer_config(p);owners[0]=cast(string)data[..];#assert !fi_issuer_config(p);
+ owners[0]="a";clients[0]=cast(string)data[0..<128];#assert fi_issuer_config(p);clients[0]=cast(string)data[..];#assert !fi_issuer_config(p);
+}
+#test "time validation rejects every missing domain and honors the upper edges without overflow" {
+ #assert fi_time_bounds(0,0,1,false,0,1,0);
+ #assert !fi_time_bounds(-1,0,1,false,0,1,0) && !fi_time_bounds(0,-1,1,false,0,1,0) && !fi_time_bounds(0,0,-1,false,0,1,0);
+ #assert !fi_time_bounds(9007199254740992,0,1,false,0,1,0) && !fi_time_bounds(0,9007199254740992,1,false,0,1,0) && !fi_time_bounds(0,0,9007199254740992,false,0,1,0);
+ #assert fi_time_bounds(9007199254740990,9007199254740991,9007199254740991,false,0,31536000,300);
+ #assert !fi_time_bounds(0,0,1,true,-1,1,0) && !fi_time_bounds(0,0,1,true,9007199254740992,1,0);
+ #assert !fi_time_bounds(0,0,1,false,0,0,0) && !fi_time_bounds(0,0,1,false,0,31536001,0);
+ #assert fi_time_bounds(0,0,1,false,0,31536000,0);
+ #assert !fi_time_bounds(0,0,1,false,0,1,-1) && !fi_time_bounds(0,0,1,false,0,1,301);
+ #assert fi_time_bounds(0,0,1,false,0,1,300);
+}
+
+#test "community cardinality ambiguity and both canonical audience schemes are exercised" {
+ names:=[1]string.["https://issuer.test"];
+ hosts:=[17]string.["a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q"];
+ auds:=[17]string.["wss://a","wss://b","wss://c","wss://d","wss://e","wss://f","wss://g","wss://h","wss://i","wss://j","wss://k","wss://l","wss://m","wss://n","wss://o","wss://p","wss://q"];
+ cs:[17]FiCommunity;for i:0..<17 {cs[i].host=hosts[i];cs[i].audience=auds[i];cs[i].issuers=names[..];}
+ ps:[17]FiIssuer;ps[1].issuer=names[0];ps[1].jwks_uri="https://keys.test";ps[1].transport=1;ps[1].token_class=1;ps[1].maximum_age=1;ps[1].connection_lifetime=1;ps[1].refresh=1;ps[1].hard_deadline=2;
+ sel:=fi_select(cs[0..<16],ps[0..<16],"b",names[0]);#assert sel.status==FI_CANDIDATE && sel.community==1 && sel.issuer==1;
+ #assert fi_select(cs[..],ps[0..<16],"b",names[0]).status==FI_UNAVAILABLE;
+ #assert fi_select(cs[0..<16],ps[..],"b",names[0]).status==FI_UNAVAILABLE;
+ #assert fi_select(cs[0..<0],ps[0..<16],"b",names[0]).status==FI_UNAVAILABLE;
+ ps[0]=ps[1];#assert fi_select(cs[0..<16],ps[0..<16],"b",names[0]).status==FI_UNAVAILABLE;ps[0].issuer="";
+ ps[1].issuer="https://other.test";#assert fi_select(cs[0..<16],ps[0..<16],"b",names[0]).status==FI_REJECTED;ps[1].issuer=names[0];
+ ps[1].refresh=0;#assert fi_select(cs[0..<16],ps[0..<16],"b",names[0]).status==FI_UNAVAILABLE;ps[1].refresh=1;
+ cs[1].host="a";#assert fi_select(cs[0..<16],ps[0..<16],"a",names[0]).status==FI_UNAVAILABLE;cs[1].host="b";
+ cs[1].audience="wss://a";#assert fi_select(cs[0..<16],ps[0..<16],"b",names[0]).status==FI_UNAVAILABLE;cs[1].audience="https://b";#assert fi_select(cs[0..<16],ps[0..<16],"b",names[0]).status==FI_CANDIDATE;
+ cs[1].host="bad_";#assert fi_select(cs[0..<16],ps[0..<16],"bad_",names[0]).status==FI_UNAVAILABLE;cs[1].host="b";
+ cs[1].audience="bad";#assert fi_select(cs[0..<16],ps[0..<16],"b",names[0]).status==FI_UNAVAILABLE;
+ cs[1].audience="http://b";#assert fi_select(cs[0..<16],ps[0..<16],"b",names[0]).status==FI_UNAVAILABLE;
+ cs[1].audience="wss://b?";#assert fi_select(cs[0..<16],ps[0..<16],"b",names[0]).status==FI_UNAVAILABLE;cs[1].audience="wss://b";
+ cs[1].issuers=names[0..<0];#assert fi_select(cs[0..<16],ps[0..<16],"b",names[0]).status==FI_UNAVAILABLE;
+}
+#test "community allowlist size and entry byte caps are independently observable" {
+ ps:[1]FiIssuer;ps[0].issuer="https://issuer.test";ps[0].jwks_uri="https://keys.test";ps[0].transport=1;ps[0].token_class=1;ps[0].maximum_age=1;ps[0].connection_lifetime=1;ps[0].refresh=1;ps[0].hard_deadline=2;
+ names:=[17]string.["https://issuer.test","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q"];
+ cs:[1]FiCommunity;cs[0].host="a";cs[0].audience="wss://a";cs[0].issuers=names[0..<16];
+ #assert fi_select(cs[..],ps[..],"a",names[0]).status==FI_CANDIDATE;
+ cs[0].issuers=names[..];#assert fi_select(cs[..],ps[..],"a",names[0]).status==FI_UNAVAILABLE;cs[0].issuers=names[0..<16];
+ data:[2049]u8;for i:0..<2049 {data[i]='a';}names[1]=cast(string)data[0..<2048];#assert fi_select(cs[..],ps[..],"a",names[0]).status==FI_CANDIDATE;names[1]=cast(string)data[..];#assert fi_select(cs[..],ps[..],"a",names[0]).status==FI_UNAVAILABLE;
+}
+#test "header and class-local bounds refuse invalid independent fields" {
+ p:FiIssuer;p.token_class=1;c:FiClaims;c.key="0000000000000000000000000000000000000000000000000000000000000000";
+ h:=FiHeader.{algorithm="RS256",typ="nip-fi-agent+jwt",kid="k"};c.has_owner=true;c.owner="bad";#assert !fi_token_class(p,h,c);
+ c.owner="1000000000000000000000000000000000000000000000000000000000000000";c.has_owner=false;#assert !fi_token_class(p,h,c);
+ h.typ="nip-fi+jwt";data:[257]u8;for i:0..<257 {data[i]='a';}h.kid=cast(string)data[0..<128];#assert fi_token_class(p,h,c);h.kid=cast(string)data[0..<129];#assert !fi_token_class(p,h,c);h.kid="k";
+ owners:=[1]string.["human"];clients:=[9]string.["a","b","c","d","e","f","g","h","i"];
+ p.token_class=2;p.owner_values=owners[..];p.client_values=clients[0..<8];c.marker="human";c.client_id="mobile";
+ #assert !fi_token_class(p,h,c);h.typ="at+jwt";p.token_class=3;#assert !fi_token_class(p,h,c);p.token_class=2;
+ c.client_id=cast(string)data[0..<256];#assert fi_token_class(p,h,c);c.client_id=cast(string)data[..];#assert !fi_token_class(p,h,c);c.client_id="mobile";
+ c.marker="a";p.allow_client=true;p.noncollision=false;#assert !fi_token_class(p,h,c);p.allow_client=false;p.noncollision=true;#assert !fi_token_class(p,h,c);
+ clients[0]="human";c.marker="human";#assert !fi_token_class(p,h,c);
+ p.marker_name="type";p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.maximum_age=1;p.connection_lifetime=1;p.refresh=1;p.hard_deadline=2;
+ clients[0]="a";#assert fi_issuer_config(p);p.client_values=clients[..];#assert !fi_issuer_config(p);
+}
+#test "claim string array limits and invalid clocks are not inferred from other fields" {
+ p:FiIssuer;p.issuer="https://issuer.test";p.maximum_age=10;p.skew=1;a:FiCommunity;a.audience="wss://relay.test";
+ c:FiClaims;c.issuer=p.issuer;c.subject="opaque";c.key="0000000000000000000000000000000000000000000000000000000000000000";c.has_iat=true;c.has_exp=true;c.exp=20;
+ aud:=[17]string.["wss://relay.test","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q"];c.audiences=aud[0..<16];
+ #assert fi_claims_candidate(p,a,c,0) && !fi_claims_candidate(p,a,c,-1);
+ c.audiences=aud[..];#assert !fi_claims_candidate(p,a,c,0);c.audiences=aud[0..<16];
+ data:[2049]u8;for i:0..<2049 {data[i]='a';}c.subject=cast(string)data[0..<256];#assert fi_claims_candidate(p,a,c,0);c.subject=cast(string)data[0..<257];#assert !fi_claims_candidate(p,a,c,0);c.subject="opaque";
+ aud[1]=cast(string)data[0..<2048];#assert fi_claims_candidate(p,a,c,0);aud[1]=cast(string)data[..];#assert !fi_claims_candidate(p,a,c,0);
+}
+
+fi_visible :: (value:string,max:int)->bool {
+ if value.count<1 || value.count>max {return false;}for b:value {if b<33 || b>126 {return false;}}return true;
+}
+fi_key :: (key:string)->bool {
+ if key.count!=64 {return false;}for b:key {if !((b>=48 && b<=57)||(b>=97 && b<=102)) {return false;}}return true;
+}
+fi_contains :: (values:[]string,wanted:string)->bool {
+ for value:values {if value==wanted {return true;}}return false;
+}
+fi_set :: (values:[]string,max:int,bytes:int)->bool {
+ if values.count<1 || values.count>max {return false;}
+ for i:0..<values.count {if !fi_visible(values[i],bytes) {return false;}for j:0..<i {if values[i]==values[j] {return false;}}}return true;
+}
+fi_source_uri :: (uri:string,transport:int)->bool #export_c {
+ p:=uri_parse(uri);if !p.ok {return false;}
+ if transport==1 {return p.scheme==URI_HTTPS;}
+ return transport==2 && p.scheme==URI_HTTP && !p.has_query;
+}
+fi_issuer_config :: (p:FiIssuer)->bool #export_c {
+ u:=uri_parse(p.issuer);if !u.ok || u.scheme!=URI_HTTPS || u.has_query || !fi_source_uri(p.jwks_uri,p.transport) {return false;}
+ if p.maximum_age<1 || p.maximum_age>31536000 || p.skew<0 || p.skew>300 || p.connection_lifetime<1 || p.connection_lifetime>31536000 {return false;}
+ if p.refresh<1 || p.hard_deadline<=p.refresh || p.hard_deadline>31536000 {return false;}
+ if p.token_class==FI_DEDICATED {return p.marker_name.count==0 && p.owner_values.count==0 && p.client_values.count==0 && !p.allow_client && !p.noncollision;}
+ if p.token_class!=FI_ACCESS_TOKEN || !fi_visible(p.marker_name,128) || !fi_set(p.owner_values,8,128) || !fi_set(p.client_values,8,128) {return false;}
+ for v:p.owner_values {if fi_contains(p.client_values,v) {return false;}}
+ return !p.allow_client || p.noncollision;
+}
+fi_select :: (communities:[]FiCommunity,issuers:[]FiIssuer,host:string,issuer:string)->FiSelection #export_c {
+ bad:=FiSelection.{status=FI_UNAVAILABLE};
+ if communities.count<1 || communities.count>16 {return bad;}
+ selected:=-1;
+ for i:0..<communities.count {
+  c:=communities[i];aud:=uri_parse(c.audience);
+  if !uri_dns(c.host) || !aud.ok || (aud.scheme!=URI_HTTPS && aud.scheme!=URI_WSS) || aud.has_query || !fi_set(c.issuers,16,2048) {return bad;}
+  for j:0..<i {if c.host==communities[j].host || c.audience==communities[j].audience {return bad;}}
+  if c.host==host {selected=i;}
+ }
+ if selected== -1 {return bad;}
+ // Crucially, no issuer-specific configuration or snapshot is inspected here.
+ if !fi_contains(communities[selected].issuers,issuer) {return FiSelection.{status=FI_REJECTED};}
+ if issuers.count<1 || issuers.count>16 {return bad;}
+ at:=-1;for i:0..<issuers.count {if issuers[i].issuer==issuer {if at!= -1 {return bad;}at=i;}}
+ if at== -1 {return FiSelection.{status=FI_REJECTED};}
+ if !fi_issuer_config(issuers[at]) {return bad;}
+ return FiSelection.{community=selected,issuer=at};
+}
+fi_token_class :: (p:FiIssuer,h:FiHeader,c:FiClaims)->bool #export_c {
+ if h.algorithm!="RS256" || !fi_visible(h.kid,128) {return false;}
+ if p.token_class==FI_DEDICATED {
+  if h.typ=="nip-fi-agent+jwt" {return c.has_owner && fi_key(c.owner) && c.owner!=c.key;}
+  return h.typ=="nip-fi+jwt" && !c.has_owner;
+ }
+ if p.token_class!=FI_ACCESS_TOKEN || h.typ!="at+jwt" || c.has_owner || !fi_visible(c.client_id,256) {return false;}
+ owner:=fi_contains(p.owner_values,c.marker);client:=fi_contains(p.client_values,c.marker);
+ if owner==client {return false;}if owner {return true;}return p.allow_client && p.noncollision;
+}
+fi_time_value :: (n:int)->bool {return n>=0 && n<=FI_SAFE_TIME;}
+fi_time_bounds :: (now:int,iat:int,expires:int,has_nbf:bool,nbf:int,maximum_age:int,skew:int)->bool #export_c {
+ if !fi_time_value(now) || !fi_time_value(iat) || !fi_time_value(expires) || maximum_age<1 || maximum_age>31536000 || skew<0 || skew>300 {return false;}
+ if now>=expires || iat>now+skew || now>=iat+maximum_age {return false;}
+ return !has_nbf || (fi_time_value(nbf) && nbf<=now+skew);
+}
+fi_claims_candidate :: (p:FiIssuer,community:FiCommunity,c:FiClaims,now:int)->bool #export_c {
+ if c.issuer!=p.issuer || !fi_visible(c.subject,256) || !fi_set(c.audiences,16,2048) || !fi_contains(c.audiences,community.audience) || !fi_key(c.key) {return false;}
+ return c.has_iat && c.has_exp && fi_time_bounds(now,c.iat,c.exp,c.has_nbf,c.nbf,p.maximum_age,p.skew);
+}

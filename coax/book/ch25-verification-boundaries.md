@@ -44,6 +44,9 @@ Protect the verification policy outside the change being evaluated:
   signed bytes. A migration must not quietly rewrite its reference data.
 - Require fresh command results for the exact commit being released.
   Keep the command, exit status, tool revision and relevant evidence.
+  If a rebase changes only unrelated files, retain results for the identical
+  hashed source/tool closure; do not rerun unaffected suites for every remote
+  commit. Changed dependencies invalidate the affected evidence.
 
 These are development controls, not extra runtime permissions. They also
 apply to a person editing code. On owned infrastructure, use the reviewed
@@ -129,6 +132,26 @@ both corrupted native builds return 20. This tests the comparison and
 reduction path; it is not a defect in the shipped compiler. Python is needed
 only for this optional verification tool. The [verification note](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-differential.md)
 records the exact subset, results and untested behavior.
+
+## Policy observations are not authenticated effects
+
+The Nostr FI candidate library is a concrete example. Coax checks the exact
+community, issuer, token class, audience, time and selected public-key shape.
+It also rejects unsafe address classes, redirects, oversized responses and
+stale snapshots from typed observations. Its native and Wasm fixtures test
+those decisions against independent address and time oracles.
+
+Those observations still need an owner. A remote message saying TLS passed
+cannot authenticate itself. The actual adapter must resolve and inspect every
+address, pin its peer, validate the endpoint, enforce stream/deadline limits
+and bind an immutable snapshot to trusted local policy. Ordinary browser fetch
+cannot expose all of that evidence. A successful policy candidate is also
+separate from checking the original JWS signature and fresh key possession.
+A typed proto or a zero-survivor mutation run supplies none of those effects.
+
+The [selected FI profile](https://github.com/OpenAgentsInc/openagents/blob/main/docs/protocol/2026-10-28-fi-rs256-policy-v1.md)
+records what currently exists and which integration gates remain. Keeping that
+boundary explicit lets the same checked policy serve multiple honest adapters.
 
 ## The bootstrap is a trust chain
 

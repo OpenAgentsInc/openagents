@@ -2222,16 +2222,18 @@
         "nostr",
         "coax"
       ],
-      "body": "Implement only the reviewed FI/HOST asymmetric algorithm profiles (P-256, Ed25519 or RSA as explicitly selected). Bounded compact JWS and base64url parser preserves exact signing input; verify signatures before using claims. This is outside Schnorr-only Nostr core.",
+      "body": "Implement the selected FI profile fi-rs256-policy-v1: RS256 only, public RSA2048\u20134096-bit modulus, exponent65537, mandatory JWK alg=RS256/use=sig. Add independently tested RSA PKCS#1 v1.5/SHA-256 verification, bounded original compact JWS/base64url and JWKS parsing, full canonical AssertionPolicyId including compiled verifier behavior, and authenticated native key-source adapters. Consume the shipped typed FI candidate policy; it grants no identity authority. Verify original signing input and fresh NIP-42 possession before authorizing claims. Browser contexts unable to inspect/pin DNS and peer IP require an authenticated broker or deny unavailable. HOST may reuse crypto but must select its own grant/JOSE authority contract; it never inherits FI authority.",
       "files": [
         "coax/lib/crypto/",
         "coax/lib/nostr/block/",
         "coax/tests/nostr/"
       ],
       "acceptance": [
-        "Independent official/negative vectors for selected algorithms and JOSE encodings pass on each advertised target",
-        "Algorithm/key confusion, malformed tokens, wrong audience/class/time and unverified claims never authorize",
-        "No unsupported JWT algorithm is advertised"
+        "Independent official/negative RSA PKCS#1 v1.5 SHA-256 and JOSE vectors pass on each advertised target; bad padding/DigestInfo/range/signature width/algorithm/key encodings deny",
+        "Original compact JWS and JWKS parsers reject duplicates, private/unknown key parameters, noncanonical base64urlUInt, unsupported critical headers and embedded/remote header-selected key sources before claims can authorize",
+        "Real key-source adapters enforce all-address classification, pinned actual peer/TLS endpoint, redirects/proxies disabled, whole-fetch deadline, streamed cap, authenticated issuer/source/policy-bound snapshots and add/remove/error/revalidation traces",
+        "Full AssertionPolicyId changes for every relevant policy or compiled verifier behavior change; rotation changes snapshot generation only; transported DTO flags never grant verification authority",
+        "Algorithm/key confusion, malformed tokens, wrong audience/class/time, unverified claims and absent/mismatched/stale NIP-42 possession never authorize; no unsupported JWT algorithm is advertised"
       ],
       "blocked_by": [
         "fi-jwks-policy",

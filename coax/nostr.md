@@ -498,6 +498,19 @@ alone does not implement FI. Deny `none`, symmetric/confused algorithms and
 untrusted network destinations. FA origin/session/code exchange is a distinct
 credential-bearing flow, not public profile metadata.
 
+The selected FI candidate profile is now
+[`fi-rs256-policy-v1`](../docs/protocol/2026-10-28-fi-rs256-policy-v1.md):
+RS256-only public key shape, exact community/issuer/class/time candidates,
+complete pinned IANA address refusal, trusted fetch-observation policy,
+bounded keys and issuer/source/policy/installed-generation-bound snapshots.
+Its Coax authority closure passes 46 groups and 782/782 mutants. Native and
+actual Wasm candidate fixtures pass; none of those predicates verifies a JWS,
+authenticates a fetch or grants identity authority. Actual RSA/original-JWS/JWKS
+parsing, authenticated provider effects, full AssertionPolicyId and fresh
+NIP-42 pairing remain explicit `fi-jws-verifier` gates. No production FI support
+is advertised from the current typed candidate implementation.
+
+
 CL/DV/WP implement channel membership/visibility and owner controls. CW uses
 composite timestamp+ID cursors, bounded rows/depth and explicit exhaustion; a
 missing page never proves an empty channel. AR revisions implement CAS,

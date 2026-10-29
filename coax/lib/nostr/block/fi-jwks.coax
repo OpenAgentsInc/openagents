@@ -1,0 +1,199 @@
+// Offline snapshot candidates only. Observations are trusted adapter facts,
+// never remotely supplied proof flags or a substitute for signature checking.
+#load "fi-policy.coax";
+#load "fi-addresses.coax";
+#authority;
+FiAddress :: struct {length:int;bytes:[16]u8;}
+FiFetch :: struct {
+ answers:[]FiAddress;peer:FiAddress;resolutions:int;connections:int;
+ elapsed_ms:int;status:int;streamed_bytes:int;
+ redirected:bool;proxy_used:bool;pin_enforced:bool;
+ tls_identity_ok:bool;mesh_endpoint_authorized:bool;
+}
+FiRsaKey :: struct {
+ kid:string;kty:string;algorithm:string;use:string;
+ has_key_ops:bool;key_ops:[]string;has_private:bool;
+ modulus:[]u8;exponent:[]u8;
+}
+FiSnapshot :: struct {
+ issuer:string;source_uri:string;policy_id:[32]u8;generation:int;fetched_at:int;
+ available:bool;last_refresh_failed:bool;revoked:bool;keys:[]FiRsaKey;
+}
+FiKeySelection :: struct {status:int;index:int;hard_deadline:int;}
+
+#test "public and mesh fetches require every observed safety property" {
+ answers:[1]FiAddress;answers[0].length=4;answers[0].bytes[0]=8;answers[0].bytes[1]=8;answers[0].bytes[2]=8;answers[0].bytes[3]=8;
+ f:FiFetch;f.answers=answers[..];f.peer=answers[0];f.resolutions=1;f.connections=1;f.status=200;f.streamed_bytes=10;f.pin_enforced=true;f.tls_identity_ok=true;
+ #assert fi_fetch_candidate("https://keys.test",1,f);
+ f.redirected=true;#assert !fi_fetch_candidate("https://keys.test",1,f);f.redirected=false;
+ f.proxy_used=true;#assert !fi_fetch_candidate("https://keys.test",1,f);f.proxy_used=false;
+ f.pin_enforced=false;#assert !fi_fetch_candidate("https://keys.test",1,f);f.pin_enforced=true;
+ f.tls_identity_ok=false;#assert !fi_fetch_candidate("https://keys.test",1,f);
+ answers[0].bytes[0]=10;f.peer=answers[0];#assert !fi_fetch_candidate("https://keys.test",1,f);
+ #assert !fi_fetch_candidate("http://keys.local",2,f);f.mesh_endpoint_authorized=true;#assert fi_fetch_candidate("http://keys.local",2,f);
+ f.peer.bytes[3]=9;#assert !fi_fetch_candidate("http://keys.local",2,f);
+}
+#test "public RSA snapshot selects bounded exact kid and handles rotation" {
+ n:[256]u8;n[0]=128;n[255]=1;e:=[3]u8.[1,0,1];
+ keys:[2]FiRsaKey;keys[0].kid="old";keys[0].kty="RSA";keys[0].algorithm="RS256";keys[0].use="sig";keys[0].modulus=n[..];keys[0].exponent=e[..];keys[1]=keys[0];keys[1].kid="new";
+ #assert fi_rsa_key_candidate(keys[0]);#assert fi_key_index(keys[0..<1],"old").index==0 && fi_key_index(keys[0..<1],"new").status==FI_REJECTED;
+ #assert fi_key_index(keys[..],"new").index==1 && fi_key_index(keys[1..<2],"old").status==FI_REJECTED;
+ p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.hard_deadline=30;
+ snap:FiSnapshot;snap.issuer=p.issuer;snap.source_uri=p.jwks_uri;snap.generation=1;snap.fetched_at=100;snap.available=true;snap.keys=keys[..];id:[32]u8;
+ result:=fi_snapshot_key(p,snap,id,1,100,"new");#assert result.status==FI_CANDIDATE && result.index==1 && result.hard_deadline==130;
+ #assert fi_snapshot_key(p,snap,id,1,129,"old").status==FI_CANDIDATE;
+ #assert fi_snapshot_key(p,snap,id,1,130,"old").status==FI_UNAVAILABLE;
+ #assert fi_snapshot_key(p,snap,id,1,100,"missing").status==FI_REJECTED;
+ snap.keys=keys[1..<2];#assert fi_snapshot_key(p,snap,id,1,100,"old").status==FI_REJECTED;
+ snap.revoked=true;#assert fi_snapshot_key(p,snap,id,1,100,"new").status==FI_UNAVAILABLE;snap.revoked=false;
+ snap.last_refresh_failed=true;#assert fi_snapshot_key(p,snap,id,1,100,"new").status==FI_UNAVAILABLE;snap.last_refresh_failed=false;
+ snap.available=false;#assert fi_snapshot_key(p,snap,id,1,100,"new").status==FI_UNAVAILABLE;
+ #assert fi_session_deadline(100,20,200,90,15,130)==105;
+ #assert fi_session_deadline(100,20,110,90,30,130)==110;
+ #assert fi_session_deadline(100,20,200,90,100,115)==115;
+ #assert fi_session_deadline(100,20,200,90,100,130)==120;
+}
+
+#test "fetch counts status streaming deadline and rebinding are independently bounded" {
+ answers:[17]FiAddress;for i:0..<17 {answers[i].length=4;answers[i].bytes[0]=8;answers[i].bytes[1]=8;answers[i].bytes[2]=8;answers[i].bytes[3]=8;}
+ f:FiFetch;f.answers=answers[0..<16];f.peer=answers[0];f.resolutions=1;f.connections=1;f.status=200;f.streamed_bytes=1;f.pin_enforced=true;f.tls_identity_ok=true;
+ #assert fi_fetch_candidate("https://keys.test",1,f);
+ f.answers=answers[..];#assert !fi_fetch_candidate("https://keys.test",1,f);f.answers=answers[0..<0];#assert !fi_fetch_candidate("https://keys.test",1,f);f.answers=answers[0..<16];
+ #assert !fi_fetch_candidate("http://keys.test",1,f);
+ f.resolutions=2;#assert !fi_fetch_candidate("https://keys.test",1,f);f.resolutions=1;f.connections=0;#assert !fi_fetch_candidate("https://keys.test",1,f);f.connections=1;
+ f.elapsed_ms=-1;#assert !fi_fetch_candidate("https://keys.test",1,f);f.elapsed_ms=9999;#assert fi_fetch_candidate("https://keys.test",1,f);f.elapsed_ms=10000;#assert !fi_fetch_candidate("https://keys.test",1,f);f.elapsed_ms=0;
+ f.status=199;#assert !fi_fetch_candidate("https://keys.test",1,f);f.status=299;#assert fi_fetch_candidate("https://keys.test",1,f);f.status=300;#assert !fi_fetch_candidate("https://keys.test",1,f);f.status=200;
+ f.streamed_bytes=0;#assert !fi_fetch_candidate("https://keys.test",1,f);f.streamed_bytes=524288;#assert fi_fetch_candidate("https://keys.test",1,f);f.streamed_bytes=524289;#assert !fi_fetch_candidate("https://keys.test",1,f);f.streamed_bytes=1;
+ answers[15].bytes[0]=127;#assert !fi_fetch_candidate("https://keys.test",1,f);answers[15].bytes[0]=8;
+ answers[15].length=3;#assert !fi_fetch_candidate("https://keys.test",1,f);answers[15].length=4;
+ for i:0..<4 {f.peer.bytes[i]=9;#assert !fi_fetch_candidate("https://keys.test",1,f);f.peer.bytes[i]=8;}
+ f.peer.length=16;#assert !fi_fetch_candidate("https://keys.test",1,f);f.peer.length=4;
+ answers[0].length=3;#assert !fi_fetch_candidate("https://keys.test",1,f);answers[0].length=4;
+ v6:FiAddress;v6.length=16;v6.bytes[0]=38;v6.bytes[1]=6;v6.bytes[2]=71;v6.bytes[3]=0;v6.bytes[15]=1;
+ answers[0]=v6;f.peer=v6;#assert fi_fetch_candidate("https://keys.test",1,f);
+ answers[0].length=17;#assert !fi_fetch_candidate("https://keys.test",1,f);
+}
+#test "RSA profile rejects every unsupported key attribute and nonminimal integer" {
+ n:[513]u8;n[0]=128;for i:1..<513 {n[i]=1;}e:=[3]u8.[1,0,1];
+ key:FiRsaKey;key.kid="k";key.kty="RSA";key.algorithm="RS256";key.use="sig";key.modulus=n[0..<256];key.exponent=e[..];
+ #assert fi_rsa_key_candidate(key);key.kid="";#assert !fi_rsa_key_candidate(key);key.kid="k";
+ key.kty="oct";#assert !fi_rsa_key_candidate(key);key.kty="RSA";key.algorithm="HS256";#assert !fi_rsa_key_candidate(key);key.algorithm="RS256";key.use="enc";#assert !fi_rsa_key_candidate(key);key.use="sig";
+ key.has_private=true;#assert !fi_rsa_key_candidate(key);key.has_private=false;
+ ops:=[2]string.["verify","sign"];key.has_key_ops=true;key.key_ops=ops[0..<1];#assert fi_rsa_key_candidate(key);
+ key.key_ops=ops[..];#assert !fi_rsa_key_candidate(key);key.key_ops=ops[0..<0];#assert !fi_rsa_key_candidate(key);key.key_ops=ops[1..<2];#assert !fi_rsa_key_candidate(key);key.has_key_ops=false;#assert !fi_rsa_key_candidate(key);key.key_ops=ops[0..<0];
+ key.modulus=n[0..<255];#assert !fi_rsa_key_candidate(key);key.modulus=n[0..<512];#assert fi_rsa_key_candidate(key);key.modulus=n[..];#assert !fi_rsa_key_candidate(key);key.modulus=n[0..<256];
+ n[0]=127;#assert !fi_rsa_key_candidate(key);n[0]=0;#assert !fi_rsa_key_candidate(key);n[0]=128;n[255]=2;#assert !fi_rsa_key_candidate(key);n[255]=1;
+ key.modulus=n[0..<257];n[0]=1;#assert fi_rsa_key_candidate(key);n[0]=0;#assert !fi_rsa_key_candidate(key);n[0]=128;key.modulus=n[0..<256];
+ key.exponent=e[0..<2];#assert !fi_rsa_key_candidate(key);key.exponent=e[..];
+ for i:0..<3 {old:=e[i];e[i]=2;#assert !fi_rsa_key_candidate(key);e[i]=old;}
+ text:[129]u8;for i:0..<129 {text[i]='a';}key.kid=cast(string)text[0..<128];#assert fi_rsa_key_candidate(key);key.kid=cast(string)text[..];#assert !fi_rsa_key_candidate(key);
+}
+#test "all keys are validated before lookup with no duplicate-kid ambiguity" {
+ n:[256]u8;n[0]=128;n[255]=1;e:=[3]u8.[1,0,1];names:=[17]string.["a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q"];
+ keys:[17]FiRsaKey;for i:0..<17 {keys[i].kid=names[i];keys[i].kty="RSA";keys[i].algorithm="RS256";keys[i].use="sig";keys[i].modulus=n[..];keys[i].exponent=e[..];}
+ #assert fi_key_index(keys[0..<16],"p").status==FI_CANDIDATE && fi_key_index(keys[0..<16],"p").index==15;
+ #assert fi_key_index(keys[..],"a").status==FI_UNAVAILABLE && fi_key_index(keys[0..<0],"a").status==FI_UNAVAILABLE;
+ keys[0].kty="EC";#assert fi_key_index(keys[0..<16],"p").status==FI_UNAVAILABLE;keys[0].kty="RSA";
+ keys[1].kid="a";#assert fi_key_index(keys[0..<16],"p").status==FI_UNAVAILABLE;
+}
+#test "snapshot identity policy and time bind before key lookup" {
+ n:[256]u8;n[0]=128;n[255]=1;e:=[3]u8.[1,0,1];keys:[1]FiRsaKey;keys[0].kid="k";keys[0].kty="RSA";keys[0].algorithm="RS256";keys[0].use="sig";keys[0].modulus=n[..];keys[0].exponent=e[..];
+ p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.hard_deadline=1;
+ snap:FiSnapshot;snap.issuer=p.issuer;snap.source_uri=p.jwks_uri;snap.generation=1;snap.fetched_at=100;snap.available=true;snap.keys=keys[..];id:[32]u8;
+ #assert fi_snapshot_key(p,snap,id,1,100,"k").status==FI_CANDIDATE;
+ #assert fi_snapshot_key(p,snap,id,2,100,"k").status==FI_UNAVAILABLE;
+ snap.generation=2;#assert fi_snapshot_key(p,snap,id,2,100,"k").status==FI_CANDIDATE;snap.generation=0;#assert fi_snapshot_key(p,snap,id,0,100,"k").status==FI_UNAVAILABLE;snap.generation=1;
+ snap.generation=0;#assert fi_snapshot_key(p,snap,id,1,100,"k").status==FI_UNAVAILABLE;snap.generation=1;
+ snap.issuer="https://other.test";#assert fi_snapshot_key(p,snap,id,1,100,"k").status==FI_UNAVAILABLE;snap.issuer=p.issuer;snap.source_uri="https://other.test";#assert fi_snapshot_key(p,snap,id,1,100,"k").status==FI_UNAVAILABLE;snap.source_uri=p.jwks_uri;
+ for i:0..<32 {snap.policy_id[i]=1;#assert fi_snapshot_key(p,snap,id,1,100,"k").status==FI_UNAVAILABLE;snap.policy_id[i]=0;}
+ #assert fi_snapshot_key(p,snap,id,1,99,"k").status==FI_UNAVAILABLE && fi_snapshot_key(p,snap,id,1,-1,"k").status==FI_UNAVAILABLE;
+ snap.fetched_at=-1;#assert fi_snapshot_key(p,snap,id,1,0,"k").status==FI_UNAVAILABLE;snap.fetched_at=9007199254740992;#assert fi_snapshot_key(p,snap,id,1,9007199254740992,"k").status==FI_UNAVAILABLE;
+ snap.fetched_at=100;p.hard_deadline=31536000;#assert fi_snapshot_key(p,snap,id,1,100,"k").status==FI_CANDIDATE;
+ #assert fi_snapshot_key(p,snap,id,2,100,"k").status==FI_UNAVAILABLE;
+ snap.generation=2;#assert fi_snapshot_key(p,snap,id,2,100,"k").status==FI_CANDIDATE;snap.generation=0;#assert fi_snapshot_key(p,snap,id,0,100,"k").status==FI_UNAVAILABLE;snap.generation=1;p.hard_deadline=31536001;#assert fi_snapshot_key(p,snap,id,1,100,"k").status==FI_UNAVAILABLE;p.hard_deadline=0;#assert fi_snapshot_key(p,snap,id,1,100,"k").status==FI_UNAVAILABLE;
+ p.hard_deadline=31536000;snap.fetched_at=9007199254740991;#assert fi_snapshot_key(p,snap,id,1,9007199254740992,"k").status==FI_UNAVAILABLE;
+ keys[0].has_private=true;snap.fetched_at=100;#assert fi_snapshot_key(p,snap,id,1,100,"k").status==FI_UNAVAILABLE;
+}
+
+fi_address_record :: (a:FiAddress,transport:int)->bool {
+ if a.length!=4 && a.length!=16 {return false;}bytes:=a.bytes;return fi_address_allowed(bytes[0..<a.length],transport);
+}
+fi_same_peer :: (a:FiAddress,b:FiAddress)->bool {
+ if a.length!=b.length {return false;}for i:0..<a.length {if a.bytes[i]!=b.bytes[i] {return false;}}return true;
+}
+fi_fetch_candidate :: (uri:string,transport:int,f:FiFetch)->bool #export_c {
+ if !fi_source_uri(uri,transport) || f.answers.count<1 || f.answers.count>16 {return false;}
+ if f.resolutions!=1 || f.connections!=1 || f.redirected || f.proxy_used || !f.pin_enforced {return false;}
+ if f.elapsed_ms<0 || f.elapsed_ms>=10000 || f.status<200 || f.status>=300 || f.streamed_bytes<1 || f.streamed_bytes>524288 {return false;}
+ for a:f.answers {if !fi_address_record(a,transport) {return false;}}
+ if !fi_same_peer(f.answers[0],f.peer) {return false;}
+ if transport==FI_PUBLIC_HTTPS {return f.tls_identity_ok;}
+ return f.mesh_endpoint_authorized;
+}
+fi_rsa_key_candidate :: (key:FiRsaKey)->bool #export_c {
+ if !fi_visible(key.kid,128) || key.kty!="RSA" || key.algorithm!="RS256" || key.use!="sig" || key.has_private {return false;}
+ if !key.has_key_ops && key.key_ops.count!=0 {return false;}
+ if key.has_key_ops && (key.key_ops.count!=1 || key.key_ops[0]!="verify") {return false;}
+ if key.modulus.count<256 || key.modulus.count>512 || key.exponent.count!=3 {return false;}
+ if key.modulus[0]==0 || (key.modulus.count==256 && key.modulus[0]<128) || (key.modulus[key.modulus.count-1]&1)==0 {return false;}
+ return key.exponent[0]==1 && key.exponent[1]==0 && key.exponent[2]==1;
+}
+fi_key_index :: (keys:[]FiRsaKey,kid:string)->FiKeySelection #export_c {
+ bad:=FiKeySelection.{status=FI_UNAVAILABLE};if keys.count<1 || keys.count>16 {return bad;}
+ // Bound and validate the whole snapshot before an attacker-selected lookup.
+ for i:0..<keys.count {
+  if !fi_rsa_key_candidate(keys[i]) {return bad;}
+  for j:0..<i {if keys[i].kid==keys[j].kid {return bad;}}
+ }
+ for i:0..<keys.count {if keys[i].kid==kid {return FiKeySelection.{index=i};}}return FiKeySelection.{status=FI_REJECTED};
+}
+fi_snapshot_key :: (p:FiIssuer,s:FiSnapshot,expected_id:[32]u8,expected_generation:int,now:int,kid:string)->FiKeySelection #export_c {
+ bad:=FiKeySelection.{status=FI_UNAVAILABLE};
+ if !s.available || s.last_refresh_failed || s.revoked || s.generation<1 || s.generation!=expected_generation || s.issuer!=p.issuer || s.source_uri!=p.jwks_uri {return bad;}
+ for i:0..<32 {if s.policy_id[i]!=expected_id[i] {return bad;}}
+ if !fi_time_value(now) || !fi_time_value(s.fetched_at) || now<s.fetched_at || p.hard_deadline<1 || p.hard_deadline>31536000 || now>=s.fetched_at+p.hard_deadline {return bad;}
+ result:=fi_key_index(s.keys,kid);if result.status!=FI_CANDIDATE {return result;}
+ result.hard_deadline=s.fetched_at+p.hard_deadline;return result;
+}
+// Call only after the validated positive policy and NumericDate candidate checks.
+// Even the maximum safe NumericDate plus the one-year cap fits signed int64.
+fi_session_deadline :: (connected:int,lifetime:int,expires:int,issued:int,maximum_age:int,snapshot_deadline:int)->int {
+ return fi_min_time(fi_min_time(connected+lifetime,expires),fi_min_time(issued+maximum_age,snapshot_deadline));
+}
+
+// Signed difference is bounded by the validated nonnegative safe-time domain.
+// Arithmetic right shift selects the smaller time without tie-only branches.
+fi_min_time :: (a:int,b:int)->int {difference:=a-b;return b+(difference&(difference>>63));}
+#forall "minimum includes equal times and both orders" a:0..<12,b:0..<12 {
+ result:=fi_min_time(a,b);#assert result<=a && result<=b && (result==a || result==b);
+}
+
+// No network access here: admission reads only the current local snapshot.
+// The returned key is a cryptographic verification candidate, never a grant.
+fi_assertion_candidate :: (communities:[]FiCommunity,issuers:[]FiIssuer,host:string,h:FiHeader,c:FiClaims,now:int,s:FiSnapshot,expected_id:[32]u8,expected_generation:int)->FiKeySelection #export_c {
+ selected:=fi_select(communities,issuers,host,c.issuer);
+ if selected.status!=FI_CANDIDATE {return FiKeySelection.{status=selected.status};}
+ p:=issuers[selected.issuer];community:=communities[selected.community];
+ if !fi_token_class(p,h,c) || !fi_claims_candidate(p,community,c,now) {return FiKeySelection.{status=FI_REJECTED};}
+ return fi_snapshot_key(p,s,expected_id,expected_generation,now,h.kid);
+}
+#test "complete candidate order rejects unknown community issuer and class before unavailable keys" {
+ names:=[1]string.["https://issuer.test"];cs:[2]FiCommunity;
+ cs[0].host="a";cs[0].audience="wss://a";cs[0].issuers=names[..];cs[1]=cs[0];cs[1].host="b";cs[1].audience="wss://b";
+ ps:[2]FiIssuer;ps[0].issuer=names[0];ps[0].jwks_uri="https://keys.test";ps[0].transport=1;ps[0].token_class=1;ps[0].maximum_age=10;ps[0].connection_lifetime=10;ps[0].refresh=1;ps[0].hard_deadline=30;ps[1]=ps[0];ps[1].issuer="https://other.test";
+ h:=FiHeader.{algorithm="RS256",typ="nip-fi+jwt",kid="k"};aud:=[1]string.["wss://a"];
+ c:FiClaims;c.issuer=names[0];c.subject="opaque";c.audiences=aud[..];c.key="0000000000000000000000000000000000000000000000000000000000000000";c.has_iat=true;c.iat=100;c.has_exp=true;c.exp=200;
+ n:[256]u8;n[0]=128;n[255]=1;e:=[3]u8.[1,0,1];keys:[1]FiRsaKey;keys[0].kid="k";keys[0].kty="RSA";keys[0].algorithm="RS256";keys[0].use="sig";keys[0].modulus=n[..];keys[0].exponent=e[..];
+ snap:FiSnapshot;snap.issuer=names[0];snap.source_uri=ps[0].jwks_uri;snap.generation=1;snap.fetched_at=100;snap.available=true;snap.keys=keys[..];id:[32]u8;
+ #assert fi_assertion_candidate(cs[..],ps[..],"a",h,c,100,snap,id,1).status==FI_CANDIDATE;
+ #assert fi_assertion_candidate(cs[..],ps[..],"b",h,c,100,snap,id,1).status==FI_REJECTED;
+ aud[0]="wss://b";#assert fi_assertion_candidate(cs[..],ps[..],"b",h,c,100,snap,id,1).status==FI_CANDIDATE;aud[0]="wss://a";
+ snap.available=false;
+ #assert fi_assertion_candidate(cs[..],ps[..],"a",h,c,100,snap,id,1).status==FI_UNAVAILABLE;
+ h.algorithm="HS256";#assert fi_assertion_candidate(cs[..],ps[..],"a",h,c,100,snap,id,1).status==FI_REJECTED;h.algorithm="RS256";
+ #assert fi_assertion_candidate(cs[..],ps[..],"unknown",h,c,100,snap,id,1).status==FI_UNAVAILABLE;
+ c.issuer="https://other.test";#assert fi_assertion_candidate(cs[..],ps[..],"a",h,c,100,snap,id,1).status==FI_REJECTED;
+ // Nonzero issuer selection must use the selected policy, never slot zero.
+ names[0]="https://other.test";ps[1].jwks_uri="https://other-keys.test";snap.available=true;snap.issuer=names[0];snap.source_uri=ps[1].jwks_uri;
+ #assert fi_assertion_candidate(cs[..],ps[..],"a",h,c,100,snap,id,1).status==FI_CANDIDATE;
+}

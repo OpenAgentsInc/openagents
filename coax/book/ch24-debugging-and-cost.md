@@ -243,4 +243,4 @@ separate from optimized release timings.
 noise and threshold. It does not establish constant time for another target,
 optimizer, JIT tier, secret distribution or algorithm. Source restrictions,
 generated-object inspection, erasure, independent review and key custody remain
-separate gates. See the [harness method and scoped evidence](../../tools/coax-nostr/timing/README.md).
+separate gates. See the [harness method and scoped evidence](https://github.com/OpenAgentsInc/openagents/blob/main/tools/coax-nostr/timing/README.md).

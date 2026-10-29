@@ -1,0 +1,628 @@
+// Pure address classification. Network effects must pin/check the actual peer.
+// The pinned IANA CSV/provenance live in tests/nostr/data/iana-2026-10-28.
+#authority;
+FI_PUBLIC_HTTPS :: 1;FI_MESH :: 2;
+FiPrefix :: struct {bytes:[16]u8;bits:int;}
+FI_PUBLIC4_DENY :: [17]FiPrefix.[
+ FiPrefix.{bytes=[16]u8.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=8},
+ FiPrefix.{bytes=[16]u8.[10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=8},
+ FiPrefix.{bytes=[16]u8.[100,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=10},
+ FiPrefix.{bytes=[16]u8.[127,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=8},
+ FiPrefix.{bytes=[16]u8.[169,254,0,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=16},
+ FiPrefix.{bytes=[16]u8.[172,16,0,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=12},
+ FiPrefix.{bytes=[16]u8.[192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=24},
+ FiPrefix.{bytes=[16]u8.[192,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=24},
+ FiPrefix.{bytes=[16]u8.[192,31,196,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=24},
+ FiPrefix.{bytes=[16]u8.[192,52,193,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=24},
+ FiPrefix.{bytes=[16]u8.[192,88,99,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=24},
+ FiPrefix.{bytes=[16]u8.[192,168,0,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=16},
+ FiPrefix.{bytes=[16]u8.[192,175,48,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=24},
+ FiPrefix.{bytes=[16]u8.[198,18,0,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=15},
+ FiPrefix.{bytes=[16]u8.[198,51,100,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=24},
+ FiPrefix.{bytes=[16]u8.[203,0,113,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=24},
+ FiPrefix.{bytes=[16]u8.[224,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=3}
+];
+FI_PUBLIC6_DENY :: [5]FiPrefix.[
+ FiPrefix.{bytes=[16]u8.[32,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=23},
+ FiPrefix.{bytes=[16]u8.[32,1,13,184,0,0,0,0,0,0,0,0,0,0,0,0],bits=32},
+ FiPrefix.{bytes=[16]u8.[32,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=16},
+ FiPrefix.{bytes=[16]u8.[38,32,0,79,128,0,0,0,0,0,0,0,0,0,0,0],bits=48},
+ FiPrefix.{bytes=[16]u8.[63,255,0,0,0,0,0,0,0,0,0,0,0,0,0,0],bits=20}
+];
+
+#test "IANA and explicit mesh boundary oracle 0" {
+ a0:=[4]u8.[0,0,0,0];
+ #assert !fi_address_allowed(a0[..],1);
+ #assert !fi_address_allowed(a0[..],2);
+ a1:=[4]u8.[0,255,255,255];
+ #assert !fi_address_allowed(a1[..],1);
+ #assert !fi_address_allowed(a1[..],2);
+ a2:=[4]u8.[1,0,0,0];
+ #assert fi_address_allowed(a2[..],1);
+ #assert !fi_address_allowed(a2[..],2);
+ a3:=[4]u8.[0,0,0,1];
+ #assert !fi_address_allowed(a3[..],1);
+ #assert !fi_address_allowed(a3[..],2);
+ a4:=[4]u8.[10,0,0,0];
+ #assert !fi_address_allowed(a4[..],1);
+ #assert fi_address_allowed(a4[..],2);
+ a5:=[4]u8.[10,255,255,255];
+ #assert !fi_address_allowed(a5[..],1);
+ #assert fi_address_allowed(a5[..],2);
+ a6:=[4]u8.[9,255,255,255];
+ #assert fi_address_allowed(a6[..],1);
+ #assert !fi_address_allowed(a6[..],2);
+ a7:=[4]u8.[11,0,0,0];
+ #assert fi_address_allowed(a7[..],1);
+ #assert !fi_address_allowed(a7[..],2);
+ a8:=[4]u8.[100,64,0,0];
+ #assert !fi_address_allowed(a8[..],1);
+ #assert fi_address_allowed(a8[..],2);
+ a9:=[4]u8.[100,127,255,255];
+ #assert !fi_address_allowed(a9[..],1);
+ #assert fi_address_allowed(a9[..],2);
+ a10:=[4]u8.[100,63,255,255];
+ #assert fi_address_allowed(a10[..],1);
+ #assert !fi_address_allowed(a10[..],2);
+ a11:=[4]u8.[100,128,0,0];
+ #assert fi_address_allowed(a11[..],1);
+ #assert !fi_address_allowed(a11[..],2);
+}
+
+#test "IANA and explicit mesh boundary oracle 1" {
+ a12:=[4]u8.[127,0,0,0];
+ #assert !fi_address_allowed(a12[..],1);
+ #assert fi_address_allowed(a12[..],2);
+ a13:=[4]u8.[127,255,255,255];
+ #assert !fi_address_allowed(a13[..],1);
+ #assert fi_address_allowed(a13[..],2);
+ a14:=[4]u8.[126,255,255,255];
+ #assert fi_address_allowed(a14[..],1);
+ #assert !fi_address_allowed(a14[..],2);
+ a15:=[4]u8.[128,0,0,0];
+ #assert fi_address_allowed(a15[..],1);
+ #assert !fi_address_allowed(a15[..],2);
+ a16:=[4]u8.[169,254,0,0];
+ #assert !fi_address_allowed(a16[..],1);
+ #assert !fi_address_allowed(a16[..],2);
+ a17:=[4]u8.[169,254,255,255];
+ #assert !fi_address_allowed(a17[..],1);
+ #assert !fi_address_allowed(a17[..],2);
+ a18:=[4]u8.[169,253,255,255];
+ #assert fi_address_allowed(a18[..],1);
+ #assert !fi_address_allowed(a18[..],2);
+ a19:=[4]u8.[169,255,0,0];
+ #assert fi_address_allowed(a19[..],1);
+ #assert !fi_address_allowed(a19[..],2);
+ a20:=[4]u8.[172,16,0,0];
+ #assert !fi_address_allowed(a20[..],1);
+ #assert fi_address_allowed(a20[..],2);
+ a21:=[4]u8.[172,31,255,255];
+ #assert !fi_address_allowed(a21[..],1);
+ #assert fi_address_allowed(a21[..],2);
+ a22:=[4]u8.[172,15,255,255];
+ #assert fi_address_allowed(a22[..],1);
+ #assert !fi_address_allowed(a22[..],2);
+ a23:=[4]u8.[172,32,0,0];
+ #assert fi_address_allowed(a23[..],1);
+ #assert !fi_address_allowed(a23[..],2);
+}
+
+#test "IANA and explicit mesh boundary oracle 2" {
+ a24:=[4]u8.[192,0,0,0];
+ #assert !fi_address_allowed(a24[..],1);
+ #assert !fi_address_allowed(a24[..],2);
+ a25:=[4]u8.[192,0,0,255];
+ #assert !fi_address_allowed(a25[..],1);
+ #assert !fi_address_allowed(a25[..],2);
+ a26:=[4]u8.[191,255,255,255];
+ #assert fi_address_allowed(a26[..],1);
+ #assert !fi_address_allowed(a26[..],2);
+ a27:=[4]u8.[192,0,1,0];
+ #assert fi_address_allowed(a27[..],1);
+ #assert !fi_address_allowed(a27[..],2);
+ a28:=[4]u8.[192,0,0,7];
+ #assert !fi_address_allowed(a28[..],1);
+ #assert !fi_address_allowed(a28[..],2);
+ a29:=[4]u8.[192,0,0,8];
+ #assert !fi_address_allowed(a29[..],1);
+ #assert !fi_address_allowed(a29[..],2);
+ a30:=[4]u8.[192,0,0,9];
+ #assert !fi_address_allowed(a30[..],1);
+ #assert !fi_address_allowed(a30[..],2);
+ a31:=[4]u8.[192,0,0,10];
+ #assert !fi_address_allowed(a31[..],1);
+ #assert !fi_address_allowed(a31[..],2);
+ a32:=[4]u8.[192,0,0,11];
+ #assert !fi_address_allowed(a32[..],1);
+ #assert !fi_address_allowed(a32[..],2);
+ a33:=[4]u8.[192,0,0,170];
+ #assert !fi_address_allowed(a33[..],1);
+ #assert !fi_address_allowed(a33[..],2);
+ a34:=[4]u8.[192,0,0,169];
+ #assert !fi_address_allowed(a34[..],1);
+ #assert !fi_address_allowed(a34[..],2);
+ a35:=[4]u8.[192,0,0,171];
+ #assert !fi_address_allowed(a35[..],1);
+ #assert !fi_address_allowed(a35[..],2);
+}
+
+#test "IANA and explicit mesh boundary oracle 3" {
+ a36:=[4]u8.[192,0,0,172];
+ #assert !fi_address_allowed(a36[..],1);
+ #assert !fi_address_allowed(a36[..],2);
+ a37:=[4]u8.[192,0,2,0];
+ #assert !fi_address_allowed(a37[..],1);
+ #assert !fi_address_allowed(a37[..],2);
+ a38:=[4]u8.[192,0,2,255];
+ #assert !fi_address_allowed(a38[..],1);
+ #assert !fi_address_allowed(a38[..],2);
+ a39:=[4]u8.[192,0,1,255];
+ #assert fi_address_allowed(a39[..],1);
+ #assert !fi_address_allowed(a39[..],2);
+ a40:=[4]u8.[192,0,3,0];
+ #assert fi_address_allowed(a40[..],1);
+ #assert !fi_address_allowed(a40[..],2);
+ a41:=[4]u8.[192,31,196,0];
+ #assert !fi_address_allowed(a41[..],1);
+ #assert !fi_address_allowed(a41[..],2);
+ a42:=[4]u8.[192,31,196,255];
+ #assert !fi_address_allowed(a42[..],1);
+ #assert !fi_address_allowed(a42[..],2);
+ a43:=[4]u8.[192,31,195,255];
+ #assert fi_address_allowed(a43[..],1);
+ #assert !fi_address_allowed(a43[..],2);
+ a44:=[4]u8.[192,31,197,0];
+ #assert fi_address_allowed(a44[..],1);
+ #assert !fi_address_allowed(a44[..],2);
+ a45:=[4]u8.[192,52,193,0];
+ #assert !fi_address_allowed(a45[..],1);
+ #assert !fi_address_allowed(a45[..],2);
+ a46:=[4]u8.[192,52,193,255];
+ #assert !fi_address_allowed(a46[..],1);
+ #assert !fi_address_allowed(a46[..],2);
+ a47:=[4]u8.[192,52,192,255];
+ #assert fi_address_allowed(a47[..],1);
+ #assert !fi_address_allowed(a47[..],2);
+}
+
+#test "IANA and explicit mesh boundary oracle 4" {
+ a48:=[4]u8.[192,52,194,0];
+ #assert fi_address_allowed(a48[..],1);
+ #assert !fi_address_allowed(a48[..],2);
+ a49:=[4]u8.[192,88,99,0];
+ #assert !fi_address_allowed(a49[..],1);
+ #assert !fi_address_allowed(a49[..],2);
+ a50:=[4]u8.[192,88,99,255];
+ #assert !fi_address_allowed(a50[..],1);
+ #assert !fi_address_allowed(a50[..],2);
+ a51:=[4]u8.[192,88,98,255];
+ #assert fi_address_allowed(a51[..],1);
+ #assert !fi_address_allowed(a51[..],2);
+ a52:=[4]u8.[192,88,100,0];
+ #assert fi_address_allowed(a52[..],1);
+ #assert !fi_address_allowed(a52[..],2);
+ a53:=[4]u8.[192,88,99,2];
+ #assert !fi_address_allowed(a53[..],1);
+ #assert !fi_address_allowed(a53[..],2);
+ a54:=[4]u8.[192,88,99,1];
+ #assert !fi_address_allowed(a54[..],1);
+ #assert !fi_address_allowed(a54[..],2);
+ a55:=[4]u8.[192,88,99,3];
+ #assert !fi_address_allowed(a55[..],1);
+ #assert !fi_address_allowed(a55[..],2);
+ a56:=[4]u8.[192,168,0,0];
+ #assert !fi_address_allowed(a56[..],1);
+ #assert fi_address_allowed(a56[..],2);
+ a57:=[4]u8.[192,168,255,255];
+ #assert !fi_address_allowed(a57[..],1);
+ #assert fi_address_allowed(a57[..],2);
+ a58:=[4]u8.[192,167,255,255];
+ #assert fi_address_allowed(a58[..],1);
+ #assert !fi_address_allowed(a58[..],2);
+ a59:=[4]u8.[192,169,0,0];
+ #assert fi_address_allowed(a59[..],1);
+ #assert !fi_address_allowed(a59[..],2);
+}
+
+#test "IANA and explicit mesh boundary oracle 5" {
+ a60:=[4]u8.[192,175,48,0];
+ #assert !fi_address_allowed(a60[..],1);
+ #assert !fi_address_allowed(a60[..],2);
+ a61:=[4]u8.[192,175,48,255];
+ #assert !fi_address_allowed(a61[..],1);
+ #assert !fi_address_allowed(a61[..],2);
+ a62:=[4]u8.[192,175,47,255];
+ #assert fi_address_allowed(a62[..],1);
+ #assert !fi_address_allowed(a62[..],2);
+ a63:=[4]u8.[192,175,49,0];
+ #assert fi_address_allowed(a63[..],1);
+ #assert !fi_address_allowed(a63[..],2);
+ a64:=[4]u8.[198,18,0,0];
+ #assert !fi_address_allowed(a64[..],1);
+ #assert !fi_address_allowed(a64[..],2);
+ a65:=[4]u8.[198,19,255,255];
+ #assert !fi_address_allowed(a65[..],1);
+ #assert !fi_address_allowed(a65[..],2);
+ a66:=[4]u8.[198,17,255,255];
+ #assert fi_address_allowed(a66[..],1);
+ #assert !fi_address_allowed(a66[..],2);
+ a67:=[4]u8.[198,20,0,0];
+ #assert fi_address_allowed(a67[..],1);
+ #assert !fi_address_allowed(a67[..],2);
+ a68:=[4]u8.[198,51,100,0];
+ #assert !fi_address_allowed(a68[..],1);
+ #assert !fi_address_allowed(a68[..],2);
+ a69:=[4]u8.[198,51,100,255];
+ #assert !fi_address_allowed(a69[..],1);
+ #assert !fi_address_allowed(a69[..],2);
+ a70:=[4]u8.[198,51,99,255];
+ #assert fi_address_allowed(a70[..],1);
+ #assert !fi_address_allowed(a70[..],2);
+ a71:=[4]u8.[198,51,101,0];
+ #assert fi_address_allowed(a71[..],1);
+ #assert !fi_address_allowed(a71[..],2);
+}
+
+#test "IANA and explicit mesh boundary oracle 6" {
+ a72:=[4]u8.[203,0,113,0];
+ #assert !fi_address_allowed(a72[..],1);
+ #assert !fi_address_allowed(a72[..],2);
+ a73:=[4]u8.[203,0,113,255];
+ #assert !fi_address_allowed(a73[..],1);
+ #assert !fi_address_allowed(a73[..],2);
+ a74:=[4]u8.[203,0,112,255];
+ #assert fi_address_allowed(a74[..],1);
+ #assert !fi_address_allowed(a74[..],2);
+ a75:=[4]u8.[203,0,114,0];
+ #assert fi_address_allowed(a75[..],1);
+ #assert !fi_address_allowed(a75[..],2);
+ a76:=[4]u8.[240,0,0,0];
+ #assert !fi_address_allowed(a76[..],1);
+ #assert fi_address_allowed(a76[..],2);
+ a77:=[4]u8.[255,255,255,255];
+ #assert !fi_address_allowed(a77[..],1);
+ #assert !fi_address_allowed(a77[..],2);
+ a78:=[4]u8.[239,255,255,255];
+ #assert !fi_address_allowed(a78[..],1);
+ #assert !fi_address_allowed(a78[..],2);
+ a79:=[4]u8.[255,255,255,254];
+ #assert !fi_address_allowed(a79[..],1);
+ #assert fi_address_allowed(a79[..],2);
+ a80:=[16]u8.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1];
+ #assert !fi_address_allowed(a80[..],1);
+ #assert fi_address_allowed(a80[..],2);
+ a81:=[16]u8.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a81[..],1);
+ #assert !fi_address_allowed(a81[..],2);
+ a82:=[16]u8.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2];
+ #assert !fi_address_allowed(a82[..],1);
+ #assert !fi_address_allowed(a82[..],2);
+ a83:=[16]u8.[0,0,0,0,0,0,0,0,0,0,255,255,0,0,0,0];
+ #assert !fi_address_allowed(a83[..],1);
+ #assert !fi_address_allowed(a83[..],2);
+}
+
+#test "IANA and explicit mesh boundary oracle 7" {
+ a84:=[16]u8.[0,0,0,0,0,0,0,0,0,0,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a84[..],1);
+ #assert !fi_address_allowed(a84[..],2);
+ a85:=[16]u8.[0,0,0,0,0,0,0,0,0,0,255,254,255,255,255,255];
+ #assert !fi_address_allowed(a85[..],1);
+ #assert !fi_address_allowed(a85[..],2);
+ a86:=[16]u8.[0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a86[..],1);
+ #assert !fi_address_allowed(a86[..],2);
+ a87:=[16]u8.[0,100,255,155,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a87[..],1);
+ #assert !fi_address_allowed(a87[..],2);
+ a88:=[16]u8.[0,100,255,155,0,0,0,0,0,0,0,0,255,255,255,255];
+ #assert !fi_address_allowed(a88[..],1);
+ #assert !fi_address_allowed(a88[..],2);
+ a89:=[16]u8.[0,100,255,154,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a89[..],1);
+ #assert !fi_address_allowed(a89[..],2);
+ a90:=[16]u8.[0,100,255,155,0,0,0,0,0,0,0,1,0,0,0,0];
+ #assert !fi_address_allowed(a90[..],1);
+ #assert !fi_address_allowed(a90[..],2);
+ a91:=[16]u8.[0,100,255,155,0,1,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a91[..],1);
+ #assert !fi_address_allowed(a91[..],2);
+ a92:=[16]u8.[0,100,255,155,0,1,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a92[..],1);
+ #assert !fi_address_allowed(a92[..],2);
+ a93:=[16]u8.[0,100,255,155,0,0,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a93[..],1);
+ #assert !fi_address_allowed(a93[..],2);
+ a94:=[16]u8.[0,100,255,155,0,2,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a94[..],1);
+ #assert !fi_address_allowed(a94[..],2);
+ a95:=[16]u8.[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a95[..],1);
+ #assert !fi_address_allowed(a95[..],2);
+}
+
+#test "IANA and explicit mesh boundary oracle 8" {
+ a96:=[16]u8.[1,0,0,0,0,0,0,0,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a96[..],1);
+ #assert !fi_address_allowed(a96[..],2);
+ a97:=[16]u8.[0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a97[..],1);
+ #assert !fi_address_allowed(a97[..],2);
+ a98:=[16]u8.[1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a98[..],1);
+ #assert !fi_address_allowed(a98[..],2);
+ a99:=[16]u8.[1,0,0,0,0,0,0,1,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a99[..],1);
+ #assert !fi_address_allowed(a99[..],2);
+ a100:=[16]u8.[1,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a100[..],1);
+ #assert !fi_address_allowed(a100[..],2);
+ a101:=[16]u8.[32,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a101[..],1);
+ #assert !fi_address_allowed(a101[..],2);
+ a102:=[16]u8.[32,1,1,255,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a102[..],1);
+ #assert !fi_address_allowed(a102[..],2);
+ a103:=[16]u8.[32,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert fi_address_allowed(a103[..],1);
+ #assert !fi_address_allowed(a103[..],2);
+ a104:=[16]u8.[32,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert fi_address_allowed(a104[..],1);
+ #assert !fi_address_allowed(a104[..],2);
+ a105:=[16]u8.[32,1,0,0,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a105[..],1);
+ #assert !fi_address_allowed(a105[..],2);
+ a106:=[16]u8.[32,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a106[..],1);
+ #assert !fi_address_allowed(a106[..],2);
+ a107:=[16]u8.[32,1,0,1,0,0,0,0,0,0,0,0,0,0,0,1];
+ #assert !fi_address_allowed(a107[..],1);
+ #assert !fi_address_allowed(a107[..],2);
+}
+
+#test "IANA and explicit mesh boundary oracle 9" {
+ a108:=[16]u8.[32,1,0,1,0,0,0,0,0,0,0,0,0,0,0,2];
+ #assert !fi_address_allowed(a108[..],1);
+ #assert !fi_address_allowed(a108[..],2);
+ a109:=[16]u8.[32,1,0,1,0,0,0,0,0,0,0,0,0,0,0,3];
+ #assert !fi_address_allowed(a109[..],1);
+ #assert !fi_address_allowed(a109[..],2);
+ a110:=[16]u8.[32,1,0,1,0,0,0,0,0,0,0,0,0,0,0,4];
+ #assert !fi_address_allowed(a110[..],1);
+ #assert !fi_address_allowed(a110[..],2);
+ a111:=[16]u8.[32,1,0,2,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a111[..],1);
+ #assert !fi_address_allowed(a111[..],2);
+ a112:=[16]u8.[32,1,0,2,0,0,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a112[..],1);
+ #assert !fi_address_allowed(a112[..],2);
+ a113:=[16]u8.[32,1,0,1,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a113[..],1);
+ #assert !fi_address_allowed(a113[..],2);
+ a114:=[16]u8.[32,1,0,2,0,1,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a114[..],1);
+ #assert !fi_address_allowed(a114[..],2);
+ a115:=[16]u8.[32,1,0,3,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a115[..],1);
+ #assert !fi_address_allowed(a115[..],2);
+ a116:=[16]u8.[32,1,0,3,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a116[..],1);
+ #assert !fi_address_allowed(a116[..],2);
+ a117:=[16]u8.[32,1,0,2,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a117[..],1);
+ #assert !fi_address_allowed(a117[..],2);
+ a118:=[16]u8.[32,1,0,4,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a118[..],1);
+ #assert !fi_address_allowed(a118[..],2);
+ a119:=[16]u8.[32,1,0,4,1,18,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a119[..],1);
+ #assert !fi_address_allowed(a119[..],2);
+}
+
+#test "IANA and explicit mesh boundary oracle 10" {
+ a120:=[16]u8.[32,1,0,4,1,18,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a120[..],1);
+ #assert !fi_address_allowed(a120[..],2);
+ a121:=[16]u8.[32,1,0,4,1,17,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a121[..],1);
+ #assert !fi_address_allowed(a121[..],2);
+ a122:=[16]u8.[32,1,0,4,1,19,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a122[..],1);
+ #assert !fi_address_allowed(a122[..],2);
+ a123:=[16]u8.[32,1,0,16,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a123[..],1);
+ #assert !fi_address_allowed(a123[..],2);
+ a124:=[16]u8.[32,1,0,31,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a124[..],1);
+ #assert !fi_address_allowed(a124[..],2);
+ a125:=[16]u8.[32,1,0,15,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a125[..],1);
+ #assert !fi_address_allowed(a125[..],2);
+ a126:=[16]u8.[32,1,0,32,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a126[..],1);
+ #assert !fi_address_allowed(a126[..],2);
+ a127:=[16]u8.[32,1,0,47,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a127[..],1);
+ #assert !fi_address_allowed(a127[..],2);
+ a128:=[16]u8.[32,1,0,48,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a128[..],1);
+ #assert !fi_address_allowed(a128[..],2);
+ a129:=[16]u8.[32,1,0,63,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a129[..],1);
+ #assert !fi_address_allowed(a129[..],2);
+ a130:=[16]u8.[32,1,0,64,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a130[..],1);
+ #assert !fi_address_allowed(a130[..],2);
+ a131:=[16]u8.[32,1,13,184,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a131[..],1);
+ #assert !fi_address_allowed(a131[..],2);
+}
+
+#test "IANA and explicit mesh boundary oracle 11" {
+ a132:=[16]u8.[32,1,13,184,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a132[..],1);
+ #assert !fi_address_allowed(a132[..],2);
+ a133:=[16]u8.[32,1,13,183,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert fi_address_allowed(a133[..],1);
+ #assert !fi_address_allowed(a133[..],2);
+ a134:=[16]u8.[32,1,13,185,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert fi_address_allowed(a134[..],1);
+ #assert !fi_address_allowed(a134[..],2);
+ a135:=[16]u8.[32,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a135[..],1);
+ #assert !fi_address_allowed(a135[..],2);
+ a136:=[16]u8.[32,2,255,255,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a136[..],1);
+ #assert !fi_address_allowed(a136[..],2);
+ a137:=[16]u8.[32,1,255,255,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert fi_address_allowed(a137[..],1);
+ #assert !fi_address_allowed(a137[..],2);
+ a138:=[16]u8.[32,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert fi_address_allowed(a138[..],1);
+ #assert !fi_address_allowed(a138[..],2);
+ a139:=[16]u8.[38,32,0,79,128,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a139[..],1);
+ #assert !fi_address_allowed(a139[..],2);
+ a140:=[16]u8.[38,32,0,79,128,0,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a140[..],1);
+ #assert !fi_address_allowed(a140[..],2);
+ a141:=[16]u8.[38,32,0,79,127,255,255,255,255,255,255,255,255,255,255,255];
+ #assert fi_address_allowed(a141[..],1);
+ #assert !fi_address_allowed(a141[..],2);
+ a142:=[16]u8.[38,32,0,79,128,1,0,0,0,0,0,0,0,0,0,0];
+ #assert fi_address_allowed(a142[..],1);
+ #assert !fi_address_allowed(a142[..],2);
+ a143:=[16]u8.[63,255,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a143[..],1);
+ #assert !fi_address_allowed(a143[..],2);
+}
+
+#test "IANA and explicit mesh boundary oracle 12" {
+ a144:=[16]u8.[63,255,15,255,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a144[..],1);
+ #assert !fi_address_allowed(a144[..],2);
+ a145:=[16]u8.[63,254,255,255,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert fi_address_allowed(a145[..],1);
+ #assert !fi_address_allowed(a145[..],2);
+ a146:=[16]u8.[63,255,16,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert fi_address_allowed(a146[..],1);
+ #assert !fi_address_allowed(a146[..],2);
+ a147:=[16]u8.[95,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a147[..],1);
+ #assert !fi_address_allowed(a147[..],2);
+ a148:=[16]u8.[95,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a148[..],1);
+ #assert !fi_address_allowed(a148[..],2);
+ a149:=[16]u8.[94,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a149[..],1);
+ #assert !fi_address_allowed(a149[..],2);
+ a150:=[16]u8.[95,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a150[..],1);
+ #assert !fi_address_allowed(a150[..],2);
+ a151:=[16]u8.[252,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a151[..],1);
+ #assert fi_address_allowed(a151[..],2);
+ a152:=[16]u8.[253,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a152[..],1);
+ #assert fi_address_allowed(a152[..],2);
+ a153:=[16]u8.[251,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a153[..],1);
+ #assert !fi_address_allowed(a153[..],2);
+ a154:=[16]u8.[254,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a154[..],1);
+ #assert !fi_address_allowed(a154[..],2);
+ a155:=[16]u8.[254,128,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a155[..],1);
+ #assert !fi_address_allowed(a155[..],2);
+}
+
+#test "IANA and explicit mesh boundary oracle 13" {
+ a156:=[16]u8.[254,191,255,255,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a156[..],1);
+ #assert !fi_address_allowed(a156[..],2);
+ a157:=[16]u8.[254,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255];
+ #assert !fi_address_allowed(a157[..],1);
+ #assert !fi_address_allowed(a157[..],2);
+ a158:=[16]u8.[254,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a158[..],1);
+ #assert !fi_address_allowed(a158[..],2);
+ a159:=[4]u8.[8,8,8,8];
+ #assert fi_address_allowed(a159[..],1);
+ #assert !fi_address_allowed(a159[..],2);
+ a160:=[4]u8.[1,1,1,1];
+ #assert fi_address_allowed(a160[..],1);
+ #assert !fi_address_allowed(a160[..],2);
+ a161:=[4]u8.[223,255,255,255];
+ #assert fi_address_allowed(a161[..],1);
+ #assert !fi_address_allowed(a161[..],2);
+ a162:=[4]u8.[224,0,0,0];
+ #assert !fi_address_allowed(a162[..],1);
+ #assert !fi_address_allowed(a162[..],2);
+ a163:=[16]u8.[32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert fi_address_allowed(a163[..],1);
+ #assert !fi_address_allowed(a163[..],2);
+ a164:=[16]u8.[32,1,72,96,72,96,0,0,0,0,0,0,0,0,136,136];
+ #assert fi_address_allowed(a164[..],1);
+ #assert !fi_address_allowed(a164[..],2);
+ a165:=[16]u8.[38,6,71,0,71,0,0,0,0,0,0,0,0,0,17,17];
+ #assert fi_address_allowed(a165[..],1);
+ #assert !fi_address_allowed(a165[..],2);
+ a166:=[16]u8.[63,255,255,255,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert fi_address_allowed(a166[..],1);
+ #assert !fi_address_allowed(a166[..],2);
+ a167:=[16]u8.[64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a167[..],1);
+ #assert !fi_address_allowed(a167[..],2);
+}
+
+#test "IANA and explicit mesh boundary oracle 14" {
+ a168:=[16]u8.[253,255,255,255,0,0,0,0,0,0,0,0,0,0,0,0];
+ #assert !fi_address_allowed(a168[..],1);
+ #assert fi_address_allowed(a168[..],2);
+ a169:=[16]u8.[0,0,0,0,0,0,0,0,0,0,255,255,10,0,0,1];
+ #assert !fi_address_allowed(a169[..],1);
+ #assert !fi_address_allowed(a169[..],2);
+ a170:=[16]u8.[0,100,255,155,0,0,0,0,0,0,0,0,10,0,0,1];
+ #assert !fi_address_allowed(a170[..],1);
+ #assert !fi_address_allowed(a170[..],2);
+}
+
+#test "address families and transport tags refuse unsupported forms" {
+ a:[3]u8;b:[5]u8;v:=[4]u8.[8,8,8,8];
+ #assert FI_PUBLIC_HTTPS==1 && FI_MESH==2;
+ #assert !fi_address_allowed(a[..],1) && !fi_address_allowed(b[..],2);
+ #assert !fi_address_allowed(v[..],0) && !fi_address_allowed(v[..],3);
+}
+#test "mesh broadcast and loopback require every address byte" {
+ broadcast:=[4]u8.[255,255,255,255];
+ for i:0..<4 {a:=broadcast;a[i]=254;#assert fi_address_allowed(a[..],FI_MESH);}
+ for i:0..<15 {a:[16]u8;a[15]=1;a[i]=1;#assert !fi_address_allowed(a[..],FI_MESH);}
+}
+#test "prefix comparisons examine every bit including a partial byte" {
+ a:=[16]u8.[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];p:FiPrefix;p.bytes=a;p.bits=128;
+ #assert fi_ip_prefix(a[..],p);
+ for i:0..<128 {b:=a;b[i/8]^=cast(u8)(1<<(7-i%8));#assert !fi_ip_prefix(b[..],p);}
+ p.bits=7;a[0]=0;#assert fi_ip_prefix(a[..],p);a[0]=2;#assert !fi_ip_prefix(a[..],p);
+ p.bits=0;#assert fi_ip_prefix(a[..],p);
+}
+fi_ip_prefix :: (address:[]u8,p:FiPrefix)->bool {
+ for i:0..<p.bits {shift:=7-i%8;if ((address[i/8]>>shift)&1)!=((p.bytes[i/8]>>shift)&1) {return false;}}
+ return true;
+}
+fi_address_allowed :: (address:[]u8,transport:int)->bool #export_c {
+ if address.count!=4 && address.count!=16 {return false;}
+ if transport==FI_PUBLIC_HTTPS {
+  if address.count==4 {for p:FI_PUBLIC4_DENY {if fi_ip_prefix(address,p) {return false;}}return true;}
+  if address[0]<32 || address[0]>=64 {return false;}
+  for p:FI_PUBLIC6_DENY {if fi_ip_prefix(address,p) {return false;}}return true;
+ }
+ if transport!=FI_MESH {return false;}
+ if address.count==4 {
+  if address[0]==255 && address[1]==255 && address[2]==255 && address[3]==255 {return false;}
+  return address[0]==10 || address[0]==127 || (address[0]==172 && address[1]>=16 && address[1]<32) ||
+   (address[0]==192 && address[1]==168) || (address[0]==100 && address[1]>=64 && address[1]<128) || address[0]>=240;
+ }
+ if address[0]>=252 && address[0]<=253 {return true;}
+ for i:0..<15 {if address[i]!=0 {return false;}}return address[15]==1;
+}

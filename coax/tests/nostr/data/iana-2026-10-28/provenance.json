@@ -1,0 +1,45 @@
+{
+  "schema": "coax.fi-address-registry.v1",
+  "retrieved": "2026-10-28",
+  "registry_last_updated": "2025-10-09",
+  "sources": [
+    {
+      "url": "https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry-1.csv",
+      "sha256": "cbc4b7653c8bc640ba1e8e5d4ebbf11e7c7a1d867e7f1593aad001d3f8632aac",
+      "networks": 26
+    },
+    {
+      "url": "https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry-1.csv",
+      "sha256": "bf56772aef97fbf9b4a27c98b8511f2bb1ba96da4b9ccc12ab203a2496faba66",
+      "networks": 25
+    }
+  ],
+  "public_ipv4_denied": [
+    "0.0.0.0/8",
+    "10.0.0.0/8",
+    "100.64.0.0/10",
+    "127.0.0.0/8",
+    "169.254.0.0/16",
+    "172.16.0.0/12",
+    "192.0.0.0/24",
+    "192.0.2.0/24",
+    "192.31.196.0/24",
+    "192.52.193.0/24",
+    "192.88.99.0/24",
+    "192.168.0.0/16",
+    "192.175.48.0/24",
+    "198.18.0.0/15",
+    "198.51.100.0/24",
+    "203.0.113.0/24",
+    "224.0.0.0/3"
+  ],
+  "public_ipv6_required": "2000::/3",
+  "public_ipv6_denied_within_required": [
+    "2001::/23",
+    "2001:db8::/32",
+    "2002::/16",
+    "2620:4f:8000::/48",
+    "3fff::/20"
+  ],
+  "scope": "Conservative NIP-FI public_https special-purpose refusal; not a routability claim. All IPv6 catalog rows outside 2000::/3 are refused by the required prefix."
+}

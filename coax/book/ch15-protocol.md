@@ -636,7 +636,7 @@ permission checks. The decoder's full check closure separately kills971/971 muta
 reference and independent oracle tests cover the real parser-to-policy path;
 these scoped observations do not certify signatures or all target behavior.
 See the repository's
-[admission evidence](../../docs/verification/coax-nostr-json-admission-2026-10-28.md)
+[admission evidence](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-nostr-json-admission-2026-10-28.md)
 for limits, commands and the remaining consumer gates.
 
 ## Four kinds of version
