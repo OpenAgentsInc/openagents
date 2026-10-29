@@ -9,6 +9,11 @@
   },
   "milestones": [
     {
+      "slug": "desk-zeron-ui",
+      "title": "Zeron's UI in Coax, pixel for pixel",
+      "body": "Owner's direction (2026-10-29): the desktop app, and later the web app, moves off the HUD look to UI forked from Zeron (Rust/GPUI, MIT, by Wing). Coax components drawn on the GPU the way GPUI draws them (quads with radii, borders and shadows, glyph-atlas text), one component at a time, each matched pixel for pixel against a screenshot of Zeron."
+    },
+    {
       "slug": "desk-local-chat",
       "title": "First: the web chat, running on your own Claude",
       "body": "The owner's first goal. The same Claude Agent SDK chat as openagents.com/chat (conversations, model chips Haiku, Sonnet and Opus 5.5 defaulting to Opus, STOP, cost per turn), but in a Mac window, running the user's installed `claude` with the user's own Claude Code login. No API key, no OpenAgents account, nothing sent to our servers."
@@ -35,6 +40,23 @@
     }
   ],
   "tasks": [
+    {
+      "slug": "desk-zeron-composer",
+      "title": "A new chat screen with Zeron's input bar, pixel for pixel",
+      "parent": "desk-zeron-ui",
+      "size": "M",
+      "body": "A brand new chat screen in apps/openagents-desktop/, connected to nothing, whose composer is an exact match of Zeron's GPUI input bar (/Users/christopherdavid/work/zeron, its UI crate and default theme). GPUI-style primitives in Coax (rounded quad with border and shadow, glyph-atlas text in Zeron's font) drawn by the Metal host. Typing, backspace, caret and placeholder work; send does nothing. The app opens on this screen; the HUD chat, LAB and router stay in the tree but aren't shown.\n\nReference: a screenshot of a Zeron dev build at a known size and scale. The pre-nuke Zeron adaptation is at 0b401561a0^:apps/openagents/. Attribution: Based on Zeron by Wing, MIT.",
+      "files": [
+        "apps/openagents-desktop/",
+        "docs/desktop/coax-desktop.md"
+      ],
+      "acceptance": [
+        "build.sh makes OpenAgents.app from a clean checkout and it opens on the new screen",
+        "A --shot of the empty chat at the reference size matches the Zeron screenshot in the composer region, with the measured difference reported",
+        "Typing into the composer shows the text and caret; backspace works; the placeholder shows when empty",
+        "coax test passes for every new .coax file"
+      ]
+    },
     {
       "slug": "desk-host",
       "title": "Mac host: a window that draws Coax HUD output with Metal",
