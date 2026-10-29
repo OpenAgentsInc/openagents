@@ -44,6 +44,8 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   // The style fixture (docs/verse/art-styles.md): the fixture realm in the painterly preset at each clock key.
   for (const c of ["0", "0.25", "0.5", "0.75"])
     byAddress[`fixture-painterly-${c}`] = { path: `/realms/fixture?style=painterly&clock=${c}`, lit: 0.5, settle: 3000, blocks: 6, module: "fixture" }
+  // and backlit at noon, the sun put behind the blob tree (?sun=, ?sunup=), for the light shafts (spec 6)
+  byAddress["fixture-painterly-shafts"] = { path: "/realms/fixture?style=painterly&clock=0.5&sun=156&sunup=9.5", lit: 0.5, settle: 3000, blocks: 6, module: "fixture" }
   for (const [name, page] of Object.entries(byAddress)) pages[name] ??= page
   return { pages, byAddress, open, unlisted }
 }

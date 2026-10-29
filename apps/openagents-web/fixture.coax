@@ -138,6 +138,8 @@ Fixture :: struct {
   // the style fixture: ?style= in the page's URL (STYLE_*, -1 none) and its clock
   paint: int; clock: f32; day: StyleClock; day_from: f32;   // the clock now, how it runs, and when it was read
   pitch: f32;                // ?pitch=: radians up from the fixture's own view (the sky mustn't slide)
+  sun_az: f32; sun_up: f32;  // ?sun=AZ&sunup=EL (degrees; AZ about +y from +z, the eye looks down -z): the key put
+                             // there, to show what the clock's own sun can't (shafts through the tree); 0 up: the clock's
   mask: bool;                // ?probe=shadow: draw where the shadow band falls, for the style check
 }
 
@@ -215,6 +217,7 @@ fixture_message :: (s: [] Fixture, kind: int, text: string) #export_c {
   s[0].paint = style_query(fact_line(text, "url"));
   s[0].mask = s[0].paint >= 0 && query_has(fact_line(text, "url"), "probe=shadow");
   s[0].pitch = clamp(query_decimal(fact_line(text, "url"), "pitch="), -0.6, 0.6);
+  s[0].sun_az = query_decimal(fact_line(text, "url"), "sun=") * DEG; s[0].sun_up = clamp(query_decimal(fact_line(text, "url"), "sunup="), -89, 89) * DEG;
   s[0].day = verse_style_clock(fact_line(text, "clock"), fact_line(text, "now"), fact_line(text, "day"));
   s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
   // the style fixture is a test view: it doesn't count as a visit or keep anything
@@ -705,6 +708,10 @@ fixture_frame :: (s: [] Fixture, out: [] f32, uniforms: [] f32, width: f32, heig
     for i: 0..<16 { uniforms[VIEW_AT + i] = 0; }
     uniforms[VIEW_AT] = s[0].pitch;
     if verse_style_at(verse_style_preset(s[0].paint, tier), s[0].clock, uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]) { uniforms[7] = ifx s[0].mask then 2.0f32 else 1.0f32; }
+    if s[0].sun_up != 0 && uniforms[STYLE_AT + SU_KEY_DIR + 3] < 0.5 {
+      e := s[0].sun_up; a := s[0].sun_az;
+      uniforms[STYLE_AT + SU_KEY_DIR] = cos(e) * sin(a); uniforms[STYLE_AT + SU_KEY_DIR + 1] = sin(e); uniforms[STYLE_AT + SU_KEY_DIR + 2] = cos(e) * cos(a);
+    }
   }
   uniforms[5] = cast(f32) s[0].plate_n;
   for i: 0..<s[0].plate_n {
@@ -876,6 +883,18 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
   #assert abs(query_decimal("https://x/realms/fixture?pitch=-0.1", "pitch=") + 0.1) < 0.0001;
   #assert query_decimal("https://x/realms/fixture?style=painterly", "pitch=") == 0 && query_decimal("https://x/realms/fixture?pitch=x", "pitch=") == 0;
   #assert !query_has("https://x/realms/fixture?style=painterly#probe=shadow", "probe=shadow") && !query_has("https://x/realms/fixture?probe=shadowy", "probe=shadow");
+}
+#test "?sun= and ?sunup= put the day's key where a check needs it (behind the tree), and nothing else" {
+  s: [1] Fixture;
+  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?style=painterly&clock=0.75&sun=158&sunup=7\nclock=fixed:0.75");
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  #assert fixture_frame(s[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
+  #assert abs(u[STYLE_AT + SU_KEY_DIR + 1] - cast(f32) sin(7 * DEG)) < 0.0001 && abs(u[STYLE_AT + SU_KEY_DIR + 2] - cast(f32) (cos(7 * DEG) * cos(158 * DEG))) < 0.0001;
+  #assert abs(u[STYLE_AT + SU_KEY + 1] - 0.72) < 0.001;
+  n: [1] Fixture;
+  fixture_message(n[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?style=painterly&clock=0.75\nclock=fixed:0.75");
+  #assert fixture_frame(n[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
+  #assert u[STYLE_AT + SU_KEY_DIR + 1] > 0.3;
 }
 #test "?clock=cycle turns the style fixture's day: a quarter in twelve minutes" {
   s: [1] Fixture;

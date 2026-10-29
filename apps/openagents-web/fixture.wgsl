@@ -63,7 +63,8 @@ struct Lit { @location(0) light: vec4f, @location(1) aux: vec4f }
 @fragment fn bg_fs(@builtin(position) pos: vec4f) -> Lit {
   let p = pos.xy;
   if (u.painted > 0.5) {
-    return Lit(paint(p), vec4f(0.0));
+    let c = paint(p);
+    return Lit(c, vec4f(shaft_glow, 0.0, 0.0, 0.0));   // aux.r: the sky's glow the light shafts blur
   }
   let c = vec2f(0.5, 0.58) * u.size;
   let r = length((p - c) / max(u.size.y, 1.0));
@@ -383,6 +384,20 @@ fn ray(p: vec2f) -> vec3f {
   let up = cross(right, fwd);
   return normalize(fwd + right * q.x + up * q.y);
 }
+// Where a direction lands on screen, 0 to 1 across and down (ray's inverse); z 1 when it lies ahead of the eye.
+fn screen_at(d: vec3f) -> vec3f {
+  let aspect = u.size.x / max(u.size.y, 1.0);
+  let tv = max(0.36, 0.5 / aspect);
+  let a = -0.11942 + u.r0.x;
+  let fwd = vec3f(0.0, sin(a), -cos(a));
+  let right = normalize(cross(fwd, vec3f(0.0, 1.0, 0.0)));
+  let up = cross(right, fwd);
+  let z = dot(d, fwd);
+  let q = vec2f(dot(d, right), dot(d, up)) / max(z, 0.0001);
+  return vec3f((q.x / (tv * aspect) + 1.0) * 0.5, (1.0 - q.y / tv) * 0.5, select(0.0, 1.0, z > 0.01));
+}
+// The light shafts' source (art-styles.md 6): the sky's glow toward the key light, set where paint draws sky.
+var<private> shaft_glow: f32 = 0.0;
 fn paint(p: vec2f) -> vec4f {
   let d = ray(p);
   let h = trace(EYE, d);
@@ -397,6 +412,7 @@ fn paint(p: vec2f) -> vec4f {
   var c = vec3f(0.0);
   if (h.kind == 0.0) {
     c = sky(d, st(1u).xyz);
+    shaft_glow = verse_style_shaft_source(dot(d, st(1u).xyz));
     c += vec3f(stars(p)) * st(14u).w * 0.6;
   } else {
     c = shade(h, EYE, d);
@@ -410,6 +426,7 @@ fn paint(p: vec2f) -> vec4f {
     let wp = EYE + d * h.t;
     let hz = st(9u);
     let f = verse_style_haze(h.t, wp.y, 0.0, hz.x, hz.y, hz.z, hz.w);
+    shaft_glow = verse_style_shaft_source(dot(d, st(1u).xyz)) * f;   // far, hazed things let the glow through
     let style = st(31u).y; let cap = st(31u).x;
     c = vec3f(verse_outline_styled(style, c.x, edge, cap, f), verse_outline_styled(style, c.y, edge, cap, f), verse_outline_styled(style, c.z, edge, cap, f));
   }
@@ -498,8 +515,29 @@ struct Step { v: vec4f }
   let uv = pos.xy / u.size;
   let b = textureSampleLevel(post_quarter, post_lin, uv, 0.0).rgb * 0.55 + textureSampleLevel(post_eighth, post_lin, uv, 0.0).rgb * 0.45;
   let m = st(19u).z;
-  let c = vec3f(verse_style_bloom_mix(light.x, b.x, m), verse_style_bloom_mix(light.y, b.y, m), verse_style_bloom_mix(light.z, b.z, m));
+  var c = vec3f(verse_style_bloom_mix(light.x, b.x, m), verse_style_bloom_mix(light.y, b.y, m), verse_style_bloom_mix(light.z, b.z, m));
+  c += shafts(pos.xy, uv) * st(11u).xyz * st(0u).w;
   return vec4f(panels(pos.xy, pow(clamp(tone(c), vec3f(0.0), vec3f(1.0)), vec3f(1.0 / 2.2))), 1.0);
+}
+// Light shafts (art-styles.md 6): march from the pixel toward the key light's place on screen,
+// gathering the sky's glow (aux.r) with each tap weighted decay^i; the tree's crown and trunk block
+// it, so light streams through the gaps. Its strength is the preset's weight, faded as the light
+// leaves the frame. The march starts a hashed fraction of a step in, so few taps don't step.
+fn shafts(p: vec2f, uv: vec2f) -> f32 {
+  let sh = st(20u);
+  let l = screen_at(st(1u).xyz);
+  let fade = verse_style_shaft_fade(l.x, l.y, sh.w) * l.z;
+  if (fade <= 0.0 || sh.z <= 0.0) { return 0.0; }
+  let n = sh.x;
+  let step = (l.xy - uv) / n;
+  let jitter = fract(52.9829189 * fract(dot(p, vec2f(0.06711056, 0.00583715))));
+  var sum = 0.0;
+  for (var i = 0.0; i < n; i += 1.0) {
+    let q = uv + step * (i + jitter);
+    if (any(q < vec2f(0.0)) || any(q > vec2f(1.0))) { break; }
+    sum += textureSampleLevel(post_aux, post_lin, q, 0.0).r * verse_style_shaft_tap(i, sh.y);
+  }
+  return verse_style_shaft(sum, verse_style_shaft_total(n, sh.y), sh.z, fade);
 }
 // ---- the strokes: one quad per stroke or light (fixture.coax lit, tinted_dot)
 struct V {
@@ -579,7 +617,7 @@ fn verse_outline_crease(l_facing: f32) -> f32 {
 }
 // ---- end generated
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -916,5 +954,41 @@ fn verse_style_shadow_tap(l_k: f32, l_phone: f32, l_axis: f32) -> f32 {
 }
 fn verse_style_contact(l_cast_lit: f32, l_blob: f32, l_strength: f32) -> f32 {
   return coax_p_st_min(l_cast_lit, (1.0 - (l_strength * coax_p_st_sat(l_blob))));
+}
+fn verse_style_shaft_source(l_cos_t: f32) -> f32 {
+  var coax_t34: f32;
+  var coax_t35: f32;
+  coax_t34 = (-24.0);
+  coax_t35 = coax_p_st_max((1.0 - l_cos_t), 0.0);
+  return exp((coax_t34 * coax_t35));
+}
+fn verse_style_shaft_fade(l_x: f32, l_y: f32, l_margin: f32) -> f32 {
+  var coax_t36: f32;
+  var coax_t37: f32;
+  coax_t36 = coax_p_st_max((-l_x), (l_x - 1.0));
+  coax_t37 = coax_p_st_max((-l_y), (l_y - 1.0));
+  var l_out: f32 = coax_p_st_max(coax_p_st_max(coax_t36, coax_t37), 0.0);
+  return (1.0 - verse_style_soft_step((l_margin * 0.5), (l_margin * 0.5), l_out));
+}
+fn verse_style_shaft_tap(l_i: f32, l_decay: f32) -> f32 {
+  return pow(coax_p_st_max(l_decay, 9.99999997e-07), l_i);
+}
+fn verse_style_shaft_total(l_n: f32, l_decay: f32) -> f32 {
+  var coax_t38: f32;
+  var coax_t39: f32;
+  if ((abs((1.0 - l_decay)) < 9.99999997e-07))
+  {
+    return l_n;
+  }
+  coax_t38 = (1.0 - pow(coax_p_st_max(l_decay, 9.99999997e-07), l_n));
+  coax_t39 = (1.0 - l_decay);
+  return (coax_t38 / coax_t39);
+}
+fn verse_style_shaft(l_sum: f32, l_total: f32, l_weight: f32, l_fade: f32) -> f32 {
+  var coax_t40: f32;
+  var coax_t41: f32;
+  coax_t40 = ((l_sum / coax_p_st_max(l_total, 9.99999997e-07)) * l_weight);
+  coax_t41 = coax_p_st_sat(l_fade);
+  return (coax_t40 * coax_t41);
 }
 // ---- end generated

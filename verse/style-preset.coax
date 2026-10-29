@@ -137,7 +137,7 @@ painterly_key :: (i: int) -> StyleKey {
     k.zenith_r = 0.012; k.zenith_g = 0.018; k.zenith_b = 0.05;
     k.horizon_r = 0.10; k.horizon_g = 0.14; k.horizon_b = 0.27;
     k.cloud_r = 0.30; k.cloud_g = 0.34; k.cloud_b = 0.46;           // between
-    k.exposure = 2.4; k.shaft_weight = 0.10;
+    k.exposure = 2.4; k.shaft_weight = 0.20;
   } else if day {
     k = sk_light(1.00, 0.95, 0.85, 1.0, 1.00, 0.84, 0.60, 1.0);
     k.tint_r = 0.52; k.tint_g = 0.58; k.tint_b = 0.86;
@@ -149,7 +149,7 @@ painterly_key :: (i: int) -> StyleKey {
     k.zenith_r = 0.24; k.zenith_g = 0.48; k.zenith_b = 0.86;
     k.horizon_r = 0.56; k.horizon_g = 0.74; k.horizon_b = 0.90;
     k.cloud_r = 1.0; k.cloud_g = 0.98; k.cloud_b = 0.95;
-    k.exposure = 1.6; k.shaft_weight = 0.22;
+    k.exposure = 1.6; k.shaft_weight = 0.44;
   } else {
     // dawn and dusk
     k = sk_light(1.00, 0.72, 0.48, 0.75, 1.00, 0.70, 0.45, 1.0);
@@ -162,7 +162,7 @@ painterly_key :: (i: int) -> StyleKey {
     k.zenith_r = 0.20; k.zenith_g = 0.24; k.zenith_b = 0.52;
     k.horizon_r = 0.95; k.horizon_g = 0.62; k.horizon_b = 0.48;
     k.cloud_r = 1.0; k.cloud_g = 0.80; k.cloud_b = 0.66;              // between
-    k.exposure = 2.0; k.shaft_weight = 0.16;                          // between
+    k.exposure = 2.0; k.shaft_weight = 0.32;                          // between
   }
   return k;
 }
@@ -450,7 +450,7 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert sp_near(o[SU_HAZE], 20) && sp_near(o[SU_HAZE + 1], 0.011) && sp_near(o[SU_HAZE + 2], 0.88) && sp_near(o[SU_HAZE + 3], 60);
   #assert sp_near(o[SU_HAZE_COLOUR], 0.56) && sp_near(o[SU_HAZE_COLOUR + 1], 0.74) && sp_near(o[SU_HAZE_COLOUR + 2], 0.90);
   #assert sp_near(o[SU_HORIZON], o[SU_HAZE_COLOUR]) && sp_near(o[SU_HORIZON + 2], o[SU_HAZE_COLOUR + 2]);
-  #assert sp_near(o[SU_ZENITH + 2], 0.86) && sp_near(o[SU_TONE], 1.6) && sp_near(o[SU_RIM + 3], 0.30) && sp_near(o[SU_SHAFTS + 2], 0.22);
+  #assert sp_near(o[SU_ZENITH + 2], 0.86) && sp_near(o[SU_TONE], 1.6) && sp_near(o[SU_RIM + 3], 0.30) && sp_near(o[SU_SHAFTS + 2], 0.44);
   #assert o[SU_KEY_DIR + 3] == 0 && sp_near(o[SU_KEY_DIR + 1], sin(60 * DEG)) && o[SU_SUN + 3] == 0;
   #assert verse_style_at(p, 0.75, o[..]);
   #assert sp_near(o[SU_KEY + 1], 0.72) && sp_near(o[SU_KEY + 3], 0.75) && sp_near(o[SU_HAZE + 1], 0.013) && sp_near(o[SU_HAZE + 3], 50);
@@ -463,7 +463,7 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert verse_style_at(p, 0.0, o[..]);
   #assert sp_near(o[SU_KEY], 0.62) && sp_near(o[SU_KEY + 2], 0.95) && sp_near(o[SU_KEY + 3], 0.35);
   #assert sp_near(o[SU_HAZE], 12) && sp_near(o[SU_HAZE + 1], 0.016) && sp_near(o[SU_HAZE + 2], 0.85) && sp_near(o[SU_HAZE + 3], 40);
-  #assert sp_near(o[SU_HAZE_COLOUR + 2], 0.27) && sp_near(o[SU_ZENITH + 2], 0.05) && sp_near(o[SU_TONE], 2.4) && sp_near(o[SU_SHAFTS + 2], 0.10);
+  #assert sp_near(o[SU_HAZE_COLOUR + 2], 0.27) && sp_near(o[SU_ZENITH + 2], 0.05) && sp_near(o[SU_TONE], 2.4) && sp_near(o[SU_SHAFTS + 2], 0.20);
   #assert sp_near(o[SU_RIM], 0.70) && sp_near(o[SU_RIM + 3], 0.18) && sp_near(o[SU_RIM2], 0.27);
   // the moon is the key at midnight, up in the sky, and the stars are out
   #assert o[SU_KEY_DIR + 3] == 1 && o[SU_KEY_DIR + 1] > 0 && o[SU_SUN + 3] == 1;

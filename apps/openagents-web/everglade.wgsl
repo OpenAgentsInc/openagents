@@ -825,7 +825,7 @@ fn water_halves(i: WaterOut) -> WaterShade {
 }
 
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -1162,5 +1162,41 @@ fn verse_style_shadow_tap(l_k: f32, l_phone: f32, l_axis: f32) -> f32 {
 }
 fn verse_style_contact(l_cast_lit: f32, l_blob: f32, l_strength: f32) -> f32 {
   return coax_p_st_min(l_cast_lit, (1.0 - (l_strength * coax_p_st_sat(l_blob))));
+}
+fn verse_style_shaft_source(l_cos_t: f32) -> f32 {
+  var coax_t34: f32;
+  var coax_t35: f32;
+  coax_t34 = (-24.0);
+  coax_t35 = coax_p_st_max((1.0 - l_cos_t), 0.0);
+  return exp((coax_t34 * coax_t35));
+}
+fn verse_style_shaft_fade(l_x: f32, l_y: f32, l_margin: f32) -> f32 {
+  var coax_t36: f32;
+  var coax_t37: f32;
+  coax_t36 = coax_p_st_max((-l_x), (l_x - 1.0));
+  coax_t37 = coax_p_st_max((-l_y), (l_y - 1.0));
+  var l_out: f32 = coax_p_st_max(coax_p_st_max(coax_t36, coax_t37), 0.0);
+  return (1.0 - verse_style_soft_step((l_margin * 0.5), (l_margin * 0.5), l_out));
+}
+fn verse_style_shaft_tap(l_i: f32, l_decay: f32) -> f32 {
+  return pow(coax_p_st_max(l_decay, 9.99999997e-07), l_i);
+}
+fn verse_style_shaft_total(l_n: f32, l_decay: f32) -> f32 {
+  var coax_t38: f32;
+  var coax_t39: f32;
+  if ((abs((1.0 - l_decay)) < 9.99999997e-07))
+  {
+    return l_n;
+  }
+  coax_t38 = (1.0 - pow(coax_p_st_max(l_decay, 9.99999997e-07), l_n));
+  coax_t39 = (1.0 - l_decay);
+  return (coax_t38 / coax_t39);
+}
+fn verse_style_shaft(l_sum: f32, l_total: f32, l_weight: f32, l_fade: f32) -> f32 {
+  var coax_t40: f32;
+  var coax_t41: f32;
+  coax_t40 = ((l_sum / coax_p_st_max(l_total, 9.99999997e-07)) * l_weight);
+  coax_t41 = coax_p_st_sat(l_fade);
+  return (coax_t40 * coax_t41);
 }
 // ---- end generated

@@ -181,6 +181,30 @@ verse_style_bloom_share :: (lum:f32,threshold:f32,knee:f32)->f32 #export_c {
 }
 // The light with its blurred bright share mixed back: gently, mix of it.
 verse_style_bloom_mix :: (c:f32,bloom:f32,mix:f32)->f32 #export_c {return c+bloom*mix;}
+// ---- 6b. Light shafts: a radial blur of the sky's glow toward the key light's place on screen
+// The glow a sky pixel puts into the blur: the sky near the light, by the ray's cosine to it
+// (exp(-24 (1 - cos)): half at 14 degrees, a tenth at 25), so gaps in a canopy against the sky round
+// the sun stream light and open sky far from it adds nothing. A surface passes it on in the share the
+// haze has taken of it (the lit air in front of a far ridge glows; a near trunk blocks).
+verse_style_shaft_source :: (cos_t:f32)->f32 #export_c {return exp(-24.0f32*st_max(1.0f32-cos_t,0.0f32));}
+// How much of the shafts show, by where the light sits on screen (x, y: 0 to 1 across the frame,
+// outside it past an edge): all of them inside the frame, fading out over `margin` (0.35) of the
+// frame past its edge, none further.
+verse_style_shaft_fade :: (x:f32,y:f32,margin:f32)->f32 #export_c {
+ out:=st_max(st_max(st_max(-x,x-1.0f32),st_max(-y,y-1.0f32)),0.0f32);
+ return 1.0f32-verse_style_soft_step(margin*0.5f32,margin*0.5f32,out);
+}
+// Tap i's weight along the march from the pixel toward the light: decay^i (0.94).
+verse_style_shaft_tap :: (i:f32,decay:f32)->f32 #export_c {return pow(st_max(decay,0.000001f32),i);}
+// All n taps' weights together, to share the shafts' strength over them.
+verse_style_shaft_total :: (n:f32,decay:f32)->f32 #export_c {
+ if abs(1.0f32-decay)<0.000001f32 {return n;}
+ return (1.0f32-pow(st_max(decay,0.000001f32),n))/(1.0f32-decay);
+}
+// A pixel's shafts: `sum` (the taps' glow, each times its weight) shared over the taps, at the
+// preset's weight (0.44 by day, 0.20 at night) and the frame-edge fade. Added to the light, coloured
+// like the key light in the haze.
+verse_style_shaft :: (sum:f32,total:f32,weight:f32,fade:f32)->f32 #export_c {return sum/st_max(total,0.000001f32)*weight*st_sat(fade);}
 // Relative luminance of linear RGB.
 verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.7152f32*g+0.0722f32*b;}
 
@@ -372,4 +396,27 @@ verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.715
  #assert abs(verse_style_saturation(0.6f32,0.5f32,1.10f32)-0.61f32)<0.0001f32;
  #assert verse_style_saturation(0.0f32,0.5f32,3.0f32)==0.0f32;
  #assert abs(verse_style_luma(1.0f32,1.0f32,1.0f32)-1.0f32)<0.0001f32;
+}
+
+#test "light shafts: the sky's glow toward the light, 24 taps decaying 0.94, at most the preset's weight" {
+ #assert verse_style_shaft_source(1.0f32)==1.0f32;
+ #assert abs(verse_style_shaft_source(cos(13.8f32*0.0174533f32))-0.5f32)<0.01f32;
+ #assert verse_style_shaft_source(cos(25.5f32*0.0174533f32))<0.1f32 && verse_style_shaft_source(-1.0f32)<0.0001f32;
+ #assert verse_style_shaft_tap(0.0f32,0.94f32)==1.0f32 && abs(verse_style_shaft_tap(23.0f32,0.94f32)-0.2405f32)<0.001f32;
+ // the 24 desktop taps' weights, and a phone's 12, summed
+ s:=0.0f32; for i:0..<24 {s=s+verse_style_shaft_tap(cast(f32)i,0.94f32);}
+ #assert abs(verse_style_shaft_total(24.0f32,0.94f32)-s)<0.001f32;
+ s=0.0f32; for i:0..<12 {s=s+verse_style_shaft_tap(cast(f32)i,0.94f32);}
+ #assert abs(verse_style_shaft_total(12.0f32,0.94f32)-s)<0.001f32;
+ #assert verse_style_shaft_total(5.0f32,1.0f32)==5.0f32;
+ // every tap in the light's full glow: the preset's weight, 0.44 by day and 0.20 at night; none in shadow
+ t:=verse_style_shaft_total(24.0f32,0.94f32);
+ #assert abs(verse_style_shaft(t,t,0.44f32,1.0f32)-0.44f32)<0.0001f32 && abs(verse_style_shaft(t,t,0.20f32,1.0f32)-0.20f32)<0.0001f32;
+ #assert verse_style_shaft(0.0f32,t,0.22f32,1.0f32)==0.0f32;
+}
+#test "shafts show while the light is in the frame and fade out over 0.35 of it past the edge" {
+ #assert verse_style_shaft_fade(0.5f32,0.5f32,0.35f32)==1.0f32 && verse_style_shaft_fade(0.0f32,1.0f32,0.35f32)==1.0f32;
+ #assert abs(verse_style_shaft_fade(1.175f32,0.5f32,0.35f32)-0.5f32)<0.0001f32;
+ #assert verse_style_shaft_fade(0.5f32,-0.35f32,0.35f32)==0.0f32 && verse_style_shaft_fade(-3.0f32,0.5f32,0.35f32)==0.0f32;
+ for i:0..<50 {o:=cast(f32)i*0.01f32; #assert verse_style_shaft_fade(1.0f32+o+0.01f32,0.5f32,0.35f32)<=verse_style_shaft_fade(1.0f32+o,0.5f32,0.35f32);}
 }

@@ -250,11 +250,24 @@ the sky without a seam.
   0.85 after exposure, soft knee 0.25, mixed back at 0.30 desktop and 0.22
   phone. Emissive materials (Hecate's dog, glowing flowers) write their bloom
   share directly, as now.
-- **Light shafts**: screen-space radial blur from the key light's screen
-  position over a sky mask (depth = far). Desktop takes 24 samples, a phone
-  12, with decay 0.94 and weight 0.22 by day, 0.10 at night. Shafts are on
-  only while the light is within 0.35 of the frame's edge and fade over that
-  margin.
+- **Light shafts** (built October 29, as-light-shafts): a screen-space radial
+  blur toward the key light's screen position, in the post pass. Its source is
+  the sky's glow round the light, `exp(-24 (1 - cos θ))` (half at 14°, a
+  tenth at 25°), which the scene writes into the post pass's aux target: the
+  sky passes all of it, a surface the share the haze has taken of it (the lit
+  air in front of a far ridge glows; a near trunk or crown blocks), so light
+  streams past the near world's edges and the near world casts dark streaks
+  into it. From each pixel the pass marches toward the light, desktop 24
+  taps, a phone 12, tap i weighted `0.94^i`, starting a hashed fraction of a
+  step in so few taps don't step; the sum over the taps' total weight, times
+  the weight (0.44 by day, 0.32 at dusk and dawn, 0.20 at night: the first
+  numbers here, 0.22 and 0.10, didn't read), is added to the light in the key
+  light's in-haze colour times its strength. Shafts are full while the light is
+  in the frame and fade out over 0.35 of the frame past its edge
+  (`verse_style_shaft_source`, `_fade`, `_tap`, `_total`, `verse_style_shaft`).
+  The fixture's `?sun=AZ&sunup=EL` (degrees) puts the sun behind its tree for
+  the golden `fixture-painterly-shafts`; its post pass costs 0.17 ms more with
+  the sun in view at 1440×900 on an M-series Mac.
 
 ### 7. Foliage: blob canopies
 
