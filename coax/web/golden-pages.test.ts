@@ -42,6 +42,12 @@ test("the likeliest break touches the page's own inputs, newest first; shared on
   expect(suspects("landing", commits, p).map((s) => [s.hash, s.why])).toEqual([["c1", "own"], ["c0", "own"], ["c2", "shared"]])
   expect(suspects("everglade", commits, p).map((s) => s.hash)).toEqual(["c2"])
   expect(touches("landing", ["apps/openagents-web/projects/coax/work/nostr.json"], p)).toBe("")
+  // the house's own libraries before the rest of the engine, which every realm takes
+  const house = [
+    { hash: "e1", author: "a", subject: "style", files: ["verse/style.coax"] },
+    { hash: "e0", author: "b", subject: "house", files: ["verse/haunt.coax"] },
+  ]
+  expect(suspects("haunted-house", house, p).map((s) => [s.hash, s.why])).toEqual([["e0", "own"], ["e1", "engine"]])
 })
 
 test("a page's bytes in the bucket: its bare path and its index.html, not its twin or its children", () => {

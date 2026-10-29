@@ -106,10 +106,13 @@ export function affected(changed: string[], p: Pages = goldenPages()): string[] 
   return names.filter((n) => { const ins = pageInputs(n, p); return changed.some((f) => ins.some((i) => under(f, i))) })
 }
 
-/** Why a commit's files may change a page: "own" (its own inputs), "shared", or "" (they can't). */
-export function touches(name: string, files: string[], p: Pages = goldenPages()): "own" | "shared" | "" {
+/** Why a commit's files may change a page: "own" (an input of its own: its module, what that loads or links, its
+ *  page, assets or golden), "engine" (only the rest of verse/, which every realm takes), "shared", or "" (they can't). */
+export type Why = "own" | "engine" | "shared"
+export function touches(name: string, files: string[], p: Pages = goldenPages()): Why | "" {
   const ins = pageInputs(name, p)
-  if (files.some((f) => ins.some((i) => under(f, i)))) return "own"
+  if (files.some((f) => ins.some((i) => i !== "verse/" && under(f, i)))) return "own"
+  if (files.some((f) => under(f, "verse/") && ins.includes("verse/"))) return "engine"
   return files.some(sharedHit) ? "shared" : ""
 }
 
@@ -120,13 +123,13 @@ export function pageObjects(path: string): string {
 }
 
 // The commits of a range that may have changed a page, newest first; the
-// likeliest is the newest touching its own inputs, else the newest touching
-// what every page shares.
-export type Suspect = { hash: string; author: string; subject: string; why: "own" | "shared" }
+// likeliest is the newest touching its own inputs, else the engine, else what
+// every page shares.
+export type Suspect = { hash: string; author: string; subject: string; why: Why }
 export function suspects(name: string, commits: { hash: string; author: string; subject: string; files: string[] }[], p: Pages = goldenPages()): Suspect[] {
   const out: Suspect[] = []
   for (const c of commits) { const why = touches(name, c.files, p); if (why) out.push({ hash: c.hash, author: c.author, subject: c.subject, why }) }
-  return [...out.filter((s) => s.why === "own"), ...out.filter((s) => s.why === "shared")]
+  return (["own", "engine", "shared"] as const).flatMap((why) => out.filter((s) => s.why === why))
 }
 
 // ---- git: the commits of a range with their files
