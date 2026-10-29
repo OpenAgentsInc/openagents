@@ -1,0 +1,547 @@
+// Separate aggregate source analysis. It never upgrades the scalar-v1 profile.
+#load "inventory.coax";
+#load "../../../coax/tests/nostr/secret_aggregate.coax";
+#load "../../../coax/tests/nostr/secret_aggregate_cases.coax";
+#authority;
+AG_GUARDS :: 14;
+AgValue :: struct {mask:u64;type:int;literal:int;lo:int;hi:int;known:bool;region:int;extent:int;view:bool;}
+AgBinding :: struct {name:string;value:AgValue;induction:bool;}
+AgEnv :: struct {bindings:[64]AgBinding;count:int;procedure:int;binding_floor:int;}
+AgGuard :: struct {node:int;unit:int;line:int;column:int;mask:u64;kind:u32;}
+AgMemo :: struct {procedure:int;count:int;args:[8]AgValue;result:AgValue;closure:u64;height:int;}
+AgMemory :: struct {taint:[4096]u64;dirty:[4096]bool;readonly:[4096]bool;used:int;guard_count:int;guards:[256]AgGuard;memo:[128]AgMemo;memo_count:int;scope:[16]u64;height:[16]int;compiled_runs:bool;classified:bool;public_views:bool;branch_active:int;protected_regions:int;}
+AgBlock :: struct {value:AgValue;returned:bool;possible:bool;}
+AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
+#test "opt-in view roots require explicit bounded region and access" {
+ f:=SC_fixture();values:[32]u64;memory:[1]AgMemory;labels:=[1]AgLabel.[AgLabel.{name="x",type="[] u64",extent=2,access=1}];
+ f.nodes[5].a=10;f.nodes[10]=ScNode.{kind=3,b=3};f.types[0].type="[] u64";f.nodes[7]=ScNode.{kind=16};
+ r:=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],1,labels[..],false);
+ #assert r.error==0 && memory[0].used==1 && memory[0].readonly[1] && memory[0].taint[1]==1;
+ labels[0].extent=0;r=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],1,labels[..],false);#assert r.error==SC_TYPE;
+ labels[0].extent=2;labels[0].access=0;r=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],1,labels[..],false);#assert r.error==SC_TYPE;
+ labels[0].access=2;r=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],1,labels[..],false);#assert r.error==0 && !memory[0].readonly[1];
+ labels[0].extent=1025;r=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],1,labels[..],false);#assert r.error==SC_TYPE;
+ labels[0].extent=2;labels[0].access=3;r=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],1,labels[..],false);#assert r.error==SC_TYPE;
+ r=AG_check_classified(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],1,labels[..],false);#assert r.error==SC_UNSUPPORTED;
+ labels[0].access=1;labels[0].extent=1;r=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],1,labels[..],false);#assert r.error==0;
+ labels[0].extent=1024;r=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],1,labels[..],false);#assert r.error==0;
+ f=SC_fixture();labels[0]=AgLabel.{name="x",type="u64",extent=1};r=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],1,labels[..],false);#assert r.error==SC_TYPE;
+ labels[0].extent=0;labels[0].access=1;r=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],1,labels[..],false);#assert r.error==SC_TYPE;
+}
+#test "view access stays attached to a borrowed region" {
+ f:=AG_fixture();env:[1]AgEnv;state:[1]ScAudit;memory:[1]AgMemory;
+ env[0].count=1;env[0].bindings[0]=AgBinding.{name="x",value=AgValue.{type=8,region=1}};memory[0].used=1;memory[0].readonly[1]=true;
+ AG_write(f.nodes[..],f.values[..],f.roots[..],f.types[..],7,AgValue.{mask=2},23,env[..],memory[..],state[..]);#assert state[0].error==SC_UNSUPPORTED && memory[0].taint[1]==0;
+ state[0]=ScAudit.{};memory[0].readonly[1]=false;AG_write(f.nodes[..],f.values[..],f.roots[..],f.types[..],7,AgValue.{mask=2},23,env[..],memory[..],state[..]);#assert state[0].error==0 && memory[0].taint[1]==2 && memory[0].dirty[1];
+}
+#test "public-only procedures do not accept secret inputs and forbidden names remain forbidden" {
+ f:=SC_fixture();values:[32]u64;memory:[1]AgMemory;labels:=[1]AgLabel.[AgLabel.{name="x",type="u64"}];
+ f.nodes[2].name="candidate_public";f.types[0].procedure="candidate_public";
+ public:=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate_public",memory[..],0,labels[..],false);
+ secret:=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate_public",memory[..],1,labels[..],false);
+ #assert public.error==0 && secret.error==SC_VARTIME;
+ f.nodes[2].name="candidate_vartime";f.types[0].procedure="candidate_vartime";
+ forbidden:=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate_vartime",memory[..],0,labels[..],false);#assert forbidden.error==SC_VARTIME;
+}
+#test "public calls require opt-in and forbidden callees stay forbidden" {
+ f:=SC_fixture();values:[32]u64;memory:[1]AgMemory;labels:=[1]AgLabel.[AgLabel.{name="x",type="u64"}];
+ f.nodes[2].next=9;f.nodes[7]=ScNode.{kind=21,name="helper_public",head=8};f.nodes[8]=ScNode.{kind=20,name="x"};
+ f.nodes[9]=ScNode.{kind=64,name="helper_public",line=2,a=3,b=10,head=11};f.nodes[10]=ScNode.{kind=40,head=12};f.nodes[11]=ScNode.{kind=68,name="y",line=2,a=3};f.nodes[12]=ScNode.{kind=44,a=13};f.nodes[13]=ScNode.{kind=20,name="y"};
+ f.types[1]=ScType.{procedure="helper_public",procedure_line=2,name="y",line=2,role="parameter",type="u64"};
+ legacy:=AG_check_classified(f.nodes[..],values[..],f.roots[..],f.types[0..<2],"candidate",memory[..],0,labels[..],false);#assert legacy.error==SC_VARTIME;
+ public:=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<2],"candidate",memory[..],0,labels[..],false);#assert public.error==0;
+ f.nodes[7].name="helper_vartime";f.nodes[9].name="helper_vartime";f.types[1].procedure="helper_vartime";
+ forbidden:=AG_check_public_views(f.nodes[..],values[..],f.roots[..],f.types[0..<2],"candidate",memory[..],0,labels[..],false);#assert forbidden.error==SC_VARTIME;
+ // The forbidden-name gate runs even when no declaration exists.
+ f.nodes[7]=ScNode.{kind=21,name="missing_vartime"};env:[1]AgEnv;state:[1]ScAudit;memory[0]=AgMemory.{public_views=true};
+ ignored:=AG_call(f.nodes[..],values[..],f.roots[..],f.types[0..<2],7,env[..],memory[..],state[..],0);#assert state[0].error==SC_VARTIME;
+}
+#test "aggregate source bounds and scalar identities are explicit" {
+ #assert AG_primitive("u64")==-1 && AG_primitive("u32")==-2 && AG_primitive("bool")==-3 && AG_primitive("int")==-4 && AG_primitive("u8")==-5;
+ #assert AG_primitive("f64")==0 && AG_primitive("string")==0;
+ #assert AG_interval(0,4096) && !AG_interval(-1,1) && !AG_interval(0,4097) && !AG_interval(2,1);
+}
+#test "classified root requires exact parameter names types and mask width" {
+ f:=SC_fixture();values:[32]u64;memory:[1]AgMemory;labels:=[1]AgLabel.[AgLabel.{name="x",type="u64"}];
+ public:=AG_check_classified(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],0,labels[..],false);
+ secret:=AG_check_classified(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],1,labels[..],false);
+ #assert public.error==0 && public.return_mask==0 && secret.error==0 && secret.return_mask==1;
+ #assert AG_check_classified(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],2,labels[..],false).error==SC_ENTRY;
+ labels[0].name="wrong";wrong:=AG_check_classified(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],0,labels[..],false);#assert wrong.error==SC_TYPE && wrong.unit== -1;
+ labels[0].name="x";labels[0].type="u32";#assert AG_check_classified(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],0,labels[..],false).error==SC_TYPE;
+ #assert AG_check_classified(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],0,labels[0..<0],false).error==SC_TYPE;
+}
+#test "classified public branches analyze both returns and protect prior bindings" {
+ f:=SC_fixture();values:[32]u64;memory:[1]AgMemory;labels:=[1]AgLabel.[AgLabel.{name="x",type="u64"}];
+ f.nodes[6]=ScNode.{kind=45,a=7,c=8,d=9};f.nodes[7]=ScNode.{kind=20,name="x"};
+ f.nodes[8]=ScNode.{kind=40,head=10};f.nodes[9]=ScNode.{kind=40,head=12};
+ f.nodes[10]=ScNode.{kind=44,a=11};f.nodes[11]=ScNode.{kind=16};
+ f.nodes[12]=ScNode.{kind=44,a=13};f.nodes[13]=ScNode.{kind=20,name="x"};
+ r:=AG_check_classified(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],0,labels[..],false);
+ #assert r.error==0 && r.return_mask==0;
+ state:[1]ScAudit;#assert AG_readonly_expr(f.nodes[..],13,state[..],0) && AG_readonly_block(f.nodes[..],8,state[..],0);
+ f.nodes[10]=ScNode.{kind=43,a=11,c=13,op=23};
+ r=AG_check_classified(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],0,labels[..],false);#assert r.error==SC_UNSUPPORTED;
+}
+#test "read-only expression scanner checks every operand and depth" {
+ nodes:[16]ScNode;state:[1]ScAudit;nodes[1]=ScNode.{kind=16};nodes[2]=ScNode.{kind=18};nodes[3]=ScNode.{kind=20};nodes[4]=ScNode.{kind=21};
+ #assert AG_readonly_expr(nodes[..],1,state[..],0) && AG_readonly_expr(nodes[..],2,state[..],0) && AG_readonly_expr(nodes[..],3,state[..],0);
+ #assert !AG_readonly_expr(nodes[..],0,state[..],0) && !AG_readonly_expr(nodes[..],4,state[..],0) && !AG_readonly_expr(nodes[..],1,state[..],32);
+ for kind:[3]u32.[22,25,30] {nodes[5]=ScNode.{kind=kind,a=1};#assert AG_readonly_expr(nodes[..],5,state[..],0);#assert AG_readonly_expr(nodes[..],5,state[..],30);#assert !AG_readonly_expr(nodes[..],5,state[..],31);nodes[5].a=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);}
+ for kind:[2]u32.[23,26] {nodes[5]=ScNode.{kind=kind,a=1,b=2};#assert AG_readonly_expr(nodes[..],5,state[..],0);#assert AG_readonly_expr(nodes[..],5,state[..],30);#assert !AG_readonly_expr(nodes[..],5,state[..],31);nodes[5].a=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);nodes[5].a=1;nodes[5].b=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);}
+ nodes[5]=ScNode.{kind=31,a=1,b=2,c=3};#assert AG_readonly_expr(nodes[..],5,state[..],0);#assert AG_readonly_expr(nodes[..],5,state[..],30);#assert !AG_readonly_expr(nodes[..],5,state[..],31);
+ nodes[5].a=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);nodes[5].a=1;nodes[5].b=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);nodes[5].b=2;nodes[5].c=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);
+ state[0].visits=262144;#assert !AG_readonly_expr(nodes[..],1,state[..],0) && state[0].error==SC_LIMIT;
+}
+#test "read-only loop scanner rejects writes calls and invalid structure" {
+ nodes:[16]ScNode;state:[1]ScAudit;nodes[1]=ScNode.{kind=40};nodes[3]=ScNode.{kind=16};nodes[4]=ScNode.{kind=21};nodes[5]=ScNode.{kind=40};
+ #assert AG_readonly_block(nodes[..],1,state[..],0) && !AG_readonly_block(nodes[..],0,state[..],0) && !AG_readonly_block(nodes[..],3,state[..],0) && !AG_readonly_block(nodes[..],1,state[..],16);
+ nodes[1].head=2;nodes[2]=ScNode.{kind=42};#assert AG_readonly_block(nodes[..],1,state[..],0);nodes[2].a=3;#assert AG_readonly_block(nodes[..],1,state[..],0);nodes[2].a=4;#assert !AG_readonly_block(nodes[..],1,state[..],0);
+ nodes[2]=ScNode.{kind=44,a=3};#assert AG_readonly_block(nodes[..],1,state[..],0);nodes[2].a=4;#assert !AG_readonly_block(nodes[..],1,state[..],0);
+ nodes[2]=ScNode.{kind=45,a=3,c=5};#assert AG_readonly_block(nodes[..],1,state[..],0);#assert AG_readonly_block(nodes[..],1,state[..],14);#assert !AG_readonly_block(nodes[..],1,state[..],15);
+ nodes[2].a=4;#assert !AG_readonly_block(nodes[..],1,state[..],0);nodes[2].a=3;nodes[2].c=3;#assert !AG_readonly_block(nodes[..],1,state[..],0);nodes[2].c=5;nodes[2].d=5;#assert AG_readonly_block(nodes[..],1,state[..],0);nodes[2].d=3;#assert !AG_readonly_block(nodes[..],1,state[..],0);
+ nodes[2]=ScNode.{kind=43};#assert !AG_readonly_block(nodes[..],1,state[..],0);
+ state[0].visits=262144;#assert !AG_readonly_block(nodes[..],1,state[..],0) && state[0].error==SC_LIMIT;
+}
+#test "public return joins preserve origins and protected scope" {
+ memory:[1]AgMemory;a:=AgBlock.{possible=true,value=AgValue.{mask=1,type=-1}};b:=AgBlock.{possible=true,returned=true,value=AgValue.{mask=2,type=-1}};
+ both:=AG_accumulate(a,b,memory[..]);#assert both.possible && both.returned && both.value.mask==3;
+ only:=AG_accumulate(AgBlock.{},b,memory[..]);#assert only.possible && only.returned && only.value.mask==2;
+ neither:=AG_accumulate(a,AgBlock.{},memory[..]);#assert neither.possible && !neither.returned && neither.value.mask==1;
+ f:=SC_fixture();values:[32]u64;env:[1]AgEnv;state:[1]ScAudit;env[0].count=1;env[0].binding_floor=1;memory[0].used=2;memory[0].protected_regions=1;memory[0].branch_active=3;
+ f.nodes[8]=ScNode.{kind=40,head=9};f.nodes[9]=ScNode.{kind=44,a=10};f.nodes[10]=ScNode.{kind=16};
+ empty:=AG_public_arm(f.nodes[..],values[..],f.roots[..],f.types[0..<1],0,env[..],memory[..],state[..],0);#assert !empty.possible;
+ result:=AG_public_arm(f.nodes[..],values[..],f.roots[..],f.types[0..<1],8,env[..],memory[..],state[..],0);
+ #assert result.possible && result.returned && env[0].count==1 && env[0].binding_floor==1 && memory[0].protected_regions==1 && memory[0].branch_active==3;
+ #assert AG_public_arm(f.nodes[..],values[..],f.roots[..],f.types[0..<1],8,env[..],memory[..],state[..],14).returned;
+ state[0]=ScAudit.{};discard:=AG_public_arm(f.nodes[..],values[..],f.roots[..],f.types[0..<1],8,env[..],memory[..],state[..],15);#assert state[0].error==SC_LIMIT;
+}
+#test "public arm protects prior scalar and aggregate bindings at their boundaries" {
+ f:=SC_fixture();values:[32]u64;memory:[1]AgMemory;state:[1]ScAudit;env:[1]AgEnv;
+ env[0].count=1;env[0].bindings[0]=AgBinding.{name="x",value=AgValue.{type=-1,known=true,lo=1,hi=1}};
+ env[0].binding_floor=1;AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==SC_UNSUPPORTED;
+ state[0]=ScAudit.{};env[0].binding_floor=0;env[0].bindings[0].value.region=2;memory[0].protected_regions=2;
+ AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==SC_UNSUPPORTED;
+ state[0]=ScAudit.{};memory[0].protected_regions=1;AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==0 && env[0].bindings[0].value.lo==2;
+}
+#test "read-only recursion accounts for every operand at its depth limit" {
+ n:[80]ScNode;s:[1]ScAudit;n[1]=ScNode.{kind=16};n[2]=ScNode.{kind=22,a=1};
+ for kind:[2]u32.[23,26] {
+  n[3]=ScNode.{kind=kind,a=2,b=1};#assert !AG_readonly_expr(n[..],3,s[..],30);
+  n[3].a=1;n[3].b=2;#assert !AG_readonly_expr(n[..],3,s[..],30);
+ }
+ n[3]=ScNode.{kind=31,a=2,b=1,c=1};#assert !AG_readonly_expr(n[..],3,s[..],30);
+ n[3].a=1;n[3].b=2;#assert !AG_readonly_expr(n[..],3,s[..],30);n[3].b=1;n[3].c=2;#assert !AG_readonly_expr(n[..],3,s[..],30);
+ // A 31-edge expression is accepted at depth zero but not at depth one.
+ for i:0..<31 {n[20+i]=ScNode.{kind=22,a=21+i};}n[51]=ScNode.{kind=16};
+ n[4]=ScNode.{kind=40,head=5};
+ n[5]=ScNode.{kind=42,a=20};#assert AG_readonly_block(n[..],4,s[..],0);
+ n[5]=ScNode.{kind=44,a=20};#assert AG_readonly_block(n[..],4,s[..],0);
+ n[5]=ScNode.{kind=45,a=20,c=6};n[6]=ScNode.{kind=40};#assert AG_readonly_block(n[..],4,s[..],0);
+ // Each branch depth must advance, including an optional else.
+ n[5]=ScNode.{kind=45,a=1,c=7,d=6};n[7]=ScNode.{kind=40,head=8};n[8]=ScNode.{kind=45,a=1,c=6};#assert !AG_readonly_block(n[..],4,s[..],14);
+ n[5].c=6;n[5].d=7;#assert !AG_readonly_block(n[..],4,s[..],14);
+ s[0]=ScAudit.{visits=262143};#assert !AG_readonly_block(n[..],4,s[..],0) && s[0].error==SC_LIMIT;
+}
+#test "public arm isolates prior bindings and restores fresh local scope" {
+ f:=SC_fixture();values:[32]u64;env:[1]AgEnv;memory:[1]AgMemory;state:[1]ScAudit;
+ env[0].procedure=2;env[0].count=1;env[0].bindings[0]=AgBinding.{name="x",value=AG_number(1)};
+ f.nodes[8]=ScNode.{kind=40,head=9};f.nodes[9]=ScNode.{kind=43,a=10,c=7,op=23,next=11};f.nodes[10]=ScNode.{kind=16};f.nodes[11]=ScNode.{kind=44,a=10};
+ fail:=AG_public_arm(f.nodes[..],values[..],f.roots[..],f.types[0..<1],8,env[..],memory[..],state[..],0);#assert state[0].error==SC_UNSUPPORTED && !fail.returned;
+ state[0]=ScAudit.{};f.nodes[9]=ScNode.{kind=42,name="y",line=1,a=10,next=11};f.types[1]=ScType.{procedure="candidate",procedure_line=1,name="y",line=1,role="local",type="u64"};
+ env[0].binding_floor=0;memory[0].used=2;memory[0].protected_regions=0;
+ pass:=AG_public_arm(f.nodes[..],values[..],f.roots[..],f.types[0..<2],8,env[..],memory[..],state[..],0);
+ #assert state[0].error==0 && pass.returned && env[0].count==1 && env[0].binding_floor==0 && memory[0].protected_regions==0;
+}
+#test "protected-binding boundary distinguishes equal slot and absent floor" {
+ f:=SC_fixture();values:[32]u64;memory:[1]AgMemory;state:[1]ScAudit;env:[1]AgEnv;
+ env[0].count=1;env[0].bindings[0]=AgBinding.{name="x",value=AgValue.{type=-1,known=true,lo=1,hi=1}};
+ env[0].binding_floor=0;AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==0 && env[0].bindings[0].value.lo==2;
+}
+#test "public loop possible return does not erase continuation" {
+ f:=SC_fixture();values:[32]u64;memory:[1]AgMemory;state:[1]ScAudit;env:[1]AgEnv;env[0].procedure=2;env[0].count=1;env[0].bindings[0]=AgBinding.{name="x",value=AgValue.{type=-1}};memory[0].classified=true;
+ f.nodes[6]=ScNode.{kind=47,name="i",a=16,b=17,c=18,next=23};f.nodes[16]=ScNode.{kind=16};f.nodes[17]=ScNode.{kind=16};values[17]=2;
+ f.nodes[18]=ScNode.{kind=40,head=19};f.nodes[19]=ScNode.{kind=45,a=7,c=20};f.nodes[20]=ScNode.{kind=40,head=21};f.nodes[21]=ScNode.{kind=44,a=22};f.nodes[22]=ScNode.{kind=16};values[22]=1;
+ f.nodes[23]=ScNode.{kind=44,a=24};f.nodes[24]=ScNode.{kind=16};f.types[1]=ScType.{procedure="candidate",procedure_line=1,name="i",role="loop",type="int"};
+ r:=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<2],4,env[..],memory[..],state[..],0);
+ #assert state[0].error==0 && r.returned && r.possible && r.value.known && r.value.lo==0 && r.value.hi==1;
+ env[0].count=1;memory[0].branch_active=1;state[0]=ScAudit.{};r=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<2],4,env[..],memory[..],state[..],0);#assert state[0].error==SC_UNSUPPORTED;
+}
+#test "one public arm return leaves the other continuation reachable" {
+ f:=SC_fixture();values:[32]u64;memory:[1]AgMemory;state:[1]ScAudit;env:[1]AgEnv;env[0].procedure=2;env[0].count=1;env[0].bindings[0]=AgBinding.{name="x",value=AgValue.{type=-1}};memory[0].classified=true;
+ f.nodes[6]=ScNode.{kind=45,a=7,c=8,next=12};f.nodes[8]=ScNode.{kind=40,head=9};f.nodes[9]=ScNode.{kind=44,a=10};f.nodes[10]=ScNode.{kind=16};values[10]=1;
+ f.nodes[12]=ScNode.{kind=44,a=13};f.nodes[13]=ScNode.{kind=16};
+ r:=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<1],4,env[..],memory[..],state[..],0);
+ #assert state[0].error==0 && r.returned && r.possible && r.value.known && r.value.lo==0 && r.value.hi==1;
+}
+#test "scanner checks each expression operand independently at the limit" {
+ n:[80]ScNode;s:[1]ScAudit;n[1]=ScNode.{kind=16};n[2]=ScNode.{kind=22,a=1};
+ for kind:[2]u32.[23,26] {n[3]=ScNode.{kind=kind,a=2,b=1};#assert !AG_readonly_expr(n[..],3,s[..],30);n[3].a=1;n[3].b=2;#assert !AG_readonly_expr(n[..],3,s[..],30);}
+ n[3]=ScNode.{kind=31,a=2,b=1,c=1};#assert !AG_readonly_expr(n[..],3,s[..],30);n[3].a=1;n[3].b=2;#assert !AG_readonly_expr(n[..],3,s[..],30);n[3].b=1;n[3].c=2;#assert !AG_readonly_expr(n[..],3,s[..],30);
+ n[1]=ScNode.{kind=21};n[4]=ScNode.{kind=40,head=5};n[5]=ScNode.{kind=42,a=1};#assert !AG_readonly_block(n[..],4,s[..],0);
+}
+#test "public arms reject a fresh view that aliases a prior region" {
+ f:=SC_fixture();values:[32]u64;memory:[1]AgMemory;state:[1]ScAudit;env:[1]AgEnv;
+ f.nodes[8]=ScNode.{kind=40,head=9};f.nodes[9]=ScNode.{kind=42,name="v",line=1,a=16,next=11};
+ f.nodes[11]=ScNode.{kind=43,a=10,c=18,op=23};f.nodes[10]=ScNode.{kind=16};f.nodes[14]=ScNode.{kind=3,b=3};f.nodes[15]=ScNode.{kind=2,a=19,b=3};
+ f.nodes[16]=ScNode.{kind=27,a=7};f.nodes[17]=ScNode.{kind=20,name="v"};f.nodes[18]=ScNode.{kind=26,a=17,b=10};f.nodes[19]=ScNode.{kind=16};values[19]=1;
+ f.types[1]=ScType.{procedure="candidate",procedure_line=1,name="v",line=1,role="local",type="[]u64"};
+ env[0].procedure=2;env[0].count=1;env[0].bindings[0]=AgBinding.{name="x",value=AgValue.{type=15,region=2,extent=1}};memory[0].used=2;
+ ignored:=AG_public_arm(f.nodes[..],values[..],f.roots[..],f.types[0..<2],8,env[..],memory[..],state[..],0);#assert state[0].error==SC_UNSUPPORTED && !memory[0].dirty[2];
+ state[0]=ScAudit.{};env[0].count=1;memory[0].protected_regions=0;ignored=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<2],8,env[..],memory[..],state[..],0);#assert state[0].error==0 && memory[0].dirty[2];
+}
+#test "public control joins cover else-only returns and definite loop returns" {
+ f:=SC_fixture();values:[32]u64;memory:[1]AgMemory;state:[1]ScAudit;env:[1]AgEnv;env[0].procedure=2;env[0].count=1;env[0].bindings[0]=AgBinding.{name="x",value=AgValue.{type=-1}};memory[0].classified=true;
+ f.nodes[6]=ScNode.{kind=45,a=7,c=11,d=8,next=12};f.nodes[11]=ScNode.{kind=40};f.nodes[8]=ScNode.{kind=40,head=9};f.nodes[9]=ScNode.{kind=44,a=10};f.nodes[10]=ScNode.{kind=16};values[10]=1;f.nodes[12]=ScNode.{kind=44,a=13};f.nodes[13]=ScNode.{kind=16};
+ r:=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<1],4,env[..],memory[..],state[..],0);#assert state[0].error==0 && r.returned && r.value.known && r.value.lo==0 && r.value.hi==1;
+ f.nodes[6]=ScNode.{kind=47,name="i",a=16,b=17,c=18,next=12};f.nodes[16]=ScNode.{kind=16};f.nodes[17]=ScNode.{kind=16};values[17]=2;f.nodes[18]=ScNode.{kind=40,head=9};f.types[1]=ScType.{procedure="candidate",procedure_line=1,name="i",role="loop",type="int"};
+ state[0]=ScAudit.{};r=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<2],4,env[..],memory[..],state[..],0);#assert state[0].error==0 && r.returned && r.value.known && r.value.lo==0 && r.value.hi==1;
+}
+#test "else scanner advances exactly one level" {
+ n:[12]ScNode;s:[1]ScAudit;n[1]=ScNode.{kind=16};n[2]=ScNode.{kind=40,head=3};n[3]=ScNode.{kind=45,a=1,c=4,d=4};n[4]=ScNode.{kind=40};
+ #assert AG_readonly_block(n[..],2,s[..],14) && !AG_readonly_block(n[..],2,s[..],15);
+}
+#test "unclassified entry rejects stray classification arguments" {
+ f:=SC_fixture();values:[32]u64;memory:[1]AgMemory;labels:=[1]AgLabel.[AgLabel.{name="x",type="u64"}];empty:[]AgLabel;
+ r:=AG_check_source(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],false,false,1,empty,false);#assert r.error==SC_ENTRY && r.unit== -1;
+ r=AG_check_source(f.nodes[..],values[..],f.roots[..],f.types[0..<1],"candidate",memory[..],false,false,0,labels[..],false);#assert r.error==SC_ENTRY && r.unit== -1;
+}
+#test "readonly scan starts at the actual loop body depth" {
+ f:=AG_fixture();env:[1]AgEnv;memory:[1]AgMemory;state:[1]ScAudit;env[0].procedure=2;env[0].count=1;env[0].bindings[0]=AgBinding.{name="x",value=AgValue.{type=12,region=2}};memory[0].used=2;memory[0].classified=true;
+ f.nodes[6]=ScNode.{kind=47,name="i",a=16,b=17,c=18};f.nodes[16]=ScNode.{kind=16};f.nodes[17]=ScNode.{kind=16};f.values[17]=2;f.nodes[18]=ScNode.{kind=40,head=20};f.nodes[60]=ScNode.{kind=18};f.values[60]=1;
+ for i:0..<15 {at:=20+2*i;f.nodes[at]=ScNode.{kind=45,a=60,c=at+1};f.nodes[at+1]=ScNode.{kind=40,head=ifx i<14 then at+2 else 0};}
+ f.types[1]=ScType.{procedure="candidate",procedure_line=1,name="i",role="loop",type="int"};
+ ignored:=AG_block(f.nodes[..],f.values[..],f.roots[..],f.types[0..<2],4,env[..],memory[..],state[..],0);#assert !memory[0].dirty[2];
+}
+AG_primitive :: (name:string)->int {if name=="u64" {return -1;}if name=="u32" {return -2;}if name=="bool" {return -3;}if name=="int" {return -4;}if name=="u8" {return -5;}return 0;}
+AG_type_limit :: ()->int {return 8;}
+AG_array_limit :: ()->int {return 1024;}
+AG_interval_limit :: ()->int {return 4096;}
+AG_interval :: (lo:int,hi:int)->bool {return lo>=0 && lo<=hi && hi<=AG_interval_limit();}
+AG_number :: (value:int)->AgValue {return AgValue.{type=-4,lo=value,hi=value,known=true};}
+AG_origin :: (value:AgValue,memory:[]AgMemory)->u64 {if value.region!=0 {return value.mask|memory[0].taint[value.region];}return value.mask;}
+AG_slot :: (env:[]AgEnv,name:string)->int {for i:0..<env[0].count {if env[0].bindings[i].name==name {return i;}}return -1;}
+// A cache belongs to one immutable AG_check graph. Its bounded overflow falls
+// back to the original scan. Both hits and scans consume the existing budget.
+AG_lookup_cached :: (state:[]ScAudit,name:string,kind:int)->int {
+ for i:0..<state[0].lookup_count {if !AG_tick(state,0) {return -1;}row:=state[0].lookups[i];if row.kind==kind && row.name==name {return row.id;}}
+ return -1;
+}
+AG_lookup_save :: (state:[]ScAudit,name:string,kind:int,id:int) {
+ if state[0].error!=0 || state[0].lookup_count>=128 {return;}
+ at:=state[0].lookup_count;state[0].lookups[at]=ScLookup.{name=name,kind=kind,id=id};state[0].lookup_count+=1;
+}
+AG_struct :: (nodes:[]ScNode,roots:[]int,name:string,state:[]ScAudit)->int {
+ cached:=AG_lookup_cached(state,name,2);if cached>=0 {return cached;}if state[0].error!=0 {return 0;}
+ found:=0;for root:roots {id:=nodes[root].head;while id!=0 {if !AG_tick(state,id) {return 0;}if nodes[id].kind==66 && nodes[id].name==name {if found!=0 {SC_fail(state,SC_GRAPH,id);return 0;}found=id;}id=nodes[id].next;}}AG_lookup_save(state,name,2,found);return found;
+}
+AG_type :: (nodes:[]ScNode,roots:[]int,id:int,state:[]ScAudit)->int {
+ if id<0 {if id>=-5 {return id;}SC_fail(state,SC_TYPE,0);return 0;}
+ n:=nodes[id];if n.kind==1 {p:=AG_primitive(n.name);if p!=0 {return p;}s:=AG_struct(nodes,roots,n.name,state);if s!=0 {return s;}}
+ else if n.kind==2 || n.kind==3 || n.kind==66 {return id;}SC_fail(state,SC_TYPE,id);return 0;
+}
+AG_element :: (nodes:[]ScNode,roots:[]int,type:int,state:[]ScAudit)->int {
+ if !SC_ref(type,nodes.count) || (nodes[type].kind!=2 && nodes[type].kind!=3) {SC_fail(state,SC_TYPE,0);return 0;}return AG_type(nodes,roots,nodes[type].b,state);
+}
+AG_length :: (nodes:[]ScNode,values:[]u64,type:int,state:[]ScAudit)->int {
+ if SC_ref(type,nodes.count) && nodes[type].kind==2 && nodes[nodes[type].a].kind==16 && values[nodes[type].a]>=1 && values[nodes[type].a]<=cast(u64)AG_array_limit() {return cast(int)values[nodes[type].a];}SC_fail(state,SC_TYPE,0);return 0;
+}
+AG_field :: (nodes:[]ScNode,type:int,name:string,state:[]ScAudit)->int {
+ if !SC_ref(type,nodes.count) || nodes[type].kind!=66 {SC_fail(state,SC_TYPE,0);return 0;}field:=nodes[type].head;
+ while field!=0 {if !AG_tick(state,field) {return 0;}if nodes[field].kind!=69 {SC_fail(state,SC_TYPE,field);return 0;}if nodes[field].name==name {return field;}field=nodes[field].next;}SC_fail(state,SC_TYPE,type);return 0;
+}
+AG_match :: (nodes:[]ScNode,values:[]u64,roots:[]int,type:int,name:string,state:[]ScAudit,depth:int)->bool {
+ if depth>=AG_type_limit() {return false;}resolved:=AG_type(nodes,roots,type,state);if resolved<0 {return AG_primitive(name)==resolved;}
+ n:=nodes[resolved];if n.kind==66 {return name==n.name;}
+ if name.count<3 || name[0]!=91 {return false;}at:=1;length:=0;
+ while at<name.count && name[at]>=48 && name[at]<=57 {digit:=cast(int)name[at]-48;if length>(AG_array_limit()-digit)/10 {SC_fail(state,SC_LIMIT,0);return false;}length=length*10+digit;at+=1;}
+ if at>=name.count || name[at]!=93 {return false;}
+ if n.kind==2 {if at==1 || AG_length(nodes,values,resolved,state)!=length {return false;}}
+ else if n.kind!=3 || at!=1 {return false;}
+ inner:=at+1;if inner<name.count && name[inner]==32 {inner+=1;}return AG_match(nodes,values,roots,n.b,name[inner..<name.count],state,depth+1);
+}
+AG_resolved :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,p:ScNode,n:ScNode,role:string,state:[]ScAudit)->int {
+ count:=0;name:string;for row:types {if row.unit==p.unit && row.procedure==p.name && row.procedure_line==p.line && row.name==n.name && row.line==n.line && row.role==role {count+=1;name=row.type;}}
+ if count!=1 {SC_fail(state,SC_TYPE,0);return 0;}primitive:=AG_primitive(name);if primitive!=0 {return primitive;}structure:=AG_struct(nodes,roots,name,state);if structure!=0 {return structure;}
+ for node,index:nodes {if node.kind==2 || node.kind==3 {if AG_match(nodes,values,roots,index,name,state,0) {return index;}}}SC_fail(state,SC_TYPE,0);return 0;
+}
+AG_new :: (nodes:[]ScNode,values:[]u64,roots:[]int,value:AgValue,type:int,memory:[]AgMemory,state:[]ScAudit)->AgValue {
+ result:=value;result.mask=AG_origin(value,memory);result.type=AG_type(nodes,roots,type,state);result.region=0;result.view=false;
+ // A copied or borrowed aggregate cannot recover facts from its original
+ // literal after any write through its source region, even a public write.
+ if value.region!=0 && memory[0].dirty[value.region] {result.literal=0;}
+ if !AG_valid_type(nodes,values,roots,result.type,result.mask!=0,state,0) {SC_fail(state,SC_TYPE,0);return result;}
+ if AG_primitive_name(result.type)=="" {n:=nodes[result.type];if n.kind==3 {if value.region==0 || value.extent<1 {SC_fail(state,SC_UNSUPPORTED,type);return result;}result.region=value.region;result.view=true;}
+ else {if memory[0].used==4095 {SC_fail(state,SC_LIMIT,type);return result;}memory[0].used+=1;result.region=memory[0].used;memory[0].taint[result.region]=result.mask;if n.kind==2 {result.extent=AG_length(nodes,values,result.type,state);}}}
+ return result;
+}
+AG_bind :: (env:[]AgEnv,name:string,value:AgValue,state:[]ScAudit,where:int) {
+ if env[0].count==64 || AG_slot(env,name)>=0 {SC_fail(state,SC_UNSUPPORTED,where);return;}at:=env[0].count;env[0].bindings[at]=AgBinding.{name=name,value=value};env[0].count+=1;
+}
+AG_guard :: (nodes:[]ScNode,memory:[]AgMemory,state:[]ScAudit,id:int,mask:u64) {
+ for i:0..<memory[0].guard_count {if memory[0].guards[i].node==id {memory[0].guards[i].mask|=mask;return;}}
+ if memory[0].guard_count==256 {SC_fail(state,SC_LIMIT,id);return;}n:=nodes[id];at:=memory[0].guard_count;memory[0].guards[at]=AgGuard.{node=id,unit=n.unit,line=n.line,column=n.column,mask=mask,kind=1};memory[0].guard_count+=1;
+}
+AG_union :: (a:AgValue,b:AgValue,memory:[]AgMemory)->AgValue {
+ r:=a;r.mask=AG_origin(a,memory)|AG_origin(b,memory);r.region=0;r.literal=0;bounds:=AG_join_bounds(a,b);r.known=bounds.known;r.lo=bounds.lo;r.hi=bounds.hi;return r;
+}
+
+AG_valid_type :: (nodes:[]ScNode,values:[]u64,roots:[]int,type:int,secret:bool,state:[]ScAudit,depth:int)->bool {
+ if depth>=AG_type_limit() {return false;}t:=AG_type(nodes,roots,type,state);if t<0 {return t!=-4 || !secret;}
+ n:=nodes[t];if n.kind==2 {length:=AG_length(nodes,values,t,state);return length>0 && AG_valid_type(nodes,values,roots,n.b,secret,state,depth+1);}
+ if n.kind==3 {if depth!=0 {return false;}return AG_valid_type(nodes,values,roots,n.b,secret,state,depth+1);}
+ field:=n.head;count:=0;while field!=0 {if !AG_tick(state,field) {return false;}if nodes[field].kind!=69 {return false;}count+=1;if count>64 {return false;}if !AG_valid_type(nodes,values,roots,nodes[field].a,secret,state,depth+1) {return false;}field=nodes[field].next;}return count>0;
+}
+
+AG_binary :: (a:AgValue,b:AgValue,op:u32,memory:[]AgMemory,state:[]ScAudit,id:int)->AgValue {
+ r:=AgValue.{mask=AG_origin(a,memory)|AG_origin(b,memory),type=a.type};if a.type==-4 {r.type=b.type;}
+ if (op==50 || op==51) && AG_origin(a,memory)!=0 {SC_fail(state,SC_BRANCH,id);}
+ if (op==42 || op==43) && AG_origin(b,memory)!=0 {SC_fail(state,SC_SHIFT,id);}
+ if (op==37 || op==38) && r.mask!=0 {SC_fail(state,SC_UNSUPPORTED,id);}
+ if op<34 || op>51 {SC_fail(state,SC_UNSUPPORTED,id);return r;}
+ if op>=44 {r.type=-3;r.known=true;r.hi=1;}
+ if a.known && b.known {
+  if op==34 {r.lo=a.lo+b.lo;r.hi=a.hi+b.hi;r.known=AG_interval(r.lo,r.hi);}
+  else if op==35 {r.lo=a.lo-b.hi;r.hi=a.hi-b.lo;r.known=AG_interval(r.lo,r.hi);}
+  else if op==36 {r.lo=a.lo*b.lo;r.hi=a.hi*b.hi;r.known=AG_interval(r.lo,r.hi);}
+  else if op==37 && b.lo>0 {r.lo=a.lo/b.hi;r.hi=a.hi/b.lo;r.known=AG_interval(r.lo,r.hi);}
+  else if op==38 && b.lo>0 {r.hi=b.hi-1;r.known=AG_interval(r.lo,r.hi);}
+  else if op==44 {if a.lo==a.hi && b.lo==b.hi && a.lo==b.lo {r.lo=1;}else if a.hi<b.lo || b.hi<a.lo {r.hi=0;}}
+  else if op==45 {if a.lo==a.hi && b.lo==b.hi && a.lo==b.lo {r.hi=0;}else if a.hi<b.lo || b.hi<a.lo {r.lo=1;}}
+  else if op==46 {if a.hi<b.lo {r.lo=1;}else if a.lo>=b.hi {r.hi=0;}}
+  else if op==47 {if a.hi<=b.lo {r.lo=1;}else if a.lo>b.hi {r.hi=0;}}
+  else if op==48 {if a.lo>b.hi {r.lo=1;}else if a.hi<=b.lo {r.hi=0;}}
+  else if op==49 {if a.lo>=b.hi {r.lo=1;}else if a.hi<b.lo {r.hi=0;}}
+  else if op==50 {if a.lo!=0 && b.lo!=0 {r.lo=1;}else if a.hi==0 || b.hi==0 {r.hi=0;}}
+  else if op==51 {if a.lo!=0 || b.lo!=0 {r.lo=1;}else if a.hi==0 && b.hi==0 {r.hi=0;}}
+ }
+ // Byte arithmetic can wrap in release builds. Bounds outside the byte range
+ // cannot be used to eliminate a branch or establish an index.
+ if r.type==-5 && r.known && r.hi>255 {r.known=false;}
+ return r;
+}
+AG_literal_field :: (nodes:[]ScNode,values:[]u64,id:int,field:ScNode,state:[]ScAudit,depth:int)->AgValue {
+ if depth>=AG_type_limit()-1 || !AG_tick(state,id) {SC_fail(state,SC_LIMIT,id);return AgValue.{};}n:=nodes[id];
+ if n.kind==29 {at:=n.head;first:=true;result:AgValue;while at!=0 {item:=AG_literal_field(nodes,values,at,field,state,depth+1);if first {result=item;first=false;}else {bounds:=AG_join_bounds(result,item);result.known=bounds.known;result.lo=bounds.lo;result.hi=bounds.hi;}at=nodes[at].next;}return result;}
+ if n.kind!=28 {SC_fail(state,SC_GRAPH,id);return AgValue.{};}at:=n.head;
+ while at!=0 {if !AG_tick(state,at) {return AgValue.{};}if nodes[at].kind!=71 {SC_fail(state,SC_GRAPH,at);return AgValue.{};}if nodes[at].name==field.name {v:=nodes[at].a;if nodes[v].kind==16 && values[v]<=cast(u64)AG_interval_limit() {return AG_number(cast(int)values[v]);}return AgValue.{};}at=nodes[at].next;}
+ if field.b==0 {return AG_number(0);}return AgValue.{};
+}
+AG_expr :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit,depth:int)->AgValue {
+ if !AG_tick(state,id) {return AgValue.{};}if id==0 || depth>=16 {SC_fail(state,SC_LIMIT,id);return AgValue.{};}n:=nodes[id];
+ if n.kind==16 || n.kind==18 {if n.kind==18 && values[id]>1 {SC_fail(state,SC_GRAPH,id);return AgValue.{};}r:=AgValue.{type=ifx n.kind==18 then -3 else -4};if values[id]<=cast(u64)AG_interval_limit() {r.known=true;r.lo=cast(int)values[id];r.hi=r.lo;}return r;}
+ // Only the checked-source driver may attest that the pinned compiler has
+ // successfully evaluated the same source graph. No value or type is guessed.
+ if n.kind==24 {if !memory[0].compiled_runs {SC_fail(state,SC_UNSUPPORTED,id);}return AgValue.{};}
+ if n.kind==20 {slot:=AG_slot(env,n.name);if slot>=0 {return env[0].bindings[slot].value;}d:=AG_decl(nodes,roots,n.name,state);if nodes[d].kind!=65 {SC_fail(state,SC_CALL,id);return AgValue.{};}empty:[1]AgEnv;return AG_expr(nodes,values,roots,types,nodes[d].a,empty[..],memory,state,depth+1);}
+ if n.kind==22 {a:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);r:=a;r.mask=AG_origin(a,memory);r.region=0;r.literal=0;if n.op!=35 && n.op!=52 {SC_fail(state,SC_UNSUPPORTED,id);return r;}
+  if n.op==52 {r.type=-3;if a.known {r.lo=ifx a.hi==0 then 1 else 0;r.hi=ifx a.lo!=0 then 0 else 1;}}
+  else {r.known=false;}return r;}
+ if n.kind==23 {a:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);b:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,depth+1);return AG_binary(a,b,n.op,memory,state,id);}
+ if n.kind==30 {r:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);if AG_primitive_name(r.type)=="" {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}r.mask=AG_origin(r,memory);r.region=0;r.type=AG_type(nodes,roots,n.d,state);if r.type==-5 && r.known && (r.lo<0 || r.hi>255) {r.known=false;}return r;}
+ if n.kind==31 {condition:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);if AG_origin(condition,memory)!=0 {SC_fail(state,SC_BRANCH,id);return AgValue.{};}
+  a:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,depth+1);b:=AG_expr(nodes,values,roots,types,n.c,env,memory,state,depth+1);if condition.known && condition.lo==condition.hi {return ifx condition.lo!=0 then a else b;}return AG_union(a,b,memory);}
+ if n.kind==25 {base:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);
+  if SC_ref(base.type,nodes.count) && (nodes[base.type].kind==2 || nodes[base.type].kind==3) && n.name=="count" {if base.extent<1 {SC_fail(state,SC_TYPE,id);return AgValue.{};}return AG_number(base.extent);}
+  field:=AG_field(nodes,base.type,n.name,state);r:=base;r.mask=AG_origin(base,memory);r.type=AG_type(nodes,roots,nodes[field].a,state);r.literal=0;r.known=false;r.view=false;r.extent=0;
+  if SC_ref(r.type,nodes.count) && nodes[r.type].kind==2 {r.extent=AG_length(nodes,values,r.type,state);}
+  if base.literal!=0 && (base.region==0 || !memory[0].dirty[base.region]) {bounds:=AG_literal_field(nodes,values,base.literal,nodes[field],state,0);r.known=bounds.known;r.lo=bounds.lo;r.hi=bounds.hi;}return r;}
+ if n.kind==26 || n.kind==27 {base:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);lo:=AG_number(0);if n.b!=0 {lo=AG_expr(nodes,values,roots,types,n.b,env,memory,state,depth+1);}
+  if AG_origin(lo,memory)!=0 {SC_fail(state,SC_INDEX,id);return AgValue.{};}element:=AG_element(nodes,roots,base.type,state);if base.extent<1 {SC_fail(state,SC_TYPE,id);return AgValue.{};}
+  if n.kind==26 {if !lo.known || lo.lo<0 || lo.hi>=base.extent {SC_fail(state,SC_LIMIT,id);}r:=base;r.mask=AG_origin(base,memory);r.type=element;r.extent=0;r.view=false;r.known=false;return r;}
+  hi:=AG_number(base.extent);if n.c!=0 {hi=AG_expr(nodes,values,roots,types,n.c,env,memory,state,depth+1);}if AG_origin(hi,memory)!=0 {SC_fail(state,SC_INDEX,id);}
+  if !lo.known || !hi.known || lo.lo!=lo.hi || hi.lo!=hi.hi || lo.lo<0 || hi.lo<lo.lo || hi.lo>base.extent || base.region==0 {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}
+  r:=base;r.mask=AG_origin(base,memory);r.extent=hi.lo-lo.lo;r.view=true;r.literal=0;r.known=false;return r;}
+ if n.kind==28 || n.kind==29 {r:=AgValue.{type=AG_type(nodes,roots,n.d,state),literal=id};at:=n.head;
+  while at!=0 {if !AG_tick(state,at) {break;}if n.kind==28 && nodes[at].kind!=71 {SC_fail(state,SC_GRAPH,at);break;}value:=ifx n.kind==28 then nodes[at].a else at;item:=AG_expr(nodes,values,roots,types,value,env,memory,state,depth+1);r.mask|=AG_origin(item,memory);at=nodes[at].next;}
+  if !AG_valid_type(nodes,values,roots,r.type,r.mask!=0,state,0) {SC_fail(state,SC_TYPE,id);}if n.kind==29 {r.extent=AG_length(nodes,values,r.type,state);}return r;}
+ if n.kind==21 {return AG_call(nodes,values,roots,types,id,env,memory,state,depth+1);}
+ SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};
+}
+AG_public_only :: (name:string)->bool {return name.count>=7 && name[name.count-7..<name.count]=="_public";}
+AG_call :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit,depth:int)->AgValue {
+ n:=nodes[id];if SC_vartime(n.name) || (AG_public_only(n.name) && !memory[0].public_views) {SC_fail(state,SC_VARTIME,id);return AgValue.{};}args:[8]AgValue;count:=0;at:=n.head;
+ while at!=0 {if count==8 {SC_fail(state,SC_LIMIT,id);return AgValue.{};}args[count]=AG_expr(nodes,values,roots,types,at,env,memory,state,depth);count+=1;at=nodes[at].next;if state[0].error!=0 {return AgValue.{};}}
+ d:=AG_decl(nodes,roots,n.name,state);builtin:=SC_builtin(n.name);if AG_slot(env,n.name)>=0 {SC_fail(state,SC_CALL,id);return AgValue.{};}
+ if builtin!=0 {
+  if d!=0 || count!=ifx builtin==1 then 1 else 2 {SC_fail(state,SC_CALL,id);return AgValue.{};}
+  r:=args[0];r.mask=AG_origin(r,memory);r.region=0;r.known=false;r.literal=0;
+  if builtin!=1 {r.mask|=AG_origin(args[1],memory);if builtin==3 && AG_origin(args[1],memory)!=0 {SC_fail(state,SC_SHIFT,id);}}return r;
+ }
+ if nodes[d].kind!=64 {SC_fail(state,SC_CALL,id);return AgValue.{};}return AG_procedure(nodes,values,roots,types,d,args[0..<count],memory,state);
+}
+AG_target_root :: (nodes:[]ScNode,id:int,state:[]ScAudit)->int {
+ at:=id;for i:0..<16 {if !AG_tick(state,at) {return 0;}if nodes[at].kind==20 {return at;}if nodes[at].kind!=25 && nodes[at].kind!=26 {SC_fail(state,SC_UNSUPPORTED,at);return 0;}at=nodes[at].a;}SC_fail(state,SC_LIMIT,id);return 0;
+}
+AG_write :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,rhs:AgValue,op:u32,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit) {
+ target:=AG_expr(nodes,values,roots,types,id,env,memory,state,0);mask:=AG_origin(rhs,memory);
+ if op<23 || op>33 {SC_fail(state,SC_UNSUPPORTED,id);return;}
+ if (op==32 || op==33) && mask!=0 {SC_fail(state,SC_SHIFT,id);}
+ if (op==27 || op==28) && (mask|AG_origin(target,memory))!=0 {SC_fail(state,SC_UNSUPPORTED,id);}
+ root:=AG_target_root(nodes,id,state);slot:=AG_slot(env,nodes[root].name);if slot<0 {SC_fail(state,SC_CALL,id);return;}if env[0].bindings[slot].induction {SC_fail(state,ifx mask!=0 then SC_BRANCH else SC_UNSUPPORTED,id);return;}
+ if slot<env[0].binding_floor || (target.region!=0 && target.region<=memory[0].protected_regions) {SC_fail(state,SC_UNSUPPORTED,id);return;}
+ if nodes[id].kind==20 && target.view {SC_fail(state,SC_UNSUPPORTED,id);return;}
+ if nodes[id].kind==20 && AG_primitive_name(target.type)!="" {r:=rhs;r.mask=mask;r.region=0;r.literal=0;if op!=23 {r=AG_binary(target,rhs,op+10,memory,state,id);}
+  r.type=target.type;env[0].bindings[slot].value=r;return;}
+ if target.region==0 || memory[0].readonly[target.region] {SC_fail(state,SC_UNSUPPORTED,id);return;}
+ memory[0].taint[target.region]|=mask;memory[0].dirty[target.region]=true;
+}
+// Before a loop, conservatively taint writable outer scalars and all outer
+// aggregate regions by all incoming data. This over-approximates backedges and
+// direct-callee view writes, rather than trusting one iteration as a fixed point.
+AG_loop_marks :: (nodes:[]ScNode,id:int,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit,mask:u64,depth:int) {
+ if depth>=16 || !AG_tick(state,id) {SC_fail(state,SC_LIMIT,id);return;}n:=nodes[id];
+ if n.kind==43 {root:=AG_target_root(nodes,n.c,state);slot:=AG_slot(env,nodes[root].name);if slot>=0 {env[0].bindings[slot].value.mask|=mask;env[0].bindings[slot].value.known=false;}}
+ if n.kind==40 {at:=n.head;while at!=0 {AG_loop_marks(nodes,at,env,memory,state,mask,depth+1);at=nodes[at].next;}}
+ else if n.kind==47 || n.kind==45 {AG_loop_marks(nodes,n.c,env,memory,state,mask,depth+1);if n.d!=0 {AG_loop_marks(nodes,n.d,env,memory,state,mask,depth+1);}}
+}
+// A deliberately narrow read-only loop subset. Calls and writes refuse this
+// optimization; the existing conservative loop analysis still handles them.
+AG_readonly_expr :: (nodes:[]ScNode,id:int,state:[]ScAudit,depth:int)->bool {
+ if id==0 || depth>=32 || !AG_tick(state,id) {return false;}n:=nodes[id];
+ if n.kind==16 || n.kind==18 || n.kind==20 {return true;}
+ if n.kind==22 || n.kind==25 || n.kind==30 {return AG_readonly_expr(nodes,n.a,state,depth+1);}
+ if n.kind==23 || n.kind==26 {return AG_readonly_expr(nodes,n.a,state,depth+1) && AG_readonly_expr(nodes,n.b,state,depth+1);}
+ if n.kind==31 {return AG_readonly_expr(nodes,n.a,state,depth+1) && AG_readonly_expr(nodes,n.b,state,depth+1) && AG_readonly_expr(nodes,n.c,state,depth+1);}
+ return false;
+}
+AG_readonly_block :: (nodes:[]ScNode,id:int,state:[]ScAudit,depth:int)->bool {
+ if id==0 || depth>=16 || !AG_tick(state,id) || nodes[id].kind!=40 {return false;}
+ at:=nodes[id].head;while at!=0 {if !AG_tick(state,at) {return false;}n:=nodes[at];
+  if n.kind==42 {if n.a!=0 && !AG_readonly_expr(nodes,n.a,state,0) {return false;}}
+  else if n.kind==44 {if !AG_readonly_expr(nodes,n.a,state,0) {return false;}}
+  else if n.kind==45 {if !AG_readonly_expr(nodes,n.a,state,0) || !AG_readonly_block(nodes,n.c,state,depth+1) {return false;}if n.d!=0 && !AG_readonly_block(nodes,n.d,state,depth+1) {return false;}}
+  else {return false;}at=n.next;
+ }return true;
+}
+AG_accumulate :: (base:AgBlock,part:AgBlock,memory:[]AgMemory)->AgBlock {
+ r:=base;if part.possible {if r.possible {r.value=AG_union(r.value,part.value,memory);}else {r.value=part.value;}r.possible=true;}r.returned=part.returned;return r;
+}
+// Unknown public arms may create and mutate fresh locals only. Pre-existing
+// bindings and regions, including aliases through calls, remain protected.
+AG_public_arm :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit,depth:int)->AgBlock {
+ if id==0 {return AgBlock.{};}saved:=env[0].count;old_binding:=env[0].binding_floor;old_region:=memory[0].protected_regions;
+ env[0].binding_floor=saved;memory[0].protected_regions=memory[0].used;memory[0].branch_active+=1;
+ part:=AG_block(nodes,values,roots,types,id,env,memory,state,depth+1);
+ memory[0].branch_active-=1;memory[0].protected_regions=old_region;env[0].binding_floor=old_binding;env[0].count=saved;return part;
+}
+AG_block :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit,depth:int)->AgBlock {
+ if depth>=16 || !AG_tick(state,id) {SC_fail(state,SC_LIMIT,id);return AgBlock.{};}if nodes[id].kind!=40 {SC_fail(state,SC_UNSUPPORTED,id);return AgBlock.{};}
+ at:=nodes[id].head;result:AgBlock;
+ while at!=0 && state[0].error==0 {if !AG_tick(state,at) {break;}n:=nodes[at];if result.returned {SC_fail(state,SC_UNSUPPORTED,at);break;}
+  if n.kind==42 {if n.flag {SC_fail(state,SC_UNSUPPORTED,at);break;}type:=AG_resolved(nodes,values,roots,types,nodes[env[0].procedure],n,"local",state);r:=AG_number(0);if n.a!=0 {r=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);}r=AG_new(nodes,values,roots,r,type,memory,state);AG_bind(env,n.name,r,state,at);}
+  else if n.kind==43 {r:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);AG_write(nodes,values,roots,types,n.c,r,n.op,env,memory,state);}
+  else if n.kind==44 {value:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);part:=AgBlock.{value=value,returned=true,possible=true};result=AG_accumulate(result,part,memory);}
+  else if n.kind==52 {r:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);mask:=AG_origin(r,memory);if mask==0 && r.known && r.hi==0 {SC_fail(state,SC_UNSUPPORTED,at);}else if mask!=0 || !r.known || r.lo!=1 {AG_guard(nodes,memory,state,at,mask);}}
+  else if n.kind==45 {condition:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);if AG_origin(condition,memory)!=0 {SC_fail(state,SC_BRANCH,at);break;}
+   if !condition.known || condition.lo!=condition.hi {
+    if !memory[0].classified {SC_fail(state,SC_UNSUPPORTED,at);break;}
+    yes:=AG_public_arm(nodes,values,roots,types,n.c,env,memory,state,depth);no:=AG_public_arm(nodes,values,roots,types,n.d,env,memory,state,depth);
+    joined:=AG_accumulate(yes,no,memory);joined.returned=yes.returned && no.returned;result=AG_accumulate(result,joined,memory);
+   }else {branch:=ifx condition.lo!=0 then n.c else n.d;if branch!=0 {saved:=env[0].count;if nodes[branch].kind!=40 {SC_fail(state,SC_UNSUPPORTED,branch);break;}part:=AG_block(nodes,values,roots,types,branch,env,memory,state,depth+1);env[0].count=saved;result=AG_accumulate(result,part,memory);}}}
+  else if n.kind==46 {condition:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);SC_fail(state,ifx AG_origin(condition,memory)!=0 then SC_BRANCH else SC_UNSUPPORTED,at);}
+  else if n.kind==47 {if memory[0].branch_active!=0 {SC_fail(state,SC_UNSUPPORTED,at);break;}start:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);end:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,0);
+   if (AG_origin(start,memory)|AG_origin(end,memory))!=0 {SC_fail(state,SC_BRANCH,at);break;}
+   if !start.known || !end.known || !AG_interval(start.lo,end.hi) {SC_fail(state,SC_LIMIT,at);break;}
+   // The body is analyzed once; it cannot represent the unchanged state of a
+   // zero-trip execution. Refuse unless every admitted range is nonempty.
+   if start.hi>=end.lo {SC_fail(state,SC_UNSUPPORTED,at);break;}
+   readonly:=false;if memory[0].classified {readonly=AG_readonly_block(nodes,n.c,state,0);}
+   incoming:=cast(u64)0;for i:0..<env[0].count {incoming|=AG_origin(env[0].bindings[i].value,memory);}
+   if !readonly {for i:0..<env[0].count {region:=env[0].bindings[i].value.region;if region!=0 {memory[0].taint[region]|=incoming;memory[0].dirty[region]=true;}}}
+   AG_loop_marks(nodes,n.c,env,memory,state,incoming,0);saved:=env[0].count;
+   loop_type:=AG_resolved(nodes,values,roots,types,nodes[env[0].procedure],n,"loop",state);if loop_type!=-4 {SC_fail(state,SC_TYPE,at);break;}
+   loop:=AgValue.{type=loop_type,lo=start.lo,hi=end.hi-1,known=true};AG_bind(env,n.name,loop,state,at);if env[0].count>saved {env[0].bindings[saved].induction=true;}
+   part:=AG_block(nodes,values,roots,types,n.c,env,memory,state,depth+1);env[0].count=saved;if part.possible {if !readonly {SC_fail(state,SC_UNSUPPORTED,at);}else {part.returned=false;result=AG_accumulate(result,part,memory);}}
+  }
+  else {SC_fail(state,SC_UNSUPPORTED,at);}at=n.next;
+ }
+ return result;
+}
+AG_memo_equal :: (a:AgValue,b:AgValue)->bool {
+ return a.mask==b.mask && a.type==b.type && a.literal==b.literal && a.lo==b.lo && a.hi==b.hi && a.known==b.known && a.extent==b.extent;
+}
+AG_memo_value :: (value:AgValue)->AgValue {
+ return AgValue.{mask=value.mask,type=value.type,literal=value.literal,lo=value.lo,hi=value.hi,known=value.known,extent=value.extent};
+}
+AG_memo_scope :: (memory:[]AgMemory,level:int,closure:u64,height:int) {
+ if level>0 {memory[0].scope[level-1]|=closure;if memory[0].height[level-1]<=height {memory[0].height[level-1]=height+1;}}
+}
+AG_procedure :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,args:[]AgValue,memory:[]AgMemory,state:[]ScAudit)->AgValue {
+ if !AG_tick(state,id) {return AgValue.{};}if state[0].depth==16 || args.count>8 {SC_fail(state,SC_LIMIT,id);return AgValue.{};}
+ for i:0..<state[0].depth {if state[0].stack[i]==id {SC_fail(state,SC_RECURSION,id);return AgValue.{};}}
+ p:=nodes[id];if p.kind!=64 || p.flag2 {SC_fail(state,SC_CALL,id);return AgValue.{};}if SC_vartime(p.name) {SC_fail(state,SC_VARTIME,id);return AgValue.{};}
+ if AG_public_only(p.name) {if !memory[0].public_views {SC_fail(state,SC_VARTIME,id);return AgValue.{};}for arg:args {if AG_origin(arg,memory)!=0 {SC_fail(state,SC_VARTIME,id);return AgValue.{};}}}
+ seen:=-1;for i:0..<state[0].count {if state[0].seen[i]==id {seen=i;}}if seen<0 {if state[0].count==64 {SC_fail(state,SC_LIMIT,id);return AgValue.{};}seen=state[0].count;state[0].seen[seen]=id;state[0].count+=1;}
+ level:=state[0].depth;state[0].stack[level]=id;state[0].depth+=1;memory[0].scope[level]=cast(u64)1<<seen;memory[0].height[level]=1;env:=[1]AgEnv.[AgEnv.{procedure=id}];at:=p.head;count:=0;keys:[8]AgValue;cacheable:=true;
+ while at!=0 {if !AG_tick(state,at) {return AgValue.{};}if count>=args.count || nodes[at].kind!=68 {SC_fail(state,SC_CALL,at);return AgValue.{};}
+  type:=AG_resolved(nodes,values,roots,types,p,nodes[at],"parameter",state);if !AG_match(nodes,values,roots,nodes[at].a,AG_parameter_name(types,p,nodes[at]),state,0) {SC_fail(state,SC_TYPE,at);}
+  value:=AG_new(nodes,values,roots,args[count],type,memory,state);AG_bind(env[..],nodes[at].name,value,state,at);if value.view || args[count].view {cacheable=false;}keys[count]=AG_memo_value(value);count+=1;at=nodes[at].next;
+ }
+ if count!=args.count {SC_fail(state,SC_CALL,id);return AgValue.{};}
+ if cacheable && state[0].error==0 {
+  ancestors:=cast(u64)0;for i:0..<level {for j:0..<state[0].count {if state[0].seen[j]==state[0].stack[i] {ancestors|=cast(u64)1<<j;}}}
+  for i:0..<memory[0].memo_count {if !AG_tick(state,id) {break;}memo:=memory[0].memo[i];if memo.procedure!=id || memo.count!=count || (memo.closure&ancestors)!=0 || level+memo.height>16 {continue;}
+   match:=true;for j:0..<count {if !AG_tick(state,id) {return AgValue.{};}if !AG_memo_equal(memo.args[j],keys[j]) {match=false;break;}}
+   if match {result:=AG_new(nodes,values,roots,memo.result,p.a,memory,state);AG_memo_scope(memory,level,memo.closure,memo.height);state[0].depth-=1;return result;}
+  }
+ }
+ block:=AG_block(nodes,values,roots,types,p.b,env[..],memory,state,0);if !block.returned {SC_fail(state,SC_UNSUPPORTED,id);}
+ result:=AG_new(nodes,values,roots,block.value,p.a,memory,state);if result.view {SC_fail(state,SC_UNSUPPORTED,id);}
+ if cacheable && state[0].error==0 && memory[0].memo_count<128 {at_memo:=memory[0].memo_count;memory[0].memo_count+=1;memory[0].memo[at_memo].procedure=id;memory[0].memo[at_memo].count=count;memory[0].memo[at_memo].args=keys;memory[0].memo[at_memo].result=AG_memo_value(result);memory[0].memo[at_memo].closure=memory[0].scope[level];memory[0].memo[at_memo].height=memory[0].height[level];}
+ AG_memo_scope(memory,level,memory[0].scope[level],memory[0].height[level]);state[0].depth-=1;return result;
+}
+AG_primitive_name :: (type:int)->string {if type==-1 {return "u64";}if type==-2 {return "u32";}if type==-3 {return "bool";}if type==-4 {return "int";}if type==-5 {return "u8";}return "";}
+AG_parameter_name :: (types:[]ScType,p:ScNode,n:ScNode)->string {for t:types {if t.unit==p.unit && t.procedure==p.name && t.procedure_line==p.line && t.name==n.name && t.line==n.line && t.role=="parameter" {return t.type;}}return "";}
+AG_check_source :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,entry:string,memory:[]AgMemory,compiled_runs:bool,classified:bool,secret_mask:u64,labels:[]AgLabel,public_views:bool)->ScResult {
+ if !LA_shape(nodes,roots,types) || values.count!=nodes.count || memory.count!=1 {return ScResult.{error=SC_GRAPH,unit=-1};}
+ if !classified && (secret_mask!=0 || labels.count!=0 || public_views) {return ScResult.{error=SC_ENTRY,unit=-1};}memory[0]=AgMemory.{};
+ memory[0].compiled_runs=compiled_runs;memory[0].classified=classified;memory[0].public_views=public_views;
+ state:[1]ScAudit;id:=AG_decl(nodes,roots,entry,state[..]);if state[0].error!=0 {return ScResult.{error=state[0].error,unit=-1};}if nodes[id].kind!=64 {return ScResult.{error=SC_ENTRY,unit=-1};}args:[8]AgValue;at:=nodes[id].head;count:=0;
+ while at!=0 {if !AG_tick(state[..],at) {break;}if count==8 {SC_fail(state[..],SC_LIMIT,id);break;}
+  if classified {if count>=labels.count || nodes[at].name!=labels[count].name || AG_parameter_name(types,nodes[id],nodes[at])!=labels[count].type {SC_fail(state[..],SC_TYPE,at);break;}}
+  bit:=cast(u64)1<<count;if !classified || (secret_mask&bit)!=0 {args[count].mask=bit;}
+  if public_views {
+   type:=AG_type(nodes,roots,nodes[at].a,state[..]);is_view:=SC_ref(type,nodes.count) && nodes[type].kind==3;label:=labels[count];
+   if is_view {
+    // At most eight fresh root views can be allocated before procedure entry.
+    if label.extent<1 || label.extent>AG_array_limit() || (label.access!=1 && label.access!=2) {SC_fail(state[..],SC_TYPE,at);break;}
+    memory[0].used+=1;region:=memory[0].used;memory[0].taint[region]=args[count].mask;memory[0].readonly[region]=label.access==1;
+    args[count].region=region;args[count].extent=label.extent;
+   }else if label.extent!=0 || label.access!=0 {SC_fail(state[..],SC_TYPE,at);break;}
+  }
+  count+=1;at=nodes[at].next;}
+ if state[0].error!=0 {return ScResult.{error=state[0].error,unit=-1};}
+ if count==0 || (classified && (labels.count!=count || (secret_mask>>count)!=0)) {return ScResult.{error=SC_ENTRY,unit=-1};}r:=AG_procedure(nodes,values,roots,types,id,args[0..<count],memory,state[..]);where:=state[0].where;error:=state[0].error;if error==0 && memory[0].guard_count!=0 {error=AG_GUARDS;}
+ return ScResult.{error=error,unit=nodes[where].unit,line=nodes[where].line,column=nodes[where].column,reached=state[0].count,visits=state[0].visits,return_mask=AG_origin(r,memory)};
+}
+// Direct graph callers have no compiler attestation. The compiled entry is
+// reserved for the source driver after compilation and source-hash checks.
+AG_check :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,entry:string,memory:[]AgMemory)->ScResult #export_c {empty:[]AgLabel;return AG_check_source(nodes,values,roots,types,entry,memory,false,false,0,empty,false);}
+AG_check_compiled :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,entry:string,memory:[]AgMemory)->ScResult #export_c {empty:[]AgLabel;return AG_check_source(nodes,values,roots,types,entry,memory,true,false,0,empty,false);}
+
+// Internal source bridge only: the checked driver binds these labels to the
+// exact compiler-recorded source closure and resolved parameter inventory.
+AG_check_classified :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,entry:string,memory:[]AgMemory,secret_mask:u64,labels:[]AgLabel,compiled_runs:bool)->ScResult #export_c {
+ return AG_check_source(nodes,values,roots,types,entry,memory,compiled_runs,true,secret_mask,labels,false);
+}
+// Internal checked bridge only: extents, access and disjoint live storage are
+// explicit caller premises, never inferred from source or arbitrary IR.
+AG_check_public_views :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,entry:string,memory:[]AgMemory,secret_mask:u64,labels:[]AgLabel,compiled_runs:bool)->ScResult #export_c {
+ return AG_check_source(nodes,values,roots,types,entry,memory,compiled_runs,true,secret_mask,labels,true);
+}
+
+AG_tick :: (state:[]ScAudit,where:int)->bool {
+ if state[0].error!=0 {return false;}if state[0].visits>=262144 {SC_fail(state,SC_LIMIT,where);return false;}state[0].visits+=1;return true;
+}
+AG_decl :: (nodes:[]ScNode,roots:[]int,name:string,state:[]ScAudit)->int {
+ cached:=AG_lookup_cached(state,name,1);if cached>=0 {return cached;}if state[0].error!=0 {return 0;}
+ found:=0;for root:roots {id:=nodes[root].head;while id!=0 {if !AG_tick(state,id) {return 0;}n:=nodes[id];if (n.kind==64 || n.kind==65) && n.name==name {if found!=0 {SC_fail(state,SC_GRAPH,id);return 0;}found=id;}id=n.next;}}AG_lookup_save(state,name,1,found);return found;
+}
+
+// Public interval arithmetic only. Admitted endpoints are 0..4096, so each
+// difference+4096 lies in 0..8192 and the divisor produces an exact 0/1 choice.
+AG_join_bounds :: (a:AgValue,b:AgValue)->AgValue {
+ r:AgValue;r.known=a.known && b.known && AG_interval(a.lo,a.hi) && AG_interval(b.lo,b.hi);
+ if r.known {limit:=AG_interval_limit();r.lo=a.lo-((a.lo-b.lo+limit)/(limit+1))*(a.lo-b.lo);r.hi=b.hi+((a.hi-b.hi+limit)/(limit+1))*(a.hi-b.hi);}return r;
+}

@@ -1,0 +1,150 @@
+{
+  "schema": "coax.large-source-audit.partial.v1",
+  "scope": "experimental separate profile; no signer, target, timing or production approval",
+  "compiler_sha256": "f335e7ec7b3f6d5966244a09aa8002b11b5ba607a1f673353c51effd9dab84a1",
+  "compiler_version": "coax0 0.22.0",
+  "compiler_aggregate_run_steps": 250000000,
+  "sources": {
+    "tools/coax-nostr/large-source-audit/inventory.coax": "68a30c50ca2b02308dd56d6416a8dbf04798ded7912dcfc1354f19462fbb8d85",
+    "tools/coax-nostr/large-source-audit/aggregate.coax": "ac29ff216df396078f995d62f9dab9bf360f238e66efe2342ea855ebad1a5018",
+    "tools/coax-nostr/large-source-audit/bridge-aggregate.cpp": "36425ae3a5733ba91b1c383f07a836f6525dc102e483aee8d1e1fff870d97bd3",
+    "tools/coax-nostr/large-source-audit/check.py": "811e7f65169eff6254e6509b7f84bb2fe111d6e85632c6a04457632b04257e4f",
+    "tools/coax-nostr/large-source-audit/aggregate.py": "ca48ee2e52c7e7abe3af910ef41aa915abcc63c314ce281386075a3815e8562f",
+    "tools/coax-nostr/large-source-audit/test_public_views.py": "30d72d523d1cb1181c087d5fff3f2bb07c1bee9a9d192ffa25848e4300e1e1fb",
+    "tools/coax-nostr/large-source-audit/test_large_closure.py": "fad8e88ee75b61c84b64054c687a3e6a3d013739e3575e4d6d3ca31c284c52c9",
+    "tools/coax-nostr/large-source-audit/test_correspondence.py": "5b37f6658f43d57ec49a9d91cd67ccdb31566c73444bfda5637d2d11ad9e4a91"
+  },
+  "checks": {
+    "coax": 198,
+    "passed": 198,
+    "full_reference_mutants": 2935,
+    "killed": 2935,
+    "survived": 0,
+    "full_checks": 162449,
+    "skipped": 0,
+    "trace_sha256": "623da902812b632ab9125f1e272f72286e63b2fb4742b18395ca52ae744277bb",
+    "output_sha256": "85c689ed59cf483e1449c56d805f40db8e4a090aff369104dbe5cb5bb8494096",
+    "check_log_sha256": "a6c5eeaae94247d597e8dbba7da014a773be37b17d839e10491d7a103e63ffed"
+  },
+  "fixtures": {
+    "inherited_view_test_groups": 7,
+    "inherited_view_log_sha256": "25a08178a7d8284ae0cda111965200a0ba9f3623ad8e53ee98d4de2dfd9880f3",
+    "large_closure_test_groups": 2,
+    "large_closure_log_sha256": "c2897f145ed51bb584d194f8d188c773baaea03f0359b200be91d4ec61e6832a"
+  },
+  "signer_snapshot": {
+    "scope": "uncommitted caller-owned 32-byte diagnostic; not current shipped signer approval",
+    "source_sha256": {
+      "$SIGNER_WORKTREE/coax/lib/crypto/schnorr_sign_workspace.coax": "39457c3f972f5a8c17e38abe761301533d7ee478560e339144ce7726ccdd5ce7",
+      "$SIGNER_WORKTREE/coax/lib/crypto/schnorr_prepare_workspace.coax": "d96f9096b132f002baf75451c6698e2ec0e9656183028380faa60e2869eac305",
+      "$SIGNER_WORKTREE/coax/lib/crypto/schnorr_scalar_workspace.coax": "6a5b214e6a9ac87bcd0afa34b2bf0668126fa7ce4b8fe7f69bff6e50b4ee52f9",
+      "$SIGNER_WORKTREE/coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+      "$SIGNER_WORKTREE/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "$SIGNER_WORKTREE/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+      "$SIGNER_WORKTREE/coax/lib/crypto/schnorr_point_workspace.coax": "98ab2e2ab9f4f90f2ae0333e8f340705b2a99520a717efa7e6139876d5b1f69e",
+      "$SIGNER_WORKTREE/coax/lib/crypto/secp_mult_base_web.coax": "3ca9989b48ff368d1511fe9d81e4f91ec9f8f93d4099c6cf4cf0aa31fd391220",
+      "$SIGNER_WORKTREE/coax/lib/crypto/secp_mult_base.coax": "fb9b34e769cb21e9d75439369e8608c27e94f5443907bd1b5a79f1cbcc1476a0",
+      "$SIGNER_WORKTREE/coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+      "$SIGNER_WORKTREE/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "$SIGNER_WORKTREE/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "$SIGNER_WORKTREE/coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+      "$SIGNER_WORKTREE/coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+      "$SIGNER_WORKTREE/coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915",
+      "$SIGNER_WORKTREE/coax/lib/crypto/schnorr_nonce_point.coax": "08513e024253cd076f1bbf620562e23a32ae7836899b2d97aa1dfb6f1f9ecfad",
+      "$SIGNER_WORKTREE/coax/lib/crypto/schnorr_nonce_workspace.coax": "68812db84fab59fb5fb22fe268c9d573c44e5df2cc5a99bac008810fe8bf8ac1",
+      "$SIGNER_WORKTREE/coax/lib/crypto/sha256_workspace.coax": "8f6b5c4d0eff8d122c1db39a2c676a652f91553ce2f6f78ee68de66df136de7c",
+      "$SIGNER_WORKTREE/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+      "$SIGNER_WORKTREE/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+      "$SIGNER_WORKTREE/coax/lib/crypto/schnorr_math_workspace.coax": "97a253083cceac10ed99c32eba15cab894534c2e4e08604cea6d3305c5aee787",
+      "$SIGNER_WORKTREE/coax/lib/crypto/schnorr_fast.coax": "d27a4b855d5d350888d46d0a2ef68f88c6d30e48ad54e1e201f46c3e432f8f4c",
+      "$SIGNER_WORKTREE/coax/lib/crypto/schnorr.coax": "f90f2a3fca5f65bf0c32d22897b30c192e16946c3890a286e4a2922880ed1757",
+      "$SIGNER_WORKTREE/coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+      "$SIGNER_WORKTREE/coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+      "$SIGNER_WORKTREE/coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756",
+      "$SIGNER_WORKTREE/coax/lib/crypto/aead_cleanup.coax": "e5f098f786a72f1dd91a1ae882db2cbc40efc55b7049c20cc907767645d72108"
+    },
+    "resolved_type_sha256": "4c7d1cf69cc780d0bcddf7b1ecef699a48f9b41b37c3a0be4ce66e1b1f583f3f",
+    "old_profile": {
+      "raw_report_sha256": "b6d4a603cf09f199297f743026bb294927ae55963c82d3481294a7bf154a4162",
+      "accepted": false,
+      "error": "limit"
+    },
+    "large_default": {
+      "raw_report_sha256": "4b5e1cc347c5f3964853a0b4154fd335236597035ce6d0f9b9d30f3f4894eec3",
+      "accepted": false,
+      "error": "unsupported",
+      "line": 114,
+      "column": 44,
+      "reached": 1,
+      "visits": 2286
+    },
+    "large_classified": {
+      "raw_report_sha256": "60c7d75f71e8bb9b352ab4612dd322bbdaf46c8af84608fb8b9629d817799de6",
+      "accepted": false,
+      "error": "type",
+      "line": 0,
+      "column": 0,
+      "reached": 1,
+      "visits": 5792,
+      "manifest_sha256": "156b1131207edb44415988ac87d657ac9316be3bef9dd1321fce8708e2e25c84",
+      "parameters": [
+        {
+          "name": "key",
+          "type": "[] u8",
+          "classification": "secret",
+          "view": {
+            "element_type": "u8",
+            "extent": 32,
+            "access": "read"
+          }
+        },
+        {
+          "name": "aux",
+          "type": "[] u8",
+          "classification": "secret",
+          "view": {
+            "element_type": "u8",
+            "extent": 32,
+            "access": "read"
+          }
+        },
+        {
+          "name": "message",
+          "type": "[] u8",
+          "classification": "public",
+          "view": {
+            "element_type": "u8",
+            "extent": 32,
+            "access": "read"
+          }
+        },
+        {
+          "name": "session",
+          "type": "[] SignOperation",
+          "classification": "public",
+          "view": {
+            "element_type": "SignOperation",
+            "extent": 1,
+            "access": "write"
+          }
+        },
+        {
+          "name": "work",
+          "type": "[] SignScratch",
+          "classification": "public",
+          "view": {
+            "element_type": "SignScratch",
+            "extent": 1,
+            "access": "write"
+          }
+        },
+        {
+          "name": "overlap",
+          "type": "bool",
+          "classification": "public",
+          "view": null
+        }
+      ]
+    }
+  }
+}

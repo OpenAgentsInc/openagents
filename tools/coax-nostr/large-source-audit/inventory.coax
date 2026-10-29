@@ -1,0 +1,65 @@
+// Bounded inventory and parsed-graph shape for a separate large-source audit.
+// These checks do not authenticate the compiler or analyze secret flow. The
+// driver must bind paths and digests to its actual immutable source snapshots,
+// and must run the complete dataflow policy before reporting any decision.
+#load "../../../coax/lib/crypto/secret-flow.coax";
+#authority;
+
+#test "large inventory bounds include both edges and reject overflow" {
+  a:[33]int;
+  #assert !LA_inputs(a[0..<0],0) && LA_inputs(a[0..<1],0) && LA_inputs(a[0..<32],0) && !LA_inputs(a[..],0);
+  a[0]=65536;a[1]=65536;a[2]=65536;a[3]=65536;
+  #assert LA_inputs(a[0..<4],0);a[4]=1;#assert !LA_inputs(a[0..<5],0);
+  a[0]=65537;#assert !LA_inputs(a[0..<1],0);a[0]= -1;#assert !LA_inputs(a[0..<1],0);
+  #assert !LA_inputs(a[0..<1],1);
+  #assert LA_node_limit()==65536 && LA_counts(2,1,0) && LA_counts(65536,32,8192);
+  #assert !LA_counts(1,1,0) && !LA_counts(65537,1,0) && !LA_counts(2,0,0) && !LA_counts(2,33,0);
+  #assert !LA_counts(2,1,-1) && !LA_counts(2,1,8193);
+}
+#test "closure requires ordered unique nonempty source paths" {
+  a:=[3]ScPath.[ScPath.{value="a"},ScPath.{value="b"},ScPath.{value="c"}];b:=a;
+  #assert LA_closure(a[..],b[..]) && !LA_closure(a[0..<0],b[0..<0]) && !LA_closure(a[..],b[0..<2]);
+  b[1].value="c";#assert !LA_closure(a[..],b[..]);b=a;b[1].value="a";#assert !LA_closure(a[..],b[..]);
+  a[1].value="a";b=a;#assert !LA_closure(a[..],b[..]);a[1].value="b";
+  a[0].value="";b=a;#assert !LA_closure(a[..],b[..]);
+}
+#test "large graph shape validates every physical unit and reference" {
+  nodes:[4]ScNode;roots:[2]int;types:[1]ScType;
+  nodes[1]=ScNode.{kind=74,unit=0};nodes[2]=ScNode.{kind=74,unit=1};nodes[3]=ScNode.{kind=16,unit=1};roots[0]=1;roots[1]=2;
+  #assert LA_shape(nodes[..],roots[..],types[..]);
+  nodes[1].a=4;#assert !LA_shape(nodes[..],roots[..],types[..]);nodes[1].a=0;
+  nodes[1].unit= -1;#assert !LA_shape(nodes[..],roots[..],types[..]);nodes[1].unit=0;
+  nodes[3].unit=2;#assert !LA_shape(nodes[..],roots[..],types[..]);nodes[3].unit=1;
+  nodes[3].a=4;#assert !LA_shape(nodes[..],roots[..],types[..]);nodes[3].a=0;
+  nodes[3].b= -1;#assert !LA_shape(nodes[..],roots[..],types[..]);nodes[3].b=0;
+  roots[1]=1;#assert !LA_shape(nodes[..],roots[..],types[..]);roots[1]=2;
+  roots[0]=0;#assert !LA_shape(nodes[..],roots[..],types[..]);
+  roots[0]= -1;#assert !LA_shape(nodes[..],roots[..],types[..]);
+  roots[0]=4;#assert !LA_shape(nodes[..],roots[..],types[..]);
+  roots[0]=5;#assert !LA_shape(nodes[..],roots[..],types[..]);roots[0]=1;
+  nodes[1].kind=16;#assert !LA_shape(nodes[..],roots[..],types[..]);nodes[1].kind=74;
+  types[0].unit=2;#assert !LA_shape(nodes[..],roots[..],types[..]);types[0].unit=0;
+  nodes[0].kind=1;#assert !LA_shape(nodes[..],roots[..],types[..]);
+}
+
+LA_node_limit :: ()->int #export_c {return 65536;}
+LA_units :: (count:int)->bool #export_c {return count>=1 && count<=32;}
+LA_inputs :: (lengths:[]int,descriptors:int)->bool #export_c {
+  if !LA_units(lengths.count) || descriptors!=0 {return false;}
+  total:=0;for n:lengths {if n<0 || n>65536 || n>262144-total {return false;}total+=n;}return true;
+}
+LA_counts :: (nodes:int,units:int,types:int)->bool #export_c {return nodes>=2 && nodes<=LA_node_limit() && LA_units(units) && types>=0 && types<=8192;}
+LA_closure :: (expected:[]ScPath,actual:[]ScPath)->bool #export_c {
+  if !LA_units(expected.count) || actual.count!=expected.count {return false;}
+  for i:0..<expected.count {if expected[i].value.count==0 || expected[i].value!=actual[i].value {return false;}for j:0..<i {if actual[j].value==actual[i].value {return false;}}}return true;
+}
+LA_shape :: (nodes:[]ScNode,roots:[]int,types:[]ScType)->bool {
+  if !LA_counts(nodes.count,roots.count,types.count) || nodes[0].kind!=0 {return false;}
+  for i:1..<nodes.count {
+    n:=nodes[i];if n.unit<0 || n.unit>=roots.count {return false;}
+    if !SC_ref(n.a,nodes.count)||!SC_ref(n.b,nodes.count)||!SC_ref(n.c,nodes.count)||!SC_ref(n.d,nodes.count)||!SC_ref(n.head,nodes.count)||!SC_ref(n.next,nodes.count) {return false;}
+  }
+  for i:0..<roots.count {if roots[i]<1 || roots[i]>=nodes.count {return false;}if nodes[roots[i]].kind!=74 || nodes[roots[i]].unit!=i {return false;}}
+  for t:types {if t.unit<0 || t.unit>=roots.count {return false;}}
+  return true;
+}
