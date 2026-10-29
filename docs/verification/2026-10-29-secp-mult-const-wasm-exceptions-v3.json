@@ -1,0 +1,81 @@
+{
+  "compiler": "coax0 0.18.2",
+  "compiler_sha256": "56f87661b9f1f105598132bf5c45f13e07fea46f4f23249921a22111d58f3ee4",
+  "elapsed_seconds": 9.36759899999015,
+  "exception_driver_sha256": "5742948dd2211c184bca24af3b67cbd06b6142d51e1f389ccc425434eea6b403",
+  "exception_test_sha256": "811de49725937ea67afb0f799eac43b557ce22fc13ff050cb973ada979b0b831",
+  "libsecp_artifact_sha256": "8c46f911b6821f9fc0de66a55d50b11325e364cf64afd95ca6ab0b7f2882201b",
+  "libsecp_source_commit": "6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d",
+  "modes": [
+    {
+      "generated_c_sha256": "e060b1a48a6e0cafd5ea37557be27d819bfc1803f2913202fb94fdada96753b5",
+      "library_sha256": "2caba8c5780c78b16f6fb410e12fe73be46d4af0bc3bdb1aa51bb4c5801920ed",
+      "mode": "checked",
+      "object_bytes": 59192,
+      "object_sha256": "6623dacff0b5af38cf39ea06f66dd69ca896a5769f0e666db826fbfa7e392c33",
+      "stack_usage_records": [
+        "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-secp-const-cigjqeag/checked.c:1078:smc_multiply\t2560\tstatic"
+      ],
+      "stream_sha256": "72b5312944897c8c276546d5bfe4fbf3e4bb9a6ae4fbc7e750d59ca05c32ffb0"
+    },
+    {
+      "generated_c_sha256": "461f4e879ff4fc03c238690cc36bac12ff0dd2ca9e61085cb6a5467da5a6691b",
+      "library_sha256": "b6acc061619bbadfcf9644c97e92ef63c3cbaf5202568adda9292bd87e1f02a7",
+      "mode": "release",
+      "object_bytes": 54792,
+      "object_sha256": "3cb2da5f2da947b3c8c7708c7fca68f35d3156a199092b5f1264801b297bdb39",
+      "stack_usage_records": [
+        "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-secp-const-cigjqeag/release.c:1078:smc_multiply\t3008\tstatic"
+      ],
+      "stream_sha256": "16479baa6120fb3f2080d82eee06cb464518a161efde631275d3395194a57bc4"
+    }
+  ],
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "native_target": "arm64-apple-darwin25.4.0",
+  "random_pairs": 100000,
+  "schema": "coax.secp-mult-const.v1",
+  "scope": "public-fixture arithmetic and source schedule only; no discharged secret guards, object/JIT review, device, erasure or production-secret approval",
+  "seed": 20261029,
+  "sources": {
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+    "coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+    "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+    "coax/lib/crypto/secp_group32.coax": "b4e11a4626ba2b7be823078dc8495b800ecd9f579366d706cdd4e421b18f437b",
+    "coax/lib/crypto/secp_mult_const.coax": "60957c9aacf9412b82b56083bf3c02e8159a3f18ec62e5f847b305844201d0cf",
+    "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+    "coax/tests/nostr/scalar_candidate.py": "4a52ddd914edc2469850229c3b490d7f5bedc1c0fb418c3087df76831954b966",
+    "coax/tests/nostr/secp_field.py": "e2449aa8475c32d4fbcfe17fea520b3fb502555897412e7d1a82b2bb4d93143f",
+    "coax/tests/nostr/secp_field32.py": "34c2d6d3538417c027f43c84ab24d73f02dc573a196cf1bd9c96319e52502ca1",
+    "coax/tests/nostr/secp_field32_adapter.coax": "ba911543b1f8406f0565193e195d7e6d7ce4b7d8d3a7c017f36721b096480cda",
+    "coax/tests/nostr/secp_field_mul.py": "bbf58edc942f4c00712d9b016be5f834a57813a9c230fdb618be1fd756e7ff80",
+    "coax/tests/nostr/secp_group.py": "95a53bd98ca92d84eef4663d752cd16cea8e065f8761dd924e2a820254a00328",
+    "coax/tests/nostr/secp_mult_const.py": "f8bf13fabc5047c352dffddd4112ebeaef014754ae0b20505e8b0b744b3b8887",
+    "coax/tests/nostr/secp_mult_const_stream.c": "e11fdc2a8eed31c31837c6d3fad44cc0194df8c7873f728d6664f33fc031d5f0",
+    "coax/tests/nostr/secp_mult_const_wasm.c": "23805e662e4d885d161fc6918ed489faa15e98800db0e6d5768c23add2867bde",
+    "coax/tests/nostr/secp_mult_const_wasm.cjs": "9430a37d9b351997e26ae2523cf7ff1291fe5ed0a435cfbd15cfb89dd39f8eec",
+    "tools/coax-nostr/fuzz/UPSTREAM.json": "dfc511b8c6ab64e780f52bf9e4ce77c8273b96edd64827459f37c1e9b8bbf33e",
+    "tools/coax-nostr/fuzz/oracle.py": "d690d0f5e5318e96fc6c6c5f56ce87af5543d90d8acb8f53abc67381d7626cd9"
+  },
+  "temporary_bytes": 828257,
+  "wasm_exceptional": [
+    {
+      "artifact_sha256": "34485a8da6fe569a2ac3d995e24f2285a51913d15354dd21554c2b22ab1c6a46",
+      "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+      "exceptional_cases": 15,
+      "failures": 0,
+      "mode": "checked",
+      "stack_bytes": 1048576,
+      "target": "wasm32-wasip1"
+    },
+    {
+      "artifact_sha256": "73787e7f7685aea406a4f1378996098fcda5055cbe2d32a8722a39c2b36c5909",
+      "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+      "exceptional_cases": 15,
+      "failures": 0,
+      "mode": "release",
+      "stack_bytes": 1048576,
+      "target": "wasm32-wasip1"
+    }
+  ]
+}

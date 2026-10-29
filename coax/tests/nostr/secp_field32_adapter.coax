@@ -1,0 +1,5 @@
+// Test-only access to the internal canonical field representation.
+#load "../../lib/crypto/secp_field32.coax";
+sf32_test_add :: (a:Sf32,b:Sf32)->Sf32 #export_c {return sf32_add(a,b);}
+sf32_test_sub :: (a:Sf32,b:Sf32)->Sf32 #export_c {return sf32_sub(a,b);}
+sf32_test_mul :: (a:Sf32,b:Sf32)->Sf32 #export_c {return sf32_mul(a,b);}

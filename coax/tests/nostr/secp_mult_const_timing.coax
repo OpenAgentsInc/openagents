@@ -1,0 +1,14 @@
+// Public deterministic timing fixtures; no real identities or secrets.
+#load "../../lib/crypto/secp_mult_const.coax";
+#load "../../../tools/coax-nostr/timing/fixtures.coax";
+smc_timing :: (input: ScScalar) -> SgPoint #export_c { return smc_multiply(input,sg_generator()).value; }
+smc_control_fixed :: (input: ScScalar) -> SgPoint #export_c {
+  empty: [] u64; result: SgPoint;
+  word := cast(u64) input.limbs[0] | cast(u64) input.limbs[1] << 32;
+  result.x.limb[0] = ct_fixed(word,empty); return result;
+}
+smc_control_branch :: (input: ScScalar) -> SgPoint #export_c {
+  empty: [] u64; result: SgPoint;
+  word := cast(u64) input.limbs[0] | cast(u64) input.limbs[1] << 32;
+  result.x.limb[0] = ct_branch(word,empty); return result;
+}

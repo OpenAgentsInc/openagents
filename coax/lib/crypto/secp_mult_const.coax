@@ -1,0 +1,130 @@
+// Fixed-work signed radix-16 multiplication of a bounded public peer point.
+// Scalar and digits may be secret. This source schedule does not establish
+// target-code constant-time behavior or production-secret approval.
+#load "secp_group32.coax";
+#load "secp_scalar.coax";
+#authority;
+SmcDigits :: struct { magnitude: [65] u64; negative: [65] u64; }
+
+#test "signed radix16 digits include zero, positive, negative, and carry" {
+  zero := smc_recode(sc_small(0));
+  for i: 0..<65 { #assert zero.magnitude[i] == 0 && zero.negative[i] == 0; }
+  seven := smc_recode(sc_small(7)); #assert seven.magnitude[0] == 7 && seven.negative[0] == 0 && seven.magnitude[1] == 0;
+  eight := smc_recode(sc_small(8)); #assert eight.magnitude[0] == 8 && eight.negative[0] == CB_MAX64 && eight.magnitude[1] == 1;
+  fifteen := smc_recode(sc_small(15)); #assert fifteen.magnitude[0] == 1 && fifteen.negative[0] == CB_MAX64 && fifteen.magnitude[1] == 1;
+  sixteen := smc_recode(sc_small(16)); #assert sixteen.magnitude[0] == 0 && sixteen.magnitude[1] == 1;
+}
+#forall "one-hot scalar bit survives signed radix16 recoding" bit: 0..<256 {
+  input: ScScalar; input.limbs[bit/32] = cast(u32) 1 << (bit%32);
+  digits := smc_recode(input); at := bit/4; value := cast(u64) 1 << (bit%4);
+  if value < 8 { #assert digits.magnitude[at] == value && digits.negative[at] == 0; }
+  else { #assert digits.magnitude[at] == 8 && digits.negative[at] == CB_MAX64 && digits.magnitude[at+1] == 1; }
+}
+#test "generated point table contains zero through eight multiples" {
+  g := sg_generator(); table := smc_table(sg32_from_point(g)); expected := sg_infinity();
+  for i: 0..<9 { #assert sg_equal_mask(sg32_to_point(table[i]),expected) == CB_MAX64; expected = sg_add_valid(expected,g); }
+  empty := smc_table(sg32_from_point(sg_infinity())); for i: 0..<9 { #assert sg_equal_mask(sg32_to_point(empty[i]),sg_infinity()) == CB_MAX64; }
+}
+#test "masked selection visits zero and every nonzero table entry" {
+  table := smc_table(sg32_from_point(sg_generator())); reference: [9] SgPoint;
+  for i: 0..<9 { reference[i] = sg32_to_point(table[i]); }
+  for i: 0..<9 {
+    got := sg32_to_point(smc_pick(table[..],cast(u64) i)); checked := sg_pick(reference[..],cast(u64) i);
+    #assert checked.ok && sg_equal_mask(got,checked.value) == CB_MAX64;
+  }
+  #assert sg_equal_mask(sg32_to_point(smc_pick(table[..],9)),sg_infinity()) == CB_MAX64;
+}
+#test "masked selection reads a non-infinity first entry" {
+  table:[1]Sg32;table[0]=sg32_from_point(sg_generator());
+  #assert sg_equal_mask(sg32_to_point(smc_pick(table[..],0)),sg_generator())==CB_MAX64;
+}
+#test "signed point selection preserves canonical infinity" {
+  g := sg_generator(); neg := sg32_to_point(smc_signed(sg32_from_point(g),CB_MAX64));
+  #assert sg_equal_mask(neg,sg_negate(g).value) == CB_MAX64;
+  #assert sg_equal_mask(sg32_to_point(smc_signed(sg32_from_point(g),0)),g) == CB_MAX64;
+  infinity := sg32_to_point(smc_signed(sg32_from_point(sg_infinity()),CB_MAX64));
+  #assert infinity.x.limb[0] == 1 && infinity.y.limb[0] == 1 && infinity.z.limb[0] == 0;
+}
+#test "variable-base multiplication returns the generator for scalar one" {
+  result := smc_multiply(sc_small(1),sg_generator());
+  #assert result.ok && sg_equal_mask(result.value,sg_generator()) == CB_MAX64;
+}
+#test "variable-base multiplication handles a negative radix16 digit" {
+  g:=sg_generator();expected:=g;for i:0..<3 {expected=sg_double_valid(expected);}
+  result:=smc_multiply(sc_small(8),g);
+  #assert result.ok && sg_equal_mask(result.value,expected)==CB_MAX64;
+}
+#test "variable-base multiplication shifts a nonzero higher window" {
+  g:=sg_generator();expected:SgPoint;
+  expected.x.limb=[10]u64.[40758282,62531466,28220484,27714025,62038803,7376805,18525122,41620672,43234718,3769331];
+  expected.y.limb=[10]u64.[23160865,13317018,66108959,7934792,1218185,22957508,60420943,39209590,7576037,4061396];
+  expected.z.limb[0]=1;
+  result:=smc_multiply(sc_small(16),g);
+  #assert result.ok && sg_equal_mask(result.value,expected)==CB_MAX64;
+}
+#test "variable-base multiplication consumes the highest scalar window" {
+  input:ScScalar;input.limbs[7]=0x80000000;expected:SgPoint;
+  expected.x.limb=[10]u64.[59499396,55345423,57425547,45517942,41020426,66567196,28142740,16280724,10759142,2919908];
+  expected.y.limb=[10]u64.[52004878,43110266,11898128,63984251,18345988,44072529,22083722,24866723,21567957,4135642];
+  expected.z.limb[0]=1;result:=smc_multiply(input,sg_generator());
+  #assert result.ok && sg_equal_mask(result.value,expected)==CB_MAX64;
+}
+#test "variable-base multiplication accepts mathematical infinity" {
+  result:=smc_multiply(sc_small(1),sg_infinity());
+  #assert result.ok && sg_equal_mask(result.value,sg_infinity())==CB_MAX64;
+}
+#test "variable-base multiplication refuses invalid bounded peers" {
+  bad:SgPoint;result:=smc_multiply(sc_small(1),bad);
+  #assert !result.ok && sg_equal_mask(result.value,sg_infinity())==CB_MAX64;
+}
+
+// Fixed65 digits; negative entries use a complete mask, never a branch.
+// The scalar is reduced modulo the group order before recoding.
+smc_recode :: (input: ScScalar) -> SmcDigits {
+  scalar := sc_normalize(input); result: SmcDigits; carry: u64;
+  for i: 0..<64 {
+    value := cast(u64) ((scalar.limbs[i/8] >> ((i%8)*4)) & 15) + carry;
+    carry = (value + 8) >> 4;
+    mask := cb_mask(carry);
+    result.magnitude[i] = cb_ct_select64(mask,16-value,value);
+    result.negative[i] = mask;
+  }
+  result.magnitude[64] = carry; return result;
+}
+// PRIVATE BY CONVENTION: canonical valid point; table indices are public.
+smc_table :: (point: Sg32) -> [9] Sg32 {
+  table: [9] Sg32; table[0] = sg32_infinity(); table[1] = point;
+  for i: 2..<9 { table[i] = sg32_add(table[i-1],point); }
+  return table;
+}
+// PRIVATE BY CONVENTION: canonical valid generated points only.
+smc_pick :: (table: [] Sg32,which: u64) -> Sg32 {
+  chosen := sg32_infinity();
+  for i: 0..<table.count {
+    mask := cast(u32)(sg_word_equal(which,cast(u64) i)&SF32_WORD); point := table[i];
+    for limb: 0..<8 {
+      chosen.x.limb[limb] ^= (chosen.x.limb[limb] ^ point.x.limb[limb]) & mask;
+      chosen.y.limb[limb] ^= (chosen.y.limb[limb] ^ point.y.limb[limb]) & mask;
+      chosen.z.limb[limb] ^= (chosen.z.limb[limb] ^ point.z.limb[limb]) & mask;
+    }
+  }
+  return chosen;
+}
+smc_signed :: (point: Sg32,negative: u64) -> Sg32 {
+  zero:Sf32; neg := point; neg.y = sf32_sub(zero,point.y); neg = sg32_canonical_infinity(neg);
+  return sg32_choose(negative,neg,point);
+}
+// Bounded peer coordinates are required by sg_valid_mask; infinity is
+// mathematically admitted, while ECDH peer admission is a separate gate.
+smc_multiply :: (input: ScScalar,peer: SgPoint) -> SgResult #export_c {
+  valid := sg_valid_mask(peer); admitted := sg_choose(valid,sg_normalize(peer),sg_infinity());
+  table := smc_table(sg32_from_point(admitted)); digits := smc_recode(input);
+  result := smc_signed(smc_pick(table[..],digits.magnitude[64]),digits.negative[64]);
+  for round: 0..<64 {
+    for bit: 0..<4 { result = sg32_double(result); }
+    at := 63-round;
+    selected := smc_signed(smc_pick(table[..],digits.magnitude[at]),digits.negative[at]);
+    result = sg32_add(result,selected);
+  }
+  return sg_finish(valid,sg32_to_point(result));
+}

@@ -1,0 +1,188 @@
+{
+  "artifact_bytes": 27270263,
+  "compiler": "coax0 0.18.2",
+  "compiler_sha256": "56f87661b9f1f105598132bf5c45f13e07fea46f4f23249921a22111d58f3ee4",
+  "generated_c_sha256": "e54f63d4b0e28c5912b475b9f6fcfe05cae9c348dbd45c11ee5e8cefd915ca5a",
+  "native_flags": [
+    "-std=c11",
+    "-O2"
+  ],
+  "object_sha256": "35a46bc5024f8a94404d3d5ede617f9d76fd457e809690b9ccf459be88804065",
+  "raw_retention": "CT01 raw rows and exact native object retained in ignored output directory; hashes retained here",
+  "runs": [
+    {
+      "coax": {
+        "acquisition_ns": 267930260208,
+        "clock_resolution_ns": 42,
+        "degenerate": false,
+        "fixture": 0,
+        "mean0": 267782.0513339913,
+        "mean1": 268029.1701740159,
+        "minimum_clock_pair_ns": 0,
+        "n0": 500000,
+        "n1": 500000,
+        "raw_bytes": 9000012,
+        "status": 2,
+        "t": -3.2681477922643336,
+        "variance0": 1408009771.0091338,
+        "variance1": 1450754474.912266,
+        "warmup": 20000
+      },
+      "fixture": "variable",
+      "independent": {
+        "degenerate": false,
+        "mean0": 267782.051334,
+        "mean1": 268029.170174,
+        "n0": 500000,
+        "n1": 500000,
+        "noise": [
+          {
+            "maximum_ns": 7659292,
+            "median_ns": 255667,
+            "minimum_ns": 219250,
+            "p99_ns": 381292,
+            "zero_ticks": 0
+          },
+          {
+            "maximum_ns": 5574125,
+            "median_ns": 255875,
+            "minimum_ns": 219500,
+            "p99_ns": 382083,
+            "zero_ticks": 0
+          }
+        ],
+        "status": 2,
+        "t": -3.268147791938718,
+        "variance0": 1408009771.0091407,
+        "variance1": 1450754474.9122446
+      },
+      "raw_file": "variable.bin",
+      "raw_sha256": "4b5747180dda1f4eb9e59cf972163ffb9f189663d88428828623176510e9682b"
+    },
+    {
+      "coax": {
+        "acquisition_ns": 38124167,
+        "clock_resolution_ns": 42,
+        "degenerate": false,
+        "fixture": 1,
+        "mean0": 20.445856000000436,
+        "mean1": 20.379573999999142,
+        "minimum_clock_pair_ns": 0,
+        "n0": 500000,
+        "n1": 500000,
+        "raw_bytes": 9000012,
+        "status": 2,
+        "t": 0.32225500516125316,
+        "variance0": 11872.13010468714,
+        "variance1": 9280.378010334618,
+        "warmup": 20000
+      },
+      "fixture": "fixed-control",
+      "independent": {
+        "degenerate": false,
+        "mean0": 20.445856,
+        "mean1": 20.379574,
+        "n0": 500000,
+        "n1": 500000,
+        "noise": [
+          {
+            "maximum_ns": 46000,
+            "median_ns": 0,
+            "minimum_ns": 0,
+            "p99_ns": 42,
+            "zero_ticks": 274525
+          },
+          {
+            "maximum_ns": 25666,
+            "median_ns": 0,
+            "minimum_ns": 0,
+            "p99_ns": 42,
+            "zero_ticks": 274092
+          }
+        ],
+        "status": 2,
+        "t": 0.3222550051549466,
+        "variance0": 11872.130104687472,
+        "variance1": 9280.378010334543
+      },
+      "raw_file": "fixed-control.bin",
+      "raw_sha256": "a92fbf893110ffd1b2790e936c5ed531b6b9ffda7efcc099393b2bfc1098e088"
+    },
+    {
+      "coax": {
+        "acquisition_ns": 112366042,
+        "clock_resolution_ns": 42,
+        "degenerate": false,
+        "fixture": 2,
+        "mean0": 16.40366199999946,
+        "mean1": 173.10939800000344,
+        "minimum_clock_pair_ns": 0,
+        "n0": 500000,
+        "n1": 500000,
+        "raw_bytes": 9000012,
+        "status": 1,
+        "t": -296.7278135818932,
+        "variance0": 7710.237335464624,
+        "variance1": 131741.2909966618,
+        "warmup": 20000
+      },
+      "fixture": "branch-control",
+      "independent": {
+        "degenerate": false,
+        "mean0": 16.403662,
+        "mean1": 173.109398,
+        "n0": 500000,
+        "n1": 500000,
+        "noise": [
+          {
+            "maximum_ns": 21167,
+            "median_ns": 0,
+            "minimum_ns": 0,
+            "p99_ns": 42,
+            "zero_ticks": 316866
+          },
+          {
+            "maximum_ns": 89750,
+            "median_ns": 208,
+            "minimum_ns": 0,
+            "p99_ns": 334,
+            "zero_ticks": 158365
+          }
+        ],
+        "status": 1,
+        "t": -296.72781358188826,
+        "variance0": 7710.237335464427,
+        "variance1": 131741.29099665958
+      },
+      "raw_file": "branch-control.bin",
+      "raw_sha256": "0689a73364f27b92084a8a0a93553de78f1d2e2bc3a69d409f60b4d8a928933b"
+    }
+  ],
+  "samples_per_fixture": 1000000,
+  "schema": "coax.secp-variable-base-timing.v1",
+  "scope": "first-order Welch observations of public fixed-zero versus seeded256-bit inputs, fixed public peer and this named native target only; no source guard, object/JIT, independent audit, erasure or production-secret admission",
+  "seed": 20261029,
+  "sources": {
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+    "coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+    "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+    "coax/lib/crypto/secp_group32.coax": "b4e11a4626ba2b7be823078dc8495b800ecd9f579366d706cdd4e421b18f437b",
+    "coax/lib/crypto/secp_mult_const.coax": "552ed9785746ce9b862d5083f7096a9cca848b062744af9246a53a4deb40f307",
+    "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+    "coax/tests/nostr/secp_mult_const_timing.c": "08745c1801b45575353a407cc106da9b72674a25037cf04d0294a278e5a1198b",
+    "coax/tests/nostr/secp_mult_const_timing.coax": "f01ccd0ef8dd12cdc42eea76844ebd38826193ab914c671e9666ce7c738e43fc",
+    "coax/tests/nostr/secp_mult_const_timing.py": "84c19e187f71e29a0bb0ab7061763e68fcf98ed5388839ff6c6bf56ef04e1903",
+    "tools/coax-nostr/timing/fixtures.coax": "499667507b2faa5a24812b4b8decf210bb64329822fbb7d0d4fc926ebb79640f",
+    "tools/coax-nostr/timing/model.coax": "f9ee68c4e90d6db9f71569c79058eb60d7c1ce52271204785c1ef623ecfe95e3",
+    "tools/coax-nostr/timing/run.py": "1afcb114fe00f414670c08697d97f87b110736c24458ccd235c0a879a8a164cc"
+  },
+  "target": {
+    "architecture": "arm64",
+    "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+    "cpu": "Apple M5 Max",
+    "environment": "normal shared developer machine; no affinity/governor/process changes",
+    "os": "Darwin 25.4.0"
+  },
+  "threshold_abs_t": 10
+}

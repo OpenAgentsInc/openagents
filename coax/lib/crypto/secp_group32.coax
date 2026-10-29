@@ -1,0 +1,82 @@
+// Experimental canonical 8x32 group kernels. No secret-use approval.
+#load "secp_group.coax";
+#load "secp_field32.coax";
+#authority;
+Sg32 :: struct {x:Sf32;y:Sf32;z:Sf32;}
+
+#test "canonical conversion round trips generator and infinity" {
+  #assert sg_equal_mask(sg32_to_point(sg32_from_point(sg_generator())),sg_generator())==CB_MAX64;
+  #assert sg_equal_mask(sg32_to_point(sg32_from_point(sg_infinity())),sg_infinity())==CB_MAX64;
+}
+#test "32-bit point doubling agrees with the independent group kernel" {
+  g:=sg_generator(); got:=sg32_to_point(sg32_double(sg32_from_point(g)));
+  #assert sg_equal_mask(got,sg_double_valid(g))==CB_MAX64;
+  #assert sg_equal_mask(sg32_to_point(sg32_double(sg32_from_point(sg_infinity()))),sg_infinity())==CB_MAX64;
+}
+#test "32-bit point addition covers equality, opposites, and infinity" {
+  g:=sg_generator(); n:=sg_negate(g).value; inf:=sg_infinity();
+  a:=sg32_from_point(g); b:=sg32_from_point(n); z:=sg32_from_point(inf);
+  #assert sg_equal_mask(sg32_to_point(sg32_add(a,a)),sg_double_valid(g))==CB_MAX64;
+  #assert sg_equal_mask(sg32_to_point(sg32_add(a,b)),inf)==CB_MAX64;
+  #assert sg_equal_mask(sg32_to_point(sg32_add(a,z)),g)==CB_MAX64;
+  #assert sg_equal_mask(sg32_to_point(sg32_add(z,a)),g)==CB_MAX64;
+}
+
+#test "32-bit point addition computes a distinct finite sum" {
+  g:=sg_generator();two:=sg_double_valid(g);three:=sg_add_valid(g,two);
+  result:=sg32_to_point(sg32_add(sg32_from_point(g),sg32_from_point(two)));
+  #assert sg_equal_mask(result,three)==CB_MAX64;
+}
+
+sg32_from_field :: (a:SecpField)->Sf32 {
+  r:Sf32;
+  for i:0..<10 {
+    at:=i*26;word:=at/32;shift:=at%32;v:=a.limb[i];
+    r.limb[word]|=cast(u32)((v<<shift)&SF32_WORD);
+    r.limb[(word+1)%8]|=cast(u32)(v>>(32-shift));
+  }
+  return r;
+}
+sg32_to_field :: (a:Sf32)->SecpField {
+  r:SecpField;
+  for i:0..<10 {
+    at:=i*26;word:=at/32;shift:=at%32;
+    v:=(cast(u64)a.limb[word]>>shift)|(cast(u64)a.limb[(word+1)%8]<<(32-shift));
+    r.limb[i]=v&(ifx i==9 then SF_MASK22 else SF_MASK26);
+  }
+  return r;
+}
+sg32_from_point :: (p:SgPoint)->Sg32 {return Sg32.{x=sg32_from_field(p.x),y=sg32_from_field(p.y),z=sg32_from_field(p.z)};}
+sg32_to_point :: (p:Sg32)->SgPoint {return SgPoint.{x=sg32_to_field(p.x),y=sg32_to_field(p.y),z=sg32_to_field(p.z)};}
+sg32_mask_equal :: (a:Sf32,b:Sf32)->u64 {
+  difference:u64;for i:0..<8 {difference|=cast(u64)(a.limb[i]^b.limb[i]);}return sg_word_equal(difference,0);
+}
+sg32_choose_field :: (mask:u64,a:Sf32,b:Sf32)->Sf32 {
+  r:Sf32;m:=cast(u32)(mask&SF32_WORD);for i:0..<8 {r.limb[i]=cb_ct_select32(m,a.limb[i],b.limb[i]);}return r;
+}
+sg32_choose :: (mask:u64,a:Sg32,b:Sg32)->Sg32 {return Sg32.{x=sg32_choose_field(mask,a.x,b.x),y=sg32_choose_field(mask,a.y,b.y),z=sg32_choose_field(mask,a.z,b.z)};}
+sg32_infinity :: ()->Sg32 {r:Sg32;r.x.limb[0]=1;r.y.limb[0]=1;return r;}
+sg32_canonical_infinity :: (p:Sg32)->Sg32 {zero:Sf32;return sg32_choose(sg32_mask_equal(p.z,zero),sg32_infinity(),p);}
+sg32_double :: (p:Sg32)->Sg32 {
+  aa:=sf32_mul(p.x,p.x);bb:=sf32_mul(p.y,p.y);cc:=sf32_mul(bb,bb);
+  q:=sf32_add(p.x,bb);dd:=sf32_sub(sf32_sub(sf32_mul(q,q),aa),cc);dd=sf32_add(dd,dd);
+  ee:=sf32_add(sf32_add(aa,aa),aa);ff:=sf32_mul(ee,ee);
+  r:Sg32;r.x=sf32_sub(ff,sf32_add(dd,dd));
+  eightcc:=sf32_add(cc,cc);eightcc=sf32_add(eightcc,eightcc);eightcc=sf32_add(eightcc,eightcc);
+  r.y=sf32_sub(sf32_mul(ee,sf32_sub(dd,r.x)),eightcc);
+  yz:=sf32_mul(p.y,p.z);r.z=sf32_add(yz,yz);return sg32_canonical_infinity(r);
+}
+sg32_add :: (a:Sg32,b:Sg32)->Sg32 {
+  z1z1:=sf32_mul(a.z,a.z);z2z2:=sf32_mul(b.z,b.z);
+  u1:=sf32_mul(a.x,z2z2);u2:=sf32_mul(b.x,z1z1);
+  s1:=sf32_mul(a.y,sf32_mul(b.z,z2z2));s2:=sf32_mul(b.y,sf32_mul(a.z,z1z1));
+  h:=sf32_sub(u2,u1);twoh:=sf32_add(h,h);ii:=sf32_mul(twoh,twoh);jj:=sf32_mul(h,ii);
+  diff:=sf32_sub(s2,s1);rr:=sf32_add(diff,diff);vv:=sf32_mul(u1,ii);
+  r:Sg32;r.x=sf32_sub(sf32_sub(sf32_mul(rr,rr),jj),sf32_add(vv,vv));
+  t:=sf32_mul(s1,jj);r.y=sf32_sub(sf32_mul(rr,sf32_sub(vv,r.x)),sf32_add(t,t));
+  zsum:=sf32_add(a.z,b.z);r.z=sf32_mul(sf32_sub(sf32_sub(sf32_mul(zsum,zsum),z1z1),z2z2),h);
+  zero:Sf32;same:=sg32_mask_equal(h,zero)&sg32_mask_equal(s1,s2);
+  r=sg32_choose(same,sg32_double(a),r);
+  r=sg32_choose(sg32_mask_equal(a.z,zero),b,r);
+  r=sg32_choose(sg32_mask_equal(b.z,zero),a,r);return sg32_canonical_infinity(r);
+}

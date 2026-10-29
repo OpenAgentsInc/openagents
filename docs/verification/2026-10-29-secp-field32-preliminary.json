@@ -1,0 +1,28 @@
+{
+  "compiler": "coax0 0.18.2",
+  "compiler_sha256": "56f87661b9f1f105598132bf5c45f13e07fea46f4f23249921a22111d58f3ee4",
+  "modes": [
+    {
+      "artifact_sha256": "e69649e533a9c6678227f695b916d2f133862fe1f8fe5c0ce3ef4711d8d72d89",
+      "generated_c_sha256": "197c75ffa9eaf6a006ed8cc4d0b6a45377237943c0e9404585c659badfd52141",
+      "mode": "checked"
+    },
+    {
+      "artifact_sha256": "2e86f0085f4d99d6d39c5036058b66754cbe84812450279f129bfefdbe3797fa",
+      "generated_c_sha256": "7d43a9458e24d9f0e365c78c91fdbc1783d618c2a48049b923a3228f116a69d1",
+      "mode": "release"
+    }
+  ],
+  "operations_per_pair": 3,
+  "pairs_per_mode": 101560,
+  "random_pairs": 100000,
+  "schema": "coax.secp-field32.v1",
+  "scope": "canonical field arithmetic only; no secret-use or target constant-time approval",
+  "seed": 20261029,
+  "sources": {
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+    "coax/tests/nostr/secp_field32.py": "34c2d6d3538417c027f43c84ab24d73f02dc573a196cf1bd9c96319e52502ca1",
+    "coax/tests/nostr/secp_field32_adapter.coax": "ba911543b1f8406f0565193e195d7e6d7ce4b7d8d3a7c017f36721b096480cda"
+  }
+}
