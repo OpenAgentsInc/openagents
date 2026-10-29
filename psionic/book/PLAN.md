@@ -63,7 +63,7 @@ on the shared numerics in I and supplies the forward primitives reused later.
 | [9. Read the options](ch09-read-the-options.md) — runnable: bounded CPU | Slot LM-head probabilities, vocabulary mass and typed statistics with explicit temperature; serialization and calibration loading remain separate. |
 | [10. Execute Elephant](ch10-execute-elephant.md) — runnable: original weights, CPU | Authenticated original Elephant files and a typed text decision through the complete 32-layer hybrid stack. Compared with an independent CPU implementation at an intermediate layer and at the output for the recorded request; a request corpus under chapter 13's rules, calibration (12) and measured resource admission remain open gates. |
 | 11. Execute Mammoth | Reuse the engine with its own dimensions, shards and memory profile; complete real-weight checks for this checkpoint. |
-| 12. Are the probabilities any good? | Load exactly the calibration the pinned bundle supplies (or state that none exists and keep temperature explicit); reproduce the published serialized answers; Brier score, calibration error, abstention and per-kind accuracy on a frozen held-out request corpus, kept separate from numerical conformance. |
+| 12. Are the probabilities any good? | Load exactly the calibration the pinned bundle supplies (or state that none exists and keep temperature explicit); reproduce the published serialized answers; Brier score, calibration error, abstention and per-kind accuracy on a frozen held-out request corpus, kept separate from numerical conformance. Every result names the model identity and the corpus it was measured on. |
 | 13. Qualify honestly | Compare with a reference whose arithmetic cannot be reproduced exactly: only like modes (decode with decode, replay with replay); distribution checks (top-1 agreement, total variation, router-margin and near-tie regret) frozen before any confirmation set is read and never loosened after; values measured on the device that ran, not a surrogate. Every result binds the exact build, libraries and arithmetic actually executed; the command's exit status is the verdict; an absent qualification reads as unknown; failures are quoted with their units and counterexamples. |
 
 Text support is the first scope. Image inputs, quantized variants and serving
@@ -87,7 +87,7 @@ rollout.
 | 14. Time a decision | Wall-clock for each phase (authenticating the files, preparing the request, the shared prefix, each suffix, the readout), cold and warm file cache, peak memory, and prompt tokens processed per second at several prompt lengths. The host's measured compute and memory bandwidth bound what any optimization can reach; a reproducible harness and recorded workload come before any claim. |
 | 15. Keep the model resident | Authenticate the files once per process rather than per request, keep the mapped weights warm, size each request's state and workspace from the model's memory plan, and refuse a request that does not fit, with a typed reason. |
 | 16. Serve `/v1/systemone` | A small HTTP host does sockets; Coax decides everything else. Bounded bodies decoded from the `proto/` contract, the same body as a NIP-DEC job, typed refusals, a deadline per request, cancellation, a busy refusal instead of an unbounded queue, and the served model identity (its tensor digest) in every answer. No request or answer content is logged. |
-| 17. Run it live | An owner-approved machine and address, a supervised process with health and readiness that waits for authentication, restart on failure, a new build promoted only after golden requests reproduce retained answers, usage records for later metering, and the first published latency figures at P50, P95 and P99. |
+| 17. Run it live | An owner-approved machine and address, a supervised process with health and readiness that waits for authentication and a warm-up of seeded decisions, restart on failure, a new build promoted only after golden requests reproduce retained answers, usage records for later metering, and the first published latency figures at P50, P95 and P99. |
 | 18. Make the numbers move | Measured optimizations, one at a time, each with parity against the previous answer: reuse of the shared prefix across a request's questions, every CPU core on the matrix products, a decoded-weight cache for hot layers, then the device work of Part V. Each change records its before-and-after numbers in chapter 14's harness. |
 
 The hosting machine, domain, budget and any public access are owner
@@ -510,6 +510,30 @@ The harness is product logic, so it is Coax, with the host doing processes,
 files and network. Coder's own agent loop can consume these chapters; nothing
 here replaces its simple loop with more machinery.
 
+## XXII. Decisions in production
+
+A decision model is only as useful as the thresholds, evidence and checks
+around it. These chapters come from the pre-reset work on Jev, System One and
+small decision models ([notes](../docs/decisions.md)). Each extends an early
+chapter and can start as soon as that chapter exists: 156 after 12, 157 and 158
+after 16 and 17, 159 and 160 after 19 and 20, and 161 to 164 after Part III.
+
+| Chapter | What we build and check |
+| --- | --- |
+| 156. Fit our own calibration, and refuse a stale one | Per-question temperatures and binned or isotonic maps fitted on a calibration split and scored on held-out data (reliability curve, expected calibration error, Brier, log loss, confident errors; no bin reported below 20 rows); a map is served only if it passes its frozen gate, and refused for any other model identity or question set. |
+| 157. Thresholds from written costs | A versioned threshold record derived from the cost of a wrong action and the cost of falling through, with three bands (act, abstain to a person or a stronger model, refuse), checked by held-out cost per decision with confidence intervals, never tuned on raw numbers by hand. |
+| 158. Record readings, join outcomes, watch drift | For every decision, the raw and calibrated probabilities, the threshold and the model identity, with no content; each joined to its later outcome or a small judged sample, maps refitted on a schedule, and an alert when calibration error rises past a stated bound. |
+| 159. A Pylon checks itself before serving | A read-only doctor and a self-check against shipped reference decisions that the Pylon must pass before it advertises a slot; an update that would change the served model identity is refused unless declared. |
+| 160. How far apart may two honest answers be? | A distance between two machines' answer distributions (centred log probabilities), measured for honest pairs across backends and for cheap substitutes (a quantized copy, another runtime, a sibling model), with round and strike limits set between them; fresh seeded items with no answer key, the checked subset chosen after answers arrive. |
+| 161. Read a bounded ONNX graph | A Coax reader for a fixed opset and a small set of operators, mapping anonymous initializers to named tensors by walking the graph and refusing anything outside the set; first consumers are a static-embedding model and a tiny image classifier. |
+| 162. A decision in milliseconds | A small encoder with fixed decision heads (a ModernBERT-family model with local and global attention, GeGLU and quantized embedding rows, per-head temperatures) answering a typed question in milliseconds, with identical argmaxes and a stated distance from its reference, and the p50 and p99 latency at 512 tokens on CPU and GPU. |
+| 163. Distill Elephant into a small router | An encoder student trained on Elephant's answer distributions over owned synthetic requests, with temperatures fitted on a development split; promoted only above stated agreement with Elephant, calibration error and cheap-answer precision. |
+| 164. Shadow a new model, then promote it | A candidate model answering beside the current one on live traffic, both logged; promoted only within stated disagreement limits and with no regression in joined outcomes. Chapter 122 rolls out new builds of one model; this rolls out a different model. |
+
+A probability is never permission: the consumer of each answer owns its
+threshold, abstention and interpretation, and these chapters make those
+choices explicit, versioned and measured.
+
 ## Optional laboratories
 
 | Appendix | Scope and entry point |
@@ -519,7 +543,7 @@ here replaces its simple loop with more machinery.
 | C. Derivatives inside derivatives | Higher-order/input derivatives and a tiny PINN after 64–65; independent derivative and PDE-residual checks. |
 | D. Look inside a model | Bounded activation capture at named layers, logit lens over the residual stream, attention and recurrent-state inspection; doubles as the tool for localizing a reference mismatch in 10–11. |
 
-## Prerequisites, not a waiting list of 155 steps
+## Prerequisites, not a waiting list of 164 steps
 
 | Path | Prerequisites | First complete payoff |
 | --- | --- | --- |
@@ -547,6 +571,7 @@ here replaces its simple loop with more machinery.
 | Voice / training scale | 12, 115 and the voice gate / a resumable trainer plus backend | Voice pipeline 127 and decision steering 128 / distributed training 129. |
 | Mesh inference | 130's two-stage parity, 22's measurements and network transport | Packages and placement 131–134 → experts and routing 135–137 → trust and verification 138–139 → Mesh-LLM interoperation 140 → DeepSeek V4.1 across stages 141 → Mistral Large 3 142 → Le Chonk 143. |
 | Harness | Part III's API; chapter 37's constrained decoding; chapter 119's prefix cache for the stable-prefix measurements | The simplest loop 144 → session log 145 → stable prefix 146 → tools, sandbox and condensation 147–149 → programs, forks and plugins 150–152 → protocols, measurement and consent 153–155. |
+| Decisions in production | 12 and 16–17 for calibration, thresholds and outcomes; 19–21 for Pylon checks; Part III for the encoder branch | Own calibration 156 → cost thresholds 157 → outcomes and drift 158; Pylon self-check 159 → honest-distance limits 160; ONNX 161 → millisecond encoder 162 → distilled router 163 → shadow promotion 164. |
 
 ## Coax features each branch needs
 
