@@ -1,0 +1,1 @@
+#import_proto "../../../../proto/descriptors/block-identity.pb" as F;

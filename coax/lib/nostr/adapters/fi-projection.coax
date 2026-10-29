@@ -1,0 +1,415 @@
+// Bounded FI assertion projection. Consistency is not JWS verification,
+// issuer trust, subject/owner admission, possession, or session authority.
+// Input bytes are borrowed and must stay live and unchanged during use.
+#load "fi-proto-import.coax";
+#load "../block/fi-compact.coax";
+#load "../block/fi-claims-parse.coax";
+#load "../block/fi-protected.coax";
+#load "../hex.coax";
+#load "../../../tests/nostr/proto_wire_F.coax";
+#authority;
+FpaAssertion :: struct {original:[]u8;consistent:bool;}
+fpa_bytes :: (a:[]u8,b:[]u8)->bool {
+ if a.count!=b.count {return false;}for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;
+}
+fpa_claim_text :: (text:FiClaimText,actual:string)->bool {copy:=text;return cast(string)copy.bytes[0..<copy.count]==actual;}
+// Return the original audience's JSON form, after the claims parser has checked
+// its member uniqueness and shape. This preserves a singleton array vs string.
+fpa_audience_form :: (raw:string)->int {
+ j:[1]Json;json_start(j[..],raw);if json_next(j[..])!=JSON_OBJECT {return 0;}
+ name:[128]u8;token:=json_next(j[..]);
+ while token==JSON_STRING {
+  n:=json_unescape(json_text(j[..]),name[..]);if n<0 {return 0;}
+  is_aud:=cast(string)name[0..<n]=="aud";token=json_next(j[..]);
+  if is_aud {if token==JSON_STRING {return 1;}if token==JSON_ARRAY {return 2;}return 0;}
+  if !json_skip(j[..]) {return 0;}
+  token=json_next(j[..]);
+ }
+ return 0;
+}
+fpa_audience :: (aud:F_Audience,claims:FiClaimsProjection,form:int)->bool {
+ if claims.audience_count<1 {return false;}
+ if claims.audience_count>16 {return false;}
+ checked:=F_Audience_decode(aud.wire);if aud.error!=0 {return false;}if checked.error!=0 {return false;}
+ choice:=F_Audience_case_form(checked);if !choice.present {return false;}if cast(int)choice.value!=form {return false;}
+ copy:=claims;
+ if form==1 {one:=F_Audience_get_single(checked);return claims.audience_count==1 && fpa_claim_text(copy.audiences[0],one.value);}
+ // A valid oneof choice other than the single-string case is the list case.
+ many:=F_Audience_get_multiple(checked);iterator:=F_AudienceList_iter_values(many.value);index:=0;
+ while iterator.has_value {
+  if index>=claims.audience_count {return false;}
+  if !fpa_claim_text(copy.audiences[index],iterator.value) {return false;}
+  index+=1;iterator=F_AudienceList_next_values(iterator);
+ }
+ // The generated parent decode validates the complete list; stable wire makes
+ // the nested iterator's exhaustion and error state deterministic.
+ return index==claims.audience_count;
+}
+fpa_number :: (n:F_JsonNumber,expected:int)->bool {
+ checked:=F_JsonNumber_decode(n.wire);if n.error!=0 {return false;}if checked.error!=0 {return false;}
+ text:=F_JsonNumber_get_decimal(checked);parsed:=json_int(text.value);return parsed.ok && parsed.value==expected;
+}
+fpa_key :: (projected:[]u8,hex:FiClaimText)->bool {
+ copy:=hex;decoded:[32]u8;result:=hex_decode_checked(cast(string)copy.bytes[0..<copy.count],decoded[..],false);
+ return result.error==NC_OK && result.written==32 && fpa_bytes(projected,decoded[..]);
+}
+fpa_claims :: (projected:F_AssertionClaims,claims:FiClaimsProjection,form:int)->bool {
+ if projected.error!=0 {return false;}
+ if !claims.ok {return false;}
+ // The generated decoder requires and recursively validates singular fields.
+ checked:=F_AssertionClaims_decode(projected.wire);if checked.error!=0 {return false;}
+ iss:=F_AssertionClaims_get_issuer(checked);sub:=F_AssertionClaims_get_subject(checked);key:=F_AssertionClaims_get_nostr_pubkey(checked);
+ if !fpa_claim_text(claims.issuer,iss.value) || !fpa_claim_text(claims.subject,sub.value) || !fpa_key(key.value,claims.key) {return false;}
+ aud:=F_AssertionClaims_get_audience(checked);iat:=F_AssertionClaims_get_issued_at(checked);expires:=F_AssertionClaims_get_expires_at(checked);
+ if !fpa_audience(aud.value,claims,form) || !fpa_number(iat.value,claims.iat) || !fpa_number(expires.value,claims.exp) {return false;}
+ nbf:=F_AssertionClaims_get_not_before(checked);owner:=F_AssertionClaims_get_owner_pubkey(checked);client:=F_AssertionClaims_get_client_id(checked);
+ if nbf.present!=claims.has_nbf || owner.present!=claims.has_owner || client.present!=claims.has_client {return false;}
+ if nbf.present && !fpa_number(nbf.value,claims.nbf) {return false;}
+ if owner.present && !fpa_key(owner.value,claims.owner) {return false;}
+ if client.present && !fpa_claim_text(claims.client,client.value) {return false;}
+ return true;
+}
+fpa_read :: (wire:[]u8)->FpaAssertion #export_c {
+ assertion:=F_Assertion_decode(wire);if assertion.error!=0 {return FpaAssertion.{};}
+ original:=F_Assertion_get_original_compact_jws(assertion);header:=F_Assertion_get_protected_header(assertion);projected:=F_Assertion_get_claims(assertion);
+ token:=cast(string)original.value;parts:=fi_compact_parse(token);if !parts.ok {return FpaAssertion.{};}
+ header_bytes:[4096]u8;payload_bytes:[65536]u8;
+ a:=fi_b64url_decode(token[0..<parts.protected_end],header_bytes[..]);b:=fi_b64url_decode(token[parts.payload_start..<parts.signing_end],payload_bytes[..]);
+ if a.error!=NC_OK {return FpaAssertion.{};}
+ if b.error!=NC_OK {return FpaAssertion.{};}
+ header_original:=F_JsonObject_get_utf8(header.value);payload_original:=F_AssertionClaims_get_original(projected.value);body:=F_JsonObject_get_utf8(payload_original.value);
+ if !fpa_bytes(header_original.value,header_bytes[0..<a.written]) {return FpaAssertion.{};}
+ if !fpa_bytes(body.value,payload_bytes[0..<b.written]) {return FpaAssertion.{};}
+ protected:=fi_protected_parse(cast(string)header_bytes[0..<a.written]);claims:=fi_claims_parse(cast(string)payload_bytes[0..<b.written],"");
+ form:=fpa_audience_form(cast(string)payload_bytes[0..<b.written]);
+ if !protected.ok || !fpa_claims(projected.value,claims,form) {return FpaAssertion.{};}
+ return FpaAssertion.{original=original.value,consistent=true};
+}
+
+#test "FI generated projection agrees with the original compact bytes" {
+ wire:=[956]u8.[10,247,4,101,121,74,104,98,71,99,105,79,105,74,83,85,122,73,49,78,105,73,115,73,110,82,53,99,67,73,54,73,109,53,112,99,67,49,109,97,83,116,113,100,51,81,105,76,67,74,114,97,87,81,105,79,105,74,48,90,88,78,48,73,110,48,46,101,121,74,112,99,51,77,105,79,105,74,111,100,72,82,119,99,122,111,118,76,50,108,122,99,51,86,108,99,105,53,48,90,88,78,48,73,105,119,105,99,51,86,105,73,106,111,105,99,51,86,105,97,109,86,106,100,67,73,115,73,109,70,49,90,67,73,54,73,110,100,122,99,122,111,118,76,51,74,108,98,71,70,53,76,110,82,108,99,51,81,105,76,67,74,117,98,51,78,48,99,108,57,119,100,87,74,114,90,88,107,105,79,105,73,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,73,105,119,105,97,87,70,48,73,106,111,120,76,67,74,108,101,72,65,105,79,106,74,57,46,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,18,49,10,47,123,34,97,108,103,34,58,34,82,83,50,53,54,34,44,34,116,121,112,34,58,34,110,105,112,45,102,105,43,106,119,116,34,44,34,107,105,100,34,58,34,116,101,115,116,34,125,26,140,2,10,171,1,10,168,1,123,34,105,115,115,34,58,34,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,34,44,34,115,117,98,34,58,34,115,117,98,106,101,99,116,34,44,34,97,117,100,34,58,34,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,34,44,34,110,111,115,116,114,95,112,117,98,107,101,121,34,58,34,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,34,44,34,105,97,116,34,58,49,44,34,101,120,112,34,58,50,125,18,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,26,7,115,117,98,106,101,99,116,34,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,42,18,10,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,50,3,10,1,49,58,3,10,1,50];
+ result:=fpa_read(wire[..]);#assert result.consistent && result.original.count==631;
+ wire[864]^=1;#assert !fpa_read(wire[..]).consistent;wire[864]^=1; // issuer
+ wire[885]^=1;#assert !fpa_read(wire[..]).consistent;wire[885]^=1; // subject
+ wire[894]^=1;#assert !fpa_read(wire[..]).consistent;wire[894]^=1; // key
+ wire[930]^=1;#assert !fpa_read(wire[..]).consistent;wire[930]^=1; // audience
+ wire[950]^=1;#assert !fpa_read(wire[..]).consistent;wire[950]^=1; // issued
+ wire[955]^=1;#assert !fpa_read(wire[..]).consistent;wire[955]^=1; // expires
+ wire[640]^=1;#assert !fpa_read(wire[..]).consistent;wire[640]^=1;
+ wire[696]^=1;#assert !fpa_read(wire[..]).consistent;wire[696]^=1;
+ #assert !fpa_read(wire[0..<wire.count-1]).consistent;
+}
+#test "FI audience shape and byte comparisons are explicit" {
+ a:=[3]u8.[1,2,3];b:=[3]u8.[1,2,3];
+ #assert fpa_bytes(a[..],b[..]) && !fpa_bytes(a[..],b[0..<2]);
+ for i:0..<3 {b[i]^=1;#assert !fpa_bytes(a[..],b[..]);b[i]^=1;}
+ #assert fpa_audience_form("{\"aud\":\"x\"}")==1;
+ #assert fpa_audience_form("{\"aud\":[\"x\"]}")==2;
+ #assert fpa_audience_form("{\"aud\":null}")==0 && fpa_audience_form("{}")==0;
+}
+
+#test "FI arrays and optional claims match exact originals" {
+ wire:=[1343]u8.[10,173,6,101,121,74,104,98,71,99,105,79,105,74,83,85,122,73,49,78,105,73,115,73,110,82,53,99,67,73,54,73,109,70,48,75,50,112,51,100,67,73,115,73,109,116,112,90,67,73,54,73,110,82,108,99,51,81,105,102,81,46,101,121,74,112,99,51,77,105,79,105,74,111,100,72,82,119,99,122,111,118,76,50,108,122,99,51,86,108,99,105,53,48,90,88,78,48,73,105,119,105,99,51,86,105,73,106,111,105,99,51,86,105,97,109,86,106,100,67,73,115,73,109,70,49,90,67,73,54,87,121,74,51,99,51,77,54,76,121,57,121,90,87,120,104,101,83,53,48,90,88,78,48,73,105,119,105,97,72,82,48,99,72,77,54,76,121,57,118,100,71,104,108,99,105,53,48,90,88,78,48,73,108,48,115,73,109,53,118,99,51,82,121,88,51,66,49,89,109,116,108,101,83,73,54,73,106,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,119,77,68,65,105,76,67,74,112,89,88,81,105,79,106,69,115,73,109,86,52,99,67,73,54,77,105,119,105,98,109,74,109,73,106,111,120,76,67,74,117,98,51,78,48,99,108,57,118,100,50,53,108,99,108,57,119,100,87,74,114,90,88,107,105,79,105,73,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,77,84,69,120,73,105,119,105,89,50,120,112,90,87,53,48,88,50,108,107,73,106,111,105,98,87,57,105,97,87,120,108,73,110,48,46,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,18,45,10,43,123,34,97,108,103,34,58,34,82,83,50,53,54,34,44,34,116,121,112,34,58,34,97,116,43,106,119,116,34,44,34,107,105,100,34,58,34,116,101,115,116,34,125,26,221,3,10,183,2,10,180,2,123,34,105,115,115,34,58,34,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,34,44,34,115,117,98,34,58,34,115,117,98,106,101,99,116,34,44,34,97,117,100,34,58,91,34,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,34,44,34,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,34,93,44,34,110,111,115,116,114,95,112,117,98,107,101,121,34,58,34,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,34,44,34,105,97,116,34,58,49,44,34,101,120,112,34,58,50,44,34,110,98,102,34,58,49,44,34,110,111,115,116,114,95,111,119,110,101,114,95,112,117,98,107,101,121,34,58,34,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,34,44,34,99,108,105,101,110,116,95,105,100,34,58,34,109,111,98,105,108,101,34,125,18,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,26,7,115,117,98,106,101,99,116,34,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,42,40,18,38,10,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,10,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,50,3,10,1,49,58,3,10,1,50,66,3,10,1,49,74,32,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,82,6,109,111,98,105,108,101];
+ #assert fpa_read(wire[..]).consistent;
+ wire[1250]^=1;#assert !fpa_read(wire[..]).consistent;wire[1250]^=1; // audience
+ wire[1300]^=1;#assert !fpa_read(wire[..]).consistent;wire[1300]^=1; // nbf
+ wire[1303]^=1;#assert !fpa_read(wire[..]).consistent;wire[1303]^=1; // owner
+ wire[1337]^=1;#assert !fpa_read(wire[..]).consistent;wire[1337]^=1; // client
+ wire[1296]=90;#assert !fpa_read(wire[..]).consistent;wire[1296]=66;
+ wire[1301]=90;#assert !fpa_read(wire[..]).consistent;wire[1301]=74;
+ wire[1335]=90;#assert !fpa_read(wire[..]).consistent;wire[1335]=82;
+}
+#test "FI numeric and key helper values cannot grant consistency" {
+ number:=[3]u8.[10,1,49];bad:=[3]u8.[10,1,97];
+ #assert fpa_number(F_JsonNumber_decode(number[..]),1) && !fpa_number(F_JsonNumber_decode(number[..]),2);
+ #assert !fpa_number(F_JsonNumber_decode(bad[..]),1);
+ forged:=F_JsonNumber_decode(number[..]);forged.error=1;#assert !fpa_number(forged,1);
+ malformed:=[1]u8.[0];forged=F_JsonNumber.{wire=malformed[..]};#assert !fpa_number(forged,1);
+ key:[32]u8;hex:FiClaimText;for i:0..<64 {hex.bytes[i]=48;}hex.count=64;
+ #assert fpa_key(key[..],hex);key[0]=1;#assert !fpa_key(key[..],hex);key[0]=0;
+ hex.count=62;#assert !fpa_key(key[..],hex);hex.count=64;
+ hex.bytes[0]=120;#assert !fpa_key(key[..],hex);
+ text:FiClaimText;text.bytes[0]=97;text.count=1;#assert fpa_claim_text(text,"a") && !fpa_claim_text(text,"b");
+}
+
+#test "FI audience and malformed model boundaries are distinct" {
+ #assert fpa_audience_form("[]")==0 && fpa_audience_form("{")==0;
+ #assert fpa_audience_form("{\"\":1,\"aud\":\"x\"}")==1;
+ #assert fpa_audience_form("{\"skip\":[1,2],\"aud\":[\"x\"]}")==2;
+ #assert fpa_audience_form("{\"x\":[")==0;
+ #assert fpa_audience_form("{\"\\ud800\":1}")==0;
+ single:=[3]u8.[10,1,120];multiple:=[8]u8.[18,6,10,1,120,10,1,121];empty:[1]u8;
+ claims:FiClaimsProjection;claims.ok=true;claims.audience_count=1;claims.audiences[0].bytes[0]=120;claims.audiences[0].count=1;
+ #assert fpa_audience(F_Audience_decode(single[..]),claims,1);
+ forged:=F_Audience_decode(single[..]);forged.error=1;#assert !fpa_audience(forged,claims,1);
+ malformed:=[1]u8.[0];forged=F_Audience.{wire=malformed[..]};#assert !fpa_audience(forged,claims,1);
+ empty_list:=[2]u8.[18,0];claims.audience_count=0;#assert !fpa_audience(F_Audience_decode(empty_list[..]),claims,2);claims.audience_count=1;
+ claims.audience_count=0;#assert !fpa_audience(F_Audience_decode(single[..]),claims,1);claims.audience_count=17;#assert !fpa_audience(F_Audience_decode(single[..]),claims,1);claims.audience_count=1;
+ #assert !fpa_audience(F_Audience_decode(single[..]),claims,2);
+ #assert !fpa_audience(F_Audience_decode(empty[0..<0]),claims,1);
+ claims.audience_count=2;claims.audiences[1].bytes[0]=121;claims.audiences[1].count=1;
+ #assert fpa_audience(F_Audience_decode(multiple[..]),claims,2);
+ claims.audience_count=1;#assert !fpa_audience(F_Audience_decode(multiple[..]),claims,2);
+ claims.audience_count=2;claims.audiences[1].bytes[0]=122;#assert !fpa_audience(F_Audience_decode(multiple[..]),claims,2);
+ all:[50]u8;all[0]=18;all[1]=48;
+ for i:0..<16 {all[2+i*3]=10;all[3+i*3]=1;all[4+i*3]=cast(u8)(97+i);claims.audiences[i].bytes[0]=cast(u8)(97+i);claims.audiences[i].count=1;}
+ claims.audience_count=16;#assert fpa_audience(F_Audience_decode(all[..]),claims,2);
+ extra:[53]u8;for i:0..<50 {extra[i]=all[i];}extra[1]=51;extra[50]=10;extra[51]=1;extra[52]=113;
+ #assert !fpa_audience(F_Audience_decode(extra[..]),claims,2);
+ claims.audience_count=17;#assert !fpa_audience(F_Audience_decode(extra[..]),claims,2);
+ bad:=[1]u8.[0];projection:=F_AssertionClaims_decode(bad[..]);#assert !fpa_claims(projection,claims,1);
+ projection.error=0;claims.ok=false;#assert !fpa_claims(projection,claims,1);
+ claims.ok=true;#assert !fpa_claims(projection,claims,1);
+}
+
+#test "generated JSON object validator boundaries" {
+ empty:[1]u8;
+ #assert F_JsonObject__check(empty[0..<0],64,0,false,false).error==0;
+ #assert F_JsonObject__check(empty[0..<0],65,0,false,false).error==F__pb_LIMIT;
+ #assert F_JsonObject__check(empty[0..<0],0,0,true,false).error==F__pb_REQUIRED;
+ #assert F_JsonObject_decode(empty[0..<0]).error==F__pb_REQUIRED;
+ one:=[3]u8.[10,1,97];
+ good:=F_JsonObject__check(one[..],0,1,true,false);
+ #assert good.error==0 && good.left==0;
+ #assert F_JsonObject__check(one[..],0,0,true,false).error==F__pb_LIMIT;
+ #assert F_JsonObject_decode(one[..]).error==0;
+ duplicate:=[4]u8.[10,0,10,0];
+ #assert F_JsonObject_decode(duplicate[..]).error==F__pb_DUPLICATE;
+ wrong:=[2]u8.[8,0];#assert F_JsonObject_decode(wrong[..]).error==F__pb_WIRE;
+ malformed:=[1]u8.[0];#assert F_JsonObject_decode(malformed[..]).error==F__pb_WIRE;
+ nonminimal:=[3]u8.[10,128,0];
+ #assert F_JsonObject_decode(nonminimal[..]).error==0;
+ #assert F_JsonObject__check(nonminimal[..],0,1,true,true).error==F__pb_WIRE;
+ #assert F__pb_message_admitted(64,1048576) && !F__pb_message_admitted(65,0);
+ #assert !F__pb_message_admitted(0,-1) && !F__pb_message_admitted(0,1048577);
+ #assert F__pb_root_depth()==0 && F__pb_default_fields()==524288;
+}
+#test "generated JSON object payload size is exact" {
+ wire:[131077]u8;wire[0]=10;wire[1]=128;wire[2]=128;wire[3]=8;
+ #assert F_JsonObject_decode(wire[0..<131076]).error==0;
+ wire[1]=129;
+ #assert F_JsonObject_decode(wire[..]).error==F__pb_LIMIT;
+}
+
+#test "generated FI number validation and getters" {
+ empty:[1]u8;#assert F_JsonNumber__check(empty[0..<0],65,0,false,false).error==F__pb_LIMIT;
+ #assert F_JsonNumber__check(empty[0..<0],0,0,true,false).error==F__pb_REQUIRED && F_JsonNumber_decode(empty[0..<0]).error==F__pb_REQUIRED;
+ one:=[3]u8.[10,1,49];good:=F_JsonNumber__check(one[..],0,1,true,false);
+ #assert good.error==0 && good.left==0 && F_JsonNumber__check(one[..],0,0,true,false).error==F__pb_LIMIT;
+ #assert F_JsonNumber_decode(one[..]).error==0;
+ dup:=[6]u8.[10,1,49,10,1,50];#assert F_JsonNumber_decode(dup[..]).error==F__pb_DUPLICATE;
+ wrong:=[2]u8.[8,0];#assert F_JsonNumber_decode(wrong[..]).error==F__pb_WIRE;
+ bad:=[3]u8.[10,1,255];#assert F_JsonNumber_decode(bad[..]).error==F__pb_UTF8;
+ overlong:=[4]u8.[10,129,0,49];#assert F_JsonNumber_decode(overlong[..]).error==0;
+ #assert F_JsonNumber__check(overlong[..],0,1,true,true).error==F__pb_WIRE;
+ bounded:[132]u8;bounded[0]=10;bounded[1]=128;bounded[2]=1;
+ #assert F_JsonNumber_decode(bounded[0..<131]).error==0;bounded[1]=129;
+ #assert F_JsonNumber_decode(bounded[..]).error==F__pb_LIMIT;
+ prefixed:=[5]u8.[24,8,10,1,49];value:=F_JsonNumber_get_decimal(F_JsonNumber_decode(prefixed[..]));
+ #assert value.error==0 && value.present && value.value=="1";
+ invalid:=F_JsonNumber.{wire=wrong[..]};#assert F_JsonNumber_get_decimal(invalid).error==F__pb_WIRE;
+ invalid=F_JsonNumber.{wire=one[..],error=F__pb_VALUE};#assert F_JsonNumber_get_decimal(invalid).error==F__pb_VALUE;
+ trailing:=[4]u8.[10,1,49,128];invalid=F_JsonNumber.{wire=trailing[..]};#assert F_JsonNumber_get_decimal(invalid).error==F__pb_WIRE;
+}
+#test "generated FI object getters report presence and failures" {
+ prefixed:=[5]u8.[24,8,10,1,97];m:=F_JsonObject_decode(prefixed[..]);value:=F_JsonObject_get_utf8(m);
+ #assert value.error==0 && value.present && value.value.count==1 && value.value[0]==97;
+ m.error=F__pb_VALUE;#assert F_JsonObject_get_utf8(m).error==F__pb_VALUE;
+ wrong:=[2]u8.[8,0];m=F_JsonObject.{wire=wrong[..]};#assert F_JsonObject_get_utf8(m).error==F__pb_WIRE;
+}
+
+#test "generated FI audience oneof validation and accessors" {
+ empty:[1]u8;#assert F_Audience__check(empty[0..<0],65,0,true,false).error==F__pb_LIMIT;
+ #assert F_Audience_decode(empty[0..<0]).error==0 && !F_Audience_case_form(F_Audience_decode(empty[0..<0])).present;
+ one:=[3]u8.[10,1,120];two:=[5]u8.[18,3,10,1,121];
+ #assert F_Audience__check(one[..],0,0,true,false).error==F__pb_LIMIT;
+ #assert F_Audience__check(one[..],0,1,true,false).error==0;
+ c:=F_Audience__check(two[..],0,2,true,false);#assert c.error==0 && c.left==0;
+ #assert F_Audience__check(two[..],64,2,true,false).error==F__pb_LIMIT;
+ #assert F_Audience__check(two[..],63,2,true,false).error==0;
+ #assert F_Audience__check(two[..],0,1,true,false).error==F__pb_LIMIT;
+ #assert F_Audience_case_form(F_Audience_decode(one[..])).value==1;
+ #assert F_Audience_case_form(F_Audience_decode(two[..])).value==2;
+ dup:=[6]u8.[10,1,120,10,1,121];#assert F_Audience_decode(dup[..]).error==F__pb_DUPLICATE;
+ conflict:=[5]u8.[10,1,120,18,0];#assert F_Audience_decode(conflict[..]).error==F__pb_DUPLICATE;
+ reversed:=[5]u8.[18,0,10,1,120];#assert F_Audience_decode(reversed[..]).error==F__pb_DUPLICATE;
+ duplicate_child:=[4]u8.[18,0,18,0];#assert F_Audience_decode(duplicate_child[..]).error==F__pb_DUPLICATE;
+ wrong:=[2]u8.[8,0];#assert F_Audience_decode(wrong[..]).error==F__pb_WIRE;
+ wrong_child:=[2]u8.[16,0];#assert F_Audience_decode(wrong_child[..]).error==F__pb_WIRE;
+ invalid_utf:=[3]u8.[10,1,255];#assert F_Audience_decode(invalid_utf[..]).error==F__pb_UTF8;
+ bad_child:=[3]u8.[18,1,0];#assert F_Audience_decode(bad_child[..]).error==F__pb_WIRE;
+ overlong:=[4]u8.[10,129,0,120];#assert F_Audience_decode(overlong[..]).error==0 && F_Audience_decode_minimal(overlong[..]).error==F__pb_WIRE;
+ prefixed_one:=[5]u8.[24,8,10,1,120];m:=F_Audience_decode(prefixed_one[..]);choice:=F_Audience_case_form(m);single:=F_Audience_get_single(m);
+ #assert choice.error==0 && choice.present && choice.value==1 && single.error==0 && single.present && single.value=="x";
+ #assert !F_Audience_get_multiple(m).present;
+ prefixed_two:=[7]u8.[24,16,18,3,10,1,121];m=F_Audience_decode(prefixed_two[..]);choice=F_Audience_case_form(m);multi:=F_Audience_get_multiple(m);
+ #assert choice.error==0 && choice.present && choice.value==2 && multi.error==0 && multi.present;
+ #assert !F_Audience_get_single(m).present;
+ m.error=F__pb_VALUE;#assert F_Audience_case_form(m).error==F__pb_VALUE && F_Audience_get_single(m).error==F__pb_VALUE && F_Audience_get_multiple(m).error==F__pb_VALUE;
+ m=F_Audience.{wire=wrong[..]};#assert F_Audience_case_form(m).error==F__pb_WIRE && F_Audience_get_single(m).error==F__pb_WIRE && F_Audience_get_multiple(m).error==F__pb_WIRE;
+}
+
+#test "generated FI audience list validation and iteration" {
+ empty:[1]u8;#assert F_AudienceList__check(empty[0..<0],65,0,true,false).error==F__pb_LIMIT;
+ one:=[3]u8.[10,1,120];c:=F_AudienceList__check(one[..],0,1,true,false);#assert c.error==0 && c.left==0;
+ #assert F_AudienceList__check(one[..],0,0,true,false).error==F__pb_LIMIT;
+ bad:=[2]u8.[8,0];#assert F_AudienceList_decode(bad[..]).error==F__pb_WIRE;
+ invalid:=[3]u8.[10,1,255];#assert F_AudienceList_decode(invalid[..]).error==F__pb_UTF8;
+ overlong:=[4]u8.[10,129,0,120];#assert F_AudienceList_decode(overlong[..]).error==0;
+ #assert F_AudienceList_decode_minimal(overlong[..]).error==F__pb_WIRE;
+ list:=[8]u8.[16,0,10,1,120,10,1,121];m:=F_AudienceList_decode(list[..]);iter:=F_AudienceList_iter_values(m);
+ #assert iter.error==0 && iter.has_value && iter.value=="x";
+ iter=F_AudienceList_next_values(iter);#assert iter.error==0 && iter.has_value && iter.value=="y";
+ iter=F_AudienceList_next_values(iter);#assert iter.error==0 && iter.done && !iter.has_value;
+ broken:=F_AudienceList.{wire=bad[..]};iter=F_AudienceList_iter_values(broken);#assert iter.error==F__pb_WIRE && iter.done;
+ broken=F_AudienceList.{wire=one[..],error=F__pb_VALUE};iter=F_AudienceList_iter_values(broken);#assert iter.error==F__pb_VALUE && iter.done;
+ iter=F_AudienceList_Iter_values.{wire=one[..],done=true};iter=F_AudienceList_next_values(iter);#assert iter.done && !iter.has_value;
+ iter=F_AudienceList_Iter_values.{wire=one[..],error=F__pb_VALUE};iter=F_AudienceList_next_values(iter);#assert iter.error==F__pb_VALUE && !iter.has_value;
+ invalid_key:=[1]u8.[0];iter=F_AudienceList_Iter_values.{wire=invalid_key[..]};iter=F_AudienceList_next_values(iter);#assert iter.error==F__pb_WIRE && iter.done && !iter.has_value;
+}
+#test "FI claims validator checks each field and preserves budgets" {
+ empty:[1]u8;
+ #assert F_AssertionClaims__check(empty[0..<0],65,0,false,false).error==F__pb_LIMIT;
+ #assert F_AssertionClaims__check(empty[0..<0],0,0,true,false).error==F__pb_REQUIRED;
+ for f:1..<11 {
+  wire:[70]u8;wire[0]=cast(u8)(f*8+2);
+  if f==4 || f==9 {wire[1]=32;} else if f==1 || f==5 || f==6 || f==7 || f==8 {wire[1]=3;wire[2]=10;wire[3]=1;wire[4]=120;} else {wire[1]=1;wire[2]=120;}
+  n:=cast(int)wire[1]+2;
+  budget:=1;if f==1 || f==5 || f==6 || f==7 || f==8 {budget=2;}
+  check:=F_AssertionClaims__check(wire[0..<n],0,budget,false,false);
+  #assert check.error==0 && check.left==0;
+  #assert F_AssertionClaims__check(wire[0..<n],0,budget-1,false,false).error==F__pb_LIMIT;
+  for i:0..<n {wire[n+i]=wire[i];}
+  #assert F_AssertionClaims__check(wire[0..<n*2],0,10,false,false).error==F__pb_DUPLICATE;
+  wire[0]=cast(u8)(f*8);wire[1]=0;
+  #assert F_AssertionClaims__check(wire[0..<2],0,10,false,false).error==F__pb_WIRE;
+  wire[0]=cast(u8)(f*8+2);wire[1]=1;wire[2]=0;
+  if f==1 || f==5 || f==6 || f==7 || f==8 {#assert F_AssertionClaims__check(wire[0..<3],0,10,false,false).error==F__pb_WIRE;}
+  if f==4 || f==9 {#assert F_AssertionClaims__check(wire[0..<3],0,10,false,false).error==F__pb_LIMIT;}
+  if f==2 || f==3 || f==10 {wire[2]=255;#assert F_AssertionClaims__check(wire[0..<3],0,10,false,false).error==F__pb_UTF8;}
+ }
+ nonminimal:=[4]u8.[18,129,0,120];
+ #assert F_AssertionClaims__check(nonminimal[..],0,1,false,false).error==0;
+ #assert F_AssertionClaims__check(nonminimal[..],0,1,false,true).error==F__pb_WIRE;
+ nested:=[5]u8.[10,3,10,1,120];
+ #assert F_AssertionClaims__check(nested[..],63,2,false,false).error==0;
+ #assert F_AssertionClaims__check(nested[..],64,2,false,false).error==F__pb_LIMIT;
+}
+#test "FI assertion validator checks each field and nested errors" {
+ empty:[1]u8;
+ #assert F_Assertion__check(empty[0..<0],65,0,false,false).error==F__pb_LIMIT;
+ #assert F_Assertion__check(empty[0..<0],0,0,true,false).error==F__pb_REQUIRED;
+ for f:1..<4 {
+  wire:[12]u8;wire[0]=cast(u8)(f*8+2);wire[1]=0;
+  if f==2 {wire[1]=3;wire[2]=10;wire[3]=1;wire[4]=120;}
+  n:=cast(int)wire[1]+2;
+  if f==3 {#assert F_Assertion__check(wire[0..<n],0,10,false,false).error==F__pb_REQUIRED;}
+  else {
+   budget:=1;if f==2 {budget=2;}
+   check:=F_Assertion__check(wire[0..<n],0,budget,false,false);#assert check.error==0 && check.left==0;
+   #assert F_Assertion__check(wire[0..<n],0,budget-1,false,false).error==F__pb_LIMIT;
+   for i:0..<n {wire[n+i]=wire[i];}
+   #assert F_Assertion__check(wire[0..<n*2],0,10,false,false).error==F__pb_DUPLICATE;
+  }
+  wire[0]=cast(u8)(f*8);wire[1]=0;#assert F_Assertion__check(wire[0..<2],0,10,false,false).error==F__pb_WIRE;
+ }
+ nonminimal:=[3]u8.[10,128,0];
+ #assert F_Assertion__check(nonminimal[..],0,1,false,false).error==0;
+ #assert F_Assertion__check(nonminimal[..],0,1,false,true).error==F__pb_WIRE;
+ nested:=[5]u8.[18,3,10,1,120];
+ #assert F_Assertion__check(nested[..],63,2,false,false).error==0;
+ #assert F_Assertion__check(nested[..],64,2,false,false).error==F__pb_LIMIT;
+}
+#test "FI claims and assertion getters propagate errors" {
+ bad:=[1]u8.[0];
+ claims:=F_AssertionClaims.{wire=bad[..]};
+ #assert F_AssertionClaims_get_original(claims).error==F__pb_WIRE;
+ #assert F_AssertionClaims_get_issuer(claims).error==F__pb_WIRE;
+ #assert F_AssertionClaims_get_subject(claims).error==F__pb_WIRE;
+ #assert F_AssertionClaims_get_nostr_pubkey(claims).error==F__pb_WIRE;
+ #assert F_AssertionClaims_get_audience(claims).error==F__pb_WIRE;
+ #assert F_AssertionClaims_get_issued_at(claims).error==F__pb_WIRE;
+ #assert F_AssertionClaims_get_expires_at(claims).error==F__pb_WIRE;
+ #assert F_AssertionClaims_get_not_before(claims).error==F__pb_WIRE;
+ #assert F_AssertionClaims_get_owner_pubkey(claims).error==F__pb_WIRE;
+ #assert F_AssertionClaims_get_client_id(claims).error==F__pb_WIRE;
+ claims.error=F__pb_VALUE;
+ #assert F_AssertionClaims_get_original(claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_issuer(claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_subject(claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_nostr_pubkey(claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_audience(claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_issued_at(claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_expires_at(claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_not_before(claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_owner_pubkey(claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_client_id(claims).error==F__pb_VALUE;
+ a:=F_Assertion.{wire=bad[..]};
+ #assert F_Assertion_get_original_compact_jws(a).error==F__pb_WIRE;
+ #assert F_Assertion_get_protected_header(a).error==F__pb_WIRE;
+ #assert F_Assertion_get_claims(a).error==F__pb_WIRE;
+ a.error=F__pb_VALUE;
+ #assert F_Assertion_get_original_compact_jws(a).error==F__pb_VALUE;
+ #assert F_Assertion_get_protected_header(a).error==F__pb_VALUE;
+ #assert F_Assertion_get_claims(a).error==F__pb_VALUE;
+}
+#test "FI nested depth and each required claim are enforced" {
+ for f:1..<9 {
+  if f==2 || f==3 || f==4 {continue;}
+  wire:=[5]u8.[0,3,10,1,120];wire[0]=cast(u8)(f*8+2);
+  #assert F_AssertionClaims__check(wire[..],63,2,false,false).error==0;
+  #assert F_AssertionClaims__check(wire[..],64,2,false,false).error==F__pb_LIMIT;
+ }
+ claims:[128]u8;n:=0;
+ for f:1..<8 {
+  claims[n]=cast(u8)(f*8+2);n+=1;
+  if f==4 {claims[n]=32;n+=33;}
+  else if f==2 || f==3 {claims[n]=1;claims[n+1]=120;n+=2;}
+  else {claims[n]=3;claims[n+1]=10;claims[n+2]=1;claims[n+3]=120;n+=4;}
+ }
+ #assert F_AssertionClaims_decode(claims[0..<n]).error==0;
+ forged_claims:=F_AssertionClaims.{wire=claims[0..<n],error=F__pb_VALUE};
+ #assert F_AssertionClaims_get_original(forged_claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_issuer(forged_claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_subject(forged_claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_nostr_pubkey(forged_claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_audience(forged_claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_issued_at(forged_claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_expires_at(forged_claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_not_before(forged_claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_owner_pubkey(forged_claims).error==F__pb_VALUE;
+ #assert F_AssertionClaims_get_client_id(forged_claims).error==F__pb_VALUE;
+ noncanonical:[129]u8;noncanonical[0]=claims[0];noncanonical[1]=131;noncanonical[2]=0;
+ for i:2..<n {noncanonical[i+1]=claims[i];}
+ #assert F_AssertionClaims_decode(noncanonical[0..<n+1]).error==0;
+ #assert F_AssertionClaims_decode_minimal(noncanonical[0..<n+1]).error==F__pb_WIRE;
+ for missing:1..<8 {
+  shorter:[128]u8;k:=0;pos:=0;
+  for f:1..<8 {
+   size:=5;if f==4 {size=34;}if f==2 || f==3 {size=3;}
+   if f!=missing {for i:0..<size {shorter[k]=claims[pos+i];k+=1;}}
+   pos+=size;
+  }
+  #assert F_AssertionClaims_decode(shorter[0..<k]).error==F__pb_REQUIRED;
+ }
+ top:[256]u8;top[0]=10;top[1]=0;top[2]=18;top[3]=3;top[4]=10;top[5]=1;top[6]=120;top[7]=26;top[8]=cast(u8)n;
+ for i:0..<n {top[9+i]=claims[i];}
+ total:=9+n;
+ #assert F_Assertion__check(top[0..<total],62,15,false,false).error==0;
+ #assert F_Assertion__check(top[0..<total],63,15,false,false).error==F__pb_LIMIT;
+ #assert F_Assertion__check(top[0..<total],0,15,false,false).left==0;
+ #assert F_Assertion__check(top[0..<7],0,15,true,false).error==F__pb_REQUIRED;
+ forged_assertion:=F_Assertion.{wire=top[0..<total],error=F__pb_VALUE};
+ #assert F_Assertion_get_original_compact_jws(forged_assertion).error==F__pb_VALUE;
+ #assert F_Assertion_get_protected_header(forged_assertion).error==F__pb_VALUE;
+ #assert F_Assertion_get_claims(forged_assertion).error==F__pb_VALUE;
+ noncanonical_top:[257]u8;noncanonical_top[0]=10;noncanonical_top[1]=128;noncanonical_top[2]=0;
+ for i:2..<total {noncanonical_top[i+1]=top[i];}
+ #assert F_Assertion_decode(noncanonical_top[0..<total+1]).error==0;
+ #assert F_Assertion_decode_minimal(noncanonical_top[0..<total+1]).error==F__pb_WIRE;
+ for i:0..<n+2 {top[total+i]=top[7+i];}
+ #assert F_Assertion__check(top[0..<total+n+2],0,20,false,false).error==F__pb_DUPLICATE;
+ #assert F_Assertion__check(top[0..<2],0,10,true,false).error==F__pb_REQUIRED;
+ top[2]=26;top[3]=cast(u8)n;for i:0..<n {top[4+i]=claims[i];}
+ #assert F_Assertion__check(top[0..<n+4],0,15,true,false).error==F__pb_REQUIRED;
+}

@@ -1,0 +1,238 @@
+// An unverified projection of an original event. Neither a matching projection
+// nor unknown fields authorize anything; verification is a separate operation.
+// Input is borrowed and must remain live, stable and unchanged throughout use.
+#load "event-proto-import.coax";
+#load "../event.coax";
+#load "../../../tests/nostr/proto_wire_N.coax";
+#authority;
+NpaEvent :: struct {original:[]u8;consistent:bool;}
+npa_equal_bytes :: (a:[]u8,b:[]u8)->bool {
+  if a.count!=b.count {return false;}
+  for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;
+}
+npa_tags :: (original:NostrEvent,projected:N_Event)->bool {
+  json:[1]Json;json_start(json[..],original.original[original.tags_from..<original.tags_to]);
+  if json_next(json[..])!=JSON_ARRAY {return false;}
+  // The generated event iterator validates all nested tags first. With a
+  // stable wire, a yielded tag's value iterator cannot acquire a wire error.
+  tags:=N_Event_iter_tags(projected);decoded:[65536]u8;
+  while true {
+    token:=json_next(json[..]);if token==JSON_ARRAY_END {break;}
+    if token!=JSON_ARRAY {return false;}
+    if !tags.has_value {return false;}
+    values:=N_Tag_iter_values(tags.value);
+    while true {
+      value_token:=json_next(json[..]);if value_token==JSON_ARRAY_END {break;}
+      if value_token!=JSON_STRING {return false;}
+      if !values.has_value {return false;}
+      n:=json_unescape(json_text(json[..]),decoded[..]);if n<0 || cast(string)decoded[0..<n]!=values.value {return false;}
+      values=N_Tag_next_values(values);
+    }
+    if values.has_value {return false;}
+    tags=N_Event_next_tags(tags);
+  }
+  return !tags.has_value && tags.error==0 && json_next(json[..])==JSON_END;
+}
+npa_fields :: (original:NostrEvent,projected:N_Event)->bool {
+  if original.error!=NE_OK || projected.error!=0 {return false;}
+  // Revalidate the complete borrowed child; generated decode recursively checks
+  // required fields and tags. The caller keeps its wire stable while read.
+  checked:=N_Event_decode(projected.wire);if checked.error!=0 {return false;}
+  id:=N_Event_get_id(checked);key:=N_Event_get_pubkey(checked);sig:=N_Event_get_sig(checked);
+  created:=N_Event_get_created_at(checked);kind:=N_Event_get_kind(checked);content:=N_Event_get_content(checked);
+  copied:=original;
+  if !npa_equal_bytes(id.value,copied.id[..]) || !npa_equal_bytes(key.value,copied.public_key[..]) || !npa_equal_bytes(sig.value,copied.signature[..]) {return false;}
+  if created.value!=cast(u64)original.created_at || kind.value!=cast(u32)original.kind {return false;}
+  decoded:[65536]u8;n:=json_unescape(original.original[original.content_from..<original.content_to],decoded[..]);
+  return n>=0 && cast(string)decoded[0..<n]==content.value && npa_tags(original,projected);
+}
+// This validates equality with the original only. It must not be used as a
+// signature, membership, ownership, freshness or command authorization.
+npa_read :: (wire:[]u8)->NpaEvent #export_c {
+  envelope:=N_SignedEvent_decode(wire);if envelope.error!=0 {return NpaEvent.{};}
+  raw:=N_SignedEvent_get_original_json(envelope);projected:=N_SignedEvent_get_event(envelope);
+  original:=ne_parse(cast(string)raw.value);if !npa_fields(original,projected.value) {return NpaEvent.{};}
+  return NpaEvent.{original=raw.value,consistent=true};
+}
+
+#test "generated event projection preserves exact original and rejects mismatches" {
+  wire:=[589]u8.[10,153,3,123,34,105,100,34,58,34,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,34,44,34,112,117,98,107,101,121,34,58,34,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,34,44,34,99,114,101,97,116,101,100,95,97,116,34,58,52,50,44,34,107,105,110,100,34,58,55,44,34,116,97,103,115,34,58,91,91,34,120,34,44,34,92,117,48,48,101,57,34,93,44,91,93,44,91,34,120,34,44,34,92,117,48,48,101,57,34,93,93,44,34,99,111,110,116,101,110,116,34,58,34,104,105,92,110,116,104,101,114,101,34,44,34,115,105,103,34,58,34,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,34,44,34,118,101,114,105,102,105,101,100,34,58,116,114,117,101,44,34,97,117,116,104,111,114,105,122,101,100,34,58,116,114,117,101,125,18,171,1,10,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,18,32,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,24,42,32,7,42,7,10,1,120,10,2,195,169,42,0,42,7,10,1,120,10,2,195,169,50,8,104,105,10,116,104,101,114,101,58,64,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,208,5,1,208,5,1];
+  result:=npa_read(wire[..]);#assert result.consistent && result.original.count==409;
+  #assert cast(string)result.original=="{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"created_at\":42,\"kind\":7,\"tags\":[[\"x\",\"\\u00e9\"],[],[\"x\",\"\\u00e9\"]],\"content\":\"hi\\nthere\",\"sig\":\"22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222\",\"verified\":true,\"authorized\":true}";
+  wire[417]^=1;#assert !npa_read(wire[..]).consistent;wire[417]^=1; // id
+  wire[451]^=1;#assert !npa_read(wire[..]).consistent;wire[451]^=1; // key
+  wire[484]^=1;#assert !npa_read(wire[..]).consistent;wire[484]^=1; // created
+  wire[486]^=1;#assert !npa_read(wire[..]).consistent;wire[486]^=1; // kind
+  wire[491]^=1;#assert !npa_read(wire[..]).consistent;wire[491]^=1; // tag
+  wire[509]^=1;#assert !npa_read(wire[..]).consistent;wire[509]^=1; // content
+  wire[519]^=1;#assert !npa_read(wire[..]).consistent;wire[519]^=1; // sig
+  #assert !npa_read(wire[0..<wire.count-1]).consistent;
+  envelope:=N_SignedEvent_decode(wire[..]);raw:=N_SignedEvent_get_original_json(envelope);child:=N_SignedEvent_get_event(envelope);
+  source:=ne_parse(cast(string)raw.value);#assert npa_tags(source,child.value) && npa_fields(source,child.value);
+  bad:=source;bad.error=NE_SHAPE;#assert !npa_fields(bad,child.value);
+  broken:=child.value;broken.error=1;#assert !npa_fields(source,broken) && !npa_tags(source,broken);
+  bad=source;bad.original="[]";bad.tags_from=0;bad.tags_to=2;#assert !npa_tags(bad,broken) && !npa_tags(bad,child.value);
+  broken=child.value;broken.wire=wire[0..<1];broken.error=0;#assert !npa_fields(source,broken);
+  bad=source;bad.original="{}";bad.tags_from=0;bad.tags_to=2;#assert !npa_tags(bad,child.value);
+  bad.original="[1]";bad.tags_to=3;#assert !npa_tags(bad,child.value);
+  bad.original="[[1]]";bad.tags_to=5;#assert !npa_tags(bad,child.value);
+  bad.original="[[]]";bad.tags_to=4;#assert !npa_tags(bad,child.value);
+  bad.original="[[\"x\"]]";bad.tags_to=7;#assert !npa_tags(bad,child.value);
+  bad.original="[[\"x\",\"é\",\"extra\"]]";bad.tags_to=20;#assert !npa_tags(bad,child.value);
+  bad.original="[[\"x\",\"é\"],[],[\"x\",\"é\"],[]]";bad.tags_to=bad.original.count;#assert !npa_tags(bad,child.value);
+  bad.original="[[\"x\",\"\\ud800\"]]";bad.tags_to=bad.original.count;#assert !npa_tags(bad,child.value);
+  bad.original="[[\"x\",\"é\"],[],[\"x\",\"é\"]] garbage";bad.tags_to=bad.original.count;#assert !npa_tags(bad,child.value);
+}
+#test "byte equality requires equal lengths and every byte" {
+  a:=[3]u8.[0,1,2];b:=[3]u8.[0,1,2];
+  #assert npa_equal_bytes(a[..],b[..]) && !npa_equal_bytes(a[..],b[0..<2]);
+  for i:0..<3 {b[i]^=1;#assert !npa_equal_bytes(a[..],b[..]);b[i]^=1;}
+}
+
+#test "empty tag values and empty content are retained" {
+  wire:=[487]u8.[10,209,2,123,34,105,100,34,58,34,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,34,44,34,112,117,98,107,101,121,34,58,34,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,34,44,34,99,114,101,97,116,101,100,95,97,116,34,58,48,44,34,107,105,110,100,34,58,48,44,34,116,97,103,115,34,58,91,91,34,34,93,93,44,34,99,111,110,116,101,110,116,34,58,34,34,44,34,115,105,103,34,58,34,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,34,125,18,144,1,10,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,18,32,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,24,0,32,0,42,2,10,0,50,0,58,64,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34];
+  #assert npa_read(wire[..]).consistent;
+}
+
+#test "generated event tag validators preserve wire, budgets and bounds" {
+ empty:[1]u8;
+ #assert N_Tag__check(empty[0..<0],64,0,true,false).error==0;
+ #assert N_Tag__check(empty[0..<0],65,0,true,false).error==N__pb_LIMIT;
+ one:=[3]u8.[10,1,120];c:=N_Tag__check(one[..],0,1,true,false);
+ #assert c.error==0 && c.left==0;
+ #assert N_Tag__check(one[..],0,0,true,false).error==N__pb_LIMIT;
+ #assert N_Tag_decode(one[..]).error==0;
+ wrong:=[2]u8.[8,0];#assert N_Tag_decode(wrong[..]).error==N__pb_WIRE;
+ malformed:=[1]u8.[0];#assert N_Tag_decode(malformed[..]).error==N__pb_WIRE;
+ invalid:=[3]u8.[10,1,255];#assert N_Tag_decode(invalid[..]).error==N__pb_UTF8;
+ overlong:=[4]u8.[10,129,0,120];#assert N_Tag_decode(overlong[..]).error==0;
+ #assert N_Tag_decode_minimal(overlong[..]).error==N__pb_WIRE;
+ many:[195]u8;for i:0..<65 {many[i*3]=10;many[i*3+1]=1;many[i*3+2]=120;}
+ #assert N_Tag__check(many[0..<192],0,64,true,false).error==0;
+ #assert N_Tag__check(many[0..<195],0,65,true,false).error==N__pb_LIMIT;
+ bounded:[131077]u8;bounded[0]=10;bounded[1]=128;bounded[2]=128;bounded[3]=8;
+ #assert N_Tag_decode(bounded[0..<131076]).error==0;
+ bounded[1]=129;#assert N_Tag_decode(bounded[..]).error==N__pb_LIMIT;
+ list:=[8]u8.[16,0,10,1,120,10,1,121];tag:=N_Tag_decode(list[..]);iter:=N_Tag_iter_values(tag);
+ #assert iter.error==0 && iter.has_value && iter.value=="x";
+ iter=N_Tag_next_values(iter);#assert iter.error==0 && iter.has_value && iter.value=="y";
+ iter=N_Tag_next_values(iter);#assert iter.error==0 && iter.done && !iter.has_value;
+ bad:=N_Tag.{wire=wrong[..]};iter=N_Tag_iter_values(bad);#assert iter.error==N__pb_WIRE && iter.done;
+ bad=N_Tag.{wire=one[..],error=N__pb_VALUE};iter=N_Tag_iter_values(bad);#assert iter.error==N__pb_VALUE && iter.done;
+ iter=N_Tag_Iter_values.{wire=one[..],done=true};iter=N_Tag_next_values(iter);#assert iter.done && !iter.has_value;
+ iter=N_Tag_Iter_values.{wire=one[..],error=N__pb_VALUE};iter=N_Tag_next_values(iter);#assert iter.error==N__pb_VALUE && !iter.has_value;
+ iter=N_Tag_Iter_values.{wire=malformed[..]};iter=N_Tag_next_values(iter);#assert iter.error==N__pb_WIRE && iter.done && !iter.has_value;
+}
+#test "generated event fields enforce wire, presence and nested budgets" {
+ empty:[1]u8;
+ #assert N_Event__check(empty[0..<0],65,0,false,false).error==N__pb_LIMIT;
+ #assert N_Event__check(empty[0..<0],0,0,true,false).error==N__pb_REQUIRED;
+ for f:1..<8 {
+  wire:[140]u8;n:=0;
+  if f==3 || f==4 {wire[0]=cast(u8)(f*8);wire[1]=1;n=2;}
+  else {
+   wire[0]=cast(u8)(f*8+2);
+   if f==1 || f==2 {wire[1]=32;n=34;}
+   else if f==7 {wire[1]=64;n=66;}
+   else if f==5 {wire[1]=3;wire[2]=10;wire[3]=1;wire[4]=120;n=5;}
+   else {wire[1]=1;wire[2]=120;n=3;}
+  }
+  budget:=1;if f==5 {budget=2;}
+  check:=N_Event__check(wire[0..<n],0,budget,false,false);#assert check.error==0 && check.left==0;
+  #assert N_Event__check(wire[0..<n],0,budget-1,false,false).error==N__pb_LIMIT;
+  if f!=5 {
+   for i:0..<n {wire[n+i]=wire[i];}
+   #assert N_Event__check(wire[0..<n*2],0,10,false,false).error==N__pb_DUPLICATE;
+  }
+  if f==3 || f==4 {wire[0]=cast(u8)(f*8+2);}else {wire[0]=cast(u8)(f*8);}
+  wire[1]=0;#assert N_Event__check(wire[0..<2],0,10,false,false).error==N__pb_WIRE;
+  if f==1 || f==2 || f==7 {wire[0]=cast(u8)(f*8+2);wire[1]=1;wire[2]=0;#assert N_Event__check(wire[0..<3],0,10,false,false).error==N__pb_LIMIT;}
+  if f==6 {wire[0]=50;wire[1]=1;wire[2]=255;#assert N_Event__check(wire[0..<3],0,10,false,false).error==N__pb_UTF8;}
+ }
+ nonminimal:=[3]u8.[24,129,0];
+ #assert N_Event__check(nonminimal[..],0,1,false,false).error==0;
+ #assert N_Event__check(nonminimal[..],0,1,false,true).error==N__pb_WIRE;
+ maximum:=[6]u8.[32,255,255,255,255,15];#assert N_Event__check(maximum[..],0,1,false,false).error==0;
+ overflow:=[6]u8.[32,128,128,128,128,16];#assert N_Event__check(overflow[..],0,1,false,false).error==N__pb_VALUE;
+ content:[262149]u8;content[0]=50;content[1]=128;content[2]=128;content[3]=16;
+ #assert N_Event__check(content[0..<262148],0,1,false,false).error==0;
+ content[1]=129;#assert N_Event__check(content[..],0,1,false,false).error==N__pb_LIMIT;
+ nested:=[5]u8.[42,3,10,1,120];
+ #assert N_Event__check(nested[..],63,2,false,false).error==0;
+ #assert N_Event__check(nested[..],64,2,false,false).error==N__pb_LIMIT;
+ many:[4098]u8;for i:0..<2049 {many[i*2]=42;many[i*2+1]=0;}
+ #assert N_Event__check(many[0..<4096],0,2048,false,false).error==0;
+ #assert N_Event__check(many[..],0,2049,false,false).error==N__pb_LIMIT;
+}
+#test "generated event and envelope required fields remain distinct" {
+ event:[192]u8;event[0]=10;event[1]=32;event[34]=18;event[35]=32;
+ event[68]=24;event[69]=1;event[70]=32;event[71]=1;event[72]=50;event[73]=1;event[74]=120;event[75]=58;event[76]=64;
+ n:=141;#assert N_Event_decode(event[0..<n]).error==0;
+ forged:=N_Event.{wire=event[0..<n],error=N__pb_VALUE};
+ #assert N_Event_get_id(forged).error==N__pb_VALUE;
+ #assert N_Event_get_pubkey(forged).error==N__pb_VALUE;
+ #assert N_Event_get_created_at(forged).error==N__pb_VALUE;
+ #assert N_Event_get_kind(forged).error==N__pb_VALUE;
+ #assert N_Event_get_content(forged).error==N__pb_VALUE;
+ #assert N_Event_get_sig(forged).error==N__pb_VALUE;
+ #assert N_Event_iter_tags(forged).error==N__pb_VALUE && N_Event_iter_tags(forged).done;
+ empty:[1]u8;missing_event:=N_Event.{wire=empty[0..<0]};
+ #assert N_Event_get_id(missing_event).error==N__pb_REQUIRED;
+ #assert N_Event_get_pubkey(missing_event).error==N__pb_REQUIRED;
+ #assert N_Event_get_created_at(missing_event).error==N__pb_REQUIRED;
+ #assert N_Event_get_kind(missing_event).error==N__pb_REQUIRED;
+ #assert N_Event_get_content(missing_event).error==N__pb_REQUIRED;
+ #assert N_Event_get_sig(missing_event).error==N__pb_REQUIRED;
+ #assert N_Event_iter_tags(missing_event).error==N__pb_REQUIRED && N_Event_iter_tags(missing_event).done;
+ badkey:=[1]u8.[0];
+ iter:=N_Event_Iter_tags.{wire=badkey[..]};iter=N_Event_next_tags(iter);#assert iter.error==N__pb_WIRE && iter.done && !iter.has_value;
+ iter=N_Event_Iter_tags.{wire=event[0..<n],done=true};iter=N_Event_next_tags(iter);#assert iter.done && !iter.has_value;
+ iter=N_Event_Iter_tags.{wire=event[0..<n],error=N__pb_VALUE};iter=N_Event_next_tags(iter);#assert iter.error==N__pb_VALUE && !iter.has_value;
+ starts:=[6]int.[0,34,68,70,72,75];sizes:=[6]int.[34,34,2,2,3,66];
+ for missing:0..<6 {
+  short:[192]u8;k:=0;
+  for f:0..<6 {if f!=missing {for i:0..<sizes[f] {short[k]=event[starts[f]+i];k+=1;}}}
+  #assert N_Event_decode(short[0..<k]).error==N__pb_REQUIRED;
+ }
+ overlong:[193]u8;overlong[0]=10;overlong[1]=160;overlong[2]=0;
+ for i:2..<n {overlong[i+1]=event[i];}
+ #assert N_Event_decode(overlong[0..<n+1]).error==0;
+ #assert N_Event_decode_minimal(overlong[0..<n+1]).error==N__pb_WIRE;
+ envelope:[320]u8;envelope[0]=10;envelope[1]=1;envelope[2]=120;envelope[3]=18;envelope[4]=141;envelope[5]=1;
+ for i:0..<n {envelope[6+i]=event[i];}
+ total:=6+n;#assert N_SignedEvent_decode(envelope[0..<total]).error==0;
+ // The ordinary envelope accepts a valid non-minimal field length; its
+ // minimal variant rejects it even when all required fields are present.
+ overlong_envelope:[321]u8;overlong_envelope[0]=10;overlong_envelope[1]=129;overlong_envelope[2]=0;
+ for i:2..<total {overlong_envelope[i+1]=envelope[i];}
+ #assert N_SignedEvent_decode(overlong_envelope[0..<total+1]).error==0;
+ #assert N_SignedEvent_decode_minimal(overlong_envelope[0..<total+1]).error==N__pb_WIRE;
+ forged_envelope:=N_SignedEvent.{wire=envelope[0..<total],error=N__pb_VALUE};
+ #assert N_SignedEvent_get_original_json(forged_envelope).error==N__pb_VALUE;
+ #assert N_SignedEvent_get_event(forged_envelope).error==N__pb_VALUE;
+ missing_envelope:=N_SignedEvent.{wire=empty[0..<0]};
+ #assert N_SignedEvent_get_original_json(missing_envelope).error==N__pb_REQUIRED;
+ #assert N_SignedEvent_get_event(missing_envelope).error==N__pb_REQUIRED;
+ #assert N_SignedEvent__check(empty[0..<0],65,0,false,false).error==N__pb_LIMIT;
+ single:=[3]u8.[10,1,120];
+ #assert N_SignedEvent__check(single[..],0,1,false,false).error==0;
+ #assert N_SignedEvent__check(single[..],0,0,false,false).error==N__pb_LIMIT;
+ duplicate:=[6]u8.[10,1,120,10,1,121];#assert N_SignedEvent__check(duplicate[..],0,2,false,false).error==N__pb_DUPLICATE;
+ wrong_event:=[2]u8.[16,0];#assert N_SignedEvent__check(wrong_event[..],0,1,false,false).error==N__pb_WIRE;
+
+ #assert N_SignedEvent__check(envelope[0..<total],63,8,false,false).error==0;
+ #assert N_SignedEvent__check(envelope[0..<total],64,8,false,false).error==N__pb_LIMIT;
+ #assert N_SignedEvent__check(envelope[0..<total],0,8,false,false).left==0;
+ #assert N_SignedEvent_decode(envelope[0..<3]).error==N__pb_REQUIRED;
+ #assert N_SignedEvent_decode(envelope[3..<total]).error==N__pb_REQUIRED;
+ for i:0..<n+3 {envelope[total+i]=envelope[3+i];}
+ #assert N_SignedEvent__check(envelope[0..<total+n+3],0,20,false,false).error==N__pb_DUPLICATE;
+ badchild:=[3]u8.[18,1,0];#assert N_SignedEvent__check(badchild[..],0,3,false,false).error==N__pb_WIRE;
+ invalid:=[2]u8.[8,0];#assert N_SignedEvent__check(invalid[..],0,2,false,false).error==N__pb_WIRE;
+ nonminimal:=[4]u8.[10,129,0,120];
+ #assert N_SignedEvent__check(nonminimal[..],0,1,false,false).error==0;
+ #assert N_SignedEvent__check(nonminimal[..],0,1,false,true).error==N__pb_WIRE;
+ large:[524293]u8;large[0]=10;large[1]=128;large[2]=128;large[3]=32;
+ #assert N_SignedEvent__check(large[0..<524292],0,1,false,false).error==0;
+ large[1]=129;#assert N_SignedEvent__check(large[..],0,1,false,false).error==N__pb_LIMIT;
+}

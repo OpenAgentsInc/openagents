@@ -1,0 +1,5 @@
+const fs=require('fs'),assert=require('assert'),{WASI}=require('node:wasi');
+(async()=>{const wasi=new WASI({version:'preview1'});const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[2]),{wasi_snapshot_preview1:wasi.wasiImport});wasi.initialize(instance);const e=instance.exports;
+assert.equal(e.fpa_test_run(-1n),-1n);assert.equal(e.fpa_test_run(1048577n),-1n);
+for(const c of JSON.parse(fs.readFileSync(process.argv[3],'utf8'))){const data=Uint8Array.from(c.wire);new Uint8Array(e.memory.buffer,e.fpa_test_input(),data.length).set(data);const n=Number(e.fpa_test_run(BigInt(data.length)));assert.equal(n===data.length,c.consistent,c.name);if(c.consistent){assert.deepStrictEqual(Array.from(new Uint8Array(e.memory.buffer,e.fpa_test_output(),n)),Array.from(data),c.name);if(c.signature!==null){new Uint8Array(e.memory.buffer,e.fpa_test_modulus(),c.modulus.length).set(c.modulus);assert.equal(!!e.fpa_test_verified(BigInt(data.length)),c.signature,c.name);}}}
+console.log('Wasm FI source/projection cases passed');})().catch(e=>{console.error(e);process.exit(1)});

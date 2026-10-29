@@ -1,0 +1,15 @@
+// Test-only generated-codec round-trip; no identity authority is inferred.
+#load "../../lib/nostr/adapters/fi-projection.coax";
+#load "../../lib/nostr/block/fi-jws-signature.coax";
+fpa_test_roundtrip :: (input:[]u8,output:[]u8)->int #export_c {
+ result:=fpa_read(input);if !result.consistent {return -1;}
+ encoded:=F_Assertion_encode(F_Assertion_decode(input),output);
+ if encoded.error!=0 || !fpa_read(encoded.wire).consistent {return -1;}
+ return encoded.wire.count;
+}
+// Test-only signature verification, using a caller-supplied public test key.
+// This still does not establish issuer, ownership, possession or session.
+fpa_test_signature :: (input:[]u8,modulus:[]u8)->bool #export_c {
+ result:=fpa_read(input);if !result.consistent {return false;}
+ return fi_jws_signature(result.original,modulus).verified;
+}

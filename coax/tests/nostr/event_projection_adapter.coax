@@ -1,0 +1,20 @@
+// Test-only generated-codec round-trip and explicit verifier consumer.
+#load "../../lib/nostr/adapters/event-projection.coax";
+npa_test_roundtrip :: (input:[]u8,output:[]u8)->int #export_c {
+  r:=npa_read(input);if !r.consistent {return -1;}
+  encoded:=N_SignedEvent_encode(N_SignedEvent_decode(input),output);
+  if encoded.error!=0 || !npa_read(encoded.wire).consistent {return -1;}
+  return encoded.wire.count;
+}
+npa_test_verify :: (input:[]u8,scratch:[]u8)->bool #export_c {
+  r:=npa_read(input);if !r.consistent {return false;}
+  event:=nostr_event_verify_vartime(cast(string)r.original,scratch,false);
+  return event.error==NE_OK && event.verified;
+}
+// A test-only consumer: actual signature verification and independently
+// supplied expected owner are prerequisites. No policy is inferred from JSON.
+npa_test_owner :: (input:[]u8,owner:[]u8,scratch:[]u8)->bool #export_c {
+ r:=npa_read(input);if !r.consistent {return false;}
+ event:=nostr_event_verify_vartime(cast(string)r.original,scratch,false);
+ return event.error==NE_OK && event.verified && npa_equal_bytes(event.public_key[..],owner);
+}
