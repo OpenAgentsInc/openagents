@@ -1,0 +1,10 @@
+// ye_gate prints each case's report and returns its exit status.
+#load "../lib/qualify-gate.coax";
+// book:begin example
+main :: () {
+    for k:0..<YE_GATE_CASES {
+        status:=ye_gate(k);
+        print("exit status %\n\n",status);
+    }
+}
+// book:end example

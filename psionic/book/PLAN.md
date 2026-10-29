@@ -10,7 +10,8 @@ Proposal, updated 2026-10-29. [Chapter 1](ch001-learning-a-number.md) and
 [Chapter 8](ch008-decisions-have-a-different-mask.md) and
 [Chapter 9](ch009-read-the-options.md) and
 [Chapter 10](ch010-execute-elephant.md) and
-[Chapter 12](ch012-are-the-probabilities-any-good.md) are runnable on the tested CPU host.
+[Chapter 12](ch012-are-the-probabilities-any-good.md) and
+[Chapter 13](ch013-qualify-honestly.md) are runnable on the tested CPU host.
 [Chapter 26](ch026-a-coax-compute-subset.md) and
 [Chapter 30](ch030-elephant-on-cuda.md) are runnable on the tested NVIDIA host
 (Elephant only), and their examples run without a GPU.
@@ -81,7 +82,7 @@ on the shared numerics in I and supplies the forward primitives reused later.
 | [10. Execute Elephant](ch010-execute-elephant.md) — runnable: original weights, CPU | Authenticated original Elephant files and a typed text decision through the complete 32-layer hybrid stack. Compared with an independent CPU implementation at an intermediate layer and at the output for the recorded request; a request corpus under chapter 13's rules, calibration (12) and measured resource admission remain open gates. |
 | 11. Execute Mammoth | Reuse the engine with its own dimensions, shards and memory profile; complete real-weight checks for this checkpoint. |
 | [12. Are the probabilities any good?](ch012-are-the-probabilities-any-good.md) — runnable: CPU; 12-request Elephant run | Load exactly the calibration the pinned bundle supplies (or state that none exists and keep temperature explicit); reproduce the published serialized answers; Brier score, calibration error, abstention and per-kind accuracy on a frozen held-out request corpus, kept separate from numerical conformance. Every result names the model identity and the corpus it was measured on. Neither pinned bundle has a calibration file, so temperature is 1.0; a larger corpus remains open. |
-| 13. Qualify honestly | Compare with a reference whose arithmetic cannot be reproduced exactly: only like modes (decode with decode, replay with replay); distribution checks (top-1 agreement, total variation, router-margin and near-tie regret) frozen before any confirmation set is read and never loosened after; values measured on the device that ran, not a surrogate. Every result binds the exact build, libraries and arithmetic actually executed; the command's exit status is the verdict; an absent qualification reads as unknown; failures are quoted with their units and counterexamples. |
+| [13. Qualify honestly](ch013-qualify-honestly.md) — runnable: CPU, chapter 10 found unknown | Compare with a reference whose arithmetic cannot be reproduced exactly: only like modes (decode with decode, replay with replay); distribution checks (top-1 agreement, total variation, router-margin and near-tie regret) frozen before any confirmation set is read and never loosened after; values measured on the device that ran, not a surrogate. Every result binds the exact build, libraries and arithmetic actually executed; the command's exit status is the verdict; an absent qualification reads as unknown; failures are quoted with their units and counterexamples. |
 
 Text support is the first scope. Image inputs, quantized variants and serving
 integration each receive separate qualification. A layer fixture or imported

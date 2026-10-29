@@ -1,0 +1,37 @@
+// Chapter 13's gate: one case per process, its verdict as the exit status.
+#load "qualify-elephant.coax";
+#load "qualify-report.coax";
+YE_GATE_CASES :: 8;
+
+// book:begin gate
+// Prints case k's report and returns the status the process exits with.
+ye_gate :: (k:int)->int #export_c {
+    c:[4096]f64;r:[4096]f64;
+    if k==0 {
+        names:=[3]string.["chapter 10, layer 0 of token 32","chapter 10, decision probabilities","chapter 10, decision slot mass"];
+        worst:=0;
+        for i:0..<YE_CASES {
+            status:=qy_print(names[i],ye_policy(i),ye_case(i,c[..],r[..]),QyVerdict.agrees);
+            if status>worst {worst=status;}
+        }
+        return worst;
+    }
+    // Chapter 10's decision values with a complete build record.
+    p:=ye_decision_policy();record:=ye_record(1);n:=ye_evidence(1,c[..],r[..]);
+    record.sources=qy_text_digest("an example sources digest");record.profile=qy_name(YE_PROFILE);
+    bound:=qy_qualify(p,record,c[0..<n],r[0..<n]);
+    if k==1 {return qy_print("complete record, development data",p,bound,QyVerdict.agrees);}
+    if k==2 {return qy_print("complete record, claimed as qualified",p,bound,QyVerdict.qualified);}
+    if k==5 {empty:QyRecord;return qy_print("no record",p,qy_qualify(p,empty,c[0..<n],r[0..<n]),QyVerdict.agrees);}
+    if k==7 {bad:=p;bad.tv_max=-bad.tv_max;return qy_print("negative threshold",bad,qy_qualify(bad,record,c[0..<n],r[0..<n]),QyVerdict.agrees);}
+    // A deliberately failing candidate: the first probability is 0.001 high.
+    c[0]+=0.001;c[1]-=0.001;
+    if k==6 {c[1]=f64_from_bits(cast(u64)k+0x7ff0000000000000);}
+    record.candidate=qy_values_digest(c[0..<n]);
+    if k==3 {return qy_print("deliberately failing candidate",p,qy_qualify(p,record,c[0..<n],r[0..<n]),QyVerdict.agrees);}
+    if k==4 {return qy_print("summary edited to pass",p,qy_check_summary(bound,p,record,c[0..<n],r[0..<n]),QyVerdict.agrees);}
+    if k==6 {return qy_print("not-a-number candidate",p,qy_qualify(p,record,c[0..<n],r[0..<n]),QyVerdict.agrees);}
+    print("no gate case %\n",k);
+    return 2;
+}
+// book:end gate

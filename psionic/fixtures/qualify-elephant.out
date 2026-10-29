@@ -1,0 +1,72 @@
+chapter 10, layer 0 of token 32
+  policy 1a20462a8028a3b97a261de3518793171d8da0057d897779096568300c6ab45a (one_block)
+  rule: 4096 values; each |candidate - reference| <= 3e-06 hidden-state units
+  measured: largest |difference| 1.430511474609375e-06 hidden-state units at value 3994 (candidate 7.504566192626953, reference 7.504567623138428); 0 of 4096 over the limit
+  unknown: sources, profile (not recorded)
+  verdict: unknown (claimed: agrees)
+chapter 10, decision probabilities
+  policy 2e1baf5507e6d111a6060b1dc1dbaafbce222f24b1e97b9158ef08ce299822d7 (replay)
+  rule: 2 values; each |candidate - reference| <= 0.0005 probability; total variation <= 0.0005; top 1 must match unless the reference margin <= 0.0005 and the regret <= 0.0005
+  measured: largest |difference| 3.7422332788139556e-08 probability at value 0 (candidate 0.757196285, reference 0.7571962475776672); 0 of 2 over the limit; total variation 2.98023224015731e-08; top 1: candidate [0], reference [0], margin 0.5143925547599792, regret 0.0
+  unknown: sources, profile (not recorded)
+  verdict: unknown (claimed: agrees)
+chapter 10, decision slot mass
+  policy ff89eed1a44a088e856d36bf292049ecf6d1bb0135207142b64ce68960a1998f (replay)
+  rule: 1 value; each |candidate - reference| <= 0.0005 probability
+  measured: largest |difference| 1.8926036071675867e-07 probability at value 0 (candidate 0.228232722, reference 0.22823253273963928); 0 of 1 over the limit
+  unknown: sources, profile (not recorded)
+  verdict: unknown (claimed: agrees)
+exit status 2
+
+complete record, development data
+  policy 2e1baf5507e6d111a6060b1dc1dbaafbce222f24b1e97b9158ef08ce299822d7 (replay)
+  rule: 2 values; each |candidate - reference| <= 0.0005 probability; total variation <= 0.0005; top 1 must match unless the reference margin <= 0.0005 and the regret <= 0.0005
+  measured: largest |difference| 3.7422332788139556e-08 probability at value 0 (candidate 0.757196285, reference 0.7571962475776672); 0 of 2 over the limit; total variation 2.98023224015731e-08; top 1: candidate [0], reference [0], margin 0.5143925547599792, regret 0.0
+  verdict: agrees (claimed: agrees)
+exit status 0
+
+complete record, claimed as qualified
+  policy 2e1baf5507e6d111a6060b1dc1dbaafbce222f24b1e97b9158ef08ce299822d7 (replay)
+  rule: 2 values; each |candidate - reference| <= 0.0005 probability; total variation <= 0.0005; top 1 must match unless the reference margin <= 0.0005 and the regret <= 0.0005
+  measured: largest |difference| 3.7422332788139556e-08 probability at value 0 (candidate 0.757196285, reference 0.7571962475776672); 0 of 2 over the limit; total variation 2.98023224015731e-08; top 1: candidate [0], reference [0], margin 0.5143925547599792, regret 0.0
+  verdict: agrees (claimed: qualified)
+exit status 3
+
+deliberately failing candidate
+  policy 2e1baf5507e6d111a6060b1dc1dbaafbce222f24b1e97b9158ef08ce299822d7 (replay)
+  rule: 2 values; each |candidate - reference| <= 0.0005 probability; total variation <= 0.0005; top 1 must match unless the reference margin <= 0.0005 and the regret <= 0.0005
+  measured: largest |difference| 0.001000037422332789 probability at value 0 (candidate 0.758196285, reference 0.7571962475776672); 2 of 2 over the limit; total variation 0.0010000076200103875; top 1: candidate [0], reference [0], margin 0.5143925547599792, regret 0.0
+  failed (value): 2 of 2 values differ by more than 0.0005 probability; the first is value 0
+  verdict: failed (claimed: agrees)
+exit status 1
+
+summary edited to pass
+  policy 2e1baf5507e6d111a6060b1dc1dbaafbce222f24b1e97b9158ef08ce299822d7 (replay)
+  rule: 2 values; each |candidate - reference| <= 0.0005 probability; total variation <= 0.0005; top 1 must match unless the reference margin <= 0.0005 and the regret <= 0.0005
+  measured: largest |difference| 0.001000037422332789 probability at value 0 (candidate 0.758196285, reference 0.7571962475776672); 2 of 2 over the limit; total variation 0.0010000076200103875; top 1: candidate [0], reference [0], margin 0.5143925547599792, regret 0.0
+  failed (summary): the summary differs from the report recomputed from the evidence
+  verdict: failed (claimed: agrees)
+exit status 1
+
+no record
+  policy 2e1baf5507e6d111a6060b1dc1dbaafbce222f24b1e97b9158ef08ce299822d7 (replay)
+  rule: 2 values; each |candidate - reference| <= 0.0005 probability; total variation <= 0.0005; top 1 must match unless the reference margin <= 0.0005 and the regret <= 0.0005
+  measured: largest |difference| 3.7422332788139556e-08 probability at value 0 (candidate 0.757196285, reference 0.7571962475776672); 0 of 2 over the limit; total variation 2.98023224015731e-08; top 1: candidate [0], reference [0], margin 0.5143925547599792, regret 0.0
+  unknown: policy digest, dataset, model, compiler, sources, profile, mode, reference profile, reference mode, candidate values, reference values, role (not recorded)
+  verdict: unknown (claimed: agrees)
+exit status 2
+
+not-a-number candidate
+  policy 2e1baf5507e6d111a6060b1dc1dbaafbce222f24b1e97b9158ef08ce299822d7 (replay)
+  rule: 2 values; each |candidate - reference| <= 0.0005 probability; total variation <= 0.0005; top 1 must match unless the reference margin <= 0.0005 and the regret <= 0.0005
+  failed (nonfinite): value 1 is not finite (candidate nan, reference 0.242803692817688)
+  verdict: failed (claimed: agrees)
+exit status 1
+
+negative threshold
+  policy 0000000000000000000000000000000000000000000000000000000000000000 (replay)
+  rule: 2 values; each |candidate - reference| <= 0.0005 probability; total variation <= -0.0005; top 1 must match unless the reference margin <= 0.0005 and the regret <= 0.0005
+  failed (policy): the policy is not valid, so nothing was compared
+  verdict: failed (claimed: agrees)
+exit status 1
+

@@ -310,6 +310,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/qualify-elephant.coax",
+      "chapter": "psionic/book/ch013-qualify-honestly.md",
+      "stdout": "psionic/fixtures/qualify-elephant.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

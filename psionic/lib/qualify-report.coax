@@ -1,0 +1,59 @@
+// Chapter 13: plain reports. Printing only; every decision is made in qualify.coax.
+#import "Basic";
+#load "qualify.coax";
+
+qy_print_hex :: (id:[32]u8) {
+    text:[64]u8;digits:="0123456789abcdef";
+    for i:0..<32 {text[2*i]=digits[id[i]>>4];text[2*i+1]=digits[id[i]&15];}
+    print("%",cast(string)text[..]);
+}
+qy_unit_name :: (unit:QyUnit)->string {
+    if unit==QyUnit.hidden {return "hidden-state units";}
+    if unit==QyUnit.probability {return "probability";}
+    if unit==QyUnit.score {return "score units";}
+    return "unknown units";
+}
+qy_cause_name :: (cause:QyCause)->string {
+    names:=[21]string.["none","policy","policy digest","dataset","model","compiler","sources","profile","mode","reference profile","reference mode","candidate values","reference values","role","count","nonfinite","range","value","total variation","selection","summary"];
+    return names[cast(int)cause];
+}
+qy_print_top :: (top:[16]int,k:int) {
+    print("[");for j:0..<k {if j>0 {print(", ");}print("%",top[j]);}print("]");
+}
+// book:begin report
+// Prints the policy, what was measured, why it failed, and the verdict; returns the exit status.
+qy_print :: (label:string,p:QyPolicy,x:QyReport,claim:QyVerdict)->int {
+    unit:=qy_unit_name(p.unit);
+    print("%\n  policy ",label);qy_print_hex(x.policy);print(" (%)\n",p.mode);
+    print("  rule: % %; each |candidate - reference| <= % %",p.values,ifx p.values==1 then "value" else "values",p.value_abs,unit);
+    if p.distribution {print("; total variation <= %",p.tv_max);}
+    if p.top>0 {print("; top % must match unless the reference margin <= % and the regret <= %",p.top,p.near_tie,p.regret_max);}
+    print("\n");
+    if x.worst>=0 && x.cause!=QyCause.nonfinite && x.cause!=QyCause.range {
+        print("  measured: largest |difference| % % at value % (candidate %, reference %); % of % over the limit",x.difference,unit,x.worst,x.candidate,x.reference,x.over,x.count);
+        if p.distribution {print("; total variation %",x.tv);}
+        if p.top>0 {print("; top %: candidate ",p.top);qy_print_top(x.candidate_top,p.top);print(", reference ");qy_print_top(x.reference_top,p.top);print(", margin %, regret %",x.margin,x.regret);}
+        print("\n");
+    }
+    if x.verdict==QyVerdict.failed {
+        print("  failed (%): ",qy_cause_name(x.cause));
+        if x.cause==QyCause.value {print("% of % values differ by more than % %; the first is value %\n",x.over,x.count,p.value_abs,unit,x.first_over);}
+        else if x.cause==QyCause.nonfinite {print("value % is not finite (candidate %, reference %)\n",x.worst,x.candidate,x.reference);}
+        else if x.cause==QyCause.range {print("value % is outside [0, 1] (candidate %, reference %)\n",x.worst,x.candidate,x.reference);}
+        else if x.cause==QyCause.count {print("candidate has % values, reference %, policy %\n",x.count,x.reference_count,p.values);}
+        else if x.cause==QyCause.total_variation {print("total variation % exceeds %\n",x.tv,p.tv_max);}
+        else if x.cause==QyCause.selection {print("the top % differ; reference margin % (limit %), regret % (limit %)\n",p.top,x.margin,p.near_tie,x.regret,p.regret_max);}
+        else if x.cause==QyCause.summary {print("the summary differs from the report recomputed from the evidence\n");}
+        else if x.cause==QyCause.policy {print("the policy is not valid, so nothing was compared\n");}
+        else {print("the record's % does not match the policy or the evidence\n",qy_cause_name(x.cause));}
+    }
+    if x.unknown!=0 {
+        print("  unknown:");first:=true;
+        for i:2..<14 {if ((x.unknown>>cast(u32)i)&1)==1 {if !first {print(",");}print(" %",qy_cause_name(cast(QyCause)i));first=false;}}
+        print(" (not recorded)\n");
+    }
+    status:=qy_exit(x,claim);
+    print("  verdict: % (claimed: %)\n",x.verdict,claim);
+    return status;
+}
+// book:end report
