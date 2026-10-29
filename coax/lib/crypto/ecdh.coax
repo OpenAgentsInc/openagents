@@ -1,0 +1,117 @@
+// Experimental raw-x arithmetic and caller-owned explicit scratch. The host
+// must erase the entire scratch before reporting completion, including errors.
+// Hidden compiler/ABI copies, target timing and production secrets remain open.
+#load "secp_mult_const.coax";
+#load "ecdh_fast.coax";
+#authority;
+EC_OK :: 0;
+EC_LENGTH :: 1;
+EC_PEER :: 2;
+EC_SCALAR :: 3;
+EC_METADATA :: 4;
+EC_CLEANUP_PENDING :: 5;
+EcdhScratch :: struct {scalar:ScScalar;shared:SgPoint;affine:SgAffine;staged:[32]u8;}
+EcdhMath :: struct {shared:Sg32;affine_x:Sf32;}
+ECDH_TEST_PEER :: [32]u8.[0x79,0xbe,0x66,0x7e,0xf9,0xdc,0xbb,0xac,0x55,0xa0,0x62,0x95,0xce,0x87,0x0b,0x07,0x02,0x9b,0xfc,0xdb,0x2d,0xce,0x28,0xd9,0x59,0xf2,0x81,0x5b,0x16,0xf8,0x17,0x98];
+
+#test "public metadata and invalid peers refuse before secret work" {
+  work:[1]EcdhScratch;key:[32]u8;peer:[32]u8;
+  #assert ecdh_stage(key[0..<31],peer[..],work[..])==EC_LENGTH;
+  #assert ecdh_stage(key[..],peer[0..<31],work[..])==EC_LENGTH;
+  #assert ecdh_stage(key[..],peer[..],work[0..<0])==EC_LENGTH;
+  for i:0..<32 {peer[i]=255;}
+  #assert ecdh_stage(key[..],peer[..],work[..])==EC_PEER;
+}
+#test "host admission rejects missing, short, misaligned or overlapping regions" {
+  #assert ecdh_admit(32,32,32,true,true,false)==EC_OK;
+  #assert ecdh_admit(31,32,32,true,true,false)==EC_METADATA;
+  #assert ecdh_admit(32,31,32,true,true,false)==EC_METADATA;
+  #assert ecdh_admit(32,32,31,true,true,false)==EC_METADATA;
+  #assert ecdh_admit(32,32,32,false,true,false)==EC_METADATA;
+  #assert ecdh_admit(32,32,32,true,false,false)==EC_METADATA;
+  #assert ecdh_admit(32,32,32,true,true,true)==EC_METADATA;
+}
+#test "raw x of generator times one is generator x" {
+  key:[32]u8;key[31]=1;peer:=ECDH_TEST_PEER;
+  work:[1]EcdhScratch;
+  #assert ecdh_stage(key[..],peer[..],work[..])==EC_OK;
+  #assert cb_ct_equal(work[0].staged[..],peer[..])==CB_MAX64;
+  #assert work[0].shared.z.limb[0]!=0;
+  generator:=sg_generator();for i:0..<10 {#assert work[0].affine.x.limb[i]==generator.x.limb[i];}
+}
+
+// `secret` and `peer` are stable 32-byte views; work has exactly one live,
+// disjoint caller-owned instance. All public validation precedes secret use.
+// Success and scalar refusal both compute a point and write masked staging.
+// No caller may publish staging before successful external wipe of work.
+#test "invalid zero scalar masks output and still selects the safe fallback" {
+  key:[32]u8;peer:=ECDH_TEST_PEER;work:[1]EcdhScratch;
+  #assert ecdh_stage(key[..],peer[..],work[..])==EC_SCALAR;
+  #assert sc_equal(work[0].scalar,sc_small(1));for i:0..<32 {#assert work[0].staged[i]==0;}
+}
+#test "high scalar byte reaches the independently computed raw x" {
+  key:[32]u8;key[0]=1;peer:=ECDH_TEST_PEER;
+  want:=[8]u32.[0x8c28a97b,0xf8298bc0,0xd23d8c74,0x9452a32e,0x694b65e3,0x0a9472a3,0x954ab30f,0xe5324caa];work:[1]EcdhScratch;
+  #assert ecdh_stage(key[..],peer[..],work[..])==EC_OK;for i:0..<8 {#assert cb_load_be32(work[0].staged[..],i*4).value==want[i];}
+}
+#test "admitted signed digit and higher window use the full schedule" {
+  g:=sg_generator();expected:=g;for i:0..<3 {expected=sg_double_valid(expected);}
+  got:=sg32_to_point(ecdh_multiply_admitted(sc_small(8),g));#assert sg_equal_mask(got,expected)==CB_MAX64;
+}
+// Pointer presence, alignment, representability and overlap are truthful host
+// observations; no pointer effects occur in this policy.
+ecdh_admit :: (secret_len:int,peer_len:int,capacity:int,present:bool,aligned:bool,overlap:bool)->u32 #export_c {
+  if secret_len!=32 || peer_len!=32 || capacity<32 || !present || !aligned || overlap {return EC_METADATA;}
+  return EC_OK;
+}
+// Private: canonical finite point; zero is the canonical infinity encoding.
+ecdh_table :: (point:Sg32)->[9]Sg32 {
+  table:[9]Sg32;table[0]=sg32_infinity();table[1]=point;
+  for i:2..<9 {table[i]=ef_add(table[i-1],point);}
+  return table;
+}
+#test "table starts with infinity and the supplied point" {
+  point:=sg32_from_point(sg_generator());table:=ecdh_table(point);inf:=sg32_infinity();
+  #assert (sg32_mask_equal(table[0].x,inf.x)&sg32_mask_equal(table[0].y,inf.y)&sg32_mask_equal(table[0].z,inf.z))==CB_MAX64;
+  #assert (sg32_mask_equal(table[1].x,point.x)&sg32_mask_equal(table[1].y,point.y)&sg32_mask_equal(table[1].z,point.z))==CB_MAX64;
+}
+#test "highest scalar window reaches its independent raw x" {
+  key:[32]u8;key[0]=128;peer:=ECDH_TEST_PEER;
+  want:=[8]u32.[0xb23790a4,0x2be63e1b,0x251ad6c9,0x4fdef072,0x71ec0aad,0xa31db6c3,0xe8bd3204,0x3f8be384];work:[1]EcdhScratch;
+  #assert ecdh_stage(key[..],peer[..],work[..])==EC_OK;for i:0..<8 {#assert cb_load_be32(work[0].staged[..],i*4).value==want[i];}
+}
+#test "group order scalar refuses and masks the staged result" {
+  key:[32]u8;for i:0..<8 {stored:=cb_store_be32(key[..],i*4,SC_N.limbs[7-i]);}peer:=ECDH_TEST_PEER;work:[1]EcdhScratch;
+  #assert ecdh_stage(key[..],peer[..],work[..])==EC_SCALAR;
+  #assert sc_equal(work[0].scalar,sc_small(1));for i:0..<32 {#assert work[0].staged[i]==0;}
+}
+// Private: peer is a canonical valid finite public lift; scalar is in 1..n-1.
+ecdh_multiply_admitted :: (input:ScScalar,peer:SgPoint)->Sg32 {
+  point:=sg32_from_point(peer);table:=ecdh_table(point);
+  digits:=smc_recode(input);result:=smc_signed(smc_pick(table[..],digits.magnitude[64]),digits.negative[64]);
+  for round:0..<64 {
+    for bit:0..<4 {result=ef_double(result);}
+    selected:=smc_signed(smc_pick(table[..],digits.magnitude[63-round]),digits.negative[63-round]);
+    result=ef_add(result,selected);
+  }
+  return sg32_canonical_infinity(result);
+}
+// Private: a canonical finite public peer and a scalar in 1..n-1.
+ecdh_secret_math :: (input:ScScalar,peer:SgPoint)->EcdhMath {
+  result:EcdhMath;result.shared=ecdh_multiply_admitted(input,peer);
+  inverse:=ef_inverse(result.shared.z);
+  result.affine_x=ef_field_mul(result.shared.x,ef_field_mul(inverse,inverse));return result;
+}
+ecdh_stage :: (secret:[]u8,peer:[]u8,work:[]EcdhScratch)->u32 #export_c {
+  if secret.count!=32 || peer.count!=32 || work.count!=1 {return EC_LENGTH;}
+  point:=sg_lift_x_public(peer);if !point.ok {return EC_PEER;}
+  raw:ScScalar;wide:[9]u32;bits:u32;
+  for i:0..<8 {word:=cb_load_be32(secret,(7-i)*4).value;raw.limbs[i]=word;wide[i]=word;bits|=word;}
+  valid:=sc_subtract_n(wide).borrow & (sc_zero_bit(bits)^1);
+  work[0].scalar=sc_select(valid,raw,sc_small(1));
+  product:=ecdh_secret_math(work[0].scalar,point.value);work[0].shared=sg32_to_point(product.shared);
+  work[0].affine.x=sg32_to_field(product.affine_x);
+  for i:0..<8 {stored:=cb_store_be32(work[0].staged[..],(7-i)*4,product.affine_x.limb[i]);}
+  mask:=cb_mask(valid);for i:0..<32 {work[0].staged[i]&=cast(u8)(mask&255);}
+  return cast(u32)((valid^1)*EC_SCALAR);
+}

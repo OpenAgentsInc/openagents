@@ -1,0 +1,2 @@
+const fs=require('node:fs'),{WASI}=require('node:wasi');
+(async()=>{const wasi=new WASI({version:'preview1',args:[],env:{}});const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[2]),{wasi_snapshot_preview1:wasi.wasiImport});const status=wasi.start(instance);if(status!==undefined&&status!==0)throw Error(`status ${status}`);console.log('Wasm host cleanup fixture passed');})().catch(e=>{console.error(e.stack||e);process.exitCode=1;});

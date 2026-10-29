@@ -1,0 +1,8 @@
+// Test-only source-audit bridge. Caller values are copied by value; this does
+// not establish an external caller's byte-view or secret-copy contract.
+#load "../../lib/crypto/ecdh.coax";
+EcdhAuditResult :: struct {status:u32;value:[32]u8;}
+ecdh_audit_entry :: (secret:[32]u8,peer:[32]u8)->EcdhAuditResult #export_c {
+  key:=secret;other:=peer;work:[1]EcdhScratch;result:EcdhAuditResult;
+  result.status=ecdh_stage(key[..],other[..],work[..]);result.value=work[0].staged;return result;
+}
