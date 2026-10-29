@@ -1,0 +1,22 @@
+{
+  "cases": 49,
+  "completed": [
+    210000
+  ],
+  "cancellation": 4352,
+  "sealed": [
+    {
+      "v": "openagents.phrase-gate.v2",
+      "payload": "UEcCAAEBAAM0UAAAALZt+YdCTQ/IJP58KRQoFadXDBsfGGHvjOFPU8QPlECIavlyOsqQEgGbfKYvvghNJNe2wHbgZAutE0LguB4GbrY1rL+i1Nf+nxfo+9REFI3CUSTSX6n7v5lHP/MwT/3Io+MuNV2Gw1w29kborF57c3pgev34mD+82algmwZSToEFMWibgl04S49DHuEqguPuIhpHiN8LR1UK+Qgw2V4hH6uFuV19DN+Dvx71F+v5o5HXYiUV/pSjPFBbNofjxwhvk9AwpZgg106fGOWLEa4+RVBVfJBTXNkA1iH/q/xEYqn/RKUDU7P2E5U/7KWsGEAYLFbpSTC/FCKcMNPi68eRAdP5eeL8Jsjy+pvtS3I1i1DiIfX3"
+    },
+    {
+      "v": "openagents.phrase-gate.v2",
+      "payload": "UEcCAAEBAAM0UAAAALZt+YdCTQ/IJP58KRQoFadXDBsfGGHvjOFPU8QPlECIarioWuDNmyLaZeY2wgZ87lIDlIc5BzMavmD3ftztssGegqIYTQSTvkxPJKdzCi5kh41x2FlQ0o5duxh4VTLnaf5yFxuF9zjd3Cjj0U39ny1Nt1W5mxkp445+ZD2OXMYADBt477HMrMvb/cGkGm9ZMtjjUq2xKB3/c94GVSwZ91dodUmUKJk+BnlGdocK/x0l/cpYAp1pAWlDEA6rWbhxOr5SraXw1TN1oAHqgw8qE3DmxP6Uv295S6Bm4VzFQ5LF/tsTfajQmAQm2CwLPYFAfyGle69bcsx56W0Ug8bxQemesnnj9ZyeV77VYrTA1zroYQKt"
+    }
+  ],
+  "legacyEntryUnchanged": true,
+  "rollback": {
+    "before": "{\"schema\":\"coax.phrase-gate.fixture-artifact.v1\",\"experimental\":false,\"profile\":\"checked\",\"fixtureSha256\":\"de751670e9a33cf7c6e454849bd165c854e54e9f25448a2dbd1a0db1b284723c\",\"legacySourceSha256\":\"1b0bf4992651c16f3df7bf1c9e0d553280ca64287d9d7ec2b7c031ba48ef1105\",\"assets\":{\"index.html\":\"25dc99b5117ac857bffdb4507604c169674a525fbc44fa6f60b4ae33d3f1f62d\",\"legacy.js\":\"288b218f673b3ebebf4f88972c5071e615ba0ce164c3acb57ecd224f9dec8e3a\",\"legacy-entry.json\":\"ca2a79bdc49a2eab48069aa946207a40bd0854fa70b8535fb8179e76d72c0944\"}}",
+    "after": "{\"schema\":\"coax.phrase-gate.fixture-artifact.v1\",\"experimental\":false,\"profile\":\"checked\",\"fixtureSha256\":\"de751670e9a33cf7c6e454849bd165c854e54e9f25448a2dbd1a0db1b284723c\",\"legacySourceSha256\":\"1b0bf4992651c16f3df7bf1c9e0d553280ca64287d9d7ec2b7c031ba48ef1105\",\"assets\":{\"index.html\":\"25dc99b5117ac857bffdb4507604c169674a525fbc44fa6f60b4ae33d3f1f62d\",\"legacy.js\":\"288b218f673b3ebebf4f88972c5071e615ba0ce164c3acb57ecd224f9dec8e3a\",\"legacy-entry.json\":\"ca2a79bdc49a2eab48069aa946207a40bd0854fa70b8535fb8179e76d72c0944\"}}"
+  }
+}

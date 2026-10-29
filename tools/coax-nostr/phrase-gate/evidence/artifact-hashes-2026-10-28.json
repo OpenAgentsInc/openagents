@@ -1,0 +1,49 @@
+{
+  "schema": "coax.phrase-gate.browser-artifacts.v1",
+  "sources": {
+    "coax/lib/access/phrase-gate-worker.coax": "58b2bd66bc8fa355c941bdb62334565d1936bca53edcfcef878dff6300b5a6ed",
+    "coax/lib/access/phrase-gate-profile.coax": "52a65af43893a93c6e5a74851a3a160b908b78f9326b8653ebd57935aa4877f3",
+    "coax/lib/access/phrase-gate-crypto.coax": "c55bcbc235e6a0975f2a84b84ba56539a63e39e7fb061596ff21cf75f7b76970",
+    "coax/lib/access/README.md": "5f3fafe01b69ddf6cf60601166d30a7ac459a3198baffabfafefea5905f096e3",
+    "coax/lib/access/phrase-gate-entry.coax": "7c94c3643408ee9963b82905946b445063a6e69279f3fa9b0187ff3416ca8fa4",
+    "coax/lib/access/phrase-gate-state.coax": "19851a3c2c149d9588eaaa07f1c7e88da88bf1424c491900f0cdde371986510c",
+    "coax/lib/access/platform/phrase-gate-worker.js": "a0c2ee1ced2499155618816d946c0e0c5f8d10814cc9c748c921bb91b5ed7700",
+    "coax/lib/access/platform/phrase-gate-worker.c": "0658d925af7c8e9650a0f4df9a395f9c2bf8a03eda34211b2cf243e9c2f33c33",
+    "coax/web/unlock/experimental/client.js": "3157cd3f50f96715195264c07a6cbb1499a113a9f5d4165176c9bb0bc396f928",
+    "coax/web/unlock/experimental/index.html": "3d0841c02b16a4174cb2ad6ef575d7b8a5b0ce254d4937a178a233259b170de5",
+    "tools/coax-nostr/phrase-gate/browser.html": "1e94a565d41169b2681b4c25aa84617bb505b25a0ae09ba75dcbfaf1e08d54ac",
+    "tools/coax-nostr/phrase-gate/stage.ts": "6664b0678fa57f96f06ac32c46d7c39637810b3d7069c33d733236e1b718adc0",
+    "tools/coax-nostr/phrase-gate/test_phrase_gate.py": "91fc86c7226574bb9c020ffbce276f5735e2ef4e858928ce20ce80050669955a",
+    "tools/coax-nostr/phrase-gate/baseline.html": "25dc99b5117ac857bffdb4507604c169674a525fbc44fa6f60b4ae33d3f1f62d",
+    "tools/coax-nostr/phrase-gate/wasm.cjs": "dd3bc07c96d47c92e5edc725d5f64f5d52cdba09e5d1a6a3b794d190648fc544",
+    "tools/coax-nostr/phrase-gate/staging-browser.ts": "51fe38fd37fc86e5b9f21d43285fdd3fdd31db1cb6b7c79c5790b58c47971452",
+    "tools/coax-nostr/phrase-gate/browser.ts": "d251322b2ff6088b3d4708fb60089bc9aeb1aa871dbcae9798037ce9962d7d7b",
+    "tools/coax-nostr/phrase-gate/README.md": "d0bacc50f33043932415526632ed820245c4ab1561d0ad441b8151c9ac25e556",
+    "tools/coax-nostr/phrase-gate/extra-vectors.ts": "aafb62311d4f1d1437784249132338cfb9d93961fc224c090ff4968659cca948",
+    "tools/coax-nostr/phrase-gate/server.cjs": "943e4c327aadd7bbe130e365bda04f2141096c2bded0907196f31e65654d453b",
+    "tools/coax-nostr/phrase-gate/native.c": "badabeb26c776f02607177e13de9d3a071a974ad230d9c4c893683e0851456e7",
+    "tools/coax-nostr/phrase-gate/build.ts": "b7fbbc179699004df783efd5f70f5fcc07ec3e77601a8be96dacc3ee68a9e9c7",
+    "artifact/checked/experimental/phrase-gate-worker.wasm": "3b3134676b4810ef6bbdc8a9d3f54faed18d655845ae9a3292941703981e16b2",
+    "artifact/checked/build/observe.wasm": "e3ae8a44a030728fff17213bc6d7459d325c3cce93fa32e9b090e97fca894198",
+    "artifact/checked/build/init-fail.wasm": "f6b41da15ecac61948edd286c502c0b1a9ab0671699ceee977b4063630e34c9d",
+    "artifact/checked/experimental/manifest.json": "88c5772c25e591a10571180b9bd020f26fd105ad6be61485f5b39063423d6d65",
+    "artifact/checked/baseline/manifest.json": "a8111941ef5ad92855da797fa0dfdde32b0c0e205bf9c43cca6602b791c2c976",
+    "artifact/release/experimental/phrase-gate-worker.wasm": "81ef794110c02ac599b6257b2b45fc3fc7b0f5989d8c97e57c490167537688d9",
+    "artifact/release/build/observe.wasm": "f373ea3aeac6e623c9c209e27ada617ae6c7e5e8f5b93acaa27cef6db1a0c447",
+    "artifact/release/build/init-fail.wasm": "16b12931416b2eef9eca60d65008d1daa4782edac958ff549cddf7ef2afede59",
+    "artifact/release/experimental/manifest.json": "ba48ebcf69f36e8a03fc5372c7568e8d793d66ed35479ce25c450869ee6f70cc",
+    "artifact/release/baseline/manifest.json": "a5ca034d913924a8b6b8d959154ac0b86d3f77b5da8538b85282ba6fd29439a2"
+  },
+  "independentOracle": {
+    "implementation": "Node/OpenSSL from separately reviewed format reference",
+    "freshBrowserEntriesOpened": 4,
+    "checked": 2,
+    "release": 2
+  },
+  "counts": {
+    "coaxChecks": 146,
+    "nativeAsanUbsanPerMode": 82,
+    "actualWasmPerMode": 82,
+    "actualChromePerMode": 49
+  }
+}

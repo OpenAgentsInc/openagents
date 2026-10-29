@@ -1,0 +1,1061 @@
+{
+  "schema": "coax.phrase-gate-experimental.v1",
+  "compiler": "coax0 0.16.0",
+  "compiler_sha256": "46d332386114ff213a2083440469332742915ea99b2506a9619730420fda2719",
+  "fixture_sha256": "de751670e9a33cf7c6e454849bd165c854e54e9f25448a2dbd1a0db1b284723c",
+  "scope": "Experimental public-fixture/staging path only. No enabled production format switch or full-memory erasure assurance.",
+  "native": [
+    {
+      "mode": "checked",
+      "target": "asan-ubsan",
+      "records": 82,
+      "observation": "82 native ASan/UBSan full-round/admission records, cancellation/abort/budget/cleanup failures and identified-buffer observations passed"
+    },
+    {
+      "mode": "release",
+      "target": "asan-ubsan",
+      "records": 82,
+      "observation": "82 native ASan/UBSan full-round/admission records, cancellation/abort/budget/cleanup failures and identified-buffer observations passed"
+    }
+  ],
+  "wasm": [
+    {
+      "target": "wasm32-v8",
+      "node": "v26.12.1",
+      "module_sha256": "ee7882cf29932f1e2462c0cca9f94eb1d7ca659924ac800cbf3248b7db82ecf9",
+      "records": 82,
+      "elapsedMs": 10815.316832999999,
+      "observations": [
+        {
+          "id": "reviewed-open",
+          "error": 0,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "reviewed-seal",
+          "error": 0,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "explicit-normalization",
+          "error": 0,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "wrong-phrase",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-version",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-flags",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-kdf",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-cipher",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-rounds",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-length",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-context",
+          "error": 4,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-salt",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-nonce",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-ciphertext",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-mac",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-truncated",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-trailing",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-noncanonical",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-duplicate",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-unknown",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-shape",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "raw-v2-bang",
+          "error": 2,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "unicode-folding-forbidden",
+          "error": 2,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "empty-password",
+          "error": 2,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "password-raw-over",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "context-absent",
+          "error": 4,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "context-empty",
+          "error": 4,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "trusted-context-other",
+          "error": 4,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "caller-relay-policy",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "caller-recipient-policy",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "caller-uri-unsupported",
+          "error": 5,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "packet-version",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "packet-duplicate",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "packet-unknown",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "packet-padbits",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "packet-whitespace",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "packet-raw-over",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "complete-4096",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "complete-4097",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "header-truncated-0",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "header-truncated-1",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "header-truncated-73",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "header-truncated-74",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "header-truncated-106",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "magic",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "mac-position-0",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-1",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-2",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-3",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-4",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-5",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-6",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-7",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-8",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-9",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-10",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-11",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-12",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-13",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-14",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-15",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-16",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-17",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-18",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-19",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-20",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-21",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-22",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-23",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-24",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-25",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-26",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-27",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-28",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-29",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-30",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-31",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "semantic-40",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "semantic-41",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "semantic-42",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "semantic-43",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "dns-query-positive",
+          "error": 0,
+          "steps": 206,
+          "completed": 210000
+        }
+      ],
+      "mode": "checked"
+    },
+    {
+      "target": "wasm32-v8",
+      "node": "v26.12.1",
+      "module_sha256": "016aa368a46a86d4fbf972bb2d54d99ca62ced2a174aaa5243a98b078d14c75d",
+      "records": 82,
+      "elapsedMs": 8302.296209,
+      "observations": [
+        {
+          "id": "reviewed-open",
+          "error": 0,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "reviewed-seal",
+          "error": 0,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "explicit-normalization",
+          "error": 0,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "wrong-phrase",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-version",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-flags",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-kdf",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-cipher",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-rounds",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-length",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-context",
+          "error": 4,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-salt",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-nonce",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-ciphertext",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-mac",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-truncated",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-trailing",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "fixture-noncanonical",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-duplicate",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-unknown",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "fixture-shape",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "raw-v2-bang",
+          "error": 2,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "unicode-folding-forbidden",
+          "error": 2,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "empty-password",
+          "error": 2,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "password-raw-over",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "context-absent",
+          "error": 4,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "context-empty",
+          "error": 4,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "trusted-context-other",
+          "error": 4,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "caller-relay-policy",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "caller-recipient-policy",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "caller-uri-unsupported",
+          "error": 5,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "packet-version",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "packet-duplicate",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "packet-unknown",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "packet-padbits",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "packet-whitespace",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "packet-raw-over",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "complete-4096",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "complete-4097",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "header-truncated-0",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "header-truncated-1",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "header-truncated-73",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "header-truncated-74",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "header-truncated-106",
+          "error": 1,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "magic",
+          "error": 3,
+          "steps": 0,
+          "completed": 0
+        },
+        {
+          "id": "mac-position-0",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-1",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-2",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-3",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-4",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-5",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-6",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-7",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-8",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-9",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-10",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-11",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-12",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-13",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-14",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-15",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-16",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-17",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-18",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-19",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-20",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-21",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-22",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-23",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-24",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-25",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-26",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-27",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-28",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-29",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-30",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "mac-position-31",
+          "error": 10,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "semantic-40",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "semantic-41",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "semantic-42",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "semantic-43",
+          "error": 5,
+          "steps": 206,
+          "completed": 210000
+        },
+        {
+          "id": "dns-query-positive",
+          "error": 0,
+          "steps": 206,
+          "completed": 210000
+        }
+      ],
+      "mode": "release"
+    }
+  ],
+  "browser": [],
+  "sources": {
+    "coax/lib/access/phrase-gate-worker.coax": "58b2bd66bc8fa355c941bdb62334565d1936bca53edcfcef878dff6300b5a6ed",
+    "coax/lib/access/phrase-gate-state.coax": "19851a3c2c149d9588eaaa07f1c7e88da88bf1424c491900f0cdde371986510c",
+    "coax/lib/access/phrase-gate-crypto.coax": "c55bcbc235e6a0975f2a84b84ba56539a63e39e7fb061596ff21cf75f7b76970",
+    "coax/lib/access/phrase-gate-profile.coax": "52a65af43893a93c6e5a74851a3a160b908b78f9326b8653ebd57935aa4877f3",
+    "coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "coax/lib/net/uri.coax": "a64721f594454734e06352ecec04dce1ccb3dbb16b5364f15d4e9978ce3f3691",
+    "coax/tests/nostr/phrase_gate_vectors.coax": "1b5fd3de754f73f8c569bfc0bfd313ce55e608f447299c7fb8da8a13840821bf",
+    "coax/lib/crypto/pbkdf2.coax": "7302038002cf2eac67c8b9bcd143295bb794e2eb951aec9208ee2340d1cd8df0",
+    "coax/lib/crypto/hmac.coax": "b8a73c54d4f0b14b05e93942a3ecca3730accf9ca3ff4617274192e2a8470685",
+    "coax/tests/nostr/hmac_rfc.coax": "bc4a8ce471ac564f8d65e41293506f3ce504748124a8a9b45bacf02c9d92b5f7",
+    "coax/tests/nostr/pbkdf2_rfc.coax": "75dd81927cdaf3e121ab3b8ae3bb6dd6f97885f5f43c405c4cb0167694ff2ec4",
+    "coax/lib/crypto/hkdf.coax": "b345a77f19af185903d9b8cefa6e3f50959f75dbb4d4784830358023e70068e8",
+    "coax/tests/nostr/hkdf_rfc.coax": "cdd3bd4623f7dc536be8b5b4a1ad2592ac22e684866281af26c596e9d7077092",
+    "coax/lib/crypto/chacha20.coax": "c959d92c0603b615cded026015b6eade4f7c6fec4845dea888bafd4b4bbfbc07",
+    "coax/lib/access/phrase-gate-entry.coax": "7c94c3643408ee9963b82905946b445063a6e69279f3fa9b0187ff3416ca8fa4",
+    "coax/lib/nostr/base64.coax": "aa06ce4c14a4130e540265bcc017b8ec349899e4ae12e33e451f862043f47e6c",
+    "coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+    "coax/lib/crypto/zeroize.coax": "158c6a3eb2c8139a1ac6059201dc26aae052b358cab580121335f774235df16c",
+    "coax/lib/access/platform/phrase-gate-worker.c": "0658d925af7c8e9650a0f4df9a395f9c2bf8a03eda34211b2cf243e9c2f33c33",
+    "coax/lib/access/platform/phrase-gate-worker.js": "a0c2ee1ced2499155618816d946c0e0c5f8d10814cc9c748c921bb91b5ed7700",
+    "coax/lib/crypto/platform/zeroize.c": "7f1767b1bd35a577a43b0c076e561fb7737f2bbe31bc89e903064bd457b9081a",
+    "coax/lib/crypto/platform/zeroize.h": "1bb0d7d87793eace4c9b7592b5a99ab7d19e499f0c14afeb324e0533995fb3c3",
+    "tools/coax-nostr/phrase-gate/test_phrase_gate.py": "91fc86c7226574bb9c020ffbce276f5735e2ef4e858928ce20ce80050669955a",
+    "coax/tests/nostr/data/phrase-gate-draft-2026-10-28.json": "de751670e9a33cf7c6e454849bd165c854e54e9f25448a2dbd1a0db1b284723c",
+    "coax/web/unlock/gate.ts": "1b0bf4992651c16f3df7bf1c9e0d553280ca64287d9d7ec2b7c031ba48ef1105",
+    "coax/web/unlock/inject.ts": "92051e162a4e07517cba8c7c959ecc18767159fc1a0371d071c91da4bd25f8ed"
+  }
+}

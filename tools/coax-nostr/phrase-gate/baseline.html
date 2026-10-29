@@ -1,0 +1,5 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Coax · Legacy</title><style>body{background:#090a0b;color:#eee;font:16px monospace;padding:10vw}input,button{background:transparent;color:inherit;border:1px solid #888;padding:1rem}pre{white-space:pre-wrap}</style><h1>Legacy</h1><input id="phrase" type="password" aria-label="Phrase"><button id="open">Open</button><pre id="result">Ready</pre><script type="module">
+import{match,normalize,ROUNDS}from'./legacy.js';
+const entry=await(await fetch('./legacy-entry.json')).json();window.openLegacy=async typed=>{const n=normalize(typed);return n.length>=4&&n.length<=40?await match(typed,[entry],ROUNDS,true):null;};
+document.getElementById('open').onclick=async()=>{const result=await window.openLegacy(document.getElementById('phrase').value);document.getElementById('result').textContent=result?JSON.stringify(result):'Refused';};
+</script>

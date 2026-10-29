@@ -1,0 +1,14 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Coax · Gate</title>
+<style>body{margin:0;background:#090a0b;color:#eee;font:16px ui-monospace,monospace;display:grid;place-items:center;min-height:100dvh}main{width:min(34rem,85vw)}header{letter-spacing:.25em;margin-bottom:2rem}input,button{box-sizing:border-box;background:transparent;color:inherit;border:1px solid #777;padding:.8rem;font:inherit}input{width:100%;margin:.8rem 0}button{cursor:pointer}nav{display:flex;gap:.6rem}pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;color:#bbb}small{color:#888}</style>
+<main><header>COAX · GATE</header><small>Public fixture · experimental</small><input id="phrase" aria-label="Phrase" type="password" autocomplete="off"><nav><button id="open">Open</button><button id="seal">Seal</button><button id="stop">Stop</button></nav><pre id="status">Ready</pre><pre id="result"></pre></main>
+<script type="module">
+import{createExperimentalGate}from'./client.js';
+import*as legacyAdapter from'./legacy.js';
+const $=id=>document.getElementById(id),fixture=await(await fetch('./fixture.json')).json(),raw=await(await fetch('./entry-v2.json')).text();
+const gate=createExperimentalGate({legacyAdapter,worker:new URL('./phrase-gate-worker.js',import.meta.url),record:fixture.record,relay:fixture.pointer.relay,recipient:fixture.pointer.recipient,legacy:[fixture.legacy],entries:[raw]});
+window.gate=gate;window.fixture=fixture;window.ready=gate.ready;
+const progress=p=>{$('status').textContent=`${p.completed} / ${p.total}`;};
+async function run(mode){$('result').textContent='';$('status').textContent='Working';try{const result=mode==='open'?await gate.open($('phrase').value,progress):await gate.seal($('phrase').value,fixture.canonical,progress);$('status').textContent=result?'Done':'Refused';if(result)$('result').textContent=JSON.stringify(result,null,2);}catch{$('status').textContent='Refused';}}
+$('open').onclick=()=>run('open');$('seal').onclick=()=>run('seal');$('stop').onclick=async()=>{await gate.cancel();$('status').textContent='Stopped';};
+addEventListener('pagehide',()=>{void gate.close();},{once:true});
+</script></html>

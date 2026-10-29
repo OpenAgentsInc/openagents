@@ -1,0 +1,44 @@
+{
+  "schema": "coax.phrase-gate.authority.v1",
+  "entry": "coax/lib/access/phrase-gate-worker.coax",
+  "compiler": "coax0 0.16.0",
+  "compilerSha256": "46d332386114ff213a2083440469332742915ea99b2506a9619730420fda2719",
+  "checks": {
+    "total": 146,
+    "passed": 146,
+    "failed": 0,
+    "logSha256": "b8fed6e7a5331052c460d2f66dfd664097d85c6b283aaa99011a704bad2883e6"
+  },
+  "mutation": {
+    "total": 4315,
+    "killed": 4315,
+    "survived": 0,
+    "exemptions": 0,
+    "logSha256": "bb8daaa32dab5d0f97deec3efc10b9438fb0a6283f692932c63f884f93048978"
+  },
+  "sources": {
+    "coax/lib/access/phrase-gate-worker.coax": "58b2bd66bc8fa355c941bdb62334565d1936bca53edcfcef878dff6300b5a6ed",
+    "coax/lib/access/phrase-gate-state.coax": "19851a3c2c149d9588eaaa07f1c7e88da88bf1424c491900f0cdde371986510c",
+    "coax/lib/access/phrase-gate-crypto.coax": "c55bcbc235e6a0975f2a84b84ba56539a63e39e7fb061596ff21cf75f7b76970",
+    "coax/lib/access/phrase-gate-profile.coax": "52a65af43893a93c6e5a74851a3a160b908b78f9326b8653ebd57935aa4877f3",
+    "coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "coax/lib/net/uri.coax": "a64721f594454734e06352ecec04dce1ccb3dbb16b5364f15d4e9978ce3f3691",
+    "coax/tests/nostr/phrase_gate_vectors.coax": "1b5fd3de754f73f8c569bfc0bfd313ce55e608f447299c7fb8da8a13840821bf",
+    "coax/lib/crypto/pbkdf2.coax": "7302038002cf2eac67c8b9bcd143295bb794e2eb951aec9208ee2340d1cd8df0",
+    "coax/lib/crypto/hmac.coax": "b8a73c54d4f0b14b05e93942a3ecca3730accf9ca3ff4617274192e2a8470685",
+    "coax/tests/nostr/hmac_rfc.coax": "bc4a8ce471ac564f8d65e41293506f3ce504748124a8a9b45bacf02c9d92b5f7",
+    "coax/tests/nostr/pbkdf2_rfc.coax": "75dd81927cdaf3e121ab3b8ae3bb6dd6f97885f5f43c405c4cb0167694ff2ec4",
+    "coax/lib/crypto/hkdf.coax": "b345a77f19af185903d9b8cefa6e3f50959f75dbb4d4784830358023e70068e8",
+    "coax/tests/nostr/hkdf_rfc.coax": "cdd3bd4623f7dc536be8b5b4a1ad2592ac22e684866281af26c596e9d7077092",
+    "coax/lib/crypto/chacha20.coax": "c959d92c0603b615cded026015b6eade4f7c6fec4845dea888bafd4b4bbfbc07",
+    "coax/lib/access/phrase-gate-entry.coax": "7c94c3643408ee9963b82905946b445063a6e69279f3fa9b0187ff3416ca8fa4",
+    "coax/lib/nostr/base64.coax": "aa06ce4c14a4130e540265bcc017b8ec349899e4ae12e33e451f862043f47e6c",
+    "coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+    "coax/lib/crypto/zeroize.coax": "158c6a3eb2c8139a1ac6059201dc26aae052b358cab580121335f774235df16c"
+  }
+}

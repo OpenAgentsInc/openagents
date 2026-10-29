@@ -1,0 +1,87 @@
+<!doctype html><meta charset="utf-8"><title>Gate fixture</title><pre id="status">Ready</pre>
+<script type="module">
+import{match,normalize,ROUNDS}from'/legacy.js';
+const check=(ok,why)=>{if(!ok)throw Error(why);};const encode=s=>new TextEncoder().encode(s).buffer;
+const hex=s=>Uint8Array.from(s.match(/../g)??[],b=>parseInt(b,16));
+function client(path){
+ const worker=new Worker(path,{type:'module'}),pending=new Map();let id=0,resolveReady,rejectReady;
+ const ready=new Promise((resolve,reject)=>{resolveReady=resolve;rejectReady=reject;});
+ worker.onmessage=e=>{
+  const m=e.data;if(m.type==='ready'){resolveReady();return;}
+  if(m.id===undefined){rejectReady(Error(m.error));return;}
+  const p=pending.get(m.id);if(!p)return;
+  for(const key of ['key','keys','master','prk','password'])check(!(key in m),'secret message field');
+  if(m.type==='progress'){p.progress.push(m);p.observe?.(m,worker,m.id);return;}
+  pending.delete(m.id);p.resolve({...m,progress:p.progress});
+ };
+ worker.onerror=e=>rejectReady(Error(e.message));worker.postMessage({type:'init'});
+ return{worker,ready,async counts(a,b){await ready;const n=++id;return new Promise(resolve=>{pending.set(n,{resolve,progress:[]});worker.postMessage({type:'counts',id:n,legacy:a,v2:b});});},async run(operation,password,record,message,relay,recipient,observe){
+  await ready;const n=++id,fields={password:encode(password),record:encode(record),message:encode(message),relay:encode(relay),recipient:encode(recipient)};
+  const result=new Promise(resolve=>pending.set(n,{resolve,observe,progress:[]}));worker.postMessage({type:'run',id:n,operation,...fields},Object.values(fields));check(fields.password.byteLength===0,'password ownership was not transferred');return result;
+ },close(){worker.terminate();}};
+}
+window.run=async(group)=>{
+ const f=await(await fetch('/fixture.json')).json(),v=f.v2,record=JSON.stringify(v.contextRecord),pointer=new TextDecoder().decode(hex(v.plaintextHex)),entry=JSON.stringify(v.entry),relay=f.legacy.pointer.relay,recipient=f.legacy.pointer.recipient;
+ const report={cases:0,completed:[],cancellation:0,sealed:[],legacyEntryUnchanged:false};
+ if(group!=='extra'){
+ let observed=client('/observe/phrase-gate-worker.js');await observed.ready;
+ try{
+  check((await observed.counts(4,4)).error===0&&(await observed.counts(4,5)).error===1,'combined attempt cap');report.cases++;
+  const good=await observed.run(0,v.phrase,record,entry,relay,recipient);check(good.type==='done'&&good.cleanup===0&&good.clean===1,'actual worker open');check(new TextDecoder().decode(good.result)===pointer,'pointer differs');report.completed.push(good.completed);report.cases++;
+  for(const p of good.progress)check(p.completed>=0&&p.completed<=210000&&p.total===210000,'progress bound');
+  const wrong=await observed.run(0,'incorrectphrase2026',record,entry,relay,recipient);check(wrong.type==='refused'&&!wrong.result&&wrong.cleanup===0&&wrong.clean===1,'wrong phrase returned data');report.cases++;
+  for(const bad of f.invalid){const raw=hex(bad.wireHex),payload=btoa(String.fromCharCode(...raw));const r=await observed.run(0,v.phrase,record,JSON.stringify({v:v.entry.v,payload}),relay,recipient);check(r.type==='refused'&&!r.result&&r.cleanup===0&&r.clean===1,'invalid accepted '+bad.case);report.cases++;}
+  const cancelled=await observed.run(0,v.phrase,record,entry,relay,recipient,(p,w,id)=>{if(p.completed>=4096)w.postMessage({type:'cancel',id});});
+  check(cancelled.type==='cancelled'&&cancelled.completed<210000&&!cancelled.result&&cancelled.clean===1,'cooperative cancellation');report.cancellation=cancelled.completed;report.cases++;
+  observed.worker.postMessage({type:'test-fault',value:1});const beforeRun=await observed.run(0,v.phrase,record,entry,relay,recipient);check(beforeRun.type==='refused'&&beforeRun.fatal&&!beforeRun.result,'pre-run cleanup failure granted');check((await observed.run(0,v.phrase,record,entry,relay,recipient)).fatal,'pre-run failed engine reused');observed.close();observed=client('/observe/phrase-gate-worker.js');await observed.ready;report.cases++;
+  const trap=await observed.run(0,v.phrase,record,entry,relay,recipient,(p,w)=>{if(p.completed>=4096)w.postMessage({type:'test-trap'});});check(trap.type==='refused'&&!trap.result&&trap.clean===1&&trap.fatal,'trap cleanup');check((await observed.run(0,v.phrase,record,entry,relay,recipient)).fatal,'trapped engine reused');observed.close();observed=client('/observe/phrase-gate-worker.js');await observed.ready;report.cases++;
+  const fail=await observed.run(0,v.phrase,record,entry,relay,recipient,(p,w)=>{if(p.completed>=4096)w.postMessage({type:'test-fault',value:1});});check(fail.type==='refused'&&!fail.result&&fail.cleanup!==0,'failed erasure became success');check(fail.fatal&&(await observed.run(0,v.phrase,record,entry,relay,recipient)).fatal,'uncertain cleanup engine reused');observed.close();observed=client('/observe/phrase-gate-worker.js');await observed.ready;report.cases++;
+  const getterTrap=await observed.run(0,v.phrase,record,entry,relay,recipient,(p,w)=>{if(p.completed>=4096)w.postMessage({type:'test-fault',value:2});});check(getterTrap.type==='refused'&&!getterTrap.result&&getterTrap.fatal,'cleanup observation trap granted');check((await observed.run(0,v.phrase,record,entry,relay,recipient)).fatal,'observation-trapped engine reused');observed.close();observed=client('/observe/phrase-gate-worker.js');await observed.ready;report.cases++;
+  const before=JSON.stringify(f.legacy.entry),limits=await observed.counts(1,1);check(limits.error===0,'dual config refused');
+  const typed='Open Sesame!',normalized=normalize(typed);check(normalized.length>=4&&normalized.length<=40,'legacy eligibility');
+  const old=await match(typed,[f.legacy.entry],ROUNDS,true);check(old?.id===f.legacy.pointer.id,'legacy-first independent dispatch');check(JSON.stringify(f.legacy.entry)===before,'legacy entry rewritten');report.legacyEntryUnchanged=true;report.cases++;
+ }finally{observed.close();}
+ const normal=client('/normal/phrase-gate-worker.js');await normal.ready;
+ try{
+  for(let i=0;i<2;i++){const r=await normal.run(1,v.phrase,record,pointer,relay,recipient);check(r.type==='done'&&r.cleanup===0&&r.clean===undefined,'normal worker seal');const packet=JSON.parse(new TextDecoder().decode(r.result));report.sealed.push(packet);report.cases++;const opened=await normal.run(0,v.phrase,record,JSON.stringify(packet),relay,recipient);check(opened.type==='done'&&new TextDecoder().decode(opened.result)===pointer,'real entropy interop');report.cases++;}
+  check(report.sealed[0].payload!==report.sealed[1].payload,'entropy reused');
+ }finally{normal.close();}
+ const missing=client('/missing/phrase-gate-worker.js');try{await missing.ready;throw Error('missing module accepted');}catch(e){check(e.message==='module','wrong missing-module failure');report.cases++;}finally{missing.close();}
+ }
+ for(const mode of ['absent','throw','partial','wrong']){const failed=client('/entropy/'+mode+'/worker.js');try{await failed.ready;const result=await failed.run(1,v.phrase,record,pointer,relay,recipient);check(result.type==='refused'&&!result.result&&result.clean===1,'entropy failure leaked '+mode);report.cases++;}finally{failed.close();}}
+ if(group!=='extra'){
+ // Import the actual explicit client with a legacy configuration element present.
+ const marker=document.createElement('script');marker.id='coaxial-unlocks';marker.type='application/json';marker.textContent=JSON.stringify({module:'/must-not-import.js',entries:[f.legacy.entry]});document.body.append(marker);
+ let armed=0;globalThis.coaxial={ready:true,send(){armed++;}};
+ const {createExperimentalGate}=await import('/client.js'),legacyAdapter=await import('/adapter.js');dispatchEvent(new CustomEvent('coaxial',{detail:{code:0}}));check(armed===0,'implicit legacy auto-arm');report.cases++;
+ const initFailed=createExperimentalGate({legacyAdapter,worker:'/init-fail/phrase-gate-worker.js',record,relay,recipient,entries:[entry]});try{for(let i=0;i<2;i++){let rejected=false;try{await initFailed.open(v.phrase);}catch{rejected=true;}check(rejected,'initial-cleanup failed worker reused');}report.cases++;}finally{await initFailed.close();}
+ const config={legacyAdapter,worker:'/normal/phrase-gate-worker.js',record,relay,recipient,legacy:[f.legacy.entry],entries:[entry]};
+ const explicit=createExperimentalGate(config);await explicit.ready;
+ try{
+  const legacy=await explicit.open('Open Sesame!');check(legacy?.id===f.legacy.pointer.id,'actual client legacy dispatch');report.cases++;
+  let replacement;const first=explicit.open(v.phrase,p=>{if(p.completed>=4096&&!replacement)replacement=explicit.open(v.phrase);});
+  check(await first===null,'superseded run granted');check((await replacement)?.id===f.legacy.pointer.id,'replacement run failed');report.cases++;
+  let stopped=false;const cancelling=explicit.open(v.phrase,p=>{if(p.completed>=4096&&!stopped){stopped=true;void explicit.cancel();}});check(await cancelling===null,'cancelled client granted');report.cases++;
+ }finally{await explicit.close();}
+ const bytes=s=>new TextEncoder().encode(s),boundRecord=bytes(record),boundRelay=bytes(relay),boundRecipient=bytes(recipient);
+ const snapshot=createExperimentalGate({...config,legacy:[],record:boundRecord,relay:boundRelay,recipient:boundRecipient});boundRecord.fill(0);boundRelay.fill(0);boundRecipient.fill(0);
+ try{check((await snapshot.open(v.phrase))?.id===f.legacy.pointer.id,'trusted context was not snapshotted');report.cases++;}finally{await snapshot.close();}
+ for(const fault of ['death-counts','after-ready','stall-counts','stall-run','refused-counts']){
+  let calls=0;const stub={ROUNDS:210000,normalize:legacyAdapter.normalize,async match(){calls++;return fault==='stall-run'?null:f.legacy.pointer;}},dead=createExperimentalGate({...config,legacyAdapter:stub,worker:'/fault/'+fault+'.js',inactivityMs:100});
+  await dead.ready;if(fault==='after-ready')await new Promise(r=>setTimeout(r,40));const started=performance.now();
+  try{const result=await dead.open(v.phrase);check(result===null,'failed worker granted '+fault);if(fault!=='stall-run')check(calls===0,'failed counts invoked legacy '+fault);check(performance.now()-started<2000,'dead worker request stalled');
+   check(await dead.open(v.phrase)===null,'dead worker reused');await dead.cancel();report.cases++;
+  }finally{await dead.close();}
+ }
+ }
+ if((await(await fetch('/__mode')).json()).rollback){
+  const activate=async mode=>{check((await fetch('/__switch?profile='+mode,{method:'POST'})).ok,'artifact activation');};
+  const frame=async()=>{const node=document.createElement('iframe');node.src='/active/?fresh='+Math.random();document.body.append(node);await new Promise((resolve,reject)=>{node.onload=resolve;node.onerror=reject;});return node;};
+  const manifest=async()=>{const m=await(await fetch('/active/manifest.json')).json();for(const [name,expected]of Object.entries(m.assets)){const bytes=await(await fetch('/active/'+name)).arrayBuffer(),hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');check(hash===expected,'artifact hash '+name);}return JSON.stringify(m);};
+  await activate('baseline');const before=await manifest();let node=await frame();for(let i=0;i<100&&!node.contentWindow.openLegacy;i++)await new Promise(r=>setTimeout(r,10));check((await node.contentWindow.openLegacy('Open Sesame!'))?.id===f.legacy.pointer.id,'baseline legacy failed');node.remove();report.cases++;
+  await activate('experimental');await manifest();node=await frame();for(let i=0;i<100&&!node.contentWindow.ready;i++)await new Promise(r=>setTimeout(r,10));await node.contentWindow.ready;check((await node.contentWindow.gate.open(v.phrase))?.id===f.legacy.pointer.id,'experimental artifact failed');await node.contentWindow.gate.close();node.remove();report.cases++;
+  await activate('baseline');const after=await manifest();check(after===before,'rollback manifest or exact entry bytes changed');node=await frame();for(let i=0;i<100&&!node.contentWindow.openLegacy;i++)await new Promise(r=>setTimeout(r,10));check((await node.contentWindow.openLegacy('Open Sesame!'))?.id===f.legacy.pointer.id,'restored legacy failed');node.remove();report.rollback={before,after};report.cases++;
+ }
+ document.getElementById('status').textContent='Pass';return report;
+};
+</script>

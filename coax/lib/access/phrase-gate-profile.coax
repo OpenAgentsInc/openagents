@@ -1,0 +1,293 @@
+// Experimental reviewed v2 framing and selected DNS-only URL profile.
+// No effects, legacy rewrite, signing authority or production format switch.
+#load "../nostr/json.coax";
+#load "../crypto/sha256.coax";
+#load "../net/uri.coax";
+#load "../../tests/nostr/phrase_gate_vectors.coax";
+#authority;
+PG_OK :: cast(u32)0;PG_LIMIT :: cast(u32)1;PG_PHRASE :: cast(u32)2;PG_FORMAT :: cast(u32)3;
+PG_CONTEXT :: cast(u32)4;PG_POINTER :: cast(u32)5;PG_CAPACITY :: cast(u32)6;PG_ALIAS :: cast(u32)7;
+PG_STATE :: cast(u32)8;PG_KDF :: cast(u32)9;PG_AUTH :: cast(u32)10;PG_CRYPTO :: cast(u32)11;
+PG_CANCELLED :: cast(u32)12;PG_CLEANUP :: cast(u32)13;PG_NOT_READY :: cast(u32)14;
+PG_ROUNDS :: 210000;PG_HEADER :: 74;PG_TAG :: 32;PG_WIRE_MAX :: 4202;PG_PLAIN_MAX :: 4096;
+PG_FIELDS_WORK :: 8448;PG_CONTEXT_LABEL :: "openagents.phrase-gate.v2/context\0";
+PgText :: struct {written:int;error:u32;}
+PgFrame :: struct {size:int;error:u32;}
+PgRange :: struct {from:int;count:int;}
+PgFields :: struct {values:[4]PgRange;seen:u32;error:u32;}
+
+#forall "v2 ASCII bytes fold explicitly and never delete arbitrary punctuation" byte:0..<256 {
+  raw:[17]u8;for i:0..<16 {raw[i]='a';}raw[16]=cast(u8)byte;out:[40]u8;for i:0..<40 {out[i]=165;}
+  result:=pg_normalize_checked(cast(string)raw[..],out[..],false);
+  letter:=(byte>=65 && byte<=90)||(byte>=97 && byte<=122)||(byte>=48 && byte<=57);
+  separator:=byte==32 || byte==45;
+  #assert result.error==(ifx letter || separator then PG_OK else PG_PHRASE);
+  if result.error==PG_OK {#assert result.written==(ifx separator then 16 else 17);#assert out[result.written]==165;}
+  else {#assert result.written==0;for b:out {#assert b==165;}}
+}
+#test "raw and normalized phrase limits, capacity and aliases are independent" {
+  raw:[129]u8;for i:0..<129 {raw[i]=' ';}for i:112..<128 {raw[i]='A';}out:[41]u8;
+  r:=pg_normalize_checked(cast(string)raw[0..<128],out[0..<40],false);#assert r.error==0 && r.written==16;
+  #assert cast(string)out[0..<16]=="aaaaaaaaaaaaaaaa";
+  #assert pg_normalize_checked(cast(string)raw[..],out[..],false).error==PG_LIMIT;
+  #assert pg_normalize_checked("aaaaaaaaaaaaaaa",out[..],false).error==PG_PHRASE;
+  #assert pg_normalize_checked("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",out[..],false).written==40;
+  #assert pg_normalize_checked("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",out[..],false).error==PG_PHRASE;
+  #assert pg_normalize_checked(PG_TEST_PHRASE,out[0..<1],false).error==PG_CAPACITY;
+  #assert pg_normalize_checked(PG_TEST_PHRASE,out[..],true).error==PG_ALIAS;
+  #assert pg_attempts(0,0)==PG_OK && pg_attempts(4,4)==PG_OK;
+  #assert pg_attempts(8,1)==PG_LIMIT && pg_attempts(-1,0)==PG_LIMIT && pg_attempts(0,-1)==PG_LIMIT;
+}
+#test "reviewed original header bytes admit fixed counters and exact wire budgets" {
+  wire:=PG_TEST_WIRE;context:=PG_TEST_CONTEXT;
+  r:=pg_frame_checked(wire[..],context[..],false);#assert r.error==0 && r.size==182;
+  #assert pg_wire_admit(107)==0 && pg_wire_admit(4202)==0 && pg_wire_admit(106)==PG_LIMIT && pg_wire_admit(4203)==PG_LIMIT;
+  #assert pg_plain_admit(1)==0 && pg_plain_admit(4096)==0 && pg_plain_admit(0)==PG_LIMIT && pg_plain_admit(4097)==PG_LIMIT;
+  #assert pg_frame_checked(wire[..],context[0..<31],false).error==PG_CONTEXT;
+  #assert pg_frame_checked(wire[..],context[..],true).error==PG_ALIAS;
+  for at:[12]int.[0,1,2,3,4,5,6,7,8,9,10,13] {
+    bad:=wire;bad[at]^=1;#assert pg_frame_checked(bad[..],context[..],false).error==PG_FORMAT;
+  }
+  for at:14..<46 {bad:=wire;bad[at]^=1;#assert pg_frame_checked(bad[..],context[..],false).error==PG_CONTEXT;}
+}
+#test "trusted manifest derives the reviewed context and never defaults absence to zero" {
+  out:[33]u8;work:[8448]u8;canonical:[4096]u8;out[32]=165;
+  #assert pg_context_checked(PG_TEST_RECORD,work[..],canonical[..],out[0..<32],false)==0;
+  expected:=PG_TEST_CONTEXT;for i:0..<32 {#assert out[i]==expected[i];}#assert out[32]==165;
+  #assert pg_context_checked("{}",work[..],canonical[..],out[0..<32],false)==PG_CONTEXT;
+  #assert pg_context_checked(PG_TEST_RECORD,work[..],canonical[..],out[0..<31],false)==PG_CAPACITY;
+  #assert pg_context_checked(PG_TEST_RECORD,work[..],canonical[..],out[..],true)==PG_ALIAS;
+}
+#test "canonical locator matches the reviewed plaintext and explicit caller policy" {
+  out:[4096]u8;work:[8448]u8;canonical:[4096]u8;for i:0..<4096 {out[i]=165;}
+  recipient:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+  r:=pg_pointer_checked(PG_TEST_POINTER,"wss://relay.example",recipient,work[..],canonical[..],out[..],false);
+  #assert r.error==0 && r.written==182 && cast(string)out[0..<r.written]==PG_TEST_POINTER && out[r.written]==165;
+  #assert pg_pointer_checked(PG_TEST_POINTER,"wss://other.example",recipient,work[..],canonical[..],out[..],false).error==PG_POINTER;
+  #assert pg_pointer_checked(PG_TEST_POINTER,"wss://relay.example","",work[..],canonical[..],out[..],false).error==PG_POINTER;
+  #assert pg_pointer_checked(PG_TEST_POINTER,"wss://relay.example",recipient,work[..],canonical[..],out[0..<181],false).error==PG_CAPACITY;
+  #assert pg_pointer_checked(PG_TEST_POINTER,"wss://relay.example",recipient,work[..],canonical[..],out[..],true).error==PG_ALIAS;
+}
+#test "selected URL profile refuses reinterpretation, credentials and unsupported authorities" {
+  for text:[4]string.["wss://relay.example","wss://a","wss://example.com:443/p%20q?x=1&y=@","wss://EXAMPLE.com/a/b?x=%23"] {#assert pg_relay_url(text);}
+  for text:[21]string.["http://a","https://a","wss://127.0.0.1","ws://a","WSS://a","wss:a","wss:///a","wss://user@a","wss://a#x","wss://a/\\x","wss://a/%x0","wss://a/%0","wss://a/ x","wss://a/\0","wss://[::1]","wss://a:","wss://a:65536","wss://-a","wss://a..b","wss://127.1","wss://256.0.0.1"] {#assert !pg_relay_url(text);}
+}
+
+#forall "raw budgets and bounded output measure all inclusive endpoints" n:-1..<4100 {
+  #assert pg_raw_admit(n)==(ifx n>=0 && n<=128 then PG_OK else PG_LIMIT);
+  #assert pg_output_admit(n,4096)==(ifx n>=0 && n<=4096 then PG_OK else PG_CAPACITY);
+  #assert pg_output_admit(0,n)==(ifx n>=0 && n<=4096 then PG_OK else PG_CAPACITY);
+}
+#forall "all unsigned byte classifications and ASCII JSON sizes agree with the wire writer" value:0..<256 {
+  b:=cast(u8)value;one:=[1]u8.[b];out:[16]u8;
+  #assert pg_lower(b)==cast(u8)(ifx value>=65 && value<=90 then value+32 else value);
+  #assert pg_ascii(cast(string)one[..])==(value<=127);
+  if value<128 {#assert pg_ascii_size(cast(string)one[..])==json_write_string(out[..],0,cast(string)one[..]);}
+}
+#test "quota and equality helpers include empty and exact boundaries" {
+  #assert pg_equal("","") && !pg_equal("", "x") && !pg_equal("x", "y");
+  #assert pg_attempts(8,0)==0 && pg_attempts(9,0)==PG_LIMIT && pg_attempts(0,8)==0 && pg_attempts(0,9)==PG_LIMIT;
+  #assert pg_output_admit(0,0)==0 && pg_output_admit(1,1)==0;
+  text:[65]u8;for i:0..<65 {text[i]='a';}
+  #assert pg_lower_hex(cast(string)text[0..<64]) && !pg_lower_hex(cast(string)text[..]);
+  text[0]='g';#assert !pg_lower_hex(cast(string)text[0..<64]);text[0]='f';#assert pg_lower_hex(cast(string)text[0..<64]);
+  text[63]='A';#assert !pg_lower_hex(cast(string)text[0..<64]);
+  #assert !pg_relay_url("https://relay.example");
+}
+#test "generic closed object parser preserves empty strings and designated ranges" {
+  names:=[4]string.["a","b","c","d"];maxima:=[4]int.[0,1,2048,1];work:[8449]u8;key:[257]u8;
+  r:=pg_fields("{\"a\":\"\",\"b\":\"B\",\"c\":\"C\",\"d\":\"D\"}",names[..],maxima[..],work[0..<8448]);
+  #assert r.error==0 && r.seen==15;
+  #assert r.values[0].from==0 && r.values[0].count==0 && r.values[1].from==2048 && r.values[2].from==4096 && r.values[3].from==6144;
+  #assert pg_field(r,work[..],1)=="B" && pg_field(r,work[..],2)=="C" && pg_field(r,work[..],3)=="D";
+  #assert pg_name("a",names[..],key[0..<256])==0 && pg_name("z",names[..],key[0..<256]) == -1;
+  #assert pg_name("\\x",names[..],key[0..<256]) == -1 && pg_name("a",names[..],key[..]) == -1;
+  #assert pg_fields("{}",names[0..<0],maxima[0..<0],work[0..<8448]).error==PG_CAPACITY;
+  extra:=[5]string.["a","b","c","d","e"];limits:[5]int;
+  #assert pg_fields("{}",extra[..],limits[..],work[0..<8448]).error==PG_CAPACITY;
+  #assert pg_fields("{}",names[..],maxima[0..<3],work[0..<8448]).error==PG_CAPACITY;
+  #assert pg_fields("{}",names[..],maxima[..],work[..]).error==PG_CAPACITY;
+  maxima[0] = -1;#assert pg_fields("{}",names[..],maxima[..],work[0..<8448]).error==PG_CAPACITY;
+  maxima[0]=2049;#assert pg_fields("{}",names[..],maxima[..],work[0..<8448]).error==PG_CAPACITY;
+  single:=[1]string.["a"];zero:=[1]int.[0];
+  #assert pg_fields("{\"a\":\"\"}",single[..],zero[..],work[0..<8448]).error==0;
+  for text:[7]string.["{\"a\":true}","{\"a\":\"x\"}","{\"a\":\"\",\"a\":\"\"}","{\"a\":\"\"}x","{\"a\":\"\"", "{\"a\":\"\",\"z\":\"\"}","[]"] {
+    #assert pg_fields(text,single[..],zero[..],work[0..<8448]).error==PG_POINTER;
+  }
+}
+#test "canonical context and pointer capacities cannot borrow an adjacent region" {
+  work:[8449]u8;canonical:[4097]u8;out:[4097]u8;recipient:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+  r:=pg_pointer_checked(PG_TEST_POINTER,"wss://relay.example",recipient,work[0..<8448],canonical[0..<182],out[0..<182],false);#assert r.error==0 && r.written==182;
+  #assert pg_pointer_checked(PG_TEST_POINTER,"wss://relay.example",recipient,work[..],canonical[0..<4096],out[0..<4096],false).error==PG_CAPACITY;
+  #assert pg_pointer_checked(PG_TEST_POINTER,"wss://relay.example",recipient,work[0..<8448],canonical[0..<181],out[0..<4096],false).error==PG_CAPACITY;
+  #assert pg_pointer_checked(PG_TEST_POINTER,"wss://relay.example",recipient,work[0..<8448],canonical[0..<4096],out[..],false).error==PG_CAPACITY;
+  #assert pg_pointer_checked(PG_TEST_POINTER,"wss://relay.example",recipient,work[0..<8448],canonical[..],out[0..<4096],false).error==PG_CAPACITY;
+  #assert pg_pointer_checked(PG_TEST_POINTER,"",recipient,work[0..<8448],canonical[0..<4096],out[0..<4096],false).error==PG_POINTER;
+  digest:[32]u8;
+  #assert pg_context_checked(PG_TEST_RECORD,work[..],canonical[0..<4096],digest[..],false)==PG_CAPACITY;
+  #assert pg_context_checked(PG_TEST_RECORD,work[0..<8448],canonical[0..<1],digest[..],false)==PG_CAPACITY;
+  #assert pg_context_checked(PG_TEST_RECORD,work[0..<8448],canonical[..],digest[..],false)==PG_CAPACITY;
+  for text:[6]string.["", "x", "{\"domain\":\"\",\"environment\":\"a\",\"module\":\"b\",\"presentation\":\"c\"}","{\"domain\":\"a\",\"environment\":\"\",\"module\":\"b\",\"presentation\":\"c\"}","{\"domain\":\"a\",\"environment\":\"b\",\"module\":\"\",\"presentation\":\"c\"}","{\"domain\":\"a\",\"environment\":\"b\",\"module\":\"c\",\"presentation\":\"\"}"] {#assert pg_context_checked(text,work[0..<8448],canonical[0..<4096],digest[..],false)==PG_CONTEXT;}
+  names:=[4]string.["domain","environment","module","presentation"];fields:PgFields;fields.seen=15;
+  for i:0..<4 {fields.values[i]=PgRange.{from=i*2048,count=1};work[i*2048]='a';}
+  for field:0..<4 {
+    fields.values[field].count=128;for i:0..<128 {work[field*2048+i]='a';}
+    n:=pg_emit_fields(names[..],fields,work[0..<8448],out[0..<4096],0,false);
+    #assert pg_context_checked(cast(string)out[0..<n],work[0..<8448],canonical[0..<4096],digest[..],false)==0;
+    fields.values[field].count=129;work[field*2048+128]='a';n=pg_emit_fields(names[..],fields,work[0..<8448],out[0..<4096],0,false);
+    #assert pg_context_checked(cast(string)out[0..<n],work[0..<8448],canonical[0..<4096],digest[..],false)==PG_CONTEXT;
+    fields.values[field].count=1;
+  }
+}
+#test "decoded name failures and empty names retain an explicit missing index" {
+  key:[256]u8;long:[257]u8;for i:0..<257 {long[i]='a';}blank:=[1]string.[""];names:=[1]string.["a"];
+  #assert pg_name("",blank[..],key[..])==0;
+  #assert pg_name(cast(string)long[..],names[..],key[..]) == -1;
+}
+#test "context record quota is independent of semantic parsing" {
+  work:[8448]u8;canonical:[4096]u8;out:[32]u8;record:[4097]u8;
+  for i:0..<4097 {record[i]=' ';}for i:0..<PG_TEST_RECORD.count {record[i]=PG_TEST_RECORD[i];}
+  #assert pg_context_checked(cast(string)record[0..<4096],work[..],canonical[..],out[..],false)==0;
+  #assert pg_context_checked(cast(string)record[..],work[..],canonical[..],out[..],false)==PG_CONTEXT;
+  for i:0..<4096 {canonical[i]=165;}
+  #assert pg_context_checked(PG_TEST_RECORD,work[..],canonical[0..<PG_CONTEXT_LABEL.count+PG_TEST_RECORD.count-1],out[..],false)==PG_CAPACITY;
+  for b:canonical {#assert b==165;}
+}
+#test "pointer policy and body each validate their own identity and URL fields" {
+  work:[8448]u8;canonical:[4096]u8;out:[4096]u8;
+  recipient:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+  #assert pg_pointer_checked("{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"recipient\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"relay\":\"http://a\"}","http://a",recipient,work[..],canonical[..],out[..],false).error==PG_POINTER;
+  #assert pg_pointer_checked("{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"recipient\":\"x\",\"relay\":\"wss://a\"}","wss://a","x",work[..],canonical[..],out[..],false).error==PG_POINTER;
+  #assert pg_pointer_checked("{\"id\":\"gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"recipient\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"relay\":\"wss://relay.example\"}","wss://relay.example",recipient,work[..],canonical[..],out[..],false).error==PG_POINTER;
+  for i:0..<4096 {canonical[i]=165;}
+  #assert pg_pointer_checked(PG_TEST_POINTER,"wss://relay.example",recipient,work[..],canonical[0..<1],out[..],false).error==PG_CAPACITY;
+  for b:canonical {#assert b==165;}
+  names:=[3]string.["id","recipient","relay"];fields:PgFields;fields.seen=7;data:[8448]u8;
+  fields.values[0]=PgRange.{count=64};fields.values[1]=PgRange.{from=2048,count=64};fields.values[2]=PgRange.{from=4096,count=19};
+  for i:0..<64 {data[i]='a';data[2048+i]=recipient[i];}for i:0..<19 {data[4096+i]="wss://relay.example"[i];}
+  for index:0..<2 {
+    fields.values[index].count=65;data[index*2048+64]='a';n:=pg_emit_fields(names[..],fields,data[..],out[..],0,false);
+    for i:0..<8448 {work[i]=165;}
+    #assert pg_pointer_checked(cast(string)out[0..<n],"wss://relay.example",recipient,work[..],canonical[..],out[..],false).error==PG_POINTER;
+    // Oversize identity values never write the byte just outside their slot.
+    #assert work[index*2048+64]==165;fields.values[index].count=64;
+  }
+}
+
+#forall "context record scalar quotas include one and the maximum" n:-1..<4100 {#assert pg_record_admit(n)==(ifx n>=1 && n<=4096 then PG_OK else PG_CONTEXT);}
+pg_record_admit :: (n:int)->u32 {return ifx n<1 || n>4096 then PG_CONTEXT else PG_OK;}
+pg_raw_admit :: (n:int)->u32 {return ifx n<0 || n>128 then PG_LIMIT else PG_OK;}
+pg_ascii :: (text:string)->bool {for b:text {if b>127 {return false;}}return true;}
+pg_equal :: (a:string,b:string)->bool {
+  if a.count!=b.count {return false;}for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;
+}
+pg_attempts :: (legacy:int,v2:int)->u32 #export_c {
+  if legacy<0 || v2<0 || v2>8-legacy {return PG_LIMIT;}return PG_OK;
+}
+pg_plain_admit :: (n:int)->u32 #export_c {return ifx n<1 || n>4096 then PG_LIMIT else PG_OK;}
+pg_wire_admit :: (n:int)->u32 #export_c {return ifx n<107 || n>4202 then PG_LIMIT else PG_OK;}
+pg_output_admit :: (required:int,capacity:int)->u32 {
+  return ifx required<0 || capacity<required || capacity>4096 then PG_CAPACITY else PG_OK;
+}
+pg_lower :: (b:u8)->u8 {return ifx b>=65 && b<=90 then b+32 else b;}
+pg_digit :: (b:u8)->bool {return b>=48 && b<=57;}
+pg_phrase_byte :: (b:u8)->bool {return (b>=97 && b<=122)||pg_digit(b);}
+pg_normalize_checked :: (raw:string,out:[]u8,overlap:bool)->PgText #export_c {
+  if pg_raw_admit(raw.count)!=0 {return PgText.{error=PG_LIMIT};}
+  if overlap {return PgText.{error=PG_ALIAS};}
+  n:=0;
+  for byte:raw {b:=pg_lower(byte);if pg_phrase_byte(b) {n+=1;}else if b!=32 && b!=45 {return PgText.{error=PG_PHRASE};}}
+  if n<16 || n>40 {return PgText.{error=PG_PHRASE};}
+  if pg_output_admit(n,out.count)!=0 {return PgText.{error=PG_CAPACITY};}
+  at:=0;for byte:raw {b:=pg_lower(byte);if pg_phrase_byte(b) {out[at]=b;at+=1;}}
+  return PgText.{written=at};
+}
+pg_frame_checked :: (wire:[]u8,context:[]u8,overlap:bool)->PgFrame #export_c {
+  if pg_wire_admit(wire.count)!=0 {return PgFrame.{error=PG_LIMIT};}
+  if context.count!=32 {return PgFrame.{error=PG_CONTEXT};}
+  if overlap {return PgFrame.{error=PG_ALIAS};}
+  if wire[0]!=80 || wire[1]!=71 || wire[2]!=2 || wire[3]!=0 || wire[4]!=1 || wire[5]!=1 {return PgFrame.{error=PG_FORMAT};}
+  if cb_load_be32(wire,6).value!=210000 {return PgFrame.{error=PG_FORMAT};}
+  n:=cast(int)cb_load_be32(wire,10).value;
+  if pg_plain_admit(n)!=0 || wire.count!=106+n {return PgFrame.{error=PG_FORMAT};}
+  if cb_ct_equal(wire[14..<46],context)!=CB_MAX64 {return PgFrame.{error=PG_CONTEXT};}
+  return PgFrame.{size=n};
+}
+pg_lower_hex :: (text:string)->bool {
+  if text.count!=64 {return false;}
+  for b:text {if !(pg_digit(b)||(b>=97 && b<=102)) {return false;}}return true;
+}
+pg_relay_url :: (text:string)->bool #export_c {
+  parsed:=uri_parse(text);return parsed.ok && parsed.scheme==URI_WSS;
+}
+pg_name :: (raw:string,names:[]string,keywork:[]u8)->int {
+  if keywork.count!=256 {return -1;}
+  n:=json_unescape(raw,keywork);if n<0 {return -1;}
+  for i:0..<names.count {if pg_equal(cast(string)keywork[0..<n],names[i]) {return i;}}return -1;
+}
+// Byte payloads remain exclusively in caller-owned registered workspace.
+// Returned metadata contains ranges/counts only, never copied plaintext.
+pg_fields :: (text:string,names:[]string,maxima:[]int,work:[]u8)->PgFields {
+  r:PgFields;
+  if work.count!=8448 || names.count<1 || names.count>4 || maxima.count!=names.count {return PgFields.{error=PG_CAPACITY};}
+  for maximum:maxima {if maximum<0 || maximum>2048 {return PgFields.{error=PG_CAPACITY};}}
+  j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return PgFields.{error=PG_POINTER};}
+  token:=json_next(j[..]);
+  // At this object-parser position a string can only be a key.
+  while token==JSON_STRING {
+    index:=pg_name(text[j[0].from..<j[0].to],names,work[8192..<8448]);
+    if index<0 {return PgFields.{error=PG_POINTER};}bit:=cast(u32)1<<index;
+    if (r.seen&bit)!=0 {return PgFields.{error=PG_POINTER};}
+    if json_next(j[..])!=JSON_STRING {return PgFields.{error=PG_POINTER};}
+    start:=index*2048;n:=json_unescape(text[j[0].from..<j[0].to],work[start..<start+maxima[index]]);
+    if n<0 {return PgFields.{error=PG_POINTER};}
+    r.values[index]=PgRange.{from=start,count=n};r.seen|=bit;token=json_next(j[..]);
+  }
+  if token!=JSON_OBJECT_END || json_next(j[..])!=JSON_END || r.seen!=(cast(u32)1<<names.count)-1 {return PgFields.{error=PG_POINTER};}
+  return r;
+}
+pg_field :: (fields:PgFields,work:[]u8,index:int)->string {
+  r:=fields.values[index];return cast(string)work[r.from..<r.from+r.count];
+}
+pg_ascii_size :: (text:string)->int {
+  size:=2;for b:text {size+=ifx b==34 || b==92 || b==8 || b==9 || b==10 || b==12 || b==13 then 2 else ifx b<32 then 6 else 1;}return size;
+}
+pg_raw :: (out:[]u8,at:int,text:string,measure:bool)->int {return ifx measure then at+text.count else json_raw(out,at,text);}
+pg_emit_fields :: (names:[]string,fields:PgFields,work:[]u8,out:[]u8,offset:int,measure:bool)->int {
+  at:=pg_raw(out,offset,"{",measure);
+  for i:0..<names.count {
+    if i>0 {at=pg_raw(out,at,",",measure);}
+    name:=names[i];value:=pg_field(fields,work,i);
+    at=ifx measure then at+pg_ascii_size(name) else json_write_string(out,at,name);
+    at=pg_raw(out,at,":",measure);
+    at=ifx measure then at+pg_ascii_size(value) else json_write_string(out,at,value);
+  }
+  return pg_raw(out,at,"}",measure);
+}
+pg_context_checked :: (record:string,work:[]u8,canonical:[]u8,out:[]u8,overlap:bool)->u32 #export_c {
+  if overlap {return PG_ALIAS;}
+  if out.count!=32 || work.count!=8448 {return PG_CAPACITY;}
+  if pg_record_admit(record.count)!=0 {return PG_CONTEXT;}
+  names:=[4]string.["domain","environment","module","presentation"];maxima:=[4]int.[128,128,128,128];
+  fields:=pg_fields(record,names[..],maxima[..],work);if fields.error!=0 {return PG_CONTEXT;}
+  for i:0..<4 {value:=pg_field(fields,work,i);if value.count<1 {return PG_CONTEXT;}if !pg_ascii(value) {return PG_CONTEXT;}}
+  size:=pg_emit_fields(names[..],fields,work,canonical,PG_CONTEXT_LABEL.count,true);
+  if pg_output_admit(size,canonical.count)!=0 {return PG_CAPACITY;}
+  at:=json_raw(canonical,0,PG_CONTEXT_LABEL);at=pg_emit_fields(names[..],fields,work,canonical,at,false);
+  return ifx sha256_hash_checked(canonical[0..<at],out,false)==0 then PG_OK else PG_CRYPTO;
+}
+pg_pointer_checked :: (plain:string,relay:string,recipient:string,work:[]u8,canonical:[]u8,out:[]u8,overlap:bool)->PgText #export_c {
+  if overlap {return PgText.{error=PG_ALIAS};}
+  if pg_plain_admit(plain.count)!=0 {return PgText.{error=PG_LIMIT};}
+  if work.count!=8448 {return PgText.{error=PG_CAPACITY};}
+  if !pg_relay_url(relay) || !pg_lower_hex(recipient) {return PgText.{error=PG_POINTER};}
+  names:=[3]string.["id","recipient","relay"];maxima:=[3]int.[64,64,2048];
+  fields:=pg_fields(plain,names[..],maxima[..],work);if fields.error!=0 {return PgText.{error=fields.error};}
+  id:=pg_field(fields,work,0);to:=pg_field(fields,work,1);url:=pg_field(fields,work,2);
+  if !pg_lower_hex(id) || !pg_equal(to,recipient) || !pg_equal(url,relay) {return PgText.{error=PG_POINTER};}
+  size:=pg_emit_fields(names[..],fields,work,canonical,0,true);
+  if pg_output_admit(size,canonical.count)!=0 || pg_output_admit(size,out.count)!=0 {return PgText.{error=PG_CAPACITY};}
+  n:=pg_emit_fields(names[..],fields,work,canonical,0,false);
+  if !pg_equal(plain,cast(string)canonical[0..<n]) {return PgText.{error=PG_POINTER};}
+  for i:0..<n {out[i]=canonical[i];}return PgText.{written=n};
+}

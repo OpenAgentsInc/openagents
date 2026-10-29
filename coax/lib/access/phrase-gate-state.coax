@@ -1,0 +1,371 @@
+// One resumable job, caller-owned stable storage, no I/O or key export.
+// Terminal output stays unavailable until the platform acknowledges cleanup.
+#load "phrase-gate-crypto.coax";
+#load "phrase-gate-entry.coax";
+#authority;
+PG_IDLE :: cast(u32)0;PG_ACTIVE :: cast(u32)1;PG_CLOSING :: cast(u32)2;PG_DONE :: cast(u32)3;PG_REFUSED :: cast(u32)4;
+PG_OPEN :: cast(u32)0;PG_SEAL :: cast(u32)1;
+PG_WORK_BYTES :: 22128;
+PG_PB_FROM :: 0;PG_PHRASE_FROM :: 832;PG_MASTER_FROM :: 872;PG_PRK_FROM :: 904;
+PG_KEYS_FROM :: 936;PG_TAG_FROM :: 1000;PG_SALT_FROM :: 1032;PG_INFO_FROM :: 1096;
+PG_MAC_FROM :: 1192;PG_PLAIN_FROM :: 5488;PG_DECODE_FROM :: 9584;PG_CANON_FROM :: 18032;
+PgJob :: struct {
+  phase:u32;operation:u32;error:u32;context_ready:bool;started:bool;
+  wire_count:int;plain_count:int;written:int;completed:int;
+  context:[32]u8;salt:[16]u8;nonce:[12]u8;
+}
+PgProgress :: struct {error:u32;phase:u32;completed:int;total:int;}
+// Internal borrowed partition; callers validate exact work size before use.
+PgScratch :: struct {pb:[]u8;phrase:[]u8;master:[]u8;prk:[]u8;keys:[]u8;tag:[]u8;salt:[]u8;info:[]u8;mac:[]u8;plain:[]u8;decoded:[]u8;canonical:[]u8;}
+pg_scratch :: (work:[]u8)->PgScratch {
+ return PgScratch.{pb=work[0..<832],phrase=work[832..<872],master=work[872..<904],prk=work[904..<936],keys=work[936..<1000],tag=work[1000..<1032],salt=work[1032..<1096],info=work[1096..<1192],mac=work[1192..<5488],plain=work[5488..<9584],decoded=work[9584..<18032],canonical=work[18032..<22128]};
+}
+PG_TEST_RELAY :: "wss://relay.example";
+PG_TEST_RECIPIENT :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+
+#test "worker workspace regions have fixed nonoverlapping bounded layout" {
+  #assert pg_work_size()==22128 && pg_worker_budget()==256;
+  starts:=[12]int.[PG_PB_FROM,PG_PHRASE_FROM,PG_MASTER_FROM,PG_PRK_FROM,PG_KEYS_FROM,PG_TAG_FROM,PG_SALT_FROM,PG_INFO_FROM,PG_MAC_FROM,PG_PLAIN_FROM,PG_DECODE_FROM,PG_CANON_FROM];
+  sizes:=[12]int.[832,40,32,32,64,32,64,96,4296,4096,8448,4096];
+  #assert starts[0]==0;
+  for i:0..<11 {#assert starts[i]+sizes[i]==starts[i+1];}#assert starts[11]+sizes[11]==PG_WORK_BYTES;
+}
+#test "normalization and exact labelled salt initialize the existing fixed-round KDF" {
+  state:[1]PgJob;work:[22128]u8;input:[4202]u8;wire:=PG_TEST_WIRE;entropy:[28]u8;
+  for i:0..<wire.count {input[i]=wire[i];}
+  #assert pg_begin_checked(state[..],work[..],input[..],wire.count,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==0;
+  #assert state[0].phase==PG_ACTIVE && state[0].context_ready && state[0].started && state[0].wire_count==288 && state[0].plain_count==182;
+  #assert pg_result(state[..]).error==PG_NOT_READY && pg_result(state[..]).written==0;
+  expected:[832]u8;password:[40]u8;salt:[64]u8;
+  normalized:=pg_normalize_checked(PG_TEST_PHRASE,password[..],false);salted:=pg_kdf_salt(wire[46..<62],salt[..]);
+  #assert pb_init_checked(expected[..],password[0..<normalized.written],salt[0..<salted.written],210000,32,false)==0;
+  for i:0..<832 {#assert work[i]==expected[i];}
+  before:=work;
+  #assert pg_begin_checked(state[..],work[..],input[..],wire.count,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==PG_STATE;
+  for i:0..<22128 {#assert work[i]==before[i];}
+  out:[4202]u8;#assert pg_step_checked(state[..],work[..],input[..],PG_TEST_RELAY,PG_TEST_RECIPIENT,out[..],1)==0;
+  p:=pg_progress(state[..]);#assert p.error==0 && p.phase==PG_ACTIVE && p.completed==1 && p.total==210000;
+}
+#test "public completed-KDF state models terminal admission without a production shortcut" {
+  // The worker never exposes its state. This unit model supplies the known
+  // public fixture's completed PB state; native/browser gates run all rounds.
+  for operation:[2]u32.[PG_OPEN,PG_SEAL] {
+    state:[1]PgJob;work:[22128]u8;input:[4202]u8;out:[4202]u8;wire:=PG_TEST_WIRE;plain:=PG_TEST_PLAIN;master:=PG_TEST_MASTER;entropy:[28]u8;
+    for i:0..<28 {entropy[i]=wire[46+i];}for i:0..<4202 {out[i]=165;}
+    count:=ifx operation==PG_OPEN then wire.count else plain.count;
+    for i:0..<count {input[i]=ifx operation==PG_OPEN then wire[i] else plain[i];}
+    #assert pg_begin_checked(state[..],work[..],input[..],count,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],operation,false)==0;
+    work[5]=PB_DONE;stored:=cb_store_be32(work[..],20,1);stored=cb_store_be32(work[..],24,0);
+    for i:0..<32 {work[576+i]=master[i];}
+    #assert pbkdf2_info(work[0..<832]).phase==PB_DONE && pbkdf2_info(work[0..<832]).total==210000;
+    #assert pg_step_checked(state[..],work[..],input[..],PG_TEST_RELAY,PG_TEST_RECIPIENT,out[..],256)==0;
+    #assert state[0].phase==PG_CLOSING && state[0].completed==210000 && pg_result(state[..]).error==PG_NOT_READY;
+    #assert pg_ack_cleanup(state[..],0)==0;
+    result:=pg_result(state[..]);#assert result.error==0 && result.written==(ifx operation==PG_OPEN then 182 else 288);
+    for i:0..<result.written {#assert out[i]==(ifx operation==PG_OPEN then plain[i] else wire[i]);}#assert out[result.written]==165;
+    #assert pg_reset_after_wipe(state[..],0)==0 && state[0].phase==PG_IDLE && !state[0].context_ready;
+  }
+}
+#test "cancellation and failed erasure never become a successful locator" {
+  state:[1]PgJob;work:[22128]u8;input:[4202]u8;wire:=PG_TEST_WIRE;entropy:[28]u8;
+  for i:0..<wire.count {input[i]=wire[i];}
+  #assert pg_begin_checked(state[..],work[..],input[..],wire.count,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==0;
+  #assert pg_cancel_checked(state[..],work[..])==0 && state[0].phase==PG_CLOSING;
+  #assert pg_result(state[..]).error==PG_NOT_READY;
+  #assert pg_ack_cleanup(state[..],6)==PG_CLEANUP && state[0].phase==PG_REFUSED && pg_result(state[..]).error==PG_CLEANUP;
+  #assert pg_ack_cleanup(state[..],0)==PG_STATE;
+  #assert pg_reset_after_wipe(state[..],6)==PG_CLEANUP && pg_result(state[..]).written==0;
+  #assert pg_reset_after_wipe(state[..],0)==0;
+  #assert pg_begin_checked(state[..],work[..],input[..],wire.count,"x",PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==PG_PHRASE;
+  #assert state[0].phase==PG_CLOSING && pg_result(state[..]).error==PG_NOT_READY;
+  #assert pg_ack_cleanup(state[..],0)==PG_PHRASE && pg_result(state[..]).error==PG_PHRASE && pg_result(state[..]).written==0;
+}
+#test "message transport stays inside Coax and never loses entry semantic fields" {
+  for operation:[2]u32.[PG_OPEN,PG_SEAL] {
+    state:[1]PgJob;work:[22128]u8;input:[4202]u8;out:[6144]u8;wire:=PG_TEST_WIRE;master:=PG_TEST_MASTER;entropy:[28]u8;
+    for i:0..<28 {entropy[i]=wire[46+i];}
+    message:=ifx operation==PG_OPEN then PG_TEST_ENTRY else PG_TEST_POINTER;
+    #assert pg_begin_message_checked(state[..],work[..],input[..],message,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],operation,false)==0;
+    work[5]=PB_DONE;stored:=cb_store_be32(work[..],20,1);stored=cb_store_be32(work[..],24,0);for i:0..<32 {work[576+i]=master[i];}
+    #assert pg_step_message_checked(state[..],work[..],input[..],PG_TEST_RELAY,PG_TEST_RECIPIENT,out[..],256)==0;
+    #assert pg_result(state[..]).error==PG_NOT_READY && pg_ack_cleanup(state[..],0)==0;
+    result:=pg_result(state[..]);expected:=ifx operation==PG_OPEN then PG_TEST_POINTER else PG_TEST_ENTRY;
+    #assert result.error==0 && cast(string)out[0..<result.written]==expected;
+  }
+}
+#forall "trap and explicit failure statuses can only close into refusal" error:0..<15 {
+  state:[1]PgJob;expected:=ifx error==0 then PG_STATE else cast(u32)error;
+  #assert pg_abort(state[..],cast(u32)error)==expected && state[0].phase==PG_CLOSING;
+  #assert pg_result(state[..]).error==PG_NOT_READY && pg_ack_cleanup(state[..],0)==expected;
+  #assert pg_result(state[..]).error==expected && pg_result(state[..]).written==0;
+}
+#test "platform dispatch uses Coax phase and erasure decisions" {
+  state:[1]PgJob;#assert pg_transport_ready(state[..])==0 && !pg_cleanup_pending(state[..]);
+  #assert !pg_is_running(state[..]) && !pg_may_emit(state[..]) && !pg_was_cancelled(state[..]);
+  #assert pg_random_bytes(PG_OPEN)==0 && pg_random_bytes(PG_SEAL)==28;
+  #assert pg_abort_after_effect(state[..],0)==PG_CRYPTO && pg_cleanup_pending(state[..]);
+  #assert pg_transport_ready(state[..])==PG_STATE && pg_ack_cleanup(state[..],0)==PG_CRYPTO;
+  #assert pg_abort_after_effect(state[..],6)==PG_CLEANUP && pg_ack_cleanup(state[..],0)==PG_CLEANUP;
+  state[0].phase=PG_REFUSED;state[0].error=0;#assert pg_result(state[..]).error==PG_STATE;
+  state[0].phase=PG_DONE;state[0].written=0;#assert !pg_may_emit(state[..]) && pg_result(state[..]).error==PG_STATE;
+  state[0].phase=PG_REFUSED;state[0].error=PG_CANCELLED;#assert pg_was_cancelled(state[..]);
+  state[0].phase=PG_ACTIVE;#assert pg_is_running(state[..]);
+}
+
+#test "scalar ABI quotas are enforced before foreign pointers or byte access" {
+  for password:[5]int.[-1,0,1,128,129] {for record:[5]int.[-1,0,1,4096,4097] {for entropy:[3]int.[27,28,29] {for operation:[3]u32.[0,1,2] {
+    expected:=ifx operation>1 then PG_STATE else ifx password<0 || password>128 then PG_LIMIT else ifx record<1 || record>4096 then PG_CONTEXT else ifx operation==1 && entropy!=28 then PG_FORMAT else PG_OK;
+    #assert pg_config_request(password,record,entropy,operation)==expected;
+    #assert pg_request(password,record,ifx operation==0 then 107 else 1,entropy,operation)==expected;
+    #assert pg_message_request(password,record,1,7,64,entropy,operation)==expected;
+  }}}}
+  for operation:[2]u32.[0,1] {
+    for count:[7]int.[-1,0,1,4096,4097,6144,6145] {
+      limit:=ifx operation==0 then 6144 else 4096;
+      #assert pg_message_request(0,1,count,7,64,28,operation)==(ifx count>=1 && count<=limit then PG_OK else PG_LIMIT);
+    }
+    for count:[4]int.[6,7,2048,2049] {#assert pg_message_request(0,1,1,count,64,28,operation)==(ifx count>=7 && count<=2048 then PG_OK else PG_POINTER);}
+    #assert pg_message_request(0,1,1,7,63,28,operation)==PG_POINTER;
+    for count:[6]int.[0,1,106,107,4202,4203] {
+      #assert pg_request(0,1,count,28,operation)==(ifx (operation==0 && count>=107 && count<=4202)||(operation==1 && count>=1 && count<=4096) then PG_OK else PG_LIMIT);
+    }
+  }
+}
+#test "malformed bookkeeping and spans never admit work or a terminal success" {
+  state:[2]PgJob;work:[22129]u8;input:[4203]u8;out:[6145]u8;entropy:[28]u8;
+  #assert pg_abort(state[0..<0],PG_AUTH)==PG_STATE && pg_result(state[..]).error==PG_STATE && pg_progress(state[..]).error==PG_STATE;
+  #assert pg_ack_cleanup(state[..],0)==PG_STATE && pg_reset_after_wipe(state[..],0)==PG_STATE;
+  #assert pg_transport_ready(state[..])==PG_STATE && !pg_cleanup_pending(state[..]) && !pg_is_running(state[..]) && !pg_was_cancelled(state[..]);
+  state[0].phase=PG_CLOSING;#assert !pg_cleanup_pending(state[..]);state[0].phase=PG_ACTIVE;#assert !pg_is_running(state[..]);
+  state[0].phase=PG_REFUSED;state[0].error=PG_CANCELLED;#assert !pg_was_cancelled(state[..]);state[0]=PgJob.{};
+  #assert pg_begin_checked(state[..],work[0..<22128],input[0..<4202],288,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==PG_STATE;
+  #assert pg_begin_checked(state[0..<1],work[..],input[0..<4202],288,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==PG_STATE;
+  #assert pg_begin_checked(state[0..<1],work[0..<22128],input[..],288,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==PG_STATE;
+  #assert pg_begin_message_checked(state[..],work[0..<22128],input[0..<4202],PG_TEST_ENTRY,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==PG_STATE;
+  #assert pg_begin_message_checked(state[0..<1],work[..],input[0..<4202],PG_TEST_ENTRY,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==PG_STATE;
+  #assert pg_begin_message_checked(state[0..<1],work[0..<22128],input[..],PG_TEST_ENTRY,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==PG_STATE;
+  state[0].phase=PG_ACTIVE;
+  #assert pg_begin_message_checked(state[0..<1],work[0..<22128],input[0..<4202],PG_TEST_ENTRY,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==PG_STATE;
+  state[0].phase=PG_IDLE;
+  #assert pg_begin_checked(state[0..<1],work[0..<22128],input[0..<4202],288,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,true)==PG_ALIAS;
+  #assert pg_result(state[0..<1]).error==PG_NOT_READY;#assert pg_reset_after_wipe(state[0..<1],0)==0;
+  #assert pg_begin_message_checked(state[0..<1],work[0..<22128],input[0..<4202],"",PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==PG_LIMIT;
+  #assert pg_reset_after_wipe(state[0..<1],0)==0;
+  #assert pg_begin_message_checked(state[0..<1],work[0..<22128],input[0..<4202],PG_TEST_ENTRY,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,true)==PG_ALIAS;
+  #assert pg_reset_after_wipe(state[0..<1],0)==0;
+  #assert pg_begin_checked(state[0..<1],work[0..<22128],input[0..<4202],288,PG_TEST_PHRASE,PG_TEST_RECORD,"https://a",PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==PG_POINTER;
+  #assert pg_reset_after_wipe(state[0..<1],0)==0;
+  #assert pg_begin_checked(state[0..<1],work[0..<22128],input[0..<4202],288,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,"",entropy[..],PG_OPEN,false)==PG_POINTER;
+  for written:[5]int.[0,1,6144,6145,-1] {state[0]=PgJob.{phase=PG_DONE,written=written};#assert pg_result(state[0..<1]).error==(ifx written>=1 && written<=6144 then PG_OK else PG_STATE);}
+  state[0]=PgJob.{phase=PG_DONE,written=1,error=PG_AUTH};#assert pg_result(state[0..<1]).error==PG_NOT_READY;
+  state[0]=PgJob.{written=17,completed=13,error=PG_AUTH,context_ready=true,started=true};
+  #assert pg_reset_after_wipe(state[0..<1],0)==0 && state[0].written==0 && state[0].completed==0 && state[0].error==0 && !state[0].started && !state[0].context_ready;
+  #assert pg_progress(state[0..<1]).total==0;
+  state[0].written=9;#assert pg_abort(state[0..<1],PG_AUTH)==PG_AUTH && state[0].written==0;
+  state[0].written=9;#assert pg_ack_cleanup(state[0..<1],9)==PG_CLEANUP && state[0].phase==PG_REFUSED && state[0].written==0;
+  state[0].written=9;#assert pg_reset_after_wipe(state[0..<1],9)==PG_CLEANUP && state[0].phase==PG_REFUSED && state[0].written==0;
+}
+#test "active metadata is independently validated before every KDF chunk" {
+  state:[2]PgJob;work:[22129]u8;input:[4203]u8;out:[6145]u8;entropy:[28]u8;wire:=PG_TEST_WIRE;
+  for i:0..<wire.count {input[i]=wire[i];}
+  #assert pg_begin_checked(state[0..<1],work[0..<22128],input[0..<4202],wire.count,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==0;
+  baseline:=state[0];original:=work;
+  #assert pg_active(state[..],work[0..<22128])==PG_STATE && pg_active(state[0..<1],work[..])==PG_STATE;
+  for fault:0..<10 {
+    state[0]=baseline;
+    if fault==0 {state[0].phase=PG_DONE;}else if fault==1 {state[0].operation=2;}else if fault==2 {state[0].error=PG_AUTH;}else if fault==3 {state[0].context_ready=false;}else if fault==4 {state[0].started=false;}else if fault==5 {state[0].written=1;}else if fault==6 {state[0].plain_count=0;}else if fault==7 {state[0].wire_count=1;}else if fault==8 {state[0].completed = -1;}else {state[0].completed=210001;}
+    #assert pg_active(state[0..<1],work[0..<22128])==PG_STATE;
+  }
+  state[0]=baseline;state[0].completed=1;#assert pg_active(state[0..<1],work[0..<22128])==PG_KDF;
+  state[0]=baseline;
+  stored:=cb_store_be32(work[..],8,210001);#assert pg_active(state[0..<1],work[0..<22128])==PG_KDF;work=original;
+  stored=cb_store_be32(work[..],12,33);#assert pg_active(state[0..<1],work[0..<22128])==PG_KDF;work=original;
+  work[0]^=1;#assert pg_active(state[0..<1],work[0..<22128])==PG_KDF;work=original;
+  work[5]=PB_CANCELLED;#assert pg_active(state[0..<1],work[0..<22128])==PG_KDF;work=original;
+  #assert pg_step_checked(state[0..<1],work[0..<22128],input[..],PG_TEST_RELAY,PG_TEST_RECIPIENT,out[0..<4202],1)==PG_CAPACITY;state[0]=baseline;
+  #assert pg_step_checked(state[0..<1],work[0..<22128],input[0..<4202],PG_TEST_RELAY,PG_TEST_RECIPIENT,out[0..<4201],1)==PG_CAPACITY;state[0]=baseline;
+  #assert pg_step_message_checked(state[0..<1],work[0..<22128],input[0..<4202],PG_TEST_RELAY,PG_TEST_RECIPIENT,out[..],1)==PG_CAPACITY;state[0]=baseline;
+  #assert pg_step_checked(state[0..<1],work[0..<22128],input[0..<4202],PG_TEST_RELAY,PG_TEST_RECIPIENT,out[0..<4202],0)==PG_KDF;state[0]=baseline;
+  #assert pg_complete_derived(state[0..<1],work[0..<22128],input[0..<4202],PG_TEST_RELAY,PG_TEST_RECIPIENT,out[0..<4202])==PG_KDF;state[0]=baseline;
+  #assert pg_cancel_checked(state[0..<1],work[0..<22128])==0 && state[0].error==PG_CANCELLED && state[0].written==0;
+  #assert pg_cancel_checked(state[0..<1],work[0..<22128])==PG_STATE && pg_step_message_checked(state[0..<1],work[0..<22128],input[0..<4202],PG_TEST_RELAY,PG_TEST_RECIPIENT,out[0..<6144],1)==PG_STATE;
+}
+
+#test "scratch views are the exact registered regions, including first and last bytes" {
+  work:[22128]u8;s:=pg_scratch(work[..]);spans:=[12][]u8.[s.pb,s.phrase,s.master,s.prk,s.keys,s.tag,s.salt,s.info,s.mac,s.plain,s.decoded,s.canonical];
+  starts:=[12]int.[0,832,872,904,936,1000,1032,1096,1192,5488,9584,18032];sizes:=[12]int.[832,40,32,32,64,32,64,96,4296,4096,8448,4096];
+  for i:0..<12 {#assert spans[i].count==sizes[i];spans[i][0]=cast(u8)(i+1);spans[i][sizes[i]-1]=cast(u8)(32+i);#assert work[starts[i]]==cast(u8)(i+1) && work[starts[i]+sizes[i]-1]==cast(u8)(32+i);}
+}
+#test "begin overwrites stale idle metadata and copies nonzero leading nonce and salt bytes" {
+  state:[1]PgJob;work:[22128]u8;input:[4202]u8;entropy:[28]u8;wire:=PG_TEST_WIRE;wire[46]=99;wire[62]=88;
+  for i:0..<wire.count {input[i]=wire[i];}for i:0..<28 {entropy[i]=cast(u8)(77+i);}
+  state[0]=PgJob.{error=PG_AUTH,written=9,completed=7,started=true};
+  #assert pg_begin_checked(state[..],work[..],input[..],wire.count,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==0;
+  #assert state[0].error==0 && state[0].written==0 && state[0].completed==0 && state[0].salt[0]==99 && state[0].nonce[0]==88;
+  #assert pg_reset_after_wipe(state[..],0)==0;
+  for i:0..<PG_TEST_PLAIN.count {input[i]=PG_TEST_PLAIN[i];}
+  #assert pg_begin_checked(state[..],work[..],input[..],PG_TEST_PLAIN.count,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_SEAL,false)==0;
+  for i:0..<16 {#assert state[0].salt[i]==entropy[i];}for i:0..<12 {#assert state[0].nonce[i]==entropy[16+i];}
+  state[0]=PgJob.{written=9};#assert pg_reset_after_wipe(state[..],7)==PG_CLEANUP && state[0].phase==PG_REFUSED && state[0].error==PG_CLEANUP && state[0].written==0;
+}
+#test "original salt and nonce cannot change between start and authenticated completion" {
+  for changed:[2]int.[46,62] {
+    state:[1]PgJob;work:[22128]u8;input:[4202]u8;out:[4202]u8;entropy:[28]u8;wire:=PG_TEST_WIRE;master:=PG_TEST_MASTER;
+    for i:0..<wire.count {input[i]=wire[i];}
+    #assert pg_begin_checked(state[..],work[..],input[..],wire.count,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==0;
+    work[5]=PB_DONE;stored:=cb_store_be32(work[..],20,1);stored=cb_store_be32(work[..],24,0);for i:0..<32 {work[576+i]=master[i];}
+    state[0].completed=210000;#assert pg_active(state[..],work[..])==0;
+    input[changed]^=1;#assert pg_step_checked(state[..],work[..],input[..],PG_TEST_RELAY,PG_TEST_RECIPIENT,out[..],256)==PG_FORMAT;
+  }
+}
+#test "invalid transport shapes cannot write any registered input or scratch byte" {
+  state:[2]PgJob;work:[22129]u8;input:[4203]u8;entropy:[28]u8;
+  for bad:0..<3 {
+    for i:0..<22129 {work[i]=165;}for i:0..<4203 {input[i]=165;}
+    count:=ifx bad==0 then 2 else 1;working:=ifx bad==1 then 22129 else 22128;incoming:=ifx bad==2 then 4203 else 4202;
+    #assert pg_begin_message_checked(state[0..<count],work[0..<working],input[0..<incoming],PG_TEST_ENTRY,PG_TEST_PHRASE,PG_TEST_RECORD,PG_TEST_RELAY,PG_TEST_RECIPIENT,entropy[..],PG_OPEN,false)==PG_STATE;
+    for b:work {#assert b==165;}for b:input {#assert b==165;}
+  }
+}
+
+pg_work_size :: ()->int #export_c {return PG_WORK_BYTES;}
+pg_worker_budget :: ()->int #export_c {return 256;}
+pg_config_request :: (password:int,record:int,entropy:int,operation:u32)->u32 {
+  if operation>PG_SEAL {return PG_STATE;}
+  if password<0 || password>128 {return PG_LIMIT;}
+  if pg_record_admit(record)!=0 {return PG_CONTEXT;}
+  if operation==PG_SEAL && entropy!=28 {return PG_FORMAT;}
+  return PG_OK;
+}
+pg_request :: (password:int,record:int,input:int,entropy:int,operation:u32)->u32 #export_c {
+  error:=pg_config_request(password,record,entropy,operation);if error!=0 {return error;}
+  return ifx operation==PG_OPEN then pg_wire_admit(input) else pg_plain_admit(input);
+}
+pg_message_request :: (password:int,record:int,input:int,relay:int,recipient:int,entropy:int,operation:u32)->u32 #export_c {
+  error:=pg_config_request(password,record,entropy,operation);if error!=0 {return error;}
+  if relay<7 || relay>2048 || recipient!=64 {return PG_POINTER;}
+  if input<1 || input>(ifx operation==PG_OPEN then 6144 else 4096) {return PG_LIMIT;}return PG_OK;
+}
+pg_fail :: (state:[]PgJob,error:u32)->u32 {
+  state[0].phase=PG_CLOSING;state[0].error=error;state[0].written=0;return error;
+}
+pg_begin_checked :: (state:[]PgJob,work:[]u8,input:[]u8,input_count:int,raw:string,record:string,relay:string,recipient:string,entropy:[]u8,operation:u32,overlap:bool)->u32 #export_c {
+  if state.count!=1 || work.count!=22128 || input.count!=4202 {return PG_STATE;}
+  if state[0].phase!=PG_IDLE {return PG_STATE;}
+  slots:=pg_scratch(work);state[0]=PgJob.{};
+  if overlap {return pg_fail(state,PG_ALIAS);}
+  status:=pg_request(raw.count,record.count,input_count,entropy.count,operation);if status!=0 {return pg_fail(state,status);}
+  if !pg_relay_url(relay) || !pg_lower_hex(recipient) {return pg_fail(state,PG_POINTER);}
+  state[0].operation=operation;
+  status=pg_context_checked(record,slots.decoded,slots.canonical,state[0].context[..],false);
+  if status!=0 {return pg_fail(state,status);}state[0].context_ready=true;
+  normalized:=pg_normalize_checked(raw,slots.phrase,false);if normalized.error!=0 {return pg_fail(state,normalized.error);}
+  if operation==PG_OPEN {
+    frame:=pg_frame_checked(input[0..<input_count],state[0].context[..],false);if frame.error!=0 {return pg_fail(state,frame.error);}
+    state[0].wire_count=input_count;state[0].plain_count=frame.size;
+    for i:0..<16 {state[0].salt[i]=input[46+i];}for i:0..<12 {state[0].nonce[i]=input[62+i];}
+  } else {
+    pointer:=pg_pointer_checked(cast(string)input[0..<input_count],relay,recipient,slots.decoded,slots.canonical,slots.plain,false);
+    if pointer.error!=0 {return pg_fail(state,pointer.error);}
+    state[0].plain_count=pointer.written;state[0].wire_count=106+pointer.written;
+    for i:0..<16 {state[0].salt[i]=entropy[i];}for i:0..<12 {state[0].nonce[i]=entropy[16+i];}
+  }
+  salted:=pg_kdf_salt(state[0].salt[..],slots.salt);if salted.error!=0 {return pg_fail(state,salted.error);}
+  status=pb_init_checked(slots.pb,slots.phrase[0..<normalized.written],slots.salt[0..<salted.written],210000,32,false);
+  if status!=0 {return pg_fail(state,PG_KDF);}
+  state[0].started=true;state[0].phase=PG_ACTIVE;return PG_OK;
+}
+pg_active :: (state:[]PgJob,work:[]u8)->u32 {
+  if state.count!=1 || work.count!=22128 {return PG_STATE;}
+  slots:=pg_scratch(work);s:=state[0];
+  if s.phase!=PG_ACTIVE || s.operation>PG_SEAL || s.error!=0 || !s.context_ready || !s.started || s.written!=0 {return PG_STATE;}
+  if pg_plain_admit(s.plain_count)!=0 || s.wire_count!=106+s.plain_count || s.completed<0 || s.completed>210000 {return PG_STATE;}
+  progress:=pbkdf2_info(slots.pb);
+  if progress.error!=0 || progress.total!=210000 || pb_word(work,12)!=32 || progress.completed<s.completed {return PG_KDF;}
+  if progress.phase!=PB_ACTIVE && progress.phase!=PB_DONE {return PG_KDF;}return PG_OK;
+}
+pg_complete_derived :: (state:[]PgJob,work:[]u8,input:[]u8,relay:string,recipient:string,out:[]u8)->u32 {
+  slots:=pg_scratch(work);status:=pb_result_checked(slots.pb,slots.master,false);if status!=0 {return pg_fail(state,PG_KDF);}
+  status=pg_keys_checked(slots.master,state[0].salt[..],state[0].context[..],slots.prk,slots.info,slots.keys,false);
+  if status!=0 {return pg_fail(state,status);}
+  result:PgText;
+  if state[0].operation==PG_OPEN {
+    wire:=input[0..<state[0].wire_count];
+    if cb_ct_equal(wire[46..<62],state[0].salt[..])!=CB_MAX64 || cb_ct_equal(wire[62..<74],state[0].nonce[..])!=CB_MAX64 {return pg_fail(state,PG_FORMAT);}
+    decrypted:=pg_open_payload_checked(slots.keys,wire,state[0].context[..],slots.mac,slots.tag,slots.plain,false);
+    if decrypted.error!=0 {return pg_fail(state,decrypted.error);}
+    result=pg_pointer_checked(cast(string)slots.plain[0..<decrypted.written],relay,recipient,slots.decoded,slots.canonical,out[0..<4096],false);
+  } else {
+    result=pg_seal_payload_checked(slots.keys,state[0].salt[..],state[0].nonce[..],state[0].context[..],slots.plain[0..<state[0].plain_count],input,slots.mac,slots.tag,out,false);
+  }
+  if result.error!=0 {return pg_fail(state,result.error);}
+  state[0].written=result.written;state[0].phase=PG_CLOSING;return PG_OK;
+}
+pg_step_checked :: (state:[]PgJob,work:[]u8,input:[]u8,relay:string,recipient:string,out:[]u8,budget:int)->u32 #export_c {
+  status:=pg_active(state,work);if status!=0 {return status;}
+  if input.count!=4202 || out.count!=4202 {return pg_fail(state,PG_CAPACITY);}
+  slots:=pg_scratch(work);progress:=pb_step_checked(slots.pb,budget);if progress.error!=0 {return pg_fail(state,PG_KDF);}
+  state[0].completed=progress.completed;
+  if progress.phase==PB_DONE {return pg_complete_derived(state,work,input,relay,recipient,out);}return PG_OK;
+}
+pg_cancel_checked :: (state:[]PgJob,work:[]u8)->u32 #export_c {
+  status:=pg_active(state,work);if status!=0 {return status;}
+  slots:=pg_scratch(work);cancelled:=pb_cancel_checked(slots.pb);if cancelled!=0 {return pg_fail(state,PG_KDF);}
+  state[0].phase=PG_CLOSING;state[0].error=PG_CANCELLED;return PG_OK;
+}
+pg_ack_cleanup :: (state:[]PgJob,status:u32)->u32 #export_c {
+  if state.count!=1 || state[0].phase!=PG_CLOSING {return PG_STATE;}
+  if status!=0 {state[0].phase=PG_REFUSED;state[0].error=PG_CLEANUP;state[0].written=0;return PG_CLEANUP;}
+  state[0].phase=ifx state[0].error==0 then PG_DONE else PG_REFUSED;
+  return state[0].error;
+}
+pg_reset_after_wipe :: (state:[]PgJob,status:u32)->u32 #export_c {
+  if state.count!=1 {return PG_STATE;}
+  if status!=0 {state[0].phase=PG_REFUSED;state[0].error=PG_CLEANUP;state[0].written=0;return PG_CLEANUP;}
+  state[0]=PgJob.{};return PG_OK;
+}
+pg_progress :: (state:[]PgJob)->PgProgress #export_c {
+  if state.count!=1 {return PgProgress.{error=PG_STATE};}
+  s:=state[0];return PgProgress.{error=s.error,phase=s.phase,completed=s.completed,total=ifx s.started then 210000 else 0};
+}
+pg_result :: (state:[]PgJob)->PgText #export_c {
+  if state.count!=1 {return PgText.{error=PG_STATE};}
+  s:=state[0];
+  if s.phase==PG_DONE && s.error==0 {
+    if s.written<1 || s.written>6144 {return PgText.{error=PG_STATE};}return PgText.{written=s.written};
+  }
+  if s.phase==PG_REFUSED {return PgText.{error=ifx s.error==0 then PG_STATE else s.error};}return PgText.{error=PG_NOT_READY};
+}
+pg_begin_message_checked :: (state:[]PgJob,work:[]u8,input:[]u8,message:string,raw:string,record:string,relay:string,recipient:string,entropy:[]u8,operation:u32,overlap:bool)->u32 #export_c {
+  if state.count!=1 || work.count!=22128 || input.count!=4202 {return PG_STATE;}
+  if state[0].phase!=PG_IDLE {return PG_STATE;}
+  status:=pg_message_request(raw.count,record.count,message.count,relay.count,recipient.count,entropy.count,operation);
+  if status!=0 {return pg_fail(state,status);}if overlap {return pg_fail(state,PG_ALIAS);}
+  count:=message.count;
+  if operation==PG_OPEN {
+    slots:=pg_scratch(work);decoded:=pg_entry_decode_checked(message,slots.decoded,input,false);
+    if decoded.error!=0 {return pg_fail(state,decoded.error);}count=decoded.written;
+  }else {for i:0..<count {input[i]=message[i];}}
+  return pg_begin_checked(state,work,input,count,raw,record,relay,recipient,entropy,operation,false);
+}
+pg_step_message_checked :: (state:[]PgJob,work:[]u8,input:[]u8,relay:string,recipient:string,out:[]u8,budget:int)->u32 #export_c {
+  status:=pg_active(state,work);if status!=0 {return status;}
+  if out.count!=6144 {return pg_fail(state,PG_CAPACITY);}
+  status=pg_step_checked(state,work,input,relay,recipient,out[0..<4202],budget);if status!=0 {return status;}
+  if state[0].phase==PG_CLOSING && state[0].operation==PG_SEAL {
+    packed:=pg_entry_encode_checked(input[0..<state[0].wire_count],state[0].context[..],out,false);
+    if packed.error!=0 {return pg_fail(state,packed.error);}state[0].written=packed.written;
+  }
+  return PG_OK;
+}
+pg_abort :: (state:[]PgJob,error:u32)->u32 #export_c {
+  if state.count!=1 {return PG_STATE;}
+  return pg_fail(state,ifx error==0 then PG_STATE else error);
+}
+pg_transport_ready :: (state:[]PgJob)->u32 #export_c {return ifx state.count==1 && state[0].phase==PG_IDLE then PG_OK else PG_STATE;}
+pg_cleanup_pending :: (state:[]PgJob)->bool #export_c {return state.count==1 && state[0].phase==PG_CLOSING;}
+pg_random_bytes :: (operation:u32)->int #export_c {return ifx operation==PG_SEAL then 28 else 0;}
+pg_abort_after_effect :: (state:[]PgJob,status:u32)->u32 #export_c {return pg_abort(state,ifx status==0 then PG_CRYPTO else PG_CLEANUP);}
+pg_is_running :: (state:[]PgJob)->bool #export_c {return state.count==1 && state[0].phase==PG_ACTIVE;}
+pg_may_emit :: (state:[]PgJob)->bool #export_c {return pg_result(state).error==PG_OK;}
+pg_was_cancelled :: (state:[]PgJob)->bool #export_c {return state.count==1 && state[0].phase==PG_REFUSED && state[0].error==PG_CANCELLED;}

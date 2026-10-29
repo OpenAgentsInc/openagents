@@ -1,0 +1,3 @@
+// Single generated header for the dedicated worker's pure policy and erasure.
+#load "phrase-gate-state.coax";
+#load "../crypto/zeroize.coax";

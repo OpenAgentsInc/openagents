@@ -1,0 +1,27 @@
+{
+  "url": "https://coax-phrase-gate-staging-ezxz4mgdsq-uc.a.run.app/experimental/",
+  "mode": "experimental",
+  "manifest": {
+    "schema": "coax.phrase-gate.fixture-artifact.v1",
+    "experimental": true,
+    "profile": "release",
+    "fixtureSha256": "de751670e9a33cf7c6e454849bd165c854e54e9f25448a2dbd1a0db1b284723c",
+    "legacySourceSha256": "1b0bf4992651c16f3df7bf1c9e0d553280ca64287d9d7ec2b7c031ba48ef1105",
+    "assets": {
+      "index.html": "3d0841c02b16a4174cb2ad6ef575d7b8a5b0ce254d4937a178a233259b170de5",
+      "client.js": "29b5629fb8abeb92b1d0feb879090856196f74c0ca6aa4a108a77379a99d4004",
+      "legacy.js": "14980240877d564a6600a09bb0063e191d7d5ee0d0247cb75ae536a2247f0771",
+      "legacy-entry.json": "ca2a79bdc49a2eab48069aa946207a40bd0854fa70b8535fb8179e76d72c0944",
+      "entry-v2.json": "81c9e7aee3c5c29f35832f5370ad27abef5df677208a8f237a95c0c00991e884",
+      "fixture.json": "677813b9db103674d12b72eb457a858b37d5f00ed0e56cb491b5d2a07342279b",
+      "phrase-gate-worker.js": "a0c2ee1ced2499155618816d946c0e0c5f8d10814cc9c748c921bb91b5ed7700",
+      "phrase-gate-worker.wasm": "81ef794110c02ac599b6257b2b45fc3fc7b0f5989d8c97e57c490167537688d9"
+    }
+  },
+  "pointer": {
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "recipient": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "relay": "wss://relay.example"
+  },
+  "legacyOnly": false
+}

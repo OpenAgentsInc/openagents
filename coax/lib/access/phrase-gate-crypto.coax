@@ -1,0 +1,147 @@
+// Experimental v2 composition; all buffers are caller-owned and are erased
+// by the worker's identified-buffer effect boundary before a terminal result.
+#load "phrase-gate-profile.coax";
+#load "../crypto/pbkdf2.coax";
+#load "../crypto/hkdf.coax";
+#load "../crypto/chacha20.coax";
+#authority;
+PG_KDF_LABEL :: "openagents.phrase-gate.v2/kdf\0";
+PG_KEYS_LABEL :: "openagents.phrase-gate.v2/keys\0";
+PG_MAC_LABEL :: "openagents.phrase-gate.v2/mac\0";
+PG_MAC_WORK :: 4296;
+
+#test "domain labels have exactly one explicit terminal zero byte" {
+  #assert PG_KDF_LABEL.count==30 && PG_KEYS_LABEL.count==31 && PG_MAC_LABEL.count==30;
+  #assert PG_KDF_LABEL[29]==0 && PG_KEYS_LABEL[30]==0 && PG_MAC_LABEL[29]==0;
+  wire:=PG_TEST_WIRE;salt:[64]u8;for i:0..<64 {salt[i]=165;}
+  r:=pg_kdf_salt(wire[46..<62],salt[..]);#assert r.error==0 && r.written==46;
+  #assert cast(string)salt[0..<30]==PG_KDF_LABEL;
+  for i:0..<16 {#assert salt[30+i]==cast(u8)i;}#assert salt[46]==165;
+  #assert pg_kdf_salt(wire[46..<61],salt[..]).error==PG_FORMAT;
+  #assert pg_kdf_salt(wire[46..<62],salt[0..<45]).error==PG_CAPACITY;
+}
+#test "reviewed master derives separate exact encryption and MAC key halves" {
+  master:=PG_TEST_MASTER;wire:=PG_TEST_WIRE;context:=PG_TEST_CONTEXT;expected:=PG_TEST_KEYS;
+  prk:[32]u8;info:[96]u8;keys:[65]u8;keys[64]=165;
+  #assert pg_keys_checked(master[..],wire[46..<62],context[..],prk[..],info[..],keys[0..<64],false)==0;
+  for i:0..<64 {#assert keys[i]==expected[i];}#assert keys[64]==165;
+  #assert pg_keys_checked(master[0..<31],wire[46..<62],context[..],prk[..],info[..],keys[0..<64],false)==PG_CRYPTO;
+  #assert pg_keys_checked(master[..],wire[46..<62],context[..],prk[..],info[..],keys[0..<64],true)==PG_ALIAS;
+}
+#test "full MAC is checked before any private plaintext writes" {
+  keys:=PG_TEST_KEYS;wire:=PG_TEST_WIRE;context:=PG_TEST_CONTEXT;
+  mac:[4296]u8;tag:[32]u8;plain:[4096]u8;
+  // The native/Wasm oracle matrix separately covers all 32 tag positions.
+  for position:[2]int.[0,31] {
+    for i:0..<4096 {plain[i]=165;}bad:=wire;bad[wire.count-32+position]^=1;
+    r:=pg_open_payload_checked(keys[..],bad[..],context[..],mac[..],tag[..],plain[..],false);
+    #assert r.error==PG_AUTH && r.written==0;for b:plain {#assert b==165;}
+  }
+  r:=pg_open_payload_checked(keys[..],wire[..],context[..],mac[..],tag[..],plain[..],false);
+  #assert r.error==0 && r.written==182 && cast(string)plain[0..<182]==PG_TEST_POINTER && plain[182]==165;
+  #assert pg_open_payload_checked(keys[..],wire[..],context[..],mac[..],tag[..],plain[0..<181],false).error==PG_CAPACITY;
+}
+#test "counter-one writer reproduces the entire reviewed cryptogram transactionally" {
+  keys:=PG_TEST_KEYS;wire:=PG_TEST_WIRE;context:=PG_TEST_CONTEXT;plain:=PG_TEST_PLAIN;
+  staged:[4202]u8;mac:[4296]u8;tag:[32]u8;out:[4202]u8;for i:0..<4202 {out[i]=165;}
+  r:=pg_seal_payload_checked(keys[..],wire[46..<62],wire[62..<74],context[..],plain[..],staged[..],mac[..],tag[..],out[0..<wire.count],false);
+  #assert r.error==0 && r.written==wire.count;for i:0..<wire.count {#assert out[i]==wire[i];}#assert out[wire.count]==165;
+  for i:0..<4202 {out[i]=165;}
+  #assert pg_seal_payload_checked(keys[..],wire[46..<62],wire[62..<74],context[..],plain[..],staged[..],mac[..],tag[..],out[0..<wire.count-1],false).error==PG_CAPACITY;
+  for b:out {#assert b==165;}
+}
+
+#test "KDF key schedule and MAC capacities are checked independently before writes" {
+  master:=PG_TEST_MASTER;wire:=PG_TEST_WIRE;context:=PG_TEST_CONTEXT;keys:[65]u8;prk:[33]u8;info:[97]u8;salt:[65]u8;mac:[4297]u8;tag:[33]u8;authenticated:[4171]u8;
+  #assert pg_kdf_salt(wire[46..<62],salt[0..<46]).error==0 && pg_kdf_salt(wire[46..<62],salt[0..<64]).error==0 && pg_kdf_salt(wire[46..<62],salt[..]).error==PG_CAPACITY;
+  #assert pg_keys_checked(master[..],wire[46..<62],context[..],prk[0..<32],info[0..<63],keys[0..<64],false)==0;
+  #assert pg_keys_checked(master[..],wire[46..<62],context[..],prk[..],info[0..<96],keys[0..<64],false)==PG_CAPACITY;
+  #assert pg_keys_checked(master[..],wire[46..<62],context[..],prk[0..<32],info[0..<96],keys[..],false)==PG_CAPACITY;
+  #assert pg_keys_checked(master[..],wire[46..<62],context[..],prk[0..<32],info[0..<62],keys[0..<64],false)==PG_CAPACITY;
+  #assert pg_keys_checked(master[..],wire[46..<62],context[..],prk[0..<32],info[..],keys[0..<64],false)==PG_CAPACITY;
+  #assert pg_keys_checked(master[..],wire[46..<61],context[..],prk[0..<32],info[0..<96],keys[0..<64],false)==PG_CRYPTO;
+  #assert pg_keys_checked(master[..],wire[46..<62],context[0..<31],prk[0..<32],info[0..<96],keys[0..<64],false)==PG_CRYPTO;
+  #assert pg_mac_checked(keys[0..<64],authenticated[0..<75],mac[0..<4296],tag[0..<32])==0;
+  #assert pg_mac_checked(keys[0..<64],authenticated[0..<4170],mac[0..<4296],tag[0..<32])==0;
+  #assert pg_mac_checked(keys[0..<64],authenticated[0..<74],mac[0..<4296],tag[0..<32])==PG_CAPACITY;
+  #assert pg_mac_checked(keys[0..<64],authenticated[..],mac[0..<4296],tag[0..<32])==PG_CAPACITY;
+  #assert pg_mac_checked(keys[..],authenticated[0..<75],mac[0..<4296],tag[0..<32])==PG_CAPACITY;
+  #assert pg_mac_checked(keys[0..<64],authenticated[0..<75],mac[..],tag[0..<32])==PG_CAPACITY;
+  #assert pg_mac_checked(keys[0..<64],authenticated[0..<75],mac[0..<4296],tag[..])==PG_CAPACITY;
+}
+#test "writer and reader shape failures are transactional at every independent span" {
+  keys:=PG_TEST_KEYS;wire:=PG_TEST_WIRE;context:=PG_TEST_CONTEXT;plain:=PG_TEST_PLAIN;mac:[4297]u8;tag:[33]u8;staged:[4203]u8;out:[4203]u8;
+  for i:0..<4203 {out[i]=165;}
+  #assert pg_open_payload_checked(keys[..],wire[..],context[..],mac[0..<4296],tag[0..<32],out[0..<4096],true).error==PG_ALIAS;
+  #assert pg_open_payload_checked(keys[..],wire[0..<106],context[..],mac[0..<4296],tag[0..<32],out[0..<4096],false).error==PG_LIMIT;
+  #assert pg_open_payload_checked(keys[0..<63],wire[..],context[..],mac[0..<4296],tag[0..<32],out[0..<4096],false).error==PG_CAPACITY;
+  #assert pg_seal_payload_checked(keys[..],wire[46..<62],wire[62..<74],context[..],plain[..],staged[0..<4202],mac[0..<4296],tag[0..<32],out[0..<4202],true).error==PG_ALIAS;
+  #assert pg_seal_payload_checked(keys[0..<63],wire[46..<62],wire[62..<74],context[..],plain[..],staged[0..<4202],mac[0..<4296],tag[0..<32],out[0..<4202],false).error==PG_FORMAT;
+  #assert pg_seal_payload_checked(keys[..],wire[46..<61],wire[62..<74],context[..],plain[..],staged[0..<4202],mac[0..<4296],tag[0..<32],out[0..<4202],false).error==PG_FORMAT;
+  #assert pg_seal_payload_checked(keys[..],wire[46..<62],wire[62..<73],context[..],plain[..],staged[0..<4202],mac[0..<4296],tag[0..<32],out[0..<4202],false).error==PG_FORMAT;
+  #assert pg_seal_payload_checked(keys[..],wire[46..<62],wire[62..<74],context[0..<31],plain[..],staged[0..<4202],mac[0..<4296],tag[0..<32],out[0..<4202],false).error==PG_FORMAT;
+  #assert pg_seal_payload_checked(keys[..],wire[46..<62],wire[62..<74],context[..],plain[0..<0],staged[0..<4202],mac[0..<4296],tag[0..<32],out[0..<4202],false).error==PG_LIMIT;
+  #assert pg_seal_payload_checked(keys[..],wire[46..<62],wire[62..<74],context[..],plain[..],staged[..],mac[0..<4296],tag[0..<32],out[0..<4202],false).error==PG_CAPACITY;
+  #assert pg_seal_payload_checked(keys[..],wire[46..<62],wire[62..<74],context[..],plain[..],staged[0..<4202],mac[0..<4296],tag[0..<32],out[..],false).error==PG_CAPACITY;
+  #assert pg_seal_payload_checked(keys[..],wire[46..<62],wire[62..<74],context[..],plain[..],staged[0..<4202],mac[..],tag[0..<32],out[0..<4202],false).error==PG_CAPACITY;
+  #assert pg_seal_payload_checked(keys[..],wire[46..<62],wire[62..<74],context[..],plain[..],staged[0..<4202],mac[0..<4296],tag[..],out[0..<4202],false).error==PG_CAPACITY;
+  for b:out {#assert b==165;}
+}
+
+#test "ciphertext slots are exactly the input width and cannot borrow tag capacity" {
+ key:[32]u8;nonce:[12]u8;input:[2]u8;out:[3]u8;for i:0..<3 {out[i]=165;}
+ #assert pg_cipher_checked(key[..],nonce[..],input[..],out[..]).error==PG_CAPACITY;
+ #assert pg_cipher_checked(key[..],nonce[..],input[..],out[0..<1]).error==PG_CAPACITY;
+ for b:out {#assert b==165;}
+ #assert pg_cipher_checked(key[..],nonce[..],input[0..<0],out[0..<0]).error==0;
+ #assert pg_cipher_checked(key[..],nonce[..],input[..],out[0..<2]).written==2 && out[2]==165;
+ #assert pg_cipher_checked(key[0..<31],nonce[..],input[..],out[0..<2]).error==PG_CRYPTO;
+ #assert pg_cipher_checked(key[..],nonce[0..<11],input[..],out[0..<2]).error==PG_CRYPTO;
+}
+pg_cipher_checked :: (key:[]u8,nonce:[]u8,input:[]u8,out:[]u8)->PgText {
+ if out.count!=input.count {return PgText.{error=PG_CAPACITY};}
+ result:=chacha20_xor_checked(key,nonce,1,input,out,false);
+ return ifx result.error==0 then PgText.{written=result.written} else PgText.{error=PG_CRYPTO};
+}
+pg_kdf_salt :: (salt:[]u8,out:[]u8)->PgText {
+  if salt.count!=16 {return PgText.{error=PG_FORMAT};}
+  size:=PG_KDF_LABEL.count+salt.count;if out.count<size || out.count>64 {return PgText.{error=PG_CAPACITY};}
+  at:=json_raw(out,0,PG_KDF_LABEL);for b:salt {out[at]=b;at+=1;}return PgText.{written=at};
+}
+pg_keys_checked :: (master:[]u8,salt:[]u8,context:[]u8,prk:[]u8,info:[]u8,keys:[]u8,overlap:bool)->u32 {
+  if overlap {return PG_ALIAS;}
+  if master.count!=32 || salt.count!=16 || context.count!=32 {return PG_CRYPTO;}
+  if prk.count!=32 || keys.count!=64 || info.count<PG_KEYS_LABEL.count+32 || info.count>96 {return PG_CAPACITY;}
+  status:=hkdf_extract_checked(salt,master,prk,false);if status!=0 {return PG_CRYPTO;}
+  at:=json_raw(info,0,PG_KEYS_LABEL);for b:context {info[at]=b;at+=1;}
+  return ifx hkdf_expand_checked(prk,info[0..<at],keys,64,false)==0 then PG_OK else PG_CRYPTO;
+}
+pg_mac_checked :: (keys:[]u8,authenticated:[]u8,mac:[]u8,tag:[]u8)->u32 {
+  if keys.count!=64 || tag.count!=32 || mac.count!=4296 || authenticated.count<75 || authenticated.count>4170 {return PG_CAPACITY;}
+  at:=json_raw(mac,0,PG_MAC_LABEL);for b:authenticated {mac[at]=b;at+=1;}
+  return ifx hmac_sha256_checked(keys[32..<64],mac[0..<at],tag,false)==0 then PG_OK else PG_CRYPTO;
+}
+pg_open_payload_checked :: (keys:[]u8,wire:[]u8,context:[]u8,mac:[]u8,tag:[]u8,plain:[]u8,overlap:bool)->PgText {
+  if overlap {return PgText.{error=PG_ALIAS};}
+  frame:=pg_frame_checked(wire,context,false);if frame.error!=0 {return PgText.{error=frame.error};}
+  if pg_output_admit(frame.size,plain.count)!=0 {return PgText.{error=PG_CAPACITY};}
+  status:=pg_mac_checked(keys,wire[0..<74+frame.size],mac,tag);if status!=0 {return PgText.{error=status};}
+  if cb_ct_equal(tag,wire[74+frame.size..<wire.count])!=CB_MAX64 {return PgText.{error=PG_AUTH};}
+  result:=pg_cipher_checked(keys[0..<32],wire[62..<74],wire[74..<74+frame.size],plain[0..<frame.size]);
+  return ifx result.error==0 then PgText.{written=result.written} else PgText.{error=PG_CRYPTO};
+}
+pg_seal_payload_checked :: (keys:[]u8,salt:[]u8,nonce:[]u8,context:[]u8,plain:[]u8,staged:[]u8,mac:[]u8,tag:[]u8,out:[]u8,overlap:bool)->PgText {
+  if overlap {return PgText.{error=PG_ALIAS};}
+  if keys.count!=64 || salt.count!=16 || nonce.count!=12 || context.count!=32 {return PgText.{error=PG_FORMAT};}
+  if pg_plain_admit(plain.count)!=0 {return PgText.{error=PG_LIMIT};}
+  required:=106+plain.count;
+  if staged.count!=4202 || out.count<required || out.count>4202 || mac.count!=4296 || tag.count!=32 {return PgText.{error=PG_CAPACITY};}
+  staged[0]=80;staged[1]=71;staged[2]=2;staged[3]=0;staged[4]=1;staged[5]=1;
+  stored:=cb_store_be32(staged,6,210000);stored=cb_store_be32(staged,10,cast(u32)plain.count);
+  for i:0..<32 {staged[14+i]=context[i];}for i:0..<16 {staged[46+i]=salt[i];}for i:0..<12 {staged[62+i]=nonce[i];}
+  result:=pg_cipher_checked(keys[0..<32],nonce,plain,staged[74..<required-32]);
+  if result.error!=0 {return PgText.{error=PG_CRYPTO};}
+  status:=pg_mac_checked(keys,staged[0..<74+plain.count],mac,tag);if status!=0 {return PgText.{error=status};}
+  for i:0..<32 {staged[74+plain.count+i]=tag[i];}
+  for i:0..<required {out[i]=staged[i];}return PgText.{written=required};
+}

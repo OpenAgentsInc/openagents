@@ -1,0 +1,80 @@
+// Bounded transport projection. MAC input remains the original decoded wire,
+// never this JSON wrapper or a reconstruction of authenticated fields.
+#load "phrase-gate-profile.coax";
+#load "../nostr/base64.coax";
+#authority;
+PG_ENTRY_VERSION :: "openagents.phrase-gate.v2";
+PG_ENTRY_PREFIX :: "{\"v\":\"openagents.phrase-gate.v2\",\"payload\":\"";
+PG_ENTRY_MAX :: 6144;
+
+#test "reviewed canonical base64 transports every original cryptogram byte" {
+  work:[8448]u8;wire:[4202]u8;expected:=PG_TEST_WIRE;context:=PG_TEST_CONTEXT;out:[6144]u8;for i:0..<6144 {out[i]=165;}
+  decoded:=pg_entry_decode_checked(PG_TEST_ENTRY,work[..],wire[0..<expected.count],false);
+  #assert decoded.error==0 && decoded.written==expected.count;for i:0..<decoded.written {#assert wire[i]==expected[i];}
+  encoded:=pg_entry_encode_checked(wire[0..<decoded.written],context[..],out[0..<PG_TEST_ENTRY.count],false);
+  #assert encoded.error==0 && encoded.written==PG_TEST_ENTRY.count && cast(string)out[0..<encoded.written]==PG_TEST_ENTRY && out[encoded.written]==165;
+  #assert pg_entry_encode_checked(wire[0..<decoded.written],context[..],out[0..<PG_TEST_ENTRY.count-1],false).error==PG_CAPACITY;
+}
+#test "entry semantics never disappear through a platform JSON reserialization" {
+  work:[8448]u8;wire:[4202]u8;for i:0..<4202 {wire[i]=165;}
+  for text:[7]string.["{}","[]","{\"v\":\"other\",\"payload\":\"AAAA\"}","{\"v\":\"openagents.phrase-gate.v2\",\"payload\":0}","{\"v\":\"openagents.phrase-gate.v2\",\"payload\":\"AR==\"}","{\"v\":\"openagents.phrase-gate.v2\",\"payload\":\"AAAA\",\"unknown\":true}","{\"v\":\"openagents.phrase-gate.v2\",\"v\":\"openagents.phrase-gate.v2\",\"payload\":\"AAAA\"}"] {
+    r:=pg_entry_decode_checked(text,work[..],wire[..],false);#assert r.error!=0 && r.written==0;
+  }
+  #assert pg_entry_decode_checked("{\"v\":\"openagents.phrase-gate.v2\",\"payload\":\"A\"}",work[..],wire[..],false).error==PG_FORMAT;
+  #assert pg_entry_decode_checked(PG_TEST_ENTRY,work[..],wire[0..<287],false).error==PG_CAPACITY;
+  for b:wire {#assert b==165;}
+}
+
+#forall "entry text and output transport quotas include empty and exact caps" n:-1..<6147 {
+  #assert pg_entry_text_admit(n)==(ifx n>=1 && n<=6144 then PG_OK else PG_LIMIT);
+  #assert pg_entry_output_admit(n)==(ifx n>=0 && n<=4202 then PG_OK else PG_CAPACITY);
+}
+#test "entry failures preserve caller output and cannot use adjacent scratch" {
+  work:[8449]u8;out:[6145]u8;wire:=PG_TEST_WIRE;context:=PG_TEST_CONTEXT;
+  #assert pg_entry_decode_checked(PG_TEST_ENTRY,work[0..<8448],out[0..<0],false).error==PG_CAPACITY;
+  #assert pg_entry_decode_checked(PG_TEST_ENTRY,work[..],out[0..<4202],false).error==PG_CAPACITY;
+  #assert pg_entry_decode_checked(PG_TEST_ENTRY,work[0..<8448],out[0..<4203],false).error==PG_CAPACITY;
+  #assert pg_entry_decode_checked(PG_TEST_ENTRY,work[0..<8448],out[0..<4202],true).error==PG_ALIAS;
+  #assert pg_entry_encode_checked(wire[..],context[..],out[..],false).error==PG_CAPACITY;
+  #assert pg_entry_encode_checked(wire[..],context[..],out[0..<6144],true).error==PG_ALIAS;
+  #assert pg_entry_encode_checked(wire[0..<100],context[..],out[0..<6144],false).error==PG_LIMIT;
+  #assert pg_payload("",work[0..<5604])==0 && pg_payload("AA==",work[0..<5604])==4;
+  #assert pg_payload("AA==",work[0..<5605]) == -1;
+  for text:[5]string.["{\"v\":\"openagents.phrase-gate.v2\",\"payload\":\"AA==\"}","{\"v\":\"openagents.phrase-gate.v2\",\"payload\":\"\"}","{\"v\":\"\",\"payload\":\"AAAA\"}","{\"v\":\"openagents.phrase-gate.v2\",\"payload\":\"AAAA\"}x","{\"v\":\"openagents.phrase-gate.v2\",\"payload\":\"AAAA\""] {#assert pg_entry_decode_checked(text,work[0..<8448],out[0..<4202],false).error!=0;}
+  #assert pg_entry_decode_checked("{\"v\":\"openagents.phrase-gate.v2\",\"payload\":\"AA==\"}",work[0..<8448],out[0..<4202],false).error==PG_LIMIT;
+  #assert pg_entry_decode_checked("{\"v\":\"openagents.phrase-gate.v2\",\"payload\":\"AAAA\"}x",work[0..<8448],out[0..<4202],false).error==PG_FORMAT;
+}
+pg_entry_text_admit :: (n:int)->u32 {return ifx n<1 || n>6144 then PG_LIMIT else PG_OK;}
+pg_entry_output_admit :: (n:int)->u32 {return ifx n<0 || n>4202 then PG_CAPACITY else PG_OK;}
+pg_payload :: (raw:string,out:[]u8)->int {if out.count!=5604 {return -1;}return json_unescape(raw,out);}
+pg_entry_decode_checked :: (entry:string,work:[]u8,out:[]u8,overlap:bool)->PgText #export_c {
+  if overlap {return PgText.{error=PG_ALIAS};}
+  if pg_entry_text_admit(entry.count)!=0 {return PgText.{error=PG_LIMIT};}
+  if work.count!=8448 || pg_entry_output_admit(out.count)!=0 {return PgText.{error=PG_CAPACITY};}
+  names:=[2]string.["v","payload"];seen:=cast(u32)0;payload:int;
+  j:[1]Json;json_start(j[..],entry);if json_next(j[..])!=JSON_OBJECT {return PgText.{error=PG_FORMAT};}
+  token:=json_next(j[..]);
+  while token==JSON_STRING {
+    index:=pg_name(entry[j[0].from..<j[0].to],names[..],work[8192..<8448]);if index<0 {return PgText.{error=PG_FORMAT};}
+    bit:=cast(u32)1<<index;if (seen&bit)!=0 {return PgText.{error=PG_FORMAT};}
+    if json_next(j[..])!=JSON_STRING {return PgText.{error=PG_FORMAT};}
+    if index==0 {if !json_is(entry[j[0].from..<j[0].to],PG_ENTRY_VERSION) {return PgText.{error=PG_FORMAT};}}
+    else {payload=pg_payload(entry[j[0].from..<j[0].to],work[0..<5604]);if payload<1 {return PgText.{error=PG_LIMIT};}}
+    seen|=bit;token=json_next(j[..]);
+  }
+  if token!=JSON_OBJECT_END || json_next(j[..])!=JSON_END || seen!=3 {return PgText.{error=PG_FORMAT};}
+  text:=cast(string)work[0..<payload];size:=base64_decode_size(text);
+  if size<1 {return PgText.{error=PG_FORMAT};}if pg_wire_admit(size)!=0 {return PgText.{error=PG_LIMIT};}
+  if out.count<size {return PgText.{error=PG_CAPACITY};}
+  result:=base64_decode_checked(text,out,false);
+  return ifx result.error==NC_OK then PgText.{written=result.written} else PgText.{error=PG_FORMAT};
+}
+pg_entry_encode_checked :: (wire:[]u8,context:[]u8,out:[]u8,overlap:bool)->PgText #export_c {
+  if overlap {return PgText.{error=PG_ALIAS};}
+  frame:=pg_frame_checked(wire,context,false);if frame.error!=0 {return PgText.{error=frame.error};}
+  count:=base64_encode_size(wire.count);required:=PG_ENTRY_PREFIX.count+count+2;
+  if out.count<required || out.count>6144 {return PgText.{error=PG_CAPACITY};}
+  at:=json_raw(out,0,PG_ENTRY_PREFIX);encoded:=base64_encode_checked(cast(string)wire,out[at..<at+count],false);
+  if encoded.error!=NC_OK {return PgText.{error=PG_FORMAT};}
+  at=json_raw(out,at+encoded.written,"\"}");return PgText.{written=at};
+}

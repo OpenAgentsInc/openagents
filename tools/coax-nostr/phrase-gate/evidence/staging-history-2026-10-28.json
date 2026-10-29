@@ -1,0 +1,59 @@
+{
+  "schema": "coax.phrase-gate.staging-history.v1",
+  "project": "openagentsgemini",
+  "region": "us-central1",
+  "service": "coax-phrase-gate-staging",
+  "url": "https://coax-phrase-gate-staging-ezxz4mgdsq-uc.a.run.app",
+  "scope": "Isolated public fixtures only; no production gate or real entry change. Minimum 30-day future real rollback window has not been started.",
+  "minimumFutureRollbackDays": 30,
+  "baseline": {
+    "revision": "coax-phrase-gate-staging-00001-r9k",
+    "image": "sha256:7953207fa2c967d81e0cb38076a678f654825d219d0d3e29cb4e8c3c5c7d4ddf",
+    "artifact": {
+      "schema": "coax.phrase-gate.fixture-artifact.v1",
+      "experimental": false,
+      "profile": "release",
+      "fixtureSha256": "de751670e9a33cf7c6e454849bd165c854e54e9f25448a2dbd1a0db1b284723c",
+      "legacySourceSha256": "1b0bf4992651c16f3df7bf1c9e0d553280ca64287d9d7ec2b7c031ba48ef1105",
+      "assets": {
+        "index.html": "25dc99b5117ac857bffdb4507604c169674a525fbc44fa6f60b4ae33d3f1f62d",
+        "legacy.js": "288b218f673b3ebebf4f88972c5071e615ba0ce164c3acb57ecd224f9dec8e3a",
+        "legacy-entry.json": "ca2a79bdc49a2eab48069aa946207a40bd0854fa70b8535fb8179e76d72c0944"
+      }
+    }
+  },
+  "experimental": {
+    "revision": "coax-phrase-gate-staging-span",
+    "image": "sha256:db568b3e267d9ec765f7ee9650b49b3e61a63e0211976475ad7cd09bb8c08c81",
+    "artifact": {
+      "schema": "coax.phrase-gate.fixture-artifact.v1",
+      "experimental": true,
+      "profile": "release",
+      "fixtureSha256": "de751670e9a33cf7c6e454849bd165c854e54e9f25448a2dbd1a0db1b284723c",
+      "legacySourceSha256": "1b0bf4992651c16f3df7bf1c9e0d553280ca64287d9d7ec2b7c031ba48ef1105",
+      "assets": {
+        "index.html": "3d0841c02b16a4174cb2ad6ef575d7b8a5b0ce254d4937a178a233259b170de5",
+        "client.js": "29b5629fb8abeb92b1d0feb879090856196f74c0ca6aa4a108a77379a99d4004",
+        "legacy.js": "14980240877d564a6600a09bb0063e191d7d5ee0d0247cb75ae536a2247f0771",
+        "legacy-entry.json": "ca2a79bdc49a2eab48069aa946207a40bd0854fa70b8535fb8179e76d72c0944",
+        "entry-v2.json": "81c9e7aee3c5c29f35832f5370ad27abef5df677208a8f237a95c0c00991e884",
+        "fixture.json": "677813b9db103674d12b72eb457a858b37d5f00ed0e56cb491b5d2a07342279b",
+        "phrase-gate-worker.js": "a0c2ee1ced2499155618816d946c0e0c5f8d10814cc9c748c921bb91b5ed7700",
+        "phrase-gate-worker.wasm": "81ef794110c02ac599b6257b2b45fc3fc7b0f5989d8c97e57c490167537688d9"
+      }
+    }
+  },
+  "trafficAfterActualRollbackAndRestore": [
+    {
+      "percent": 100,
+      "revisionName": "coax-phrase-gate-staging-span"
+    }
+  ],
+  "observations": [
+    "Baseline HTTPS visible button opens unchanged legacy entry without Wasm",
+    "Experimental HTTPS visible button opens v2 and unchanged legacy entries",
+    "All served manifest asset hashes match local frozen artifacts",
+    "Actual Cloud Run traffic rolled back to exact baseline reader/entry/manifest and old phrase opens",
+    "Traffic restored to final experimental revision, with baseline kept at separate route"
+  ]
+}

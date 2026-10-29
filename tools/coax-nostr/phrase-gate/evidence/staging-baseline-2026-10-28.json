@@ -1,0 +1,22 @@
+{
+  "url": "https://coax-phrase-gate-staging-ezxz4mgdsq-uc.a.run.app/baseline/",
+  "mode": "baseline",
+  "manifest": {
+    "schema": "coax.phrase-gate.fixture-artifact.v1",
+    "experimental": false,
+    "profile": "release",
+    "fixtureSha256": "de751670e9a33cf7c6e454849bd165c854e54e9f25448a2dbd1a0db1b284723c",
+    "legacySourceSha256": "1b0bf4992651c16f3df7bf1c9e0d553280ca64287d9d7ec2b7c031ba48ef1105",
+    "assets": {
+      "index.html": "25dc99b5117ac857bffdb4507604c169674a525fbc44fa6f60b4ae33d3f1f62d",
+      "legacy.js": "288b218f673b3ebebf4f88972c5071e615ba0ce164c3acb57ecd224f9dec8e3a",
+      "legacy-entry.json": "ca2a79bdc49a2eab48069aa946207a40bd0854fa70b8535fb8179e76d72c0944"
+    }
+  },
+  "pointer": {
+    "relay": "wss://relay.example",
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "recipient": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+  },
+  "legacyOnly": true
+}
