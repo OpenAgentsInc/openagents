@@ -1,0 +1,1917 @@
+// Water for Verse, phase W1: bodies of water, their gameplay surface,
+// currents, and the forces they put on rigid bodies. A port of the previous
+// engine's `physics::water` (`git show b399fa2dbe:crates/physics/src/water/`,
+// the W1 commit; later phases grew the same files), with its tests as the
+// checks below, so it is provably the same physics. The specification is
+// verse/everglade/previous/water.md ("Coupling with `crates/physics`" and
+// its W1 status); docs/verse/water.md says what is here and what is next.
+//
+// - WaterBody: a pond, river, waterfall, ocean, pool, puddle or marsh, as
+//   an outline (a polygon, a river Course with widths, or everywhere), a
+//   level (constant, or a profile along the course), a density, up to
+//   eight Gerstner terms (WaveSet) with an optional spectrum seed, and an
+//   optional FlowGrid.
+// - The surface: level plus Gerstner waves (Fournier and Reeves 1986, in
+//   Finch's GPU Gems chapter 1 form) on a clock folded on a whole-tick
+//   period, as Tessendorf 2001 suggests for looping. Each wave's angular
+//   frequency is snapped to a whole multiple of 2 PI / T, so its phase is an
+//   integer counter, (n_i tick) mod P: sampling tick N in O(1) equals
+//   stepping from tick 0, bit for bit. Horizontal displacement is inverted
+//   by fixed-point iteration.
+// - WaterSet: point queries over a zone's water through a uniform grid.
+// - water_submerged: submerged volume, centre of buoyancy and wetted area
+//   of a sphere (an exact cap), capsule (slices, each disc cut into a
+//   circular segment) or cuboid (six tetrahedra clipped exactly, the plane
+//   fitted under its four lowest corners on rough water, after Kerner 2015).
+// - water_apply: buoyancy at the centre of buoyancy, linear and quadratic
+//   drag on the velocity relative to the water, and angular damping, each
+//   a named ledger term (water.buoyancy, water.drag). Bodies on waves stay
+//   awake; bodies at rest on still water count as supported for sleep.
+// - water_flow_river: divergence-free potential flow along a course around
+//   obstacles, from the stream function relaxed by successive
+//   over-relaxation (Batchelor 1967).
+//
+// Nothing here renders; the look of water (W2 on) never feeds back into
+// these forces. Rigid bodies come from verse/rigid.coax.
+//
+// Storage: Coax has no growable arrays yet, so everything with a length
+// (polygons, courses, profiles, flow grids, a set's grid cells, pushes)
+// lives in the caller's arrays and the records hold views of them. The
+// procedures that fill them say how much room they need.
+//
+// Units are metres, seconds, kilograms and radians; +Y is up and the
+// surface lies in the (x, z) plane, whose points are D2 (x, y = z).
+// The checks replay the old tests' full scenes (up to a minute of
+// simulated time each) in the evaluator, so they need a larger budget than
+// the default and take about half a minute:
+//   coax/bin/coax test --library verse/water.coax --steps 500000000
+
+#load "rigid.coax";
+
+FRESH :: 1000.0;            // kg/m^3
+SALT :: 1025.0;
+MAX_WAVES :: 8;             // the most Gerstner terms a surface carries
+WATER_G :: 9.81;            // gravity in the dispersion relation, m/s^2
+INVERSIONS :: 5;            // fixed-point rounds inverting the displacement
+WATER_MAX_CELLS :: 65536;   // the most cells a set's grid has; coarser past it
+WATER_SLICES :: 16;         // slices along a capsule's axis per part
+WATER_MAX_FLOW :: 16384;    // the most nodes a generated river grid has
+WATER_MAX_PERIOD :: 4294967296; // 2^32 ticks: phase products stay exact in u64
+
+// The waves.
+
+// One Gerstner term.
+Wave :: struct {
+  direction: D2;        // of travel, unit
+  amplitude: f64;       // m
+  wavelength: f64;      // m
+  phase: f64;           // rad
+  harmonic: u64;        // angular frequency in multiples of 2 PI / T; set by water_waves
+}
+
+// Up to MAX_WAVES terms on a clock of whole ticks.
+WaveSet :: struct {
+  waves: [MAX_WAVES] Wave;
+  count: int;
+  steepness: f64;       // Q in [0, 1]: 0 sinusoidal, 1 the sharpest crest without loops
+  period: u64 = 1;      // the loop period, ticks
+  tick: f64;            // one tick, s
+  seed: u64;            // of the spectrum the terms were drawn from, when seeded
+  seeded: bool;
+}
+
+WaveError :: enum u8 { none; too_many; clock; long_period; steepness; wavelength; }
+WaveSetResult :: struct { set: WaveSet; error: WaveError; }
+
+// Integer phase counters, one per wave, in steps of 2 PI / period.
+Phases :: struct { count: [MAX_WAVES] u64; }
+
+// What the waves do to the particle at a rest position.
+Displacement :: struct {
+  horizontal: D2;
+  height: f64;
+  normal: D3;
+  velocity: D3;
+}
+
+water_wave :: (direction: D2, amplitude: f64, wavelength: f64, phase: f64) -> Wave {
+  return Wave.{direction = d2_unit_or(direction, d2(1.0, 0.0)), amplitude = amplitude, wavelength = wavelength, phase = phase, harmonic = 0};
+}
+
+water_wavenumber :: (w: Wave) -> f64 { return TAU_D / w.wavelength; }
+
+// No waves.
+water_calm :: () -> WaveSet {
+  s: WaveSet;
+  s.period = 1;
+  s.tick = 1.0 / 120.0;
+  return s;
+}
+
+round_d :: (x: f64) -> f64 {
+  r := floor(x);
+  if x - r >= 0.5 { return r + 1.0; }
+  return r;
+}
+
+// Waves on a clock of `tick` seconds that loops every `period` ticks, each
+// frequency snapped to the nearest nonzero multiple of 2 PI / T. Refuses
+// more than MAX_WAVES terms, a zero period or one of 2^32 ticks or more, a
+// tick that is not positive, a wavelength that is not positive, and a
+// steepness outside [0, 1].
+water_waves :: (tick: f64, period: u64, steepness: f64, waves: [] Wave) -> WaveSetResult {
+  out: WaveSetResult;
+  out.set = water_calm();
+  if waves.count > MAX_WAVES { out.error = WaveError.too_many; return out; }
+  if period == 0 || !(tick > 0.0 && is_finite(tick)) { out.error = WaveError.clock; return out; }
+  if period >= WATER_MAX_PERIOD { out.error = WaveError.long_period; return out; }
+  if !(steepness >= 0.0 && steepness <= 1.0) { out.error = WaveError.steepness; return out; }
+  span := tick * f64(period);
+  s: WaveSet;
+  s.steepness = steepness;
+  s.period = period;
+  s.tick = tick;
+  s.count = waves.count;
+  for w, i: waves {
+    if !(w.wavelength > 0.0 && is_finite(w.wavelength)) { out.error = WaveError.wavelength; return out; }
+    s.waves[i] = w;
+    omega := sqrt(WATER_G * water_wavenumber(w));
+    h := round_d(omega * span / TAU_D);
+    s.waves[i].harmonic = ifx h < 1.0 then 1 else cast(u64) fmin(h, 1000000000000000000.0);
+  }
+  out.set = s;
+  return out;
+}
+
+// SplitMix64 (Steele, Lea and Flood, OOPSLA 2014): the next state and a
+// number in [0, 1).
+SplitMix :: struct { state: u64; value: f64; }
+splitmix :: (state: u64) -> SplitMix {
+  s := add_wrap(state, 0x9e3779b97f4a7c15);
+  z := s;
+  z = mul_wrap(z ^ (z >> 30), 0xbf58476d1ce4e5b9);
+  z = mul_wrap(z ^ (z >> 27), 0x94d049bb133111eb);
+  return SplitMix.{state = s, value = f64((z ^ (z >> 31)) >> 11) / 9007199254740992.0};
+}
+
+// `count` terms drawn from `seed` around a wind blowing along `wind`:
+// wavelengths from half to twice `wavelength`, directions within 45
+// degrees of the wind, and amplitudes in proportion to wavelength so every
+// term has the same slope, `amplitude` at `wavelength`.
+water_seeded :: (seed: u64, tick: f64, period: u64, count: int, wind: D2, wavelength: f64, amplitude: f64, steepness: f64) -> WaveSetResult {
+  out: WaveSetResult;
+  out.set = water_calm();
+  if count > MAX_WAVES || count < 0 { out.error = WaveError.too_many; return out; }
+  waves: [MAX_WAVES] Wave;
+  base := d2_unit_or(wind, d2(1.0, 0.0));
+  r := SplitMix.{state = seed};
+  for i: 0..<count {
+    r = splitmix(r.state);
+    scale := pow(2.0, r.value * 2.0 - 1.0);
+    r = splitmix(r.state);
+    turn := (r.value - 0.5) * (PI_D / 2.0);
+    sn := sin(turn); cs := cos(turn);
+    direction := d2(base.x * cs - base.y * sn, base.x * sn + base.y * cs);
+    r = splitmix(r.state);
+    waves[i] = water_wave(direction, amplitude * scale, wavelength * scale, r.value * TAU_D);
+  }
+  out = water_waves(tick, period, steepness, waves[0..<count]);
+  if out.error == WaveError.none {
+    out.set.seed = seed;
+    out.set.seeded = true;
+  }
+  return out;
+}
+
+// Whether the surface ever moves.
+water_is_calm :: (s: WaveSet) -> bool {
+  for i: 0..<s.count { if s.waves[i].amplitude != 0.0 { return false; } }
+  return true;
+}
+
+// Wave i's angular frequency, rad/s.
+water_omega :: (s: WaveSet, i: int) -> f64 {
+  return TAU_D * f64(s.waves[i].harmonic) / (f64(s.period) * s.tick);
+}
+
+// Every wave's phase counter at `tick`, in O(1).
+water_phases :: (s: WaveSet, tick: u64) -> Phases {
+  p: Phases;
+  folded := tick % s.period;
+  for i: 0..<s.count {
+    p.count[i] = (s.waves[i].harmonic % s.period) * folded % s.period;
+  }
+  return p;
+}
+
+// Phase counters one tick on.
+water_advance :: (s: WaveSet, p: Phases) -> Phases {
+  next := p;
+  for i: 0..<s.count {
+    next.count[i] = (p.count[i] + s.waves[i].harmonic % s.period) % s.period;
+  }
+  return next;
+}
+
+phases_eq :: (a: Phases, b: Phases) -> bool {
+  for i: 0..<MAX_WAVES { if a.count[i] != b.count[i] { return false; } }
+  return true;
+}
+
+// The per-wave helpers take the set's scalars, not the set, so a sample
+// does not copy every wave once per wave.
+wave_q :: (steepness: f64, count: int, w: Wave) -> f64 {
+  ka := water_wavenumber(w) * w.amplitude;
+  if ka <= 0.0 { return 0.0; }
+  return steepness / (ka * f64(count));
+}
+
+wave_theta :: (period: u64, w: Wave, count: u64, p0: D2) -> f64 {
+  return water_wavenumber(w) * d2_dot(w.direction, p0) - TAU_D * f64(count) / f64(period) + w.phase;
+}
+
+// Horizontal displacement only, for the fixed-point inversion.
+wave_horizontal :: (s: WaveSet, p0: D2, p: Phases) -> D2 {
+  d := d2(0.0, 0.0);
+  for i: 0..<s.count {
+    w := s.waves[i];
+    theta := wave_theta(s.period, w, p.count[i], p0);
+    d = d2_add(d, d2_scale(w.direction, wave_q(s.steepness, s.count, w) * w.amplitude * cos(theta)));
+  }
+  return d;
+}
+
+// The displacement, normal and velocity of the particle at rest position p0.
+water_at_rest :: (s: WaveSet, p0: D2, p: Phases) -> Displacement {
+  horizontal := d2(0.0, 0.0);
+  height := 0.0;
+  // Tangents dP/dx0 and dP/dz0 of the displaced surface.
+  tx := D3_X;
+  tz := D3_Z;
+  velocity := D3_ZERO;
+  for i: 0..<s.count {
+    w := s.waves[i];
+    theta := wave_theta(s.period, w, p.count[i], p0);
+    sn := sin(theta); co := cos(theta);
+    a := w.amplitude; k := water_wavenumber(w); q := wave_q(s.steepness, s.count, w); d := w.direction;
+    omega := TAU_D * f64(w.harmonic) / (f64(s.period) * s.tick);
+    horizontal = d2_add(horizontal, d2_scale(d, q * a * co));
+    height += a * sn;
+    qak := q * a * k * sn;
+    ak := a * k * co;
+    tx = d3_add(tx, d3(-qak * d.x * d.x, ak * d.x, -qak * d.x * d.y));
+    tz = d3_add(tz, d3(-qak * d.x * d.y, ak * d.y, -qak * d.y * d.y));
+    velocity = d3_add(velocity, d3(q * a * omega * sn * d.x, -a * omega * co, q * a * omega * sn * d.y));
+  }
+  return Displacement.{horizontal = horizontal, height = height, normal = d3_unit_or(d3_cross(tz, tx), D3_Y), velocity = velocity};
+}
+
+// The surface over world point x: the rest position whose particle lands
+// there, by fixed-point iteration, which contracts by at most the
+// steepness each round.
+water_at :: (s: WaveSet, x: D2, p: Phases) -> Displacement {
+  if s.count == 0 {
+    return Displacement.{horizontal = d2(0.0, 0.0), height = 0.0, normal = D3_Y, velocity = D3_ZERO};
+  }
+  p0 := x;
+  for r: 0..<INVERSIONS { p0 = d2_sub(x, wave_horizontal(s, p0, p)); }
+  return water_at_rest(s, p0, p);
+}
+
+// Courses, outlines and levels.
+
+// A river's course: a centreline with a full width at each point, and the
+// distance along it to each point.
+Course :: struct {
+  points: [] D2;
+  widths: [] f64;
+  lengths: [] f64;
+}
+
+// Where a point sits relative to a course.
+Station :: struct {
+  along: f64;           // distance along the course, clamped to it
+  offset: f64;          // signed distance from the centreline, + to the left of the flow
+  half_width: f64;
+  tangent: D2;          // direction of flow, unit
+  beyond: bool;         // past either end
+}
+
+// A course through `points` with a full width at each; `lengths` (as long
+// as `points`) receives the distances along it.
+water_course :: (points: [] D2, widths: [] f64, lengths: [] f64) -> Course {
+  #assert points.count >= 2;
+  #assert points.count == widths.count && lengths.count == points.count;
+  lengths[0] = 0.0;
+  for i: 1..<points.count { lengths[i] = lengths[i - 1] + d2_dist(points[i - 1], points[i]); }
+  return Course.{points = points, widths = widths, lengths = lengths};
+}
+
+// How many points water_course_spline makes.
+water_spline_points :: (controls: int, per_segment: int) -> int {
+  steps := ifx per_segment < 1 then 1 else per_segment;
+  return (controls - 1) * steps + 1;
+}
+
+// A course along a uniform Catmull-Rom spline through `controls`, with
+// `per_segment` points between each pair and widths interpolated linearly.
+// The three outputs need water_spline_points(controls.count, per_segment)
+// elements each.
+water_course_spline :: (controls: [] D2, widths: [] f64, per_segment: int, points: [] D2, out_widths: [] f64, lengths: [] f64) -> Course {
+  n := controls.count;
+  #assert n >= 2 && n == widths.count;
+  steps := ifx per_segment < 1 then 1 else per_segment;
+  total := water_spline_points(n, per_segment);
+  #assert points.count >= total && out_widths.count >= total && lengths.count >= total;
+  k := 0;
+  for i: 0..<n - 1 {
+    p0 := controls[clamp_index(i - 1, n)];
+    p1 := controls[i];
+    p2 := controls[clamp_index(i + 1, n)];
+    p3 := controls[clamp_index(i + 2, n)];
+    for s: 0..<steps {
+      t := f64(s) / f64(steps);
+      t2 := t * t; t3 := t * t * t;
+      points[k] = d2(spline_axis(p0.x, p1.x, p2.x, p3.x, t, t2, t3), spline_axis(p0.y, p1.y, p2.y, p3.y, t, t2, t3));
+      out_widths[k] = widths[i] + (widths[i + 1] - widths[i]) * t;
+      k += 1;
+    }
+  }
+  points[k] = controls[n - 1];
+  out_widths[k] = widths[n - 1];
+  return water_course(points[0..<total], out_widths[0..<total], lengths[0..<total]);
+}
+
+clamp_index :: (i: int, n: int) -> int {
+  if i < 0 { return 0; }
+  if i > n - 1 { return n - 1; }
+  return i;
+}
+
+spline_axis :: (p0: f64, p1: f64, p2: f64, p3: f64, t: f64, t2: f64, t3: f64) -> f64 {
+  return 0.5 * (2.0 * p1 + (p2 - p0) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t3);
+}
+
+water_course_length :: (c: Course) -> f64 { return c.lengths[c.lengths.count - 1]; }
+
+// The nearest station on the course to p. The search runs on scalars:
+// the checks evaluate it millions of times, and every vector a call copies
+// counts against their budget.
+water_locate :: (c: Course, p: D2) -> Station {
+  best := 1.0 / 0.0;
+  bi := 0;
+  bt := 0.0;
+  px := p.x; py := p.y;
+  for i: 0..<c.points.count - 1 {
+    ax := c.points[i].x; ay := c.points[i].y;
+    dx := c.points[i + 1].x - ax; dy := c.points[i + 1].y - ay;
+    l2 := dx * dx + dy * dy;
+    t := 0.0;
+    if l2 > 0.0 { t = fclamp(((px - ax) * dx + (py - ay) * dy) / l2, 0.0, 1.0); }
+    ex := px - (ax + dx * t); ey := py - (ay + dy * t);
+    dist := ex * ex + ey * ey;
+    if dist < best { best = dist; bi = i; bt = t; }
+  }
+  a := c.points[bi]; b := c.points[bi + 1];
+  tangent := d2_unit_or(d2_sub(b, a), d2(1.0, 0.0));
+  normal := d2(-tangent.y, tangent.x);
+  foot := d2_add(a, d2_scale(d2_sub(b, a), bt));
+  last := c.points.count - 2;
+  rel := d2_dot(d2_sub(p, a), d2_sub(b, a));
+  beyond := (bi == 0 && rel < 0.0) || (bi == last && d2_dot(d2_sub(p, b), d2_sub(b, a)) > 0.0 && bt >= 1.0);
+  return Station.{
+    along = c.lengths[bi] + (c.lengths[bi + 1] - c.lengths[bi]) * bt,
+    offset = d2_dot(d2_sub(p, foot), normal),
+    half_width = 0.5 * (c.widths[bi] + (c.widths[bi + 1] - c.widths[bi]) * bt),
+    tangent = tangent,
+    beyond = beyond};
+}
+
+// The point on the centreline at distance `along`.
+water_point_at :: (c: Course, along_in: f64) -> D2 {
+  along := fclamp(along_in, 0.0, water_course_length(c));
+  i := c.points.count - 2;
+  for k: 0..<c.lengths.count - 1 {
+    if along <= c.lengths[k + 1] { i = k; break; }
+  }
+  span := c.lengths[i + 1] - c.lengths[i];
+  t := ifx span > 0.0 then (along - c.lengths[i]) / span else 0.0;
+  return d2_lerp(c.points[i], c.points[i + 1], t);
+}
+
+// A box in the (x, z) plane, or none for an unbounded outline.
+Bounds :: struct { lo: D2; hi: D2; bounded: bool; }
+
+points_bounds :: (points: [] D2) -> Bounds {
+  lo := d2(1.0 / 0.0, 1.0 / 0.0);
+  hi := d2(-1.0 / 0.0, -1.0 / 0.0);
+  for p: points { lo = d2_min(lo, p); hi = d2_max(hi, p); }
+  return Bounds.{lo = lo, hi = hi, bounded = true};
+}
+
+course_bounds :: (c: Course) -> Bounds {
+  reach := 0.0;
+  for w: c.widths { reach = fmax(reach, w); }
+  reach *= 0.5;
+  b := points_bounds(c.points);
+  b.lo = d2(b.lo.x - reach, b.lo.y - reach);
+  b.hi = d2(b.hi.x + reach, b.hi.y + reach);
+  return b;
+}
+
+WaterKind :: enum u8 { pond; river; waterfall; ocean; pool; puddle; marsh; }
+OutlineKind :: enum u8 { everywhere; polygon; river; }
+LevelKind :: enum u8 { constant; profile; }
+
+// Even-odd crossing test.
+polygon_contains :: (points: [] D2, p: D2) -> bool {
+  inside := false;
+  n := points.count;
+  for i: 0..<n {
+    a := points[i]; b := points[(i + n - 1) % n];
+    if (a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+// The height and its slope along the course at distance `along`.
+LevelAt :: struct { height: f64; slope: f64; }
+
+// A profile's points are (along, height), interpolated linearly and held
+// past either end.
+level_at :: (kind: LevelKind, height: f64, profile: [] D2, along: f64) -> LevelAt {
+  if kind == LevelKind.constant { return LevelAt.{height = height, slope = 0.0}; }
+  if profile.count == 0 { return LevelAt.{height = 0.0, slope = 0.0}; }
+  first := profile[0];
+  if along <= first.x { return LevelAt.{height = first.y, slope = 0.0}; }
+  for i: 0..<profile.count - 1 {
+    a := profile[i]; b := profile[i + 1];
+    if along <= b.x {
+      span := b.x - a.x;
+      slope := ifx span > 0.0 then (b.y - a.y) / span else 0.0;
+      return LevelAt.{height = a.y + slope * (along - a.x), slope = slope};
+    }
+  }
+  return LevelAt.{height = profile[profile.count - 1].y, slope = 0.0};
+}
+
+// Currents.
+
+// Horizontal velocities at the nodes of a regular grid, sampled
+// bilinearly; outside the grid the water is still. Node (i, j) is
+// velocity[j * nx + i].
+FlowGrid :: struct {
+  origin: D2;
+  cell: f64;
+  nx: int;
+  nz: int;
+  velocity: [] D2;
+}
+
+// A round obstacle in a river, such as a rock or a pier.
+Obstacle :: struct { center: D2; radius: f64; }
+
+// How many nodes a grid from min to max at `cell` spacing has.
+water_flow_nodes :: (lo: D2, hi: D2, cell: f64) -> int {
+  return (int(ceil_d((hi.x - lo.x) / cell)) + 1) * (int(ceil_d((hi.y - lo.y) / cell)) + 1);
+}
+
+ceil_d :: (x: f64) -> f64 { return -floor(-x); }
+
+// Still water from min to max; `store` needs water_flow_nodes(min, max, cell).
+water_flow_still :: (lo: D2, hi: D2, cell: f64, store: [] D2) -> FlowGrid {
+  nx := int(ceil_d((hi.x - lo.x) / cell)) + 1;
+  nz := int(ceil_d((hi.y - lo.y) / cell)) + 1;
+  #assert nx * nz <= store.count;
+  for k: 0..<nx * nz { store[k] = d2(0.0, 0.0); }
+  return FlowGrid.{origin = lo, cell = cell, nx = nx, nz = nz, velocity = store[0..<nx * nz]};
+}
+
+// A uniform current everywhere on the grid.
+water_flow_uniform :: (lo: D2, hi: D2, cell: f64, velocity: D2, store: [] D2) -> FlowGrid {
+  g := water_flow_still(lo, hi, cell, store);
+  for k: 0..<g.nx * g.nz { g.velocity[k] = velocity; }
+  return g;
+}
+
+water_flow_node :: (g: FlowGrid, i: int, j: int) -> D2 { return g.velocity[j * g.nx + i]; }
+water_flow_position :: (g: FlowGrid, i: int, j: int) -> D2 { return d2_add(g.origin, d2_scale(d2(f64(i), f64(j)), g.cell)); }
+
+// The current at p, bilinear between nodes.
+water_flow_sample :: (g: FlowGrid, p: D2) -> D2 {
+  if g.nx < 2 || g.nz < 2 { return d2(0.0, 0.0); }
+  gx := (p.x - g.origin.x) / g.cell;
+  gz := (p.y - g.origin.y) / g.cell;
+  if !(gx >= 0.0) || !(gz >= 0.0) || gx > f64(g.nx - 1) || gz > f64(g.nz - 1) { return d2(0.0, 0.0); }
+  i := int(floor(gx)); if i > g.nx - 2 { i = g.nx - 2; }
+  j := int(floor(gz)); if j > g.nz - 2 { j = g.nz - 2; }
+  fx := gx - f64(i); fz := gz - f64(j);
+  a := d2_lerp(water_flow_node(g, i, j), water_flow_node(g, i + 1, j), fx);
+  b := d2_lerp(water_flow_node(g, i, j + 1), water_flow_node(g, i + 1, j + 1), fx);
+  return d2_lerp(a, b, fz);
+}
+
+// The central-difference divergence at an interior node, 1/s.
+water_flow_divergence :: (g: FlowGrid, i: int, j: int) -> f64 {
+  h2 := 2.0 * g.cell;
+  return (water_flow_node(g, i + 1, j).x - water_flow_node(g, i - 1, j).x) / h2 + (water_flow_node(g, i, j + 1).y - water_flow_node(g, i, j - 1).y) / h2;
+}
+
+// The grid water_flow_river lays over a course.
+water_river_bounds :: (c: Course, cell: f64) -> Bounds {
+  reach := 0.0;
+  for w: c.widths { reach = fmax(reach, w); }
+  reach = reach * 0.5 + 2.0 * cell;
+  b := points_bounds(c.points);
+  b.lo = d2(b.lo.x - reach, b.lo.y - reach);
+  b.hi = d2(b.hi.x + reach, b.hi.y + reach);
+  return b;
+}
+
+// Potential flow along `course` around `obstacles` on a grid of `cell`
+// spacing, carrying `speed` m/s on average across the course's first width
+// (the discharge per unit depth is speed times that width).
+//
+// Laplace's equation for the stream function psi: 0 on the right bank and
+// the discharge on the left (nodes outside hold the lateral profile
+// extended past the banks), a constant on each obstacle, the uniform
+// lateral profile across both ends; interior nodes relax by successive
+// over-relaxation in a fixed order, so every machine gets the same field.
+// The velocity is the curl of psi, (dpsi/dz, -dpsi/dx), by central
+// differences: the discrete divergence is zero to rounding away from the
+// banks, and the flux between the banks is the discharge at every cross
+// section. `store` needs the bounds' water_flow_nodes, at most
+// WATER_MAX_FLOW.
+water_flow_river :: (course: Course, obstacles: [] Obstacle, cell: f64, speed: f64, store: [] D2) -> FlowGrid {
+  b := water_river_bounds(course, cell);
+  grid := water_flow_still(b.lo, b.hi, cell, store);
+  discharge := speed * course.widths[0];
+  nx := grid.nx; nz := grid.nz;
+  #assert nx * nz <= WATER_MAX_FLOW;
+  psi: [WATER_MAX_FLOW] f64;
+  free: [WATER_MAX_FLOW] bool;
+  for j: 0..<nz {
+    for i: 0..<nx {
+      p := water_flow_position(grid, i, j);
+      station := water_locate(course, p);
+      k := j * nx + i;
+      // The uniform lateral profile, extended linearly past the banks so the
+      // zero and full streamlines fall on the banks themselves.
+      psi[k] = discharge * (station.offset + station.half_width) / (2.0 * station.half_width);
+      edge := i == 0 || j == 0 || i == nx - 1 || j == nz - 1;
+      inside := !station.beyond && abs(station.offset) < station.half_width;
+      rock := -1;
+      for o, n: obstacles {
+        if d2_dist(p, o.center) <= o.radius { rock = n; break; }
+      }
+      if rock >= 0 {
+        // A streamline wraps the rock: hold it at the undisturbed flow's
+        // value at its centre.
+        at := water_locate(course, obstacles[rock].center);
+        psi[k] = discharge * fclamp((at.offset + at.half_width) / (2.0 * at.half_width), 0.0, 1.0);
+      } else {
+        free[k] = inside && !edge;
+      }
+    }
+  }
+  tolerance := fmax(abs(discharge), 0.000000000001) * 0.0000000001;
+  for sweep: 0..<20000 {
+    change := 0.0;
+    for j: 1..<nz - 1 {
+      for i: 1..<nx - 1 {
+        k := j * nx + i;
+        if !free[k] { continue; }
+        average := 0.25 * (psi[k - 1] + psi[k + 1] + psi[k - nx] + psi[k + nx]);
+        delta := 1.85 * (average - psi[k]);
+        psi[k] += delta;
+        change = fmax(change, abs(delta));
+      }
+    }
+    if change < tolerance { break; }
+  }
+  h2 := 2.0 * cell;
+  for j: 1..<nz - 1 {
+    for i: 1..<nx - 1 {
+      k := j * nx + i;
+      grid.velocity[k] = d2((psi[k + nx] - psi[k - nx]) / h2, -(psi[k + 1] - psi[k - 1]) / h2);
+    }
+  }
+  // Nodes just past a bank take their free neighbours' mean, so a bilinear
+  // sample near the bank carries the full stream, not half. Only fixed
+  // nodes change and only free ones are read, so this works in place.
+  for j: 1..<nz - 1 {
+    for i: 1..<nx - 1 {
+      k := j * nx + i;
+      if free[k] { continue; }
+      sum := d2(0.0, 0.0);
+      n := 0;
+      if free[k - 1] { sum = d2_add(sum, grid.velocity[k - 1]); n += 1; }
+      if free[k + 1] { sum = d2_add(sum, grid.velocity[k + 1]); n += 1; }
+      if free[k - nx] { sum = d2_add(sum, grid.velocity[k - nx]); n += 1; }
+      if free[k + nx] { sum = d2_add(sum, grid.velocity[k + nx]); n += 1; }
+      if n > 0 { grid.velocity[k] = d2(sum.x / f64(n), sum.y / f64(n)); }
+    }
+  }
+  return grid;
+}
+
+// Bodies of water.
+
+// One body of water. `polygon` holds a polygon outline's points, `course`
+// a river's; `profile` a profile level's (along, height) points.
+WaterBody :: struct {
+  id: int;
+  kind: WaterKind;
+  outline: OutlineKind;
+  polygon: [] D2;
+  course: Course;
+  level: LevelKind;
+  height: f64;
+  profile: [] D2;
+  density: f64 = FRESH;
+  waves: WaveSet;
+  flow: FlowGrid;
+  has_flow: bool;
+}
+
+// The water at one point at one tick; `found` is false where there is none.
+WaterSample :: struct {
+  found: bool;
+  body: int;
+  height: f64;          // surface height, m
+  normal: D3;           // unit, up
+  surface_velocity: D3; // of the surface's water particles from the waves, m/s
+  flow: D3;             // the current, horizontal, m/s
+  density: f64;
+}
+
+// The water's velocity at the surface: waves plus current.
+water_velocity :: (s: WaterSample) -> D3 { return d3_add(s.surface_velocity, s.flow); }
+
+// Whether the water here is still: no waves and no current.
+water_still :: (s: WaterSample) -> bool {
+  return d3_eq(s.surface_velocity, D3_ZERO) && d3_len2(s.flow) < 0.000000000001;
+}
+
+sample_eq :: (a: WaterSample, b: WaterSample) -> bool {
+  if a.found != b.found { return false; }
+  if !a.found { return true; }
+  return a.body == b.body && a.height == b.height && d3_eq(a.normal, b.normal) && d3_eq(a.surface_velocity, b.surface_velocity) && d3_eq(a.flow, b.flow) && a.density == b.density;
+}
+
+// Still fresh water.
+water_body :: (id: int, kind: WaterKind) -> WaterBody {
+  b: WaterBody;
+  b.id = id;
+  b.kind = kind;
+  b.density = FRESH;
+  b.waves = water_calm();
+  return b;
+}
+
+// A pond: a polygon at a constant level.
+water_pond :: (id: int, points: [] D2, height: f64) -> WaterBody {
+  b := water_body(id, WaterKind.pond);
+  b.outline = OutlineKind.polygon;
+  b.polygon = points;
+  b.level = LevelKind.constant;
+  b.height = height;
+  return b;
+}
+
+// An ocean of seawater at `height` everywhere.
+water_ocean :: (id: int, height: f64) -> WaterBody {
+  b := water_body(id, WaterKind.ocean);
+  b.outline = OutlineKind.everywhere;
+  b.level = LevelKind.constant;
+  b.height = height;
+  b.density = SALT;
+  return b;
+}
+
+// A river along `course`, at a profile level.
+water_river :: (id: int, course: Course, profile: [] D2) -> WaterBody {
+  b := water_body(id, WaterKind.river);
+  b.outline = OutlineKind.river;
+  b.course = course;
+  b.level = LevelKind.profile;
+  b.profile = profile;
+  return b;
+}
+
+water_with_waves :: (b: WaterBody, waves: WaveSet) -> WaterBody { next := b; next.waves = waves; return next; }
+water_with_flow :: (b: WaterBody, flow: FlowGrid) -> WaterBody { next := b; next.flow = flow; next.has_flow = true; return next; }
+water_with_density :: (b: WaterBody, density: f64) -> WaterBody { next := b; next.density = density; return next; }
+
+// Whether (x, z) lies in the water.
+water_contains :: (b: WaterBody, p: D2) -> bool {
+  if b.outline == OutlineKind.everywhere { return true; }
+  if b.outline == OutlineKind.polygon { return polygon_contains(b.polygon, p); }
+  s := water_locate(b.course, p);
+  return !s.beyond && abs(s.offset) <= s.half_width;
+}
+
+// The outline's box, or none for an unbounded outline.
+water_bounds :: (b: WaterBody) -> Bounds {
+  if b.outline == OutlineKind.everywhere { return Bounds.{}; }
+  if b.outline == OutlineKind.polygon { return points_bounds(b.polygon); }
+  return course_bounds(b.course);
+}
+
+// The water over (x, z) at `tick`, or none outside the outline: a pure
+// function of the body and the tick.
+water_body_sample :: (b: WaterBody, x: f64, z: f64, tick: u64) -> WaterSample {
+  phases: Phases;
+  if b.waves.count > 0 { phases = water_phases(b.waves, tick); }
+  return water_body_sample_with(b, x, z, phases);
+}
+
+// As water_body_sample, with phase counters the caller advanced.
+water_body_sample_with :: (b: WaterBody, x: f64, z: f64, phases: Phases) -> WaterSample {
+  out: WaterSample;
+  p := d2(x, z);
+  along := 0.0;
+  tangent := d2(1.0, 0.0);
+  if b.outline == OutlineKind.polygon {
+    if !polygon_contains(b.polygon, p) || b.polygon.count < 3 { return out; }
+  } else if b.outline == OutlineKind.river {
+    s := water_locate(b.course, p);
+    if s.beyond || abs(s.offset) > s.half_width { return out; }
+    along = s.along;
+    tangent = s.tangent;
+  }
+  level := level_at(b.level, b.height, b.profile, along);
+  wave := Displacement.{normal = D3_Y};
+  if b.waves.count > 0 { wave = water_at(b.waves, p, phases); }
+  // Height H = level + waves; the normal is (-dH/dx, 1, -dH/dz).
+  n := wave.normal;
+  out.found = true;
+  out.body = b.id;
+  out.height = level.height + wave.height;
+  out.normal = d3_unit(d3(n.x / n.y - level.slope * tangent.x, 1.0, n.z / n.y - level.slope * tangent.y));
+  out.surface_velocity = wave.velocity;
+  if b.has_flow {
+    f := water_flow_sample(b.flow, p);
+    out.flow = d3(f.x, 0.0, f.y);
+  }
+  out.density = b.density;
+  return out;
+}
+
+// A zone's water.
+
+// A zone's bodies with a uniform grid over their outlines, so a point
+// lookup tests only the few bodies whose bounds cover its cell. Where
+// outlines overlap, the body listed first wins; unbounded bodies (an
+// ocean) come after every bounded one. Cell c lists the indices of the
+// bounded bodies covering it, entries[starts[c]..<starts[c + 1]].
+WaterSet :: struct {
+  bodies: [] WaterBody;
+  origin: D2;
+  cell: f64;
+  nx: int;
+  nz: int;
+  starts: [] int;
+  entries: [] int;
+}
+
+set_cell_of :: (origin: D2, cell: f64, p: D2) -> D2 {
+  // Cell coordinates, floored at zero; huge ones stay huge without
+  // overflowing a cast.
+  return d2(fclamp(floor((p.x - origin.x) / cell), 0.0, 1000000000000.0), fclamp(floor((p.y - origin.y) / cell), 0.0, 1000000000000.0));
+}
+
+set_counts :: (lo: D2, hi: D2, cell: f64) -> D2 {
+  return d2(floor((hi.x - lo.x) / cell) + 1.0, floor((hi.y - lo.y) / cell) + 1.0);
+}
+
+// The entries a grid of `cell` needs.
+set_entries :: (bodies: [] WaterBody, lo: D2, cell: f64, nx: int, nz: int) -> int {
+  total := 0;
+  for body: bodies {
+    bb := water_bounds(body);
+    if !bb.bounded { continue; }
+    a := set_cell_of(lo, cell, bb.lo); c := set_cell_of(lo, cell, bb.hi);
+    i1 := fmin(c.x, f64(nx - 1)); j1 := fmin(c.y, f64(nz - 1));
+    if i1 >= a.x && j1 >= a.y { total += int((i1 - a.x + 1.0) * (j1 - a.y + 1.0)); }
+  }
+  return total;
+}
+
+// The set of `bodies` gridded at `cell` metres. `starts` and `entries` are
+// the grid's storage: when they, or WATER_MAX_CELLS, are too small for
+// `cell`, the cell doubles until they fit. Samples do not depend on it.
+water_set :: (bodies: [] WaterBody, cell_in: f64, starts: [] int, entries: [] int) -> WaterSet {
+  lo := d2(1.0 / 0.0, 1.0 / 0.0);
+  hi := d2(-1.0 / 0.0, -1.0 / 0.0);
+  for body: bodies {
+    bb := water_bounds(body);
+    if bb.bounded { lo = d2_min(lo, bb.lo); hi = d2_max(hi, bb.hi); }
+  }
+  if lo.x > hi.x { lo = d2(0.0, 0.0); hi = d2(0.0, 0.0); }
+  cell := fmax(cell_in, 0.001);
+  most := WATER_MAX_CELLS;
+  if starts.count - 1 < most { most = starts.count - 1; }
+  #assert most >= 1;
+  while true {
+    n := set_counts(lo, hi, cell);
+    if n.x * n.y <= f64(most) && set_entries(bodies, lo, cell, int(n.x), int(n.y)) <= entries.count { break; }
+    cell *= 2.0;
+  }
+  n := set_counts(lo, hi, cell);
+  nx := int(n.x); nz := int(n.y);
+  k := 0;
+  for c: 0..<nx * nz {
+    starts[c] = k;
+    i := f64(c % nx); j := f64(c / nx);
+    for body, index: bodies {
+      bb := water_bounds(body);
+      if !bb.bounded { continue; }
+      a := set_cell_of(lo, cell, bb.lo); b := set_cell_of(lo, cell, bb.hi);
+      if i >= a.x && i <= b.x && j >= a.y && j <= b.y { entries[k] = index; k += 1; }
+    }
+  }
+  starts[nx * nz] = k;
+  return WaterSet.{bodies = bodies, origin = lo, cell = cell, nx = nx, nz = nz, starts = starts, entries = entries};
+}
+
+// The body with id `id`, or -1.
+water_find :: (s: WaterSet, id: int) -> int {
+  for b, i: s.bodies { if b.id == id { return i; } }
+  return -1;
+}
+
+// The water over (x, z) at `tick`, if any.
+water_sample :: (s: WaterSet, x: f64, z: f64, tick: u64) -> WaterSample {
+  gx := (x - s.origin.x) / s.cell;
+  gz := (z - s.origin.y) / s.cell;
+  if gx >= 0.0 && gz >= 0.0 && gx < f64(s.nx) && gz < f64(s.nz) {
+    c := int(gz) * s.nx + int(gx);
+    for e: s.starts[c]..<s.starts[c + 1] {
+      found := water_body_sample(s.bodies[s.entries[e]], x, z, tick);
+      if found.found { return found; }
+    }
+  }
+  for i: 0..<s.bodies.count {
+    if s.bodies[i].outline != OutlineKind.everywhere { continue; }
+    found := water_body_sample(s.bodies[i], x, z, tick);
+    if found.found { return found; }
+  }
+  none: WaterSample;
+  return none;
+}
+
+set_overlaps :: (b: WaterBody, lo: D2, hi: D2) -> bool {
+  bb := water_bounds(b);
+  return !bb.bounded || (bb.lo.x <= hi.x && bb.lo.y <= hi.y && bb.hi.x >= lo.x && bb.hi.y >= lo.y);
+}
+
+// The ids of the bodies whose outlines may overlap the box from lo to hi,
+// each once, in the set's order, written to `out`; returns how many.
+water_bodies_overlapping :: (s: WaterSet, lo: D2, hi: D2, out: [] int) -> int {
+  a := set_cell_of(s.origin, s.cell, lo);
+  b := set_cell_of(s.origin, s.cell, hi);
+  n := 0;
+  for body, index: s.bodies {
+    listed := body.outline == OutlineKind.everywhere;
+    if !listed && a.x < f64(s.nx) && a.y < f64(s.nz) {
+      i0 := int(a.x); j0 := int(a.y);
+      i1 := int(fmin(b.x, f64(s.nx - 1))); j1 := int(fmin(b.y, f64(s.nz - 1)));
+      for j: j0..<j1 + 1 {
+        for i: i0..<i1 + 1 {
+          c := j * s.nx + i;
+          for e: s.starts[c]..<s.starts[c + 1] { if s.entries[e] == index { listed = true; } }
+        }
+      }
+    }
+    if listed && set_overlaps(body, lo, hi) { out[n] = body.id; n += 1; }
+  }
+  return n;
+}
+
+// Submersion.
+
+ColliderKind :: enum u8 { sphere; capsule; cuboid; }
+
+// A collider's shape. A capsule's axis is its local z.
+ColliderShape :: struct {
+  kind: ColliderKind;
+  radius: f64;
+  half_length: f64;
+  half: D3;
+}
+
+shape_sphere :: (radius: f64) -> ColliderShape { return ColliderShape.{kind = ColliderKind.sphere, radius = radius}; }
+shape_capsule :: (radius: f64, half_length: f64) -> ColliderShape { return ColliderShape.{kind = ColliderKind.capsule, radius = radius, half_length = half_length}; }
+shape_cuboid :: (half: D3) -> ColliderShape { return ColliderShape.{kind = ColliderKind.cuboid, half = half}; }
+
+// A shape's volume, m^3.
+shape_volume :: (s: ColliderShape) -> f64 {
+  r := s.radius;
+  if s.kind == ColliderKind.sphere { return 4.0 / 3.0 * PI_D * (r * r * r); }
+  if s.kind == ColliderKind.capsule { return PI_D * r * r * 2.0 * s.half_length + 4.0 / 3.0 * PI_D * (r * r * r); }
+  return 8.0 * s.half.x * s.half.y * s.half.z;
+}
+
+// A shape's surface area, m^2.
+shape_area :: (s: ColliderShape) -> f64 {
+  r := s.radius;
+  if s.kind == ColliderKind.sphere { return 4.0 * PI_D * r * r; }
+  if s.kind == ColliderKind.capsule { return 2.0 * PI_D * r * 2.0 * s.half_length + 4.0 * PI_D * r * r; }
+  h := s.half;
+  return 8.0 * (h.x * h.y + h.y * h.z + h.x * h.z);
+}
+
+// The radius of a sphere about the centre that holds the shape.
+shape_bound :: (s: ColliderShape) -> f64 {
+  if s.kind == ColliderKind.sphere { return s.radius; }
+  if s.kind == ColliderKind.capsule { return s.radius + s.half_length; }
+  return d3_len(s.half);
+}
+
+// A plane; the water is on the side its normal points away from.
+Plane :: struct { point: D3; normal: D3; }
+
+// Height of p above the plane along its normal, m.
+plane_distance :: (pl: Plane, p: D3) -> f64 { return d3_dot(d3_sub(p, pl.point), pl.normal); }
+
+// The part of a shape below a plane.
+Cut :: struct { volume: f64; centroid: D3; wetted: f64; }
+
+// The part of a collider under water.
+Submersion :: struct {
+  volume: f64;          // m^3
+  centroid: D3;         // centre of buoyancy, world frame
+  wetted_area: f64;     // m^2
+  total_volume: f64;
+  total_area: f64;
+  water: WaterSample;        // the water at the collider, if any
+}
+
+// The fraction of the surface that is wet.
+water_wetted_fraction :: (s: Submersion) -> f64 {
+  if s.total_area > 0.0 { return fclamp(s.wetted_area / s.total_area, 0.0, 1.0); }
+  return 0.0;
+}
+
+// The fraction of the volume under water.
+water_volume_fraction :: (s: Submersion) -> f64 {
+  if s.total_volume > 0.0 { return fclamp(s.volume / s.total_volume, 0.0, 1.0); }
+  return 0.0;
+}
+
+// The part of `shape` at (center, rotation) below `plane`.
+water_below :: (shape: ColliderShape, center: D3, rotation: DQ, plane: Plane) -> Cut {
+  if shape.kind == ColliderKind.sphere { return cut_sphere(center, shape.radius, plane); }
+  if shape.kind == ColliderKind.capsule { return cut_capsule(center, dq_rotate(rotation, D3_Z), shape.radius, shape.half_length, plane); }
+  return cut_cuboid(center, rotation, shape.half, plane);
+}
+
+// The exact spherical cap below the plane.
+cut_sphere :: (center: D3, r: f64, plane: Plane) -> Cut {
+  h := fclamp(r - plane_distance(plane, center), 0.0, 2.0 * r);
+  if h <= 0.0 { return Cut.{volume = 0.0, centroid = center, wetted = 0.0}; }
+  volume := PI_D * h * h * (3.0 * r - h) / 3.0;
+  // The cap's centroid lies 3 (2r - h)^2 / (4 (3r - h)) from the centre.
+  e := 2.0 * r - h;
+  depth := 3.0 * (e * e) / (4.0 * (3.0 * r - h));
+  return Cut.{volume = volume, centroid = d3_sub(center, d3_scale(plane.normal, depth)), wetted = 2.0 * PI_D * r * h};
+}
+
+// What a capsule's slices share, and what they add up.
+CapsuleCut :: struct {
+  center: D3; axis: D3; r: f64; half: f64;
+  along: f64; s: f64; side: D3; dc: f64;
+  volume: f64; moment: D3; wetted: f64;
+}
+
+capsule_radius :: (c: CapsuleCut, z: f64) -> f64 {
+  e := abs(z) - c.half;
+  if e <= 0.0 { return c.r; }
+  return sqrt(fmax(c.r * c.r - e * e, 0.0));
+}
+
+// One slice at z, dz thick: a disc, cut by the plane into a circular segment.
+capsule_slice :: (c: CapsuleCut, z: f64, dz: f64) -> CapsuleCut {
+  rz := capsule_radius(c, z);
+  a := d3_add(c.center, d3_scale(c.axis, z));
+  d0 := c.dc + c.along * z;
+  area := 0.0; offset := 0.0; arc := 0.0;
+  if c.s <= 0.000000000001 || rz <= 0.0 {
+    if d0 < 0.0 { area = PI_D * rz * rz; arc = 1.0; }
+  } else {
+    delta := d0 / c.s;
+    if delta >= rz {
+    } else if delta <= -rz {
+      area = PI_D * rz * rz; arc = 1.0;
+    } else {
+      chord := sqrt(rz * rz - delta * delta);
+      theta := acos_d(delta / rz);
+      area = rz * rz * theta - delta * chord;
+      offset = ifx area > 0.0 then -2.0 / 3.0 * chord * chord * chord / area else 0.0;
+      arc = theta / PI_D;
+    }
+  }
+  next := c;
+  next.volume += area * dz;
+  next.moment = d3_add(next.moment, d3_scale(d3_add(a, d3_scale(c.side, offset)), area * dz));
+  next.wetted += 2.0 * PI_D * c.r * arc * dz;
+  return next;
+}
+
+capsule_part :: (c: CapsuleCut, a: f64, b: f64) -> CapsuleCut {
+  if b <= a { return c; }
+  next := c;
+  dz := (b - a) / f64(WATER_SLICES);
+  for k: 0..<WATER_SLICES { next = capsule_slice(next, a + (f64(k) + 0.5) * dz, dz); }
+  return next;
+}
+
+// Integrated slice by slice along the axis; each of the three parts (two
+// caps and the cylinder) is split where the axis crosses the plane, so the
+// step there falls between slices.
+cut_capsule :: (center: D3, axis: D3, r: f64, half: f64, plane: Plane) -> Cut {
+  c: CapsuleCut;
+  n := plane.normal;
+  c.center = center; c.axis = axis; c.r = r; c.half = half;
+  c.along = d3_dot(axis, n);
+  across := d3_sub(n, d3_scale(axis, c.along));
+  c.s = d3_len(across);
+  c.side = ifx c.s > 0.000000000001 then d3_div(across, d3(c.s, c.s, c.s)) else D3_ZERO;
+  c.dc = plane_distance(plane, center);
+  crosses := abs(c.along) > 0.000000000001;
+  cross := ifx crosses then -c.dc / c.along else 0.0;
+  for part: 0..<3 {
+    lo := ifx part == 0 then -half - r else ifx part == 1 then -half else half;
+    hi := ifx part == 0 then -half else ifx part == 1 then half else half + r;
+    if hi <= lo { continue; }
+    if crosses && cross > lo && cross < hi {
+      c = capsule_part(c, lo, cross);
+      c = capsule_part(c, cross, hi);
+    } else {
+      c = capsule_part(c, lo, hi);
+    }
+  }
+  centroid := center;
+  if c.volume > 0.0 { centroid = d3(c.moment.x / c.volume, c.moment.y / c.volume, c.moment.z / c.volume); }
+  return Cut.{volume = c.volume, centroid = centroid, wetted = c.wetted};
+}
+
+// Corner i has its x, y and z signs in bits 0, 1 and 2.
+Corners :: struct { p: [8] D3; }
+
+cuboid_corners :: (center: D3, rotation: DQ, half: D3) -> Corners {
+  out: Corners;
+  for i: 0..<8 {
+    sx := ifx i & 1 == 0 then -1.0 else 1.0;
+    sy := ifx i & 2 == 0 then -1.0 else 1.0;
+    sz := ifx i & 4 == 0 then -1.0 else 1.0;
+    out.p[i] = d3_add(center, dq_rotate(rotation, d3_mul(half, d3(sx, sy, sz))));
+  }
+  return out;
+}
+
+// Six tetrahedra about the diagonal from corner 0 to corner 7, and the
+// faces as corner loops: -x, +x, -y, +y, -z, +z.
+cube_tets :: () -> [24] int {
+  t: [24] int;
+  rows := "013701570237026704570467";
+  for i: 0..<24 { t[i] = byte_at(rows, i) - 48; }
+  return t;
+}
+cube_faces :: () -> [24] int {
+  f: [24] int;
+  rows := "026415730451237601324675";
+  for i: 0..<24 { f[i] = byte_at(rows, i) - 48; }
+  return f;
+}
+CUBE_TETS :: #run cube_tets();
+CUBE_FACES :: #run cube_faces();
+
+// Volume and first moment.
+Moment :: struct { volume: f64; moment: D3; }
+
+tet_moment :: (p0: D3, p1: D3, p2: D3, p3: D3) -> Moment {
+  v := abs(d3_dot(d3_sub(p1, p0), d3_cross(d3_sub(p2, p0), d3_sub(p3, p0)))) / 6.0;
+  return Moment.{volume = v, moment = d3_scale(d3_add(d3_add(d3_add(p0, p1), p2), p3), 0.25 * v)};
+}
+
+tet_cut :: (pi: D3, pj: D3, di: f64, dj: f64) -> D3 {
+  return d3_add(pi, d3_scale(d3_sub(pj, pi), di / (di - dj)));
+}
+
+// The part of a tetrahedron below the plane, given each vertex's signed
+// distance.
+tet_below :: (p: [4] D3, d: [4] f64) -> Moment {
+  under: [4] int; nu := 0;
+  over: [4] int; no := 0;
+  for i: 0..<4 {
+    if d[i] < 0.0 { under[nu] = i; nu += 1; } else { over[no] = i; no += 1; }
+  }
+  if nu == 0 { return Moment.{}; }
+  if nu == 4 { return tet_moment(p[0], p[1], p[2], p[3]); }
+  if nu == 1 {
+    i := under[0];
+    return tet_moment(p[i], tet_cut(p[i], p[over[0]], d[i], d[over[0]]), tet_cut(p[i], p[over[1]], d[i], d[over[1]]), tet_cut(p[i], p[over[2]], d[i], d[over[2]]));
+  }
+  if nu == 3 {
+    j := over[0];
+    whole := tet_moment(p[0], p[1], p[2], p[3]);
+    top := tet_moment(p[j], tet_cut(p[j], p[under[0]], d[j], d[under[0]]), tet_cut(p[j], p[under[1]], d[j], d[under[1]]), tet_cut(p[j], p[under[2]], d[j], d[under[2]]));
+    return Moment.{volume = whole.volume - top.volume, moment = d3_sub(whole.moment, top.moment)};
+  }
+  i := under[0]; k := under[1];
+  j := over[0]; l := over[1];
+  a0 := p[i]; a1 := tet_cut(p[i], p[j], d[i], d[j]); a2 := tet_cut(p[i], p[l], d[i], d[l]);
+  b0 := p[k]; b1 := tet_cut(p[k], p[j], d[k], d[j]); b2 := tet_cut(p[k], p[l], d[k], d[l]);
+  m0 := tet_moment(a0, a1, a2, b0);
+  m1 := tet_moment(a1, a2, b0, b1);
+  m2 := tet_moment(a2, b0, b1, b2);
+  return Moment.{volume = m0.volume + m1.volume + m2.volume, moment = d3_add(d3_add(m0.moment, m1.moment), m2.moment)};
+}
+
+// Area of the part of a planar quad below the plane (Sutherland-Hodgman).
+clipped_area :: (p: [4] D3, d: [4] f64) -> f64 {
+  poly: [8] D3; n := 0;
+  for i: 0..<4 {
+    j := (i + 1) % 4;
+    if d[i] <= 0.0 { poly[n] = p[i]; n += 1; }
+    if (d[i] < 0.0) != (d[j] < 0.0) && d[i] != d[j] {
+      poly[n] = tet_cut(p[i], p[j], d[i], d[j]); n += 1;
+    }
+  }
+  if n < 3 { return 0.0; }
+  sum := D3_ZERO;
+  for i: 1..<n - 1 { sum = d3_add(sum, d3_cross(d3_sub(poly[i], poly[0]), d3_sub(poly[i + 1], poly[0]))); }
+  return 0.5 * d3_len(sum);
+}
+
+// Six tetrahedra clipped by the plane exactly, and the faces for the
+// wetted area.
+cut_cuboid :: (center: D3, rotation: DQ, half: D3, plane: Plane) -> Cut {
+  c := cuboid_corners(center, rotation, half);
+  d: [8] f64;
+  above := 0; below := 0;
+  for i: 0..<8 {
+    d[i] = plane_distance(plane, c.p[i]);
+    if d[i] >= 0.0 { above += 1; } else { below += 1; }
+  }
+  if above == 8 { return Cut.{volume = 0.0, centroid = center, wetted = 0.0}; }
+  if below == 8 { return Cut.{volume = 8.0 * half.x * half.y * half.z, centroid = center, wetted = shape_area(shape_cuboid(half))}; }
+  m: Moment;
+  for t: 0..<6 {
+    p: [4] D3; dd: [4] f64;
+    for v: 0..<4 { p[v] = c.p[CUBE_TETS[t * 4 + v]]; dd[v] = d[CUBE_TETS[t * 4 + v]]; }
+    one := tet_below(p, dd);
+    m.volume += one.volume;
+    m.moment = d3_add(m.moment, one.moment);
+  }
+  wetted := 0.0;
+  for f: 0..<6 {
+    p: [4] D3; dd: [4] f64;
+    for v: 0..<4 { p[v] = c.p[CUBE_FACES[f * 4 + v]]; dd[v] = d[CUBE_FACES[f * 4 + v]]; }
+    wetted += clipped_area(p, dd);
+  }
+  centroid := center;
+  if m.volume > 0.0 { centroid = d3(m.moment.x / m.volume, m.moment.y / m.volume, m.moment.z / m.volume); }
+  return Cut.{volume = m.volume, centroid = centroid, wetted = wetted};
+}
+
+// A plane fitted by least squares to surface heights at points (x, z, h),
+// or none (a zero normal) when they do not span an area.
+fitted_plane :: (points: [4] D3, n: int) -> Plane {
+  none: Plane;
+  mean := d2(0.0, 0.0);
+  height := 0.0;
+  for i: 0..<n { mean = d2_add(mean, d2(points[i].x, points[i].z)); height += points[i].y; }
+  mean = d2(mean.x / f64(n), mean.y / f64(n));
+  height /= f64(n);
+  sxx := 0.0; sxz := 0.0; szz := 0.0; sxh := 0.0; szh := 0.0;
+  for i: 0..<n {
+    qx := points[i].x - mean.x; qz := points[i].z - mean.y;
+    e := points[i].y - height;
+    sxx += qx * qx; sxz += qx * qz; szz += qz * qz; sxh += qx * e; szh += qz * e;
+  }
+  det := sxx * szz - sxz * sxz;
+  scale := (sxx + szz) * (sxx + szz);
+  if scale <= 0.0 || det <= scale * 0.000001 { return none; }
+  gx := (sxh * szz - szh * sxz) / det;
+  gz := (szh * sxx - sxh * sxz) / det;
+  return Plane.{point = d3(mean.x, height, mean.y), normal = d3_unit(d3(-gx, 1.0, -gz))};
+}
+
+// The part of `shape` at (center, rotation) under the water of `s` at
+// `tick`. The water is the plane tangent to its surface over the
+// collider's centre; on moving water a capsule tilts that plane to the
+// heights under its ends and a cuboid fits it to the heights under its
+// four lowest corners.
+water_submerged :: (shape: ColliderShape, center: D3, rotation: DQ, s: WaterSet, tick: u64) -> Submersion {
+  out: Submersion;
+  out.centroid = center;
+  out.total_volume = shape_volume(shape);
+  out.total_area = shape_area(shape);
+  xz := d2(center.x, center.z);
+  sample := water_sample(s, xz.x, xz.y, tick);
+  if !sample.found { return out; }
+  out.water = sample;
+  bound := shape_bound(shape);
+  // Far above or far below the surface: nothing to clip.
+  if center.y - bound > sample.height + bound { return out; }
+  if center.y + bound < sample.height - bound {
+    out.volume = out.total_volume;
+    out.wetted_area = out.total_area;
+    return out;
+  }
+  flat := d3_eq(sample.normal, D3_Y) && d3_eq(sample.surface_velocity, D3_ZERO);
+  plane := Plane.{point = d3(xz.x, sample.height, xz.y), normal = sample.normal};
+  if shape.kind == ColliderKind.capsule && !flat {
+    axis := d3_scale(dq_rotate(rotation, D3_Z), shape.half_length);
+    w := d2(axis.x, axis.z);
+    reach := d2_len(w);
+    if reach > 0.000000001 {
+      e0 := d2_sub(xz, w); e1 := d2_add(xz, w);
+      a := water_sample(s, e0.x, e0.y, tick);
+      b := water_sample(s, e1.x, e1.y, tick);
+      if a.found && b.found {
+        dir := d2(w.x / reach, w.y / reach);
+        slope := (b.height - a.height) / (2.0 * reach);
+        g := d2(-sample.normal.x / sample.normal.y, -sample.normal.z / sample.normal.y);
+        perp := d2(-dir.y, dir.x);
+        grad := d2_add(d2_scale(dir, slope), d2_scale(perp, d2_dot(g, perp)));
+        plane.normal = d3_unit(d3(-grad.x, 1.0, -grad.y));
+      }
+    }
+  }
+  if shape.kind == ColliderKind.cuboid && !flat {
+    c := cuboid_corners(center, rotation, shape.half);
+    // A stable sort by height, as the old sort_by.
+    for i: 1..<8 {
+      k := i;
+      while k > 0 && c.p[k - 1].y > c.p[k].y {
+        t := c.p[k]; c.p[k] = c.p[k - 1]; c.p[k - 1] = t;
+        k -= 1;
+      }
+    }
+    heights: [4] D3; n := 0;
+    for i: 0..<4 {
+      h := water_sample(s, c.p[i].x, c.p[i].z, tick);
+      if h.found { heights[n] = d3(c.p[i].x, h.height, c.p[i].z); n += 1; }
+    }
+    if n >= 3 {
+      fit := fitted_plane(heights, n);
+      if !d3_eq(fit.normal, D3_ZERO) { plane = fit; }
+    }
+  }
+  cut := water_below(shape, center, rotation, plane);
+  out.volume = cut.volume;
+  out.centroid = cut.centroid;
+  out.wetted_area = cut.wetted;
+  return out;
+}
+
+// Forces.
+
+// Drag and damping, and the gravity buoyancy opposes.
+WaterSettings :: struct {
+  gravity: D3;          // m/s^2; buoyancy pushes against it
+  linear: f64 = 60.0;   // linear drag per wetted area, N s/m^3: skin friction and the waves a bobbing body radiates
+  quadratic: f64 = 1.0; // C_d on the projected area, a quarter of the wetted area (Cauchy's mean projection)
+  angular: f64 = 1.5;   // angular damping at full wetting, 1/s
+}
+
+water_settings :: () -> WaterSettings {
+  s: WaterSettings;
+  s.gravity = d3(0.0, -9.81, 0.0);
+  return s;
+}
+
+// A collider: a shape at its body's centre and attitude.
+Collider :: struct { body: int; shape: ColliderShape; }
+
+// One force water put on a body for the next step.
+Push :: struct {
+  body: int;
+  term: Term;
+  force: D3;            // N, world frame
+  at: D3;               // where it acts
+  couple: D3;           // a pure couple besides the force's own moment, N m
+  still: bool;          // whether the water there was still
+}
+
+// The momentum a push adds over a step of dt about origin.
+water_push_momentum :: (p: Push, dt: f64, origin: D3) -> Momentum {
+  m := momentum_impulse(d3_scale(p.force, dt), p.at, origin);
+  m.angular = d3_add(m.angular, d3_scale(p.couple, dt));
+  return m;
+}
+
+// Enter pushes into a ledger under their terms, for a step of dt.
+water_record :: (pushes: [] Push, l: Ledger, dt: f64) -> Ledger {
+  next := l;
+  for p: pushes { next = ledger_add(next, p.term, water_push_momentum(p, dt, next.origin)); }
+  return next;
+}
+
+// Add water's forces to every awake body with a collider in the water of
+// `s` at `tick`, for the next step of dt: buoyancy rho g V at the centre of
+// buoyancy; drag on the velocity relative to the water there, linear and
+// quadratic in the wetted area, never reversing the relative motion within
+// a step; and angular damping, shared among a body's colliders by volume.
+// When `only` is not empty, only the bodies it marks true. The pushes go
+// to `out`, two per wet collider; returns how many. Bodies on still water
+// count as supported for sleep; waves and currents keep them awake.
+water_apply :: (w: RigidWorld, colliders: [] Collider, s: WaterSet, tick: u64, dt: f64, settings: WaterSettings, only: [] bool, out: [] Push) -> int {
+  n := 0;
+  g := d3_len(settings.gravity);
+  up := ifx g > 0.0 then d3(-settings.gravity.x / g, -settings.gravity.y / g, -settings.gravity.z / g) else D3_Y;
+  step := fmax(dt, 0.000000001);
+  for collider: colliders {
+    id := collider.body;
+    body := w.bodies[id];
+    if body.sleeping { continue; }
+    if only.count > 0 && !only[id] { continue; }
+    sub := water_submerged(collider.shape, body.pos, body.orientation, s, tick);
+    if !sub.water.found { continue; }
+    if sub.volume <= 0.0 { continue; }
+    sample := sub.water;
+    rho := sample.density;
+    buoyancy := Push.{body = id, term = Term.buoyancy, force = d3_scale(up, rho * g * sub.volume), at = sub.centroid, couple = D3_ZERO, still = water_still(sample)};
+    // Drag on the velocity relative to the water at the centre of buoyancy.
+    arm := d3_sub(sub.centroid, body.pos);
+    relative := d3_sub(d3_add(body.vel, d3_cross(rigid_omega_world(body), arm)), water_velocity(sample));
+    speed := d3_len(relative);
+    area := sub.wetted_area;
+    drag := d3_scale(d3_neg(relative), settings.linear * area + 0.5 * rho * settings.quadratic * 0.25 * area * speed);
+    most := body.mass * speed / step;
+    size := d3_len(drag);
+    if size > most && size > 0.0 { drag = d3_scale(drag, most / size); }
+    total := 0.0;
+    for other: colliders { if other.body == id { total += shape_volume(other.shape); } }
+    share := ifx total > 0.0 then shape_volume(collider.shape) / total else 1.0;
+    rate := fmin(settings.angular * water_wetted_fraction(sub) * share, 1.0 / step);
+    spin := rigid_angular_momentum(body);
+    damping := Push.{body = id, term = Term.drag, force = drag, at = sub.centroid, couple = d3_scale(d3_neg(spin), rate), still = buoyancy.still};
+    target := w.bodies[id];
+    target.force = d3_add(target.force, buoyancy.force);
+    target.torque = d3_add(target.torque, d3_add(d3_cross(d3_sub(buoyancy.at, target.pos), buoyancy.force), buoyancy.couple));
+    target.force = d3_add(target.force, damping.force);
+    target.torque = d3_add(target.torque, d3_add(d3_cross(d3_sub(damping.at, target.pos), damping.force), damping.couple));
+    w.bodies[id] = target;
+    out[n] = buoyancy;
+    out[n + 1] = damping;
+    n += 2;
+  }
+  // Per body touched: floating at rest on still water counts as support;
+  // waves and currents keep it awake.
+  for k: 0..<n {
+    id := out[k].body;
+    first := true;
+    for e: 0..<k { if out[e].body == id { first = false; } }
+    if !first { continue; }
+    still := true;
+    for e: k..<n { if out[e].body == id && !out[e].still { still = false; } }
+    b := w.bodies[id];
+    if still { b.supported = true; } else { b.sleep_time = 0.0; }
+    w.bodies[id] = b;
+  }
+  return n;
+}
+
+// Checks: the old crate's tests (crates/physics/src/water/tests.rs at the
+// W1 commit), with the same scenes, durations and expected values.
+
+WATER_DT :: 1.0 / 120.0;
+TEST_GRAVITY :: #run d3(0.0, -9.81, 0.0);
+
+// A square pond 100 m across at height 0; `points` needs four.
+still_pond :: (points: [] D2) -> WaterBody {
+  points[0] = d2(-50.0, -50.0); points[1] = d2(50.0, -50.0);
+  points[2] = d2(50.0, 50.0); points[3] = d2(-50.0, 50.0);
+  return water_pond(0, points[0..<4], 0.0);
+}
+
+swell :: () -> WaveSet {
+  r := water_seeded(7, WATER_DT, 120 * 60, 6, d2(1.0, 0.3), 9.0, 0.12, 0.5);
+  #assert r.error == WaveError.none;
+  return r.set;
+}
+
+wavy_ocean :: () -> WaterBody { return water_with_waves(water_ocean(1, 0.0), swell()); }
+
+// A bend: east, round to the north. The outputs need 25 points each.
+test_bend :: (points: [] D2, widths: [] f64, lengths: [] f64) -> Course {
+  controls: [5] D2;
+  controls[0] = d2(0.0, 0.0); controls[1] = d2(12.0, 0.0); controls[2] = d2(18.0, 4.0);
+  controls[3] = d2(20.0, 12.0); controls[4] = d2(20.0, 24.0);
+  w: [5] f64;
+  w[0] = 4.0; w[1] = 4.0; w[2] = 4.5; w[3] = 4.0; w[4] = 4.0;
+  return water_course_spline(controls[..], w[..], 6, points, widths, lengths);
+}
+
+ROCK :: #run d2(20.0, 17.0);
+
+// The river along the bend, falling 0.3 m over 40 m, around a rock;
+// `profile` needs two points and `flow` 3465 nodes (55 by 63).
+test_river :: (points: [] D2, widths: [] f64, lengths: [] f64, profile: [] D2, flow: [] D2) -> WaterBody {
+  course := test_bend(points, widths, lengths);
+  rock: [1] Obstacle;
+  rock[0] = Obstacle.{center = ROCK, radius = 0.5};
+  grid := water_flow_river(course, rock[..], 0.5, 1.2, flow);
+  profile[0] = d2(0.0, 0.3); profile[1] = d2(40.0, 0.0);
+  return water_with_flow(water_river(2, course, profile[0..<2]), grid);
+}
+
+// A body of `mass` with one collider, at `pos`.
+add_body :: (bodies: [] RigidBody, colliders: [] Collider, i: int, shape: ColliderShape, mass: f64, pos: D3, orientation: DQ) {
+  inertia := rigid_box_inertia(mass, d3_scale(shape.half, 2.0));
+  if shape.kind == ColliderKind.sphere {
+    m := 0.4 * mass * shape.radius * shape.radius;
+    inertia = d3(m, m, m);
+  } else if shape.kind == ColliderKind.capsule {
+    r := shape.radius;
+    inertia = rigid_box_inertia(mass, d3(2.0 * r, 2.0 * r, 2.0 * (shape.half_length + r)));
+  }
+  bodies[i] = rigid_body(mass, inertia, pos, orientation);
+  colliders[i] = Collider.{body = i, shape = shape};
+}
+
+// Water's forces, then a step, for `seconds`.
+float_for :: (w: RigidWorld, colliders: [] Collider, s: WaterSet, seconds: f64, settings: WaterSettings, pushes: [] Push) -> RigidWorld {
+  next := w;
+  every: [1] bool;
+  for k: 0..<int(round_d(seconds / WATER_DT)) {
+    n := water_apply(next, colliders, s, next.tick, WATER_DT, settings, every[0..<0], pushes);
+    next = rigid_step(next, TEST_GRAVITY);
+  }
+  return next;
+}
+
+// Water's forces for the world's next step, with the default settings.
+wet_step :: (w: RigidWorld, colliders: [] Collider, s: WaterSet, pushes: [] Push) -> int {
+  every: [1] bool;
+  return water_apply(w, colliders, s, w.tick, WATER_DT, water_settings(), every[0..<0], pushes);
+}
+
+submersion :: (w: RigidWorld, colliders: [] Collider, id: int, s: WaterSet) -> Submersion {
+  c := colliders[id];
+  return water_submerged(c.shape, w.bodies[id].pos, w.bodies[id].orientation, s, w.tick);
+}
+
+body_eq :: (a: RigidBody, b: RigidBody) -> bool {
+  return d3_eq(a.pos, b.pos) && d3_eq(a.vel, b.vel) && d3_eq(a.omega, b.omega) && a.orientation.x == b.orientation.x && a.orientation.y == b.orientation.y && a.orientation.z == b.orientation.z && a.orientation.w == b.orientation.w && d3_eq(a.force, b.force) && d3_eq(a.torque, b.torque) && a.sleeping == b.sleeping && a.sleep_time == b.sleep_time;
+}
+
+// The surface.
+
+#test "a sample at tick N equals stepping from tick zero" {
+  body := wavy_ocean();
+  phases := water_phases(body.waves, 0);
+  pts: [3] D2;
+  pts[0] = d2(0.3, -2.0); pts[1] = d2(17.5, 4.25); pts[2] = d2(-60.0, 33.0);
+  for t: 0..<30001 {
+    tick := cast(u64) t;
+    if t % 997 == 0 || t == 30000 {
+      #assert phases_eq(phases, water_phases(body.waves, tick));
+      for p: pts {
+        #assert sample_eq(water_body_sample(body, p.x, p.y, tick), water_body_sample_with(body, p.x, p.y, phases));
+      }
+    }
+    phases = water_advance(body.waves, phases);
+  }
+  // The clock folds: a tick and the same tick a period later agree
+  // exactly, however late.
+  late: u64 = 1 << 40;
+  for p: pts {
+    a := water_body_sample(body, p.x, p.y, 1234);
+    #assert a.found;
+    #assert sample_eq(a, water_body_sample(body, p.x, p.y, 1234 + body.waves.period * (late / body.waves.period)));
+  }
+  // A world stepped to tick N reads the same surface.
+  none: [1] RigidBody;
+  w := rigid_world(WATER_DT, none[0..<0]);
+  for k: 0..<500 { w = rigid_step(w, TEST_GRAVITY); }
+  #assert sample_eq(water_body_sample(body, 1.0, 2.0, w.tick), water_body_sample(body, 1.0, 2.0, 500));
+}
+
+#test "snapped frequencies stay near deep-water dispersion" {
+  waves := swell();
+  #assert waves.count == 6 && waves.seeded && waves.seed == 7;
+  for i: 0..<waves.count {
+    exact := sqrt(WATER_G * water_wavenumber(waves.waves[i]));
+    // Within half a step of 2 PI / T.
+    #assert abs(water_omega(waves, i) - exact) <= PI_D / 60.0 + 0.000000000001;
+  }
+  nine: [9] Wave;
+  for i: 0..<9 { nine[i] = water_wave(d2(1.0, 0.0), 0.1, 5.0, 0.0); }
+  #assert water_waves(WATER_DT, 100, 0.5, nine[..]).error == WaveError.too_many;
+  #assert water_waves(WATER_DT, 0, 0.5, nine[0..<2]).error == WaveError.clock;
+  #assert water_waves(0.0, 100, 0.5, nine[0..<2]).error == WaveError.clock;
+  #assert water_waves(WATER_DT, 100, 1.5, nine[0..<2]).error == WaveError.steepness;
+  #assert water_waves(WATER_DT, 4294967296, 0.5, nine[0..<2]).error == WaveError.long_period;
+  nine[1].wavelength = 0.0;
+  #assert water_waves(WATER_DT, 100, 0.5, nine[0..<2]).error == WaveError.wavelength;
+  #assert water_is_calm(water_calm()) && !water_is_calm(waves);
+}
+
+#test "the inverted surface lands on the query point with a consistent normal" {
+  waves := swell();
+  phases := water_phases(waves, 4321);
+  worst := 0.0;
+  for i: 0..<40 {
+    x := d2(f64(i) * 1.37 - 20.0, sin(f64(i) * 0.71) * 9.0);
+    p0 := x;
+    for r: 0..<INVERSIONS { p0 = d2_sub(x, water_at_rest(waves, p0, phases).horizontal); }
+    d := water_at_rest(waves, p0, phases);
+    worst = fmax(worst, d2_len(d2_sub(d2_add(p0, d.horizontal), x)));
+    // The normal matches the slope of the sampled height.
+    h := 0.0001;
+    s := water_at(waves, x, phases);
+    dx := (water_at(waves, d2(x.x + h, x.y), phases).height - water_at(waves, d2(x.x - h, x.y), phases).height) / (2.0 * h);
+    dz := (water_at(waves, d2(x.x, x.y + h), phases).height - water_at(waves, d2(x.x, x.y - h), phases).height) / (2.0 * h);
+    numeric := d3_unit(d3(-dx, 1.0, -dz));
+    #assert d3_angle(numeric, s.normal) < 0.02;
+  }
+  #assert worst < 0.002;
+}
+
+// Submersion geometry.
+
+#test "a plane through the centre wets exactly half of every shape" {
+  shapes: [3] ColliderShape;
+  shapes[0] = shape_sphere(0.7);
+  shapes[1] = shape_capsule(0.3, 0.8);
+  shapes[2] = shape_cuboid(d3(0.2, 0.5, 1.1));
+  for shape: shapes {
+    for k: 0..<12 {
+      kf := f64(k);
+      rotation := dq_euler_xyz(0.37 * kf, 1.1 * kf, 0.2 * kf);
+      center := d3(3.0, -1.0, 2.0);
+      plane := Plane.{point = center, normal = d3_unit(d3(sin(0.3 * kf) * 0.4, 1.0, 0.2))};
+      cut := water_below(shape, center, rotation, plane);
+      // A centrally symmetric body is halved by any plane through its centre.
+      error := abs(cut.volume / shape_volume(shape) - 0.5);
+      tolerance := ifx shape.kind == ColliderKind.capsule then 0.005 else 0.000000000001;
+      #assert error < tolerance;
+      #assert abs(cut.wetted / shape_area(shape) - 0.5) < fmax(tolerance, 0.000000001);
+      #assert plane_distance(plane, cut.centroid) < 0.0;
+    }
+  }
+}
+
+#test "caps and slices match their closed forms" {
+  r := 0.5;
+  up := Plane.{point = D3_ZERO, normal = D3_Y};
+  // A sphere 0.2 m into the water: a cap of height 0.2.
+  h := 0.2;
+  c := water_below(shape_sphere(r), d3(0.0, r - h, 0.0), DQ.{}, up);
+  #assert abs(c.volume - PI_D * h * h * (3.0 * r - h) / 3.0) < 0.000000000001;
+  #assert abs(c.wetted - 2.0 * PI_D * r * h) < 0.000000000001;
+  #assert c.centroid.y < 0.0 && c.centroid.y > -h;
+  // A vertical capsule under to 0.3 m above its centre.
+  up3 := Plane.{point = d3(0.0, 0.3, 0.0), normal = D3_Y};
+  c = water_below(shape_capsule(0.25, 0.5), D3_ZERO, dq_x(PI_D / 2.0), up3);
+  expected := 2.0 / 3.0 * PI_D * (0.25 * 0.25 * 0.25) + PI_D * 0.0625 * 0.8;
+  #assert abs(c.volume - expected) / expected < 0.002;
+  expected_wet := 2.0 * PI_D * 0.0625 + 2.0 * PI_D * 0.25 * 0.8;
+  #assert abs(c.wetted - expected_wet) / expected_wet < 0.002;
+  // A cuboid: a tilted box below a level plane, by brute-force sampling.
+  half := d3(0.3, 0.2, 0.6);
+  rotation := dq_mul(dq_z(0.4), dq_x(0.3));
+  center := d3(0.0, 0.1, 0.0);
+  c = water_below(shape_cuboid(half), center, rotation, up);
+  n := 60;
+  count := 0;
+  sum := D3_ZERO;
+  for i: 0..<n {
+    fi := (f64(i) + 0.5) / f64(n) * 2.0 - 1.0;
+    for j: 0..<n {
+      fj := (f64(j) + 0.5) / f64(n) * 2.0 - 1.0;
+      for k: 0..<n {
+        fk := (f64(k) + 0.5) / f64(n) * 2.0 - 1.0;
+        p := d3_add(center, dq_rotate(rotation, d3(half.x * fi, half.y * fj, half.z * fk)));
+        if p.y < 0.0 { count += 1; sum = d3_add(sum, p); }
+      }
+    }
+  }
+  sampled := f64(count) / f64(n * n * n) * shape_volume(shape_cuboid(half));
+  #assert abs(c.volume - sampled) / sampled < 0.005;
+  #assert d3_dist(c.centroid, d3_scale(sum, 1.0 / f64(count))) < 0.005;
+}
+
+// Floating and sinking.
+
+#test "a cube of half water's density settles half submerged" {
+  pts: [4] D2; ponds: [1] WaterBody; starts: [1025] int; entries: [2048] int;
+  ponds[0] = still_pond(pts[..]);
+  s := water_set(ponds[..], 4.0, starts[..], entries[..]);
+  bodies: [1] RigidBody; cols: [1] Collider; pushes: [4] Push;
+  add_body(bodies[..], cols[..], 0, shape_cuboid(d3(0.5, 0.5, 0.5)), 500.0, d3(0.0, 0.8, 0.0), dq_z(0.1));
+  w := float_for(rigid_world(WATER_DT, bodies[..]), cols[..], s, 60.0, water_settings(), pushes[..]);
+  fraction := water_volume_fraction(submersion(w, cols[..], 0, s));
+  #assert abs(fraction - 0.5) < 0.005;
+  #assert d3_len(bodies[0].vel) < 0.01;
+}
+
+// The draft of a sphere of `ratio` times water's density, by bisection on
+// the cap volume.
+analytic_draft :: (r: f64, ratio: f64) -> f64 {
+  want := ratio * 4.0 / 3.0 * PI_D * (r * r * r);
+  lo := 0.0; hi := 2.0 * r;
+  for k: 0..<100 {
+    h := 0.5 * (lo + hi);
+    if PI_D * h * h * (3.0 * r - h) / 3.0 < want { lo = h; } else { hi = h; }
+  }
+  return 0.5 * (lo + hi);
+}
+
+#test "light spheres float at the analytic draft and heavy ones sink" {
+  pts: [4] D2; ponds: [1] WaterBody; starts: [1025] int; entries: [2048] int;
+  ponds[0] = still_pond(pts[..]);
+  s := water_set(ponds[..], 4.0, starts[..], entries[..]);
+  r := 0.4;
+  v := 4.0 / 3.0 * PI_D * (r * r * r);
+  bodies: [2] RigidBody; cols: [2] Collider; pushes: [8] Push;
+  add_body(bodies[..], cols[..], 0, shape_sphere(r), 900.0 * v, d3(-5.0, 1.0, 0.0), DQ.{});
+  add_body(bodies[..], cols[..], 1, shape_sphere(r), 1100.0 * v, d3(5.0, 1.0, 0.0), DQ.{});
+  w := float_for(rigid_world(WATER_DT, bodies[..]), cols[..], s, 40.0, water_settings(), pushes[..]);
+  draft := r - bodies[0].pos.y;
+  expected := analytic_draft(r, 0.9);
+  #assert abs(draft - expected) / expected < 0.01;
+  #assert bodies[1].pos.y < -20.0;
+  #assert bodies[1].vel.y < -0.5;
+}
+
+#test "sinking reaches the quadratic drag terminal speed" {
+  pts: [4] D2; ponds: [1] WaterBody; starts: [1025] int; entries: [2048] int;
+  ponds[0] = still_pond(pts[..]);
+  s := water_set(ponds[..], 4.0, starts[..], entries[..]);
+  r := 0.3;
+  density := 1400.0;
+  v := 4.0 / 3.0 * PI_D * (r * r * r);
+  bodies: [1] RigidBody; cols: [1] Collider; pushes: [4] Push;
+  add_body(bodies[..], cols[..], 0, shape_sphere(r), density * v, d3(0.0, -2.0, 0.0), DQ.{});
+  settings := water_settings();
+  settings.linear = 40.0;
+  w := float_for(rigid_world(WATER_DT, bodies[..]), cols[..], s, 20.0, settings, pushes[..]);
+  // (rho_b - rho) V g = c_l A v + 1/2 rho C_d (A / 4) v^2, with A = 4 PI r^2.
+  area := 4.0 * PI_D * r * r;
+  weight := (density - FRESH) * v * 9.81;
+  a := 0.5 * FRESH * settings.quadratic * 0.25 * area;
+  b := settings.linear * area;
+  terminal := (-b + sqrt(b * b + 4.0 * a * weight)) / (2.0 * a);
+  speed := -bodies[0].vel.y;
+  #assert abs(speed - terminal) / terminal < 0.02;
+  // Quadratic drag alone, as with C_d on a sphere's frontal area.
+  add_body(bodies[..], cols[..], 0, shape_sphere(r), density * v, d3(0.0, -2.0, 0.0), DQ.{});
+  settings = water_settings();
+  settings.linear = 0.0;
+  settings.quadratic = 0.47;
+  w = float_for(rigid_world(WATER_DT, bodies[..]), cols[..], s, 30.0, settings, pushes[..]);
+  terminal = sqrt(2.0 * weight / (FRESH * 0.47 * PI_D * r * r));
+  speed = -bodies[0].vel.y;
+  #assert abs(speed - terminal) / terminal < 0.02;
+}
+
+#test "a plank floats flat and rights itself after a push" {
+  pts: [4] D2; ponds: [1] WaterBody; starts: [1025] int; entries: [2048] int;
+  ponds[0] = still_pond(pts[..]);
+  s := water_set(ponds[..], 4.0, starts[..], entries[..]);
+  half := d3(0.12, 0.025, 1.0);
+  mass := 600.0 * 8.0 * half.x * half.y * half.z;
+  bodies: [1] RigidBody; cols: [1] Collider; pushes: [4] Push;
+  // Dropped nearly on end.
+  add_body(bodies[..], cols[..], 0, shape_cuboid(half), mass, d3(0.0, 1.2, 0.0), dq_x(1.3));
+  w := float_for(rigid_world(WATER_DT, bodies[..]), cols[..], s, 30.0, water_settings(), pushes[..]);
+  #assert abs(dq_rotate(bodies[0].orientation, D3_Y).y) > 0.995;
+  // A shove that rolls it about its long axis.
+  push := d3_scale(dq_rotate(bodies[0].orientation, D3_Z), bodies[0].inertia.z * 6.0);
+  bodies[0] = rigid_angular_impulse(bodies[0], push);
+  most := 0.0;
+  for k: 0..<int(20.0 / WATER_DT) {
+    n := wet_step(w, cols[..], s, pushes[..]);
+    w = rigid_step(w, TEST_GRAVITY);
+    most = fmax(most, 1.0 - abs(dq_rotate(bodies[0].orientation, D3_Y).y));
+  }
+  #assert most > 0.05;
+  #assert abs(dq_rotate(bodies[0].orientation, D3_Y).y) > 0.995;
+}
+
+#test "a floating body sleeps on a still pond but not on waves" {
+  pts: [4] D2; ponds: [1] WaterBody; starts: [1025] int; entries: [2048] int;
+  ponds[0] = still_pond(pts[..]);
+  pond := water_set(ponds[..], 4.0, starts[..], entries[..]);
+  oceans: [1] WaterBody; ostarts: [2] int; oentries: [1] int;
+  oceans[0] = wavy_ocean();
+  ocean := water_set(oceans[..], 4.0, ostarts[..], oentries[..]);
+  shape := shape_sphere(0.3);
+  mass := 500.0 * shape_volume(shape);
+  still: [1] RigidBody; cols: [1] Collider; pushes: [4] Push;
+  add_body(still[..], cols[..], 0, shape, mass, d3(0.0, 0.5, 0.0), DQ.{});
+  w := float_for(rigid_world(WATER_DT, still[..]), cols[..], pond, 30.0, water_settings(), pushes[..]);
+  #assert still[0].sleeping;
+  height := still[0].pos.y;
+  w = float_for(w, cols[..], pond, 5.0, water_settings(), pushes[..]);
+  #assert still[0].pos.y == height;
+  rough: [1] RigidBody;
+  add_body(rough[..], cols[..], 0, shape, mass, d3(0.0, 0.5, 0.0), DQ.{});
+  r := rigid_world(WATER_DT, rough[..]);
+  slept := false;
+  for k: 0..<int(30.0 / WATER_DT) {
+    n := wet_step(r, cols[..], ocean, pushes[..]);
+    r = rigid_step(r, TEST_GRAVITY);
+    slept = slept || rough[0].sleeping;
+  }
+  #assert !slept;
+  // It rides the swell: its height follows the surface.
+  sample := water_sample(ocean, rough[0].pos.x, rough[0].pos.z, r.tick);
+  #assert sample.found && abs(rough[0].pos.y - sample.height) < 0.3;
+}
+
+// Currents.
+
+#test "generated river flow is divergence-free and carries the discharge" {
+  pts: [25] D2; widths: [25] f64; lengths: [25] f64; profile: [2] D2; flow: [3465] D2;
+  body := test_river(pts[..], widths[..], lengths[..], profile[..], flow[..]);
+  course := body.course;
+  grid := body.flow;
+  #assert grid.nx == 55 && grid.nz == 63;
+  speed := 1.2;
+  worst := 0.0;
+  for j: 1..<grid.nz - 1 {
+    for i: 1..<grid.nx - 1 {
+      // Nodes whose neighbours all lie in the river.
+      inside := water_contains(body, water_flow_position(grid, i - 1, j - 1)) && water_contains(body, water_flow_position(grid, i, j - 1))
+        && water_contains(body, water_flow_position(grid, i - 1, j)) && water_contains(body, water_flow_position(grid, i + 1, j))
+        && water_contains(body, water_flow_position(grid, i, j + 1)) && water_contains(body, water_flow_position(grid, i, j));
+      // Away from the rock, whose nodes hold the wrapped streamline.
+      clear := d2_dist(water_flow_position(grid, i, j), ROCK) > 0.5 + 2.0 * grid.cell;
+      if inside && clear { worst = fmax(worst, abs(water_flow_divergence(grid, i, j))); }
+    }
+  }
+  #assert worst < 0.000000001;
+  // The flux across sections away from the ends is the discharge.
+  discharge := speed * 4.0;
+  sections: [5] f64;
+  sections[0] = 4.0; sections[1] = 10.0; sections[2] = 16.0; sections[3] = 22.0; sections[4] = 30.0;
+  for along: sections {
+    mid := water_point_at(course, along);
+    station := water_locate(course, mid);
+    normal := d2(-station.tangent.y, station.tangent.x);
+    n := 200;
+    flux := 0.0;
+    for k: 0..<n {
+      t := ((f64(k) + 0.5) / f64(n) * 2.0 - 1.0) * station.half_width;
+      flux += d2_dot(water_flow_sample(grid, d2_add(mid, d2_scale(normal, t))), station.tangent) * (2.0 * station.half_width / f64(n));
+    }
+    #assert abs(flux - discharge) / discharge < 0.03;
+    // On the centreline the water runs downstream.
+    v := water_flow_sample(grid, mid);
+    #assert d2_dot(d2_unit_or(v, d2(0.0, 0.0)), station.tangent) > 0.9;
+  }
+}
+
+// A float dropped at a seeded point upstream, 30 s down the river, with
+// the whole world recorded every 12 ticks into `trace` (300 entries).
+river_run :: (seed: u64, trace: [] RigidBody) -> RigidBody {
+  pts: [25] D2; widths: [25] f64; lengths: [25] f64; profile: [2] D2; flow: [3465] D2; pond: [4] D2;
+  waters: [2] WaterBody;
+  waters[0] = test_river(pts[..], widths[..], lengths[..], profile[..], flow[..]);
+  waters[1] = still_pond(pond[..]);
+  starts: [1025] int; entries: [2048] int;
+  s := water_set(waters[..], 4.0, starts[..], entries[..]);
+  jitter := f64(mul_wrap(seed, 0x9e3779b97f4a7c15) >> 40) / 16777216.0;
+  shape := shape_cuboid(d3(0.3, 0.15, 0.3));
+  bodies: [1] RigidBody; cols: [1] Collider; pushes: [4] Push;
+  add_body(bodies[..], cols[..], 0, shape, 600.0 * shape_volume(shape), d3(2.0, 0.6, (jitter - 0.5) * 1.5), DQ.{});
+  w := rigid_world(WATER_DT, bodies[..]);
+  recorded := 0;
+  for k: 0..<int(30.0 / WATER_DT) {
+    n := wet_step(w, cols[..], s, pushes[..]);
+    w = rigid_step(w, TEST_GRAVITY);
+    if w.tick % 12 == 0 { trace[recorded] = bodies[0]; recorded += 1; }
+  }
+  return bodies[0];
+}
+
+#test "a seeded float follows the river round the bend and replays exactly" {
+  pts: [25] D2; widths: [25] f64; lengths: [25] f64;
+  course := test_bend(pts[..], widths[..], lengths[..]);
+  trace: [300] RigidBody;
+  body := river_run(42, trace[..]);
+  at := body.pos;
+  station := water_locate(course, d2(at.x, at.z));
+  // Past the bend (about 15 m to 25 m along) and into the northbound leg,
+  // still between the banks and afloat.
+  #assert station.along > 26.0;
+  #assert abs(station.offset) < station.half_width;
+  #assert at.y > -0.5;
+  again: [300] RigidBody;
+  replay := river_run(42, again[..]);
+  for k: 0..<300 { #assert body_eq(trace[k], again[k]); }
+  #assert body_eq(body, replay);
+}
+
+// Bookkeeping and determinism.
+
+#test "the momentum ledger balances with the water terms" {
+  oceans: [1] WaterBody; ostarts: [2] int; oentries: [1] int;
+  oceans[0] = wavy_ocean();
+  ocean := water_set(oceans[..], 4.0, ostarts[..], oentries[..]);
+  shapes: [3] ColliderShape;
+  shapes[0] = shape_sphere(0.3);
+  shapes[1] = shape_capsule(0.2, 0.6);
+  shapes[2] = shape_cuboid(d3(0.4, 0.2, 0.7));
+  bodies: [3] RigidBody; cols: [3] Collider; pushes: [8] Push;
+  for shape, i: shapes {
+    add_body(bodies[..], cols[..], i, shape, 650.0 * shape_volume(shape), d3(f64(i) * 3.0, 1.5, 0.5), dq_y(0.3 * f64(i)));
+    bodies[i].omega = d3(0.5, -0.2, 0.3);
+  }
+  w := rigid_world(WATER_DT, bodies[..]);
+  origin := d3(1.0, -2.0, 3.0);
+  ledger := ledger_new(origin, world_momentum(w, origin));
+  worst := 0.0;
+  for k: 0..<int(15.0 / WATER_DT) {
+    n := wet_step(w, cols[..], ocean, pushes[..]);
+    ledger = water_record(pushes[0..<n], ledger, WATER_DT);
+    for b: bodies {
+      if !b.sleeping { ledger = ledger_add_impulse(ledger, Term.gravity, d3_scale(d3_scale(TEST_GRAVITY, b.mass), WATER_DT), b.pos); }
+    }
+    w = rigid_step(w, TEST_GRAVITY);
+    e := ledger_error(ledger, world_momentum(w, origin));
+    worst = fmax(worst, fmax(e.linear, e.angular));
+  }
+  #assert ledger.entered[cast(int) Term.buoyancy];
+  #assert ledger.entered[cast(int) Term.drag];
+  #assert worst < 0.000000001;
+  // Leaving a term out shows.
+  #assert ledger_error(ledger_without(ledger, Term.buoyancy), world_momentum(w, origin)).linear > 0.001;
+}
+
+#test "a copied world in water continues bit for bit" {
+  pts: [25] D2; widths: [25] f64; lengths: [25] f64; profile: [2] D2; flow: [3465] D2;
+  waters: [2] WaterBody;
+  waters[0] = test_river(pts[..], widths[..], lengths[..], profile[..], flow[..]);
+  waters[1] = wavy_ocean();
+  starts: [1025] int; entries: [2048] int;
+  s := water_set(waters[..], 4.0, starts[..], entries[..]);
+  bodies: [3] RigidBody; cols: [3] Collider; pushes: [8] Push;
+  add_body(bodies[..], cols[..], 0, shape_cuboid(d3(0.3, 0.2, 0.5)), 120.0, d3(3.0, 0.6, 0.0), dq_y(0.4));
+  add_body(bodies[..], cols[..], 1, shape_sphere(0.35), 90.0, d3(-30.0, 0.5, -30.0), DQ.{});
+  add_body(bodies[..], cols[..], 2, shape_capsule(0.3, 0.4), 100.0, d3(-34.0, 0.6, -30.0), dq_x(0.7));
+  w := rigid_world(WATER_DT, bodies[..]);
+  for k: 0..<240 {
+    n := wet_step(w, cols[..], s, pushes[..]);
+    w = rigid_step(w, TEST_GRAVITY);
+  }
+  // A world is its bodies and its clock, and water its bodies: copies hold
+  // everything (the old test round-tripped both through JSON).
+  copy := bodies;
+  restored := rigid_world(WATER_DT, copy[..]);
+  restored.tick = w.tick;
+  for i: 0..<3 { #assert body_eq(copy[i], bodies[i]); }
+  waters_back := waters;
+  starts_back: [1025] int; entries_back: [2048] int;
+  s_back := water_set(waters_back[..], 4.0, starts_back[..], entries_back[..]);
+  for k: 0..<600 {
+    n := wet_step(w, cols[..], s, pushes[..]);
+    w = rigid_step(w, TEST_GRAVITY);
+    m := wet_step(restored, cols[..], s_back, pushes[..]);
+    restored = rigid_step(restored, TEST_GRAVITY);
+    for i: 0..<3 { #assert body_eq(copy[i], bodies[i]); }
+  }
+}
+
+#test "a water set finds the same water as testing every body" {
+  pond: [4] D2; pts: [25] D2; widths: [25] f64; lengths: [25] f64; profile: [2] D2; flow: [3465] D2;
+  tri: [3] D2;
+  tri[0] = d2(60.0, 0.0); tri[1] = d2(70.0, 0.0); tri[2] = d2(65.0, 8.0);
+  bodies: [3] WaterBody;
+  bodies[0] = water_with_density(still_pond(pond[..]), 1010.0);
+  bodies[1] = test_river(pts[..], widths[..], lengths[..], profile[..], flow[..]);
+  bodies[2] = water_pond(5, tri[..], 2.0);
+  starts: [4097] int; entries: [8192] int;
+  s := water_set(bodies[..], 3.0, starts[..], entries[..]);
+  #assert s.cell == 3.0;
+  for i: 0..<400 {
+    x := sin(f64(i) * 0.731) * 80.0;
+    z := cos(f64(i) * 1.913) * 80.0;
+    brute: WaterSample;
+    for b: bodies {
+      found := water_body_sample(b, x, z, 77);
+      if found.found { brute = found; break; }
+    }
+    #assert sample_eq(water_sample(s, x, z, 77), brute);
+  }
+  ids: [3] int;
+  n := water_bodies_overlapping(s, d2(61.0, 1.0), d2(62.0, 2.0), ids[..]);
+  #assert n == 1 && ids[0] == 5;
+  #assert !water_sample(s, 200.0, 200.0, 0).found;
+  // A river's level falls along its course.
+  up := water_sample(s, 1.0, 0.0, 0);
+  #assert up.found && up.body == 0;
+  a := water_body_sample(bodies[1], 1.0, 0.0, 0);
+  b := water_body_sample(bodies[1], 20.0, 20.0, 0);
+  #assert a.found && b.found && a.height > b.height && d3_len(a.flow) > 0.5;
+}

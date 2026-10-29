@@ -300,6 +300,31 @@
       "blocked_by": [],
       "blocks": [],
       "status": "draft"
+    },
+    {
+      "slug": "verse-water-w1",
+      "parent": "engine-everglade-parity",
+      "title": "Water W1: the physics of water in Coax",
+      "size": "L",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "Phase W1 of verse-water (#c278), the only phase the owner has released: port the previous engine's physics::water (git show b399fa2dbe:crates/physics/src/water/, the W1 commit of #10773) to Coax as an engine library: water bodies, the Gerstner surface with deterministic time, point queries, the flow grid, buoyancy, drag, currents and the ledger terms, with the old tests as Coax checks matching their expected values. The spec is verse/everglade/previous/water.md, \"Coupling with crates/physics\" and its W1 status. No rendering (W2), no Everglade river or swimming (W3), no realm changes.",
+      "files": [
+        "verse/water.coax",
+        "verse/rigid.coax",
+        "docs/verse/water.md"
+      ],
+      "acceptance": [
+        "The old crate's water tests are ported as #test checks with the same scenes and expected values",
+        "coax/bin/coax test --library verse/water.coax --steps 500000000 passes",
+        "coax/bin/coax test --library verse/rigid.coax passes",
+        "docs/verse/water.md says what W1 covers and what is next"
+      ],
+      "blocked_by": [],
+      "blocks": []
     }
   ]
 }
