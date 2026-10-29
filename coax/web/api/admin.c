@@ -13,6 +13,8 @@
 //   GET /api/admin/analytics?view=overview|sessions|session&days=N&space=web|kiki|dev|all&auto=1&sid=S
 //                                              the reports, for admin.coax; a cookie or an
 //                                              Authorization: Nostr header for this exact URL
+//   GET /api/admin/reports, POST .../<kind>/<ref>/hide|keep|restore
+//                                              Hecate's Cemetery's review queue (/admin/reports)
 //
 // Anyone else gets 401 or 403 and nothing more, not even counts. The reports
 // are rows for admin.coax to draw: a section starts "#TITLE|FLAGS|COLUMN|...",
@@ -348,16 +350,56 @@ static void reports(const request *q, PGconn *db) {
   free(o.p);
 }
 
+// Hecate's Cemetery's review queue (/admin/reports, admin.coax): the reports as rows
+// (migrations/0033_villa_review.sql, villa.reports_rows), and an admin's decision on
+// one, through villa.reports_api, the same rules /api/villa/reports keeps:
+//   GET  /api/admin/reports                                 the rows
+//   POST /api/admin/reports/<kind>/<ref>/hide|keep|restore  {"decided": ...}
+static void review(const request *q, PGconn *db, const char *who) {
+  const char *rest = q->path + 18;
+  if (!*rest || !strcmp(rest, "/")) {
+    if (strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET\"}"); return; }
+    const char *v[1] = {who};
+    PGresult *r = PQexecParams(db, "SELECT villa.reports_rows($1)", 1, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0)) {
+      const char *t = PQgetvalue(r, 0, 0);
+      api_respond(q->fd, 200, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", t, strlen(t));
+    } else { api_log("review: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not now\"}"); }
+    PQclear(r);
+    return;
+  }
+  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST\"}"); return; }
+  char from[256];   // a decision comes from this site's page
+  if (api_header(q, "Origin", from, sizeof from) && strcmp(from, origin())) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return; }
+  // "/<kind>/<ref>/<act>" as a text[] of [A-Za-z0-9] segments, behind "reports"
+  char parts[200] = "{reports"; size_t n = strlen(parts); int segs = 0;
+  for (const char *p = rest; *p; p++) {
+    if (*p == '/') { if (!p[1]) break; if (n + 2 >= sizeof parts) break; parts[n++] = ','; segs++; continue; }
+    if (!isalnum((unsigned char)*p) || n + 2 >= sizeof parts) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
+    parts[n++] = *p;
+  }
+  parts[n++] = '}'; parts[n] = 0;
+  if (segs != 3) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
+  const char *v[2] = {parts, who};
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM villa.reports_api('POST', $1::text[], '{}', NULL, $2) x",
+                             2, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
+  else { api_log("review: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not kept\"}"); }
+  PQclear(r);
+}
+
 bool admin_route(const request *q) {
   if (strncmp(q->path, "/api/admin/", 11)) return false;
   PGconn *db = api_db();
   if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
   if (!strcmp(q->path, "/api/admin/login")) { login(q, db); return true; }
   if (!strcmp(q->path, "/api/admin/logout")) { logout(q, db); return true; }
-  if (strcmp(q->path, "/api/admin/analytics")) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return true; }
+  bool queue = !strncmp(q->path, "/api/admin/reports", 18) && (q->path[18] == 0 || q->path[18] == '/');
+  if (strcmp(q->path, "/api/admin/analytics") && !queue) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return true; }
   char who[65];
   int status = who_is(q, db, who);
   if (status) { refuse(q->fd, status); return true; }
-  reports(q, db);
+  if (queue) review(q, db, who);
+  else reports(q, db);
   return true;
 }

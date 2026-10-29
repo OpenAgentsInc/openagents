@@ -1,4 +1,4 @@
-// /admin/analytics's C face for the browser: scalar Wasm exports over
+// /admin/analytics's (and /admin/reports') C face for the browser: scalar Wasm exports over
 // admin.coax, and the request it asks for handed to the host's HTTP import
 // (coax/web/host.js) with its answer wanted. The host keeps one AdminState.
 // This page records no analytics of its own: it is the admins' view of them.
@@ -15,12 +15,15 @@ static coax_v_t_AdminState at(uint32_t state) { return (coax_v_t_AdminState){(co
 static void send_ask(uint32_t state) {
   coax_t_AdminState *s = at(state).data;
   if (s->ask_n <= 0) return;
-  if (coaxial_http((uint32_t)(uintptr_t)s->ask.e, (uint32_t)s->ask_n, 0, 0, 4) >= 0) coaxial_admin_asked(at(state));
+  // flag 1: a POST (a decision on a report, /admin/reports); its answer is wanted too
+  if (coaxial_http((uint32_t)(uintptr_t)s->ask.e, (uint32_t)s->ask_n, 0, 0, s->post ? 5 : 4) >= 0) coaxial_admin_asked(at(state));
 }
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_AdminState) * 7u + offsetof(coax_t_AdminState, inbox) * 3u + 0x41444du);
 }
+// data-page 1: /admin/reports, the review queue; else /admin/analytics.
+EXPORT("coaxial_page") void coaxial_page(uint32_t state, int32_t page) { coaxial_admin_page(at(state), page); }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_AdminState); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_admin_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_projects_vertex_floats(); }
