@@ -1,0 +1,490 @@
+// Ice Cream Man's tunables: every number a run reads (tuning.rs), with the
+// same names, defaults and bounds as ~/work/aethyr-demo/src/icecream/rules.h
+// (ICECREAM_TUNABLES), in the same order. verse/icecream/rules.coax loads it.
+
+Tuning :: struct {
+  walk: f32 = 4.5;
+  sprint: f32 = 7.0;
+  jump_speed: f32 = 5.5;
+  gravity: f32 = 16.0;
+  max_health: f32 = 100.0;
+  regen_after: f32 = 10.0;
+  regen_rate: f32 = 4.0;
+  man_wander: f32 = 2.4;
+  man_investigate: f32 = 3.6;
+  man_search: f32 = 3.2;
+  man_chase: f32 = 5.6;
+  sight: f32 = 22.0;
+  sight_angle: f32 = 70.0;
+  notice: f32 = 4.0;
+  search_time: f32 = 7.0;
+  sniff_every: f32 = 25.0;
+  patrol_keys: u32 = 2;
+  corners: u32 = 1;
+  sprinkle_damage: f32 = 5.0;
+  grab_damage: f32 = 30.0;
+  grab_shove: f32 = 8.0;
+  grab_reach: f32 = 1.25;
+  grab_wait: f32 = 2.0;
+  gloat: f32 = 1.0;
+  volley_min: f32 = 3.0;
+  volley_max: f32 = 15.0;
+  volley_spread: f32 = 6.0;
+  pellet_speed: f32 = 11.0;
+  volley_wait: f32 = 2.4;
+  pellet_dodge: f32 = 0.45;
+  fudge_start: u32 = 30;
+  fudge_max: u32 = 60;
+  fudge_pickup: u32 = 15;
+  fudge_rate: f32 = 6.0;
+  fudge_speed: f32 = 16.0;
+  fudge_range: f32 = 13.0;
+  fudge_slow: f32 = 2.5;
+  slowed: f32 = 0.5;
+  freeze_hits: u32 = 6;
+  fudge_memory: f32 = 4.0;
+  frozen: f32 = 3.0;
+  farts_start: u32 = 3;
+  farts_max: u32 = 5;
+  fart_range: f32 = 4.5;
+  fart_radius: f32 = 3.5;
+  fart_shove: f32 = 10.0;
+  confused: f32 = 4.0;
+  fart_wait: f32 = 1.0;
+  cloud_life: f32 = 3.0;
+  jingle_noise: f32 = 30.0;
+  jingle_wait: f32 = 1.5;
+  sprint_noise: f32 = 14.0;
+  fudge_noise: f32 = 12.0;
+  fridge_noise: f32 = 8.0;
+  door_noise: f32 = 25.0;
+  extra_closets: u32 = 2;
+  unlock: f32 = 6.0;
+  unlock_guard: f32 = 8.0;
+  puzzle_key: u32 = 1;
+  reach: f32 = 1.4;
+  key_reach: f32 = 0.9;
+  backrooms: u32 = 1;
+  loops: u32 = 7;
+  house_size: u32 = 7;
+  key_spread: u32 = 1;
+  earned_weapons: u32 = 1;
+  man_health: f32 = 400.0;
+  sword_damage: f32 = 25.0;
+  sword_reach: f32 = 1.9;
+  sword_wait: f32 = 0.45;
+  sword_task: u32 = 1;
+  spear_damage: f32 = 35.0;
+  spear_reach: f32 = 3.4;
+  spear_wait: f32 = 0.8;
+  pistol_damage: f32 = 15.0;
+  pistol_rate: f32 = 3.0;
+  pistol_speed: f32 = 22.0;
+  pistol_range: f32 = 18.0;
+  pistol_ammo: u32 = 12;
+  pistol_max: u32 = 40;
+  pistol_pickup: u32 = 8;
+  pistol_task: u32 = 1;
+  sugar_damage: f32 = 60.0;
+  sugar_radius: f32 = 2.5;
+  sugar_speed: f32 = 12.0;
+  sugar_range: f32 = 14.0;
+  sugar_wait: f32 = 1.2;
+  sugar_ammo: u32 = 4;
+  sugar_max: u32 = 10;
+  sugar_pickup: u32 = 2;
+  sugar_task: u32 = 4;
+  minion_count: u32 = 3;
+  minion_first: f32 = 25.0;
+  minion_every: f32 = 15.0;
+  minion_growth: f32 = 60.0;
+  minion_speed: f32 = 3.4;
+  minion_health: f32 = 30.0;
+  minion_damage: f32 = 6.0;
+  minion_bite_wait: f32 = 1.0;
+  minion_sight: f32 = 14.0;
+  fudge_minion_damage: f32 = 10.0;
+  fart_minion_damage: f32 = 40.0;
+  cone_drop: f32 = 0.35;
+  cone_boost: f32 = 0.5;
+  cone_time: f32 = 10.0;
+  staff_length: f32 = 10.0;
+  staff_damage: f32 = 30.0;
+  staff_wait: f32 = 2.0;
+  staff_minions: u32 = 3;
+  staff_minion_life: f32 = 20.0;
+  free_roam: u32 = 1;
+  yellow: f32 = 1.0;
+  fog_near: f32 = 3.0;
+  fog_far: f32 = 18.0;
+  flicker: f32 = 0.35;
+  buzz: f32 = 0.8;
+  first_person: u32 = 0;
+}
+
+TUNABLES :: 117;
+
+// Each tunable's name, bounds and whether it takes whole numbers, in order.
+TunableBounds :: struct { name: string; lo: f64; hi: f64; whole: bool; }
+TUNABLE_BOUNDS :: [117] TunableBounds.[
+  TunableBounds.{name = "walk", lo = 1.0, hi = 12.0, whole = false},
+  TunableBounds.{name = "sprint", lo = 1.0, hi = 16.0, whole = false},
+  TunableBounds.{name = "jump_speed", lo = 2.0, hi = 10.0, whole = false},
+  TunableBounds.{name = "gravity", lo = 4.0, hi = 40.0, whole = false},
+  TunableBounds.{name = "max_health", lo = 10.0, hi = 1000.0, whole = false},
+  TunableBounds.{name = "regen_after", lo = 0.0, hi = 120.0, whole = false},
+  TunableBounds.{name = "regen_rate", lo = 0.0, hi = 50.0, whole = false},
+  TunableBounds.{name = "man_wander", lo = 0.5, hi = 12.0, whole = false},
+  TunableBounds.{name = "man_investigate", lo = 0.5, hi = 12.0, whole = false},
+  TunableBounds.{name = "man_search", lo = 0.5, hi = 12.0, whole = false},
+  TunableBounds.{name = "man_chase", lo = 0.5, hi = 14.0, whole = false},
+  TunableBounds.{name = "sight", lo = 2.0, hi = 60.0, whole = false},
+  TunableBounds.{name = "sight_angle", lo = 10.0, hi = 180.0, whole = false},
+  TunableBounds.{name = "notice", lo = 0.0, hi = 20.0, whole = false},
+  TunableBounds.{name = "search_time", lo = 0.0, hi = 60.0, whole = false},
+  TunableBounds.{name = "sniff_every", lo = 3.0, hi = 600.0, whole = false},
+  TunableBounds.{name = "patrol_keys", lo = 0.0, hi = 3.0, whole = true},
+  TunableBounds.{name = "corners", lo = 0.0, hi = 1.0, whole = true},
+  TunableBounds.{name = "sprinkle_damage", lo = 0.0, hi = 100.0, whole = false},
+  TunableBounds.{name = "grab_damage", lo = 0.0, hi = 200.0, whole = false},
+  TunableBounds.{name = "grab_shove", lo = 0.0, hi = 30.0, whole = false},
+  TunableBounds.{name = "grab_reach", lo = 0.5, hi = 4.0, whole = false},
+  TunableBounds.{name = "grab_wait", lo = 0.2, hi = 20.0, whole = false},
+  TunableBounds.{name = "gloat", lo = 0.0, hi = 10.0, whole = false},
+  TunableBounds.{name = "volley_min", lo = 0.0, hi = 30.0, whole = false},
+  TunableBounds.{name = "volley_max", lo = 1.0, hi = 40.0, whole = false},
+  TunableBounds.{name = "volley_spread", lo = 0.0, hi = 30.0, whole = false},
+  TunableBounds.{name = "pellet_speed", lo = 1.0, hi = 40.0, whole = false},
+  TunableBounds.{name = "volley_wait", lo = 0.3, hi = 30.0, whole = false},
+  TunableBounds.{name = "pellet_dodge", lo = 0.0, hi = 1.0, whole = false},
+  TunableBounds.{name = "fudge_start", lo = 0.0, hi = 500.0, whole = true},
+  TunableBounds.{name = "fudge_max", lo = 1.0, hi = 999.0, whole = true},
+  TunableBounds.{name = "fudge_pickup", lo = 0.0, hi = 500.0, whole = true},
+  TunableBounds.{name = "fudge_rate", lo = 0.5, hi = 20.0, whole = false},
+  TunableBounds.{name = "fudge_speed", lo = 2.0, hi = 40.0, whole = false},
+  TunableBounds.{name = "fudge_range", lo = 1.0, hi = 40.0, whole = false},
+  TunableBounds.{name = "fudge_slow", lo = 0.0, hi = 20.0, whole = false},
+  TunableBounds.{name = "slowed", lo = 0.05, hi = 1.0, whole = false},
+  TunableBounds.{name = "freeze_hits", lo = 1.0, hi = 50.0, whole = true},
+  TunableBounds.{name = "fudge_memory", lo = 0.5, hi = 30.0, whole = false},
+  TunableBounds.{name = "frozen", lo = 0.0, hi = 60.0, whole = false},
+  TunableBounds.{name = "farts_start", lo = 0.0, hi = 50.0, whole = true},
+  TunableBounds.{name = "farts_max", lo = 1.0, hi = 99.0, whole = true},
+  TunableBounds.{name = "fart_range", lo = 1.0, hi = 20.0, whole = false},
+  TunableBounds.{name = "fart_radius", lo = 0.5, hi = 15.0, whole = false},
+  TunableBounds.{name = "fart_shove", lo = 0.0, hi = 40.0, whole = false},
+  TunableBounds.{name = "confused", lo = 0.0, hi = 60.0, whole = false},
+  TunableBounds.{name = "fart_wait", lo = 0.1, hi = 20.0, whole = false},
+  TunableBounds.{name = "cloud_life", lo = 0.2, hi = 20.0, whole = false},
+  TunableBounds.{name = "jingle_noise", lo = 0.0, hi = 80.0, whole = false},
+  TunableBounds.{name = "jingle_wait", lo = 0.2, hi = 20.0, whole = false},
+  TunableBounds.{name = "sprint_noise", lo = 0.0, hi = 80.0, whole = false},
+  TunableBounds.{name = "fudge_noise", lo = 0.0, hi = 80.0, whole = false},
+  TunableBounds.{name = "fridge_noise", lo = 0.0, hi = 80.0, whole = false},
+  TunableBounds.{name = "door_noise", lo = 0.0, hi = 80.0, whole = false},
+  TunableBounds.{name = "extra_closets", lo = 0.0, hi = 4.0, whole = true},
+  TunableBounds.{name = "unlock", lo = 0.0, hi = 600.0, whole = false},
+  TunableBounds.{name = "unlock_guard", lo = 0.0, hi = 60.0, whole = false},
+  TunableBounds.{name = "puzzle_key", lo = 0.0, hi = 1.0, whole = true},
+  TunableBounds.{name = "reach", lo = 0.5, hi = 4.0, whole = false},
+  TunableBounds.{name = "key_reach", lo = 0.3, hi = 4.0, whole = false},
+  TunableBounds.{name = "backrooms", lo = 0.0, hi = 1.0, whole = true},
+  TunableBounds.{name = "loops", lo = 0.0, hi = 24.0, whole = true},
+  TunableBounds.{name = "house_size", lo = 3.0, hi = 10.0, whole = true},
+  TunableBounds.{name = "key_spread", lo = 0.0, hi = 1.0, whole = true},
+  TunableBounds.{name = "earned_weapons", lo = 0.0, hi = 1.0, whole = true},
+  TunableBounds.{name = "man_health", lo = 10.0, hi = 10000.0, whole = false},
+  TunableBounds.{name = "sword_damage", lo = 0.0, hi = 500.0, whole = false},
+  TunableBounds.{name = "sword_reach", lo = 0.5, hi = 6.0, whole = false},
+  TunableBounds.{name = "sword_wait", lo = 0.1, hi = 10.0, whole = false},
+  TunableBounds.{name = "sword_task", lo = 1.0, hi = 50.0, whole = true},
+  TunableBounds.{name = "spear_damage", lo = 0.0, hi = 500.0, whole = false},
+  TunableBounds.{name = "spear_reach", lo = 1.0, hi = 10.0, whole = false},
+  TunableBounds.{name = "spear_wait", lo = 0.1, hi = 10.0, whole = false},
+  TunableBounds.{name = "pistol_damage", lo = 0.0, hi = 500.0, whole = false},
+  TunableBounds.{name = "pistol_rate", lo = 0.2, hi = 20.0, whole = false},
+  TunableBounds.{name = "pistol_speed", lo = 2.0, hi = 60.0, whole = false},
+  TunableBounds.{name = "pistol_range", lo = 1.0, hi = 60.0, whole = false},
+  TunableBounds.{name = "pistol_ammo", lo = 0.0, hi = 500.0, whole = true},
+  TunableBounds.{name = "pistol_max", lo = 1.0, hi = 999.0, whole = true},
+  TunableBounds.{name = "pistol_pickup", lo = 0.0, hi = 500.0, whole = true},
+  TunableBounds.{name = "pistol_task", lo = 1.0, hi = 50.0, whole = true},
+  TunableBounds.{name = "sugar_damage", lo = 0.0, hi = 1000.0, whole = false},
+  TunableBounds.{name = "sugar_radius", lo = 0.5, hi = 10.0, whole = false},
+  TunableBounds.{name = "sugar_speed", lo = 2.0, hi = 60.0, whole = false},
+  TunableBounds.{name = "sugar_range", lo = 1.0, hi = 60.0, whole = false},
+  TunableBounds.{name = "sugar_wait", lo = 0.1, hi = 20.0, whole = false},
+  TunableBounds.{name = "sugar_ammo", lo = 0.0, hi = 200.0, whole = true},
+  TunableBounds.{name = "sugar_max", lo = 1.0, hi = 999.0, whole = true},
+  TunableBounds.{name = "sugar_pickup", lo = 0.0, hi = 200.0, whole = true},
+  TunableBounds.{name = "sugar_task", lo = 1.0, hi = 100.0, whole = true},
+  TunableBounds.{name = "minion_count", lo = 0.0, hi = 12.0, whole = true},
+  TunableBounds.{name = "minion_first", lo = 0.0, hi = 600.0, whole = false},
+  TunableBounds.{name = "minion_every", lo = 1.0, hi = 600.0, whole = false},
+  TunableBounds.{name = "minion_growth", lo = 0.0, hi = 600.0, whole = false},
+  TunableBounds.{name = "minion_speed", lo = 0.5, hi = 12.0, whole = false},
+  TunableBounds.{name = "minion_health", lo = 1.0, hi = 1000.0, whole = false},
+  TunableBounds.{name = "minion_damage", lo = 0.0, hi = 100.0, whole = false},
+  TunableBounds.{name = "minion_bite_wait", lo = 0.1, hi = 20.0, whole = false},
+  TunableBounds.{name = "minion_sight", lo = 1.0, hi = 80.0, whole = false},
+  TunableBounds.{name = "fudge_minion_damage", lo = 0.0, hi = 500.0, whole = false},
+  TunableBounds.{name = "fart_minion_damage", lo = 0.0, hi = 500.0, whole = false},
+  TunableBounds.{name = "cone_drop", lo = 0.0, hi = 1.0, whole = false},
+  TunableBounds.{name = "cone_boost", lo = 0.0, hi = 3.0, whole = false},
+  TunableBounds.{name = "cone_time", lo = 0.0, hi = 120.0, whole = false},
+  TunableBounds.{name = "staff_length", lo = 1.0, hi = 40.0, whole = false},
+  TunableBounds.{name = "staff_damage", lo = 0.0, hi = 1000.0, whole = false},
+  TunableBounds.{name = "staff_wait", lo = 0.2, hi = 30.0, whole = false},
+  TunableBounds.{name = "staff_minions", lo = 1.0, hi = 12.0, whole = true},
+  TunableBounds.{name = "staff_minion_life", lo = 1.0, hi = 600.0, whole = false},
+  TunableBounds.{name = "free_roam", lo = 0.0, hi = 1.0, whole = true},
+  TunableBounds.{name = "yellow", lo = 0.0, hi = 1.0, whole = false},
+  TunableBounds.{name = "fog_near", lo = 0.0, hi = 100.0, whole = false},
+  TunableBounds.{name = "fog_far", lo = 1.0, hi = 120.0, whole = false},
+  TunableBounds.{name = "flicker", lo = 0.0, hi = 1.0, whole = false},
+  TunableBounds.{name = "buzz", lo = 0.0, hi = 1.0, whole = false},
+  TunableBounds.{name = "first_person", lo = 0.0, hi = 1.0, whole = true},
+];
+
+// Sets the tunable at `index` (in TUNABLE_BOUNDS) to a value already checked.
+tuning_put :: (t: Tuning, index: int, value: f64) -> Tuning {
+  o := t;
+  if index == 0 { o.walk = f32(value); }
+  else if index == 1 { o.sprint = f32(value); }
+  else if index == 2 { o.jump_speed = f32(value); }
+  else if index == 3 { o.gravity = f32(value); }
+  else if index == 4 { o.max_health = f32(value); }
+  else if index == 5 { o.regen_after = f32(value); }
+  else if index == 6 { o.regen_rate = f32(value); }
+  else if index == 7 { o.man_wander = f32(value); }
+  else if index == 8 { o.man_investigate = f32(value); }
+  else if index == 9 { o.man_search = f32(value); }
+  else if index == 10 { o.man_chase = f32(value); }
+  else if index == 11 { o.sight = f32(value); }
+  else if index == 12 { o.sight_angle = f32(value); }
+  else if index == 13 { o.notice = f32(value); }
+  else if index == 14 { o.search_time = f32(value); }
+  else if index == 15 { o.sniff_every = f32(value); }
+  else if index == 16 { o.patrol_keys = cast(u32) value; }
+  else if index == 17 { o.corners = cast(u32) value; }
+  else if index == 18 { o.sprinkle_damage = f32(value); }
+  else if index == 19 { o.grab_damage = f32(value); }
+  else if index == 20 { o.grab_shove = f32(value); }
+  else if index == 21 { o.grab_reach = f32(value); }
+  else if index == 22 { o.grab_wait = f32(value); }
+  else if index == 23 { o.gloat = f32(value); }
+  else if index == 24 { o.volley_min = f32(value); }
+  else if index == 25 { o.volley_max = f32(value); }
+  else if index == 26 { o.volley_spread = f32(value); }
+  else if index == 27 { o.pellet_speed = f32(value); }
+  else if index == 28 { o.volley_wait = f32(value); }
+  else if index == 29 { o.pellet_dodge = f32(value); }
+  else if index == 30 { o.fudge_start = cast(u32) value; }
+  else if index == 31 { o.fudge_max = cast(u32) value; }
+  else if index == 32 { o.fudge_pickup = cast(u32) value; }
+  else if index == 33 { o.fudge_rate = f32(value); }
+  else if index == 34 { o.fudge_speed = f32(value); }
+  else if index == 35 { o.fudge_range = f32(value); }
+  else if index == 36 { o.fudge_slow = f32(value); }
+  else if index == 37 { o.slowed = f32(value); }
+  else if index == 38 { o.freeze_hits = cast(u32) value; }
+  else if index == 39 { o.fudge_memory = f32(value); }
+  else if index == 40 { o.frozen = f32(value); }
+  else if index == 41 { o.farts_start = cast(u32) value; }
+  else if index == 42 { o.farts_max = cast(u32) value; }
+  else if index == 43 { o.fart_range = f32(value); }
+  else if index == 44 { o.fart_radius = f32(value); }
+  else if index == 45 { o.fart_shove = f32(value); }
+  else if index == 46 { o.confused = f32(value); }
+  else if index == 47 { o.fart_wait = f32(value); }
+  else if index == 48 { o.cloud_life = f32(value); }
+  else if index == 49 { o.jingle_noise = f32(value); }
+  else if index == 50 { o.jingle_wait = f32(value); }
+  else if index == 51 { o.sprint_noise = f32(value); }
+  else if index == 52 { o.fudge_noise = f32(value); }
+  else if index == 53 { o.fridge_noise = f32(value); }
+  else if index == 54 { o.door_noise = f32(value); }
+  else if index == 55 { o.extra_closets = cast(u32) value; }
+  else if index == 56 { o.unlock = f32(value); }
+  else if index == 57 { o.unlock_guard = f32(value); }
+  else if index == 58 { o.puzzle_key = cast(u32) value; }
+  else if index == 59 { o.reach = f32(value); }
+  else if index == 60 { o.key_reach = f32(value); }
+  else if index == 61 { o.backrooms = cast(u32) value; }
+  else if index == 62 { o.loops = cast(u32) value; }
+  else if index == 63 { o.house_size = cast(u32) value; }
+  else if index == 64 { o.key_spread = cast(u32) value; }
+  else if index == 65 { o.earned_weapons = cast(u32) value; }
+  else if index == 66 { o.man_health = f32(value); }
+  else if index == 67 { o.sword_damage = f32(value); }
+  else if index == 68 { o.sword_reach = f32(value); }
+  else if index == 69 { o.sword_wait = f32(value); }
+  else if index == 70 { o.sword_task = cast(u32) value; }
+  else if index == 71 { o.spear_damage = f32(value); }
+  else if index == 72 { o.spear_reach = f32(value); }
+  else if index == 73 { o.spear_wait = f32(value); }
+  else if index == 74 { o.pistol_damage = f32(value); }
+  else if index == 75 { o.pistol_rate = f32(value); }
+  else if index == 76 { o.pistol_speed = f32(value); }
+  else if index == 77 { o.pistol_range = f32(value); }
+  else if index == 78 { o.pistol_ammo = cast(u32) value; }
+  else if index == 79 { o.pistol_max = cast(u32) value; }
+  else if index == 80 { o.pistol_pickup = cast(u32) value; }
+  else if index == 81 { o.pistol_task = cast(u32) value; }
+  else if index == 82 { o.sugar_damage = f32(value); }
+  else if index == 83 { o.sugar_radius = f32(value); }
+  else if index == 84 { o.sugar_speed = f32(value); }
+  else if index == 85 { o.sugar_range = f32(value); }
+  else if index == 86 { o.sugar_wait = f32(value); }
+  else if index == 87 { o.sugar_ammo = cast(u32) value; }
+  else if index == 88 { o.sugar_max = cast(u32) value; }
+  else if index == 89 { o.sugar_pickup = cast(u32) value; }
+  else if index == 90 { o.sugar_task = cast(u32) value; }
+  else if index == 91 { o.minion_count = cast(u32) value; }
+  else if index == 92 { o.minion_first = f32(value); }
+  else if index == 93 { o.minion_every = f32(value); }
+  else if index == 94 { o.minion_growth = f32(value); }
+  else if index == 95 { o.minion_speed = f32(value); }
+  else if index == 96 { o.minion_health = f32(value); }
+  else if index == 97 { o.minion_damage = f32(value); }
+  else if index == 98 { o.minion_bite_wait = f32(value); }
+  else if index == 99 { o.minion_sight = f32(value); }
+  else if index == 100 { o.fudge_minion_damage = f32(value); }
+  else if index == 101 { o.fart_minion_damage = f32(value); }
+  else if index == 102 { o.cone_drop = f32(value); }
+  else if index == 103 { o.cone_boost = f32(value); }
+  else if index == 104 { o.cone_time = f32(value); }
+  else if index == 105 { o.staff_length = f32(value); }
+  else if index == 106 { o.staff_damage = f32(value); }
+  else if index == 107 { o.staff_wait = f32(value); }
+  else if index == 108 { o.staff_minions = cast(u32) value; }
+  else if index == 109 { o.staff_minion_life = f32(value); }
+  else if index == 110 { o.free_roam = cast(u32) value; }
+  else if index == 111 { o.yellow = f32(value); }
+  else if index == 112 { o.fog_near = f32(value); }
+  else if index == 113 { o.fog_far = f32(value); }
+  else if index == 114 { o.flicker = f32(value); }
+  else if index == 115 { o.buzz = f32(value); }
+  else if index == 116 { o.first_person = cast(u32) value; }
+  return o;
+}
+
+tuning_same :: (a: Tuning, b: Tuning) -> bool {
+  return a.walk == b.walk &&
+    a.sprint == b.sprint &&
+    a.jump_speed == b.jump_speed &&
+    a.gravity == b.gravity &&
+    a.max_health == b.max_health &&
+    a.regen_after == b.regen_after &&
+    a.regen_rate == b.regen_rate &&
+    a.man_wander == b.man_wander &&
+    a.man_investigate == b.man_investigate &&
+    a.man_search == b.man_search &&
+    a.man_chase == b.man_chase &&
+    a.sight == b.sight &&
+    a.sight_angle == b.sight_angle &&
+    a.notice == b.notice &&
+    a.search_time == b.search_time &&
+    a.sniff_every == b.sniff_every &&
+    a.patrol_keys == b.patrol_keys &&
+    a.corners == b.corners &&
+    a.sprinkle_damage == b.sprinkle_damage &&
+    a.grab_damage == b.grab_damage &&
+    a.grab_shove == b.grab_shove &&
+    a.grab_reach == b.grab_reach &&
+    a.grab_wait == b.grab_wait &&
+    a.gloat == b.gloat &&
+    a.volley_min == b.volley_min &&
+    a.volley_max == b.volley_max &&
+    a.volley_spread == b.volley_spread &&
+    a.pellet_speed == b.pellet_speed &&
+    a.volley_wait == b.volley_wait &&
+    a.pellet_dodge == b.pellet_dodge &&
+    a.fudge_start == b.fudge_start &&
+    a.fudge_max == b.fudge_max &&
+    a.fudge_pickup == b.fudge_pickup &&
+    a.fudge_rate == b.fudge_rate &&
+    a.fudge_speed == b.fudge_speed &&
+    a.fudge_range == b.fudge_range &&
+    a.fudge_slow == b.fudge_slow &&
+    a.slowed == b.slowed &&
+    a.freeze_hits == b.freeze_hits &&
+    a.fudge_memory == b.fudge_memory &&
+    a.frozen == b.frozen &&
+    a.farts_start == b.farts_start &&
+    a.farts_max == b.farts_max &&
+    a.fart_range == b.fart_range &&
+    a.fart_radius == b.fart_radius &&
+    a.fart_shove == b.fart_shove &&
+    a.confused == b.confused &&
+    a.fart_wait == b.fart_wait &&
+    a.cloud_life == b.cloud_life &&
+    a.jingle_noise == b.jingle_noise &&
+    a.jingle_wait == b.jingle_wait &&
+    a.sprint_noise == b.sprint_noise &&
+    a.fudge_noise == b.fudge_noise &&
+    a.fridge_noise == b.fridge_noise &&
+    a.door_noise == b.door_noise &&
+    a.extra_closets == b.extra_closets &&
+    a.unlock == b.unlock &&
+    a.unlock_guard == b.unlock_guard &&
+    a.puzzle_key == b.puzzle_key &&
+    a.reach == b.reach &&
+    a.key_reach == b.key_reach &&
+    a.backrooms == b.backrooms &&
+    a.loops == b.loops &&
+    a.house_size == b.house_size &&
+    a.key_spread == b.key_spread &&
+    a.earned_weapons == b.earned_weapons &&
+    a.man_health == b.man_health &&
+    a.sword_damage == b.sword_damage &&
+    a.sword_reach == b.sword_reach &&
+    a.sword_wait == b.sword_wait &&
+    a.sword_task == b.sword_task &&
+    a.spear_damage == b.spear_damage &&
+    a.spear_reach == b.spear_reach &&
+    a.spear_wait == b.spear_wait &&
+    a.pistol_damage == b.pistol_damage &&
+    a.pistol_rate == b.pistol_rate &&
+    a.pistol_speed == b.pistol_speed &&
+    a.pistol_range == b.pistol_range &&
+    a.pistol_ammo == b.pistol_ammo &&
+    a.pistol_max == b.pistol_max &&
+    a.pistol_pickup == b.pistol_pickup &&
+    a.pistol_task == b.pistol_task &&
+    a.sugar_damage == b.sugar_damage &&
+    a.sugar_radius == b.sugar_radius &&
+    a.sugar_speed == b.sugar_speed &&
+    a.sugar_range == b.sugar_range &&
+    a.sugar_wait == b.sugar_wait &&
+    a.sugar_ammo == b.sugar_ammo &&
+    a.sugar_max == b.sugar_max &&
+    a.sugar_pickup == b.sugar_pickup &&
+    a.sugar_task == b.sugar_task &&
+    a.minion_count == b.minion_count &&
+    a.minion_first == b.minion_first &&
+    a.minion_every == b.minion_every &&
+    a.minion_growth == b.minion_growth &&
+    a.minion_speed == b.minion_speed &&
+    a.minion_health == b.minion_health &&
+    a.minion_damage == b.minion_damage &&
+    a.minion_bite_wait == b.minion_bite_wait &&
+    a.minion_sight == b.minion_sight &&
+    a.fudge_minion_damage == b.fudge_minion_damage &&
+    a.fart_minion_damage == b.fart_minion_damage &&
+    a.cone_drop == b.cone_drop &&
+    a.cone_boost == b.cone_boost &&
+    a.cone_time == b.cone_time &&
+    a.staff_length == b.staff_length &&
+    a.staff_damage == b.staff_damage &&
+    a.staff_wait == b.staff_wait &&
+    a.staff_minions == b.staff_minions &&
+    a.staff_minion_life == b.staff_minion_life &&
+    a.free_roam == b.free_roam &&
+    a.yellow == b.yellow &&
+    a.fog_near == b.fog_near &&
+    a.fog_far == b.fog_far &&
+    a.flicker == b.flicker &&
+    a.buzz == b.buzz &&
+    a.first_person == b.first_person;
+}
