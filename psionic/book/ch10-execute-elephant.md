@@ -110,6 +110,56 @@ the independently calculated result agrees within the recorded tolerance.
 See the [verification record](../../docs/verification/psionic-ch10-2026-10-29.md)
 for measured results and their numerical limits.
 
+## How fast is it?
+
+Slow. This chapter's path is a correctness reference, and it is timed as one.
+On a Linux machine with an Intel i7-14700K and 125 GB of memory, the sample
+request took:
+
+| Phase | Time |
+| --- | --- |
+| Prepare the request (render, normalize, tokenize 86 tokens) | 0.63 ms |
+| Open the session (hash 18.8 GB, inventory every tensor) | 83.5 s |
+| Execute the decision | 2,092 s, about 35 minutes |
+
+That is about 0.04 prompt tokens per second. The unchanged harness above,
+including its compilation, took 29 minutes 17 seconds on the same machine
+under lighter load. Peak resident memory was about 17.8 GiB, almost
+all of it the mapped checkpoint. Other processes shared the processor; the
+[verification record](../../docs/verification/psionic-ch10-2026-10-29.md)
+lists the load and repeat to reproduce it:
+
+```shell
+psionic/tests/bench_elephant.sh /path/to/elephant-directory
+```
+
+The time goes into arithmetic, not memory. The decision needs about 730
+billion multiply-adds: every weight of the text stack for each of the 86
+tokens, plus one full-vocabulary readout. This chapter's profile widens each
+BF16 weight and accumulates every product in compensated binary64, in one
+thread. That ran at about 0.52 billion multiply-adds per second on one core of
+this machine, which accounts for the measured time. One core reads memory at
+about 13.8 GB/s, so all the weights could be read in under two seconds; the
+compensated sum's fixed order also keeps the compiler from using vector
+instructions.
+
+Three things matter beyond the arithmetic:
+
+- **Opening the session is per process, not per request.** Hashing the
+  checkpoint proves its identity once; chapter 15 keeps an authenticated
+  session resident so later decisions skip those 83.5 seconds.
+- **The shared prefix need not be recomputed.** Here 49 of the 86 tokens are
+  the shared state. A request with several questions computes them once and
+  forks per question, as chapter 8 describes.
+- **A response time below one second needs a GPU.** Chapters 25 and 29 give
+  Coax a compute subset and a CUDA backend. An RTX 4080 has about 16 GB of
+  memory, slightly less than the BF16 weights, so the decision runs layer by
+  layer over the whole prompt, keeps most layers resident and streams the
+  rest over PCIe. These are plans with stated gates, not measured results.
+
+Every faster profile must reproduce this chapter's answer within a stated,
+frozen tolerance (chapter 13). This slow path remains the reference.
+
 ## What the checks establish
 
 Small independent fixtures exercise nonzero recurrent state, rotary positions,

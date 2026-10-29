@@ -27,6 +27,9 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
   C) does platform effects only: lifecycle, Keychain, network, GPU
   bindings. Avoid toolchains outside Coax and the host C compiler. Python
   is tooling only; it is never shipped and never needed at run time.
+  Exception, owner-approved 2026-10-29: the NVIDIA CUDA toolkit (installed
+  through Nix) may compile and profile Coax-generated GPU code. Coax still
+  writes the arithmetic; no cuBLAS, cuDNN or hand-written kernels.
 - **Check first.** Write `#test`/`#forall` checks before the code. Use
   `#authority;` for any file that decides money, admission or policy, and
   run `coax mutate` on it with zero survivors. Don't mark mutants equivalent
