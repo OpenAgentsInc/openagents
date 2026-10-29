@@ -63,6 +63,8 @@ test("optional key backup waits for version-pinned complete NFKC normalization",
   expect(task.acceptance.join(" ")).toContain("Full NormalizationTest")
   expect(task.acceptance.join(" ")).toContain("assigned scalars omitted by Part 1")
   expect(reaches("nip49-primitives", "unicode-nfkc")).toBe(true)
+  expect(reaches("nip49-primitives", "nip49-aead-workspace")).toBe(true)
+  expect(reaches("nip49-backup", "nip49-aead-workspace")).toBe(true)
   expect(reaches("nip49-backup", "unicode-nfkc")).toBe(true)
 })
 

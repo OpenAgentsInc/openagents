@@ -358,7 +358,8 @@
         "crypto-sha256",
         "crypto-chacha20",
         "crypto-target-conformance",
-        "nip49-primitives"
+        "nip49-primitives",
+        "nip49-aead-workspace"
       ]
     },
     {
@@ -464,7 +465,8 @@
         "nip44-v2",
         "unlock-gate-format",
         "unlock-gate-coax",
-        "nip49-primitives"
+        "nip49-primitives",
+        "nip49-aead-workspace"
       ]
     },
     {
@@ -964,7 +966,8 @@
         "unlock-gate-coax",
         "crypto-secret-codegen",
         "ios-key-custody",
-        "nip49-primitives"
+        "nip49-primitives",
+        "nip49-aead-workspace"
       ]
     },
     {
@@ -2847,6 +2850,23 @@
       ]
     },
     {
+      "slug": "nip49-aead-workspace",
+      "parent": "m-key-backup",
+      "title": "XChaCha20-Poly1305 owned scratch and cleanup",
+      "size": "L",
+      "labels": ["nostr", "crypto", "coax"],
+      "body": "Move the experimental NIP-49 AEAD's explicitly named key-derived scratch into caller-owned bounded storage with a reviewed lifecycle and checked host admission. Preserve published XChaCha20-Poly1305 behavior and transactional authentication. Wipe registered secret regions on success, refusal, failure and cooperative cancellation before reporting completion; do not claim hidden stack/register/compiler copies or crash cleanup are erased without separate evidence. This is a prerequisite for the optional NIP-49 primitive task, not production-secret approval.",
+      "files": ["coax/lib/crypto/", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Independent XChaCha20-Poly1305 vectors and tampered ciphertext/tag/AAD/nonce cases pass on checked and release native, actual Wasm and iOS Simulator profiles",
+        "Bounded workspace and target-width address admission refuse missing, overlapping, oversized and wrapping spans; documented caller-owned memory remains valid and stable",
+        "Actual registered workspace and key-derived buffers are wiped on success, authentication failure, effect failure and cooperative cancellation; injected failed wipes remain pending or visibly quarantine output",
+        "Affected Coax authority checks and complete mutation pass with zero survivors; independently review alias, cleanup and publication boundaries without claiming hidden-copy, physical-device or production-secret guarantees"
+      ],
+      "blocked_by": ["crypto-chacha20", "crypto-secure-zero", "crypto-vector-runner"],
+      "blocks": ["nip49-primitives"]
+    },
+    {
       "slug": "nip49-primitives",
       "parent": "m-key-backup",
       "title": "Optional NIP-49 KDF, cipher and normalization primitives",
@@ -2869,7 +2889,8 @@
         "crypto-chacha20",
         "crypto-secure-zero",
         "crypto-vector-runner",
-        "unicode-nfkc"
+        "unicode-nfkc",
+        "nip49-aead-workspace"
       ],
       "blocks": [
         "nip49-backup"
