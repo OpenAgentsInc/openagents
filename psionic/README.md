@@ -28,6 +28,9 @@ round trip. The supported CPU and finite-schema profiles state their limits.
 DeepSeek R1 Qwen distill as a dense CPU reference. [Chapter 57](book/ch057-deepseeks-front-door.md)
 adds typed recipe boundaries, independent plain-run tokenization and a bounded
 UTF-8/DSML streaming protocol with explicit finish handling.
+[Chapter 59](book/ch059-routers-that-balance-themselves.md) supplies DeepSeek’s
+selection-only correction bias, grouped/global routing and complete margin
+comparison records, ahead of chapter 58’s complete V2-Lite decoder.
 
 [Chapters 45a–45c](book/ch045a-original-weights-stay-on-the-gpu.md) add resident
 original 20b CUDA execution, complete greedy Harmony generation and batched

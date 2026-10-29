@@ -1,0 +1,133 @@
+// deepseek-router-cpu-wide-v1. Text routing only; no model or device parity claim.
+#authority;
+DrStatus :: enum u8 {ok;shape;capacity;alias;number;arithmetic;}
+DrProfile :: enum u8 {v2;v3;v41;}
+DrConfig :: struct {profile:DrProfile;k:int;groups:int=1;selected_groups:int=1;scale:f64=1;}
+DrRoute :: struct {status:DrStatus;experts:int;profile:DrProfile;count:int;ids:[8]int;weights:[8]f64;group_count:int;groups:[8]int;has_margin:bool;cutoff:f64;excluded:int=-1;runner:f64;margin:f64;has_group_margin:bool;group_excluded:int=-1;group_margin:f64;}
+DrPick :: struct {count:int;ids:[8]int;runner:int=-1;}
+#load "../../fixtures/deepseek/router-goldens.coax";
+
+#test "routing shape and scale endpoints are admitted before output publication" {
+    c:=DrConfig.{profile=DrProfile.v2,k=1};#assert dr_shape(c,1,0) && !dr_shape(c,0,0) && !dr_shape(c,385,0) && dr_shape(c,384,0);
+    c.k=0;#assert !dr_shape(c,2,0);c.k=9;#assert !dr_shape(c,9,0);c.k=8;#assert dr_shape(c,8,0);c.k=2;#assert !dr_shape(c,1,0);
+    c.k=1;c.groups=0;#assert !dr_shape(c,8,0);c.groups=9;#assert !dr_shape(c,9,0);c.groups=8;#assert dr_shape(c,8,0);c.groups=3;#assert !dr_shape(c,8,0);
+    c.groups=4;c.selected_groups=0;#assert !dr_shape(c,8,0);c.selected_groups=5;#assert !dr_shape(c,8,0);c.selected_groups=4;#assert dr_shape(c,8,0);
+    c.selected_groups=1;c.k=3;#assert !dr_shape(c,8,0);c.k=1;#assert !dr_shape(c,8,8);
+    c.profile=DrProfile.v3;#assert !dr_shape(c,8,0) && dr_shape(c,8,8);c.groups=2;#assert !dr_shape(c,2,2);
+    c.profile=DrProfile.v2;#assert dr_shape(c,2,0);c.profile=DrProfile.v41;#assert !dr_shape(c,2,2);
+    x:=[1]f32.[0];b:[1]f32;out:[1]f64;rank:[1]f64;c=DrConfig.{profile=DrProfile.v41,k=1,scale=65536};
+    #assert dr_route(c,x[..],b[..],out[..],rank[..],false).status==DrStatus.ok;
+    c.scale=65537;#assert dr_route(c,x[..],b[..],out[..],rank[..],false).status==DrStatus.number;
+    c.scale=0;#assert dr_route(c,x[..],b[..],out[..],rank[..],false).status==DrStatus.number;
+    c.scale=-1;#assert dr_route(c,x[..],b[..],out[..],rank[..],false).status==DrStatus.number;
+    c.k=0;#assert dr_route(c,x[..],b[..],out[..],rank[..],false).status==DrStatus.shape;
+}
+#test "stable scoring and maximum IDs preserve small probabilities and exact ties" {
+    #assert abs(dr_log1p(0.01)-0.009950330853168083)<1e-17 && dr_log1p(1e-100)==1e-100 && dr_log1p(0)==0;
+    #assert abs(dr_gate_score(DrProfile.v3,-2)-0.11920292202211755)<1e-16;
+    #assert dr_gate_score(DrProfile.v41,20)>sqrt(20.0) && dr_gate_score(DrProfile.v41,21)==sqrt(21.0);
+    x:=[3]f32.[0,2,2];#assert dr_maximum_id(x[..])==1;x[0]=3;#assert dr_maximum_id(x[..])==0;
+    #assert dr_bits32(0x7f7fffff) && dr_bits32(0xff7fffff) && dr_bits32(0x80000000);
+    #assert dr_bits64(0x7fefffffffffffff) && dr_bits64(0xffefffffffffffff) && dr_bits64(0x8000000000000000);
+}
+
+#test "bias selects experts but unbiased scores alone set their weights" {
+    x:=[4]f32.[-2,0,2,4];bias:=[4]f32.[100,0,0,0];scores:[4]f64;ranked:[4]f64;
+    c:=DrConfig.{profile=DrProfile.v3,k=2};r:=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);
+    #assert r.status==DrStatus.ok && r.ids[0]==0 && r.ids[1]==3 && r.excluded==2 && r.has_margin;
+    #assert abs(r.weights[0]-scores[0]/(scores[0]+scores[3]))<1e-15 && abs(r.weights[0]+r.weights[1]-1)<1e-15;
+    #assert ranked[0]==scores[0]+100 && r.cutoff==ranked[3] && r.runner==ranked[2] && r.margin==r.cutoff-r.runner;
+    bias[0]=200;s:=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);#assert s.weights[0]==r.weights[0] && s.weights[1]==r.weights[1];
+}
+#test "V2 keeps full softmax mass while V41 uses sqrt-softplus scale and epsilon" {
+    x:=[3]f32.[0,0,0];bias:[3]f32;scores:[3]f64;ranked:[3]f64;
+    r:=dr_route(DrConfig.{profile=DrProfile.v2,k=2},x[..],bias[0..<0],scores[..],ranked[..],false);
+    #assert r.status==DrStatus.ok && r.ids[0]==0 && r.ids[1]==1 && r.weights[0]==1.0/3.0 && r.margin==0;
+    c:=DrConfig.{profile=DrProfile.v41,k=2,scale=1.5};r=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);
+    #assert r.status==DrStatus.ok && r.weights[0]==0.75 && r.weights[1]==0.75 && abs(scores[0]-sqrt(log(2.0)))<1e-15;
+    c.k=1;r=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);#assert r.weights[0]==scores[0]*1.5;
+    for i:0..<3 {x[i]=-1000;}c.k=2;r=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);#assert r.status==DrStatus.ok && r.weights[0]==0 && r.weights[1]==0;
+    c.profile=DrProfile.v3;#assert dr_route(c,x[..],bias[..],scores[..],ranked[..],false).status==DrStatus.arithmetic;
+}
+#test "group selection uses two biased leaders for V3 and one unbiased leader for V2" {
+    x:=[8]f32.[0,0,0,0,0,0,0,0];bias:=[8]f32.[8,0,5,5,7,0,0,0];scores:[8]f64;ranked:[8]f64;
+    c:=DrConfig.{profile=DrProfile.v3,k=2,groups=4,selected_groups=1};r:=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);
+    #assert r.status==DrStatus.ok && r.groups[0]==1 && r.ids[0]==2 && r.ids[1]==3 && r.group_excluded==0 && r.group_margin==2;
+    #assert !r.has_margin && r.excluded==-1 && r.margin==0;
+    c.profile=DrProfile.v2;x[0]=8;x[2]=7.75;x[3]=7.75;x[4]=7;r=dr_route(c,x[..],bias[0..<0],scores[..],ranked[..],false);
+    #assert r.status==DrStatus.ok && r.groups[0]==0 && r.ids[0]==0 && r.ids[1]==1 && r.group_excluded==1 && r.group_margin>0;
+}
+#test "failed routing leaves both public diagnostics untouched" {
+    x:=[2]f32.[1,2];bias:[2]f32;scores:=[2]f64.[-7,-7];ranked:=[2]f64.[-9,-9];c:=DrConfig.{profile=DrProfile.v41,k=1};
+    #assert dr_route(c,x[..],bias[..],scores[0..<1],ranked[..],false).status==DrStatus.capacity;
+    #assert dr_route(c,x[..],bias[..],scores[..],ranked[0..<1],false).status==DrStatus.capacity;
+    #assert dr_route(c,x[..],bias[..],scores[..],ranked[..],true).status==DrStatus.alias;
+    #assert !dr_bits32(0x7f800000) && !dr_bits32(0x7fc00001) && !dr_bits32(0xff800000);
+    #assert !dr_bits64(0x7ff0000000000000) && !dr_bits64(0x7ff8000000000001) && !dr_bits64(0xfff0000000000000);
+    for v:scores {#assert v==-7;}for v:ranked {#assert v==-9;}
+}
+dr_bits64 :: (bits:u64)->bool {return (bits&0x7fffffffffffffff)<0x7ff0000000000000;}
+dr_bits32 :: (bits:u32)->bool {return (bits&0x7fffffff)<0x7f800000;}
+dr_finite :: (x:f64)->bool {return dr_bits64(f64_bits(x));}
+dr_finite32 :: (x:f32)->bool {return dr_bits32(f32_bits(x));}
+dr_shape :: (c:DrConfig,n:int,bias:int)->bool {
+    if n<1 || n>384 || c.k<1 || c.k>8 || c.k>n {return false;}
+    if c.groups<1 || c.groups>8 || n%c.groups!=0 || c.selected_groups<1 || c.selected_groups>c.groups {return false;}
+    if c.k>(n/c.groups)*c.selected_groups {return false;}
+    if c.profile==DrProfile.v2 {if bias!=0 {return false;}}else {if bias!=n {return false;}}
+    if c.profile==DrProfile.v41 && c.groups!=1 {return false;}
+    if c.profile==DrProfile.v3 && c.groups>1 && n/c.groups<2 {return false;}
+    return true;
+}
+// Compensated log(1+y), retaining tiny positive y when 1+y rounds to 1.
+dr_log1p :: (y:f64)->f64 {u:=1+y;if u==1 {return y;}return log(u)*(y/(u-1));}
+dr_gate_score :: (profile:DrProfile,x:f64)->f64 {
+    if profile==DrProfile.v3 {a:=abs(x);return exp((x-a)/2)/(1+exp(-a));}
+    if x>20 {return sqrt(x);}return sqrt(dr_log1p(exp(x)));
+}
+// Ascending scans plus a strict comparison give lowest-ID ties, including -0.
+dr_candidate :: (rank:[]f64,allowed:[]u8,prior:[]int)->int {
+    best:=-1;for id:0..<rank.count {used:=false;for p:prior {if p==id {used=true;}}
+        if allowed[id]==1 && !used {if best==-1 {best=id;}else if rank[id]>rank[best] {best=id;}}}return best;
+}
+dr_top :: (rank:[]f64,allowed:[]u8,n:int)->DrPick {
+    r:=DrPick.{};for slot:0..<n {best:=dr_candidate(rank,allowed,r.ids[0..<slot]);if best==-1 {break;}r.ids[slot]=best;r.count+=1;}
+    r.runner=dr_candidate(rank,allowed,r.ids[0..<r.count]);return r;
+}
+dr_maximum_id :: (x:[]f32)->int {best:=0;for i:1..<x.count {if x[i]>x[best] {best=i;}}return best;
+}
+// book:begin route
+dr_route :: (c:DrConfig,logits:[]f32,bias:[]f32,scores:[]f64,ranked:[]f64,overlap:bool)->DrRoute #export_c {
+    n:=logits.count;if !dr_shape(c,n,bias.count) {return DrRoute.{status=DrStatus.shape};}
+    if scores.count<n || ranked.count<n {return DrRoute.{status=DrStatus.capacity};}
+    if overlap {return DrRoute.{status=DrStatus.alias};}
+    if !dr_finite(c.scale) || c.scale<=0 || c.scale>65536 {return DrRoute.{status=DrStatus.number};}
+    for x:logits {if !dr_finite32(x) {return DrRoute.{status=DrStatus.number};}}
+    for x:bias {if !dr_finite32(x) {return DrRoute.{status=DrStatus.number};}}
+    raw:[384]f64;rank:[384]f64;allowed:[384]u8;maximum:=f64(logits[dr_maximum_id(logits)]);
+    total:=0.0;
+    for i:0..<n {raw[i]=ifx c.profile==DrProfile.v2 then exp(f64(logits[i])-maximum) else dr_gate_score(c.profile,f64(logits[i]));total+=raw[i];}
+    for i:0..<n {if c.profile==DrProfile.v2 {raw[i]/=total;}rank[i]=raw[i];if bias.count!=0 {rank[i]+=f64(bias[i]);}allowed[i]=1;}
+    result:=DrRoute.{experts=n,profile=c.profile,count=c.k,group_count=c.selected_groups};
+    group_scores:[8]f64;group_allowed:[8]u8;
+    width:=n/c.groups;
+    for group:0..<c.groups {group_allowed[group]=1;begin:=group*width;leaders:=dr_top(rank[begin..<begin+width],allowed[begin..<begin+width],ifx c.profile==DrProfile.v3 then 2 else 1);
+        for slot:0..<leaders.count {group_scores[group]+=rank[begin+leaders.ids[slot]];}}
+    groups:=dr_top(group_scores[0..<c.groups],group_allowed[0..<c.groups],c.selected_groups);
+    for i:0..<c.selected_groups {result.groups[i]=groups.ids[i];}
+    if groups.runner!=-1 {result.has_group_margin=true;result.group_excluded=groups.runner;result.group_margin=group_scores[groups.ids[c.selected_groups-1]]-group_scores[result.group_excluded];}
+    for id:0..<n {allowed[id]=0;for i:0..<c.selected_groups {if id/(n/c.groups)==result.groups[i] {allowed[id]=1;}}}
+    selected:=dr_top(rank[0..<n],allowed[0..<n],c.k);
+    for slot:0..<c.k {result.ids[slot]=selected.ids[slot];}
+    result.cutoff=rank[result.ids[c.k-1]];
+    if selected.runner!=-1 {result.has_margin=true;result.excluded=selected.runner;result.runner=rank[result.excluded];result.margin=result.cutoff-result.runner;}
+    denominator:=1.0;
+    if c.profile==DrProfile.v3 || (c.profile==DrProfile.v41 && c.k>1) {
+        denominator=0;for slot:0..<c.k {denominator+=raw[result.ids[slot]];}
+        if c.profile==DrProfile.v41 {denominator+=1e-20;}
+        if denominator==0 {return DrRoute.{status=DrStatus.arithmetic};}
+    }
+    for slot:0..<c.k {result.weights[slot]=(raw[result.ids[slot]]/denominator)*c.scale;}
+    for i:0..<n {scores[i]=raw[i];ranked[i]=rank[i];}return result;
+}
+// book:end route

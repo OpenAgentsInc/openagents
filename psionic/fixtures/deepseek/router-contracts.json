@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "profile": "deepseek-router-cpu-wide-v1",
+  "contracts": {
+    "v2": {
+      "source": "https://huggingface.co/deepseek-ai/DeepSeek-V2-Lite-Chat/resolve/85864749cd611b4353ce1decdb286193298f64c7/config.json",
+      "source_sha256": "f346286b0f1c8b044252fd54cb4fa78b9fab6472a6e8bebb9edfe03d414ea03d",
+      "configuration": {
+        "experts": 64,
+        "selected": 6,
+        "score": "softmax",
+        "normalize_selected": false,
+        "scale": 1,
+        "groups": 1,
+        "selected_groups": 1,
+        "bias": false
+      }
+    },
+    "v3": {
+      "source": "https://raw.githubusercontent.com/deepseek-ai/DeepSeek-V3/9b4e9788e4a3a731f7567338ed15d3ec549ce03b/inference/configs/config_671B.json",
+      "source_sha256": "d21d797509598ffaa7c22686abdf3a94e38f31a6193dc158fffe0a6fb6ef5010",
+      "configuration": {
+        "experts": 256,
+        "selected": 8,
+        "score": "sigmoid",
+        "normalize_selected": true,
+        "scale": 2.5,
+        "groups": 8,
+        "selected_groups": 4,
+        "bias": true,
+        "group_score": "two largest biased scores"
+      },
+      "reference_source": {
+        "url": "https://raw.githubusercontent.com/deepseek-ai/DeepSeek-V3/9b4e9788e4a3a731f7567338ed15d3ec549ce03b/inference/model.py",
+        "sha256": "fdb7995bc234badbf0011b5af8cf391be94343abc51305428cb9a04452116f02"
+      }
+    },
+    "v41": {
+      "source": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/config.json",
+      "source_sha256": "2e84f45cf1dac8c7fcbb200e96667d4b913275690668ed496f24c7747207a809",
+      "configuration": {
+        "experts": 384,
+        "selected": 6,
+        "score": "sqrtsoftplus",
+        "normalize_selected_if_k_gt_1": true,
+        "denominator_epsilon": 1e-20,
+        "scale": 1.5,
+        "groups": 1,
+        "selected_groups": 1,
+        "bias": true
+      },
+      "reference_source": {
+        "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/model.py",
+        "sha256": "e5decd76fe70fd56ef2f10124d245c6f64fb6a0003cc9068a1d3182a168b8d2d"
+      }
+    }
+  }
+}

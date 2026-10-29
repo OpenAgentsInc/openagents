@@ -29,6 +29,7 @@
 
 - [56. Execute a DeepSeek R1 distill](ch056-execute-a-deepseek-r1-distill.md)
 - [57. DeepSeek’s front door](ch057-deepseeks-front-door.md)
+- [59. Routers that balance themselves](ch059-routers-that-balance-themselves.md)
 
 - [165. A machine whose state is a trace](ch165-a-machine-whose-state-is-a-trace.md)
 - [166. Attention as exact memory](ch166-attention-as-exact-memory.md)
@@ -42,6 +43,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–10, 12, 26, 30 (Elephant on CUDA), 41–48, 56–57, 165–168 and 172 are
+Chapters 1–10, 12, 26, 30 (Elephant on CUDA), 41–48, 56–57, 59, 165–168 and 172 are
 runnable. Chapter 11, chapters 13–25, 27–29, 31–40 and the remaining outlines
 remain proposed.

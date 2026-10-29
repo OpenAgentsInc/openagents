@@ -1,5 +1,32 @@
 # Invariants
 
+## Psionic DeepSeek routers separate selection bias from combination weights
+
+`psionic/lib/deepseek/router*.coax` owns `deepseek-router-cpu-wide-v1`:
+F32 logits/biases with binary64 scoring and reduction, bounded to 384 experts
+and eight selected experts/groups. V2 retains full-expert softmax mass; V3
+uses sigmoid, selection-only bias and top-two group sums; V4.1 uses global
+square-root-softplus, selection-only bias, its k>1 epsilon normalization and
+route scale. Lowest-ID expert/group ties are explicit. This is a CPU equation
+reference; original model/device arithmetic and upstream top-k tie order
+require separate qualification. The correction vector is supplied, not trained.
+
+Scores and biased scores publish together only after complete validation and
+successful normalization. Failures preserve both public arrays; spare tails
+remain untouched. Each result records expert and group cutoff margins and
+excluded IDs, with explicit flags when no excluded candidate exists. Comparison
+records retain both complete reports and separate ordered-ID agreement, set
+replacement and expert-matched weight L1. Comparisons require unmodified
+successful results for the same request/model/configuration and authenticate
+no identity. The caller owns valid typed allocations/extents, immutable inputs
+and exclusive disjoint outputs; native C observes addresses only.
+
+Check: `psionic/tests/check_deepseek_router.sh --mutate --jobs 8` covers an
+independent Decimal/sort oracle at all original expert dimensions, tiny
+probabilities and near ties, exact boundary checks, native debug/release
+plain/ASan/UBSan and exact book output. See the
+[chapter 59 record](docs/verification/psionic-ch59-2026-10-29.md).
+
 ## Psionic DeepSeek front-door boundaries survive tokenization and streaming
 
 `psionic/lib/deepseek/front*.coax` owns `deepseek-front-v1`: a bounded

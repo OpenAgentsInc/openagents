@@ -79,6 +79,15 @@ typed recipe and chunk-safe DSML protocol parser, with a separately named
 R1 tokenizer adapter. Original V4.1 tokenizer/model qualification remains
 separate; chapter 58 is the next execution rung.
 
+[Chapter 59](../../book/ch059-routers-that-balance-themselves.md) supplies the
+bounded CPU-wide V2/V3/V4.1 router equations, including grouped V3 selection,
+unbiased combination weights, deterministic ties and complete comparison/margin
+records. The original V2-Lite BF16 shards are downloaded and SHA-256 checked
+outside the repository, with pinned metadata retained for chapter 58. Latent
+attention and original full V2 execution remain to be implemented. The
+[arc ledger](../../../docs/verification/deepseek-arc-progress.md) keeps every
+remaining chapter, including 141, explicit.
+
 ## What the old work achieved
 
 - **Oracle capture.** One run on eight rented B200s cost $36.85. It produced

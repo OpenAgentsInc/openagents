@@ -1,0 +1,19 @@
+#import "Basic";
+#load "../lib/deepseek/router-compare.coax";
+// book:begin example
+main :: () {
+    x:=[4]f32.[-2,0,2,4];bias:=[4]f32.[100,0,0,0];scores:[4]f64;ranked:[4]f64;
+    c:=DrConfig.{profile=DrProfile.v3,k=2,scale=2.5};
+    a:=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);#assert a.status==DrStatus.ok;
+    print("V3 selected %, %; correction bias never enters the weights\n",a.ids[0],a.ids[1]);
+    bias[0]=200;b:=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);comparison:=dr_compare(a,b);
+    #assert comparison.identical_ids && comparison.weight_l1==0;
+    print("bias changed, same experts: weight difference %\n",comparison.weight_l1);
+    c.profile=DrProfile.v41;c.scale=1.5;for i:0..<4 {x[i]=0;bias[i]=0;}
+    a=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);#assert a.status==DrStatus.ok;
+    print("V4.1 tied experts %, %; weight each %; cutoff margin %\n",a.ids[0],a.ids[1],a.weights[0],a.margin);
+    x[1]=0.000001f32;b=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);comparison=dr_compare(a,b);
+    print("comparisons retain both expert and group margin records\n");
+    #assert comparison.reference.margin==a.margin && comparison.candidate.margin==b.margin;
+}
+// book:end example

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "profile": "deepseek-router-cpu-wide-v1",
+  "date": "2026-10-29",
+  "compiler": {
+    "version": "coax0 0.23.0",
+    "sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93"
+  },
+  "native_compiler": "gcc (GCC) 15.2.0",
+  "sources": {
+    "psionic/lib/deepseek/router-compare.coax": "f5cda341c4857f60940bc5d3aba26a569272557936d060cfa6ab44a797c30877",
+    "psionic/lib/deepseek/router.coax": "15f140310b242b0bca7a3ff841ad02e1ef20d00637fa7c186772d143e16ceb16",
+    "psionic/fixtures/deepseek/router-goldens.coax": "a1f4fa2733944a453c540c539b9ce7368deee24aeb371cc1d516f5868962a3b4",
+    "psionic/tests/deepseek_router_oracle.py": "82456c79fa259fff7483480a3c181dbb696977e2c546203b920fcaa093f24da0",
+    "psionic/tests/deepseek_router_native.c": "8e4e4fe250e5e6d041246fed24962986a26af2d34a8ce817f3d866e6ecf940b7",
+    "psionic/tests/check_deepseek_router.sh": "ae1316b1b2eb135f7e6fdd1e46b87afcaff4d82dfdaf5375fe757c2fd2616587",
+    "psionic/platform/deepseek-router-memory.c": "0d1838c43ecbb33810812a2f818c4b47a98e94abafc8133c05f26e9b68a82c72",
+    "psionic/platform/deepseek-router-memory.h": "66190262c418a0f90ce6fc3bbd22b1180892bd0e39cf8ed17307b5cbacbf94ab",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/fixtures/deepseek/router-goldens.h": "f423693ce2411cc7b723870f8eb8a74d916aac0c3698a4a502d8d57e5bafd679",
+    "psionic/fixtures/deepseek/router-goldens.json": "ca67fa056112e16bea1a69fd7940644dd3c7c493104f96d37f5c526b8a5754ac",
+    "psionic/fixtures/deepseek/router-contracts.json": "c91dede1561fff553c04422657c96b916800fe6d1084d7a9f12dd07d4d6de955",
+    "psionic/examples/deepseek-router.coax": "be6327607f00d35e5cef4eb1379e1ac8115a7354e067f41909a0e74dee824c01",
+    "psionic/fixtures/deepseek-router.out": "5ba4f9280047fa4eaab4a77809d9b5a0c273dbb53fe0706cdf4dca196e41b02e"
+  },
+  "checks": {
+    "command": "psionic/tests/check_deepseek_router.sh --mutate --jobs 8",
+    "coax_checks_per_mode": 21,
+    "modes": [
+      "debug",
+      "release"
+    ],
+    "native": [
+      "plain",
+      "ASan+UBSan"
+    ],
+    "native_flags": "-std=c11 -O0/-O3 -g -ffp-contract=off -fno-fast-math",
+    "independent_cases": 13,
+    "original_expert_dimensions": [
+      64,
+      256,
+      384
+    ],
+    "mutation": "275 mutants, 275 killed, 0 survived",
+    "score_weight_error": "1e-12 * abs(reference) + 1e-300",
+    "margin_error": "sum of the corresponding score-component error bounds",
+    "exact_ids": true
+  }
+}

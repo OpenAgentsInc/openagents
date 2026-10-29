@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "repo": "deepseek-ai/DeepSeek-V2-Lite-Chat",
+  "revision": "85864749cd611b4353ce1decdb286193298f64c7",
+  "files": [
+    {
+      "name": "model-00001-of-000004.safetensors",
+      "bytes": 8594887408,
+      "sha256": "a314b79a30810b1038f9db08345178e16fb5742aa266c4a3dc05054c59800082"
+    },
+    {
+      "name": "model-00002-of-000004.safetensors",
+      "bytes": 8591757448,
+      "sha256": "b0bd088feada0af954614da3a5b179c4d4d5d8bb2482ec83194d101f3fe91796"
+    },
+    {
+      "name": "model-00003-of-000004.safetensors",
+      "bytes": 8590718520,
+      "sha256": "d31b192e488f0b3a04e007d842c3c9ba5783d944cb1cc27402fe8b8bb837c490"
+    },
+    {
+      "name": "model-00004-of-000004.safetensors",
+      "bytes": 5636263200,
+      "sha256": "304499be0ea06bf8a3937d7a3cc515bc3738dbd288bdd0bbc1b2d3560fce4930"
+    },
+    {
+      "name": "config.json",
+      "bytes": 1522,
+      "sha256": "f346286b0f1c8b044252fd54cb4fa78b9fab6472a6e8bebb9edfe03d414ea03d"
+    },
+    {
+      "name": "model.safetensors.index.json",
+      "bytes": 479924,
+      "sha256": "d2cdb2f325f6682cf3ad1ad2526a9f979d857390b579380c0331d975136e0acf"
+    },
+    {
+      "name": "tokenizer_config.json",
+      "bytes": 1279,
+      "sha256": "31181eaf79394ea26728d95ecb54fe7c8413e6f56085dbabc8b0818134380ec8"
+    }
+  ],
+  "state": "All four original shards downloaded and independently hashed against pinned Hub LFS identities; numerical execution and Coax admission remain pending."
+}

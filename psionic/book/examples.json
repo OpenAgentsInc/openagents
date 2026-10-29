@@ -300,6 +300,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/deepseek-router.coax",
+      "chapter": "psionic/book/ch059-routers-that-balance-themselves.md",
+      "stdout": "psionic/fixtures/deepseek-router.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

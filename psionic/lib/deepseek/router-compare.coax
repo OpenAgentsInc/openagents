@@ -1,0 +1,36 @@
+#load "router.coax";
+#authority;
+// Every comparison retains both complete routing/margin records. Inputs are
+// successful, unmodified results for the same request/model/configuration.
+DrComparison :: struct {status:DrStatus;reference:DrRoute;candidate:DrRoute;identical_ids:bool;changed:int;weight_l1:f64;}
+#test "comparisons retain both near-tie margins and match weights by expert ID" {
+    x:=[3]f32.[1,1,0];bias:[3]f32;scores:[3]f64;ranked:[3]f64;c:=DrConfig.{profile=DrProfile.v3,k=2};
+    a:=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);bias[1]=0.000001f32;
+    b:=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);r:=dr_compare(a,b);
+    #assert r.status==DrStatus.ok && !r.identical_ids && r.changed==0 && r.weight_l1==0;
+    #assert r.reference.ids[0]==0 && r.candidate.ids[0]==1 && r.reference.margin==a.margin && r.candidate.margin==b.margin;
+    c.k=1;a=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);bias[1]=0;bias[0]=0.000001f32;b=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);r=dr_compare(a,b);
+    #assert r.status==DrStatus.ok && r.changed==1 && r.weight_l1==2 && r.reference.margin>0 && r.candidate.margin>0;
+    #assert dr_compare(a,a).identical_ids && dr_compare(a,a).weight_l1==0;
+    c.scale=2;b=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);r=dr_compare(a,b);#assert r.status==DrStatus.ok && r.weight_l1==3 && r.changed==1;
+    a=b;c.scale=1;b=dr_route(c,x[..],bias[..],scores[..],ranked[..],false);r=dr_compare(a,b);#assert r.weight_l1==1 && r.changed==0 && r.identical_ids;
+    b.status=DrStatus.number;#assert dr_compare(a,b).status==DrStatus.shape;b=a;a.status=DrStatus.shape;#assert dr_compare(a,b).status==DrStatus.shape;
+}
+#test "mismatched reports and invalid counts refuse before indexing" {
+    a:=DrRoute.{experts=2,count=1};b:=a;b.experts=3;#assert dr_compare(a,b).status==DrStatus.shape;
+    b=a;b.count=2;#assert dr_compare(a,b).status==DrStatus.shape;b=a;b.profile=DrProfile.v41;#assert dr_compare(a,b).status==DrStatus.shape;
+    a.count=0;b=a;#assert dr_compare(a,b).status==DrStatus.shape;a.count=9;b=a;#assert dr_compare(a,b).status==DrStatus.shape;
+    a.count=8;a.experts=8;b=a;#assert dr_compare(a,b).status==DrStatus.ok;
+}
+// book:begin compare
+dr_compare :: (a:DrRoute,b:DrRoute)->DrComparison #export_c {
+    if a.status!=DrStatus.ok || b.status!=DrStatus.ok || a.experts!=b.experts || a.count!=b.count || a.profile!=b.profile || a.count<1 || a.count>8 {return DrComparison.{status=DrStatus.shape};}
+    r:=DrComparison.{reference=a,candidate=b,identical_ids=true};
+    for i:0..<a.count {if a.ids[i]!=b.ids[i] {r.identical_ids=false;}
+        match:=-1;for j:0..<b.count {if a.ids[i]==b.ids[j] {match=j;}}
+        if match==-1 {r.changed+=1;r.weight_l1+=a.weights[i];}else {r.weight_l1+=abs(a.weights[i]-b.weights[match]);}
+    }
+    for j:0..<b.count {found:=false;for i:0..<a.count {if b.ids[j]==a.ids[i] {found=true;}}if !found {r.weight_l1+=b.weights[j];}}
+    return r;
+}
+// book:end compare

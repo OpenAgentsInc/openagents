@@ -1,0 +1,4 @@
+V3 selected 0, 3; correction bias never enters the weights
+bias changed, same experts: weight difference 0.0
+V4.1 tied experts 0, 1; weight each 0.75; cutoff margin 0.0
+comparisons retain both expert and group margin records
