@@ -1683,7 +1683,7 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
   return 37;
 }
 
-#test "/signin asks who is signed in, then shows a code, polls it, and signs in" {
+#test "/login asks who is signed in, then shows a code, polls it, and signs in" {
   s: [1] PrivateState;
   out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   coaxial_private_page(s[..], 2);
@@ -1698,7 +1698,7 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
   #assert s[0].code_state == CODE_ASKING;
   coaxial_private_posted(s[..], 2);
   pv_answer(s[..], 2, PV_CODE_ANSWER);
-  #assert s[0].qr_want && s[0].code_n == 96 && s[0].poll_n == 64;
+  #assert s[0].qr_want && s[0].code_n == 95 && s[0].poll_n == 64;
   #assert cast(string) s[0].code_url[0..<s[0].code_n] == "https://openagents.com/login#c=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
   coaxial_private_qr(s[..], 0, pv_fake_qr(s[..]));
   #assert s[0].code_state == CODE_SHOWN && !s[0].qr_want && s[0].qr_size == 37;
@@ -1742,7 +1742,7 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
   #assert s[0].me_status == -1 && s[0].code_state == CODE_NONE && s[0].line_n == 0;
 }
 
-#test "/signin: an expired code offers NEW CODE; a refused grid is no code" {
+#test "/login: an expired code offers NEW CODE; a refused grid is no code" {
   s: [1] PrivateState;
   out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   coaxial_private_page(s[..], 2);
