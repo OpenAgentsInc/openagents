@@ -32,9 +32,11 @@ gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$im
   --default-buckets-behavior REGIONAL_USER_OWNED_BUCKET > "$stage/build.log" 2>&1 || { tail -30 "$stage/build.log"; exit 1; }
 admins="$(grep -v '^#' "$here/admins.conf" | grep -E '^[0-9a-f]{64}$' | paste -sd, - || true)"
 runners="$(grep -v '^#' "$here/runners.conf" 2>/dev/null | grep -E '^[0-9a-f]{64}$' | paste -sd, - || true)"
+# Our team (team.conf): kind:value,... ; its visits are our own testing, not usage.
+team="$(grep -v '^#' "$here/team.conf" 2>/dev/null | awk 'NF == 2 && ($1 == "player" || $1 == "email_sha256") { print $1 ":" $2 }' | paste -sd, - || true)"
 
 deploy() {  # service secret host agent-projects-secret runner-service drops-folder
-  local secrets="OA_API_DATABASE=$2:latest" env="^@^OA_ADMIN_PUBKEYS=$admins@OA_AGENT_RUNNER_PUBKEYS=$runners@OA_API_ORIGIN=https://$3@OA_DROPS_BUCKET=openagentsgemini-project-drops@OA_DROPS_PREFIX=$6" wake
+  local secrets="OA_API_DATABASE=$2:latest" env="^@^OA_ADMIN_PUBKEYS=$admins@OA_AGENT_RUNNER_PUBKEYS=$runners@OA_TEAM=$team@OA_API_ORIGIN=https://$3@OA_DROPS_BUCKET=openagentsgemini-project-drops@OA_DROPS_PREFIX=$6" wake
   if gcloud secrets describe "$4" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AGENT_PROJECTS=$4:latest"; fi
   wake="$(gcloud run services describe "$5" --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
   [[ -n "$wake" ]] && env+="@OA_AGENT_WAKE_URL=$wake/wake"

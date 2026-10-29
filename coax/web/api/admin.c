@@ -8,10 +8,12 @@
 //                                              good once; sets the oa_admin cookie
 //                                              (HttpOnly, Secure, SameSite=Strict, /api/admin)
 //                                              and sends the browser to /admin/analytics
-//                                              (?next=chat: to /chat; the cookie opens /api/chat too)
+//                                              (?next=chat: to /chat; the cookie opens /api/chat too);
+//                                              and oa_team=1 (Path=/, two years): the team's browser
 //   GET /api/admin/logout                      ends that session
-//   GET /api/admin/analytics?view=overview|sessions|session&days=N&space=web|kiki|dev|all&auto=1&sid=S
-//                                              the reports, for admin.coax; a cookie or an
+//   GET /api/admin/analytics?view=overview|sessions|session&days=N&space=web|kiki|dev|all&auto=1&team=1&sid=S
+//                                              the reports, for admin.coax (our team's own testing,
+//                                              auto = 'team', left out unless team=1); a cookie or an
 //                                              Authorization: Nostr header for this exact URL
 //   GET /api/admin/reports, POST .../<kind>/<ref>/hide|keep|restore
 //                                              Hecate's Cemetery's review queue (/admin/reports)
@@ -142,7 +144,8 @@ static void login(const request *q, PGconn *db) {
   // and /api/chat (chat.c), the admins' chat with a Claude agent.
   snprintf(headers, sizeof headers, "Location: %s\r\nSet-Cookie: oa_admin=%s; Path=/api/admin; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
            "Set-Cookie: oa_admin=%s; Path=/api/drops; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
-           "Set-Cookie: oa_admin=%s; Path=/api/chat; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n",
+           "Set-Cookie: oa_admin=%s; Path=/api/chat; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
+           TEAM_COOKIE,   // this browser's later visits, logged out too, are our own testing (analytics.c)
            !strcmp(next, "chat") ? "/chat" : "/admin/analytics",
            token, SESSION_HOURS * 3600, token, SESSION_HOURS * 3600, token, SESSION_HOURS * 3600);
   api_log("admin signed in: %.12s", ev.pubkey);
@@ -214,20 +217,23 @@ static void section(out_buf *o, PGconn *db, const char *title, const char *flags
 }
 
 // The sessions in the filter: s every session with events since $1 in space
-// $2 (or all), k those kept ($3: automated ones too), e their events.
+// $2 (or all), k those kept ($3: automated ones too; $4: our team's own
+// testing too, auto = 'team', migrations/0037_analytics_team.sql), e their events.
 #define KEPT \
   "WITH s AS (SELECT sid, min(ms) AS first_ms, max(ms) AS last_ms, min(space) AS space, count(*) AS n, " \
-  "  bool_or(auto IS NOT NULL OR (ev = 'session-start' AND p ? 'agent')) AS automated " \
+  "  bool_or((auto IS NOT NULL AND auto <> 'team') OR (ev = 'session-start' AND p ? 'agent')) AS automated, " \
+  "  coalesce(bool_or(auto = 'team'), false) AS team " \
   "  FROM analytics.events WHERE ms >= $1::bigint AND ($2 = 'all' OR space = $2) GROUP BY sid), " \
-  "k AS (SELECT * FROM s WHERE $3::boolean OR NOT automated), " \
+  "k AS (SELECT * FROM s WHERE ($3::boolean OR NOT automated) AND ($4::boolean OR NOT team)), " \
   "e AS (SELECT x.* FROM analytics.events x JOIN k USING (sid) WHERE x.ms >= $1::bigint) "
 // The playtesters in the filter (after KEPT): one row a join, so a person
 // who came back counts once among the people and again among the visits.
-// An automated one (its own mark, or its session's) counts only with $3.
+// An automated one (its own mark, or its session's) counts only with $3, the team's only with $4.
 #define PLAYTESTERS \
   ", pt AS (SELECT t.email FROM analytics.playtesters t " \
   "  WHERE (CASE WHEN t.at < 1e11 THEN t.at * 1000 ELSE t.at END) >= $1::bigint AND ($2 = 'all' OR t.space = $2) " \
-  "  AND ($3::boolean OR (t.auto IS NULL AND NOT EXISTS (SELECT 1 FROM s WHERE s.sid = t.sid AND s.automated)))) "
+  "  AND ($3::boolean OR ((t.auto IS NULL OR t.auto = 'team') AND NOT EXISTS (SELECT 1 FROM s WHERE s.sid = t.sid AND s.automated)))" \
+  "  AND ($4::boolean OR (t.auto IS DISTINCT FROM 'team' AND NOT EXISTS (SELECT 1 FROM s WHERE s.sid = t.sid AND s.team)))) "
 #define CHI(ms) "to_char(to_timestamp((" ms ") / 1000.0) AT TIME ZONE 'America/Chicago', 'MM-DD HH24:MI')"
 // The flow's steps, as the playtest's funnel counts them.
 #define STEP_OF \
@@ -252,44 +258,46 @@ static void overview(out_buf *o, PGconn *db, const char *const *f) {
     "UNION ALL SELECT 'Errors', count(*)::text FROM e WHERE ev = 'error' "
     "UNION ALL SELECT 'Playtesters', count(DISTINCT lower(email))::text FROM pt "
     "UNION ALL SELECT 'Playtester visits', count(*)::text FROM pt "
-    "UNION ALL SELECT 'Automated, ' || CASE WHEN $3::boolean THEN 'counted' ELSE 'left out' END, count(*)::text FROM s WHERE automated", 3, f);
+    "UNION ALL SELECT 'Automated, ' || CASE WHEN $3::boolean THEN 'counted' ELSE 'left out' END, count(*)::text FROM s WHERE automated "
+    "UNION ALL SELECT 'Our team, ' || CASE WHEN $4::boolean THEN 'counted' ELSE 'left out' END, count(*)::text FROM s WHERE team AND NOT automated", 4, f);
   section(o, db, "FUNNEL", "", "STEP|SESSIONS|OF ALL", KEPT
     ", steps(i, label) AS (SELECT i, (" STEP_NAMES ")[i] FROM generate_series(1, 9) i), "
     "reach AS (SELECT sid, max(" STEP_OF ") AS far FROM e GROUP BY sid) "
     "SELECT initcap(label), count(r.sid)::text, CASE WHEN (SELECT count(*) FROM reach) > 0 "
     "  THEN round(100.0 * count(r.sid) / (SELECT count(*) FROM reach))::text || '%' ELSE '-' END "
-    "FROM steps LEFT JOIN reach r ON r.far >= steps.i GROUP BY i, label ORDER BY i", 3, f);
+    "FROM steps LEFT JOIN reach r ON r.far >= steps.i GROUP BY i, label ORDER BY i", 4, f);
   section(o, db, "WHERE THEY STOPPED", "", "LAST THING DONE|SESSIONS", KEPT
     "SELECT ev, count(*)::text FROM (SELECT DISTINCT ON (sid) sid, ev FROM e "
     "  WHERE ev NOT IN ('alive', 'hidden', 'visible', 'resize', 'world-leave', 'page-leave', 'session-end', 'error') "
-    "  ORDER BY sid, coalesce(ct, ms) DESC, id DESC) l GROUP BY ev ORDER BY count(*) DESC LIMIT 15", 3, f);
+    "  ORDER BY sid, coalesce(ct, ms) DESC, id DESC) l GROUP BY ev ORDER BY count(*) DESC LIMIT 15", 4, f);
   section(o, db, "BY DAY", "", "DAY|SESSIONS|VISITORS|EVENTS", KEPT
     "SELECT to_char(to_timestamp(k.first_ms / 1000.0) AT TIME ZONE 'America/Chicago', 'YYYY-MM-DD') AS day, count(*)::text, "
     "  count(DISTINCT st.p->>'pid')::text, sum(k.n)::text "
     "FROM k LEFT JOIN LATERAL (SELECT p FROM e WHERE e.sid = k.sid AND e.ev = 'session-start' LIMIT 1) st ON true "
-    "GROUP BY day ORDER BY day DESC LIMIT 60", 3, f);
+    "GROUP BY day ORDER BY day DESC LIMIT 60", 4, f);
   section(o, db, "WHERE THEY CAME FROM", "", "FROM|SESSIONS", KEPT
     "SELECT coalesce(nullif(p->>'ref', ''), 'direct'), count(*)::text FROM e WHERE ev = 'session-start' "
-    "GROUP BY 1 ORDER BY count(*) DESC LIMIT 15", 3, f);
+    "GROUP BY 1 ORDER BY count(*) DESC LIMIT 15", 4, f);
   section(o, db, "PAGES", "", "PAGE|VIEWS", KEPT
     "SELECT coalesce(nullif(p->>'path', ''), page), count(*)::text FROM e WHERE ev IN ('page-view', 'landing') "
-    "GROUP BY 1 ORDER BY count(*) DESC LIMIT 15", 3, f);
+    "GROUP BY 1 ORDER BY count(*) DESC LIMIT 15", 4, f);
   section(o, db, "PLACES", "", "COUNTRY|PLACE|SESSIONS", KEPT
     "SELECT coalesce(x.region, '?'), coalesce(initcap(x.city), '') || coalesce(', ' || x.subdivision, ''), count(*)::text "
-    "FROM k JOIN analytics.sessions x USING (sid) GROUP BY 1, 2 ORDER BY count(*) DESC LIMIT 15", 3, f);
+    "FROM k JOIN analytics.sessions x USING (sid) GROUP BY 1, 2 ORDER BY count(*) DESC LIMIT 15", 4, f);
   section(o, db, "DEVICES", "", "SYSTEM|BROWSER|PHONE|SESSIONS", KEPT
     "SELECT coalesce(p->>'os', '?'), coalesce(regexp_replace(p->>'browser', ' [0-9.]+$', ''), '?'), "
     "  CASE WHEN p->>'mobile' = 'true' THEN 'phone' ELSE '' END, count(*)::text "
-    "FROM e WHERE ev = 'session-start' GROUP BY 1, 2, 3 ORDER BY count(*) DESC LIMIT 15", 3, f);
+    "FROM e WHERE ev = 'session-start' GROUP BY 1, 2, 3 ORDER BY count(*) DESC LIMIT 15", 4, f);
   section(o, db, "ERRORS", "", "MESSAGE|WHERE|TIMES|LAST", KEPT
     "SELECT coalesce(p->>'msg', ''), coalesce(p->>'src', '') || coalesce(':' || (p->>'line'), ''), count(*)::text, " CHI("max(ms)") " "
-    "FROM e WHERE ev = 'error' GROUP BY 1, 2 ORDER BY max(ms) DESC LIMIT 20", 3, f);
+    "FROM e WHERE ev = 'error' GROUP BY 1, 2 ORDER BY max(ms) DESC LIMIT 20", 4, f);
   section(o, db, "WHAT THEY SAID AND TYPED", "s", "SESSION|WHEN|WHERE|WORDS", KEPT
-    "SELECT sid, " CHI("ms") ", ev, p->>'text' FROM e WHERE p ? 'text' ORDER BY ms DESC LIMIT 100", 3, f);
+    "SELECT sid, " CHI("ms") ", ev, p->>'text' FROM e WHERE p ? 'text' ORDER BY ms DESC LIMIT 100", 4, f);
   section(o, db, "SURVEY ANSWERS", "s", "SESSION|WHEN|QUESTION|ANSWER",
     "SELECT coalesce(sid, ''), " CHI("CASE WHEN at < 1e11 THEN at * 1000 ELSE at END") ", q, coalesce(a #>> '{}', '') || CASE WHEN skip THEN ' (skipped)' ELSE '' END "
     "FROM analytics.survey_answers WHERE (CASE WHEN at < 1e11 THEN at * 1000 ELSE at END) >= $1::bigint AND ($2 = 'all' OR space = $2) "
-    "ORDER BY at DESC LIMIT 100", 2, f);
+    "AND ($4::boolean OR auto IS DISTINCT FROM 'team') AND $3::boolean IS NOT NULL "
+    "ORDER BY at DESC LIMIT 100", 4, f);
 }
 
 static void sessions(out_buf *o, PGconn *db, const char *const *f) {
@@ -298,12 +306,12 @@ static void sessions(out_buf *o, PGconn *db, const char *const *f) {
     "  round((k.last_ms - k.first_ms) / 60000.0, 1)::text, (" STEP_NAMES ")[far.far], "
     "  coalesce(x.region, '') || coalesce(' ' || initcap(x.city), ''), "
     "  coalesce(st.p->>'os', '') || coalesce(' ' || regexp_replace(st.p->>'browser', ' [0-9.]+$', ''), '') || CASE WHEN st.p->>'mobile' = 'true' THEN ' phone' ELSE '' END, "
-    "  CASE WHEN k.automated THEN coalesce(st.p->>'agent', 'yes') ELSE '' END "
+    "  CASE WHEN k.automated THEN coalesce(st.p->>'agent', 'yes') WHEN k.team THEN 'our team' ELSE '' END "
     "FROM k LEFT JOIN analytics.sessions x USING (sid) "
     "LEFT JOIN LATERAL (SELECT p FROM e WHERE e.sid = k.sid AND e.ev = 'session-start' LIMIT 1) st ON true "
     "LEFT JOIN LATERAL (SELECT page FROM e WHERE e.sid = k.sid ORDER BY coalesce(ct, ms), id LIMIT 1) fp ON true "
     "LEFT JOIN LATERAL (SELECT max(" STEP_OF ") AS far FROM e WHERE e.sid = k.sid) far ON true "
-    "ORDER BY k.first_ms DESC LIMIT 300", 3, f);
+    "ORDER BY k.first_ms DESC LIMIT 300", 4, f);
 }
 
 static void one_session(out_buf *o, PGconn *db, const char *sid) {
@@ -326,18 +334,19 @@ static void one_session(out_buf *o, PGconn *db, const char *sid) {
 }
 
 static void reports(const request *q, PGconn *db) {
-  char view[24], days[12], space[12], autos[4], sid[96];
+  char view[24], days[12], space[12], autos[4], team[4], sid[96];
   api_query(q, "view", view, sizeof view);
   api_query(q, "days", days, sizeof days);
   api_query(q, "space", space, sizeof space);
   api_query(q, "auto", autos, sizeof autos);
+  api_query(q, "team", team, sizeof team);   // our own testing: left out unless team=1
   api_query(q, "sid", sid, sizeof sid);
   long d = days[0] ? strtol(days, NULL, 10) : 7;
   if (d < 0 || d > 3650) d = 7;
   char from[32];
   snprintf(from, sizeof from, "%lld", d == 0 ? 0LL : (long long)api_now_ms() - d * 86400000LL);
   if (strcmp(space, "web") && strcmp(space, "kiki") && strcmp(space, "dev")) snprintf(space, sizeof space, "all");
-  const char *f[3] = {from, space, !strcmp(autos, "1") ? "true" : "false"};
+  const char *f[4] = {from, space, !strcmp(autos, "1") ? "true" : "false", !strcmp(team, "1") ? "true" : "false"};
   out_buf o = {0};
   if (!strcmp(view, "session")) {
     for (const char *c = sid; *c; c++)

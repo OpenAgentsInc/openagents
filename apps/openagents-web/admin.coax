@@ -34,9 +34,10 @@ AD_HTTP :: 512;            // + id: an HTTP answer (coax/web/host.js)
 AD_NAVIGATE :: 1;
 
 AD_OVERVIEW :: 0; AD_SESSIONS :: 1; AD_SESSION :: 2;
-AD_CHIPS :: 15;
-AD_CHIP_LABELS :: [15] string.["OVERVIEW", "SESSIONS", "1 DAY", "7 DAYS", "30 DAYS", "ALL TIME", "ALL", "WEB", "KIKI", "DEV",
-                              "AUTOMATED", "BACK", "LOG OUT", "REPORTS", "ANALYTICS"];
+AD_CHIPS :: 16;
+AD_CHIP_LABELS :: [16] string.["OVERVIEW", "SESSIONS", "1 DAY", "7 DAYS", "30 DAYS", "ALL TIME", "ALL", "WEB", "KIKI", "DEV",
+                              "AUTOMATED", "BACK", "LOG OUT", "REPORTS", "ANALYTICS", "OUR TEAM"];
+AD_CHIP_ORDER :: [16] int.[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 11, 12, 13, 14];   // OUR TEAM sits beside AUTOMATED
 AD_DAYS :: [4] string.["1", "7", "30", "0"];
 AD_SPACES :: [4] string.["all", "web", "kiki", "dev"];
 AD_CHIP :: 100000;         // hot: AD_CHIP + a chip, or a row's index, AD_ACT + a row's index * 4 + its action, or -1
@@ -54,6 +55,7 @@ AdminState :: struct {
   said: int;                   // what the last decision did: AD_ACT_* + 1, -1 not done, 0 nothing yet
   width: f32; height: f32; d: f32;
   view: int; days: int; space: int; autos: bool;
+  team: bool;                  // count our team's own testing too (off: the server leaves it out)
   sid: [96] u8; sid_n: int;
   status: int;                 // -1 nothing asked yet, 0 waiting, else the last answer's HTTP status
   ask: [AD_ASK] u8; ask_n: int;   // a request for the face to send
@@ -160,6 +162,7 @@ ad_ask :: (s: [] AdminState) {
     n = ad_put(s, n, "&days="); n = ad_put(s, n, AD_DAYS[s[0].days]);
     n = ad_put(s, n, "&space="); n = ad_put(s, n, AD_SPACES[s[0].space]);
     n = ad_put(s, n, ifx s[0].autos then "&auto=1" else "&auto=0");
+    if s[0].team { n = ad_put(s, n, "&team=1"); }
   }
   s[0].ask_n = n;
   ad_waiting(s);
@@ -218,9 +221,10 @@ ad_layout :: (s: [] AdminState) -> AdLayout {
   cap := 7.5 * d;
   x0 := (m + 18) * d; right := (w - m - 18) * d;
   x := x0; y := (m + 76) * d;
-  for i: 0..<AD_CHIPS {
+  for o: 0..<AD_CHIPS {
+    i := AD_CHIP_ORDER[o];
     l.shown[i] = ifx s[0].page == AD_REPORTS then i == 12 || i == 14
-                 else i != 14 && (i != 11 || s[0].view == AD_SESSION) && (s[0].view != AD_SESSION || i < 2 || i > 10);
+                 else i != 14 && (i != 11 || s[0].view == AD_SESSION) && (s[0].view != AD_SESSION || i < 2 || (i > 10 && i != 15));
     if !l.shown[i] { continue; }
     gap := ifx i == 2 || i == 6 || i == 10 || i == 12 || i == 13 then 22.0f32 else 6.0f32;   // the groups apart
     cw := chip_width(AD_CHIP_LABELS[i], cap, p);
@@ -290,7 +294,7 @@ ad_header :: (out: [] f32, at: int, s: [] AdminState, l: AdLayout, p: Pen) -> in
   for i: 0..<AD_CHIPS {
     if !l.shown[i] { continue; }
     on := (i == 0 && s[0].view == AD_OVERVIEW) || (i == 1 && s[0].view == AD_SESSIONS) || (i >= 2 && i <= 5 && s[0].days == i - 2)
-       || (i >= 6 && i <= 9 && s[0].space == i - 6) || (i == 10 && s[0].autos);
+       || (i >= 6 && i <= 9 && s[0].space == i - 6) || (i == 10 && s[0].autos) || (i == 15 && s[0].team);
     k := ifx on then orange else ifx s[0].hot == AD_CHIP + i then white else dim;
     v = chip(out, v, AD_CHIP_LABELS[i], l.chips[i].x0, l.chips[i].y1 - 5 * d, cap, k, p);
   }
@@ -469,6 +473,7 @@ ad_act :: (s: [] AdminState, target: int) {
   else if i >= 2 && i <= 5 { s[0].days = i - 2; }
   else if i >= 6 && i <= 9 { s[0].space = i - 6; }
   else if i == 10 { s[0].autos = !s[0].autos; }
+  else if i == 15 { s[0].team = !s[0].team; }
   else if i == 11 { ad_back(s); return; }
   else if i == 13 || i == 14 || i == 12 {
     url := ifx i == 13 then "/admin/reports" else ifx i == 14 then "/admin/analytics" else "/api/admin/logout";
@@ -585,6 +590,24 @@ AD_FIXTURE :: "200\n#SUMMARY||WHAT|COUNT\nSessions|4\nVisitors|3\n#SESSIONS|s|SE
   #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/analytics?view=overview&days=30&space=kiki&auto=1";
   ad_act(s[..], AD_CHIP + 12);
   #assert s[0].action == AD_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/api/admin/logout";
+}
+
+#test "our team's own testing is left out unless OUR TEAM is on; the chip sits beside AUTOMATED" {
+  s: [1] AdminState; data: [AD_TEST_DATA] u8; s[0].data = data[..];
+  out: [AD_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n0 := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, false);
+  #assert !s[0].team && cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/analytics?view=overview&days=7&space=all&auto=0";
+  ad_answer(s[..], AD_FIXTURE);
+  l := ad_layout(s[..]);
+  #assert l.shown[15] && l.chips[15].x0 > l.chips[10].x0 && l.chips[15].x0 < l.chips[12].x0;
+  cx := (l.chips[15].x0 + l.chips[15].x1) * 0.5; cy := (l.chips[15].y0 + l.chips[15].y1) * 0.5;
+  #assert ad_hit(s[..], cx, cy) == AD_CHIP + 15;
+  ad_act(s[..], AD_CHIP + 15);
+  #assert s[0].team && cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/analytics?view=overview&days=7&space=all&auto=0&team=1";
+  ad_act(s[..], AD_CHIP + 1);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/analytics?view=sessions&days=7&space=all&auto=0&team=1";
+  ad_act(s[..], AD_CHIP + 15);
+  #assert !s[0].team && cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/analytics?view=sessions&days=7&space=all&auto=0";
 }
 
 AD_QUEUE :: "200\n#OPEN REPORTS|aw|KIND|WHICH|REPORTS|FIRST|WHAT IT SAYS|WHY\nnote|42|3|10-29 08:00|Guest AB12: rude words|rude\n#DECIDED|rw|KIND|WHICH|DECISION|WHEN|BY|WHAT IT SAID|RESTORE\nchat|7|HIDDEN|10-29 07:00|9f4b4c7e|Guest CD34: a line|yes\nnote|5|KEPT|10-29 06:00|9f4b4c7e|Guest EF56: fine|\n";

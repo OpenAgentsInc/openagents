@@ -51,7 +51,7 @@ page or `/` is the Kiki flow).
 | `page` | `kiki`, or main's world name (`haunt`) or file name; ≤ 32 chars | page |
 | `ct` | the page's own clock, ms (orders a session's steps) | page |
 | `p` | ≤ 16 props, keys `^[A-Za-z][A-Za-z0-9_]{0,23}$`, strings ≤ 80, `text` ≤ 500 kept only with `consent: true` | page, cleaned by server |
-| `auto` | the automated tool: header `X-Verse-Automation`, cookie `verse-automation`, or the body's `auto: "webdriver"` | server |
+| `auto` | the automated tool: header `X-Verse-Automation`, cookie `verse-automation`, or the body's `auto: "webdriver"`; or `team` for our own testing (openagents.com only: cookie `oa_team`, an admin's key or login, a player or email in `coax/web/api/team.conf`, or a device seen in a team session; `migrations/0037_analytics_team.sql`) | server |
 
 Limits: 50 events a batch, 5,000 per session per server run. A headless or
 robot User-Agent (`bot_agent()`, a long regex of crawlers and headless

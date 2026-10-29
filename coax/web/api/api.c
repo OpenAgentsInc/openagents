@@ -6,11 +6,13 @@
 //
 //   api [--listen HOST:PORT] [--migrations DIR]
 //   OA_API_DATABASE   a libpq connection string (Secret Manager on Cloud Run)
+//   OA_TEAM           our team (team.conf as kind:value,...): its visits are testing, not usage (analytics.c)
 //   PORT              0.0.0.0:$PORT when set (Cloud Run)
 //
 // On start it applies the migrations it was shipped with (DIR/*.sql, in name
 // order, each once, in a transaction, under an advisory lock so two
-// instances never race) and records them in schema_migrations.
+// instances never race) and records them in schema_migrations; then it
+// writes the team into analytics.team and marks its sessions (analytics.c).
 //
 // Routes:
 //   GET  /api/playtest/health      a database round trip
@@ -162,6 +164,7 @@ static bool migrate(void) {
     }
     free(names[i]);
   }
+  if (ok) analytics_team_init(c);   // under the same lock: two instances never backfill at once
   exec_ok(c, "SELECT pg_advisory_unlock(7731001)");
   return ok;
 }

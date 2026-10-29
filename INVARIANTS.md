@@ -742,6 +742,21 @@ Check: `coax/web/api/test_private.py` (via `coax/web/api/test.sh`),
 `coax test apps/openagents-web/private.coax`, `coax/web/smoke.sh`. Threat
 model and residual risks: `docs/private-projects-threat-model.md`.
 
+## Our own testing is not usage
+
+The team's visits (any browser an admin logged in from, the players and
+emails in `coax/web/api/team.conf`, and every device seen in one of their
+sessions) are kept with `auto = 'team'`, at the source (`analytics.ingest`,
+and triggers for imported rows and playtest joins) and by
+`analytics.team_tag()`, which the API runs on every start to backfill. Every
+visitor count that leaves out `auto IS NOT NULL` leaves them out;
+/admin/analytics leaves them out unless OUR TEAM is on and says how many it
+left out. Automation keeps its own mark. `team.conf` holds opaque ids and
+email hashes only, never an email.
+
+Check: `coax/web/api/test_team.py` (via `coax/web/api/test.sh`),
+`coax test apps/openagents-web/admin.coax`.
+
 ## Analytics never lose visibility
 
 Every page keeps sending the analytics contract

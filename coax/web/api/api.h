@@ -28,6 +28,8 @@ const char *api_query(const request *q, const char *name, char *out, size_t cap)
 
 // Route files: true when they answered.
 bool analytics_route(const request *q);   // analytics.c
+void analytics_team_init(PGconn *db);     // the team (OA_TEAM, OA_ADMIN_PUBKEYS) into analytics.team, and its backfill
+#define TEAM_COOKIE "Set-Cookie: oa_team=1; Path=/; Max-Age=63072000; HttpOnly; Secure; SameSite=Lax\r\n"   // this browser is the team's
 void admin_init(void);                    // admin.c
 bool admin_route(const request *q);
 bool admin_is(const char *pubkey);        // a pubkey in OA_ADMIN_PUBKEYS

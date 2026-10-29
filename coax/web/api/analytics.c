@@ -7,6 +7,14 @@
 // NIP-98 also ties the session to that Nostr pubkey. The cleaning and the
 // limits are the playtest's, in SQL (migrations/0002_events.sql
 // analytics.ingest), so an import and a live page are kept by one rule.
+//
+// Our own testing is not usage (migrations/0037_analytics_team.sql): a batch
+// from the team's browser (cookie oa_team=1, set when an admin logs in), from
+// an admin's site session (cookie oa_session) or key, a team player or a
+// team device is kept with auto = 'team'. A team session's answer sets
+// oa_team, so that browser stays the team's after it logs out. On start the
+// service writes the team (OA_TEAM from team.conf, and OA_ADMIN_PUBKEYS) into
+// analytics.team and runs analytics.team_tag(), which backfills.
 #include "api.h"
 #include "nostr.h"
 #include <stdio.h>
@@ -39,6 +47,65 @@ static void cookie_auto(const char *cookies, char *out, size_t cap) {
   out[i] = 0;
 }
 
+// A cookie's value: name=<value> up to ';' or a space, at most cap - 1 of [A-Za-z0-9_-].
+static void cookie_value(const char *cookies, const char *name, char *out, size_t cap) {
+  out[0] = 0;
+  size_t w = strlen(name);
+  for (const char *c = strstr(cookies, name); c; c = strstr(c + 1, name)) {
+    if ((c != cookies && c[-1] != ' ' && c[-1] != ';') || c[w] != '=') continue;
+    c += w + 1;
+    size_t i = 0;
+    while (i + 1 < cap && ((c[i] >= 'a' && c[i] <= 'z') || (c[i] >= 'A' && c[i] <= 'Z') || (c[i] >= '0' && c[i] <= '9') || c[i] == '_' || c[i] == '-')) {
+      out[i] = c[i]; i++;
+    }
+    out[i] = 0;
+    return;
+  }
+}
+
+// Appends the tokens of `list` (split at commas and spaces) to a JSON array of
+// `kind` in out: kind:value tokens of OA_TEAM when `kind` is set, else the
+// 64-hex keys of OA_ADMIN_PUBKEYS. Only [A-Za-z0-9_-] gets through.
+static size_t team_list(char *out, size_t n, size_t cap, const char *list, const char *kind) {
+  bool first = true;
+  for (const char *p = list ? list : ""; *p;) {
+    while (*p == ',' || *p == ' ' || *p == '\n' || *p == '\t') p++;
+    const char *t = p;
+    while (*p && *p != ',' && *p != ' ' && *p != '\n' && *p != '\t') p++;
+    size_t len = (size_t)(p - t);
+    const char *v = t;
+    if (kind) {
+      size_t k = strlen(kind);
+      if (len <= k + 1 || strncmp(t, kind, k) || t[k] != ':') continue;
+      v = t + k + 1; len -= k + 1;
+    } else if (len != 64) continue;
+    bool ok = len > 0 && len < 100;
+    for (size_t i = 0; ok && i < len; i++)
+      ok = (v[i] >= 'a' && v[i] <= 'z') || (v[i] >= 'A' && v[i] <= 'Z') || (v[i] >= '0' && v[i] <= '9') || v[i] == '_' || v[i] == '-';
+    if (!ok || n + len + 8 >= cap) continue;
+    n += (size_t)snprintf(out + n, cap - n, "%s\"%.*s\"", first ? "" : ",", (int)len, v);
+    first = false;
+  }
+  return n;
+}
+
+void analytics_team_init(PGconn *db) {
+  const char *team = getenv("OA_TEAM");
+  static char cfg[16384];
+  size_t n = (size_t)snprintf(cfg, sizeof cfg, "{\"npub\":[");
+  n = team_list(cfg, n, sizeof cfg, getenv("OA_ADMIN_PUBKEYS"), NULL);
+  n += (size_t)snprintf(cfg + n, sizeof cfg - n, "],\"player\":[");
+  n = team_list(cfg, n, sizeof cfg, team, "player");
+  n += (size_t)snprintf(cfg + n, sizeof cfg - n, "],\"email_sha256\":[");
+  n = team_list(cfg, n, sizeof cfg, team, "email_sha256");
+  snprintf(cfg + n, sizeof cfg - n, "]}");
+  const char *v[1] = {cfg};
+  PGresult *r = PQexecParams(db, "SELECT analytics.team_set($1::jsonb), analytics.team_tag()::text", 1, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_log("team: %s kept; marked %s", PQgetvalue(r, 0, 0), PQgetvalue(r, 0, 1));
+  else api_log("team: %s", PQerrorMessage(db));
+  PQclear(r);
+}
+
 static void ingest(const request *q) {
   if (q->body_len == 0 || q->body_len > 256 * 1024) { api_json(q->fd, 400, "{\"error\":\"no batch\"}"); return; }
   char ip[128], ua[512], host[256], automation[64], cookies[2048], auth[4096], tmp[256];
@@ -48,7 +115,12 @@ static void ingest(const request *q) {
   api_header(q, "User-Agent", ua, sizeof ua);
   api_header(q, "Host", host, sizeof host);
   api_header(q, "X-Verse-Automation", automation, sizeof automation);
-  if (!automation[0] && api_header(q, "Cookie", cookies, sizeof cookies)) cookie_auto(cookies, automation, sizeof automation);
+  char team[4] = "", site[72] = "";
+  if (api_header(q, "Cookie", cookies, sizeof cookies)) {
+    if (!automation[0]) cookie_auto(cookies, automation, sizeof automation);
+    cookie_value(cookies, "oa_team", team, sizeof team);
+    cookie_value(cookies, "oa_session", site, sizeof site);
+  }
   api_header(q, "X-Client-Region", region, sizeof region);
   api_header(q, "X-Client-Subdivision", subdivision, sizeof subdivision);
   api_header(q, "X-Client-City", city, sizeof city);
@@ -89,6 +161,8 @@ static void ingest(const request *q) {
   n = field(ctx, n, sizeof ctx, "tls", tls);
   n = field(ctx, n, sizeof ctx, "device", device);
   n = field(ctx, n, sizeof ctx, "key", player);
+  n = field(ctx, n, sizeof ctx, "team", !strcmp(team, "1") ? "1" : "");
+  n = field(ctx, n, sizeof ctx, "site", site);
   if (n + 2 < sizeof ctx) { ctx[n++] = '}'; ctx[n] = 0; }
 
   PGconn *db = api_db();
@@ -98,6 +172,13 @@ static void ingest(const request *q) {
   memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
   const char *params[2] = {body, ctx};
   PGresult *r = PQexecParams(db, "SELECT analytics.ingest($1::jsonb, $2::jsonb)", 2, NULL, params, NULL, NULL, 0);
+  // A team session marks its browser (oa_team) for the visits after it.
+  bool mark = false;
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && atoi(PQgetvalue(r, 0, 0)) >= 0 && strcmp(team, "1")) {
+    PGresult *t = PQexecParams(db, "SELECT 1 FROM analytics.sessions WHERE sid = ($1::jsonb)->>'sid' AND team", 1, NULL, params, NULL, NULL, 0);
+    mark = PQresultStatus(t) == PGRES_TUPLES_OK && PQntuples(t) == 1;
+    PQclear(t);
+  }
   free(body);
   if (PQresultStatus(r) != PGRES_TUPLES_OK) {
     // bad JSON is the page's fault; anything else is ours
@@ -112,7 +193,7 @@ static void ingest(const request *q) {
   PQclear(r);
   if (kept < 0) { api_json(q->fd, 400, "{\"error\":\"not a batch\"}"); return; }
   char out[64]; snprintf(out, sizeof out, "{\"kept\":%d}", kept);
-  api_json(q->fd, 200, out);
+  api_respond(q->fd, 200, "application/json", mark ? TEAM_COOKIE : NULL, out, strlen(out));
 }
 
 bool analytics_route(const request *q) {
