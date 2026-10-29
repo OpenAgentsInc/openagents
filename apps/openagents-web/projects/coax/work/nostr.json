@@ -359,7 +359,8 @@
         "crypto-chacha20",
         "crypto-target-conformance",
         "nip49-primitives",
-        "nip49-aead-workspace"
+        "nip49-aead-workspace",
+        "nip49-kdf-workspace"
       ]
     },
     {
@@ -968,7 +969,8 @@
         "crypto-secret-codegen",
         "ios-key-custody",
         "nip49-primitives",
-        "nip49-aead-workspace"
+        "nip49-aead-workspace",
+        "nip49-kdf-workspace"
       ]
     },
     {
@@ -2868,6 +2870,22 @@
       "blocks": ["nip49-primitives"]
     },
     {
+      "slug": "nip49-kdf-workspace",
+      "parent": "m-key-backup",
+      "title": "Scrypt owned secret workspace and cleanup",
+      "size": "L",
+      "labels": ["nostr", "crypto", "coax"],
+      "body": "Move the experimental NIP-49 scrypt pipeline's explicitly named password-derived arrays, including first/mixed, ROMix next and BlockMix/PBKDF2 intermediates, into bounded caller-owned storage managed by the existing wipe lifecycle. Inventory the reachable SHA-256 and HMAC helper arrays too. Preserve scrypt outputs, bounded work, transactional publication and truthful host admission. A refusal before registration preserves prior caller storage; failed wipe effects remain pending or quarantine output. Compiler copies, scalar temporaries, crash cleanup, target timing and production-secret approval are separate claims.",
+      "files": ["coax/lib/crypto/", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "The NFKC-to-scrypt host path uses owned storage for all explicitly named password-derived temporary arrays across its reachable KDF, HMAC and hash calls, and erases registered storage after success, failure and cooperative cancellation",
+        "Independent scrypt vectors and bounds pass checked and release native, actual Wasm and iOS Simulator, including the existing N=65536 r=8 p=1 64 MiB simulator fixture; early refusal and injected wipe failures are observed accurately",
+        "Affected Coax authority checks and complete mutation testing have zero survivors or waivers, with independent source review of aliases, lifetime, error handling and cleanup; document hidden-copy, target and production limits"
+      ],
+      "blocked_by": ["crypto-secure-zero", "crypto-vector-runner"],
+      "blocks": ["nip49-primitives"]
+    },
+    {
       "slug": "nip49-primitives",
       "parent": "m-key-backup",
       "title": "Optional NIP-49 KDF, cipher and normalization primitives",
@@ -2891,7 +2909,8 @@
         "crypto-secure-zero",
         "crypto-vector-runner",
         "unicode-nfkc",
-        "nip49-aead-workspace"
+        "nip49-aead-workspace",
+        "nip49-kdf-workspace"
       ],
       "blocks": [
         "nip49-backup"
