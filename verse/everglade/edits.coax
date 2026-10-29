@@ -7,16 +7,19 @@
 // Everglade's world (POST /api/playtest/world/everglade, an admin's only)
 // and every visitor's page lays it over the plan.
 //
+// An admin may also take away the city's people and cats (people.coax):
+// the list keeps which are gone, and every page leaves them out.
+//
 // The list as text (eg_edits_text, eg_edits_read), a line each:
 //   eg-edit 1
-//   t KIND X Z YAW SIZE     an item: X and Z in centimetres, YAW in degrees, SIZE in percent
+//   t KIND X Z YAW SIZE GROUP   an item: X and Z in centimetres, YAW in degrees, SIZE in percent,
+//                               GROUP the row it was placed in (0 or left out: on its own)
+//   p SPOT                      the person at plan.coax EG_SPOT SPOT is taken away
 //
 // A thing may not stand in a wall, a building, a prop, the woods or past
 // the world's edge (eg_edit_fault: the realm refuses the place or the move).
-// It may stand on a street, and may block a way: eg_edits_unreached walks
-// the city again, as plan.coax's reachability check does, with every
-// thing in the way, and names the first door, character, street, gate or
-// trail's end nobody can reach any more, so the realm warns the admin.
+// It may stand on a street. A removal takes the nearest thing or person, a
+// named person, or a whole group ("these crates": eg_remove_pick).
 //   coax/bin/coax test --library verse/everglade/edits.coax --steps 3000000000
 
 #load "people.coax";
@@ -24,14 +27,15 @@
 EG_EDIT_ITEMS :: 5;
 EG_EDIT_MAX :: 48;      // things an admin may add
 EG_EDIT_LABEL :: [5] string.["CRATE", "BARREL", "BENCH", "FENCE", "STALL"];
+EG_EDIT_LABELS :: [5] string.["CRATES", "BARRELS", "BENCHES", "FENCES", "STALLS"];   // more than one
 // Each one's footprint at size 1 from the pack's bounds (verse/packs/everglade.json): half its
 // width across (its local x), half its depth (its local z), and its height, metres.
 EG_EDIT_HALF :: [15] f32.[0.42, 0.45, 0.93,   0.35, 0.35, 0.9,   1.39, 0.27, 0.53,   1.03, 0.06, 0.81,   0.92, 0.47, 2.63];
 EG_EDIT_SIZE_MIN :: 0.5; EG_EDIT_SIZE_MAX :: 3.0;
 EG_EDIT_HEAD :: "eg-edit 1\n";
 
-EgThing :: struct { kind: int; x: f32; z: f32; yaw: f32; size: f32; }
-EgEdits :: struct { n: int; things: [EG_EDIT_MAX] EgThing; }
+EgThing :: struct { kind: int; x: f32; z: f32; yaw: f32; size: f32; group: int; }
+EgEdits :: struct { n: int; things: [EG_EDIT_MAX] EgThing; gone: u32; }   // gone: a bit per EG_SPOT
 
 // Why a thing can't stand where it is.
 EG_FAULT_NONE :: 0; EG_FAULT_EDGE :: 1; EG_FAULT_WOODS :: 2; EG_FAULT_SOLID :: 3; EG_FAULT_THING :: 4;
@@ -85,78 +89,88 @@ eg_edit_on_street :: (e: EgEdits, i: int) -> bool {
   return false;
 }
 
-// ---- walking the city again with the things in the way
+// ---- what a removal takes: placed things and the city's people
 
-// Closes the cells the things stand on (widened as everglade_open widens a solid).
-eg_edits_block :: (grid: [] u8, e: EgEdits) {
-  pad := f32(EG_RADIUS) + f32(EG_REACH_CELL) * 0.71;
-  box: [EG_BOX] f32;
-  for t: 0..<e.n {
-    eg_edit_box(e.things[t], box[..]);
-    i0 := cast(int) floor((box[0] - pad - f32(EG_REACH_WEST)) / f32(EG_REACH_CELL));
-    i1 := cast(int) floor((box[2] + pad - f32(EG_REACH_WEST)) / f32(EG_REACH_CELL));
-    j0 := cast(int) floor((box[1] - pad - f32(EG_REACH_WEST)) / f32(EG_REACH_CELL));
-    j1 := cast(int) floor((box[3] + pad - f32(EG_REACH_WEST)) / f32(EG_REACH_CELL));
-    for j: hi_i(j0, 0)..<lo_i(j1 + 1, EG_REACH_N) {
-      for i: hi_i(i0, 0)..<lo_i(i1 + 1, EG_REACH_N) {
-        x := f32(EG_REACH_WEST) + (f32(i) + 0.5) * f32(EG_REACH_CELL);
-        z := f32(EG_REACH_WEST) + (f32(j) + 0.5) * f32(EG_REACH_CELL);
-        if box_gap(box[..], 0, x, z) < pad { grid[j * EG_REACH_N + i] = 0; }
-      }
+// Whether spot i's person (or cat) is taken away.
+eg_gone :: (e: EgEdits, i: int) -> bool { return i >= 0 && i < EG_SPOTS && (e.gone >> cast(u32) i) & 1 != 0; }
+
+// What a removal may name: one of the kit's things (EG_EDIT_ITEMS), a person, a cat, or anything (-1).
+EG_PICK_ANY :: -1; EG_PICK_PERSON :: EG_EDIT_ITEMS; EG_PICK_CAT :: EG_EDIT_ITEMS + 1;
+EG_REMOVE_NEAR :: 8.0;     // metres from you a removal reaches
+EgTake :: struct { things: u64; people: u32; n_things: int; n_people: int; }
+
+eg_take_thing :: (e: EgEdits, i: int, kind: int) -> bool {
+  return kind == EG_PICK_ANY || (kind >= 0 && kind < EG_EDIT_ITEMS && eg_edit_kind(e.things[i].kind) == kind);
+}
+eg_take_person :: (e: EgEdits, i: int, kind: int) -> bool {
+  if eg_gone(e, i) { return false; }
+  return kind == EG_PICK_ANY || (kind == EG_PICK_PERSON && !EG_SPOT_CAT[i]) || (kind == EG_PICK_CAT && EG_SPOT_CAT[i]);
+}
+eg_gap2 :: (ax: f32, az: f32, bx: f32, bz: f32) -> f32 { return (ax - bx) * (ax - bx) + (az - bz) * (az - bz); }
+
+// What "remove ..." takes, standing at (x, z): who (a spot) names one
+// person; else of kind (EG_PICK_*), the nearest within EG_REMOVE_NEAR, or
+// with all ("these crates", "clear this") every one within it and the whole
+// group the nearest was placed with. With no kind and not all, the nearest
+// of the things and the people; with no kind and all, the placed things.
+eg_remove_pick :: (e: EgEdits, x: f32, z: f32, kind: int, who: int, all: bool) -> EgTake {
+  r: EgTake;
+  if who >= 0 && who < EG_SPOTS {
+    if !eg_gone(e, who) { r.people = cast(u32) 1 << cast(u32) who; r.n_people = 1; }
+    return r;
+  }
+  reach := f32(EG_REMOVE_NEAR * EG_REMOVE_NEAR);
+  best := -1; most := reach;
+  for i: 0..<e.n {
+    if !eg_take_thing(e, i, kind) { continue; }
+    d := eg_gap2(e.things[i].x, e.things[i].z, x, z);
+    if d < most { most = d; best = i; }
+  }
+  folk := kind == EG_PICK_PERSON || kind == EG_PICK_CAT || (kind == EG_PICK_ANY && !all);
+  person := -1;
+  if folk {
+    for i: 0..<EG_SPOTS {
+      if !eg_take_person(e, i, kind) { continue; }
+      d := eg_gap2(EG_SPOT[i * 3], EG_SPOT[i * 3 + 1], x, z);
+      if d < most { most = d; person = i; best = -1; }
     }
   }
-}
-
-// What must stay reachable on foot, as plan.coax checks it: every door,
-// every character, every street node, every gate, the quest board, the
-// stalls and each trail's end. Target k's place and name.
-EG_TARGETS :: EG_BUILDINGS + EG_SPOTS + EG_NODES + EG_GATES + 8;
-EG_TARGET_EXTRA :: [16] f32.[6.2, -6.4,  32, 3.5,  32, -3.5,  -88, 22,  22, 95,  66, 89.5,  96, -16,  0, -98];
-EG_TARGET_EXTRA_NAME :: [8] string.["THE QUEST BOARD", "THE NORTH STALLS", "THE SOUTH STALLS", "THE WAYSTONE", "THE RUINS", "THE CRYPT", "THE FAR BANK", "THE ROAD IN"];
-eg_target_x :: (k: int) -> f32 {
-  if k < EG_BUILDINGS { return EG_DOOR[k * 2]; }
-  s := k - EG_BUILDINGS;
-  if s < EG_SPOTS { return EG_SPOT[s * 3]; }
-  n := s - EG_SPOTS;
-  if n < EG_NODES { return EG_NODE_XZ[n * 2]; }
-  g := n - EG_NODES;
-  if g < EG_GATES { return EG_GATE[g * 4]; }
-  return EG_TARGET_EXTRA[(g - EG_GATES) * 2];
-}
-eg_target_z :: (k: int) -> f32 {
-  if k < EG_BUILDINGS { return EG_DOOR[k * 2 + 1]; }
-  s := k - EG_BUILDINGS;
-  if s < EG_SPOTS { return EG_SPOT[s * 3 + 1]; }
-  n := s - EG_SPOTS;
-  if n < EG_NODES { return EG_NODE_XZ[n * 2 + 1]; }
-  g := n - EG_NODES;
-  if g < EG_GATES { return EG_GATE[g * 4 + 1]; }
-  return EG_TARGET_EXTRA[(g - EG_GATES) * 2 + 1];
-}
-eg_target_name :: (k: int) -> string {
-  if k < 0 { return ""; }
-  if k < EG_BUILDINGS { return EG_BUILDING_NAME[k]; }
-  s := k - EG_BUILDINGS;
-  if s < EG_SPOTS { return EG_PERSON[s]; }
-  n := s - EG_SPOTS;
-  if n < EG_NODES { return "A STREET"; }
-  g := n - EG_NODES;
-  if g < EG_GATES { return EG_GATE_NAME[g]; }
-  return EG_TARGET_EXTRA_NAME[g - EG_GATES];
-}
-
-// Walks the city from the road in with the things in the way: the first
-// target nobody reaches any more, or -1 when every one still is. grid and
-// queue are EG_REACH_N squared each (the realm's face lends them).
-eg_edits_unreached :: (grid: [] u8, queue: [] u32, e: EgEdits) -> int {
-  if grid.count < EG_REACH_N * EG_REACH_N || queue.count < EG_REACH_N * EG_REACH_N { return -1; }
-  everglade_open(grid);
-  eg_edits_block(grid, e);
-  if everglade_fill(grid, queue) == 0 { return EG_TARGETS - 1; }
-  for k: 0..<EG_TARGETS {
-    if !reached(grid, eg_target_x(k), eg_target_z(k)) { return k; }
+  if !all {
+    if person >= 0 { r.people = cast(u32) 1 << cast(u32) person; r.n_people = 1; }
+    else if best >= 0 { r.things = cast(u64) 1 << cast(u64) best; r.n_things = 1; }
+    return r;
   }
-  return -1;
+  group := ifx best >= 0 then e.things[best].group else 0;
+  for i: 0..<e.n {
+    if !eg_take_thing(e, i, kind) { continue; }
+    close := eg_gap2(e.things[i].x, e.things[i].z, x, z) < reach;
+    if close || (group > 0 && e.things[i].group == group) { r.things |= cast(u64) 1 << cast(u64) i; r.n_things += 1; }
+  }
+  if folk {
+    for i: 0..<EG_SPOTS {
+      if eg_take_person(e, i, kind) && eg_gap2(EG_SPOT[i * 3], EG_SPOT[i * 3 + 1], x, z) < reach { r.people |= cast(u32) 1 << cast(u32) i; r.n_people += 1; }
+    }
+  }
+  return r;
+}
+
+// The list without what t takes.
+eg_remove :: (e: EgEdits, t: EgTake) -> EgEdits {
+  out := e;
+  out.n = 0;
+  for i: 0..<e.n {
+    if (t.things >> cast(u64) i) & 1 != 0 { continue; }
+    out.things[out.n] = e.things[i]; out.n += 1;
+  }
+  out.gone = e.gone | t.people;
+  return out;
+}
+
+// A new group's number for a row placed together.
+eg_new_group :: (e: EgEdits) -> int {
+  g := 0;
+  for i: 0..<e.n { g = hi_i(g, e.things[i].group); }
+  return g + 1;
 }
 
 // ---- the list as text
@@ -183,7 +197,12 @@ eg_edits_text :: (e: EgEdits, out: [] u8) -> int {
     n = raw_put(out, n, " "); n = eg_put_int(out, n, eg_round(t.z * 100));
     n = raw_put(out, n, " "); n = eg_put_int(out, n, eg_round(t.yaw * 180 / f32(PI)));
     n = raw_put(out, n, " "); n = eg_put_int(out, n, eg_round(t.size * 100));
+    if t.group > 0 { n = raw_put(out, n, " "); n = eg_put_int(out, n, t.group); }
     n = raw_put(out, n, "\n");
+  }
+  for i: 0..<EG_SPOTS {
+    if !eg_gone(e, i) { continue; }
+    n = raw_put(out, n, "p "); n = eg_put_int(out, n, i); n = raw_put(out, n, "\n");
   }
   if n >= out.count { return 0; }
   return n;
@@ -216,15 +235,28 @@ eg_edits_read :: (text: string, e: [] EgEdits) -> bool {
     line := text[i..<j];
     i = j + 1;
     if line.count == 0 { continue; }
-    if line.count < 3 || line[0] != 't' || line[1] != ' ' { return false; }
+    if line.count < 3 || (line[0] != 't' && line[0] != 'p') || line[1] != ' ' { return false; }
+    if line[0] == 'p' {
+      spot := eg_number(line, 2);
+      if !spot.ok || spot.end != line.count { return false; }
+      if spot.v >= 0 && spot.v < EG_SPOTS { got.gone |= cast(u32) 1 << cast(u32) spot.v; }
+      continue;
+    }
     kind := eg_number(line, 2); x := eg_number(line, kind.end); z := eg_number(line, x.end);
     yaw := eg_number(line, z.end); size := eg_number(line, yaw.end);
-    if !kind.ok || !x.ok || !z.ok || !yaw.ok || !size.ok || size.end != line.count { return false; }
+    if !kind.ok || !x.ok || !z.ok || !yaw.ok || !size.ok { return false; }
+    group := 0;
+    if size.end != line.count {
+      g := eg_number(line, size.end);
+      if !g.ok || g.end != line.count { return false; }
+      group = hi_i(g.v, 0);
+    }
     if kind.v < 0 || kind.v >= EG_EDIT_ITEMS || got.n >= EG_EDIT_MAX { continue; }
     t: EgThing;
     t.kind = kind.v; t.x = f32(x.v) / 100; t.z = f32(z.v) / 100;
     t.yaw = f32(yaw.v) * f32(PI) / 180;
     t.size = clamp(f32(size.v) / 100, f32(EG_EDIT_SIZE_MIN), f32(EG_EDIT_SIZE_MAX));
+    t.group = group;
     got.things[got.n] = t; got.n += 1;
     if eg_edit_fault(got, got.n - 1) != EG_FAULT_NONE { got.n -= 1; }
   }
@@ -278,7 +310,7 @@ eg_edits_answer :: (answer: string, e: [] EgEdits) -> int {
   v := eg_json_at(body, "version");
   if v < 0 { return -1; }
   version := eg_number(body[v..<body.count], 0);
-  if version.v == 0 { e[0].n = 0; return 0; }
+  if version.v == 0 { e[0].n = 0; e[0].gone = 0; return 0; }
   at := eg_json_at(body, "edits");
   if at < 0 || body[at] != '"' { return -1; }
   text: [4096] u8; n := 0;
@@ -363,12 +395,43 @@ eg_one :: (t: EgThing) -> EgEdits { e: EgEdits; e.things[0] = t; e.n = 1; return
   #assert eg_edits_answer("500\n{}", got[..]) == -1 && eg_edits_answer("200\n{\"doc\": {\"edits\": \"nonsense\"}, \"version\": 2}", got[..]) == -1;
 }
 
-#test "walking the city again: a stall at the inn's door shuts it, a crate on the commons shuts nothing" {
-  grid: [EG_REACH_N * EG_REACH_N] u8;
-  queue: [EG_REACH_N * EG_REACH_N] u32;
-  #assert eg_edits_unreached(grid[..], queue[..], eg_one(eg_thing(0, 6, -12, 0, 1))) == -1;
-  door := eg_one(eg_thing(4, -4.5, -37, f32(PI) / 2, 1));
-  #assert eg_edit_fault(door, 0) == EG_FAULT_NONE;
-  k := eg_edits_unreached(grid[..], queue[..], door);
-  #assert k == EG_INN && eg_target_name(k) == "THE INN";
+#test "a removal: the nearest thing or person, a named one, or a whole row ('these crates')" {
+  e: EgEdits;
+  // the owner's four crates in a row on the commons, placed together, and a bench beside them
+  for k: 0..<4 { e.things[k] = eg_thing(0, 4 + f32(k) * 1.34, -12, 0, 1); e.things[k].group = 1; }
+  e.things[4] = eg_thing(2, 6, -16, 0, 1); e.n = 5;
+  one := eg_remove_pick(e, 6, -10, EG_PICK_ANY, -1, false);
+  #assert one.n_things == 1 && one.n_people == 0 && (one.things >> 1) & 1 != 0;
+  rows := eg_remove_pick(e, 6, -10, 0, -1, true);
+  #assert rows.n_things == 4 && rows.n_people == 0 && (rows.things >> 4) & 1 == 0;
+  left := eg_remove(e, rows);
+  #assert left.n == 1 && left.things[0].kind == 2;
+  // standing far down the row, "these crates" still takes the whole row it was placed in
+  far := eg_remove_pick(e, 4 - 7.5, -12, 0, -1, true);
+  #assert far.n_things == 4;
+  // "clear this": every placed thing near, nobody of the city
+  clear := eg_remove_pick(e, 6, -12, EG_PICK_ANY, -1, true);
+  #assert clear.n_things == 5 && clear.n_people == 0;
+  // the town crier stands by the board: nearer than any thing, "remove that" takes him
+  crier := eg_remove_pick(e, 3.2, -7, EG_PICK_ANY, -1, false);
+  #assert crier.n_people == 1 && (crier.people >> 3) & 1 != 0;
+  marta := eg_remove(e, eg_remove_pick(e, 0, 0, EG_PICK_ANY, 5, false));
+  #assert eg_gone(marta, 5) && marta.n == 5 && eg_remove_pick(marta, 0, 0, EG_PICK_ANY, 5, false).n_people == 0;
+  // the inn's cat by Marta, as a cat; nothing near is nothing taken
+  #assert eg_remove_pick(e, -3.4, -32, EG_PICK_CAT, -1, false).people == cast(u32) 64;
+  #assert eg_remove_pick(e, 60, -40, EG_PICK_ANY, -1, false).n_things == 0;
+  #assert eg_new_group(e) == 2;
+}
+
+#test "the list keeps who is gone and each thing's row" {
+  e: EgEdits;
+  e.things[0] = eg_thing(0, 6, -12, 0, 1); e.things[0].group = 3; e.n = 1;
+  e.gone = (cast(u32) 1 << 5) | (cast(u32) 1 << 19);
+  out: [512] u8;
+  n := eg_edits_text(e, out[..]);
+  #assert cast(string) out[0..<n] == "eg-edit 1\nt 0 600 -1200 0 100 3\np 5\np 19\n";
+  back: [1] EgEdits;
+  #assert eg_edits_read(cast(string) out[0..<n], back[..]);
+  #assert back[0].n == 1 && back[0].things[0].group == 3 && eg_gone(back[0], 5) && eg_gone(back[0], 19) && !eg_gone(back[0], 3);
+  #assert !eg_edits_read("eg-edit 1\np x\n", back[..]);
 }

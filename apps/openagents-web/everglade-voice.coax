@@ -9,8 +9,10 @@
 // of the realm's catalogue: place an item (with a count), remove the
 // nearest placed thing, or undo. Nothing here reads the words: only that
 // typed answer, held again to verse/everglade/edits.coax. The edit is done in
-// front of you, the list published as Everglade's world (an admin's write,
-// checked on the server), and what was done is spoken back (action 9).
+// front of you (or takes away the things or people it names: a whole row
+// for "these crates"), the list published as Everglade's world (an admin's
+// write, checked on the server), and what was done is shown and spoken back
+// (action 9). What was heard shows while the server answers.
 //
 // Everyone's page lays the published list over the plan (everglade_world):
 // a non-admin sees the things and has no button. The switch is the page's:
@@ -53,7 +55,8 @@ EditVoice :: struct {
   ask: [EDIT_ASK] u8; ask_n: int;     // the heard words for the face to send
   post: [EDIT_POST] u8; post_n: int;  // the list to publish, for the face
   say: [EDIT_LINE] u8; say_n: int;    // what to speak back
-  check: bool;                        // the face should walk the city again (everglade_edit_check)
+  person: int;                        // the city's person picked in edit mode, -1 none
+  px: [EG_SPOTS] f32; py: [EG_SPOTS] f32; pseen: [EG_SPOTS] bool;   // the people on the screen, for a pick
   wall_base: int;
   town_used: [5] int;
 }
@@ -108,7 +111,7 @@ everglade_voice_message :: (s: [] Everglade, kind: int, text: string) -> bool {
     }
     n += ev_put(s[0].ev.ask[n..<EDIT_ASK], "\"}");
     s[0].ev.ask_n = n;
-    ev_line(s, "WORKING IT OUT");
+    s[0].ev.line_n = 0;   // the heard words show until the edit is done
   }
   return true;
 }
@@ -168,7 +171,6 @@ everglade_edit_ask :: (s: [] Everglade) -> int #export_c { return s[0].ev.ask_n;
 everglade_edit_ask_sent :: (s: [] Everglade) #export_c { s[0].ev.ask_n = 0; }
 everglade_edit_post :: (s: [] Everglade) -> int #export_c { return s[0].ev.post_n; }
 everglade_edit_post_sent :: (s: [] Everglade) #export_c { s[0].ev.post_n = 0; }
-everglade_edit_wants_check :: (s: [] Everglade) -> bool #export_c { return s[0].ev.check; }
 // ORIGINAL: the face asks the server for the designed city (POST .../reset) once.
 everglade_edit_reset :: (s: [] Everglade) -> bool #export_c { r := s[0].ev.reset; s[0].ev.reset = false; return r; }
 
@@ -189,9 +191,17 @@ everglade_edit_saved :: (s: [] Everglade, status: int) #export_c {
 // The selector's answer ("STATUS\n" and its JSON): the edit, done in front of you.
 everglade_edit_answer :: (s: [] Everglade, answer: string) #export_c {
   if answer.count < 4 || answer[0..<4] != "200\n" {
-    nothing := answer.count >= 4 && answer[0..<4] == "422\n";
-    ev_line(s, ifx nothing then "I CAN PLACE CRATES, BARRELS, BENCHES, FENCES AND STALLS, REMOVE ONE, OR UNDO" else "THAT DIDN'T WORK · TRY AGAIN");
-    ev_say(s, ifx nothing then "I can place crates, barrels, benches, fences and stalls, remove one, or undo." else "That didn't work. Try again.");
+    if answer.count >= 4 && answer[0..<4] == "422\n" {
+      // nothing in the catalogue fits: what was heard, and nothing more
+      n := ev_put(s[0].ev.line[..], "DIDN'T CATCH AN EDIT IN: '");
+      for c: 0..<s[0].ev.caption_n { if n < EDIT_LINE - 1 { s[0].ev.line[n] = s[0].ev.caption[c]; n += 1; } }
+      n += ev_put(s[0].ev.line[n..<EDIT_LINE], "'");
+      s[0].ev.line_n = n;
+      ev_say(s, "I didn't catch an edit.");
+      return;
+    }
+    ev_line(s, "THAT DIDN'T WORK · TRY AGAIN");
+    ev_say(s, "That didn't work. Try again.");
     return;
   }
   body := answer[4..<answer.count];
@@ -199,15 +209,24 @@ everglade_edit_answer :: (s: [] Everglade, answer: string) #export_c {
   if e < 0 || body[e] != '"' { ev_line(s, "THAT DIDN'T WORK · TRY AGAIN"); return; }
   word := ev_word(body, e);
   if word == "undo" { edit_undo(s, true); return; }
-  if word == "remove" { edit_remove(s); return; }
-  if word != "place" { ev_line(s, "THAT DIDN'T WORK · TRY AGAIN"); return; }
   i := eg_json_at(body, "item");
   item := -1;
   if i >= 0 && body[i] == '"' {
     w := ev_word(body, i);
     for k: 0..<EG_EDIT_ITEMS { if w == EDIT_NAMES[k] { item = k; } }
+    if w == "person" { item = EG_PICK_PERSON; }
+    if w == "cat" { item = EG_PICK_CAT; }
   }
-  if item < 0 { ev_line(s, "THAT DIDN'T WORK · TRY AGAIN"); return; }
+  if word == "remove" {
+    h := eg_json_at(body, "who");
+    who := -1;
+    if h >= 0 && body[h] == '"' { w := ev_word(body, h); for k: 0..<EG_SPOTS { if w == EG_PERSON[k] { who = k; } } }
+    a := eg_json_at(body, "all");
+    all := a >= 0 && a + 4 <= body.count && body[a..<a + 4] == "true";
+    edit_remove(s, item, who, all);
+    return;
+  }
+  if word != "place" || item < 0 || item >= EG_EDIT_ITEMS { ev_line(s, "THAT DIDN'T WORK · TRY AGAIN"); return; }
   c := eg_json_at(body, "count");
   count := 1;
   if c >= 0 { got := eg_number(body[c..<body.count], 0); if got.v > 0 { count = eg_clamp_n(got.v, 1, 6); } }
@@ -232,23 +251,66 @@ edit_remember :: (s: [] Everglade) {
   s[0].ev.undo_n += 1;
 }
 
-// Places count of item in a row in front of you, each where it may stand.
+// "PLACED A CRATE", "PLACED 4 CRATES"; "REMOVED ..." the same way.
+ev_count :: (out: [] u8, verb: string, n: int, one: string, many: string) -> int {
+  m := ev_put(out, verb);
+  if n == 1 { m += ev_put(out[m..<out.count], "A "); m += ev_put(out[m..<out.count], one); return m; }
+  m = eg_put_int(out, m, n);
+  m += ev_put(out[m..<out.count], " ");
+  return m + ev_put(out[m..<out.count], many);
+}
+ev_lower :: (out: [] u8, n: int) -> int {
+  for i: 0..<n { if out[i] >= 'A' && out[i] <= 'Z' { out[i] = out[i] + 32; } }
+  return n;
+}
+// The line (capitals) as the sentence spoken back: "Placed 4 crates."
+// The line's " · " is a comma said.
+ev_say_line :: (s: [] Everglade) {
+  n := 0;
+  i := 0;
+  line := s[0].ev.line[0..<s[0].ev.line_n];
+  while i < line.count {
+    if i + 3 < line.count && line[i] == ' ' && line[i + 1] == 0xC2 && line[i + 2] == 0xB7 { s[0].ev.say[n] = ','; n += 1; i += 3; continue; }
+    s[0].ev.say[n] = line[i]; n += 1; i += 1;
+  }
+  if n > 1 { _ := ev_lower(s[0].ev.say[1..<n], n - 1); }
+  if n < EDIT_LINE { s[0].ev.say[n] = '.'; n += 1; }
+  s[0].ev.say_n = n;
+}
+// "Removed Old Tam." with the name as it's written.
+ev_say_person :: (s: [] Everglade, before: string, i: int, after: string) {
+  m := ev_put(s[0].ev.say[..], before);
+  m += ev_put(s[0].ev.say[m..<EDIT_LINE], EG_PERSON[i]);
+  s[0].ev.say_n = m + ev_put(s[0].ev.say[m..<EDIT_LINE], after);
+}
+
+EDIT_CLEAR :: 0.25;   // metres a placed thing stays off you, past your walker's radius
+
+// Places count of item in a row in front of you, clear of you, each where it
+// may stand, as one group (a later "remove these" takes the row). A row that
+// doesn't fit is shifted further out, and what still doesn't is left out and said.
 edit_place :: (s: [] Everglade, item: int, count: int, spoken: bool) {
   if s[0].ev.edits.n >= EG_EDIT_MAX { ev_line(s, "THE CITY HAS AS MANY THINGS AS IT TAKES"); ev_say(s, "There's no room for more things."); return; }
   before := s[0].ev.edits;
   fx := sin(s[0].face); fz := cos(s[0].face);
   rx := fz; rz := -fx;   // across your view
   w := EG_EDIT_HALF[item * 3] * 2 + 0.5;
+  // the row's near edge clear of you: your radius, a margin, then half the thing's depth
+  first := f32(EG_RADIUS) + f32(EDIT_CLEAR) + EG_EDIT_HALF[item * 3 + 1] + 0.5;
+  group := eg_new_group(s[0].ev.edits);
   placed := 0;
   for k: 0..<count {
     if s[0].ev.edits.n >= EG_EDIT_MAX { break; }
     across := (f32(k) - f32(count - 1) / 2) * w;
     done := false;
     for d: 0..<4 {
-      ahead := [4] f32.[2.6, 3.6, 4.8, 1.8];
       t: EgThing;
-      t.kind = item; t.size = 1; t.yaw = s[0].face;
-      t.x = s[0].feet.x + fx * ahead[d] + rx * across; t.z = s[0].feet.z + fz * ahead[d] + rz * across;
+      t.kind = item; t.size = 1; t.yaw = s[0].face; t.group = group;
+      ahead := first + f32(d) * 1.1;
+      t.x = s[0].feet.x + fx * ahead + rx * across; t.z = s[0].feet.z + fz * ahead + rz * across;
+      box: [EG_BOX] f32;
+      eg_edit_box(t, box[..]);
+      if box_gap(box[..], 0, s[0].feet.x, s[0].feet.z) < f32(EG_RADIUS) + f32(EDIT_CLEAR) { continue; }   // never on you
       s[0].ev.edits.things[s[0].ev.edits.n] = t; s[0].ev.edits.n += 1;
       if eg_edit_fault(s[0].ev.edits, s[0].ev.edits.n - 1) == EG_FAULT_NONE { done = true; break; }
       s[0].ev.edits.n -= 1;
@@ -258,35 +320,74 @@ edit_place :: (s: [] Everglade, item: int, count: int, spoken: bool) {
   if placed == 0 { s[0].ev.edits = before; ev_line(s, "THERE'S NO ROOM THERE"); ev_say(s, "There's no room there."); return; }
   after := s[0].ev.edits;
   s[0].ev.edits = before; edit_remember(s); s[0].ev.edits = after;
-  n := ev_put(s[0].ev.line[..], "PLACED ");
-  digit := [1] u8.[cast(u8) ('0' + placed)];
-  n += ev_put(s[0].ev.line[n..<EDIT_LINE], cast(string) digit[..]);
-  n += ev_put(s[0].ev.line[n..<EDIT_LINE], " ");
-  n += ev_put(s[0].ev.line[n..<EDIT_LINE], EG_EDIT_LABEL[item]);
-  s[0].ev.line_n = n;
-  m := ev_put(s[0].ev.say[..], "Placed ");
-  m += ev_put(s[0].ev.say[m..<EDIT_LINE], cast(string) digit[..]);
-  m += ev_put(s[0].ev.say[m..<EDIT_LINE], " ");
-  m += ev_put(s[0].ev.say[m..<EDIT_LINE], EDIT_NAMES[item]);
-  m += ev_put(s[0].ev.say[m..<EDIT_LINE], ifx placed > 1 then "s." else ".");
-  s[0].ev.say_n = m;
+  n := ev_count(s[0].ev.line[..], "PLACED ", placed, EG_EDIT_LABEL[item], EG_EDIT_LABELS[item]);
+  if placed < count {
+    n += ev_put(s[0].ev.line[n..<EDIT_LINE], " · ");
+    n = eg_put_int(s[0].ev.line[..], n, count - placed);
+    n += ev_put(s[0].ev.line[n..<EDIT_LINE], " DIDN'T FIT");
+  }
+  s[0].ev.line_n = lo_i(n, EDIT_LINE);
+  ev_say_line(s);
   if spoken { edit_changed(s, "Placed by voice"); } else { edit_settle(s); }
 }
 
-edit_remove :: (s: [] Everglade) {
-  best := -1; most := 64.0f32;
-  for i: 0..<s[0].ev.edits.n {
-    t := s[0].ev.edits.things[i];
-    d := (t.x - s[0].feet.x) * (t.x - s[0].feet.x) + (t.z - s[0].feet.z) * (t.z - s[0].feet.z);
-    if d < most { most = d; best = i; }
+// Takes away what a removal names (verse/everglade/edits.coax eg_remove_pick):
+// kind EG_PICK_* or -1, who a spot or -1, all for "these", "those", "clear this".
+edit_remove :: (s: [] Everglade, kind: int, who: int, all: bool) {
+  take := eg_remove_pick(s[0].ev.edits, s[0].feet.x, s[0].feet.z, kind, who, all);
+  if take.n_things + take.n_people == 0 {
+    if who >= 0 {
+      n := ev_put(s[0].ev.line[..], ev_name_up(who));
+      s[0].ev.line_n = n + ev_put(s[0].ev.line[n..<EDIT_LINE], " IS ALREADY GONE");
+      ev_say_person(s, "", who, " is already gone.");
+    } else { ev_line(s, "NOTHING NEAR YOU TO REMOVE"); ev_say_line(s); }
+    return;
   }
-  if best < 0 { ev_line(s, "NOTHING PLACED NEAR YOU TO REMOVE"); ev_say(s, "There's nothing placed near you."); return; }
   edit_remember(s);
-  for i: best + 1..<s[0].ev.edits.n { s[0].ev.edits.things[i - 1] = s[0].ev.edits.things[i]; }
-  s[0].ev.edits.n -= 1;
-  ev_line(s, "REMOVED IT"); ev_say(s, "Removed it.");
+  edit_take(s, take, true);
+}
+
+// Takes t away and says what went: "REMOVED MARTA", "REMOVED 4 CRATES".
+edit_take :: (s: [] Everglade, t: EgTake, spoken: bool) {
+  e := s[0].ev.edits;
+  kind := -1; mixed := false;
+  for i: 0..<e.n {
+    if (t.things >> cast(u64) i) & 1 == 0 { continue; }
+    k := eg_edit_kind(e.things[i].kind);
+    if kind < 0 { kind = k; } else if kind != k { mixed = true; }
+  }
+  one := -1; cats := 0;
+  for i: 0..<EG_SPOTS { if (t.people >> cast(u32) i) & 1 != 0 { one = i; if EG_SPOT_CAT[i] { cats += 1; } } }
+  s[0].ev.edits = eg_remove(e, t);
+  if s[0].ev.picked >= s[0].ev.edits.n { s[0].ev.picked = -1; }
+  if s[0].ev.person >= 0 && eg_gone(s[0].ev.edits, s[0].ev.person) { s[0].ev.person = -1; }
+  n := 0;
+  if t.n_things == 0 && t.n_people == 1 {
+    n = ev_put(s[0].ev.line[..], "REMOVED ");
+    n += ev_put(s[0].ev.line[n..<EDIT_LINE], ev_name_up(one));
+  } else if t.n_things == 0 {
+    n = ev_count(s[0].ev.line[..], "REMOVED ", t.n_people, "CAT", ifx cats == t.n_people then "CATS" else "PEOPLE");
+  } else if t.n_people == 0 && !mixed {
+    n = ev_count(s[0].ev.line[..], "REMOVED ", t.n_things, EG_EDIT_LABEL[kind], EG_EDIT_LABELS[kind]);
+  } else {
+    n = ev_count(s[0].ev.line[..], "REMOVED ", t.n_things + t.n_people, "THING", "THINGS");
+  }
+  s[0].ev.line_n = n;
+  if !spoken { edit_settle(s); return; }
+  ev_say_line(s);
+  if t.n_things == 0 && t.n_people == 1 { ev_say_person(s, "Removed ", one, "."); }
   edit_changed(s, "Removed by voice");
 }
+
+// A person's name in capitals (EG_PERSON "Old Tam" is "OLD TAM").
+ev_name_up :: (i: int) -> string {
+  if i < 0 || i >= EG_SPOTS { return ""; }
+  return EG_PERSON_UP[i];
+}
+EG_PERSON_UP :: [22] string.[
+  "BRAM", "TILDA", "PIP", "OSWIN", "PEBBLE", "MARTA", "SOOT", "HOLLIS", "FERN", "ADA", "QUILL",
+  "GARRICK", "ISOLDE", "ROOK", "SABLE", "ELOWEN", "WISP", "BROTHER ANSELM", "VEGA", "MOSS", "OLD TAM", "CORIN"
+];
 
 edit_undo :: (s: [] Everglade, spoken: bool) {
   if s[0].ev.undo_n == 0 { ev_line(s, "NOTHING TO UNDO"); if spoken { ev_say(s, "There's nothing to undo."); } return; }
@@ -305,18 +406,6 @@ edit_undo :: (s: [] Everglade, spoken: bool) {
 edit_changed :: (s: [] Everglade, summary: string) {
   edit_walls(s);
   s[0].ev.post_n = eg_edits_body(s[0].ev.edits, summary, s[0].ev.post[..]);
-  s[0].ev.check = true;
-}
-
-// The face lends a grid and a queue (EG_REACH_N squared each): a warning when a way is shut.
-everglade_edit_check :: (s: [] Everglade, grid: [] u8, queue: [] u32) #export_c {
-  s[0].ev.check = false;
-  k := eg_edits_unreached(grid, queue, s[0].ev.edits);
-  if k < 0 { return; }
-  n := s[0].ev.line_n;
-  n += ev_put(s[0].ev.line[n..<EDIT_LINE], " · IT SHUTS THE WAY TO ");
-  n += ev_put(s[0].ev.line[n..<EDIT_LINE], eg_target_name(k));
-  s[0].ev.line_n = n;
 }
 
 // The player's walls: the plan's, then a box for each placed thing.
@@ -325,8 +414,11 @@ edit_walls :: (s: [] Everglade) {
   box: [EG_BOX] f32;
   for i: 0..<s[0].ev.edits.n {
     if w >= WALLS { break; }
-    eg_edit_box(s[0].ev.edits.things[i], box[..]);
-    put6(s[0].walls[..], w, box[0], 0, box[1], box[2], box[4], box[3]);
+    t := s[0].ev.edits.things[i];
+    eg_edit_box(t, box[..]);
+    // from under the ground to its top where it's drawn (edit_draw stands it at the ground under its middle)
+    g := ground_at(s, t.x, t.z);
+    put6(s[0].walls[..], w, box[0], g - 1, box[1], box[2], g + box[4], box[3]);
     w += 1;
   }
   s[0].wall_n = w;
@@ -347,7 +439,7 @@ edit_draw :: (s: [] Everglade) {
 edit_start :: (s: [] Everglade) {
   for k: 0..<EG_EDIT_ITEMS { s[0].ev.town_used[k] = s[0].kit_used[group_of(EDIT_MESH[k])]; }
   s[0].ev.wall_base = s[0].wall_n;
-  s[0].ev.finger = -1; s[0].ev.finger2 = -1; s[0].ev.lit = -1; s[0].ev.picked = -1;
+  s[0].ev.finger = -1; s[0].ev.finger2 = -1; s[0].ev.lit = -1; s[0].ev.picked = -1; s[0].ev.person = -1;
 }
 // The extra instances an item's group keeps for placed things.
 edit_cap :: (group: int) -> int {
@@ -425,15 +517,18 @@ everglade_voice_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom
   walls := s[0].wall_n;
   everglade_edit_answer(s[..], "200\n{\"edit\": \"place\", \"item\": \"barrel\", \"count\": 2, \"model\": \"m\"}");
   #assert s[0].ev.edits.n == 2 && s[0].ev.edits.things[0].kind == 1 && s[0].ev.edits.things[0].z < -9;
-  #assert s[0].wall_n == walls + 2 && s[0].ev.post_n > 0 && s[0].ev.check;
-  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "PLACED 2 BARREL" || s[0].ev.line_n > 0;
+  #assert s[0].wall_n == walls + 2 && s[0].ev.post_n > 0;
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "PLACED 2 BARRELS";
   #assert cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "Placed 2 barrels.";
   everglade_edit_answer(s[..], "200\n{\"edit\": \"remove\", \"model\": \"m\"}");
   #assert s[0].ev.edits.n == 1 && s[0].wall_n == walls + 1;
   everglade_edit_answer(s[..], "200\n{\"edit\": \"undo\", \"model\": \"m\"}");
   #assert s[0].ev.edits.n == 2;
+  everglade_message(s[..], MSG_VOICE, "heard|what time is it");
+  #assert s[0].ev.line_n == 0 && ev_text(s[..]) == "what time is it";   // the heard words while the server answers
   everglade_edit_answer(s[..], "422\n{\"error\": \"none fit\"}");
-  #assert s[0].ev.edits.n == 2 && s[0].ev.say_n > 0;
+  #assert s[0].ev.edits.n == 2 && cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "DIDN'T CATCH AN EDIT IN: 'what time is it'";
+  #assert cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "I didn't catch an edit.";
   // what was published is what everyone's page lays over the plan
   t: [1] Everglade;
   everglade_start(t[..]);
@@ -441,4 +536,152 @@ everglade_voice_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom
   #assert body.count > 40;
   everglade_world(t[..], "200\n{\"doc\": {\"edits\": \"eg-edit 1\\nt 1 600 -1200 0 100\\n\", \"everglade\": 1}, \"version\": 4}");
   #assert t[0].ev.edits.n == 1 && t[0].wall_n == walls + 1 && !voice_on(t[..]);
+}
+
+#test "voice edits: one of a thing is A THING, more are THINGS" {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  everglade_message(s[..], MSG_VIEWER, "A|1\n");
+  s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"place\", \"item\": \"bench\", \"count\": 2}");
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "PLACED 2 BENCHES" && cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "Placed 2 benches.";
+  s[0].feet = v3(-6, 0, -9);
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"place\", \"item\": \"barrel\", \"count\": 1}");
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "PLACED A BARREL" && cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "Placed a barrel.";
+  out: [64] u8;
+  #assert cast(string) out[0..<ev_count(out[..], "PLACED ", 3, EG_EDIT_LABEL[3], EG_EDIT_LABELS[3])] == "PLACED 3 FENCES";
+  #assert cast(string) out[0..<ev_count(out[..], "PLACED ", 4, EG_EDIT_LABEL[4], EG_EDIT_LABELS[4])] == "PLACED 4 STALLS";
+  #assert cast(string) out[0..<ev_count(out[..], "PLACED ", 4, EG_EDIT_LABEL[0], EG_EDIT_LABELS[0])] == "PLACED 4 CRATES";
+}
+
+#test "voice edits: a row starts in front of you and never stands on you, whichever way you face" {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  everglade_message(s[..], MSG_VIEWER, "A|1\n");
+  for f: 0..<8 {
+    s[0].ev.edits.n = 0;
+    s[0].feet = v3(4, 0, -12); s[0].face = f32(f) * f32(PI) / 4;
+    for item: 0..<EG_EDIT_ITEMS {
+      edit_place(s[..], item, 6, false);
+    }
+    #assert s[0].ev.edits.n > 0;
+    box: [EG_BOX] f32;
+    for i: 0..<s[0].ev.edits.n {
+      eg_edit_box(s[0].ev.edits.things[i], box[..]);
+      #assert box_gap(box[..], 0, 4, -12) >= f32(EG_RADIUS) + f32(EDIT_CLEAR) - 0.001;
+      #assert eg_edit_fault(s[0].ev.edits, i) == EG_FAULT_NONE;
+      // ahead of you, not behind
+      t := s[0].ev.edits.things[i];
+      #assert (t.x - 4) * sin(s[0].face) + (t.z + 12) * cos(s[0].face) > 0;
+    }
+  }
+  // a row that doesn't all fit says how many didn't
+  s[0].ev.edits.n = 0;
+  s[0].feet = v3(0, 0, -52); s[0].face = 0;   // just inside the South Gate, facing in
+  edit_place(s[..], 4, 6, false);
+  line := cast(string) s[0].ev.line[0..<s[0].ev.line_n];
+  #assert s[0].ev.edits.n == 6 || (line.count > 11 && line[line.count - 11..<line.count] == "DIDN'T FIT");
+  s[0].ev.line_n = ev_put(s[0].ev.line[..], "PLACED 4 STALLS · 2 DIDN'T FIT");
+  ev_say_line(s[..]);
+  #assert cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "Placed 4 stalls, 2 didn't fit.";
+}
+
+#test "voice edits: placed things are walls from the ground they stand on; a bench you stand on casts your shadow on its top" {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  everglade_message(s[..], MSG_VIEWER, "A|1\n");
+  s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
+  edit_place(s[..], 2, 1, false);
+  t := s[0].ev.edits.things[0];
+  w := (s[0].wall_n - 1) * 6;
+  g := ground_at(s[..], t.x, t.z);
+  #assert abs(s[0].walls[w + 4] - (g + EG_EDIT_HALF[2 * 3 + 2])) < 0.001 && s[0].walls[w + 1] < g;
+  // standing on the bench's top: the floor under you is its top, not the ground
+  top := s[0].walls[w + 4];
+  #assert abs(floor_under(s[..], t.x, t.z, top) - top) < 0.001 && abs(floor_under(s[..], t.x, t.z, g) - g) < 0.001;
+  u: [UNIFORM_FLOATS] f32;
+  s[0].shadow_n = 0;
+  shadow(s[..], u[..], t.x, t.z, top, 0.45, 0.6);
+  packed := u[U_SHADOW + 3];
+  cm := floor(packed / 2);
+  #assert abs(packed - cm * 2 - 0.6) < 0.01 && abs(cm / 100 - 100 - top) < 0.006;
+}
+
+#test "voice edits: remove these crates takes the row; remove Marta takes her, UNDO and ORIGINAL bring her back" {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  everglade_message(s[..], MSG_VIEWER, "A|1\n");
+  // the owner's four crates (published before rows were kept: each on its own) and two benches
+  everglade_world(s[..], "200\n{\"doc\": {\"edits\": \"eg-edit 1\\nt 0 400 -1200 0 100\\nt 0 534 -1200 0 100\\nt 0 668 -1200 0 100\\nt 0 802 -1200 0 100\\nt 2 600 -1700 0 100\\nt 2 600 -2000 0 100\\n\", \"everglade\": 1}, \"version\": 7}");
+  #assert s[0].ev.edits.n == 6;
+  s[0].feet = v3(6, 0, -10); s[0].face = f32(PI);
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"remove\", \"item\": \"crate\", \"all\": true, \"model\": \"m\"}");
+  #assert s[0].ev.edits.n == 2 && s[0].ev.edits.things[0].kind == 2 && cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "REMOVED 4 CRATES";
+  #assert cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "Removed 4 crates." && s[0].ev.post_n > 0;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"undo\"}");
+  #assert s[0].ev.edits.n == 6;
+  // a row placed together goes as one, from wherever you stand by it
+  s[0].ev.edits.n = 0;
+  s[0].feet = v3(6, 0, -9);
+  edit_place(s[..], 1, 6, false);
+  placed := s[0].ev.edits.n;
+  #assert placed > 1;
+  s[0].feet = v3(6, 0, -3);
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"remove\", \"item\": \"barrel\", \"all\": true}");
+  #assert s[0].ev.edits.n == 0;
+  // a person by name, from anywhere: off the city, and back with UNDO and with ORIGINAL
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"remove\", \"who\": \"Marta\"}");
+  #assert eg_gone(s[0].ev.edits, 5) && cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "REMOVED MARTA" && cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "Removed Marta.";
+  #assert nearest(s[..], v3(-3.4, 0, -36)) != 5;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"remove\", \"who\": \"Marta\"}");
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "MARTA IS ALREADY GONE";
+  edit_undo(s[..], false);
+  #assert !eg_gone(s[0].ev.edits, 5) && nearest(s[..], v3(-3.4, 0, -36)) == 5;
+  // "remove these cats" by the inn takes its cat, not Marta
+  s[0].feet = v3(-3, 0, -34);
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"remove\", \"item\": \"cat\", \"all\": true}");
+  #assert eg_gone(s[0].ev.edits, 6) && !eg_gone(s[0].ev.edits, 5) && cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "REMOVED SOOT";
+  edit_toggle(s[..]);
+  edit_press(s[..], EB_ORIGINAL); edit_press(s[..], EB_ORIGINAL);
+  #assert s[0].ev.edits.gone == 0 && s[0].ev.reset;
+}
+
+#test "voice edits: with Moss taken away his quest is off the board, and one under way can't be handed in till he's back" {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  everglade_message(s[..], MSG_VIEWER, "A|1\n");
+  #assert board_count(s[..]) == 3;
+  s[0].stages[0] = 3;   // the waystone's quest, ready to hand in
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"remove\", \"who\": \"Moss\"}");
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "REMOVED MOSS";
+  #assert board_count(s[..]) == 2 && board_nth(s[..], 0) == 1 && !on_board(s[..], 0);
+  open_board(s[..]);
+  #assert s[0].pick == 1;
+  s[0].pick = 0; board_act(s[..]);
+  #assert s[0].stages[0] == 3;
+  close_board(s[..]);
+  talk_to(s[..], EG_CRIER);
+  #assert s[0].stages[0] == 3;
+  end_talk(s[..]);
+  edit_undo(s[..], true);
+  #assert board_count(s[..]) == 3;
+  open_board(s[..]);
+  #assert s[0].pick == 0;
+  board_act(s[..]);
+  #assert s[0].stages[0] == EG_QUEST_DONE;
+}
+
+#test "edit mode: a click on one of the city's people picks them, and DELETE takes them away" {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  everglade_message(s[..], MSG_VIEWER, "A|1\n");
+  edit_toggle(s[..]);
+  s[0].ev.pseen[5] = true; s[0].ev.px[5] = 400; s[0].ev.py[5] = 300;
+  s[0].dpr = 1;
+  #assert everglade_edit_pointer(s[..], 404, 302, 0, 3) && s[0].ev.person == 5 && s[0].ev.picked == -1;
+  _ := everglade_key(s[..], 'r', 0);
+  #assert !eg_gone(s[0].ev.edits, 5) && s[0].ev.person == 5;   // R turns things, not people
+  #assert everglade_key(s[..], EV_KEY_DELETE, 0) && eg_gone(s[0].ev.edits, 5) && s[0].ev.person == -1;
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "REMOVED MARTA" && s[0].ev.due > 0;
+  #assert everglade_key(s[..], 'z', 0) && !eg_gone(s[0].ev.edits, 5);
 }

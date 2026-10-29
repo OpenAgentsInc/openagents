@@ -244,29 +244,40 @@ fn path_distance(p: vec2f) -> f32 {
   }
   return d;
 }
-fn shade_shadows(p: vec2f) -> f32 {
+// A shadow is x, z, radius and its strength with the floor it falls on
+// packed in (everglade.coax shadow: strength + 2 * centimetres above -100 m),
+// so one cast on a bench's top darkens the bench, not the ground under it.
+// level: only surfaces within SHADOW_LEVEL of that floor take it (the water takes any).
+const SHADOW_LEVEL = 0.35;
+fn shade_shadows_at(p: vec2f, y: f32, level: bool) -> f32 {
   var s = 1.0;
   for (var i = 0; i < 16; i++) {
     let b = u.shadow[i];
     if (b.z <= 0.0) { break; }
+    let cm = floor(b.w * 0.5);
+    let strength = b.w - cm * 2.0;
+    if (level && abs(y - (cm * 0.01 - 100.0)) > SHADOW_LEVEL) { continue; }
     let d = length(p - b.xy) / b.z;
-    s *= 1.0 - b.w * (1.0 - smoothstep(0.35, 1.0, d));
+    s *= 1.0 - strength * (1.0 - smoothstep(0.35, 1.0, d));
   }
   return s;
 }
+fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
 
 @fragment fn scene_fs(s: S, @builtin(front_facing) front: bool) -> @location(0) vec4f {
   let tex = textureSample(sheets, sheet, s.uv, s.slice);
   var n = normalize(s.normal);
   var base = s.tint;
+  var shadow = 1.0;
   if (s.look == 5u) {
     // A kit mesh: its texture, cut out where the leaves' layer is clear; both sides of a leaf lit.
     if (tex.a < 0.35) { discard; }
     base = tex.rgb * s.tint;
     if (!front) { n = -n; }
+    // a kit piece's top (a bench, a crate) takes the shadow of whoever stands on it
+    if (n.y > 0.7) { shadow = shade_shadows_at(s.world.xz, s.world.y, true); }
   }
   let xz = s.world.xz;
-  var shadow = 1.0;
   if (s.look == 99u) {
     let broad = noise(xz * 0.13);
     let fine = noise(xz * 2.7);
@@ -292,7 +303,7 @@ fn shade_shadows(p: vec2f) -> f32 {
     let mud = mix(vec3f(0.27, 0.22, 0.15), vec3f(0.36, 0.3, 0.2), noise(xz * 2.3)) * (0.85 + 0.25 * noise(xz * 11.0));
     let wet = smoothstep(-0.02, 0.25, under);
     base = mix(base, mud * (1.0 - 0.45 * smoothstep(0.3, 2.0, under)), wet);
-    shadow = shade_shadows(xz);
+    shadow = shade_shadows_at(xz, s.world.y, true);
   } else if (s.look == 1u) {
     base *= 0.8 + 0.35 * noise(s.world.xy * 3.1 + s.world.zx * 2.3);
   } else if (s.look == 2u) {

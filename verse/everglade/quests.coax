@@ -108,15 +108,29 @@ eg_quest_mark :: (q: int, stage: int) -> QuestMark {
   return m;
 }
 
-// Taking a quest from the board: only one not yet taken.
-eg_quest_take :: (stages: [] int, q: int) -> bool {
-  if q < 0 || q >= EG_QUESTS || q >= stages.count || stages[q] != 0 { return false; }
+// The one a quest's TALK step sends you to, who gave it out, or -1.
+eg_quest_giver :: (q: int) -> int {
+  if q < 0 || q >= EG_QUESTS { return -1; }
+  for k: 0..<EG_QUEST_STEPS { if EG_QUEST_KIND[q * EG_QUEST_STEPS + k] == EG_STEP_TALK { return EG_QUEST_ARG[q * EG_QUEST_STEPS + k]; } }
+  return -1;
+}
+// Whether a quest is on the board: its giver is in the city (gone has a bit
+// per EG_SPOT an admin took away, edits.coax). While they're gone it isn't
+// offered and can't be handed in.
+eg_quest_open :: (q: int, gone: u32) -> bool {
+  g := eg_quest_giver(q);
+  return q >= 0 && q < EG_QUESTS && (g < 0 || (gone >> cast(u32) g) & 1 == 0);
+}
+
+// Taking a quest from the board: only one not yet taken, and on the board.
+eg_quest_take :: (stages: [] int, q: int, gone: u32) -> bool {
+  if q < 0 || q >= EG_QUESTS || q >= stages.count || stages[q] != 0 || !eg_quest_open(q, gone) { return false; }
   stages[q] = 1;
   return true;
 }
 // Handing in at the board (or to the crier): a quest whose last step is the one it's on.
-eg_quest_hand_in :: (stages: [] int, q: int) -> bool {
-  if q < 0 || q >= EG_QUESTS || q >= stages.count || !eg_quest_ready(q, stages[q]) { return false; }
+eg_quest_hand_in :: (stages: [] int, q: int, gone: u32) -> bool {
+  if q < 0 || q >= EG_QUESTS || q >= stages.count || !eg_quest_ready(q, stages[q]) || !eg_quest_open(q, gone) { return false; }
   stages[q] = EG_QUEST_DONE;
   return true;
 }
@@ -245,32 +259,32 @@ eg_quest_load :: (text: string, stages: [] int, player: string) -> bool {
 
 #test "a quest is taken, followed and handed in, and only in that order" {
   st := [3] int.[0, 0, 0];
-  #assert !eg_quest_hand_in(st[..], 0) && eg_quest_talk(st[..], 19) == -1 && eg_quest_reach(st[..], -92, 25) == 0;
+  #assert !eg_quest_hand_in(st[..], 0, 0) && eg_quest_talk(st[..], 19) == -1 && eg_quest_reach(st[..], -92, 25) == 0;
   #assert eg_quest_state(0, st[0]) == "NEW";
-  #assert eg_quest_take(st[..], 0) && !eg_quest_take(st[..], 0) && st[0] == 1;
+  #assert eg_quest_take(st[..], 0, 0) && !eg_quest_take(st[..], 0, 0) && st[0] == 1;
   #assert eg_quest_todo(0, st[0]) == "GO OUT BY THE EAST GATE TO THE DEEP WOOD" && eg_quest_state(0, st[0]) == "UNDER WAY";
   // talking to Moss before you're there counts for nothing; far away nothing moves
   #assert eg_quest_talk(st[..], 19) == -1 && eg_quest_reach(st[..], 0, 0) == 0 && st[0] == 1;
   m := eg_quest_mark(0, st[0]);
   #assert m.ok && m.x == -92 && m.z == 25;
   #assert eg_quest_reach(st[..], -88, 18) == 1 && st[0] == 2 && eg_quest_kind_at(0, st[0]) == EG_STEP_TALK;
-  #assert !eg_quest_hand_in(st[..], 0);
+  #assert !eg_quest_hand_in(st[..], 0, 0);
   #assert eg_quest_talk(st[..], 21) == -1 && eg_quest_talk(st[..], 19) == 0 && st[0] == 3;
   #assert eg_quest_ready(0, st[0]) && eg_quest_state(0, st[0]) == "HAND IN";
   m = eg_quest_mark(0, st[0]);
   #assert m.ok && m.x > 6.19 && m.x < 6.21 && m.z == -5;
-  #assert eg_quest_hand_in(st[..], 0) && st[0] == EG_QUEST_DONE && !eg_quest_hand_in(st[..], 0);
+  #assert eg_quest_hand_in(st[..], 0, 0) && st[0] == EG_QUEST_DONE && !eg_quest_hand_in(st[..], 0, 0);
   #assert eg_quest_state(0, st[0]) == "DONE" && eg_quest_todo(0, st[0]) == "" && !eg_quest_mark(0, st[0]).ok;
   #assert !eg_quest_has_flock(st[..]);
   // the river: the flock is earned when it's handed in, not before
-  #assert eg_quest_take(st[..], 2) && eg_quest_reach(st[..], 93, -12) == 1 && eg_quest_talk(st[..], 20) == 2;
-  #assert !eg_quest_has_flock(st[..]) && eg_quest_hand_in(st[..], 2) && eg_quest_has_flock(st[..]);
-  #assert !eg_quest_take(st[..], -1) && !eg_quest_take(st[..], 3);
+  #assert eg_quest_take(st[..], 2, 0) && eg_quest_reach(st[..], 93, -12) == 1 && eg_quest_talk(st[..], 20) == 2;
+  #assert !eg_quest_has_flock(st[..]) && eg_quest_hand_in(st[..], 2, 0) && eg_quest_has_flock(st[..]);
+  #assert !eg_quest_take(st[..], -1, 0) && !eg_quest_take(st[..], 3, 0);
 }
 
 #test "two quests at once move on their own" {
   st := [3] int.[0, 0, 0];
-  #assert eg_quest_take(st[..], 0) && eg_quest_take(st[..], 1);
+  #assert eg_quest_take(st[..], 0, 0) && eg_quest_take(st[..], 1, 0);
   #assert eg_quest_reach(st[..], 22, 90) == 1 && st[0] == 1 && st[1] == 2;
   #assert eg_quest_talk(st[..], 21) == 1 && st[1] == 3 && st[0] == 1;
 }
@@ -297,4 +311,15 @@ eg_quest_load :: (text: string, stages: [] int, player: string) -> bool {
   #assert bad[0] == 0 && bad[1] == 0 && bad[2] == 0;
   small: [8] u8;
   #assert eg_quest_save(small[..], st[..], "p-7") == 0;
+}
+
+#test "a quest whose giver was taken away is off the board and can't be handed in until they're back" {
+  #assert eg_quest_giver(0) == 19 && eg_quest_giver(1) == 21 && eg_quest_giver(2) == 20;
+  moss := cast(u32) 1 << 19;
+  #assert !eg_quest_open(0, moss) && eg_quest_open(1, moss) && eg_quest_open(2, moss);
+  st: [EG_QUESTS] int;
+  #assert !eg_quest_take(st[..], 0, moss) && st[0] == 0 && eg_quest_take(st[..], 1, moss);
+  // under way when Moss went: up to the board, but not handed in until Moss is back
+  #assert eg_quest_take(st[..], 0, 0) && eg_quest_reach(st[..], -88, 18) == 1 && eg_quest_talk(st[..], 19) == 0;
+  #assert eg_quest_ready(0, st[0]) && !eg_quest_hand_in(st[..], 0, moss) && eg_quest_hand_in(st[..], 0, 0);
 }

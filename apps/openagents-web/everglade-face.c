@@ -13,7 +13,7 @@
 // (GET /api/playtest/world/everglade, everyone), heard words go to the
 // server's selector (POST /api/playtest/realm/everglade/edit) and the new
 // list is published (POST /api/playtest/world/everglade); the server checks
-// both are an admin's. It lends the page a grid to walk the city again.
+// both are an admin's.
 // verse/everglade/river.coax is the river (River.h): built once from the
 // page's carved ground, each frame it says what water you are in, whose
 // pace, jump, current and breath the face passes to the controller and the
@@ -47,8 +47,6 @@ static int32_t ask_id = -1, mint_id = -1;
 #define RESET_URL "/api/playtest/world/everglade/reset"
 static int32_t world_id = -1, edit_id = -1, post_id = -1;
 static bool world_asked;
-static uint8_t reach_grid[400 * 400];
-static uint32_t reach_queue[400 * 400];
 static void edit_out(uint32_t state);
 static bool facts_seen, has_player, mint_tried;
 static void ask_out(uint32_t state);
@@ -178,8 +176,6 @@ static void edit_out(uint32_t state) {
     everglade_edit_post_sent(at(state));
     if (post_id < 0) { post_id = -1; everglade_edit_saved(at(state), 0); }
   }
-  if (everglade_edit_wants_check(at(state)))
-    everglade_edit_check(at(state), (coax_v_u8){reach_grid, sizeof reach_grid}, (coax_v_u32){reach_queue, sizeof reach_queue / sizeof reach_queue[0]});
 }
 
 // The page's question, once the browser has a player key (or minting one failed).

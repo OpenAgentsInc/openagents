@@ -446,16 +446,22 @@ just happened, and along the bottom the hotbar CRATE, BARREL, BENCH, FENCE,
 STALL (1 to 5 place one in front of you), UNDO (Z), REDO (Y), ORIGINAL and
 DONE (B or Esc). Click or tap a placed thing to pick it; its row moves it
 LEFT, RIGHT, AWAY and NEAR (the arrows), TURNs it (R), makes it BIGGER or
-SMALLER (+ and -) or DELETEs it (Delete); Esc lets go. On a phone the
-hotbar is two rows and the picked thing's row is two rows of four. A change
-that would put a thing past the edge, in the woods, in a building or in
-another thing is refused and says why; one that shuts the way to a door, a
-spot or a gate is kept with a warning naming it. The list is published a
+SMALLER (+ and -) or DELETEs it (Delete); Esc lets go. Click or tap one of
+the city's people or cats to pick them, and DELETE takes them away (REMOVED
+MARTA). On a phone the hotbar is two rows and the picked thing's row is two
+rows of four. A change that would put a thing past the edge, in the woods,
+in a building or in another thing is refused and says why. Placed things
+are walls from the ground they stand on; a bench or anything else no
+higher than a step can be stood on, and the soft shadow falls on its top
+(everglade.wgsl shade_shadows_at). The list is published a
 moment after the last change and at once on DONE. ORIGINAL asks twice, then
 puts the designed city back for everyone (`POST
 /api/playtest/world/everglade/reset`); UNDO after it brings the edits back
 and publishes them again. Edit mode and voice edits share one list, one
-undo and one redo.
+undo and one redo. A removed person is a `p SPOT` line in the list; a
+quest whose giver is gone (Moss, Corin, Old Tam) is off the quest board,
+and one under way can't be handed in until they're back
+(`verse/everglade/quests.coax` eg_quest_open).
 
 ## Voice edits (admins only, eg-edit)
 
@@ -465,11 +471,18 @@ The voice host hears the sentence and the page sends it to
 `POST /api/playtest/realm/everglade/edit`, which checks admin_who and asks
 Gemini for one edit under a response schema of the realm's catalogue
 (`migrations/0045_realm_voice_edit.sql`): place 1 to 6 of crate, barrel,
-bench, fence or stall in front of you, remove the nearest placed thing, or
-undo. No words are matched. The page does the edit
-(`verse/everglade/edits.coax`, `apps/openagents-web/everglade-voice.coax`),
-refuses a place that blocks a street or overlaps a building, warns if a
-door, spot or gate is no longer reachable, and publishes the edits as
+bench, fence or stall in front of you; remove (the nearest placed thing
+or person, a person or cat by name, or with `all` many at once: "remove
+these crates", "get rid of those benches", "clear this", every one near
+and the whole row the nearest was placed with: migration
+`0046_realm_voice_remove.sql`); or undo. No words are matched. While the
+server answers, what was heard shows; then the result (PLACED 4 CRATES,
+PLACED A BARREL, REMOVED MARTA). A sentence with no edit in it shows only
+DIDN'T CATCH AN EDIT IN: '...'. The page does the edit
+(`verse/everglade/edits.coax`, `apps/openagents-web/everglade-voice.coax`):
+a row starts clear of you (your radius, a margin and half the thing) and
+goes further out where it doesn't fit, saying how many didn't; it refuses
+a place in a building, the woods or another thing; and publishes the edits as
 Everglade's world (`POST /api/playtest/world/everglade`, admin site session
 only). Everyone sees them. `POST /api/playtest/world/everglade/reset` puts
 the designed city back; every version is kept in the realm's log. The
