@@ -1,0 +1,41 @@
+// Experimental BIP-340 key/public-point preparation. Not a signer.
+#load "schnorr_scalar_workspace.coax";
+#load "schnorr_point_workspace.coax";
+#authority;
+#test "prepare BIP-340 vector secret three" {
+  key:[32]u8;key[31]=3;work:[1]SignPrepare;
+  expected:=[32]u8.[0xf9,0x30,0x8a,0x01,0x92,0x58,0xc3,0x10,0x49,0x34,0x4f,0x85,0xf8,0x9d,0x52,0x29,0xb5,0x31,0xc8,0x45,0x83,0x6f,0x99,0xb0,0x86,0x01,0xf1,0x13,0xbc,0xe0,0x36,0xf9];
+  #assert sk_prepare(key[..],work[..],false) && work[0].valid==1 && work[0].point[0].odd==0;
+  for i:0..<32 {#assert work[0].public_key[i]==expected[i];}#assert work[0].normalized[31]==3;
+}
+#test "invalid secret uses fallback but does not grant validity" {
+  key:[32]u8;work:[1]SignPrepare;
+  #assert sk_prepare(key[..],work[..],false) && work[0].valid==0 && work[0].point[0].finite==1;
+  #assert work[0].normalized[31]==1 && work[0].key[0].valid==0;
+}
+#test "odd public point negates the private scalar" {
+  key:[32]u8;work:[1]SignPrepare;#assert ss_write(SC_N,key[..]);key[31]-=3;
+  #assert sk_prepare(key[..],work[..],false) && work[0].valid==1 && work[0].point[0].odd==1;
+  for i:0..<31 {#assert work[0].normalized[i]==0;}#assert work[0].normalized[31]==3;
+}
+#test "key preparation refuses metadata before state changes" {
+  key:[33]u8;work:[1]SignPrepare;work[0].valid=9;
+  #assert !sk_prepare(key[0..<31],work[..],false) && !sk_prepare(key[..],work[..],false);
+  #assert !sk_prepare(key[0..<32],work[0..<0],false) && !sk_prepare(key[0..<32],work[..],true);
+  #assert work[0].valid==9;#assert sk_prepare_key(key[0..<32],work[..]) && work[0].valid==0;
+}
+SignPrepare :: struct {key:[1]SignScalar;point:[1]SignPoint;public_key:[32]u8;normalized:[32]u8;valid:u64;}
+sk_clear :: (work:[]SignPrepare) {work[0].valid=0;}
+sk_prepare_key :: (key:[]u8,work:[]SignPrepare)->bool {sk_clear(work);return ss_key(key,work[0].key[..],false);}
+// The caller owns stable disjoint key and work, retains the valid bit through
+// publication, and must wipe the complete workspace. A true return is not a
+// signing authorization or evidence that the secret is valid.
+sk_prepare :: (key:[]u8,work:[]SignPrepare,overlap:bool)->bool #export_c {
+  if work.count!=1 || key.count!=32 || overlap {return false;}
+  ok:=sk_prepare_key(key,work);if !ok {return ok;}
+  ok=sp_base(work[0].key[0].safe,work[0].point[..]);if !ok {return ok;}
+  ok=sp_x(work[0].point[..],work[0].public_key[..]);if !ok {return ok;}
+  normalized:=ss_even(work[0].key[0].safe,work[0].point[0].odd);
+  ok=ss_write(normalized,work[0].normalized[..]);if !ok {return ok;}
+  work[0].valid=work[0].key[0].valid & work[0].point[0].finite;return true;
+}
