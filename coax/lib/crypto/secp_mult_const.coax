@@ -158,5 +158,8 @@ smc_multiply :: (input: ScScalar,peer: SgPoint) -> SgResult #export_c {
     selected := smc_signed(smc_pick(table[..],digits.magnitude[at]),digits.negative[at]);
     result = sg32_add(result,selected);
   }
-  return sg_finish(valid,sg32_to_point(result));
+  // The group kernel already produces canonical coordinates and infinity.
+  // Select with the public validity mask before converting the canonical result.
+  finished:SgResult;finished.value=sg32_to_point(sg32_choose(valid,sg32_canonical_infinity(result),sg32_infinity()));
+  finished.ok=valid==CB_MAX64;return finished;
 }

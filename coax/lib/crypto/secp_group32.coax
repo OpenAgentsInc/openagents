@@ -1,6 +1,6 @@
 // Experimental canonical 8x32 group kernels. No secret-use approval.
 #load "secp_group.coax";
-#load "secp_field32.coax";
+#load "secp_field32_total.coax";
 #authority;
 Sg32 :: struct {x:Sf32;y:Sf32;z:Sf32;}
 
@@ -58,23 +58,23 @@ sg32_choose :: (mask:u64,a:Sg32,b:Sg32)->Sg32 {return Sg32.{x=sg32_choose_field(
 sg32_infinity :: ()->Sg32 {r:Sg32;r.x.limb[0]=1;r.y.limb[0]=1;return r;}
 sg32_canonical_infinity :: (p:Sg32)->Sg32 {zero:Sf32;return sg32_choose(sg32_mask_equal(p.z,zero),sg32_infinity(),p);}
 sg32_double :: (p:Sg32)->Sg32 {
-  aa:=sf32_mul(p.x,p.x);bb:=sf32_mul(p.y,p.y);cc:=sf32_mul(bb,bb);
-  q:=sf32_add(p.x,bb);dd:=sf32_sub(sf32_sub(sf32_mul(q,q),aa),cc);dd=sf32_add(dd,dd);
-  ee:=sf32_add(sf32_add(aa,aa),aa);ff:=sf32_mul(ee,ee);
-  r:Sg32;r.x=sf32_sub(ff,sf32_add(dd,dd));
-  eightcc:=sf32_add(cc,cc);eightcc=sf32_add(eightcc,eightcc);eightcc=sf32_add(eightcc,eightcc);
-  r.y=sf32_sub(sf32_mul(ee,sf32_sub(dd,r.x)),eightcc);
-  yz:=sf32_mul(p.y,p.z);r.z=sf32_add(yz,yz);return sg32_canonical_infinity(r);
+  aa:=sf32_mul_total(p.x,p.x);bb:=sf32_mul_total(p.y,p.y);cc:=sf32_mul_total(bb,bb);
+  q:=sf32_add_total(p.x,bb);dd:=sf32_sub(sf32_sub(sf32_mul_total(q,q),aa),cc);dd=sf32_add_total(dd,dd);
+  ee:=sf32_add_total(sf32_add_total(aa,aa),aa);ff:=sf32_mul_total(ee,ee);
+  r:Sg32;r.x=sf32_sub(ff,sf32_add_total(dd,dd));
+  eightcc:=sf32_add_total(cc,cc);eightcc=sf32_add_total(eightcc,eightcc);eightcc=sf32_add_total(eightcc,eightcc);
+  r.y=sf32_sub(sf32_mul_total(ee,sf32_sub(dd,r.x)),eightcc);
+  yz:=sf32_mul_total(p.y,p.z);r.z=sf32_add_total(yz,yz);return sg32_canonical_infinity(r);
 }
 sg32_add :: (a:Sg32,b:Sg32)->Sg32 {
-  z1z1:=sf32_mul(a.z,a.z);z2z2:=sf32_mul(b.z,b.z);
-  u1:=sf32_mul(a.x,z2z2);u2:=sf32_mul(b.x,z1z1);
-  s1:=sf32_mul(a.y,sf32_mul(b.z,z2z2));s2:=sf32_mul(b.y,sf32_mul(a.z,z1z1));
-  h:=sf32_sub(u2,u1);twoh:=sf32_add(h,h);ii:=sf32_mul(twoh,twoh);jj:=sf32_mul(h,ii);
-  diff:=sf32_sub(s2,s1);rr:=sf32_add(diff,diff);vv:=sf32_mul(u1,ii);
-  r:Sg32;r.x=sf32_sub(sf32_sub(sf32_mul(rr,rr),jj),sf32_add(vv,vv));
-  t:=sf32_mul(s1,jj);r.y=sf32_sub(sf32_mul(rr,sf32_sub(vv,r.x)),sf32_add(t,t));
-  zsum:=sf32_add(a.z,b.z);r.z=sf32_mul(sf32_sub(sf32_sub(sf32_mul(zsum,zsum),z1z1),z2z2),h);
+  z1z1:=sf32_mul_total(a.z,a.z);z2z2:=sf32_mul_total(b.z,b.z);
+  u1:=sf32_mul_total(a.x,z2z2);u2:=sf32_mul_total(b.x,z1z1);
+  s1:=sf32_mul_total(a.y,sf32_mul_total(b.z,z2z2));s2:=sf32_mul_total(b.y,sf32_mul_total(a.z,z1z1));
+  h:=sf32_sub(u2,u1);twoh:=sf32_add_total(h,h);ii:=sf32_mul_total(twoh,twoh);jj:=sf32_mul_total(h,ii);
+  diff:=sf32_sub(s2,s1);rr:=sf32_add_total(diff,diff);vv:=sf32_mul_total(u1,ii);
+  r:Sg32;r.x=sf32_sub(sf32_sub(sf32_mul_total(rr,rr),jj),sf32_add_total(vv,vv));
+  t:=sf32_mul_total(s1,jj);r.y=sf32_sub(sf32_mul_total(rr,sf32_sub(vv,r.x)),sf32_add_total(t,t));
+  zsum:=sf32_add_total(a.z,b.z);r.z=sf32_mul_total(sf32_sub(sf32_sub(sf32_mul_total(zsum,zsum),z1z1),z2z2),h);
   zero:Sf32;same:=sg32_mask_equal(h,zero)&sg32_mask_equal(s1,s2);
   r=sg32_choose(same,sg32_double(a),r);
   r=sg32_choose(sg32_mask_equal(a.z,zero),b,r);

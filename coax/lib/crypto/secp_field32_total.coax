@@ -1,0 +1,84 @@
+// Fixed-work total reductions for the secret variable-base group kernel.
+// All Sf32 bit patterns are accepted. The existing checked helpers remain
+// available unchanged; group operations supply canonical operands.
+#load "secp_field32.coax";
+#authority;
+
+#test "total reducers accept noncanonical full-width inputs" {
+  max:Sf32;for i:0..<8 {max.limb[i]=cast(u32)SF32_WORD;}
+  sum:=sf32_add_total(max,max);product:=sf32_mul_total(max,max);
+  expected_sum:Sf32;expected_sum.limb[0]=1952;expected_sum.limb[1]=2;
+  expected_product:Sf32;expected_product.limb[0]=952576;expected_product.limb[1]=1952;expected_product.limb[2]=1;
+  #assert sf32_equal(sum,expected_sum) && sf32_equal(product,expected_product);
+}
+#forall "total reducers match checked helpers on canonical small inputs" a:0..<16,b:0..<16 {
+  x:Sf32;y:Sf32;x.limb[0]=cast(u32)a;y.limb[0]=cast(u32)b;
+  #assert sf32_equal(sf32_add_total(x,y),sf32_add(x,y));
+  #assert sf32_equal(sf32_mul_total(x,y),sf32_mul(x,y));
+}
+
+// Equivalent full-width fold with the two exceptional low limbs explicit.
+#forall "total fold agrees with the checked fold on varied public limbs" index:0..<8,which:0..<3 {
+  a:Sf32;for i:0..<8 {a.limb[i]=cast(u32)(123456789+i*77123);}
+  a.limb[index]=cast(u32)SF32_WORD;
+  top:=ifx which==0 then cast(u64)0 else ifx which==1 then cast(u64)1 else cast(u64)4294968273;
+  got:=sf32_fold_total(a,top);want:=sf32_fold_top(a,top);
+  #assert got.carry==want.carry && sf32_equal(got.value,want.value);
+}
+#test "total fold carries through all limbs" {
+  a:Sf32;for i:0..<8 {a.limb[i]=cast(u32)SF32_WORD;}
+  got:=sf32_fold_total(a,1);want:=sf32_fold_top(a,1);
+  #assert got.carry==want.carry && sf32_equal(got.value,want.value);
+}
+#forall "total fold carry stops at each upper limb" index:2..<8 {
+  a:Sf32;for i:0..<8 {a.limb[i]=cast(u32)SF32_WORD;}a.limb[index]=0;
+  got:=sf32_fold_total(a,1);want:=sf32_fold_top(a,1);
+  #assert got.carry==want.carry && sf32_equal(got.value,want.value);
+}
+#forall "total canonical selection preserves each input limb" index:0..<8 {
+  a:Sf32;a.limb[index]=123456789;
+  #assert sf32_equal(sf32_canonical_total(a),a);
+}
+#test "total canonical selection reduces just above the prime" {
+  a:=SF32_P;a.limb[0]+=1;one:Sf32;one.limb[0]=1;
+  #assert sf32_equal(sf32_canonical_total(a),one);
+}
+sf32_fold_total :: (input:Sf32,top:u64)->Sf32Fold {
+  r:Sf32Fold;wide:=cast(u64)input.limb[0]+top*977;
+  r.value.limb[0]=cast(u32)(wide&SF32_WORD);carry:=wide>>32;
+  wide=cast(u64)input.limb[1]+carry+top;r.value.limb[1]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+  wide=cast(u64)input.limb[2]+carry;r.value.limb[2]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+  wide=cast(u64)input.limb[3]+carry;r.value.limb[3]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+  wide=cast(u64)input.limb[4]+carry;r.value.limb[4]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+  wide=cast(u64)input.limb[5]+carry;r.value.limb[5]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+  wide=cast(u64)input.limb[6]+carry;r.value.limb[6]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+  wide=cast(u64)input.limb[7]+carry;r.value.limb[7]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+  r.carry=carry;return r;
+}
+sf32_canonical_total :: (input:Sf32)->Sf32 {
+  folded:=sf32_fold_total(input,1);mask:=cast(u32)(value_barrier((folded.carry&1)*CB_MAX64)&SF32_WORD);r:Sf32;
+  for i:0..<8 {r.limb[i]=input.limb[i]^((input.limb[i]^folded.value.limb[i])&value_barrier(mask));}
+  return r;
+}
+sf32_add_total :: (a:Sf32,b:Sf32)->Sf32 {
+  r:Sf32;carry:u64;
+  for i:0..<8 {wide:=cast(u64)a.limb[i]+cast(u64)b.limb[i]+carry;r.limb[i]=cast(u32)(wide&SF32_WORD);carry=wide>>32;}
+  // Two folds reduce any 257-bit sum; the second cannot overflow.
+  folded:=sf32_fold_total(r,carry);folded=sf32_fold_total(folded.value,folded.carry);
+  return sf32_canonical_total(folded.value);
+}
+sf32_mul_total :: (a:Sf32,b:Sf32)->Sf32 {
+  product:[16]u32;
+  for i:0..<8 {
+    carry:u64;
+    for j:0..<8 {wide:=cast(u64)a.limb[i]*cast(u64)b.limb[j]+cast(u64)product[i+j]+carry;product[i+j]=cast(u32)(wide&SF32_WORD);carry=wide>>32;}
+    product[i+8]=cast(u32)carry;
+  }
+  r:Sf32;carry:u64;previous:u64;
+  for i:0..<8 {
+    high:=cast(u64)product[i+8];wide:=cast(u64)product[i]+high*977+previous+carry;
+    r.limb[i]=cast(u32)(wide&SF32_WORD);carry=wide>>32;previous=high;
+  }
+  top:=previous+carry;folded:=sf32_fold_total(r,top);folded=sf32_fold_total(folded.value,folded.carry);
+  return sf32_canonical_total(folded.value);
+}

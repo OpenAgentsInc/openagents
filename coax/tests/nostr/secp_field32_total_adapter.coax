@@ -1,0 +1,4 @@
+// Test-only wrappers for the total reducers.
+#load "../../lib/crypto/secp_field32_total.coax";
+sf32_total_test_add :: (a:Sf32,b:Sf32)->Sf32 #export_c {return sf32_add_total(a,b);}
+sf32_total_test_mul :: (a:Sf32,b:Sf32)->Sf32 #export_c {return sf32_mul_total(a,b);}
