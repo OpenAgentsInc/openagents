@@ -2476,6 +2476,38 @@
       "blocks": []
     },
     {
+      "slug": "nostr-store-verified-dedup",
+      "parent": "m-client-state",
+      "title": "Deduplicate verified event IDs before store quotas",
+      "size": "L",
+      "labels": ["nostr", "coax"],
+      "body": "Derive and verify the canonical event ID and signature from immutable input before duplicate handling; never trust a supplied ID or admission flag. Keep one deterministic lexicographically lowest exact original per verified ID and do not charge duplicates as additional records. A representation replacement is failure-atomic and accounts for its byte-quota delta. This does not establish durable rollback protection.",
+      "files": ["coax/lib/nostr/", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Verified independently signed reordered duplicates, including Unicode and escaped encodings and different signatures, converge on the same original; forged IDs, signatures, aliases and unsupported inputs refuse",
+        "Count and byte quotas, later deletion and failed replacement preserve the prior originals and tombstones without charging an extra record for a duplicate",
+        "Checked/release native and Wasm, sanitizer and independent expected-state controls pass; authored full mutation has zero survivors and a verified positive path fits the unchanged check budget"
+      ],
+      "blocked_by": ["nostr-event"],
+      "blocks": ["nostr-event-store"]
+    },
+    {
+      "slug": "nostr-store-trusted-recovery",
+      "parent": "m-client-state",
+      "title": "Bind durable store recovery to trusted freshness",
+      "size": "L",
+      "labels": ["nostr", "coax"],
+      "body": "Bind store identity, schema, a nonwrapping monotonic generation and exact snapshot digest to an actual independently trusted rollback-resistant checkpoint source. Define provisioning, privacy, crash-safe commit order and concurrency; a signature or digest stored only beside a snapshot cannot establish freshness. Keep restore unavailable when a trusted provider is absent or cannot establish a current checkpoint.",
+      "files": ["coax/lib/nostr/", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Absent or unavailable checkpoint, mismatched identity or digest, stale snapshot, corruption or uncertain crash state fails closed without publishing or overwriting the last committed state",
+        "A controlled monotonic provider exercises every commit and recovery crash transition, rollback, truncation, forgery, deletion non-resurrection, migration and concurrent writers; an acknowledged commit never loses an acknowledged tombstone",
+        "Validate the actual provider and its provisioning, security and target trust assumptions separately before claiming durable recovery; tests distinguish mock evidence from real-provider evidence"
+      ],
+      "blocked_by": ["host-storage-pipe", "nostr-event"],
+      "blocks": ["nostr-event-store"]
+    },
+    {
       "slug": "nostr-event-store",
       "parent": "m-client-state",
       "title": "Verified event storage, replacement, deletion and expiration",
@@ -2495,7 +2527,9 @@
       ],
       "blocked_by": [
         "nostr-event",
-        "host-storage-pipe"
+        "host-storage-pipe",
+        "nostr-store-verified-dedup",
+        "nostr-store-trusted-recovery"
       ],
       "blocks": [
         "nostr-multirelay",
