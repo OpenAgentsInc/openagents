@@ -503,7 +503,17 @@ static const char *git_why(const text *out) {
   static const char *known[] = {"Host key verification failed", "Permission denied", "Could not resolve", "Load key", "invalid format",
                                 "Connection timed out", "Connection refused", "Repository not found", "not found", "bad permissions", NULL};
   for (int i = 0; known[i]; i++) if (out && out->p && strstr(out->p, known[i])) return known[i];
-  return "other";
+  // else git's words, with anything that looks like an address or a path left out
+  static char said[240];
+  said[0] = 0;
+  if (!out || !out->p) return "no output";
+  char copy[2048]; snprintf(copy, sizeof copy, "%s", out->p);
+  size_t n = 0;
+  for (char *w = strtok(copy, " \n\t'\""); w && n < sizeof said - 12; w = strtok(NULL, " \n\t'\"")) {
+    const char *word = strchr(w, '@') || strstr(w, "://") || strchr(w, '/') ? "<…>" : w;
+    n += (size_t)snprintf(said + n, sizeof said - n, "%s%s", n ? " " : "", word);
+  }
+  return said;
 }
 
 // Rebase the turn's commit on main and push it. false: a conflict (the files are in *why).
