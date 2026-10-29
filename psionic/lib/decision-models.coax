@@ -1,0 +1,53 @@
+// Exact text execution targets and trusted original artifact identities.
+#load "qwen-model.coax";
+#authority;
+PsKind :: enum u8 {elephant;mammoth;}
+PsStatus :: enum u8 {ok;kind;capacity;}
+PsShardPin :: struct {name:string;bytes:int;sha:string;}
+PsTarget :: struct {status:PsStatus;kind:PsKind;origin:string;revision:string;config_sha:string;tokenizer_sha:string;readout_sha:string;index_sha:string;vocab:int;tensors:int;shards:int;shard:[2]PsShardPin;shape:QeShape;}
+#test "pinned Elephant dimensions and all original artifacts are explicit" {
+    t:=ps_target(0,128);#assert t.status==PsStatus.ok && t.kind==PsKind.elephant && t.vocab==248320 && t.tensors==760 && t.shards==1;
+    #assert t.origin=="baselabs/elephant-1" && t.revision=="b3f8a93462fb1051a9de031e94a7ff380e254072";
+    #assert t.config_sha=="f26324589d15932e2742dbb13dbc7c561865ce4f80990af3b7dff05efe4dadab";
+    #assert t.tokenizer_sha=="a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f" && t.readout_sha=="96ea8a5c6ecfc30c20cdd369762db5997c5f4fb9821ce0a0318941343eb5e8ba";
+    #assert t.index_sha=="" && t.shard[0].name=="model.safetensors" && t.shard[0].bytes==18819722392;
+    #assert t.shard[0].sha=="682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba";
+    #assert t.shape.linear.width==4096 && t.shape.linear.hidden==12288 && t.shape.state.linear_layers==24 && t.shape.state.full_layers==8 && t.shape.state.capacity==128;
+    #assert t.shape.linear.delta.key_heads==16 && t.shape.linear.delta.value_heads==32 && t.shape.linear.delta.key_dim==128 && t.shape.linear.delta.value_dim==128;
+    #assert t.shape.full.attention.heads==16 && t.shape.full.attention.kv_heads==4 && t.shape.full.attention.head_dim==256 && t.shape.full.attention.rotary_dim==64 && qe_valid(t.shape);
+}
+#test "pinned Mammoth dimensions and both shard identities are explicit" {
+    t:=ps_target(1,1);#assert t.status==PsStatus.ok && t.kind==PsKind.mammoth && t.vocab==248320 && t.tensors==1184 && t.shards==2;
+    #assert t.origin=="baselabs/mammoth-1" && t.revision=="61cec44c281c693992e3d6ebeb44dd3402dfa186";
+    #assert t.config_sha=="bab5a8ceb73fd6a8f191afaf23afbf689d931da5b3c7c9d5153cf1e4b5024502";
+    #assert t.index_sha=="0424520f63f04816eee4d229a4487dc9744866ceb46513e591dd987e401b1663";
+    #assert t.shard[0].name=="model-00001-of-00002.safetensors" && t.shard[0].bytes==49825162976 && t.shard[0].sha=="29701f9a7b131bedb3fe1d565dad69b912d9128c6fc27e3d8fb0aedc47ae0e06";
+    #assert t.shard[1].name=="model-00002-of-00002.safetensors" && t.shard[1].bytes==4888445168 && t.shard[1].sha=="4da0ff5476813bbd9898454f0d7f7ba3c82914c42e32e2b87577c6d69daae671";
+    #assert t.shape.linear.width==5120 && t.shape.linear.hidden==17408 && t.shape.state.linear_layers==48 && t.shape.state.full_layers==16 && t.shape.linear.delta.value_heads==48;
+    #assert t.shape.full.attention.heads==24 && t.shape.full.attention.kv_heads==4 && t.shape.full.attention.head_dim==256 && t.shape.full.attention.rotary_dim==64 && qe_valid(t.shape);
+}
+#test "targets refuse unknown model IDs and unbounded capacities" {
+    #assert ps_target(2,1).status==PsStatus.kind && ps_target(255,1).status==PsStatus.kind;
+    #assert ps_target(0,0).status==PsStatus.capacity && ps_target(1,16385).status==PsStatus.capacity;
+    #assert ps_target(0,1).status==PsStatus.ok && ps_target(1,16384).status==PsStatus.ok;
+}
+ps_target :: (kind:u8,capacity:int)->PsTarget #export_c {
+    if kind>1 {return PsTarget.{status=PsStatus.kind};}
+    if !qf_token_count(capacity) {return PsTarget.{status=PsStatus.capacity};}
+    t:=PsTarget.{kind=cast(PsKind)kind,vocab=248320,tokenizer_sha="a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f",readout_sha="96ea8a5c6ecfc30c20cdd369762db5997c5f4fb9821ce0a0318941343eb5e8ba"};
+    d:=4096;f:=12288;heads:=16;value_heads:=32;linear:=24;full:=8;
+    if kind==0 {
+        t.origin="baselabs/elephant-1";t.revision="b3f8a93462fb1051a9de031e94a7ff380e254072";t.config_sha="f26324589d15932e2742dbb13dbc7c561865ce4f80990af3b7dff05efe4dadab";t.tensors=760;t.shards=1;
+        t.shard[0]=PsShardPin.{name="model.safetensors",bytes=18819722392,sha="682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba"};
+    } else {
+        d=5120;f=17408;heads=24;value_heads=48;linear=48;full=16;
+        t.origin="baselabs/mammoth-1";t.revision="61cec44c281c693992e3d6ebeb44dd3402dfa186";t.config_sha="bab5a8ceb73fd6a8f191afaf23afbf689d931da5b3c7c9d5153cf1e4b5024502";t.tensors=1184;t.shards=2;
+        t.index_sha="0424520f63f04816eee4d229a4487dc9744866ceb46513e591dd987e401b1663";
+        t.shard[0]=PsShardPin.{name="model-00001-of-00002.safetensors",bytes=49825162976,sha="29701f9a7b131bedb3fe1d565dad69b912d9128c6fc27e3d8fb0aedc47ae0e06"};
+        t.shard[1]=PsShardPin.{name="model-00002-of-00002.safetensors",bytes=4888445168,sha="4da0ff5476813bbd9898454f0d7f7ba3c82914c42e32e2b87577c6d69daae671"};
+    }
+    delta:=PdShape.{key_heads=16,value_heads=value_heads,key_dim=128,value_dim=128,epsilon=0.000001f32};
+    attention:=QfShape.{heads=heads,kv_heads=4,head_dim=256,rotary_dim=64,epsilon=0.000001f32};
+    t.shape=QeShape.{linear=QlShape.{width=d,hidden=f,delta=delta,dtype=QmDtype.bf16},full=QhShape.{width=d,hidden=f,capacity=capacity,attention=attention,dtype=QmDtype.bf16},state=QpShape.{linear_layers=linear,full_layers=full,capacity=capacity,delta=delta,attention=attention}};
+    return t;
+}

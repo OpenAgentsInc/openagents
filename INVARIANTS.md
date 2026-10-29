@@ -1,5 +1,16 @@
 # Invariants
 
+## Psionic decision-model targets use pinned original identities
+
+`psionic/lib/decision-models.coax` exposes only the pinned Elephant and Mammoth
+text profiles, including exact revisions, sidecar and shard identities,
+architecture dimensions and bounded state capacity. The target metadata alone
+does not authenticate supplied bytes or qualify execution. Bundle admission
+must check every original and callers retain valid immutable storage.
+
+Check: `psionic/check.sh` includes zero-survivor authority mutation and native
+plain/sanitized checks; see the [target record](docs/verification/psionic-targets-2026-10-29.md).
+
 ## Psionic rank-five bundles bind complete original identities
 
 `psionic/lib/model-io/rank5-bundle.coax` authenticates caller-pinned config,

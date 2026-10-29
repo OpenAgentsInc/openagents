@@ -26,7 +26,7 @@ python3 -I psionic/tests/qwen_full_oracle.py --header > "$out/qwen-full-oracle.h
 python3 -I psionic/tests/qwen_decision_oracle.py --header > "$out/qwen-decision-oracle.h"
 python3 -I psionic/tests/readout_oracle.py
 python3 -I psionic/tests/qwen_model_oracle.py
-for unit in learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-rope readout model-io/access model-io/rank5-bundle; do
+for unit in learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-rope decision-models readout model-io/access model-io/rank5-bundle; do
     "$coax" test "psionic/lib/$unit.coax"
     "$coax" test "psionic/lib/$unit.coax" --release
     "$coax" mutate "psionic/lib/$unit.coax"
@@ -35,7 +35,7 @@ for mode in debug release; do
     flags=()
     opt=-O0
     if [[ $mode == release ]]; then flags+=(--release); opt=-O2; fi
-    for unit in learn tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-rope readout rank5 access rank5-bundle; do
+    for unit in learn tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-rope decision-models readout rank5 access rank5-bundle; do
         source="psionic/lib/$unit.coax"
         if [[ $unit == weights ]]; then source=psionic/lib/model-io/weights.coax; fi
         if [[ $unit == rank5 ]]; then source=psionic/lib/model-io/rank5.coax; fi
@@ -59,6 +59,7 @@ for mode in debug release; do
             qwen-prefix) adapter=psionic/platform/qwen-prefix-memory.c; harness=psionic/tests/qwen_prefix.c ;;
             qwen-model) adapter=psionic/platform/qwen-model-memory.c; harness=psionic/tests/qwen_model.c ;;
             qwen-rope) adapter=psionic/platform/qwen-rope-memory.c; harness=psionic/tests/qwen_rope.c ;;
+            decision-models) adapter=psionic/platform/decision-models-memory.c; harness=psionic/tests/decision_models.c ;;
             readout) adapter=psionic/platform/readout-memory.c; harness=psionic/tests/readout.c ;;
             rank5) adapter=psionic/platform/rank5-memory.c; harness=psionic/tests/rank5.c ;;
             access) adapter=psionic/platform/access-memory.c; harness=psionic/tests/access.c ;;

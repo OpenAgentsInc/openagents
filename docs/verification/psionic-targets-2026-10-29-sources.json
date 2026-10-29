@@ -1,0 +1,10 @@
+{
+  "coax/bin/coax": "5388de6c9c976ff6328fd2f4f4aa3433e28d529deaac5f78a74abaab39c52498",
+  "psionic/lib/decision-models.coax": "f6fafbd13745a1a6b5fc43423d96be6e3c074f38a8ed24994ce20022e71ae0bc",
+  "psionic/lib/qwen-model.coax": "a19e213d3f3d3f3018ea7dfcdcb5ee390154bea5f33c8764f750fcad4619be60",
+  "psionic/lib/qwen-linear-layer.coax": "d98239772214fca7f7b5c488fd1e0b526187fb7155587d8426993eb232a4f9b0",
+  "psionic/lib/qwen-full-layer.coax": "a9283010057aaa5f1a0674c72e619a1f09315a2a35c5c9b35cf896a12dc35946",
+  "psionic/lib/qwen-prefix.coax": "3844d466e870c0a2229d4b22d0a9078e9df53d6b92ac6048929419d501fec966",
+  "psionic/platform/decision-models-memory.c": "4f26422dfab021c8172270f9deca1856c1748d537e11bb685c16b91eaae92606",
+  "psionic/tests/decision_models.c": "b27e004eb5969cbad845046f4f18f178a175ce56dfc538692de9d0494a598271"
+}
