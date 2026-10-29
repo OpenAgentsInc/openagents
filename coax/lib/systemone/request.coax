@@ -19,6 +19,14 @@ SO_BASETEN_KEY_ENV :: "BASETEN_API_KEY";
 SO_ELEPHANT :: "decision-models/baseten-elephant-9b-latest";   // elephant-1, 9B
 SO_MAMMOTH :: "decision-models/baseten-mammoth-27b-latest";    // mammoth-1, 27B
 SO_CONTEXT_TOKENS :: 16384;      // both models refuse a longer request
+// Our own door: Psionic's /v1/systemone (psionic/book/ch016-serve-systemone.md),
+// psionic-serve --elephant-gpu, loopback only and keyless; reached from
+// another machine through an SSH tunnel to the same port. It answers as
+// elephant-1 and holds up to 512 tokens per question.
+SO_PSIONIC_URL :: "http://127.0.0.1:8790/v1/systemone";
+SO_PSIONIC_URL_ENV :: "PSIONIC_SYSTEMONE_URL";   // another door, when set
+SO_PSIONIC_KEY_ENV :: "PSIONIC_SYSTEMONE_KEY";   // a key, when the door needs one (psionic-serve does not)
+SO_PSIONIC_ELEPHANT :: "elephant-1";
 
 SO_MAX_QUESTIONS :: 64;
 SO_MAX_OPTIONS :: 255;           // a choice question's options
@@ -104,7 +112,7 @@ so_question :: (b: [] SoBody, name: string, kind: SoKind, options: int, instruct
 }
 
 // Pick one of options: keys[i] is what the answer names, labels[i] says
-// what it means to the model.
+// what it means to the model ("" sends null: the key says it all).
 so_choice :: (b: [] SoBody, name: string, instructions: string, keys: [] string, labels: [] string) {
   if keys.count != labels.count { so_fail(b, "a choice needs one label per key"); return; }
   if keys.count < 1 || keys.count > SO_MAX_OPTIONS { so_fail(b, "a choice takes 1 to 255 options"); return; }
@@ -116,7 +124,8 @@ so_choice :: (b: [] SoBody, name: string, instructions: string, keys: [] string,
   so_put(b, ",\"criteria\":{");
   for i: 0..<keys.count {
     if i > 0 { so_put(b, ","); }
-    so_put_string(b, keys[i]); so_put(b, ":"); so_put_string(b, labels[i]);
+    so_put_string(b, keys[i]); so_put(b, ":");
+    if labels[i].count == 0 { so_put(b, "null"); } else { so_put_string(b, labels[i]); }
   }
   so_put(b, "}}");
 }

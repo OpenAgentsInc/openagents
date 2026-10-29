@@ -343,6 +343,10 @@ ps_may_run :: (access: int, kind: int) -> bool {
 // The user sent a message on Psionic: it joins the transcript and the replay, and the request goes.
 ps_send :: (p: [] PsEngine, s: [] Session, text: string) {
   s_user(s, text);
+  ps_forward(p, s, text);
+}
+// A message already in the transcript goes to gpt-oss-20b (the Lab sends it here once Elephant has routed it).
+ps_forward :: (p: [] PsEngine, s: [] Session, text: string) {
   p[0].turn += 1;
   if p[0].hist.count == 0 { return; }   // no buffers (a check without the host): it only joins the transcript
   if !ps_user_item(p, text) {

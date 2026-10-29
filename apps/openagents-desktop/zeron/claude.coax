@@ -36,6 +36,8 @@
 
 S_PARTS :: 768;
 P_USER :: 0; P_TEXT :: 1; P_THINK :: 2; P_TOOL :: 3; P_NOTICE :: 4;
+// The Lab's routing decision (lab.coax): its own group, the headline as its text, a TK_ROUTE chip.
+P_ROUTE :: 5;
 S_DIFF_MAX :: 40;          // lines an edit's diff keeps a side (Zeron caps the chip's body too)
 
 SPart :: struct {
@@ -440,6 +442,17 @@ s_build :: (s: [] Session, ui: [] SUi, t: [] Transcript) {
     if !in_assistant { t_entry(t); in_assistant = true; }
     if p.kind == P_TEXT { t_text(t, s_text_of(s, i)); i += 1; continue; }
     if p.kind == P_NOTICE { n := t_notice(t, p.notice, s_text_of(s, i)); i += 1; continue; }
+    if p.kind == P_ROUTE {
+      g := t_group(t, s_text_of(s, i));
+      if g < 0 { break; }
+      ti := t_tool(t, g, Tool.{kind = TK_ROUTE, arg = p.arg, detail = p.detail, output = p.output, resolved = true});
+      if ti < 0 { break; }
+      tu := ifx ti < T_TOOLS then ui[0].t_user[ti] else 0;
+      t[0].tools[ti].open = tu == 1; ui[0].t_set[ti] = t[0].tools[ti].open;
+      gu := ui[0].g_user[g];
+      t[0].groups[g].open = gu == 1; ui[0].g_set[g] = t[0].groups[g].open;
+      i += 1; continue;
+    }
     // a run of thoughts and calls: one group
     j := i;
     while j < s[0].n && (s[0].parts[j].kind == P_THINK || s[0].parts[j].kind == P_TOOL) { j += 1; }
@@ -524,6 +537,7 @@ Engine :: struct {
   probe_out: [E_PATH + 1024] u8; probe_n: int;
   path_env: [E_PATH + 8] u8; path_n: int;          // "PATH=..."
   claude: [E_FILE] u8; claude_n: int;
+  codex: bool;                       // codex is on PATH (the Lab offers it)
   cwd: [E_FILE] u8; cwd_n: int;
   sid: [128] u8; sid_n: int;         // the conversation's session, for --resume
   err: [2048] u8;
@@ -532,8 +546,8 @@ Engine :: struct {
 e_str :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
 
 // The login shell's PATH and where claude is (the old Backend's lookup: the
-// usual install places, then `command -v claude`).
-PROBE_SCRIPT :: "printf 'OA_PATH=%s\\n' \"$PATH\"; for p in \"$HOME/.local/bin/claude\" /opt/homebrew/bin/claude /usr/local/bin/claude \"$HOME/.claude/local/claude\"; do if [ -x \"$p\" ]; then printf 'OA_CLAUDE=%s\\n' \"$p\"; fi; done; printf 'OA_CLAUDE=%s\\n' \"$(command -v claude)\"";
+// usual install places, then `command -v claude`), and whether codex is on it.
+PROBE_SCRIPT :: "printf 'OA_PATH=%s\\n' \"$PATH\"; for p in \"$HOME/.local/bin/claude\" /opt/homebrew/bin/claude /usr/local/bin/claude \"$HOME/.claude/local/claude\"; do if [ -x \"$p\" ]; then printf 'OA_CLAUDE=%s\\n' \"$p\"; fi; done; printf 'OA_CLAUDE=%s\\n' \"$(command -v claude)\"; printf 'OA_CODEX=%s\\n' \"$(command -v codex)\"";
 
 e_probe_start :: (e: [] Engine) {
   h := cxproc_new();
@@ -575,6 +589,7 @@ e_probe_done :: (e: [] Engine) {
     j := i; while j < out.count && out[j] != '\n' { j += 1; }
     l := cast(string) out[i..<j];
     if l.count > 8 && l[0..<8] == "OA_PATH=" { path = cast(string) l[8..<l.count]; }
+    if l.count > 9 && l[0..<9] == "OA_CODEX=" { e[0].codex = true; }
     if l.count > 10 && l[0..<10] == "OA_CLAUDE=" && e[0].claude_n == 0 && l.count - 10 < E_FILE { e[0].claude_n = e_set(e[0].claude[..], 0, cast(string) l[10..<l.count]); }
     i = j + 1;
   }
@@ -629,7 +644,10 @@ e_start :: (e: [] Engine, s: [] Session) -> bool {
 e_send :: (e: [] Engine, s: [] Session, text: string) {
   was_live := s[0].live;
   s_user(s, text);
-  k := s[0].n - 1;
+  e_forward(e, s, s[0].n - 1, was_live);
+}
+// User part k goes to the CLI (the Lab sends it here once Elephant has routed it).
+e_forward :: (e: [] Engine, s: [] Session, k: int, was_live: bool) {
   if !e[0].on { return; }
   if !e[0].probed { e[0].pend = k; return; }   // e_pump starts it once PATH is known
   if e[0].running && e[0].run_effort != e[0].effort && e[0].ready && !was_live { e_close(e); }

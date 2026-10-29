@@ -1,10 +1,11 @@
-// The HTTPS transport: curl as a child (coax/platform/process-native.c,
+// The HTTP(S) transport: curl as a child (coax/platform/process-native.c,
 // reached through the Claude SDK's process bindings; link that file). The
 // body goes on curl's stdin; the response and its status come back on
 // stdout. The API key never passes through Coax or curl's arguments: curl
 // reads it from the environment variable named by key_env (--variable) and
 // expands it into the Authorization header itself, so it is not visible in
-// a process listing either.
+// a process listing either. A keyless door (key_env "", our own
+// psionic-serve on loopback) sends no Authorization header.
 
 #load "answers.coax";
 #load "../agent/claude/transport.coax";
@@ -44,57 +45,104 @@ so_digits :: (out: [] u8, v: int) -> string {
   return cast(string) out[0..<n];
 }
 
-// POST body to c.url. out receives the response; err receives curl's stderr
-// when it fails.
-so_post :: (c: SoClient, body: string, out: [] u8, err: [] u8) -> SoResult {
+// A request in flight: so_start sends it, so_step reads what curl wrote so
+// far (a frame loop polls with wait_ms 0; so_post blocks), and r holds the
+// result once done.
+SoCall :: struct {
+  h: int = -1;
+  out: [] u8; err: [] u8;
+  at: int; last: int; lines: int;
+  timeout_s: int;
+  done: bool;
   r: SoResult;
-  if !so_name_ok(c.key_env) { r.problem = "key_env must be a plain variable name"; return r; }
-  for ch: c.key_env { k := cxproc_getenv_push(cast(int) ch); }
-  if cxproc_getenv() <= 0 { r.problem = "the API key variable is unset or empty"; return r; }
-  if body.count == 0 { r.problem = "no request body"; return r; }
+}
+
+so_fail_call :: (call: [] SoCall, problem: string) -> bool {
+  call[0].r.problem = problem; call[0].done = true;
+  if call[0].h >= 0 { so_release(call[0].h); call[0].h = -1; }
+  return false;
+}
+
+// Starts curl on body for c.url: false (call[0].r.problem says why) when it
+// could not start. A door with no key_env sends no Authorization header.
+so_start :: (c: SoClient, body: string, call: [] SoCall, out: [] u8, err: [] u8) -> bool {
+  call[0] = SoCall.{out = out, err = err, timeout_s = c.timeout_s};
+  keyed := c.key_env.count > 0;
+  if keyed {
+    if !so_name_ok(c.key_env) { return so_fail_call(call, "key_env must be a plain variable name"); }
+    for ch: c.key_env { k := cxproc_getenv_push(cast(int) ch); }
+    if cxproc_getenv() <= 0 { return so_fail_call(call, "the API key variable is unset or empty"); }
+  }
+  if body.count == 0 { return so_fail_call(call, "no request body"); }
   h := cxproc_new();
-  if h < 0 { r.problem = "no process slot is free"; return r; }
+  if h < 0 { return so_fail_call(call, "no process slot is free"); }
   num: [24] u8;
   ok := so_arg(h, c.curl) && so_arg(h, "-sS") && so_arg(h, "--max-time") && so_arg(h, so_digits(num[..], c.timeout_s));
-  ok = ok && so_arg(h, "--variable") && so_push_part(h, CL_FIELD_ARG, "%") && so_arg(h, c.key_env);
-  ok = ok && so_arg(h, "--expand-header") && so_push_part(h, CL_FIELD_ARG, "Authorization: ") && so_push_part(h, CL_FIELD_ARG, c.scheme)
-          && so_push_part(h, CL_FIELD_ARG, " {{") && so_push_part(h, CL_FIELD_ARG, c.key_env) && so_arg(h, "}}");
+  if keyed {
+    ok = ok && so_arg(h, "--variable") && so_push_part(h, CL_FIELD_ARG, "%") && so_arg(h, c.key_env);
+    ok = ok && so_arg(h, "--expand-header") && so_push_part(h, CL_FIELD_ARG, "Authorization: ") && so_push_part(h, CL_FIELD_ARG, c.scheme)
+            && so_push_part(h, CL_FIELD_ARG, " {{") && so_push_part(h, CL_FIELD_ARG, c.key_env) && so_arg(h, "}}");
+  }
   ok = ok && so_arg(h, "-H") && so_arg(h, "Content-Type: application/json");
   ok = ok && so_arg(h, "--data-binary") && so_arg(h, "@-");
   ok = ok && so_arg(h, "--write-out") && so_arg(h, "\n%{http_code}\n");
   ok = ok && so_arg(h, "--") && so_arg(h, c.url);
-  if !ok { x := cxproc_release(h); r.problem = "an argument holds a zero byte or does not fit"; return r; }
+  if !ok { x := cxproc_release(h); return so_fail_call(call, "an argument holds a zero byte or does not fit"); }
   e := cxproc_spawn(h);
-  if e != 0 { x := cxproc_release(h); r.problem = ifx e == 2 then "curl not found" else "failed to start curl"; return r; }
-  defer so_release(h);
-  for ch: body { if cxproc_write(h, cast(int) ch) != 0 { r.problem = "failed to write the request to curl"; return r; } }
-  if cxproc_flush(h) != 0 || cxproc_close_stdin(h) != 0 { r.problem = "failed to write the request to curl"; return r; }
+  if e != 0 { x := cxproc_release(h); return so_fail_call(call, ifx e == 2 then "curl not found" else "failed to start curl"); }
+  call[0].h = h;
+  for ch: body { if cxproc_write(h, cast(int) ch) != 0 { return so_fail_call(call, "failed to write the request to curl"); } }
+  if cxproc_flush(h) != 0 || cxproc_close_stdin(h) != 0 { return so_fail_call(call, "failed to write the request to curl"); }
+  return true;
+}
+
+// Reads what curl has written, waiting up to wait_ms for each line (0: only
+// what is there); true once the call is done and call[0].r holds the result.
+so_step :: (call: [] SoCall, wait_ms: int) -> bool {
+  if call[0].done { return true; }
+  h := call[0].h; out := call[0].out;
   // Every line into out, newline-joined; the last one is the status.
-  at := 0; last := 0; lines := 0;
   while true {
-    n := cxproc_read_line(h, (c.timeout_s + 10) * 1000);
+    n := cxproc_read_line(h, wait_ms);
     if n == CL_EOF { break; }
-    if n == CL_TIMEOUT { r.problem = "curl did not finish in time"; return r; }
-    if n < 0 || at + n + 1 > out.count { r.problem = "the response does not fit its buffer"; return r; }
-    if lines > 0 { out[at] = '\n'; at += 1; }
-    last = at;
-    for i: 0..<n { out[at + i] = cast(u8) cxproc_line_byte(h, i); }
-    at += n; lines += 1;
+    if n == CL_TIMEOUT {
+      if wait_ms <= 0 { return false; }
+      x := so_fail_call(call, "curl did not finish in time"); return true;
+    }
+    if n < 0 || call[0].at + n + 1 > out.count { x := so_fail_call(call, "the response does not fit its buffer"); return true; }
+    if call[0].lines > 0 { out[call[0].at] = '\n'; call[0].at += 1; }
+    call[0].last = call[0].at;
+    for i: 0..<n { out[call[0].at + i] = cast(u8) cxproc_line_byte(h, i); }
+    call[0].at += n; call[0].lines += 1;
   }
   status := cxproc_wait(h, 5000);
   if status != 0 {
-    r.stderr = so_stderr(h, err);
-    r.problem = ifx status == 28 then "the request timed out" else "curl failed";
-    return r;
+    call[0].r.stderr = so_stderr(h, call[0].err);
+    x := so_fail_call(call, ifx status == 28 then "the request timed out" else ifx status == 7 then "the server is unreachable" else "curl failed");
+    return true;
   }
+  so_release(h); call[0].h = -1; call[0].done = true;
+  at := call[0].at; last := call[0].last;
   code := json_int(cast(string) out[last..<at]);
-  r.status = ifx code.ok then code.value else 0;
+  call[0].r.status = ifx code.ok then code.value else 0;
   end := ifx last > 0 then last - 1 else 0;     // drop the newline before the status
   while end > 0 && (out[end - 1] == '\n' || out[end - 1] == '\r' || out[end - 1] == ' ' || out[end - 1] == '\t') { end -= 1; }
-  r.body = cast(string) out[0..<end];
-  if r.status != 200 { r.problem = "the API refused the request"; return r; }
-  r.usage = so_usage(r.body);
-  return r;
+  call[0].r.body = cast(string) out[0..<end];
+  if call[0].r.status != 200 { call[0].r.problem = "the API refused the request"; return true; }
+  call[0].r.usage = so_usage(call[0].r.body);
+  return true;
+}
+
+// Stops a call still running (curl is killed with its process).
+so_cancel :: (call: [] SoCall) { if !call[0].done { x := so_fail_call(call, "cancelled"); } }
+
+// POST body to c.url and wait for the answer. out receives the response;
+// err receives curl's stderr when it fails.
+so_post :: (c: SoClient, body: string, out: [] u8, err: [] u8) -> SoResult {
+  call: [1] SoCall;
+  if !so_start(c, body, call[..], out, err) { return call[0].r; }
+  while !so_step(call[..], (c.timeout_s + 10) * 1000) {}
+  return call[0].r;
 }
 
 so_release :: (h: int) { x := cxproc_release(h); }

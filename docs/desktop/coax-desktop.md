@@ -132,8 +132,36 @@ How it works:
   GPUI's does: Coax asks for each new grapheme, the host shapes it with
   CoreText and rasterizes its cells (emoji into a color atlas). Zeron's
   composer has no context menu, so neither does this one.
-- The app opens on that screen. The HUD chat, LAB and router
-  (`chat.coax`, `router.coax`) stay in the tree and build, unshown.
+- The Lab (`zeron/lab.coax`, 2026-10-29) is the third mode beside Claude
+  and Psionic: on the model chip after Psionic in an empty chat (or
+  `--mode lab`, shot step `mode lab`).
+  Each message first goes to our own Elephant, `elephant-1` served by
+  `psionic-serve --elephant-gpu` (Psionic chapter 16, `/v1/systemone`) on
+  the RTX 4080 worker `coderos-4080`, through the Coax System One client
+  (`coax/lib/systemone`, its keyless Psionic door, polled with `so_step`
+  from the frame loop). It asks the old router's five questions (agent,
+  difficulty, effort, Claude model, local work) with the agents this app
+  can run as choices: Claude Code, Psionic (gpt-oss-20b), and Codex when it
+  is on PATH. The decision is a group in the transcript, "Routed to Claude
+  Code · Sonnet 5.5 · Medium", opening to a "Routed by elephant-1 · N ms"
+  chip with every distribution, the round trip and server latency, usage
+  and the served identity. Claude Code then runs the message with the
+  chosen model and effort, or the Psionic engine (gpt-oss-20b) runs it when
+  Elephant picks Psionic; if Psionic is unreachable Claude Code (Sonnet,
+  medium) answers after Psionic's error. Codex is not an engine here yet,
+  so its messages run on Claude Code and the decision says so. Refusals
+  (503 busy, 524 timeout, 413 too long, any other code) and an unreachable
+  server are error chips; the unreachable one names the tunnel
+  (`ssh -N -L 8790:127.0.0.1:8790 coderos-4080`) and the start command.
+  `PSIONIC_SYSTEMONE_URL` names another door, `PSIONIC_SYSTEMONE_KEY` a key
+  if one is ever needed (psionic-serve has none). The wire is HTTP through
+  the tunnel, not a Nostr decision job: the body is the same NIP-DEC body,
+  but the server is loopback-only and one decision at a time, and a relay
+  round trip adds latency and a relay to a call the app makes per message.
+  A five-question decision takes about 1.8 s on the server (the device
+  plan was raised to 512 tokens per question for it).
+- The HUD chat, its LAB and the Mammoth router (`chat.coax`, `router.coax`,
+  `Router.swift`) stay in the tree and build, unshown.
 - Licenses and attribution: `apps/openagents-desktop/zeron/NOTICE`.
 
 Component one, the composer, against Zeron's own render (1320x880 at scale 2,

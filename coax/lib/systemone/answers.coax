@@ -147,8 +147,16 @@ so_usage :: (text: string) -> SoUsage {
   return SoUsage.{ok = true, input_tokens = i.value, output_tokens = o.value};
 }
 
-// An error response's message ({"error": ..., "error_type": ...}), or "".
-so_error_of :: (ar: [] ClArena, text: string) -> string { return cl_str(ar, text, "error"); }
+// An error response's message, or "": Baseten's {"error": MESSAGE,
+// "error_type": ...} or NIP-DEC's {"error": {"code": ..., "message": ...}}
+// (Psionic's /v1/systemone).
+so_error_of :: (ar: [] ClArena, text: string) -> string {
+  m := cl_str(ar, text, "error");
+  if m.count == 0 { m = cl_str(ar, text, "error.message"); }
+  return m;
+}
+// A NIP-DEC refusal's code ("busy", "timeout", "limit_exceeded" ...), or "".
+so_error_code :: (ar: [] ClArena, text: string) -> string { return cl_str(ar, text, "error.code"); }
 
 // ---- checks
 
@@ -190,4 +198,6 @@ so_near :: (a: f64, b: f64) -> bool { return a - b < 0.000000001 && b - a < 0.00
   #assert so_check(b[..], high) == "a noul answer is not a probability";
   ab: [64] u8; ar: [1] ClArena; ar[0].buf = ab[..];
   #assert so_error_of(ar[..], "{\n\t\"error\": \"Choice criteria must be an object\",\n\t\"error_type\": \"Validation\"\n}") == "Choice criteria must be an object";
+  busy := "{\"error\":{\"code\":\"busy\",\"message\":\"another decision is running\"}}";
+  #assert so_error_of(ar[..], busy) == "another decision is running" && so_error_code(ar[..], busy) == "busy";
 }

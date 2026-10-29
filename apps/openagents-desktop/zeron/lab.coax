@@ -1,0 +1,446 @@
+// The Lab: a chat mode in which every message is first routed by our own
+// Elephant (elephant-1 on Psionic's /v1/systemone, psionic/book/
+// ch016-serve-systemone.md) and then runs on the engine it chose. The
+// questions are the old HUD router's (router.coax: which agent, how hard,
+// how much reasoning, which Claude model, whether it needs this Mac), with
+// the agents this app can run as the choices: Claude Code, Psionic
+// (gpt-oss-20b) and Codex when it is installed. The request goes through the
+// Coax System One client (coax/lib/systemone) to the keyless door at
+// 127.0.0.1:8790 (an SSH tunnel to the GPU worker; PSIONIC_SYSTEMONE_URL
+// names another), polled from the frame loop like the Claude engine. The
+// decision becomes a group in the transcript, "Routed to Claude Code ·
+// Sonnet 5.5 · High", opening onto every distribution, the latency and the
+// usage; a refusal, a busy or late server, or no server at all is an error
+// chip that says why (and how to bring the server up).
+//
+// Claude Code runs what Elephant routes to it with the chosen model and
+// effort; Psionic runs gpt-oss-20b through its Responses engine
+// (psionic.coax) with the effort mapped to its three. When Psionic gives
+// no answer (its server down: on coderos-4080 it cannot share the RTX 4080
+// with Elephant), Claude Code answers after Psionic's chip. Codex is not an
+// engine in this build: its messages run on Claude Code, and the decision
+// says so.
+
+#load "psionic.coax";
+#load "../../../coax/lib/systemone/systemone.coax";
+
+LAB_TUNNEL :: "ssh -N -L 8790:127.0.0.1:8790 coderos-4080";
+LAB_START :: "cd ~/oa-lab-elephant && psionic/platform/serve.sh --elephant-gpu ~/models/elephant-1-b3f8a934 --port 8790 --capacity 512";
+LAB_MESSAGE_MAX :: 1200;        // bytes of the message Elephant reads (a question holds 512 tokens)
+LAB_TIMEOUT_S :: 30;
+
+LAB_IDLE :: 0; LAB_ASKING :: 1;
+
+// The agents a message can go to (the harness question's keys).
+LAB_CLAUDE :: "claude_code"; LAB_PSIONIC :: "psionic"; LAB_CODEX :: "codex";
+LAB_HARNESS_LABELS :: [3] string.[
+  "Claude Code, Anthropic's coding agent on this Mac: strong at reading, writing and refactoring code, running commands, and long careful tasks",
+  "Psionic, our own open model (gpt-oss-20b) on our GPU: fast for small talk, plain questions and short explanations",
+  "Codex, OpenAI's coding agent CLI: strong at code changes, terminal work and quick fixes"];
+LAB_HARNESS_NAMES :: [3] string.["Claude Code", "Psionic", "Codex"];
+// The router's levels, efforts and Claude models (router.coax), keys first.
+LAB_LEVELS :: [5] string.["Trivial: a one-line answer", "Easy: a short answer or a small edit", "Moderate: a few files or steps",
+                          "Hard: many files, debugging or design", "Very hard: a long, open-ended or risky task"];
+LAB_LEVEL_NAMES :: [5] string.["trivial", "easy", "moderate", "hard", "very hard"];
+LAB_EFFORT_LABELS :: [5] string.["Low: answer directly, little thinking", "Medium: some thought", "High: careful reasoning",
+                                 "Extra high: deep reasoning for hard problems", "Max: the most reasoning, for the hardest tasks"];
+// In MODEL_IDS order (claude.coax): Opus, Sonnet, Haiku.
+LAB_CLAUDE_LABELS :: [3] string.["Opus 5.5: the most capable, for hard or important work", "Sonnet 5.5: balanced, for everyday work",
+                                 "Haiku 5.5: fastest and cheapest, for simple requests"];
+
+Lab :: struct {
+  phase: int;
+  call: [1] SoCall;
+  q: [1] SoBody;                  // the questions asked, for so_check
+  part: int;                      // the user's message (a session part)
+  route: int;                     // its decision part, or -1
+  via: int;                       // the engine running it: 0 Claude Code, 1 Psionic
+  fallback: bool;                 // Psionic failed and Claude Code took it
+  secs: f32;                      // since it was sent
+  codex: bool;                    // Codex is installed: offered as a choice
+  url: [512] u8; url_n: int;
+  body: [] u8; out: [] u8; err: [] u8;   // the host's (lab_attach)
+}
+LAB_BODY :: 24576; LAB_OUT :: 65536; LAB_ERR :: 4096;
+lab_attach :: (l: [] Lab, body: [] u8, out: [] u8, err: [] u8) { l[0].body = body; l[0].out = out; l[0].err = err; }
+
+// The door: PSIONIC_SYSTEMONE_URL when set, else our tunnel's (read once, when the host is attached).
+lab_door :: (l: [] Lab) {
+  if l[0].url_n > 0 { return; }
+  v := cl_getenv(SO_PSIONIC_URL_ENV, l[0].url[..]);
+  l[0].url_n = ifx v.count > 0 then v.count else e_set(l[0].url[..], 0, SO_PSIONIC_URL);
+}
+lab_url :: (l: [] Lab) -> string { return ifx l[0].url_n > 0 then e_str(l[0].url[..], l[0].url_n) else SO_PSIONIC_URL; }
+
+// The state Elephant reads: the message (cut to LAB_MESSAGE_MAX bytes on a
+// character boundary) and what this Mac can run.
+lab_state :: (out: [] u8, message: string, codex: bool) -> string {
+  k := e_set(out, 0, "Request: ");
+  n := message.count;
+  if n > LAB_MESSAGE_MAX { n = LAB_MESSAGE_MAX; while n > 0 && (message[n] & 0xC0) == 0x80 { n -= 1; } }
+  k = e_set(out, k, cast(string) message[0..<n]);
+  if n < message.count { k = e_set(out, k, " ..."); }
+  k = e_set(out, k, "\nThis Mac can run: Claude Code, Psionic (gpt-oss-20b)");
+  if codex { k = e_set(out, k, ", Codex"); }
+  return cast(string) out[0..<k];
+}
+
+// The request: the router's five questions over the message.
+lab_body :: (b: [] SoBody, buf: [] u8, state: string, codex: bool) {
+  keys := [3] string.[LAB_CLAUDE, LAB_PSIONIC, LAB_CODEX]; labels := LAB_HARNESS_LABELS;
+  levels := LAB_LEVELS; efforts := EFFORT_IDS; effort_labels := LAB_EFFORT_LABELS;
+  models := MODEL_IDS; model_labels := LAB_CLAUDE_LABELS;
+  agents := ifx codex then 3 else 2;
+  so_begin(b, buf, SO_PSIONIC_ELEPHANT, "");
+  so_state_text(b, state);
+  so_choice(b, "harness", "Which agent should handle the user's request? Only choose an agent this Mac can run.", keys[0..<agents], labels[0..<agents]);
+  so_score(b, "difficulty", "How hard is the user's request to do well?", levels[..]);
+  so_choice(b, "effort", "How much reasoning should the agent spend on this request? Hard requests need more.", efforts[..], effort_labels[..]);
+  so_choice(b, "claude_model", "If Claude Code handles it, which model fits the request?", models[..], model_labels[..]);
+  so_noul(b, "local_work", "Does the request need to read or change files, or run commands, on this Mac?");
+}
+
+// ---------------------------------------------------------------- the decision
+
+LabDecision :: struct {
+  ok: bool;
+  harness: int;                   // 0 Claude Code, 1 Psionic, 2 Codex
+  harness_p: f64;
+  effort: int; model: int;        // EFFORT_IDS, MODEL_IDS indices
+  difficulty: f64; level: int;
+  local_work: f64;
+  latency_ms: int;                // the server's
+}
+
+lab_index :: (key: string, keys: [] string) -> int { for i: 0..<keys.count { if keys[i] == key { return i; } } return -1; }
+
+lab_read :: (text: string) -> LabDecision {
+  d: LabDecision;
+  ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  keys := [3] string.[LAB_CLAUDE, LAB_PSIONIC, LAB_CODEX]; efforts := EFFORT_IDS; models := MODEL_IDS;
+  h := so_choice_of(ar[..], text, "harness");
+  e := so_choice_of(ar[..], text, "effort");
+  m := so_choice_of(ar[..], text, "claude_model");
+  s := so_score_of(text, "difficulty");
+  w := so_noul_of(text, "local_work");
+  if !h.ok || !e.ok || !m.ok || !s.ok || !w.ok { return d; }
+  d.harness = lab_index(h.choice, keys[..]); d.harness_p = h.probability;
+  d.effort = lab_index(e.choice, efforts[..]); d.model = lab_index(m.choice, models[..]);
+  d.difficulty = s.score; d.level = s.level; d.local_work = w.value;
+  l := cl_int(text, "latency_ms"); d.latency_ms = ifx l.ok then l.value else -1;
+  d.ok = d.harness >= 0 && d.effort >= 0 && d.model >= 0;
+  return d;
+}
+
+// A probability with two decimals ("0.71", "1.00").
+lab_prob :: (out: [] u8, at: int, p: f64) -> int {
+  c := cast(int) (p * 100.0 + 0.5);
+  if c > 100 { c = 100; } if c < 0 { c = 0; }
+  k := at;
+  out[k] = cast(u8) ('0' + c / 100); out[k + 1] = '.'; out[k + 2] = cast(u8) ('0' + (c / 10) % 10); out[k + 3] = cast(u8) ('0' + c % 10);
+  return k + 4;
+}
+// One question's distribution, most likely first: "high 0.50 · medium 0.20 · ...".
+lab_ranked :: (out: [] u8, at: int, text: string, name: string, keys: [] string) -> int {
+  used: [8] bool; k := at;
+  for round: 0..<keys.count {
+    best := -1; bp := -1.0;
+    for i: 0..<keys.count { if !used[i] { p := so_probability(text, name, keys[i]); if p.ok && p.value > bp { bp = p.value; best = i; } } }
+    if best < 0 { break; }
+    used[best] = true;
+    if round > 0 { k = e_set(out, k, " · "); }
+    k = e_set(out, k, keys[best]); k = e_set(out, k, " "); k = lab_prob(out, k, bp);
+  }
+  return k;
+}
+
+// The chip's headline: "Routed to Claude Code · Sonnet 5.5 · High · 1.8 s"
+// (the round trip), and for an agent this build cannot run yet, who answers instead.
+lab_headline :: (out: [] u8, d: LabDecision, round_ms: int) -> string {
+  names := LAB_HARNESS_NAMES; models := MODEL_NAMES; efforts := EFFORT_NAMES;
+  k := e_set(out, 0, "Routed to "); k = e_set(out, k, names[d.harness]);
+  if d.harness == 1 { k = e_set(out, k, " · gpt-oss-20b"); }
+  else { k = e_set(out, k, " · "); k = e_set(out, k, models[d.model]); }
+  k = e_set(out, k, " · "); k = e_set(out, k, efforts[d.effort]);
+  k = e_set(out, k, " · "); k = put_int(out, k, round_ms / 1000); k = e_set(out, k, ".");
+  k = put_int(out, k, (round_ms % 1000) / 100); k = e_set(out, k, " s");
+  if d.harness == 2 { k = e_set(out, k, " · answered by Claude Code"); }
+  return cast(string) out[0..<k];
+}
+
+// The chip's body: every distribution, the latency, the usage, who served it.
+lab_details :: (out: [] u8, text: string, d: LabDecision, codex: bool, round_ms: int) -> string {
+  keys := [3] string.[LAB_CLAUDE, LAB_PSIONIC, LAB_CODEX]; efforts := EFFORT_IDS; models := MODEL_IDS;
+  levels := [5] string.["0", "1", "2", "3", "4"]; names := LAB_LEVEL_NAMES;
+  k := e_set(out, 0, "harness       "); k = lab_ranked(out, k, text, "harness", keys[0..<(ifx codex then 3 else 2)]);
+  k = e_set(out, k, "\ndifficulty    "); k = put_int(out, k, cast(int) d.difficulty); k = e_set(out, k, ".");
+  k = put_int(out, k, (cast(int) (d.difficulty * 10.0 + 0.5)) % 10);
+  k = e_set(out, k, " of 4, most likely "); k = e_set(out, k, names[d.level]); k = e_set(out, k, " · levels ");
+  k = lab_ranked(out, k, text, "difficulty", levels[..]);
+  k = e_set(out, k, "\neffort        "); k = lab_ranked(out, k, text, "effort", efforts[..]);
+  k = e_set(out, k, "\nclaude_model  "); k = lab_ranked(out, k, text, "claude_model", models[..]);
+  k = e_set(out, k, "\nlocal_work    yes "); k = lab_prob(out, k, d.local_work);
+  k = e_set(out, k, "\nlatency       "); k = put_int(out, k, round_ms); k = e_set(out, k, " ms round trip");
+  if d.latency_ms >= 0 { k = e_set(out, k, " · "); k = put_int(out, k, d.latency_ms); k = e_set(out, k, " ms deciding on the server"); }
+  u := so_usage(text);
+  k = e_set(out, k, "\nusage         ");
+  if u.ok { k = put_int(out, k, u.input_tokens); k = e_set(out, k, " tokens in · "); k = put_int(out, k, u.output_tokens); k = e_set(out, k, " out"); }
+  else { k = e_set(out, k, "not reported (psionic-serve keeps no usage records)"); }
+  ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  who := cl_str(ar[..], text, "service.identity");
+  if who.count > 0 { k = e_set(out, k, "\nserved by     "); k = e_set(out, k, who); }
+  if d.harness == 2 { k = e_set(out, k, "\nnote          Codex is not an engine in this build yet, so Claude Code answers"); }
+  if d.harness == 1 { k = e_set(out, k, "\nnote          if Psionic gives no answer, Claude Code answers after its chip"); }
+  return cast(string) out[0..<k];
+}
+
+// What went wrong, for the error chip: the refusal by its NIP-DEC code, an
+// unreachable server with the tunnel and start commands.
+lab_problem :: (out: [] u8, r: SoResult, url: string) -> string {
+  ab: [512] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  k := 0;
+  if r.problem == "the server is unreachable" {
+    k = e_set(out, k, "Elephant isn't reachable at "); k = e_set(out, k, url);
+    k = e_set(out, k, ". Open the tunnel: "); k = e_set(out, k, LAB_TUNNEL);
+    k = e_set(out, k, " (on coderos-4080, if it isn't running: "); k = e_set(out, k, LAB_START); k = e_set(out, k, ")");
+    return cast(string) out[0..<k];
+  }
+  if r.status == 0 {
+    k = e_set(out, k, "Elephant didn't answer: "); k = e_set(out, k, r.problem);
+    if r.stderr.count > 0 { k = e_set(out, k, " ("); k = e_set(out, k, r.stderr); k = e_set(out, k, ")"); }
+    return cast(string) out[0..<k];
+  }
+  code := so_error_code(ar[..], r.body);
+  if r.status == 503 || code == "busy" { return "Elephant is busy with another decision (503 busy). Send again in a moment."; }
+  if r.status == 524 || code == "timeout" { return "Elephant didn't decide before its deadline (524 timeout)."; }
+  if r.status == 413 || code == "limit_exceeded" { return "The message is too long for Elephant to read (413: a question holds 512 tokens on our server)."; }
+  k = e_set(out, k, "Elephant refused the request (");
+  k = put_int(out, k, r.status);
+  if code.count > 0 { k = e_set(out, k, " "); k = e_set(out, k, code); }
+  k = e_set(out, k, ")");
+  m := so_error_of(ar[..], r.body);
+  if m.count > 0 { k = e_set(out, k, ": "); k = e_set(out, k, m); }
+  if r.status == 200 { k = e_set(out, k, ": "); k = e_set(out, k, r.problem); }
+  return cast(string) out[0..<k];
+}
+
+// ---------------------------------------------------------------- the turn
+
+// A Lab message: it joins the transcript, and Elephant is asked where it goes.
+lab_send :: (l: [] Lab, e: [] Engine, s: [] Session, text: string) {
+  l[0].route = -1; l[0].via = 0; l[0].fallback = false;
+  if l[0].phase == LAB_ASKING || s[0].live { s_notice(s, N_ERROR, "Wait for this turn to finish, or stop it, before sending to the Lab again."); return; }
+  s_user(s, text);
+  l[0].part = s[0].n - 1; l[0].secs = 0;
+  l[0].codex = e[0].codex;
+  if !e[0].on { return; }       // the checks: no process
+  if l[0].body.count == 0 { lab_fail(s, "The Lab has no room for its request."); return; }
+  lab_door(l);
+  st: [1400] u8;
+  lab_body(l[0].q[..], l[0].body[..], lab_state(st[..], text, l[0].codex), l[0].codex);
+  body := so_finish(l[0].q[..]);
+  if body.count == 0 { lab_fail(s, l[0].q[0].problem); return; }
+  c := SoClient.{url = lab_url(l), key_env = "", timeout_s = LAB_TIMEOUT_S};
+  kb: [8] u8;
+  if cl_getenv(SO_PSIONIC_KEY_ENV, kb[..]).count > 0 { c.key_env = SO_PSIONIC_KEY_ENV; c.scheme = "Bearer"; }
+  if !so_start(c, body, l[0].call[..], l[0].out[..], l[0].err[..]) { lab_fail(s, lab_problem(l[0].out[..], l[0].call[0].r, lab_url(l))); return; }
+  l[0].phase = LAB_ASKING;
+}
+lab_fail :: (s: [] Session, why: string) { s_notice(s, N_ERROR, why); s_turn_end(s, false, ""); }
+
+// Elephant answered (text, checked against the questions): the decision
+// joins the transcript and the message goes to its engine.
+lab_route :: (l: [] Lab, e: [] Engine, p: [] PsEngine, s: [] Session, text: string, round_ms: int) {
+  d := lab_read(text);
+  if !d.ok { lab_fail(s, "Elephant's answer named a choice the Lab didn't offer."); return; }
+  hb: [256] u8; db: [4096] u8; ib: [600] u8;
+  k := s_part(s, P_ROUTE);
+  if k < 0 { return; }
+  s_append(s, k, lab_headline(hb[..], d, round_ms));
+  ik := e_set(ib[..], 0, "POST "); ik = e_set(ib[..], ik, lab_url(l)); ik = e_set(ib[..], ik, "  model elephant-1, 5 questions");
+  det: [64] u8; n := e_set(det[..], 0, "elephant-1 · "); n = put_int(det[..], n, round_ms); n = e_set(det[..], n, " ms");
+  s[0].parts[k].tk = TK_ROUTE; s[0].parts[k].resolved = true;
+  s[0].parts[k].arg = s_put(s, cast(string) ib[0..<ik]);
+  s[0].parts[k].detail = s_put(s, cast(string) det[0..<n]);
+  s[0].parts[k].output = s_put(s, lab_details(db[..], text, d, l[0].codex, round_ms));
+  l[0].route = k;
+  // Psionic runs it with the effort mapped to its three (low, medium, high)
+  if d.harness == 1 {
+    l[0].via = 1;
+    p[0].effort = ifx d.effort < 2 then d.effort else 2;
+    ps_forward(p, s, s_text_of(s, l[0].part));
+    return;
+  }
+  // Claude Code runs it with the chosen model and effort
+  lab_claude(l, e, s, d.model, d.effort);
+}
+lab_claude :: (l: [] Lab, e: [] Engine, s: [] Session, model: int, effort: int) {
+  l[0].via = 0;
+  e_set_model(e, model);
+  e[0].effort = effort;
+  e_forward(e, s, l[0].part, false);
+}
+// Whether Psionic's turn ended with no answer: nothing but notices after the decision.
+lab_unanswered :: (l: [] Lab, s: [] Session) -> bool {
+  if l[0].route < 0 || s[0].live || s[0].stopping { return false; }
+  failed := false;
+  for k: l[0].route + 1..<s[0].n {
+    kind := s[0].parts[k].kind;
+    if kind == P_TEXT || kind == P_TOOL || kind == P_USER { return false; }
+    if kind == P_NOTICE {
+      nk := s[0].parts[k].notice;
+      if nk == N_ERROR || nk == N_OFFLINE || nk == N_BUSY { failed = true; }
+    }
+  }
+  return failed;
+}
+
+// Stop while Elephant decides: curl goes, the turn ends.
+lab_stop :: (l: [] Lab, s: [] Session) -> bool {
+  if l[0].phase != LAB_ASKING { return false; }
+  so_cancel(l[0].call[..]);
+  l[0].phase = LAB_IDLE;
+  s[0].stopping = true;
+  s_turn_end(s, false, "");
+  return true;
+}
+
+// Each frame: what curl wrote; once done, the decision or the error chip.
+lab_pump :: (l: [] Lab, e: [] Engine, p: [] PsEngine, s: [] Session, dt: f32) {
+  // Psionic gave no answer: Claude Code takes the message (Sonnet, medium), after Psionic's chip
+  if l[0].phase == LAB_IDLE && l[0].via == 1 && !l[0].fallback && lab_unanswered(l, s) {
+    l[0].fallback = true;
+    s[0].live = true; s[0].noticed = false; s[0].secs = 0; s[0].changed = true;
+    lab_claude(l, e, s, 1, 1);
+    return;
+  }
+  if l[0].phase != LAB_ASKING { return; }
+  l[0].secs += dt;
+  if !so_step(l[0].call[..], 0) { return; }
+  l[0].phase = LAB_IDLE;
+  r := l[0].call[0].r;
+  round_ms := cast(int) (l[0].secs * 1000.0);
+  if r.problem.count == 0 { r.problem = so_check(l[0].q[..], r.body); }
+  if r.problem.count > 0 { pb: [1024] u8; lab_fail(s, lab_problem(pb[..], r, lab_url(l))); return; }
+  lab_route(l, e, p, s, r.body, round_ms);
+}
+
+// ---------------------------------------------------------------- checks
+
+// The request for "fix the failing test in coax/web" on a Mac without Codex.
+LAB_TEST_BODY :: "{\"model\":\"elephant-1\",\"state\":\"Request: fix the failing test in coax/web\\nThis Mac can run: Claude Code, Psionic (gpt-oss-20b)\",\"questions\":{\"harness\":{\"type\":\"choice\",\"instructions\":\"Which agent should handle the user's request? Only choose an agent this Mac can run.\",\"criteria\":{\"claude_code\":\"Claude Code, Anthropic's coding agent on this Mac: strong at reading, writing and refactoring code, running commands, and long careful tasks\",\"psionic\":\"Psionic, our own open model (gpt-oss-20b) on our GPU: fast for small talk, plain questions and short explanations\"}},\"difficulty\":{\"type\":\"score\",\"instructions\":\"How hard is the user's request to do well?\",\"criteria\":[\"Trivial: a one-line answer\",\"Easy: a short answer or a small edit\",\"Moderate: a few files or steps\",\"Hard: many files, debugging or design\",\"Very hard: a long, open-ended or risky task\"]},\"effort\":{\"type\":\"choice\",\"instructions\":\"How much reasoning should the agent spend on this request? Hard requests need more.\",\"criteria\":{\"low\":\"Low: answer directly, little thinking\",\"medium\":\"Medium: some thought\",\"high\":\"High: careful reasoning\",\"xhigh\":\"Extra high: deep reasoning for hard problems\",\"max\":\"Max: the most reasoning, for the hardest tasks\"}},\"claude_model\":{\"type\":\"choice\",\"instructions\":\"If Claude Code handles it, which model fits the request?\",\"criteria\":{\"claude-opus-5-5\":\"Opus 5.5: the most capable, for hard or important work\",\"claude-sonnet-5-5\":\"Sonnet 5.5: balanced, for everyday work\",\"claude-haiku-5-5\":\"Haiku 5.5: fastest and cheapest, for simple requests\"}},\"local_work\":{\"type\":\"noul\",\"instructions\":\"Does the request need to read or change files, or run commands, on this Mac?\"}}}";
+
+#test "a Lab message asks Elephant the router's five questions, with the agents this Mac can run" {
+  buf: [8192] u8; st: [1400] u8; b: [1] SoBody;
+  lab_body(b[..], buf[..], lab_state(st[..], "fix the failing test in coax/web", false), false);
+  body := so_finish(b[..]);
+  #assert body == LAB_TEST_BODY && json_valid(body) && b[0].questions == 5;
+  #assert b[0].names[0] == "harness" && b[0].options[0] == 2 && b[0].kinds[1] == SoKind.score && b[0].options[1] == 5;
+  #assert b[0].names[2] == "effort" && b[0].names[3] == "claude_model" && b[0].kinds[4] == SoKind.noul;
+  // with Codex installed it is a third choice, and the state says so
+  lab_body(b[..], buf[..], lab_state(st[..], "hi", true), true);
+  body = so_finish(b[..]);
+  #assert b[0].options[0] == 3 && s_has(body, "\"codex\":\"codex, openai") && s_has(body, "can run: claude code, psionic (gpt-oss-20b), codex\"");
+  // a long message is cut on a character boundary
+  long: [1300] u8; for i: 0..<1300 { long[i] = ifx i % 2 == 0 then 0xC3 else 0xA9; }
+  state := lab_state(st[..], cast(string) long[..], false);
+  #assert state.count == 9 + 1200 + 4 + 53 && s_has(state, " ...\nthis mac");
+}
+
+// Elephant's answer to LAB_TEST_BODY, recorded from psionic-serve
+// --elephant-gpu --capacity 512 on the RTX 4080 (2026-10-29).
+LAB_TEST_ANSWER :: "{\"model\":\"elephant-1\",\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\"claude_code\",\"confidence\":0.994958694,\"probabilities\":{\"claude_code\":0.994958694,\"psionic\":0.005041306}},\"difficulty\":{\"type\":\"score\",\"score\":1.882631565,\"confidence\":0.493983513,\"selected\":\"2\",\"legend\":{\"0\":\"Trivial: a one-line answer\",\"1\":\"Easy: a short answer or a small edit\",\"2\":\"Moderate: a few files or steps\",\"3\":\"Hard: many files, debugging or design\",\"4\":\"Very hard: a long, open-ended or risky task\"},\"probabilities\":{\"0\":0.044380083,\"1\":0.25351843,\"2\":0.493983513,\"3\":0.191325787,\"4\":0.016792186}},\"effort\":{\"type\":\"choice\",\"choice\":\"medium\",\"confidence\":0.434657295,\"probabilities\":{\"low\":0.090798155,\"medium\":0.434657295,\"high\":0.356523652,\"xhigh\":0.080537392,\"max\":0.037483506}},\"claude_model\":{\"type\":\"choice\",\"choice\":\"claude-sonnet-5-5\",\"confidence\":0.646685903,\"probabilities\":{\"claude-opus-5-5\":0.148796558,\"claude-sonnet-5-5\":0.646685903,\"claude-haiku-5-5\":0.204517539}},\"local_work\":{\"type\":\"noul\",\"noul\":0.982787513}},\"usage\":null,\"service\":{\"door\":\"psionic\",\"version\":\"psionic-serve-v1\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\"},\"latency_ms\":1819}";
+
+#test "Elephant's recorded answer becomes the decision, its headline and its distributions" {
+  buf: [8192] u8; st: [1400] u8; b: [1] SoBody;
+  lab_body(b[..], buf[..], lab_state(st[..], "fix the failing test in coax/web", false), false);
+  body := so_finish(b[..]);
+  #assert so_check(b[..], LAB_TEST_ANSWER) == "";
+  d := lab_read(LAB_TEST_ANSWER);
+  #assert d.ok && d.harness == 0 && d.effort == 1 && d.model == 1 && d.level == 2 && d.latency_ms == 1819 && d.local_work > 0.98;
+  hb: [256] u8;
+  #assert lab_headline(hb[..], d, 1900) == "Routed to Claude Code · Sonnet 5.5 · Medium · 1.9 s";
+}
+
+#test "the decision's chip opens onto every distribution, the latency, the usage and who served it" {
+  d := LabDecision.{ok = true, harness = 0, effort = 1, model = 1, difficulty = 1.882631565, level = 2, local_work = 0.982787513, latency_ms = 1819};
+  db: [4096] u8; hb: [256] u8;
+  text := lab_details(db[..], LAB_TEST_ANSWER, d, false, 1900);
+  #assert s_has(text, "harness       claude_code 0.99 · psionic 0.01\ndifficulty    1.9 of 4, most likely moderate · levels 2 0.49 · 1 0.25 · 3 0.19 · 0 0.04 · 4 0.02\n");
+  #assert s_has(text, "\neffort        medium 0.43 · high 0.36 · low 0.09 · xhigh 0.08 · max 0.04\n");
+  #assert s_has(text, "\nclaude_model  claude-sonnet-5-5 0.65 · claude-haiku-5-5 0.20 · claude-opus-5-5 0.15\nlocal_work    yes 0.98\n");
+  #assert s_has(text, "\nlatency       1900 ms round trip · 1819 ms deciding on the server\nusage         not reported");
+  #assert s_has(text, "\nserved by     elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba") && !s_has(text, "note");
+}
+
+#test "routed to Psionic or Codex: the headline names it, and Codex says Claude Code answers" {
+  d := LabDecision.{ok = true, harness = 1, effort = 0, model = 2, difficulty = 0.1, level = 0, local_work = 0.01, latency_ms = 1700};
+  db: [4096] u8; hb: [256] u8;
+  #assert lab_headline(hb[..], d, 1700) == "Routed to Psionic · gpt-oss-20b · Low · 1.7 s";
+  d.harness = 2;
+  #assert lab_headline(hb[..], d, 1700) == "Routed to Codex · Haiku 5.5 · Low · 1.7 s · answered by Claude Code";
+  #assert s_has(lab_details(db[..], LAB_TEST_ANSWER, d, true, 1900), "\nnote          codex is not an engine in this build yet, so claude code answers");
+}
+
+#test "the decision joins the transcript as its own group, then the message goes to Claude Code" {
+  pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
+  e: [1] Engine; l: [1] Lab;
+  lab_send(l[..], e[..], ss[..], "fix the failing test in coax/web");
+  #assert ss[0].n == 1 && ss[0].parts[0].kind == P_USER && ss[0].live && l[0].phase == LAB_IDLE;
+  p: [1] PsEngine;
+  lab_route(l[..], e[..], p[..], ss[..], LAB_TEST_ANSWER, 1900);
+  #assert ss[0].n == 2 && ss[0].parts[1].kind == P_ROUTE && ss[0].parts[1].tk == TK_ROUTE;
+  #assert s_text_of(ss[..], 1) == "Routed to Claude Code · Sonnet 5.5 · Medium · 1.9 s" && ss[0].parts[1].detail == "elephant-1 · 1900 ms";
+  #assert e[0].model == 1 && e[0].effort == 1 && ss[0].live;
+  t: [1] Transcript; ui: [1] SUi;
+  s_build(ss[..], ui[..], t[..]);
+  #assert t[0].ng == 1 && t[0].nt == 1 && t[0].groups[0].summary == "Routed to Claude Code · Sonnet 5.5 · Medium · 1.9 s" && !t[0].groups[0].open;
+  #assert t[0].tools[0].kind == TK_ROUTE && tool_label(t[0].tools[0]) == "Routed by" && tool_detail(t[0].tools[0]) == "elephant-1 · 1900 ms";
+  #assert s_has(t[0].tools[0].output, "claude_model  claude-sonnet-5-5 0.65");
+  // the next message waits for this turn
+  lab_send(l[..], e[..], ss[..], "again");
+  #assert ss[0].n == 3 && ss[0].parts[2].kind == P_NOTICE;
+}
+
+#test "refusals, a busy or late server and no server at all are error chips that say why" {
+  out: [1024] u8; url := SO_PSIONIC_URL;
+  busy := SoResult.{status = 503, body = "{\"error\":{\"code\":\"busy\",\"message\":\"another decision is running\"}}", problem = "the API refused the request"};
+  #assert lab_problem(out[..], busy, url) == "Elephant is busy with another decision (503 busy). Send again in a moment.";
+  late := SoResult.{status = 524, body = "{\"error\":{\"code\":\"timeout\",\"message\":\"the decision did not finish before its deadline\"}}", problem = "the API refused the request"};
+  #assert lab_problem(out[..], late, url) == "Elephant didn't decide before its deadline (524 timeout).";
+  long := SoResult.{status = 413, body = "{\"error\":{\"code\":\"limit_exceeded\",\"message\":\"the request exceeds a size or token bound\"}}", problem = "the API refused the request"};
+  #assert s_has(lab_problem(out[..], long, url), "too long for elephant to read (413");
+  wrong := SoResult.{status = 403, body = "{\"error\":{\"code\":\"not_admitted\",\"message\":\"the model is not served here\"}}", problem = "the API refused the request"};
+  #assert lab_problem(out[..], wrong, url) == "Elephant refused the request (403 not_admitted): the model is not served here";
+  gone := SoResult.{problem = "the server is unreachable", stderr = "curl: (7) Failed to connect"};
+  #assert lab_problem(out[..], gone, url) == "Elephant isn't reachable at http://127.0.0.1:8790/v1/systemone. Open the tunnel: ssh -N -L 8790:127.0.0.1:8790 coderos-4080 (on coderos-4080, if it isn't running: cd ~/oa-lab-elephant && psionic/platform/serve.sh --elephant-gpu ~/models/elephant-1-b3f8a934 --port 8790 --capacity 512)";
+  odd := SoResult.{status = 200, body = "{\"answers\":{}}", problem = "a question has no answer"};
+  #assert lab_problem(out[..], odd, url) == "Elephant refused the request (200): a question has no answer";
+  // a failed routing ends the turn with its chip
+  pool: [4096] u8; ss: [1] Session; s_init(ss[..], pool[..]);
+  s_user(ss[..], "hi");
+  lab_fail(ss[..], lab_problem(out[..], busy, url));
+  #assert !ss[0].live && ss[0].n == 2 && ss[0].parts[1].kind == P_NOTICE && ss[0].parts[1].notice == N_ERROR;
+}
+
+LAB_TEST_PSIONIC :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\"psionic\",\"confidence\":0.91,\"probabilities\":{\"claude_code\":0.09,\"psionic\":0.91}},\"difficulty\":{\"type\":\"score\",\"score\":0.1,\"confidence\":0.9,\"probabilities\":{\"0\":0.9,\"1\":0.08,\"2\":0.01,\"3\":0.005,\"4\":0.005}},\"effort\":{\"type\":\"choice\",\"choice\":\"high\",\"confidence\":0.9,\"probabilities\":{\"low\":0.05,\"medium\":0.05,\"high\":0.9,\"xhigh\":0.0,\"max\":0.0}},\"claude_model\":{\"type\":\"choice\",\"choice\":\"claude-haiku-5-5\",\"confidence\":0.9,\"probabilities\":{\"claude-opus-5-5\":0.05,\"claude-sonnet-5-5\":0.05,\"claude-haiku-5-5\":0.9}},\"local_work\":{\"type\":\"noul\",\"noul\":0.01}},\"latency_ms\":1700}";
+
+#test "routed to Psionic, gpt-oss-20b runs it; with no answer from Psionic, Claude Code takes it after Psionic's chip" {
+  pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
+  e: [1] Engine; l: [1] Lab; p: [1] PsEngine;
+  lab_send(l[..], e[..], ss[..], "hi");
+  lab_route(l[..], e[..], p[..], ss[..], LAB_TEST_PSIONIC, 1800);
+  #assert l[0].via == 1 && p[0].effort == 2 && p[0].turn == 1 && ss[0].live;
+  #assert s_text_of(ss[..], 1) == "Routed to Psionic · gpt-oss-20b · High · 1.8 s";
+  lab_pump(l[..], e[..], p[..], ss[..], 0.016);
+  #assert !l[0].fallback;
+  // Psionic's server is down: its chip, the turn ends, and Claude Code answers
+  s_notice(ss[..], N_OFFLINE, "Psionic isn't reachable");
+  s_turn_end(ss[..], false, "");
+  lab_pump(l[..], e[..], p[..], ss[..], 0.016);
+  #assert l[0].fallback && l[0].via == 0 && ss[0].live && e[0].model == 1 && e[0].effort == 1;
+  // once
+  s_turn_end(ss[..], false, "");
+  lab_pump(l[..], e[..], p[..], ss[..], 0.016);
+  #assert !ss[0].live;
+}

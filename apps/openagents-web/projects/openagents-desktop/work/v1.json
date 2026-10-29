@@ -114,6 +114,29 @@
       ]
     },
     {
+      "slug": "desk-lab-elephant",
+      "title": "The Lab decides with our own Elephant: /v1/systemone on Psionic",
+      "parent": "desk-zeron-ui",
+      "size": "M",
+      "body": "The Lab returns in the Zeron UI as a mode beside Claude (and Psionic). Each Lab message goes first to our own Elephant, elephant-1 served by psionic-serve --elephant-gpu (Psionic chapter 16, /v1/systemone) on coderos-4080, through coax/lib/systemone's keyless Psionic door over an SSH tunnel, with the old router's five questions (agent, difficulty, effort, Claude model, local work) and the agents this app can run as choices. The decision shows as a Zeron group, 'Routed to Claude Code · Sonnet 5.5 · Medium · 1.8 s', opening to every distribution, the latency, usage and the served identity; then the chosen engine runs the message. Busy, deadline, refusal and unreachable servers are error chips that say why.",
+      "files": [
+        "apps/openagents-desktop/zeron/lab.coax",
+        "apps/openagents-desktop/zeron/screen.coax",
+        "apps/openagents-desktop/zeron/modes.coax",
+        "apps/openagents-desktop/zeron/psionic.coax",
+        "apps/openagents-desktop/zeron/claude.coax",
+        "coax/lib/systemone/",
+        "psionic/lib/device/plan.coax",
+        "docs/desktop/coax-desktop.md"
+      ],
+      "acceptance": [
+        "coax test --library passes for lab.coax, screen.coax, claude.coax, tools.coax and coax/lib/systemone: the request body matches the router's questions, a recorded real Elephant response maps to the decision group, and 503, 524, 413, other refusals and an unreachable server map to error chips",
+        "Three live Lab messages of different kinds ('hi', 'fix the failing test in coax/web', 'explain MXFP4 briefly') are each routed by our Elephant with the latency shown, and the chosen engine answers (--shot PNGs)",
+        "Claude mode still works, Psionic routes run on the Psionic engine (Claude answers when it is unreachable), and build.sh passes",
+        "psionic-serve --elephant-gpu stays up on coderos-4080 (tmux) and the tunnel command and start command are documented in docs/desktop/coax-desktop.md"
+      ]
+    },
+    {
       "slug": "desk-host",
       "title": "Mac host: a window that draws Coax HUD output with Metal",
       "parent": "desk-local-chat",
