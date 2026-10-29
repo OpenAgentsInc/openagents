@@ -10,6 +10,14 @@
 // block after it. The stream is built once from the page's carved ground; its
 // baked nodes are store 2. It decides nothing. Every pointer is an offset into
 // the host's WebAssembly.Memory; the page's state is the host's.
+//
+// What you restored (the bloomed patches and the woken roots) is saved
+// whenever it grows: fairy_progress's bytes in an AESV container (save.coax),
+// kept in this browser as the current save and the last good one (the host's
+// action 4, message 4 on the next visit), and for a player with an account
+// on the server too (/api/playtest/progress/fairy-forest/main, the player's
+// key); on the next visit the newer of the two is added back. Where you are
+// is kept the same way by place-face.h.
 #include "fairy.h"
 #include "Player.h"
 #include "Grid.h"
@@ -67,6 +75,79 @@ static void start(uint32_t state) {
     stream_built = true;
     swim.pace = 1;
   }
+}
+
+// ---- what you restored, kept (save.coax)
+#define SAVE_SCHEMA 1
+#define PROGRESS_URL "/api/playtest/progress/fairy-forest/main"
+#define KEEP_EVERY 1.0             /* seconds between saves while it grows */
+static const coax_string save_world = {"fairy-forest", 12};
+static uint8_t slot_bytes[4096], server_bytes[4096], container[512], payload[64];
+static char kept[8192], post[2048];
+static uint32_t keep_n;            // the record's length while the host is to keep it (action 4)
+static coax_t_SaveSlots slots, server_slots;
+static double loaded_at;           // when the save that was added back was made (ms), 0 none
+static int64_t kept_count = -1;    // fairy_progress_count when last kept (or added back)
+static double kept_t = -10;
+static bool keep_soon;             // the server's save was added back: keep it here too
+static int32_t progress_ask = -1;  // the server's save, asked for
+static double wall_ms(void) { return track_state.epoch > 0 ? track_state.epoch + track_state.t * 1000.0 : 0; }
+
+// Adds back the current save of these slots, else the last good one; true when one opened.
+static bool open_slots(uint32_t state, uint8_t *bytes, size_t cap, coax_t_SaveSlots s, double newer_than) {
+  for (int from = 1; from <= 2; from++) {
+    coax_t_SavePick k = save_pick((coax_v_u8){bytes, (int64_t)cap}, s, save_world, SAVE_SCHEMA, from);
+    if (k.which == 0) return false;
+    if (k.time <= newer_than) return false;
+    if (!fairy_progress_open(at(state), (coax_v_u8){bytes + k.at, k.count})) continue;
+    loaded_at = k.time;
+    kept_count = fairy_progress_count(at(state));
+    return true;
+  }
+  return false;
+}
+// Saves what you restored when it grew (at most every KEEP_EVERY s, unless now).
+static void keep_progress(uint32_t state, bool now_) {
+  if (golden || keep_n || !fairy(state)->started) return;
+  int64_t c = fairy_progress_count(at(state));
+  if (kept_count < 0) { kept_count = c; return; }   // the first frame: nothing new yet
+  if ((c == kept_count && !keep_soon) || (!now_ && now - kept_t < KEEP_EVERY)) return;
+  int64_t n = fairy_progress(at(state), (coax_v_u8){payload, sizeof payload});
+  if (n <= 0) return;
+  int64_t cn = save_pack(save_world, SAVE_SCHEMA, (coax_v_u8){payload, n}, n, (coax_v_u8){container, sizeof container});
+  if (cn <= 0) return;
+  double when = wall_ms();
+  int64_t rn = save_record((coax_v_u8){container, cn}, cn, when, (coax_v_u8){slot_bytes, sizeof slot_bytes}, slots,
+                           save_world, SAVE_SCHEMA, (coax_v_u8){(uint8_t *)kept, sizeof kept});
+  if (rn <= 0) return;
+  slots = save_read((coax_string){kept, rn}, (coax_v_u8){slot_bytes, sizeof slot_bytes});
+  keep_n = (uint32_t)rn;
+  kept_count = c; kept_t = now; loaded_at = when; keep_soon = false;
+  if (place_keeper.account) {
+    int64_t pn = save_post_body((coax_v_u8){container, cn}, cn, when, (coax_v_u8){(uint8_t *)post, sizeof post});
+    if (pn > 0) coaxial_http((uint32_t)(uintptr_t)PROGRESS_URL, sizeof PROGRESS_URL - 1, (uint32_t)(uintptr_t)post, (uint32_t)pn, 1 | 8);
+  }
+}
+// The kept record (message 4), the facts (600: an account asks the server
+// for its save), the server's answer, and leaving (601, 603: kept at once).
+// True when the message was the progress's alone.
+static bool progress_message(uint32_t state, int32_t kind, uint32_t length) {
+  if (golden) return false;
+  if (kind == 4) {
+    slots = save_read((coax_string){(const char *)inbox, length}, (coax_v_u8){slot_bytes, sizeof slot_bytes});
+    open_slots(state, slot_bytes, sizeof slot_bytes, slots, 0);
+    return true;
+  }
+  if (kind == 600 && place_keeper.account && progress_ask < 0)
+    progress_ask = coaxial_http((uint32_t)(uintptr_t)PROGRESS_URL, sizeof PROGRESS_URL - 1, 0, 0, 4 | 8);
+  if (progress_ask >= 0 && kind == 512 + progress_ask) {
+    progress_ask = -2;
+    server_slots = save_from_server((coax_string){(const char *)inbox, length}, (coax_v_u8){server_bytes, sizeof server_bytes});
+    if (open_slots(state, server_bytes, sizeof server_bytes, server_slots, loaded_at)) keep_soon = true;
+    return true;
+  }
+  if (kind == 601 || kind == 603) keep_progress(state, true);
+  return false;
 }
 
 // Where you are, kept so a reload puts you back (place-face.h).
@@ -146,6 +227,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     fairy_stream_frame(sv(), (coax_v_f32){u.data + at_water, u.count - at_water}, golden ? 2.0 : now, small, eye[0], eye[1], eye[2], 2.0f / (fy * (h > 1 ? h : 1)));
   }
   place_frame(state);
+  keep_progress(state, false);
   track_frame(tr(), dt, w, h, scale);
   if (n > 0) track_loaded(tr(), track_cstr("load-fairy-forest"));
   track_drain(&track_state);
@@ -191,10 +273,12 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inb
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
+  if (progress_message(state, kind, length)) return;
   if (place_message(state, kind, inbox, length)) return;
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) track_drain(&track_state);
 }
-EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { (void)state; return place_action(); }
-EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { (void)state; return place_outbox(); }
-EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { (void)state; return place_outbox_len(); }
-EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { (void)state; place_done(); }
+// The host takes one action at a time: the save's (4) first, else the place's.
+EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { (void)state; return keep_n ? 4 : place_action(); }
+EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { (void)state; return place_out_now ? place_outbox() : (uint32_t)(uintptr_t)kept; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { (void)state; return place_out_now ? place_outbox_len() : keep_n; }
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { (void)state; if (place_out_now) { place_done(); return; } keep_n = 0; }

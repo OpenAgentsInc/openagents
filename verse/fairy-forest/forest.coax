@@ -210,6 +210,73 @@ ff_step :: (f: [] Forest, now: f64) {
   }
 }
 
+// ---- what you restored, kept (the page saves it, save.coax)
+
+// The payload: the patch count, a byte a patch (1 bloomed), the root count,
+// a byte a root (1 awake). Its length, or -1 when out is too small.
+FF_PROGRESS_BYTES :: FF_PATCHES + FF_ROOTS + 2;
+ff_progress :: (f: [] Forest, out: [] u8) -> int {
+  if out.count < FF_PROGRESS_BYTES { return -1; }
+  out[0] = cast(u8) FF_PATCHES;
+  for i: 0..<FF_PATCHES { out[1 + i] = ifx f[0].bloomed[i] then 1 else 0; }
+  out[FF_PATCHES + 1] = cast(u8) FF_ROOTS;
+  for r: 0..<FF_ROOTS { out[FF_PATCHES + 2 + r] = ifx f[0].awake[r] then 1 else 0; }
+  return FF_PROGRESS_BYTES;
+}
+// A payload this valley can take: its counts are this valley's, every byte 0 or 1.
+ff_progress_valid :: (b: [] u8) -> bool {
+  if b.count != FF_PROGRESS_BYTES || cast(int) b[0] != FF_PATCHES || cast(int) b[FF_PATCHES + 1] != FF_ROOTS { return false; }
+  for i: 0..<FF_PATCHES { if b[1 + i] > 1 { return false; } }
+  for r: 0..<FF_ROOTS { if b[FF_PATCHES + 2 + r] > 1 { return false; } }
+  return true;
+}
+// Puts back what a payload kept, already spread (no news): what is restored
+// here stays, and what it kept is added. False when it isn't this valley's.
+ff_progress_open :: (f: [] Forest, b: [] u8, now: f64) -> bool {
+  if !ff_progress_valid(b) { return false; }
+  began := now - FF_SPREAD - 1;
+  for i: 0..<FF_PATCHES {
+    if b[1 + i] == 0 || f[0].bloomed[i] { continue; }
+    f[0].bloomed[i] = true; f[0].bloomed_at[i] = began;
+    ff_bloom_add(f, FF_PATCH[i * 4], FF_PATCH[i * 4 + 1], FF_PATCH[i * 4 + 2], began);
+  }
+  for r: 0..<FF_ROOTS {
+    if b[FF_PATCHES + 2 + r] == 0 || f[0].awake[r] { continue; }
+    f[0].awake[r] = true; f[0].awake_at[r] = began;
+    ff_bloom_add(f, FF_ROOT[r * 3], FF_ROOT[r * 3 + 1], f32(FF_ROOT_SPREAD), began);
+  }
+  return true;
+}
+// How much is restored: bloomed patches and awake roots (it only grows).
+ff_progress_count :: (f: [] Forest) -> int {
+  n := ff_roots_awake(f);
+  for i: 0..<FF_PATCHES { if f[0].bloomed[i] { n += 1; } }
+  return n;
+}
+
+#test "what you restored is kept and comes back spread, with no news, and only this valley's" {
+  a: [1] Forest; a[0].news = -1;
+  #assert ff_bloom(a[..], 0, 1) && ff_bloom(a[..], 2, 1);
+  a[0].awake[1] = true;
+  b: [FF_PROGRESS_BYTES] u8;
+  #assert ff_progress(a[..], b[..]) == FF_PROGRESS_BYTES && ff_progress_count(a[..]) == 3;
+  c: [1] Forest; c[0].news = -1;
+  #assert ff_progress_open(c[..], b[..], 100);
+  #assert c[0].bloomed[0] && !c[0].bloomed[1] && c[0].bloomed[2] && c[0].awake[1] && !c[0].awake[0];
+  #assert ff_progress_count(c[..]) == 3 && c[0].news == -1;
+  #assert ff_restored(c[..], FF_PATCH[0], FF_PATCH[1], 100) == 1;
+  #assert ff_restored(c[..], FF_ROOT[3], FF_ROOT[4], 100) == 1;
+  // again: nothing doubles
+  n := c[0].bloom_n;
+  #assert ff_progress_open(c[..], b[..], 101) && c[0].bloom_n == n;
+  // another valley's, or a broken one: refused, nothing changed
+  b[0] = cast(u8) (FF_PATCHES + 1);
+  #assert !ff_progress_open(c[..], b[..], 102);
+  b[0] = cast(u8) FF_PATCHES; b[3] = 7;
+  #assert !ff_progress_valid(b[..]);
+  #assert !ff_progress_valid(b[0..<4]);
+}
+
 // ---- the stream's course as the page draws and carves it
 
 // The Catmull-Rom point at t in [0, 1] between controls i and i + 1 (water.coax's spline).

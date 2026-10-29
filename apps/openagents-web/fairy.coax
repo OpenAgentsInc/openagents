@@ -427,6 +427,15 @@ fairy_spawn :: (s: [] Fairy) -> Point #export_c { if !s[0].started { fairy_start
 fairy_spawn_face :: () -> f32 #export_c { return f32(FF_SPAWN_FACE); }
 fairy_heights :: (s: [] Fairy) -> int #export_c { if !s[0].started { fairy_start(s); } return FF_GROUND_POINTS; }
 
+// ---- what you restored, kept so a reload brings it back (the face saves it, save.coax)
+fairy_progress :: (s: [] Fairy, out: [] u8) -> int #export_c { return ff_progress(s[0].forest[..], out); }
+fairy_progress_open :: (s: [] Fairy, b: [] u8) -> bool #export_c {
+  if !s[0].started { fairy_start(s); }
+  return ff_progress_open(s[0].forest[..], b, s[0].time);
+}
+fairy_progress_count :: (s: [] Fairy) -> int #export_c { return ff_progress_count(s[0].forest[..]); }
+fairy_progress_bytes :: () -> int #export_c { return FF_PROGRESS_BYTES; }
+
 // ---- where you are, kept so a reload puts you back (place.coax, the face's place-face.h)
 
 // Open ground: inside the valley's bound, out of the stream's water and clear of the trunks.
