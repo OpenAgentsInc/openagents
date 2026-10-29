@@ -157,6 +157,8 @@ actual build identities and limitations are in the
 `psionic/lib/gptoss/device-*.coax` owns `gpt-oss-cuda-f32-v1`: original
 BF16/MXFP4 coefficient bytes relocate unchanged into aligned resident intervals,
 f32 lane products and ordered f64 reductions feed the complete CUDA decoder.
+Single-token and batched packed products use admitted tensor-relative u32
+offsets with unchanged lane/fold arithmetic and view bounds.
 Coax admits shapes, byte budgets, tensor-relative u32 index bounds, all kernel
 views and the ordered launch program; C performs effects. The native session
 has no automatic CPU fallback. Authentication and upload happen once.

@@ -1,0 +1,27 @@
+authenticated once: 81.612 seconds
+paired repeat=-1 variant=1 input=1024 forced_output=128 prefill=3.229290 decode=3.255371 tok_s=39.320
+paired repeat=-1 variant=0 input=1024 forced_output=128 prefill=3.204287 decode=4.371039 tok_s=29.284
+paired repeat=0 variant=0 input=1024 forced_output=128 prefill=3.213457 decode=4.368741 tok_s=29.299
+paired repeat=0 variant=1 input=1024 forced_output=128 prefill=3.209056 decode=3.260940 tok_s=39.252
+paired repeat=1 variant=1 input=1024 forced_output=128 prefill=3.210179 decode=3.258470 tok_s=39.282
+paired repeat=1 variant=0 input=1024 forced_output=128 prefill=3.216495 decode=4.382530 tok_s=29.207
+paired repeat=2 variant=0 input=1024 forced_output=128 prefill=3.220119 decode=4.385154 tok_s=29.189
+paired repeat=2 variant=1 input=1024 forced_output=128 prefill=3.222762 decode=3.267968 tok_s=39.168
+paired repeat=3 variant=1 input=1024 forced_output=128 prefill=3.222130 decode=3.261682 tok_s=39.244
+paired repeat=3 variant=0 input=1024 forced_output=128 prefill=3.220331 decode=4.384611 tok_s=29.193
+paired repeat=4 variant=0 input=1024 forced_output=128 prefill=3.222791 decode=4.387179 tok_s=29.176
+paired repeat=4 variant=1 input=1024 forced_output=128 prefill=3.226771 decode=3.276252 tok_s=39.069
+all paired full caches, logits, traces and expert IDs: bitwise equal
+greedy repeat=-1 variant=1 input=70 output=128 prefill=0.238416 decode=2.355169 tok_s=53.924
+greedy repeat=-1 variant=0 input=70 output=128 prefill=0.238162 decode=3.467789 tok_s=36.623
+greedy repeat=0 variant=0 input=70 output=128 prefill=0.238816 decode=3.470070 tok_s=36.599
+greedy repeat=0 variant=1 input=70 output=128 prefill=0.238714 decode=2.359041 tok_s=53.835
+greedy repeat=1 variant=1 input=70 output=128 prefill=0.238646 decode=2.356682 tok_s=53.889
+greedy repeat=1 variant=0 input=70 output=128 prefill=0.238905 decode=3.468643 tok_s=36.614
+greedy repeat=2 variant=0 input=70 output=128 prefill=0.238375 decode=3.468887 tok_s=36.611
+greedy repeat=2 variant=1 input=70 output=128 prefill=0.238361 decode=2.358702 tok_s=53.843
+greedy repeat=3 variant=1 input=70 output=128 prefill=0.238434 decode=2.357196 tok_s=53.878
+greedy repeat=3 variant=0 input=70 output=128 prefill=0.238843 decode=3.467132 tok_s=36.630
+greedy repeat=4 variant=0 input=70 output=128 prefill=0.239618 decode=3.470057 tok_s=36.599
+greedy repeat=4 variant=1 input=70 output=128 prefill=0.238636 decode=2.359112 tok_s=53.834
+all greedy generated IDs and stops: bitwise equal

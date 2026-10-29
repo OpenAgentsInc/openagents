@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <poll.h>
 #include <pthread.h>
 #include <signal.h>
@@ -137,6 +138,8 @@ int main(int argc,char **argv){
     if(inet_pton(AF_INET,"127.0.0.1",&address.sin_addr)!=1)fail("loopback address failed");
     if(bind(listener,(struct sockaddr*)&address,sizeof address) || listen(listener,8))fail("loopback listener failed");fprintf(stderr,"Psionic Responses ready on 127.0.0.1:%ld\n",port);
     while(!stopping){int fd=accept(listener,NULL,NULL);if(fd<0){if(stopping)break;if(errno==EINTR)continue;break;}fcntl(fd,F_SETFL,fcntl(fd,F_GETFL,0)|O_NONBLOCK);
+        /* Semantic SSE writes should reach the client without Nagle delays. */
+        if(setsockopt(fd,IPPROTO_TCP,TCP_NODELAY,&yes,sizeof yes)){close(fd);continue;}
         pthread_mutex_lock(&connections);int admit=rs_connections(active);if(admit)active++;pthread_mutex_unlock(&connections);if(!admit){close(fd);continue;}
         Request *r=calloc(1,sizeof *r);if(!r)fail("request allocation failed");r->fd=fd;pthread_t t;if(pthread_create(&t,NULL,connection,r))fail("request thread failed");pthread_detach(t);
     }

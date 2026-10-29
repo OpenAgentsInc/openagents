@@ -21,8 +21,15 @@ build's latency verdict. `qualification/lab-build.json` identifies the exact
 library translation/executable used by the original speculation/tool observations;
 it explicitly records which harness build inputs were not archived.
 
-All original runs are CPU wide with f32 storage, not upstream BF16 activation
+Those earlier original runs are CPU wide with f32 storage, not upstream BF16 activation
 parity. Sparse original smoke requests do not establish general model quality,
 long-context conformance or production throughput. Simultaneous work affected
 latencies. Final broad mutation runs were stopped at the owner's request;
 focused changed-code checks and native sanitizers are the final gate.
+
+`decode-products.coax` freezes the old single-token lane/fold program for
+address-optimization parity. `qualification/decode-speed-2026-10-29/` separately
+records paired original-20b CUDA speed runs: one resident weight allocation,
+alternating baseline/candidate modules, exact complete-state and generated-ID
+agreement, plus an end-to-end Responses smoke benchmark. These records do not
+change the earlier CPU numerical/latency verdicts.

@@ -83,3 +83,27 @@ device integration gates; this command does not silently claim those features.
 
 Continue with [batched prefill](ch045c-prefill-together.md) and the
 [measurement record](../../docs/verification/psionic-gptoss-device-2026-10-29.md).
+
+## Make the admitted address arithmetic cheap
+
+The single-token BF16 and original-MXFP4 products now use the same unsigned
+32-bit tensor-relative indexing as prefill. The memory plan already proves
+those element offsets fit. The kernel retains view bounds checks, coefficient
+bytes, lane assignment, multiplication order and the periodic f32 fold before
+its ordered f64 reduction. It hoists the selected expert row and input-slot
+bases out of the inner coefficient loop.
+
+The [frozen pre-optimization program](../fixtures/gptoss/decode-products.coax)
+checks bit-identical partials on varied signed coefficients, ragged lane work,
+shared/slot inputs and fold boundaries. The
+[owned decode-product benchmark](../tests/gptoss_decode_bench.c) alternates
+before/after kernels and flushes more than the 4080 L2 before each timed launch.
+The [full-model paired harness](../tests/gptoss_speed.c) authenticates once,
+keeps one set of weights resident, alternates two Coax-generated CUDA modules,
+and compares full caches, logits, traces, expert IDs and greedy continuations.
+It selects and waits per token as the serving path does. Its measurements and
+limits are in the [decode-speed record](../../docs/verification/psionic-decode-speed-2026-10-29.md).
+
+Both numerical and backend profiles retain their identity: this change removes
+address overhead rather than changing the model's arithmetic. Prefill, matrix
+hardware, graph replay and concurrent scheduling remain separate measurements.

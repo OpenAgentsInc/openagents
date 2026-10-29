@@ -1,0 +1,14 @@
+// Frozen pre-optimization lane/fold program, used only as a parity oracle.
+gk_bf_reference :: (item:int,rows:int,cols:int,lanes:int,w:[]u64,x:[]f32,partial:[]f32) {
+    row:=item/lanes;lane:=item%lanes;groups:=cols/4;sum:f32=0;total:f32=0;
+    for k:0..<(groups+lanes-1)/lanes {g:=k*lanes+lane;if g<groups {bits:=w[row*groups+g];for j:0..<4 {h:=cast,trunc(u16)(bits>>cast(u64)(16*j));sum+=gk_bf(h)*x[g*4+j];}}
+        if (k+1)%64==0 || k+1==(groups+lanes-1)/lanes {total+=sum;sum=0;}}
+    partial[lane*rows+row]=total;
+}
+gk_mx_reference :: (item:int,rows:int,cols:int,lanes:int,input_stride:int,w:[]u64,scales:[]u8,ids:[]int,x:[]f32,partial:[]f32) {
+    lane:=item%lanes;row:=item/lanes%rows;slot:=item/(lanes*rows);expert:=ids[slot];groups:=cols/32;sum:f32=0;total:f32=0;bad_scale:u32=0;
+    for k:0..<(groups+lanes-1)/lanes {g:=k*lanes+lane;if g<groups {base:=(expert*rows+row)*groups+g;if scales[base]>252 {bad_scale=0x7f800000;}power:=gk_power(scales[base]);
+        for half:0..<2 {word:=w[base*2+half];for j:0..<16 {coefficient:=gk_fp4((word>>cast(u64)(4*j))&15)*power;sum+=coefficient*x[slot*input_stride+g*32+half*16+j];}}}
+        if (k+1)%8==0 || k+1==(groups+lanes-1)/lanes {total+=sum;sum=0;}}
+    partial[(slot*lanes+lane)*rows+row]=f32_from_bits(f32_bits(total)|bad_scale);
+}

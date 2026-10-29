@@ -39,21 +39,21 @@ gk_norm :: (item:int,width:int,partial:[]f64,scale:[]u16,x:[]f32,out:[]f32,flags
 }
 // Lane-adjacent work items read adjacent groups of four packed BF16 values.
 gk_bf_part :: (item:int,rows:int,cols:int,lanes:int,w:[]u64,x:[]f32,partial:[]f32) #export_c {
-    row:=item/lanes;lane:=item%lanes;groups:=cols/4;sum:f32=0;total:f32=0;
-    for k:0..<(groups+lanes-1)/lanes {g:=k*lanes+lane;if g<groups {bits:=w[row*groups+g];for j:0..<4 {h:=cast,trunc(u16)(bits>>cast(u64)(16*j));sum+=gk_bf(h)*x[g*4+j];}}
-        if (k+1)%64==0 || k+1==(groups+lanes-1)/lanes {total+=sum;sum=0;}}
-    partial[lane*rows+row]=total;
+    work:=cast(u32)item;nr:=cast(u32)rows;nl:=cast(u32)lanes;row:=work/nl;lane:=work%nl;groups:=cast(u32)cols/4;parts:=(groups+nl-1)/nl;sum:f32=0;total:f32=0;
+    for k:cast(u32)0..<parts {g:=add_wrap(mul_wrap(k,nl),lane);if g<groups {bits:=w[gk_addr(row,groups,g)];for j:cast(u32)0..<cast(u32)4 {h:=cast,trunc(u16)(bits>>cast(u64)(16*j));sum+=gk_bf(h)*x[gk_addr(g,4,j)];}}
+        if (k+1)%64==0 || k+1==parts {total+=sum;sum=0;}}
+    partial[gk_addr(lane,nr,row)]=total;
 }
 gk_bf_finish :: (item:int,rows:int,lanes:int,partial:[]f32,bias:[]u16,out:[]f32,flags:[]u8) #export_c {
     sum:f64=0;for lane:0..<lanes {sum+=f64(partial[lane*rows+item]);}v:=f32(sum);if bias.count!=0 {v+=gk_bf(bias[item]);}out[item]=v;flags[item]=gk_bad(v);
 }
 // Route IDs stay on device. Packed rows decode only the selected experts.
 gk_mx_part :: (item:int,rows:int,cols:int,lanes:int,input_stride:int,w:[]u64,scales:[]u8,ids:[]int,x:[]f32,partial:[]f32) #export_c {
-    lane:=item%lanes;row:=item/lanes%rows;slot:=item/(lanes*rows);expert:=ids[slot];groups:=cols/32;sum:f32=0;total:f32=0;bad_scale:u32=0;
-    for k:0..<(groups+lanes-1)/lanes {g:=k*lanes+lane;if g<groups {base:=(expert*rows+row)*groups+g;if scales[base]>252 {bad_scale=0x7f800000;}power:=gk_power(scales[base]);
-        for half:0..<2 {word:=w[base*2+half];for j:0..<16 {coefficient:=gk_fp4((word>>cast(u64)(4*j))&15)*power;sum+=coefficient*x[slot*input_stride+g*32+half*16+j];}}}
-        if (k+1)%8==0 || k+1==(groups+lanes-1)/lanes {total+=sum;sum=0;}}
-    partial[(slot*lanes+lane)*rows+row]=f32_from_bits(f32_bits(total)|bad_scale);
+    work:=cast(u32)item;nr:=cast(u32)rows;nl:=cast(u32)lanes;lane:=work%nl;row:=work/nl%nr;slot:=work/(nl*nr);expert:=cast(u32)ids[slot];groups:=cast(u32)cols/32;parts:=(groups+nl-1)/nl;input_base:=mul_wrap(slot,cast(u32)input_stride);row_base:=add_wrap(mul_wrap(expert,nr),row);sum:f32=0;total:f32=0;bad_scale:u32=0;
+    for k:cast(u32)0..<parts {g:=add_wrap(mul_wrap(k,nl),lane);if g<groups {base:=cast(u32)gk_addr(row_base,groups,g);scale:=scales[base];if scale>252 {bad_scale=0x7f800000;}power:=gk_power(scale);
+        for half:cast(u32)0..<cast(u32)2 {word:=w[gk_addr(base,2,half)];for j:cast(u32)0..<cast(u32)16 {coefficient:=gk_fp4((word>>cast(u64)(4*j))&15)*power;at:=add_wrap(input_base,add_wrap(mul_wrap(g,cast(u32)32),half*16+j));sum+=coefficient*x[cast(int)at];}}}
+        if (k+1)%8==0 || k+1==parts {total+=sum;sum=0;}}
+    partial[gk_addr(add_wrap(mul_wrap(slot,nl),lane),nr,row)]=f32_from_bits(f32_bits(total)|bad_scale);
 }
 gk_mx_finish :: (item:int,rows:int,lanes:int,ids:[]int,partial:[]f32,bias:[]u16,out:[]f32,flags:[]u8) #export_c {
     row:=item%rows;slot:=item/rows;sum:f64=0;for lane:0..<lanes {sum+=f64(partial[(slot*lanes+lane)*rows+row]);}
@@ -325,3 +325,12 @@ gk_context_64x8 :: (item:int,heads:int,kv_heads:int,tokens:int,start:int,window:
     out:[8192]f32;flags:[8192]u8;empty:[1]u16;
     for query:0..<2 {for h:0..<2 {for d:0..<2 {item:=query*4096+h*63*64+d*63;gk_batch_finish(item,4096,2,8,partial[..],empty[0..<0],out[..],flags[..]);expected:=ifx query==0 then f32(1018.0/129.0) else f32(1014.0/129.0);#assert abs(out[item]-expected)<0.000003f32 && flags[item]==0;}}}
 }
+
+#test "decode products preserve ragged lane order, folding and slot inputs" {
+    rows:=4;cols:=4192;groups:=131;lanes:=16;words:[4192]u64;scales:[2096]u8;x:[8384]f32;ids:=[2]int.[3,1];p:[128]f32;ref:[128]f32;
+    for i:0..<4192 {words[i]=ifx i%2==0 then cast(u64)0xfedcba9876543210 else cast(u64)0x123456789abcdef0;}
+    for i:0..<2096 {scales[i]=cast(u8)(126+i%3);}for i:0..<8384 {x[i]=f32(i%17-8)*0.125f32;}
+    for stride:[2]int.[0,4192] {for item:0..<128 {gk_mx_part(item,rows,cols,lanes,stride,words[..],scales[..],ids[..],x[..],p[..]);gk_mx_reference(item,rows,cols,lanes,stride,words[..],scales[..],ids[..],x[..],ref[..]);#assert f32_bits(p[item])==f32_bits(ref[item]);}}
+    dense:[4160]u64;for i:0..<4160 {dense[i]=0x3f80bf003f004000;}for item:0..<64 {gk_bf_part(item,4,4160,16,dense[..],x[..],p[..]);gk_bf_reference(item,4,4160,16,dense[..],x[..],ref[..]);#assert f32_bits(p[item])==f32_bits(ref[item]);}
+}
+#load "../../fixtures/gptoss/decode-products.coax";

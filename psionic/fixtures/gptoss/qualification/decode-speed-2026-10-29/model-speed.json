@@ -1,0 +1,277 @@
+{
+  "profile": "gpt-oss-cuda-f32-v1",
+  "model": "original-20b",
+  "context_capacity": 2048,
+  "concurrency": 1,
+  "clock": "host monotonic",
+  "variants": {
+    "0": "before: checked signed-64 decode indexing",
+    "1": "after: admitted unsigned-32 decode indexing"
+  },
+  "cases": {
+    "paired": {
+      "variants": {
+        "0": {
+          "runs": [
+            {
+              "repeat": -1,
+              "variant": 0,
+              "input_tokens": 1024,
+              "output_tokens": 128,
+              "prefill_seconds": 3.204287,
+              "decode_seconds": 4.371039,
+              "decode_tokens_per_second": 29.284
+            },
+            {
+              "repeat": 0,
+              "variant": 0,
+              "input_tokens": 1024,
+              "output_tokens": 128,
+              "prefill_seconds": 3.213457,
+              "decode_seconds": 4.368741,
+              "decode_tokens_per_second": 29.299
+            },
+            {
+              "repeat": 1,
+              "variant": 0,
+              "input_tokens": 1024,
+              "output_tokens": 128,
+              "prefill_seconds": 3.216495,
+              "decode_seconds": 4.38253,
+              "decode_tokens_per_second": 29.207
+            },
+            {
+              "repeat": 2,
+              "variant": 0,
+              "input_tokens": 1024,
+              "output_tokens": 128,
+              "prefill_seconds": 3.220119,
+              "decode_seconds": 4.385154,
+              "decode_tokens_per_second": 29.189
+            },
+            {
+              "repeat": 3,
+              "variant": 0,
+              "input_tokens": 1024,
+              "output_tokens": 128,
+              "prefill_seconds": 3.220331,
+              "decode_seconds": 4.384611,
+              "decode_tokens_per_second": 29.193
+            },
+            {
+              "repeat": 4,
+              "variant": 0,
+              "input_tokens": 1024,
+              "output_tokens": 128,
+              "prefill_seconds": 3.222791,
+              "decode_seconds": 4.387179,
+              "decode_tokens_per_second": 29.176
+            }
+          ],
+          "median_decode_tokens_per_second": 29.193,
+          "minimum_decode_tokens_per_second": 29.176,
+          "maximum_decode_tokens_per_second": 29.299,
+          "median_prefill_seconds": 3.220119
+        },
+        "1": {
+          "runs": [
+            {
+              "repeat": -1,
+              "variant": 1,
+              "input_tokens": 1024,
+              "output_tokens": 128,
+              "prefill_seconds": 3.22929,
+              "decode_seconds": 3.255371,
+              "decode_tokens_per_second": 39.32
+            },
+            {
+              "repeat": 0,
+              "variant": 1,
+              "input_tokens": 1024,
+              "output_tokens": 128,
+              "prefill_seconds": 3.209056,
+              "decode_seconds": 3.26094,
+              "decode_tokens_per_second": 39.252
+            },
+            {
+              "repeat": 1,
+              "variant": 1,
+              "input_tokens": 1024,
+              "output_tokens": 128,
+              "prefill_seconds": 3.210179,
+              "decode_seconds": 3.25847,
+              "decode_tokens_per_second": 39.282
+            },
+            {
+              "repeat": 2,
+              "variant": 1,
+              "input_tokens": 1024,
+              "output_tokens": 128,
+              "prefill_seconds": 3.222762,
+              "decode_seconds": 3.267968,
+              "decode_tokens_per_second": 39.168
+            },
+            {
+              "repeat": 3,
+              "variant": 1,
+              "input_tokens": 1024,
+              "output_tokens": 128,
+              "prefill_seconds": 3.22213,
+              "decode_seconds": 3.261682,
+              "decode_tokens_per_second": 39.244
+            },
+            {
+              "repeat": 4,
+              "variant": 1,
+              "input_tokens": 1024,
+              "output_tokens": 128,
+              "prefill_seconds": 3.226771,
+              "decode_seconds": 3.276252,
+              "decode_tokens_per_second": 39.069
+            }
+          ],
+          "median_decode_tokens_per_second": 39.244,
+          "minimum_decode_tokens_per_second": 39.069,
+          "maximum_decode_tokens_per_second": 39.282,
+          "median_prefill_seconds": 3.22213
+        }
+      },
+      "decode_rate_improvement_percent": 34.42948652074127
+    },
+    "greedy": {
+      "variants": {
+        "0": {
+          "runs": [
+            {
+              "repeat": -1,
+              "variant": 0,
+              "input_tokens": 70,
+              "output_tokens": 128,
+              "prefill_seconds": 0.238162,
+              "decode_seconds": 3.467789,
+              "decode_tokens_per_second": 36.623
+            },
+            {
+              "repeat": 0,
+              "variant": 0,
+              "input_tokens": 70,
+              "output_tokens": 128,
+              "prefill_seconds": 0.238816,
+              "decode_seconds": 3.47007,
+              "decode_tokens_per_second": 36.599
+            },
+            {
+              "repeat": 1,
+              "variant": 0,
+              "input_tokens": 70,
+              "output_tokens": 128,
+              "prefill_seconds": 0.238905,
+              "decode_seconds": 3.468643,
+              "decode_tokens_per_second": 36.614
+            },
+            {
+              "repeat": 2,
+              "variant": 0,
+              "input_tokens": 70,
+              "output_tokens": 128,
+              "prefill_seconds": 0.238375,
+              "decode_seconds": 3.468887,
+              "decode_tokens_per_second": 36.611
+            },
+            {
+              "repeat": 3,
+              "variant": 0,
+              "input_tokens": 70,
+              "output_tokens": 128,
+              "prefill_seconds": 0.238843,
+              "decode_seconds": 3.467132,
+              "decode_tokens_per_second": 36.63
+            },
+            {
+              "repeat": 4,
+              "variant": 0,
+              "input_tokens": 70,
+              "output_tokens": 128,
+              "prefill_seconds": 0.239618,
+              "decode_seconds": 3.470057,
+              "decode_tokens_per_second": 36.599
+            }
+          ],
+          "median_decode_tokens_per_second": 36.611,
+          "minimum_decode_tokens_per_second": 36.599,
+          "maximum_decode_tokens_per_second": 36.63,
+          "median_prefill_seconds": 0.238843
+        },
+        "1": {
+          "runs": [
+            {
+              "repeat": -1,
+              "variant": 1,
+              "input_tokens": 70,
+              "output_tokens": 128,
+              "prefill_seconds": 0.238416,
+              "decode_seconds": 2.355169,
+              "decode_tokens_per_second": 53.924
+            },
+            {
+              "repeat": 0,
+              "variant": 1,
+              "input_tokens": 70,
+              "output_tokens": 128,
+              "prefill_seconds": 0.238714,
+              "decode_seconds": 2.359041,
+              "decode_tokens_per_second": 53.835
+            },
+            {
+              "repeat": 1,
+              "variant": 1,
+              "input_tokens": 70,
+              "output_tokens": 128,
+              "prefill_seconds": 0.238646,
+              "decode_seconds": 2.356682,
+              "decode_tokens_per_second": 53.889
+            },
+            {
+              "repeat": 2,
+              "variant": 1,
+              "input_tokens": 70,
+              "output_tokens": 128,
+              "prefill_seconds": 0.238361,
+              "decode_seconds": 2.358702,
+              "decode_tokens_per_second": 53.843
+            },
+            {
+              "repeat": 3,
+              "variant": 1,
+              "input_tokens": 70,
+              "output_tokens": 128,
+              "prefill_seconds": 0.238434,
+              "decode_seconds": 2.357196,
+              "decode_tokens_per_second": 53.878
+            },
+            {
+              "repeat": 4,
+              "variant": 1,
+              "input_tokens": 70,
+              "output_tokens": 128,
+              "prefill_seconds": 0.238636,
+              "decode_seconds": 2.359112,
+              "decode_tokens_per_second": 53.834
+            }
+          ],
+          "median_decode_tokens_per_second": 53.843,
+          "minimum_decode_tokens_per_second": 53.834,
+          "maximum_decode_tokens_per_second": 53.889,
+          "median_prefill_seconds": 0.238636
+        }
+      },
+      "decode_rate_improvement_percent": 47.06782114664993
+    }
+  },
+  "limitations": [
+    "The fixed 1024/128 case forces IDs; the greedy case uses actual model choices.",
+    "Both decode cases select on device and wait/read control per token, matching serving synchronization.",
+    "Core timing excludes HTTP/tokenization/serialization. Greedy rate excludes the first token chosen by prefill.",
+    "One warm-up per variant, five paired measured repeats; no concurrency or packaged-engine comparison."
+  ]
+}

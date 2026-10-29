@@ -109,3 +109,21 @@ model function handoff and full typed replay, using only an owned weather fixtur
 as the externally supplied result.
 Run only against a test instance: the checks deliberately exercise limits and
 failures. Do not treat a fixture-backed passing result as model qualification.
+
+## Measure response speed
+
+The [decode optimization record](../../../docs/verification/psionic-decode-speed-2026-10-29.md)
+separates paired core rates from actual HTTP timing. Original 20b greedy decode
+improves from 36.611 to 53.843 tokens/s on the qualified short-prefix workload,
+with identical generated IDs. The optimized 128-token SSE request measures
+48.816 output IDs/s end to end. These are single-request RTX 4080 measurements;
+long-prefix prefill remains a separate bottleneck.
+
+Against an owned test instance with its key already in the environment:
+
+```shell
+python3 psionic/tests/responses_speed.py http://127.0.0.1:8080 --out /tmp/response-speed.json
+```
+
+The tool runs one warm-up and five requests, retains every timing sample, and
+checks the generated state by digest. It prints no reasoning or answer content.
