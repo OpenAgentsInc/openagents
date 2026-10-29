@@ -821,6 +821,79 @@
       ],
       "blocked_by": [],
       "blocks": []
+    },
+    {
+      "slug": "ff-chat-room",
+      "parent": "ff",
+      "title": "Fairy Forest's chat room: one room for everyone, always on screen",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "A Horse Isle-style chat box always on screen in Fairy Forest: every player's lines in order with their name, open to anyone in the realm. Reuse the realm host's room (apps/openagents-web/room.coax, realm-room.c, /api/playtest/presence and /api/playtest/chat/<room>): the player key minted by /api/playtest/player, the presence post, the say path and the text entry. Today that wiring lives in realm-face.c for the Haunted House only; lift what Fairy Forest needs into a piece other realms can share.\n\nPlan: `verse/fairy-forest/README.md`, \"Talking with other players\".",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "apps/openagents-web/fairy-face.c",
+        "apps/openagents-web/room.coax",
+        "apps/openagents-web/realm-room.c"
+      ],
+      "acceptance": [
+        "Two headless tabs in /realms/fairy-forest see each other's lines with names",
+        "The box is on screen on desktop and phone without covering the Bloom button",
+        "Typing never moves the fairy"
+      ],
+      "blocked_by": [
+        "ff-first-crack"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "ff-inbox",
+      "parent": "ff",
+      "title": "Fairy Forest's inbox: direct messages between players",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "Send a message to any player you've met; it waits in their inbox until they read it, online or not, and they can answer from there. Needs server storage per player (coax/web/api) and an inbox pane.\n\nPlan: `verse/fairy-forest/README.md`, \"Talking with other players\".",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "A message sent to a player who is offline is in their inbox when they come back",
+        "They can answer from the inbox"
+      ],
+      "blocked_by": [
+        "ff-chat-room"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "ff-panes",
+      "parent": "ff",
+      "title": "Making Fairy Forest: panes the agent brings up one at a time",
+      "size": "L",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "Edit mode never opens every pane at once: the agent brings up only the pane for what you're working on. A design board from one voice prompt with concise features to check on or off; a lore pane per character, saved and brought back; a quest-design form pane; accept and decline cards for the world's owner.\n\nPlan: `verse/fairy-forest/README.md`, \"Making the world: panes\".",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "verse/fairy-forest/"
+      ],
+      "acceptance": [
+        "One voice prompt brings up a design board whose features can be checked on and off",
+        "A character's lore pane is saved and comes back",
+        "The owner accepts or declines a change from a card"
+      ],
+      "blocked_by": [
+        "ff-first-crack"
+      ],
+      "blocks": []
     }
   ]
 }
