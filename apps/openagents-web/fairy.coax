@@ -12,7 +12,7 @@
 // physics, drawn in the painted water preset). You walk and run on the
 // engine's controller (verse/player.coax) and see the valley through the free
 // orbit (verse/camera.coax); every Space press is one wing beat up, with no
-// limit, holding it hovers and letting go glides down (the face does the flight).
+// limit, holding it beats on and climbs, and letting go glides down (the face does the flight).
 //
 // The look (fairy.wgsl, verse/paint.coax): three soft toon bands with a warm
 // rim, shadows tinted blue, blue-cyan haze that steps the ridges back, a
@@ -1228,8 +1228,8 @@ plate :: (s: [] Fairy, u: [] f32, b: Box, alpha: f32, look: f32) {
 phone :: (s: [] Fairy) -> bool { return s[0].touch || s[0].width / hi(s[0].dpr, 0.5) < 700; }
 
 hint :: (s: [] Fairy) -> string {
-  if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP RIGHT SIDE TO FLAP UP"; }
-  return "WASD MOVE · DRAG TURNS · SPACE FLAPS UP · HOLD SPACE TO HOVER · SHIFT WALKS, IN THE AIR DIVES";
+  if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP RIGHT SIDE TO FLAP UP, HOLD TO CLIMB"; }
+  return "WASD MOVE · DRAG TURNS · SPACE FLAPS UP, HOLD TO CLIMB · SHIFT WALKS, IN THE AIR DIVES";
 }
 
 // A mood glyph over a creature: a face in a ring, its colour and mouth the mood.

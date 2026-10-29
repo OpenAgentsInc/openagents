@@ -4,8 +4,8 @@
 // and the pond (Stream.h). Once a frame it passes values between them in
 // order: the page's controls, the player's step among the forest's walls
 // with a fairy's flight (every Space press, or a tap on a phone's right
-// half, is one wing beat up, with no limit; held, she hovers; let go, she
-// glides down; Shift in the air dives), the stream's say on what water you are in,
+// half, is one wing beat up, with no limit; held (Space, or a still thumb on
+// the right half), she beats on and climbs steadily; let go, she glides down; Shift in the air dives), the stream's say on what water you are in,
 // then the page's frame with where you ended up, and the stream's uniform
 // block after it. The stream is built once from the page's carved ground; its
 // baked nodes are store 2. It decides nothing. Every pointer is an offset into
@@ -51,7 +51,7 @@ static coax_v_t_Stream sv(void) { return (coax_v_t_Stream){&stream, 1}; }
 
 #define FLAP_UP 5.2f      /* m/s up from each beat in the air: about 0.55 m a beat */
 #define GLIDE -1.5f       /* m/s: the gentle fall between beats */
-#define HOVER -0.2f       /* m/s: the fall while Space is held */
+#define CLIMB 3.2f        /* m/s: the steady climb while Space is held, beating on */
 #define CEILING 40.0f     /* m over the ground: beats stop lifting here */
 #define DIVE -7.0f        /* m/s: the fall while Shift is held in the air, wings folded */
 
@@ -178,7 +178,9 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   now += dt;
   fairy_golden(at(state), golden);
   fairy_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
-  bool jump = g->jump || sticks.jump;
+  // a thumb held still on the right half, past a tap's time, is Space held
+  bool thumb_held = sticks.look_on && !sticks.travelled && now - sticks.since > 0.3;
+  bool jump = g->jump || sticks.jump || thumb_held;
   int64_t taps = fairy_taps(at(state)) + (sticks.jump ? 1 : 0);
   bool afloat = swim.medium >= 2;
   bool grounded = player.on_ground;
@@ -187,11 +189,12 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   player.theta = fairy_player_theta(at(state));
   // flight: every press is one wing beat up, as many as you like (on the
   // ground the player's jump lifts you); between beats you glide down, and
-  // held you hover
+  // held, she keeps beating and climbs
   bool beat = taps > 0 || (jump && !jump_was);
   if (beat) flap_phase = 1.5708f + 6.2832f * (float)(int)(flap_phase / 6.2832f + 1.0f);   /* wings to the top, then the downstroke */
   if (beat && !grounded && !afloat && player.pos.y < CEILING) player.vel.y = player.vel.y > 0 ? player.vel.y * 0.5f + FLAP_UP : FLAP_UP;
-  if (!player.on_ground && player.vel.y < (jump ? HOVER : GLIDE)) player.vel.y = jump ? HOVER : GLIDE;
+  if (jump && !grounded && !afloat && player.pos.y < CEILING && player.vel.y < CLIMB) player.vel.y = CLIMB;
+  if (!player.on_ground && player.vel.y < GLIDE) player.vel.y = GLIDE;
   if (player.pos.y > CEILING && player.vel.y > 0) player.vel.y = 0;
   // Shift in the air dives (on the ground it still walks): a fast fall, wings folded down
   bool diving = g->run && !player.on_ground && !afloat && !beat;
@@ -203,7 +206,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_t_Vec3 feet = verse_player_feet(player);
   coax_v_f32 heights = {g->heights.e, fairy_heights(at(state))};
   swim = fairy_stream_swim(sv(), heights, player.pos.x, player.pos.z, feet.y, false, dt, now);
-  // the wings: a slow beat standing, a full stroke after each press, a flutter while you hover or glide
+  // the wings: a slow beat standing, a full stroke after each press, fast strokes while you climb, a flutter as you glide
   flap_phase += dt * (player.on_ground ? 3.0f : jump ? 22.0f : 11.0f);
   if (diving) flap_phase = 4.7124f;   /* sin = -1: the wings held down */
   if (flap_phase > 6283.0f) flap_phase -= 6283.1853f;
