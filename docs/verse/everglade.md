@@ -260,8 +260,11 @@ than 6.5 m from the flock. Each bird keeps its last ten places (one every
   from the board, a character or the inn, and go out by the gates to the
   quest areas and back (eg-quests); earn the bird-flock companion
   (eg-companion); see the whole city from above (MAP); wade, swim and dive
-  in the river by the bridge.
-- **Can't:** edit anything. No building, placing, removing, painting or
+  in the river by the bridge; cast the spell bar's spells and break the
+  town's buildings and props (see Spells and destruction); a broken
+  building grows back.
+- **Can't:** keep anything broken, or break it for anyone else: what a
+  spell breaks is your page's alone. Edit anything. No building, placing, removing, painting or
   terrain tools; no player-made objects stay in the city. An admin
   (`admins.conf`, logged in at /login) is the one exception: see Edit mode. Everglade stays
   put so quests can rely on it; making things is the Sandbox's job. No
@@ -475,6 +478,77 @@ and W6's ripples), drawn by its shader and read by the swimmer:
 ## What's next
 
 eg-launch ([realms-port.md](realms-port.md)).
+
+## Spells and destruction (eg-ruleset, eg-spells, eg-destruct)
+
+Everglade plays by the SRD 5e ruleset: realms.json gives it
+`"ruleset": "srd5"`, the page carries it (`data-ruleset`, the page facts'
+`ruleset=` line) and `verse/rules/srd5.coax` holds the rules a realm with
+that ruleset uses: the dice (a seeded SplitMix64), the saving throw and the
+spell save DC, damage types, the spells' damage, and an object's armor class
+and hit points by material and size (SRD 5.2.1, Breaking Objects: cloth 11,
+glass 13, wood 15, stone 17, iron 19; Tiny to Large, fragile 2/3/4/5 or
+resilient 5/10/18/27; glass takes double from bludgeoning and thunder,
+stone and iron half from fire, poison and psychic do nothing). A realm
+without a ruleset gets none of this: no bar, nothing breaks. `realms.ts`
+refuses a ruleset it doesn't know.
+
+**The bar** (`apps/openagents-web/everglade-spells.coax`) is the previous
+Rust engine's Everglade destruction bar (hotbar.rs DEV_ORDER; meteor.rs's
+numbers), along the bottom over the hint, five slots at most:
+
+| Key | Slot | Spell | Cast | Area | Damage |
+| --- | --- | --- | --- | --- | --- |
+| 1 | METEOR | Meteor Swarm: six meteors with fire trails on a 6 m ring, each a 4 m blast | 2.5 s | 6 m | 20d6 fire + 20d6 bludgeoning, rolled once a cast |
+| 2 | BOLT | Thunderbolt: a branching bolt from 60 m, a flash and the sky's light | 1.2 s | 3.4 m | 20d10 lightning |
+| 3 | MEGA | Mega Thunderbolt | 0.5 s | 5.8 m | 100d10 lightning |
+| 4 | ORB | Water Orb: gathers over you, thrown on an arc, bursts | 0.6 s | 3 m | 6d10 bludgeoning |
+| R | REBUILD | the town stands again (shown once something broke) | | | |
+
+Desktop: press 1 to 4 (or click a slot), a ring follows the pointer onto
+the ground or whatever it points at, click to cast; the same key again or
+Esc puts the spell away; a drag still turns the camera. Phone: tap a slot,
+then tap where it lands; tap the slot again to put it away. Casts reach
+140 m (the city is 127 m across); past that the ring goes dull red and the
+line says TOO FAR. One line over the bar says how to cast, then what the
+cast did (`METEOR SWARM · 20D6 FIRE 71 + 20D6 BLUDGEONING 66 · 23 BROKE`).
+No mana and no cooldown, as the old destruction bar; the cast bar shows,
+and you may walk while it fills.
+
+**Who has it:** everyone. Visitors and admins both get the bar; the old
+engine gave it to its dev builds, but here what a player breaks is only on
+their own page, so it costs nobody else anything and is the realm's toy.
+
+**What breaks** (`verse/demolish.coax`): every kit piece of the town
+(walls, windows, doors, corners, roofs, log roofs, floors, chimneys,
+stairs, stalls, barrels, crates, tables, benches, fences, props: about
+3,000) has its SRD AC and hit points by its mesh's material and size.
+A blast damages each piece it reaches as an unattended object: full at
+its middle, none at its edge. At 0 a piece breaks into chunks (a grid of
+its bounds, at most 3 a side, about a metre each; a roof in slabs along its
+two slopes) thrown away from the blow, with dust. A raised piece is held
+up by the pieces its base rests on (found once, on an 8 m grid); when
+fewer than 40% of them stand it comes loose and falls as one rigid body,
+turning, and shatters on the ground: so upper storeys fall when the walls
+under them go and a roof falls when its walls do. The fire leaves scorch
+marks (18 at most, 16 s each) and smoke. Things an admin placed don't
+break; the people and the cats aren't hurt; you still can't walk through
+a broken building's footprint (next step).
+
+**Frame budget:** at most 260 chunks and 40 falling pieces at once (a phone
+130 and 20); a new chunk takes the oldest sleeping one's place. Debris
+steps at 60 Hz (rigid.coax bodies, box corners against the ground with
+friction and restitution, chunks pushing apart), sleeps once still for
+0.6 s or after 12 s, and a sleeping chunk costs nothing to step. Chunks,
+fire and smoke draw as the shapes' boxes and spheres (700 and 168 slots);
+fire and lightning are LOOK_GLOW in everglade.wgsl: unlit, three times
+their colour, blooming, no shadow.
+
+**It grows back:** nothing broken is saved or shared. A broken building
+(or a 16 m cell of props) stands whole again 60 s after its last damage
+once you are 30 m from it (the old engine's rule), R (or REBUILD) stands
+the whole town at once, and a reload starts it whole. The shared town is
+never wrecked.
 
 ## Edit mode (admins only, eg-edit)
 

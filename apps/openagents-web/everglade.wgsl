@@ -346,6 +346,7 @@ const LOOK_CHARACTER = 8u;                         // the Ranger: textured, two 
 const LOOK_ROCK = 10u;                             // a kit rock (everglade.coax LOOK_ROCK): darker, mottled, mossy on top
 const LOOK_FLAME = 13u;                            // a lamp's flame: its colour, glowing as the lamps are lit
 const LOOK_WINDOW = 14u;                           // a window pane: the kit's, its glass glowing warm at night
+const LOOK_GLOW = 15u;                             // a spell's fire or lightning (everglade-spells.coax): its own light, unlit, all of it blooming
 fn canopy_n(n: vec3f, blob: vec3f) -> vec3f {
   return normalize(vec3f(verse_style_canopy_normal(n.x, blob.x, CANOPY_MIX), verse_style_canopy_normal(n.y, blob.y, CANOPY_MIX), verse_style_canopy_normal(n.z, blob.z, CANOPY_MIX)));
 }
@@ -519,6 +520,7 @@ struct Shade { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(
   let n = u32(u.ground.x);
   if (instance < n * n || st(21u).x < 1.0) { o.pos = vec4f(0.0, 0.0, -1.0, 1.0); return o; }   // the ground casts nothing
   let v = place(id, instance);
+  if (v.look == LOOK_GLOW) { o.pos = vec4f(0.0, 0.0, -1.0, 1.0); return o; }   // fire and lightning cast no shadow
   let q = shadow_place(v.world, light_space());
   o.pos = vec4f(q.xy, q.z, 1.0);
   o.uv = v.uv; o.slice = v.slice;
@@ -614,6 +616,11 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
 
 @fragment fn scene_fs(s: S, @builtin(front_facing) front: bool) -> Lit {
   let tex = textureSample(sheets, sheet, s.uv, s.slice);
+  if (s.look == LOOK_GLOW) {
+    // fire, a fireball, lightning: as bright as its colour says, three times over, and it all blooms
+    let c = pow(max(s.tint, vec3f(0.0)), vec3f(2.2)) * 3.0;
+    return Lit(vec4f(c, 1.0), vec4f(0.0));
+  }
   var n = normalize(s.normal);
   var base = s.tint;
   var shadow = 1.0;

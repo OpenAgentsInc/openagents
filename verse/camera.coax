@@ -244,18 +244,18 @@ verse_orbit_room :: (o: Orbit, spheres: [] f32, boxes: [] f32) -> f32 #export_c 
   }
   for i: 0..<boxes.count / BOX {
     k := i * BOX;
-    o3: [3] f32; d3: [3] f32;
+    o3: [3] f32; dir3: [3] f32;
     o3[0] = r.from.x; o3[1] = r.from.y; o3[2] = r.from.z;
-    d3[0] = r.dir.x; d3[1] = r.dir.y; d3[2] = r.dir.z;
+    dir3[0] = r.dir.x; dir3[1] = r.dir.y; dir3[2] = r.dir.z;
     enter := -1000000.0f32; leave := 1000000.0f32; inside := true; miss := false;
     for a: 0..<3 {
       low := boxes[k + a] - f32(FREE_CLEAR); high := boxes[k + 3 + a] + f32(FREE_CLEAR);
       if !(low <= high) { miss = true; break; }
       if o3[a] < low || o3[a] > high { inside = false; }
-      if abs(d3[a]) < 0.000001 {
+      if abs(dir3[a]) < 0.000001 {
         if o3[a] < low || o3[a] > high { miss = true; }
       } else {
-        t0 := (low - o3[a]) / d3[a]; t1 := (high - o3[a]) / d3[a];
+        t0 := (low - o3[a]) / dir3[a]; t1 := (high - o3[a]) / dir3[a];
         enter = hi(enter, lo(t0, t1)); leave = lo(leave, hi(t0, t1));
       }
     }

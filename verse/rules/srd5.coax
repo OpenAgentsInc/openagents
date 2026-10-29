@@ -33,14 +33,14 @@ SrdDice :: struct { seed: u64; state: u64; rolled: u64; }
 SRD_LOW32 :: 0xFFFFFFFF;
 srd_wmul :: (a: u64, b: u64) -> u64 {
   al := a & SRD_LOW32; ah := a >> 32; bl := b & SRD_LOW32; bh := b >> 32;
-  lo := al * bl;
-  high := (((ah * bl) & SRD_LOW32) + ((al * bh) & SRD_LOW32) + (lo >> 32)) & SRD_LOW32;
-  return (high << 32) | (lo & SRD_LOW32);
+  low := al * bl;
+  high := (((ah * bl) & SRD_LOW32) + ((al * bh) & SRD_LOW32) + (low >> 32)) & SRD_LOW32;
+  return (high << 32) | (low & SRD_LOW32);
 }
 srd_wadd :: (a: u64, b: u64) -> u64 {
-  lo := (a & SRD_LOW32) + (b & SRD_LOW32);
-  high := ((a >> 32) + (b >> 32) + (lo >> 32)) & SRD_LOW32;
-  return (high << 32) | (lo & SRD_LOW32);
+  low := (a & SRD_LOW32) + (b & SRD_LOW32);
+  high := ((a >> 32) + (b >> 32) + (low >> 32)) & SRD_LOW32;
+  return (high << 32) | (low & SRD_LOW32);
 }
 
 srd_dice :: (seed: u64) -> SrdDice { return SrdDice.{seed = seed, state = seed, rolled = 0}; }
@@ -241,9 +241,9 @@ srd_object_takes :: (o: SrdObject, dmg: SrdDamage, share: f32) -> int {
   for f: 0..<6 { #assert seen[f] > 60; }
   #assert a[0].rolled == 600;
   c: [1] SrdDice; c[0] = srd_dice(43);
-  same := 0;
-  for i: 0..<50 { if srd_roll(c[..], 20) == srd_roll(a[..], 20) { same += 1; } }
-  #assert same < 15;
+  alike := 0;
+  for i: 0..<50 { if srd_roll(c[..], 20) == srd_roll(a[..], 20) { alike += 1; } }
+  #assert alike < 15;
 }
 
 #test "srd5: 20d6 sums between 20 and 120 and averages near 70" {

@@ -63,6 +63,7 @@
 #load "../../verse/everglade/folk.coax";
 #load "everglade-voice.coax";
 #load "everglade-place.coax";
+#load "everglade-spells.coax";
 #load "../../verse/style-preset.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
@@ -102,9 +103,10 @@ UNIFORM_FLOATS :: U_LIGHTS + LIGHTS * 8;
 
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4; SHAPE_MESH :: 5; SHAPE_SKINNED :: 6;
 SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
-SLOTS :: [5] int.[0, 400, 72, 48, 1640];
-SLOT_AT :: [5] int.[0, 0, 400, 472, 520];
-SHAPE_OBJECTS :: 2160;
+// (the boxes and spheres hold the spells' debris, fire and smoke too: everglade-spells.coax)
+SLOTS :: [5] int.[0, 700, 168, 72, 1640];
+SLOT_AT :: [5] int.[0, 0, 700, 868, 940];
+SHAPE_OBJECTS :: 2580;
 // The kit's instances after the shapes, a group each: a tree kind (its
 // trunk and its leaves, two meshes drawn over the same instances), a small
 // thing of the undergrowth (a bush, a fern, two rocks), then one per piece
@@ -328,6 +330,7 @@ Everglade :: struct {
   part_used: [PEOPLE_PARTS] int; shown_n: int; shown: [PEOPLE_SHOWN] int;
   answered: f32;                           // seconds since the one you talk to last said something
   ev: EditVoice;                           // an admin's voice edits and what's published over the plan (everglade-voice.coax)
+  sp: Spells;                              // the spell bar and what breaks (everglade-spells.coax), with the ruleset srd5
 }
 
 // ---- small things
@@ -442,6 +445,7 @@ everglade_start :: (s: [] Everglade) {
   }
   build_town(s);
   edit_start(s);
+  spells_start(s);
 }
 
 // The player's walls (every solid, from the floor up) and the camera's
@@ -628,6 +632,7 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
     }
   }
   s[0].pack_ready = s[0].identity_first >= 0;
+  spells_catalog(s, text);
 }
 everglade_pack_failed :: (s: [] Everglade) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
 everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
@@ -635,6 +640,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
   if kind == MSG_FACTS {
     if !s[0].started { everglade_start(s); }
     take_visit(s, text); take_player(s, text);
+    spells_facts(s, text);
     s[0].day = verse_style_clock(fact(text, "clock"), fact(text, "now"), fact(text, "day"));
     s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
     return;
@@ -765,6 +771,7 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if s[0].talk >= 0 { return talk_key(s, key, mods); }
   if s[0].board { return board_key(s, key, mods); }
   if everglade_voice_key(s, key, true) { return true; }
+  if spells_key(s, key) { return true; }
   if (key == 'e' || key == 'E') && s[0].near_board && !s[0].above { open_board(s); return true; }
   if (key == 'e' || key == 'E') && s[0].near >= 0 && !s[0].above { talk_to(s, s[0].near); return true; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
@@ -796,6 +803,7 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
   if s[0].board { return board_pointer(s, x, y, phase, id); }
   if talk_pointer(s, x, y, phase, id) { return true; }
   if everglade_voice_pointer(s, x, y, phase, id) { return true; }
+  if spells_pointer(s, x, y, phase, kind, id) { return true; }
   if kind != 0 {
     s[0].touch = true;
     if phase == 0 && in_box(s[0].map_button, x, y) { s[0].map_finger = id; return true; }
@@ -2448,6 +2456,9 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
     breathing = 50 * k;
   }
   y1 -= breathing;
+  // the spell bar (everglade-spells.coax), with the ruleset: over the hint
+  n = spells_hud(s, out, u, n, y1 - hs - 28 * k);
+  y1 -= s[0].sp.lift;
   // An admin's EDIT and edit mode (everglade-edit.coax) and TALK TO EDIT (everglade-voice.coax), over the hint; whoever is near is asked above it.
   lift := 0.0f32;
   if s[0].ev.admin { n = everglade_voice_hud(s, out, u, n, y1 - hs - 28 * k); lift = ifx voice_on(s) then 100 * k else 0.0f32; }
@@ -2508,6 +2519,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   landmarks(s);
   lamp_posts(s);
   edit_draw(s);
+  spells_frame(s, u, shot, t);
   first := cast(u32) hi_i(s[0].identity_first, 0);
   for kind: 0..<5 {
     d := kind * 4;
@@ -2571,6 +2583,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   _ := verse_style_at(verse_style_preset(STYLE_PAINTERLY, ifx phone(s) then STYLE_PHONE else STYLE_DESKTOP), s[0].clock, u[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
   sun := unit_or(v3(u[STYLE_AT + SU_KEY_DIR], u[STYLE_AT + SU_KEY_DIR + 1], u[STYLE_AT + SU_KEY_DIR + 2]), v3(0, 1, 0));
   u[U_SUN] = sun.x; u[U_SUN + 1] = sun.y; u[U_SUN + 2] = sun.z;
+  spells_light(s, u);
   // the haze (art-styles.md 4): the preset's density and start, thinned and pushed off over the map's lift
   u[U_EYE + 3] = lerp(u[STYLE_AT + SU_HAZE + 1], 0.004, s[0].lift);
   u[U_SUN + 3] = lerp(u[STYLE_AT + SU_HAZE], 170, s[0].lift);
@@ -3169,15 +3182,20 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert g[0].counts[SHAPE_BOX] < SLOTS[SHAPE_BOX] && g[0].counts[SHAPE_SPHERE] < SLOTS[SHAPE_SPHERE];
   for i: 0..<FLOCK_BIRDS { #assert flat_gap(g[0].birds[0].pos[i], v3(0, 0, -79.65)) < 5; }
   // a save given back before the facts; then the facts say whose browser it is
-  h: [1] Everglade;
-  everglade_message(h[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
-  #assert h[0].stages[0] == EG_QUEST_DONE && h[0].stages[1] == 2 && h[0].flock;
-  everglade_message(h[..], MSG_FACTS, "now=1\nplayer=p-1\n");
-  #assert h[0].stages[1] == 2 && h[0].flock;
-  o: [1] Everglade;
-  everglade_message(o[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
-  everglade_message(o[..], MSG_FACTS, "now=1\nplayer=p-2\n");
-  #assert o[0].stages[0] == 0 && o[0].stages[1] == 0 && !o[0].flock;
+  // (each other city in its own block, so the checks hold two at once, not three)
+  {
+    h: [1] Everglade;
+    everglade_message(h[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
+    #assert h[0].stages[0] == EG_QUEST_DONE && h[0].stages[1] == 2 && h[0].flock;
+    everglade_message(h[..], MSG_FACTS, "now=1\nplayer=p-1\n");
+    #assert h[0].stages[1] == 2 && h[0].flock;
+  }
+  {
+    o: [1] Everglade;
+    everglade_message(o[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
+    everglade_message(o[..], MSG_FACTS, "now=1\nplayer=p-2\n");
+    #assert o[0].stages[0] == 0 && o[0].stages[1] == 0 && !o[0].flock;
+  }
   // a minted player key goes out before a waiting save, which follows it
   g[0].dirty = true;
   n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);

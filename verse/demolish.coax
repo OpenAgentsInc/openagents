@@ -35,8 +35,9 @@
 #load "rigid.coax";
 #load "terrain.coax";
 
-DEMO_PIECES :: 3400;
-DEMO_SUPPORTS :: 24000;
+DEMO_PIECES :: 3100;
+DEMO_MESHES :: 64;
+DEMO_SUPPORTS :: 16000;
 DEMO_CHUNKS :: 260;        // the desktop's chunks (the old town's budget), a phone half
 DEMO_LOOSE :: 40;          // loose whole pieces at once
 DEMO_BODIES :: DEMO_CHUNKS + DEMO_LOOSE;
@@ -55,41 +56,48 @@ DEMO_GRAVITY :: -9.81;
 DP_STANDING :: 0; DP_LOOSE :: 1; DP_BROKEN :: 2;
 DEMO_CHUNK :: 1; DEMO_WHOLE :: 2;   // what a body is
 
+// A piece: scalars only and at most 32 of them (the interpreter's checks hold
+// a few thousand); its rest rows in DemoWorld.rest, its axes read from them,
+// its mesh's bounds and chunk colour in DemoWorld.mesh_box and mesh_rgb.
 DemoPiece :: struct {
   mesh: int; object: int; group: int;
-  rest: [12] f32;            // its instance's rows standing (3 rows of 4: the columns and where it is)
-  lo: [3] f32; hi: [3] f32;  // its mesh's bounds, local
-  centre: Point;             // its bounds' middle, in the world, standing
-  axis: [9] f32;             // its local axes in the world, unit (columns of rest)
-  half: [3] f32;             // half its size along them, metres
-  amin: Point; amax: Point;  // its box in the world, standing
-  base: f32;                 // its lowest point
-  anchored: bool;            // it stands on the ground
-  pitched: bool;             // a roof: its chunks lie on two slopes
-  colour: Point;             // its chunks' colour (sRGB)
+  cx: f32; cy: f32; cz: f32;   // its bounds' middle, in the world, standing
+  hx: f32; hy: f32; hz: f32;   // half its size along its axes, metres
+  x0: f32; y0: f32; z0: f32; x1: f32; y1: f32; z1: f32;   // its box in the world, standing (y0 its lowest point)
+  anchored: bool;              // it stands on the ground
+  pitched: bool;               // a roof: its chunks lie on two slopes
   material: int; ac: int; hp: int; max_hp: int;
-  state: int; body: int;     // DP_*, its body while loose
-  sup_at: int; sup_n: int;   // the pieces holding it up (DemoWorld.supports)
-  hit_at: f64;               // when it last took damage
+  state: int; body: int;       // DP_*, its body while loose
+  sup_at: int; sup_n: int;     // the pieces holding it up (DemoWorld.supports)
+  hit_at: f64;                 // when it last took damage
 }
 
+// A body's own things beside its rigid state (DemoWorld.state, DB_FLOATS a body).
 DemoBody :: struct {
-  kind: int;                 // 0 free, DEMO_CHUNK, DEMO_WHOLE
-  piece: int;                // a whole piece's, or the piece a chunk came from
-  half: D3;
-  colour: Point;
+  kind: int;                   // 0 free, DEMO_CHUNK, DEMO_WHOLE
+  piece: int;                  // a whole piece's, or the piece a chunk came from
+  hx: f64; hy: f64; hz: f64;   // half its size
+  cr: f32; cg: f32; cb: f32;
   born: f64;
-  rest_time: f64;            // s in contact and nearly still
-  turned: DQ;                // a whole piece's turn from standing (its rest axes) to its body's
-  radius: f64;               // a chunk as a ball, for pushing
+  rest_time: f64;              // s in contact and nearly still
+  tx: f64; ty: f64; tz: f64; tw: f64;   // a whole piece's turn from standing (its rest axes) to its body's
+  radius: f64;                 // a chunk as a ball, for pushing
 }
 
 DemoEvent :: struct { at: Point; size: f32; kind: int; }   // kind 1 a break, 2 a heavy landing
 
+// A body's rigid.coax state, flat: mass, inertia 3, pos 3, vel 3, orientation 4,
+// omega 3, force 3, torque 3, sleeping, sleep_time, supported. (Flat, so a realm
+// that holds a DemoWorld doesn't hand its C header rigid.coax's types.)
+DB_FLOATS :: 26;
+
 DemoWorld :: struct {
   pieces: [DEMO_PIECES] DemoPiece; n: int;
+  rest: [DEMO_PIECES * 12] f32;
+  mesh_box: [DEMO_MESHES * 6] f32;   // each mesh's local bounds (low x y z, high x y z)
+  mesh_rgb: [DEMO_MESHES * 3] f32;   // and its chunks' colour (sRGB)  // each piece's instance rows standing (3 rows of 4: the columns and where it is)
   supports: [DEMO_SUPPORTS] int; sup_n: int;
-  bodies: [DEMO_BODIES] RigidBody;
+  state: [DEMO_BODIES * DB_FLOATS] f64;
   meta: [DEMO_BODIES] DemoBody;
   chunk_cap: int; loose_cap: int;
   clock: f64; carry: f64; tick: u64;
@@ -97,7 +105,6 @@ DemoWorld :: struct {
   events: [DEMO_EVENTS] DemoEvent; event_n: int;
   linked: bool;
   broken_n: int;             // pieces broken so far (until a restore)
-  step_ms: f64;              // not timed here: the realm may write its own measure
 }
 
 // ---- small things
@@ -109,16 +116,44 @@ demo_rand :: (w: [] DemoWorld) -> f32 {
 dp3 :: (p: Point) -> D3 { return d3(f64(p.x), f64(p.y), f64(p.z)); }
 pd3 :: (p: D3) -> Point { return v3(f32(p.x), f32(p.y), f32(p.z)); }
 
-demo_new :: (w: [] DemoWorld, phone: bool) {
+demo_body :: (w: [] DemoWorld, b: int) -> RigidBody {
+  k := b * DB_FLOATS;
+  f := w[0].state[k..<k + DB_FLOATS];
+  return RigidBody.{mass = f[0], inertia = d3(f[1], f[2], f[3]), pos = d3(f[4], f[5], f[6]), vel = d3(f[7], f[8], f[9]),
+                    orientation = dq(f[10], f[11], f[12], f[13]), omega = d3(f[14], f[15], f[16]), force = d3(f[17], f[18], f[19]),
+                    torque = d3(f[20], f[21], f[22]), sleeping = f[23] > 0.5, sleep_time = f[24], supported = f[25] > 0.5};
+}
+demo_put :: (w: [] DemoWorld, b: int, o: RigidBody) {
+  k := b * DB_FLOATS;
+  f := w[0].state[k..<k + DB_FLOATS];
+  f[0] = o.mass; f[1] = o.inertia.x; f[2] = o.inertia.y; f[3] = o.inertia.z;
+  f[4] = o.pos.x; f[5] = o.pos.y; f[6] = o.pos.z; f[7] = o.vel.x; f[8] = o.vel.y; f[9] = o.vel.z;
+  f[10] = o.orientation.x; f[11] = o.orientation.y; f[12] = o.orientation.z; f[13] = o.orientation.w;
+  f[14] = o.omega.x; f[15] = o.omega.y; f[16] = o.omega.z; f[17] = o.force.x; f[18] = o.force.y; f[19] = o.force.z;
+  f[20] = o.torque.x; f[21] = o.torque.y; f[22] = o.torque.z;
+  f[23] = ifx o.sleeping then 1.0 else 0.0; f[24] = o.sleep_time; f[25] = ifx o.supported then 1.0 else 0.0;
+}
+demo_asleep :: (w: [] DemoWorld, b: int) -> bool { return w[0].state[b * DB_FLOATS + 23] > 0.5; }
+demo_pos :: (w: [] DemoWorld, b: int) -> D3 { k := b * DB_FLOATS + 4; return d3(w[0].state[k], w[0].state[k + 1], w[0].state[k + 2]); }
+demo_turned :: (m: DemoBody) -> DQ { return dq(m.tx, m.ty, m.tz, m.tw); }
+demo_half :: (m: DemoBody) -> D3 { return d3(m.hx, m.hy, m.hz); }
+// A piece's box, middle and colour as points.
+demo_min :: (p: DemoPiece) -> Point { return v3(p.x0, p.y0, p.z0); }
+demo_max :: (p: DemoPiece) -> Point { return v3(p.x1, p.y1, p.z1); }
+demo_centre :: (p: DemoPiece) -> Point { return v3(p.cx, p.cy, p.cz); }
+demo_colour :: (w: [] DemoWorld, p: DemoPiece) -> Point { m := clamp_mesh(p.mesh) * 3; return v3(w[0].mesh_rgb[m], w[0].mesh_rgb[m + 1], w[0].mesh_rgb[m + 2]); }
+clamp_mesh :: (m: int) -> int { return ifx m < 0 then 0 else ifx m >= DEMO_MESHES then DEMO_MESHES - 1 else m; }
+
+demo_new :: (w: [] DemoWorld, small_screen: bool) {
   w[0].n = 0; w[0].sup_n = 0; w[0].linked = false; w[0].event_n = 0; w[0].broken_n = 0;
-  w[0].chunk_cap = ifx phone then DEMO_CHUNKS / 2 else DEMO_CHUNKS;
-  w[0].loose_cap = ifx phone then DEMO_LOOSE / 2 else DEMO_LOOSE;
+  w[0].chunk_cap = ifx small_screen then DEMO_CHUNKS / 2 else DEMO_CHUNKS;
+  w[0].loose_cap = ifx small_screen then DEMO_LOOSE / 2 else DEMO_LOOSE;
   w[0].seed = 20261029;
   for i: 0..<DEMO_BODIES { w[0].meta[i].kind = 0; }
 }
-demo_tier :: (w: [] DemoWorld, phone: bool) {
-  w[0].chunk_cap = ifx phone then DEMO_CHUNKS / 2 else DEMO_CHUNKS;
-  w[0].loose_cap = ifx phone then DEMO_LOOSE / 2 else DEMO_LOOSE;
+demo_tier :: (w: [] DemoWorld, small_screen: bool) {
+  w[0].chunk_cap = ifx small_screen then DEMO_CHUNKS / 2 else DEMO_CHUNKS;
+  w[0].loose_cap = ifx small_screen then DEMO_LOOSE / 2 else DEMO_LOOSE;
 }
 
 // A placed piece: its mesh, its instance (the realm's object index), its
@@ -129,10 +164,9 @@ demo_add :: (w: [] DemoWorld, mesh: int, object: int, group: int, rows: [] f32) 
   w[0].n = i + 1;
   p: DemoPiece;
   p.mesh = mesh; p.object = object; p.group = group;
-  for k: 0..<12 { p.rest[k] = rows[k]; }
+  for k: 0..<12 { w[0].rest[i * 12 + k] = rows[k]; }
   p.state = DP_STANDING; p.body = -1;
   p.hp = 1; p.max_hp = 1; p.ac = 10;
-  p.colour = v3(0.7, 0.66, 0.6);
   w[0].pieces[i] = p;
   w[0].linked = false;
   return i;
@@ -142,29 +176,31 @@ demo_add :: (w: [] DemoWorld, mesh: int, object: int, group: int, rows: [] f32) 
 demo_shape :: (w: [] DemoWorld, i: int, low: Point, hi_: Point, ground: f32, material: int, ac: int, hp: int, colour: Point, pitched: bool) {
   if i < 0 || i >= w[0].n { return; }
   p := w[0].pieces[i];
-  p.lo[0] = low.x; p.lo[1] = low.y; p.lo[2] = low.z; p.hi[0] = hi_.x; p.hi[1] = hi_.y; p.hi[2] = hi_.z;
-  r := p.rest;
+  mb := clamp_mesh(p.mesh) * 6;
+  w[0].mesh_box[mb] = low.x; w[0].mesh_box[mb + 1] = low.y; w[0].mesh_box[mb + 2] = low.z;
+  w[0].mesh_box[mb + 3] = hi_.x; w[0].mesh_box[mb + 4] = hi_.y; w[0].mesh_box[mb + 5] = hi_.z;
+  r := w[0].rest[i * 12..<i * 12 + 12];
   mid := v3((low.x + hi_.x) / 2, (low.y + hi_.y) / 2, (low.z + hi_.z) / 2);
-  p.centre = v3(r[0] * mid.x + r[1] * mid.y + r[2] * mid.z + r[3],
-                r[4] * mid.x + r[5] * mid.y + r[6] * mid.z + r[7],
-                r[8] * mid.x + r[9] * mid.y + r[10] * mid.z + r[11]);
+  centre := v3(r[0] * mid.x + r[1] * mid.y + r[2] * mid.z + r[3],
+               r[4] * mid.x + r[5] * mid.y + r[6] * mid.z + r[7],
+               r[8] * mid.x + r[9] * mid.y + r[10] * mid.z + r[11]);
+  p.cx = centre.x; p.cy = centre.y; p.cz = centre.z;
   ext := [3] f32.[(hi_.x - low.x) / 2, (hi_.y - low.y) / 2, (hi_.z - low.z) / 2];
-  amin := p.centre; amax := p.centre;
+  half: [3] f32;
+  amin := centre; amax := centre;
   for c: 0..<3 {
     col := v3(r[c], r[4 + c], r[8 + c]);
-    l := length(col);
-    u := unit_or(col, ifx c == 0 then v3(1, 0, 0) else ifx c == 1 then v3(0, 1, 0) else v3(0, 0, 1));
-    p.axis[c * 3] = u.x; p.axis[c * 3 + 1] = u.y; p.axis[c * 3 + 2] = u.z;
-    p.half[c] = hi(ext[c] * l, 0.02);
+    half[c] = hi(ext[c] * length(col), 0.02);
     reach := times(col, ext[c]);
     amin.x -= abs(reach.x); amin.y -= abs(reach.y); amin.z -= abs(reach.z);
     amax.x += abs(reach.x); amax.y += abs(reach.y); amax.z += abs(reach.z);
   }
-  p.amin = amin; p.amax = amax;
-  p.base = amin.y;
+  p.hx = half[0]; p.hy = half[1]; p.hz = half[2];
+  p.x0 = amin.x; p.y0 = amin.y; p.z0 = amin.z; p.x1 = amax.x; p.y1 = amax.y; p.z1 = amax.z;
   p.anchored = amin.y <= ground + 0.35;
   p.material = material; p.ac = ac; p.hp = hi_int(hp, 1); p.max_hp = p.hp;
-  p.colour = colour; p.pitched = pitched;
+  mc := clamp_mesh(p.mesh) * 3;
+  w[0].mesh_rgb[mc] = colour.x; w[0].mesh_rgb[mc + 1] = colour.y; w[0].mesh_rgb[mc + 2] = colour.z; p.pitched = pitched;
   w[0].pieces[i] = p;
   w[0].linked = false;
 }
@@ -180,10 +216,10 @@ demo_cell :: (x: f32) -> int {
 // Whether q holds p up: p's base rests on q's top or inside it, and their
 // footprints overlap (by more than a seam).
 demo_holds :: (p: DemoPiece, q: DemoPiece) -> bool {
-  if q.amin.y > p.base + 0.2 || q.amax.y < p.base - 0.45 { return false; }
-  if q.amax.y > p.amax.y + 0.5 && q.amin.y > p.base - 0.05 { return false; }   // not something standing on it
+  if q.y0 > p.y0 + 0.2 || q.y1 < p.y0 - 0.45 { return false; }
+  if q.y1 > p.y1 + 0.5 && q.y0 > p.y0 - 0.05 { return false; }   // not something standing on it
   m := 0.06f32;
-  return p.amin.x + m < q.amax.x && q.amin.x + m < p.amax.x && p.amin.z + m < q.amax.z && q.amin.z + m < p.amax.z;
+  return p.x0 + m < q.x1 && q.x0 + m < p.x1 && p.z0 + m < q.z1 && q.z0 + m < p.z1;
 }
 // Finds every piece's supports once its shapes are in: a grid of cells
 // lists the pieces over each, and each raised piece looks in its own.
@@ -194,15 +230,15 @@ demo_link :: (w: [] DemoWorld) {
   // first pass: how many in each cell (a piece in every cell its footprint covers, CAP a cell)
   for i: 0..<w[0].n {
     p := w[0].pieces[i];
-    for cx: demo_cell(p.amin.x)..<demo_cell(p.amax.x) + 1 { for cz: demo_cell(p.amin.z)..<demo_cell(p.amax.z) + 1 { counts[cz * DEMO_GRID + cx] += 1; } }
+    for cx: demo_cell(p.x0)..<demo_cell(p.x1) + 1 { for cz: demo_cell(p.z0)..<demo_cell(p.z1) + 1 { counts[cz * DEMO_GRID + cx] += 1; } }
   }
   total := 0;
   for c: 0..<DEMO_GRID * DEMO_GRID { heads[c] = total; total += counts[c]; counts[c] = 0; }
   list: [DEMO_PIECES * 6] int;
   for i: 0..<w[0].n {
     p := w[0].pieces[i];
-    for cx: demo_cell(p.amin.x)..<demo_cell(p.amax.x) + 1 {
-      for cz: demo_cell(p.amin.z)..<demo_cell(p.amax.z) + 1 {
+    for cx: demo_cell(p.x0)..<demo_cell(p.x1) + 1 {
+      for cz: demo_cell(p.z0)..<demo_cell(p.z1) + 1 {
         c := cz * DEMO_GRID + cx;
         k := heads[c] + counts[c];
         if k < list.count { list[k] = i; counts[c] += 1; }
@@ -214,8 +250,8 @@ demo_link :: (w: [] DemoWorld) {
     p := w[0].pieces[i];
     p.sup_at = w[0].sup_n; p.sup_n = 0;
     if !p.anchored {
-      for cx: demo_cell(p.amin.x)..<demo_cell(p.amax.x) + 1 {
-        for cz: demo_cell(p.amin.z)..<demo_cell(p.amax.z) + 1 {
+      for cx: demo_cell(p.x0)..<demo_cell(p.x1) + 1 {
+        for cz: demo_cell(p.z0)..<demo_cell(p.z1) + 1 {
           c := cz * DEMO_GRID + cx;
           for e: 0..<counts[c] {
             j := list[heads[c] + e];
@@ -238,9 +274,9 @@ demo_link :: (w: [] DemoWorld) {
 
 // How many of its supports still stand.
 demo_standing_supports :: (w: [] DemoWorld, i: int) -> int {
-  p := w[0].pieces[i];
+  at := w[0].pieces[i].sup_at;
   m := 0;
-  for e: 0..<p.sup_n { if w[0].pieces[w[0].supports[p.sup_at + e]].state == DP_STANDING { m += 1; } }
+  for e: 0..<w[0].pieces[i].sup_n { if w[0].pieces[w[0].supports[at + e]].state == DP_STANDING { m += 1; } }
   return m;
 }
 
@@ -263,7 +299,7 @@ demo_free_body :: (w: [] DemoWorld, kind: int) -> int {
   if kind == DEMO_CHUNK && chunks >= w[0].chunk_cap {
     oldest := -1;
     for b: 0..<DEMO_BODIES {
-      if w[0].meta[b].kind != DEMO_CHUNK || !w[0].bodies[b].sleeping { continue; }
+      if w[0].meta[b].kind != DEMO_CHUNK || !demo_asleep(w, b) { continue; }
       if oldest < 0 || w[0].meta[b].born < w[0].meta[oldest].born { oldest = b; }
     }
     if oldest >= 0 { w[0].meta[oldest].kind = 0; }
@@ -275,18 +311,22 @@ demo_free_body :: (w: [] DemoWorld, kind: int) -> int {
 
 // A piece's local point (in its bounds) in the world, as it stands now.
 demo_point :: (w: [] DemoWorld, i: int, x: f32, y: f32, z: f32) -> Point {
-  p := w[0].pieces[i];
-  r := p.rest;
+  r := w[0].rest[i * 12..<i * 12 + 12];
   at := v3(r[0] * x + r[1] * y + r[2] * z + r[3], r[4] * x + r[5] * y + r[6] * z + r[7], r[8] * x + r[9] * y + r[10] * z + r[11]);
-  if p.state != DP_LOOSE || p.body < 0 { return at; }
-  b := w[0].bodies[p.body];
-  turned := w[0].meta[p.body].turned;
-  return add(pd3(b.pos), pd3(dq_rotate(turned, dp3(sub(at, p.centre)))));
+  b := w[0].pieces[i].body;
+  if w[0].pieces[i].state != DP_LOOSE || b < 0 { return at; }
+  turned := demo_turned(w[0].meta[b]);
+  return add(pd3(demo_pos(w, b)), pd3(dq_rotate(turned, dp3(sub(at, demo_centre(w[0].pieces[i]))))));
 }
 
 // The piece's rest axes as a quaternion (from its unit columns).
-demo_rest_q :: (p: DemoPiece) -> DQ {
-  a := p.axis;
+demo_rest_q :: (w: [] DemoWorld, i: int) -> DQ {
+  r := w[0].rest[i * 12..<i * 12 + 12];
+  a: [9] f32;
+  for c: 0..<3 {
+    u := unit_or(v3(r[c], r[4 + c], r[8 + c]), ifx c == 0 then v3(1, 0, 0) else ifx c == 1 then v3(0, 1, 0) else v3(0, 0, 1));
+    a[c * 3] = u.x; a[c * 3 + 1] = u.y; a[c * 3 + 2] = u.z;
+  }
   m00 := f64(a[0]); m10 := f64(a[1]); m20 := f64(a[2]);
   m01 := f64(a[3]); m11 := f64(a[4]); m21 := f64(a[5]);
   m02 := f64(a[6]); m12 := f64(a[7]); m22 := f64(a[8]);
@@ -314,32 +354,37 @@ demo_break :: (w: [] DemoWorld, i: int, from: Point, speed: f32) {
   p := w[0].pieces[i];
   if p.state == DP_BROKEN { return; }
   carry := D3_ZERO; spin := D3_ZERO;
-  turn := demo_rest_q(p);
+  turn := demo_rest_q(w, i);
   if p.state == DP_LOOSE && p.body >= 0 {
-    carry = w[0].bodies[p.body].vel;
-    turn = w[0].bodies[p.body].orientation;
+    was := demo_body(w, p.body);
+    carry = was.vel;
+    turn = was.orientation;
   }
   // its chunks: a grid over its bounds, at most 3 a side, about a metre each (thin slabs stay one deep)
-  ext := [3] f32.[p.half[0] * 2, p.half[1] * 2, p.half[2] * 2];
+  ext := [3] f32.[p.hx * 2, p.hy * 2, p.hz * 2];
+  mb := clamp_mesh(p.mesh) * 6;
+  lo3 := [3] f32.[w[0].mesh_box[mb], w[0].mesh_box[mb + 1], w[0].mesh_box[mb + 2]];
+  hi3 := [3] f32.[w[0].mesh_box[mb + 3], w[0].mesh_box[mb + 4], w[0].mesh_box[mb + 5]];
+  rgb := demo_colour(w, p);
   cells: [3] int;
   for a: 0..<3 { cells[a] = lo_int(hi_int(cast(int) (ext[a] / 1.1 + 0.5), 1), 3); }
   if p.pitched { cells[0] = 4; cells[1] = 1; cells[2] = 3; }
-  mid := v3((p.lo[0] + p.hi[0]) / 2, (p.lo[1] + p.hi[1]) / 2, (p.lo[2] + p.hi[2]) / 2);
-  size := v3((p.hi[0] - p.lo[0]) / f32(cells[0]), (p.hi[1] - p.lo[1]) / f32(cells[1]), (p.hi[2] - p.lo[2]) / f32(cells[2]));
-  scale := v3(p.half[0] * 2 / hi(p.hi[0] - p.lo[0], 0.001), p.half[1] * 2 / hi(p.hi[1] - p.lo[1], 0.001), p.half[2] * 2 / hi(p.hi[2] - p.lo[2], 0.001));
+  mid := v3((lo3[0] + hi3[0]) / 2, (lo3[1] + hi3[1]) / 2, (lo3[2] + hi3[2]) / 2);
+  size := v3((hi3[0] - lo3[0]) / f32(cells[0]), (hi3[1] - lo3[1]) / f32(cells[1]), (hi3[2] - lo3[2]) / f32(cells[2]));
+  scale := v3(p.hx * 2 / hi(hi3[0] - lo3[0], 0.001), p.hy * 2 / hi(hi3[1] - lo3[1], 0.001), p.hz * 2 / hi(hi3[2] - lo3[2], 0.001));
   centre_now := demo_point(w, i, mid.x, mid.y, mid.z);
   for cx: 0..<cells[0] {
     for cy: 0..<cells[1] {
       for cz: 0..<cells[2] {
-        lx := p.lo[0] + (f32(cx) + 0.5) * size.x;
-        ly := p.lo[1] + (f32(cy) + 0.5) * size.y;
-        lz := p.lo[2] + (f32(cz) + 0.5) * size.z;
+        lx := lo3[0] + (f32(cx) + 0.5) * size.x;
+        ly := lo3[1] + (f32(cy) + 0.5) * size.y;
+        lz := lo3[2] + (f32(cz) + 0.5) * size.z;
         hx := size.x * scale.x * 0.46; hy := size.y * scale.y * 0.46; hz := size.z * scale.z * 0.46;
         tilt := 0.0f32;
         if p.pitched {
           // a roof's slab on its slope: high at the ridge (local x 0), low at the eaves
-          side := (lx - mid.x) / hi((p.hi[0] - p.lo[0]) / 2, 0.01);
-          ly = p.hi[1] - (p.hi[1] - p.lo[1]) * abs(side) * 0.9 - 0.2;
+          side := (lx - mid.x) / hi((hi3[0] - lo3[0]) / 2, 0.01);
+          ly = hi3[1] - (hi3[1] - lo3[1]) * abs(side) * 0.9 - 0.2;
           hy = 0.16;
           tilt = ifx side > 0 then -0.62f32 else 0.62f32;
         }
@@ -356,9 +401,10 @@ demo_break :: (w: [] DemoWorld, i: int, from: Point, speed: f32) {
         jit := v3(demo_rand(w) - 0.5, demo_rand(w) - 0.5, demo_rand(w) - 0.5);
         body.vel = d3_add(carry, dp3(add(out, times(jit, 1.2))));
         body.omega = d3(f64((demo_rand(w) - 0.5) * 6), f64((demo_rand(w) - 0.5) * 6), f64((demo_rand(w) - 0.5) * 6));
-        w[0].bodies[b] = body;
+        demo_put(w, b, body);
         tone := 0.86 + 0.24 * demo_rand(w);
-        w[0].meta[b] = DemoBody.{kind = DEMO_CHUNK, piece = i, half = half, colour = times(p.colour, tone), born = w[0].clock, rest_time = 0,
+        w[0].meta[b] = DemoBody.{kind = DEMO_CHUNK, piece = i, hx = half.x, hy = half.y, hz = half.z, cr = rgb.x * tone, cg = rgb.y * tone, cb = rgb.z * tone,
+                                 born = w[0].clock, rest_time = 0, tx = 0, ty = 0, tz = 0, tw = 1,
                                  radius = fmin(half.x, fmin(half.y, half.z)) * 0.5 + fmax(half.x, fmax(half.y, half.z)) * 0.5};
       }
     }
@@ -367,7 +413,7 @@ demo_break :: (w: [] DemoWorld, i: int, from: Point, speed: f32) {
   p.state = DP_BROKEN; p.body = -1; p.hp = 0;
   w[0].pieces[i] = p;
   w[0].broken_n += 1;
-  demo_event(w, centre_now, hi(p.half[0], hi(p.half[1], p.half[2])), 1);
+  demo_event(w, centre_now, hi(p.hx, hi(p.hy, p.hz)), 1);
 }
 
 // Damage to piece i (already through its ruleset's immunities); breaks it
@@ -387,16 +433,18 @@ demo_loosen :: (w: [] DemoWorld, i: int) {
   p := w[0].pieces[i];
   if p.state != DP_STANDING { return; }
   b := demo_free_body(w, DEMO_WHOLE);
-  if b < 0 { demo_break(w, i, add(p.centre, v3(0, 2, 0)), 1.5); return; }
-  half := d3(f64(p.half[0]), f64(p.half[1]), f64(p.half[2]));
-  mass := hi(p.half[0] * p.half[1] * p.half[2] * 8 * 300, 20);
-  q := demo_rest_q(p);
-  body := rigid_body(f64(mass), rigid_box_inertia(f64(mass), d3_scale(half, 2.0)), dp3(p.centre), q);
+  if b < 0 { demo_break(w, i, add(demo_centre(p), v3(0, 2, 0)), 1.5); return; }
+  half := d3(f64(p.hx), f64(p.hy), f64(p.hz));
+  mass := hi(p.hx * p.hy * p.hz * 8 * 300, 20);
+  q := demo_rest_q(w, i);
+  rgb := demo_colour(w, p);
+  body := rigid_body(f64(mass), rigid_box_inertia(f64(mass), d3_scale(half, 2.0)), dp3(demo_centre(p)), q);
   // a nudge, so it tips as it goes
   body.omega = d3(f64((demo_rand(w) - 0.5) * 1.2), f64((demo_rand(w) - 0.5) * 0.4), f64((demo_rand(w) - 0.5) * 1.2));
   body.vel = d3(f64((demo_rand(w) - 0.5) * 0.6), 0.0, f64((demo_rand(w) - 0.5) * 0.6));
-  w[0].bodies[b] = body;
-  w[0].meta[b] = DemoBody.{kind = DEMO_WHOLE, piece = i, half = half, colour = p.colour, born = w[0].clock, rest_time = 0, turned = dq(0.0, 0.0, 0.0, 1.0)};
+  demo_put(w, b, body);
+  w[0].meta[b] = DemoBody.{kind = DEMO_WHOLE, piece = i, hx = half.x, hy = half.y, hz = half.z, cr = rgb.x, cg = rgb.y, cb = rgb.z,
+                           born = w[0].clock, rest_time = 0, tx = 0, ty = 0, tz = 0, tw = 1, radius = 0};
   p.state = DP_LOOSE; p.body = b;
   p.hit_at = w[0].clock;
   w[0].pieces[i] = p;
@@ -412,9 +460,8 @@ demo_settle :: (w: [] DemoWorld) -> int {
   while changed && rounds < 24 {
     changed = false; rounds += 1;
     for i: 0..<w[0].n {
-      p := w[0].pieces[i];
-      if p.state != DP_STANDING || p.anchored || p.sup_n == 0 { continue; }
-      if f32(demo_standing_supports(w, i)) < f32(DEMO_HOLD) * f32(p.sup_n) {
+      if w[0].pieces[i].state != DP_STANDING || w[0].pieces[i].anchored || w[0].pieces[i].sup_n == 0 { continue; }
+      if f32(demo_standing_supports(w, i)) < f32(DEMO_HOLD) * f32(w[0].pieces[i].sup_n) {
         demo_loosen(w, i);
         if w[0].pieces[i].state != DP_STANDING { moved += 1; changed = true; }
       }
@@ -488,33 +535,36 @@ demo_ground :: (b: [] RigidBody, half: D3, ground_y: f64) -> f64 {
 // a sleeping one standing as rubble under an awake one.
 demo_push :: (w: [] DemoWorld) {
   for a: 0..<DEMO_BODIES {
-    if w[0].meta[a].kind != DEMO_CHUNK || w[0].bodies[a].sleeping { continue; }
+    if w[0].meta[a].kind != DEMO_CHUNK || demo_asleep(w, a) { continue; }
+    ka := a * DB_FLOATS;
     ra := w[0].meta[a].radius;
-    ax := w[0].bodies[a].pos.x; ay := w[0].bodies[a].pos.y; az := w[0].bodies[a].pos.z;
     for c: 0..<DEMO_BODIES {
       if c == a || w[0].meta[c].kind != DEMO_CHUNK { continue; }
+      kc := c * DB_FLOATS;
       reach := (ra + w[0].meta[c].radius) * 0.8;
-      dx := ax - w[0].bodies[c].pos.x;
+      dx := w[0].state[ka + 4] - w[0].state[kc + 4];
       if dx > reach || dx < -reach { continue; }
-      dz := az - w[0].bodies[c].pos.z;
+      dz := w[0].state[ka + 6] - w[0].state[kc + 6];
       if dz > reach || dz < -reach { continue; }
-      dy := ay - w[0].bodies[c].pos.y;
+      dy := w[0].state[ka + 5] - w[0].state[kc + 5];
       dist2 := dx * dx + dy * dy + dz * dz;
       if dist2 >= reach * reach || dist2 < 0.000001 { continue; }
       dist := sqrt(dist2);
-      n := d3(dx / dist, dy / dist, dz / dist);
+      nx := dx / dist; ny := dy / dist; nz := dz / dist;
       over := reach - dist;
-      still := w[0].bodies[c].sleeping;
+      still := w[0].state[kc + 23] > 0.5;
       share := ifx still then 1.0 else 0.5;
-      w[0].bodies[a].pos = d3_add(w[0].bodies[a].pos, d3_scale(n, over * share));
-      ax = w[0].bodies[a].pos.x; ay = w[0].bodies[a].pos.y; az = w[0].bodies[a].pos.z;
-      va := d3_dot(w[0].bodies[a].vel, n);
-      if va < 0.0 { w[0].bodies[a].vel = d3_sub(w[0].bodies[a].vel, d3_scale(n, va * (1.0 + DEMO_RESTITUTION) * share)); }
-      if n.y > 0.5 { w[0].bodies[a].supported = true; }
+      w[0].state[ka + 4] += nx * over * share; w[0].state[ka + 5] += ny * over * share; w[0].state[ka + 6] += nz * over * share;
+      va := w[0].state[ka + 7] * nx + w[0].state[ka + 8] * ny + w[0].state[ka + 9] * nz;
+      if va < 0.0 {
+        f := va * (1.0 + DEMO_RESTITUTION) * share;
+        w[0].state[ka + 7] -= nx * f; w[0].state[ka + 8] -= ny * f; w[0].state[ka + 9] -= nz * f;
+      }
+      if ny > 0.5 { w[0].state[ka + 25] = 1.0; }
       if !still {
-        w[0].bodies[c].pos = d3_sub(w[0].bodies[c].pos, d3_scale(n, over * 0.5));
-        vc := d3_dot(w[0].bodies[c].vel, n);
-        if vc > 0.0 { w[0].bodies[c].vel = d3_sub(w[0].bodies[c].vel, d3_scale(n, vc * 0.5)); }
+        w[0].state[kc + 4] -= nx * over * 0.5; w[0].state[kc + 5] -= ny * over * 0.5; w[0].state[kc + 6] -= nz * over * 0.5;
+        vc := w[0].state[kc + 7] * nx + w[0].state[kc + 8] * ny + w[0].state[kc + 9] * nz;
+        if vc > 0.0 { w[0].state[kc + 7] -= nx * vc * 0.5; w[0].state[kc + 8] -= ny * vc * 0.5; w[0].state[kc + 9] -= nz * vc * 0.5; }
       }
     }
   }
@@ -530,38 +580,44 @@ demo_step :: (w: [] DemoWorld, g: Ground, heights: [] f32, dt: f32) {
     w[0].carry -= h; steps += 1;
     w[0].clock += h; w[0].tick += 1;
     awake := 0;
-    for b: 0..<DEMO_BODIES { if w[0].meta[b].kind != 0 && !w[0].bodies[b].sleeping { awake += 1; } }
+    for b: 0..<DEMO_BODIES { if w[0].meta[b].kind != 0 && !demo_asleep(w, b) { awake += 1; } }
     if awake == 0 { continue; }
     // gravity and the free flight (rigid.coax), one body at a time
     for b: 0..<DEMO_BODIES {
-      if w[0].meta[b].kind == 0 || w[0].bodies[b].sleeping { continue; }
-      one := rigid_world(h, w[0].bodies[b..<b + 1]);
-      _ := rigid_step(one, d3(0.0, DEMO_GRAVITY, 0.0));
+      if w[0].meta[b].kind == 0 || demo_asleep(w, b) { continue; }
+      one: [1] RigidBody;
+      one[0] = demo_body(w, b);
+      _ := rigid_step(rigid_world(h, one[..]), d3(0.0, DEMO_GRAVITY, 0.0));
+      demo_put(w, b, one[0]);
     }
     demo_push(w);
     for b: 0..<DEMO_BODIES {
       kind := w[0].meta[b].kind;
-      if kind == 0 || w[0].bodies[b].sleeping { continue; }
-      at := w[0].bodies[b].pos;
+      if kind == 0 || demo_asleep(w, b) { continue; }
+      one: [1] RigidBody;
+      one[0] = demo_body(w, b);
+      at := one[0].pos;
       ground_y := f64(verse_terrain_height(g, heights, f32(at.x), f32(at.z)));
-      impact := demo_ground(w[0].bodies[b..<b + 1], w[0].meta[b].half, ground_y);
+      impact := demo_ground(one[..], demo_half(w[0].meta[b]), ground_y);
+      demo_put(w, b, one[0]);
       if kind == DEMO_WHOLE {
         i := w[0].meta[b].piece;
         // its turn from standing, for drawing
-        w[0].meta[b].turned = dq_mul(w[0].bodies[b].orientation, dq_conj(demo_rest_q(w[0].pieces[i])));
+        t := dq_mul(one[0].orientation, dq_conj(demo_rest_q(w, i)));
+        w[0].meta[b].tx = t.x; w[0].meta[b].ty = t.y; w[0].meta[b].tz = t.z; w[0].meta[b].tw = t.w;
         if impact > DEMO_SHATTER || w[0].clock - w[0].meta[b].born > 6.0 {
-          demo_event(w, pd3(w[0].bodies[b].pos), 2, 2);
-          demo_break(w, i, add(pd3(w[0].bodies[b].pos), v3(0, -1, 0)), f32(fmin(impact, 8.0)) * 0.4);
+          demo_event(w, pd3(one[0].pos), 2, 2);
+          demo_break(w, i, add(pd3(one[0].pos), v3(0, -1, 0)), f32(fmin(impact, 8.0)) * 0.4);
         }
         continue;
       }
       // a chunk at rest on something sleeps (rubble), and one fallen out of the world goes
-      body := w[0].bodies[b];
+      body := one[0];
       slow := d3_len(body.vel) < 0.25 && d3_len(body.omega) < 0.6;
       w[0].meta[b].rest_time = ifx slow then w[0].meta[b].rest_time + h else 0.0;
       if w[0].meta[b].rest_time > 0.6 || w[0].clock - w[0].meta[b].born > 12.0 {
         body.vel = D3_ZERO; body.omega = D3_ZERO; body.sleeping = true;
-        w[0].bodies[b] = body;
+        demo_put(w, b, body);
       }
       if body.pos.y < ground_y - 5.0 { w[0].meta[b].kind = 0; }
     }
@@ -574,17 +630,18 @@ demo_step :: (w: [] DemoWorld, g: Ground, heights: [] f32, dt: f32) {
 // Piece i's instance rows now: its rest rows standing, all zero broken
 // (nothing drawn), turned and moved with its body loose.
 demo_rows :: (w: [] DemoWorld, i: int, out: [] f32) {
+  state := w[0].pieces[i].state;
+  r := w[0].rest[i * 12..<i * 12 + 12];
+  if state == DP_STANDING { for k: 0..<12 { out[k] = r[k]; } return; }
   p := w[0].pieces[i];
-  if p.state == DP_STANDING { for k: 0..<12 { out[k] = p.rest[k]; } return; }
-  if p.state == DP_BROKEN || p.body < 0 { for k: 0..<12 { out[k] = 0; } return; }
-  b := w[0].bodies[p.body];
-  q := w[0].meta[p.body].turned;
-  r := p.rest;
+  if state == DP_BROKEN || p.body < 0 { for k: 0..<12 { out[k] = 0; } return; }
+  q := demo_turned(w[0].meta[p.body]);
+  at := demo_pos(w, p.body);
   for c: 0..<3 {
     col := pd3(dq_rotate(q, d3(f64(r[c]), f64(r[4 + c]), f64(r[8 + c]))));
     out[c] = col.x; out[4 + c] = col.y; out[8 + c] = col.z;
   }
-  t := add(pd3(b.pos), pd3(dq_rotate(q, dp3(sub(v3(r[3], r[7], r[11]), p.centre)))));
+  t := add(pd3(at), pd3(dq_rotate(q, dp3(sub(v3(r[3], r[7], r[11]), demo_centre(p))))));
   out[3] = t.x; out[7] = t.y; out[11] = t.z;
 }
 
@@ -593,19 +650,20 @@ demo_rows :: (w: [] DemoWorld, i: int, out: [] f32) {
 DemoBox :: struct { at: Point; x: Point; y: Point; z: Point; colour: Point; }
 demo_chunk_box :: (w: [] DemoWorld, b: int, box: [] DemoBox) -> bool {
   if b < 0 || b >= DEMO_BODIES || w[0].meta[b].kind != DEMO_CHUNK { return false; }
-  body := w[0].bodies[b];
-  h := w[0].meta[b].half;
-  box[0] = DemoBox.{at = pd3(body.pos),
-    x = pd3(dq_rotate(body.orientation, d3(h.x * 2.0, 0.0, 0.0))),
-    y = pd3(dq_rotate(body.orientation, d3(0.0, h.y * 2.0, 0.0))),
-    z = pd3(dq_rotate(body.orientation, d3(0.0, 0.0, h.z * 2.0))),
-    colour = w[0].meta[b].colour};
+  k := b * DB_FLOATS;
+  o := dq(w[0].state[k + 10], w[0].state[k + 11], w[0].state[k + 12], w[0].state[k + 13]);
+  m := w[0].meta[b];
+  box[0] = DemoBox.{at = pd3(demo_pos(w, b)),
+    x = pd3(dq_rotate(o, d3(m.hx * 2.0, 0.0, 0.0))),
+    y = pd3(dq_rotate(o, d3(0.0, m.hy * 2.0, 0.0))),
+    z = pd3(dq_rotate(o, d3(0.0, 0.0, m.hz * 2.0))),
+    colour = v3(m.cr, m.cg, m.cb)};
   return true;
 }
 
 // How many chunks live, and of them awake; loose pieces falling.
 demo_chunks :: (w: [] DemoWorld) -> int { m := 0; for b: 0..<DEMO_BODIES { if w[0].meta[b].kind == DEMO_CHUNK { m += 1; } } return m; }
-demo_awake :: (w: [] DemoWorld) -> int { m := 0; for b: 0..<DEMO_BODIES { if w[0].meta[b].kind != 0 && !w[0].bodies[b].sleeping { m += 1; } } return m; }
+demo_awake :: (w: [] DemoWorld) -> int { m := 0; for b: 0..<DEMO_BODIES { if w[0].meta[b].kind != 0 && !demo_asleep(w, b) { m += 1; } } return m; }
 demo_loose :: (w: [] DemoWorld) -> int { m := 0; for b: 0..<DEMO_BODIES { if w[0].meta[b].kind == DEMO_WHOLE { m += 1; } } return m; }
 
 // ---- regrowth
@@ -615,12 +673,10 @@ demo_loose :: (w: [] DemoWorld) -> int { m := 0; for b: 0..<DEMO_BODIES { if w[0
 demo_restore :: (w: [] DemoWorld, g: int) -> int {
   m := 0;
   for i: 0..<w[0].n {
-    p := w[0].pieces[i];
-    if g >= 0 && p.group != g { continue; }
-    if p.state != DP_STANDING || p.hp < p.max_hp { m += 1; }
-    if p.body >= 0 { w[0].meta[p.body].kind = 0; }
-    p.state = DP_STANDING; p.body = -1; p.hp = p.max_hp; p.hit_at = 0;
-    w[0].pieces[i] = p;
+    if g >= 0 && w[0].pieces[i].group != g { continue; }
+    if w[0].pieces[i].state != DP_STANDING || w[0].pieces[i].hp < w[0].pieces[i].max_hp { m += 1; }
+    if w[0].pieces[i].body >= 0 { w[0].meta[w[0].pieces[i].body].kind = 0; }
+    w[0].pieces[i].state = DP_STANDING; w[0].pieces[i].body = -1; w[0].pieces[i].hp = w[0].pieces[i].max_hp; w[0].pieces[i].hit_at = 0;
   }
   for b: 0..<DEMO_BODIES {
     if w[0].meta[b].kind == 0 { continue; }
@@ -631,7 +687,7 @@ demo_restore :: (w: [] DemoWorld, g: int) -> int {
 }
 // Whether group g has anything broken, loose or damaged.
 demo_hurt :: (w: [] DemoWorld, g: int) -> bool {
-  for i: 0..<w[0].n { p := w[0].pieces[i]; if p.group == g && (p.state != DP_STANDING || p.hp < p.max_hp) { return true; } }
+  for i: 0..<w[0].n { if w[0].pieces[i].group == g && (w[0].pieces[i].state != DP_STANDING || w[0].pieces[i].hp < w[0].pieces[i].max_hp) { return true; } }
   return false;
 }
 
@@ -680,7 +736,7 @@ demo_cottage :: (w: [] DemoWorld) {
   demo_rows(w[..], 1, rows[..]);
   #assert rows[0] == 0 && rows[5] == 0 && rows[3] == 0;
   // the chunks fly away from the blow (from the south, so north)
-  for b: 0..<DEMO_BODIES { if w[0].meta[b].kind == DEMO_CHUNK { #assert w[0].bodies[b].vel.z > 0.0; } }
+  for b: 0..<DEMO_BODIES { if w[0].meta[b].kind == DEMO_CHUNK { #assert demo_body(w[..], b).vel.z > 0.0; } }
 }
 
 #test "demolish: the wall over a broken one comes loose, falls and breaks on the ground; the roof holds" {
@@ -697,7 +753,7 @@ demo_cottage :: (w: [] DemoWorld) {
   // everything comes to rest on the ground, none under it
   for k: 0..<900 { demo_step(w[..], g, heights[..], 1.0 / 60.0); }
   #assert demo_awake(w[..]) == 0;
-  for b: 0..<DEMO_BODIES { if w[0].meta[b].kind == DEMO_CHUNK { #assert w[0].bodies[b].pos.y > -0.05 && w[0].bodies[b].pos.y < 2.0; } }
+  for b: 0..<DEMO_BODIES { if w[0].meta[b].kind == DEMO_CHUNK { #assert demo_pos(w[..], b).y > -0.05 && demo_pos(w[..], b).y < 2.0; } }
 }
 
 #test "demolish: knock out the upper walls and the roof falls; restore stands it all back" {
@@ -742,6 +798,6 @@ demo_cottage :: (w: [] DemoWorld) {
   rows: [12] f32;
   demo_rows(w[..], 20, rows[..]);
   // its middle (bounds' middle at local y 1.56) is where its body is
-  #assert abs(rows[1] * 1.56 + rows[3] - f32(w[0].bodies[b].pos.x)) < 0.01;
-  #assert abs(rows[5] * 1.56 + rows[7] - f32(w[0].bodies[b].pos.y)) < 0.01 && rows[7] < 3.12;
+  #assert abs(rows[1] * 1.56 + rows[3] - f32(demo_pos(w[..], b).x)) < 0.01;
+  #assert abs(rows[5] * 1.56 + rows[7] - f32(demo_pos(w[..], b).y)) < 0.01 && rows[7] < 3.12;
 }

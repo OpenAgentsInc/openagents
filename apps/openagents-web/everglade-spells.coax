@@ -1,0 +1,983 @@
+// Everglade's spells and destruction (eg-spells, eg-destruct), loaded by
+// everglade.coax: the previous Rust engine's Everglade bar with destruction
+// on (`0b401561a0^:crates/verse-zone-everglade/src/zones/everglade/
+// hotbar.rs` DEV_ORDER and `demolition/meteor.rs`), on today's realm.
+//
+// The realm plays by the SRD 5e ruleset (realms.json "ruleset": "srd5", the
+// page facts' ruleset= line; verse/rules/srd5.coax). Without it there is no
+// bar and nothing breaks. With it, along the bottom:
+//
+//   1 METEOR   Meteor Swarm: six meteors on a 6 m ring, each a 4 m blast of
+//              20d6 fire and 20d6 bludgeoning (rolled once a cast); 2.5 s cast.
+//   2 BOLT     The Thunderbolt: one branching bolt from the clouds, 20d10
+//              lightning over 3.4 m; 1.2 s cast.
+//   3 MEGA     The Mega Thunderbolt: 100d10 over 5.8 m; 0.5 s cast.
+//   4 ORB      The Water Orb: an orb of water gathers over you and is thrown,
+//              bursting for 6d10 bludgeoning over 3 m; 0.6 s cast.
+//   R REBUILD  the town stands again (shown once something broke).
+//
+// A number key picks a spell (again, or Esc, puts it away); a ring follows
+// the pointer over whatever it points at, and a click casts there. On a phone
+// tap a slot, then tap where it lands. No mana, no cooldown, as the old
+// engine's destruction bar; the cast bar stays, and you may walk through it.
+//
+// What a blast reaches takes its damage as an unattended object (full
+// damage, falling off to none at the blast's edge, the old engine's tuning):
+// every kit piece of the town has its SRD armor class and hit points by
+// material and size (sp_object), and verse/demolish.coax breaks it into
+// chunks at 0, drops what it held up and steps the debris. Nothing a player
+// breaks is shared: it is this page's, and a broken building grows back
+// whole after 60 s of rest with you 30 m away (the old engine's rule), or at
+// once with R. The people and the cats aren't hurt; things an admin placed
+// don't break.
+
+#load "../../verse/rules/srd5.coax";
+#load "../../verse/demolish.coax";
+
+SP_SLOTS :: 4;
+SP_METEOR :: 0; SP_BOLT :: 1; SP_MEGA :: 2; SP_ORB :: 3; SP_REBUILD :: 4;
+SP_SPELL :: [4] int.[SPELL_METEOR_SWARM, SPELL_THUNDERBOLT, SPELL_MEGA_THUNDERBOLT, SPELL_WATER_ORB];
+SP_WORD :: [5] string.["METEOR", "BOLT", "MEGA", "ORB", "REBUILD"];
+SP_KEY :: [5] string.["1", "2", "3", "4", "R"];
+// each spell's ring on the ground (m), its blast (m), how fast its blast throws debris (m/s)
+SP_RING :: [4] f32.[6.0, 2.2, 3.6, 1.6];
+SP_BLAST :: [4] f32.[4.0, 3.4, 5.8, 3.0];
+SP_THROW :: [4] f32.[17.0, 14.0, 22.0, 10.0];
+SP_RANGE :: 140.0;        // m from you: the old destruction bar reached anything in sight; the city is 127 m across
+SP_METEORS :: 6;
+SP_HEIGHT :: 30.0;        // a meteor falls from this high
+SP_FALL :: 1.0;           // s
+SP_STAGGER :: 0.13;       // s between meteors
+SP_BOLT_HEIGHT :: 60.0;
+SP_BOLT_LEAD :: 0.09;     // s for the bolt to come down
+SP_BOLT_LIFE :: 0.5;      // s it stays lit
+SP_BOLT_POINTS :: 14;
+SP_BLASTS :: 12;
+SP_SCORCHES :: 18;        // the old engine's most scorch marks
+SP_SCORCH_LIFE :: 16.0;
+SP_PUFFS :: 40;
+SP_DROPS :: 12;
+SP_GROUPS :: 192;         // a building each, then 16 m cells for the rest
+SP_REGROW :: 60.0;        // s of rest before a broken building grows back
+SP_REGROW_AWAY :: 30.0;   // m you must be from it
+SP_NEWS :: 5.0;           // s a cast's line shows
+
+YELLOW_R :: 1.0; YELLOW_G :: 0.68; YELLOW_B :: 0.22;
+LOOK_GLOW :: 15;          // everglade.wgsl LOOK_GLOW: its own light, unlit, blooming
+
+SpMeteor :: struct { live: bool; from: Point; to: Point; t: f32; fall: f32; }
+SpBlast :: struct { live: bool; at: Point; t: f32; radius: f32; kind: int; }   // kind: 0 fire, 1 lightning, 2 water
+SpScorch :: struct { live: bool; at: Point; t: f32; radius: f32; }
+SpPuff :: struct { live: bool; at: Point; vel: Point; t: f32; life: f32; size: f32; dark: f32; }
+SpDrop :: struct { live: bool; at: Point; vel: Point; t: f32; }
+SpBolt :: struct { live: bool; t: f32; mega: bool; points: [SP_BOLT_POINTS] Point; branch: [8] Point; }
+
+Spells :: struct {
+  on: bool;                  // the ruleset says srd5
+  ready: bool;               // the pieces have their shapes (the pack's catalog)
+  dm: [1] DemoWorld;
+  dice: [1] SrdDice;
+  bounds: [KIT_MESHES * 6] f32; have: [KIT_MESHES] bool;
+  group_x: [SP_GROUPS] f32; group_z: [SP_GROUPS] f32; group_n: [SP_GROUPS] int;
+  armed: int;                // the slot aimed, -1 none
+  px: f32; py: f32; seen: bool;            // the pointer, device pixels
+  down: bool; down_x: f32; down_y: f32; down_id: int; down_touch: bool; slot_finger: int;
+  aim: Point; aim_ok: bool; far: bool;
+  shot: Shot; fx: f32; fy: f32;
+  casting: int; cast_t: f32; cast_at: Point; cast_from: Point;
+  dmg: SrdDamage;
+  meteors: [SP_METEORS] SpMeteor;
+  blasts: [SP_BLASTS] SpBlast;
+  scorches: [SP_SCORCHES] SpScorch;
+  puffs: [SP_PUFFS] SpPuff;
+  drops: [SP_DROPS] SpDrop;
+  bolt: SpBolt;
+  orb_t: f32; orb_from: Point; orb_to: Point; orb_live: bool;
+  flash: f32; flash_rgb: Point;
+  broke: int;                // pieces this cast broke
+  news: [120] u8; news_n: int; news_t: f32;
+  boxes: [SP_SLOTS + 1] Box;
+  lift: f32;                 // how much of the bottom the bar takes, for what sits over it
+  regrow_t: f32;
+  frame_ms: f32;
+}
+
+// ---- the ruleset's view of each kit piece
+
+// A town mesh's material, size and resilience (SRD 5.2.1, Breaking Objects),
+// as the old engine's piece table: plaster and timber walls are Large wood,
+// brick walls stone, posts and doors Medium, window glass Small and fragile,
+// props fragile, iron things resilient.
+// (mesh - 12, as KIT_MESH from Wall_Plaster_Straight: 0 plaster; 1 plaster window; 2 plaster door; 3 plaster grid; 4 brick; 5 brick window; 6 brick door; 7 window; 8 door; 9 corner; 10 roof; 11 tower roof; 12 log; 13 floor wood; 14 floor brick; 15 chimney; 16 stair; 17 stall; 18 apples; 19 barrel; 20 crate; 21 table; 22 chair; 23 bench; 24 mug; 25 shelf; 26 bag; 27 anvil; 28 weapon stand; 29 sword; 30 shield; 31 cauldron; 32 dummy; 33 banner; 34 pegs; 35 chalice; 36 gable; 37 scroll; 38 step; 39 fence;)
+SP_MAT :: [40] int.[
+  MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_STONE, MAT_STONE, MAT_STONE, MAT_GLASS,
+  MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_STONE, MAT_STONE,
+  MAT_WOOD, MAT_WOOD, MAT_CLOTH, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD,
+  MAT_STONE, MAT_WOOD, MAT_CLOTH, MAT_IRON, MAT_WOOD, MAT_IRON, MAT_WOOD, MAT_IRON,
+  MAT_WOOD, MAT_CLOTH, MAT_WOOD, MAT_IRON, MAT_STONE, MAT_CLOTH, MAT_STONE, MAT_WOOD];
+SP_SIZE :: [40] int.[
+  SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_SMALL,
+  SIZE_MEDIUM, SIZE_MEDIUM, SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_MEDIUM,
+  SIZE_LARGE, SIZE_LARGE, SIZE_SMALL, SIZE_SMALL, SIZE_MEDIUM, SIZE_MEDIUM, SIZE_SMALL, SIZE_MEDIUM,
+  SIZE_TINY, SIZE_MEDIUM, SIZE_SMALL, SIZE_MEDIUM, SIZE_MEDIUM, SIZE_TINY, SIZE_SMALL, SIZE_SMALL,
+  SIZE_MEDIUM, SIZE_MEDIUM, SIZE_SMALL, SIZE_TINY, SIZE_LARGE, SIZE_TINY, SIZE_MEDIUM, SIZE_MEDIUM];
+SP_TOUGH :: [40] bool.[
+  true, true, true, true, true, true, true, false, true, true,
+  true, true, true, true, true, true, true, false, false, false,
+  false, false, false, false, false, false, false, true, false, true,
+  false, true, false, false, false, true, true, false, true, false];
+// its chunks' colour, sRGB
+SP_COLOUR :: [40 * 3] f32.[
+  0.86, 0.8, 0.68, 0.86, 0.8, 0.68, 0.86, 0.8, 0.68, 0.66, 0.52, 0.38,
+  0.63, 0.47, 0.38, 0.63, 0.47, 0.38, 0.63, 0.47, 0.38, 0.6, 0.75, 0.82,
+  0.5, 0.35, 0.22, 0.48, 0.34, 0.22, 0.66, 0.33, 0.25, 0.6, 0.32, 0.26,
+  0.5, 0.37, 0.25, 0.5, 0.36, 0.24, 0.62, 0.6, 0.56, 0.6, 0.46, 0.38,
+  0.52, 0.38, 0.25, 0.55, 0.4, 0.26, 0.7, 0.22, 0.15, 0.55, 0.4, 0.26,
+  0.6, 0.45, 0.3, 0.5, 0.36, 0.24, 0.5, 0.36, 0.24, 0.52, 0.38, 0.25,
+  0.75, 0.72, 0.66, 0.5, 0.36, 0.24, 0.62, 0.55, 0.42, 0.3, 0.3, 0.32,
+  0.5, 0.36, 0.24, 0.62, 0.55, 0.42, 0.55, 0.4, 0.26, 0.3, 0.3, 0.32,
+  0.8, 0.65, 0.3, 0.6, 0.15, 0.12, 0.5, 0.36, 0.24, 0.8, 0.65, 0.3,
+  0.63, 0.47, 0.38, 0.88, 0.82, 0.66, 0.62, 0.6, 0.56, 0.55, 0.4, 0.26];
+
+sp_object :: (mesh: int) -> SrdObject {
+  m := mesh - (KIT_FOREST + KIT_TREES);
+  if m < 0 || m >= 40 { return srd_object(MAT_WOOD, SIZE_MEDIUM, false); }
+  return srd_object(SP_MAT[m], SP_SIZE[m], SP_TOUGH[m]);
+}
+sp_on :: (s: [] Everglade) -> bool { return s[0].sp.on && s[0].sp.ready; }
+sp_dm :: (s: [] Everglade) -> [] DemoWorld { return s[0].sp.dm[..]; }
+
+// The group a piece regrows with: the building it stands in, else a 16 m cell.
+sp_group :: (x: f32, z: f32) -> int {
+  for b: 0..<EG_BUILDINGS {
+    k := b * EG_BOX;
+    if x > EG_BUILDING[k] - 0.8 && x < EG_BUILDING[k + 2] + 0.8 && z > EG_BUILDING[k + 1] - 0.8 && z < EG_BUILDING[k + 3] + 0.8 { return b; }
+  }
+  cx := clamp_i(cast(int) floor((x + 104) / 16), 0, 12);
+  cz := clamp_i(cast(int) floor((z + 104) / 16), 0, 12);
+  return clamp_i(EG_BUILDINGS + cz * 13 + cx, 0, SP_GROUPS - 1);
+}
+
+// ---- hooks: the realm calls these
+
+// At the start, once the town is laid: every town piece's instance.
+spells_start :: (s: [] Everglade) {
+  w := sp_dm(s);
+  demo_new(w, false);
+  s[0].sp.dice[0] = srd_dice(20261029);
+  s[0].sp.armed = -1; s[0].sp.casting = -1; s[0].sp.slot_finger = -1; s[0].sp.down_id = -1;
+  for g: 0..<SP_GROUPS { s[0].sp.group_x[g] = 0; s[0].sp.group_z[g] = 0; s[0].sp.group_n[g] = 0; }
+  rows: [12] f32;
+  for g: KIT_FOREST..<KIT_GROUPS {
+    m := g + KIT_TREES;
+    for n: 0..<s[0].kit_used[g] {
+      o := s[0].group_at[g] + n;
+      for k: 0..<12 { rows[k] = s[0].objects[o * OBJECT_FLOATS + k]; }
+      grp := sp_group(rows[3], rows[11]);
+      _ := demo_add(w, m, o, grp, rows[..]);
+      s[0].sp.group_x[grp] += rows[3]; s[0].sp.group_z[grp] += rows[11]; s[0].sp.group_n[grp] += 1;
+    }
+  }
+  for g: 0..<SP_GROUPS { if s[0].sp.group_n[g] > 0 { s[0].sp.group_x[g] /= f32(s[0].sp.group_n[g]); s[0].sp.group_z[g] /= f32(s[0].sp.group_n[g]); } }
+}
+
+// The page facts: ruleset=srd5 turns the bar on.
+spells_facts :: (s: [] Everglade, facts: string) { s[0].sp.on = fact(facts, "ruleset") == SRD_RULESET; }
+
+// The pack's catalog: each mesh's bounds ("M NAME FIRST COUNT K X0 Y0 Z0 X1 Y1 Z1"), then every piece's shape and supports.
+spells_catalog :: (s: [] Everglade, text: string) {
+  i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e];
+    i = e + 1;
+    if line.count < 4 || line[0] != 'M' || line[1] != ' ' { continue; }
+    name_end := word_end(line, 2);
+    name := line[2..<name_end];
+    m := -1;
+    for k: 0..<KIT_MESHES { if name == KIT_MESH[k] { m = k; } }
+    if m < 0 { continue; }
+    at := name_end;
+    for skip: 0..<3 { at = word_end(line, at + 1); }   // FIRST COUNT K
+    nums: [6] f32; ok := true;
+    for k: 0..<6 {
+      if at >= line.count { ok = false; break; }
+      b := at + 1;
+      c := word_end(line, b);
+      v := sp_decimal(line[b..<c]);
+      if !finite(v) { ok = false; }
+      nums[k] = v; at = c;
+    }
+    if !ok { continue; }
+    for k: 0..<6 { s[0].sp.bounds[m * 6 + k] = nums[k]; }
+    s[0].sp.have[m] = true;
+  }
+  sp_shapes(s);
+}
+// A decimal like -4.125.
+sp_decimal :: (t: string) -> f32 {
+  if t.count == 0 { return 1.0f32 / 0.0f32; }
+  sign := 1.0f32; i := 0;
+  if t[0] == '-' { sign = -1; i = 1; }
+  v := 0.0f32; scale := 0.0f32; digits := 0;
+  while i < t.count {
+    ch := t[i];
+    if ch == '.' { if scale > 0 { return 1.0f32 / 0.0f32; } scale = 1; }
+    else if ch >= '0' && ch <= '9' {
+      if scale > 0 { scale /= 10; v += f32(ch - '0') * scale; } else { v = v * 10 + f32(ch - '0'); }
+      digits += 1;
+    } else { return 1.0f32 / 0.0f32; }
+    i += 1;
+  }
+  if digits == 0 { return 1.0f32 / 0.0f32; }
+  return sign * v;
+}
+SP_UNIT :: [6] f32.[-0.5, 0, -0.5, 0.5, 1, 0.5];
+sp_shapes :: (s: [] Everglade) {
+  w := sp_dm(s);
+  for i: 0..<w[0].n {
+    m := w[0].pieces[i].mesh;
+    if m < 0 || m >= KIT_MESHES { continue; }
+    k := m * 6;
+    b: [6] f32;   // a mesh the catalog didn't bound: a metre cube
+    for c: 0..<6 { b[c] = ifx s[0].sp.have[m] then s[0].sp.bounds[k + c] else SP_UNIT[c]; }
+    r := w[0].rest[i * 12..<i * 12 + 12];
+    o := sp_object(m);
+    c := m - (KIT_FOREST + KIT_TREES);
+    colour := ifx c >= 0 && c < 40 then v3(SP_COLOUR[c * 3], SP_COLOUR[c * 3 + 1], SP_COLOUR[c * 3 + 2]) else v3(0.6, 0.5, 0.4);
+    demo_shape(w, i, v3(b[0], b[1], b[2]), v3(b[3], b[4], b[5]), ground_at(s, r[3], r[11]), o.material, o.ac, o.hp, colour, m == M_ROOF);
+  }
+  demo_link(w);
+  s[0].sp.ready = true;
+}
+
+// Keys: 1 to 4 pick a spell (again puts it away), Esc puts it away or stops a cast, R rebuilds.
+spells_key :: (s: [] Everglade, key: int) -> bool {
+  if !sp_on(s) || s[0].above || s[0].ev.editing { return false; }
+  if key >= '1' && key < '1' + SP_SLOTS { sp_press(s, key - '1'); return true; }
+  if key == KEY_ESCAPE && (s[0].sp.armed >= 0 || s[0].sp.casting >= 0) { s[0].sp.armed = -1; s[0].sp.casting = -1; return true; }
+  if (key == 'r' || key == 'R') && sp_broken(s) { sp_rebuild(s); return true; }
+  return false;
+}
+sp_press :: (s: [] Everglade, slot: int) {
+  if slot == SP_REBUILD { sp_rebuild(s); return; }
+  s[0].sp.armed = ifx s[0].sp.armed == slot then -1 else slot;
+}
+sp_broken :: (s: [] Everglade) -> bool { return s[0].sp.dm[0].broken_n > 0 || demo_chunks(sp_dm(s)) > 0; }
+sp_rebuild :: (s: [] Everglade) {
+  n := demo_restore(sp_dm(s), -1);
+  for i: 0..<SP_SCORCHES { s[0].sp.scorches[i].live = false; }
+  sp_say(s, "THE TOWN STANDS AGAIN", n, "PIECES");
+}
+
+// The pointer: a click (or a tap) on a slot presses it; with a spell picked
+// the pointer aims and a click or a tap casts where it points. A mouse drag
+// still turns the camera.
+spells_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool {
+  if !sp_on(s) || s[0].above || s[0].ev.editing || s[0].talk >= 0 || s[0].board { return false; }
+  k := hi(s[0].dpr, 0.5);
+  if kind == 0 || phase == 0 { s[0].sp.px = x; s[0].sp.py = y; s[0].sp.seen = true; }
+  if phase == 0 {
+    for b: 0..<SP_SLOTS + 1 {
+      if in_box(s[0].sp.boxes[b], x, y) { sp_press(s, b); s[0].sp.slot_finger = id; return true; }
+    }
+  }
+  if id == s[0].sp.slot_finger && phase >= 2 { s[0].sp.slot_finger = -1; return true; }
+  if s[0].sp.armed < 0 { return false; }
+  if phase == 0 { s[0].sp.down = true; s[0].sp.down_x = x; s[0].sp.down_y = y; s[0].sp.down_id = id; s[0].sp.down_touch = kind != 0; return kind != 0; }
+  if phase == 1 { if kind != 0 && id == s[0].sp.down_id { s[0].sp.px = x; s[0].sp.py = y; return true; } return false; }
+  if id != s[0].sp.down_id || !s[0].sp.down { return false; }
+  s[0].sp.down = false;
+  moved := abs(x - s[0].sp.down_x) + abs(y - s[0].sp.down_y);
+  if phase == 2 && moved < (ifx kind != 0 then 24.0f32 else 8.0f32) * k {
+    s[0].sp.px = x; s[0].sp.py = y;
+    sp_aim(s);
+    sp_cast(s);
+  }
+  return kind != 0;
+}
+
+// ---- aiming
+
+Hit :: struct { t: f32; ok: bool; }
+// The ray o + t d against the box (x0..x1, y0..y1, z0..z1): where it enters.
+sp_slab :: (o: f32, d: f32, low: f32, high: f32, t: [] f32) -> bool {
+  if abs(d) < 0.00001 { return o >= low && o <= high; }
+  ta := (low - o) / d; tb := (high - o) / d;
+  if ta > tb { tmp := ta; ta = tb; tb = tmp; }
+  t[0] = hi(t[0], ta); t[1] = lo(t[1], tb);
+  return t[0] <= t[1];
+}
+sp_ray_box :: (o: Point, d: Point, p: DemoPiece) -> Hit {
+  t := [2] f32.[0, 1000];
+  if !sp_slab(o.x, d.x, p.x0, p.x1, t[..]) || !sp_slab(o.y, d.y, p.y0, p.y1, t[..]) || !sp_slab(o.z, d.z, p.z0, p.z1, t[..]) { return Hit.{t = 0, ok = false}; }
+  return Hit.{t = t[0], ok = true};
+}
+// The ray through screen point (x, y), device pixels.
+sp_ray :: (s: [] Everglade, x: f32, y: f32) -> OrbitRay {
+  nx := x / hi(s[0].width, 1) * 2 - 1; ny := 1 - y / hi(s[0].height, 1) * 2;
+  return verse_shot_ray(s[0].sp.shot, s[0].sp.fx, s[0].sp.fy, nx, ny);
+}
+// Where the pointer points: the first standing piece's box or the ground.
+sp_aim :: (s: [] Everglade) {
+  w := sp_dm(s);
+  x := s[0].sp.px; y := s[0].sp.py;
+  if !s[0].sp.seen { x = s[0].width / 2; y = s[0].height * 0.55; }
+  r := sp_ray(s, x, y);
+  best := verse_terrain_ray(everglade_ground(), s[0].heights[..], r.from, r.dir, 400);
+  ground := best < 399;
+  for i: 0..<w[0].n {
+    if w[0].pieces[i].state != DP_STANDING { continue; }
+    h := sp_ray_box(r.from, r.dir, w[0].pieces[i]);
+    if h.ok && h.t > 0.3 && h.t < best { best = h.t; ground = true; }
+  }
+  s[0].sp.aim = add(r.from, times(r.dir, best));
+  s[0].sp.aim_ok = ground;
+  s[0].sp.far = flat_gap(s[0].sp.aim, s[0].feet) > f32(SP_RANGE);
+}
+// The top of whatever stands at x, z (a roof, a wall, a crate), else the ground.
+sp_surface :: (s: [] Everglade, x: f32, z: f32, under: f32) -> f32 {
+  w := sp_dm(s);
+  y := ground_at(s, x, z);
+  for i: 0..<w[0].n {
+    if w[0].pieces[i].state != DP_STANDING || x < w[0].pieces[i].x0 || x > w[0].pieces[i].x1 || z < w[0].pieces[i].z0 || z > w[0].pieces[i].z1 { continue; }
+    top := w[0].pieces[i].y1;
+    if top > y && top < under { y = top; }
+  }
+  return y;
+}
+
+// ---- casting
+
+sp_cast :: (s: [] Everglade) {
+  slot := s[0].sp.armed;
+  if slot < 0 || s[0].sp.casting >= 0 { return; }
+  if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND OR A BUILDING", -1, ""); return; }
+  if s[0].sp.far { sp_say(s, "TOO FAR · 140 M AT MOST", -1, ""); return; }
+  s[0].sp.casting = slot; s[0].sp.cast_t = 0; s[0].sp.cast_at = s[0].sp.aim;
+  s[0].sp.cast_from = add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z) + 1.6, 0));
+  s[0].sp.armed = -1;
+  if slot == SP_ORB { s[0].sp.orb_live = true; s[0].sp.orb_t = 0; }
+}
+// The cast bar ends: the damage is rolled once and the strike set going.
+sp_release :: (s: [] Everglade, slot: int) {
+  spell := srd_spell(SP_SPELL[slot]);
+  s[0].sp.dmg = srd_roll_damage(s[0].sp.dice[..], spell);
+  s[0].sp.broke = 0;
+  to := s[0].sp.cast_at;
+  you := s[0].sp.cast_from;
+  if slot == SP_METEOR {
+    back := unit_or(v3(you.x - to.x, 0, you.z - to.z), v3(0, 0, -1));
+    side := v3(back.z, 0, -back.x);
+    for m: 0..<SP_METEORS {
+      a := f32(m) * f32(TAU) / f32(SP_METEORS) + srd_unit(s[0].sp.dice[..]) * 0.8;
+      r := ifx m == 0 then 0.0f32 else SP_RING[0] * (0.35 + 0.6 * srd_unit(s[0].sp.dice[..]));
+      gx := to.x + cos(a) * r; gz := to.z + sin(a) * r;
+      gy := sp_surface(s, gx, gz, to.y + 6);
+      if m == 0 { gy = to.y; }
+      dest := v3(gx, gy, gz);
+      lateral := (srd_unit(s[0].sp.dice[..]) - 0.5) * 12;
+      from := add(dest, add(times(back, 14 + 6 * srd_unit(s[0].sp.dice[..])), add(times(side, lateral), v3(0, f32(SP_HEIGHT), 0))));
+      s[0].sp.meteors[m] = SpMeteor.{live = true, from = from, to = dest, t = -(f32(m) * f32(SP_STAGGER) + 0.05 * srd_unit(s[0].sp.dice[..])), fall = f32(SP_FALL)};
+    }
+    return;
+  }
+  if slot == SP_BOLT || slot == SP_MEGA {
+    b: SpBolt;
+    b.live = true; b.t = 0; b.mega = slot == SP_MEGA;
+    top := add(to, v3((srd_unit(s[0].sp.dice[..]) - 0.5) * 8, f32(SP_BOLT_HEIGHT), (srd_unit(s[0].sp.dice[..]) - 0.5) * 8));
+    for i: 0..<SP_BOLT_POINTS {
+      f := f32(i) / f32(SP_BOLT_POINTS - 1);
+      p := mix(top, to, f);
+      wobble := (1 - f) * (ifx b.mega then 3.6f32 else 2.6f32);
+      if i > 0 && i < SP_BOLT_POINTS - 1 {
+        p.x += (srd_unit(s[0].sp.dice[..]) - 0.5) * 2 * wobble;
+        p.z += (srd_unit(s[0].sp.dice[..]) - 0.5) * 2 * wobble;
+      }
+      b.points[i] = p;
+    }
+    // two branches off the upper half, four points each
+    for br: 0..<2 {
+      root := b.points[3 + br * 3];
+      dir := unit_or(v3(srd_unit(s[0].sp.dice[..]) - 0.5, -0.9, srd_unit(s[0].sp.dice[..]) - 0.5), v3(0.3, -1, 0));
+      p := root;
+      for j: 0..<4 {
+        p = add(p, add(times(dir, 4), v3((srd_unit(s[0].sp.dice[..]) - 0.5) * 2, 0, (srd_unit(s[0].sp.dice[..]) - 0.5) * 2)));
+        b.branch[br * 4 + j] = p;
+      }
+    }
+    s[0].sp.bolt = b;
+    return;
+  }
+  // the orb flies from over you to the point
+  s[0].sp.orb_from = sp_orb_rest(s); s[0].sp.orb_to = to; s[0].sp.orb_t = 0;
+}
+sp_orb_rest :: (s: [] Everglade) -> Point {
+  f := v3(sin(s[0].face), 0, cos(s[0].face));
+  return add(add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z) + 2.6, 0)), times(f, 1.2));
+}
+
+// A blast at `at`: every standing piece it reaches takes the cast's damage,
+// full at its middle and none at its edge; what breaks flies out, and what
+// it held up falls.
+sp_blast :: (s: [] Everglade, at: Point, slot: int) {
+  w := sp_dm(s);
+  radius := SP_BLAST[slot];
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state == DP_BROKEN { continue; }
+    c := v3(clamp(at.x, p.x0, p.x1), clamp(at.y, p.y0, p.y1), clamp(at.z, p.z0, p.z1));
+    d := length(sub(c, at));
+    if d >= radius { continue; }
+    share := 1 - d / radius;
+    if p.state == DP_LOOSE { continue; }
+    amount := srd_object_takes(sp_object(p.mesh), s[0].sp.dmg, share);
+    if demo_damage(w, i, amount, at, SP_THROW[slot] * (0.4 + 0.6 * share)) { s[0].sp.broke += 1; }
+  }
+  _ := demo_settle(w);
+  kind := ifx slot == SP_ORB then 2 else ifx slot == SP_METEOR then 0 else 1;
+  sp_add_blast(s, at, radius, kind);
+  if kind != 2 { sp_add_scorch(s, v3(at.x, sp_surface(s, at.x, at.z, at.y + 0.5), at.z), ifx kind == 0 then 2.6f32 else radius * 0.6); }
+  for q: 0..<(ifx kind == 2 then 0 else 4) {
+    sp_add_puff(s, add(at, v3((srd_unit(s[0].sp.dice[..]) - 0.5) * 2, 0.5, (srd_unit(s[0].sp.dice[..]) - 0.5) * 2)),
+                v3((srd_unit(s[0].sp.dice[..]) - 0.5) * 1.2, 1.4 + srd_unit(s[0].sp.dice[..]), (srd_unit(s[0].sp.dice[..]) - 0.5) * 1.2),
+                1.6 + srd_unit(s[0].sp.dice[..]), 4.5, ifx kind == 0 then 0.18f32 else 0.3f32);
+  }
+  if kind == 2 {
+    for q: 0..<SP_DROPS {
+      a := f32(q) * f32(TAU) / f32(SP_DROPS);
+      s[0].sp.drops[q] = SpDrop.{live = true, at = add(at, v3(0, 0.5, 0)), vel = v3(cos(a) * 4, 5 + 3 * srd_unit(s[0].sp.dice[..]), sin(a) * 4), t = 0};
+    }
+  }
+  s[0].sp.flash = hi(s[0].sp.flash, ifx kind == 1 then 1.0f32 else 0.55f32);
+  s[0].sp.flash_rgb = ifx kind == 1 then v3(0.72, 0.8, 1.0) else ifx kind == 0 then v3(1.0, 0.62, 0.28) else v3(0.6, 0.8, 0.9);
+}
+sp_add_blast :: (s: [] Everglade, at: Point, radius: f32, kind: int) {
+  k := 0;
+  for i: 0..<SP_BLASTS { if !s[0].sp.blasts[i].live { k = i; break; } if s[0].sp.blasts[i].t > s[0].sp.blasts[k].t { k = i; } }
+  s[0].sp.blasts[k] = SpBlast.{live = true, at = at, t = 0, radius = radius, kind = kind};
+}
+sp_add_scorch :: (s: [] Everglade, at: Point, radius: f32) {
+  k := 0;
+  for i: 0..<SP_SCORCHES { if !s[0].sp.scorches[i].live { k = i; break; } if s[0].sp.scorches[i].t > s[0].sp.scorches[k].t { k = i; } }
+  s[0].sp.scorches[k] = SpScorch.{live = true, at = at, t = 0, radius = radius};
+}
+sp_add_puff :: (s: [] Everglade, at: Point, vel: Point, size: f32, life: f32, dark: f32) {
+  k := 0;
+  for i: 0..<SP_PUFFS { if !s[0].sp.puffs[i].live { k = i; break; } if s[0].sp.puffs[i].t / s[0].sp.puffs[i].life > s[0].sp.puffs[k].t / s[0].sp.puffs[k].life { k = i; } }
+  s[0].sp.puffs[k] = SpPuff.{live = true, at = at, vel = vel, t = 0, life = life, size = size, dark = dark};
+}
+
+// What a cast did, for the line over the bar.
+sp_put :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count { if n < out.count { out[n] = text[i]; n += 1; } }
+  return n;
+}
+sp_say :: (s: [] Everglade, text: string, count: int, what: string) {
+  n := sp_put(s[0].sp.news[..], 0, text);
+  if count >= 0 {
+    n = sp_put(s[0].sp.news[..], n, " · ");
+    n = put_digits(s[0].sp.news[..], n, count);
+    n = sp_put(s[0].sp.news[..], n, " ");
+    n = sp_put(s[0].sp.news[..], n, what);
+  }
+  s[0].sp.news_n = n; s[0].sp.news_t = f32(SP_NEWS);
+}
+// "METEOR SWARM · 20D6 FIRE 71 + 20D6 BLUDGEONING 66 · 23 BROKE"
+sp_report :: (s: [] Everglade, slot: int) {
+  spell := srd_spell(SP_SPELL[slot]);
+  d := s[0].sp.dmg;
+  buf := s[0].sp.news[..];
+  n := 0;
+  up: [24] u8;
+  n = sp_put(buf, n, sp_upper(up[..], spell.name));
+  n = sp_put(buf, n, " · ");
+  n = put_digits(buf, n, spell.dice); n = sp_put(buf, n, "D"); n = put_digits(buf, n, spell.sides);
+  n = sp_put(buf, n, " "); n = sp_put(buf, n, sp_upper(up[..], DMG_NAME[d.kind])); n = sp_put(buf, n, " "); n = put_digits(buf, n, d.amount);
+  if spell.dice2 > 0 {
+    n = sp_put(buf, n, " + ");
+    n = put_digits(buf, n, spell.dice2); n = sp_put(buf, n, "D"); n = put_digits(buf, n, spell.sides2);
+    n = sp_put(buf, n, " "); n = sp_put(buf, n, sp_upper(up[..], DMG_NAME[d.kind2])); n = sp_put(buf, n, " "); n = put_digits(buf, n, d.amount2);
+  }
+  n = sp_put(buf, n, " · ");
+  n = put_digits(buf, n, s[0].sp.broke);
+  n = sp_put(buf, n, " BROKE");
+  s[0].sp.news_n = n; s[0].sp.news_t = f32(SP_NEWS);
+}
+sp_upper :: (out: [] u8, text: string) -> string {
+  n := 0;
+  for i: 0..<text.count {
+    if n >= out.count { break; }
+    ch := text[i];
+    out[n] = ifx ch >= 'a' && ch <= 'z' then cast(u8) (ch - 32) else ch;
+    n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+
+// ---- each frame
+
+// After the town's pieces are drawn: the casts move on, blasts break what
+// they reach, the debris steps, each piece's instance is written as it is
+// now, and the spells' fire, light and smoke are drawn.
+spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
+  if !s[0].sp.ready { return; }
+  w := sp_dm(s);
+  demo_tier(w, phone(s));
+  s[0].sp.shot = shot;
+  aspect := s[0].width / hi(s[0].height, 1);
+  s[0].sp.fy = clamp(aspect * 1.25, 0.95, 1.9); s[0].sp.fx = s[0].sp.fy / aspect;
+  if s[0].sp.on && s[0].sp.armed >= 0 && (s[0].sp.seen || phone(s)) { sp_aim(s); }
+  // the cast bar
+  if s[0].sp.casting >= 0 {
+    slot := s[0].sp.casting;
+    s[0].sp.cast_t += dt;
+    if slot == SP_ORB { s[0].sp.orb_t += dt; }
+    if s[0].sp.cast_t >= srd_spell(SP_SPELL[slot]).bar { s[0].sp.casting = -1; sp_release(s, slot); }
+  }
+  // the meteors fall
+  last := false;
+  for m: 0..<SP_METEORS {
+    if !s[0].sp.meteors[m].live { continue; }
+    s[0].sp.meteors[m].t += dt;
+    if s[0].sp.meteors[m].t >= s[0].sp.meteors[m].fall {
+      s[0].sp.meteors[m].live = false;
+      sp_blast(s, s[0].sp.meteors[m].to, SP_METEOR);
+      last = true;
+      for o: 0..<SP_METEORS { if s[0].sp.meteors[o].live { last = false; } }
+    }
+  }
+  if last { sp_report(s, SP_METEOR); }
+  // the bolt strikes once it is down
+  if s[0].sp.bolt.live {
+    before := s[0].sp.bolt.t;
+    s[0].sp.bolt.t += dt;
+    if before < f32(SP_BOLT_LEAD) && s[0].sp.bolt.t >= f32(SP_BOLT_LEAD) {
+      slot := ifx s[0].sp.bolt.mega then SP_MEGA else SP_BOLT;
+      sp_blast(s, s[0].sp.bolt.points[SP_BOLT_POINTS - 1], slot);
+      sp_report(s, slot);
+    }
+    if s[0].sp.bolt.t > f32(SP_BOLT_LEAD + SP_BOLT_LIFE) { s[0].sp.bolt.live = false; }
+  }
+  // the orb, once thrown
+  if s[0].sp.orb_live && s[0].sp.casting != SP_ORB {
+    s[0].sp.orb_t += dt;
+    if s[0].sp.orb_t >= 0.7 { s[0].sp.orb_live = false; sp_blast(s, s[0].sp.orb_to, SP_ORB); sp_report(s, SP_ORB); }
+  }
+  // the debris (verse/demolish.coax), its dust, and what grows back
+  demo_step(w, everglade_ground(), s[0].heights[..], dt);
+  for e: 0..<w[0].event_n {
+    ev := w[0].events[e];
+    sp_add_puff(s, ev.at, v3(0, 0.8, 0), hi(ev.size, 0.8) * 1.4, 2.5, ifx ev.kind == 2 then 0.5f32 else 0.62f32);
+  }
+  s[0].sp.regrow_t += dt;
+  if s[0].sp.regrow_t > 1 { s[0].sp.regrow_t = 0; sp_regrow(s); }
+  // every piece's instance, as it is now
+  rows: [12] f32;
+  for i: 0..<w[0].n {
+    demo_rows(w, i, rows[..]);
+    o := w[0].pieces[i].object * OBJECT_FLOATS;
+    for k: 0..<12 { s[0].objects[o + k] = rows[k]; }
+  }
+  sp_draw(s, dt);
+  if s[0].sp.news_t > 0 { s[0].sp.news_t = hi(s[0].sp.news_t - dt, 0); }
+  s[0].sp.flash = hi(s[0].sp.flash - dt * 4, 0);
+}
+
+// A broken building grows back whole after SP_REGROW s of rest with you SP_REGROW_AWAY m away.
+sp_regrow :: (s: [] Everglade) {
+  w := sp_dm(s);
+  latest: [SP_GROUPS] f64;
+  hurt: [SP_GROUPS] bool;
+  for g: 0..<SP_GROUPS { latest[g] = 0; hurt[g] = false; }
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state == DP_STANDING && p.hp >= p.max_hp { continue; }
+    g := clamp_i(p.group, 0, SP_GROUPS - 1);
+    hurt[g] = true;
+    if p.hit_at > latest[g] { latest[g] = p.hit_at; }
+    if p.state == DP_LOOSE { latest[g] = w[0].clock; }
+  }
+  for g: 0..<SP_GROUPS {
+    if !hurt[g] || w[0].clock - latest[g] < f64(SP_REGROW) { continue; }
+    dx := s[0].sp.group_x[g] - s[0].feet.x; dz := s[0].sp.group_z[g] - s[0].feet.z;
+    if dx * dx + dz * dz < f32(SP_REGROW_AWAY * SP_REGROW_AWAY) { continue; }
+    _ := demo_restore(w, g);
+  }
+}
+
+// ---- drawing the spells
+
+// A shape with its own three axes (each its full size), as shape() writes one.
+sp_shape :: (s: [] Everglade, kind: int, look: int, at: Point, ax: Point, ay: Point, az: Point, colour: Point) {
+  n := s[0].counts[kind];
+  if n >= SLOTS[kind] { return; }
+  s[0].counts[kind] = n + 1;
+  o := (SLOT_AT[kind] + n) * OBJECT_FLOATS;
+  s[0].objects[o] = ax.x; s[0].objects[o + 1] = ay.x; s[0].objects[o + 2] = az.x; s[0].objects[o + 3] = at.x;
+  s[0].objects[o + 4] = ax.y; s[0].objects[o + 5] = ay.y; s[0].objects[o + 6] = az.y; s[0].objects[o + 7] = at.y;
+  s[0].objects[o + 8] = ax.z; s[0].objects[o + 9] = ay.z; s[0].objects[o + 10] = az.z; s[0].objects[o + 11] = at.z;
+  s[0].objects[o + 12] = colour.x; s[0].objects[o + 13] = colour.y; s[0].objects[o + 14] = colour.z;
+  s[0].objects[o + 15] = f32(kind + 8 * look);
+}
+sp_ball :: (s: [] Everglade, look: int, at: Point, size: f32, colour: Point) {
+  sp_shape(s, SHAPE_SPHERE, look, at, v3(size, 0, 0), v3(0, size, 0), v3(0, 0, size), colour);
+}
+// A glowing rod from a to b, `thick` across.
+sp_rod :: (s: [] Everglade, a: Point, b: Point, thick: f32, colour: Point) {
+  d := sub(b, a);
+  l := length(d);
+  if l < 0.01 { return; }
+  y := times(d, 1 / l);
+  x := unit_or(cross(y, v3(0, 0, 1)), v3(1, 0, 0));
+  z := cross(x, y);
+  sp_shape(s, SHAPE_BOX, LOOK_GLOW, mix(a, b, 0.5), times(x, thick), times(y, l + thick * 0.5), times(z, thick), colour);
+}
+
+sp_draw :: (s: [] Everglade, dt: f32) {
+  w := sp_dm(s);
+  // the debris: a box each
+  box: [1] DemoBox;
+  for b: 0..<DEMO_BODIES {
+    if !demo_chunk_box(w, b, box[..]) { continue; }
+    sp_shape(s, SHAPE_BOX, LOOK_STONE, box[0].at, box[0].x, box[0].y, box[0].z, box[0].colour);
+  }
+  // the meteors: a burning rock, a trail of fire behind it and smoke
+  for m: 0..<SP_METEORS {
+    me := s[0].sp.meteors[m];
+    if !me.live || me.t < 0 { continue; }
+    f := clamp(me.t / me.fall, 0, 1);
+    e := f * f * 0.35 + f * 0.65;
+    at := mix(me.from, me.to, e);
+    dir := unit_or(sub(me.to, me.from), v3(0, -1, 0));
+    sp_ball(s, LOOK_GLOW, at, 1.5, v3(1.0, 0.92, 0.6));
+    sp_ball(s, LOOK_GLOW, at, 2.3, v3(YELLOW_R, YELLOW_G, YELLOW_B));
+    for k: 1..<8 {
+      tk := f32(k);
+      p := sub(at, times(dir, tk * 1.25));
+      c := mix(v3(YELLOW_R, YELLOW_G, YELLOW_B), v3(0.85, 0.16, 0.03), tk / 8);
+      sp_ball(s, LOOK_GLOW, p, 2.0 - tk * 0.2, c);
+    }
+    for k: 0..<3 { sp_ball(s, LOOK_MATTE, sub(at, times(dir, 10 + f32(k) * 2.2)), 1.6 + f32(k) * 0.5, v3(0.16, 0.14, 0.13)); }
+  }
+  // the blasts: a fireball (or a splash) that swells and fades
+  for i: 0..<SP_BLASTS {
+    if !s[0].sp.blasts[i].live { continue; }
+    s[0].sp.blasts[i].t += dt;
+    bl := s[0].sp.blasts[i];
+    if bl.t > 0.9 { s[0].sp.blasts[i].live = false; continue; }
+    grow := clamp(bl.t / 0.3, 0, 1);
+    fade := 1 - clamp((bl.t - 0.3) / 0.6, 0, 1);
+    r := bl.radius * (0.4 + 0.9 * grow) * (0.5 + 0.5 * fade);
+    if bl.kind == 2 {
+      sp_ball(s, LOOK_WATER, add(bl.at, v3(0, r * 0.3, 0)), r * 2 * fade, v3(0.42, 0.62, 0.72));
+    } else {
+      hot := ifx bl.kind == 0 then mix(v3(1.0, 0.85, 0.5), v3(0.85, 0.2, 0.05), 1 - fade) else mix(v3(0.95, 0.97, 1.0), v3(0.45, 0.6, 1.0), 1 - fade);
+      sp_ball(s, LOOK_GLOW, add(bl.at, v3(0, r * 0.4, 0)), r * 2, hot);
+    }
+  }
+  // the scorch marks, fading as they shrink
+  for i: 0..<SP_SCORCHES {
+    if !s[0].sp.scorches[i].live { continue; }
+    s[0].sp.scorches[i].t += dt;
+    sc := s[0].sp.scorches[i];
+    if sc.t > f32(SP_SCORCH_LIFE) { s[0].sp.scorches[i].live = false; continue; }
+    left := clamp((f32(SP_SCORCH_LIFE) - sc.t) / 3, 0, 1);
+    r := sc.radius * 2 * (0.4 + 0.6 * left);
+    sp_shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(sc.at, v3(0, 0.03, 0)), v3(r, 0, 0), v3(0, 0.05, 0), v3(0, 0, r), v3(0.05, 0.045, 0.04));
+    if sc.t < 3 { sp_shape(s, SHAPE_CYLINDER, LOOK_GLOW, add(sc.at, v3(0, 0.06, 0)), v3(r * 0.5, 0, 0), v3(0, 0.03, 0), v3(0, 0, r * 0.5), times(v3(0.9, 0.3, 0.05), 1 - sc.t / 3)); }
+  }
+  // smoke and dust
+  for i: 0..<SP_PUFFS {
+    if !s[0].sp.puffs[i].live { continue; }
+    s[0].sp.puffs[i].t += dt;
+    s[0].sp.puffs[i].at = add(s[0].sp.puffs[i].at, times(s[0].sp.puffs[i].vel, dt));
+    pf := s[0].sp.puffs[i];
+    if pf.t > pf.life { s[0].sp.puffs[i].live = false; continue; }
+    f := pf.t / pf.life;
+    size := pf.size * (0.6 + 1.6 * f) * (1 - f * f * 0.8);
+    sp_ball(s, LOOK_MATTE, pf.at, size, v3(pf.dark, pf.dark * 0.95, pf.dark * 0.9));
+  }
+  // the orb's splash
+  for i: 0..<SP_DROPS {
+    if !s[0].sp.drops[i].live { continue; }
+    s[0].sp.drops[i].t += dt;
+    s[0].sp.drops[i].vel.y -= 9.81 * dt;
+    s[0].sp.drops[i].at = add(s[0].sp.drops[i].at, times(s[0].sp.drops[i].vel, dt));
+    if s[0].sp.drops[i].t > 1.4 { s[0].sp.drops[i].live = false; continue; }
+    sp_ball(s, LOOK_WATER, s[0].sp.drops[i].at, 0.5, v3(0.42, 0.62, 0.72));
+  }
+  // the orb: gathering over you, then thrown on an arc
+  if s[0].sp.orb_live {
+    if s[0].sp.casting == SP_ORB {
+      grow := clamp(s[0].sp.cast_t / srd_spell(SPELL_WATER_ORB).bar, 0, 1);
+      sp_ball(s, LOOK_WATER, sp_orb_rest(s), 0.3 + 1.7 * grow, v3(0.4, 0.62, 0.74));
+    } else {
+      f := clamp(s[0].sp.orb_t / 0.7, 0, 1);
+      p := mix(s[0].sp.orb_from, s[0].sp.orb_to, f);
+      p.y += sin(f * f32(PI)) * hi(3, flat_gap(s[0].sp.orb_from, s[0].sp.orb_to) * 0.15);
+      sp_ball(s, LOOK_WATER, p, 2.0, v3(0.4, 0.62, 0.74));
+    }
+  }
+  // the bolt: a bright core in segments, coming down over its lead, flickering
+  if s[0].sp.bolt.live {
+    b := s[0].sp.bolt;
+    down := clamp(b.t / f32(SP_BOLT_LEAD), 0, 1);
+    shown := cast(int) (down * f32(SP_BOLT_POINTS - 1));
+    flicker := ifx cast(int) (b.t * 30) % 3 == 0 then 0.7f32 else 1.0f32;
+    thick := ifx b.mega then 0.55f32 else 0.3f32;
+    core := times(v3(0.92, 0.95, 1.0), flicker);
+    for i: 0..<shown { sp_rod(s, b.points[i], b.points[i + 1], thick, core); }
+    if down >= 1 {
+      for br: 0..<2 {
+        prev := b.points[3 + br * 3];
+        for j: 0..<4 { sp_rod(s, prev, b.branch[br * 4 + j], thick * 0.5, times(v3(0.6, 0.72, 1.0), flicker)); prev = b.branch[br * 4 + j]; }
+      }
+    }
+  }
+}
+
+// The thunder's light and the fire's: the key light flares with the flash.
+spells_light :: (s: [] Everglade, u: [] f32) {
+  f := s[0].sp.flash;
+  if f <= 0 { return; }
+  k := STYLE_AT + SU_KEY;
+  c := s[0].sp.flash_rgb;
+  u[k + 3] = u[k + 3] * (1 + 2.2 * f);
+  u[k] = lerp(u[k], c.x, f * 0.6); u[k + 1] = lerp(u[k + 1], c.y, f * 0.6); u[k + 2] = lerp(u[k + 2], c.z, f * 0.6);
+}
+
+// ---- the HUD: the ring, the bolt's glow, the flash, the bar
+
+SpScreen :: struct { x: f32; y: f32; ok: bool; }
+sp_screen :: (u: [] f32, p: Point, width: f32, height: f32) -> SpScreen {
+  cx := u[U_VIEW] * p.x + u[U_VIEW + 1] * p.y + u[U_VIEW + 2] * p.z + u[U_VIEW + 3];
+  cy := u[U_VIEW + 4] * p.x + u[U_VIEW + 5] * p.y + u[U_VIEW + 6] * p.z + u[U_VIEW + 7];
+  cw := u[U_VIEW + 12] * p.x + u[U_VIEW + 13] * p.y + u[U_VIEW + 14] * p.z + u[U_VIEW + 15];
+  if !(cw > 0.3) { return SpScreen.{x = 0, y = 0, ok = false}; }
+  return SpScreen.{x = (cx / cw + 1) * 0.5 * width, y = (1 - cy / cw) * 0.5 * height, ok = true};
+}
+// A ring of radius r lying over what stands round `at`, as strokes.
+sp_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, at: Point, r: f32, colour: Point, light: f32) -> int {
+  k := hi(s[0].dpr, 0.5);
+  m := n;
+  // on a roof or a wall top, the ring lies at the height it points at; on the ground, over it
+  lift_y := ifx at.y > ground_at(s, at.x, at.z) + 0.5 then at.y else -1000.0f32;
+  prev := SpScreen.{x = 0, y = 0, ok = false};
+  for i: 0..<41 {
+    a := f32(i) * f32(TAU) / 40;
+    x := at.x + cos(a) * r; z := at.z + sin(a) * r;
+    y := hi(ground_at(s, x, z), lift_y) + 0.15;
+    p := sp_screen(u, v3(x, y, z), s[0].width, s[0].height);
+    if i > 0 && p.ok && prev.ok {
+      if lit(out, m, prev.x, prev.y, p.x, p.y, 1.1 * k, light, 3 * k, colour.x, colour.y, colour.z, 0) { m += 6; }
+    }
+    prev = p;
+  }
+  return m;
+}
+
+spells_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) -> int {
+  s[0].sp.lift = 0;
+  for b: 0..<SP_SLOTS + 1 { s[0].sp.boxes[b] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
+  if !sp_on(s) { return at; }
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  n := at;
+  // the flash, over everything
+  if s[0].sp.flash > 0.02 {
+    c := s[0].sp.flash_rgb;
+    if lit(out, n, 0, h / 2, w, h / 2, h / 2 + 4, s[0].sp.flash * 0.35, 1, c.x, c.y, c.z, 0) { n += 6; }
+  }
+  // the bolt's glow round its core
+  if s[0].sp.bolt.live && s[0].sp.bolt.t >= f32(SP_BOLT_LEAD) * 0.5 {
+    b := s[0].sp.bolt;
+    glow := ifx b.mega then 26.0f32 else 16.0f32;
+    for i: 0..<SP_BOLT_POINTS - 1 {
+      p := sp_screen(u, b.points[i], w, h); q := sp_screen(u, b.points[i + 1], w, h);
+      if p.ok && q.ok && lit(out, n, p.x, p.y, q.x, q.y, 2 * k, 0.9, glow * k, 0.55, 0.68, 1.0, 0) { n += 6; }
+    }
+  }
+  if s[0].above || s[0].ev.editing || s[0].talk >= 0 || s[0].board { return n; }
+  // the ring where the picked spell would land, or where the cast will
+  slot := ifx s[0].sp.casting >= 0 then s[0].sp.casting else s[0].sp.armed;
+  if slot >= 0 && (s[0].sp.casting >= 0 || s[0].sp.aim_ok) {
+    spot := ifx s[0].sp.casting >= 0 then s[0].sp.cast_at else s[0].sp.aim;
+    pulse := 0.65 + 0.35 * sin(f32(s[0].time) * 6);
+    colour := ifx slot == SP_METEOR then v3(1.0, 0.45, 0.1) else ifx slot == SP_ORB then v3(0.45, 0.8, 0.95) else v3(0.6, 0.72, 1.0);
+    if s[0].sp.far && s[0].sp.casting < 0 { colour = v3(0.6, 0.25, 0.2); pulse = 0.5; }
+    n = sp_ring(s, out, u, n, spot, SP_RING[slot], colour, pulse);
+    n = sp_ring(s, out, u, n, spot, SP_BLAST[slot] * 0.25, colour, pulse * 0.7);
+  }
+  // the bar: a slot a spell, and REBUILD once something broke; along the
+  // bottom, or on a phone down the right edge, clear of the thumbs' stick
+  phone_ := phone(s);
+  count := ifx sp_broken(s) then SP_SLOTS + 1 else SP_SLOTS;
+  bw := (ifx phone_ then 66.0f32 else 96.0f32) * k;
+  bh := 44 * k; gap := 6 * k;
+  total := f32(count) * bw + f32(count - 1) * gap;
+  x := floor((w - total) / 2);
+  y1 := floor(bottom);
+  ts := (ifx phone_ then 7.5f32 else 8.5f32) * k;
+  cy := floor(h * 0.3);
+  for b: 0..<count {
+    box := Box.{x0 = x, y0 = y1 - bh, x1 = x + bw, y1 = y1};
+    if phone_ { box = Box.{x0 = w - 16 * k - bw, y0 = cy, x1 = w - 16 * k, y1 = cy + bh}; cy += bh + gap; }
+    s[0].sp.boxes[b] = box;
+    lit_ := b < SP_SLOTS && (s[0].sp.armed == b || s[0].sp.casting == b);
+    plate(s, u, box, 0.88, ifx lit_ then 2.0f32 else 1.0f32);
+    word := SP_WORD[b];
+    size := ts;
+    room := bw - 14 * k;
+    if text_width(word, size) > room { size = size * room / text_width(word, size); }
+    if !phone_ { n = draw_text(out, n, SP_KEY[b], box.x0 + 6 * k, box.y0 + 13 * k, 6 * k, GAP, SPACE, ink(k, 0.55, PARCH_R, PARCH_G, PARCH_B), false, false); }
+    n = draw_text(out, n, word, floor(box.x0 + (bw - text_width(word, size)) / 2), floor(box.y1 - 12 * k), size, GAP, SPACE,
+                  ink(k, ifx lit_ then 1.0f32 else 0.9f32, GOLD_R, GOLD_G, GOLD_B), false, false);
+    x += bw + gap;
+  }
+  top := ifx phone_ then y1 else y1 - bh - 8 * k;
+  // the cast bar over it
+  if s[0].sp.casting >= 0 {
+    spell := srd_spell(SP_SPELL[s[0].sp.casting]);
+    cw := hi(total * 0.6, 200 * k);
+    back := Box.{x0 = floor((w - cw) / 2), y0 = top - 30 * k, x1 = floor((w + cw) / 2), y1 = top};
+    plate(s, u, back, 0.8, 0);
+    fill := (cw - 16 * k) * clamp(s[0].sp.cast_t / spell.bar, 0, 1);
+    if fill > 2 * k { plate(s, u, Box.{x0 = back.x0 + 8 * k, y0 = back.y1 - 10 * k, x1 = back.x0 + 8 * k + fill, y1 = back.y1 - 5 * k}, 0.95, 2); }
+    up: [24] u8;
+    name := sp_upper(up[..], spell.name);
+    n = draw_text(out, n, name, back.x0 + 10 * k, back.y0 + 15 * k, 7 * k, GAP, SPACE, ink(k, 0.95, PARCH_R, PARCH_G, PARCH_B), false, false);
+    top = back.y0 - 6 * k;
+  }
+  // one line: how to cast the picked spell, or what the last cast did
+  line := "";
+  if s[0].sp.armed >= 0 && s[0].sp.casting < 0 {
+    line = ifx phone_ then "TAP WHERE IT LANDS · TAP THE SLOT TO PUT IT AWAY" else "CLICK WHERE IT LANDS · ESC PUTS IT AWAY";
+    if s[0].sp.far { line = "TOO FAR · 140 M AT MOST"; }
+  } else if s[0].sp.news_t > 0 {
+    line = cast(string) s[0].sp.news[0..<s[0].sp.news_n];
+  }
+  if line.count > 0 {
+    ls := 7 * k;
+    lw := text_width(line, ls);
+    if lw > w - 40 * k { ls = ls * (w - 40 * k) / lw; lw = w - 40 * k; }
+    plate(s, u, Box.{x0 = (w - lw) / 2 - 10 * k, y0 = top - ls - 18 * k, x1 = (w + lw) / 2 + 10 * k, y1 = top}, 0.72, 0);
+    n = draw_text(out, n, line, floor((w - lw) / 2), floor(top - 9 * k), ls, GAP, SPACE, ink(k, 0.9, PARCH_R, PARCH_G, PARCH_B), false, false);
+    top -= ls + 24 * k;
+  }
+  s[0].sp.lift = bottom - top;
+  return n;
+}
+
+// ---- checks
+
+// The town meshes' bounds as the pack's catalog gives them (pack 2026-10-29), for the checks.
+SP_TEST_BOUNDS :: "M Wall_Plaster_Straight 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_Plaster_Window_Wide_Round 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_Plaster_Door_Round 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_Plaster_WoodGrid 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_UnevenBrick_Straight 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_UnevenBrick_Window_Wide_Round 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_UnevenBrick_Door_Round 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Window_Wide_Round1 0 1 0 -0.682 1.016 -0.1 0.682 2.742 0.1\nM Door_1_Round 0 1 0 -0.046 0 -0.1 1.074 2.351 0.1\nM Corner_Exterior_Wood 0 1 0 -0.105 0 -0.12 0.105 3 0.12\nM Roof_RoundTiles_6x8 0 1 0 -4.125 -0.782 -4.829 4.125 4.89 4.854\nM Roof_Tower_RoundTiles 0 1 0 -2 0 -2 2 4 2\nM Roof_Log 0 1 0 -0.586 3.849 -5.348 0.563 5.236 5.348\nM Floor_WoodDark 0 1 0 -1 -0.1 -1 1 0 1\nM Floor_Brick 0 1 0 -1 -0.1 -1 1 0 1\nM Prop_Chimney 0 1 0 -0.4 0 -0.4 0.4 3.178 0.4\nM Stall_Empty 0 1 0 -0.922 0 -0.466 0.922 2.627 0.466\nM Barrel 0 1 0 -0.349 0 -0.349 0.349 0.898 0.349\nM Crate_Wooden 0 1 0 -0.421 0 -0.454 0.421 0.931 0.454\nM Bench 0 1 0 -1.388 0 -0.267 1.388 0.533 0.267\nM Prop_WoodenFence_Single 0 1 0 -1.03 0 -0.06 1.03 0.81 0.06\nM Roof_Front_Brick6 0 1 0 -3.347 -0.132 -0.335 3.348 4.384 0.794\n";
+
+sp_ready_city :: (g: [] Everglade) {
+  everglade_start(g);
+  everglade_catalog(g, CATALOG);
+  spells_catalog(g, SP_TEST_BOUNDS);
+  everglade_message(g, MSG_FACTS, "now=1\nruleset=srd5\nplayer=p-1");
+}
+
+#test "spells: no ruleset, no bar; srd5 gives the four spells, and the town's pieces their SRD stats" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  everglade_start(g[..]);
+  everglade_catalog(g[..], CATALOG);
+  spells_catalog(g[..], SP_TEST_BOUNDS);
+  #assert g[0].sp.ready && !sp_on(g[..]) && !everglade_key(g[..], '1', 0);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].sp.boxes[0].x1 == 0;
+  everglade_message(g[..], MSG_FACTS, "now=1\nruleset=srd5");
+  #assert sp_on(g[..]);
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  for b: 0..<SP_SLOTS { #assert g[0].sp.boxes[b].x1 > g[0].sp.boxes[b].x0; }
+  #assert g[0].sp.boxes[SP_REBUILD].x1 == 0;   // nothing broken yet
+  w := sp_dm(g[..]);
+  #assert w[0].n > 2000 && w[0].n <= DEMO_PIECES && w[0].linked;
+  walls := 0; glass := 0;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.mesh == M_PLASTER { walls += 1; #assert p.ac == 15 && p.max_hp == 27 && p.hy > 1.5; }
+    if p.mesh == M_WINDOW { glass += 1; #assert p.ac == 13 && p.max_hp == 3; }
+    if p.mesh == M_ROOF { #assert !p.anchored && p.sup_n >= 4; }
+  }
+  #assert walls > 50 && glass > 20;
+}
+
+#test "spells: 1 picks Meteor Swarm, a click casts it at the inn, and the inn breaks; R stands it again" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  sp_ready_city(g[..]);
+  inn := EG_INN * EG_BOX;
+  ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
+  #assert everglade_key(g[..], '1', 0) && g[0].sp.armed == SP_METEOR;
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  // aim straight at the inn's middle, as a click there would
+  g[0].sp.aim = v3(ix, ground_at(g[..], ix, iz) + 3, iz); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  sp_cast(g[..]);
+  #assert g[0].sp.casting == SP_METEOR && g[0].sp.armed == -1;
+  w := sp_dm(g[..]);
+  // the cast bar (2.5 s), the meteors' fall, the debris: a tenth of a second a frame (the debris steps 0.1 s at most a frame)
+  for f: 0..<50 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert w[0].broken_n > 20 && g[0].sp.broke > 20 && g[0].sp.news_n > 0;
+  #assert demo_chunks(w) > 50 && demo_chunks(w) <= w[0].chunk_cap;
+  #assert g[0].counts[SHAPE_BOX] < SLOTS[SHAPE_BOX] && g[0].counts[SHAPE_SPHERE] <= SLOTS[SHAPE_SPHERE];
+  // the inn's roof is down
+  roof_down := false;
+  for i: 0..<w[0].n { p := w[0].pieces[i]; if p.mesh == M_ROOF && p.group == EG_INN && p.state != DP_STANDING { roof_down = true; } }
+  #assert roof_down;
+  // a broken piece draws nothing
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state == DP_BROKEN { #assert g[0].objects[p.object * OBJECT_FLOATS] == 0 && g[0].objects[p.object * OBJECT_FLOATS + 5] == 0; break; }
+  }
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].sp.boxes[SP_REBUILD].x1 > 0;
+  #assert everglade_key(g[..], 'r', 0) && w[0].broken_n == 0 && demo_chunks(w) == 0;
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  for i: 0..<w[0].n { p := w[0].pieces[i]; #assert p.state == DP_STANDING && g[0].objects[p.object * OBJECT_FLOATS + 3] == w[0].rest[i * 12 + 3]; }
+}
+
+#test "spells: the Thunderbolt's bolt comes down and blasts a hole; a phone taps a slot, then the target" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  sp_ready_city(g[..]);
+  g[0].touch = true;
+  _ := everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  b := g[0].sp.boxes[SP_BOLT];
+  #assert b.x1 > b.x0 && b.x1 <= 780;
+  #assert everglade_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1, 3) && g[0].sp.armed == SP_BOLT;
+  #assert everglade_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1, 3);
+  // a tap in the middle of the screen casts there
+  #assert everglade_pointer(g[..], 390, 1200, 0, 1, 4);
+  #assert everglade_pointer(g[..], 390, 1200, 2, 1, 4);
+  #assert g[0].sp.casting == SP_BOLT;
+  for f: 0..<40 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 0.05, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert !g[0].sp.bolt.live && g[0].sp.news_n > 0 && g[0].sp.dmg.amount >= 20 && g[0].sp.dmg.amount <= 200;
+}
+
+#test "spells: a broken building grows back after a minute with you away, not while you stand by it" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  sp_ready_city(g[..]);
+  w := sp_dm(g[..]);
+  inn := EG_INN * EG_BOX;
+  ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
+  g[0].sp.dmg = SrdDamage.{amount = 200, kind = DMG_FIRE, amount2 = 0, kind2 = DMG_NONE};
+  sp_blast(g[..], v3(ix, ground_at(g[..], ix, iz) + 1, iz), SP_MEGA);
+  #assert demo_hurt(w, EG_INN);
+  g[0].feet = v3(ix, 0, iz - 12);
+  w[0].clock += 61; sp_regrow(g[..]);
+  #assert demo_hurt(w, EG_INN);
+  g[0].feet = v3(ix, 0, iz - 60);
+  sp_regrow(g[..]);
+  #assert !demo_hurt(w, EG_INN);
+}
