@@ -412,7 +412,17 @@ static void draft_child(int fd, const char *drop, const char *request) {
   PQfinish(c); free(b.p);
 }
 
+typedef struct { char slug[80], pubkey[65], sealed[200]; } target;
+static bool publisher_on(void);
+static bool grow_target(PGconn *db, const char *pk, const char *drop, target *t);
+static void grow_draft(int fd, const char *pk, const char *drop, const target *t);
 static void draft(const request *q, PGconn *db, const char *pk, const char *drop) {
+  target t;
+  if (grow_target(db, pk, drop, &t)) {   // a drop on a project: read with the project's work, in a child
+    if (!publisher_on()) { api_json(q->fd, 503, "{\"error\":\"this service can't read a project's work\"}"); return; }
+    if (in_child()) { grow_draft(q->fd, pk, drop, &t); _exit(0); }
+    return;
+  }
   const char *v[3] = {pk, drop, env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops")};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text, coalesce((x->'request')::text, '') FROM drops.draft_start($1, $2, $3) x",
                              3, NULL, v, NULL, NULL, 0);
@@ -923,10 +933,134 @@ static const char *publish_steps(PGconn *c, const char *slug, bool has_key) {
   return NULL;
 }
 
+
+// ---- growing a project (rc-later-drops, 0041_project_grow.sql): a drop on a project's page is read
+// with the project's work as the relay has it now, and ACCEPT signs the proposals with its key.
+static bool grow_target(PGconn *db, const char *pk, const char *drop, target *t) {
+  PGresult *r = PQexecParams(db, "SELECT x->>'slug', x->>'pubkey', x->>'sealed' FROM drops.grow_target($1, $2) x", 2, NULL,
+                             (const char *[]){pk, drop}, NULL, NULL, 0);
+  bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0);
+  if (ok) {
+    snprintf(t->slug, sizeof t->slug, "%s", PQgetvalue(r, 0, 0));
+    snprintf(t->pubkey, sizeof t->pubkey, "%s", PQgetvalue(r, 0, 1));
+    snprintf(t->sealed, sizeof t->sealed, "%s", PQgetvalue(r, 0, 2));
+  }
+  PQclear(r);
+  return ok;
+}
+
+// The project's key, opened, and a connection to its relay as that key; the project's events into *evs.
+static relay *grow_relay(const target *t, unsigned char sk[32], char **evs) {
+  char err[300] = "", pub[65];
+  *evs = NULL;
+  if (!unseal(getenv("OA_PROJECT_KEK"), t->slug, t->sealed, sk, 32) || !nostr_pubkey(sk, pub) || strcmp(pub, t->pubkey)) {
+    memset(sk, 0, 32); api_log("drops: grow: the key can't be opened"); return NULL;
+  }
+  relay *r = relay_open(getenv("OA_PUBLISH_RELAY"), sk, err, sizeof err);
+  if (!r) { api_log("drops: grow: %s", err); memset(sk, 0, 32); return NULL; }
+  char filter[200];
+  snprintf(filter, sizeof filter, "{\"authors\":[\"%s\"],\"kinds\":[1621,1630,1631,1632,1633,30623],\"limit\":5000}", t->pubkey);
+  *evs = relay_query(r, filter, err, sizeof err);
+  if (!*evs) { api_log("drops: grow: %s", err); relay_close(r); memset(sk, 0, 32); return NULL; }
+  return r;
+}
+
+static void grow_draft(int fd, const char *pk, const char *drop, const target *t) {
+  unsigned char sk[32]; char *evs = NULL;
+  relay *r = grow_relay(t, sk, &evs);
+  memset(sk, 0, 32);
+  relay_close(r);
+  if (!r) { api_json(fd, 502, "{\"error\":\"the project's work can't be read now\"}"); return; }
+  PGconn *c = api_db_new();
+  if (!c) { free(evs); api_json(fd, 503, "{\"error\":\"no database\"}"); return; }
+  const char *v[4] = {pk, drop, env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops"), evs};
+  PGresult *q = PQexecParams(c, "SELECT (x->>'status')::int, (x->'body')::text, coalesce((x->'request')::text, '') FROM drops.grow_start($1, $2, $3, $4::jsonb) x",
+                             4, NULL, v, NULL, NULL, 0);
+  free(evs);
+  if (PQresultStatus(q) != PGRES_TUPLES_OK || PQntuples(q) != 1) { PQclear(q); PQfinish(c); api_json(fd, 500, "{\"error\":\"not kept\"}"); return; }
+  int status = atoi(PQgetvalue(q, 0, 0));
+  if (status != 200) { api_json(fd, status, PQgetvalue(q, 0, 1)); PQclear(q); PQfinish(c); return; }
+  char *request = strdup(PQgetvalue(q, 0, 2));
+  PQclear(q); PQfinish(c);
+  if (request) draft_child(fd, drop, request);
+  free(request);
+}
+
+// ACCEPT: the work as it is now, what to sign from it, each event signed and sent, the files copied.
+static const char *grow_steps(PGconn *c, const char *pk, const char *drop, const target *t) {
+  unsigned char sk[32]; char *evs = NULL, err[300] = "";
+  relay *r = grow_relay(t, sk, &evs);
+  if (!r) return "the relay";
+  answer b = ask(c, Q("drops.grow_begin($1, $2, $3::jsonb)"), 3, (const char *[]){pk, drop, evs});
+  free(evs);
+  int began = b.status;
+  free(b.body); free(b.all);
+  const char *why = began == 200 ? NULL : "the proposals";
+  for (int guard = 0; guard < 2000 && !why; guard++) {
+    PGresult *q = PQexecParams(c, "SELECT x->>'seq', x->>'kind', x->>'tags', x->>'content' FROM drops.grow_next($1) x", 1, NULL,
+                               (const char *[]){drop}, NULL, NULL, 0);
+    if (PQresultStatus(q) != PGRES_TUPLES_OK || PQntuples(q) != 1) { api_log("drops: grow: %s", PQresultErrorMessage(q)); PQclear(q); why = "sql"; break; }
+    if (PQgetisnull(q, 0, 0)) { PQclear(q); break; }
+    char id[65], seq[16];
+    snprintf(seq, sizeof seq, "%s", PQgetvalue(q, 0, 0));
+    char *ev = nostr_sign(sk, atoi(PQgetvalue(q, 0, 1)), (long long)time(NULL), PQgetvalue(q, 0, 2), PQgetvalue(q, 0, 3), id);
+    PQclear(q);
+    if (!ev) { why = "not signed"; break; }
+    if (!relay_send(r, ev, id, err, sizeof err)) { free(ev); why = "the relay"; break; }
+    char *kept = sql_text(c, "SELECT drops.grow_sent($1, $2::int, $3, $4)::text", 4, (const char *[]){drop, seq, id, ev});
+    free(ev);
+    if (!kept) why = "sql";
+    free(kept);
+  }
+  relay_close(r);
+  memset(sk, 0, 32);
+  if (why) { if (err[0]) api_log("drops: grow: %s", err); return why; }
+  char tok[4096];
+  if (!token(tok, sizeof tok)) return "no token";
+  PGresult *f = PQexecParams(c, "SELECT object, dest FROM drops.grow_files($1)", 1, NULL, (const char *[]){drop}, NULL, NULL, 0);
+  bool copied = PQresultStatus(f) == PGRES_TUPLES_OK;
+  for (int i = 0; copied && i < PQntuples(f); i++) copied = site_copy(tok, PQgetvalue(f, i, 0), PQgetvalue(f, i, 1));
+  PQclear(f);
+  if (!copied) return "the files";
+  free(sql_text(c, "SELECT drops.grow_done($1)::text", 1, (const char *[]){drop}));
+  return NULL;
+}
+
+// Adopt: a project made by hand gives the service its key. The call is signed with that key; the body is
+// {slug, name, key, members}. Only the sealed key is kept; the key's digits are zeroed before the body goes on.
+static void adopt(const request *q, PGconn *db, const char *signer) {
+  char *body = malloc(q->body_len + 1), hexkey[80] = "", slug[80] = "", sealed[200], pub[65];
+  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
+  unsigned char sk[32];
+  bool ok = str_of(body, "key", hexkey, sizeof hexkey) && strlen(hexkey) == 64 && str_of(body, "slug", slug, sizeof slug);
+  for (int i = 0; ok && i < 32; i++) { unsigned v; ok = sscanf(hexkey + 2 * i, "%2x", &v) == 1; sk[i] = (unsigned char)v; }
+  char *at = hexkey[0] ? strstr(body, hexkey) : NULL;
+  if (at) memset(at, '0', strlen(hexkey));
+  memset(hexkey, 0, sizeof hexkey);
+  ok = ok && nostr_pubkey(sk, pub) && !strcmp(pub, signer) && seal(getenv("OA_PROJECT_KEK"), slug, sk, 32, sealed, sizeof sealed);
+  memset(sk, 0, 32);
+  if (!ok) { free(body); api_json(q->fd, 403, "{\"error\":\"sign with the project's own key, and send that key\"}"); return; }
+  reply(q->fd, ask(db, Q("drops.adopt($1, $2::jsonb, $3)"), 3, (const char *[]){signer, body, sealed}));
+  free(body);
+}
+
 // PUBLISH: the reviewed draft is frozen (0020), then, when this service publishes, made public.
 static void publish(const request *q, PGconn *db, const char *pk, const char *drop) {
   answer ap = ask(db, Q("drops.draft_approve($1, $2)"), 2, (const char *[]){pk, drop});
   if (!publisher_on() || (ap.status != 200 && ap.status != 409)) { reply(q->fd, ap); return; }
+  target t;
+  if (grow_target(db, pk, drop, &t)) {   // ACCEPT on a project's drop
+    free(ap.body); free(ap.all);
+    if (!in_child()) return;
+    PGconn *c = api_db_new();
+    if (!c) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); _exit(0); }
+    const char *why = grow_steps(c, pk, drop, &t);
+    if (why) api_log("drops: accept stopped at %s", why);
+    reply(q->fd, ask(c, Q("drops.grow_answer($1, $2, $3)"), 3, (const char *[]){pk, drop, why}));
+    PQfinish(c);
+    _exit(0);
+  }
   answer b = ask(db, Q("drops.publish_begin($1, $2, $3)"), 3, (const char *[]){pk, drop, env_or("OA_PUBLISH_VISIBILITY", "public")});
   if (b.status != 200) { free(b.body); free(b.all); reply(q->fd, ap); return; }
   char slug[80], state[24];
@@ -978,9 +1112,30 @@ bool drops_route(const request *q) {
     signin(q, db, pk);
     return true;
   }
+  if (!strcmp(rest, "adopt") && post) {
+    if (!signed_req || !publisher_on()) { api_json(q->fd, signed_req ? 503 : 401, "{\"error\":\"sign with the project's own key\"}"); return true; }
+    adopt(q, db, pk);
+    return true;
+  }
+  if (!strncmp(rest, "home/", 5) && !post) {   // home/SLUG/PUBKEY: may this viewer drop on that project?
+    char slug[81] = "", ppk[65] = "";
+    if (sscanf(rest + 5, "%80[a-z0-9-]/%64[0-9a-f]", slug, ppk) != 2 || strlen(ppk) != 64) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return true; }
+    reply(q->fd, ask(db, Q("drops.home_for($1, $2::bool, $3, $4)"), 4, (const char *[]){pk, admin ? "true" : "false", slug, ppk}));
+    return true;
+  }
   if (!strcmp(rest, "me") && !post) { reply(q->fd, ask(db, Q("drops.me($1, $2::bool)"), 2, (const char *[]){pk, admin ? "true" : "false"})); return true; }
   if (!*rest) {
-    if (post) reply(q->fd, ask(db, Q("drops.new_drop($1, $2::bool)"), 2, (const char *[]){pk, admin ? "true" : "false"}));
+    if (post) {
+      char *body = malloc(q->body_len + 3);
+      if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+      if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
+      PGresult *ok = PQexecParams(db, "SELECT jsonb_typeof($1::jsonb) = 'object'", 1, NULL, (const char *[]){body}, NULL, NULL, 0);
+      bool obj = PQresultStatus(ok) == PGRES_TUPLES_OK && PQgetvalue(ok, 0, 0)[0] == 't';
+      PQclear(ok);
+      if (obj) reply(q->fd, ask(db, Q("drops.new_drop($1, $2::bool, $3::jsonb)"), 3, (const char *[]){pk, admin ? "true" : "false", body}));
+      else api_json(q->fd, 400, "{\"error\":\"a JSON object\"}");
+      free(body);
+    }
     else reply(q->fd, ask(db, Q("drops.list($1)"), 1, (const char *[]){pk}));
     return true;
   }

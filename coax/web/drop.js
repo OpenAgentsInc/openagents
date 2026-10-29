@@ -1,11 +1,15 @@
 const STATE_KIND = 40, VIEWER_KIND = 3, REVIEW_KIND = 41, VALUE_KIND = 42;
 const ACT_PICK = 20, ACT_SIGNIN = 22, ACT_DRAFT = 23, ACT_EDIT = 24, ACT_SAVE = 25, ACT_PUBLISH = 26, ACT_DISCARD = 27;
 const PARALLEL = 3;
+// A drop on a project (/projects?add=SLUG&key=KEY#new, from its page's ADD TO PROJECT) grows it: the
+// draft is proposals for it (rc-later-drops), reviewed as a new project's draft is and ACCEPTed.
+const GROW_SECTIONS = [["card", 0, "WHAT IT ADDS"], ["mechanics", 0, "NEW MECHANICS"], ["design", 0, "DESIGN NOTES"], ["roadmap", 1, "PROPOSED WORK"],
+  ["engine_needs", 1, "ENGINE NEEDS"], ["assets", 1, "ASSETS"], ["to_make", 1, "TO MAKE"]];
 const SECTIONS = [["card", 0, "CARD"], ["mechanics", 0, "MECHANICS"], ["design", 0, "DESIGN"], ["roadmap", 1, "ROADMAP"],
   ["engine_needs", 1, "ENGINE NEEDS"], ["assets", 1, "ASSETS"], ["to_make", 1, "TO MAKE"]];
 const NAMES = { name: "Name", line: "One line", owner: "Owner", slug: "Slug", cover: "Cover", art_direction: "Art direction",
   markdown: "Design document", open_questions: "Open question", initiative: "Initiative", title: "Title", body: "Body",
-  size: "Size", acceptance: "Check", mechanics: "Mechanic", needs: "Needs", why: "Why", reuses: "Reuses an engine task",
+  size: "Size", acceptance: "Check", mechanics: "Mechanic", needs: "Needs", existing: "Adds to a milestone it has", why: "Why", reuses: "Reuses an engine task",
   file: "File", kind: "Kind", licence: "Licence", use: "Use", milestones: "Milestone", tasks: "Task", engine_needs: "Engine need",
   assets: "Asset", to_make: "To make" };
 const ORDER = ["name", "title", "slug", "line", "owner", "size", "file", "kind", "licence", "use", "why", "reuses", "cover",
@@ -14,8 +18,14 @@ const ONE = { open_questions: "an open question", acceptance: "a check", mechani
 const named = (k) => NAMES[k] || String(k).replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 const ordered = (o) => Object.keys(o).sort((a, b) => ((ORDER.indexOf(a) + 1 || 99) - (ORDER.indexOf(b) + 1 || 99)) || a.localeCompare(b));
 
+function target() {
+  const q = new URLSearchParams(location.search), slug = q.get("add") || "", key = q.get("key") || "";
+  return /^[a-z0-9-]{1,80}$/.test(slug) && /^[0-9a-f]{64}$/.test(key) ? { slug, key, name: slug.replace(/-/g, " "), member: true } : null;
+}
+
 export function startDrops({ send }) {
-  const files = [];
+  const files = [], add = target();
+  const blocked = () => !!add && !add.member;   // signed in, but not one of the project's members
   let signed = "", dragging = false, dropId = "", making = null, depth = 0, note = "", draft = null, resumed = false;
   let fields = [], reviewNote = "", reviewState = "";
   const picker = Object.assign(document.createElement("input"), { type: "file", multiple: true });
@@ -25,7 +35,7 @@ export function startDrops({ send }) {
   const signer = () => !!(globalThis.nostr && typeof globalThis.nostr.signEvent === "function");
 
   function push() {
-    const lines = [`S|${signed ? 1 : 0}|${signer() ? 1 : 0}|${dragging ? 1 : 0}|${clean(note)}`];
+    const lines = [`S|${signed ? (blocked() ? 2 : 1) : 0}|${signer() ? 1 : 0}|${dragging ? 1 : 0}|${clean(note)}|${add ? clean(add.name).slice(0, 80) : ""}`];
     for (const f of files.slice(-40)) lines.push(`F|${clean(f.name).slice(0, 80)}|${f.kind}|${f.bytes}|${f.permille}|${f.status}|${clean(f.note).slice(0, 60)}`);
     if (draft) lines.push(draftLine(draft));
     send(STATE_KIND, lines.join("\n"));
@@ -57,10 +67,12 @@ export function startDrops({ send }) {
       } else if (typeof v === "boolean") row(col, "B", label, path, v ? "yes" : "no");
       else if (typeof v === "string") row(col, "T", label, path, v);
     };
-    for (const [key, col, title] of SECTIONS) {
+    const grows = !!d.grow;
+    for (const [key, col, title] of grows ? GROW_SECTIONS : SECTIONS) {
       if (d[key] === undefined) continue;
       row(col, "H", title, null, "");
-      walk(col, d[key], [key], named(key));
+      // what a drop grows is the project's own: only what it adds is the member's to change
+      walk(col, grows && key === "card" ? { line: d.card.line } : d[key], [key], named(key));
     }
     return out;
   }
@@ -69,7 +81,7 @@ export function startDrops({ send }) {
     const d = draft?.draft;
     fields = d && draft.status === "ready" ? flatten(d) : [];
     const state = reviewState || (draft?.published ? "published" : draft?.approved ? "approved" : "ready");
-    const lines = [`V|${state}|${draft?.edits || 0}|${clean(reviewNote).slice(0, 160)}|${clean(d?.card?.name).slice(0, 80)}`];
+    const lines = [`V|${state}|${draft?.edits || 0}|${clean(reviewNote).slice(0, 160)}|${clean(d?.card?.name).slice(0, 80)}|${d?.grow ? 1 : 0}`];
     let room = 60000;
     for (const f of fields) {
       const line = `R|${f.col}|${f.kind}|${clean(f.label).slice(0, 90)}|${clean(f.value).slice(0, 140)}${f.value.length > 140 ? "..." : ""}`;
@@ -103,7 +115,11 @@ export function startDrops({ send }) {
     try {
       const [s, x] = await post(`/api/drops/${dropId}/${what}`, {});
       if (s !== 200) reviewNote = x.error || "refused";
-      else if (what === "publish") { draft = x; if (x.published) reviewNote = `Live at openagents.com${x.published.page}`; }
+      else if (what === "publish") {
+        draft = x;
+        if (x.published?.added !== undefined) reviewNote = `Added to openagents.com${x.published.page}: ${x.published.added} new ${x.published.added === 1 ? "task" : "tasks"}`;
+        else if (x.published) reviewNote = `Live at openagents.com${x.published.page}`;
+      }
       else { dropId = ""; draft = null; files.length = 0; reviewState = "discarded"; pushReview(); reviewState = ""; push(); return; }
     } catch { reviewNote = "no answer"; }
     pushReview(); push();
@@ -119,7 +135,7 @@ export function startDrops({ send }) {
     resumed = true;
     try {
       const list = await get("/api/drops");
-      const open = list?.drops?.find((d) => (d.status === "open" || d.status === "approved") && d.files > 0);
+      const open = list?.drops?.find((d) => (d.status === "open" || d.status === "approved") && d.files > 0 && (d.project || "") === (add?.slug || ""));
       if (!open || dropId) return;
       dropId = open.id;
       const d = await get(`/api/drops/${open.id}`);
@@ -148,6 +164,13 @@ export function startDrops({ send }) {
       const j = r.ok ? await r.json() : null;
       signed = j && j.may ? j.pubkey : "";
       note = j && !j.may ? "this key may not drop files yet" : "";
+      if (signed && add) {
+        const h = await fetch(`/api/drops/home/${add.slug}/${add.key}`, { credentials: "same-origin", cache: "no-store" });
+        const k = await h.json().catch(() => ({}));
+        if (h.ok) { add.name = k.name || add.name; add.member = !!k.member; }
+        else add.member = false;
+        if (!add.member) note = h.ok ? `Only ${add.name}'s members add to it.` : (k.error || "This project doesn't take drops yet.");
+      }
     } catch { signed = ""; }
     if (signed) send(VIEWER_KIND, signed);
     push();
@@ -168,7 +191,7 @@ export function startDrops({ send }) {
   }
 
   function take(list) {
-    if (!signed) return;
+    if (!signed || blocked()) return;
     for (const file of list) files.push({ file, name: file.name, kind: "", bytes: file.size, permille: 0, status: "queued", note: "" });
     push();
     pump();
@@ -182,7 +205,7 @@ export function startDrops({ send }) {
 
   function ensureDrop() {
     if (dropId) return Promise.resolve(dropId);
-    making ||= post("/api/drops", {}).then(([s, j]) => { making = null; if (s !== 200) throw new Error(j.error || "no drop"); return (dropId = j.id); });
+    making ||= post("/api/drops", add ? { project: add.slug, pubkey: add.key } : {}).then(([s, j]) => { making = null; if (s !== 200) throw new Error(j.error || "no drop"); return (dropId = j.id); });
     return making;
   }
 
@@ -213,7 +236,7 @@ export function startDrops({ send }) {
   }
 
   function pump() {
-    if (!signed) return;
+    if (!signed || blocked()) return;
     let busy = files.filter((f) => f.status === "uploading" || f.status === "scanning" || f.status === "starting").length;
     for (const f of files) {
       if (busy >= PARALLEL) break;

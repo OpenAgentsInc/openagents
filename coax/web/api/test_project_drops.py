@@ -84,7 +84,7 @@ class FakeGcs(http.server.BaseHTTPRequestHandler):
 
 # rc-publish: a relay that asks for AUTH, checks each event's id against its NIP-01 serialization and keeps it.
 import base64 as b64mod, hashlib, socketserver, struct
-pub_relay = {"events": [], "auth": []}
+pub_relay = {"events": [], "auth": [], "reqs": []}
 
 
 class FakeRelay(socketserver.BaseRequestHandler):
@@ -124,6 +124,16 @@ class FakeRelay(socketserver.BaseRequestHandler):
                 if h[0] & 0x0F == 8:
                     return
                 msg = json.loads(data)
+                if msg[0] == "CLOSE":
+                    continue
+                if msg[0] == "REQ":   # rc-later-drops: the project's work, as a relay answers a filter
+                    f = msg[2]
+                    pub_relay["reqs"].append(f)
+                    for e in pub_relay["events"]:
+                        if e["pubkey"] in f.get("authors", [e["pubkey"]]) and e["kind"] in f.get("kinds", [e["kind"]]):
+                            self.frame(json.dumps(["EVENT", msg[1], e]))
+                    self.frame(json.dumps(["EOSE", msg[1]]))
+                    continue
                 ev = msg[1]
                 serial = json.dumps([0, ev["pubkey"], ev["created_at"], ev["kind"], ev["tags"], ev["content"]], separators=(",", ":"), ensure_ascii=False)
                 ok = hashlib.sha256(serial.encode()).hexdigest() == ev["id"] and len(ev["sig"]) == 128 and h[1] & 0x80
@@ -498,6 +508,97 @@ def realm_checks():
           and "broken.glb" in sql("SELECT realm_note FROM drops.projects WHERE slug = 'lantern-garden'"))
 
 realm_checks()
+
+
+# rc-later-drops: a second drop on a project proposes changes; ACCEPT signs them with its key and updates the page.
+def grow_checks():
+    # a project made by hand gives the service its key, signed with that key
+    hand_key = admin_key + ".hand"
+    hand_pk = subprocess.run([os.environ["SIGN"], "--new", hand_key], capture_output=True, text=True, check=True).stdout.strip()
+    hand_hex = open(hand_key).read().strip()
+    body = {"slug": "hand-villa", "name": "Hand Villa", "key": hand_hex, "members": [sql("SELECT owner FROM drops.projects WHERE slug = 'moon-villa'")]}
+    check("grow: adopting a key takes a call signed by that key", dcall("POST", "/api/drops/adopt", body, keyfile=stranger_key, origin=False)[0] == 403)
+    status, adopted, _ = dcall("POST", "/api/drops/adopt", body, keyfile=hand_key, origin=False)
+    check("grow: a hand-made project gives the service its key, kept only sealed with its members",
+          status == 200 and adopted == {"slug": "hand-villa", "pubkey": hand_pk, "members": 1}
+          and len(sql("SELECT key_sealed FROM drops.homes WHERE slug = 'hand-villa'")) == 120
+          and sql(f"SELECT count(*) FROM drops.homes WHERE key_sealed LIKE '%{hand_hex}%' OR name LIKE '%{hand_hex}%'") == "0", (status, adopted))
+    check("grow: the key is in no log", hand_hex not in open(os.environ["API_LOG"]).read() if os.environ.get("API_LOG") else True)
+    check("grow: the drop area knows the project and who may drop on it",
+          dcall("GET", f"/api/drops/home/hand-villa/{hand_pk}", cookie=mjar)[1] == {"slug": "hand-villa", "name": "Hand Villa", "member": False}
+          and dcall("GET", f"/api/drops/home/hand-villa/{hand_pk}", cookie=jar)[1]["member"] is True
+          and dcall("GET", f"/api/drops/home/hand-villa/{'0' * 64}", cookie=jar)[0] == 404)
+    check("grow: only the project's members drop on it",
+          dcall("POST", "/api/drops", {"project": "hand-villa", "pubkey": hand_pk}, cookie=mjar)[0] == 403
+          and dcall("POST", "/api/drops", {"project": "hand-villa", "pubkey": "00" * 32}, cookie=jar)[0] == 404)
+    # a second drop on Moon Villa (published from the first drop above, its key sealed here)
+    pk = sql("SELECT pubkey FROM drops.projects WHERE slug = 'moon-villa'")
+    before = list(pub_relay["events"])
+    ini, mil, task = [e for e in before if e["kind"] == 1621 and e["pubkey"] == pk][:3]
+    mil_slug = [t[1] for t in mil["tags"] if t[0] == "slug"][0]
+    status, g, _ = dcall("POST", "/api/drops", {"project": "moon-villa", "pubkey": pk}, cookie=jar)
+    check("grow: the project's maintainer opens a drop on it", status == 200 and g["project"] == "moon-villa" and g["name"] == "Moon Villa", g)
+    gd = g["id"]
+    check("grow: the drop says which project it grows", [x for x in dcall("GET", "/api/drops", cookie=jar)[1]["drops"] if x["id"] == gd][0]["project"] == "moon-villa")
+    more_notes = b"# Fireflies\n\nAt dusk fireflies rise over the flowers. A night market opens by the gate.\n"
+    status, added, _ = dcall("POST", f"/api/drops/{gd}/files", {"name": "Dusk notes.md", "bytes": len(more_notes)}, cookie=jar)
+    put(added["upload"], more_notes)
+    dcall("POST", f"/api/drops/{gd}/files/{added['file']['id']}/done", {}, cookie=jar)
+    acc = lambda t: [t]
+    bucket["draft"] = {"card": {"line": "Fireflies at dusk and a night market."}, "mechanics": ["Fireflies rise at dusk"],
+        "design": {"markdown": "# Fireflies\n\nAt dusk fireflies rise over the flowers.", "open_questions": ["How many fireflies?"]},
+        "roadmap": {"milestones": [
+            {"slug": mil_slug, "existing": True, "title": "", "body": "", "tasks": [
+                {"slug": "fireflies", "title": "Fireflies at dusk", "body": "They rise over the flowers.", "size": "M",
+                 "acceptance": acc("Wait for dusk: fireflies rise over the flowers"), "mechanics": ["Fireflies rise at dusk"], "needs": ["verse:verse-particles"]}]},
+            {"slug": "night-market", "existing": False, "title": "The night market", "body": "Stalls by the gate.", "tasks": [
+                {"slug": "t", "title": "Market stalls", "body": "Stalls light up.", "size": "S",
+                 "acceptance": acc("Walk to the gate at night: stalls are lit"), "mechanics": [], "needs": []}]}]},
+        "assets": [{"file": "Dusk notes.md", "kind": "document", "licence": "unknown: ask the owner", "use": "design"}],
+        "to_make": [], "engine_needs": []}
+    n_asked = len(bucket["asked"])
+    status, drafted, _ = dcall("POST", f"/api/drops/{gd}/draft", {}, cookie=jar)
+    asked = bucket["asked"][-1] if len(bucket["asked"]) > n_asked else {}
+    prompt = asked.get("systemInstruction", {}).get("parts", [{}])[0].get("text", "")
+    check("grow: the model reads the drop with the project's work as the relay has it now",
+          "The project: Moon Villa (moon-villa)" in prompt and f"milestone {mil_slug}: " in prompt and "  task t: " in prompt and "[open]" in prompt
+          and asked["generationConfig"]["responseSchema"]["properties"]["roadmap"]["properties"]["milestones"]["items"]["properties"]["existing"]["type"] == "BOOLEAN"
+          and pub_relay["reqs"] and pub_relay["reqs"][-1]["authors"] == [pk], prompt[-600:])
+    check("grow: the proposals are kept as a draft for the project, named for it",
+          status == 200 and drafted["status"] == "ready" and drafted["draft"]["grow"] == {"project": "moon-villa", "pubkey": pk}
+          and drafted["draft"]["card"]["name"] == "Moon Villa", drafted)
+    E = f"/api/drops/{gd}/draft/edit"
+    check("grow: the member changes a proposal", dcall("POST", E, {"path": ["roadmap", "milestones", "1", "tasks", "0", "title"], "value": "Lit market stalls"}, cookie=jar)[0] == 200)
+    check("grow: and can't touch what it grows", dcall("POST", E, {"path": ["grow", "project"], "value": "coax"}, cookie=jar)[0] == 400)
+    status, acc_, _ = dcall("POST", f"/api/drops/{gd}/publish", {}, cookie=jar)
+    check("grow: ACCEPT adds them to the project", status == 200 and acc_["published"] == {"slug": "moon-villa", "page": "/projects/moon-villa", "added": 3}, acc_)
+    new = pub_relay["events"][len(before):]
+    kinds = [e["kind"] for e in new]
+    tag = lambda e, n: [t for t in e["tags"] if t[0] == n]
+    check("grow: tasks, a milestone, the design notes and the order, signed by the project's key", kinds == [1621, 1621, 1621, 1111, 30623]
+          and all(e["pubkey"] == pk for e in new), kinds)
+    if kinds == [1621, 1621, 1621, 1111, 30623]:
+        ff, ms, st, note, order = new
+        check("grow: a task for a milestone the project has hangs from it; a new milestone from the initiative",
+              tag(ff, "parent") == [["parent", mil["id"]]] and ["t", "needs-verse"] in ff["tags"] and "## Acceptance\n\n- Wait for dusk" in ff["content"]
+              and tag(ms, "parent") == [["parent", ini["id"]]] and ["t", "milestone"] in ms["tags"] and tag(st, "parent") == [["parent", ms["id"]]]
+              and tag(st, "slug") == [["slug", "t-2"]] and tag(st, "subject") == [["subject", "Lit market stalls"]]
+              and tag(ff, "a") == tag(task, "a"), (ff["tags"], ms["tags"], st["tags"]))
+        check("grow: the design notes are a comment on the project",
+              tag(note, "A") == [["A", f"30621:{pk}:moon-villa", "wss://relay.openagents.com"]] and tag(note, "K") == [["K", "30621"]]
+              and note["content"].startswith("# Fireflies") and "## Open questions\n\n- How many fireflies?" in note["content"], note)
+        check("grow: the order keeps every rank and puts the new issues after them",
+              [t[1:] for t in tag(order, "item")] == [[ini["id"], "11"], [mil["id"], "12"], [task["id"], "13"], [ff["id"], "1311"], [ms["id"], "1312"], [st["id"], "1313"]]
+              and tag(order, "d") == [["d", "moon-villa"]], order["tags"])
+    gfiles = [k for k in bucket["site"] if k.startswith("projects/moon-villa/files/dusk-notes-")]
+    check("grow: the drop's files go next to the project's page", len(gfiles) == 1 and bucket["site"][gfiles[0]]["data"] == more_notes, gfiles)
+    n = len(pub_relay["events"])
+    status, again, _ = dcall("POST", f"/api/drops/{gd}/publish", {}, cookie=jar)
+    check("grow: ACCEPT again signs nothing twice", status == 200 and len(pub_relay["events"]) == n and again["published"]["added"] == 3, again)
+    check("grow: a drop on a project isn't read as a new project", sql(f"SELECT (drops.draft_start((SELECT owner FROM drops.drops WHERE id = '{gd}'), '{gd}', 'b')->>'status')") == "409")
+
+
+grow_checks()
 status, _, oh = dcall("POST", "/api/drops/signout", {}, cookie=jar)
 check("drops: signing out ends the session", status == 200 and "Max-Age=0" in oh.get("Set-Cookie", "") and dcall("GET", "/api/drops/me", cookie=jar)[0] == 401)
 gcs_server.shutdown()

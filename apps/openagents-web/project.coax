@@ -404,6 +404,8 @@ Work :: struct {
   slug: string; name: string; description: string; license: string; path: string; repo: string;
   owner: string;              // who owns it (project.json owner), the header says
   realm: string;              // its first realm's page (the 30621's realm tag, a project made from a drop), or ""
+  add: string;                // where a member drops more on it (/projects' drop area for this project), or ""
+  add_buf: [192] u8;
   dstart: [MAX_ITEMS] int;    // each row's line in details (index_details), or -1
   dlines: int;                // the lines in details
   links: string;              // WORK_LINKS: alias | needs or by | project d | its alias | its status | its title
@@ -1029,6 +1031,8 @@ header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, w: [] Work) -> int 
   // a project made from a drop: its first realm, at the right of the crumbs
   rb := realm_box(w, b, d);
   if rb.x1 > rb.x0 { v = put(out, v, realm_label(w, b, d), rb.x0, b.y0 + 22 * d, 7 * d, orange); }
+  ab := add_box(w, b, d);
+  if ab.x1 > ab.x0 { v = put(out, v, add_label(w, b, d), ab.x0, b.y0 + 22 * d, 7 * d, orange); }
   title := 26 * d;
   // a long name shrinks to fit a phone's width (PLANETARY VILLA)
   room := right - x;
@@ -2151,9 +2155,39 @@ realm_box :: (w: [] Work, b: Box, d: f32) -> Box {
   return Box.{x0 = right - text_width(realm_label(w, b, d), 7 * d), y0 = b.y0 + 10 * d, x1 = right, y1 = b.y0 + 27 * d};
 }
 
+// The header's door for a member to drop more on the project (rc-later-drops): ADD TO PROJECT opens
+// /projects' drop area for it, left of the realm's link; ADD where there's less room, none on the
+// narrowest screens.
+add_label :: (w: [] Work, b: Box, d: f32) -> string {
+  crumbs := text_width("OPENAGENTS / PROJECTS /", 7 * d) + SPACE * 7 * d + text_width(w[0].name, 7 * d);
+  rb := realm_box(w, b, d);
+  right := ifx rb.x1 > rb.x0 then rb.x0 - 18 * d else b.x1 - 18 * d;
+  long := "ADD TO PROJECT";
+  if b.x0 + 18 * d + crumbs + 24 * d + text_width(long, 7 * d) <= right { return long; }
+  return ifx b.x0 + 18 * d + crumbs + 24 * d + text_width("ADD", 7 * d) <= right then "ADD" else "";
+}
+add_box :: (w: [] Work, b: Box, d: f32) -> Box {
+  label := add_label(w, b, d);
+  if w[0].add.count == 0 || label.count == 0 { return Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
+  rb := realm_box(w, b, d);
+  right := ifx rb.x1 > rb.x0 then rb.x0 - 18 * d else b.x1 - 18 * d;
+  return Box.{x0 = right - text_width(label, 7 * d), y0 = b.y0 + 10 * d, x1 = right, y1 = b.y0 + 27 * d};
+}
+// "/projects?add=SLUG&key=KEY#new" for a project whose key and slug the page knows.
+set_add :: (w: [] Work, slug: string, key: string) {
+  w[0].add = "";
+  if key.count != 64 || slug.count == 0 || slug.count > 80 { return; }
+  for i: 0..<slug.count { c := slug[i]; if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return; } }
+  n := put_text(w[0].add_buf[..], 0, "/projects?add="); n += put_text(w[0].add_buf[..], n, slug);
+  n += put_text(w[0].add_buf[..], n, "&key="); n += put_text(w[0].add_buf[..], n, key); n += put_text(w[0].add_buf[..], n, "#new");
+  w[0].add = cast(string) w[0].add_buf[0..<n];
+}
+
 click :: (s: [] ProjectState, w: [] Work, x: f32, y: f32) -> bool {
   rb := realm_box(w, layout(s[0].width, s[0].height, hi(s[0].dpr, 1)).header, hi(s[0].dpr, 1));
   if rb.x1 > rb.x0 && inside(rb, x, y) { s[0].action = ACT_NAVIGATE; s[0].out_n = put_text(s[0].outbox[..], 0, w[0].realm); return true; }
+  ab := add_box(w, layout(s[0].width, s[0].height, hi(s[0].dpr, 1)).header, hi(s[0].dpr, 1));
+  if ab.x1 > ab.x0 && inside(ab, x, y) { s[0].action = ACT_NAVIGATE; s[0].out_n = put_text(s[0].outbox[..], 0, w[0].add); return true; }
   go := crumb_at(s, x, y);
   if go.count > 0 { s[0].action = ACT_NAVIGATE; s[0].out_n = put_text(s[0].outbox[..], 0, go); return true; }
   if s[0].open > 0 {
@@ -2247,6 +2281,8 @@ coaxial_project_cursor :: (s: [] ProjectState, w: [] Work) -> int #export_c {
   if crumb_at(s, x, y).count > 0 { return 1; }
   rb := realm_box(w, layout(s[0].width, s[0].height, hi(s[0].dpr, 1)).header, hi(s[0].dpr, 1));
   if rb.x1 > rb.x0 && inside(rb, x, y) { return 1; }
+  ab := add_box(w, layout(s[0].width, s[0].height, hi(s[0].dpr, 1)).header, hi(s[0].dpr, 1));
+  if ab.x1 > ab.x0 && inside(ab, x, y) { return 1; }
   if s[0].open > 0 {
     if inside(s[0].close, x, y) || link_at(s, x, y) != -1 { return 1; }
     if inside(s[0].panel, x, y) { return 0; }
@@ -2371,6 +2407,7 @@ choose :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Live) {
     w[0].slug = live_slug(lv); w[0].name = live_slug(lv);
     grow(t, "");
   }
+  if s[0].page == 0 { set_add(w, w[0].slug, live_key(lv)); }
 }
 live_project_of :: (lv: [] Live, b: Baked) -> bool {
   buf: [160] u8;
@@ -2786,6 +2823,37 @@ within :: (out: [] f32, from: int, to: int, b: Box, d: f32) -> bool {
     if k == 0 { #assert coaxial_project_cursor(s[..], wk[..]) == 1; }
     #assert click(s[..], wk[..], s[0].px, s[0].py) && s[0].action == ACT_NAVIGATE;
     #assert same(cast(string) s[0].outbox[0..<s[0].out_n], "/projects/lantern-garden/realm");
+  }
+}
+
+#test "a member adds to a project from its header: ADD TO PROJECT opens the drop area for it" {
+  key := "f841614afa0210523f6f4038fe85ce7d83cacdc2098ba60d63128f064088e0a7";
+  sizes := [4] f32.[1440, 900, 390, 844];
+  for k: 0..<2 {
+    w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
+    s: [1] ProjectState; wk: [1] Work;
+    s[0].width = w; s[0].height = h; s[0].dpr = 2; s[0].pointed = true;
+    wk[0].name = "PLANETARY VILLA";
+    hb := layout(w, h, 2).header;
+    set_add(wk[..], "planetary villa", key);
+    #assert wk[0].add.count == 0;
+    set_add(wk[..], "planetary-villa", "f8");
+    #assert wk[0].add.count == 0;
+    set_add(wk[..], "planetary-villa", key);
+    #assert same(wk[0].add, "/projects?add=planetary-villa&key=f841614afa0210523f6f4038fe85ce7d83cacdc2098ba60d63128f064088e0a7#new");
+    ab := add_box(wk[..], hb, 2);
+    #assert ab.x1 > ab.x0 && ab.x1 <= hb.x1 && ab.x0 > hb.x0 + 36 + text_width("OPENAGENTS / PROJECTS / PLANETARY VILLA", 14);
+    #assert same(add_label(wk[..], hb, 2), ifx k == 0 then "ADD TO PROJECT" else "ADD");
+    wk[0].realm = "/projects/planetary-villa/realm";
+    rb := realm_box(wk[..], hb, 2); ab = add_box(wk[..], hb, 2);
+    #assert ab.x1 <= ab.x0 || ab.x1 < rb.x0;   // left of the realm's link, or none
+    if k == 0 {
+      #assert ab.x1 > ab.x0;
+      s[0].px = (ab.x0 + ab.x1) * 0.5; s[0].py = (ab.y0 + ab.y1) * 0.5;
+      #assert coaxial_project_cursor(s[..], wk[..]) == 1;
+      #assert click(s[..], wk[..], s[0].px, s[0].py) && s[0].action == ACT_NAVIGATE;
+      #assert same(cast(string) s[0].outbox[0..<s[0].out_n], wk[0].add);
+    }
   }
 }
 

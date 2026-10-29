@@ -78,7 +78,15 @@ The aim is to manage everything on the website.
    realm live.
 5. **Grow.** Later drops on a project's page add to it: new assets, new
    design notes, new milestones. Each drop is turned into proposed changes
-   the owner accepts.
+   the owner accepts. Built: a member's ADD TO PROJECT on the project's page
+   opens the drop area for it (`/projects?add=<slug>&key=<pubkey>#new`); the
+   agent reads the drop with the project's work as the relay has it now and
+   proposes tasks (under milestones it has, or new ones), design notes and
+   assets; the member reviews them like a draft and ACCEPTs, and the site
+   signs them with the project's key (new issues, a design-notes comment,
+   the task order extended) so the page's live view shows them
+   (`coax/web/api/drops.c`, `0041_project_grow.sql`). A project made by hand
+   hands the site its key once with `bun coax/web/project/adopt.ts <slug>`.
 
 The steps to build Part 2 are tasks in the Verse project under "Realm
 creation from a drop" (https://openagents.com/projects/verse).

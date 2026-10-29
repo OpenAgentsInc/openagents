@@ -661,15 +661,21 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
   d := p.d; dr := draft_row(text); k := drop_layout(l, d, dr >= 0); b := k.panel;
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT); pale := ink(p, INK_PALE);
   signed := drop_flag(text, 1); signer := drop_flag(text, 2); dragging := drop_flag(text, 3);
-  v := titled(out, at, b, "NEW PROJECT", "", p);
+  // a drop on a project (its page's ADD TO PROJECT): S's sixth field is its name (rc-later-drops)
+  onto := ifx same(field(text, 0, 0), "S") then field(text, 0, 5) else "";
+  outsider := same(field(text, 0, 0), "S") && same(field(text, 0, 1), "2");   // signed in, not one of its members
+  v := titled(out, at, b, ifx onto.count > 0 then "ADD TO PROJECT" else "NEW PROJECT", onto, p);
   v = chip(out, v, "CLOSE", k.close.x0, k.close.y1 - 5 * d, FILTER_CAP * d, ifx hot == HIT_CLOSE then white else dim, p);
-  v = put_wrapped(out, v, "Drop design notes, voice memos, concept art, 3D models, textures and sounds. They stay private to you until you publish.",
+  v = put_wrapped(out, v, ifx onto.count > 0 then "Drop new notes, voice memos, art, models and sounds for it. We read them against its work and propose changes you accept or decline."
+                  else "Drop design notes, voice memos, concept art, 3D models, textures and sounds. They stay private to you until you publish.",
                   b.x0 + 26 * d, b.y0 + title_room(p) + 12 * d, 6.5 * d, dim, box_w(b) - 52 * d, 12 * d, 3);
   z := k.zone; cx := (z.x0 + z.x1) * 0.5; zw := box_w(z) - 24 * d; mid := (z.y0 + z.y1) * 0.5;
   dragging = dragging && signed;
   lit_zone := dragging || hot == HIT_ZONE;
   v = dashed(out, v, z, ifx lit_zone then orange else dim, ifx dragging then p.fade else (ifx hot == HIT_ZONE then 0.8 * p.fade else 0.45 * p.fade), d);
-  if dragging {
+  if outsider {
+    v = put_center(out, v, "ONLY ITS MEMBERS ADD TO IT", cx, mid - 14 * d, 12 * d, white, zw);
+  } else if dragging {
     v = put_center(out, v, "LET GO TO DROP", cx, mid + 6 * d, 16 * d, orange, zw);
   } else if !signed {
     v = put_center(out, v, "LOG IN TO DROP FILES", cx, mid - 22 * d, 12 * d, white, zw);
@@ -1066,6 +1072,8 @@ item_kind :: (line: string) -> u8 { f := field(line, 0, 2); return ifx f.count >
 item_col :: (line: string) -> int { return ifx same(field(line, 0, 1), "1") then 1 else 0; }
 editable :: (kind: u8) -> bool { return kind == 'T' || kind == 'B' || kind == 'A'; }
 review_state :: (s: [] ProjectsState) -> string { return field(review_line(s, 0), 0, 1); }
+// V's sixth field: 1 when the draft is proposals for a project a drop grows (rc-later-drops).
+review_grows :: (s: [] ProjectsState) -> bool { return same(field(review_line(s, 0), 0, 5), "1"); }
 review_approved :: (s: [] ProjectsState) -> bool { return same(review_state(s), "approved") || same(review_state(s), "published"); }
 
 index_review :: (s: [] ProjectsState) {
@@ -1165,23 +1173,27 @@ draw_review :: (out: [] f32, at: int, s: [] ProjectsState, l: Layout, p: Pen) ->
   d := p.d; k := review_layout(l, d); b := k.panel; hot := s[0].hot;
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT); pale := ink(p, INK_PALE);
   approved := review_approved(s);
-  v := titled(out, at, b, "REVIEW DRAFT", "", p);
+  grows := review_grows(s);
+  v := titled(out, at, b, ifx grows then "REVIEW CHANGES" else "REVIEW DRAFT", "", p);
   cap := FILTER_CAP * d;
   v = chip(out, v, "BACK", k.back.x0, k.back.y1 - 5 * d, cap, ifx hot == HIT_BACK then white else dim, p);
-  v = chip(out, v, "DISCARD", k.discard.x0, k.discard.y1 - 5 * d, cap, ifx hot == HIT_DISCARD || s[0].confirm == HIT_DISCARD then white else dim, p);
-  if !approved { v = chip(out, v, "PUBLISH", k.publish.x0, k.publish.y1 - 5 * d, cap, ifx hot == HIT_PUBLISH then white else orange, p); }
+  v = chip(out, v, ifx grows then "DECLINE" else "DISCARD", k.discard.x0, k.discard.y1 - 5 * d, cap, ifx hot == HIT_DISCARD || s[0].confirm == HIT_DISCARD then white else dim, p);
+  if !approved { v = chip(out, v, ifx grows then "ACCEPT" else "PUBLISH", k.publish.x0, k.publish.y1 - 5 * d, cap, ifx hot == HIT_PUBLISH then white else orange, p); }
   tx := b.x0 + 26 * d; ty := b.y0 + title_room(p) + 12 * d; tw := box_w(b) - 52 * d;
   note := field(review_line(s, 0), 0, 3);
   if s[0].confirm == HIT_PUBLISH {
-    v = put_fit(out, v, "Publish this project? Its key, page, roadmap and files go public.", tx, ty, 6.5 * d, white, tw);
+    v = put_fit(out, v, ifx grows then "Accept these changes? The project's key signs them and they go live on its page."
+                else "Publish this project? Its key, page, roadmap and files go public.", tx, ty, 6.5 * d, white, tw);
   } else if s[0].confirm == HIT_DISCARD {
-    v = put_fit(out, v, "Discard this drop? Its files leave the bucket and the draft is gone.", tx, ty, 6.5 * d, white, tw);
+    v = put_fit(out, v, ifx grows then "Decline them? The drop's files leave the bucket and the proposals are gone."
+                else "Discard this drop? Its files leave the bucket and the draft is gone.", tx, ty, 6.5 * d, white, tw);
   } else if approved && note.count == 0 {
     v = put_wrapped(out, v, "Queued to publish. Nothing is public until the publisher runs.", tx, ty, 6.5 * d, pale, tw, 11 * d, 2);
   } else if note.count > 0 {
     v = put_wrapped(out, v, note, tx, ty, 6.5 * d, pale, tw, 11 * d, 2);
   } else {
-    v = put_wrapped(out, v, ifx l.wide then "Click any field to change it. Nothing is public until you PUBLISH." else "Tap any field to change it. Nothing is public until you PUBLISH.",
+    v = put_wrapped(out, v, ifx grows then (ifx l.wide then "Click any field to change it. Nothing changes on the project until you ACCEPT." else "Tap any field to change it. Nothing changes on the project until you ACCEPT.")
+                    else (ifx l.wide then "Click any field to change it. Nothing is public until you PUBLISH." else "Tap any field to change it. Nothing is public until you PUBLISH."),
                     tx, ty, 6.5 * d, dim, tw, 11 * d, 2);
   }
   if s[0].confirm != 0 {
@@ -1825,6 +1837,30 @@ outbox_is :: (s: [] ProjectsState, text: string) -> bool { return same(cast(stri
     send_to(s[..], MSG_REVIEW, "V|discarded|0||\n");
     #assert !s[0].review_open && s[0].drop_open;
   }
+}
+
+#test "a drop on a project says whose it is, tells a non-member, and its review ACCEPTs or DECLINEs" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  s: [1] ProjectsState;
+  w := 2880.0f32; h := 1800.0f32;
+  s[0].drop_open = true;
+  drop_message(s[..], "S|0|0|0||Planetary Villa\n");
+  out_signed_out := projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true);
+  drop_message(s[..], "S|2|0|0|Only Planetary Villa's members add to it.|Planetary Villa\n");
+  nv := projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true);
+  #assert nv > 0 && nv != out_signed_out && on_canvas(out[..], nv, w, h, 2);
+  #assert !drop_flag(drops_of(s[..]), 1);   // not one of its members: nothing is taken
+  drop_message(s[..], "S|1|0|0||Planetary Villa\nF|dusk.md|document|20|1000|kept|\nD|ready|Planetary Villa|Fireflies.|1|1|1|1|0||0\n");
+  l := layout(w, h, 2);
+  dl := drop_layout(l, 2, true);
+  #assert tap(s[..], dl.review) && s[0].review_open;
+  send_to(s[..], MSG_REVIEW, "V|ready|0||Planetary Villa|1\nR|0|H|WHAT IT ADDS|\nR|0|T|Line|Fireflies at dusk.\nR|1|H|PROPOSED WORK|\nR|1|B|Adds to a milestone it has|yes\n");
+  #assert review_grows(s[..]) && review_items(s[..]) == 4;
+  nv = projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true);
+  #assert nv > 300 && on_canvas(out[..], nv, w, h, 2);
+  send_to(s[..], MSG_REVIEW, "V|ready|0||Moon Villa\nR|0|T|Name|Moon Villa\n");
+  #assert !review_grows(s[..]);
 }
 
 #test "a long review scrolls each column, and the editor takes a long text" {

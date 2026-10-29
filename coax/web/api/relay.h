@@ -17,6 +17,9 @@ typedef struct relay relay;
 relay *relay_open(const char *url, const unsigned char sk[32], char *err, size_t errcap);
 // Sends ["EVENT", event] and waits for the relay's OK for id; false with the reason in err.
 bool relay_send(relay *r, const char *event_json, const char *id, char *err, size_t errcap);
+// Sends ["REQ", sub, filter] and gathers the events until EOSE: a JSON array of them (malloc'd), or NULL
+// with the reason in err. filter is a NIP-01 filter object, already serialized.
+char *relay_query(relay *r, const char *filter_json, char *err, size_t errcap);
 void relay_close(relay *r);
 
 // Sealing a secret: AES-256-GCM under a 32-byte key given as 64 hex digits, with aad bound in.

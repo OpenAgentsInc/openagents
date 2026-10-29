@@ -356,6 +356,58 @@ bool relay_send(relay *r, const char *event_json, const char *id, char *err, siz
   return false;
 }
 
+// The raw text of a top-level array message's n-th element (an object or array): where it starts and its length.
+static bool element(const char *msg, int n, const char **at, size_t *len) {
+  int depth = 0, k = 0; bool in_str = false; const char *start = NULL;
+  for (const char *p = msg; *p; p++) {
+    if (in_str) { if (*p == '\\' && p[1]) p++; else if (*p == '"') in_str = false; continue; }
+    if (*p == '"') in_str = true;
+    else if (*p == '[' || *p == '{') { if (depth == 1 && k == n && !start) start = p; depth++; }
+    else if (*p == ']' || *p == '}') { depth--; if (depth == 1 && start) { *at = start; *len = (size_t)(p + 1 - start); return true; } }
+    else if (*p == ',' && depth == 1) k++;
+  }
+  return false;
+}
+
+char *relay_query(relay *r, const char *filter_json, char *err, size_t cap) {
+  size_t n = strlen(filter_json) + 32;
+  char *msg = malloc(n);
+  if (!msg) return NULL;
+  snprintf(msg, n, "[\"REQ\",\"q\",%s]", filter_json);
+  bool sent = frame_out(r, 0x1, msg, strlen(msg));
+  free(msg);
+  if (!sent) { fail(err, cap, "relay: cut off"); return NULL; }
+  size_t out_n = 1, out_cap = 4096;
+  char *out = malloc(out_cap);
+  if (!out) return NULL;
+  out[0] = '[';
+  long long deadline = now_ms() + WAIT_MS;
+  for (int guard = 0; guard < 20000; guard++) {
+    char *m = message_in(r, deadline), word[16], sub[16];
+    if (!m) { fail(err, cap, "relay: no EOSE"); free(out); return NULL; }
+    field(m, 0, word, sizeof word);
+    bool ours = field(m, 1, sub, sizeof sub) && !strcmp(sub, "q");
+    const char *ev; size_t len;
+    if (ours && !strcmp(word, "EVENT") && element(m, 2, &ev, &len)) {
+      if (out_n + len + 3 > out_cap) {
+        while (out_n + len + 3 > out_cap) out_cap *= 2;
+        char *grown = out_cap <= (64u << 20) ? realloc(out, out_cap) : NULL;
+        if (!grown) { free(m); free(out); fail(err, cap, "relay: too much"); return NULL; }
+        out = grown;
+      }
+      if (out_n > 1) out[out_n++] = ',';
+      memcpy(out + out_n, ev, len); out_n += len;
+    }
+    bool end = ours && (!strcmp(word, "EOSE") || !strcmp(word, "CLOSED"));
+    if (!strcmp(word, "AUTH")) field(m, 1, r->challenge, sizeof r->challenge);
+    free(m);
+    if (end) break;
+  }
+  frame_out(r, 0x1, "[\"CLOSE\",\"q\"]", 13);
+  out[out_n++] = ']'; out[out_n] = 0;
+  return out;
+}
+
 void relay_close(relay *r) {
   if (!r) return;
   if (r->tls) { SSL_shutdown(r->tls); SSL_free(r->tls); }
