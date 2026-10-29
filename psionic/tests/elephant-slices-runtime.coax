@@ -1,0 +1,127 @@
+// Owned original-weight slice entry. Each slice runs one part of the decision
+// path, exactly as qx_block composes it, over a handful of tokens: the
+// embedding gather, one bound layer from a fresh state, and a bounded chunk
+// of the vocabulary readout. C only maps files and moves bytes.
+#load "../lib/model-io/layer-map.coax";
+#load "../lib/qwen-rope.coax";
+EsStatus :: enum u8 {ok;shape;capacity;number;rope;layer;norm;projection;}
+EsResult :: struct {status:EsStatus;cause:int;written:int;}
+
+#test "embedding rows decode in token order and refuse unknown tokens" {
+    // bf16 1, 2, -2, 0.5 as rows of width 2 for a vocabulary of 2.
+    table:=[8]u8.[0x80,0x3f,0x00,0x40,0x00,0xc0,0x00,0x3f];
+    tokens:=[3]int.[1,0,1];out:=[7]f32.[-7,-7,-7,-7,-7,-7,-7];work:[2]f32;
+    r:=es_embed(table[..],2,tokens[..],out[..],work[..]);
+    #assert r.status==EsStatus.ok && r.written==6;
+    #assert out[0]==-2 && out[1]==0.5 && out[2]==1 && out[3]==2 && out[4]==-2 && out[5]==0.5 && out[6]==-7;
+    bad:=[1]int.[2];#assert es_embed(table[..],2,bad[..],out[..],work[..]).status==EsStatus.shape;
+    neg:=[1]int.[-1];#assert es_embed(table[..],2,neg[..],out[..],work[..]).status==EsStatus.shape;
+    #assert es_embed(table[..],0,tokens[..],out[..],work[..]).status==EsStatus.shape;
+    #assert es_embed(table[..],2,tokens[..],out[0..<5],work[..]).status==EsStatus.capacity;
+    #assert es_embed(table[0..<7],2,tokens[..],out[..],work[..]).status==EsStatus.shape;
+    nan:=[4]u8.[0xc0,0x7f,0x00,0x00];one:=[1]int.[0];
+    #assert es_embed(nan[..],2,one[..],out[..],work[..]).status==EsStatus.number;
+}
+
+es_embed :: (table:[]u8,width:int,tokens:[]int,out:[]f32,work:[]f32)->EsResult #export_c {
+    if width<1 || table.count%(2*width)!=0 {return EsResult.{status=EsStatus.shape};}
+    vocab:=table.count/(2*width);
+    for token:tokens {if token<0 || token>=vocab {return EsResult.{status=EsStatus.shape};}}
+    if out.count<tokens.count*width || work.count<width {return EsResult.{status=EsStatus.capacity};}
+    for t:0..<tokens.count {
+        begin:=tokens[t]*width*2;
+        v:=PaView.{dtype=PwDtype.bf16,data=table[begin..<begin+width*2],elements=width};
+        r:=pa_decode(v,out[t*width..<(t+1)*width],work[0..<width],false);
+        if r.status!=PwStatus.ok {return EsResult.{status=EsStatus.number,cause=cast(int)r.status};}
+    }
+    return EsResult.{written=tokens.count*width};
+}
+
+// The model shape restricted to one layer of the given kind, holding `count` tokens.
+es_layer_shape :: (s:QeShape,kind:u8,count:int)->QeShape {
+    r:=s;r.full.capacity=count;r.state.capacity=count;r.state.linear_layers=0;r.state.full_layers=0;
+    if kind==cast(u8)QeKind.linear {r.state.linear_layers=1;} else {r.state.full_layers=1;}
+    return r;
+}
+es_layer_work :: (s:QeShape,kind:u8,count:int)->int #export_c {
+    one:=es_layer_shape(s,kind,count);
+    return qp_total(one.state)+128*count+qe_layout(one,0,count).total;
+}
+
+#test "one layer runs from a fresh state at positions from zero" {
+    linear:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    full:=QhShape.{width=2,hidden=1,capacity=1,attention=QfShape.{heads=1,kv_heads=1,head_dim=64,rotary_dim=64,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=linear,full=full,state=QpShape.{linear_layers=24,full_layers=8,capacity=1,delta=linear.delta,attention=full.attention}};
+    zero:[512]u8;norm:[2]f32;qnorm:[64]f32;conv:[12]f32;scalar:[1]f32;gain:=[1]f32.[1];
+    lw:=QlWeights.{input_norm=norm[..],post_norm=norm[..],conv=conv[..],a_log=scalar[..],dt=scalar[..],delta_norm=gain[..],qkv=zero[0..<12],z=zero[0..<4],a=zero[0..<4],b=zero[0..<4],mixer_out=zero[0..<4],gate=zero[0..<4],up=zero[0..<4],down=zero[0..<4]};
+    fw:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=qnorm[..],k_norm=qnorm[..],q=zero[0..<512],k=zero[0..<256],v=zero[0..<256],mixer_out=zero[0..<256],gate=zero[0..<4],up=zero[0..<4],down=zero[0..<4]};
+    input:=[6]f32.[1,2,3,4,5,6];out:=[7]f32.[-7,-7,-7,-7,-7,-7,-7];
+    for kind:0..<2 {
+        layer:=QeLayer.{kind=cast(u8)kind,linear=lw,full=fw};
+        one:=es_layer_shape(shape,cast(u8)kind,3);
+        #assert one.state.capacity==3 && one.full.capacity==3 && one.state.linear_layers+one.state.full_layers==1;
+        #assert (one.state.linear_layers==1)==(kind==0);
+        need:=es_layer_work(shape,cast(u8)kind,3);work:[20000]f32;#assert need<=20000 && need>qp_total(one.state)+384;
+        for i:0..<work.count {work[i]=9;}
+        r:=es_layer(shape,layer,input[..],3,out[..],work[0..<need]);
+        // Zero weights leave only the residual path: the output is the input.
+        #assert r.status==EsStatus.ok && r.written==6;
+        for i:0..<6 {#assert out[i]==input[i];}
+        #assert out[6]==-7;
+        #assert es_layer(shape,layer,input[..],3,out[..],work[0..<need-1]).status==EsStatus.capacity;
+        #assert es_layer(shape,layer,input[0..<5],3,out[..],work[0..<need]).status==EsStatus.capacity;
+        #assert es_layer(shape,layer,input[..],3,out[0..<5],work[0..<need]).status==EsStatus.capacity;
+        #assert es_layer(shape,layer,input[..],0,out[..],work[0..<need]).status==EsStatus.shape;
+        #assert es_layer(shape,layer,input[..],65,out[..],work[0..<need]).status==EsStatus.shape;
+    }
+    bad:=QeLayer.{kind=2,linear=lw,full=fw};work:[20000]f32;
+    #assert es_layer(shape,bad,input[..],3,out[..],work[..]).status==EsStatus.layer;
+    small:=shape;small.full.attention.rotary_dim=2;small.full.attention.head_dim=2;small.state.attention=small.full.attention;
+    #assert es_layer(small,QeLayer.{kind=0,linear=lw,full=fw},input[..],3,out[..],work[..]).status==EsStatus.shape;
+}
+
+es_layer :: (s:QeShape,layer:QeLayer,input:[]f32,count:int,out:[]f32,work:[]f32)->EsResult #export_c {
+    if count<1 || count>64 || s.full.attention.rotary_dim!=64 {return EsResult.{status=EsStatus.shape};}
+    one:=es_layer_shape(s,layer.kind,count);d:=one.linear.width;
+    states:=qp_total(one.state);rope_at:=states;engine_at:=rope_at+128*count;total:=es_layer_work(s,layer.kind,count);
+    if input.count!=count*d || out.count<count*d || work.count<total {return EsResult.{status=EsStatus.capacity};}
+    state:=work[0..<states];for i:0..<states {state[i]=0;}
+    rope:=work[rope_at..<rope_at+64*count];
+    c:=qw_rope(0,count,rope,work[rope_at+64*count..<engine_at],false);
+    if c.status!=QwStatus.ok {return EsResult.{status=EsStatus.rope,cause=cast(int)c.status};}
+    layers:=[1]QeLayer.[layer];
+    r:=qe_block(one,layers[..],input,rope,0,count,state,out[0..<count*d],work[engine_at..<total],false);
+    if r.status!=QeStatus.ok {return EsResult.{status=EsStatus.layer,cause=cast(int)r.status};}
+    return EsResult.{written=r.written};
+}
+
+#test "a readout chunk is the final norm then rows of the head" {
+    // Two rows: logits are the normalized hidden against [1,0] and [0,-1].
+    head:=[8]u8.[0x80,0x3f,0,0,0,0,0x80,0xbf];hidden:=[2]f32.[3,4];scale:=[2]f32.[0,0];
+    logits:=[3]f32.[-7,-7,-7];work:[6]f32;
+    r:=es_readout(2,0.000001,hidden[..],scale[..],head[..],2,logits[..],work[..]);
+    #assert r.status==EsStatus.ok && r.written==2 && logits[2]==-7;
+    norm:[2]f32;nwork:[2]f32;#assert qb_begin(2,0.000001,hidden[..],scale[..],norm[..],nwork[..],false).status==QmStatus.ok;
+    #assert logits[0]==norm[0] && logits[1]==-norm[1] && logits[0]!=0;
+    #assert es_readout(2,0.000001,hidden[..],scale[..],head[..],2,logits[..],work[0..<5]).status==EsStatus.capacity;
+    #assert es_readout(2,0.000001,hidden[..],scale[..],head[..],2,logits[0..<1],work[..]).status==EsStatus.capacity;
+    #assert es_readout(2,0.000001,hidden[..],scale[..],head[0..<7],2,logits[..],work[..]).status==EsStatus.shape;
+    #assert es_readout(2,0.000001,hidden[0..<1],scale[..],head[..],2,logits[..],work[..]).status==EsStatus.shape;
+    #assert es_readout(2,0.000001,hidden[..],scale[0..<1],head[..],2,logits[..],work[..]).status==EsStatus.shape;
+    #assert es_readout(2,0.000001,hidden[..],scale[..],head[..],0,logits[..],work[..]).status==EsStatus.shape;
+    #assert es_readout(2,0.000001,hidden[..],scale[..],head[..],32769,logits[..],work[..]).status==EsStatus.shape;
+    nanhead:=[8]u8.[0xc0,0x7f,0,0,0,0,0x80,0xbf];
+    #assert es_readout(2,0.000001,hidden[..],scale[..],nanhead[..],2,logits[..],work[..]).status==EsStatus.projection;
+    #assert es_readout(0,0.000001,hidden[0..<0],scale[0..<0],head[0..<0],2,logits[..],work[..]).status==EsStatus.shape;
+}
+
+es_readout :: (width:int,epsilon:f32,hidden:[]f32,final_norm:[]f32,head:[]u8,rows:int,logits:[]f32,work:[]f32)->EsResult #export_c {
+    if width<1 || rows<1 || rows>32768 || hidden.count!=width || final_norm.count!=width || head.count!=rows*width*2 {return EsResult.{status=EsStatus.shape};}
+    if logits.count<rows || work.count<2*width+rows {return EsResult.{status=EsStatus.capacity};}
+    norm:=work[0..<width];
+    f:=qb_begin(width,epsilon,hidden,final_norm,norm,work[width..<2*width],false);
+    if f.status!=QmStatus.ok {return EsResult.{status=EsStatus.norm,cause=cast(int)f.status};}
+    p:=qm_project(QmDtype.bf16,rows,width,head,norm,logits[0..<rows],work[2*width..<2*width+rows],false);
+    if p.status!=QmStatus.ok {return EsResult.{status=EsStatus.projection,cause=cast(int)p.status};}
+    return EsResult.{written=rows};
+}
