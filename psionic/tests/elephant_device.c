@@ -245,7 +245,18 @@ int main(int argc, char **argv) {
     PcEvent filled[2], released[2], start, mid, end;
     for (int i = 0; i < 2; i++) { TRY(pc_event(&filled[i])); TRY(pc_event(&released[i])); }
     TRY(pc_event(&start)); TRY(pc_event(&mid)); TRY(pc_event(&end));
-    float *x = malloc((size_t)T * DP_WIDTH * 4), *rope = malloc((size_t)T * 64 * 4), *rope_work = malloc((size_t)T * 64 * 4), *logits = malloc(DP_VOCAB * 4);
+    /* Inputs and logits live in pinned memory, so a recorded replay can copy them. */
+    float *x, *rope, *logits, *rope_work = malloc((size_t)T * 64 * 4);
+    TRY(pc_host_alloc((size_t)T * DP_WIDTH * 4, (void **)&x));
+    TRY(pc_host_alloc((size_t)T * 64 * 4, (void **)&rope));
+    TRY(pc_host_alloc(DP_VOCAB * 4, (void **)&logits));
+    /* PSIONIC_DEVICE_REPLAY=1 records the decision's copies and launches once
+       and replays the recording for every run. */
+    const char *replay_env = getenv("PSIONIC_DEVICE_REPLAY");
+    int replay = replay_env && *replay_env == '1';
+    PcGraph graph = NULL;
+    PcEvent join, rejoin;
+    TRY(pc_event(&join)); TRY(pc_event(&rejoin));
     double probabilities[2], prob_work[2];
     coax_t_QrResult answer = {0};
     /* PSIONIC_DEVICE_PROFILE=1 times every launch of one extra run with events. */
@@ -263,6 +274,16 @@ int main(int argc, char **argv) {
         if (!dp_embed((coax_v_s64){tokens, T}, DP_WIDTH, session.model.embedding, (coax_v_f32){x, T * DP_WIDTH})) { fprintf(stderr, "embedding refused\n"); return 1; }
         coax_t_QwResult rr = qw_rope(0, T, (coax_v_f32){rope, T * 64}, (coax_v_f32){rope_work, T * 64}, 0);
         if (rr.status) { fprintf(stderr, "rope status %u\n", rr.status); return 1; }
+        if (replay && graph) {
+            TRY(pc_replay(graph, compute));
+            goto issued;
+        }
+        if (replay) {
+            TRY(pc_capture_begin(compute));
+            TRY(pc_record(join, compute));
+            TRY(pc_wait(copy, join));
+            for (int k = 0; k < 2; k++) TRY(pc_record(released[k], compute));
+        }
         TRY(pc_record(start, compute));
         TRY(pc_upload(workspace + (PcBuffer)dp_input_offset(T), x, (size_t)T * DP_WIDTH * 4, compute));
         TRY(pc_upload(workspace + (PcBuffer)dp_rope_offset(T), rope, (size_t)T * 64 * 4, compute));
@@ -296,13 +317,21 @@ int main(int argc, char **argv) {
         if (timed) TRY(pc_record(marks[plan.ops], compute));
         TRY(pc_download(logits, workspace + (PcBuffer)dp_logits_offset(T), DP_VOCAB * 4, compute));
         TRY(pc_record(end, compute));
+        if (replay) {
+            TRY(pc_record(rejoin, copy));
+            TRY(pc_wait(compute, rejoin));
+            TRY(pc_capture_end(compute, &graph));
+            TRY(pc_replay(graph, compute));
+        }
+    issued:
         TRY(pc_sync_stream(compute));
         int64_t slot_ids[2] = {qr_pinned_slot(0), qr_pinned_slot(1)};
         answer = qr_read(COAX_QrKind_choice, 1, (coax_v_f32){logits, DP_VOCAB}, (coax_v_s64){slot_ids, 2}, (coax_v_f64){probabilities, 2}, (coax_v_f64){prob_work, 2}, 0);
-        double total = now() - tr, device, inputs;
+        double total = now() - tr, device = 0, inputs = 0;
+        if (answer.status) { fprintf(stderr, "readout status %u\n", answer.status); return 1; }
+        if (replay) { printf("run %d: time to response %.1f ms (one recorded replay of %lld operations)\n", run + 1, total * 1e3, (long long)plan.ops); continue; }
         TRY(pc_event_seconds(mid, end, &device));
         TRY(pc_event_seconds(start, mid, &inputs));
-        if (answer.status) { fprintf(stderr, "readout status %u\n", answer.status); return 1; }
         if (!timed) { printf("run %d: time to response %.1f ms (device %.1f ms, input upload %.2f ms)\n", run + 1, total * 1e3, device * 1e3, inputs * 1e3); continue; }
         /* Per kernel, and per projection shape. */
         double per[DP_KERNELS] = {0}, shape_ms[64] = {0}, sum = 0;

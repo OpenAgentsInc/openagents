@@ -43,6 +43,12 @@ static struct {
     CUresult (*cuStreamCreate)(PcStream *, unsigned);
     CUresult (*cuStreamSynchronize)(PcStream);
     CUresult (*cuStreamDestroy)(PcStream);
+    CUresult (*cuStreamBeginCapture)(PcStream, int);
+    CUresult (*cuStreamEndCapture)(PcStream, void **);
+    CUresult (*cuGraphInstantiate)(void **, void *, unsigned long long);
+    CUresult (*cuGraphLaunch)(void *, PcStream);
+    CUresult (*cuGraphDestroy)(void *);
+    CUresult (*cuGraphExecDestroy)(void *);
     CUresult (*cuStreamWaitEvent)(PcStream, PcEvent, unsigned);
     CUresult (*cuEventCreate)(PcEvent *, unsigned);
     CUresult (*cuEventDestroy)(PcEvent);
@@ -109,6 +115,12 @@ static int load_cuda(void) {
     LOAD(g.cuda, cuStreamCreate, "cuStreamCreate");
     LOAD(g.cuda, cuStreamSynchronize, "cuStreamSynchronize");
     LOAD(g.cuda, cuStreamDestroy, "cuStreamDestroy_v2");
+    LOAD(g.cuda, cuStreamBeginCapture, "cuStreamBeginCapture_v2");
+    LOAD(g.cuda, cuStreamEndCapture, "cuStreamEndCapture");
+    LOAD(g.cuda, cuGraphInstantiate, "cuGraphInstantiateWithFlags");
+    LOAD(g.cuda, cuGraphLaunch, "cuGraphLaunch");
+    LOAD(g.cuda, cuGraphDestroy, "cuGraphDestroy");
+    LOAD(g.cuda, cuGraphExecDestroy, "cuGraphExecDestroy");
     LOAD(g.cuda, cuEventDestroy, "cuEventDestroy_v2");
     LOAD(g.cuda, cuStreamWaitEvent, "cuStreamWaitEvent");
     LOAD(g.cuda, cuEventCreate, "cuEventCreate");
@@ -284,3 +296,21 @@ PcStatus pc_launch_warps(PcKernel kernel, int64_t warps, int block, const PcArg 
 
 PcStatus pc_destroy_stream(PcStream stream) { return g.ready ? check(g.cuStreamDestroy(stream), "cuStreamDestroy") : PC_ABSENT; }
 PcStatus pc_destroy_event(PcEvent event) { return g.ready ? check(g.cuEventDestroy(event), "cuEventDestroy") : PC_ABSENT; }
+
+/* Record the work issued to `stream` (and to streams that join it through
+   events) without running it, then replay the recording as one launch. */
+PcStatus pc_capture_begin(PcStream stream) {
+    /* 2: CU_STREAM_CAPTURE_MODE_RELAXED */
+    return g.ready ? check(g.cuStreamBeginCapture(stream, 2), "cuStreamBeginCapture") : PC_ABSENT;
+}
+PcStatus pc_capture_end(PcStream stream, PcGraph *graph) {
+    if (!g.ready) return PC_ABSENT;
+    void *recorded = NULL;
+    PcStatus s = check(g.cuStreamEndCapture(stream, &recorded), "cuStreamEndCapture");
+    if (s) return s;
+    s = check(g.cuGraphInstantiate(graph, recorded, 0), "cuGraphInstantiate");
+    g.cuGraphDestroy(recorded);
+    return s;
+}
+PcStatus pc_replay(PcGraph graph, PcStream stream) { return g.ready ? check(g.cuGraphLaunch(graph, stream), "cuGraphLaunch") : PC_ABSENT; }
+PcStatus pc_graph_free(PcGraph graph) { return g.ready ? check(g.cuGraphExecDestroy(graph), "cuGraphExecDestroy") : PC_ABSENT; }

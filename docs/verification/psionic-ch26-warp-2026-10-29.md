@@ -82,6 +82,17 @@ Coax meaning of the MMA primitive; the per-word relative measure the harness
 prints is not meaningful for them because many partial sums are near zero, so
 they are qualified by the projection comparison above instead.
 
+## Recorded launch replay
+
+`PSIONIC_DEVICE_REPLAY=1` records the decision's 1,122 copies and launches
+once (CUDA stream capture through `pc_capture_begin`/`pc_capture_end`) and
+replays the recording for every run. It returned the same probabilities to
+every printed digit. Warm replays took 151.2-155.9 ms (first run, including
+the recording, 177.0 ms), measured while a compiler bootstrap loaded the CPU;
+direct launches took 145.8-148.8 ms on a quiet machine. The GPU is busy for
+nearly the whole decision, so launch overhead is not what limits it; replay is
+kept opt-in.
+
 ## Limits
 
 No shared memory or barriers yet: each warp reads its weight fragments from

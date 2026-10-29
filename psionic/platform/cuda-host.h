@@ -62,6 +62,13 @@ PcStatus pc_stream(PcStream *stream);
 PcStatus pc_event(PcEvent *event);
 PcStatus pc_destroy_stream(PcStream stream);
 PcStatus pc_destroy_event(PcEvent event);
+typedef void *PcGraph;
+/* Recorded launch replay: everything issued to `stream` between begin and end
+   (and to streams joined to it by events) becomes one replayable graph. */
+PcStatus pc_capture_begin(PcStream stream);
+PcStatus pc_capture_end(PcStream stream, PcGraph *graph);
+PcStatus pc_replay(PcGraph graph, PcStream stream);
+PcStatus pc_graph_free(PcGraph graph);
 PcStatus pc_record(PcEvent event, PcStream stream);
 PcStatus pc_wait(PcStream stream, PcEvent event);
 PcStatus pc_event_seconds(PcEvent start, PcEvent end, double *seconds);
