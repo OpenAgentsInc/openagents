@@ -358,6 +358,8 @@ struct WarpInfo {
 };
 WarpInfo g_warp;
 static bool is_mma_primitive(const ProcDecl *p) { return p && str_eq(p->name, "cu_mma_bf16_16x8x16"); }
+// Set while `coax metal-compute` emits: f64 is the float-float pair coax_ff.
+static bool g_metal_compute = false;
 
 namespace {
 
@@ -379,7 +381,7 @@ std::string c_type(Type t) {
   switch (t->kind) {
     case TypeKind::void_: return "void";
     case TypeKind::integer: return std::string(t->is_signed ? "int" : "uint") + std::to_string(t->bits) + "_t";
-    case TypeKind::floating: return t == &T_F32 ? "float" : "double";
+    case TypeKind::floating: return t == &T_F32 ? "float" : g_metal_compute ? "coax_ff" : "double";
     case TypeKind::bool_: return "_Bool";
     case TypeKind::string_: return "coax_string";
     default: return "coax_" + tag(t);
@@ -523,14 +525,34 @@ struct Emitter {
     return "(" + c + ")";
   }
 
+  // Device code: CUDA (coax cuda) or Metal (coax metal-compute).
+  bool device() const { return opts.cuda || opts.metal_compute; }
+  // The pointer type of a temporary holding the address of a place. Metal
+  // pointers name their address space: a view's elements are device memory,
+  // locals are thread memory.
+  std::string pointer_type(const Expr *place) {
+    if (!opts.metal_compute) return c_type(place->type) + " *";
+    const Expr *e = place;
+    bool space_device = false;
+    while (e && (e->kind == ExprKind::index || e->kind == ExprKind::field)) {
+      if (e->kind == ExprKind::index && e->lhs->type->kind == TypeKind::view) { space_device = true; break; }
+      e = e->lhs;
+    }
+    return std::string(space_device ? "device " : "thread ") + c_type(place->type) + " *";
+  }
   // C's math.h names, with the float variants for f32; Metal overloads.
   std::string math_name(const Expr *e) {
     std::string name = e->intrinsic == Intrinsic::abs ? "fabs" : to_std(e->text);
+    if (opts.metal_compute) {
+      if (e->type != &T_F32) return "coax_ff_" + to_std(e->text);  // exp, log, sqrt, floor, abs (admission)
+      if (e->intrinsic == Intrinsic::abs || e->intrinsic == Intrinsic::floor) return name;
+      return "precise::" + name;
+    }
     if (opts.metal) return e->intrinsic == Intrinsic::abs ? "abs" : name;
     return name + (e->type == &T_F32 ? "f" : "");
   }
   std::string proc_name(const ProcDecl *p) {
-    if (opts.cuda && p->export_c) return "coax_k_" + to_std(p->name);  // the kernel wrapper keeps the name
+    if (device() && p->export_c) return "coax_k_" + to_std(p->name);  // the kernel wrapper keeps the name
     return p->export_c || p->foreign ? to_std(p->name) : "coax_p_" + to_std(p->name);
   }
 
@@ -556,7 +578,7 @@ struct Emitter {
         continue;
       }
       if (o.lvalue) {
-        std::string t = new_temp(c_type(o.e->type) + " *");
+        std::string t = new_temp(pointer_type(o.e));
         prefix += t + " = &(" + ex(o.e) + "), ";
         texts.push_back("(*" + t + ")");
       } else {
@@ -570,7 +592,8 @@ struct Emitter {
   }
 
   std::string zero_value(Type t) {
-    if (opts.cuda && (t->kind == TypeKind::array || t->kind == TypeKind::view)) return c_type(t) + "{}";
+    if (device() && (t->kind == TypeKind::array || t->kind == TypeKind::view)) return c_type(t) + "{}";
+    if (opts.metal_compute && t == &T_F64) return "coax_ff_make(0.0f, 0.0f)";
     if (needs_init(t)) return "coax_init_" + tag(t) + "()";
     switch (t->kind) {
       case TypeKind::string_: return "COAX_STR(0, 0)";
@@ -636,6 +659,22 @@ struct Emitter {
     std::string x = ex(e->lhs), line = std::to_string(e->loc.line);
     if (from == to) return x;
     if (to == &T_STRING) return "coax_string_of_bytes(" + x + ")";
+    if (opts.metal_compute && is_float(to)) {
+      if (to == &T_F32 && from == &T_F64) return "coax_ff_to_f32(" + x + ", " + line + ")";
+      if (to == &T_F64) {
+        if (from == &T_F32) return "coax_ff_from_f32(" + x + ")";
+        Type b = from->kind == TypeKind::enum_ ? from->elem : from;
+        return std::string(b->is_signed ? "coax_ff_from_s64((int64_t)(" : "coax_ff_from_u64((uint64_t)(") + x + "))";
+      }
+    }
+    if (opts.metal_compute && from == &T_F32 && !is_float(to) && to->kind != TypeKind::enum_) {
+      Type tb = to;
+      std::string lo = tb->is_signed ? (tb->bits == 64 ? "INT64_MIN" : "INT64_C(" + std::to_string(-(int64_t)1 << (tb->bits - 1)) + ")") : "0";
+      std::string hi_s = "INT64_C(" + std::to_string(tb->bits == 64 ? INT64_MAX : ((int64_t)1 << (tb->bits - 1)) - 1) + ")";
+      std::string hi_u = "UINT64_C(" + std::to_string(tb->bits == 64 ? UINT64_MAX : ((uint64_t)1 << tb->bits) - 1) + ")";
+      return "((" + c_type(to) + ")" + (tb->is_signed ? "coax_ftoi_s((float)(" + x + "), " + lo + ", " + hi_s + ", " + line + ")"
+                                                      : "coax_ftoi_u((float)(" + x + "), " + hi_u + ", " + line + ")") + ")";
+    }
     if (to == &T_F32 && from == &T_F64 && !opts.metal) return "coax_to_f32(" + x + ", " + line + ")";
     if (is_float(to)) return "((" + c_type(to) + ")(" + x + "))";
     if (to->kind == TypeKind::enum_) {
@@ -674,6 +713,23 @@ struct Emitter {
           std::string t = buf;
           if (t.find_first_of(".eEn") == std::string::npos) t += ".0";
           return t + "f";
+        }
+        if (opts.metal_compute) {
+          // Decimal text: 9 digits round-trip any f32. An f64 is the pair
+          // hi = f32(v), lo = f32(v - hi).
+          auto text = [](float f) -> std::string {
+            if (std::isnan(f)) return "as_type<float>(0x7fc00000u)";
+            if (std::isinf(f)) return f < 0 ? "as_type<float>(0xff800000u)" : "as_type<float>(0x7f800000u)";
+            char buf[64];
+            snprintf(buf, sizeof buf, "%.9g", (double)f);
+            std::string t = buf;
+            if (t.find_first_of(".eEn") == std::string::npos) t += ".0";
+            return t + "f";
+          };
+          if (e->type == &T_F32) return text((float)e->float_value);
+          float hi = (float)e->float_value;
+          float lo = std::isfinite(hi) ? (float)(e->float_value - (double)hi) : 0.0f;
+          return "coax_ff_make(" + text(hi) + ", " + text(lo) + ")";
         }
         if (opts.cuda && !std::isfinite(e->float_value)) {
           // NVRTC has no __builtin_nan/inf: spell the bit pattern.
@@ -718,12 +774,19 @@ struct Emitter {
                  c + "[0]), \"+f\"(" + c + "[1]), \"+f\"(" + c + "[2]), \"+f\"(" + c + "[3]) : \"r\"(" + a + "[0]), \"r\"(" + a + "[1]), \"r\"(" + a +
                  "[2]), \"r\"(" + a + "[3]), \"r\"(" + b + "[0]), \"r\"(" + b + "[1]))";
         }
+        if (opts.metal_compute && g_warp.mma_calls.count(e)) {
+          // The simdgroup's 16x8x16 product, lane by lane (coax_mma_bf16_16x8x16 in the runtime).
+          return "coax_mma_bf16_16x8x16(" + local_name(e->args[0]->lhs->text) + ", " + local_name(e->args[1]->lhs->text) + ", " +
+                 local_name(e->args[2]->lhs->text) + ", coax_lane)";
+        }
         std::vector<Operand> ops;
         for (const Expr *a : e->args) ops.push_back({a, false});
         std::string name = e->intrinsic != Intrinsic::none ? math_name(e) : proc_name(e->proc);
+        bool hidden = opts.metal_compute && e->intrinsic == Intrinsic::none;  // the lane and the error word
         return ordered(ops, [&](const std::vector<std::string> &t) {
           std::string s = name + "(";
           for (size_t i = 0; i < t.size(); i++) s += (i ? ", " : "") + t[i];
+          if (hidden) s += std::string(t.empty() ? "" : ", ") + "coax_lane, coax_err";
           return s + ")";
         });
       }
@@ -744,7 +807,7 @@ struct Emitter {
         }
         return "(" + ex(e->lhs) + ")." + to_std(e->text);
       case ExprKind::index: {
-        if (opts.cuda) {
+        if (device()) {
           auto at = g_warp.lane_index.find(e);
           // The element is this lane's own: index - lane*k, which folds to the offset.
           if (at != g_warp.lane_index.end())
@@ -810,9 +873,9 @@ struct Emitter {
         std::vector<Operand> ops;
         for (const Expr *a : e->args) ops.push_back({a, false});
         return ordered(ops, [&](const std::vector<std::string> &t) {
-          std::string s = opts.cuda ? c_type(e->type) + "{{" : "((" + c_type(e->type) + "){{";
+          std::string s = device() ? c_type(e->type) + "{{" : "((" + c_type(e->type) + "){{";
           for (size_t i = 0; i < t.size(); i++) s += (i ? ", " : "") + t[i];
-          return s + (opts.cuda ? "}}" : "}})");
+          return s + (device() ? "}}" : "}})");
         });
       }
       case ExprKind::cast: return cast(e);
@@ -981,7 +1044,7 @@ struct Emitter {
         line(ex(target) + " = " + ex(s->expr) + ";");
       } else {
         // The place first, then the value (spec §7.3).
-        std::string p = new_temp(c_type(target->type) + " *");
+        std::string p = new_temp(pointer_type(target));
         line(p + " = &(" + ex(target) + ");");
         line("*" + p + " = " + ex(s->expr) + ";");
       }
@@ -992,7 +1055,7 @@ struct Emitter {
     bool direct = !has_call(target) && !has_call(s->expr);
     std::string p, v;
     if (!direct) {
-      p = new_temp(c_type(target->type) + " *");
+      p = new_temp(pointer_type(target));
       v = new_temp(c_type(s->expr->type));
       line(p + " = &(" + ex(target) + ");");
       line(v + " = " + ex(s->expr) + ";");
@@ -1030,7 +1093,7 @@ struct Emitter {
         else line(ex(s->expr) + ";");
         break;
       case StmtKind::var: {
-        if (opts.cuda && g_warp.lane_arrays.count(s)) {
+        if (device() && g_warp.lane_arrays.count(s)) {
           // Lane l keeps elements l*k .. l*k+k-1: this lane's k values.
           line(c_type(s->type->elem) + " " + local_name(s->name) + "[" + std::to_string(s->type->length / 32) + "] = {};");
           break;
@@ -1076,9 +1139,9 @@ struct Emitter {
         loop(s->then_);
         break;
       case StmtKind::for_range: {
-        if (opts.cuda && g_warp.lane_loops.count(s)) {
+        if (device() && g_warp.lane_loops.count(s)) {
           // Each lane runs the body once, as its own `lane`.
-          loop(s->then_, {"const int64_t " + local_name(s->name) + " = (int64_t)(threadIdx.x & 31u);"});
+          loop(s->then_, {"const int64_t " + local_name(s->name) + (opts.metal_compute ? " = (int64_t)coax_lane;" : " = (int64_t)(threadIdx.x & 31u);")});
           break;
         }
         std::string t = c_type(s->type), n = std::to_string(temp_count++);
@@ -1094,7 +1157,7 @@ struct Emitter {
           return x->kind == ExprKind::int_lit ? x : nullptr;
         };
         const Expr *lo = literal(s->expr), *hi = literal(s->expr2);
-        if (opts.cuda && lo && hi && (int64_t)hi->int_value - (int64_t)lo->int_value <= 128) line("#pragma unroll");
+        if (device() && lo && hi && (int64_t)hi->int_value - (int64_t)lo->int_value <= 128) line("#pragma unroll");
         line("for (" + t + " " + i + " = coax_lo" + n + "; " + i + " < coax_hi" + n + "; " + i + "++)");
         loop(s->then_);
         indent--;
@@ -1141,15 +1204,17 @@ struct Emitter {
   // ---- declarations ----
 
   std::string prototype(const ProcDecl *p, bool header = false) {
-    std::string s = (opts.cuda ? "static __device__ " : header || p->export_c ? "" : p->foreign ? "extern " : "static ") + c_type(p->ret) + " " +
+    std::string s = (opts.cuda ? "static __device__ " : opts.metal_compute ? "static inline " : header || p->export_c ? "" : p->foreign ? "extern " : "static ") + c_type(p->ret) + " " +
                     proc_name(p) + "(";
-    if (p->params.count == 0) s += "void";
+    if (p->params.count == 0 && !opts.metal_compute) s += "void";
     for (int32_t i = 0; i < p->params.count; i++) {
       if (i) s += ", ";
       s += c_type(p->params[i].type);
       if (!header) s += " " + local_name(p->params[i].name);
       else if (!is_c_keyword(p->params[i].name)) s += " " + to_std(p->params[i].name);
     }
+    // Metal: every procedure carries the simdgroup lane and the launch's error words.
+    if (opts.metal_compute) s += std::string(p->params.count ? ", " : "") + "uint coax_lane, thread uint *coax_err";
     return s + ")";
   }
 
@@ -1496,8 +1561,421 @@ static std::string emit_cuda(const File *file, const EmitOptions &opts) {
   return s;
 }
 
+// The device runtime of `coax metal-compute`: the checks of RUNTIME spelled
+// for Metal Shading Language, the float-float f64 profile (APPLE-FF-v1) and
+// the simdgroup MMA. Metal has no trap, so a failed check counts itself in
+// the launch's error words (coax_err[0] failures, coax_err[1] the largest
+// failing line), takes a harmless value and lets the launch finish; the host
+// reads the words at completion and discards the launch's results. Each
+// trapping helper takes the error words as a hidden last argument through a
+// macro of the same name as its C counterpart.
+static const char *METAL_RUNTIME = R"COAXRT(/* Compile with fast math off (MTLMathModeSafe, precise functions): +, -, *, /
+   round once each and are never contracted or reassociated, so the
+   float-float sums below stay compensated. */
+#include <metal_stdlib>
+using namespace metal;
+#pragma METAL fp math_mode(safe)
+#pragma METAL fp contract(off)
+#pragma clang diagnostic ignored "-Wunused-function"
+/* metal_stdlib defines int8_t .. uint64_t (64-bit long and ulong). */
+#define INT64_C(x) x##L
+#define UINT64_C(x) x##UL
+#define INT64_MIN (-9223372036854775807L - 1)
+#define INT64_MAX 9223372036854775807L
+#define UINT64_MAX 18446744073709551615UL
+#define COAX_DEV static inline
+/* The thread's own error words live in registers; the kernel entry adds them
+   to the launch's words once, at the end (a device atomic inside a check
+   would serialize every simdgroup shuffle after it). */
+#define COAX_ERR thread uint *coax_err
+COAX_DEV void coax_trap_(int32_t line, COAX_ERR) {
+  coax_err[0] += 1u;
+  coax_err[1] = max(coax_err[1], (uint)line);
+}
+/* Narrow integers are computed in 64 bits and range checked. */
+#define COAX_NARROW_OPS(T, N, LO, HI)                                                                     \
+  COAX_DEV T coax_add_##N##_(T a, T b, int32_t l, COAX_ERR) { int64_t r = (int64_t)a + (int64_t)b; if (r < LO || r > HI) coax_trap_(l, coax_err); return (T)r; } \
+  COAX_DEV T coax_sub_##N##_(T a, T b, int32_t l, COAX_ERR) { int64_t r = (int64_t)a - (int64_t)b; if (r < LO || r > HI) coax_trap_(l, coax_err); return (T)r; } \
+  COAX_DEV T coax_mul_##N##_(T a, T b, int32_t l, COAX_ERR) { int64_t r = (int64_t)a * (int64_t)b; if (r < LO || r > HI) coax_trap_(l, coax_err); return (T)r; } \
+  COAX_DEV T coax_neg_##N##_(T a, int32_t l, COAX_ERR) { int64_t r = -(int64_t)a; if (r < LO || r > HI) coax_trap_(l, coax_err); return (T)r; } \
+  COAX_DEV T coax_wadd_##N(T a, T b) { return (T)(uint64_t)((uint64_t)(int64_t)a + (uint64_t)(int64_t)b); }                        \
+  COAX_DEV T coax_wsub_##N(T a, T b) { return (T)(uint64_t)((uint64_t)(int64_t)a - (uint64_t)(int64_t)b); }                        \
+  COAX_DEV T coax_wmul_##N(T a, T b) { return (T)(uint64_t)((uint64_t)(int64_t)a * (uint64_t)(int64_t)b); }                        \
+  COAX_DEV T coax_wneg_##N(T a) { return (T)(uint64_t)(0UL - (uint64_t)(int64_t)a); }
+#define COAX_SHIFT_DIV_OPS(T, N, SIGNED, MIN)                                                             \
+  COAX_DEV T coax_div_##N##_(T a, T b, int32_t l, COAX_ERR) {                                             \
+    if (b == 0) { coax_trap_(l, coax_err); return 0; }                                                  \
+    if (SIGNED && a == MIN && b == (T)-1) { coax_trap_(l, coax_err); return a; }                        \
+    return (T)(a / b);                                                                                  \
+  }                                                                                                     \
+  COAX_DEV T coax_mod_##N##_(T a, T b, int32_t l, COAX_ERR) {                                             \
+    if (b == 0) { coax_trap_(l, coax_err); return 0; }                                                  \
+    if (SIGNED && b == (T)-1) return 0;                                                                 \
+    return (T)(a % b);                                                                                  \
+  }                                                                                                     \
+  COAX_DEV T coax_shl_##N##_(T a, int64_t b, int32_t l, COAX_ERR) {                                       \
+    if (b < 0 || b >= (int64_t)(8 * sizeof(T))) { coax_trap_(l, coax_err); return 0; }                  \
+    return (T)((uint64_t)a << b);                                                                       \
+  }                                                                                                     \
+  COAX_DEV T coax_shr_##N##_(T a, int64_t b, int32_t l, COAX_ERR) {                                       \
+    if (b < 0 || b >= (int64_t)(8 * sizeof(T))) { coax_trap_(l, coax_err); return 0; }                  \
+    return (T)(a >> b);                                                                                 \
+  }
+COAX_NARROW_OPS(int8_t, s8, -128L, 127L)
+COAX_NARROW_OPS(int16_t, s16, -32768L, 32767L)
+COAX_NARROW_OPS(int32_t, s32, -2147483648L, 2147483647L)
+COAX_NARROW_OPS(uint8_t, u8, 0L, 255L)
+COAX_NARROW_OPS(uint16_t, u16, 0L, 65535L)
+COAX_NARROW_OPS(uint32_t, u32, 0L, 4294967295L)
+COAX_DEV int64_t coax_add_s64_(int64_t a, int64_t b, int32_t l, COAX_ERR) { int64_t r = (int64_t)((uint64_t)a + (uint64_t)b); if (((a ^ r) & (b ^ r)) < 0) coax_trap_(l, coax_err); return r; }
+COAX_DEV int64_t coax_sub_s64_(int64_t a, int64_t b, int32_t l, COAX_ERR) { int64_t r = (int64_t)((uint64_t)a - (uint64_t)b); if (((a ^ b) & (a ^ r)) < 0) coax_trap_(l, coax_err); return r; }
+COAX_DEV int64_t coax_mul_s64_(int64_t a, int64_t b, int32_t l, COAX_ERR) {
+  int64_t r = (int64_t)((uint64_t)a * (uint64_t)b);
+  if ((a == -1 && b == INT64_MIN) || (b == -1 && a == INT64_MIN) || (a != 0 && (r / a != b))) coax_trap_(l, coax_err);
+  return r;
+}
+COAX_DEV int64_t coax_neg_s64_(int64_t a, int32_t l, COAX_ERR) { if (a == INT64_MIN) coax_trap_(l, coax_err); return (int64_t)(0UL - (uint64_t)a); }
+COAX_DEV int64_t coax_wadd_s64(int64_t a, int64_t b) { return (int64_t)((uint64_t)a + (uint64_t)b); }
+COAX_DEV int64_t coax_wsub_s64(int64_t a, int64_t b) { return (int64_t)((uint64_t)a - (uint64_t)b); }
+COAX_DEV int64_t coax_wmul_s64(int64_t a, int64_t b) { return (int64_t)((uint64_t)a * (uint64_t)b); }
+COAX_DEV int64_t coax_wneg_s64(int64_t a) { return (int64_t)(0UL - (uint64_t)a); }
+COAX_DEV uint64_t coax_add_u64_(uint64_t a, uint64_t b, int32_t l, COAX_ERR) { uint64_t r = a + b; if (r < a) coax_trap_(l, coax_err); return r; }
+COAX_DEV uint64_t coax_sub_u64_(uint64_t a, uint64_t b, int32_t l, COAX_ERR) { if (b > a) coax_trap_(l, coax_err); return a - b; }
+COAX_DEV uint64_t coax_mul_u64_(uint64_t a, uint64_t b, int32_t l, COAX_ERR) { uint64_t r = a * b; if (a != 0 && r / a != b) coax_trap_(l, coax_err); return r; }
+COAX_DEV uint64_t coax_neg_u64_(uint64_t a, int32_t l, COAX_ERR) { if (a != 0) coax_trap_(l, coax_err); return 0; }
+COAX_DEV uint64_t coax_wadd_u64(uint64_t a, uint64_t b) { return a + b; }
+COAX_DEV uint64_t coax_wsub_u64(uint64_t a, uint64_t b) { return a - b; }
+COAX_DEV uint64_t coax_wmul_u64(uint64_t a, uint64_t b) { return a * b; }
+COAX_DEV uint64_t coax_wneg_u64(uint64_t a) { return 0UL - a; }
+COAX_SHIFT_DIV_OPS(int8_t, s8, 1, (int8_t)-128)
+COAX_SHIFT_DIV_OPS(int16_t, s16, 1, (int16_t)-32768)
+COAX_SHIFT_DIV_OPS(int32_t, s32, 1, (int32_t)(-2147483647 - 1))
+COAX_SHIFT_DIV_OPS(int64_t, s64, 1, INT64_MIN)
+COAX_SHIFT_DIV_OPS(uint8_t, u8, 0, 0)
+COAX_SHIFT_DIV_OPS(uint16_t, u16, 0, 0)
+COAX_SHIFT_DIV_OPS(uint32_t, u32, 0, 0)
+COAX_SHIFT_DIV_OPS(uint64_t, u64, 0, 0)
+#define coax_add_s8(a, b, l) coax_add_s8_(a, b, l, coax_err)
+#define coax_add_s16(a, b, l) coax_add_s16_(a, b, l, coax_err)
+#define coax_add_s32(a, b, l) coax_add_s32_(a, b, l, coax_err)
+#define coax_add_s64(a, b, l) coax_add_s64_(a, b, l, coax_err)
+#define coax_add_u8(a, b, l) coax_add_u8_(a, b, l, coax_err)
+#define coax_add_u16(a, b, l) coax_add_u16_(a, b, l, coax_err)
+#define coax_add_u32(a, b, l) coax_add_u32_(a, b, l, coax_err)
+#define coax_add_u64(a, b, l) coax_add_u64_(a, b, l, coax_err)
+#define coax_sub_s8(a, b, l) coax_sub_s8_(a, b, l, coax_err)
+#define coax_sub_s16(a, b, l) coax_sub_s16_(a, b, l, coax_err)
+#define coax_sub_s32(a, b, l) coax_sub_s32_(a, b, l, coax_err)
+#define coax_sub_s64(a, b, l) coax_sub_s64_(a, b, l, coax_err)
+#define coax_sub_u8(a, b, l) coax_sub_u8_(a, b, l, coax_err)
+#define coax_sub_u16(a, b, l) coax_sub_u16_(a, b, l, coax_err)
+#define coax_sub_u32(a, b, l) coax_sub_u32_(a, b, l, coax_err)
+#define coax_sub_u64(a, b, l) coax_sub_u64_(a, b, l, coax_err)
+#define coax_mul_s8(a, b, l) coax_mul_s8_(a, b, l, coax_err)
+#define coax_mul_s16(a, b, l) coax_mul_s16_(a, b, l, coax_err)
+#define coax_mul_s32(a, b, l) coax_mul_s32_(a, b, l, coax_err)
+#define coax_mul_s64(a, b, l) coax_mul_s64_(a, b, l, coax_err)
+#define coax_mul_u8(a, b, l) coax_mul_u8_(a, b, l, coax_err)
+#define coax_mul_u16(a, b, l) coax_mul_u16_(a, b, l, coax_err)
+#define coax_mul_u32(a, b, l) coax_mul_u32_(a, b, l, coax_err)
+#define coax_mul_u64(a, b, l) coax_mul_u64_(a, b, l, coax_err)
+#define coax_neg_s8(a, l) coax_neg_s8_(a, l, coax_err)
+#define coax_neg_s16(a, l) coax_neg_s16_(a, l, coax_err)
+#define coax_neg_s32(a, l) coax_neg_s32_(a, l, coax_err)
+#define coax_neg_s64(a, l) coax_neg_s64_(a, l, coax_err)
+#define coax_neg_u8(a, l) coax_neg_u8_(a, l, coax_err)
+#define coax_neg_u16(a, l) coax_neg_u16_(a, l, coax_err)
+#define coax_neg_u32(a, l) coax_neg_u32_(a, l, coax_err)
+#define coax_neg_u64(a, l) coax_neg_u64_(a, l, coax_err)
+#define coax_div_s8(a, b, l) coax_div_s8_(a, b, l, coax_err)
+#define coax_div_s16(a, b, l) coax_div_s16_(a, b, l, coax_err)
+#define coax_div_s32(a, b, l) coax_div_s32_(a, b, l, coax_err)
+#define coax_div_s64(a, b, l) coax_div_s64_(a, b, l, coax_err)
+#define coax_div_u8(a, b, l) coax_div_u8_(a, b, l, coax_err)
+#define coax_div_u16(a, b, l) coax_div_u16_(a, b, l, coax_err)
+#define coax_div_u32(a, b, l) coax_div_u32_(a, b, l, coax_err)
+#define coax_div_u64(a, b, l) coax_div_u64_(a, b, l, coax_err)
+#define coax_mod_s8(a, b, l) coax_mod_s8_(a, b, l, coax_err)
+#define coax_mod_s16(a, b, l) coax_mod_s16_(a, b, l, coax_err)
+#define coax_mod_s32(a, b, l) coax_mod_s32_(a, b, l, coax_err)
+#define coax_mod_s64(a, b, l) coax_mod_s64_(a, b, l, coax_err)
+#define coax_mod_u8(a, b, l) coax_mod_u8_(a, b, l, coax_err)
+#define coax_mod_u16(a, b, l) coax_mod_u16_(a, b, l, coax_err)
+#define coax_mod_u32(a, b, l) coax_mod_u32_(a, b, l, coax_err)
+#define coax_mod_u64(a, b, l) coax_mod_u64_(a, b, l, coax_err)
+#define coax_shl_s8(a, b, l) coax_shl_s8_(a, b, l, coax_err)
+#define coax_shl_s16(a, b, l) coax_shl_s16_(a, b, l, coax_err)
+#define coax_shl_s32(a, b, l) coax_shl_s32_(a, b, l, coax_err)
+#define coax_shl_s64(a, b, l) coax_shl_s64_(a, b, l, coax_err)
+#define coax_shl_u8(a, b, l) coax_shl_u8_(a, b, l, coax_err)
+#define coax_shl_u16(a, b, l) coax_shl_u16_(a, b, l, coax_err)
+#define coax_shl_u32(a, b, l) coax_shl_u32_(a, b, l, coax_err)
+#define coax_shl_u64(a, b, l) coax_shl_u64_(a, b, l, coax_err)
+#define coax_shr_s8(a, b, l) coax_shr_s8_(a, b, l, coax_err)
+#define coax_shr_s16(a, b, l) coax_shr_s16_(a, b, l, coax_err)
+#define coax_shr_s32(a, b, l) coax_shr_s32_(a, b, l, coax_err)
+#define coax_shr_s64(a, b, l) coax_shr_s64_(a, b, l, coax_err)
+#define coax_shr_u8(a, b, l) coax_shr_u8_(a, b, l, coax_err)
+#define coax_shr_u16(a, b, l) coax_shr_u16_(a, b, l, coax_err)
+#define coax_shr_u32(a, b, l) coax_shr_u32_(a, b, l, coax_err)
+#define coax_shr_u64(a, b, l) coax_shr_u64_(a, b, l, coax_err)
+/* A failed index or slice check reads element 0 of the same view instead. */
+COAX_DEV int64_t coax_index_(int64_t i, int64_t n, int32_t l, COAX_ERR) { if ((uint64_t)i >= (uint64_t)n) { coax_trap_(l, coax_err); return 0; } return i; }
+#define coax_index(i, n, l) coax_index_(i, n, l, coax_err)
+COAX_DEV bool coax_slice_ok_(int64_t lo, int64_t hi, int64_t n, int32_t l, COAX_ERR) { if ((uint64_t)hi > (uint64_t)n || (uint64_t)lo > (uint64_t)hi) { coax_trap_(l, coax_err); return false; } return true; }
+COAX_DEV int64_t coax_cast_ss_(int64_t v, int64_t lo, int64_t hi, int32_t l, COAX_ERR) { if (v < lo || v > hi) coax_trap_(l, coax_err); return v; }
+COAX_DEV uint64_t coax_cast_su_(int64_t v, uint64_t hi, int32_t l, COAX_ERR) { if (v < 0 || (uint64_t)v > hi) coax_trap_(l, coax_err); return (uint64_t)v; }
+COAX_DEV int64_t coax_cast_us_(uint64_t v, int64_t hi, int32_t l, COAX_ERR) { if (v > (uint64_t)hi) coax_trap_(l, coax_err); return (int64_t)v; }
+COAX_DEV uint64_t coax_cast_uu_(uint64_t v, uint64_t hi, int32_t l, COAX_ERR) { if (v > hi) coax_trap_(l, coax_err); return v; }
+#define coax_cast_ss(v, lo, hi, l) coax_cast_ss_(v, lo, hi, l, coax_err)
+#define coax_cast_su(v, hi, l) coax_cast_su_(v, hi, l, coax_err)
+#define coax_cast_us(v, hi, l) coax_cast_us_(v, hi, l, coax_err)
+#define coax_cast_uu(v, hi, l) coax_cast_uu_(v, hi, l, coax_err)
+COAX_DEV int64_t coax_ftoi_s_(float v, int64_t lo, int64_t hi, int32_t l, COAX_ERR) {
+  if (!(v >= -9223372036854775808.0f && v < 9223372036854775808.0f)) { coax_trap_(l, coax_err); return 0; }
+  int64_t i = (int64_t)v; if (i < lo || i > hi) coax_trap_(l, coax_err); return i;
+}
+COAX_DEV uint64_t coax_ftoi_u_(float v, uint64_t hi, int32_t l, COAX_ERR) {
+  if (!(v > -1.0f && v < 18446744073709551616.0f)) { coax_trap_(l, coax_err); return 0; }
+  uint64_t u = (uint64_t)v; if (u > hi) coax_trap_(l, coax_err); return u;
+}
+#define coax_ftoi_s(v, lo, hi, l) coax_ftoi_s_(v, lo, hi, l, coax_err)
+#define coax_ftoi_u(v, hi, l) coax_ftoi_u_(v, hi, l, coax_err)
+COAX_DEV float coax_f32_from_bits(uint32_t x) { return as_type<float>(x); }
+COAX_DEV uint32_t coax_f32_bits(float f) { return as_type<uint>(f); }
+COAX_DEV uint32_t coax_add_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a+b);}
+COAX_DEV uint32_t coax_sub_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a-b);}
+COAX_DEV uint32_t coax_mul_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a*b);}
+COAX_DEV uint32_t coax_rotl_u32(uint32_t a,uint32_t b){uint k=(uint)(b&31u);return (uint32_t)((a<<k)|(a>>((32u-k)&31u)));}
+COAX_DEV uint32_t coax_rotr_u32(uint32_t a,uint32_t b){uint k=(uint)(b&31u);return (uint32_t)((a>>k)|(a<<((32u-k)&31u)));}
+COAX_DEV uint64_t coax_add_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a+b);}
+COAX_DEV uint64_t coax_sub_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a-b);}
+COAX_DEV uint64_t coax_mul_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a*b);}
+COAX_DEV uint64_t coax_rotl_u64(uint64_t a,uint64_t b){uint k=(uint)(b&63u);return (uint64_t)((a<<k)|(a>>((64u-k)&63u)));}
+COAX_DEV uint64_t coax_rotr_u64(uint64_t a,uint64_t b){uint k=(uint)(b&63u);return (uint64_t)((a>>k)|(a<<((64u-k)&63u)));}
+
+/* APPLE-FF-v1: f64 is a float-float pair, value hi + lo with |lo| <= ulp(hi)/2
+   (about 48 significant bits; the f32 exponent range, subnormals flushed).
+   Sums use error-free two-sum, products the exact fma residual. */
+struct coax_ff { float hi; float lo; };
+COAX_DEV coax_ff coax_ff_make(float h, float l) { coax_ff r; r.hi = h; r.lo = l; return r; }
+COAX_DEV coax_ff coax_ff_two_sum(float a, float b) { float s = a + b; float bb = s - a; return coax_ff_make(s, (a - (s - bb)) + (b - bb)); }
+COAX_DEV coax_ff coax_ff_fast(float a, float b) { float s = a + b; return coax_ff_make(s, b - (s - a)); }
+COAX_DEV coax_ff operator+(coax_ff a, coax_ff b) {
+  coax_ff s = coax_ff_two_sum(a.hi, b.hi);
+  if (!isfinite(s.hi)) return coax_ff_make(s.hi, 0.0f);
+  coax_ff t = coax_ff_two_sum(a.lo, b.lo);
+  s = coax_ff_fast(s.hi, s.lo + t.hi);
+  return coax_ff_fast(s.hi, s.lo + t.lo);
+}
+COAX_DEV coax_ff operator-(coax_ff a) { return coax_ff_make(-a.hi, -a.lo); }
+COAX_DEV coax_ff operator-(coax_ff a, coax_ff b) { return a + (-b); }
+COAX_DEV coax_ff operator*(coax_ff a, coax_ff b) {
+  float p = a.hi * b.hi;
+  if (!isfinite(p) || p == 0.0f) return coax_ff_make(p, 0.0f);
+  float e = fma(a.hi, b.hi, -p);
+  e = e + (a.hi * b.lo + a.lo * b.hi);
+  return coax_ff_fast(p, e);
+}
+COAX_DEV coax_ff operator/(coax_ff a, coax_ff b) {
+  float q1 = a.hi / b.hi;
+  if (!isfinite(q1) || q1 == 0.0f) return coax_ff_make(q1, 0.0f);
+  coax_ff r = a - b * coax_ff_make(q1, 0.0f);
+  float q2 = r.hi / b.hi;
+  r = r - b * coax_ff_make(q2, 0.0f);
+  float q3 = r.hi / b.hi;
+  return coax_ff_fast(q1, q2) + coax_ff_make(q3, 0.0f);
+}
+COAX_DEV bool operator==(coax_ff a, coax_ff b) { return a.hi == b.hi && a.lo == b.lo; }
+COAX_DEV bool operator!=(coax_ff a, coax_ff b) { return !(a == b); }
+COAX_DEV bool operator<(coax_ff a, coax_ff b) { return a.hi < b.hi || (a.hi == b.hi && a.lo < b.lo); }
+COAX_DEV bool operator>(coax_ff a, coax_ff b) { return b < a; }
+COAX_DEV bool operator<=(coax_ff a, coax_ff b) { return a < b || a == b; }
+COAX_DEV bool operator>=(coax_ff a, coax_ff b) { return b < a || a == b; }
+COAX_DEV coax_ff coax_ff_from_f32(float x) { return coax_ff_make(x, 0.0f); }
+COAX_DEV coax_ff coax_ff_from_s64(int64_t v) { float h = (float)v; return coax_ff_fast(h, (float)(v - (int64_t)h)); }
+COAX_DEV coax_ff coax_ff_from_u64(uint64_t v) { float h = (float)v; return coax_ff_fast(h, (float)(int64_t)(v - (uint64_t)h)); }
+/* Rounds the pair once; a finite pair that rounds past FLT_MAX fails, as the C build's f32(x) does. */
+COAX_DEV float coax_ff_to_f32_(coax_ff a, int32_t l, COAX_ERR) { float r = a.hi + a.lo; if (isinf(r) && isfinite(a.hi)) coax_trap_(l, coax_err); return r; }
+#define coax_ff_to_f32(a, l) coax_ff_to_f32_(a, l, coax_err)
+COAX_DEV coax_ff coax_ff_abs(coax_ff a) { return a.hi < 0.0f ? -a : a; }
+COAX_DEV coax_ff coax_ff_floor(coax_ff a) { float f = floor(a.hi); if (f == a.hi) return coax_ff_fast(f, floor(a.lo)); return coax_ff_make(f, 0.0f); }
+/* Scales a pair by 2^k exactly (no overflow or flush for |k| in the ranges used). */
+COAX_DEV coax_ff coax_ff_scale(coax_ff a, int k) { return coax_ff_make(ldexp(a.hi, k), ldexp(a.lo, k)); }
+/* sqrt: scale by an even power of two into [1, 4) so the residual stays
+   normal, one Newton correction, then scale back. */
+COAX_DEV coax_ff coax_ff_sqrt(coax_ff a) {
+  if (!(a.hi > 0.0f) || isinf(a.hi)) return coax_ff_make(precise::sqrt(a.hi), 0.0f);
+  int k = ilogb(a.hi) & ~1;
+  coax_ff m = coax_ff_scale(a, -k);
+  float s = precise::sqrt(m.hi), p = s * s;
+  coax_ff r = m - coax_ff_make(p, fma(s, s, -p));
+  return coax_ff_scale(coax_ff_fast(s, r.hi / (2.0f * s)), k / 2);
+}
+/* exp: x = n ln2 + r, r/256 through a degree-8 expm1 series, then eight
+   doublings of expm1 (e^2y - 1 = 2(e^y - 1) + (e^y - 1)^2), then 2^n. */
+COAX_DEV coax_ff coax_ff_exp(coax_ff a) {
+  if (isnan(a.hi)) return a;
+  if (a.hi > 88.7228394f) return coax_ff_make(as_type<float>(0x7f800000u), 0.0f); /* above log FLT_MAX */
+  if (a.hi < -103.98f) return coax_ff_make(0.0f, 0.0f);
+  const coax_ff ln2 = coax_ff_make(0.693147182f, -1.90465421e-09f);
+  const coax_ff inv[7] = {coax_ff_make(0.5f, 0.0f), coax_ff_make(0.166666672f, -4.96705388e-09f), coax_ff_make(0.0416666679f, -1.24176347e-09f),
+    coax_ff_make(0.00833333377f, -4.34617203e-10f), coax_ff_make(0.00138888892f, -3.36310944e-11f), coax_ff_make(0.000198412701f, -2.72559687e-12f),
+    coax_ff_make(2.48015876e-05f, -3.40699609e-13f)};
+  float n = rint(a.hi / 0.693147182f);
+  coax_ff r = a - ln2 * coax_ff_make(n, 0.0f);
+  r = coax_ff_make(r.hi * 0.00390625f, r.lo * 0.00390625f);
+  coax_ff s = r, p = r;
+  for (int k = 0; k < 7; k++) { p = p * r; s = s + p * inv[k]; }
+  for (int k = 0; k < 8; k++) s = coax_ff_make(2.0f * s.hi, 2.0f * s.lo) + s * s;
+  s = s + coax_ff_make(1.0f, 0.0f);
+  int e = (int)n;
+  return coax_ff_make(ldexp(s.hi, e), ldexp(s.lo, e));
+}
+/* log: x = m 2^k with m in [sqrt(1/2), sqrt(2)); log m = 2 atanh u with
+   u = (m - 1) / (m + 1), |u| <= 0.172, summed to u^25 (the next term is
+   below 2^-50 of the sum); then k ln2. Near x = 1 the result keeps its
+   relative accuracy because m - 1 is exact. */
+COAX_DEV coax_ff coax_ff_log(coax_ff a) {
+  if (!(a.hi > 0.0f) || isinf(a.hi)) return coax_ff_make(precise::log(a.hi), 0.0f);
+  const coax_ff ln2 = coax_ff_make(0.693147182f, -1.90465421e-09f);
+  const coax_ff odd[13] = {coax_ff_make(1.0f, 0.0f), coax_ff_make(0.333333343f, -9.93410776e-09f), coax_ff_make(0.200000003f, -2.98023228e-09f),
+    coax_ff_make(0.142857149f, -6.386212e-09f), coax_ff_make(0.111111112f, -8.27842295e-10f), coax_ff_make(0.0909090936f, -2.70930212e-09f),
+    coax_ff_make(0.0769230798f, -2.86560797e-09f), coax_ff_make(0.0666666701f, -3.47693763e-09f), coax_ff_make(0.0588235296f, -2.19134724e-10f),
+    coax_ff_make(0.0526315793f, -3.92135824e-10f), coax_ff_make(0.0476190485f, -8.86973883e-10f), coax_ff_make(0.0434782617f, -8.09845746e-10f),
+    coax_ff_make(0.0399999991f, 8.94069652e-10f)};
+  int k = ilogb(a.hi);
+  coax_ff m = coax_ff_scale(a, -k);
+  if (m.hi > 1.41421354f) { m = coax_ff_scale(m, -1); k += 1; }
+  const coax_ff one = coax_ff_make(1.0f, 0.0f);
+  coax_ff u = (m - one) / (m + one), u2 = u * u, p = odd[12];
+  for (int j = 11; j >= 0; j--) p = p * u2 + odd[j];
+  coax_ff y = u * p;
+  y = coax_ff_make(2.0f * y.hi, 2.0f * y.lo);
+  return ln2 * coax_ff_make((float)k, 0.0f) + y;
+}
+
+/* cu_mma_bf16_16x8x16 for one simdgroup, in the PTX fragment layout of
+   lib/compute/mma.coax: each lane gathers rows g and g+8 of A and columns 2t
+   and 2t+1 of B from the lanes that hold them, adds the 16 exact products in
+   f32 in k order and adds that sum into C. */
+COAX_DEV float coax_bf16_lo(uint w) { return as_type<float>(w << 16); }
+COAX_DEV float coax_bf16_hi(uint w) { return as_type<float>(w & 0xffff0000u); }
+COAX_DEV void coax_mma_bf16_16x8x16(thread uint *a, thread uint *b, thread float *c, uint lane) {
+  uint g = lane >> 2, t = lane & 3u;
+  uint a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3], b0 = b[0], b1 = b[1];
+  float s00 = 0.0f, s01 = 0.0f, s10 = 0.0f, s11 = 0.0f;
+  /* A product of two bf16 values is exact in f32, so fma(x, y, s) rounds
+     exactly as s + x * y. Step J of half H covers k = 8H + 2J and 8H + 2J + 1. */
+#define COAX_MMA_STEP(J, H)                                                                        \
+  {                                                                                                \
+    ushort sa = (ushort)(4 * g + J), sb0 = (ushort)(8 * t + J), sb1 = (ushort)(8 * t + 4 + J);     \
+    uint x0 = simd_shuffle(H ? a2 : a0, sa), x1 = simd_shuffle(H ? a3 : a1, sa);                   \
+    uint y0 = simd_shuffle(H ? b1 : b0, sb0), y1 = simd_shuffle(H ? b1 : b0, sb1);                 \
+    float r0l = coax_bf16_lo(x0), r0h = coax_bf16_hi(x0), r1l = coax_bf16_lo(x1), r1h = coax_bf16_hi(x1); \
+    float c0l = coax_bf16_lo(y0), c0h = coax_bf16_hi(y0), c1l = coax_bf16_lo(y1), c1h = coax_bf16_hi(y1); \
+    s00 = fma(r0l, c0l, s00); s00 = fma(r0h, c0h, s00); s01 = fma(r0l, c1l, s01); s01 = fma(r0h, c1h, s01); \
+    s10 = fma(r1l, c0l, s10); s10 = fma(r1h, c0h, s10); s11 = fma(r1l, c1l, s11); s11 = fma(r1h, c1h, s11); \
+  }
+  COAX_MMA_STEP(0, 0) COAX_MMA_STEP(1, 0) COAX_MMA_STEP(2, 0) COAX_MMA_STEP(3, 0)
+  COAX_MMA_STEP(0, 1) COAX_MMA_STEP(1, 1) COAX_MMA_STEP(2, 1) COAX_MMA_STEP(3, 1)
+#undef COAX_MMA_STEP
+  c[0] += s00; c[1] += s01; c[2] += s10; c[3] += s11;
+}
+)COAXRT";
+
+// `coax metal-compute FILE`: the kernels of a file and what they call, as
+// Metal Shading Language. Each kernel takes one constant argument block at
+// buffer index 0 and the launch's two error words at buffer index 1. The
+// argument block is the work-item count (8 bytes) and then each parameter
+// after the work item, in order: a view is 16 bytes (the device address of
+// element 0, then the element count), an f64 is 8 bytes (hi, then lo, as
+// f32), and every other scalar sits in the low bytes of its own 8.
+std::string emit_metal_compute(const File *file, const EmitOptions &opts) {
+  g_metal_compute = true;
+  Emitter em{file, opts};
+  std::vector<const ProcDecl *> procs = cuda_procs(file);
+  std::string functions;
+  for (const ProcDecl *p : procs) functions += em.function(p);
+  std::vector<Type> used;
+  auto add = [&](Type t) {
+    if (t->kind != TypeKind::array && t->kind != TypeKind::view) return;
+    for (Type u : used) if (u == t) return;
+    used.push_back(t);
+  };
+  std::function<void(const Expr *)> types_expr = [&](const Expr *e) {
+    if (!e) return;
+    add(e->type);
+    types_expr(e->lhs); types_expr(e->rhs); types_expr(e->third);
+    for (const Expr *a : e->args) types_expr(a);
+  };
+  std::function<void(const Stmt *)> types_stmt = [&](const Stmt *st) {
+    if (!st) return;
+    add(st->type);
+    types_expr(st->expr); types_expr(st->expr2); types_expr(st->target);
+    for (const Stmt *c : st->body) types_stmt(c);
+    types_stmt(st->then_); types_stmt(st->else_);
+  };
+  for (const ProcDecl *p : procs) {
+    add(p->ret);
+    for (const Param &prm : p->params) add(prm.type);
+    types_stmt(p->body);
+  }
+  // Arrays and views hold scalars only (admission), so they never depend on each other.
+  std::string types, helpers;
+  for (Type t : used) {
+    std::string c = c_type(t), e = c_type(t->elem), tg = tag(t);
+    if (t->kind == TypeKind::array) { types += "typedef struct { " + e + " e[" + std::to_string(t->length) + "]; } " + c + ";\n"; continue; }
+    types += "typedef struct { device " + e + " *data; int64_t count; } " + c + ";\n";
+    helpers += "COAX_DEV device " + e + " *coax_elem_" + tg + "_(" + c + " v, int64_t i, int32_t l, COAX_ERR) { return &v.data[coax_index(i, v.count, l)]; }\n";
+    helpers += "#define coax_elem_" + tg + "(v, i, l) coax_elem_" + tg + "_(v, i, l, coax_err)\n";
+    helpers += "COAX_DEV " + c + " coax_reslice_" + tg + "_(" + c + " v, int64_t lo, int64_t hi, int32_t l, COAX_ERR) {\n"
+               "  " + c + " r = {v.data, 0};\n  if (coax_slice_ok_(lo, hi, v.count, l, coax_err)) { r.data = v.data + lo; r.count = hi - lo; }\n  return r;\n}\n";
+    helpers += "#define coax_reslice_" + tg + "(v, lo, hi, l) coax_reslice_" + tg + "_(v, lo, hi, l, coax_err)\n";
+  }
+  std::string s = "/* Generated by coax0 from " + file->src->path + " (coax metal-compute). Do not edit: change the .coax file. */\n";
+  s += METAL_RUNTIME;
+  s += "\n/* Types */\n" + types + helpers + "\n";
+  for (const ProcDecl *p : procs) s += em.prototype(p) + ";\n";
+  s += functions;
+  s += "\n/* Kernels: one argument block at buffer(0) (the item count, then each parameter\n"
+       "   in an 8-byte slot, views in 16), the error words at buffer(1). */\n";
+  for (const ProcDecl *p : procs) {
+    if (!p->export_c) continue;
+    std::string name = to_std(p->name), block = "struct coax_args_" + name + " {\n  int64_t coax_items;\n";
+    std::string call = em.proc_name(p) + "(coax_item";
+    for (int32_t i = 1; i < p->params.count; i++) {
+      Type t = p->params[i].type;
+      std::string field = em.local_name(p->params[i].name);
+      block += "  " + c_type(t) + " " + field + ";";
+      int64_t size = t->kind == TypeKind::view ? 16 : t == &T_F64 ? 8 : t->kind == TypeKind::bool_ ? 1 : t->bits / 8;
+      if (size < 8) block += " uint8_t coax_pad" + std::to_string(i) + "[" + std::to_string(8 - size) + "];";
+      block += "\n";
+      call += ", coax_a." + field;
+    }
+    block += "};\n";
+    bool warp = g_warp.warp_kernels.count(p);
+    s += block;
+    s += "kernel void " + name + "(constant coax_args_" + name + " &coax_a [[buffer(0)]], device atomic_uint *coax_errors [[buffer(1)]],\n"
+         "    uint coax_gid [[thread_position_in_grid]], uint coax_simd_lane [[thread_index_in_simdgroup]]) {\n";
+    if (warp)  // one simdgroup of 32 lanes per work item
+      s += "  int64_t coax_item = (int64_t)(coax_gid >> 5);\n  uint coax_lane = coax_simd_lane;\n";
+    else
+      s += "  int64_t coax_item = (int64_t)coax_gid;\n  uint coax_lane = coax_simd_lane;\n";
+    s += "  if (coax_item >= coax_a.coax_items) return;\n  uint coax_err[2] = {0, 0};\n  " + call + (p->params.count > 1 ? ", " : ", ") +
+         "coax_lane, coax_err);\n"
+         "  if (coax_err[0]) {\n"
+         "    atomic_fetch_add_explicit(&coax_errors[0], coax_err[0], memory_order_relaxed);\n"
+         "    atomic_fetch_max_explicit(&coax_errors[1], coax_err[1], memory_order_relaxed);\n  }\n}\n";
+  }
+  for (size_t at = 0; (at = s.find("_Bool", at)) != std::string::npos;) s.replace(at, 5, "bool");
+  g_metal_compute = false;
+  return s;
+}
+
 std::string emit_c(const File *file, const EmitOptions &opts) {
   if (opts.cuda) return emit_cuda(file, opts);
+  if (opts.metal_compute) return emit_metal_compute(file, opts);
   Emitter em{file, opts};
   std::string functions;
   for (const ProcDecl *p : file->procs) functions += em.function(p);

@@ -1,6 +1,7 @@
-// `coax cuda` admission: native code observes the checked tree; the decisions
-// are lib/compiler/compute.coax (the CU_ procedures). Build-only stage0 has no
-// compute policy and refuses the command.
+// `coax cuda` and `coax metal-compute` admission: native code observes the
+// checked tree; the decisions are lib/compiler/compute.coax (the CU_ and, for
+// Metal, MT_ procedures). Build-only stage0 has no compute policy and refuses
+// both commands.
 #include "coax.h"
 
 namespace coax {
@@ -46,18 +47,25 @@ static bool is_lane_loop(const Stmt *s) {
   return lo && hi && lo->int_value == 0 && hi->int_value == 32;
 }
 
+// One refusal, worded for the target: E0700 for CUDA, E0702 for Metal.
+static void compute_refuse(const File *file, Loc loc, uint32_t reason, bool metal) {
+  coax_string text = CU_reason_text(reason), fix = metal ? MT_fix() : CU_fix();
+  error_at(file->src, loc, metal ? "E0702" : "E0700",
+           std::string(text.data, (size_t)text.count) + (metal ? " is outside the Metal compute subset" : " is outside the CUDA compute subset"),
+           std::string(fix.data, (size_t)fix.count));
+}
+
 // Warp kernels: lane loops, per-lane arrays and device primitives, checked
 // against the CU_lane_* and CU_primitive_* policy and recorded in g_warp.
 struct WarpAdmission {
   const File *file;
+  bool metal = false;
   bool ok = true;
   std::map<std::string, const Stmt *> arrays;  // local fixed arrays by name
   std::set<std::string> lane_arrays, inner;    // per-lane arrays; locals declared in the current lane loop
   std::map<std::string, std::pair<int64_t, int64_t>> ranges;  // constant-bound loop counters: [lo, hi)
   void refuse(Loc loc, uint32_t reason) {
-    coax_string text = CU_reason_text(reason), fix = CU_fix();
-    error_at(file->src, loc, "E0700", std::string(text.data, (size_t)text.count) + " is outside the CUDA compute subset",
-             std::string(fix.data, (size_t)fix.count));
+    compute_refuse(file, loc, reason, metal);
     ok = false;
   }
   const Stmt *array_of(const Expr *e) {
@@ -231,13 +239,12 @@ struct WarpAdmission {
 
 struct ComputeAdmission {
   const File *file;
+  bool metal = false;
   std::vector<const ProcDecl *> done, active;
   bool ok = true;
 
   void refuse(Loc loc, uint32_t reason) {
-    coax_string text = CU_reason_text(reason), fix = CU_fix();
-    error_at(file->src, loc, "E0700", std::string(text.data, (size_t)text.count) + " is outside the CUDA compute subset",
-             std::string(fix.data, (size_t)fix.count));
+    compute_refuse(file, loc, reason, metal);
     ok = false;
   }
   bool type(Loc loc, Type t) {
@@ -254,13 +261,26 @@ struct ComputeAdmission {
       uint32_t r = CU_call(e->builtin_print, e->proc && e->proc->foreign, is_active, (int64_t)active.size());
       if (r) { refuse(e->loc, r); return; }
       if (is_mma_primitive(e->proc)) {  // a device primitive: its body is its CPU meaning, not device code
-        for (const Expr *a : e->args) expr(a);
+        // Its arguments are whole register arrays (the warp check sizes them).
+        for (const Expr *a : e->args) expr(a->kind == ExprKind::slice && !a->rhs ? a->lhs : a);
         return;
       }
       if (e->byte_intrinsic != ByteIntrinsic::none) {
-        r = CU_byte_intrinsic((uint32_t)e->byte_intrinsic);
+        r = metal ? MT_byte_intrinsic((uint32_t)e->byte_intrinsic) : CU_byte_intrinsic((uint32_t)e->byte_intrinsic);
         if (r) { refuse(e->loc, r); return; }
       }
+      if (metal && e->intrinsic != Intrinsic::none) {
+        r = MT_math((uint32_t)e->intrinsic, compute_code(e->type) == 3);
+        if (r) { refuse(e->loc, r); return; }
+      }
+    }
+    if (metal && e->kind == ExprKind::cast) {
+      uint32_t r = MT_cast(compute_code(e->lhs->type), compute_code(e->type));
+      if (r) { refuse(e->loc, r); return; }
+    }
+    if (metal && e->kind == ExprKind::slice) {
+      uint32_t r = MT_slice(e->lhs->type->kind == TypeKind::array, false);
+      if (r) { refuse(e->loc, r); return; }
     }
     if (e->kind == ExprKind::ct_value) {
       uint32_t r = CU_constant(compute_code(e->type));
@@ -307,14 +327,15 @@ struct ComputeAdmission {
 #endif
 
 // Every kernel and everything it reaches must stay inside the subset.
-bool compute_admit(const File *file) {
+bool compute_admit(const File *file, bool metal) {
 #ifdef COAX_BOOTSTRAP_IMPORTER
-  (void)file; (void)compute_code;
-  fprintf(stderr, "coax: coax cuda requires the final compiler, not build-only stage0\n");
+  (void)file; (void)compute_code; (void)metal;
+  fprintf(stderr, "coax: coax cuda and coax metal-compute require the final compiler, not build-only stage0\n");
   return false;
 #else
   ComputeAdmission a{file};
   WarpAdmission warp{file};
+  a.metal = warp.metal = metal;
   g_warp = WarpInfo{};
   bool any = false;
   for (const ProcDecl *p : file->procs) {
@@ -326,7 +347,7 @@ bool compute_admit(const File *file) {
   for (const ProcDecl *p : a.done) if (!p->export_c) warp.helper(p->body);
   a.ok = a.ok && warp.ok;
   if (!any) {
-    error_at(file->src, {1, 1, 0}, "E0701", "a CUDA module needs at least one #export_c kernel",
+    error_at(file->src, {1, 1, 0}, metal ? "E0703" : "E0701", metal ? "a Metal compute module needs at least one #export_c kernel" : "a CUDA module needs at least one #export_c kernel",
              "Mark each kernel #export_c; its first parameter is the int work item and it returns nothing.");
     return false;
   }

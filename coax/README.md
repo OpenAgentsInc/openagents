@@ -67,6 +67,7 @@ coax/build.sh test
 | `coax c FILE [--release] [--library [--header out.h]]` | Print the generated C, optionally as a library with its header |
 | `coax metal FILE` | Print the file's f32/bool procedures as Metal Shading Language |
 | `coax cuda FILE` | Print the file's `#export_c` kernels, and what they call, as CUDA C for NVRTC |
+| `coax metal-compute FILE` | Print the same kernels as Metal Shading Language compute kernels for Apple GPUs |
 | `coax check FILE` | Typecheck and run compile-time code, without a C compiler |
 | `coax proto PROFILE.pb --prefix Name [-o FILE]` | Generate inspectable Coax types/codecs directly from a descriptor |
 | `coax deps FILE` | Print a checked JSON source/descriptor input inventory |
@@ -243,6 +244,27 @@ apps/openagents-ios/build.sh
   barrier or atomic yet; the host
   ([psionic/platform/cuda-host.c](../psionic/platform/cuda-host.c)) loads,
   binds, launches and waits.
+- `coax metal-compute FILE` emits the same compute subset as Metal Shading
+  Language compute kernels for Apple GPUs. Each kernel takes one constant
+  argument block at `buffer(0)` (the item count, then each parameter after
+  the work item in an 8-byte slot; a view is 16 bytes, its device address and
+  count) and the launch's two error words at `buffer(1)`. Metal has no trap:
+  a failed integer, bounds or slice check counts itself in the thread's
+  error words, takes a harmless value (element 0 for an index) and lets the
+  launch finish; the kernel entry adds the thread's words to the launch's once,
+  and the host ([psionic/platform/metal-host.m](../psionic/platform/metal-host.m))
+  reports `PM_CHECK` and discards the launch. Apple GPUs have no binary64, so
+  `f64` is a float-float pair (`coax_ff`, profile APPLE-FF-v1: compensated
+  sums, fma products, about 2^-44 relative) with float-float `exp`, `log`,
+  `sqrt`, `abs` and `floor`; `f64` bit patterns, other `f64` math and `f64`
+  to integer casts are refused, and so are views of register arrays other
+  than the primitive's fragments (E0702; a module without a kernel is E0703).
+  Lane loops run one 32-lane simdgroup per item, and `cu_mma_bf16_16x8x16`
+  keeps its PTX fragment layout: each lane gathers its rows and columns with
+  `simd_shuffle` and adds the 16 exact products in k order. Compile the output
+  with `MTLMathModeSafe` and precise math functions (the generated pragmas also
+  turn contraction off). `psionic/tests/run_metal_kernels.sh` runs the kernels
+  against the C build on the GPU.
 
 ## Compile-time contract
 

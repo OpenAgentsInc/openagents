@@ -28,7 +28,7 @@ The first two digits after the `E` give the stage that reports the error:
 | `E04` | Compile-time evaluation and checks | Chapters 9 and 10 |
 | `E05` | Protobuf descriptor imports | Chapter 15 |
 | `E06` | Source-unit composition | Chapter 22 |
-| `E07` | Device code (`coax cuda`) | Chapter 14 |
+| `E07` | Device code (`coax cuda`, `coax metal-compute`) | Chapter 14 |
 
 Chapter 4 explains how to read a diagnostic, and Chapter 20 shows which
 part of the compiler produces each stage's errors. With `--json`, each
@@ -195,3 +195,5 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0604` | unbalanced source unit | In a composed program every physical source must balance its own parentheses, brackets and braces within depth 128. Declarations cannot cross a source boundary. |
 | `E0700` | outside the CUDA compute subset | coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break, continue and acyclic calls. Strings, structs, enums, while loops, defer, #assert, print and #foreign calls stay in the C library. Every #export_c procedure is a kernel: it returns nothing and its first parameter is its int work item. |
 | `E0701` | CUDA module has no kernel | coax cuda compiles the #export_c procedures of a file as kernels, with what they call. Mark at least one procedure #export_c. |
+| `E0702` | outside the Metal compute subset | coax metal-compute accepts what coax cuda accepts (E0700). Apple GPUs have no binary64, so f64 is a float-float pair: f64_bits, f64_from_bits, sin, cos, tan and pow of an f64 and conversion of an f64 to an integer are refused. A view points into device memory, so a slice of a kernel's fixed array is refused except as a whole argument to a device primitive. |
+| `E0703` | Metal compute module has no kernel | coax metal-compute compiles the #export_c procedures of a file as kernels, with what they call. Mark at least one procedure #export_c. |

@@ -34,11 +34,12 @@ CU_number :: (code:u32)->bool #export_c {return code>=2 && code<=11;}
  #assert CU_reason_text(23)=="a per-lane index that is not lane*k+c into a [32*k] array" && CU_reason_text(24)=="a per-lane array outside lane loops and device primitives";
  #assert CU_reason_text(25)=="a lane loop assigning a value the warp shares" && CU_reason_text(26)=="break or continue directly in a lane loop";
  #assert CU_reason_text(27)=="a device primitive with the wrong arguments" && CU_reason_text(28)=="a device primitive inside a lane loop";
- #assert CU_reason_text(29)=="this reason";
+ #assert CU_reason_text(29)=="an f64 bit pattern" && CU_reason_text(30)=="a view of a register array" && CU_reason_text(31)=="this f64 operation";
+ #assert CU_reason_text(32)=="this reason" && CU_reason_text(4000000000)=="this reason";
  #assert CU_fix()=="coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break/continue and acyclic calls; every #export_c procedure is a kernel with an int work item first and no result";
 }
 CU_reason_text :: (reason:u32)->string #export_c {
- texts:=[29] string.["","a string value","a struct value","an enum value","an array that is not a fixed array of at most 4096 scalars",
+ texts:=[32] string.["","a string value","a struct value","an enum value","an array that is not a fixed array of at most 4096 scalars",
   "a view of something other than numbers","a value of this type","a while loop","defer","#assert","print","a #foreign call",
   "a recursive call","this storage intrinsic","a compile-time aggregate","a kernel that returns a value",
   "a kernel whose first parameter is not its int work item","a call chain deeper than 64","a returned value that is not a scalar",
@@ -46,8 +47,9 @@ CU_reason_text :: (reason:u32)->string #export_c {
   "a lane loop that is not for lane: 0..<32 in a kernel","a lane loop inside a lane loop",
   "a per-lane index that is not lane*k+c into a [32*k] array","a per-lane array outside lane loops and device primitives",
   "a lane loop assigning a value the warp shares","break or continue directly in a lane loop",
-  "a device primitive with the wrong arguments","a device primitive inside a lane loop"];
- if reason>=29 {return "this reason";}
+  "a device primitive with the wrong arguments","a device primitive inside a lane loop",
+  "an f64 bit pattern","a view of a register array","this f64 operation"];
+ if reason>=32 {return "this reason";}
  return texts[cast(int)reason];
 }
 CU_fix :: ()->string #export_c {
@@ -214,5 +216,60 @@ CU_lane_jump :: (direct:bool)->u32 #export_c {if direct {return 26;}return 0;}
 }
 CU_primitive_mma :: (a:int,b:int,c:int,a_code:u32,b_code:u32,c_code:u32)->u32 #export_c {
  if a!=128 || b!=64 || c!=128 || a_code!=10 || b_code!=10 || c_code!=2 {return 27;}
+ return 0;
+}
+
+// The Metal compute subset (`coax metal-compute`): the same admission as
+// CUDA, lowered to Metal Shading Language. Apple GPUs have no binary64, so an
+// f64 value is a float-float pair (hi + lo, about 48 significant bits) with
+// compensated addition, exact products and exp, log, sqrt, abs and floor of
+// its own. What has no float-float meaning is refused: a binary64 bit
+// pattern, the other transcendentals and conversion to an integer. Views are
+// device memory, so a view of a kernel's register array is refused except as
+// a whole argument to a device primitive.
+#test "the Metal fix names the float-float profile" {
+ #assert MT_fix()=="coax metal-compute accepts what coax cuda accepts; f64 is a float-float pair, so its bit patterns, sin, cos, tan, pow and conversion to an integer are refused, and views point into device memory, never into a kernel's register arrays";
+}
+MT_fix :: ()->string #export_c {
+ return "coax metal-compute accepts what coax cuda accepts; f64 is a float-float pair, so its bit patterns, sin, cos, tan, pow and conversion to an integer are refused, and views point into device memory, never into a kernel's register arrays";
+}
+#forall "Metal byte intrinsics: no binary64 bit patterns, otherwise as CUDA" code:0..<16 {
+ expected:=CU_byte_intrinsic(cast(u32)code);
+ if code==3 || code==5 {expected=29;}
+ #assert MT_byte_intrinsic(cast(u32)code)==expected;
+}
+MT_byte_intrinsic :: (code:u32)->u32 #export_c {
+ if code==3 || code==5 {return 29;}
+ return CU_byte_intrinsic(code);
+}
+// Math intrinsics by native code: 1 sin, 2 cos, 3 tan, 4 exp, 5 log, 6 sqrt,
+// 7 floor, 8 abs, 9 pow. On f64 only exp, log, sqrt, floor and abs have a
+// float-float meaning; every f32 intrinsic is the precise Metal function.
+#forall "Metal f64 math: exp, log, sqrt, floor and abs" code:0..<12, wide:bool {
+ expected:u32=0;
+ if wide && (code<4 || code>8) {expected=31;}
+ #assert MT_math(cast(u32)code,wide)==expected;
+}
+MT_math :: (code:u32,wide:bool)->u32 #export_c {
+ if wide && (code<4 || code>8) {return 31;}
+ return 0;
+}
+// A conversion from f64 to an integer has no float-float meaning here.
+#forall "Metal refuses f64 to integer" from:0..<18, to:0..<18 {
+ expected:u32=0;
+ if from==3 && to>=4 && to<=11 {expected=31;}
+ #assert MT_cast(cast(u32)from,cast(u32)to)==expected;
+}
+MT_cast :: (from:u32,to:u32)->u32 #export_c {
+ if from==3 && to>=4 && to<=11 {return 31;}
+ return 0;
+}
+// A slice of a fixed array is a view of registers: only a device primitive's
+// whole argument may be one.
+#forall "Metal views never point into registers" array:bool, primitive:bool {
+ #assert MT_slice(array,primitive)==cast(u32)(ifx array && !primitive then 30 else 0);
+}
+MT_slice :: (array:bool,primitive:bool)->u32 #export_c {
+ if array && !primitive {return 30;}
  return 0;
 }

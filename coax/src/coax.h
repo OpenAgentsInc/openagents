@@ -449,6 +449,7 @@ struct EmitOptions {
   bool library = false;  // no C main; #export_c procedures are the interface
   bool metal = false;    // Metal Shading Language instead of C
   bool cuda = false;     // CUDA C for NVRTC: the compute subset (lib/compiler/compute.coax)
+  bool metal_compute = false;  // Metal Shading Language compute kernels: the same subset, f64 as float-float
 };
 std::string emit_c(const File *file, const EmitOptions &opts);
 // A C header for the file's #export_c procedures and the types they use,

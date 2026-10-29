@@ -8,6 +8,7 @@
 //   coax header  file.coax [-o out.h]                the C header for those procedures
 //   coax c       file.coax [--release] [--lib]       print the generated C
 //   coax cuda    file.coax [--release]               CUDA C for NVRTC (the compute subset)
+//   coax metal-compute file.coax [--release]         Metal compute kernels (the same subset)
 //   coax check   file.coax                           check without invoking C
 //   coax layout  file.coax                           struct and enum layouts
 //   coax test    file.coax [--steps N]               run every #test and #forall
@@ -262,7 +263,7 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   Arena arena;
   File file;
   if (!front_end(path, &src, &arena, &file, opts, library)) return false;
-  if (opts.cuda) {file.cuda=true;if(!compute_admit(&file)) {if (!g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");return false;}}
+  if (opts.cuda || opts.metal_compute) {file.cuda=opts.cuda;if(!compute_admit(&file,opts.metal_compute)) {if (!g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");return false;}}
   TimedPhase phase{"emit"};
   if(!g_timings.source_map.empty() && !write_file(g_timings.source_map,emit_debug_map(&file))) {fprintf(stderr,"coax: cannot write source map '%s'\n",g_timings.source_map.c_str());return false;}
   if (what == Output::c) {*text=emit_c(&file,opts);g_timings.generated_bytes=text->size();}
@@ -334,6 +335,7 @@ static int usage() {
           "       coax c       file.coax [--release] [--library [--header out.h]]\n"
           "       coax metal   file.coax\n"
           "       coax cuda    file.coax [--release]\n"
+          "       coax metal-compute file.coax [--release]\n"
           "       coax check   file.coax\n"
           "       coax proto   profile.pb --prefix Name [-o output.coax]\n"
           "       coax layout  file.coax\n"
@@ -407,7 +409,7 @@ static int main_impl(int argc, char **argv) {
   }
   if (cmd == "explain") return explain(argc, argv);
   if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
-      cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "cuda" && cmd != "test" && cmd != "mutate" && cmd != "proto")
+      cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "cuda" && cmd != "metal-compute" && cmd != "test" && cmd != "mutate" && cmd != "proto")
     return usage();
 
   const char *input = nullptr;
@@ -504,6 +506,7 @@ static int main_impl(int argc, char **argv) {
   }
   if (cmd == "metal") opts.library = opts.metal = true;
   if (cmd == "cuda") opts.library = opts.cuda = true;
+  if (cmd == "metal-compute") opts.library = opts.metal_compute = true;
   if (cmd == "test" || cmd == "mutate") {
     Source src;
     Arena arena;
@@ -518,7 +521,7 @@ static int main_impl(int argc, char **argv) {
     fwrite(text.data(), 1, text.size(), stdout);
     return 0;
   }
-  if (cmd == "c" || cmd == "header" || cmd == "metal" || cmd == "cuda") {
+  if (cmd == "c" || cmd == "header" || cmd == "metal" || cmd == "cuda" || cmd == "metal-compute") {
     if (!compile(input, opts, cmd == "header" ? Output::header : Output::c, &text,
                  cmd != "c" || opts.library ? 1 : 0, header.empty() ? nullptr : &header))
       return 1;
