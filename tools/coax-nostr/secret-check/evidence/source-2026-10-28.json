@@ -1,0 +1,715 @@
+{
+  "schema": "coax.secret-source-cases.v1",
+  "scope": "unsigned scalar source policy only; aggregate/loop/object timing gates remain open",
+  "test_driver_sha256": "6f76bbe62bb62fcb6d32c603b7df3a8c628fe9adce2738b6b43e8a3ad774e0be",
+  "cases": [
+    {
+      "case": "native_masked_select_oracle",
+      "checked_cases": 2000,
+      "release_cases": 2000,
+      "optimization": "-O2",
+      "oracle": "Python bit operations",
+      "seed": 1751
+    },
+    {
+      "case": "loaded_closure",
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": true,
+        "source_sha256": {
+          "$CASES/spaces in paths/root.coax": "dc2e68560d82cc15e580b39c521dce833dac0e5e1413a5e4e6a633c132946a73",
+          "$CASES/spaces in paths/part.coax": "f731fca5a407606968322950d165cffedec4fff3812fb68ccb197a63517bbcbc"
+        },
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$CASES/spaces in paths/root.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 2,
+        "visited_nodes": 17,
+        "return_dependency_mask": 1
+      }
+    },
+    {
+      "case": "changed_helper",
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/spaces in paths/root.coax": "dc2e68560d82cc15e580b39c521dce833dac0e5e1413a5e4e6a633c132946a73",
+          "$CASES/spaces in paths/part.coax": "78ee41ea648d0316abce2ccec65aebb9ce802ad8d037cd74e3e147ab6bf893d6"
+        },
+        "error": 6,
+        "error_name": "secret-branch",
+        "file": "$CASES/spaces in paths/part.coax",
+        "line": 1,
+        "column": 30,
+        "reached_procedures": 2,
+        "visited_nodes": 17,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "postcompile_source_drift",
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/spaces in paths/root.coax": "dc2e68560d82cc15e580b39c521dce833dac0e5e1413a5e4e6a633c132946a73",
+          "$CASES/spaces in paths/part.coax": "f731fca5a407606968322950d165cffedec4fff3812fb68ccb197a63517bbcbc"
+        },
+        "error": 13,
+        "error_name": "source-drift",
+        "drift_file": "$CASES/spaces in paths/part.coax"
+      }
+    },
+    {
+      "case": "seeded_lost_origin_detected",
+      "expected_error": 6,
+      "broken_error": 0,
+      "detected": true,
+      "mutated_representation": "generated C identifier origin return replaced by zero; source policy unchanged"
+    },
+    {
+      "case": "real_frontend_policy_sanitized",
+      "address_sanitizer": true,
+      "undefined_sanitizer": true,
+      "source_secret_ifx_error": 6,
+      "negative_source_count_error": 2
+    },
+    {
+      "case": "masked",
+      "expected": 0,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": true,
+        "source_sha256": {
+          "$CASES/masked.coax": "08e475a2da07ca89576e3022f30f3406fd71204a00dbc601c63cc6bf29cf3594"
+        },
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$CASES/masked.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 18,
+        "return_dependency_mask": 7
+      }
+    },
+    {
+      "case": "public_ifx",
+      "expected": 0,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": true,
+        "source_sha256": {
+          "$CASES/public_ifx.coax": "fab4c4ec78c2028275d4a83351d2756967310520101ccf0f2b52fe27b3a2e28d"
+        },
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$CASES/public_ifx.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 9,
+        "return_dependency_mask": 1
+      }
+    },
+    {
+      "case": "clear_assignment",
+      "expected": 0,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": true,
+        "source_sha256": {
+          "$CASES/clear_assignment.coax": "e7c6a0f2a3b9eae37db70fce7e0829714b26cf0b76d1dc2b958c43888ec65f88"
+        },
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$CASES/clear_assignment.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 15,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "truncation",
+      "expected": 0,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": true,
+        "source_sha256": {
+          "$CASES/truncation.coax": "d0e58b9ae85721ba797149622ed242f4e409f24aa3a4e984237cd2630ec51ec2"
+        },
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$CASES/truncation.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 7,
+        "return_dependency_mask": 1
+      }
+    },
+    {
+      "case": "comments",
+      "expected": 0,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": true,
+        "source_sha256": {
+          "$CASES/comments.coax": "7efce64367726e5d5229e177ea0283b648bc4bbabe23e8e0475cadec325976bb"
+        },
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$CASES/comments.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 8,
+        "return_dependency_mask": 1
+      }
+    },
+    {
+      "case": "expression_depth_boundary",
+      "expected": 0,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": true,
+        "source_sha256": {
+          "$CASES/expression_depth_boundary.coax": "b7d5a5201915e50889266d53ab112d084f445454653604757facac3e05b0ddbc"
+        },
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$CASES/expression_depth_boundary.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 21,
+        "return_dependency_mask": 1
+      }
+    },
+    {
+      "case": "cb_mask",
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "cb_mask",
+        "accepted": true,
+        "source_sha256": {
+          "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd"
+        },
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$REPO/coax/lib/crypto/bytes.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 108,
+        "return_dependency_mask": 1
+      }
+    },
+    {
+      "case": "cb_ct_select32",
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "cb_ct_select32",
+        "accepted": true,
+        "source_sha256": {
+          "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd"
+        },
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$REPO/coax/lib/crypto/bytes.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 80,
+        "return_dependency_mask": 7
+      }
+    },
+    {
+      "case": "cb_ct_select64",
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "cb_ct_select64",
+        "accepted": true,
+        "source_sha256": {
+          "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd"
+        },
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$REPO/coax/lib/crypto/bytes.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 80,
+        "return_dependency_mask": 7
+      }
+    },
+    {
+      "case": "actual_scalar_not_admitted",
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "sc_mul",
+        "accepted": false,
+        "source_sha256": {
+          "$REPO/coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+          "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+          "$REPO/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c"
+        },
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$REPO/coax/lib/crypto/secp_scalar.coax",
+        "line": 108,
+        "column": 63,
+        "reached_procedures": 2,
+        "visited_nodes": 168,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "ifx",
+      "expected": 6,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/ifx.coax": "123a37ebb144df9699296fa046c02ad247c8d5c6df20057efb2af2c5167bc28c"
+        },
+        "error": 6,
+        "error_name": "secret-branch",
+        "file": "$CASES/ifx.coax",
+        "line": 1,
+        "column": 35,
+        "reached_procedures": 1,
+        "visited_nodes": 9,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "short_circuit",
+      "expected": 6,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/short_circuit.coax": "251b1ee88e6d6acdf36c04a143f5a1735757ccaf79282ae738bf739d35811e98"
+        },
+        "error": 6,
+        "error_name": "secret-branch",
+        "file": "$CASES/short_circuit.coax",
+        "line": 1,
+        "column": 41,
+        "reached_procedures": 1,
+        "visited_nodes": 12,
+        "return_dependency_mask": 1
+      }
+    },
+    {
+      "case": "index",
+      "expected": 7,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/index.coax": "3ddb9e5c7edc8e3c94d04b19519f09038d85395e034a61a72d299c4ab15f496d"
+        },
+        "error": 7,
+        "error_name": "secret-index",
+        "file": "$CASES/index.coax",
+        "line": 1,
+        "column": 44,
+        "reached_procedures": 1,
+        "visited_nodes": 9,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "public_memory",
+      "expected": 5,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/public_memory.coax": "012f4fac1a3707f993547bcafaccb36a8599e50ada0ebd501da6d9d459af01a0"
+        },
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/public_memory.coax",
+        "line": 1,
+        "column": 38,
+        "reached_procedures": 1,
+        "visited_nodes": 7,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "shift",
+      "expected": 12,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/shift.coax": "dcc612a25a5bcce3c5ece48471d615e354df17af5a375db1a12e29ccecb064ab"
+        },
+        "error": 12,
+        "error_name": "secret-shift",
+        "file": "$CASES/shift.coax",
+        "line": 1,
+        "column": 42,
+        "reached_procedures": 1,
+        "visited_nodes": 10,
+        "return_dependency_mask": 3
+      }
+    },
+    {
+      "case": "vartime",
+      "expected": 8,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/vartime.coax": "dc33c945a481d59d91ad256d08d6437db05f5ae0c53e8818d86fe2c64e826a9f"
+        },
+        "error": 8,
+        "error_name": "vartime",
+        "file": "$CASES/vartime.coax",
+        "line": 1,
+        "column": 76,
+        "reached_procedures": 1,
+        "visited_nodes": 7,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "foreign",
+      "expected": 9,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/foreign.coax": "3ae51a7f01612f8e3f0ca0c86b69e513838f63cd979efe6774942a62ca701e33"
+        },
+        "error": 9,
+        "error_name": "callee",
+        "file": "$CASES/foreign.coax",
+        "line": 1,
+        "column": 1,
+        "reached_procedures": 1,
+        "visited_nodes": 11,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "transitive",
+      "expected": 6,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/transitive.coax": "619a7f621c9f466fc3794a03d0f79240b216775f616f3a06931b95206635674e"
+        },
+        "error": 6,
+        "error_name": "secret-branch",
+        "file": "$CASES/transitive.coax",
+        "line": 1,
+        "column": 30,
+        "reached_procedures": 3,
+        "visited_nodes": 27,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "recursion",
+      "expected": 11,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/recursion.coax": "a93d8245b750ccdc8da4cabcaaa5c917c8a75c1d00d4a393a75b118ee0ffaddb"
+        },
+        "error": 11,
+        "error_name": "recursion",
+        "file": "$CASES/recursion.coax",
+        "line": 1,
+        "column": 1,
+        "reached_procedures": 2,
+        "visited_nodes": 18,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "while",
+      "expected": 6,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/while.coax": "730f7e250094243e5d68974b4a5dbc1b40ef776cbdf53af0a7503944e9cf2283"
+        },
+        "error": 6,
+        "error_name": "secret-branch",
+        "file": "$CASES/while.coax",
+        "line": 1,
+        "column": 33,
+        "reached_procedures": 1,
+        "visited_nodes": 10,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "public_loop",
+      "expected": 5,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/public_loop.coax": "affba5d5e5fd1270cf430d0b6c8902289325621799e7236a376c4eb93319adcc"
+        },
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/public_loop.coax",
+        "line": 1,
+        "column": 28,
+        "reached_procedures": 1,
+        "visited_nodes": 5,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "aggregate",
+      "expected": 5,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/aggregate.coax": "9b5f2babd0c53ad73e5bbbb6609ce3395ad5086fe8f253e5d2fe1d86d62efbab"
+        },
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/aggregate.coax",
+        "line": 1,
+        "column": 67,
+        "reached_procedures": 1,
+        "visited_nodes": 7,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "uninitialized",
+      "expected": 5,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/uninitialized.coax": "95182055e58edb521f35f2dd6f9a221646d2395d7c21e145fd1be3aaa21dd453"
+        },
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/uninitialized.coax",
+        "line": 1,
+        "column": 28,
+        "reached_procedures": 1,
+        "visited_nodes": 5,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "narrow_cast",
+      "expected": 5,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/narrow_cast.coax": "ab75d19c8ca54d2af21f2992eefc5621348f3d7e855ad2e0f7f43dcf2857950d"
+        },
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/narrow_cast.coax",
+        "line": 1,
+        "column": 35,
+        "reached_procedures": 1,
+        "visited_nodes": 7,
+        "return_dependency_mask": 1
+      }
+    },
+    {
+      "case": "division",
+      "expected": 5,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/division.coax": "5bbdc22edbabf474e4d66a404d21c09d6b6c16766ee24a5216730e9b7b14a915"
+        },
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/division.coax",
+        "line": 1,
+        "column": 42,
+        "reached_procedures": 1,
+        "visited_nodes": 10,
+        "return_dependency_mask": 3
+      }
+    },
+    {
+      "case": "compound",
+      "expected": 6,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/compound.coax": "10baa714d4a36828b8beb9d711c657a8d1dbec0b1c9fab89bb34cef122eae377"
+        },
+        "error": 6,
+        "error_name": "secret-branch",
+        "file": "$CASES/compound.coax",
+        "line": 1,
+        "column": 45,
+        "reached_procedures": 1,
+        "visited_nodes": 13,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "float",
+      "expected": 10,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/float.coax": "f3154c4368446cc8fa7efb633ddaccabee51e277719596fe465f59f478a53db1"
+        },
+        "error": 10,
+        "error_name": "type",
+        "file": "$CASES/float.coax",
+        "line": 1,
+        "column": 15,
+        "reached_procedures": 1,
+        "visited_nodes": 6,
+        "return_dependency_mask": 1
+      }
+    },
+    {
+      "case": "no_secret_syntax",
+      "expected": 1,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "error": 1,
+        "error_name": "frontend"
+      }
+    },
+    {
+      "case": "empty_entry",
+      "expected": 4,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/empty_entry.coax": "a2a3d4bf062980fdf1ac7eba68c5deb9a3c6808483711b7164fb495155bc451f"
+        },
+        "error": 4,
+        "error_name": "entry",
+        "file": null,
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 0,
+        "visited_nodes": 0,
+        "return_dependency_mask": 0
+      }
+    },
+    {
+      "case": "expression_depth_limit",
+      "expected": 2,
+      "report": {
+        "schema": "coax.secret-source-audit.v1",
+        "entry": "candidate",
+        "accepted": false,
+        "source_sha256": {
+          "$CASES/expression_depth_limit.coax": "6e47067c5596273316d39d5b68504f04a9cf877b8603ff2b669d91b52d54d41a"
+        },
+        "error": 2,
+        "error_name": "limit",
+        "file": "$CASES/expression_depth_limit.coax",
+        "line": 1,
+        "column": 69,
+        "reached_procedures": 1,
+        "visited_nodes": 22,
+        "return_dependency_mask": 0
+      }
+    }
+  ],
+  "audit": {
+    "compiler": "coax0 0.16.0",
+    "compiler_sha256": "46d332386114ff213a2083440469332742915ea99b2506a9619730420fda2719",
+    "audit_artifact_sha256": "ea3e1124ae38422b4e0373f20dc7291974e855b07c28fabd6f737f23d9e658e5",
+    "audit_input_sha256": {
+      "$REPO/tools/coax-nostr/secret-check/frontend.coax": "0715526e5c9005ad53a08f30883f88e623f68a32c247a507fc1d2fdf926eac6f",
+      "$REPO/coax/lib/compiler/lexer.coax": "2a193c698aab87f24384bdd4443dc02d15a2a699cea5b371762392fc5925ad0b",
+      "$REPO/coax/lib/compiler/parser.coax": "58ce077fa68612ba5700774f887a7035907c104f0446baa56412deb0d500e4f0",
+      "$REPO/coax/lib/compiler/sources.coax": "a5cea55ef5f6efa502d15d9e0ddd462e3e1a5cffe0f25a8200873443c9df008d",
+      "$REPO/coax/lib/crypto/sha256-memory.coax": "9c59475cf6744005e9a9bff7efa5c1fd1cf90c5323a7c52e818a166b0451433d",
+      "$REPO/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+      "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "$REPO/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+      "$REPO/coax/lib/crypto/secret-flow.coax": "40553fd3512570aa7ab35e79145344f2a7e6c214612b70c9c74bf87f7d3eda5a",
+      "$REPO/coax/lib/crypto/secret-types.coax": "e7a6a4632ab555ac12b3765d97bf18fcad5e18248f182889b31fb965682117e7",
+      "$REPO/coax/tests/nostr/secret_flow.coax": "b3b383a63aa7fffeaed0daf3bde6066c0c1e7f7e856c6a855f8c5c45fb2840d3",
+      "$REPO/tools/coax-nostr/secret-check/bridge.cpp": "ef81a4b024bd0570593a5a1f73b1f0d9df0498e031d552081ed77f1ca6979c81",
+      "$REPO/tools/coax-nostr/secret-check/check.py": "eb471332d2fc739763d47d06f4322941ba4cd2c297f15a1312298fd6b6cd7346"
+    },
+    "classification": "all entry parameters secret",
+    "profile": "unsigned-scalar-source-v1",
+    "object_timing_approved": false,
+    "checked_runtime_guards_proved": false,
+    "aggregate_memory_loops_supported": false
+  },
+  "checks": {
+    "summary": "40 checks, 40 passed, 0 failed",
+    "output_sha256": "79885c7d9d7cfd4eb0d445e132ae69471b551d41380ced21d6fa9811ee65f293"
+  },
+  "mutation": {
+    "summary": "741 mutants, 741 killed, 0 survived",
+    "output_sha256": "ca60b7a6de7e72eb2c60b6cabc443fae7b333de0dc4ebdbe7b16a161322f6941"
+  },
+  "limitations": [
+    "unsigned scalar source policy only",
+    "all entry parameters classified secret",
+    "actual scalar multiplication is unsupported",
+    "no checked-runtime-guard proof",
+    "no object optimizer JIT timing proof",
+    "no production cryptographic admission",
+    "no secure-erasure claim"
+  ]
+}

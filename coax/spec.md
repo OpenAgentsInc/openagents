@@ -480,6 +480,17 @@ masked-select native/Wasm evidence. `tests/wrapping.py` checks defined wrap/rota
 semantics against an independent integer oracle, including actual Wasm execution
 and native sanitizers.
 
+The optional [scalar secret-path audit](../tools/coax-nostr/secret-check/README.md)
+uses the actual Coax frontend and typed source-map closure. Its Coax authority
+policy classifies all entry parameters as secret, tracks scalar origins through
+direct callees and refuses secret control/index operations, public-only
+`_vartime` calls and unsupported syntax. It admits a bounded unsigned scalar
+subset, including selected masked operations; arrays, aggregate access and all
+loops remain unsupported. Source/compiler/tool hashes bind each result to the
+analyzed snapshot. This is source policy only: checked arithmetic guards,
+optimizer/object/JIT behavior, erasure and production cryptographic admission
+remain separate gates. There is no `#secret` language annotation.
+
 Planned overloaded operators must be pure, nonallocating and nonfallible.
 Assignment, field lookup, short-circuit booleans and procedure calls are not
 overloadable. Indexing, arithmetic and comparison require specific constraints.
