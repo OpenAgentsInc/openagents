@@ -977,6 +977,22 @@
       ]
     },
     {
+      "slug": "crypto-secret-audit-large-closure",
+      "parent": "m-assurance",
+      "title": "Audit larger secret-source closures without weakening existing bounds",
+      "size": "L",
+      "labels": ["nostr", "crypto", "coax"],
+      "body": "The full Schnorr signing entry resolves 27 physical source units, beyond the existing classified secret-source auditor's 16-unit profile. Its current exact-source report refuses before dataflow analysis. Design a separately versioned bounded large-closure audit or an equivalently rigorous compositional analysis that covers the actual signer graph. Preserve the existing profile and its refusals; do not merely raise a limit, drop units, suppress guards, trust caller-supplied proof booleans, or treat a partial audit as full acceptance.",
+      "files": ["tools/coax-nostr/public-view-check/", "tools/coax-nostr/secret-check/", "coax/lib/crypto/secret-flow.coax", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "The separately identified profile handles the complete exact signer closure with source, compiler, artifact, classification and resolved-type identities bound end to end; old profiles and historical refusal evidence remain unchanged",
+        "Independent adversarial cases cover all physical units, transitive calls, aliases and ownership, secret-derived control and indices, guards, stale identities, unsupported effects and resource boundaries; unsupported behavior fails closed",
+        "Full affected authority checks and mutation pass without survivors or waivers, with independent review of the dataflow and evidence binding; preserve caller, runtime, hidden-copy, target timing and production limitations"
+      ],
+      "blocked_by": [],
+      "blocks": ["schnorr-sign"]
+    },
+    {
       "slug": "schnorr-sign",
       "parent": "m3-sign-ecdh",
       "title": "BIP-340 signing with auxiliary randomness",
@@ -998,6 +1014,7 @@
         "secp-mult-base",
         "schnorr-verify",
         "schnorr-fast-verify",
+        "crypto-secret-audit-large-closure",
         "crypto-secure-zero"
       ],
       "blocks": [
