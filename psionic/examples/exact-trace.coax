@@ -1,0 +1,37 @@
+#import "Basic";
+#load "../lib/exact-memory.coax";
+
+// book:begin example
+main :: () {
+    // Store i*i at address i for i = 4..1, then print mem[4] + mem[1].
+    program:=[18]TmOp.[TmOp.{code=TmCode.push,arg=4},TmOp.{code=TmCode.set,arg=0},
+        TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.get,arg=0},
+        TmOp.{code=TmCode.mul},TmOp.{code=TmCode.store},
+        TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.push,arg=1},TmOp.{code=TmCode.sub},
+        TmOp.{code=TmCode.set,arg=0},TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.brif,arg=2},
+        TmOp.{code=TmCode.push,arg=4},TmOp.{code=TmCode.load},TmOp.{code=TmCode.push,arg=1},
+        TmOp.{code=TmCode.load},TmOp.{code=TmCode.add}];
+    full:[20]TmOp;for i:0..<18 {full[i]=program[i];}
+    full[18]=TmOp.{code=TmCode.out};full[19]=TmOp.{code=TmCode.ret};
+    trace:[256]int;outputs:[1]int;a:=tm_run(full[..],64,trace[..],outputs[..],false);
+    #assert a.status==TmStatus.ok;
+    print("machine: % steps, output %, trace digest ",a.steps,outputs[0]);hex8(a.digest);
+    keys:[8]int;values:[8]int;b:=em_run(full[..],64,trace[..],outputs[..],keys[..],values[..],false);
+    #assert b.status==TmStatus.ok;
+    print("memory by attention: % steps, output %, trace digest ",b.steps,outputs[0]);hex8(b.digest);
+    k:=[4]int.[7,3,7,9];v:=[4]int.[10,20,30,40];r:=em_read(k[..],v[..],4,7);
+    print("read key 7 from [7,3,7,9]: % (latest write, position %)\n",r.value,r.position);
+    #assert em_read(k[..],v[..],4,8).status==EmStatus.missing;
+    print("read key 8: refused as missing\n");
+    spin:=[3]TmOp.[TmOp.{code=TmCode.push,arg=1},TmOp.{code=TmCode.brif,arg=0},TmOp.{code=TmCode.ret}];
+    s:=tm_run(spin[..],64,trace[..],outputs[..],false);
+    #assert s.status==TmStatus.budget;
+    print("endless loop: refused after % steps, nothing published\n",s.steps);
+}
+// The first eight bytes of a digest in hexadecimal, then a newline.
+hex8 :: (d:[32]u8) {
+    digits:="0123456789abcdef";
+    for i:0..<8 {hi:=cast(int)(d[i]>>4);lo:=cast(int)(d[i]&15);print("%",digits[hi..<hi+1]);print("%",digits[lo..<lo+1]);}
+    print("\n");
+}
+// book:end example

@@ -1,0 +1,5 @@
+machine: 53 steps, output 17, trace digest d7be7b683aee9a03
+memory by attention: 53 steps, output 17, trace digest d7be7b683aee9a03
+read key 7 from [7,3,7,9]: 30 (latest write, position 2)
+read key 8: refused as missing
+endless loop: refused after 64 steps, nothing published

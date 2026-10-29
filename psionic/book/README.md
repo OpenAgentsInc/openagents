@@ -40,8 +40,10 @@ run examples directly without the check command.
 | [46. Execute gpt-oss-120b](ch46-execute-gpt-oss-120b.md) | Runnable: original CPU model and residency | The same engine, 36 layers and 128 experts, original shards and measured memory. |
 | [47. Let the small model guess](ch47-let-the-small-model-guess.md) | Runnable: serial CPU speculative profile | Standard acceptance/correction, block bonus, whole-cache rollback, prompt n-grams and original greedy parity. |
 | [48. Call a tool](ch48-call-a-tool.md) | Runnable: finite JSON-schema enum and granted tools | Mask before sampling, typed commentary handoffs, tool-role results and final-only display. |
+| [165. A machine whose state is a trace](ch165-a-machine-whose-state-is-a-trace.md) | Runnable: bounded CPU reference interpreter | Admit and run a small integer stack machine whose four-token-per-step trace and SHA-256 digest identify the run; a refused run publishes nothing. |
+| [166. Attention as exact memory](ch166-attention-as-exact-memory.md) | Runnable: bounded CPU, integer scores | Parabolic keys and hard-max reads return exactly the latest write or refuse; the machine with attention as its only memory reproduces the interpreter's digest. |
 
-Chapters 41–48 start an independent gpt-oss branch; chapter 11 and chapters 13–40 remain planned.
+Chapters 41–48 start an independent gpt-oss branch, and 165–166 open Part XXIII (programs compiled into weights); chapter 11 and chapters 13–40 remain planned.
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
 sets the proposed full reading order: early Elephant/Mammoth and useful

@@ -230,6 +230,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/exact-trace.coax",
+      "chapter": "psionic/book/ch165-a-machine-whose-state-is-a-trace.md",
+      "stdout": "psionic/fixtures/exact-trace.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

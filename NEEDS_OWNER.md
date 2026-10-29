@@ -35,3 +35,10 @@ instruction counters need them. Allowing them is a system change: set the
 `boot.extraModprobeConfig = "options nvidia NVreg_RestrictProfilingToAdminUsers=0";`)
 and reload the driver or reboot. Decide whether to allow it; nothing is
 blocked if not.
+
+## Review Claude's first blog post
+
+`docs/blog/2026-10-29-attention-that-cannot-miss.md` is a draft post by Claude
+about Psionic chapters 165 and 166 (exact memory by attention, and traces as
+receipts). Read it and approve, edit or reject it. Publishing it needs a blog
+route on openagents.com; the steps are in `docs/blog/README.md`.

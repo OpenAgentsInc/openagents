@@ -1,0 +1,211 @@
+// A bounded integer stack machine whose output is its own execution trace.
+#load "../../coax/lib/crypto/sha256.coax";
+#load "../fixtures/trace-vectors.coax";
+#authority;
+
+TmCode :: enum u8 {push;get;set;add;sub;mul;load;store;brif;out;ret;}
+TmOp :: struct {code:TmCode;arg:int;}
+TmStatus :: enum u8 {ok;shape;code;argument;underflow;overflow;local;address;branch;arithmetic;budget;capacity;fell;alias;digest;}
+TmResult :: struct {status:TmStatus;ip:int;steps:int;outputs:int;digest:[32]u8;}
+TmState :: struct {stack:[32]int;depth:int;locals:[8]int;outputs:int;}
+TmStepResult :: struct {status:TmStatus;next:int;state:TmState;}
+
+TM_PROGRAM_MAX :: 256;
+TM_STACK_MAX :: 32;
+TM_LOCALS :: 8;
+TM_CELLS :: 64;
+TM_OUTPUTS :: 64;
+TM_STEPS_MAX :: 65536;
+TM_TOKENS :: 4;
+TM_I32_MIN :: -2147483648;
+TM_I32_MAX :: 2147483647;
+
+#test "a constant program halts with its output and a four-token trace per step" {
+    program:=[3]TmOp.[TmOp.{code=TmCode.push,arg=7},TmOp.{code=TmCode.out},TmOp.{code=TmCode.ret}];
+    trace:[12]int;outputs:[1]int;
+    r:=tm_run(program[..],16,trace[..],outputs[..],false);
+    #assert r.status==TmStatus.ok && r.steps==3 && r.outputs==1 && outputs[0]==7;
+    #assert trace[0]==0 && trace[1]==cast(int)TmCode.push && trace[2]==7 && trace[3]==1;
+    #assert trace[4]==1 && trace[5]==cast(int)TmCode.out && trace[6]==7 && trace[7]==1;
+    #assert trace[8]==2 && trace[9]==cast(int)TmCode.ret && trace[10]==0 && trace[11]==0;
+}
+#test "a backward branch counts down and the trace records every step" {
+    // local0 = 3; loop: out local0; local0 -= 1; if local0 != 0 goto loop; ret
+    program:=[10]TmOp.[TmOp.{code=TmCode.push,arg=3},TmOp.{code=TmCode.set,arg=0},
+        TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.out},
+        TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.push,arg=1},TmOp.{code=TmCode.sub},TmOp.{code=TmCode.set,arg=0},
+        TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.brif,arg=2}];
+    program2:[11]TmOp;for i:0..<10 {program2[i]=program[i];}program2[10]=TmOp.{code=TmCode.ret};
+    trace:[200]int;outputs:[4]int;
+    r:=tm_run(program2[..],64,trace[..],outputs[..],false);
+    #assert r.status==TmStatus.ok && r.outputs==3 && outputs[0]==3 && outputs[1]==2 && outputs[2]==1;
+    #assert r.steps==2+3*8+1;
+    last:=(r.steps-2)*TM_TOKENS;#assert trace[last]==9 && trace[last+2]==0 && trace[last+3]==10;
+}
+#test "memory stores and loads, and the digest identifies the trace" {
+    program:=[9]TmOp.[TmOp.{code=TmCode.push,arg=5},TmOp.{code=TmCode.push,arg=42},TmOp.{code=TmCode.store},
+        TmOp.{code=TmCode.push,arg=5},TmOp.{code=TmCode.load},TmOp.{code=TmCode.push,arg=6},TmOp.{code=TmCode.load},
+        TmOp.{code=TmCode.add},TmOp.{code=TmCode.out}];
+    program2:[10]TmOp;for i:0..<9 {program2[i]=program[i];}program2[9]=TmOp.{code=TmCode.ret};
+    trace:[40]int;outputs:[1]int;
+    r:=tm_run(program2[..],16,trace[..],outputs[..],false);
+    #assert r.status==TmStatus.ok && outputs[0]==42 && trace[10]==42 && trace[11]==5;
+    #assert trace[18]==42 && trace[19]==5 && trace[26]==0 && trace[27]==6;
+    other:=r;program2[1].arg=43;
+    s:=tm_run(program2[..],16,trace[..],outputs[..],false);
+    same:=true;for i:0..<32 {if s.digest[i]!=other.digest[i] {same=false;}}
+    #assert s.status==TmStatus.ok && outputs[0]==43 && !same;
+}
+#test "every fault is a typed refusal that publishes nothing" {
+    trace:=[8]int.[-9,-9,-9,-9,-9,-9,-9,-9];outputs:=[2]int.[-9,-9];
+    under:=[2]TmOp.[TmOp.{code=TmCode.add},TmOp.{code=TmCode.ret}];
+    #assert tm_run(under[..],8,trace[..],outputs[..],false).status==TmStatus.underflow;
+    big:=[4]TmOp.[TmOp.{code=TmCode.push,arg=TM_I32_MAX},TmOp.{code=TmCode.push,arg=1},TmOp.{code=TmCode.add},TmOp.{code=TmCode.ret}];
+    #assert tm_run(big[..],8,trace[..],outputs[..],false).status==TmStatus.arithmetic;
+    loc:=[3]TmOp.[TmOp.{code=TmCode.push,arg=1},TmOp.{code=TmCode.set,arg=8},TmOp.{code=TmCode.ret}];
+    #assert tm_run(loc[..],8,trace[..],outputs[..],false).status==TmStatus.local;
+    addr:=[3]TmOp.[TmOp.{code=TmCode.push,arg=64},TmOp.{code=TmCode.load},TmOp.{code=TmCode.ret}];
+    #assert tm_run(addr[..],8,trace[..],outputs[..],false).status==TmStatus.address;
+    spin:=[3]TmOp.[TmOp.{code=TmCode.push,arg=1},TmOp.{code=TmCode.brif,arg=0},TmOp.{code=TmCode.ret}];
+    #assert tm_run(spin[..],2,trace[..],outputs[..],false).status==TmStatus.budget;
+    fall:=[1]TmOp.[TmOp.{code=TmCode.push,arg=1}];
+    #assert tm_run(fall[..],8,trace[..],outputs[..],false).status==TmStatus.fell;
+    jump:=[2]TmOp.[TmOp.{code=TmCode.brif,arg=2},TmOp.{code=TmCode.ret}];
+    #assert tm_run(jump[..],8,trace[..],outputs[..],false).status==TmStatus.branch;
+    wide:=[2]TmOp.[TmOp.{code=TmCode.push,arg=TM_I32_MAX+1},TmOp.{code=TmCode.ret}];
+    #assert tm_run(wide[..],8,trace[..],outputs[..],false).status==TmStatus.argument;
+    ok:=[3]TmOp.[TmOp.{code=TmCode.push,arg=1},TmOp.{code=TmCode.out},TmOp.{code=TmCode.ret}];
+    #assert tm_run(ok[..],8,trace[0..<7],outputs[..],false).status==TmStatus.capacity;
+    #assert tm_run(ok[..],8,trace[..],outputs[0..<0],false).status==TmStatus.capacity;
+    #assert tm_run(ok[..],8,trace[..],outputs[..],true).status==TmStatus.alias;
+    #assert tm_run(ok[0..<0],8,trace[..],outputs[..],false).status==TmStatus.shape;
+    #assert tm_run(ok[..],0,trace[..],outputs[..],false).status==TmStatus.budget;
+    for v:trace {#assert v==-9;} for v:outputs {#assert v==-9;}
+}
+#test "the stack is bounded and multiplication is checked" {
+    deep:[34]TmOp;for i:0..<33 {deep[i]=TmOp.{code=TmCode.push,arg=i};}deep[33]=TmOp.{code=TmCode.ret};
+    trace:[200]int;outputs:[1]int;
+    #assert tm_run(deep[..],64,trace[..],outputs[..],false).status==TmStatus.overflow;
+    mul:=[5]TmOp.[TmOp.{code=TmCode.push,arg=65536},TmOp.{code=TmCode.push,arg=-32768},TmOp.{code=TmCode.mul},TmOp.{code=TmCode.out},TmOp.{code=TmCode.ret}];
+    r:=tm_run(mul[..],8,trace[..],outputs[..],false);#assert r.status==TmStatus.ok && outputs[0]==TM_I32_MIN;
+    mul[1].arg=-32769;#assert tm_run(mul[..],8,trace[..],outputs[..],false).status==TmStatus.arithmetic;
+}
+#test "program length and step budget are bounded at their limits" {
+    rets:[257]TmOp;for i:0..<257 {rets[i]=TmOp.{code=TmCode.ret};}
+    trace:[8]int;outputs:[1]int;
+    #assert tm_run(rets[0..<256],1,trace[..],outputs[..],false).status==TmStatus.ok;
+    #assert tm_run(rets[..],1,trace[..],outputs[..],false).status==TmStatus.shape;
+    #assert tm_run(rets[0..<1],TM_STEPS_MAX,trace[..],outputs[..],false).status==TmStatus.ok;
+    #assert tm_run(rets[0..<1],TM_STEPS_MAX+1,trace[..],outputs[..],false).status==TmStatus.budget;
+    #assert tm_run(rets[0..<1],0,trace[..],outputs[..],false).status==TmStatus.budget;
+    #assert tm_admit(rets[0..<256])==TmStatus.ok && tm_admit(rets[..])==TmStatus.shape;
+}
+#forall "branch targets and arguments outside the program are refused before running" t:-2..<6 {
+    p:=[3]TmOp.[TmOp.{code=TmCode.push,arg=0},TmOp.{code=TmCode.brif,arg=t},TmOp.{code=TmCode.ret}];
+    trace:[16]int;outputs:[1]int;r:=tm_admit(p[..]);
+    if t>=0 && t<3 {#assert r==TmStatus.ok;} else {#assert r==TmStatus.branch;}
+}
+
+// book:begin admit
+tm_fits :: (v:int)->bool {return v>=TM_I32_MIN && v<=TM_I32_MAX;}
+tm_admit :: (program:[]TmOp)->TmStatus #export_c {
+    if program.count<1 || program.count>TM_PROGRAM_MAX {return TmStatus.shape;}
+    for op:program {
+        if cast(int)op.code>cast(int)TmCode.ret {return TmStatus.code;}
+        if op.code==TmCode.push && !tm_fits(op.arg) {return TmStatus.argument;}
+        if (op.code==TmCode.get || op.code==TmCode.set) && (op.arg<0 || op.arg>=TM_LOCALS) {return TmStatus.local;}
+        if op.code==TmCode.brif && (op.arg<0 || op.arg>=program.count) {return TmStatus.branch;}
+    }
+    return TmStatus.ok;
+}
+// book:end admit
+
+// book:begin step
+// One instruction: it returns the next state and instruction pointer (or a
+// refusal) and writes its four trace tokens (ip, code, x, y) into `row`.
+// Memory is not part of the state: `load` reads the caller's `cells`, and a
+// `store` is only reported in its row, for the caller to apply.
+tm_step :: (program:[]TmOp,ip:int,s:TmState,cells:[]int,row:[]int)->TmStepResult {
+    op:=program[ip];next:=ip+1;r:=TmStepResult.{state=s};
+    need:=0;
+    if op.code==TmCode.add || op.code==TmCode.sub || op.code==TmCode.mul || op.code==TmCode.store {need=2;}
+    if op.code==TmCode.set || op.code==TmCode.load || op.code==TmCode.brif || op.code==TmCode.out {need=1;}
+    if r.state.depth<need {r.status=TmStatus.underflow;return r;}
+    pushes:=op.code==TmCode.push || op.code==TmCode.get;
+    if pushes && r.state.depth>=TM_STACK_MAX {r.status=TmStatus.overflow;return r;}
+    x:=0;y:=0;d:=r.state.depth;
+    if op.code==TmCode.push {x=op.arg;r.state.stack[d]=x;r.state.depth=d+1;y=d+1;}
+    else if op.code==TmCode.get {x=r.state.locals[op.arg];r.state.stack[d]=x;r.state.depth=d+1;y=op.arg;}
+    else if op.code==TmCode.set {x=r.state.stack[d-1];r.state.depth=d-1;r.state.locals[op.arg]=x;y=op.arg;}
+    else if op.code==TmCode.add || op.code==TmCode.sub || op.code==TmCode.mul {
+        a:=r.state.stack[d-2];b:=r.state.stack[d-1];v:=a+b;
+        if op.code==TmCode.sub {v=a-b;}
+        if op.code==TmCode.mul {v=a*b;}
+        if !tm_fits(v) {r.status=TmStatus.arithmetic;return r;}
+        r.state.stack[d-2]=v;r.state.depth=d-1;x=v;y=d-1;
+    }
+    else if op.code==TmCode.load {
+        a:=r.state.stack[d-1];if a<0 || a>=TM_CELLS {r.status=TmStatus.address;return r;}
+        x=cells[a];r.state.stack[d-1]=x;y=a;
+    }
+    else if op.code==TmCode.store {
+        a:=r.state.stack[d-2];v:=r.state.stack[d-1];if a<0 || a>=TM_CELLS {r.status=TmStatus.address;return r;}
+        r.state.depth=d-2;x=v;y=a;
+    }
+    else if op.code==TmCode.brif {
+        x=r.state.stack[d-1];r.state.depth=d-1;if x!=0 {next=op.arg;}y=next;
+    }
+    else if op.code==TmCode.out {
+        if r.state.outputs>=TM_OUTPUTS {r.status=TmStatus.capacity;return r;}
+        x=r.state.stack[d-1];r.state.depth=d-1;r.state.outputs+=1;y=r.state.outputs;
+    }
+    else {next=-1;}
+    row[0]=ip;row[1]=cast(int)op.code;row[2]=x;row[3]=y;
+    r.next=next;return r;
+}
+// book:end step
+
+tm_bytes :: (row:[]int,bytes:[]u8) {
+    for t:0..<TM_TOKENS {
+        w:=cast(u32)(row[t]&0xffffffff);
+        for b:0..<4 {bytes[t*4+b]=cast(u8)((w>>cast(u32)(b*8))&0xff);}
+    }
+}
+
+// book:begin run
+// Runs a program for at most `budget` steps. The first pass executes and
+// hashes without touching the caller's storage; only a run known to succeed
+// is replayed into the caller's trace, so a refused run writes nothing.
+tm_pass :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int,publish:bool)->TmResult {
+    s:TmState;cells:[64]int;ip:=0;steps:=0;stage_out:[64]int;row:[4]int;bytes:[16]u8;
+    sha:[112]u8;ok:=sha256_init(sha[..])==SHA_OK;
+    while true {
+        if ip==program.count {return TmResult.{status=TmStatus.fell,ip=ip,steps=steps};}
+        if steps>=budget {return TmResult.{status=TmStatus.budget,ip=ip,steps=steps};}
+        r:=tm_step(program,ip,s,cells[..],row[..]);
+        if r.status!=TmStatus.ok {return TmResult.{status=r.status,ip=ip,steps=steps};}
+        if program[ip].code==TmCode.store {cells[row[3]]=row[2];}
+        if r.state.outputs>s.outputs {stage_out[s.outputs]=row[2];}
+        if (steps+1)*TM_TOKENS>trace.count || r.state.outputs>outputs.count {return TmResult.{status=TmStatus.capacity,ip=ip,steps=steps};}
+        if publish {for t:0..<TM_TOKENS {trace[steps*TM_TOKENS+t]=row[t];}}
+        tm_bytes(row[..],bytes[..]);ok=ok && sha256_update_checked(sha[..],bytes[..],false)==SHA_OK;
+        s=r.state;steps+=1;
+        if r.next<0 {break;}
+        ip=r.next;
+    }
+    result:=TmResult.{ip=ip,steps=steps,outputs=s.outputs};
+    ok=ok && sha256_final_checked(sha[..],result.digest[..],false)==SHA_OK;
+    if !ok {return TmResult.{status=TmStatus.digest};}
+    for i:0..<s.outputs {outputs[i]=stage_out[i];}
+    return result;
+}
+tm_run :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int,overlap:bool)->TmResult #export_c {
+    admitted:=tm_admit(program);if admitted!=TmStatus.ok {return TmResult.{status=admitted};}
+    if budget<1 || budget>TM_STEPS_MAX {return TmResult.{status=TmStatus.budget};}
+    if outputs.count<1 {return TmResult.{status=TmStatus.capacity};}
+    if overlap {return TmResult.{status=TmStatus.alias};}
+    first:=tm_pass(program,budget,trace,outputs,false);
+    if first.status!=TmStatus.ok {return first;}
+    return tm_pass(program,budget,trace,outputs,true);
+}
+// book:end run
