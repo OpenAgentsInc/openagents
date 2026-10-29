@@ -8,6 +8,7 @@ Chapter 3 adds checked CPU numerical operations over that storage. Chapter 4
 reads original BF16/F32 weight files and complete pinned shard bundles.
 Chapter 5 renders typed text decisions and tokenizes original Qwen data.
 Chapter 6 executes a small causal dense attention block with a KV cache.
+Chapter 7 composes Qwen-style linear and full-attention layers with separate states.
 
 Start with [the book](book/README.md) and
 [Chapter 1: Learning a number](book/ch01-learning-a-number.md), then
@@ -15,7 +16,8 @@ Start with [the book](book/README.md) and
 [Chapter 3: Numbers and matrices](book/ch03-numbers-and-matrices.md), then
 [Chapter 4: Reading original weights](book/ch04-reading-original-weights.md), then
 [Chapter 5: Text becomes a model request](book/ch05-text-becomes-a-model-request.md), then
-[Chapter 6: Attention without training](book/ch06-attention-without-training.md).
+[Chapter 6: Attention without training](book/ch06-attention-without-training.md), then
+[Chapter 7: A hybrid sequence model](book/ch07-a-hybrid-sequence-model.md).
 [The design notes](../docs/psionic/README.md) explain the larger plan.
 
 From the repository root:
@@ -28,6 +30,7 @@ coax/bin/coax run psionic/examples/numbers-matrices.coax
 coax/bin/coax run psionic/examples/read-weights.coax
 coax/bin/coax run psionic/examples/text-request.coax
 coax/bin/coax run psionic/examples/attention.coax
+coax/bin/coax run psionic/examples/hybrid-sequence.coax
 ```
 
 The check command builds the compiler if it is absent, runs authored Coax
@@ -43,6 +46,7 @@ credentials, or downloads at run time.
 | --- | --- |
 | [lib/learn.coax](lib/learn.coax) | Checks first, admission, loss/gradient, fixed-rate SGD, prediction. |
 | [lib/tensor.coax](lib/tensor.coax) | Checked rank/shape/byte/stride metadata, indexing and staged finite-f32 copy. |
+| [lib/qwen-linear-layer.coax](lib/qwen-linear-layer.coax), [lib/qwen-full-layer.coax](lib/qwen-full-layer.coax) | Bounded causal Qwen-style linear and full-attention layers with staged model state. |
 | [lib/attention.coax](lib/attention.coax) | Bounded dense causal block, grouped-query attention, rotary positions and cache execution. |
 | [platform/attention-memory.h](platform/attention-memory.h), [tests/attention.c](tests/attention.c) | Address observations and native independent forward/cache checks. |
 | [lib/ops-contract.coax](lib/ops-contract.coax) | Operation shapes, typed view counts, epsilon rules and matrix-work admission. |
@@ -95,5 +99,8 @@ owned reference evidence from upstream-runtime/model qualification.
 Chapter 6 adds a small causal dense block with caller-supplied interleaved rotary
 tables, grouped-query attention and a key/value cache; its dimensions are
 bounded and do not qualify an actual model. See [chapter 6](book/ch06-attention-without-training.md).
+Chapter 7 implements single-token Qwen-style layers and a small hybrid example;
+complete checkpoint execution and model behavior remain unqualified. See
+[chapter 7](book/ch07-a-hybrid-sequence-model.md).
 Autodiff, full model execution, GPU
 execution and serving remain planned.

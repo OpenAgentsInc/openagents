@@ -1,0 +1,104 @@
+// Qwen3.5 residual, offset-RMS and dense feed-forward execution.
+#load "qwen-matvec.coax";
+#authority;
+
+#test "offset RMS and SwiGLU produce the derived two-channel result" {
+    x:=[2]f32.[1,-1];att:=[2]f32.[0,0];norm:=[2]f32.[0,0];
+    gate:=[4]u8.[0,0x40,0,0];up:=[4]u8.[0,0x40,0,0];down:=[4]u8.[0x80,0x3f,0,0];
+    out:=[3]f32.[-7,-7,-7];work:[13]f32;
+    r:=qb_finish(QmDtype.bf16,2,1,3,x[..],att[..],norm[..],gate[..],up[..],down[..],out[..],work[..],false);
+    #assert r.status==QmStatus.ok && r.written==2;
+    #assert abs(out[0]-1.7310586f32)<0.0000002f32 && out[1]==-1 && out[2]==-7;
+}
+#test "full feed-forward refusal never publishes a partial residual" {
+    x:=[2]f32.[1,-1];att:=[2]f32.[1,0];norm:=[2]f32.[0,0];
+    gate:=[4]u8.[0,0,0,0];up:=[4]u8.[0,0,0,0];down:=[4]u8.[0,0,0x80,0x7f];
+    out:=[2]f32.[-7,-7];work:[13]f32;
+    #assert qb_finish(QmDtype.bf16,2,1,3,x[..],att[..],norm[..],gate[..],up[..],down[..],out[..],work[..],false).status==QmStatus.number;
+    #assert qb_finish(QmDtype.bf16,2,1,3,x[..],att[..],norm[..],gate[..],up[..],down[..],out[..],work[0..<11],false).status==QmStatus.capacity;
+    #assert qb_finish(QmDtype.bf16,2,1,3,x[..],att[..],norm[..],gate[..],up[..],down[..],out[..],work[..],true).status==QmStatus.alias;
+    #assert out[0]==-7 && out[1]==-7;
+}
+qb_width_valid :: (width:int,epsilon:f32)->bool {return width>=1 && width<=8192 && psionic_tensor_finite_bits(f32_bits(epsilon)) && epsilon>0;}
+qb_valid :: (tag:u8,width:int,hidden:int,epsilon:f32)->bool {
+    return tag<=1 && hidden>=1 && hidden<=32768 && qb_width_valid(width,epsilon);
+}
+qb_work_count :: (width:int,hidden:int)->int {return 4*width+4*hidden;}
+qb_sigmoid :: (x:f64)->f64 {e:=exp(-abs(x));return exp((x-abs(x))/2)/(1+e);}
+qb_data :: (a:[]f32)->QmStatus {for v:a {if !psionic_tensor_finite_bits(f32_bits(v)) {return QmStatus.number;}}return QmStatus.ok;}
+// book:begin finish
+qb_finish :: (dtype:QmDtype,width:int,hidden:int,epsilon:f32,x:[]f32,attention:[]f32,scale:[]f32,
+        gate_weights:[]u8,up_weights:[]u8,down_weights:[]u8,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c {
+    if !qb_valid(cast(u8)dtype,width,hidden,epsilon) {return QmResult.{status=QmStatus.shape};}
+    if x.count!=width || attention.count!=width || scale.count!=width || gate_weights.count!=qm_bytes(dtype,hidden,width) || up_weights.count!=qm_bytes(dtype,hidden,width) || down_weights.count!=qm_bytes(dtype,width,hidden) || out.count<width || work.count<qb_work_count(width,hidden) {return QmResult.{status=QmStatus.capacity};}
+    if overlap {return QmResult.{status=QmStatus.alias};}
+    if qb_data(x)!=QmStatus.ok {return QmResult.{status=QmStatus.number};}
+    if qb_data(attention)!=QmStatus.ok {return QmResult.{status=QmStatus.number};}
+    if qb_data(scale)!=QmStatus.ok {return QmResult.{status=QmStatus.number};}
+    residual:=work[0..<width];normalized:=work[width..<2*width];go:=2*width;uo:=go+hidden;toff:=uo+hidden;po:=toff+hidden;doff:=po+hidden;
+    gate:=work[go..<uo];up:=work[uo..<toff];temporary:=work[toff..<po];product:=work[po..<doff];down:=work[doff..<doff+width];downtmp:=work[doff+width..<doff+2*width];
+    squares:PsionicAccumulator;
+    for i:0..<width {
+        value:=f64(x[i])+f64(attention[i]);if !psionic_ops_fits_f32(value) {return QmResult.{status=QmStatus.arithmetic};}
+        residual[i]=f32(value);squares=psionic_ops_accumulate(squares,f64(residual[i])*f64(residual[i]));
+    }
+    divisor:=sqrt(psionic_ops_total(squares)/f64(width)+f64(epsilon));
+    for i:0..<width {
+        value:=f64(residual[i])/divisor*(1+f64(scale[i]));
+        if !psionic_ops_fits_f32(value) {return QmResult.{status=QmStatus.arithmetic};}normalized[i]=f32(value);
+    }
+    g:=qm_project(dtype,hidden,width,gate_weights,normalized,gate,temporary,false);if g.status!=QmStatus.ok {return g;}
+    u:=qm_project(dtype,hidden,width,up_weights,normalized,up,temporary,false);if u.status!=QmStatus.ok {return u;}
+    for i:0..<hidden {value:=f64(gate[i])*qb_sigmoid(f64(gate[i]))*f64(up[i]);if !psionic_ops_fits_f32(value) {return QmResult.{status=QmStatus.arithmetic};}product[i]=f32(value);}
+    d:=qm_project(dtype,width,hidden,down_weights,product,down,downtmp,false);if d.status!=QmStatus.ok {return d;}
+    for i:0..<width {value:=f64(residual[i])+f64(down[i]);if !psionic_ops_fits_f32(value) {return QmResult.{status=QmStatus.arithmetic};}downtmp[i]=f32(value);}
+    for i:0..<width {out[i]=downtmp[i];}return QmResult.{written=width};
+}
+// book:end finish
+
+#load "../fixtures/hybrid/qwen-block-vectors.coax";
+#test "block shape and finite epsilon limits are independent" {
+    #assert qb_valid(0,1,1,1) && qb_valid(1,8192,32768,1) && qb_work_count(3,2)==20;
+    #assert !qb_valid(2,1,1,1) && !qb_valid(0,0,1,1) && !qb_valid(0,8193,1,1);
+    #assert !qb_valid(0,1,0,1) && !qb_valid(0,1,32769,1) && !qb_valid(0,1,1,0);
+    #assert abs(qb_sigmoid(-1)-0.2689414213699951)<0.000000000000001;
+}
+#test "each input and output span is checked before work" {
+    x:=[2]f32.[1,-1];att:=[2]f32.[0,0];scale:=[2]f32.[0,0];w:[4]u8;out:[2]f32;work:[13]f32;
+    #assert qb_finish(QmDtype.bf16,2,1,3,x[0..<1],att[..],scale[..],w[..],w[..],w[..],out[..],work[..],false).status==QmStatus.capacity;
+    #assert qb_finish(QmDtype.bf16,2,1,3,x[..],att[0..<1],scale[..],w[..],w[..],w[..],out[..],work[..],false).status==QmStatus.capacity;
+    #assert qb_finish(QmDtype.bf16,2,1,3,x[..],att[..],scale[0..<1],w[..],w[..],w[..],out[..],work[..],false).status==QmStatus.capacity;
+    #assert qb_finish(QmDtype.bf16,2,1,3,x[..],att[..],scale[..],w[0..<3],w[..],w[..],out[..],work[..],false).status==QmStatus.capacity;
+    #assert qb_finish(QmDtype.bf16,2,1,3,x[..],att[..],scale[..],w[..],w[0..<3],w[..],out[..],work[..],false).status==QmStatus.capacity;
+    #assert qb_finish(QmDtype.bf16,2,1,3,x[..],att[..],scale[..],w[..],w[..],w[0..<3],out[..],work[..],false).status==QmStatus.capacity;
+    #assert qb_finish(QmDtype.bf16,2,1,3,x[..],att[..],scale[..],w[..],w[..],w[..],out[0..<1],work[..],false).status==QmStatus.capacity;
+}
+#test "input layer normalization uses offset weights and stages its output" {
+    x:=[2]f32.[3,4];scale:=[2]f32.[1,-1];out:=[3]f32.[-7,-7,-7];work:=[3]f32.[-9,-9,-9];
+    r:=qb_begin(2,3.5f32,x[..],scale[..],out[..],work[..],false);
+    #assert r.status==QmStatus.ok && r.written==2 && out[0]==1.5f32 && out[1]==0 && out[2]==-7 && work[2]==-9;
+    #assert qb_begin(2,3.5f32,x[..],scale[..],out[0..<1],work[..],false).status==QmStatus.capacity;
+    #assert qb_begin(2,3.5f32,x[..],scale[..],out[..],work[..],true).status==QmStatus.alias;
+}
+// book:begin begin
+qb_begin :: (width:int,epsilon:f32,x:[]f32,scale:[]f32,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c {
+    if !qb_width_valid(width,epsilon) {return QmResult.{status=QmStatus.shape};}
+    if x.count!=width || scale.count!=width || out.count<width || work.count<width {return QmResult.{status=QmStatus.capacity};}
+    if overlap {return QmResult.{status=QmStatus.alias};}
+    if qb_data(x)!=QmStatus.ok {return QmResult.{status=QmStatus.number};}
+    if qb_data(scale)!=QmStatus.ok {return QmResult.{status=QmStatus.number};}
+    squares:PsionicAccumulator;
+    for v:x {squares=psionic_ops_accumulate(squares,f64(v)*f64(v));}
+    divisor:=sqrt(psionic_ops_total(squares)/f64(width)+f64(epsilon));
+    for i:0..<width {value:=f64(x[i])/divisor*(1+f64(scale[i]));if !psionic_ops_fits_f32(value) {return QmResult.{status=QmStatus.arithmetic};}work[i]=f32(value);}
+    for i:0..<width {out[i]=work[i];}
+    return QmResult.{written=width};
+}
+// book:end begin
+#test "input normalization checks every exact view boundary" {
+    x:=[2]f32.[1,2];scale:=[2]f32.[0,0];out:[2]f32;work:[2]f32;
+    #assert qb_begin(2,1,x[..],scale[..],out[..],work[..],false).status==QmStatus.ok;
+    #assert qb_begin(2,1,x[0..<1],scale[..],out[..],work[..],false).status==QmStatus.capacity;
+    #assert qb_begin(2,1,x[..],scale[0..<1],out[..],work[..],false).status==QmStatus.capacity;
+    #assert qb_begin(2,1,x[..],scale[..],out[..],work[0..<1],false).status==QmStatus.capacity;
+}

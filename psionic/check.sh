@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapters 1–6, local/owned machines only. No model downloads or services.
+# Chapters 1–7, local/owned machines only. No model downloads or services.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 root=$PWD
@@ -20,7 +20,10 @@ python3 -I psionic/tests/text_oracle.py --header > "$out/text-goldens.h"
 python3 -I psionic/tests/attention_oracle.py --header > "$out/attention-oracle.h"
 python3 -I psionic/tests/delta_oracle.py --header > "$out/delta-oracle.h"
 python3 -I psionic/tests/qwen_attention_oracle.py --header > "$out/qwen-attention-oracle.h"
-for unit in learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec; do
+python3 -I psionic/tests/qwen_block_oracle.py --header > "$out/qwen-block-oracle.h"
+python3 -I psionic/tests/qwen_linear_oracle.py --header > "$out/qwen-linear-oracle.h"
+python3 -I psionic/tests/qwen_full_oracle.py --header > "$out/qwen-full-oracle.h"
+for unit in learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer; do
     "$coax" test "psionic/lib/$unit.coax"
     "$coax" test "psionic/lib/$unit.coax" --release
     "$coax" mutate "psionic/lib/$unit.coax"
@@ -29,7 +32,7 @@ for mode in debug release; do
     flags=()
     opt=-O0
     if [[ $mode == release ]]; then flags+=(--release); opt=-O2; fi
-    for unit in learn tensor ops weights text attention delta qwen-attention qwen-matvec; do
+    for unit in learn tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer; do
         source="psionic/lib/$unit.coax"
         if [[ $unit == weights ]]; then source=psionic/lib/model-io/weights.coax; fi
         "$coax" c "$source" --library --header "$out/$unit.h" "${flags[@]}" > "$out/$unit.c"
@@ -43,6 +46,9 @@ for mode in debug release; do
             delta) adapter=psionic/platform/delta-memory.c; harness=psionic/tests/delta.c ;;
             qwen-attention) adapter=psionic/platform/qwen-attention-memory.c; harness=psionic/tests/qwen_attention.c ;;
             qwen-matvec) adapter=psionic/platform/qwen-matvec-memory.c; harness=psionic/tests/qwen_matvec.c ;;
+            qwen-block) adapter=psionic/platform/qwen-block-memory.c; harness=psionic/tests/qwen_block.c ;;
+            qwen-linear-layer) adapter=psionic/platform/qwen-linear-layer-memory.c; harness=psionic/tests/qwen_linear.c ;;
+            qwen-full-layer) adapter=psionic/platform/qwen-full-layer-memory.c; harness=psionic/tests/qwen_full.c ;;
         esac
         for native in plain sanitized; do
             sanitizers=()
@@ -57,4 +63,4 @@ for mode in debug release; do
     done
 done
 python3 -I psionic/tests/book.py --coax "$coax"
-echo "Psionic chapters 1–6 pass: Coax debug/release checks, zero-survivor mutation, native debug/release, ASan/UBSan and book"
+echo "Psionic chapters 1–7 pass: Coax debug/release checks, zero-survivor mutation, native debug/release, ASan/UBSan and book"

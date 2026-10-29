@@ -70,6 +70,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/hybrid-sequence.coax",
+      "chapter": "psionic/book/ch07-a-hybrid-sequence-model.md",
+      "stdout": "psionic/fixtures/hybrid-sequence.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

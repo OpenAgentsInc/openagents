@@ -1,0 +1,24 @@
+#load "../lib/qwen-linear-layer.coax";
+#load "../lib/qwen-full-layer.coax";
+#import "Basic";
+// book:begin example
+main :: () {
+    linear:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    full:=QhShape.{width=2,hidden=1,capacity=2,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    zero:[16]u8;norm:[2]f32;conv:[12]f32;scalar:[1]f32;gain:=[1]f32.[1];
+    lw:=QlWeights.{input_norm=norm[..],post_norm=norm[..],conv=conv[..],a_log=scalar[..],dt=scalar[..],delta_norm=gain[..],qkv=zero[0..<12],z=zero[0..<4],a=zero[0..<4],b=zero[0..<4],mixer_out=zero[0..<4],gate=zero[0..<4],up=zero[0..<4],down=zero[0..<4]};
+    fw:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=norm[..],k_norm=norm[..],q=zero[..],k=zero[0..<8],v=zero[0..<8],mixer_out=zero[0..<8],gate=zero[0..<4],up=zero[0..<4],down=zero[0..<4]};
+    tokens:=[4]f32.[1,2,3,4];rope:=[2]f32.[1,0];history:[27]f32;states:=[3]f32.[8,4,2];cache:[8]f32;vector:[2]f32;next:[2]f32;work:[128]f32;
+    for position:0..<2 {
+        for j:0..<2 {vector[j]=tokens[position*2+j];}
+        for layer:0..<3 {
+            r:=ql_step(linear,lw,vector[..],history[layer*9..<(layer+1)*9],states[layer..<layer+1],next[..],work[..],false);
+            #assert r.status==QlStatus.ok;for j:0..<2 {vector[j]=next[j];}
+        }
+        r:=qh_step(full,fw,vector[..],rope[..],position,cache[..],next[..],work[..],false);
+        #assert r.status==QhStatus.ok;
+        print("position %: [%, %], recurrent states [%, %, %]\n",position,next[0],next[1],states[0],states[1],states[2]);
+    }
+    print("full-attention cache entries: %, %\n",cache[0],cache[4]);
+}
+// book:end example

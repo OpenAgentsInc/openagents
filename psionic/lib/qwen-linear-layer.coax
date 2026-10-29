@@ -1,0 +1,120 @@
+// A single Qwen-style causal linear-attention decoder layer.
+#load "qwen-block.coax";
+#load "delta.coax";
+#authority;
+// book:begin types
+QlShape :: struct { width:int; hidden:int; delta:PdShape; dtype:QmDtype; }
+QlWeights :: struct {
+    input_norm:[]f32; post_norm:[]f32; conv:[]f32; a_log:[]f32; dt:[]f32; delta_norm:[]f32;
+    qkv:[]u8; z:[]u8; a:[]u8; b:[]u8; mixer_out:[]u8; gate:[]u8; up:[]u8; down:[]u8;
+}
+QlLayout :: struct {norm:int;temp:int;packed:int;history:int;state:int;delta_out:int;delta_work:int;mixed:int;draft:int;block_work:int;total:int;}
+QlStatus :: enum u8 {ok;shape;capacity;alias;number;arithmetic;}
+QlResult :: struct {status:QlStatus;written:int;}
+// book:end types
+#test "a zero-projection layer preserves its residual and advances both states" {
+    s:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    zero:=[12]u8.[0,0,0,0,0,0,0,0,0,0,0,0];norm:=[2]f32.[0,0];conv:[12]f32;param:=[1]f32.[0];gain:=[1]f32.[1];
+    w:=QlWeights.{input_norm=norm[..],post_norm=norm[..],conv=conv[..],a_log=param[..],dt=param[..],delta_norm=gain[..],qkv=zero[..],z=zero[0..<4],a=zero[0..<4],b=zero[0..<4],mixer_out=zero[0..<4],gate=zero[0..<4],up=zero[0..<4],down=zero[0..<4]};
+    x:=[2]f32.[1,2];history:=[9]f32.[1,2,3,4,5,6,7,8,9];state:=[1]f32.[4];out:=[3]f32.[-7,-7,-7];work:[128]f32;
+    r:=ql_step(s,w,x[..],history[..],state[..],out[..],work[..],false);
+    #assert r.status==QlStatus.ok && r.written==2 && out[0]==1 && out[1]==2 && out[2]==-7;
+    #assert abs(state[0]-2)<0.0000001f32;
+    expected:=[9]f32.[2,3,0,5,6,0,8,9,0];for i:0..<9 {#assert history[i]==expected[i];}
+}
+#test "failure in a later feed-forward matrix preserves all public state" {
+    s:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    zero:[12]u8;bad:=[4]u8.[0,0,0x80,0x7f];norm:[2]f32;conv:[12]f32;param:[1]f32;gain:=[1]f32.[1];
+    w:=QlWeights.{input_norm=norm[..],post_norm=norm[..],conv=conv[..],a_log=param[..],dt=param[..],delta_norm=gain[..],qkv=zero[..],z=zero[0..<4],a=zero[0..<4],b=zero[0..<4],mixer_out=zero[0..<4],gate=zero[0..<4],up=zero[0..<4],down=bad[..]};
+    x:=[2]f32.[1,2];history:=[9]f32.[1,2,3,4,5,6,7,8,9];state:=[1]f32.[4];out:=[2]f32.[-7,-7];work:[128]f32;
+    r:=ql_step(s,w,x[..],history[..],state[..],out[..],work[..],false);
+    #assert r.status==QlStatus.number && r.written==0 && out[0]==-7 && out[1]==-7 && state[0]==4;
+    for i:0..<9 {#assert history[i]==f32(i+1);}
+}
+ql_valid :: (s:QlShape)->bool {return qb_valid(cast(u8)s.dtype,s.width,s.hidden,s.delta.epsilon) && pd_valid(s.delta);}
+ql_projection_work :: (s:QlShape)->int {return pd_channels(s.delta)+s.width;}
+ql_layout :: (s:QlShape)->QlLayout {
+    c:=pd_channels(s.delta);n:=pd_states(s.delta);v:=s.delta.value_heads*s.delta.value_dim;
+    p:QlLayout;p.temp=s.width;p.packed=p.temp+ql_projection_work(s);p.history=p.packed+pd_input_count(s.delta);
+    p.state=p.history+3*c;p.delta_out=p.state+n;p.delta_work=p.delta_out+v;
+    p.mixed=p.delta_work+pd_work_count(s.delta);p.draft=p.mixed+s.width;p.block_work=p.draft+s.width;
+    p.total=p.block_work+qb_work_count(s.width,s.hidden);return p;
+}
+ql_work_count :: (s:QlShape)->int {return ql_layout(s).total;}
+ql_weights_valid :: (s:QlShape,w:QlWeights)->bool {
+    d:=s.width;f:=s.hidden;c:=pd_channels(s.delta);v:=s.delta.value_heads*s.delta.value_dim;h:=s.delta.value_heads;
+    if w.input_norm.count!=d || w.post_norm.count!=d || w.conv.count!=4*c || w.a_log.count!=h || w.dt.count!=h || w.delta_norm.count!=s.delta.value_dim {return false;}
+    return w.qkv.count==qm_bytes(s.dtype,c,d) && w.z.count==qm_bytes(s.dtype,v,d) && w.a.count==qm_bytes(s.dtype,h,d) && w.b.count==qm_bytes(s.dtype,h,d) && w.mixer_out.count==qm_bytes(s.dtype,d,v) && w.gate.count==qm_bytes(s.dtype,f,d) && w.up.count==qm_bytes(s.dtype,f,d) && w.down.count==qm_bytes(s.dtype,d,f);
+}
+ql_mstatus :: (s:QmStatus)->QlStatus {return cast(QlStatus)cast(u8)s;}
+ql_dstatus :: (s:PdStatus)->QlStatus {return cast(QlStatus)cast(u8)s;}
+// book:begin layer
+ql_step :: (s:QlShape,w:QlWeights,x:[]f32,history:[]f32,state:[]f32,out:[]f32,work:[]f32,overlap:bool)->QlResult #export_c {
+    if !ql_valid(s) {return QlResult.{status=QlStatus.shape};}
+    d:=s.width;f:=s.hidden;c:=pd_channels(s.delta);n:=pd_states(s.delta);v:=s.delta.value_heads*s.delta.value_dim;h:=s.delta.value_heads;
+    if !ql_weights_valid(s,w) || x.count!=d || history.count!=3*c || state.count!=n || out.count<d || work.count<ql_work_count(s) {return QlResult.{status=QlStatus.capacity};}
+    if overlap {return QlResult.{status=QlStatus.alias};}
+    layout:=ql_layout(s);norm:=work[layout.norm..<layout.temp];temp:=work[layout.temp..<layout.packed];
+    packed:=work[layout.packed..<layout.history];next_history:=work[layout.history..<layout.state];next_state:=work[layout.state..<layout.delta_out];
+    delta_out:=work[layout.delta_out..<layout.delta_work];delta_work:=work[layout.delta_work..<layout.mixed];
+    mixed:=work[layout.mixed..<layout.draft];draft:=work[layout.draft..<layout.block_work];block_work:=work[layout.block_work..<layout.total];
+    norm_result:=qb_begin(d,s.delta.epsilon,x,w.input_norm,norm,temp,false);
+    if norm_result.status!=QmStatus.ok {return QlResult.{status=ql_mstatus(norm_result.status)};}
+    qkv:=qm_project(s.dtype,c,d,w.qkv,norm,packed[0..<c],temp,false);if qkv.status!=QmStatus.ok {return QlResult.{status=ql_mstatus(qkv.status)};}
+    aoff:=5*c;boff:=aoff+h;logoff:=boff+h;dtoff:=logoff+h;zoff:=dtoff+h;gammaoff:=zoff+v;
+    for i:0..<4*c {packed[c+i]=w.conv[i];}
+    for i:0..<h {packed[logoff+i]=w.a_log[i];packed[dtoff+i]=w.dt[i];}
+    for i:0..<s.delta.value_dim {packed[gammaoff+i]=w.delta_norm[i];}
+    ar:=qm_project(s.dtype,h,d,w.a,norm,packed[aoff..<aoff+h],temp,false);if ar.status!=QmStatus.ok {return QlResult.{status=ql_mstatus(ar.status)};}
+    br:=qm_project(s.dtype,h,d,w.b,norm,packed[boff..<boff+h],temp,false);if br.status!=QmStatus.ok {return QlResult.{status=ql_mstatus(br.status)};}
+    zr:=qm_project(s.dtype,v,d,w.z,norm,packed[zoff..<zoff+v],temp,false);if zr.status!=QmStatus.ok {return QlResult.{status=ql_mstatus(zr.status)};}
+    for i:0..<3*c {next_history[i]=history[i];}for i:0..<n {next_state[i]=state[i];}
+    dr:=pd_step(s.delta,packed,next_history,next_state,delta_out,delta_work,false);if dr.status!=PdStatus.ok {return QlResult.{status=ql_dstatus(dr.status)};}
+    mr:=qm_project(s.dtype,d,v,w.mixer_out,delta_out,mixed,temp,false);if mr.status!=QmStatus.ok {return QlResult.{status=ql_mstatus(mr.status)};}
+    end:=qb_finish(s.dtype,d,f,s.delta.epsilon,x,mixed,w.post_norm,w.gate,w.up,w.down,draft,block_work,false);if end.status!=QmStatus.ok {return QlResult.{status=ql_mstatus(end.status)};}
+    for i:0..<3*c {history[i]=next_history[i];}for i:0..<n {state[i]=next_state[i];}for i:0..<d {out[i]=draft[i];}
+    return QlResult.{written=d};
+}
+// book:end layer
+#test "layer status translation preserves every primitive refusal" {
+    #assert ql_dstatus(PdStatus.ok)==QlStatus.ok && ql_dstatus(PdStatus.shape)==QlStatus.shape;
+    #assert ql_dstatus(PdStatus.capacity)==QlStatus.capacity && ql_dstatus(PdStatus.alias)==QlStatus.alias;
+    #assert ql_dstatus(PdStatus.number)==QlStatus.number && ql_dstatus(PdStatus.arithmetic)==QlStatus.arithmetic;
+    #assert ql_mstatus(QmStatus.number)==QlStatus.number && ql_mstatus(QmStatus.arithmetic)==QlStatus.arithmetic;
+}
+
+#load "../fixtures/hybrid/qwen-linear-vectors.coax";
+#test "layer workspace offsets are contiguous and dimension-derived" {
+    s:=QlShape.{width=3,hidden=2,delta=PdShape.{key_heads=1,value_heads=2,key_dim=2,value_dim=2,epsilon=0.125f32},dtype=QmDtype.f32};
+    #assert ql_valid(s) && ql_projection_work(s)==11;
+    p:=ql_layout(s);#assert p.norm==0 && p.temp==3 && p.packed==14 && p.history==68 && p.state==92 && p.delta_out==100;
+    #assert p.delta_work==104 && p.mixed==148 && p.draft==151 && p.block_work==154 && p.total==174 && ql_work_count(s)==174;
+    bad:=s;bad.width=0;#assert !ql_valid(bad);bad=s;bad.delta.key_heads=0;#assert !ql_valid(bad);
+}
+#test "every layer weight view has an independent expected length" {
+    s:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    bytes:[12]u8;norm:[2]f32;conv:[12]f32;p:[1]f32;
+    w:=QlWeights.{input_norm=norm[..],post_norm=norm[..],conv=conv[..],a_log=p[..],dt=p[..],delta_norm=p[..],qkv=bytes[..],z=bytes[0..<4],a=bytes[0..<4],b=bytes[0..<4],mixer_out=bytes[0..<4],gate=bytes[0..<4],up=bytes[0..<4],down=bytes[0..<4]};
+    #assert ql_weights_valid(s,w);
+    bad:=w;bad.input_norm=norm[0..<1];#assert !ql_weights_valid(s,bad);bad=w;bad.post_norm=norm[0..<1];#assert !ql_weights_valid(s,bad);
+    bad=w;bad.conv=conv[0..<11];#assert !ql_weights_valid(s,bad);bad=w;bad.a_log=p[0..<0];#assert !ql_weights_valid(s,bad);
+    bad=w;bad.dt=p[0..<0];#assert !ql_weights_valid(s,bad);bad=w;bad.delta_norm=p[0..<0];#assert !ql_weights_valid(s,bad);
+    bad=w;bad.qkv=bytes[0..<11];#assert !ql_weights_valid(s,bad);bad=w;bad.z=bytes[0..<3];#assert !ql_weights_valid(s,bad);
+    bad=w;bad.a=bytes[0..<3];#assert !ql_weights_valid(s,bad);bad=w;bad.b=bytes[0..<3];#assert !ql_weights_valid(s,bad);
+    bad=w;bad.mixer_out=bytes[0..<3];#assert !ql_weights_valid(s,bad);bad=w;bad.gate=bytes[0..<3];#assert !ql_weights_valid(s,bad);
+    bad=w;bad.up=bytes[0..<3];#assert !ql_weights_valid(s,bad);bad=w;bad.down=bytes[0..<3];#assert !ql_weights_valid(s,bad);
+}
+#test "layer publishes nothing on bad shape, span, or alias" {
+    s:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    bytes:[12]u8;norm:[2]f32;conv:[12]f32;p:[1]f32;
+    w:=QlWeights.{input_norm=norm[..],post_norm=norm[..],conv=conv[..],a_log=p[..],dt=p[..],delta_norm=p[..],qkv=bytes[..],z=bytes[0..<4],a=bytes[0..<4],b=bytes[0..<4],mixer_out=bytes[0..<4],gate=bytes[0..<4],up=bytes[0..<4],down=bytes[0..<4]};
+    x:[2]f32;history:[9]f32;state:[1]f32;out:[2]f32;work:[128]f32;
+    #assert ql_step(s,w,x[0..<1],history[..],state[..],out[..],work[..],false).status==QlStatus.capacity;
+    #assert ql_step(s,w,x[..],history[0..<8],state[..],out[..],work[..],false).status==QlStatus.capacity;
+    #assert ql_step(s,w,x[..],history[..],state[0..<0],out[..],work[..],false).status==QlStatus.capacity;
+    #assert ql_step(s,w,x[..],history[..],state[..],out[0..<1],work[..],false).status==QlStatus.capacity;
+    #assert ql_step(s,w,x[..],history[..],state[..],out[..],work[0..<1],false).status==QlStatus.capacity;
+    bad:=w;bad.input_norm=norm[0..<1];#assert ql_step(s,bad,x[..],history[..],state[..],out[..],work[..],false).status==QlStatus.capacity;
+    bad=w;bad.conv=conv[0..<11];#assert ql_step(s,bad,x[..],history[..],state[..],out[..],work[..],false).status==QlStatus.capacity;
+    #assert ql_step(s,w,x[..],history[..],state[..],out[..],work[..],true).status==QlStatus.alias;
+}

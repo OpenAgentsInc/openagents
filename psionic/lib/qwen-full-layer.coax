@@ -1,0 +1,119 @@
+// One causal Qwen-style full-attention decoder layer.
+#load "qwen-block.coax";
+#load "qwen-attention.coax";
+#authority;
+QhShape :: struct {width:int;hidden:int;capacity:int;attention:QfShape;dtype:QmDtype;}
+QhWeights :: struct {input_norm:[]f32;post_norm:[]f32;q_norm:[]f32;k_norm:[]f32;q:[]u8;k:[]u8;v:[]u8;mixer_out:[]u8;gate:[]u8;up:[]u8;down:[]u8;}
+QhStatus :: enum u8 {ok;shape;capacity;alias;number;arithmetic;mask;}
+QhResult :: struct {status:QhStatus;written:int;}
+QhLayout :: struct {norm:int;temp:int;prepare:int;prepared:int;attend:int;att_out:int;att_work:int;mixed:int;draft:int;block:int;total:int;}
+#test "zero attention and MLP preserve the residual and append a cache entry" {
+    s:=QhShape.{width=2,hidden=1,capacity=2,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    matrix:[16]u8;norm:[2]f32;rope:=[2]f32.[1,0];
+    w:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=norm[..],k_norm=norm[..],q=matrix[..],k=matrix[0..<8],v=matrix[0..<8],mixer_out=matrix[0..<8],gate=matrix[0..<4],up=matrix[0..<4],down=matrix[0..<4]};
+    x:=[2]f32.[1,2];cache:=[8]f32.[7,7,7,7,7,7,7,7];out:=[3]f32.[-7,-7,-7];work:[100]f32;
+    r:=qh_step(s,w,x[..],rope[..],0,cache[..],out[..],work[..],false);
+    #assert r.status==QhStatus.ok && r.written==2 && out[0]==1 && out[1]==2 && out[2]==-7;
+    for i:0..<4 {#assert cache[i]==0;}for i:4..<8 {#assert cache[i]==7;}
+}
+#test "a late full-layer failure cannot publish an output or cache" {
+    s:=QhShape.{width=2,hidden=1,capacity=1,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    matrix:[16]u8;bad:=[4]u8.[0,0,0x80,0x7f];norm:[2]f32;rope:=[2]f32.[1,0];
+    w:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=norm[..],k_norm=norm[..],q=matrix[..],k=matrix[0..<8],v=matrix[0..<8],mixer_out=matrix[0..<8],gate=matrix[0..<4],up=matrix[0..<4],down=bad[..]};
+    x:=[2]f32.[1,2];cache:=[4]f32.[7,7,7,7];out:=[2]f32.[-7,-7];work:[100]f32;
+    r:=qh_step(s,w,x[..],rope[..],0,cache[..],out[..],work[..],false);
+    #assert r.status==QhStatus.number && r.written==0;
+    for v:cache {#assert v==7;}for v:out {#assert v==-7;}
+}
+qh_valid :: (s:QhShape)->bool {return qb_valid(cast(u8)s.dtype,s.width,s.hidden,s.attention.epsilon) && qf_valid(s.attention) && qf_token_count(s.capacity);}
+qh_rope_offset :: (base:int,dim:int)->int {return base+2*dim;}
+qh_cache_count :: (s:QhShape)->int {return 2*s.capacity*s.attention.kv_heads*s.attention.head_dim;}
+qh_layout :: (s:QhShape,position:int)->QhLayout {
+    q:=s.attention.heads*s.attention.head_dim;p:QhLayout;p.temp=s.width;p.prepare=p.temp+2*q+s.width;
+    p.prepared=p.prepare+qf_input_count(s.attention);p.attend=p.prepared+qf_output_count(s.attention);
+    p.att_out=p.attend+qf_attend_count(s.attention,position+1);p.att_work=p.att_out+q;
+    p.mixed=p.att_work+q;p.draft=p.mixed+s.width;p.block=p.draft+s.width;p.total=p.block+qb_work_count(s.width,s.hidden);return p;
+}
+qh_weights_valid :: (s:QhShape,w:QhWeights)->bool {
+    d:=s.width;f:=s.hidden;q:=s.attention.heads*s.attention.head_dim;k:=s.attention.kv_heads*s.attention.head_dim;dim:=s.attention.head_dim;
+    return w.input_norm.count==d && w.post_norm.count==d && w.q_norm.count==dim && w.k_norm.count==dim && w.q.count==qm_bytes(s.dtype,2*q,d) && w.k.count==qm_bytes(s.dtype,k,d) && w.v.count==qm_bytes(s.dtype,k,d) && w.mixer_out.count==qm_bytes(s.dtype,d,q) && w.gate.count==qm_bytes(s.dtype,f,d) && w.up.count==qm_bytes(s.dtype,f,d) && w.down.count==qm_bytes(s.dtype,d,f);
+}
+qh_mstatus :: (s:QmStatus)->QhStatus {return cast(QhStatus)cast(u8)s;}
+qh_fstatus :: (s:QfStatus)->QhStatus {return cast(QhStatus)cast(u8)s;}
+// book:begin layer
+qh_step :: (s:QhShape,w:QhWeights,x:[]f32,rope:[]f32,position:int,cache:[]f32,out:[]f32,work:[]f32,overlap:bool)->QhResult #export_c {
+    if !qh_valid(s) {return QhResult.{status=QhStatus.shape};}
+    if position<0 || position>=s.capacity {return QhResult.{status=QhStatus.capacity};}
+    d:=s.width;f:=s.hidden;q:=s.attention.heads*s.attention.head_dim;k:=s.attention.kv_heads*s.attention.head_dim;dim:=s.attention.head_dim;tokens:=position+1;
+    p:=qh_layout(s,position);
+    if !qh_weights_valid(s,w) || x.count!=d || rope.count!=s.attention.rotary_dim || cache.count!=qh_cache_count(s) || out.count<d || work.count<p.total {return QhResult.{status=QhStatus.capacity};}
+    if overlap {return QhResult.{status=QhStatus.alias};}
+    norm:=work[p.norm..<p.temp];temp:=work[p.temp..<p.prepare];prep:=work[p.prepare..<p.prepared];prepared:=work[p.prepared..<p.attend];
+    attend:=work[p.attend..<p.att_out];att_out:=work[p.att_out..<p.att_work];att_work:=work[p.att_work..<p.mixed];mixed:=work[p.mixed..<p.draft];draft:=work[p.draft..<p.block];block:=work[p.block..<p.total];
+    b:=qb_begin(d,s.attention.epsilon,x,w.input_norm,norm,temp,false);if b.status!=QmStatus.ok {return QhResult.{status=qh_mstatus(b.status)};}
+    kstart:=2*q;vstart:=kstart+k;scalebase:=vstart+k;
+    qr:=qm_project(s.dtype,kstart,d,w.q,norm,prep[0..<kstart],temp,false);if qr.status!=QmStatus.ok {return QhResult.{status=qh_mstatus(qr.status)};}
+    kr:=qm_project(s.dtype,k,d,w.k,norm,prep[kstart..<vstart],temp,false);if kr.status!=QmStatus.ok {return QhResult.{status=qh_mstatus(kr.status)};}
+    vr:=qm_project(s.dtype,k,d,w.v,norm,prep[vstart..<scalebase],temp,false);if vr.status!=QmStatus.ok {return QhResult.{status=qh_mstatus(vr.status)};}
+    for i:0..<dim {prep[scalebase+i]=w.q_norm[i];prep[scalebase+dim+i]=w.k_norm[i];}
+    for i:0..<s.attention.rotary_dim {prep[qh_rope_offset(scalebase,dim)+i]=rope[i];}
+    pr:=qf_prepare(s.attention,prep,prepared,false);if pr.status!=QfStatus.ok {return QhResult.{status=qh_fstatus(pr.status)};}
+    for i:0..<kstart {attend[i]=prepared[i];}
+    for t:0..<tokens {
+        for i:0..<k {
+            key:=prepared[2*q+i];value:=prepared[2*q+k+i];
+            if t<position {key=cache[t*2*k+i];value=cache[t*2*k+k+i];}
+            attend[2*q+t*k+i]=key;attend[2*q+tokens*k+t*k+i]=value;
+        }
+    }
+    mask:[16384]u8;for i:0..<tokens {mask[i]=1;}
+    ar:=qf_attend(s.attention,tokens,attend,mask[0..<tokens],att_out,att_work,false);if ar.status!=QfStatus.ok {return QhResult.{status=qh_fstatus(ar.status)};}
+    mr:=qm_project(s.dtype,d,q,w.mixer_out,att_out,mixed,temp,false);if mr.status!=QmStatus.ok {return QhResult.{status=qh_mstatus(mr.status)};}
+    end:=qb_finish(s.dtype,d,f,s.attention.epsilon,x,mixed,w.post_norm,w.gate,w.up,w.down,draft,block,false);if end.status!=QmStatus.ok {return QhResult.{status=qh_mstatus(end.status)};}
+    for i:0..<k {cache[position*2*k+i]=prepared[2*q+i];cache[position*2*k+k+i]=prepared[2*q+k+i];}
+    for i:0..<d {out[i]=draft[i];}return QhResult.{written=d};
+}
+// book:end layer
+#test "full-layer status translation preserves primitive refusals" {
+    #assert qh_fstatus(QfStatus.ok)==QhStatus.ok && qh_fstatus(QfStatus.shape)==QhStatus.shape;
+    #assert qh_fstatus(QfStatus.capacity)==QhStatus.capacity && qh_fstatus(QfStatus.alias)==QhStatus.alias;
+    #assert qh_fstatus(QfStatus.number)==QhStatus.number && qh_fstatus(QfStatus.arithmetic)==QhStatus.arithmetic && qh_fstatus(QfStatus.mask)==QhStatus.mask;
+    #assert qh_mstatus(QmStatus.number)==QhStatus.number && qh_mstatus(QmStatus.arithmetic)==QhStatus.arithmetic;
+}
+
+#load "../fixtures/hybrid/qwen-full-vectors.coax";
+#test "full-layer layouts and dimension admission are exact" {
+    s:=QhShape.{width=3,hidden=2,capacity=3,attention=QfShape.{heads=2,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=0.125f32},dtype=QmDtype.f32};
+    #assert qh_valid(s) && qh_cache_count(s)==12 && qh_rope_offset(7,3)==13;
+    p:=qh_layout(s,0);#assert p.norm==0 && p.temp==3 && p.prepare==14 && p.prepared==32 && p.attend==44;
+    #assert p.att_out==56 && p.att_work==60 && p.mixed==64 && p.draft==67 && p.block==70 && p.total==90;
+    #assert qh_layout(s,2).total==98;
+    bad:=s;bad.width=0;#assert !qh_valid(bad);bad=s;bad.attention.heads=0;#assert !qh_valid(bad);bad=s;bad.capacity=0;#assert !qh_valid(bad);
+}
+#test "full-layer weight lengths are independently admitted" {
+    s:=QhShape.{width=2,hidden=1,capacity=1,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    matrix:[16]u8;norm:[2]f32;
+    w:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=norm[..],k_norm=norm[..],q=matrix[..],k=matrix[0..<8],v=matrix[0..<8],mixer_out=matrix[0..<8],gate=matrix[0..<4],up=matrix[0..<4],down=matrix[0..<4]};
+    #assert qh_weights_valid(s,w);
+    bad:=w;bad.input_norm=norm[0..<1];#assert !qh_weights_valid(s,bad);bad=w;bad.post_norm=norm[0..<1];#assert !qh_weights_valid(s,bad);
+    bad=w;bad.q_norm=norm[0..<1];#assert !qh_weights_valid(s,bad);bad=w;bad.k_norm=norm[0..<1];#assert !qh_weights_valid(s,bad);
+    bad=w;bad.q=matrix[0..<15];#assert !qh_weights_valid(s,bad);bad=w;bad.k=matrix[0..<7];#assert !qh_weights_valid(s,bad);
+    bad=w;bad.v=matrix[0..<7];#assert !qh_weights_valid(s,bad);bad=w;bad.mixer_out=matrix[0..<7];#assert !qh_weights_valid(s,bad);
+    bad=w;bad.gate=matrix[0..<3];#assert !qh_weights_valid(s,bad);bad=w;bad.up=matrix[0..<3];#assert !qh_weights_valid(s,bad);bad=w;bad.down=matrix[0..<3];#assert !qh_weights_valid(s,bad);
+}
+#test "full-layer rejects each malformed span and cache position" {
+    s:=QhShape.{width=2,hidden=1,capacity=1,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    matrix:[16]u8;norm:[2]f32;rope:=[2]f32.[1,0];
+    w:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=norm[..],k_norm=norm[..],q=matrix[..],k=matrix[0..<8],v=matrix[0..<8],mixer_out=matrix[0..<8],gate=matrix[0..<4],up=matrix[0..<4],down=matrix[0..<4]};
+    x:=[2]f32.[1,2];cache:[4]f32;out:[2]f32;work:[100]f32;
+    #assert qh_step(s,w,x[..],rope[..],-1,cache[..],out[..],work[..],false).status==QhStatus.capacity;
+    #assert qh_step(s,w,x[..],rope[..],1,cache[..],out[..],work[..],false).status==QhStatus.capacity;
+    #assert qh_step(s,w,x[0..<1],rope[..],0,cache[..],out[..],work[..],false).status==QhStatus.capacity;
+    #assert qh_step(s,w,x[..],rope[0..<1],0,cache[..],out[..],work[..],false).status==QhStatus.capacity;
+    #assert qh_step(s,w,x[..],rope[..],0,cache[0..<3],out[..],work[..],false).status==QhStatus.capacity;
+    #assert qh_step(s,w,x[..],rope[..],0,cache[..],out[0..<1],work[..],false).status==QhStatus.capacity;
+    #assert qh_step(s,w,x[..],rope[..],0,cache[..],out[..],work[0..<1],false).status==QhStatus.capacity;
+    #assert qh_step(s,w,x[..],rope[..],0,cache[..],out[..],work[..],true).status==QhStatus.alias;
+    #assert qh_layout(s,0).total==58 && qh_step(s,w,x[..],rope[..],0,cache[..],out[..],work[0..<58],false).status==QhStatus.ok;
+    bad:=w;bad.q_norm=norm[0..<1];#assert qh_step(s,bad,x[..],rope[..],0,cache[..],out[..],work[..],false).status==QhStatus.capacity;
+}

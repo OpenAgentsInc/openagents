@@ -1,5 +1,27 @@
 # Invariants
 
+## Psionic Qwen-style causal layers publish complete state transitions
+
+`psionic/lib/qwen-block.coax`, `qwen-linear-layer.coax` and
+`qwen-full-layer.coax` compose offset-RMS, original BF16/F32 projections,
+convolution/DeltaNet or gated full attention, residuals and SwiGLU. The bounded
+CPU profile admits the target Elephant and Mammoth per-layer dimensions;
+it does not claim full-checkpoint execution or upstream bitwise parity.
+
+Each linear layer stages its convolution history, recurrent matrix and output
+until the full layer succeeds. Each full layer stages its next KV entry and
+output. Invalid shape, length, address observation, non-finite input and
+arithmetic failures do not publish those outputs or states; workspaces may be
+dirty. The full layer's present path is single-token causal. Callers retain
+valid allocation/lifetime/alignment, exclusive access and consistency of state,
+position, weights and supplied rotary coefficients.
+
+Check: `psionic/check.sh` contains debug/release authority mutation, independent
+full-layer fixtures and native plain/ASan+UBSan checks. See the
+[chapter 7 record](docs/verification/psionic-ch07-2026-10-29.md) for tested
+limits and the separate CoderOS CPU results. Decision masks and full model
+execution remain future work.
+
 ## Psionic hybrid primitives stage attention and recurrent work
 
 `psionic/lib/delta.coax`, `qwen-attention.coax` and `qwen-matvec.coax` own

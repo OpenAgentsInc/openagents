@@ -1,9 +1,9 @@
 # Hybrid forward primitives: progress toward chapter 7
 
-The chapter 7 model path now has three bounded Coax primitives. They are
-building blocks for the pinned Elephant and Mammoth checkpoints, not yet a
-complete layer, model, decision service, or independently qualified upstream
-runtime. The existing [chapter 6](../../psionic/book/ch06-attention-without-training.md)
+The chapter 7 model path has three bounded Coax primitives and separately
+composed causal linear and full-attention layers. These are building blocks for
+the pinned Elephant and Mammoth checkpoints, not yet a complete model,
+decision service, or independently qualified upstream runtime. The existing [chapter 6](../../psionic/book/ch06-attention-without-training.md)
 remains an educational dense block with its own different rotary convention.
 
 - [delta.coax](../../psionic/lib/delta.coax) implements width-four causal
@@ -49,9 +49,10 @@ gates. Native tests exercise actual storage, aliases and non-finite values.
 The [verification record](../verification/psionic-hybrid-2026-10-29.md)
 contains the precise test scope.
 
-Still required for chapter 7 are model tensor mapping, full pre/post layer
-normalization and projection orchestration, causal full-model execution,
-independent upstream layer comparisons, and combined attention/recurrent state
-handling. Chapters 8–11 additionally need the decision mask, branch forks,
+[Chapter 7](../../psionic/book/ch07-a-hybrid-sequence-model.md) composes the
+causal layers and documents their state. Still required are model tensor
+mapping, causal full-model execution, independent upstream layer comparisons,
+and general combined attention/recurrent state handling. Chapters 8–11 need
+the decision mask, branch forks,
 readout, complete original checkpoint execution and serving. Neither these
 kernels nor partially downloaded checkpoints prove those outcomes.
