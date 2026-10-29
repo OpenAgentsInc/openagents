@@ -26,7 +26,7 @@
 //                             others the page's own
 //   coaxial_wants_text(state) focus the keyboard field (a phone's keyboard)
 //   coaxial_field(state)      where the app draws that field: 4 floats, device pixels
-//   coaxial_cursor(state)     0 the default, 1 a link
+//   coaxial_cursor(state)     0 the default, 1 a link, 2 a crosshair
 //   coaxial_hash(state, length) the location's hash (without '#') in the inbox, at load and on every change
 //   coaxial_action(state), coaxial_outbox(state), coaxial_outbox_len(state), coaxial_action_done(state)
 //                             out: 1 navigates to the outbox's URL (under data-root, if the page has one; or an https:// URL), 2 copies its text, 3 makes it the
@@ -1069,7 +1069,7 @@ function after(gesture, tap = false) {
     else if (code === 5) { try { const p = JSON.parse(text); if (p && typeof p.key === "string") localStorage.setItem("verse.player", text); } catch {} }
     else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
   }
-  const cursor = ["", "pointer"][call("coaxial_cursor")] || "";
+  const cursor = ["", "pointer", "crosshair"][call("coaxial_cursor")] || "";
   if ((canvas.dataset.cursor || "") !== cursor) canvas.dataset.cursor = cursor;
 }
 

@@ -2,12 +2,10 @@
 // the galaxy after it (/verse/galaxy), ported from the playtest's Kiki flow
 // (aethyr-cpp frozen/kiki at revision 8, demo/kiki-2026-10-27b).
 //
-// The landing: CREATE ANYTHING over ENTER THE VERSE, the one line about the
-// house, and the email box with GO, and ENTER beside it to play now as a
-// guest. An email is never verified (a format check only); it goes to
-// POST /api/playtest/join with this browser's anonymous id and the session,
-// and is kept in the browser so a returning player goes straight on. Both
-// ways reach the galaxy.
+// The landing, as playtest.openagents.com drew it: CREATE YOUR WORLD over
+// ENTER THE VERSE, the one line about the house, and PLAYTEST NOW, which
+// goes to the galaxy. No email is asked for; one this browser gave the old
+// playtest is still joined again (POST /api/playtest/join, how "return").
 //
 // The galaxy: the playtest's worlds turning on their orbits, from the realm
 // host's table (realms.json, written into realms.coax): an open world opens
@@ -42,6 +40,7 @@ MODE_LINK :: 1.0;
 MODE_PULSE :: 2.0;
 MODE_GLOW_TEXT :: 3.0;
 MODE_BAR :: 4.0;
+MODE_ORB :: 5.0;   // verse.wgsl: a shaded sphere (the landing's orbs)
 
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
@@ -145,6 +144,12 @@ VerseState :: struct {
   note: int; nudge_at: f32;
   landed: bool;              // the page's step event is sent
   going: bool; going_at: f32; join_id: int; answered: bool;
+  orbs: [ORBS] Orb; orb_n: int; orb_id: int; seeded: bool; orb_acc: f32;
+  hold: Orb; holding: bool; hold_at: f32;   // the orb being made under a press
+  dt: f32;                   // this frame's seconds, for the orbs
+  near: bool; near_x: f32; near_y: f32;    // the mouse, which the orbs drift toward (CSS pixels)
+  bounced: [BOUNCED] int; bounced_n: int;  // pairs (a id * 65536 + b id) that have bounced once
+  sparks: [SPARKS] Spark; spark_n: int; luck: f32;
   // the galaxy
   rot: f32; tilt: f32; spun: bool;
   down: bool; down_id: int; down_x: f32; down_y: f32; drag_rot: f32; drag_tilt: f32; moved: f32;
@@ -260,24 +265,7 @@ join :: (s: [] VerseState, t: [] Track, how: string, wanted: bool) {
 
 // ---- what a press does
 
-// GO: an email, kept and joined, then the galaxy; a bad one says so.
-submit :: (s: [] VerseState, t: [] Track) {
-  if s[0].going { return; }
-  if s[0].email_n == 0 { s[0].note = NOTE_EMPTY; s[0].nudge_at = s[0].time; return; }
-  if !email_ok(email_text(s)) { s[0].note = NOTE_BAD; s[0].nudge_at = s[0].time; return; }
-  s[0].note = NOTE_NONE; s[0].focused = false;
-  s[0].going = true; s[0].going_at = s[0].time; s[0].answered = false;
-  if email_text(s) != kept_text(s) {
-    act(s, ACT_KEEP, email_text(s));
-    s[0].join_id = -2;
-    join(s, t, "form", true);
-    if track_begin(t, "join") { track_str(t, "email", email_text(s)); track_str(t, "how", "form"); track_end(t); }
-  } else { s[0].answered = true; }
-  if track_begin(t, "start") { track_str(t, "how", "email"); track_str(t, "to", "galaxy"); track_end(t); }
-  go_to(s, "/verse/galaxy");
-}
-
-// ENTER: play now as a guest (or as the email given before).
+// PLAYTEST NOW: the galaxy, as a guest (or as the email given before).
 enter :: (s: [] VerseState, t: [] Track) {
   if s[0].going { return; }
   s[0].note = NOTE_NONE; s[0].focused = false;
@@ -310,8 +298,6 @@ pick :: (s: [] VerseState, t: [] Track, p: int, via: string) {
 }
 
 press_button :: (s: [] VerseState, t: [] Track, b: int) {
-  if b == BTN_FIELD { focus(s, t); return; }
-  if b == BTN_GO { submit(s, t); return; }
   if b == BTN_ENTER { enter(s, t); return; }
   if b == BTN_HOUSE { pick(s, t, HOUSE, "tag"); return; }
   if b == BTN_CODING { pick(s, t, CODING, "tag"); return; }
@@ -328,22 +314,7 @@ press_button :: (s: [] VerseState, t: [] Track, b: int) {
 verse_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool #export_c {
   if s[0].page == PAGE_GALAXY { return setup_key(s, t, key, mods) || world_key(s, t, key); }
   if s[0].page != PAGE_LANDING || s[0].going { return false; }
-  if key == KEY_ENTER { if s[0].focused || s[0].email_n > 0 { submit(s, t); } else { enter(s, t); } return true; }
-  // with a keyboard, typing goes into the box without a click first
-  if !s[0].focused && key > 32 && key < 127 && mods & (MOD_CTRL | MOD_META) == 0 { focus(s, t); }
-  if !s[0].focused { return false; }
-  n: [1] int; n[0] = s[0].email_n;
-  if box_command(s, tk_command(key, mods), email_text(s), n[..]) { s[0].email_n = n[0]; return true; }
-  if key == KEY_BACKSPACE {
-    s[0].email_n = ifx s[0].typed_all then 0 else tk_back(email_text(s), mods); s[0].typed_all = false;
-    s[0].typed_at = s[0].time; s[0].note = NOTE_NONE; return true;
-  }
-  if key < 32 { s[0].typed_all = false; }
-  if key == KEY_ESCAPE { s[0].focused = false; return true; }
-  if key > 0 && mods & (MOD_CTRL | MOD_META) == 0 {
-    buf: [4] u8; buf[0] = cast(u8) (key & 127);
-    if key < 127 { email_type(s, cast(string) buf[0..<1]); return true; }
-  }
+  if key == KEY_ENTER { enter(s, t); return true; }
   return false;
 }
 
@@ -354,10 +325,6 @@ verse_message :: (s: [] VerseState, t: [] Track, kind: int, bytes: string) #expo
     s[0].want_id = -1; realm_answered(s, bytes); return;
   }
   if kind == MSG_TEXT {
-    if s[0].page == PAGE_LANDING && !s[0].going {
-      if !s[0].focused { focus(s, t); }
-      email_type(s, bytes);
-    }
     return;
   }
   if kind == MSG_KEPT {
@@ -414,17 +381,22 @@ verse_pointer :: (s: [] VerseState, t: [] Track, x: f32, y: f32, phase: int, kin
       s[0].drag_rot = s[0].rot; s[0].drag_tilt = s[0].tilt; s[0].moved = 0;
       return true;
     }
-    // the landing: a press in the stars brings you back to the box
-    if !s[0].going {
-      s[0].nudge_at = s[0].time;
-      if kind == 0 { focus(s, t); } else { s[0].focused = false; }
-    }
+    // the landing: a press in the stars starts an orb, growing while held
+    if !s[0].going { orb_hold(s, x, y); }
     return true;
   }
   if s[0].press >= 0 && id == s[0].press_id {
     if phase == POINTER_UP && b == s[0].press { press_button(s, t, b); }
     if phase != POINTER_MOVE { s[0].press = -1; s[0].press_id = -1; }
     return true;
+  }
+  if !galaxy {
+    k := hi(s[0].dpr, 0.5);
+    if phase == POINTER_MOVE {
+      s[0].near = kind == 0; s[0].near_x = x / k; s[0].near_y = y / k;
+      if s[0].holding { s[0].hold.x = x / k; s[0].hold.y = y / k; }
+    } else { orb_drop(s); if phase == POINTER_CANCEL { s[0].near = false; } }
+    return kind == 0 || s[0].holding;
   }
   if galaxy && s[0].down && id == s[0].down_id {
     k := hi(s[0].dpr, 0.5);
@@ -456,6 +428,7 @@ verse_wants_text :: (s: [] VerseState) -> bool #export_c {
 }
 verse_cursor :: (s: [] VerseState) -> int #export_c {
   if s[0].hover >= 0 || s[0].press >= 0 { return 1; }
+  if s[0].page == PAGE_LANDING { return 2; }   // the playtest's crosshair over the orbs
   if s[0].page == PAGE_GALAXY && s[0].over >= 0 && realm_kind_at(s, s[0].over) == KIND_OPEN { return 1; }
   return 0;
 }
@@ -806,123 +779,285 @@ brand :: (s: [] VerseState, out: [] f32, at: int, word: string) -> int {
   k := s[0].dpr;
   x := 16 * k + 8 * k; y := 16 * k + 9 * k; r := 6 * k;
   vertices := at;
+  landing := s[0].page == PAGE_LANDING;
+  mr: f32 = ifx landing then CONTENT else PARCH_R; mg: f32 = ifx landing then CONTENT else PARCH_G; mb: f32 = ifx landing then CONTENT else PARCH_B;
   for i: 0..<24 {
     a := -1.5707963 + 0.6 + cast(f32) i * (6.2831853 - 1.2) / 24.0;
     b := a + (6.2831853 - 1.2) / 24.0;
-    if lit(out, vertices, x + r * cos(a), y + r * sin(a), x + r * cos(b), y + r * sin(b), 0.7 * k, 0.9, 1.5 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { vertices += 6; }
+    if lit(out, vertices, x + r * cos(a), y + r * sin(a), x + r * cos(b), y + r * sin(b), 0.7 * k, 0.9, 1.5 * k, mr, mg, mb, MODE_STROKE) { vertices += 6; }
   }
-  if lit(out, vertices, x, y - r - 1.5 * k, x, y - 1 * k, 0.7 * k, 0.9, 1.5 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { vertices += 6; }
+  if lit(out, vertices, x, y - r - 1.5 * k, x, y - 1 * k, 0.7 * k, 0.9, 1.5 * k, mr, mg, mb, MODE_STROKE) { vertices += 6; }
+  if s[0].page == PAGE_LANDING { return write(k, out, vertices, "OpenAgents", x + r + 10 * k, y + 5 * k, sans_cap(14) * k, GAP, SPACE, sans_ink(CONTENT), false, false); }
   return write(k, out, vertices, word, x + r + 10 * k, y + 4.5 * k, 9 * k, GAP, SPACE, white(k, 0.95), false, false);
+}
+
+// ---- the landing's orbs (the playtest's app.js orbs, revision 9)
+// Faint grey worlds pulling on each other behind the hero. A press in the
+// stars makes one that grows while held and joins the rest when let go;
+// two that touch bounce once, then merge in a burst of sparks; each trails
+// sparks as it moves and drifts toward the mouse. Every number is the
+// playtest's ORB, in CSS pixels per frame at 60 fps.
+
+ORBS :: 41; SPARKS :: 900; BOUNCED :: 128;
+Orb :: struct { id: int; x: f32; y: f32; r: f32; vx: f32; vy: f32; }
+Spark :: struct { x: f32; y: f32; vx: f32; vy: f32; life: f32; max: f32; size: f32; }
+
+ORB_GRAVITY :: 0.22; ORB_SOFTENING :: 500.0; ORB_KICK :: 0.9; ORB_SWIRL :: 0.22;
+ORB_POINTER :: 0.00035; ORB_DRAG :: 0.998; ORB_WALL :: 0.75; ORB_BOUNCE :: 0.7; ORB_MAX_SPEED :: 9.0;
+ORB_HOLD_START :: 3.0; ORB_HOLD_GROW_MS :: 28.0; ORB_HOLD_MAX :: 46.0; ORB_MERGED_MAX :: 64.0;
+ORB_TRAIL_EVERY :: 0.6; ORB_TRAIL_LIFE :: 40.0; ORB_BURST :: 34; ORB_BURST_SPEED :: 3.2; ORB_BURST_LIFE :: 55.0;
+ORB_DUST_EVERY :: 0.9; ORB_DUST_NEAR :: 50.0; ORB_DUST_FAR :: 150.0; ORB_DUST_SPEED :: 2.2;
+ORB_ALPHA :: 0.4;
+SPARK_R :: 1.0; SPARK_G :: 0.824; SPARK_B :: 0.627;   // 255, 210, 160
+
+// A number in [0, 1), the same run every visit.
+luck :: (s: [] VerseState) -> f32 {
+  s[0].luck += 1;
+  v := sin(s[0].luck * 12.9898 + 78.233) * 43758.5453;
+  return v - floor(v);
+}
+new_orb :: (s: [] VerseState, x: f32, y: f32, r: f32) -> Orb { s[0].orb_id += 1; return Orb.{id = s[0].orb_id, x = x, y = y, r = r}; }
+
+// Sends orb i sideways around the biggest other orb, into an orbit.
+orb_kick :: (s: [] VerseState, i: int) {
+  big := -1;
+  for j: 0..<s[0].orb_n { if j != i && (big < 0 || s[0].orbs[j].r > s[0].orbs[big].r) { big = j; } }
+  if big < 0 { return; }
+  a := s[0].orbs[i]; b := s[0].orbs[big];
+  dx := a.x - b.x; dy := a.y - b.y; d := hi(sqrt(dx * dx + dy * dy), 0.0001);
+  v := ORB_KICK * sqrt(ORB_GRAVITY * b.r * b.r / sqrt(d * d + ORB_SOFTENING));
+  s[0].orbs[i].vx += -dy / d * v; s[0].orbs[i].vy += dx / d * v;
+}
+orb_seed :: (s: [] VerseState, w: f32, h: f32) {
+  s[0].seeded = true; s[0].orb_n = 4;
+  s[0].orbs[0] = new_orb(s, w * 0.5, h * 0.7, 24);
+  s[0].orbs[1] = new_orb(s, w * 0.22, h * 0.32, 9);
+  s[0].orbs[2] = new_orb(s, w * 0.78, h * 0.66, 7);
+  s[0].orbs[3] = new_orb(s, w * 0.7, h * 0.22, 5);
+  for i: 1..<4 { orb_kick(s, i); }
+}
+// A press at (x, y), device pixels.
+orb_hold :: (s: [] VerseState, x: f32, y: f32) {
+  k := hi(s[0].dpr, 0.5);
+  s[0].hold = new_orb(s, x / k, y / k, ORB_HOLD_START); s[0].holding = true; s[0].hold_at = s[0].time;
+}
+orb_drop :: (s: [] VerseState) {
+  if !s[0].holding { return; }
+  s[0].holding = false;
+  if s[0].orb_n >= ORBS - 1 { for i: 1..<s[0].orb_n { s[0].orbs[i - 1] = s[0].orbs[i]; } s[0].orb_n -= 1; }
+  s[0].orbs[s[0].orb_n] = s[0].hold; s[0].orb_n += 1;
+  orb_kick(s, s[0].orb_n - 1);
+}
+spark :: (s: [] VerseState, x: f32, y: f32, vx: f32, vy: f32, life: f32, size: f32) {
+  if s[0].spark_n >= SPARKS { return; }
+  s[0].sparks[s[0].spark_n] = Spark.{x = x, y = y, vx = vx, vy = vy, life = life, max = life, size = size}; s[0].spark_n += 1;
+}
+bounced_once :: (s: [] VerseState, key: int) -> bool {
+  for i: 0..<s[0].bounced_n { if s[0].bounced[i] == key { return true; } }
+  return false;
+}
+// One frame of the playtest's step, in a w x h CSS pixel hero.
+orb_step :: (s: [] VerseState, w: f32, h: f32) {
+  calm := s[0].still;
+  if s[0].holding {
+    s[0].hold.r = lo(ORB_HOLD_MAX, ORB_HOLD_START + (s[0].time - s[0].hold_at) * 1000 / ORB_HOLD_GROW_MS);
+    // dust drifts in toward the orb being made
+    if !calm && luck(s) < ORB_DUST_EVERY {
+      a := luck(s) * 6.2831853; d := s[0].hold.r + ORB_DUST_NEAR + luck(s) * (ORB_DUST_FAR - ORB_DUST_NEAR);
+      spark(s, s[0].hold.x + cos(a) * d, s[0].hold.y + sin(a) * d, -cos(a) * ORB_DUST_SPEED, -sin(a) * ORB_DUST_SPEED, (d - s[0].hold.r) / ORB_DUST_SPEED, 2);
+    }
+  }
+  n := s[0].orb_n;
+  for i: 0..<n {
+    a := s[0].orbs[i];
+    for j: 0..<n {
+      if i == j { continue; }
+      b := s[0].orbs[j];
+      dx := b.x - a.x; dy := b.y - a.y; d2 := dx * dx + dy * dy + ORB_SOFTENING; d := sqrt(d2);
+      f := ORB_GRAVITY * b.r * b.r / d2;
+      a.vx += f * (dx - ORB_SWIRL * dy) / d; a.vy += f * (dy + ORB_SWIRL * dx) / d;
+    }
+    if s[0].near && !s[0].holding { a.vx += (s[0].near_x - a.x) * ORB_POINTER; a.vy += (s[0].near_y - a.y) * ORB_POINTER; }
+    a.vx *= ORB_DRAG; a.vy *= ORB_DRAG;
+    sp := sqrt(a.vx * a.vx + a.vy * a.vy);
+    if sp > ORB_MAX_SPEED { a.vx *= ORB_MAX_SPEED / sp; a.vy *= ORB_MAX_SPEED / sp; }
+    s[0].orbs[i] = a;
+  }
+  for i: 0..<n {
+    a := s[0].orbs[i];
+    a.x += a.vx; a.y += a.vy;
+    if a.x < a.r || a.x > w - a.r { a.vx *= -ORB_WALL; a.x = clamp(a.x, a.r, hi(a.r, w - a.r)); }
+    if a.y < a.r || a.y > h - a.r { a.vy *= -ORB_WALL; a.y = clamp(a.y, a.r, hi(a.r, h - a.r)); }
+    s[0].orbs[i] = a;
+    // a trail of sparks behind each moving orb
+    sp := sqrt(a.vx * a.vx + a.vy * a.vy);
+    if !calm && luck(s) < ORB_TRAIL_EVERY * lo(1, sp / 2) {
+      back := a.r / hi(sp, 0.0001);
+      jx := (luck(s) - 0.5) * a.r * 0.6; jy := (luck(s) - 0.5) * a.r * 0.6;
+      spark(s, a.x - a.vx * back + jx, a.y - a.vy * back + jy, -a.vx * 0.15 + (luck(s) - 0.5) * 0.3, -a.vy * 0.15 + (luck(s) - 0.5) * 0.3,
+            ORB_TRAIL_LIFE * (0.6 + luck(s) * 0.6), 1.4 + a.r * 0.06);
+    }
+  }
+  // touching orbs bounce apart first, then merge into one
+  i := 0;
+  while i < s[0].orb_n {
+    j := s[0].orb_n - 1;
+    while j > i {
+      a := s[0].orbs[i]; b := s[0].orbs[j];
+      dx := b.x - a.x; dy := b.y - a.y; d := hi(sqrt(dx * dx + dy * dy), 0.0001); touch := (a.r + b.r) * 0.92;
+      if d > touch { j -= 1; continue; }
+      key := ifx a.id < b.id then a.id * 65536 + b.id else b.id * 65536 + a.id;
+      ma := a.r * a.r; mb := b.r * b.r; m := ma + mb;
+      if !bounced_once(s, key) {
+        nx := dx / d; ny := dy / d; closing := (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+        if closing > 0 {
+          q := (1 + ORB_BOUNCE) * closing / m;
+          a.vx -= q * mb * nx; a.vy -= q * mb * ny; b.vx += q * ma * nx; b.vy += q * ma * ny;
+          s[0].bounced[s[0].bounced_n % BOUNCED] = key; s[0].bounced_n = lo_i(s[0].bounced_n + 1, BOUNCED);
+          for e: 0..<8 { if calm { break; } spark(s, a.x + nx * a.r, a.y + ny * a.r, (luck(s) - 0.5) * 2.4, (luck(s) - 0.5) * 2.4, 26, 1.2); }
+        }
+        push := (touch - d) / 2;
+        a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
+        s[0].orbs[i] = a; s[0].orbs[j] = b;
+        j -= 1; continue;
+      }
+      a.vx = (a.vx * ma + b.vx * mb) / m; a.vy = (a.vy * ma + b.vy * mb) / m;
+      a.x = (a.x * ma + b.x * mb) / m; a.y = (a.y * ma + b.y * mb) / m;
+      a.r = lo(ORB_MERGED_MAX, sqrt(m));
+      for e: 0..<ORB_BURST {
+        if calm { break; }
+        ang := luck(s) * 6.2831853; v := ORB_BURST_SPEED * (0.3 + luck(s));
+        spark(s, a.x + cos(ang) * a.r, a.y + sin(ang) * a.r, cos(ang) * v + a.vx, sin(ang) * v + a.vy, ORB_BURST_LIFE * (0.5 + luck(s) * 0.7), 1 + luck(s) * 1.6);
+      }
+      s[0].orbs[i] = a;
+      for o: j + 1..<s[0].orb_n { s[0].orbs[o - 1] = s[0].orbs[o]; }
+      s[0].orb_n -= 1;
+      j -= 1;
+    }
+    i += 1;
+  }
+  // the sparks drift, slow and fade
+  live := 0;
+  for e: 0..<s[0].spark_n {
+    p := s[0].sparks[e];
+    p.x += p.vx; p.y += p.vy; p.vx *= 0.97; p.vy *= 0.97; p.life -= 1;
+    if p.life > 0 { s[0].sparks[live] = p; live += 1; }
+  }
+  s[0].spark_n = live;
+}
+lo_i :: (a: int, b: int) -> int { if a < b { return a; } return b; }
+
+// The orbs at 60 steps a second whatever the frame rate, and drawn.
+draw_orbs :: (s: [] VerseState, out: [] f32, at: int, dt: f32) -> int {
+  k := hi(s[0].dpr, 0.5); w := s[0].width / k; h := s[0].height / k;
+  if !s[0].seeded { orb_seed(s, w, h); }
+  s[0].orb_acc = lo(s[0].orb_acc + clamp(dt, 0, 0.1), 0.1);
+  while s[0].orb_acc >= 1.0 / 60.0 { s[0].orb_acc -= 1.0 / 60.0; orb_step(s, w, h); }
+  vertices := at;
+  for e: 0..<s[0].spark_n {
+    p := s[0].sparks[e];
+    if tinted_dot(out, vertices, p.x * k, p.y * k, p.size * 0.5 * k, (p.life / p.max) * 0.85, 0.5 * k, SPARK_R, SPARK_G, SPARK_B) { vertices += 6; }
+  }
+  for i: 0..<s[0].orb_n + (ifx s[0].holding then 1 else 0) {
+    a := ifx i < s[0].orb_n then s[0].orbs[i] else s[0].hold;
+    if orb_dot(out, vertices, a.x * k, a.y * k, a.r * k) { vertices += 6; }
+    // the thin ring around each, 4 pixels out
+    rr := (a.r + 4) * k;
+    vertices = ring(out, vertices, a.x * k, a.y * k, rr, rr, 48, 0.5 * k, 0.16 * 0.93 * ORB_ALPHA, 0.6 * k, 1, 1, 1);
+  }
+  return vertices;
+}
+// One orb: the shaded sphere and its faint halo (verse.wgsl MODE_ORB).
+orb_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32) -> bool {
+  if !tinted_dot(out, at, x, y, radius, ORB_ALPHA, radius, 1, 1, 1) { return false; }
+  for v: 0..<6 { out[(at + v) * VERTEX_FLOATS + 11] = MODE_ORB; }
+  return true;
 }
 
 // ---- the landing
 
 TITLE :: "ENTER THE VERSE";
-EYEBROW :: "CREATE ANYTHING";
-LEDE_1 :: "EDIT OUR HAUNTED HOUSE.";
-LEDE_2 :: "CAN YOU MAKE IT SCARIER?";
-PLACEHOLDER :: "YOU@EXAMPLE.COM";
+TITLE_1 :: "ENTER"; TITLE_2 :: "THE VERSE";
+EYEBROW :: "CREATE YOUR WORLD";
+column :: (s: [] VerseState) -> f32 { return lo(400 * s[0].dpr, s[0].width - 32 * s[0].dpr); }   // the realm setup's panel
+LEDE :: "Edit our haunted house. Can you make it scarier?";
+LEDE_1 :: "Edit our haunted house.";
+LEDE_2 :: "Can you make it scarier?";
+PLAY :: "PLAYTEST NOW";
+LOOK_HUD :: 4.0;   // verse.wgsl: the playtest's glass bar button (hud-button.js)
+EYEBROW_GREY :: 0.604;   // #9a9aa0, the eyebrow
+CONTENT :: 0.93;   // #ededed, the words
 
-column :: (s: [] VerseState) -> f32 { return lo(400 * s[0].dpr, s[0].width - 32 * s[0].dpr); }
-join_box :: (s: [] VerseState) -> Box {
-  k := s[0].dpr; w := column(s); cx := s[0].width * 0.5; cy := s[0].height * 0.5;
-  return Box.{x0 = cx - w * 0.5, y0 = cy + 6 * k, x1 = cx + w * 0.5, y1 = cy + 124 * k};
-}
-field_box :: (s: [] VerseState) -> Box {
-  k := s[0].dpr; j := join_box(s);
-  return Box.{x0 = j.x0 + 14 * k, y0 = j.y0 + 34 * k, x1 = j.x1 - 14 * k - 60 * k, y1 = j.y0 + 76 * k};
-}
-go_box :: (s: [] VerseState) -> Box {
-  k := s[0].dpr; j := join_box(s); f := field_box(s);
-  return Box.{x0 = f.x1 + 8 * k, y0 = f.y0, x1 = j.x1 - 14 * k, y1 = f.y1};
-}
-enter_box :: (s: [] VerseState) -> Box {
-  k := s[0].dpr; j := join_box(s);
-  return Box.{x0 = j.x0 + 44 * k, y0 = j.y0 + 86 * k, x1 = j.x0 + 132 * k, y1 = j.y0 + 112 * k};
+grey :: (k: f32, light: f32, c: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, c, c, c * 1.02); }
+// The playtest's Geist, as the system sans (font.coax), px CSS pixels tall.
+sans_ink :: (c: f32) -> Ink { return Ink.{core = 0, light = 1, glow = 0, red = c, green = c, blue = c, mode = MODE_SANS, sans = true}; }
+sans_cap :: (px: f32) -> f32 { return px * SANS_CAP / SANS_SCALE; }
+centred_sans :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return write(d, out, at, text, x - ink_width(text, cap, GAP, SPACE, k) * 0.5, base, cap, GAP, SPACE, k, false, false);
 }
 
-// The faint orbs drifting behind the hero (the playtest's, made faint as revision 9 asked).
-orbs :: (s: [] VerseState, out: [] f32, at: int) -> int {
-  k := s[0].dpr; t := ifx s[0].still then 0.0f32 else s[0].time;
-  ox := [5] f32.[0.25, 0.73, 0.78, 0.14, 0.6];
-  oy := [5] f32.[0.27, 0.26, 0.73, 0.62, 0.86];
-  size := [5] f32.[4.5, 3.5, 3.8, 2.6, 3.0];
-  vertices := at;
-  for i: 0..<5 {
-    f := cast(f32) i;
-    x := (ox[i] + 0.018 * sin(t * 0.11 + f * 1.7)) * s[0].width;
-    y := (oy[i] + 0.014 * cos(t * 0.09 + f * 2.3)) * s[0].height;
-    if tinted_dot(out, vertices, x, y, size[i] * k, 0.42, 12 * k, 0.93, 0.93, 0.95) { vertices += 6; }
-    vertices = ring(out, vertices, x, y, (size[i] + 4) * k, (size[i] + 4) * k, 28, 0.5 * k, 0.16, 1 * k, 0.93, 0.93, 0.95);
-  }
-  return vertices;
+// Where the hero's lines sit, as the playtest's CSS lays them out: a grid of
+// the eyebrow, the title, the lede and the button, gap 18, centred on the
+// screen (on a short screen no eyebrow, gap 10 and a 56-pixel button).
+Hero :: struct { eyebrow: f32; title: f32; title_cap: f32; title_lines: int; lede: f32; lines: int; lede_cap: f32; button: Box; low: bool; }
+hero :: (s: [] VerseState) -> Hero {
+  k := s[0].dpr; w := s[0].width / k; h := s[0].height / k;
+  o: Hero;
+  o.low = h <= 520;
+  gap := ifx o.low then 10.0f32 else 18.0f32;
+  font := ifx o.low then 24.0f32 else clamp(w * 0.044, 22, 44);   // clamp(22px, 4.4vw, 44px)
+  // too wide for one line, the title breaks after ENTER (the playtest's text-wrap: balance)
+  // (when the playtest's Michroma line, about 16.8 ems with its .22em spacing, wouldn't fit)
+  o.title_lines = ifx font * 16.8 > w - 32 then 2 else 1;
+  o.title_cap = fit_cap(ifx o.title_lines == 2 then TITLE_2 else TITLE, font * 0.9, 0.62, w - 32) * k;
+  o.lede_cap = sans_cap(ifx o.low then 14.0f32 else 16.0f32);
+  o.lines = ifx sans_width(LEDE, sans_em(o.lede_cap)) > w - 32 then 2 else 1;
+  bh := ifx o.low then 56.0f32 else 64.0f32;
+  bw := lo(360, w - 64);
+  eyebrow_h := ifx o.low then 0.0f32 else 13.0f32;
+  title_h := font * 1.45 * cast(f32) o.title_lines; lede_h := 25.6 * cast(f32) o.lines;
+  total := eyebrow_h + (ifx o.low then 0.0f32 else gap) + title_h + gap + lede_h + gap + 8 + bh;
+  top := ifx o.low then 36 + (h - 36 - total) * 0.5 else (h - total) * 0.5;
+  y := top;
+  o.eyebrow = (y + eyebrow_h * 0.5 + 4) * k;
+  if !o.low { y += eyebrow_h + gap; }
+  o.title = (y + font * 1.45 * 0.5) * k + o.title_cap * 0.5;
+  y += title_h + gap;
+  o.lede = (y + 12.8) * k + o.lede_cap * k * 0.5;
+  y += lede_h + gap + 8;
+  cx := w * 0.5;
+  o.button = Box.{x0 = (cx - bw * 0.5) * k, y0 = y * k, x1 = (cx + bw * 0.5) * k, y1 = (y + bh) * k};
+  o.lede_cap *= k;
+  return o;
 }
 
 draw_landing :: (s: [] VerseState, out: [] f32, at: int) -> int {
-  k := s[0].dpr; d := k; w := s[0].width; cx := w * 0.5; cy := s[0].height * 0.5;
-  vertices := orbs(s, out, at);
+  k := s[0].dpr; d := k; w := s[0].width; cx := w * 0.5;
+  vertices := draw_orbs(s, out, at, s[0].dt);
   vertices = brand(s, out, vertices, "OPENAGENTS");
-  room := w - 32 * k;
-  eyebrow := fit_cap(EYEBROW, 7.5 * k, WIDE, room);
-  vertices = centred(d, out, vertices, EYEBROW, cx, cy - 118 * k, eyebrow, WIDE, bronze(k, 0.85));
-  title := fit_cap(TITLE, 30 * k, 0.62, w - 48 * k);
-  vertices = centred(d, out, vertices, TITLE, cx, cy - 70 * k, title, 0.62, ink(0.9 * k * title / (30 * k), 1, 5 * k, PARCH_R, PARCH_G, PARCH_B));
-  lede := lo(fit_cap(LEDE_1, 9.5 * k, GAP, room), fit_cap(LEDE_2, 9.5 * k, GAP, room));
-  vertices = centred(d, out, vertices, LEDE_1, cx, cy - 36 * k, lede, GAP, white(k, 0.9));
-  vertices = centred(d, out, vertices, LEDE_2, cx, cy - 18 * k, lede, GAP, white(k, 0.9));
-
-  // the box: YOUR EMAIL, the field and GO; or ENTER, play now as a guest
-  j := join_box(s);
-  plate(s, j, 0.9, LOOK_PLAIN);
-  vertices = write(d, out, vertices, "YOUR EMAIL", j.x0 + 16 * k, j.y0 + 22 * k, 7 * k, WIDE, space_for(WIDE), bronze(k, 0.95), false, false);
-  f := field_box(s);
-  s[0].boxes[BTN_FIELD] = f; s[0].shown[BTN_FIELD] = true;
-  focused := s[0].focused && !s[0].going;
-  plate(s, f, 0.95, ifx focused || s[0].hover == BTN_FIELD then LOOK_LIT else LOOK_PLAIN);
-  // the focus: an orange line round the field that breathes, brighter for a moment on a nudge
-  nudge := ifx s[0].still then 0.0f32 else 1 - ease((s[0].time - s[0].nudge_at) / NUDGE_TIME);
-  if focused || nudge > 0 {
-    breathe := ifx s[0].still then 0.0f32 else 0.15 * sin(s[0].time * 3.4);
-    light := ifx focused then 0.55 + breathe else 0.0f32;
-    light = hi(light, 0.95 * nudge);
-    g := 2 * k + 5 * k * nudge;
-    xs := [5] f32.[f.x0, f.x1, f.x1, f.x0, f.x0];
-    ys := [5] f32.[f.y0, f.y0, f.y1, f.y1, f.y0];
-    for e: 0..<4 {
-      if lit(out, vertices, xs[e], ys[e], xs[e + 1], ys[e + 1], 0.6 * k, light, g, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { vertices += 6; }
-    }
+  o := hero(s);
+  if !o.low {
+    eyebrow := fit_cap(EYEBROW, 7.5 * k, WIDE, w - 32 * k);
+    vertices = centred(d, out, vertices, EYEBROW, cx, o.eyebrow, eyebrow, WIDE, grey(k, 0.95, EYEBROW_GREY));
   }
-  cap := 10 * k; base := (f.y0 + f.y1) * 0.5 + cap * 0.5; left := f.x0 + 12 * k; width := f.x1 - f.x0 - 24 * k;
-  text := email_text(s);
-  if text.count == 0 && !focused {
-    vertices = write(d, out, vertices, PLACEHOLDER, left, base, cap, GAP, SPACE, white(k, 0.32), false, false);
-  } else {
-    from := 0;
-    while from < text.count && measure(text[from..<text.count], GAP, SPACE, false) * cap > width { from += 1; }
-    shown := text[from..<text.count];
-    vertices = write(d, out, vertices, shown, left, base, cap, GAP, SPACE, ifx s[0].typed_all then ember(k, 0.97) else white(k, 0.97), false, false);
-    since := s[0].time - s[0].typed_at;
-    if focused && (s[0].still || since / 1.06 - floor(since / 1.06) < 0.5) {
-      after := ifx shown.count > 0 then GAP * 0.6 else 0.0f32;
-      x := floor(left + (measure(shown, GAP, SPACE, false) + after) * cap) + 0.5;
-      if lit(out, vertices, x, base + 2 * k, x, base - cap - 3 * k, 0.5 * k, 1, 3 * k, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { vertices += 6; }
-    }
+  title_ink := ink(1.25 * k * o.title_cap / (30 * k), 1, 4 * k, CONTENT, CONTENT, CONTENT);
+  if o.title_lines == 1 { vertices = centred(d, out, vertices, TITLE, cx, o.title, o.title_cap, 0.62, title_ink); }
+  else {
+    line := (o.title_cap / k / 0.9) * 1.45 * k;   // the font's line height
+    vertices = centred(d, out, vertices, TITLE_1, cx, o.title, o.title_cap, 0.62, title_ink);
+    vertices = centred(d, out, vertices, TITLE_2, cx, o.title + line, o.title_cap, 0.62, title_ink);
   }
-  s[0].field[0] = f.x0; s[0].field[1] = f.y0; s[0].field[2] = f.x1; s[0].field[3] = f.y1;
-  vertices = plate_button(s, out, vertices, BTN_GO, go_box(s), "GO", true);
-  e := enter_box(s);
-  row := (e.y0 + e.y1) * 0.5 + 3.5 * k;
-  vertices = write(d, out, vertices, "OR", j.x0 + 16 * k, row, 7 * k, GAP, SPACE, white(k, 0.5), false, false);
-  vertices = plate_button(s, out, vertices, BTN_ENTER, e, "ENTER", false);
-  guest := fit_cap("PLAY NOW AS A GUEST", 7 * k, GAP, j.x1 - e.x1 - 26 * k);
-  vertices = write(d, out, vertices, "PLAY NOW AS A GUEST", e.x1 + 12 * k, row, guest, GAP, SPACE, white(k, 0.55), false, false);
-
-  // what went wrong, under the box
-  if s[0].note != NOTE_NONE {
-    say := ifx s[0].note == NOTE_BAD then "THAT DOESN'T LOOK LIKE AN EMAIL ADDRESS" else "TYPE YOUR EMAIL, OR ENTER TO PLAY AS A GUEST";
-    size := fit_cap(say, 8 * k, GAP, room);
-    vertices = centred(d, out, vertices, say, cx, j.y1 + 26 * k, size, GAP, ember(k, 0.95));
+  if o.lines == 1 { vertices = centred_sans(d, out, vertices, LEDE, cx, o.lede, o.lede_cap, sans_ink(CONTENT)); }
+  else {
+    vertices = centred_sans(d, out, vertices, LEDE_1, cx, o.lede, o.lede_cap, sans_ink(CONTENT));
+    vertices = centred_sans(d, out, vertices, LEDE_2, cx, o.lede + 25.6 * k, o.lede_cap, sans_ink(CONTENT));
   }
+  // PLAYTEST NOW: the glass bar (verse.wgsl draws it), its words in wide capitals
+  b := o.button;
+  s[0].boxes[BTN_ENTER] = b; s[0].shown[BTN_ENTER] = true;
+  plate(s, b, 1, LOOK_HUD + (ifx s[0].press == BTN_ENTER then 2.0f32 else ifx s[0].hover == BTN_ENTER then 1.0f32 else 0.0f32));
+  cap := fit_cap(PLAY, (b.y1 - b.y0) * 0.26 * 0.86, WIDE * 0.62, b.x1 - b.x0 - 32 * k);
+  vertices = centred(d, out, vertices, PLAY, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, WIDE * 0.62, ink(0.85 * k, 1, 1.6 * k, 0.97, 0.97, 0.98));
   return vertices;
 }
 
@@ -1096,7 +1231,7 @@ verse_frame :: (s: [] VerseState, t: [] Track, out: [] f32, uniforms: [] f32, wi
   if !s[0].started { verse_reset(s); }
   // back to a page left by going on (the browser kept it): it answers again
   if s[0].going && s[0].next_n == 0 && s[0].time - s[0].going_at > 6 { s[0].going = false; }
-  s[0].time += clamp(dt, 0, 0.1);
+  s[0].time += clamp(dt, 0, 0.1); s[0].dt = dt;
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
   if s[0].page == PAGE_GALAXY && !s[0].down && !still { s[0].rot += 0.036 * clamp(dt, 0, 0.1); }
   s[0].plate_n = 0;
@@ -1191,14 +1326,14 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
     n := verse_frame(s[..], t[..], out[..], u[..], w * 2, h * 2, 2, 0, true);
     #assert n > 0 && n % 6 == 0 && n < MAX_VERTICES;
     for v: 0..<n { x := out[v * VERTEX_FLOATS]; #assert x > -40 && x < w * 2 + 40; }
-    #assert s[0].shown[BTN_FIELD] && s[0].shown[BTN_GO] && s[0].shown[BTN_ENTER];
-    f := s[0].boxes[BTN_FIELD]; g := s[0].boxes[BTN_GO]; e := s[0].boxes[BTN_ENTER];
-    #assert f.x0 >= 16 * 2 && g.x1 <= w * 2 - 16 * 2 && f.x1 < g.x0 && e.y0 > f.y1;
-    #assert u[5] >= 4 && u[PANEL_AT] > 0;
+    #assert !s[0].shown[BTN_FIELD] && !s[0].shown[BTN_GO] && s[0].shown[BTN_ENTER];
+    e := s[0].boxes[BTN_ENTER];
+    #assert e.x0 >= 32 * 2 - 1 && e.x1 <= w * 2 - 32 * 2 + 1 && e.y0 > h && e.y1 < h * 2;
+    #assert u[5] == 1 && u[PANEL_AT + 6] == LOOK_HUD && s[0].orb_n == 4;
   }
 }
 
-#test "ENTER goes to the galaxy as a guest, once" {
+#test "PLAYTEST NOW goes to the galaxy as a guest, once; Enter does too" {
   s: [1] VerseState; t: [1] Track;
   page_at(s[..], t[..], PAGE_LANDING, 1440, 900);
   #assert batch_has(t[..], "\"ev\":\"landing\"");
@@ -1212,58 +1347,23 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   #assert s[0].action == 0;
 }
 
-#test "GO with an email keeps it, joins and then goes" {
-  s: [1] VerseState; t: [1] Track;
-  page_at(s[..], t[..], PAGE_LANDING, 390, 844);
-  click(s[..], t[..], s[0].boxes[BTN_FIELD]);
-  #assert verse_wants_text(s[..]) && batch_has(t[..], "join-open");
-  verse_message(s[..], t[..], MSG_TEXT, "Chris@OpenAgents.com");
-  #assert email_text(s[..]) == "chris@openagents.com";
-  #assert verse_key(s[..], t[..], KEY_ENTER, 0);
-  #assert s[0].action == ACT_KEEP && cast(string) s[0].outbox[0..<s[0].out_n] == "chris@openagents.com";
-  #assert s[0].req_ready && cast(string) s[0].req_url[0..<s[0].req_url_n] == "/api/playtest/join";
-  body := cast(string) s[0].req_body[0..<s[0].req_body_n];
-  #assert body == "{\"email\":\"chris@openagents.com\",\"player\":\"feedfacecafebeef\",\"sid\":\"c0123456789abcdef\",\"how\":\"form\"}";
-  #assert s[0].req_flags == HTTP_POST | HTTP_ANSWER;
-  verse_requested(s[..], 3);
-  take_action(s[..]);
-  redraw(s[..], t[..], 0.016);
-  #assert s[0].action == 0;   // waiting for the server
-  verse_message(s[..], t[..], HTTP_KIND + 3, "200\n{\"joined\":true}");
-  redraw(s[..], t[..], 0.016);
-  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/verse/galaxy";
-  #assert batch_has(t[..], "\"how\":\"email\"");
-}
-
-#test "GO goes on anyway when the server doesn't answer" {
+#test "a press in the stars makes an orb that grows while held, then joins the rest" {
   s: [1] VerseState; t: [1] Track;
   page_at(s[..], t[..], PAGE_LANDING, 1440, 900);
-  verse_message(s[..], t[..], MSG_TEXT, "a@b.co");
-  click(s[..], t[..], s[0].boxes[BTN_GO]);
-  verse_requested(s[..], 0);
-  take_action(s[..]);
-  for i: 0..<30 { redraw(s[..], t[..], 0.1); }
-  #assert s[0].action == ACT_NAVIGATE;
-}
-
-#test "a bad email says so and sends nothing" {
-  s: [1] VerseState; t: [1] Track;
-  page_at(s[..], t[..], PAGE_LANDING, 1440, 900);
-  click(s[..], t[..], s[0].boxes[BTN_GO]);
-  #assert s[0].note == NOTE_EMPTY && !s[0].req_ready && s[0].action == 0;
-  verse_message(s[..], t[..], MSG_TEXT, "not an email");
-  #assert email_text(s[..]) == "notanemail";
-  click(s[..], t[..], s[0].boxes[BTN_GO]);
-  #assert s[0].note == NOTE_BAD && !s[0].req_ready && !s[0].going;
-  _ := verse_key(s[..], t[..], KEY_BACKSPACE, 0);
-  #assert email_text(s[..]) == "notanemai" && s[0].note == NOTE_NONE;
-  // Cmd+A and Cmd+C copy it, Cmd+R is the browser's, typing replaces it, Cmd+Backspace empties it
-  #assert !verse_key(s[..], t[..], 'r', MOD_META) && email_text(s[..]) == "notanemai";
-  #assert verse_key(s[..], t[..], 'a', MOD_META) && verse_key(s[..], t[..], 'c', MOD_META);
-  #assert s[0].action == TK_ACT_COPY && cast(string) s[0].outbox[0..<s[0].out_n] == "notanemai";
-  s[0].action = 0;
-  #assert verse_key(s[..], t[..], 'q', 0) && email_text(s[..]) == "q";
-  #assert verse_key(s[..], t[..], KEY_BACKSPACE, MOD_META) && email_text(s[..]) == "";
+  #assert s[0].orb_n == 4 && !s[0].holding;
+  poke(s[..], t[..], 200, 200, POINTER_DOWN, 0, 1);
+  #assert s[0].holding && s[0].hold.r == ORB_HOLD_START && s[0].press < 0;
+  for i: 0..<30 { frame(s[..], t[..], 1.0 / 60.0); }
+  #assert s[0].hold.r > 10 && s[0].spark_n == 0;   // still (reduced motion): no sparks
+  s[0].still = false;
+  for i: 0..<30 { orb_step(s[..], 1440, 900); }
+  #assert s[0].spark_n > 0;   // dust drifting in toward it
+  poke(s[..], t[..], 200, 200, POINTER_UP, 0, 1);
+  #assert !s[0].holding && s[0].orb_n >= 2 && s[0].orbs[s[0].orb_n - 1].r > 10;   // (its first moments may have merged two)
+  for i: 0..<120 { orb_step(s[..], 1440, 900); }
+  #assert s[0].orb_n >= 1 && s[0].orb_n <= 5;
+  for i: 0..<s[0].orb_n { o := s[0].orbs[i]; #assert o.x >= 0 && o.x <= 1440 && o.y >= 0 && o.y <= 900; }
+  #assert verse_cursor(s[..]) == 2 && !verse_wants_text(s[..]);
 }
 
 #test "a returning player's email is filled in and joined again" {
@@ -1274,8 +1374,8 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   #assert email_text(s[..]) == "me@example.org" && s[0].req_ready && s[0].req_flags == HTTP_POST;
   #assert text_has(cast(string) s[0].req_body[0..<s[0].req_body_n], "\"how\":\"return\"");
   verse_requested(s[..], 0);
-  click(s[..], t[..], s[0].boxes[BTN_GO]);
-  #assert s[0].action == 0 && !s[0].req_ready;   // the same email: nothing to keep or join again
+  click(s[..], t[..], s[0].boxes[BTN_ENTER]);
+  #assert s[0].action == 0 && !s[0].req_ready && batch_has(t[..], "\"how\":\"email\"");
   redraw(s[..], t[..], 0.016);
   #assert s[0].action == ACT_NAVIGATE;
 }
