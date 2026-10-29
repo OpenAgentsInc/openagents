@@ -128,9 +128,12 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   player.pace = swim.pace;
   player.theta = everglade_player_theta(at(state));
   sticks = verse_sticks_used(sticks);
-  int64_t walls = everglade_walls(at(state));
+  // on the bridge's deck its rails are in your way; off it (in the river under it) its piles are
+  bool deck = everglade_on_bridge(at(state), player.pos.x, player.pos.z) && swim.medium < 2;
+  int64_t walls = everglade_walls_on(at(state), deck);
+  int64_t bodies = everglade_bodies_on(at(state), deck);
   coax_t_Vec3 was = player.pos;
-  player = verse_player_advance_among(player, dt, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6});
+  player = verse_player_advance_among(player, dt, (coax_v_f32){g->bodies.e, bodies * 7}, (coax_v_f32){g->walls.e, walls * 6});
   // afloat, the current carries you
   if (swim.medium >= 2) { player.pos.x += swim.flow_x * dt; player.pos.z += swim.flow_z * dt; }
   coax_t_Point kept = everglade_hold(at(state), was.x, was.z, player.pos.x, player.pos.z);

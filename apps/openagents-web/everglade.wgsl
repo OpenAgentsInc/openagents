@@ -1394,8 +1394,8 @@ fn water_below(n: vec3f, v: vec3f, path: f32, slope: f32) -> WaterShade {
 }
 
 // A fountain's pool: still water bent by the detail waves and by rings running out from where the
-// falls strike, in the painted look. The basin is shallow, so its bands are read at 2.1 times its
-// depth (a painted fountain's water reads deep in the middle and clear at the rim).
+// falls strike, in the painted look. The basin is shallow, so its bands are read at 1.2 times its
+// depth (the bowl's 1.4): bright teal at the rim, deepening toward the column, never the river's blue.
 fn fountain_pool_shade(i: WaterOut, part: u32, v: vec3f, footprint: f32) -> WaterShade {
   let world = i.world_depth.xyz;
   let rest = i.rest_flow.xy;
@@ -1413,9 +1413,9 @@ fn fountain_pool_shade(i: WaterOut, part: u32, v: vec3f, footprint: f32) -> Wate
   let ring = (rest / max(r, 1e-3)) * sign(off) * amp * k * cos(k * d - t * 9.0);
   let slope = detail.xy * 0.7 + ring;
   let n = normalize(vec3f(-slope.x, 1.0, -slope.y));
-  let deep = select(2.1, 2.4, part == 2u);
+  let deep = select(1.2, 1.4, part == 2u);
   // and its shore line half as wide as a river's
-  return water_painted(world, rest, flow, i.world_depth.w * deep, i.look.w * 2.0, i.look.x, n, v, footprint);
+  return water_painted_teal(world, rest, flow, i.world_depth.w * deep, i.look.w * 2.0, i.look.x, n, v, footprint, 0.85);
 }
 
 // ---- the painted look (art-styles.md 12; verse/water-look.coax water_paint_*, the `painted` preset,
@@ -1431,16 +1431,21 @@ fn water_paint_ramp(edge: f32, x: f32) -> f32 { return smoothstep(edge - 0.075, 
 fn water_paint_sparkle(rdl: f32) -> f32 { return smoothstep(0.99756, 0.99939, rdl); }
 
 fn water_painted(world: vec3f, rest: vec2f, flow: vec2f, depth: f32, shore: f32, white: f32, n: vec3f, v: vec3f, footprint: f32) -> WaterShade {
+  return water_painted_teal(world, rest, flow, depth, shore, white, n, v, footprint, 0.0);
+}
+// A fountain's clear water over pale stone: the bands warmed toward a bright teal (teal 1 all of it).
+const W_TEAL = vec3f(0.12, 0.70, 0.64);
+fn water_painted_teal(world: vec3f, rest: vec2f, flow: vec2f, depth: f32, shore: f32, white: f32, n: vec3f, v: vec3f, footprint: f32, teal: f32) -> WaterShade {
   var o: WaterShade;
   let l = water_host_sun().xyz;
   // the bands, in the light the land has (its shadows fall on the water too)
-  let band = mix(mix(W_SHALLOW, W_MID, water_paint_ramp(0.4, depth)), W_DEEP, water_paint_ramp(1.5, depth));
+  let band = mix(mix(mix(W_SHALLOW, W_MID, water_paint_ramp(0.4, depth)), W_DEEP, water_paint_ramp(1.5, depth)), W_TEAL, teal);
   let light = water_host_light(world, vec3f(0.0, 1.0, 0.0));
   var body = pow(band, vec3f(2.2)) * (light * 0.82 + vec3f(0.05));
   // a painted surface is calmer than the optics': the waves bend its reflection a third as much,
   // and the sky never takes more than half of it, so the bands still show at a grazing look
   let calm = normalize(mix(vec3f(0.0, 1.0, 0.0), n, 0.35));
-  let fresnel = min(water_fresnel(max(dot(calm, v), 0.001)), 0.5);
+  let fresnel = min(water_fresnel(max(dot(calm, v), 0.001)), 0.5 - 0.2 * teal);
   let refl = water_host_sky(reflect(-v, calm), 0.0);
   // sparkles: a cell of the grid sparkles when its hashed tilt mirrors the key
   let grid = select(0.15, 0.25, u.water.control.x < 8.0);
@@ -1467,7 +1472,7 @@ fn water_painted(world: vec3f, rest: vec2f, flow: vec2f, depth: f32, shore: f32,
   let streak = smoothstep(0.95, 0.995, ridge) * broken_by * smoothstep(0.05, 0.4, speed) * 0.35 * smoothstep(0.1, 0.5, depth)
     * (1.0 - smoothstep(0.08, 0.25, footprint));
   let foam = clamp(max(max(line, churn), rings) + streak, 0.0, 1.0);
-  let alpha = (0.5 + 0.42 * smoothstep(0.05, 1.2, depth)) * smoothstep(-0.05, 0.1, depth);
+  let alpha = (0.5 + 0.2 * teal + 0.42 * smoothstep(0.05, 1.2, depth)) * smoothstep(-0.05, 0.1, depth);
   let edge = smoothstep(-0.05, 0.1, depth);
   let foam_rgb = vec3f(0.95, 0.97, 0.96) * (light * 0.9 + vec3f(0.06));
   var emit = body * alpha * (1.0 - fresnel) + refl * fresnel * edge + vec3f(1.0, 0.97, 0.88) * sparkle * water_host_sun_light() * 1.2;

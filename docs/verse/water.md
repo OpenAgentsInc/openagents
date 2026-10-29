@@ -192,8 +192,9 @@ shader (everglade.coax `lathe`, everglade.wgsl `lathe_vertex`,
   wet below the water and a mossy band at the waterline.
 - **Water.** After the river's patches, 32 instances of the water draw: the
   basin's pool (8 wedges of rings and sectors) and the upper bowl's (4), in
-  the painted look at 2.1 and 2.4 times their depth (the basin is 0.4 to
-  0.6 m deep) with a shore line half a river's width; 8 streams leaving the
+  the painted look at 1.2 and 1.4 times their depth (the basin is 0.4 to
+  0.6 m deep), the bands taken 85% of the way to a bright teal
+  (`water_painted_teal`, (0.12, 0.70, 0.64)) with the sky at most 0.33 of it with a shore line half a river's width; 8 streams leaving the
   bowl's lip at 0.7 m/s and falling as thrown water does for 0.555 s to the
   pool 1.77 m out, each a tube that leaves the lip as a broad tongue; 4 arcs
   of the jet from the finial into the bowl; and 8 splash crowns where the
@@ -202,6 +203,8 @@ shader (everglade.coax `lathe`, everglade.wgsl `lathe_vertex`,
   and white with the sky in its rim (`fountain_fall_shade`).
 - **Caustics** on the basin's floor and the bowl's (`fountain_depth_at`
   feeds `water_depth_at`).
+- **In your way** as a round body the plinth's 3.32 m across
+  (everglade.coax `bodies`), not the plan's 6 m box.
 - Two numbers ride in the water block's spare `W_GRID2` z and w: the ground
   under the fountain and 1 when it is drawn (everglade.coax `U_FOUNTAIN`).
   On a phone the pools and streams take the phone's coarser quads; the
