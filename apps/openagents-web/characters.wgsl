@@ -12,7 +12,7 @@ struct U {
   right: vec4f, up: vec4f, ahead: vec4f,
   moon: vec4f,     // toward the moon
   pad: vec4f,
-  panel: array<vec4f, 32>,   // per plate: x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
+  panel: array<vec4f, 56>,   // per plate: x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
   fig: array<vec4f, 30>,     // per figure (characters.coax FIG_FLOATS): bound; coat, look; marks, pattern; x, y, z, yaw; bones, blend, size, glow
   bone: array<vec4f, 384>,   // per figure 32 bones: end a, radius + 1000 × region; end b, radius
 }
@@ -42,7 +42,7 @@ fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
 }
 fn panels(p: vec2f, under: vec3f) -> vec3f {
   var c = under;
-  for (var k = 0; k < 16; k++) {
+  for (var k = 0; k < 28; k++) {
     if (f32(k) >= u.panels) { break; }
     c = plate(p, c, u.panel[k * 2], u.panel[k * 2 + 1]);
   }

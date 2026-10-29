@@ -1,13 +1,16 @@
 // The characters realm, openagents.com/realm/characters: the Verse
 // engine's figures (verse/figure.coax) in a night garden, drawn by
 // characters.wgsl. Two shadow visitors (soft silhouettes, black, fuzzy at
-// the edge and lit only at the rim) and a lit one to compare; tap or click
-// a figure to choose it, then its gait (STAND, WALK, RUN), its look (SOFT
-// or LIT) and an emote (verse/motion.coax: WAVE, BOW, CHEER, SHRUG,
-// DANCE), played over its gait. A motion an agent writes comes in the
-// link: /realm/characters#motion=<the document>; it is checked, and plays
-// on a figure of its rig, or the page says why it was refused. Drag turns
-// the view, the wheel zooms.
+// the edge and lit only at the rim), a lit one to compare, a dog and a fox;
+// tap or click a figure to choose it, then its gait (STAND, WALK, TROT for
+// an animal, RUN), its look (SOFT or LIT), an emote (verse/motion.coax: a
+// person's WAVE, BOW, CHEER, SHRUG, DANCE; an animal's SIT, LIE, DIG,
+// FETCH, BOW, WAG), played over its gait, and its SHAPE: a slider for each
+// of its build's numbers, its pattern and its colours. An agent sets the
+// same through the link: /realm/characters#motion=<a motion document>, or
+// #shape=<a shape> (figure.coax verse_figure_shape_read) for the chosen
+// figure; each is checked, and the page says why if it is refused. Drag
+// turns the view, the wheel zooms.
 //
 // State lives in the host's memory (a Chars the face keeps), so the dev
 // server can swap this code in while the page runs.
@@ -18,7 +21,7 @@
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 24000;
-PLATES :: 16;
+PLATES :: 28;
 FIGS :: 6;
 FIG_FLOATS :: 20;      // bound (4); coat, look; marks, pattern; x, y, z, yaw; bones, blend, size, glow
 // width, height, time, fade; figures, plates, dpr, chosen; the eye and the
@@ -42,9 +45,14 @@ FADE_GAIT :: 0.35;     // seconds one gait takes to blend into the next
 TARGET_Y :: 0.75;      // the height the view turns round
 
 // The buttons.
-BTN_STAND :: 0; BTN_WALK :: 1; BTN_RUN :: 2; BTN_LOOK :: 3;
-BTN_EMOTE :: 4;        // then one per emote the chosen figure's rig has
-EMOTES :: 6;
+BTN_STAND :: 0; BTN_WALK :: 1; BTN_TROT :: 2; BTN_RUN :: 3; BTN_LOOK :: 4; BTN_SHAPE :: 5; BTN_PATTERN :: 6;
+BTN_COAT :: 7;         // a swatch each: COATS
+BTN_MARKS :: BTN_COAT + COATS;
+BTN_EMOTE :: BTN_MARKS + MARKS;   // then one per emote the chosen figure's rig has
+EMOTES :: 8;
+COATS :: 6; MARKS :: 4;
+COAT_COLOURS :: [18] f32.[0.85, 0.74, 0.52,  0.6, 0.36, 0.13,  0.24, 0.12, 0.05,  0.03, 0.028, 0.03,  0.36, 0.37, 0.39,  0.66, 0.24, 0.06];
+MARK_COLOURS :: [12] f32.[0.92, 0.9, 0.86,  0.03, 0.028, 0.03,  0.5, 0.3, 0.12,  0.45, 0.46, 0.48];
 BUTTONS :: BTN_EMOTE + EMOTES;
 MOTIONS :: 16;         // the motion library: the engine's own, then the one from the link
 NOTICE :: 9.0;         // seconds a notice shows
@@ -83,6 +91,9 @@ Chars :: struct {
   linked: int = -1;          // the library's slot for the motion from the link
   pending: [INBOX] u8; pending_n: int;   // a link's motion, until the cast is built
   notice: [256] u8; notice_n: int; notice_until: f32; notice_bad: bool;
+  shaping: bool;                 // the SHAPE panel is open
+  sliding: int = -1;             // the slider being dragged
+  sliders: [SHAPE_NUMBERS] Box; slider_n: int; slider_of: [SHAPE_NUMBERS] int;
   inbox: [INBOX] u8;
 }
 Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
@@ -160,10 +171,18 @@ build :: (c: [] Chars) {
   c[0].figs[1] = walker("THE TALL ONE", tall, Place.{x = -0.9, z = 0.5, yaw = 0.5});
   guest: Shape; guest.coat = fv(0.34, 0.12, 0.08); guest.marks = fv(0.2, 0.17, 0.14); guest.girth = 1.05;
   c[0].figs[2] = walker("A GUEST", guest, Place.{x = 0.8, z = -0.6, yaw = -0.4});
-  c[0].fig_n = 3;
-  for i: 0..<3 { c[0].figs[i].now = Play.{}; c[0].figs[i].last = Play.{}; }
+  dog: Shape; dog.rig = Rig.animal; dog.coat = fv(0.6, 0.36, 0.13); dog.marks = fv(0.92, 0.9, 0.86); dog.pattern = PATTERN_SOCKS; dog.ears = 0.85; dog.ear_size = 1.1;
+  c[0].figs[3] = walker("THE DOG", dog, Place.{x = 0.3, z = 1.2, yaw = 0.9});
+  fox: Shape; fox.rig = Rig.animal; fox.size = 0.7; fox.legs = 0.85; fox.snout = 1.35; fox.ear_size = 1.5; fox.tail = 1.6; fox.fluff = 1.9;
+  fox.coat = fv(0.66, 0.24, 0.06); fox.marks = fv(0.03, 0.028, 0.03); fox.pattern = PATTERN_POINTS;
+  c[0].figs[4] = walker("THE FOX", fox, Place.{x = -1.45, z = 0.2});
+  c[0].figs[4].gait = Gait.trot; c[0].figs[4].was = Gait.trot;
+  c[0].fig_n = 5;
+  for i: 0..<c[0].fig_n { c[0].figs[i].now = Play.{}; c[0].figs[i].last = Play.{}; }
+  c[0].sliding = -1;
   c[0].motion_n = 0;
   for i: 0..<PERSON_MOTIONS { if verse_motion_read(c[0].motions[c[0].motion_n..<c[0].motion_n + 1], PERSON_MOTION_TEXT[i]) { c[0].motion_n += 1; } }
+  for i: 0..<ANIMAL_MOTIONS { if verse_motion_read(c[0].motions[c[0].motion_n..<c[0].motion_n + 1], ANIMAL_MOTION_TEXT[i]) { c[0].motion_n += 1; } }
   c[0].linked = -1;
   c[0].built = true;
   if c[0].pending_n > 0 { take_link(c, cast(string) c[0].pending[0..<c[0].pending_n]); c[0].pending_n = 0; }
@@ -236,6 +255,21 @@ emote :: (c: [] Chars, i: int, slot: int) {
   w.last = w.now;
   w.now = Play.{motion = slot, start = now};
   c[0].figs[i] = w;
+  if m[0].still { set_gait(c, i, Gait.stand); }
+}
+// A gait set while a still emote plays ends the emote.
+gait_for :: (c: [] Chars, i: int, g: Gait) {
+  if i < 0 || i >= c[0].fig_n { return; }
+  w := c[0].figs[i];
+  if g != Gait.stand && w.now.motion >= 0 && w.now.motion < c[0].motion_n && c[0].motions[w.now.motion].still && w.now.stop < 0 {
+    c[0].figs[i].now.stop = c[0].time;
+  }
+  set_gait(c, i, g);
+}
+reshape :: (c: [] Chars, i: int, s: Shape) {
+  if i < 0 || i >= c[0].fig_n { return; }
+  c[0].figs[i].shape = verse_figure_shape_fix(s);
+  c[0].figs[i].skel = verse_figure_skeleton(c[0].figs[i].shape);
 }
 // Ends finished plays.
 settle :: (c: [] Chars, i: int) {
@@ -261,6 +295,18 @@ say :: (c: [] Chars, a: string, b: string, bad: bool) {
 // likes (#motion=nod; rig person; ...): it is read into the library's last
 // slot and plays on the chosen figure, or the first of its rig.
 take_link :: (c: [] Chars, hash: string) {
+  if hash.count > 6 && hash[0..<6] == "shape=" {
+    i := c[0].chosen;
+    r := verse_figure_shape_read(c[0].figs[i].shape, hash[6..<hash.count]);
+    if !r.ok {
+      buf: [96] u8;
+      n := motion_put(buf[..], 0, "line "); n = motion_put_int(buf[..], n, r.line); n = motion_put(buf[..], n, ": "); n = motion_put(buf[..], n, r.why);
+      say(c, "YOUR SHAPE WAS REFUSED · ", cast(string) buf[0..<n], true); return;
+    }
+    reshape(c, i, r.shape);
+    say(c, "SHAPE SET · ", c[0].figs[i].name, false);
+    return;
+  }
   key := "motion";
   if hash.count <= key.count + 1 || hash[0..<key.count] != key || (hash[key.count] != '=' && hash[key.count] != ' ') { return; }
   doc: [INBOX] u8;
@@ -328,6 +374,90 @@ pick :: (c: [] Chars, x: f32, y: f32) -> int {
   return best;
 }
 
+// ---- the SHAPE panel: a slider for each number the rig reads, then the
+// pattern and the coat's and the marks' colours. It sits on the right on
+// a computer, above the buttons on a phone.
+
+shape_rows :: (rig: Rig) -> int { return ifx rig == Rig.animal then SHAPE_NUMBERS else 5; }
+swatch :: (c: [] Chars, out: [] f32, at: int, i: int, b: Box, r: f32, g: f32, bl: f32, on: bool) -> int {
+  k := c[0].dpr;
+  c[0].boxes[i] = b; c[0].shown[i] = true;
+  look: f32 = ifx on then LOOK_LIT_UP else LOOK_PLAIN;
+  if c[0].press == i || c[0].hover == i { look += LOOK_HOVER; }
+  plate(c, b, 0.9, look);
+  cx := (b.x0 + b.x1) * 0.5; cy := (b.y0 + b.y1) * 0.5;
+  rad := lo(b.x1 - b.x0, b.y1 - b.y0) * 0.3;
+  if lit(out, at, cx - 0.5, cy, cx + 0.5, cy, rad, 1, 0.5 * k, sqrt(r), sqrt(g), sqrt(bl), MODE_STROKE) { return at + 6; }
+  return at;
+}
+shape_panel :: (c: [] Chars, out: [] f32, at: int, w: Walker, m: f32, bottom: f32) -> int {
+  k := c[0].dpr;
+  rows := shape_rows(w.shape.rig);
+  rh := ifx phone(c) then 21 * k else 25 * k;
+  sw := ifx phone(c) then 30 * k else 32 * k;
+  pw := ifx phone(c) then c[0].width - 2 * m else 300 * k;
+  ph := cast(f32) rows * rh + 2 * (sw + 8 * k) + 22 * k;
+  x0 := c[0].width - m - pw;
+  y0 := ifx phone(c) then bottom - ph else hi(m + 100 * k, bottom - ph);
+  panel := Box.{x0 = x0, y0 = y0, x1 = x0 + pw, y1 = y0 + ph};
+  plate(c, panel, 0.82, LOOK_PLAIN);
+  v := at;
+  pad := 12 * k; label_w := 74 * k;
+  for r: 0..<rows {
+    at_number := ifx w.shape.rig == Rig.animal then r else ifx r < 5 then r else 0;
+    y := y0 + 10 * k + cast(f32) r * rh + rh * 0.5;
+    v = words(out, v, SHAPE_NAMES[at_number], x0 + pad, y + 3.2 * k, 6.5 * k, ink_of(k, 0.8, false));
+    tx0 := x0 + pad + label_w; tx1 := x0 + pw - pad;
+    range := shape_range(at_number);
+    f := clamp((verse_figure_shape_get(w.shape, at_number) - range.x) / hi(range.y - range.x, 0.001), 0, 1);
+    kx := tx0 + (tx1 - tx0) * f;
+    if lit(out, v, tx0, y, tx1, y, 0.6 * k, 0.35, 1.5 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { v += 6; }
+    if kx > tx0 + 0.5 && lit(out, v, tx0, y, kx, y, 1.0 * k, 0.9, 2 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { v += 6; }
+    if lit(out, v, kx - 0.5, y, kx + 0.5, y, (ifx c[0].sliding == r then 6.5f32 else 5.0f32) * k, 1, 3 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { v += 6; }
+    c[0].sliders[r] = Box.{x0 = tx0 - 10 * k, y0 = y - rh * 0.5, x1 = tx1 + 10 * k, y1 = y + rh * 0.5};
+    c[0].slider_of[r] = at_number;
+  }
+  c[0].slider_n = rows;
+  y := y0 + 10 * k + cast(f32) rows * rh + 4 * k;
+  pb := Box.{x0 = x0 + pad, y0 = y, x1 = x0 + pad + label_w + 20 * k, y1 = y + sw};
+  v = button(c, out, v, BTN_PATTERN, pb, PATTERN_NAMES[w.shape.pattern], false);
+  gap := 6 * k;
+  room := x0 + pw - pad - (pb.x1 + 10 * k);
+  size := lo(sw, (room - gap * cast(f32) (COATS - 1)) / cast(f32) COATS);
+  sx := pb.x1 + 10 * k;
+  for i: 0..<COATS {
+    col := fv(COAT_COLOURS[i * 3], COAT_COLOURS[i * 3 + 1], COAT_COLOURS[i * 3 + 2]);
+    on := abs(col.x - w.shape.coat.x) + abs(col.y - w.shape.coat.y) + abs(col.z - w.shape.coat.z) < 0.01;
+    v = swatch(c, out, v, BTN_COAT + i, Box.{x0 = sx, y0 = y + (sw - size) * 0.5, x1 = sx + size, y1 = y + (sw + size) * 0.5}, col.x, col.y, col.z, on);
+    sx += size + gap;
+  }
+  y += sw + 8 * k;
+  v = words(out, v, "MARKS", x0 + pad, y + sw * 0.5 + 3.2 * k, 6.5 * k, ink_of(k, 0.8, false));
+  sx = pb.x1 + 10 * k;
+  for i: 0..<MARKS {
+    col := fv(MARK_COLOURS[i * 3], MARK_COLOURS[i * 3 + 1], MARK_COLOURS[i * 3 + 2]);
+    on := abs(col.x - w.shape.marks.x) + abs(col.y - w.shape.marks.y) + abs(col.z - w.shape.marks.z) < 0.01;
+    v = swatch(c, out, v, BTN_MARKS + i, Box.{x0 = sx, y0 = y + (sw - size) * 0.5, x1 = sx + size, y1 = y + (sw + size) * 0.5}, col.x, col.y, col.z, on);
+    sx += size + gap;
+  }
+  return v;
+}
+slide :: (c: [] Chars, r: int, x: f32) {
+  if r < 0 || r >= c[0].slider_n { return; }
+  b := c[0].sliders[r];
+  k := c[0].dpr;
+  f := clamp((x - (b.x0 + 10 * k)) / hi(b.x1 - b.x0 - 20 * k, 1), 0, 1);
+  at := c[0].slider_of[r];
+  range := shape_range(at);
+  i := c[0].chosen;
+  reshape(c, i, verse_figure_shape_set(c[0].figs[i].shape, at, range.x + (range.y - range.x) * f));
+}
+slider_at :: (c: [] Chars, x: f32, y: f32) -> int {
+  if !c[0].shaping { return -1; }
+  for r: 0..<c[0].slider_n { if inside(c[0].sliders[r], x, y) { return r; } }
+  return -1;
+}
+
 // ---- the frame
 
 coaxial_chars_frame :: (c: [] Chars, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
@@ -373,7 +503,7 @@ coaxial_chars_frame :: (c: [] Chars, out: [] f32, u: [] f32, width: f32, height:
   vertices = words(out, vertices, "CHARACTERS", m, m + 14 * k, 14 * k, ink_of(k, 1, true));
   w := c[0].figs[c[0].chosen];
   vertices = words(out, vertices, w.name, m, m + 36 * k, 9 * k, ink_of(k, 0.95, false));
-  hint := ifx phone(c) then "TAP A FIGURE · DRAG TO TURN" else "CLICK A FIGURE TO CHOOSE IT · DRAG TO TURN · 1 2 3 GAIT · L LOOK · 4 TO 9 EMOTES";
+  hint := ifx phone(c) then "TAP A FIGURE · DRAG TO TURN" else "CLICK A FIGURE TO CHOOSE IT · DRAG TO TURN · 1 2 3 T GAIT · L LOOK · S SHAPE · 4 TO 9 EMOTES";
   vertices = words(out, vertices, hint, m, m + 54 * k, 6.5 * k, ink_of(k, 0.55, false));
   if c[0].notice_n > 0 && c[0].time < c[0].notice_until {
     // on a phone, two lines: what happened, then why
@@ -389,36 +519,44 @@ coaxial_chars_frame :: (c: [] Chars, out: [] f32, u: [] f32, width: f32, height:
       vertices = words(out, vertices, note, m, m + 74 * k, lo(7 * k, room / hi(measure(note, GAP, SPACE, false), 0.001)), ink_of(k, 0.95, !c[0].notice_bad));
     }
   }
-  labels := [4] string.["STAND", "WALK", "RUN", ""];
-  bw := ifx phone(c) then lo(84 * k, (width - 2 * m - 3 * 8 * k) / 4) else 92 * k;
-  bh := 34 * k; gap := 8 * k;
-  x := (width - (bw * 4 + gap * 3)) * 0.5; y := height - m - bh;
-  for i: 0..<BTN_EMOTE {
+  // the gaits, the look and SHAPE; a person doesn't trot
+  four := w.shape.rig == Rig.animal;
+  row := [6] int.[BTN_STAND, BTN_WALK, BTN_TROT, BTN_RUN, BTN_LOOK, BTN_SHAPE];
+  count := 6;
+  if !four { row = [6] int.[BTN_STAND, BTN_WALK, BTN_RUN, BTN_LOOK, BTN_SHAPE, 0]; count = 5; }
+  gap := 8 * k; bh := ifx phone(c) then 32 * k else 34 * k;
+  bw := lo(92 * k, (width - 2 * m - cast(f32) (count - 1) * gap) / cast(f32) count);
+  x := (width - (bw * cast(f32) count + gap * cast(f32) (count - 1))) * 0.5; y := height - m - bh;
+  for r: 0..<count {
+    i := row[r];
     b := Box.{x0 = x, y0 = y, x1 = x + bw, y1 = y + bh};
-    if i == BTN_LOOK {
-      label := ifx w.shape.look == LOOK_SOFT then "SOFT" else "LIT";
-      vertices = button(c, out, vertices, i, b, label, w.shape.look == LOOK_SOFT);
-    } else {
-      g := cast(Gait) cast(u8) i;
-      if i == BTN_RUN { g = Gait.run; }
-      vertices = button(c, out, vertices, i, b, labels[i], w.gait == g);
+    if i == BTN_LOOK { vertices = button(c, out, vertices, i, b, ifx w.shape.look == LOOK_SOFT then "SOFT" else "LIT", w.shape.look == LOOK_SOFT); }
+    else if i == BTN_SHAPE { vertices = button(c, out, vertices, i, b, "SHAPE", c[0].shaping); }
+    else {
+      g := ifx i == BTN_STAND then Gait.stand else ifx i == BTN_WALK then Gait.walk else ifx i == BTN_TROT then Gait.trot else Gait.run;
+      label := ifx i == BTN_STAND then "STAND" else ifx i == BTN_WALK then "WALK" else ifx i == BTN_TROT then "TROT" else "RUN";
+      vertices = button(c, out, vertices, i, b, label, w.gait == g);
     }
     x += bw + gap;
   }
   // the chosen figure's emotes, a row above
   emotes := 0;
   for e: 0..<EMOTES { if emote_slot(c, w.shape.rig, e) >= 0 { emotes += 1; } }
+  top := y;
   if emotes > 0 {
-    ew := lo(bw, (width - 2 * m - cast(f32) (emotes - 1) * gap) / cast(f32) emotes);
+    ew := lo(92 * k, (width - 2 * m - cast(f32) (emotes - 1) * gap) / cast(f32) emotes);
     ex := (width - (ew * cast(f32) emotes + gap * cast(f32) (emotes - 1))) * 0.5;
-    ey := y - bh - gap;
+    ey := y - bh - gap; top = ey;
     for e: 0..<emotes {
       slot := emote_slot(c, w.shape.rig, e);
-      label := ifx slot == c[0].linked then "YOURS" else ifx w.shape.rig == Rig.person && e < PERSON_MOTIONS then PERSON_MOTION_LABELS[e] else verse_motion_name(c[0].motions[slot..<slot + 1]);
+      label := ifx slot == c[0].linked then "YOURS" else ifx !four && e < PERSON_MOTIONS then PERSON_MOTION_LABELS[e]
+               else ifx four && e < ANIMAL_MOTIONS then ANIMAL_MOTION_LABELS[e] else verse_motion_name(c[0].motions[slot..<slot + 1]);
       vertices = button(c, out, vertices, BTN_EMOTE + e, Box.{x0 = ex, y0 = ey, x1 = ex + ew, y1 = ey + bh}, label, playing(c, c[0].chosen, slot));
       ex += ew + gap;
     }
   }
+  c[0].slider_n = 0;
+  if c[0].shaping { vertices = shape_panel(c, out, vertices, w, m, top - gap); }
   for p: 0..<c[0].plate_n {
     o := PANEL_AT + p * 8; b := c[0].plates[p];
     u[o] = b.x0; u[o + 1] = b.y0; u[o + 2] = b.x1; u[o + 3] = b.y1;
@@ -431,9 +569,15 @@ coaxial_chars_frame :: (c: [] Chars, out: [] f32, u: [] f32, width: f32, height:
 // ---- input
 
 act :: (c: [] Chars, i: int) {
-  if i == BTN_STAND { set_gait(c, c[0].chosen, Gait.stand); }
-  else if i == BTN_WALK { set_gait(c, c[0].chosen, Gait.walk); }
-  else if i == BTN_RUN { set_gait(c, c[0].chosen, Gait.run); }
+  ch := c[0].chosen;
+  if i == BTN_STAND { gait_for(c, ch, Gait.stand); }
+  else if i == BTN_WALK { gait_for(c, ch, Gait.walk); }
+  else if i == BTN_TROT { if c[0].figs[ch].shape.rig == Rig.animal { gait_for(c, ch, Gait.trot); } }
+  else if i == BTN_RUN { gait_for(c, ch, Gait.run); }
+  else if i == BTN_SHAPE { c[0].shaping = !c[0].shaping; }
+  else if i == BTN_PATTERN { s := c[0].figs[ch].shape; s.pattern = (s.pattern + 1) % PATTERNS; reshape(c, ch, s); }
+  else if i >= BTN_COAT && i < BTN_COAT + COATS { s := c[0].figs[ch].shape; o := (i - BTN_COAT) * 3; s.coat = fv(COAT_COLOURS[o], COAT_COLOURS[o + 1], COAT_COLOURS[o + 2]); reshape(c, ch, s); }
+  else if i >= BTN_MARKS && i < BTN_MARKS + MARKS { s := c[0].figs[ch].shape; o := (i - BTN_MARKS) * 3; s.marks = fv(MARK_COLOURS[o], MARK_COLOURS[o + 1], MARK_COLOURS[o + 2]); reshape(c, ch, s); }
   else if i >= BTN_EMOTE && i < BTN_EMOTE + EMOTES {
     emote(c, c[0].chosen, emote_slot(c, c[0].figs[c[0].chosen].shape.rig, i - BTN_EMOTE));
   }
@@ -453,15 +597,18 @@ coaxial_chars_pointer :: (c: [] Chars, x: f32, y: f32, phase: int, kind: int, id
     c[0].idle = 0;
     if c[0].down { return true; }
     c[0].press = button_at(c, x, y);
+    c[0].sliding = ifx c[0].press < 0 then slider_at(c, x, y) else -1;
+    if c[0].sliding >= 0 { slide(c, c[0].sliding, x); }
     c[0].down = true; c[0].down_id = id; c[0].lx = x; c[0].ly = y; c[0].travel = 0;
     return true;
   }
   if phase == 1 {
-    if !c[0].down { c[0].hover = button_at(c, x, y); return false; }
+    if !c[0].down { c[0].hover = button_at(c, x, y); if c[0].hover < 0 && slider_at(c, x, y) >= 0 { c[0].hover = BUTTONS; } return false; }
     if id != c[0].down_id { return true; }
     dx := x - c[0].lx; dy := y - c[0].ly;
     c[0].travel += abs(dx) + abs(dy);
-    if c[0].press < 0 {
+    if c[0].sliding >= 0 { slide(c, c[0].sliding, x); }
+    else if c[0].press < 0 {
       k := c[0].dpr;
       c[0].yaw -= dx / k * 0.008;
       c[0].pitch = clamp(c[0].pitch + dy / k * 0.006, 0.05, 1.2);
@@ -472,7 +619,8 @@ coaxial_chars_pointer :: (c: [] Chars, x: f32, y: f32, phase: int, kind: int, id
   if !c[0].down || id != c[0].down_id { return false; }
   c[0].down = false;
   pressed := c[0].press; c[0].press = -1;
-  if phase == 3 { return true; }
+  was_sliding := c[0].sliding >= 0; c[0].sliding = -1;
+  if phase == 3 || was_sliding { return true; }
   if pressed >= 0 { if inside(c[0].boxes[pressed], x, y) { act(c, pressed); } return true; }
   if c[0].travel < 10 * c[0].dpr {
     f := pick(c, x, y);
@@ -489,6 +637,8 @@ coaxial_chars_key :: (c: [] Chars, key: int, mods: int) -> bool #export_c {
   if key == '1' { act(c, BTN_STAND); return true; }
   if key == '2' { act(c, BTN_WALK); return true; }
   if key == '3' { act(c, BTN_RUN); return true; }
+  if key == 't' || key == 'T' { act(c, BTN_TROT); return true; }
+  if key == 's' || key == 'S' { act(c, BTN_SHAPE); return true; }
   if key == 'l' || key == 'L' { act(c, BTN_LOOK); return true; }
   if key >= '4' && key <= '9' { act(c, BTN_EMOTE + key - '4'); return true; }
   if key == 9 || key == -5 { c[0].chosen = (c[0].chosen + 1) % (ifx c[0].fig_n > 0 then c[0].fig_n else 1); return true; }
@@ -501,7 +651,7 @@ coaxial_chars_cursor :: (c: [] Chars) -> int #export_c { return ifx c[0].hover >
   cs: [1] Chars; c := cs[..];
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   n := coaxial_chars_frame(c, out[..], u[..], 1280, 800, 1, 0.016, false);
-  #assert n > 0 && c[0].fig_n == 3 && u[4] == 3 && u[5] == 4 + PERSON_MOTIONS;
+  #assert n > 0 && c[0].fig_n == 5 && u[4] == 5 && u[5] == 5 + PERSON_MOTIONS;
   #assert u[FIG_AT + 7] == 1 && u[FIG_AT + FIG_FLOATS * 2 + 7] == 0 && u[FIG_AT + 16] > 15;
   x0 := c[0].figs[1].at.x;
   c[0].chosen = 1;
@@ -533,7 +683,7 @@ coaxial_chars_cursor :: (c: [] Chars) -> int #export_c { return ifx c[0].hover >
   for i: 0..<12 { c[0].inbox[i] = "motion=bogus"[i]; }
   coaxial_chars_hash(c, 12);
   n := coaxial_chars_frame(c, out[..], u[..], 1280, 800, 1, 0.016, false);
-  #assert c[0].motion_n == PERSON_MOTIONS && c[0].notice_bad && c[0].shown[BTN_EMOTE + 4];
+  #assert c[0].motion_n == PERSON_MOTIONS + ANIMAL_MOTIONS && c[0].notice_bad && c[0].shown[BTN_EMOTE + 4];
   #assert coaxial_chars_key(c, '4', 0) && c[0].figs[0].now.motion == 0;
   c[0].time += 0.6;
   w := c[0].figs[0];
@@ -544,9 +694,34 @@ coaxial_chars_cursor :: (c: [] Chars) -> int #export_c { return ifx c[0].hover >
   text := "motion=nod; rig person; seconds 1; loop; at 0; head 20 0 0; at 0.5; head -20 0 0";
   for i: 0..<text.count { c[0].inbox[i] = text[i]; }
   coaxial_chars_hash(c, text.count);
-  #assert !c[0].notice_bad && c[0].linked == PERSON_MOTIONS && c[0].figs[c[0].chosen].now.motion == PERSON_MOTIONS;
+  #assert !c[0].notice_bad && c[0].linked == PERSON_MOTIONS + ANIMAL_MOTIONS && c[0].figs[c[0].chosen].now.motion == c[0].linked;
   bad := "motion nod; rig person; seconds 1; at 0; head 99 0 0";
   for i: 0..<bad.count { c[0].inbox[i] = bad[i]; }
   coaxial_chars_hash(c, bad.count);
-  #assert c[0].notice_bad && c[0].linked == -1 && c[0].motion_n == PERSON_MOTIONS;
+  #assert c[0].notice_bad && c[0].linked == -1 && c[0].motion_n == PERSON_MOTIONS + ANIMAL_MOTIONS;
+}
+#test "an animal trots, sits still to an emote, and takes a shape from sliders and from the link" {
+  cs: [1] Chars; c := cs[..];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := coaxial_chars_frame(c, out[..], u[..], 1280, 800, 1, 0.016, false);
+  c[0].chosen = 3;
+  #assert coaxial_chars_key(c, 't', 0) && c[0].figs[3].gait == Gait.trot;
+  #assert coaxial_chars_key(c, '4', 0) && c[0].figs[3].gait == Gait.stand && c[0].motions[c[0].figs[3].now.motion].still;
+  #assert coaxial_chars_key(c, 's', 0) && c[0].shaping;
+  n = coaxial_chars_frame(c, out[..], u[..], 1280, 800, 1, 0.016, false);
+  #assert c[0].slider_n == SHAPE_NUMBERS && c[0].shown[BTN_PATTERN] && c[0].shown[BTN_COAT + 5];
+  b := c[0].sliders[0];
+  #assert coaxial_chars_pointer(c, b.x1, (b.y0 + b.y1) * 0.5, 0, 0, 1) && coaxial_chars_pointer(c, b.x1, (b.y0 + b.y1) * 0.5, 2, 0, 1);
+  #assert c[0].figs[3].shape.size == 1.8 && c[0].figs[3].skel.size == 1.8;
+  p := c[0].boxes[BTN_PATTERN];
+  #assert coaxial_chars_pointer(c, p.x0 + 2, p.y0 + 2, 0, 0, 1) && coaxial_chars_pointer(c, p.x0 + 2, p.y0 + 2, 2, 0, 1);
+  #assert c[0].figs[3].shape.pattern == (PATTERN_SOCKS + 1) % PATTERNS;
+  text := "shape=size 0.6; ears 0; pattern stripes";
+  for i: 0..<text.count { c[0].inbox[i] = text[i]; }
+  coaxial_chars_hash(c, text.count);
+  #assert c[0].figs[3].shape.size == 0.6 && c[0].figs[3].shape.pattern == PATTERN_STRIPES && !c[0].notice_bad;
+  bad := "shape=size 0.6; legs 7";
+  for i: 0..<bad.count { c[0].inbox[i] = bad[i]; }
+  coaxial_chars_hash(c, bad.count);
+  #assert c[0].notice_bad && c[0].figs[3].shape.legs == 1;
 }

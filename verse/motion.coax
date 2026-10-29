@@ -9,6 +9,7 @@
 //   seconds 2.4            how long, 0.1 to 30
 //   once | loop | hold     after the last key: fade out, start over, or keep the pose
 //   fade 0.25              seconds to blend in and out (0 to 2; 0.25 if left out)
+//   still                  the figure stops where it is to play it (a sit, a dig)
 //   at 0.4                 a key, seconds from the start, each later than the last
 //   right_shoulder 0 0 -150   a joint's pitch, yaw and roll in degrees, under the last key
 //   lift 0 0.1 0           the whole figure moved, metres, under the last key
@@ -43,6 +44,7 @@ Motion :: struct {
   key_n: int; keys: [MAX_KEYS] MotionKey;
   entry_n: int; entries: [MAX_ENTRIES] MotionEntry;
   uses: [MAX_JOINTS] bool; lifts: bool;
+  still: bool;
   error: [MOTION_ERROR] u8; error_n: int;
   line: int;   // the line an error is on (from 1); 0 none
 }
@@ -148,6 +150,9 @@ verse_motion_read :: (m: [] Motion, text: string) -> bool #export_c {
       v := motion_number(arg);
       if n != 2 || !v.ok || v.v < 0 || v.v > 2 { return motion_refuse(m, line, "fade is a motion_number of seconds from 0 to 2", "", ""); }
       m[0].fade = v.v;
+    } else if word == "still" {
+      if n != 1 { return motion_refuse(m, line, "still takes nothing after it", "", ""); }
+      m[0].still = true;
     } else if word == "once" || word == "loop" || word == "hold" {
       if n != 1 { return motion_refuse(m, line, word, " takes nothing after it", ""); }
       m[0].mode = ifx word == "loop" then MODE_LOOP else ifx word == "hold" then MODE_HOLD else MODE_ONCE;
@@ -293,6 +298,17 @@ PERSON_MOTION_TEXT :: [5] string.[
 ];
 PERSON_MOTION_LABELS :: [5] string.["WAVE", "BOW", "CHEER", "SHRUG", "DANCE"];
 
+ANIMAL_MOTIONS :: 6;
+ANIMAL_MOTION_TEXT :: [6] string.[
+  "motion sit; rig animal; seconds 1.2; hold; still; fade 0.5; at 1.2; pelvis -32 0 0; lift 0 -0.1 0; front_left_shoulder 32 0 0; front_right_shoulder 32 0 0; front_left_elbow 0 0 0; front_right_elbow 0 0 0; hind_left_hip -75 0 0; hind_right_hip -75 0 0; hind_left_knee 125 0 0; hind_right_knee 125 0 0; hind_left_hock -110 0 0; hind_right_hock -110 0 0; hind_left_paw 50 0 0; hind_right_paw 50 0 0; neck -5 0 0; head 15 0 0; tail 60 0 0; tail_2 20 0 0",
+  "motion lie; rig animal; seconds 1.5; hold; still; fade 0.6; at 1.5; lift 0 -0.36 0; front_left_shoulder -70 0 0; front_right_shoulder -70 0 0; front_left_elbow 0 0 0; front_right_elbow 0 0 0; front_left_wrist 10 0 0; front_right_wrist 10 0 0; front_left_paw 60 0 0; front_right_paw 60 0 0; hind_left_hip -80 0 -30; hind_right_hip -80 0 30; hind_left_knee 120 0 0; hind_right_knee 120 0 0; hind_left_hock -110 0 0; hind_right_hock -110 0 0; neck -20 0 0; head 20 0 0; tail 80 0 0; tail_2 10 30 0",
+  "motion dig; rig animal; seconds 0.6; loop; still; fade 0.3; at 0; pelvis 14 0 0; lift 0 -0.04 0; neck 35 0 0; head 25 0 0; front_left_shoulder -45 0 0; front_left_elbow 70 0 0; front_right_shoulder 30 0 0; front_right_elbow 10 0 0; tail -40 0 0; at 0.3; front_left_shoulder 30 0 0; front_left_elbow 10 0 0; front_right_shoulder -45 0 0; front_right_elbow 70 0 0; tail -40 20 0",
+  "motion pick_up; rig animal; seconds 2.2; once; still; fade 0.3; at 0; neck 0 0 0; head 0 0 0; at 0.7; neck 70 0 0; head 35 0 0; pelvis 6 0 0; front_left_shoulder 8 0 0; front_right_shoulder 8 0 0; lift 0 -0.02 0; at 1.1; neck 72 0 0; head 38 0 0; at 1.8; neck -25 0 0; head -10 0 0; pelvis 0 0 0; lift 0 0 0; front_left_shoulder 0 0 0; front_right_shoulder 0 0 0; tail -60 0 0; at 2.2; neck -15 0 0; head 0 0 0",
+  "motion play_bow; rig animal; seconds 2.4; once; still; fade 0.35; at 0.5; pelvis 22 0 0; lift 0 -0.02 0; front_left_shoulder -85 0 0; front_right_shoulder -85 0 0; front_left_elbow 15 0 0; front_right_elbow 15 0 0; front_left_paw 50 0 0; front_right_paw 50 0 0; hind_left_hip -20 0 0; hind_right_hip -20 0 0; neck -40 0 0; head -10 0 0; tail -70 40 0; at 0.8; tail -70 -40 0; at 1.1; tail -70 40 0; at 1.4; tail -70 -40 0; at 1.7; tail -70 40 0; pelvis 22 0 0; at 2.4; pelvis 0 0 0; lift 0 0 0; tail -50 0 0",
+  "motion wag; rig animal; seconds 0.5; loop; fade 0.3; at 0; tail -60 45 0; tail_2 0 25 0; pelvis 0 4 0; at 0.25; tail -60 -45 0; tail_2 0 -25 0; pelvis 0 -4 0"
+];
+ANIMAL_MOTION_LABELS :: [6] string.["SIT", "LIE", "DIG", "FETCH", "BOW", "WAG"];
+
 // ---- checks
 
 #test "a motion is read, its keys and joints in order" {
@@ -306,6 +322,9 @@ PERSON_MOTION_LABELS :: [5] string.["WAVE", "BOW", "CHEER", "SHRUG", "DANCE"];
 #test "every built-in motion reads" {
   ms: [1] Motion; m := ms[..];
   for i: 0..<PERSON_MOTIONS { #assert verse_motion_read(m, PERSON_MOTION_TEXT[i]); }
+  for i: 0..<ANIMAL_MOTIONS { #assert verse_motion_read(m, ANIMAL_MOTION_TEXT[i]); #assert m[0].rig == Rig.animal; }
+  #assert m[0].mode == MODE_LOOP && !m[0].still;
+  #assert verse_motion_read(m, ANIMAL_MOTION_TEXT[0]) && m[0].still && m[0].mode == MODE_HOLD;
 }
 #test "a motion out of bounds is refused, with its line and the range" {
   ms: [1] Motion; m := ms[..];
@@ -372,6 +391,13 @@ PERSON_MOTION_LABELS :: [5] string.["WAVE", "BOW", "CHEER", "SHRUG", "DANCE"];
     for s: 0..<12 {
       p := verse_motion_apply(m, Pose.{}, m[0].seconds * cast(f32) s / 11, 1);
       for j: 0..<PERSON_JOINTS { #assert verse_figure_turn_ok(Rig.person, j, p.turn[j]); }
+    }
+  }
+  for i: 0..<ANIMAL_MOTIONS {
+    #assert verse_motion_read(m, ANIMAL_MOTION_TEXT[i]);
+    for s: 0..<12 {
+      p := verse_motion_apply(m, Pose.{}, m[0].seconds * cast(f32) s / 11, 1);
+      for j: 0..<ANIMAL_JOINTS { #assert verse_figure_turn_ok(Rig.animal, j, p.turn[j]); }
     }
   }
 }
