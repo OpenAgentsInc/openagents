@@ -746,8 +746,9 @@ view_rows :: (s: [] MyRealm) {
   t: f32 = 1 / tan(cast(f32) FOV * 0.5);
   sx := t / hi(aspect, 0.3); sy := t;
   if aspect < 1 { sx = t * 0.9; sy = sx * aspect; }
-  // 2D: orthographic, SIDE_HALF metres above and below the middle (a phone sees as wide as tall)
-  if s[0].ortho { sy = 1 / SIDE_HALF; sx = sy / hi(aspect, 0.3); if aspect < 1 { sx = 1 / SIDE_HALF; sy = sx * aspect; } }
+  // 2D: orthographic, SIDE_HALF metres above and below the middle on every screen (a phone sees
+  // less to either side, never past the ground's near edge)
+  if s[0].ortho { sy = 1 / SIDE_HALF; sx = sy / hi(aspect, 0.3); }
   zn: f32 = 0.1; zf: f32 = 200.0;
   a := zf / (zn - zf); b := zn * zf / (zn - zf);
   v := s[0].view[..];
