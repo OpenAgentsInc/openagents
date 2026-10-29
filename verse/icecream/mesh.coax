@@ -289,9 +289,9 @@ flavor_at :: (i: u32) -> Flavor { return cast(Flavor) cast(u8) (i % 4); }
 cold :: (m: Module) -> bool { return m == Module.hallway || m == Module.stairwell || m == Module.freezer_room || m == Module.laundry; }
 
 hash_u :: (a: u32, b: u32) -> u32 {
-  x := mul_wrap(a, 0x9E3779B9) ^ mul_wrap(b, 0x85EBCA6B);
+  x := wmul32(a, 0x9E3779B9) ^ wmul32(b, 0x85EBCA6B);
   x = x ^ (x >> 15);
-  x = mul_wrap(x, 0x2C1B3C6D);
+  x = wmul32(x, 0x2C1B3C6D);
   x = x ^ (x >> 12);
   return x;
 }
@@ -971,7 +971,7 @@ vertex_hash :: (h0: u64, x: Vtx) -> u64 {
   w := [11] u64.[grid(x.p.x), grid(x.p.y), grid(x.p.z), grid(x.n.x), grid(x.n.y), grid(x.n.z),
                  grid(x.hull.x), grid(x.hull.y), grid(x.hull.z), cast(u64) x.colour, cast(u64) f32_bits(x.weight)];
   h := h0;
-  for k: 0..<11 { h = mul_wrap(h ^ w[k], 0x100000001b3); }
+  for k: 0..<11 { h = wmul64(h ^ w[k], 0x100000001b3); }
   return h;
 }
 Sums :: struct { hash: u64 = 0xcbf29ce484222325; count: int; lo: V3 = V3.{x = 1000000, y = 1000000, z = 1000000}; hi: V3 = V3.{x = -1000000, y = -1000000, z = -1000000}; }

@@ -57,6 +57,22 @@ PI_F :: 3.14159265358979323846f32;
 TAU_F :: 6.28318530717958647692f32;
 rads_per_deg :: () -> f32 { d: f32 = 180.0; return PI_F / d; }
 
+// Wrapping u64 arithmetic in halves, so the rules build with every coax0
+// (the add_wrap/mul_wrap builtins are newer than some release compilers).
+LOW32 :: 0xFFFFFFFF;
+wmul64 :: (a: u64, b: u64) -> u64 {
+  al := a & LOW32; ah := a >> 32; bl := b & LOW32; bh := b >> 32;
+  lo := al * bl;
+  high := (((ah * bl) & LOW32) + ((al * bh) & LOW32) + (lo >> 32)) & LOW32;
+  return (high << 32) | (lo & LOW32);
+}
+wadd64 :: (a: u64, b: u64) -> u64 {
+  lo := (a & LOW32) + (b & LOW32);
+  high := ((a >> 32) + (b >> 32) + (lo >> 32)) & LOW32;
+  return (high << 32) | (lo & LOW32);
+}
+wmul32 :: (a: u32, b: u32) -> u32 { return cast(u32) ((cast(u64) a * cast(u64) b) & LOW32); }
+
 // ---- geometry on the floor plane (geom.rs) ----
 
 V2 :: struct { x: f32; z: f32; }
@@ -156,8 +172,8 @@ Rng :: struct { state: u64; }
 rng_of :: (seed: u64) -> Rng { return Rng.{state = seed ^ 0x1CEC2EA30000000}; }
 mix64 :: (s: u64) -> u64 {
   z := s;
-  z = mul_wrap(z ^ (z >> 30), 0xBF58476D1CE4E5B9);
-  z = mul_wrap(z ^ (z >> 27), 0x94D049BB133111EB);
+  z = wmul64(z ^ (z >> 30), 0xBF58476D1CE4E5B9);
+  z = wmul64(z ^ (z >> 27), 0x94D049BB133111EB);
   return z ^ (z >> 31);
 }
 // The game's generators, by slot in Game.rngs.
@@ -169,7 +185,7 @@ RNG_CLOSETS :: 4;
 RNGS :: 5;
 
 rng_u64 :: (g: [] Game, r: int) -> u64 {
-  g[0].rngs[r].state = add_wrap(g[0].rngs[r].state, 0x9E3779B97F4A7C15);
+  g[0].rngs[r].state = wadd64(g[0].rngs[r].state, 0x9E3779B97F4A7C15);
   return mix64(g[0].rngs[r].state);
 }
 rng_below :: (g: [] Game, r: int, n: int) -> int {
@@ -1568,7 +1584,7 @@ game_new :: (g: [] Game, seed: u64, man_on: bool, t: Tuning) {
   g[0].man.volley_wait = t.volley_wait;
   g[0].man.sniff = t.sniff_every;
   g[0].man.health = t.man_health;
-  g[0].rngs[RNG_MAN] = rng_of(add_wrap(mul_wrap(seed, 31), 17));
+  g[0].rngs[RNG_MAN] = rng_of(wadd64(wmul64(seed, 31), 17));
   g[0].rngs[RNG_GAME] = rng_of(seed ^ 0x3141592653589793);
   g[0].player.pos = g[0].house.spawn;
   g[0].player.facing = v2(0, -1);
@@ -2367,18 +2383,18 @@ fingerprint :: (g: [] Game) -> u64 {
   h: u64 = 0xcbf29ce484222325;
   prime: u64 = 0x100000001b3;
   fs := [7] f32.[g[0].player.pos.x, g[0].player.pos.z, g[0].player.height, g[0].player.health, g[0].man.pos.x, g[0].man.pos.z, g[0].man.timer];
-  for k: 0..<7 { h = mul_wrap(h ^ cast(u64) f32_bits(fs[k]), prime); }
-  h = mul_wrap(h ^ (cast(u64) g[0].player.fudge << 32 | cast(u64) g[0].player.farts << 16 | cast(u64) g[0].player.keys), prime);
-  h = mul_wrap(h ^ g[0].tick, prime);
-  h = mul_wrap(h ^ cast(u64) g[0].man.state, prime);
-  h = mul_wrap(h ^ cast(u64) g[0].status, prime);
-  h = mul_wrap(h ^ cast(u64) g[0].shot_n, prime);
-  h = mul_wrap(h ^ (cast(u64) g[0].minion_n | cast(u64) g[0].drop_n << 16), prime);
+  for k: 0..<7 { h = wmul64(h ^ cast(u64) f32_bits(fs[k]), prime); }
+  h = wmul64(h ^ (cast(u64) g[0].player.fudge << 32 | cast(u64) g[0].player.farts << 16 | cast(u64) g[0].player.keys), prime);
+  h = wmul64(h ^ g[0].tick, prime);
+  h = wmul64(h ^ cast(u64) g[0].man.state, prime);
+  h = wmul64(h ^ cast(u64) g[0].status, prime);
+  h = wmul64(h ^ cast(u64) g[0].shot_n, prime);
+  h = wmul64(h ^ (cast(u64) g[0].minion_n | cast(u64) g[0].drop_n << 16), prime);
   for i: 0..<g[0].minion_n {
-    h = mul_wrap(h ^ (cast(u64) f32_bits(g[0].minions[i].pos.x) << 32 | cast(u64) f32_bits(g[0].minions[i].pos.z)), prime);
+    h = wmul64(h ^ (cast(u64) f32_bits(g[0].minions[i].pos.x) << 32 | cast(u64) f32_bits(g[0].minions[i].pos.z)), prime);
   }
-  h = mul_wrap(h ^ cast(u64) f32_bits(g[0].man.health), prime);
-  for i: 0..<g[0].shot_n { h = mul_wrap(h ^ cast(u64) f32_bits(g[0].shots[i].pos.x), prime); }
+  h = wmul64(h ^ cast(u64) f32_bits(g[0].man.health), prime);
+  for i: 0..<g[0].shot_n { h = wmul64(h ^ cast(u64) f32_bits(g[0].shots[i].pos.x), prime); }
   return h;
 }
 
