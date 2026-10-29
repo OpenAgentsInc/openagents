@@ -93,6 +93,7 @@ Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 
 Fairy :: struct {
   started: bool;
+  stream: [FF_LINE_N * 3] f32;   // the stream's middle as a line (ff_stream_line), made at the start
   time: f64;
   width: f32; height: f32; dpr: f32;
   touch: bool;
@@ -175,6 +176,7 @@ fairy_ground :: (s: [] Fairy, x: f32, z: f32) -> f32 #export_c { return ground_a
 
 fairy_start :: (s: [] Fairy) {
   s[0].started = true;
+  ff_stream_line(s[0].stream[..]);
   nodes := FF_NODE_XZ; links := FF_LINK_AB; flats := FF_FLATS;
   shaped_ok := verse_terrain_build(ground(), s[0].heights[..], nodes[..], links[..], f32(FF_PATH_HALF), flats[..]);
   carve(s);
@@ -190,12 +192,30 @@ fairy_start :: (s: [] Fairy) {
 }
 
 // The stream's bed and banks, cut into the built ground.
+// (The line is made once. A point further than the widest half and the
+// banks from every piece of it can't be carved, so each row measures only
+// the pieces that come that close to it.)
 carve :: (s: [] Fairy) {
   w := CELLS + 1;
+  line := s[0].stream[..];
+  wide := 0.0f32;
+  for k: 0..<FF_LINE_N { wide = hi(wide, line[k * 3 + 1]); }
+  reach := wide * 0.5 + 14;
+  ks: [FF_LINE_N] int;
   for j: 0..<w {
+    z := f32(FF_EDGE) + f32(j) * f32(FF_CELL);
+    n := 0;
+    for k: 1..<FF_LINE_N {
+      az := line[k * 3 - 1]; bz := line[k * 3 + 2];
+      if z >= lo(az, bz) - reach && z <= hi(az, bz) + reach { ks[n] = k; n += 1; }
+    }
+    if n == 0 { continue; }
+    x0 := 1000000.0f32; x1 := -1000000.0f32;
+    for m: 0..<n { k := ks[m]; x0 = lo(x0, lo(line[k * 3 - 3], line[k * 3])); x1 = hi(x1, hi(line[k * 3 - 3], line[k * 3])); }
     for i: 0..<w {
-      x := f32(FF_EDGE) + f32(i) * f32(FF_CELL); z := f32(FF_EDGE) + f32(j) * f32(FF_CELL);
-      near_s := ff_stream_near(x, z);
+      x := f32(FF_EDGE) + f32(i) * f32(FF_CELL);
+      if x < x0 - reach || x > x1 + reach { continue; }
+      near_s := ff_stream_near_some(line, ks[0..<n], x, z);
       if near_s.d < near_s.half + 14 { s[0].heights[j * w + i] = ff_carve(s[0].heights[j * w + i], near_s); }
     }
   }
@@ -212,11 +232,11 @@ fairy_level :: () -> f32 #export_c { return f32(FF_LEVEL); }
 fairy_pond_x :: () -> f32 #export_c { return f32(FF_POND_X); }
 fairy_pond_z :: () -> f32 #export_c { return f32(FF_POND_Z); }
 
-// Clear of the trails, the stream, the glades, the heart tree and the creatures?
-open_ground :: (x: f32, z: f32, room: f32) -> bool {
+// Clear of the trails, the stream (line: s[0].stream), the glades, the heart tree and the creatures?
+open_ground :: (line: [] f32, x: f32, z: f32, room: f32) -> bool {
   nodes := FF_NODE_XZ; links := FF_LINK_AB;
   if verse_path_nearest(nodes[..], links[..], x, z).d < f32(FF_PATH_HALF) + 2.5 + room { return false; }
-  st := ff_stream_near(x, z);
+  st := ff_stream_near_line(line, x, z);
   if st.d < st.half + 2.5 + room { return false; }
   if sqrt(x * x + z * z) < 17 + room { return false; }
   for g: 0..<FF_GLADES {
@@ -229,13 +249,14 @@ open_ground :: (x: f32, z: f32, room: f32) -> bool {
 // The forest: a jittered grid, kept off the open ground; out to the rim's slopes.
 plant_trees :: (s: [] Fairy) {
   n := 0;
+  line := s[0].stream[..];
   step := 7.0f32;
   for a: 0..<22 {
     for b: 0..<22 {
       if n >= TREES { break; }
       x := -74 + f32(a) * step + (hash1(f32(a), f32(b)) - 0.5) * 4.5;
       z := -74 + f32(b) * step + (hash1(f32(b) + 7.3, f32(a)) - 0.5) * 4.5;
-      if !open_ground(x, z, 1.5) { continue; }
+      if !open_ground(line, x, z, 1.5) { continue; }
       // the valley floor near the trails is lighter wood: skip some
       if sqrt(x * x + z * z) < 45 && hash1(x, z) < 0.35 { continue; }
       k := n * TREE_FLOATS;
@@ -252,6 +273,7 @@ plant_trees :: (s: [] Fairy) {
 // Ferns round each glade's edge and by the trails near where you wake, off the trails and the water.
 plant_ferns :: (s: [] Fairy) {
   n := 0;
+  line := s[0].stream[..];
   nodes := FF_NODE_XZ; links := FF_LINK_AB;
   for g: 0..<FF_GLADES {
     for k: 0..<20 {
@@ -260,7 +282,7 @@ plant_ferns :: (s: [] Fairy) {
       d := FF_GLADE[g * 3 + 2] * (0.75 + 0.5 * hash1(f32(k), f32(g) + 3));
       x := FF_GLADE[g * 3] + cos(a) * d; z := FF_GLADE[g * 3 + 1] + sin(a) * d;
       if verse_path_nearest(nodes[..], links[..], x, z).d < f32(FF_PATH_HALF) + 0.8 { continue; }
-      st := ff_stream_near(x, z);
+      st := ff_stream_near_line(line, x, z);
       if st.d < st.half + 1.5 { continue; }
       if ff_patch_near_xz(x, z, 1.8) { continue; }
       k4 := n * 4;
@@ -351,7 +373,7 @@ build_scenery :: (s: [] Fairy) {
     }
   }
   for k: 0..<7 {
-    p := heart_stone(k);
+    p := heart_stone(s, k);
     if p.ok && w < WALLS { put6(wl, w, p.x - 0.55, 0, p.z - 0.45, p.x + 0.55, 0.6, p.z + 0.45); w += 1; }
   }
   b := f32(FF_BOUND);
@@ -374,10 +396,10 @@ heart_blob :: (k: int) -> HeartBlob {
 }
 // The stone k round the heart tree, as props() places it (ok false: none there).
 Stone :: struct { ok: bool; x: f32; z: f32; a: f32; }
-heart_stone :: (k: int) -> Stone {
+heart_stone :: (s: [] Fairy, k: int) -> Stone {
   a := f32(k) * 0.9 + 0.2;
   x := cos(a) * 15; z := sin(a) * 15;
-  return Stone.{ok = !(!open_ground(x, z, -3) && k % 2 == 0), x = x, z = z, a = a};
+  return Stone.{ok = !(!open_ground(s[0].stream[..], x, z, -3) && k % 2 == 0), x = x, z = z, a = a};
 }
 
 // The camera keeps out of the crowns near you and the heart tree's canopy:
@@ -694,7 +716,7 @@ props :: (s: [] Fairy) {
     a := f32(k) * 0.52;
     rr := 8.2 + hash1(f32(k), 1) * 1.2;
     x := f32(FF_POND_X) + cos(a) * rr; z := f32(FF_POND_Z) + sin(a) * rr * 0.95;
-    st := ff_stream_near(x, z);
+    st := ff_stream_near_line(s[0].stream[..], x, z);
     if st.d < st.half - 0.8 || st.d > st.half + 1.6 { continue; }
     g := ground_at(s, x, z);
     sway := sin(t * 1.3 + f32(k)) * 0.06;
@@ -713,7 +735,7 @@ props :: (s: [] Fairy) {
     shape(s, SHAPE_SPHERE, ifx lamp > 0.3 then LOOK_GLOW else LOOK_MATTE, v3(x, y, z), 0, 0, 0.28, 0.32, 0.28, 1.0 * k2, 0.8 * k2, 0.4 * k2);
   }
   for k: 0..<7 {
-    st := heart_stone(k);
+    st := heart_stone(s, k);
     if !st.ok { continue; }
     x := st.x; z := st.z; a := st.a;
     g := ground_at(s, x, z);
@@ -1390,7 +1412,7 @@ top_under :: (g: [] Fairy, x: f32, z: f32, feet: f32) -> f32 {
   }
   #assert top_under(g[..], 0, 0, 30) > 20;      // the heart tree's canopy
   #assert top_under(g[..], 0, 0, 1) == 0;       // its trunk is a wall, not a step
-  st := heart_stone(1);
+  st := heart_stone(g[..], 1);
   if st.ok { #assert near(top_under(g[..], st.x, st.z, 0.3), 0.6, 0.001); }
 }
 

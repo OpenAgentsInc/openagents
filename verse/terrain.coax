@@ -104,12 +104,28 @@ verse_path_nearest :: (nodes: [] f32, links: [] int, x: f32, z: f32) -> Near #ex
 smooth :: (e0: f32, e1: f32, x: f32) -> f32 { t := clamp01((x - e0) / (e1 - e0)); return t * t * (3 - 2 * t); }
 
 // The ground's height at x, z before it is sampled into the heightfield.
-shaped :: (g: Ground, nodes: [] f32, links: [] int, half: f32, flats: [] f32, x: f32, z: f32) -> f32 {
+// Only links within reach (half + 0.2 + PATH_BLEND) of the point can level
+// it, so only the links in close (their numbers) are measured: the nearest
+// of them is the nearest of all whenever it matters.
+shaped :: (g: Ground, nodes: [] f32, links: [] int, close: [] int, half: f32, flats: [] f32, x: f32, z: f32) -> f32 {
   h := hills_rim(x, z, g.rim_from, g.rim);
-  p := verse_path_nearest(nodes, links, x, z);
-  if p.link >= 0 {
-    k := smooth(half + 0.2, half + 0.2 + f32(PATH_BLEND), p.d);
-    h = lerp(hills_rim(p.x, p.z, g.rim_from, g.rim) * f32(PATH_LEVEL), h, k);
+  reach := half + 0.2 + f32(PATH_BLEND);
+  most := 1000000000000.0f32; bx := x; bz := z; found := false;
+  for n: 0..<close.count {
+    i := close[n];
+    ax := nodes[links[i * LINK] * NODE]; az := nodes[links[i * LINK] * NODE + 1];
+    ex := nodes[links[i * LINK + 1] * NODE]; ez := nodes[links[i * LINK + 1] * NODE + 1];
+    if x < lo(ax, ex) - reach || x > hi(ax, ex) + reach { continue; }
+    dx := ex - ax; dz := ez - az;
+    size := dx * dx + dz * dz;
+    t := ifx size > 0.000001 then clamp01(((x - ax) * dx + (z - az) * dz) / size) else 0.0f32;
+    px := ax + dx * t; pz := az + dz * t;
+    d2 := (x - px) * (x - px) + (z - pz) * (z - pz);
+    if d2 < most { most = d2; bx = px; bz = pz; found = true; }
+  }
+  if found {
+    k := smooth(half + 0.2, half + 0.2 + f32(PATH_BLEND), sqrt(most));
+    if k < 1 { h = lerp(hills_rim(bx, bz, g.rim_from, g.rim) * f32(PATH_LEVEL), h, k); }
   }
   for i: 0..<flats.count / FLAT {
     fx := flats[i * FLAT]; fz := flats[i * FLAT + 1]; r := flats[i * FLAT + 2]; level := flats[i * FLAT + 3];
@@ -119,12 +135,25 @@ shaped :: (g: Ground, nodes: [] f32, links: [] int, half: f32, flats: [] f32, x:
   return h;
 }
 
-// Fills heights for g; false when there isn't room for them.
+// Fills heights for g; false when there isn't room for them (or there are
+// more than TERRAIN_LINKS links). Each row measures only the links whose
+// span comes within reach of it.
+TERRAIN_LINKS :: 256;
 verse_terrain_build :: (g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32, flats: [] f32) -> bool #export_c {
-  if g.n < 1 || heights.count < ground_points(g) { return false; }
+  if g.n < 1 || heights.count < ground_points(g) || links.count / LINK > TERRAIN_LINKS { return false; }
+  reach := half + 0.2 + f32(PATH_BLEND);
+  close: [TERRAIN_LINKS] int;
   for j: 0..<g.n + 1 {
+    z := g.south + f32(j) * g.cell;
+    cn := 0;
+    for i: 0..<links.count / LINK {
+      if !link_ok(nodes, links, i) { continue; }
+      az := nodes[links[i * LINK] * NODE + 1]; ez := nodes[links[i * LINK + 1] * NODE + 1];
+      if z < lo(az, ez) - reach || z > hi(az, ez) + reach { continue; }
+      close[cn] = i; cn += 1;
+    }
     for i: 0..<g.n + 1 {
-      heights[j * (g.n + 1) + i] = shaped(g, nodes, links, half, flats, g.west + f32(i) * g.cell, g.south + f32(j) * g.cell);
+      heights[j * (g.n + 1) + i] = shaped(g, nodes, links, close[0..<cn], half, flats, g.west + f32(i) * g.cell, z);
     }
   }
   return true;

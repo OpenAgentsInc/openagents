@@ -227,23 +227,48 @@ ff_spline :: (p0: f32, p1: f32, p2: f32, p3: f32, t: f32, t2: f32, t3: f32) -> f
   return 0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (3 * p1 - p0 - 3 * p2 + p3) * t3);
 }
 
+// The stream's middle as a line: the course sampled six times between each
+// pair of controls (x, z, full width a point), as the page draws it.
+FF_LINE_STEPS :: 6;
+FF_LINE_N :: (FF_COURSE_N - 1) * FF_LINE_STEPS + 1;
+ff_stream_line :: (out: [] f32) {
+  p := ff_course_at(0, 0);
+  out[0] = p.x; out[1] = p.y; out[2] = p.z;
+  k := 1;
+  for i: 0..<FF_COURSE_N - 1 {
+    for s: 1..<FF_LINE_STEPS + 1 {
+      q := ff_course_at(i, f32(s) / f32(FF_LINE_STEPS));
+      out[k * 3] = q.x; out[k * 3 + 1] = q.y; out[k * 3 + 2] = q.z;
+      k += 1;
+    }
+  }
+}
+
 // The distance from (x, z) to the stream's middle, and its half width there.
 StreamNear :: struct { d: f32; half: f32; }
 ff_stream_near :: (x: f32, z: f32) -> StreamNear {
+  line: [FF_LINE_N * 3] f32;
+  ff_stream_line(line[..]);
+  return ff_stream_near_line(line[..], x, z);
+}
+// The same against a line made once (ff_stream_line), for many points.
+ff_stream_near_line :: (line: [] f32, x: f32, z: f32) -> StreamNear {
+  all: [FF_LINE_N - 1] int;
+  for k: 0..<FF_LINE_N - 1 { all[k] = k + 1; }
+  return ff_stream_near_some(line, all[..], x, z);
+}
+// The same over only the line's pieces in ks (k: from point k - 1 to k, in order).
+ff_stream_near_some :: (line: [] f32, ks: [] int, x: f32, z: f32) -> StreamNear {
   best := StreamNear.{d = 100000, half = 1};
-  steps := 6;
-  prev := ff_course_at(0, 0);
-  for i: 0..<FF_COURSE_N - 1 {
-    for s: 1..<steps + 1 {
-      p := ff_course_at(i, f32(s) / f32(steps));
-      ax := prev.x; az := prev.z; bx := p.x; bz := p.z;
-      abx := bx - ax; abz := bz - az;
-      t := clamp01(((x - ax) * abx + (z - az) * abz) / hi(abx * abx + abz * abz, 0.0001));
-      px := ax + abx * t; pz := az + abz * t;
-      d := sqrt((x - px) * (x - px) + (z - pz) * (z - pz));
-      if d < best.d { best.d = d; best.half = (prev.y + (p.y - prev.y) * t) * 0.5; }
-      prev = p;
-    }
+  for n: 0..<ks.count {
+    k := ks[n];
+    ax := line[k * 3 - 3]; aw := line[k * 3 - 2]; az := line[k * 3 - 1];
+    bx := line[k * 3]; bw := line[k * 3 + 1]; bz := line[k * 3 + 2];
+    abx := bx - ax; abz := bz - az;
+    t := clamp01(((x - ax) * abx + (z - az) * abz) / hi(abx * abx + abz * abz, 0.0001));
+    px := ax + abx * t; pz := az + abz * t;
+    d := sqrt((x - px) * (x - px) + (z - pz) * (z - pz));
+    if d < best.d { best.d = d; best.half = (aw + (bw - aw) * t) * 0.5; }
   }
   return best;
 }
