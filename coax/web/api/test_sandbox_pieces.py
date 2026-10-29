@@ -132,12 +132,13 @@ check("voice edit: the words are the model's only input from the admin", sent["c
 schema = sent["generationConfig"]["responseSchema"]
 check("voice edit: under the realm's catalogue as enums",
       schema["properties"]["edit"]["enum"] == ["place", "remove", "undo", "none"] and schema["properties"]["item"]["enum"] == ["crate", "barrel", "bench", "fence", "stall", "person", "cat"]
-      and schema["properties"]["all"] == {"type": "boolean"} and "Old Tam" in schema["properties"]["who"]["enum"], schema)
+      and schema["properties"]["all"]["type"] == "boolean" and "Old Tam" in schema["properties"]["who"]["enum"], schema)
 here = os.path.dirname(os.path.abspath(__file__))
 coax_items = re.findall(r'"([^"]*)"', re.search(r'EG_EDIT_LABEL :: \[5\] string\.\[([^\]]*)\]', open(os.path.join(here, "../../../verse/everglade/edits.coax")).read()).group(1))
 check("voice edit: the server's things are the page's (verse/everglade/edits.coax)", [x.lower() for x in coax_items] == schema["properties"]["item"]["enum"][:5], coax_items)
 coax_people = re.findall(r'"([^"]*)"', re.search(r'EG_PERSON :: \[22\] string\.\[([^\]]*)\]', open(os.path.join(here, "../../../verse/everglade/people.coax")).read()).group(1))
-check("voice edit: the server's people are the page's (verse/everglade/people.coax)", coax_people == schema["properties"]["who"]["enum"], coax_people)
+check("voice edit: the server's people are the page's (verse/everglade/people.coax), after nobody", schema["properties"]["who"]["enum"] == ["nobody"] + coax_people, coax_people)
+check("voice edit: all and who are always answered", schema["required"] == ["edit", "all", "who"], schema)
 prompt = sent["systemInstruction"]["parts"][0]["text"]
 check("voice edit: the prompt shows how many is said ('these crates', 'clear this') and never lists the edits back to the admin",
       "remove these crates => remove, item crate, all true" in prompt and "clear this => remove, all true" in prompt and "remove these cats => remove, item cat, all true" in prompt, prompt)
@@ -147,6 +148,12 @@ s, a = voice_edit("undo that", {"edit": "undo", "item": "crate"})
 check("voice edit: undo has no fields", s == 200 and a == {"edit": "undo", "model": "gemini-3.8-flash"}, a)
 s, a = voice_edit("remove these crates", {"edit": "remove", "item": "crate", "all": True, "count": 4})
 check("voice edit: remove these crates is every crate near, as the page takes them", s == 200 and a == {"edit": "remove", "item": "crate", "all": True, "model": "gemini-3.8-flash"}, a)
+s, a = voice_edit("remove these crates", {"edit": "remove", "item": "crate", "all": False, "who": "Marta"})
+check("voice edit: a name never rides along with a placed thing's kind", s == 200 and a == {"edit": "remove", "item": "crate", "model": "gemini-3.8-flash"}, a)
+s, a = voice_edit("remove these cats", {"edit": "remove", "item": "cat", "all": True, "who": "Soot"})
+check("voice edit: nor with many", s == 200 and a == {"edit": "remove", "item": "cat", "all": True, "model": "gemini-3.8-flash"}, a)
+s, a = voice_edit("remove that", {"edit": "remove", "all": False, "who": "nobody"})
+check("voice edit: nobody named is no name", s == 200 and a == {"edit": "remove", "model": "gemini-3.8-flash"}, a)
 s, a = voice_edit("clear this", {"edit": "remove", "all": True})
 check("voice edit: clear this", s == 200 and a == {"edit": "remove", "all": True, "model": "gemini-3.8-flash"}, a)
 s, a = voice_edit("remove that", {"edit": "remove", "all": False, "who": "Nobody"})
@@ -168,4 +175,4 @@ check("voice edit: another site's page is refused", s == 403, (s, a))
 s, a = voice_edit("put a crate here", {"edit": "place", "item": "crate"}, realm="ice-cream-man")
 check("voice edit: a realm without voice edits says so", s == 400, (s, a))
 check("voice edit: every sentence is kept with the admin who said it",
-      sql("select count(*) from verse.voice_edits where pubkey = '" + admin_hex + "'") == "10" and sql("select count(*) from verse.voice_edits where pubkey <> '" + admin_hex + "'") == "0")
+      sql("select count(*) from verse.voice_edits where pubkey = '" + admin_hex + "'") == "13" and sql("select count(*) from verse.voice_edits where pubkey <> '" + admin_hex + "'") == "0")

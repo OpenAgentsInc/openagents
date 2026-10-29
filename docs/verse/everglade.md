@@ -475,7 +475,8 @@ bench, fence or stall in front of you; remove (the nearest placed thing
 or person, a person or cat by name, or with `all` many at once: "remove
 these crates", "get rid of those benches", "clear this", every one near
 and the whole row the nearest was placed with: migration
-`0046_realm_voice_remove.sql`); or undo. No words are matched. While the
+`0046_realm_voice_remove.sql`, every field always answered and a name
+kept only for one person: `0047_realm_voice_fields.sql`); or undo. No words are matched. While the
 server answers, what was heard shows; then the result (PLACED 4 CRATES,
 PLACED A BARREL, REMOVED MARTA). A sentence with no edit in it shows only
 DIDN'T CATCH AN EDIT IN: '...'. The page does the edit
