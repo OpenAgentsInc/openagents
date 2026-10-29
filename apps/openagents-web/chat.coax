@@ -628,7 +628,7 @@ ch_composer :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen) -> int {
   two := s[0].width / d < 700;
   if m > 0 {
     s[0].clip0 = 0; s[0].clip1 = s[0].height;
-    r := ch_text(s, out, ChFlow.{y = y - 9 * d, v = v}, cast(string) buf[0..<m], x0, x1 - x0, 6, ch_chrome(p, ifx orange then INK_ORANGE else INK_DIM), ifx two then 2 else 1, true);
+    r := ch_text(s, out, ChFlow.{y = y - 9 * d, v = v}, cast(string) buf[0..<m], x0, x1 - x0, 6.5, ch_chrome(p, ifx orange then INK_ORANGE else INK_DIM), ifx two then 2 else 1, true);
     v = r.v;
   }
   // the models
