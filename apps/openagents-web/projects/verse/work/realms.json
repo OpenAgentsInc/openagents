@@ -1086,6 +1086,35 @@
         "eg-destruct"
       ],
       "blocks": []
+    },
+    {
+      "slug": "eg-npcs",
+      "parent": "eg",
+      "title": "Everglade: the people are real Quaternius characters, not two shapes",
+      "size": "M",
+      "labels": [
+        "realms",
+        "everglade",
+        "characters"
+      ],
+      "body": "Every humanoid NPC a skinned Universal Base Character in a dyed Fantasy outfit (Peasant or Ranger), with a head, hair and retargeted UAL clips (idle, walk, talk, nod and three stances), keeping their names, roles, talk and life: weight shifts, glances, turning to face you within 4 m, nods. Parts and textures shared so the pack stays near budget. Cats: a real model once a kit has one.",
+      "files": [
+        "verse/tools/people.py",
+        "verse/everglade/folk.coax",
+        "verse/everglade/people-rig.coax",
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade.wgsl",
+        "verse/packs/everglade.json",
+        "docs/verse/everglade.md"
+      ],
+      "acceptance": [
+        "Production shots of several NPCs as dressed, posed characters",
+        "Pack under its budget, raised with a stated reason",
+        "Phone frame's kit triangles stay under 700,000 with the people drawn",
+        "licences.md names the Quaternius Standard packs"
+      ],
+      "blocked_by": [],
+      "blocks": []
     }
   ]
 }
