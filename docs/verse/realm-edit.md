@@ -70,7 +70,7 @@ not offered (migration 0052 took the engineer's row back off).
 
 | Realm | Rows | Visitor tools | Placed |
 |---|---|---|---|
-| Everglade | flock, floats, undergrowth, daycycle | map, build | crate, barrel, bench, fence, stall |
+| Everglade | flock, floats, undergrowth, daycycle | map, build (BUILD: edit mode's things, each a card) | crate, barrel, bench, fence, stall |
 | The Grid | robots, names | | |
 | Hecate's Cemetery | flight (off: a visit starts at the gate), fireflies, trail, tips, others | | |
 | Fairy Forest | sparkles, grass, ridges | fly (her wing beats in the air) | |
@@ -78,3 +78,14 @@ not offered (migration 0052 took the engineer's row back off).
 | Ice Cream Man | minions, weapons, backrooms (from the next house; EDIT shows while a card is up) | | |
 | Haunted House | others, sounds, scares, chat | map (the big map), voice (VOICE) | |
 | a made realm | its features (the builder's catalogue) | build, fly, jump, map, talk, voice | the builder's things |
+
+## Everglade
+
+Everglade's own edit mode (everglade-edit.coax: the hotbar, UNDO, REDO, ORIGINAL, picking and
+moving things, HOLD TO TALK voice edits) stays; the layer's EDIT stands where its EDIT was and opens
+both, the board and SETTINGS under EDIT and the hotbar along the bottom. DONE closes both. The
+board is typed there (TYPE IT): Everglade's HOLD TO TALK is its voice edits. The realm's owner and
+admin accounts get edit mode as a site admin does, and the server lets them publish its world
+(player.c: a hand-built realm's world routes). A visitor the owner lets build gets BUILD: the
+hotbar's things only, each placed where an admin's would go and sent as a card; ACCEPT on the
+owner's page puts the thing in the city and publishes it as an edit by hand.

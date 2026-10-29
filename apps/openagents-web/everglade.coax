@@ -1150,7 +1150,7 @@ everglade_action :: (s: [] Everglade) -> int #export_c { a := s[0].action; s[0].
 everglade_action_done :: (s: [] Everglade) #export_c { s[0].out_n = 0; }
 
 // While you talk, the phone's keyboard comes up over the typed line.
-everglade_wants_text :: (s: [] Everglade) -> bool #export_c { return s[0].talk >= 0; }
+everglade_wants_text :: (s: [] Everglade) -> bool #export_c { return s[0].talk >= 0 || redit_typing(s[0].ev.ed[..]); }
 
 // ---- the scene
 
@@ -1272,7 +1272,7 @@ city :: (s: [] Everglade, u: [] f32) {
       shape(s, SHAPE_CYLINDER, LOOK_WOOD, v3(px, (bed + deck - 0.9) / 2, pz), 0, 0, wide, deck - 0.9 - bed + 0.3, wide, 0.36, 0.27, 0.17);
     }
   }
-  river_floats(s);
+  if redit_row_on(s[0].ev.ed[..], "floats") { river_floats(s); }   // the realm's board (docs/verse/realm-edit.md)
 }
 
 // The river's floats: a duck a body and a head, a lily pad a green disc
@@ -1837,7 +1837,7 @@ forest :: (s: [] Everglade, u: [] f32, eye: Point) {
       far_tree(s, x, base, z, size, yaw, kind);
     }
   }
-  if !kit_on { return; }
+  if !kit_on || !redit_row_on(s[0].ev.ed[..], "undergrowth") { return; }
   for t: 0..<s[0].small_n {
     o := t * TREE_FLOATS;
     x := s[0].smalls[o]; z := s[0].smalls[o + 1];
@@ -2511,7 +2511,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   view(shot, width, height, u, U_VIEW);
   figure(s, u, shown, face, speed, act == 3, t);
-  if s[0].flock { flock_frame(s[0].birds[..], shown, face, t); birds(s); }
+  if s[0].flock && redit_row_on(s[0].ev.ed[..], "flock") { flock_frame(s[0].birds[..], shown, face, t); birds(s); }
   people(s, u, shown, t);
   s[0].answered += t;
   city(s, u);
@@ -2578,7 +2578,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   // the painterly preset at the clock (art-styles.md 13): the day turns unless the page is still;
   // the key light (the sun, or the moon at night) is the one everything here is lit by
   // (a still page, a golden or reduced motion, shows a turning day at noon, so its shot is the same every time)
-  if !still { s[0].clock = verse_style_clock_at(s[0].day, cast(f32) (s[0].time - s[0].day_from)); }
+  if !still && redit_row_on(s[0].ev.ed[..], "daycycle") { s[0].clock = verse_style_clock_at(s[0].day, cast(f32) (s[0].time - s[0].day_from)); }
   else if s[0].day.mode != STYLE_CLOCK_FIXED { s[0].clock = 0.5; }
   _ := verse_style_at(verse_style_preset(STYLE_PAINTERLY, ifx phone(s) then STYLE_PHONE else STYLE_DESKTOP), s[0].clock, u[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
   sun := unit_or(v3(u[STYLE_AT + SU_KEY_DIR], u[STYLE_AT + SU_KEY_DIR + 1], u[STYLE_AT + SU_KEY_DIR + 2]), v3(0, 1, 0));

@@ -178,6 +178,10 @@ ANCHOR :: RBox.{x0 = 1300, y0 = 16, x1 = 1380, y1 = 54};
   #assert e[0].shown[RB_ACCEPT] && e[0].shown[RB_DECLINE] && tap(e[..], e[0].boxes[RB_ACCEPT]);
   redit_step(e[..], 3, 1440, 900, 1);
   #assert url_is(e[..], "/api/playtest/realms/the-grid/proposals/12/accept") && e[0].card_n == 1 && e[0].card_id[0] == 9 && e[0].waiting == 1;
+  #assert !redit_took(e[..]);
+  _ = answer(e[..], 2, "200\n{\"accepted\":true}");
+  // accepted: the realm is told what and where, once
+  #assert redit_took(e[..]) && cast(string) e[0].decided_thing[0..<e[0].decided_thing_n] == "crate" && e[0].decided_x == 2.5 && e[0].decided_z == -3 && !redit_took(e[..]);
 }
 
 #test "a thing the realm places goes to the server as the owner's or a visitor's card" {

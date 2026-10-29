@@ -28,6 +28,7 @@
 #include "Grid.h"
 #include "River.h"
 #include "analytics-face.h"
+#include "edit-face.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
@@ -192,24 +193,25 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
 // The published edits once, then an admin's heard words, ORIGINAL's reset and new list, one request each at a time.
 static void edit_out(uint32_t state) {
   coax_t_Everglade *g = city(state);
+  edit_face_drain((coax_v_t_RealmEdit){g->ev.ed.e, 1});   /* the shared edit layer's one request */
   if (facts_seen && !world_asked) {
     world_asked = true;
     world_id = coaxial_http((uint32_t)(uintptr_t)WORLD_URL, sizeof WORLD_URL - 1, 0, 0, 4);
   }
   int64_t n = everglade_edit_ask(at(state));
   if (n > 0 && edit_id < 0) {
-    edit_id = coaxial_http((uint32_t)(uintptr_t)EDIT_URL, sizeof EDIT_URL - 1, (uint32_t)(uintptr_t)g->ev.ask.e, (uint32_t)n, 1 | 4);
+    edit_id = coaxial_http((uint32_t)(uintptr_t)EDIT_URL, sizeof EDIT_URL - 1, (uint32_t)(uintptr_t)g->ev.ask.e, (uint32_t)n, 1 | 4 | 8);
     everglade_edit_ask_sent(at(state));
     if (edit_id < 0) { edit_id = -1; everglade_edit_answer(at(state), (coax_string){"0\n", 2}); }
   }
   // ORIGINAL: the designed city back, before any list published after it.
   if (post_id < 0 && everglade_edit_reset(at(state))) {
-    post_id = coaxial_http((uint32_t)(uintptr_t)RESET_URL, sizeof RESET_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
+    post_id = coaxial_http((uint32_t)(uintptr_t)RESET_URL, sizeof RESET_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4 | 8);
     if (post_id < 0) { post_id = -1; everglade_edit_saved(at(state), 0); }
   }
   n = everglade_edit_post(at(state));
   if (n > 0 && post_id < 0) {
-    post_id = coaxial_http((uint32_t)(uintptr_t)WORLD_URL, sizeof WORLD_URL - 1, (uint32_t)(uintptr_t)g->ev.post.e, (uint32_t)n, 1 | 4);
+    post_id = coaxial_http((uint32_t)(uintptr_t)WORLD_URL, sizeof WORLD_URL - 1, (uint32_t)(uintptr_t)g->ev.post.e, (uint32_t)n, 1 | 4 | 8);   /* the player key: a realm admin account publishes too */
     everglade_edit_post_sent(at(state));
     if (post_id < 0) { post_id = -1; everglade_edit_saved(at(state), 0); }
   }

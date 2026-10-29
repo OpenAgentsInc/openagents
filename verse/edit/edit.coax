@@ -61,6 +61,8 @@ RealmEdit :: struct {
   req_url: [REDIT_URL] u8; req_url_n: int; req_body: [REDIT_BODY] u8; req_body_n: int; req_flags: int;
   req_ready: bool; req_id: int; req_what: int; req_at: f32;
   spec_due: bool; asked: bool; settings_due: bool; cards_due: bool;
+  // the card last accepted, once the server says so (redit_took): a realm whose things are its own lays it out
+  deciding: bool; decided_thing: [REDIT_THING] u8; decided_thing_n: int; decided_x: f32; decided_z: f32; took: bool;
   switch_row: int; switch_on: bool; decide_due: int; revise: [REDIT_TYPED] u8; revise_n: int;
   place_thing: [REDIT_THING] u8; place_thing_n: int; place_x: f32; place_z: f32; place_yaw: f32;
   out: [REDIT_OUT] u8; out_n: int;
@@ -163,6 +165,8 @@ redit_placed_thing :: (e: [] RealmEdit, i: int) -> string { return cast(string) 
 // The server changed the realm since the last time a realm asked: switch its features again.
 redit_changed :: (e: [] RealmEdit) -> bool { c := e[0].changed; e[0].changed = false; return c; }
 redit_typing :: (e: [] RealmEdit) -> bool { return e[0].typing; }
+// A card just accepted (true once): its thing and where, in decided_thing, decided_x and decided_z.
+redit_took :: (e: [] RealmEdit) -> bool { t := e[0].took; e[0].took = false; return t; }
 redit_open :: (e: [] RealmEdit) -> bool { return e[0].pane != REDIT_SHUT; }
 
 redit_note :: (e: [] RealmEdit, text: string) { e[0].note_n = redit_copy(e[0].note[..], text); e[0].note_at = e[0].time; }
@@ -329,6 +333,9 @@ redit_next :: (e: [] RealmEdit) {
     tail: [48] u8;
     n := redit_put(tail[..], 0, "/proposals/"); n = redit_put_int(tail[..], n, e[0].card_id[0]);
     n = redit_put(tail[..], n, ifx accept then "/accept" else "/decline");
+    e[0].deciding = accept;
+    e[0].decided_thing_n = redit_copy(e[0].decided_thing[..], cast(string) e[0].card_thing[0..<e[0].card_thing_n[0]]);
+    e[0].decided_x = e[0].card_x[0]; e[0].decided_z = e[0].card_z[0];
     redit_ask(e, REQ_E_DECIDE, cast(string) tail[0..<n], 0, true);
     redit_drop_card(e);
     return;
@@ -384,6 +391,7 @@ redit_answer :: (e: [] RealmEdit, text: string) {
   if what == REQ_E_CARDS { if status == 200 { redit_read_cards(e, p_body); } return; }
   if what == REQ_E_DECIDE {
     if status != 200 { redit_note(e, "That card was already decided."); }
+    e[0].took = status == 200 && e[0].deciding; e[0].deciding = false;
     e[0].cards_due = true; e[0].spec_due = true;
   }
 }

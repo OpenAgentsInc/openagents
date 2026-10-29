@@ -20,6 +20,7 @@
 // voice= line says so; the server's /api/auth/me says A|1 for an admin.
 
 #load "../../verse/everglade/edits.coax";
+#load "../../verse/edit/edit.coax";   // the board, SETTINGS and the cards every realm has (docs/verse/realm-edit.md)
 #load "everglade-edit.coax";
 
 MSG_VOICE :: 50;          // voice.js: "phase|caption"
@@ -59,6 +60,9 @@ EditVoice :: struct {
   px: [EG_SPOTS] f32; py: [EG_SPOTS] f32; pseen: [EG_SPOTS] bool;   // the people on the screen, for a pick
   wall_base: int;
   town_used: [5] int;
+  // The shared edit layer: its EDIT is Everglade's (the board and SETTINGS open with edit mode); a
+  // visitor with BUILD places as cards; its owner and admins edit as a site admin does
+  ed: [1] RealmEdit; ed_open: bool;
 }
 
 voice_on :: (s: [] Everglade) -> bool { return s[0].ev.admin && s[0].ev.voice; }
@@ -75,6 +79,7 @@ ev_say :: (s: [] Everglade, text: string) { s[0].ev.say_n = ev_put(s[0].ev.say[.
 
 // The viewer's lines (A|1 an admin), the page facts' voice= line, and the voice's phase.
 everglade_voice_message :: (s: [] Everglade, kind: int, text: string) -> bool {
+  if redit_message(s[0].ev.ed[..], kind, text) { return true; }
   if kind == MSG_VIEWER {
     s[0].ev.admin = false;
     i := 0;
@@ -129,6 +134,8 @@ ev_release :: (s: [] Everglade) {
 }
 
 everglade_voice_key :: (s: [] Everglade, key: int, down: bool) -> bool {
+  used := redit_key(s[0].ev.ed[..], key, down);
+  if used > 0 { return used == 1; }
   if everglade_edit_key(s, key, down) { return true; }
   if !voice_on(s) || s[0].ev.editing || (key != 'v' && key != 'V') || s[0].talk >= 0 || s[0].board { return false; }
   if down && !s[0].ev.key { s[0].ev.key = true; ev_press(s); }
@@ -137,6 +144,7 @@ everglade_voice_key :: (s: [] Everglade, key: int, down: bool) -> bool {
 }
 
 everglade_voice_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
+  if redit_pointer(s[0].ev.ed[..], x, y, phase, id) { return true; }
   if everglade_edit_pointer(s, x, y, phase, id) { return true; }
   if !voice_on(s) { return false; }
   if phase == 0 && in_box(s[0].ev.button, x, y) { s[0].ev.finger = id; ev_press(s); return true; }
@@ -147,6 +155,7 @@ everglade_voice_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int
 
 // The voice's actions, one a frame, when the outbox is free.
 everglade_voice_actions :: (s: [] Everglade) {
+  edit_layer(s);
   edit_tick(s);
   if s[0].action != 0 { return; }
   if s[0].ev.want_face {

@@ -33,12 +33,54 @@ EDIT_SETTLE :: 1.2;        // seconds after the last change before it's publishe
 EDIT_PICK :: 56.0;         // CSS pixels from a thing's middle that pick it
 EV_KEY_DELETE :: -12;
 
-edit_on :: (s: [] Everglade) -> bool { return s[0].ev.admin && s[0].ev.editing; }
+edit_on :: (s: [] Everglade) -> bool { return eg_builder(s) && s[0].ev.editing; }
+// A visitor the owner lets build (the layer's SETTINGS): edit mode's things, each sent as a card.
+eg_visitor_builds :: (s: [] Everglade) -> bool { return !s[0].ev.admin && s[0].ev.ed[0].ready && redit_tool(s[0].ev.ed[..], "build"); }
+eg_builder :: (s: [] Everglade) -> bool { return s[0].ev.admin || eg_visitor_builds(s); }
+
+// ---- the shared edit layer (verse/edit/edit.coax), each frame from everglade_voice_actions
+
+edit_layer :: (s: [] Everglade) {
+  e := s[0].ev.ed[..];
+  redit_start(e, "everglade");
+  redit_step(e, f32(s[0].time), s[0].width, s[0].height, s[0].dpr);
+  e[0].voice = false;   // Everglade's own HOLD TO TALK edits it by voice; the board is typed
+  if redit_may(e) { s[0].ev.admin = true; }   // the realm's owner and admins (the server checks every write)
+  // the layer's EDIT and Everglade's edit mode open and close together
+  open := redit_open(e);
+  if s[0].ev.admin {
+    if open != s[0].ev.ed_open { if open != s[0].ev.editing { edit_toggle(s); } }
+    else if s[0].ev.editing != open { e[0].pane = ifx s[0].ev.editing then REDIT_BOARD else REDIT_SHUT; }
+  }
+  s[0].ev.ed_open = redit_open(e);
+  // a visitor's card accepted here: the thing goes into the city, published as any edit by hand
+  if redit_took(e) && s[0].ev.admin {
+    kind := -1;
+    took := cast(string) e[0].decided_thing[0..<e[0].decided_thing_n];
+    for i: 0..<EG_EDIT_ITEMS { if eg_lower_is(EG_EDIT_LABEL[i], took) { kind = i; } }
+    if kind >= 0 && s[0].ev.edits.n < EG_EDIT_MAX {
+      before := s[0].ev.edits;
+      t: EgThing; t.kind = kind; t.size = 1; t.yaw = 0; t.group = eg_new_group(s[0].ev.edits); t.x = e[0].decided_x; t.z = e[0].decided_z;
+      s[0].ev.edits.things[s[0].ev.edits.n] = t; s[0].ev.edits.n += 1;
+      if eg_edit_fault(s[0].ev.edits, s[0].ev.edits.n - 1) == EG_FAULT_NONE {
+        after := s[0].ev.edits;
+        s[0].ev.edits = before; edit_remember(s); s[0].ev.edits = after;
+        edit_settle(s);
+      } else { s[0].ev.edits = before; redit_note(e, "Accepted, but something stands there now."); }
+    }
+  }
+}
+// A label (CRATE) is a thing's name (crate).
+eg_lower_is :: (label: string, name: string) -> bool {
+  if label.count != name.count { return false; }
+  for i: 0..<label.count { c := label[i]; if c >= 'A' && c <= 'Z' { c = c + 32; } if c != name[i] { return false; } }
+  return true;
+}
 
 // ---- into and out of edit mode
 
 edit_toggle :: (s: [] Everglade) {
-  if !s[0].ev.admin { return; }
+  if !eg_builder(s) { return; }
   if s[0].ev.editing { edit_done(s); return; }
   s[0].ev.editing = true; s[0].ev.picked = -1; s[0].ev.person = -1; s[0].ev.sure = 0; s[0].ev.line_n = 0;
   if s[0].ev.held { ev_release(s); }
@@ -56,6 +98,7 @@ edit_settle :: (s: [] Everglade) {
 }
 edit_publish :: (s: [] Everglade) {
   s[0].ev.due = 0;
+  if !s[0].ev.admin { return; }   // a visitor's things went as cards
   s[0].ev.post_n = eg_edits_body(s[0].ev.edits, "Edited by hand", s[0].ev.post[..]);
 }
 // Each frame (everglade_voice_actions): a settled change goes out.
@@ -69,6 +112,21 @@ edit_tick :: (s: [] Everglade) {
 // One of item in front of you, picked.
 edit_place_one :: (s: [] Everglade, item: int) {
   n := s[0].ev.edits.n;
+  if !s[0].ev.admin {
+    // a visitor: placed where an admin's would go, then sent to the owner as a card instead
+    before := s[0].ev.edits; undos := s[0].ev.undo_n;
+    edit_place(s, item, 1, false);
+    if s[0].ev.edits.n > n {
+      t := s[0].ev.edits.things[n];
+      name: [16] u8;
+      for i: 0..<EG_EDIT_LABEL[item].count { c := EG_EDIT_LABEL[item][i]; name[i] = ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+      redit_place(s[0].ev.ed[..], cast(string) name[0..<EG_EDIT_LABEL[item].count], t.x, t.z, t.yaw);
+      ev_line(s, "SENT TO THE OWNER");
+    }
+    s[0].ev.edits = before; s[0].ev.undo_n = undos; s[0].ev.due = 0; s[0].ev.say_n = 0;
+    edit_walls(s);
+    return;
+  }
   edit_place(s, item, 1, false);
   s[0].ev.say_n = 0;
   if s[0].ev.edits.n > n { s[0].ev.picked = s[0].ev.edits.n - 1; }
@@ -158,6 +216,7 @@ edit_original :: (s: [] Everglade) {
 edit_press :: (s: [] Everglade, b: int) {
   if b == EB_EDIT { edit_toggle(s); return; }
   if !edit_on(s) { return; }
+  if !s[0].ev.admin && !(b >= EB_ITEM && b < EB_ITEM + EG_EDIT_ITEMS) && b != EB_DONE { return; }   // a visitor places and is done
   if b != EB_ORIGINAL { s[0].ev.sure = 0; }
   if b >= EB_ITEM && b < EB_ITEM + EG_EDIT_ITEMS { edit_place_one(s, b - EB_ITEM); return; }
   if b == EB_UNDO { edit_undo(s, false); s[0].ev.picked = -1; s[0].ev.person = -1; return; }
@@ -171,7 +230,7 @@ edit_press :: (s: [] Everglade, b: int) {
 
 // B, and in edit mode 1 to 5, Z, Y, Esc, and with a thing picked the arrows, R, + and -, Delete.
 everglade_edit_key :: (s: [] Everglade, key: int, down: bool) -> bool {
-  if !s[0].ev.admin || s[0].talk >= 0 || s[0].board { return false; }
+  if !eg_builder(s) || s[0].talk >= 0 || s[0].board { return false; }
   if key == 'b' || key == 'B' { if down { edit_toggle(s); } return true; }
   if !s[0].ev.editing { return false; }
   picked := s[0].ev.picked >= 0 || s[0].ev.person >= 0;
@@ -204,7 +263,7 @@ everglade_edit_key :: (s: [] Everglade, key: int, down: bool) -> bool {
 
 // A press on a button, or on a placed thing (picks it); anything else goes on (a drag looks, a thumb walks).
 everglade_edit_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
-  if !s[0].ev.admin { return false; }
+  if !eg_builder(s) { return false; }
   if s[0].ev.finger2 == id && phase > 0 {
     if phase >= 2 { s[0].ev.finger2 = -1; s[0].ev.lit = -1; }
     return true;
@@ -213,7 +272,7 @@ everglade_edit_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int)
   for b: 0..<EB_N {
     if in_box(s[0].ev.boxes[b], x, y) { s[0].ev.finger2 = id; s[0].ev.lit = b; edit_press(s, b); return true; }
   }
-  if !s[0].ev.editing { return false; }
+  if !s[0].ev.editing || !s[0].ev.admin { return false; }   // a visitor picks nothing
   k := hi(s[0].dpr, 0.5);
   best := -1; most := f32(EDIT_PICK) * k * f32(EDIT_PICK) * k;
   for i: 0..<s[0].ev.edits.n {
@@ -278,16 +337,25 @@ edit_button :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, b: int, box: B
 everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) -> int {
   for b: 0..<EB_N { s[0].ev.boxes[b] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
   s[0].ev.eye_x = u[U_EYE]; s[0].ev.eye_z = u[U_EYE + 2];
-  if !s[0].ev.admin || s[0].talk >= 0 || s[0].board { return at; }
+  if !eg_builder(s) || s[0].talk >= 0 || s[0].board { s[0].ev.ed[0].pane = REDIT_SHUT; for i: 0..<RB_N { s[0].ev.ed[0].shown[i] = false; } return at; }
   k := hi(s[0].dpr, 0.5);
   n := at;
-  // EDIT, left of MAP
+  // EDIT, left of MAP: the shared layer's for its owner and admins (THE BOARD, SETTINGS, the cards
+  // under it), BUILD for a visitor the owner lets build
   mb := s[0].map_button;
   if !s[0].above {
-    word := ifx s[0].ev.editing then "DONE" else "EDIT";
+    visitor := !s[0].ev.admin;
+    word := ifx s[0].ev.editing then "DONE" else ifx visitor then "BUILD" else "EDIT";
     bw := text_width(word, 9 * k) + 32 * k;
     eb := Box.{x0 = mb.x0 - 8 * k - bw, y0 = mb.y0, x1 = mb.x0 - 8 * k, y1 = mb.y1};
-    n = edit_button(s, out, u, n, EB_EDIT, eb, word, "B", s[0].ev.editing);
+    if visitor || !s[0].ev.ed[0].ready { n = edit_button(s, out, u, n, EB_EDIT, eb, word, "B", s[0].ev.editing); }
+    else {
+      n = redit_hud(s[0].ev.ed[..], out, n, RBox.{x0 = eb.x0, y0 = eb.y0, x1 = eb.x1, y1 = eb.y1});
+      for i: 0..<s[0].ev.ed[0].plate_n {
+        pb := s[0].ev.ed[0].plate_box[i];
+        plate(s, u, Box.{x0 = pb.x0, y0 = pb.y0, x1 = pb.x1, y1 = pb.y1}, s[0].ev.ed[0].plate_alpha[i], s[0].ev.ed[0].plate_look[i]);
+      }
+    }
   }
   if !s[0].ev.editing || s[0].above { return n; }
   // the placed things where they are on the screen (for a pick), the picked one named
@@ -315,7 +383,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   }
   // EDITING, and what happened, over the middle
   w := s[0].width;
-  title := "EDITING";
+  title := ifx s[0].ev.admin then "EDITING" else "BUILDING · WHAT YOU PLACE GOES TO THE OWNER";
   line := ifx s[0].ev.line_n > 0 then cast(string) s[0].ev.line[0..<s[0].ev.line_n] else "";
   ls := 7.5 * k;
   lw := text_width(line, ls);
@@ -335,7 +403,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   digit: [1] u8;
   if phone(s) {
     acts := [4] string.["UNDO", "REDO", "ORIGINAL", "DONE"];
-    for i: 0..<4 { n = edit_button(s, out, u, n, EB_UNDO + i, edit_row(s, i, 4, 120 * k, bh, y), ifx i == 2 && sure then "SURE?" else acts[i], "", i == 3 || (i == 2 && sure)); }
+    for i: 0..<4 { if s[0].ev.admin || i == 3 { n = edit_button(s, out, u, n, EB_UNDO + i, edit_row(s, ifx s[0].ev.admin then i else 0, ifx s[0].ev.admin then 4 else 1, 120 * k, bh, y), ifx i == 2 && sure then "SURE?" else acts[i], "", i == 3 || (i == 2 && sure)); } }
     y -= bh + 6 * k;
     for i: 0..<EG_EDIT_ITEMS { n = edit_button(s, out, u, n, EB_ITEM + i, edit_row(s, i, EG_EDIT_ITEMS, 100 * k, bh, y), EG_EDIT_LABEL[i], "", false); }
   } else {
@@ -344,9 +412,11 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
       digit[0] = cast(u8) ('1' + i);
       n = edit_button(s, out, u, n, EB_ITEM + i, edit_row(s, i, slots, 104 * k, bh, y), EG_EDIT_LABEL[i], cast(string) digit[..], false);
     }
-    n = edit_button(s, out, u, n, EB_UNDO, edit_row(s, EB_UNDO, slots, 104 * k, bh, y), "UNDO", "Z", false);
-    n = edit_button(s, out, u, n, EB_REDO, edit_row(s, EB_REDO, slots, 104 * k, bh, y), "REDO", "Y", false);
-    n = edit_button(s, out, u, n, EB_ORIGINAL, edit_row(s, EB_ORIGINAL, slots, 104 * k, bh, y), ifx sure then "SURE?" else "ORIGINAL", "", sure);
+    if s[0].ev.admin {
+      n = edit_button(s, out, u, n, EB_UNDO, edit_row(s, EB_UNDO, slots, 104 * k, bh, y), "UNDO", "Z", false);
+      n = edit_button(s, out, u, n, EB_REDO, edit_row(s, EB_REDO, slots, 104 * k, bh, y), "REDO", "Y", false);
+      n = edit_button(s, out, u, n, EB_ORIGINAL, edit_row(s, EB_ORIGINAL, slots, 104 * k, bh, y), ifx sure then "SURE?" else "ORIGINAL", "", sure);
+    }
     n = edit_button(s, out, u, n, EB_DONE, edit_row(s, EB_DONE, slots, 104 * k, bh, y), "DONE", "ESC", true);
   }
   if who >= 0 {
@@ -452,4 +522,55 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   // a press on DONE leaves edit mode
   d := s[0].ev.boxes[EB_DONE];
   #assert everglade_edit_pointer(s[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 0, 1) && !s[0].ev.editing;
+}
+
+#test "the shared layer: a realm admin's EDIT opens edit mode and the board; a visitor with BUILD sends a card; an accepted card is placed" {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  u: [UNIFORM_FLOATS] f32;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  s[0].width = 1440; s[0].height = 900; s[0].dpr = 1;
+  s[0].map_button = Box.{x0 = 1360, y0 = 16, x1 = 1424, y1 = 54};
+  e := s[0].ev.ed[..];
+  edit_layer(s[..]);
+  #assert e[0].req_ready && cast(string) e[0].req_url[0..<e[0].req_url_n] == "/api/playtest/realms/everglade";
+  // a visitor the owner lets build: BUILD, the things only, each sent as a card
+  redit_requested(e, 2);
+  #assert everglade_voice_message(s[..], HTTP_KIND + 2, "200\nrealm everglade\nrole visitor\nowner 0\ntool map 1\ntool build 1\nthing crate\nthing barrel\nrow flock 1 The bird flock\n");
+  edit_layer(s[..]);
+  n := everglade_edit_hud(s[..], out[..], u[..], 0, 840);
+  #assert !s[0].ev.admin && s[0].ev.boxes[EB_EDIT].x1 > 0 && !e[0].shown[RB_EDIT];
+  edit_press(s[..], EB_EDIT);
+  #assert s[0].ev.editing;
+  s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
+  edit_press(s[..], EB_ITEM + 1);
+  #assert s[0].ev.edits.n == 0 && cast(string) e[0].place_thing[0..<e[0].place_thing_n] == "barrel" && s[0].ev.post_n == 0;
+  n = everglade_edit_hud(s[..], out[..], u[..], 0, 840);
+  #assert s[0].ev.boxes[EB_DONE].x1 > 0 && s[0].ev.boxes[EB_UNDO].x1 == 0 && s[0].ev.boxes[EB_ORIGINAL].x1 == 0;   // no UNDO or ORIGINAL for a visitor
+  // a realm admin: the layer's EDIT stands where Everglade's was, and opens edit mode with the board
+  a: [1] Everglade;
+  everglade_start(a[..]);
+  a[0].width = 1440; a[0].height = 900; a[0].dpr = 1;
+  a[0].map_button = Box.{x0 = 1360, y0 = 16, x1 = 1424, y1 = 54};
+  f := a[0].ev.ed[..];
+  edit_layer(a[..]);
+  redit_requested(f, 3);
+  #assert everglade_voice_message(a[..], HTTP_KIND + 3, "200\nrealm everglade\nrole admin\nowner 0\ntool build 1\nrow flock 0 The bird flock\nwaiting 1\n");
+  edit_layer(a[..]);
+  n = everglade_edit_hud(a[..], out[..], u[..], 0, 840);
+  b := f[0].boxes[RB_EDIT];
+  #assert a[0].ev.admin && f[0].shown[RB_EDIT] && b.x1 < 1360 && !redit_row_on(f, "flock");
+  #assert everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1) && everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1);
+  edit_layer(a[..]);
+  #assert a[0].ev.editing && redit_open(f);
+  // the visitor's card accepted here: the barrel goes into the city and out to everyone
+  f[0].took = true; f[0].decided_thing_n = redit_copy(f[0].decided_thing[..], "barrel"); f[0].decided_x = 6; f[0].decided_z = -12;
+  edit_layer(a[..]);
+  #assert a[0].ev.edits.n == 1 && a[0].ev.edits.things[0].kind == 1 && a[0].ev.edits.things[0].x == 6 && a[0].ev.due > 0;
+  // DONE on the layer closes edit mode too
+  n = everglade_edit_hud(a[..], out[..], u[..], 0, 840);
+  b = f[0].boxes[RB_EDIT];
+  #assert everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1) && everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1);
+  edit_layer(a[..]);
+  #assert !a[0].ev.editing && !redit_open(f);
 }
