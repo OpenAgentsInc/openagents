@@ -569,8 +569,8 @@ put_bytes :: (buf: [] u8, at: int, n: int) -> int {
 }
 
 // What a file's status says, into buf.
-put_status :: (buf: [] u8, status: string, permille: int, signed: bool) -> int {
-  if same(status, "queued") { return put_text(buf, 0, ifx signed then "QUEUED" else "WAITING FOR LOGIN"); }
+put_status :: (buf: [] u8, status: string, permille: int) -> int {
+  if same(status, "queued") { return put_text(buf, 0, "QUEUED"); }
   if same(status, "starting") { return put_text(buf, 0, "STARTING"); }
   if same(status, "uploading") { c := put_text(buf, 0, "UPLOADING "); c += put_int(buf, c, permille / 10); return c + put_text(buf, c, "%"); }
   if same(status, "scanning") { return put_text(buf, 0, "SCANNING"); }
@@ -659,6 +659,7 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
   v = put_wrapped(out, v, "Drop design notes, voice memos, concept art, 3D models, textures and sounds. They stay private to you until you publish.",
                   b.x0 + 26 * d, b.y0 + title_room(p) + 12 * d, 6.5 * d, dim, box_w(b) - 52 * d, 12 * d, 3);
   z := k.zone; cx := (z.x0 + z.x1) * 0.5; zw := box_w(z) - 24 * d; mid := (z.y0 + z.y1) * 0.5;
+  dragging = dragging && signed;
   lit_zone := dragging || hot == HIT_ZONE;
   v = dashed(out, v, z, ifx lit_zone then orange else dim, ifx dragging then p.fade else (ifx hot == HIT_ZONE then 0.8 * p.fade else 0.45 * p.fade), d);
   if dragging {
@@ -670,7 +671,6 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
       v = put_center(out, v, "Your browser's Nostr signer signs you in.", cx, mid + 4 * d, 6.5 * d, dim, zw);
     } else {
       v = put_center_wrapped(out, v, "Use a Nostr signer in this browser, or open your admin login link.", cx, mid + 4 * d, 6.5 * d, dim, zw, 12 * d, 2);
-      v = put_center_wrapped(out, v, "Files you pick now wait until you're signed in.", cx, mid + 30 * d, 6.5 * d, faint, zw, 12 * d, 2);
     }
   } else {
     v = put_center(out, v, ifx l.wide then "DROP FILES HERE" else "TAP TO PICK FILES", cx, mid - 14 * d, 16 * d, ifx hot == HIT_ZONE then orange else white, zw);
@@ -694,7 +694,7 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
     y := k.rows_top + k.row_h * cast(f32) row;
     row += 1;
     permille := parse(field(text, r, 4));
-    sb: [48] u8; sn := put_status(sb[..], status, permille, signed);
+    sb: [48] u8; sn := put_status(sb[..], status, permille);
     st := cast(string) sb[0..<sn];
     refused := same(status, "refused");
     bb: [24] u8; bn := put_bytes(bb[..], 0, bytes);
@@ -770,7 +770,7 @@ drop_hit :: (l: Layout, d: f32, text: string, x: f32, y: f32) -> int {
   if can_ask(text) && inside(k.ask, x, y) { return HIT_DRAFT; }
   if can_review(text) && inside(k.review, x, y) { return HIT_REVIEW; }
   if !drop_flag(text, 1) && drop_flag(text, 2) && inside(k.signin, x, y) { return HIT_SIGNIN; }
-  if inside(k.zone, x, y) { return HIT_ZONE; }
+  if drop_flag(text, 1) && inside(k.zone, x, y) { return HIT_ZONE; }
   return HIT_NONE;
 }
 
@@ -1556,8 +1556,8 @@ drop_message :: (s: [] ProjectsState, text: string) {
   #assert same(cast(string) b[0..<put_bytes(b[..], 0, 2048)], "2 KB");
   #assert same(cast(string) b[0..<put_bytes(b[..], 0, 5452595)], "5.2 MB");
   #assert same(cast(string) b[0..<put_bytes(b[..], 0, 67108864)], "64 MB");
-  #assert same(cast(string) b[0..<put_status(b[..], "uploading", 420, true)], "UPLOADING 42%");
-  #assert same(cast(string) b[0..<put_status(b[..], "queued", 0, false)], "WAITING FOR LOGIN");
+  #assert same(cast(string) b[0..<put_status(b[..], "uploading", 420)], "UPLOADING 42%");
+  #assert same(cast(string) b[0..<put_status(b[..], "queued", 0)], "QUEUED");
   #assert drop_progress("uploading", 420) == 0.42f32 && drop_progress("queued", 0) == 0 && drop_progress("kept", 0) == 1;
 }
 
@@ -1575,14 +1575,13 @@ drop_message :: (s: [] ProjectsState, text: string) {
     #assert projects_pointer(s[..], FIXTURE, nx, ny, P_DOWN, 0) && projects_pointer(s[..], FIXTURE, nx, ny, P_UP, 0);
     #assert s[0].drop_open && s[0].action == ACT_HASH && same(cast(string) s[0].outbox[0..<s[0].out_n], "new");
     coaxial_projects_action_done(s[..]);
-    // signed out: the zone still picks files, which wait for the sign-in
+    // signed out: the zone picks nothing until the viewer logs in
     #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true) > 300;
     dl := drop_layout(l, 2, false);
     #assert within(dl.zone, l.list) && within(dl.close, l.list) && apart(dl.close, dl.zone) && dl.fit >= 3;
     zx := (dl.zone.x0 + dl.zone.x1) * 0.5; zy := dl.zone.y0 + 10;
     #assert projects_pointer(s[..], FIXTURE, zx, zy, P_DOWN, 0) && projects_pointer(s[..], FIXTURE, zx, zy, P_UP, 0);
-    #assert s[0].action == ACT_PICK;
-    coaxial_projects_action_done(s[..]);
+    #assert s[0].action != ACT_PICK;
     // a Nostr signer: SIGN IN WITH NOSTR asks the host to sign in
     drop_message(s[..], "S|0|1|0|\n");
     sx := (dl.signin.x0 + dl.signin.x1) * 0.5; sy := (dl.signin.y0 + dl.signin.y1) * 0.5;

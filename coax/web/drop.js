@@ -168,9 +168,10 @@ export function startDrops({ send }) {
   }
 
   function take(list) {
+    if (!signed) return;
     for (const file of list) files.push({ file, name: file.name, kind: "", bytes: file.size, permille: 0, status: "queued", note: "" });
     push();
-    if (signed) pump(); else me();
+    pump();
   }
 
   async function post(url, body) {
@@ -223,15 +224,15 @@ export function startDrops({ send }) {
   }
 
   const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
-  addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); depth++; if (!dragging) { dragging = true; push(); } });
-  addEventListener("dragover", (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+  addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); if (!signed) return; depth++; if (!dragging) { dragging = true; push(); } });
+  addEventListener("dragover", (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = signed ? "copy" : "none"; });
   addEventListener("dragleave", (e) => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth && dragging) { dragging = false; push(); } });
   addEventListener("drop", (e) => { if (!hasFiles(e)) return; e.preventDefault(); depth = 0; dragging = false; take([...e.dataTransfer.files]); });
   picker.addEventListener("change", () => { take([...picker.files]); picker.value = ""; });
   addEventListener("coaxial", (e) => {
     const code = e.detail?.code;
     if (code === 0) { push(); if (signed) send(VIEWER_KIND, signed); }
-    else if (code === ACT_PICK) picker.click();
+    else if (code === ACT_PICK && signed) picker.click();
     else if (code === ACT_SIGNIN) signin();
     else if (code === ACT_DRAFT) read();
     else if (code === ACT_EDIT) edit(Number(e.detail.text));

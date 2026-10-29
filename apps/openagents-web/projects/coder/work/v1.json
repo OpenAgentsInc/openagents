@@ -1,0 +1,336 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "coder",
+  "initiative": {
+    "slug": "coder-v1",
+    "title": "Coder: route each message to the right agent, and Microcoder for the rest",
+    "body": "Every coding-agent issue lives here. The Lab's router (Mammoth) picks Claude Code, Codex or other for each message; other goes to Microcoder, a small Coax agent loop that runs on whichever model gateway fits, Google first. The old Rust inference upstreams move over as Coax gateways.",
+    "spec": "docs/coder/microcoder.md"
+  },
+  "milestones": [
+    {
+      "slug": "gw-v1",
+      "title": "Gateways v1: Vertex, Gemini and OpenRouter",
+      "body": "The gateway interface, streaming, Chat Completions, the three first gateways and fallback plans, tested on the recorded fixtures."
+    },
+    {
+      "slug": "mc-v1",
+      "title": "Microcoder v1 behind the Lab's other route",
+      "body": "The loop, its tools and the Lab hookup, so a message Mammoth routes to other gets answered."
+    },
+    {
+      "slug": "gw-v2",
+      "title": "Gateways v2: the rest of the old upstreams",
+      "body": "Z.ai, Vercel, OpenAI and Anthropic direct, psionic, Pylon, rates and the text-action fallback."
+    },
+    {
+      "slug": "gw-hosted",
+      "title": "Ours: inference without the user's own keys",
+      "body": "/v1/inference in coax/web/api, metered by account; the Mammoth key leaves the app."
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "gw-core",
+      "title": "Gateway interface, SSE reader and a streaming curl transport",
+      "parent": "gw-v1",
+      "size": "L",
+      "body": "coax/lib/gateway/: GwRequest, GwEvent (text_delta, reasoning_delta, done, refused), GwUsage and the Gateway shape. An SSE line reader, and a streaming variant of coax/lib/systemone's curl transport that reads stdout as it comes. The key is read by curl from the environment, never passed through Coax or curl's arguments. From crates/inference/src/{event,sse,stream,request,response}.rs.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/gateway/",
+        "coax/lib/systemone/transport.coax"
+      ],
+      "acceptance": [
+        "Tests replay the recorded fixtures (0b401561a0^:crates/coder/fixtures/gateway/*.sse) into GwEvents",
+        "A streamed call delivers text deltas before the response ends",
+        "No key appears in arguments, logs or errors"
+      ]
+    },
+    {
+      "slug": "gw-chat",
+      "title": "Chat Completions translation",
+      "parent": "gw-v1",
+      "size": "M",
+      "body": "One translator from GwRequest to Chat Completions and back, with strict json_schema response_format and usage. The base for Vertex's OpenAI endpoint, OpenRouter, Z.ai, Vercel, OpenAI and psionic. From crates/inference/src/chat/* and upstream/chat.rs.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/gateway/chat.coax"
+      ],
+      "acceptance": [
+        "Request bodies match the old crate's for the same input",
+        "Streamed and whole responses both parse, including usage"
+      ],
+      "blocked_by": [
+        "gw-core"
+      ]
+    },
+    {
+      "slug": "gw-vertex",
+      "title": "Vertex Gemini gateway (first choice)",
+      "parent": "gw-v1",
+      "size": "M",
+      "body": "Vertex's OpenAI-compatible endpoint (aiplatform.googleapis.com, project openagentsgemini, location global) with a bearer from a service-account token minted per hour. Strict json_schema. From upstream/vertex.rs and microcoder-loop/src/vertex.rs.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/gateway/vertex.coax"
+      ],
+      "acceptance": [
+        "The recorded Vertex fixture parses",
+        "A live smoke answers with gemini-3.8-flash when a credential is present and skips otherwise"
+      ],
+      "blocked_by": [
+        "gw-chat"
+      ]
+    },
+    {
+      "slug": "gw-gemini",
+      "title": "Gemini API gateway",
+      "parent": "gw-v1",
+      "size": "M",
+      "body": "The native Gemini Developer API (generateContent and streamGenerateContent) with responseSchema. Its own translator. From upstream/google.rs and gemini.rs.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/gateway/gemini.coax"
+      ],
+      "acceptance": [
+        "The recorded Google fixture parses",
+        "A live smoke answers when a key is present and skips otherwise"
+      ],
+      "blocked_by": [
+        "gw-core"
+      ]
+    },
+    {
+      "slug": "gw-openrouter",
+      "title": "OpenRouter gateway",
+      "parent": "gw-v1",
+      "size": "M",
+      "body": "OpenRouter on the Chat Completions translator, plus its usage, cost and provider fields. From crates/openrouter and upstream/openrouter.rs.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/gateway/openrouter.coax"
+      ],
+      "acceptance": [
+        "The recorded OpenRouter fixture parses, cost included",
+        "A live smoke answers when a key is present and skips otherwise"
+      ],
+      "blocked_by": [
+        "gw-chat"
+      ]
+    },
+    {
+      "slug": "gw-plan",
+      "title": "Plans: fallback before the first token, benching on 401/402",
+      "parent": "gw-v1",
+      "size": "M",
+      "body": "Up to three (gateway, model) attempts. Move on after a refusal or a failure before the first token, never after it. A 401 or 402 benches that gateway for the session. Each attempt is logged (gateway, model, status, latency, tokens), never the prompt. From crates/inference/src/router.rs and microcoder-loop failover.rs and capacity.rs.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/gateway/plan.coax"
+      ],
+      "acceptance": [
+        "A refused first attempt falls through to the second",
+        "A failure after the first token ends the call instead of retrying",
+        "The attempt log never contains prompt text"
+      ],
+      "blocked_by": [
+        "gw-core"
+      ]
+    },
+    {
+      "slug": "mc-loop",
+      "title": "Microcoder loop: state, one structured call a step, endings",
+      "parent": "mc-v1",
+      "size": "L",
+      "body": "coax/lib/microcoder/: MicroState (environment, task, route, last 12 actions with output head and tail, viewed files, notes), the NextAction schema (rationale, commands, view, finished, reply, ask), and the endings finished, asked, bad_replies, no_capacity, stopped and idle. Microcoder imposes no step or time limits of its own.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/microcoder/"
+      ],
+      "acceptance": [
+        "'what is 2+2' finishes in one step with no commands",
+        "Three replies that fail the schema end the run as bad_replies",
+        "Tests run against a scripted gateway"
+      ],
+      "blocked_by": [
+        "gw-plan"
+      ]
+    },
+    {
+      "slug": "mc-tools",
+      "title": "Microcoder tools: commands and view",
+      "parent": "mc-v1",
+      "size": "M",
+      "body": "Commands run in the working directory through coax/platform/process-native.c with a 30 s timeout and capped output; view reads files under the working directory, 64 KB each. With local_work under 0.5 commands are refused with a note in state.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/microcoder/"
+      ],
+      "acceptance": [
+        "'how many Swift files are in this folder' runs one command and answers",
+        "A command past its timeout is killed and recorded"
+      ],
+      "blocked_by": [
+        "mc-loop"
+      ]
+    },
+    {
+      "slug": "mc-lab",
+      "title": "The Lab's other route runs Microcoder",
+      "parent": "mc-v1",
+      "size": "M",
+      "body": "In the Mac app, a Lab message Mammoth routes to other runs Microcoder. The routing JSON stays first, then one row per step (gateway, model, commands, exit codes, folded output), and the reply streams through the 120 ms push. harness_started becomes true. STOP ends the run.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "apps/openagents-desktop/",
+        "apps/openagents-web/chat.coax"
+      ],
+      "acceptance": [
+        "A Lab message routed to other gets an answer in the transcript",
+        "The reply streams token by token",
+        "STOP works mid-stream"
+      ],
+      "blocked_by": [
+        "mc-tools",
+        "gw-vertex"
+      ]
+    },
+    {
+      "slug": "router-tune",
+      "title": "Tune the router with labelled examples",
+      "parent": "mc-v1",
+      "size": "S",
+      "body": "Mammoth splits close to evenly between claude_code and codex on coding refactors. Collect labelled Lab messages and add examples or sharper labels to router.coax until a held-out set routes as labelled.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "apps/openagents-desktop/router.coax"
+      ],
+      "acceptance": [
+        "A held-out set of labelled messages routes as labelled at least 90% of the time"
+      ]
+    },
+    {
+      "slug": "gw-zai",
+      "title": "Z.ai gateway",
+      "parent": "gw-v2",
+      "size": "S",
+      "body": "glm-5.3-flash on the Chat Completions translator. From upstream/zai.rs.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/gateway/zai.coax"
+      ],
+      "acceptance": [
+        "The recorded Z.ai fixture parses"
+      ],
+      "blocked_by": [
+        "gw-chat"
+      ]
+    },
+    {
+      "slug": "gw-vercel",
+      "title": "Vercel AI Gateway",
+      "parent": "gw-v2",
+      "size": "S",
+      "body": "A fallback only, on the Chat Completions translator. From upstream/vercel.rs.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/gateway/vercel.coax"
+      ],
+      "acceptance": [
+        "A live smoke answers when a key is present and skips otherwise"
+      ],
+      "blocked_by": [
+        "gw-chat"
+      ]
+    },
+    {
+      "slug": "gw-direct",
+      "title": "OpenAI and Anthropic direct",
+      "parent": "gw-v2",
+      "size": "M",
+      "body": "OpenAI on Chat Completions; Anthropic on its own Messages translator, with structured output as one forced tool. From upstream/{openai,anthropic,responses}.rs.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/gateway/openai.coax",
+        "coax/lib/gateway/anthropic.coax"
+      ],
+      "acceptance": [
+        "Both answer a schema-constrained request in live smokes when keys are present"
+      ],
+      "blocked_by": [
+        "gw-chat"
+      ]
+    },
+    {
+      "slug": "gw-rates",
+      "title": "Rates card and cost per attempt",
+      "parent": "gw-v2",
+      "size": "S",
+      "body": "Prices per model in one table; every done event carries cost. From crates/inference/src/{rates,meter/*}.rs.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/gateway/rates.coax"
+      ],
+      "acceptance": [
+        "Each attempt log row has a cost",
+        "Model names and prices live in one file"
+      ],
+      "blocked_by": [
+        "gw-plan"
+      ]
+    },
+    {
+      "slug": "mc-text-action",
+      "title": "Text-action fallback for providers without strict schemas",
+      "parent": "gw-v2",
+      "size": "S",
+      "body": "Take the action's JSON out of plain text when a provider can't enforce a schema. From microcoder-loop/src/text_action.rs.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/microcoder/text_action.coax"
+      ],
+      "acceptance": [
+        "Replies with prose around the JSON parse; replies without JSON count as bad"
+      ],
+      "blocked_by": [
+        "mc-loop"
+      ]
+    },
+    {
+      "slug": "gw-psionic",
+      "title": "psionic local gateway",
+      "parent": "gw-v2",
+      "size": "S",
+      "body": "Chat Completions on localhost for a model running on the user's machine. From upstream/psionic.rs.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/gateway/psionic.coax"
+      ],
+      "acceptance": [
+        "Answers when a local server is up and is skipped otherwise"
+      ],
+      "blocked_by": [
+        "gw-chat"
+      ]
+    },
+    {
+      "slug": "gw-pylon",
+      "title": "Pylon gateway",
+      "parent": "gw-v2",
+      "size": "M",
+      "body": "Inference served by Pylon providers. From upstream/pylon.rs, after Pylon has a Coax client.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/lib/gateway/pylon.coax"
+      ],
+      "acceptance": [
+        "A request served by a Pylon provider streams back"
+      ],
+      "blocked_by": [
+        "gw-chat"
+      ]
+    },
+    {
+      "slug": "gw-ours",
+      "title": "Our /v1/inference route in coax/web/api",
+      "parent": "gw-hosted",
+      "size": "L",
+      "body": "Our keys in Secret Manager, metered by account, so the Mac app works without the user's own keys. The Mammoth key moves behind it too, out of the app. From crates/gateway (BYOK, public, rates). Bitcoin rails only for payment.\n\nSpec: docs/coder/microcoder.md. The old code is at 0b401561a0^ (the commit before the Coder service was removed).",
+      "files": [
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "A signed-in user's Lab message reaches Vertex through /v1/inference",
+        "The Mac app ships with no provider key in it"
+      ],
+      "blocked_by": [
+        "gw-plan",
+        "gw-rates"
+      ]
+    }
+  ]
+}

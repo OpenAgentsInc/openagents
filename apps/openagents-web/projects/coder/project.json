@@ -1,0 +1,23 @@
+{
+  "slug": "coder",
+  "name": "Coder",
+  "description": "Our coding agents: the router that picks Claude Code, Codex or Microcoder for each message, Microcoder in Coax, and the inference gateways it runs on.",
+  "relay": "wss://relay.openagents.com",
+  "repo": {
+    "d": "openagents",
+    "name": "OpenAgents",
+    "description": "The OpenAgents monorepo: the apps, the protocol, Coax and the Grid.",
+    "web": "https://github.com/OpenAgentsInc/openagents",
+    "clone": "https://github.com/OpenAgentsInc/openagents.git",
+    "euc": "0aa2d953dd48f0d402ea7c826bad90b2548524c2"
+  },
+  "path": "docs/coder/",
+  "contributions": "open",
+  "license": "Apache-2.0",
+  "owner": "Chris",
+  "pubkey": "ba065d4fe884fa5f7468ef735a10c092e28212a513b5d137b73a53570f9e1a1d",
+  "maintainers": [
+    "9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a",
+    "1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"
+  ]
+}
