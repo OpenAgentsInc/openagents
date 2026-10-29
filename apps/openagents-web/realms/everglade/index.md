@@ -36,6 +36,7 @@ Take one, go where it says (the step you are on and how far it is show under EVE
 
 - Computer: W A S D move you at a run, Shift walks, Space jumps, C dives in the river, drag the mouse or the arrow keys turn the camera, the wheel zooms, M (or the MAP button) lifts the camera over the whole city and back.
 - Phone: your left thumb walks, your right thumb turns the camera, a tap jumps, MAP at the top right shows the city from above.
+- A reload puts you back where you were, facing the same way, inside or out. Logged in, the same place follows you to another device. A link with a place in it (`#commons`, `#in-inn`) starts you there instead.
 - `#quest-board` starts you at the quest board.
 - A link can start you beside someone, near enough to talk: `#marta`, `#old-tam`, `#pebble` and so on, by their name.
 - A link can start you at a place: `#commons`, `#market`, `#guilds`, `#temple`, `#observatory`, `#inn`, `#road`, `#deep-wood`, `#ruins`, `#crypt`, `#river`, `#gate`, `#north-gate`; inside a building: `#in-inn`, `#in-store`, `#in-smithy`, `#in-alchemist`, `#in-fighters`, `#in-rangers`, `#in-temple`; `#above` opens on the map.
