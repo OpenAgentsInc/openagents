@@ -1,0 +1,13 @@
+ok   #test scalar, empty and contiguous views have different element counts (1 case, 3701 steps)
+ok   #test rank dimensions products and storage records refuse before address arithmetic (1 case, 664 steps)
+ok   #test transpose reversal gaps and singleton strides have independent addresses (1 case, 9929 steps)
+ok   #test bounded slicing validates last selected element and canonicalizes empties (1 case, 7547 steps)
+ok   #test broadcasts are readable aliases and never writable destinations (1 case, 7170 steps)
+ok   #test foreign stale overflowing and out-of-storage views cannot be used (1 case, 1868 steps)
+ok   #test gather materializes logical order and preserves signed zero and tails (1 case, 6281 steps)
+ok   #test a successful alias write invalidates a saved value once, failures do not (1 case, 7588 steps)
+ok   #test empty gather and scatter do no data work and do not increment version (1 case, 1402 steps)
+ok   #test nonfinite representations are refused without evaluating them as Coax constants (1 case, 150 steps)
+ok   #forall rank-one strided coordinates use the absolute storage origin (49 cases, 64373 steps)
+ok   #test alias intervals can prove disjoint views but conservatively retain gaps (1 case, 8549 steps)
+12 checks, 12 passed, 0 failed

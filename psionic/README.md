@@ -4,6 +4,8 @@ Psionic is a machine-learning library written in Coax, built one runnable book
 chapter at a time. The first milestone trains a one-parameter model on
 `[1, 2] → [2, 4]`, then predicts for an unseen input `3`. Chapter 2 adds
 bounded shapes, row-major indexing and a staged copy into caller-owned storage.
+[Chapter 2a](book/ch002a-a-tensor-is-a-view-of-memory.md) adds strided CPU views,
+empty tensors, broadcasting and storage-version checks for saved values.
 Chapter 3 adds checked CPU numerical operations over that storage. Chapter 4
 reads original BF16/F32 weight files and complete pinned shard bundles.
 Chapter 5 renders typed text decisions and tokenizes original Qwen data.

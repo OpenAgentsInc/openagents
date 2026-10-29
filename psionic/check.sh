@@ -27,6 +27,9 @@ cc=${COAX_CC:-cc}
 # A chapter-only request avoids unrelated oracle/package setup.
 if [[ ${#only[@]} -eq 1 ]]; then
     chapter=${only[0]%.coax}; chapter=${chapter#psionic/lib/}
+    if [[ $chapter == tensor-view ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_views.sh
+    fi
     if [[ $chapter == deepseek/mla || $chapter == deepseek/mla-types || $chapter == deepseek/v2-rope ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_v2_math.sh --mutate --jobs "$jobs"
     fi
@@ -114,8 +117,8 @@ python3 -I psionic/tests/mammoth_reference_fixture.py
 python3 -I psionic/tests/mammoth_reference_fixture.py --check-output psionic/fixtures/models/mammoth/psionic-reference.txt
 python3 -I psionic/tests/session_fixture.py
 "$text_python" -I psionic/tests/prepare_oracle.py --header > "$out/prepare-golden.h"
-coax_units=(trace-machine exact-memory soft-memory relu-arith gate-graph compiler-harness harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality serve-request serve-engine)
-native_units=(exact-memory soft-memory gate-graph compiler-harness harmony gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout rank5 rank5-bundle access layer-map model-map decision-calibration decision-json decision-quality)
+coax_units=(trace-machine exact-memory soft-memory relu-arith gate-graph compiler-harness harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate tensor tensor-view ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality serve-request serve-engine)
+native_units=(exact-memory soft-memory gate-graph compiler-harness harmony gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate tensor tensor-view ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout rank5 rank5-bundle access layer-map model-map decision-calibration decision-json decision-quality)
 native_source() {
     case "$1" in
         weights|rank5|rank5-bundle|access|layer-map|model-map) echo "psionic/lib/model-io/$1.coax" ;;
@@ -139,6 +142,7 @@ native_harness() {
         route) adapter=psionic/platform/route-spans.c; harness=psionic/tests/route.c ;;
         threshold) adapter=psionic/platform/threshold-spans.c; harness=psionic/tests/threshold.c ;;
         calibrate) adapter=psionic/platform/calibrate-spans.c; harness=psionic/tests/calibrate.c ;;
+        tensor-view) adapter=psionic/platform/tensor-view-memory.c; harness=psionic/tests/tensor_view.c ;;
         tensor) adapter=psionic/platform/tensor-memory.c; harness=psionic/tests/tensor.c ;;
         ops) adapter=psionic/platform/ops-memory.c; harness=psionic/tests/ops.c ;;
         weights) adapter=psionic/platform/weights-memory.c; harness=psionic/tests/weights.c ;;

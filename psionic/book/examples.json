@@ -32,6 +32,16 @@
       ]
     },
     {
+      "source": "psionic/examples/tensor-views.coax",
+      "chapter": "psionic/book/ch002a-a-tensor-is-a-view-of-memory.md",
+      "stdout": "psionic/fixtures/tensor-views.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/numbers-matrices.coax",
       "chapter": "psionic/book/ch003-numbers-and-matrices.md",
       "stdout": "psionic/fixtures/numbers-matrices.out",

@@ -1,0 +1,30 @@
+#load "../lib/tensor-view.coax";
+#import "Basic";
+// book:begin example
+main :: () {
+    owner:=[1]TvStorage.[tv_owner(7,1,6).storage];
+    matrix:=tv_contiguous(owner[0],TvShape.{rank=2,dims=[4]int.[2,3,0,0]},true).view;
+    transposed:=tv_transpose(owner[0],matrix,0,1).view;
+    data:=[6]f32.[1,2,3,4,5,6];out:[6]f32;scratch:[6]f32;
+    read:=tv_gather_checked(owner[..],transposed,data[..],out[..],scratch[..],false);
+    #assert read.status==TvStatus.ok;
+    print("transpose [3, 2], strides [1, 3]: %, %, %, %, %, %\n",out[0],out[1],out[2],out[3],out[4],out[5]);
+    saved:=tv_save(owner[0],matrix);
+    source:=[6]f32.[10,20,30,40,50,60];
+    written:=tv_scatter_checked(owner[..],transposed,source[..],data[..],scratch[..],false);
+    #assert written.status==TvStatus.ok && tv_saved_status(owner[0],saved)==TvStatus.modified;
+    print("write through transpose: %, %, %, %, %, %\n",data[0],data[1],data[2],data[3],data[4],data[5]);
+    print("storage version: %; saved value changed before backward\n",owner[0].version);
+    row:=tv_slice(owner[0],matrix,0,0,1,1).view;
+    broadcast:=tv_broadcast(owner[0],row,TvShape.{rank=2,dims=[4]int.[2,3,0,0]}).view;
+    refused:=tv_scatter_checked(owner[..],broadcast,source[..],data[..],scratch[..],false);
+    #assert refused.status==TvStatus.readonly && owner[0].version==1;
+    print("broadcast [2, 3], strides [0, 1]: read-only; write refused\n");
+    empty:=tv_slice(owner[0],matrix,0,2,0,1).view;
+    #assert tv_layout(owner[0],empty).elements==0;
+    print("empty slice: 0 elements, no address is read\n");
+    #assert tv_retire(owner[..]).status==TvStatus.ok;
+    #assert tv_layout(owner[0],matrix).status==TvStatus.state;
+    print("retired storage: existing views refused\n");
+}
+// book:end example

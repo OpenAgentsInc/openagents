@@ -738,6 +738,35 @@ plus all earlier chapters and source-linked book/transcript checks. See
 `docs/verification/psionic-ch03-2026-10-28.md`. This qualifies a bounded CPU
 profile, not learned affine layers, arbitrary layouts, gradients or devices.
 
+## Psionic CPU tensor views share one authoritative storage version
+
+`psionic/lib/tensor-view.coax` adds a separate bounded borrowed-f32 view layer;
+chapter 2's contiguous/nonempty contract is unchanged. Views have rank 0–4,
+nonnegative extents, signed element strides, absolute origins and allocation
+identity/epoch. Extents, absolute strides, nonempty logical element counts and
+backing counts are bounded by 1,048,576. Empty tensors dereference no element.
+Every public boundary re-admits metadata and proves all reachable offsets fit.
+Writable layouts require a sufficient injectivity proof; broadcast views are
+read-only, and interval alias queries conservatively retain possible overlap.
+
+Gather/scatter validate exact owner/backing extents, capacities, finite selected
+or source values and disjoint declared writable/read spans before any writes.
+Refusal preserves all spans and returns zero written. Scatter increments the
+single authoritative version exactly once on a successful nonempty write;
+saved tokens detect any alias write and refuse retired/reused allocation epochs.
+Empty writes do not increment; version overflow refuses before staging.
+The C adapter only observes ranges, including the owner record. Caller-owned
+storage, truthful valid/aligned extents, fresh identities/epochs, one live
+record per allocation, mutation through this boundary and exclusive synchronous
+access remain obligations. This is not automatic ownership, unforgeable native
+handles, concurrency, a backward engine or device placement.
+
+Check: `psionic/check.sh --only tensor-view`; independent native integer address
+and uniqueness enumeration, actual aliases, finite-bit copying, short buffers,
+zero-element null views and maximum-size transpose, plus debug/release native
+ASan/UBSan and the exact book transcript. The dated record is
+[chapter 2a](docs/verification/psionic-ch002a-2026-10-29.md).
+
 ## Psionic tensor storage admits shapes before touching caller data
 
 `psionic/lib/tensor.coax` owns contiguous binary32 shape/index/copy admission:

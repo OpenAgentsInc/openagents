@@ -1,0 +1,4 @@
+independent address/uniqueness enumeration: 28350 layouts
+four-dimensional reverse/transpose: all 240 coordinate addresses match independent equations
+native strided copies: bit preservation, untouched gaps/tails, all nonfinite classes, short spans, actual aliases, version overflow and stale epochs pass
+empty null spans and maximum 1,048,576-element transposed materialization pass

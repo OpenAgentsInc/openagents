@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "base_commit": "13f856af3cf981d02f9659d898bb6eb1e092cf9d",
+  "coax_version": "coax0 0.22.0",
+  "coax_sha256": "c5acf492faaef7ea8450245c44b454e69b208f83d9594e874be4d06eb3d3ae1a",
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "machine": "Apple arm64, macOS 26.4",
+  "flags": [
+    "-std=c11",
+    "debug:-O0",
+    "release:-O3",
+    "-g",
+    "-ffp-contract=off",
+    "-fno-fast-math",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-Wno-unused-function",
+    "-Wno-unused-parameter",
+    "-Wno-unknown-pragmas"
+  ],
+  "sanitizer_flags": [
+    "-fsanitize=address,undefined",
+    "-fno-omit-frame-pointer"
+  ],
+  "sanitizer_environment": {
+    "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+    "UBSAN_OPTIONS": "halt_on_error=1"
+  },
+  "sources_sha256": {
+    "psionic/lib/tensor-view.coax": "5635cb23773453ea82a412aa7b5dc8b021d89f6ace10e28f6fc4f60a0d15b6de",
+    "psionic/platform/tensor-view-memory.c": "6bb3a2ef6216b469e1091c5e230f0b53eb288178645cd77977143ae21dde5b87",
+    "psionic/platform/tensor-view-memory.h": "3012162a4067044505076b641f3a28d53afa46a60fdd23af75908ce9366b7609",
+    "psionic/tests/tensor_view.c": "1d54dc6fde65c8819a199a4c0f63953a15a9ab43423e9203f7c309276d507e5e",
+    "psionic/tests/check_tensor_views.sh": "358f3af03aad74526c63de8fecd98e4497e6d8970fc2b78c3635abd26c200990",
+    "psionic/examples/tensor-views.coax": "eddc3b44580bdeb186f9a0853549c00f8c4ea23db946c566ec54d7fc69d183cb",
+    "psionic/fixtures/tensor-views.out": "b88f9d4c729bb6edc64d633a87e08a77dda08b6c0680b4e732e7e7730c49f3a6"
+  },
+  "native_executables_sha256": {
+    "native-debug-plain": "c26ff0c8071fa7fcd8e61b1333ca56b5d8eb1fc022ae3f706ce1fc22ed2c739e",
+    "native-release-sanitized": "ccb1ea5654e87f1a0d177329703c417080e3736a9bcddbf733f8f2cde70c1e0a",
+    "native-release-plain": "b0878c10f3231ef72bc65d0767aaf5b3a854fc665ce35a0ab8cfe3720c751335",
+    "native-debug-sanitized": "29dce8a792dff875152bbde59c3cb3ab80aa28437e2913225926665de0ff5fb1"
+  },
+  "generated_translation_sha256": {
+    "debug": [
+      "d6f515e156757b25587e4afc46c5ebd2d7014a81a99f9aadca1102a6f0909ad5  /tmp/psionic-views-evidence/tensor-view.c",
+      "5887ab737bf08e2834088916230cbd1eb1c1d0ef8cf3ece81f7a4c9d16dd836b  /tmp/psionic-views-evidence/tensor-view.h"
+    ],
+    "release": [
+      "f6486073ec89e0e86e024f3496dcbfe7a3f93a3995f17658c1361b1a6447bf71  /tmp/psionic-views-evidence/tensor-view.c",
+      "5887ab737bf08e2834088916230cbd1eb1c1d0ef8cf3ece81f7a4c9d16dd836b  /tmp/psionic-views-evidence/tensor-view.h"
+    ]
+  },
+  "notes": [
+    "12 authored check groups per mode, including 49 generated rank-one cases. Native address enumeration covers 28,350 layouts plus 240 independent 4D reverse/transposed addresses.",
+    "Final native cases pass plain/ASan/UBSan in debug/release. Native tests were extended after an earlier pass, justifying their final rerun. Unchanged Coax checks were not rerun.",
+    "Focused runner stages were resumed after correcting unsupported Darwin leak detection and expected f32 print formatting; the final script syntax checks pass. Leak detection is not claimed on Darwin.",
+    "No mutation run, full-library suite, GPU use or original-model inference, following the owner scoped-check preference. The new authority root/native unit is registered in the full release gate.",
+    "A new compiler bootstrap was stopped when it entered broad compiler mutation gates. These checks use the recorded existing qualified compiler; no incomplete bootstrap artifact was used.",
+    "Book example matches the frozen transcript in debug/release; book structure/links/source listings pass."
+  ]
+}
