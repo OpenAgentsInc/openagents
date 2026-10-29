@@ -5,9 +5,16 @@
 // number comes from fairy.coax; the shading curves are verse/paint.coax's,
 // generated below. Light is linear until the post pass encodes it.
 //
-// The fade (verse/fairy-forest/forest.coax): colour is drained to a cool
-// grey everywhere but inside the bloom circles, which spread out from what
-// you restore; a circle's young front glows a moment.
+// The fade (verse/fairy-forest/forest.coax): colour is drained most of the
+// way to a cool grey of the same lightness (desaturated, never whitened)
+// everywhere but inside the bloom circles, which spread out from what you
+// restore; a circle's young front glows a moment.
+//
+// The palette is a clear, saturated daytime: yellow-green grass, rich
+// mid-green crowns, a teal-blue sky warming to cream round the sun, and a
+// haze only in the distance, teal in the middle distance shifting to
+// blue-violet far off. Its numbers are Fairy Forest's own, not the shared
+// painterly presets'.
 
 struct U {
   size: vec2f, time: f32, fade: f32, still: f32, plates: f32, k: f32, you_z: f32,
@@ -28,13 +35,15 @@ struct U {
 @group(0) @binding(0) var<uniform> u: U;
 
 // The painterly day key (art-styles.md 3 to 5): key, ambient, shadow tint, haze, sky.
-const KEY = vec3f(1.0, 0.95, 0.85);
-const SKY_AMB = vec3f(0.55, 0.66, 0.84);
-const GROUND_AMB = vec3f(0.45, 0.40, 0.30);
-const SHADOW_TINT = vec3f(0.52, 0.58, 0.86);
-const HAZE = vec3f(0.56, 0.74, 0.90);
-const HAZE_KEY = vec3f(1.0, 0.90, 0.72);
-const ZENITH = vec3f(0.24, 0.48, 0.86);
+const KEY = vec3f(1.0, 0.95, 0.84);
+const SKY_AMB = vec3f(0.50, 0.68, 0.82);
+const GROUND_AMB = vec3f(0.42, 0.42, 0.24);
+const SHADOW_TINT = vec3f(0.46, 0.60, 0.86);
+const HAZE = vec3f(0.50, 0.78, 0.80);       // the horizon and the middle distance's haze: teal
+const HAZE_FAR = vec3f(0.52, 0.56, 0.86);   // the far haze: blue-violet
+const HAZE_KEY = vec3f(1.0, 0.90, 0.68);    // toward the sun: warm cream
+const ZENITH = vec3f(0.14, 0.46, 0.74);     // teal-blue overhead
+const HAZE_FROM = 28.0;                     // m: nothing nearer is hazed
 const RIM_DAY = vec3f(1.0, 0.84, 0.60);
 const TAU = 6.2831853;
 
@@ -64,7 +73,9 @@ fn sky_colour(d: vec3f, clouds: bool) -> vec3f {
   c = mix(c, HAZE * 1.08, verse_paint_sky_band(up));
   let l = sun_dir();
   let cs = dot(d, l);
-  c += mix(HAZE_KEY, vec3f(1.0, 0.97, 0.9), 0.5) * verse_paint_halo(cs) * 0.5;
+  // the horizon warms to cream toward the sun, and a warm bloom rings it
+  c = mix(c, HAZE_KEY * 1.1, pow(max(cs, 0.0), 6.0) * (1.0 - smoothstep(0.0, 0.5, up)) * 0.8);
+  c += mix(HAZE_KEY, vec3f(1.0, 0.97, 0.9), 0.5) * verse_paint_halo(cs) * 0.8;
   if (cs > 0.99939) { c = vec3f(1.0, 0.97, 0.9) * 4.0; }   // the disc, drawn at 2 degrees
   if (clouds && up > 0.01) {
     let drift = vec2f(u.time * 3.0, u.time * 1.2) * (1.0 - u.still);
@@ -100,17 +111,22 @@ fn restored(xz: vec2f) -> vec2f {
 // The faded world: the painted colour drained to a pale, cool grey.
 fn faded(c: vec3f, r: f32) -> vec3f {
   let l = dot(c, vec3f(0.3, 0.55, 0.15));
-  let grey = vec3f(l) * vec3f(0.94, 0.97, 1.04) * 0.82 + vec3f(0.03);
-  return mix(mix(grey, c, 0.3), c, r);
+  let grey = vec3f(l) * vec3f(0.92, 0.99, 1.02) * 0.84;
+  return mix(mix(grey, c, 0.45), c, r);
 }
 
 // The haze over a surface at world seen from the eye.
+// It starts HAZE_FROM past the shared curve's own start, so the near and
+// middle distance stay crisp, and it shifts from teal to blue-violet far off.
+fn haze_colour(d: f32, to_sun: f32) -> vec3f {
+  let far = mix(HAZE, HAZE_FAR, smoothstep(60.0, 220.0, d));
+  return mix(far, HAZE_KEY, verse_paint_haze_sun(to_sun));
+}
 fn hazed(c: vec3f, world: vec3f) -> vec3f {
   let to = world - u.eye.xyz;
   let d = length(to);
-  let f = verse_paint_haze(d, world.y - 0.0, u.eye.w);
-  let warm = verse_paint_haze_sun(dot(to / max(d, 0.001), sun_dir()));
-  return mix(c, mix(HAZE, HAZE_KEY, warm), f);
+  let f = verse_paint_haze(max(d - HAZE_FROM, 0.0), world.y - 0.0, u.eye.w) * 0.85;
+  return mix(c, haze_colour(d, dot(to / max(d, 0.001), sun_dir())), f);
 }
 
 fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
@@ -161,6 +177,7 @@ struct S {
   @location(1) normal: vec3f,
   @location(2) tint: vec3f,
   @location(3) @interpolate(flat) look: u32,
+  @location(4) local: vec3f,     // where on its shape (a unit shape, -0.5 to 0.5): a wing's veins
 }
 
 fn quad(v: u32) -> vec2f {
@@ -322,6 +339,7 @@ fn wind_bend(xz: vec2f) -> f32 {
   o.normal = normalize(normal + vec3f(0.0, 0.00001, 0.0));
   o.tint = m.colour.rgb;
   o.look = look;
+  o.local = v.p;
   return o;
 }
 
@@ -339,10 +357,11 @@ fn grass_vertex(id: u32, cell: u32) -> S {
   let centre = u.grass.xy + vec2f(f32(side));
   let reach = u.grass2.x;
   let r = distance(xz, centre);
-  var tall = (0.35 + 0.25 * h3) * (1.0 - smoothstep(reach - 6.0, reach, r));
+  var tall = (0.42 + 0.4 * h3) * (1.0 - smoothstep(reach - 6.0, reach, r));
   let gy = ground_h(xz);
   if (path_distance(xz) < u.grass2.z + 0.15 || gy < u.grass2.y + 0.08 || length(xz) < 5.0) { tall = 0.0; }
   if (tall < 0.02) { o.pos = vec4f(0.0, 0.0, 2.0, 1.0); return o; }
+  tall *= mix(0.6, 1.25, restored(xz).x);   // restored meadows grow tall
   let yaw = h4 * TAU;
   let across = vec3f(cos(yaw), 0.0, sin(yaw)) * 0.03;
   let base = vec3f(xz.x, gy - 0.02, xz.y);
@@ -370,12 +389,12 @@ fn grass_vertex(id: u32, cell: u32) -> S {
 // The ground's painted colour at xz: broad meadow greens, warm trails, sandy banks.
 fn ground_colour(xz: vec2f) -> vec3f {
   let broad = noise(xz * 0.06);
-  var base = mix(vec3f(0.17, 0.36, 0.08), vec3f(0.27, 0.44, 0.10), broad);
-  base *= 0.92 + 0.16 * noise(xz * 0.21 + vec2f(3.0, 1.0));
+  var base = mix(vec3f(0.10, 0.27, 0.035), vec3f(0.19, 0.35, 0.045), broad);
+  base *= 0.9 + 0.2 * noise(xz * 0.21 + vec2f(3.0, 1.0));
   let d = path_distance(xz);
   let half = u.path_info.y;
   let edge = 1.0 - smoothstep(half - 0.25, half + 0.25, d);
-  base = mix(base, vec3f(0.50, 0.38, 0.22), edge);
+  base = mix(base, vec3f(0.52, 0.36, 0.18), edge);
   return base;
 }
 
@@ -389,7 +408,10 @@ fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> ve
   var band = verse_paint_band(w);
   if (character) { band = verse_paint_band2(w); }
   let ambient = mix(GROUND_AMB, SKY_AMB, n.y * 0.5 + 0.5) * 0.55;
-  var light = c * mix(SHADOW_TINT * ambient * 1.25, KEY + ambient, band);
+  var shade = SHADOW_TINT * ambient * 1.25;
+  // a character's shadow side stays warm and light, so she reads against the greens
+  if (character) { shade = mix(shade, KEY * 0.8, 0.5); }
+  var light = c * mix(shade, KEY + ambient, band);
   let strength = select(0.30, 0.45, character);
   light += RIM_DAY * verse_paint_rim(abs(dot(n, v)), ndl, strength) * mix(vec3f(0.6), c * 1.6, 0.4);
   return light;
@@ -406,20 +428,38 @@ fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> ve
   if (s.look == 99u) {
     base = ground_colour(xz);
     // the banks: sand where the ground dips to the water
-    base = mix(base, vec3f(0.55, 0.48, 0.32), smoothstep(u.grass2.y + 0.5, u.grass2.y - 0.1, s.world.y));
+    base = mix(base, vec3f(0.58, 0.46, 0.26), smoothstep(u.grass2.y + 0.5, u.grass2.y - 0.1, s.world.y));
     shadow = blob_shadows(xz);
   } else if (s.look == 98u) {
-    base = ground_colour(xz) * mix(0.82, 1.18, s.tint.x) * (0.96 + 0.08 * s.tint.y);
-    base = mix(base, base * vec3f(1.12, 1.08, 0.82), s.tint.x * 0.6);
+    base = ground_colour(xz) * mix(0.78, 1.2, s.tint.x) * (0.94 + 0.12 * s.tint.y);
+    base = mix(base, base * vec3f(1.2, 1.08, 0.7), s.tint.x * 0.6);
     shadow = blob_shadows(xz);
   } else if (s.look == 3u || s.look == 6u) {
     character = true; keep = true;
   } else if (s.look == 4u) {
     glow = 1.0;
+  } else if (s.look == 9u) {
+    glow = 1.0; keep = true;
   } else if (s.look == 5u) {
+    // a wing: veins fanning from its root, a bright rim, and between them a
+    // thin membrane the light shows through (every other pixel of it drawn)
+    let q = s.local.xy * 2.0;
+    let fan = atan2(q.x, q.y + 1.0);
+    let vein = 1.0 - smoothstep(0.035, 0.09, abs(fract(fan * 2.4 + 0.5) - 0.5));
+    let rim = smoothstep(0.78, 0.96, length(q));
+    let cross_vein = 1.0 - smoothstep(0.02, 0.06, abs(fract(length(q + vec2f(0.0, 1.0)) * 2.2) - 0.5) - 0.44);
+    let solid = max(max(vein, rim), cross_vein * 0.6);
+    let cell = vec2u(s.pos.xy) % 2u;
+    if (solid < 0.5 && (cell.x + cell.y) % 2u == 0u) { discard; }
+    base = mix(base * 0.8, mix(base, vec3f(1.0), 0.55), solid);
     glow = 0.8; keep = true;
   } else if (s.look == 7u) {
     keep = true;
+  } else if (s.look == 8u) {
+    // bark: moss in patches up the trunk, darker toward its foot
+    let moss = smoothstep(0.35, 0.75, noise(vec2f(s.world.x + s.world.z, s.world.y * 1.3) * 1.7));
+    base = mix(base, vec3f(0.26, 0.40, 0.12), moss * 0.7);
+    base *= mix(0.5, 1.0, smoothstep(-0.5, 0.05, s.local.y));
   }
   let r = restored(xz);
   if (!keep) { base = faded(base, r.x); }
@@ -746,7 +786,7 @@ fn water_fragment(i: WaterOut) -> WaterShade {
   var emit = body * alpha * (1.0 - fresnel) + refl * fresnel * smoothstep(-0.05, 0.1, depth) + vec3f(1.0, 0.97, 0.88) * sparkle * 3.0;
   emit = mix(emit, white, foam);
   // the haze over the water, as over every surface
-  let hz = verse_paint_haze(dist, world.y, u.eye.w);
+  let hz = verse_paint_haze(max(dist - HAZE_FROM, 0.0), world.y, u.eye.w) * 0.85;
   let trans = vec3f((1.0 - alpha) * (1.0 - fresnel) * (1.0 - foam));
   o.emit = emit * (1.0 - hz) + mix(HAZE, HAZE_KEY, verse_paint_haze_sun(dot(-v, l))) * hz * (vec3f(1.0) - trans);
   o.transmit = trans;
@@ -792,11 +832,14 @@ struct Step { v: vec4f }
 @group(1) @binding(4) var post_depth: texture_depth_2d;
 @group(1) @binding(5) var post_lin: sampler;
 
-// The tone (art-styles.md 9): 1 - exp(-1.6 c), saturation up 1.10, blacks lifted.
+// The tone (art-styles.md 9): 1 - exp(-k c), blacks lifted (verse_paint_tone).
+// Fairy Forest's own: saturation up 1.28 and a little contrast round the middle, for a clear day.
 fn tone(c: vec3f) -> vec3f {
-  var t = vec3f(verse_paint_tone(c.r, 1.3), verse_paint_tone(c.g, 1.3), verse_paint_tone(c.b, 1.3));
+  var t = vec3f(verse_paint_tone(c.r, 1.35), verse_paint_tone(c.g, 1.35), verse_paint_tone(c.b, 1.35));
   let l = dot(t, vec3f(0.2126, 0.7152, 0.0722));
-  return clamp(vec3f(l) + (t - vec3f(l)) * 1.25, vec3f(0.0), vec3f(1.0));
+  t = vec3f(l) + (t - vec3f(l)) * 1.28;
+  t = mix(t, t * t * (3.0 - 2.0 * t), 0.25);
+  return clamp(t, vec3f(0.0), vec3f(1.0));
 }
 
 @fragment fn post_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
@@ -805,7 +848,7 @@ fn tone(c: vec3f) -> vec3f {
   let light = textureLoad(post_light, p, 0).rgb;
   let near = textureSampleLevel(post_quarter, post_lin, uv, 0.0).rgb;
   let far = textureSampleLevel(post_eighth, post_lin, uv, 0.0).rgb;
-  let mixback = select(0.30, 0.22, u.sun.w > 0.5);
+  let mixback = select(0.26, 0.2, u.sun.w > 0.5);
   let c = light + (near * 0.55 + far * 0.45) * mixback * 3.0;
   return vec4f(plates(pos.xy, encode(tone(c))), 1.0);
 }

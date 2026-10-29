@@ -31,6 +31,7 @@
 #load "../../verse/camera.coax";
 #load "../../verse/terrain.coax";
 #load "../../verse/fairy-forest/forest.coax";
+#load "place-orbit.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 16000;
@@ -57,7 +58,7 @@ OBJECTS :: 1640;
 OBJECT_FLOATS :: 16;
 // Looks (fairy.wgsl): how a surface takes the light and the fade.
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_GLOW :: 4; LOOK_WING :: 5;
-LOOK_CLOTH :: 6; LOOK_RIDGE :: 7; LOOK_BARK :: 8;
+LOOK_CLOTH :: 6; LOOK_RIDGE :: 7; LOOK_BARK :: 8; LOOK_SPARK :: 9;   // her own light: glows, and the fade never dims it
 // The draws: the ground and four shapes, the grass, then the water (last: the host draws it after the rest).
 DRAWS :: 7;
 GRASS_DRAW :: 5;
@@ -73,6 +74,7 @@ BOXES :: 120;
 TREES :: 190;              // x, z, height, canopy radius, hue
 TREE_FLOATS :: 5;
 RIDGES :: 30;
+FERNS :: 40;               // x, z, yaw, size
 
 HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 16; HOLD_JUMP :: 32;
 HOLD_TURN_LEFT :: 64; HOLD_TURN_RIGHT :: 128; HOLD_TILT_UP :: 256; HOLD_TILT_DOWN :: 512;
@@ -114,11 +116,13 @@ Fairy :: struct {
   spheres: [SPHERES * 4] f32; sphere_n: int;
   boxes: [BOXES * 6] f32; box_n: int;
   trees: [TREES * TREE_FLOATS] f32; tree_n: int;
+  ferns: [FERNS * 4] f32; fern_n: int;
   shadow_n: int;
   plate_n: int;
   water_vertices: int; water_patches: int;
   pads: [7 * 8] f32; pad_n: int;
   near_creature: int;
+  sparks: [18 * 4] f32; spark_next: int; spark_clock: f32;
   taps: int;   // Space presses not yet taken by the face: each is one wing beat
 }
 
@@ -181,6 +185,7 @@ fairy_start :: (s: [] Fairy) {
   s[0].near_creature = -1;
   s[0].forest[0].news = -1;
   plant_trees(s);
+  plant_ferns(s);
   build_scenery(s);
 }
 
@@ -242,6 +247,56 @@ plant_trees :: (s: [] Fairy) {
     }
   }
   s[0].tree_n = n;
+}
+
+// Ferns round each glade's edge and by the trails near where you wake, off the trails and the water.
+plant_ferns :: (s: [] Fairy) {
+  n := 0;
+  nodes := FF_NODE_XZ; links := FF_LINK_AB;
+  for g: 0..<FF_GLADES {
+    for k: 0..<20 {
+      if n >= FERNS { break; }
+      a := f32(k) * 2.399 + f32(g);
+      d := FF_GLADE[g * 3 + 2] * (0.75 + 0.5 * hash1(f32(k), f32(g) + 3));
+      x := FF_GLADE[g * 3] + cos(a) * d; z := FF_GLADE[g * 3 + 1] + sin(a) * d;
+      if verse_path_nearest(nodes[..], links[..], x, z).d < f32(FF_PATH_HALF) + 0.8 { continue; }
+      st := ff_stream_near(x, z);
+      if st.d < st.half + 1.5 { continue; }
+      if ff_patch_near_xz(x, z, 1.8) { continue; }
+      k4 := n * 4;
+      s[0].ferns[k4] = x; s[0].ferns[k4 + 1] = z; s[0].ferns[k4 + 2] = a * 3; s[0].ferns[k4 + 3] = 0.7 + 0.5 * hash1(x, z);
+      n += 1;
+    }
+  }
+  s[0].fern_n = n;
+}
+ff_patch_near_xz :: (x: f32, z: f32, r: f32) -> bool {
+  for i: 0..<FF_PATCHES {
+    dx := x - FF_PATCH[i * 4]; dz := z - FF_PATCH[i * 4 + 1];
+    if dx * dx + dz * dz < (r + 1.4) * (r + 1.4) { return true; }
+  }
+  return false;
+}
+
+// A fern: five fronds arching out from its heart, the nearest ones first while the spheres last.
+ferns :: (s: [] Fairy, eye: Point) {
+  t := effect_time(s);
+  for f: 0..<s[0].fern_n {
+    k := f * 4;
+    x := s[0].ferns[k]; z := s[0].ferns[k + 1]; yaw := s[0].ferns[k + 2]; size := s[0].ferns[k + 3];
+    dx := x - eye.x; dz := z - eye.z;
+    if dx * dx + dz * dz > 1600 { continue; }
+    if s[0].counts[SHAPE_SPHERE] > SLOTS[SHAPE_SPHERE] - 8 { return; }
+    g := ground_at(s, x, z);
+    for i: 0..<5 {
+      a := yaw + f32(i) * 1.2566;
+      sway := sin(t * 1.4 + f32(f) + f32(i)) * 0.05;
+      out := v3(sin(a), 0, cos(a));
+      c := add(v3(x, g + 0.32 * size, z), times(out, 0.42 * size));
+      shade := 0.85 + 0.3 * hash1(f32(f), f32(i));
+      shape(s, SHAPE_SPHERE, LOOK_LEAVES, c, a, 1.0 + sway, 0.2 * size, 0.95 * size, 0.04, 0.2 * shade, 0.5 * shade, 0.08 * shade);
+    }
+  }
 }
 
 put6 :: (out: [] f32, i: int, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
@@ -349,6 +404,34 @@ fairy_walls :: (s: [] Fairy) -> int #export_c { if !s[0].started { fairy_start(s
 fairy_spawn :: (s: [] Fairy) -> Point #export_c { if !s[0].started { fairy_start(s); } return v3(f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z)); }
 fairy_spawn_face :: () -> f32 #export_c { return f32(FF_SPAWN_FACE); }
 fairy_heights :: (s: [] Fairy) -> int #export_c { if !s[0].started { fairy_start(s); } return FF_GROUND_POINTS; }
+
+// ---- where you are, kept so a reload puts you back (place.coax, the face's place-face.h)
+
+// Open ground: inside the valley's bound, out of the stream's water and clear of the trunks.
+fairy_place_open :: (s: [] Fairy, x: f32, z: f32) -> bool #export_c {
+  if !s[0].started { fairy_start(s); }
+  b := f32(FF_BOUND) - 1;
+  if !finite(x) || !finite(z) || x < -b || x > b || z < -b || z > b { return false; }
+  if ground_at(s, x, z) < f32(FF_LEVEL) + 0.1 { return false; }
+  return verse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
+}
+// A kept place made good: itself when open, else the nearest open spot, else the spawn.
+fairy_place_fix :: (s: [] Fairy, p: Place) -> Place #export_c {
+  q := p; q.y = 0; q.room = -1;
+  for i: 0..<PLACE_TRIES {
+    t := verse_place_try(p.x, p.z, i);
+    if fairy_place_open(s, t.x, t.z) { q.x = t.x; q.z = t.z; return q; }
+  }
+  q.x = f32(FF_SPAWN_X); q.z = f32(FF_SPAWN_Z); q.face = f32(FF_SPAWN_FACE); q.yaw = f32(FF_SPAWN_FACE);
+  return q;
+}
+// The camera behind you at a kept place, as it was kept.
+fairy_place_camera :: (s: [] Fairy, p: Place) #export_c {
+  if !s[0].started { fairy_start(s); }
+  s[0].feet = v3(p.x, ground_at(s, p.x, p.z), p.z); s[0].face = p.face;
+  s[0].orbit = verse_place_orbit(p, s[0].feet);
+}
+fairy_place_of :: (s: [] Fairy, x: f32, y: f32, z: f32, face: f32) -> Place #export_c { return verse_place_of(x, y, z, face, s[0].orbit, -1); }
 
 // ---- the controls
 
@@ -490,18 +573,23 @@ shadow :: (s: [] Fairy, u: [] f32, x: f32, z: f32, radius: f32, strength: f32) {
 
 effect_time :: (s: [] Fairy) -> f32 { return ifx s[0].golden then f32(GOLDEN_TIME) else f32(s[0].time); }
 
-// The forest's trees: a trunk and a canopy of three soft blobs, in yellow-leaning greens.
+// The forest's trees: a warm trunk and a canopy of three clumps, rich mid-greens, one lighter and one darker.
 trees :: (s: [] Fairy, u: [] f32, eye: Point) {
   for t: 0..<s[0].tree_n {
     k := t * TREE_FLOATS;
     x := s[0].trees[k]; z := s[0].trees[k + 1]; h := s[0].trees[k + 2]; r := s[0].trees[k + 3]; hue := s[0].trees[k + 4];
     g := ground_at(s, x, z);
-    shape(s, SHAPE_CYLINDER, LOOK_BARK, v3(x, g + h * 0.5 - 0.3, z), 0, 0, 0.5, h + 0.6, 0.5, 0.36, 0.25, 0.17);
-    gr := 0.22 + hue * 0.1; gg := 0.46 + hue * 0.08; gb := 0.14 + hue * 0.04;
-    if hue > 0.8 { gr = 0.5; gg = 0.42; gb = 0.2; }   // a few autumn-gold crowns
+    shape(s, SHAPE_CYLINDER, LOOK_BARK, v3(x, g + h * 0.5 - 0.3, z), 0, 0, 0.5, h + 0.6, 0.5, 0.44, 0.38, 0.24);
+    // a flared foot of roots on the near trees, while the cones last
+    dx0 := x - eye.x; dz0 := z - eye.z;
+    if dx0 * dx0 + dz0 * dz0 < 1600 && s[0].counts[SHAPE_CONE] < SLOTS[SHAPE_CONE] - 24 {
+      shape(s, SHAPE_CONE, LOOK_BARK, v3(x, g + 0.3, z), hue * 4, 0, 1.25, 1.0, 1.15, 0.4, 0.36, 0.22);
+    }
+    gr := 0.12 + hue * 0.12; gg := 0.42 + hue * 0.12; gb := 0.05 + hue * 0.03;
+    if hue > 0.86 { gr = 0.62; gg = 0.5; gb = 0.1; }   // a few autumn-gold crowns
     shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x, g + h + r * 0.55, z), hue * 6, 0, r * 2.2, r * 1.9, r * 2.2, gr, gg, gb);
-    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x + r * 0.55, g + h + r * 0.05, z - r * 0.35), 0, 0, r * 1.4, r * 1.2, r * 1.4, gr * 1.08, gg * 1.05, gb);
-    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x - r * 0.45, g + h + r * 0.15, z + r * 0.4), 0, 0, r * 1.3, r * 1.15, r * 1.3, gr * 0.95, gg, gb * 1.1);
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x + r * 0.55, g + h + r * 0.05, z - r * 0.35), 0, 0, r * 1.4, r * 1.2, r * 1.4, gr * 1.35, gg * 1.22, gb * 1.1);
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x - r * 0.45, g + h + r * 0.15, z + r * 0.4), 0, 0, r * 1.3, r * 1.15, r * 1.3, gr * 0.7, gg * 0.78, gb * 1.2);
     dx := x - eye.x; dz := z - eye.z;
     if dx * dx + dz * dz < 900 { shadow(s, u, x, z, r * 1.4, 0.5); }
   }
@@ -695,58 +783,201 @@ creatures :: (s: [] Fairy, u: [] f32, you: Point) {
   }
 }
 
-// You: a small fairy in a petal dress, with two pairs of glowing wings that flap.
+// A shape at centre whose three axes are given (their lengths the sizes): for
+// what yaw and tilt can't turn, a wing's membrane along its own spars.
+oriented :: (s: [] Fairy, kind: int, look: int, centre: Point, c0: Point, c1: Point, c2: Point, red: f32, green: f32, blue: f32) {
+  if kind < 1 || kind > 4 { return; }
+  n := s[0].counts[kind];
+  if n >= SLOTS[kind] { return; }
+  s[0].counts[kind] = n + 1;
+  o := (SLOT_AT[kind] + n) * OBJECT_FLOATS;
+  s[0].objects[o] = c0.x; s[0].objects[o + 1] = c1.x; s[0].objects[o + 2] = c2.x; s[0].objects[o + 3] = centre.x;
+  s[0].objects[o + 4] = c0.y; s[0].objects[o + 5] = c1.y; s[0].objects[o + 6] = c2.y; s[0].objects[o + 7] = centre.y;
+  s[0].objects[o + 8] = c0.z; s[0].objects[o + 9] = c1.z; s[0].objects[o + 10] = c2.z; s[0].objects[o + 11] = centre.z;
+  s[0].objects[o + 12] = red; s[0].objects[o + 13] = green; s[0].objects[o + 14] = blue;
+  s[0].objects[o + 15] = f32(kind + 8 * look);
+}
+
+// The figure's measures, from her feet (m).
+FAIRY_HIP :: 0.6;
+FAIRY_SHOULDER :: 1.06;
+FAIRY_HEAD :: 1.34;         // the head's centre
+FAIRY_HEAD_R :: 0.18;       // its radius; the hair reaches 0.2
+FAIRY_WING_ROOT :: 0.98;    // the wings' roots: on the upper back, under the shoulders
+FAIRY_WING_BACK :: 0.12;    // behind the spine
+FAIRY_WING_SIDE :: 0.06;    // out from it
+WING_UP_LONG :: 0.66; WING_UP_WIDE :: 0.36;
+WING_LOW_LONG :: 0.46; WING_LOW_WIDE :: 0.26;
+
+Wing :: struct { root: Point; along: Point; across: Point; flat: Point; reach: f32; wide: f32; }
+
+// One wing: pair 0 the upper, 1 the lower; side +1 her right, -1 her left;
+// beat -1 (down) to 1 (up). Each sweeps out and a little back from the
+// upper back, the upper pair rising at most 20 degrees and the lower hanging
+// below it, so from behind it never crosses her head (the test below).
+fairy_wing :: (feet: Point, face: f32, pair: int, side: f32, beat: f32) -> Wing {
+  ahead := v3(sin(face), 0, cos(face));
+  right := v3(-cos(face), 0, sin(face));
+  w: Wing;
+  w.root = add(add(feet, v3(0, f32(FAIRY_WING_ROOT), 0)), add(times(ahead, -f32(FAIRY_WING_BACK)), times(right, side * f32(FAIRY_WING_SIDE))));
+  rise := ifx pair == 0 then 0.1f32 + 0.25f32 * beat else -0.55f32 + 0.18f32 * beat;
+  back := ifx pair == 0 then 0.22f32 else 0.16f32;
+  out := add(times(right, side * cos(rise) * cos(back)), add(v3(0, sin(rise), 0), times(ahead, -cos(rise) * sin(back))));
+  w.along = unit_or(out, right);
+  // the membrane lies about in her back's plane
+  w.across = unit_or(cross(ahead, w.along), v3(0, 1, 0));
+  w.flat = cross(w.along, w.across);
+  w.reach = ifx pair == 0 then f32(WING_UP_LONG) else f32(WING_LOW_LONG);
+  w.wide = ifx pair == 0 then f32(WING_UP_WIDE) else f32(WING_LOW_WIDE);
+  return w;
+}
+
+// You: a small fairy with a round face, pointed ears and copper hair in a
+// bun, a gold bodice over a coral dress with a petal hem, and two pairs of
+// glowing, veined wings on her upper back that beat with each flap.
 fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, act: int, air: f32, flap: f32) {
   t := effect_time(s);
   walking := act == 1 || act == 2;
-  swing := ifx walking && air < 0.2 then sin(stride * 2.4) * (ifx act == 2 then 0.7f32 else 0.45f32) else 0.0f32;
-  bob := ifx walking then abs(cos(stride * 2.4)) * 0.04 else sin(t * 2) * 0.02;
+  flying := air > 0.2;
+  swing := ifx walking && !flying then sin(stride * 2.4) * (ifx act == 2 then 0.7f32 else 0.45f32) else 0.0f32;
+  bob := ifx walking && !flying then abs(cos(stride * 2.4)) * 0.04 else ifx flying then sin(t * 2.6) * 0.06 else sin(t * 2) * 0.02;
   base := add(feet, v3(0, bob, 0));
   ahead := v3(sin(face), 0, cos(face));
   right := v3(-cos(face), 0, sin(face));
-  hip := add(base, v3(0, 0.62, 0));
-  skin := v3(0.96, 0.8, 0.68);
+  up := v3(0, 1, 0);
+  // warm colours, so she stands out against the greens
+  skin := v3(0.98, 0.76, 0.62);
+  leaf := v3(1.0, 0.72, 0.26);     // the bodice: sunflower gold
+  rose := v3(1.0, 0.36, 0.40);     // the dress: coral rose
+  petal := v3(1.0, 0.62, 0.46);    // the hem and sleeves: peach
+  hair := v3(0.9, 0.36, 0.2);      // copper
+  hip := add(base, v3(0, f32(FAIRY_HIP), 0));
+  // legs: a thigh and a calf, the knee bent when the leg swings back or she flies
   for side: 0..<2 {
     sign := ifx side == 0 then 1.0f32 else -1.0f32;
-    leg := add(hip, times(right, 0.08 * sign));
-    a := ifx air > 0.2 then 0.25f32 * sign else swing * sign;
-    down := v3(sin(face) * sin(a), -cos(a), cos(face) * sin(a));
-    limb(s, SHAPE_CYLINDER, LOOK_SKIN, leg, add(leg, times(down, 0.6)), 0.09, skin.x, skin.y, skin.z);
-    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(leg, times(down, 0.62)), face, 0, 0.12, 0.08, 0.18, 0.5, 0.76, 0.48);
-    shoulder := add(add(base, v3(0, 1.07, 0)), times(right, 0.17 * sign));
-    arm_a := ifx air > 0.2 then 0.9f32 else -a * 0.8;
-    arm := add(times(v3(sin(face) * sin(arm_a), -cos(arm_a), cos(face) * sin(arm_a)), 1), times(right, (ifx air > 0.2 then 0.5f32 else 0.1f32) * sign));
-    limb(s, SHAPE_CYLINDER, LOOK_SKIN, shoulder, add(shoulder, times(unit_or(arm, v3(0, -1, 0)), 0.46)), 0.075, skin.x, skin.y, skin.z);
+    top := add(hip, times(right, 0.075 * sign));
+    a := ifx flying then -0.25f32 + 0.1f32 * sign else swing * sign;
+    bend := ifx flying then 0.7f32 else hi(-a, 0) * 0.9 + 0.08;
+    down := add(times(ahead, sin(a)), v3(0, -cos(a), 0));
+    knee := add(top, times(down, 0.3));
+    shin := add(times(ahead, sin(a - bend)), v3(0, -cos(a - bend), 0));
+    ankle := add(knee, times(shin, 0.27));
+    limb(s, SHAPE_CYLINDER, LOOK_SKIN, top, knee, 0.1, skin.x, skin.y, skin.z);
+    shape(s, SHAPE_SPHERE, LOOK_SKIN, knee, face, 0, 0.09, 0.09, 0.09, skin.x, skin.y, skin.z);
+    limb(s, SHAPE_CONE, LOOK_SKIN, add(ankle, times(shin, -0.04)), add(knee, times(shin, -0.06)), 0.1, skin.x, skin.y, skin.z);
+    // a leaf slipper, pointed
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(ankle, add(times(ahead, 0.04), v3(0, -0.01, 0))), face, 0.25, 0.09, 0.07, 0.19, 0.5, 0.3, 0.16);
   }
-  // the petal dress: a cone of rose petals over a leaf-green bodice
-  shape(s, SHAPE_CONE, LOOK_CLOTH, add(base, v3(0, 0.7, 0)), face, 0, 0.62, 0.55, 0.62, 0.96, 0.6, 0.72);
+  // the dress: a rose bell, a hem of petals, a leaf bodice and a gold sash
+  shape(s, SHAPE_CONE, LOOK_CLOTH, add(base, v3(0, 0.72, 0)), face, 0, 0.56, 0.5, 0.52, rose.x, rose.y, rose.z);
+  for k: 0..<9 {
+    a := face + f32(k) * 0.6981 + 0.35;
+    lift := ifx flying then 0.06f32 * sin(t * 5 + f32(k)) else 0.0f32;
+    c := ifx k % 2 == 0 then petal else rose;
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(base, v3(sin(a) * 0.27, 0.47 + lift, cos(a) * 0.27)), a, -0.5 - lift * 3, 0.2, 0.3, 0.06, c.x, c.y, c.z);
+  }
+  shape(s, SHAPE_CYLINDER, LOOK_CLOTH, add(base, v3(0, 0.99, 0)), face, 0, 0.25, 0.24, 0.2, leaf.x, leaf.y, leaf.z);
+  shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(base, v3(0, 1.08, 0)), face, 0, 0.27, 0.12, 0.21, leaf.x, leaf.y, leaf.z);
+  shape(s, SHAPE_CYLINDER, LOOK_CLOTH, add(base, v3(0, 0.88, 0)), face, 0, 0.27, 0.05, 0.22, 0.3, 0.7, 0.34);
+  limb(s, SHAPE_CYLINDER, LOOK_SKIN, add(base, v3(0, 1.1, 0)), add(base, v3(0, 1.2, 0)), 0.07, skin.x, skin.y, skin.z);
+  // arms: a puffed sleeve, the upper arm, the forearm and a hand; out to the sides in the air
+  for side: 0..<2 {
+    sign := ifx side == 0 then 1.0f32 else -1.0f32;
+    shoulder := add(add(base, v3(0, f32(FAIRY_SHOULDER), 0)), times(right, 0.15 * sign));
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, shoulder, face, 0, 0.13, 0.11, 0.12, petal.x, petal.y, petal.z);
+    swing_a := ifx flying then 0.0f32 else -swing * 0.7;
+    spread := ifx flying then 0.75f32 + 0.15f32 * sin(t * 3) else 0.18f32;
+    upper := unit_or(add(add(times(ahead, sin(swing_a)), v3(0, -cos(spread) * cos(swing_a), 0)), times(right, sin(spread) * sign)), v3(0, -1, 0));
+    elbow := add(shoulder, times(upper, 0.22));
+    fore := unit_or(add(upper, add(times(ahead, 0.35), v3(0, ifx flying then 0.3f32 else 0.0f32, 0))), upper);
+    wrist := add(elbow, times(fore, 0.2));
+    limb(s, SHAPE_CYLINDER, LOOK_SKIN, shoulder, elbow, 0.07, skin.x, skin.y, skin.z);
+    shape(s, SHAPE_SPHERE, LOOK_SKIN, elbow, face, 0, 0.065, 0.065, 0.065, skin.x, skin.y, skin.z);
+    limb(s, SHAPE_CONE, LOOK_SKIN, add(wrist, times(fore, 0.03)), add(elbow, times(fore, -0.05)), 0.075, skin.x, skin.y, skin.z);
+    shape(s, SHAPE_SPHERE, LOOK_SKIN, add(wrist, times(fore, 0.03)), face, 0, 0.07, 0.08, 0.06, skin.x, skin.y, skin.z);
+  }
+  // the head and face
+  head := add(base, v3(0, f32(FAIRY_HEAD), 0));
+  hr := f32(FAIRY_HEAD_R);
+  shape(s, SHAPE_SPHERE, LOOK_SKIN, head, face, 0, hr * 2, hr * 1.9, hr * 1.95, skin.x, skin.y, skin.z);
+  for side: 0..<2 {
+    sign := ifx side == 0 then 1.0f32 else -1.0f32;
+    eye := add(head, add(times(ahead, hr * 0.86), add(times(right, 0.068 * sign), v3(0, -0.005, 0))));
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, eye, face, 0, 0.052, 0.072, 0.03, 0.16, 0.12, 0.3);
+    shape(s, SHAPE_SPHERE, LOOK_SPARK, add(eye, add(times(ahead, 0.014), add(times(right, 0.012 * sign), v3(0, 0.016, 0)))), 0, 0, 0.02, 0.02, 0.012, 0.75, 0.78, 0.82);
+    cheek := add(head, add(times(ahead, hr * 0.8), add(times(right, 0.105 * sign), v3(0, -0.055, 0))));
+    shape(s, SHAPE_SPHERE, LOOK_SKIN, cheek, face, 0, 0.05, 0.03, 0.025, 1.0, 0.56, 0.58);
+    // a pointed ear, back and up
+    ear := add(head, add(times(right, hr * 0.95 * sign), v3(0, 0.0, -0.02)));
+    limb(s, SHAPE_CONE, LOOK_SKIN, ear, add(ear, add(times(right, 0.11 * sign), add(v3(0, 0.08, 0), times(ahead, -0.06)))), 0.06, skin.x, skin.y, skin.z);
+  }
+  shape(s, SHAPE_SPHERE, LOOK_SKIN, add(head, add(times(ahead, hr * 0.98), v3(0, -0.035, 0))), face, 0, 0.024, 0.02, 0.02, skin.x, skin.y * 0.95, skin.z * 0.95);
+  shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(times(ahead, hr * 0.9), v3(0, -0.085, 0))), face, 0, 0.045, 0.016, 0.02, 0.86, 0.3, 0.42);
+  // hair: a cap swept back, a fringe, locks down her back, two buns and a flower
+  shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(v3(0, 0.035, 0), times(ahead, -0.04))), face, 0, hr * 2.2, hr * 2.0, hr * 2.15, hair.x, hair.y, hair.z);
+  for k: 0..<3 {
+    off := (f32(k) - 1) * 0.07;
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(times(ahead, hr * 0.72), add(times(right, off), v3(0, 0.12 - abs(off) * 0.4, 0)))), face + off * 3, 0.5, 0.1, 0.07, 0.08, hair.x * 1.05, hair.y * 1.05, hair.z);
+  }
+  for k: 0..<3 {
+    off := (f32(k) - 1) * 0.09;
+    from := add(head, add(times(ahead, -0.11), add(times(right, off), v3(0, 0.02, 0))));
+    sway := ifx flying then 0.1f32 * sin(t * 4 + f32(k)) else 0.03f32 * sin(t * 1.5 + f32(k));
+    limb(s, SHAPE_CONE, LOOK_CLOTH, from, add(from, add(times(ahead, -0.08 - sway), add(times(right, off * 0.6), v3(0, -0.34 + abs(off), 0)))), 0.12, hair.x * 0.92, hair.y * 0.92, hair.z * 0.95);
+  }
+  shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(v3(0, 0.17, 0), times(ahead, -0.11))), face, 0.6, 0.17, 0.15, 0.15, hair.x * 1.08, hair.y * 1.08, hair.z);
+  // a flower over her left ear: five pink petals round a gold heart
+  bloom_at := add(head, add(times(right, -0.165), add(v3(0, 0.1, 0), times(ahead, 0.03))));
   for k: 0..<5 {
-    a := face + f32(k) * 1.2566;
-    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(base, v3(sin(a) * 0.24, 0.5, cos(a) * 0.24)), a, 0.5, 0.22, 0.12, 0.3, 0.98, 0.7, 0.8);
+    a := f32(k) * 1.2566;
+    p := add(bloom_at, add(times(ahead, cos(a) * 0.035), v3(0, sin(a) * 0.035, 0)));
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, p, face, 0, 0.03, 0.045, 0.045, 1.0, 0.5, 0.7);
   }
-  shape(s, SHAPE_CYLINDER, LOOK_CLOTH, add(base, v3(0, 0.98, 0)), face, 0, 0.3, 0.3, 0.24, 0.48, 0.74, 0.46);
-  head := add(base, v3(0, 1.3, 0));
-  shape(s, SHAPE_SPHERE, LOOK_SKIN, head, face, 0, 0.34, 0.36, 0.34, skin.x, skin.y, skin.z);
-  // hair: a soft lilac bob and a bun
-  shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(v3(0, 0.05, 0), times(ahead, -0.04))), face, 0, 0.38, 0.32, 0.38, 0.66, 0.52, 0.86);
-  shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(v3(0, 0.2, 0), times(ahead, -0.12))), face, 0, 0.18, 0.18, 0.18, 0.7, 0.56, 0.9);
-  // wings: two pairs on the back, swept and beating
-  back := add(base, add(v3(0, 1.0, 0), times(ahead, -0.14)));
-  beat := sin(flap) * 0.55;
+  shape(s, SHAPE_SPHERE, LOOK_SPARK, add(bloom_at, times(right, -0.01)), face, 0, 0.03, 0.03, 0.03, 0.9, 0.7, 0.25);
+  // wings: two pairs, each wing an oval of light whose root sits at the spine
+  beat := sin(flap);
   for side: 0..<2 {
     sign := ifx side == 0 then 1.0f32 else -1.0f32;
     for pair: 0..<2 {
-      sweep := (ifx pair == 0 then 0.35f32 else 0.6f32) + beat;
-      yaw := face + sign * (f32(PI) * 0.5 - sweep);
-      out := v3(sin(yaw), 0, cos(yaw));
-      size := ifx pair == 0 then 0.62f32 else 0.42f32;
-      lift := ifx pair == 0 then 0.2f32 else -0.12f32;
-      c := add(back, add(times(out, size * 0.5), v3(0, lift, 0)));
-      tint := ifx pair == 0 then v3(0.62, 0.92, 0.98) else v3(0.9, 0.74, 0.98);
-      shape(s, SHAPE_SPHERE, LOOK_WING, c, yaw + f32(PI) * 0.5, ifx pair == 0 then -0.35f32 else 0.4f32, size, size * 0.62, 0.025, tint.x, tint.y, tint.z);
+      w := fairy_wing(base, face, pair, sign, beat);
+      c := add(w.root, times(w.along, w.reach * 0.5));
+      tint := ifx pair == 0 then v3(0.5, 0.92, 1.0) else v3(0.98, 0.6, 1.0);
+      oriented(s, SHAPE_SPHERE, LOOK_WING, c, times(w.across, w.wide), times(w.along, w.reach), times(w.flat, 0.02), tint.x, tint.y, tint.z);
     }
   }
   shadow(s, u, feet.x, feet.z, lo(0.45 + air * 0.08, 0.9), clamp(0.6 - air * 0.12, 0.15, 0.6));
+}
+
+// The trail of sparkles she leaves while she moves or flies: born at her
+// back, they drift down and fade. None in golden mode (they follow the clock).
+SPARKS :: 18;
+SPARK_LIFE :: 1.1;
+sparkle :: (s: [] Fairy, feet: Point, face: f32, moving: bool, dt: f32) {
+  if s[0].golden { return; }
+  s[0].spark_clock -= dt;
+  every := ifx moving then 0.07f32 else 0.45f32;
+  if s[0].spark_clock <= 0 {
+    s[0].spark_clock = every;
+    i := s[0].spark_next % SPARKS;
+    s[0].spark_next = i + 1;
+    j := hash1(f32(s[0].time) * 13.1, f32(i));
+    side := ifx i % 2 == 0 then 1.0f32 else -1.0f32;
+    ahead := v3(sin(face), 0, cos(face));
+    right := v3(-cos(face), 0, sin(face));
+    p := add(feet, add(v3(0, 0.9 + j * 0.4, 0), add(times(ahead, -0.2), times(right, side * (0.15 + j * 0.35)))));
+    k := i * 4;
+    s[0].sparks[k] = p.x; s[0].sparks[k + 1] = p.y; s[0].sparks[k + 2] = p.z; s[0].sparks[k + 3] = f32(s[0].time);
+  }
+  for i: 0..<SPARKS {
+    k := i * 4;
+    age := f32(s[0].time) - s[0].sparks[k + 3];
+    if s[0].sparks[k + 3] <= 0 || age < 0 || age > f32(SPARK_LIFE) { continue; }
+    life := 1 - age / f32(SPARK_LIFE);
+    size := 0.05 * life;
+    gold := ifx i % 3 == 0 then 0.0f32 else 1.0f32;
+    shape(s, SHAPE_SPHERE, LOOK_SPARK, v3(s[0].sparks[k], s[0].sparks[k + 1] - age * 0.35, s[0].sparks[k + 2]), 0, 0, size, size, size,
+          lerp(1.0, 1.0, gold) * (0.6 + life), lerp(0.62, 0.9, gold) * (0.6 + life), lerp(0.95, 0.55, gold) * (0.6 + life));
+  }
 }
 
 // The camera as clip-space rows (WebGPU: depth 0 near to 1 far).
@@ -1011,12 +1242,14 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   s[0].shadow_n = 0; s[0].plate_n = 0;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   fairy_figure(s, u, shown, face, s[0].stride, act, s[0].air, flap);
+  sparkle(s, shown, face, speed > 0.6 || s[0].air > 0.2, t);
   creatures(s, u, shown);
   heart(s, u);
   patches(s);
   props(s);
   trees(s, u, shot.eye);
   ridges(s);
+  ferns(s, shot.eye);
   ph := phone(s);
   for kind: 0..<5 {
     d := kind * 4;
@@ -1037,7 +1270,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   u[6] = s[0].dpr;
   view(shot, width, height, u, U_VIEW);
   u[U_EYE] = shot.eye.x; u[U_EYE + 1] = shot.eye.y; u[U_EYE + 2] = shot.eye.z;
-  u[U_EYE + 3] = ifx ph then 0.011f32 * 1.25f32 else 0.011f32;
+  u[U_EYE + 3] = ifx ph then 0.006f32 * 1.25f32 else 0.006f32;   // the far haze's density (fairy.wgsl hazed: none nearer than 48 m)
   sun := unit_or(v3(0.5, 0.62, 0.45), v3(0, 1, 0));
   u[U_SUN] = sun.x; u[U_SUN + 1] = sun.y; u[U_SUN + 2] = sun.z; u[U_SUN + 3] = ifx ph then 1.0f32 else 0.0f32;
   u[U_GROUND] = f32(CELLS); u[U_GROUND + 1] = f32(FF_CELL); u[U_GROUND + 2] = f32(FF_EDGE); u[U_GROUND + 3] = f32(FF_EDGE);
@@ -1160,6 +1393,70 @@ top_under :: (g: [] Fairy, x: f32, z: f32, feet: f32) -> f32 {
   st := heart_stone(1);
   if st.ok { #assert near(top_under(g[..], st.x, st.z, 0.3), 0.6, 0.001); }
 }
+
+#test "a kept place in Fairy Forest: open ground stays, the stream or a trunk moves you clear" {
+  g: [1] Fairy;
+  fairy_start(g[..]);
+  sx := f32(FF_SPAWN_X); sz := f32(FF_SPAWN_Z);
+  #assert fairy_place_open(g[..], sx, sz);
+  q := fairy_place_fix(g[..], verse_place(sx + 1, 0, sz + 1, 1, 1.5, 0.4, 6, 0, -1, 1000));
+  #assert q.x == sx + 1 && q.z == sz + 1;
+  t := g[0].trees[0..<2];
+  m := fairy_place_fix(g[..], verse_place(t[0], 0, t[1], 0, 0, 0.3, 5, 0, -1, 1000));
+  #assert fairy_place_open(g[..], m.x, m.z) && (m.x != t[0] || m.z != t[1]);
+  w := fairy_place_fix(g[..], verse_place(f32(FF_POND_X), 0, f32(FF_POND_Z), 0, 0, 0.3, 5, 0, -1, 1000));
+  #assert fairy_place_open(g[..], w.x, w.z);
+  fairy_place_camera(g[..], q);
+  #assert g[0].orbit.yaw == 1.5;
+}
+
+// Behind: the camera within 17 degrees of straight behind her, looking down
+// from 10 degrees (the orbit rests at 17) to 65, near or far.
+#test "from behind, no wing ever crosses her head, at any beat, pitch or distance" {
+  u: [UNIFORM_FLOATS] f32;
+  feet := v3(3, 2, -4);
+  face := 0.7f32;
+  head := add(feet, v3(0, f32(FAIRY_HEAD), 0));
+  hr := f32(FAIRY_HEAD_R) * 1.15;   // the hair and buns round it
+  crossings := 0; looks := 0;
+  for turn: 1..<4 {
+    for pitch_i: 2..<6 {
+      for dist_i: 0..<4 {
+        o := verse_orbit_start(feet, face);
+        o.yaw = o.yaw + (f32(turn) - 2) * 0.3;
+        o.pitch = -0.3 + f32(pitch_i) * 0.24;
+        z := f32(FREE_NEAR) + f32(dist_i) * 2.5;
+        o.want = z; o.zoom = z;
+        o.shown = verse_orbit_ray(o).far;
+        view(verse_orbit_shot(o), 1280, 800, u[..], U_VIEW);
+        hc := project(u[..], head, 1280, 800);
+        if hc.x < -1000 { continue; }
+        hs := hi(dist2(hc, project(u[..], add(head, v3(0, hr, 0)), 1280, 800)), dist2(hc, project(u[..], add(head, times(v3(-cos(face), 0, sin(face)), hr)), 1280, 800)));
+        for b: 0..<9 {
+          beat := -1 + f32(b) * 0.25;
+          for pair: 0..<2 {
+            for side: 0..<2 {
+              w := fairy_wing(feet, face, pair, ifx side == 0 then 1.0f32 else -1.0f32, beat);
+              c := add(w.root, times(w.along, w.reach * 0.5));
+              for k: 0..<24 {
+                a := f32(k) * f32(TAU) / 24;
+                for ring: 1..<5 {
+                  q := add(c, add(times(w.along, cos(a) * w.reach * 0.5 * f32(ring) / 4), times(w.across, sin(a) * w.wide * 0.5 * f32(ring) / 4)));
+                  pq := project(u[..], q, 1280, 800);
+                  looks += 1;
+                  // over the head on screen and nearer the camera than it: the wing would hide her face
+                  if dist2(pq, hc) < hs && pq.z < hc.z { crossings += 1; }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  #assert looks > 10000 && crossings == 0;
+}
+dist2 :: (a: Point, b: Point) -> f32 { dx := a.x - b.x; dy := a.y - b.y; return sqrt(dx * dx + dy * dy); }
 
 #test "trees keep off the trails, the stream and the glades" {
   g: [1] Fairy;

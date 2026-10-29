@@ -19,6 +19,8 @@
 #include <stddef.h>
 
 #define EXPORT(name) __attribute__((export_name(name)))
+#define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
+IMPORT("coaxial_http") int32_t coaxial_http(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags);
 
 static coax_t_Player player;
 static coax_t_Sticks sticks;
@@ -47,6 +49,7 @@ static coax_v_t_Stream sv(void) { return (coax_v_t_Stream){&stream, 1}; }
 
 static coax_t_Fairy *fairy(uint32_t state) { return (coax_t_Fairy *)(uintptr_t)state; }
 static coax_v_t_Fairy at(uint32_t state) { return (coax_v_t_Fairy){fairy(state), 1}; }
+#include "place-face.h"
 static void start(uint32_t state) {
   if (!track_state.page_n) track_init(tr(), track_cstr("fairy-forest"));
   if (placed) return;
@@ -54,6 +57,8 @@ static void start(uint32_t state) {
   player = verse_player_place(spawn.x, spawn.y, spawn.z, fairy_spawn_face());
   sticks = verse_sticks_reset();
   placed = true;
+  verse_place_golden(place_k(), golden);
+  place_seen(state);
   if (!stream_built) {
     int64_t n = fairy_course((coax_v_f32){course, 48});
     coax_t_Fairy *f = fairy(state);
@@ -62,6 +67,17 @@ static void start(uint32_t state) {
     stream_built = true;
     swim.pace = 1;
   }
+}
+
+// Where you are, kept so a reload puts you back (place-face.h).
+static coax_t_Place place_here(uint32_t state) {
+  if (!placed) return (coax_t_Place){0};
+  return fairy_place_of(at(state), player.pos.x, player.pos.y, player.pos.z, verse_player_face(player));
+}
+static void place_put(uint32_t state, coax_t_Place p) {
+  coax_t_Place q = fairy_place_fix(at(state), p);
+  player = verse_player_place(q.x, 0, q.z, q.face);
+  fairy_place_camera(at(state), q);
 }
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
@@ -129,6 +145,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     float fy = aspect * 1.25f; fy = fy < 0.95f ? 0.95f : fy > 1.9f ? 1.9f : fy;
     fairy_stream_frame(sv(), (coax_v_f32){u.data + at_water, u.count - at_water}, golden ? 2.0 : now, small, eye[0], eye[1], eye[2], 2.0f / (fy * (h > 1 ? h : 1)));
   }
+  place_frame(state);
   track_frame(tr(), dt, w, h, scale);
   if (n > 0) track_loaded(tr(), track_cstr("load-fairy-forest"));
   track_drain(&track_state);
@@ -174,5 +191,10 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inb
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
+  if (place_message(state, kind, inbox, length)) return;
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) track_drain(&track_state);
 }
+EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { (void)state; return place_action(); }
+EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { (void)state; return place_outbox(); }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { (void)state; return place_outbox_len(); }
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { (void)state; place_done(); }
