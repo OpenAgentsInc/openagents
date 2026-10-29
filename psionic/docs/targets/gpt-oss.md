@@ -1,7 +1,9 @@
 # gpt-oss as an inference target
 
 Survey updated 2026-10-29. [Chapter 34](../../book/ch34-original-mxfp4-weights.md)
-now implements the bounded original-format CPU decoder. Full-model execution
+now implements the bounded original-format CPU decoder;
+[chapter 35](../../book/ch35-a-few-experts-then-a-router.md) adds a bounded
+top-k router and tiny affine mixture. Full-model execution
 and Harmony remain planned. No weights were downloaded, and no upstream
 setup, inference or tool code was run. Psionic would implement the behavior in
 Coax; Python stays reviewed reference and export tooling, never a runtime
@@ -53,6 +55,13 @@ also shows:
 
 These are exactly the details where a generic MoE or attention block would be
 silently wrong.
+
+Chapter 35 implements the selected-only top-k formula for 1–128 logits and
+1–4 selected experts, including synthetic 32/128-expert top-four fixtures.
+Its `cpu-topk-affine-v1` profile has explicit lowest-ID ties, f32 routing
+weights with wide accumulation and width-16 affine teaching experts. It does
+not qualify the learned gate, nonlinear expert projections, BF16 arithmetic
+or a complete original MLP.
 
 ## Weights are MXFP4 in the original files
 

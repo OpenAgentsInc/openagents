@@ -1,5 +1,25 @@
 # Invariants
 
+## Psionic bounded top-k mixtures preserve route and output semantics
+
+`psionic/lib/moe.coax` implements `cpu-topk-affine-v1`: 1–128 finite logits,
+1–4 selected experts, descending scores and lowest-ID ties, selected-only
+softmax with wide accumulation and f32 coefficients. Tiny affine mixtures
+have width 1–16, unique resident IDs and exact row-major matrix/bias extents.
+Every resident entry counts against a logical payload budget; only selected
+parameter values are numerically evaluated. Missing selected experts refuse
+instead of changing the route. Output and the successful route publish only
+after every selected expert and the bounded combination succeed; spare output
+capacity is unchanged. This is not original BF16 gpt-oss arithmetic, a complete
+expert layer, model identity admission or OS memory reservation. The native
+adapter observes nested overlap; valid allocations, extents, alignment,
+parameter identity, immutable lifetimes and exclusive access are caller duties.
+
+Check: `psionic/tests/check_moe.sh` and the main `psionic/check.sh` include
+independent Decimal fixtures, debug/release checks, zero-survivor mutation
+and native plain/sanitized gates. See the
+[chapter 35 record](docs/verification/psionic-ch35-2026-10-29.md).
+
 ## Psionic original MXFP4 decoding admits complete finite windows
 
 `psionic/lib/mxfp4.coax` decodes the gpt-oss original-format low/high nibble

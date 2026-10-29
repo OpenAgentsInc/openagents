@@ -13,6 +13,8 @@ Chapter 8 adds decision blocks and forks their complete live hybrid state.
 Chapter 9 converts vocabulary logits to option probabilities and typed statistics.
 [Chapter 34](book/ch34-original-mxfp4-weights.md) starts the independent gpt-oss
 branch with an exact bounded decoder for its original MXFP4 byte groups.
+[Chapter 35](book/ch35-a-few-experts-then-a-router.md) adds sorted top-k routing
+and a complete tiny affine mixture with explicit resident budgets.
 
 Start with [the book](book/README.md) and
 [Chapter 1: Learning a number](book/ch01-learning-a-number.md), then
@@ -41,6 +43,8 @@ coax/bin/coax run psionic/examples/decision-forks.coax
 coax/bin/coax run psionic/examples/read-options.coax
 coax/bin/coax run psionic/examples/original-mxfp4.coax
 psionic/tests/check_mxfp4.sh
+coax/bin/coax run psionic/examples/few-experts.coax
+psionic/tests/check_moe.sh
 ```
 
 The check command builds the compiler if it is absent, runs authored Coax
@@ -54,6 +58,7 @@ credentials, or downloads at run time.
 
 | Path | Role |
 | --- | --- |
+| [lib/moe.coax](lib/moe.coax) | Bounded top-k selection, selected-only normalization and tiny resident affine expert mixtures with atomic output. |
 | [lib/mxfp4.coax](lib/mxfp4.coax) | Original gpt-oss MXFP4 byte decoding: exact finite CPU values, shape/count/scale admission and unchanged output on refusal; separate from complete artifact admission. |
 | [lib/learn.coax](lib/learn.coax) | Checks first, admission, loss/gradient, fixed-rate SGD, prediction. |
 | [lib/tensor.coax](lib/tensor.coax) | Checked rank/shape/byte/stride metadata, indexing and staged finite-f32 copy. |

@@ -1,0 +1,21 @@
+#import "Basic";
+#load "../lib/moe.coax";
+
+// book:begin example
+main :: () {
+    logits:=[3]f32.[0,2,2];x:=[2]f32.[1,2];
+    a:=[4]f32.[1,0,0,1];b:=[4]f32.[2,0,0,2];c:=[4]f32.[4,0,0,4];
+    ba:=[2]f32.[-100,-100];bb:=[2]f32.[1,-1];bc:=[2]f32.[-1,1];
+    experts:=[3]MoExpert.[MoExpert.{id=2,matrix=c[..],bias=bc[..]},MoExpert.{id=0,matrix=a[..],bias=ba[..]},MoExpert.{id=1,matrix=b[..],bias=bb[..]}];
+    out:=[3]f32.[-7,-7,-7];r:=mo_forward(logits[..],2,x[..],experts[..],72,out[..],false);
+    #assert r.status==MoStatus.ok && out[2]==-7;
+    print("selected experts: %, % (weights %, %)\n",r.route.ids[0],r.route.ids[1],r.route.weights[0],r.route.weights[1]);
+    print("mixture: %, %; resident payload: % bytes\n",out[0],out[1],r.resident_bytes);
+    scores:=[6]f32.[0,4,2,3,1,-1];top:=mo_route(scores[..],4);
+    #assert top.status==MoStatus.ok;
+    print("top-four order: %, %, %, %\n",top.ids[0],top.ids[1],top.ids[2],top.ids[3]);
+    out[0]=-7;r=mo_forward(logits[..],2,x[..],experts[1..<3],72,out[..],false);
+    #assert r.status==MoStatus.resident && r.written==0 && out[0]==-7;
+    print("missing selected expert refused without output\n");
+}
+// book:end example

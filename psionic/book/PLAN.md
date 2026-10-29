@@ -11,7 +11,9 @@ Proposal, updated 2026-10-29. [Chapter 1](ch01-learning-a-number.md) and
 [Chapter 9](ch09-read-the-options.md) and
 [Chapter 10](ch10-execute-elephant.md) are runnable on the tested CPU host.
 The [first gpt-oss format chapter, 34](ch34-original-mxfp4-weights.md), is also
-runnable as a bounded CPU decoder; complete gpt-oss execution is still planned.
+runnable as a bounded CPU decoder. [Chapter 35](ch35-a-few-experts-then-a-router.md)
+adds the bounded top-k router and tiny affine experts; complete gpt-oss execution
+is still planned.
 The remaining chapters below are outlines, not implemented capabilities. A
 chapter ships with shared Coax library code, authored checks, independent
 native tests, source-linked examples and an exact supported scope. Coax
@@ -159,7 +161,7 @@ the memory plan of 22 and the sampling of 30.
 | Chapter | What we build and check |
 | --- | --- |
 | [34. Original MXFP4 weights](ch34-original-mxfp4-weights.md) — runnable: bounded CPU format decoder | The checkpoint's own MoE format: 32 FP4 (E2M1) values packed into 16 bytes per block, with one biased power-of-two scale per block in a separate `.scales` tensor. Decode every code at every admitted scale exactly into `f32` against an independent table, refuse partial blocks and out-of-range scales, and keep this original format distinct from chapter 28's derived quantization profile. |
-| 35. A few experts, then a router | A tiny MoE with directly checkable choices, ties, weighting, dispatch/gather and expert-residency budgets; then gpt-oss's exact rule, softmax over the sorted top four router logits. |
+| [35. A few experts, then a router](ch35-a-few-experts-then-a-router.md) — runnable: bounded CPU | A tiny MoE with directly checkable choices, ties, weighting, dispatch/gather and expert-residency budgets; then gpt-oss's selected-only softmax over sorted top-four logits, under an explicit wide CPU and lowest-ID-tie profile. Original gate projection and BF16 parity remain separate. |
 | 36. Attention with sinks and a window | Learned per-head sink logits that join each softmax denominator without contributing a value; a 128-token banded window on alternate layers beside full attention, with a window-bounded cache; YaRN rotary scaling (base 150,000, factor 32 over 4,096 original positions); attention biases; and the clamped SwiGLU (alpha 1.702, limit 7, plus-one linear term). |
 | 37. The harmony format | The o200k_harmony tokenizer through chapter 5's byte-BPE engine, with its own split pattern, ranks and special tokens (201,088 vocabulary entries); render system, developer, user, assistant and tool messages with reasoning effort; parse `analysis`, `commentary` and `final` channels and stop on `<\|return\|>` or `<\|call\|>`; refuse malformed streams. |
 | 38. Execute gpt-oss-20b | 24 layers and 32 experts: complete original-weight generation with chapter 30's sampling; independent token, intermediate, router-choice and logit references; full versus cached logits; measured residency for the separately pinned `original/` checkpoint files. |

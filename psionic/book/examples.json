@@ -120,6 +120,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/few-experts.coax",
+      "chapter": "psionic/book/ch35-a-few-experts-then-a-router.md",
+      "stdout": "psionic/fixtures/few-experts.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -1,0 +1,137 @@
+// Bounded sorted top-k routing and a tiny affine mixture of resident experts.
+#load "ops.coax";
+#load "../fixtures/moe-vectors.coax";
+#authority;
+
+MoStatus :: enum u8 {ok;shape;capacity;alias;number;resident;budget;arithmetic;}
+MoRoute :: struct {status:MoStatus;count:int;ids:[4]int;weights:[4]f32;}
+MoExpert :: struct {id:int;matrix:[]f32;bias:[]f32;}
+MoPlan :: struct {status:MoStatus;bytes:int;}
+MoResult :: struct {status:MoStatus;cause:int;written:int;route:MoRoute;resident_bytes:int;}
+
+#test "routing has exact counts, selected-only normalization and stable ties" {
+    logits:=[6]f32.[0,4,2,3,1,-1];r:=mo_route(logits[..],4);
+    #assert r.status==MoStatus.ok && r.count==4 && r.ids[0]==1 && r.ids[1]==3 && r.ids[2]==2 && r.ids[3]==4;
+    ties:=[5]f32.[2,2,2,2,2];r=mo_route(ties[..],4);
+    for i:0..<4 {#assert r.ids[i]==i && r.weights[i]==0.25f32;}
+    one:=mo_route(logits[..],1);#assert one.count==1 && one.ids[0]==1 && one.weights[0]==1;
+    #assert mo_route(logits[0..<0],1).status==MoStatus.shape;
+    #assert mo_route(logits[..],0).status==MoStatus.shape && mo_route(logits[..],5).status==MoStatus.shape;
+    #assert mo_route(logits[0..<2],3).status==MoStatus.shape;
+    too_many:[129]f32;#assert mo_route(too_many[..],4).status==MoStatus.shape;
+}
+#test "a tiny mixture dispatches by expert ID and gathers only selected results" {
+    logits:=[3]f32.[0,2,2];x:=[2]f32.[1,2];
+    a:=[4]f32.[1,0,0,1];b:=[4]f32.[2,0,0,2];c:=[4]f32.[4,0,0,4];
+    ba:=[2]f32.[-100,-100];bb:=[2]f32.[1,-1];bc:=[2]f32.[-1,1];
+    experts:=[3]MoExpert.[MoExpert.{id=2,matrix=c[..],bias=bc[..]},MoExpert.{id=0,matrix=a[..],bias=ba[..]},MoExpert.{id=1,matrix=b[..],bias=bb[..]}];
+    out:=[3]f32.[-7,-7,-7];p:=mo_plan(2,3,72);#assert p.status==MoStatus.ok && p.bytes==72;
+    result:=mo_forward(logits[..],2,x[..],experts[..],72,out[..],false);
+    #assert result.status==MoStatus.ok && result.written==2 && result.resident_bytes==72 && out[0]==3 && out[1]==6 && out[2]==-7;
+    #assert result.route.count==2 && result.route.ids[0]==1 && result.route.ids[1]==2;
+    #assert result.route.weights[0]==0.5f32 && result.route.weights[1]==0.5f32;
+    a[0]=f32_from_bits(0x7f7fffff);ba[0]=a[0];#assert mo_forward(logits[..],2,x[..],experts[..],72,out[0..<2],false).status==MoStatus.ok;
+    out[0]=-7;out[1]=-7;
+    #assert mo_forward(logits[..],2,x[..],experts[1..<3],72,out[..],false).status==MoStatus.resident;
+    #assert mo_forward(logits[..],2,x[..],experts[..],71,out[..],false).status==MoStatus.budget;
+    #assert mo_forward(logits[..],2,x[..],experts[..],72,out[0..<1],false).status==MoStatus.capacity;
+    #assert mo_forward(logits[..],2,x[..],experts[..],72,out[..],true).status==MoStatus.alias;
+    for v:out {#assert v==-7;}
+    a[0]=1;ba[0]=-100;c[0]=f32_from_bits(0x7f7fffff);bc[0]=c[0];
+    failed:=mo_forward(logits[..],2,x[..],experts[..],72,out[..],false);#assert failed.status==MoStatus.arithmetic && failed.cause==cast(int)PsionicOpStatus.arithmetic && failed.written==0;
+    for v:out {#assert v==-7;}
+}
+#test "resident metadata and bounded plans refuse before numerical work" {
+    #assert mo_plan(1,1,8).status==MoStatus.ok && mo_plan(16,128,139264).bytes==139264;
+    #assert mo_plan(1,1,7).status==MoStatus.budget && mo_plan(1,1,-1).status==MoStatus.budget;
+    #assert mo_plan(0,1,8).status==MoStatus.shape && mo_plan(17,1,1000000).status==MoStatus.shape;
+    #assert mo_plan(1,0,8).status==MoStatus.shape && mo_plan(1,129,1000000).status==MoStatus.shape;
+    logits:=[2]f32.[0,1];x:=[1]f32.[2];m:=[1]f32.[1];b:=[1]f32.[0];out:=[1]f32.[-7];
+    experts:=[2]MoExpert.[MoExpert.{id=0,matrix=m[..],bias=b[..]},MoExpert.{id=1,matrix=m[..],bias=b[..]}];
+    experts[1].id=0;#assert mo_forward(logits[..],1,x[..],experts[..],16,out[..],false).status==MoStatus.resident;
+    experts[1].id=2;#assert mo_forward(logits[..],1,x[..],experts[..],16,out[..],false).status==MoStatus.resident;
+    experts[1].id=1;experts[1].matrix=m[0..<0];#assert mo_forward(logits[..],1,x[..],experts[..],16,out[..],false).status==MoStatus.shape;
+    experts[1].matrix=m[..];experts[1].bias=b[0..<0];#assert mo_forward(logits[..],1,x[..],experts[..],16,out[..],false).status==MoStatus.shape;
+    #assert out[0]==-7;
+}
+#test "unselected resident metadata is checked and final combination is bounded" {
+    logits:=[3]f32.[0,0,2];x:=[1]f32.[1];m:=[1]f32.[0];b:=[1]f32.[1];out:=[2]f32.[-7,-7];
+    experts:=[3]MoExpert.[MoExpert.{id=0,matrix=m[..],bias=b[..]},MoExpert.{id=1,matrix=m[..],bias=b[..]},MoExpert.{id=2,matrix=m[..],bias=b[..]}];
+    for bad:-1..<4 {
+        if bad<0 || bad>=3 {experts[0].id=bad;#assert mo_forward(logits[..],1,x[..],experts[..],24,out[..],false).status==MoStatus.resident;}
+    }
+    experts[0].id=0;experts[1].id=0;#assert mo_forward(logits[..],1,x[..],experts[..],24,out[..],false).status==MoStatus.resident;
+    experts[1].id=1;experts[0].matrix=m[0..<0];#assert mo_forward(logits[..],1,x[..],experts[..],24,out[..],false).status==MoStatus.shape;
+    experts[0].matrix=m[..];logits[2]=0;b[0]=f32_from_bits(0x7f7fffff);
+    r:=mo_forward(logits[..],3,x[..],experts[..],24,out[..],false);
+    #assert r.status==MoStatus.arithmetic && r.cause==cast(int)PsionicOpStatus.arithmetic && r.written==0 && out[0]==-7 && out[1]==-7;
+}
+
+// book:begin plan
+mo_plan :: (width:int,residents:int,budget:int)->MoPlan #export_c {
+    if width<1 || width>16 || residents<1 || residents>128 {return MoPlan.{status=MoStatus.shape};}
+    bytes:=(width*width+width)*residents*4;
+    if budget<bytes {return MoPlan.{status=MoStatus.budget};}
+    return MoPlan.{bytes=bytes};
+}
+// book:end plan
+
+// book:begin route
+mo_route :: (logits:[]f32,k:int)->MoRoute #export_c {
+    if logits.count<1 || logits.count>128 || k<1 || k>4 || k>logits.count {return MoRoute.{status=MoStatus.shape};}
+    for value:logits {if !psionic_tensor_finite_bits(f32_bits(value)) {return MoRoute.{status=MoStatus.number};}}
+    result:MoRoute;
+    for slot:0..<k {
+        best:=-1;
+        for expert:0..<logits.count {
+            used:=false;for prior:0..<slot {if result.ids[prior]==expert {used=true;}}
+            if !used {if best<0 || logits[expert]>logits[best] {best=expert;}}
+        }
+        result.ids[slot]=best;
+    }
+    numerators:[4]f64;denominator:PsionicAccumulator;
+    for slot:0..<k {
+        numerators[slot]=exp(f64(logits[result.ids[slot]])-f64(logits[result.ids[0]]));
+        denominator=psionic_ops_accumulate(denominator,numerators[slot]);
+    }
+    total:=psionic_ops_total(denominator);
+    for slot:0..<k {result.weights[slot]=f32(numerators[slot]/total);}
+    result.count=k;return result;
+}
+// book:end route
+
+// book:begin forward
+mo_forward :: (logits:[]f32,k:int,x:[]f32,experts:[]MoExpert,budget:int,out:[]f32,overlap:bool)->MoResult #export_c {
+    route:=mo_route(logits,k);if route.status!=MoStatus.ok {return MoResult.{status=route.status};}
+    d:=x.count;plan:=mo_plan(d,experts.count,budget);if plan.status!=MoStatus.ok {return MoResult.{status=plan.status};}
+    if experts.count>logits.count {return MoResult.{status=MoStatus.shape};}
+    if out.count<d {return MoResult.{status=MoStatus.capacity};}
+    if overlap {return MoResult.{status=MoStatus.alias};}
+    for i:0..<experts.count {
+        e:=experts[i];if e.id<0 || e.id>=logits.count {return MoResult.{status=MoStatus.resident};}
+        if e.matrix.count!=d*d || e.bias.count!=d {return MoResult.{status=MoStatus.shape};}
+        for j:0..<i {if experts[j].id==e.id {return MoResult.{status=MoStatus.resident};}}
+    }
+    positions:[4]int;
+    for slot:0..<route.count {
+        found:=-1;for i:0..<experts.count {if experts[i].id==route.ids[slot] {found=i;}}
+        if found<0 {return MoResult.{status=MoStatus.resident};}positions[slot]=found;
+    }
+    mat:[16]f32;affine:[16]f32;scratch:[16]f32;stage:[16]f32;
+    indices:[1]int;mask:[1]u8;sums:[16]PsionicAccumulator;
+    for slot:0..<route.count {
+        e:=experts[positions[slot]];
+        multiply:=psionic_ops_checked(PsionicRequest.{op=PsionicOp.matmul,rows=d,width=d,columns=1},e.matrix,x,indices[0..<0],mask[0..<0],mat[0..<d],scratch[0..<d],false);
+        if multiply.status!=PsionicOpStatus.ok {return MoResult.{status=MoStatus.arithmetic,cause=cast(int)multiply.status};}
+        add:=psionic_ops_checked(PsionicRequest.{rows=1,width=d},mat[0..<d],e.bias,indices[0..<0],mask[0..<0],affine[0..<d],scratch[0..<d],false);
+        if add.status!=PsionicOpStatus.ok {return MoResult.{status=MoStatus.arithmetic,cause=cast(int)add.status};}
+        for j:0..<d {sums[j]=psionic_ops_accumulate(sums[j],f64(route.weights[slot])*f64(affine[j]));}
+    }
+    for j:0..<d {
+        value:=psionic_ops_total(sums[j]);if !psionic_ops_fits_f32(value) {return MoResult.{status=MoStatus.arithmetic,cause=cast(int)PsionicOpStatus.arithmetic};}
+        stage[j]=f32(value);
+    }
+    for j:0..<d {out[j]=stage[j];}
+    return MoResult.{written=d,route=route,resident_bytes=plan.bytes};
+}
+// book:end forward

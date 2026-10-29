@@ -4,7 +4,9 @@ Status, 2026-10-29: chapters 1–10 implement M0/M1, the artifact slice of M5,
 text requests, bounded Qwen-style layers and authenticated original-weight
 Elephant text decisions on the tested Apple LP64 CPU host. Mammoth and autodiff
 remain `planned`. The independent [chapter 34 format decoder](../book/ch34-original-mxfp4-weights.md)
-now implements bounded original MXFP4 bytes; complete gpt-oss execution remains planned.
+now implements bounded original MXFP4 bytes. [Chapter 35](../book/ch35-a-few-experts-then-a-router.md)
+adds bounded top-k routing and tiny resident affine mixtures; complete gpt-oss
+execution remains planned.
 [Run the first chapter](../book/ch01-learning-a-number.md)
 or `psionic/check.sh`; [retained verification](../../docs/verification/psionic-m0-2026-10-28.md)
 records the scope. Later chapter titles are working names; gates determine
@@ -186,7 +188,7 @@ a prerequisite for starting the ready work.
 
 The [full proposed table of contents](../book/PLAN.md) now gives
 one outline per chapter, with prerequisite notes. Chapters 1–10 and the
-independent MXFP4 format chapter 34 are runnable;
+independent MXFP4/router chapters 34–35 are runnable;
 chapter numbers and part boundaries are provisional. The new
 [NVIDIA breadth survey](targets/nvidia-breadth.md) records pinned candidate checkpoints,
 operator requirements, data studies and source-license qualifications.

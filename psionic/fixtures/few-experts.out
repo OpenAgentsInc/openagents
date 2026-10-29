@@ -1,0 +1,4 @@
+selected experts: 1, 2 (weights 0.5, 0.5)
+mixture: 3.0, 6.0; resident payload: 72 bytes
+top-four order: 1, 3, 2, 4
+missing selected expert refused without output
