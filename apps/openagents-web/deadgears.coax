@@ -1434,6 +1434,12 @@ frame :: (s: [] DeadGears, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   u: [UNIFORM_FLOATS] f32;
   return deadgears_frame(s, out[..], u[..], w, h, dpr, dt, false);
 }
+// A check that draws many frames declares its buffers once and draws into them:
+// each fresh vertex buffer is 384000 zeroed values, and the compiler bounds a
+// check's aggregate traversal (E0400).
+frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, dt: f32) -> int {
+  return deadgears_frame(s, out, u, w, h, dpr, dt, false);
+}
 
 #test "the uniforms line up with deadgears.wgsl's" {
   #assert UNIFORM_FLOATS % 4 == 0 && U_LIGHT % 4 == 0 && U_SHADOW % 4 == 0 && U_OCC % 4 == 0 && U_PLATE % 4 == 0;
@@ -1568,7 +1574,8 @@ tag_end :: () -> int { return SAVE_TAG.count + 1; }
   #assert abs(s[0].deck_hour - 15.5) < 0.01;
   g := game(s[..]);
   g.st[0].wave = 3;
-  for i: 0..<400 { n = frame(s[..], 1280, 800, 1, 0.05); }
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  for i: 0..<400 { n = frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.05); }
   #assert s[0].deck_hour > 18;
   #assert query_number("https://openagents.com/realm/dead-gears?hour=17.25&spawn=200", "hour") == 17.25;
   #assert query_number("https://openagents.com/realm/dead-gears?hour=17.25&spawn=200", "spawn") == 200;
@@ -1595,10 +1602,11 @@ bot_turn :: (s: [] DeadGears) {
 play_out :: (s: [] DeadGears, phone_size: bool, fight: bool, frames: int) -> int {
   g := game(s);
   w: f32 = ifx phone_size then 390.0f32 else 1280.0f32; h: f32 = ifx phone_size then 844.0f32 else 800.0f32;
-  n := frame(s, w, h, 1, 0.05);
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := frame_in(out[..], u[..], s, w, h, 1, 0.05);
   held := -1;
   for f: 0..<frames {
-    if over(s) { n = frame(s, w, h, 1, 0.05); return f; }
+    if over(s) { n = frame_in(out[..], u[..], s, w, h, 1, 0.05); return f; }
     if fight {
       b := s[0].boxes[BTN_FIRE];
       if g.st[0].phase == REPAIR {
@@ -1612,19 +1620,22 @@ play_out :: (s: [] DeadGears, phone_size: bool, fight: bool, frames: int) -> int
         else { used := deadgears_key(s, 'f', 0); }
       }
     }
-    if f % 40 == 0 { n = frame(s, w, h, 1, 0.05); } else { step_fight(s, 0.05); }
+    if f % 40 == 0 { n = frame_in(out[..], u[..], s, w, h, 1, 0.05); } else { step_fight(s, 0.05); }
   }
   return frames;
 }
 
-#test "a full game is won on a laptop and on a phone, and lost by standing still" {
-  for size: 0..<2 {
-    s: [1] DeadGears;
-    started(s[..]);
-    f := play_out(s[..], size == 1, true, 6000);
-    g := game(s[..]);
-    #assert g.st[0].phase == WON && g.st[0].repairs == 3 && s[0].shown[BTN_AGAIN];
-  }
+// Three checks, one game each: a whole game is most of a check's budget.
+won_through_the_controls :: (phone_size: bool) -> bool {
+  s: [1] DeadGears;
+  started(s[..]);
+  f := play_out(s[..], phone_size, true, 6000);
+  g := game(s[..]);
+  return g.st[0].phase == WON && g.st[0].repairs == 3 && s[0].shown[BTN_AGAIN];
+}
+#test "a full game is won on a laptop" { #assert won_through_the_controls(false); }
+#test "a full game is won on a phone" { #assert won_through_the_controls(true); }
+#test "a full game is lost by standing still" {
   s: [1] DeadGears;
   started(s[..]);
   f := play_out(s[..], false, false, 6000);

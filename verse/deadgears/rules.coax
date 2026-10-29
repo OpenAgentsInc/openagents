@@ -508,7 +508,7 @@ push_characters :: (g: Game, self: int, from: Point, to: Point, yaw: f32) -> Poi
     if length2 < 0.000000000001 { break; }
     first: f32 = 2; hit_x: f32 = 0; hit_z: f32 = 0;
     for i: 0..<ecs_high(g.e) {
-      if i == self || !is_body(g, i) { continue; }
+      if i == self || !is_body(g.e, g.hp, i) { continue; }
       o := g.pos[i];
       if abs(o.y - from.y) >= f32(CHARACTER_HEIGHT) { continue; }
       dx := at.x - o.x; dz := at.z - o.z;
@@ -530,7 +530,7 @@ push_characters :: (g: Game, self: int, from: Point, to: Point, yaw: f32) -> Poi
   }
   at.y = to.y;
   for i: 0..<ecs_high(g.e) {
-    if i == self || !is_body(g, i) { continue; }
+    if i == self || !is_body(g.e, g.hp, i) { continue; }
     o := g.pos[i];
     if abs(o.y - at.y) >= f32(CHARACTER_HEIGHT) { continue; }
     dx := at.x - o.x; dz := at.z - o.z; dd := sqrt(dx * dx + dz * dz);
@@ -542,11 +542,13 @@ push_characters :: (g: Game, self: int, from: Point, to: Point, yaw: f32) -> Poi
   return at;
 }
 
-is_body :: (g: Game, i: int) -> bool {
-  m := g.e.mask[i];
-  if !g.e.live[i] { return false; }
+// Takes the two fields it reads, not the Game: it runs for every pair of
+// characters each step, and a Game is some forty views to copy.
+is_body :: (e: Entities, hp: [] f32, i: int) -> bool {
+  m := e.mask[i];
+  if !e.live[i] { return false; }
   if (m & (C_ENGINEER | C_SUPPORT)) != 0 { return true; }
-  return (m & (C_MUTANT | C_HEALTH)) == C_MUTANT | C_HEALTH && g.hp[i] > 0;
+  return (m & (C_MUTANT | C_HEALTH)) == C_MUTANT | C_HEALTH && hp[i] > 0;
 }
 
 // A character walks by (dx, dz): round the other characters, then along the
