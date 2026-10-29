@@ -3,7 +3,12 @@
 Status: first crack live and unlisted, October 29, 2026, at
 https://openagents.com/realms/fairy-forest (task ff-first-crack): the valley,
 the fairy with flight and a glide, Bloom, three creatures and three of the
-heart tree's roots. Not saved yet, no talk, no home or crafting. The
+heart tree's roots. Since then (ff-roots): Thornfall (brambles round a fallen
+giant tree, with Burdock the badger) and the Old Ring (nine standing stones,
+with Hollow the owl), so all five roots can be woken; then the heart tree
+blooms, colour comes back to the whole valley, and the forest stays open to
+wander. What you restored is saved in this browser and, with an account, on
+the server. No talk yet, no home or crafting. The
 designer's notes on panes, chat and messages were added the same day. It is drawn
 from what players told us when asked what game they would make: a magical
 fairy forest came up again and again, unprompted, along with caring for

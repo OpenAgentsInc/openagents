@@ -7,10 +7,14 @@
 //
 // +z is north and the heart tree is the origin. The valley is 160 m across
 // (80 cells of 2 m); you may walk 124 m of it, and its rim rises into
-// wooded ridges. Three glades of the spec's five are in this crack:
-// Mossbank (where you wake), The Reeds (by the pond) and Lanternwood. Each
-// glade's creature has one trouble: its glade has faded. Bloom its patches
-// and it is happy again, and one of the heart tree's five roots wakes.
+// wooded ridges. Five glades: Mossbank (where you wake), The Reeds (by the
+// pond), Lanternwood, Thornfall (brambles and a fallen giant tree, to the
+// north) and the Old Ring (standing stones, to the south). Each glade's
+// creature has one trouble: its glade has faded (in Thornfall, brambles have
+// grown over the badger's way home; in the Old Ring the stones have gone
+// dark). Bloom its patches and it is happy again, and one of the heart
+// tree's five roots wakes. All five, and the heart tree blooms: the ending.
+// The forest stays open after it.
 //   coax/bin/coax test apps/openagents-web/fairy.coax   (this file's checks run with the page's)
 
 FF_CELLS :: 80;
@@ -22,26 +26,29 @@ FF_GROUND_POINTS :: (FF_CELLS + 1) * (FF_CELLS + 1);
 FF_LEVEL :: -0.3;          // the stream's and the pond's surface
 
 // The trails: the ring round the heart tree and a trail out to each glade.
-FF_NODES :: 18;
-FF_NODE_XZ :: [36] f32.[
+FF_NODES :: 22;
+FF_NODE_XZ :: [44] f32.[
   0, 10,  10, 0,  0, -10,  -10, 0,                 // 0-3 the ring round the heart
   -16, -18,  -26, -28,  -33, -35,                  // 4-6 to Mossbank (6: where you wake)
   12, -6,  20, -13,                                // 7-8 to the Reeds
   -10, 18,  -20, 28,  -27, 33,                     // 9-11 to Lanternwood
   -40, -44,  -24, -42,                             // 12-13 round Mossbank
   -34, 40,  -18, 38,                               // 14-15 round Lanternwood
-  6, 22,  4, 38                                    // 16-17 north toward the stream's woods
+  6, 22,  4, 38,                                   // 16-17 north toward Thornfall
+  2, 47,                                           // 18 Thornfall
+  1, -24,  0, -36,  0, -43                         // 19-21 south into the Old Ring, through its gap
 ];
-FF_LINKS :: 18;
-FF_LINK_AB :: [36] int.[
+FF_LINKS :: 23;
+FF_LINK_AB :: [46] int.[
   0, 1,  1, 2,  2, 3,  3, 0,
   2, 4,  4, 5,  5, 6,  6, 12,  6, 13,  13, 5,
   1, 7,  7, 8,
   0, 9,  9, 10,  10, 11,  11, 14,  11, 15,
-  0, 16
+  0, 16,  16, 17,  17, 18,
+  2, 19,  19, 20,  20, 21
 ];
 // Flat ground: the heart's clearing and the glades.
-FF_FLATS :: [16] f32.[0, 0, 14, 0.2,   -33, -35, 9, 0.3,   21, -15, 6, 0.1,   -27, 33, 9, 0.4];
+FF_FLATS :: [24] f32.[0, 0, 14, 0.2,   -33, -35, 9, 0.3,   21, -15, 6, 0.1,   -27, 33, 9, 0.4,   1, 49, 12, 0.5,   0, -47, 9, 0.3];
 
 // The stream: control points (x, z, full width), north to south, wide at the pond.
 FF_COURSE_N :: 10;
@@ -52,29 +59,38 @@ FF_COURSE :: [30] f32.[
 FF_POND_X :: 36.5; FF_POND_Z :: -16.0;
 
 // The glades: x, z, radius.
-FF_GLADES :: 3;
-FF_GLADE :: [9] f32.[-33, -35, 11,   21, -15, 8,   -27, 33, 11];
-FF_GLADE_NAMES :: [3] string.["MOSSBANK", "THE REEDS", "LANTERNWOOD"];
+FF_GLADES :: 5;
+FF_GLADE :: [15] f32.[-33, -35, 11,   21, -15, 8,   -27, 33, 11,   2, 48, 11,   0, -47, 10];
+FF_GLADE_NAMES :: [5] string.["MOSSBANK", "THE REEDS", "LANTERNWOOD", "THORNFALL", "THE OLD RING"];
+FF_THORNFALL :: 3; FF_OLD_RING :: 4;
+FF_RING_STONES :: 9;       // the Old Ring's standing stones, round its middle
+FF_RING_R :: 7.0;
 FF_SPAWN_X :: -33.0; FF_SPAWN_Z :: -37.0; FF_SPAWN_FACE :: 0.7;
 
 // The faded patches to bloom: x, z, how far colour spreads, glade (-1 the first flower).
-FF_PATCHES :: 9;
-FF_PATCH :: [36] f32.[
+// (New patches are added at the end, so a save made with fewer still opens.)
+// Thornfall's are bramble thickets, which flower into wild roses; the Old
+// Ring's are three of its stones (ff_ring_stone 0, 3 and 6), whose carvings light.
+FF_PATCHES :: 15;
+FF_PATCH :: [60] f32.[
   -31.5, -34.8, 7, -1,
   -37, -30, 13, 0,   -27, -39, 13, 0,   -38, -40, 12, 0,
   17.5, -18, 13, 1,   24, -10.5, 13, 1,
-  -31, 28, 13, 2,   -22, 37, 13, 2,   -33, 39, 12, 2
+  -31, 28, 13, 2,   -22, 37, 13, 2,   -33, 39, 12, 2,
+  -6, 46, 13, 3,   9, 49.5, 13, 3,   7, 42.5, 12, 3,
+  -1.92, -41.74, 13, 4,   -3.6, -51.29, 13, 4,   5.52, -47.97, 13, 4
 ];
 FF_BLOOM_NEAR :: 2.8;      // metres: near enough to bloom a patch
 FF_SPREAD :: 2.6;          // seconds a bloom takes to spread to its full reach
 
 // The creatures: x, z, the glade whose trouble is theirs, kind (0 hedgehog, 1 frog, 2 rabbit).
-FF_CREATURES :: 3;
-FF_CREATURE :: [12] f32.[-30, -31.5, 0, 0,   20, -14, 1, 1,   -24.5, 31, 2, 2];
-FF_CREATURE_NAMES :: [3] string.["BRAMBLE", "PIP", "CLOVER"];
+// (3 a badger; 4 an owl, who sits on the low stone in the Old Ring's middle)
+FF_CREATURES :: 5;
+FF_CREATURE :: [20] f32.[-30, -31.5, 0, 0,   20, -14, 1, 1,   -24.5, 31, 2, 2,   1, 44, 3, 3,   0, -47, 4, 4];
+FF_CREATURE_NAMES :: [5] string.["BRAMBLE", "PIP", "CLOVER", "BURDOCK", "HOLLOW"];
 FF_TALK_NEAR :: 6.0;
 // What each says: worried, partly helped, happy.
-FF_SAYS :: [9] string.[
+FF_SAYS :: [15] string.[
   "MOSSBANK HAS GONE GREY. THE FLOWERS BY MY BURROW WON'T WAKE.",
   "IT'S COMING BACK. THERE'S MORE GREY BY THE MUSHROOMS.",
   "MOSSBANK IS GREEN AGAIN. LISTEN, THE HEART TREE STIRRED.",
@@ -83,13 +99,21 @@ FF_SAYS :: [9] string.[
   "RIBBIT! THE REEDS ARE SINGING. A ROOT HAS WOKEN.",
   "LANTERNWOOD'S LIGHTS HAVE GONE OUT. I CAN'T FIND MY WAY.",
   "I CAN SEE A LITTLE LIGHT. KEEP GOING.",
-  "THE LANTERNS ARE LIT. THANK YOU, LITTLE FAIRY."
+  "THE LANTERNS ARE LIT. THANK YOU, LITTLE FAIRY.",
+  "BRAMBLES HAVE GROWN OVER MY WAY HOME. THE THORNS ARE EVERYWHERE.",
+  "THOSE THORNS ARE FLOWERING. THERE ARE MORE BY THE FALLEN TREE.",
+  "ROSES WHERE THE THORNS WERE. I CAN GET HOME. THANK YOU.",
+  "THE STONES HAVE GONE DARK. THEY HOLD WHAT THE FOREST REMEMBERS.",
+  "THIS STONE REMEMBERS: THE FADE CAME WHEN THE HEART TREE FELL ASLEEP.",
+  "THE RING IS LIT. THE HEART TREE IS THE FOREST'S OWN HEART. WAKE IT."
 ];
 MOOD_WORRIED :: 0; MOOD_HOPEFUL :: 1; MOOD_HAPPY :: 2;
 
-// The heart tree's five roots: where each tip lies (x, z), and the glade that wakes it (-1: a glade not in this crack).
+// The heart tree's five roots: where each tip lies (x, z), and the glade that wakes it.
 FF_ROOTS :: 5;
-FF_ROOT :: [15] f32.[-9, -9, 0,   10, -6, 1,   -8, 9, 2,   9, 8, -1,   0, -12, -1];
+FF_ROOT :: [15] f32.[-9, -9, 0,   10, -6, 1,   -8, 9, 2,   4, 12, 3,   1, -12.5, 4];
+FF_HEART_WAIT :: 3.0;      // seconds after the last root wakes before the heart tree blooms
+FF_HEART_SPREAD :: 140.0;  // its bloom: colour back over the whole valley
 FF_ROOT_SPREAD :: 22.0;
 
 // A circle of restored colour: where, how far it reaches, when it began, and whether it is in use.
@@ -103,8 +127,19 @@ Forest :: struct {
   awake_at: [FF_ROOTS] f64;
   blooms: [FF_BLOOMS] Bloom;
   bloom_n: int;
-  news: int;               // what just happened: -1 none, 0..4 a root woke, 10 + creature: that creature is happy
+  news: int;               // what just happened: -1 none, 0..4 a root woke, FF_NEWS_HEART the heart tree bloomed
   news_at: f64;
+  heart: bool;             // the heart tree has bloomed: the ending
+  heart_at: f64;
+}
+FF_NEWS_HEART :: 20;
+
+// The Old Ring's standing stone k: where it stands and which way it faces.
+RingStone :: struct { x: f32; z: f32; a: f32; }
+ff_ring_stone :: (k: int) -> RingStone {
+  a := f32(k) * f32(TAU) / f32(FF_RING_STONES) + 1.5708 + f32(TAU) / f32(FF_RING_STONES * 2);   // (a gap to the north for the trail)
+  cx := FF_GLADE[FF_OLD_RING * 3]; cz := FF_GLADE[FF_OLD_RING * 3 + 1];
+  return RingStone.{x = cx + cos(a) * f32(FF_RING_R), z = cz + sin(a) * f32(FF_RING_R), a = a};
 }
 
 // ---- the fade
@@ -208,6 +243,16 @@ ff_step :: (f: [] Forest, now: f64) {
     ff_bloom_add(f, FF_ROOT[r * 3], FF_ROOT[r * 3 + 1], f32(FF_ROOT_SPREAD), now);
     f[0].news = r; f[0].news_at = now;
   }
+  // all five awake: a moment later the heart tree blooms, and colour comes back everywhere
+  if !f[0].heart && ff_roots_awake(f) == FF_ROOTS {
+    last := 0.0;
+    for r: 0..<FF_ROOTS { if f[0].awake_at[r] > last { last = f[0].awake_at[r]; } }
+    if now - last >= FF_HEART_WAIT {
+      f[0].heart = true; f[0].heart_at = now;
+      ff_bloom_add(f, 0, 0, f32(FF_HEART_SPREAD), now);
+      f[0].news = FF_NEWS_HEART; f[0].news_at = now;
+    }
+  }
 }
 
 // ---- what you restored, kept (the page saves it, save.coax)
@@ -223,27 +268,37 @@ ff_progress :: (f: [] Forest, out: [] u8) -> int {
   for r: 0..<FF_ROOTS { out[FF_PATCHES + 2 + r] = ifx f[0].awake[r] then 1 else 0; }
   return FF_PROGRESS_BYTES;
 }
-// A payload this valley can take: its counts are this valley's, every byte 0 or 1.
+// A payload this valley can take: its root count is this valley's, it has no
+// more patches than this valley (a save from before Thornfall and the Old
+// Ring has fewer: its patches are this valley's first), every byte 0 or 1.
 ff_progress_valid :: (b: [] u8) -> bool {
-  if b.count != FF_PROGRESS_BYTES || cast(int) b[0] != FF_PATCHES || cast(int) b[FF_PATCHES + 1] != FF_ROOTS { return false; }
-  for i: 0..<FF_PATCHES { if b[1 + i] > 1 { return false; } }
-  for r: 0..<FF_ROOTS { if b[FF_PATCHES + 2 + r] > 1 { return false; } }
+  if b.count < 2 { return false; }
+  n := cast(int) b[0];
+  if n > FF_PATCHES || b.count != n + FF_ROOTS + 2 || cast(int) b[n + 1] != FF_ROOTS { return false; }
+  for i: 0..<n { if b[1 + i] > 1 { return false; } }
+  for r: 0..<FF_ROOTS { if b[n + 2 + r] > 1 { return false; } }
   return true;
 }
 // Puts back what a payload kept, already spread (no news): what is restored
-// here stays, and what it kept is added. False when it isn't this valley's.
+// here stays, and what it kept is added; five roots awake, the heart tree has
+// bloomed. False when it isn't this valley's.
 ff_progress_open :: (f: [] Forest, b: [] u8, now: f64) -> bool {
   if !ff_progress_valid(b) { return false; }
+  n := cast(int) b[0];
   began := now - FF_SPREAD - 1;
-  for i: 0..<FF_PATCHES {
+  for i: 0..<n {
     if b[1 + i] == 0 || f[0].bloomed[i] { continue; }
     f[0].bloomed[i] = true; f[0].bloomed_at[i] = began;
     ff_bloom_add(f, FF_PATCH[i * 4], FF_PATCH[i * 4 + 1], FF_PATCH[i * 4 + 2], began);
   }
   for r: 0..<FF_ROOTS {
-    if b[FF_PATCHES + 2 + r] == 0 || f[0].awake[r] { continue; }
+    if b[n + 2 + r] == 0 || f[0].awake[r] { continue; }
     f[0].awake[r] = true; f[0].awake_at[r] = began;
     ff_bloom_add(f, FF_ROOT[r * 3], FF_ROOT[r * 3 + 1], f32(FF_ROOT_SPREAD), began);
+  }
+  if !f[0].heart && ff_roots_awake(f) == FF_ROOTS {
+    f[0].heart = true; f[0].heart_at = began - 60;
+    ff_bloom_add(f, 0, 0, f32(FF_HEART_SPREAD), began);
   }
   return true;
 }
@@ -275,6 +330,48 @@ ff_progress_count :: (f: [] Forest) -> int {
   b[0] = cast(u8) FF_PATCHES; b[3] = 7;
   #assert !ff_progress_valid(b[..]);
   #assert !ff_progress_valid(b[0..<4]);
+}
+
+#test "a save from the three-glade valley (nine patches) still opens, into the first nine" {
+  old: [9 + FF_ROOTS + 2] u8;
+  old[0] = 9; old[1] = 1; old[9] = 1; old[10] = cast(u8) FF_ROOTS; old[11] = 1;
+  c: [1] Forest; c[0].news = -1;
+  #assert ff_progress_open(c[..], old[..], 50);
+  #assert c[0].bloomed[0] && c[0].bloomed[8] && !c[0].bloomed[9] && c[0].awake[0] && !c[0].heart;
+}
+
+#test "Thornfall and the Old Ring wake the last two roots; then the heart tree blooms and colours the whole valley" {
+  f: [1] Forest; f[0].news = -1;
+  for i: 0..<FF_PATCHES { #assert ff_bloom(f[..], i, 1.0); }
+  ff_step(f[..], 3.0);
+  #assert ff_roots_awake(f[..]) == FF_ROOTS && !f[0].heart;
+  for c: 0..<FF_CREATURES { #assert ff_mood(f[..], c) == MOOD_HAPPY; }
+  ff_step(f[..], 5.0);
+  #assert !f[0].heart;
+  ff_step(f[..], 6.1);
+  #assert f[0].heart && f[0].news == FF_NEWS_HEART;
+  #assert ff_restored(f[..], 55, 55, 30) == 1 && ff_restored(f[..], -55, -55, 30) == 1;
+  // kept and opened again: the heart has bloomed, quietly
+  b: [FF_PROGRESS_BYTES] u8;
+  #assert ff_progress(f[..], b[..]) == FF_PROGRESS_BYTES;
+  g: [1] Forest; g[0].news = -1;
+  #assert ff_progress_open(g[..], b[..], 100) && g[0].heart && g[0].news == -1;
+}
+
+#test "every glade's patches are in it, off the stream; the Old Ring's are by its stones" {
+  for i: 1..<FF_PATCHES {
+    g := cast(int) FF_PATCH[i * 4 + 3];
+    dx := FF_PATCH[i * 4] - FF_GLADE[g * 3]; dz := FF_PATCH[i * 4 + 1] - FF_GLADE[g * 3 + 1];
+    #assert sqrt(dx * dx + dz * dz) < FF_GLADE[g * 3 + 2];
+    st := ff_stream_near(FF_PATCH[i * 4], FF_PATCH[i * 4 + 1]);
+    #assert st.d > st.half + 2;
+  }
+  for k: 0..<3 {
+    p := FF_PATCHES - 3 + k;
+    st := ff_ring_stone(k * 3);
+    dx := FF_PATCH[p * 4] - st.x; dz := FF_PATCH[p * 4 + 1] - st.z;
+    #assert sqrt(dx * dx + dz * dz) < 1.6;
+  }
 }
 
 // ---- the stream's course as the page draws and carves it

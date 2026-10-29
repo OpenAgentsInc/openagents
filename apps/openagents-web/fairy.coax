@@ -52,9 +52,9 @@ UNIFORM_FLOATS :: U_WATER + WATER_FLOATS;
 CELLS :: FF_CELLS;
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4;
 SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
-SLOTS :: [5] int.[0, 60, 1000, 420, 160];
-SLOT_AT :: [5] int.[0, 0, 60, 1060, 1480];
-OBJECTS :: 1640;
+SLOTS :: [5] int.[0, 60, 1200, 560, 200];
+SLOT_AT :: [5] int.[0, 0, 60, 1260, 1820];
+OBJECTS :: 2020;
 OBJECT_FLOATS :: 16;
 // Looks (fairy.wgsl): how a surface takes the light and the fade.
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_GLOW :: 4; LOOK_WING :: 5;
@@ -69,13 +69,15 @@ GRASS_BLADES_PHONE :: 32;  // and on a phone (8)
 GRASS_PATCHES :: 32;       // patches a side on a computer: out to 32 m
 GRASS_PATCHES_PHONE :: 18; // on a phone: out to 18 m
 
-WALLS :: 480;               // a trunk and a crown a tree, the heart tree's, its roots, the stones, the valley's edge
+WALLS :: 500;
+// Thornfall's fallen giant: a trunk lying east-west, its root plate at the west end.
+LOG_X0 :: -8.0; LOG_X1 :: 7.0; LOG_Z :: 54.0; LOG_R :: 1.3;               // a trunk and a crown a tree, the heart tree's, its roots, the stones, the valley's edge
 SPHERES :: 64;
 BOXES :: 120;
 TREES :: 190;              // x, z, height, canopy radius, hue
 TREE_FLOATS :: 5;
 RIDGES :: 30;
-FERNS :: 40;               // x, z, yaw, size
+FERNS :: 70;               // x, z, yaw, size
 
 HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 16; HOLD_JUMP :: 32;
 HOLD_TURN_LEFT :: 64; HOLD_TURN_RIGHT :: 128; HOLD_TILT_UP :: 256; HOLD_TILT_DOWN :: 512;
@@ -83,6 +85,7 @@ KEY_ESCAPE :: -1; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
 LOOK_DRAG :: 0.0055;
 WHEEL_ZOOM :: 0.006;
 NEWS_TIME :: 4.5;
+HEART_NEWS_TIME :: 9.0;
 GOLDEN_TIME :: 2.0;
 
 // The HUD's colours: a cream ink and a soft gold.
@@ -241,6 +244,7 @@ open_ground :: (line: [] f32, x: f32, z: f32, room: f32) -> bool {
   st := ff_stream_near_line(line, x, z);
   if st.d < st.half + 2.5 + room { return false; }
   if sqrt(x * x + z * z) < 17 + room { return false; }
+  if x > f32(LOG_X0) - 4 - room && x < f32(LOG_X1) + 3 + room && abs(z - f32(LOG_Z)) < 3.5 + room { return false; }
   for g: 0..<FF_GLADES {
     dx := x - FF_GLADE[g * 3]; dz := z - FF_GLADE[g * 3 + 1];
     if sqrt(dx * dx + dz * dz) < FF_GLADE[g * 3 + 2] + room { return false; }
@@ -278,7 +282,7 @@ plant_ferns :: (s: [] Fairy) {
   line := s[0].stream[..];
   nodes := FF_NODE_XZ; links := FF_LINK_AB;
   for g: 0..<FF_GLADES {
-    for k: 0..<20 {
+    for k: 0..<14 {
       if n >= FERNS { break; }
       a := f32(k) * 2.399 + f32(g);
       d := FF_GLADE[g * 3 + 2] * (0.75 + 0.5 * hash1(f32(k), f32(g) + 3));
@@ -378,6 +382,14 @@ build_scenery :: (s: [] Fairy) {
     p := heart_stone(s, k);
     if p.ok && w < WALLS { put6(wl, w, p.x - 0.55, 0, p.z - 0.45, p.x + 0.55, 0.6, p.z + 0.45); w += 1; }
   }
+  // the fallen giant (a floor along its top) and the Old Ring's stones
+  if w < WALLS { put6(wl, w, f32(LOG_X0) - 1, 0, f32(LOG_Z) - f32(LOG_R), f32(LOG_X1), f32(LOG_R) * 2 - 0.3, f32(LOG_Z) + f32(LOG_R)); w += 1; }
+  for k: 0..<FF_RING_STONES {
+    st := ff_ring_stone(k);
+    if w < WALLS { put6(wl, w, st.x - 0.5, 0, st.z - 0.5, st.x + 0.5, 3.1, st.z + 0.5); w += 1; }
+  }
+  rc := v3(FF_GLADE[FF_OLD_RING * 3], 0, FF_GLADE[FF_OLD_RING * 3 + 1]);
+  if w < WALLS { put6(wl, w, rc.x - 0.75, 0, rc.z - 0.75, rc.x + 0.75, 0.85, rc.z + 0.75); w += 1; }
   b := f32(FF_BOUND);
   if w + 4 <= WALLS {
     put6(wl, w, -b - 2, 0, -b - 2, b + 2, 80, -b); put6(wl, w + 1, -b - 2, 0, b, b + 2, 80, b + 2);
@@ -621,6 +633,8 @@ trees :: (s: [] Fairy, u: [] f32, eye: Point) {
     gr := 0.12 + hue * 0.12; gg := 0.42 + hue * 0.12; gb := 0.05 + hue * 0.03;
     if hue > 0.86 { gr = 0.62; gg = 0.5; gb = 0.1; }   // a few autumn-gold crowns
     shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x, g + h + r * 0.55, z), hue * 6, 0, r * 2.2, r * 1.9, r * 2.2, gr, gg, gb);
+    // far off, the one clump is enough (the haze has it)
+    if dx0 * dx0 + dz0 * dz0 > 70 * 70 { continue; }
     shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x + r * 0.55, g + h + r * 0.05, z - r * 0.35), 0, 0, r * 1.4, r * 1.2, r * 1.4, gr * 1.35, gg * 1.22, gb * 1.1);
     shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x - r * 0.45, g + h + r * 0.15, z + r * 0.4), 0, 0, r * 1.3, r * 1.15, r * 1.3, gr * 0.7, gg * 0.78, gb * 1.2);
     dx := x - eye.x; dz := z - eye.z;
@@ -677,6 +691,8 @@ patches :: (s: [] Fairy) {
   t := f64(effect_time(s));
   now := s[0].time;
   for i: 0..<FF_PATCHES {
+    glade := cast(int) FF_PATCH[i * 4 + 3];
+    if glade == FF_THORNFALL || glade == FF_OLD_RING { continue; }   // thornfall() and old_ring() draw theirs
     x := FF_PATCH[i * 4]; z := FF_PATCH[i * 4 + 1];
     g := ground_at(s, x, z);
     open := 0.0f32; glow := 0.0f32;
@@ -759,7 +775,199 @@ props :: (s: [] Fairy) {
   }
 }
 
-// The creatures: a hedgehog, a frog and a rabbit, turned to you when you are near.
+// Thornfall: the fallen giant, its root plate reared up at the west end, and
+// bramble thickets (its three patches among them): dark and thorny while
+// faded; bloomed, they flower into wild roses.
+thornfall :: (s: [] Fairy, eye: Point) {
+  f := s[0].forest[..];
+  t := effect_time(s);
+  cx := FF_GLADE[FF_THORNFALL * 3]; cz := FF_GLADE[FF_THORNFALL * 3 + 1];
+  dx := cx - eye.x; dz := cz - eye.z;
+  if dx * dx + dz * dz > 95 * 95 { return; }
+  gz := f32(LOG_Z);
+  g0 := ground_at(s, f32(LOG_X0), gz); g1 := ground_at(s, f32(LOG_X1), gz);
+  r := f32(LOG_R);
+  a := v3(f32(LOG_X0), g0 + r - 0.3, gz); b := v3(f32(LOG_X1), g1 + r - 0.3, gz);
+  // the trunk in three lengths, a little uneven, the bark darker in its cracks
+  for k: 0..<3 {
+    f0 := f32(k) / 3; f1 := f32(k + 1) / 3;
+    wob := 1 + (hash1(f32(k), 8) - 0.5) * 0.12;
+    shade := 0.88 + hash1(f32(k), 9) * 0.2;
+    limb(s, SHAPE_CYLINDER, LOOK_MATTE, mix(a, b, f0 - 0.02), mix(a, b, f1 + 0.02), r * 2 * wob * (1 - f0 * 0.12), 0.44 * shade, 0.34 * shade, 0.23 * shade);
+  }
+  for k: 0..<7 {
+    p0 := mix(a, b, 0.08 + f32(k) * 0.13);
+    an := hash1(f32(k), 3) * 2.4 - 1.2;
+    q := add(p0, v3(0, sin(an) * r * 1.0, cos(an) * r * 1.0));
+    limb(s, SHAPE_CYLINDER, LOOK_MATTE, add(q, v3(-0.9, 0, 0)), add(q, v3(0.9, 0, 0)), 0.18, 0.28, 0.21, 0.15);
+  }
+  // moss along its top, a broken end, two snapped branches
+  limb(s, SHAPE_CYLINDER, LOOK_LEAVES, add(a, v3(1.5, r * 0.85, 0)), add(b, v3(-2, r * 0.85, 0)), r * 0.9, 0.3, 0.46, 0.16);
+  shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(b, v3(0.15, 0, 0)), 1.5708, 1.5708, r * 1.9, 0.3, r * 1.9, 0.72, 0.58, 0.4);
+  limb(s, SHAPE_CONE, LOOK_MATTE, add(a, v3(5, r * 0.6, 0.3)), add(a, v3(6.5, r + 2.2, 1.2)), 0.45, 0.42, 0.33, 0.22);
+  limb(s, SHAPE_CONE, LOOK_MATTE, add(a, v3(10, r * 0.5, -0.4)), add(a, v3(11, r + 1.6, -1.6)), 0.35, 0.42, 0.33, 0.22);
+  // the root plate: a disc of earth and roots standing on edge
+  plate_at := add(a, v3(-0.6, 0.6, 0));
+  shape(s, SHAPE_CYLINDER, LOOK_MATTE, plate_at, 1.5708, 1.5708, 5.2, 0.8, 4.6, 0.38, 0.28, 0.2);
+  for k: 0..<9 {
+    an := f32(k) * 0.698;
+    tip := add(plate_at, v3(-0.4 - hash1(f32(k), 3) * 0.8, sin(an) * 3.4, cos(an) * 3.6));
+    limb(s, SHAPE_CONE, LOOK_MATTE, plate_at, tip, 0.45, 0.4, 0.3, 0.2);
+  }
+  // the thickets: the three patches, and more brambles round the glade's edge
+  for k: 0..<9 {
+    x := 0.0f32; z := 0.0f32; patch := -1;
+    if k < 3 {
+      patch = FF_PATCHES - 6 + k;
+      x = FF_PATCH[patch * 4]; z = FF_PATCH[patch * 4 + 1];
+    } else {
+      an := f32(k) * 1.05 + 0.4;
+      d := 9.0 + hash1(f32(k), 5) * 2;
+      x = cx + cos(an) * d; z = cz + sin(an) * d;
+      if abs(z - gz) < 3 && x > f32(LOG_X0) - 4 && x < f32(LOG_X1) + 3 { continue; }
+      nodes := FF_NODE_XZ; links := FF_LINK_AB;
+      if verse_path_nearest(nodes[..], links[..], x, z).d < f32(FF_PATH_HALF) + 1 { continue; }
+    }
+    bloomed := patch >= 0 && f[0].bloomed[patch];
+    back := ff_restored(f, x, z, s[0].time);
+    open := 0.0f32;
+    if bloomed { open = clamp01(cast(f32) (s[0].time - f[0].bloomed_at[patch]) / 1.5); }
+    if patch < 0 { open = back; }
+    g := ground_at(s, x, z);
+    size := ifx patch >= 0 then 1.0f32 else 0.8f32 + hash1(x, z) * 0.4;
+    // a low, lumpy mound of small dark leaves, deep green going plum, greener as it comes back
+    for m: 0..<8 {
+      an := f32(m) * 2.399 + f32(k);
+      rr := 0.85 * size * sqrt((f32(m) + 0.5) / 8);
+      c := v3(x + cos(an) * rr, g + (0.3 + 0.3 * (1 - rr / size)) * size, z + sin(an) * rr);
+      shade := 0.8 + 0.4 * hash1(f32(m), f32(k) + 1);
+      shape(s, SHAPE_SPHERE, LOOK_LEAVES, c, an, 0, 0.62 * size, 0.5 * size, 0.58 * size,
+            lerp(0.2, 0.18, open) * shade, lerp(0.26, 0.42, open) * shade, lerp(0.16, 0.12, open) * shade);
+    }
+    // thorns all over it, red-brown, and two low canes looping over the top
+    for m: 0..<10 {
+      an := f32(m) * 2.399 + f32(k) * 0.7;
+      up := 0.25 + 0.6 * hash1(f32(m), f32(k) + 4);
+      dir := unit_or(v3(cos(an) * (1 - up), up, sin(an) * (1 - up)), v3(0, 1, 0));
+      root := add(v3(x, g + 0.32 * size, z), times(dir, 0.6 * size));
+      if s[0].counts[SHAPE_CONE] < SLOTS[SHAPE_CONE] - 30 { limb(s, SHAPE_CONE, LOOK_MATTE, root, add(root, times(dir, 0.28 * size)), 0.07, 0.5, 0.22, 0.2); }
+    }
+    for m: 0..<2 {
+      an := f32(m) * 3.1416 + f32(k);
+      p0 := v3(x + cos(an) * 0.8 * size, g + 0.3 * size, z + sin(an) * 0.8 * size);
+      p1 := v3(x + cos(an + 1.2) * 0.25 * size, g + 0.9 * size, z + sin(an + 1.2) * 0.25 * size);
+      p2 := v3(x + cos(an + 2.4) * 0.85 * size, g + 0.35 * size, z + sin(an + 2.4) * 0.85 * size);
+      if s[0].counts[SHAPE_CYLINDER] < SLOTS[SHAPE_CYLINDER] - 40 {
+        limb(s, SHAPE_CYLINDER, LOOK_MATTE, p0, p1, 0.06, 0.42, 0.18, 0.18);
+        limb(s, SHAPE_CYLINDER, LOOK_MATTE, p1, p2, 0.06, 0.42, 0.18, 0.18);
+      }
+    }
+    // the roses, opening as it blooms
+    if open > 0.02 {
+      for m: 0..<7 {
+        an := f32(m) * 2.399 + f32(k);
+        rr := 0.75 * size * (0.4 + 0.6 * hash1(f32(m), f32(k) + 2));
+        c := v3(x + cos(an) * rr, g + 0.75 * size + hash1(f32(k), f32(m)) * 0.35, z + sin(an) * rr);
+        sz := 0.2 * open;
+        pink := ifx m % 3 == 0 then 0.0f32 else 1.0f32;
+        shape(s, SHAPE_SPHERE, ifx bloomed && open < 1 then LOOK_GLOW else LOOK_MATTE, c, an, 0, sz, sz * 0.7, sz,
+              lerp(1.0, 0.98, pink), lerp(0.96, 0.5, pink), lerp(0.86, 0.62, pink));
+      }
+    }
+  }
+}
+
+// The Old Ring: nine standing stones round a low middle stone, with a gap to
+// the north for the trail. Three of them (its patches) carry a carving that
+// lights when you bloom them; the rest catch a little of the light once the
+// ring is restored.
+old_ring :: (s: [] Fairy, u: [] f32, eye: Point) {
+  f := s[0].forest[..];
+  t := effect_time(s);
+  cx := FF_GLADE[FF_OLD_RING * 3]; cz := FF_GLADE[FF_OLD_RING * 3 + 1];
+  dx := cx - eye.x; dz := cz - eye.z;
+  if dx * dx + dz * dz > 110 * 110 { return; }
+  for k: 0..<FF_RING_STONES {
+    st := ff_ring_stone(k);
+    g := ground_at(s, st.x, st.z);
+    tall := 2.9 + hash1(f32(k), 4) * 0.7;
+    lean := (hash1(f32(k), 9) - 0.5) * 0.12;
+    yaw := st.a + 1.5708;
+    // weathered grey-brown, with a lighter, narrower upper block and a rounded crown, mossy at the foot
+    tone := 0.2 + hash1(f32(k), 2) * 0.06;
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(st.x, g + tall * 0.32 - 0.2, st.z), yaw, lean, 1.25, tall * 0.68, 0.8, tone, tone * 0.98, tone * 0.9);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(st.x, g + tall * 0.72 - 0.2, st.z), yaw + 0.08, lean, 1.0, tall * 0.4, 0.66, tone * 1.08, tone * 1.06, tone);
+    shape(s, SHAPE_SPHERE, LOOK_STONE, v3(st.x, g + tall - 0.3, st.z), yaw, lean, 1.0, 0.45, 0.66, tone * 1.08, tone * 1.06, tone);
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(st.x, g + 0.05, st.z), yaw, 0, 1.6, 0.5, 1.15, 0.2, 0.34, 0.12);
+    // the carving on its inner face: a ring over a line
+    patch := -1;
+    if k % 3 == 0 { patch = FF_PATCHES - 3 + k / 3; }
+    if patch < 0 { continue; }
+    on := f[0].bloomed[patch];
+    pulse := ifx on then 0.8f32 + 0.2f32 * sin(t * 2 + f32(k)) else 1.0f32;
+    inward := v3(-cos(st.a), 0, -sin(st.a));
+    face := add(v3(st.x, g + 1.5, st.z), times(inward, 0.33));
+    col := ifx on then v3(0.55 * pulse, 0.95 * pulse, 0.9 * pulse) else v3(0.42, 0.42, 0.4);
+    look := ifx on then LOOK_GLOW else LOOK_MATTE;
+    side := v3(-inward.z, 0, inward.x);
+    for m: 0..<8 {
+      an := f32(m) * 0.785;
+      p := add(add(face, v3(0, 0.45 + sin(an) * 0.22, 0)), times(side, cos(an) * 0.22));
+      shape(s, SHAPE_SPHERE, look, p, 0, 0, 0.08, 0.08, 0.05, col.x, col.y, col.z);
+    }
+    limb(s, SHAPE_CYLINDER, look, add(face, v3(0, -0.55, 0)), add(face, v3(0, 0.18, 0)), 0.07, col.x, col.y, col.z);
+    if on { shadow(s, u, st.x, st.z, 1.2, 0.0); }
+  }
+  // the middle stone, where the owl sits
+  g := ground_at(s, cx, cz);
+  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(cx, g + 0.4, cz), 0.3, 0, 1.5, 0.9, 1.4, 0.26, 0.25, 0.22);
+}
+
+// The heart tree in bloom (the ending): blossom over the canopy, a rising
+// spiral of light from its trunk for the first moments, and petals drifting
+// down round it from then on.
+heart_bloom :: (s: [] Fairy) {
+  f := s[0].forest[..];
+  if !f[0].heart { return; }
+  t := effect_time(s);
+  age := cast(f32) (s[0].time - f[0].heart_at);
+  if s[0].golden { age = 30; }
+  for k: 0..<9 {
+    b := heart_blob(k);
+    for m: 0..<4 {
+      an := f32(m) * 1.5708 + f32(k);
+      up := 0.2 + hash1(f32(k), f32(m)) * 0.5;
+      p := v3(b.x + cos(an) * b.w * 0.42, b.y + up * b.w * 0.3, b.z + sin(an) * b.w * 0.42);
+      sz := 0.9 + hash1(f32(m), f32(k)) * 0.6;
+      shape(s, SHAPE_SPHERE, LOOK_GLOW, p, an, 0, sz, sz * 0.8, sz, 1.0, 0.72, 0.84);
+    }
+  }
+  // the spiral: forty lights climbing round the trunk and out over the valley
+  if age < 14 {
+    for k: 0..<40 {
+      life := age * 0.9 - f32(k) * 0.12;
+      if life < 0 || life > 6 { continue; }
+      an := f32(k) * 0.55 + life * 1.4;
+      rr := 3.5 + life * 3.2;
+      p := v3(cos(an) * rr, 2 + life * 3.6, sin(an) * rr);
+      sz := 0.5 * (1 - life / 6) + 0.15;
+      gold := ifx k % 3 == 0 then 1.0f32 else 0.0f32;
+      shape(s, SHAPE_SPHERE, LOOK_GLOW, p, 0, 0, sz, sz, sz, 1.0, lerp(0.7, 0.9, gold), lerp(0.85, 0.5, gold));
+    }
+  }
+  // petals, falling for good
+  for k: 0..<24 {
+    cycle := 9.0 + hash1(f32(k), 1) * 4;
+    ph := (t + hash1(f32(k), 2) * cycle) / cycle;
+    ph = ph - floor(ph);
+    an := f32(k) * 2.399;
+    rr := 4 + hash1(f32(k), 3) * 12;
+    p := v3(cos(an) * rr + sin(t * 0.7 + f32(k)) * 1.2, 22 - ph * 21, sin(an) * rr + cos(t * 0.6 + f32(k)) * 1.2);
+    shape(s, SHAPE_SPHERE, LOOK_MATTE, p, an + t, 0.6, 0.22, 0.05, 0.16, 1.0, 0.7, 0.82);
+  }
+}
+
+// The creatures: a hedgehog, a frog, a rabbit, a badger and an owl, turned to you when you are near.
 creatures :: (s: [] Fairy, u: [] f32, you: Point) {
   t := effect_time(s);
   for c: 0..<FF_CREATURES {
@@ -796,6 +1004,49 @@ creatures :: (s: [] Fairy, u: [] f32, you: Point) {
         shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(base, add(times(right, 0.3 * sign), v3(0, 0.08, -0.05))), face, 0, 0.3, 0.16, 0.42, 0.32, 0.6, 0.26);
       }
       shadow(s, u, x, z, 0.6, 0.55);
+    } else if kind == 3 {
+      // a badger: long and low, grey, a white-striped black face
+      body := add(base, v3(0, 0.36, 0));
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, body, face, 0, 0.7, 0.5, 1.0, 0.5, 0.5, 0.52);
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(body, v3(0, -0.12, 0)), face, 0, 0.6, 0.3, 0.86, 0.22, 0.2, 0.2);
+      for side: 0..<2 {
+        sign := ifx side == 0 then 1.0f32 else -1.0f32;
+        for end: 0..<2 {
+          along := ifx end == 0 then 0.3f32 else -0.3f32;
+          shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(base, add(times(ahead, along), add(times(right, 0.22 * sign), v3(0, 0.1, 0)))), face, 0, 0.16, 0.22, 0.2, 0.16, 0.15, 0.15);
+        }
+      }
+      head := add(body, add(times(ahead, 0.55), v3(0, 0.04, 0)));
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, head, face, 0, 0.36, 0.32, 0.46, 0.14, 0.13, 0.13);
+      limb(s, SHAPE_CYLINDER, LOOK_CLOTH, add(head, add(times(ahead, -0.12), v3(0, 0.15, 0))), add(head, add(times(ahead, 0.22), v3(0, 0.05, 0))), 0.11, 0.97, 0.96, 0.92);
+      for side: 0..<2 {
+        sign := ifx side == 0 then 1.0f32 else -1.0f32;
+        shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(times(right, 0.15 * sign), v3(0, 0.15, -0.04))), face, 0, 0.12, 0.1, 0.08, 0.95, 0.94, 0.9);
+        shape(s, SHAPE_SPHERE, LOOK_SPARK, add(head, add(times(ahead, 0.17), add(times(right, 0.1 * sign), v3(0, 0.05, 0)))), 0, 0, 0.045, 0.045, 0.045, 0.1, 0.08, 0.08);
+      }
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, times(ahead, 0.24)), 0, 0, 0.08, 0.07, 0.07, 0.08, 0.07, 0.07);
+      shadow(s, u, x, z, 0.75, 0.55);
+    } else if kind == 4 {
+      // an owl on the middle stone: round, tawny, with great gold eyes and ear tufts
+      sit := add(base, v3(0, 0.85, 0));
+      body := add(sit, v3(0, 0.42, 0));
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, body, face, 0, 0.66, 0.8, 0.6, 0.56, 0.4, 0.26);
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(body, add(times(ahead, 0.16), v3(0, -0.06, 0))), face, 0, 0.46, 0.58, 0.32, 0.9, 0.8, 0.62);
+      head := add(body, v3(0, 0.46, 0));
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, head, face, 0, 0.56, 0.46, 0.5, 0.6, 0.44, 0.28);
+      blink := ifx mood == MOOD_HAPPY then 1.0f32 else 0.75f32;
+      for side: 0..<2 {
+        sign := ifx side == 0 then 1.0f32 else -1.0f32;
+        disc := add(head, add(times(ahead, 0.2), add(times(right, 0.13 * sign), v3(0, 0.02, 0))));
+        shape(s, SHAPE_SPHERE, LOOK_CLOTH, disc, face, 0, 0.22, 0.22, 0.08, 0.95, 0.88, 0.72);
+        shape(s, SHAPE_SPHERE, LOOK_SPARK, add(disc, times(ahead, 0.03)), face, 0, 0.13, 0.13 * blink, 0.06, 1.0, 0.76, 0.2);
+        shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(disc, times(ahead, 0.06)), face, 0, 0.06, 0.06 * blink, 0.03, 0.08, 0.06, 0.05);
+        tuft := add(head, add(times(right, 0.18 * sign), v3(0, 0.18, 0)));
+        limb(s, SHAPE_CONE, LOOK_CLOTH, tuft, add(tuft, add(times(right, 0.08 * sign), v3(0, 0.2, 0))), 0.1, 0.5, 0.36, 0.22);
+        wing := add(body, add(times(right, 0.3 * sign), v3(0, -0.02, -0.04)));
+        shape(s, SHAPE_SPHERE, LOOK_CLOTH, wing, face, 0.15 * sign, 0.16, 0.66, 0.42, 0.46, 0.32, 0.2);
+      }
+      limb(s, SHAPE_CONE, LOOK_CLOTH, add(head, add(times(ahead, 0.24), v3(0, -0.06, 0))), add(head, add(times(ahead, 0.32), v3(0, -0.14, 0))), 0.07, 0.92, 0.72, 0.3);
     } else {
       body := add(base, v3(0, 0.38, 0));
       fur := v3(0.86, 0.82, 0.78);
@@ -1272,7 +1523,8 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   cap := 11 * k;
   title := "FAIRY FOREST";
   roots := ff_roots_awake(f);
-  line2 := ifx roots == 0 then "THE HEART TREE SLEEPS" else ifx roots == 1 then "ONE ROOT OF FIVE AWAKE" else ifx roots == 2 then "TWO ROOTS OF FIVE AWAKE" else "THREE ROOTS OF FIVE AWAKE";
+  counted := [5] string.["ONE ROOT OF FIVE AWAKE", "TWO ROOTS OF FIVE AWAKE", "THREE ROOTS OF FIVE AWAKE", "FOUR ROOTS OF FIVE AWAKE", "ALL FIVE ROOTS AWAKE"];
+  line2 := ifx f[0].heart then "THE HEART TREE IS IN BLOOM" else ifx roots == 0 then "THE HEART TREE SLEEPS" else counted[roots - 1];
   small := 7.5 * k;
   tw := hi(text_width(title, cap), text_width(line2, small));
   plate(s, u, Box.{x0 = gutter, y0 = gutter, x1 = gutter + tw + 28 * k, y1 = gutter + cap + small + 34 * k}, 0.78, 0);
@@ -1281,7 +1533,8 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   // the mood glyphs over the creatures in view
   for c: 0..<FF_CREATURES {
     x := FF_CREATURE[c * 4]; z := FF_CREATURE[c * 4 + 1];
-    p := project(u, v3(x, ground_at(s, x, z) + 1.6, z), w, h);
+    lift := ifx cast(int) FF_CREATURE[c * 4 + 3] == 4 then 2.9f32 else 1.6f32;   // the owl sits on its stone
+    p := project(u, v3(x, ground_at(s, x, z) + lift, z), w, h);
     if p.x < -1000 || p.z > 60 { continue; }
     r := clamp(150 * k / hi(p.z, 1), 5 * k, 15 * k);
     n = mood_glyph(s, out, n, p.x, p.y, r, ff_mood(f, c), k);
@@ -1300,7 +1553,8 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   said := "";
   who := "";
   if s[0].near_creature >= 0 { said = ff_says(f, s[0].near_creature); who = FF_CREATURE_NAMES[s[0].near_creature]; }
-  if f[0].news >= 0 && s[0].time - f[0].news_at < f64(NEWS_TIME) { said = "A ROOT OF THE HEART TREE WAKES"; who = ""; }
+  if f[0].news >= 0 && f[0].news < FF_ROOTS && s[0].time - f[0].news_at < f64(NEWS_TIME) { said = "A ROOT OF THE HEART TREE WAKES"; who = ""; }
+  if f[0].news == FF_NEWS_HEART && s[0].time - f[0].news_at < f64(HEART_NEWS_TIME) { said = "THE FOREST IS AWAKE, AND IT IS YOURS TO WANDER"; who = "THE HEART TREE BLOOMS"; }
   if said.count > 0 {
     sc := 8.5 * k;
     sw := text_width(said, sc);
@@ -1313,23 +1567,26 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
     n = draw_text(out, n, said, (w - sw) / 2, b.y1 - 11 * k, sc, GAP, SPACE, ink(k, 0.95, CREAM_R, CREAM_G, CREAM_B), false, false);
     above = b.y0;
   }
-  // BLOOM: E on a computer, a button on a phone
+  // BLOOM (or LIGHT): E on a computer, a button on a phone
   s[0].button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
-  if ff_patch_near(f, you.x, you.z) >= 0 {
+  near_patch := ff_patch_near(f, you.x, you.z);
+  if near_patch >= 0 {
     bc := 9 * k;
+    // the Old Ring's stones are lit, not bloomed
+    verb := ifx cast(int) FF_PATCH[near_patch * 4 + 3] == FF_OLD_RING then "LIGHT" else "BLOOM";
     if phone(s) {
-      bw := hi(text_width("BLOOM", bc) + 40 * k, 120 * k); bh := 46 * k;
+      bw := hi(text_width(verb, bc) + 40 * k, 120 * k); bh := 46 * k;
       b := Box.{x0 = w - 16 * k - bw, y0 = above - 12 * k - bh, x1 = w - 16 * k, y1 = above - 12 * k};
       s[0].button = b;
       plate(s, u, b, 0.9, ifx s[0].button_on then 3.0f32 else 1.0f32);
-      n = draw_text(out, n, "BLOOM", (b.x0 + b.x1 - text_width("BLOOM", bc)) / 2, (b.y0 + b.y1 + bc) / 2, bc, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+      n = draw_text(out, n, verb, (b.x0 + b.x1 - text_width(verb, bc)) / 2, (b.y0 + b.y1 + bc) / 2, bc, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
     } else {
-      wide := text_width("E", bc) + 16 * k + text_width("BLOOM", bc);
+      wide := text_width("E", bc) + 16 * k + text_width(verb, bc);
       x0 := (w - wide) / 2;
       b := Box.{x0 = x0 - 14 * k, y0 = above - 12 * k - bc - 22 * k, x1 = x0 + wide + 14 * k, y1 = above - 12 * k};
       plate(s, u, b, 0.85, 1);
       n = draw_text(out, n, "E", x0, b.y1 - 11 * k, bc, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
-      n = draw_text(out, n, "BLOOM", x0 + text_width("E", bc) + 16 * k, b.y1 - 11 * k, bc, GAP, SPACE, ink(k, 0.95, CREAM_R, CREAM_G, CREAM_B), false, false);
+      n = draw_text(out, n, verb, x0 + text_width("E", bc) + 16 * k, b.y1 - 11 * k, bc, GAP, SPACE, ink(k, 0.95, CREAM_R, CREAM_G, CREAM_B), false, false);
     }
   }
   if move_on {
@@ -1395,6 +1652,9 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   heart(s, u);
   patches(s);
   props(s);
+  thornfall(s, shot.eye);
+  old_ring(s, u, shot.eye);
+  heart_bloom(s);
   trees(s, u, shot.eye);
   ridges(s);
   ferns(s, shot.eye);
@@ -1621,4 +1881,28 @@ dist2 :: (a: Point, b: Point) -> f32 { dx := a.x - b.x; dy := a.y - b.y; return 
   // the stream's bed is under its level, the trails over it
   #assert ground_at(g[..], f32(FF_POND_X), f32(FF_POND_Z)) < f32(FF_LEVEL) - 1;
   #assert ground_at(g[..], f32(FF_SPAWN_X), f32(FF_SPAWN_Z)) > f32(FF_LEVEL) + 0.2;
+}
+
+#test "Thornfall and the Old Ring: their patches can be stood at, and a frame there in full bloom stays within its slots" {
+  g: [1] Fairy;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  fairy_start(g[..]);
+  for i: FF_PATCHES - 6..<FF_PATCHES { #assert fairy_place_open(g[..], FF_PATCH[i * 4], FF_PATCH[i * 4 + 1]); }
+  for i: 0..<FF_PATCHES { #assert ff_bloom(g[0].forest[..], i, 0.5); }
+  nv := 0;
+  for at: 0..<2 {
+    gl := ifx at == 0 then FF_THORNFALL else FF_OLD_RING;
+    x := FF_GLADE[gl * 3]; z := FF_GLADE[gl * 3 + 1] + 4;
+    for k: 0..<60 { nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 0, z, 3.1, 0, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+    #assert g[0].counts[1] < SLOTS[1];
+    #assert g[0].counts[2] < SLOTS[2];
+    #assert g[0].counts[3] < SLOTS[3];
+    #assert g[0].counts[4] < SLOTS[4];
+    #assert nv > 0 && nv <= MAX_VERTICES;
+  }
+  #assert g[0].forest[0].heart && ff_roots_awake(g[0].forest[..]) == FF_ROOTS;
+  // the heart tree in bloom, seen from its clearing
+  for k: 0..<3 { nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, 0, 0, -14, 3.1, 0, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  for k: 1..<5 { #assert g[0].counts[k] < SLOTS[k]; }
 }
