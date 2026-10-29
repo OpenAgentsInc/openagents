@@ -966,6 +966,7 @@
       "blocks": [
         "schnorr-sign",
         "crypto-ecdh-xonly",
+        "crypto-ecdh-owned-lifecycle",
         "nostr-keys",
         "unlock-gate-coax",
         "crypto-secret-codegen",
@@ -1027,7 +1028,8 @@
         "crypto-secure-zero",
         "crypto-public-view-audit",
         "crypto-ecdh-fixed-serialization",
-        "crypto-ecdh-public-guards"
+        "crypto-ecdh-public-guards",
+        "crypto-ecdh-owned-lifecycle"
       ],
       "blocks": [
         "nip44-v2",
@@ -3546,6 +3548,23 @@
         "Run affected source checks and full mutation with zero survivors, independent adversarial controls and security review; document runtime trust and never claim target-wide timing, JIT, erasure or production approval"
       ],
       "blocked_by": ["crypto-public-view-audit", "crypto-field-secret-guards", "crypto-ecdh-fixed-serialization"],
+      "blocks": ["crypto-ecdh-xonly"]
+    },
+    {
+      "slug": "crypto-ecdh-owned-lifecycle",
+      "parent": "m-assurance",
+      "title": "Establish an owned ECDH scratch lifecycle",
+      "size": "L",
+      "labels": ["nostr", "crypto", "coax"],
+      "body": "The experimental ECDH wrapper refuses invalid metadata before workspace ownership and leaves prefilled storage unchanged; an injected failed wipe returns cleanup pending with workspace potentially dirty. Design and implement a safe ownership and cleanup lifecycle that can satisfy the ECDH task's literal error-path scratch requirement without writing to unadmitted, invalid or overlapping storage or treating an incomplete wipe as a successful error return. Preserve or explicitly version the existing ABI and behavior, and distinguish caller premises from established invariants. No target timing, hidden-copy erasure or production approval follows.",
+      "files": ["coax/lib/crypto/ecdh.coax", "coax/lib/crypto/platform/", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Define and independently review exact ownership acquisition, initial state, exclusive lifetime, all return and pending states, output release and cleanup retry; map every exposed ECDH error return to a completed wipe or demonstrate why it cannot expose previously owned secret scratch, without assuming arbitrary caller storage starts clean",
+        "Refuse invalid, overlapping, stale or unadmitted storage without unsafe writes; preserve existing exported behavior or provide an explicitly versioned interface with its caller obligations and failure semantics",
+        "Test prefixed dirty workspace, malformed metadata and aliases, prior-use and retry sequences, invalid peer and scalar, injected wipe failures and recovery, cancellation and concurrent misuse under checked/release native and Wasm and relevant sanitizers; retain unchanged arithmetic and source-audit evidence",
+        "Run affected Coax checks and full mutation with zero survivors, independent adversarial tests and security review; record exact identities and limits without claiming hidden copies, target timing or production approval"
+      ],
+      "blocked_by": ["crypto-secure-zero"],
       "blocks": ["crypto-ecdh-xonly"]
     }
   ]
