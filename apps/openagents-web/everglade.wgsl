@@ -20,6 +20,7 @@ struct U {
   plate: array<vec4f, 64>,
   water: WaterU,   // the river's waves, look and mesh (verse/water-look.coax W_* rows)
   style: array<vec4f, 32>,  // the painterly preset at the clock (verse/style-preset.coax SU_*: row = SU / 4)
+  solid: array<vec4f, 32>,  // where no grass grows: the buildings' and props' footprints (x0, z0, x1, z1)
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -238,6 +239,7 @@ const WIND_DIR = vec2f(0.8, 0.6);
 const LOOK_FAR_CANOPY = 6u;                        // a far tree's cone, lit as a blob
 const LOOK_CANOPY = 7u;                            // a kit tree's leaves, lit as a blob
 const LOOK_CHARACTER = 8u;                         // the Ranger: textured, two bands and the stronger rim (spec 11)
+const LOOK_ROCK = 10u;                             // a kit rock (everglade.coax LOOK_ROCK): darker, mottled, mossy on top
 fn canopy_n(n: vec3f, blob: vec3f) -> vec3f {
   return normalize(vec3f(verse_style_canopy_normal(n.x, blob.x, CANOPY_MIX), verse_style_canopy_normal(n.y, blob.y, CANOPY_MIX), verse_style_canopy_normal(n.z, blob.z, CANOPY_MIX)));
 }
@@ -368,7 +370,7 @@ struct Shade { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(
   let q = shadow_place(v.world, light_space());
   o.pos = vec4f(q.xy, q.z, 1.0);
   o.uv = v.uv; o.slice = v.slice;
-  o.cut = select(0u, 1u, v.look == 5u || v.look == LOOK_CANOPY || v.look == LOOK_CHARACTER);
+  o.cut = select(0u, 1u, v.look == 5u || v.look == LOOK_CANOPY || v.look == LOOK_CHARACTER || v.look == LOOK_ROCK);
   return o;
 }
 @fragment fn shadow_fs(v: Shade) {
@@ -383,14 +385,16 @@ fn map_lit(p: vec3f, n: vec3f) -> f32 {
   let uv = vec2f(0.5 + 0.5 * q.x, 0.5 - 0.5 * q.y);
   let texel = 1.0 / f32(textureDimensions(shadow_map).x);
   let phone = st(31u).z; let taps = st(21u).y; let r = st(21u).z;
+  // the taps' disc 1.6 times the preset's: the penumbra spans several texels, so the map's stair-steps
+  // melt into a soft edge; the average then firmed (smoothstep) so a thin caster's shade keeps its depth
   var lit = 0.0;
   for (var k = 0.0; k < 9.0; k += 1.0) {
     if (k >= taps) { break; }
     let o = vec2f(verse_style_shadow_tap(k, phone, 0.0), verse_style_shadow_tap(k, phone, 1.0));
-    lit += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + o * r * texel, q.z - 0.0006);
+    lit += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + o * r * 1.6 * texel, q.z - 0.0006);
   }
   let inside = all(uv > vec2f(0.0)) && all(uv < vec2f(1.0));
-  return select(1.0, lit / max(taps, 1.0), inside);
+  return select(1.0, smoothstep(0.1, 0.75, lit / max(taps, 1.0)), inside);
 }
 
 fn hash(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }
@@ -438,7 +442,7 @@ fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
   var n = normalize(s.normal);
   var base = s.tint;
   var shadow = 1.0;
-  if (s.look == 5u || s.look == LOOK_CANOPY || s.look == LOOK_CHARACTER) {
+  if (s.look == 5u || s.look == LOOK_CANOPY || s.look == LOOK_CHARACTER || s.look == LOOK_ROCK) {
     // A kit mesh: its texture, cut out where the leaves' layer is clear; both sides of a leaf lit
     // (a canopy's blob normal already faces out, so it keeps it).
     if (tex.a < 0.35) { discard; }
@@ -446,6 +450,15 @@ fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
     if (!front && s.look != LOOK_CANOPY) { n = -n; }
     // a kit piece's top (a bench, a crate) takes the shadow of whoever stands on it
     if (n.y > 0.7) { shadow = shade_shadows_at(s.world.xz, s.world.y, true); }
+  }
+  if (s.look == LOOK_ROCK) {
+    // a rock: its pale texture taken down to a mid grey-brown, mottled in broad patches, and moss
+    // where it faces up (broken by noise), so in full sun it sits under the grass's value, not over it
+    let p = s.world;
+    let mottle = noise(p.xz * 0.9 + p.y * 0.7) * 0.6 + noise(p.xz * 4.1 - p.y * 3.3) * 0.4;
+    base = base * vec3f(0.62, 0.6, 0.55) * (0.78 + 0.34 * mottle);
+    let moss = smoothstep(0.35, 0.8, n.y + 0.35 * (noise(p.xz * 2.3 + p.y) - 0.5));
+    base = mix(base, vec3f(0.11, 0.2, 0.07) * (0.8 + 0.4 * mottle), moss * 0.85);
   }
   let xz = s.world.xz;
   if (s.look == 99u) {
@@ -483,26 +496,28 @@ fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
   }
   // the shapes' and the ground's colours are written as they show on screen (sRGB); the light works in
   // linear, as the kit's textures (sampled sRGB) already are
-  if (s.look != 5u && s.look != LOOK_CANOPY && s.look != LOOK_CHARACTER) { base = pow(max(base, vec3f(0.0)), vec3f(2.2)); }
-  // the painterly light (spec 1 to 4): the wrapped key times its shadow map and the movers' blobs,
-  // in three soft bands (two for the Ranger), the shadow band the albedo under the cool tinted
-  // ambient, the warm rim along silhouettes, then the haze
-  let l = st(1u).xyz;
-  let v = normalize(s.world - u.eye.xyz);
+  if (s.look != 5u && s.look != LOOK_CANOPY && s.look != LOOK_CHARACTER && s.look != LOOK_ROCK) { base = pow(max(base, vec3f(0.0)), vec3f(2.2)); }
   let lit = verse_style_contact(map_lit(s.world, n), 1.0 - shadow, st(4u).w);
-  let character = s.look == LOOK_CHARACTER || s.look == 3u;
+  return paint(base, n, s.world, lit, s.look == LOOK_CHARACTER || s.look == 3u, true);
+}
+// The painterly light (spec 1 to 4): the wrapped key times what of it reaches (lit: the shadow map and
+// the movers' blobs) in three soft bands (two for a character), the shadow band the albedo under the
+// cool tinted ambient, the warm rim along silhouettes (not on a blade: a field edge on would all be
+// rim), then the haze; with the share that blooms and the glow a hazed surface passes the shafts.
+fn paint(base: vec3f, n: vec3f, world: vec3f, lit: f32, character: bool, rim: bool) -> Lit {
+  let l = st(1u).xyz;
+  let v = normalize(world - u.eye.xyz);
   let w = verse_style_wrap(dot(n, l)) * lit;
   let band = select(verse_style_bands(w, st(7u).x, st(7u).y, st(7u).z, st(7u).w), verse_style_bands2(w, st(8u).x, st(8u).y), character);
   let key = st(0u).xyz * st(0u).w;
   let amb = vec3f(verse_style_ambient(n.y, st(5u).x, st(6u).x, st(5u).w), verse_style_ambient(n.y, st(5u).y, st(6u).y, st(5u).w), verse_style_ambient(n.y, st(5u).z, st(6u).z, st(5u).w));
   var c = banded(base, st(4u).xyz * amb, key + amb, band);
   let rs = select(st(2u).w, st(3u).x, character);
-  c += st(2u).xyz * verse_style_rim(dot(n, -v), dot(n, l), st(3u).y, st(3u).z, rs) * lit;
-  let d = length(u.eye.xyz - s.world);
-  let fog = haze_share(d, s.world.y);
+  if (rim) { c += st(2u).xyz * verse_style_rim(dot(n, -v), dot(n, l), st(3u).y, st(3u).z, rs) * lit; }
+  let d = length(u.eye.xyz - world);
+  let fog = haze_share(d, world.y);
   c = mix(c, haze_colour(fog, v), fog);
   let b = st(19u);
-  // the far, hazed surface passes on the sky's glow toward the light, as the air in front of it does
   return Lit(vec4f(c, verse_style_bloom_share(verse_style_luma(c.x, c.y, c.z), b.x, b.y)), vec4f(verse_style_shaft_source(dot(v, l)) * fog, 0.0, 0.0, 0.0));
 }
 // A banded surface (spec 1 and 3): the shadow band takes the tint's hue once more at the preset's
@@ -1080,8 +1095,103 @@ fn shafts(p: vec2f, uv: vec2f) -> f32 {
   return verse_style_shaft(sum, verse_style_shaft_total(n, sh.y), sh.z, fade);
 }
 
+// ---- the grass (art-styles.md 8): one tapered triangle a blade, instanced from a hash of its cell
+// (no buffer of blades), in a square two radii across round the eye, world-aligned so blades hold
+// still as you walk; behind the eye or past the radius (shrinking over the last 6 m) none. Its colour
+// is the meadow's under it, the root in the blades' shade and the tip lighter and warmer; its normal
+// the ground's up, tilted toward the light as the wind bends it. None on the streets, the squares,
+// the river, the buildings' and props' footprints; the movers (their blob shadows) part it.
+const ROOT = 0.78;
+fn ground_y(q: vec2f) -> f32 {
+  let g = (q - u.ground.zw) / u.ground.y;
+  let i = vec2i(floor(g)); let f = fract(g);
+  return mix(mix(height(i.x, i.y), height(i.x + 1, i.y), f.x), mix(height(i.x, i.y + 1), height(i.x + 1, i.y + 1), f.x), f.y);
+}
+fn meadow(q: vec2f) -> vec3f {
+  return pow(mix(vec3f(0.24, 0.43, 0.15), vec3f(0.38, 0.58, 0.22), noise(q * 0.13)), vec3f(2.2));
+}
+fn grass_mask(q: vec2f) -> f32 {
+  var m = verse_style_grass_clear(path_distance(q) - u.path_info.y);
+  for (var k = 0; k < 4; k++) {
+    let sq = u.square[k];
+    if (sq.z <= 0.0) { break; }
+    m *= verse_style_grass_clear(length(q - sq.xy) - sq.z);
+  }
+  for (var k = 0; k < 32; k++) {
+    let b = u.solid[k];
+    if (b.z <= b.x) { continue; }
+    let d = max(max(b.x - q.x, q.x - b.z), max(b.y - q.y, q.y - b.w));
+    m *= verse_style_grass_clear(d - 0.3);
+  }
+  return m * verse_style_grass_clear(0.25 - water_over(q) * 5.0);
+}
+struct G {
+  @builtin(position) pos: vec4f,
+  @location(0) world: vec3f,
+  @location(1) n: vec3f,
+  @location(2) albedo: vec3f,
+}
+@vertex fn grass_vs(@builtin(vertex_index) v: u32, @builtin(instance_index) i: u32) -> G {
+  var o: G;
+  o.pos = vec4f(0.0, 0.0, -1.0, 1.0); o.world = vec3f(0.0); o.n = vec3f(0.0, 1.0, 0.0); o.albedo = vec3f(0.0);
+  let g = st(22u); let g2 = st(23u); let w = st(24u); let w2 = st(25u);
+  let per = max(u32(g.x), 1u); let r = g.y; let side = u32(2.0 * r);
+  // past the far field's blades the near ring's (verse_style_near_*): a square 2 reach across, hashed
+  // apart from the far field's by an offset seed, widened toward the eye
+  let reach = verse_style_near_reach(st(31u).z);
+  let far_n = per * side * side;
+  let near = i >= far_n;
+  let nper = max(u32(st(26u).w), 1u); let nside = u32(2.0 * reach);
+  let j = select(i, i - far_n, near);
+  let bper = select(per, nper, near); let bside = select(side, nside, near); let half = select(r, reach, near);
+  let cell = j / bper; let b = f32(j % bper) + select(0.0, 101.0, near);
+  let c = floor(u.eye.xz) - vec2f(half) + vec2f(f32(cell % bside), f32(cell / bside));
+  let k = c + vec2f(b * 7.13, b * -3.71);
+  let q = c + vec2f(hash(k), hash(k + vec2f(19.1, 7.7)));
+  let rel = q - u.eye.xz;
+  let dist = length(rel);
+  // behind the eye nothing: the clip test on the root
+  let root_clip = clip(vec3f(q.x, ground_y(q), q.y));
+  if (root_clip.w < -1.0 || abs(root_clip.x) > root_clip.w * 1.2 + 1.0) { return o; }
+  let tall = verse_style_blade_height(hash(k + vec2f(3.3, 41.9)), g.w, g2.x) * verse_style_grass_fade(dist, r, g.z) * grass_mask(q);
+  if (tall < 0.02) { return o; }
+  let t = select(u.time, 0.0, u.still > 0.5);
+  let wd = vec2f(w2.x, w2.y);
+  let theta = verse_style_wind(dot(q, wd), verse_style_gust(q.x, q.y, t, wd.x, wd.y, w.z, w.w), t, w.x, w.y, w.z);
+  // the movers (their blob shadows: you, the people, the cats) part the blades within 0.7 m
+  var lean = wd * verse_style_bend(theta, tall, 1.0);
+  for (var m = 0; m < 8; m++) {
+    let sh = u.shadow[m];
+    if (sh.z <= 0.0) { break; }
+    let away = q - sh.xy;
+    lean += normalize(away + vec2f(0.0001)) * tall * 0.85 * verse_style_part(length(away), w2.w);
+  }
+  let ang = hash(k + vec2f(5.9, 13.3)) * 6.2831853;
+  let across = vec3f(cos(ang), 0.0, sin(ang)) * g2.y * 0.5 * verse_style_near_width(dist, reach);
+  var world = vec3f(q.x, ground_y(q), q.y);
+  let base = meadow(q);
+  let hj = hash(k + vec2f(31.7, 2.9));
+  let a = vec3f(verse_style_jitter(base.x, 0.0, hj, g2.w), verse_style_jitter(base.y, 1.0, hj, g2.w), verse_style_jitter(base.z, 2.0, hj, g2.w));
+  if (v == 0u) { world -= across; o.albedo = a * ROOT; }
+  else if (v == 1u) { world += across; o.albedo = a * ROOT; }
+  else {
+    world += vec3f(lean.x, sqrt(max(tall * tall - dot(lean, lean), tall * tall * 0.15)), lean.y);
+    o.albedo = vec3f(verse_style_tip(a.x, 0.0, g2.z), verse_style_tip(a.y, 1.0, g2.z), verse_style_tip(a.z, 2.0, g2.z));
+  }
+  let l = st(1u).xyz;
+  let lx = normalize(vec2f(l.x, l.z) + vec2f(0.0001));
+  let tilt = verse_style_grass_tilt(theta, w.x, w2.z);
+  o.n = normalize(vec3f(lx.x * sin(tilt), cos(tilt), lx.y * sin(tilt)));
+  o.pos = clip(world);
+  o.world = world;
+  return o;
+}
+@fragment fn grass_fs(g: G) -> Lit {
+  return paint(g.albedo, normalize(g.n), g.world, map_lit(g.world, vec3f(0.0, 1.0, 0.0)), false, false);
+}
+
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter, verse_style_canopy_axis, verse_style_canopy_normal, verse_style_canopy_sway, verse_style_canopy_open) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter, verse_style_canopy_axis, verse_style_canopy_normal, verse_style_canopy_sway, verse_style_canopy_open, verse_style_near_reach, verse_style_near_blades, verse_style_near_width) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -1552,5 +1662,14 @@ fn verse_style_canopy_sway(l_theta: f32, l_amp: f32, l_reach: f32, l_share: f32)
 }
 fn verse_style_canopy_open(l_n: f32, l_gap: f32) -> f32 {
   return select(0.0, 1.0, (l_n < l_gap));
+}
+fn verse_style_near_reach(l_on_phone: f32) -> f32 {
+  return select(7.0, 6.0, (l_on_phone > 0.5));
+}
+fn verse_style_near_blades(l_reach: f32, l_density: f32) -> f32 {
+  return (((4.0 * l_reach) * l_reach) * l_density);
+}
+fn verse_style_near_width(l_d: f32, l_reach: f32) -> f32 {
+  return (1.0 + (1.39999998 * (1.0 - coax_p_st_sat((l_d / coax_p_st_max(l_reach, 0.00100000005))))));
 }
 // ---- end generated

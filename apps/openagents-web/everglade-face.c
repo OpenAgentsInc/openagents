@@ -332,4 +332,5 @@ EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return place_
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return place_out_now ? place_outbox_len() : (uint32_t)city(state)->out_n; }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { if (place_out_now) place_done(); else everglade_action_done(at(state)); }
 EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return everglade_wants_text(at(state)) ? 1 : 0; }
+EXPORT("coaxial_grass_instances") uint32_t coaxial_grass_instances(uint32_t state) { return city(state)->started ? (uint32_t)everglade_grass_instances(at(state)) : 0u; }
 EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->field.e; }

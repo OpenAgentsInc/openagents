@@ -109,7 +109,9 @@
 // fragment), and bg_fs reads it as group 2 (group 1 empty):
 //   coaxial_caster_vertices(state), coaxial_caster_instances(state)  what caster_vs draws (0: none)
 // A traced bg_fs that writes @builtin(frag_depth) puts its depth in the scene's buffer. Grass, when the
-// WGSL has grass_vs/grass_fs (bg's groups), draws right after bg_fs, depth-tested and written:
+// WGSL has grass_vs/grass_fs (bg's groups), draws right after bg_fs, depth-tested and written; in a
+// mesh scene (no caster_vs) it takes the scene's groups instead, so its blades stand on the scene's
+// ground and read its shadow map:
 //   coaxial_grass_instances(state)  blades to draw, one triangle (3 vertices) each (0: none)
 // Particles, optionally: particles:URL names a shader module of their own (particle_vs/particle_fs,
 // group 0 the uniforms, group 1 binding 0 the emitters), drawn after the scene, added, depth-tested:
@@ -662,7 +664,7 @@ async function loadShaders() {
       depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less", depthBias: 2, depthBiasSlopeScale: 2 },
     }) : null,
     grassy ? device.createRenderPipelineAsync({
-      layout: bgLayout, vertex: { module, entryPoint: "grass_vs" }, fragment: { module, entryPoint: "grass_fs", targets: lit },
+      layout: casters ? bgLayout : device.createPipelineLayout({ bindGroupLayouts: sceneGroups }), vertex: { module, entryPoint: "grass_vs" }, fragment: { module, entryPoint: "grass_fs", targets: lit },
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less" },
     }) : null,
@@ -1168,8 +1170,11 @@ function frame(now) {
   pass.setBindGroup(0, gpu.bindGroup);
   if (gpu.caster) { pass.setBindGroup(1, gpu.emptyGroup); pass.setBindGroup(2, gpu.shadowGroup); }
   pass.setPipeline(gpu.bg); pass.draw(3);
-  const blades = gpu.grass ? x.coaxial_grass_instances(arena.state) : 0;
-  if (blades) { pass.setPipeline(gpu.grass); pass.draw(3, blades); }
+  const blades = gpu.grass && (gpu.caster || gpu.sceneGroup) ? x.coaxial_grass_instances(arena.state) : 0;
+  if (blades) {
+    if (!gpu.caster) { pass.setBindGroup(1, gpu.sceneGroup); if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup); }
+    pass.setPipeline(gpu.grass); pass.draw(3, blades);
+  }
   if (draws) {
     pass.setPipeline(gpu.scene);
     if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);

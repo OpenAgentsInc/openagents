@@ -582,6 +582,22 @@ ambient. The deep wood's waystone and the ruins' pillars stand as the kit's
 rock, not grey boxes. Still to come: the night's emissive windows, lanterns
 and torches.
 
+**Built** (October 29, eg-paint-foliage): Everglade grows the grass of section
+8 round the eye once the pack is in (not from the map): the far field (24 a
+m² out to 32 m, 8 out to 18 on a phone) and a near ring on top of it (32 more
+a m² within 7 m, 24 within 6 m on a phone, `verse_style_near_*`), the near
+blades widening toward the eye to 2.4 times at it, so the ground under you
+reads as thick grass as in another.jpg, not single blades. No grass on the
+streets and trails, the commons, the market and the forecourt, the river, or
+the buildings' and props' footprints (`U_SOLID`, 32 boxes after the style's
+rows); the blades are lit as the ground is, shadow map and all, and the
+movers part them. The kit's rocks draw as rock (`LOOK_ROCK`): the pale
+texture taken down to a grey-brown, mottled, with moss on their tops, so a
+sunlit face isn't the brightest thing in the frame. The shadow map's taps
+reach 1.6 times the preset's and the average is firmed (`smoothstep(0.1,
+0.75)`), so the edges are soft without the map's stair-steps and a thin
+caster keeps its shade. Phone, deep wood, 390×844 at 3×: 3.4 ms GPU p50.
+
 ## Order of the work
 
 1. The style field and presets, and the style fixture, which everything else

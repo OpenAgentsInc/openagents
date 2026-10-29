@@ -274,7 +274,18 @@ verse_style_canopy_sway :: (theta:f32,amp:f32,reach:f32,share:f32)->f32 #export_
 // Leafy gaps: whether the canopy is open at a point whose leaf noise is n (0 to 1): open where the noise
 // is under `gap` (the preset's 0.36), so the sky shows through in holes and the light shafts streak.
 verse_style_canopy_open :: (n:f32,gap:f32)->f32 #export_c {return ifx n<gap then 1.0f32 else 0.0f32;}
+// The near ring (another.jpg's forest floor): a square 2 reach across round the eye where more
+// blades grow (the preset's grass_near a m2, on top of the far field's), and the blades nearer
+// than reach widen toward the eye, 2.4 times at it, so the ground under you reads as thick grass.
+verse_style_near_reach :: (on_phone:f32)->f32 #export_c {return ifx on_phone>0.5f32 then 6.0f32 else 7.0f32;}
+verse_style_near_blades :: (reach:f32,density:f32)->f32 #export_c {return 4.0f32*reach*reach*density;}
+verse_style_near_width :: (d:f32,reach:f32)->f32 #export_c {return 1.0f32+1.4f32*(1.0f32-st_sat(d/st_max(reach,0.001f32)));}
 
+#test "the near ring: 7 m (6 on a phone), 4 r2 blades a density, 2.4 times as wide at the eye and 1 at the reach" {
+ #assert verse_style_near_reach(0.0f32)==7.0f32 && verse_style_near_reach(1.0f32)==6.0f32;
+ #assert verse_style_near_blades(7.0f32,32.0f32)==6272.0f32;
+ #assert abs(verse_style_near_width(0.0f32,7.0f32)-2.4f32)<0.0001f32 && verse_style_near_width(7.0f32,7.0f32)==1.0f32 && verse_style_near_width(20.0f32,7.0f32)==1.0f32;
+}
 #test "the band edges sit at 0.20 and 0.58 and blend over 0.12" {
  #assert verse_style_bands(0.0f32,0.20f32,0.58f32,0.06f32,0.55f32)==0.0f32;
  #assert verse_style_bands(0.14f32,0.20f32,0.58f32,0.06f32,0.55f32)==0.0f32;

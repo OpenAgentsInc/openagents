@@ -86,7 +86,10 @@ U_WATER :: U_PLATE + PLATES * 8;
 WATER_FLOATS :: 324;
 // Then the painterly preset at the clock (verse/style-preset.coax verse_style_at, SU_* rows; everglade.wgsl u.style).
 STYLE_AT :: U_WATER + WATER_FLOATS;
-UNIFORM_FLOATS :: STYLE_AT + STYLE_FLOATS;
+// Then where no grass grows (art-styles.md 8): the buildings' and the props' footprints, x0, z0, x1, z1.
+SOLIDS :: 32;
+U_SOLID :: STYLE_AT + STYLE_FLOATS;
+UNIFORM_FLOATS :: U_SOLID + SOLIDS * 4;
 
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4; SHAPE_MESH :: 5; SHAPE_SKINNED :: 6;
 SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
@@ -116,6 +119,9 @@ RANGER_AT :: OBJECTS;     // you, the Ranger: one object after everything else
 ALL_OBJECTS :: OBJECTS + 1;
 OBJECT_FLOATS :: 16;
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_WATER :: 4; LOOK_KIT :: 5;
+// The kit's rocks (Rock_Medium_1 and _2: the undergrowth's and the waystone's): the kit's texture, darkened
+// and mottled, moss on their tops (everglade.wgsl LOOK_ROCK), so a sunlit face isn't the brightest thing about.
+LOOK_ROCK :: 10;
 KIT_MESHES :: 52;
 KIT_MESH :: [52] string.["Pine_5", "Pine_5_Leaves", "Pine_4", "Pine_4_Leaves", "CommonTree_3", "CommonTree_3_Leaves",
   "CommonTree_4", "CommonTree_4_Leaves", "Bush_Common_Flowers", "Fern_1", "Rock_Medium_1", "Rock_Medium_2",
@@ -191,6 +197,7 @@ Everglade :: struct {
   started: bool;
   // the time of day (realms.json clock: cycle, or ?clock=T pinned): the clock now, how it runs, when it was read
   clock: f32; day: StyleClock; day_from: f64;
+  grass_n: int;   // the blades this frame (everglade_grass_instances)
   time: f64;
   width: f32; height: f32; dpr: f32;
   touch: bool;
@@ -550,6 +557,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
   if loaded >= 0 && total > 0 { s[0].pack_loaded = loaded; s[0].pack_total = total; }
 }
 
+everglade_grass_instances :: (s: [] Everglade) -> int #export_c { return s[0].grass_n; }
 everglade_walls :: (s: [] Everglade) -> int #export_c { if !s[0].started { everglade_start(s); } return s[0].wall_n; }
 everglade_spawn :: (s: [] Everglade) -> Point #export_c { if !s[0].started { everglade_start(s); } return s[0].spawn; }
 everglade_spawn_face :: (s: [] Everglade) -> f32 #export_c { return s[0].spawn_face; }
@@ -1415,7 +1423,8 @@ kit_rows :: (s: [] Everglade, group: int, rows: [] f32) {
   o := (s[0].group_at[group] + n) * OBJECT_FLOATS;
   for i: 0..<12 { s[0].objects[o + i] = rows[i]; }
   s[0].objects[o + 12] = 1; s[0].objects[o + 13] = 1; s[0].objects[o + 14] = 1;
-  s[0].objects[o + 15] = f32(SHAPE_MESH + 8 * LOOK_KIT);
+  rock := group == group_of(10) || group == group_of(11);
+  s[0].objects[o + 15] = f32(SHAPE_MESH + 8 * (ifx rock then LOOK_ROCK else LOOK_KIT));
 }
 // The group a mesh is drawn over: a tree's trunk and leaves share theirs.
 group_of :: (m: int) -> int { return ifx m < 2 * KIT_TREES then m / 2 else m - KIT_TREES; }
@@ -2163,6 +2172,17 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   // the haze (art-styles.md 4): the preset's density and start, thinned and pushed off over the map's lift
   u[U_EYE + 3] = lerp(u[STYLE_AT + SU_HAZE + 1], 0.004, s[0].lift);
   u[U_SUN + 3] = lerp(u[STYLE_AT + SU_HAZE], 170, s[0].lift);
+  // the grass (art-styles.md 8): a square two radii across round the eye, at the preset's density;
+  // none from above (the map) or before the pack (the scene's groups) is in
+  for k: 0..<SOLIDS * 4 { u[U_SOLID + k] = 0; }
+  for b: 0..<EG_BUILDINGS { for k: 0..<4 { u[U_SOLID + b * 4 + k] = EG_BUILDING[b * EG_BOX + k]; } }
+  for i: 0..<EG_PROPS { for k: 0..<4 { u[U_SOLID + (EG_BUILDINGS + i) * 4 + k] = EG_PROP[i * EG_BOX + k]; } }
+  gr := u[STYLE_AT + SU_GRASS + 1];
+  // the far field (4 r2 a density) and the near ring past it (style.coax verse_style_near_blades)
+  reach := verse_style_near_reach(u[STYLE_AT + SU_STYLE + 2]);
+  far := cast(int) (2 * gr) * cast(int) (2 * gr) * cast(int) u[STYLE_AT + SU_GRASS];
+  ring := ifx u[STYLE_AT + SU_FOLIAGE + 3] > 0 then cast(int) (2 * reach) * cast(int) (2 * reach) * cast(int) u[STYLE_AT + SU_FOLIAGE + 3] else 0;
+  s[0].grass_n = ifx s[0].pack_ready && s[0].lift < 0.01 then far + ring else 0;
   u[U_GROUND] = f32(EG_CELLS); u[U_GROUND + 1] = f32(EG_CELL); u[U_GROUND + 2] = f32(EG_EDGE); u[U_GROUND + 3] = f32(EG_EDGE);
   paths(u);
 
@@ -2216,7 +2236,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
 
 #test "the uniforms and shape slots line up with everglade.wgsl's" {
   #assert UNIFORM_FLOATS % 4 == 0;
-  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 504 && STYLE_AT == 828 && UNIFORM_FLOATS == 956;
+  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 504 && STYLE_AT == 828 && U_SOLID == 956 && UNIFORM_FLOATS == 1084;
   #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
   total := 0;
   for g: 0..<KIT_GROUPS - KIT_FOREST { total += TOWN_CAP[g]; }
@@ -2307,6 +2327,13 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   // On the road in, the trees beside you are the kit's, the shared trunk and leaves draws alike.
   #assert g[0].kit_used[0] + g[0].kit_used[1] + g[0].kit_used[2] + g[0].kit_used[3] > 20;
   #assert g[0].draws[5 * 4 + 3] == g[0].draws[6 * 4 + 3] && g[0].draws[5 * 4 + 2] == g[0].draws[6 * 4 + 2];
+  // the rocks draw as rock (darker, mottled, mossy: everglade.wgsl LOOK_ROCK), a fern as the kit
+  kit(g[..], group_of(10), 0, 0, -80, 0, 1); kit(g[..], group_of(9), 1, 0, -80, 0, 1);
+  rk := (g[0].group_at[group_of(10)] + g[0].kit_used[group_of(10)] - 1) * OBJECT_FLOATS;
+  fk := (g[0].group_at[group_of(9)] + g[0].kit_used[group_of(9)] - 1) * OBJECT_FLOATS;
+  #assert g[0].objects[rk + 15] == f32(SHAPE_MESH + 8 * LOOK_ROCK) && g[0].objects[fk + 15] == f32(SHAPE_MESH + 8 * LOOK_KIT);
+  // the grass: the far field's 4 r2 a density and the near ring's past it
+  #assert g[0].grass_n == 64 * 64 * 24 + 14 * 14 * 32;
   everglade_pack_failed(g[..]);
   #assert !g[0].pack_failed;
   h: [1] Everglade;

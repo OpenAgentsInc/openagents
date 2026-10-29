@@ -51,7 +51,7 @@ SU_GRASS :: 88;             // blades per m2, radius (m), fade (m), least height
 SU_GRASS2 :: 92;            // most height (m), base width (m), the tip's lift, hue jitter
 SU_WIND :: 96;              // bend amplitude (rad), wavelength (m), speed (m/s), gust scale (1/m)
 SU_WIND2 :: 100;            // wind direction x, z, the bent normal's most tilt (rad), parting radius (m)
-SU_FOLIAGE :: 104;          // canopy normal mix, sway (m), the crown's open share (leafy gaps, 0.36), 0
+SU_FOLIAGE :: 104;          // canopy normal mix, sway (m), the crown's open share (leafy gaps, 0.36), the near ring's added blades a m2
 SU_WATER_SHALLOW :: 108;    // shallow rgb, the shallow band's depth (m)
 SU_WATER_MID :: 112;        // mid rgb, the mid band's depth (m)
 SU_WATER_DEEP :: 116;       // deep rgb, each edge's softness (m)
@@ -104,7 +104,7 @@ StylePreset :: struct {
   grass_width: f32; grass_tip: f32; grass_jitter: f32;
   wind_amp: f32; wind_wavelength: f32; wind_speed: f32; wind_gust: f32;
   wind_x: f32; wind_z: f32; wind_tilt: f32; parting: f32;
-  canopy_mix: f32; sway: f32; canopy_gap: f32;
+  canopy_mix: f32; sway: f32; canopy_gap: f32; grass_near: f32;
   // water (the painted preset)
   shallow_r: f32; shallow_g: f32; shallow_b: f32; shallow_depth: f32;
   mid_r: f32; mid_g: f32; mid_b: f32; mid_depth: f32;
@@ -217,6 +217,7 @@ verse_style_preset :: (style: int, tier: int) -> StylePreset {
     p.wind_amp = 0.30; p.wind_wavelength = 12; p.wind_speed = 3; p.wind_gust = 1.0 / 25.0;
     p.wind_x = 0.8; p.wind_z = 0.6; p.wind_tilt = 20 * DEG; p.parting = 0.7;
     p.canopy_mix = 0.85; p.sway = 0.05; p.canopy_gap = 0.36;
+    p.grass_near = ifx on_phone then 24.0 else 32.0;   // the near ring's added blades a m2 (style.coax verse_style_near_reach)
     p.shallow_r = 0.30; p.shallow_g = 0.72; p.shallow_b = 0.74; p.shallow_depth = 0.4;
     p.mid_r = 0.10; p.mid_g = 0.45; p.mid_b = 0.55; p.mid_depth = 1.5;
     p.deep_r = 0.05; p.deep_g = 0.22; p.deep_b = 0.36; p.water_soft = 0.15;
@@ -308,7 +309,7 @@ verse_style_at :: (p: StylePreset, clock: f32, out: [] f32) -> bool {
   put4(out, SU_GRASS2, p.grass_high, p.grass_width, p.grass_tip, p.grass_jitter);
   put4(out, SU_WIND, p.wind_amp, p.wind_wavelength, p.wind_speed, p.wind_gust);
   put4(out, SU_WIND2, p.wind_x, p.wind_z, p.wind_tilt, p.parting);
-  put4(out, SU_FOLIAGE, p.canopy_mix, p.sway, p.canopy_gap, 0);
+  put4(out, SU_FOLIAGE, p.canopy_mix, p.sway, p.canopy_gap, p.grass_near);
   put4(out, SU_WATER_SHALLOW, p.shallow_r, p.shallow_g, p.shallow_b, p.shallow_depth);
   put4(out, SU_WATER_MID, p.mid_r, p.mid_g, p.mid_b, p.mid_depth);
   put4(out, SU_WATER_DEEP, p.deep_r, p.deep_g, p.deep_b, p.water_soft);
@@ -417,6 +418,7 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert d.shadow_size == 2048 && d.shadow_taps == 9 && f.shadow_size == 1024 && f.shadow_taps == 4;
   #assert d.shadow_cool == 1.5 && f.shadow_cool == 1.5 && verse_style_preset(STYLE_LOWPOLY, STYLE_DESKTOP).shadow_cool == 0;
   #assert d.grass_density == 24 && d.grass_radius == 32 && f.grass_density == 8 && f.grass_radius == 18;
+  #assert d.grass_near == 32 && f.grass_near == 24;
   #assert d.cloud_octaves == 2 && f.cloud_octaves == 1;
   #assert d.shaft_samples == 24 && f.shaft_samples == 12;
   #assert d.bloom_mix == 0.30 && f.bloom_mix == 0.22;
@@ -523,7 +525,7 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   p := verse_style_preset(STYLE_LOWPOLY, STYLE_PHONE);
   o: [STYLE_FLOATS] f32;
   #assert p.ok && verse_style_at(p, 0.3, o[..]);
-  #assert o[SU_TONE + 3] == 0 && o[SU_BLOOM + 2] == 0 && o[SU_SHAFTS + 2] == 0 && o[SU_GRASS] == 0 && o[SU_CLOUDS] == 0;
+  #assert o[SU_TONE + 3] == 0 && o[SU_BLOOM + 2] == 0 && o[SU_SHAFTS + 2] == 0 && o[SU_GRASS] == 0 && o[SU_FOLIAGE + 3] == 0 && o[SU_CLOUDS] == 0;
   #assert o[SU_BANDS + 3] == 1 && o[SU_STYLE] == 1 && o[SU_STYLE + 1] == 0 && o[SU_STYLE + 2] == 1;
   #assert sp_near(o[SU_STYLE + 3], 0.3);
 }
