@@ -4,6 +4,27 @@ Written 2026-10-28. Everything here was checked read-only on that date with the
 automation account. Nothing was changed. This plan proposes deletions; it makes
 none. Each deletion needs the owner's explicit yes, by name.
 
+## Done (2026-10-28 evening, owner's go: "delete coder, all as part of one migration")
+
+- **Backed up** to the private bucket `gs://openagentsgemini-coder-backup-20261028`:
+  - `sql/openagents.sql.gz`: the accounts database, 15 MB;
+  - `sql/lnurl.sql.gz`: Lightning addresses;
+  - `nfs/accounts.tgz`: both NFS exports (`/srv/accounts/stack` and `/srv/accounts/web`), which turned out empty.
+- **Agent-facing files moved to the site** (`apps/openagents-web`): `llms.txt` and `llms-full.txt`, rewritten
+  for the new site, plus `robots.txt`, `sitemap.xml`, `.well-known/nostr.json` (NIP-05),
+  `.well-known/security.txt`, and `cli/install.sh` and `install.ps1`, kept as they were.
+- **openagents.com's default is the site's bucket** (`lb.sh`), so any unknown path gets the Coax 404.
+  `/login` is the phone login page; `/signin`, `/logout` and `/signup` redirect to it.
+- **Deleted:** Cloud Run service `coder`, backend service `coaxial-coder`, serverless NEG
+  `coaxial-coder`, and the domain mappings `openagents.com`, `new.openagents.com` and `l402.openagents.com`.
+- **Not deleted, waiting for a yes by name:**
+  - the `openagents` and `lnurl` databases on `openagents-production-pg` (the instance stays: it holds `oa_analytics`);
+  - the NFS server behind `10.42.27.2` and its reserved address `oa-accounts-nfs-production`;
+  - the images `openagents/openagents-web` and `openagents/openagents-stack`;
+  - the web and gateway secrets listed below;
+  - the `coder-sync` URL map with `coder-sync-vm` and `coder-sync-run`.
+- **Dashboards still to repoint by hand:** Stripe, MoneyDevKit, WorkOS, the GitHub OAuth app and the GitHub App.
+
 ## What it is and why it goes
 
 `coder` is the Cloud Run service (project `openagentsgemini`, region
