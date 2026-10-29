@@ -41,8 +41,21 @@ it did not review other effects, run target tests, or approve the analyzer.
 The regression failed before the correction and the three corrected Coax
 suites passed 192, 196 and 199 checks. Their ordinary mutation runs killed
 2,789/2,789, 2,850/2,850 and 2,941/2,941 mutants, respectively. These are
-the ordinary scheduler runs; full reference-mode mutation was still running
-at this partial publication and is not claimed here. Separate tests cover
+the ordinary scheduler runs. Full reference-mode mutation subsequently killed
+all 2,789, 2,850 and 2,941 mutants, with 158,168, 155,353 and 163,303 full
+checks respectively, and zero skipped, borrowed or unstable checks in each
+profile. The exact [legacy](data/secret-checked-cast-2026-10-29/legacy-reference.log),
+[public-view](data/secret-checked-cast-2026-10-29/public-view-reference.log) and
+[large](data/secret-checked-cast-2026-10-29/large-reference.log) logs are retained.
+Their SHA-256 values are `198d95ecb1d244a1af2d45a8ff8fc6830af72b69d14618dcdcf679bb467e7e16`,
+`87a503718cf3e69bb9c4252debe9d3b18fdc9eb7592e14dfa082bb8a0c2bf305`, and
+`b2658cc784a94a02a1cbba2e4a0de318da10415c9c9d690e9f2c0b077540e09d`.
+These runs used `coax0 0.22.0` SHA-256
+`f335e7ec7b3f6d5966244a09aa8002b11b5ba607a1f673353c51effd9dab84a1`,
+the corrected aggregate source hashes listed above, and shared Coax tests
+`2f7ecaa5620aa07a2f82c5bbdddebfb0d9f1bdd6878c58d4b0eacaca9c8eb8de` and
+`48eba5b22f959af9ce90160db248a2c339a4840182fca2c8e2c38107572306ba`.
+Separate tests cover
 signed and unsigned runtime boundaries on checked/release native and WASI,
 ordinary public and truncating-cast controls, secret views and aliased
 regions, and explicit refusal of float and enum cast types. A secret signed
