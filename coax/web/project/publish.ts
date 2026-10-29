@@ -37,7 +37,7 @@
 // state/<slug>.json caches the slug -> event id map from the last run.
 import { getPublicKey, type Event } from "nostr-effect/pure"
 import { hexToBytes } from "@noble/hashes/utils"
-import { readdirSync, mkdirSync, writeFileSync } from "node:fs"
+import { readdirSync, mkdirSync, renameSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Relay, Signer } from "./relay"
 import { aliases, checkWork, fieldTags, filters, fold, followups, ISSUE_REVISION, KIND_COMMENT, KIND_ISSUE, KIND_ORDER,
@@ -75,7 +75,20 @@ export async function readWork(d: string): Promise<WorkItem[]> {
   return checkWork(items)
 }
 
+/** The project folded from the relay. A fold missing issues the last run saw is read again
+ * (a busy relay can still answer short), and only then refused. */
 async function load(relay: Relay): Promise<Folded> {
+  for (let n = 1; ; n++) {
+    try { return await loadOnce(relay) } catch (e) {
+      if (!(e instanceof ShortFold) || n >= 3) throw e
+      console.error(`${e.message}; reading the relay again (${n}/2)`)
+      await Bun.sleep(1500 * n)
+    }
+  }
+}
+class ShortFold extends Error {}
+
+async function loadOnce(relay: Relay): Promise<Folded> {
   const first = await relay.all(filters(pk, config))
   const ids = first.filter((e) => e.kind === KIND_ISSUE).map((e) => e.id)
   const more: Event[] = []
@@ -89,18 +102,20 @@ async function load(relay: Relay): Promise<Folded> {
   try { known = await Bun.file(cache).json() } catch {}
   const now = new Set(f.issues.map((i) => i.id))
   const lost = Object.entries(known).filter(([, id]) => !now.has(id))
-  if (lost.length && !has("forget")) throw new Error(`the relay didn't return ${lost.length} known issue(s) (${lost.slice(0, 3).map(([s]) => s).join(", ")}...); refusing to continue (--forget to drop them from the cache)`)
+  if (lost.length && !has("forget")) throw new ShortFold(`the relay didn't return ${lost.length} known issue(s) (${lost.slice(0, 3).map(([s]) => s).join(", ")}...); refusing to continue (--forget to drop them from the cache)`)
   mkdirSync(join(import.meta.dir, "state"), { recursive: true })
-  writeFileSync(cache,
-    JSON.stringify(Object.fromEntries(f.issues.map((i) => [i.slug, i.id])), null, 2) + "\n")
+  // many workers run at once: write aside and rename, so no one reads half a file
+  const tmp = `${cache}.${process.pid}`
+  writeFileSync(tmp, JSON.stringify(Object.fromEntries(f.issues.map((i) => [i.slug, i.id])), null, 2) + "\n")
+  renameSync(tmp, cache)
   return f
 }
 
 const published: string[] = []
 async function send(relay: Relay, e: Event, what: string) {
-  published.push(`${e.kind} ${what}`)
-  if (dry) { console.log(`would publish kind ${e.kind}: ${what}`); return }
+  if (dry) { published.push(`${e.kind} ${what}`); console.log(`would publish kind ${e.kind}: ${what}`); return }
   await relay.publish(e)
+  published.push(`${e.kind} ${what}`)
   console.log(`published kind ${e.kind}: ${what} (${e.id.slice(0, 8)})`)
 }
 
@@ -360,6 +375,10 @@ async function note(relay: Relay, what: string, text: string, by: string) {
   const f = await load(relay)
   const i = find(f, what)
   const who = by || i.claimed_by
+  // a re-run after a failed try must not post the same note twice
+  if (i.notes.some((n) => n.text === text.trim() && n.by === who && Date.now() / 1000 - n.at < 3600)) {
+    console.log(`the same note is already on ${i.slug}`); return
+  }
   await send(relay, commentEvent(i, text.trim(), who ? [["by", who]] : [], `A note on a task: ${i.title}`), `note on ${i.slug}`)
 }
 
@@ -370,7 +389,8 @@ async function done(relay: Relay, what: string, commit: string) {
   if (finished(i)) throw new Error(`${i.slug} is already ${i.status}`)
   const who = i.claimed_by
   const url = `${config.repo.web.replace(/\/$/, "")}/commit/${commit}`
-  await send(relay, commentEvent(i, `Done in ${commit.slice(0, 10)}: ${url}`, [["commit", commit], ["r", url], ...(who ? [["by", who]] : [])],
+  // a re-run after the status failed sends only the status
+  if (i.commit !== commit) await send(relay, commentEvent(i, `Done in ${commit.slice(0, 10)}: ${url}`, [["commit", commit], ["r", url], ...(who ? [["by", who]] : [])],
     `A task was finished: ${i.title}`), `${i.slug} done in ${commit.slice(0, 10)}`)
   await send(relay, statusEvent(i, "resolved"), `${i.slug} resolved`)
 }
@@ -411,14 +431,16 @@ async function plan(relay: Relay, what: string, rest: string[], by: string) {
   steps = steps.filter((st) => st.text)
   if (!steps.length) throw new Error("a plan needs at least one step")
   const who = by || i.claimed_by
-  await send(relay, commentEvent(i, planText(steps), [["plan", TASK_PLAN], ...(who ? [["by", who]] : [])],
+  if (i.plan && planText(i.plan.steps) === planText(steps) && i.plan.by === who) console.log(`the plan for ${i.slug} is already this`)
+  else await send(relay, commentEvent(i, planText(steps), [["plan", TASK_PLAN], ...(who ? [["by", who]] : [])],
     `A worker's plan for a task: ${i.title}`), `plan for ${i.slug} (${planDone(steps)}/${steps.length})`)
   steps.forEach((st, k) => console.log(`${String(k + 1).padStart(3)}. [${st.mark}] ${st.text}  (${MARK_WORD[st.mark]})`))
 }
 
 const verb = args[0]
-const relay = await Relay.open(relayUrl, key)
+let relay!: Relay
 try {
+  relay = await Relay.open(relayUrl, key)
   if (verb === "publish") await publishAll(relay)
   else if (verb === "move") {
     const where = has("before") ? "before" : has("after") ? "after" : null
@@ -440,4 +462,10 @@ try {
   else if (verb === "done" && args[1]) await done(relay, args[1], flag("commit"))
   else if (verb === "plan" && args[1]) await plan(relay, args[1], args.slice(2), flag("by"))
   else { console.error("usage: bun publish.ts publish|move|status|respread|list|show|claim|note|release|done|plan (see the top of this file)"); process.exitCode = 2 }
-} finally { relay.close() }
+} catch (e) {
+  // one clear line, and what already went out, so a re-run knows where it stands
+  const msg = e instanceof Error ? e.message : String(e)
+  console.error(`error: ${msg}`)
+  if (published.length && !dry) console.error(`sent before the error: ${published.join("; ")} (re-running the command is safe)`)
+  process.exitCode = 1
+} finally { relay?.close() }

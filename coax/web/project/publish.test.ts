@@ -125,3 +125,11 @@ test("claim, note, release, show, plan, done", async () => {
   expect(await run("show", "hmac")).toContain("done in a5c9177b1d")
   await expect(run("done", "hmac", "--commit", "a5c9177b1d")).rejects.toThrow("already resolved")
 }, 60000)
+
+test("ten workers at once each land their note once; a repeated note is not posted twice", async () => {
+  const outs = await Promise.all(Array.from({ length: 10 }, (_, k) => run("note", "hmac", `parallel note ${k}`, "--by", `w${k}`)))
+  for (const o of outs) expect(o).toContain("published kind 1111: note on hmac")
+  expect(await run("note", "hmac", "parallel note 3", "--by", "w3")).toContain("the same note is already on hmac")
+  const shown = await run("show", "hmac")
+  for (let k = 0; k < 10; k++) expect(shown.split(`w${k}: parallel note ${k}`).length).toBe(2)
+}, 60000)
