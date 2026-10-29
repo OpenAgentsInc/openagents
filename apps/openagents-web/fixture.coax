@@ -136,7 +136,7 @@ Fixture :: struct {
   objects: [MESHES * INSTANCE_FLOATS] f32;
   view: [16] f32;            // clip = rows · world
   // the style fixture: ?style= in the page's URL (STYLE_*, -1 none) and its clock
-  paint: int; clock: f32;
+  paint: int; clock: f32; day: StyleClock; day_from: f32;   // the clock now, how it runs, and when it was read
 }
 
 fixture_reset :: (s: [] Fixture) {
@@ -211,7 +211,8 @@ fixture_message :: (s: [] Fixture, kind: int, text: string) #export_c {
   if kind != HOST_FACTS || s[0].counted { return; }
   s[0].counted = true;
   s[0].paint = style_query(fact_line(text, "url"));
-  s[0].clock = clock_of(fact_line(text, "clock"));
+  s[0].day = verse_style_clock(fact_line(text, "clock"), fact_line(text, "now"), fact_line(text, "day"));
+  s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
   // the style fixture is a test view: it doesn't count as a visit or keep anything
   if s[0].paint < 0 { s[0].visits += 1; s[0].dirty = true; }
   realm := fact_line(text, "realm"); slot := fact_line(text, "slot");
@@ -230,21 +231,6 @@ style_query :: (url: string) -> int {
     i = e;
   }
   return -1;
-}
-// The page's clock fact as a time of day: fixed:T is T; anything else (cycle, real, none) noon.
-clock_of :: (fact: string) -> f32 {
-  if fact.count < 7 || fact[0..<6] != "fixed:" { return 0.5; }
-  v := 0.0f32; scale := 1.0f32; seen_dot := false; digits := 0;
-  for i: 6..<fact.count {
-    c := fact[i];
-    if c == '.' && !seen_dot { seen_dot = true; continue; }
-    if c < '0' || c > '9' { return 0.5; }
-    d := cast(f32) cast(int) (c - '0');
-    if seen_dot { scale *= 0.1; v += d * scale; } else { v = v * 10 + d; }
-    digits += 1;
-  }
-  if digits == 0 || v > 1 { return 0.5; }
-  return v;
 }
 // A key=value line's value ("" none).
 fact_line :: (facts: string, key: string) -> string {
@@ -671,6 +657,8 @@ fixture_frame :: (s: [] Fixture, out: [] f32, uniforms: [] f32, width: f32, heig
   uniforms[LAMP_AT + 3] = ifx still then 1.0f32 else 0.9 + 0.1 * sin(s[0].time * 2.4);
   n := ifx s[0].paint >= 0 then draw_paint(s, out) else draw_realm(s, out);
   if s[0].paint >= 0 {
+    // the clock turns unless the page is still (goldens, reduced motion)
+    if !still { s[0].clock = verse_style_clock_at(s[0].day, s[0].time - s[0].day_from); }
     // the preset for this canvas (a phone's tier under 600 css px wide), at the clock
     tier := ifx width / s[0].dpr < 600 then STYLE_PHONE else STYLE_DESKTOP;
     if verse_style_at(verse_style_preset(s[0].paint, tier), s[0].clock, uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]) { uniforms[7] = 1; }
@@ -832,5 +820,13 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
   #assert u[7] == 0 && u[STYLE_AT + SU_KEY] == 0;
   #assert style_query("https://x/realms/fixture?a=1&style=painterly#top") == STYLE_PAINTERLY;
   #assert style_query("https://x/realms/fixture#style=painterly") == -1;
-  #assert clock_of("fixed:0.75") == 0.75 && clock_of("fixed:1") == 1 && clock_of("cycle") == 0.5 && clock_of("fixed:2") == 0.5 && clock_of("fixed:") == 0.5;
+}
+#test "?clock=cycle turns the style fixture's day: a quarter in twelve minutes" {
+  s: [1] Fixture;
+  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?style=painterly&clock=cycle\nclock=cycle\nnow=2880000\nday=0.3");
+  #assert s[0].clock == 0;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  for i: 0..<7200 { fixture_step(s[..], 0.1); }
+  #assert fixture_frame(s[..], out[..], u[..], 2880, 1800, 2, 0.0, false) > 0;
+  #assert abs(s[0].clock - 0.25) < 0.001 && abs(u[STYLE_AT + SU_STYLE + 3] - 0.25) < 0.001;
 }

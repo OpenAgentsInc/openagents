@@ -353,7 +353,13 @@ ones. The physics (W1), the mesh and the swimmer don't change, only the look:
 
 `verse_style_at(preset, clock)` interpolates the keys linearly in the clock
 (0 midnight, 0.25 dawn, 0.5 noon, 0.75 dusk). The sun's elevation follows
-the clock (−20° at midnight to 60° at noon on the preset's azimuth). Below
+the clock (−20° at midnight to 60° at noon on the preset's azimuth), and its
+azimuth swings a quarter turn either side of it, so it rises on one side and
+sets on the other. `verse_style_clock` reads the page's facts (`clock`,
+`now`, `day`) and `verse_style_clock_at` runs it: a `cycle` day is 48 real
+minutes and the same for every visitor (it counts from 1970), `real` is the
+visitor's local time, and a realm with its own moon puts it in with
+`verse_style_own_moon`. Below
 −6° the moon is the key, with key strength 0.35 and its own colour (0.62,
 0.70, 0.95). Key colours: by day (1.00, 0.95, 0.85) at strength 1.0, and at
 dusk or dawn (1.00, 0.72, 0.48) at 0.75.

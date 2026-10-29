@@ -65,7 +65,8 @@
 //       playtest player's public id and account, "" none; never its key), voice (the page's data-voice route, "" none),
 //       style (the realm's art style, data-style: lowpoly, painterly or photoreal; "" not a realm), zone.<id>
 //       (a zone's style, data-zones "id:style ...") and clock (data-clock: cycle, real or fixed:T; the URL's
-//       ?clock=T, T from 0 to 1, pins it to fixed:T for shots)
+//       ?clock=T, T from 0 to 1, pins it to fixed:T for shots; ?clock=cycle or real sets it), day (the visitor's
+//       local time of day, 0 midnight to 1)
 //   601 hidden, 602 shown again, 603 the page is being left (the app's beacon goes in that turn),
 //   604 an error the page raised: message, file and line, a line each
 // and, on a page with data-drops (drop.js, /projects): files dropped on the page or picked go to
@@ -496,7 +497,10 @@ function styleFacts() {
   const d = script?.dataset || {}, out = { style: d.style || "" };
   for (const z of (d.zones || "").split(/\s+/)) { const [id, st] = z.split(":"); if (id && st) out[`zone.${id}`] = st; }
   const pin = new URLSearchParams(location.search).get("clock");
-  out.clock = pin !== null && /^(0(\.\d{1,4})?|1(\.0{1,4})?)$/.test(pin) ? `fixed:${pin}` : d.clock || "";
+  out.clock = pin !== null && /^(0(\.\d{1,4})?|1(\.0{1,4})?)$/.test(pin) ? `fixed:${pin}` : pin === "cycle" || pin === "real" ? pin : d.clock || "";
+  // the visitor's local time of day, 0 midnight to 1, for a clock that is real
+  const t = new Date();
+  out.day = ((t.getHours() * 3600 + t.getMinutes() * 60 + t.getSeconds()) / 86400).toFixed(5);
   return out;
 }
 function pageFacts() {

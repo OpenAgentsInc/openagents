@@ -316,6 +316,62 @@ verse_style_at :: (p: StylePreset, clock: f32, out: [] f32) -> bool {
   return true;
 }
 
+// ---- the clock (realms.json "clock"; host.js's facts clock=, now=, day=)
+STYLE_CLOCK_FIXED :: 0;
+STYLE_CLOCK_CYCLE :: 1;     // the day turns once every STYLE_CYCLE_SECONDS, the same for everyone
+STYLE_CLOCK_REAL :: 2;      // the visitor's local time
+STYLE_CYCLE_SECONDS :: 2880.0;   // 48 real minutes a day
+StyleClock :: struct { mode: int; at: f32; }   // at: the time of day when the page opened
+
+// A decimal number at the start of `text` ("" or none: -1).
+sp_number :: (text: string) -> f64 {
+  v := 0.0; scale := 1.0; dot := false; digits := 0;
+  for i: 0..<text.count {
+    c := text[i];
+    if c == '.' && !dot { dot = true; continue; }
+    if c < '0' || c > '9' { break; }
+    d := cast(f64) cast(int) (c - '0');
+    if dot { scale *= 0.1; v += d * scale; } else { v = v * 10.0 + d; }
+    digits += 1;
+  }
+  return ifx digits > 0 then v else -1.0;
+}
+/** The page's clock from its facts: `clock` (fixed:T, cycle or real; noon when
+ *  it is none of them), `now` (ms since 1970, for a cycle everyone shares) and
+ *  `day` (the visitor's local time of day, 0 to 1, for real). */
+verse_style_clock :: (clock: string, now_ms: string, day: string) -> StyleClock {
+  c: StyleClock; c.mode = STYLE_CLOCK_FIXED; c.at = 0.5;
+  if clock == "cycle" {
+    n := sp_number(now_ms);
+    if n >= 0 { turns := n / 1000.0 / STYLE_CYCLE_SECONDS; c.mode = STYLE_CLOCK_CYCLE; c.at = cast(f32) (turns - floor(turns)); }
+    return c;
+  }
+  if clock == "real" {
+    d := sp_number(day);
+    if d >= 0 && d <= 1 { c.mode = STYLE_CLOCK_REAL; c.at = cast(f32) d; }
+    return c;
+  }
+  if clock.count > 6 && clock[0..<6] == "fixed:" {
+    t := sp_number(clock[6..<clock.count]);
+    if t >= 0 && t <= 1 { c.at = cast(f32) t; }
+  }
+  return c;
+}
+/** The time of day `seconds` after the page opened (0 midnight, 0.5 noon). */
+verse_style_clock_at :: (c: StyleClock, seconds: f32) -> f32 {
+  if c.mode == STYLE_CLOCK_FIXED { return c.at; }
+  day := ifx c.mode == STYLE_CLOCK_CYCLE then STYLE_CYCLE_SECONDS else 86400.0f32;
+  t := c.at + seconds / day;
+  return t - floor(t);
+}
+/** A realm with a moon of its own (Hecate's, in its real phase) puts its
+ *  direction in while the moon is the key; the preset's colours stay. */
+verse_style_own_moon :: (out: [] f32, x: f32, y: f32, z: f32) {
+  l := sqrt(x * x + y * y + z * z);
+  if out.count < STYLE_FLOATS || out[SU_KEY_DIR + 3] < 0.5 || l <= 0 { return; }
+  out[SU_KEY_DIR] = x / l; out[SU_KEY_DIR + 1] = y / l; out[SU_KEY_DIR + 2] = z / l;
+}
+
 // The numbers that change through the day, for the checks.
 STYLE_KEYED :: 24;
 STYLE_KEYED_AT :: [STYLE_KEYED] int.[SU_KEY, SU_KEY + 1, SU_KEY + 2, SU_KEY + 3, SU_RIM, SU_RIM + 1, SU_RIM + 2, SU_RIM + 3, SU_TINT, SU_TINT + 2,
@@ -448,4 +504,43 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert o[SU_TONE + 3] == 0 && o[SU_BLOOM + 2] == 0 && o[SU_SHAFTS + 2] == 0 && o[SU_GRASS] == 0 && o[SU_CLOUDS] == 0;
   #assert o[SU_BANDS + 3] == 1 && o[SU_STYLE] == 1 && o[SU_STYLE + 1] == 0 && o[SU_STYLE + 2] == 1;
   #assert sp_near(o[SU_STYLE + 3], 0.3);
+}
+#test "the clock: fixed pins it, cycle turns every 48 minutes for everyone alike, real follows the visitor" {
+  f := verse_style_clock("fixed:0.25", "1700000000000", "0.9");
+  #assert f.mode == STYLE_CLOCK_FIXED && f.at == 0.25 && verse_style_clock_at(f, 999) == 0.25;
+  #assert verse_style_clock("fixed:2", "", "").at == 0.5 && verse_style_clock("", "", "").at == 0.5 && verse_style_clock("noon", "5", "0.1").mode == STYLE_CLOCK_FIXED;
+  // 2,880 s into a cycle day is a whole day: back where it was; 720 s is a quarter
+  c := verse_style_clock("cycle", "2880000", "0.9");
+  #assert c.mode == STYLE_CLOCK_CYCLE && c.at == 0;
+  #assert sp_near(verse_style_clock_at(c, 720), 0.25) && sp_near(verse_style_clock_at(c, 2880), 0);
+  a := verse_style_clock("cycle", "1700000000000", ""); b := verse_style_clock("cycle", "1700000720000", "");
+  #assert sp_near(verse_style_clock_at(a, 720), b.at);   // two visitors twelve minutes apart see the same sky
+  r := verse_style_clock("real", "", "0.75");
+  #assert r.mode == STYLE_CLOCK_REAL && r.at == 0.75 && sp_near(verse_style_clock_at(r, 21600), 0.0);
+  #assert verse_style_clock("real", "", "x").mode == STYLE_CLOCK_FIXED;
+}
+#test "a realm's own moon takes the key's direction at night, never by day" {
+  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  o: [STYLE_FLOATS] f32;
+  #assert verse_style_at(p, 0.0, o[..]);
+  verse_style_own_moon(o[..], 0, 3, 4);
+  #assert sp_near(o[SU_KEY_DIR + 1], 0.6) && sp_near(o[SU_KEY_DIR + 2], 0.8) && sp_near(o[SU_KEY], 0.62);
+  #assert verse_style_at(p, 0.5, o[..]);
+  y := o[SU_KEY_DIR + 1];
+  verse_style_own_moon(o[..], 0, 3, 4);
+  #assert o[SU_KEY_DIR + 1] == y;
+}
+#test "a cycle's day is smooth: no key number jumps between neighbouring frames" {
+  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  a: [STYLE_FLOATS] f32; b: [STYLE_FLOATS] f32;
+  #assert verse_style_at(p, 0, a[..]);
+  for i: 1..<200 {
+    #assert verse_style_at(p, cast(f32) i / 200.0, b[..]);
+    // a step is a fiftieth of its quarter day's change: linear, no jump at a key
+    k := (i - 1) / 50;
+    k0: [STYLE_FLOATS] f32; k1: [STYLE_FLOATS] f32;
+    #assert verse_style_at(p, cast(f32) k * 0.25, k0[..]) && verse_style_at(p, cast(f32) (k + 1) * 0.25, k1[..]);
+    for n: 0..<STYLE_KEYED { j := STYLE_KEYED_AT[n]; #assert abs(b[j] - a[j]) <= abs(k1[j] - k0[j]) / 50.0 + 0.0001; }
+    for j: 0..<STYLE_FLOATS { a[j] = b[j]; }
+  }
 }
