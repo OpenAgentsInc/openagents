@@ -38,6 +38,7 @@ static coax_t_Track track_state;
 static int32_t ask_id = -1, mint_id = -1;
 #define WORLD_URL "/api/playtest/world/everglade"
 #define EDIT_URL "/api/playtest/realm/everglade/edit"
+#define RESET_URL "/api/playtest/world/everglade/reset"
 static int32_t world_id = -1, edit_id = -1, post_id = -1;
 static bool world_asked;
 static uint8_t reach_grid[400 * 400];
@@ -108,7 +109,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   return n < 0 ? 0u : (uint32_t)n;
 }
 
-// The published edits once, then an admin's heard words and new list, one request each at a time.
+// The published edits once, then an admin's heard words, ORIGINAL's reset and new list, one request each at a time.
 static void edit_out(uint32_t state) {
   coax_t_Everglade *g = city(state);
   if (facts_seen && !world_asked) {
@@ -120,6 +121,11 @@ static void edit_out(uint32_t state) {
     edit_id = coaxial_http((uint32_t)(uintptr_t)EDIT_URL, sizeof EDIT_URL - 1, (uint32_t)(uintptr_t)g->ev.ask.e, (uint32_t)n, 1 | 4);
     everglade_edit_ask_sent(at(state));
     if (edit_id < 0) { edit_id = -1; everglade_edit_answer(at(state), (coax_string){"0\n", 2}); }
+  }
+  // ORIGINAL: the designed city back, before any list published after it.
+  if (post_id < 0 && everglade_edit_reset(at(state))) {
+    post_id = coaxial_http((uint32_t)(uintptr_t)RESET_URL, sizeof RESET_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
+    if (post_id < 0) { post_id = -1; everglade_edit_saved(at(state), 0); }
   }
   n = everglade_edit_post(at(state));
   if (n > 0 && post_id < 0) {

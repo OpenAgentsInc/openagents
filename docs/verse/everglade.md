@@ -13,7 +13,8 @@ The previous Everglade, on the Rust engine, is kept for parity in
 Everglade is a conventional MMORPG hub in the woods: where players gather,
 get quests and set out from. It is the same for everyone and players can't
 change it, so quests and characters can rely on it. Only an admin can,
-by voice (below), and every change is kept as the realm's published edits. The brief is the
+in edit mode or by voice (below), and every change is kept as the realm's
+published edits. The brief is the
 Everglade section of `~/work/aethyr-demo/docs/realms.md`; the shape and the
 paper map come from the old OpenAgents Everglade (`0b401561a0^:docs/verse/everglade.md`),
 a glade around a commons grown into a small town. This plan keeps its
@@ -231,7 +232,7 @@ than 6.5 m from the flock. Each bird keeps its last ten places (one every
   (eg-companion); see the whole city from above (MAP).
 - **Can't:** edit anything. No building, placing, removing, painting or
   terrain tools; no player-made objects stay in the city. An admin
-  (`admins.conf`, logged in at /login) is the one exception: see Voice edits. Everglade stays
+  (`admins.conf`, logged in at /login) is the one exception: see Edit mode. Everglade stays
   put so quests can rely on it; making things is the Sandbox's job. No
   fighting inside the walls. The world ends at its edge, and past the
   trails' ends the forest and the river keep you to the ways out.
@@ -397,6 +398,26 @@ Each building is put together from its footprint in `plan.coax`, in
 ## What's next
 
 eg-launch ([realms-port.md](realms-port.md)).
+
+## Edit mode (admins only, eg-edit)
+
+An admin gets EDIT beside MAP at the top right (B on a keyboard); nobody
+else does. Edit mode is the Haunted House's (`realm.coax` draw_edit), in
+`apps/openagents-web/everglade-edit.coax`: EDITING over the middle with what
+just happened, and along the bottom the hotbar CRATE, BARREL, BENCH, FENCE,
+STALL (1 to 5 place one in front of you), UNDO (Z), REDO (Y), ORIGINAL and
+DONE (B or Esc). Click or tap a placed thing to pick it; its row moves it
+LEFT, RIGHT, AWAY and NEAR (the arrows), TURNs it (R), makes it BIGGER or
+SMALLER (+ and -) or DELETEs it (Delete); Esc lets go. On a phone the
+hotbar is two rows and the picked thing's row is two rows of four. A change
+that would put a thing past the edge, in the woods, in a building or in
+another thing is refused and says why; one that shuts the way to a door, a
+spot or a gate is kept with a warning naming it. The list is published a
+moment after the last change and at once on DONE. ORIGINAL asks twice, then
+puts the designed city back for everyone (`POST
+/api/playtest/world/everglade/reset`); UNDO after it brings the edits back
+and publishes them again. Edit mode and voice edits share one list, one
+undo and one redo.
 
 ## Voice edits (admins only, eg-edit)
 

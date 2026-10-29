@@ -1,0 +1,420 @@
+// Everglade's edit mode for admins (eg-edit), loaded by everglade-voice.coax:
+// the Haunted House's edit mode (realm.coax draw_edit) brought to the city.
+// An admin (/api/auth/me says A|1) gets EDIT by MAP, top right, or B on a
+// keyboard. In edit mode the hotbar along the bottom places the city's five
+// things in front of you (1 to 5), with UNDO (Z), REDO (Y), ORIGINAL (the
+// designed city back: press it twice) and DONE (B or Esc). A click or a tap
+// on a placed thing picks it, and the row over the hotbar moves it (the
+// arrows), turns it (R), resizes it (+ and -) or deletes it (Delete); Esc
+// lets go. A change that would put a thing past the edge, in the woods, in a
+// building or in another thing is refused (verse/everglade/edits.coax), and
+// one that shuts the way to a door, a spot or a gate is kept with a warning.
+//
+// Edits made here and by voice (everglade-voice.coax) are one list with one
+// undo and redo. The list is published as Everglade's world a moment after
+// the last change, and at once on DONE (POST /api/playtest/world/everglade,
+// an admin's write, checked on the server); ORIGINAL asks the server to put
+// the designed city back (POST .../reset), and UNDO after it brings the list
+// back and publishes it again. Everyone's page lays the list over the plan;
+// nobody else gets EDIT.
+
+EB_ITEM :: 0;                              // the hotbar: one per item, then
+EB_UNDO :: EG_EDIT_ITEMS; EB_REDO :: EB_UNDO + 1; EB_ORIGINAL :: EB_UNDO + 2; EB_DONE :: EB_UNDO + 3;
+EB_HOTBAR :: EB_DONE + 1;
+EB_OP :: EB_HOTBAR;                        // the picked thing's row
+EB_OPS :: 8;
+EB_EDIT :: EB_OP + EB_OPS;                 // EDIT, by MAP
+EB_N :: EB_EDIT + 1;
+EOP_LEFT :: 0; EOP_RIGHT :: 1; EOP_AWAY :: 2; EOP_NEAR :: 3; EOP_TURN :: 4; EOP_BIGGER :: 5; EOP_SMALLER :: 6; EOP_DELETE :: 7;
+EOP_LABELS :: [EB_OPS] string.["LEFT", "RIGHT", "AWAY", "NEAR", "TURN", "BIGGER", "SMALLER", "DELETE"];
+EDIT_STEP :: 0.5;          // metres an arrow moves a thing
+EDIT_SURE :: 3.0;          // seconds ORIGINAL waits for its second press
+EDIT_SETTLE :: 1.2;        // seconds after the last change before it's published
+EDIT_PICK :: 56.0;         // CSS pixels from a thing's middle that pick it
+EV_KEY_DELETE :: -12;
+
+edit_on :: (s: [] Everglade) -> bool { return s[0].ev.admin && s[0].ev.editing; }
+
+// ---- into and out of edit mode
+
+edit_toggle :: (s: [] Everglade) {
+  if !s[0].ev.admin { return; }
+  if s[0].ev.editing { edit_done(s); return; }
+  s[0].ev.editing = true; s[0].ev.picked = -1; s[0].ev.sure = 0; s[0].ev.line_n = 0;
+  if s[0].ev.held { ev_release(s); }
+}
+edit_done :: (s: [] Everglade) {
+  s[0].ev.editing = false; s[0].ev.picked = -1; s[0].ev.sure = 0;
+  if s[0].ev.due > 0 { edit_publish(s); }
+}
+
+// A change by hand: kept for undo first (edit_remember), then published once
+// the changes stop for a moment.
+edit_settle :: (s: [] Everglade) {
+  edit_walls(s);
+  s[0].ev.due = s[0].time + f64(EDIT_SETTLE);
+  s[0].ev.check = true;
+}
+edit_publish :: (s: [] Everglade) {
+  s[0].ev.due = 0;
+  s[0].ev.post_n = eg_edits_body(s[0].ev.edits, "Edited by hand", s[0].ev.post[..]);
+}
+// Each frame (everglade_voice_actions): a settled change goes out.
+edit_tick :: (s: [] Everglade) {
+  if s[0].ev.due > 0 && s[0].time >= s[0].ev.due && s[0].ev.post_n == 0 && !s[0].ev.reset { edit_publish(s); }
+  if s[0].ev.sure > 0 && s[0].time > s[0].ev.sure { s[0].ev.sure = 0; }
+}
+
+// ---- the edits by hand
+
+// One of item in front of you, picked.
+edit_place_one :: (s: [] Everglade, item: int) {
+  n := s[0].ev.edits.n;
+  edit_place(s, item, 1, false);
+  s[0].ev.say_n = 0;
+  if s[0].ev.edits.n > n { s[0].ev.picked = s[0].ev.edits.n - 1; }
+}
+
+// The way from the camera to the picked thing, on the ground: AWAY, and LEFT and RIGHT across it.
+edit_away :: (s: [] Everglade, t: EgThing) -> Point {
+  dx := t.x - s[0].ev.eye_x; dz := t.z - s[0].ev.eye_z;
+  d := sqrt(dx * dx + dz * dz);
+  if d < 0.01 { return v3(sin(s[0].face), 0, cos(s[0].face)); }
+  return v3(dx / d, 0, dz / d);
+}
+
+edit_op :: (s: [] Everglade, op: int) {
+  i := s[0].ev.picked;
+  if i < 0 || i >= s[0].ev.edits.n { s[0].ev.picked = -1; return; }
+  before := s[0].ev.edits;
+  if op == EOP_DELETE {
+    for j: i + 1..<s[0].ev.edits.n { s[0].ev.edits.things[j - 1] = s[0].ev.edits.things[j]; }
+    s[0].ev.edits.n -= 1;
+    s[0].ev.picked = -1;
+    after := s[0].ev.edits;
+    s[0].ev.edits = before; edit_remember(s); s[0].ev.edits = after;
+    ev_line(s, "DELETED IT");
+    edit_settle(s);
+    return;
+  }
+  t := s[0].ev.edits.things[i];
+  a := edit_away(s, t);
+  if op == EOP_AWAY { t.x += a.x * f32(EDIT_STEP); t.z += a.z * f32(EDIT_STEP); }
+  if op == EOP_NEAR { t.x -= a.x * f32(EDIT_STEP); t.z -= a.z * f32(EDIT_STEP); }
+  // right of the way you look: away turned a quarter clockwise seen from above
+  if op == EOP_RIGHT { t.x -= a.z * f32(EDIT_STEP); t.z += a.x * f32(EDIT_STEP); }
+  if op == EOP_LEFT { t.x += a.z * f32(EDIT_STEP); t.z -= a.x * f32(EDIT_STEP); }
+  if op == EOP_TURN { t.yaw = wrap_angle(t.yaw + f32(PI) / 4); }
+  if op == EOP_BIGGER { t.size = lo(t.size * 1.25, f32(EG_EDIT_SIZE_MAX)); }
+  if op == EOP_SMALLER { t.size = hi(t.size / 1.25, f32(EG_EDIT_SIZE_MIN)); }
+  s[0].ev.edits.things[i] = t;
+  fault := eg_edit_fault(s[0].ev.edits, i);
+  if fault != EG_FAULT_NONE {
+    s[0].ev.edits = before;
+    n := ev_put(s[0].ev.line[..], "IT CAN'T GO THERE · ");
+    s[0].ev.line_n = n + ev_put(s[0].ev.line[n..<EDIT_LINE], EG_FAULT_WORD[fault]);
+    return;
+  }
+  after := s[0].ev.edits;
+  s[0].ev.edits = before; edit_remember(s); s[0].ev.edits = after;
+  s[0].ev.line_n = 0;
+  edit_settle(s);
+}
+
+edit_redo :: (s: [] Everglade) {
+  if s[0].ev.redo_n == 0 { ev_line(s, "NOTHING TO REDO"); return; }
+  redo := s[0].ev.redos[s[0].ev.redo_n - 1];
+  s[0].ev.redo_n -= 1;
+  keep := s[0].ev.redo_n;
+  edit_remember(s);   // clears the redos: they're put back
+  s[0].ev.redo_n = keep;
+  s[0].ev.edits = redo;
+  s[0].ev.picked = -1;
+  ev_line(s, "REDONE");
+  edit_settle(s);
+}
+
+// ORIGINAL: the first press asks, the second puts the designed city back for everyone.
+edit_original :: (s: [] Everglade) {
+  if s[0].ev.sure == 0 { s[0].ev.sure = s[0].time + f64(EDIT_SURE); ev_line(s, "PRESS ORIGINAL AGAIN TO PUT THE DESIGNED CITY BACK"); return; }
+  s[0].ev.sure = 0;
+  if s[0].ev.edits.n > 0 { edit_remember(s); }
+  s[0].ev.edits.n = 0; s[0].ev.picked = -1;
+  s[0].ev.due = 0; s[0].ev.post_n = 0; s[0].ev.reset = true;
+  edit_walls(s);
+  ev_line(s, "THE DESIGNED CITY IS BACK · UNDO BRINGS THE EDITS BACK");
+}
+
+// A press on the hotbar, the row or EDIT.
+edit_press :: (s: [] Everglade, b: int) {
+  if b == EB_EDIT { edit_toggle(s); return; }
+  if !edit_on(s) { return; }
+  if b != EB_ORIGINAL { s[0].ev.sure = 0; }
+  if b >= EB_ITEM && b < EB_ITEM + EG_EDIT_ITEMS { edit_place_one(s, b - EB_ITEM); return; }
+  if b == EB_UNDO { edit_undo(s, false); s[0].ev.picked = -1; return; }
+  if b == EB_REDO { edit_redo(s); return; }
+  if b == EB_ORIGINAL { edit_original(s); return; }
+  if b == EB_DONE { edit_done(s); return; }
+  if b >= EB_OP && b < EB_OP + EB_OPS { edit_op(s, b - EB_OP); }
+}
+
+// ---- keys and pointers
+
+// B, and in edit mode 1 to 5, Z, Y, Esc, and with a thing picked the arrows, R, + and -, Delete.
+everglade_edit_key :: (s: [] Everglade, key: int, down: bool) -> bool {
+  if !s[0].ev.admin || s[0].talk >= 0 || s[0].board { return false; }
+  if key == 'b' || key == 'B' { if down { edit_toggle(s); } return true; }
+  if !s[0].ev.editing { return false; }
+  picked := s[0].ev.picked >= 0;
+  op := -1;
+  if picked {
+    if key == KEY_LEFT { op = EOP_LEFT; }
+    if key == KEY_RIGHT { op = EOP_RIGHT; }
+    if key == KEY_UP { op = EOP_AWAY; }
+    if key == KEY_DOWN { op = EOP_NEAR; }
+    if key == 'r' || key == 'R' { op = EOP_TURN; }
+    if key == '+' || key == '=' { op = EOP_BIGGER; }
+    if key == '-' || key == '_' { op = EOP_SMALLER; }
+    if key == EV_KEY_DELETE || key == KEY_BACKSPACE { op = EOP_DELETE; }
+  }
+  b := -1;
+  if op >= 0 { b = EB_OP + op; }
+  if key >= '1' && key < '1' + EG_EDIT_ITEMS { b = EB_ITEM + (key - '1'); }
+  if key == 'z' || key == 'Z' { b = EB_UNDO; }
+  if key == 'y' || key == 'Y' { b = EB_REDO; }
+  if key == 'e' || key == 'E' { return true; }   // nobody to talk to while editing
+  if key == KEY_ESCAPE {
+    if down { if picked { s[0].ev.picked = -1; } else { edit_done(s); } }
+    return true;
+  }
+  if b < 0 { return false; }
+  if down { edit_press(s, b); }
+  return true;
+}
+
+// A press on a button, or on a placed thing (picks it); anything else goes on (a drag looks, a thumb walks).
+everglade_edit_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
+  if !s[0].ev.admin { return false; }
+  if s[0].ev.finger2 == id && phase > 0 {
+    if phase >= 2 { s[0].ev.finger2 = -1; s[0].ev.lit = -1; }
+    return true;
+  }
+  if phase != 0 { return false; }
+  for b: 0..<EB_N {
+    if in_box(s[0].ev.boxes[b], x, y) { s[0].ev.finger2 = id; s[0].ev.lit = b; edit_press(s, b); return true; }
+  }
+  if !s[0].ev.editing { return false; }
+  k := hi(s[0].dpr, 0.5);
+  best := -1; most := f32(EDIT_PICK) * k * f32(EDIT_PICK) * k;
+  for i: 0..<s[0].ev.edits.n {
+    if !s[0].ev.seen[i] { continue; }
+    dx := s[0].ev.sx[i] - x; dy := s[0].ev.sy[i] - y;
+    if dx * dx + dy * dy < most { most = dx * dx + dy * dy; best = i; }
+  }
+  if best < 0 { return false; }
+  s[0].ev.picked = best; s[0].ev.finger2 = id; s[0].ev.sure = 0; s[0].ev.line_n = 0;
+  return true;
+}
+
+// ---- on the screen
+
+edit_hint :: (s: [] Everglade) -> string {
+  if phone(s) {
+    if s[0].ev.picked >= 0 { return "THE ROW MOVES, TURNS, RESIZES OR DELETES IT"; }
+    return "TAP A THING TO PICK IT · A SLOT PLACES ONE";
+  }
+  if s[0].ev.picked >= 0 { return "ARROWS MOVE IT · R TURNS · + AND - RESIZE · DELETE REMOVES · ESC LETS GO"; }
+  return "CLICK A THING TO PICK IT · 1 TO 5 PLACE · Z UNDO · Y REDO · B OR ESC TO PLAY";
+}
+
+// The i'th of n boxes in a row centred across the screen, its bottom at bottom.
+edit_row :: (s: [] Everglade, i: int, n: int, widest: f32, height: f32, bottom: f32) -> Box {
+  k := hi(s[0].dpr, 0.5);
+  gap := ifx phone(s) then 4 * k else 8 * k;
+  room := s[0].width - 32 * k;
+  w := lo(widest, (room - f32(n - 1) * gap) / f32(n));
+  total := f32(n) * w + f32(n - 1) * gap;
+  x0 := floor((s[0].width - total) / 2 + f32(i) * (w + gap));
+  return Box.{x0 = x0, y0 = bottom - height, x1 = x0 + w, y1 = bottom};
+}
+
+edit_button :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, b: int, box: Box, label: string, key: string, on: bool) -> int {
+  k := hi(s[0].dpr, 0.5);
+  s[0].ev.boxes[b] = box;
+  plate(s, u, box, 0.88, ifx on || s[0].ev.lit == b then 2.0f32 else 1.0f32);
+  ts := 8.5 * k;
+  room := box.x1 - box.x0 - 10 * k;
+  tw := text_width(label, ts);
+  if tw > room { ts = ts * room / tw; tw = room; }
+  base := floor(box.y1 - (box.y1 - box.y0 - ts) / 2);
+  n := draw_text(out, at, label, floor((box.x0 + box.x1 - tw) / 2), base, ts, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  if key.count > 0 && !phone(s) {
+    n = draw_text(out, n, key, floor(box.x0 + 7 * k), floor(box.y0 + 12 * k), 5.5 * k, GAP, SPACE, ink(k, 0.6, PARCH_R, PARCH_G, PARCH_B), false, false);
+  }
+  return n;
+}
+
+// EDIT by MAP for an admin; in edit mode EDITING and what happened over the
+// middle, the picked thing named over it, its row and the hotbar over the
+// hint (whose top is bottom). Returns the vertices drawn so far.
+everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) -> int {
+  for b: 0..<EB_N { s[0].ev.boxes[b] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
+  s[0].ev.eye_x = u[U_EYE]; s[0].ev.eye_z = u[U_EYE + 2];
+  if !s[0].ev.admin || s[0].talk >= 0 || s[0].board { return at; }
+  k := hi(s[0].dpr, 0.5);
+  n := at;
+  // EDIT, left of MAP
+  mb := s[0].map_button;
+  if !s[0].above {
+    word := ifx s[0].ev.editing then "DONE" else "EDIT";
+    bw := text_width(word, 9 * k) + 32 * k;
+    eb := Box.{x0 = mb.x0 - 8 * k - bw, y0 = mb.y0, x1 = mb.x0 - 8 * k, y1 = mb.y1};
+    n = edit_button(s, out, u, n, EB_EDIT, eb, word, "B", s[0].ev.editing);
+  }
+  if !s[0].ev.editing || s[0].above { return n; }
+  // the placed things where they are on the screen (for a pick), the picked one named
+  for i: 0..<s[0].ev.edits.n {
+    t := s[0].ev.edits.things[i];
+    p := v3(t.x, ground_at(s, t.x, t.z) + 0.6 * t.size, t.z);
+    sc := on_screen(u, p, s[0].width, s[0].height);
+    s[0].ev.seen[i] = sc.ok; s[0].ev.sx[i] = sc.x; s[0].ev.sy[i] = sc.y;
+  }
+  pk := s[0].ev.picked;
+  if pk >= s[0].ev.edits.n { pk = -1; s[0].ev.picked = -1; }
+  if pk >= 0 {
+    t := s[0].ev.edits.things[pk];
+    tall := EG_EDIT_HALF[eg_edit_kind(t.kind) * 3 + 2] * t.size * (ifx t.kind == 4 then 1.55f32 else 1.0f32);
+    top := v3(t.x, ground_at(s, t.x, t.z) + tall + 0.4, t.z);
+    n = tag(s, out, u, n, EG_EDIT_LABEL[eg_edit_kind(t.kind)], top, 9 * k, 1, true);
+  }
+  // EDITING, and what happened, over the middle
+  w := s[0].width;
+  title := "EDITING";
+  line := ifx s[0].ev.line_n > 0 then cast(string) s[0].ev.line[0..<s[0].ev.line_n] else "";
+  ls := 7.5 * k;
+  lw := text_width(line, ls);
+  if lw > w - 48 * k { ls = ls * (w - 48 * k) / lw; lw = w - 48 * k; }
+  top_y := ifx phone(s) then mb.y1 + 14 * k else 16 * k;
+  pw := hi(text_width(title, 11 * k), lw) + 32 * k;
+  ph := ifx line.count > 0 then 54 * k else 36 * k;
+  plate(s, u, Box.{x0 = floor((w - pw) / 2), y0 = top_y, x1 = floor((w + pw) / 2), y1 = top_y + ph}, 0.82, 0);
+  n = draw_text(out, n, title, floor((w - text_width(title, 11 * k)) / 2), floor(top_y + 11 * k + 12 * k), 11 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  if line.count > 0 {
+    n = draw_text(out, n, line, floor((w - lw) / 2), floor(top_y + 42 * k), ls, GAP, SPACE, ink(k, 0.9, PARCH_R, PARCH_G, PARCH_B), false, false);
+  }
+  // the hotbar: one row on a computer; on a phone the items over UNDO, REDO, ORIGINAL and DONE
+  bh := 38 * k;
+  y := bottom - 8 * k;
+  sure := s[0].ev.sure > 0;
+  digit: [1] u8;
+  if phone(s) {
+    acts := [4] string.["UNDO", "REDO", "ORIGINAL", "DONE"];
+    for i: 0..<4 { n = edit_button(s, out, u, n, EB_UNDO + i, edit_row(s, i, 4, 120 * k, bh, y), ifx i == 2 && sure then "SURE?" else acts[i], "", i == 3 || (i == 2 && sure)); }
+    y -= bh + 6 * k;
+    for i: 0..<EG_EDIT_ITEMS { n = edit_button(s, out, u, n, EB_ITEM + i, edit_row(s, i, EG_EDIT_ITEMS, 100 * k, bh, y), EG_EDIT_LABEL[i], "", false); }
+  } else {
+    slots := EB_HOTBAR;
+    for i: 0..<EG_EDIT_ITEMS {
+      digit[0] = cast(u8) ('1' + i);
+      n = edit_button(s, out, u, n, EB_ITEM + i, edit_row(s, i, slots, 104 * k, bh, y), EG_EDIT_LABEL[i], cast(string) digit[..], false);
+    }
+    n = edit_button(s, out, u, n, EB_UNDO, edit_row(s, EB_UNDO, slots, 104 * k, bh, y), "UNDO", "Z", false);
+    n = edit_button(s, out, u, n, EB_REDO, edit_row(s, EB_REDO, slots, 104 * k, bh, y), "REDO", "Y", false);
+    n = edit_button(s, out, u, n, EB_ORIGINAL, edit_row(s, EB_ORIGINAL, slots, 104 * k, bh, y), ifx sure then "SURE?" else "ORIGINAL", "", sure);
+    n = edit_button(s, out, u, n, EB_DONE, edit_row(s, EB_DONE, slots, 104 * k, bh, y), "DONE", "ESC", true);
+  }
+  if pk < 0 { return n; }
+  // the picked thing's row: named, then its eight edits (two rows of four on a phone)
+  y -= bh + 12 * k;
+  oh := 34 * k;
+  if phone(s) {
+    for i: 0..<4 { n = edit_button(s, out, u, n, EB_OP + 4 + i, edit_row(s, i, 4, 96 * k, oh, y), EOP_LABELS[4 + i], "", i == 3); }
+    y -= oh + 6 * k;
+    for i: 0..<4 { n = edit_button(s, out, u, n, EB_OP + i, edit_row(s, i, 4, 96 * k, oh, y), EOP_LABELS[i], "", false); }
+  } else {
+    for i: 0..<EB_OPS { n = edit_button(s, out, u, n, EB_OP + i, edit_row(s, i, EB_OPS, 96 * k, oh, y), EOP_LABELS[i], "", i == EOP_DELETE); }
+  }
+  first := s[0].ev.boxes[EB_OP];
+  name := EG_EDIT_LABEL[eg_edit_kind(s[0].ev.edits.things[pk].kind)];
+  return draw_text(out, n, name, first.x0, floor(first.y0 - 10 * k), 8.5 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+}
+
+// ---- checks
+
+#test "edit mode: only an admin gets EDIT; B goes in and out; the hotbar places and picks" {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  #assert !everglade_key(s[..], 'b', 0) && !s[0].ev.editing;
+  everglade_message(s[..], MSG_VIEWER, "K|npub1x\nH|aa\nA|1\n");
+  #assert everglade_key(s[..], 'b', 0) && s[0].ev.editing && edit_on(s[..]);
+  s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
+  #assert everglade_key(s[..], '2', 0) && s[0].ev.edits.n == 1 && s[0].ev.edits.things[0].kind == 1 && s[0].ev.picked == 0;
+  #assert s[0].ev.post_n == 0 && s[0].ev.due > 0;   // published a moment later, not at once
+  s[0].ev.eye_x = 6; s[0].ev.eye_z = -4;            // looking south from behind you
+  z0 := s[0].ev.edits.things[0].z;
+  #assert everglade_key(s[..], KEY_UP, 0) && s[0].ev.edits.things[0].z < z0;
+  #assert everglade_key(s[..], 'r', 0) && abs(s[0].ev.edits.things[0].yaw) < 3.0;
+  size := s[0].ev.edits.things[0].size;
+  #assert everglade_key(s[..], '=', 0) && s[0].ev.edits.things[0].size > size;
+  s[0].time += 2;
+  edit_tick(s[..]);
+  #assert s[0].ev.post_n > 0;
+  s[0].ev.post_n = 0;
+  // undo three times and redo once
+  #assert everglade_key(s[..], 'z', 0) && everglade_key(s[..], 'z', 0) && everglade_key(s[..], 'z', 0);
+  #assert s[0].ev.edits.things[0].z == z0 && s[0].ev.redo_n == 3;
+  #assert everglade_key(s[..], 'y', 0) && s[0].ev.edits.things[0].z < z0;
+  // delete, then Esc out: what's due goes at once
+  s[0].ev.picked = 0;
+  #assert everglade_key(s[..], EV_KEY_DELETE, 0) && s[0].ev.edits.n == 0;
+  #assert everglade_key(s[..], KEY_ESCAPE, 0) && !s[0].ev.editing && s[0].ev.post_n > 0;
+}
+
+#test "edit mode: a thing is refused where it can't stand; ORIGINAL takes two presses and UNDO brings the list back" {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  everglade_message(s[..], MSG_VIEWER, "A|1\n");
+  edit_toggle(s[..]);
+  s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
+  edit_press(s[..], EB_ITEM + 0);
+  edit_press(s[..], EB_ITEM + 3);
+  #assert s[0].ev.edits.n == 2;
+  // pushed far away it stops at the first refusal and stays where it was
+  s[0].ev.picked = 0; s[0].ev.eye_x = 6; s[0].ev.eye_z = -4;
+  for i: 0..<200 { edit_press(s[..], EB_OP + EOP_AWAY); }
+  #assert eg_edit_fault(s[0].ev.edits, 0) == EG_FAULT_NONE && s[0].ev.line_n > 0;
+  s[0].ev.post_n = 0;
+  edit_press(s[..], EB_ORIGINAL);
+  #assert s[0].ev.edits.n == 2 && s[0].ev.sure > 0;
+  edit_press(s[..], EB_ORIGINAL);
+  #assert s[0].ev.edits.n == 0 && s[0].ev.reset && s[0].ev.post_n == 0;
+  #assert everglade_edit_reset(s[..]) && !s[0].ev.reset;
+  edit_press(s[..], EB_UNDO);
+  #assert s[0].ev.edits.n == 2;
+  s[0].time += 2; edit_tick(s[..]);
+  #assert s[0].ev.post_n > 0;
+}
+
+#test "edit mode: the HUD draws EDIT for an admin only, and the hotbar and the row within the plates" {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  u: [UNIFORM_FLOATS] f32;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  s[0].width = 1440; s[0].height = 900; s[0].dpr = 1;
+  s[0].map_button = Box.{x0 = 1360, y0 = 16, x1 = 1424, y1 = 54};
+  first := everglade_edit_hud(s[..], out[..], u[..], 0, 840);
+  #assert first == 0 && s[0].ev.boxes[EB_EDIT].x1 == 0;
+  everglade_message(s[..], MSG_VIEWER, "A|1\n");
+  second := everglade_edit_hud(s[..], out[..], u[..], 0, 840);
+  #assert second > 0 && s[0].ev.boxes[EB_EDIT].x1 > 0 && s[0].ev.boxes[EB_EDIT].x1 < 1360;
+  edit_toggle(s[..]);
+  s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
+  edit_press(s[..], EB_ITEM + 1);
+  s[0].plate_n = 4;
+  n := everglade_edit_hud(s[..], out[..], u[..], 0, 840);
+  #assert n > 0 && s[0].plate_n <= PLATES && s[0].ev.boxes[EB_DONE].x1 > 0 && s[0].ev.boxes[EB_OP + EOP_DELETE].x1 > 0;
+  #assert s[0].ev.boxes[EB_OP].y1 < s[0].ev.boxes[EB_ITEM].y0;
+  // a press on DONE leaves edit mode
+  d := s[0].ev.boxes[EB_DONE];
+  #assert everglade_edit_pointer(s[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 0, 1) && !s[0].ev.editing;
+}

@@ -16,7 +16,7 @@ struct U {
   path: array<vec4f, 32>,
   path_info: vec4f,
   square: array<vec4f, 4>,
-  plate: array<vec4f, 32>,
+  plate: array<vec4f, 64>,
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -41,7 +41,7 @@ fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
 }
 fn plates(p: vec2f, under: vec3f) -> vec3f {
   var c = under;
-  for (var k = 0; k < 16; k++) {
+  for (var k = 0; k < 32; k++) {
     if (f32(k) >= u.plates) { break; }
     c = plate(p, c, u.plate[k * 2], u.plate[k * 2 + 1]);
   }

@@ -64,7 +64,7 @@
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
 MAX_VERTICES :: 30000;
-PLATES :: 16;
+PLATES :: 32;
 // The uniforms: width, height, time, fade, still, plates, dpr, horizon; the
 // view's four rows; the eye and the fog's density; the sun and where the
 // fog starts; the ground; SHADOWS blobs; PATHS path pieces and their count
@@ -1526,6 +1526,7 @@ hint :: (s: [] Everglade) -> string {
     if phone(s) { return "THE MAP · TAP MAP TO WALK AGAIN"; }
     return "THE MAP · M OR ESC TO WALK AGAIN";
   }
+  if s[0].ev.editing { return edit_hint(s); }
   if s[0].news_time > 0 && s[0].news >= 0 { return news_line(s); }
   if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP JUMPS"; }
   return "WASD WALK · DRAG OR ARROWS TURN · WHEEL ZOOMS · SHIFT RUNS · M MAP";
@@ -1854,7 +1855,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   s[0].bye_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   if s[0].talk >= 0 { return conversation(s, out, u, n); }
   if s[0].board { return board_panel(s, out, u, n); }
-  if s[0].lift < 0.5 { n = tracker(s, out, u, n, gutter + cap + small + 44 * k, you); }
+  if s[0].lift < 0.5 && !s[0].ev.editing { n = tracker(s, out, u, n, gutter + cap + small + 44 * k, you); }
   line := hint(s);
   hs := 7.5 * k;
   room := w - 2 * gutter - 24 * k;
@@ -1863,11 +1864,11 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   y1 := h - gutter;
   plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - hs - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
   n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, hs, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
-  // An admin's TALK TO EDIT (everglade-voice.coax), over the hint; whoever is near is asked above it.
+  // An admin's EDIT and edit mode (everglade-edit.coax) and TALK TO EDIT (everglade-voice.coax), over the hint; whoever is near is asked above it.
   lift := 0.0f32;
-  if voice_on(s) && !s[0].above { n = everglade_voice_hud(s, out, u, n, y1 - hs - 28 * k); lift = 100 * k; }
+  if s[0].ev.admin { n = everglade_voice_hud(s, out, u, n, y1 - hs - 28 * k); lift = ifx voice_on(s) then 100 * k else 0.0f32; }
   // Someone near: E (or TALK, on a phone) talks to them.
-  if (s[0].near >= 0 || s[0].near_board) && !s[0].above {
+  if (s[0].near >= 0 || s[0].near_board) && !s[0].above && !s[0].ev.editing {
     ask := talk_prompt(s);
     ts := 9 * k;
     aw := text_width(ask, ts) + 32 * k;
@@ -2003,7 +2004,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
 
 #test "the uniforms and shape slots line up with everglade.wgsl's" {
   #assert UNIFORM_FLOATS % 4 == 0;
-  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && UNIFORM_FLOATS == 376;
+  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && UNIFORM_FLOATS == 504;
   #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
   total := 0;
   for g: 0..<KIT_GROUPS - KIT_FOREST { total += TOWN_CAP[g]; }

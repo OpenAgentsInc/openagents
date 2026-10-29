@@ -18,12 +18,13 @@
 // voice= line says so; the server's /api/auth/me says A|1 for an admin.
 
 #load "../../verse/everglade/edits.coax";
+#load "everglade-edit.coax";
 
 MSG_VOICE :: 50;          // voice.js: "phase|caption"
 MSG_VIEWER :: 606;        // host.js: /api/auth/me's lines
 ACT_VOICE :: 7; ACT_VOICE_TO :: 8; ACT_VOICE_SAY :: 9;
 VOICE_FACING :: "Everglade builder";   // whom the voice host leaves our turns to: the page answers
-EDIT_UNDOS :: 8;
+EDIT_UNDOS :: 16;
 EDIT_POST :: 6144;
 EDIT_ASK :: 512;
 EDIT_LINE :: 160;
@@ -35,6 +36,15 @@ EditVoice :: struct {
   voice: bool;              // this page has voice edits on (realms.json)
   edits: EgEdits;           // what's published over the plan
   undos: [EDIT_UNDOS] EgEdits; undo_n: int;
+  redos: [EDIT_UNDOS] EgEdits; redo_n: int;   // what UNDO took back, for REDO (everglade-edit.coax)
+  editing: bool;                      // edit mode (everglade-edit.coax), an admin's only
+  picked: int;                        // the placed thing picked in it, -1 none
+  sure: f64;                          // ORIGINAL pressed once: until this time a second press puts the plan back
+  due: f64;                           // a change by hand is published at this time (0 none)
+  reset: bool;                        // the face should ask the server for the designed city
+  boxes: [EB_N] Box; lit: int; finger2: int;   // edit mode's buttons, the one held, and its finger
+  eye_x: f32; eye_z: f32;             // the camera, for which way AWAY is
+  sx: [EG_EDIT_MAX] f32; sy: [EG_EDIT_MAX] f32; seen: [EG_EDIT_MAX] bool;   // the things on the screen, for a pick
   button: Box; finger: int; held: bool; key: bool;
   want_face: bool; want_voice: int;   // 1 on, 2 end
   phase: [16] u8; phase_n: int;
@@ -116,13 +126,15 @@ ev_release :: (s: [] Everglade) {
 }
 
 everglade_voice_key :: (s: [] Everglade, key: int, down: bool) -> bool {
-  if !voice_on(s) || (key != 'v' && key != 'V') || s[0].talk >= 0 || s[0].board { return false; }
+  if everglade_edit_key(s, key, down) { return true; }
+  if !voice_on(s) || s[0].ev.editing || (key != 'v' && key != 'V') || s[0].talk >= 0 || s[0].board { return false; }
   if down && !s[0].ev.key { s[0].ev.key = true; ev_press(s); }
   if !down && s[0].ev.key { s[0].ev.key = false; ev_release(s); }
   return true;
 }
 
 everglade_voice_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
+  if everglade_edit_pointer(s, x, y, phase, id) { return true; }
   if !voice_on(s) { return false; }
   if phase == 0 && in_box(s[0].ev.button, x, y) { s[0].ev.finger = id; ev_press(s); return true; }
   if s[0].ev.finger != id || !s[0].ev.held { return false; }
@@ -132,6 +144,7 @@ everglade_voice_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int
 
 // The voice's actions, one a frame, when the outbox is free.
 everglade_voice_actions :: (s: [] Everglade) {
+  edit_tick(s);
   if s[0].action != 0 { return; }
   if s[0].ev.want_face {
     s[0].ev.want_face = false;
@@ -156,6 +169,8 @@ everglade_edit_ask_sent :: (s: [] Everglade) #export_c { s[0].ev.ask_n = 0; }
 everglade_edit_post :: (s: [] Everglade) -> int #export_c { return s[0].ev.post_n; }
 everglade_edit_post_sent :: (s: [] Everglade) #export_c { s[0].ev.post_n = 0; }
 everglade_edit_wants_check :: (s: [] Everglade) -> bool #export_c { return s[0].ev.check; }
+// ORIGINAL: the face asks the server for the designed city (POST .../reset) once.
+everglade_edit_reset :: (s: [] Everglade) -> bool #export_c { r := s[0].ev.reset; s[0].ev.reset = false; return r; }
 
 // The published list (GET /api/playtest/world/everglade's answer), laid over the plan for everyone.
 everglade_world :: (s: [] Everglade, answer: string) #export_c {
@@ -183,7 +198,7 @@ everglade_edit_answer :: (s: [] Everglade, answer: string) #export_c {
   e := eg_json_at(body, "edit");
   if e < 0 || body[e] != '"' { ev_line(s, "THAT DIDN'T WORK · TRY AGAIN"); return; }
   word := ev_word(body, e);
-  if word == "undo" { edit_undo(s); return; }
+  if word == "undo" { edit_undo(s, true); return; }
   if word == "remove" { edit_remove(s); return; }
   if word != "place" { ev_line(s, "THAT DIDN'T WORK · TRY AGAIN"); return; }
   i := eg_json_at(body, "item");
@@ -196,7 +211,7 @@ everglade_edit_answer :: (s: [] Everglade, answer: string) #export_c {
   c := eg_json_at(body, "count");
   count := 1;
   if c >= 0 { got := eg_number(body[c..<body.count], 0); if got.v > 0 { count = eg_clamp_n(got.v, 1, 6); } }
-  edit_place(s, item, count);
+  edit_place(s, item, count, true);
 }
 eg_clamp_n :: (v: int, a: int, b: int) -> int { if v < a { return a; } if v > b { return b; } return v; }
 // A JSON string value's words at text[at] (its opening quote).
@@ -208,6 +223,7 @@ ev_word :: (text: string, at: int) -> string {
 // ---- the edits
 
 edit_remember :: (s: [] Everglade) {
+  s[0].ev.redo_n = 0;   // a new change: what was undone can't come back
   if s[0].ev.undo_n == EDIT_UNDOS {
     for k: 1..<EDIT_UNDOS { s[0].ev.undos[k - 1] = s[0].ev.undos[k]; }
     s[0].ev.undo_n -= 1;
@@ -217,7 +233,7 @@ edit_remember :: (s: [] Everglade) {
 }
 
 // Places count of item in a row in front of you, each where it may stand.
-edit_place :: (s: [] Everglade, item: int, count: int) {
+edit_place :: (s: [] Everglade, item: int, count: int, spoken: bool) {
   if s[0].ev.edits.n >= EG_EDIT_MAX { ev_line(s, "THE CITY HAS AS MANY THINGS AS IT TAKES"); ev_say(s, "There's no room for more things."); return; }
   before := s[0].ev.edits;
   fx := sin(s[0].face); fz := cos(s[0].face);
@@ -254,7 +270,7 @@ edit_place :: (s: [] Everglade, item: int, count: int) {
   m += ev_put(s[0].ev.say[m..<EDIT_LINE], EDIT_NAMES[item]);
   m += ev_put(s[0].ev.say[m..<EDIT_LINE], ifx placed > 1 then "s." else ".");
   s[0].ev.say_n = m;
-  edit_changed(s, "Placed by voice");
+  if spoken { edit_changed(s, "Placed by voice"); } else { edit_settle(s); }
 }
 
 edit_remove :: (s: [] Everglade) {
@@ -272,12 +288,17 @@ edit_remove :: (s: [] Everglade) {
   edit_changed(s, "Removed by voice");
 }
 
-edit_undo :: (s: [] Everglade) {
-  if s[0].ev.undo_n == 0 { ev_line(s, "NOTHING TO UNDO"); ev_say(s, "There's nothing to undo."); return; }
+edit_undo :: (s: [] Everglade, spoken: bool) {
+  if s[0].ev.undo_n == 0 { ev_line(s, "NOTHING TO UNDO"); if spoken { ev_say(s, "There's nothing to undo."); } return; }
+  if s[0].ev.redo_n == EDIT_UNDOS {
+    for k: 1..<EDIT_UNDOS { s[0].ev.redos[k - 1] = s[0].ev.redos[k]; }
+    s[0].ev.redo_n -= 1;
+  }
+  s[0].ev.redos[s[0].ev.redo_n] = s[0].ev.edits; s[0].ev.redo_n += 1;
   s[0].ev.undo_n -= 1;
   s[0].ev.edits = s[0].ev.undos[s[0].ev.undo_n];
-  ev_line(s, "UNDONE"); ev_say(s, "Undone.");
-  edit_changed(s, "Undone by voice");
+  ev_line(s, "UNDONE");
+  if spoken { ev_say(s, "Undone."); edit_changed(s, "Undone by voice"); } else { edit_settle(s); }
 }
 
 // After an edit: the walls again, the list to publish, and a walk of the city.
@@ -326,7 +347,7 @@ edit_draw :: (s: [] Everglade) {
 edit_start :: (s: [] Everglade) {
   for k: 0..<EG_EDIT_ITEMS { s[0].ev.town_used[k] = s[0].kit_used[group_of(EDIT_MESH[k])]; }
   s[0].ev.wall_base = s[0].wall_n;
-  s[0].ev.finger = -1;
+  s[0].ev.finger = -1; s[0].ev.finger2 = -1; s[0].ev.lit = -1; s[0].ev.picked = -1;
 }
 // The extra instances an item's group keeps for placed things.
 edit_cap :: (group: int) -> int {
@@ -349,16 +370,16 @@ ev_text :: (s: [] Everglade) -> string {
 // The button at the bottom middle, over the hint; returns its top.
 everglade_voice_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) -> int {
   s[0].ev.button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
-  if !voice_on(s) || s[0].talk >= 0 || s[0].board || s[0].above { return at; }
+  n := everglade_edit_hud(s, out, u, at, bottom);
+  if !voice_on(s) || s[0].ev.editing || s[0].talk >= 0 || s[0].board || s[0].above { return n; }
   k := hi(s[0].dpr, 0.5); w := s[0].width;
-  n := at;
   word := ifx s[0].ev.held then "LISTENING" else ifx phone(s) then "HOLD TO TALK" else "HOLD TO TALK · V";
   ts := 10 * k;
   bw := hi(text_width(word, ts) + 48 * k, 200 * k); bh := 52 * k;
-  b := Box.{x0 = (w - bw) / 2, y0 = bottom - bh, x1 = (w + bw) / 2, y1 = bottom};
+  b := Box.{x0 = floor((w - bw) / 2), y0 = floor(bottom - bh), x1 = floor((w + bw) / 2), y1 = floor(bottom)};
   s[0].ev.button = b;
   plate(s, u, b, 0.92, ifx s[0].ev.held then 2.0f32 else 1.0f32);
-  n = draw_text(out, n, word, (w - text_width(word, ts)) / 2, b.y1 - 20 * k, ts, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  n = draw_text(out, n, word, floor((w - text_width(word, ts)) / 2), floor(b.y1 - 20 * k), ts, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
   line := ev_text(s);
   ls := 7.5 * k;
   room := w - 48 * k;
@@ -366,7 +387,7 @@ everglade_voice_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom
   if lw > room { ls = ls * room / lw; lw = room; }
   y1 := b.y0 - 8 * k;
   plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - ls - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
-  n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, ls, GAP, SPACE, ink(k, 0.9, PARCH_R, PARCH_G, PARCH_B), false, false);
+  n = draw_text(out, n, line, floor((w - lw) / 2), floor(y1 - 10 * k), ls, GAP, SPACE, ink(k, 0.9, PARCH_R, PARCH_G, PARCH_B), false, false);
   return n;
 }
 
