@@ -125,7 +125,6 @@
         "slug": "dead-gears",
         "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": [], "things": [],
           "rows": [
-            {"id": "support", "label": "The support engineer", "says": "the support engineer who fights beside you and repairs the reactor"},
             {"id": "alarms", "label": "Flashing wave alarms", "says": "the red alarm strips that flash when a wave comes"},
             {"id": "radar", "label": "The radar", "says": "the radar in the corner of the screen"},
             {"id": "sparks", "label": "Hit sparks", "says": "sparks and effects when something is hit"} ] },

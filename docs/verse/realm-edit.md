@@ -65,15 +65,16 @@ SETTINGS (what visitors get; a realm whose code honours no visitor tool says so)
 ## What each realm can switch
 
 Only what its code really switches; a feature that something else needs (Everglade's people and
-quest board, a game's creatures) is not offered.
+quest board, a game's creatures, Dead Gears' support engineer, whom the fight's rules reach for) is
+not offered (migration 0052 took the engineer's row back off).
 
 | Realm | Rows | Visitor tools | Placed |
 |---|---|---|---|
 | Everglade | flock, floats, undergrowth, daycycle | map, build | crate, barrel, bench, fence, stall |
 | The Grid | robots, names | | |
-| Hecate's Cemetery | flight, fireflies, trail, tips, others | | |
-| Fairy Forest | sparkles, grass, ridges | fly | |
-| Dead Gears | support, alarms, radar, sparks | | |
-| Ice Cream Man | minions, weapons, backrooms | | |
-| Haunted House | others, sounds, scares, chat | map, voice | |
+| Hecate's Cemetery | flight (off: a visit starts at the gate), fireflies, trail, tips, others | | |
+| Fairy Forest | sparkles, grass, ridges | fly (her wing beats in the air) | |
+| Dead Gears | alarms, radar, sparks (EDIT pauses the fight) | | |
+| Ice Cream Man | minions, weapons, backrooms (from the next house; EDIT shows while a card is up) | | |
+| Haunted House | others, sounds, scares, chat | map (the big map), voice (VOICE) | |
 | a made realm | its features (the builder's catalogue) | build, fly, jump, map, talk, voice | the builder's things |

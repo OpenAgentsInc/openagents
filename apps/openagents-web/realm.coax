@@ -23,6 +23,7 @@
 #load "place.coax";
 #load "world.coax";
 #load "room.coax";
+#load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, a HUD bar's press and flash, 0, 0
 MAX_VERTICES :: 36000;
@@ -239,6 +240,9 @@ Realm :: struct {
   jump_id: int; jump_at: f32; jump_long: bool;   // a finger on the jump circle
   viewer: [64] u8; viewer_n: int; // /api/auth/me's npub, shortened (realm_viewer)
   plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;   // this frame's plates
+  // The shared edit layer: its board switches other visitors, the house's sounds, its lightning and
+  // sparks, and the chat; SETTINGS has the big map and VOICE for visitors
+  ed: [1] RealmEdit;
 }
 
 // What voice.js says (message 50): "phase|caption". "off" or "notice" means the microphone is off.
@@ -290,6 +294,7 @@ realm_voice_to :: (r: [] Realm, who: string) #export_c {
   r[0].voice_to_n = tw_copy(r[0].voice_to[..], 0, who);
   r[0].out_n = put(r[0].outbox[..], 0, cast(string) r[0].voice_to[0..<r[0].voice_to_n]);
   r[0].action = ACT_VOICE_TO;
+  r[0].ed[0].faced = false;   // the edit layer tells VOICE again before it next listens
 }
 // Their answer to what VOICE heard, for voice.js to speak; false while the
 // outbox is busy (the face tries again next frame).
@@ -315,7 +320,18 @@ realm_open_text :: (r: [] Realm, kind: int) #export_c { r[0].typing = true; r[0]
 realm_typing_for :: (r: [] Realm) -> int #export_c { return r[0].typing_for; }
 realm_typed :: (r: [] Realm) -> string #export_c { return cast(string) r[0].typed[0..<r[0].typed_n]; }
 realm_close_text :: (r: [] Realm) #export_c { r[0].typing = false; }
-realm_wants_text :: (r: [] Realm) -> bool #export_c { return r[0].typing; }
+realm_wants_text :: (r: [] Realm) -> bool #export_c { return r[0].typing || redit_typing(r[0].ed[..]); }
+// The edit layer's, for the face: a row of its board, and its push to talk handed to the host's outbox.
+realm_row_on :: (r: [] Realm, key: string) -> bool #export_c { return redit_row_on(r[0].ed[..], key); }
+realm_edit_message :: (r: [] Realm, kind: int, text: string) -> bool #export_c { return redit_message(r[0].ed[..], kind, text); }
+realm_edit_act :: (r: [] Realm) #export_c {
+  if r[0].action != 0 { return; }
+  e := redit_take_action(r[0].ed[..], r[0].outbox[..]);
+  if e.kind == 0 { return; }
+  r[0].out_n = e.n; r[0].action = e.kind;
+  // the editor is who VOICE answers as now: a person you talk to next is told again
+  if e.kind == REDIT_ACT_VOICE_TO { r[0].voice_to_n = tw_copy(r[0].voice_to[..], 0, REDIT_FACING); }
+}
 // Typed or pasted text (the host's field on a phone): printable bytes only.
 realm_type :: (r: [] Realm, text: string) #export_c {
   if !r[0].typing { return; }
@@ -376,7 +392,7 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
   if b == BTN_USE { r[0].asks |= ifx v.target.count > 0 then ASK_USE else ASK_GOAL; }
   if b == BTN_HINT { r[0].asks |= ASK_HINT; }
   if b == BTN_BYE { r[0].asks |= ASK_BYE; }
-  if b == BTN_MAP { r[0].map = !r[0].map; }
+  if b == BTN_MAP { r[0].map = !r[0].map && redit_tool(r[0].ed[..], "map"); }   // SETTINGS can keep the big map from visitors
   if b == BTN_SEND && r[0].typed_n > 0 { r[0].asks |= ASK_SEND; }
   if b == BTN_CANCEL { r[0].typing = false; }
   if b == BTN_ASK && v.talking.count > 0 { realm_open_text(r, TYPE_ASK); }
@@ -443,6 +459,8 @@ picked_key :: (r: [] Realm, v: RealmView, key: int) -> bool {
 // A key down (down) or up. Returns whether it was used. A key held down
 // repeats; only its first press acts.
 realm_key :: (r: [] Realm, v: RealmView, key: int, mods: int, down: bool) -> bool #export_c {
+  used := redit_key(r[0].ed[..], key, down);
+  if used > 0 { return used == 1; }
   cmd := tk_command(key, mods);
   // The survey box takes every key while it's open, but the browser's.
   if r[0].typing && cmd != TK_BROWSER {
@@ -646,6 +664,7 @@ on_stick :: (r: [] Realm, x: f32, y: f32) -> bool {
 // whether it was used here: only a finger that starts on the move stick is
 // the face's, for the thumbs (verse_sticks_world_touch).
 realm_pointer :: (r: [] Realm, v: RealmView, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if redit_pointer(r[0].ed[..], x, y, phase, id) { return true; }
   r[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then button_at(r, x, y) else -1;
   if phase == POINTER_DOWN {
     r[0].touch = kind != 0;
@@ -721,9 +740,16 @@ hotbar_top :: (r: [] Realm) -> f32 { return slot_box(r, 0).y0; }
 // Who you are, at the top left: the name or npub you're logged in with, else GUEST.
 title_box :: (r: [] Realm) -> Box {
   k := r[0].dpr; m := gutter(r);
-  w := lo(230 * k, minimap_box(r).x0 - m - 16 * k);
+  w := lo(230 * k, minimap_box(r).x0 - m - 16 * k - edit_room(r));
   return Box.{x0 = m + 4 * k, y0 = m + 4 * k, x1 = m + 4 * k + w, y1 = m + 4 * k + 30 * k};
 }
+// EDIT, left of the minimap, for its owner and admins (verse/edit/edit.coax).
+edit_box :: (r: [] Realm) -> RBox {
+  k := r[0].dpr; b := minimap_box(r);
+  w := measure("EDIT", GAP, SPACE, false) * 9 * k + 32 * k;
+  return RBox.{x0 = b.x0 - 10 * k - w, y0 = b.y0, x1 = b.x0 - 10 * k, y1 = b.y0 + 34 * k};
+}
+edit_room :: (r: [] Realm) -> f32 { if !redit_may(r[0].ed[..]) { return 0; } b := edit_box(r); return b.x1 - b.x0 + 10 * r[0].dpr; }
 // The bottom of the HUD's top: the name, and the quest's line under it.
 top_bottom :: (r: [] Realm) -> f32 { return hi(title_box(r).y1 + 24 * r[0].dpr, minimap_box(r).y1); }
 
@@ -969,7 +995,7 @@ draw_others :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
 // The chat shows while it's open and nothing else holds the middle: not in
 // a conversation, edit mode, the map or another typed box.
 chat_shown :: (r: [] Realm, v: RealmView) -> bool {
-  if !r[0].chat || v.editing || r[0].map || v.talking.count > 0 { return false; }
+  if !r[0].chat || v.editing || r[0].map || v.talking.count > 0 || !redit_row_on(r[0].ed[..], "chat") { return false; }
   return !r[0].typing || r[0].typing_for == TYPE_CHAT;
 }
 
@@ -1335,10 +1361,19 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
   if r[0].hold >= v.item_n { r[0].hold = -1; }
 
   // who you are and the quest's step; the minimap (or the map); everyone else here
+  redit_start(r[0].ed[..], "haunted-house");
+  redit_step(r[0].ed[..], r[0].time, width, height, dpr);
+  if !redit_tool(r[0].ed[..], "map") { r[0].map = false; }
+  if !redit_row_on(r[0].ed[..], "chat") && r[0].typing && r[0].typing_for == TYPE_CHAT { r[0].typing = false; }
   vertices = draw_name(r, v, out, vertices);
-  vertices = draw_others(r, v, out, vertices);
+  if redit_row_on(r[0].ed[..], "others") { vertices = draw_others(r, v, out, vertices); }
   vertices = draw_map(r, v, out, vertices, uniforms);
-  if !v.no_voice { vertices = draw_voice_button(r, out, vertices); }
+  if !v.no_voice && redit_tool(r[0].ed[..], "voice") { vertices = draw_voice_button(r, out, vertices); }
+  vertices = redit_hud(r[0].ed[..], out, vertices, edit_box(r));
+  for i: 0..<r[0].ed[0].plate_n {
+    eb := r[0].ed[0].plate_box[i];
+    plate(r, Box.{x0 = eb.x0, y0 = eb.y0, x1 = eb.x1, y1 = eb.y1}, r[0].ed[0].plate_alpha[i], r[0].ed[0].plate_look[i]);
+  }
   if phone(r) { vertices = draw_jump(r, out, vertices); }
   vertices = draw_voice(r, out, vertices, v.talking);
 
@@ -2353,4 +2388,33 @@ plated :: (u: [] f32, b: Box) -> f32 {
   body := cast(string) t[0].buf[0..<t[0].buf_n];
   #assert text_has(body, "\"ev\":\"presence\"") && text_has(body, "\"room\":\"haunted-house\",\"here\":2,\"full\":false");
   #assert text_has(body, "\"ev\":\"chat\"") && text_has(body, "\"text\":\"anyone here?\",\"consent\":true");
+}
+
+#test "EDIT for the Haunted House's owner and admins only; the board hides other visitors, SETTINGS keeps the big map and VOICE from visitors" {
+  r: [1] Realm; desk(r[..]); v := view();
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  v.has_view = true;
+  v.camera[0] = 1; v.camera[5] = 1; v.camera[10] = 1; v.camera[14] = 1;
+  v.others = 1; v.other_name[0] = "Guest 0A1B"; v.other_at[0] = 0; v.other_at[1] = -1; v.other_at[2] = 5;
+  a := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert r[0].ed[0].req_ready && cast(string) r[0].ed[0].req_url[0..<r[0].ed[0].req_url_n] == "/api/playtest/realms/haunted-house";
+  plates := r[0].plate_n;
+  redit_requested(r[0].ed[..], 3);
+  #assert realm_edit_message(r[..], HTTP_KIND + 3, "200\nrealm haunted-house\nrole visitor\nowner 0\ntool map 0\ntool voice 0\nrow others 0 Other visitors\nrow sounds 0 The house's sounds\nrow chat 1 Room chat\n");
+  b := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert b < a && r[0].plate_n == plates - 1 && !r[0].shown[BTN_VOICE] && !r[0].ed[0].shown[RB_EDIT];   // nobody else drawn, no VOICE, no EDIT
+  #assert !realm_row_on(r[..], "sounds") && realm_row_on(r[..], "chat");
+  _ := realm_key(r[..], v, 'm', 0, true);
+  #assert !r[0].map;   // the big map is off for visitors
+  o: [1] Realm; desk(o[..]);
+  a = realm_draw(o[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  redit_requested(o[0].ed[..], 4);
+  #assert realm_edit_message(o[..], HTTP_KIND + 4, "200\nrealm haunted-house\nrole owner\nowner 1\ntool map 0\ntool voice 0\nrow others 1 Other visitors\nwaiting 0\n");
+  a = realm_draw(o[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  e := o[0].ed[0].boxes[RB_EDIT];
+  m := minimap_box(o[..]);
+  #assert o[0].ed[0].shown[RB_EDIT] && o[0].shown[BTN_VOICE] && e.x1 < m.x0 && e.x0 > title_box(o[..]).x1;
+  pt(o[..], v, (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, POINTER_DOWN, 0, 1);
+  pt(o[..], v, (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, POINTER_UP, 0, 1);
+  #assert o[0].ed[0].pane == REDIT_BOARD;
 }

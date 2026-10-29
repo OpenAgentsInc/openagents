@@ -48,6 +48,7 @@
 #include "Particles.h"
 #include "Setpiece.h"
 #include "analytics-face.h"
+#include "edit-face.h"
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -199,6 +200,7 @@ static void world_edited(void);
 static void room_say(coax_string typed);
 
 static coax_v_t_Realm realm_of(void) { return (coax_v_t_Realm){&realm, 1}; }
+static coax_v_t_RealmEdit ed(void) { return (coax_v_t_RealmEdit){realm.ed.e, 1}; }
 static coax_t_HauntPoint point(coax_t_Vec3 v) { return (coax_t_HauntPoint){v.x, v.y, v.z}; }
 static coax_string text(const char *t) { return (coax_string){t, (int64_t)strlen(t)}; }
 static void toast(const char *t) { house.toast = text(t); house.toast_until = now + 3.5; }
@@ -855,6 +857,7 @@ static void take_asks(void) {
 // The sounds the house asked for this frame, a line each: name gain pan.
 static void queue_sounds(void) {
   sounds_n = 0;
+  if (!realm_row_on(realm_of(), (coax_string){"sounds", 6})) return;   /* the board switched the house's sounds off */
   for (int64_t i = 0; i < house.sound_count && i < 16; i++) {
     coax_t_HauntSound cue = house.sounds.e[i];
     if (cue.gain <= 0) continue;
@@ -999,6 +1002,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   float *u = (float *)(uintptr_t)uniforms;
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_realm_max_vertices() * coaxial_realm_vertex_floats()};
   int64_t n = realm_draw(realm_of(), view, out, (coax_v_f32){u, coaxial_realm_uniform_floats()}, w, h, scale, dt);
+  realm_edit_act(realm_of());
+  edit_face_drain(ed());
   if (golden) u[2] = (float)GOLDEN_FX;   // the shaders' time: the sky, the particles
   if (!track_state.page_n) track_init(tr(), track_cstr("haunt"));
   track_frame(tr(), dt, w, h, scale);
@@ -1008,6 +1013,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     coax_t_Vec3 eye = verse_player_view_eye(player, house.camera), at = verse_player_view_at(player, house.camera);
     bool flown = flight_view(&eye, &at, still != 0);
     verse_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, w, h, (coax_v_f32){u + 8, 16});
+    if (!realm_row_on(realm_of(), (coax_string){"scares", 6})) house.spark_until = 0;   /* the board: no sparks */
     draw_count = verse_haunt_instances(house, fx_now(), (coax_v_t_HauntInstance){instances, 4096}, (coax_v_t_HauntDraw){draws, 256});
     light_count = verse_haunt_lights(house, fx_now(), (coax_v_t_HauntGPUlight){lights, 64});
     instance_end = 0;
@@ -1016,6 +1022,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     if (flown) { u[24] = eye.x; u[25] = eye.y; u[26] = eye.z; }
     choose_particles(u[24], u[25], u[26]);
     u[28] = now < house.flash_until ? 1.0f : 0.0f;
+    if (!realm_row_on(realm_of(), (coax_string){"scares", 6})) u[28] = 0;   /* the board: no lightning */
     // The cutaway (realm.wgsl): what stands between the eye and you isn't drawn. Not in a flight.
     coax_t_Vec3 feet = verse_player_feet(player);
     u[29] = feet.x; u[30] = flown ? -1e4f : feet.y + 1.0f; u[31] = feet.z;
@@ -1053,6 +1060,7 @@ EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t 
   if (opened && flight_skip()) return 1u;
   bool typing = realm_wants_text(realm_of());
   bool used = realm_key(realm_of(), view, key, mods, true);
+  edit_face_drain(ed());
   take_asks();   // now, inside the key event: a copy reaches the clipboard
   track_key(tr(), key, typing);   // never what's typed into the survey box: that's its answer
   track_drain(&track_state);
@@ -1067,7 +1075,7 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   track_pointer(tr(), x, y, phase, kind, realm_button_label(realm_of(), x, y));
   track_drain(&track_state);
   if (phase == 0 && opened && flight_skip()) return 1u;
-  if (realm_pointer(realm_of(), view, x, y, phase, kind, id)) { take_asks(); return 1u; }
+  if (realm_pointer(realm_of(), view, x, y, phase, kind, id)) { edit_face_drain(ed()); take_asks(); return 1u; }
   if (kind != 0 && opened) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return kind != 0 ? 1u : 0u;
 }
@@ -1099,6 +1107,8 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (length > sizeof inbox) return;
   if (!track_state.page_n) track_init(tr(), track_cstr("haunt"));   // the facts come before the first frame
   if (place_message(state, kind, inbox, length)) return;
+  if (kind != 600 && realm_edit_message(realm_of(), kind, (coax_string){(const char *)inbox, length})) { edit_face_drain(ed()); return; }
+  if (kind == 600) realm_edit_message(realm_of(), kind, (coax_string){(const char *)inbox, length});
   if (kind == 600) {   // the facts: a player with an email has a save on the server too
     read_account(length);
     facts_seen = true;

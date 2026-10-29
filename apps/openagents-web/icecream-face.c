@@ -7,8 +7,12 @@
 // (docs/verse/realm-host.md). Action 4 keeps the save in the realm's slot,
 // message 4 brings it back; action 30 hands the page a round's trace.
 #include "icecream.h"
+// The edit layer's RealmEdit (in icecream.h) and the scene both have an [8] bool: the scene's keeps its own name here.
+#define coax_a8_bool coax_a8_bool_scene
 #include "Scene.h"
+#undef coax_a8_bool
 #include "analytics-face.h"
+#include "edit-face.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -21,7 +25,15 @@ typedef struct { coax_t_IceRealm hud; coax_t_IceScene scene; } Realm;
 static Realm *state_at(uint32_t state) { return (Realm *)(uintptr_t)state; }
 static coax_v_t_IceRealm at(uint32_t state) { return (coax_v_t_IceRealm){&state_at(state)->hud, 1}; }
 static coax_v_t_IceScene scene_at(uint32_t state) { return (coax_v_t_IceScene){&state_at(state)->scene, 1}; }
-static uint8_t inbox[1024];
+static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){state_at(state)->hud.ed.e, 1}; }
+// The board's rows are the run's options for the next house (verse/icecream/play.coax).
+static void edit_options(uint32_t state) {
+  coax_t_Options *o = &state_at(state)->scene.plays.e[0].options;
+  o->no_minions = !ice_row_on(at(state), (coax_string){"minions", 7});
+  o->no_weapons = !ice_row_on(at(state), (coax_string){"weapons", 7});
+  o->no_backrooms = !ice_row_on(at(state), (coax_string){"backrooms", 9});
+}
+static uint8_t inbox[4096];
 static float facts[64];
 static int tracing[1024];
 static coax_t_Track track_state;
@@ -93,6 +105,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, floats};
   int64_t n = ice_frame(at(state), out, u, width, height, dpr, dt, still != 0, (coax_v_f32){facts, 64}, icecream_seed(scene));
   acts(state);
+  edit_options(state);
+  edit_face_drain(ed(state));
   icecream_scene_uniforms(scene, u, width, height, still != 0);
   track_frame(tr(), dt, width, height, dpr);
   if (n > 0 && !entered) { entered = true; track_world(tr(), track_cstr(WORLD)); track_loaded(tr(), track_cstr("load-engine")); }
@@ -102,15 +116,19 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
 
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
   track_start();
-  track_key(tr(), key, false);
+  track_key(tr(), key, ice_wants_text(at(state)));
   track_drain(&track_state);
   bool used = ice_key(at(state), key, true);
+  edit_face_drain(ed(state));
+  if (ice_wants_text(at(state))) return used ? 1u : 0u;
   acts(state);
   if (used) return 1u;
   return icecream_key(scene_at(state), key, true, mods) ? 1u : 0u;
 }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) {
   track_key_up(tr(), key);
+  if (ice_key(at(state), key, false)) return 1u;
+  if (ice_wants_text(at(state))) return 0u;
   return icecream_key(scene_at(state), key, false, mods) ? 1u : 0u;
 }
 EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { track_blur(tr()); ice_blur(at(state)); acts(state); icecream_blur(scene_at(state)); }
@@ -121,18 +139,22 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   track_drain(&track_state);
   int64_t zone = ice_pointer(at(state), x, y, phase, kind, id);
   acts(state);
+  edit_face_drain(ed(state));
   if (zone >= 0) return 1u;
   coax_t_IceRealm *h = &state_at(state)->hud;
   icecream_pointer(scene_at(state), x, y, phase, kind, id, zone == -2 ? 1 : 0, h->stick_cx, h->stick_cy);
   return 1u;
 }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)ice_cursor(at(state)); }
+EXPORT("coaxial_wants_text") uint32_t coaxial_wants_text(uint32_t state) { return ice_wants_text(at(state)) ? 1u : 0u; }
 
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) length = sizeof inbox;
   track_start();
+  if (kind != 600 && ice_edit_message(at(state), kind, (coax_string){(const char *)inbox, (int64_t)length})) { edit_face_drain(ed(state)); return; }
+  if (kind == 600) ice_edit_message(at(state), kind, (coax_string){(const char *)inbox, (int64_t)length});
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, (int64_t)length})) track_drain(&track_state);
   if (kind == 600) ice_page(at(state), (coax_string){(const char *)inbox, (int64_t)length});
   if (kind == MSG_KEPT) icecream_load(scene_at(state), (coax_string){(const char *)inbox, (int64_t)length});

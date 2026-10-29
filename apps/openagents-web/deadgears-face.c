@@ -6,6 +6,7 @@
 // state is the host's (coaxial_state_size).
 #include "deadgears.h"
 #include "analytics-face.h"
+#include "edit-face.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -16,7 +17,8 @@ static bool golden;
 
 static coax_t_DeadGears *game_at(uint32_t state) { return (coax_t_DeadGears *)(uintptr_t)state; }
 static coax_v_t_DeadGears at(uint32_t state) { return (coax_v_t_DeadGears){game_at(state), 1}; }
-static void drain(uint32_t state) { track_drain(&game_at(state)->track.e[0]); }
+static void drain(uint32_t state) { track_drain(&game_at(state)->track.e[0]); edit_face_drain((coax_v_t_RealmEdit){game_at(state)->ed.e, 1}); }
+EXPORT("coaxial_wants_text") uint32_t coaxial_wants_text(uint32_t state) { return deadgears_wants_text(at(state)) ? 1u : 0u; }
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_DeadGears) * 1000003u + offsetof(coax_t_DeadGears, objects) * 7u + offsetof(coax_t_DeadGears, outbox) * 13u + 0x44474552u);

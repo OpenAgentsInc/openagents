@@ -51,6 +51,9 @@ Particle :: struct { pos: V3; vel: V3; age: f32; life: f32; size: f32; kind: Par
 Options :: struct {
   seed: u64; has_seed: bool;
   bot: bool; calm: bool; arm: bool; free_roam: bool; first_person: bool; cone: bool; no_farts: bool;
+  // the realm's board (docs/verse/realm-edit.md), from the next house: no minions, no weapons to earn
+  // or spear puzzle, no backrooms
+  no_minions: bool; no_weapons: bool; no_backrooms: bool;
   trace: bool; trace_at: u64;
   difficulty: Difficulty = Difficulty.normal;
 }
@@ -235,13 +238,22 @@ options_of :: (text: string) -> Options {
 
 // ---- the run's life (world.cpp newRun, startPlaying)
 
+// The realm's board (docs/verse/realm-edit.md) over a house's tuning.
+board_tuning :: (o: Options, t: Tuning) -> Tuning {
+  tuned := t;
+  if o.no_minions { tuned = change(tuned, "minion_count", 0); tuned = change(tuned, "minion_growth", 0); }
+  if o.no_weapons { tuned = change(tuned, "earned_weapons", 0); tuned = change(tuned, "puzzle_key", 0); }
+  if o.no_backrooms { tuned = change(tuned, "backrooms", 0); }
+  return tuned;
+}
+
 DEFAULT_SEED :: 3;
 new_run :: (p: [] Play, g: [] Game) {
   o := p[0].options;
   p[0].seed = ifx o.has_seed then o.seed else ifx p[0].stepped == 0 && p[0].seed == 0 then DEFAULT_SEED else p[0].seed + 1;
   if p[0].seed == 0 && !o.has_seed { p[0].seed = DEFAULT_SEED; }
   p[0].difficulty = p[0].next_difficulty;
-  game_new(g, p[0].seed, !o.calm, tuning_for(p[0].difficulty));
+  game_new(g, p[0].seed, !o.calm, board_tuning(o, tuning_for(p[0].difficulty)));
   if o.no_farts { g[0].player.farts = 0; }
   if o.arm { game_arm(g); }
   if o.free_roam {
@@ -564,7 +576,7 @@ effect :: (p: [] Play, g: [] Game, e: Event) {
 // Whether a run counts for the best time: played by hand, as the game comes.
 counts_for_best :: (p: [] Play, g: [] Game) -> bool {
   o := p[0].options;
-  return !o.bot && !o.calm && !o.arm && !o.free_roam && !o.no_farts && !o.cone && !g[0].free_roam;
+  return !o.bot && !o.calm && !o.arm && !o.free_roam && !o.no_farts && !o.cone && !g[0].free_roam && !o.no_minions && !o.no_weapons && !o.no_backrooms;
 }
 finished :: (p: [] Play, g: [] Game) {
   p[0].new_best = false;
@@ -1013,4 +1025,14 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   #assert !q[0].timer_on && q[0].jumpscares && q[0].seen_tour && q[0].tour == -1;
   #assert q[0].best[1] == 187.25 && q[0].best[0] == 0;
   #assert q[0].next_difficulty == Difficulty.hard && q[0].difficulty == Difficulty.hard && q[0].seed == 3;
+}
+
+#test "the realm's board: a house with no minions, weapons to earn or backrooms" {
+  o: Options;
+  hard := tuning_for(Difficulty.hard);
+  #assert hard.minion_count == 4 && board_tuning(o, hard).minion_count == 4;
+  o.no_minions = true; o.no_weapons = true; o.no_backrooms = true;
+  t := board_tuning(o, hard);
+  #assert t.minion_count == 0 && t.minion_growth == 0 && t.earned_weapons == 0 && t.backrooms == 0 && t.puzzle_key == 0;
+  #assert t.house_size == hard.house_size && t.man_chase == hard.man_chase;
 }

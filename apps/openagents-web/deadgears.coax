@@ -17,6 +17,7 @@
 #load "font.coax";
 #load "analytics.coax";
 #load "../../verse/deadgears/rules.coax";
+#load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -104,6 +105,8 @@ DeadGears :: struct {
   restored: bool; saves: int;
   last_phase: int; last_wave: int; tracked_wave: int;
   facts: bool;
+  // The shared edit layer: its board switches the wave alarms, the radar and the hit sparks
+  ed: [1] RealmEdit;
 }
 
 // ---- small things
@@ -308,6 +311,7 @@ restore :: (s: [] DeadGears, text: string) -> bool {
 
 deadgears_message :: (s: [] DeadGears, kind: int, text: string) #export_c {
   started(s);
+  if redit_message(s[0].ed[..], kind, text) { return; }
   if kind == MSG_KEPT { ok := restore(s, text); return; }
   if kind == HOST_PAGE {
     s[0].facts = true;
@@ -332,7 +336,11 @@ leave_to :: (s: [] DeadGears, url: string) {
   s[0].out_n = put(s[0].outbox[..], 0, url);
   s[0].action = ACT_NAVIGATE;
 }
-deadgears_action :: (s: [] DeadGears) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
+deadgears_action :: (s: [] DeadGears) -> int #export_c {
+  if s[0].action == 0 { e := redit_take_action(s[0].ed[..], s[0].outbox[..]); if e.kind != 0 { s[0].out_n = e.n; return e.kind; } }
+  a := s[0].action; s[0].action = 0; return a;
+}
+deadgears_wants_text :: (s: [] DeadGears) -> bool #export_c { return redit_typing(s[0].ed[..]); }
 deadgears_action_done :: (s: [] DeadGears) #export_c { s[0].out_n = 0; }
 
 // ---- the controls
@@ -384,7 +392,9 @@ release_fingers :: (s: [] DeadGears) {
 
 deadgears_key :: (s: [] DeadGears, key: int, mods: int) -> bool #export_c {
   started(s);
-  track_key(s[0].track[..], key, false);
+  track_key(s[0].track[..], key, redit_typing(s[0].ed[..]));
+  used := redit_key(s[0].ed[..], key, true);
+  if used > 0 { return used == 1; }
   if key == KEY_ESCAPE {
     if over(s) { leave_to(s, "/verse/galaxy"); return true; }
     set_paused(s, !s[0].paused);
@@ -409,6 +419,8 @@ deadgears_key :: (s: [] DeadGears, key: int, mods: int) -> bool #export_c {
 
 deadgears_key_up :: (s: [] DeadGears, key: int, mods: int) -> bool #export_c {
   track_key_up(s[0].track[..], key);
+  if redit_key(s[0].ed[..], key, false) == 1 { return true; }
+  if redit_typing(s[0].ed[..]) { return false; }
   b := hold_bit(key);
   if b == 0 { return false; }
   if s[0].held & b != 0 { s[0].held = s[0].held - b; }
@@ -435,6 +447,7 @@ press :: (s: [] DeadGears, b: int) {
 // the left half of the screen is the move stick and the right half looks.
 deadgears_pointer :: (s: [] DeadGears, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   started(s);
+  if redit_pointer(s[0].ed[..], x, y, phase, id) { return true; }
   k := hi(s[0].dpr, 0.5);
   b := button_at(s, x, y);
   if kind != 0 { s[0].touch = true; }
@@ -555,6 +568,7 @@ turn_view :: (s: [] DeadGears, dt: f32) {
 // ---- the rules' events: the flash, the toasts, the effects, the saves
 
 effect :: (s: [] DeadGears, kind: int, at: Point, to: Point, life: f32, size: f32) {
+  if !redit_row_on(s[0].ed[..], "sparks") { return; }
   i := s[0].fx_next;
   s[0].fx[i] = Fx.{kind = kind, at = at, to = to, t = 0, life = life, size = size};
   s[0].fx_next = (i + 1) % FX;
@@ -864,6 +878,7 @@ draw_world :: (s: [] DeadGears) {
   // The alarms over the far bulkhead: red strips that flash as a wave comes.
   pulse := alarm_level(s);
   for k: 0..<2 {
+    if !redit_row_on(s[0].ed[..], "alarms") { break; }
     side := ifx k == 0 then -1.0f32 else 1.0f32;
     box(s, v3(side * 11, 3.7, -23.5), v3(3.1, 0.12, 0.1), v3(0.8, 0.2, 0.12), 0.35 + 0.65 * pulse, 0, 0, 0);
   }
@@ -1263,7 +1278,14 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
   n = hud_button(s, u, out, n, BTN_PAUSE, pb, ifx s[0].paused then "RESUME" else "PAUSE", 7 * k, s[0].paused, true);
   rh := (ifx small then 96.0f32 else 150.0f32) * k;
   rw := rh * 32 / 38;
-  n = radar(s, u, out, n, Rect.{x0 = w - gut - rw, y0 = pb.y1 + 8 * k, x1 = w - gut, y1 = pb.y1 + 8 * k + rh});
+  if redit_row_on(s[0].ed[..], "radar") { n = radar(s, u, out, n, Rect.{x0 = w - gut - rw, y0 = pb.y1 + 8 * k, x1 = w - gut, y1 = pb.y1 + 8 * k + rh}); }
+  // EDIT, left of PAUSE, for its owner and admins (verse/edit/edit.coax); open, the fight waits
+  ew := text_width("EDIT", 9 * k) + 32 * k;
+  n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = pb.x0 - 8 * k - ew, y0 = gut, x1 = pb.x0 - 8 * k, y1 = gut + 32 * k});
+  for i: 0..<s[0].ed[0].plate_n {
+    eb := s[0].ed[0].plate_box[i];
+    plate(s, u, Rect.{x0 = eb.x0, y0 = eb.y0, x1 = eb.x1, y1 = eb.y1}, s[0].ed[0].plate_alpha[i], s[0].ed[0].plate_look[i]);
+  }
   // The cutter: its ammo and mode.
   ammo: [32] u8;
   a := 0;
@@ -1410,6 +1432,9 @@ deadgears_frame :: (s: [] DeadGears, out: [] f32, u: [] f32, width: f32, height:
   t := ifx finite(dt) then clamp(dt, 0, 0.05) else 0.0f32;
   s[0].time += f64(t);
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
+  redit_start(s[0].ed[..], "dead-gears");
+  redit_step(s[0].ed[..], f32(s[0].time), width, height, dpr);
+  if redit_open(s[0].ed[..]) && playing(s) { set_paused(s, true); }
   step_fight(s, t);
   camera(s, width, height);
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
@@ -1643,4 +1668,26 @@ won_through_the_controls :: (phone_size: bool) -> bool {
   started(s[..]);
   f := play_out(s[..], false, false, 6000);
   #assert game(s[..]).st[0].phase == LOST && s[0].shown[BTN_AGAIN];
+}
+
+#test "EDIT for its owner and admins only; the board switches the alarms and the radar off, and opening it pauses the fight" {
+  s: [1] DeadGears;
+  n := frame(s[..], 1280, 800, 1, 1.0 / 60.0);
+  #assert s[0].ed[0].req_ready && cast(string) s[0].ed[0].req_url[0..<s[0].ed[0].req_url_n] == "/api/playtest/realms/dead-gears";
+  objs := s[0].obj_n;
+  verts := n;
+  redit_requested(s[0].ed[..], 7);
+  deadgears_message(s[..], HTTP_KIND + 7, "200\nrealm dead-gears\nrole visitor\nowner 0\nrow alarms 0 Flashing wave alarms\nrow radar 0 The radar\nrow sparks 1 Hit sparks\n");
+  n = frame(s[..], 1280, 800, 1, 1.0 / 60.0);
+  #assert s[0].obj_n == objs - 2 && n < verts && !s[0].ed[0].shown[RB_EDIT];   // no alarm strips, no radar; a visitor has no EDIT
+  a: [1] DeadGears;
+  n = frame(a[..], 1280, 800, 1, 1.0 / 60.0);
+  redit_requested(a[0].ed[..], 6);
+  deadgears_message(a[..], HTTP_KIND + 6, "200\nrealm dead-gears\nrole admin\nowner 0\nrow radar 1 The radar\nwaiting 0\n");
+  n = frame(a[..], 1280, 800, 1, 1.0 / 60.0);
+  e := a[0].ed[0].boxes[RB_EDIT];
+  #assert a[0].ed[0].shown[RB_EDIT] && e.x1 < 1280 - 16 - 76 && e.x0 > 900 && !a[0].paused;
+  #assert deadgears_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 0, 0, 1) && deadgears_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 2, 0, 1);
+  n = frame(a[..], 1280, 800, 1, 1.0 / 60.0);
+  #assert a[0].ed[0].pane == REDIT_BOARD && a[0].paused;
 }

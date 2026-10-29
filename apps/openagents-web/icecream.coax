@@ -12,6 +12,7 @@
 #load "font.coax";
 #load "ui.coax";
 #load "analytics.coax";
+#load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 16000;
@@ -139,6 +140,8 @@ IceRealm :: struct {
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
   plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_radius: [PLATES] f32; plate_n: int;
   toast_count: f32; toast_until: f32; toast_kind: int; toast_n: int;
+  // The shared edit layer: its board switches the minions, the weapons and the backrooms, from the next house
+  ed: [1] RealmEdit;
 }
 
 ice_reset :: (s: [] IceRealm) {
@@ -166,7 +169,14 @@ h_do_act :: (s: [] IceRealm, a: int) {
   if a / 256 == A_GALAXY { h_leave_to(s, "/verse/galaxy"); return; }
   h_queue_act(s, a / 256, a % 256);
 }
-ice_action :: (s: [] IceRealm) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
+ice_action :: (s: [] IceRealm) -> int #export_c {
+  if s[0].action == 0 { e := redit_take_action(s[0].ed[..], s[0].outbox[..]); if e.kind != 0 { s[0].out_n = e.n; return e.kind; } }
+  a := s[0].action; s[0].action = 0; return a;
+}
+// The edit layer's, for the face: typing is on; a row of the board (the run's options for the next house)
+ice_wants_text :: (s: [] IceRealm) -> bool #export_c { return redit_typing(s[0].ed[..]); }
+ice_row_on :: (s: [] IceRealm, key: string) -> bool #export_c { return redit_row_on(s[0].ed[..], key); }
+ice_edit_message :: (s: [] IceRealm, kind: int, text: string) -> bool #export_c { return redit_message(s[0].ed[..], kind, text); }
 ice_action_done :: (s: [] IceRealm) #export_c { s[0].out_n = 0; }
 
 // ---- in from the host
@@ -188,6 +198,8 @@ ice_page :: (s: [] IceRealm, text: string) #export_c {
 // Enter on a card is its main button; anything else is the run's.
 ice_key :: (s: [] IceRealm, key: int, down: bool) -> bool #export_c {
   if !s[0].started { ice_reset(s); }
+  used := redit_key(s[0].ed[..], key, down);
+  if used > 0 { return used == 1; }
   if down && key == KEY_ENTER && h_card_on(s) && s[0].main_act > 0 { h_do_act(s, s[0].main_act); return true; }
   if down && key == KEY_ESCAPE && run_phase(s) == PH_OVER { h_leave_to(s, "/verse/galaxy"); return true; }
   return false;
@@ -205,6 +217,7 @@ h_button_at :: (s: [] IceRealm, x: f32, y: f32) -> int {
 // A pointer: >= 0 the HUD took it, -2 a thumb on the stick, -1 the run's (to look, aim or fire).
 ice_pointer :: (s: [] IceRealm, x: f32, y: f32, ph: int, kind: int, id: int) -> int #export_c {
   if !s[0].started { ice_reset(s); }
+  if redit_pointer(s[0].ed[..], x, y, ph, id) { return 0; }
   for h: 0..<HOLDS {
     if s[0].hold_id[h] == id && s[0].hold_id[h] >= 0 {
       if ph == POINTER_UP || ph == POINTER_CANCEL { h_queue_act(s, A_HELD, h * 2); s[0].hold_id[h] = -1; }
@@ -642,6 +655,19 @@ ice_frame :: (s: [] IceRealm, out: [] f32, uniforms: [] f32, width: f32, height:
   s[0].plate_n = 0;
   s[0].button_n = 0;
   n := h_draw_hud(s, out);
+  // EDIT, top right, while a card is up (in the run the pointer aims), for its owner and admins (verse/edit/edit.coax)
+  redit_start(s[0].ed[..], "ice-cream-man");
+  redit_step(s[0].ed[..], s[0].time, width, height, dpr);
+  if !h_card_on(s) { s[0].ed[0].pane = REDIT_SHUT; }
+  k := s[0].dpr; g := 16 * k;
+  ew := h_text_w("EDIT", 9 * k) + 32 * k;
+  if h_card_on(s) {
+    n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = width - g - ew, y0 = g, x1 = width - g, y1 = g + 38 * k});
+    for i: 0..<s[0].ed[0].plate_n {
+      eb := s[0].ed[0].plate_box[i];
+      h_plate(s, Box.{x0 = eb.x0, y0 = eb.y0, x1 = eb.x1, y1 = eb.y1}, s[0].ed[0].plate_alpha[i], s[0].ed[0].plate_look[i], 12 * k);
+    }
+  } else { for i: 0..<RB_N { s[0].ed[0].shown[i] = false; } s[0].ed[0].plate_n = 0; }
   if s[0].hover >= s[0].button_n { s[0].hover = -1; }
   uniforms[0] = width; uniforms[1] = height; uniforms[2] = ifx still then 0.0f32 else s[0].time;
   uniforms[3] = ifx still then 1.0f32 else clamp(s[0].time / 0.4, 0, 1);
@@ -739,4 +765,32 @@ h_playing_facts :: (f: [] f32) {
   n = ice_frame(s[..], out[..], u[..], 390, 844, 1, 0.016, true, f[..], 3);
   #assert s[0].main_act == A_TOUR_END * 256;
   for i: 0..<s[0].plate_n { bb := s[0].plates[i]; #assert bb.x0 >= 0 && bb.x1 <= 390 && bb.y0 >= 0 && bb.y1 <= 844; }
+}
+
+#test "EDIT for its owner and admins while a card is up; its board's rows are the next house's" {
+  s: [1] IceRealm;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  f: [FACTS] f32;
+  h_playing_facts(f[..]);
+  f[F_PHASE] = PH_MENU;
+  n := ice_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, true, f[..], 3);
+  #assert s[0].ed[0].req_ready && cast(string) s[0].ed[0].req_url[0..<s[0].ed[0].req_url_n] == "/api/playtest/realms/ice-cream-man";
+  redit_requested(s[0].ed[..], 1);
+  #assert ice_edit_message(s[..], HTTP_KIND + 1, "200\nrealm ice-cream-man\nrole visitor\nowner 0\nrow minions 0 Minions\nrow weapons 1 Weapons\n");
+  n = ice_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, true, f[..], 3);
+  #assert !ice_row_on(s[..], "minions") && ice_row_on(s[..], "weapons") && ice_row_on(s[..], "backrooms") && !s[0].ed[0].shown[RB_EDIT];
+  a: [1] IceRealm;
+  n = ice_frame(a[..], out[..], u[..], 1440, 900, 1, 0.016, true, f[..], 3);
+  redit_requested(a[0].ed[..], 2);
+  #assert ice_edit_message(a[..], HTTP_KIND + 2, "200\nrealm ice-cream-man\nrole owner\nowner 1\nrow minions 1 Minions\nwaiting 0\n");
+  n = ice_frame(a[..], out[..], u[..], 1440, 900, 1, 0.016, true, f[..], 3);
+  e := a[0].ed[0].boxes[RB_EDIT];
+  #assert a[0].ed[0].shown[RB_EDIT] && e.x1 <= 1440 && e.x0 > 1200;
+  #assert ice_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, POINTER_DOWN, 0, 1) == 0 && ice_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, POINTER_UP, 0, 1) == 0;
+  #assert a[0].ed[0].pane == REDIT_BOARD;
+  // in the run (no card), no EDIT and the board shuts
+  f[F_PHASE] = PH_PLAYING;
+  n = ice_frame(a[..], out[..], u[..], 1440, 900, 1, 0.016, true, f[..], 3);
+  #assert !a[0].ed[0].shown[RB_EDIT] && a[0].ed[0].pane == REDIT_SHUT;
 }
