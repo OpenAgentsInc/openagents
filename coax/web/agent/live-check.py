@@ -130,8 +130,19 @@ v0, doc0 = st["version"], st["doc"]
 if MODE == "key":
     if OTHER and not os.path.exists(OTHER):
         subprocess.run([SIGN, "--new", OTHER], capture_output=True, check=True)
+    pub_b = subprocess.run([SIGN, "--key", OTHER, "--pubkey"], capture_output=True, text=True, check=True).stdout.strip()
+    added = not any(m.get("pubkey") == pub_b for m in doc0.get("members", []))
+    if added:   # the second member joins the fixture's document for the check and leaves after
+        s, b = signed("POST", "push", {"base": v0, "doc": {**doc0, "members": doc0.get("members", []) + [{"name": "Key Check", "pubkey": pub_b}]}})
+        check("the second member is added to the document", s == 200, (s, b))
     cookie_b = session(OTHER)
     check("a second member signs in", cookie_b is not None)
+
+    def leave():
+        if added:
+            s, st = signed("GET", "state")
+            s, b = signed("POST", "push", {"base": st["version"], "doc": {**st["doc"], "members": [m for m in st["doc"].get("members", []) if m.get("pubkey") != pub_b]}})
+            check("the second member is taken out of the document again", s == 200, (s, b))
 
     def talk(c):
         s, b, _ = http("GET", f"{ORIGIN}/projects/{SLUG}/api/talk", None, {"Cookie": f"oa_project={c}"})
@@ -163,6 +174,7 @@ if MODE == "key":
     check("REMOVE deletes it", s == 200 and kline(cookie) == ["K", "", "", "0"], kline(cookie))
     u = ask(cookie, "Automated check: reply with exactly the word ok. Use no tools.")
     check("with none saved, their turn runs on OpenAgents' key under the cap", u and u[3] == "done" and u[15] == "openagents", u and (u[3], u[8][:200], u[15]))
+    leave()
     sys.exit(1 if failed else 0)
 
 if MODE == "capped":
