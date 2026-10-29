@@ -1,5 +1,12 @@
 # Fixed-base source revalidation with canonical 8×32 group arithmetic
 
+**Source-audit security correction:** the historical aggregate `accepted=true`
+reports described below are superseded and untrusted pending exact-graph
+revalidation with the corrected analyzer. See the
+[checked-cast advisory](2026-10-29-secret-audit-checked-cast.md). The
+separately recorded arithmetic and timing observations retain their stated
+scope and do not depend on that source-audit acceptance.
+
 The fixed comb retains its actual compile-time `SgPoint` tables, public profile parameters and full-table masked selector. Each selected canonical point is converted to `Sg32`; online doubling and addition use the reviewed total 8×32 group kernel, and the canonical result converts back to the existing `SgPoint` ABI. Table generation remains the existing public Coax computation. The selector is private by convention and requires canonical valid generated entries; the real wrappers supply the reviewed tables. This is source-scope and public arithmetic evidence, not object/JIT timing, erasure or production-secret approval.
 
 The checked native-library source audit analyzes each actual wrapper with the explicit 250,000,000-step compile-time table budget, without changing source-audit limits. Both raw reports have `accepted=true`, no guard obligations, 30 reached procedures and 46,115 visits. They bind the actual ordered source graph and compiler-recorded source hashes; generated `#run` values are treated as opaque public data only after the trusted driver verifies successful compilation of that graph. The [evidence](2026-10-29-secp-fixed-base-sg32.json) records the compiler, profile, inputs and both reports. The source audit does not establish target-code timing or production-secret safety.
