@@ -230,6 +230,49 @@ bucket["draft"]["roadmap"]["milestones"][0]["tasks"][0]["acceptance"] = []
 status, refused_draft, _ = dcall("POST", f"/api/drops/{d}/draft", {}, cookie=jar)
 check("drops: a draft with a task no one could check is refused, and the good one kept",
       status == 502 and refused_draft["status"] == "failed" and "acceptance" in refused_draft["note"] and refused_draft["draft"]["card"]["slug"] == "planetary-villa", refused_draft)
+
+# rc-review: every field is the owner's to change; PUBLISH freezes it; DISCARD forgets it.
+bucket["draft"]["roadmap"]["milestones"][0]["tasks"][0]["acceptance"] = ["Pick a flower: it is in your hand"]
+dcall("POST", f"/api/drops/{d}/draft", {}, cookie=jar)
+E = f"/api/drops/{d}/draft/edit"
+T = ["roadmap", "milestones", "0", "tasks", "0"]
+status, ed, _ = dcall("POST", E, {"path": ["card", "name"], "value": "  Moon Villa "}, cookie=jar)
+check("review: the owner renames the project", status == 200 and ed["draft"]["card"]["name"] == "Moon Villa" and ed["edits"] == 1, ed)
+check("review: a slug stays a slug", dcall("POST", E, {"path": ["card", "slug"], "value": "Moon Villa!"}, cookie=jar)[1]["draft"]["card"]["slug"] == "moon-villa")
+check("review: a check is added at a list's end",
+      dcall("POST", E, {"path": T + ["acceptance", "1"], "value": "Two moons rise"}, cookie=jar)[1]["draft"]["roadmap"]["milestones"][0]["tasks"][0]["acceptance"]
+      == ["Pick a flower: it is in your hand", "Two moons rise"])
+check("review: an emptied item leaves its list",
+      dcall("POST", E, {"path": T + ["acceptance", "0"], "value": ""}, cookie=jar)[1]["draft"]["roadmap"]["milestones"][0]["tasks"][0]["acceptance"] == ["Two moons rise"])
+check("review: the last check can't go", dcall("POST", E, {"path": T + ["acceptance", "0"], "value": ""}, cookie=jar)[0] == 400)
+check("review: a yes or no", dcall("POST", E, {"path": ["engine_needs", "0", "reuses"], "value": "no"}, cookie=jar)[1]["draft"]["engine_needs"][0]["reuses"] is False)
+check("review: a size is S, M or L", dcall("POST", E, {"path": T + ["size"], "value": "XL"}, cookie=jar)[0] == 400
+      and dcall("POST", E, {"path": T + ["size"], "value": "L"}, cookie=jar)[1]["draft"]["roadmap"]["milestones"][0]["tasks"][0]["size"] == "L")
+check("review: no field outside the draft, no title emptied, nothing too long",
+      dcall("POST", E, {"path": ["status"], "value": "x"}, cookie=jar)[0] == 400
+      and dcall("POST", E, {"path": ["card", "nope"], "value": "x"}, cookie=jar)[0] == 400
+      and dcall("POST", E, {"path": T + ["title"], "value": " "}, cookie=jar)[0] == 400
+      and dcall("POST", E, {"path": ["card", "line"], "value": "x" * 20001}, cookie=jar)[0] == 400)
+check("review: someone else can't change it", dcall("POST", E, {"path": ["card", "name"], "value": "Mine"}, cookie=mjar)[0] == 404)
+check("review: an edit from another site is refused", dcall("POST", E, {"path": ["card", "name"], "value": "x"}, cookie=jar, origin=False)[0] == 403)
+got = dcall("GET", f"/api/drops/{d}/draft", cookie=jar)[1]
+check("review: the edits are kept, the model's answer too",
+      got["draft"]["card"]["name"] == "Moon Villa" and got["edits"] == 6 and got["approved"] is False
+      and sql(f"SELECT original->'card'->>'name' FROM drops.drafts WHERE drop_id = '{d}'") == "Planetary Villa", got)
+status, pub, _ = dcall("POST", f"/api/drops/{d}/publish", {}, cookie=jar)
+check("review: PUBLISH freezes the reviewed draft for the publisher",
+      status == 200 and pub["approved"] is True and sql(f"SELECT status FROM drops.drops WHERE id = '{d}'") == "approved", pub)
+check("review: after PUBLISH nothing changes and nothing is read again",
+      dcall("POST", E, {"path": ["card", "name"], "value": "x"}, cookie=jar)[0] == 409 and dcall("POST", f"/api/drops/{d}/draft", {}, cookie=jar)[0] == 409)
+kept = [k for k in bucket["objects"] if f"/{d}/" in k]
+status, gone, _ = dcall("POST", f"/api/drops/{d}/discard", {}, cookie=mjar)
+check("review: someone else can't discard it", status == 404 and all(k in bucket["objects"] for k in kept))
+status, gone, _ = dcall("POST", f"/api/drops/{d}/discard", {}, cookie=jar)
+check("review: DISCARD takes the files out of the bucket and forgets the draft",
+      status == 200 and kept and not [k for k in bucket["objects"] if f"/{d}/" in k]
+      and sql(f"SELECT count(*) FROM drops.files WHERE drop_id = '{d}'") == "0"
+      and dcall("GET", f"/api/drops/{d}/draft", cookie=jar)[1] == {"status": "none"} and "objects" not in gone, (status, gone, kept))
+check("review: a discarded drop is closed", dcall("POST", f"/api/drops/{d}/discard", {}, cookie=jar)[0] == 409)
 status, _, oh = dcall("POST", "/api/drops/signout", {}, cookie=jar)
 check("drops: signing out ends the session", status == 200 and "Max-Age=0" in oh.get("Set-Cookie", "") and dcall("GET", "/api/drops/me", cookie=jar)[0] == 401)
 gcs_server.shutdown()

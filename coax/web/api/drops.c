@@ -21,6 +21,10 @@
 //                                            reads them from the bucket; the answer waits for the draft
 //                                            -> {status: ready|failed, note, draft}
 //   GET  /api/drops/<d>/draft                the last draft {status: none|reading|ready|failed, ...}
+//   POST /api/drops/<d>/draft/edit           the owner changes one field {path, value} (rc-review,
+//                                            0020_project_review.sql) -> the draft
+//   POST /api/drops/<d>/publish              PUBLISH: the reviewed draft, frozen for the publisher
+//   POST /api/drops/<d>/discard              DISCARD: the drop's files leave the bucket, its draft is gone
 //
 // Who asks: a NIP-98 signature (each event once), else the oa_drops cookie,
 // else the admin sign-in's cookie (admin.c sets it for /api/drops too). A
@@ -414,6 +418,28 @@ static void draft(const request *q, PGconn *db, const char *pk, const char *drop
   free(request);
 }
 
+// A call that takes the request's JSON body as $3.
+static void body_call(const request *q, PGconn *db, const char *pk, const char *drop, const char *sql) {
+  char *body = malloc(q->body_len + 3);
+  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
+  reply(q->fd, ask(db, sql, 3, (const char *[]){pk, drop, body}));
+  free(body);
+}
+
+// DISCARD: the rules forget the drop; a child takes its files out of the bucket, then answers.
+static void discard(const request *q, PGconn *db, const char *pk, const char *drop) {
+  answer a = ask(db, Q("drops.discard($1, $2)"), 2, (const char *[]){pk, drop});
+  if (a.status != 200) { reply(q->fd, a); return; }
+  PGresult *r = PQexecParams(db, "SELECT jsonb_array_elements_text(($1::jsonb)->'objects')", 1, NULL, (const char *[]){a.all}, NULL, NULL, 0);
+  if (in_child()) {
+    if (PQresultStatus(r) == PGRES_TUPLES_OK) for (int i = 0; i < PQntuples(r); i++) delete_object(PQgetvalue(r, i, 0));
+    reply(q->fd, a);
+    _exit(0);
+  }
+  PQclear(r); free(a.body); free(a.all);
+}
+
 static bool id_ok(const char *s, char lead) {
   if (s[0] != lead || s[1] != '-' || strlen(s) != 18) return false;
   for (int i = 2; i < 18; i++) if (!isxdigit((unsigned char)s[i])) return false;
@@ -464,6 +490,9 @@ bool drops_route(const request *q) {
     return true;
   }
   if (!strcmp(slash, "/files") && post) { add_file(q, db, pk, admin, drop); return true; }
+  if (post && !strcmp(slash, "/draft/edit")) { body_call(q, db, pk, drop, Q("drops.draft_edit($1, $2, $3::jsonb)")); return true; }
+  if (post && !strcmp(slash, "/publish")) { reply(q->fd, ask(db, Q("drops.draft_approve($1, $2)"), 2, (const char *[]){pk, drop})); return true; }
+  if (post && !strcmp(slash, "/discard")) { discard(q, db, pk, drop); return true; }
   if (!strcmp(slash, "/draft")) {
     if (post) draft(q, db, pk, drop);
     else reply(q->fd, ask(db, Q("drops.draft_get($1, $2)"), 2, (const char *[]){pk, drop}));
