@@ -3655,6 +3655,22 @@
       "blocks": ["crypto-ecdh-xonly"]
     },
     {
+      "slug": "proto-generated-error-precedence",
+      "parent": "m-projections",
+      "title": "Preserve exact generated protobuf errors",
+      "size": "M",
+      "labels": ["nostr", "coax", "protocol"],
+      "body": "Generated getters and iterators currently combine ordinal error codes using bitwise OR. For example, LIMIT=2 and WIRE=1 become DUPLICATE=3, even though no duplicate occurred. Specify and implement deterministic error precedence for invalid carried DTOs and fresh decoder failures without treating combined ordinal codes as flags; document compatibility for existing consumers. All DTOs remain unverified and confer no authority.",
+      "files": ["coax/lib/proto/", "coax/tests/proto/", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Single and simultaneous carried/decode errors preserve the documented exact precedence for generated getters, iterators, oneofs and unknown-field readers; no new error can be invented by bitwise combination",
+        "Exercise every supported error category, invalid wire with prior errors, and valid/missing/partial values across affected descriptors; preserve or explicitly migrate existing API and wire behavior",
+        "Protoc interoperability, checked/release native and Wasm, relevant iOS consumers, Python-free bootstrap and full changed authority mutation pass without survivors; independently review exact graph and generated-source correspondence"
+      ],
+      "blocked_by": ["proto-generated-checks"],
+      "blocks": []
+    },
+    {
       "slug": "proto-nostr-numeric-ranges",
       "parent": "m-projections",
       "title": "Enforce declared Nostr numeric ranges in protobuf consumers",
