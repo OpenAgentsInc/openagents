@@ -33,7 +33,7 @@
 
 PV_MAX_VERTICES :: 240000;
 PV_INBOX :: 262144;
-PV_DATA :: 262144;
+PV_DATA :: 262144;         // the last state answer's lines (PrivateHost holds both; PrivateState sees them)
 PV_LINES :: 2048;
 PV_URL :: 256;
 PV_BODY :: 6144;
@@ -94,7 +94,7 @@ PrivateState :: struct {
   hit_box: [PV_HITS] Box; hit_id: [PV_HITS] int; hit_n: int;
   link: [PV_URL] u8; link_n: int;
   outbox: [PV_TEXT] u8; out_n: int; action: int;   // a URL, or a copy (TK_ACT_COPY) of what's typed
-  data: [PV_DATA] u8; data_n: int;
+  data: [] u8; data_n: int;   // PrivateHost's (a #test's own short buffer)
   line_at: [PV_LINES] int; line_end: [PV_LINES] int; line_n: int;
   // a phone code: /signin's sign-in, or LINK A PHONE's
   code_state: int; code_at: f32; polled_at: f32;
@@ -103,7 +103,23 @@ PrivateState :: struct {
   qr: [PV_QR] u8; qr_size: int; qr_want: bool;
   linking: bool;                 // page 0: LINK A PHONE is open
   me_status: int; me_at: f32;    // page 2: -1 not asked, 0 waiting, 200 signed in, 401 not, else offline
+  inbox: [] u8;                  // PrivateHost's
+}
+
+// What the host keeps (private-face.c): the state and the two big buffers it
+// sees. They live here, outside PrivateState, so a #test's state is small: the
+// compiler's aggregate storage limit (coax/spec.md, E0400) is under what the
+// page holds.
+PrivateHost :: struct {
+  s: [1] PrivateState;
+  data: [PV_DATA] u8;
   inbox: [PV_INBOX] u8;
+}
+// Before every call: the state sees the host's buffers (they move with it).
+coaxial_private_bind :: (h: [] PrivateHost) #export_c {
+  if h.count < 1 { return; }
+  h[0].s[0].data = h[0].data[..];
+  h[0].s[0].inbox = h[0].inbox[..];
 }
 
 // ---------------------------------------------------------------- the lines
@@ -308,7 +324,7 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
     s[0].ask_id = -1;
     if code == 200 {
       n := 0;
-      while i < bytes.count && n < PV_DATA { s[0].data[n] = bytes[i]; n += 1; i += 1; }
+      while i < bytes.count && n < s[0].data.count { s[0].data[n] = bytes[i]; n += 1; i += 1; }
       s[0].data_n = n; pv_index(s);
       s[0].status = 200; s[0].live = true; s[0].since = s[0].time;
     } else if code == 0 || code >= 500 {
@@ -323,7 +339,7 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
     s[0].ask_id = -1;
     if code == 200 {
       n := 0;
-      while i < bytes.count && n < PV_DATA { s[0].data[n] = bytes[i]; n += 1; i += 1; }
+      while i < bytes.count && n < s[0].data.count { s[0].data[n] = bytes[i]; n += 1; i += 1; }
       s[0].data_n = n; pv_index(s); s[0].me_status = 200;
     } else {
       s[0].me_status = ifx code == 401 then 401 else 599; s[0].data_n = 0; s[0].line_n = 0;
@@ -1440,7 +1456,7 @@ coaxial_private_key :: (s: [] PrivateState, key: int, mods: int) -> bool #export
 }
 coaxial_private_wheel :: (s: [] PrivateState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
 coaxial_private_message :: (s: [] PrivateState, kind: int, length: int) #export_c {
-  if s.count < 1 || length < 0 || length > PV_INBOX { return; }
+  if s.count < 1 || length < 0 || length > s[0].inbox.count { return; }
   text := cast(string) s[0].inbox[0..<length];
   if kind >= PV_HTTP && kind < PV_HTTP + 8 { pv_answer(s, kind - PV_HTTP, text); return; }
   if kind == PV_TYPED { if s[0].typing { pv_type(s, text); } return; }
@@ -1454,7 +1470,7 @@ coaxial_private_message :: (s: [] PrivateState, kind: int, length: int) #export_
 }
 // The location's hash: a sign-in link's "invite=<token>". It's cleared at once.
 coaxial_private_hash :: (s: [] PrivateState, length: int) #export_c {
-  if s.count < 1 || length < 7 || length > 200 { return; }
+  if s.count < 1 || length < 7 || length > 200 || length > s[0].inbox.count { return; }
   text := cast(string) s[0].inbox[0..<length];
   if text[0..<7] != "invite=" { return; }
   t := text[7..<text.count];
@@ -1473,6 +1489,12 @@ coaxial_private_max_vertices :: () -> int #export_c { return PV_MAX_VERTICES; }
 
 // ---------------------------------------------------------------- checks
 
+// A #test's buffers: enough for the fixtures, and small, so the checks stay
+// inside the compiler's aggregate storage limit (E0400).
+PV_TEST_DATA :: 4096;
+PV_TEST_INBOX :: 1024;
+PV_TEST_VERTICES :: 24000;
+
 PV_FIXTURE :: "200\nY|Ada|member\nP|Test|A test project.|3|Oct 28 15:52|Ada\nT|2026-10-28|15:55\nG|g1|agreed|Ada, Bea|Ship it\nG|g2|proposed||Try another\nD|2026-10-27|TUE OCT 27\nM|2026-10-27|m0|done|Ada|Yesterday's|\nD|2026-10-28|WED OCT 28\nM|2026-10-28|m1|doing|Ada|Write it|started\nM|2026-10-28|m2|todo|Bea|Read it|\nD|2026-10-29|THU OCT 29\nC|c1|Before\nI|c1|i1|done|Tests|green\nI|c1|i2|todo|Deck|\nA|5|Oct 28 15:50|Bot|plan|1. read 2. write\nX|1|Oct 28 15:40|Ada|Look at the deck|\nX|2|Oct 28 15:41|Bot|On it|1\nN|Sessions|4|20\nS|Live from openagents.com.\nL|Old analytics|https://example.com/analytics.html\n";
 
 pv_fresh :: (s: [] PrivateState, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
@@ -1480,8 +1502,8 @@ pv_fresh :: (s: [] PrivateState, out: [] f32, u: [] f32, w: f32, h: f32) -> int 
 }
 
 #test "the locked page asks nothing and draws only what it is" {
-  s: [1] PrivateState;
-  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   coaxial_private_page(s[..], 1);
   t := "proj";
   for i: 0..<t.count { s[0].inbox[i] = t[i]; }
@@ -1492,8 +1514,8 @@ pv_fresh :: (s: [] PrivateState, out: [] f32, u: [] f32, w: f32, h: f32) -> int 
 }
 
 #test "a member's page asks for the state, draws its panels, and a 404 locks it again" {
-  s: [1] PrivateState;
-  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   coaxial_private_page(s[..], 0);
   t := "proj";
   for i: 0..<t.count { s[0].inbox[i] = t[i]; }
@@ -1523,8 +1545,8 @@ pv_fresh :: (s: [] PrivateState, out: [] f32, u: [] f32, w: f32, h: f32) -> int 
 }
 
 #test "a phone draws one column of the same panels" {
-  s: [1] PrivateState;
-  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   coaxial_private_page(s[..], 0);
   t := "proj";
   for i: 0..<t.count { s[0].inbox[i] = t[i]; }
@@ -1536,8 +1558,8 @@ pv_fresh :: (s: [] PrivateState, out: [] f32, u: [] f32, w: f32, h: f32) -> int 
 }
 
 #test "an answer that never came keeps what was shown, OFFLINE" {
-  s: [1] PrivateState;
-  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   coaxial_private_page(s[..], 0);
   t := "proj";
   for i: 0..<t.count { s[0].inbox[i] = t[i]; }
@@ -1553,8 +1575,8 @@ pv_fresh :: (s: [] PrivateState, out: [] f32, u: [] f32, w: f32, h: f32) -> int 
 }
 
 #test "typing and sending a message, escaped as JSON" {
-  s: [1] PrivateState;
-  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   coaxial_private_page(s[..], 0);
   t := "proj";
   for i: 0..<t.count { s[0].inbox[i] = t[i]; }
@@ -1597,8 +1619,8 @@ pv_fresh :: (s: [] PrivateState, out: [] f32, u: [] f32, w: f32, h: f32) -> int 
 }
 
 #test "a sign-in link's token clears the hash, is traded once, then the page loads again" {
-  s: [1] PrivateState;
-  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   coaxial_private_page(s[..], 1);
   t := "proj";
   for i: 0..<t.count { s[0].inbox[i] = t[i]; }
@@ -1637,8 +1659,8 @@ pv_loaded :: (s: [] PrivateState, out: [] f32, u: [] f32) {
 }
 
 #test "a project with an agent reads the conversation and draws its turns, cards, STOP, UNDO TURN and AGREE" {
-  s: [1] PrivateState;
-  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   pv_loaded(s[..], out[..], u[..]);
   n1 := pv_fresh(s[..], out[..], u[..], 1440, 900);
   #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/projects/proj/api/talk" && s[0].ask_kind == ASK_TALK;
@@ -1671,8 +1693,8 @@ pv_loaded :: (s: [] PrivateState, out: [] f32, u: [] f32) {
 }
 
 #test "asking the agent from its own field, apart from the messages field" {
-  s: [1] PrivateState;
-  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   pv_loaded(s[..], out[..], u[..]);
   n1 := pv_fresh(s[..], out[..], u[..], 390, 844);
   coaxial_private_asked(s[..], 1);
@@ -1692,8 +1714,8 @@ pv_loaded :: (s: [] PrivateState, out: [] f32, u: [] f32) {
 }
 
 #test "a project without an agent draws no AGENT panel and stops asking" {
-  s: [1] PrivateState;
-  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   pv_loaded(s[..], out[..], u[..]);
   n1 := pv_fresh(s[..], out[..], u[..], 1440, 900);
   coaxial_private_asked(s[..], 1);
@@ -1712,8 +1734,8 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
 }
 
 #test "/login asks who is signed in, then shows a code, polls it, and signs in" {
-  s: [1] PrivateState;
-  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   coaxial_private_page(s[..], 2);
   n := 0;
   n = pv_fresh(s[..], out[..], u[..], 1440, 900);
@@ -1732,7 +1754,7 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
   #assert s[0].code_state == CODE_SHOWN && !s[0].qr_want && s[0].qr_size == 37;
   // the QR's light squares stay on the canvas, whole pixels a module
   n = pv_fresh(s[..], out[..], u[..], 780, 1688);
-  #assert n > 37 * 6 && n < PV_MAX_VERTICES;
+  #assert n > 37 * 6 && n < PV_TEST_VERTICES;   // not cut short, so inside the page's budget too
   for k: 0..<n { #assert out[k * VERTEX_FLOATS] >= -20 && out[k * VERTEX_FLOATS] <= 800 && out[k * VERTEX_FLOATS + 1] >= -20 && out[k * VERTEX_FLOATS + 1] <= 1708; }
   // no poll before 2 s, then one with the poll token (never the challenge)
   #assert s[0].post_n == 0;
@@ -1771,8 +1793,8 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
 }
 
 #test "/login: an expired code offers NEW CODE; a refused grid is no code" {
-  s: [1] PrivateState;
-  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   coaxial_private_page(s[..], 2);
   n := pv_fresh(s[..], out[..], u[..], 1440, 900);
   coaxial_private_asked(s[..], 1);
@@ -1800,8 +1822,8 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
 }
 
 #test "LINK A PHONE asks for a link code, shows it over the page, and says when the phone is linked" {
-  s: [1] PrivateState;
-  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   coaxial_private_page(s[..], 0);
   t := "proj";
   for i: 0..<t.count { s[0].inbox[i] = t[i]; }
@@ -1835,8 +1857,8 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
 }
 
 #test "KEY: a member's own key is pasted masked, posted once and wiped; saved, it shows its kind and last four; each turn says whose key ran it" {
-  s: [1] PrivateState;
-  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   pv_loaded(s[..], out[..], u[..]);
   n1 := pv_fresh(s[..], out[..], u[..], 1440, 900);
   coaxial_private_asked(s[..], 1);
