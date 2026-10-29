@@ -24,7 +24,7 @@
 
 AD_MAX_VERTICES :: 240000;
 AD_INBOX :: 1048576;       // the host's messages: an answer is "STATUS\n" then the rows
-AD_DATA :: 1048576;
+AD_DATA :: 1048576;        // the last answer's rows (AdminHost holds both; AdminState sees them)
 AD_ROWS :: 4096;
 AD_SECTIONS :: 16;
 AD_COLS :: 12;
@@ -59,13 +59,29 @@ AdminState :: struct {
   ask: [AD_ASK] u8; ask_n: int;   // a request for the face to send
   scroll: f32; hot: int; press: int; press_x: f32; press_y: f32; drag_y: f32; dragged: bool;
   outbox: [64] u8; out_n: int; action: int;
-  data: [AD_DATA] u8; data_n: int;
+  data: [] u8; data_n: int;   // AdminHost's (a #test's own short buffer)
   sec_n: int;
   sec_head: [AD_SECTIONS] int; sec_end: [AD_SECTIONS] int;   // the "#" line
   sec_first: [AD_SECTIONS] int; sec_rows: [AD_SECTIONS] int; sec_cols: [AD_SECTIONS] int;
   sec_weight: [AD_SECTIONS * AD_COLS] f32;
   row_at: [AD_ROWS] int; row_end: [AD_ROWS] int; row_n: int;
+  inbox: [] u8;                // AdminHost's
+}
+
+// What the host keeps (admin-face.c): the state and the two megabyte buffers it
+// sees. They live here, outside AdminState, so a #test's state is small: the
+// compiler's aggregate storage limit (coax/spec.md, E0400) is well under the
+// two megabytes the page holds.
+AdminHost :: struct {
+  s: [1] AdminState;
+  data: [AD_DATA] u8;
   inbox: [AD_INBOX] u8;
+}
+// Before every call: the state sees the host's buffers (they move with it).
+coaxial_admin_bind :: (h: [] AdminHost) #export_c {
+  if h.count < 1 { return; }
+  h[0].s[0].data = h[0].data[..];
+  h[0].s[0].inbox = h[0].inbox[..];
 }
 
 // ---- the answer's rows
@@ -184,7 +200,7 @@ ad_answer :: (s: [] AdminState, bytes: string) {
   s[0].status = ifx code == 0 then 599 else code;
   if code != 200 { s[0].data_n = 0; ad_index(s); return; }
   n := 0;
-  while i < bytes.count && n < AD_DATA { s[0].data[n] = bytes[i]; n += 1; i += 1; }
+  while i < bytes.count && n < s[0].data.count { s[0].data[n] = bytes[i]; n += 1; i += 1; }
   s[0].data_n = n;
   ad_index(s);
   s[0].hot = -1;
@@ -506,7 +522,7 @@ coaxial_admin_key :: (s: [] AdminState, key: int) -> bool #export_c {
 }
 coaxial_admin_wheel :: (s: [] AdminState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
 coaxial_admin_message :: (s: [] AdminState, kind: int, length: int) #export_c {
-  if s.count < 1 || kind < AD_HTTP || kind >= AD_HTTP + 8 || length < 0 || length > AD_INBOX { return; }
+  if s.count < 1 || kind < AD_HTTP || kind >= AD_HTTP + 8 || length < 0 || length > s[0].inbox.count { return; }
   ad_answer(s, cast(string) s[0].inbox[0..<length]);
 }
 coaxial_admin_cursor :: (s: [] AdminState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
@@ -518,11 +534,16 @@ coaxial_admin_max_vertices :: () -> int #export_c { return AD_MAX_VERTICES; }
 
 // ---- checks
 
+// A #test's buffers: enough for the fixtures, and small, so the checks stay
+// inside the compiler's aggregate storage limit (E0400).
+AD_TEST_DATA :: 4096;
+AD_TEST_VERTICES :: 24000;
+
 AD_FIXTURE :: "200\n#SUMMARY||WHAT|COUNT\nSessions|4\nVisitors|3\n#SESSIONS|s|SESSION|STARTED|SPACE|FIRST PAGE|EVENTS|MINUTES|FURTHEST|PLACE|DEVICE|AUTOMATED\nc00000000000000a1|10-28 15:52|web|haunt|5|0.4|answered|US Chicago|macOS Chrome|\n#ERRORS||MESSAGE|WHERE|TIMES|LAST\n";
 
 #test "nothing but LOADING, then ADMINS ONLY for anyone the server refuses" {
-  s: [1] AdminState;
-  out: [AD_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] AdminState; data: [AD_TEST_DATA] u8; s[0].data = data[..];
+  out: [AD_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   n := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, true);
   #assert s[0].status == 0 && s[0].ask_n > 0 && n > 0;   // LOADING
   #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/analytics?view=overview&days=7&space=all&auto=0";
@@ -532,8 +553,8 @@ AD_FIXTURE :: "200\n#SUMMARY||WHAT|COUNT\nSessions|4\nVisitors|3\n#SESSIONS|s|SE
 }
 
 #test "an admin's answer is drawn as sections; a session's row opens its timeline; Escape goes back" {
-  s: [1] AdminState;
-  out: [AD_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] AdminState; data: [AD_TEST_DATA] u8; s[0].data = data[..];
+  out: [AD_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   n0 := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, false);
   coaxial_admin_asked(s[..]);
   ad_answer(s[..], AD_FIXTURE);
@@ -556,8 +577,8 @@ AD_FIXTURE :: "200\n#SUMMARY||WHAT|COUNT\nSessions|4\nVisitors|3\n#SESSIONS|s|SE
 }
 
 #test "the filters ask again; LOG OUT goes to the logout" {
-  s: [1] AdminState;
-  out: [AD_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] AdminState; data: [AD_TEST_DATA] u8; s[0].data = data[..];
+  out: [AD_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   n0 := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, false);
   ad_answer(s[..], AD_FIXTURE);
   ad_act(s[..], AD_CHIP + 4); ad_act(s[..], AD_CHIP + 8); ad_act(s[..], AD_CHIP + 10);
@@ -569,8 +590,8 @@ AD_FIXTURE :: "200\n#SUMMARY||WHAT|COUNT\nSessions|4\nVisitors|3\n#SESSIONS|s|SE
 AD_QUEUE :: "200\n#OPEN REPORTS|aw|KIND|WHICH|REPORTS|FIRST|WHAT IT SAYS|WHY\nnote|42|3|10-29 08:00|Guest AB12: rude words|rude\n#DECIDED|rw|KIND|WHICH|DECISION|WHEN|BY|WHAT IT SAID|RESTORE\nchat|7|HIDDEN|10-29 07:00|9f4b4c7e|Guest CD34: a line|yes\nnote|5|KEPT|10-29 06:00|9f4b4c7e|Guest EF56: fine|\n";
 
 #test "/admin/reports asks for the queue; HIDE and KEEP on an open report, RESTORE only where the server says" {
-  s: [1] AdminState;
-  out: [AD_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] AdminState; data: [AD_TEST_DATA] u8; s[0].data = data[..];
+  out: [AD_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   coaxial_admin_page(s[..], 1);
   n0 := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, true);
   #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/reports" && !s[0].post;
@@ -610,8 +631,8 @@ AD_QUEUE :: "200\n#OPEN REPORTS|aw|KIND|WHICH|REPORTS|FIRST|WHAT IT SAYS|WHY\nno
 }
 
 #test "ANALYTICS and REPORTS link the two pages" {
-  s: [1] AdminState;
-  out: [AD_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s: [1] AdminState; data: [AD_TEST_DATA] u8; s[0].data = data[..];
+  out: [AD_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   n0 := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, true);
   ad_answer(s[..], AD_FIXTURE);
   ad_act(s[..], AD_CHIP + 13);

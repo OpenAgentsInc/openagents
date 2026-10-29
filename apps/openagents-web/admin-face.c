@@ -1,6 +1,7 @@
 // /admin/analytics's (and /admin/reports') C face for the browser: scalar Wasm exports over
 // admin.coax, and the request it asks for handed to the host's HTTP import
-// (coax/web/host.js) with its answer wanted. The host keeps one AdminState.
+// (coax/web/host.js) with its answer wanted. The host keeps one AdminHost: the
+// AdminState and the buffers it sees, bound again before every call.
 // This page records no analytics of its own: it is the admins' view of them.
 #include "admin.h"
 #include <stddef.h>
@@ -9,7 +10,11 @@
 #define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
 IMPORT("coaxial_http") int32_t coaxial_http(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags);
 
-static coax_v_t_AdminState at(uint32_t state) { return (coax_v_t_AdminState){(coax_t_AdminState *)(uintptr_t)state, 1}; }
+static coax_v_t_AdminState at(uint32_t state) {
+  coax_t_AdminHost *h = (coax_t_AdminHost *)(uintptr_t)state;
+  coaxial_admin_bind((coax_v_t_AdminHost){h, 1});
+  return (coax_v_t_AdminState){h->s.e, 1};
+}
 
 // The request admin.coax asks for, once there's a free slot (flag 4: answer wanted).
 static void send_ask(uint32_t state) {
@@ -20,11 +25,11 @@ static void send_ask(uint32_t state) {
 }
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
-  return (uint32_t)(sizeof(coax_t_AdminState) * 7u + offsetof(coax_t_AdminState, inbox) * 3u + 0x41444du);
+  return (uint32_t)(sizeof(coax_t_AdminHost) * 7u + offsetof(coax_t_AdminHost, inbox) * 3u + sizeof(coax_t_AdminState) * 5u + 0x41444du);
 }
 // data-page 1: /admin/reports, the review queue; else /admin/analytics.
 EXPORT("coaxial_page") void coaxial_page(uint32_t state, int32_t page) { coaxial_admin_page(at(state), page); }
-EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_AdminState); }
+EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_AdminHost); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_admin_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_projects_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_projects_uniform_floats(); }
@@ -50,7 +55,7 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   return used;
 }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { coaxial_admin_wheel(at(state), dy); }
-EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { return (uint32_t)(uintptr_t)at(state).data->inbox.e; }
+EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { return (uint32_t)(uintptr_t)at(state).data->inbox.data; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return (uint32_t)coaxial_admin_inbox_cap(); }
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, int32_t length) { coaxial_admin_message(at(state), kind, length); }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)coaxial_admin_cursor(at(state)); }
