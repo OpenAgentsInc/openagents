@@ -23,11 +23,15 @@ EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uin
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_fixture_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_fixture_uniform_floats(); }
 
+// Golden mode (host.js coaxial_golden): the painterly fixture's wind, clouds and lamp hold still, as under still.
+static bool golden;
+EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
+
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float width, float height, float dpr, float dt, uint32_t still) {
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_fixture_max_vertices() * coaxial_fixture_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_fixture_uniform_floats()};
-  int64_t n = fixture_frame(at(state), out, u, width, height, dpr, dt, still != 0);
+  int64_t n = fixture_frame(at(state), out, u, width, height, dpr, dt, still != 0 || golden);
   return n < 0 ? 0u : (uint32_t)n;
 }
 
