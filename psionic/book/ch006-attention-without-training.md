@@ -1,6 +1,6 @@
 # 6. Attention without training
 
-[Chapter 5](ch05-text-becomes-a-model-request.md) gave us token IDs and
+[Chapter 5](ch005-text-becomes-a-model-request.md) gave us token IDs and
 complete request branches. This chapter takes a smaller step toward executing
 a model: a causal dense decoder block operating on already-embedded vectors.
 The weights are supplied by the caller. There is no training, tokenizer lookup,
@@ -110,7 +110,7 @@ chapter 3 binary64 compensated accumulator; intermediate vectors are narrowed
 to binary32 once at each stated projection or operation. The code refuses
 non-finite inputs and intermediates outside finite binary32 range. A compiler
 and host must retain the no-FMA, no-reassociation profile described in
-[chapter 3](ch03-numbers-and-matrices.md).
+[chapter 3](ch003-numbers-and-matrices.md).
 
 ## Positions are rotations
 

@@ -16,7 +16,7 @@ batched speculation → device tool integration.** Existing Coax CUDA emission,
 BF16 kernels and driver effects are reused. Do not call this branch complete
 for practical inference until the recorded device throughput gates pass.
 
-[Run the first chapter](../book/ch01-learning-a-number.md)
+[Run the first chapter](../book/ch001-learning-a-number.md)
 or `psionic/check.sh`; [retained verification](../../docs/verification/psionic-m0-2026-10-28.md)
 records the scope. Later chapter titles are working names; gates determine
 completion, not a calendar or page count.
@@ -66,7 +66,7 @@ this first milestone.
 
 ## Chapter 2: shapes and storage — implemented
 
-[The chapter](../book/ch02-shapes-and-storage.md) and
+[The chapter](../book/ch002-shapes-and-storage.md) and
 [shared tensor unit](../lib/tensor.coax) admit contiguous `f32`
 shapes of rank 0–4, canonical inactive dimensions, bounded element/byte counts,
 row-major strides and checked coordinates. A staged copy exercises exact
@@ -80,7 +80,7 @@ complete with chapter 3 below, under its explicit teaching-profile limits.
 
 ## Chapter 3: numbers and matrices — implemented
 
-[The chapter](../book/ch03-numbers-and-matrices.md) implements
+[The chapter](../book/ch003-numbers-and-matrices.md) implements
 `CPU-f32-wide-v1`: binary32 storage, explicit binary64 products and compensated
 reductions, one checked narrowing per output, and staged publication. The
 [operation contracts](../lib/ops-contract.coax) and
@@ -98,7 +98,7 @@ Elephant/Mammoth priority remains unchanged.
 
 ## Chapter 4: reading original weights — implemented
 
-[The chapter](../book/ch04-reading-original-weights.md) and
+[The chapter](../book/ch004-reading-original-weights.md) and
 [model-io units](../lib/model-io/) implement `original-weights-v1`:
 bounded original Safetensors BF16/F32 inventory, checked exact-byte SHA-256
 identities, complete single/sharded bundles, a bounded HF index subset and
@@ -115,7 +115,7 @@ is the attention/forward core, using chapter 5's text contract below.
 
 ## Chapter 5: text becomes a model request — implemented
 
-[The chapter](../book/ch05-text-becomes-a-model-request.md) and
+[The chapter](../book/ch005-text-becomes-a-model-request.md) and
 [text library](../lib/text.coax) implement `qwen35-text-v1`: original
 Qwen tokenizer indexes, Unicode-17 NFC and ranked byte-BPE, 33 added literals,
 frozen tagged choice/noul/score requests, 256 one-token slot labels and exact
@@ -133,7 +133,7 @@ block; no training dependency has been added to the urgent decision-model path.
 
 ## Chapter 6: attention without training — implemented
 
-[The chapter](../book/ch06-attention-without-training.md) and
+[The chapter](../book/ch006-attention-without-training.md) and
 [attention library](../lib/attention.coax) execute a bounded causal
 dense decoder block with learned RMS scaling, grouped-query attention,
 caller-supplied interleaved rotary tables, SwiGLU and an incremental KV cache.
@@ -141,14 +141,14 @@ Independent full-sequence fixtures and native storage/refusal checks qualify
 this small CPU profile. It does not implement Qwen3.5's exact hybrid block or
 the decision mask. Chapter 7 and real-model qualification remain next.
 
-[Chapter 7](../book/ch07-a-hybrid-sequence-model.md) composes
+[Chapter 7](../book/ch007-a-hybrid-sequence-model.md) composes
 model-specific causal linear and full-attention layers. [Its verification](../../docs/verification/psionic-ch07-2026-10-29.md)
 scopes the small CPU references; original checkpoints, the decision mask and
 upstream runtime comparisons remain separate gates.
 
 ## Chapter 8: decision masks and snapshots — implemented
 
-[The chapter](../book/ch08-decisions-have-a-different-mask.md)
+[The chapter](../book/ch008-decisions-have-a-different-mask.md)
 implements bidirectional full-attention blocks and snapshots of live recurrent,
 convolution and KV state. Whole-model branch isolation and original-weight
 request comparisons remain separate gates.
@@ -290,7 +290,7 @@ new issues, model downloads, hardware purchases or deployment requirements.
 
 ## Measured GPT-OSS device baseline
 
-[Chapters 45a–45c](../book/ch45a-original-weights-stay-on-the-gpu.md) now run
+[Chapters 45a–45c](../book/ch045a-original-weights-stay-on-the-gpu.md) now run
 original 20b with resident packed weights, a complete greedy CUDA decoder and
 128-token grouped prefill. The retained original vectors pass the frozen
 numerical bound and exact route/top-token gates; a complete Harmony turn runs.

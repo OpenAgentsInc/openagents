@@ -1,7 +1,7 @@
 # 47. Let the small model guess
 
-[Previous: gpt-oss-120b](ch46-execute-gpt-oss-120b.md) · [Contents](SUMMARY.md) ·
-[Next: tools](ch48-call-a-tool.md)
+[Previous: gpt-oss-120b](ch046-execute-gpt-oss-120b.md) · [Contents](SUMMARY.md) ·
+[Next: tools](ch048-call-a-tool.md)
 
 A draft model proposes tokens. The target keeps authority over the output
 distribution. Because our two original models share the same tokenizer, a

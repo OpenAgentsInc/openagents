@@ -6,8 +6,8 @@ where a turn ends. This chapter builds that boundary in Coax for gpt-oss.
 
 We will tokenize with the original byte ranks, render typed messages and parse
 complete model replies. We can check all of it without loading model weights.
-Chapters [5](ch05-text-becomes-a-model-request.md) and
-[43](ch43-attention-with-sinks-and-a-window.md) provide the earlier tokenizer
+Chapters [5](ch005-text-becomes-a-model-request.md) and
+[43](ch043-attention-with-sinks-and-a-window.md) provide the earlier tokenizer
 and attention context; the [plan](PLAN.md) puts complete gpt-oss generation next.
 
 ```shell

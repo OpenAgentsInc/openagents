@@ -29,9 +29,9 @@ The [example](../examples/attention-sinks.coax),
 `gpt-oss-attention-cpu-wide-v1` profile. Inputs are synthetic, projected `f32`
 Q/K/V vectors and per-head sink logits. This chapter qualifies bounded CPU
 primitives; original checkpoint binding and a complete decoder remain chapter
-38's work. Read chapters [3](ch03-numbers-and-matrices.md),
-[6](ch06-attention-without-training.md) and
-[35](ch42-a-few-experts-then-a-router.md) first.
+38's work. Read chapters [3](ch003-numbers-and-matrices.md),
+[6](ch006-attention-without-training.md) and
+[35](ch042-a-few-experts-then-a-router.md) first.
 
 ## Let the sink keep some probability
 

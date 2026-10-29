@@ -1,6 +1,6 @@
 # 48. Call a tool
 
-[Previous: speculative decoding](ch47-let-the-small-model-guess.md) ·
+[Previous: speculative decoding](ch047-let-the-small-model-guess.md) ·
 [Contents](SUMMARY.md)
 
 A Harmony handoff asks the host to do something. It grants no authority on its

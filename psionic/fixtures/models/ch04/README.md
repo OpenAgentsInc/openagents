@@ -1,7 +1,7 @@
 # Owned original weight fixtures
 
 These tiny Safetensors artifacts are authored in this repository for
-[chapter 4](../../../book/ch04-reading-original-weights.md). They contain no
+[chapter 4](../../../book/ch004-reading-original-weights.md). They contain no
 external checkpoint or training data. `owned-v1` is a fixture revision label,
 not an upstream Git revision or proof of provenance.
 

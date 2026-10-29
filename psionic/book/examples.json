@@ -3,7 +3,7 @@
   "examples": [
     {
       "source": "psionic/examples/learn-number.coax",
-      "chapter": "psionic/book/ch01-learning-a-number.md",
+      "chapter": "psionic/book/ch001-learning-a-number.md",
       "stdout": "psionic/fixtures/learn-number.out",
       "exit_status": 0,
       "modes": [
@@ -13,7 +13,7 @@
     },
     {
       "source": "psionic/examples/refuse-capacity.coax",
-      "chapter": "psionic/book/ch01-learning-a-number.md",
+      "chapter": "psionic/book/ch001-learning-a-number.md",
       "stdout": "psionic/fixtures/refuse-capacity.out",
       "exit_status": 0,
       "modes": [
@@ -23,7 +23,7 @@
     },
     {
       "source": "psionic/examples/shape-storage.coax",
-      "chapter": "psionic/book/ch02-shapes-and-storage.md",
+      "chapter": "psionic/book/ch002-shapes-and-storage.md",
       "stdout": "psionic/fixtures/shape-storage.out",
       "exit_status": 0,
       "modes": [
@@ -33,7 +33,7 @@
     },
     {
       "source": "psionic/examples/numbers-matrices.coax",
-      "chapter": "psionic/book/ch03-numbers-and-matrices.md",
+      "chapter": "psionic/book/ch003-numbers-and-matrices.md",
       "stdout": "psionic/fixtures/numbers-matrices.out",
       "exit_status": 0,
       "modes": [
@@ -43,7 +43,7 @@
     },
     {
       "source": "psionic/examples/read-weights.coax",
-      "chapter": "psionic/book/ch04-reading-original-weights.md",
+      "chapter": "psionic/book/ch004-reading-original-weights.md",
       "stdout": "psionic/fixtures/read-weights.out",
       "exit_status": 0,
       "modes": [
@@ -53,7 +53,7 @@
     },
     {
       "source": "psionic/examples/text-request.coax",
-      "chapter": "psionic/book/ch05-text-becomes-a-model-request.md",
+      "chapter": "psionic/book/ch005-text-becomes-a-model-request.md",
       "stdout": "psionic/fixtures/text-request.out",
       "exit_status": 0,
       "modes": [
@@ -63,7 +63,7 @@
     },
     {
       "source": "psionic/examples/attention.coax",
-      "chapter": "psionic/book/ch06-attention-without-training.md",
+      "chapter": "psionic/book/ch006-attention-without-training.md",
       "stdout": "psionic/fixtures/attention.out",
       "exit_status": 0,
       "modes": [
@@ -73,7 +73,7 @@
     },
     {
       "source": "psionic/examples/hybrid-sequence.coax",
-      "chapter": "psionic/book/ch07-a-hybrid-sequence-model.md",
+      "chapter": "psionic/book/ch007-a-hybrid-sequence-model.md",
       "stdout": "psionic/fixtures/hybrid-sequence.out",
       "exit_status": 0,
       "modes": [
@@ -83,7 +83,7 @@
     },
     {
       "source": "psionic/examples/decision-forks.coax",
-      "chapter": "psionic/book/ch08-decisions-have-a-different-mask.md",
+      "chapter": "psionic/book/ch008-decisions-have-a-different-mask.md",
       "stdout": "psionic/fixtures/decision-forks.out",
       "exit_status": 0,
       "modes": [
@@ -93,7 +93,7 @@
     },
     {
       "source": "psionic/examples/read-options.coax",
-      "chapter": "psionic/book/ch09-read-the-options.md",
+      "chapter": "psionic/book/ch009-read-the-options.md",
       "stdout": "psionic/fixtures/read-options.out",
       "exit_status": 0,
       "modes": [
@@ -103,7 +103,7 @@
     },
     {
       "source": "psionic/examples/elephant-target.coax",
-      "chapter": "psionic/book/ch10-execute-elephant.md",
+      "chapter": "psionic/book/ch010-execute-elephant.md",
       "stdout": "psionic/fixtures/elephant-target.out",
       "exit_status": 0,
       "modes": [
@@ -113,7 +113,7 @@
     },
     {
       "source": "psionic/examples/original-mxfp4.coax",
-      "chapter": "psionic/book/ch41-original-mxfp4-weights.md",
+      "chapter": "psionic/book/ch041-original-mxfp4-weights.md",
       "stdout": "psionic/fixtures/original-mxfp4.out",
       "exit_status": 0,
       "modes": [
@@ -123,7 +123,7 @@
     },
     {
       "source": "psionic/examples/few-experts.coax",
-      "chapter": "psionic/book/ch42-a-few-experts-then-a-router.md",
+      "chapter": "psionic/book/ch042-a-few-experts-then-a-router.md",
       "stdout": "psionic/fixtures/few-experts.out",
       "exit_status": 0,
       "modes": [
@@ -133,7 +133,7 @@
     },
     {
       "source": "psionic/examples/attention-sinks.coax",
-      "chapter": "psionic/book/ch43-attention-with-sinks-and-a-window.md",
+      "chapter": "psionic/book/ch043-attention-with-sinks-and-a-window.md",
       "stdout": "psionic/fixtures/attention-sinks.out",
       "exit_status": 0,
       "modes": [
@@ -143,7 +143,7 @@
     },
     {
       "source": "psionic/examples/harmony.coax",
-      "chapter": "psionic/book/ch44-the-harmony-format.md",
+      "chapter": "psionic/book/ch044-the-harmony-format.md",
       "stdout": "psionic/fixtures/harmony.out",
       "exit_status": 0,
       "modes": [
@@ -153,7 +153,7 @@
     },
     {
       "source": "psionic/examples/probability-quality.coax",
-      "chapter": "psionic/book/ch12-are-the-probabilities-any-good.md",
+      "chapter": "psionic/book/ch012-are-the-probabilities-any-good.md",
       "stdout": "psionic/fixtures/probability-quality.out",
       "exit_status": 0,
       "modes": [
@@ -163,7 +163,7 @@
     },
     {
       "source": "psionic/examples/execute-gptoss.coax",
-      "chapter": "psionic/book/ch45-execute-gpt-oss-20b.md",
+      "chapter": "psionic/book/ch045-execute-gpt-oss-20b.md",
       "stdout": "psionic/fixtures/execute-gptoss.out",
       "exit_status": 0,
       "modes": [
@@ -173,7 +173,7 @@
     },
     {
       "source": "psionic/examples/gptoss-residency.coax",
-      "chapter": "psionic/book/ch46-execute-gpt-oss-120b.md",
+      "chapter": "psionic/book/ch046-execute-gpt-oss-120b.md",
       "stdout": "psionic/fixtures/gptoss-residency.out",
       "exit_status": 0,
       "modes": [
@@ -183,7 +183,7 @@
     },
     {
       "source": "psionic/examples/speculative-tokens.coax",
-      "chapter": "psionic/book/ch47-let-the-small-model-guess.md",
+      "chapter": "psionic/book/ch047-let-the-small-model-guess.md",
       "stdout": "psionic/fixtures/speculative-tokens.out",
       "exit_status": 0,
       "modes": [
@@ -193,7 +193,7 @@
     },
     {
       "source": "psionic/examples/call-a-tool.coax",
-      "chapter": "psionic/book/ch48-call-a-tool.md",
+      "chapter": "psionic/book/ch048-call-a-tool.md",
       "stdout": "psionic/fixtures/call-a-tool.out",
       "exit_status": 0,
       "modes": [
@@ -203,7 +203,7 @@
     },
     {
       "source": "psionic/examples/device-matvec.coax",
-      "chapter": "psionic/book/ch26-a-coax-compute-subset.md",
+      "chapter": "psionic/book/ch026-a-coax-compute-subset.md",
       "stdout": "psionic/fixtures/device-matvec.out",
       "exit_status": 0,
       "modes": [
@@ -213,7 +213,7 @@
     },
     {
       "source": "psionic/examples/device-plan.coax",
-      "chapter": "psionic/book/ch30-elephant-on-cuda.md",
+      "chapter": "psionic/book/ch030-elephant-on-cuda.md",
       "stdout": "psionic/fixtures/device-plan.out",
       "exit_status": 0,
       "modes": [
@@ -223,7 +223,7 @@
     },
     {
       "source": "psionic/examples/gptoss-device-plan.coax",
-      "chapter": "psionic/book/ch45a-original-weights-stay-on-the-gpu.md",
+      "chapter": "psionic/book/ch045a-original-weights-stay-on-the-gpu.md",
       "stdout": "psionic/fixtures/gptoss-device-plan.out",
       "exit_status": 0,
       "modes": [

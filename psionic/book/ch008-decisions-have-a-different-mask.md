@@ -7,7 +7,7 @@ blocks. The shared state prefix is one block; each question suffix is its own
 later block. A suffix cannot affect the cached prefix or a sibling suffix.
 The DeltaNet and convolution layers remain causal.
 
-[Chapter 7](ch07-a-hybrid-sequence-model.md) gave each layer its own state.
+[Chapter 7](ch007-a-hybrid-sequence-model.md) gave each layer its own state.
 Here we evaluate a full-attention block and fork every kind of state at the
 prefix boundary. We use bounded, synthetic CPU examples; real-weight execution
 and complete end-to-end decision qualification remain later work.
@@ -187,7 +187,7 @@ main :: () {
 The program keeps the prefix source separate from the two copies. Each suffix
 updates its own convolution/recurrent state and KV cache. A real model will
 perform that sequence for every layer and must retain the exact token split
-from [chapter 5](ch05-text-becomes-a-model-request.md). A block-level test and
+from [chapter 5](ch005-text-becomes-a-model-request.md). A block-level test and
 snapshot operation alone do not establish whole-model branch isolation.
 
 The [verification record](../../docs/verification/psionic-ch08-2026-10-29.md)

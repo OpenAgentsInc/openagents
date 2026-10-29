@@ -1,7 +1,7 @@
 # 45. Execute gpt-oss-20b
 
-[Previous: Harmony](ch44-the-harmony-format.md) · [Contents](SUMMARY.md) ·
-[Next: gpt-oss-120b](ch46-execute-gpt-oss-120b.md)
+[Previous: Harmony](ch044-the-harmony-format.md) · [Contents](SUMMARY.md) ·
+[Next: gpt-oss-120b](ch046-execute-gpt-oss-120b.md)
 
 A decoder, a router and an attention fixture are useful pieces. They become a
 model when the original embedding, every block and the complete vocabulary

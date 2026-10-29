@@ -1,6 +1,6 @@
 # 4. Reading original weights
 
-[Chapter 3](ch03-numbers-and-matrices.md) gave us numerical operations. Now we
+[Chapter 3](ch003-numbers-and-matrices.md) gave us numerical operations. Now we
 will feed them numbers stored in someone else's file. The reader must establish
 what those bytes mean before they become shapes, offsets or floating-point
 values that the rest of Psionic trusts.
@@ -363,7 +363,7 @@ Request the last two matrix entries with `first = 4`, `count = 2`, and derive
 buffers remain unchanged. Then alter one original byte while keeping its
 expected hash and verify that the bundle refuses before publishing inventory.
 
-Next: [tokenizers and prompt bytes](ch05-text-becomes-a-model-request.md). The original tokenizer identity we bind
+Next: [tokenizers and prompt bytes](ch005-text-becomes-a-model-request.md). The original tokenizer identity we bind
 here becomes an interpreted, checked input in chapter 5; original weight
 execution will reuse this artifact boundary as attention and model-specific
 architecture arrive.

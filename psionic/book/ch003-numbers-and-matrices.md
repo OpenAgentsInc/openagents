@@ -1,6 +1,6 @@
 # 3. Numbers and matrices
 
-We can now give arrays [checked shapes and storage](ch02-shapes-and-storage.md).
+We can now give arrays [checked shapes and storage](ch002-shapes-and-storage.md).
 This chapter puts numbers through that storage: add two arrays, reduce rows,
 multiply matrices, gather rows, form probabilities and normalize a row.
 These are small CPU operations that later models will share.
@@ -489,5 +489,5 @@ one of the equal softmax scores: the allowed entry should become one and the
 other exact zero. Finally, place an out-of-range index at the end of a gather
 request and verify that neither writable buffer changes.
 
-Next, [read original weight artifacts](ch04-reading-original-weights.md). The bounded numerical operations
+Next, [read original weight artifacts](ch004-reading-original-weights.md). The bounded numerical operations
 remain shared library code as real-model architecture and tokenizer work begins.

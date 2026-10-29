@@ -8,7 +8,7 @@ values, and copy it into caller-owned storage while checking those boundaries.
 The implementation is [lib/tensor.coax](../lib/tensor.coax). The example in
 [examples/shape-storage.coax](../examples/shape-storage.coax) calls that same
 library. We add no allocator, matrix arithmetic or automatic differentiation
-in this chapter. [Chapter 1](ch01-learning-a-number.md) remains a regression.
+in this chapter. [Chapter 1](ch001-learning-a-number.md) remains a regression.
 
 ## Run it
 
@@ -359,6 +359,6 @@ coordinate and expected output; the final value should still be 60. Then
 try a nonzero inactive dimension and check that both writable arrays stay
 unchanged on refusal.
 
-[Next we build dense CPU operations](ch03-numbers-and-matrices.md) over this
+[Next we build dense CPU operations](ch003-numbers-and-matrices.md) over this
 admitted storage. Shapes,
 counts and publication boundaries stay explicit while the numerical work grows.

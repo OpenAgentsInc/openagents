@@ -81,5 +81,5 @@ Greedy generation is the qualified device policy here. Chapter 45's seeded
 CPU sampler, chapter 47's speculation and chapter 48's tool masks are separate
 device integration gates; this command does not silently claim those features.
 
-Continue with [batched prefill](ch45c-prefill-together.md) and the
+Continue with [batched prefill](ch045c-prefill-together.md) and the
 [measurement record](../../docs/verification/psionic-gptoss-device-2026-10-29.md).

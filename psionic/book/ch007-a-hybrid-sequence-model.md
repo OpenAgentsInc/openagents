@@ -1,6 +1,6 @@
 # 7. A hybrid sequence model
 
-[Chapter 6](ch06-attention-without-training.md) built a causal attention block.
+[Chapter 6](ch006-attention-without-training.md) built a causal attention block.
 Qwen3.5 uses two different kinds of decoder layer: a causal gated DeltaNet
 layer and a full-attention layer. Both have input normalization, a token mixer,
 a residual, another normalization, and a feed-forward residual. Three linear

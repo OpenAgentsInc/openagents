@@ -99,7 +99,7 @@ fixed-profile CPU replay, floating-point comparisons across devices, and model
 quality are separate contracts. Equal generated text is weak numerical
 evidence; teacher-forced intermediate tensors and logits localize errors.
 
-The implemented [chapter 3 profile](../book/ch03-numbers-and-matrices.md)
+The implemented [chapter 3 profile](../book/ch003-numbers-and-matrices.md)
 uses explicit binary64 products/compensated reductions over binary32 storage;
 it does not alter M0's arithmetic. Add/sum/dot/matmul narrow once per output
 with a finite-range check. Masked softmax validates all logits and binary mask
@@ -217,7 +217,7 @@ inconsistencies to resolve when those proposed targets are selected.
 
 ## Original artifacts before model-specific execution
 
-[Chapter 4](../book/ch04-reading-original-weights.md) implements
+[Chapter 4](../book/ch004-reading-original-weights.md) implements
 [model-io](../lib/model-io/): byte-bounded Safetensors parsing,
 original BF16/F32 tensor intervals, exact original-byte SHA-256 identities,
 a complete HF shard-index subset and caller-pinned tensor manifests. This
@@ -235,7 +235,7 @@ resource qualification remain next.
 
 ## Text requests preserve original bytes and token boundaries
 
-[Chapter 5](../book/ch05-text-becomes-a-model-request.md) implements
+[Chapter 5](../book/ch005-text-becomes-a-model-request.md) implements
 [the text library](../lib/text.coax): frozen tagged Base Labs
 choice/noul/score rendering, Unicode-17 NFC and split classes, original Qwen
 byte-BPE/added-token data, and complete branch token-prefix matching. Original

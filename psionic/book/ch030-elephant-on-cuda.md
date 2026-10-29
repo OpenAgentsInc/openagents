@@ -1,10 +1,10 @@
 # 30. Elephant on CUDA
 
-[Chapter 10](ch10-execute-elephant.md) answered one typed question with the
+[Chapter 10](ch010-execute-elephant.md) answered one typed question with the
 original Elephant weights in about 35 minutes of CPU time. This chapter
 answers the same question on an RTX 4080 in about a quarter of a second, with
 the same probabilities to six decimal places. Every kernel is Coax from
-[chapter 26](ch26-a-coax-compute-subset.md), and so is every decision about
+[chapter 26](ch026-a-coax-compute-subset.md), and so is every decision about
 what runs where: which weights stay on the device, which stream from host
 memory, and the order of every copy and launch.
 

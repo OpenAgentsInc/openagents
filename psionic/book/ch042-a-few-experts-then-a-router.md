@@ -25,8 +25,8 @@ missing selected expert refused without output
 ```
 
 This is the next independent gpt-oss branch chapter after
-[original MXFP4 weights](ch41-original-mxfp4-weights.md). Its small matrix
-operations use the shared [chapter 3 kernels](ch03-numbers-and-matrices.md).
+[original MXFP4 weights](ch041-original-mxfp4-weights.md). Its small matrix
+operations use the shared [chapter 3 kernels](ch003-numbers-and-matrices.md).
 The example requires no downloaded weights or upstream runtime.
 
 ## Three experts we can check by hand

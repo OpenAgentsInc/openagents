@@ -1,7 +1,7 @@
 # From checkpoint inventory to a hybrid block
 
 This records the original-weight building blocks used by
-[chapter 10](../book/ch10-execute-elephant.md). Elephant text
+[chapter 10](../book/ch010-execute-elephant.md). Elephant text
 execution is exercised there; Mammoth end-to-end execution remains future work.
 
 The separate rank-five inventory and bundle code retains all five extents,

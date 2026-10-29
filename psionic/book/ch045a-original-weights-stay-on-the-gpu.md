@@ -1,6 +1,6 @@
 # 45a. Original weights stay on the GPU
 
-[Chapter 45](ch45-execute-gpt-oss-20b.md) established a complete numerical
+[Chapter 45](ch045-execute-gpt-oss-20b.md) established a complete numerical
 reference. Usable inference also needs a different execution layout: keep the
 weights and working state resident, and move the computation to them. We start
 with original gpt-oss-20b on the owned RTX 4080. The 120b model needs a larger
@@ -85,4 +85,4 @@ there is no hidden CPU fallback. Original weights are an additional opt-in.
 Full mutation roots and whole-original CPU decisions are excluded from this
 iteration path at the owner's direction.
 
-Continue with [the complete CUDA decoder](ch45b-a-complete-cuda-decoder.md).
+Continue with [the complete CUDA decoder](ch045b-a-complete-cuda-decoder.md).

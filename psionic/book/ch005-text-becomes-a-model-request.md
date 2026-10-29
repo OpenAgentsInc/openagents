@@ -1,6 +1,6 @@
 # 5. Text becomes a model request
 
-[Chapter 4](ch04-reading-original-weights.md) bound original bytes to an
+[Chapter 4](ch004-reading-original-weights.md) bound original bytes to an
 expected model. Now we will turn state and typed questions into the exact
 text and token sequence that a decision model sees.
 

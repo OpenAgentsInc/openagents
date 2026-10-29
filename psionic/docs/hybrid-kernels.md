@@ -3,7 +3,7 @@
 The chapter 7 model path has three bounded Coax primitives and separately
 composed causal linear and full-attention layers. These are building blocks for
 the pinned Elephant and Mammoth checkpoints, not yet a complete model,
-decision service, or independently qualified upstream runtime. The existing [chapter 6](../book/ch06-attention-without-training.md)
+decision service, or independently qualified upstream runtime. The existing [chapter 6](../book/ch006-attention-without-training.md)
 remains an educational dense block with its own different rotary convention.
 
 - [delta.coax](../lib/delta.coax) implements width-four causal
@@ -49,7 +49,7 @@ gates. Native tests exercise actual storage, aliases and non-finite values.
 The [verification record](../../docs/verification/psionic-hybrid-2026-10-29.md)
 contains the precise test scope.
 
-[Chapter 7](../book/ch07-a-hybrid-sequence-model.md) composes the
+[Chapter 7](../book/ch007-a-hybrid-sequence-model.md) composes the
 causal layers and documents their state. Still required are model tensor
 mapping, causal full-model execution, independent upstream layer comparisons,
 and general combined attention/recurrent state handling. Chapters 8–11 need

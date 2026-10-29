@@ -11,36 +11,36 @@ Chapter 6 executes a small causal dense attention block with a KV cache.
 Chapter 7 composes Qwen-style linear and full-attention layers with separate states.
 Chapter 8 adds decision blocks and forks their complete live hybrid state.
 Chapter 9 converts vocabulary logits to option probabilities and typed statistics.
-[Chapter 41](book/ch41-original-mxfp4-weights.md) starts the independent gpt-oss
+[Chapter 41](book/ch041-original-mxfp4-weights.md) starts the independent gpt-oss
 branch with an exact bounded decoder for its original MXFP4 byte groups.
-[Chapter 42](book/ch42-a-few-experts-then-a-router.md) adds sorted top-k routing
+[Chapter 42](book/ch042-a-few-experts-then-a-router.md) adds sorted top-k routing
 and a complete tiny affine mixture with explicit resident budgets.
-[Chapter 43](book/ch43-attention-with-sinks-and-a-window.md) adds sink/window
+[Chapter 43](book/ch043-attention-with-sinks-and-a-window.md) adds sink/window
 attention, split-half YaRN, biased projection and the clamped expert activation.
-[Chapter 44](book/ch44-the-harmony-format.md) adds the original byte-rank
+[Chapter 44](book/ch044-the-harmony-format.md) adds the original byte-rank
 tokenizer and typed Harmony rendering/parsing with exact completion stops.
 
-[Chapters 45–48](book/ch45-execute-gpt-oss-20b.md) execute both original gpt-oss models,
+[Chapters 45–48](book/ch045-execute-gpt-oss-20b.md) execute both original gpt-oss models,
 add seeded generation, standard speculative verification and a constrained tool
 round trip. The supported CPU and finite-schema profiles state their limits.
 
-[Chapters 45a–45c](book/ch45a-original-weights-stay-on-the-gpu.md) add resident
+[Chapters 45a–45c](book/ch045a-original-weights-stay-on-the-gpu.md) add resident
 original 20b CUDA execution, complete greedy Harmony generation and batched
-prefill on the RTX 4080. [Run a prompt](book/ch45b-a-complete-cuda-decoder.md)
+prefill on the RTX 4080. [Run a prompt](book/ch045b-a-complete-cuda-decoder.md)
 with `psionic/run-gptoss.sh`; [focused checks](tests/check_gptoss_device.sh)
 use owned tiny weights by default. Device throughput has separate measured
 gates in the plan.
 
 Start with [the book](book/README.md) and
-[Chapter 1: Learning a number](book/ch01-learning-a-number.md), then
-[Chapter 2: Shapes and storage](book/ch02-shapes-and-storage.md) and
-[Chapter 3: Numbers and matrices](book/ch03-numbers-and-matrices.md), then
-[Chapter 4: Reading original weights](book/ch04-reading-original-weights.md), then
-[Chapter 5: Text becomes a model request](book/ch05-text-becomes-a-model-request.md), then
-[Chapter 6: Attention without training](book/ch06-attention-without-training.md), then
-[Chapter 7: A hybrid sequence model](book/ch07-a-hybrid-sequence-model.md), then
-[Chapter 8: Decisions have a different mask](book/ch08-decisions-have-a-different-mask.md), then
-[Chapter 9: Read the options](book/ch09-read-the-options.md).
+[Chapter 1: Learning a number](book/ch001-learning-a-number.md), then
+[Chapter 2: Shapes and storage](book/ch002-shapes-and-storage.md) and
+[Chapter 3: Numbers and matrices](book/ch003-numbers-and-matrices.md), then
+[Chapter 4: Reading original weights](book/ch004-reading-original-weights.md), then
+[Chapter 5: Text becomes a model request](book/ch005-text-becomes-a-model-request.md), then
+[Chapter 6: Attention without training](book/ch006-attention-without-training.md), then
+[Chapter 7: A hybrid sequence model](book/ch007-a-hybrid-sequence-model.md), then
+[Chapter 8: Decisions have a different mask](book/ch008-decisions-have-a-different-mask.md), then
+[Chapter 9: Read the options](book/ch009-read-the-options.md).
 [The design notes](docs/README.md) explain the larger plan.
 
 From the repository root:
@@ -123,7 +123,7 @@ values, preserves unused capacity, and refuses before any write. Chapter 3
 implements the named `CPU-f32-wide-v1` profile for bounded rows/matrices, with
 a 1,048,576 multiply-add budget per matmul. It validates finite inputs before
 staging; arithmetic overflow may dirty scratch while preserving destination.
-[Its chapter](book/ch03-numbers-and-matrices.md) defines exact shapes, masks,
+[Its chapter](book/ch003-numbers-and-matrices.md) defines exact shapes, masks,
 normalization, precision and error contracts. Chapter 4 adds the separate `original-weights-v1` artifact profile: rank 0–4
 BF16/F32 originals, 64-GiB files, 128-GiB weight bundles, 16 shards, 4,096
 tensors, 1-MiB headers/indexes and finite decode windows of at most 1,048,576
@@ -131,20 +131,20 @@ values. Metadata may describe larger tensors without expanding them. Caller
 pins bind original sidecar/shard hashes and complete name/dtype/shape inventory;
 labels alone do not authenticate provenance. Metadata drafts may change on
 refusal; public inventory and both decoded float spans have explicit atomic
-publication contracts. See [chapter 4](book/ch04-reading-original-weights.md)
+publication contracts. See [chapter 4](book/ch004-reading-original-weights.md)
 for exact profile and lifetime obligations. Chapter 5 adds `qwen35-text-v1`:
 original Qwen tokenizer data and frozen tagged Base Labs rendering, with
 Unicode-17 NFC, explicit byte/token/work budgets, integer structured JSON
 entries and complete token-prefix matching across 1–32 branches. Its
-[chapter](book/ch05-text-becomes-a-model-request.md) and
+[chapter](book/ch005-text-becomes-a-model-request.md) and
 [verification](../docs/verification/psionic-ch05-2026-10-29.md) distinguish
 owned reference evidence from upstream-runtime/model qualification.
 Chapter 6 adds a small causal dense block with caller-supplied interleaved rotary
 tables, grouped-query attention and a key/value cache; its dimensions are
-bounded and do not qualify an actual model. See [chapter 6](book/ch06-attention-without-training.md).
+bounded and do not qualify an actual model. See [chapter 6](book/ch006-attention-without-training.md).
 Chapter 7 implements single-token Qwen-style layers and a small hybrid example;
 complete checkpoint execution and model behavior remain unqualified. See
-[chapter 7](book/ch07-a-hybrid-sequence-model.md).
+[chapter 7](book/ch007-a-hybrid-sequence-model.md).
 Chapter 8 evaluates a bidirectional full-attention block and forks convolution,
 recurrent and live KV state. The fork compares a caller-bound model identity;
 see chapter 10 for the Elephant original-checkpoint qualification.

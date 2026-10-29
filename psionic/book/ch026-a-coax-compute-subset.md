@@ -182,5 +182,5 @@ The subset has no shared memory, barriers, atomics, warp exchange or tensor
 cores, so a work item cannot cooperate with its neighbours. That is why the
 batched product runs at about a quarter of the card's f32 rate. The tested host
 is one NixOS machine with one driver; that is evidence for this machine, not a
-qualified Linux target. [Chapter 30](ch30-elephant-on-cuda.md) uses these
+qualified Linux target. [Chapter 30](ch030-elephant-on-cuda.md) uses these
 kernels, and more like them, for the whole Elephant decision.

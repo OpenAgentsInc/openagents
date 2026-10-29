@@ -1,7 +1,7 @@
 # 46. Execute gpt-oss-120b
 
-[Previous: gpt-oss-20b](ch45-execute-gpt-oss-20b.md) · [Contents](SUMMARY.md) ·
-[Next: speculative decoding](ch47-let-the-small-model-guess.md)
+[Previous: gpt-oss-20b](ch045-execute-gpt-oss-20b.md) · [Contents](SUMMARY.md) ·
+[Next: speculative decoding](ch047-let-the-small-model-guess.md)
 
 A larger model should exercise the same implementation. gpt-oss-120b changes
 24 layers to 36 and 32 experts to 128. It still selects four experts and shares

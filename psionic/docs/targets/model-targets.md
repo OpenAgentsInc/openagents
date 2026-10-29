@@ -138,7 +138,7 @@ separate consumer work; calling Baseten is not native Psionic execution.
 
 ## Chapter 5 implementation scope
 
-The [text chapter](../../book/ch05-text-becomes-a-model-request.md)
+The [text chapter](../../book/ch005-text-becomes-a-model-request.md)
 now implements frozen tagged rendering and original tokenizer semantics under
 `qwen35-text-v1` budgets, using Unicode 17.0.0 and integer structured entries.
 Both pinned tokenizer originals had SHA-256

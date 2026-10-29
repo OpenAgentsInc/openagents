@@ -1,17 +1,17 @@
 # gpt-oss as an inference target
 
-Survey updated 2026-10-29. [Chapter 41](../../book/ch41-original-mxfp4-weights.md)
+Survey updated 2026-10-29. [Chapter 41](../../book/ch041-original-mxfp4-weights.md)
 now implements the bounded original-format CPU decoder;
-[chapter 42](../../book/ch42-a-few-experts-then-a-router.md) adds a bounded
+[chapter 42](../../book/ch042-a-few-experts-then-a-router.md) adds a bounded
 top-k router and tiny affine mixture.
-[Chapter 43](../../book/ch43-attention-with-sinks-and-a-window.md) adds bounded
+[Chapter 43](../../book/ch043-attention-with-sinks-and-a-window.md) adds bounded
 sink/window attention, split-half YaRN, biased projection and clamped SwiGLU.
-[Chapter 44](../../book/ch44-the-harmony-format.md) adds bounded original-rank
+[Chapter 44](../../book/ch044-the-harmony-format.md) adds bounded original-rank
 text tokenization, typed Harmony framing and strict completion parsing.
-[Chapters 45–46](../../book/ch45-execute-gpt-oss-20b.md) now execute both complete
+[Chapters 45–46](../../book/ch045-execute-gpt-oss-20b.md) now execute both complete
 original checkpoints in Coax under `gpt-oss-cpu-wide-v1`, with independent dense
-references and seeded generation. [Chapter 47](../../book/ch47-let-the-small-model-guess.md)
-adds serial speculative verification; [chapter 48](../../book/ch48-call-a-tool.md)
+references and seeded generation. [Chapter 47](../../book/ch047-let-the-small-model-guess.md)
+adds serial speculative verification; [chapter 48](../../book/ch048-call-a-tool.md)
 adds a finite JSON-schema enum profile and granted tool round trip. Full weights
 were downloaded as pinned data; upstream setup, inference and tool code were never
 executed. Python remains reference/export tooling, never a runtime dependency. Part VII of the [book plan](../../book/PLAN.md) gives the
@@ -145,7 +145,7 @@ model. Text is the only modality.
 
 ## Chapter 43 implementation boundary
 
-[Attention with sinks and a window](../../book/ch43-attention-with-sinks-and-a-window.md)
+[Attention with sinks and a window](../../book/ch043-attention-with-sinks-and-a-window.md)
 now provides `gpt-oss-attention-cpu-wide-v1` in
 [`gptoss-attention.coax`](../../lib/gptoss-attention.coax) and
 [`gptoss-math.coax`](../../lib/gptoss-math.coax). Projected f32 Q/K/V execution
@@ -169,7 +169,7 @@ now supplies complete original-weight execution and intermediate/logit reference
 
 ## Chapter 44 implementation boundary
 
-[The harmony format](../../book/ch44-the-harmony-format.md) implements
+[The harmony format](../../book/ch044-the-harmony-format.md) implements
 `gpt-oss-harmony-text-v1`. Coax admits an immutable, SHA-256-pinned HST7 table
 built deterministically from the original o200k rank bytes; the separate split
 pattern uses Unicode-17 category tables and preserves bytes without NFC. The

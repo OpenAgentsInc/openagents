@@ -71,25 +71,25 @@ Implementation readiness is each branch's prerequisites, not chapter number.
 
 ## Where to start
 
-[Chapter 1](../book/ch01-learning-a-number.md) answers one question:
+[Chapter 1](../book/ch001-learning-a-number.md) answers one question:
 **how does a program learn the number 2 from examples of `y = 2x`?** It uses
 two training examples, one parameter, an explicit loss, and a hand-derived
 gradient. It checks the first update exactly, trains for sixteen steps, and
 predicts on a held-out input. The same Coax implementation runs through its
 authored checks and a compiled native host.
 
-[Chapter 2](../book/ch02-shapes-and-storage.md) now implements bounded
+[Chapter 2](../book/ch002-shapes-and-storage.md) now implements bounded
 shape/storage admission, row-major indexing and staged copy.
 [Its verification](../../docs/verification/psionic-ch02-2026-10-28.md) records the tested
-scope. [Chapter 3](../book/ch03-numbers-and-matrices.md) now adds
+scope. [Chapter 3](../book/ch003-numbers-and-matrices.md) now adds
 CPU matrix/reduction/gather/softmax/normalization operations under an explicit
-wide-accumulation profile. [Chapter 4](../book/ch04-reading-original-weights.md)
+wide-accumulation profile. [Chapter 4](../book/ch004-reading-original-weights.md)
 now adds original Safetensors/BF16/F32 inventory, exact-byte identities, complete
 shard/index/manifest admission and bounded finite decoding.
-[Chapter 5](../book/ch05-text-becomes-a-model-request.md) now implements
+[Chapter 5](../book/ch005-text-becomes-a-model-request.md) now implements
 the frozen text renderer, Unicode-17 NFC, original-Qwen byte-BPE and shared
-token-prefix layout under explicit budgets. [Chapter 6](../book/ch06-attention-without-training.md) adds a small causal attention block. [Chapter 7](../book/ch07-a-hybrid-sequence-model.md) composes
-causal Qwen-style linear and full-attention layers. [Chapter 8](../book/ch08-decisions-have-a-different-mask.md) adds decision blocks and hybrid state forks; real-checkpoint qualification remains next.
+token-prefix layout under explicit budgets. [Chapter 6](../book/ch006-attention-without-training.md) adds a small causal attention block. [Chapter 7](../book/ch007-a-hybrid-sequence-model.md) composes
+causal Qwen-style linear and full-attention layers. [Chapter 8](../book/ch008-decisions-have-a-different-mask.md) adds decision blocks and hybrid state forks; real-checkpoint qualification remains next.
 The learning path replaces the hand-written gradient with autodiff over those
 same operations, then builds small physical and language models.
 The [roadmap](roadmap.md) specifies the boundaries of each step.
