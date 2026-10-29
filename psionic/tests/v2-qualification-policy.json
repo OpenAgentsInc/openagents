@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "profile": "deepseek-v2-lite-cpu-wide-v1",
+  "frozen_before_original_candidate": true,
+  "logits_and_residuals": {"atol": 0.0002, "rtol": 0.00002},
+  "route_weights": {"atol": 0.000002, "rtol": 0.00002},
+  "ordered_router_ids": "exact",
+  "generated_ids": "exact",
+  "normal_finish": "typed EOS required; context and token limits fail",
+  "reference": "independent original BF16 coefficients; binary64 products/reductions; explicit F32 activation boundaries; cache-free full-prefix execution",
+  "scope": "one original ASCII Hi recipe; compressed and expanded forms separately; no original Torch/BF16 arithmetic equivalence claim"
+}

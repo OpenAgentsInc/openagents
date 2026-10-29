@@ -1,0 +1,4 @@
+compressed: 50 cache floats; five tokens through both layers
+next token 1; routed experts 2, 0; shared expert branch included
+expanded: 100 cache floats; five tokens through both layers
+next token 1; routed experts 2, 0; shared expert branch included

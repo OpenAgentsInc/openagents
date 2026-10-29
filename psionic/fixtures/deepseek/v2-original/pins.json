@@ -39,5 +39,5 @@
       "sha256": "31181eaf79394ea26728d95ecb54fe7c8413e6f56085dbabc8b0818134380ec8"
     }
   ],
-  "state": "All four original shards downloaded and independently hashed against pinned Hub LFS identities; numerical execution and Coax admission remain pending."
+  "state": "All original shards independently hashed against pinned Hub LFS identities and admitted by Coax; complete original Hi generation in both cache forms qualified against independent cache-free equations. See ../v2-cpu-original/manifest.json."
 }

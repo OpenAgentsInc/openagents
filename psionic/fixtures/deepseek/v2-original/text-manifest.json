@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "revision": "85864749cd611b4353ce1decdb286193298f64c7",
+  "source_tokenizer_bytes": 4607451,
+  "source_tokenizer_sha256": "41f3bf64213da8c012d8bd0871a58a1fdf70463e8f08f110ddbb1082f529f669",
+  "table_bytes": 1471919,
+  "table_sha256": "06f510b759a76101d180215a39f30c6a2f28f5c8ef28c872e48d64a989e12009",
+  "entries": 100002,
+  "bos": 100000,
+  "eos": 100001
+}

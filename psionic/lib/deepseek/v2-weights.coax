@@ -1,0 +1,148 @@
+#load "v2-model.coax";
+#load "../model-io/identity.coax";
+#authority;
+#load "../../fixtures/deepseek/v2-original/targets.coax";
+
+#test "complete owned V2 payload authenticates every tensor before publication" {
+    data:=DVT_DATA;pins:=DVT_PINS;tensors:=DVT_TENSORS;payload:=[1]int.[DVT_PAYLOAD];
+    p:=DvProfile.{shape=DVT_SHAPE,pins=pins[..],tensors=tensors[..],payload=payload[..]};files:=[1]DsFile.[DsFile.{name="model.safetensors",data=data[..]}];
+    blocks:[2]DvBlock;draft:[2]DvBlock;experts:[3]DvExpert;de:[3]DvExpert;out:[1]DvModel;
+    for layer:0..<2 {draft[layer].p[7]=data[0..<1];draft[layer].experts=de[0..<1];for slot:0..<3 {draft[layer].dense.p[slot]=data[0..<1];draft[layer].shared.p[slot]=data[0..<1];}}
+    r:=dv_bind_profile(p,files[..],blocks[..],experts[..],draft[..],de[..],out[..],false);
+    #assert r.status==DsStatus.ok && r.written==2 && dv_model_valid(out[0]) && blocks[1].experts.count==3;
+    #assert blocks[0].dense.p[0].count==40 && blocks[1].shared.p[0].count==48 && experts[2].p[2].count==24;
+    expected_blocks:[2]DvBlock;expected_experts:[3]DvExpert;expected:=dv_tiny_model(data[..],expected_blocks[..],expected_experts[..]);
+    for slot:0..<3 {#assert out[0].p[slot].count==expected.p[slot].count;for i:0..<out[0].p[slot].count {#assert out[0].p[slot][i]==expected.p[slot][i];}}
+    for layer:0..<2 {for slot:0..<8 {#assert blocks[layer].p[slot].count==expected_blocks[layer].p[slot].count;for i:0..<blocks[layer].p[slot].count {#assert blocks[layer].p[slot][i]==expected_blocks[layer].p[slot][i];}}
+        for slot:0..<3 {#assert blocks[layer].dense.p[slot].count==expected_blocks[layer].dense.p[slot].count && blocks[layer].shared.p[slot].count==expected_blocks[layer].shared.p[slot].count;
+            for i:0..<blocks[layer].dense.p[slot].count {#assert blocks[layer].dense.p[slot][i]==expected_blocks[layer].dense.p[slot][i];}for i:0..<blocks[layer].shared.p[slot].count {#assert blocks[layer].shared.p[slot][i]==expected_blocks[layer].shared.p[slot][i];}}}
+    for id:0..<3 {for slot:0..<3 {#assert experts[id].p[slot].count==expected_experts[id].p[slot].count;for i:0..<experts[id].p[slot].count {#assert experts[id].p[slot][i]==expected_experts[id].p[slot][i];}}}
+    de[0].p[0]=data[0..<0];draft[0].p[0]=data[0..<0];#assert dv_model_valid(out[0]);
+    data[data.count-1]+=1;#assert dv_bind_profile(p,files[..],blocks[..],experts[..],draft[..],de[..],out[..],false).status==DsStatus.weights && dv_model_valid(out[0]);
+}
+#test "V2 binding rejects every public workspace endpoint and wrong identities before publication" {
+    data:=DVT_DATA;pins:=DVT_PINS;tensors:=DVT_TENSORS;payload:=[1]int.[DVT_PAYLOAD];p:=DvProfile.{shape=DVT_SHAPE,pins=pins[..],tensors=tensors[..],payload=payload[..]};
+    files:=[1]DsFile.[DsFile.{name="model.safetensors",data=data[..]}];blocks:[2]DvBlock;draft:[2]DvBlock;experts:[3]DvExpert;de:[3]DvExpert;out:[1]DvModel;out[0].shape.layers=77;
+    for field:0..<7 {b:=blocks[..];d:=draft[..];e:=experts[..];w:=de[..];o:=out[..];alias:=false;profile:=p;
+        if field==0 {b=blocks[0..<1];}else if field==1 {e=experts[0..<2];}else if field==2 {d=draft[0..<1];}else if field==3 {w=de[0..<2];}else if field==4 {o=out[0..<0];}else if field==5 {alias=true;}else {profile.shape.selected=0;}
+        r:=dv_bind_profile(profile,files[..],b,e,d,w,o,alias);expected:=DsStatus.capacity;if field==5 {expected=DsStatus.alias;}else if field==6 {expected=DsStatus.shape;}#assert r.status==expected && out[0].shape.layers==77;
+    }
+    files[0].name="wrong";#assert dv_bind_profile(p,files[..],blocks[..],experts[..],draft[..],de[..],out[..],false).status==DsStatus.weights;files[0].name="model.safetensors";
+    pins[0].bytes+=1;#assert dv_bind_profile(p,files[..],blocks[..],experts[..],draft[..],de[..],out[..],false).status==DsStatus.weights;
+    #assert dv_find_tensor(p,files[..],"missing",1,1,1).status==DsStatus.weights;
+    #assert dv_find_tensor(p,files[..],"model.embed_tokens.weight",1,9,4).status==DsStatus.weights;
+    #assert dv_find_tensor(p,files[..],"model.embed_tokens.weight",2,8,4).status==DsStatus.weights;
+    #assert dv_find_tensor(p,files[..],"model.embed_tokens.weight",2,9,3).status==DsStatus.weights;
+}
+#test "V2 fixed original metadata names and payload identity are separate from data views" {
+    buf:[128]u8;n:=dv_common_name(26,5,buf[..]);#assert cast(string)buf[0..<n]=="model.layers.26.self_attn.kv_b_proj.weight";
+    n=dv_ffn_name(10,-2,0,buf[..]);#assert cast(string)buf[0..<n]=="model.layers.10.mlp.gate_proj.weight";
+    n=dv_ffn_name(63,383,2,buf[..]);#assert cast(string)buf[0..<n]=="model.layers.63.mlp.experts.383.down_proj.weight";
+    n=dv_ffn_name(0,100,1,buf[..]);#assert cast(string)buf[0..<n]=="model.layers.0.mlp.experts.100.up_proj.weight";
+    n=dv_ffn_name(1,-1,2,buf[..]);#assert cast(string)buf[0..<n]=="model.layers.1.mlp.shared_experts.down_proj.weight";
+    pins:[7]DsArtifact;tensors:[5291]DvTensor;payload:[7]int;p:=dv_original_profile(128,pins[..],tensors[..],payload[..]);
+    #assert p.shape.width==2048 && p.tensors.count==5291 && p.pins.count==7 && p.payload.count==7;
+    for i:0..<7 {#assert pins[i].name==DV_ORIGINAL_PINS[i].name && pins[i].bytes==DV_ORIGINAL_PINS[i].bytes && pins[i].sha==DV_ORIGINAL_PINS[i].sha && payload[i]==DV_ORIGINAL_PAYLOAD[i];}
+    for i:0..<5291 {#assert tensors[i].file==DV_ORIGINAL_TENSORS[i].file && tensors[i].name==DV_ORIGINAL_TENSORS[i].name && tensors[i].rank==DV_ORIGINAL_TENSORS[i].rank && tensors[i].rows==DV_ORIGINAL_TENSORS[i].rows && tensors[i].cols==DV_ORIGINAL_TENSORS[i].cols && tensors[i].begin==DV_ORIGINAL_TENSORS[i].begin && tensors[i].end==DV_ORIGINAL_TENSORS[i].end;}
+    #assert dv_original_profile(128,pins[0..<6],tensors[..],payload[..]).tensors.count==0;
+    #assert dv_original_profile(128,pins[..],tensors[0..<5290],payload[..]).tensors.count==0;
+    #assert dv_original_profile(128,pins[..],tensors[..],payload[0..<6]).tensors.count==0;
+}
+#test "V2 tensor dimension and interval admission has exact independent endpoints" {
+    x:=DvTensor.{rank=1,rows=1,cols=1,begin=8,end=10};#assert dv_tensor_valid(x);
+    edge:=x;edge.end=8;#assert dv_tensor_bounds(edge) && !dv_tensor_valid(edge);
+    for field:0..<10 {bad:=x;
+        if field==0 {bad.rank=0;}else if field==1 {bad.rank=3;}
+        else if field==2 {bad.rows=0;}else if field==3 {bad.rows=151937;bad.end=303882;}
+        else if field==4 {bad.cols=0;}else if field==5 {bad.rank=2;bad.cols=32769;bad.end=65546;}
+        else if field==6 {bad.cols=2;bad.end=12;}else if field==7 {bad.begin=7;bad.end=9;}else if field==8 {bad.end=7;}else {bad.end=11;}
+        #assert !dv_tensor_valid(bad);
+    }
+    x.rank=2;x.rows=151936;x.cols=32768;x.end=9957277704;#assert dv_tensor_valid(x);
+}
+#test "V2 layout checks every file count payload boundary and coverage edge without reading content" {
+    data:[36]u8;files:[11]DsFile;pins:[11]DsArtifact;payload:[11]int;tensors:[13]DvTensor;
+    for i:0..<11 {files[i]=DsFile.{name="owned",data=data[0..<34]};}payload[0]=8;
+    for i:0..<13 {tensors[i]=DvTensor.{file=0,name="owned",rank=1,rows=1,cols=1,begin=8+2*i,end=10+2*i};}
+    s:=DvShape.{layers=1,width=1,vocab=1,dense_layers=1,dense_hidden=1,experts=1,selected=1,expert_hidden=1,shared=1,attention=MlShape.{heads=1,nope=1,rope=2,value=1,latent=1,capacity=1}};
+    p:=DvProfile.{shape=s,pins=pins[0..<10],tensors=tensors[..],payload=payload[0..<10]};#assert dv_layout(p,files[0..<10])==DsStatus.ok;
+    p.pins=pins[..];p.payload=payload[..];#assert dv_layout(p,files[..])==DsStatus.weights;
+    p.pins=pins[0..<2];p.payload=payload[0..<2];#assert dv_layout(p,files[0..<2])==DsStatus.ok;
+    #assert dv_layout(p,files[0..<0])==DsStatus.weights;p.pins=pins[0..<1];#assert dv_layout(p,files[0..<2])==DsStatus.weights;p.pins=pins[0..<2];p.payload=payload[0..<1];#assert dv_layout(p,files[0..<2])==DsStatus.weights;p.payload=payload[0..<2];
+    p.tensors=tensors[0..<12];#assert dv_layout(p,files[0..<2])==DsStatus.weights;p.tensors=tensors[..];
+    payload[1]=34;#assert dv_layout(p,files[0..<2])==DsStatus.ok;payload[1]=35;#assert dv_layout(p,files[0..<2])==DsStatus.format;payload[1]=7;#assert dv_layout(p,files[0..<2])==DsStatus.format;payload[1]=0;
+    files[1].data=data[0..<7];payload[1]=7;#assert dv_layout(p,files[0..<2])==DsStatus.format;files[1].data=data[0..<34];payload[1]=0;
+    #assert dv_file_index(0,2) && dv_file_index(1,2) && !dv_file_index(-1,2) && !dv_file_index(2,2);
+    for field:0..<6 {saved:=tensors[0];
+        if field==0 {tensors[0].file=-1;}else if field==1 {tensors[0].file=2;}else if field==2 {tensors[0].rank=0;}
+        else if field==3 {tensors[0].begin=9;tensors[0].end=11;}else if field==4 {payload[0]=0;}else {tensors[12].rows=2;tensors[12].end=36;}
+        #assert dv_layout(p,files[0..<2])==DsStatus.format;tensors[0]=saved;payload[0]=8;tensors[12].rows=1;tensors[12].end=34;
+    }
+    files[0].data=data[..];#assert dv_layout(p,files[0..<2])==DsStatus.format;
+}
+#test "three-head V2 payload binds independent output dimensions and both routed layers" {
+    data:=DVW_DATA;pins:=DVW_PINS;tensors:=DVW_TENSORS;payload:=[1]int.[DVW_PAYLOAD];p:=DvProfile.{shape=DVW_SHAPE,pins=pins[..],tensors=tensors[..],payload=payload[..]};files:=[1]DsFile.[DsFile.{name="model.safetensors",data=data[..]}];
+    blocks:[3]DvBlock;draft:[3]DvBlock;experts:[8]DvExpert;de:[8]DvExpert;out:[1]DvModel;
+    r:=dv_bind_profile(p,files[..],blocks[..],experts[..],draft[..],de[..],out[..],false);#assert r.status==DsStatus.ok && dv_model_valid(out[0]) && blocks[2].p[6].count==72;
+}
+
+DV_COMMON_NAMES :: [8]string.["input_layernorm.weight","post_attention_layernorm.weight","self_attn.q_proj.weight","self_attn.kv_a_proj_with_mqa.weight","self_attn.kv_a_layernorm.weight","self_attn.kv_b_proj.weight","self_attn.o_proj.weight","mlp.gate.weight"];
+DV_FFN_NAMES :: [3]string.["gate_proj.weight","up_proj.weight","down_proj.weight"];
+dv_name_piece :: (out:[]u8,at:int,text:string)->int {for i:0..<text.count {out[at+i]=text[i];}return at+text.count;}
+dv_name_int :: (out:[]u8,at:int,value:int)->int {n:=at;v:=value;if v>=100 {out[n]='0'+cast(u8)(v/100);n+=1;}if v>=10 {out[n]='0'+cast(u8)((v/10)%10);n+=1;}out[n]='0'+cast(u8)(v%10);return n+1;}
+dv_name_layer :: (layer:int,out:[]u8)->int {n:=dv_name_piece(out,0,"model.layers.");n=dv_name_int(out,n,layer);return dv_name_piece(out,n,".");}
+dv_common_name :: (layer:int,slot:int,out:[]u8)->int {n:=dv_name_layer(layer,out);return dv_name_piece(out,n,DV_COMMON_NAMES[slot]);}
+dv_ffn_name :: (layer:int,expert:int,slot:int,out:[]u8)->int {
+    n:=dv_name_layer(layer,out);n=dv_name_piece(out,n,"mlp.");
+    if expert==-1 {n=dv_name_piece(out,n,"shared_experts.");}else if expert>=0 {n=dv_name_piece(out,n,"experts.");n=dv_name_int(out,n,expert);n=dv_name_piece(out,n,".");}
+    return dv_name_piece(out,n,DV_FFN_NAMES[slot]);
+}
+dv_tensor_count :: (s:DvShape)->int {return 3+10*s.dense_layers+(s.layers-s.dense_layers)*(11+3*s.experts);}
+dv_tensor_bounds :: (x:DvTensor)->bool {return x.begin>=8 && x.end>=x.begin;}
+dv_tensor_valid :: (x:DvTensor)->bool {return x.rank>=1 && x.rank<=2 && x.rows>=1 && x.rows<=151936 && x.cols>=1 && x.cols<=32768 && (x.rank!=1 || x.cols==1) && dv_tensor_bounds(x) && x.end-x.begin==2*x.rows*x.cols;}
+dv_file_index :: (i:int,n:int)->bool {return i>=0 && i<n;}
+dv_layout :: (p:DvProfile,files:[]DsFile)->DsStatus {
+    if files.count<1 || files.count>10 || p.pins.count!=files.count || p.payload.count!=files.count || p.tensors.count!=dv_tensor_count(p.shape) {return DsStatus.weights;}
+    cursor:[10]int;for i:0..<files.count {start:=p.payload[i];if start!=0 && (start<8 || start>files[i].data.count) {return DsStatus.format;}cursor[i]=start;}
+    for t:p.tensors {if !dv_tensor_valid(t) || !dv_file_index(t.file,files.count) {return DsStatus.format;}
+        if t.begin!=cursor[t.file] || t.end>files[t.file].data.count {return DsStatus.format;}cursor[t.file]=t.end;}
+    for i:0..<files.count {if p.payload[i]!=0 && cursor[i]!=files[i].data.count {return DsStatus.format;}}return DsStatus.ok;
+}
+dv_find_tensor :: (p:DvProfile,files:[]DsFile,name:string,rank:int,rows:int,cols:int)->DvBound {
+    for t:p.tensors {if t.name==name {if t.rank!=rank || t.rows!=rows || t.cols!=cols {return DvBound.{status=DsStatus.weights};}return DvBound.{data=files[t.file].data[t.begin..<t.end]};}}
+    return DvBound.{status=DsStatus.weights};
+}
+dv_bind_expert :: (p:DvProfile,files:[]DsFile,layer:int,expert:int,hidden:int)->DvBoundExpert {
+    e:=DvExpert.{};for slot:0..<3 {name:[128]u8;n:=dv_ffn_name(layer,expert,slot,name[..]);rows:=hidden;cols:=p.shape.width;if slot==2 {rows=p.shape.width;cols=hidden;}
+        found:=dv_find_tensor(p,files,cast(string)name[0..<n],2,rows,cols);if found.status!=DsStatus.ok {return DvBoundExpert.{status=found.status};}e.p[slot]=found.data;}return DvBoundExpert.{expert=e};
+}
+// book:begin bind
+dv_bind_profile :: (p:DvProfile,files:[]DsFile,blocks:[]DvBlock,experts:[]DvExpert,draft:[]DvBlock,draft_experts:[]DvExpert,out:[]DvModel,overlap:bool)->DsResult #export_c {
+    s:=p.shape;if !dv_shape(s) {return DsResult.{status=DsStatus.shape};}if overlap {return DsResult.{status=DsStatus.alias};}
+    count:=(s.layers-s.dense_layers)*s.experts;if blocks.count<s.layers || experts.count<count || draft.count<s.layers || draft_experts.count<count || out.count<1 {return DsResult.{status=DsStatus.capacity};}
+    status:=dv_layout(p,files);if status!=DsStatus.ok {return DsResult.{status=status};}
+    for i:0..<files.count {f:=files[i];pin:=p.pins[i];if f.name!=pin.name || f.data.count!=pin.bytes || !pw_digest(f.data,pin.sha) {return DsResult.{status=DsStatus.weights};}}
+    m:=DvModel.{shape=s};names:=[3]string.["model.embed_tokens.weight","model.norm.weight","lm_head.weight"];
+    for slot:0..<3 {rank:=2;rows:=s.vocab;cols:=s.width;if slot==1 {rank=1;rows=s.width;cols=1;}
+        found:=dv_find_tensor(p,files,names[slot],rank,rows,cols);if found.status!=DsStatus.ok {return DsResult.{status=found.status};}m.p[slot]=found.data;}
+    a:=s.attention;rows:=[7]int.[s.width,s.width,a.heads*(a.nope+a.rope),a.latent+a.rope,a.latent,a.heads*(a.nope+a.value),s.width];cols:=[7]int.[1,1,s.width,s.width,1,a.latent,a.heads*a.value];
+    for layer:0..<s.layers {draft[layer]=DvBlock.{};
+        for slot:0..<7 {name:[128]u8;n:=dv_common_name(layer,slot,name[..]);rank:=2;if slot==0 || slot==1 || slot==4 {rank=1;}
+            found:=dv_find_tensor(p,files,cast(string)name[0..<n],rank,rows[slot],cols[slot]);if found.status!=DsStatus.ok {return DsResult.{status=found.status};}draft[layer].p[slot]=found.data;}
+        if layer<s.dense_layers {found:=dv_bind_expert(p,files,layer,-2,s.dense_hidden);if found.status!=DsStatus.ok {return DsResult.{status=found.status};}draft[layer].dense=found.expert;}
+        else {name:[128]u8;n:=dv_common_name(layer,7,name[..]);found:=dv_find_tensor(p,files,cast(string)name[0..<n],2,s.experts,s.width);if found.status!=DsStatus.ok {return DsResult.{status=found.status};}draft[layer].p[7]=found.data;
+            base:=(layer-s.dense_layers)*s.experts;for id:0..<s.experts {expert:=dv_bind_expert(p,files,layer,id,s.expert_hidden);if expert.status!=DsStatus.ok {return DsResult.{status=expert.status};}draft_experts[base+id]=expert.expert;}
+            shared:=dv_bind_expert(p,files,layer,-1,s.shared*s.expert_hidden);if shared.status!=DsStatus.ok {return DsResult.{status=shared.status};}draft[layer].shared=shared.expert;
+        }
+    }
+    for i:0..<count {experts[i]=draft_experts[i];}
+    for layer:0..<s.layers {blocks[layer]=draft[layer];if layer>=s.dense_layers {base:=(layer-s.dense_layers)*s.experts;blocks[layer].experts=experts[base..<base+s.experts];}}
+    m.blocks=blocks[0..<s.layers];out[0]=m;return DsResult.{written=s.layers};
+}
+// book:end bind
+dv_original_profile :: (capacity:int,pins:[]DsArtifact,tensors:[]DvTensor,payload:[]int)->DvProfile #export_c {
+    if pins.count<DV_ORIGINAL_PINS.count || tensors.count<DV_ORIGINAL_TENSORS.count || payload.count<DV_ORIGINAL_PAYLOAD.count {return DvProfile.{};}
+    for i:0..<DV_ORIGINAL_PINS.count {pins[i]=DV_ORIGINAL_PINS[i];payload[i]=DV_ORIGINAL_PAYLOAD[i];}
+    for i:0..<DV_ORIGINAL_TENSORS.count {tensors[i]=DV_ORIGINAL_TENSORS[i];}
+    return DvProfile.{shape=dv_original_shape(capacity),pins=pins[0..<DV_ORIGINAL_PINS.count],tensors=tensors[0..<DV_ORIGINAL_TENSORS.count],payload=payload[0..<DV_ORIGINAL_PAYLOAD.count]};
+}

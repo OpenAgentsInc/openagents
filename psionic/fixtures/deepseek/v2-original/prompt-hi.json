@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "revision": "85864749cd611b4353ce1decdb286193298f64c7",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hi"
+    }
+  ],
+  "rendered_after_bos": "User: Hi\n\nAssistant:",
+  "tokens": [
+    100000,
+    5726,
+    25,
+    11598,
+    185,
+    185,
+    77398,
+    25
+  ],
+  "scope": "Pinned original recipe and tokenizer DATA; ASCII fixture uses independent ordered-regex splitting and ranked BPE. General Coax text encoding is not claimed here."
+}

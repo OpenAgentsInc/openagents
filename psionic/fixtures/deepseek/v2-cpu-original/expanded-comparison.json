@@ -1,0 +1,23 @@
+{
+  "logits": {
+    "max_abs": 0.0,
+    "max_bound_ratio": 0.0,
+    "pass_bound": true
+  },
+  "trace": {
+    "max_abs": 0.0,
+    "max_bound_ratio": 0.0,
+    "pass_bound": true
+  },
+  "weights": {
+    "max_abs": 3.3306690738754696e-16,
+    "max_bound_ratio": 2.6285009818595058e-11,
+    "pass_bound": true
+  },
+  "ordered_router_ids_exact": true,
+  "greedy_every_position_exact": true,
+  "minimum_reference_route_margin": 9.429313669179207e-07,
+  "maximum_margin_abs_error": 2.7755575615628914e-17,
+  "passed": true,
+  "reference_seconds": 90.68780252407305
+}

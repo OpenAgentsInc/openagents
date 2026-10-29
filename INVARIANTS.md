@@ -1,5 +1,34 @@
 # Invariants
 
+## Psionic complete V2-Lite execution commits every layer together
+
+`psionic/lib/deepseek/v2*.coax` owns `deepseek-v2-lite-cpu-wide-v1`:
+original BF16 coefficients, F32 activations/caches and compensated binary64
+products/reductions, with original V2 YaRN and full-softmax routing. Routed
+weights apply after each down projection; the shared FFN is added once.
+Compressed and expanded caches have distinct F32 boundaries and references.
+
+Complete SHA-256 admission checks all original files and exact coverage of
+the 5,291 tensor intervals before binding. Public model metadata borrows
+public block/expert storage and immutable files, never temporary drafts.
+Caller-supplied profiles require trustworthy pins. Every token stages all
+layer cache rows, residual diagnostics, routes and logits before publication;
+failure preserves all public spans. Private work may change. Valid typed
+allocations/extents, immutable lifetimes, matching model/cache form,
+sequential history and exclusive disjoint writable storage are caller duties.
+C observes nested address overlap and performs effects only.
+
+Greedy ties use lowest IDs; EOS, token/context limits and cancellation remain
+distinct. Text support is the fixed original Hi prompt and an admitted token
+byte table, bounded to 4,096 IDs/65,536 answer bytes. BOS and unmapped IDs
+refuse; only a final typed EOS is removed. This is not a general V2 encoder.
+
+Check: `psionic/tests/check_deepseek_v2.sh` covers complete owned prefix
+references, admission/ownership, native debug/release plain/ASan/UBSan,
+current-source original-answer decoding and lossless original-value replay.
+`psionic/check.sh --only deepseek/v2 --jobs 8` adds zero-survivor mutation.
+Original execution and arithmetic scope: [chapter 58 record](docs/verification/psionic-ch58-2026-10-29.md).
+
 ## Psionic latent attention stages new rows and keeps rotary profiles distinct
 
 `psionic/lib/deepseek/mla*.coax` implements shared latent-attention CPU

@@ -1,0 +1,123 @@
+#load "v2-plan.coax";
+#authority;
+#load "../../fixtures/deepseek/v2-tiny/model.coax";
+#load "../../fixtures/deepseek/v2-wide/model.coax";
+
+#test "late V2 vocabulary failure preserves every layer cache and every public output" {
+    data:=DVT_DATA;blocks:[2]DvBlock;experts:[3]DvExpert;m:=dv_tiny_model(data[..],blocks[..],experts[..]);p:=dv_plan(m.shape,MlMode.compressed);
+    cache:[50]f32;out:[9]f32;trace:[16]f32;routes:[2]DrRoute;work:[4096]f32;scores:[128]f64;acc:[4]PsionicAccumulator;draft:[2]DrRoute;
+    for i:0..<50 {cache[i]=3;}for i:0..<9 {out[i]=7;}for i:0..<16 {trace[i]=9;}for i:0..<2 {routes[i].count=11;}
+    m.p[2][m.p[2].count-2]=0x80;m.p[2][m.p[2].count-1]=0x7f;
+    r:=dv_step(m,MlMode.compressed,1,0,cache[..],DvOutput.{logits=out[..],trace=trace[..],routes=routes[..]},DvWork.{floats=work[..],scores=scores[..],accumulators=acc[..],routes=draft[..]},false);
+    #assert r.status==DsStatus.number && r.written==0;for v:cache {#assert v==3;}for v:out {#assert v==7;}for v:trace {#assert v==9;}for v:routes {#assert v.count==11;}
+}
+#test "V2 model metadata checks every nested span and inactive expert field" {
+    data:=DVT_DATA;blocks:[2]DvBlock;experts:[3]DvExpert;m:=dv_tiny_model(data[..],blocks[..],experts[..]);#assert dv_model_valid(m);saved:=m;
+    m.shape.selected=0;#assert !dv_model_valid(m);m=saved;m.blocks=blocks[0..<1];#assert !dv_model_valid(m);m=saved;
+    for slot:0..<3 {prior:=m.p[slot];m.p[slot]=data[0..<0];#assert !dv_model_valid(m);m.p[slot]=prior;}
+    for layer:0..<2 {for slot:0..<7 {prior:=blocks[layer].p[slot];blocks[layer].p[slot]=data[0..<0];#assert !dv_model_valid(m);blocks[layer].p[slot]=prior;}}
+    blocks[0].p[7]=data[0..<1];#assert !dv_model_valid(m);blocks[0].p[7]=data[0..<0];
+    blocks[0].experts=experts[0..<1];#assert !dv_model_valid(m);blocks[0].experts=experts[0..<0];
+    for slot:0..<3 {blocks[0].shared.p[slot]=data[0..<1];#assert !dv_model_valid(m);blocks[0].shared.p[slot]=data[0..<0];
+        prior:=blocks[0].dense.p[slot];blocks[0].dense.p[slot]=data[0..<0];#assert !dv_model_valid(m);blocks[0].dense.p[slot]=prior;
+        blocks[1].dense.p[slot]=data[0..<1];#assert !dv_model_valid(m);blocks[1].dense.p[slot]=data[0..<0];
+        prior=blocks[1].shared.p[slot];blocks[1].shared.p[slot]=data[0..<0];#assert !dv_model_valid(m);blocks[1].shared.p[slot]=prior;
+        for id:0..<3 {prior=experts[id].p[slot];experts[id].p[slot]=data[0..<0];#assert !dv_model_valid(m);experts[id].p[slot]=prior;}}
+    prior:=blocks[1].p[7];blocks[1].p[7]=data[0..<0];#assert !dv_model_valid(m);blocks[1].p[7]=prior;
+    blocks[1].experts=experts[0..<2];#assert !dv_model_valid(m);
+}
+#test "every V2 scratch view uses its exact planned interval" {
+    p:=dv_plan(DVT_SHAPE,MlMode.compressed);f:[4096]f32;for i:0..<4096 {f[i]=f32(i);}v:=dv_views(f[..],p);
+    views:=[21][]f32.[v.x,v.normal,v.query,v.kv,v.latent,v.rotated,v.key,v.attended,v.projected,v.gate,v.up,v.activation,v.down,v.combined,v.stage,v.scratch,v.rotary,v.attention,v.pending,v.trace,v.logits];
+    for i:0..<21 {#assert views[i].count==p.begin[i+1]-p.begin[i] && views[i][0]==f32(p.begin[i]) && views[i][views[i].count-1]==f32(p.begin[i+1]-1);}
+    sc:[16]f64;for i:0..<16 {sc[i]=f64(i);}sv:=dv_score_views(sc[..],DVT_SHAPE,MlMode.compressed);
+    #assert sv.attention.count==10 && sv.attention[0]==0 && sv.attention[9]==9 && sv.raw.count==3 && sv.raw[0]==10 && sv.raw[2]==12 && sv.ranked.count==3 && sv.ranked[0]==13 && sv.ranked[2]==15;
+    #assert dv_model_position(0,5) && dv_model_position(4,5) && !dv_model_position(-1,5) && !dv_model_position(5,5);
+}
+#test "V2 resource intervals have independent exact dimensions at unequal shapes" {
+    a:=dv_plan(DVT_SHAPE,MlMode.compressed);b:=dv_plan(DVW_SHAPE,MlMode.expanded);
+    first:=[21]int.[4,4,8,5,3,8,2,4,4,17,17,17,4,4,46,46,10,21,10,16,9];second:=[21]int.[6,6,21,8,4,21,4,6,6,21,21,21,6,6,71,71,25,49,57,36,11];
+    for i:0..<21 {#assert a.begin[i+1]-a.begin[i]==first[i] && b.begin[i+1]-b.begin[i]==second[i];}
+    #assert a.cache==50 && a.scores==16 && a.accumulators==4 && a.row==5;
+    #assert b.cache==285 && b.scores==23 && b.accumulators==6 && b.row==19;
+}
+#test "V2 token position every public output and every workspace refuse at their boundary" {
+    data:=DVT_DATA;blocks:[2]DvBlock;experts:[3]DvExpert;m:=dv_tiny_model(data[..],blocks[..],experts[..]);p:=dv_plan(m.shape,MlMode.compressed);
+    cache:[50]f32;out:[9]f32;trace:[16]f32;routes:[2]DrRoute;f:[4096]f32;sc:[128]f64;acc:[4]PsionicAccumulator;draft:[2]DrRoute;
+    for field:0..<14 {o:=DvOutput.{logits=out[..],trace=trace[..],routes=routes[..]};w:=DvWork.{floats=f[0..<p.floats],scores=sc[0..<p.scores],accumulators=acc[..],routes=draft[..]};c:=cache[..];token:=1;pos:=0;alias:=false;
+        if field==0 {token=-1;}else if field==1 {token=9;}else if field==2 {pos=-1;}else if field==3 {pos=5;}
+        else if field==4 {c=cache[0..<49];}else if field==5 {o.logits=out[0..<8];}else if field==6 {o.trace=trace[0..<15];}else if field==7 {o.routes=routes[0..<1];}
+        else if field==8 {w.floats=f[0..<p.floats-1];}else if field==9 {w.scores=sc[0..<p.scores-1];}else if field==10 {w.accumulators=acc[0..<3];}else if field==11 {w.routes=draft[0..<1];}else if field==12 {alias=true;}else {m.shape.selected=0;}
+        r:=dv_step(m,MlMode.compressed,token,pos,c,o,w,alias);expected:=DsStatus.capacity;if field<2 {expected=DsStatus.token;}else if field<4 {expected=DsStatus.state;}else if field==12 {expected=DsStatus.alias;}else if field==13 {expected=DsStatus.shape;}#assert r.status==expected;
+    }
+    m.shape.selected=2;trace[0]=7;routes[0].count=9;r:=dv_step(m,MlMode.compressed,0,0,cache[..],DvOutput.{logits=out[..],trace=trace[0..<0],routes=routes[0..<0]},DvWork.{floats=f[0..<p.floats],scores=sc[0..<p.scores],accumulators=acc[..],routes=draft[..]},false);
+    #assert r.status==DsStatus.ok && trace[0]==7 && routes[0].count==9;
+    m=dv_tiny_model(data[..],blocks[..],experts[..]);m.shape.layers=1;m.blocks=blocks[0..<1];p=dv_plan(m.shape,MlMode.compressed);routes[0].count=19;
+    r=dv_step(m,MlMode.compressed,0,0,cache[..],DvOutput.{logits=out[..],trace=trace[0..<8],routes=routes[0..<1]},DvWork.{floats=f[0..<p.floats],scores=sc[0..<p.scores],accumulators=acc[..],routes=draft[0..<1]},false);
+    #assert r.status==DsStatus.ok && routes[0].count==0;
+}
+#test "three-layer trace capacity checks multiplication rather than an accidental sum" {
+    data:=DVW_DATA;blocks:[3]DvBlock;experts:[8]DvExpert;m:=dv_wide_model(data[..],blocks[..],experts[..]);
+    cache:[120]f32;out:[11]f32;trace:[35]f32;routes:[3]DrRoute;f:[4096]f32;sc:[128]f64;acc:[6]PsionicAccumulator;draft:[3]DrRoute;
+    r:=dv_step(m,MlMode.compressed,1,0,cache[..],DvOutput.{logits=out[..],trace=trace[..],routes=routes[..]},DvWork.{floats=f[..],scores=sc[..],accumulators=acc[..],routes=draft[..]},false);#assert r.status==DsStatus.capacity;
+}
+
+dv_expert_valid :: (e:DvExpert,d:int,hidden:int)->bool {return e.p[0].count==2*hidden*d && e.p[1].count==2*hidden*d && e.p[2].count==2*d*hidden;}
+dv_expert_empty :: (e:DvExpert)->bool {return e.p[0].count==0 && e.p[1].count==0 && e.p[2].count==0;}
+dv_model_valid :: (m:DvModel)->bool {
+    s:=m.shape;if !dv_shape(s) || m.blocks.count!=s.layers {return false;}d:=s.width;a:=s.attention;
+    if m.p[0].count!=2*s.vocab*d || m.p[1].count!=2*d || m.p[2].count!=2*s.vocab*d {return false;}
+    sizes:=[7]int.[d,d,a.heads*(a.nope+a.rope)*d,(a.latent+a.rope)*d,a.latent,a.heads*(a.nope+a.value)*a.latent,d*a.heads*a.value];
+    for layer:0..<s.layers {b:=m.blocks[layer];for slot:0..<7 {if b.p[slot].count!=2*sizes[slot] {return false;}}
+        if layer<s.dense_layers {if b.p[7].count!=0 || b.experts.count!=0 || !dv_expert_empty(b.shared) || !dv_expert_valid(b.dense,d,s.dense_hidden) {return false;}}
+        else {if b.p[7].count!=2*s.experts*d || b.experts.count!=s.experts || !dv_expert_empty(b.dense) || !dv_expert_valid(b.shared,d,s.shared*s.expert_hidden) {return false;}
+            for expert:b.experts {if !dv_expert_valid(expert,d,s.expert_hidden) {return false;}}}
+    }return true;
+}
+dv_ffn :: (e:DvExpert,d:int,hidden:int,x:[]f32,out:[]f32,v:DvViews)->DsStatus {
+    empty:[1]u8;gate:=v.gate[0..<hidden];up:=v.up[0..<hidden];act:=v.activation[0..<hidden];
+    status:=ds_project(hidden,d,e.p[0],x,empty[0..<0],gate,v.stage,v.scratch);if status!=DsStatus.ok {return status;}
+    status=ds_project(hidden,d,e.p[1],x,empty[0..<0],up,v.stage,v.scratch);if status!=DsStatus.ok {return status;}
+    for j:0..<hidden {r:=ds_silu(gate[j],up[j]);if r.status!=DsStatus.ok {return r.status;}act[j]=r.value;}
+    return ds_project(d,hidden,e.p[2],act,empty[0..<0],out,v.stage,v.scratch);
+}
+dv_mixture :: (s:DvShape,b:DvBlock,x:[]f32,v:DvViews,scores:[]f64,ranked:[]f64,acc:[]PsionicAccumulator)->DvMixture {
+    empty:[1]u8;status:=ds_project(s.experts,s.width,b.p[7],x,empty[0..<0],v.gate[0..<s.experts],v.stage,v.scratch);
+    if status!=DsStatus.ok {return DvMixture.{status=status};}
+    route:=dr_route(DrConfig.{profile=DrProfile.v2,k=s.selected},v.gate[0..<s.experts],v.up[0..<0],scores,ranked,false);if route.status!=DrStatus.ok {return DvMixture.{status=DsStatus.arithmetic};}
+    for j:0..<s.width {acc[j]=PsionicAccumulator.{};}
+    for slot:0..<route.count {status=dv_ffn(b.experts[route.ids[slot]],s.width,s.expert_hidden,x,v.down,v);if status!=DsStatus.ok {return DvMixture.{status=status};}
+        for j:0..<s.width {acc[j]=psionic_ops_accumulate(acc[j],route.weights[slot]*f64(v.down[j]));}}
+    for j:0..<s.width {value:=psionic_ops_total(acc[j]);if !psionic_ops_fits_f32(value) {return DvMixture.{status=DsStatus.arithmetic};}v.combined[j]=f32(value);}
+    status=dv_ffn(b.shared,s.width,s.shared*s.expert_hidden,x,v.down,v);if status!=DsStatus.ok {return DvMixture.{status=status};}
+    status=ds_add(v.combined,v.down);if status!=DsStatus.ok {return DvMixture.{status=status};}return DvMixture.{route=route};
+}
+// book:begin step
+dv_step :: (m:DvModel,mode:MlMode,token:int,position:int,cache:[]f32,out:DvOutput,work:DvWork,overlap:bool)->DsResult #export_c {
+    s:=m.shape;p:=dv_plan(s,mode);if p.status!=DsStatus.ok {return DsResult.{status=p.status};}
+    if token<0 || token>=s.vocab {return DsResult.{status=DsStatus.token};}if !dv_model_position(position,s.attention.capacity) {return DsResult.{status=DsStatus.state};}
+    if !dv_model_valid(m) {return DsResult.{status=DsStatus.weights};}
+    if cache.count<p.cache || out.logits.count<s.vocab || (out.trace.count!=0 && out.trace.count<2*s.layers*s.width) || (out.routes.count!=0 && out.routes.count<s.layers) || work.floats.count<p.floats || work.scores.count<p.scores || work.accumulators.count<p.accumulators || work.routes.count<s.layers {return DsResult.{status=DsStatus.capacity};}
+    if overlap {return DsResult.{status=DsStatus.alias};}
+    v:=dv_views(work.floats,p);sv:=dv_score_views(work.scores,s,mode);d:=s.width;a:=s.attention;empty:[1]u8;
+    for j:0..<d {bits:=qm_bits(QmDtype.bf16,m.p[0],token*d+j);if !psionic_tensor_finite_bits(bits) {return DsResult.{status=DsStatus.number};}v.x[j]=f32_from_bits(bits);}
+    for layer:0..<s.layers {b:=m.blocks[layer];status:=ds_rms(v.x,b.p[0],v.normal);if status!=DsStatus.ok {return DsResult.{status=status};}
+        status=ds_project(a.heads*(a.nope+a.rope),d,b.p[2],v.normal,empty[0..<0],v.query,v.stage,v.scratch);if status!=DsStatus.ok {return DsResult.{status=status};}
+        status=ds_project(a.latent+a.rope,d,b.p[3],v.normal,empty[0..<0],v.kv,v.stage,v.scratch);if status!=DsStatus.ok {return DsResult.{status=status};}
+        status=ds_rms(v.kv[0..<a.latent],b.p[4],v.latent);if status!=DsStatus.ok {return DsResult.{status=status};}
+        rotated:=dv_rotary(a.heads,a.nope,a.rope,v.query,v.kv[a.latent..<a.latent+a.rope],position,v.rotated,v.key,v.rotary,false);if rotated.status!=DsStatus.ok {return DsResult.{status=rotated.status};}
+        history:=cache[layer*a.capacity*p.row..<layer*a.capacity*p.row+position*p.row];pending:=v.pending[layer*p.row..<(layer+1)*p.row];
+        attended:=ml_attention(a,mode,b.p[5],v.rotated,v.latent,v.key,history,position,dv_attention_scale(a.nope,a.rope),v.attended,pending,v.attention,sv.attention,false);if attended.status!=DsStatus.ok {return DsResult.{status=attended.status};}
+        status=ds_project(d,a.heads*a.value,b.p[6],v.attended,empty[0..<0],v.projected,v.stage,v.scratch);if status!=DsStatus.ok {return DsResult.{status=status};}
+        status=ds_add(v.x,v.projected);if status!=DsStatus.ok {return DsResult.{status=status};}for j:0..<d {v.trace[2*layer*d+j]=v.x[j];}
+        status=ds_rms(v.x,b.p[1],v.normal);if status!=DsStatus.ok {return DsResult.{status=status};}work.routes[layer]=DrRoute.{};
+        if layer<s.dense_layers {status=dv_ffn(b.dense,d,s.dense_hidden,v.normal,v.combined,v);if status!=DsStatus.ok {return DsResult.{status=status};}}
+        else {mixed:=dv_mixture(s,b,v.normal,v,sv.raw,sv.ranked,work.accumulators);if mixed.status!=DsStatus.ok {return DsResult.{status=mixed.status};}work.routes[layer]=mixed.route;}
+        status=ds_add(v.x,v.combined);if status!=DsStatus.ok {return DsResult.{status=status};}for j:0..<d {v.trace[(2*layer+1)*d+j]=v.x[j];}
+    }
+    status:=ds_rms(v.x,m.p[1],v.normal);if status!=DsStatus.ok {return DsResult.{status=status};}status=ds_project(s.vocab,d,m.p[2],v.normal,empty[0..<0],v.logits,v.stage,v.scratch);if status!=DsStatus.ok {return DsResult.{status=status};}
+    for layer:0..<s.layers {for j:0..<p.row {cache[(layer*a.capacity+position)*p.row+j]=v.pending[layer*p.row+j];}}
+    for i:0..<s.vocab {out.logits[i]=v.logits[i];}if out.trace.count!=0 {for i:0..<2*s.layers*d {out.trace[i]=v.trace[i];}}if out.routes.count!=0 {for i:0..<s.layers {out.routes[i]=work.routes[i];}}
+    return DsResult.{written=s.vocab,next=position+1};
+}
+// book:end step

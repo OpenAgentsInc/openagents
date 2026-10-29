@@ -1,0 +1,7 @@
+#ifndef PSIONIC_DEEPSEEK_V2_MEMORY_H
+#define PSIONIC_DEEPSEEK_V2_MEMORY_H
+#include "deepseek-v2.h"
+coax_t_DsResult psionic_dv_step(coax_t_DvModel,coax_t_MlMode,int64_t,int64_t,coax_v_f32,coax_t_DvOutput,coax_t_DvWork);
+coax_t_DsResult psionic_dv_bind(coax_t_DvProfile,coax_v_t_DsFile,coax_v_t_DvBlock,coax_v_t_DvExpert,coax_v_t_DvBlock,coax_v_t_DvExpert,coax_v_t_DvModel);
+coax_t_DsResult psionic_dv_decode(coax_v_u8,coax_v_s64,coax_v_u8,coax_v_u8);
+#endif

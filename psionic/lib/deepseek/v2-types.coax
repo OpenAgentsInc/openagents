@@ -1,0 +1,19 @@
+#load "mla.coax";
+#load "v2-rope.coax";
+#load "router.coax";
+// deepseek-v2-cpu-wide-v1. Caller-owned immutable weights and workspaces.
+DvShape :: struct {layers:int;width:int;vocab:int;dense_layers:int;dense_hidden:int;experts:int;selected:int;expert_hidden:int;shared:int;attention:MlShape;}
+DvExpert :: struct {p:[3][]u8;}
+// norm, postnorm, query, KV-A, latent norm, KV-B, output, router.
+DvBlock :: struct {p:[8][]u8;dense:DvExpert;shared:DvExpert;experts:[]DvExpert;}
+DvModel :: struct {shape:DvShape;p:[3][]u8;blocks:[]DvBlock;}
+DvPlan :: struct {status:DsStatus;cache:int;floats:int;scores:int;accumulators:int;row:int;begin:[22]int;}
+DvWork :: struct {floats:[]f32;scores:[]f64;accumulators:[]PsionicAccumulator;routes:[]DrRoute;}
+DvOutput :: struct {logits:[]f32;trace:[]f32;routes:[]DrRoute;}
+DvMixture :: struct {status:DsStatus;route:DrRoute;}
+DvTensor :: struct {file:int;name:string;rank:int;rows:int;cols:int;begin:int;end:int;}
+DvProfile :: struct {shape:DvShape;pins:[]DsArtifact;tensors:[]DvTensor;payload:[]int;}
+DvBound :: struct {status:DsStatus;data:[]u8;}
+DvBoundExpert :: struct {status:DsStatus;expert:DvExpert;}
+DvScoreViews :: struct {attention:[]f64;raw:[]f64;ranked:[]f64;}
+DvViews :: struct {x:[]f32;normal:[]f32;query:[]f32;kv:[]f32;latent:[]f32;rotated:[]f32;key:[]f32;attended:[]f32;projected:[]f32;gate:[]f32;up:[]f32;activation:[]f32;down:[]f32;combined:[]f32;stage:[]f32;scratch:[]f32;rotary:[]f32;attention:[]f32;pending:[]f32;trace:[]f32;logits:[]f32;}

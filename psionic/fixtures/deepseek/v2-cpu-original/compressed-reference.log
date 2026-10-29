@@ -1,0 +1,52 @@
+compressed reference layer 0 seconds 0.799
+compressed reference layer 1 seconds 5.975
+compressed reference layer 2 seconds 5.782
+compressed reference layer 3 seconds 4.957
+compressed reference layer 4 seconds 5.058
+compressed reference layer 5 seconds 4.083
+compressed reference layer 6 seconds 4.996
+compressed reference layer 7 seconds 5.374
+compressed reference layer 8 seconds 5.558
+compressed reference layer 9 seconds 5.148
+compressed reference layer 10 seconds 5.245
+compressed reference layer 11 seconds 4.96
+compressed reference layer 12 seconds 5.574
+compressed reference layer 13 seconds 5.34
+compressed reference layer 14 seconds 5.939
+compressed reference layer 15 seconds 5.411
+compressed reference layer 16 seconds 6.116
+compressed reference layer 17 seconds 5.652
+compressed reference layer 18 seconds 5.248
+compressed reference layer 19 seconds 5.704
+compressed reference layer 20 seconds 5.892
+compressed reference layer 21 seconds 5.642
+compressed reference layer 22 seconds 5.979
+compressed reference layer 23 seconds 6.18
+compressed reference layer 24 seconds 6.168
+compressed reference layer 25 seconds 6.27
+compressed reference layer 26 seconds 6.609
+{
+  "compressed": {
+    "logits": {
+      "max_abs": 0.0,
+      "max_bound_ratio": 0.0,
+      "pass_bound": true
+    },
+    "trace": {
+      "max_abs": 0.0,
+      "max_bound_ratio": 0.0,
+      "pass_bound": true
+    },
+    "weights": {
+      "max_abs": 3.3306690738754696e-16,
+      "max_bound_ratio": 2.8783187054876837e-11,
+      "pass_bound": true
+    },
+    "ordered_router_ids_exact": true,
+    "greedy_every_position_exact": true,
+    "minimum_reference_route_margin": 9.309193715195674e-07,
+    "maximum_margin_abs_error": 2.0816681711721685e-17,
+    "passed": true,
+    "reference_seconds": 148.00723513495177
+  }
+}

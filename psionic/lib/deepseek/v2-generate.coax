@@ -1,0 +1,38 @@
+#load "v2-types.coax";
+#authority;
+DvStop :: enum u8 {more;eos;token_limit;context;cancelled;}
+DvDecision :: struct {status:DsStatus;stop:DvStop;token:int=-1;}
+#test "V2 greedy ties use lowest IDs and EOS limit context cancellation stay distinct" {
+    x:=[3]f32.[1,2,2];r:=dv_decide(x[..],2,0,8,1,8,false);#assert r.status==DsStatus.ok && r.stop==DvStop.more && r.token==1;
+    x[2]=3;r=dv_decide(x[..],2,0,8,1,8,false);#assert r.status==DsStatus.ok && r.stop==DvStop.eos && r.token==2;
+    r=dv_decide(x[..],2,8,8,1,8,false);#assert r.status==DsStatus.ok && r.stop==DvStop.token_limit && r.token==-1;
+    r=dv_decide(x[..],2,0,8,8,8,false);#assert r.status==DsStatus.ok && r.stop==DvStop.context && r.token==-1;
+    r=dv_decide(x[..],2,0,8,8,8,true);#assert r.status==DsStatus.ok && r.stop==DvStop.cancelled && r.token==-1;
+    #assert dv_original_bos()==100000 && dv_original_eos()==100001;
+}
+#test "V2 generation bounds refuse malformed progress before choosing a token" {
+    x:=[3]f32.[1,2,3];#assert dv_decide(x[0..<0],2,0,8,1,8,false).status==DsStatus.shape;
+    #assert dv_decide(x[..],-1,0,8,1,8,false).status==DsStatus.token && dv_decide(x[..],3,0,8,1,8,false).status==DsStatus.token;
+    for field:0..<8 {count:=0;limit:=8;pos:=1;cap:=8;
+        if field==0 {count=-1;}else if field==1 {limit=0;}else if field==2 {limit=4097;}else if field==3 {count=9;}else if field==4 {cap=0;}else if field==5 {cap=163841;}else if field==6 {pos=0;}else {pos=9;}
+        #assert dv_decide(x[..],2,count,limit,pos,cap,false).status==DsStatus.state;
+    }
+    #assert dv_decide(x[..],2,0,4096,163839,163840,false).status==DsStatus.ok;
+    #assert dv_decide(x[..],0,0,1,1,2,false).status==DsStatus.ok;
+    r:=dv_decide(x[..],0,0,1,1,1,false);#assert r.status==DsStatus.ok && r.stop==DvStop.context;
+    #assert dv_logits_count(1) && dv_logits_count(151936) && !dv_logits_count(0) && !dv_logits_count(151937);
+    #assert dv_greedy(x[..]).next==2;
+}
+dv_original_bos :: ()->int #export_c {return 100000;}
+dv_original_eos :: ()->int #export_c {return 100001;}
+dv_logits_count :: (n:int)->bool {return n>=1 && n<=151936;}
+dv_greedy :: (logits:[]f32)->DsResult #export_c {
+    if !dv_logits_count(logits.count) {return DsResult.{status=DsStatus.shape};}for x:logits {if !ds_finite(x) {return DsResult.{status=DsStatus.number};}}
+    return DsResult.{next=dr_maximum_id(logits)};
+}
+dv_decide :: (logits:[]f32,eos:int,generated:int,limit:int,position:int,capacity:int,cancelled:bool)->DvDecision #export_c {
+    if !dv_logits_count(logits.count) {return DvDecision.{status=DsStatus.shape};}if eos<0 || eos>=logits.count {return DvDecision.{status=DsStatus.token};}
+    if generated<0 || limit<1 || limit>4096 || generated>limit || capacity<1 || capacity>163840 || position<1 || position>capacity {return DvDecision.{status=DsStatus.state};}
+    if cancelled {return DvDecision.{stop=DvStop.cancelled};}if generated==limit {return DvDecision.{stop=DvStop.token_limit};}if position==capacity {return DvDecision.{stop=DvStop.context};}
+    r:=dv_greedy(logits);if r.status!=DsStatus.ok {return DvDecision.{status=r.status};}return DvDecision.{stop=ifx r.next==eos then DvStop.eos else DvStop.more,token=r.next};
+}

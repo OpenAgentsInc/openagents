@@ -1,0 +1,14 @@
+#load "../lib/deepseek/v2.coax";
+dv_test_hi :: (out:[]int)->int #export_c {
+    if out.count<DV_PROMPT_HI.count {return 0;}
+    for i:0..<DV_PROMPT_HI.count {out[i]=DV_PROMPT_HI[i];}return DV_PROMPT_HI.count;
+}
+// Test-only owned-profile constructor; native callers still use the public binder.
+dv_test_profile :: (wide:bool,pins:[]DsArtifact,tensors:[]DvTensor,payload:[]int)->DvProfile #export_c {
+    if wide {
+        for i:0..<DVW_PINS.count {pins[i]=DVW_PINS[i];}for i:0..<DVW_TENSORS.count {tensors[i]=DVW_TENSORS[i];}payload[0]=DVW_PAYLOAD;
+        return DvProfile.{shape=DVW_SHAPE,pins=pins[0..<1],tensors=tensors[0..<DVW_TENSORS.count],payload=payload[0..<1]};
+    }
+    for i:0..<DVT_PINS.count {pins[i]=DVT_PINS[i];}for i:0..<DVT_TENSORS.count {tensors[i]=DVT_TENSORS[i];}payload[0]=DVT_PAYLOAD;
+    return DvProfile.{shape=DVT_SHAPE,pins=pins[0..<1],tensors=tensors[0..<DVT_TENSORS.count],payload=payload[0..<1]};
+}

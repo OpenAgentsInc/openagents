@@ -39,11 +39,15 @@ if [[ ${#only[@]} -eq 1 ]]; then
     if [[ $chapter == deepseek/front || $chapter == deepseek/front-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_front.sh --mutate --jobs "$jobs"
     fi
+    if [[ $chapter == deepseek/v2 || $chapter == deepseek/v2-* ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_v2.sh --mutate --jobs "$jobs"
+    fi
     if [[ $chapter == deepseek ]]; then
         env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek.sh --mutate --jobs "$jobs"
         env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_front.sh --mutate --jobs "$jobs"
         env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_router.sh --mutate --jobs "$jobs"
-        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_v2_math.sh --mutate --jobs "$jobs"
+        env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_v2_math.sh --mutate --jobs "$jobs"
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_v2.sh --mutate --jobs "$jobs"
     fi
     if [[ $chapter == deepseek || $chapter == deepseek/* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek.sh --mutate --jobs "$jobs"
@@ -276,6 +280,7 @@ if [[ $deepseek == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_front.sh --mutate --jobs "$jobs"
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_router.sh --mutate --jobs "$jobs"
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_v2_math.sh --mutate --jobs "$jobs"
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_v2.sh --mutate --jobs "$jobs"
     phase "DeepSeek implemented units"
 fi
 # Chapter 16: the toy model, the serve-run loop and real loopback servers.

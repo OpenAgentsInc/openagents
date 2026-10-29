@@ -350,6 +350,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/deepseek-v2.coax",
+      "chapter": "psionic/book/ch058-execute-deepseek-v2-lite.md",
+      "stdout": "psionic/fixtures/deepseek-v2.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

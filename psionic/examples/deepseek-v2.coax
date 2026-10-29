@@ -1,0 +1,22 @@
+#import "Basic";
+#load "../lib/deepseek/v2-model.coax";
+#load "../lib/deepseek/v2-generate.coax";
+// book:begin example
+main :: () {
+    for mode:0..<2 {
+        data:=DVT_DATA;blocks:[2]DvBlock;experts:[3]DvExpert;
+        model:=dv_tiny_model(data[..],blocks[..],experts[..]);form:=cast(MlMode)mode;p:=dv_plan(model.shape,form);
+        cache:[100]f32;logits:[9]f32;trace:[16]f32;routes:[2]DrRoute;
+        floats:[4096]f32;scores:[128]f64;acc:[4]PsionicAccumulator;draft:[2]DrRoute;
+        for pos:0..<DVT_TOKENS.count {
+            r:=dv_step(model,form,DVT_TOKENS[pos],pos,cache[0..<p.cache],
+                DvOutput.{logits=logits[..],trace=trace[..],routes=routes[..]},
+                DvWork.{floats=floats[0..<p.floats],scores=scores[0..<p.scores],accumulators=acc[..],routes=draft[..]},false);
+            #assert r.status==DsStatus.ok && r.next==pos+1;
+        }
+        next:=dv_greedy(logits[..]);#assert next.status==DsStatus.ok && routes[0].count==0 && routes[1].count==2;
+        print("%: % cache floats; five tokens through both layers\n",ifx mode==0 then "compressed" else "expanded",p.cache);
+        print("next token %; routed experts %, %; shared expert branch included\n",next.next,routes[1].ids[0],routes[1].ids[1]);
+    }
+}
+// book:end example

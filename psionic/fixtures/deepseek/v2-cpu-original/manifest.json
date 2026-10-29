@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "profile": "deepseek-v2-lite-cpu-wide-v1",
+  "policy_sha256": "120d9683d643b6d4f275a88c3d4bd71d6ce04365fe0d21ac94251e28943e4213",
+  "executed_c_path": "/tmp/psionic-v2-qualification/deepseek-v2.c",
+  "captures": {
+    "compressed": {
+      "candidate_sha256": "68a43f17985c774950acc998dc1b19f6f2cd0b7715e2d3a84904f9abd6f84cd9",
+      "reference_sha256": "2c7aa3fa5c6debfce79af62f8fcec47b4396e50ad3348573d1153b2b836f917d"
+    },
+    "expanded": {
+      "candidate_sha256": "99ef90661999a2d5f21ebbe3822b8d6959d458a419f28a71a527662d5f253f70",
+      "reference_sha256": "d6e5e1d61349677d7fe122a104892e88677fbdfcdfd899ffee828e0e7d16ce23"
+    }
+  },
+  "files": {
+    "compressed-candidate.bin.gz": {
+      "bytes": 24472254,
+      "sha256": "0b3913e00878d603900bc00a3e64f39bf5e497960e01eec4e6e80d32a033ae96"
+    },
+    "expanded-candidate.xor.gz": {
+      "bytes": 6776418,
+      "sha256": "9cc077569c3b530f677ee194d430981be7cfce02286f6ea5ed4cddd828585dc9"
+    },
+    "cross-cache-comparison.json": {
+      "bytes": 573,
+      "sha256": "f2cdde18205b5b97179013ee0ea0b94c5201563661abfd87fa36ef44052e94d8"
+    },
+    "compressed-reference.xor.gz": {
+      "bytes": 31520,
+      "sha256": "5086d60bcd17f0397a73021ece8a2cfa442061cbe79d229732b6c88cb7a4bbd4"
+    },
+    "compressed.json": {
+      "bytes": 345,
+      "sha256": "a16d1381a6cbfb1310cc0e4acadf9e355c1aadb086c2bb39f6c5b8ccec7278e4"
+    },
+    "compressed.txt": {
+      "bytes": 97,
+      "sha256": "144e059a90073066d8bda245cb34882c799938ef411e471da608b788d833fc68"
+    },
+    "compressed-generated.i64": {
+      "bytes": 192,
+      "sha256": "7357a9fc68f11e5054778ee204d9a00c157e3b5c1b8de5cf820ec21135a9a661"
+    },
+    "compressed-comparison.json": {
+      "bytes": 560,
+      "sha256": "d70921ba01a00b6b69bc8e346b7d29edf320d1102315fdcb958c6a4cadf3fab7"
+    },
+    "compressed-reference.log": {
+      "bytes": 1798,
+      "sha256": "c174799abca2bef291c1cc5e619bd26897eab895ddcb7609ae4d70b64f53b9a8"
+    },
+    "expanded-reference.xor.gz": {
+      "bytes": 31798,
+      "sha256": "39bfa2365a8635c4efecf579587b4b7833b2929a11db5b86209f33b0c81f2832"
+    },
+    "expanded.json": {
+      "bytes": 344,
+      "sha256": "84ecf89fd1445a82abcfd39e0b7ec3f9cf55c41e45793117e432e648b454ca35"
+    },
+    "expanded.txt": {
+      "bytes": 97,
+      "sha256": "144e059a90073066d8bda245cb34882c799938ef411e471da608b788d833fc68"
+    },
+    "expanded-generated.i64": {
+      "bytes": 192,
+      "sha256": "7357a9fc68f11e5054778ee204d9a00c157e3b5c1b8de5cf820ec21135a9a661"
+    },
+    "expanded-comparison.json": {
+      "bytes": 559,
+      "sha256": "b8051d741023af5dc66e8d4c2ffe94646c4a32665d850325d512e5efda220303"
+    },
+    "expanded-reference.log": {
+      "bytes": 1739,
+      "sha256": "b017ee42f9db35924aa29e37ef5713e97f1a84ce7333dfe68fab18926f22cc04"
+    },
+    "build-identity.json": {
+      "bytes": 3733,
+      "sha256": "d946cb651505b1100497df4c3efc3c6021c3511b9d3c70aadd4d111cf7777359"
+    },
+    "run.log": {
+      "bytes": 2604,
+      "sha256": "9c73bef640e5c6d224269b4dad72e82588a29eb248c166c126d476ec145cac22"
+    },
+    "executed.c.gz": {
+      "bytes": 125334,
+      "sha256": "63927ca39a145276cf9e7e21779848ef18f6b058fb684185d5bb529b7625bb77"
+    },
+    "executed.h.gz": {
+      "bytes": 5767,
+      "sha256": "dbfca5af24113282a33f90edff457cb14c43db19f58428f73881c91ab869a8a7"
+    },
+    "host.c.gz": {
+      "bytes": 2578,
+      "sha256": "31fc429bb1c49f0e4bb93e2cfc13f5b44bf8f15f77c8664dc13eb03500e66bbb"
+    },
+    "memory.c.gz": {
+      "bytes": 947,
+      "sha256": "0149816624ad91cbadcf7f2ba2367e33c3967cab34c87b3f15c40c58e8f69a3a"
+    },
+    "memory.h.gz": {
+      "bytes": 230,
+      "sha256": "65c1a95280f47ee47e02c6ee834ee128ef4e1949ab8a73146c40c3d45a86058a"
+    },
+    "spans.h.gz": {
+      "bytes": 587,
+      "sha256": "77eb5b54aa6b16a5a0ebcf952f96ab3aec85535efe60cb9cc2c951e6b910ebf4"
+    }
+  },
+  "scope": "Complete original fixed Hi recipe in both cache forms. Wide CPU arithmetic; no Torch/BF16, GPU, throughput or general tokenizer parity claim.",
+  "rebuild_sources": {
+    "executed.c.gz": "75d32d3068f2ef40f602e6a0a0ddb798bab08ba6074a4fc71149e117582bf672",
+    "executed.h.gz": "8d1e586b32dec6fea6f682d02dc39588776492ba8a77053d9692b08f0beae1a0",
+    "host.c.gz": "2c371617e96e147af891f90e89deb4eedb2b5ee4b87b41b37afe0a3d6581b01d",
+    "memory.c.gz": "5d520ca18c28e260fcddf4c65d63cbbaf6a6314d0aad039dfff511f4098e3714",
+    "memory.h.gz": "4ad8d25aafa013a3c81ea56803bac7e33e0dd543691e1de254c660caa1307f02",
+    "spans.h.gz": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e"
+  }
+}
