@@ -153,6 +153,31 @@ realm's golden: release to staging (it fails with "no golden"), then
 `coax/web/goldens/<slug>.png`, commit it (and only the goldens you meant to
 change) and release again.
 
+## Edit mode for admins
+
+The owner's rule (eg-edit): whenever a user is an admin (a key in
+`coax/web/api/admins.conf`, logged in at /login or signing NIP-98), they
+have edit mode. Every write is checked on the server (`admin_who`); what an
+admin changes in a built-in realm is that realm's published world
+(`POST /api/playtest/world/<id>`, `/reset` for the designed one), and
+everyone sees it. Where each realm stands:
+
+| Realm | Edit mode | Why |
+| --- | --- | --- |
+| Haunted House | everyone's own copy, the owner's offers (realm.coax, world.coax) | it was made to be edited |
+| Sandbox | everyone, plus set pieces from a sentence | it was made to be edited |
+| Everglade | admins only: EDIT by MAP (B) and HOLD TO TALK (everglade-edit.coax, everglade-voice.coax) | the city is the same for everyone, so only an admin changes it |
+| The Grid | not yet: task grid-edit | its art is one baked scene with no kit of pieces to place; it needs one first |
+| Hecate's Cemetery | not yet: task hc-edit | Kiki's world; visitors already place vases; what an admin may move needs her say |
+| Dead Gears | none, by decision | a game: the hull, cover and spawns are its rules, and a moved piece breaks waves, pathing and balance |
+| Ice Cream Man | none, by decision | a game: the keys, doors and the chase route are the puzzle, and a moved piece can make it unwinnable |
+| Fixture Realm | none: it is the host's test world | its lamp already moves; its golden must not change |
+| A First Realm (drop) | none here: a project's owner places its drop | the pieces are the project's, placed when its drop is published (drops.c) |
+
+A realm that gets edit mode copies Everglade's: the page asks
+`/api/auth/me` (A|1 an admin), keeps its list of placed things, draws EDIT
+for an admin only and publishes the list as the realm's world.
+
 ## Adding a realm
 
 1. Its module: `<module>.coax` with checks, `<module>-face.c`, `<module>.wgsl`; a `wasm.sh` line in `build.sh`.

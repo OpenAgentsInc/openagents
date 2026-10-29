@@ -653,6 +653,51 @@
       "blocks": []
     },
     {
+      "slug": "grid-edit",
+      "parent": "rl-later",
+      "title": "The Grid: edit mode for admins",
+      "size": "M",
+      "labels": [
+        "realms",
+        "admin"
+      ],
+      "body": "The owner's rule (eg-edit): whenever a user is an admin, they have edit mode. The Grid has none yet: its art is one baked scene (thegrid.wgsl draws the pack's faces and lines; store 0 is the robots) with no kit of pieces to place. Give it a small kit (the stations' crates, boards, lamps from the demo's art) drawn as instances, then Everglade's edit mode (apps/openagents-web/everglade-edit.coax): EDIT for an admin only (/api/auth/me A|1), the hotbar, pick, move, turn, resize, delete, UNDO, REDO, ORIGINAL, DONE, published as /api/playtest/world/the-grid and checked on the server.\n\nPlan: `docs/verse/realm-host.md` (Edit mode for admins).",
+      "files": [
+        "apps/openagents-web/",
+        "coax/web/api/",
+        "docs/verse/"
+      ],
+      "acceptance": [
+        "An admin sees EDIT in the Grid and places, moves, turns, resizes and removes pieces; UNDO, REDO, DONE and ORIGINAL work",
+        "The edits persist on the server for everyone; a non-admin sees them and has no EDIT"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "hc-edit",
+      "parent": "rl-later",
+      "title": "Hecate's Cemetery: edit mode for admins",
+      "size": "M",
+      "labels": [
+        "realms",
+        "admin",
+        "planetary-villa"
+      ],
+      "body": "The owner's rule (eg-edit): whenever a user is an admin, they have edit mode. Hecate's Cemetery is Kiki's world (Planetary Villa); visitors already pick flowers and place vases (villaplay.coax). Ask Kiki what an admin may move (plots, hedges, cypresses, the fountain, the field's things), then bring Everglade's edit mode (apps/openagents-web/everglade-edit.coax): EDIT for an admin only, published as /api/playtest/world/hecates-cemetery and checked on the server.\n\nPlan: `docs/verse/realm-host.md` (Edit mode for admins).",
+      "files": [
+        "apps/openagents-web/",
+        "coax/web/api/",
+        "docs/verse/"
+      ],
+      "acceptance": [
+        "Kiki has said what an admin may move",
+        "An admin sees EDIT in Hecate's Cemetery and moves those things; UNDO, REDO, DONE and ORIGINAL work; a non-admin has no EDIT"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
       "slug": "rl-sandbox",
       "parent": "rl-later",
       "title": "The Sandbox realm",
