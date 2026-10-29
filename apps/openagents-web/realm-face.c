@@ -843,6 +843,8 @@ EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { (void)sta
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { (void)state; return (int32_t)realm_cursor(realm_of()); }
 
 // Output: EXIT's navigation, a copied link, the house to keep.
+// The graphics the host draws with (host.js), so GFX names it: 0 HIGH, 1 MEDIUM, 2 LOW.
+EXPORT("coaxial_quality") void coaxial_quality(uint32_t state, int32_t q) { (void)state; realm_set_quality(realm_of(), q); }
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { (void)state; return (int32_t)realm.action; }
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) {
   (void)state; return (uint32_t)(uintptr_t)(realm.action == 4 ? (void *)kept : (void *)realm.outbox.e);

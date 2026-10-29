@@ -171,7 +171,14 @@ OPS :: 8;
 BTN_ASK :: BTN_OP + OPS; BTN_TEACH :: BTN_ASK + 1;   // the conversation's ASK and TEACH
 BTN_ACCEPT :: BTN_TEACH + 1; BTN_DECLINE :: BTN_TEACH + 2;   // an offered change
 BTN_CHAT :: BTN_DECLINE + 1; BTN_SAY :: BTN_CHAT + 1;          // the hotbar's CHAT, and the chat's SAY
-BUTTONS :: BTN_SAY + 1;
+BTN_GFX :: BTN_SAY + 1;                                         // the hotbar's graphics: HIGH, MEDIUM, LOW
+BUTTONS :: BTN_GFX + 1;
+
+// Graphics (host.js): how many pixels the house is drawn with. HIGH every
+// device pixel, MEDIUM at most 1.5 a CSS pixel, LOW 1; phones start at MEDIUM.
+QUALITY_NAMES :: [3] string.["high", "medium", "low"];
+QUALITY_LABELS :: [3] string.["GFX HIGH", "GFX MED", "GFX LOW"];
+ACT_QUALITY :: 6;   // host.js: the outbox names the graphics to draw with
 
 HELP_TIME :: 9.0;      // seconds the controls stay written after you first move
 
@@ -195,10 +202,13 @@ Realm :: struct {
   op: int;              // the edit ASK_OP does
   pick_x: f32; pick_y: f32;              // where ASK_PICK picks, device pixels
   down_x: f32; down_y: f32; down_id: int; down_at: f32;   // a press that may be a click or tap
-  outbox: [160] u8; out_n: int; action: int;        // the host's: ACT_NAVIGATE and a URL
+  outbox: [160] u8; out_n: int; action: int;        // the host's: ACT_NAVIGATE and a URL, or ACT_QUALITY and its name
+  quality: int;         // the graphics in force, 0 HIGH, 1 MEDIUM, 2 LOW (the host says which at the start)
   hover: int;           // the button the mouse is over (-1 none)
   plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;   // this frame's plates
 }
+
+realm_set_quality :: (r: [] Realm, q: int) #export_c { if q >= 0 && q < 3 { r[0].quality = q; } }
 
 realm_reset :: (r: [] Realm) #export_c { r[0].press = -1; r[0].press_id = -1; r[0].moved_at = -1; r[0].hover = -1; }
 
@@ -295,6 +305,12 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
     if v.selected.count > 0 { edit_op(r, row_op(v, k)); }
     else if v.zone.count > 0 { edit_op(r, row_op(v, k)); }
   }
+  if b == BTN_GFX {
+    names := QUALITY_NAMES;
+    r[0].quality = (r[0].quality + 1) % 3;
+    r[0].out_n = put(r[0].outbox[..], 0, names[r[0].quality]);
+    r[0].action = ACT_QUALITY;
+  }
   if b == BTN_EXIT {
     r[0].asks |= ASK_EXIT;
     r[0].out_n = put(r[0].outbox[..], 0, "/");
@@ -359,6 +375,8 @@ realm_key :: (r: [] Realm, v: RealmView, key: int, mods: int, down: bool) -> boo
   }
   // In a conversation, T asks them something.
   if v.talking.count > 0 && (key == 't' || key == 'T') { realm_do(r, v, BTN_ASK); return true; }
+  // G steps the graphics down: HIGH, MEDIUM, LOW, and round again.
+  if key == 'g' || key == 'G' { realm_do(r, v, BTN_GFX); return true; }
   // C opens the room's chat to say something, and closes it.
   if key == 'c' || key == 'C' { realm_do(r, v, BTN_CHAT); return true; }
   if key == KEY_ESCAPE {
@@ -485,7 +503,7 @@ slot_box :: (r: [] Realm, i: int) -> Box {
   return Box.{x0 = x1 - w, y0 = y0, x1 = x1, y1 = y0 + h};
 }
 
-SLOTS :: 5;
+SLOTS :: 6;
 
 // The bottom of the HUD's top: the title, and on a phone the hotbar under it.
 top_bottom :: (r: [] Realm) -> f32 { return ifx phone(r) then slot_box(r, 0).y1 else title_box(r).y1; }
@@ -1045,7 +1063,9 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
   vertices = hud_button(r, out, vertices, BTN_MAP, slot_box(r, 1), "MAP", "M", r[0].map);
   vertices = hud_button(r, out, vertices, BTN_EDIT, slot_box(r, 2), "EDIT", "B", v.editing);
   vertices = hud_button(r, out, vertices, BTN_CHAT, slot_box(r, 3), "CHAT", "C", r[0].chat || v.unread > 0);
-  vertices = hud_button(r, out, vertices, BTN_EXIT, slot_box(r, 4), "EXIT", "", false);
+  labels := QUALITY_LABELS;
+  vertices = hud_button(r, out, vertices, BTN_GFX, slot_box(r, 4), labels[r[0].quality % 3], "G", false);
+  vertices = hud_button(r, out, vertices, BTN_EXIT, slot_box(r, 5), "EXIT", "", false);
 
   // the house's notice, under the title
   if v.notice.count > 0 {
@@ -1453,6 +1473,22 @@ view :: () -> RealmView { v: RealmView; v.ready = true; v.title = "Foyer"; v.que
   #assert realm_pointer(r[..], v, 720, 390, POINTER_UP, 0, 1) && !r[0].looking;
   #assert !realm_pointer(r[..], v, 300, 700, POINTER_DOWN, 1, 7);
   #assert !realm_pointer(r[..], v, 320, 690, POINTER_MOVE, 1, 7);
+}
+
+#test "GFX steps the graphics down and tells the host; G does too" {
+  r: [1] Realm; desk(r[..]); v := view();
+  realm_set_quality(r[..], 1);
+  #assert r[0].quality == 1;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  _ := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert r[0].shown[BTN_GFX];
+  b := r[0].boxes[BTN_GFX]; x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
+  #assert realm_pointer(r[..], v, x, y, POINTER_DOWN, 0, 1) && realm_pointer(r[..], v, x, y, POINTER_UP, 0, 1);
+  #assert r[0].quality == 2 && r[0].action == ACT_QUALITY && cast(string) r[0].outbox[0..<r[0].out_n] == "low";
+  r[0].action = 0;
+  #assert realm_key(r[..], v, 'g', 0, true) && r[0].quality == 0 && cast(string) r[0].outbox[0..<r[0].out_n] == "high";
+  realm_set_quality(r[..], 7);
+  #assert r[0].quality == 0;
 }
 
 #test "the hotbar's buttons act on release over them, and EXIT goes home" {

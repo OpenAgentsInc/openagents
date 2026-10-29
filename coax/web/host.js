@@ -186,6 +186,7 @@ async function loadEngine(bytes, generation) {
   }
   x.coaxial_page?.(arena.state, Number((script && script.dataset.page) || 0));
   if (golden) x.coaxial_golden?.(1);
+  x.coaxial_quality?.(arena.state, golden ? 0 : quality);
   engine = { exports: x, layout };
   if (script?.dataset.text) send(2, script.dataset.text);
   for (const a of assets) if (a.done) deliver(a); // a new build gets what the last one had
@@ -548,6 +549,7 @@ async function loadShaders() {
   const stride = arena.floats * 4;
   // With a scene, every pipeline in the pass shares its depth buffer; only the scene tests and writes it.
   const scene = !!engine?.exports.coaxial_draws;
+  gpu.scene3d = scene;
   const flat = scene ? { depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "always" } } : {};
   const shadows = scene && /fn\s+shadow_vs\b/.test(code);
   const post = scene && /fn\s+post_fs\b/.test(code);
@@ -862,6 +864,27 @@ function observeSize() {
   try { new ResizeObserver(take).observe(canvas, { box: "device-pixel-content-box" }); }
   catch { new ResizeObserver(take).observe(canvas); }
 }
+// Graphics on a page with a 3D scene: HIGH draws every device pixel, MEDIUM at most 1.5 a CSS
+// pixel, LOW 1 (the browser scales the canvas up). Phones start at MEDIUM: their screens have up to
+// 9 times the pixels of the page, and a scene's shaders run on each. The app's action 6 names a new
+// one and coaxial_quality(state, 0|1|2) tells the app the one in force; kept in localStorage
+// verse.quality. Goldens always draw HIGH.
+const QUALITY = ["high", "medium", "low"], QUALITY_CAP = [Infinity, 1.5, 1];
+let quality = (() => {
+  try { const q = QUALITY.indexOf(localStorage.getItem("verse.quality")); if (q >= 0) return q; } catch {}
+  return matchMedia("(pointer: coarse)").matches ? 1 : 0;
+})();
+function setQuality(name) {
+  const q = QUALITY.indexOf(name);
+  if (q < 0) return;
+  quality = q;
+  try { localStorage.setItem("verse.quality", name); } catch {}
+}
+// The share of the device pixels a frame draws.
+const drawn = (deviceWidth) => {
+  if (!gpu?.scene3d || golden || !canvas.clientWidth) return 1;
+  return Math.min(1, QUALITY_CAP[quality] / (deviceWidth / canvas.clientWidth));
+};
 // Device pixels per CSS pixel, as the canvas is actually drawn.
 const scale = () => (canvas.width && canvas.clientWidth ? canvas.width / canvas.clientWidth : devicePixelRatio || 1);
 
@@ -870,7 +893,8 @@ function frame(now) {
   requestAnimationFrame(frame);
   if (!engine || !gpu?.bg) return;
   const dt = last ? (now - last) / 1000 : 0; last = now;
-  const [w, h] = devicePixels || [Math.max(1, Math.round(canvas.clientWidth * devicePixelRatio)), Math.max(1, Math.round(canvas.clientHeight * devicePixelRatio))];
+  const [dw, dh] = devicePixels || [Math.max(1, Math.round(canvas.clientWidth * devicePixelRatio)), Math.max(1, Math.round(canvas.clientHeight * devicePixelRatio))];
+  const f = drawn(dw), w = Math.max(1, Math.round(dw * f)), h = Math.max(1, Math.round(dh * f));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   const dpr = scale();
   let n = 0;
@@ -1036,6 +1060,7 @@ function after(gesture, tap = false) {
     // The app's own place in the page (the hash), replaced so Back still leaves the page.
     else if (code === 3) { if (location.hash.slice(1) !== text) history.replaceState(history.state, "", text ? `#${encodeURIComponent(text)}` : location.pathname + location.search); }
     else if (code === 4) keep(text);
+    else if (code === 6) setQuality(text);
     else if (code === 5) { try { const p = JSON.parse(text); if (p && typeof p.key === "string") localStorage.setItem("verse.player", text); } catch {} }
     else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
   }
