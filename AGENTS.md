@@ -84,6 +84,20 @@ weights in seconds. `coax mutate` gives the same report for any `--jobs` or
 shard split, so zero survivors stays the rule; name the units you touched with
 `--only` and leave the full `psionic/check.sh` for release.
 
+**Time limits (owner rule, 2026-10-29: nothing should ever run 6 hours).**
+
+- **One task takes at most 2 hours, start to push.** If it can't finish,
+  push the finished part (passing, with its record saying what's missing)
+  and report the rest instead of continuing.
+- **One command takes at most 15 minutes.** A check that would take longer
+  gets split into slices, shards (`coax mutate --shard`) or a smaller unit,
+  or runs on a faster path. It is never simply waited on.
+- **Never repeat a passing result.** A mutation run, gate or test that
+  passed on unchanged files is not rerun to "confirm". Cite the earlier
+  result and its commit in the record.
+- **Report progress at least every 30 minutes,** with what changed and
+  what's left. Stop, don't wait, when a run exceeds its limit.
+
 The full iOS test command and TestFlight steps are in
 [apps/openagents-ios/README.md](apps/openagents-ios/README.md). Run the
 tests for what you touched, not everything.
