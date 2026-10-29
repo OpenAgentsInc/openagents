@@ -7,6 +7,8 @@ you, October 29 (eg-people). The city is
 walkable at https://openagents.com/realm/everglade (not on the galaxy until
 eg-launch; `/verse/galaxy?realms=all` shows it). The order of the work after
 this is in [realms-port.md](realms-port.md).
+The previous Everglade, on the Rust engine, is kept for parity in
+[`verse/everglade/previous/`](../../verse/everglade/previous/README.md): its map and specifications.
 
 Everglade is a conventional MMORPG hub in the woods: where players gather,
 get quests and set out from. It is the same for everyone and nobody can
