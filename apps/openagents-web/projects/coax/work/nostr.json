@@ -542,7 +542,8 @@
         "crypto-bytes"
       ],
       "blocks": [
-        "secp-field-mul"
+        "secp-field-mul",
+        "crypto-field-secret-guards"
       ]
     },
     {
@@ -891,7 +892,8 @@
         "crypto-ct-timing-harness",
         "crypto-secret-lint",
         "crypto-secret-aggregate-closure",
-        "coax-run-resource-inputs"
+        "coax-run-resource-inputs",
+        "crypto-field-secret-guards"
       ],
       "blocks": [
         "schnorr-sign"
@@ -919,7 +921,8 @@
         "crypto-ct-timing-harness",
         "crypto-secret-lint",
         "crypto-secret-aggregate-closure",
-        "crypto-secret-public-loop-summaries"
+        "crypto-secret-public-loop-summaries",
+        "crypto-field-secret-guards"
       ],
       "blocks": [
         "crypto-ecdh-xonly"
@@ -3026,7 +3029,8 @@
         "secp-mult-base",
         "secp-mult-const",
         "crypto-secret-codegen",
-        "crypto-secret-public-loop-summaries"
+        "crypto-secret-public-loop-summaries",
+        "crypto-field-secret-guards"
       ]
     },
     {
@@ -3206,6 +3210,40 @@
         "crypto-secret-aggregate-closure"
       ],
       "blocks": [
+        "secp-mult-const",
+        "crypto-field-secret-guards"
+      ]
+    },
+    {
+      "slug": "crypto-field-secret-guards",
+      "parent": "m-assurance",
+      "title": "Discharge reachable field guard obligations with bound proofs",
+      "size": "L",
+      "labels": [
+        "nostr",
+        "crypto",
+        "coax"
+      ],
+      "body": "Investigate the secret-derived assertions at secp_field.coax:239 and secp_field32.coax:70,92 that block fixed-base and variable-base no-secret-branch acceptance. Prove their safety for the exact reachable caller inputs or replace them with an independently verified construction that preserves admitted behavior and error contracts. Bind every proof or transformation to exact source and caller preconditions; do not turn an assertion into an automatic audit waiver. Object/JIT timing, production-secret approval and erasure remain separate.",
+      "files": [
+        "coax/lib/crypto/",
+        "coax/tests/nostr/",
+        "tools/coax-nostr/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Characterize every reachable caller precondition and boundary, including admitted limb magnitudes and canonical field32 inputs, and independently review source-to-model correspondence",
+        "Machine-check the actual guard obligations or verify a safe replacement; include out-of-contract witnesses and mutated-bound or changed-source negative controls",
+        "Preserve public ABI, failure behavior and existing resource limits; run independent arithmetic, checked/release and relevant authority mutation checks with zero survivors",
+        "Record exact source, model, compiler, tool and target identities; do not claim target-wide constant time, JIT, erasure or production-secret approval"
+      ],
+      "blocked_by": [
+        "secp-field-repr",
+        "crypto-secret-aggregate-closure",
+        "crypto-secret-public-loop-summaries"
+      ],
+      "blocks": [
+        "secp-mult-base",
         "secp-mult-const"
       ]
     }
