@@ -544,6 +544,164 @@
         "verse-water-w6-ripples"
       ],
       "blocks": []
+    },
+    {
+      "slug": "verse-water-w3-rest",
+      "parent": "engine-everglade-parity",
+      "title": "Water W3 (rest): ponds, the weir and plunge pool, NPC swimming, rowboat props",
+      "size": "L",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "The rest of phase W3 of verse-water (#c278) as verse/everglade/previous/water.md has it (its W3 row, \"Swimming and wading\", \"Breath and suffocation\", \"Rowboats\"), past the river already shipped: Everglade's four ponds swimmable with carved beds, Glade Run's level profile and generated flow field, the weir as a cascade with a plunge pool, swimming and wading for players and NPCs under SRD 5.2.1 (verse/rules/srd5.coax), breath and suffocation, every bank blocker removed, floating ducks and lily pads, and rowboat props.",
+      "files": [
+        "verse/everglade/plan.coax",
+        "verse/everglade/river.coax",
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade-face.c",
+        "apps/openagents-web/everglade.wgsl",
+        "docs/verse/water.md"
+      ],
+      "acceptance": [
+        "coax test passes on plan.coax, river.coax and everglade.coax",
+        "The ponds and the plunge pool are swimmable and drawn by the water shader on desktop and phone",
+        "NPCs wade and swim by the SRD rules"
+      ],
+      "blocked_by": [
+        "verse-water-w3"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "verse-water-w7",
+      "parent": "engine-everglade-parity",
+      "title": "Water W7: underwater",
+      "size": "L",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "Phase W7 of verse-water (#c278) past the caustics already shipped: submersion, underwater fog, the split waterline, Snell's window, distortion, sun shafts, motes, caustics on all submerged surfaces and underwater audio (verse/everglade/previous/water.md).",
+      "files": [
+        "apps/openagents-web/everglade.wgsl",
+        "verse/water-look.coax",
+        "docs/verse/water.md"
+      ],
+      "acceptance": [
+        "Diving in Everglade shows the underwater look on desktop and phone inside the frame budget"
+      ],
+      "blocked_by": [
+        "verse-water-w5"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "verse-water-w8",
+      "parent": "engine-everglade-parity",
+      "title": "Water W8: spells and water",
+      "size": "L",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "Phase W8 of verse-water (#c278) by previous/water.md \"Spells and water\": the ice states and freezing table, the other spells' effects on water, Control Water's four modes, Create or Destroy Water, Water Walk, Water Breathing, the lightning conduction rule, and fire meets water. Built against the spell definitions of the spells worker (verse/rules/srd5.coax, the spell bar).",
+      "files": [
+        "verse/water.coax",
+        "verse/everglade/river.coax",
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade.wgsl",
+        "docs/verse/water.md"
+      ],
+      "acceptance": [
+        "Each spell's water effect works in Everglade as the table says",
+        "coax test passes on the files touched"
+      ],
+      "blocked_by": [
+        "verse-water-w3-rest",
+        "verse-water-w6"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "verse-water-w9",
+      "parent": "engine-everglade-parity",
+      "title": "Water W9: weather",
+      "size": "L",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "Phase W9 of verse-water (#c278): the deterministic per-zone weather schedule (previous/water.md \"Weather\"), rain particles, rain ripples, puddles, wet surfaces and characters, bounded rising water.",
+      "files": [
+        "verse/water.coax",
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade.wgsl",
+        "docs/verse/water.md"
+      ],
+      "acceptance": [
+        "Rain falls on the schedule with ripples and puddles on desktop and phone"
+      ],
+      "blocked_by": [
+        "verse-water-w6"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "verse-water-w10",
+      "parent": "engine-everglade-parity",
+      "title": "Water W10: ocean and scale",
+      "size": "L",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "Phase W10 of verse-water (#c278): the clipmap, cell streaming of water textures, a coastal test scene, and multiplayer checks of the simulated and visual split (previous/water.md).",
+      "files": [
+        "verse/water.coax",
+        "verse/water-look.coax",
+        "apps/openagents-web/everglade.wgsl",
+        "docs/verse/water.md"
+      ],
+      "acceptance": [
+        "A coastal test scene draws the ocean to the horizon inside the frame budget"
+      ],
+      "blocked_by": [
+        "verse-water-w4",
+        "verse-water-w5"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "verse-water-w11",
+      "parent": "engine-everglade-parity",
+      "title": "Water W11: measurement",
+      "size": "M",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "Phase W11 of verse-water (#c278): per-tier GPU and CPU timings on desktop and phones, budgets set from the measurements, device runs recorded in NEEDS_OWNER.md.",
+      "files": [
+        "docs/verse/water.md"
+      ],
+      "acceptance": [
+        "Timings recorded per tier",
+        "Budgets in docs/verse/water.md set from them"
+      ],
+      "blocked_by": [
+        "verse-water-w7",
+        "verse-water-w8",
+        "verse-water-w9",
+        "verse-water-w10"
+      ],
+      "blocks": []
     }
   ]
 }
