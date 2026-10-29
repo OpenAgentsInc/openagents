@@ -20,7 +20,10 @@ adds the bounded top-k router and tiny affine experts.
 [Chapter 43](ch043-attention-with-sinks-and-a-window.md) adds bounded sink/window
 attention, split-half YaRN, biased projection and clamped activation. Chapters
 45–48 now provide CPU reference execution, sampling, speculative verification
-and a finite-schema tool round trip. **GPU execution and useful throughput are
+and a finite-schema tool round trip. Chapters
+[165](ch165-a-machine-whose-state-is-a-trace.md) and
+[166](ch166-attention-as-exact-memory.md) open Part XXIII with a reference
+trace machine and attention as exact memory. **GPU execution and useful throughput are
 not complete.** The device sequence below is the next GPT-OSS delivery path.
 The remaining chapters below are outlines, not implemented capabilities. A
 chapter ships with shared Coax library code, authored checks, independent
@@ -590,8 +593,8 @@ is computation inside a model that can be verified, not a faster computer.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 165. A machine whose state is a trace | A small integer stack machine (constants, locals, add, subtract, multiply, load, store, conditional branch, output, return), a CPU reference interpreter, and a trace format of a few tokens per instruction whose digest identifies the run; anything outside the machine's window is a typed refusal. |
-| 166. Attention as exact memory | Keys placed on a parabola and a hard-max read that returns exactly the matching entry, latest write winning, with cumulative sums from uniform keys; a near miss is a typed refusal, checked against a map oracle on generated read and write streams. |
+| [165. A machine whose state is a trace](ch165-a-machine-whose-state-is-a-trace.md) — runnable | A small integer stack machine (constants, locals, add, subtract, multiply, load, store, conditional branch, output, return), a CPU reference interpreter, and a trace format of a few tokens per instruction whose digest identifies the run; anything outside the machine's window is a typed refusal. |
+| [166. Attention as exact memory](ch166-attention-as-exact-memory.md) — runnable | Keys placed on a parabola and a hard-max read that returns exactly the matching entry, latest write winning, with cumulative sums from uniform keys; a near miss is a typed refusal, checked against a map oracle on generated read and write streams. |
 | 167. Arithmetic and branches from ReLU | Products, step-function conditionals and residual wiring that are exact inside a checked integer range (64-bit integers, then binary64 within 2^53) and refused outside it. |
 | 168. Compile a gate graph into a block | A small gate-graph language and its evaluator, a scheduler that packs gates into layers and reuses residual slots, and weights emitted for an ordinary transformer block; chapter 6's forward pass must reproduce the evaluator bit for bit. |
 | 169. A harness that catches the compiler | A seeded differential run over hundreds of generated graphs across the evaluator, the compiled weights and the interpreter, which must catch the two compiler bugs the pre-reset harness found (cumulative sums reordered across layers; same-step writes resolved in schedule order instead of program order) as planted mutants. |
