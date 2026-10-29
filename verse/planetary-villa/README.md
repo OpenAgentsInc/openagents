@@ -16,8 +16,11 @@ expansion this session focuses on.
   Breath of the Wild*.
 - **Look:** a simple stylized, almost low-poly art style. Everything is lit by
   moonlight, so it's not very bright, with some outlines and garden paths.
+- **The moon:** it doesn't move in the sky. Its phase is the real moon's phase
+  right now.
 - **Make your pet:** you upload data about your pet: a late pet, or a new one.
   - Text, images or video help the agent build the avatar.
+  - The photos and videos are kept, for the pet's memorial page.
   - You customize the avatar the way you would in the Sims.
 - **Emotes:** there's a set to choose from, and the agent can make new ones
   from what you say about the creature.
@@ -29,11 +32,15 @@ expansion this session focuses on.
     most beloved traits and stories.
 - **Memorial page:** each tombstone links to a testimonial-style memorial page
   for the pet. The memorial page has a shareable link.
+  - Every memorial uses the same clearly formatted template. It puts first
+    what was uploaded when the pet was made, and more can be added later.
+  - Anyone can write a comment on a memorial page.
 - **Multiplayer:** the world is multiplayer, with a chat box like Horse Isle's.
 - **What's in it for now:** mini games come later. For now there is the
   cemetery, plus an attached open field where you play fetch with your pet and
   explore other tombstones and memorial links.
-- **Pets:** the canine characters glow white.
+- **Pets:** dogs first; other animals come later. The canine characters glow
+  white.
 - **You:** your character doesn't have many details yet. It's mostly a shadow:
   an all-black humanoid with fuzzy edges, and maybe a particle system to show
   you're visiting from another realm.
@@ -45,6 +52,8 @@ expansion this session focuses on.
   clicking.
 - **Place:** put the vase anywhere in the world. The tutorial directs you to
   place it by the tombstone.
+- **Stay:** a placed vase stays until someone cleans it up. Its flowers decay
+  over time.
 
 ## How it's built
 
@@ -67,10 +76,9 @@ Planetary Villa task waits on the Verse one.
 
 ## Open questions for Kiki
 
-- **The moon:** does it move, and are there clouds?
-- **Uploaded media:** are photos and videos kept after the avatar is made, or
-  only used to make it?
-- **Pets beyond dogs:** cats and other animals at launch, or dogs first?
-- **Memorial page access:** who can write testimonials? Only people the owner
-  invites, or anyone with the link?
-- **Placed vases:** how long do they stay?
+Kiki answered the first round on October 28; the answers are in the sections
+above. Still open:
+
+- **Clouds:** are there clouds in the sky?
+- **Cleaning up:** who can clean up a placed vase: whoever placed it, the pet's
+  owner, or anyone?
