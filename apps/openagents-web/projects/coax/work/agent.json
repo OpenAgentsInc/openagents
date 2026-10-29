@@ -16,6 +16,12 @@
       "title": "Talk to the project agent on the page",
       "body": "The Coax Claude Agent SDK, the runner, oa-api sessions and the page panel.",
       "parent": "project-agent"
+    },
+    {
+      "slug": "chat",
+      "title": "/chat: a direct chat with the OpenAgents agent",
+      "body": "openagents.com/chat: admins talk to a Claude agent with read access to the public openagents repository, on the same hosted runner as the project agent, in a general mode.",
+      "parent": "project-agent"
     }
   ],
   "tasks": [
@@ -161,6 +167,138 @@
       "blocked_by": [
         "pa-runner",
         "pa-panel"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "chat-api",
+      "parent": "chat",
+      "title": "oa-api: chat conversations, turns and events",
+      "size": "M",
+      "labels": [
+        "agent",
+        "api"
+      ],
+      "body": "chat.c and migration 0021_chat.sql: conversations, turns and events shaped like managed-agent sessions (openagents.agent.managed.v1, protocol spec §18.2), admins only (the NIP-98 admin sign-in and the phone sign-in), a message wakes the runner in general mode, STOP, a model per conversation (Haiku, Sonnet or Opus 5.5 only) and a $10/day cap on OpenAgents' key across models.\n\nSpec: `docs/chat.md`.",
+      "files": [
+        "coax/web/api/chat.c",
+        "coax/web/api/migrations/0021_chat.sql",
+        "coax/web/api/test_zchat.py"
+      ],
+      "acceptance": [
+        "A non-admin gets the dashboard's 401/403 and nothing else",
+        "A follow-up resumes the conversation's CLI session",
+        "Over the cap, send answers 429 and says so",
+        "Only the three Claude model ids are accepted"
+      ],
+      "blocked_by": [
+        "pa-api"
+      ],
+      "blocks": [
+        "chat-launch"
+      ]
+    },
+    {
+      "slug": "chat-runner",
+      "parent": "chat",
+      "title": "The runner's general mode for /chat",
+      "size": "M",
+      "labels": [
+        "agent",
+        "cloud"
+      ],
+      "body": "chat-runner.c (included by runner.c) and the chat.coax engine: a read-only sparse, blobless checkout of openagents main refreshed each turn, Read/Glob/Grep inside it plus WebSearch and WebFetch, Edit/Write/Bash/Task refused by the permission callback, session files kept in a mounted bucket, the model switchable on resume.\n\nSpec: `docs/chat.md`.",
+      "files": [
+        "coax/web/agent/chat-runner.c",
+        "coax/web/agent/chat.coax",
+        "coax/web/agent/runner.c"
+      ],
+      "acceptance": [
+        "A question about a file is answered from the checkout and names it",
+        "An Edit or Bash attempt is refused",
+        "STOP interrupts a running turn",
+        "A model switch mid-conversation takes the next turn"
+      ],
+      "blocked_by": [
+        "pa-runner"
+      ],
+      "blocks": [
+        "chat-launch"
+      ]
+    },
+    {
+      "slug": "chat-page",
+      "parent": "chat",
+      "title": "/chat page in Coax",
+      "size": "M",
+      "labels": [
+        "agent",
+        "web"
+      ],
+      "body": "chat.coax: the conversations and NEW CHAT, the conversation with Markdown drawn cleanly, the tool in use, STOP, the model picker by the text box, the model and credential on each answer, the cap message, SIGN IN for anyone else; works at 390 px.\n\nSpec: `docs/chat.md`.",
+      "files": [
+        "apps/openagents-web/chat.coax",
+        "apps/openagents-web/chat-face.c",
+        "apps/openagents-web/chat/"
+      ],
+      "acceptance": [
+        "Desktop and 390 px shots read cleanly",
+        "Signed out it draws only SIGN IN",
+        "The hidden main is the h1 and one link"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "chat-launch"
+      ]
+    },
+    {
+      "slug": "chat-key",
+      "parent": "chat",
+      "title": "Bring your own Anthropic API key or Claude subscription token",
+      "size": "M",
+      "labels": [
+        "agent",
+        "security"
+      ],
+      "body": "KEY on /chat: an API key (models list) or a claude setup-token token (a minimal Haiku CLI turn) is checked, sealed by the runner with AES-256-GCM under a Secret Manager key, used only in the CLI child's environment (ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN, never both) with no cap from us, shown only as its kind and last four, and REMOVE deletes it. An expired token says so and is marked expired.\n\nSpec: `docs/chat.md`.",
+      "files": [
+        "coax/web/agent/chat-runner.c",
+        "coax/web/api/chat.c",
+        "apps/openagents-web/chat.coax"
+      ],
+      "acceptance": [
+        "A bad key is refused with the reason and nothing is saved",
+        "A saved key or token runs a turn as YOUR KEY",
+        "REMOVE deletes it",
+        "Neither shows in any log, event or response"
+      ],
+      "blocked_by": [
+        "chat-api",
+        "chat-runner"
+      ],
+      "blocks": [
+        "chat-launch"
+      ]
+    },
+    {
+      "slug": "chat-launch",
+      "parent": "chat",
+      "title": "/chat live for admins",
+      "size": "S",
+      "labels": [
+        "agent"
+      ],
+      "body": "oa-api and the runner deployed, the page released, /chat routed to the site in production, one production check on Haiku.\n\nSpec: `docs/chat.md`.",
+      "files": [],
+      "acceptance": [
+        "An admin opens /chat on production and gets an answer",
+        "The staging checks pass on Haiku"
+      ],
+      "blocked_by": [
+        "chat-api",
+        "chat-runner",
+        "chat-page",
+        "chat-key"
       ],
       "blocks": []
     }
