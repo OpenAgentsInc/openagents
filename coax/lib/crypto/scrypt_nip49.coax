@@ -1,0 +1,118 @@
+// Experimental resumable NIP-49 scrypt parameters r=8, p=1.
+// Secret erasure, normalization and production approval remain open.
+#load "scrypt_pbkdf2.coax";
+#load "scrypt_romix.coax";
+#authority;
+
+#test "NIP-49 scrypt composition agrees with an independent native oracle" {
+  password:=[5]u8.[110,111,115,116,114];salt:[16]u8;for i:0..<16 {salt[i]=cast(u8)i;}
+  expected:=[32]u8.[0xef,0x5c,0x8d,0xc1,0x45,0x2e,0x06,0xdc,0x1c,0x06,0x7a,0x4b,0xc2,0x62,0xe3,0x97,0x87,0x6a,0x38,0x76,0xca,0x7d,0xda,0xd5,0x62,0x08,0x73,0x76,0xc6,0xb5,0x59,0xf5];
+  memory:[16384]u8;state:[1]Nip49Scrypt;out:[33]u8;out[32]=165;state[0].password[900]=255;
+  #assert nip49_scrypt_start(state[..],password[..],salt[..],memory[..],4,false);
+  #assert state[0].password[900]==0;
+  #assert !nip49_scrypt_finish(state[..],out[..],false);
+  for i:0..<32 {#assert nip49_scrypt_step(state[..],memory[..],1,false);}
+  #assert nip49_scrypt_finish(state[..],out[..],false);
+  for i:0..<32 {#assert out[i]==expected[i];}#assert out[32]==165;
+  #assert state[0].phase==NIP49_SCRYPT_DONE;
+  #assert !nip49_scrypt_finish(state[..],out[..],false);
+  #assert !nip49_scrypt_step(state[..],memory[..],1,false);
+}
+
+#test "NIP-49 scrypt rejects bad parameters before touching output" {
+  password:[1]u8;salt:[17]u8;memory:[2048]u8;state:[1]Nip49Scrypt;out:[33]u8;
+  for i:0..<33 {out[i]=165;}
+  #assert !nip49_scrypt_start(state[..],password[..],salt[0..<15],memory[..],1,false);
+  #assert !nip49_scrypt_start(state[..],password[..],salt[..],memory[..],1,false);
+  #assert !nip49_scrypt_start(state[..],password[..],salt[0..<16],memory[..],0,false);
+  #assert !nip49_scrypt_start(state[..],password[..],salt[0..<16],memory[..],19,false);
+  #assert !nip49_scrypt_start(state[..],password[..],salt[0..<16],memory[0..<2047],1,false);
+  #assert !nip49_scrypt_start(state[..],password[..],salt[0..<16],memory[..],1,true);
+  #assert !nip49_scrypt_finish(state[..],out[..],false);
+  for v:out {#assert v==165;}
+}
+
+#test "NIP-49 scrypt exact metadata and failure boundaries" {
+  #assert nip49_scrypt_params(0,16,2048,1,false);
+  #assert nip49_scrypt_params(1024,16,268435456,18,false);
+  #assert nip49_scrypt_cost(1)==2 && nip49_scrypt_cost(18)==262144;
+  #assert nip49_scrypt_cost(0)==0 && nip49_scrypt_cost(19)==0;
+  #assert !nip49_scrypt_params(-1,16,2048,1,false);
+  #assert !nip49_scrypt_params(1025,16,2048,1,false);
+  #assert !nip49_scrypt_params(0,15,2048,1,false);
+  #assert !nip49_scrypt_params(0,17,2048,1,false);
+  #assert !nip49_scrypt_params(0,16,2048,0,false);
+  #assert !nip49_scrypt_params(0,16,268435456,19,false);
+  #assert !nip49_scrypt_params(0,16,2048,1,true);
+  #assert nip49_finish_admit(NIP49_SCRYPT_ACTIVE,0,32,false);
+  #assert nip49_finish_admit(NIP49_SCRYPT_ACTIVE,1024,CB_MAX_BYTES,false);
+  #assert !nip49_finish_admit(0,0,32,false);
+  #assert !nip49_finish_admit(NIP49_SCRYPT_ACTIVE,-1,32,false);
+  #assert !nip49_finish_admit(NIP49_SCRYPT_ACTIVE,1025,32,false);
+  #assert !nip49_finish_admit(NIP49_SCRYPT_ACTIVE,0,31,false);
+  #assert !nip49_finish_admit(NIP49_SCRYPT_ACTIVE,0,CB_MAX_BYTES+1,false);
+  #assert !nip49_finish_admit(NIP49_SCRYPT_ACTIVE,0,32,true);
+  state:[1]Nip49Scrypt;password:[1]u8;memory:[2048]u8;first:[1024]u8;out:[32]u8;
+  #assert !nip49_start_after_pb1(state[..],password[..],memory[..],1,first[..],false);
+  #assert state[0].phase==0;
+  #assert !nip49_scrypt_step(state[..],memory[..],1,false);
+  #assert !nip49_scrypt_step(state[0..<0],memory[..],1,false);
+  #assert !nip49_scrypt_finish(state[0..<0],out[..],false);
+  state[0].phase=NIP49_SCRYPT_ACTIVE;state[0].romix[0]=RomixState.{r=8,n=2,phase=ROMIX_FILL};
+  #assert !nip49_scrypt_step(state[..],memory[..],1,true);
+  #assert !nip49_scrypt_finish(state[..],out[..],true);
+  #assert !nip49_scrypt_finish(state[..],out[0..<31],false);
+  state[0].phase=0;
+  #assert !nip49_complete(state[..],false) && state[0].phase==0;
+  #assert nip49_complete(state[..],true) && state[0].phase==NIP49_SCRYPT_DONE;
+}
+
+NIP49_SCRYPT_ACTIVE :: 1; NIP49_SCRYPT_DONE :: 2;
+Nip49Scrypt :: struct {romix:[1]RomixState;password:[1024]u8;password_count:int;phase:int;}
+
+nip49_scrypt_cost :: (log_n:int)->int {
+  if log_n<1 || log_n>18 {return 0;}
+  return 1<<log_n;
+}
+nip49_scrypt_params :: (password:int,salt:int,memory:int,log_n:int,overlap:bool)->bool {
+  if password<0 || password>1024 || salt!=16 || overlap {return false;}
+  return romix_params(8,nip49_scrypt_cost(log_n),memory);
+}
+nip49_finish_admit :: (phase:int,password:int,capacity:int,overlap:bool)->bool {
+  return phase==NIP49_SCRYPT_ACTIVE && password>=0 && password<=1024 && capacity>=32 && capacity<=CB_MAX_BYTES && !overlap;
+}
+nip49_complete :: (state:[]Nip49Scrypt,ok:bool)->bool {
+  if ok {state[0].phase=NIP49_SCRYPT_DONE;}
+  return ok;
+}
+nip49_start_after_pb1 :: (state:[]Nip49Scrypt,password:[]u8,memory:[]u8,log_n:int,first:[]u8,ok:bool)->bool {
+  if !ok {return false;}
+  state[0]=Nip49Scrypt.{};state[0].password_count=password.count;
+  for i:0..<password.count {state[0].password[i]=password[i];}
+  started:=romix_start(state[0].romix[..],first,memory,8,nip49_scrypt_cost(log_n),false);
+  if started {state[0].phase=NIP49_SCRYPT_ACTIVE;}
+  return started;
+}
+
+// Internal ABI: password is already NFKC-normalized by the caller; views,
+// scratch and state must remain stable, disjoint and protected from tampering.
+// State, scratch and transient secrets are not yet proven erased.
+nip49_scrypt_start :: (state:[]Nip49Scrypt,password:[]u8,salt:[]u8,memory:[]u8,log_n:int,overlap:bool)->bool #export_c {
+  if state.count!=1 || !nip49_scrypt_params(password.count,salt.count,memory.count,log_n,overlap) {return false;}
+  first:[1024]u8;
+  ok:=scrypt_pbkdf2_one(password,salt,1024,first[..],false);
+  return nip49_start_after_pb1(state,password,memory,log_n,first[..],ok);
+}
+
+nip49_scrypt_step :: (state:[]Nip49Scrypt,memory:[]u8,budget:int,overlap:bool)->bool #export_c {
+  if state.count!=1 || overlap || state[0].phase!=NIP49_SCRYPT_ACTIVE {return false;}
+  return romix_step(state[0].romix[..],memory,budget,false);
+}
+
+nip49_scrypt_finish :: (state:[]Nip49Scrypt,out:[]u8,overlap:bool)->bool #export_c {
+  if state.count!=1 {return false;}
+  if !nip49_finish_admit(state[0].phase,state[0].password_count,out.count,overlap) {return false;}
+  mixed:[1024]u8;if !romix_finish(state[0].romix[..],mixed[..],false) {return false;}
+  ok:=scrypt_pbkdf2_one(state[0].password[0..<state[0].password_count],mixed[..],32,out,false);
+  return nip49_complete(state,ok);
+}

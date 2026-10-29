@@ -1,0 +1,142 @@
+// Experimental resumable RFC 7914 ROMix. Memory indexes depend on the input.
+// This is not full scrypt, and it is not approved for production secrets.
+#load "scrypt_blockmix.coax";
+#authority;
+
+#test "RFC 7914 section 10 ROMix with bounded resumable steps" {
+  input:=[128]u8.[0xf7,0xce,0x0b,0x65,0x3d,0x2d,0x72,0xa4,0x10,0x8c,0xf5,0xab,0xe9,0x12,0xff,0xdd,0x77,0x76,0x16,0xdb,0xbb,0x27,0xa7,0x0e,0x82,0x04,0xf3,0xae,0x2d,0x0f,0x6f,0xad,0x89,0xf6,0x8f,0x48,0x11,0xd1,0xe8,0x7b,0xcc,0x3b,0xd7,0x40,0x0a,0x9f,0xfd,0x29,0x09,0x4f,0x01,0x84,0x63,0x95,0x74,0xf3,0x9a,0xe5,0xa1,0x31,0x52,0x17,0xbc,0xd7,0x89,0x49,0x91,0x44,0x72,0x13,0xbb,0x22,0x6c,0x25,0xb5,0x4d,0xa8,0x63,0x70,0xfb,0xcd,0x98,0x43,0x80,0x37,0x46,0x66,0xbb,0x8f,0xfc,0xb5,0xbf,0x40,0xc2,0x54,0xb0,0x67,0xd2,0x7c,0x51,0xce,0x4a,0xd5,0xfe,0xd8,0x29,0xc9,0x0b,0x50,0x5a,0x57,0x1b,0x7f,0x4d,0x1c,0xad,0x6a,0x52,0x3c,0xda,0x77,0x0e,0x67,0xbc,0xea,0xaf,0x7e,0x89];
+  expected:=[128]u8.[0x79,0xcc,0xc1,0x93,0x62,0x9d,0xeb,0xca,0x04,0x7f,0x0b,0x70,0x60,0x4b,0xf6,0xb6,0x2c,0xe3,0xdd,0x4a,0x96,0x26,0xe3,0x55,0xfa,0xfc,0x61,0x98,0xe6,0xea,0x2b,0x46,0xd5,0x84,0x13,0x67,0x3b,0x99,0xb0,0x29,0xd6,0x65,0xc3,0x57,0x60,0x1f,0xb4,0x26,0xa0,0xb2,0xf4,0xbb,0xa2,0x00,0xee,0x9f,0x0a,0x43,0xd1,0x9b,0x57,0x1a,0x9c,0x71,0xef,0x11,0x42,0xe6,0x5d,0x5a,0x26,0x6f,0xdd,0xca,0x83,0x2c,0xe5,0x9f,0xaa,0x7c,0xac,0x0b,0x9c,0xf1,0xbe,0x2b,0xff,0xca,0x30,0x0d,0x01,0xee,0x38,0x76,0x19,0xc4,0xae,0x12,0xfd,0x44,0x38,0xf2,0x03,0xa0,0xe4,0xe1,0xc4,0x7e,0xc3,0x14,0x86,0x1f,0x4e,0x90,0x87,0xcb,0x33,0x39,0x6a,0x68,0x73,0xe8,0xf9,0xd2,0x53,0x9a,0x4b,0x8e];
+  state:[1]RomixState;memory:[2048]u8;out:[129]u8;out[128]=165;
+  #assert romix_start(state[..],input[..],memory[..],1,16,false);
+  #assert !romix_finish(state[..],out[..],false);
+  for i:0..<32 {#assert romix_step(state[..],memory[..],1,false);}
+  #assert romix_finish(state[..],out[..],false);
+  for i:0..<128 {#assert out[i]==expected[i];}
+  #assert out[128]==165;
+  #assert romix_finish(state[..],out[0..<128],false);
+  #assert romix_step(state[..],memory[..],1,false);
+  #assert !romix_finish(state[0..<0],out[..],false);
+  #assert !romix_finish(state[..],out[..],true);
+  #assert !romix_finish(state[..],out[0..<127],false);
+}
+
+#test "ROMix refuses invalid metadata, phases, budgets and alias facts" {
+  input:[128]u8;memory:[2048]u8;state:[1]RomixState;out:[129]u8;
+  #assert !romix_start(state[..],input[..],memory[..],0,16,false);
+  #assert !romix_start(state[..],input[..],memory[..],1,15,false);
+  #assert !romix_start(state[..],input[..],memory[0..<2047],1,16,false);
+  #assert !romix_start(state[..],input[..],memory[..],1,16,true);
+  #assert romix_start(state[..],input[..],memory[..],1,16,false);
+  #assert !romix_step(state[..],memory[..],0,false);
+  #assert !romix_step(state[..],memory[..],65,false);
+  #assert !romix_step(state[..],memory[..],1,true);
+  #assert !romix_finish(state[..],out[..],false);
+}
+
+#test "ROMix limits and state validation at exact boundaries" {
+  #assert romix_params(1,2,256);
+  #assert romix_params(8,262144,268435456);
+  #assert romix_params(1,2,268435456);
+  #assert !romix_params(0,2,256);
+  #assert !romix_params(9,2,2304);
+  #assert !romix_params(1,1,128);
+  #assert !romix_params(1,3,384);
+  #assert !romix_params(1,524288,67108864);
+  #assert !romix_params(1,2,268435457);
+  #assert romix_power_of_two(1) && romix_power_of_two(2) && !romix_power_of_two(3);
+  #assert !romix_power_of_two(0);
+  state:[1]RomixState;state[0]=RomixState.{r=1,n=2,phase=ROMIX_FILL};
+  #assert romix_valid(state[0],256);
+  state[0].index=2;#assert !romix_valid(state[0],256);
+  state[0].index=-1;#assert !romix_valid(state[0],256);
+  state[0].index=0;state[0].phase=0;#assert !romix_valid(state[0],256);
+  state[0].phase=ROMIX_DONE;#assert !romix_valid(state[0],256);
+  state[0].index=2;#assert romix_valid(state[0],256);
+  state[0].r=0;#assert !romix_valid(state[0],256);
+  #assert romix_output_admit(128,128,false);
+  #assert romix_output_admit(128,CB_MAX_BYTES,false);
+  #assert !romix_output_admit(128,127,false);
+  #assert !romix_output_admit(128,CB_MAX_BYTES+1,false);
+  #assert !romix_output_admit(128,128,true);
+  next:[128]u8;state[0].x[0]=17;next[0]=42;
+  #assert !romix_complete_step(state[..],next[..],128,false);
+  #assert state[0].x[0]==17 && state[0].phase==0;
+  input:[128]u8;memory:[256]u8;
+  #assert !romix_step(state[..],memory[..],1,false);
+  #assert romix_start(state[..],input[..],memory[..],1,2,false);
+  #assert romix_step(state[..],memory[..],64,false);
+  #assert state[0].phase==ROMIX_DONE;
+}
+
+ROMIX_FILL :: 1; ROMIX_MIX :: 2; ROMIX_DONE :: 3;
+ROMIX_MAX_N :: 262144; ROMIX_MAX_MEMORY :: 268435456; ROMIX_MAX_STEP :: 64;
+RomixState :: struct {x:[1024]u8;r:int;n:int;index:int;phase:int;}
+
+romix_power_of_two :: (bits:u64)->bool {
+  if bits==0 {return false;}
+  return (bits & sub_wrap(cast(u64)0,bits))==bits;
+}
+romix_params :: (r:int,n:int,memory:int)->bool {
+  if r<1 || r>8 || n<2 || n/2>=ROMIX_MAX_N {return false;}
+  if !romix_power_of_two(cast(u64)n) {return false;}
+  needed:=n*128*r;
+  return memory>=needed && memory<=ROMIX_MAX_MEMORY;
+}
+romix_output_admit :: (size:int,capacity:int,overlap:bool)->bool {
+  return capacity>=size && capacity<=CB_MAX_BYTES && !overlap;
+}
+romix_complete_step :: (state:[]RomixState,next:[]u8,size:int,ok:bool)->bool {
+  if !ok {state[0].phase=0;return false;}
+  for i:0..<size {state[0].x[i]=next[i];}
+  state[0].index+=1;
+  if state[0].index==state[0].n {
+    if state[0].phase==ROMIX_FILL {state[0].phase=ROMIX_MIX;state[0].index=0;}
+    else {state[0].phase=ROMIX_DONE;}
+  }
+  return true;
+}
+romix_valid :: (state:RomixState,memory:int)->bool {
+  if !romix_params(state.r,state.n,memory) {return false;}
+  if state.phase==ROMIX_DONE {return state.index==state.n;}
+  return (state.phase==ROMIX_FILL || state.phase==ROMIX_MIX) && state.index>=0 && state.index<state.n;
+}
+// Internal ABI: the host must keep state and scratch memory stable and
+// disjoint from all other views, and protect both from tampering. The scratch
+// contains password-derived values and is not yet proven erased on any path.
+romix_start :: (state:[]RomixState,input:[]u8,memory:[]u8,r:int,n:int,overlap:bool)->bool #export_c {
+  if state.count!=1 || overlap || !romix_params(r,n,memory.count) || input.count!=128*r {return false;}
+  state[0]=RomixState.{r=r,n=n,phase=ROMIX_FILL};
+  for i:0..<input.count {state[0].x[i]=input[i];}
+  return true;
+}
+
+romix_step :: (state:[]RomixState,memory:[]u8,budget:int,overlap:bool)->bool #export_c {
+  if state.count!=1 || overlap || budget<1 || budget>ROMIX_MAX_STEP {return false;}
+  if !romix_valid(state[0],memory.count) {return false;}
+  size:=state[0].r*128;next:[1024]u8;success:=true;
+  for step:0..<budget {
+    if state[0].phase==ROMIX_DONE {break;}
+    if state[0].phase==ROMIX_FILL {
+      base:=state[0].index*size;
+      for i:0..<size {memory[base+i]=state[0].x[i];}
+    } else {
+      // RFC Integerify selects a password-derived memory address. This
+      // construction is intentionally not presented as constant-time.
+      word:=cb_load_le64(state[0].x[..],size-64).value;
+      selected:=cast(int)(word & cast(u64)(state[0].n-1));base:=selected*size;
+      for i:0..<size {state[0].x[i]^=memory[base+i];}
+    }
+    ok:=scrypt_blockmix(state[0].x[0..<size],next[0..<size],state[0].r,false);
+    success=romix_complete_step(state,next[..],size,ok);
+    if !success {break;}
+  }
+  return success;
+}
+
+romix_finish :: (state:[]RomixState,out:[]u8,overlap:bool)->bool #export_c {
+  if state.count!=1 || overlap {return false;}
+  if !romix_valid(state[0],ROMIX_MAX_MEMORY) || state[0].phase!=ROMIX_DONE {return false;}
+  size:=state[0].r*128;if !romix_output_admit(size,out.count,false) {return false;}
+  for i:0..<size {out[i]=state[0].x[i];}
+  return true;
+}
