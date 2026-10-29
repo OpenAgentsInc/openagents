@@ -19,7 +19,9 @@
 
 #load "space.coax";
 
-Ground :: struct { n: int = 64; cell: f32 = 1.5; west: f32 = -48; south: f32 = -48; }
+// rim_from and rim shape the bowl's edge: a city wider than a garden
+// moves it out and eases it (verse/everglade/plan.coax).
+Ground :: struct { n: int = 64; cell: f32 = 1.5; west: f32 = -48; south: f32 = -48; rim_from: f32 = 32; rim: f32 = 0.022; }
 
 HILL :: 1.6;           // metres: the rolling hills' height
 RIM_FROM :: 32.0;      // metres from the middle where the ground starts rising
@@ -44,12 +46,16 @@ ground_points :: (g: Ground) -> int { return (g.n + 1) * (g.n + 1); }
 
 // The hills the ground would have with no paths or flats: rolling, and
 // rising toward the edge so a realm sits in a shallow bowl.
-verse_terrain_hills :: (x: f32, z: f32) -> f32 #export_c {
+verse_terrain_hills :: (x: f32, z: f32) -> f32 #export_c { return hills_rim(x, z, f32(RIM_FROM), f32(RIM)); }
+
+// The same hills with the bowl's edge from rim_from metres out, rising rim
+// metres per metre squared.
+hills_rim :: (x: f32, z: f32, rim_from: f32, rim: f32) -> f32 {
   h := f32(HILL) * (0.55 * sin(x * 0.11 + 0.3) * cos(z * 0.093 - 0.4)
                   + 0.3 * sin(x * 0.23 - z * 0.17 + 1.1)
                   + 0.15 * sin(z * 0.31 + x * 0.07));
   r := sqrt(x * x + z * z);
-  if r > f32(RIM_FROM) { h += (r - f32(RIM_FROM)) * (r - f32(RIM_FROM)) * f32(RIM); }
+  if r > rim_from { h += (r - rim_from) * (r - rim_from) * rim; }
   return h;
 }
 
@@ -97,12 +103,12 @@ verse_path_nearest :: (nodes: [] f32, links: [] int, x: f32, z: f32) -> Near #ex
 smooth :: (e0: f32, e1: f32, x: f32) -> f32 { t := clamp01((x - e0) / (e1 - e0)); return t * t * (3 - 2 * t); }
 
 // The ground's height at x, z before it is sampled into the heightfield.
-shaped :: (nodes: [] f32, links: [] int, half: f32, flats: [] f32, x: f32, z: f32) -> f32 {
-  h := verse_terrain_hills(x, z);
+shaped :: (g: Ground, nodes: [] f32, links: [] int, half: f32, flats: [] f32, x: f32, z: f32) -> f32 {
+  h := hills_rim(x, z, g.rim_from, g.rim);
   p := verse_path_nearest(nodes, links, x, z);
   if p.link >= 0 {
     k := smooth(half + 0.2, half + 0.2 + f32(PATH_BLEND), p.d);
-    h = lerp(verse_terrain_hills(p.x, p.z) * f32(PATH_LEVEL), h, k);
+    h = lerp(hills_rim(p.x, p.z, g.rim_from, g.rim) * f32(PATH_LEVEL), h, k);
   }
   for i: 0..<flats.count / FLAT {
     fx := flats[i * FLAT]; fz := flats[i * FLAT + 1]; r := flats[i * FLAT + 2]; level := flats[i * FLAT + 3];
@@ -117,7 +123,7 @@ verse_terrain_build :: (g: Ground, heights: [] f32, nodes: [] f32, links: [] int
   if g.n < 1 || heights.count < ground_points(g) { return false; }
   for j: 0..<g.n + 1 {
     for i: 0..<g.n + 1 {
-      heights[j * (g.n + 1) + i] = shaped(nodes, links, half, flats, g.west + f32(i) * g.cell, g.south + f32(j) * g.cell);
+      heights[j * (g.n + 1) + i] = shaped(g, nodes, links, half, flats, g.west + f32(i) * g.cell, g.south + f32(j) * g.cell);
     }
   }
   return true;
@@ -377,6 +383,13 @@ built :: (heights: [] f32) -> bool {
   #assert finite(verse_terrain_height(g, h[..], f32(0.0 / 0.0), 3));
   flat: Ground; flat.n = 0;
   #assert verse_terrain_height(flat, h[..], 1, 1) == 0;
+}
+
+#test "a wider ground moves the bowl's edge out" {
+  wide: Ground; wide.rim_from = 80; wide.rim = 0.004;
+  #assert near(hills_rim(46, 0, wide.rim_from, wide.rim), hills_rim(46, 0, 1000, 0), 0.0001);
+  #assert hills_rim(95, 0, wide.rim_from, wide.rim) > hills_rim(95, 0, 1000, 0) + 0.8;
+  #assert near(hills_rim(46, 0, 32, 0.022), verse_terrain_hills(46, 0), 0.0001);
 }
 
 #test "a ray stops at the ground, just above it" {
