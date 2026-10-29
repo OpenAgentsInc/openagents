@@ -1,0 +1,54 @@
+// Experimental BIP-340 nonce/point preparation; not a complete signer.
+#load "schnorr_nonce_workspace.coax";
+#load "schnorr_scalar_workspace.coax";
+#load "schnorr_point_workspace.coax";
+#authority;
+#test "first BIP-340 vector derives the nonce point" {
+  key:[32]u8;key[31]=3;aux:[32]u8;msg:[32]u8;work:[1]SignNoncePoint;
+  pub:=[32]u8.[0xf9,0x30,0x8a,0x01,0x92,0x58,0xc3,0x10,0x49,0x34,0x4f,0x85,0xf8,0x9d,0x52,0x29,0xb5,0x31,0xc8,0x45,0x83,0x6f,0x99,0xb0,0x86,0x01,0xf1,0x13,0xbc,0xe0,0x36,0xf9];
+  expected:=[32]u8.[0xe9,0x07,0x83,0x1f,0x80,0x84,0x8d,0x10,0x69,0xa5,0x37,0x1b,0x40,0x24,0x10,0x36,0x4b,0xdf,0x1c,0x5f,0x83,0x07,0xb0,0x08,0x4c,0x55,0xf1,0xce,0x2d,0xca,0x82,0x15];
+  #assert snp_prepare(key[..],pub[..],aux[..],msg[..],work[..],false) && work[0].valid==1 && work[0].point[0].odd==1;
+  for i:0..<32 {#assert work[0].r[i]==expected[i];}
+}
+#test "nonce reduction keeps zero invalid while using fixed-work fallback" {
+  hash:[32]u8;work:[1]SignNoncePoint;work[0].valid=1;
+  #assert snp_reduce(hash[..],work[..]) && work[0].nonce_valid==0 && work[0].valid==0 && sc_equal(work[0].safe,sc_small(1));
+  hash[31]=1;#assert snp_reduce(hash[..],work[..]) && work[0].nonce_valid==1 && work[0].valid==0 && sc_equal(work[0].safe,sc_small(1));
+  #assert ss_write(SC_N,hash[..]);#assert snp_reduce(hash[..],work[..]) && work[0].nonce_valid==0 && work[0].valid==0 && sc_equal(work[0].safe,sc_small(1));
+  hash[31]+=1;#assert snp_reduce(hash[..],work[..]) && work[0].nonce_valid==1 && work[0].valid==0 && sc_equal(work[0].safe,sc_small(1));
+  #assert !snp_reduce(hash[0..<31],work[..]) && !snp_reduce(hash[..],work[0..<0]);
+}
+#test "nonce-point metadata refusal and stale validity reset" {
+  key:[32]u8;pub:[32]u8;aux:[32]u8;msg:[1]u8;work:[1]SignNoncePoint;work[0].valid=9;
+  #assert !snp_prepare(key[0..<31],pub[..],aux[..],msg[..],work[..],false);
+  #assert !snp_prepare(key[..],pub[0..<31],aux[..],msg[..],work[..],false);
+  #assert !snp_prepare(key[..],pub[..],aux[0..<31],msg[..],work[..],false);
+  #assert !snp_prepare(key[..],pub[..],aux[..],msg[..],work[0..<0],false);
+  #assert !snp_prepare(key[..],pub[..],aux[..],msg[..],work[..],true);
+  #assert work[0].valid==9;work[0].nonce_valid=8;#assert snp_start(work[..]) && work[0].valid==0 && work[0].nonce_valid==0;
+  work[0].valid=9;#assert !snp_step(work[..],false) && work[0].valid==0;
+  work[0].valid=7;#assert snp_step(work[..],true) && work[0].valid==7;
+  work[0].nonce_valid=1;work[0].point[0].finite=0;#assert snp_finish(work[..]) && work[0].valid==0;
+  work[0].nonce_valid=1;work[0].point[0].finite=1;#assert snp_finish(work[..]) && work[0].valid==1;
+  work[0].nonce_valid=0;#assert snp_finish(work[..]) && work[0].valid==0;
+}
+SignNoncePoint :: struct {hash_work:[1]SnNonce;point:[1]SignPoint;hash:[32]u8;safe:ScScalar;r:[32]u8;nonce_valid:u64;valid:u64;}
+snp_start :: (work:[]SignNoncePoint)->bool {work[0].valid=0;work[0].nonce_valid=0;return true;}
+snp_step :: (work:[]SignNoncePoint,ok:bool)->bool {if !ok {work[0].valid=0;}return ok;}
+snp_finish :: (work:[]SignNoncePoint)->bool {work[0].valid=work[0].nonce_valid & work[0].point[0].finite;return true;}
+snp_reduce :: (hash:[]u8,work:[]SignNoncePoint)->bool {
+  if work.count!=1 || hash.count!=32 {return false;}
+  loaded:=sc_reduce_bytes(hash);bits:u32;for i:0..<8 {bits|=loaded.value.limbs[i];}
+  work[0].valid=0;work[0].nonce_valid=sc_zero_bit(bits)^1;work[0].safe=sc_select(work[0].nonce_valid,loaded.value,sc_small(1));return loaded.ok;
+}
+// The caller supplies parity-normalized key bytes and matching public x. Views
+// are valid/stable/disjoint, and the entire work region requires a host wipe.
+// Success reports metadata/operations, not authorization to publish a result.
+snp_prepare :: (key:[]u8,pub:[]u8,aux:[]u8,message:[]u8,work:[]SignNoncePoint,overlap:bool)->bool #export_c {
+  if work.count!=1 || key.count!=32 || pub.count!=32 || aux.count!=32 || !sha256_input_ok(message.count) || overlap {return false;}
+  ok:=snp_start(work) && snp_step(work,sn_nonce(key,pub,aux,message,work[0].hash_work[..],work[0].hash[..],false));
+  ok=ok && snp_step(work,snp_reduce(work[0].hash[..],work));
+  ok=ok && snp_step(work,sp_base(work[0].safe,work[0].point[..]));
+  ok=ok && snp_step(work,sp_x(work[0].point[..],work[0].r[..]));
+  return ok && snp_finish(work);
+}

@@ -1,0 +1,4 @@
+const fs=require('fs'),assert=require('assert'),{WASI}=require('node:wasi');
+(async()=>{const wasi=new WASI({version:'preview1'});const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[2]),{wasi_snapshot_preview1:wasi.wasiImport});wasi.initialize(instance);const e=instance.exports;assert.equal(e.np_refusal(),1);
+for(const c of JSON.parse(fs.readFileSync(process.argv[3],'utf8'))){for(const n of ['key','pub','aux','message'])new Uint8Array(e.memory.buffer,e['np_'+n](),c[n].length).set(c[n]);assert.equal(e.np_run(c.message.length),1);assert.equal(e.np_valid(),BigInt(c.valid));assert.equal(e.np_odd(),BigInt(c.odd));for(const n of ['hash','r'])assert.deepStrictEqual(Array.from(new Uint8Array(e.memory.buffer,e['np_'+n](),32)),c[n]);}
+console.log('Wasm: independent BIP-340 nonce points passed');})().catch(e=>{console.error(e);process.exit(1)});
