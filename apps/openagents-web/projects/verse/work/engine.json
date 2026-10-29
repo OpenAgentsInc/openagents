@@ -15,6 +15,12 @@
       "title": "What Planetary Villa needs from the engine",
       "body": "Upgrades Hecate's Cemetery is blocked on; each links back to its Planetary Villa tasks.",
       "parent": "verse-engine"
+    },
+    {
+      "slug": "engine-everglade-parity",
+      "title": "Everglade at parity with the previous engine",
+      "body": "What the Rust Verse engine's Everglade had that the Coax one doesn't yet. The reference is verse/everglade/previous/ (copied from 0b401561a0^, before the Nuke).",
+      "parent": "verse-engine"
     }
   ],
   "tasks": [
@@ -269,6 +275,31 @@
       ],
       "blocked_by": [],
       "blocks": []
+    },
+    {
+      "slug": "verse-water",
+      "parent": "engine-everglade-parity",
+      "title": "The water system from the previous Verse engine",
+      "size": "XL",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "Port the whole water system of the previous Rust Verse engine to Coax: everything verse/everglade/previous/water.md specifies and the old engine shipped (phases W1 to W11: the coupling with physics, the shaders per tier, the spectrum, the clipmap, the shared clock, and what floats, swims and splashes), and the coast that reused it (verse/everglade/previous/coast.md, C1). Read the old code with `git show 0b401561a0^:<path>` (the paths in those files). Then Everglade's river and shore use it.\n\nNot started: the owner holds it until they say go.",
+      "files": [
+        "verse/",
+        "apps/openagents-web/"
+      ],
+      "acceptance": [
+        "Every behaviour water.md lists as shipped in the old engine works in a realm on openagents.com, side by side with the old engine's captures",
+        "Desktop and phone stay inside their frame budgets",
+        "Everglade's river is drawn with it",
+        "coax test passes on the engine files touched"
+      ],
+      "blocked_by": [],
+      "blocks": [],
+      "status": "draft"
     }
   ]
 }
