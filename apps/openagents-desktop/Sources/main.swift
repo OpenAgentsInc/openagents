@@ -129,7 +129,7 @@ final class ChatView: MTKView, MTKViewDelegate {
     cmd.commit()
   }
 
-  // --shot PATH: draw offscreen for a second and a half, write the last frame as a PNG, quit.
+  // --shot PATH [--click X,Y]: draw offscreen (clicking at device pixel X,Y after half a second) for a second and a half, write the last frame as a PNG, quit.
   func shot(_ path: String, width: Int, height: Int) {
     let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorPixelFormat, width: width, height: height, mipmapped: false)
     d.usage = [.renderTarget, .shaderRead]; d.storageMode = .shared
@@ -139,6 +139,10 @@ final class ChatView: MTKView, MTKViewDelegate {
     var frames = 0
     Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { timer in
       frames += 1
+      if frames == 30, let i = CommandLine.arguments.firstIndex(of: "--click"), i + 1 < CommandLine.arguments.count {
+        let xy = CommandLine.arguments[i + 1].split(separator: ",").compactMap { Float($0) }
+        if xy.count == 2 { _ = dk_pointer(chatState, xy[0], xy[1], 0); _ = dk_pointer(chatState, xy[0], xy[1], 2) }
+      }
       self.render(pass, size: CGSize(width: width, height: height), dpr: 2) { cmd in
         guard frames == 90 else { return }
         timer.invalidate()

@@ -43,6 +43,7 @@ CH_REFRESH :: 30.0;        // else
 POST_SEND :: 1; POST_MODEL :: 2; POST_STOP :: 3; POST_KEY :: 4; POST_KEY_REMOVE :: 5;
 H_HOME :: 1; H_SIGNIN :: 2; H_NEW :: 3; H_CHATS :: 4; H_KEY :: 5; H_FIELD :: 6; H_SEND :: 7; H_STOP :: 8;
 H_KFIELD :: 9; H_KSAVE :: 10; H_REPLACE :: 11; H_REMOVE :: 12; H_CLOSE :: 13;
+H_LAB :: 14; H_BACK :: 15;  // the Mac app's Lab: one thread, one field, BACK
 H_MODEL :: 20;             // + the model's index
 H_CONV :: 100;             // + a conversation's index in the list
 K_BACK :: -3; K_ESC :: -1;
@@ -63,6 +64,8 @@ ChatState :: struct {
   ask: [CH_URL] u8; ask_n: int; ask_id: int;
   post: [CH_URL] u8; post_n: int; post_id: int; post_kind: int;
   body: [CH_BODY] u8; body_n: int;
+  lab: bool;                     // the Mac app: in the Lab (its own thread, /api/lab/)
+  ask_lab: bool;                 // the state asked for was the Lab's
   effort: int;                   // the Mac app: the effort chosen here, its index + 1; 0 the backend's own
   shown: int;                    // the conversation shown: its id, 0 a new one, -1 the newest
   model: int;                    // the model chosen here, -1 the conversation's own
@@ -205,8 +208,9 @@ ch_number :: (buf: [] u8, at: int, n: int) -> int {
 }
 ch_ask :: (s: [] ChatState) {
   if s[0].ask_id >= 0 || s[0].ask_n > 0 { return; }
-  n := ch_put(s[0].ask[..], 0, "/api/chat/state");
-  if s[0].shown >= 0 { n = ch_put(s[0].ask[..], n, "?c="); n = ch_number(s[0].ask[..], n, s[0].shown); }
+  s[0].ask_lab = s[0].lab;
+  n := ch_put(s[0].ask[..], 0, ifx s[0].lab then "/api/lab/state" else "/api/chat/state");
+  if s[0].shown >= 0 && !s[0].lab { n = ch_put(s[0].ask[..], n, "?c="); n = ch_number(s[0].ask[..], n, s[0].shown); }
   s[0].ask_n = n;
   s[0].asked_at = s[0].time;
   if s[0].status == -1 { s[0].status = 0; }
@@ -225,7 +229,7 @@ ch_json :: (buf: [] u8, at: int, text: string) -> int {
 }
 // A post: {"key": "value", ...} from up to three pairs (an empty key is left out).
 ch_post :: (s: [] ChatState, op: string, kind: int, k1: string, v1: string, k2: string, v2: string, k3: string, v3: string) {
-  n := ch_put(s[0].post[..], 0, "/api/chat/");
+  n := ch_put(s[0].post[..], 0, ifx s[0].lab then "/api/lab/" else "/api/chat/");
   s[0].post_n = ch_put(s[0].post[..], n, op);
   b := ch_put(s[0].body[..], 0, "{");
   keys := [3] string.[k1, k2, k3]; values := [3] string.[v1, v2, v3];
@@ -240,6 +244,15 @@ ch_post :: (s: [] ChatState, op: string, kind: int, k1: string, v1: string, k2: 
   }
   s[0].body_n = ch_put(s[0].body[..], b, "}");
   s[0].post_kind = kind; s[0].post_id = -1;
+}
+// A pushed state is the Lab's: its Z line's column 7 is "lab".
+ch_pushed_lab :: (text: string) -> bool {
+  col := 0; k := 0;
+  while k < text.count && text[k] != '\n' {
+    if text[k] == '|' { col += 1; if col == 7 { return k + 3 < text.count && text[k + 1] == 'l' && text[k + 2] == 'a' && text[k + 3] == 'b'; } }
+    k += 1;
+  }
+  return false;
 }
 // The conversation a pushed state shows: its Z line's column 7.
 ch_pushed_for :: (text: string) -> int {
@@ -306,6 +319,7 @@ ch_answer :: (s: [] ChatState, id: int, bytes: string) {
   if i < bytes.count && bytes[i] == '\n' { i += 1; }
   if id == s[0].ask_id {
     s[0].ask_id = -1;
+    if s[0].ask_lab != s[0].lab { s[0].asked_at = -1000; return; }   // asked before switching: ask again
     if code == 200 {
       ch_take(s, bytes, i);
     } else if code == 0 || code >= 500 {
@@ -521,7 +535,7 @@ ch_working :: (s: [] ChatState, i: int, buf: [] u8) -> int {
 ch_turns :: (s: [] ChatState, out: [] f32, f: ChFlow, x0: f32, x1: f32, p: Pen, draw: bool) -> ChFlow {
   d := p.d; r := f;
   n := ch_count(s, 'U');
-  if n == 0 && ch_local(s) { return r; }
+  if n == 0 && (ch_local(s) || s[0].lab) { return r; }
   if n == 0 {
     r = ch_text(s, out, r, "Ask anything about OpenAgents. The agent reads a fresh copy of the public openagents repository (main) and the web, and says which files it read. It can't change anything.",
                 x0, x1 - x0, BODY, ink(p, INK_FAINT), 6, draw);
@@ -777,6 +791,7 @@ ch_header :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen, wide: bool)
   v = put(out, v, "CHAT", px, cy, 7 * d, ch_chrome(p, INK_ORANGE));
   kw := chip_width("KEY", 7 * d, p);
   if !ch_local(s) { v = ch_chip(s, out, v, "KEY", right - kw, cy, H_KEY, s[0].keying, p); }
+  else { kw = chip_width("LAB", 7 * d, p); v = ch_chip(s, out, v, "LAB", right - kw, cy, H_LAB, false, p); }
   if !wide {
     nw := chip_width("NEW", 7 * d, p); cw := chip_width("CHATS", 7 * d, p);
     v = ch_chip(s, out, v, "NEW", right - kw - nw - 8 * d, cy, H_NEW, false, p);
@@ -834,6 +849,7 @@ coaxial_chat_frame :: (s: [] ChatState, out: [] f32, uniforms: [] f32, width: f3
   w := width / d;
   m := ifx w < 700 then 12.0f32 else 24.0f32;
   g := 10 * d;
+  if s[0].lab { return ch_lab(s, out, uniforms, p, m * d, g); }
   wide := w >= 900;
   head := Box.{x0 = m * d, y0 = m * d, x1 = width - m * d, y1 = m * d + 44 * d};
   glass(uniforms, 0, head, 10 * d, 0.92);
@@ -877,6 +893,43 @@ coaxial_chat_frame :: (s: [] ChatState, out: [] f32, uniforms: [] f32, width: f3
   return frame(out, v, comp, 10 * d, p);
 }
 
+// The Lab (the Mac app): BACK, one transcript and one field, nothing else.
+ch_lab :: (s: [] ChatState, out: [] f32, uniforms: [] f32, p: Pen, m: f32, g: f32) -> int {
+  d := p.d; width := s[0].width; height := s[0].height;
+  head := Box.{x0 = m, y0 = m, x1 = width - m, y1 = m + 44 * d};
+  glass(uniforms, 0, head, 10 * d, 0.92);
+  cy := head.y0 + 26 * d;
+  v := ch_chip(s, out, 0, "BACK", head.x0 + 14 * d, cy, H_BACK, false, p);
+  lx := head.x0 + 14 * d + chip_width("BACK", 7 * d, p) + 16 * d;
+  v = put(out, v, "LAB", lx, cy, 7 * d, ch_chrome(p, INK_ORANGE));
+  v = frame(out, v, head, 10 * d, p);
+  bottom := height - m;
+  comp := Box.{x0 = m, y0 = bottom - 56 * d, x1 = width - m, y1 = bottom};
+  conv := Box.{x0 = m, y0 = head.y1 + g, x1 = width - m, y1 = comp.y0 - g};
+  glass(uniforms, 1, conv, 10 * d, 0.92);
+  glass(uniforms, 2, comp, 10 * d, 0.92);
+  inner := 22 * d;
+  x0 := conv.x0 + inner; x1 := conv.x1 - inner;
+  view0 := conv.y0 + 10 * d; view1 := conv.y1 - 8 * d;
+  measured := ch_turns(s, out, ChFlow.{y = 0, v = v}, x0, x1, p, false);
+  s[0].content = measured.y;
+  room := view1 - view0;
+  s[0].back = clamp(s[0].back, 0, hi(0, s[0].content - room));
+  start := ifx s[0].content <= room then view0 else view1 - s[0].content + s[0].back;
+  s[0].clip0 = view0 - 2 * d; s[0].clip1 = view1;
+  v = ch_turns(s, out, ChFlow.{y = start, v = v}, x0, x1, p, true).v;
+  v = frame(out, v, conv, 10 * d, p);
+  s[0].clip0 = 0; s[0].clip1 = height;
+  busy := ch_busy(s);
+  word := ifx busy then "STOP" else "SEND";
+  sw := chip_width(word, 7 * d, p);
+  fx1 := comp.x1 - 14 * d;
+  fb := Box.{x0 = comp.x0 + 14 * d, y0 = comp.y1 - 44 * d, x1 = fx1 - sw - 10 * d, y1 = comp.y1 - 12 * d};
+  v = ch_field(s, out, v, fb, p, 0, "", H_FIELD);
+  v = ch_chip(s, out, v, word, fx1 - sw, fb.y1 - 6 * d, ifx busy then H_STOP else H_SEND, !busy && s[0].text_n > 0 && s[0].typing, p);
+  return frame(out, v, comp, 10 * d, p);
+}
+
 // ---------------------------------------------------------------- input
 
 ch_hit_at :: (s: [] ChatState, x: f32, y: f32) -> int {
@@ -895,6 +948,7 @@ ch_send :: (s: [] ChatState) {
   if text.count == 0 { return; }
   c: [24] u8;
   cn := 0;
+  if s[0].lab { ch_post(s, "send", POST_SEND, "text", text, "", "", "", ""); return; }
   if s[0].shown > 0 { cn = ch_number(c[..], 0, s[0].shown); }
   ch_post(s, "send", POST_SEND, ifx cn > 0 then "c" else "", cast(string) c[0..<cn], "text", text, "model", MODELS[ch_model(s)]);
 }
@@ -916,16 +970,24 @@ ch_choose_model :: (s: [] ChatState, k: int) {
     ch_post(s, "model", POST_MODEL, "c", cast(string) c[0..<cn], "model", MODELS[k], "", "");
   }
 }
+// Into the Lab or back: the other screen's lines are dropped and asked for afresh.
+ch_switch :: (s: [] ChatState, lab: bool) {
+  s[0].lab = lab; s[0].data_n = 0; s[0].line_n = 0; s[0].back = 0;
+  s[0].listing = false; s[0].keying = false; s[0].typing = lab; s[0].focus = 0;
+  s[0].asked_at = -1000;
+}
 ch_act :: (s: [] ChatState, target: int) {
   if target != H_FIELD && target != H_SEND && target != H_KFIELD && target != H_KSAVE && (target < H_MODEL || target >= H_MODEL + 3) && (target < H_EFFORT || target >= H_EFFORT + 5) { s[0].typing = false; }
   if target == H_HOME { ch_go(s, "/"); }
   else if target == H_SIGNIN { ch_go(s, "/login"); }
+  else if target == H_LAB || target == H_BACK { ch_switch(s, target == H_LAB); }
   else if target == H_NEW { s[0].shown = 0; s[0].listing = false; s[0].keying = false; s[0].back = 0; s[0].asked_at = -1000; s[0].typing = true; s[0].focus = 0; }
   else if target == H_CHATS { s[0].listing = !s[0].listing; s[0].keying = false; }
   else if target == H_KEY { s[0].keying = !s[0].keying; s[0].listing = false; s[0].knote_n = 0; s[0].replacing = false; ch_wipe_key(s); }
   else if target == H_CLOSE { s[0].keying = false; s[0].replacing = false; ch_wipe_key(s); }
   else if target == H_FIELD { s[0].typing = true; s[0].focus = 0; }
   else if target == H_SEND { s[0].focus = 0; ch_send(s); }
+  else if target == H_STOP && s[0].lab { if s[0].post_kind == 0 { ch_post(s, "stop", POST_STOP, "", "", "", "", "", ""); } }
   else if target == H_STOP {
     if s[0].shown > 0 && s[0].post_kind == 0 {
       c: [24] u8;
@@ -1032,7 +1094,10 @@ coaxial_chat_message :: (s: [] ChatState, kind: int, length: int) #export_c {
   text := cast(string) s[0].inbox[0..<length];
   if kind >= CH_HTTP && kind < CH_HTTP + 8 { ch_answer(s, kind - CH_HTTP, text); return; }
   if kind == CH_TYPED { if s[0].typing { ch_type(s, text); } return; }
-  if kind == CH_PUSHED { if s[0].status == 200 && ch_pushed_for(text) == s[0].shown { ch_take(s, text, 0); } return; }
+  if kind == CH_PUSHED {
+    if s[0].status == 200 && (ifx s[0].lab then ch_pushed_lab(text) else !ch_pushed_lab(text) && ch_pushed_for(text) == s[0].shown) { ch_take(s, text, 0); }
+    return;
+  }
   if kind == CH_SHOWN && s[0].status == 200 { s[0].asked_at = -1000; }   // shown again: read the state now
 }
 coaxial_chat_hash :: (s: [] ChatState, length: int) #export_c { }
@@ -1236,4 +1301,33 @@ ch_typed_in :: (s: [] ChatState, text: string) {
   for i: 0..<other.count { s[0].inbox[i] = other[i]; }
   coaxial_chat_message(s[..], CH_PUSHED, other.count);
   #assert ch_count(s[..], 'U') == 1;
+}
+
+#test "the Mac app's Lab: LAB in the header, then BACK, one transcript and one field on /api/lab" {
+  s: [1] ChatState;
+  out: [CH_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n0 := ch_fresh(s[..], out[..], u[..], 2640, 1760);
+  coaxial_chat_asked(s[..], 0);
+  ch_answer(s[..], 0, "200\nZ|0|0|local||0|0|0|high\n");
+  n1 := ch_fresh(s[..], out[..], u[..], 2640, 1760);
+  #assert ch_has_hit(s[..], H_LAB);
+  ch_act(s[..], H_LAB);
+  n2 := ch_fresh(s[..], out[..], u[..], 2640, 1760);
+  #assert s[0].lab && cast(string) s[0].ask[0..<s[0].ask_n] == "/api/lab/state";
+  #assert ch_has_hit(s[..], H_BACK) && ch_has_hit(s[..], H_FIELD) && !ch_has_hit(s[..], H_MODEL) && !ch_has_hit(s[..], H_NEW);
+  coaxial_chat_asked(s[..], 1);
+  ch_answer(s[..], 1, "200\nZ|0|0|local||0|0|lab|high\nU|5|done|Oct 28|claude-opus-5-5|local|hi|hello||x|0\n");
+  #assert ch_count(s[..], 'U') == 1;
+  ch_typed_in(s[..], "again");
+  ch_act(s[..], H_SEND);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/lab/send" && cast(string) s[0].body[0..<s[0].body_n] == "{\"text\":\"again\"}";
+  coaxial_chat_posted(s[..], 2);
+  push := "Z|0|0|local||0|1|lab|high\nU|5|done|Oct 28|claude-opus-5-5|local|hi|hello||x|0\nU|6|running|Oct 28|claude-opus-5-5|local|again|he||writing|0\n";
+  for i: 0..<push.count { s[0].inbox[i] = push[i]; }
+  coaxial_chat_message(s[..], CH_PUSHED, push.count);
+  #assert ch_count(s[..], 'U') == 2;
+  ch_act(s[..], H_BACK);
+  #assert !s[0].lab && s[0].line_n == 0;
+  n3 := ch_fresh(s[..], out[..], u[..], 2640, 1760);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/chat/state";
 }

@@ -21,7 +21,7 @@ final class Conversation: Codable {
   var busy: Bool { turns.contains { $0.status == "queued" || $0.status == "running" } }
 }
 
-struct Saved: Codable { var next: Int; var conversations: [Conversation]; var effort: String? }
+struct Saved: Codable { var next: Int; var conversations: [Conversation]; var effort: String?; var lab: Conversation? }
 
 final class Backend {
   private let lock = NSLock()
@@ -31,6 +31,9 @@ final class Backend {
   // host pushes it at most every 120 ms (STREAM_COMMIT_MS) for the conversation last asked for.
   private var dirty = false
   private var lastShown = -1
+  private var lastLab = false
+  // The Lab: one thread of its own, apart from the chats (/api/lab/).
+  private var lab = Conversation(id: 0, title: "Lab", model: "claude-opus-5-5")
   private var conversations: [Conversation] = []
   private var running: [Int: Process] = [:]
   private var partial: [Int: String] = [:]
@@ -41,13 +44,13 @@ final class Backend {
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     file = dir.appendingPathComponent("chat.json")
     if let data = try? Data(contentsOf: file), let saved = try? JSONDecoder().decode(Saved.self, from: data) {
-      next = saved.next; conversations = saved.conversations; effort = saved.effort ?? effort
-      for c in conversations { for t in c.turns where t.status == "queued" || t.status == "running" { t.status = "stopped"; t.error = "the app was closed" } }
+      next = saved.next; conversations = saved.conversations; effort = saved.effort ?? effort; lab = saved.lab ?? lab
+      for c in conversations + [lab] { for t in c.turns where t.status == "queued" || t.status == "running" { t.status = "stopped"; t.error = "the app was closed" } }
     }
   }
 
   private func save() {
-    if let data = try? JSONEncoder().encode(Saved(next: next, conversations: conversations, effort: effort)) { try? data.write(to: file, options: .atomic) }
+    if let data = try? JSONEncoder().encode(Saved(next: next, conversations: conversations, effort: effort, lab: lab)) { try? data.write(to: file, options: .atomic) }
   }
 
   // One request, answered "STATUS\nbody" as host.js answers chat.wasm.
@@ -59,7 +62,22 @@ final class Backend {
     if parts.count > 1 { for kv in parts[1].split(separator: "&") { let p = kv.split(separator: "=", maxSplits: 1); if p.count == 2 { query[String(p[0])] = String(p[1]) } } }
     let json = (body.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
     switch (post, path) {
-    case (false, "/api/chat/state"): lastShown = Int(query["c"] ?? "") ?? -1; return "200\n" + lines(shown: lastShown)
+    case (false, "/api/lab/state"): lastLab = true; return "200\n" + labLines()
+    case (true, "/api/lab/send"):
+      let text = (json["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+      if text.isEmpty { return "400\n{\"error\": \"nothing to send\"}" }
+      if lab.busy { return "409\n{\"error\": \"a turn is still running\"}" }
+      let t = Turn(id: next, text: text, model: lab.model); next += 1
+      lab.turns.append(t); lab.updated = Date(); save()
+      start(lab, t)
+      return "200\n{\"turn\": \(t.id)}"
+    case (true, "/api/lab/stop"):
+      if let t = lab.turns.last(where: { $0.status == "queued" || $0.status == "running" }) {
+        t.status = "stopped"; t.error = "stopped"; t.working = ""
+        running[t.id]?.terminate(); running[t.id] = nil; dirty = true; save()
+      }
+      return "200\n{}"
+    case (false, "/api/chat/state"): lastLab = false; lastShown = Int(query["c"] ?? "") ?? -1; return "200\n" + lines(shown: lastShown)
     case (true, "/api/chat/send"): return send(json)
     case (true, "/api/chat/model"):
       if let c = find(json["c"]), let m = json["model"] as? String { c.model = m; save() }
@@ -84,7 +102,7 @@ final class Backend {
     lock.lock(); defer { lock.unlock() }
     if !dirty { return nil }
     dirty = false
-    return lines(shown: lastShown)
+    return lastLab ? labLines() : lines(shown: lastShown)
   }
 
   private func find(_ v: Any?) -> Conversation? {
@@ -230,11 +248,21 @@ final class Backend {
     for c in list { out += "C|\(c.id)|\(cell(c.title))|\(c.model)|\(Backend.stamp.string(from: c.updated))|\(c.busy ? 1 : 0)\n" }
     if let c = shown {
       out += "S|\(c.id)|\(cell(c.title))|\(c.model)|\(c.session == nil ? 0 : 1)\n"
-      for t in c.turns {
+      out += turnLines(c)
+    }
+    return out
+  }
+
+  private func labLines() -> String {
+    "Z|0|0|local||0|\(lab.busy ? 1 : 0)|lab|\(effort)\n" + turnLines(lab)
+  }
+
+  private func turnLines(_ c: Conversation) -> String {
+    var out = ""
+    for t in c.turns {
         let answer = t.answer + (partial[t.id].map { (t.answer.isEmpty ? "" : "\n\n") + $0 } ?? "")
         out += "U|\(t.id)|\(t.status)|\(Backend.stamp.string(from: t.at))|\(t.model)|local|\(escaped(t.text))|\(escaped(answer))|\(cell(t.error))|\(cell(t.working))|\(String(format: "%.4f", t.cost))\n"
         for tool in t.tools { out += "T|\(t.id)|\(cell(tool.name))|\(cell(tool.detail))\n" }
-      }
     }
     return out
   }
