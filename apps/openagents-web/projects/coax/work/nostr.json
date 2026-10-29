@@ -823,7 +823,8 @@
         "server-nip98-session",
         "project-page-verify",
         "nostr-proto-adapters",
-        "nostr-event-store"
+        "nostr-event-store",
+        "project-verified-borrowed-state"
       ]
     },
     {
@@ -2055,7 +2056,8 @@
       ],
       "blocks": [
         "project-live-catchup",
-        "project-page-verify"
+        "project-page-verify",
+        "project-verified-borrowed-state"
       ],
       "status": "resolved"
     },
@@ -2084,6 +2086,45 @@
         "project-page-live"
       ],
       "blocks": [
+        "project-page-verify",
+        "project-verified-borrowed-state"
+      ]
+    },
+    {
+      "slug": "project-verified-borrowed-state",
+      "parent": "m8-project-live",
+      "title": "Borrowed runner state and complete checked project admission",
+      "size": "L",
+      "labels": [
+        "coax",
+        "nostr",
+        "authority",
+        "web"
+      ],
+      "body": "The #c969 draft has checked queue/receipt, project/root scope and exact-ID predicates, but its real Live runner still makes unchecked subscription/context, namespace replacement, quarantine, repair/EOSE, timeout and publication decisions. Owned multi-megabyte Store/Table/byte arrays cannot be instantiated under the unchanged coax0 aggregate-slot cap. Replace those owned policy-state buffers with coherently bound borrowed views, or extract small borrowed policy state while keeping the effect runner free of authority choices. Exercise the same positive runtime transition code with real small buffers, mark every authority-bearing source unit and complete its full mutation closure. Production capacities stay explicit and unchanged; there is no test-only implementation or interpreter-cap waiver. Preserve the unshipped #c969 draft and its frozen 200-issue/1,562-event public workload. This prerequisite does not itself approve production verification, secret use or the separate #c969 rendered-frame budget.",
+      "files": [
+        "apps/openagents-web/project-verified.coax",
+        "apps/openagents-web/project-live.coax",
+        "apps/openagents-web/project-fold.coax",
+        "apps/openagents-web/project-face.c",
+        "apps/openagents-web/project-verify-queue.coax",
+        "apps/openagents-web/project-scope.coax",
+        "coax/tests/nostr/",
+        "coax/web/project/"
+      ],
+      "acceptance": [
+        "Inventory every real subscription, receipt/generation, context/root synthesis, namespace replacement, quarantine, repair/EOSE, timeout and candidate replacement decision; every authority choice is in a checked #authority unit, and effects do not recreate policy",
+        "Borrowed-buffer binding validates coherent typed capacities before mutation; stable/disjoint truthful host allocation, lifetime and serialized access premises are explicit; production event/byte/tag/element, queue and output maxima remain bounded and unchanged",
+        "Positive admission, refusal, root repair, stale generations, candidate publication and deletion/replacement paths execute in Coax checks using the same code and real borrowed storage; full reachable mutation closes with zero survivors and no dummy early-return-only coverage, waived mutants, alternate test implementation or interpreter-cap increase",
+        "Native checked/release and actual Wasm exercise declared production-max buffer shapes, exact/one-past capacity faults, malformed binding and generation/lifetime failure paths without partial authority or damaging the last complete display",
+        "The preserved signed fixture and public capture retain independent TS table parity; #c969 remains open until its separate actual browser forgery, live-update and <=4 ms rendered-frame acceptance also passes"
+      ],
+      "blocked_by": [
+        "project-page-live",
+        "nostr-event",
+        "project-live-catchup"
+      ],
+      "blocks": [
         "project-page-verify"
       ]
     },
@@ -2109,7 +2150,8 @@
       "blocked_by": [
         "project-page-live",
         "nostr-event",
-        "project-live-catchup"
+        "project-live-catchup",
+        "project-verified-borrowed-state"
       ],
       "blocks": [
         "nostr-production-cutover",

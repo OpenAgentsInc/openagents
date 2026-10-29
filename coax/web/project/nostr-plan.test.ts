@@ -140,3 +140,12 @@ test("signing waits for a real bounded positive verification check", () => {
   expect(task.acceptance.join(" ")).toContain("20,000,000-step")
   expect(task.body).toContain("do not replace it with a mock")
 })
+
+test("verified project publication waits for the real runner authority closure",()=>{
+  const t=tasks.get("project-verified-borrowed-state");
+  expect(t).toBeDefined();expect(reaches("project-page-verify",t.slug)).toBe(true);
+  expect(t.acceptance.join(" ")).toContain("zero survivors");
+  expect(t.acceptance.join(" ")).toContain("interpreter-cap increase");
+  expect(t.acceptance.join(" ")).toContain("production-max");
+  expect(t.body).toContain("200-issue/1,562-event");
+});
