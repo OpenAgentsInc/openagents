@@ -617,8 +617,12 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
 @fragment fn scene_fs(s: S, @builtin(front_facing) front: bool) -> Lit {
   let tex = textureSample(sheets, sheet, s.uv, s.slice);
   if (s.look == LOOK_GLOW) {
-    // fire, a fireball, lightning: as bright as its colour says, three times over, and it all blooms
-    let c = pow(max(s.tint, vec3f(0.0)), vec3f(2.2)) * 3.0;
+    // fire, a fireball, lightning: white-hot where it faces you, its colour, then deep red at its rim;
+    // up to three times as bright as its colour says, and it all blooms
+    let facing = abs(dot(normalize(s.normal), normalize(u.eye.xyz - s.world)));
+    let tint = pow(max(s.tint, vec3f(0.0)), vec3f(2.2));
+    let rim = tint * vec3f(1.0, 0.35, 0.2);
+    let c = mix(rim * 0.5, mix(tint, vec3f(1.0, 0.97, 0.9), facing * facing * 0.6), smoothstep(0.0, 0.7, facing)) * (0.8 + 2.4 * facing);
     return Lit(vec4f(c, 1.0), vec4f(0.0));
   }
   var n = normalize(s.normal);

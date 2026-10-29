@@ -451,11 +451,11 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
   _ := demo_settle(w);
   kind := ifx slot == SP_ORB then 2 else ifx slot == SP_METEOR then 0 else 1;
   sp_add_blast(s, at, radius, kind);
-  if kind != 2 { sp_add_scorch(s, v3(at.x, sp_surface(s, at.x, at.z, at.y + 0.5), at.z), ifx kind == 0 then 2.6f32 else radius * 0.6); }
+  if kind != 2 { sp_add_scorch(s, v3(at.x, sp_surface(s, at.x, at.z, at.y + 0.5), at.z), ifx kind == 0 then 1.4f32 else radius * 0.45); }
   for q: 0..<(ifx kind == 2 then 0 else 4) {
     sp_add_puff(s, add(at, v3((srd_unit(s[0].sp.dice[..]) - 0.5) * 2, 0.5, (srd_unit(s[0].sp.dice[..]) - 0.5) * 2)),
                 v3((srd_unit(s[0].sp.dice[..]) - 0.5) * 1.2, 1.4 + srd_unit(s[0].sp.dice[..]), (srd_unit(s[0].sp.dice[..]) - 0.5) * 1.2),
-                1.6 + srd_unit(s[0].sp.dice[..]), 4.5, ifx kind == 0 then 0.18f32 else 0.3f32);
+                1.3 + srd_unit(s[0].sp.dice[..]), 4.5, ifx kind == 0 then 0.3f32 else 0.42f32);
   }
   if kind == 2 {
     for q: 0..<SP_DROPS {
@@ -665,15 +665,15 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     e := f * f * 0.35 + f * 0.65;
     at := mix(me.from, me.to, e);
     dir := unit_or(sub(me.to, me.from), v3(0, -1, 0));
-    sp_ball(s, LOOK_GLOW, at, 1.5, v3(1.0, 0.92, 0.6));
-    sp_ball(s, LOOK_GLOW, at, 2.3, v3(YELLOW_R, YELLOW_G, YELLOW_B));
-    for k: 1..<8 {
+    sp_ball(s, LOOK_MATTE, at, 0.7, v3(0.12, 0.1, 0.09));   // the rock
+    sp_ball(s, LOOK_GLOW, sub(at, times(dir, 0.15)), 1.2, v3(1.0, 0.85, 0.5));
+    for k: 1..<9 {
       tk := f32(k);
-      p := sub(at, times(dir, tk * 1.25));
-      c := mix(v3(YELLOW_R, YELLOW_G, YELLOW_B), v3(0.85, 0.16, 0.03), tk / 8);
-      sp_ball(s, LOOK_GLOW, p, 2.0 - tk * 0.2, c);
+      p := sub(at, times(dir, tk * 0.75));
+      c := mix(v3(YELLOW_R, YELLOW_G, YELLOW_B), v3(0.85, 0.16, 0.03), tk / 9);
+      sp_ball(s, LOOK_GLOW, p, 1.15 - tk * 0.1, c);
     }
-    for k: 0..<3 { sp_ball(s, LOOK_MATTE, sub(at, times(dir, 10 + f32(k) * 2.2)), 1.6 + f32(k) * 0.5, v3(0.16, 0.14, 0.13)); }
+    for k: 0..<3 { sp_ball(s, LOOK_MATTE, sub(at, times(dir, 7.5 + f32(k) * 1.6)), 0.9 + f32(k) * 0.35, v3(0.42, 0.4, 0.38)); }
   }
   // the blasts: a fireball (or a splash) that swells and fades
   for i: 0..<SP_BLASTS {
@@ -683,12 +683,13 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     if bl.t > 0.9 { s[0].sp.blasts[i].live = false; continue; }
     grow := clamp(bl.t / 0.3, 0, 1);
     fade := 1 - clamp((bl.t - 0.3) / 0.6, 0, 1);
-    r := bl.radius * (0.4 + 0.9 * grow) * (0.5 + 0.5 * fade);
+    r := bl.radius * (0.25 + 0.5 * grow) * (0.4 + 0.6 * fade);
     if bl.kind == 2 {
       sp_ball(s, LOOK_WATER, add(bl.at, v3(0, r * 0.3, 0)), r * 2 * fade, v3(0.42, 0.62, 0.72));
     } else {
       hot := ifx bl.kind == 0 then mix(v3(1.0, 0.85, 0.5), v3(0.85, 0.2, 0.05), 1 - fade) else mix(v3(0.95, 0.97, 1.0), v3(0.45, 0.6, 1.0), 1 - fade);
       sp_ball(s, LOOK_GLOW, add(bl.at, v3(0, r * 0.4, 0)), r * 2, hot);
+      if bl.t < 0.12 { sp_ball(s, LOOK_GLOW, add(bl.at, v3(0, r * 0.4, 0)), r * 2.6, times(hot, 0.6)); }
     }
   }
   // the scorch marks, fading as they shrink
@@ -699,7 +700,7 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     if sc.t > f32(SP_SCORCH_LIFE) { s[0].sp.scorches[i].live = false; continue; }
     left := clamp((f32(SP_SCORCH_LIFE) - sc.t) / 3, 0, 1);
     r := sc.radius * 2 * (0.4 + 0.6 * left);
-    sp_shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(sc.at, v3(0, 0.03, 0)), v3(r, 0, 0), v3(0, 0.05, 0), v3(0, 0, r), v3(0.05, 0.045, 0.04));
+    sp_shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(sc.at, v3(0, 0.01, 0)), v3(r, 0, 0), v3(0, 0.02, 0), v3(0, 0, r), v3(0.03, 0.025, 0.022));
     if sc.t < 3 { sp_shape(s, SHAPE_CYLINDER, LOOK_GLOW, add(sc.at, v3(0, 0.06, 0)), v3(r * 0.5, 0, 0), v3(0, 0.03, 0), v3(0, 0, r * 0.5), times(v3(0.9, 0.3, 0.05), 1 - sc.t / 3)); }
   }
   // smoke and dust
@@ -711,7 +712,7 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     if pf.t > pf.life { s[0].sp.puffs[i].live = false; continue; }
     f := pf.t / pf.life;
     size := pf.size * (0.6 + 1.6 * f) * (1 - f * f * 0.8);
-    sp_ball(s, LOOK_MATTE, pf.at, size, v3(pf.dark, pf.dark * 0.95, pf.dark * 0.9));
+    sp_ball(s, LOOK_MATTE, pf.at, size * 0.7, v3(pf.dark, pf.dark * 0.97, pf.dark * 0.94));
   }
   // the orb's splash
   for i: 0..<SP_DROPS {
