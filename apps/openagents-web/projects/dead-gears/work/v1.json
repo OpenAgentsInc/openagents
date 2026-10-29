@@ -1,0 +1,250 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "dead-gears",
+  "initiative": {
+    "slug": "dg-v2",
+    "title": "Dead Gears that plays well: aim it, move like a person, fights that feel good",
+    "body": "Owner's review of the first version: \"projectiles are weird, like they auto shoot the nearest thing, and no character controller, it's blocky, horrible.\" First fix aiming (shots go where you point), then move onto Verse's shared controller and skinned character, then the feel of the fights.",
+    "spec": "verse/deadgears/"
+  },
+  "milestones": [
+    {
+      "slug": "dg-aim",
+      "title": "Aiming you control",
+      "body": "Shots go through the crosshair, with a crosshair worth looking at, light assist on phones only, and shots that read clearly."
+    },
+    {
+      "slug": "dg-character",
+      "title": "A real character",
+      "body": "Verse's player controller and skinned character for you and the support engineer, and creatures with real bodies."
+    },
+    {
+      "slug": "dg-feel",
+      "title": "Fights that feel good",
+      "body": "Hit feel, smarter creatures, a dodge and cover, tuning from play data, and an owner playtest."
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "dg-free-aim",
+      "title": "Shots go where the crosshair is, not to the nearest creature",
+      "parent": "dg-aim",
+      "size": "M",
+      "body": "Owner: \"projectiles are weird, like they auto shoot the nearest thing\". Today dg_fire (verse/deadgears/rules.coax) calls dg_target, which picks the best mutant inside a cone that widens 0.25 m per metre, and the beam snaps to it whatever the crosshair is on; the aim is only the camera's yaw, so pitch does nothing. Replace it with a ray from the camera through the crosshair (yaw and pitch) into the arena, hitting the first mutant part, cover or wall it meets. Body regions come from where the ray hits, not the mode: high on the body is the head, the limbs sever.",
+      "files": [
+        "verse/deadgears/rules.coax",
+        "apps/openagents-web/deadgears.coax"
+      ],
+      "acceptance": [
+        "A shot with the crosshair on empty floor hits nothing, even with a mutant a metre to the side",
+        "Tilting the view up and down moves where the shot lands",
+        "A test fires through a gap in cover and hits the mutant behind it, and fires at cover and hits the cover"
+      ]
+    },
+    {
+      "slug": "dg-crosshair",
+      "title": "A crosshair that tells you what you'd hit",
+      "parent": "dg-aim",
+      "size": "S",
+      "body": "A small reticle at screen centre that brightens over a mutant and marks a hit (a short tick) and a kill. A hit marker on the creature's body where the shot landed.",
+      "files": [
+        "apps/openagents-web/deadgears.coax"
+      ],
+      "acceptance": [
+        "The reticle changes when it is over a mutant",
+        "Every hit shows a mark where it landed"
+      ],
+      "blocked_by": [
+        "dg-free-aim"
+      ]
+    },
+    {
+      "slug": "dg-aim-assist",
+      "title": "Light aim assist on phones only",
+      "parent": "dg-aim",
+      "size": "S",
+      "body": "Thumbs are less precise than a mouse. On touch only: slow the turn a little while the crosshair crosses a mutant, and bend a shot at most a few degrees toward a mutant it nearly hit. Never pick a target off-screen or behind you. Off with a mouse.",
+      "files": [
+        "apps/openagents-web/deadgears.coax"
+      ],
+      "acceptance": [
+        "With a mouse, shots never bend",
+        "On a phone, a shot within a few degrees of a mutant hits it; one further off misses"
+      ],
+      "blocked_by": [
+        "dg-free-aim"
+      ]
+    },
+    {
+      "slug": "dg-projectiles",
+      "title": "Shots that travel and read clearly",
+      "parent": "dg-aim",
+      "size": "M",
+      "body": "The cutter's beam is a 0.1 s line from you to the target. Make each mode read: Sever a fast spinning blade with a short travel time, Head a thin tracer, Core a heavier slower bolt. Impacts spark on cover and walls. The brute's bolts get a visible wind-up so you can dodge them.",
+      "files": [
+        "verse/deadgears/rules.coax",
+        "apps/openagents-web/deadgears.coax"
+      ],
+      "acceptance": [
+        "Each mode's shot looks different and travels from the muzzle",
+        "A brute's bolt can be seen coming and stepped out of"
+      ],
+      "blocked_by": [
+        "dg-free-aim"
+      ]
+    },
+    {
+      "slug": "dg-controller",
+      "title": "Use Verse's player controller",
+      "parent": "dg-character",
+      "size": "L",
+      "body": "Owner: \"no character controller, it's blocky, horrible\". Dead Gears walks you with its own 40-line walk() (fixed speeds, no acceleration, no jump, yaw = camera). The Grid, Everglade and the garden share verse/player.coax: acceleration, turning to face your way, run, gravity, jump, steps, a camera that pulls in at walls. Move Dead Gears onto it: the arena's hull, reactor and cover as its walls, the creatures and the support engineer as its bodies. Strafe while aiming (the character faces the crosshair when the cutter is up, faces the way it walks when not).",
+      "files": [
+        "apps/openagents-web/deadgears.coax",
+        "verse/player.coax"
+      ],
+      "acceptance": [
+        "Walking starts and stops with acceleration, not instantly",
+        "You can jump onto a low crate and step off",
+        "The camera never ends up inside a wall or cover",
+        "With the cutter raised you strafe while facing the crosshair"
+      ]
+    },
+    {
+      "slug": "dg-skinned-you",
+      "title": "You are a real animated character, not boxes",
+      "parent": "dg-character",
+      "size": "L",
+      "body": "Today engineer() draws you from a dozen boxes that bob. verse/cast.coax already plays a skinned character with idle, walk, sprint and jump clips cross-fading in 0.18 s (the Grid). Draw you with it, add aim, fire, reload and crouch-at-cover poses on top (an upper-body layer while the legs walk), and give the suit Dead Gears' colours.",
+      "files": [
+        "apps/openagents-web/deadgears.coax",
+        "verse/cast.coax"
+      ],
+      "acceptance": [
+        "You walk, run, jump, crouch, aim, fire and reload with distinct animation",
+        "Feet don't slide: the walk cycle matches the speed",
+        "Golden shots on a laptop and a phone"
+      ],
+      "blocked_by": [
+        "dg-controller"
+      ]
+    },
+    {
+      "slug": "dg-skinned-ally",
+      "title": "The support engineer uses the same character",
+      "parent": "dg-character",
+      "size": "S",
+      "body": "Same as dg-skinned-you for the support engineer, in its own colours, with its repair animation at the reactor.",
+      "files": [
+        "apps/openagents-web/deadgears.coax"
+      ],
+      "acceptance": [
+        "The support engineer walks, ducks and repairs with animation"
+      ],
+      "blocked_by": [
+        "dg-skinned-you"
+      ]
+    },
+    {
+      "slug": "dg-creature-bodies",
+      "title": "Creatures with real bodies",
+      "parent": "dg-character",
+      "size": "L",
+      "body": "The mutants are box figures too. Build them as soft-bone figures (verse/figure.coax, the rounded bones the shadow visitor uses) or skinned meshes, each kind with its own silhouette and gait. Severed limbs come off where the shot hit and keep their shape; a crawler that lost its legs drags itself.",
+      "files": [
+        "apps/openagents-web/deadgears.coax",
+        "verse/figure.coax"
+      ],
+      "acceptance": [
+        "Each creature kind is recognisable by silhouette alone",
+        "A severed limb falls from where it was hit"
+      ],
+      "blocked_by": [
+        "dg-free-aim"
+      ],
+      "needs": [
+        "verse:verse-soft-silhouette"
+      ]
+    },
+    {
+      "slug": "dg-hit-feel",
+      "title": "Hits that feel like hits",
+      "parent": "dg-feel",
+      "size": "M",
+      "body": "Hit-stop of a few frames on a kill, a small camera kick per shot, the creature recoiling from the side it was hit, sparks and fluid at the hit point, and a sound per hit (muted in tests and headless runs, per AGENTS.md).",
+      "files": [
+        "apps/openagents-web/deadgears.coax"
+      ],
+      "acceptance": [
+        "A kill pauses the action for under 80 ms",
+        "A creature hit on the left recoils to the right"
+      ],
+      "blocked_by": [
+        "dg-free-aim"
+      ]
+    },
+    {
+      "slug": "dg-enemy-ai",
+      "title": "Creatures that flank and use the room",
+      "parent": "dg-feel",
+      "size": "M",
+      "body": "Today mutants walk at you and the brute fires bolts. Give them roles: crawlers come from vents and under cover, runners circle to flank, the brute pins you behind cover. They path round cover rather than through it, and come at the reactor when you are far from it.",
+      "files": [
+        "verse/deadgears/rules.coax"
+      ],
+      "acceptance": [
+        "A test shows a runner reaching you from the side while you face a crawler",
+        "No creature walks through cover"
+      ]
+    },
+    {
+      "slug": "dg-dodge",
+      "title": "A dodge, and cover you slide into",
+      "parent": "dg-feel",
+      "size": "M",
+      "body": "A short dodge roll with a cooldown, and cover by moving into it (the COVER button stays on phones). Peek and fire from cover.",
+      "files": [
+        "apps/openagents-web/deadgears.coax",
+        "verse/deadgears/rules.coax"
+      ],
+      "acceptance": [
+        "Dodging through a brute's bolt avoids it",
+        "Running into cover crouches you behind it"
+      ],
+      "blocked_by": [
+        "dg-controller"
+      ]
+    },
+    {
+      "slug": "dg-tune",
+      "title": "Tune waves and the reactor with play data",
+      "parent": "dg-feel",
+      "size": "S",
+      "body": "With aiming now real, the waves are harder. Use the realm's analytics (wave reached, deaths, time per wave) from the playtest to tune counts, health and the reactor's repair time, and save mid-wave-1 (today leaving mid-wave 1 restarts it).",
+      "files": [
+        "verse/deadgears/rules.coax",
+        "apps/openagents-web/deadgears.coax"
+      ],
+      "acceptance": [
+        "Leaving mid-wave 1 and coming back resumes the wave",
+        "Wave numbers are set from recorded play, written in the commit"
+      ]
+    },
+    {
+      "slug": "dg-playtest",
+      "title": "Owner playtest on a laptop and a phone",
+      "parent": "dg-feel",
+      "size": "S",
+      "body": "After dg-free-aim, dg-controller and dg-skinned-you are live: the owner plays a full game on each and the notes become tasks here.",
+      "files": [],
+      "acceptance": [
+        "The owner's notes are filed as tasks"
+      ],
+      "blocked_by": [
+        "dg-free-aim",
+        "dg-controller",
+        "dg-skinned-you"
+      ]
+    }
+  ]
+}

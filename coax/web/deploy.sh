@@ -35,7 +35,7 @@ bun build "$here/host.js" --target browser --format esm --outfile "$stage/host.j
 # shaders and host script are named by their content (cached for good); the
 # page names them (data-wasm, data-wgsl) and is checked on every visit.
 python3 - "$app" "$stage/host.js" "$stage" <<'PY'
-import hashlib, os, re, shutil, sys
+import hashlib, json, os, re, shutil, sys
 app, host, stage = sys.argv[1:]
 assets, site = os.path.join(stage, "assets"), os.path.join(stage, "site")
 def put(src, rel):
@@ -87,7 +87,10 @@ for f in sorted(os.listdir(os.path.join(app, "well-known"))) if os.path.isdir(os
     os.makedirs(os.path.join(site, ".well-known"), exist_ok=True)
     shutil.copy(os.path.join(app, "well-known", f), os.path.join(site, ".well-known", f[:-5] + ".wellknown" if f == "apple-app-site-association.json" else f))
 # For agents: llms-full.txt is every public page's Markdown twin in one file, and sitemap.xml lists those pages.
-public = sorted(f for f in pages if f.endswith("index.md") and not f.startswith(("admin", "chat", "login", "projects" + os.sep + "private")))
+def unlisted(f):
+    j = os.path.join(app, os.path.dirname(f), "project.json")
+    return f.startswith("projects" + os.sep) and os.path.exists(j) and json.load(open(j, encoding="utf-8")).get("visibility") in ("unlisted", "private")
+public = sorted(f for f in pages if f.endswith("index.md") and not f.startswith(("admin", "chat", "login", "projects" + os.sep + "private")) and not unlisted(f))
 def url(f): return "https://openagents.com/" + os.path.dirname(f).replace(os.sep, "/")
 with open(os.path.join(site, "llms-full.txt"), "w", encoding="utf-8") as out:
     out.write(open(os.path.join(app, "llms.txt"), encoding="utf-8").read())

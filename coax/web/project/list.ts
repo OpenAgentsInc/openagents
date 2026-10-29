@@ -11,7 +11,7 @@
 // The table (PROJECTS_ROWS), one line a project, fields split by '|':
 //   slug | name | description | contributions | visibility | open | ready | done |
 //   working | last active (unix seconds, ten digits) | last active (Chicago) | page | owner | members
-// visibility is public or private; page is the site's URL for it, or empty;
+// visibility is public or unlisted (private projects are left out); page is the site's URL for it, or empty;
 // owner is the signer's hex pubkey; members are hex pubkeys split by spaces
 // (the member repositories' maintainers, and anyone p-tagged on the project or
 // on a claim or commit comment). Rows come newest activity first.
@@ -37,11 +37,11 @@ if (older > 0 && existsSync(out) && Date.now() - statSync(out).mtimeMs < older *
 const tag = (e: Event, name: string) => e.tags.find((t) => t[0] === name)?.[1] ?? ""
 const hex = /^[0-9a-f]{64}$/
 
-/** Who may see a project: private when it says so, or when it takes no outside work and doesn't say it's public. */
-export function visibility(e: Event): "public" | "private" {
+/** Who may see a project: what it says (public, unlisted or private), else private when it takes no outside work. */
+export function visibility(e: Event): "public" | "unlisted" | "private" {
   const v = tag(e, "visibility"), c = tag(e, "contributions") || "closed"
-  if (v === "private") return "private"
-  if (v === "public") return "public"
+  if (v === "public" || v === "unlisted" || v === "private") return v
+  if (v) return "private"
   return c === "open" || c === "invited" ? "public" : "private"
 }
 
@@ -112,7 +112,8 @@ try {
   process.exit(existsSync(out) ? 0 : 1)
 }
 
-rows = rows.filter((r) => r.visibility === "public").sort((a, b) => b.last - a.last || (a.slug < b.slug ? -1 : 1))
+// Unlisted rows go in the table, where projects.coax shows them only to members (MINE), and never in the Markdown index.
+rows = rows.filter((r) => r.visibility === "public" || r.visibility === "unlisted").sort((a, b) => b.last - a.last || (a.slug < b.slug ? -1 : 1))
 
 const chicago = (d: Date) => {
   const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", month: "2-digit", day: "2-digit",
@@ -135,7 +136,8 @@ PROJECTS_ROWS :: ${JSON.stringify(table)};
 `)
 
 const md: string[] = [`# Projects`, ``, `OpenAgents projects that people and agents can pick up work from, read from \`${relayUrl}\` at ${chicago(at)}: every kind 30621 project event there, signature checked, that is public (\`contributions\` open or invited, or marked public).`, ``]
-for (const r of rows) {
+const listed = rows.filter((r) => r.visibility === "public")
+for (const r of listed) {
   md.push(`## ${r.name}`, ``, r.description, ``)
   md.push(`- Page: ${r.page ? `https://openagents.com${r.page}` : "none on this site yet"}`)
   if (r.page.startsWith("/projects/") && !r.page.endsWith(".md")) md.push(`- Tasks: https://openagents.com${r.page}/index.md`)
@@ -145,6 +147,6 @@ for (const r of rows) {
   md.push(`- Last active: ${chicago(new Date(r.last * 1000))}`)
   md.push(`- Project event: kind 30621, \`d\` = \`${r.slug}\`, signed by \`${r.owner}\``, ``)
 }
-if (rows.length === 0) md.push(`No public projects are published yet.`, ``)
+if (listed.length === 0) md.push(`No public projects are published yet.`, ``)
 writeFileSync(join(SITE, "index.md"), md.join("\n"))
-console.log(`projects list ${chicago(at)}: ${rows.length} public (${rows.map((r) => r.slug).join(", ")})`)
+console.log(`projects list ${chicago(at)}: ${listed.length} public (${listed.map((r) => r.slug).join(", ")}), ${rows.length - listed.length} unlisted`)

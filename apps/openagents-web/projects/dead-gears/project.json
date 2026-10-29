@@ -1,0 +1,24 @@
+{
+  "slug": "dead-gears",
+  "name": "Dead Gears",
+  "description": "A Verse realm: hold a broken reactor against waves of mutants with a cutter that has to be aimed. Making it play well: real aiming, a real character, and fights that feel good.",
+  "relay": "wss://relay.openagents.com",
+  "repo": {
+    "d": "openagents",
+    "name": "OpenAgents",
+    "description": "The OpenAgents monorepo: the apps, the protocol, Coax and the Grid.",
+    "web": "https://github.com/OpenAgentsInc/openagents",
+    "clone": "https://github.com/OpenAgentsInc/openagents.git",
+    "euc": "0aa2d953dd48f0d402ea7c826bad90b2548524c2"
+  },
+  "path": "verse/deadgears/",
+  "contributions": "open",
+  "visibility": "unlisted",
+  "license": "Apache-2.0",
+  "owner": "Chris",
+  "pubkey": "f2f77a2bda1b84df2d79f3ce1ccd88e8a5588fd3746bdb72913f06fe6661f5bd",
+  "maintainers": [
+    "9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a",
+    "1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"
+  ]
+}

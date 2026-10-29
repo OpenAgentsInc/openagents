@@ -16,6 +16,7 @@
 // so does /projects#new.
 // The rules (docs/protocol/2026-10-28-projects.md, "Who sees a project"):
 //   a public project shows to everyone;
+//   an unlisted one is listed only to its members, though anyone with its link opens its page;
 //   a private one only to its members: the owner, a maintainer or a contributor;
 //   MINE is the projects the viewer is a member of, and it is the first
 //   choice when there are any.
@@ -306,7 +307,7 @@ member :: (table: string, r: int, viewer: string) -> bool {
   if !signed_in(viewer) { return false; }
   return same(field(table, r, C_OWNER), viewer) || listed(field(table, r, C_MEMBERS), viewer);
 }
-// Public shows to everyone; anything else (private, or a value we don't know) only to members.
+// Public shows to everyone; anything else (unlisted, private, or a value we don't know) only to members.
 can_see :: (table: string, r: int, viewer: string) -> bool {
   return same(field(table, r, C_VIS), "public") || member(table, r, viewer);
 }
@@ -1405,6 +1406,10 @@ FIXTURE :: "coax|Coax|A language.|open|public|71|16|8|claude-live-1, codex-coax|
     }
   }
   // a visibility we don't know counts as private
+  // unlisted: listed to members only, under MINE and ALL
+  hidden := "dg|Dead Gears|A realm.|open|unlisted|13|4|0||1793219000|10-28 15:30|/projects/dg|0000000000000000000000000000000000000000000000000000000000000abc|b0b0000000000000000000000000000000000000000000000000000000000002\n";
+  #assert shown(hidden, "", FILTER_ALL, order[..]) == 0 && shown(hidden, ALICE, FILTER_ALL, order[..]) == 0;
+  #assert shown(hidden, BOB, FILTER_AUTO, order[..]) == 1 && shown(hidden, BOB, FILTER_ALL, order[..]) == 1;
   odd := "x|X|y|open|secret|0|0|0||0000000001|10-28 00:00||0000000000000000000000000000000000000000000000000000000000000abc|\n";
   #assert shown(odd, "", FILTER_ALL, order[..]) == 0 && shown(odd, OWNER, FILTER_ALL, order[..]) == 1;
 }

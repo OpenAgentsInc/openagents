@@ -56,6 +56,9 @@ export interface ProjectConfig {
   path: string
   contributions: "open" | "invited" | "closed"
   license: string
+  /** Like a video's: public (listed for everyone), unlisted (only members see it listed, under MINE; anyone with the
+   *  link can open it) or private (members only). Left out, contributions decide (docs/protocol/2026-10-28-projects.md). */
+  visibility?: "public" | "unlisted" | "private"
   /** Hex pubkeys that maintain the project: p-tagged on its event, so /projects counts it as theirs. */
   maintainers?: string[]
 }
@@ -126,7 +129,8 @@ export function repoTags(c: ProjectConfig): string[][] {
 export function projectTags(pk: string, c: ProjectConfig): string[][] {
   return [["d", c.slug], ["name", c.name], ["description", c.description], ["a", repoCoord(pk, c), c.relay],
     ["path", repoCoord(pk, c), c.path], ["contributions", c.contributions], ["license", c.license],
-    ["buzz-visibility", "listed"], ...(c.maintainers ?? []).map((m) => ["p", m, "", "maintainer"])]
+    ...(c.visibility ? [["visibility", c.visibility]] : []), ["buzz-visibility", c.visibility === "public" || !c.visibility ? "listed" : "unlisted"],
+    ...(c.maintainers ?? []).map((m) => ["p", m, "", "maintainer"])]
 }
 
 /** The tags that carry an item's fields, on its issue and on every revision. */

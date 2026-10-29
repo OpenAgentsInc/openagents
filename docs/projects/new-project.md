@@ -11,7 +11,7 @@ moves onto the website, it comes out of Part 1.
 
 | # | Step | Where | Notes |
 | --- | --- | --- | --- |
-| 1 | Pick the slug, name, owner and visibility (public or private) | — | The slug is lowercase with dashes (`planetary-villa`) and never changes. A private project follows a separate path, at the end of this table |
+| 1 | Pick the slug, name, owner and visibility (public, unlisted or private) | — | The slug is lowercase with dashes (`planetary-villa`) and never changes. A private project follows a separate path, at the end of this table |
 | 2 | Make the project's key | `~/work/.secrets/openagents-project-<slug>.key` | 32 random bytes as hex, chmod 600, never printed or committed. The publisher signs everything with it |
 | 3 | Write `project.json` | `apps/openagents-web/projects/<slug>/project.json` | slug, name, one-line description, relay, repo, path (the repo folder whose commits the page draws), contributions, licence, pubkey (the key's public key), owner. Copy `projects/verse/project.json` |
 | 4 | Write the design document | `<path>/README.md` (for example `verse/planetary-villa/README.md`) | The owner's own words, with open questions for them. Agents build from it. A project's folder goes under the area it belongs to (a Verse world under `verse/`), never at the repository root |
