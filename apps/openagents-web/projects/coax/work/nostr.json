@@ -1026,7 +1026,8 @@
         "secp-mult-const",
         "crypto-secure-zero",
         "crypto-public-view-audit",
-        "crypto-ecdh-fixed-serialization"
+        "crypto-ecdh-fixed-serialization",
+        "crypto-ecdh-public-guards"
       ],
       "blocks": [
         "nip44-v2",
@@ -3394,7 +3395,7 @@
       "blocks": [
         "secp-mult-base",
         "secp-mult-const",
-        "crypto-reviewed-guard-binding", "crypto-total-secret-field", "crypto-public-peer-guard-binding"]
+        "crypto-reviewed-guard-binding", "crypto-total-secret-field", "crypto-public-peer-guard-binding", "crypto-ecdh-public-guards"]
     },
     {
       "slug": "crypto-classified-root-audit",
@@ -3480,7 +3481,7 @@
         "Analyze the exact source-hashed ECDH entry with its stated host and caller premises, retaining all guards and refusals; affected full checks, zero-survivor mutation and independent review pass without claiming target timing, hidden-copy erasure or production approval"
       ],
       "blocked_by": ["crypto-classified-root-audit", "crypto-secret-public-loop-summaries", "crypto-ecdh-fixed-serialization"],
-      "blocks": ["crypto-ecdh-xonly"]
+      "blocks": ["crypto-ecdh-xonly", "crypto-ecdh-public-guards"]
     },
     {
       "slug": "crypto-ecdh-fixed-serialization",
@@ -3496,7 +3497,7 @@
         "Record exact source, test, compiler and target identities and review limits; do not claim the whole ECDH source audit, target timing, erasure or production approval until their independent gates pass"
       ],
       "blocked_by": ["crypto-total-secret-field"],
-      "blocks": ["crypto-public-view-audit", "crypto-ecdh-xonly"]
+      "blocks": ["crypto-public-view-audit", "crypto-ecdh-xonly", "crypto-ecdh-public-guards"]
     },
     {
       "slug": "schnorr-fast-verify",
@@ -3529,6 +3530,23 @@
       ],
       "blocked_by": ["nostr-proto-adapters", "nip44-v2"],
       "blocks": ["host-grants"]
+    },
+    {
+      "slug": "crypto-ecdh-public-guards",
+      "parent": "m-assurance",
+      "title": "Prove and bind the two public guards in the ECDH source audit",
+      "size": "L",
+      "labels": ["nostr", "crypto", "coax"],
+      "body": "The classified byte-view audit of the exact ECDH entry traverses its full source and refuses with public-unproved field assertions at secp_field.coax:239 and :492. Prove their safety for every admitted public 32-byte peer, including invalid and noncanonical inputs, or implement an independently verified safe refusal while preserving checked semantics. Bind any conditional decision to exact reviewed source, caller and tool premises; keep the raw refused audit inspectable. Existing proofs and registry decisions are not generic waivers. No target, hidden-copy erasure or production-secret approval follows.",
+      "files": ["coax/lib/crypto/", "tools/coax-nostr/", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Prove and independently review the exact public x-load, lift, field and caller correspondence for every admitted byte input, including normalization magnitude bounds, and the immutable chain step and index bounds at every reachable iteration; include malformed and boundary inputs and mutated-bound controls",
+        "A separate opt-in conditional source decision binds the exact ECDH source, compiler and audit-tool graph, checked profile, parameter classifications, view and ownership premises, complete two-guard identities and origin masks, model and solver identities and trusted manual correspondence; the original accepted=false audit remains inspectable",
+        "Changed or missing sources, tools, profiles, classifications, view premises, proof or solver identities, and missing extra duplicate or changed-origin guards fail closed; preserve existing registries, default behavior and resource limits",
+        "Run affected source checks and full mutation with zero survivors, independent adversarial controls and security review; document runtime trust and never claim target-wide timing, JIT, erasure or production approval"
+      ],
+      "blocked_by": ["crypto-public-view-audit", "crypto-field-secret-guards", "crypto-ecdh-fixed-serialization"],
+      "blocks": ["crypto-ecdh-xonly"]
     }
   ]
 }
