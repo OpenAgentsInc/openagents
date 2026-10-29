@@ -823,6 +823,30 @@
       "blocks": []
     },
     {
+      "slug": "ff-flight-look",
+      "parent": "ff",
+      "title": "Fairy Forest: free flight, solid trees, bright colours and a new fairy",
+      "size": "M",
+      "labels": [
+        "realms",
+        "art-styles"
+      ],
+      "body": "Every Space press is a wing beat up with no limit; hold to hover, let go to glide; Shift in the air dives. Trunks are solid and crowns, the heart tree's canopy, roots and stones are floors to land on; the camera keeps out of crowns; grass draws only on the ground by her. Bright yellow-green grass, clumped crowns, mossy trunks with flared roots, ferns, teal haze going blue far off, a warm sky by the sun; faded ground greyed, not washed white. A rounder fairy with a face, hair, a petal dress, two pairs of glowing veined wings that never cross her head from behind, and a sparkle trail. A reload puts you back where you were.",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "apps/openagents-web/fairy-face.c",
+        "apps/openagents-web/fairy.wgsl",
+        "coax/web/goldens/fairy-forest.png"
+      ],
+      "acceptance": [
+        "coax test apps/openagents-web/fairy.coax: the wall, crown, wing and place tests pass",
+        "Production: fly onto a crown and stand; Shift brings her down; 15 m up by the heart tree no grass over the sky or trunk",
+        "Desktop and phone shots, and a golden"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
       "slug": "ff-chat-room",
       "parent": "ff",
       "title": "Fairy Forest's chat room: one room for everyone, always on screen",
