@@ -3,7 +3,7 @@
 Read-only survey, 2026-10-29. No weights were downloaded, and no upstream
 setup, inference or tool code was run. Psionic would implement the behavior in
 Coax; Python stays reviewed reference and export tooling, never a runtime
-dependency. Part V of the [book plan](../../book/PLAN.md) gives the
+dependency. Part VII of the [book plan](../../book/PLAN.md) gives the
 chapter sequence. It is proposed work, and it does not block
 [Elephant and Mammoth](model-targets.md).
 
@@ -102,10 +102,10 @@ is o200k_base's pattern and ranks plus harmony special tokens through ID
   Metal path "not production-ready", and a reference runtime does not establish
   Psionic execution in any case.
 - **Upstream sizing.** The 20b model's "within 16GB of memory" and the 120b
-  model's single-80 GB-GPU target are upstream claims. Chapter 14's residency
+  model's single-80 GB-GPU target are upstream claims. Chapter 22's residency
   plan measures each model on the machine it runs on.
 - **Upstream sampling defaults.** The recommended temperature 1.0 and top-p 1.0
-  become explicit parameters under chapter 22's named RNG, not hidden defaults.
+  become explicit parameters under chapter 30's named RNG, not hidden defaults.
 
 ## Evidence for each model
 

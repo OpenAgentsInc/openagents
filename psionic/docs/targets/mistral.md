@@ -2,8 +2,8 @@
 
 Read-only survey, 2026-10-29. Metadata, configs, model cards and licences were
 read from Hugging Face. No weights were downloaded and no upstream code was
-run. Part VI of the [book plan](../../book/PLAN.md) gives the ladder,
-and Part XVIII runs the largest models across a mesh. Nothing here blocks
+run. Part VIII of the [book plan](../../book/PLAN.md) gives the ladder,
+and Part XX runs the largest models across a mesh. Nothing here blocks
 [Elephant and Mammoth](model-targets.md).
 
 ## Why a ladder
