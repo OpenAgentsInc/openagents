@@ -31,6 +31,7 @@ RoomState :: struct {
   line_text: [ROOM_LINES * ROOM_TEXT] u8; line_text_n: [ROOM_LINES] int;
   line_mine: [ROOM_LINES] bool;
   line_num: [ROOM_LINES] int;     // each line's number in its room (for a report)
+  line_from: [ROOM_LINES * ROOM_ID] u8; line_from_n: [ROOM_LINES] int;   // who said it (0053_verse_social.sql), "" the demo's
   last: int;                      // the number of the last line read
   unread: int;                    // lines from others since the panel was last open
   heard: int;                     // lines from others in the last answer
@@ -201,9 +202,24 @@ room_take :: (s: [] RoomState, answer: string) -> int #export_c {
         mn := world_field(t, i, "mine", where[..]);
         s[0].line_mine[slot] = where[0] >= 0 && t[where[0]..<where[0] + mn] == "true";
         s[0].line_num[slot] = num;
+        s[0].line_from_n[slot] = room_text(t, i, "from", s[0].line_from[..], slot * ROOM_ID, ROOM_ID);
         if !s[0].line_mine[slot] && s[0].joined { s[0].unread += 1; s[0].heard += 1; }
         s[0].last = num;
       }
+      i = world_space(t, e);
+      if i < t.count && t[i] == 44 { i = world_space(t, i + 1); }
+    }
+  }
+  // the lines an admin took out since: gone here too
+  rm := room_array(t, obj, "removed");
+  if rm >= 0 {
+    i := world_space(t, rm + 1);
+    while i < t.count && t[i] != 93 {
+      e := i;
+      while e < t.count && t[e] >= 48 && t[e] <= 57 { e += 1; }
+      if e == i { break; }
+      gone := room_int(t[i..<e]);
+      room_drop(s, gone, "");
       i = world_space(t, e);
       if i < t.count && t[i] == 44 { i = world_space(t, i + 1); }
     }
@@ -229,6 +245,33 @@ room_ease :: (s: [] RoomState, dt: f32) #export_c {
   }
 }
 
+// Takes lines out of the panel: line number num (0: any), said by from ("": anyone).
+room_drop :: (s: [] RoomState, num: int, from: string) #export_c {
+  if num <= 0 && from.count == 0 { return; }
+  kept := 0;
+  for k: 0..<s[0].lines {
+    slot := (s[0].head + k) % ROOM_LINES;
+    who := cast(string) s[0].line_from[slot * ROOM_ID..<slot * ROOM_ID + s[0].line_from_n[slot]];
+    out := (num <= 0 || s[0].line_num[slot] == num) && (from.count == 0 || who == from);
+    if out { continue; }
+    to := (s[0].head + kept) % ROOM_LINES;
+    if to != slot {
+      s[0].line_name_n[to] = s[0].line_name_n[slot]; s[0].line_text_n[to] = s[0].line_text_n[slot];
+      s[0].line_from_n[to] = s[0].line_from_n[slot];
+      s[0].line_mine[to] = s[0].line_mine[slot]; s[0].line_num[to] = s[0].line_num[slot];
+      for b: 0..<ROOM_NAME { s[0].line_name[to * ROOM_NAME + b] = s[0].line_name[slot * ROOM_NAME + b]; }
+      for b: 0..<ROOM_TEXT { s[0].line_text[to * ROOM_TEXT + b] = s[0].line_text[slot * ROOM_TEXT + b]; }
+      for b: 0..<ROOM_ID { s[0].line_from[to * ROOM_ID + b] = s[0].line_from[slot * ROOM_ID + b]; }
+    }
+    kept += 1;
+  }
+  s[0].lines = kept;
+}
+room_other_id :: (s: [] RoomState, i: int) -> string #export_c { return cast(string) s[0].id[i * ROOM_ID..<i * ROOM_ID + s[0].id_n[i]]; }
+room_line_from :: (s: [] RoomState, k: int) -> string #export_c {
+  slot := (s[0].head + k) % ROOM_LINES;
+  return cast(string) s[0].line_from[slot * ROOM_ID..<slot * ROOM_ID + s[0].line_from_n[slot]];
+}
 room_other_name :: (s: [] RoomState, i: int) -> string #export_c { return cast(string) s[0].name[i * ROOM_NAME..<i * ROOM_NAME + s[0].name_n[i]]; }
 // The k-th line kept, oldest first.
 room_line_name :: (s: [] RoomState, k: int) -> string #export_c {
@@ -281,6 +324,16 @@ room_line_text :: (s: [] RoomState, k: int) -> string #export_c {
   #assert room_take(s[..], "200\n{\"last\": 10, \"others\": [], \"messages\": []}") == 200 && s[0].others == 0 && s[0].lines == 3;
   #assert room_take(s[..], "429\n{\"error\": \"the room is full\"}") == 429 && s[0].full;
   #assert room_take(s[..], "0\n") == 0;
+}
+
+#test "lines say who said them, and leave when removed or blocked" {
+  s: [1] RoomState;
+  a := "200\n{\"last\": 3, \"others\": [], \"removed\": [], \"messages\": [{\"n\": 1, \"name\": \"A\", \"text\": \"one\", \"from\": \"p-a\"}, {\"n\": 2, \"name\": \"B\", \"text\": \"two\", \"from\": \"p-b\"}, {\"n\": 3, \"name\": \"A\", \"text\": \"three\", \"from\": \"p-a\"}]}";
+  #assert room_take(s[..], a) == 200 && s[0].lines == 3 && room_line_from(s[..], 1) == "p-b";
+  #assert room_take(s[..], "200\n{\"last\": 3, \"others\": [], \"messages\": [], \"removed\": [2]}") == 200;
+  #assert s[0].lines == 2 && room_line_text(s[..], 0) == "one" && room_line_text(s[..], 1) == "three";
+  room_drop(s[..], 0, "p-a");
+  #assert s[0].lines == 0;
 }
 
 #test "the panel keeps the last six lines" {

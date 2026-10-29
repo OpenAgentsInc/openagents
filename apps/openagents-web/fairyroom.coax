@@ -1,0 +1,881 @@
+// Talking with other players in Fairy Forest (verse/fairy-forest/README.md,
+// "Talking with other players"; tasks ff-chat-room and ff-inbox).
+//
+// The chat room: the realm's room (room.coax; coax/web/api/room.c), named
+// "fairy-forest", one for everyone in the forest. A chat box like Horse
+// Isle's is always on screen: every player's lines in order with their
+// name. On a computer it sits at the bottom left, Enter to type; on a phone
+// it is one line along the top, the latest said, and a tap opens it to the
+// last six with a field to type in. The others in the forest are drawn
+// where the room says they are, fairies like you with their name over them.
+//
+// The inbox: messages between players who have met (been in the forest at
+// once). A message waits until it is read, online or not; the INBOX button
+// says how many are new, and the pane lists who you have met: open one to
+// read what they wrote and answer.
+//
+// Abuse: a line is at most CHAT_TYPED bytes and a message MSG_TYPED (the
+// server cuts at 500 and limits how fast); BLOCK on a line or a player hides
+// their lines and messages for you; an admin sees REMOVE on every line.
+// The face (fairy-face.c) sends what this file asks for and hands back the
+// answers; nothing typed goes to analytics, only counts.
+
+#load "room.coax";
+
+FF_ROOM :: "fairy-forest";
+CHAT_TYPED :: 160;
+MSG_TYPED :: 400;
+INBOX_MSGS :: 40;
+INBOX_TEXT :: 500;
+INBOX_MET :: 30;
+INBOX_BLOCKED :: 30;
+SOCIAL_BUTTONS :: 40;
+OTHERS_DRAWN :: 6;          // others drawn as fairies, the nearest; the rest by name only
+OTHERS_NEAR :: 90.0;        // metres
+NAME_NEAR :: 45.0;          // their names, this near
+SOCIAL_TOAST_TIME :: 4.0;
+INBOX_EVERY :: 15.0;        // seconds between inbox asks while you're here
+FF_INBOX :: false;          // the INBOX button (ff-inbox)
+
+// What a button does (SocialButton.kind).
+SB_CHAT :: 1; SB_SAY :: 2; SB_FOLD :: 3; SB_BLOCK_LINE :: 4; SB_REMOVE_LINE :: 5; SB_INBOX :: 6;
+SB_THREAD :: 7; SB_BLOCK_MET :: 8; SB_BACK :: 9; SB_SEND :: 10; SB_WRITE :: 11;
+
+// What the face is asked to send (ffs_wants): one kind at a time each.
+ASK_CHAT :: 1; ASK_INBOX :: 2; ASK_MESSAGE :: 3; ASK_READ :: 4; ASK_BLOCK :: 5; ASK_REMOVE :: 6;
+
+SocialButton :: struct { box: Box; kind: int; arg: int; }
+
+Social :: struct {
+  // the chat
+  typing: bool;
+  line: [CHAT_TYPED] u8; line_n: int;
+  open: bool;                 // a phone's box opened to six lines
+  chat_send: bool;            // a line for the face to say
+  said: int; written: int;    // lines said and messages sent (counted, never their words)
+  // the inbox, as the server last said it
+  inbox_open: bool;
+  heard: bool;                // the server has answered once
+  admin: bool;
+  unread: int;
+  msg_n: int;
+  msg_id: [INBOX_MSGS] int;
+  msg_from: [INBOX_MSGS * ROOM_ID] u8; msg_from_n: [INBOX_MSGS] int;
+  msg_to: [INBOX_MSGS * ROOM_ID] u8; msg_to_n: [INBOX_MSGS] int;
+  msg_text: [INBOX_MSGS * INBOX_TEXT] u8; msg_text_n: [INBOX_MSGS] int;
+  msg_mine: [INBOX_MSGS] bool; msg_read: [INBOX_MSGS] bool;
+  met_n: int;
+  met_id: [INBOX_MET * ROOM_ID] u8; met_id_n: [INBOX_MET] int;
+  met_name: [INBOX_MET * ROOM_NAME] u8; met_name_n: [INBOX_MET] int;
+  met_blocked: [INBOX_MET] bool;
+  blocked_n: int;
+  blocked: [INBOX_BLOCKED * ROOM_ID] u8; blocked_id_n: [INBOX_BLOCKED] int;
+  // the one you write to (an open thread), and what you write
+  thread: [ROOM_ID] u8; thread_n: int;
+  thread_name: [ROOM_NAME] u8; thread_name_n: int;
+  writing: bool;
+  msg: [MSG_TYPED] u8; msg_n_typed: int;
+  // what to send
+  ask_inbox: bool; msg_send: bool;
+  read_send: bool; read_upto: int;
+  block_send: bool; block_id: [ROOM_ID] u8; block_n: int; block_on: bool;
+  remove_send: bool; remove_num: int;
+  // a word on what happened
+  toast: [80] u8; toast_n: int; toast_at: f64;
+  // the boxes and buttons drawn this frame, for the pointer
+  chat_box: Box; inbox_box: Box;
+  buttons: [SOCIAL_BUTTONS] SocialButton; button_n: int;
+  finger: int; finger_on: bool; finger_kind: int; finger_arg: int; finger_box: Box;
+}
+
+ffs_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for k: 0..<s.count { out[at + k] = s[k]; }
+  return at + s.count;
+}
+ffs_copy :: (to: [] u8, from: string) -> int {
+  n := 0;
+  for c: from { if n < to.count { to[n] = c; n += 1; } }
+  return n;
+}
+ffs_has_id :: (ids: [] u8, ns: [] int, count: int, id: string) -> bool {
+  for i: 0..<count { if cast(string) ids[i * ROOM_ID..<i * ROOM_ID + ns[i]] == id { return true; } }
+  return false;
+}
+ffs_toast :: (s: [] Fairy, text: string) {
+  g := s[0].social[..];
+  g[0].toast_n = ffs_copy(g[0].toast[..], text);
+  g[0].toast_at = s[0].time;
+}
+
+ffs_msg_from :: (g: [] Social, i: int) -> string { return cast(string) g[0].msg_from[i * ROOM_ID..<i * ROOM_ID + g[0].msg_from_n[i]]; }
+ffs_msg_to :: (g: [] Social, i: int) -> string { return cast(string) g[0].msg_to[i * ROOM_ID..<i * ROOM_ID + g[0].msg_to_n[i]]; }
+ffs_msg_text :: (g: [] Social, i: int) -> string { return cast(string) g[0].msg_text[i * INBOX_TEXT..<i * INBOX_TEXT + g[0].msg_text_n[i]]; }
+ffs_met_id :: (g: [] Social, i: int) -> string { return cast(string) g[0].met_id[i * ROOM_ID..<i * ROOM_ID + g[0].met_id_n[i]]; }
+ffs_met_name :: (g: [] Social, i: int) -> string { return cast(string) g[0].met_name[i * ROOM_NAME..<i * ROOM_NAME + g[0].met_name_n[i]]; }
+ffs_thread :: (g: [] Social) -> string { return cast(string) g[0].thread[0..<g[0].thread_n]; }
+ffs_blocks :: (g: [] Social, id: string) -> bool { return ffs_has_id(g[0].blocked[..], g[0].blocked_id_n[..], g[0].blocked_n, id); }
+// New messages from one player (or from anyone, id "").
+ffs_unread_from :: (g: [] Social, id: string) -> int {
+  n := 0;
+  for i: 0..<g[0].msg_n { if !g[0].msg_mine[i] && !g[0].msg_read[i] && (id.count == 0 || ffs_msg_from(g, i) == id) { n += 1; } }
+  return n;
+}
+
+// ---- the server's answers
+
+// GET /api/playtest/inbox's answer ("STATUS\n" and the body). Returns the status.
+ffs_inbox_take :: (g: [] Social, answer: string) -> int {
+  nl := 0;
+  while nl < answer.count && answer[nl] != 10 { nl += 1; }
+  status := room_int(answer[0..<nl]);
+  if status != 200 || nl >= answer.count { return status; }
+  t := answer[nl + 1..<answer.count];
+  obj := world_space(t, 0);
+  if obj >= t.count || t[obj] != 123 { return 0; }
+  where: [1] int;
+  an := world_field(t, obj, "admin", where[..]);
+  g[0].admin = where[0] >= 0 && t[where[0]..<where[0] + an] == "true";
+  g[0].unread = cast(int) room_field_num(t, obj, "unread");
+  n := 0;
+  a := room_array(t, obj, "messages");
+  if a >= 0 {
+    i := world_space(t, a + 1);
+    while i < t.count && t[i] == 123 {
+      e := world_value_end(t, i);
+      if e < 0 { break; }
+      if n < INBOX_MSGS {
+        g[0].msg_id[n] = cast(int) room_field_num(t, i, "id");
+        g[0].msg_from_n[n] = room_text(t, i, "from", g[0].msg_from[..], n * ROOM_ID, ROOM_ID);
+        g[0].msg_to_n[n] = room_text(t, i, "to", g[0].msg_to[..], n * ROOM_ID, ROOM_ID);
+        g[0].msg_text_n[n] = room_text(t, i, "text", g[0].msg_text[..], n * INBOX_TEXT, INBOX_TEXT);
+        mn := world_field(t, i, "mine", where[..]);
+        g[0].msg_mine[n] = where[0] >= 0 && t[where[0]..<where[0] + mn] == "true";
+        rn := world_field(t, i, "read", where[..]);
+        g[0].msg_read[n] = where[0] >= 0 && t[where[0]..<where[0] + rn] == "true";
+        n += 1;
+      }
+      i = world_space(t, e);
+      if i < t.count && t[i] == 44 { i = world_space(t, i + 1); }
+    }
+  }
+  g[0].msg_n = n;
+  m := 0;
+  b := room_array(t, obj, "met");
+  if b >= 0 {
+    i := world_space(t, b + 1);
+    while i < t.count && t[i] == 123 {
+      e := world_value_end(t, i);
+      if e < 0 { break; }
+      if m < INBOX_MET {
+        g[0].met_id_n[m] = room_text(t, i, "id", g[0].met_id[..], m * ROOM_ID, ROOM_ID);
+        g[0].met_name_n[m] = room_text(t, i, "name", g[0].met_name[..], m * ROOM_NAME, ROOM_NAME);
+        bn := world_field(t, i, "blocked", where[..]);
+        g[0].met_blocked[m] = where[0] >= 0 && t[where[0]..<where[0] + bn] == "true";
+        m += 1;
+      }
+      i = world_space(t, e);
+      if i < t.count && t[i] == 44 { i = world_space(t, i + 1); }
+    }
+  }
+  g[0].met_n = m;
+  ffs_blocked_take(g, t, obj);
+  g[0].heard = true;
+  return status;
+}
+// The "blocked" list of ids in an answer.
+ffs_blocked_take :: (g: [] Social, t: string, obj: int) {
+  c := room_array(t, obj, "blocked");
+  if c < 0 { return; }
+  k := 0;
+  i := world_space(t, c + 1);
+  while i < t.count && t[i] == 34 && k < INBOX_BLOCKED {
+    e := world_string_end(t, i);
+    if e < 0 { break; }
+    g[0].blocked_id_n[k] = world_unescape(t[i + 1..<e - 1], g[0].blocked[k * ROOM_ID..<k * ROOM_ID + ROOM_ID]);
+    k += 1;
+    i = world_space(t, e);
+    if i < t.count && t[i] == 44 { i = world_space(t, i + 1); }
+  }
+  g[0].blocked_n = k;
+}
+
+// ---- what the face sends
+
+// The body for the kind asked (ASK_*), or 0.
+ffs_body :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c {
+  g := s[0].social[..];
+  o := 0;
+  if kind == ASK_MESSAGE {
+    o = ffs_put(out, 0, "{\"to\":\"");
+    o = ff_json(out, o, ffs_thread(g));
+    o = ffs_put(out, o, "\",\"text\":\"");
+    if o > 0 { o = ff_json(out, o, cast(string) g[0].msg[0..<g[0].msg_n_typed]); }
+    o = ffs_put(out, o, "\"}");
+  } else if kind == ASK_READ {
+    o = ffs_put(out, 0, "{\"upto\":");
+    o = room_put_int(out, o, g[0].read_upto);
+    o = ffs_put(out, o, ",\"from\":\"");
+    if o > 0 { o = ff_json(out, o, ffs_thread(g)); }
+    o = ffs_put(out, o, "\"}");
+  } else if kind == ASK_BLOCK {
+    o = ffs_put(out, 0, "{\"player\":\"");
+    if o > 0 { o = ff_json(out, o, cast(string) g[0].block_id[0..<g[0].block_n]); }
+    o = ffs_put(out, o, ifx g[0].block_on then "\",\"on\":true}" else "\",\"on\":false}");
+  } else if kind == ASK_REMOVE {
+    o = ffs_put(out, 0, "{\"n\":");
+    o = room_put_int(out, o, g[0].remove_num);
+    o = ffs_put(out, o, "}");
+  } else { return 0; }
+  return ifx o > 0 then o else 0;
+}
+ffs_url :: (kind: int, out: [] u8) -> int #export_c {
+  if kind == ASK_CHAT { return room_url(FF_ROOM, true, out); }
+  if kind == ASK_INBOX || kind == ASK_MESSAGE { return ffs_put(out, 0, "/api/playtest/inbox"); }
+  if kind == ASK_READ { return ffs_put(out, 0, "/api/playtest/inbox/read"); }
+  if kind == ASK_BLOCK { return ffs_put(out, 0, "/api/playtest/block"); }
+  if kind == ASK_REMOVE { o := ffs_put(out, 0, "/api/playtest/chat/"); o = ffs_put(out, o, FF_ROOM); return ffs_put(out, o, "/remove"); }
+  return -1;
+}
+// The next thing to send, taken (0: nothing).
+ffs_next :: (s: [] Fairy) -> int #export_c {
+  g := s[0].social[..];
+  if g[0].chat_send { g[0].chat_send = false; return ASK_CHAT; }
+  if g[0].msg_send { g[0].msg_send = false; return ASK_MESSAGE; }
+  if g[0].block_send { g[0].block_send = false; return ASK_BLOCK; }
+  if g[0].remove_send { g[0].remove_send = false; return ASK_REMOVE; }
+  if g[0].read_send { g[0].read_send = false; return ASK_READ; }
+  if g[0].ask_inbox { g[0].ask_inbox = false; return ASK_INBOX; }
+  return 0;
+}
+ffs_chat_line :: (s: [] Fairy) -> string #export_c { return cast(string) s[0].social[0].line[0..<s[0].social[0].line_n]; }
+ffs_room :: () -> string #export_c { return FF_ROOM; }
+// The face asks the inbox now and then, and right after the pane opens.
+ffs_ask_inbox :: (s: [] Fairy) #export_c { s[0].social[0].ask_inbox = true; }
+
+// What came back for kind (ASK_*): the status and the body after it.
+ffs_answer :: (s: [] Fairy, kind: int, answer: string) #export_c {
+  g := s[0].social[..];
+  nl := 0;
+  while nl < answer.count && answer[nl] != 10 { nl += 1; }
+  status := room_int(answer[0..<nl]);
+  if kind == ASK_INBOX {
+    _ := ffs_inbox_take(g, answer);
+    ffs_mark_read(s);
+    return;
+  }
+  slow := status == 429;
+  if kind == ASK_CHAT {
+    if status == 200 { g[0].line_n = 0; g[0].said += 1; return; }
+    ffs_toast(s, ifx slow then "A LITTLE SLOWER: WAIT A MOMENT" else "THAT DIDN'T REACH THE OTHERS: TRY AGAIN");
+    return;
+  }
+  if kind == ASK_MESSAGE {
+    if status == 200 { g[0].msg_n_typed = 0; g[0].written += 1; g[0].ask_inbox = true; ffs_toast(s, "SENT"); return; }
+    ffs_toast(s, ifx slow then "A LITTLE SLOWER: WAIT A MOMENT" else ifx status == 403 then "YOU CAN WRITE TO PLAYERS YOU HAVE MET" else "NOT SENT: TRY AGAIN");
+    return;
+  }
+  if kind == ASK_BLOCK {
+    if status == 200 {
+      t := answer[nl + 1..<answer.count];
+      ffs_blocked_take(g, t, world_space(t, 0));
+      for i: 0..<g[0].blocked_n { room_drop(s[0].room[..], 0, cast(string) g[0].blocked[i * ROOM_ID..<i * ROOM_ID + g[0].blocked_id_n[i]]); }
+      ffs_toast(s, ifx g[0].block_on then "BLOCKED: THEIR LINES AND MESSAGES ARE HIDDEN FOR YOU" else "UNBLOCKED");
+      g[0].ask_inbox = true;
+    } else { ffs_toast(s, "THAT DIDN'T WORK: TRY AGAIN"); }
+    return;
+  }
+  if kind == ASK_REMOVE {
+    if status == 200 { room_drop(s[0].room[..], g[0].remove_num, ""); ffs_toast(s, "LINE REMOVED"); }
+    else { ffs_toast(s, "NOT REMOVED"); }
+    return;
+  }
+  if kind == ASK_READ && status == 200 { g[0].ask_inbox = true; }
+}
+
+// An open thread's new messages are read: tell the server, up to the newest.
+ffs_mark_read :: (s: [] Fairy) {
+  g := s[0].social[..];
+  if !g[0].inbox_open || g[0].thread_n == 0 { return; }
+  upto := 0;
+  for i: 0..<g[0].msg_n {
+    if !g[0].msg_mine[i] && !g[0].msg_read[i] && ffs_msg_from(g, i) == ffs_thread(g) { upto = g[0].msg_id[i]; g[0].msg_read[i] = true; }
+  }
+  if upto > 0 { g[0].read_upto = upto; g[0].read_send = true; g[0].unread = ffs_unread_from(g, ""); }
+}
+
+// ---- typing
+
+ffs_typing :: (s: [] Fairy) -> bool { g := s[0].social[..]; return g[0].typing || (g[0].inbox_open && g[0].writing && g[0].thread_n > 0); }
+
+ffs_add :: (buf: [] u8, n: int, c: int) -> int {
+  size := ifx c < 0x80 then 1 else ifx c < 0x800 then 2 else ifx c < 0x10000 then 3 else 4;
+  if c < 32 || c == 127 || n + size > buf.count { return n; }
+  if size == 1 { buf[n] = cast(u8) c; }
+  if size == 2 { buf[n] = cast(u8) (0xC0 | (c >> 6)); buf[n + 1] = cast(u8) (0x80 | (c & 63)); }
+  if size == 3 { buf[n] = cast(u8) (0xE0 | (c >> 12)); buf[n + 1] = cast(u8) (0x80 | ((c >> 6) & 63)); buf[n + 2] = cast(u8) (0x80 | (c & 63)); }
+  if size == 4 {
+    buf[n] = cast(u8) (0xF0 | (c >> 18)); buf[n + 1] = cast(u8) (0x80 | ((c >> 12) & 63));
+    buf[n + 2] = cast(u8) (0x80 | ((c >> 6) & 63)); buf[n + 3] = cast(u8) (0x80 | (c & 63));
+  }
+  return n + size;
+}
+ffs_back :: (buf: [] u8, n: int) -> int {
+  m := n;
+  while m > 0 { m -= 1; if (buf[m] & 0xC0) != 0x80 { break; } }
+  return m;
+}
+ffs_start_chat :: (s: [] Fairy) {
+  g := s[0].social[..];
+  g[0].typing = true; g[0].writing = false; g[0].open = true;
+  s[0].held = 0; s[0].taps = 0; s[0].use = false;
+}
+ffs_say :: (s: [] Fairy) {
+  g := s[0].social[..];
+  if g[0].line_n > 0 { g[0].chat_send = true; }
+  g[0].typing = false;
+}
+ffs_send_message :: (s: [] Fairy) {
+  g := s[0].social[..];
+  if g[0].msg_n_typed == 0 || g[0].thread_n == 0 { return; }
+  g[0].msg_send = true;
+}
+
+// A key while you type (true: taken). Enter says it, Esc stops typing; the keys never walk you.
+ffs_key :: (s: [] Fairy, key: int, mods: int) -> bool {
+  g := s[0].social[..];
+  if g[0].typing {
+    if key == KEY_ESCAPE { g[0].typing = false; return true; }
+    if key == KEY_ENTER { ffs_say(s); return true; }
+    if key == KEY_BACKSPACE { g[0].line_n = ffs_back(g[0].line[..], g[0].line_n); return true; }
+    if (mods & 10) != 0 { return false; }
+    g[0].line_n = ffs_add(g[0].line[..], g[0].line_n, key);
+    return true;
+  }
+  if g[0].inbox_open && g[0].writing && g[0].thread_n > 0 {
+    if key == KEY_ESCAPE { g[0].writing = false; return true; }
+    if key == KEY_ENTER { ffs_send_message(s); return true; }
+    if key == KEY_BACKSPACE { g[0].msg_n_typed = ffs_back(g[0].msg[..], g[0].msg_n_typed); return true; }
+    if (mods & 10) != 0 { return false; }
+    g[0].msg_n_typed = ffs_add(g[0].msg[..], g[0].msg_n_typed, key);
+    return true;
+  }
+  if g[0].inbox_open && key == KEY_ESCAPE {
+    if g[0].thread_n > 0 { g[0].thread_n = 0; } else { g[0].inbox_open = false; }
+    return true;
+  }
+  return false;
+}
+// Text from the host's field or a paste (message 1), while you type.
+ffs_typed :: (s: [] Fairy, text: string) -> bool {
+  g := s[0].social[..];
+  if !ffs_typing(s) { return false; }
+  for c: text {
+    if c == 10 || c == 13 { if g[0].typing { ffs_say(s); } else { ffs_send_message(s); } continue; }
+    if c < 32 { continue; }
+    if g[0].typing { if g[0].line_n < CHAT_TYPED { g[0].line[g[0].line_n] = c; g[0].line_n += 1; } }
+    else if g[0].msg_n_typed < MSG_TYPED { g[0].msg[g[0].msg_n_typed] = c; g[0].msg_n_typed += 1; }
+  }
+  return true;
+}
+
+// ---- the pointer: a press and lift on the same button is a press
+
+ffs_button :: (g: [] Social, b: Box, kind: int, arg: int) {
+  if g[0].button_n >= SOCIAL_BUTTONS { return; }
+  g[0].buttons[g[0].button_n] = SocialButton.{box = b, kind = kind, arg = arg};
+  g[0].button_n += 1;
+}
+ffs_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, id: int) -> bool {
+  g := s[0].social[..];
+  if phase == 0 {
+    for i: 0..<g[0].button_n {
+      b := g[0].buttons[i];
+      if in_box(b.box, x, y) { g[0].finger = id; g[0].finger_on = true; g[0].finger_kind = b.kind; g[0].finger_arg = b.arg; g[0].finger_box = b.box; return true; }
+    }
+    // a press on a box but not a button: the box's, not the camera's (and it stops typing elsewhere)
+    on := in_box(g[0].chat_box, x, y) || in_box(g[0].inbox_box, x, y);
+    if !on && g[0].typing { g[0].typing = false; }
+    return on;
+  }
+  if g[0].finger_on && id == g[0].finger {
+    if phase == 2 && in_box(g[0].finger_box, x, y) { ffs_press(s, g[0].finger_kind, g[0].finger_arg); }
+    if phase >= 2 { g[0].finger_on = false; }
+    return true;
+  }
+  return false;
+}
+
+// What a button does.
+ffs_press :: (s: [] Fairy, kind: int, arg: int) {
+  g := s[0].social[..];
+  r := s[0].room[..];
+  if kind == SB_CHAT { if s[0].talk > 0 { end_talk(s); } ffs_start_chat(s); return; }
+  if kind == SB_SAY { ffs_say(s); return; }
+  if kind == SB_FOLD { g[0].open = false; g[0].typing = false; return; }
+  if kind == SB_BLOCK_LINE {
+    if arg < 0 || arg >= r[0].lines { return; }
+    who := room_line_from(r, arg);
+    if who.count == 0 { return; }
+    g[0].block_n = ffs_copy(g[0].block_id[..], who); g[0].block_on = true; g[0].block_send = true;
+    return;
+  }
+  if kind == SB_REMOVE_LINE { if g[0].admin && arg > 0 { g[0].remove_num = arg; g[0].remove_send = true; } return; }
+  if kind == SB_INBOX {
+    g[0].inbox_open = !g[0].inbox_open; g[0].typing = false; g[0].writing = false; g[0].thread_n = 0;
+    if g[0].inbox_open { g[0].ask_inbox = true; if s[0].talk > 0 { end_talk(s); } }
+    return;
+  }
+  if kind == SB_THREAD {
+    if arg < 0 || arg >= g[0].met_n { return; }
+    g[0].thread_n = ffs_copy(g[0].thread[..], ffs_met_id(g, arg));
+    g[0].thread_name_n = ffs_copy(g[0].thread_name[..], ffs_met_name(g, arg));
+    g[0].writing = !g[0].met_blocked[arg]; g[0].msg_n_typed = 0;
+    s[0].held = 0; s[0].taps = 0;
+    ffs_mark_read(s);
+    return;
+  }
+  if kind == SB_BLOCK_MET {
+    if arg < 0 || arg >= g[0].met_n { return; }
+    g[0].block_n = ffs_copy(g[0].block_id[..], ffs_met_id(g, arg)); g[0].block_on = !g[0].met_blocked[arg]; g[0].block_send = true;
+    g[0].met_blocked[arg] = g[0].block_on;
+    if g[0].block_on && ffs_thread(g) == ffs_met_id(g, arg) { g[0].writing = false; }
+    return;
+  }
+  if kind == SB_BACK { g[0].thread_n = 0; g[0].writing = false; return; }
+  if kind == SB_SEND { ffs_send_message(s); return; }
+  if kind == SB_WRITE { g[0].writing = true; s[0].held = 0; return; }
+}
+
+// ---- drawing
+
+ffs_outline :: (out: [] f32, at: int, b: Box, k: f32, light: f32, on: bool) -> int {
+  n := at;
+  r := f32(ifx on then GOLD_R else CREAM_R); gg := f32(ifx on then GOLD_G else CREAM_G); bl := f32(ifx on then GOLD_B else CREAM_B);
+  if lit(out, n, b.x0, b.y0, b.x1, b.y0, 0.5 * k, light, 1 * k, r, gg, bl, 0) { n += 6; }
+  if lit(out, n, b.x1, b.y0, b.x1, b.y1, 0.5 * k, light, 1 * k, r, gg, bl, 0) { n += 6; }
+  if lit(out, n, b.x1, b.y1, b.x0, b.y1, 0.5 * k, light, 1 * k, r, gg, bl, 0) { n += 6; }
+  if lit(out, n, b.x0, b.y1, b.x0, b.y0, 0.5 * k, light, 1 * k, r, gg, bl, 0) { n += 6; }
+  return n;
+}
+// A button: its outline and its word, recorded for the pointer.
+ffs_btn :: (s: [] Fairy, out: [] f32, at: int, b: Box, word: string, kind: int, arg: int, cap: f32) -> int {
+  g := s[0].social[..];
+  k := hi(s[0].dpr, 0.5);
+  pressed := g[0].finger_on && g[0].finger_kind == kind && g[0].finger_arg == arg;
+  n := ffs_outline(out, at, b, k, ifx pressed then 1.0f32 else 0.55f32, pressed);
+  n = draw_text(out, n, word, (b.x0 + b.x1 - text_width(word, cap)) / 2, (b.y0 + b.y1 + cap) / 2, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  ffs_button(g, b, kind, arg);
+  return n;
+}
+// The bytes of t that fit in room at cap, cut at a character.
+ffs_fit :: (t: string, cap: f32, room: f32) -> int {
+  n := t.count;
+  if text_width(t, cap) <= room { return n; }
+  while n > 0 {
+    n -= 1;
+    while n > 0 && (t[n] & 0xC0) == 0x80 { n -= 1; }
+    if text_width(t[0..<n], cap) + text_width("...", cap) <= room { return n; }
+  }
+  return 0;
+}
+ffs_text :: (s: [] Fairy, out: [] f32, at: int, t: string, x: f32, y: f32, cap: f32, room: f32, light: f32, gold: bool) -> int {
+  k := hi(s[0].dpr, 0.5);
+  cut := ffs_fit(t, cap, room);
+  i := ifx gold then ink(k, light, GOLD_R, GOLD_G, GOLD_B) else ink(k, light, CREAM_R, CREAM_G, CREAM_B);
+  n := draw_text(out, at, t[0..<cut], x, y, cap, GAP, SPACE, i, false, false);
+  if cut < t.count { n = draw_text(out, n, "...", x + text_width(t[0..<cut], cap), y, cap, GAP, SPACE, i, false, false); }
+  return n;
+}
+// What is typed in a field, the end in view, and a caret.
+ffs_field :: (s: [] Fairy, out: [] f32, at: int, b: Box, t: string, empty: string, cap: f32, right: f32) -> int {
+  k := hi(s[0].dpr, 0.5);
+  n := ffs_outline(out, at, b, k, 0.6, false);
+  s[0].field[0] = b.x0; s[0].field[1] = b.y0; s[0].field[2] = b.x1; s[0].field[3] = b.y1;
+  ty := (b.y0 + b.y1 + cap) / 2;
+  if t.count == 0 { return draw_text(out, n, empty, b.x0 + 8 * k, ty, cap, GAP, SPACE, ink(k, 0.55, CREAM_R, CREAM_G, CREAM_B), false, false); }
+  st := 0;
+  while st < t.count && text_width(t[st..<t.count], cap) > b.x1 - b.x0 - 20 * k - right { st += 1; while st < t.count && (t[st] & 0xC0) == 0x80 { st += 1; } }
+  shown := t[st..<t.count];
+  n = draw_text(out, n, shown, b.x0 + 8 * k, ty, cap, GAP, SPACE, ink(k, 0.95, 1, 1, 1), false, false);
+  cx := b.x0 + 8 * k + text_width(shown, cap) + 3 * k;
+  if (cast(int) (s[0].time * 2)) % 2 == 0 && lit(out, n, cx, ty, cx, ty - cap, 0.6 * k, 0.9, 1.2 * k, 1, 1, 1, 0) { n += 6; }
+  return n;
+}
+
+// The others' names over their heads.
+ffs_names :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
+  r := s[0].room[..];
+  k := hi(s[0].dpr, 0.5);
+  n := at;
+  tag := 7 * k;
+  for i: 0..<r[0].others {
+    x := r[0].at[i * 4]; y := r[0].at[i * 4 + 1]; z := r[0].at[i * 4 + 2];
+    p := project(u, v3(x, ground_at(s, x, z) + hi(y, 0) + 2.05, z), s[0].width, s[0].height);
+    if p.x < -1000 || p.z > f32(NAME_NEAR) { continue; }
+    name := room_other_name(r, i);
+    n = draw_text(out, n, name, p.x - text_width(name, tag) / 2, p.y, tag, GAP, SPACE, ink(k, 0.9, CREAM_R, CREAM_G, CREAM_B), false, false);
+  }
+  return n;
+}
+
+// The others in the forest, as fairies: the nearest few, flying where they fly.
+ffs_others :: (s: [] Fairy, u: [] f32, you: Point) {
+  r := s[0].room[..];
+  drawn: [OTHERS_DRAWN] int; dn := 0;
+  for pass: 0..<OTHERS_DRAWN {
+    best := -1; bd := f32(OTHERS_NEAR * OTHERS_NEAR);
+    for i: 0..<r[0].others {
+      taken := false;
+      for j: 0..<dn { if drawn[j] == i { taken = true; } }
+      if taken { continue; }
+      dx := r[0].at[i * 4] - you.x; dz := r[0].at[i * 4 + 2] - you.z;
+      d := dx * dx + dz * dz;
+      if d < bd { bd = d; best = i; }
+    }
+    if best < 0 { break; }
+    drawn[dn] = best; dn += 1;
+  }
+  t := effect_time(s);
+  for j: 0..<dn {
+    i := drawn[j];
+    x := r[0].at[i * 4]; y := hi(r[0].at[i * 4 + 1], 0); z := r[0].at[i * 4 + 2]; face := r[0].at[i * 4 + 3];
+    moving := abs(r[0].to[i * 4] - x) + abs(r[0].to[i * 4 + 2] - z) > 0.03;
+    flap := t * (ifx y > 0.2 then 11.0f32 else 3.0f32) + f32(i) * 1.7;
+    fairy_figure(s, u, v3(x, ground_at(s, x, z) + y, z), face, t * 2.4, ifx moving then 1 else 0, y, flap);
+  }
+}
+
+// The chat box: a computer's at the bottom left; a phone's one line along
+// the top until a tap opens it. above: the foot's top edge it stays over.
+ffs_chat :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, above: f32) -> int {
+  g := s[0].social[..]; r := s[0].room[..];
+  k := hi(s[0].dpr, 0.5); w := s[0].width; h := s[0].height;
+  n := at;
+  ph := phone(s);
+  cap := 7.5 * k; row := 15 * k; pad := 10 * k;
+  unread: [24] u8;
+  un := 0;
+  if g[0].unread > 0 { un = ffs_put(unread[..], 0, "INBOX "); un = room_put_int(unread[..], un, g[0].unread); }
+  inbox_label := ifx un > 0 then cast(string) unread[0..<un] else "INBOX";
+  iw := text_width(inbox_label, cap) + 22 * k;
+  if ph && !g[0].open {
+    // one line along the top: the latest said, and INBOX
+    x0 := 16 * k; x1 := w - 16 * k;
+    y0 := 16 * k + 11 * k + 7.5 * k + 34 * k + 8 * k;
+    b := Box.{x0 = x0, y0 = y0, x1 = x1, y1 = y0 + 30 * k};
+    g[0].chat_box = b;
+    plate(s, u, b, 0.6, 0);
+    ib := Box.{x0 = x1 - pad * 0.5 - iw, y0 = y0 + 4 * k, x1 = x1 - pad * 0.5, y1 = b.y1 - 4 * k};
+    if FF_INBOX { n = ffs_btn(s, out, n, ib, inbox_label, SB_INBOX, 0, cap); } else { ib.x0 = x1; }
+    base := (b.y0 + b.y1 + cap) / 2;
+    room := ib.x0 - x0 - 2 * pad;
+    if s[0].time - g[0].toast_at < f64(SOCIAL_TOAST_TIME) && g[0].toast_n > 0 {
+      n = ffs_text(s, out, n, cast(string) g[0].toast[0..<g[0].toast_n], x0 + pad, base, cap, room, 0.95, true);
+    } else if r[0].lines > 0 {
+      j := r[0].lines - 1;
+      lead: [48] u8;
+      o := ffs_put(lead[..], 0, room_line_name(r, j)); o = ffs_put(lead[..], o, ": ");
+      ls := ifx o > 0 then cast(string) lead[0..<o] else "";
+      n = draw_text(out, n, ls, x0 + pad, base, cap, GAP, SPACE, ink(k, 0.85, GOLD_R, GOLD_G, GOLD_B), false, false);
+      n = ffs_text(s, out, n, room_line_text(r, j), x0 + pad + text_width(ls, cap), base, cap, room - text_width(ls, cap), 0.95, false);
+    } else {
+      n = draw_text(out, n, ifx r[0].others > 0 then "TAP TO CHAT WITH THE FOREST" else "TAP TO CHAT", x0 + pad, base, cap, GAP, SPACE, ink(k, 0.6, CREAM_R, CREAM_G, CREAM_B), false, false);
+    }
+    ffs_button(g, Box.{x0 = x0, y0 = y0, x1 = ib.x0 - 2 * k, y1 = b.y1}, SB_CHAT, 0);
+    return n;
+  }
+  // the full box: who's here, the last six lines, and the line you type
+  bw := ifx ph then w - 32 * k else lo(400 * k, w * 0.34);
+  lines := r[0].lines;
+  bh := pad * 2 + f32(lines + 1) * row + 30 * k;
+  x0 := 16 * k;
+  y0 := ifx ph then 16 * k + 11 * k + 7.5 * k + 34 * k + 8 * k else above - 10 * k - bh;
+  b := Box.{x0 = x0, y0 = y0, x1 = x0 + bw, y1 = y0 + bh};
+  g[0].chat_box = b;
+  plate(s, u, b, ifx g[0].typing then 0.85f32 else 0.62f32, 0);
+  base := y0 + pad + cap;
+  // the head: how many here (or the last word), INBOX, and on a phone HIDE
+  head: [40] u8;
+  o := ffs_put(head[..], 0, "JUST YOU IN THE FOREST");
+  if r[0].others > 0 { o = room_put_int(head[..], 0, r[0].others + 1); o = ffs_put(head[..], o, " IN THE FOREST"); }
+  hx1 := b.x1 - pad * 0.5;
+  if ph {
+    fb := Box.{x0 = hx1 - text_width("HIDE", cap) - 22 * k, y0 = base - cap - 6 * k, x1 = hx1, y1 = base + 6 * k};
+    n = ffs_btn(s, out, n, fb, "HIDE", SB_FOLD, 0, cap);
+    hx1 = fb.x0 - 6 * k;
+  }
+  ib := Box.{x0 = hx1 - iw, y0 = base - cap - 6 * k, x1 = hx1, y1 = base + 6 * k};
+  if FF_INBOX { n = ffs_btn(s, out, n, ib, inbox_label, SB_INBOX, 0, cap); } else { ib.x0 = hx1; }
+  if s[0].time - g[0].toast_at < f64(SOCIAL_TOAST_TIME) && g[0].toast_n > 0 {
+    n = ffs_text(s, out, n, cast(string) g[0].toast[0..<g[0].toast_n], x0 + pad, base, cap * 0.9, ib.x0 - x0 - 2 * pad, 0.95, true);
+  } else if o > 0 {
+    n = draw_text(out, n, cast(string) head[0..<o], x0 + pad, base, cap * 0.9, GAP, SPACE, ink(k, 0.6, CREAM_R, CREAM_G, CREAM_B), false, false);
+  }
+  base += row + 4 * k;
+  room := bw - 2 * pad;
+  open := g[0].typing || ph;   // the lines' buttons show while you type (always on a phone's open box)
+  for j: 0..<lines {
+    name := room_line_name(r, j); text := room_line_text(r, j);
+    lead: [48] u8;
+    lo_ := ffs_put(lead[..], 0, name); lo_ = ffs_put(lead[..], lo_, ": ");
+    ls := ifx lo_ > 0 then cast(string) lead[0..<lo_] else "";
+    nw := text_width(ls, cap);
+    n = draw_text(out, n, ls, x0 + pad, base, cap, GAP, SPACE, ink(k, 0.85, GOLD_R, GOLD_G, GOLD_B), false, false);
+    bx := x0 + bw - pad * 0.5;
+    if open && g[0].admin && room_line_num(r, j) > 0 {
+      rb := Box.{x0 = bx - text_width("REMOVE", cap * 0.8) - 14 * k, y0 = base - cap - 4 * k, x1 = bx, y1 = base + 4 * k};
+      n = ffs_btn(s, out, n, rb, "REMOVE", SB_REMOVE_LINE, room_line_num(r, j), cap * 0.8);
+      bx = rb.x0 - 4 * k;
+    }
+    if open && !room_line_mine(r, j) && room_line_from(r, j).count > 0 {
+      bb := Box.{x0 = bx - text_width("BLOCK", cap * 0.8) - 14 * k, y0 = base - cap - 4 * k, x1 = bx, y1 = base + 4 * k};
+      n = ffs_btn(s, out, n, bb, "BLOCK", SB_BLOCK_LINE, j, cap * 0.8);
+      bx = bb.x0 - 4 * k;
+    }
+    n = ffs_text(s, out, n, text, x0 + pad + nw, base, cap, bx - x0 - pad - nw - 4 * k, ifx room_line_mine(r, j) then 0.7f32 else 0.95f32, false);
+    base += row;
+  }
+  // the line you type
+  fb := Box.{x0 = x0 + pad * 0.6, y0 = b.y1 - 28 * k - pad * 0.4, x1 = b.x1 - pad * 0.6, y1 = b.y1 - pad * 0.4};
+  if g[0].typing {
+    send_w := ifx ph then 56 * k else 0.0f32;
+    n = ffs_field(s, out, n, Box.{x0 = fb.x0, y0 = fb.y0, x1 = fb.x1 - send_w, y1 = fb.y1}, ffs_chat_line(s),
+                  ifx ph then "SAY SOMETHING" else "SAY SOMETHING · ENTER SAYS IT · ESC CLOSES", cap, 0);
+    if ph { n = ffs_btn(s, out, n, Box.{x0 = fb.x1 - send_w + 4 * k, y0 = fb.y0, x1 = fb.x1, y1 = fb.y1}, "SAY", SB_SAY, 0, cap); }
+  } else {
+    n = ffs_btn(s, out, n, fb, ifx ph then "CHAT" else "ENTER TO CHAT", SB_CHAT, 0, cap);
+  }
+  return n;
+}
+
+// The inbox pane: who you have met, or one of them and what you said to each other.
+ffs_inbox :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
+  g := s[0].social[..];
+  k := hi(s[0].dpr, 0.5); w := s[0].width;
+  n := at;
+  cap := 8 * k; row := 22 * k; pad := 14 * k;
+  pw := lo(w - 32 * k, 540 * k);
+  x0 := (w - pw) / 2; x1 := x0 + pw;
+  y0 := 16 * k + 11 * k + 7.5 * k + 34 * k + 8 * k;
+  thread := g[0].thread_n > 0;
+  // what the thread shows: the last messages between you, oldest first
+  shown: [6] int; sn := 0;
+  if thread {
+    i := g[0].msg_n - 1;
+    while i >= 0 && sn < 6 {
+      if ffs_msg_from(g, i) == ffs_thread(g) || ffs_msg_to(g, i) == ffs_thread(g) { shown[sn] = i; sn += 1; }
+      i -= 1;
+    }
+  }
+  rows := ifx thread then hi(f32(sn), 1) * 2 + 2 else hi(f32(lo(f32(g[0].met_n), 7)), 1) + 0.6;
+  ph_ := pad * 2 + cap + 14 * k + rows * row;
+  b := Box.{x0 = x0, y0 = y0, x1 = x1, y1 = y0 + ph_};
+  g[0].inbox_box = b;
+  plate(s, u, b, 0.9, 0);
+  base := y0 + pad + cap;
+  bx := x1 - pad * 0.6;
+  close := Box.{x0 = bx - text_width(ifx thread then "BACK" else "CLOSE", cap) - 24 * k, y0 = y0 + 8 * k, x1 = bx, y1 = y0 + 8 * k + 30 * k};
+  n = ffs_btn(s, out, n, close, ifx thread then "BACK" else "CLOSE", ifx thread then SB_BACK else SB_INBOX, 0, cap);
+  if !thread {
+    n = draw_text(out, n, "INBOX", x0 + pad, base + 4 * k, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+    if s[0].time - g[0].toast_at < f64(SOCIAL_TOAST_TIME) && g[0].toast_n > 0 {
+      n = ffs_text(s, out, n, cast(string) g[0].toast[0..<g[0].toast_n], x0 + pad + text_width("INBOX", cap) + 16 * k, base + 4 * k, cap * 0.8, close.x0 - x0 - 2 * pad - text_width("INBOX", cap), 0.9, false);
+    }
+    base += 14 * k + row;
+    if g[0].met_n == 0 {
+      said := ifx g[0].heard then "NOBODY YET: PLAYERS IN THE FOREST WITH YOU APPEAR HERE" else "LOADING";
+      return ffs_text(s, out, n, said, x0 + pad, base, cap * 0.85, pw - 2 * pad, 0.65, false);
+    }
+    for m: 0..<g[0].met_n {
+      if m >= 7 { break; }
+      id := ffs_met_id(g, m);
+      bxr := x1 - pad * 0.6;
+      bw := text_width(ifx g[0].met_blocked[m] then "UNBLOCK" else "BLOCK", cap * 0.8) + 18 * k;
+      bb := Box.{x0 = bxr - bw, y0 = base - cap - 6 * k, x1 = bxr, y1 = base + 6 * k};
+      n = ffs_btn(s, out, n, bb, ifx g[0].met_blocked[m] then "UNBLOCK" else "BLOCK", SB_BLOCK_MET, m, cap * 0.8);
+      ww := text_width("OPEN", cap * 0.8) + 18 * k;
+      wb := Box.{x0 = bb.x0 - 6 * k - ww, y0 = bb.y0, x1 = bb.x0 - 6 * k, y1 = bb.y1};
+      if !g[0].met_blocked[m] { n = ffs_btn(s, out, n, wb, "OPEN", SB_THREAD, m, cap * 0.8); }
+      label: [64] u8;
+      o := ffs_put(label[..], 0, ffs_met_name(g, m));
+      new_ := ffs_unread_from(g, id);
+      if new_ > 0 && o > 0 { o = ffs_put(label[..], o, " · "); o = room_put_int(label[..], o, new_); o = ffs_put(label[..], o, " NEW"); }
+      lt := ifx o > 0 then cast(string) label[0..<o] else ffs_met_name(g, m);
+      n = ffs_text(s, out, n, lt, x0 + pad, base, cap, wb.x0 - x0 - pad - 8 * k, ifx g[0].met_blocked[m] then 0.5f32 else 0.95f32, new_ > 0);
+      // the whole row opens it too
+      if !g[0].met_blocked[m] { ffs_button(g, Box.{x0 = x0 + pad * 0.5, y0 = bb.y0, x1 = wb.x0 - 4 * k, y1 = bb.y1}, SB_THREAD, m); }
+      base += row;
+    }
+    return n;
+  }
+  // a thread: their name, what was said, and the field
+  n = ffs_text(s, out, n, cast(string) g[0].thread_name[0..<g[0].thread_name_n], x0 + pad, base + 4 * k, cap, close.x0 - x0 - 2 * pad, 0.95, true);
+  base += 14 * k + row;
+  if sn == 0 {
+    n = draw_text(out, n, "NO MESSAGES YET: WRITE THE FIRST", x0 + pad, base, cap * 0.85, GAP, SPACE, ink(k, 0.6, CREAM_R, CREAM_G, CREAM_B), false, false);
+    base += row * 2;
+  }
+  inner := pw - 2 * pad;
+  q := sn - 1;
+  while q >= 0 {
+    i := shown[q];
+    who := ifx g[0].msg_mine[i] then "YOU: " else "";
+    t := ffs_msg_text(g, i);
+    // up to two lines each
+    next: [1] int;
+    e := wrap(t, 0, (inner - text_width(who, cap * 0.9)) / (cap * 0.9), GAP, SPACE, false, next[..]);
+    n = draw_text(out, n, who, x0 + pad, base, cap * 0.9, GAP, SPACE, ink(k, 0.8, GOLD_R, GOLD_G, GOLD_B), false, false);
+    n = draw_text(out, n, t[0..<e], x0 + pad + text_width(who, cap * 0.9), base, cap * 0.9, GAP, SPACE, ink(k, ifx g[0].msg_mine[i] then 0.7f32 else 0.95f32, CREAM_R, CREAM_G, CREAM_B), false, false);
+    if next[0] > e && next[0] < t.count {
+      n = ffs_text(s, out, n, t[next[0]..<t.count], x0 + pad + text_width(who, cap * 0.9), base + row * 0.75, cap * 0.9, inner - text_width(who, cap * 0.9), ifx g[0].msg_mine[i] then 0.7f32 else 0.95f32, false);
+    }
+    base += row * 2;
+    q -= 1;
+  }
+  fb := Box.{x0 = x0 + pad * 0.6, y0 = b.y1 - 30 * k - pad * 0.5, x1 = x1 - pad * 0.6, y1 = b.y1 - pad * 0.5};
+  sw := text_width("SEND", cap) + 26 * k;
+  if g[0].writing {
+    n = ffs_field(s, out, n, Box.{x0 = fb.x0, y0 = fb.y0, x1 = fb.x1 - sw - 6 * k, y1 = fb.y1}, cast(string) g[0].msg[0..<g[0].msg_n_typed],
+                  ifx phone(s) then "WRITE A MESSAGE" else "WRITE A MESSAGE · ENTER SENDS IT", cap * 0.9, 0);
+  } else {
+    n = ffs_btn(s, out, n, Box.{x0 = fb.x0, y0 = fb.y0, x1 = fb.x1 - sw - 6 * k, y1 = fb.y1}, "WRITE", SB_WRITE, 0, cap);
+  }
+  n = ffs_btn(s, out, n, Box.{x0 = fb.x1 - sw, y0 = fb.y0, x1 = fb.x1, y1 = fb.y1}, "SEND", SB_SEND, 0, cap);
+  return n;
+}
+
+// The social HUD, after the rest of it: names, the chat box, the inbox pane.
+// above: the top of what is along the bottom (the hint, or the talk pane).
+ffs_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, above: f32) -> int {
+  g := s[0].social[..];
+  g[0].button_n = 0;
+  g[0].chat_box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; g[0].inbox_box = g[0].chat_box;
+  n := ffs_names(s, out, u, at);
+  if redit_open(s[0].ed[..]) { g[0].typing = false; return n; }   // the edit board has the screen
+  if g[0].inbox_open { return ffs_inbox(s, out, u, n); }
+  return ffs_chat(s, out, u, n, above);
+}
+
+#test "the inbox answer: messages, who you have met, blocks and admin" {
+  g: [1] Social;
+  a := "200\n{\"you\": {\"id\": \"p-me\", \"name\": \"Guest ME\"}, \"admin\": true, \"unread\": 1, \"messages\": [{\"id\": 4, \"from\": \"p-ann\", \"name\": \"Ann\", \"to\": \"p-me\", \"to_name\": \"Guest ME\", \"text\": \"meet \\\"me\\\" at the pond\", \"at\": 1, \"mine\": false, \"read\": false}, {\"id\": 5, \"from\": \"p-me\", \"to\": \"p-ann\", \"text\": \"ok\", \"mine\": true, \"read\": false}], \"met\": [{\"id\": \"p-ann\", \"name\": \"Ann\", \"blocked\": false}, {\"id\": \"p-bo\", \"name\": \"Bo\", \"blocked\": true}], \"blocked\": [\"p-bo\"]}";
+  #assert ffs_inbox_take(g[..], a) == 200;
+  #assert g[0].admin && g[0].unread == 1 && g[0].msg_n == 2 && g[0].msg_id[0] == 4 && ffs_msg_text(g[..], 0) == "meet \"me\" at the pond";
+  #assert ffs_msg_from(g[..], 0) == "p-ann" && !g[0].msg_mine[0] && g[0].msg_mine[1] && ffs_msg_to(g[..], 1) == "p-ann";
+  #assert g[0].met_n == 2 && ffs_met_name(g[..], 1) == "Bo" && g[0].met_blocked[1] && !g[0].met_blocked[0];
+  #assert g[0].blocked_n == 1 && ffs_blocks(g[..], "p-bo") && !ffs_blocks(g[..], "p-ann");
+  #assert ffs_unread_from(g[..], "p-ann") == 1 && ffs_unread_from(g[..], "p-bo") == 0;
+  #assert ffs_inbox_take(g[..], "403\n{}") == 403 && g[0].msg_n == 2;
+}
+
+// ---- analytics: counts only, never the words (team and admin use is left
+// out on the server, migrations/0037_analytics_team.sql)
+
+// A line said (ASK_CHAT) or a message sent (ASK_MESSAGE).
+ffs_track_sent :: (t: [] Track, kind: int) #export_c {
+  ev := ifx kind == ASK_CHAT then "chat" else ifx kind == ASK_MESSAGE then "message" else "";
+  if ev.count == 0 { return; }
+  if track_begin(t, ev) { track_str(t, "room", FF_ROOM); track_str(t, "world", "fairy-forest"); track_end(t); }
+}
+// Who is here: when you come in, and whenever the number changes.
+ffs_track_here :: (t: [] Track, here: int, full: bool) #export_c {
+  if track_begin(t, "presence") { track_str(t, "room", FF_ROOM); track_int(t, "here", here); track_bool(t, "full", full); track_end(t); }
+}
+
+#test "typing a line never walks you; Enter says it, and the face is asked to send it" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  #assert fairy_key(s[..], 'w', 0) && s[0].held != 0;
+  #assert fairy_key(s[..], KEY_ENTER, 0) && s[0].social[0].typing && s[0].held == 0 && fairy_still(s[..]) && fairy_wants_text(s[..]);
+  #assert fairy_key(s[..], 'w', 0) && fairy_key(s[..], 'e', 0) && s[0].held == 0 && !s[0].use;
+  fairy_typed(s[..], " hi");
+  #assert ffs_chat_line(s[..]) == "we hi";
+  #assert fairy_key(s[..], KEY_BACKSPACE, 0) && ffs_chat_line(s[..]) == "we h";
+  #assert fairy_key(s[..], KEY_ENTER, 0) && !s[0].social[0].typing && ffs_next(s[..]) == ASK_CHAT && ffs_next(s[..]) == 0;
+  ffs_answer(s[..], ASK_CHAT, "200\n{\"n\": 3}");
+  #assert s[0].social[0].line_n == 0 && s[0].social[0].said == 1;
+  // a line too fast: kept, and a word why
+  #assert fairy_key(s[..], KEY_ENTER, 0);
+  fairy_typed(s[..], "again\n");
+  #assert ffs_next(s[..]) == ASK_CHAT;
+  ffs_answer(s[..], ASK_CHAT, "429\n{}");
+  #assert ffs_chat_line(s[..]) == "again" && cast(string) s[0].social[0].toast[0..<s[0].social[0].toast_n] == "A LITTLE SLOWER: WAIT A MOMENT";
+  t: [1] Track;
+  track_init(t[..], "fairy-forest");
+  #assert track_message(t[..], HOST_PAGE, "tab=0123456789abcdef\nfresh=1\nvisitor=fedcba9876543210\nnow=1793200000000\nnav=1");
+  ffs_track_sent(t[..], ASK_CHAT);
+  ffs_track_here(t[..], 2, false);
+  body := cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert ff_has(body, "\"ev\":\"chat\"") && !ff_has(body, "again") && ff_has(body, "\"room\":\"fairy-forest\",\"here\":2");
+}
+
+#test "the inbox: open a player you have met, read, write and send; block and remove" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  g := s[0].social[..];
+  ffs_press(s[..], SB_INBOX, 0);
+  #assert g[0].inbox_open && ffs_next(s[..]) == ASK_INBOX;
+  ffs_answer(s[..], ASK_INBOX, "200\n{\"admin\": true, \"unread\": 1, \"messages\": [{\"id\": 7, \"from\": \"p-ann\", \"to\": \"p-me\", \"text\": \"hello\", \"mine\": false, \"read\": false}], \"met\": [{\"id\": \"p-ann\", \"name\": \"Ann\", \"blocked\": false}], \"blocked\": []}");
+  #assert g[0].met_n == 1 && g[0].unread == 1;
+  ffs_press(s[..], SB_THREAD, 0);
+  #assert ffs_thread(g) == "p-ann" && g[0].writing && g[0].read_send && g[0].read_upto == 7 && g[0].unread == 0;
+  b: [400] u8;
+  #assert ffs_next(s[..]) == ASK_READ;
+  n := ffs_body(s[..], ASK_READ, b[..]);
+  #assert cast(string) b[0..<n] == "{\"upto\":7,\"from\":\"p-ann\"}";
+  #assert fairy_key(s[..], 'w', 0) && s[0].held == 0;
+  fairy_typed(s[..], "ill be \"there\"\n");
+  #assert ffs_next(s[..]) == ASK_MESSAGE;
+  n = ffs_body(s[..], ASK_MESSAGE, b[..]);
+  #assert cast(string) b[0..<n] == "{\"to\":\"p-ann\",\"text\":\"will be \\\"there\\\"\"}";
+  ffs_answer(s[..], ASK_MESSAGE, "200\n{\"id\": 8}");
+  #assert g[0].msg_n_typed == 0 && g[0].written == 1 && g[0].ask_inbox;
+  n = ffs_url(ASK_MESSAGE, b[..]);
+  #assert cast(string) b[0..<n] == "/api/playtest/inbox";
+  // block from the list
+  ffs_press(s[..], SB_BACK, 0);
+  ffs_press(s[..], SB_BLOCK_MET, 0);
+  #assert g[0].block_send && g[0].block_on && !g[0].writing;
+  n = ffs_body(s[..], ASK_BLOCK, b[..]);
+  #assert cast(string) b[0..<n] == "{\"player\":\"p-ann\",\"on\":true}";
+  // a line from them is dropped once the block is kept
+  _ := room_take(s[0].room[..], "200\n{\"last\": 2, \"others\": [], \"messages\": [{\"n\": 1, \"name\": \"Ann\", \"text\": \"x\", \"from\": \"p-ann\"}, {\"n\": 2, \"name\": \"Bo\", \"text\": \"y\", \"from\": \"p-bo\"}]}");
+  #assert s[0].room[0].lines == 2;
+  _ = ffs_next(s[..]); _ = ffs_next(s[..]);
+  ffs_answer(s[..], ASK_BLOCK, "200\n{\"blocked\": [\"p-ann\"]}");
+  #assert s[0].room[0].lines == 1 && room_line_from(s[0].room[..], 0) == "p-bo" && ffs_blocks(g, "p-ann");
+  // an admin removes a line
+  ffs_press(s[..], SB_REMOVE_LINE, 2);
+  #assert ffs_next(s[..]) == ASK_REMOVE;
+  n = ffs_url(ASK_REMOVE, b[..]);
+  #assert cast(string) b[0..<n] == "/api/playtest/chat/fairy-forest/remove";
+  ffs_answer(s[..], ASK_REMOVE, "200\n{\"removed\": 2}");
+  #assert s[0].room[0].lines == 0;
+  // talking to a creature closes the inbox
+  talk_to(s[..], 0);
+  #assert !g[0].inbox_open;
+}
+
+#test "a phone: the chat is one line along the top, a tap opens it; BLOOM and the talk pane stay clear" {
+  s: [1] Fairy;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  fairy_start(s[..]);
+  s[0].touch = true;
+  _ := room_take(s[0].room[..], "200\n{\"last\": 1, \"others\": [{\"id\": \"p-ann\", \"name\": \"Ann\", \"x\": 1, \"y\": 0, \"z\": 1, \"yaw\": 0}], \"messages\": [{\"n\": 1, \"name\": \"Ann\", \"text\": \"hello forest\", \"from\": \"p-ann\"}]}");
+  p := fairy_spawn(s[..]);
+  n := fairy_frame(s[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, false, p.x, 0, p.z, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  g := s[0].social[..];
+  c := g[0].chat_box;
+  #assert n > 0 && c.y0 > 0 && c.y1 < 844 * 3 / 3 && c.y1 - c.y0 < 40 * 3 && !g[0].open;
+  #assert in_box(s[0].button, 0, 0) == false && (s[0].button.x1 <= s[0].button.x0 || s[0].button.y0 > c.y1);
+  // a tap on it opens it, and typing there brings the keyboard
+  #assert fairy_pointer(s[..], c.x0 + 20, (c.y0 + c.y1) / 2, 0, 1, 5) && fairy_pointer(s[..], c.x0 + 20, (c.y0 + c.y1) / 2, 2, 1, 5);
+  #assert g[0].open && g[0].typing && fairy_wants_text(s[..]);
+  n = fairy_frame(s[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, false, p.x, 0, p.z, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].chat_box.y1 - g[0].chat_box.y0 > 60 * 3 && s[0].field[3] > s[0].field[1] && s[0].field[1] >= g[0].chat_box.y0;
+  // talking: the pane along the bottom, the chat box above it
+  talk_to(s[..], 0);
+  n = fairy_frame(s[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, false, p.x, 0, p.z, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert s[0].pane_top > 0 && g[0].chat_box.y1 < s[0].pane_top;
+}

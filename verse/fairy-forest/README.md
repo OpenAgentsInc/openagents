@@ -135,8 +135,13 @@ you told them and what you did for them).
 
 - **The chat room:** one room for everyone in the forest, in the style of
   Horse Isle's: a chat box always on screen, every player's lines in order
-  with their name, open to anyone in the realm. This is in the first
-  version.
+  with their name, open to anyone in the realm. Built (ff-chat-room,
+  `apps/openagents-web/fairyroom.coax`): on a computer the box sits at the
+  bottom left and Enter types; on a phone it is the latest line along the
+  top, and a tap opens the last six with a field to type in. The others in
+  the forest fly where they are, with their names over them. BLOCK on a
+  line hides that player's lines and messages for you; an admin sees
+  REMOVE on every line.
 - **The inbox:** direct messages between players. Send a message to any
   player you've met; it waits in their inbox until they read it, whether
   they're online or not, and they can answer from there.

@@ -37,9 +37,10 @@
 #load "../../verse/fairy-forest/talk.coax";
 #load "place-orbit.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "fairyroom.coax";
 
 VERTEX_FLOATS :: 16;
-MAX_VERTICES :: 16000;
+MAX_VERTICES :: 24000;
 PLATES :: 16;
 // The uniforms (fairy.wgsl U).
 U_VIEW :: 8; U_EYE :: 24; U_SUN :: 28; U_GROUND :: 32; U_GRASS :: 36; U_GRASS2 :: 40; U_SHADOW :: 44;
@@ -159,6 +160,9 @@ Fairy :: struct {
   // The shared edit layer: its board switches the sparkles, the grass and the ridges; SETTINGS has flight
   ed: [1] RealmEdit;
   ed_out: [256] u8; ed_out_n: int;
+  // the others in the forest, the chat room and the inbox (fairyroom.coax)
+  room: [1] RoomState;
+  social: [1] Social;
 }
 
 // ---- small things
@@ -529,7 +533,9 @@ fairy_key :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
   if used > 0 { return used == 1; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
+  if ffs_key(s, key, mods) { return true; }
   if s[0].talk > 0 { return talk_key(s, key, mods); }
+  if key == KEY_ENTER { ffs_start_chat(s); return true; }
   if key == 'e' || key == 'E' { s[0].use = true; return true; }
   b := hold_bit(key);
   if b == 0 { return false; }
@@ -556,6 +562,8 @@ in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && 
 fairy_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { fairy_start(s); }
   if redit_pointer(s[0].ed[..], x, y, phase, id) { return true; }
+  if kind != 0 { s[0].touch = true; }
+  if ffs_pointer(s, x, y, phase, id) { return true; }
   talking := s[0].talk > 0;
   if talking && talk_pointer(s, x, y, phase, id) { return true; }
   if kind != 0 {
@@ -666,6 +674,7 @@ talk_to :: (s: [] Fairy, c: int) {
   if c < 0 || c >= FF_CREATURES { return; }
   s[0].talk = c + 1; s[0].line_n = 0; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0;
   s[0].held = 0; s[0].use = false; s[0].taps = 0; s[0].talk_finger_on = false;
+  s[0].social[0].typing = false; s[0].social[0].inbox_open = false; s[0].social[0].writing = false;
   add_line(s, true, ff_says(s[0].forest[..], c));
 }
 end_talk :: (s: [] Fairy) { s[0].talk = 0; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0; s[0].talk_finger_on = false; }
@@ -738,6 +747,7 @@ fairy_answer :: (s: [] Fairy, reply: string) #export_c {
 }
 // Text typed into the host's field or pasted (message 1): added to what you type while you talk.
 fairy_typed :: (s: [] Fairy, text: string) #export_c {
+  if ffs_typed(s, text) { return; }
   if s[0].talk <= 0 { return; }
   for i: 0..<text.count {
     c := text[i];
@@ -761,8 +771,10 @@ fairy_facts :: (s: [] Fairy, facts: string) #export_c {
   }
 }
 // While you talk, the phone's keyboard comes up over the typed line, and you stand still.
-fairy_wants_text :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0 || redit_typing(s[0].ed[..]); }
+fairy_wants_text :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0 || redit_typing(s[0].ed[..]) || ffs_typing(s); }
 fairy_talking :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0; }
+// Talking to a creature or typing a line or a message: you stand still, and no key is tracked.
+fairy_still :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0 || ffs_typing(s); }
 
 // ---- the scene
 
@@ -1748,7 +1760,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   }
   s[0].pane_top = 0;
   s[0].button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
-  if s[0].talk > 0 { return conversation(s, out, u, n); }
+  if s[0].talk > 0 { n = conversation(s, out, u, n); return ffs_hud(s, out, u, n, s[0].pane_top); }
   // the hint at the foot
   line := hint(s);
   hs := 7.5 * k;
@@ -1759,6 +1771,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - hs - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.68, 0);
   n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, hs, GAP, SPACE, ink(k, 0.85, CREAM_R, CREAM_G, CREAM_B), false, false);
   above := y1 - hs - 20 * k;
+  foot_x0 := (w - lw) / 2 - 12 * k;   // the left edge of what is centred along the bottom
   // what a creature near you says, or the news
   said := "";
   who := "";
@@ -1777,6 +1790,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
     if who.count > 0 { n = draw_text(out, n, who, (w - ww) / 2, b.y0 + 10 * k + 7.5 * k, 7.5 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false); }
     n = draw_text(out, n, said, (w - sw) / 2, b.y1 - 11 * k, sc, GAP, SPACE, ink(k, 0.95, CREAM_R, CREAM_G, CREAM_B), false, false);
     above = b.y0;
+    foot_x0 = lo(foot_x0, b.x0);
   }
   // BLOOM (or LIGHT, or TALK): E on a computer, a button on a phone
   near_patch := ff_patch_near(f, you.x, you.z);
@@ -1798,6 +1812,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
       plate(s, u, b, 0.85, 1);
       n = draw_text(out, n, "E", x0, b.y1 - 11 * k, bc, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
       n = draw_text(out, n, verb, x0 + text_width("E", bc) + 16 * k, b.y1 - 11 * k, bc, GAP, SPACE, ink(k, 0.95, CREAM_R, CREAM_G, CREAM_B), false, false);
+      above = b.y0; foot_x0 = lo(foot_x0, b.x0);
     }
   }
   // EDIT, top right, for its owner and admins (verse/edit/edit.coax)
@@ -1816,7 +1831,9 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
     kx := ox + pad_x * r; ky := oy - pad_y * r;
     if lit(out, n, kx - 0.01, ky, kx + 0.01, ky, 14 * k, 0.8, 6 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; }
   }
-  return n;
+  // the chat box sits over what is along the bottom only where they would meet
+  chat_x1 := 16 * k + lo(400 * k, w * 0.34);
+  return ffs_hud(s, out, u, n, ifx phone(s) || chat_x1 + 8 * k > foot_x0 then above else h - 16 * k);
 }
 
 FF_TALK_TO :: [5] string.["TALK TO BRAMBLE", "TALK TO PIP", "TALK TO CLOVER", "TALK TO BURDOCK", "TALK TO HOLLOW"];
@@ -1966,6 +1983,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   trees(s, u, shot.eye);
   if redit_row_on(s[0].ed[..], "ridges") { ridges(s); }
   ferns(s, shot.eye);
+  ffs_others(s, u, shown);   // last: if the shapes run out, they go first
   ph := phone(s);
   for kind: 0..<5 {
     d := kind * 4;

@@ -25,6 +25,15 @@
 // browser with no key yet is given one first (POST /api/playtest/player),
 // which the host keeps (action 5). The answer goes back to the page. While
 // you talk you stand still, and what you type is never tracked.
+//
+// The others, the chat room and the inbox (fairyroom.coax, ff-chat-room and
+// ff-inbox): about every second where you are goes to
+// /api/playtest/presence/fairy-forest and the answer (who else is here, the
+// lines said since) to room_take; what the page asks to send (a line, a
+// message, a read, a block, an admin's removal) goes one at a time, and the
+// inbox is asked every INBOX_EVERY seconds. A browser with no player key is
+// given one as the page loads. Never in golden mode. Analytics get counts
+// only: a line said, a message sent, how many are here; never the words.
 #include "fairy.h"
 #include "Player.h"
 #include "Grid.h"
@@ -70,6 +79,7 @@ static int32_t ask_id = -1, mint_id = -1;
 static bool facts_seen, has_player, mint_tried;
 static char player_out[1024];
 static void ask_out(uint32_t state);
+static void social_frame(uint32_t state, float dt);
 static uint32_t player_n;          // the minted player's record while the host is to keep it (action 5)
 
 static coax_t_Fairy *fairy(uint32_t state) { return (coax_t_Fairy *)(uintptr_t)state; }
@@ -198,7 +208,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   fairy_golden(at(state), golden);
   fairy_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
   // while you talk you stand still: no walking, no wing beats
-  bool talking = fairy_talking(at(state));
+  bool talking = fairy_still(at(state));
   if (talking) { sticks.pad_x = 0; sticks.pad_y = 0; sticks.jump = false; sticks.run = false; g->key_x = 0; g->key_y = 0; g->jump = false; g->run = false; }
   // a thumb held still on the right half, past a tap's time, is Space held
   bool thumb_held = !talking && sticks.look_on && !sticks.travelled && now - sticks.since > 0.3;
@@ -253,6 +263,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     fairy_stream_frame(sv(), (coax_v_f32){u.data + at_water, u.count - at_water}, golden ? 2.0 : now, small, eye[0], eye[1], eye[2], 2.0f / (fy * (h > 1 ? h : 1)));
   }
   ask_out(state);
+  social_frame(state, dt);
   place_frame(state);
   edit_face_drain(ed(state));
   if (!edit_kind) edit_kind = (int32_t)fairy_edit_action(at(state));
@@ -263,21 +274,101 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   return n < 0 ? 0u : (uint32_t)n;
 }
 
+// A player key for this browser, minted once if it has none (true: there is one).
+static bool need_player(void) {
+  if (has_player) return true;
+  if (!facts_seen || mint_tried || golden) return false;
+  mint_tried = true;
+  mint_id = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
+  if (mint_id < 0) mint_id = -1;
+  return false;
+}
+
 // The page's question, once the browser has a player key (or minting one failed).
 static void ask_out(uint32_t state) {
   int64_t n = fairy_ask(at(state));
   if (n <= 0 || ask_id >= 0 || !facts_seen) return;
-  if (!has_player && !mint_tried) {
-    mint_tried = true;
-    mint_id = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
-    if (mint_id < 0) mint_id = -1;
-    return;
-  }
+  if (!has_player && !mint_tried) { need_player(); return; }
   if (mint_id >= 0) return;
   ask_id = coaxial_http((uint32_t)(uintptr_t)NPC_URL, sizeof NPC_URL - 1, (uint32_t)(uintptr_t)fairy(state)->ask.e, (uint32_t)n, 1 | 4 | 8);
   fairy_ask_sent(at(state));
   if (ask_id < 0) { ask_id = -1; fairy_answer(at(state), (coax_string){"0\n", 2}); }
 }
+// ---- the others, the chat room and the inbox (fairyroom.coax)
+#define ROOM_EVERY 1.0
+#define ROOM_WAIT 10.0
+#define INBOX_EVERY 15.0
+static int32_t room_ask = -1, social_ask = -1;
+static int64_t social_kind;
+static double room_at = -10, room_asked_at, inbox_at = -100, social_asked_at;
+static char room_url_buf[120], social_url_buf[160];
+static uint8_t room_body[256], social_body[2400];
+static int64_t here_was = -1;
+static coax_v_t_RoomState rooms(uint32_t state) { return (coax_v_t_RoomState){&fairy(state)->room.e[0], 1}; }
+
+static void social_frame(uint32_t state, float dt) {
+  room_ease(rooms(state), dt);
+  if (golden || !facts_seen || !need_player() || mint_id >= 0) return;
+  coax_t_Fairy *f = fairy(state);
+  // what the page asks to send, one at a time
+  if (social_ask < 0 || now - social_asked_at > ROOM_WAIT) {
+    if (now - inbox_at > INBOX_EVERY) { inbox_at = now; ffs_ask_inbox(at(state)); }
+    int64_t kind = ffs_next(at(state));
+    if (kind) {
+      int64_t un = ffs_url(kind, (coax_v_u8){(uint8_t *)social_url_buf, sizeof social_url_buf});
+      int64_t bn = 0;
+      if (kind == 1) {   // ASK_CHAT
+        coax_string sid = {(const char *)track_state.sid.e, track_state.sid_n};
+        bn = room_chat_body(ffs_chat_line(at(state)), sid, (coax_v_u8){social_body, sizeof social_body});
+      } else if (kind != 2) {
+        bn = ffs_body(at(state), kind, (coax_v_u8){social_body, sizeof social_body});
+      }
+      if (kind == 2) inbox_at = now;
+      if (un > 0 && (kind == 2 || bn > 0)) {
+        int32_t id = coaxial_http((uint32_t)(uintptr_t)social_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)social_body, (uint32_t)bn,
+                                  (kind == 2 ? 0 : 1) | 4 | 8);
+        if (id >= 0) { social_ask = id; social_kind = kind; social_asked_at = now; }
+        else ffs_answer(at(state), kind, (coax_string){"0\n", 2});
+      }
+    }
+  }
+  if (room_ask >= 0 && now - room_asked_at < ROOM_WAIT) return;
+  if (now - room_at < ROOM_EVERY) return;
+  room_at = now;
+  int64_t un = room_url(ffs_room(), false, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
+  coax_t_Vec3 feet = verse_player_feet(player);
+  float air = player.on_ground ? 0.0f : feet.y;
+  int64_t bn = room_presence_body(feet.x, air, feet.z, verse_player_face(player), f->room.e[0].last, (coax_v_u8){room_body, sizeof room_body});
+  if (un <= 0 || bn <= 0) return;
+  room_ask = coaxial_http((uint32_t)(uintptr_t)room_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)room_body, (uint32_t)bn, 1 | 4 | 8);
+  room_asked_at = now;
+}
+
+// The room's and the inbox's answers. True when the message was theirs.
+static bool social_message(uint32_t state, int32_t kind, uint32_t length) {
+  coax_string answer = {(const char *)inbox, length};
+  if (room_ask >= 0 && kind == 512 + room_ask) {
+    room_ask = -1;
+    int64_t st = room_take(rooms(state), answer);
+    if (st == 403 && has_player) { has_player = false; mint_tried = false; }
+    coax_t_RoomState *r = &fairy(state)->room.e[0];
+    int64_t here = r->full ? 0 : r->others + 1;
+    if (r->joined && here != here_was) { here_was = here; ffs_track_here(tr(), here, r->full); track_drain(&track_state); }
+    return true;
+  }
+  if (social_ask >= 0 && kind == 512 + social_ask) {
+    social_ask = -1;
+    int64_t said = fairy(state)->social.e[0].said, written = fairy(state)->social.e[0].written;
+    ffs_answer(at(state), social_kind, answer);
+    if (social_kind == 1) room_at = -10;   // a line said: the room asked now, so it shows
+    if (fairy(state)->social.e[0].said != said || fairy(state)->social.e[0].written != written) {
+      ffs_track_sent(tr(), social_kind); track_drain(&track_state);
+    }
+    return true;
+  }
+  return false;
+}
+
 static bool has_line(uint32_t length, const char *prefix) {
   size_t k = strlen(prefix);
   const char *p = (const char *)inbox, *end = p + length;
@@ -328,7 +419,7 @@ EXPORT("coaxial_water_draws") uint32_t coaxial_water_draws(uint32_t state) { (vo
 
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
   start(state);
-  track_key(tr(), key, fairy_talking(at(state)) || fairy_wants_text(at(state)));
+  track_key(tr(), key, fairy_still(at(state)) || fairy_wants_text(at(state)));
   bool used = fairy_key(at(state), key, mods);
   edit_face_drain(ed(state));
   track_drain(&track_state);
@@ -357,6 +448,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (kind != 600 && edit_face_message(ed(state), kind, (coax_string){(const char *)inbox, length})) { edit_face_drain(ed(state)); return; }   /* the board's typing and answers first */
   if (kind == 1) { fairy_typed(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (talk_message(state, kind, length)) return;
+  if (social_message(state, kind, length)) return;
   if (progress_message(state, kind, length)) return;
   if (place_message(state, kind, inbox, length)) return;
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) track_drain(&track_state);
@@ -392,6 +484,6 @@ EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) {
   else keep_n = 0;
   action_now = 0; action_edit = false;
 }
-// While you talk or type to the board, the phone's keyboard comes up over the typed line (the host's field, put where the page draws it).
-EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return fairy_talking(at(state)) || fairy_wants_text(at(state)) ? 1 : 0; }
+// While you talk, type a line or a message, or type to the board, the phone's keyboard comes up over the typed line (the host's field, put where the page draws it).
+EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return fairy_wants_text(at(state)) ? 1 : 0; }
 EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)fairy(state)->field.e; }
