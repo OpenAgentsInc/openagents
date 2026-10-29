@@ -1,8 +1,9 @@
 # Psionic in Coax
 
-Status, 2026-10-29: chapters 1–8 implement M0/M1, bounded original-weight
-artifacts, text requests and small causal Qwen-style layers on the tested CPU host. Autodiff and full model execution
-remain proposed. The
+Status, 2026-10-29: chapters 1–10 implement M0/M1, bounded original-weight
+artifacts, text requests, small Qwen-style layers and authenticated
+original-weight Elephant text decisions on the tested CPU host. Mammoth and
+autodiff remain proposed. The
 [Coax library and book](../../psionic/README.md) train a bounded scalar CPU model
 and implement bounded contiguous storage plus dense row/matrix numerics.
 Run `psionic/check.sh` from the repository root.

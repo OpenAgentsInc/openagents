@@ -1,8 +1,9 @@
 # Starting point and roadmap
 
-Status, 2026-10-29: chapters 1–8 implement M0/M1, the artifact slice of M5,
-text requests and bounded causal Qwen-style layers on the tested Apple LP64 CPU
-host. Autodiff and full model execution remain `planned`.
+Status, 2026-10-29: chapters 1–10 implement M0/M1, the artifact slice of M5,
+text requests, bounded Qwen-style layers and authenticated original-weight
+Elephant text decisions on the tested Apple LP64 CPU host. Mammoth and autodiff
+remain `planned`.
 [Run the first chapter](../../psionic/book/ch01-learning-a-number.md)
 or `psionic/check.sh`; [retained verification](../verification/psionic-m0-2026-10-28.md)
 records the scope. Later chapter titles are working names; gates determine
@@ -181,7 +182,7 @@ a prerequisite for starting the ready work.
 ## Proposed book order
 
 The [full proposed table of contents](../../psionic/book/PLAN.md) now gives
-one outline per chapter, with prerequisite notes. Chapters 1–8 are runnable;
+one outline per chapter, with prerequisite notes. Chapters 1–10 are runnable;
 chapter numbers and part boundaries are provisional. The new
 [NVIDIA breadth survey](nvidia-breadth.md) records pinned candidate checkpoints,
 operator requirements, data studies and source-license qualifications.

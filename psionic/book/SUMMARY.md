@@ -13,6 +13,8 @@
 - [10. Execute Elephant](ch10-execute-elephant.md)
 
 Proposed: [full table of contents and prerequisites](PLAN.md), from early
-Elephant/Mammoth through nanochat pretraining/post-training, NVIDIA retrieval,
-vision, motion, speech, scientific ML, world generation and robot policies.
+Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
+pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
+ML, world generation, robot policies, production hosting and inference across a
+mesh.
 The ten chapters linked above are runnable; later chapters remain proposed.

@@ -31,7 +31,9 @@ run examples directly without the check command.
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
 sets the proposed full reading order: early Elephant/Mammoth and useful
-retrieval, then training/nanochat, vision, motion, speech, physics and composite models.
+retrieval, gpt-oss, Mistral and DeepSeek, then training/nanochat, vision,
+motion, speech, physics, composite models, production hosting and inference
+across a mesh.
 Its prerequisite map lets independent branches start earlier than their
 position in the contents. The [roadmap](../../docs/psionic/roadmap.md) lists
 future work. Planned language and
