@@ -61,7 +61,7 @@
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
         "assets": ["index:/realm/everglade/assets/Everglade.indices"]
       } },
-    { "id": "deadgears", "name": "DEAD GEARS", "kind": "open", "listed": false, "orbit": { "r": 0.3, "a": 1.15, "size": 0.03 },
+    { "id": "deadgears", "name": "DEAD GEARS", "kind": "open", "orbit": { "r": 0.3, "a": 1.15, "size": 0.03 },
       "realm": {
         "slug": "dead-gears",
         "title": "Dead Gears",

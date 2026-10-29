@@ -532,10 +532,13 @@ Every page keeps sending the analytics contract
 (`coax/web/analytics-contract.json`, the same rows as `analytics.contract` in
 oa-api): the landing's session-start and page-view, the galaxy's page-view,
 and the Haunted House's page-view, world-enter, load-engine, area, objective,
-quest, click and world-leave. A release never promotes a build whose staging
+quest, click and world-leave; Ice Cream Man's page-view, world-enter,
+load-engine and world-leave; and Dead Gears' page-view, world-enter,
+load-engine, wave and world-leave. A release never promotes a build whose staging
 walk stops sending one: `coax/web/goldens.ts` plays the journey in headless
 Chrome, runs in through the house's front door, clicks and leaves, reads
-every batch the pages send and names what is missing, and `release.sh` stops
+every batch the pages send (a realm's after its own walk, then leaves it)
+and names what is missing, and `release.sh` stops
 before production. In production the Health card on /admin/analytics shows,
 per surface, the last event, the last hour and day, and which contract
 events no page sent in a day. Changing the contract changes both lists in one
