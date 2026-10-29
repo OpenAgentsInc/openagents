@@ -400,6 +400,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/calibration.coax",
+      "chapter": "psionic/book/ch156-fit-our-own-calibration.md",
+      "stdout": "psionic/fixtures/calibration.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

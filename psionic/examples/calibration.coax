@@ -1,0 +1,77 @@
+#import "Basic";
+#load "../lib/calibrate.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+N :: 4000;
+QUESTIONS :: 2;
+SET :: 1;
+kinds :: [4]string.["raw","temperature","binned","isotonic"];
+
+// The three splits of one model: fit, gate, test.
+Splits :: struct {q:[3][N]int;p:[3][N]f64;y:[3][N]f64;}
+draw :: (seed:u64,model:[]f64)->Splits {
+    s:Splits;
+    for k:0..<3 {#assert cf_simulate(seed+cast(u64)k,model,s.q[k][..],s.p[k][..],s.y[k][..],false)==CfStatus.ok;}
+    return s;
+}
+rows_of :: (q:[]int,k:int,rows:[]int)->[]int {return rows[0..<cf_rows(q,k,rows)];}
+
+// Fit every kind per question on the fit split; keep the one with the lowest
+// gate log loss among those that pass the gate, or the raw probabilities.
+Chosen :: struct {map:[QUESTIONS]CfMap;}
+choose :: (splits:Splits,model:u64,show:bool)->Chosen {
+    s:=splits;
+    c:Chosen;rows:[N]int;mapped:[N]f64;
+    for k:0..<QUESTIONS {
+        g:=rows_of(s.q[1][..],k,rows[..]);raw:=cf_measure(s.p[1][..],s.y[1][..],g);
+        if show {print("question %, gate split: raw ECE %, log loss %\n",k,r4(raw.ece),r4(raw.log_loss));}
+        c.map[k]=CfMap.{kind=CfKind.none,model=model,questions=SET,question=k};best:=raw.log_loss;
+        for kind:1..<4 {
+            m:=cf_fit(cast(CfKind)kind,model,SET,k,s.q[0][..],s.p[0][..],s.y[0][..],rows[..]);#assert m.status==CfStatus.ok;
+            for i:0..<N {mapped[i]=cf_map(m,s.p[1][i]);}
+            r:=cf_measure(mapped[..],s.y[1][..],rows_of(s.q[1][..],k,rows[..]));pass:=cf_gate(raw,r);
+            if show {print("  %: ECE %, log loss %, %\n",kinds[kind],r4(r.ece),r4(r.log_loss),ifx pass then "passes" else "fails");}
+            if pass && r.log_loss<best {c.map[k]=m;best=r.log_loss;}
+        }
+        if show {print("  chosen: %\n",kinds[cast(int)c.map[k].kind]);}
+    }
+    return c;
+}
+
+// book:begin example
+main :: () {
+    v1:=[4]f64.[2,0,0.6,-0.6];s:=draw(156,v1[..]);c:=choose(s,1,true);
+    rows:[N]int;mapped:[N]f64;
+
+    // The test split, opened once, through cf_apply.
+    #assert cf_apply(c.map[..],1,SET,s.q[2][..],s.p[2][..],mapped[..],false)==CfStatus.ok;
+    print("test split, raw -> calibrated:\n");
+    for k:0..<QUESTIONS {
+        t:=rows_of(s.q[2][..],k,rows[..]);a:=cf_measure(s.p[2][..],s.y[2][..],t);b:=cf_measure(mapped[..],s.y[2][..],t);
+        print("  question %: ECE % -> %, Brier % -> %, log loss % -> %, confident errors % -> %\n",k,
+            r4(a.ece),r4(b.ece),r4(a.brier),r4(b.brier),r4(a.log_loss),r4(b.log_loss),a.confident_errors,b.confident_errors);
+    }
+    count:[10]int;mean:[10]f64;rate:[10]f64;
+    t:=rows_of(s.q[2][..],0,rows[..]);
+    print("question 0 reliability, mean probability / rate of yes per tenth:\n");
+    for pass:0..<2 {
+        x:=s.p[2][..];if pass==1 {x=mapped[..];}
+        #assert cf_reliability(x,s.y[2][..],t,count[..],mean[..],rate[..],false)==CfStatus.ok;
+        print("  %:",ifx pass==0 then "raw" else "calibrated");
+        for b:0..<10 {if count[b]>=CF_MIN_ROWS {print(" %/%",r4(mean[b]),r4(rate[b]));}}
+        print("\n");
+    }
+
+    // A new model version: model 1's maps are refused, not silently reused.
+    v2:=[4]f64.[1,0.9,1.5,0];s2:=draw(256,v2[..]);
+    print("model 2 through model 1's maps: %\n",cf_apply(c.map[..],2,SET,s2.q[2][..],s2.p[2][..],mapped[..],false));
+    print("model 1's maps for question set 2: %\n",cf_apply(c.map[..],1,2,s2.q[2][..],s2.p[2][..],mapped[..],false));
+    c2:=choose(s2,2,false);
+    #assert cf_apply(c2.map[..],2,SET,s2.q[2][..],s2.p[2][..],mapped[..],false)==CfStatus.ok;
+    print("model 2, refitted on its own splits:\n");
+    for k:0..<QUESTIONS {
+        t2:=rows_of(s2.q[2][..],k,rows[..]);a:=cf_measure(s2.p[2][..],s2.y[2][..],t2);b:=cf_measure(mapped[..],s2.y[2][..],t2);
+        print("  question %: %, ECE % -> %, log loss % -> %\n",k,kinds[cast(int)c2.map[k].kind],r4(a.ece),r4(b.ece),r4(a.log_loss),r4(b.log_loss));
+    }
+}
+// book:end example

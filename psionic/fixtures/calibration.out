@@ -1,0 +1,21 @@
+question 0, gate split: raw ECE 0.0995, log loss 0.5306
+  temperature: ECE 0.0184, log loss 0.4506, passes
+  binned: ECE 0.0112, log loss 0.458, passes
+  isotonic: ECE 0.012, log loss 0.4659, passes
+  chosen: temperature
+question 1, gate split: raw ECE 0.0428, log loss 0.5283
+  temperature: ECE 0.0314, log loss 0.5255, passes
+  binned: ECE 0.0254, log loss 0.4614, passes
+  isotonic: ECE 0.0324, log loss 0.4674, passes
+  chosen: binned
+test split, raw -> calibrated:
+  question 0: ECE 0.098 -> 0.01, Brier 0.318 -> 0.2978, log loss 0.5451 -> 0.4622, confident errors 149 -> 43
+  question 1: ECE 0.0368 -> 0.0133, Brier 0.3533 -> 0.3052, log loss 0.5312 -> 0.4724, confident errors 4 -> 23
+question 0 reliability, mean probability / rate of yes per tenth:
+  raw: 0.0267/0.1244 0.1494/0.2748 0.2468/0.3871 0.3499/0.4658 0.4538/0.5 0.551/0.5696 0.6509/0.6047 0.7516/0.6279 0.8547/0.6977 0.9747/0.8877
+  calibrated: 0.069/0.0714 0.1448/0.153 0.2482/0.2138 0.3483/0.3742 0.4511/0.4882 0.55/0.5779 0.6492/0.65 0.7529/0.7719 0.8582/0.869 0.9315/0.9186
+model 2 through model 1's maps: stale
+model 1's maps for question set 2: stale
+model 2, refitted on its own splits:
+  question 0: binned, ECE 0.0428 -> 0.0304, log loss 0.5297 -> 0.4774
+  question 1: temperature, ECE 0.0732 -> 0.0158, log loss 0.5182 -> 0.4841

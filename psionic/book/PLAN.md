@@ -39,6 +39,8 @@ DeepSeek R1-Distill-Qwen-1.5B CPU reference and a complete greedy greeting.
 [Chapters 70](ch070-learning-with-arrays.md) and
 [71](ch071-gradients-as-a-program.md) are runnable on the CPU: learning on
 simulated deadline data, first with hand-written gradients, then with a tape.
+[Chapter 156](ch156-fit-our-own-calibration.md) fits and gates its own
+calibration maps, and refuses them for another model version.
 [Chapter 157](ch157-thresholds-from-written-costs.md) derives a cascade's
 thresholds from written costs on synthetic probabilities.
 [Chapter 164a](ch164a-learn-which-model-to-call.md) uses chapter 70's trainer
@@ -616,7 +618,7 @@ with synthetic probabilities (live traffic after 16 and 17), 158 after 16 and 17
 
 | Chapter | What we build and check |
 | --- | --- |
-| 156. Fit our own calibration, and refuse a stale one | Per-question temperatures and binned or isotonic maps fitted on a calibration split and scored on held-out data (reliability curve, expected calibration error, Brier, log loss, confident errors; no bin reported below 20 rows); a map is served only if it passes its frozen gate, and refused for any other model identity or question set. |
+| [156. Fit our own calibration, and refuse a stale one](ch156-fit-our-own-calibration.md) — runnable: cpu-f64-calibrate-v1, synthetic probabilities | Per-question temperatures and binned or isotonic maps fitted on a calibration split and scored on held-out data (reliability curve, expected calibration error, Brier, log loss, confident errors; no bin reported below 20 rows); a map is served only if it passes its frozen gate, and refused for any other model identity or question set. |
 | [157. Thresholds from written costs](ch157-thresholds-from-written-costs.md) — runnable: cpu-f64-threshold-v1, synthetic probabilities | A versioned threshold record derived from the cost of a wrong action and the cost of falling through, with three bands (act, abstain to a person or a stronger model, refuse), checked by held-out cost per decision with confidence intervals, never tuned on raw numbers by hand. The first project is an Elephant and Mammoth cascade with three actions (use Elephant's answer, escalate to Mammoth, abstain or ask for more), driven by an explicit table of consequences: each kind of mistake, added latency and inference cost, worked by hand first on synthetic probabilities. It is compared with always Elephant, always Mammoth and a fixed escalation rule, reporting error against coverage, escalation rate, latency and cost; the operating point is chosen on validation data before the confirmation set is opened. Two consumers, a voice interruption and a background classification, rationally choose differently from the same probabilities. |
 | 158. Record readings, join outcomes, watch drift | For every decision, the raw and calibrated probabilities, the threshold and the model identity, with no content; each joined to its later outcome or a small judged sample, maps refitted on a schedule, and an alert when calibration error rises past a stated bound. Each record also names the eligible actions, the chosen action, its selection probability and the policy version, its measured cost, and whether the outcome is still pending, so later policies can be evaluated from the log. |
 | 159. A Pylon checks itself before serving | A read-only doctor and a self-check against shipped reference decisions that the Pylon must pass before it advertises a slot; an update that would change the served model identity is refused unless declared. |

@@ -388,8 +388,9 @@ has the commands and results.
 ## What this does not do yet
 
 - **Synthetic, calibrated probabilities.** Elephant's real probabilities need
-  [chapter 156](PLAN.md)'s calibration before costs can be trusted with them,
-  and Mammoth's real evidence is not a single right-or-wrong reading.
+  [chapter 156](ch156-fit-our-own-calibration.md)'s calibration before
+  costs can be trusted with them, and Mammoth's real evidence is not a single
+  right-or-wrong reading.
 - **One validation draw** and normal intervals. No interval on ρ carries into
   the record.
 - **No live traffic.** Chapter 158 records each decision, its band and its
