@@ -43,8 +43,18 @@ Everglade. The tasks are in the Verse project under "Port the realms"
    - The Sandbox is at /realm/sandbox (rl-sandbox): a world document
      (`verse/tools/pack_sandbox.py`) played by the Haunted House's engine
      and edit tools, one shared world `sandbox` on the server that anyone
-     with a player key publishes to (`0029_sandbox_open.sql`). Its
-     one-sentence set pieces are still to come.
+     with a player key publishes to (`0029_sandbox_open.sql`).
+   - **The Sandbox's set pieces** (rl-sandbox-pieces): you type one
+     sentence ("a flock of birds follows me") and the world gets that
+     piece. Gemini on Vertex picks it, behind
+     `POST /api/playtest/sandbox/piece`, from a fixed typed catalogue (a
+     flock of birds that follows you, a ring of lanterns, a grove of trees,
+     a pond) with its bounded count, kind, colour and size. The server
+     checks the answer against the catalogue and the page checks it again
+     (`verse/setpiece.coax`). Nothing matches keywords. A seeded generator
+     in the same file lays the piece out in front of you, as one undo step
+     and one publish. The Sandbox's own engine (`verse/haunt.coax`) draws
+     it, and the flock flies round whoever is walking.
    - The Grid is at /realm/the-grid (rl-grid), on the galaxy where its
      locked planet was: the demo's own Grid scene (`lander3-scene.json`)
      packed by `verse/tools/pack_grid.py` into storage buffers that

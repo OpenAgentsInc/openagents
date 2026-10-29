@@ -614,6 +614,37 @@
       "blocked_by": [
         "rl-realm-host"
       ],
+      "blocks": [
+        "rl-sandbox-pieces"
+      ]
+    },
+    {
+      "slug": "rl-sandbox-pieces",
+      "parent": "rl-later",
+      "title": "The Sandbox's one-sentence set pieces",
+      "size": "M",
+      "labels": [
+        "realms",
+        "sandbox",
+        "server"
+      ],
+      "body": "In the Sandbox a visitor types one sentence (\"a flock of birds follows me\", \"a ring of blue lanterns\") and the world gets that set piece. No keyword matching: the sentence goes to a server endpoint (POST /api/playtest/sandbox/piece) where Gemini on Vertex picks one piece from a fixed typed catalogue (a flock of birds that follows you, a ring of lanterns, a grove of trees, a pond) and its bounded parameters (count, kind, colour, size), checked against the catalogue on the server and again on the page. A seeded generator in Coax lays the piece out in front of you; it is one undo step and one publish in the Sandbox's build and publish model, and the Sandbox's own engine (verse/haunt.coax) draws it, the flock flying round whoever is walking.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "verse/setpiece.coax",
+        "verse/haunt.coax",
+        "apps/openagents-web/realm.coax",
+        "apps/openagents-web/realm-face.c",
+        "coax/web/api/npc.c",
+        "coax/web/api/migrations/"
+      ],
+      "acceptance": [
+        "Coax #tests for the catalogue's validation and the seeded generator of every piece",
+        "API checks (coax/web/api/test.sh) for the endpoint against a fake model, and one check against the real model",
+        "On /realm/sandbox a typed sentence makes its piece, Z takes it back in one step, and it is published to the shared Sandbox"
+      ],
+      "blocked_by": [
+        "rl-sandbox"
+      ],
       "blocks": []
     },
     {
