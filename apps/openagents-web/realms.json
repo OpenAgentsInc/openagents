@@ -50,7 +50,23 @@
     { "id": "brain", "name": "BIG BRAIN", "kind": "locked", "orbit": { "r": 0.46, "a": 0.5, "size": 0.045 } },
     { "id": "grove", "name": "EVERGLADE", "kind": "locked", "orbit": { "r": 0.34, "a": 4.2, "size": 0.032 } },
     { "id": "coding", "name": "CODING", "kind": "soon", "orbit": { "r": 0.37, "a": 3.25, "size": 0.043 } },
-    { "id": "grid", "name": "THE GRID", "kind": "locked", "orbit": { "r": 0.3, "a": 5.4, "size": 0.036 } },
+    { "id": "grid", "name": "THE GRID", "kind": "open", "orbit": { "r": 0.3, "a": 5.4, "size": 0.036 },
+      "realm": {
+        "slug": "the-grid",
+        "title": "The Grid",
+        "description": "The Grid, the bare Verse world: a floor of lines out to the dark, the Pylon terminal, the help desk, the Game Lab and the gym, robots walking their rounds with the Foreman by the start, and the gate to Everglade.",
+        "alt": "Enter the Verse: walk the Grid",
+        "module": "thegrid",
+        "slot": "the-grid",
+        "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
+        "assets": [
+          "data:/realm/the-grid/assets/grid.data",
+          "storage:/realm/the-grid/assets/grid.vertices",
+          "storage:/realm/the-grid/assets/grid.lines",
+          "storage:/realm/the-grid/assets/grid.bones",
+          "index:/realm/the-grid/assets/grid.indices"
+        ]
+      } },
     { "id": "everglade", "name": "EVERGLADE BLOCKOUT", "kind": "open", "listed": false, "orbit": { "r": 0.21, "a": 4.65, "size": 0.024 },
       "realm": {
         "slug": "everglade",

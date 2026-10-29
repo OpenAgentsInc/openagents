@@ -45,7 +45,15 @@ Everglade. The tasks are in the Verse project under "Port the realms"
      and edit tools, one shared world `sandbox` on the server that anyone
      with a player key publishes to (`0029_sandbox_open.sql`). Its
      one-sentence set pieces are still to come.
-   - **Medieval Town folds into Everglade** (rl-medieval-town, decided
+   - The Grid is at /realm/the-grid (rl-grid), on the galaxy where its
+     locked planet was: the demo's own Grid scene (`lander3-scene.json`)
+     packed by `verse/tools/pack_grid.py` into storage buffers that
+     `thegrid.wgsl` draws unlit, lines as screen-space quads and the robots
+     skinned on the GPU from their clips' frames, replaying their recorded
+     rounds. The gate goes to Everglade. The stations' panels (the Pylon
+     terminal, the guide, the suggestion box, the build board) are not
+     ported; their names show and they are walls.
+   - **Medieval Town folds into Everglade** (rl-medieval, decided
      October 29). The demo's town (`~/work/aethyr-demo` `src/town.cpp`,
      `docs/medieval-town.md`) is the layout of Hivemind's Modular Medieval
      Town, a third-party pack, with each of its 8,087 pieces swapped for a

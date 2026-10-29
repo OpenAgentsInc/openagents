@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm and build/chat.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/thegrid.wasm, build/villa.wasm, build/private.wasm and build/chat.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -37,6 +37,10 @@ garden=$!
 "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/everglade-face.c" "$here/build/everglade.wasm" \
   "$m/player.coax" "$m/grid.coax" &
 everglade=$!
+# /realm/the-grid: the bare Verse world from the demo's scene (verse/tools/pack_grid.py), with the player and thumbs.
+"$here/../../coax/web/wasm.sh" "$here/thegrid.coax" "$here/thegrid-face.c" "$here/build/thegrid.wasm" \
+  "$m/player.coax" "$m/grid.coax" &
+thegrid=$!
 # /realm/hecates-cemetery: Planetary Villa's first expansion (verse/planetary-villa/README.md),
 # with the player, thumbs and figures (villafig.coax: the engine's figures and motions) as libraries.
 "$here/../../coax/web/wasm.sh" "$here/villa.coax" "$here/villa-face.c" "$here/build/villa.wasm" \
@@ -98,4 +102,5 @@ wait "$fixture"
 wait "$icecream"
 wait "$deadgears"
 wait "$everglade"
+wait "$thegrid"
 wait "$villa"
