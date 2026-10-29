@@ -107,3 +107,12 @@ test("mutation scheduling preserves full-graph guarantees", () => {
   expect(tasks.get("coax-mutation-scheduling").body).toContain("fall back to the full reference runner")
   expect(tasks.get("coax-mutation-scheduling").acceptance.join(" ")).toContain("every reachable mutation site")
 })
+
+test("site releases bind the tested compiler to the actual target inputs", () => {
+  const task = tasks.get("coax-release-compiler-provenance")
+  expect(task).toBeDefined()
+  expect(reaches(task.slug, "coax-mutation-scheduling")).toBe(true)
+  expect(task.body).toContain("unrelated main commits must not trigger redundant compiler checks")
+  expect(task.acceptance.join(" ")).toContain("before any staging write")
+  expect(task.acceptance.join(" ")).toContain("without rerunning checks")
+})

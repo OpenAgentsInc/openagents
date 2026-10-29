@@ -3147,6 +3147,36 @@
       "blocked_by": [
         "coax-run-resource-inputs"
       ],
+      "blocks": [
+        "coax-release-compiler-provenance"
+      ]
+    },
+    {
+      "slug": "coax-release-compiler-provenance",
+      "parent": "compiler",
+      "title": "Bind site releases to the tested compiler source",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "The site release creates a clean worktree of origin/main but currently copies coax/bin/coax from the invoking checkout without proving that binary was built from the target revision's compiler inputs. Parallel long-lived Nostr worktrees can therefore build a site with a stale or uncommitted compiler, even if the target source is clean. Bind a Python-free compiler build to a deterministic, complete identity of its real inputs and verify it against the exact release worktree before staging. Reuse a verified compiler when its inputs are identical; unrelated main commits must not trigger redundant compiler checks. Refuse missing, stale, dirty or forged provenance rather than silently copying or skipping gates. The digest identifies inputs, not correctness or a security signature.",
+      "files": [
+        "coax/build.sh",
+        "coax/src/",
+        "scripts/coax-release.sh",
+        "coax/web/release.sh",
+        "coax/tests/",
+        "coax/web/project/QUEUE.md"
+      ],
+      "acceptance": [
+        "The published compiler embeds or is bound to a deterministic identity of all actual compiler build inputs, generated seeds, runtime sources, release metadata and relevant build configuration; the release verifies it against the target tree before any staging write",
+        "Tests reject an older compiler, changed source, changed seed, dirty or missing provenance and binary/provenance substitution; reuse succeeds for unrelated remote commits whose compiler inputs are unchanged, without rerunning checks",
+        "The provenance mechanism is Python-free for bootstrap and release, preserves existing full staging and production gates, and documents what the identity does and does not prove"
+      ],
+      "blocked_by": [
+        "coax-mutation-scheduling"
+      ],
       "blocks": []
     },
     {
