@@ -449,13 +449,16 @@ noise_next :: (noise: f32, rms: f32, speaking: bool) -> f32 {
 // either. It learns only while the reply is sounding (down_now near
 // down_env): in a pause, or the fading tail after a reply, a quiet mic says
 // nothing about the echo, and learning there talked it down 40 dB, so the
-// next reply's first words cut it off. Each reply that starts after quiet
-// begins at ECHO_ONSET_DB or above for the same reason.
+// next reply's first words cut it off: it learns while reply audio came in
+// the last 200 ms (recent_play) and isn't silence (down_now). Each reply
+// that starts after quiet (down_env under ECHO_QUIET_DB) begins at
+// ECHO_ONSET_DB or above for the same reason.
 // Over the reply, a frame is speech only ECHO_MARGIN_DB over it, and
 // a barge-in takes BARGE_MS of such speech; a pause between words counts
 // the run down a frame at a time rather than starting it again.
 ECHO_MARGIN_DB :: 14.0;
 ECHO_ONSET_DB :: -6.0;
+ECHO_QUIET_DB :: -70.0;     // down_env under this: the reply has been quiet a while
 ECHO_SOUNDING_DB :: 10.0;   // down_now within this of down_env: the reply is sounding
 BARGE_MS :: 240;
 echo_next :: (echo: f32, diff: f32) -> f32 {
@@ -1042,7 +1045,7 @@ verse_voice_uplink :: (s: [] VoiceState, pcm: [] s16, out: [] s16, f: [] VoiceFe
   // stands well over the leak we expect (echo_next), so the reply never cuts
   // itself off or becomes a turn of its own.
   hearing := playing && s[0].down_env > -90.0;
-  if hearing && s[0].down_now > s[0].down_env - ECHO_SOUNDING_DB { s[0].echo_db = echo_next(s[0].echo_db, l.rms_db - s[0].down_env); }
+  if hearing && s[0].recent_play > 0 && s[0].down_now > s[0].down_env - ECHO_SOUNDING_DB { s[0].echo_db = echo_next(s[0].echo_db, l.rms_db - s[0].down_env); }
   if hearing && l.rms_db <= s[0].down_env + s[0].echo_db + ECHO_MARGIN_DB {
     speech = false; above = false; p = lo32(p, 0.29);
   }
@@ -1126,7 +1129,7 @@ verse_voice_uplink :: (s: [] VoiceState, pcm: [] s16, out: [] s16, f: [] VoiceFe
   s[0].up_seq = next_seq(s[0].up_seq);
   if s[0].recent_play > 0 { s[0].recent_play -= 1; }
   s[0].down_env = hi32(s[0].down_env - 0.6, -120.0);
-  s[0].down_now = hi32(s[0].down_now - 6.0, -120.0);
+  s[0].down_now = hi32(s[0].down_now - 0.6, -120.0);
   return ev;
 }
 
@@ -1142,7 +1145,6 @@ verse_voice_preroll :: (s: [] VoiceState, out: [] s16) -> u32 #export_c {
 verse_voice_downlink :: (s: [] VoiceState, pcm: [] s16, rate: u32, f: [] VoiceFeatures) -> u32 #export_c {
   ev := apply_due(s, STREAM_DOWNLINK);
   // a reply starting after quiet: assume a strong echo until it is heard (echo_next)
-  if pcm.count > 0 && s[0].recent_play == 0 { s[0].echo_db = hi32(s[0].echo_db, ECHO_ONSET_DB); }
   if pcm.count > 0 { s[0].recent_play = 10; }
   target_db := s[0].gain_db - (ifx s[0].ducked then s[0].duck_db else 0.0);
   target := ifx s[0].paused then 0.0 else lin_from_db(target_db);
@@ -1157,6 +1159,8 @@ verse_voice_downlink :: (s: [] VoiceState, pcm: [] s16, rate: u32, f: [] VoiceFe
   s[0].cur_gain = clampf(g, 0.0, 4.0);
   if target == 0.0 && s[0].cur_gain < 0.001 { s[0].cur_gain = 0; }
   l := measure(pcm);
+  // a reply starting after quiet (about 1.5 s): assume a strong echo until it is heard (echo_next)
+  if pcm.count > 0 && l.rms_db > -70.0 && s[0].down_env < ECHO_QUIET_DB { s[0].echo_db = hi32(s[0].echo_db, ECHO_ONSET_DB); }
   if pcm.count > 0 { s[0].down_env = hi32(s[0].down_env, l.rms_db); s[0].down_now = l.rms_db; }
   if f.count >= 1 {
     f[0] = VoiceFeatures.{stream = STREAM_DOWNLINK, sequence = s[0].down_seq, media_epoch = s[0].epoch,
@@ -1382,15 +1386,15 @@ over_reply :: (s: [] VoiceState, r: [] Rng, kind: int, reply: int, frames: int, 
   a := over_reply(s[..], r[..], 0, 3277, 40, 30);   // a good canceller: the leak is learned low
   #assert a.barges == 0 && s[0].echo_db < -20.0;
   learned := s[0].echo_db;
-  skip(s[..], r[..], 0, 60, 70);                     // the reply ends; its level fades for a while
+  skip(s[..], r[..], 0, 120, 70);                    // the reply ends; its level fades for a while
   #assert s[0].echo_db >= learned - 1.5;              // next to nothing learned from the quiet
   // the next reply comes back loud for its first moments (the canceller re-converging)
-  b := over_reply(s[..], r[..], 1, 3277, 20, 130);
+  b := over_reply(s[..], r[..], 1, 3277, 20, 190);
   #assert b.barges == 0 && b.starts == 0;
   // once the canceller settles, someone talking over the reply still cuts in
-  c := over_reply(s[..], r[..], 0, 3277, 60, 150);
+  c := over_reply(s[..], r[..], 0, 3277, 60, 210);
   #assert c.barges == 0 && s[0].echo_db < -20.0;
-  d := over_reply(s[..], r[..], 1, 3277, 20, 210);
+  d := over_reply(s[..], r[..], 1, 3277, 20, 270);
   #assert d.barges == 1;
 }
 

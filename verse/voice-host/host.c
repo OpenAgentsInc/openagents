@@ -354,6 +354,7 @@ typedef struct {
   size_t cut_rest;            // where cut_text's unrendered sentences start
   uint64_t cut_at;            // now_ms() of the cut; 0: nothing kept
   int cut_resumes;            // resumes in a row, so an echo can't cut it forever
+  uint32_t echo_turn;         // a turn already taken for the echo from its partial: its final is dropped
   // Turns that started while a reply played and never barged in: the phone's
   // own engine judged them too weak to interrupt, so they are the reply's
   // echo or the room, not someone talking (deliver_final drops them).
@@ -1051,6 +1052,10 @@ static void resume_cut(session *s, uint32_t turn_no, const char *turn) {
 
 static void deliver_final(session *s, uint32_t turn_no, const char *turn, const char *text) {
   s->t_final = now_ms();
+  if (turn_no == s->echo_turn) {
+    logf_("%s: %s was the reply's echo, already resumed: %s", s->sid, turn, text);
+    return;
+  }
   if (take_quiet(s, turn_no)) {
     logf_("%s: %s heard over the reply without a barge-in, so not taken: %s", s->sid, turn, text);
     send_turn_event(s, turn, OA_TURN_PHASE_ENDED, NULL, 0);
@@ -1101,7 +1106,14 @@ static void on_job_done(job *j) {
         s->done_cut_ms = j->cut_silence_ms;
         snprintf(s->done_text, sizeof s->done_text, "%s", j->text);
       }
-      if (j->ok && s->turn_open && j->text[0]) send_turn_event(s, j->turn, OA_TURN_PHASE_PARTIAL, j->text, 0);
+      // Two or more of the reply's own words while the turn is still open:
+      // the echo, so the reply goes on now rather than after the turn ends.
+      static char w[64][32];
+      if (j->ok && s->turn_open && s->echo_turn != j->turn_no && words_of(j->text, w, 64) >= 2 && is_echo(s, j->text)) {
+        logf_("%s: %s heard %s so far", s->sid, j->turn, j->text);
+        s->echo_turn = j->turn_no;
+        resume_cut(s, j->turn_no, j->turn);
+      } else if (j->ok && s->turn_open && j->text[0]) send_turn_event(s, j->turn, OA_TURN_PHASE_PARTIAL, j->text, 0);
       if (s->final_pending) plan_final(s);
       else if (s->turn_open) maybe_recognize(s);
     }
