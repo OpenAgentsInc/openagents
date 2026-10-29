@@ -1,0 +1,492 @@
+{
+  "schema": "coax.public-view-audit-evidence.v1",
+  "scope": "source-only under explicit view, tool and runtime premises; no target or production approval",
+  "source_sha256": {
+    "tools/coax-nostr/public-view-check/aggregate.coax": "a01cf12169831c2892d1dbaf0d36c0e408b71da388e2b0d18704c656c8535794",
+    "tools/coax-nostr/public-view-check/aggregate.py": "6e3babd692fdb5a3ea351b6abf50ed9d33aef6856a9857d868d37c716ac9078d",
+    "tools/coax-nostr/public-view-check/bridge-aggregate.cpp": "ac56e8d614612532900a62462a6089e4c0de6f2857c57d8c52a98cd8cfb5754c",
+    "tools/coax-nostr/public-view-check/check.py": "4a478426bcf468e5e4d319185bffce2b503ac62e3fc2ef4659cbb13d77656e6b",
+    "tools/coax-nostr/public-view-check/test_public_views.py": "5d52c1a2bf0a50f9602c5b27bbc748d81e8cb2cca4a15a1b1dc21a91f0802434"
+  },
+  "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+  "source_checks": 195,
+  "python_tests": 7,
+  "observations": [
+    {
+      "case": "artifact_swap.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "artifact_swap.coax",
+      "expected": 0,
+      "error": 0,
+      "accepted": true,
+      "return_dependency_mask": 1,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 0,
+      "error": 0,
+      "accepted": true,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "manifest.coax",
+      "expected": 13,
+      "error": 13,
+      "accepted": false,
+      "return_dependency_mask": null,
+      "guards": []
+    },
+    {
+      "case": "public_call.coax",
+      "expected": 0,
+      "error": 0,
+      "accepted": true,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "write.coax",
+      "expected": 0,
+      "error": 0,
+      "accepted": true,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "secret_copy.coax",
+      "expected": 0,
+      "error": 0,
+      "accepted": true,
+      "return_dependency_mask": 1,
+      "guards": []
+    },
+    {
+      "case": "public_guard.coax",
+      "expected": 14,
+      "error": 14,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": [
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "case": "real_ecdh_entry",
+      "expected": 14,
+      "error": 14,
+      "accepted": false,
+      "return_dependency_mask": 1,
+      "guards": [
+        [
+          239,
+          0
+        ],
+        [
+          492,
+          0
+        ]
+      ]
+    },
+    {
+      "case": "branch.coax",
+      "expected": 6,
+      "error": 6,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "index.coax",
+      "expected": 7,
+      "error": 7,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "readonly.coax",
+      "expected": 5,
+      "error": 5,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "readonly_callee.coax",
+      "expected": 5,
+      "error": 5,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "readonly_slice.coax",
+      "expected": 5,
+      "error": 5,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "tainted_public.coax",
+      "expected": 8,
+      "error": 8,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "tainted_slice_alias.coax",
+      "expected": 8,
+      "error": 8,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "tainted_alias_branch.coax",
+      "expected": 6,
+      "error": 6,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "secret_public.coax",
+      "expected": 8,
+      "error": 8,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "forbidden_public.coax",
+      "expected": 8,
+      "error": 8,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "forbidden_transitive.coax",
+      "expected": 8,
+      "error": 8,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "secret_branch_public_helper.coax",
+      "expected": 6,
+      "error": 6,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "foreign.coax",
+      "expected": 9,
+      "error": 9,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "bounds.coax",
+      "expected": 2,
+      "error": 2,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "zero_trip.coax",
+      "expected": 5,
+      "error": 5,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "view_escape.coax",
+      "expected": 5,
+      "error": 5,
+      "accepted": false,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "read_public.coax",
+      "expected": 0,
+      "error": 0,
+      "accepted": true,
+      "return_dependency_mask": 0,
+      "guards": []
+    },
+    {
+      "case": "read_secret.coax",
+      "expected": 0,
+      "error": 0,
+      "accepted": true,
+      "return_dependency_mask": 1,
+      "guards": []
+    }
+  ],
+  "observations_report_sha256": "2ef57daed4fdd9af2e02e0513322621b7b603641a87bc6e747a49dc004a8422a",
+  "coax_log_sha256": "71509147689fd05e66ec79f9fa9963349c0d9eac8c233644416467e78d9a9f94",
+  "python_log_sha256": "a04e2c1f7010e45afcefd999be8fe8db748556b786ac69643f1fe3c0433a088d",
+  "mutation": {
+    "mutants": 2844,
+    "killed": 2844,
+    "survived": 0,
+    "log_sha256": "16bd5b3702102daca66948630ec076c1d2e587ab376b7529c63356524472938b"
+  },
+  "historical_mutation_failures": {
+    "eleven_survivors_log_sha256": "fcc5ce7cf49dc5b27406b03062d752b86b2ece7faacca6cce948c3203abcabea",
+    "one_survivor_log_sha256": "2279f6cd66d4b42fb472a6602e45bdedf7487db0dc53b596cc965dd74057201f",
+    "direct_final_survivor_witness_sha256": "b523490c5e1c33f1d3456d1900f6d797a4f527c0f7f285689be07e2e1e955fae"
+  },
+  "real_ecdh_audit": {
+    "schema": "coax.secret-source-audit.v1",
+    "entry": "ecdh_stage",
+    "classification": "explicit whole-parameter classification",
+    "profile": "aggregate-source-v1",
+    "accepted": false,
+    "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+    "compiler": "coax0 0.22.0",
+    "compiler_run_steps": null,
+    "audit_artifact_sha256": "472167ffd0995381b7c3734290cbdd571d286ccde2ed97862dfbb50a0a5bfb03",
+    "audit_input_sha256": {
+      "$REPO/tools/coax-nostr/secret-check/frontend.coax": "570f71b622640f2a2f55fb4fe1a05b78a36a2f606bf5e288f2150a3ba1b0de0c",
+      "$REPO/coax/lib/compiler/lexer.coax": "2a193c698aab87f24384bdd4443dc02d15a2a699cea5b371762392fc5925ad0b",
+      "$REPO/coax/lib/compiler/parser.coax": "448318fa44d7935bebb0efcf1d6a55f77c39d1cc4450c18ed5ffbe4c55d36365",
+      "$REPO/coax/lib/compiler/sources.coax": "a5cea55ef5f6efa502d15d9e0ddd462e3e1a5cffe0f25a8200873443c9df008d",
+      "$REPO/coax/lib/crypto/sha256-memory.coax": "9c59475cf6744005e9a9bff7efa5c1fd1cf90c5323a7c52e818a166b0451433d",
+      "$REPO/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+      "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "$REPO/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+      "$REPO/tools/coax-nostr/secret-check/source-policy.coax": "e0822835f32f266d4ca97b26d47ea158ffc58bed62eb5096d3eeec1dc9c628c5",
+      "$REPO/tools/coax-nostr/public-view-check/aggregate.coax": "a01cf12169831c2892d1dbaf0d36c0e408b71da388e2b0d18704c656c8535794",
+      "$REPO/coax/lib/crypto/secret-flow.coax": "208119c702a971e799baa13221b211b38665c0a7a34c52a2af3f453ac5588f4e",
+      "$REPO/coax/lib/crypto/secret-types.coax": "e7a6a4632ab555ac12b3765d97bf18fcad5e18248f182889b31fb965682117e7",
+      "$REPO/coax/tests/nostr/secret_flow.coax": "b3b383a63aa7fffeaed0daf3bde6066c0c1e7f7e856c6a855f8c5c45fb2840d3",
+      "$REPO/coax/tests/nostr/secret_aggregate.coax": "6e87fcd53c8955bb1ce5f1dff6a57b57055fd6813461be07357da46f77afbd7a",
+      "$REPO/coax/tests/nostr/secret_aggregate_cases.coax": "b99853d36c10cedf11c195856d7d56032c3f8bd7a59a9d0b030350e09f55adc7",
+      "$REPO/tools/coax-nostr/public-view-check/bridge-aggregate.cpp": "ac56e8d614612532900a62462a6089e4c0de6f2857c57d8c52a98cd8cfb5754c",
+      "$REPO/tools/coax-nostr/public-view-check/check.py": "4a478426bcf468e5e4d319185bffce2b503ac62e3fc2ef4659cbb13d77656e6b",
+      "$REPO/tools/coax-nostr/public-view-check/aggregate.py": "6e3babd692fdb5a3ea351b6abf50ed9d33aef6856a9857d868d37c716ac9078d"
+    },
+    "object_timing_approved": false,
+    "checked_runtime_guards_proved": false,
+    "aggregate_memory_loops_supported": true,
+    "compiler_profile": "native-c-checked-library",
+    "compiler_source_map_sha256": "a5398d1e3e576f6b1cddad452400ed074ad2320c2ffb1549a7c2a5bf105d17d8",
+    "source_sha256": {
+      "$REPO/coax/lib/crypto/ecdh.coax": "2f6509d0bb427fa811c274838ad19aa6d1a22550663b62720d2cd595e4d35c39",
+      "$REPO/coax/lib/crypto/secp_mult_const.coax": "948b31ef93663792305347ca5f65e22259c5777e783edf7b9502b09033de622b",
+      "$REPO/coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+      "$REPO/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "$REPO/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "$REPO/coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+      "$REPO/coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+      "$REPO/coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+      "$REPO/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+      "$REPO/coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915"
+    },
+    "resolved_type_sha256": "f1fff1b2a59a44de648f16f9ad9615170cf45c65de1330579d2afe755f1fa1f6",
+    "resolved_type_inventory_scope": "compiler-typed physical closure; only reached procedures flow-analyzed",
+    "classification_manifest_sha256": "9baf01d1e7e7714e008d383d423bcb91f0497b7c479bcd2b26f1452ad460b649",
+    "classified_parameters": [
+      {
+        "name": "secret",
+        "type": "[] u8",
+        "classification": "secret",
+        "view": {
+          "element_type": "u8",
+          "extent": 32,
+          "access": "read"
+        }
+      },
+      {
+        "name": "peer",
+        "type": "[] u8",
+        "classification": "public",
+        "view": {
+          "element_type": "u8",
+          "extent": 32,
+          "access": "read"
+        }
+      },
+      {
+        "name": "work",
+        "type": "[] EcdhScratch",
+        "classification": "public",
+        "view": {
+          "element_type": "EcdhScratch",
+          "extent": 1,
+          "access": "write"
+        }
+      }
+    ],
+    "classification_assumption": "caller-supplied; public parameters must be public at the actual call boundary",
+    "error": 14,
+    "error_name": "guard-obligations",
+    "file": "$REPO/coax/lib/crypto/ecdh.coax",
+    "line": 0,
+    "column": 0,
+    "reached_procedures": 61,
+    "visited_nodes": 168959,
+    "return_dependency_mask": 1,
+    "supported_algorithm_dataflow": true,
+    "source_status": "analyzed-with-guard-obligations",
+    "production_crypto_approved": false,
+    "view_assumption": "caller supplies live aligned fixed-extent views, mutually disjoint from each other and all other reachable storage, with declared access and initial classifications and no concurrent mutation throughout the invocation",
+    "public_only_scope": "all reached public-only bodies and transitive effects are analyzed; no declassification from names",
+    "authored_guard_obligations": [
+      {
+        "node": 7186,
+        "line": 239,
+        "column": 3,
+        "origin_mask": 0,
+        "kind": "authored-assertion",
+        "file": "$REPO/coax/lib/crypto/secp_field.coax",
+        "source_sha256": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+        "classification": "public-unproved"
+      },
+      {
+        "node": 8991,
+        "line": 492,
+        "column": 5,
+        "origin_mask": 0,
+        "kind": "authored-assertion",
+        "file": "$REPO/coax/lib/crypto/secp_field.coax",
+        "source_sha256": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+        "classification": "public-unproved"
+      }
+    ]
+  },
+  "legacy_registry": {
+    "raw_accepted": false,
+    "raw_error_name": "guard-obligations",
+    "source_scope_accepted": true,
+    "conditional": true,
+    "report_sha256": "46b8450e52b9c7c86478947e20e52e14425cda358848746a9d24272f0c382844"
+  },
+  "independent_review": "separate source, driver, bridge and artifact-loading review; stable-files and physical view ownership remain caller/runtime premises"
+}
