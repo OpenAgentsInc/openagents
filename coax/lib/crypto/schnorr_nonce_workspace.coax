@@ -1,0 +1,50 @@
+// Experimental BIP-340 nonce derivation with named caller-owned secret state.
+// It does not sign, validate scalars or approve production-secret use.
+#load "sha256_workspace.coax";
+#authority;
+SN_AUX_TAG :: #run S_hash("BIP0340/aux");
+SN_NONCE_TAG :: #run S_hash("BIP0340/nonce");
+#test "BIP-340 vector zero nonce hash with normalized scalar three" {
+  key:[32]u8;key[31]=3;aux:[32]u8;msg:[32]u8;
+  pub:=[32]u8.[0xf9,0x30,0x8a,0x01,0x92,0x58,0xc3,0x10,0x49,0x34,0x4f,0x85,0xf8,0x9d,0x52,0x29,0xb5,0x31,0xc8,0x45,0x83,0x6f,0x99,0xb0,0x86,0x01,0xf1,0x13,0xbc,0xe0,0x36,0xf9];
+  expected:=[32]u8.[0x1d,0x2d,0xc1,0x65,0x2f,0xee,0x3a,0xd0,0x84,0x34,0x46,0x9f,0x9a,0xd3,0x05,0x36,0xa5,0x78,0x7f,0xec,0xcf,0xa3,0x08,0xe8,0xfb,0x39,0x6c,0x80,0x30,0xdd,0x1c,0x69];
+  work:[1]SnNonce;out:[33]u8;out[32]=165;
+  #assert sn_nonce(key[..],pub[..],aux[..],msg[..],work[..],out[..],false);
+  for i:0..<32 {#assert out[i]==expected[i];}#assert out[32]==165;
+}
+#test "nonce admission rejects incorrect views before effects" {
+  key:[32]u8;pub:[32]u8;aux:[32]u8;msg:[1]u8;work:[1]SnNonce;out:[32]u8;
+  work[0].digest[0]=42;for i:0..<32 {out[i]=165;}
+  #assert !sn_nonce(key[0..<31],pub[..],aux[..],msg[..],work[..],out[..],false);
+  #assert !sn_nonce(key[..],pub[0..<31],aux[..],msg[..],work[..],out[..],false);
+  #assert !sn_nonce(key[..],pub[..],aux[0..<31],msg[..],work[..],out[..],false);
+  #assert !sn_nonce(key[..],pub[..],aux[..],msg[..],work[0..<0],out[..],false);
+  #assert !sn_nonce(key[..],pub[..],aux[..],msg[..],work[..],out[0..<31],false);
+  #assert !sn_nonce(key[..],pub[..],aux[..],msg[..],work[..],out[..],true);
+  #assert work[0].digest[0]==42;for b:out {#assert b==165;}
+}
+#test "BIP-340 nonce depends on all four inputs and message lengths" {
+  key:[32]u8;pub:[32]u8;aux:[32]u8;msg:[65]u8;work:[1]SnNonce;one:[32]u8;two:[32]u8;
+  #assert sn_nonce(key[..],pub[..],aux[..],msg[..],work[..],one[..],false);
+  key[0]=1;#assert sn_nonce(key[..],pub[..],aux[..],msg[..],work[..],two[..],false);#assert cb_ct_equal(one[..],two[..])!=CB_MAX64;key[0]=0;
+  pub[0]=1;#assert sn_nonce(key[..],pub[..],aux[..],msg[..],work[..],two[..],false);#assert cb_ct_equal(one[..],two[..])!=CB_MAX64;pub[0]=0;
+  aux[0]=1;#assert sn_nonce(key[..],pub[..],aux[..],msg[..],work[..],two[..],false);#assert cb_ct_equal(one[..],two[..])!=CB_MAX64;aux[0]=0;
+  msg[64]=1;#assert sn_nonce(key[..],pub[..],aux[..],msg[..],work[..],two[..],false);#assert cb_ct_equal(one[..],two[..])!=CB_MAX64;
+  #assert sn_nonce(key[..],pub[..],aux[..],msg[0..<0],work[..],two[..],false);#assert cb_ct_equal(one[..],two[..])!=CB_MAX64;
+}
+#forall "nonce preflight combines both operation results" tag_ok:bool,aux_ok:bool {
+  #assert sn_both(tag_ok,aux_ok)==(tag_ok && aux_ok);
+}
+sn_both :: (a:bool,b:bool)->bool {return a && b;}
+SnNonce :: struct {sha:[1]ShaOwned;tag:[32]u8;digest:[32]u8;t:[32]u8;}
+// key contains the already parity-normalized scalar. Views must be valid,
+// stable, mutually disjoint and accurately described; output is secret too.
+sn_nonce :: (key:[]u8,pub:[]u8,aux:[]u8,message:[]u8,work:[]SnNonce,out:[]u8,overlap:bool)->bool #export_c {
+  if work.count!=1 || key.count!=32 || pub.count!=32 || aux.count!=32 || !sha256_input_ok(message.count) || !cb_span(out.count,0,32) || overlap {return false;}
+  tagvalue:=SN_AUX_TAG;tag_ok:=sha256_emit(tagvalue.words[..],work[0].tag[..])==SHA_OK;
+  aux_ok:=so_init(work[0].sha[..]) && so_update(work[0].sha[..],work[0].tag[..],false) && so_update(work[0].sha[..],work[0].tag[..],false) && so_update(work[0].sha[..],aux,false) && so_finish(work[0].sha[..],work[0].digest[..],false);
+  ok:=sn_both(tag_ok,aux_ok);if !ok {return ok;}
+  for i:0..<32 {work[0].t[i]=key[i]^work[0].digest[i];}
+  tagvalue=SN_NONCE_TAG;tag_ok=sha256_emit(tagvalue.words[..],work[0].tag[..])==SHA_OK;
+  return tag_ok && so_init(work[0].sha[..]) && so_update(work[0].sha[..],work[0].tag[..],false) && so_update(work[0].sha[..],work[0].tag[..],false) && so_update(work[0].sha[..],work[0].t[..],false) && so_update(work[0].sha[..],pub,false) && so_update(work[0].sha[..],message,false) && so_finish(work[0].sha[..],out,false);
+}
