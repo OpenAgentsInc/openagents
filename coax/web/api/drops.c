@@ -572,12 +572,14 @@ static const char *publish_steps(PGconn *c, const char *slug, bool has_key) {
   free(sql_text(c, "SELECT drops.publish_step($1, 'files')::text", 1, (const char *[]){slug}));
   free(sql_text(c, "SELECT drops.publish_step($1, 'listed')::text", 1, (const char *[]){slug}));
   char name[200];
-  const char *pages[3][3] = {{"SELECT drops.published_slugs()", "projects/published-slugs.txt", "text/plain; charset=utf-8"},
-                             {"SELECT drops.publish_page($1)", "index.html", "text/html; charset=utf-8"},
-                             {"SELECT drops.publish_md($1)", "index.md", "text/markdown; charset=utf-8"}};
-  for (int i = 0; i < 3; i++) {
+  // the page answers at /projects/<slug> (an object of that name, as upload.py writes a site's pages) and at .../index.html
+  const char *pages[4][3] = {{"SELECT drops.published_slugs()", "projects/published-slugs.txt", "text/plain; charset=utf-8"},
+                             {"SELECT drops.publish_page($1)", "", "text/html; charset=utf-8"},
+                             {"SELECT drops.publish_page($1)", "/index.html", "text/html; charset=utf-8"},
+                             {"SELECT drops.publish_md($1)", "/index.md", "text/markdown; charset=utf-8"}};
+  for (int i = 0; i < 4; i++) {
     char *text = sql_text(c, pages[i][0], i ? 1 : 0, (const char *[]){slug});
-    if (i) snprintf(name, sizeof name, "projects/%s/%s", slug, pages[i][1]); else snprintf(name, sizeof name, "%s", pages[i][1]);
+    if (i) snprintf(name, sizeof name, "projects/%s%s", slug, pages[i][1]); else snprintf(name, sizeof name, "%s", pages[i][1]);
     bool ok = text && site_put(tok, name, pages[i][2], text);
     free(text);
     if (!ok) return "the page";

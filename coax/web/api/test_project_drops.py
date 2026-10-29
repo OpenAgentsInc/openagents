@@ -362,8 +362,8 @@ check("publish: the order ranks every issue", [t[1] for t in ptag(order, "item")
       and [t[2] for t in ptag(order, "item")] == ["11", "12", "13"], order["tags"])
 ppage = bucket["site"].get("projects/moon-villa/index.html", {})
 check("publish: the page is in the site's bucket, uncached, drawn live by the project app",
-      ppage.get("meta", {}).get("cacheControl") == "no-cache" and f'data-app="project" data-text="{pk} moon-villa"'.encode() in ppage.get("data", b"")
-      and b"<h1>Moon Villa</h1>" in ppage.get("data", b""), ppage.get("meta"))
+      ppage.get("meta", {}).get("cacheControl") == "no-cache" and f'data-project="{pk} moon-villa"'.encode() in ppage.get("data", b"")
+      and b"<h1>Moon Villa</h1>" in ppage.get("data", b"") and bucket["site"].get("projects/moon-villa", {}).get("data") == ppage.get("data"), ppage.get("meta"))
 plisted = bucket["site"].get("projects/published.txt", {}).get("data", b"").decode()
 check("publish: /projects lists it from published.txt, with no release",
       plisted.startswith("moon-villa|Moon Villa|") and f"|/projects/moon-villa|{pk}|{admin_pk}\n" in plisted
