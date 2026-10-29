@@ -201,3 +201,11 @@ native/Wasm/oracle/parity groups passed in 51.077 seconds on that same source.
 The final report records exact compiler, source, artifact and log hashes,
 including both failed earlier gates. No existing compiler, interpreter or
 mutation resource ceiling was raised for this work.
+
+
+The reachable rebased initial snapshot is `f64e9fee9b19fda59fca2ac63fb56f8ddcb34ba2`; the accepted source
+snapshot is `c13c4f65b751ecdb5aadfbcb0b13c03cb70b2543`. Both were created after their respective
+runs. The historical local handles above and in the focused report retain the
+original provenance; all 21 initial parity Coax files and all 22 accepted
+Coax files match the reachable snapshots byte for byte. Integration did not
+repeat the frozen gate for unrelated main changes.

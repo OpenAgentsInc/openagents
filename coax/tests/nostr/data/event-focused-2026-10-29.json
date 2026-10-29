@@ -79,6 +79,15 @@
   ],
   "independent_bigint_signature_checks": 8,
   "independent_preimages": 96,
+  "integration": {
+    "frozen_accepted_coax_files_verified": 22,
+    "historical_accepted_local_snapshot": "e014e8556b7f67fa807d2e7bc80efd019720b8a3",
+    "historical_initial_local_snapshot": "f5581bacd14ca501ab667e6bb25322e7c31bf837",
+    "initial_parity_coax_files_verified": 21,
+    "reachable_accepted_snapshot": "c13c4f65b751ecdb5aadfbcb0b13c03cb70b2543",
+    "reachable_initial_snapshot": "f64e9fee9b19fda59fca2ac63fb56f8ddcb34ba2",
+    "timing": "Both local snapshots and their rebased equivalents were created after the relevant runs. None is represented as existing when a run began. All frozen Coax bytes match the reachable snapshots."
+  },
   "mutation": {
     "command": [
       "coax/bin/coax-event-0.17",
