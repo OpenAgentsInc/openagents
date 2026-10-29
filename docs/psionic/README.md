@@ -28,6 +28,7 @@ refusals, and execution evidence throughout that progression.
 | [Hybrid kernel progress](hybrid-kernels.md) | Bounded Qwen-style recurrent, attention and original-weight projection primitives; current qualification and remaining work. |
 | [Architecture and considerations](architecture.md) | What belongs in Coax, storage and numerical contracts, compiler limits, and the eventual backend boundary. |
 | [Starting point and roadmap](roadmap.md) | A concrete first change, a chapter sequence, dependencies, and acceptance gates. |
+| [Production inference notes](inference-engineering.md) | What Psionic takes from *Inference Engineering* (Baseten): service metrics, batching, caching, routing, autoscaling, rollout and observability, mapped to Coax chapters, and what it does not adopt. |
 | [gpt-oss target survey](gpt-oss.md) | Pinned gpt-oss-20b/120b and harmony sources: MXFP4 originals, sink/window attention, expert routing, the response format, and what Psionic does not adopt. |
 | [NVIDIA breadth and target survey](nvidia-breadth.md) | Proposed retrieval, vision, motion, speech, physics, hybrid/MoE, world-model and robotics studies; pinned sources and data/terms distinctions. |
 | [Development process](process.md) | How prose, checks, library code, examples, and evidence move together. |

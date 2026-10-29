@@ -164,6 +164,7 @@ This change does not publish issue-status updates.
 | Alongside this path | A memory residency plan, byte-identical multi-worker CPU execution and batched/reused prefix forks. | Each model's CPU reference; parallel and batched results must equal the single-worker sequential ones. |
 | Alongside this path | Coax compute consumer, generated Metal kernels, Elephant then Mammoth device qualification. | Concrete shapes/operations and each model's CPU numerical reference; no generic training dependency. |
 | After original-weight baselines | One separately qualified quantized profile, shared System One serving integration and the voice engine's decision gate as the first consumer. | Full-model numerical evidence and explicit artifact/profile/contract boundaries. |
+| Production hosting | Service benchmarks, continuous batching, a tiered prefix cache, routing/queueing/autoscaling policy, fast cold starts, canary rollout, observability and metering, all deciding in Coax. | A qualified model with measured latency, a consumer contract, a qualified Linux target for hosted machines and an owner-approved budget. |
 
 CPU reference correctness and device execution can advance together. Do not
 wait for a fast full-model CPU service or finish the entire teaching spine
@@ -188,19 +189,19 @@ operator requirements, data studies and source-license qualifications.
 | --- | --- | --- |
 | I. Small numbers, real contracts | 1–3 | Scalar learning → bounded shapes/storage → dense CPU numerics. |
 | II. Open weights early | 4–12 | Weights/tokenizer → attention and Qwen hybrid → decision masks/state/readout → **Elephant, then Mammoth** → calibrated, evaluated decisions. |
-| III. Measurable, parallel, portable execution | 13–19 | Memory plan and CPU evidence → byte-identical multi-core CPU → batched/reused prefix forks → a Coax compute subset → Metal → one quantization profile → optional CUDA. |
-| IV. Useful inference | 20–23 | Sampling and constrained decoding; Nemotron embeddings search the Coax book; Minitron continues text; search runs in the browser. |
-| V. An open reasoning model | 24–30 | Original MXFP4 weights → expert routing → sink/window attention and YaRN → harmony format → gpt-oss-20b, then 120b → tool calls. |
-| VI. Learning foundations | 31–36 | Arrays/autodiff → our own physical surrogate → byte LM → complete tiny trained decoder. |
-| VII. Data, tokenizers and optimization | 37–39 | Provenance, packing/resume, deterministic BPE training and exact AdamW/Muon updates. |
-| VIII. nanochat and post-training | 40–48 | Exact forward/backward → pretraining → SFT/tools; separately specified continued pretraining, preferences, nanochat rollouts, decision post-training and Mammoth-to-Elephant distillation. |
-| IX. Vision and generative primitives | 49–53 | Image operations → Elephant/Mammoth image inputs → C-RADIO features → older Cosmos image tokenizer → tiny diffusion/flow model. |
-| X. Motion for Verse | 54–57 | Poses/codebooks → MotionBricks SOMA → explicit Verse animation integration. |
-| XI. Speech | 58–62 | Audio/spectral features → FastConformer → Parakeet TDT transcription → streaming transcription in the voice engine → text-to-speech. |
-| XII. Scientific ML | 63–67 | Spectral layers/Darcy FNO; geometry/DoMINO; optional independent FourCastNet3 weather branch. |
-| XIII. More sequence architectures | 68–70 | Tiny state-space → Nano hybrid → Lightning, reusing the router from V. |
-| XIV. World models and policies | 71–75 | One Cosmos3-Edge path; separately, tiny imitation → conditional GR00T study → simulated control loop. |
-| XV. Operate and scale | 76–78 | Shared System One serving, a decision model steering the voice engine, and one real distributed-training topology. |
+| III. Measurable, parallel, portable execution | 13–20 | Memory plan and CPU evidence → byte-identical multi-core CPU → batched/reused prefix forks → a Coax compute subset → tiled attention → Metal → quantized weights and caches → optional CUDA. |
+| IV. Useful inference | 21–24 | Sampling and constrained decoding; Nemotron embeddings search the Coax book; Minitron continues text; search runs in the browser. |
+| V. An open reasoning model | 25–32 | Original MXFP4 weights → expert routing → sink/window attention and YaRN → harmony format → gpt-oss-20b, then 120b → speculative decoding → tool calls. |
+| VI. Learning foundations | 33–38 | Arrays/autodiff → our own physical surrogate → byte LM → complete tiny trained decoder. |
+| VII. Data, tokenizers and optimization | 39–41 | Provenance, packing/resume, deterministic BPE training and exact AdamW/Muon updates. |
+| VIII. nanochat and post-training | 42–50 | Exact forward/backward → pretraining → SFT/tools; separately specified continued pretraining, preferences, nanochat rollouts, decision post-training and Mammoth-to-Elephant distillation. |
+| IX. Vision and generative primitives | 51–55 | Image operations → Elephant/Mammoth image inputs → C-RADIO features → older Cosmos image tokenizer → tiny diffusion/flow model. |
+| X. Motion for Verse | 56–59 | Poses/codebooks → MotionBricks SOMA → explicit Verse animation integration. |
+| XI. Speech | 60–64 | Audio/spectral features → FastConformer → Parakeet TDT transcription → streaming transcription in the voice engine → text-to-speech. |
+| XII. Scientific ML | 65–69 | Spectral layers/Darcy FNO; geometry/DoMINO; optional independent FourCastNet3 weather branch. |
+| XIII. More sequence architectures | 70–72 | Tiny state-space → Nano hybrid → Lightning, reusing the router from V. |
+| XIV. World models and policies | 73–77 | One Cosmos3-Edge path; separately, tiny imitation → conditional GR00T study → simulated control loop. |
+| XV. Host inference in production | 78–92 | Service benchmarks → System One server and clients → continuous batching → paged state and a tiered prefix cache → routing, queueing and autoscaling → cold starts → canary rollout → observability and metering → failure handling → conditional disaggregation and multi-device inference → a voice pipeline and decision steering → distributed training. |
 | Optional laboratories | A–D | SmolLM2-135M import; Mini/Bolt assistant architectures; higher-order derivatives/PINNs; activation and state inspection. |
 
 Several chapters need Coax compiler features that do not exist yet: GPU
@@ -226,22 +227,22 @@ the broader model studies extend that map without changing signed issue IDs.
 | M0: scalar learning — implemented | Current tested CPU subset | `psionic/check.sh`, retained native/mutation/sanitizer/book evidence. |
 | M1: bounded CPU foundations — implemented | M0 | Chapters 2–3 ship shape/storage and add/sum/dot/matmul/gather/masked-softmax/unscaled-normalization operations. Exact small fixtures, Decimal references, resource gates and native debug/release/sanitizer evidence qualify the named CPU teaching profile. |
 | Urgent decision inference | M1, bounded artifacts/tokenizer, exact Qwen hybrid and decision contract | Complete original-weight Elephant, then Mammoth; masks, prefix isolation, slot probabilities and real-weight request evidence, then the published calibration and held-out decision quality. Chapters 4–12. |
-| M5: artifacts implemented; resumable state planned | Artifact admission after M1; optimizer/data state once training exists | Chapter 4 implements bounded Safetensors/BF16/F32 and exact identities; later deterministic packing and model/optimizer/RNG/data-state resume. Chapters 4 and 37. |
-| M6–M8: performance, devices, quantization | Concrete operators and CPU references; original-weight evidence before quantization claims | Measured memory/latency budgets, byte-identical multi-worker CPU and batched forks, real generated-kernel execution, device lifetimes and separately qualified approximate profiles. Chapters 13–19 accompany decision work. |
-| NVIDIA retrieval / dense continuation | Shared forward operations/artifacts plus each target's tokenizer, masks and configuration | Token/intermediate/output reference checks plus held-out retrieval or full/cached logits; named-RNG sampling and grammar-constrained decoding; a separately qualified browser target. Chapters 20–23. |
-| gpt-oss | Shared forward core, tokenizer engine, memory plan, sampling and an exact MoE router | Exact MXFP4 decode vectors, sink/window/YaRN attention references, harmony render/parse, complete 20b then 120b original-weight generation with token/router/logit references and measured residency, and schema-constrained tool calls. Chapters 24–30; no training or hybrid-recurrence prerequisite. |
-| M2–M4: generic learning | M1 → arrays/autodiff → byte LM and complete causal decoder gradients | Analytic/finite-difference checks and complete tiny training/held-out generation. Chapters 31–32 and 34–36. |
-| Early physical learning | Arrays/autodiff and a checked owned solver | Supervised surrogate, held-out initial conditions/parameters, one-step and rollout errors. Chapter 33; no language-model prerequisite. |
-| nanochat pipeline | Exact enabled forward/backward features, deterministic tokenizer training, data/resume and AdamW/Muon | Tiny complete pretraining → SFT → pinned on-policy reward recipe; stage-specific numerical, gradient and held-out gates. Chapters 37–43 and 46. |
-| Additional post-training | Shared training/evaluation; specific data/objective contracts | Continued pretraining, preference/reward/DPO, decision adaptation and Mammoth-to-Elephant distillation are separate studies. Chapters 44–45 and 47–48; decision adaptation and distillation do not wait for nanochat RL. |
-| Vision | Shared forward core and exact image/patch/convolution operators; autodiff for trained heads | C-RADIO feature/retrieval checks; separately qualify the older Cosmos tokenizer and tiny diffusion/flow. Chapters 49–53. Elephant/Mammoth image inputs are chapter 50's own exact encoder/preprocessing profile. |
-| Verse motion | Shared attention, required codec operators, rotations/skeleton/codebooks | Complete SOMA root/pose/decoder trajectory references before Verse integration. Chapters 54–57; speech and physics do not block it. |
-| Speech | Shared convolution/attention and exact spectral/audio features | Parakeet encoder/decoder references and WER/CER; streaming transcription and a separately selected text-to-speech model get measured latency budgets in the voice engine. Chapters 58–62. |
-| Scientific ML | Shared training/spectral core for Darcy; geometry operators for DoMINO; spherical operators for weather | Solver comparisons, bounded datasets, exact preprocessing and physical evaluation. Chapters 63–67; DoMINO and FourCastNet3 are independent specialties. |
-| New language architectures | Dense inference and exact recurrence; explicit router/expert execution for MoE | Tiny state transitions and expert choices, then complete Nano/Lightning checkpoint evidence. Chapters 68–70; optional Mini/Bolt retain distinct profiles. |
-| World generation | Mature vision, exact codecs, temporal conditioning and diffusion/flow methods | One complete bounded Cosmos3-Edge path; reference agreement and physical quality are separate tests. Chapters 71–72. |
-| Robot policies | Shared vision/language, training/flow, embodiment normalization and tiny imitation | Conditional GR00T artifact selection and one simulated action/control-loop profile. Chapters 73–75; Cosmos execution is not a prerequisite. |
-| M9: integration and scale | A qualified model plus protocol consumer / a correct resumable trainer plus selected backend | Versioned shared System One integration and the voice engine's never-awaited decision gate / one actual homogeneous multi-device topology. Chapters 76–78 can start as their own prerequisites arrive. |
+| M5: artifacts implemented; resumable state planned | Artifact admission after M1; optimizer/data state once training exists | Chapter 4 implements bounded Safetensors/BF16/F32 and exact identities; later deterministic packing and model/optimizer/RNG/data-state resume. Chapters 4 and 39. |
+| M6–M8: performance, devices, quantization | Concrete operators and CPU references; original-weight evidence before quantization claims | Measured memory/latency budgets, byte-identical multi-worker CPU and batched forks, tiled attention under its own profile, real generated-kernel execution, device lifetimes and separately qualified approximate profiles judged by perplexity and decision quality against the originals. Chapters 13–20 accompany decision work. |
+| NVIDIA retrieval / dense continuation | Shared forward operations/artifacts plus each target's tokenizer, masks and configuration | Token/intermediate/output reference checks plus held-out retrieval or full/cached logits; named-RNG sampling and grammar-constrained decoding; a separately qualified browser target. Chapters 21–24. |
+| gpt-oss | Shared forward core, tokenizer engine, memory plan, sampling and an exact MoE router | Exact MXFP4 decode vectors, sink/window/YaRN attention references, harmony render/parse, complete 20b then 120b original-weight generation with token/router/logit references and measured residency, and schema-constrained tool calls. Chapters 25–32; no training or hybrid-recurrence prerequisite. |
+| M2–M4: generic learning | M1 → arrays/autodiff → byte LM and complete causal decoder gradients | Analytic/finite-difference checks and complete tiny training/held-out generation. Chapters 33–34 and 36–38. |
+| Early physical learning | Arrays/autodiff and a checked owned solver | Supervised surrogate, held-out initial conditions/parameters, one-step and rollout errors. Chapter 35; no language-model prerequisite. |
+| nanochat pipeline | Exact enabled forward/backward features, deterministic tokenizer training, data/resume and AdamW/Muon | Tiny complete pretraining → SFT → pinned on-policy reward recipe; stage-specific numerical, gradient and held-out gates. Chapters 39–45 and 48. |
+| Additional post-training | Shared training/evaluation; specific data/objective contracts | Continued pretraining, preference/reward/DPO, decision adaptation and Mammoth-to-Elephant distillation are separate studies. Chapters 46–47 and 49–50; decision adaptation and distillation do not wait for nanochat RL. |
+| Vision | Shared forward core and exact image/patch/convolution operators; autodiff for trained heads | C-RADIO feature/retrieval checks; separately qualify the older Cosmos tokenizer and tiny diffusion/flow. Chapters 51–55. Elephant/Mammoth image inputs are chapter 52's own exact encoder/preprocessing profile. |
+| Verse motion | Shared attention, required codec operators, rotations/skeleton/codebooks | Complete SOMA root/pose/decoder trajectory references before Verse integration. Chapters 56–59; speech and physics do not block it. |
+| Speech | Shared convolution/attention and exact spectral/audio features | Parakeet encoder/decoder references and WER/CER; streaming transcription and a separately selected text-to-speech model get measured latency budgets in the voice engine. Chapters 60–64. |
+| Scientific ML | Shared training/spectral core for Darcy; geometry operators for DoMINO; spherical operators for weather | Solver comparisons, bounded datasets, exact preprocessing and physical evaluation. Chapters 65–69; DoMINO and FourCastNet3 are independent specialties. |
+| New language architectures | Dense inference and exact recurrence; explicit router/expert execution for MoE | Tiny state transitions and expert choices, then complete Nano/Lightning checkpoint evidence. Chapters 70–72; optional Mini/Bolt retain distinct profiles. |
+| World generation | Mature vision, exact codecs, temporal conditioning and diffusion/flow methods | One complete bounded Cosmos3-Edge path; reference agreement and physical quality are separate tests. Chapters 73–74. |
+| Robot policies | Shared vision/language, training/flow, embodiment normalization and tiny imitation | Conditional GR00T artifact selection and one simulated action/control-loop profile. Chapters 75–77; Cosmos execution is not a prerequisite. |
+| M9: integration and scale | A qualified model plus protocol consumer / a correct resumable trainer plus selected backend | Reproducible service benchmarks; versioned System One serving; batch-invariant continuous batching; prefix-cache hit evidence; routing and autoscaling policies checked in deterministic traffic simulation; measured cold starts; canary rollouts with golden-request checks; usage records priced by an `#authority` policy; the voice engine's never-awaited decision gate / one actual homogeneous multi-device topology. Chapters 78–92; disaggregation and multi-device inference only after a measurement shows the need. |
 
 Do not wait for a fast full-model CPU service before starting Metal compute.
 Likewise, choosing NVIDIA weights does not imply CUDA support or require CUDA
@@ -249,7 +250,7 @@ for correctness. Coax owns arithmetic on each backend; native bindings provide
 platform effects. A reference runtime remains development tooling.
 
 The existing [project issue map](project.md) remains the executable work queue
-for its 45 tasks. When selecting a new breadth branch, create concrete issues
+for its 38 tasks. When selecting a new breadth branch, create concrete issues
 from that branch's operator/data/checkpoint gates. This proposal creates no
 new issues, model downloads, hardware purchases or deployment requirements.
 
