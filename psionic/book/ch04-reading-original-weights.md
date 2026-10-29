@@ -363,7 +363,7 @@ Request the last two matrix entries with `first = 4`, `count = 2`, and derive
 buffers remain unchanged. Then alter one original byte while keeping its
 expected hash and verify that the bundle refuses before publishing inventory.
 
-Next: tokenizers and prompt bytes. The original tokenizer identity we bind
+Next: [tokenizers and prompt bytes](ch05-text-becomes-a-model-request.md). The original tokenizer identity we bind
 here becomes an interpreted, checked input in chapter 5; original weight
 execution will reuse this artifact boundary as attention and model-specific
 architecture arrive.

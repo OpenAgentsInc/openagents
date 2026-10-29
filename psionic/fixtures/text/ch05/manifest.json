@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "profile": "qwen35-text-v1",
+  "original_sha256": "a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f",
+  "elephant_revision": "b3f8a93462fb1051a9de031e94a7ff380e254072",
+  "mammoth_revision": "61cec44c281c693992e3d6ebeb44dd3402dfa186",
+  "runtime_revision": "81ce62f1597c91e46767d4d02d6ac2e18534fe94",
+  "vocab": 248077,
+  "merges": 247587,
+  "properties": 1478,
+  "nfd": 13253,
+  "compositions": 12133,
+  "added": 33,
+  "unicode": "17.0.0",
+  "files": {
+    "tokenizer.json.gz": {
+      "bytes": 3913276,
+      "sha256": "b26a4e24aa98324f0e695a4cd1b0f11478cb03f84e6d041627faf804d733e0f4"
+    },
+    "qwen35.pst": {
+      "bytes": 8277996,
+      "sha256": "09eed4956d3394e254e92d9d2cc4cf83d31ac2cc92f5d9986090a1bff9b15223"
+    },
+    "toy.pst": {
+      "bytes": 27533,
+      "sha256": "f9b803d640b83c4f28633bbfe062029f02e43b9cae3c2076e034e1361482d885"
+    },
+    "toy.coax": {
+      "bytes": 61207,
+      "sha256": "4eb8fbdb4f28b50e89615d3eebb872143e8e5cdfd8bc01e586869ad9ac7c6547"
+    },
+    "pins.coax": {
+      "bytes": 251,
+      "sha256": "651be421e32266a8a38dda55dfa4d846a99564de2690242b5183c053564f4329"
+    }
+  }
+}

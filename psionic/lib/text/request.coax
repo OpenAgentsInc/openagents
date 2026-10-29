@@ -1,0 +1,276 @@
+#load "unicode.coax";
+#load "../../fixtures/text/ch05/slots.coax";
+#load "../../../coax/lib/nostr/json.coax";
+#authority;
+// book:begin types
+PtEntryKind :: enum u8 {none;text;json;}
+PtEntry :: struct {kind:PtEntryKind;value:string;}
+PtQuestionKind :: enum u8 {choice;noul;score;}
+PtQuestion :: struct {kind:PtQuestionKind;instructions:PtEntry;}
+PtOption :: struct {name:string;description:PtEntry;}
+PtPrompt :: struct {status:PtStatus;written:int;prefix_bytes:int;slots:int;}
+// book:end types
+PtWriter :: struct {data:[]u8;at:int;status:PtStatus;}
+PT_SYSTEM :: "Apply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.";
+PT_END :: "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+
+#test "the frozen tagged request has exact bytes, defaults and no question identifier" {
+    state:=PtEntry.{kind=PtEntryKind.text,value="ready"};q:=PtQuestion.{kind=PtQuestionKind.noul};opts:[1]PtOption;out:[1024]u8;scratch:[1024]u8;
+    r:=pt_render_checked(state,q,opts[0..<0],out[..],scratch[..],false);
+    expected:="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nready\n</state>\n\nQuestion: Is the statement true, or is the answer to the question yes?\n\nOptions:\nA. yes: the statement is true / the answer is yes\nB. no: the statement is false / the answer is no\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+    #assert r.status==PtStatus.ok && r.written==expected.count && r.slots==2;
+    #assert cast(string)out[0..<r.written]==expected && cast(string)out[0..<r.prefix_bytes]==expected[0..<r.prefix_bytes];
+    #assert expected[r.prefix_bytes]=='Q';
+    exact:=pt_render_checked(state,q,opts[0..<0],out[0..<r.written],scratch[..],false);#assert exact.status==PtStatus.ok && exact.written==r.written;
+    before:=out;bad:=pt_render_checked(state,q,opts[0..<0],out[0..<r.written-1],scratch[..],false);
+    #assert bad.status==PtStatus.capacity && bad.written==0 && bad.prefix_bytes==0;
+    exact=pt_render_checked(state,q,opts[0..<0],out[..],scratch[0..<r.written],false);
+    #assert exact.status==PtStatus.ok && exact.written==r.written;
+    bad=pt_render_checked(state,q,opts[0..<0],out[..],scratch[0..<r.written-1],false);
+    #assert bad.status==PtStatus.capacity && bad.written==0 && bad.prefix_bytes==0;
+    #assert pt_render_checked(state,q,opts[0..<0],out[..],scratch[..],true).status==PtStatus.alias;
+    for i:0..<1024 {#assert out[i]==before[i];}
+}
+#test "structured entries use Python-compatible integer JSON indentation and Unicode escaping" {
+    storage:[256]u8;w:=[1]PtWriter.[PtWriter.{data=storage[..]}];
+    e:=PtEntry.{kind=PtEntryKind.json,value="{\"a\":[1,-0,true,null],\"é\":\"x\\n\\u0001\"}"};
+    status:=pt_entry(w[..],e,true);expected:="{\n  \"a\": [\n    1,\n    0,\n    true,\n    null\n  ],\n  \"é\": \"x\\n\\u0001\"\n}";
+    #assert status==PtStatus.ok && cast(string)storage[0..<w[0].at]==expected;
+    w[0].at=0;#assert pt_entry(w[..],PtEntry.{kind=PtEntryKind.text,value=" \t hello\n "},true)==PtStatus.ok && cast(string)storage[0..<w[0].at]=="hello";
+    w[0].at=0;#assert pt_entry(w[..],PtEntry.{kind=PtEntryKind.json,value="{\"x\":1.5}"},true)==PtStatus.unsupported;
+    w[0].at=0;#assert pt_entry(w[..],PtEntry.{kind=PtEntryKind.json,value="{\"a\":1,\"\\u0061\":2}"},true)==PtStatus.json;
+}
+#test "slot labels and question envelopes match the pinned schema" {
+    out:[2]u8;
+    #assert pt_label(out[..],0)==1 && out[0]=='A';#assert pt_label(out[..],25)==1 && out[0]=='Z';
+    #assert pt_label(out[..],26)==2 && out[0]=='A' && out[1]=='A';
+    #assert pt_question_count(0,1) && pt_question_count(0,255) && !pt_question_count(0,0) && !pt_question_count(0,256);
+    #assert pt_question_count(1,0) && pt_question_count(1,2) && !pt_question_count(1,1);
+    #assert pt_question_count(2,1) && pt_question_count(2,10) && !pt_question_count(2,0) && !pt_question_count(2,11) && !pt_question_count(3,2);
+    #assert pt_find_text("aQEV_PREFIX_MARKz","QEV_PREFIX_MARK")==1 && pt_find_text("QEV_PREFIX_MARK","QEV_PREFIX_MARK")==0 && pt_find_text("none","QEV_PREFIX_MARK")==-1;
+}
+
+#test "public slot labels refuse malformed requests before writing" {
+    out:=[2]u8.[9,9];r:=pt_label_checked(26,out[..]);#assert r.status==PtStatus.ok && r.written==2 && out[0]=='A' && out[1]=='A';
+    #assert pt_label_checked(0,out[0..<1]).written==1;
+    #assert pt_label_checked(-1,out[..]).status==PtStatus.range && pt_label_checked(256,out[..]).status==PtStatus.range;
+    #assert pt_label_checked(26,out[0..<1]).status==PtStatus.capacity && pt_label_checked(0,out[0..<0]).status==PtStatus.capacity;
+}
+#test "the pinned schema's one-level score has one labeled option" {
+    q:=PtQuestion.{kind=PtQuestionKind.score};options:[1]PtOption;out:[1024]u8;scratch:[1024]u8;
+    r:=pt_render_checked(PtEntry.{},q,options[..],out[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.slots==1;
+    text:=cast(string)out[0..<r.written];
+    #assert pt_find_text(text,"Rate the state: Which level describes the state?")>=0;
+    #assert pt_find_text(text,"A. level 0\n\nAnswer with one letter: A.")>=0;
+    #assert pt_render_checked(PtEntry.{},q,options[0..<0],out[..],scratch[..],false).status==PtStatus.range;
+}
+#test "choice names are bounded before scanning and stop after a writer failure" {
+    q:=PtQuestion.{kind=PtQuestionKind.choice};options:[2]PtOption;out:[1024]u8;scratch:[512]u8;
+    long:[65537]u8;options[0].name=cast(string)long[..];
+    r:=pt_render_checked(PtEntry.{},q,options[0..<1],out[..],scratch[..],false);
+    #assert r.status==PtStatus.size && r.written==0;
+    name:[600]u8;for i:0..<600 {name[i]='x';}invalid:=[1]u8.[255];
+    options[0].name=cast(string)name[..];options[1].name=cast(string)invalid[..];
+    r=pt_render_checked(PtEntry.{},q,options[..],out[..],scratch[..],false);
+    #assert r.status==PtStatus.capacity && r.written==0;
+}
+pt_label_checked :: (index:int,output:[]u8)->PtResult #export_c {
+    if index<0 || index>255 {return PtResult.{status=PtStatus.range};}
+    n:=1;if index>=26 {n=2;}
+    if output.count<n {return PtResult.{status=PtStatus.capacity};}
+    return PtResult.{written=pt_label(output,index)};
+}
+
+#load "../../fixtures/text/ch05/render-goldens.coax";
+#test "writer, prefix-marker and Python whitespace boundaries are explicit" {
+    #assert pt_render_capacity(1,1) && !pt_render_capacity(0,1) && !pt_render_capacity(1,0);
+    #assert pt_write_space(1,1,2)==PtStatus.ok && pt_write_space(1,2,2)==PtStatus.capacity;
+    #assert pt_write_space(65535,1,70000)==PtStatus.ok && pt_write_space(65535,2,70000)==PtStatus.size;
+    #assert pt_json_integer_count(1) && pt_json_integer_count(4300) && !pt_json_integer_count(0) && !pt_json_integer_count(4301);
+    #assert pt_key_slot(1,0)==0 && pt_key_slot(2,1)==257 && pt_key_slot(16,255)==4095;
+    #assert pt_prefix_cut("QEV_PREFIX_MARKx")==0 && pt_prefix_cut("xQEV_PREFIX_MARK")==1 && pt_prefix_cut("abc")==3;
+    spaces:=[29]int.[9,10,11,12,13,28,29,30,31,32,133,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288];
+    for cp:spaces {#assert pt_strip_space(cp);}
+    notspaces:=[13]int.[8,14,27,33,134,161,5761,8191,8203,8234,8240,8288,12289];for cp:notspaces {#assert !pt_strip_space(cp);}
+    span:=pt_trim("",true);#assert span.status==PtStatus.ok && span.begin==0 && span.end==0;
+    span=pt_trim(" ",true);#assert span.begin==0 && span.end==0;
+    out:[1]u8;w:=[1]PtWriter.[PtWriter.{data=out[..]}];pt_append(w[..],"xx");#assert w[0].status==PtStatus.capacity && w[0].at==0;
+    word:[4]u8;w[0]=PtWriter.{data=word[..]};pt_append_part(w[..]," abc ",1,4);
+    pt_append_part(w[..],"",0,0);#assert w[0].status==PtStatus.ok && w[0].at==3 && cast(string)word[0..<3]=="abc";
+    #assert pt_label_checked(255,out[..]).status==PtStatus.capacity;
+    label:[2]u8;#assert pt_label_checked(255,label[..]).status==PtStatus.ok;
+}
+#test "JSON containers, malformed documents and member budgets refuse exactly" {
+    buffer:[8192]u8;out:[8192]u8;
+    for count:255..<258 {
+        at:=json_raw(buffer[..],0,"{");
+        for i:0..<count {if i>0 {at=json_raw(buffer[..],at,",");}at=json_raw(buffer[..],at,"\"k");at=json_write_int(buffer[..],at,i);at=json_raw(buffer[..],at,"\":0");}
+        at=json_raw(buffer[..],at,"}");w:=[1]PtWriter.[PtWriter.{data=out[..]}];status:=pt_pretty(w[..],cast(string)buffer[0..<at]);
+        if count<=256 {#assert status==PtStatus.ok;}else {#assert status==PtStatus.size;}
+    }
+    cases:=[8]string.["[]","[\"\",{},[],false]","{\"a\":{\"x\":1,\"x\":2}}","{\"a\":{\"x\":1,\"y\":2},\"b\":{\"x\":3}}","{\"a\":1e0}","{\"a\":1E0}","[1,]","{\"x\":0}"];
+    for i:0..<cases.count {
+        w:=[1]PtWriter.[PtWriter.{data=out[..]}];status:=pt_pretty(w[..],cases[i]);
+        if i==2 || i==6 {#assert status==PtStatus.json;}else if i==4 || i==5 {#assert status==PtStatus.unsupported;}else {#assert status==PtStatus.ok;}
+    }
+    w:=[1]PtWriter.[PtWriter.{data=out[..]}];
+    #assert pt_pretty(w[..],"{\"x\":\"\\ud800\"}")==PtStatus.json;
+    w[0]=PtWriter.{data=out[..]};#assert pt_pretty(w[..],"{\"\\udc00\":1}")==PtStatus.json;
+    w[0]=PtWriter.{data=out[..]};#assert pt_pretty(w[..],"{\"x\":\"\\ud83d\\ude00\"}")==PtStatus.ok;
+    number:[4312]u8;
+    for negative:0..<2 {
+        at:=json_raw(number[..],0,"{\"n\":");if negative==1 {at=json_raw(number[..],at,"-");}
+        for i:0..<4300 {number[at+i]='9';}at+=4300;number[at]='}';
+        w[0]=PtWriter.{data=out[..]};#assert pt_pretty(w[..],cast(string)number[0..<at+1])==PtStatus.ok;
+        number[at]='9';number[at+1]='}';w[0]=PtWriter.{data=out[..]};
+        #assert pt_pretty(w[..],cast(string)number[0..<at+2])==PtStatus.size;
+    }
+    w[0]=PtWriter.{data=out[0..<0]};#assert pt_pretty(w[..],"{\"x\":0}")==PtStatus.capacity;
+    w[0]=PtWriter.{data=out[0..<3]};#assert pt_pretty(w[..],"{\"x\":0}")==PtStatus.capacity;
+    w[0]=PtWriter.{data=out[0..<6]};#assert pt_pretty(w[..],"[\"xyz\"]")==PtStatus.capacity;
+}
+
+#test "empty JSON layout, deepest key slots and late writer failures are checked" {
+    out:[16384]u8;source:[8192]u8;w:=[1]PtWriter.[PtWriter.{data=out[..]}];
+    #assert pt_pretty(w[..],"[]")==PtStatus.ok && cast(string)out[0..<w[0].at]=="[]";
+    w[0].at=0;#assert pt_pretty(w[..],"{}")==PtStatus.ok && cast(string)out[0..<w[0].at]=="{}";
+    at:=0;for i:0..<15 {at=json_raw(source[..],at,"{\"x\":");}at=json_raw(source[..],at,"{");
+    for i:0..<256 {if i>0 {at=json_raw(source[..],at,",");}at=json_raw(source[..],at,"\"k");at=json_write_int(source[..],at,i);at=json_raw(source[..],at,"\":0");}
+    for i:0..<16 {at=json_raw(source[..],at,"}");}
+    w[0].at=0;#assert pt_pretty(w[..],cast(string)source[0..<at])==PtStatus.ok;
+    q:=PtQuestion.{kind=PtQuestionKind.noul};options:[2]PtOption;scratch:[1024]u8;
+    r:=pt_render_checked(PtEntry.{},q,options[0..<0],out[..],scratch[0..<1],false);#assert r.status==PtStatus.capacity && r.written==0;
+    q.kind=PtQuestionKind.choice;options[0].name="same";options[1].name="same";
+    #assert pt_render_checked(PtEntry.{},q,options[..],out[..],scratch[..],false).status==PtStatus.range;
+    options[0].description=PtEntry.{kind=PtEntryKind.text,value=" x "};
+    r=pt_render_checked(PtEntry.{},q,options[0..<1],out[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && pt_find_text(cast(string)out[0..<r.written],"A. same: x\n\n")>=0;
+}
+
+pt_render_capacity :: (output:int,scratch:int)->bool #export_c {return output>=1 && scratch>=1;}
+pt_write_space :: (at:int,n:int,capacity:int)->PtStatus {
+    if n>capacity-at {return PtStatus.capacity;}
+    if n>PT_TEXT_MAX-at {return PtStatus.size;}return PtStatus.ok;
+}
+pt_json_integer_count :: (n:int)->bool {return n>=1 && n<=4300;}
+pt_key_slot :: (depth:int,index:int)->int {return (depth-1)*256+index;}
+pt_prefix_cut :: (text:string)->int {marker:=pt_find_text(text,"QEV_PREFIX_MARK");if marker>=0 {return marker;}return text.count;}
+
+pt_question_count :: (kind:u8,n:int)->bool #export_c {
+    if kind==0 {return n>=1 && n<=255;}if kind==1 {return n==0 || n==2;}if kind==2 {return n>=1 && n<=10;}return false;
+}
+pt_append :: (w:[]PtWriter,s:string) {
+    pt_append_part(w,s,0,s.count);
+}
+// Append a bounded part without constructing a substring of an empty view.
+pt_append_part :: (w:[]PtWriter,s:string,begin:int,end:int) {
+    if w[0].status!=PtStatus.ok {return;}
+    n:=end-begin;status:=pt_write_space(w[0].at,n,w[0].data.count);if status!=PtStatus.ok {w[0].status=status;return;}
+    for i:begin..<end {w[0].data[w[0].at+i-begin]=s[i];}w[0].at+=n;
+}
+pt_strip_space :: (cp:int)->bool {
+    return (cp>=9 && cp<=13) || (cp>=28 && cp<=32) || cp==133 || cp==160 || cp==5760 || (cp>=8192 && cp<=8202) || cp==8232 || cp==8233 || cp==8239 || cp==8287 || cp==12288;
+}
+pt_trim :: (text:string,strip:bool)->PtSpan {
+    begin:=0;end:=0;at:=0;leading:=true;
+    while at<text.count {
+        r:=pt_rune(text,at);if r.status!=PtStatus.ok {return PtSpan.{status=r.status};}
+        if !strip || !pt_strip_space(r.cp) {if leading {begin=at;leading=false;}end=r.next;}at=r.next;
+    }return PtSpan.{begin=begin,end=end};
+}
+pt_indent :: (w:[]PtWriter,depth:int) {pt_append(w,"\n");for i:0..<depth {pt_append(w,"  ");}}
+pt_pretty :: (w:[]PtWriter,text:string)->PtStatus {
+    j:[1]Json;json_start_bounded(j[..],text,text.count,text.count);
+    depth:=0;counts:[16]int;types:[16]int;keys:[4096]string;decoded:[65536]u8;
+    t:=json_next(j[..]);if t!=JSON_OBJECT && t!=JSON_ARRAY {return PtStatus.unsupported;}
+    while t!=JSON_END {
+        if t==JSON_ERROR {return PtStatus.json;}
+        if t==JSON_OBJECT_END || t==JSON_ARRAY_END {
+            depth-=1;if counts[depth]>0 {pt_indent(w,depth);}
+            if t==JSON_OBJECT_END {pt_append(w,"}");}else {pt_append(w,"]");}
+        }else {
+            if depth>0 {
+                if types[depth-1]==JSON_ARRAY || j[0].key {
+                    if counts[depth-1]>=256 {return PtStatus.size;}
+                    if counts[depth-1]>0 {pt_append(w,",");}pt_indent(w,depth);
+                    counts[depth-1]+=1;
+                }
+            }
+            if t==JSON_OBJECT || t==JSON_ARRAY {
+                types[depth]=t;counts[depth]=0;depth+=1;
+                if t==JSON_OBJECT {pt_append(w,"{");}else {pt_append(w,"[");}
+            }else if t==JSON_STRING {
+                n:=json_unescape(json_text(j[..]),decoded[..]);if n<0 {return PtStatus.json;}
+                start:=w[0].at;pos:=json_write_string(w[0].data,w[0].at,cast(string)decoded[0..<n]);
+                if pos==-1 {return PtStatus.capacity;}w[0].at=pos;
+                if j[0].key {
+                    key:=cast(string)w[0].data[start..<pos];index:=counts[depth-1]-1;
+                    for i:0..<index {if keys[pt_key_slot(depth,i)]==key {return PtStatus.json;}}keys[pt_key_slot(depth,index)]=key;pt_append(w,": ");
+                }
+            }else if t==JSON_NUMBER {
+                raw:=json_text(j[..]);for c:raw {if c=='.' || c=='e' || c=='E' {return PtStatus.unsupported;}}
+                digits:=raw.count;if raw[0]=='-' {digits-=1;}
+                if !pt_json_integer_count(digits) {return PtStatus.size;}
+                if raw=="-0" {pt_append(w,"0");}else {pt_append(w,raw);}
+            }else {pt_append(w,json_text(j[..]));}
+        }
+        if w[0].status!=PtStatus.ok {return w[0].status;}t=json_next(j[..]);
+    }return PtStatus.ok;
+}
+pt_entry :: (w:[]PtWriter,e:PtEntry,strip:bool)->PtStatus {
+    if !pt_text_count(e.value.count) {return PtStatus.size;}
+    if e.kind==PtEntryKind.none {if e.value!="" {return PtStatus.unsupported;}return PtStatus.ok;}
+    if e.kind==PtEntryKind.text {span:=pt_trim(e.value,strip);if span.status!=PtStatus.ok {return span.status;}pt_append_part(w,e.value,span.begin,span.end);return w[0].status;}
+    if e.kind==PtEntryKind.json {return pt_pretty(w,e.value);}return PtStatus.unsupported;
+}
+pt_label :: (out:[]u8,index:int)->int {
+    label:=PT_SLOT_LABELS[index];for i:0..<label.count {out[i]=label[i];}return label.count;
+}
+pt_find_text :: (text:string,needle:string)->int {
+    for i:0..<text.count-needle.count+1 {if text[i..<i+needle.count]==needle {return i;}}return -1;
+}
+// book:begin render
+pt_render_checked :: (state:PtEntry,q:PtQuestion,options:[]PtOption,output:[]u8,scratch:[]u8,overlap:bool)->PtPrompt #export_c {
+    if !pt_question_count(cast(u8)q.kind,options.count) {return PtPrompt.{status=PtStatus.range};}
+    if !pt_render_capacity(output.count,scratch.count) {return PtPrompt.{status=PtStatus.capacity};}
+    if overlap {return PtPrompt.{status=PtStatus.alias};}
+    w:=[1]PtWriter.[PtWriter.{data=scratch}];
+    pt_append(w[..],"<|im_start|>system\n");pt_append(w[..],PT_SYSTEM);pt_append(w[..],"<|im_end|>\n<|im_start|>user\n<state>\n");
+    status:=pt_entry(w[..],state,false);if status!=PtStatus.ok {return PtPrompt.{status=status};}
+    pt_append(w[..],"\n</state>\n\n");prefix:=w[0].at;
+    prefix=pt_prefix_cut(cast(string)scratch[0..<prefix]);
+    if q.kind==PtQuestionKind.score {pt_append(w[..],"Rate the state: ");}else {pt_append(w[..],"Question: ");}
+    start:=w[0].at;status=pt_entry(w[..],q.instructions,true);if status!=PtStatus.ok {return PtPrompt.{status=status};}
+    if w[0].at==start {
+        if q.kind==PtQuestionKind.noul {pt_append(w[..],"Is the statement true, or is the answer to the question yes?");}
+        else if q.kind==PtQuestionKind.score {pt_append(w[..],"Which level describes the state?");}else {pt_append(w[..],"Which option applies to the state?");}
+    }
+    pt_append(w[..],"\n\nOptions:\n");n:=options.count;if q.kind==PtQuestionKind.noul {n=2;}
+    description:[65536]u8;label:[2]u8;
+    for i:0..<n {
+        if i>0 {pt_append(w[..],"\n");}size:=pt_label(label[..],i);pt_append(w[..],cast(string)label[0..<size]);pt_append(w[..],". ");
+        if w[0].status!=PtStatus.ok {return PtPrompt.{status=w[0].status};}
+        entry:PtEntry;name:="";
+        if options.count>0 {entry=options[i].description;}
+        if q.kind==PtQuestionKind.noul {
+            if i==0 {name="yes";}else {name="no";}
+            if entry.kind==PtEntryKind.none {entry.kind=PtEntryKind.text;if i==0 {entry.value="the statement is true / the answer is yes";}else {entry.value="the statement is false / the answer is no";}}
+        }else if q.kind==PtQuestionKind.choice {
+            name=options[i].name;if !pt_text_count(name.count) {return PtPrompt.{status=PtStatus.size};}
+            valid:=pt_utf8_validate(name);if valid!=PtStatus.ok {return PtPrompt.{status=valid};}
+            for k:0..<i {if options[k].name==name {return PtPrompt.{status=PtStatus.range};}}
+        }
+        d:=[1]PtWriter.[PtWriter.{data=description[..]}];status=pt_entry(d[..],entry,true);if status!=PtStatus.ok {return PtPrompt.{status=status};}
+        if q.kind==PtQuestionKind.score {pt_append(w[..],"level ");digit:=[1]u8.[cast(u8)(48+i)];pt_append(w[..],cast(string)digit[..]);}else {pt_append(w[..],name);}
+        if d[0].at>0 {pt_append(w[..],": ");pt_append(w[..],cast(string)description[0..<d[0].at]);}
+    }
+    if n<=26 {pt_append(w[..],"\n\nAnswer with one letter: ");}else {pt_append(w[..],"\n\nAnswer with one label: ");}
+    for i:0..<n {if i>0 {pt_append(w[..],", ");}size:=pt_label(label[..],i);pt_append(w[..],cast(string)label[0..<size]);}
+    pt_append(w[..],".");pt_append(w[..],PT_END);
+    if w[0].status!=PtStatus.ok {return PtPrompt.{status=w[0].status};}
+    if output.count<w[0].at {return PtPrompt.{status=PtStatus.capacity};}
+    for i:0..<w[0].at {output[i]=scratch[i];}
+    return PtPrompt.{written=w[0].at,prefix_bytes=prefix,slots=n};
+}
+// book:end render

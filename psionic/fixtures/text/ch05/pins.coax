@@ -1,0 +1,3 @@
+// Deterministic table identities; original tokenizer DATA, not executable code.
+PT_QWEN_SHA :: "09eed4956d3394e254e92d9d2cc4cf83d31ac2cc92f5d9986090a1bff9b15223";
+PT_ORIGINAL_SHA :: "a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f";

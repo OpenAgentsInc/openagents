@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "elephant_revision": "b3f8a93462fb1051a9de031e94a7ff380e254072",
+  "mammoth_revision": "61cec44c281c693992e3d6ebeb44dd3402dfa186",
+  "onejev_revision": "81ce62f1597c91e46767d4d02d6ac2e18534fe94",
+  "mammoth_tokenizer_sha256": "a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f",
+  "reference_text_files": {
+    "serve.patch": {
+      "bytes": 41045,
+      "sha256": "f234c125f1d38d82104b9e1f24e75bde51e4401928acfba2fbf5c59ef2fb46b8"
+    },
+    "engine.py": {
+      "bytes": 2799,
+      "sha256": "72373353379c53b7cabfb5d05b6fef3c898d48c87cc386e03fc3de9c07e67ca7"
+    },
+    "setup.sh": {
+      "bytes": 1285,
+      "sha256": "6bf9514c6b80f585a94f9a40c03f87c27cce9e2de8d2ba4cf4b41434babca62a"
+    },
+    "chat_template.jinja": {
+      "bytes": 7756,
+      "sha256": "a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715"
+    },
+    "tokenizer_config.json": {
+      "bytes": 1505,
+      "sha256": "2984c03425a28d242744e234a5003786fd289b3713db79fe0958c65eb59d85b2"
+    },
+    "readout.json": {
+      "bytes": 63,
+      "sha256": "96ea8a5c6ecfc30c20cdd369762db5997c5f4fb9821ce0a0318941343eb5e8ba"
+    },
+    "config.json": {
+      "bytes": 3146,
+      "sha256": "f26324589d15932e2742dbb13dbc7c561865ce4f80990af3b7dff05efe4dadab"
+    },
+    "README.md": {
+      "bytes": 5475,
+      "sha256": "0c1f7c170191d0906218c3b34ad7a11ae4bc49a04d210eb12e5bb7a5461648f7"
+    },
+    "constraints.txt": {
+      "bytes": 1416,
+      "sha256": "7afb5334b5d57ef09e3d8ac2fc670f07182c50ffb51035d5b6eb7898f863edfb"
+    },
+    "qev-prompt.py": {
+      "bytes": 6421,
+      "sha256": "17dfae09e4dff47cb8ce80e172eba116f188b82b70c2777bd14fd9b8a71680de"
+    },
+    "qev-engine.py": {
+      "bytes": 22720,
+      "sha256": "f9665c68714818dbea8edc1e80d0b0d86737537dd606ff53cff37aafb84d6bf4"
+    },
+    "qev-schema.py": {
+      "bytes": 3050,
+      "sha256": "bce4b7d353ac115a9e50aef284975ddeed9a3bb452e3fd928a556668705bc2f3"
+    }
+  },
+  "execution": "No downloaded scripts or model runtime executed. Only original tokenizer data retained; no model weights."
+}

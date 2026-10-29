@@ -1,0 +1,38 @@
+#load "../lib/text.coax";
+#import "Basic";
+
+// book:begin example
+main :: () {
+    state:=PtEntry.{kind=PtEntryKind.text,value="ready"};
+    question:=PtQuestion.{kind=PtQuestionKind.choice};
+    options:=[2]PtOption.[
+        PtOption.{name="go",description=PtEntry.{kind=PtEntryKind.text,value=" continue "}},
+        PtOption.{name="stop"}];
+    bytes:[2048]u8;scratch:[2048]u8;
+    request:=pt_render_checked(state,question,options[..],bytes[..],scratch[..],false);
+    #assert request.status==PtStatus.ok && request.slots==2;
+    print("request: % slots, % UTF-8 bytes\n",request.slots,request.written);
+    print("prefix candidate: first % bytes\n",request.prefix_bytes);
+    print("%\n",cast(string)bytes[0..<request.written]);
+
+    // A small owned vocabulary makes the merge steps visible; these are TOY IDs.
+    table:=PT_TOY;ids:[32]int;stage:[32]int;normal:[128]u8;scalars:[128]int;symbols:[32]int;
+    encoded:=pt_encode_checked(table[..],"ababa hello's",ids[..],stage[..],normal[..],scalars[..],symbols[..],false);
+    #assert encoded.status==PtStatus.ok && encoded.written==4 && encoded.work==65;
+    #assert ids[0]==256 && ids[1]==257 && ids[2]==262 && ids[3]==263;
+    print("teaching BPE: [%, %, %, %]; work bound = %\n",ids[0],ids[1],ids[2],ids[3],encoded.work);
+
+    // Illustrative complete token vectors: the candidate shrinks across branches.
+    candidate:=[4]int.[10,11,12,13];full:=[12]int.[10,11,12,20,21,10,11,12,30,10,11,99];
+    ends:=[3]int.[5,9,12];branches:[3]PtBranch;
+    split:=pt_split_checked(candidate[..],full[..],ends[..],branches[..],false);
+    #assert split.status==PtStatus.ok && split.prefix==2;
+    print("shared tokens: %; suffix starts: [%, %, %]\n",split.prefix,branches[0].begin,branches[1].begin,branches[2].begin);
+
+    before:=bytes;options[1].name="go";
+    refused:=pt_render_checked(state,question,options[..],bytes[..],scratch[..],false);
+    #assert refused.status==PtStatus.range && refused.written==0;
+    for i:0..<bytes.count {#assert bytes[i]==before[i];}
+    print("refused: duplicate option label; published bytes unchanged\n");
+}
+// book:end example

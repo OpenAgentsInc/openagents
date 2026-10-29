@@ -1,5 +1,42 @@
 # Invariants
 
+## Psionic text requests publish complete bounded byte/token layouts
+
+`psionic/lib/text.coax` and `psionic/lib/text/` own `qwen35-text-v1`: frozen
+tagged Base Labs choice/noul/score prompts, original Qwen byte-BPE/added-token
+data, Unicode-17 NFC and split classes, and shared token-prefix matching over
+complete branch encodings. Original and packed tokenizer identities are pinned;
+callers admit the exact table SHA-256 once and keep those bytes immutable and
+alive for subsequent calls. Layout parsing is not a fresh identity admission.
+
+State strings preserve whitespace; instructions/descriptions use Python
+Unicode stripping. Structured entries preserve insertion order and exact integer,
+boolean/null/string values with two-space JSON formatting and a 4,300-digit
+integer limit; duplicate keys and
+floating/exponent JSON numbers refuse. Choices admit 1–255 options, noul has
+yes/no slots, and the pinned score schema admits 1–10 levels. Question IDs never
+enter the prompt. The exact disabled-thinking assistant prefix is preserved.
+
+Each input/rendered branch is at most 65,536 UTF-8 bytes, each candidate/full
+branch at most 16,384 tokens, and a split has 1–32 branches. BPE pieces are at
+most 1,024 bytes, with a sum-of-squared-piece budget of 16,777,216; the encoder
+reports this conservative bound as `work`, zero on failure. Combining runs
+admit at most 128 nonzero classes. JSON has depth 16 and 256 members per
+container. No truncation, option pruning or silently changed template is used.
+
+Public prompt bytes, token IDs and split metadata change only on success;
+workspaces may change on refusal. Split intervals refer to flattened complete
+encodings; `answer` is the final token position within its complete branch.
+Native C observes every writable and nested read-only span; callers retain
+pointer/extent/alignment/lifetime/immutability and exclusive-access duties.
+
+Check: `psionic/check.sh` runs debug/release checks and zero-survivor mutation,
+original-data token/request fixtures, independent Unicode/regex/BPE oracles and
+real native storage in plain and ASan/UBSan builds, plus previous chapters and
+the book gate. See `docs/verification/psionic-ch05-2026-10-29.md`. The retained
+corpus uses an owned oracle; broader upstream-runtime parity and whole-model
+execution remain separate qualification gates.
+
 ## Psionic original-weight admission binds complete immutable byte inventories
 
 `psionic/lib/model-io/` owns `original-weights-v1`: rank 0–4 BF16/F32

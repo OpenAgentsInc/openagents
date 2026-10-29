@@ -1,0 +1,236 @@
+// qwen35-text-v1: Unicode 17 NFC and the tokenizer's property classes.
+#load "../../fixtures/text/ch05/toy.coax";
+#authority;
+PtStatus :: enum u8 {ok; size; capacity; alias; utf8; artifact; unsupported; range; json; budget;}
+PtResult :: struct {status:PtStatus;written:int;work:int;}
+PtLayout :: struct {status:PtStatus;counts:[7]int;starts:[7]int;}
+PtRune :: struct {status:PtStatus;cp:int;next:int;}
+PtSpan :: struct {status:PtStatus;begin:int;end:int;}
+PtProp :: struct {flags:int;ccc:int;}
+PT_WIDTH :: [7]int.[8,16,16,24,12,4,1];
+PT_CAP :: [7]int.[262144,262144,8192,16384,16384,64,8388608];
+PT_TEXT_MAX :: 65536;
+PT_TOKENS_MAX :: 16384;
+PT_WORK_MAX :: 16777216;
+
+#test "table sections and byte budgets precede any record access" {
+    data:=PT_TOY;t:=pt_layout(data[..]);#assert t.status==PtStatus.ok && t.counts[0]==268 && t.counts[1]==10;
+    #assert t.starts[0]==1056 && t.starts[6]+t.counts[6]==data.count;
+    for i:0..<32 {#assert pt_layout(data[0..<i]).status==PtStatus.artifact;}
+    for i:0..<4 {copy:=data;copy[i]=0;#assert pt_layout(copy[..]).status==PtStatus.artifact;}
+    copy:=data;copy[4]=0;copy[5]=0;#assert pt_layout(copy[..]).status==PtStatus.artifact;
+    #assert pt_layout(data[0..<data.count-1]).status==PtStatus.artifact;
+    for k:0..<7 {#assert pt_count(k,PT_CAP[k]) && !pt_count(k,PT_CAP[k]+1) && !pt_count(k,-1);}
+    #assert pt_count(0,256) && !pt_count(0,255) && !pt_count(2,0) && pt_count(2,1);
+    #assert pt_count(1,0) && pt_count(3,0) && pt_count(4,0) && pt_count(5,0) && pt_count(6,0);
+}
+#test "UTF8 scalar boundaries, continuation, overlong, surrogate and maximum rules" {
+    good:=[16]u8.[0,127,194,128,223,191,224,160,128,239,191,191,244,143,191,191];
+    cps:=[7]int.[0,127,128,2047,2048,65535,1114111];at:=0;
+    for cp:cps {r:=pt_rune(cast(string)good[..],at);#assert r.status==PtStatus.ok && r.cp==cp;at=r.next;}
+    #assert at==16 && pt_rune(cast(string)good[..],16).status==PtStatus.utf8 && pt_rune(cast(string)good[..],-1).status==PtStatus.utf8;
+    bad:=[6][4]u8.[[4]u8.[128,0,0,0],[4]u8.[193,128,0,0],[4]u8.[224,128,128,0],[4]u8.[237,160,128,0],[4]u8.[244,144,128,128],[4]u8.[245,128,128,128]];
+    for b:bad {copy:=b;#assert pt_rune(cast(string)copy[..],0).status==PtStatus.utf8;}
+    for n:1..<4 {#assert pt_rune(cast(string)good[12..<12+n],0).status==PtStatus.utf8;}
+    broken:=[2]u8.[194,127];#assert pt_rune(cast(string)broken[..],0).status==PtStatus.utf8;
+    broken[1]=192;#assert pt_rune(cast(string)broken[..],0).status==PtStatus.utf8;
+    #assert !pt_scalar(-1) && pt_scalar(0) && pt_scalar(0xd7ff) && !pt_scalar(0xd800) && !pt_scalar(0xdfff) && pt_scalar(0xe000) && pt_scalar(0x10ffff) && !pt_scalar(0x110000);
+    #assert pt_utf8_width(127)==1 && pt_utf8_width(128)==2 && pt_utf8_width(2047)==2 && pt_utf8_width(2048)==3 && pt_utf8_width(65535)==3 && pt_utf8_width(65536)==4;
+    encoded:[16]u8;pos:=0;for cp:cps {pos=pt_put_utf8(encoded[..],pos,cp);}for i:0..<16 {#assert encoded[i]==good[i];}
+}
+#test "NFC composes, orders stable classes and preserves destination on failure" {
+    table:=PT_TOY;t:=pt_layout(table[..]);out:=[16]u8.[9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9];work:[24]int;
+    input:=[3]u8.[101,204,129];r:=pt_normalize_checked(table[..],cast(string)input[..],out[..],work[..],false);
+    #assert r.status==PtStatus.ok && r.written==2 && out[0]==195 && out[1]==169 && out[2]==9;
+    ordered:=[5]u8.[101,204,149,204,129];r=pt_normalize_checked(table[..],cast(string)ordered[..],out[..],work[..],false);
+    #assert r.status==PtStatus.ok && r.written==4 && out[0]==195 && out[1]==169 && out[2]==204 && out[3]==149;
+    before:=out;r=pt_normalize_checked(table[..],cast(string)input[..],out[0..<1],work[..],false);#assert r.status==PtStatus.capacity && r.written==0;
+    r=pt_normalize_checked(table[..],cast(string)input[..],out[..],work[0..<1],false);#assert r.status==PtStatus.capacity;
+    r=pt_normalize_checked(table[..],cast(string)input[..],out[..],work[..],true);#assert r.status==PtStatus.alias;
+    input[2]=255;r=pt_normalize_checked(table[..],cast(string)input[..],out[..],work[..],false);#assert r.status==PtStatus.utf8;
+    for i:0..<16 {#assert out[i]==before[i];}
+    #assert pt_normalize_checked(table[..],cast(string)input[0..<0],out[0..<0],work[0..<0],false).written==0;
+    #assert pt_prop(table[..],t,65).flags==1 && pt_prop(table[..],t,48).flags==4;
+    #assert pt_prop(table[..],t,32).flags==24 && pt_prop(table[..],t,28).flags==16 && pt_prop(table[..],t,0x301).ccc==230;
+    #assert pt_prop(table[..],t,0x10000).flags==0 && pt_pair(table[..],t,4,101,0x301)==131 && pt_pair(table[..],t,4,100,0x301)==-1;
+    #assert pt_text_count(0) && pt_text_count(65536) && !pt_text_count(-1) && !pt_text_count(65537);
+    #assert pt_budget(16777215,1) && !pt_budget(16777216,1);
+}
+
+#test "balanced lookup steps, UTF8 lead classes and exact scratch capacities" {
+    #assert pt_header_count(32) && !pt_header_count(31);
+    #assert pt_mid(0,5)==2 && pt_mid(9,15)==12 && pt_mid(7,8)==7;
+    #assert pt_row_valid(0,1) && !pt_row_valid(1,1) && !pt_row_valid(0,0);
+    for b:0..<256 {
+        expected:=0;if b<128 {expected=1;}else if b>=194 && b<=223 {expected=2;}else if b>=224 && b<=239 {expected=3;}else if b>=240 && b<=244 {expected=4;}
+        #assert pt_lead(b)==expected;
+    }
+    prefixed:=[5]u8.[97,240,144,128,128];#assert pt_rune(cast(string)prefixed[..],1).cp==65536;
+    #assert pt_rune(cast(string)prefixed[0..<3],1).status==PtStatus.utf8;
+    table:=PT_TOY;t:=pt_layout(table[..]);out:[32]u8;work:[32]int;
+    cps:=[6]int.[0xe8,0xe9,0x340,0x1f82,0xac00,0xac01];
+    indices:=[6]int.[33,34,252,282,283,284];
+    for i:0..<6 {#assert pt_decomposition(table[..],t,cps[i])==indices[i];}
+    #assert pt_decomposition(table[..],t,0xbf)==-1 && pt_decomposition(table[..],t,0x110000)==-1;
+    #assert pt_prop(table[..],t,0).flags==0 && pt_prop(table[..],t,-1).flags==0 && pt_prop(table[..],t,9).flags==24;
+    input:=[2]u8.[195,169];
+    r:=pt_normalize_checked(table[..],cast(string)input[..],out[0..<2],work[0..<2],false);
+    #assert r.status==PtStatus.ok && r.written==2 && work[0]==0xe9 && out[0]==195 && out[1]==169;
+    greek:=[3]u8.[225,190,130];r=pt_normalize_checked(table[..],cast(string)greek[..],out[..],work[..],false);
+    #assert r.status==PtStatus.ok && r.written==8 && work[0]==0x3b1 && work[3]==0x345;
+    hangul:=[6]u8.[225,132,128,225,133,161];r=pt_normalize_checked(table[..],cast(string)hangul[..],out[..],work[..],false);
+    #assert r.status==PtStatus.ok && r.written==3 && out[0]==234 && out[1]==176 && out[2]==128;
+    single:=[2]u8.[205,128];r=pt_normalize_checked(table[..],cast(string)single[..],out[..],work[..],false);
+    #assert r.status==PtStatus.ok && work[0]==0x300 && out[1]==128;
+    blocked:=[5]u8.[101,204,128,204,129];r=pt_normalize_checked(table[..],cast(string)blocked[..],out[..],work[..],false);
+    #assert r.status==PtStatus.ok && r.written==4 && out[0]==195 && out[1]==168 && out[3]==129;
+    starter:=[4]u8.[97,204,149,101];r=pt_normalize_checked(table[..],cast(string)starter[..],out[..],work[..],false);
+    #assert r.status==PtStatus.ok && r.written==4 && out[0]==97 && out[1]==204 && out[2]==149 && out[3]==101;
+    #assert pt_marks(128) && !pt_marks(129);
+    #assert pt_token_count(0) && pt_token_count(16384) && !pt_token_count(16385) && !pt_token_count(-1);
+}
+
+#test "leading marks, class-one ordering and bounded combining runs" {
+    table:=PT_TOY;out:[260]u8;work:[260]int;
+    leading:=[4]u8.[204,149,204,129];r:=pt_normalize_checked(table[..],cast(string)leading[..],out[..],work[..],false);
+    #assert r.status==PtStatus.ok && out[0]==204 && out[1]==129 && out[2]==204 && out[3]==149;
+    firstclass:=[4]u8.[204,129,204,180];r=pt_normalize_checked(table[..],cast(string)firstclass[..],out[..],work[..],false);
+    #assert r.status==PtStatus.ok && out[1]==180 && out[3]==129;
+    marks:[258]u8;for i:0..<129 {marks[i*2]=204;marks[i*2+1]=129;}
+    #assert pt_normalize_checked(table[..],cast(string)marks[0..<256],out[..],work[..],false).status==PtStatus.ok;
+    before:=out;r=pt_normalize_checked(table[..],cast(string)marks[..],out[..],work[..],false);
+    #assert r.status==PtStatus.budget && r.written==0;for i:0..<260 {#assert out[i]==before[i];}
+    t:=pt_layout(table[..]);
+    for value:0..<6 {
+        copy:=table;row:=t.starts[3];for i:0..<4 {copy[row+4+i]=cast(u8)((cast(u32)value>>(i*8))&255);}
+        r=pt_normalize_checked(copy[..],"À",out[..],work[..],false);
+        if value==0 || value==5 {#assert r.status==PtStatus.artifact;}
+    }
+}
+
+#test "first canonical rows, starter resets and composition blocking remain observable" {
+    table:=PT_TOY;t:=pt_layout(table[..]);out:[512]u8;work:[512]int;
+    r:=pt_normalize_checked(table[..],"À",out[..],work[..],false);#assert r.status==PtStatus.ok && r.written==2 && out[0]==195 && out[1]==128;
+    row:=pt_pair(table[..],t,4,65,0x300);#assert row==0;
+    r=pt_normalize_checked(table[..],"À",out[..],work[..],false);#assert r.status==PtStatus.ok && r.written==2 && out[1]==128;
+    r=pt_normalize_checked(table[..],"x é è",out[..],work[..],false);#assert r.status==PtStatus.ok && r.written==7 && cast(string)out[0..<7]=="x é è";
+    r=pt_normalize_checked(table[..],"e̅́",out[..],work[..],false);#assert r.status==PtStatus.ok && r.written==5 && out[0]==101 && out[2]==133 && out[4]==129;
+    run:[257]u8;for i:0..<128 {run[i*2]=204;run[i*2+1]=129;}run[256]=120;
+    r=pt_normalize_checked(table[..],cast(string)run[..],out[..],work[..],false);#assert r.status==PtStatus.ok && r.written==257;
+    run[255]=180; // CCC 1 at the end of the same run still counts as a mark.
+    #assert pt_normalize_checked(table[..],cast(string)run[0..<256],out[..],work[..],false).status==PtStatus.ok;
+    separated:[259]u8;for i:0..<128 {separated[i*2]=204;separated[i*2+1]=129;}separated[256]=120;separated[257]=204;separated[258]=129;
+    #assert pt_normalize_checked(table[..],cast(string)separated[..],out[..],work[..],false).status==PtStatus.ok;
+    letters:[129]u8;for i:0..<129 {letters[i]=120;}
+    #assert pt_normalize_checked(table[..],cast(string)letters[..],out[..],work[..],false).status==PtStatus.ok;
+    mixed:[258]u8;for i:0..<129 {mixed[i*2]=204;mixed[i*2+1]=129;}mixed[257]=180;
+    #assert pt_normalize_checked(table[..],cast(string)mixed[..],out[..],work[..],false).status==PtStatus.budget;
+    after:[257]u8;after[0]=120;for i:0..<128 {after[1+i*2]=204;after[2+i*2]=129;}
+    #assert pt_normalize_checked(table[..],cast(string)after[..],out[..],work[..],false).status==PtStatus.ok;
+    #assert pt_utf8_validate("name")==PtStatus.ok;
+    bad:=[1]u8.[255];#assert pt_utf8_validate(cast(string)bad[..])==PtStatus.utf8;
+}
+pt_utf8_validate :: (text:string)->PtStatus {
+    at:=0;while at<text.count {r:=pt_rune(text,at);if r.status!=PtStatus.ok {return r.status;}at=r.next;}return PtStatus.ok;
+}
+
+pt_header_count :: (n:int)->bool {return n>=32;}
+pt_mid :: (lo:int,hi:int)->int {return lo+(hi-lo)/2;}
+pt_row_valid :: (row:int,count:int)->bool {return row<count;}
+pt_u32 :: (data:[]u8,at:int)->int {
+    n:u32=0;for i:0..<4 {n |= cast(u32)data[at+i]<<(i*8);}return cast(int)n;
+}
+pt_count :: (k:int,n:int)->bool {
+    if n<0 || n>PT_CAP[k] {return false;}
+    if k==0 {return n>=256;}if k==2 {return n>=1;}return true;
+}
+pt_layout :: (data:[]u8)->PtLayout #export_c {
+    if !pt_header_count(data.count) {return PtLayout.{status=PtStatus.artifact};}
+    if data[0]!='P' || data[1]!='S' || data[2]!='T' || data[3]!='5' {return PtLayout.{status=PtStatus.artifact};}
+    t:PtLayout;at:=1056;
+    for k:0..<7 {
+        n:=pt_u32(data,4+k*4);if !pt_count(k,n) {return PtLayout.{status=PtStatus.artifact};}
+        t.counts[k]=n;t.starts[k]=at;at+=n*PT_WIDTH[k];
+    }
+    if at!=data.count {return PtLayout.{status=PtStatus.artifact};}return t;
+}
+pt_row :: (t:PtLayout,k:int,i:int)->int {return t.starts[k]+i*PT_WIDTH[k];}
+pt_pair :: (data:[]u8,t:PtLayout,k:int,a:int,b:int)->int {
+    lo:=0;hi:=t.counts[k];
+    while lo<hi {
+        mid:=pt_mid(lo,hi);row:=pt_row(t,k,mid);x:=pt_u32(data,row);y:=pt_u32(data,row+4);
+        if x<a || (x==a && y<b) {lo=mid+1;}else {hi=mid;}
+    }
+    if pt_row_valid(lo,t.counts[k]) {row:=pt_row(t,k,lo);if pt_u32(data,row)==a && pt_u32(data,row+4)==b {return lo;}}return -1;
+}
+pt_prop :: (data:[]u8,t:PtLayout,cp:int)->PtProp {
+    lo:=0;hi:=t.counts[2];
+    while lo<hi {mid:=pt_mid(lo,hi);if pt_u32(data,pt_row(t,2,mid))<=cp {lo=mid+1;}else {hi=mid;}}
+    if lo==0 {return PtProp.{};}row:=pt_row(t,2,lo-1);if cp>pt_u32(data,row+4) {return PtProp.{};}
+    return PtProp.{flags=pt_u32(data,row+8),ccc=pt_u32(data,row+12)};
+}
+pt_decomposition :: (data:[]u8,t:PtLayout,cp:int)->int {
+    lo:=0;hi:=t.counts[3];
+    while lo<hi {mid:=pt_mid(lo,hi);if pt_u32(data,pt_row(t,3,mid))<cp {lo=mid+1;}else {hi=mid;}}
+    if pt_row_valid(lo,t.counts[3]) {if pt_u32(data,pt_row(t,3,lo))==cp {return lo;}}return -1;
+}
+pt_scalar :: (cp:int)->bool {return cp>=0 && cp<=1114111 && (cp<55296 || cp>57343);}
+pt_text_count :: (n:int)->bool {return n>=0 && n<=PT_TEXT_MAX;}
+pt_token_count :: (n:int)->bool {return n>=0 && n<=PT_TOKENS_MAX;}
+pt_marks :: (n:int)->bool {return n<=128;}
+pt_budget :: (used:int,next:int)->bool {return next<=PT_WORK_MAX-used;}
+pt_lead :: (b:int)->int {
+    if b<128 {return 1;}if b>=194 && b<=223 {return 2;}if b>=224 && b<=239 {return 3;}if b>=240 && b<=244 {return 4;}return 0;
+}
+pt_rune :: (s:string,at:int)->PtRune #export_c {
+    if at<0 || at>=s.count {return PtRune.{status=PtStatus.utf8};}
+    b:=cast(int)s[at];width:=pt_lead(b);if width==0 {return PtRune.{status=PtStatus.utf8};}
+    if width==1 {return PtRune.{cp=b,next=at+1};}
+    masks:=[3]int.[31,15,7];minimums:=[3]int.[128,2048,65536];
+    cp:=b&masks[width-2];minimum:=minimums[width-2];
+    if width>s.count-at {return PtRune.{status=PtStatus.utf8};}
+    for i:1..<width {v:=cast(int)s[at+i];if v<128 || v>191 {return PtRune.{status=PtStatus.utf8};}cp=(cp<<6)|(v&63);}
+    if cp<minimum || !pt_scalar(cp) {return PtRune.{status=PtStatus.utf8};}return PtRune.{cp=cp,next=at+width};
+}
+pt_utf8_width :: (cp:int)->int {if cp<128 {return 1;}if cp<2048 {return 2;}if cp<65536 {return 3;}return 4;}
+pt_put_utf8 :: (out:[]u8,at:int,cp:int)->int {
+    n:=pt_utf8_width(cp);if n==1 {out[at]=cast(u8)cp;return at+1;}
+    lead:=240;if n==2 {lead=192;}else if n==3 {lead=224;}
+    out[at]=cast(u8)(lead|(cp>>(6*(n-1))));
+    for i:1..<n {out[at+i]=cast(u8)(128|((cp>>(6*(n-i-1)))&63));}return at+n;
+}
+// book:begin normalize
+pt_normalize_checked :: (table:[]u8,input:string,output:[]u8,scalars:[]int,overlap:bool)->PtResult #export_c {
+    if !pt_text_count(input.count) {return PtResult.{status=PtStatus.size};}
+    if overlap {return PtResult.{status=PtStatus.alias};}
+    t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}
+    n:=0;at:=0;marks:=0;
+    while at<input.count {
+        r:=pt_rune(input,at);if r.status!=PtStatus.ok {return PtResult.{status=r.status};}at=r.next;
+        d:=pt_decomposition(table,t,r.cp);width:=1;
+        if d>=0 {width=pt_u32(table,pt_row(t,3,d)+4);if width<1 || width>4 {return PtResult.{status=PtStatus.artifact};}}
+        if width>scalars.count-n {return PtResult.{status=PtStatus.capacity};}
+        for k:0..<width {
+            cp:=r.cp;if d>=0 {cp=pt_u32(table,pt_row(t,3,d)+8+k*4);}
+            pos:=n;cc:=pt_prop(table,t,cp).ccc;
+            if cc>0 {marks+=1;}else {marks=0;}
+            if !pt_marks(marks) {return PtResult.{status=PtStatus.budget};}
+            while pos>0 && cc>0 && pt_prop(table,t,scalars[pos-1]).ccc>cc {
+                scalars[pos]=scalars[pos-1];pos-=1;
+            }
+            scalars[pos]=cp;n+=1;
+        }
+    }
+    if n==0 {return PtResult.{};}
+    size:=1;starter:=0;last:=pt_prop(table,t,scalars[0]).ccc;
+    for i:1..<n {
+        cp:=scalars[i];cc:=pt_prop(table,t,cp).ccc;composed:=pt_pair(table,t,4,scalars[starter],cp);
+        if composed>=0 && (last<cc || last==0) {scalars[starter]=pt_u32(table,pt_row(t,4,composed)+8);}
+        else {if cc==0 {starter=size;}scalars[size]=cp;size+=1;last=cc;}
+    }
+    bytes:=0;for i:0..<size {if !pt_scalar(scalars[i]) {return PtResult.{status=PtStatus.artifact};}bytes+=pt_utf8_width(scalars[i]);}
+    if bytes>output.count {return PtResult.{status=PtStatus.capacity};}
+    pos:=0;for i:0..<size {pos=pt_put_utf8(output,pos,scalars[i]);}
+    return PtResult.{written=pos};
+}
+// book:end normalize

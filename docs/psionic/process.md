@@ -1,7 +1,7 @@
 # Development process
 
-Status: chapters 1–4 implement this workflow through [psionic/check.sh](../../psionic/check.sh).
-The runner checks the library units, five examples, native boundaries, and
+Status: chapters 1–5 implement this workflow through [psionic/check.sh](../../psionic/check.sh).
+The runner checks the library units, six examples, native boundaries, and
 source-linked book listings. Later target and performance work below remains
 proposed until its workload and evidence exist.
 
@@ -141,7 +141,7 @@ Before a chapter is called complete, list what ran and what did not. Put
 required owner taps, credentials, paid compute, device checks, or sign-offs
 in the workspace's `NEEDS_OWNER.md` with a concrete action and acceptance
 condition. Work that is entirely local and credential-free should continue
-without an owner dependency. Chapters 1–4 need no owner action.
+without an owner dependency. Chapters 1–5 need no owner action.
 
 Integrate with the app, voice engine, or a future provider only through a
 real consumer's explicit boundary. Introduce cross-surface contracts in root

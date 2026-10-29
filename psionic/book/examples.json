@@ -50,6 +50,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/text-request.coax",
+      "chapter": "psionic/book/ch05-text-becomes-a-model-request.md",
+      "stdout": "psionic/fixtures/text-request.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

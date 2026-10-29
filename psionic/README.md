@@ -6,12 +6,14 @@ chapter at a time. The first milestone trains a one-parameter model on
 bounded shapes, row-major indexing and a staged copy into caller-owned storage.
 Chapter 3 adds checked CPU numerical operations over that storage. Chapter 4
 reads original BF16/F32 weight files and complete pinned shard bundles.
+Chapter 5 renders typed text decisions and tokenizes original Qwen data.
 
 Start with [the book](book/README.md) and
 [Chapter 1: Learning a number](book/ch01-learning-a-number.md), then
 [Chapter 2: Shapes and storage](book/ch02-shapes-and-storage.md) and
 [Chapter 3: Numbers and matrices](book/ch03-numbers-and-matrices.md), then
-[Chapter 4: Reading original weights](book/ch04-reading-original-weights.md).
+[Chapter 4: Reading original weights](book/ch04-reading-original-weights.md), then
+[Chapter 5: Text becomes a model request](book/ch05-text-becomes-a-model-request.md).
 [The design notes](../docs/psionic/README.md) explain the larger plan.
 
 From the repository root:
@@ -22,13 +24,15 @@ coax/bin/coax run psionic/examples/learn-number.coax
 coax/bin/coax run psionic/examples/shape-storage.coax
 coax/bin/coax run psionic/examples/numbers-matrices.coax
 coax/bin/coax run psionic/examples/read-weights.coax
+coax/bin/coax run psionic/examples/text-request.coax
 ```
 
 The check command builds the compiler if it is absent, runs authored Coax
 checks in debug/release and the authority mutation gates, compares independent
 native numerical oracles in debug/release with and without ASan/UBSan, and
 verifies book listings, local links, example output and exit status. It uses
-a C11 compiler and Python 3 for book tooling and independent Decimal/owned-artifact fixtures.
+a C11 compiler and Python 3 for book tooling and independent Decimal/owned-artifact fixtures. Chapter 5 fixture authoring and
+verification require Python with Unicode database 17.0.0 (tested Python 3.15.1).
 Neither the library nor its examples require Python, models, services,
 credentials, or downloads at run time.
 
@@ -37,6 +41,9 @@ credentials, or downloads at run time.
 | [lib/learn.coax](lib/learn.coax) | Checks first, admission, loss/gradient, fixed-rate SGD, prediction. |
 | [lib/tensor.coax](lib/tensor.coax) | Checked rank/shape/byte/stride metadata, indexing and staged finite-f32 copy. |
 | [lib/ops-contract.coax](lib/ops-contract.coax) | Operation shapes, typed view counts, epsilon rules and matrix-work admission. |
+| [lib/text.coax](lib/text.coax), [lib/text/](lib/text/) | qwen35-text-v1: frozen tagged requests, Unicode-17 NFC, original-table ranked BPE and validated prefix/suffix layouts. |
+| [platform/text-memory.h](platform/text-memory.h) | Typed text/token native interface and nested span observations. |
+| [tests/text.c](tests/text.c), [tests/text_oracle.py](tests/text_oracle.py) | Independent Unicode/regex/BPE and rendered-request references, actual original data and native refusals. |
 | [lib/model-io/](lib/model-io/) | original-weights-v1 prefix/shape admission, JSON inventory, streaming SHA-256 identities, shard-index/manifest checks and finite window decoding. |
 | [platform/weights-memory.h](platform/weights-memory.h) | Native artifact interface; observes all writable/nested read-only spans. |
 | [tests/weights.c](tests/weights.c), [tests/weights_fixtures.py](tests/weights_fixtures.py) | Actual original single/sharded files, independent hashes/encodings, malformed inputs, aliases and atomic float refusal. |
@@ -73,5 +80,12 @@ pins bind original sidecar/shard hashes and complete name/dtype/shape inventory;
 labels alone do not authenticate provenance. Metadata drafts may change on
 refusal; public inventory and both decoded float spans have explicit atomic
 publication contracts. See [chapter 4](book/ch04-reading-original-weights.md)
-for exact profile and lifetime obligations. Autodiff, full model execution, GPU
+for exact profile and lifetime obligations. Chapter 5 adds `qwen35-text-v1`:
+original Qwen tokenizer data and frozen tagged Base Labs rendering, with
+Unicode-17 NFC, explicit byte/token/work budgets, integer structured JSON
+entries and complete token-prefix matching across 1–32 branches. Its
+[chapter](book/ch05-text-becomes-a-model-request.md) and
+[verification](../docs/verification/psionic-ch05-2026-10-29.md) distinguish
+owned reference evidence from upstream-runtime/model qualification.
+Autodiff, full model execution, GPU
 execution and serving remain planned.

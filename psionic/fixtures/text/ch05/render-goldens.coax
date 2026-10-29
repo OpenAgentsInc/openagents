@@ -1,0 +1,553 @@
+#test "independent rendered request 0" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="go",description=PtEntry.{kind=PtEntryKind.text,value=" continue "}};
+    options[1]=PtOption.{name="stop",description=PtEntry.{}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="ready"},PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==380 && r.prefix_bytes==219;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nready\n</state>\n\nQuestion: Which option applies to the state?\n\nOptions:\nA. go: continue\nB. stop\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 1" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="go",description=PtEntry.{kind=PtEntryKind.text,value=" continue "}};
+    options[1]=PtOption.{name="stop",description=PtEntry.{}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="ready"},PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==359 && r.prefix_bytes==219;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nready\n</state>\n\nQuestion: Choose café?\n\nOptions:\nA. go: continue\nB. stop\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 2" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="ready"},PtQuestion.{kind=PtQuestionKind.noul,instructions=PtEntry.{}},options[0..<0],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==481 && r.prefix_bytes==219;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nready\n</state>\n\nQuestion: Is the statement true, or is the answer to the question yes?\n\nOptions:\nA. yes: the statement is true / the answer is yes\nB. no: the statement is false / the answer is no\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 3" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="ready"},PtQuestion.{kind=PtQuestionKind.noul,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<0],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==434 && r.prefix_bytes==219;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nready\n</state>\n\nQuestion: Choose café?\n\nOptions:\nA. yes: the statement is true / the answer is yes\nB. no: the statement is false / the answer is no\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 4" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="",description=PtEntry.{}};
+    options[1]=PtOption.{name="",description=PtEntry.{kind=PtEntryKind.json,value="{\"condition\":\"done\"}"}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="ready"},PtQuestion.{kind=PtQuestionKind.score,instructions=PtEntry.{}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==409 && r.prefix_bytes==219;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nready\n</state>\n\nRate the state: Which level describes the state?\n\nOptions:\nA. level 0\nB. level 1: {\n  \"condition\": \"done\"\n}\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 5" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="",description=PtEntry.{}};
+    options[1]=PtOption.{name="",description=PtEntry.{kind=PtEntryKind.json,value="{\"condition\":\"done\"}"}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="ready"},PtQuestion.{kind=PtQuestionKind.score,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==390 && r.prefix_bytes==219;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nready\n</state>\n\nRate the state: Choose café?\n\nOptions:\nA. level 0\nB. level 1: {\n  \"condition\": \"done\"\n}\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 6" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="go",description=PtEntry.{kind=PtEntryKind.text,value=" continue "}};
+    options[1]=PtOption.{name="stop",description=PtEntry.{}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.json,value="{\"ticket\":\"charged twice\",\"count\":2,\"nested\":[true,null]}"},PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==458 && r.prefix_bytes==297;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n{\n  \"ticket\": \"charged twice\",\n  \"count\": 2,\n  \"nested\": [\n    true,\n    null\n  ]\n}\n</state>\n\nQuestion: Which option applies to the state?\n\nOptions:\nA. go: continue\nB. stop\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 7" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="go",description=PtEntry.{kind=PtEntryKind.text,value=" continue "}};
+    options[1]=PtOption.{name="stop",description=PtEntry.{}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.json,value="{\"ticket\":\"charged twice\",\"count\":2,\"nested\":[true,null]}"},PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==437 && r.prefix_bytes==297;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n{\n  \"ticket\": \"charged twice\",\n  \"count\": 2,\n  \"nested\": [\n    true,\n    null\n  ]\n}\n</state>\n\nQuestion: Choose café?\n\nOptions:\nA. go: continue\nB. stop\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 8" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.json,value="{\"ticket\":\"charged twice\",\"count\":2,\"nested\":[true,null]}"},PtQuestion.{kind=PtQuestionKind.noul,instructions=PtEntry.{}},options[0..<0],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==559 && r.prefix_bytes==297;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n{\n  \"ticket\": \"charged twice\",\n  \"count\": 2,\n  \"nested\": [\n    true,\n    null\n  ]\n}\n</state>\n\nQuestion: Is the statement true, or is the answer to the question yes?\n\nOptions:\nA. yes: the statement is true / the answer is yes\nB. no: the statement is false / the answer is no\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 9" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.json,value="{\"ticket\":\"charged twice\",\"count\":2,\"nested\":[true,null]}"},PtQuestion.{kind=PtQuestionKind.noul,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<0],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==512 && r.prefix_bytes==297;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n{\n  \"ticket\": \"charged twice\",\n  \"count\": 2,\n  \"nested\": [\n    true,\n    null\n  ]\n}\n</state>\n\nQuestion: Choose café?\n\nOptions:\nA. yes: the statement is true / the answer is yes\nB. no: the statement is false / the answer is no\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 10" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="",description=PtEntry.{}};
+    options[1]=PtOption.{name="",description=PtEntry.{kind=PtEntryKind.json,value="{\"condition\":\"done\"}"}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.json,value="{\"ticket\":\"charged twice\",\"count\":2,\"nested\":[true,null]}"},PtQuestion.{kind=PtQuestionKind.score,instructions=PtEntry.{}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==487 && r.prefix_bytes==297;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n{\n  \"ticket\": \"charged twice\",\n  \"count\": 2,\n  \"nested\": [\n    true,\n    null\n  ]\n}\n</state>\n\nRate the state: Which level describes the state?\n\nOptions:\nA. level 0\nB. level 1: {\n  \"condition\": \"done\"\n}\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 11" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="",description=PtEntry.{}};
+    options[1]=PtOption.{name="",description=PtEntry.{kind=PtEntryKind.json,value="{\"condition\":\"done\"}"}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.json,value="{\"ticket\":\"charged twice\",\"count\":2,\"nested\":[true,null]}"},PtQuestion.{kind=PtQuestionKind.score,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==468 && r.prefix_bytes==297;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n{\n  \"ticket\": \"charged twice\",\n  \"count\": 2,\n  \"nested\": [\n    true,\n    null\n  ]\n}\n</state>\n\nRate the state: Choose café?\n\nOptions:\nA. level 0\nB. level 1: {\n  \"condition\": \"done\"\n}\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 12" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="go",description=PtEntry.{kind=PtEntryKind.text,value=" continue "}};
+    options[1]=PtOption.{name="stop",description=PtEntry.{}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="QEV_PREFIX_MARK inside state"},PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==403 && r.prefix_bytes==203;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nQEV_PREFIX_MARK inside state\n</state>\n\nQuestion: Which option applies to the state?\n\nOptions:\nA. go: continue\nB. stop\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 13" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="go",description=PtEntry.{kind=PtEntryKind.text,value=" continue "}};
+    options[1]=PtOption.{name="stop",description=PtEntry.{}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="QEV_PREFIX_MARK inside state"},PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==382 && r.prefix_bytes==203;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nQEV_PREFIX_MARK inside state\n</state>\n\nQuestion: Choose café?\n\nOptions:\nA. go: continue\nB. stop\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 14" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="QEV_PREFIX_MARK inside state"},PtQuestion.{kind=PtQuestionKind.noul,instructions=PtEntry.{}},options[0..<0],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==504 && r.prefix_bytes==203;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nQEV_PREFIX_MARK inside state\n</state>\n\nQuestion: Is the statement true, or is the answer to the question yes?\n\nOptions:\nA. yes: the statement is true / the answer is yes\nB. no: the statement is false / the answer is no\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 15" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="QEV_PREFIX_MARK inside state"},PtQuestion.{kind=PtQuestionKind.noul,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<0],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==457 && r.prefix_bytes==203;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nQEV_PREFIX_MARK inside state\n</state>\n\nQuestion: Choose café?\n\nOptions:\nA. yes: the statement is true / the answer is yes\nB. no: the statement is false / the answer is no\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 16" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="",description=PtEntry.{}};
+    options[1]=PtOption.{name="",description=PtEntry.{kind=PtEntryKind.json,value="{\"condition\":\"done\"}"}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="QEV_PREFIX_MARK inside state"},PtQuestion.{kind=PtQuestionKind.score,instructions=PtEntry.{}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==432 && r.prefix_bytes==203;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nQEV_PREFIX_MARK inside state\n</state>\n\nRate the state: Which level describes the state?\n\nOptions:\nA. level 0\nB. level 1: {\n  \"condition\": \"done\"\n}\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 17" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="",description=PtEntry.{}};
+    options[1]=PtOption.{name="",description=PtEntry.{kind=PtEntryKind.json,value="{\"condition\":\"done\"}"}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="QEV_PREFIX_MARK inside state"},PtQuestion.{kind=PtQuestionKind.score,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==413 && r.prefix_bytes==203;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nQEV_PREFIX_MARK inside state\n</state>\n\nRate the state: Choose café?\n\nOptions:\nA. level 0\nB. level 1: {\n  \"condition\": \"done\"\n}\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 18" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="go",description=PtEntry.{kind=PtEntryKind.text,value=" continue "}};
+    options[1]=PtOption.{name="stop",description=PtEntry.{}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="  ready \n"},PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==384 && r.prefix_bytes==223;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n  ready \n\n</state>\n\nQuestion: Which option applies to the state?\n\nOptions:\nA. go: continue\nB. stop\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 19" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="go",description=PtEntry.{kind=PtEntryKind.text,value=" continue "}};
+    options[1]=PtOption.{name="stop",description=PtEntry.{}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="  ready \n"},PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==363 && r.prefix_bytes==223;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n  ready \n\n</state>\n\nQuestion: Choose café?\n\nOptions:\nA. go: continue\nB. stop\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 20" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="  ready \n"},PtQuestion.{kind=PtQuestionKind.noul,instructions=PtEntry.{}},options[0..<0],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==485 && r.prefix_bytes==223;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n  ready \n\n</state>\n\nQuestion: Is the statement true, or is the answer to the question yes?\n\nOptions:\nA. yes: the statement is true / the answer is yes\nB. no: the statement is false / the answer is no\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 21" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="  ready \n"},PtQuestion.{kind=PtQuestionKind.noul,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<0],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==438 && r.prefix_bytes==223;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n  ready \n\n</state>\n\nQuestion: Choose café?\n\nOptions:\nA. yes: the statement is true / the answer is yes\nB. no: the statement is false / the answer is no\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 22" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="",description=PtEntry.{}};
+    options[1]=PtOption.{name="",description=PtEntry.{kind=PtEntryKind.json,value="{\"condition\":\"done\"}"}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="  ready \n"},PtQuestion.{kind=PtQuestionKind.score,instructions=PtEntry.{}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==413 && r.prefix_bytes==223;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n  ready \n\n</state>\n\nRate the state: Which level describes the state?\n\nOptions:\nA. level 0\nB. level 1: {\n  \"condition\": \"done\"\n}\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 23" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="",description=PtEntry.{}};
+    options[1]=PtOption.{name="",description=PtEntry.{kind=PtEntryKind.json,value="{\"condition\":\"done\"}"}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="  ready \n"},PtQuestion.{kind=PtQuestionKind.score,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==394 && r.prefix_bytes==223;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n  ready \n\n</state>\n\nRate the state: Choose café?\n\nOptions:\nA. level 0\nB. level 1: {\n  \"condition\": \"done\"\n}\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 24" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="go",description=PtEntry.{kind=PtEntryKind.text,value=" continue "}};
+    options[1]=PtOption.{name="stop",description=PtEntry.{}};
+    r:=pt_render_checked(PtEntry.{},PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==375 && r.prefix_bytes==214;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n\n</state>\n\nQuestion: Which option applies to the state?\n\nOptions:\nA. go: continue\nB. stop\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 25" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="go",description=PtEntry.{kind=PtEntryKind.text,value=" continue "}};
+    options[1]=PtOption.{name="stop",description=PtEntry.{}};
+    r:=pt_render_checked(PtEntry.{},PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==354 && r.prefix_bytes==214;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n\n</state>\n\nQuestion: Choose café?\n\nOptions:\nA. go: continue\nB. stop\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 26" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    r:=pt_render_checked(PtEntry.{},PtQuestion.{kind=PtQuestionKind.noul,instructions=PtEntry.{}},options[0..<0],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==476 && r.prefix_bytes==214;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n\n</state>\n\nQuestion: Is the statement true, or is the answer to the question yes?\n\nOptions:\nA. yes: the statement is true / the answer is yes\nB. no: the statement is false / the answer is no\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 27" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    r:=pt_render_checked(PtEntry.{},PtQuestion.{kind=PtQuestionKind.noul,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<0],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==429 && r.prefix_bytes==214;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n\n</state>\n\nQuestion: Choose café?\n\nOptions:\nA. yes: the statement is true / the answer is yes\nB. no: the statement is false / the answer is no\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 28" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="",description=PtEntry.{}};
+    options[1]=PtOption.{name="",description=PtEntry.{kind=PtEntryKind.json,value="{\"condition\":\"done\"}"}};
+    r:=pt_render_checked(PtEntry.{},PtQuestion.{kind=PtQuestionKind.score,instructions=PtEntry.{}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==404 && r.prefix_bytes==214;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n\n</state>\n\nRate the state: Which level describes the state?\n\nOptions:\nA. level 0\nB. level 1: {\n  \"condition\": \"done\"\n}\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 29" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="",description=PtEntry.{}};
+    options[1]=PtOption.{name="",description=PtEntry.{kind=PtEntryKind.json,value="{\"condition\":\"done\"}"}};
+    r:=pt_render_checked(PtEntry.{},PtQuestion.{kind=PtQuestionKind.score,instructions=PtEntry.{kind=PtEntryKind.text,value="  Choose café? \n"}},options[0..<2],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==385 && r.prefix_bytes==214;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\n\n</state>\n\nRate the state: Choose café?\n\nOptions:\nA. level 0\nB. level 1: {\n  \"condition\": \"done\"\n}\n\nAnswer with one letter: A, B.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 30" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="name0",description=PtEntry.{kind=PtEntryKind.text,value="description 0"}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="ready"},PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{kind=PtEntryKind.text,value="Pick."}},options[0..<1],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==348 && r.prefix_bytes==219;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nready\n</state>\n\nQuestion: Pick.\n\nOptions:\nA. name0: description 0\n\nAnswer with one letter: A.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 31" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="name0",description=PtEntry.{kind=PtEntryKind.text,value="description 0"}};
+    options[1]=PtOption.{name="name1",description=PtEntry.{kind=PtEntryKind.text,value="description 1"}};
+    options[2]=PtOption.{name="name2",description=PtEntry.{kind=PtEntryKind.text,value="description 2"}};
+    options[3]=PtOption.{name="name3",description=PtEntry.{kind=PtEntryKind.text,value="description 3"}};
+    options[4]=PtOption.{name="name4",description=PtEntry.{kind=PtEntryKind.text,value="description 4"}};
+    options[5]=PtOption.{name="name5",description=PtEntry.{kind=PtEntryKind.text,value="description 5"}};
+    options[6]=PtOption.{name="name6",description=PtEntry.{kind=PtEntryKind.text,value="description 6"}};
+    options[7]=PtOption.{name="name7",description=PtEntry.{kind=PtEntryKind.text,value="description 7"}};
+    options[8]=PtOption.{name="name8",description=PtEntry.{kind=PtEntryKind.text,value="description 8"}};
+    options[9]=PtOption.{name="name9",description=PtEntry.{kind=PtEntryKind.text,value="description 9"}};
+    options[10]=PtOption.{name="name10",description=PtEntry.{kind=PtEntryKind.text,value="description 10"}};
+    options[11]=PtOption.{name="name11",description=PtEntry.{kind=PtEntryKind.text,value="description 11"}};
+    options[12]=PtOption.{name="name12",description=PtEntry.{kind=PtEntryKind.text,value="description 12"}};
+    options[13]=PtOption.{name="name13",description=PtEntry.{kind=PtEntryKind.text,value="description 13"}};
+    options[14]=PtOption.{name="name14",description=PtEntry.{kind=PtEntryKind.text,value="description 14"}};
+    options[15]=PtOption.{name="name15",description=PtEntry.{kind=PtEntryKind.text,value="description 15"}};
+    options[16]=PtOption.{name="name16",description=PtEntry.{kind=PtEntryKind.text,value="description 16"}};
+    options[17]=PtOption.{name="name17",description=PtEntry.{kind=PtEntryKind.text,value="description 17"}};
+    options[18]=PtOption.{name="name18",description=PtEntry.{kind=PtEntryKind.text,value="description 18"}};
+    options[19]=PtOption.{name="name19",description=PtEntry.{kind=PtEntryKind.text,value="description 19"}};
+    options[20]=PtOption.{name="name20",description=PtEntry.{kind=PtEntryKind.text,value="description 20"}};
+    options[21]=PtOption.{name="name21",description=PtEntry.{kind=PtEntryKind.text,value="description 21"}};
+    options[22]=PtOption.{name="name22",description=PtEntry.{kind=PtEntryKind.text,value="description 22"}};
+    options[23]=PtOption.{name="name23",description=PtEntry.{kind=PtEntryKind.text,value="description 23"}};
+    options[24]=PtOption.{name="name24",description=PtEntry.{kind=PtEntryKind.text,value="description 24"}};
+    options[25]=PtOption.{name="name25",description=PtEntry.{kind=PtEntryKind.text,value="description 25"}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="ready"},PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{kind=PtEntryKind.text,value="Pick."}},options[0..<26],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==1055 && r.prefix_bytes==219;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nready\n</state>\n\nQuestion: Pick.\n\nOptions:\nA. name0: description 0\nB. name1: description 1\nC. name2: description 2\nD. name3: description 3\nE. name4: description 4\nF. name5: description 5\nG. name6: description 6\nH. name7: description 7\nI. name8: description 8\nJ. name9: description 9\nK. name10: description 10\nL. name11: description 11\nM. name12: description 12\nN. name13: description 13\nO. name14: description 14\nP. name15: description 15\nQ. name16: description 16\nR. name17: description 17\nS. name18: description 18\nT. name19: description 19\nU. name20: description 20\nV. name21: description 21\nW. name22: description 22\nX. name23: description 23\nY. name24: description 24\nZ. name25: description 25\n\nAnswer with one letter: A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 32" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="name0",description=PtEntry.{kind=PtEntryKind.text,value="description 0"}};
+    options[1]=PtOption.{name="name1",description=PtEntry.{kind=PtEntryKind.text,value="description 1"}};
+    options[2]=PtOption.{name="name2",description=PtEntry.{kind=PtEntryKind.text,value="description 2"}};
+    options[3]=PtOption.{name="name3",description=PtEntry.{kind=PtEntryKind.text,value="description 3"}};
+    options[4]=PtOption.{name="name4",description=PtEntry.{kind=PtEntryKind.text,value="description 4"}};
+    options[5]=PtOption.{name="name5",description=PtEntry.{kind=PtEntryKind.text,value="description 5"}};
+    options[6]=PtOption.{name="name6",description=PtEntry.{kind=PtEntryKind.text,value="description 6"}};
+    options[7]=PtOption.{name="name7",description=PtEntry.{kind=PtEntryKind.text,value="description 7"}};
+    options[8]=PtOption.{name="name8",description=PtEntry.{kind=PtEntryKind.text,value="description 8"}};
+    options[9]=PtOption.{name="name9",description=PtEntry.{kind=PtEntryKind.text,value="description 9"}};
+    options[10]=PtOption.{name="name10",description=PtEntry.{kind=PtEntryKind.text,value="description 10"}};
+    options[11]=PtOption.{name="name11",description=PtEntry.{kind=PtEntryKind.text,value="description 11"}};
+    options[12]=PtOption.{name="name12",description=PtEntry.{kind=PtEntryKind.text,value="description 12"}};
+    options[13]=PtOption.{name="name13",description=PtEntry.{kind=PtEntryKind.text,value="description 13"}};
+    options[14]=PtOption.{name="name14",description=PtEntry.{kind=PtEntryKind.text,value="description 14"}};
+    options[15]=PtOption.{name="name15",description=PtEntry.{kind=PtEntryKind.text,value="description 15"}};
+    options[16]=PtOption.{name="name16",description=PtEntry.{kind=PtEntryKind.text,value="description 16"}};
+    options[17]=PtOption.{name="name17",description=PtEntry.{kind=PtEntryKind.text,value="description 17"}};
+    options[18]=PtOption.{name="name18",description=PtEntry.{kind=PtEntryKind.text,value="description 18"}};
+    options[19]=PtOption.{name="name19",description=PtEntry.{kind=PtEntryKind.text,value="description 19"}};
+    options[20]=PtOption.{name="name20",description=PtEntry.{kind=PtEntryKind.text,value="description 20"}};
+    options[21]=PtOption.{name="name21",description=PtEntry.{kind=PtEntryKind.text,value="description 21"}};
+    options[22]=PtOption.{name="name22",description=PtEntry.{kind=PtEntryKind.text,value="description 22"}};
+    options[23]=PtOption.{name="name23",description=PtEntry.{kind=PtEntryKind.text,value="description 23"}};
+    options[24]=PtOption.{name="name24",description=PtEntry.{kind=PtEntryKind.text,value="description 24"}};
+    options[25]=PtOption.{name="name25",description=PtEntry.{kind=PtEntryKind.text,value="description 25"}};
+    options[26]=PtOption.{name="name26",description=PtEntry.{kind=PtEntryKind.text,value="description 26"}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="ready"},PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{kind=PtEntryKind.text,value="Pick."}},options[0..<27],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==1085 && r.prefix_bytes==219;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nready\n</state>\n\nQuestion: Pick.\n\nOptions:\nA. name0: description 0\nB. name1: description 1\nC. name2: description 2\nD. name3: description 3\nE. name4: description 4\nF. name5: description 5\nG. name6: description 6\nH. name7: description 7\nI. name8: description 8\nJ. name9: description 9\nK. name10: description 10\nL. name11: description 11\nM. name12: description 12\nN. name13: description 13\nO. name14: description 14\nP. name15: description 15\nQ. name16: description 16\nR. name17: description 17\nS. name18: description 18\nT. name19: description 19\nU. name20: description 20\nV. name21: description 21\nW. name22: description 22\nX. name23: description 23\nY. name24: description 24\nZ. name25: description 25\nAA. name26: description 26\n\nAnswer with one label: A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}
+#test "independent rendered request 33" {
+    options:[255]PtOption;output:[65536]u8;scratch:[65536]u8;
+    options[0]=PtOption.{name="name0",description=PtEntry.{kind=PtEntryKind.text,value="description 0"}};
+    options[1]=PtOption.{name="name1",description=PtEntry.{kind=PtEntryKind.text,value="description 1"}};
+    options[2]=PtOption.{name="name2",description=PtEntry.{kind=PtEntryKind.text,value="description 2"}};
+    options[3]=PtOption.{name="name3",description=PtEntry.{kind=PtEntryKind.text,value="description 3"}};
+    options[4]=PtOption.{name="name4",description=PtEntry.{kind=PtEntryKind.text,value="description 4"}};
+    options[5]=PtOption.{name="name5",description=PtEntry.{kind=PtEntryKind.text,value="description 5"}};
+    options[6]=PtOption.{name="name6",description=PtEntry.{kind=PtEntryKind.text,value="description 6"}};
+    options[7]=PtOption.{name="name7",description=PtEntry.{kind=PtEntryKind.text,value="description 7"}};
+    options[8]=PtOption.{name="name8",description=PtEntry.{kind=PtEntryKind.text,value="description 8"}};
+    options[9]=PtOption.{name="name9",description=PtEntry.{kind=PtEntryKind.text,value="description 9"}};
+    options[10]=PtOption.{name="name10",description=PtEntry.{kind=PtEntryKind.text,value="description 10"}};
+    options[11]=PtOption.{name="name11",description=PtEntry.{kind=PtEntryKind.text,value="description 11"}};
+    options[12]=PtOption.{name="name12",description=PtEntry.{kind=PtEntryKind.text,value="description 12"}};
+    options[13]=PtOption.{name="name13",description=PtEntry.{kind=PtEntryKind.text,value="description 13"}};
+    options[14]=PtOption.{name="name14",description=PtEntry.{kind=PtEntryKind.text,value="description 14"}};
+    options[15]=PtOption.{name="name15",description=PtEntry.{kind=PtEntryKind.text,value="description 15"}};
+    options[16]=PtOption.{name="name16",description=PtEntry.{kind=PtEntryKind.text,value="description 16"}};
+    options[17]=PtOption.{name="name17",description=PtEntry.{kind=PtEntryKind.text,value="description 17"}};
+    options[18]=PtOption.{name="name18",description=PtEntry.{kind=PtEntryKind.text,value="description 18"}};
+    options[19]=PtOption.{name="name19",description=PtEntry.{kind=PtEntryKind.text,value="description 19"}};
+    options[20]=PtOption.{name="name20",description=PtEntry.{kind=PtEntryKind.text,value="description 20"}};
+    options[21]=PtOption.{name="name21",description=PtEntry.{kind=PtEntryKind.text,value="description 21"}};
+    options[22]=PtOption.{name="name22",description=PtEntry.{kind=PtEntryKind.text,value="description 22"}};
+    options[23]=PtOption.{name="name23",description=PtEntry.{kind=PtEntryKind.text,value="description 23"}};
+    options[24]=PtOption.{name="name24",description=PtEntry.{kind=PtEntryKind.text,value="description 24"}};
+    options[25]=PtOption.{name="name25",description=PtEntry.{kind=PtEntryKind.text,value="description 25"}};
+    options[26]=PtOption.{name="name26",description=PtEntry.{kind=PtEntryKind.text,value="description 26"}};
+    options[27]=PtOption.{name="name27",description=PtEntry.{kind=PtEntryKind.text,value="description 27"}};
+    options[28]=PtOption.{name="name28",description=PtEntry.{kind=PtEntryKind.text,value="description 28"}};
+    options[29]=PtOption.{name="name29",description=PtEntry.{kind=PtEntryKind.text,value="description 29"}};
+    options[30]=PtOption.{name="name30",description=PtEntry.{kind=PtEntryKind.text,value="description 30"}};
+    options[31]=PtOption.{name="name31",description=PtEntry.{kind=PtEntryKind.text,value="description 31"}};
+    options[32]=PtOption.{name="name32",description=PtEntry.{kind=PtEntryKind.text,value="description 32"}};
+    options[33]=PtOption.{name="name33",description=PtEntry.{kind=PtEntryKind.text,value="description 33"}};
+    options[34]=PtOption.{name="name34",description=PtEntry.{kind=PtEntryKind.text,value="description 34"}};
+    options[35]=PtOption.{name="name35",description=PtEntry.{kind=PtEntryKind.text,value="description 35"}};
+    options[36]=PtOption.{name="name36",description=PtEntry.{kind=PtEntryKind.text,value="description 36"}};
+    options[37]=PtOption.{name="name37",description=PtEntry.{kind=PtEntryKind.text,value="description 37"}};
+    options[38]=PtOption.{name="name38",description=PtEntry.{kind=PtEntryKind.text,value="description 38"}};
+    options[39]=PtOption.{name="name39",description=PtEntry.{kind=PtEntryKind.text,value="description 39"}};
+    options[40]=PtOption.{name="name40",description=PtEntry.{kind=PtEntryKind.text,value="description 40"}};
+    options[41]=PtOption.{name="name41",description=PtEntry.{kind=PtEntryKind.text,value="description 41"}};
+    options[42]=PtOption.{name="name42",description=PtEntry.{kind=PtEntryKind.text,value="description 42"}};
+    options[43]=PtOption.{name="name43",description=PtEntry.{kind=PtEntryKind.text,value="description 43"}};
+    options[44]=PtOption.{name="name44",description=PtEntry.{kind=PtEntryKind.text,value="description 44"}};
+    options[45]=PtOption.{name="name45",description=PtEntry.{kind=PtEntryKind.text,value="description 45"}};
+    options[46]=PtOption.{name="name46",description=PtEntry.{kind=PtEntryKind.text,value="description 46"}};
+    options[47]=PtOption.{name="name47",description=PtEntry.{kind=PtEntryKind.text,value="description 47"}};
+    options[48]=PtOption.{name="name48",description=PtEntry.{kind=PtEntryKind.text,value="description 48"}};
+    options[49]=PtOption.{name="name49",description=PtEntry.{kind=PtEntryKind.text,value="description 49"}};
+    options[50]=PtOption.{name="name50",description=PtEntry.{kind=PtEntryKind.text,value="description 50"}};
+    options[51]=PtOption.{name="name51",description=PtEntry.{kind=PtEntryKind.text,value="description 51"}};
+    options[52]=PtOption.{name="name52",description=PtEntry.{kind=PtEntryKind.text,value="description 52"}};
+    options[53]=PtOption.{name="name53",description=PtEntry.{kind=PtEntryKind.text,value="description 53"}};
+    options[54]=PtOption.{name="name54",description=PtEntry.{kind=PtEntryKind.text,value="description 54"}};
+    options[55]=PtOption.{name="name55",description=PtEntry.{kind=PtEntryKind.text,value="description 55"}};
+    options[56]=PtOption.{name="name56",description=PtEntry.{kind=PtEntryKind.text,value="description 56"}};
+    options[57]=PtOption.{name="name57",description=PtEntry.{kind=PtEntryKind.text,value="description 57"}};
+    options[58]=PtOption.{name="name58",description=PtEntry.{kind=PtEntryKind.text,value="description 58"}};
+    options[59]=PtOption.{name="name59",description=PtEntry.{kind=PtEntryKind.text,value="description 59"}};
+    options[60]=PtOption.{name="name60",description=PtEntry.{kind=PtEntryKind.text,value="description 60"}};
+    options[61]=PtOption.{name="name61",description=PtEntry.{kind=PtEntryKind.text,value="description 61"}};
+    options[62]=PtOption.{name="name62",description=PtEntry.{kind=PtEntryKind.text,value="description 62"}};
+    options[63]=PtOption.{name="name63",description=PtEntry.{kind=PtEntryKind.text,value="description 63"}};
+    options[64]=PtOption.{name="name64",description=PtEntry.{kind=PtEntryKind.text,value="description 64"}};
+    options[65]=PtOption.{name="name65",description=PtEntry.{kind=PtEntryKind.text,value="description 65"}};
+    options[66]=PtOption.{name="name66",description=PtEntry.{kind=PtEntryKind.text,value="description 66"}};
+    options[67]=PtOption.{name="name67",description=PtEntry.{kind=PtEntryKind.text,value="description 67"}};
+    options[68]=PtOption.{name="name68",description=PtEntry.{kind=PtEntryKind.text,value="description 68"}};
+    options[69]=PtOption.{name="name69",description=PtEntry.{kind=PtEntryKind.text,value="description 69"}};
+    options[70]=PtOption.{name="name70",description=PtEntry.{kind=PtEntryKind.text,value="description 70"}};
+    options[71]=PtOption.{name="name71",description=PtEntry.{kind=PtEntryKind.text,value="description 71"}};
+    options[72]=PtOption.{name="name72",description=PtEntry.{kind=PtEntryKind.text,value="description 72"}};
+    options[73]=PtOption.{name="name73",description=PtEntry.{kind=PtEntryKind.text,value="description 73"}};
+    options[74]=PtOption.{name="name74",description=PtEntry.{kind=PtEntryKind.text,value="description 74"}};
+    options[75]=PtOption.{name="name75",description=PtEntry.{kind=PtEntryKind.text,value="description 75"}};
+    options[76]=PtOption.{name="name76",description=PtEntry.{kind=PtEntryKind.text,value="description 76"}};
+    options[77]=PtOption.{name="name77",description=PtEntry.{kind=PtEntryKind.text,value="description 77"}};
+    options[78]=PtOption.{name="name78",description=PtEntry.{kind=PtEntryKind.text,value="description 78"}};
+    options[79]=PtOption.{name="name79",description=PtEntry.{kind=PtEntryKind.text,value="description 79"}};
+    options[80]=PtOption.{name="name80",description=PtEntry.{kind=PtEntryKind.text,value="description 80"}};
+    options[81]=PtOption.{name="name81",description=PtEntry.{kind=PtEntryKind.text,value="description 81"}};
+    options[82]=PtOption.{name="name82",description=PtEntry.{kind=PtEntryKind.text,value="description 82"}};
+    options[83]=PtOption.{name="name83",description=PtEntry.{kind=PtEntryKind.text,value="description 83"}};
+    options[84]=PtOption.{name="name84",description=PtEntry.{kind=PtEntryKind.text,value="description 84"}};
+    options[85]=PtOption.{name="name85",description=PtEntry.{kind=PtEntryKind.text,value="description 85"}};
+    options[86]=PtOption.{name="name86",description=PtEntry.{kind=PtEntryKind.text,value="description 86"}};
+    options[87]=PtOption.{name="name87",description=PtEntry.{kind=PtEntryKind.text,value="description 87"}};
+    options[88]=PtOption.{name="name88",description=PtEntry.{kind=PtEntryKind.text,value="description 88"}};
+    options[89]=PtOption.{name="name89",description=PtEntry.{kind=PtEntryKind.text,value="description 89"}};
+    options[90]=PtOption.{name="name90",description=PtEntry.{kind=PtEntryKind.text,value="description 90"}};
+    options[91]=PtOption.{name="name91",description=PtEntry.{kind=PtEntryKind.text,value="description 91"}};
+    options[92]=PtOption.{name="name92",description=PtEntry.{kind=PtEntryKind.text,value="description 92"}};
+    options[93]=PtOption.{name="name93",description=PtEntry.{kind=PtEntryKind.text,value="description 93"}};
+    options[94]=PtOption.{name="name94",description=PtEntry.{kind=PtEntryKind.text,value="description 94"}};
+    options[95]=PtOption.{name="name95",description=PtEntry.{kind=PtEntryKind.text,value="description 95"}};
+    options[96]=PtOption.{name="name96",description=PtEntry.{kind=PtEntryKind.text,value="description 96"}};
+    options[97]=PtOption.{name="name97",description=PtEntry.{kind=PtEntryKind.text,value="description 97"}};
+    options[98]=PtOption.{name="name98",description=PtEntry.{kind=PtEntryKind.text,value="description 98"}};
+    options[99]=PtOption.{name="name99",description=PtEntry.{kind=PtEntryKind.text,value="description 99"}};
+    options[100]=PtOption.{name="name100",description=PtEntry.{kind=PtEntryKind.text,value="description 100"}};
+    options[101]=PtOption.{name="name101",description=PtEntry.{kind=PtEntryKind.text,value="description 101"}};
+    options[102]=PtOption.{name="name102",description=PtEntry.{kind=PtEntryKind.text,value="description 102"}};
+    options[103]=PtOption.{name="name103",description=PtEntry.{kind=PtEntryKind.text,value="description 103"}};
+    options[104]=PtOption.{name="name104",description=PtEntry.{kind=PtEntryKind.text,value="description 104"}};
+    options[105]=PtOption.{name="name105",description=PtEntry.{kind=PtEntryKind.text,value="description 105"}};
+    options[106]=PtOption.{name="name106",description=PtEntry.{kind=PtEntryKind.text,value="description 106"}};
+    options[107]=PtOption.{name="name107",description=PtEntry.{kind=PtEntryKind.text,value="description 107"}};
+    options[108]=PtOption.{name="name108",description=PtEntry.{kind=PtEntryKind.text,value="description 108"}};
+    options[109]=PtOption.{name="name109",description=PtEntry.{kind=PtEntryKind.text,value="description 109"}};
+    options[110]=PtOption.{name="name110",description=PtEntry.{kind=PtEntryKind.text,value="description 110"}};
+    options[111]=PtOption.{name="name111",description=PtEntry.{kind=PtEntryKind.text,value="description 111"}};
+    options[112]=PtOption.{name="name112",description=PtEntry.{kind=PtEntryKind.text,value="description 112"}};
+    options[113]=PtOption.{name="name113",description=PtEntry.{kind=PtEntryKind.text,value="description 113"}};
+    options[114]=PtOption.{name="name114",description=PtEntry.{kind=PtEntryKind.text,value="description 114"}};
+    options[115]=PtOption.{name="name115",description=PtEntry.{kind=PtEntryKind.text,value="description 115"}};
+    options[116]=PtOption.{name="name116",description=PtEntry.{kind=PtEntryKind.text,value="description 116"}};
+    options[117]=PtOption.{name="name117",description=PtEntry.{kind=PtEntryKind.text,value="description 117"}};
+    options[118]=PtOption.{name="name118",description=PtEntry.{kind=PtEntryKind.text,value="description 118"}};
+    options[119]=PtOption.{name="name119",description=PtEntry.{kind=PtEntryKind.text,value="description 119"}};
+    options[120]=PtOption.{name="name120",description=PtEntry.{kind=PtEntryKind.text,value="description 120"}};
+    options[121]=PtOption.{name="name121",description=PtEntry.{kind=PtEntryKind.text,value="description 121"}};
+    options[122]=PtOption.{name="name122",description=PtEntry.{kind=PtEntryKind.text,value="description 122"}};
+    options[123]=PtOption.{name="name123",description=PtEntry.{kind=PtEntryKind.text,value="description 123"}};
+    options[124]=PtOption.{name="name124",description=PtEntry.{kind=PtEntryKind.text,value="description 124"}};
+    options[125]=PtOption.{name="name125",description=PtEntry.{kind=PtEntryKind.text,value="description 125"}};
+    options[126]=PtOption.{name="name126",description=PtEntry.{kind=PtEntryKind.text,value="description 126"}};
+    options[127]=PtOption.{name="name127",description=PtEntry.{kind=PtEntryKind.text,value="description 127"}};
+    options[128]=PtOption.{name="name128",description=PtEntry.{kind=PtEntryKind.text,value="description 128"}};
+    options[129]=PtOption.{name="name129",description=PtEntry.{kind=PtEntryKind.text,value="description 129"}};
+    options[130]=PtOption.{name="name130",description=PtEntry.{kind=PtEntryKind.text,value="description 130"}};
+    options[131]=PtOption.{name="name131",description=PtEntry.{kind=PtEntryKind.text,value="description 131"}};
+    options[132]=PtOption.{name="name132",description=PtEntry.{kind=PtEntryKind.text,value="description 132"}};
+    options[133]=PtOption.{name="name133",description=PtEntry.{kind=PtEntryKind.text,value="description 133"}};
+    options[134]=PtOption.{name="name134",description=PtEntry.{kind=PtEntryKind.text,value="description 134"}};
+    options[135]=PtOption.{name="name135",description=PtEntry.{kind=PtEntryKind.text,value="description 135"}};
+    options[136]=PtOption.{name="name136",description=PtEntry.{kind=PtEntryKind.text,value="description 136"}};
+    options[137]=PtOption.{name="name137",description=PtEntry.{kind=PtEntryKind.text,value="description 137"}};
+    options[138]=PtOption.{name="name138",description=PtEntry.{kind=PtEntryKind.text,value="description 138"}};
+    options[139]=PtOption.{name="name139",description=PtEntry.{kind=PtEntryKind.text,value="description 139"}};
+    options[140]=PtOption.{name="name140",description=PtEntry.{kind=PtEntryKind.text,value="description 140"}};
+    options[141]=PtOption.{name="name141",description=PtEntry.{kind=PtEntryKind.text,value="description 141"}};
+    options[142]=PtOption.{name="name142",description=PtEntry.{kind=PtEntryKind.text,value="description 142"}};
+    options[143]=PtOption.{name="name143",description=PtEntry.{kind=PtEntryKind.text,value="description 143"}};
+    options[144]=PtOption.{name="name144",description=PtEntry.{kind=PtEntryKind.text,value="description 144"}};
+    options[145]=PtOption.{name="name145",description=PtEntry.{kind=PtEntryKind.text,value="description 145"}};
+    options[146]=PtOption.{name="name146",description=PtEntry.{kind=PtEntryKind.text,value="description 146"}};
+    options[147]=PtOption.{name="name147",description=PtEntry.{kind=PtEntryKind.text,value="description 147"}};
+    options[148]=PtOption.{name="name148",description=PtEntry.{kind=PtEntryKind.text,value="description 148"}};
+    options[149]=PtOption.{name="name149",description=PtEntry.{kind=PtEntryKind.text,value="description 149"}};
+    options[150]=PtOption.{name="name150",description=PtEntry.{kind=PtEntryKind.text,value="description 150"}};
+    options[151]=PtOption.{name="name151",description=PtEntry.{kind=PtEntryKind.text,value="description 151"}};
+    options[152]=PtOption.{name="name152",description=PtEntry.{kind=PtEntryKind.text,value="description 152"}};
+    options[153]=PtOption.{name="name153",description=PtEntry.{kind=PtEntryKind.text,value="description 153"}};
+    options[154]=PtOption.{name="name154",description=PtEntry.{kind=PtEntryKind.text,value="description 154"}};
+    options[155]=PtOption.{name="name155",description=PtEntry.{kind=PtEntryKind.text,value="description 155"}};
+    options[156]=PtOption.{name="name156",description=PtEntry.{kind=PtEntryKind.text,value="description 156"}};
+    options[157]=PtOption.{name="name157",description=PtEntry.{kind=PtEntryKind.text,value="description 157"}};
+    options[158]=PtOption.{name="name158",description=PtEntry.{kind=PtEntryKind.text,value="description 158"}};
+    options[159]=PtOption.{name="name159",description=PtEntry.{kind=PtEntryKind.text,value="description 159"}};
+    options[160]=PtOption.{name="name160",description=PtEntry.{kind=PtEntryKind.text,value="description 160"}};
+    options[161]=PtOption.{name="name161",description=PtEntry.{kind=PtEntryKind.text,value="description 161"}};
+    options[162]=PtOption.{name="name162",description=PtEntry.{kind=PtEntryKind.text,value="description 162"}};
+    options[163]=PtOption.{name="name163",description=PtEntry.{kind=PtEntryKind.text,value="description 163"}};
+    options[164]=PtOption.{name="name164",description=PtEntry.{kind=PtEntryKind.text,value="description 164"}};
+    options[165]=PtOption.{name="name165",description=PtEntry.{kind=PtEntryKind.text,value="description 165"}};
+    options[166]=PtOption.{name="name166",description=PtEntry.{kind=PtEntryKind.text,value="description 166"}};
+    options[167]=PtOption.{name="name167",description=PtEntry.{kind=PtEntryKind.text,value="description 167"}};
+    options[168]=PtOption.{name="name168",description=PtEntry.{kind=PtEntryKind.text,value="description 168"}};
+    options[169]=PtOption.{name="name169",description=PtEntry.{kind=PtEntryKind.text,value="description 169"}};
+    options[170]=PtOption.{name="name170",description=PtEntry.{kind=PtEntryKind.text,value="description 170"}};
+    options[171]=PtOption.{name="name171",description=PtEntry.{kind=PtEntryKind.text,value="description 171"}};
+    options[172]=PtOption.{name="name172",description=PtEntry.{kind=PtEntryKind.text,value="description 172"}};
+    options[173]=PtOption.{name="name173",description=PtEntry.{kind=PtEntryKind.text,value="description 173"}};
+    options[174]=PtOption.{name="name174",description=PtEntry.{kind=PtEntryKind.text,value="description 174"}};
+    options[175]=PtOption.{name="name175",description=PtEntry.{kind=PtEntryKind.text,value="description 175"}};
+    options[176]=PtOption.{name="name176",description=PtEntry.{kind=PtEntryKind.text,value="description 176"}};
+    options[177]=PtOption.{name="name177",description=PtEntry.{kind=PtEntryKind.text,value="description 177"}};
+    options[178]=PtOption.{name="name178",description=PtEntry.{kind=PtEntryKind.text,value="description 178"}};
+    options[179]=PtOption.{name="name179",description=PtEntry.{kind=PtEntryKind.text,value="description 179"}};
+    options[180]=PtOption.{name="name180",description=PtEntry.{kind=PtEntryKind.text,value="description 180"}};
+    options[181]=PtOption.{name="name181",description=PtEntry.{kind=PtEntryKind.text,value="description 181"}};
+    options[182]=PtOption.{name="name182",description=PtEntry.{kind=PtEntryKind.text,value="description 182"}};
+    options[183]=PtOption.{name="name183",description=PtEntry.{kind=PtEntryKind.text,value="description 183"}};
+    options[184]=PtOption.{name="name184",description=PtEntry.{kind=PtEntryKind.text,value="description 184"}};
+    options[185]=PtOption.{name="name185",description=PtEntry.{kind=PtEntryKind.text,value="description 185"}};
+    options[186]=PtOption.{name="name186",description=PtEntry.{kind=PtEntryKind.text,value="description 186"}};
+    options[187]=PtOption.{name="name187",description=PtEntry.{kind=PtEntryKind.text,value="description 187"}};
+    options[188]=PtOption.{name="name188",description=PtEntry.{kind=PtEntryKind.text,value="description 188"}};
+    options[189]=PtOption.{name="name189",description=PtEntry.{kind=PtEntryKind.text,value="description 189"}};
+    options[190]=PtOption.{name="name190",description=PtEntry.{kind=PtEntryKind.text,value="description 190"}};
+    options[191]=PtOption.{name="name191",description=PtEntry.{kind=PtEntryKind.text,value="description 191"}};
+    options[192]=PtOption.{name="name192",description=PtEntry.{kind=PtEntryKind.text,value="description 192"}};
+    options[193]=PtOption.{name="name193",description=PtEntry.{kind=PtEntryKind.text,value="description 193"}};
+    options[194]=PtOption.{name="name194",description=PtEntry.{kind=PtEntryKind.text,value="description 194"}};
+    options[195]=PtOption.{name="name195",description=PtEntry.{kind=PtEntryKind.text,value="description 195"}};
+    options[196]=PtOption.{name="name196",description=PtEntry.{kind=PtEntryKind.text,value="description 196"}};
+    options[197]=PtOption.{name="name197",description=PtEntry.{kind=PtEntryKind.text,value="description 197"}};
+    options[198]=PtOption.{name="name198",description=PtEntry.{kind=PtEntryKind.text,value="description 198"}};
+    options[199]=PtOption.{name="name199",description=PtEntry.{kind=PtEntryKind.text,value="description 199"}};
+    options[200]=PtOption.{name="name200",description=PtEntry.{kind=PtEntryKind.text,value="description 200"}};
+    options[201]=PtOption.{name="name201",description=PtEntry.{kind=PtEntryKind.text,value="description 201"}};
+    options[202]=PtOption.{name="name202",description=PtEntry.{kind=PtEntryKind.text,value="description 202"}};
+    options[203]=PtOption.{name="name203",description=PtEntry.{kind=PtEntryKind.text,value="description 203"}};
+    options[204]=PtOption.{name="name204",description=PtEntry.{kind=PtEntryKind.text,value="description 204"}};
+    options[205]=PtOption.{name="name205",description=PtEntry.{kind=PtEntryKind.text,value="description 205"}};
+    options[206]=PtOption.{name="name206",description=PtEntry.{kind=PtEntryKind.text,value="description 206"}};
+    options[207]=PtOption.{name="name207",description=PtEntry.{kind=PtEntryKind.text,value="description 207"}};
+    options[208]=PtOption.{name="name208",description=PtEntry.{kind=PtEntryKind.text,value="description 208"}};
+    options[209]=PtOption.{name="name209",description=PtEntry.{kind=PtEntryKind.text,value="description 209"}};
+    options[210]=PtOption.{name="name210",description=PtEntry.{kind=PtEntryKind.text,value="description 210"}};
+    options[211]=PtOption.{name="name211",description=PtEntry.{kind=PtEntryKind.text,value="description 211"}};
+    options[212]=PtOption.{name="name212",description=PtEntry.{kind=PtEntryKind.text,value="description 212"}};
+    options[213]=PtOption.{name="name213",description=PtEntry.{kind=PtEntryKind.text,value="description 213"}};
+    options[214]=PtOption.{name="name214",description=PtEntry.{kind=PtEntryKind.text,value="description 214"}};
+    options[215]=PtOption.{name="name215",description=PtEntry.{kind=PtEntryKind.text,value="description 215"}};
+    options[216]=PtOption.{name="name216",description=PtEntry.{kind=PtEntryKind.text,value="description 216"}};
+    options[217]=PtOption.{name="name217",description=PtEntry.{kind=PtEntryKind.text,value="description 217"}};
+    options[218]=PtOption.{name="name218",description=PtEntry.{kind=PtEntryKind.text,value="description 218"}};
+    options[219]=PtOption.{name="name219",description=PtEntry.{kind=PtEntryKind.text,value="description 219"}};
+    options[220]=PtOption.{name="name220",description=PtEntry.{kind=PtEntryKind.text,value="description 220"}};
+    options[221]=PtOption.{name="name221",description=PtEntry.{kind=PtEntryKind.text,value="description 221"}};
+    options[222]=PtOption.{name="name222",description=PtEntry.{kind=PtEntryKind.text,value="description 222"}};
+    options[223]=PtOption.{name="name223",description=PtEntry.{kind=PtEntryKind.text,value="description 223"}};
+    options[224]=PtOption.{name="name224",description=PtEntry.{kind=PtEntryKind.text,value="description 224"}};
+    options[225]=PtOption.{name="name225",description=PtEntry.{kind=PtEntryKind.text,value="description 225"}};
+    options[226]=PtOption.{name="name226",description=PtEntry.{kind=PtEntryKind.text,value="description 226"}};
+    options[227]=PtOption.{name="name227",description=PtEntry.{kind=PtEntryKind.text,value="description 227"}};
+    options[228]=PtOption.{name="name228",description=PtEntry.{kind=PtEntryKind.text,value="description 228"}};
+    options[229]=PtOption.{name="name229",description=PtEntry.{kind=PtEntryKind.text,value="description 229"}};
+    options[230]=PtOption.{name="name230",description=PtEntry.{kind=PtEntryKind.text,value="description 230"}};
+    options[231]=PtOption.{name="name231",description=PtEntry.{kind=PtEntryKind.text,value="description 231"}};
+    options[232]=PtOption.{name="name232",description=PtEntry.{kind=PtEntryKind.text,value="description 232"}};
+    options[233]=PtOption.{name="name233",description=PtEntry.{kind=PtEntryKind.text,value="description 233"}};
+    options[234]=PtOption.{name="name234",description=PtEntry.{kind=PtEntryKind.text,value="description 234"}};
+    options[235]=PtOption.{name="name235",description=PtEntry.{kind=PtEntryKind.text,value="description 235"}};
+    options[236]=PtOption.{name="name236",description=PtEntry.{kind=PtEntryKind.text,value="description 236"}};
+    options[237]=PtOption.{name="name237",description=PtEntry.{kind=PtEntryKind.text,value="description 237"}};
+    options[238]=PtOption.{name="name238",description=PtEntry.{kind=PtEntryKind.text,value="description 238"}};
+    options[239]=PtOption.{name="name239",description=PtEntry.{kind=PtEntryKind.text,value="description 239"}};
+    options[240]=PtOption.{name="name240",description=PtEntry.{kind=PtEntryKind.text,value="description 240"}};
+    options[241]=PtOption.{name="name241",description=PtEntry.{kind=PtEntryKind.text,value="description 241"}};
+    options[242]=PtOption.{name="name242",description=PtEntry.{kind=PtEntryKind.text,value="description 242"}};
+    options[243]=PtOption.{name="name243",description=PtEntry.{kind=PtEntryKind.text,value="description 243"}};
+    options[244]=PtOption.{name="name244",description=PtEntry.{kind=PtEntryKind.text,value="description 244"}};
+    options[245]=PtOption.{name="name245",description=PtEntry.{kind=PtEntryKind.text,value="description 245"}};
+    options[246]=PtOption.{name="name246",description=PtEntry.{kind=PtEntryKind.text,value="description 246"}};
+    options[247]=PtOption.{name="name247",description=PtEntry.{kind=PtEntryKind.text,value="description 247"}};
+    options[248]=PtOption.{name="name248",description=PtEntry.{kind=PtEntryKind.text,value="description 248"}};
+    options[249]=PtOption.{name="name249",description=PtEntry.{kind=PtEntryKind.text,value="description 249"}};
+    options[250]=PtOption.{name="name250",description=PtEntry.{kind=PtEntryKind.text,value="description 250"}};
+    options[251]=PtOption.{name="name251",description=PtEntry.{kind=PtEntryKind.text,value="description 251"}};
+    options[252]=PtOption.{name="name252",description=PtEntry.{kind=PtEntryKind.text,value="description 252"}};
+    options[253]=PtOption.{name="name253",description=PtEntry.{kind=PtEntryKind.text,value="description 253"}};
+    options[254]=PtOption.{name="name254",description=PtEntry.{kind=PtEntryKind.text,value="description 254"}};
+    r:=pt_render_checked(PtEntry.{kind=PtEntryKind.text,value="ready"},PtQuestion.{kind=PtQuestionKind.choice,instructions=PtEntry.{kind=PtEntryKind.text,value="Pick."}},options[0..<255],output[..],scratch[..],false);
+    #assert r.status==PtStatus.ok && r.written==8463 && r.prefix_bytes==219;
+    #assert cast(string)output[0..<r.written]=="<|im_start|>system\nApply the question to the state. Choose exactly one of the listed options. Respond with only its uppercase letter, with no explanation or reasoning.<|im_end|>\n<|im_start|>user\n<state>\nready\n</state>\n\nQuestion: Pick.\n\nOptions:\nA. name0: description 0\nB. name1: description 1\nC. name2: description 2\nD. name3: description 3\nE. name4: description 4\nF. name5: description 5\nG. name6: description 6\nH. name7: description 7\nI. name8: description 8\nJ. name9: description 9\nK. name10: description 10\nL. name11: description 11\nM. name12: description 12\nN. name13: description 13\nO. name14: description 14\nP. name15: description 15\nQ. name16: description 16\nR. name17: description 17\nS. name18: description 18\nT. name19: description 19\nU. name20: description 20\nV. name21: description 21\nW. name22: description 22\nX. name23: description 23\nY. name24: description 24\nZ. name25: description 25\nAA. name26: description 26\nAB. name27: description 27\nAC. name28: description 28\nAD. name29: description 29\nAE. name30: description 30\nAF. name31: description 31\nAG. name32: description 32\nAH. name33: description 33\nAI. name34: description 34\nAJ. name35: description 35\nAK. name36: description 36\nAL. name37: description 37\nAM. name38: description 38\nAN. name39: description 39\nAO. name40: description 40\nAP. name41: description 41\nAQ. name42: description 42\nAR. name43: description 43\nAS. name44: description 44\nAT. name45: description 45\nAU. name46: description 46\nAV. name47: description 47\nAW. name48: description 48\nAX. name49: description 49\nAY. name50: description 50\nAZ. name51: description 51\nBA. name52: description 52\nBB. name53: description 53\nBC. name54: description 54\nBD. name55: description 55\nBE. name56: description 56\nBF. name57: description 57\nBG. name58: description 58\nBH. name59: description 59\nBI. name60: description 60\nBJ. name61: description 61\nBK. name62: description 62\nBL. name63: description 63\nBM. name64: description 64\nBN. name65: description 65\nBO. name66: description 66\nBP. name67: description 67\nBR. name68: description 68\nBS. name69: description 69\nBT. name70: description 70\nBU. name71: description 71\nBV. name72: description 72\nBW. name73: description 73\nBX. name74: description 74\nBY. name75: description 75\nCA. name76: description 76\nCB. name77: description 77\nCC. name78: description 78\nCD. name79: description 79\nCE. name80: description 80\nCF. name81: description 81\nCG. name82: description 82\nCH. name83: description 83\nCI. name84: description 84\nCK. name85: description 85\nCL. name86: description 86\nCM. name87: description 87\nCN. name88: description 88\nCO. name89: description 89\nCP. name90: description 90\nCR. name91: description 91\nCS. name92: description 92\nCT. name93: description 93\nCU. name94: description 94\nCV. name95: description 95\nCW. name96: description 96\nCX. name97: description 97\nCY. name98: description 98\nDA. name99: description 99\nDB. name100: description 100\nDC. name101: description 101\nDD. name102: description 102\nDE. name103: description 103\nDF. name104: description 104\nDG. name105: description 105\nDH. name106: description 106\nDI. name107: description 107\nDJ. name108: description 108\nDK. name109: description 109\nDL. name110: description 110\nDM. name111: description 111\nDN. name112: description 112\nDO. name113: description 113\nDP. name114: description 114\nDR. name115: description 115\nDS. name116: description 116\nDT. name117: description 117\nDU. name118: description 118\nDV. name119: description 119\nDW. name120: description 120\nDX. name121: description 121\nDY. name122: description 122\nEA. name123: description 123\nEB. name124: description 124\nEC. name125: description 125\nED. name126: description 126\nEE. name127: description 127\nEF. name128: description 128\nEG. name129: description 129\nEH. name130: description 130\nEI. name131: description 131\nEK. name132: description 132\nEL. name133: description 133\nEM. name134: description 134\nEN. name135: description 135\nEO. name136: description 136\nEP. name137: description 137\nEQ. name138: description 138\nER. name139: description 139\nES. name140: description 140\nET. name141: description 141\nEU. name142: description 142\nEV. name143: description 143\nEW. name144: description 144\nEX. name145: description 145\nEZ. name146: description 146\nFA. name147: description 147\nFB. name148: description 148\nFC. name149: description 149\nFD. name150: description 150\nFE. name151: description 151\nFF. name152: description 152\nFG. name153: description 153\nFH. name154: description 154\nFI. name155: description 155\nFK. name156: description 156\nFL. name157: description 157\nFM. name158: description 158\nFN. name159: description 159\nFO. name160: description 160\nFP. name161: description 161\nFR. name162: description 162\nFS. name163: description 163\nFT. name164: description 164\nFU. name165: description 165\nFW. name166: description 166\nFX. name167: description 167\nFY. name168: description 168\nGA. name169: description 169\nGB. name170: description 170\nGC. name171: description 171\nGD. name172: description 172\nGE. name173: description 173\nGF. name174: description 174\nGG. name175: description 175\nGH. name176: description 176\nGI. name177: description 177\nGL. name178: description 178\nGM. name179: description 179\nGN. name180: description 180\nGO. name181: description 181\nGP. name182: description 182\nGR. name183: description 183\nGS. name184: description 184\nGT. name185: description 185\nGU. name186: description 186\nGV. name187: description 187\nGW. name188: description 188\nGX. name189: description 189\nGY. name190: description 190\nHA. name191: description 191\nHB. name192: description 192\nHC. name193: description 193\nHD. name194: description 194\nHE. name195: description 195\nHF. name196: description 196\nHG. name197: description 197\nHH. name198: description 198\nHI. name199: description 199\nHK. name200: description 200\nHL. name201: description 201\nHM. name202: description 202\nHN. name203: description 203\nHO. name204: description 204\nHP. name205: description 205\nHQ. name206: description 206\nHR. name207: description 207\nHS. name208: description 208\nHT. name209: description 209\nHU. name210: description 210\nHV. name211: description 211\nHW. name212: description 212\nHX. name213: description 213\nHY. name214: description 214\nHZ. name215: description 215\nIA. name216: description 216\nIB. name217: description 217\nIC. name218: description 218\nID. name219: description 219\nIE. name220: description 220\nIF. name221: description 221\nIG. name222: description 222\nIH. name223: description 223\nII. name224: description 224\nIJ. name225: description 225\nIK. name226: description 226\nIL. name227: description 227\nIM. name228: description 228\nIN. name229: description 229\nIO. name230: description 230\nIP. name231: description 231\nIQ. name232: description 232\nIR. name233: description 233\nIS. name234: description 234\nIT. name235: description 235\nIU. name236: description 236\nIV. name237: description 237\nIW. name238: description 238\nIX. name239: description 239\nIZ. name240: description 240\nJA. name241: description 241\nJB. name242: description 242\nJC. name243: description 243\nJD. name244: description 244\nJE. name245: description 245\nJI. name246: description 246\nJJ. name247: description 247\nJK. name248: description 248\nJM. name249: description 249\nJO. name250: description 250\nJP. name251: description 251\nJR. name252: description 252\nJS. name253: description 253\nJT. name254: description 254\n\nAnswer with one label: A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE, AF, AG, AH, AI, AJ, AK, AL, AM, AN, AO, AP, AQ, AR, AS, AT, AU, AV, AW, AX, AY, AZ, BA, BB, BC, BD, BE, BF, BG, BH, BI, BJ, BK, BL, BM, BN, BO, BP, BR, BS, BT, BU, BV, BW, BX, BY, CA, CB, CC, CD, CE, CF, CG, CH, CI, CK, CL, CM, CN, CO, CP, CR, CS, CT, CU, CV, CW, CX, CY, DA, DB, DC, DD, DE, DF, DG, DH, DI, DJ, DK, DL, DM, DN, DO, DP, DR, DS, DT, DU, DV, DW, DX, DY, EA, EB, EC, ED, EE, EF, EG, EH, EI, EK, EL, EM, EN, EO, EP, EQ, ER, ES, ET, EU, EV, EW, EX, EZ, FA, FB, FC, FD, FE, FF, FG, FH, FI, FK, FL, FM, FN, FO, FP, FR, FS, FT, FU, FW, FX, FY, GA, GB, GC, GD, GE, GF, GG, GH, GI, GL, GM, GN, GO, GP, GR, GS, GT, GU, GV, GW, GX, GY, HA, HB, HC, HD, HE, HF, HG, HH, HI, HK, HL, HM, HN, HO, HP, HQ, HR, HS, HT, HU, HV, HW, HX, HY, HZ, IA, IB, IC, ID, IE, IF, IG, IH, II, IJ, IK, IL, IM, IN, IO, IP, IQ, IR, IS, IT, IU, IV, IW, IX, IZ, JA, JB, JC, JD, JE, JI, JJ, JK, JM, JO, JP, JR, JS, JT.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+}

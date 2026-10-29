@@ -1,7 +1,7 @@
 # Psionic in Coax
 
-Status, 2026-10-29: chapters 1–4 implement M0/M1 and the bounded original-weight
-artifact slice of M5 on the tested CPU host. Autodiff and full model execution
+Status, 2026-10-29: chapters 1–5 implement M0/M1, the bounded original-weight
+artifact slice of M5 and the text-request/tokenizer profile on the tested CPU host. Autodiff and full model execution
 remain proposed. The
 [Coax library and book](../../psionic/README.md) train a bounded scalar CPU model
 and implement bounded contiguous storage plus dense row/matrix numerics.
@@ -9,7 +9,8 @@ Run `psionic/check.sh` from the repository root.
 [Chapter 1 verification](../verification/psionic-m0-2026-10-28.md),
 [chapter 2 verification](../verification/psionic-ch02-2026-10-28.md), and
 [chapter 3 verification](../verification/psionic-ch03-2026-10-28.md), and
-[chapter 4 verification](../verification/psionic-ch04-2026-10-29.md) state the
+[chapter 4 verification](../verification/psionic-ch04-2026-10-29.md), and
+[chapter 5 verification](../verification/psionic-ch05-2026-10-29.md) state the
 tested scopes. The retired Rust workspace remains historical input.
 
 Build Psionic as a Coax library whose book explains and exercises the actual
@@ -69,8 +70,11 @@ scope. [Chapter 3](../../psionic/book/ch03-numbers-and-matrices.md) now adds
 CPU matrix/reduction/gather/softmax/normalization operations under an explicit
 wide-accumulation profile. [Chapter 4](../../psionic/book/ch04-reading-original-weights.md)
 now adds original Safetensors/BF16/F32 inventory, exact-byte identities, complete
-shard/index/manifest admission and bounded finite decoding. Next are tokenizer
-semantics and the early Elephant/Mammoth forward path.
+shard/index/manifest admission and bounded finite decoding.
+[Chapter 5](../../psionic/book/ch05-text-becomes-a-model-request.md) now implements
+the frozen text renderer, Unicode-17 NFC, original-Qwen byte-BPE and shared
+token-prefix layout under explicit budgets. Next is the attention/forward core
+for the early Elephant/Mammoth path.
 The learning path replaces the hand-written gradient with autodiff over those
 same operations, then builds small physical and language models.
 The [roadmap](roadmap.md) specifies the boundaries of each step.

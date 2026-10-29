@@ -1,0 +1,12 @@
+// Public chapter-5 root: text-only requests, original Qwen tokenizer tables.
+#load "text/tokenizer.coax";
+#load "text/request.coax";
+#load "text/prefix.coax";
+#load "model-io/identity.coax";
+#load "../fixtures/text/ch05/pins.coax";
+#authority;
+#test "empty bytes cannot impersonate the pinned full tokenizer" {
+    table: [1]u8;#assert !pt_admit(table[0..<0]);
+}
+// Exact once-per-immutable-table identity admission. No downloaded code executes.
+pt_admit :: (table:[]u8)->bool #export_c {return pw_digest(table,PT_QWEN_SHA);}

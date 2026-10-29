@@ -1,7 +1,8 @@
 # Architecture and considerations
 
-Status: chapters 1–4 implement bounded scalar learning, contiguous CPU storage,
-`CPU-f32-wide-v1` numerics and `original-weights-v1` artifact admission in
+Status: chapters 1–5 implement bounded scalar learning, contiguous CPU storage,
+`CPU-f32-wide-v1` numerics, `original-weights-v1` artifact admission and
+`qwen35-text-v1` text requests in
 [psionic/](../../psionic/README.md). Autodiff, full model execution and
 accelerator contracts below remain proposed.
 The [source survey](research.md) supplies their motivation; each increment
@@ -228,5 +229,23 @@ all nested ranges but performs no parsing, hashing or model policy.
 
 Config and tokenizer bytes are identity-bound opaque sidecars here. Expected
 pins must come from a trusted caller; matching hashes and revision labels
-do not authenticate provenance. Actual Elephant/Mammoth configuration,
-tokenization, architecture execution and resource qualification remain next.
+do not authenticate provenance. Chapter 5 interprets the pinned tokenizer in a separately bounded text profile.
+Actual Elephant/Mammoth configuration, architecture execution and full-model
+resource qualification remain next.
+
+## Text requests preserve original bytes and token boundaries
+
+[Chapter 5](../../psionic/book/ch05-text-becomes-a-model-request.md) implements
+[the text library](../../psionic/lib/text.coax): frozen tagged Base Labs
+choice/noul/score rendering, Unicode-17 NFC and split classes, original Qwen
+byte-BPE/added-token data, and complete branch token-prefix matching. Original
+tokenizer data and deterministic packed indexes are pinned together. A host
+admits the exact table hash once and keeps it immutable for subsequent calls.
+
+Published prompt bytes, token IDs and split metadata change only on success;
+workspaces may change on refusal. Declared byte/token/normalization/BPE budgets
+refuse oversized work without truncation. The encoder reports a conservative
+squared-piece work bound. Integers of at most 4,300 digits are supported; exact
+Python-compatible floating JSON formatting remains outside this first profile.
+Owned standard-library oracles and real native buffers qualify the stated
+corpus. Upstream-runtime parity and whole-model execution remain distinct gates.

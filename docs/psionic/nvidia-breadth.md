@@ -3,9 +3,9 @@
 Read-only source survey, 2026-10-28. The supplied ChatGPT Pro recommendations
 are research input. This document adopts their useful capability progression
 while preserving the owner's earlier priority: **native Elephant, then
-Mammoth, before the broader model program**. Chapters 1–4 currently
+Mammoth, before the broader model program**. Chapters 1–5 currently
 run scalar learning, bounded storage, CPU row/matrix numerics and original
-BF16/F32 artifact admission in Psionic. All targets here are proposals; no NVIDIA implementation or
+BF16/F32 artifact admission and bounded text requests in Psionic. All targets here are proposals; no NVIDIA implementation or
 original-training reproduction is claimed.
 
 The [proposed contents](../../psionic/book/PLAN.md) gives each study a place.

@@ -1,8 +1,8 @@
 # Starting point and roadmap
 
-Status, 2026-10-29: chapters 1–4 implement M0/M1 and the artifact slice of M5
+Status, 2026-10-29: chapters 1–5 implement M0/M1, the artifact slice of M5 and text requests
 on the tested Apple LP64 CPU host, including `CPU-f32-wide-v1` numerics and
-`original-weights-v1` import. Autodiff and full model execution remain `planned`.
+`original-weights-v1` import plus `qwen35-text-v1` rendering/tokenization. Autodiff and full model execution remain `planned`.
 [Run the first chapter](../../psionic/book/ch01-learning-a-number.md)
 or `psionic/check.sh`; [retained verification](../verification/psionic-m0-2026-10-28.md)
 records the scope. Later chapter titles are working names; gates determine
@@ -98,7 +98,25 @@ files, malformed artifacts, digest/index/manifest mismatches, native aliases
 and all BF16 encodings in debug/release with sanitizer and mutation gates.
 The artifact slice of M5 is implemented; optimizer/RNG/data-state resume is
 still planned. Real Elephant/Mammoth checkpoints are not yet qualified. Next
-is chapter 5's exact tokenizer/prompt contract, then the forward core.
+is the attention/forward core, using chapter 5's text contract below.
+
+## Chapter 5: text becomes a model request — implemented
+
+[The chapter](../../psionic/book/ch05-text-becomes-a-model-request.md) and
+[text library](../../psionic/lib/text.coax) implement `qwen35-text-v1`: original
+Qwen tokenizer indexes, Unicode-17 NFC and ranked byte-BPE, 33 added literals,
+frozen tagged choice/noul/score requests, 256 one-token slot labels and exact
+shared-prefix/suffix metadata. Typed entry, byte/token/work and JSON budgets
+are explicit; integer structured JSON is supported without floating formatting.
+The pinned schema accepts score sizes 1–10, correcting the earlier 2–10 plan.
+
+[Verification](../verification/psionic-ch05-2026-10-29.md) retains independent
+Unicode/regex/BPE fixtures, actual original data, rendered-request/token IDs,
+mutation and native debug/release/sanitizer evidence. The evidence uses an
+owned oracle, not an executed upstream model runtime. Upstream reference
+capture, broader request qualification and complete Elephant/Mammoth execution
+remain model gates. Next is chapter 6's attention core; no training dependency
+has been added to the urgent decision-model path.
 
 ## Delivery priority: Elephant, then Mammoth
 
@@ -110,12 +128,12 @@ issue slugs. The NVIDIA breadth and expanded contents below are proposals;
 this update does not add project issues. The existing queue source
 is [work/roadmap.json](../../apps/openagents-web/projects/psionic/work/roadmap.json).
 The signed queue records M0 complete; chapters 2–3 implement M1 and chapter 4
-implements the artifact slice of M5 in source.
+implements the artifact slice of M5; chapter 5 implements the bounded text profile in source.
 This change does not publish issue-status updates.
 
 | Priority | Work | Must finish first |
 | --- | --- | --- |
-| Now | Pin both model bundles/nanochat, reference contracts and license/provenance; qualify pinned real artifacts with chapter 4 and implement tokenization over the shared CPU core. | Chapters 1–4 are shipped. Each real model still needs its own larger execution/resource profile. |
+| Now | Pin both model bundles/nanochat, reference contracts and license/provenance; qualify pinned real artifacts with chapter 4 and extend model-specific reference capture and attention over the shared CPU core. | Chapters 1–5 are shipped. Each real model still needs its own larger execution/resource profile. |
 | Next | Qualify original model artifacts, exact Qwen tokenizer/decision prompts, independent reference capture, and model-specific numerical extensions. | Each task's data/math prerequisites; no training subsystem. |
 | Next | Qwen3.5 dense blocks, block-bidirectional full attention, causal DeltaNet, complete prefix forks and slot readout. | Shared operations/artifacts and exact prompt/state fixtures. |
 | First real model | Complete original-weight Elephant text decisions. | All hybrid layers, exact renderer/readout, bounded state and independent full-model oracles. |
@@ -137,7 +155,7 @@ a prerequisite for starting the ready work.
 ## Proposed book order
 
 The [full proposed table of contents](../../psionic/book/PLAN.md) now gives
-one outline per chapter, with prerequisite notes. Chapters 1–4 are runnable;
+one outline per chapter, with prerequisite notes. Chapters 1–5 are runnable;
 chapter numbers and part boundaries are provisional. The new
 [NVIDIA breadth survey](nvidia-breadth.md) records pinned candidate checkpoints,
 operator requirements, data studies and source-license qualifications.

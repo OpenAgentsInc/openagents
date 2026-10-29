@@ -5,8 +5,9 @@ in Coax early. Elephant is the first complete real-weight target; Mammoth
 follows on the same engine. Their inference delivery does not wait for the
 book's autodiff, language-model training, or nanochat pipeline chapters.
 
-These are planned capabilities. Current Psionic implements the bounded scalar
-trainer, chapter 2 storage admission and chapter 3 bounded CPU numerics. [The project queue](https://openagents.com/projects/psionic)
+Full model execution remains planned. Chapters 1–5 implement the bounded scalar
+trainer, storage/numerics, original-weight artifact admission and the
+`qwen35-text-v1` tokenizer/request profile. [The project queue](https://openagents.com/projects/psionic)
 and [roadmap](roadmap.md) define the actual dependencies and acceptance.
 
 ## Evidence and pins
@@ -19,8 +20,8 @@ research inputs; they are not installed capabilities of the new Coax library.
 Its API free window ended on October 27, and its effort/memory estimates do
 not establish a budget or a working Coax port.
 
-Small public source files and repository metadata were rechecked on October
-28. No weights were downloaded, no hosted inference was called, and no
+Public source files and original tokenizer data were rechecked on October
+29. No weights were downloaded, no hosted inference was called, and no
 external setup or training script was executed.
 
 | Target | Revision read | Base / text configuration |
@@ -81,7 +82,7 @@ The initial profile is **text-only**. Published models also accept images,
 but admitting vision tensors does not implement preprocessing, a vision
 encoder/projector, or image token layout. A separate issue qualifies those.
 The renderer must handle one-option choice and the published upper bound of
-255 options, and score levels 2–10, with exact fixture-defined edge behavior.
+255 options, and score levels 1–10, with exact fixture-defined edge behavior.
 The published trained-length ceiling is 16384; derive actual request/token
 limits from the complete pinned serving bundle rather than its much larger
 base-config positional capacity. Smaller first execution envelopes must be
@@ -134,3 +135,15 @@ After native support, connect the existing root System One protocol/codecs
 where applicable (`coax/lib/systemone/` and root `proto/`). Version any public
 contract extension first. Hosted serving and wallet/provider policy remain
 separate consumer work; calling Baseten is not native Psionic execution.
+
+## Chapter 5 implementation scope
+
+The [text chapter](../../psionic/book/ch05-text-becomes-a-model-request.md)
+now implements frozen tagged rendering and original tokenizer semantics under
+`qwen35-text-v1` budgets, using Unicode 17.0.0 and integer structured entries.
+Both pinned tokenizer originals had SHA-256
+`a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f`.
+The actual pinned schema permits 1–10 score levels. Independent owned
+Unicode/regex/BPE fixtures qualify the stated corpus; no upstream model runtime
+was executed. Full request-domain/reference parity and model execution remain
+their separate acceptance gates.

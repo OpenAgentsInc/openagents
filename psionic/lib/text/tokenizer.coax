@@ -1,0 +1,200 @@
+#load "unicode.coax";
+#load "../../fixtures/text/ch05/goldens.coax";
+#authority;
+PtMerge :: struct {status:PtStatus;rank:int=-1;id:int;}
+
+#test "ranked BPE uses merge order and leftmost equal-rank ties" {
+    table:=PT_TOY;input:="ababa hello's";out:[32]int;stage:[32]int;normal:[128]u8;scalars:[128]int;symbols:[32]int;
+    r:=pt_encode_checked(table[..],input,out[..],stage[..],normal[..],scalars[..],symbols[..],false);
+    #assert r.status==PtStatus.ok && r.written==4 && r.work==65 && out[0]==256 && out[1]==257 && out[2]==262 && out[3]==263;
+}
+#test "added tokens bypass ordinary BPE, capacity and malformed inputs never publish" {
+    table:=PT_TOY;input:="a<|im_start|>ab<|im_end|>";out:=[8]int.[-1,-1,-1,-1,-1,-1,-1,-1];stage:[32]int;normal:[128]u8;scalars:[128]int;symbols:[32]int;
+    r:=pt_encode_checked(table[..],input,out[..],stage[..],normal[..],scalars[..],symbols[..],false);
+    #assert r.status==PtStatus.ok && r.written==4 && r.work==5 && out[0]==97 && out[1]==264 && out[2]==256 && out[3]==265 && out[4]==-1;
+    before:=out;
+    #assert pt_encode_checked(table[..],input,out[0..<3],stage[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.capacity;
+    #assert pt_encode_checked(table[..],input,out[..],stage[0..<1],normal[..],scalars[..],symbols[..],false).status==PtStatus.capacity;
+    #assert pt_encode_checked(table[..],input,out[..],stage[..],normal[..],scalars[..],symbols[..],true).status==PtStatus.alias;
+    for i:0..<8 {#assert out[i]==before[i];}
+    #assert pt_encode_checked(table[..],"",out[..],stage[..],normal[..],scalars[..],symbols[..],false).written==0;
+}
+#test "Qwen splitting distinguishes spaces, newlines, contractions, marks and single digits" {
+    table:=PT_TOY;t:=pt_layout(table[..]);
+    strings:=[9]string.["  hello","123","'RE","!!!\r\n"," \t \nx"," \t x","é","'ſ","a b"];
+    ends:=[9]int.[1,1,3,5,4,2,3,3,1];
+    for i:0..<9 {#assert pt_piece(table[..],t,strings[i],0)==ends[i];}
+    #assert pt_piece_budget(0,1024) && !pt_piece_budget(0,1025) && pt_piece_budget(16777215,1) && !pt_piece_budget(16777216,1);
+    #assert pt_token_count(16384) && !pt_token_count(16385);
+}
+
+#forall "independent Unicode-regex and priority-queue oracle vectors" c:0..<PT_GOLD_TEXT.count {
+    table:=PT_TOY;out:[128]int;stage:[128]int;normal:[512]u8;scalars:[512]int;symbols:[128]int;
+        r:=pt_encode_checked(table[..],PT_GOLD_TEXT[c],out[..],stage[..],normal[..],scalars[..],symbols[..],false);
+        #assert r.status==PtStatus.ok && r.written==PT_GOLD_COUNT[c] && r.work==PT_GOLD_WORK[c];
+        for i:0..<r.written {#assert out[i]==PT_GOLD_IDS[c][i];}
+}
+
+#forall "independent pretokenizer span oracle" c:0..<PT_PIECE_TEXT.count {
+    table:=PT_TOY;t:=pt_layout(table[..]);pos:=0;
+    for i:0..<PT_PIECE_COUNT[c] {end:=pt_piece(table[..],t,PT_PIECE_TEXT[c],pos);#assert end==PT_PIECE_ENDS[c][i];pos=end;}
+    #assert pos==PT_PIECE_TEXT[c].count;
+}
+#test "contractions are prefix matches with Unicode case folding" {
+    #assert pt_fold(65)==97 && pt_fold(90)==122 && pt_fold(64)==64 && pt_fold(91)==91 && pt_fold(383)==115 && pt_fold(384)==384;
+    yes:=[8]string.["'sauce","'test","'real","'vest","'more","'llama","'dragon","'ſauce"];
+    ends:=[8]int.[2,2,3,3,2,3,2,3];for i:0..<8 {#assert pt_contraction(yes[i],0)==ends[i];}
+    no:=[9]string.["'","'r","'x","'ra","'va","'la","'ae","'al","’s"];
+    for text:no {#assert pt_contraction(text,0)==0;}#assert pt_contraction("x'Smore",1)==3;
+}
+#test "vocabulary, merge records, exact capacities and leftmost ties are bounded" {
+    table:=PT_TOY;t:=pt_layout(table[..]);
+    #assert pt_span(table[..],t,-1).status==PtStatus.range && pt_span(table[..],t,t.counts[0]).status==PtStatus.range;
+    span:=pt_span(table[..],t,0);#assert span.status==PtStatus.ok && span.end-span.begin==1 && table[span.begin]==0;
+    #assert pt_pool_span(0,1,1) && pt_pool_span(0,9,9) && !pt_pool_span(0,0,9) && !pt_pool_span(0,10,9) && !pt_pool_span(9,1,9);
+    for kind:0..<4 {
+        copy:=table;at:=t.starts[0];value:=0;
+        if kind==1 {at+=4;value=t.counts[6]+1;}else if kind==2 {at+=4;value=0;}else if kind==3 {value=t.counts[6];}
+        else {at+=4;value=1;}
+        for i:0..<4 {copy[at+i]=cast(u8)((cast(u32)value>>(i*8))&255);}
+        result:=pt_span(copy[..],t,0);if kind==0 {#assert result.status==PtStatus.ok;}else {#assert result.status==PtStatus.artifact;}
+    }
+    row:=pt_row(t,1,pt_pair(table[..],t,1,97,98));
+    for kind:0..<2 {
+        copy:=table;at:=row+8;value:=t.counts[1];if kind==1 {at=row+12;value=t.counts[0];}
+        for i:0..<4 {copy[at+i]=cast(u8)((cast(u32)value>>(i*8))&255);}
+        #assert pt_merge(copy[..],t,97,98).status==PtStatus.artifact;
+    }
+    symbols:[3]int;r:=pt_bpe(table[..],t,"aaa",symbols[..]);#assert r.status==PtStatus.ok && r.written==2 && symbols[0]==266 && symbols[1]==97;
+    r=pt_bpe(table[..],t,"aba",symbols[..]);#assert r.status==PtStatus.ok && r.written==1 && symbols[0]==257;
+    r=pt_bpe(table[..],t,"a",symbols[0..<1]);#assert r.status==PtStatus.ok && r.written==1 && symbols[0]==97;
+    #assert pt_bpe(table[..],t,"ab",symbols[0..<1]).status==PtStatus.capacity;
+    r=pt_bpe(table[..],t,"ab",symbols[0..<2]);#assert r.status==PtStatus.ok && r.written==1 && symbols[0]==256;
+    output:[1]int;stage:[1]int;normal:[16]u8;scalars:[16]int;
+    r=pt_encode_checked(table[..],"ab",output[..],stage[..],normal[..],scalars[..],symbols[..],false);#assert r.status==PtStatus.ok && r.written==1 && output[0]==256;
+    bad:=[1]u8.[255];#assert pt_encode_checked(table[..],cast(string)bad[..],output[..],stage[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.utf8;
+    #assert pt_added(table[..],t,"<!im_start|>",0).rank==-1;
+    copy:=table;at:=32+97*4;value:=t.counts[0];for i:0..<4 {copy[at+i]=cast(u8)((cast(u32)value>>(i*8))&255);}
+    #assert pt_bpe(copy[..],t,"a",symbols[..]).status==PtStatus.artifact;
+    outputs:[4]int;stages:[2]int;
+    #assert pt_encode_checked(table[..],"a b",outputs[..],stages[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.capacity;
+}
+#test "a newly created lower-rank pair takes priority over a remaining tie" {
+    table:=PT_TOY;t:=pt_layout(table[..]);
+    ab:=pt_row(t,1,pt_pair(table[..],t,1,97,98));
+    aba:=pt_row(t,1,pt_pair(table[..],t,1,256,97));
+    for i:0..<4 {table[ab+8+i]=0;table[aba+8+i]=0;}table[ab+8]=1;
+    symbols:[4]int;r:=pt_bpe(table[..],t,"abab",symbols[..]);
+    #assert r.status==PtStatus.ok && r.written==2 && symbols[0]==257 && symbols[1]==98;
+}
+pt_pool_span :: (begin:int,n:int,total:int)->bool {return n>=1 && n<=total && begin<=total-n;}
+
+pt_span :: (data:[]u8,t:PtLayout,id:int)->PtSpan {
+    if id<0 || id>=t.counts[0] {return PtSpan.{status=PtStatus.range};}
+    row:=pt_row(t,0,id);begin:=pt_u32(data,row);n:=pt_u32(data,row+4);
+    if !pt_pool_span(begin,n,t.counts[6]) {return PtSpan.{status=PtStatus.artifact};}
+    return PtSpan.{begin=t.starts[6]+begin,end=t.starts[6]+begin+n};
+}
+pt_has :: (table:[]u8,t:PtLayout,cp:int,bits:int)->bool {return (pt_prop(table,t,cp).flags&bits)!=0;}
+pt_fold :: (cp:int)->int {if cp>=65 && cp<=90 {return cp+32;}if cp==383 {return 115;}return cp;}
+pt_contraction :: (s:string,at:int)->int {
+    if s[at]!=39 {return at;}
+    a:=pt_rune(s,at+1);if a.status!=PtStatus.ok {return at;}c:=pt_fold(a.cp);
+    if c==115 || c==116 || c==109 || c==100 {return a.next;}
+    b:=pt_rune(s,a.next);if b.status!=PtStatus.ok {return at;}d:=pt_fold(b.cp);
+        if (c==114 && d==101) || (c==118 && d==101) || (c==108 && d==108) {return b.next;}
+    return at;
+}
+pt_run :: (table:[]u8,t:PtLayout,s:string,at:int,bits:int,want:bool)->int {
+    pos:=at;while pos<s.count {r:=pt_rune(s,pos);if pt_has(table,t,r.cp,bits)!=want {return pos;}pos=r.next;}return pos;
+}
+// book:begin pieces
+// The pinned split expression; numeric scalars are disjoint from word runs.
+pt_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int {
+    end:=pt_contraction(s,at);if end>at {return end;}
+    r:=pt_rune(s,at);if pt_has(table,t,r.cp,4) {return r.next;}
+    pos:=at;if r.cp!=13 && r.cp!=10 {pos=r.next;}
+    end=pt_run(table,t,s,pos,3,true);
+    if end>pos {return end;}
+    end=pt_run(table,t,s,at,3,true);if end>at {return end;}
+    pos=at;if r.cp==32 {pos=r.next;}
+    end=pt_run(table,t,s,pos,15,false);
+    if end>pos {
+        while true {if end==s.count {return end;}c:=pt_rune(s,end);if c.cp!=13 && c.cp!=10 {return end;}end=c.next;}return end;
+    }
+    space:=at;last_newline:=at;last_space:=at;
+    while true {
+        if space==s.count {break;}c:=pt_rune(s,space);if !pt_has(table,t,c.cp,8) {break;}
+        last_space=space;space=c.next;if c.cp==13 || c.cp==10 {last_newline=space;}
+    }
+    if last_newline>at {return last_newline;}
+    if space==s.count {return space;}
+    if last_space>at {return last_space;}return space;
+}
+// book:end pieces
+pt_added :: (table:[]u8,t:PtLayout,s:string,at:int)->PtMerge {
+    if s[at]!='<' {return PtMerge.{};}
+    // The admitted table orders added literals longest first.
+    for i:0..<t.counts[5] {
+        id:=pt_u32(table,pt_row(t,5,i));span:=pt_span(table,t,id);if span.status!=PtStatus.ok {return PtMerge.{status=span.status};}
+        n:=span.end-span.begin;
+        if n<=s.count-at {
+            equal:=true;for k:1..<n {if table[span.begin+k]!=s[at+k] {equal=false;}}
+            if equal {return PtMerge.{id=id,rank=n};}
+        }
+    }return PtMerge.{};
+}
+
+pt_piece_budget :: (used:int,n:int)->bool {return n<=1024 && pt_budget(used,n*n);}
+pt_merge :: (table:[]u8,t:PtLayout,a:int,b:int)->PtMerge {
+    at:=pt_pair(table,t,1,a,b);if at<0 {return PtMerge.{};}
+    row:=pt_row(t,1,at);rank:=pt_u32(table,row+8);id:=pt_u32(table,row+12);
+    if rank>=t.counts[1] || id>=t.counts[0] {return PtMerge.{status=PtStatus.artifact};}
+    return PtMerge.{rank=rank,id=id};
+}
+pt_bpe :: (table:[]u8,t:PtLayout,s:string,symbols:[]int)->PtResult {
+    if symbols.count<s.count {return PtResult.{status=PtStatus.capacity};}
+    for i:0..<s.count {id:=pt_u32(table,32+cast(int)s[i]*4);if id>=t.counts[0] {return PtResult.{status=PtStatus.artifact};}symbols[i]=id;}
+    n:=s.count;
+    while true {
+        best:=PtMerge.{};pos:=-1;
+        for i:0..<n-1 {
+            m:=pt_merge(table,t,symbols[i],symbols[i+1]);if m.status!=PtStatus.ok {return PtResult.{status=m.status};}
+            if m.rank!=-1 && (best.rank==-1 || m.rank<best.rank) {best=m;pos=i;}
+        }
+        if pos<0 {break;}
+        symbols[pos]=best.id;for i:pos+1..<n-1 {symbols[i]=symbols[i+1];}n-=1;
+    }return PtResult.{written=n};
+}
+// book:begin encode
+// Only output is published. Stage/normal/scalars/symbols are disposable workspaces.
+pt_encode_checked :: (table:[]u8,input:string,output:[]int,stage:[]int,normal:[]u8,scalars:[]int,symbols:[]int,overlap:bool)->PtResult #export_c {
+    if !pt_text_count(input.count) {return PtResult.{status=PtStatus.size};}
+    if overlap {return PtResult.{status=PtStatus.alias};}
+    t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}
+    at:=0;n:=0;used:=0;
+    while at<input.count {
+        added:=pt_added(table,t,input,at);if added.status!=PtStatus.ok {return PtResult.{status=added.status};}
+        if added.rank!=-1 {
+            if n>=stage.count {return PtResult.{status=PtStatus.capacity};}stage[n]=added.id;n+=1;at+=added.rank;
+        }else {
+            end:=at+1;
+            while end<input.count {found:=pt_added(table,t,input,end);if found.status!=PtStatus.ok {return PtResult.{status=found.status};}if found.rank!=-1 {break;}end+=1;}
+            norm:=pt_normalize_checked(table,input[at..<end],normal,scalars,false);if norm.status!=PtStatus.ok {return norm;}
+            if !pt_text_count(norm.written) {return PtResult.{status=PtStatus.size};}
+            text:=cast(string)normal[0..<norm.written];pos:=0;
+            while pos<text.count {
+                next:=pt_piece(table,t,text,pos);width:=next-pos;
+                if !pt_piece_budget(used,width) {return PtResult.{status=PtStatus.budget};}used+=width*width;
+                bpe:=pt_bpe(table,t,text[pos..<next],symbols);if bpe.status!=PtStatus.ok {return bpe;}
+                if bpe.written>stage.count-n {return PtResult.{status=PtStatus.capacity};}
+                for k:0..<bpe.written {stage[n+k]=symbols[k];}n+=bpe.written;pos=next;
+            }
+            at=end;
+        }
+        if !pt_token_count(n) {return PtResult.{status=PtStatus.size};}
+    }
+    if n>output.count {return PtResult.{status=PtStatus.capacity};}
+    for i:0..<n {output[i]=stage[i];}return PtResult.{written=n,work=used};
+}
+// book:end encode
