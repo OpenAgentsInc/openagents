@@ -136,6 +136,16 @@ verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.715
  #assert abs(verse_style_rim(0.0f32,-1.0f32,0.38f32,0.12f32,0.30f32)-0.105f32)<0.0001f32;
  #assert verse_style_rim(0.2f32,0.5f32,0.38f32,0.12f32,0.30f32)>verse_style_rim(0.2f32,-0.5f32,0.38f32,0.12f32,0.30f32);
 }
+#test "on a 1.8 m figure 8 m away at 1440x900 the rim is 2 to 4 px wide" {
+ // a figure's body: a 0.24 m round seen side on, by the style fixture's lens (900 rows over a
+ // half-height of 0.36): 156 px a metre at 8 m. Walk in from the silhouette a millimetre at a time.
+ px_per_m:=900.0f32/(2.0f32*0.36f32*8.0f32);
+ r:=0.24f32; lit:=0.0f32;
+ for i:0..<240 {x:=r-cast(f32)i*0.001f32-0.0005f32; ndv:=sqrt(st_max(1.0f32-x*x/(r*r),0.0f32));
+  if verse_style_rim(ndv,0.5f32,0.38f32,0.12f32,0.45f32)>0.0f32 {lit=lit+0.001f32;}}
+ w:=lit*px_per_m;
+ #assert w>=2.0f32 && w<=4.0f32;
+}
 #test "day haze: 0.58 at 100 m, 0.86 at 200 m, never past its cap" {
  #assert verse_style_haze(20.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==0.0f32;
  #assert abs(verse_style_haze(100.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)-0.585f32)<0.005f32;

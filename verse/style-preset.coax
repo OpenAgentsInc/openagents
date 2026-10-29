@@ -379,6 +379,15 @@ STYLE_KEYED_AT :: [STYLE_KEYED] int.[SU_KEY, SU_KEY + 1, SU_KEY + 2, SU_KEY + 3,
   SU_HAZE_KEY + 1, SU_ZENITH, SU_HORIZON + 1, SU_CLOUD_TOP + 2, SU_TONE, SU_SHAFTS + 2];
 sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
 
+#test "the rim's colour is the key's, warmed, by clock: day, dusk and dawn, the moon's silver at 0.6" {
+  day := verse_style_preset(STYLE_PAINTERLY, 0); o: [STYLE_FLOATS] f32;
+  #assert verse_style_at(day, 0.5, o[..]);
+  #assert sp_near(o[SU_RIM], 1.00) && sp_near(o[SU_RIM + 1], 0.84) && sp_near(o[SU_RIM + 2], 0.60) && sp_near(o[SU_RIM + 3], 0.30) && sp_near(o[SU_RIM2], 0.45);
+  #assert verse_style_at(day, 0.25, o[..]);
+  #assert sp_near(o[SU_RIM], 1.00) && sp_near(o[SU_RIM + 1], 0.70) && sp_near(o[SU_RIM + 2], 0.45);
+  #assert verse_style_at(day, 0.0, o[..]);
+  #assert sp_near(o[SU_RIM], 0.70) && sp_near(o[SU_RIM + 1], 0.78) && sp_near(o[SU_RIM + 2], 0.95) && sp_near(o[SU_RIM + 3], 0.18) && sp_near(o[SU_RIM2], 0.27);
+}
 #test "the painterly preset holds the spec's shading numbers" {
   p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   #assert p.ok;
