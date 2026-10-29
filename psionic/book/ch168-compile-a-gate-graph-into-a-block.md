@@ -180,6 +180,9 @@ gg_operand :: (n:GgNode,which:int)->int {
     return n.a;
 }
 gg_compile :: (nodes:[]GgNode,outputs:[]int,weights:[]f64)->GgPlan #export_c {
+    return gg_compile_planted(nodes,outputs,weights,GgFault.none);
+}
+gg_compile_planted :: (nodes:[]GgNode,outputs:[]int,weights:[]f64,fault:GgFault)->GgPlan #export_c {
     admitted:=gg_admit(nodes,outputs);
     if admitted.status!=GgStatus.ok {return GgPlan.{status=admitted.status,node=admitted.node};}
     forms:[128]RaForm;layer:[128]int;last:[128]int;slot:[128]int;kept:[128]bool;
@@ -191,10 +194,16 @@ gg_compile :: (nodes:[]GgNode,outputs:[]int,weights:[]f64)->GgPlan #export_c {
         if forms[i].count==-1 {return GgPlan.{status=GgStatus.terms,node=i};}
         if gg_coef_sum(forms[i])>f64(GG_COEF_SUM_MAX) {return GgPlan.{status=GgStatus.range,node=i};}
         if n.op==GgOp.input {plan.inputs+=1;}
+        // A gadget builds forms of its own: step and equality add a constant term,
+        // select forms a - b. Those must fit too, or the gate is refused here.
+        if (n.op==GgOp.step || n.op==GgOp.eq0) && forms[n.a].count>=RA_TERMS {return GgPlan.{status=GgStatus.terms,node=i};}
+        if n.op==GgOp.select && ra_plus(forms[n.a],ra_neg(forms[n.b])).count==-1 {return GgPlan.{status=GgStatus.terms,node=i};}
         if gg_gate(n.op) {
             deepest:=0;
             for which:0..<gg_arity(n.op) {deepest=gg_max(deepest,gg_layer_of(forms[gg_operand(n,which)],layer[..]));}
-            layer[i]=deepest+1;
+            // Planted: a gate placed in its deepest operand's own layer reads it before it is written.
+            next:=1;if fault==GgFault.same_layer && deepest>=1 {next=0;}
+            layer[i]=deepest+next;
             if layer[i]>GG_LAYERS_MAX {return GgPlan.{status=GgStatus.layers,node=i};}
             plan.layers=gg_max(plan.layers,layer[i]);
         }
@@ -213,13 +222,23 @@ gg_compile :: (nodes:[]GgNode,outputs:[]int,weights:[]f64)->GgPlan #export_c {
         }
     }
     for o:outputs {f:=forms[o];for t:0..<f.count {kept[f.slots[t]]=true;}}
+    // Clearing: in the layer of the last reader, for slots that are not kept.
+    // Planted: a slot handed out one layer early, or never cleared, or cleared with the wrong sign.
+    release:[128]int;
+    for i:0..<nodes.count {
+        if last[i]>=1 && !kept[i] {
+            release[i]=last[i];plan.clear[i]=last[i];
+            if fault==GgFault.early_reuse && last[i]>=2 {release[i]=last[i]-1;}
+            if fault==GgFault.no_clear {plan.clear[i]=0;}
+        }
+    }
     // Slots: 0 holds the constant one, then inputs in order, then gates by layer.
     // A slot is freed in the layer of its node's last reader; 0 means none chosen.
     free:[64]bool;plan.width=1;
     for i:0..<nodes.count {if nodes[i].op==GgOp.input {slot[i]=plan.width;plan.width+=1;plan.values+=1;}}
     for layer_index:0..<plan.layers {
         L:=layer_index+1;
-        for i:0..<nodes.count {if last[i]==L && !kept[i] {free[slot[i]]=true;}}
+        for i:0..<nodes.count {if release[i]==L {free[slot[i]]=true;}}
         for i:1..<nodes.count {
             if layer[i]==L && gg_gate(nodes[i].op) {
                 plan.values+=1;chosen:=0;
@@ -235,7 +254,7 @@ gg_compile :: (nodes:[]GgNode,outputs:[]int,weights:[]f64)->GgPlan #export_c {
     // Units per layer: each gate's units, plus one to clear each freed slot.
     for i:0..<nodes.count {
         if gg_gate(nodes[i].op) {plan.units[layer[i]-1]+=gg_units(nodes[i].op);}
-        if last[i]>=1 && !kept[i] {plan.units[last[i]-1]+=1;}
+        if plan.clear[i]>=1 {plan.units[plan.clear[i]-1]+=1;}
     }
     for L:0..<plan.layers {
         if plan.units[L]>RA_UNITS_MAX {return GgPlan.{status=GgStatus.units,node=L};}
@@ -259,12 +278,17 @@ gg_compile :: (nodes:[]GgNode,outputs:[]int,weights:[]f64)->GgPlan #export_c {
             }
         }
         for i:0..<nodes.count {
-            if last[i]==L && !kept[i] {#assert ra_unit(w,plan.width,units,u,ra_term(slot[i],1),ra_one(),slot[i],-1);u+=1;}
+            if plan.clear[i]==L {
+                sign:=-1;if fault==GgFault.clear_sign {sign=-sign;}
+                #assert ra_unit(w,plan.width,units,u,ra_term(slot[i],1),ra_one(),slot[i],sign);u+=1;
+            }
         }
         #assert u==units;
         base+=ra_weight_count(plan.width,units);
     }
     for k:0..<outputs.count {plan.out[k]=gg_slots(forms[outputs[k]],slot[..]);}
+    plan.nodes=nodes.count;
+    for i:0..<nodes.count {plan.layer[i]=layer[i];plan.slot[i]=slot[i];}
     return plan;
 }
 gg_units :: (op:GgOp)->int {
@@ -279,7 +303,9 @@ Each limit the compiler meets is a typed refusal:
 - **`layers`:** more than 32 layers.
 - **`width`:** more than 64 live slots.
 - **`units`:** more than 128 units in a layer.
-- **`terms`:** a linear form with more than eight terms.
+- **`terms`:** a form needing more than eight distinct terms. This includes
+  the forms a gadget builds for itself: a step or an equality adds a constant
+  term, and a select forms `a − b`.
 - **`range`:** coefficients summing past 2²⁷, which could push a partial sum
   past 2⁵³.
 - **`capacity`:** a weight buffer too small for the plan.
@@ -329,12 +355,13 @@ weights multiply 4097 by 4097 exactly in binary64 and round it in binary32.
   - A constant read early that must not clear slot 0.
   - Every admission and compiler limit, at exactly the limit and one past it.
 - **The independent oracle** generates 300 seeded graphs with up to 22 nodes
-  and inputs up to ±8,192. It predicts each graph's values, or the node where
-  a value leaves the range or a form exceeds eight terms. In the native
-  harness, 291 graphs compile and reproduce the oracle exactly, and the other
-  9 are refused at the predicted node.
+  and inputs up to ±8,192, plus three graphs built to reach the term limit.
+  It predicts each graph's values, or the node where a value leaves the range
+  or a form, including a gadget's own, needs more than eight distinct terms.
+  In the native harness, 292 graphs compile and reproduce the oracle exactly,
+  8 are refused for range, and 3 for terms, each at the predicted node.
 - **Mutation testing** of `gate-graph.coax` and the chapter 167 unit it loads
-  kills all 666 mutants. The first run left 88 survivors. Most came from
+  kills all 729 mutants. The first run left 88 survivors. Most came from
   choices the checks could not observe:
   - a maximum written as "update if greater", whose tie case is invisible;
   - "never read" written as −1;
@@ -346,6 +373,13 @@ weights multiply 4097 by 4097 exactly in binary64 and round it in binary32.
   under every later layer.
 
 ## What this does not do yet
+
+[Chapter 169](ch169-a-harness-that-catches-the-compiler.md)'s harness found a
+real bug in the first version of this compiler. A select's `a − b`, or a
+step's added constant, could exceed the term limit on a form the compiler had
+already accepted, and the compiler then failed an internal assertion instead
+of refusing. The fix merges like terms (so `x − x` costs nothing) and checks
+each gadget's forms before scheduling.
 
 This is straight-line code, one step at a time, with no memory. Chapter 169
 attacks the compiler with a differential harness and planted bugs. Chapter 170

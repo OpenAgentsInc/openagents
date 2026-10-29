@@ -24,7 +24,7 @@ int main(void){
     assert(psionic_ra_forward(2,2,fv(w,12),fv(x,2),fv(w,2),false)==COAX_RaStatus_alias);
     size_t compiled=0,refused=0,long_forms=0;static double weights[1<<16];
     for(size_t c=0;c<sizeof(graph_cases)/sizeof(*graph_cases);c++){
-        const graph_case *t=&graph_cases[c];coax_t_GgNode nodes[24];int64_t outs[3],in[4],vals[3];double got[3];
+        const graph_case *t=&graph_cases[c];coax_t_GgNode nodes[24];int64_t outs[3],in[9],vals[3];double got[3];
         for(int i=0;i<t->n;i++)nodes[i]=(coax_t_GgNode){(coax_t_GgOp)t->op[i],t->a[i],t->b[i],t->c[i],t->k[i]};
         for(int i=0;i<t->outputs;i++)outs[i]=t->out[i];
         for(int i=0;i<t->inputs;i++)in[i]=t->in[i];

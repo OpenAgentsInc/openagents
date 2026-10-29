@@ -1,0 +1,281 @@
+// A differential harness that runs every graph three ways and names where they part.
+#load "gate-graph.coax";
+#authority;
+
+// Where two paths disagreed: the schedule (evaluator against the plan
+// interpreter) or the emitted weights (plan interpreter against the block).
+ChWhere :: enum u8 {none;schedule;emission;}
+ChRun :: struct {status:GgStatus;where:ChWhere;node:int;}
+ChCatch :: struct {status:GgStatus;graphs:int;skipped:int;caught:bool;graph:int;node:int;where:ChWhere;}
+// One generated case: the graph's node count, and its inputs and two outputs.
+ChCase :: struct {count:int;inputs:int;values:[3]int;outputs:[2]int;}
+
+CH_GRAPH_NODES :: 16;
+CH_RUNS_MAX :: 1000;
+#load "../fixtures/harness-vectors.coax";
+
+#test "the honest compiler agrees with itself on every generated graph" {
+    // The oracle predicts which of these cases are skipped: a value out of range, or a form too long.
+    r:=ch_differential(1,40,GgFault.none);
+    #assert r.status==GgStatus.ok && !r.caught && r.graphs==40-HV_SKIPPED_SEED1_40 && r.skipped==HV_SKIPPED_SEED1_40;
+    #assert ch_count_ok(1) && ch_count_ok(CH_RUNS_MAX) && !ch_count_ok(0) && !ch_count_ok(CH_RUNS_MAX+1);
+    // Seed 11 has a case the evaluator refuses; it is skipped, and only the rest are compared.
+    k:=ch_differential(11,40,GgFault.none);
+    #assert k.status==GgStatus.ok && !k.caught && k.skipped==HV_SKIPPED_SEED11_40 && k.skipped>=1 && k.graphs==40-k.skipped;
+    #assert ch_differential(1,0,GgFault.none).status==GgStatus.shape;
+}
+#test "every planted compiler bug is caught, and placed in the schedule or the emitter" {
+    early:=ch_differential(1,40,GgFault.early_reuse);
+    #assert early.caught && early.where==ChWhere.schedule;
+    same:=ch_differential(1,40,GgFault.same_layer);
+    #assert same.caught && same.where==ChWhere.schedule;
+    stale:=ch_differential(1,40,GgFault.no_clear);
+    #assert stale.caught && stale.where==ChWhere.schedule;
+    sign:=ch_differential(1,40,GgFault.clear_sign);
+    #assert sign.caught && sign.where==ChWhere.emission;
+    // A catch names the first case that disagrees, and the node where it shows: replaying
+    // the cases before it agrees, and replaying that case gives the same node.
+    faults:=[4]GgFault.[GgFault.early_reuse,GgFault.same_layer,GgFault.no_clear,GgFault.clear_sign];
+    catches:=[4]ChCatch.[early,same,stale,sign];nodes:[16]GgNode;
+    for f:0..<4 {
+        c:=catches[f];
+        for g:0..<c.graph+1 {
+            k:=ch_case(1,g,nodes[..]);r:=ch_run(nodes[0..<k.count],k.outputs[..],k.values[0..<k.inputs],faults[f]);
+            if g<c.graph {#assert r.status!=GgStatus.ok || r.where==ChWhere.none;}
+            else {#assert r.status==GgStatus.ok && r.where==c.where && r.node==c.node;}
+        }
+    }
+}
+#test "the interpreter follows the plan, not the graph" {
+    // x -> relu -> relu; the second relu's input slot is reused for its output in layer 2.
+    g:=[3]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.relu,a=0},GgNode.{op=GgOp.relu,a=1}];
+    outs:=[1]int.[2];w:[4096]f64;inputs:=[1]int.[4];v:[16]int;
+    plan:=gg_compile(g[..],outs[..],w[..]);read:[1]int;
+    #assert ch_interpret(plan,g[..],inputs[..],v[..],read[..]).status==GgStatus.ok && v[0]==4 && v[1]==4 && v[2]==4 && read[0]==4;
+    r:=ch_run(g[..],outs[..],inputs[..],GgFault.none);#assert r.status==GgStatus.ok && r.where==ChWhere.none;
+    // Without clearing, layer 1 adds relu(x) onto x's slot and layer 2 reads 8, not 4.
+    bad:=gg_compile_planted(g[..],outs[..],w[..],GgFault.no_clear);
+    #assert ch_interpret(bad,g[..],inputs[..],v[..],read[..]).status==GgStatus.ok && v[1]==4 && v[2]==8 && read[0]==16;
+    // When the stale value sits only in an output's slot, reading the outputs catches it.
+    out1:=[2]int.[1,2];late:=gg_compile_planted(g[0..<2],out1[0..<1],w[..],GgFault.no_clear);
+    #assert ch_interpret(late,g[0..<2],inputs[..],v[..],read[..]).status==GgStatus.ok && v[1]==4 && read[0]==8;
+    lr:=ch_run(g[0..<2],out1[0..<1],inputs[..],GgFault.no_clear);#assert lr.where==ChWhere.schedule && lr.node==1;
+    s:=ch_run(g[..],outs[..],inputs[..],GgFault.no_clear);#assert s.where==ChWhere.schedule && s.node==2;
+    #assert ch_run(g[0..<0],outs[..],inputs[..],GgFault.none).status==GgStatus.shape;
+    // Sixteen nodes are the most a run takes.
+    long:[17]GgNode;long[0]=GgNode.{op=GgOp.input,k=0};for i:1..<17 {long[i]=GgNode.{op=GgOp.relu,a=i-1};}
+    o15:=[1]int.[15];o16:=[1]int.[16];
+    #assert ch_run(long[0..<16],o15[..],inputs[..],GgFault.none).status==GgStatus.ok;
+    #assert ch_run(long[..],o16[..],inputs[..],GgFault.none).status==GgStatus.shape;
+    one:=[1]GgNode.[GgNode.{op=GgOp.input,k=0}];o0:=[1]int.[0];
+    #assert ch_run(one[..],o0[..],inputs[..],GgFault.none).status==GgStatus.ok;
+    // A wrong clearing sign is invisible to the plan but not to the weights.
+    e:=ch_run(g[..],outs[..],inputs[..],GgFault.clear_sign);#assert e.where==ChWhere.emission && e.node==2;
+    #assert ch_interpret(plan,g[..],inputs[0..<0],v[..],read[..]).status==GgStatus.capacity;
+    #assert ch_interpret(plan,g[..],inputs[..],v[0..<2],read[..]).status==GgStatus.capacity;
+    #assert ch_interpret(plan,g[..],inputs[..],v[..],read[0..<0]).status==GgStatus.capacity;
+    #assert ch_interpret(plan,g[0..<2],inputs[..],v[..],read[..]).status==GgStatus.shape;
+    other:=plan;other.status=GgStatus.width;#assert ch_interpret(other,g[..],inputs[..],v[..],read[..]).status==GgStatus.width;
+}
+#test "the interpreter computes what the weights mean, even off contract" {
+    // A select whose condition slot holds 5: the weights give b + 5(a - b).
+    g:=[4]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.input,k=1},GgNode.{op=GgOp.step,a=0},GgNode.{op=GgOp.select,c=2,a=0,b=1}];
+    outs:=[1]int.[3];w:[4096]f64;plan:=gg_compile(g[..],outs[..],w[..]);v:[4]int;read:[1]int;
+    bad:=plan;
+    // Point the step's slot at the first input's slot. Layer 1 adds step(5) = 1 to it,
+    // so layer 2 reads 6 as both a and the condition: b + 6(a - b) = 2 + 6 * 4.
+    bad.slot[2]=bad.slot[0];
+    inputs:=[2]int.[5,2];
+    #assert ch_interpret(bad,g[..],inputs[..],v[..],read[..]).status==GgStatus.ok && v[2]==1 && v[3]==26;
+    #assert ch_relu(-3)==0 && ch_relu(0)==0 && ch_relu(4)==4;
+    // Step and equality as identities agree with the ideal meaning on integers.
+    for x:-3..<4 {
+        h:=[3]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.step,a=0},GgNode.{op=GgOp.eq0,a=0}];o2:=[2]int.[1,2];
+        p:=gg_compile(h[..],o2[..],w[..]);one:=[1]int.[x];vv:[3]int;rr:[2]int;
+        #assert ch_interpret(p,h[..],one[..],vv[..],rr[..]).status==GgStatus.ok;
+        s1:=0;if x>=1 {s1=1;} e1:=0;if x==0 {e1=1;}
+        #assert vv[1]==s1 && vv[2]==e1 && rr[0]==s1 && rr[1]==e1;
+    }
+}
+#test "the first difference is the earliest index" {
+    a:=[4]int.[1,2,3,4];b:=[4]int.[1,2,3,4];
+    #assert ch_first_difference(a[..],b[..])==-1 && ch_first_difference(a[0..<0],b[0..<0])==-1;
+    b[0]=9;#assert ch_first_difference(a[..],b[..])==0;
+    b[0]=1;b[1]=9;b[3]=9;#assert ch_first_difference(a[..],b[..])==1;
+    b[1]=2;#assert ch_first_difference(a[..],b[..])==3;
+}
+#test "linear nodes and wide products agree three ways" {
+    // add and scale are not in the generator, so they are checked here; 4097 * 4097 needs binary64.
+    g:=[7]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.input,k=1},GgNode.{op=GgOp.add,a=0,b=1},
+        GgNode.{op=GgOp.scale,a=2,k=-3},GgNode.{op=GgOp.relu,a=3},GgNode.{op=GgOp.mul,a=0,b=1},GgNode.{op=GgOp.add,a=5,b=4}];
+    outs:=[2]int.[3,6];w:[4096]f64;
+    inputs:=[2]int.[-5,2];r:=ch_run(g[..],outs[..],inputs[..],GgFault.none);#assert r.status==GgStatus.ok && r.where==ChWhere.none;
+    plan:=gg_compile(g[..],outs[..],w[..]);v:[7]int;read:[2]int;
+    #assert ch_interpret(plan,g[..],inputs[..],v[..],read[..]).status==GgStatus.ok && v[2]==-3 && v[3]==9 && v[6]==-1 && read[0]==9 && read[1]==-1;
+    inputs=[2]int.[4097,4097];r=ch_run(g[..],outs[..],inputs[..],GgFault.none);#assert r.status==GgStatus.ok && r.where==ChWhere.none;
+}
+#test "runs that cannot be compared are skipped, not counted as agreement" {
+    // x * x * x * x at x = 300 leaves the range: the evaluator refuses, so nothing is compared.
+    g:=[4]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.mul,a=0,b=0},GgNode.{op=GgOp.mul,a=1,b=1},GgNode.{op=GgOp.relu,a=2}];
+    outs:=[1]int.[3];inputs:=[1]int.[300];
+    #assert ch_run(g[..],outs[..],inputs[..],GgFault.none).status==GgStatus.range;
+    inputs[0]=3;#assert ch_run(g[..],outs[..],inputs[..],GgFault.none).status==GgStatus.ok;
+    #assert ch_differential(1,1001,GgFault.none).status==GgStatus.shape;
+}
+#test "generated graphs are admissible, small, and differ by seed and index" {
+    a:[16]GgNode;b:[16]GgNode;
+    na:=ch_generate(7,0,a[..]);nb:=ch_generate(7,1,b[..]);nc:=ch_generate(8,0,b[..]);
+    #assert na>=2 && na<=CH_GRAPH_NODES && nb>=2 && nc>=2;
+    outs:[16]int;for i:0..<16 {outs[i]=i;}
+    for seed:0..<5 {for g:0..<5 {
+        n:=ch_generate(seed,g,a[..]);#assert gg_admit(a[0..<n],outs[0..<n]).status==GgStatus.ok;
+    }}
+    // Exact graphs, inputs and outputs for chosen seeds are pinned by the oracle in harness-vectors.coax.
+}
+
+// book:begin interpret
+// Execute the compiler's own schedule with integers: slot 0 holds 1, inputs
+// sit in their slots, and in each layer every gate reads the residual as it
+// was at the start of the layer, adds its value to its slot, and every slot the
+// plan clears there loses its start-of-layer value. Gates compute chapter 167's
+// identities, which is what the weights mean, not the graph's ideal meaning:
+// a select on a stale condition of 5 gives b + 5(a - b) here as in the block,
+// and the evaluator alone decides what was intended. A node's reported value is
+// what its gate wrote, or its linear form over the values already reported;
+// the outputs are read from the final residual, as the block reads them.
+ch_interpret :: (plan:GgPlan,nodes:[]GgNode,inputs:[]int,values:[]int,read:[]int)->GgResult #export_c {
+    if plan.status!=GgStatus.ok {return GgResult.{status=plan.status};}
+    if nodes.count!=plan.nodes {return GgResult.{status=GgStatus.shape};}
+    if inputs.count!=plan.inputs || values.count<nodes.count || read.count<plan.outputs {return GgResult.{status=GgStatus.capacity};}
+    forms:[128]RaForm;v:[128]int;s:[64]int;s[0]=1;
+    for i:0..<nodes.count {forms[i]=gg_form_of(nodes,forms[..],i);}
+    for i:0..<nodes.count {if nodes[i].op==GgOp.input {s[plan.slot[i]]=inputs[nodes[i].k];}}
+    for layer_index:0..<plan.layers {
+        L:=layer_index+1;start:=s;
+        // Node 0 is always an input, so gates start at node 1.
+        for i:1..<nodes.count {
+            n:=nodes[i];
+            if gg_gate(n.op) && plan.layer[i]==L {
+                a:=ch_form(forms[n.a],plan,start[..]);x:int;
+                if n.op==GgOp.mul {x=a*ch_form(forms[n.b],plan,start[..]);}
+                if n.op==GgOp.relu {x=ch_relu(a);}
+                if n.op==GgOp.step {x=ch_relu(a)-ch_relu(a-1);}
+                if n.op==GgOp.eq0 {x=1-(ch_relu(a)-ch_relu(a-1))-(ch_relu(-a)-ch_relu(-a-1));}
+                if n.op==GgOp.select {b:=ch_form(forms[n.b],plan,start[..]);x=b+(a-b)*ch_relu(ch_form(forms[n.c],plan,start[..]));}
+                s[plan.slot[i]]+=x;v[i]=x;
+            }
+        }
+        for i:0..<nodes.count {if plan.clear[i]==L {s[plan.slot[i]]-=start[plan.slot[i]];}}
+    }
+    for i:0..<nodes.count {
+        n:=nodes[i];
+        if n.op==GgOp.input {v[i]=inputs[n.k];}
+        if n.op==GgOp.constant {v[i]=n.k;}
+        if n.op==GgOp.add {v[i]=v[n.a]+v[n.b];}
+        if n.op==GgOp.sub {v[i]=v[n.a]-v[n.b];}
+        if n.op==GgOp.scale {v[i]=v[n.a]*n.k;}
+        values[i]=v[i];
+    }
+    for k:0..<plan.outputs {
+        f:=plan.out[k];sum:=0;
+        for t:0..<f.count {sum+=f.coefs[t]*s[f.slots[t]];}
+        read[k]=sum;
+    }
+    return GgResult.{};
+}
+ch_relu :: (x:int)->int {return (x+cast(int)abs(f64(x)))/2;}
+// A form over base nodes, read through the plan's slots. Constants are k times slot 0.
+ch_form :: (f:RaForm,plan:GgPlan,s:[]int)->int {
+    sum:=0;
+    for t:0..<f.count {sum+=f.coefs[t]*s[plan.slot[f.slots[t]]];}
+    return sum;
+}
+// book:end interpret
+
+// book:begin run
+// One graph, three ways. The evaluator and the plan interpreter both report
+// every node, so a schedule bug names its first node; the block is compared on
+// the graph's real outputs only. Making every node an output would keep every
+// slot alive, and no slot would ever be reused: the probe would hide the bugs.
+ch_run :: (nodes:[]GgNode,outputs:[]int,inputs:[]int,fault:GgFault)->ChRun #export_c {
+    if nodes.count<1 || nodes.count>CH_GRAPH_NODES {return ChRun.{status=GgStatus.shape};}
+    every:[16]int;for i:1..<nodes.count {every[i]=i;}  // every[0] is already 0
+    want:[16]int;
+    e:=gg_eval(nodes,inputs,every[0..<nodes.count],want[..]);if e.status!=GgStatus.ok {return ChRun.{status=e.status,node=e.node};}
+    weights:[16384]f64;plan:=gg_compile_planted(nodes,outputs,weights[..],fault);
+    if plan.status!=GgStatus.ok {return ChRun.{status=plan.status,node=plan.node};}
+    planned:[128]int;read:[16]int;
+    #assert ch_interpret(plan,nodes,inputs,planned[..],read[..]).status==GgStatus.ok;
+    first:=ch_first_difference(planned[0..<nodes.count],want[0..<nodes.count]);
+    if first!=-1 {return ChRun.{where=ChWhere.schedule,node=first};}
+    for k:0..<outputs.count {if read[k]!=want[outputs[k]] {return ChRun.{where=ChWhere.schedule,node=outputs[k]};}}
+    got:[16]f64;
+    #assert gg_run(plan,weights[..],inputs,got[..],false,false)==GgStatus.ok;
+    for k:0..<outputs.count {if got[k]!=f64(read[k]) {return ChRun.{where=ChWhere.emission,node=outputs[k]};}}
+    return ChRun.{};
+}
+// The first index where two equally long lists differ, or -1.
+ch_first_difference :: (a:[]int,b:[]int)->int {
+    for i:0..<a.count {if a[i]!=b[i] {return i;}}
+    return -1;
+}
+// book:end run
+
+// book:begin generate
+// A seeded graph of at most 16 nodes: one to three inputs, then gates and
+// linear nodes over earlier nodes, with selects only on earlier bits.
+ch_next :: (x:int)->int {return (x*1103515245+12345)%2147483648;}
+ch_generate :: (seed:int,graph:int,nodes:[]GgNode)->int #export_c {
+    x:=ch_next((seed%65536)*65537+graph%65536);
+    x=ch_next(x);inputs:=1+x%3;count:=inputs;
+    for i:0..<inputs {nodes[i]=GgNode.{op=GgOp.input,k=i};}
+    x=ch_next(x);total:=inputs+4+x%(CH_GRAPH_NODES-inputs-3);
+    bits:[16]int;nbits:=0;
+    while count<total {
+        x=ch_next(x);pick:=x%12;
+        x=ch_next(x);a:=x%count;x=ch_next(x);b:=x%count;
+        n:=GgNode.{op=GgOp.relu,a=a};
+        if pick<2 {n=GgNode.{op=GgOp.mul,a=a,b=b};}
+        else if pick<4 {n=GgNode.{op=GgOp.step,a=a};}
+        else if pick<5 {n=GgNode.{op=GgOp.eq0,a=a};}
+        else if pick<7 && nbits>0 {x=ch_next(x);n=GgNode.{op=GgOp.select,a=a,b=b,c=bits[x%nbits]};}
+        else if pick<8 {n=GgNode.{op=GgOp.sub,a=a,b=b};}
+        else if pick<9 {n=GgNode.{op=GgOp.constant,k=x%7-3};}
+        nodes[count]=n;
+        if n.op==GgOp.step || n.op==GgOp.eq0 {bits[nbits]=count;nbits+=1;}
+        count+=1;
+    }
+    return count;
+}
+// book:end generate
+
+// book:begin differential
+// A whole case from a seed and an index: the graph, inputs from -100 to 100,
+// and two outputs (one chosen node and the last). Reproducible, so any catch
+// can be replayed.
+ch_case :: (seed:int,graph:int,nodes:[]GgNode)->ChCase #export_c {
+    c:ChCase;c.count=ch_generate(seed,graph,nodes);
+    x:=ch_next(seed*7919+graph);
+    for i:0..<c.count {if nodes[i].op==GgOp.input {x=ch_next(x);c.values[c.inputs]=x%201-100;c.inputs+=1;}}
+    x=ch_next(x);c.outputs[0]=x%(c.count-1);c.outputs[1]=c.count-1;
+    return c;
+}
+ch_count_ok :: (count:int)->bool {return count>=1 && count<=CH_RUNS_MAX;}
+// Run `count` cases with the given planted fault and stop at the first one
+// where the three paths disagree. Cases that cannot be compared (a value out
+// of range, a form too long) are skipped and counted, never taken as agreement.
+ch_differential :: (seed:int,count:int,fault:GgFault)->ChCatch #export_c {
+    if !ch_count_ok(count) {return ChCatch.{status=GgStatus.shape};}
+    result:ChCatch;nodes:[16]GgNode;
+    for g:0..<count {
+        c:=ch_case(seed,g,nodes[..]);
+        r:=ch_run(nodes[0..<c.count],c.outputs[..],c.values[0..<c.inputs],fault);
+        if r.status!=GgStatus.ok {result.skipped+=1;}
+        else {
+            result.graphs+=1;
+            if r.where!=ChWhere.none {result.caught=true;result.graph=g;result.node=r.node;result.where=r.where;return result;}
+        }
+    }
+    return result;
+}
+// book:end differential

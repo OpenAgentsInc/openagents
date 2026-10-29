@@ -46,9 +46,10 @@ run examples directly without the check command.
 | [166. Attention as exact memory](ch166-attention-as-exact-memory.md) | Runnable: bounded CPU, integer scores | Parabolic keys and hard-max reads return exactly the latest write or refuse; the machine with attention as its only memory reproduces the interpreter's digest. |
 | [167. Arithmetic and branches from ReLU](ch167-arithmetic-and-branches-from-relu.md) | Runnable: bounded CPU, binary64 and binary32 | A gated ReLU layer computes integer products, steps, equality and selection exactly within ±2²⁶ in binary64; binary32 only while products stay under 2²⁴. |
 | [168. Compile a gate graph into a block](ch168-compile-a-gate-graph-into-a-block.md) | Runnable: bounded CPU, binary64 | A gate language, its integer evaluator, a scheduler that reuses residual slots, and emitted weights whose forward pass reproduces the evaluator exactly. |
+| [169. A harness that catches the compiler](ch169-a-harness-that-catches-the-compiler.md) | Runnable: bounded CPU | Run every program through the evaluator, a plan interpreter and the weights; catch four planted compiler bugs and place each in the schedule or the emitter. |
 | [172. From hard-max to softmax](ch172-from-hard-max-to-softmax.md) | Runnable: bounded CPU, binary64/binary32/bfloat16 rounding | Prove softmax reads stay exact for any trace length once β ≥ ln(4V), and measure where binary32 and bfloat16 rounding breaks them. |
 
-Chapters 41–48 start an independent gpt-oss branch, and 165–168 and 172 open Part XXIII (programs compiled into weights); chapter 11 and chapters 13–40 remain planned.
+Chapters 41–48 start an independent gpt-oss branch, and 165–169 and 172 open Part XXIII (programs compiled into weights); chapter 11 and chapters 13–40 remain planned.
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
 sets the proposed full reading order: early Elephant/Mammoth and useful

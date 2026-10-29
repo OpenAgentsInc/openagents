@@ -76,15 +76,42 @@ def evaluate(nodes, inputs):
 
 
 def first_long_form(nodes, limit=8):
-    """The first node whose linear form needs more than `limit` terms: a gate or
-    input is one term, a constant one term, scale keeps its operand's count,
-    and add or sub concatenate. None when every form fits."""
-    terms = []
+    """The first node whose form needs more than `limit` distinct terms, or None.
+
+    A form maps base nodes (inputs, constants and gates, each its own base) to
+    coefficients; like terms merge and cancelled terms vanish. Gadgets build
+    forms of their own: step and equality add a constant term to their operand,
+    and select forms a - b. A sum that needs more than `limit` distinct terms
+    while it is being built is refused, even if later terms would cancel."""
+    forms = []
+
+    def plus(a, b):
+        r = dict(a)
+        for key, coef in b.items():
+            if key in r:
+                r[key] += coef
+            elif len(r) == limit:
+                return None
+            else:
+                r[key] = coef
+        return {key: coef for key, coef in r.items() if coef != 0}
+
     for i, (op, a, b, c, k) in enumerate(nodes):
-        n = terms[a] + terms[b] if op in ("add", "sub") else terms[a] if op == "scale" else 1
-        if n > limit:
+        if op in ("add", "sub"):
+            f = plus(forms[a], forms[b] if op == "add" else {key: -v for key, v in forms[b].items()})
+        elif op == "scale":
+            f = {key: v * k for key, v in forms[a].items()}
+        elif op == "constant":
+            f = {i: k}
+        else:
+            f = {i: 1}
+        if f is None:
             return i
-        terms.append(n)
+        if op in ("step", "eq0") and len(forms[a]) >= limit:
+            return i
+        if op == "select" and plus(forms[a], {key: -v for key, v in forms[b].items()}) is None:
+            return i
+        forms.append(f)
     return None
 
 
@@ -107,10 +134,29 @@ def random_graph(rng):
     return nodes, outputs
 
 
+def long_form_graphs():
+    """Graphs that reach the term limit on purpose: a nine-term sum, a step on a
+    full eight-term form, and a select whose a - b needs nine terms."""
+    def summed(n):
+        nodes = [("input", 0, 0, 0, k) for k in range(n)] + [("add", 0, 1, 0, 0)]
+        for i in range(2, n):
+            nodes.append(("add", len(nodes) - 1, i, 0, 0))
+        return nodes  # the last node sums x0..x(n-1)
+    nine = summed(9)  # node 16
+    eight = summed(8)  # node 14
+    step = eight + [("step", 14, 0, 0, 0)]
+    select = eight + [("relu", 0, 0, 0, 0), ("step", 0, 0, 0, 0), ("select", 14, 15, 16, 0)]
+    return [(nine, [16]), (step, [15]), (select, [17])]
+
+
 def graph_cases():
     rng = random.Random(168)
     cases = []
-    while len(cases) < 300:
+    for nodes, outputs in long_form_graphs():
+        n_inputs = sum(1 for n in nodes if n[0] == "input")
+        inputs = [rng.randint(-9, 9) for _ in range(n_inputs)]
+        cases.append((nodes, outputs, inputs, "terms", [first_long_form(nodes)]))
+    while len(cases) < 303:
         nodes, outputs = random_graph(rng)
         n_inputs = sum(1 for n in nodes if n[0] == "input")
         scale = rng.choice([3, 50, 3000, 2 ** 13])
@@ -126,6 +172,115 @@ def graph_cases():
     return cases
 
 
+def nxt(x):
+    return (x * 1103515245 + 12345) % 2147483648
+
+
+def harness_graph(seed, g):
+    """Chapter 169's generator, from its description: one to three inputs, then
+    gates and linear nodes over earlier nodes, at most 16 nodes in all."""
+    x = nxt((seed % 65536) * 65537 + g % 65536)
+    x = nxt(x)
+    n_inputs = 1 + x % 3
+    nodes = [("input", 0, 0, 0, i) for i in range(n_inputs)]
+    x = nxt(x)
+    total = n_inputs + 4 + x % (16 - n_inputs - 3)
+    bits = []
+    while len(nodes) < total:
+        count = len(nodes)
+        x = nxt(x)
+        pick = x % 12
+        x = nxt(x)
+        a = x % count
+        x = nxt(x)
+        b = x % count
+        n = ("relu", a, 0, 0, 0)
+        if pick < 2:
+            n = ("mul", a, b, 0, 0)
+        elif pick < 4:
+            n = ("step", a, 0, 0, 0)
+        elif pick < 5:
+            n = ("eq0", a, 0, 0, 0)
+        elif pick < 7 and bits:
+            x = nxt(x)
+            n = ("select", a, b, bits[x % len(bits)], 0)
+        elif pick < 8:
+            n = ("sub", a, b, 0, 0)
+        elif pick < 9:
+            n = ("constant", 0, 0, 0, x % 7 - 3)
+        nodes.append(n)
+        if n[0] in ("step", "eq0"):
+            bits.append(count)
+    return nodes
+
+
+def harness_case(seed, g):
+    nodes = harness_graph(seed, g)
+    x = nxt(seed * 7919 + g)
+    values = []
+    for n in nodes:
+        if n[0] == "input":
+            x = nxt(x)
+            values.append(x % 201 - 100)
+    x = nxt(x)
+    return nodes, values, [x % (len(nodes) - 1), len(nodes) - 1]
+
+
+def harness_skipped(seed, count):
+    """Cases the harness cannot compare: a value out of range, or a form too long."""
+    skipped = 0
+    for g in range(count):
+        nodes, values, _ = harness_case(seed, g)
+        if evaluate(nodes, values)[0] != "ok" or first_long_form(nodes) is not None:
+            skipped += 1
+    return skipped
+
+
+HARNESS_PINS = [(1, 0), (1, 1), (1, 7), (2, 0), (3, 694), (7, 0), (7, 1), (8, 0), (20, 999), (65535, 3),
+                (65536, 0), (65537, 2), (1, 65536), (2, 65538)]
+
+
+def harness_coax():
+    lines = ["// Generated by psionic/tests/gate_oracle.py --harness; chapter 169's cases from its description.",
+             "HV_SKIPPED_SEED1_40 :: %d;" % harness_skipped(1, 40),
+             "HV_SKIPPED_SEED11_40 :: %d;" % harness_skipped(11, 40)]
+    for seed, g in HARNESS_PINS:
+        nodes, values, outputs = harness_case(seed, g)
+        lines.append('#test "independent harness case seed %d index %d" {' % (seed, g))
+        # Start from nodes that are not inputs, so a skipped write cannot pass as one.
+        lines.append("    nodes:[16]GgNode;for i:0..<16 {nodes[i]=GgNode.{op=GgOp.relu,a=5,k=9};}")
+        lines.append("    c:=ch_case(%d,%d,nodes[..]);" % (seed, g))
+        lines.append("    #assert c.count==%d && c.inputs==%d && c.outputs[0]==%d && c.outputs[1]==%d;" % (
+            len(nodes), len(values), outputs[0], outputs[1]))
+        for i, v in enumerate(values):
+            lines.append("    #assert c.values[%d]==%d;" % (i, v))
+        for i, (op, a, b, c, k) in enumerate(nodes):
+            lines.append("    #assert nodes[%d].op==GgOp.%s && nodes[%d].a==%d && nodes[%d].b==%d && nodes[%d].c==%d && nodes[%d].k==%d;" % (
+                i, op, i, a, i, b, i, c, i, k))
+        lines.append("}")
+    return "\n".join(lines) + "\n"
+
+
+def harness_header():
+    lines = ["/* Generated by psionic/tests/gate_oracle.py --harness-header; do not edit. */",
+             "#include <stdint.h>",
+             "typedef struct { int seed, graph, count, inputs; int op[16], a[16], b[16], c[16]; int64_t k[16];",
+             "  int64_t values[3]; int outputs[2]; } harness_case;",
+             "static const harness_case harness_cases[] = {"]
+    for seed in range(1, 4):
+        for g in range(300):
+            nodes, values, outputs = harness_case(seed, g)
+            col = lambda j: ",".join(str(n[j]) for n in nodes)
+            lines.append("  {%d, %d, %d, %d, {%s}, {%s}, {%s}, {%s}, {%s}, {%s}, {%d, %d}}," % (
+                seed, g, len(nodes), len(values), ",".join(str(OPS.index(n[0])) for n in nodes),
+                col(1), col(2), col(3), ",".join("%dLL" % n[4] for n in nodes),
+                ",".join("%dLL" % v for v in values), outputs[0], outputs[1]))
+    lines.append("};")
+    lines.append("static const int harness_skipped[21] = {0%s};" % "".join(
+        ", %d" % harness_skipped(seed, 1000) for seed in range(1, 21)))
+    return "\n".join(lines)
+
+
 def header():
     lines = ["/* Generated by psionic/tests/gate_oracle.py; do not edit. */",
              "#include <stdint.h>",
@@ -135,7 +290,7 @@ def header():
         lines.append("  {%d, %dLL, %dLL, %dLL, %d, %r}," % (GADGETS.index(g), a, b, c, int(single), want))
     lines.append("};")
     lines.append("typedef struct { int n; int op[24]; int a[24]; int b[24]; int c[24]; int64_t k[24];")
-    lines.append("  int outputs; int out[3]; int inputs; int64_t in[4]; int ok; int64_t want[3]; } graph_case;")
+    lines.append("  int outputs; int out[3]; int inputs; int64_t in[9]; int ok; int64_t want[3]; } graph_case;")
     lines.append("static const graph_case graph_cases[] = {")
     for nodes, outputs, inputs, status, want in graph_cases():
         col = lambda j: ",".join(str(n[j]) for n in nodes)
@@ -151,6 +306,12 @@ def header():
 def main():
     if sys.argv[1:] == ["--header"]:
         print(header())
+        return
+    if sys.argv[1:] == ["--harness"]:
+        sys.stdout.write(harness_coax())
+        return
+    if sys.argv[1:] == ["--harness-header"]:
+        print(harness_header())
         return
     graphs = graph_cases()
     count = lambda name: sum(1 for g in graphs if g[3] == name)

@@ -85,18 +85,32 @@ weights can then be measured in both formats, as chapter 172 did for attention.
 ## Units from linear forms
 
 A unit reads two linear forms over residual slots. Slot 0 always holds 1, so
-a form can include a constant. A unit adds `scale × value × ReLU(gate)` to one
-target slot.
+a form can include a constant. Adding two forms merges terms on the same slot
+and drops terms that cancel, so `x − x` is the empty form. A unit adds
+`scale × value × ReLU(gate)` to one target slot.
 
 <!-- source: psionic/lib/relu-arith.coax forms -->
 ```jai
 ra_term :: (slot:int,coef:int)->RaForm {f:RaForm;f.count=1;f.slots[0]=slot;f.coefs[0]=coef;return f;}
 ra_one :: ()->RaForm {return ra_term(0,1);}
+// Terms on the same slot merge and terms that cancel are dropped, so x - x is
+// the empty form. A sum that needs more than eight distinct slots at any point
+// is refused (count -1).
 ra_plus :: (a:RaForm,b:RaForm)->RaForm {
     r:=a;
-    if a.count<0 || b.count<0 || a.count+b.count>RA_TERMS {r.count=-1;return r;}
-    for i:0..<b.count {r.slots[a.count+i]=b.slots[i];r.coefs[a.count+i]=b.coefs[i];}
-    r.count=a.count+b.count;return r;
+    if a.count<0 || b.count<0 {r.count=-1;return r;}
+    for i:0..<b.count {
+        found:=-1;
+        for j:0..<r.count {if r.slots[j]==b.slots[i] {found=j;}}
+        if found>=0 {r.coefs[found]+=b.coefs[i];}
+        else {
+            if r.count==RA_TERMS {r.count=-1;return r;}
+            r.slots[r.count]=b.slots[i];r.coefs[r.count]=b.coefs[i];r.count+=1;
+        }
+    }
+    kept:=0;
+    for j:0..<r.count {if r.coefs[j]!=0 {r.slots[kept]=r.slots[j];r.coefs[kept]=r.coefs[j];kept+=1;}}
+    r.count=kept;return r;
 }
 ra_neg :: (a:RaForm)->RaForm {r:=a;for i:0..<a.count {r.coefs[i]=-a.coefs[i];}return r;}
 ```
@@ -207,10 +221,11 @@ its type rule allows only a step or an equality as a condition.
   `struct` rounding. The native harness [gate.c](../tests/gate.c) agrees on
   every one, plain and under ASan/UBSan, in debug and release, and also checks
   NaN and infinity refusals.
-- **Mutation testing** of `relu-arith.coax` kills all 274 mutants. The first
+- **Mutation testing** of `relu-arith.coax` kills all 295 mutants. The first
   run left 44 survivors, almost all in checks that couldn't tell a misplaced
   unit from a correct one. The fix was to size each gadget's layer to exactly
-  its units, so a misplaced unit fails outright.
+  its units, so a misplaced unit fails outright. Merging like terms came later,
+  after chapter 169's harness found a form that grew without it.
 
 The [verification record](../../docs/verification/psionic-ch167-168-2026-10-29.md)
 has the commands and results.

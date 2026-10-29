@@ -8,7 +8,12 @@ GgNode :: struct {op:GgOp;a:int;b:int;c:int;k:int;}
 GgStatus :: enum u8 {ok;shape;operand;type;range;layers;width;units;terms;capacity;alias;}
 // `node` names the refusing node, or the layer for a units refusal.
 GgResult :: struct {status:GgStatus;node:int;}
-GgPlan :: struct {status:GgStatus;node:int;layers:int;width:int;units:[32]int;weights:int;values:int;inputs:int;outputs:int;out:[16]RaForm;}
+// The plan also records each node's layer, slot and the layer that clears its
+// slot (0: never), so chapter 169's interpreter can execute the schedule itself.
+GgPlan :: struct {status:GgStatus;node:int;layers:int;width:int;units:[32]int;weights:int;values:int;inputs:int;outputs:int;out:[16]RaForm;
+    nodes:int;layer:[128]int;slot:[128]int;clear:[128]int;}
+// Deliberate compiler bugs for chapter 169's harness; production code passes none.
+GgFault :: enum u8 {none;early_reuse;same_layer;no_clear;clear_sign;}
 
 GG_NODES_MAX :: 128;
 GG_LAYERS_MAX :: 32;
@@ -137,14 +142,80 @@ GG_COEF_SUM_MAX :: 134217728;  // 2^27: with values within 2^26, every partial s
     o1:=[1]int.[2];
     #assert gg_compile(sq[0..<30],o1[..],w[..]).weights==5046;
     #assert gg_compile(sq[0..<30],o1[..],w[0..<5045]).status==GgStatus.capacity;
-    // More than eight terms in one linear form.
-    sum:[12]GgNode;sum[0]=GgNode.{op=GgOp.input,k=0};for i:1..<12 {sum[i]=GgNode.{op=GgOp.add,a=i-1,b=0};}
-    o[0]=7;#assert gg_compile(sum[0..<8],o[..],w[..]).status==GgStatus.ok;
-    o[0]=8;rr:=gg_compile(sum[0..<9],o[..],w[..]);#assert rr.status==GgStatus.terms && rr.node==8;
+    // More than eight distinct terms in one linear form: x0 + ... + x8 over nine inputs.
+    sum:[17]GgNode;for i:0..<9 {sum[i]=GgNode.{op=GgOp.input,k=i};}
+    sum[9]=GgNode.{op=GgOp.add,a=0,b=1};for i:10..<17 {sum[i]=GgNode.{op=GgOp.add,a=i-1,b=i-8};}
+    o[0]=15;#assert gg_compile(sum[0..<16],o[..],w[..]).status==GgStatus.ok;
+    o[0]=16;rr:=gg_compile(sum[..],o[..],w[..]);#assert rr.status==GgStatus.terms && rr.node==16;
+    // Repeating a term merges it instead of adding one: x + x + ... stays one term.
+    rep:[12]GgNode;rep[0]=GgNode.{op=GgOp.input,k=0};for i:1..<12 {rep[i]=GgNode.{op=GgOp.add,a=i-1,b=0};}
+    o[0]=11;#assert gg_compile(rep[..],o[..],w[..]).status==GgStatus.ok;
     // Coefficients whose sum could overflow binary64's exact range.
     big:=[3]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.scale,a=0,k=RA_VALUE_MAX},GgNode.{op=GgOp.scale,a=1,k=3}];
     o[0]=1;#assert gg_compile(big[0..<2],o[..],w[..]).status==GgStatus.ok;
     o[0]=2;#assert gg_compile(big[..],o[..],w[..]).status==GgStatus.range;
+}
+#test "gadget forms must fit as well as node forms" {
+    // Eight distinct terms are a full form: a step on it would need a ninth for its constant.
+    full:[16]GgNode;for i:0..<8 {full[i]=GgNode.{op=GgOp.input,k=i};}
+    full[8]=GgNode.{op=GgOp.add,a=0,b=1};
+    for i:2..<8 {full[7+i]=GgNode.{op=GgOp.add,a=6+i,b=i};}
+    // full[14] is x0 + ... + x7, eight terms.
+    full[15]=GgNode.{op=GgOp.step,a=14};o:=[1]int.[15];w:[8192]f64;
+    r:=gg_compile(full[..],o[..],w[..]);#assert r.status==GgStatus.terms && r.node==15;
+    full[15]=GgNode.{op=GgOp.eq0,a=14};#assert gg_compile(full[..],o[..],w[..]).status==GgStatus.terms;
+    full[15]=GgNode.{op=GgOp.relu,a=14};#assert gg_compile(full[..],o[..],w[..]).status==GgStatus.ok;
+    full[15]=GgNode.{op=GgOp.step,a=13};#assert gg_compile(full[..],o[..],w[..]).status==GgStatus.ok;
+    // select(c, a, b) forms a - b: x0..x7 minus a distinct node needs nine terms.
+    s:[18]GgNode;for i:0..<16 {s[i]=full[i];}
+    s[15]=GgNode.{op=GgOp.relu,a=0};s[16]=GgNode.{op=GgOp.step,a=0};s[17]=GgNode.{op=GgOp.select,c=16,a=14,b=15};
+    o[0]=17;#assert gg_compile(s[..],o[..],w[..]).status==GgStatus.terms;
+    // Minus a node already in the form, it merges and fits.
+    s[17]=GgNode.{op=GgOp.select,c=16,a=14,b=0};#assert gg_compile(s[..],o[..],w[..]).status==GgStatus.ok;
+    // x - x is empty, so it costs no terms at all.
+    z:=[3]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.sub,a=0,b=0},GgNode.{op=GgOp.relu,a=1}];o1:=[1]int.[2];
+    pz:=gg_compile(z[..],o1[..],w[..]);inputs:=[1]int.[5];got:[1]f64;
+    #assert pz.status==GgStatus.ok && gg_run(pz,w[..],inputs[..],got[..],false,false)==GgStatus.ok && got[0]==0;
+}
+#test "each planted fault changes the plan or the weights, and only that" {
+    // x, r1 = relu(x), r2 = relu(r1), r3 = relu(r2), m = r1 * r3: r1 is read in layers 2 and 4.
+    g:=[5]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.relu,a=0},GgNode.{op=GgOp.relu,a=1},
+        GgNode.{op=GgOp.relu,a=2},GgNode.{op=GgOp.mul,a=1,b=3}];
+    outs:=[1]int.[4];w:[4096]f64;inputs:=[1]int.[3];got:[1]f64;
+    honest:=gg_compile(g[..],outs[..],w[..]);
+    #assert honest.status==GgStatus.ok && honest.layers==4 && honest.layer[1]==1 && honest.layer[4]==4;
+    #assert honest.clear[0]==1 && honest.clear[1]==4 && honest.clear[2]==3 && honest.clear[3]==4 && honest.clear[4]==0;
+    #assert gg_run(honest,w[..],inputs[..],got[..],false,false)==GgStatus.ok && got[0]==9;
+    // Same layer: each relu lands in its operand's layer, so the chain collapses to one layer.
+    same:=gg_compile_planted(g[..],outs[..],w[..],GgFault.same_layer);
+    #assert same.status==GgStatus.ok && same.layer[1]==1 && same.layer[2]==1 && same.layer[3]==1 && same.layer[4]==1;
+    #assert gg_run(same,w[..],inputs[..],got[..],false,false)==GgStatus.ok && got[0]!=9;
+    // No clear: the plan clears nothing and every layer is one unit lighter where a clear was.
+    stale:=gg_compile_planted(g[..],outs[..],w[..],GgFault.no_clear);
+    for i:0..<5 {#assert stale.clear[i]==0;}
+    #assert stale.units[0]==honest.units[0]-1 && stale.units[3]==honest.units[3]-2;
+    #assert gg_run(stale,w[..],inputs[..],got[..],false,false)==GgStatus.ok && got[0]!=9;
+    // Clear sign: the same plan, but clearing adds instead of subtracting.
+    sign:=gg_compile_planted(g[..],outs[..],w[..],GgFault.clear_sign);
+    for i:0..<5 {#assert sign.clear[i]==honest.clear[i] && sign.slot[i]==honest.slot[i] && sign.layer[i]==honest.layer[i];}
+    #assert gg_run(sign,w[..],inputs[..],got[..],false,false)==GgStatus.ok && got[0]!=9;
+    // Early reuse: r1's slot is handed out in layer 3, a layer before its last reader.
+    early:=gg_compile_planted(g[..],outs[..],w[..],GgFault.early_reuse);
+    #assert early.clear[1]==4 && early.slot[3]==early.slot[1] && honest.slot[3]!=honest.slot[1];
+    #assert gg_run(early,w[..],inputs[..],got[..],false,false)==GgStatus.ok && got[0]!=9;
+    // An input read only in layer 2 is released in layer 1, where a gate takes its slot.
+    late:=[4]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.constant,k=2},GgNode.{op=GgOp.relu,a=1},GgNode.{op=GgOp.mul,a=0,b=2}];
+    o3:=[1]int.[3];pl:=gg_compile(late[..],o3[..],w[..]);
+    #assert gg_run(pl,w[..],inputs[..],got[..],false,false)==GgStatus.ok && got[0]==6;
+    pe:=gg_compile_planted(late[..],o3[..],w[..],GgFault.early_reuse);
+    #assert pe.slot[2]==pe.slot[0] && pl.slot[2]!=pl.slot[0];
+    #assert gg_run(pe,w[..],inputs[..],got[..],false,false)==GgStatus.ok && got[0]!=6;
+    // The plan records every node, starting with node 0.
+    #assert honest.nodes==5 && honest.slot[0]==1 && pl.nodes==4 && pl.slot[0]==1;
+    // A node read only in the layer after its own is never released early.
+    short:=[3]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.relu,a=0},GgNode.{op=GgOp.relu,a=1}];o2:=[1]int.[2];
+    ps:=gg_compile_planted(short[..],o2[..],w[..],GgFault.early_reuse);
+    #assert gg_run(ps,w[..],inputs[..],got[..],false,false)==GgStatus.ok && got[0]==3;
 }
 #test "units per layer are bounded" {
     w:[40000]f64;g:[70]GgNode;g[0]=GgNode.{op=GgOp.input,k=0};g[1]=GgNode.{op=GgOp.input,k=1};
@@ -250,9 +321,11 @@ GG_COEF_SUM_MAX :: 134217728;  // 2^27: with values within 2^26, every partial s
     inputs=[2]int.[RA_VALUE_MAX,-1];#assert gg_run(plan,w[..],inputs[..],got[..],false,false)==GgStatus.ok && got[0]==-f64(RA_VALUE_MAX);
     inputs=[2]int.[-RA_VALUE_MAX,1];#assert gg_run(plan,w[..],inputs[..],got[..],false,false)==GgStatus.ok;
     // Coefficient sums at 2^27 compile; one more is refused.
-    k:=[4]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.scale,a=0,k=-RA_VALUE_MAX},GgNode.{op=GgOp.scale,a=1,k=2},GgNode.{op=GgOp.add,a=2,b=0}];
+    // (Adding x itself would merge into -2^27 + 1, which fits; a second input does not merge.)
+    k:=[5]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.scale,a=0,k=-RA_VALUE_MAX},GgNode.{op=GgOp.scale,a=1,k=2},
+        GgNode.{op=GgOp.input,k=1},GgNode.{op=GgOp.add,a=2,b=3}];
     o1[0]=2;#assert gg_compile(k[0..<3],o1[..],w[..]).status==GgStatus.ok;
-    o1[0]=3;rr:=gg_compile(k[..],o1[..],w[..]);#assert rr.status==GgStatus.range && rr.node==3;
+    o1[0]=4;rr:=gg_compile(k[..],o1[..],w[..]);#assert rr.status==GgStatus.range && rr.node==4;
 }
 #test "128 units fit in a layer and 129 do not" {
     w:[40000]f64;
@@ -365,6 +438,9 @@ gg_operand :: (n:GgNode,which:int)->int {
     return n.a;
 }
 gg_compile :: (nodes:[]GgNode,outputs:[]int,weights:[]f64)->GgPlan #export_c {
+    return gg_compile_planted(nodes,outputs,weights,GgFault.none);
+}
+gg_compile_planted :: (nodes:[]GgNode,outputs:[]int,weights:[]f64,fault:GgFault)->GgPlan #export_c {
     admitted:=gg_admit(nodes,outputs);
     if admitted.status!=GgStatus.ok {return GgPlan.{status=admitted.status,node=admitted.node};}
     forms:[128]RaForm;layer:[128]int;last:[128]int;slot:[128]int;kept:[128]bool;
@@ -376,10 +452,16 @@ gg_compile :: (nodes:[]GgNode,outputs:[]int,weights:[]f64)->GgPlan #export_c {
         if forms[i].count==-1 {return GgPlan.{status=GgStatus.terms,node=i};}
         if gg_coef_sum(forms[i])>f64(GG_COEF_SUM_MAX) {return GgPlan.{status=GgStatus.range,node=i};}
         if n.op==GgOp.input {plan.inputs+=1;}
+        // A gadget builds forms of its own: step and equality add a constant term,
+        // select forms a - b. Those must fit too, or the gate is refused here.
+        if (n.op==GgOp.step || n.op==GgOp.eq0) && forms[n.a].count>=RA_TERMS {return GgPlan.{status=GgStatus.terms,node=i};}
+        if n.op==GgOp.select && ra_plus(forms[n.a],ra_neg(forms[n.b])).count==-1 {return GgPlan.{status=GgStatus.terms,node=i};}
         if gg_gate(n.op) {
             deepest:=0;
             for which:0..<gg_arity(n.op) {deepest=gg_max(deepest,gg_layer_of(forms[gg_operand(n,which)],layer[..]));}
-            layer[i]=deepest+1;
+            // Planted: a gate placed in its deepest operand's own layer reads it before it is written.
+            next:=1;if fault==GgFault.same_layer && deepest>=1 {next=0;}
+            layer[i]=deepest+next;
             if layer[i]>GG_LAYERS_MAX {return GgPlan.{status=GgStatus.layers,node=i};}
             plan.layers=gg_max(plan.layers,layer[i]);
         }
@@ -398,13 +480,23 @@ gg_compile :: (nodes:[]GgNode,outputs:[]int,weights:[]f64)->GgPlan #export_c {
         }
     }
     for o:outputs {f:=forms[o];for t:0..<f.count {kept[f.slots[t]]=true;}}
+    // Clearing: in the layer of the last reader, for slots that are not kept.
+    // Planted: a slot handed out one layer early, or never cleared, or cleared with the wrong sign.
+    release:[128]int;
+    for i:0..<nodes.count {
+        if last[i]>=1 && !kept[i] {
+            release[i]=last[i];plan.clear[i]=last[i];
+            if fault==GgFault.early_reuse && last[i]>=2 {release[i]=last[i]-1;}
+            if fault==GgFault.no_clear {plan.clear[i]=0;}
+        }
+    }
     // Slots: 0 holds the constant one, then inputs in order, then gates by layer.
     // A slot is freed in the layer of its node's last reader; 0 means none chosen.
     free:[64]bool;plan.width=1;
     for i:0..<nodes.count {if nodes[i].op==GgOp.input {slot[i]=plan.width;plan.width+=1;plan.values+=1;}}
     for layer_index:0..<plan.layers {
         L:=layer_index+1;
-        for i:0..<nodes.count {if last[i]==L && !kept[i] {free[slot[i]]=true;}}
+        for i:0..<nodes.count {if release[i]==L {free[slot[i]]=true;}}
         for i:1..<nodes.count {
             if layer[i]==L && gg_gate(nodes[i].op) {
                 plan.values+=1;chosen:=0;
@@ -420,7 +512,7 @@ gg_compile :: (nodes:[]GgNode,outputs:[]int,weights:[]f64)->GgPlan #export_c {
     // Units per layer: each gate's units, plus one to clear each freed slot.
     for i:0..<nodes.count {
         if gg_gate(nodes[i].op) {plan.units[layer[i]-1]+=gg_units(nodes[i].op);}
-        if last[i]>=1 && !kept[i] {plan.units[last[i]-1]+=1;}
+        if plan.clear[i]>=1 {plan.units[plan.clear[i]-1]+=1;}
     }
     for L:0..<plan.layers {
         if plan.units[L]>RA_UNITS_MAX {return GgPlan.{status=GgStatus.units,node=L};}
@@ -444,12 +536,17 @@ gg_compile :: (nodes:[]GgNode,outputs:[]int,weights:[]f64)->GgPlan #export_c {
             }
         }
         for i:0..<nodes.count {
-            if last[i]==L && !kept[i] {#assert ra_unit(w,plan.width,units,u,ra_term(slot[i],1),ra_one(),slot[i],-1);u+=1;}
+            if plan.clear[i]==L {
+                sign:=-1;if fault==GgFault.clear_sign {sign=-sign;}
+                #assert ra_unit(w,plan.width,units,u,ra_term(slot[i],1),ra_one(),slot[i],sign);u+=1;
+            }
         }
         #assert u==units;
         base+=ra_weight_count(plan.width,units);
     }
     for k:0..<outputs.count {plan.out[k]=gg_slots(forms[outputs[k]],slot[..]);}
+    plan.nodes=nodes.count;
+    for i:0..<nodes.count {plan.layer[i]=layer[i];plan.slot[i]=slot[i];}
     return plan;
 }
 gg_units :: (op:GgOp)->int {

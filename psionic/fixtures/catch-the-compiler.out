@@ -1,0 +1,6 @@
+the honest compiler: 99590 graphs over 100 seeds, 0 disagreements
+reuse a slot a layer early: caught in 100 of 100 seeds by graph 6 at the latest; schedule 100, emission 0
+run a gate in its operand's layer: caught in 100 of 100 seeds by graph 4 at the latest; schedule 100, emission 0
+never clear a reused slot: caught in 100 of 100 seeds by graph 5 at the latest; schedule 100, emission 0
+clear with the wrong sign: caught in 100 of 100 seeds by graph 9 at the latest; schedule 0, emission 100
+first catch for a missing clear, seed 1: graph 0, node 4, in the schedule

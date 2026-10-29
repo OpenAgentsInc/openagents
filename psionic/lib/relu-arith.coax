@@ -69,12 +69,19 @@ RA_EXACT_MAX :: 9007199254740992;  // 2^53: every integer up to here is a binary
     #assert ra_gadget(RaGadget.select,2,3,0,false)==6 && ra_gadget(RaGadget.select,-1,3,0,false)==0;
 }
 #test "forms combine, negate and refuse more than eight terms" {
+    #assert ra_term(3,5).count==1 && ra_term(3,5).slots[0]==3 && ra_term(3,5).coefs[0]==5 && ra_one().count==1;
     a:=ra_term(1,2);b:=ra_plus(a,ra_term(2,-3));
     #assert b.count==2 && b.slots[1]==2 && b.coefs[1]==-3;
     n:=ra_neg(b);#assert n.count==2 && n.coefs[0]==-2 && n.coefs[1]==3;
     f:=ra_term(0,1);for i:0..<7 {f=ra_plus(f,ra_term(i+1,1));}
-    #assert f.count==8 && ra_plus(f,ra_term(1,1)).count==-1 && ra_plus(ra_plus(f,ra_term(1,1)),a).count==-1;
-    #assert ra_plus(a,ra_plus(f,ra_term(1,1))).count==-1;
+    #assert f.count==8 && ra_plus(f,ra_term(8,1)).count==-1 && ra_plus(ra_plus(f,ra_term(8,1)),a).count==-1;
+    #assert ra_plus(a,ra_plus(f,ra_term(8,1))).count==-1;
+    // Like terms merge, even in a full form; cancelled terms disappear.
+    m:=ra_plus(f,ra_term(1,4));#assert m.count==8 && m.coefs[1]==5 && m.slots[1]==1;
+    gone:=ra_plus(f,ra_term(0,-1));#assert gone.count==7 && gone.slots[0]==1 && gone.coefs[0]==1 && gone.slots[6]==7;
+    #assert ra_plus(a,ra_neg(a)).count==0 && ra_plus(ra_plus(a,ra_neg(a)),ra_term(8,1)).count==1;
+    last:=ra_plus(b,ra_term(2,3));#assert last.count==1 && last.slots[0]==1 && last.coefs[0]==2;
+    first:=ra_plus(b,ra_term(1,-2));#assert first.count==1 && first.slots[0]==2 && first.coefs[0]==-3;
     // Appending two terms after one lands them at positions 1 and 2.
     c:=ra_plus(ra_term(5,7),b);#assert c.count==3 && c.slots[0]==5 && c.slots[1]==1 && c.slots[2]==2 && c.coefs[1]==2 && c.coefs[2]==-3;
     empty:RaForm;e:=ra_plus(empty,a);#assert e.count==1 && e.slots[0]==1 && ra_plus(a,empty).count==1;
@@ -146,11 +153,24 @@ ra_forward :: (width:int,units:int,w:[]f64,x:[]f64,out:[]f64,single:bool,overlap
 // book:begin forms
 ra_term :: (slot:int,coef:int)->RaForm {f:RaForm;f.count=1;f.slots[0]=slot;f.coefs[0]=coef;return f;}
 ra_one :: ()->RaForm {return ra_term(0,1);}
+// Terms on the same slot merge and terms that cancel are dropped, so x - x is
+// the empty form. A sum that needs more than eight distinct slots at any point
+// is refused (count -1).
 ra_plus :: (a:RaForm,b:RaForm)->RaForm {
     r:=a;
-    if a.count<0 || b.count<0 || a.count+b.count>RA_TERMS {r.count=-1;return r;}
-    for i:0..<b.count {r.slots[a.count+i]=b.slots[i];r.coefs[a.count+i]=b.coefs[i];}
-    r.count=a.count+b.count;return r;
+    if a.count<0 || b.count<0 {r.count=-1;return r;}
+    for i:0..<b.count {
+        found:=-1;
+        for j:0..<r.count {if r.slots[j]==b.slots[i] {found=j;}}
+        if found>=0 {r.coefs[found]+=b.coefs[i];}
+        else {
+            if r.count==RA_TERMS {r.count=-1;return r;}
+            r.slots[r.count]=b.slots[i];r.coefs[r.count]=b.coefs[i];r.count+=1;
+        }
+    }
+    kept:=0;
+    for j:0..<r.count {if r.coefs[j]!=0 {r.slots[kept]=r.slots[j];r.coefs[kept]=r.coefs[j];kept+=1;}}
+    r.count=kept;return r;
 }
 ra_neg :: (a:RaForm)->RaForm {r:=a;for i:0..<a.count {r.coefs[i]=-a.coefs[i];}return r;}
 // book:end forms

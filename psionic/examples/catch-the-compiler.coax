@@ -1,0 +1,22 @@
+#import "Basic";
+#load "../lib/compiler-harness.coax";
+
+// book:begin example
+main :: () {
+    names:=[5]string.["the honest compiler","reuse a slot a layer early","run a gate in its operand's layer","never clear a reused slot","clear with the wrong sign"];
+    for f:0..<5 {
+        caught:=0;schedule:=0;emission:=0;latest:=0;graphs:=0;
+        for seed:1..<101 {
+            c:=ch_differential(seed,1000,cast(GgFault)f);graphs+=c.graphs;
+            if c.caught {
+                caught+=1;if c.graph>latest {latest=c.graph;}
+                if c.where==ChWhere.schedule {schedule+=1;} else {emission+=1;}
+            }
+        }
+        if f==0 {print("%: % graphs over 100 seeds, % disagreements\n",names[f],graphs,caught);}
+        else {print("%: caught in % of 100 seeds by graph % at the latest; schedule %, emission %\n",names[f],caught,latest+1,schedule,emission);}
+    }
+    c:=ch_differential(1,1000,GgFault.no_clear);
+    print("first catch for a missing clear, seed 1: graph %, node %, in the %\n",c.graph,c.node,c.where);
+}
+// book:end example

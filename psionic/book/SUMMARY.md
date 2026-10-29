@@ -34,6 +34,7 @@
 - [166. Attention as exact memory](ch166-attention-as-exact-memory.md)
 - [167. Arithmetic and branches from ReLU](ch167-arithmetic-and-branches-from-relu.md)
 - [168. Compile a gate graph into a block](ch168-compile-a-gate-graph-into-a-block.md)
+- [169. A harness that catches the compiler](ch169-a-harness-that-catches-the-compiler.md)
 - [172. From hard-max to softmax](ch172-from-hard-max-to-softmax.md)
 
 Proposed: [full table of contents and prerequisites](PLAN.md), from early

@@ -290,6 +290,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/catch-the-compiler.coax",
+      "chapter": "psionic/book/ch169-a-harness-that-catches-the-compiler.md",
+      "stdout": "psionic/fixtures/catch-the-compiler.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

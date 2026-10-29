@@ -26,7 +26,8 @@ and a finite-schema tool round trip. Chapters
 trace machine and attention as exact memory,
 [167](ch167-arithmetic-and-branches-from-relu.md) and
 [168](ch168-compile-a-gate-graph-into-a-block.md) compile exact arithmetic into
-feed-forward weights, and
+feed-forward weights, [169](ch169-a-harness-that-catches-the-compiler.md) catches
+planted compiler bugs, and
 [172](ch172-from-hard-max-to-softmax.md) measures when a floating-point softmax
 keeps that memory exact. **GPU execution and useful throughput are
 not complete.** The device sequence below is the next GPT-OSS delivery path.
@@ -616,7 +617,7 @@ is computation inside a model that can be verified, not a faster computer.
 | [166. Attention as exact memory](ch166-attention-as-exact-memory.md) — runnable | Keys placed on a parabola and a hard-max read that returns exactly the matching entry, latest write winning, with cumulative sums from uniform keys; a near miss is a typed refusal, checked against a map oracle on generated read and write streams. |
 | [167. Arithmetic and branches from ReLU](ch167-arithmetic-and-branches-from-relu.md) — runnable | Products, step-function conditionals and residual wiring that are exact inside a checked integer range (64-bit integers, then binary64 within 2^53) and refused outside it. |
 | [168. Compile a gate graph into a block](ch168-compile-a-gate-graph-into-a-block.md) — runnable | A small gate-graph language and its evaluator, a scheduler that packs gates into layers and reuses residual slots, and weights emitted for an exact block profile: chapter 6's residual stream and gated feed-forward layer without normalization, with ReLU gating, in binary64 (RMSNorm and SiLU cannot be exact, and chapter 172 rules out narrower formats). The block's forward pass must reproduce the evaluator bit for bit. |
-| 169. A harness that catches the compiler | A seeded differential run over hundreds of generated graphs across the evaluator, the compiled weights and the interpreter, which must catch the two compiler bugs the pre-reset harness found (cumulative sums reordered across layers; same-step writes resolved in schedule order instead of program order) as planted mutants. |
+| [169. A harness that catches the compiler](ch169-a-harness-that-catches-the-compiler.md) — runnable | A seeded differential run over generated graphs across the evaluator, a plan interpreter and the compiled weights, which catches planted compiler bugs in the families the pre-reset harness found (same-step writes resolved in schedule order: early reuse and same-layer scheduling; accumulation across layers: a missing or wrong-signed clear) and places each in the schedule or the emitter. |
 | 170. An interpreter in weights, or one program in weights | A universal interpreter compiled once, against a single program baked into weights (the first Futamura projection, growing with the program's length); sizes and steps per second for both, always beside the native interpreter's. |
 | 171. Decode in logarithmic time | A convex-hull lookup that replaces the linear scan over the trace, checked equal to it with comparison counts; wall-clock figures come only from running the weights, never from an interpreter standing in for them. |
 | [172. From hard-max to softmax](ch172-from-hard-max-to-softmax.md) — runnable | The analytic bound on how far softmax can stray from hard-max, then real softmax execution under chapter 27's attention profile, measuring the trace length and number format at which exactness breaks. |
