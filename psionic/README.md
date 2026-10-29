@@ -34,6 +34,9 @@ generation checked against independent full-prefix equations.
 [Chapter 59](book/ch059-routers-that-balance-themselves.md) supplies DeepSeek’s
 selection-only correction bias, grouped/global routing and complete margin
 comparison records used by chapter 58’s complete V2-Lite decoder.
+[Chapter 61](book/ch061-many-residual-streams.md) adds V4.1's four residual
+streams, fixed Sinkhorn mixing and the previous pre-mix carried between
+sub-blocks and into final readout.
 
 [Chapters 45a–45c](book/ch045a-original-weights-stay-on-the-gpu.md) add resident
 original 20b CUDA execution, complete greedy Harmony generation and batched

@@ -1,0 +1,8 @@
+#load "types.coax";
+// deepseek-hyper-cpu-wide-v1: four residual streams and temporal pre-mix.
+DhCarry :: struct {pre:[4]f32;}
+DhWeights :: struct {projection:[]f32;scale:[3]f32;base:[24]f32;}
+DhMix :: struct {pre:[4]f32;post:[4]f32;comb:[16]f32;}
+DhProjection :: struct {status:DsStatus;values:[24]f32;}
+DhMixResult :: struct {status:DsStatus;mix:DhMix;}
+DhFinish :: struct {status:DsStatus;written:int;carry:DhCarry;}

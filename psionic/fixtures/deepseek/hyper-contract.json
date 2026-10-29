@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "profile": "deepseek-hyper-cpu-wide-v1",
+  "sources": {
+    "model": {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/model.py",
+      "sha256": "e5decd76fe70fd56ef2f10124d245c6f64fb6a0003cc9068a1d3182a168b8d2d"
+    },
+    "kernel": {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/kernel.py",
+      "sha256": "1236c3507019ed176f5dba5e04bcea58867cf654818c6cf138ed4845398c2455"
+    },
+    "config": {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/config.json",
+      "sha256": "2e84f45cf1dac8c7fcbb200e96667d4b913275690668ed496f24c7747207a809"
+    }
+  },
+  "original": {
+    "width": 5120,
+    "streams": 4,
+    "mix_outputs": 24,
+    "projection_dtype": "F32",
+    "projection_shape": [
+      24,
+      20480
+    ],
+    "norm_epsilon": 1e-20,
+    "sinkhorn_iterations": 20,
+    "hc_epsilon": 1e-06,
+    "initial_pre": [
+      1,
+      0,
+      0,
+      0
+    ],
+    "comb_axes": [
+      "source",
+      "destination"
+    ]
+  },
+  "semantics": {
+    "pre": "sigmoid(affine pre) + hc_epsilon",
+    "post": "2 * sigmoid(affine post)",
+    "comb": "row softmax + hc_epsilon; column normalization; 19 row/column sweeps; add hc_epsilon to each normalization denominator",
+    "collapse": "consume previous subblock pre, not current pre",
+    "carry": "four residual streams plus the returned pre-mix; final head also consumes this carry"
+  },
+  "numeric": {
+    "storage": "F32",
+    "reductions": "compensated binary64",
+    "projection": "F32 dot result times F32 inverse RMS, rounded to F32",
+    "affine": "binary64 multiply/add rounded to F32",
+    "softmax": "F32 stored exponentials and coefficients, wide denominators",
+    "scope": "CPU equation reference; no original-device/BF16 or whole-model execution claim"
+  }
+}

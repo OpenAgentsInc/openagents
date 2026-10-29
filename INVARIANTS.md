@@ -1,5 +1,33 @@
 # Invariants
 
+## Psionic hyper-connections carry the previous pre-mix with all four streams
+
+`psionic/lib/deepseek/hyper*.coax` owns `deepseek-hyper-cpu-wide-v1`:
+four F32 residual streams, F32 coefficient projections and stored intermediates,
+compensated binary64 products/reductions, RMS epsilon 1e-20 and coefficient
+epsilon 1e-6. Combination uses source/destination axes, row softmax plus
+epsilon, then one column normalization and 19 row/column pairs. Every
+normalization denominator includes epsilon; finite iteration sums need only
+match the declared equations, not perfect stochasticity.
+
+Prepare computes current coefficients but collapses with the previous
+sub-block's pre-mix. Finish expands the sublayer output and returns the current
+pre-mix for the next sub-block. Initial pre is one-hot; final readout collapses
+using the last returned carry. Boundary state contains both all four streams
+and that carry. Outputs publish only after complete success, including late
+overflow; private scratch may change. A failed finish returns no valid next
+carry. Valid immutable allocations/extents, trustworthy parameter identity,
+matching source-major stream layout, unmodified successful mixes, the
+initial/returned carry and exclusive disjoint outputs remain caller duties.
+C observes borrowed-span addresses only.
+
+Check: `psionic/tests/check_deepseek_hyper.sh` assembles independent Decimal/
+scalar fixtures, debug/release, native plain/ASan/UBSan, all seven handoffs
+in a six-sub-block chain, final collapse and original-width projections.
+`psionic/check.sh --only deepseek/hyper --jobs 8` adds zero-survivor mutation.
+Actual checks/source identities and the component scope are in the
+[chapter 61 record](docs/verification/psionic-ch61-2026-10-29.md).
+
 ## Psionic complete V2-Lite execution commits every layer together
 
 `psionic/lib/deepseek/v2*.coax` owns `deepseek-v2-lite-cpu-wide-v1`:

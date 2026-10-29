@@ -1,0 +1,26 @@
+#import "Basic";
+#load "../lib/deepseek/hyper.coax";
+// book:begin example
+main :: () {
+    streams:=[4]f32.[1,2,3,4];carry:=dh_initial();projection:[96]f32;base:[24]f32;
+    for i:0..<24 {projection[4*i+i%4]=f32(i%5-2)/16;base[i]=f32(i%7-3)/8;}
+    weights:=DhWeights.{projection=projection[..],scale=[3]f32.[0.5,0.25,0.75],base=base};
+    input:[1]f32;value:[1]f32;out:[4]f32;work:[4]f32;
+    print("Sinkhorn: 20 iterations on 4 x 4 combination coefficients\n");
+    for step:0..<2 {
+        prepared:=dh_prepare(1,streams[..],carry,weights,input[..],work[..],false);#assert prepared.status==DsStatus.ok;
+        if step==0 {#assert input[0]==1;print("first collapse reads the initial stream: %\n",input[0]);}
+        else {
+            wrong:[1]f32;scratch:[1]f32;reset:=dh_collapse(1,streams[..],dh_initial(),wrong[..],scratch[..],false);
+            #assert reset.status==DsStatus.ok && abs(wrong[0]-input[0])>0.1f32;
+            print("second collapse uses the carried pre-mix\n");
+        }
+        // An owned affine stands in for attention/FFN in this component example.
+        value[0]=input[0]+0.25f32;
+        finished:=dh_finish(1,streams[..],value[..],prepared.mix,out[..],work[..],false);#assert finished.status==DsStatus.ok;
+        streams=out;carry=finished.carry; // Both parts cross a sub-block boundary.
+    }
+    head:=dh_collapse(1,streams[..],carry,input[..],work[..],false);#assert head.status==DsStatus.ok;
+    print("final collapse includes all four updated streams\n");
+}
+// book:end example

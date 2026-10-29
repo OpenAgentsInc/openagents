@@ -380,6 +380,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/deepseek-hyper.coax",
+      "chapter": "psionic/book/ch061-many-residual-streams.md",
+      "stdout": "psionic/fixtures/deepseek-hyper.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

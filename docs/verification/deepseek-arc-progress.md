@@ -12,7 +12,7 @@ rows stay planned until their full acceptance gates have evidence.
 | 58 | Complete original V2-Lite, latent/expanded attention parity, 64 routed/2 shared experts, combine/router/cache continuation | Complete CPU reference and original greeting in both cache forms; all 62 steps qualified against independent full-prefix equations; [record](psionic-ch58-2026-10-29.md). Fixed original prompt plus decoder; general V2 text encoder remains outside scope. |
 | 59 | V3 selection-only bias, V4.1 sqrt-softplus/scale, deterministic ties, router margins in comparisons | Implemented CPU-wide routing and margin comparisons; [record](psionic-ch59-2026-10-29.md). |
 | 60 | Window/compressed attention, both compressors, sink, source-layer sharing, candidate reuse, chunk/whole state parity | Planned. |
-| 61 | Four residual streams, pre/post and 20-iteration Sinkhorn mixing, previous-mix collapse across boundaries | Planned. |
+| 61 | Four residual streams, pre/post and 20-iteration Sinkhorn mixing, previous-mix collapse across boundaries | Implemented CPU wide component equations; all seven handoffs and final collapse in an independent six-sub-block chain, original-width projections and zero-survivor mutation; [record](psionic-ch61-2026-10-29.md). Complete V4.1/BF16 stage execution remains in 68/141. |
 | 62 | Exact normalized/compressed n-gram history, reference prime layouts/multipliers, mapped/disk lookup without eager tables | Planned. |
 | 63 | All FP4 E2M1/UE8M0 codes/scales, layout, NaN rejection, clamped SwiGLU and pre-down route weights | Planned. |
 | 64 | Exact cache residency/heat/swap, host/mapped miss lane, between-step copies and next-layer prefetch | Planned. |

@@ -1,0 +1,4 @@
+Sinkhorn: 20 iterations on 4 x 4 combination coefficients
+first collapse reads the initial stream: 1.0
+second collapse uses the carried pre-mix
+final collapse includes all four updated streams
