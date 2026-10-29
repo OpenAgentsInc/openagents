@@ -100,6 +100,9 @@ Player :: struct {
   prev_target: Vec3 = Vec3.{x = 0, y = LOOK_AT_HEIGHT, z = 0};
   prev_face: f32;
   prev_dist: f32 = CAM_MAX;
+  // Your speed's share, set by the realm: 1 on land, 0.5 wading or swimming
+  // (verse/everglade/river.coax pace_of). WALK and RUN themselves never change.
+  pace: f32 = 1;
 }
 
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
@@ -435,7 +438,7 @@ spring :: (p: Player, dest: Vec3, dt: f32) -> Player {
 step :: (w: World, p: Player, dt: f32) -> Player {
   next := p;
   dir := wish(p);
-  speed := ifx p.run then f32(RUN) else f32(WALK);
+  speed := (ifx p.run then f32(RUN) else f32(WALK)) * clamp(ifx finite(p.pace) then p.pace else 1.0f32, 0, 1);
 
   // Horizontal velocity steps toward the wish at a fixed rate.
   dx := dir.x * speed - next.vel.x;
@@ -614,6 +617,18 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player {
   // A held stick past the dead zone reaches the top speed.
   if ix * ix + iy * iy > 0 { #assert near(flat_speed(p), top, 0.001); }
   else { #assert flat_speed(p) == 0; }
+}
+
+#test "a pace under one slows you by its share, and the land speeds stay as they are" {
+  w: World;
+  p := held(verse_player_place(0, 0, 0, 0), 0, 1, false);
+  p.pace = 0.5;
+  for i: 0..<128 { p = step(w, p, STEP); }
+  #assert near(flat_speed(p), f32(WALK) * 0.5, 0.001);
+  p.pace = 1;
+  for i: 0..<128 { p = step(w, p, STEP); }
+  #assert near(flat_speed(p), f32(WALK), 0.001);
+  #assert verse_player_place(0, 0, 0, 0).pace == 1;
 }
 
 #forall "a stick inside the dead zone doesn't move you" ix: -3..<4, iy: -3..<4 {

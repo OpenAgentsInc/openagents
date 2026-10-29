@@ -33,9 +33,9 @@ realm=$!
 "$here/../../coax/web/wasm.sh" "$here/garden.coax" "$here/garden-face.c" "$here/build/garden.wasm" \
   "$m/player.coax" "$m/grid.coax" &
 garden=$!
-# /realms/everglade: the forest city's blockout (verse/everglade/plan.coax), with the player and thumbs.
+# /realms/everglade: the forest city's blockout (verse/everglade/plan.coax), with the player, thumbs and its river (verse/everglade/river.coax).
 "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/everglade-face.c" "$here/build/everglade.wasm" \
-  "$m/player.coax" "$m/grid.coax" &
+  "$m/player.coax" "$m/grid.coax" "$m/everglade/river.coax" &
 everglade=$!
 # /realms/the-grid: the bare Verse world from the demo's scene (verse/tools/pack_grid.py), with the player and thumbs.
 "$here/../../coax/web/wasm.sh" "$here/thegrid.coax" "$here/thegrid-face.c" "$here/build/thegrid.wasm" \

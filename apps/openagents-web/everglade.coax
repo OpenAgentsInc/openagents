@@ -77,7 +77,12 @@ U_PATH :: U_SHADOW + SHADOWS * 4;
 U_PATH_INFO :: U_PATH + PATHS * 4;
 U_SQUARE :: U_PATH_INFO + 4;
 U_PLATE :: U_SQUARE + SQUARES * 4;
-UNIFORM_FLOATS :: U_PLATE + PLATES * 8;
+// Then the river's block (everglade.wgsl WaterU), which the face has
+// verse/everglade/river.coax write after the frame: verse/water-look.coax
+// WATER_FLOATS of them.
+U_WATER :: U_PLATE + PLATES * 8;
+WATER_FLOATS :: 324;
+UNIFORM_FLOATS :: U_WATER + WATER_FLOATS;
 
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4; SHAPE_MESH :: 5; SHAPE_SKINNED :: 6;
 SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
@@ -126,8 +131,16 @@ M_SHELF :: 37; M_BAG :: 38; M_ANVIL :: 39; M_WEAPONS :: 40; M_SWORD :: 41; M_SHI
 M_BANNER :: 45; M_PEGS :: 46; M_CHALICE :: 47; M_GABLE :: 48; M_SCROLL :: 49; M_STEP :: 50; M_FENCE :: 51;
 STOREY :: 3.12;           // a kit wall's height
 WALL_FACE :: 0.09;        // how far a wall's outer face stands from its origin (its local +z)
-// The shapes' five draws, then a draw per kit mesh, then yours.
-DRAWS :: 5 + KIT_MESHES + 1;
+// The shapes' five draws, then a draw per kit mesh, then yours, then the
+// river's (last: the host draws it after everything else, in two halves).
+DRAWS :: 5 + KIT_MESHES + 2;
+WATER_DRAW :: 5 + KIT_MESHES + 1;
+// The river's floats, as river.coax everglade_river_floats writes them: x,
+// y, z, yaw, how far it tips and which way, 0, and the kind (0 a duck, 1 a lily pad).
+FLOATS :: 9;
+FLOAT_FLOATS :: 8;
+// Your medium in the water (river.coax): ground, wading, swimming, diving.
+WATER_GROUND :: 0; WATER_WADING :: 1; WATER_SWIMMING :: 2; WATER_DIVING :: 3;
 RANGER_NAME :: "player/male-ranger";   // its catalog line (C) in the pack
 MSG_PACK :: 605;          // the host's pack progress: "LOADED TOTAL"
 MSG_FACTS :: 600;         // the host's page facts, a line each (now=, player=)
@@ -157,7 +170,7 @@ KIT_CAP_PHONE :: 40;   // and a phone draws at most this many of each kind
 SMALL_NEAR :: 34.0;
 
 HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 16; HOLD_JUMP :: 32;
-HOLD_TURN_LEFT :: 64; HOLD_TURN_RIGHT :: 128; HOLD_TILT_UP :: 256; HOLD_TILT_DOWN :: 512;
+HOLD_TURN_LEFT :: 64; HOLD_TURN_RIGHT :: 128; HOLD_TILT_UP :: 256; HOLD_TILT_DOWN :: 512; HOLD_DIVE :: 1024;
 KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_BACKSPACE :: -3; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
 
 LOOK_DRAG :: 0.0055;
@@ -180,7 +193,14 @@ Everglade :: struct {
   drag_on: bool; drag_id: int; drag_x: f32; drag_y: f32;
   look_yaw: f32; look_pitch: f32;
   wheel: f32;
-  key_x: f32; key_y: f32; run: bool; jump: bool;
+  key_x: f32; key_y: f32; run: bool; jump: bool; dive: bool;
+  // you in the river (the face passes verse/everglade/river.coax's Swim on):
+  // your medium, how high your feet are in the water, your breath's share
+  // and Exhaustion from going without it; the river's draw and its floats
+  water: int; swim_feet: f32; breath: f32; gasps: int;
+  deck: f32;
+  water_vertices: int; water_patches: int; water_triangles: int;
+  floats: [FLOATS * FLOAT_FLOATS] f32; float_n: int;
   feet: Point; face: f32; act: int;
   above: bool;              // the map view: the camera over the city
   lift: f32;                // eased toward 1 in the map view, 0 at your shoulder
@@ -281,10 +301,48 @@ coaxial_everglade_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
 coaxial_everglade_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 
 ground_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return verse_terrain_height(everglade_ground(), s[0].heights[..], x, z); }
+// Where you stand: the ground, or the bridge's deck over the river.
+walk_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return everglade_walk_height(s[0].heights[..], s[0].deck, x, z); }
+
+// The face's river (verse/everglade/river.coax), each frame before
+// everglade_frame: your medium, your feet's height in the water, your
+// breath's share and Exhaustion from going without it; its draw (vertices
+// a patch and patches, none until it is built) and its floats.
+everglade_water :: (s: [] Everglade, medium: int, feet: f32, breath: f32, gasps: int, vertices: int, patches: int, floats: [] f32, float_n: int) #export_c {
+  if !s[0].started { everglade_start(s); }
+  s[0].water = ifx medium >= WATER_GROUND && medium <= WATER_DIVING then medium else WATER_GROUND;
+  s[0].swim_feet = ifx finite(feet) then feet else 0.0f32;
+  s[0].breath = ifx finite(breath) then clamp(breath, 0, 1) else 1.0f32;
+  s[0].gasps = hi_i(gasps, 0);
+  s[0].water_vertices = clamp_i(vertices, 0, 1024); s[0].water_patches = clamp_i(patches, 0, 64);
+  n := clamp_i(float_n, 0, FLOATS);
+  if floats.count < n * FLOAT_FLOATS { n = floats.count / FLOAT_FLOATS; }
+  for i: 0..<n * FLOAT_FLOATS { s[0].floats[i] = floats[i]; }
+  s[0].float_n = n;
+}
+clamp_i :: (a: int, low: int, high: int) -> int { if a < low { return low; } if a > high { return high; } return a; }
+// The ground's height under each row's river (the face builds the river from them).
+everglade_levels :: (s: [] Everglade, out: [] f32) #export_c {
+  if !s[0].started { everglade_start(s); }
+  everglade_river_levels(s[0].heights[..], out);
+}
+// On the bridge's deck you walk over the river, not in it.
+everglade_on_bridge :: (s: [] Everglade, x: f32, z: f32) -> bool #export_c {
+  return x >= EG_BRIDGE[0] && x <= EG_BRIDGE[2] && z >= EG_BRIDGE[1] && z <= EG_BRIDGE[3];
+}
+// Where the river's uniform block and the eye are in the uniforms.
+everglade_water_at :: () -> int #export_c { return U_WATER; }
+everglade_eye_at :: () -> int #export_c { return U_EYE; }
+// Whether this frame draws for a phone: the river's mesh is coarser there.
+everglade_phone :: (s: [] Everglade) -> bool #export_c { return phone(s); }
+// Afloat, you may not jump (river.coax: a swimmer has nothing to push from).
+everglade_afloat :: (s: [] Everglade) -> bool #export_c { return s[0].water >= WATER_SWIMMING; }
 
 everglade_start :: (s: [] Everglade) {
   s[0].started = true;
   ok := everglade_build_ground(s[0].heights[..]);
+  s[0].deck = everglade_deck(s[0].heights[..]);
+  s[0].breath = 1;
   s[0].spawn = v3(f32(EG_SPAWN_X), 0, f32(EG_SPAWN_Z));
   s[0].spawn_face = 0;
   s[0].feet = v3(s[0].spawn.x, ground_at(s, s[0].spawn.x, s[0].spawn.z), s[0].spawn.z);
@@ -362,7 +420,7 @@ plant_forest :: (s: [] Everglade) {
       x := -100 + (f32(i) + 0.2 + jx * 0.6) * f32(TREE_SPACING);
       z := -100 + (f32(j) + 0.2 + jz * 0.6) * f32(TREE_SPACING);
       if n >= TREES || abs(x) > 99.5 || abs(z) > 99.5 { continue; }
-      if !woods_all_round(x, z, 1.0) || !off_solids(solids[..], count, x, z, 1.5) { continue; }
+      if !woods_all_round(x, z, 1.0) || !off_solids(solids[..], count, x, z, 1.5) || everglade_in_river(x, 1.5) { continue; }
       put_tree(s[0].trees[..], n, x, z, size, yaw, kind);
       n += 1;
     }
@@ -380,7 +438,7 @@ plant_forest :: (s: [] Everglade) {
       x := -100 + (f32(i) + 0.5 + (jx - 0.5) * 0.7) * step;
       z := -100 + (f32(j) + 0.5 + (jz - 0.5) * 0.7) * step;
       if m >= SMALLS || abs(x) > 99.5 || abs(z) > 99.5 { continue; }
-      if !woods_all_round(x, z, 0.8) || !off_solids(solids[..], count, x, z, 1.0) { continue; }
+      if !woods_all_round(x, z, 0.8) || !off_solids(solids[..], count, x, z, 1.0) || everglade_in_river(x, 0.6) { continue; }
       // only along the tree line: open ground within a few metres
       edge := !everglade_in_woods(x + 3.5, z) || !everglade_in_woods(x - 3.5, z) || !everglade_in_woods(x, z + 3.5) || !everglade_in_woods(x, z - 3.5);
       if !edge { continue; }
@@ -552,6 +610,7 @@ hold_bit :: (key: int) -> int {
   if key == 'd' || key == 'D' { return HOLD_RIGHT; }
   if key == KEY_SHIFT { return HOLD_RUN; }
   if key == ' ' { return HOLD_JUMP; }
+  if key == 'c' || key == 'C' { return HOLD_DIVE; }
   if key == KEY_LEFT { return HOLD_TURN_LEFT; }
   if key == KEY_RIGHT { return HOLD_TURN_RIGHT; }
   if key == KEY_UP { return HOLD_TILT_UP; }
@@ -635,6 +694,7 @@ everglade_controls :: (s: [] Everglade, dt: f32, dyaw: f32, dpitch: f32) #export
   s[0].key_y = axis(h, HOLD_FORWARD, HOLD_BACK);
   s[0].run = h & HOLD_RUN != 0;
   s[0].jump = h & HOLD_JUMP != 0;
+  s[0].dive = h & HOLD_DIVE != 0;
   o := verse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
   o = verse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
   s[0].orbit = o;
@@ -951,17 +1011,7 @@ city :: (s: [] Everglade, u: [] f32) {
   for i: 1..<EG_PROPS {
     k := i * EG_BOX;
     x0 := EG_PROP[k]; z0 := EG_PROP[k + 1]; x1 := EG_PROP[k + 2]; z1 := EG_PROP[k + 3]; h := EG_PROP[k + 4];
-    if i >= EG_RIVER {
-      // The river in reaches of eight metres, each at the ground's height there.
-      reaches := cast(int) ((z1 - z0) / 8) + 1;
-      for r: 0..<reaches {
-        rz0 := z0 + (z1 - z0) * f32(r) / f32(reaches); rz1 := z0 + (z1 - z0) * f32(r + 1) / f32(reaches);
-        lowest := lo(lo(ground_at(s, x0, rz0), ground_at(s, x1, rz0)), lo(ground_at(s, x0, rz1), ground_at(s, x1, rz1)));
-        highest := hi(hi(ground_at(s, x0, rz0), ground_at(s, x1, rz0)), hi(ground_at(s, x0, rz1), ground_at(s, x1, rz1)));
-        shape(s, SHAPE_BOX, LOOK_WATER, v3((x0 + x1) / 2, (lowest + highest) / 2 - 0.1, (rz0 + rz1) / 2), 0, 0, x1 - x0, highest - lowest + 0.25, rz1 - rz0 + 0.05, 0.28, 0.46, 0.58);
-      }
-      continue;
-    }
+    if i >= EG_RIVER { continue; }   // the river is the water's (verse/everglade/river.coax), drawn last
     if i == EG_BOARD {
       block(s, LOOK_MATTE, x0, z0, x1, z1, h, 0.5, 0.38, 0.24);
       shape(s, SHAPE_BOX, LOOK_MATTE, v3((x0 + x1) / 2, ground_at(s, x0, z0) + 1.7, z0 - 0.02), 0, 0, x1 - x0 - 0.3, 0.9, 0.05, 0.92, 0.88, 0.76);
@@ -970,8 +1020,34 @@ city :: (s: [] Everglade, u: [] f32) {
     if i >= EG_STALL && i < EG_WAYSTONE { continue; }   // the kit's stalls (build_town)
     block(s, LOOK_STONE, x0, z0, x1, z1, h, 0.6, 0.6, 0.58);
   }
+  // The bridge: its deck, where you walk over the river, on two piles in the stream.
   br := EG_BRIDGE;
-  shape(s, SHAPE_BOX, LOOK_MATTE, v3((br[0] + br[2]) / 2, ground_at(s, 88, -11.5) + 0.1, (br[1] + br[3]) / 2), 0, 0, br[2] - br[0], 0.4, br[3] - br[1], 0.5, 0.38, 0.24);
+  shape(s, SHAPE_BOX, LOOK_MATTE, v3((br[0] + br[2]) / 2, s[0].deck - 0.2, (br[1] + br[3]) / 2), 0, 0, br[2] - br[0], 0.4, br[3] - br[1], 0.5, 0.38, 0.24);
+  for q: 0..<2 {
+    px := ifx q == 0 then 87.0f32 else 89.0f32;
+    bed := ground_at(s, px, -11);
+    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(px, (bed + s[0].deck - 0.4) / 2, -11), 0, 0, 1.0, s[0].deck - 0.4 - bed + 0.3, 1.0, 0.42, 0.32, 0.2);
+  }
+  river_floats(s);
+}
+
+// The river's floats: a duck a body and a head, a lily pad a green disc
+// (and a flower on every other), each turned the way it floats.
+river_floats :: (s: [] Everglade) {
+  for i: 0..<s[0].float_n {
+    k := i * FLOAT_FLOATS;
+    p := v3(s[0].floats[k], s[0].floats[k + 1], s[0].floats[k + 2]);
+    yaw := s[0].floats[k + 3];
+    if s[0].floats[k + 7] < 0.5 {
+      shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(p.x, p.y + 0.02, p.z), yaw, 0, 0.3, 0.2, 0.42, 0.42, 0.3, 0.18);
+      hx := p.x + sin(yaw) * 0.16; hz := p.z + cos(yaw) * 0.16;
+      shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(hx, p.y + 0.17, hz), yaw, 0, 0.14, 0.14, 0.15, 0.12, 0.4, 0.2);
+      shape(s, SHAPE_CONE, LOOK_MATTE, v3(hx + sin(yaw) * 0.09, p.y + 0.16, hz + cos(yaw) * 0.09), yaw, 1.57, 0.05, 0.08, 0.05, 0.92, 0.62, 0.16);
+      continue;
+    }
+    shape(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(p.x, p.y + 0.01, p.z), yaw, 0, 0.55, 0.02, 0.55, 0.22, 0.46, 0.2);
+    if i % 2 == 0 { shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(p.x + 0.08, p.y + 0.06, p.z), yaw, 0, 0.12, 0.08, 0.12, 0.95, 0.78, 0.86); }
+  }
 }
 
 // ---- the town, laid once from the plan out of the Medieval Village and
@@ -1528,9 +1604,16 @@ hint :: (s: [] Everglade) -> string {
   }
   if s[0].ev.editing { return edit_hint(s); }
   if s[0].news_time > 0 && s[0].news >= 0 { return news_line(s); }
+  if s[0].water == WATER_WADING { return "WADING · HALF SPEED IN THE WATER"; }
+  if s[0].water == WATER_SWIMMING { return ifx phone(s) then "SWIMMING · HALF SPEED" else "SWIMMING · HOLD C TO DIVE"; }
+  if s[0].water == WATER_DIVING { return ifx phone(s) then "UNDER WATER" else "UNDER WATER · LET GO OF C TO COME UP"; }
   if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP JUMPS"; }
   return "WASD WALK · DRAG OR ARROWS TURN · WHEEL ZOOMS · SHIFT RUNS · M MAP";
 }
+
+// Out of breath (river.coax, SRD 5.2.1): an Exhaustion level each 6 s; the sixth, you come to on the bank.
+GASP_LINE :: [5] string.["OUT OF BREATH · EXHAUSTION 1", "OUT OF BREATH · EXHAUSTION 2", "OUT OF BREATH · EXHAUSTION 3",
+  "OUT OF BREATH · EXHAUSTION 4", "OUT OF BREATH · EXHAUSTION 5"];
 
 // A quest's news, over the hint for a few seconds: taken, its next step, handed in.
 news_line :: (s: [] Everglade) -> string {
@@ -1864,6 +1947,21 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   y1 := h - gutter;
   plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - hs - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
   n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, hs, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+  // Under water, or out of breath: your breath over the hint, and the Exhaustion it costs.
+  breathing := 0.0f32;
+  if (s[0].breath < 0.999 || s[0].gasps > 0) && !s[0].above && !s[0].ev.editing {
+    label := ifx s[0].gasps > 0 then GASP_LINE[clamp_i(s[0].gasps, 1, 5) - 1] else "BREATH";
+    ls := 7 * k;
+    gw := hi(text_width(label, ls) + 28 * k, 170 * k);
+    by1 := y1 - hs - 30 * k;
+    back := Box.{x0 = (w - gw) / 2, y0 = by1 - ls - 30 * k, x1 = (w + gw) / 2, y1 = by1};
+    plate(s, u, back, 0.72, 0);
+    fill := (gw - 20 * k) * s[0].breath;
+    if fill > 2 * k { plate(s, u, Box.{x0 = back.x0 + 10 * k, y0 = by1 - 14 * k, x1 = back.x0 + 10 * k + fill, y1 = by1 - 8 * k}, 0.9, 2); }
+    n = draw_text(out, n, label, back.x0 + 14 * k, by1 - 20 * k, ls, GAP, SPACE, ink(k, 0.9, PARCH_R, PARCH_G, PARCH_B), false, false);
+    breathing = 50 * k;
+  }
+  y1 -= breathing;
   // An admin's EDIT and edit mode (everglade-edit.coax) and TALK TO EDIT (everglade-voice.coax), over the hint; whoever is near is asked above it.
   lift := 0.0f32;
   if s[0].ev.admin { n = everglade_voice_hud(s, out, u, n, y1 - hs - 28 * k); lift = ifx voice_on(s) then 100 * k else 0.0f32; }
@@ -1903,7 +2001,10 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   if !finite3(feet) { feet = s[0].feet; }
   s[0].feet = feet; s[0].face = face; s[0].act = act;
   speed := sqrt(vx * vx + vz * vz);
-  shown := add(feet, v3(0, ground_at(s, feet.x, feet.z), 0));
+  // afloat, you are where the river holds you; else on the ground or the deck
+  shown := add(feet, v3(0, walk_at(s, feet.x, feet.z), 0));
+  if s[0].water >= WATER_SWIMMING { shown.y = s[0].swim_feet; }
+  else if s[0].water == WATER_WADING { shown.y = s[0].swim_feet + feet.y; }
 
   shot := camera_frame(s, shown, vx, vz, t);
 
@@ -1942,6 +2043,13 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + RANGER_AT);
   s[0].draws[d + 3] = cast(u32) (ifx s[0].ranger_count > 0 then 1 else 0);
   s[0].kit_triangles += s[0].ranger_count / 3;
+  // the river: a patch an instance, drawn after everything (host.js coaxial_water_draws)
+  d = WATER_DRAW * 4;
+  s[0].draws[d] = first;
+  s[0].draws[d + 1] = cast(u32) s[0].water_vertices;
+  s[0].draws[d + 2] = 0;
+  s[0].draws[d + 3] = cast(u32) (ifx s[0].water_vertices > 0 then s[0].water_patches else 0);
+  s[0].water_triangles = s[0].water_vertices / 3 * s[0].water_patches;
 
   u[0] = width; u[1] = height; u[2] = f32(s[0].time); u[3] = 1; u[4] = ifx still then 1.0f32 else 0.0f32;
   u[6] = s[0].dpr;
@@ -2004,7 +2112,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
 
 #test "the uniforms and shape slots line up with everglade.wgsl's" {
   #assert UNIFORM_FLOATS % 4 == 0;
-  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && UNIFORM_FLOATS == 504;
+  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 504 && UNIFORM_FLOATS == 828;
   #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
   total := 0;
   for g: 0..<KIT_GROUPS - KIT_FOREST { total += TOWN_CAP[g]; }
@@ -2108,7 +2216,8 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   everglade_catalog(g[..], CATALOG);
   face := 0.6f32;
   n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, face, 0, 0, 0, false, 0, 0, 0, 0);
-  d := (DRAWS - 1) * 4;
+  d := (WATER_DRAW - 1) * 4;
+  #assert WATER_DRAW == DRAWS - 1 && g[0].draws[WATER_DRAW * 4 + 3] == 0;   // no river yet: the face hasn't built it
   #assert g[0].draws[d] == 44107 && g[0].draws[d + 1] == 94188 && g[0].draws[d + 3] == 1;
   #assert g[0].draws[d + 2] == cast(u32) (EG_CELLS * EG_CELLS + RANGER_AT);
   o := RANGER_AT * OBJECT_FLOATS;
@@ -2190,6 +2299,11 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   g[0].touch = true;
   everglade_start(g[..]);
   everglade_catalog(g[..], CATALOG);
+  // the river at a phone's tier (river.coax everglade_river_vertices, everglade_river_patches), its floats
+  ducks := [72] f32.[88.4, -0.9, -26, 0, 0, 0, 0, 0,   87.2, -0.8, 2, 1, 0, 0, 0, 0,   88.8, -0.9, -34, 2, 0, 0, 0, 0,
+    86.6, -0.9, -22.5, 0, 0, 0, 0, 1,   86.8, -0.9, -29.5, 0, 0, 0, 0, 1,   89.4, -0.9, -24, 0, 0, 0, 0, 1,
+    86.7, -0.8, 4.5, 0, 0, 0, 0, 1,   89.3, -0.8, 7, 0, 0, 0, 0, 1,   86.9, -0.9, -36.5, 0, 0, 0, 0, 1];
+  everglade_water(g[..], WATER_GROUND, 0, 1, 0, 6 * 4 * 6, 52, ducks[..], FLOATS);
   most := 0; whole := 0;
   spots := [8] f32.[0, -84,  -75, 0,  44, 74,  80, -4];
   for p: 0..<4 {
@@ -2205,6 +2319,8 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   // The forest's kit share of a phone's frame stays under 700,000 triangles, and so
   // does the whole frame's kit: the forest, the town and you (the Ranger's 31,396).
   #assert most > 0 && most < 700000 && whole >= most + RANGER_TRIANGLES && whole < 700000;
+  // and with the river's 2,496 triangles drawn too
+  #assert g[0].water_triangles == 2496 && whole + g[0].water_triangles < 700000;
 }
 
 #test "the camera stays out of the woods: at a clearing's edge it pulls in before the trees" {

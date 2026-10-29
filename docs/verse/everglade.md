@@ -80,7 +80,7 @@ python3 verse/everglade/map.py --times
 | **The deep wood** | East, by the Deep Wood Trail | waystone | The woodwarden; the first quest area past the trees. |
 | **The ruins** | North-west, at the end of the Ruins Trail | three broken pillars | The ruin scholar. |
 | **The crypt** | North-west, off the North Trail's fork | 8 × 6 m | A crypt door; a dungeon later (the Haunted House is the first one a quest can send you to). |
-| **The river crossing** | West, past the West Gate | a 4 m river and a bridge | The ferryman on the far bank. The river runs the length of the world; the bridge is the only way over. |
+| **The river crossing** | West, past the West Gate | a 4 m river and a bridge | The ferryman on the far bank. The river runs the length of the world in a carved bed; you cross by the bridge, or wade and swim across in the glade beside it. |
 | Houses | Six plots round the streets | 8 to 10 m a side | Homes for the city's people (eg-people), filler that keeps the streets streets. |
 
 ## Walking times
@@ -133,7 +133,7 @@ meshes. Where a kit has no piece, the line says what is assembled instead.
 | Forest and trails | SN `CommonTree_1/3/4` (+ `_Leaves`), `Pine_1/4/5`, `TwistedTree_2/4/5`, `Bush_Common`, `Fern_1`, `Grass_*`, `Clover_*`, `Flower_*`, `Mushroom_Common`, `Plant_1/7`, `Rock_Medium_1..3`. |
 | Ruins | SN `Rock_Medium_*`; MV `Prop_Brick1..4`, `Wall_UnevenBrick_Straight` broken off, `Wall_Arch`; FP `Vase_Rubble_Medium`. |
 | Crypt | MV `Wall_UnevenBrick_Door_Round`, `DoorFrame_Round_Brick`, `Door_4_Round`; SN `DeadTree_1..3`, `Rock_Medium_*`. |
-| River crossing | MV `Floor_WoodDark` planks and `Prop_WoodenFence_Single` rails for the bridge; SN `Rock_Medium_*` on the banks; water drawn by the engine. |
+| River crossing | MV `Floor_WoodDark` planks and `Prop_WoodenFence_Single` rails for the bridge; SN `Rock_Medium_*` on the banks; water drawn by the engine (the water system, docs/verse/water.md). |
 | Characters | You are the previous Everglade's Ranger (below, "You: the Ranger"); the people are still plain figures, to be aethyr's figure parts with the `Peasant` and `Ranger` outfits; the cats are aethyr's `Custom_Cat`. |
 
 ## Where characters stand
@@ -229,13 +229,15 @@ than 6.5 m from the flock. Each bird keeps its last ten places (one every
   the temple; eg-buildings); talk to the characters (eg-people); take quests
   from the board, a character or the inn, and go out by the gates to the
   quest areas and back (eg-quests); earn the bird-flock companion
-  (eg-companion); see the whole city from above (MAP).
+  (eg-companion); see the whole city from above (MAP); wade, swim and dive
+  in the river by the bridge.
 - **Can't:** edit anything. No building, placing, removing, painting or
   terrain tools; no player-made objects stay in the city. An admin
   (`admins.conf`, logged in at /login) is the one exception: see Edit mode. Everglade stays
   put so quests can rely on it; making things is the Sandbox's job. No
   fighting inside the walls. The world ends at its edge, and past the
-  trails' ends the forest and the river keep you to the ways out.
+  trails' ends the forest keeps you to the ways out (the river's glade by
+  the bridge is open: you may swim across there).
 
 ## The blockout
 
@@ -321,11 +323,12 @@ Past a 6 m apron of open grass round the palisade, everything is woods
 (`everglade_in_woods` in `plan.coax`) but the trails, 3 m either side of
 their middle, and six clearings where they end: the stables, where you
 arrive on the road in, the deep wood's waystone, the ruins, the crypt and
-the river's far bank. You can't walk into the woods and the camera never
+the river's far bank, and the river's glade either side of the bridge
+(an ellipse 14 m across and 52 m along it). You can't walk into the woods and the camera never
 backs into them, so the only ways out of the city are the trails.
 
 - **Trees:** one every 4.2 m, jittered, wherever the woods are, with a
-  metre clear of open ground round each trunk and none on the river (about
+  metre clear of open ground round each trunk and none in the river (about
   a thousand). Four kinds from Stylized Nature: `Pine_5`, `Pine_4`,
   `CommonTree_3`, `CommonTree_4`, each with its `_Leaves`.
 - **Along the tree line:** `Bush_Common_Flowers`, `Fern_1`,
@@ -356,7 +359,13 @@ The checks (`plan.coax`):
 - **Everything is reachable on foot:** a half-metre grid of the world, each
   solid widened by a walker's radius, filled from the road in, reaches every
   door, every character, every path node, every gate, the quest board, the
-  stalls, every trail's end and the river's far bank.
+  stalls, every trail's end and the river's far bank. The river is not in
+  the way: in its glade you reach both banks and the water between them;
+  past the glade the woods close in on it.
+- **The river stays in its bed:** its level falls south at least 8 mm a
+  ground row and stands 0.2 m under the ground beside it; the bed is 2.2 m
+  under the level at the middle; the river trail climbs onto the bridge's
+  deck and off it within the trails' slope.
 - **The palisade keeps you in** but for its four gates.
 - **The woods keep you to the trails:** no cell in the woods is reachable,
   straight out from each wall the forest stops you inside the apron, the
@@ -394,6 +403,35 @@ Each building is put together from its footprint in `plan.coax`, in
 - **Draw cost:** every kit piece of the town is one instance of one of
   the pack's meshes; the checks hold each mesh's count under its cap and
   the town within 3,061 pieces.
+
+## The river (W3 of the water system)
+
+The river is one body of the water system (docs/verse/water.md, W1 to W3
+and W6's ripples), drawn by its shader and read by the swimmer:
+
+- **Its bed:** `everglade_carve_river` in `plan.coax` cuts it into the
+  ground after the terrain is built: a level from north (10 m up the
+  hills) to south that never rises, the bed a V 2.2 m deep at the middle
+  and 0.25 m at its banks 2 m out, climbing one in one to the ground (in
+  the south woods, a ravine). The bridge (8 m long, on two piles in the
+  stream) spans the cut at the trail's height.
+- **Its water:** `verse/everglade/river.coax`, a W1 river along x = 88 from
+  the north edge to the south, 6 m wide, on that level, with a 0.45 m/s
+  current southward round the bridge's piles and a light chop. The ground
+  under it shades as silt, darker the deeper.
+- **You in it:** past 0.4 m you wade, past 1.25 m you swim, at half speed
+  either way (a sixth less for each level of Exhaustion); afloat you can't
+  jump and the current carries you. Hold C to dive. Under water you hold
+  your breath for a minute (BREATH shows over the hint); then a level of
+  Exhaustion every 6 s, and at the sixth you come to on the nearer bank.
+  Surfacing removes them.
+- **Swimming across is allowed** beside the bridge: the glade opens the
+  river from 40 m south of the crossing to 12 m north of it. Up and down
+  the river past the glade the forest closes in on both banks.
+- **On the water:** three ducks paddle round their stretch of the glade and
+  six lily pads ride on their stems, floating by the physics' buoyancy.
+- **Ripples:** a splash where you come into the water and rings as you
+  move through it.
 
 ## What's next
 

@@ -1,0 +1,674 @@
+// Everglade's river on the water system (phase W3 of docs/verse/water.md,
+// adapted to today's Everglade): the 4 m river verse/everglade/plan.coax
+// carves along x = 88 from the north edge of the world to the south, one
+// verse/water.coax river body with the level profile the plan's carve
+// follows and a current from water_flow_river round the bridge's piles,
+// drawn with the W2 shader (verse/water-look.coax, everglade.wgsl). It is
+// its own library, as verse/player.coax is: the realm's face
+// (apps/openagents-web/everglade-face.c) passes values between it, the page
+// and the controller.
+//
+// Ported from the old W3 (git show 03b7bbe2b0: crates/physics/src/water/
+// medium.rs, crates/verse-world/src/water.rs, the zone's water.rs) what fits
+// the current layout:
+//
+// - The medium: ground, wading (deeper than 0.4 m), swimming (deeper than
+//   1.25 m or the feet off the bed) and diving (the eye under the surface),
+//   from the gameplay surface; a swimmer settles at a float line 1.2 m
+//   under the surface, an idle diver rises at 0.6 m/s.
+// - Pace (SRD 5.2.1): half speed wading and swimming, a sixth of Speed less
+//   each Exhaustion level. On land the controller's speeds are unchanged.
+// - Breath (SRD 5.2.1): 1 + Constitution modifier minutes (the Ranger's
+//   modifier is +0: a minute), at least 30 s; out of breath, an Exhaustion
+//   level every 6 s; the sixth defeats, and you come to on the nearer bank.
+//   Breathing again removes them; breath refills over 6 s.
+// - Floats: ducks and lily pads, rigid bodies (verse/rigid.coax) on
+//   water_apply's buoyancy and drag; a duck paddles back to its stretch of
+//   the glade against the current, a lily pad is held by its stem.
+//
+// Not ported, because today's Everglade has none of them: the four ponds,
+// the weir and its plunge pool, rowboats, townsfolk swimming, and the
+// underwater combat rules.
+//   coax/bin/coax test --library verse/everglade/river.coax --steps 2000000000
+
+#load "../water-look.coax";
+
+RIVER_X :: 88.0;          // the plan's river runs along x = 88 (EG_RIVER_X)
+RIVER_NORTH :: 104.0;     // from the north edge of the ground, flowing south
+RIVER_SOUTH :: -104.0;
+RIVER_WIDTH :: 6.0;       // the outline: the 4 m channel and its wet banks
+RIVER_POINTS :: 27;       // the course, every 8 m
+RIVER_COLS :: 13;         // the baked nodes: 0.5 m across, from -3 to 3 m
+RIVER_ROWS :: 209;        // and 1 m along
+RIVER_ACROSS :: 0.5;
+RIVER_ALONG :: 1.0;
+RIVER_PATCH_ROWS :: 4;    // a patch (an instance) is 4 m of river
+RIVER_PATCHES :: 52;
+RIVER_NODES :: RIVER_COLS * RIVER_ROWS * WATER_NODE;
+RIVER_FLOW_CELL :: 0.5;
+RIVER_FLOW :: 7600;       // the flow grid's nodes (17 by 433)
+RIVER_SPEED :: 0.45;      // m/s, the mean current
+RIVER_PILES :: 2;         // the bridge's piles, in the stream
+RIVER_PILE :: [6] f64.[87.0, -11.0, 0.5,   89.0, -11.0, 0.5];   // each holds five of the flow grid's nodes
+RIVER_RIPPLES :: 24;
+
+// The swimmer (medium.rs).
+WADE_DEPTH :: 0.4;
+SWIM_DEPTH :: 1.25;
+FLOAT_DEPTH :: 1.2;
+EYE_HEIGHT :: 1.6;
+STANDING :: 0.05;
+RISE_SPEED :: 0.6;
+SETTLE_RATE :: 6.0;
+DIVE_SPEED :: 1.5;        // m/s down while you hold dive (ours; the old diver followed the camera's pitch)
+MEDIUM_GROUND :: 0; MEDIUM_WADING :: 1; MEDIUM_SWIMMING :: 2; MEDIUM_DIVING :: 3;
+
+// Breath (verse-world water.rs, SRD 5.2.1).
+CON :: 0;                 // the Ranger's Constitution modifier
+MIN_HOLD :: 30.0;
+ROUND :: 6.0;
+REFILL :: 6.0;
+DEFEAT_LEVEL :: 6;
+
+// Floats: three ducks and six lily pads.
+FLOATS :: 9;
+DUCKS :: 3;
+FLOAT_HOME :: [18] f64.[
+  88.4, -26.0,   87.2, 2.0,   88.8, -34.0,
+  86.6, -22.5,   86.8, -29.5,   89.4, -24.0,   86.7, 4.5,   89.3, 7.0,   86.9, -36.5
+];
+FLOAT_STEP :: 1.0 / 120.0;
+
+River :: struct {
+  ready: bool;
+  n: int; cell: f32; west: f32; south: f32;      // the ground the bed is (verse/terrain.coax's grid)
+  points: [RIVER_POINTS] D2; widths: [RIVER_POINTS] f64; lengths: [RIVER_POINTS] f64;
+  profile: [RIVER_POINTS] D2;
+  flow: [RIVER_FLOW] D2;
+  piles: [RIVER_PILES] Obstacle;
+  bodies: [1] WaterBody;
+  starts: [257] int; entries: [256] int;
+  set: WaterSet;
+  preset: WaterPreset;
+  nodes: [RIVER_NODES] f32;                       // store 3 (everglade.wgsl water_nodes)
+  ripples: [RIVER_RIPPLES * 4] f32;
+  // you
+  medium: int; feet: f32; afloat: bool;
+  breath: f64; out: f64; levels: int;
+  wake_x: f32; wake_z: f32; wake_time: f32; splashed: bool;
+  // the floats
+  floats: [FLOATS] RigidBody; colliders: [FLOATS] Collider; pushes: [FLOATS * 2] Push;
+  float_tick: u64; float_carry: f64;
+}
+
+// What the face passes on to the controller and the page each frame.
+Swim :: struct {
+  medium: int;
+  feet: f32;            // where your feet are, m: the bed, or afloat in the water
+  surface: f32;         // the water's height over you, or -1000 where there is none
+  pace: f32;            // your speed's share, 1 on land
+  flow_x: f32; flow_z: f32;   // the current that carries a swimmer, m/s
+  breath: f32;          // its share left, 0 to 1
+  levels: int;          // Exhaustion from suffocating
+  defeated: bool;       // the sixth level: you come to on the bank
+  bank_x: f32; bank_z: f32;
+}
+
+// ---- the bed
+
+// The ground's height at (x, z), as verse/terrain.coax's verse_terrain_height
+// reads it (the same two triangles a cell the ground draws).
+river_bed :: (r: [] River, heights: [] f32, x: f32, z: f32) -> f32 {
+  n := r[0].n;
+  if n < 1 || heights.count < (n + 1) * (n + 1) { return 0; }
+  gx := clamp_f((x - r[0].west) / r[0].cell, 0, f32(n) - 0.0001);
+  gz := clamp_f((z - r[0].south) / r[0].cell, 0, f32(n) - 0.0001);
+  if !(gx == gx) { gx = 0; }
+  if !(gz == gz) { gz = 0; }
+  i := cast(int) floor(gx); j := cast(int) floor(gz);
+  fx := gx - f32(i); fz := gz - f32(j);
+  w := n + 1;
+  h00 := heights[j * w + i]; h10 := heights[j * w + i + 1]; h01 := heights[(j + 1) * w + i]; h11 := heights[(j + 1) * w + i + 1];
+  if fx >= fz { return h00 + (h10 - h00) * fx + (h11 - h10) * fz; }
+  return h00 + (h11 - h01) * fx + (h01 - h00) * fz;
+}
+
+clamp_f :: (a: f32, low: f32, high: f32) -> f32 { return lo_f(high, hi_f(low, a)); }
+
+// ---- the body
+
+// The river's level at z from the plan's level per ground row (levels[j] at
+// z = south + j cell), linear between rows.
+level_from :: (r: [] River, levels: [] f32, z: f64) -> f64 {
+  g := (z - f64(r[0].south)) / f64(r[0].cell);
+  if g <= 0.0 { return f64(levels[0]); }
+  last := levels.count - 1;
+  if g >= f64(last) { return f64(levels[last]); }
+  j := int(floor(g));
+  f := g - f64(j);
+  return f64(levels[j]) + (f64(levels[j + 1]) - f64(levels[j])) * f;
+}
+
+// Builds the river: its course and level profile, its waves, its current,
+// its set, the baked nodes the shader reads, the floats.
+everglade_river_start :: (r: [] River, heights: [] f32, levels: [] f32, n: int, cell: f32, west: f32, south: f32) #export_c {
+  r[0].n = n; r[0].cell = cell; r[0].west = west; r[0].south = south;
+  span := RIVER_NORTH - RIVER_SOUTH;
+  for i: 0..<RIVER_POINTS {
+    z := RIVER_NORTH - span * f64(i) / f64(RIVER_POINTS - 1);
+    r[0].points[i] = d2(RIVER_X, z);
+    r[0].widths[i] = RIVER_WIDTH;
+  }
+  course := water_course(r[0].points[..], r[0].widths[..], r[0].lengths[..]);
+  for i: 0..<RIVER_POINTS {
+    r[0].profile[i] = d2(r[0].lengths[i], level_from(r, levels, r[0].points[i].y));
+  }
+  for p: 0..<RIVER_PILES {
+    r[0].piles[p] = Obstacle.{center = d2(RIVER_PILE[p * 3], RIVER_PILE[p * 3 + 1]), radius = RIVER_PILE[p * 3 + 2]};
+  }
+  grid := water_flow_river(course, r[0].piles[..], RIVER_FLOW_CELL, RIVER_SPEED, r[0].flow[..]);
+  body := water_with_flow(water_river(1, course, r[0].profile[..]), grid);
+  // A light chop drifting downstream: the old river preset's water under a breeze.
+  sea := water_wind_sea(3.0, 2.6, 0.55, 4);
+  // gentler than the open sea's: a river's chop seldom breaks
+  if sea.error == WaveError.none { calm := sea.set; calm.steepness = 0.35; body = water_with_waves(body, calm); }
+  r[0].bodies[0] = body;
+  r[0].set = water_set(r[0].bodies[..], 8.0, r[0].starts[..], r[0].entries[..]);
+  r[0].preset = water_preset(WATER_RIVER);
+  river_bake(r, heights);
+  r[0].breath = hold_seconds(CON);
+  r[0].medium = MEDIUM_GROUND;
+  floats_start(r);
+  r[0].ready = true;
+}
+
+// The nodes: a row every metre along the course, 13 across it, each with
+// its rest position at the level, the depth to the bed under it, its
+// distance to the shore and the current there.
+river_bake :: (r: [] River, heights: [] f32) {
+  b := r[0].bodies[0];
+  wet: [RIVER_COLS * RIVER_ROWS] bool;
+  shore: [RIVER_COLS * RIVER_ROWS] f32;
+  for j: 0..<RIVER_ROWS {
+    along := f64(j) * RIVER_ALONG;
+    middle := water_point_at(b.course, along);
+    s := water_locate(b.course, middle);
+    normal := d2(-s.tangent.y, s.tangent.x);
+    level := level_at(b.level, b.height, b.profile, along).height;
+    for c: 0..<RIVER_COLS {
+      offset := (f64(c) - f64(RIVER_COLS - 1) * 0.5) * RIVER_ACROSS;
+      p := d2_add(middle, d2_scale(normal, offset));
+      k := (j * RIVER_COLS + c) * WATER_NODE;
+      depth := level - f64(river_bed(r, heights, cast(f32) p.x, cast(f32) p.y));
+      f := water_flow_sample(b.flow, p);
+      r[0].nodes[k] = cast(f32) p.x; r[0].nodes[k + 1] = cast(f32) level; r[0].nodes[k + 2] = cast(f32) p.y;
+      r[0].nodes[k + 3] = cast(f32) depth;
+      r[0].nodes[k + 5] = cast(f32) f.x; r[0].nodes[k + 6] = cast(f32) f.y;
+      // white water where the current wraps a pile
+      foam := 0.0;
+      for q: 0..<RIVER_PILES { foam = fmax(foam, 1.0 - d2_dist(p, r[0].piles[q].center) / 1.2); }
+      r[0].nodes[k + 7] = cast(f32) foam;
+      wet[j * RIVER_COLS + c] = depth > 0.0;
+    }
+  }
+  water_shore_distance(RIVER_COLS, RIVER_ROWS, wet[..], RIVER_ACROSS, RIVER_ALONG, shore[..]);
+  for k: 0..<RIVER_COLS * RIVER_ROWS { r[0].nodes[k * WATER_NODE + 4] = shore[k]; }
+}
+
+everglade_river_node_bytes :: () -> int #export_c { return RIVER_NODES * 4; }
+
+// The river's uniform block (everglade.wgsl WaterU) for this frame at
+// `time` s: the waves on the water clock, the look, the tier, the mesh.
+everglade_river_frame :: (r: [] River, u: [] f32, time: f64, phone: bool, ex: f32, ey: f32, ez: f32, pixel_angle: f32) #export_c {
+  if !r[0].ready || u.count < WATER_FLOATS { return; }
+  b := r[0].bodies[0];
+  inside := false;
+  s := water_sample(r[0].set, f64(ex), f64(ez), river_tick(time));
+  if s.found && f64(ey) < s.height { inside = true; }
+  water_look_body(u, 0, b.waves, time, r[0].preset, 1, inside);
+  water_look_detail(u, 0, 3.0, 0.12, 2.4, 0.016);
+  water_look_control(u, 0, phone);
+  water_look_ripples(u, 0, r[0].ripples[..], cast(f32) u[W_PARAMS]);
+  u[W_REST + 1] = pixel_angle;
+  u[W_GRID] = f32(RIVER_COLS); u[W_GRID + 1] = f32(RIVER_ROWS);
+  u[W_GRID + 2] = ifx phone then 6.0f32 else 12.0f32;
+  u[W_GRID + 3] = ifx phone then 4.0f32 else 8.0f32;
+  u[W_GRID2] = f32(RIVER_PATCH_ROWS); u[W_GRID2 + 1] = f32(RIVER_PATCHES);
+  // the nodes' frame: the first at the course's start, a row a metre on along it
+  start := water_point_at(b.course, 0.0);
+  first := water_locate(b.course, start);
+  normal := d2(-first.tangent.y, first.tangent.x);
+  corner := d2_add(start, d2_scale(normal, -f64(RIVER_COLS - 1) * 0.5 * RIVER_ACROSS));
+  u[W_FRAME] = cast(f32) corner.x; u[W_FRAME + 1] = cast(f32) corner.y;
+  u[W_FRAME + 2] = cast(f32) atan_d2(first.tangent.x, first.tangent.y);
+  u[W_FRAME + 3] = f32(RIVER_ACROSS); u[W_REST + 3] = f32(RIVER_ALONG);
+}
+
+// The water clock's tick at `time` s.
+river_tick :: (time: f64) -> u64 { return cast(u64) floor(fmax(time, 0.0) * 120.0); }
+
+// The draw: vertices a patch, and patches.
+everglade_river_vertices :: (phone: bool) -> int #export_c { return ifx phone then 6 * 4 * 6 else 12 * 8 * 6; }
+everglade_river_patches :: () -> int #export_c { return RIVER_PATCHES; }
+
+// The gameplay surface over (x, z) at `time`, or none.
+everglade_river_surface :: (r: [] River, x: f32, z: f32, time: f64) -> f32 #export_c {
+  if !r[0].ready { return -1000; }
+  s := water_sample(r[0].set, f64(x), f64(z), river_tick(time));
+  if !s.found { return -1000; }
+  return cast(f32) s.height;
+}
+
+// ---- the swimmer (medium.rs)
+
+// The medium of feet at `feet` over a bed at `bed` under a surface at
+// `surface` (-1000: none). In the air over the water is the ground's rules.
+medium_of :: (surface: f32, bed: f32, feet: f32) -> int {
+  if surface <= -999 { return MEDIUM_GROUND; }
+  depth := surface - bed;
+  if depth <= f32(WADE_DEPTH) || feet > surface { return MEDIUM_GROUND; }
+  if feet + f32(EYE_HEIGHT) < surface { return MEDIUM_DIVING; }
+  if depth > f32(SWIM_DEPTH) || feet > bed + f32(STANDING) { return MEDIUM_SWIMMING; }
+  return MEDIUM_WADING;
+}
+
+// A swimmer's feet after dt: at the float line it settles onto it, an idle
+// diver rises at RISE_SPEED, a stroke moves it at the asked speed, never
+// below the bed nor above the float line.
+swim_height :: (feet: f32, surface: f32, bed: f32, vertical: f32, dt: f32) -> f32 {
+  float := surface - f32(FLOAT_DEPTH);
+  floor_ := lo_f(bed, float);
+  top := hi_f(float, floor_);
+  if !(dt > 0) || !(feet == feet) { return clamp_f(feet, floor_, top); }
+  next := 0.0f32;
+  if vertical != 0 { next = feet + vertical * dt; }
+  else if feet < float - 0.05 { next = lo_f(feet + f32(RISE_SPEED) * dt, float); }
+  else { next = float + (feet - float) * exp(-f32(SETTLE_RATE) * dt); }
+  return clamp_f(next, floor_, top);
+}
+
+// The speed's share (water.rs pace): half wading and swimming without a
+// swim speed, less a sixth each Exhaustion level.
+pace_of :: (medium: int, levels: int) -> f32 {
+  base := ifx medium == MEDIUM_GROUND then 1.0f32 else 0.5f32;
+  return base * hi_f((30.0 - 5.0 * f32(levels)) / 30.0, 0);
+}
+
+// ---- breath (water.rs Breath)
+
+hold_seconds :: (con: int) -> f64 {
+  c := con; if c < -10 { c = -10; } if c > 20 { c = 20; }
+  return fmax(60.0 * f64(1 + c), MIN_HOLD);
+}
+
+BREATH_OUT :: 1; BREATH_LEVEL :: 2; BREATH_DEFEAT :: 4; BREATH_BACK :: 8;
+
+// Advances breath by dt with the eye `under` the surface; returns what
+// happened as BREATH_* bits.
+breath_tick :: (r: [] River, dt: f64, under: bool) -> int {
+  if !(dt > 0.0) { return 0; }
+  events := 0;
+  limit := hold_seconds(CON);
+  if !under {
+    if r[0].levels > 0 { events = events | BREATH_BACK; r[0].levels = 0; }
+    r[0].out = 0.0;
+    r[0].breath = fmin(r[0].breath + limit / REFILL * dt, limit);
+    return events;
+  }
+  spare := dt;
+  if r[0].breath > 0.0 {
+    spent := fmin(spare, r[0].breath);
+    r[0].breath -= spent;
+    spare -= spent;
+    if r[0].breath <= 0.000000001 { r[0].breath = 0.0; events = events | BREATH_OUT; }
+  }
+  if r[0].breath > 0.0 { return events; }
+  r[0].out += spare;
+  while r[0].out + 0.000000001 >= ROUND * f64(r[0].levels + 1) {
+    r[0].levels += 1;
+    if r[0].levels >= DEFEAT_LEVEL {
+      events = events | BREATH_DEFEAT;
+      r[0].levels = 0; r[0].out = 0.0; r[0].breath = limit;
+      break;
+    }
+    events = events | BREATH_LEVEL;
+  }
+  return events;
+}
+
+// One frame of you in the river: your feet at (x, z) over the carved
+// ground, `dive` held, `dt` s, at `time` on the water clock.
+everglade_river_swim :: (r: [] River, heights: [] f32, x: f32, z: f32, dive: bool, dt: f32, time: f64) -> Swim #export_c {
+  out: Swim;
+  out.surface = -1000; out.pace = 1; out.breath = 1; out.medium = MEDIUM_GROUND;
+  bed := river_bed(r, heights, x, z);
+  out.feet = bed;
+  if !r[0].ready { return out; }
+  t := ifx dt == dt && dt > 0 then lo_f(dt, 0.25) else 0.0f32;
+  s := water_sample(r[0].set, f64(x), f64(z), river_tick(time));
+  surface := ifx s.found then cast(f32) s.height else -1000.0f32;
+  // Afloat, you keep your height in the water; on the bed, your feet are on it.
+  feet := ifx r[0].afloat then r[0].feet else bed;
+  if surface > -999 && surface - bed > f32(SWIM_DEPTH) && !r[0].afloat { feet = hi_f(bed, surface - f32(FLOAT_DEPTH)); }
+  medium := medium_of(surface, bed, feet);
+  afloat := medium == MEDIUM_SWIMMING || medium == MEDIUM_DIVING;
+  if afloat {
+    feet = swim_height(feet, surface, bed, ifx dive then -f32(DIVE_SPEED) else 0.0f32, t);
+    medium = medium_of(surface, bed, feet);
+    afloat = medium == MEDIUM_SWIMMING || medium == MEDIUM_DIVING;
+    // you stand again where the bed comes up under a float line
+    if afloat && feet <= bed + f32(STANDING) && surface - bed <= f32(SWIM_DEPTH) { afloat = false; medium = MEDIUM_WADING; }
+  }
+  if !afloat { feet = bed; }
+  events := breath_tick(r, f64(t), medium == MEDIUM_DIVING);
+  r[0].medium = medium; r[0].feet = feet; r[0].afloat = afloat;
+  out.medium = medium; out.feet = feet; out.surface = surface;
+  out.pace = pace_of(medium, r[0].levels);
+  if afloat && s.found { out.flow_x = cast(f32) s.flow.x; out.flow_z = cast(f32) s.flow.z; }
+  out.breath = cast(f32) (r[0].breath / hold_seconds(CON));
+  out.levels = r[0].levels;
+  if events & BREATH_DEFEAT != 0 {
+    out.defeated = true;
+    // the nearer bank, past the water's edge
+    side := ifx x >= f32(RIVER_X) then 1.0f32 else -1.0f32;
+    out.bank_x = f32(RIVER_X) + side * 4.4; out.bank_z = z;
+    r[0].afloat = false; r[0].medium = MEDIUM_GROUND;
+  }
+  river_wake(r, x, z, medium, surface, time);
+  return out;
+}
+
+// ---- ripples, your wake and splash (phase W6's ripple field)
+
+WAKE_EVERY :: 0.35;       // s between the rings you leave moving through water
+WAKE_STEP :: 0.25;        // m you must have moved for one
+
+// Rings where you wade or swim and move, and a splash where you come into
+// the water from the air or the bank.
+river_wake :: (r: [] River, x: f32, z: f32, medium: int, surface: f32, time: f64) {
+  t := cast(f32) (time - 3600.0 * floor(time / 3600.0));
+  wet := medium != MEDIUM_GROUND && surface > -999;
+  if !wet { r[0].splashed = false; return; }
+  if !r[0].splashed {
+    water_add_ripple(r[0].ripples[..], x, z, t, 0.03);
+    r[0].splashed = true; r[0].wake_x = x; r[0].wake_z = z; r[0].wake_time = t;
+    return;
+  }
+  dx := x - r[0].wake_x; dz := z - r[0].wake_z;
+  age := t - r[0].wake_time;
+  if age < 0 { r[0].wake_time = t; return; }
+  if age >= f32(WAKE_EVERY) && dx * dx + dz * dz >= f32(WAKE_STEP) * f32(WAKE_STEP) {
+    strength := ifx medium == MEDIUM_WADING then 0.012f32 else 0.018f32;
+    if medium == MEDIUM_DIVING { strength = 0.006; }
+    water_add_ripple(r[0].ripples[..], x, z, t, strength);
+    r[0].wake_x = x; r[0].wake_z = z; r[0].wake_time = t;
+  }
+}
+
+// ---- the floats
+
+// A duck: a ball of 0.16 m radius at 1.1 kg (half under); a lily pad: a disc
+// as a 0.5 x 0.03 x 0.5 m slab of 2.6 kg (a third under).
+floats_start :: (r: [] River) {
+  for i: 0..<FLOATS {
+    x := FLOAT_HOME[i * 2]; z := FLOAT_HOME[i * 2 + 1];
+    s := water_sample(r[0].set, x, z, 0);
+    y := ifx s.found then s.height else 0.0;
+    shape: ColliderShape;
+    mass := 0.0;
+    inertia := d3(0.0, 0.0, 0.0);
+    if i < DUCKS {
+      shape = shape_sphere(0.16); mass = 1.1;
+      m := 0.4 * mass * 0.16 * 0.16; inertia = d3(m, m, m);
+    } else {
+      shape = shape_cuboid(d3(0.25, 0.015, 0.25)); mass = 2.6;
+      inertia = rigid_box_inertia(mass, d3(0.5, 0.03, 0.5));
+    }
+    r[0].floats[i] = rigid_body(mass, inertia, d3(x, y + 0.02, z), dq_y(golden(i + 5) * TAU_D));
+    r[0].colliders[i] = Collider.{body = i, shape = shape};
+  }
+  r[0].float_tick = 0; r[0].float_carry = 0.0;
+}
+
+// Steps the floats by dt in fixed steps: buoyancy and drag from the water,
+// a duck's paddling home and a lily pad's stem; writes each one's x, y, z,
+// its yaw, its tip and the way it tips, 0, and its kind (0 a duck, 1 a pad)
+// into `out`.
+everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
+  if !r[0].ready { return 0; }
+  if dt == dt && dt > 0 { r[0].float_carry += fmin(f64(dt), 0.25); }
+  steps := 0;
+  every: [1] bool;
+  gravity := d3(0.0, -9.81, 0.0);
+  while r[0].float_carry >= FLOAT_STEP && steps < 8 {
+    w := rigid_world(FLOAT_STEP, r[0].floats[..]);
+    w.tick = r[0].float_tick;
+    n := water_apply(w, r[0].colliders[..], r[0].set, w.tick, FLOAT_STEP, water_settings(), every[0..<0], r[0].pushes[..]);
+    for i: 0..<FLOATS { r[0].floats[i] = float_steer(r[0].floats[i], i, r[0].float_tick); }
+    w = rigid_step(w, gravity);
+    r[0].float_tick = w.tick;
+    r[0].float_carry -= FLOAT_STEP;
+    steps += 1;
+  }
+  if r[0].float_carry >= FLOAT_STEP { r[0].float_carry = 0.0; }
+  count := 0;
+  for i: 0..<FLOATS {
+    if (count + 1) * 8 > out.count { break; }
+    b := r[0].floats[i];
+    k := count * 8;
+    out[k] = cast(f32) b.pos.x; out[k + 1] = cast(f32) b.pos.y; out[k + 2] = cast(f32) b.pos.z;
+    out[k + 3] = cast(f32) yaw_of_q(b.orientation);
+    // how far it tips (its up's lean), and which way, about the vertical
+    up := dq_rotate(b.orientation, D3_Y);
+    out[k + 4] = cast(f32) acos_d(fclamp(up.y, -1.0, 1.0)); out[k + 5] = cast(f32) atan_d2(up.x, up.z); out[k + 6] = 0;
+    out[k + 7] = ifx i < DUCKS then 0.0f32 else 1.0f32;
+    count += 1;
+  }
+  return count;
+}
+
+// A duck paddles toward a point that wanders slowly round its home, up to
+// 4 N; a lily pad's stem pulls it back to its anchor like a spring with
+// some give, and keeps it from spinning away.
+float_steer :: (b: RigidBody, i: int, tick: u64) -> RigidBody {
+  next := b;
+  hx := FLOAT_HOME[i * 2]; hz := FLOAT_HOME[i * 2 + 1];
+  if i < DUCKS {
+    t := f64(tick % 1000000) / 120.0;
+    a := t * 0.11 + f64(i) * 2.1;
+    tx := hx + 0.8 * sin(a); tz := hz + 2.5 * sin(a * 0.7 + 1.0);
+    fx := (tx - b.pos.x) * 3.0 - b.vel.x * 2.0;
+    fz := (tz - b.pos.z) * 3.0 - b.vel.z * 2.0;
+    size := sqrt(fx * fx + fz * fz);
+    if size > 4.0 { fx = fx * 4.0 / size; fz = fz * 4.0 / size; }
+    next.force = d3_add(next.force, d3(fx, 0.0, fz));
+    // and turns to face the way it paddles
+    if size > 0.05 { next.torque = d3_add(next.torque, d3(0.0, 0.004 * turn_d(atan_d2(fx, fz), yaw_of_q(b.orientation)), 0.0)); }
+    return next;
+  }
+  fx := (hx - b.pos.x) * 9.0 - b.vel.x * 1.5;
+  fz := (hz - b.pos.z) * 9.0 - b.vel.z * 1.5;
+  next.force = d3_add(next.force, d3(fx, 0.0, fz));
+  return next;
+}
+
+// atan2 for the duck's heading, from rigid.coax's atan_d.
+atan_d2 :: (x: f64, z: f64) -> f64 {
+  if z > 0.0 { return atan_d(x / z); }
+  if z < 0.0 { return atan_d(x / z) + ifx x >= 0.0 then PI_D else -PI_D; }
+  return ifx x >= 0.0 then PI_D * 0.5 else -PI_D * 0.5;
+}
+turn_d :: (a: f64, b: f64) -> f64 { d := a - b + PI_D; d = d - TAU_D * floor(d / TAU_D); return d - PI_D; }
+// The yaw of an attitude: where it turns +z, about +Y.
+yaw_of_q :: (q: DQ) -> f64 {
+  f := dq_rotate(q, D3_Z);
+  return atan_d2(f.x, f.z);
+}
+
+// ---- checks
+
+// A test river: the plan's levels as a gentle fall, the bed its carve (a
+// V 2.45 m deep at the middle), on the plan's ground grid.
+TEST_N :: 104;
+test_ground :: (heights: [] f32, levels: [] f32) {
+  for j: 0..<TEST_N + 1 {
+    z := -104.0f32 + f32(j) * 2;
+    levels[j] = -0.6 - (100 - z) * 0.002;
+    for i: 0..<TEST_N + 1 {
+      x := -104.0f32 + f32(i) * 2;
+      d := abs(x - 88);
+      h := 1.0f32;
+      if d <= 2 { h = levels[j] - 0.25 - 1.95 * (1 - d / 2); }
+      else if d < 8 { h = lo_f(1.0, levels[j] - 0.25 + (d - 2)); }
+      heights[j * (TEST_N + 1) + i] = h;
+    }
+  }
+}
+
+#test "the medium follows the depth (medium.rs depth_sets_the_medium)" {
+  #assert medium_of(-1000, 0, 0) == MEDIUM_GROUND;
+  #assert medium_of(0, -0.3, -0.3) == MEDIUM_GROUND;
+  #assert medium_of(0, -0.8, -0.8) == MEDIUM_WADING;
+  #assert medium_of(0, -2, -f32(FLOAT_DEPTH)) == MEDIUM_SWIMMING;
+  #assert medium_of(0, -1, -0.8) == MEDIUM_SWIMMING;
+  #assert medium_of(0, -3, -2.5) == MEDIUM_DIVING;
+  #assert pace_of(MEDIUM_GROUND, 0) == 1 && pace_of(MEDIUM_WADING, 0) == 0.5 && pace_of(MEDIUM_SWIMMING, 0) == 0.5;
+  #assert abs(pace_of(MEDIUM_SWIMMING, 3) - 0.25) < 0.0001 && pace_of(MEDIUM_GROUND, 6) == 0;
+}
+
+#test "a swimmer settles, dives to the bed and rises back (medium.rs a_swimmer_settles_dives_and_rises_back)" {
+  feet := -0.5f32;
+  for k: 0..<240 { feet = swim_height(feet, 0, -3, 0, 1.0 / 120.0); }
+  #assert abs(feet + f32(FLOAT_DEPTH)) < 0.01;
+  for k: 0..<600 { feet = swim_height(feet, 0, -3, -1.5, 1.0 / 120.0); }
+  #assert feet == -3;
+  start := feet;
+  feet = swim_height(feet, 0, -3, 0, 1);
+  #assert abs(feet - start - f32(RISE_SPEED)) < 0.00001;
+}
+
+#test "breath: a minute held, a level every 6 s out of it, the sixth defeats (water.rs, SRD 5.2.1)" {
+  #assert hold_seconds(-1) == 30 && hold_seconds(0) == 60 && hold_seconds(2) == 180 && hold_seconds(-5) == 30;
+  r: [1] River;
+  r[0].breath = hold_seconds(CON);
+  // 59.5 s under: still breathing
+  events := 0;
+  for k: 0..<119 { events = events | breath_tick(r[..], 0.5, true); }
+  #assert events == 0 && r[0].levels == 0 && abs(r[0].breath - 0.5) < 0.000001;
+  #assert breath_tick(r[..], 0.5, true) == BREATH_OUT;
+  // a level at the end of each 6 s round
+  for k: 0..<11 { events = breath_tick(r[..], 0.5, true); }
+  #assert r[0].levels == 0;
+  #assert breath_tick(r[..], 0.5, true) == BREATH_LEVEL && r[0].levels == 1;
+  // breathing again removes them, and breath refills over 6 s
+  #assert breath_tick(r[..], 3.0, false) == BREATH_BACK && r[0].levels == 0 && abs(r[0].breath - 30) < 0.000001;
+  #assert breath_tick(r[..], 3.0, false) == 0 && r[0].breath == 60;
+  // the sixth level, 36 s out of breath, defeats and leaves you breathing
+  for k: 0..<120 { events = breath_tick(r[..], 0.5, true); }
+  #assert r[0].breath == 0;
+  defeated := false;
+  for k: 0..<72 { if breath_tick(r[..], 0.5, true) & BREATH_DEFEAT != 0 { defeated = true; #assert k == 71; } }
+  #assert defeated && r[0].levels == 0 && r[0].breath == 60;
+}
+
+#test "the river: a body along the carve, its current downstream and round the piles, its nodes over the bed" {
+  heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
+  levels: [TEST_N + 1] f32;
+  test_ground(heights[..], levels[..]);
+  r: [1] River;
+  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -104, -104);
+  #assert r[0].ready && r[0].bodies[0].flow.nx * r[0].bodies[0].flow.nz <= RIVER_FLOW;
+  // the level falls downstream (south), as the plan's levels do
+  s0 := water_sample(r[0].set, 88, 40, 0); s1 := water_sample(r[0].set, 88, -40, 0);
+  #assert s0.found && s1.found && s0.height > s1.height;
+  #assert abs(s1.height - (-0.6 - 140.0 * 0.002)) < 0.08;
+  // the current runs south at about the mean speed mid-stream, and parts round a pile
+  #assert s1.flow.z < -0.3 && abs(s1.flow.x) < 0.05;
+  // beside a pile the stream bends round it
+  open := water_sample(r[0].set, 87, -30, 0);
+  turned := 0.0;
+  for q: 0..<4 {
+    at := water_sample(r[0].set, 87 + ifx q == 0 then -1.0 else 0.0, -11 + ifx q == 1 then 1.0 else ifx q == 2 then -1.0 else 0.0, 0);
+    if q == 3 { at = water_sample(r[0].set, 88, -11, 0); }
+    turned = fmax(turned, abs(at.flow.x - open.flow.x) + abs(at.flow.z - open.flow.z));
+  }
+  #assert open.found && turned > 0.03;
+  // not in the woods' ground beyond the banks
+  #assert !water_sample(r[0].set, 92.5, -40, 0).found;
+  // nodes: the middle is 2.45 m deep at rest, the bank's dry nodes have no shore distance
+  mid := (100 * RIVER_COLS + 6) * WATER_NODE;
+  #assert abs(r[0].nodes[mid] - 88) < 0.001 && abs(r[0].nodes[mid + 2] - 4) < 0.001;
+  #assert abs(r[0].nodes[mid + 3] - 2.2) < 0.06;
+  edge := (100 * RIVER_COLS + 0) * WATER_NODE;
+  #assert r[0].nodes[edge + 3] < 0 && r[0].nodes[edge + 4] == 0;
+  #assert r[0].nodes[mid + 4] > 1.0 && r[0].nodes[mid + 6] < -0.3;
+  // the frame the shader finds a node from (everglade.wgsl water_uv) gives each node its column and row
+  u: [WATER_FLOATS] f32;
+  everglade_river_frame(r[..], u[..], 0, false, 88, 5, -40, 0.001);
+  for q: 0..<3 {
+    j := q * 100; c := q * 6;
+    k := (j * RIVER_COLS + c) * WATER_NODE;
+    a := u[W_FRAME + 2];
+    tx := sin(a); tz := cos(a);
+    dx := r[0].nodes[k] - u[W_FRAME]; dz := r[0].nodes[k + 2] - u[W_FRAME + 1];
+    #assert abs((dx * -tz + dz * tx) / u[W_FRAME + 3] - f32(c)) < 0.01 && abs((dx * tx + dz * tz) / u[W_REST + 3] - f32(j)) < 0.01;
+  }
+}
+
+#test "you wade into the river at half speed, swim in the middle, dive, and come to on the bank" {
+  heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
+  levels: [TEST_N + 1] f32;
+  test_ground(heights[..], levels[..]);
+  r: [1] River;
+  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -104, -104);
+  // on the bank: ground, full pace
+  a := everglade_river_swim(r[..], heights[..], 83.0, -30, false, 1.0 / 60.0, 1.0);
+  #assert a.medium == MEDIUM_GROUND && a.pace == 1;
+  // a metre and a half from the middle: wading on the bed at half pace
+  b := everglade_river_swim(r[..], heights[..], 86.5, -30, false, 1.0 / 60.0, 1.1);
+  #assert b.medium == MEDIUM_WADING && b.pace == 0.5 && abs(b.feet - river_bed(r[..], heights[..], 86.5, -30)) < 0.0001;
+  // the middle: afloat at the float line, carried south
+  c := Swim.{};
+  for k: 0..<120 { c = everglade_river_swim(r[..], heights[..], 88.0, -30, false, 1.0 / 60.0, 1.2 + f64(k) / 60.0); }
+  #assert c.medium == MEDIUM_SWIMMING && abs(c.feet - (c.surface - f32(FLOAT_DEPTH))) < 0.05 && c.flow_z < -0.2 && c.breath == 1;
+  // hold dive: under in about half a second; breath runs down
+  for k: 0..<120 { c = everglade_river_swim(r[..], heights[..], 88.0, -30, true, 1.0 / 60.0, 3.2 + f64(k) / 60.0); }
+  #assert c.medium == MEDIUM_DIVING && c.breath < 1 && c.feet >= river_bed(r[..], heights[..], 88.0, -30) - 0.0001;
+  // stay down past your breath and six rounds: you come to on the nearer bank
+  defeated := false; bank := 0.0f32;
+  for k: 0..<6000 {
+    c = everglade_river_swim(r[..], heights[..], 87.6, -30, true, 0.05, 5.2 + f64(k) * 0.05);
+    if c.defeated { defeated = true; bank = c.bank_x; break; }
+  }
+  #assert defeated && abs(bank - 83.6) < 0.001;
+  // let go: you rise and breathe again
+  for k: 0..<300 { c = everglade_river_swim(r[..], heights[..], 88.0, -30, false, 1.0 / 30.0, 400.0 + f64(k) / 30.0); }
+  #assert c.medium == MEDIUM_SWIMMING && c.levels == 0;
+  // the rings: a splash where you came in, then a wake as you move
+  live := 0;
+  for i: 0..<RIVER_RIPPLES { if r[0].ripples[i * 4 + 3] > 0 { live += 1; } }
+  #assert live >= 1;
+}
+
+#test "ducks and lily pads float on the river by buoyancy and keep to the glade" {
+  heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
+  levels: [TEST_N + 1] f32;
+  test_ground(heights[..], levels[..]);
+  r: [1] River;
+  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -104, -104);
+  out: [FLOATS * 8] f32;
+  n := 0;
+  for k: 0..<150 { n = everglade_river_floats(r[..], 1.0 / 60.0, out[..]); }
+  #assert n == FLOATS;
+  for i: 0..<FLOATS {
+    x := out[i * 8]; y := out[i * 8 + 1]; z := out[i * 8 + 2];
+    s := water_sample(r[0].set, f64(x), f64(z), r[0].float_tick);
+    #assert s.found;
+    // afloat at the surface, not sunk, not flown
+    #assert abs(f64(y) - s.height) < 0.12;
+    // and within a few metres of home against a 0.45 m/s current
+    hx := cast(f32) FLOAT_HOME[i * 2]; hz := cast(f32) FLOAT_HOME[i * 2 + 1];
+    #assert sqrt((x - hx) * (x - hx) + (z - hz) * (z - hz)) < 4;
+    #assert out[i * 8 + 7] == ifx i < DUCKS then 0.0f32 else 1.0f32;
+  }
+}

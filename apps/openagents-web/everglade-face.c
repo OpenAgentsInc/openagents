@@ -13,11 +13,17 @@
 // (GET /api/playtest/world/everglade, everyone), heard words go to the
 // server's selector (POST /api/playtest/realm/everglade/edit) and the new
 // list is published (POST /api/playtest/world/everglade); the server checks
-// both are an admin's. It lends the page a grid to walk the city again. It decides nothing. Every pointer is an offset into the host's
+// both are an admin's. It lends the page a grid to walk the city again.
+// verse/everglade/river.coax is the river (River.h): built once from the
+// page's carved ground, each frame it says what water you are in, whose
+// pace, jump, current and breath the face passes to the controller and the
+// page, steps the ducks and lily pads, and writes the river's uniform block
+// after the page's frame; its baked nodes are store 3. It decides nothing. Every pointer is an offset into the host's
 // WebAssembly.Memory; the page's state is the host's (coaxial_state_size).
 #include "everglade.h"
 #include "Player.h"
 #include "Grid.h"
+#include "River.h"
 #include "analytics-face.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -47,6 +53,12 @@ static void edit_out(uint32_t state);
 static bool facts_seen, has_player, mint_tried;
 static void ask_out(uint32_t state);
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
+static coax_t_River river;
+static bool river_built;
+static float river_levels[105];
+static float river_floats[9 * 8];
+static coax_t_Swim swim;
+static coax_v_t_River rv(void) { return (coax_v_t_River){&river, 1}; }
 
 static coax_t_Everglade *city(uint32_t state) { return (coax_t_Everglade *)(uintptr_t)state; }
 static coax_v_t_Everglade at(uint32_t state) { return (coax_v_t_Everglade){city(state), 1}; }
@@ -57,6 +69,12 @@ static void start(uint32_t state) {
   player = verse_player_place(spawn.x, spawn.y, spawn.z, everglade_spawn_face(at(state)));
   sticks = verse_sticks_reset();
   placed = true;
+  if (!river_built) {
+    everglade_levels(at(state), (coax_v_f32){river_levels, 105});
+    everglade_river_start(rv(), (coax_v_f32){city(state)->heights.e, 105 * 105}, (coax_v_f32){river_levels, 105}, 104, 2, -104, -104);
+    river_built = true;
+    swim.pace = 1; swim.breath = 1;
+  }
 }
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
@@ -82,12 +100,15 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   bool busy = everglade_busy(at(state));
   if (busy) sticks = verse_sticks_reset();
   if (busy) player = verse_player_input(player, 0, 0, 0, 0, false, false, 0, 0);
-  else player = verse_player_input(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, g->run || sticks.run, g->jump || sticks.jump, 0, 0);
+  else player = verse_player_input(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, g->run || sticks.run, (g->jump || sticks.jump) && !everglade_afloat(at(state)), 0, 0);
+  player.pace = swim.pace;
   player.theta = everglade_player_theta(at(state));
   sticks = verse_sticks_used(sticks);
   int64_t walls = everglade_walls(at(state));
   coax_t_Vec3 was = player.pos;
   player = verse_player_advance_among(player, dt, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6});
+  // afloat, the current carries you
+  if (swim.medium >= 2) { player.pos.x += swim.flow_x * dt; player.pos.z += swim.flow_z * dt; }
   coax_t_Point kept = everglade_hold(at(state), was.x, was.z, player.pos.x, player.pos.z);
   if (kept.x != player.pos.x || kept.z != player.pos.z) {
     if (kept.x != player.pos.x) player.vel.x = 0;
@@ -95,12 +116,36 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     player.pos.x = kept.x; player.pos.z = kept.z;
     player.prev_pos = player.pos;
   }
+  // the river: what water you are in, on the bridge's deck none
+  coax_v_f32 heights = {g->heights.e, 105 * 105};
+  if (everglade_on_bridge(at(state), player.pos.x, player.pos.z) && swim.medium < 2) {
+    swim = (coax_t_Swim){0}; swim.pace = 1; swim.breath = 1; swim.surface = -1000;
+  } else {
+    swim = everglade_river_swim(rv(), heights, player.pos.x, player.pos.z, g->dive && !busy, dt, now);
+  }
+  if (swim.defeated) {
+    // the sixth level of Exhaustion: you come to on the nearer bank
+    player = verse_player_place(swim.bank_x, 0, swim.bank_z, verse_player_face(player));
+    swim.medium = 0; swim.pace = 1;
+  }
+  int64_t floats = everglade_river_floats(rv(), dt, (coax_v_f32){river_floats, 9 * 8});
+  bool small = everglade_phone(at(state));
+  everglade_water(at(state), swim.medium, swim.feet, swim.breath, swim.levels,
+                  everglade_river_vertices(small), everglade_river_patches(), (coax_v_f32){river_floats, 9 * 8}, floats);
   coax_t_Vec3 feet = verse_player_feet(player);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_everglade_max_vertices() * coaxial_everglade_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_everglade_uniform_floats()};
   int64_t n = everglade_frame(at(state), out, u, w, h, scale, dt, still != 0, feet.x, feet.y, feet.z, verse_player_face(player),
                            verse_player_act(player), player.vel.x, player.vel.z,
                            sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
+  if (n > 0) {
+    // the river's uniform block, after the page's frame has written the rest
+    int64_t at_water = everglade_water_at();
+    float *eye = u.data + everglade_eye_at();
+    float aspect = w / (h > 1 ? h : 1);
+    float fy = aspect * 1.25f; fy = fy < 0.95f ? 0.95f : fy > 1.9f ? 1.9f : fy;
+    everglade_river_frame(rv(), (coax_v_f32){u.data + at_water, u.count - at_water}, now, small, eye[0], eye[1], eye[2], 2.0f / (fy * (h > 1 ? h : 1)));
+  }
   ask_out(state);
   edit_out(state);
   track_frame(tr(), dt, w, h, scale);
@@ -166,12 +211,15 @@ static bool has_line(uint32_t length, const char *prefix) {
 
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return city(state)->started ? (uint32_t)everglade_draws(at(state)) : 0u; }
-EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 3; }
-EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return (uint32_t)everglade_store_cap(k); }
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4; }
+EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return (uint32_t)(k == 3 ? everglade_river_node_bytes() : everglade_store_cap(k)); }
 EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
+  if (k == 3) return (uint32_t)(uintptr_t)river.nodes.e;
   return (uint32_t)(uintptr_t)(k == 0 ? (void *)city(state)->heights.e : k == 1 ? (void *)city(state)->objects.e : (void *)city(state)->palette.e);
 }
-EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { (void)state; return (uint32_t)everglade_store_cap(k); }
+EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { (void)state; return coaxial_store_cap(k); }
+// The last draw is the river's (everglade.coax WATER_DRAW): the host draws it after the rest, in two halves.
+EXPORT("coaxial_water_draws") uint32_t coaxial_water_draws(uint32_t state) { (void)state; return 1; }
 
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
   start(state);

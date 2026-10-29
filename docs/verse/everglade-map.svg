@@ -592,7 +592,7 @@
 <line x1="416.0" y1="382.0" x2="520.0" y2="366.0" stroke="#b08a5a" stroke-width="12.0" stroke-linecap="round"/>
 <rect x="56.0" y="558.0" width="16.0" height="328.0" fill="#7fa7c0"/>
 <rect x="56.0" y="86.0" width="16.0" height="420.0" fill="#7fa7c0"/>
-<rect x="53.60000000000002" y="506.0" width="20.799999999999955" height="52.0" fill="#8a6a44" stroke="#5a4428"/>
+<rect x="48.0" y="506.0" width="32.0" height="52.0" fill="#8a6a44" stroke="#5a4428"/>
 <rect x="440.0" y="708.4" width="233.6" height="3.2" fill="#5a3f24"/>
 <rect x="158.4" y="708.4" width="233.6" height="3.2" fill="#5a3f24"/>
 <rect x="428.0" y="704.0" width="12.0" height="12.0" fill="#5a3f24"/>

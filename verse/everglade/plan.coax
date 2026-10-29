@@ -103,7 +103,7 @@ EG_PROP_NAME :: [15] string.[
 ];
 EG_FOUNTAIN :: 0; EG_BOARD :: 1; EG_STALL :: 2; EG_WAYSTONE :: 8; EG_PILLAR :: 9; EG_CRYPT :: 12; EG_RIVER :: 13;
 // The bridge over the river where the trail crosses it: a deck you walk on, not in the way.
-EG_BRIDGE :: [5] f32.[85.4, -18, 90.6, -5, 0.5];
+EG_BRIDGE :: [5] f32.[84, -18, 92, -5, 0.5];   // its ends on the ground the river's carve leaves as it was
 
 // ---- the streets and the trails out (verse/terrain.coax nodes and links)
 EG_NODES :: 30;
@@ -221,14 +221,95 @@ everglade_build_ground :: (heights: [] f32) -> bool {
   flats: [EG_FLATS * FLAT] f32;
   made := everglade_flats(flats[..]);
   if made == 0 { return false; }
-  return verse_terrain_build(everglade_ground(), heights, nodes[..], links[..], f32(EG_PATH_HALF), flats[..]);
+  if !verse_terrain_build(everglade_ground(), heights, nodes[..], links[..], f32(EG_PATH_HALF), flats[..]) { return false; }
+  everglade_carve_river(heights);
+  return true;
+}
+
+// ---- the river (docs/verse/water.md W3): a channel carved along x = 88
+// from the north edge to the south, its water one verse/water.coax river
+// body (verse/everglade/river.coax). Its level falls from north to south,
+// never rising and always 0.2 m under the lowest ground it runs through,
+// so the water stays in its bed; the bed is a V 2.2 m under the level at
+// the middle and 0.25 m under it at the banks, 2 m out either side, and
+// past them it climbs one in one until it meets the ground (in the south
+// woods, where the ground rises, a ravine).
+EG_RIVER_X :: 88.0;
+EG_RIVER_HALF :: 2.0;     // the banks, metres from the middle
+EG_RIVER_DEPTH :: 2.2;    // under the level at the middle
+EG_RIVER_RIM :: 0.25;     // under the level at the banks
+EG_RIVER_FALL :: 0.008;   // the least the level falls each ground row (2 m)
+EG_RIVER_FREEBOARD :: 0.2;
+EG_RIVER_COL :: 96;       // the ground's column at x = 88
+
+// The level over each ground row (z = EG_EDGE + j EG_CELL) of the ground
+// as built, before the carve.
+everglade_river_levels_of :: (heights: [] f32, levels: [] f32) {
+  w := EG_CELLS + 1;
+  if levels.count < w || heights.count < EG_GROUND_POINTS { return; }
+  above := 1000000.0f32;
+  for k: 0..<w {
+    j := EG_CELLS - k;
+    low := 1000000.0f32;
+    for i: EG_RIVER_COL - 4..<EG_RIVER_COL + 5 { low = lo(low, heights[j * w + i]); }
+    levels[j] = lo(above - f32(EG_RIVER_FALL), low - f32(EG_RIVER_FREEBOARD));
+    above = levels[j];
+  }
+}
+
+// The level over each row of the carved ground: the middle's bed and the depth.
+everglade_river_levels :: (heights: [] f32, levels: [] f32) #export_c {
+  w := EG_CELLS + 1;
+  if levels.count < w || heights.count < EG_GROUND_POINTS { return; }
+  for j: 0..<w { levels[j] = heights[j * w + EG_RIVER_COL] + f32(EG_RIVER_DEPTH); }
+}
+
+// The bed's height d metres from the middle under a level.
+river_section :: (level: f32, d: f32) -> f32 {
+  half := f32(EG_RIVER_HALF);
+  if d <= half { return level - f32(EG_RIVER_RIM) - (f32(EG_RIVER_DEPTH) - f32(EG_RIVER_RIM)) * (1 - d / half); }
+  return level - f32(EG_RIVER_RIM) + (d - half);
+}
+
+everglade_carve_river :: (heights: [] f32) {
+  w := EG_CELLS + 1;
+  levels: [EG_CELLS + 1] f32;
+  everglade_river_levels_of(heights, levels[..]);
+  for j: 0..<w {
+    for i: 0..<w {
+      x := f32(EG_EDGE) + f32(i) * f32(EG_CELL);
+      d := abs(x - f32(EG_RIVER_X));
+      if d > 30 { continue; }
+      heights[j * w + i] = lo(heights[j * w + i], river_section(levels[j], d));
+    }
+  }
+}
+
+// Whether x is within `pad` of the river's water (3 m either side of its
+// middle, verse/everglade/river.coax's outline): no tree stands in it.
+everglade_in_river :: (x: f32, pad: f32) -> bool { return abs(x - f32(EG_RIVER_X)) < 3 + pad; }
+
+// Where you walk: the ground, or the bridge's deck where it spans the
+// river. The deck's top is 0.1 m over the trail's ground at its ends,
+// where the carve has left the ground as it was.
+EG_DECK :: 0.1;
+everglade_deck :: (heights: [] f32) -> f32 {
+  if heights.count < EG_GROUND_POINTS { return 0; }
+  w := EG_CELLS + 1;
+  j := cast(int) ((-11.5 - f32(EG_EDGE)) / f32(EG_CELL));
+  return (heights[j * w + EG_RIVER_COL - 2] + heights[j * w + EG_RIVER_COL + 2]) / 2 + f32(EG_DECK);
+}
+everglade_walk_height :: (heights: [] f32, deck: f32, x: f32, z: f32) -> f32 {
+  h := verse_terrain_height(everglade_ground(), heights, x, z);
+  if x >= EG_BRIDGE[0] && x <= EG_BRIDGE[2] && z >= EG_BRIDGE[1] && z <= EG_BRIDGE[3] { return hi(h, deck); }
+  return h;
 }
 
 // ---- what stands in the way
 
 // Every box a walker can't pass, five numbers each: the palisade, the
 // buildings, the solid props, and the edge of the world. Returns how many.
-EG_SOLIDS :: EG_PALISADE_N + EG_BUILDINGS + 4 * EG_INTERIORS + EG_PROPS + 4;
+EG_SOLIDS :: EG_PALISADE_N + EG_BUILDINGS + 4 * EG_INTERIORS + EG_RIVER + 4;
 everglade_solids :: (out: [] f32) -> int {
   bld := EG_BUILDING;
   pal := EG_PALISADE;
@@ -239,7 +320,9 @@ everglade_solids :: (out: [] f32) -> int {
     if !EG_INTERIOR[i] { n = put_box(out, n, bld[..], i); continue; }
     n = put_walls(out, n, i);
   }
-  for i: 0..<EG_PROPS { n = put_box(out, n, prp[..], i); }
+  // The river's banks are in the props for the map, but you may wade and
+  // swim in it (verse/everglade/river.coax): they stand in no one's way.
+  for i: 0..<EG_PROPS { if i < EG_RIVER { n = put_box(out, n, prp[..], i); } }
   b := f32(EG_BOUND);
   edges := [20] f32.[-b - 4, -b - 4, b + 4, -b, 12,   -b - 4, b, b + 4, b + 4, 12,   -b - 4, -b, -b, b, 12,   b, -b, b + 4, b, 12];
   for i: 0..<4 { n = put_box(out, n, edges[..], i); }
@@ -341,6 +424,8 @@ EG_CLEARING :: [18] f32.[
   14, -70, 11,    0, -88, 7,    -91, 20, 9,    22, 94, 12,    66, 92, 9,    93, -13, 8
 ];
 
+// The river's glade: x, z of its middle and its half widths across and along.
+EG_GLADE :: [4] f32.[88, -14, 7, 26];
 everglade_in_woods :: (x: f32, z: f32) -> bool {
   a := f32(EG_APRON);
   if x > -65.25 - a && x < 65.25 + a && z > -57.5 - a && z < 61.25 + a { return false; }
@@ -348,6 +433,9 @@ everglade_in_woods :: (x: f32, z: f32) -> bool {
     dx := x - EG_CLEARING[c * 3]; dz := z - EG_CLEARING[c * 3 + 1]; r := EG_CLEARING[c * 3 + 2];
     if dx * dx + dz * dz < r * r { return false; }
   }
+  // The river's glade either side of the bridge, where you may swim across.
+  gx := (x - EG_GLADE[0]) / EG_GLADE[2]; gz := (z - EG_GLADE[1]) / EG_GLADE[3];
+  if gx * gx + gz * gz < 1 { return false; }
   nodes := EG_NODE_XZ; links := EG_LINK_AB;
   return verse_path_nearest(nodes[..], links[..], x, z).d >= f32(EG_TRAIL_FREE);
 }
@@ -548,6 +636,10 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   #assert reached(grid[..], -40, -60) && reached(grid[..], 70, 30);
   // The far bank is reached by the bridge, and the forest beyond it is not.
   #assert reached(grid[..], 96, -16) && !reached(grid[..], 95, 40);
+  // In the glade you may wade and swim across beside the bridge; up and down
+  // the river past it the forest closes in on both banks.
+  #assert reached(grid[..], 88, -30) && reached(grid[..], 88, 4) && reached(grid[..], 84, -34) && reached(grid[..], 92, -34);
+  #assert !reached(grid[..], 88, -60) && !reached(grid[..], 88, 40) && !reached(grid[..], 88, -95) && !reached(grid[..], 88, 95);
   // Each trail stays open from its gate to its end.
   #assert reached(grid[..], -80, 4) && reached(grid[..], 44, 74) && reached(grid[..], 80, -4) && reached(grid[..], 0, -98);
 }
@@ -592,7 +684,8 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
     }
     #assert highest - lowest < 0.25;
   }
-  // The forest past the walls rises; the trails out climb gently.
+  // The forest past the walls rises; the trails out climb gently, the river trail over the bridge's deck.
+  deck := everglade_deck(heights[..]);
   #assert verse_terrain_height(g, heights[..], -96, -96) > verse_terrain_height(g, heights[..], -40, -40) + 2;
   for l: 0..<EG_LINKS {
     a := EG_LINK_AB[l * 2]; b := EG_LINK_AB[l * 2 + 1];
@@ -601,10 +694,40 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
       x0 := lerp(ax, bx, f32(s) / 20); z0 := lerp(az, bz, f32(s) / 20);
       x1 := lerp(ax, bx, f32(s + 1) / 20); z1 := lerp(az, bz, f32(s + 1) / 20);
       run := sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0));
-      rise := abs(verse_terrain_height(g, heights[..], x1, z1) - verse_terrain_height(g, heights[..], x0, z0));
+      rise := abs(everglade_walk_height(heights[..], deck, x1, z1) - everglade_walk_height(heights[..], deck, x0, z0));
       #assert rise <= run * 0.2 + 0.05;
     }
   }
+}
+
+#test "the river runs in its carved bed, falling south, with the deck over it" {
+  heights: [EG_GROUND_POINTS] f32;
+  #assert everglade_build_ground(heights[..]);
+  levels: [EG_CELLS + 1] f32;
+  everglade_river_levels(heights[..], levels[..]);
+  g := everglade_ground();
+  w := EG_CELLS + 1;
+  for j: 0..<w {
+    if j > 0 { #assert levels[j] - levels[j - 1] >= f32(EG_RIVER_FALL) - 0.0001; }
+    // the water stays in its bed: past the banks the ground stands over the level
+    for i: 0..<w {
+      x := f32(EG_EDGE) + f32(i) * f32(EG_CELL);
+      d := abs(x - f32(EG_RIVER_X));
+      if d >= 4 && d <= 8 { #assert heights[j * w + i] >= levels[j] + 0.15; }
+      if d <= 2 { #assert near(heights[j * w + i], river_section(levels[j], d), 0.0001); }
+    }
+  }
+  // Deep enough to swim in the middle, shallow enough to wade at the edge.
+  z := -30.0f32;
+  j := cast(int) ((z - f32(EG_EDGE)) / f32(EG_CELL));
+  #assert levels[j] - verse_terrain_height(g, heights[..], 88, z) > 2.1;
+  #assert levels[j] - verse_terrain_height(g, heights[..], 86.5, z) < 1.25;
+  // The deck stands over the water and the trail's ground either side of it.
+  deck := everglade_deck(heights[..]);
+  b := cast(int) ((-11.5 - f32(EG_EDGE)) / f32(EG_CELL));
+  #assert deck > levels[b] + 0.8;
+  #assert everglade_walk_height(heights[..], deck, 88, -11.5) == deck;
+  #assert abs(verse_terrain_height(g, heights[..], EG_BRIDGE[0], -7) - deck) < 0.3 && abs(verse_terrain_height(g, heights[..], EG_BRIDGE[2], -13) - deck) < 0.3;
 }
 
 #test "every place, gate and character has a name, and the hashes are distinct" {
