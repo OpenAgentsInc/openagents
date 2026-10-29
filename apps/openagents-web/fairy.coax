@@ -11,8 +11,8 @@
 // the stream and the pond are verse/fairy-forest/stream.coax (verse/water.coax
 // physics, drawn in the painted water preset). You walk and run on the
 // engine's controller (verse/player.coax) and see the valley through the free
-// orbit (verse/camera.coax); Space jumps, Space again in the air flaps up
-// (three flaps a hop) and holding it glides down (the face does the flight).
+// orbit (verse/camera.coax); every Space press is one wing beat up, with no
+// limit, holding it hovers and letting go glides down (the face does the flight).
 //
 // The look (fairy.wgsl, verse/paint.coax): three soft toon bands with a warm
 // rim, shadows tinted blue, blue-cyan haze that steps the ridges back, a
@@ -119,6 +119,7 @@ Fairy :: struct {
   water_vertices: int; water_patches: int;
   pads: [7 * 8] f32; pad_n: int;
   near_creature: int;
+  taps: int;   // Space presses not yet taken by the face: each is one wing beat
 }
 
 // ---- small things
@@ -305,6 +306,7 @@ fairy_key :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
   if key == 'e' || key == 'E' { s[0].use = true; return true; }
   b := hold_bit(key);
   if b == 0 { return false; }
+  if b == HOLD_JUMP && s[0].held & HOLD_JUMP == 0 { s[0].taps += 1; }
   s[0].held = s[0].held | b;
   return true;
 }
@@ -374,6 +376,9 @@ fairy_controls :: (s: [] Fairy, dt: f32, dyaw: f32, dpitch: f32) #export_c {
 
 fairy_player_theta :: (s: [] Fairy) -> f32 #export_c { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
 fairy_jump :: (s: [] Fairy) -> bool #export_c { return s[0].jump; }
+// The Space presses since the face last asked, each one wing beat (kept, so a
+// quick tap between two frames still beats), and none left after.
+fairy_taps :: (s: [] Fairy) -> int #export_c { n := s[0].taps; s[0].taps = 0; return n; }
 fairy_phone :: (s: [] Fairy) -> bool #export_c { return phone(s); }
 
 // ---- the scene
@@ -779,8 +784,8 @@ plate :: (s: [] Fairy, u: [] f32, b: Box, alpha: f32, look: f32) {
 phone :: (s: [] Fairy) -> bool { return s[0].touch || s[0].width / hi(s[0].dpr, 0.5) < 700; }
 
 hint :: (s: [] Fairy) -> string {
-  if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP TO HOP, AGAIN TO FLY"; }
-  return "WASD MOVE · DRAG TURNS · SHIFT WALKS · SPACE HOPS, AGAIN TO FLY, HOLD TO GLIDE";
+  if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP RIGHT SIDE TO FLAP UP"; }
+  return "WASD MOVE · DRAG TURNS · SHIFT WALKS · SPACE FLAPS UP · HOLD SPACE TO HOVER";
 }
 
 // A mood glyph over a creature: a face in a ring, its colour and mouth the mood.
