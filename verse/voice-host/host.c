@@ -13,6 +13,7 @@
 #include "ws.h"
 #include "VoiceReply.h"
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -343,6 +344,12 @@ typedef struct {
   uint64_t played_samples; // from the client's PLAYBACK / BARGE_IN
   speech_exchange hist[HISTORY];
   size_t nhist;
+  // The reply a barge-in last cut, kept until that turn's transcript says
+  // whether it was someone talking or the reply's own echo (resume_if_echo).
+  char cut_text[MAX_TEXT + 1];
+  size_t cut_n, cut_played;   // samples rendered and played when it was cut
+  uint64_t cut_at;            // now_ms() of the cut; 0: nothing kept
+  int cut_resumes;            // resumes in a row, so an echo can't loop on one sentence
 } session;
 
 static session *sessions[MAX_SESSIONS];
@@ -695,6 +702,12 @@ static void cut_speech(session *s, uint64_t client_epoch, bool barge) {
   bool was = s->speaking && u;
   char turn[65] = "";
   if (u) snprintf(turn, sizeof turn, "%s", u->turn);
+  if (barge && was && u->text[0]) {
+    snprintf(s->cut_text, sizeof s->cut_text, "%s", u->text);
+    s->cut_n = u->n; s->cut_played = (size_t)s->played_samples; s->cut_at = now_ms();
+  } else if (!barge) {
+    s->cut_at = 0; s->cut_resumes = 0;
+  }
   uint64_t e = oa_voice_cut(s->v);
   if (client_epoch > e) e = oa_voice_set_epoch(s->v, client_epoch);
   oa_voice_floor_bump(s->fl);
@@ -922,8 +935,84 @@ static void on_reply_audio(session *s, job *j) {
 
 // ---------------------------------------------------------------- job results
 
+// The words of text, lowercased letters and digits, into w (at most n words
+// of 31 bytes). Returns how many.
+static int words_of(const char *text, char w[][32], int n) {
+  int k = 0, len = 0;
+  for (const unsigned char *c = (const unsigned char *)text;; c++) {
+    bool in = *c && (isalnum(*c) || *c >= 0x80 || *c == '\'');
+    if (in && *c != '\'') { if (len < 31) w[k][len++] = (char)tolower(*c); }
+    else if (!in && len) { w[k][len] = 0; len = 0; if (++k == n) return k; }
+    if (!*c) return k;
+  }
+}
+
+// A turn heard over the reply is its echo when most of its words are the
+// reply's: the phone's mic caught the speaker and barged in on itself.
+// Only real recognition: the offline provider's stand-in transcript ("I
+// heard N milliseconds of speech") is what its echo agent says back.
+// A barge-in with no words at all (the mic caught the reply, or a noise) is
+// never someone talking either.
+static bool is_echo(const session *s, const char *text) {
+  if (g_provider != PROVIDER_GOOGLE || !s->cut_at || now_ms() - s->cut_at > 10000) return false;
+  if (!text[0]) return true;
+  static char t[64][32], r[256][32];
+  int nt = words_of(text, t, 64), nr = words_of(s->cut_text, r, 256), hit = 0;
+  if (!nt) return false;
+  // The last word is often cut off where the barge-in cut the reply ("No
+  // form" of "No foreman"): its first three letters are enough.
+  for (int i = 0; i < nt; i++)
+    for (int j = 0; j < nr; j++)
+      if (!strcmp(t[i], r[j]) || (i == nt - 1 && strlen(t[i]) >= 3 && !strncmp(t[i], r[j], 3))) { hit++; break; }
+  return hit * 4 >= nt * 3;
+}
+
+static void on_reply_sentence(session *s, const job *e);
+
+// The cut reply again, for this turn, from the start of the sentence the
+// phone was playing (from the next one when it already resumed once).
+static void resume_cut(session *s, uint32_t turn_no, const char *turn) {
+  const char *t = s->cut_text;
+  size_t len = strlen(t);
+  size_t at = s->cut_n ? (size_t)((double)len * (double)(s->cut_played < s->cut_n ? s->cut_played : s->cut_n) / (double)s->cut_n) : 0;
+  while (at > 0 && !(strchr(".?!", t[at - 1]) && t[at] == ' ')) at--;
+  if (s->cut_resumes > 0) {
+    while (at < len && !(strchr(".?!", t[at]) && (t[at + 1] == ' ' || !t[at + 1]))) at++;
+    if (at < len) at++;
+  }
+  while (t[at] == ' ') at++;
+  s->cut_resumes++;
+  char rest[MAX_TEXT + 1];
+  snprintf(rest, sizeof rest, "%s", t + at);
+  s->cut_at = 0;
+  if (!rest[0]) { send_turn_event(s, turn, OA_TURN_PHASE_ENDED, NULL, 0); return; }
+  logf_("%s: %s is the reply's echo; resuming from: %s", s->sid, turn, rest);
+  job e = {0};
+  e.turn_no = turn_no;
+  snprintf(e.turn, sizeof e.turn, "%s", turn);
+  for (char *a = rest; *a;) {
+    char *b = a;
+    while (*b && !(strchr(".?!", *b) && (b[1] == ' ' || !b[1]))) b++;
+    if (*b) b++;
+    char keep = *b; *b = 0;
+    snprintf(e.text, sizeof e.text, "%s", a);
+    on_reply_sentence(s, &e);
+    *b = keep;
+    a = b;
+    while (*a == ' ') a++;
+  }
+  utter *u = utter_by_turn(s, turn_no);
+  if (u) { u->text_done = true; pump_speech(s, now_ms()); }
+}
+
 static void deliver_final(session *s, uint32_t turn_no, const char *turn, const char *text) {
   s->t_final = now_ms();
+  if (is_echo(s, text)) {
+    logf_("%s: %s heard %s", s->sid, turn, text);
+    resume_cut(s, turn_no, turn);
+    return;
+  }
+  s->cut_at = 0; s->cut_resumes = 0;
   if (g_verbose) logf_("%s: %s final (%s) in %llu ms: %s", s->sid, turn, s->plan, (unsigned long long)(s->t_final - s->t_end), text);
   else logf_("%s: %s final (%s) in %llu ms (%zu bytes)", s->sid, turn, s->plan, (unsigned long long)(s->t_final - s->t_end), strlen(text));
   send_turn_event(s, turn, OA_TURN_PHASE_FINAL, text, 0);
@@ -1123,7 +1212,8 @@ static void on_control(session *s, const oa_voice_control *c) {
     // run, every report (about four a second while a reply plays), so a
     // silent client shows up as a stuck count or as no reports at all.
     if (g_verbose)
-      logf_("%s: playback %s played %llu samples", s->sid, c->utterance, (unsigned long long)c->played_samples);
+      logf_("%s: playback %.*s played %llu samples", s->sid, (int)c->utterance.len, (const char *)c->utterance.ptr,
+            (unsigned long long)c->played_samples);
     s->played_samples = c->played_samples;
     break;
   case OA_CONTROL_PING: {

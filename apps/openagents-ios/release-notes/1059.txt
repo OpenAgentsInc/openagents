@@ -1,0 +1,1 @@
+Voice no longer talks over itself. The phone's own reply coming out of the speaker used to sound like you interrupting, so the reply cut off after a second or two and the app answered its own words. Now the reply plays to the end unless you really talk over it.
