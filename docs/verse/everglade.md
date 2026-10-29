@@ -132,7 +132,7 @@ meshes. Where a kit has no piece, the line says what is assembled instead.
 | Ruins | SN `Rock_Medium_*`; MV `Prop_Brick1..4`, `Wall_UnevenBrick_Straight` broken off, `Wall_Arch`; FP `Vase_Rubble_Medium`. |
 | Crypt | MV `Wall_UnevenBrick_Door_Round`, `DoorFrame_Round_Brick`, `Door_4_Round`; SN `DeadTree_1..3`, `Rock_Medium_*`. |
 | River crossing | MV `Floor_WoodDark` planks and `Prop_WoodenFence_Single` rails for the bridge; SN `Rock_Medium_*` on the banks; water drawn by the engine. |
-| Characters | aethyr's figure parts with the `Peasant` and `Ranger` outfits; the cats are aethyr's `Custom_Cat`. |
+| Characters | You are the previous Everglade's Ranger (below, "You: the Ranger"); the people are still plain figures, to be aethyr's figure parts with the `Peasant` and `Ranger` outfits; the cats are aethyr's `Custom_Cat`. |
 
 ## Where characters stand
 
@@ -244,7 +244,8 @@ as grey boxes at full size, built on the realm host
 - `apps/openagents-web/everglade.coax`, `everglade-face.c`, `everglade.wgsl`:
   the realm. It draws the ground and streets (`verse/terrain.coax`), the
   palisade, every building as a box with a gable roof, the props, the
-  forest (below), the characters as plain figures and cats, and each
+  forest (below), you as the Ranger (below), the characters as plain
+  figures and cats, and each
   place's name as you come near. The free orbit
   (`verse/camera.coax`) follows you and keeps out of the walls; walking is
   `verse/player.coax` among the plan's solids, thumbs `verse/grid.coax`.
@@ -252,6 +253,64 @@ as grey boxes at full size, built on the realm host
   place's id in the hash starts you at it (`#commons`, `#market`, `#guilds`,
   `#temple`, `#observatory`, `#inn`, `#road`, `#deep-wood`, `#ruins`,
   `#crypt`, `#river`, `#gate`, `#north-gate`).
+
+## You: the Ranger (eg-ranger)
+
+You walk Everglade as the character you were in the previous Everglade (the
+Rust engine's, removed in the Nuke; [previous/](../../verse/everglade/previous/README.md)):
+the hooded green **Ranger**, Quaternius's Universal male Ranger, the
+character the owner calls the Ranger Druid. It is taken whole, byte for
+byte, from that engine's last pinned Everglade pack
+(`assets/verse/everglade/a82df378….vtp` at `853417f2`, checked by its
+SHA-256), not rebuilt from the glTFs, so its mesh, proportions, textures and
+clips are exactly the old ones:
+
+- **Mesh:** the `Male_Ranger` outfit (hood, tunic, belts, bracer, trousers,
+  boots) with the head and neck of `Superhero_Male_FullBody`, and no hair or
+  eyebrows (the hood covers them): 5 parts, 31,396 triangles, 27,402
+  vertices, 75 joints.
+- **Textures:** the old ones at their own resolution, the outfit 512, the
+  body's and head's skin 256, the teeth 128 and the eyes 128; each is a
+  layer of the realm's 512-texel texture array, the smaller ones repeated
+  texel for texel (no resampling).
+- **Clips:** the Universal Animation Library's idle, walk, run, jump,
+  backpedal, strafe left and right, and the tree-chopping swing, with the
+  old engine's seconds and metres per loop.
+
+`verse/tools/pack_realm.py` (manifest `"character"`) copies it into the pack
+(32 bytes a vertex: position, normal and layer, uv, four joints and
+weights) and writes its rig to `verse/everglade/ranger.coax`. `verse/skin.coax`
+plays it as the old engine did (`Motion::of`, `ClipPlayer`): standing below
+0.1 m/s idles, below 5 m/s walks, faster runs, off the ground jumps; a
+change of clip blends over 0.22 s from the pose it left; a gait advances by
+the ground covered (seconds a loop times metres moved over metres a loop),
+so the feet keep to the ground; keys are sampled as the old engine did
+(linear translation, spherical rotation). Each frame it writes the 75
+joints' skinning matrices to a store the shader reads; the GPU skins the
+vertices (four joints each) and draws the Ranger in one draw at your feet,
+turned to face the way you go. The controller is unchanged: walking,
+running, jumping, the camera and their speeds are `verse/player.coax` and
+`verse/camera.coax`'s.
+
+The checks: the pack's catalog names the Ranger with its 75 joints; the
+controller's state picks idle, walk, run and jump as the old engine did;
+the pose at eight joints, three clips and several times matches the old
+engine's sampling (worked out in `pack_realm.py` from the old pack) within
+a millimetre; and a phone's whole frame, the Ranger's 31,396 triangles
+with the trees, stays under 700,000.
+
+What differs from the old Everglade, and why:
+
+- **Backpedal, strafes and the swing are packed but not chosen.** The old
+  controller kept facing the camera and stepped backward or sideways; ours
+  always turns you to face the way you go, so you never walk backward or
+  sideways, and there is no chopping yet.
+- **Speeds:** the old controller ran at 6.4 m/s; ours walks at 3.5 and runs
+  at 7.5. The clips are the same; the gait follows the ground covered, so
+  the run plays a little faster than it did.
+- **Light:** the realm's own lighting (sun, sky, fog) and a soft round
+  shadow under you, not the old engine's physically based light and cast
+  shadows, so the Ranger reads slightly flatter.
 
 ## The forest
 
@@ -269,9 +328,11 @@ backs into them, so the only ways out of the city are the trails.
 - **Along the tree line:** `Bush_Common_Flowers`, `Fern_1`,
   `Rock_Medium_1` and `_2`.
 - **The pack:** `verse/packs/everglade.json`, compiled to
-  `realms/everglade/assets/everglade.pack` (4.3 MB, budget 5 MB) with
-  `licences.md`; it carries the town's 44 Medieval Village and Fantasy
-  Props pieces as well as the forest's. It also carries 1,024 identity indices (`"identity"`), so
+  `realms/everglade/assets/everglade.pack` (6.0 MB: 6,021,712 bytes,
+  budget 6,750,000) with `licences.md`; it carries the town's 44 Medieval
+  Village and Fantasy Props pieces as well as the forest's, and the Ranger
+  (1.7 MB of it). The budget was 5 MB before the Ranger and rose by the
+  Ranger's bytes, rounded up. It also carries 1,024 identity indices (`"identity"`), so
   the city's shapes, drawn from the vertex index alone, share the pack's
   index buffer.
 - **The phone:** each frame the trees in view and nearer than 55 m (42 m on

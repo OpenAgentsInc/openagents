@@ -13,7 +13,7 @@
 // the market, the forecourt and each building.
 // The checks walk the whole city on a half-metre grid and build its
 // ground, so they need a larger step budget than a file's default:
-//   coax/bin/coax test --library verse/everglade/plan.coax --steps 200000000
+//   coax/bin/coax test --library verse/everglade/plan.coax --steps 2000000000
 
 #load "../terrain.coax";
 

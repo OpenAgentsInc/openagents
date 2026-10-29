@@ -1,7 +1,7 @@
 {
   "pack": "everglade",
   "title": "Everglade",
-  "budget": 5000000,
+  "budget": 6750000,
   "scene": "~/work/aethyr-cpp/build-native/native-root/assets/scene.bin",
   "layers": "~/work/aethyr-cpp/assets/layer{n}",
   "texture_size": 512,
@@ -19,6 +19,11 @@
     },
     "quaternius-fantasy-props": {
       "name": "Quaternius Fantasy Props MegaKit",
+      "licence": "CC0 1.0 Universal",
+      "url": "https://quaternius.com/"
+    },
+    "quaternius-universal-characters": {
+      "name": "Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library",
       "licence": "CC0 1.0 Universal",
       "url": "https://quaternius.com/"
     }
@@ -76,5 +81,14 @@
     "Scroll_1",
     "Stairs_Exterior_Platform",
     "Prop_WoodenFence_Single"
-  ]
+  ],
+  "character": {
+    "name": "player/male-ranger",
+    "revision": "853417f290e7cae1df18c081b89b0818432e60af",
+    "path": "assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+    "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+    "licence": "quaternius-universal-characters",
+    "rig": "verse/everglade/ranger.coax",
+    "prefix": "RANGER"
+  }
 }

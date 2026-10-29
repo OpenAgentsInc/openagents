@@ -570,6 +570,36 @@
       "blocks": []
     },
     {
+      "slug": "eg-ranger",
+      "parent": "eg",
+      "title": "Everglade: you are the old Everglade's Ranger",
+      "size": "M",
+      "labels": [
+        "realms",
+        "everglade"
+      ],
+      "body": "Parity with the previous Everglade, starting with the character: the player is the old engine's skinned Universal male Ranger (`player/male-ranger` in its last pinned pack, `0b401561a0^:assets/verse/everglade/a82df378…vtp`): the same mesh parts, textures, skeleton and clips (idle, walk, run, jump, backpedal, both strafes and the two-handed chop), picked from the current controller's state as the old `Motion::of` did, gaits advancing by distance travelled, blended 0.22 s in joint space. The controller (`verse/player.coax`) and camera (`verse/camera.coax`) are unchanged; only the figure drawn changes. GPU-skinned from the pack as the Grid's robots are.\n\nPlan: `docs/verse/everglade.md`, the player section.",
+      "files": [
+        "verse/tools/pack_realm.py",
+        "verse/packs/everglade.json",
+        "verse/everglade/",
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade.wgsl",
+        "apps/openagents-web/everglade-face.c",
+        "apps/openagents-web/realm/everglade/"
+      ],
+      "acceptance": [
+        "The player at /realm/everglade on production is the old Ranger, textured, playing idle, walk, run and jump from the controller",
+        "Headless side-by-side against the old engine's look",
+        "A phone's kit triangles stay under 700,000 with the character counted",
+        "The realm's coax tests and plan.coax checks pass"
+      ],
+      "blocked_by": [
+        "eg-design"
+      ],
+      "blocks": []
+    },
+    {
       "slug": "eg-launch",
       "parent": "eg",
       "title": "Everglade live on openagents.com",

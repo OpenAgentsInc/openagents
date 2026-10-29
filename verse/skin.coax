@@ -1,0 +1,325 @@
+// A skinned character's clips, played as the old Rust Verse engine played
+// them (before the Nuke, 0b401561a0^: crates/verse-engine/src/animation.rs
+// and Everglade's crates/verse-zone-everglade/src/zones/everglade/player.rs).
+// Everglade's player, the old engine's Ranger (verse/everglade/ranger.coax,
+// written by verse/tools/pack_realm.py), is the first to use it.
+//
+// A rig is a skeleton, parents first, each joint's rest translation and
+// rotation and its inverse bind, and clips of keys per joint. The clip
+// that plays comes from the movement, as the old Motion::of chose it:
+// airborne jumps, below 0.1 m/s stands, below 5 m/s walks, faster runs.
+// A gait (a clip that travels, its metres a loop) advances by the distance
+// moved, so the feet keep pace with the ground; any other clip runs on the
+// clock, looping. A new clip starts at its beginning. Each joint's
+// translation is the straight line between its two keys either side and its
+// rotation the arc (slerp), and a change of clip blends from the pose it
+// left to the new clip's over SKIN_FADE seconds, smoothstepped, joint by
+// joint before the parents' transforms accumulate, so every bone keeps its
+// length. skin_palette then writes each joint's skinning matrix (its posed
+// transform times its inverse bind) as three rows of four for the vertex
+// shader.
+//   coax/bin/coax test verse/skin.coax
+
+#load "space.coax";
+
+SKIN_JOINTS_MAX :: 96;
+SKIN_FADE :: 0.22;        // seconds a change of clip blends (the old engine's transition)
+SKIN_STILL :: 0.1;        // below this many m/s a character stands (Motion::MOVING)
+SKIN_RUN_FROM :: 5.0;     // and from this it runs rather than walks (Motion::RUN_FROM)
+// The old pack's clip order (everglade_pack/compile.rs PLAYER_CLIPS).
+SKIN_IDLE :: 0; SKIN_WALK :: 1; SKIN_RUN :: 2; SKIN_JUMP :: 3;
+SKIN_BACKPEDAL :: 4; SKIN_STRAFE_LEFT :: 5; SKIN_STRAFE_RIGHT :: 6; SKIN_SWING :: 7;
+
+Quat :: struct { x: f32; y: f32; z: f32; w: f32 = 1; }
+// A joint's pose relative to its parent.
+SkinLocal :: struct { t: Point; q: Quat; }
+
+// A rig's numbers, as verse/tools/pack_realm.py writes them: per joint its
+// parent, rest (translation, then rotation x y z w: 7) and inverse bind
+// (three rows of four: 12); per clip its seconds and metres a loop; per
+// clip and joint its translation and rotation keys (first, count) into
+// keys_t (time, x, y, z) and keys_r (time, x, y, z, w).
+SkinRig :: struct {
+  joints: int; clips: int;
+  parent: [] int; rest: [] f32; bind: [] f32;
+  duration: [] f32; distance: [] f32;
+  track_t: [] int; track_r: [] int;
+  keys_t: [] f32; keys_r: [] f32;
+}
+
+// One character's playback.
+Skin :: struct {
+  clip: int = -1;           // the clip playing, -1 before the first
+  time: f32;                // seconds into it
+  clock: f32;               // seconds played in all
+  changed: f32;             // the clock when the clip last changed
+  from: [SKIN_JOINTS_MAX] SkinLocal;   // the pose it left
+  now: [SKIN_JOINTS_MAX] SkinLocal;    // the pose now
+}
+
+// The clip a character moving at speed m/s plays, on the ground or not (Motion::of).
+skin_motion :: (speed: f32, airborne: bool) -> int {
+  if airborne { return SKIN_JUMP; }
+  if !finite(speed) || speed < f32(SKIN_STILL) { return SKIN_IDLE; }
+  if speed < f32(SKIN_RUN_FROM) { return SKIN_WALK; }
+  return SKIN_RUN;
+}
+
+quat_dot :: (a: Quat, b: Quat) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w; }
+quat_scaled :: (a: Quat, k: f32) -> Quat { return Quat.{x = a.x * k, y = a.y * k, z = a.z * k, w = a.w * k}; }
+quat_plus :: (a: Quat, b: Quat) -> Quat { return Quat.{x = a.x + b.x, y = a.y + b.y, z = a.z + b.z, w = a.w + b.w}; }
+quat_unit :: (a: Quat) -> Quat {
+  l := sqrt(quat_dot(a, a));
+  if !(l > 0.003) { return Quat.{}; }   // glam's length_squared > 0.00001, else identity
+  return quat_scaled(a, 1 / l);
+}
+quat_mul :: (a: Quat, b: Quat) -> Quat {
+  return Quat.{x = a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+               y = a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+               z = a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+               w = a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z};
+}
+quat_rotate :: (q: Quat, v: Point) -> Point {
+  u := v3(q.x, q.y, q.z);
+  t := times(cross(u, v), 2);
+  return add(add(v, times(t, q.w)), cross(u, t));
+}
+// glam's slerp: the shorter way round; nearly the same rotation, a
+// normalised straight line.
+slerp :: (a: Quat, b_: Quat, s: f32) -> Quat {
+  b := b_;
+  d := quat_dot(a, b);
+  if d < 0 { b = quat_scaled(b, -1); d = -d; }
+  if d > 0.9995 { return quat_unit(quat_plus(quat_scaled(a, 1 - s), quat_scaled(b, s))); }
+  theta := atan2(sqrt(hi(1 - d * d, 0)), d);
+  k := 1 / sin(theta);
+  return quat_plus(quat_scaled(a, sin(theta * (1 - s)) * k), quat_scaled(b, sin(theta * s) * k));
+}
+
+// The two keys either side of t on a channel of `count` keys from `first`,
+// `width` numbers a key (time first), and how far t is between them: the
+// last key at or before t and the next (the old engine's pair()).
+KeyPair :: struct { a: int; b: int; f: f32; }
+key_pair :: (keys: [] f32, first: int, count: int, width: int, t: f32) -> KeyPair {
+  i := 0;
+  while i + 1 < count && keys[(first + i + 1) * width] <= t { i += 1; }
+  a := first + i;
+  b := ifx i + 1 < count then a + 1 else a;
+  ta := keys[a * width]; tb := keys[b * width];
+  f := ifx tb > ta then clamp01((t - ta) / (tb - ta)) else 0.0f32;
+  return KeyPair.{a = a, b = b, f = f};
+}
+
+skin_rest :: (r: SkinRig, j: int) -> SkinLocal {
+  o := j * 7;
+  return SkinLocal.{t = v3(r.rest[o], r.rest[o + 1], r.rest[o + 2]),
+                    q = Quat.{x = r.rest[o + 3], y = r.rest[o + 4], z = r.rest[o + 5], w = r.rest[o + 6]}};
+}
+
+// Joint j's pose `time` seconds into clip c (looping).
+skin_sample :: (r: SkinRig, c: int, j: int, time: f32) -> SkinLocal {
+  d := r.duration[c];
+  t := ifx finite(time) && d > 0 then hi(time, 0) - d * floor(hi(time, 0) / d) else 0.0f32;
+  l := skin_rest(r, j);
+  k := (c * r.joints + j) * 2;
+  if r.track_t[k + 1] > 0 {
+    p := key_pair(r.keys_t, r.track_t[k], r.track_t[k + 1], 4, t);
+    a := v3(r.keys_t[p.a * 4 + 1], r.keys_t[p.a * 4 + 2], r.keys_t[p.a * 4 + 3]);
+    b := v3(r.keys_t[p.b * 4 + 1], r.keys_t[p.b * 4 + 2], r.keys_t[p.b * 4 + 3]);
+    l.t = mix(a, b, p.f);
+  }
+  if r.track_r[k + 1] > 0 {
+    p := key_pair(r.keys_r, r.track_r[k], r.track_r[k + 1], 5, t);
+    a := Quat.{x = r.keys_r[p.a * 5 + 1], y = r.keys_r[p.a * 5 + 2], z = r.keys_r[p.a * 5 + 3], w = r.keys_r[p.a * 5 + 4]};
+    b := Quat.{x = r.keys_r[p.b * 5 + 1], y = r.keys_r[p.b * 5 + 2], z = r.keys_r[p.b * 5 + 3], w = r.keys_r[p.b * 5 + 4]};
+    l.q = slerp(quat_unit(a), quat_unit(b), p.f);
+  }
+  return l;
+}
+
+// Plays `clip` for dt seconds for a character moving at speed m/s
+// (Actor::advance, then Playback::update_selected).
+skin_advance :: (r: SkinRig, s: [] Skin, clip: int, speed: f32, dt: f32) {
+  if clip < 0 || clip >= r.clips || r.joints > SKIN_JOINTS_MAX { return; }
+  t := ifx finite(dt) then hi(dt, 0) else 0.0f32;
+  first := s[0].clip < 0;
+  if clip != s[0].clip { s[0].time = 0; }
+  d := r.duration[clip];
+  step := t;
+  if r.distance[clip] > 0 { step = hi(ifx finite(speed) then speed else 0.0f32, 0) * t / r.distance[clip] * d; }
+  s[0].time += step;
+  s[0].time -= d * floor(s[0].time / d);
+  if !finite(s[0].time) { s[0].time = 0; }
+  s[0].clock += t;
+  if clip != s[0].clip {
+    for j: 0..<r.joints { s[0].from[j] = s[0].now[j]; }
+    s[0].changed = s[0].clock;
+    if first { s[0].changed -= f32(SKIN_FADE); }
+    s[0].clip = clip;
+  }
+  f := clamp01((s[0].clock - s[0].changed) / f32(SKIN_FADE));
+  f = f * f * (3 - 2 * f);
+  for j: 0..<r.joints {
+    target := skin_sample(r, clip, j, s[0].time);
+    if f >= 1 { s[0].now[j] = target; continue; }
+    a := s[0].from[j];
+    s[0].now[j] = SkinLocal.{t = mix(a.t, target.t, f), q = slerp(a.q, target.q, f)};
+  }
+}
+
+// Each joint's skinning matrix for the pose now, three rows of four each,
+// into out: its posed transform (its parents' and its own) times its
+// inverse bind, in the character's own space.
+skin_palette :: (r: SkinRig, s: [] Skin, out: [] f32) {
+  if r.joints > SKIN_JOINTS_MAX || out.count < r.joints * 12 { return; }
+  gq: [SKIN_JOINTS_MAX] Quat;
+  gt: [SKIN_JOINTS_MAX] Point;
+  for j: 0..<r.joints {
+    l := s[0].now[j];
+    p := r.parent[j];
+    if p < 0 || p >= j { gq[j] = l.q; gt[j] = l.t; }
+    else { gq[j] = quat_unit(quat_mul(gq[p], l.q)); gt[j] = add(gt[p], quat_rotate(gq[p], l.t)); }
+    // rows of the posed rotation, times the inverse bind's rows
+    q := gq[j];
+    ex := quat_rotate(q, v3(1, 0, 0)); ey := quat_rotate(q, v3(0, 1, 0)); ez := quat_rotate(q, v3(0, 0, 1));
+    b := j * 12;
+    for row: 0..<3 {
+      m0 := ifx row == 0 then ex.x else ifx row == 1 then ex.y else ex.z;
+      m1 := ifx row == 0 then ey.x else ifx row == 1 then ey.y else ey.z;
+      m2 := ifx row == 0 then ez.x else ifx row == 1 then ez.y else ez.z;
+      m3 := ifx row == 0 then gt[j].x else ifx row == 1 then gt[j].y else gt[j].z;
+      for col: 0..<4 {
+        v := m0 * r.bind[b + col] + m1 * r.bind[b + 4 + col] + m2 * r.bind[b + 8 + col];
+        if col == 3 { v += m3; }
+        out[b + row * 4 + col] = v;
+      }
+    }
+  }
+}
+
+// Where joint j stands in the pose now, in the character's own space.
+skin_joint :: (r: SkinRig, s: [] Skin, j: int) -> Point {
+  if j < 0 || j >= r.joints || r.joints > SKIN_JOINTS_MAX { return v3(0, 0, 0); }
+  chain: [SKIN_JOINTS_MAX] int;
+  n := 0; k := j;
+  while k >= 0 && n < SKIN_JOINTS_MAX { chain[n] = k; n += 1; p := r.parent[k]; k = ifx p < k then p else -1; }
+  q := Quat.{}; t := v3(0, 0, 0);
+  while n > 0 {
+    n -= 1;
+    l := s[0].now[chain[n]];
+    t = add(t, quat_rotate(q, l.t));
+    q = quat_unit(quat_mul(q, l.q));
+  }
+  return t;
+}
+
+// ---- checks, on a two-joint rig: a root and an arm one metre up it
+
+TEST_PARENT :: [2] int.[-1, 0];
+TEST_REST :: [14] f32.[0, 0, 0, 0, 0, 0, 1,   0, 1, 0, 0, 0, 0, 1];
+// The inverse binds of the rest pose: the arm's lifts by -1.
+TEST_BIND :: [24] f32.[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0,   1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 1, 0];
+TEST_DURATION :: [4] f32.[2, 1, 1, 1];
+TEST_DISTANCE :: [4] f32.[0, 2, 4, 0];
+// Clip 1 turns the arm a quarter turn about z over its second; clip 0 holds it at rest.
+TEST_TRACK_T :: [16] int.[0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 1, 0, 0];
+TEST_TRACK_R :: [16] int.[0, 0, 0, 0,   0, 0, 0, 2,   0, 0, 0, 0,   0, 0, 0, 0];
+TEST_KEYS_T :: [4] f32.[0, 0, 2, 0];
+TEST_KEYS_R :: [10] f32.[0, 0, 0, 0, 1,   1, 0, 0, 0.70710678, 0.70710678];
+TestRig :: struct {
+  parent: [2] int; rest: [14] f32; bind: [24] f32; duration: [4] f32; distance: [4] f32;
+  track_t: [16] int; track_r: [16] int; keys_t: [4] f32; keys_r: [10] f32;
+}
+test_rig :: (d: [] TestRig) -> SkinRig {
+  d[0].parent = TEST_PARENT; d[0].rest = TEST_REST; d[0].bind = TEST_BIND; d[0].duration = TEST_DURATION;
+  d[0].distance = TEST_DISTANCE; d[0].track_t = TEST_TRACK_T; d[0].track_r = TEST_TRACK_R;
+  d[0].keys_t = TEST_KEYS_T; d[0].keys_r = TEST_KEYS_R;
+  return SkinRig.{joints = 2, clips = 4, parent = d[0].parent[..], rest = d[0].rest[..], bind = d[0].bind[..],
+                  duration = d[0].duration[..], distance = d[0].distance[..], track_t = d[0].track_t[..],
+                  track_r = d[0].track_r[..], keys_t = d[0].keys_t[..], keys_r = d[0].keys_r[..]};
+}
+
+#test "the clip is the old Motion::of's: jump in the air, stand, walk, run" {
+  #assert skin_motion(0, false) == SKIN_IDLE && skin_motion(0.09, false) == SKIN_IDLE;
+  #assert skin_motion(0.1, false) == SKIN_WALK && skin_motion(3.5, false) == SKIN_WALK;
+  #assert skin_motion(4.99, false) == SKIN_WALK && skin_motion(5, false) == SKIN_RUN && skin_motion(7.5, false) == SKIN_RUN;
+  #assert skin_motion(7.5, true) == SKIN_JUMP && skin_motion(0, true) == SKIN_JUMP;
+}
+
+#test "keys: the two either side and how far between, held past the last" {
+  k := [8] f32.[0, 10, 1, 20, 3, 30, 4, 40];
+  p := key_pair(k[..], 0, 4, 2, 2);
+  #assert p.a == 1 && p.b == 2 && near(p.f, 0.5, 0.0001);
+  p = key_pair(k[..], 0, 4, 2, 9);
+  #assert p.a == 3 && p.b == 3 && p.f == 0;
+  p = key_pair(k[..], 0, 4, 2, 0);
+  #assert p.a == 0 && p.b == 1 && p.f == 0;
+}
+
+#test "slerp keeps unit length and takes the shorter way" {
+  a := Quat.{};
+  b := Quat.{z = 0.70710678, w = 0.70710678};
+  m := slerp(a, b, 0.5);
+  #assert near(quat_dot(m, m), 1, 0.0001) && near(m.z, 0.38268343, 0.0005) && near(m.w, 0.92387953, 0.0005);
+  n := slerp(a, quat_scaled(b, -1), 0.5);
+  #assert near(n.z, m.z, 0.0005) && near(n.w, m.w, 0.0005);
+}
+
+#test "the rest pose skins every vertex where it was bound" {
+  d: [1] TestRig;
+  r := test_rig(d[..]);
+  s: [1] Skin;
+  skin_advance(r, s[..], 0, 0, 0.5);
+  pal: [24] f32;
+  skin_palette(r, s[..], pal[..]);
+  for j: 0..<2 { for row: 0..<3 { for col: 0..<4 { #assert near(pal[j * 12 + row * 4 + col], ifx row == col then 1.0f32 else 0.0f32, 0.0001); } } }
+}
+
+#test "a gait advances by the distance moved, a clip on the clock by time, and a new clip starts at its beginning" {
+  d: [1] TestRig;
+  r := test_rig(d[..]);
+  s: [1] Skin;
+  skin_advance(r, s[..], 1, 1, 0.5);     // 0.5 m of a 2 m loop of one second
+  #assert s[0].clip == 1 && near(s[0].time, 0.25, 0.0001);
+  skin_advance(r, s[..], 1, 0, 0.5);     // standing still, a gait holds
+  #assert near(s[0].time, 0.25, 0.0001);
+  skin_advance(r, s[..], 1, 2, 1.0);     // 2 m: a whole loop, back where it was
+  #assert near(s[0].time, 0.25, 0.0001);
+  skin_advance(r, s[..], 0, 3, 0.75);    // the clock clip: from 0, by time alone
+  #assert s[0].clip == 0 && near(s[0].time, 0.75, 0.0001);
+  skin_advance(r, s[..], 0, 0, 1.5);
+  #assert near(s[0].time, 0.25, 0.0001);
+}
+
+#test "the first clip shows at once; a change blends from the pose it left over SKIN_FADE, smoothstepped" {
+  d: [1] TestRig;
+  r := test_rig(d[..]);
+  s: [1] Skin;
+  skin_advance(r, s[..], 1, 2, 0.5);     // one second's loop, 1 m: half way, the arm turned an eighth
+  #assert near(s[0].now[1].q.z, 0.38268343, 0.0005);
+  skin_advance(r, s[..], 0, 0, 0);       // to the rest clip: the frame it changes still shows the pose it left
+  #assert near(s[0].now[1].q.z, 0.38268343, 0.0005);
+  skin_advance(r, s[..], 0, 0, 0.11);    // half the fade in, half way (smoothstep 0.5)
+  #assert near(s[0].now[1].q.z, slerp(Quat.{}, Quat.{z = 0.38268343, w = 0.92387953}, 0.5).z, 0.0005);
+  skin_advance(r, s[..], 0, 0, 0.2);
+  #assert near(s[0].now[1].q.z, 0, 0.0001) && near(s[0].now[1].q.w, 1, 0.0001);
+}
+
+#test "a turned arm skins its vertices round the joint, its root moves them all" {
+  d: [1] TestRig;
+  r := test_rig(d[..]);
+  s: [1] Skin;
+  skin_advance(r, s[..], 1, 2, 1.0 - 0.0001);   // all but the end of the quarter turn
+  skin_advance(r, s[..], 1, 0, 0);
+  pal: [24] f32;
+  skin_palette(r, s[..], pal[..]);
+  // A vertex bound 2 m up (1 m along the arm) turns a quarter about z round (0, 1, 0): to (-1, 1, 0).
+  x := pal[12] * 0 + pal[13] * 2 + pal[14] * 0 + pal[15];
+  y := pal[16] * 0 + pal[17] * 2 + pal[18] * 0 + pal[19];
+  #assert near(x, -1, 0.001) && near(y, 1, 0.001);
+  // Clip 3 lifts the root 2 m: the arm and its vertices with it.
+  skin_advance(r, s[..], 3, 0, 0);
+  skin_advance(r, s[..], 3, 0, 1);
+  skin_palette(r, s[..], pal[..]);
+  #assert near(pal[19] + pal[17] * 2, 4, 0.001) && near(pal[7], 2, 0.001);
+}

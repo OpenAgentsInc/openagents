@@ -30,11 +30,27 @@ The catalog is text, a line each:
   S NAME K                        a sound and its licence
   I FIRST COUNT                   identity indices (0, 1, ... COUNT-1) for shapes the realm's shader
                                   draws from the vertex index alone (manifest "identity": COUNT)
+  C NAME FIRST COUNT K WORD VERTICES JOINTS
+                                  a skinned character: its indices (numbered from its own first
+                                  vertex), licence, the vertex buffer word its vertices start at,
+                                  how many there are and its joints
 Vertices are the Haunted House's (realm.wgsl): 48 bytes, position, normal,
 uv, colour with its layer in the alpha byte, then 12 zero bytes; the layer
-is the pack's own (0 first).
+is the pack's own (0 first). A character's vertices follow the kit's, 32
+bytes each: position (3 x f32), the normal as three signed bytes (n / 127)
+with the layer in the fourth, uv (2 x f32), four joints (u8) and four
+weights (u8, 255ths summing to 255).
+
+A character (manifest "character") is taken whole from a skinned character
+in a VTP3 pack of the old Rust Verse engine (crates/verse-zone-everglade/src/
+zones/everglade_pack/format.rs before the Nuke), read from git at a pinned
+revision and checked against its SHA-256: its mesh, its base-colour images
+(each a layer, scaled up to texture_size by repeating texels, PNG, so no
+texel changes) and, written to the manifest's "rig" path as Coax, its
+skeleton and clips, keys as they were. Its triangles are counted apart
+from the kit's.
 """
-import io, json, os, struct, sys
+import hashlib, io, json, os, struct, subprocess, sys, zlib
 from pathlib import Path
 
 KIND_CATALOG, KIND_VERTICES, KIND_INDICES, KIND_LAYER, KIND_SOUND = 1, 2, 3, 4, 5
@@ -83,6 +99,244 @@ def image(stem, size):
     else:
         im.save(buf, "JPEG", quality=82, optimize=True)
     return path, buf.getvalue()
+
+
+class Reader:
+    """Little-endian reads over bytes, refusing to run past their end."""
+    def __init__(self, b):
+        self.b, self.o = b, 0
+    def take(self, n):
+        if self.o + n > len(self.b):
+            raise SystemExit("character pack: runs past its end")
+        v = self.b[self.o:self.o + n]; self.o += n; return v
+    def u8(self): return self.take(1)[0]
+    def u16(self): return struct.unpack("<H", self.take(2))[0]
+    def i16(self): return struct.unpack("<h", self.take(2))[0]
+    def u32(self): return struct.unpack("<I", self.take(4))[0]
+    def f32(self, n=1):
+        v = struct.unpack(f"<{n}f", self.take(4 * n)); return v if n > 1 else v[0]
+    def name(self): return self.take(self.u8()).decode()
+
+
+def vtp_planes(r, colored):
+    """A VTP3 primitive's quantized vertex planes: positions, uvs, i8 normals."""
+    n = r.u32()
+    po, ps, uo, us = r.f32(3), r.f32(3), r.f32(2), r.f32(2)
+    x, y, z, u, v = (struct.unpack(f"<{n}H", r.take(2 * n)) for _ in range(5))
+    normals = r.take(3 * n)
+    if colored:
+        r.take(4 * n)
+    pos = [(po[0] + ps[0] * x[i], po[1] + ps[1] * y[i], po[2] + ps[2] * z[i]) for i in range(n)]
+    uv = [(uo[0] + us[0] * u[i], uo[1] + us[1] * v[i]) for i in range(n)]
+    return pos, uv, normals
+
+
+def vtp_character(r):
+    c = {"name": r.name(), "joints": [], "prims": [], "clips": []}
+    for _ in range(r.u16()):
+        c["joints"].append({"parent": r.i16(), "t": r.f32(3), "r": r.f32(4), "s": r.f32(3), "bind": r.f32(16)})
+    for _ in range(r.u8()):
+        material = r.u16()
+        pos, uv, normals = vtp_planes(r, False)
+        n = len(pos)
+        joints, weights = r.take(4 * n), r.take(4 * n)
+        count = r.u32()
+        c["prims"].append({"material": material, "pos": pos, "uv": uv, "normals": normals, "joints": joints,
+                           "weights": weights, "indices": struct.unpack(f"<{count}H", r.take(2 * count))})
+    for _ in range(r.u8()):
+        clip = {"name": r.name(), "duration": r.f32(), "distance": r.f32(), "tracks": []}
+        for _ in range(r.u16()):
+            track = {"joint": r.u16()}
+            for channel, width in (("t", 3), ("r", 4), ("s", 3)):
+                track[channel] = [(r.f32(), r.f32(width)) for _ in range(r.u16())]
+            clip["tracks"].append(track)
+        c["clips"].append(clip)
+    return c
+
+
+def vtp_pack(b):
+    """The textures, materials and character of a VTP3 pack (its models are skipped)."""
+    r = Reader(b)
+    if r.take(8) != b"VTP3\r\n\x1a\n":
+        raise SystemExit("character pack: not VTP3")
+    textures = []
+    for _ in range(r.u32()):
+        name, w, h = r.name(), r.u32(), r.u32()
+        textures.append({"name": name, "w": w, "h": h, "png": r.take(r.u32())})
+    size, stored = r.u32(), r.u32()
+    body = zlib.decompress(r.take(stored), -15)
+    if len(body) != size:
+        raise SystemExit("character pack: its body is not its stated length")
+    r = Reader(body)
+    materials = []
+    for _ in range(r.u32()):
+        name, texture, colour = r.name(), r.u16(), r.f32(4)
+        alpha, cutoff, sides = r.u8(), r.f32(), r.u8()
+        materials.append({"name": name, "texture": texture, "colour": colour, "alpha": alpha})
+    for _ in range(r.u32()):
+        r.name()
+        for _ in range(r.u8()):
+            r.u16(); colored = r.u8(); vtp_planes(r, colored); r.take(2 * r.u32())
+    if not r.u8():
+        raise SystemExit("character pack: it has no character")
+    return textures, materials, vtp_character(r)
+
+
+def character_source(spec):
+    """The pinned VTP3 pack, read from git at its revision and checked."""
+    root = Path(__file__).resolve().parents[2]
+    b = subprocess.run(["git", "-C", str(root), "show", f"{spec['revision']}:{spec['path']}"],
+                       capture_output=True, check=True).stdout
+    if hashlib.sha256(b).hexdigest() != spec["sha256"]:
+        raise SystemExit(f"{spec['path']}: not the pinned character pack")
+    return vtp_pack(b)
+
+
+def texels_up(png, size):
+    """A PNG at size x size, each source texel repeated (the image must divide it)."""
+    from PIL import Image
+    im = Image.open(io.BytesIO(png)).convert("RGBA")
+    if size % im.size[0] or size % im.size[1]:
+        raise SystemExit(f"a {im.size[0]} x {im.size[1]} character image doesn't divide {size}")
+    if im.getextrema()[3] == (255, 255):
+        im = im.convert("RGB")
+    im = im.resize((size, size), Image.NEAREST)
+    buf = io.BytesIO()
+    im.save(buf, "PNG", optimize=True)
+    return buf.getvalue()
+
+
+def posed_joints(c, clip, time):
+    """Every joint's position `time` seconds into `clip`, as the old engine sampled it
+    (crates/verse-engine/src/animation.rs sample, matrices), in f64: the check the
+    rig's Coax playback is held to."""
+    import math
+    def pair(keys, t, default):
+        if not keys:
+            return default, default, 0.0
+        i = max(sum(1 for k in keys if k[0] <= t) - 1, 0)
+        a = keys[i]; b = keys[i + 1] if i + 1 < len(keys) else a
+        f = min(max((t - a[0]) / (b[0] - a[0]), 0.0), 1.0) if b[0] > a[0] else 0.0
+        return a[1], b[1], f
+    def unit(q):
+        l = math.sqrt(sum(x * x for x in q)); return tuple(x / l for x in q) if l * l > 1e-5 else (0, 0, 0, 1)
+    def slerp(a, b, f):
+        d = sum(x * y for x, y in zip(a, b))
+        if d < 0: b = tuple(-x for x in b); d = -d
+        if d > 0.9995: return unit(tuple(x + (y - x) * f for x, y in zip(a, b)))
+        th = math.acos(d); k = 1 / math.sin(th)
+        return tuple((x * math.sin(th * (1 - f)) + y * math.sin(th * f)) * k for x, y in zip(a, b))
+    def qmul(a, b):
+        ax, ay, az, aw = a; bx, by, bz, bw = b
+        return (aw*bx + ax*bw + ay*bz - az*by, aw*by - ax*bz + ay*bw + az*bx, aw*bz + ax*by - ay*bx + az*bw, aw*bw - ax*bx - ay*by - az*bz)
+    def rot(q, v):
+        u = q[:3]; w = q[3]
+        cr = lambda a, b: (a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0])
+        t = tuple(2 * x for x in cr(u, v)); t2 = cr(u, t)
+        return tuple(v[i] + w * t[i] + t2[i] for i in range(3))
+    k = c["clips"][clip]; t = time % k["duration"]
+    tracks = {tr["joint"]: tr for tr in k["tracks"]}
+    gq, gt = [], []
+    for j, joint in enumerate(c["joints"]):
+        tr = tracks.get(j)
+        a, b, f = pair(tr["t"] if tr else [], t, joint["t"]); lt = tuple(x + (y - x) * f for x, y in zip(a, b))
+        a, b, f = pair(tr["r"] if tr else [], t, joint["r"]); lq = slerp(unit(a), unit(b), f) if tr and tr["r"] else tuple(joint["r"])
+        if joint["parent"] < 0: gq.append(lq); gt.append(lt)
+        else:
+            p = joint["parent"]; gq.append(unit(qmul(gq[p], lq))); gt.append(tuple(x + y for x, y in zip(gt[p], rot(gq[p], lt))))
+    return gt, gq
+
+
+def skinned_point(c, clip, time, j, x):
+    """Point x (in the character's space) skinned wholly by joint j: posed times inverse bind."""
+    gt, gq = posed_joints(c, clip, time)
+    b = c["joints"][j]["bind"]
+    y = tuple(b[r] * x[0] + b[4 + r] * x[1] + b[8 + r] * x[2] + b[12 + r] for r in range(3))
+    q = gq[j]; u = q[:3]; w = q[3]
+    cr = lambda a, v: (a[1]*v[2] - a[2]*v[1], a[2]*v[0] - a[0]*v[2], a[0]*v[1] - a[1]*v[0])
+    t = tuple(2 * k for k in cr(u, y)); t2 = cr(u, t)
+    return tuple(y[i] + w * t[i] + t2[i] + gt[j][i] for i in range(3))
+
+
+def f9(x):
+    """An f32 as Coax reads it back exactly."""
+    t = "%.9g" % x
+    return t if any(c in t for c in ".en") else t + ".0"
+
+
+# The joints the rig's checks pose: the root, the spine, a hand, a foot and the last.
+CHECK_JOINTS = (0, 13, 20, 26, 33, 45, 60, 74)
+
+
+def rig_coax(m, c, prefix, triangles):
+    """The character's skeleton and clips as Coax constants, for verse/skin.coax."""
+    J = c["joints"]
+    for j in J:
+        if max(abs(v - 1) for v in j["s"]) > 1e-5:
+            raise SystemExit(f"{c['name']}: a joint's rest scale isn't 1")
+    tt, tr, kt, kr = [], [], [], []
+    for clip in c["clips"]:
+        tracks = {t["joint"]: t for t in clip["tracks"]}
+        for j in range(len(J)):
+            t = tracks.get(j)
+            if t and any(max(abs(v - 1) for v in k[1]) > 1e-5 for k in t["s"]):
+                raise SystemExit(f"{c['name']}: clip {clip['name']} scales a joint")
+            for keys, out, track in ((t["t"] if t else [], kt, tt), (t["r"] if t else [], kr, tr)):
+                track += [len(out), len(keys)]
+                for time, value in keys:
+                    out.append((time,) + tuple(value))
+    def arr(name, kind, values, per_line, fmt):
+        lines = [", ".join(fmt(v) for v in values[i:i + per_line]) for i in range(0, len(values), per_line)]
+        return f"{name} :: [{len(values)}] {kind}.[\n  " + ",\n  ".join(lines) + "\n];\n"
+    flat = lambda rows: [v for row in rows for v in row]
+    P = prefix
+    sizes = {"PARENT": len(J), "REST": 7 * len(J), "BIND": 12 * len(J), "DURATION": len(c["clips"]),
+             "DISTANCE": len(c["clips"]), "TRACK_T": len(tt), "TRACK_R": len(tr), "KEYS_T": 4 * len(kt), "KEYS_R": 5 * len(kr)}
+    out = [f"// Generated by verse/tools/pack_realm.py from verse/packs/{m['pack']}.json; do not edit.",
+           f"// The skeleton and clips of {c['name']}, the old Rust Verse engine's character, as its last",
+           f"// pinned pack held them ({m['character']['path']} at {m['character']['revision'][:10]}):",
+           "// per joint its parent (parents first), its rest translation and rotation (x, y, z, w) and",
+           "// its inverse bind (three rows of four); per clip its seconds, the metres a loop travels (0",
+           "// for a clip on the clock) and, per joint, its translation and rotation keys (first, count)",
+           "// into the key lists: time then the value. Scale is 1 everywhere (within 1e-5). verse/skin.coax plays it.",
+           "",
+           '#load "../skin.coax";',
+           "",
+           f"{P}_JOINTS :: {len(J)};",
+           f"{P}_CLIPS :: {len(c['clips'])};",
+           f"{P}_TRIANGLES :: {triangles};",
+           f"{P}_CLIP_NAME :: [{len(c['clips'])}] string.[" + ", ".join(f'"{k["name"]}"' for k in c["clips"]) + "];",
+           arr(f"{P}_DURATION", "f32", [k["duration"] for k in c["clips"]], 8, f9).rstrip(),
+           arr(f"{P}_DISTANCE", "f32", [k["distance"] for k in c["clips"]], 8, f9).rstrip(),
+           arr(f"{P}_PARENT", "int", [j["parent"] for j in J], 25, str).rstrip(),
+           arr(f"{P}_REST", "f32", flat(tuple(j["t"]) + tuple(j["r"]) for j in J), 7, f9).rstrip(),
+           arr(f"{P}_BIND", "f32", flat([j["bind"][r], j["bind"][4 + r], j["bind"][8 + r], j["bind"][12 + r]]
+                                        for j in J for r in range(3)), 12, f9).rstrip(),
+           arr(f"{P}_TRACK_T", "int", tt, 30, str).rstrip(),
+           arr(f"{P}_TRACK_R", "int", tr, 30, str).rstrip(),
+           arr(f"{P}_KEYS_T", "f32", flat(kt), 8, f9).rstrip(),
+           arr(f"{P}_KEYS_R", "f32", flat(kr), 10, f9).rstrip(),
+           "// Checks, by the old engine's sampling (posed_joints in pack_realm.py, in f64): part way",
+           "// into each clip, where a joint stands and where the point (0.1, 1, 0.05) skinned wholly",
+           "// by it goes: clip, seconds, joint, x, y, z, then the point's x, y, z.",
+           arr(f"{P}_CHECK", "f32", flat((ci, tm, j) + tuple(posed_joints(c, ci, tm)[0][j])
+                                         + skinned_point(c, ci, tm, j, (0.1, 1.0, 0.05))
+                                         for ci in range(len(c["clips"])) for tm in (0.0, c["clips"][ci]["duration"] * 0.37)
+                                         for j in CHECK_JOINTS if j < len(J)), 9, f9).rstrip(),
+           "",
+           "// The rig in a page's state (a view needs an array it may write through), and its views.",
+           f"{P.title()} :: struct {{",
+           *[f"  {n.split(':')[0].lower()}: [{sizes[n.split(':')[0]]}] {n.split(':')[1]};" for n in ['PARENT:int', 'REST:f32', 'BIND:f32', 'DURATION:f32', 'DISTANCE:f32', 'TRACK_T:int', 'TRACK_R:int', 'KEYS_T:f32', 'KEYS_R:f32']],
+           "}",
+           f"{P.lower()}_load :: (d: [] {P.title()}) {{",
+           *[f"  d[0].{n.split(':')[0].lower()} = {P}_{n.split(':')[0]};" for n in ['PARENT:int', 'REST:f32', 'BIND:f32', 'DURATION:f32', 'DISTANCE:f32', 'TRACK_T:int', 'TRACK_R:int', 'KEYS_T:f32', 'KEYS_R:f32']],
+           "}",
+           f"{P.lower()}_rig :: (d: [] {P.title()}) -> SkinRig {{",
+           f"  return SkinRig.{{joints = {P}_JOINTS, clips = {P}_CLIPS, parent = d[0].parent[..], rest = d[0].rest[..], bind = d[0].bind[..],",
+           "                  duration = d[0].duration[..], distance = d[0].distance[..], track_t = d[0].track_t[..],",
+           "                  track_r = d[0].track_r[..], keys_t = d[0].keys_t[..], keys_r = d[0].keys_r[..]};",
+           "}"]
+    return "\n".join(out) + "\n"
 
 
 def build(manifest_path):
@@ -136,6 +390,36 @@ def build(manifest_path):
         src, data = image(home(m["layers"].format(n=layer)), size)
         entries.append((KIND_LAYER, lic, f"layer{k}", data))
         layer_lines.append(f"T {k} {src.name} {lic}")
+    character_lines, rig = [], None
+    if "character" in m:
+        spec = m["character"]
+        lic = licence_of(spec.get("licence"), f"character {spec['name']}")
+        textures, materials, c = character_source(spec)
+        if c["name"] != spec["name"]:
+            raise SystemExit(f"the pinned pack's character is {c['name']}, not {spec['name']}")
+        first, word, count = len(indices), len(vertices) // 4, 0
+        layer_of = {}
+        for pr in c["prims"]:
+            mat = materials[pr["material"]]
+            if mat["alpha"] != 0 or any(abs(x - 1) > 1e-6 for x in mat["colour"]):
+                raise SystemExit(f"{c['name']}: a material isn't plain opaque base colour")
+            t = mat["texture"]
+            if t not in layer_of:
+                layer_of[t] = len(layer_lines)
+                entries.append((KIND_LAYER, lic, f"layer{layer_of[t]}", texels_up(textures[t]["png"], size)))
+                layer_lines.append(f"T {layer_of[t]} {textures[t]['name']} {lic}")
+            layer = layer_of[t]
+            for i, p in enumerate(pr["pos"]):
+                n = pr["normals"][3 * i:3 * i + 3]
+                vertices += struct.pack("<3f", *p) + bytes(n) + bytes([layer]) + struct.pack("<2f", *pr["uv"][i])
+                vertices += pr["joints"][4 * i:4 * i + 4] + pr["weights"][4 * i:4 * i + 4]
+                if sum(pr["weights"][4 * i:4 * i + 4]) != 255 or max(pr["joints"][4 * i:4 * i + 4]) >= len(c["joints"]):
+                    raise SystemExit(f"{c['name']}: a vertex's skin is out of range")
+            indices += [count + k for k in pr["indices"]]
+            count += len(pr["pos"])
+        character_lines.append(f"C {c['name']} {first} {len(indices) - first} {lic} {word} {count} {len(c['joints'])}")
+        if "rig" in spec:
+            rig = (spec["rig"], rig_coax(m, c, spec.get("prefix", "RIG"), (len(indices) - first) // 3))
     for s in m.get("sounds", []):
         lic = licence_of(s.get("licence"), f"sound {s['name']}")
         entries.append((KIND_SOUND, lic, s["name"], home(s["file"]).read_bytes()))
@@ -150,7 +434,7 @@ def build(manifest_path):
     def catalog(total):
         lines = [f"pack {m['pack']}", f"budget {budget}", f"bytes {total}"]
         lines += [f"L {k} {licences[key]['name']}|{licences[key]['licence']}|{licences[key]['url']}" for k, key in enumerate(keys)]
-        return ("\n".join(lines + mesh_lines + identity_lines + layer_lines + sound_lines) + "\n").encode()
+        return ("\n".join(lines + mesh_lines + character_lines + identity_lines + layer_lines + sound_lines) + "\n").encode()
     # The catalog names the file's size, which depends on the catalog: settle it.
     total = 0
     for _ in range(4):
@@ -173,7 +457,7 @@ def build(manifest_path):
         out[off:off + len(data)] = data
     if total > budget:
         raise SystemExit(f"{m['pack']}: {total} bytes, over its budget of {budget}")
-    return m, keys, bytes(out), mesh_lines, layer_lines, sound_lines
+    return m, keys, bytes(out), mesh_lines + character_lines, layer_lines, sound_lines, rig
 
 
 def licences_md(m, keys, mesh_lines, layer_lines, sound_lines, total):
@@ -188,7 +472,7 @@ def licences_md(m, keys, mesh_lines, layer_lines, sound_lines, total):
     lines += ["", "## Assets", "", "| Asset | Kind | Licence |", "| --- | --- | --- |"]
     for x in mesh_lines:
         p = x.split()
-        lines.append(f"| {p[1]} | mesh | {name(p[4])} |")
+        lines.append(f"| {p[1]} | {'character' if p[0] == 'C' else 'mesh'} | {name(p[4])} |")
     for x in layer_lines:
         p = x.split()
         lines.append(f"| texture {p[1]} ({p[2]}) | texture | {name(p[3])} |")
@@ -201,9 +485,11 @@ def licences_md(m, keys, mesh_lines, layer_lines, sound_lines, total):
 if __name__ == "__main__":
     if len(sys.argv) not in (3, 4):
         raise SystemExit(__doc__.split("\n\n")[1])
-    m, keys, data, ml, ll, sl = build(sys.argv[1])
+    m, keys, data, ml, ll, sl, rig = build(sys.argv[1])
     Path(sys.argv[2]).parent.mkdir(parents=True, exist_ok=True)
     Path(sys.argv[2]).write_bytes(data)
+    if rig:
+        Path(__file__).resolve().parents[2].joinpath(rig[0]).write_text(rig[1])
     if len(sys.argv) == 4:
         Path(sys.argv[3]).write_text(licences_md(m, keys, ml, ll, sl, len(data)))
     print(f"{m['pack']}: {len(data):,} bytes of {int(m['budget']):,}; {len(ml)} meshes, {len(ll)} layers, {len(sl)} sound{"" if len(sl) == 1 else "s"}")

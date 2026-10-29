@@ -124,10 +124,10 @@ static bool has_line(uint32_t length, const char *prefix) {
 
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return city(state)->started ? (uint32_t)everglade_draws(at(state)) : 0u; }
-EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 2; }
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 3; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return (uint32_t)everglade_store_cap(k); }
 EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
-  return (uint32_t)(uintptr_t)(k == 0 ? (void *)city(state)->heights.e : (void *)city(state)->objects.e);
+  return (uint32_t)(uintptr_t)(k == 0 ? (void *)city(state)->heights.e : k == 1 ? (void *)city(state)->objects.e : (void *)city(state)->palette.e);
 }
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { (void)state; return (uint32_t)everglade_store_cap(k); }
 

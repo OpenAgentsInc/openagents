@@ -1,12 +1,13 @@
 # Licences: the Everglade pack
 
-Every asset in `everglade.pack` (4,309,100 bytes of its 5,000,000-byte budget) and its licence. Written by `verse/tools/pack_realm.py` from `verse/packs/everglade.json`.
+Every asset in `everglade.pack` (6,021,712 bytes of its 6,750,000-byte budget) and its licence. Written by `verse/tools/pack_realm.py` from `verse/packs/everglade.json`.
 
 ## Sources
 
 - Quaternius Stylized Nature MegaKit: CC0 1.0 Universal, https://quaternius.com/
 - Quaternius Medieval Village MegaKit: CC0 1.0 Universal, https://quaternius.com/
 - Quaternius Fantasy Props MegaKit: CC0 1.0 Universal, https://quaternius.com/
+- Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library: CC0 1.0 Universal, https://quaternius.com/
 
 ## Assets
 
@@ -64,6 +65,7 @@ Every asset in `everglade.pack` (4,309,100 bytes of its 5,000,000-byte budget) a
 | Scroll_1 | mesh | Quaternius Fantasy Props MegaKit |
 | Stairs_Exterior_Platform | mesh | Quaternius Medieval Village MegaKit |
 | Prop_WoodenFence_Single | mesh | Quaternius Medieval Village MegaKit |
+| player/male-ranger | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
 | texture 0 (layer29.jpg) | texture | Quaternius Stylized Nature MegaKit |
 | texture 1 (layer33.png) | texture | Quaternius Stylized Nature MegaKit |
 | texture 2 (layer32.png) | texture | Quaternius Stylized Nature MegaKit |
@@ -82,3 +84,8 @@ Every asset in `everglade.pack` (4,309,100 bytes of its 5,000,000-byte budget) a
 | texture 15 (layer3.jpg) | texture | Quaternius Fantasy Props MegaKit |
 | texture 16 (layer2.jpg) | texture | Quaternius Fantasy Props MegaKit |
 | texture 17 (layer4.jpg) | texture | Quaternius Fantasy Props MegaKit |
+| texture 18 (player/846ef2170b04ee58) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
+| texture 19 (player/b4dcc0f4139aab54) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
+| texture 20 (player/bc7aa863bd22ab0a) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
+| texture 21 (player/d08e3356a83211bc) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
+| texture 22 (player/df680cbc1967a61e) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |

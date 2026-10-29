@@ -63,8 +63,9 @@ struct Obj { r0: vec4f, r1: vec4f, r2: vec4f, colour: vec4f }
 @group(1) @binding(0) var<storage, read> vertices: array<u32>;
 @group(1) @binding(1) var<storage, read> heights: array<f32>;
 @group(1) @binding(2) var<storage, read> objects: array<Obj>;
-@group(1) @binding(3) var sheets: texture_2d_array<f32>;
-@group(1) @binding(4) var sheet: sampler;
+@group(1) @binding(3) var<storage, read> pose: array<vec4f>;   // the Ranger's joints: three rows each
+@group(1) @binding(4) var sheets: texture_2d_array<f32>;
+@group(1) @binding(5) var sheet: sampler;
 fn word(i: u32) -> f32 { return bitcast<f32>(vertices[i]); }
 
 struct S {
@@ -183,6 +184,26 @@ fn clip(w: vec3f) -> vec4f {
       o.uv = vec2f(word(b + 6u), word(b + 7u));
       o.slice = vertices[b + 8u] >> 24u;
       tint = unpack4x8unorm(vertices[b + 8u]).rgb * m.colour.rgb;
+    }
+    case 6u: {
+      // The Ranger: the pack's 32-byte character vertex, skinned by up to four joints of the pose.
+      let b = u32(m.colour.x) + id * 8u;
+      let at = vec4f(word(b), word(b + 1u), word(b + 2u), 1.0);
+      let nw = unpack4x8snorm(vertices[b + 3u]).xyz;
+      let j = vec4u(unpack4x8unorm(vertices[b + 6u]) * 255.0 + 0.5);
+      let wt = unpack4x8unorm(vertices[b + 7u]);
+      var sp = vec3f(0.0);
+      var sn = vec3f(0.0);
+      for (var k = 0u; k < 4u; k++) {
+        let r = j[k] * 3u;
+        let a = pose[r]; let c = pose[r + 1u]; let e = pose[r + 2u];
+        sp += wt[k] * vec3f(dot(a, at), dot(c, at), dot(e, at));
+        sn += wt[k] * vec3f(dot(a.xyz, nw), dot(c.xyz, nw), dot(e.xyz, nw));
+      }
+      v = Vert(sp, sn);
+      o.uv = vec2f(word(b + 4u), word(b + 5u));
+      o.slice = vertices[b + 3u] >> 24u;
+      tint = vec3f(1.0);
     }
     default: { v = cone_vertex(id); }
   }
