@@ -1,0 +1,35 @@
+#import "Basic";
+#load "../lib/gate-graph.coax";
+
+// book:begin example
+main :: () {
+    // One arithmetic step of chapter 165's machine: op 0 adds, 1 subtracts, 2 multiplies.
+    step:=[12]GgNode.[
+        GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.input,k=1},GgNode.{op=GgOp.input,k=2}, // op, a, b
+        GgNode.{op=GgOp.eq0,a=0},                                                          // n3: op == 0
+        GgNode.{op=GgOp.constant,k=-1},GgNode.{op=GgOp.add,a=0,b=4},GgNode.{op=GgOp.eq0,a=5}, // n6: op == 1
+        GgNode.{op=GgOp.add,a=1,b=2},GgNode.{op=GgOp.sub,a=1,b=2},GgNode.{op=GgOp.mul,a=1,b=2},
+        GgNode.{op=GgOp.select,c=6,a=8,b=9},                                               // n10: sub or mul
+        GgNode.{op=GgOp.select,c=3,a=7,b=10}];                                             // n11: add or that
+    outs:=[1]int.[11];weights:[8192]f64;
+    plan:=gg_compile(step[..],outs[..],weights[..]);
+    #assert plan.status==GgStatus.ok;
+    print("one arithmetic step: % layers, residual width %, units % / % / %, % weights\n",
+        plan.layers,plan.width,plan.units[0],plan.units[1],plan.units[2],plan.weights);
+    names:=[3]string.["add","subtract","multiply"];
+    for op:0..<3 {
+        inputs:=[3]int.[op,7,-3];want:[1]int;got:[1]f64;
+        #assert gg_eval(step[..],inputs[..],outs[..],want[..]).status==GgStatus.ok;
+        #assert gg_run(plan,weights[..],inputs[..],got[..],false,false)==GgStatus.ok && got[0]==f64(want[0]);
+        print("% 7 and -3: block % (evaluator %)\n",names[op],got[0],want[0]);
+    }
+    big:=[3]int.[2,4097,4097];want:[1]int;wide:[1]f64;narrow:[1]f64;
+    #assert gg_eval(step[..],big[..],outs[..],want[..]).status==GgStatus.ok;
+    #assert gg_run(plan,weights[..],big[..],wide[..],false,false)==GgStatus.ok;
+    #assert gg_run(plan,weights[..],big[..],narrow[..],true,false)==GgStatus.ok;
+    print("multiply 4097 and 4097: binary64 % (evaluator %), the same weights in binary32 %\n",wide[0],want[0],narrow[0]);
+    over:=[3]int.[2,10000,10000];
+    r:=gg_eval(step[..],over[..],outs[..],want[..]);
+    print("multiply 10000 and 10000: refused by the evaluator at node % (%)\n",r.node,r.status);
+}
+// book:end example

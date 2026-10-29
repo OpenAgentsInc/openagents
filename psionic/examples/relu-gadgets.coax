@@ -1,0 +1,15 @@
+#import "Basic";
+#load "../lib/relu-arith.coax";
+
+// book:begin example
+main :: () {
+    print("7 * -3 = %\n",ra_gadget(RaGadget.mul,7,-3,0,false));
+    print("step(0) = %, step(5) = %\n",ra_gadget(RaGadget.step,0,0,0,false),ra_gadget(RaGadget.step,5,0,0,false));
+    print("eq0(0) = %, eq0(-4) = %\n",ra_gadget(RaGadget.eq0,0,0,0,false),ra_gadget(RaGadget.eq0,-4,0,0,false));
+    print("select(1, 11, 22) = %, select(0, 11, 22) = %\n",ra_gadget(RaGadget.select,1,11,22,false),ra_gadget(RaGadget.select,0,11,22,false));
+    m:=RA_VALUE_MAX;
+    print("2^26 * 2^26 in binary64 = % (exact)\n",ra_gadget(RaGadget.mul,m,m,0,false));
+    print("4097 * 4097: binary64 %, binary32 % (exact is 16785409)\n",ra_gadget(RaGadget.mul,4097,4097,0,false),ra_gadget(RaGadget.mul,4097,4097,0,true));
+    print("step(0.5) = %: the gadget is a ramp between integers\n",ra_step_between(0.5));
+}
+// book:end example

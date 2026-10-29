@@ -1,0 +1,6 @@
+one arithmetic step: 3 layers, residual width 6, units 13 / 4 / 6, 414 weights
+add 7 and -3: block 4.0 (evaluator 4)
+subtract 7 and -3: block 10.0 (evaluator 10)
+multiply 7 and -3: block -21.0 (evaluator -21)
+multiply 4097 and 4097: binary64 16785409.0 (evaluator 16785409), the same weights in binary32 16785408.0
+multiply 10000 and 10000: refused by the evaluator at node 9 (range)

@@ -1,0 +1,238 @@
+// Exact integer arithmetic from a gated ReLU feed-forward layer.
+#authority;
+
+RaStatus :: enum u8 {ok;shape;capacity;number;alias;}
+// A linear form over residual slots: sum of coefs[i] * x[slots[i]]. Slot 0 always holds 1.
+RaForm :: struct {count:int;slots:[8]int;coefs:[8]int;}
+
+RA_VALUE_MAX :: 67108864;
+RA_WIDTH_MAX :: 64;
+RA_UNITS_MAX :: 128;
+RA_TERMS :: 8;
+RA_EXACT_MAX :: 9007199254740992;  // 2^53: every integer up to here is a binary64 value
+
+#test "a gated layer adds O times (V x) * ReLU(G x) to the residual" {
+    // Two slots: x = [1, 5]. One unit: value 3 * x1, gate x1 - 7 (negative), then a second with gate x1.
+    w:[12]f64;width:=2;units:=2;
+    w[0*2+1]=3;w[4+0*2+0]=-7;w[4+0*2+1]=1;w[8+1*2+0]=1;
+    w[1*2+1]=2;w[4+1*2+1]=1;w[8+1*2+1]=-1;
+    x:=[2]f64.[1,5];out:=[2]f64.[-9,-9];
+    #assert ra_forward(width,units,w[..],x[..],out[..],false,false)==RaStatus.ok;
+    // unit 0: 15 * ReLU(-2) = 0 into slot 0; unit 1: 10 * ReLU(5) = 50, times -1 into slot 1.
+    #assert out[0]==1 && out[1]==-45;
+    #assert ra_forward(width,units,w[..],x[..],out[0..<1],false,false)==RaStatus.capacity;
+    #assert ra_forward(width,units,w[0..<11],x[..],out[..],false,false)==RaStatus.capacity;
+    #assert ra_forward(width,units,w[..],x[0..<1],out[..],false,false)==RaStatus.capacity;
+    #assert ra_forward(0,0,w[0..<0],x[0..<0],out[..],false,false)==RaStatus.shape;
+    #assert ra_forward(width,-1,w[..],x[..],out[..],false,false)==RaStatus.shape;
+    #assert ra_forward(width,units,w[..],x[..],out[..],false,true)==RaStatus.alias;
+    #assert ra_forward(width,0,w[0..<0],x[..],out[..],false,false)==RaStatus.ok && out[0]==1 && out[1]==5;
+    // Weights and inputs beyond 2^53 (and NaN or infinity, checked natively) are refused.
+    x[1]=f64(RA_EXACT_MAX)*2;#assert ra_forward(width,units,w[..],x[..],out[..],false,false)==RaStatus.number;
+    x[1]=-f64(RA_EXACT_MAX)*2;#assert ra_forward(width,units,w[..],x[..],out[..],false,false)==RaStatus.number;
+    x[1]=5;w[3]=f64(RA_EXACT_MAX)*2;#assert ra_forward(width,units,w[..],x[..],out[..],false,false)==RaStatus.number;
+    #assert out[0]==1 && out[1]==5;
+    w[3]=f64(RA_EXACT_MAX);x[1]=f64(RA_EXACT_MAX);#assert ra_forward(width,units,w[..],x[..],out[..],false,false)==RaStatus.ok;
+}
+#test "layers are bounded in width and units" {
+    big:[24768]f64;x:[64]f64;out:[65]f64;
+    #assert ra_forward(64,128,big[0..<24576],x[..],out[0..<64],false,false)==RaStatus.ok;
+    x65:[65]f64;#assert ra_forward(65,1,big[0..<195],x65[..],out[..],false,false)==RaStatus.shape;
+    #assert ra_forward(64,129,big[0..<24768],x[..],out[0..<64],false,false)==RaStatus.shape;
+    #assert ra_weight_count(64,128)==24576;
+    one:[3]f64;x1:=[1]f64.[4];o1:[1]f64;#assert ra_forward(1,1,one[..],x1[..],o1[..],false,false)==RaStatus.ok && o1[0]==4;
+}
+#forall "products are exact for every small pair" a:-6..<7 {
+    for b:-6..<7 {#assert ra_gadget(RaGadget.mul,a,b,0,false)==f64(a*b);}
+}
+#test "products stay exact at the value bound in binary64, and in binary32 only to 2^24" {
+    m:=RA_VALUE_MAX;
+    #assert ra_gadget(RaGadget.mul,m,m,0,false)==f64(m)*f64(m) && ra_gadget(RaGadget.mul,-m,m,0,false)==-f64(m)*f64(m);
+    #assert ra_gadget(RaGadget.mul,4096,4096,0,true)==16777216;
+    #assert ra_gadget(RaGadget.mul,4097,4097,0,true)!=16785409 && ra_gadget(RaGadget.mul,4097,4097,0,false)==16785409;
+    // Past the contract: (2^27 + 1)^2 needs 55 bits, so binary64 rounds it.
+    big:=134217729;#assert cast(int)ra_gadget(RaGadget.mul,big,big,0,false)!=big*big;
+}
+#forall "step, equality, ReLU and select are exact on integers" x:-5..<6 {
+    want_step:=0.0;if x>=1 {want_step=1;}
+    want_eq:=0.0;if x==0 {want_eq=1;}
+    want_relu:=0.0;if x>0 {want_relu=f64(x);}
+    #assert ra_gadget(RaGadget.step,x,0,0,false)==want_step && ra_gadget(RaGadget.eq0,x,0,0,false)==want_eq;
+    #assert ra_gadget(RaGadget.relu,x,0,0,false)==want_relu;
+    #assert ra_gadget(RaGadget.select,1,x,9,false)==f64(x) && ra_gadget(RaGadget.select,0,x,9,false)==9;
+    #assert ra_gadget(RaGadget.copy,x,0,0,false)==f64(x) && ra_gadget(RaGadget.step,x,0,0,true)==want_step;
+}
+#test "the step gadget is a ramp between integers, so it needs integer inputs" {
+    #assert ra_step_between(0.5)==0.5 && ra_step_between(0.25)==0.25 && ra_step_between(1.5)==1 && ra_step_between(-0.5)==0;
+    #assert ra_step_between(0.1)==0.1;
+    // A select condition of 2 is outside the contract: b + 2(a - b), not a.
+    #assert ra_gadget(RaGadget.select,2,3,0,false)==6 && ra_gadget(RaGadget.select,-1,3,0,false)==0;
+}
+#test "forms combine, negate and refuse more than eight terms" {
+    a:=ra_term(1,2);b:=ra_plus(a,ra_term(2,-3));
+    #assert b.count==2 && b.slots[1]==2 && b.coefs[1]==-3;
+    n:=ra_neg(b);#assert n.count==2 && n.coefs[0]==-2 && n.coefs[1]==3;
+    f:=ra_term(0,1);for i:0..<7 {f=ra_plus(f,ra_term(i+1,1));}
+    #assert f.count==8 && ra_plus(f,ra_term(1,1)).count==-1 && ra_plus(ra_plus(f,ra_term(1,1)),a).count==-1;
+    #assert ra_plus(a,ra_plus(f,ra_term(1,1))).count==-1;
+    // Appending two terms after one lands them at positions 1 and 2.
+    c:=ra_plus(ra_term(5,7),b);#assert c.count==3 && c.slots[0]==5 && c.slots[1]==1 && c.slots[2]==2 && c.coefs[1]==2 && c.coefs[2]==-3;
+    empty:RaForm;e:=ra_plus(empty,a);#assert e.count==1 && e.slots[0]==1 && ra_plus(a,empty).count==1;
+    #assert ra_plus(empty,empty).count==0;
+}
+#test "units refuse slots, units and forms outside the layer" {
+    w:[48]f64;width:=4;units:=4;
+    #assert ra_unit(w[..],width,units,0,ra_term(1,1),ra_term(2,1),3,1);
+    #assert !ra_unit(w[..],width,units,4,ra_term(1,1),ra_term(2,1),3,1);
+    #assert !ra_unit(w[..],width,units,-1,ra_term(1,1),ra_term(2,1),3,1);
+    #assert !ra_unit(w[..],width,units,0,ra_term(4,1),ra_term(2,1),3,1);
+    #assert !ra_unit(w[..],width,units,0,ra_term(1,1),ra_term(-1,1),3,1);
+    #assert !ra_unit(w[..],width,units,0,ra_term(1,1),ra_term(2,1),4,1);
+    #assert !ra_unit(w[..],width,units,0,ra_term(1,1),ra_term(2,1),-1,1);
+    #assert !ra_unit(w[0..<47],width,units,0,ra_term(1,1),ra_term(2,1),3,1);
+    #assert !ra_unit(w[..],width,units,0,ra_term(1,1),ra_term(4,1),3,1);
+    empty:RaForm;#assert ra_unit(w[..],width,units,1,empty,empty,3,1) && ra_unit(w[..],width,units,1,empty,empty,0,1);
+    bad:RaForm;bad.count=-1;#assert !ra_unit(w[..],width,units,0,bad,ra_term(2,1),3,1);
+    #assert !ra_unit(w[..],width,units,0,ra_term(1,1),bad,3,1);
+    #assert ra_mul(w[..],width,units,3,ra_term(1,1),ra_term(2,1),3)==-1;
+    #assert ra_step(w[..],width,units,3,ra_term(1,1),3)==-1 && ra_eq0(w[..],width,units,0,ra_term(1,1),3)==-1;
+    #assert ra_select(w[..],width,units,3,ra_term(1,1),ra_term(2,1),ra_term(3,1),3)==-1;
+    #assert ra_relu(w[..],width,units,4,ra_term(1,1),3)==-1 && ra_copy(w[..],width,units,4,ra_term(1,1),3)==-1;
+    #assert ra_eq0(w[..],width,units,4,ra_term(1,1),3)==-1;
+    z:[60]f64;#assert ra_mul(z[..],5,4,0,ra_term(1,1),ra_term(2,1),3)==2 && ra_relu(z[..],5,4,2,ra_term(1,1),3)==3;
+    #assert ra_copy(z[..],5,4,3,ra_term(1,1),3)==4 && ra_step(z[..],5,4,2,ra_term(1,1),3)==4 && ra_select(z[..],5,4,2,ra_term(1,1),ra_term(2,1),ra_term(3,1),3)==4;
+    y:[75]f64;#assert ra_eq0(y[..],5,5,0,ra_term(1,1),3)==5;
+}
+
+// book:begin layer
+// One gated feed-forward layer: out = x + O * ((V x) ⊙ ReLU(G x)), with V and G
+// of shape units × width and O of shape width × units, stored V, G, O in a
+// row-major run. Every product and sum is rounded to binary32 when `single`
+// is set, in unit order, so the same weights can be measured in both formats.
+ra_weight_count :: (width:int,units:int)->int #export_c {return 3*width*units;}
+// False for NaN, infinities and magnitudes past 2^53.
+ra_exact_range :: (v:f64)->bool {return abs(v)<=f64(RA_EXACT_MAX);}
+ra_round :: (x:f64,single:bool)->f64 {
+    if single {return f64(f32(x));}
+    return x;
+}
+ra_dot :: (w:[]f64,base:int,width:int,x:[]f64,single:bool)->f64 {
+    sum:f64=0;
+    for i:0..<width {sum=ra_round(sum+ra_round(w[base+i]*x[i],single),single);}
+    return sum;
+}
+ra_forward :: (width:int,units:int,w:[]f64,x:[]f64,out:[]f64,single:bool,overlap:bool)->RaStatus #export_c {
+    if width<1 || width>RA_WIDTH_MAX || units<0 || units>RA_UNITS_MAX {return RaStatus.shape;}
+    if w.count!=ra_weight_count(width,units) || x.count!=width || out.count<width {return RaStatus.capacity;}
+    if overlap {return RaStatus.alias;}
+    for v:w {if !ra_exact_range(v) {return RaStatus.number;}}
+    for v:x {if !ra_exact_range(v) {return RaStatus.number;}}
+    hidden:[128]f64;stage:[64]f64;
+    for u:0..<units {
+        g:=ra_dot(w,(units+u)*width,width,x,single);
+        // ReLU without a comparison: (g + |g|) / 2 is g when positive and 0 otherwise.
+        hidden[u]=ra_round(ra_dot(w,u*width,width,x,single)*((g+abs(g))*0.5),single);
+    }
+    for i:0..<width {
+        sum:=x[i];
+        for u:0..<units {sum=ra_round(sum+ra_round(w[2*units*width+i*units+u]*hidden[u],single),single);}
+        stage[i]=sum;
+    }
+    for i:0..<width {out[i]=stage[i];}
+    return RaStatus.ok;
+}
+// book:end layer
+
+// book:begin forms
+ra_term :: (slot:int,coef:int)->RaForm {f:RaForm;f.count=1;f.slots[0]=slot;f.coefs[0]=coef;return f;}
+ra_one :: ()->RaForm {return ra_term(0,1);}
+ra_plus :: (a:RaForm,b:RaForm)->RaForm {
+    r:=a;
+    if a.count<0 || b.count<0 || a.count+b.count>RA_TERMS {r.count=-1;return r;}
+    for i:0..<b.count {r.slots[a.count+i]=b.slots[i];r.coefs[a.count+i]=b.coefs[i];}
+    r.count=a.count+b.count;return r;
+}
+ra_neg :: (a:RaForm)->RaForm {r:=a;for i:0..<a.count {r.coefs[i]=-a.coefs[i];}return r;}
+// book:end forms
+
+// book:begin unit
+// Unit u reads the value form and the gate form, and adds scale * value *
+// ReLU(gate) to residual slot `target`. Weights start at zero; units add.
+ra_unit :: (w:[]f64,width:int,units:int,u:int,value:RaForm,gate:RaForm,target:int,scale:int)->bool {
+    if u<0 || u>=units || target<0 || target>=width || w.count<ra_weight_count(width,units) {return false;}
+    if value.count<0 || gate.count<0 {return false;}
+    for i:0..<value.count {if value.slots[i]<0 || value.slots[i]>=width {return false;}}
+    for i:0..<gate.count {if gate.slots[i]<0 || gate.slots[i]>=width {return false;}}
+    for i:0..<value.count {w[u*width+value.slots[i]]+=f64(value.coefs[i]);}
+    for i:0..<gate.count {w[(units+u)*width+gate.slots[i]]+=f64(gate.coefs[i]);}
+    w[2*units*width+target*units+u]+=f64(scale);
+    return true;
+}
+// book:end unit
+
+// book:begin gadgets
+// Each gadget writes its units starting at `u` and returns the next free unit,
+// or -1 when they do not fit (units already placed stay written). Contracts:
+// integer inputs within RA_VALUE_MAX; `select` needs a condition that is
+// exactly 0 or 1. Breaking a contract gives a wrong number, not a refusal.
+// a * b = a * ReLU(b) - a * ReLU(-b)
+ra_mul :: (w:[]f64,width:int,units:int,u:int,a:RaForm,b:RaForm,target:int)->int #export_c {
+    if !ra_unit(w,width,units,u,a,b,target,1) || !ra_unit(w,width,units,u+1,a,ra_neg(b),target,-1) {return -1;}
+    return u+2;
+}
+// ReLU(a) = 1 * ReLU(a)
+ra_relu :: (w:[]f64,width:int,units:int,u:int,a:RaForm,target:int)->int #export_c {
+    if !ra_unit(w,width,units,u,ra_one(),a,target,1) {return -1;}
+    return u+1;
+}
+// step(a) = ReLU(a) - ReLU(a - 1): 1 for a >= 1, 0 for a <= 0 on integers
+ra_step :: (w:[]f64,width:int,units:int,u:int,a:RaForm,target:int)->int #export_c {
+    if !ra_unit(w,width,units,u,ra_one(),a,target,1) || !ra_unit(w,width,units,u+1,ra_one(),ra_plus(a,ra_term(0,-1)),target,-1) {return -1;}
+    return u+2;
+}
+// eq0(a) = 1 - (ReLU(a) - ReLU(a - 1)) - (ReLU(-a) - ReLU(-a - 1))
+ra_eq0 :: (w:[]f64,width:int,units:int,u:int,a:RaForm,target:int)->int #export_c {
+    one:=ra_one();n:=ra_neg(a);
+    if !ra_unit(w,width,units,u,one,one,target,1) || !ra_unit(w,width,units,u+1,one,a,target,-1) ||
+        !ra_unit(w,width,units,u+2,one,ra_plus(a,ra_term(0,-1)),target,1) || !ra_unit(w,width,units,u+3,one,n,target,-1) ||
+        !ra_unit(w,width,units,u+4,one,ra_plus(n,ra_term(0,-1)),target,1) {return -1;}
+    return u+5;
+}
+// select(c, a, b) = b + (a - b) * ReLU(c), for c in {0, 1}
+ra_select :: (w:[]f64,width:int,units:int,u:int,c:RaForm,a:RaForm,b:RaForm,target:int)->int #export_c {
+    if !ra_unit(w,width,units,u,b,ra_one(),target,1) || !ra_unit(w,width,units,u+1,ra_plus(a,ra_neg(b)),c,target,1) {return -1;}
+    return u+2;
+}
+// copy(a) = a * ReLU(1)
+ra_copy :: (w:[]f64,width:int,units:int,u:int,a:RaForm,target:int)->int #export_c {
+    if !ra_unit(w,width,units,u,a,ra_one(),target,1) {return -1;}
+    return u+1;
+}
+// book:end gadgets
+
+RaGadget :: enum u8 {mul;relu;step;eq0;select;copy;}
+ra_gadget_units :: (g:RaGadget)->int #export_c {
+    if g==RaGadget.relu || g==RaGadget.copy {return 1;}
+    if g==RaGadget.eq0 {return 5;}
+    return 2;
+}
+// Build one gadget over slots [1, a, b, c, out] in a layer of exactly the
+// units it needs, run that layer, and return the output slot.
+ra_gadget :: (g:RaGadget,a:int,b:int,c:int,single:bool)->f64 #export_c {
+    units:=ra_gadget_units(g);all:[75]f64;x:=[5]f64.[1,f64(a),f64(b),f64(c),0];out:[5]f64;
+    w:=all[0..<ra_weight_count(5,units)];first:=ra_term(1,1);n:int;
+    if g==RaGadget.mul {n=ra_mul(w,5,units,0,first,ra_term(2,1),4);}
+    else if g==RaGadget.relu {n=ra_relu(w,5,units,0,first,4);}
+    else if g==RaGadget.step {n=ra_step(w,5,units,0,first,4);}
+    else if g==RaGadget.eq0 {n=ra_eq0(w,5,units,0,first,4);}
+    else if g==RaGadget.select {n=ra_select(w,5,units,0,first,ra_term(2,1),ra_term(3,1),4);}
+    else {n=ra_copy(w,5,units,0,first,4);}
+    #assert n==units && ra_forward(5,units,w,x[..],out[..],single,false)==RaStatus.ok;
+    return out[4];
+}
+// The step gadget evaluated off the integers, to show why its contract needs them.
+ra_step_between :: (a:f64)->f64 {
+    w:[18]f64;x:=[3]f64.[1,a,0];out:[3]f64;
+    #assert ra_step(w[..],3,2,0,ra_term(1,1),2)==2 && ra_forward(3,2,w[..],x[..],out[..],false,false)==RaStatus.ok;
+    return out[2];
+}

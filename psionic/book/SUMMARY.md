@@ -29,6 +29,8 @@
 
 - [165. A machine whose state is a trace](ch165-a-machine-whose-state-is-a-trace.md)
 - [166. Attention as exact memory](ch166-attention-as-exact-memory.md)
+- [167. Arithmetic and branches from ReLU](ch167-arithmetic-and-branches-from-relu.md)
+- [168. Compile a gate graph into a block](ch168-compile-a-gate-graph-into-a-block.md)
 - [172. From hard-max to softmax](ch172-from-hard-max-to-softmax.md)
 
 Proposed: [full table of contents and prerequisites](PLAN.md), from early
@@ -36,6 +38,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–10, 12, 26, 30 (Elephant on CUDA), 41–48, 165, 166 and 172 are
+Chapters 1–10, 12, 26, 30 (Elephant on CUDA), 41–48, 165–168 and 172 are
 runnable. Chapter 11, chapters 13–25, 27–29, 31–40 and the remaining outlines
 remain proposed.

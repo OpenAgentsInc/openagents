@@ -260,6 +260,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/relu-gadgets.coax",
+      "chapter": "psionic/book/ch167-arithmetic-and-branches-from-relu.md",
+      "stdout": "psionic/fixtures/relu-gadgets.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/gate-block.coax",
+      "chapter": "psionic/book/ch168-compile-a-gate-graph-into-a-block.md",
+      "stdout": "psionic/fixtures/gate-block.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -1,0 +1,7 @@
+7 * -3 = -21.0
+step(0) = 0.0, step(5) = 1.0
+eq0(0) = 1.0, eq0(-4) = 0.0
+select(1, 11, 22) = 11.0, select(0, 11, 22) = 22.0
+2^26 * 2^26 in binary64 = 4503599627370496.0 (exact)
+4097 * 4097: binary64 16785409.0, binary32 16785408.0 (exact is 16785409)
+step(0.5) = 0.5: the gadget is a ramp between integers
