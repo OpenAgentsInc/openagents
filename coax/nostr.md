@@ -181,6 +181,15 @@ unchecked-access escape hatch is introduced.
 | Debug magnitude layout | Conditional fields planned | Explicit debug representation is allowed; no false `#if` claim |
 | Secret/variable-time enforcement | Missing | `crypto-secret-lint`; `#secret` is not accepted syntax today |
 
+The first secret-source checker is deliberately scalar/straight-line only.
+Completing it does not admit the real array/aggregate/loop crypto paths.
+`crypto-secret-aggregate-closure` separately gates secret multiplication and
+generated-code audit: it must handle actual typed field/scalar/group closures,
+reject secret controls/indices and unknown effects, and retain source identities.
+Boundary classifications are inputs to check, never an authored substitute for
+dataflow analysis. Compiler-inserted guards and optimized/JIT behavior still
+require their separate target evidence.
+
 ## 5. Host effects and key custody
 
 The socket pipe already exists. Extend its bounds, errors, queue overflow,

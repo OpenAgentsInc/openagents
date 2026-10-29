@@ -515,7 +515,8 @@
       "blocks": [
         "secp-mult-base",
         "secp-mult-const",
-        "crypto-secret-codegen"
+        "crypto-secret-codegen",
+        "crypto-secret-aggregate-closure"
       ]
     },
     {
@@ -669,7 +670,8 @@
       "blocks": [
         "secp-mult-verify",
         "secp-mult-base",
-        "secp-mult-const"
+        "secp-mult-const",
+        "crypto-secret-aggregate-closure"
       ]
     },
     {
@@ -885,7 +887,8 @@
       "blocked_by": [
         "secp-group",
         "crypto-ct-timing-harness",
-        "crypto-secret-lint"
+        "crypto-secret-lint",
+        "crypto-secret-aggregate-closure"
       ],
       "blocks": [
         "schnorr-sign"
@@ -911,7 +914,8 @@
       "blocked_by": [
         "secp-group",
         "crypto-ct-timing-harness",
-        "crypto-secret-lint"
+        "crypto-secret-lint",
+        "crypto-secret-aggregate-closure"
       ],
       "blocks": [
         "crypto-ecdh-xonly"
@@ -1691,7 +1695,8 @@
         "crypto-ecdh-xonly",
         "nip44-v2",
         "crypto-secure-zero",
-        "crypto-secret-lint"
+        "crypto-secret-lint",
+        "crypto-secret-aggregate-closure"
       ],
       "blocks": [
         "crypto-independent-review"
@@ -2984,6 +2989,37 @@
         "nostr-event",
         "nostr-jcs",
         "fi-jws-verifier"
+      ]
+    },
+    {
+      "slug": "crypto-secret-aggregate-closure",
+      "parent": "m-assurance",
+      "title": "Admit actual crypto aggregate and public-loop secret paths",
+      "size": "L",
+      "labels": [
+        "nostr",
+        "coax",
+        "crypto"
+      ],
+      "body": "Extend the conservative scalar/straight-line source checker to typed aggregate fields, fixed arrays, public bounded loops, assignments and transitive calls needed by real crypto. Boundary secret/public classifications are explicit inputs bound to actual parsed/type-checked source; never trust a hand-authored flow proof. Unsupported flow remains refused. Source policy does not prove inserted guards, generated objects, JIT timing or secure erasure.",
+      "files": [
+        "tools/coax-nostr/secret-check/",
+        "coax/tests/nostr/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Actual selected sf_multiply/sf_inverse, sc_mul and masked group-selection source closures pass; their full source/type identity is recorded, with public-only decode/vartime helpers excluded from secret callers",
+        "Secret array indices/loop bounds/field branches, aggregate laundering, unknown side effects and transitive _vartime fixtures refuse; unsigned masked arithmetic executes in checked/optimized modes",
+        "The supported constructs and explicit output declassifications are inspectable; unknown types/aliases/callees reject, zero surviving policy mutants, and source-policy evidence is never advertised as target-wide constant time"
+      ],
+      "blocked_by": [
+        "crypto-secret-lint",
+        "secp-group"
+      ],
+      "blocks": [
+        "secp-mult-base",
+        "secp-mult-const",
+        "crypto-secret-codegen"
       ]
     }
   ]
