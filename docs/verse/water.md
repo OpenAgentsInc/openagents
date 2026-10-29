@@ -152,6 +152,29 @@ weir and its plunge pool, rowboats, townsfolk swimming and underwater
 combat. You swim with the walk clip (there is no swim clip yet), and a
 phone has no dive button yet.
 
+## The painted preset (art-styles.md 12, as-painted-water)
+
+`water_preset(WATER_PAINTED)` ("painted", the eighth preset in
+[`verse/water-look.coax`](../../verse/water-look.coax)) sets `W_ABSORB + 3`
+to 1, and the shader's `water_painted` (everglade.wgsl) draws it in place
+of the optics: depth bands (shallow (0.30, 0.72, 0.74) under 0.4 m, mid
+(0.10, 0.45, 0.55) to 1.5 m, deep (0.05, 0.22, 0.36) below, each edge soft
+over 0.15 m, `water_paint_mid` and `water_paint_deep`), the painted sky in
+Schlick's Fresnel with no roughness blur (on a calmer normal, the waves
+bending it a third as much, and the sky never more than half), sparkles on
+a 0.15 m grid (0.25 m on a phone) within 4° of the key's reflection,
+twinkling, a 0.25 m white shore line with a broken inner edge, white water
+round the bridge's piles, W6's ripples as white rings, and thin broken
+streaks carried along the current. The bands take the land's light and its
+shadows. The physics, the mesh and the swimmer are unchanged. Everglade's
+river is drawn in it (eg-paint-river); Fairy Forest's stream had its own
+copy in fairy.wgsl first.
+
+Caustics (from W7): `water_caustics` lights what lies under the water at
+rest (the river's bed and banks) with the ridges of two drifting noise
+fields, faded in over the first 0.1 m and out with depth, in the key's
+light and shadow.
+
 ## W6: ripples (done; the rest of W6 is not)
 
 `water_look_ripples` puts 24 expanding rings in the uniform block (the old

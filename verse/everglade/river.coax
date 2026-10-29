@@ -174,7 +174,7 @@ everglade_river_start :: (r: [] River, heights: [] f32, levels: [] f32, n: int, 
   if sea.error == WaveError.none { calm := sea.set; calm.steepness = 0.35; body = water_with_waves(body, calm); }
   r[0].bodies[0] = body;
   r[0].set = water_set(r[0].bodies[..], 8.0, r[0].starts[..], r[0].entries[..]);
-  r[0].preset = water_preset(WATER_RIVER);
+  r[0].preset = water_preset(WATER_PAINTED);   // the painted look (art-styles.md 12, eg-paint-river)
   river_bake(r, heights);
   r[0].breath = hold_seconds(CON);
   r[0].medium = MEDIUM_GROUND;

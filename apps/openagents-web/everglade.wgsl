@@ -514,6 +514,7 @@ fn paint(base: vec3f, n: vec3f, world: vec3f, lit: f32, character: bool, rim: bo
   var c = banded(base, st(4u).xyz * amb, key + amb, band);
   let rs = select(st(2u).w, st(3u).x, character);
   if (rim) { c += st(2u).xyz * verse_style_rim(dot(n, -v), dot(n, l), st(3u).y, st(3u).z, rs) * lit; }
+  c += water_caustics(world, n) * base * key * lit;   // light the water focuses on what lies under it
   let d = length(u.eye.xyz - world);
   let fog = haze_share(d, world.y);
   c = mix(c, haze_colour(fog, v), fog);
@@ -670,6 +671,32 @@ fn water_rest(uv: vec2f) -> WaterRest {
   o.flow = vec2f(v[5], v[6]);
   o.foam = v[7];
   return o;
+}
+
+// How deep (m) a point lies under the river at rest, or a negative number when it is not under it.
+fn water_depth_at(p: vec3f) -> f32 {
+  if (u.water.grid.x < 2.0 || u.water.frame.w <= 0.0) { return -1.0; }
+  let uv = water_uv(p.xz);
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > u.water.grid.x - 1.0 || uv.y > u.water.grid.y - 1.0) { return -1.0; }
+  let r = water_rest(uv);
+  if (r.depth <= 0.0) { return -1.0; }
+  return r.pos.y - p.y;
+}
+// Caustics (W7, on what lies under the water): the ridges of two drifting noise fields, the
+// light the surface's bumps focus onto the bed, faded in over the first 0.1 m and out with depth,
+// on what faces up. Its share of the key light.
+fn water_caustic_pattern(p: vec2f, t: f32) -> f32 {
+  let a = water_noise(vec3f(p * 1.6, t * 0.45));
+  let b = water_noise(vec3f(p * 2.9 + vec2f(3.1, 7.7), t * 0.6 + 4.0));
+  let ra = 1.0 - abs(2.0 * a - 1.0);
+  let rb = 1.0 - abs(2.0 * b - 1.0);
+  return pow(ra, 7.0) * 0.8 + pow(rb, 7.0) * 0.55;
+}
+fn water_caustics(p: vec3f, n: vec3f) -> f32 {
+  let depth = water_depth_at(p);
+  if (depth <= 0.0) { return 0.0; }
+  let up = smoothstep(-0.2, 0.6, n.y);
+  return water_caustic_pattern(p.xz, u.water.params.x) * smoothstep(0.0, 0.1, depth) * exp(-depth * 0.7) * up * 1.4;
 }
 
 fn water_shoal(k: f32, depth: f32) -> f32 { return sqrt(tanh(clamp(k * depth, 0.0, 10.0))); }
@@ -962,6 +989,65 @@ fn water_below(n: vec3f, v: vec3f, path: f32, slope: f32) -> WaterShade {
   return o;
 }
 
+// ---- the painted look (art-styles.md 12; verse/water-look.coax water_paint_*, the `painted` preset,
+// W_ABSORB + 3): colour bands by depth in place of Beer-Lambert, the painted sky's gradient in
+// Schlick's Fresnel with no roughness blur, sparkles where a cell's tilt mirrors the key light, a
+// clean white shore line with a broken inner edge, W6's ripples as white rings, and faint streaks
+// carried along the current. The bed shows through the shallows (its caustics, water_caustics).
+
+const W_SHALLOW = vec3f(0.30, 0.72, 0.74);
+const W_MID = vec3f(0.10, 0.45, 0.55);
+const W_DEEP = vec3f(0.05, 0.22, 0.36);
+fn water_paint_ramp(edge: f32, x: f32) -> f32 { return smoothstep(edge - 0.075, edge + 0.075, x); }
+fn water_paint_sparkle(rdl: f32) -> f32 { return smoothstep(0.99756, 0.99939, rdl); }
+
+fn water_painted(world: vec3f, rest: vec2f, flow: vec2f, depth: f32, shore: f32, white: f32, n: vec3f, v: vec3f, footprint: f32) -> WaterShade {
+  var o: WaterShade;
+  let l = water_host_sun().xyz;
+  // the bands, in the light the land has (its shadows fall on the water too)
+  let band = mix(mix(W_SHALLOW, W_MID, water_paint_ramp(0.4, depth)), W_DEEP, water_paint_ramp(1.5, depth));
+  let light = water_host_light(world, vec3f(0.0, 1.0, 0.0));
+  var body = pow(band, vec3f(2.2)) * (light * 0.82 + vec3f(0.05));
+  // a painted surface is calmer than the optics': the waves bend its reflection a third as much,
+  // and the sky never takes more than half of it, so the bands still show at a grazing look
+  let calm = normalize(mix(vec3f(0.0, 1.0, 0.0), n, 0.35));
+  let fresnel = min(water_fresnel(max(dot(calm, v), 0.001)), 0.5);
+  let refl = water_host_sky(reflect(-v, calm), 0.0);
+  // sparkles: a cell of the grid sparkles when its hashed tilt mirrors the key
+  let grid = select(0.15, 0.25, u.water.control.x < 8.0);
+  let cell = floor(rest / grid);
+  let jitter = vec2f(water_hash(vec3f(cell, 1.0)), water_hash(vec3f(cell, 2.0))) - vec2f(0.5);
+  let tilt = normalize(n + vec3f(jitter.x, 0.0, jitter.y) * 0.35);
+  let rdl = dot(reflect(-v, tilt), l);
+  let twinkle = 0.5 + 0.5 * sin(u.time * (1.0 - u.still) * 21.0 + water_hash(vec3f(cell, 3.0)) * 6.28);
+  let centre = (cell + vec2f(0.5) + jitter * 0.5) * grid;
+  let dot_ = 1.0 - smoothstep(footprint * 1.2, footprint * 2.2, distance(rest, centre));
+  let sparkle = water_paint_sparkle(rdl) * twinkle * dot_ * water_host_sun().w * shade_shadows(world.xz);
+  // the shore line (0.25 m, its inner edge broken), white water, the rings, streaks along the current
+  let broken = (water_noise(vec3f(rest * 3.0, u.time * 0.3)) - 0.5) * 0.12;
+  let line = (1.0 - smoothstep(0.17 + broken, 0.27 + broken, shore)) * smoothstep(-0.02, 0.04, depth);
+  let noise = water_foam_noise(rest, flow);
+  let churn = clamp(white, 0.0, 1.0) * smoothstep(0.3, 0.6, noise + 0.3 * white);
+  let rings = clamp(water_ripple_foam(rest) * 1.6, 0.0, 1.0);
+  // streaks: thin lines stretched along the current, carried down it at its speed
+  let speed = length(flow);
+  let along = flow / max(speed, 1e-3);
+  let q = vec2f(dot(rest, vec2f(-along.y, along.x)) * 2.4, dot(rest, along) * 0.3 - u.water.params.x * speed * 0.3);
+  let ridge = 1.0 - abs(2.0 * water_noise(vec3f(q, u.water.params.x * 0.15)) - 1.0);
+  let broken_by = smoothstep(0.4, 0.7, water_noise(vec3f(rest * 0.6, u.water.params.x * 0.1)));
+  let streak = smoothstep(0.95, 0.995, ridge) * broken_by * smoothstep(0.05, 0.4, speed) * 0.35 * smoothstep(0.1, 0.5, depth)
+    * (1.0 - smoothstep(0.08, 0.25, footprint));
+  let foam = clamp(max(max(line, churn), rings) + streak, 0.0, 1.0);
+  let alpha = (0.5 + 0.42 * smoothstep(0.05, 1.2, depth)) * smoothstep(-0.05, 0.1, depth);
+  let edge = smoothstep(-0.05, 0.1, depth);
+  let foam_rgb = vec3f(0.95, 0.97, 0.96) * (light * 0.9 + vec3f(0.06));
+  var emit = body * alpha * (1.0 - fresnel) + refl * fresnel * edge + vec3f(1.0, 0.97, 0.88) * sparkle * water_host_sun_light() * 1.2;
+  emit = mix(emit, foam_rgb, foam);
+  o.emit = emit;
+  o.transmit = vec3f((1.0 - alpha) * (1.0 - fresnel * edge) * (1.0 - foam));
+  return o;
+}
+
 fn water_fragment(i: WaterOut) -> WaterShade {
   let world = i.world_depth.xyz;
   let rest = i.rest_flow.xy;
@@ -983,6 +1069,7 @@ fn water_fragment(i: WaterOut) -> WaterShade {
     none.transmit = vec3f(1.0);
     return none;
   }
+  if (u.water.absorb.w > 0.5) { return water_painted(world, rest, flow, depth, i.look.w, i.look.x, n, v, footprint); }
   var o: WaterShade;
   let nov = max(dot(n, v), 1e-3);
   let fresnel = water_fresnel(nov);

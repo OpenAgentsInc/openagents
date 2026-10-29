@@ -286,7 +286,7 @@
         "everglade",
         "water"
       ],
-      "body": "Port the whole water system of the previous Rust Verse engine to Coax: everything verse/everglade/previous/water.md specifies and the old engine shipped (phases W1 to W11: the coupling with physics, the shaders per tier, the spectrum, the clipmap, the shared clock, and what floats, swims and splashes), and the coast that reused it (verse/everglade/previous/coast.md, C1). Read the old code with `git show 0b401561a0^:<path>` (the paths in those files). Then Everglade's river and shore use it.\n\nNot started: the owner holds it until they say go.",
+      "body": "Port the whole water system of the previous Rust Verse engine to Coax: everything verse/everglade/previous/water.md specifies and the old engine shipped (phases W1 to W11: the coupling with physics, the shaders per tier, the spectrum, the clipmap, the shared clock, and what floats, swims and splashes), and the coast that reused it (verse/everglade/previous/coast.md, C1). Read the old code with `git show 0b401561a0^:<path>` (the paths in those files). Then Everglade's river and shore use it.\n\nReleased 2026-10-29 (the owner, on Everglade's fountain: \"build whatever is needed from the water epic until this gets replaced\"). Done: W1, W2, W3, W6's ripples, the painted preset and caustics; then the fountain, W4, W5 and the rest of W6, each its own task.",
       "files": [
         "verse/",
         "apps/openagents-web/"
@@ -298,8 +298,7 @@
         "coax test passes on the engine files touched"
       ],
       "blocked_by": [],
-      "blocks": [],
-      "status": "draft"
+      "blocks": []
     },
     {
       "slug": "verse-water-w1",
@@ -408,6 +407,141 @@
       ],
       "blocked_by": [
         "verse-water-w3"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "verse-water-w7-caustics",
+      "parent": "engine-everglade-parity",
+      "title": "Water W7 (part): caustics on what lies under the water",
+      "size": "S",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "From phase W7 of verse-water (#c278), only the caustics: the light the surface focuses onto what lies under the water, drawn on Everglade's river bed and banks (and later the fountain's basin) in the key's light and shadow, fading with depth. The rest of W7 (fog, the split waterline, distortion, sun shafts, motes, underwater audio) stays for later.",
+      "files": [
+        "apps/openagents-web/everglade.wgsl",
+        "docs/verse/water.md"
+      ],
+      "acceptance": [
+        "Caustics drift on the river's bed in the shallows at /realms/everglade#river",
+        "They fade out with depth and in the key's shadow",
+        "Inside the phone frame budget"
+      ],
+      "blocked_by": [
+        "verse-water-w3"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "verse-water-fountain",
+      "parent": "engine-everglade-parity",
+      "title": "Water: Everglade's fountain on the water system",
+      "size": "M",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "The commons' fountain (a flat 12-sided disc on a cream prism under a blue mushroom cap) becomes water: a carved stone basin and a column with an upper bowl (lathed stone, coursed and weathered, wet below the waterline), its pool and the upper bowl's drawn by the water shader in the painted preset (depth bands, Fresnel sky, ripples, a soft foam line where water meets stone), water falling in streams from the upper bowl's lip with a splash ring and rings where they land, a jet from the top, and caustics on the basin floor. Phones stay at 60 fps.",
+      "files": [
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade.wgsl",
+        "docs/verse/water.md",
+        "docs/verse/everglade.md"
+      ],
+      "acceptance": [
+        "coax test passes on everglade.coax",
+        "The fountain at /realms/everglade#commons shows the basin, the column, the falling streams, the splash ring and the pool's caustics at desktop and phone",
+        "No hard outline where the water meets stone",
+        "Inside the phone triangle and frame budget"
+      ],
+      "blocked_by": [
+        "verse-water-w6-ripples"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "verse-water-w4",
+      "parent": "engine-everglade-parity",
+      "title": "Water W4: spectral waves",
+      "size": "L",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "Phase W4 of verse-water (#c278): the spectral sea (water.md \"Shaders per tier\"): a CPU FFT with JONSWAP and directional spreading, cascades by tier, the baked tile for the phone, whitecaps and the foam field, shallow-water dispersion and surf. Driven by the deterministic water clock as W1's waves are.",
+      "files": [
+        "verse/water.coax",
+        "verse/water-look.coax",
+        "apps/openagents-web/everglade.wgsl",
+        "docs/verse/water.md"
+      ],
+      "acceptance": [
+        "The old W4 tests ported as #test checks",
+        "Drawn in a realm at desktop and phone inside the frame budget"
+      ],
+      "blocked_by": [
+        "verse-water-w2"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "verse-water-w5",
+      "parent": "engine-everglade-parity",
+      "title": "Water W5: scene copies, refraction, reflection, contact foam and soft particles",
+      "size": "L",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "Phase W5 of verse-water (#c278): the scene's colour and depth copied before the water (host.js), refraction of the bed through the surface, planar reflection on desktop (SSR on High), contact foam and soft edges where the water meets anything from the depth, and soft particles.",
+      "files": [
+        "coax/web/host.js",
+        "apps/openagents-web/everglade.wgsl",
+        "verse/water-look.coax",
+        "docs/verse/water.md"
+      ],
+      "acceptance": [
+        "The bed bends through the surface and things standing in the water get a foam line from the depth",
+        "Desktop and phone inside the frame budget",
+        "Pages without water draw as before"
+      ],
+      "blocked_by": [
+        "verse-water-w2"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "verse-water-w6",
+      "parent": "engine-everglade-parity",
+      "title": "Water W6 (rest): Kelvin wakes, foam trails, spray, mist and drips, debris, rowboats",
+      "size": "L",
+      "labels": [
+        "engine",
+        "everglade",
+        "water"
+      ],
+      "body": "The rest of phase W6 of verse-water (#c278) after the ripples: Kelvin wakes behind what moves through the water, foam trails, splash spray, mist and drips, floating debris from destruction, and boardable, rowable rowboats (water.md \"Rowboats\").",
+      "files": [
+        "verse/water.coax",
+        "verse/water-look.coax",
+        "verse/everglade/river.coax",
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade.wgsl",
+        "docs/verse/water.md"
+      ],
+      "acceptance": [
+        "A swimmer leaves a Kelvin wake and a foam trail",
+        "Splashes throw spray",
+        "coax test passes on the files touched"
+      ],
+      "blocked_by": [
+        "verse-water-w6-ripples"
       ],
       "blocks": []
     }

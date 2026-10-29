@@ -42,7 +42,7 @@ W_WAVES :: 0;               // 8 terms x 2 rows: dir x, dir z, k, amplitude; q, 
 W_DETAIL :: 64;             // 16 waves x 2 rows: dir x, dir z, k, amplitude; omega, phase, wavelength, 0
 W_RIPPLES :: 192;           // 24 rows: x, z, start, strength
 W_PARAMS :: 288;            // time, detail count, ripple count, wave count
-W_ABSORB :: 292;            // absorption rgb (1/m), 0
+W_ABSORB :: 292;            // absorption rgb (1/m), 1 for the painted look (art-styles.md 12)
 W_SCATTER :: 296;           // in-scatter rgb, foam amount
 W_BODY :: 300;              // roughness, swell gain, 1 when the eye is in the water, crest scattering
 W_REST :: 304;              // shore band (m), the pixel's angle (rad), the sun's disc (rad), metres along a node
@@ -71,22 +71,30 @@ WaterPreset :: struct {
   roughness: f32;       // the calm surface's
   shore_band: f32;      // m of foam along the shore
   crest_scatter: f32;   // sun through thin crests, 0 to 1
+  painted: bool;        // the stylised look (art-styles.md 12) in place of the optics
 }
 
-WATER_PRESETS :: 7;
-WATER_PRESET_NAME :: [7] string.["cove", "lake", "marsh", "ocean", "pond", "pool", "river"];
+WATER_PRESETS :: 8;
+WATER_PRESET_NAME :: [8] string.["cove", "lake", "marsh", "ocean", "pond", "pool", "river", "painted"];
 // Each: the Jerlov type, scatter rgb, foam, roughness, shore band, crest scatter (the TOML files).
-WATER_PRESET_TYPE :: [7] Jerlov.[Jerlov.II, Jerlov.C3, Jerlov.C9, Jerlov.IB, Jerlov.C5, Jerlov.I, Jerlov.C3];
-WATER_PRESET_LOOK :: [49] f32.[
+// The eighth, `painted` (art-styles.md 12), is the stylised look: the shader draws depth bands,
+// the sky's gradient in Schlick's Fresnel, sparkles and a clean shore line in place of the optics,
+// and keeps a river's absorption and roughness only for what it still reads (the swell's foam).
+WATER_PRESET_TYPE :: [8] Jerlov.[Jerlov.II, Jerlov.C3, Jerlov.C9, Jerlov.IB, Jerlov.C5, Jerlov.I, Jerlov.C3, Jerlov.IB];
+WATER_PRESET_LOOK :: [56] f32.[
   0.016, 0.085, 0.10,   0.85, 0.035, 1.2,  0.6,
   0.020, 0.060, 0.050,  0.5,  0.03,  0.8,  0.4,
   0.030, 0.032, 0.014,  0.3,  0.05,  0.4,  0.0,
   0.010, 0.050, 0.085,  0.8,  0.04,  1.6,  0.7,
   0.018, 0.045, 0.030,  0.4,  0.03,  0.6,  0.2,
   0.012, 0.050, 0.060,  0.3,  0.02,  0.25, 0.0,
-  0.016, 0.055, 0.050,  0.9,  0.04,  0.5,  0.2
+  0.016, 0.055, 0.050,  0.9,  0.04,  0.5,  0.2,
+  0.030, 0.072, 0.074,  1.0,  0.02,  0.25, 0.0
 ];
 WATER_RIVER :: 6;
+WATER_PAINTED :: 7;
+// Whether a preset is the painted look (the shader's W_ABSORB + 3).
+water_preset_painted :: (p: WaterPreset) -> bool { return p.painted; }
 
 water_preset :: (i: int) -> WaterPreset {
   p: WaterPreset;
@@ -99,6 +107,7 @@ water_preset :: (i: int) -> WaterPreset {
   p.scatter_r = WATER_PRESET_LOOK[k]; p.scatter_g = WATER_PRESET_LOOK[k + 1]; p.scatter_b = WATER_PRESET_LOOK[k + 2];
   p.foam = WATER_PRESET_LOOK[k + 3]; p.roughness = WATER_PRESET_LOOK[k + 4];
   p.shore_band = WATER_PRESET_LOOK[k + 5]; p.crest_scatter = WATER_PRESET_LOOK[k + 6];
+  p.painted = i == WATER_PAINTED;
   return p;
 }
 
@@ -116,6 +125,33 @@ water_preset_valid :: (p: WaterPreset) -> bool {
     && plus_f(p.scatter_r) && plus_f(p.scatter_g) && plus_f(p.scatter_b)
     && unit_f(p.foam) && unit_f(p.roughness) && unit_f(p.crest_scatter) && plus_f(p.shore_band);
 }
+
+// ---- the painted look (art-styles.md 12): what everglade.wgsl's water_painted draws
+
+// Depth bands: shallow (0.30, 0.72, 0.74) under 0.4 m, mid (0.10, 0.45, 0.55)
+// to 1.5 m, deep (0.05, 0.22, 0.36) below, each edge soft over 0.15 m. The
+// shares of mid and of deep at `depth` m; the shader mixes the three by them.
+WATER_PAINT_SHALLOW :: 0.4;
+WATER_PAINT_DEEP :: 1.5;
+WATER_PAINT_SOFT :: 0.15;
+water_paint_ramp :: (edge: f32, x: f32) -> f32 {
+  t := (x - (edge - WATER_PAINT_SOFT * 0.5)) / WATER_PAINT_SOFT;
+  if t <= 0 { return 0; }
+  if t >= 1 { return 1; }
+  return t * t * (3 - 2 * t);
+}
+water_paint_mid :: (depth: f32) -> f32 { return water_paint_ramp(WATER_PAINT_SHALLOW, depth); }
+water_paint_deep :: (depth: f32) -> f32 { return water_paint_ramp(WATER_PAINT_DEEP, depth); }
+// A sparkle where a cell's reflection is within 4 degrees of the key light
+// (cos 4 deg = 0.99756), full within 2 (0.99939).
+water_paint_sparkle :: (rdl: f32) -> f32 {
+  t := (rdl - 0.99756) / (0.99939 - 0.99756);
+  if t <= 0 { return 0; }
+  if t >= 1 { return 1; }
+  return t * t * (3 - 2 * t);
+}
+// The sparkle grid: 0.15 m, 0.25 m on a phone.
+water_paint_grid :: (phone: bool) -> f32 { return ifx phone then 0.25f32 else 0.15f32; }
 
 // ---- the swell
 
@@ -252,6 +288,7 @@ water_look_body :: (u: [] f32, at: int, s: WaveSet, time: f64, p: WaterPreset, g
   u[at + W_PARAMS] = cast(f32) (time - 3600.0 * floor(time / 3600.0));
   u[at + W_PARAMS + 3] = f32(s.count);
   u[at + W_ABSORB] = p.absorb_r; u[at + W_ABSORB + 1] = p.absorb_g; u[at + W_ABSORB + 2] = p.absorb_b;
+  u[at + W_ABSORB + 3] = ifx p.painted then 1.0f32 else 0.0f32;
   u[at + W_SCATTER] = p.scatter_r; u[at + W_SCATTER + 1] = p.scatter_g; u[at + W_SCATTER + 2] = p.scatter_b; u[at + W_SCATTER + 3] = p.foam;
   u[at + W_BODY] = p.roughness; u[at + W_BODY + 1] = gain; u[at + W_BODY + 2] = ifx eye_inside then 1.0f32 else 0.0f32;
   u[at + W_BODY + 3] = p.crest_scatter;
@@ -427,6 +464,14 @@ turn_f :: (x: f32, y: f32) -> f32 {
   #assert abs(sum - 0.75) < 0.0001;
 }
 
+#test "painted water: three depth bands soft over 0.15 m, sparkles near the key's reflection (art-styles.md 12)" {
+  #assert water_paint_mid(0.2) == 0 && abs(water_paint_mid(0.4) - 0.5) < 0.001 && water_paint_mid(0.6) == 1;
+  #assert water_paint_deep(1.0) == 0 && abs(water_paint_deep(1.5) - 0.5) < 0.001 && water_paint_deep(2.0) == 1;
+  #assert water_paint_mid(0.32) == 0 && water_paint_mid(0.48) == 1;
+  #assert water_paint_sparkle(1.0) == 1 && water_paint_sparkle(0.99) == 0 && water_paint_sparkle(0.9984) > 0;
+  #assert water_paint_grid(false) == 0.15 && water_paint_grid(true) == 0.25;
+}
+
 #test "the presets parse and stay in range, with Jerlov's absorption" {
   for i: 0..<WATER_PRESETS {
     p := water_preset(i);
@@ -436,6 +481,15 @@ turn_f :: (x: f32, y: f32) -> f32 {
     #assert p.absorb_r > p.absorb_g;
   }
   #assert water_preset_named("lava") == -1 && water_preset_named("river") == WATER_RIVER;
+  // only the painted preset asks the shader for the painted look
+  for i: 0..<WATER_PRESETS { #assert water_preset(i).painted == (i == WATER_PAINTED); }
+  #assert water_preset_named("painted") == WATER_PAINTED;
+  u: [WATER_FLOATS] f32;
+  ws := water_wind_sea(0.0, 3.0, 0.1, 3);
+  water_look_body(u[..], 0, ws.set, 1.0, water_preset(WATER_PAINTED), 1, false);
+  #assert u[W_ABSORB + 3] == 1;
+  water_look_body(u[..], 0, ws.set, 1.0, water_preset(WATER_RIVER), 1, false);
+  #assert u[W_ABSORB + 3] == 0;
   r := water_preset(WATER_RIVER);
   #assert r.jerlov == Jerlov.C3 && r.absorb_r == 0.48 && r.absorb_g == 0.16 && r.absorb_b == 0.22 && r.foam == 0.9;
   bad := r; bad.foam = 1.5;
