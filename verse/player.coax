@@ -31,6 +31,11 @@ TAU :: 6.2831853;
 
 WALK :: 3.5;            // m/s
 RUN :: 7.5;
+// The one setting for how you move (the owner's, 2026-10-29; meant to become
+// a player's setting): true, moving runs (RUN) and holding Shift walks
+// (WALK); false, moving walks and Shift runs. On a phone the stick decides
+// either way: a full push runs, a light one walks (verse/grid.coax RUN_PAST).
+RUN_BY_DEFAULT :: true;
 GRAVITY :: 24.0;        // m/s^2
 JUMP :: 7.5;            // m/s up: a 1.17 m peak
 ACCEL :: 60.0;          // m/s^2, speeding up and slowing down alike
@@ -389,6 +394,15 @@ verse_player_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32
   return next;
 }
 
+// Whether you run this frame, for every realm's face: shift is Shift held
+// (the key the realms call HOLD_RUN), stick_run the stick's full push
+// (verse/grid.coax), pad its travel. A stick past the dead zone decides; the
+// keys go by RUN_BY_DEFAULT, Shift turning it the other way.
+verse_runs :: (shift: bool, stick_run: bool, pad_x: f32, pad_y: f32) -> bool #export_c {
+  if finite(pad_x) && finite(pad_y) && sqrt(pad_x * pad_x + pad_y * pad_y) > f32(DEAD_ZONE) { return stick_run; }
+  return shift != RUN_BY_DEFAULT;
+}
+
 // The way the controls push in the world, unit length when `on`.
 Wish :: struct { x: f32; z: f32; on: bool; }
 
@@ -490,7 +504,7 @@ step :: (w: World, p: Player, dt: f32) -> Player {
 
   if !next.on_ground { next.act = Act.airborne; }
   else if !dir.on { next.act = Act.idle; }
-  else if p.run { next.act = Act.running; }
+  else if speed > f32(WALK) + 0.25 { next.act = Act.running; }   // shown running only at a run's speed
   else { next.act = Act.walking; }
   return next;
 }
@@ -566,6 +580,23 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player {
     #assert near(cos(a) * r, x, 0.0001 * r);
     #assert near(sin(a) * r, y, 0.0001 * r);
   }
+}
+
+#test "moving runs by default; Shift walks; a stick goes by its push" {
+  #assert RUN_BY_DEFAULT;
+  #assert verse_runs(false, false, 0, 0) && !verse_runs(true, false, 0, 0);
+  #assert verse_runs(false, true, 0, 1) && !verse_runs(false, false, 0, 0.5);
+  #assert !verse_runs(true, false, 0, 0.5) && verse_runs(true, true, 0, 1);
+  #assert verse_runs(false, false, 0.1, 0.1);   // inside the dead zone the keys decide
+  // the speed follows: a run reaches RUN, a walk WALK, and you're shown running only when you are
+  w: World;
+  p := verse_player_place(0, 0, 0, 0);
+  p = held(p, 0, 1, verse_runs(false, false, 0, 0));
+  for i: 0..<60 { p = step(w, p, STEP); }
+  #assert near(flat_speed(p), f32(RUN), 0.001) && p.act == Act.running;
+  p = held(p, 0, 1, verse_runs(true, false, 0, 0));
+  for i: 0..<60 { p = step(w, p, STEP); }
+  #assert near(flat_speed(p), f32(WALK), 0.001) && p.act == Act.walking;
 }
 
 #test "atan2 behind is +PI, not -PI" {

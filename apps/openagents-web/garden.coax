@@ -819,7 +819,7 @@ hint :: (s: [] Garden) -> string {
     return "CLICK THE VASE TO ADD A FLOWER · CLICK A FLOWER TO TAKE IT OUT · DRAG TURNS · E OR ESC RETURNS";
   }
   if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP JUMPS"; }
-  return "WASD WALK · DRAG OR ARROWS TURN THE CAMERA · WHEEL ZOOMS · SPACE JUMPS · SHIFT RUNS";
+  return "WASD MOVE · DRAG OR ARROWS TURN THE CAMERA · WHEEL ZOOMS · SPACE JUMPS · SHIFT WALKS";
 }
 
 // What E (or the button) does now: "" nothing.

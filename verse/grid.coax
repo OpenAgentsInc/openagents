@@ -39,7 +39,7 @@ NEAR :: 0.05;
 LINES :: 56;            // most lines one axis can show: 2 FOG_END / SPACING + 1
 PIECES :: 29;           // most pieces one line can show: 2 FOG_END / SEGMENT + 2
 STICK :: 56.0;          // the move stick's radius, in points
-RUN_PAST :: 1.25;       // pushed this far past the ring, you run
+RUN_PAST :: 0.8;        // pushed this far toward the ring (a full push), you run; a light push walks
 LOOK :: 0.006;          // radians per point dragged, as aethyr's drag look
 TAP_TIME :: 0.3;        // seconds: a touch shorter than this, that
 TAP_TRAVEL :: 10.0;     // moved less than this many points, is a tap
@@ -642,19 +642,18 @@ press :: (s: Sticks, slot: int, x: f32, y: f32, now: f64) -> Sticks { return ver
 drag :: (s: Sticks, slot: int, x: f32, y: f32, now: f64) -> Sticks { return verse_sticks_touch(s, slot, 1, x, y, 1000, 2000, 2, now); }
 lift :: (s: Sticks, slot: int, x: f32, y: f32, now: f64) -> Sticks { return verse_sticks_touch(s, slot, 2, x, y, 1000, 2000, 2, now); }
 
-#test "a finger on the left is the move stick" {
+#test "a finger on the left is the move stick: a full push runs, a light one walks" {
   s := press(verse_sticks_reset(), 1, 200, 1500, 0);
   #assert s.move_on && !s.look_on && s.move_slot == 1;
-  // Up a full radius (56 points at scale 2): forward, at full stick.
+  // Up a full radius (56 points at scale 2): forward, at full stick, running.
   s = drag(s, 1, 200, 1500 - 112, 0.1);
-  #assert near(s.pad_x, 0, 0.00001) && near(s.pad_y, 1, 0.00001) && !s.run;
-  // Right half a radius.
+  #assert near(s.pad_x, 0, 0.00001) && near(s.pad_y, 1, 0.00001) && s.run;
+  // Right half a radius: a light push walks.
   s = drag(s, 1, 256, 1500, 0.2);
-  #assert near(s.pad_x, 0.5, 0.00001) && near(s.pad_y, 0, 0.00001);
-  // Past the ring: still unit length; well past it, you run.
-  s = drag(s, 1, 200 + 112 * 1.2, 1500, 0.3);
-  #assert near(s.pad_x, 1, 0.00001) && !s.run;
-  #assert !drag(s, 1, 200 + 140, 1500, 0.3).run;    // exactly RUN_PAST
+  #assert near(s.pad_x, 0.5, 0.00001) && near(s.pad_y, 0, 0.00001) && !s.run;
+  #assert !drag(s, 1, 200 + 112 * 0.75, 1500, 0.3).run;   // short of RUN_PAST
+  #assert drag(s, 1, 200 + 112 * 0.85, 1500, 0.3).run;
+  // Past the ring: still unit length, and running.
   s = drag(s, 1, 200 + 112 * 1.3, 1500 - 50, 0.3);
   #assert near(s.pad_x * s.pad_x + s.pad_y * s.pad_y, 1, 0.0001) && s.run;
   s = lift(s, 1, 0, 0, 0.4);

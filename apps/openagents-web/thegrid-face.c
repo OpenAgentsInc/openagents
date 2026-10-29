@@ -61,7 +61,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   bool busy = thegrid_busy(at(state));
   if (busy) sticks = verse_sticks_reset();
   if (busy) player = verse_player_input(player, 0, 0, 0, 0, false, false, 0, 0);
-  else player = verse_player_input(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, g->run || sticks.run, g->jump || sticks.jump, 0, 0);
+  else player = verse_player_input(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y), g->jump || sticks.jump, 0, 0);
   player.theta = thegrid_player_theta(at(state));
   sticks = verse_sticks_used(sticks);
   int64_t walls = thegrid_walls(at(state));

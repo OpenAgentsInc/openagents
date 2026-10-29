@@ -6,7 +6,7 @@ The first expansion of Planetary Villa, Kiki's world on the Verse, at https://op
 - Garden paths between 64 tombstone plots, hedges, cypresses, benches round a fountain, and a gate east into an open field.
 - You are a visitor from another realm: a shadow with soft edges and a light trail of particles. A dog glowing white walks with you.
 
-On a computer: WASD walks, a drag or the arrow keys turn the camera, the wheel zooms, Shift runs. On a phone: the left thumb walks and the right thumb looks.
+On a computer: WASD moves you at a run, a drag or the arrow keys turn the camera, the wheel zooms, Shift walks. On a phone: the left thumb moves you (a full push runs, a light one walks) and the right thumb looks.
 
 The design is Kiki's: https://github.com/OpenAgentsInc/openagents/blob/main/verse/planetary-villa/README.md. Every model is drawn from the engine's own shapes in code; [the licences](/realms/hecates-cemetery/licences.md).
 

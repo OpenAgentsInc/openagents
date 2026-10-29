@@ -22,7 +22,7 @@ On the pedestal in the middle of the plaza stands a blue vase with a few flowers
 
 ## Controls
 
-- Computer: W A S D walk, Shift runs, Space jumps, drag the mouse or hold the arrow keys to turn the camera, the wheel zooms, E picks up the ball and E or a click throws it, and by the pedestal E arranges the vase.
+- Computer: W A S D move you at a run, Shift walks, Space jumps, drag the mouse or hold the arrow keys to turn the camera, the wheel zooms, E picks up the ball and E or a click throws it, and by the pedestal E arranges the vase.
 - Phone: your left thumb walks, your right thumb turns the camera, a tap jumps, the button at the bottom right picks up or throws the ball, or arranges the vase.
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 

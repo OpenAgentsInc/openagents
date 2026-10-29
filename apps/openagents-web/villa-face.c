@@ -211,7 +211,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   villa_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
   bool busy = villa_busy(at(state));
   if (busy) sticks = verse_sticks_reset();
-  player = verse_player_input(player, v->key_x, v->key_y, sticks.pad_x, sticks.pad_y, v->run || sticks.run, v->jump || sticks.jump, 0, 0);
+  player = verse_player_input(player, v->key_x, v->key_y, sticks.pad_x, sticks.pad_y, verse_runs(v->run, sticks.run, sticks.pad_x, sticks.pad_y), v->jump || sticks.jump, 0, 0);
   player.theta = villa_player_theta(at(state));
   sticks = verse_sticks_used(sticks);
   int64_t walls = villa_walls(at(state));

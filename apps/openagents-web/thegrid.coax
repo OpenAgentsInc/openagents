@@ -127,7 +127,7 @@ STATION_DOES :: [21] int.[
 // A link's page, or an answer's words.
 STATION_WHAT :: [21] string.[
   "/projects", "", "",
-  "W A S D or the arrows walk and turn, drag the mouse to look, Shift runs, Space jumps, the wheel zooms. On a phone the left thumb walks, the right looks and a tap jumps. Walk up to a station and press E, or tap its name, to open it.",
+  "W A S D or the arrows walk and turn, drag the mouse to look, you run, Shift walks, Space jumps, the wheel zooms. On a phone the left thumb walks, the right looks and a tap jumps. Walk up to a station and press E, or tap its name, to open it.",
   "The Pylon terminal stands just ahead of where you start, with the Foreman beside it. The help desk, the Game Lab, the suggestion box and the build board are round them, the gym is north up the long walk, and the gate to Everglade is close by. Each place's name shows as you come near.",
   "The Grid is where the Verse began: the first Verse demo's world, its stations and its robots walking their rounds, now in Coax. Walk through the gate to go on to Everglade, or press GALAXY to see every world.",
   "/projects", "", "",
@@ -661,7 +661,7 @@ hint :: (s: [] TheGrid) -> string {
   if s[0].failed { return "THE GRID DIDN'T LOAD · RELOAD THE PAGE TO TRY AGAIN"; }
   if !ready(s) { return "THE GRID IS ON ITS WAY"; }
   if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP JUMPS"; }
-  return "WASD WALK · DRAG OR ARROWS TURN · WHEEL ZOOMS · SHIFT RUNS";
+  return "WASD MOVE · DRAG OR ARROWS TURN · WHEEL ZOOMS · SHIFT WALKS";
 }
 
 // The nearest place, or none further than 14 m.

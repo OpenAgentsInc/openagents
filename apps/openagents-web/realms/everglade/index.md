@@ -34,7 +34,7 @@ Take one, go where it says (the step you are on and how far it is show under EVE
 
 ## Controls
 
-- Computer: W A S D walk, Shift runs, Space jumps, C dives in the river, drag the mouse or the arrow keys turn the camera, the wheel zooms, M (or the MAP button) lifts the camera over the whole city and back.
+- Computer: W A S D move you at a run, Shift walks, Space jumps, C dives in the river, drag the mouse or the arrow keys turn the camera, the wheel zooms, M (or the MAP button) lifts the camera over the whole city and back.
 - Phone: your left thumb walks, your right thumb turns the camera, a tap jumps, MAP at the top right shows the city from above.
 - `#quest-board` starts you at the quest board.
 - A link can start you beside someone, near enough to talk: `#marta`, `#old-tam`, `#pebble` and so on, by their name.

@@ -11,7 +11,7 @@
 
 EG_WORLD :: "Everglade";
 // The city's controls, for a character asked how to do something.
-EG_CONTROLS :: "W A S D or the arrows walk, Shift runs, Space jumps, drag the mouse to look, the wheel zooms, M shows the city from above; on a phone the left thumb walks and the right looks. Walk up to someone and press E, or tap TALK, to talk to them; type and press Enter to say something, and Esc or BYE ends it. Players can't build or change the city.";
+EG_CONTROLS :: "W A S D or the arrows move you at a run, Shift walks, Space jumps, drag the mouse to look, the wheel zooms, M shows the city from above; on a phone the left thumb walks and the right looks. Walk up to someone and press E, or tap TALK, to talk to them; type and press Enter to say something, and Esc or BYE ends it. Players can't build or change the city.";
 
 // Each spot's person: the name they go by.
 EG_PERSON :: [22] string.[

@@ -1235,7 +1235,7 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
       vertices = centred(d, out, vertices, "LEFT THUMB MOVES", r[0].width * 0.5, y, 7.5 * k, k2);
       vertices = centred(d, out, vertices, "RIGHT THUMB LOOKS · TAP TO JUMP", r[0].width * 0.5, y + 18 * k, 7.5 * k, k2);
     } else {
-      vertices = write(d, out, vertices, "WASD MOVE · DRAG LOOK · SPACE JUMP · SHIFT RUN · E USE · B EDIT · C CHAT", gutter(r) + 4 * k,
+      vertices = write(d, out, vertices, "WASD MOVE · DRAG LOOK · SPACE JUMP · SHIFT WALK · E USE · B EDIT · C CHAT", gutter(r) + 4 * k,
                        r[0].height - gutter(r) - 16 * k, 7.5 * k, GAP, SPACE, k2, false, false);
     }
     // what the house saves (analytics.coax), while the controls show and

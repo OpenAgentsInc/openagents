@@ -779,7 +779,7 @@ static void step(float dt) {
     coax_t_PlayerZoom z = verse_player_zoom_view(player, house.camera, realm.zoom);
     player = z.player; house.camera = z.mode; realm.zoom = 0;
   }
-  bool run = sticks.run || (realm.held & 16), jump = sticks.jump || (realm.held & 32);
+  bool run = verse_runs((realm.held & 16) != 0, sticks.run, sticks.pad_x, sticks.pad_y), jump = sticks.jump || (realm.held & 32);
   player = verse_player_input(player, realm_key_x(r), realm_key_y(r), sticks.pad_x, sticks.pad_y, run, jump,
                                  sticks.dyaw + realm.dyaw, sticks.dpitch + realm.dpitch);
   realm.dyaw = 0; realm.dpitch = 0;

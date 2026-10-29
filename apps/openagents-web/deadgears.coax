@@ -52,6 +52,7 @@ ACT_KEEP :: 4;           // host.js: keep the outbox's text in the realm's slot
 SAVE_TAG :: "deadgears-save 1";
 
 KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
+DG_RUN_BY_DEFAULT :: true;   // verse/player.coax RUN_BY_DEFAULT: moving runs, Shift (HOLD_RUN) walks
 HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 16;
 HOLD_TURN_LEFT :: 32; HOLD_TURN_RIGHT :: 64; HOLD_TILT_UP :: 128; HOLD_TILT_DOWN :: 256; HOLD_FIRE :: 512; HOLD_REPAIR :: 1024;
 
@@ -524,7 +525,9 @@ walk :: (s: [] DeadGears, dt: f32) {
   f := forward(s);
   right := v3(-f.z, 0, f.x);
   cover := g.st[0].cover;
-  run := (h & HOLD_RUN != 0 || sqrt(s[0].pad_x * s[0].pad_x + s[0].pad_y * s[0].pad_y) > 0.92) && !cover;
+  // as every realm (verse/player.coax RUN_BY_DEFAULT): moving runs and Shift walks; a stick runs on a full push
+  pad := sqrt(s[0].pad_x * s[0].pad_x + s[0].pad_y * s[0].pad_y);
+  run := (ifx pad > 0.2 then pad > 0.8 else (h & HOLD_RUN != 0) != DG_RUN_BY_DEFAULT) && !cover;
   speed: f32 = ifx cover then 1.5f32 else ifx run then 6.2f32 else 3.6f32;
   move := v3((f.x * iy + right.x * ix) * speed * dt, 0, (f.z * iy + right.z * ix) * speed * dt);
   ground: [1] Arena;
@@ -1318,7 +1321,7 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
     mn := put(mline[..], 0, "CUTTER · ");
     mn = put(mline[..], mn, mode_word(st.mode));
     n = words(s, out, n, cast(string) mline[0..<mn], ab.x0 + 16 * k, ab.y1 - 12 * k, 7 * k, 0.8, AMBER_R, AMBER_G, AMBER_B);
-    keys := ifx in_repair then "WASD WALK · DRAG TURNS · HOLD E AT THE REACTOR TO REPAIR · ESC PAUSE" else "WASD WALK · DRAG TURNS · F FIRE · R RELOAD · C COVER · Q MODE · G LIFT · T STUN · ESC PAUSE";
+    keys := ifx in_repair then "WASD MOVE · DRAG TURNS · HOLD E AT THE REACTOR TO REPAIR · ESC PAUSE" else "WASD MOVE · DRAG TURNS · F FIRE · R RELOAD · C COVER · Q MODE · G LIFT · T STUN · ESC PAUSE";
     hs := 7 * k;
     room := ab.x0 - 2 * gut - 24 * k;
     lw := text_width(keys, hs);

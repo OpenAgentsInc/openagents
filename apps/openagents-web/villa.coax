@@ -913,7 +913,7 @@ phone :: (s: [] Villa) -> bool { return s[0].touch || s[0].width / hi(s[0].dpr, 
 
 hint :: (s: [] Villa) -> string {
   if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS"; }
-  return "WASD WALK · DRAG OR ARROWS TURN THE CAMERA · WHEEL ZOOMS · SHIFT RUNS";
+  return "WASD MOVE · DRAG OR ARROWS TURN THE CAMERA · WHEEL ZOOMS · SHIFT WALKS";
 }
 
 // The flight's HUD: the place's name fading in over the descent, and SKIP.

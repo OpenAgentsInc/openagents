@@ -14,7 +14,7 @@ Open ground in the Verse that everyone builds on together, at https://openagents
 
 - Computer: B opens edit mode. P makes a set piece from a sentence (below). 1 to 5 place a crate, a barrel, a lamp, a tree or a rock in front of you; click a thing to pick it, then the arrows move it, R turns it, + and - resize it, Delete removes it. Z undoes and Y redoes. B, Escape or DONE play again, and your changes are published for everyone.
 - Phone: EDIT opens edit mode; the hotbar's slots place things, a tap picks one, and DONE publishes.
-- Walking: W A S D or the arrow keys, drag the mouse to look, Space jumps, Shift runs, the wheel zooms, C opens the chat with everyone here.
+- Walking: W A S D or the arrow keys (you run), drag the mouse to look, Space jumps, Shift walks, the wheel zooms, C opens the chat with everyone here.
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
 ## How it is made

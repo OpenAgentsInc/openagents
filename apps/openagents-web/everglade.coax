@@ -1608,7 +1608,7 @@ hint :: (s: [] Everglade) -> string {
   if s[0].water == WATER_SWIMMING { return ifx phone(s) then "SWIMMING · HALF SPEED" else "SWIMMING · HOLD C TO DIVE"; }
   if s[0].water == WATER_DIVING { return ifx phone(s) then "UNDER WATER" else "UNDER WATER · LET GO OF C TO COME UP"; }
   if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP JUMPS"; }
-  return "WASD WALK · DRAG OR ARROWS TURN · WHEEL ZOOMS · SHIFT RUNS · M MAP";
+  return "WASD MOVE · DRAG OR ARROWS TURN · WHEEL ZOOMS · SHIFT WALKS · M MAP";
 }
 
 // Out of breath (river.coax, SRD 5.2.1): an Exhaustion level each 6 s; the sixth, you come to on the bank.

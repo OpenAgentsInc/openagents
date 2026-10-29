@@ -14,7 +14,7 @@ Each place's name shows over it as you come near. Walk up to a station and press
 
 ## Playing
 
-- Computer: W A S D or the arrow keys walk and turn, drag the mouse to look, Space jumps, Shift runs, the wheel or + and - zoom.
+- Computer: W A S D or the arrow keys move and turn (you run), drag the mouse to look, Space jumps, Shift walks, the wheel or + and - zoom.
 - Phone: the left thumb walks, the right thumb looks, a tap jumps.
 - GALAXY, top right, goes back to the [galaxy](https://openagents.com/verse/galaxy).
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.

@@ -4,7 +4,7 @@ A Verse realm at https://openagents.com/realms/dead-gears: a ship's hold to hold
 
 ## How to play
 
-- Keyboard: WASD walk, Shift runs, drag the mouse (or the arrow keys) to turn, F fires the cutter (hold it), R reloads, C takes cover at a cover block, Q changes the cutter's mode, G lifts a crate and throws it, T stuns what is in front of you, E (held at the reactor) repairs it, Escape pauses.
+- Keyboard: WASD move you at a run, Shift walks, drag the mouse (or the arrow keys) to turn, F fires the cutter (hold it), R reloads, C takes cover at a cover block, Q changes the cutter's mode, G lifts a crate and throws it, T stuns what is in front of you, E (held at the reactor) repairs it, Escape pauses.
 - Phone: the left thumb walks, the right thumb looks; FIRE (REPAIR between waves), COVER, RELOAD, MODE, LIFT and STUN are buttons at the bottom right, PAUSE at the top right.
 - The cutter has three modes. SEVER cuts a limb off (a crawler loses legs, a reaver an arm); HEAD takes the head, which keeps crawling on its own; CORE hits the body hardest.
 - Lift costs 15 psi and holds a crate in front of you; throw it into a creature to stun and hurt it. Stun costs 35 psi and freezes everything in front of you for a moment. Psi comes back while you don't use it.
