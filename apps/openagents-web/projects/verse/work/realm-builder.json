@@ -475,6 +475,60 @@
         "A first-person and a top-down realm made on staging draw their cameras"
       ],
       "blocked_by": []
+    },
+    {
+      "slug": "byo-topdown-figure",
+      "parent": "byo-next",
+      "title": "Top-down: your figure reads as a figure, not a thin line",
+      "size": "S",
+      "labels": [
+        "realm-builder",
+        "web"
+      ],
+      "body": "From high above the figure is a thin line. Scale or tilt the top-down camera, or give the figure a readable top silhouette and a ground ring.",
+      "files": [
+        "apps/openagents-web/myrealm.coax"
+      ],
+      "acceptance": [
+        "Headless top-down shot shows a clear figure on desktop and phone"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "byo-2d-collide",
+      "parent": "byo-next",
+      "title": "2D: rocks and trees block you; you jump onto them",
+      "size": "S",
+      "labels": [
+        "realm-builder",
+        "web"
+      ],
+      "body": "In 2D you walk through rocks and trees. Give them colliders in the lane and let you jump onto them.",
+      "files": [
+        "apps/openagents-web/myrealm.coax"
+      ],
+      "acceptance": [
+        "A 2D run stops at a rock and can jump onto it"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "byo-fp-touch-pitch",
+      "parent": "byo-next",
+      "title": "First person on phones: a thumb drag looks up and down",
+      "size": "S",
+      "labels": [
+        "realm-builder",
+        "web"
+      ],
+      "body": "Touch drag turns but cannot pitch; the mouse can.",
+      "files": [
+        "apps/openagents-web/myrealm.coax"
+      ],
+      "acceptance": [
+        "A 390 px headless drag changes pitch"
+      ],
+      "blocked_by": []
     }
   ]
 }
