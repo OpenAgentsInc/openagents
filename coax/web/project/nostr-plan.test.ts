@@ -70,3 +70,10 @@ test("FI selects one asymmetric profile before crypto and actual transport integ
   expect(task.acceptance.join(" ")).toContain("Real key-source adapters")
   expect(reaches("fi-jws-verifier", "fi-jwks-policy")).toBe(true)
 })
+
+test("real fixed-base compile-time generation waits for bounded work inputs", () => {
+  expect(reaches("secp-mult-base", "coax-run-resource-inputs")).toBe(true)
+  expect(reaches("coax-run-resource-inputs", "coax-debug-only-fields")).toBe(true)
+  expect(tasks.get("coax-run-resource-inputs").body).toContain("Keep the current default")
+  expect(tasks.get("coax-run-resource-inputs").body).toContain("check/mutation budget waivers")
+})

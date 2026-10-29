@@ -242,7 +242,9 @@
         "coax/tests pass"
       ],
       "blocked_by": [],
-      "blocks": []
+      "blocks": [
+        "coax-run-resource-inputs"
+      ]
     },
     {
       "slug": "nostr-support-profiles",
@@ -888,7 +890,8 @@
         "secp-group",
         "crypto-ct-timing-harness",
         "crypto-secret-lint",
-        "crypto-secret-aggregate-closure"
+        "crypto-secret-aggregate-closure",
+        "coax-run-resource-inputs"
       ],
       "blocks": [
         "schnorr-sign"
@@ -3022,6 +3025,36 @@
         "secp-mult-base",
         "secp-mult-const",
         "crypto-secret-codegen"
+      ]
+    },
+    {
+      "slug": "coax-run-resource-inputs",
+      "parent": "compiler",
+      "title": "Bounded compile-time work inputs for generated crypto tables",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "The real pinned compiler refuses even #run sg_double_valid(sg_generator()) at its fixed aggregate100000-step limit. Implement explicit bounded deterministic compile-time work configuration, after the build-profile slice, so actual Coax fixed-base tables can be generated honestly. Keep the current default, use a maximum of 250000000 steps, chosen from measured public generator costs of 63698174 and 103614101 steps, preserve aggregate accounting and node/memory limits, and record the selected work profile as a build input. This does not permit check/mutation budget waivers, forged literal tables, native host effects during #run or target-dependent semantic timeouts. General compiler plugins remain outside this slice.",
+      "files": [
+        "coax/src/eval.cpp",
+        "coax/src/main.cpp",
+        "coax/lib/compiler/",
+        "coax/tests/",
+        "coax/spec.md"
+      ],
+      "acceptance": [
+        "Default100000-step behavior and deterministic failure remain unchanged; invalid, missing, negative, overflowing or above-250000000 configuration refuses before evaluation",
+        "Both real fixed-base table schedules generate through actual #run under the declared finite profile, with retained work cost,32/64KiB table bounds and independent value comparison",
+        "Independent #run sites share one aggregate budget; the explicit --run-steps input reaches every relevant compiler command and is distinguished from check/mutation and native optimization inputs",
+        "Python-free bootstrap, affected compiler/native tests, resource-policy authority checks and zero-survivor mutation pass; docs and release/status identify the bounded feature without advertising general workspace or plugin support"
+      ],
+      "blocked_by": [
+        "coax-debug-only-fields"
+      ],
+      "blocks": [
+        "secp-mult-base"
       ]
     }
   ]
