@@ -1,45 +1,64 @@
 // Ice Cream Man's scene for the realm (/realm/ice-cream-man): the seed's
-// house from mesh.coax, the kid at the spawn and the view from behind it
-// (camera.coax), as world.cpp draws them, packed for the GPU. Its own
-// library (Scene.h): the realm's HUD (apps/openagents-web/icecream.coax)
+// house from mesh.coax and every moving thing world.cpp draws (the kid, the
+// Ice Cream Man, his minions, keys, drops, shots, clouds and the bits
+// flying), packed for the GPU, with play.coax's loop driving the rules. Its
+// own library (Scene.h): the realm's HUD (apps/openagents-web/icecream.coax)
 // can't share a file with the rules, whose names clash with font.coax's.
 //
-// A vertex is six words: x, y, z; the normal (snorm bytes, the shine in the
-// fourth); the colour (bytes, its light in the fourth: a room's index,
-// LIT_FLAT + a room for a ceiling panel, LIT_KID, LIT_TOOL); the hull (snorm
-// bytes, the outline weight in the fourth). The draws take CHUNK vertices
-// an instance over a sequential index buffer (the garden's 0..1023); an
-// instance from OUTLINE_BASE is the kid's ink outline.
+// Store 0 holds the house and every model once. A vertex is six words: x,
+// y, z; the normal (snorm bytes, the shine in the fourth); the colour
+// (bytes, its light in the fourth: a room's index, LIT_FLAT + a room for a
+// ceiling panel); the hull (snorm bytes, the outline weight in the fourth).
+// The draws take CHUNK vertices an instance over a sequential index buffer
+// (0..1023): the house's chunks from instance 0, and each placed model
+// from OBJ_BASE + its object << 10 (OBJ_OUTLINE for its ink outline).
+// Store 1 holds the objects this frame: a placement, a tint, a light, the
+// shine, flat or not, and where its model starts (OBJ_FLOATS each), as
+// world.cpp's draw and drawFlat take them.
 //   coax/bin/coax test verse/icecream/scene.coax --library --steps 4000000000
-#load "camera.coax";
+#load "play.coax";
 
 SCENE_WORDS :: 6;
 CHUNK :: 1020;
-MAX_SCENE :: 530400;      // 520 chunks: the biggest house (64 rooms, ~450k) and the kid
-OUTLINE_BASE :: 1048576;
+MAX_SCENE :: 600000;      // the biggest house (64 rooms, ~450k) and the models (~60k)
 SCRATCH :: 9000;          // the most one room or model writes
 LIT_FLAT :: 128;
-LIT_KID :: 254;
-LIT_TOOL :: 253;
-SCENE_DRAWS :: 3;
+OBJ_BASE :: 8388608;
+OBJ_OUTLINE :: 4194304;
+OBJ_FLOATS :: 24;
+MAX_OBJECTS :: 2048;
+MAX_DRAWS :: 4200;
 // The uniforms the scene writes, from SCENE_AT: the view's rows (clip =
 // rows · world, depth 0..1), the eye, the fog's colour, its range (near,
-// far, strength), the kid's light, the tool's light, then a light a room.
+// far, strength), two spare, then a light a room.
 SCENE_AT :: 8;
 SCENE_FLOATS :: 16 + 5 * 4 + MAX_ROOMS * 4;
+
+// The models, in this order: the kid's four parts, the eight tools, the
+// man's five, then the little things.
+MD_TORSO :: 0; MD_HEAD :: 1; MD_ARM :: 2; MD_LEG :: 3; MD_TOOL :: 4;
+MD_MAN_BODY :: 12; MD_MAN_LEG :: 13; MD_MAN_ARM :: 14; MD_MAN_HEAD :: 15; MD_MAN_FOREHEAD :: 16;
+MD_KEY :: 17; MD_FUDGE :: 18; MD_CLOUD :: 19; MD_SPARKLE :: 20; MD_STAR :: 21; MD_SPRINKLE :: 22;
+MD_SPLAT :: 27; MD_DRIP :: 28; MD_CONE :: 29; MD_TREAT :: 30; MD_CONE_SHOT :: 31; MD_SUGAR :: 32;
+MD_BUTTON :: 33; MD_CABINET :: 36; MD_PUDDLE :: 37;
+MODELS :: 38;
 
 IceScene :: struct {
   built: bool;
   sent: int;
   seed: u64;
   games: [1] Game;
-  spaces: [1] Space;
-  view: View;
+  plays: [1] Play;
   scratch: [SCRATCH] Vtx;
   verts: [MAX_SCENE * SCENE_WORDS] u32;
   vert_n: int;
-  kid_at: int;
-  draws: [SCENE_DRAWS * 4] u32;
+  house_chunks: int;
+  model_first: [MODELS] int;     // its first chunk
+  model_count: [MODELS] int;     // its vertices
+  objs: [MAX_OBJECTS * OBJ_FLOATS] f32;
+  obj_n: int;
+  draws: [MAX_DRAWS * 4] u32;
+  draw_n: int;
 }
 
 snorm8 :: (x: f32) -> u32 { return cast(u32) cast,trunc(u8) cast(s32) roundf(clampf(x, -1, 1) * 127); }
@@ -67,87 +86,339 @@ align_chunk :: (s: [] IceScene) {
   }
 }
 
-// The kid at the spawn as world.cpp's drawAvatar stands it still: turned
-// its way, arms down but the tool arm held out, the tool in that hand.
-add_kid :: (s: [] IceScene) {
-  g := s[0].games[..];
-  pl := g[0].player;
-  turn: Xf;
-  l := len2(pl.facing);
-  if l > 0 {
-    fx := pl.facing.x / l; fz := pl.facing.z / l;
-    turn.m[0] = fz; turn.m[2] = fx; turn.m[6] = -fx; turn.m[8] = fz;
-  }
-  base := xf_mul(xf_mul(translate(v3(pl.pos.x, pl.height + 0.4 - 0.4 + 0.4, pl.pos.z)), turn), xf_scale(v3splat(avatar_scale())));
-  v := s[0].scratch[..];
-  pack(s, tn_part(Part.torso, v, 0), base, LIT_KID, 0);
-  pack(s, tn_part(Part.head, v, 0), base, LIT_KID, 0);
-  for k: 0..<2 {
-    side: f32 = ifx k == 0 then -1.0f32 else 1.0f32;
-    pack(s, tn_part(Part.leg, v, 0), xf_mul(base, translate(v3(side * 0.2, 0.8, 0))), LIT_KID, 0);
-    angle: f32 = ifx side < 0 then -1.5707963f32 else 0.0f32;
-    pack(s, tn_part(Part.arm, v, 0), xf_mul(xf_mul(base, translate(v3(side * 0.53, 1.5, 0))), rot_x(angle)), LIT_KID, 0);
-  }
-  pack(s, tn_tool(pl.tool, v, 0), xf_mul(base, translate(v3(-0.53, 1.45, 0.7))), LIT_TOOL, 0.4);
+model_build :: (m: int, v: [] Vtx) -> int {
+  if m >= MD_TOOL && m < MD_TOOL + TOOLS { return tn_tool(cast(Tool) cast(u8) (m - MD_TOOL), v, 0); }
+  if m >= MD_SPRINKLE && m < MD_SPRINKLE + 5 { return tn_sprinkle(SPRINKLES[m - MD_SPRINKLE], v, 0); }
+  if m >= MD_BUTTON && m < MD_BUTTON + 3 { return tn_button(BUTTON_COLOURS[m - MD_BUTTON], v, 0); }
+  part := Part.puddle;
+  if m == MD_TORSO { part = Part.torso; } else if m == MD_HEAD { part = Part.head; }
+  else if m == MD_ARM { part = Part.arm; } else if m == MD_LEG { part = Part.leg; }
+  else if m == MD_MAN_BODY { part = Part.man_body; } else if m == MD_MAN_LEG { part = Part.man_leg; }
+  else if m == MD_MAN_ARM { part = Part.man_arm; } else if m == MD_MAN_HEAD { part = Part.man_head; }
+  else if m == MD_MAN_FOREHEAD { part = Part.man_forehead; } else if m == MD_KEY { part = Part.key; }
+  else if m == MD_FUDGE { part = Part.fudge; } else if m == MD_CLOUD { part = Part.cloud; }
+  else if m == MD_SPARKLE { part = Part.sparkle; } else if m == MD_STAR { part = Part.star; }
+  else if m == MD_SPLAT { part = Part.splat; } else if m == MD_DRIP { part = Part.drip; }
+  else if m == MD_CONE { part = Part.cone; } else if m == MD_TREAT { part = Part.treat; }
+  else if m == MD_CONE_SHOT { part = Part.cone_shot; } else if m == MD_SUGAR { part = Part.sugar; }
+  else if m == MD_CABINET { part = Part.cabinet; }
+  return tn_part(part, v, 0);
 }
 
-// Builds the seed's house (the demo's default: Normal, Backrooms yellow), the kid, the view and the draws.
-icecream_scene_build :: (s: [] IceScene, seed: u64) #export_c {
+// Builds the seed's house (the demo's default: Normal, Backrooms yellow) and every model, and stores them.
+icecream_scene_build :: (s: [] IceScene) #export_c {
   g := s[0].games[..];
-  t := tuning_for(Difficulty.normal);
-  game_new(g, seed, false, t);
-  space_of(g, s[0].spaces[..]);
-  s[0].seed = seed;
+  t := g[0].tuning;
+  s[0].seed = g[0].house.seed;
   s[0].vert_n = 0;
   v := s[0].scratch[..];
   for i: 0..<g[0].house.room_n { pack(s, tn_room(g, i, t.yellow, v, 0), xf_id(), i, 0); }
   for i: 0..<g[0].house.room_n { pack(s, tn_lights(g, i, t.yellow, v, 0), xf_id(), LIT_FLAT + i, 0); }
   align_chunk(s);
-  s[0].kid_at = s[0].vert_n;
-  add_kid(s);
-  align_chunk(s);
-  s[0].view = cam_view(camera_facing(g[0].player.facing), g[0].player.pos, g[0].player.height, s[0].spaces[..]);
-  house := cast(u32) (s[0].kid_at / CHUNK);
-  kid := cast(u32) ((s[0].vert_n - s[0].kid_at) / CHUNK);
-  d := [12] u32.[0, CHUNK, 0, house, 0, CHUNK, house, kid, 0, CHUNK, OUTLINE_BASE + house, kid];
-  for k: 0..<12 { s[0].draws[k] = d[k]; }
+  s[0].house_chunks = s[0].vert_n / CHUNK;
+  for m: 0..<MODELS {
+    s[0].model_first[m] = s[0].vert_n / CHUNK;
+    n := model_build(m, v);
+    s[0].model_count[m] = n;
+    pack(s, n, xf_id(), 0, 0);
+    align_chunk(s);
+  }
   s[0].built = true;
   s[0].sent = 0;
 }
-icecream_scene_built :: (s: [] IceScene) -> bool #export_c { return s[0].built; }
-icecream_scene_seed :: (s: [] IceScene) -> u64 #export_c { return s[0].seed; }
-// The store's bytes this frame: the whole scene the first few frames, then none (it stays as it is).
-icecream_scene_store_bytes :: (s: [] IceScene) -> int #export_c {
-  if !s[0].built || s[0].sent >= 3 { return 0; }
+// The run's house changed (a new run, another seed): build it again.
+icecream_scene_stale :: (s: [] IceScene) -> bool #export_c { return !s[0].built || s[0].seed != s[0].games[0].house.seed || s[0].games[0].house.room_n == 0; }
+
+// ---- the objects this frame (world.cpp drawScene)
+
+WHITE3 :: V3.{x = 1, y = 1, z = 1};
+draw :: (s: [] IceScene, m: int, xf: Xf, tint: V3, light: V3, shine: f32, outline: bool, flat: bool) {
+  i := s[0].obj_n;
+  if i >= MAX_OBJECTS || s[0].draw_n + 2 > MAX_DRAWS || s[0].model_count[m] <= 0 { return; }
+  o := i * OBJ_FLOATS;
+  for r: 0..<3 {
+    s[0].objs[o + r * 4] = xf.m[r * 3]; s[0].objs[o + r * 4 + 1] = xf.m[r * 3 + 1]; s[0].objs[o + r * 4 + 2] = xf.m[r * 3 + 2];
+  }
+  s[0].objs[o + 3] = xf.t.x; s[0].objs[o + 7] = xf.t.y; s[0].objs[o + 11] = xf.t.z;
+  s[0].objs[o + 12] = tint.x; s[0].objs[o + 13] = tint.y; s[0].objs[o + 14] = tint.z; s[0].objs[o + 15] = shine;
+  s[0].objs[o + 16] = light.x; s[0].objs[o + 17] = light.y; s[0].objs[o + 18] = light.z; s[0].objs[o + 19] = ifx flat then 1.0f32 else 0.0f32;
+  s[0].objs[o + 20] = f32(s[0].model_first[m]); s[0].objs[o + 21] = 0; s[0].objs[o + 22] = 0; s[0].objs[o + 23] = 0;
+  s[0].obj_n += 1;
+  n := s[0].model_count[m];
+  chunks := (n + CHUNK - 1) / CHUNK;
+  count := ifx chunks > 1 then CHUNK else n;
+  base := cast(u32) (OBJ_BASE + i * 1024);
+  for k: 0..<(ifx outline then 2 else 1) {
+    d := s[0].draw_n * 4;
+    s[0].draws[d] = 0; s[0].draws[d + 1] = cast(u32) count;
+    s[0].draws[d + 2] = base + cast(u32) (ifx k == 1 then OBJ_OUTLINE else 0);
+    s[0].draws[d + 3] = cast(u32) chunks;
+    s[0].draw_n += 1;
+  }
+}
+lit_draw :: (s: [] IceScene, m: int, xf: Xf, tint: V3, light: V3, shine: f32, outline: bool) { draw(s, m, xf, tint, light, shine, outline, false); }
+flat_draw :: (s: [] IceScene, m: int, xf: Xf, colour: V3) { draw(s, m, xf, colour, WHITE3, 0, false, true); }
+floor3 :: (a: V3, m: f32) -> V3 { return v3(cmax(a.x, m), cmax(a.y, m), cmax(a.z, m)); }
+ceil3 :: (a: V3, m: f32) -> V3 { return v3(cmin(a.x, m), cmin(a.y, m), cmin(a.z, m)); }
+hex3 :: (h: u32) -> V3 { k: f32 = 255; return v3(f32((h >> 16) & 255) / k, f32((h >> 8) & 255) / k, f32(h & 255) / k); }
+side_of :: (k: int) -> f32 { return ifx k == 0 then -1.0f32 else 1.0f32; }
+
+draw_man :: (s: [] IceScene) {
+  g := s[0].games[..]; p := s[0].plays[..];
+  st := scare_time(p, g);
+  if !man_here(g) && st < 0 { return; }
+  man := g[0].man;
+  time := p[0].time;
+  light := floor3(light_at(g, man.pos, time), 0.97);
+  frozen := man.state == ManState.frozen;
+  bob: f32 = ifx man.moving then abs(sin(p[0].man_stride * 2)) * 0.1 else 0.0f32;
+  shake: f32 = ifx frozen then sin(time * 40) * 0.02 else 0.0f32;
+  squash := 1 + p[0].man_hit * 0.4;
+  base: Xf;
+  if st >= 0 {
+    e := scare_eye(p, g);
+    dir := v3sub(e.target, e.eye);
+    lunge := clampf((st - 0.1) / (SCARE_HIT - 0.1), 0, 1);
+    jolt: f32 = ifx st > SCARE_HIT then 0.12 * abs(sin((st - SCARE_HIT) * 20)) * cmax(1 - (st - SCARE_HIT), 0) else 0.0f32;
+    dist := (3.6 - 2 * lunge * lunge * lunge - jolt) * man_scale();
+    at := v3add(e.eye, v3mul(dir, dist));
+    base = xf_mul(xf_mul(translate(v3(at.x, e.eye.y - 2.45 * man_scale(), at.z)), rot_y(yaw_of(v2(-dir.x, -dir.z)))), xf_scale(v3splat(man_scale())));
+  } else {
+    base = xf_mul(xf_mul(xf_mul(translate(v3(man.pos.x + shake, bob, man.pos.z)), rot_y(p[0].man_yaw)), xf_scale(v3splat(man_scale()))),
+                  xf_scale(v3(squash, 1 / squash, squash)));
+  }
+  scaring_now := st >= 0;
+  d: f32 = ifx scaring_now then 0.0f32 else p[0].man_duck;
+  hip := v3(0, MAN_MODEL_HIP, 0);
+  upper := xf_mul(xf_mul(xf_mul(base, translate(hip)), rot_x(MAN_DUCK * d)), translate(v3neg(hip)));
+  tint := WHITE3;
+  shine: f32 = 0;
+  if frozen { tint = v3(0.62, 0.42, 0.3); shine = 1.3; }
+  else if man.slow > 0 { tint = v3(0.92, 0.8, 0.7); shine = 0.6; }
+  swing: f32 = ifx man.moving && !frozen then sin(p[0].man_stride * 2) * 0.6 else 0.0f32;
+  for k: 0..<2 {
+    side := side_of(k);
+    lit_draw(s, MD_MAN_LEG, xf_mul(xf_mul(base, translate(v3(side * 0.17, 0.85, 0))), rot_x(swing * side)), tint, light, shine, true);
+    reach := -swing * side * 0.7;
+    if scaring_now { reach = -1.6 + sin(time * 30 + side) * 0.2; }
+    else if man.state == ManState.chase && !frozen { reach = -1.35 + sin(time * 9 + side) * 0.15; }
+    lit_draw(s, MD_MAN_ARM, xf_mul(xf_mul(xf_mul(upper, translate(v3(side * 0.62, 1.85, 0))), rot_z(side * 0.25)), rot_x(reach)), tint, light, shine, true);
+  }
+  lit_draw(s, MD_MAN_BODY, upper, tint, light, shine, true);
+  lit_draw(s, MD_MAN_HEAD, upper, tint, light, shine, true);
+  lit_draw(s, MD_MAN_FOREHEAD, upper, tint, light, 1 + shine * 0.5, true);
+  if man.state == ManState.confused {
+    for i: 0..<3 {
+      a := time * 4 + f32(i) * 2.1;
+      flat_draw(s, MD_STAR, srt1(0.22, rot_y(a * 2), v3(man.pos.x + cos(a) * 0.5, man_top(p[0].man_duck) + 0.05, man.pos.z + sin(a) * 0.5)), v3(1.0, 0.88, 0.3));
+    }
+  }
+}
+
+// The minions: little Ice Cream Men. His are vanilla; yours are mint and glow.
+draw_minions :: (s: [] IceScene) {
+  g := s[0].games[..]; p := s[0].plays[..];
+  for i: 0..<g[0].minion_n {
+    m := g[0].minions[i];
+    light := floor3(light_at(g, m.pos, p[0].time), 0.95);
+    stride := p[0].minion_stride + f32(i) * 1.7;
+    bob: f32 = ifx m.moving then abs(sin(stride * 2)) * 0.06 else 0.0f32;
+    base := xf_mul(xf_mul(translate(v3(m.pos.x, bob, m.pos.z)), rot_y(yaw_of(m.facing))), xf_scale(v3splat(minion_scale())));
+    tint := ifx m.flash > 0 then v3(1, 0.5, 0.5) else ifx m.friendly then v3(0.7, 1.05, 0.85) else WHITE3;
+    swing: f32 = ifx m.moving then sin(stride * 2) * 0.7 else 0.0f32;
+    for k: 0..<2 {
+      side := side_of(k);
+      lit_draw(s, MD_MAN_LEG, xf_mul(xf_mul(base, translate(v3(side * 0.17, 0.85, 0))), rot_x(swing * side)), tint, light, 0, true);
+      lit_draw(s, MD_MAN_ARM, xf_mul(xf_mul(xf_mul(base, translate(v3(side * 0.62, 1.85, 0))), rot_z(side * 0.25)), rot_x(-1.2 + sin(stride * 3 + side) * 0.2)),
+               tint, light, 0, true);
+    }
+    lit_draw(s, MD_MAN_BODY, base, tint, light, 0, true);
+    lit_draw(s, MD_MAN_HEAD, base, tint, light, 0, true);
+    lit_draw(s, MD_MAN_FOREHEAD, base, tint, light, 1, true);
+    if m.friendly { flat_draw(s, MD_SPARKLE, srt1(0.1, xf_id(), v3(m.pos.x, 0.95, m.pos.z)), v3(0.6, 1.0, 0.75)); }
+  }
+}
+
+// In first person: the tool in your hand at the bottom right of the view, jabbing when you swing.
+draw_held :: (s: [] IceScene) {
+  g := s[0].games[..]; p := s[0].plays[..];
+  view := p[0].view;
+  if !view.first_person || g[0].player.hidden >= 0 || p[0].phase != Phase.playing { return; }
+  jab := sin(clampf(p[0].swing / 0.25, 0, 1) * PI_F);
+  c := p[0].camera;
+  xf := xf_mul(xf_mul(xf_mul(xf_mul(xf_mul(xf_mul(translate(view.eye), rot_y(c.yaw)), rot_x(c.pitch)), translate(v3(-0.3, -0.3, 0.5 + jab * 0.35))),
+               rot_x(-0.12 - jab * 0.3)), rot_y(0.16)), xf_scale(v3splat(0.42)));
+  lit_draw(s, MD_TOOL + cast(int) g[0].player.tool, xf, WHITE3, floor3(light_at(g, g[0].player.pos, p[0].time), 0.9), 0.4, true);
+}
+
+// The kid: the blocky avatar, swinging its arms and legs as it walks, holding the tool out in its right hand.
+draw_avatar :: (s: [] IceScene) {
+  g := s[0].games[..]; p := s[0].plays[..];
+  player := g[0].player;
+  if player.hidden >= 0 || p[0].view.first_person || boom_close(p[0].boom) { return; }
+  time := p[0].time;
+  light := floor3(light_at(g, player.pos, time), 0.97);
+  sink: f32 = 0;
+  shrink: f32 = 1;
+  ending: f32 = -1;
+  if p[0].phase == Phase.ending { ending = p[0].end_t; } else if p[0].phase == Phase.over { ending = ENDING; }
+  if ending >= 0 && g[0].status == Status.scooped {
+    t := cmin(ending / ENDING, 1);
+    sink = t * 0.9 * avatar_scale();
+    shrink = 1 - t * 0.45;
+    lit_draw(s, MD_CONE, srt1(1.2 * avatar_scale(), xf_id(), v3(player.pos.x, 0, player.pos.z)), WHITE3, light, 0.3, true);
+  }
+  flash := ifx p[0].hurt > 0.3 && sin(time * 30) > 0 then v3(1, 0.6, 0.6) else WHITE3;
+  base := xf_mul(xf_mul(translate(v3(player.pos.x, player.height + 0.4 - sink - 0.4 * cmin(shrink, 1) + 0.4 * shrink, player.pos.z)), rot_y(p[0].yaw)),
+                 xf_scale(v3splat(shrink * avatar_scale())));
+  swing := sin(p[0].stride) * 0.7 * (ifx player.moving then 1.0f32 else 0.0f32);
+  air := player.height > 0.05;
+  lit_draw(s, MD_TORSO, base, flash, light, 0, true);
+  lit_draw(s, MD_HEAD, base, flash, light, 0, true);
+  for k: 0..<2 {
+    side := side_of(k);
+    leg := ifx air then 0.4 * side else swing * side;
+    lit_draw(s, MD_LEG, xf_mul(xf_mul(base, translate(v3(side * 0.2, 0.8, 0))), rot_x(leg)), flash, light, 0, true);
+    // The right arm (x < 0 facing +z) holds the tool out.
+    angle := ifx side < 0 then -HALF_PI_F - clampf(p[0].swing / 0.25, 0, 1) * 0.9 else ifx air then -2.6f32 else -swing * side;
+    lit_draw(s, MD_ARM, xf_mul(xf_mul(base, translate(v3(side * 0.53, 1.5, 0))), rot_x(angle)), flash, light, 0, true);
+  }
+  lit_draw(s, MD_TOOL + cast(int) player.tool, xf_mul(base, translate(v3(-0.53, 1.45, 0.7))), WHITE3, light, 0.4, true);
+}
+
+scene_objects :: (s: [] IceScene) {
+  g := s[0].games[..]; p := s[0].plays[..];
+  s[0].obj_n = 0;
+  s[0].draw_n = 1;
+  time := p[0].time;
+  // Keys, bobbing and turning, each with a sparkle.
+  for i: 0..<g[0].house.key_n {
+    if g[0].taken[i] { continue; }
+    k := g[0].house.keys[i];
+    fi := f32(i);
+    bob := sin(time * 2.5 + fi) * 0.1;
+    lit_draw(s, MD_KEY, srt1(1.3, rot_y(time * 2 + fi), v3(k.x, 0.75 + bob, k.z)), WHITE3, v3(1.2, 1.15, 1.0), 1, true);
+    a := time * 3 + fi;
+    flat_draw(s, MD_SPARKLE, srt1(0.12 + 0.05 * abs(sin(time * 6)), xf_id(), v3(k.x + cos(a) * 0.45, 1.0 + bob, k.z + sin(a) * 0.45)), v3(1.0, 1.0, 0.85));
+  }
+  // Unopened fridges have a pink sparkle on top.
+  for i: 0..<g[0].house.fridge_n {
+    if g[0].opened[i] { continue; }
+    b := g[0].house.fridges[i].spot.block;
+    c := vmul(vadd(b.min, b.max), 0.5);
+    top := b.height + 0.35 + sin(time * 3 + f32(i)) * 0.08;
+    flat_draw(s, MD_SPARKLE, srt1(0.22, xf_id(), v3(c.x, top, c.z)), v3(1.0, 0.55, 0.72));
+  }
+  // With every key, the way out glows.
+  if cast(int) g[0].player.keys >= g[0].house.key_n {
+    at := g[0].house.front.stand;
+    flat_draw(s, MD_SPARKLE, srt1(0.3 + 0.08 * sin(time * 5), xf_id(), v3(at.x, 2.6, at.z)), v3(1.0, 0.86, 0.3));
+  }
+  // The spear puzzle: its buttons, lit ones glowing, and the cone cabinet with the spear inside until it's taken.
+  if puzzle_on(g) {
+    for i: 0..<g[0].house.button_n {
+      at := g[0].house.buttons[i];
+      lit_draw(s, MD_BUTTON + i % 3, translate(v3(at.x, 0, at.z)), WHITE3, floor3(light_at(g, at, time), 0.9), 0.5, true);
+      if cast(u32) i < g[0].lit || g[0].solved {
+        flat_draw(s, MD_SPARKLE, srt1(0.22 + 0.04 * sin(time * 6), xf_id(), v3(at.x, 1.35, at.z)), hex3(BUTTON_COLOURS[i % 3]));
+      }
+    }
+    at := g[0].house.cabinet;
+    lit_draw(s, MD_CABINET, translate(v3(at.x, 0, at.z)), WHITE3, light_at(g, at, time), 0.6, true);
+    if !g[0].solved && weapons_on(g) {
+      lit_draw(s, MD_TOOL + cast(int) Tool.spear, xf_mul(translate(v3(at.x, 0.35, at.z)), rot_x(-HALF_PI_F)), WHITE3, light_at(g, at, time), 0.4, true);
+    }
+  }
+  // Cones and weapons on the floor.
+  for i: 0..<g[0].drop_n {
+    d := g[0].drops[i];
+    fi := f32(i);
+    bob := sin(time * 3 + fi) * 0.08;
+    turn := rot_y(time * 1.8 + fi);
+    if d.kind == DropKind.cone { lit_draw(s, MD_TREAT, srt1(1.2, turn, v3(d.at.x, 0.15 + bob, d.at.z)), WHITE3, v3(1.1, 1.08, 1.0), 0.6, true); }
+    else { lit_draw(s, MD_TOOL + cast(int) d.tool, xf_mul(xf_mul(translate(v3(d.at.x, 0.9 + bob, d.at.z)), turn), rot_x(-0.6)), WHITE3, v3(1.15, 1.1, 1.0), 0.8, true); }
+    a := time * 3 + fi;
+    flat_draw(s, MD_SPARKLE, srt1(0.1, xf_id(), v3(d.at.x + cos(a) * 0.5, 1.0 + bob, d.at.z + sin(a) * 0.5)), v3(1.0, 1.0, 0.85));
+  }
+  // He melted: a puddle of vanilla where he stood.
+  if g[0].man_melted { lit_draw(s, MD_PUDDLE, srt(v3(1.6, 1, 1.3), xf_id(), v3(g[0].man.pos.x, 0.02, g[0].man.pos.z)), WHITE3, light_at(g, g[0].man.pos, time), 0.8, false); }
+  // The floor's splats and drips, fudge blobs, the staff's beam, sugar puffs.
+  for i: 0..<p[0].particle_n {
+    q := p[0].particles[i];
+    fade := 1 - pow(q.age / q.life, 3);
+    if q.kind == PartKind.splat || q.kind == PartKind.drip {
+      lit_draw(s, ifx q.kind == PartKind.splat then MD_SPLAT else MD_DRIP, srt(v3(q.size * fade, 1, q.size * fade), xf_id(), q.pos), WHITE3,
+               light_at(g, v2(q.pos.x, q.pos.z), time), 0.4, false);
+    } else if q.kind == PartKind.blob {
+      lit_draw(s, MD_FUDGE, srt1(q.size, xf_id(), q.pos), WHITE3, WHITE3, 0.8, false);
+    } else if q.kind == PartKind.beam {
+      span := cmax(sqrt(v3dot(q.vel, q.vel)), 0.1);
+      thick := 1.6 * cmax(1 - q.age / q.life, 0.2);
+      lit_draw(s, MD_SPRINKLE, srt(v3(thick, thick, span / 0.26), rot_y(arctan2(q.vel.x, q.vel.z)), v3add(q.pos, v3mul(q.vel, 0.5))), WHITE3, v3(1.3, 1.2, 1.25), 0.6, false);
+    } else {
+      grow := cmin(q.age / q.life, 1);
+      f := sqrt(cmax(1 - grow, 0));
+      for k: 0..<9 {
+        a := f32(k) / 9 * TAU_F;
+        r := q.size * (0.3 + grow * 0.7);
+        at := v3add(q.pos, v3(cos(a) * r, f32((k * 7) % 3) * 0.25 - 0.3, sin(a) * r));
+        lit_draw(s, MD_SUGAR, srt1(0.55 * f + 0.1, xf_id(), at), WHITE3, v3(1.2, 1.2, 1.2), 0.2, false);
+      }
+    }
+  }
+  draw_man(s);
+  draw_minions(s);
+  draw_avatar(s);
+  draw_held(s);
+  // Shots in the air.
+  for i: 0..<g[0].shot_n {
+    sh := g[0].shots[i];
+    at := v3(sh.pos.x, sh.height, sh.pos.z);
+    if sh.kind == ShotKind.fudge { lit_draw(s, MD_FUDGE, srt1(0.26, xf_id(), at), WHITE3, WHITE3, 0.9, true); }
+    else if sh.kind == ShotKind.cone { lit_draw(s, MD_CONE_SHOT, srt1(1.3, rot_y(yaw_of(sh.vel)), at), WHITE3, WHITE3, 0.5, true); }
+    else if sh.kind == ShotKind.sugar { lit_draw(s, MD_SUGAR, srt1(0.34, xf_id(), at), WHITE3, v3(1.2, 1.2, 1.2), 0.9, true); }
+    else { lit_draw(s, MD_SPRINKLE + cast(int) (sh.colour % 5), srt1(1.4, rot_y(yaw_of(sh.vel)), at), WHITE3, WHITE3, 0.3, true); }
+  }
+  // Fart clouds: puffs that swell, then shrink away.
+  for n: 0..<g[0].cloud_n {
+    c := g[0].clouds[n];
+    life := g[0].tuning.cloud_life;
+    grow := cmin(c.age / 0.35, 1);
+    fade := clampf((life - c.age) / 0.6, 0, 1);
+    for k: 0..<8 {
+      a := f32(k) / 8 * TAU_F + f32(n);
+      r := 1.2 * grow + sin(time * 1.5 + f32(k)) * 0.1;
+      size := (0.9 + 0.35 * f32((k * 5) % 3)) * grow * fade;
+      at := v3(c.at.x + cos(a) * r, 0.7 + f32((k * 3) % 4) * 0.3 + c.age * 0.2, c.at.z + sin(a) * r);
+      lit_draw(s, MD_CLOUD, srt1(size, xf_id(), at), WHITE3, WHITE3, 0, false);
+    }
+  }
+  s[0].draws[0] = 0; s[0].draws[1] = CHUNK; s[0].draws[2] = 0; s[0].draws[3] = cast(u32) s[0].house_chunks;
+}
+
+// ---- the frame
+
+icecream_frame :: (s: [] IceScene, width: f32, height: f32, dpr: f32, frame_dt: f32) #export_c {
+  ice_play_frame(s[0].plays[..], s[0].games[..], width, height, dpr, frame_dt);
+  if icecream_scene_stale(s) { icecream_scene_build(s); }
+  scene_objects(s);
+}
+icecream_draw_count :: (s: [] IceScene) -> int #export_c { return ifx s[0].built then s[0].draw_n else 0; }
+// The store's bytes this frame: the house and models the first few frames after a build, then none; the objects every frame.
+icecream_scene_store_bytes :: (s: [] IceScene, k: int) -> int #export_c {
+  if !s[0].built { return 0; }
+  if k == 1 { return s[0].obj_n * OBJ_FLOATS * 4; }
+  if s[0].sent >= 3 { return 0; }
   s[0].sent += 1;
   return s[0].vert_n * SCENE_WORDS * 4;
 }
-icecream_scene_store_cap :: () -> int #export_c { return MAX_SCENE * SCENE_WORDS * 4; }
+icecream_scene_store_cap :: (k: int) -> int #export_c { return ifx k == 1 then MAX_OBJECTS * OBJ_FLOATS * 4 else MAX_SCENE * SCENE_WORDS * 4; }
 icecream_scene_floats :: () -> int #export_c { return SCENE_FLOATS; }
 
-// ---- the light (world.cpp roomLight)
+// ---- the light and the view's uniforms
 
-FLUORESCENT :: V3.{x = 1.0, y = 0.97, z = 0.80};
-WARM :: V3.{x = 1.0, y = 0.94, z = 0.86};
-COLD :: V3.{x = 0.74, y = 0.84, z = 1.0};
 FOG :: V3.{x = 0.30, y = 0.33, z = 0.46};
 BACK_FOG :: V3.{x = 0.56, y = 0.52, z = 0.33};
-room_light :: (g: [] Game, index: int, time: f32) -> V3 {
-  t := g[0].tuning;
-  backrooms := t.yellow >= 0.5;
-  m := g[0].house.rooms[index].kind;
-  base := ifx backrooms then FLUORESCENT else ifx cold(m) then COLD else WARM;
-  i := cast(u32) index;
-  tick := cast(u32) (time * 14);
-  fast := cast(u32) (cmin(t.flicker, 0.05) * 10000);
-  slow := cast(u32) (cmax(t.flicker - 0.05, 0.0) * 10000);
-  f: f32 = 1;
-  if hash_u(i, tick) % 10000 < fast { f = ifx backrooms then 0.45f32 else 0.55f32; }
-  else if !backrooms && cold(m) && hash_u(i + 50, tick / 3) % 100 < 6 { f = 0.8; }
-  else if slow > 0 && hash_u(i + 70, cast(u32) (time * 2)) % 10000 < slow { f = 0.62; }
-  return v3mul(base, f * 0.95);
-}
-floor3 :: (a: V3, m: f32) -> V3 { return v3(cmax(a.x, m), cmax(a.y, m), cmax(a.z, m)); }
 
 // world.cpp's perspective · lookAt in rows, with WebGPU's depth (z + w) / 2.
 view_rows :: (eye: V3, target: V3, fovy: f32, aspect: f32, out: [] f32, at: int) {
@@ -172,22 +443,22 @@ view_rows :: (eye: V3, target: V3, fovy: f32, aspect: f32, out: [] f32, at: int)
   }
 }
 
-// The scene's uniforms for a frame at `time` seconds (0 when still: no flicker).
-icecream_scene_uniforms :: (s: [] IceScene, out: [] f32, width: f32, height: f32, time: f32) #export_c {
+// The scene's uniforms for a frame (the flicker held when still).
+icecream_scene_uniforms :: (s: [] IceScene, out: [] f32, width: f32, height: f32, still: bool) #export_c {
   if !s[0].built || out.count < SCENE_AT + SCENE_FLOATS || width < 1 || height < 1 { return; }
-  g := s[0].games[..];
+  g := s[0].games[..]; p := s[0].plays[..];
   aspect := width / height;
-  e := s[0].view.eye;
-  view_rows(e, s[0].view.target, cam_fov(aspect), aspect, out, SCENE_AT);
+  v := p[0].view;
+  e := v.eye;
+  time := ifx still then 0.0f32 else p[0].time;
+  view_rows(e, v.target, cam_fov(aspect), aspect, out, SCENE_AT);
   o := SCENE_AT + 16;
   t := g[0].tuning;
   y := t.yellow;
   fog := v3add(FOG, v3mul(v3sub(BACK_FOG, FOG), y));
-  spawn := room_light(g, room_of(g, g[0].player.pos), time);
-  kid := floor3(spawn, 0.97);
-  tool := floor3(spawn, 0.9);
   vals := [20] f32.[e.x, e.y, e.z, 0, fog.x, fog.y, fog.z, 0, t.fog_near, cmax(t.fog_far, t.fog_near + 0.5), 0.82 + 0.14 * y, 0,
-                    kid.x, kid.y, kid.z, 0, tool.x, tool.y, tool.z, 0];
+                    p[0].hurt, p[0].daylight, ifx g[0].player.hidden >= 0 && p[0].phase == Phase.playing then 1.0f32 else 0.0f32, 0,
+                    0, 0, 0, 0];
   for i: 0..<20 { out[o + i] = vals[i]; }
   o += 20;
   for i: 0..<MAX_ROOMS {
@@ -196,26 +467,54 @@ icecream_scene_uniforms :: (s: [] IceScene, out: [] f32, width: f32, height: f32
   }
 }
 
+// ---- the face's way in (each takes the scene, which holds the run)
+
+icecream_hash :: (s: [] IceScene, text: string) #export_c { ice_play_hash(s[0].plays[..], s[0].games[..], text); }
+icecream_seed :: (s: [] IceScene) -> u64 #export_c { return ice_play_seed(s[0].plays[..], s[0].games[..]); }
+icecream_key :: (s: [] IceScene, key: int, down: bool, mods: int) -> bool #export_c { return ice_play_key(s[0].plays[..], s[0].games[..], key, down, mods); }
+icecream_blur :: (s: [] IceScene) #export_c { ice_play_blur(s[0].plays[..]); }
+icecream_wheel :: (s: [] IceScene, dy: f32) #export_c { ice_play_wheel(s[0].plays[..], dy); }
+icecream_act :: (s: [] IceScene, a: int, arg: int) #export_c { ice_play_act(s[0].plays[..], s[0].games[..], a, arg); }
+icecream_suspend :: (s: [] IceScene, on: bool) #export_c { ice_play_suspend(s[0].plays[..], on); }
+icecream_pointer :: (s: [] IceScene, x: f32, y: f32, phase: int, kind: int, id: int, zone: int, cx: f32, cy: f32) #export_c {
+  ice_play_pointer(s[0].plays[..], s[0].games[..], x, y, phase, kind, id, zone, cx, cy);
+}
+icecream_trace_ready :: (s: [] IceScene) -> bool #export_c { return ice_trace_ready(s[0].plays[..]); }
+icecream_trace_sent :: (s: [] IceScene) #export_c { ice_trace_sent(s[0].plays[..]); }
+icecream_trace_len :: (s: [] IceScene) -> int #export_c { return s[0].plays[0].trace_n; }
+icecream_facts :: (s: [] IceScene, out: [] f32) #export_c { ice_play_facts(s[0].plays[..], s[0].games[..], out); }
+
 // ---- checks
 
-#test "the house, the kid and the view are built once, chunk by chunk" {
+#test "the house and every model are stored once, chunk by chunk" {
   s: [1] IceScene;
-  icecream_scene_build(s[..], 3);
-  g := s[0].games[..];
-  #assert s[0].kid_at % CHUNK == 0 && s[0].vert_n % CHUNK == 0 && s[0].vert_n < MAX_SCENE && s[0].kid_at > 60000;
-  #assert s[0].draws[3] * CHUNK == cast(u32) s[0].kid_at && s[0].draws[10] == OUTLINE_BASE + s[0].draws[3];
-  #assert (s[0].verts[s[0].kid_at * SCENE_WORDS + 4] >> 24) == LIT_KID && (s[0].verts[4] >> 24) == 0;
-  #assert icecream_scene_store_bytes(s[..]) == s[0].vert_n * SCENE_WORDS * 4;
-  #assert icecream_scene_store_bytes(s[..]) > 0 && icecream_scene_store_bytes(s[..]) > 0 && icecream_scene_store_bytes(s[..]) == 0;
-  e := s[0].view.eye;
-  #assert room_of(g, v2(e.x, e.z)) == room_of(g, g[0].player.pos);
+  icecream_frame(s[..], 1600, 1000, 1, 0.016);
+  #assert s[0].built && s[0].vert_n % CHUNK == 0 && s[0].vert_n < MAX_SCENE && s[0].house_chunks * CHUNK > 60000;
+  for m: 0..<MODELS { #assert s[0].model_count[m] > 0 && s[0].model_first[m] >= s[0].house_chunks; }
+  #assert (s[0].verts[4] >> 24) == 0;
+  #assert icecream_scene_store_bytes(s[..], 0) == s[0].vert_n * SCENE_WORDS * 4;
+  #assert icecream_scene_store_bytes(s[..], 0) > 0 && icecream_scene_store_bytes(s[..], 0) > 0 && icecream_scene_store_bytes(s[..], 0) == 0;
+  #assert icecream_scene_store_bytes(s[..], 1) == s[0].obj_n * OBJ_FLOATS * 4;
+}
+
+#test "the kid and the keys are drawn, each with its outline" {
+  s: [1] IceScene;
+  icecream_frame(s[..], 1600, 1000, 1, 0.016);
+  #assert s[0].draws[3] == cast(u32) s[0].house_chunks;
+  // keys (3, each with a sparkle), fridges' sparkles, the man (7 parts), the kid (7 parts)
+  #assert s[0].obj_n >= 3 * 2 + 7 + 7 && s[0].draw_n > s[0].obj_n;
+  outlined := 0;
+  for d: 1..<s[0].draw_n { if (s[0].draws[d * 4 + 2] & OBJ_OUTLINE) != 0 { outlined += 1; } }
+  #assert outlined >= 3 + 7 + 7;
+  first := s[0].draws[4 + 2];
+  #assert first >= OBJ_BASE && (first - OBJ_BASE) / 1024 == 0;
 }
 
 #test "the view puts the kid's head mid-screen, in front of the eye" {
   s: [1] IceScene;
-  icecream_scene_build(s[..], 3);
+  icecream_frame(s[..], 1600, 1000, 1, 0.016);
   u: [SCENE_AT + SCENE_FLOATS] f32;
-  icecream_scene_uniforms(s[..], u[..], 1600, 1000, 0);
+  icecream_scene_uniforms(s[..], u[..], 1600, 1000, true);
   p := s[0].games[0].player.pos;
   head := [4] f32.[p.x, s[0].games[0].player.height + CAM_HEAD, p.z, 1];
   c: [4] f32;

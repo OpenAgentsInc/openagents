@@ -4,24 +4,29 @@ struct U {
   eye: vec4f,
   fog: vec4f,
   range: vec4f,
-  kid: vec4f,
-  tool: vec4f,
+  hud: vec4f,
+  spare: vec4f,
   rooms: array<vec4f, 100>,
-  panel: array<vec4f, 8>,
+  panel: array<vec4f, 80>,
 }
 @group(0) @binding(0) var<uniform> u: U;
 fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
   if (s.y <= 0.0) { return under; }
+  if (p.x < r.x - 2.0 || p.y < r.y - 2.0 || p.x > r.z + 2.0 || p.y > r.w + 2.0) { return under; }
   let half = (r.zw - r.xy) * 0.5;
-  let corner = 4.0 * s.x;
+  let corner = min(select(4.0 * s.x, s.w, s.w > 0.0), min(half.x, half.y));
   let q = abs(p - (r.xy + half)) - half + vec2f(corner);
   let d = length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - corner;
   if (d > 1.0) { return under; }
-  let over = s.z >= 2.0;
-  let lit = over || (s.z >= 1.0 && s.z < 2.0);
-  let fill = select(vec3f(0.165, 0.114, 0.078), vec3f(0.235, 0.168, 0.115), over);
-  let line = select(vec3f(0.69, 0.541, 0.29), vec3f(0.86, 0.70, 0.42), lit);
-  let w = 1.25 * s.x;
+  let look = i32(s.z + 0.5);
+  var fill = vec3f(0.165, 0.114, 0.078);
+  var line = vec3f(0.69, 0.541, 0.29);
+  if (look == 1) { line = vec3f(0.86, 0.70, 0.42); }
+  if (look == 2) { fill = vec3f(0.235, 0.168, 0.115); line = vec3f(0.95, 0.80, 0.52); }
+  if (look == 3) { fill = vec3f(0.29, 0.13, 0.17); line = vec3f(1.0, 0.56, 0.69); }
+  if (look == 4) { fill = vec3f(0.22, 0.16, 0.07); line = vec3f(0.97, 0.77, 0.17); }
+  if (look == 5) { fill = vec3f(0.30, 0.20, 0.07); line = vec3f(1.0, 0.86, 0.40); }
+  let w = 1.25 * s.x * select(1.0, 1.6, look >= 3);
   let inside = clamp(0.5 - d, 0.0, 1.0);
   let edge = clamp(w * 0.5 + 0.5 - abs(d + w * 0.5), 0.0, 1.0);
   let a = clamp(s.y, 0.0, 1.0);
@@ -29,9 +34,29 @@ fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
 }
 fn panels(p: vec2f, under: vec3f) -> vec3f {
   var c = under;
-  for (var k = 0; k < 4; k++) {
+  for (var k = 0; k < 40; k++) {
     if (f32(k) >= u.panels) { break; }
     c = plate(p, c, u.panel[k * 2], u.panel[k * 2 + 1]);
+  }
+  return c;
+}
+fn overlay(p: vec2f, under: vec3f) -> vec3f {
+  var c = under;
+  let hurt = clamp(u.hud.x, 0.0, 1.0);
+  if (hurt > 0.0) {
+    let e = min(min(p.x, u.size.x - p.x), min(p.y, u.size.y - p.y)) / (120.0 * u.k);
+    c = mix(c, vec3f(1.0, 0.24, 0.43), hurt * 0.75 * clamp(1.0 - e, 0.0, 1.0));
+  }
+  if (u.hud.z > 0.5) {
+    let band = (p.y / u.k) % 46.0;
+    c = mix(c, vec3f(0.157, 0.094, 0.055), select(0.35, 0.94, band < 34.0));
+  }
+  let day = clamp(u.hud.y, 0.0, 1.0);
+  if (day > 0.0) {
+    let q = p / u.size - vec2f(0.7, 0.25);
+    let r = length(q * vec2f(u.size.x / max(u.size.y, 1.0), 1.0));
+    let sky = select(select(vec3f(0.749, 0.91, 1.0), vec3f(1.0, 0.898, 0.541), r < 0.14), vec3f(1.0, 0.984, 0.878), r < 0.08);
+    c = mix(c, sky, day);
   }
   return c;
 }
@@ -40,14 +65,14 @@ fn panels(p: vec2f, under: vec3f) -> vec3f {
   return vec4f(p[i], 0.0, 1.0);
 }
 @fragment fn bg_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
-  return vec4f(panels(pos.xy, u.fog.xyz * u.fade), 1.0);
+  return vec4f(panels(pos.xy, overlay(pos.xy, u.fog.xyz * u.fade)), 1.0);
 }
 @group(1) @binding(0) var<storage, read> vertices: array<u32>;
+@group(1) @binding(1) var<storage, read> objects: array<vec4f>;
 const CHUNK: u32 = 1020u;
-const OUTLINE_BASE: u32 = 1048576u;
+const OBJ_BASE: u32 = 8388608u;
+const OBJ_OUTLINE: u32 = 4194304u;
 const LIT_FLAT: u32 = 128u;
-const LIT_KID: u32 = 254u;
-const LIT_TOOL: u32 = 253u;
 const INK: vec3f = vec3f(0.17, 0.11, 0.08);
 struct S {
   @builtin(position) pos: vec4f,
@@ -62,27 +87,47 @@ fn clip_of(w: vec3f) -> vec4f {
   return vec4f(dot(u.r0, p), dot(u.r1, p), dot(u.r2, p), dot(u.r3, p));
 }
 @vertex fn scene_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> S {
-  let outline = instance >= OUTLINE_BASE;
-  let chunk = select(instance, instance - OUTLINE_BASE, outline);
-  let b = (chunk * CHUNK + id) * 6u;
-  let w = vec3f(bitcast<f32>(vertices[b]), bitcast<f32>(vertices[b + 1u]), bitcast<f32>(vertices[b + 2u]));
+  var o: S;
+  let object = instance >= OBJ_BASE;
+  var outline = false;
+  var at = instance * CHUNK + id;
+  var light = vec3f(1.0);
+  var tint = vec3f(1.0);
+  var mode = 0.0;
+  var shine = 0.0;
+  var r0 = vec4f(1.0, 0.0, 0.0, 0.0);
+  var r1 = vec4f(0.0, 1.0, 0.0, 0.0);
+  var r2 = vec4f(0.0, 0.0, 1.0, 0.0);
+  if (object) {
+    let k = instance - OBJ_BASE;
+    outline = (k & OBJ_OUTLINE) != 0u;
+    let i = ((k & (OBJ_OUTLINE - 1u)) >> 10u) * 6u;
+    r0 = objects[i]; r1 = objects[i + 1u]; r2 = objects[i + 2u];
+    tint = objects[i + 3u].xyz; shine = objects[i + 3u].w;
+    light = objects[i + 4u].xyz;
+    if (objects[i + 4u].w > 0.5) { mode = 1.0; light = tint; }
+    at = (u32(objects[i + 5u].x) + (k & 1023u)) * CHUNK + id;
+  }
+  let b = at * 6u;
+  let p = vec3f(bitcast<f32>(vertices[b]), bitcast<f32>(vertices[b + 1u]), bitcast<f32>(vertices[b + 2u]));
   let n = unpack4x8snorm(vertices[b + 3u]);
   let c = unpack4x8unorm(vertices[b + 4u]);
   let slot = vertices[b + 4u] >> 24u;
   let hull = unpack4x8snorm(vertices[b + 5u]);
-  var o: S;
+  let w = vec3f(dot(r0.xyz, p) + r0.w, dot(r1.xyz, p) + r1.w, dot(r2.xyz, p) + r2.w);
+  let normal = vec3f(dot(r0.xyz, n.xyz), dot(r1.xyz, n.xyz), dot(r2.xyz, n.xyz));
+  if (!object) {
+    if (slot >= LIT_FLAT) { light = min(u.rooms[min(slot - LIT_FLAT, 99u)].xyz * 1.05, vec3f(1.0)); mode = 1.0; }
+    else { light = u.rooms[min(slot, 99u)].xyz; }
+    shine = max(n.w, 0.0);
+  }
   var clip = clip_of(w);
-  var light = vec3f(1.0);
-  var mode = 0.0;
-  if (slot == LIT_KID) { light = u.kid.xyz; }
-  else if (slot == LIT_TOOL) { light = u.tool.xyz; }
-  else if (slot >= LIT_FLAT) { light = min(u.rooms[min(slot - LIT_FLAT, 99u)].xyz * 1.05, vec3f(1.0)); mode = 1.0; }
-  else { light = u.rooms[min(slot, 99u)].xyz; }
   if (outline) {
     mode = 2.0;
-    if (hull.w <= 0.0) { clip = vec4f(2.0, 2.0, 2.0, 1.0); }
+    if (hull.w <= 0.0 || (n.x == 0.0 && n.y == 0.0 && n.z == 0.0)) { clip = vec4f(2.0, 2.0, 2.0, 1.0); }
     else {
-      let push = vec4f(dot(u.r0.xyz, hull.xyz), dot(u.r1.xyz, hull.xyz), dot(u.r2.xyz, hull.xyz), dot(u.r3.xyz, hull.xyz));
+      let hw = vec3f(dot(r0.xyz, hull.xyz), dot(r1.xyz, hull.xyz), dot(r2.xyz, hull.xyz));
+      let push = vec4f(dot(u.r0.xyz, hw), dot(u.r1.xyz, hw), dot(u.r2.xyz, hw), dot(u.r3.xyz, hw));
       var dir = push.xy;
       let len = length(dir);
       if (len > 1e-6) { dir = dir / len; }
@@ -92,10 +137,10 @@ fn clip_of(w: vec3f) -> vec4f {
   }
   o.pos = clip;
   o.world = w;
-  o.normal = n.xyz;
-  o.colour = c.bgr;
+  o.normal = normal;
+  o.colour = c.bgr * tint;
   o.look = vec4f(light, mode);
-  o.shine = max(n.w, 0.0);
+  o.shine = shine;
   return o;
 }
 @fragment fn scene_fs(s: S, @builtin(front_facing) front: bool) -> @location(0) vec4f {
@@ -125,7 +170,7 @@ fn clip_of(w: vec3f) -> vec4f {
       c = mix(c, u.fog.xyz, fog);
     }
   }
-  return vec4f(panels(s.pos.xy, c * u.fade), 1.0);
+  return vec4f(panels(s.pos.xy, overlay(s.pos.xy, c * u.fade)), 1.0);
 }
 struct V {
   @builtin(position) pos: vec4f,

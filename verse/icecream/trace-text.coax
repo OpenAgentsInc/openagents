@@ -1,0 +1,205 @@
+// The trace format's words, shared by trace.coax (which replays traces)
+// and play.coax (which records the browser's): the event and tool names,
+// hex and decimal numbers, and one event as a trace line writes it, in the
+// format of ~/work/aethyr-demo/tools/icecream-trace; and a whole trace
+// replayed on the rules, step by step (replay_text).
+#load "rules.coax";
+
+EVENT_NAMES :: [45] string.[
+  "FudgeFired", "FudgeHit", "FudgeSplat", "Frozen", "Fart", "FartHit", "Jingle", "Empty", "Volley",
+  "SprinkleHit", "Grabbed", "PulledOut", "Spotted", "Lost", "Key", "Pickup", "Hid", "Unhid", "DoorLocked",
+  "DoorGuarded", "Jumped", "Escaped", "Scooped", "Swing", "ConeFired", "SugarFired", "SugarBurst", "Staff",
+  "FriendsCame", "ManHit", "Melted", "MinionCame", "MinionHit", "MinionMelted", "MinionBite", "Earned",
+  "WeaponDropped", "ConeDropped", "ConeEaten", "BoostOver", "Button", "PuzzleWrong", "PuzzleSolved",
+  "CabinetLocked", "FreeRoam"];
+TOOL_NAMES :: [8] string.["Fudge", "Fart", "Keys", "Sword", "Spear", "Pistol", "Sugar", "Staff"];
+
+hex_value :: (s: string) -> u64 {
+  v: u64 = 0;
+  for i: 0..<s.count {
+    c := byte_at(s, i);
+    d := ifx c >= 'a' then c - 'a' + 10 else c - '0';
+    v = v * 16 + cast(u64) d;
+  }
+  return v;
+}
+dec_value :: (s: string) -> f64 {
+  v: f64 = 0;
+  scale: f64 = 0;
+  for i: 0..<s.count {
+    c := byte_at(s, i);
+    if c == '.' { scale = 1; continue; }
+    v = v * 10 + f64(c - '0');
+    if scale > 0 { scale *= 10; }
+  }
+  return ifx scale > 0 then v / scale else v;
+}
+float_of :: (s: string) -> f32 { return f32_from_bits(cast(u32) hex_value(s)); }
+
+// The next space-separated word of s at or after `from`, as [start, end).
+Word :: struct { start: int; end: int; }
+word_at :: (s: string, from: int) -> Word {
+  i := from;
+  while i < s.count && s[i] == ' ' { i += 1; }
+  j := i;
+  while j < s.count && s[j] != ' ' { j += 1; }
+  return Word.{start = i, end = j};
+}
+
+// An event as the trace format writes it, into out; returns its length.
+put_text :: (out: [] u8, at: int, s: string) -> int {
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+put_hex8 :: (out: [] u8, at: int, v: u32) -> int {
+  for i: 0..<8 {
+    d := cast(u8) ((v >> cast(u32) (28 - 4 * i)) & 15);
+    out[at + i] = ifx d < 10 then '0' + d else 'a' + d - 10;
+  }
+  return at + 8;
+}
+put_place :: (out: [] u8, at: int, p: V2) -> int {
+  k := put_text(out, at, ":");
+  k = put_hex8(out, k, f32_bits(p.x));
+  k = put_text(out, k, ",");
+  return put_hex8(out, k, f32_bits(p.z));
+}
+put_dec :: (out: [] u8, at: int, v: u32) -> int {
+  digits: [10] u8;
+  n := 0;
+  x := v;
+  while true {
+    digits[n] = '0' + cast(u8) (x % 10);
+    n += 1;
+    x /= 10;
+    if x == 0 { break; }
+  }
+  for i: 0..<n { out[at + i] = digits[n - 1 - i]; }
+  return at + n;
+}
+event_text :: (e: Event, out: [] u8) -> int {
+  k := e.kind;
+  n := put_text(out, 0, EVENT_NAMES[cast(int) k]);
+  if k == EventKind.fudge_splat || k == EventKind.fart || k == EventKind.sugar_burst || k == EventKind.minion_came ||
+     k == EventKind.minion_hit || k == EventKind.minion_melted || k == EventKind.cone_dropped {
+    n = put_place(out, n, e.a);
+  } else if k == EventKind.staff {
+    n = put_place(out, n, e.a);
+    n = put_place(out, n, e.b);
+  } else if k == EventKind.empty || k == EventKind.swing || k == EventKind.earned {
+    n = put_text(out, n, ":");
+    n = put_text(out, n, TOOL_NAMES[cast(int) e.n]);
+  } else if k == EventKind.weapon_dropped {
+    n = put_text(out, n, ":");
+    n = put_text(out, n, TOOL_NAMES[cast(int) e.n]);
+    n = put_place(out, n, e.a);
+  } else if k == EventKind.picked_up {
+    n = put_text(out, n, ifx e.n == 0 then ":Fudge" else ":Fart");
+  } else if k == EventKind.key || k == EventKind.friends_came || k == EventKind.button {
+    n = put_text(out, n, ":");
+    n = put_dec(out, n, e.n);
+  }
+  return n;
+}
+
+has_flag :: (s: string, c: u8) -> bool {
+  for i: 0..<s.count { if s[i] == c { return true; } }
+  return false;
+}
+
+// Replays a trace; returns -1 when every step matches, or the line number of
+// the first difference (0 for a bad trace). `steps` counts the replayed steps.
+Replayed :: struct { diverged: int; steps: int; status: Status; }
+replay_text :: (g: [] Game, b: [] Bot, text: string) -> Replayed {
+  out := Replayed.{diverged = -1, steps = 0, status = Status.playing};
+  t: Tuning;
+  seed: u64 = 0;
+  man_on := true;
+  armed := false;
+  header := true;
+  bot := false;
+  line := 0;
+  at := 0;
+  buf: [128] u8;
+  while at < text.count {
+    end := at;
+    while end < text.count && text[end] != '\n' { end += 1; }
+    s := text[at..<end];
+    at = end + 1;
+    line += 1;
+    w := word_at(s, 0);
+    word := s[w.start..<w.end];
+    if header {
+      if word == "icecream-trace" || word == "name" { continue; }
+      v := word_at(s, w.end);
+      value := s[v.start..<v.end];
+      if word == "seed" { seed = cast(u64) dec_value(value); continue; }
+      if word == "difficulty" {
+        if value == "easy" { t = tuning_for(Difficulty.easy); }
+        else if value == "hard" { t = tuning_for(Difficulty.hard); }
+        else if value == "original" { t = tuning_original(); }
+        else { t = tuning_for(Difficulty.normal); }
+        continue;
+      }
+      if word == "set" {
+        x := word_at(s, v.end);
+        r := tuning_set(t, value, dec_value(s[x.start..<x.end]));
+        if !r.ok { out.diverged = 0; return out; }
+        t = r.tuning;
+        continue;
+      }
+      if word == "man" { man_on = value == "1"; continue; }
+      if word == "arm" { armed = true; continue; }
+      if word == "driver" {
+        header = false;
+        bot = value == "bot";
+        game_new(g, seed, man_on, t);
+        if armed { game_arm(g); }
+        fresh: Bot;
+        b[0] = fresh;
+        continue;
+      }
+      out.diverged = 0;
+      return out;
+    }
+    if word == "keep" {
+      if !game_keep_playing(g) { out.diverged = line; return out; }
+      bot = false;
+      continue;
+    }
+    words: [7] string;
+    words[0] = word;
+    next := w.end;
+    for k: 1..<7 {
+      x := word_at(s, next);
+      words[k] = s[x.start..<x.end];
+      next = x.end;
+    }
+    in: Input;
+    in.walk = v2(float_of(words[0]), float_of(words[1]));
+    in.sprint = has_flag(words[2], 's');
+    in.jump = has_flag(words[2], 'j');
+    in.fire = has_flag(words[2], 'f');
+    in.interact = has_flag(words[2], 'i');
+    in.aim = v2(float_of(words[3]), float_of(words[4]));
+    if words[5] != "-" { in.select = cast(s8) dec_value(words[5]); }
+    if bot && !input_same(bot_input(g, b), in) { out.diverged = line; return out; }
+    game_step(g, in);
+    out.steps += 1;
+    if fingerprint(g) != hex_value(words[6]) { out.diverged = line; return out; }
+    e := 0;
+    while true {
+      x := word_at(s, next);
+      if x.start >= x.end { break; }
+      next = x.end;
+      if e >= g[0].event_n { out.diverged = line; return out; }
+      n := event_text(g[0].events[e], buf[..]);
+      if cast(string) buf[0..<n] != s[x.start..<x.end] { out.diverged = line; return out; }
+      e += 1;
+    }
+    if e != g[0].event_n { out.diverged = line; return out; }
+  }
+  out.status = g[0].status;
+  return out;
+}
+

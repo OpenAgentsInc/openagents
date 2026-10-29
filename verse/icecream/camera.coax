@@ -2,10 +2,8 @@
 // camera.cpp (the Rust build's camera.rs): a boom from the kid's head that
 // tilts down to stay under the ceiling, pulled in short of every wall,
 // piece of furniture, doorway lintel, the floor and the ceiling by a sphere
-// swept along it. This is the view only (Space, Rig and Camera::view); the
-// drag, the wheel, Shift Lock and the boom's easing come with play
-// (icm-world). The yaw is kept as the direction it faces (sin, cos), so the
-// kid's facing gives it without an arctangent.
+// swept along it. With the drag (orbit), the wheel, Shift Lock over the right
+// shoulder, V between first and third person, and the boom's easing.
 //   coax/bin/coax test verse/icecream/camera.coax --library
 #load "mesh.coax";
 
@@ -117,23 +115,87 @@ rig_view :: (s: [] Space, r: Rig, boom: f32) -> View {
   return View.{eye = eye, target = v3sub(eye, d)};
 }
 
-// The camera: which way it faces (forward = (sin yaw, cos yaw)), its pitch
-// below the horizon and its zoom.
-Camera :: struct { sin_yaw: f32 = 0; cos_yaw: f32 = -1; pitch: f32 = 0.35; zoom: f32 = CAM_THIRD_PERSON; }
-camera_facing :: (f: V2) -> Camera {
-  c: Camera;
-  l := len2(f);
-  if l > 0 { c.sin_yaw = f.x / l; c.cos_yaw = f.z / l; }
-  return c;
+// Boom smooths the boom's length: it snaps in at once (never through a
+// wall) and eases back out slowly.
+CAM_CLOSE :: 0.6f32;           // under this boom the kid isn't drawn
+CAM_EASE_OUT :: 3.0f32;
+CAM_MIN_PITCH :: -0.6f32;
+CAM_MAX_PITCH :: 1.2f32;
+CAM_SHOULDER :: 0.7f32;
+Boom :: struct { has: bool; length: f32; }
+boom_follow :: (b: Boom, r: Rig, step: f32) -> Boom {
+  next: f32 = 0;
+  if r.first_person { next = 0; }
+  else if !b.has || r.safe <= b.length { next = r.safe; }
+  else { next = b.length + (r.safe - b.length) * (1 - exp(-CAM_EASE_OUT * step)); }
+  return Boom.{has = true, length = next};
 }
-cam_forward :: (c: Camera) -> V2 { return v2(c.sin_yaw, c.cos_yaw); }
+boom_close :: (b: Boom) -> bool { return b.has && b.length < CAM_CLOSE; }
+
+// The camera: its yaw (0 looks toward +z), its pitch below the horizon, its
+// zoom (first person under CAM_FIRST_PERSON), Shift Lock and the zoom to go
+// back to from first person.
+Camera :: struct { yaw: f32 = 3.14159265; pitch: f32 = 0.35; zoom: f32 = CAM_THIRD_PERSON; shift_lock: bool; third: f32 = CAM_THIRD_PERSON; }
+// atan on [0, 1], within 2e-5 rad (verse/space.coax's).
+atan_unit :: (t: f32) -> f32 {
+  q := t * t;
+  return t * (0.99997726 + q * (-0.33262347 + q * (0.19354346 + q * (-0.11643287 + q * (0.05265332 + q * -0.01172120)))));
+}
+// The angle of (x, y) from +X, in [-PI, PI]; 0 for the origin.
+arctan2 :: (y: f32, x: f32) -> f32 {
+  ax := abs(x); ay := abs(y);
+  if ax == 0 && ay == 0 { return 0; }
+  half: f32 = 2;
+  a := ifx ay > ax then PI_F / half - atan_unit(ax / ay) else atan_unit(ay / ax);
+  if x < 0 { a = PI_F - a; }
+  if y < 0 { a = -a; }
+  return a;
+}
+yaw_of :: (d: V2) -> f32 { return arctan2(d.x, d.z); }
+camera_facing :: (f: V2) -> Camera { c: Camera; if len2(f) > 0 { c.yaw = yaw_of(f); } return c; }
+cam_forward :: (c: Camera) -> V2 { return v2(sin(c.yaw), cos(c.yaw)); }
+cam_right :: (c: Camera) -> V2 { f := cam_forward(c); return v2(-f.z, f.x); }
+cam_walk :: (c: Camera, ahead: f32, side: f32) -> V2 { return clamp2(vadd(vmul(cam_forward(c), ahead), vmul(cam_right(c), side)), 1); }
+cam_orbit :: (c: Camera, dx: f32, dy: f32) -> Camera {
+  o := c;
+  o.yaw -= dx * 0.006;
+  o.pitch = clampf(c.pitch + dy * 0.005, CAM_MIN_PITCH, CAM_MAX_PITCH);
+  return o;
+}
+cam_wheel :: (c: Camera, delta: f32) -> Camera {
+  o := c;
+  hundred: f32 = 100;
+  o.zoom = clampf(c.zoom * pow(1.1, delta / hundred), CAM_MIN_ZOOM, CAM_MAX_ZOOM);
+  return o;
+}
 cam_first_person :: (c: Camera) -> bool { return c.zoom < CAM_FIRST_PERSON; }
-cam_look :: (c: Camera) -> V3 { return v3(cos(c.pitch) * c.sin_yaw, -sin(c.pitch), cos(c.pitch) * c.cos_yaw); }
+// V: first person to third and back; the new camera.
+cam_toggle_view :: (c: Camera) -> Camera {
+  o := c;
+  if cam_first_person(c) {
+    o.zoom = cmax(c.third, CAM_FIRST_PERSON + 1);
+    if o.pitch < 0.1 { o.pitch = 0.3; }
+  } else {
+    o.third = c.zoom;
+    o.zoom = CAM_MIN_ZOOM;
+    o.pitch = cmin(c.pitch, 0.15);
+  }
+  return o;
+}
+cam_aims :: (c: Camera) -> bool { return c.shift_lock || cam_first_person(c); }
+cam_look :: (c: Camera) -> V3 { return v3(cos(c.pitch) * sin(c.yaw), -sin(c.pitch), cos(c.pitch) * cos(c.yaw)); }
 cam_rig :: (c: Camera, at: V2, feet: f32, s: [] Space) -> Rig {
   head := v3(at.x, feet + CAM_HEAD, at.z);
   b := cam_forward(c);
   r := Rig.{pivot = head, back = v3(-b.x, 0, -b.z), rise = sin(c.pitch), look = cam_look(c), first_person = cam_first_person(c)};
   if r.first_person { return r; }
+  if c.shift_lock {
+    rt := cam_right(c);
+    shoulder := v3add(v3mul(v3(rt.x, 0, rt.z), CAM_SHOULDER * 0.6), v3mul(TN_Y, 0.1));
+    length := sqrt(v3dot(shoulder, shoulder));
+    t := space_cast(s, head, v3add(head, shoulder), CAM_RADIUS);
+    r.pivot = v3add(r.pivot, v3mul(shoulder, cmax(t * length - CAM_MARGIN, 0.0) / length));
+  }
   r.want = clampf(c.zoom, CAM_FIRST_PERSON, CAM_MAX_ZOOM);
   // Pull in until the boom's own (steeper, shorter) line is clear.
   length := r.want;
@@ -152,6 +214,16 @@ cam_view :: (c: Camera, at: V2, feet: f32, s: [] Space) -> View {
 // The vertical field of view: wider on a tall screen.
 cam_fov :: (aspect: f32) -> f32 { d: f32 = 180.0; return (ifx aspect < 1 then 70.0f32 else 60.0f32) * 3.14159265 / d; }
 
+// Where a ray from eye along dir meets the plane y = height, if it goes that way.
+Hit2 :: struct { ok: bool; at: V2; }
+ray_to_height :: (eye: V3, dir: V3, height: f32) -> Hit2 {
+  no: Hit2;
+  if abs(dir.y) < 0.00001 { return no; }
+  t := (height - eye.y) / dir.y;
+  if t <= 0 { return no; }
+  return Hit2.{ok = true, at = v2(eye.x + dir.x * t, eye.z + dir.z * t)};
+}
+
 // ---- checks ----
 
 #test "a sweep enters a box, misses it, or starts inside" {
@@ -160,6 +232,31 @@ cam_fov :: (aspect: f32) -> f32 { d: f32 = 180.0; return (ifx aspect < 1 then 70
   #assert sweep(b, v3(-1, 5, 1), v3(3, 5, 1), 0) < 0;
   #assert sweep(b, v3(1, 1, 1), v3(3, 1, 1), 0) < 0;
   #assert sweep(b, v3(-2, 1, 1), v3(2, 1, 1), 0.5) == 0.375;
+}
+
+#test "orbit, the wheel and V keep their bounds" {
+  c: Camera;
+  c = cam_orbit(c, 0, 100000);
+  #assert c.pitch == CAM_MAX_PITCH;
+  c = cam_wheel(c, 3000);
+  #assert c.zoom == CAM_MAX_ZOOM;
+  c = cam_toggle_view(c);
+  #assert cam_first_person(c) && cam_aims(c) && c.third == CAM_MAX_ZOOM;
+  c = cam_toggle_view(c);
+  #assert !cam_first_person(c) && c.zoom == CAM_MAX_ZOOM;
+  w := cam_walk(c, 1, 1);
+  #assert abs(len2(w) - 1) < 0.001;
+  b: Boom;
+  r: Rig;
+  r.safe = 3;
+  b = boom_follow(b, r, 0.016);
+  #assert b.length == 3;
+  r.safe = 5;
+  b = boom_follow(b, r, 0.016);
+  #assert b.length > 3 && b.length < 3.2;
+  r.safe = 1;
+  b = boom_follow(b, r, 0.016);
+  #assert b.length == 1 && !boom_close(b);
 }
 
 #test "the start view: behind the kid's head, under the ceiling, inside the house" {

@@ -87,7 +87,7 @@
       "realm": {
         "slug": "ice-cream-man",
         "title": "Ice Cream Man",
-        "description": "Ice Cream Man, a Verse realm in the browser: a seeded house of rooms, furniture and fluorescent light, built by the same Coax code as the game's rules. Play comes next.",
+        "description": "Ice Cream Man, a Verse realm in the browser: find three keys and escape a seeded house before the Ice Cream Man scoops you, played on the same Coax code as the game's rules.",
         "alt": "Enter the Verse",
         "module": "icecream",
         "slot": "ice-cream-man",

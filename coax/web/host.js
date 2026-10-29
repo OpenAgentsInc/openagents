@@ -939,7 +939,7 @@ function frame(now) {
 
 // ---- input: keys, the pointer and typed text go to the app; its actions come out
 const KEYS = { Escape: -1, Enter: -2, Backspace: -3, ArrowLeft: -4, ArrowRight: -5, ArrowUp: -6, ArrowDown: -7,
-  Home: -8, End: -9, PageUp: -10, PageDown: -11, Delete: -12, Shift: -13 };
+  Home: -8, End: -9, PageUp: -10, PageDown: -11, Delete: -12, Shift: -13, Control: -14 };
 const call = (name, ...args) => (engine && engine.exports[name] ? engine.exports[name](arena.state, ...args) : 0);
 let field = null;   // INVARIANTS.md: the keyboard field, an invisible input over the app's drawn field (keyboard, paste, context menu)
 let touched = false;

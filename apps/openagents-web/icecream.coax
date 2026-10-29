@@ -1,30 +1,79 @@
-// Ice Cream Man's realm (openagents.com/realm/ice-cream-man): the seed's
-// house from verse/icecream/ (mesh.coax, built and lit by scene.coax, its own
-// library), seen from where a run starts, behind the kid. No play yet
-// (icm-world brings it). This file is the HUD over it: the title plate and
-// GALAXY (or Escape), which goes back; #seed=N in the address builds that
-// seed's house. icecream-face.c builds the scene when the seed changes and
-// adds its uniforms after these.
+// Ice Cream Man's realm (openagents.com/realm/ice-cream-man): the HUD over
+// the run (verse/icecream/scene.coax and play.coax, their own library),
+// world.cpp's and web/icecream.js's, drawn in Coax in the house's fantasy
+// button style: health and keys, the timer and Menu, the toast, the boss
+// bar, the crosshair, the prompt with the front door's unlock bar, the hot
+// bar, the stick and the Fire, Jump, Use, Sprint and View buttons on a
+// phone, and the cards (the tour, Paused and the end of a round). Every
+// word the demo shows is here. The run says what to show as numbers (its
+// F_* facts, the same places as play.coax's); the HUD's buttons go back as
+// acts (play.coax A_*), which the face hands on.
 
 #load "font.coax";
 #load "ui.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
-MAX_VERTICES :: 6000;
-PLATES :: 4;
+MAX_VERTICES :: 16000;
+PLATES :: 40;
 // width, height, time, fade, still, plates, dpr, the outline's width; then
 // the scene's (verse/icecream/scene.coax SCENE_AT, SCENE_FLOATS); then per
-// plate x0, y0, x1, y1, scale, alpha, look, 0
+// plate x0, y0, x1, y1, scale, alpha, look, radius
 SCENE_FLOATS :: 436;
 PANEL_AT :: 8 + SCENE_FLOATS;
 UNIFORM_FLOATS :: PANEL_AT + PLATES * 8;
-SEED :: 3;
 
 MODE_STROKE :: 0.0;
 MODE_LINK :: 1.0;
 MODE_PULSE :: 2.0;
 MODE_GLOW_TEXT :: 3.0;
 MODE_BAR :: 4.0;
+
+// play.coax's facts and acts.
+F_PHASE :: 0; F_STATUS :: 1; F_TOUR :: 2; F_KEYS :: 3; F_KEY_N :: 4; F_HEALTH :: 5; F_BOOSTED :: 6; F_TOOL :: 7;
+F_OWNED :: 8; F_COUNT :: 9; F_BOSS :: 17; F_CROSSHAIR :: 18; F_PROMPT :: 19; F_UNLOCK :: 20; F_TIMER :: 21;
+F_HURT :: 22; F_CLOSET :: 23; F_DAYLIGHT :: 24; F_TOAST :: 25; F_TOAST_N :: 26; F_TOAST_COUNT :: 27;
+F_KNOB_X :: 28; F_KNOB_Y :: 29; F_SPRINT :: 30; F_SCARE :: 31; F_SCARY :: 32; F_TOUCH :: 34; F_SECONDS :: 35;
+F_BEST :: 36; F_NEW_BEST :: 37; F_RUN_KEYS :: 38; F_HITS :: 39; F_ACCURACY :: 40; F_MELTED_MINIONS :: 41;
+F_DIFFICULTY :: 42; F_NEXT_DIFFICULTY :: 43; F_TIMER_ON :: 44; F_JUMPSCARES :: 45; F_SPRINT_TAP :: 46;
+F_KEEP :: 47; F_FIRST_PERSON :: 48; F_STICK :: 49; F_WON :: 50; F_SHIFT_LOCK :: 51; F_TICK :: 52;
+FACTS :: 64;
+A_MENU :: 1; A_RESUME :: 2; A_NEW_HOUSE :: 3; A_KEEP :: 4; A_CYCLE :: 5; A_SELECT :: 6; A_VIEW :: 7;
+A_HELD :: 8; A_TIMER :: 9; A_JUMPSCARES :: 10; A_DIFFICULTY :: 11; A_SPRINT_MODE :: 12; A_TOUR :: 13;
+A_TOUR_NEXT :: 14; A_TOUR_BACK :: 15; A_TOUR_END :: 16; A_PLAY :: 17;
+A_GALAXY :: 100;
+PH_TITLE :: 0; PH_PLAYING :: 1; PH_MENU :: 2; PH_ENDING :: 3; PH_OVER :: 4;
+ST_PLAYING :: 0; ST_ESCAPED :: 1; ST_MELTED :: 2; ST_SCOOPED :: 3;
+TOOL_FUDGE :: 0; TOOL_FART :: 1; TOOL_KEYS :: 2;
+
+// ---- copy.rs: every word the game shows
+
+TOOL_NAMES :: [8] string.["Fudge", "Cloud", "Keys", "Sword", "Spear", "Pistol", "Sugar", "Staff"];
+EARNED :: [8] string.["", "", "", "Sword", "Spear", "Pistol", "Sugar", "Staff unlocked"];
+PROMPTS :: [8] string.["Hide", "Leave", "Fridge", "Hold Use", "Guarded", "Three keys", "Press", "Cabinet"];
+DIFFICULTIES :: [3] string.["Easy", "Normal", "Hard"];
+// play.coax Toast, in order; Keys, Earned and Button add their number.
+TOASTS :: [34] string.["", "Check-out is at 11. Don't let him in.", "Weapons", "Staff unlocked", "Frozen", "Confused", "Heard",
+  "Empty", "Spotted", "Run", "Clear", "Escape", "Keys", "Cloud", "Fudge", "Hidden", "Locked", "Guarded", "You melted him!",
+  "Allies", "Minion", "Bitten", "", "Cone", "Boost", "Normal", "", "Reset", "Unlocked", "Pink → blue → yellow",
+  "Shift Lock on", "Shift Lock off", "First person", "Third person"];
+TOAST_KEYS :: 12; TOAST_EARNED :: 22; TOAST_BUTTON :: 26;
+TOUR_TITLES :: [4] string.["Move", "Look", "Shoot", "Find the keys"];
+TOUR_KEYS :: [8] string.[
+  "Walk with W A S D or the arrow keys. Hold Shift to sprint.", "Space jumps. Jump over his sprinkles!",
+  "Drag with the mouse to look around. Scroll to zoom in and out.",
+  "Press Ctrl for Shift Lock: the camera sits over your shoulder with a crosshair for aiming. Press V to switch between first person and third person.",
+  "Click to use your tool. Press 1 for Hot Fudge, 2 for the Fart Launcher, 3 for the Key Ring, and 4 and up for weapons you earn. Q picks the next one.",
+  "Fudge slows him down, and enough of it freezes him. A fart cloud knocks him back and he forgets where you are.",
+  "Three check-out keys are hidden in the house. Walk over one to pick it up.",
+  "Then hold E at the front door to escape. Press E by a closet to hide, or by a fridge for more ammo. Esc opens the menu."];
+TOUR_TOUCH :: [8] string.[
+  "Drag the stick on the left to walk. Hold Sprint to run. You can make it a tap in the menu.", "Tap Jump to jump. Jump over his sprinkles!",
+  "Drag on the right side of the screen to look around.",
+  "Your tools aim at him when he's in front of you. Tap View to switch between first person and third person.",
+  "Tap Fire to use your tool. To switch tools, tap one in the bar at the bottom, or tap Next.",
+  "Fudge slows him down, and enough of it freezes him. A fart cloud knocks him back and he forgets where you are.",
+  "Three check-out keys are hidden in the house. Walk over one to pick it up.",
+  "Then hold Use at the front door to escape. Tap Use by a closet to hide, or by a fridge for more ammo."];
 
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
@@ -72,127 +121,486 @@ tinted_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, gl
   return true;
 }
 
-BTN_GALAXY :: 0; BUTTONS :: 1;
-
+MAX_BUTTONS :: 32;
+HOLDS :: 4;
 IceRealm :: struct {
   started: bool;
   time: f32; width: f32; height: f32; dpr: f32; still: bool;
+  touch: bool;
+  facts: [FACTS] f32;
   seed: u64;
   press: int; hover: int;
-  boxes: [BUTTONS] Box; shown: [BUTTONS] bool;
+  boxes: [MAX_BUTTONS] Box; acts: [MAX_BUTTONS] int; holds: [MAX_BUTTONS] int; button_n: int;
+  main_act: int;
+  hold_id: [HOLDS] int;
+  stick: Box; stick_cx: f32; stick_cy: f32;
+  queue: [16] int; queue_n: int;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
-  plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;
+  plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_radius: [PLATES] f32; plate_n: int;
+  toast_count: f32; toast_until: f32; toast_kind: int; toast_n: int;
 }
 
 ice_reset :: (s: [] IceRealm) {
   s[0].started = true; s[0].press = -1; s[0].hover = -1;
-  if s[0].seed == 0 { s[0].seed = SEED; }
+  for i: 0..<HOLDS { s[0].hold_id[i] = -1; }
 }
-// The seed the scene shows.
-ice_seed :: (s: [] IceRealm) -> u64 #export_c { if !s[0].started { ice_reset(s); } return s[0].seed; }
-// Seconds the lights have flickered for (none when still).
-ice_time :: (s: [] IceRealm) -> f32 #export_c { return ifx s[0].still then 0.0f32 else s[0].time; }
 
-// ---- in from the host
+// ---- out to the run and the host
 
-// #seed=N picks the house; anything else, the default one.
-ice_hash :: (s: [] IceRealm, text: string) #export_c {
-  if !s[0].started { ice_reset(s); }
-  key := "seed=";
-  seed: u64 = SEED;
-  at := 0;
-  while at + key.count <= text.count {
-    if text[at..<at + key.count] == key { break; }
-    at += 1;
-  }
-  i := at + key.count;
-  v: u64 = 0;
-  digits := 0;
-  while i < text.count && digits < 18 && text[i] >= '0' && text[i] <= '9' { v = v * 10 + cast(u64) (text[i] - '0'); i += 1; digits += 1; }
-  if digits > 0 { seed = v; }
-  s[0].seed = seed;
+h_queue_act :: (s: [] IceRealm, a: int, arg: int) {
+  if s[0].queue_n >= 16 { return; }
+  s[0].queue[s[0].queue_n] = a * 256 + arg;
+  s[0].queue_n += 1;
 }
-leave_to :: (s: [] IceRealm, url: string) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, url); s[0].action = ACT_NAVIGATE; } }
-ice_key :: (s: [] IceRealm, key: int, down: bool) -> bool #export_c {
-  if !s[0].started { ice_reset(s); }
-  if down && key == KEY_ESCAPE { leave_to(s, "/verse/galaxy"); return true; }
-  return false;
+// The next act for the run (A_* << 8 | its argument), 0 when there's none.
+ice_next_act :: (s: [] IceRealm) -> int #export_c {
+  if s[0].queue_n == 0 { return 0; }
+  a := s[0].queue[0];
+  for i: 1..<s[0].queue_n { s[0].queue[i - 1] = s[0].queue[i]; }
+  s[0].queue_n -= 1;
+  return a;
 }
-ice_blur :: (s: [] IceRealm) #export_c { s[0].press = -1; }
-button_at :: (s: [] IceRealm, x: f32, y: f32) -> int {
-  for i: 0..<BUTTONS { if s[0].shown[i] && inside(s[0].boxes[i], x, y) { return i; } }
-  return -1;
+h_leave_to :: (s: [] IceRealm, url: string) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, url); s[0].action = ACT_NAVIGATE; } }
+h_do_act :: (s: [] IceRealm, a: int) {
+  if a / 256 == A_GALAXY { h_leave_to(s, "/verse/galaxy"); return; }
+  h_queue_act(s, a / 256, a % 256);
 }
-ice_pointer :: (s: [] IceRealm, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
-  if !s[0].started { ice_reset(s); }
-  b := button_at(s, x, y);
-  s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
-  if phase == POINTER_DOWN { if b >= 0 { s[0].press = b; return true; } return false; }
-  if s[0].press >= 0 {
-    if phase == POINTER_UP && b == s[0].press && b == BTN_GALAXY { leave_to(s, "/verse/galaxy"); }
-    if phase != POINTER_MOVE { s[0].press = -1; }
-    return true;
-  }
-  return false;
-}
-ice_cursor :: (s: [] IceRealm) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
 ice_action :: (s: [] IceRealm) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
 ice_action_done :: (s: [] IceRealm) #export_c { s[0].out_n = 0; }
 
-// ---- the HUD (the fixture realm's look)
+// ---- in from the host
+
+run_phase :: (s: [] IceRealm) -> int { return cast(int) s[0].facts[F_PHASE]; }
+h_card_on :: (s: [] IceRealm) -> bool { return s[0].facts[F_TOUR] >= 0 || run_phase(s) == PH_MENU || run_phase(s) == PH_OVER || run_phase(s) == PH_TITLE; }
+// The page's facts (message 600): a coarse pointer or touch shows the thumbs' controls.
+ice_page :: (s: [] IceRealm, text: string) #export_c {
+  if !s[0].started { ice_reset(s); }
+  at := 0;
+  while at < text.count {
+    end := at;
+    while end < text.count && text[end] != '\n' { end += 1; }
+    line := text[at..<end];
+    if line == "coarse=1" || line == "touch=1" { s[0].touch = true; }
+    at = end + 1;
+  }
+}
+// Enter on a card is its main button; anything else is the run's.
+ice_key :: (s: [] IceRealm, key: int, down: bool) -> bool #export_c {
+  if !s[0].started { ice_reset(s); }
+  if down && key == KEY_ENTER && h_card_on(s) && s[0].main_act > 0 { h_do_act(s, s[0].main_act); return true; }
+  if down && key == KEY_ESCAPE && run_phase(s) == PH_OVER { h_leave_to(s, "/verse/galaxy"); return true; }
+  return false;
+}
+h_let_go :: (s: [] IceRealm) {
+  s[0].press = -1;
+  for i: 0..<HOLDS { if s[0].hold_id[i] >= 0 { h_queue_act(s, A_HELD, i * 2); s[0].hold_id[i] = -1; } }
+}
+ice_blur :: (s: [] IceRealm) #export_c { h_let_go(s); }
+h_button_at :: (s: [] IceRealm, x: f32, y: f32) -> int {
+  i := s[0].button_n - 1;
+  while i >= 0 { if inside(s[0].boxes[i], x, y) { return i; } i -= 1; }
+  return -1;
+}
+// A pointer: >= 0 the HUD took it, -2 a thumb on the stick, -1 the run's (to look, aim or fire).
+ice_pointer :: (s: [] IceRealm, x: f32, y: f32, ph: int, kind: int, id: int) -> int #export_c {
+  if !s[0].started { ice_reset(s); }
+  for h: 0..<HOLDS {
+    if s[0].hold_id[h] == id && s[0].hold_id[h] >= 0 {
+      if ph == POINTER_UP || ph == POINTER_CANCEL { h_queue_act(s, A_HELD, h * 2); s[0].hold_id[h] = -1; }
+      return 0;
+    }
+  }
+  b := h_button_at(s, x, y);
+  s[0].hover = ifx kind == 0 && ph != POINTER_CANCEL then b else -1;
+  if ph == POINTER_DOWN {
+    if b >= 0 {
+      h := s[0].holds[b];
+      if h >= 0 {
+        if s[0].hold_id[h] < 0 { s[0].hold_id[h] = id; h_queue_act(s, A_HELD, h * 2 + 1); }
+        return 0;
+      }
+      if h_card_on(s) || s[0].acts[b] / 256 == A_GALAXY { s[0].press = b; } else { h_do_act(s, s[0].acts[b]); }
+      return 0;
+    }
+    if h_card_on(s) { return 0; }
+    if kind != 0 && run_phase(s) == PH_PLAYING && s[0].touch {
+      dx := x - s[0].stick_cx; dy := y - s[0].stick_cy;
+      r := (s[0].stick.x1 - s[0].stick.x0) * 0.5 + 20 * s[0].dpr;
+      if dx * dx + dy * dy <= r * r { return -2; }
+    }
+    return -1;
+  }
+  if s[0].press >= 0 {
+    if ph == POINTER_UP && b == s[0].press { h_do_act(s, s[0].acts[b]); }
+    if ph != POINTER_MOVE { s[0].press = -1; }
+    return 0;
+  }
+  if h_card_on(s) && ph != POINTER_MOVE { return 0; }
+  return -1;
+}
+ice_cursor :: (s: [] IceRealm) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
+
+// ---- drawing: plates (the shader's rounded panels) and strokes
 
 GAP :: 0.5; SPACE :: 1.2;
 PARCH_R :: 0.91; PARCH_G :: 0.863; PARCH_B :: 0.753;
 GOLD_R :: 0.80; GOLD_G :: 0.64; GOLD_B :: 0.36;
-LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;
-white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARCH_R, PARCH_G, PARCH_B); }
-bronze :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, GOLD_R, GOLD_G, GOLD_B); }
-plate :: (s: [] IceRealm, b: Box, alpha: f32, look: f32) {
+LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0; LOOK_ON :: 3.0; LOOK_READY :: 4.0; LOOK_HOT :: 5.0;
+h_white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARCH_R, PARCH_G, PARCH_B); }
+h_bronze :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, GOLD_R, GOLD_G, GOLD_B); }
+h_pink :: (k: f32, light: f32) -> Ink { return ink(0.7 * k, light, 1.6 * k, 1.0, 0.56, 0.69); }
+h_plate :: (s: [] IceRealm, b: Box, alpha: f32, look: f32, radius: f32) {
   n := s[0].plate_n;
   if n >= PLATES { return; }
-  s[0].plates[n] = b; s[0].plate_alpha[n] = alpha; s[0].plate_look[n] = look; s[0].plate_n = n + 1;
+  s[0].plates[n] = b; s[0].plate_alpha[n] = alpha; s[0].plate_look[n] = look; s[0].plate_radius[n] = radius; s[0].plate_n = n + 1;
 }
-centred :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
-  w := measure(text, GAP, SPACE, false) * cap;
-  return write(d, out, at, text, x - w * 0.5, base, cap, GAP, SPACE, k, false, false);
+h_rect :: (x: f32, y: f32, w: f32, h: f32) -> Box { return Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + h}; }
+h_text_w :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+h_say :: (s: [] IceRealm, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return write(s[0].dpr, out, at, text, x, base, cap, GAP, SPACE, k, false, false);
 }
-fit_cap :: (text: string, cap: f32, width: f32) -> f32 { return lo(cap, width / hi(measure(text, GAP, SPACE, false), 0.001)); }
+h_centred :: (s: [] IceRealm, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return h_say(s, out, at, text, x - h_text_w(text, cap) * 0.5, base, cap, k);
+}
+h_fit_cap :: (text: string, cap: f32, width: f32) -> f32 { return lo(cap, width / hi(measure(text, GAP, SPACE, false), 0.001)); }
+// A button: its plate, its words, and what it does (a hold, or an act).
+h_button :: (s: [] IceRealm, out: [] f32, at: int, b: Box, label: string, act: int, hold: int, look: f32, radius: f32, cap: f32) -> int {
+  i := s[0].button_n;
+  if i < MAX_BUTTONS { s[0].boxes[i] = b; s[0].acts[i] = act; s[0].holds[i] = hold; s[0].button_n = i + 1; }
+  l := look;
+  if s[0].hover == i || s[0].press == i || (hold >= 0 && s[0].hold_id[hold] >= 0) { l = LOOK_HOVER; }
+  h_plate(s, b, 0.92, l, radius);
+  c := h_fit_cap(label, cap, (b.x1 - b.x0) - 10 * s[0].dpr);
+  return h_centred(s, out, at, label, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + c * 0.5, c, h_white(s[0].dpr, 0.95));
+}
+// A meter: an empty track and its filled share, as two strokes.
+h_meter :: (s: [] IceRealm, out: [] f32, at: int, x: f32, y: f32, w: f32, share: f32, r: f32, g: f32, b: f32) -> int {
+  k := s[0].dpr;
+  n := at;
+  if lit(out, n, x, y, x + w, y, 3 * k, 0.18, 1 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { n += 6; }
+  f := clamp(share, 0, 1);
+  if f > 0.01 && lit(out, n, x, y, x + w * f, y, 3 * k, 0.9, 2.5 * k, r, g, b, MODE_STROKE) { n += 6; }
+  return n;
+}
+h_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, glow: f32, r: f32, g: f32, b: f32) -> int {
+  if tinted_dot(out, at, x, y, radius, light, glow, r, g, b) { return at + 6; }
+  return at;
+}
+h_ring :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, width: f32, light: f32, r: f32, g: f32, b: f32) -> int {
+  n := at;
+  for i: 0..<20 {
+    a0 := f32(i) / 20 * 6.2831853; a1 := f32(i + 1) / 20 * 6.2831853;
+    if lit(out, n, x + cos(a0) * radius, y + sin(a0) * radius, x + cos(a1) * radius, y + sin(a1) * radius, width, light, width, r, g, b, MODE_STROKE) { n += 6; }
+  }
+  return n;
+}
 
-draw_hud :: (s: [] IceRealm, out: [] f32) -> int {
-  k := s[0].dpr; w := s[0].width;
+// "0:42.3", as world.cpp clockText.
+h_clock :: (buf: [] u8, at: int, seconds: f32) -> int {
+  tenths := cast(int) floor(hi(seconds, 0) * 10);
+  n := put_int(buf, at, tenths / 600);
+  n = put(buf, n, ":");
+  sec := (tenths % 600) / 10;
+  if sec < 10 { n = put(buf, n, "0"); }
+  n = put_int(buf, n, sec);
+  n = put(buf, n, ".");
+  return put_int(buf, n, (tenths % 600) % 10);
+}
+
+// ---- the HUD while playing (hud.rs update_hud)
+
+h_draw_playing :: (s: [] IceRealm, out: [] f32, at: int) -> int {
+  f := s[0].facts[..];
+  k := s[0].dpr; w := s[0].width; h := s[0].height;
   phone := w < 640 * k;
-  g := 16 * k;
-  title := "ICE CREAM MAN";
-  buf: [48] u8;
-  n := put(buf[..], 0, "THE HOUSE, SEED ");
-  n = put_int(buf[..], n, cast(int) s[0].seed);
-  sub := cast(string) buf[0..<n];
-  bw := 104 * k;
-  room := ifx phone then w - 2 * g else w - 3 * g - bw;
-  tw := lo(hi(measure(title, GAP, SPACE, false) * 11 * k, measure(sub, GAP, SPACE, false) * 7.5 * k) + 32 * k, room);
-  tb := Box.{x0 = g, y0 = g, x1 = g + tw, y1 = g + 54 * k};
-  plate(s, tb, 0.92, LOOK_PLAIN);
-  vertices := write(k, out, 0, title, tb.x0 + 16 * k, tb.y0 + 24 * k, fit_cap(title, 11 * k, tw - 32 * k), GAP, SPACE, white(k, 0.97), false, false);
-  vertices = write(k, out, vertices, sub, tb.x0 + 16 * k, tb.y0 + 42 * k, fit_cap(sub, 7.5 * k, tw - 32 * k), GAP, SPACE, bronze(k, 0.9), false, false);
-  b := Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 34 * k};
-  if phone { b = Box.{x0 = w - g - bw, y0 = tb.y1 + 10 * k, x1 = w - g, y1 = tb.y1 + 44 * k}; }
-  s[0].boxes[BTN_GALAXY] = b; s[0].shown[BTN_GALAXY] = true;
-  look: f32 = LOOK_LIT; if s[0].hover == BTN_GALAXY || s[0].press == BTN_GALAXY { look += LOOK_HOVER; }
-  plate(s, b, 0.92, look);
-  return centred(k, out, vertices, "GALAXY", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
+  g := 12 * k;
+  n := at;
+  // Health: a share of full health, gold while a cone's boost lasts.
+  health := clamp(f[F_HEALTH], 0, 100);
+  hb := h_rect(g, g, 172 * k, 34 * k);
+  h_plate(s, hb, 0.9, LOOK_PLAIN, 0);
+  n = h_say(s, out, n, "Health", hb.x0 + 10 * k, hb.y0 + 21 * k, 8 * k, h_white(k, 0.9));
+  r := 0.49f32; gr := 0.86f32; bl := 0.48f32;
+  if f[F_BOOSTED] > 0 { r = 0.97; gr = 0.77; bl = 0.17; } else if health <= 30 { r = 1.0; gr = 0.37; bl = 0.49; } else if health <= 60 { r = 1.0; gr = 0.83; bl = 0.30; }
+  n = h_meter(s, out, n, hb.x0 + 76 * k, hb.y0 + 17 * k, 58 * k, health / 100, r, gr, bl);
+  buf: [64] u8;
+  m := put_int(buf[..], 0, cast(int) floor(health + 0.5));
+  n = h_say(s, out, n, cast(string) buf[0..<m], hb.x0 + 142 * k, hb.y0 + 21 * k, 8 * k, h_white(k, 0.9));
+  // The keys: a dot each, gold once found.
+  kb := h_rect(g, hb.y1 + 8 * k, 132 * k, 34 * k);
+  h_plate(s, kb, 0.9, LOOK_PLAIN, 0);
+  n = h_say(s, out, n, "Keys", kb.x0 + 10 * k, kb.y0 + 21 * k, 8 * k, h_white(k, 0.9));
+  for i: 0..<3 {
+    x := kb.x0 + 64 * k + f32(i) * 22 * k; y := kb.y0 + 17 * k;
+    if f32(i) < f[F_KEYS] { n = h_dot(out, n, x, y, 6 * k, 1.0, 3 * k, 0.97, 0.77, 0.17); }
+    else { n = h_ring(out, n, x, y, 6 * k, 0.9 * k, 0.6, PARCH_R, PARCH_G, PARCH_B); }
+  }
+  // Menu, the timer beside it (under it on a phone).
+  mb := h_rect(w - g - 84 * k, g, 84 * k, 32 * k);
+  n = h_button(s, out, n, mb, "Menu", A_MENU * 256, -1, LOOK_LIT, 0, 9 * k);
+  if f[F_TIMER] >= 0 {
+    m = h_clock(buf[..], 0, f[F_TIMER]);
+    t := cast(string) buf[0..<m];
+    tw := 74 * k;
+    tb := ifx phone then h_rect(w - g - tw, mb.y1 + 8 * k, tw, 30 * k) else h_rect(mb.x0 - 10 * k - tw, g, tw, 32 * k);
+    h_plate(s, tb, 0.9, LOOK_PLAIN, 0);
+    n = h_centred(s, out, n, t, (tb.x0 + tb.x1) * 0.5, (tb.y0 + tb.y1) * 0.5 + 4.5 * k, 9 * k, h_white(k, 0.95));
+  }
+  // The toast: the latest words, for 2.6 seconds.
+  if f[F_TOAST_COUNT] != s[0].toast_count {
+    s[0].toast_count = f[F_TOAST_COUNT];
+    s[0].toast_kind = cast(int) f[F_TOAST]; s[0].toast_n = cast(int) f[F_TOAST_N];
+    s[0].toast_until = s[0].time + 2.6;
+  }
+  top := ifx phone then kb.y1 + 54 * k else g + 2 * k;
+  if s[0].toast_kind > 0 && s[0].toast_kind < 34 && s[0].time < s[0].toast_until {
+    tk := s[0].toast_kind;
+    m = 0;
+    if tk == TOAST_KEYS { m = put(buf[..], 0, "Keys "); m = put_int(buf[..], m, s[0].toast_n); m = put(buf[..], m, "/3"); }
+    else if tk == TOAST_BUTTON { m = put_int(buf[..], 0, s[0].toast_n); m = put(buf[..], m, "/3"); }
+    else if tk == TOAST_EARNED { m = put(buf[..], 0, EARNED[s[0].toast_n % 8]); }
+    else { m = put(buf[..], 0, TOASTS[tk]); }
+    t := cast(string) buf[0..<m];
+    cap := h_fit_cap(t, 11 * k, lo(w * (ifx phone then 0.88f32 else 0.7f32), 640 * k) - 28 * k);
+    tw := h_text_w(t, cap) + 28 * k;
+    tb := h_rect((w - tw) * 0.5, top, tw, cap + 22 * k);
+    h_plate(s, tb, 0.92, LOOK_LIT, 0);
+    n = h_centred(s, out, n, t, w * 0.5, tb.y1 - 11 * k, cap, h_white(k, 1.0));
+  }
+  // The boss bar: his health, once weapons have hurt him.
+  if f[F_BOSS] >= 0 {
+    bb := h_rect((w - 260 * k) * 0.5, top + 46 * k, 260 * k, 30 * k);
+    h_plate(s, bb, 0.9, LOOK_PLAIN, 0);
+    n = h_say(s, out, n, "Ice Cream Man", bb.x0 + 10 * k, bb.y0 + 19 * k, 7 * k, h_white(k, 0.9));
+    n = h_meter(s, out, n, bb.x0 + 112 * k, bb.y0 + 15 * k, 136 * k, f[F_BOSS], 1.0, 0.62, 0.72);
+  }
+  // The crosshair, while aiming.
+  if f[F_CROSSHAIR] > 0 {
+    n = h_ring(out, n, w * 0.5, h * 0.5, 9 * k, 2.2 * k, 0.45, 0.23, 0.14, 0.09);
+    n = h_ring(out, n, w * 0.5, h * 0.5, 9 * k, 1.3 * k, 1.0, 1, 1, 1);
+  }
+  // The hot bar: the tools you own in order, each with its count.
+  owned := cast(int) f[F_OWNED];
+  count := 0;
+  for t: 0..<8 { if (owned >> t) & 1 == 1 { count += 1; } }
+  slots := count + (ifx s[0].touch then 1 else 0);
+  sw := cast(f32) cast(int) lo(84, hi(44, (w / k - 24) / f32(hi(f32(slots), 1)) - 8)) * k;
+  sh := 64 * k;
+  total := f32(slots) * sw + f32(slots - 1) * 8 * k;
+  x := (w - total) * 0.5;
+  y := h - 8 * k - sh;
+  place := 0;
+  tool := cast(int) f[F_TOOL];
+  for t: 0..<8 {
+    if (owned >> t) & 1 == 0 { continue; }
+    place += 1;
+    on := t == tool;
+    b := h_rect(x, y - (ifx on then 6 * k else 0.0f32), sw, sh);
+    i := s[0].button_n;
+    if i < MAX_BUTTONS { s[0].boxes[i] = b; s[0].acts[i] = A_SELECT * 256 + t; s[0].holds[i] = -1; s[0].button_n = i + 1; }
+    h_plate(s, b, 0.92, ifx on then LOOK_ON else ifx s[0].hover == i then LOOK_HOVER else LOOK_PLAIN, 0);
+    m = put_int(buf[..], 0, place);
+    n = h_say(s, out, n, cast(string) buf[0..<m], b.x0 + 6 * k, b.y0 + 13 * k, 6 * k, h_bronze(k, 0.9));
+    name := TOOL_NAMES[t];
+    cap := h_fit_cap(name, 8 * k, sw - 10 * k);
+    n = h_centred(s, out, n, name, (b.x0 + b.x1) * 0.5, b.y0 + 32 * k, cap, ifx on then h_pink(k, 1.0) else h_white(k, 0.95));
+    c := f[F_COUNT + t];
+    if c >= 0 {
+      m = put_int(buf[..], 0, cast(int) c);
+      if t == TOOL_KEYS { m = put(buf[..], m, "/3"); }
+      n = h_centred(s, out, n, cast(string) buf[0..<m], (b.x0 + b.x1) * 0.5, b.y0 + 52 * k, 10 * k, h_white(k, 1.0));
+    }
+    x += sw + 8 * k;
+  }
+  if s[0].touch { n = h_button(s, out, n, h_rect(x, y, sw, sh), "Next", A_CYCLE * 256, -1, LOOK_LIT, 0, 9 * k); }
+  // The prompt, with the front door's unlock bar.
+  if f[F_PROMPT] >= 0 {
+    p := PROMPTS[cast(int) f[F_PROMPT] % 8];
+    if f[F_UNLOCK] >= 0 { p = "Unlocking…"; }
+    key := !s[0].touch;
+    cap := 10 * k;
+    pw := h_text_w(p, cap) + 28 * k + (ifx key then 30 * k else 0.0f32) + (ifx f[F_UNLOCK] >= 0 then 104 * k else 0.0f32);
+    pb := h_rect((w - pw) * 0.5, y - 48 * k - 10 * k, pw, 36 * k);
+    h_plate(s, pb, 0.92, LOOK_READY, 0);
+    px := pb.x0 + 14 * k;
+    if key {
+      h_plate(s, h_rect(px - 4 * k, pb.y0 + 7 * k, 22 * k, 22 * k), 1, LOOK_LIT, 0);
+      n = h_centred(s, out, n, "E", px + 7 * k, pb.y0 + 22 * k, 9 * k, h_white(k, 1.0));
+      px += 30 * k;
+    }
+    n = h_say(s, out, n, p, px, pb.y0 + 23 * k, cap, h_white(k, 1.0));
+    if f[F_UNLOCK] >= 0 { n = h_meter(s, out, n, pb.x1 - 104 * k, pb.y0 + 18 * k, 90 * k, f[F_UNLOCK], 0.97, 0.77, 0.17); }
+  }
+  // A phone's thumbs: the stick on the left, the buttons on the right.
+  if s[0].touch {
+    tab: f32 = ifx lo(w, h) >= 700 * k then 1.3f32 else 1.0f32;
+    q := k * tab;
+    st := h_rect(28 * q, h - 120 * k - 120 * q, 120 * q, 120 * q);
+    s[0].stick = st;
+    s[0].stick_cx = (st.x0 + st.x1) * 0.5; s[0].stick_cy = (st.y0 + st.y1) * 0.5;
+    h_plate(s, st, 0.45, LOOK_PLAIN, 60 * q);
+    kx := s[0].stick_cx + f[F_KNOB_X] * k; ky := s[0].stick_cy + f[F_KNOB_Y] * k;
+    h_plate(s, h_rect(kx - 25 * q, ky - 25 * q, 50 * q, 50 * q), 0.95, LOOK_ON, 25 * q);
+    n = h_thumb(s, out, n, 24, 104, 84, q, "Fire", A_HELD * 256, 1, LOOK_ON);
+    n = h_thumb(s, out, n, 118, 92, 64, q, "Jump", A_HELD * 256, 0, LOOK_LIT);
+    n = h_thumb(s, out, n, 34, 200, 62, q, "Use", A_HELD * 256, 2, ifx f[F_PROMPT] >= 0 then LOOK_READY else LOOK_LIT);
+    n = h_thumb(s, out, n, 120, 170, 62, q, "Sprint", A_HELD * 256, 3, ifx f[F_SPRINT] > 0 then LOOK_HOT else LOOK_LIT);
+    n = h_thumb(s, out, n, 40, 276, 50, q, "View", A_VIEW * 256, -1, LOOK_LIT);
+  }
+  return n;
+}
+
+h_thumb :: (s: [] IceRealm, out: [] f32, at: int, right: f32, bottom: f32, size: f32, q: f32, label: string, act: int, hold: int, look: f32) -> int {
+  k := s[0].dpr;
+  b := h_rect(s[0].width - right * q - size * q, s[0].height - 16 * k - bottom * q - size * q, size * q, size * q);
+  return h_button(s, out, at, b, label, act, hold, look, size * q * 0.5, 8 * k);
+}
+
+// ---- the cards (app.rs card): the tour, Paused, the end of a round
+
+Line :: struct { text: string; }
+CardButton :: struct { label: string; act: int; main: bool; }
+h_draw_card :: (s: [] IceRealm, out: [] f32, at: int) -> int {
+  f := s[0].facts[..];
+  k := s[0].dpr; w := s[0].width; h := s[0].height;
+  n := at;
+  title := "";
+  lines: [4] string; line_n := 0;
+  buttons: [9] CardButton; button_n := 0;
+  tour := cast(int) f[F_TOUR];
+  buf: [48] u8; m := 0;
+  timer := ifx f[F_TIMER_ON] > 0 then "Timer: on" else "Timer: off";
+  scares := ifx f[F_JUMPSCARES] > 0 then "Jumpscares: on" else "Jumpscares: off";
+  sprint := ifx f[F_SPRINT_TAP] > 0 then "Tap sprint" else "Hold sprint";
+  if tour >= 0 {
+    step := tour % 4;
+    title = TOUR_TITLES[step];
+    m = put_int(buf[..], 0, step + 1); m = put(buf[..], m, " of 4");
+    lines[0] = cast(string) buf[0..<m];
+    lines[1] = ifx s[0].touch then TOUR_TOUCH[step * 2] else TOUR_KEYS[step * 2];
+    lines[2] = ifx s[0].touch then TOUR_TOUCH[step * 2 + 1] else TOUR_KEYS[step * 2 + 1];
+    line_n = 3;
+    if step > 0 { buttons[button_n] = CardButton.{label = "Back", act = A_TOUR_BACK * 256}; button_n += 1; }
+    if step == 3 { buttons[button_n] = CardButton.{label = "Start playing", act = A_TOUR_END * 256, main = true}; button_n += 1; }
+    else {
+      buttons[button_n] = CardButton.{label = "Skip", act = A_TOUR_END * 256}; button_n += 1;
+      buttons[button_n] = CardButton.{label = "Next", act = A_TOUR_NEXT * 256, main = true}; button_n += 1;
+    }
+  } else if run_phase(s) == PH_TITLE {
+    title = "The Ice Cream Man";
+    buttons[0] = CardButton.{label = "Help", act = A_TOUR * 256};
+    buttons[1] = CardButton.{label = "Play", act = A_PLAY * 256, main = true};
+    button_n = 2;
+  } else if run_phase(s) == PH_MENU {
+    title = "Paused";
+    buttons[0] = CardButton.{label = "Help", act = A_TOUR * 256};
+    buttons[1] = CardButton.{label = "Restart", act = A_NEW_HOUSE * 256};
+    buttons[2] = CardButton.{label = "Resume", act = A_RESUME * 256, main = true};
+    buttons[3] = CardButton.{label = timer, act = A_TIMER * 256};
+    buttons[4] = CardButton.{label = scares, act = A_JUMPSCARES * 256};
+    buttons[5] = CardButton.{label = DIFFICULTIES[cast(int) f[F_NEXT_DIFFICULTY] % 3], act = A_DIFFICULTY * 256};
+    button_n = 6;
+    if s[0].touch { buttons[button_n] = CardButton.{label = sprint, act = A_SPRINT_MODE * 256}; button_n += 1; }
+    buttons[button_n] = CardButton.{label = "Galaxy", act = A_GALAXY * 256}; button_n += 1;
+  } else {
+    status := cast(int) f[F_STATUS];
+    won := f[F_WON] > 0;
+    title = ifx status == ST_MELTED then "You melted him!" else ifx won then "You escaped!" else "Scooped!";
+    keep := f[F_KEEP] > 0;
+    buttons[0] = CardButton.{label = ifx won then "Again" else "Again", act = A_NEW_HOUSE * 256, main = !keep};
+    button_n = 1;
+    if keep { buttons[button_n] = CardButton.{label = "Continue", act = A_KEEP * 256, main = true}; button_n += 1; }
+    buttons[button_n] = CardButton.{label = "Galaxy", act = A_GALAXY * 256}; button_n += 1;
+  }
+  // The sheet: its width, the lines wrapped to it, the buttons in rows.
+  cw := lo(520 * k, w - 32 * k);
+  pad := 20 * k;
+  tcap := h_fit_cap(title, 17 * k, cw - 2 * pad);
+  lcap := ifx w < 640 * k then 8 * k else 9 * k;
+  lh := lcap * 2.3;
+  wraps: [24] int; wrap_n := 0;
+  next: [1] int;
+  for l: 0..<line_n {
+    from := 0;
+    t := lines[l];
+    while from < t.count && wrap_n < 22 {
+      wk := h_white(k, 0.95); wk.scale = k;
+      end := wrap_ink(t, from, cw - 2 * pad, lcap, GAP, SPACE, wk, next[..]);
+      wraps[wrap_n] = l * 4096 + from; wraps[wrap_n + 1] = l * 4096 + end; wrap_n += 2;
+      if next[0] <= from { break; }
+      from = next[0];
+    }
+  }
+  bh := 36 * k; bg := 8 * k;
+  bwidths: [9] f32;
+  rows := 1; rw: f32 = 0;
+  for i: 0..<button_n {
+    bw := hi(h_text_w(buttons[i].label, 9 * k) + 34 * k, 88 * k);
+    bwidths[i] = bw;
+    if rw > 0 && rw + bg + bw > cw - 2 * pad { rows += 1; rw = bw; } else { rw += (ifx rw > 0 then bg else 0.0f32) + bw; }
+  }
+  ch := pad + tcap + 14 * k + f32(wrap_n / 2) * lh + 8 * k + f32(rows) * (bh + bg) + pad - bg;
+  cb := h_rect((w - cw) * 0.5, (h - ch) * 0.5, cw, ch);
+  h_plate(s, cb, 0.95, LOOK_LIT, 0);
+  y := cb.y0 + pad + tcap;
+  n = h_centred(s, out, n, title, w * 0.5, y, tcap, h_pink(k, 1.0));
+  y += 14 * k;
+  for i: 0..<wrap_n / 2 {
+    l := wraps[i * 2] / 4096;
+    a := wraps[i * 2] % 4096; e := wraps[i * 2 + 1] % 4096;
+    y += lh;
+    body := ifx l == 0 && tour >= 0 then h_bronze(k, 0.95) else h_white(k, 0.95);
+    body.scale = k;
+    seg := lines[l][a..<e];
+    n = h_say(s, out, n, seg, w * 0.5 - ink_width(seg, lcap, GAP, SPACE, body) * 0.5, y - lh * 0.3, lcap, body);
+  }
+  y += 8 * k;
+  // Lay each row out centred.
+  s[0].main_act = 0;
+  i := 0;
+  while i < button_n {
+    j := i; rw = 0;
+    while j < button_n && (rw == 0 || rw + bg + bwidths[j] <= cw - 2 * pad) { rw += (ifx rw > 0 then bg else 0.0f32) + bwidths[j]; j += 1; }
+    x := (w - rw) * 0.5;
+    for b: i..<j {
+      bb := h_rect(x, y, bwidths[b], bh);
+      n = h_button(s, out, n, bb, buttons[b].label, buttons[b].act, -1, ifx buttons[b].main then LOOK_ON else LOOK_LIT, 0, 9 * k);
+      if buttons[b].main && s[0].main_act == 0 { s[0].main_act = buttons[b].act; }
+      x += bwidths[b] + bg;
+    }
+    y += bh + bg;
+    i = j;
+  }
+  return n;
+}
+
+h_draw_hud :: (s: [] IceRealm, out: [] f32) -> int {
+  p := run_phase(s);
+  n := 0;
+  if p == PH_PLAYING || p == PH_MENU || p == PH_ENDING { n = h_draw_playing(s, out, n); }
+  if h_card_on(s) {
+    s[0].button_n = 0;
+    s[0].plate_n = 0;
+    n = h_draw_card(s, out, 0);
+  }
+  return n;
 }
 
 // ---- the frame: the HUD's strokes and uniforms (the face adds the scene's)
 
-ice_frame :: (s: [] IceRealm, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, step: f32, still: bool) -> int #export_c {
+ice_frame :: (s: [] IceRealm, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, step: f32, still: bool, facts: [] f32, seed: u64) -> int #export_c {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   if !s[0].started { ice_reset(s); }
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
   s[0].time += clamp(step, 0, 0.1);
+  s[0].seed = seed;
+  for i: 0..<FACTS { s[0].facts[i] = ifx i < facts.count then facts[i] else 0.0f32; }
+  if s[0].facts[F_TOUCH] > 0 { s[0].touch = true; }
   s[0].plate_n = 0;
-  for i: 0..<BUTTONS { s[0].shown[i] = false; }
-  n := draw_hud(s, out);
-  uniforms[0] = width; uniforms[1] = height; uniforms[2] = ice_time(s);
+  s[0].button_n = 0;
+  n := h_draw_hud(s, out);
+  if s[0].hover >= s[0].button_n { s[0].hover = -1; }
+  uniforms[0] = width; uniforms[1] = height; uniforms[2] = ifx still then 0.0f32 else s[0].time;
   uniforms[3] = ifx still then 1.0f32 else clamp(s[0].time / 0.4, 0, 1);
   uniforms[4] = ifx still then 1.0f32 else 0.0f32;
   uniforms[5] = cast(f32) s[0].plate_n;
@@ -202,7 +610,8 @@ ice_frame :: (s: [] IceRealm, out: [] f32, uniforms: [] f32, width: f32, height:
     o := PANEL_AT + i * 8; b := s[0].plates[i];
     on := i < s[0].plate_n;
     uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
-    uniforms[o + 4] = s[0].dpr; uniforms[o + 5] = ifx on then s[0].plate_alpha[i] else 0.0f32; uniforms[o + 6] = s[0].plate_look[i]; uniforms[o + 7] = 0;
+    uniforms[o + 4] = s[0].dpr; uniforms[o + 5] = ifx on then s[0].plate_alpha[i] else 0.0f32;
+    uniforms[o + 6] = s[0].plate_look[i]; uniforms[o + 7] = s[0].plate_radius[i];
   }
   return n;
 }
@@ -213,32 +622,74 @@ coaxial_ice_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 
 // ---- checks
 
-#test "the HUD: a title plate and GALAXY, on a laptop and a phone" {
-  s: [1] IceRealm;
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  u: [UNIFORM_FLOATS] f32;
-  n := ice_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, true);
-  #assert n > 0 && s[0].plate_n == 2 && u[5] == 2 && u[PANEL_AT + 5] > 0 && u[PANEL_AT + 16 + 5] == 0;
-  b := s[0].boxes[BTN_GALAXY];
-  #assert b.x1 <= 1440 && b.x0 > s[0].plates[0].x1;
-  n = ice_frame(s[..], out[..], u[..], 1170, 2532, 3, 0.016, true);
-  b = s[0].boxes[BTN_GALAXY];
-  #assert n > 0 && b.x1 <= 1170 && b.y0 > s[0].plates[0].y1 && s[0].plates[0].x1 <= 1170 - 48;
+h_playing_facts :: (f: [] f32) {
+  for i: 0..<FACTS { f[i] = 0; }
+  f[F_PHASE] = PH_PLAYING; f[F_TOUR] = -1; f[F_HEALTH] = 100; f[F_OWNED] = 7; f[F_TOOL] = 0;
+  f[F_COUNT] = 12; f[F_COUNT + 1] = 3; f[F_COUNT + 2] = 1; for t: 3..<8 { f[F_COUNT + t] = -1; }
+  f[F_BOSS] = -1; f[F_PROMPT] = -1; f[F_UNLOCK] = -1; f[F_TIMER] = 42.3; f[F_SCARE] = -1;
 }
 
-#test "#seed=N picks the house; GALAXY and Escape go back" {
+#test "the HUD while playing: health, keys, Menu, the timer and the hot bar, on a laptop and a phone" {
   s: [1] IceRealm;
-  #assert ice_seed(s[..]) == SEED;
-  ice_hash(s[..], "seed=12");
-  #assert ice_seed(s[..]) == 12;
-  ice_hash(s[..], "");
-  #assert ice_seed(s[..]) == SEED;
-  #assert ice_key(s[..], KEY_ESCAPE, true) && ice_action(s[..]) == ACT_NAVIGATE;
-  #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/verse/galaxy";
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
-  n := ice_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, true);
-  b := s[0].boxes[BTN_GALAXY];
-  x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
-  #assert ice_pointer(s[..], x, y, POINTER_DOWN, 0, 1) && ice_pointer(s[..], x, y, POINTER_UP, 0, 1) && ice_action(s[..]) == ACT_NAVIGATE;
+  f: [FACTS] f32;
+  h_playing_facts(f[..]);
+  n := ice_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, true, f[..], 3);
+  #assert n > 0 && s[0].plate_n >= 7 && s[0].button_n == 4;
+  for i: 0..<s[0].plate_n { b := s[0].plates[i]; #assert b.x0 >= 0 && b.x1 <= 1440 && b.y0 >= 0 && b.y1 <= 900; }
+  ice_page(s[..], "dpr=3\ncoarse=1\n");
+  n = ice_frame(s[..], out[..], u[..], 1170, 2532, 3, 0.016, true, f[..], 3);
+  #assert s[0].touch && s[0].button_n == 4 + 1 + 5;
+  for i: 0..<s[0].plate_n { b := s[0].plates[i]; #assert b.x0 >= 0 && b.x1 <= 1170 && b.y0 >= 0 && b.y1 <= 2532; }
+  // the buttons don't overlap
+  for i: 0..<s[0].button_n {
+    for j: i + 1..<s[0].button_n {
+      a := s[0].boxes[i]; b := s[0].boxes[j];
+      #assert a.x1 <= b.x0 || b.x1 <= a.x0 || a.y1 <= b.y0 || b.y1 <= a.y0;
+    }
+  }
+}
+
+#test "the thumbs: Fire is held, a tool is picked, the stick is the run's" {
+  s: [1] IceRealm;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  f: [FACTS] f32;
+  h_playing_facts(f[..]);
+  ice_page(s[..], "touch=1");
+  n := ice_frame(s[..], out[..], u[..], 1170, 2532, 3, 0.016, true, f[..], 3);
+  fire := -1; slot := -1;
+  for i: 0..<s[0].button_n { if s[0].holds[i] == 1 { fire = i; } if s[0].acts[i] == A_SELECT * 256 + 1 { slot = i; } }
+  #assert fire >= 0 && slot >= 0;
+  b := s[0].boxes[fire];
+  #assert ice_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 1, 5) == 0;
+  #assert ice_next_act(s[..]) == A_HELD * 256 + 3;
+  #assert ice_pointer(s[..], 10, 10, POINTER_UP, 1, 5) == 0 && ice_next_act(s[..]) == A_HELD * 256 + 2;
+  b = s[0].boxes[slot];
+  #assert ice_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 1, 6) == 0 && ice_next_act(s[..]) == A_SELECT * 256 + 1;
+  #assert ice_pointer(s[..], s[0].stick_cx, s[0].stick_cy, POINTER_DOWN, 1, 7) == -2;
+  #assert ice_pointer(s[..], 600, 900, POINTER_DOWN, 1, 8) == -1;
+}
+
+#test "the cards: Paused, the end of a round and the tour, each with its main button" {
+  s: [1] IceRealm;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  f: [FACTS] f32;
+  h_playing_facts(f[..]);
+  f[F_PHASE] = PH_MENU;
+  n := ice_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, true, f[..], 3);
+  #assert n > 0 && s[0].button_n == 7 && s[0].main_act == A_RESUME * 256;
+  #assert ice_key(s[..], KEY_ENTER, true) && ice_next_act(s[..]) == A_RESUME * 256;
+  f[F_PHASE] = PH_OVER; f[F_STATUS] = ST_SCOOPED;
+  n = ice_frame(s[..], out[..], u[..], 390, 844, 1, 0.016, true, f[..], 3);
+  #assert s[0].button_n == 2 && s[0].main_act == A_NEW_HOUSE * 256;
+  b := s[0].boxes[1];
+  #assert ice_pointer(s[..], b.x0 + 2, b.y0 + 2, POINTER_DOWN, 0, 1) == 0 && ice_pointer(s[..], b.x0 + 2, b.y0 + 2, POINTER_UP, 0, 1) == 0;
+  #assert ice_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/verse/galaxy";
+  f[F_TOUR] = 3;
+  n = ice_frame(s[..], out[..], u[..], 390, 844, 1, 0.016, true, f[..], 3);
+  #assert s[0].main_act == A_TOUR_END * 256;
+  for i: 0..<s[0].plate_n { bb := s[0].plates[i]; #assert bb.x0 >= 0 && bb.x1 <= 390 && bb.y0 >= 0 && bb.y1 <= 844; }
 }
