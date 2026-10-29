@@ -40,6 +40,12 @@
       "title": "More worlds: Sandbox, the Grid, Medieval Town",
       "body": "After the three above.",
       "parent": "realms-port"
+    },
+    {
+      "slug": "ff",
+      "title": "Fairy Forest",
+      "body": "The painterly valley round the heart tree: restore the faded forest with Bloom, help its creatures, wake the heart tree's roots.",
+      "parent": "realms-port"
     }
   ],
   "tasks": [
@@ -789,6 +795,31 @@
       "blocked_by": [
         "rl-realm-host"
       ],
+      "blocks": []
+    },
+    {
+      "slug": "ff-first-crack",
+      "parent": "ff",
+      "title": "Fairy Forest's first crack: the valley, the fairy and one loop, unlisted",
+      "size": "M",
+      "labels": [
+        "realms",
+        "art-styles"
+      ],
+      "body": "A first playable Fairy Forest at /realms/fairy-forest in the painterly style, unlisted (`listed: false`): the valley round the heart tree with Mossbank and two more glades on trails, a stream and pond, the world faded with colour spreading from what you restore; you a fairy with glowing wings, hops of flight and a glide; Bloom (E, or BLOOM on a phone) at faded patches; three creatures with mood glyphs; a glade's patches make its creature happy and wake a heart-tree root.\n\nPlan: `verse/fairy-forest/README.md`.",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "apps/openagents-web/fairy-face.c",
+        "apps/openagents-web/fairy.wgsl",
+        "verse/fairy-forest/",
+        "verse/paint.coax"
+      ],
+      "acceptance": [
+        "/realms/fairy-forest is 200 on production and absent from the galaxy",
+        "Bloom at a patch restores colour round it; a glade's three patches turn its creature happy and wake a root",
+        "Desktop and phone shots, and a golden"
+      ],
+      "blocked_by": [],
       "blocks": []
     }
   ]

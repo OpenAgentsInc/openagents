@@ -24,9 +24,11 @@ splash=$!
 # The art styles' shading (verse/style.coax, docs/verse/art-styles.md) into the fixture and every
 # painterly realm's WGSL (realms.ts --check refuses a painterly realm without it).
 style_fns="verse_style_wrap verse_style_bands verse_style_bands2 verse_style_shade verse_style_ambient verse_style_dab verse_style_rim verse_style_haze verse_style_haze_glow verse_style_fog verse_style_sky_t verse_style_sky_band verse_style_halo verse_style_tone verse_style_saturation verse_style_lift verse_style_luma"
-for w in fixture everglade villa; do
+for w in fixture everglade villa fairy; do
   (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns --into "apps/openagents-web/$w.wgsl")
 done
+# Fairy Forest's painterly shading (verse/paint.coax).
+(cd "$here/../.." && python3 coax/web/wgsl.py verse/paint.coax verse_paint_wrap verse_paint_band verse_paint_band2 verse_paint_rim verse_paint_haze verse_paint_haze_sun verse_paint_sky_mix verse_paint_sky_band verse_paint_halo verse_paint_cloud verse_paint_tone verse_paint_bloom verse_paint_water_mid verse_paint_water_deep verse_paint_sparkle --into apps/openagents-web/fairy.wgsl)
 m="$here/../../verse"
 # The voice engine for pages that talk (data-voice: the Haunted House), coax/web/voice.js.
 "$here/../../coax/web/voice/build.sh" "$here/build/voice.wasm" &
@@ -43,6 +45,10 @@ garden=$!
 "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/everglade-face.c" "$here/build/everglade.wasm" \
   "$m/player.coax" "$m/grid.coax" "$m/everglade/river.coax" &
 everglade=$!
+# /realms/fairy-forest: the painterly valley (verse/fairy-forest/forest.coax), with the player, thumbs and its stream (verse/fairy-forest/stream.coax).
+"$here/../../coax/web/wasm.sh" "$here/fairy.coax" "$here/fairy-face.c" "$here/build/fairy.wasm" \
+  "$m/player.coax" "$m/grid.coax" "$m/fairy-forest/stream.coax" &
+fairy=$!
 # /realms/the-grid: the bare Verse world from the demo's scene (verse/tools/pack_grid.py), with the player and thumbs.
 "$here/../../coax/web/wasm.sh" "$here/thegrid.coax" "$here/thegrid-face.c" "$here/build/thegrid.wasm" \
   "$m/player.coax" "$m/grid.coax" &
@@ -112,5 +118,6 @@ wait "$droprealm"
 wait "$icecream"
 wait "$deadgears"
 wait "$everglade"
+wait "$fairy"
 wait "$thegrid"
 wait "$villa"

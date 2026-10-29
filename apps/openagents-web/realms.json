@@ -85,6 +85,19 @@
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/everglade/assets/everglade.pack"]
       } },
+    { "id": "fairy", "name": "FAIRY FOREST", "kind": "open", "listed": false, "orbit": { "r": 0.3, "a": 0.9, "size": 0.028 },
+      "realm": {
+        "slug": "fairy-forest",
+        "style": "painterly",
+        "clock": "fixed:0.5",
+        "title": "Fairy Forest",
+        "description": "Fairy Forest, a faded valley round a sleeping heart tree: you are a fairy who wakes in Mossbank. Bloom the grey patches back to colour, help the creatures of the glades and wake the heart tree's roots.",
+        "alt": "Fairy Forest: a painted valley round the heart tree",
+        "module": "fairy",
+        "slot": "fairy-forest",
+        "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
+        "assets": ["index:/realms/fairy-forest/assets/Fairy.indices"]
+      } },
     { "id": "deadgears", "name": "DEAD GEARS", "kind": "open", "orbit": { "r": 0.3, "a": 2.9, "size": 0.03 },
       "realm": {
         "slug": "dead-gears",

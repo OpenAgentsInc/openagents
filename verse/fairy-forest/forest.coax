@@ -1,0 +1,315 @@
+// Fairy Forest's valley (verse/fairy-forest/README.md, the first crack): its
+// layout in metres, the trails, the stream's course, where the trees stand,
+// the faded flower patches, the creatures and their troubles, and the fade:
+// colour comes back in circles that spread out from what you bloom. The page
+// (apps/openagents-web/fairy.coax) loads this file, draws it and runs it;
+// fairy.wgsl reads the circles (Bloom) to drain or restore colour.
+//
+// +z is north and the heart tree is the origin. The valley is 160 m across
+// (80 cells of 2 m); you may walk 124 m of it, and its rim rises into
+// wooded ridges. Three glades of the spec's five are in this crack:
+// Mossbank (where you wake), The Reeds (by the pond) and Lanternwood. Each
+// glade's creature has one trouble: its glade has faded. Bloom its patches
+// and it is happy again, and one of the heart tree's five roots wakes.
+//   coax/bin/coax test apps/openagents-web/fairy.coax   (this file's checks run with the page's)
+
+FF_CELLS :: 80;
+FF_CELL :: 2.0;
+FF_EDGE :: -80.0;
+FF_BOUND :: 62.0;          // metres from the heart you may walk
+FF_PATH_HALF :: 1.1;
+FF_GROUND_POINTS :: (FF_CELLS + 1) * (FF_CELLS + 1);
+FF_LEVEL :: -0.3;          // the stream's and the pond's surface
+
+// The trails: the ring round the heart tree and a trail out to each glade.
+FF_NODES :: 18;
+FF_NODE_XZ :: [36] f32.[
+  0, 10,  10, 0,  0, -10,  -10, 0,                 // 0-3 the ring round the heart
+  -16, -18,  -26, -28,  -33, -35,                  // 4-6 to Mossbank (6: where you wake)
+  12, -6,  20, -13,                                // 7-8 to the Reeds
+  -10, 18,  -20, 28,  -27, 33,                     // 9-11 to Lanternwood
+  -40, -44,  -24, -42,                             // 12-13 round Mossbank
+  -34, 40,  -18, 38,                               // 14-15 round Lanternwood
+  6, 22,  4, 38                                    // 16-17 north toward the stream's woods
+];
+FF_LINKS :: 18;
+FF_LINK_AB :: [36] int.[
+  0, 1,  1, 2,  2, 3,  3, 0,
+  2, 4,  4, 5,  5, 6,  6, 12,  6, 13,  13, 5,
+  1, 7,  7, 8,
+  0, 9,  9, 10,  10, 11,  11, 14,  11, 15,
+  0, 16
+];
+// Flat ground: the heart's clearing and the glades.
+FF_FLATS :: [16] f32.[0, 0, 14, 0.2,   -33, -35, 9, 0.3,   21, -15, 6, 0.1,   -27, 33, 9, 0.4];
+
+// The stream: control points (x, z, full width), north to south, wide at the pond.
+FF_COURSE_N :: 10;
+FF_COURSE :: [30] f32.[
+  22, 82, 3.5,   26, 58, 3.5,   18, 40, 4,   26, 20, 4,   32, 2, 5,
+  36, -12, 17,   37, -20, 15,   31, -36, 4,   37, -56, 4,   30, -84, 3.5
+];
+FF_POND_X :: 36.5; FF_POND_Z :: -16.0;
+
+// The glades: x, z, radius.
+FF_GLADES :: 3;
+FF_GLADE :: [9] f32.[-33, -35, 11,   21, -15, 8,   -27, 33, 11];
+FF_GLADE_NAMES :: [3] string.["MOSSBANK", "THE REEDS", "LANTERNWOOD"];
+FF_SPAWN_X :: -33.0; FF_SPAWN_Z :: -37.0; FF_SPAWN_FACE :: 0.7;
+
+// The faded patches to bloom: x, z, how far colour spreads, glade (-1 the first flower).
+FF_PATCHES :: 9;
+FF_PATCH :: [36] f32.[
+  -31.5, -34.8, 7, -1,
+  -37, -30, 13, 0,   -27, -39, 13, 0,   -38, -40, 12, 0,
+  17.5, -18, 13, 1,   24, -10.5, 13, 1,
+  -31, 28, 13, 2,   -22, 37, 13, 2,   -33, 39, 12, 2
+];
+FF_BLOOM_NEAR :: 2.8;      // metres: near enough to bloom a patch
+FF_SPREAD :: 2.6;          // seconds a bloom takes to spread to its full reach
+
+// The creatures: x, z, the glade whose trouble is theirs, kind (0 hedgehog, 1 frog, 2 rabbit).
+FF_CREATURES :: 3;
+FF_CREATURE :: [12] f32.[-30, -31.5, 0, 0,   20, -14, 1, 1,   -24.5, 31, 2, 2];
+FF_CREATURE_NAMES :: [3] string.["BRAMBLE", "PIP", "CLOVER"];
+FF_TALK_NEAR :: 6.0;
+// What each says: worried, partly helped, happy.
+FF_SAYS :: [9] string.[
+  "MOSSBANK HAS GONE GREY. THE FLOWERS BY MY BURROW WON'T WAKE.",
+  "IT'S COMING BACK. THERE'S MORE GREY BY THE MUSHROOMS.",
+  "MOSSBANK IS GREEN AGAIN. LISTEN, THE HEART TREE STIRRED.",
+  "THE REEDS ARE GREY AND THE POND HAS GONE QUIET.",
+  "ONE MORE PATCH ON THE BANK AND I CAN SING.",
+  "RIBBIT! THE REEDS ARE SINGING. A ROOT HAS WOKEN.",
+  "LANTERNWOOD'S LIGHTS HAVE GONE OUT. I CAN'T FIND MY WAY.",
+  "I CAN SEE A LITTLE LIGHT. KEEP GOING.",
+  "THE LANTERNS ARE LIT. THANK YOU, LITTLE FAIRY."
+];
+MOOD_WORRIED :: 0; MOOD_HOPEFUL :: 1; MOOD_HAPPY :: 2;
+
+// The heart tree's five roots: where each tip lies (x, z), and the glade that wakes it (-1: a glade not in this crack).
+FF_ROOTS :: 5;
+FF_ROOT :: [15] f32.[-9, -9, 0,   10, -6, 1,   -8, 9, 2,   9, 8, -1,   0, -12, -1];
+FF_ROOT_SPREAD :: 22.0;
+
+// A circle of restored colour: where, how far it reaches, when it began, and whether it is in use.
+Bloom :: struct { x: f32; z: f32; reach: f32; began: f64; on: bool; }
+FF_BLOOMS :: 24;
+
+Forest :: struct {
+  bloomed: [FF_PATCHES] bool;
+  bloomed_at: [FF_PATCHES] f64;
+  awake: [FF_ROOTS] bool;
+  awake_at: [FF_ROOTS] f64;
+  blooms: [FF_BLOOMS] Bloom;
+  bloom_n: int;
+  news: int;               // what just happened: -1 none, 0..4 a root woke, 10 + creature: that creature is happy
+  news_at: f64;
+}
+
+// ---- the fade
+
+ff_bloom_add :: (f: [] Forest, x: f32, z: f32, reach: f32, now: f64) {
+  if f[0].bloom_n >= FF_BLOOMS { return; }
+  f[0].blooms[f[0].bloom_n] = Bloom.{x = x, z = z, reach = reach, began = now, on = true};
+  f[0].bloom_n += 1;
+}
+
+// How far a bloom has spread at `now`: eased out over FF_SPREAD seconds.
+ff_bloom_radius :: (b: Bloom, now: f64) -> f32 {
+  if !b.on { return 0; }
+  t := clamp01(cast(f32) ((now - b.began) / FF_SPREAD));
+  e := 1 - (1 - t) * (1 - t) * (1 - t);
+  return b.reach * e;
+}
+
+// How much colour is back at (x, z), 0 faded to 1 restored: the shader's
+// restored() over the same circles, with the same soft 5 m edge.
+ff_restored :: (f: [] Forest, x: f32, z: f32, now: f64) -> f32 {
+  best := 0.0f32;
+  for i: 0..<f[0].bloom_n {
+    b := f[0].blooms[i];
+    r := ff_bloom_radius(b, now);
+    if r <= 0 { continue; }
+    dx := x - b.x; dz := z - b.z;
+    d := sqrt(dx * dx + dz * dz);
+    edge := lo(5.0, r);
+    v := 1 - clamp01((d - (r - edge)) / hi(edge, 0.001));
+    best = hi(best, v);
+  }
+  return best;
+}
+
+// ---- patches, creatures, roots
+
+// The nearest patch not yet bloomed within reach of (x, z), or -1.
+ff_patch_near :: (f: [] Forest, x: f32, z: f32) -> int {
+  best := -1; bd := f32(FF_BLOOM_NEAR);
+  for i: 0..<FF_PATCHES {
+    if f[0].bloomed[i] { continue; }
+    dx := x - FF_PATCH[i * 4]; dz := z - FF_PATCH[i * 4 + 1];
+    d := sqrt(dx * dx + dz * dz);
+    if d < bd { bd = d; best = i; }
+  }
+  return best;
+}
+
+// Blooms patch i at `now`: colour spreads from it, and its glade's creature
+// is helped. Returns false when it was already bloomed.
+ff_bloom :: (f: [] Forest, i: int, now: f64) -> bool {
+  if i < 0 || i >= FF_PATCHES || f[0].bloomed[i] { return false; }
+  f[0].bloomed[i] = true;
+  f[0].bloomed_at[i] = now;
+  ff_bloom_add(f, FF_PATCH[i * 4], FF_PATCH[i * 4 + 1], FF_PATCH[i * 4 + 2], now);
+  return true;
+}
+
+// Patches of a glade bloomed, and how many it has.
+ff_glade_done :: (f: [] Forest, g: int) -> int {
+  n := 0;
+  for i: 0..<FF_PATCHES { if cast(int) FF_PATCH[i * 4 + 3] == g && f[0].bloomed[i] { n += 1; } }
+  return n;
+}
+ff_glade_patches :: (g: int) -> int {
+  n := 0;
+  for i: 0..<FF_PATCHES { if cast(int) FF_PATCH[i * 4 + 3] == g { n += 1; } }
+  return n;
+}
+
+ff_mood :: (f: [] Forest, c: int) -> int {
+  g := cast(int) FF_CREATURE[c * 4 + 2];
+  done := ff_glade_done(f, g);
+  if done >= ff_glade_patches(g) { return MOOD_HAPPY; }
+  if done > 0 { return MOOD_HOPEFUL; }
+  return MOOD_WORRIED;
+}
+
+ff_says :: (f: [] Forest, c: int) -> string { return FF_SAYS[c * 3 + ff_mood(f, c)]; }
+
+ff_roots_awake :: (f: [] Forest) -> int {
+  n := 0;
+  for r: 0..<FF_ROOTS { if f[0].awake[r] { n += 1; } }
+  return n;
+}
+
+// Each frame: a glade whose patches are all bloomed makes its creature
+// happy, and a moment later its root of the heart tree wakes, spreading
+// colour from the root's tip back toward the heart.
+ff_step :: (f: [] Forest, now: f64) {
+  for r: 0..<FF_ROOTS {
+    g := cast(int) FF_ROOT[r * 3 + 2];
+    if g < 0 || f[0].awake[r] { continue; }
+    if ff_glade_done(f, g) < ff_glade_patches(g) { continue; }
+    last := 0.0;
+    for i: 0..<FF_PATCHES { if cast(int) FF_PATCH[i * 4 + 3] == g && f[0].bloomed_at[i] > last { last = f[0].bloomed_at[i]; } }
+    if now - last < 1.5 { continue; }
+    f[0].awake[r] = true;
+    f[0].awake_at[r] = now;
+    ff_bloom_add(f, FF_ROOT[r * 3], FF_ROOT[r * 3 + 1], f32(FF_ROOT_SPREAD), now);
+    f[0].news = r; f[0].news_at = now;
+  }
+}
+
+// ---- the stream's course as the page draws and carves it
+
+// The Catmull-Rom point at t in [0, 1] between controls i and i + 1 (water.coax's spline).
+ff_course_at :: (i: int, t: f32) -> Point {
+  n := FF_COURSE_N;
+  a := ff_ci(i - 1, n); b := ff_ci(i, n); c := ff_ci(i + 1, n); d := ff_ci(i + 2, n);
+  t2 := t * t; t3 := t2 * t;
+  x := ff_spline(FF_COURSE[a * 3], FF_COURSE[b * 3], FF_COURSE[c * 3], FF_COURSE[d * 3], t, t2, t3);
+  z := ff_spline(FF_COURSE[a * 3 + 1], FF_COURSE[b * 3 + 1], FF_COURSE[c * 3 + 1], FF_COURSE[d * 3 + 1], t, t2, t3);
+  w := FF_COURSE[b * 3 + 2] + (FF_COURSE[c * 3 + 2] - FF_COURSE[b * 3 + 2]) * t;
+  return v3(x, w, z);
+}
+ff_ci :: (i: int, n: int) -> int { if i < 0 { return 0; } if i >= n { return n - 1; } return i; }
+ff_spline :: (p0: f32, p1: f32, p2: f32, p3: f32, t: f32, t2: f32, t3: f32) -> f32 {
+  return 0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (3 * p1 - p0 - 3 * p2 + p3) * t3);
+}
+
+// The distance from (x, z) to the stream's middle, and its half width there.
+StreamNear :: struct { d: f32; half: f32; }
+ff_stream_near :: (x: f32, z: f32) -> StreamNear {
+  best := StreamNear.{d = 100000, half = 1};
+  steps := 6;
+  prev := ff_course_at(0, 0);
+  for i: 0..<FF_COURSE_N - 1 {
+    for s: 1..<steps + 1 {
+      p := ff_course_at(i, f32(s) / f32(steps));
+      ax := prev.x; az := prev.z; bx := p.x; bz := p.z;
+      abx := bx - ax; abz := bz - az;
+      t := clamp01(((x - ax) * abx + (z - az) * abz) / hi(abx * abx + abz * abz, 0.0001));
+      px := ax + abx * t; pz := az + abz * t;
+      d := sqrt((x - px) * (x - px) + (z - pz) * (z - pz));
+      if d < best.d { best.d = d; best.half = (prev.y + (p.y - prev.y) * t) * 0.5; }
+      prev = p;
+    }
+  }
+  return best;
+}
+
+// The carve: the bed under the stream's outline, deeper in the pond, and
+// banks easing up to the ground beside it.
+ff_carve :: (h: f32, s: StreamNear) -> f32 {
+  depth := ifx s.half > 4 then 1.9f32 else 0.9f32;
+  level := f32(FF_LEVEL);
+  if s.d < s.half {
+    q := s.d / s.half;
+    return lo(h, level - 0.25 - depth * (1 - q * q));
+  }
+  bank := level - 0.25 + (s.d - s.half) * 0.7;
+  return lo(h, hi(bank, level - 0.25));
+}
+
+// ---- checks
+
+#test "a bloom spreads over a few seconds; colour comes back inside it, not past it" {
+  f: [1] Forest;
+  #assert ff_restored(f[..], 0, 0, 0) == 0;
+  ff_bloom_add(f[..], 0, 0, 12, 1.0);
+  #assert ff_restored(f[..], 0, 0, 1.0) == 0;
+  #assert ff_restored(f[..], 0, 0, 10.0) == 1;
+  #assert ff_restored(f[..], 6, 0, 10.0) == 1;
+  #assert ff_restored(f[..], 13, 0, 10.0) == 0;
+  #assert ff_restored(f[..], 8, 0, 1.6) < ff_restored(f[..], 8, 0, 10.0);
+}
+
+#test "Mossbank's trouble: bloom its three patches and Bramble is happy, then the first root wakes" {
+  f: [1] Forest;
+  #assert ff_mood(f[..], 0) == MOOD_WORRIED;
+  #assert ff_patch_near(f[..], FF_PATCH[4], FF_PATCH[5]) == 1;
+  #assert ff_bloom(f[..], 1, 1.0) && !ff_bloom(f[..], 1, 1.1);
+  #assert ff_mood(f[..], 0) == MOOD_HOPEFUL;
+  #assert ff_bloom(f[..], 2, 2.0) && ff_bloom(f[..], 3, 3.0);
+  #assert ff_mood(f[..], 0) == MOOD_HAPPY && ff_mood(f[..], 1) == MOOD_WORRIED;
+  ff_step(f[..], 3.5);
+  #assert !f[0].awake[0];
+  ff_step(f[..], 5.0);
+  #assert f[0].awake[0] && ff_roots_awake(f[..]) == 1 && f[0].news == 0;
+  #assert ff_restored(f[..], FF_ROOT[0], FF_ROOT[1], 20.0) == 1;
+  #assert ff_patch_near(f[..], FF_PATCH[4], FF_PATCH[5]) == -1;
+}
+
+#test "you wake beside the first flower, on Mossbank's trail" {
+  f: [1] Forest;
+  #assert ff_patch_near(f[..], f32(FF_SPAWN_X), f32(FF_SPAWN_Z)) == 0;
+  nodes := FF_NODE_XZ; links := FF_LINK_AB;
+  #assert verse_path_nearest(nodes[..], links[..], f32(FF_SPAWN_X), f32(FF_SPAWN_Z)).d < 3;
+}
+
+#test "the trails and glades keep out of the stream; the pond is wide" {
+  nodes := FF_NODE_XZ; links := FF_LINK_AB;
+  for i: 0..<FF_NODES {
+    s := ff_stream_near(FF_NODE_XZ[i * 2], FF_NODE_XZ[i * 2 + 1]);
+    #assert s.d > s.half + 2;
+  }
+  for g: 0..<FF_GLADES {
+    s := ff_stream_near(FF_GLADE[g * 3], FF_GLADE[g * 3 + 1]);
+    #assert s.d > s.half + 1;
+  }
+  p := ff_stream_near(f32(FF_POND_X), f32(FF_POND_Z));
+  #assert p.d < 1 && p.half > 6;
+  for c: 0..<FF_CREATURES { #assert ff_stream_near(FF_CREATURE[c * 4], FF_CREATURE[c * 4 + 1]).d > ff_stream_near(FF_CREATURE[c * 4], FF_CREATURE[c * 4 + 1]).half + 1; }
+  #assert ff_carve(1, StreamNear.{d = 0, half = 2}) < f32(FF_LEVEL) - 1;
+  #assert ff_carve(1, StreamNear.{d = 10, half = 2}) == 1;
+}

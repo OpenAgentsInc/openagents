@@ -1,6 +1,9 @@
 # Fairy Forest
 
-Status: proposal, October 29, 2026. Not started; no tasks yet. It is drawn
+Status: first crack live and unlisted, October 29, 2026, at
+https://openagents.com/realms/fairy-forest (task ff-first-crack): the valley,
+the fairy with flight and a glide, Bloom, three creatures and three of the
+heart tree's roots. Not saved yet, no talk, no home or crafting. It is drawn
 from what players told us when asked what game they would make: a magical
 fairy forest came up again and again, unprompted, along with caring for
 things until they change, helping people, building a home and a community,

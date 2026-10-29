@@ -1,0 +1,1071 @@
+// Fairy Forest, openagents.com/realms/fairy-forest: the first crack of the
+// realm verse/fairy-forest/README.md proposes, in the painterly style
+// (docs/verse/art-styles.md). You are a newly woken fairy in a valley that
+// has faded to grey. Press E (BLOOM on a phone) at a faded patch of flowers
+// and colour spreads out from it again. Three of the forest's creatures
+// each have one trouble, that their glade has faded; bloom a glade's
+// patches and its creature is happy (the glyph over its head says how it
+// feels), and one of the heart tree's five roots wakes and glows.
+//
+// The layout, the fade and the troubles are verse/fairy-forest/forest.coax;
+// the stream and the pond are verse/fairy-forest/stream.coax (verse/water.coax
+// physics, drawn in the painted water preset). You walk and run on the
+// engine's controller (verse/player.coax) and see the valley through the free
+// orbit (verse/camera.coax); Space jumps, Space again in the air flaps up
+// (three flaps a hop) and holding it glides down (the face does the flight).
+//
+// The look (fairy.wgsl, verse/paint.coax): three soft toon bands with a warm
+// rim, shadows tinted blue, blue-cyan haze that steps the ridges back, a
+// painted sky with a sun and soft clouds, wind-swept grass instanced on the
+// GPU, blob canopies, and a post pass with gentle bloom, a soft tone curve
+// and lifted blacks. Everything is drawn from the engine's five shapes in
+// code: a ground of cells (store 0), every object as a shape (store 1), the
+// stream's nodes (store 2), the grass from a hash of its cell.
+//
+// This file is the page: the controls, the scene, the HUD. fairy-face.c binds
+// it for the browser and runs the player and the stream between its calls.
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
+
+#load "font.coax";
+#load "analytics.coax";
+#load "../../verse/camera.coax";
+#load "../../verse/terrain.coax";
+#load "../../verse/fairy-forest/forest.coax";
+
+VERTEX_FLOATS :: 16;
+MAX_VERTICES :: 16000;
+PLATES :: 16;
+// The uniforms (fairy.wgsl U).
+U_VIEW :: 8; U_EYE :: 24; U_SUN :: 28; U_GROUND :: 32; U_GRASS :: 36; U_GRASS2 :: 40; U_SHADOW :: 44;
+SHADOWS :: 16;
+U_PATH :: U_SHADOW + SHADOWS * 4;
+PATHS :: 32;
+U_PATH_INFO :: U_PATH + PATHS * 4;
+U_BLOOM :: U_PATH_INFO + 4;
+U_BLOOM_INFO :: U_BLOOM + FF_BLOOMS * 4;
+U_PLATE :: U_BLOOM_INFO + 4;
+U_WATER :: U_PLATE + PLATES * 8;
+WATER_FLOATS :: 324;
+UNIFORM_FLOATS :: U_WATER + WATER_FLOATS;
+
+CELLS :: FF_CELLS;
+SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4;
+SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
+SLOTS :: [5] int.[0, 60, 1000, 420, 160];
+SLOT_AT :: [5] int.[0, 0, 60, 1060, 1480];
+OBJECTS :: 1640;
+OBJECT_FLOATS :: 16;
+// Looks (fairy.wgsl): how a surface takes the light and the fade.
+LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_GLOW :: 4; LOOK_WING :: 5;
+LOOK_CLOTH :: 6; LOOK_RIDGE :: 7; LOOK_BARK :: 8;
+// The draws: the ground and four shapes, the grass, then the water (last: the host draws it after the rest).
+DRAWS :: 7;
+GRASS_DRAW :: 5;
+WATER_DRAW :: 6;
+GRASS_BLADES :: 96;        // blades a 2 m patch draws on a computer (24 a square metre)
+GRASS_BLADES_PHONE :: 32;  // and on a phone (8)
+GRASS_PATCHES :: 32;       // patches a side on a computer: out to 32 m
+GRASS_PATCHES_PHONE :: 18; // on a phone: out to 18 m
+
+WALLS :: 240;
+SPHERES :: 64;
+BOXES :: 120;
+TREES :: 190;              // x, z, height, canopy radius, hue
+TREE_FLOATS :: 5;
+RIDGES :: 30;
+
+HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 16; HOLD_JUMP :: 32;
+HOLD_TURN_LEFT :: 64; HOLD_TURN_RIGHT :: 128; HOLD_TILT_UP :: 256; HOLD_TILT_DOWN :: 512;
+KEY_ESCAPE :: -1; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
+LOOK_DRAG :: 0.0055;
+WHEEL_ZOOM :: 0.006;
+NEWS_TIME :: 4.5;
+GOLDEN_TIME :: 2.0;
+
+// The HUD's colours: a cream ink and a soft gold.
+CREAM_R :: 0.97; CREAM_G :: 0.94; CREAM_B :: 0.86;
+GOLD_R :: 0.98; GOLD_G :: 0.82; GOLD_B :: 0.46;
+GAP :: 0.5; SPACE :: 1.2;
+
+Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+
+Fairy :: struct {
+  started: bool;
+  time: f64;
+  width: f32; height: f32; dpr: f32;
+  touch: bool;
+  golden: bool;
+  orbit: Orbit;
+  held: int;
+  drag_on: bool; drag_id: int; drag_x: f32; drag_y: f32; drag_travel: f32;
+  look_yaw: f32; look_pitch: f32;
+  key_x: f32; key_y: f32; run: bool; jump: bool;
+  use: bool;
+  button: Box; button_finger: int; button_on: bool;
+  // you, as the face last placed you: your feet on the ground, how high in the air, your wings
+  feet: Point; face: f32; act: int; stride: f32; air: f32; flap: f32; flying: bool; water: int;
+  forest: [1] Forest;
+  // the scene
+  heights: [FF_GROUND_POINTS] f32;
+  objects: [OBJECTS * OBJECT_FLOATS] f32;
+  counts: [5] int;
+  draws: [DRAWS * 4] u32;
+  walls: [WALLS * 6] f32; wall_n: int;
+  spheres: [SPHERES * 4] f32; sphere_n: int;
+  boxes: [BOXES * 6] f32; box_n: int;
+  trees: [TREES * TREE_FLOATS] f32; tree_n: int;
+  shadow_n: int;
+  plate_n: int;
+  water_vertices: int; water_patches: int;
+  pads: [7 * 8] f32; pad_n: int;
+  near_creature: int;
+}
+
+// ---- small things
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  size := sqrt(dx * dx + dy * dy);
+  if size <= 0 { return false; }
+  ux := dx / size; uy := dy / size;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, size + r, size + r, -r, size + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = size; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+ink :: (k: f32, light: f32, red: f32, green: f32, blue: f32) -> Ink {
+  i: Ink;
+  i.core = 0.55 * k; i.light = light; i.glow = 1.2 * k; i.red = red; i.green = green; i.blue = blue; i.mode = 0; i.scale = k;
+  return i;
+}
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+hash1 :: (a: f32, b: f32) -> f32 { v := sin(a * 127.1 + b * 311.7) * 43758.5453; return v - floor(v); }
+
+coaxial_fairy_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_fairy_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_fairy_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+fairy_water_at :: () -> int #export_c { return U_WATER; }
+fairy_eye_at :: () -> int #export_c { return U_EYE; }
+
+ground :: () -> Ground {
+  g: Ground; g.n = CELLS; g.cell = f32(FF_CELL); g.west = f32(FF_EDGE); g.south = f32(FF_EDGE);
+  g.rim_from = 46; g.rim = 0.03;
+  return g;
+}
+ground_at :: (s: [] Fairy, x: f32, z: f32) -> f32 { return verse_terrain_height(ground(), s[0].heights[..], x, z); }
+fairy_ground :: (s: [] Fairy, x: f32, z: f32) -> f32 #export_c { return ground_at(s, x, z); }
+
+fairy_start :: (s: [] Fairy) {
+  s[0].started = true;
+  nodes := FF_NODE_XZ; links := FF_LINK_AB; flats := FF_FLATS;
+  shaped_ok := verse_terrain_build(ground(), s[0].heights[..], nodes[..], links[..], f32(FF_PATH_HALF), flats[..]);
+  carve(s);
+  s[0].feet = v3(f32(FF_SPAWN_X), ground_at(s, f32(FF_SPAWN_X), f32(FF_SPAWN_Z)), f32(FF_SPAWN_Z));
+  s[0].face = f32(FF_SPAWN_FACE);
+  s[0].orbit = verse_orbit_start(s[0].feet, f32(FF_SPAWN_FACE));
+  s[0].button_finger = -1;
+  s[0].near_creature = -1;
+  s[0].forest[0].news = -1;
+  plant_trees(s);
+  build_scenery(s);
+}
+
+// The stream's bed and banks, cut into the built ground.
+carve :: (s: [] Fairy) {
+  w := CELLS + 1;
+  for j: 0..<w {
+    for i: 0..<w {
+      x := f32(FF_EDGE) + f32(i) * f32(FF_CELL); z := f32(FF_EDGE) + f32(j) * f32(FF_CELL);
+      near_s := ff_stream_near(x, z);
+      if near_s.d < near_s.half + 14 { s[0].heights[j * w + i] = ff_carve(s[0].heights[j * w + i], near_s); }
+    }
+  }
+}
+
+// The course for the stream library: x, z and width a control.
+fairy_course :: (out: [] f32) -> int #export_c {
+  n := FF_COURSE_N * 3;
+  if out.count < n { return 0; }
+  for i: 0..<n { out[i] = FF_COURSE[i]; }
+  return n;
+}
+fairy_level :: () -> f32 #export_c { return f32(FF_LEVEL); }
+fairy_pond_x :: () -> f32 #export_c { return f32(FF_POND_X); }
+fairy_pond_z :: () -> f32 #export_c { return f32(FF_POND_Z); }
+
+// Clear of the trails, the stream, the glades, the heart tree and the creatures?
+open_ground :: (x: f32, z: f32, room: f32) -> bool {
+  nodes := FF_NODE_XZ; links := FF_LINK_AB;
+  if verse_path_nearest(nodes[..], links[..], x, z).d < f32(FF_PATH_HALF) + 2.5 + room { return false; }
+  st := ff_stream_near(x, z);
+  if st.d < st.half + 2.5 + room { return false; }
+  if sqrt(x * x + z * z) < 17 + room { return false; }
+  for g: 0..<FF_GLADES {
+    dx := x - FF_GLADE[g * 3]; dz := z - FF_GLADE[g * 3 + 1];
+    if sqrt(dx * dx + dz * dz) < FF_GLADE[g * 3 + 2] + room { return false; }
+  }
+  return true;
+}
+
+// The forest: a jittered grid, kept off the open ground; out to the rim's slopes.
+plant_trees :: (s: [] Fairy) {
+  n := 0;
+  step := 7.0f32;
+  for a: 0..<22 {
+    for b: 0..<22 {
+      if n >= TREES { break; }
+      x := -74 + f32(a) * step + (hash1(f32(a), f32(b)) - 0.5) * 4.5;
+      z := -74 + f32(b) * step + (hash1(f32(b) + 7.3, f32(a)) - 0.5) * 4.5;
+      if !open_ground(x, z, 1.5) { continue; }
+      // the valley floor near the trails is lighter wood: skip some
+      if sqrt(x * x + z * z) < 45 && hash1(x, z) < 0.35 { continue; }
+      k := n * TREE_FLOATS;
+      s[0].trees[k] = x; s[0].trees[k + 1] = z;
+      s[0].trees[k + 2] = 2.6 + hash1(z, x) * 2.6;
+      s[0].trees[k + 3] = 2.0 + hash1(x + 1, z) * 1.4;
+      s[0].trees[k + 4] = hash1(x + 3, z + 5);
+      n += 1;
+    }
+  }
+  s[0].tree_n = n;
+}
+
+put6 :: (out: [] f32, i: int, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
+  k := i * 6;
+  if k + 6 > out.count { return; }
+  out[k] = a; out[k + 1] = b; out[k + 2] = c; out[k + 3] = d; out[k + 4] = e; out[k + 5] = f;
+}
+
+// The player's walls and the camera's scenery, from the layout.
+build_scenery :: (s: [] Fairy) {
+  w := 0; sp := 0; bx := 0;
+  for t: 0..<s[0].tree_n {
+    k := t * TREE_FLOATS;
+    x := s[0].trees[k]; z := s[0].trees[k + 1]; h := s[0].trees[k + 2]; r := s[0].trees[k + 3];
+    g := ground_at(s, x, z);
+    if w < WALLS { put6(s[0].walls[..], w, x - 0.35, 0, z - 0.35, x + 0.35, 9, z + 0.35); w += 1; }
+    if sqrt(x * x + z * z) < 58 {
+      if bx < BOXES { put6(s[0].boxes[..], bx, x - 0.3, g - 1, z - 0.3, x + 0.3, g + h, z + 0.3); bx += 1; }
+    }
+  }
+  // the heart tree's trunk
+  if w < WALLS { put6(s[0].walls[..], w, -2.2, 0, -2.2, 2.2, 30, 2.2); w += 1; }
+  if bx < BOXES { put6(s[0].boxes[..], bx, -2.2, -1, -2.2, 2.2, 16, 2.2); bx += 1; }
+  for k: 0..<4 {
+    a := f32(k) * 1.5708;
+    if sp < SPHERES { q := sp * 4; s[0].spheres[q] = cos(a) * 4; s[0].spheres[q + 1] = 19; s[0].spheres[q + 2] = sin(a) * 4; s[0].spheres[q + 3] = 6; sp += 1; }
+  }
+  b := f32(FF_BOUND);
+  if w + 4 <= WALLS {
+    put6(s[0].walls[..], w, -b - 2, 0, -b - 2, b + 2, 30, -b); put6(s[0].walls[..], w + 1, -b - 2, 0, b, b + 2, 30, b + 2);
+    put6(s[0].walls[..], w + 2, -b - 2, 0, -b, -b, 30, b); put6(s[0].walls[..], w + 3, b, 0, -b, b + 2, 30, b);
+    w += 4;
+  }
+  s[0].wall_n = w; s[0].sphere_n = sp; s[0].box_n = bx;
+}
+
+fairy_walls :: (s: [] Fairy) -> int #export_c { if !s[0].started { fairy_start(s); } return s[0].wall_n; }
+fairy_spawn :: (s: [] Fairy) -> Point #export_c { if !s[0].started { fairy_start(s); } return v3(f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z)); }
+fairy_spawn_face :: () -> f32 #export_c { return f32(FF_SPAWN_FACE); }
+fairy_heights :: (s: [] Fairy) -> int #export_c { if !s[0].started { fairy_start(s); } return FF_GROUND_POINTS; }
+
+// ---- the controls
+
+hold_bit :: (key: int) -> int {
+  if key == 'w' || key == 'W' { return HOLD_FORWARD; }
+  if key == 's' || key == 'S' { return HOLD_BACK; }
+  if key == 'a' || key == 'A' { return HOLD_LEFT; }
+  if key == 'd' || key == 'D' { return HOLD_RIGHT; }
+  if key == KEY_SHIFT { return HOLD_RUN; }
+  if key == ' ' { return HOLD_JUMP; }
+  if key == KEY_LEFT { return HOLD_TURN_LEFT; }
+  if key == KEY_RIGHT { return HOLD_TURN_RIGHT; }
+  if key == KEY_UP { return HOLD_TILT_UP; }
+  if key == KEY_DOWN { return HOLD_TILT_DOWN; }
+  return 0;
+}
+
+fairy_key :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
+  if !s[0].started { fairy_start(s); }
+  if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
+  if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
+  if key == 'e' || key == 'E' { s[0].use = true; return true; }
+  b := hold_bit(key);
+  if b == 0 { return false; }
+  s[0].held = s[0].held | b;
+  return true;
+}
+
+fairy_key_up :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
+  b := hold_bit(key);
+  if b == 0 { return false; }
+  if s[0].held & b != 0 { s[0].held = s[0].held - b; }
+  return true;
+}
+
+fairy_blur :: (s: [] Fairy) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].button_finger = -1; s[0].button_on = false; }
+
+in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+
+// A mouse drag turns the camera and a click blooms; a finger on BLOOM presses
+// it; any other finger is the face's (the sticks).
+fairy_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if !s[0].started { fairy_start(s); }
+  if kind != 0 {
+    s[0].touch = true;
+    if phase == 0 && in_box(s[0].button, x, y) { s[0].button_finger = id; s[0].button_on = true; return true; }
+    if id != s[0].button_finger { return false; }
+    if phase == 1 { s[0].button_on = in_box(s[0].button, x, y); return true; }
+    if phase == 2 && in_box(s[0].button, x, y) { s[0].use = true; }
+    s[0].button_finger = -1; s[0].button_on = false;
+    return true;
+  }
+  k := hi(s[0].dpr, 0.5);
+  if phase == 0 { s[0].drag_on = true; s[0].drag_id = id; s[0].drag_x = x; s[0].drag_y = y; s[0].drag_travel = 0; return true; }
+  if !s[0].drag_on || id != s[0].drag_id { return false; }
+  if phase == 1 {
+    s[0].look_yaw -= (x - s[0].drag_x) / k * f32(LOOK_DRAG);
+    s[0].look_pitch -= (y - s[0].drag_y) / k * f32(LOOK_DRAG);
+    s[0].drag_travel += (abs(x - s[0].drag_x) + abs(y - s[0].drag_y)) / k;
+    s[0].drag_x = x; s[0].drag_y = y;
+    return true;
+  }
+  if phase == 2 && s[0].drag_travel < 6 && s[0].button.x1 > s[0].button.x0 { s[0].use = true; }
+  s[0].drag_on = false;
+  return true;
+}
+
+fairy_wheel :: (s: [] Fairy, dy: f32) #export_c {
+  if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
+}
+
+axis :: (held: int, plus: int, minus: int) -> f32 {
+  a := 0.0f32;
+  if held & plus != 0 { a += 1; }
+  if held & minus != 0 { a -= 1; }
+  return a;
+}
+
+fairy_controls :: (s: [] Fairy, dt: f32, dyaw: f32, dpitch: f32) #export_c {
+  if !s[0].started { fairy_start(s); }
+  h := s[0].held;
+  s[0].key_x = axis(h, HOLD_RIGHT, HOLD_LEFT);
+  s[0].key_y = axis(h, HOLD_FORWARD, HOLD_BACK);
+  s[0].run = h & HOLD_RUN != 0;
+  s[0].jump = h & HOLD_JUMP != 0;
+  o := verse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
+  o = verse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
+  s[0].orbit = o;
+  s[0].look_yaw = 0; s[0].look_pitch = 0;
+}
+
+fairy_player_theta :: (s: [] Fairy) -> f32 #export_c { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
+fairy_jump :: (s: [] Fairy) -> bool #export_c { return s[0].jump; }
+fairy_phone :: (s: [] Fairy) -> bool #export_c { return phone(s); }
+
+// ---- the scene
+
+// A shape at centre, turned yaw about +Y then tilt about its own +X, sized
+// sx, sy, sz (the shape is a unit: a cube, a sphere, a cylinder or a cone a metre across).
+shape :: (s: [] Fairy, kind: int, look: int, centre: Point, yaw: f32, tilt: f32, sx: f32, sy: f32, sz: f32,
+          red: f32, green: f32, blue: f32) {
+  if kind < 1 || kind > 4 { return; }
+  n := s[0].counts[kind];
+  if n >= SLOTS[kind] { return; }
+  s[0].counts[kind] = n + 1;
+  o := (SLOT_AT[kind] + n) * OBJECT_FLOATS;
+  cy := cos(yaw); sy_ := sin(yaw); ct := cos(tilt); st := sin(tilt);
+  c0 := v3(cy * sx, 0, -sy_ * sx);
+  c1 := v3(sy_ * st * sy, ct * sy, cy * st * sy);
+  c2 := v3(sy_ * ct * sz, -st * sz, cy * ct * sz);
+  s[0].objects[o] = c0.x; s[0].objects[o + 1] = c1.x; s[0].objects[o + 2] = c2.x; s[0].objects[o + 3] = centre.x;
+  s[0].objects[o + 4] = c0.y; s[0].objects[o + 5] = c1.y; s[0].objects[o + 6] = c2.y; s[0].objects[o + 7] = centre.y;
+  s[0].objects[o + 8] = c0.z; s[0].objects[o + 9] = c1.z; s[0].objects[o + 10] = c2.z; s[0].objects[o + 11] = centre.z;
+  s[0].objects[o + 12] = red; s[0].objects[o + 13] = green; s[0].objects[o + 14] = blue;
+  s[0].objects[o + 15] = f32(kind + 8 * look);
+}
+
+// A shape whose long axis runs from a to b (a cylinder or a cone, its tip at b).
+limb :: (s: [] Fairy, kind: int, look: int, a: Point, b: Point, width: f32, red: f32, green: f32, blue: f32) {
+  d := sub(b, a);
+  l := length(d);
+  if !(l > 0.0001) { return; }
+  yaw := yaw_of(d.x, d.z);
+  tilt := atan2(flat_length(d), d.y);
+  shape(s, kind, look, mix(a, b, 0.5), yaw, tilt, width, l, width, red, green, blue);
+}
+
+shadow :: (s: [] Fairy, u: [] f32, x: f32, z: f32, radius: f32, strength: f32) {
+  n := s[0].shadow_n;
+  if n >= SHADOWS { return; }
+  k := U_SHADOW + n * 4;
+  u[k] = x; u[k + 1] = z; u[k + 2] = radius; u[k + 3] = strength;
+  s[0].shadow_n = n + 1;
+}
+
+effect_time :: (s: [] Fairy) -> f32 { return ifx s[0].golden then f32(GOLDEN_TIME) else f32(s[0].time); }
+
+// The forest's trees: a trunk and a canopy of three soft blobs, in yellow-leaning greens.
+trees :: (s: [] Fairy, u: [] f32, eye: Point) {
+  for t: 0..<s[0].tree_n {
+    k := t * TREE_FLOATS;
+    x := s[0].trees[k]; z := s[0].trees[k + 1]; h := s[0].trees[k + 2]; r := s[0].trees[k + 3]; hue := s[0].trees[k + 4];
+    g := ground_at(s, x, z);
+    shape(s, SHAPE_CYLINDER, LOOK_BARK, v3(x, g + h * 0.5 - 0.3, z), 0, 0, 0.5, h + 0.6, 0.5, 0.36, 0.25, 0.17);
+    gr := 0.22 + hue * 0.1; gg := 0.46 + hue * 0.08; gb := 0.14 + hue * 0.04;
+    if hue > 0.8 { gr = 0.5; gg = 0.42; gb = 0.2; }   // a few autumn-gold crowns
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x, g + h + r * 0.55, z), hue * 6, 0, r * 2.2, r * 1.9, r * 2.2, gr, gg, gb);
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x + r * 0.55, g + h + r * 0.05, z - r * 0.35), 0, 0, r * 1.4, r * 1.2, r * 1.4, gr * 1.08, gg * 1.05, gb);
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x - r * 0.45, g + h + r * 0.15, z + r * 0.4), 0, 0, r * 1.3, r * 1.15, r * 1.3, gr * 0.95, gg, gb * 1.1);
+    dx := x - eye.x; dz := z - eye.z;
+    if dx * dx + dz * dz < 900 { shadow(s, u, x, z, r * 1.4, 0.5); }
+  }
+}
+
+// Ridges past the rim: broad soft hills stepping back into the haze, like painted flats.
+ridges :: (s: [] Fairy) {
+  for i: 0..<RIDGES {
+    ring := i % 3;
+    a := f32(i) * 2.399 + f32(ring) * 0.5;
+    d := 105 + f32(ring) * 55 + hash1(f32(i), 2) * 20;
+    w := 70 + f32(ring) * 40 + hash1(f32(i), 5) * 30;
+    hgt := 28 + f32(ring) * 18 + hash1(f32(i), 9) * 20;
+    shape(s, SHAPE_SPHERE, LOOK_RIDGE, v3(cos(a) * d, -hgt * 0.15, sin(a) * d), a, 0, w, hgt * 2, w * 0.8, 0.2, 0.42, 0.18);
+  }
+}
+
+// The heart tree: a great trunk, its canopy, and its five roots, grey until they wake.
+heart :: (s: [] Fairy, u: [] f32) {
+  f := s[0].forest[..];
+  t := effect_time(s);
+  awake := ff_roots_awake(f);
+  shape(s, SHAPE_CYLINDER, LOOK_BARK, v3(0, 7, 0), 0, 0, 4.2, 15, 4.2, 0.42, 0.3, 0.22);
+  shape(s, SHAPE_CYLINDER, LOOK_BARK, v3(0, 0.6, 0), 0.4, 0, 6, 1.6, 6, 0.4, 0.29, 0.2);
+  // the canopy: soft rose-and-teal blobs, the blossom brighter with each root awake
+  bloom := f32(awake) / f32(FF_ROOTS);
+  for k: 0..<9 {
+    a := f32(k) * 2.399;
+    rr := ifx k == 0 then 0.0f32 else 6.5f32 + hash1(f32(k), 1) * 2;
+    y := 18 + hash1(f32(k), 3) * 4 - ifx k == 0 then 0.0f32 else 2.0f32;
+    size := ifx k == 0 then 15.0f32 else 9.0f32 + hash1(f32(k), 7) * 3;
+    rose := ifx k % 2 == 0 then 1.0f32 else 0.0f32;
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(cos(a) * rr, y, sin(a) * rr), a, 0, size, size * 0.8, size,
+          lerp(0.3, 0.86, rose * (0.4 + 0.6 * bloom)), lerp(0.52, 0.52, rose), lerp(0.42, 0.66, rose * (0.4 + 0.6 * bloom)));
+  }
+  for r: 0..<FF_ROOTS {
+    tip := v3(FF_ROOT[r * 3], 0, FF_ROOT[r * 3 + 1]);
+    tip.y = ground_at(s, tip.x, tip.z) + 0.15;
+    root := v3(tip.x * 0.22, 1.2, tip.z * 0.22);
+    mid := v3(tip.x * 0.6, 0.9, tip.z * 0.6);
+    on := f[0].awake[r];
+    look := ifx on then LOOK_GLOW else LOOK_BARK;
+    pulse := ifx on then 0.75f32 + 0.25f32 * sin(t * 2.2 + f32(r)) else 1.0f32;
+    cr := ifx on then 1.0f32 * pulse else 0.4f32; cg := ifx on then 0.78f32 * pulse else 0.3f32; cb := ifx on then 0.42f32 * pulse else 0.22f32;
+    limb(s, SHAPE_CYLINDER, look, root, mid, 1.1, cr, cg, cb);
+    limb(s, SHAPE_CONE, look, mid, tip, 0.8, cr, cg, cb);
+  }
+}
+
+// A patch: a ring of flowers; small and closed while faded, open and glowing a moment as it blooms.
+patches :: (s: [] Fairy) {
+  f := s[0].forest[..];
+  t := f64(effect_time(s));
+  now := s[0].time;
+  for i: 0..<FF_PATCHES {
+    x := FF_PATCH[i * 4]; z := FF_PATCH[i * 4 + 1];
+    g := ground_at(s, x, z);
+    open := 0.0f32; glow := 0.0f32;
+    if f[0].bloomed[i] {
+      age := cast(f32) (now - f[0].bloomed_at[i]);
+      open = clamp01(age / 1.2);
+      glow = clamp01(1 - age / 3.0);
+    }
+    count := ifx i == 0 then 1 else 9;
+    for k: 0..<count {
+      a := f32(k) * 2.399 + f32(i);
+      d := ifx count == 1 then 0.0f32 else 1.4f32 * sqrt((f32(k) + 0.5) / f32(count));
+      fx := x + cos(a) * d; fz := z + sin(a) * d;
+      fy := ground_at(s, fx, fz);
+      tall := (ifx count == 1 then 0.75f32 else 0.42f32) * (0.7 + 0.3 * open);
+      shape(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(fx, fy + tall * 0.5, fz), 0, 0, 0.04, tall, 0.04, 0.3, 0.55, 0.22);
+      c := (i + k) % 4;
+      pr := [4] f32.[0.95, 0.98, 0.72, 0.62];
+      pg := [4] f32.[0.52, 0.8, 0.55, 0.78];
+      pb := [4] f32.[0.68, 0.42, 0.95, 0.96];
+      size := (ifx count == 1 then 0.34f32 else 0.24f32) * (0.55 + 0.45 * open);
+      look := ifx glow > 0.05 || i == 0 then LOOK_GLOW else LOOK_MATTE;
+      k2 := ifx look == LOOK_GLOW then 0.55f32 + 0.45f32 * glow else 1.0f32;
+      if i == 0 && !f[0].bloomed[0] { k2 = 0.5 + 0.15 * sin(f32(t) * 3); }
+      shape(s, SHAPE_SPHERE, look, v3(fx, fy + tall + size * 0.25, fz), a, 0, size, size * 0.55, size, pr[c] * k2, pg[c] * k2, pb[c] * k2);
+    }
+    _ := g;
+  }
+}
+
+// Mossbank's mushrooms, the pond's reeds, Lanternwood's glowing fruit and the stones round the heart.
+props :: (s: [] Fairy) {
+  f := s[0].forest[..];
+  t := effect_time(s);
+  for k: 0..<14 {
+    a := f32(k) * 2.1 + 0.3;
+    d := 4 + hash1(f32(k), 4) * 6;
+    x := FF_GLADE[0] + cos(a) * d; z := FF_GLADE[1] + sin(a) * d;
+    if ff_patch_near(f, x, z) >= 0 && false { continue; }
+    g := ground_at(s, x, z);
+    h := 0.35 + hash1(f32(k), 8) * 0.6;
+    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + h * 0.5, z), 0, 0, 0.16 + h * 0.1, h, 0.16 + h * 0.1, 0.9, 0.86, 0.74);
+    cap := 0.5 + h * 0.7;
+    pink := ifx k % 3 == 0 then 1.0f32 else 0.0f32;
+    shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(x, g + h, z), 0, 0, cap, cap * 0.55, cap, lerp(0.86, 0.95, pink), lerp(0.36, 0.6, pink), lerp(0.3, 0.7, pink));
+  }
+  for k: 0..<36 {
+    a := f32(k) * 0.52;
+    rr := 8.2 + hash1(f32(k), 1) * 1.2;
+    x := f32(FF_POND_X) + cos(a) * rr; z := f32(FF_POND_Z) + sin(a) * rr * 0.95;
+    st := ff_stream_near(x, z);
+    if st.d < st.half - 0.8 || st.d > st.half + 1.6 { continue; }
+    g := ground_at(s, x, z);
+    sway := sin(t * 1.3 + f32(k)) * 0.06;
+    h := 1.0 + hash1(f32(k), 3) * 0.7;
+    shape(s, SHAPE_CONE, LOOK_LEAVES, v3(x, hi(g, f32(FF_LEVEL)) + h * 0.5, z), a, sway, 0.12, h, 0.12, 0.42, 0.56, 0.24);
+  }
+  for k: 0..<26 {
+    a := f32(k) * 2.399;
+    d := 3 + hash1(f32(k), 6) * 8;
+    x := FF_GLADE[6] + cos(a) * d; z := FF_GLADE[7] + sin(a) * d;
+    g := ground_at(s, x, z);
+    lamp := ff_restored(f, x, z, s[0].time);
+    y := g + 2.2 + hash1(f32(k), 2) * 2.2;
+    limb(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(x, y + 0.6, z), v3(x, y, z), 0.02, 0.3, 0.5, 0.2);
+    k2 := 0.35 + 0.65 * lamp;
+    shape(s, SHAPE_SPHERE, ifx lamp > 0.3 then LOOK_GLOW else LOOK_MATTE, v3(x, y, z), 0, 0, 0.28, 0.32, 0.28, 1.0 * k2, 0.8 * k2, 0.4 * k2);
+  }
+  for k: 0..<7 {
+    a := f32(k) * 0.9 + 0.2;
+    x := cos(a) * 15; z := sin(a) * 15;
+    if !open_ground(x, z, -3) && k % 2 == 0 { continue; }
+    g := ground_at(s, x, z);
+    shape(s, SHAPE_SPHERE, LOOK_STONE, v3(x, g + 0.2, z), a, 0, 1.4, 0.9, 1.1, 0.62, 0.6, 0.55);
+  }
+  for p: 0..<s[0].pad_n {
+    k := p * 8;
+    shape(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(s[0].pads[k], s[0].pads[k + 1] + 0.02, s[0].pads[k + 2]), s[0].pads[k + 3], 0, 0.9, 0.03, 0.9, 0.32, 0.58, 0.24);
+    if p % 3 == 0 { shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(s[0].pads[k] + 0.1, s[0].pads[k + 1] + 0.1, s[0].pads[k + 2]), 0, 0, 0.18, 0.12, 0.18, 0.98, 0.78, 0.86); }
+  }
+}
+
+// The creatures: a hedgehog, a frog and a rabbit, turned to you when you are near.
+creatures :: (s: [] Fairy, u: [] f32, you: Point) {
+  t := effect_time(s);
+  for c: 0..<FF_CREATURES {
+    x := FF_CREATURE[c * 4]; z := FF_CREATURE[c * 4 + 1]; kind := cast(int) FF_CREATURE[c * 4 + 3];
+    g := ground_at(s, x, z);
+    mood := ff_mood(s[0].forest[..], c);
+    dx := you.x - x; dz := you.z - z;
+    face := ifx dx * dx + dz * dz < 100 then yaw_of(dx, dz) else f32(c) * 2.0;
+    hop := ifx mood == MOOD_HAPPY then abs(sin(t * 3.0 + f32(c))) * 0.25 else 0.0f32;
+    base := v3(x, g + hop, z);
+    ahead := v3(sin(face), 0, cos(face));
+    right := v3(-cos(face), 0, sin(face));
+    if kind == 0 {
+      body := add(base, v3(0, 0.32, 0));
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, body, face, 0, 0.62, 0.5, 0.75, 0.46, 0.32, 0.22);
+      for k: 0..<12 {
+        a := f32(k) * 0.9;
+        dir := add(add(times(ahead, -0.3 + 0.55 * cos(a) * 0.4), times(right, sin(a) * 0.28)), v3(0, 0.22 + 0.06 * cos(a * 2), 0));
+        limb(s, SHAPE_CONE, LOOK_CLOTH, add(body, times(dir, 0.7)), add(body, times(dir, 1.7)), 0.12, 0.36, 0.26, 0.2);
+      }
+      head := add(body, add(times(ahead, 0.36), v3(0, -0.02, 0)));
+      shape(s, SHAPE_SPHERE, LOOK_SKIN, head, face, 0, 0.32, 0.28, 0.4, 0.86, 0.72, 0.56);
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, times(ahead, 0.2)), 0, 0, 0.08, 0.08, 0.08, 0.2, 0.14, 0.12);
+      shadow(s, u, x, z, 0.6, 0.55);
+    } else if kind == 1 {
+      body := add(base, v3(0, 0.3, 0));
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, body, face, -0.3, 0.7, 0.5, 0.75, 0.36, 0.66, 0.3);
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(body, v3(0, -0.08, 0)), face, 0, 0.6, 0.3, 0.6, 0.86, 0.9, 0.6);
+      for side: 0..<2 {
+        sign := ifx side == 0 then 1.0f32 else -1.0f32;
+        eye := add(body, add(add(times(ahead, 0.18), times(right, 0.17 * sign)), v3(0, 0.25, 0)));
+        shape(s, SHAPE_SPHERE, LOOK_CLOTH, eye, 0, 0, 0.2, 0.2, 0.2, 0.4, 0.7, 0.32);
+        shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(eye, times(ahead, 0.07)), 0, 0, 0.1, 0.1, 0.1, 0.12, 0.1, 0.1);
+        shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(base, add(times(right, 0.3 * sign), v3(0, 0.08, -0.05))), face, 0, 0.3, 0.16, 0.42, 0.32, 0.6, 0.26);
+      }
+      shadow(s, u, x, z, 0.6, 0.55);
+    } else {
+      body := add(base, v3(0, 0.38, 0));
+      fur := v3(0.86, 0.82, 0.78);
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, body, face, 0, 0.6, 0.62, 0.72, fur.x, fur.y, fur.z);
+      head := add(body, add(times(ahead, 0.3), v3(0, 0.36, 0)));
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, head, face, 0, 0.4, 0.38, 0.42, fur.x, fur.y, fur.z);
+      perk := ifx mood == MOOD_HAPPY then 0.15f32 else -0.45f32;
+      for side: 0..<2 {
+        sign := ifx side == 0 then 1.0f32 else -1.0f32;
+        ear := add(head, add(times(right, 0.1 * sign), v3(0, 0.2, -0.04)));
+        tipd := add(add(v3(0, cos(perk), 0), times(ahead, -sin(perk) * 0.6)), times(right, 0.2 * sign));
+        limb(s, SHAPE_CYLINDER, LOOK_CLOTH, ear, add(ear, times(tipd, 0.5)), 0.12, fur.x, fur.y * 0.95, fur.z * 0.95);
+      }
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, times(ahead, 0.2)), 0, 0, 0.07, 0.06, 0.07, 0.95, 0.6, 0.66);
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(body, times(ahead, -0.36)), 0, 0, 0.22, 0.22, 0.22, 0.96, 0.95, 0.92);
+      shadow(s, u, x, z, 0.6, 0.55);
+    }
+  }
+}
+
+// You: a small fairy in a petal dress, with two pairs of glowing wings that flap.
+fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, act: int, air: f32, flap: f32) {
+  t := effect_time(s);
+  walking := act == 1 || act == 2;
+  swing := ifx walking && air < 0.2 then sin(stride * 2.4) * (ifx act == 2 then 0.7f32 else 0.45f32) else 0.0f32;
+  bob := ifx walking then abs(cos(stride * 2.4)) * 0.04 else sin(t * 2) * 0.02;
+  base := add(feet, v3(0, bob, 0));
+  ahead := v3(sin(face), 0, cos(face));
+  right := v3(-cos(face), 0, sin(face));
+  hip := add(base, v3(0, 0.62, 0));
+  skin := v3(0.96, 0.8, 0.68);
+  for side: 0..<2 {
+    sign := ifx side == 0 then 1.0f32 else -1.0f32;
+    leg := add(hip, times(right, 0.08 * sign));
+    a := ifx air > 0.2 then 0.25f32 * sign else swing * sign;
+    down := v3(sin(face) * sin(a), -cos(a), cos(face) * sin(a));
+    limb(s, SHAPE_CYLINDER, LOOK_SKIN, leg, add(leg, times(down, 0.6)), 0.09, skin.x, skin.y, skin.z);
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(leg, times(down, 0.62)), face, 0, 0.12, 0.08, 0.18, 0.5, 0.76, 0.48);
+    shoulder := add(add(base, v3(0, 1.07, 0)), times(right, 0.17 * sign));
+    arm_a := ifx air > 0.2 then 0.9f32 else -a * 0.8;
+    arm := add(times(v3(sin(face) * sin(arm_a), -cos(arm_a), cos(face) * sin(arm_a)), 1), times(right, (ifx air > 0.2 then 0.5f32 else 0.1f32) * sign));
+    limb(s, SHAPE_CYLINDER, LOOK_SKIN, shoulder, add(shoulder, times(unit_or(arm, v3(0, -1, 0)), 0.46)), 0.075, skin.x, skin.y, skin.z);
+  }
+  // the petal dress: a cone of rose petals over a leaf-green bodice
+  shape(s, SHAPE_CONE, LOOK_CLOTH, add(base, v3(0, 0.7, 0)), face, 0, 0.62, 0.55, 0.62, 0.96, 0.6, 0.72);
+  for k: 0..<5 {
+    a := face + f32(k) * 1.2566;
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(base, v3(sin(a) * 0.24, 0.5, cos(a) * 0.24)), a, 0.5, 0.22, 0.12, 0.3, 0.98, 0.7, 0.8);
+  }
+  shape(s, SHAPE_CYLINDER, LOOK_CLOTH, add(base, v3(0, 0.98, 0)), face, 0, 0.3, 0.3, 0.24, 0.48, 0.74, 0.46);
+  head := add(base, v3(0, 1.3, 0));
+  shape(s, SHAPE_SPHERE, LOOK_SKIN, head, face, 0, 0.34, 0.36, 0.34, skin.x, skin.y, skin.z);
+  // hair: a soft lilac bob and a bun
+  shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(v3(0, 0.05, 0), times(ahead, -0.04))), face, 0, 0.38, 0.32, 0.38, 0.66, 0.52, 0.86);
+  shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(v3(0, 0.2, 0), times(ahead, -0.12))), face, 0, 0.18, 0.18, 0.18, 0.7, 0.56, 0.9);
+  // wings: two pairs on the back, swept and beating
+  back := add(base, add(v3(0, 1.0, 0), times(ahead, -0.14)));
+  beat := sin(flap) * 0.55;
+  for side: 0..<2 {
+    sign := ifx side == 0 then 1.0f32 else -1.0f32;
+    for pair: 0..<2 {
+      sweep := (ifx pair == 0 then 0.35f32 else 0.6f32) + beat;
+      yaw := face + sign * (f32(PI) * 0.5 - sweep);
+      out := v3(sin(yaw), 0, cos(yaw));
+      size := ifx pair == 0 then 0.62f32 else 0.42f32;
+      lift := ifx pair == 0 then 0.2f32 else -0.12f32;
+      c := add(back, add(times(out, size * 0.5), v3(0, lift, 0)));
+      tint := ifx pair == 0 then v3(0.62, 0.92, 0.98) else v3(0.9, 0.74, 0.98);
+      shape(s, SHAPE_SPHERE, LOOK_WING, c, yaw + f32(PI) * 0.5, ifx pair == 0 then -0.35f32 else 0.4f32, size, size * 0.62, 0.025, tint.x, tint.y, tint.z);
+    }
+  }
+  shadow(s, u, feet.x, feet.z, lo(0.45 + air * 0.08, 0.9), clamp(0.6 - air * 0.12, 0.15, 0.6));
+}
+
+// The camera as clip-space rows (WebGPU: depth 0 near to 1 far).
+NEAR :: 0.1; FAR :: 700.0;
+view :: (shot: Shot, width: f32, height: f32, u: [] f32, at: int) {
+  f := unit_or(sub(shot.at, shot.eye), v3(0, 0, 1));
+  r := unit_or(cross(f, v3(0, 1, 0)), v3(1, 0, 0));
+  up := cross(r, f);
+  aspect := width / hi(height, 1);
+  fy := clamp(aspect * 1.25, 0.95, 1.9);
+  fx := fy / aspect;
+  depth := f32(FAR / (FAR - NEAR));
+  e := shot.eye;
+  rows := [16] f32.[
+    r.x * fx, r.y * fx, r.z * fx, -dot(r, e) * fx,
+    up.x * fy, up.y * fy, up.z * fy, -dot(up, e) * fy,
+    f.x * depth, f.y * depth, f.z * depth, (-dot(f, e) - f32(NEAR)) * depth,
+    f.x, f.y, f.z, -dot(f, e)
+  ];
+  for i: 0..<16 { u[at + i] = rows[i]; }
+}
+
+// A point on the screen in device pixels, or x < -1000 behind the camera.
+project :: (u: [] f32, p: Point, width: f32, height: f32) -> Point {
+  cx := u[U_VIEW] * p.x + u[U_VIEW + 1] * p.y + u[U_VIEW + 2] * p.z + u[U_VIEW + 3];
+  cy := u[U_VIEW + 4] * p.x + u[U_VIEW + 5] * p.y + u[U_VIEW + 6] * p.z + u[U_VIEW + 7];
+  cw := u[U_VIEW + 12] * p.x + u[U_VIEW + 13] * p.y + u[U_VIEW + 14] * p.z + u[U_VIEW + 15];
+  if !(cw > 0.05) { return v3(-10000, 0, 0); }
+  return v3((cx / cw * 0.5 + 0.5) * width, (0.5 - cy / cw * 0.5) * height, cw);
+}
+
+ground_room :: (s: [] Fairy, r: OrbitRay) -> f32 {
+  lifted := add(r.from, v3(0, -0.5, 0));
+  return verse_terrain_ray(ground(), s[0].heights[..], lifted, r.dir, r.far);
+}
+
+camera_frame :: (s: [] Fairy, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
+  speed := sqrt(vx * vx + vz * vz);
+  o := verse_orbit_follow(s[0].orbit, feet, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
+  room := verse_orbit_room(o, s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6]);
+  room = lo(room, ground_room(s, verse_orbit_ray(o)));
+  o = verse_orbit_limit(o, room, dt);
+  s[0].orbit = o;
+  return verse_orbit_shot(o);
+}
+
+paths :: (u: [] f32) {
+  n := 0;
+  for i: 0..<FF_LINKS {
+    if n >= PATHS { break; }
+    a := FF_LINK_AB[i * 2]; b := FF_LINK_AB[i * 2 + 1];
+    k := U_PATH + n * 4;
+    u[k] = FF_NODE_XZ[a * 2]; u[k + 1] = FF_NODE_XZ[a * 2 + 1]; u[k + 2] = FF_NODE_XZ[b * 2]; u[k + 3] = FF_NODE_XZ[b * 2 + 1];
+    n += 1;
+  }
+  u[U_PATH_INFO] = f32(n); u[U_PATH_INFO + 1] = f32(FF_PATH_HALF);
+}
+
+blooms :: (s: [] Fairy, u: [] f32) {
+  f := s[0].forest[..];
+  for i: 0..<f[0].bloom_n {
+    b := f[0].blooms[i];
+    k := U_BLOOM + i * 4;
+    u[k] = b.x; u[k + 1] = b.z; u[k + 2] = ff_bloom_radius(b, s[0].time);
+    u[k + 3] = clamp01(1 - cast(f32) (s[0].time - b.began) / 4.0);   // a bright front while it spreads
+  }
+  u[U_BLOOM_INFO] = f32(f[0].bloom_n);
+}
+
+// ---- play
+
+// E, a click or BLOOM: the patch at your feet blooms.
+play :: (s: [] Fairy, you: Point) {
+  f := s[0].forest[..];
+  if s[0].use {
+    i := ff_patch_near(f, you.x, you.z);
+    if i >= 0 { done := ff_bloom(f, i, s[0].time); }
+    s[0].use = false;
+  }
+  ff_step(f, s[0].time);
+  s[0].near_creature = -1;
+  bd := f32(FF_TALK_NEAR);
+  for c: 0..<FF_CREATURES {
+    dx := you.x - FF_CREATURE[c * 4]; dz := you.z - FF_CREATURE[c * 4 + 1];
+    d := sqrt(dx * dx + dz * dz);
+    if d < bd { bd = d; s[0].near_creature = c; }
+  }
+}
+
+// ---- the HUD
+
+plate :: (s: [] Fairy, u: [] f32, b: Box, alpha: f32, look: f32) {
+  n := s[0].plate_n;
+  if n >= PLATES { return; }
+  k := U_PLATE + n * 8;
+  u[k] = b.x0; u[k + 1] = b.y0; u[k + 2] = b.x1; u[k + 3] = b.y1;
+  u[k + 4] = alpha; u[k + 5] = look; u[k + 6] = s[0].dpr; u[k + 7] = 0;
+  s[0].plate_n = n + 1;
+}
+
+phone :: (s: [] Fairy) -> bool { return s[0].touch || s[0].width / hi(s[0].dpr, 0.5) < 700; }
+
+hint :: (s: [] Fairy) -> string {
+  if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP TO HOP, AGAIN TO FLY"; }
+  return "WASD MOVE · DRAG TURNS · SHIFT WALKS · SPACE HOPS, AGAIN TO FLY, HOLD TO GLIDE";
+}
+
+// A mood glyph over a creature: a face in a ring, its colour and mouth the mood.
+mood_glyph :: (s: [] Fairy, out: [] f32, n: int, x: f32, y: f32, r: f32, mood: int, k: f32) -> int {
+  m := n;
+  cr := 0.66f32; cg := 0.74f32; cb := 0.92f32;
+  if mood == MOOD_HOPEFUL { cr = 0.84; cg = 0.86; cb = 0.7; }
+  if mood == MOOD_HAPPY { cr = GOLD_R; cg = GOLD_G; cb = GOLD_B; }
+  for i: 0..<20 {
+    a0 := f32(i) * f32(TAU) / 20; a1 := f32(i + 1) * f32(TAU) / 20;
+    if lit(out, m, x + cos(a0) * r, y + sin(a0) * r, x + cos(a1) * r, y + sin(a1) * r, 1.0 * k, 0.9, 2.5 * k, cr, cg, cb, 0) { m += 6; }
+  }
+  for e: 0..<2 {
+    ex := x + (ifx e == 0 then -0.36f32 else 0.36f32) * r;
+    if lit(out, m, ex - 0.01, y - 0.25 * r, ex + 0.01, y - 0.25 * r, 1.6 * k, 0.9, 1.5 * k, cr, cg, cb, 0) { m += 6; }
+  }
+  // the mouth: up for happy, flat for hopeful, down for worried
+  bend := ifx mood == MOOD_HAPPY then 0.32f32 else ifx mood == MOOD_HOPEFUL then 0.0f32 else -0.26f32;
+  for i: 0..<6 {
+    t0 := f32(i) / 6 * 2 - 1; t1 := f32(i + 1) / 6 * 2 - 1;
+    y0 := y + 0.3 * r + bend * r * (1 - t0 * t0); y1 := y + 0.3 * r + bend * r * (1 - t1 * t1);
+    if lit(out, m, x + t0 * 0.42 * r, y0, x + t1 * 0.42 * r, y1, 0.9 * k, 0.9, 1.5 * k, cr, cg, cb, 0) { m += 6; }
+  }
+  if mood == MOOD_HAPPY {
+    for i: 0..<4 {
+      a := f32(i) * 1.5708 + effect_time(s) * 1.2;
+      sx := x + cos(a) * r * 1.55; sy := y + sin(a) * r * 1.55;
+      if lit(out, m, sx - 0.01, sy, sx + 0.01, sy, 1.2 * k, 1.0, 3 * k, cr, cg, cb, 0) { m += 6; }
+    }
+  }
+  return m;
+}
+
+hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32, you: Point) -> int {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  f := s[0].forest[..];
+  n := 0;
+  gutter := 16 * k;
+  cap := 11 * k;
+  title := "FAIRY FOREST";
+  roots := ff_roots_awake(f);
+  line2 := ifx roots == 0 then "THE HEART TREE SLEEPS" else ifx roots == 1 then "ONE ROOT OF FIVE AWAKE" else ifx roots == 2 then "TWO ROOTS OF FIVE AWAKE" else "THREE ROOTS OF FIVE AWAKE";
+  small := 7.5 * k;
+  tw := hi(text_width(title, cap), text_width(line2, small));
+  plate(s, u, Box.{x0 = gutter, y0 = gutter, x1 = gutter + tw + 28 * k, y1 = gutter + cap + small + 34 * k}, 0.78, 0);
+  n = draw_text(out, n, title, gutter + 14 * k, gutter + 12 * k + cap, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  n = draw_text(out, n, line2, gutter + 14 * k, gutter + 22 * k + cap + small, small, GAP, SPACE, ink(k, 0.85, CREAM_R, CREAM_G, CREAM_B), false, false);
+  // the mood glyphs over the creatures in view
+  for c: 0..<FF_CREATURES {
+    x := FF_CREATURE[c * 4]; z := FF_CREATURE[c * 4 + 1];
+    p := project(u, v3(x, ground_at(s, x, z) + 1.6, z), w, h);
+    if p.x < -1000 || p.z > 60 { continue; }
+    r := clamp(150 * k / hi(p.z, 1), 5 * k, 15 * k);
+    n = mood_glyph(s, out, n, p.x, p.y, r, ff_mood(f, c), k);
+  }
+  // the hint at the foot
+  line := hint(s);
+  hs := 7.5 * k;
+  room := w - 2 * gutter - 24 * k;
+  lw := text_width(line, hs);
+  if lw > room { hs = hs * room / lw; lw = room; }
+  y1 := h - gutter;
+  plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - hs - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.68, 0);
+  n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, hs, GAP, SPACE, ink(k, 0.85, CREAM_R, CREAM_G, CREAM_B), false, false);
+  above := y1 - hs - 20 * k;
+  // what a creature near you says, or the news
+  said := "";
+  who := "";
+  if s[0].near_creature >= 0 { said = ff_says(f, s[0].near_creature); who = FF_CREATURE_NAMES[s[0].near_creature]; }
+  if f[0].news >= 0 && s[0].time - f[0].news_at < f64(NEWS_TIME) { said = "A ROOT OF THE HEART TREE WAKES"; who = ""; }
+  if said.count > 0 {
+    sc := 8.5 * k;
+    sw := text_width(said, sc);
+    roomw := w - 2 * gutter - 28 * k;
+    if sw > roomw { sc = sc * roomw / sw; sw = roomw; }
+    ww := hi(sw, text_width(who, 7.5 * k));
+    b := Box.{x0 = (w - ww) / 2 - 14 * k, y0 = above - 12 * k - sc - (ifx who.count > 0 then 36 * k else 22 * k), x1 = (w + ww) / 2 + 14 * k, y1 = above - 12 * k};
+    plate(s, u, b, 0.82, 1);
+    if who.count > 0 { n = draw_text(out, n, who, (w - ww) / 2, b.y0 + 10 * k + 7.5 * k, 7.5 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false); }
+    n = draw_text(out, n, said, (w - sw) / 2, b.y1 - 11 * k, sc, GAP, SPACE, ink(k, 0.95, CREAM_R, CREAM_G, CREAM_B), false, false);
+    above = b.y0;
+  }
+  // BLOOM: E on a computer, a button on a phone
+  s[0].button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  if ff_patch_near(f, you.x, you.z) >= 0 {
+    bc := 9 * k;
+    if phone(s) {
+      bw := hi(text_width("BLOOM", bc) + 40 * k, 120 * k); bh := 46 * k;
+      b := Box.{x0 = w - 16 * k - bw, y0 = above - 12 * k - bh, x1 = w - 16 * k, y1 = above - 12 * k};
+      s[0].button = b;
+      plate(s, u, b, 0.9, ifx s[0].button_on then 3.0f32 else 1.0f32);
+      n = draw_text(out, n, "BLOOM", (b.x0 + b.x1 - text_width("BLOOM", bc)) / 2, (b.y0 + b.y1 + bc) / 2, bc, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+    } else {
+      wide := text_width("E", bc) + 16 * k + text_width("BLOOM", bc);
+      x0 := (w - wide) / 2;
+      b := Box.{x0 = x0 - 14 * k, y0 = above - 12 * k - bc - 22 * k, x1 = x0 + wide + 14 * k, y1 = above - 12 * k};
+      plate(s, u, b, 0.85, 1);
+      n = draw_text(out, n, "E", x0, b.y1 - 11 * k, bc, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+      n = draw_text(out, n, "BLOOM", x0 + text_width("E", bc) + 16 * k, b.y1 - 11 * k, bc, GAP, SPACE, ink(k, 0.95, CREAM_R, CREAM_G, CREAM_B), false, false);
+    }
+  }
+  if move_on {
+    r := 46 * k;
+    for i: 0..<32 {
+      a0 := f32(i) * f32(TAU) / 32; a1 := f32(i + 1) * f32(TAU) / 32;
+      if lit(out, n, ox + cos(a0) * r, oy + sin(a0) * r, ox + cos(a1) * r, oy + sin(a1) * r, 0.8 * k, 0.5, 1.5 * k, CREAM_R, CREAM_G, CREAM_B, 0) { n += 6; }
+    }
+    kx := ox + pad_x * r; ky := oy - pad_y * r;
+    if lit(out, n, kx - 0.01, ky, kx + 0.01, ky, 14 * k, 0.8, 6 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; }
+  }
+  return n;
+}
+
+// ---- the frame
+
+// What the face tells the page about the stream before the frame: your
+// medium, the stream's draw and the lily pads.
+fairy_water :: (s: [] Fairy, medium: int, vertices: int, patch_n: int, pads: [] f32, count: int) #export_c {
+  s[0].water = medium;
+  s[0].water_vertices = vertices; s[0].water_patches = patch_n;
+  n := count;
+  if n * 8 > pads.count { n = pads.count / 8; }
+  if n > 7 { n = 7; }
+  for i: 0..<n * 8 { s[0].pads[i] = pads[i]; }
+  s[0].pad_n = n;
+}
+
+fairy_golden :: (s: [] Fairy, on: bool) #export_c { s[0].golden = on; }
+
+// After the player moved: your feet at (fx, fy, fz) on the flat floor, facing
+// face, doing act (player.coax Act); air is how high you fly over the
+// ground, flap your wings' phase. Lays out the scene, fills the uniforms and
+// the HUD, and returns the vertex count.
+fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
+                fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32, air: f32, flap: f32,
+                move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c {
+  if !s[0].started { fairy_start(s); }
+  if u.count < UNIFORM_FLOATS { return 0; }
+  t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  s[0].time += f64(t);
+  s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5);
+  feet := v3(fx, fy, fz);
+  if !finite3(feet) { feet = s[0].feet; }
+  s[0].face = face; s[0].act = act;
+  s[0].air = ifx finite(air) then hi(air, 0) else 0.0f32;
+  speed := sqrt(vx * vx + vz * vz);
+  if finite(speed) { s[0].stride += speed * t / 1.6; }
+  shown := add(v3(feet.x, 0, feet.z), v3(0, ground_at(s, feet.x, feet.z) + feet.y, 0));
+  s[0].feet = shown;
+  play(s, shown);
+
+  shot := camera_frame(s, shown, vx, vz, t);
+
+  for k: 0..<5 { s[0].counts[k] = 0; }
+  s[0].shadow_n = 0; s[0].plate_n = 0;
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  fairy_figure(s, u, shown, face, s[0].stride, act, s[0].air, flap);
+  creatures(s, u, shown);
+  heart(s, u);
+  patches(s);
+  props(s);
+  trees(s, u, shot.eye);
+  ridges(s);
+  ph := phone(s);
+  for kind: 0..<5 {
+    d := kind * 4;
+    s[0].draws[d] = 0;
+    s[0].draws[d + 1] = cast(u32) SHAPE_VERTICES[kind];
+    s[0].draws[d + 2] = cast(u32) (ifx kind == 0 then 0 else CELLS * CELLS + SLOT_AT[kind]);
+    s[0].draws[d + 3] = cast(u32) (ifx kind == 0 then CELLS * CELLS else s[0].counts[kind]);
+  }
+  side := ifx ph then GRASS_PATCHES_PHONE else GRASS_PATCHES;
+  blades := ifx ph then GRASS_BLADES_PHONE else GRASS_BLADES;
+  g := GRASS_DRAW * 4;
+  s[0].draws[g] = 0; s[0].draws[g + 1] = cast(u32) (blades * 3);
+  s[0].draws[g + 2] = cast(u32) (CELLS * CELLS + OBJECTS); s[0].draws[g + 3] = cast(u32) (side * side);
+  wd := WATER_DRAW * 4;
+  s[0].draws[wd] = 0; s[0].draws[wd + 1] = cast(u32) s[0].water_vertices; s[0].draws[wd + 2] = 0; s[0].draws[wd + 3] = cast(u32) s[0].water_patches;
+
+  u[0] = width; u[1] = height; u[2] = effect_time(s); u[3] = 1; u[4] = ifx still || s[0].golden then 1.0f32 else 0.0f32;
+  u[6] = s[0].dpr;
+  view(shot, width, height, u, U_VIEW);
+  u[U_EYE] = shot.eye.x; u[U_EYE + 1] = shot.eye.y; u[U_EYE + 2] = shot.eye.z;
+  u[U_EYE + 3] = ifx ph then 0.011f32 * 1.25f32 else 0.011f32;
+  sun := unit_or(v3(0.5, 0.62, 0.45), v3(0, 1, 0));
+  u[U_SUN] = sun.x; u[U_SUN + 1] = sun.y; u[U_SUN + 2] = sun.z; u[U_SUN + 3] = ifx ph then 1.0f32 else 0.0f32;
+  u[U_GROUND] = f32(CELLS); u[U_GROUND + 1] = f32(FF_CELL); u[U_GROUND + 2] = f32(FF_EDGE); u[U_GROUND + 3] = f32(FF_EDGE);
+  // the grass round the camera's ground point, patch-snapped so it doesn't swim
+  gx := floor(shot.at.x / 2) * 2 - f32(side); gz := floor(shot.at.z / 2) * 2 - f32(side);
+  u[U_GRASS] = gx; u[U_GRASS + 1] = gz; u[U_GRASS + 2] = f32(side); u[U_GRASS + 3] = f32(blades);
+  u[U_GRASS2] = f32(side) - 1; u[U_GRASS2 + 1] = f32(FF_LEVEL); u[U_GRASS2 + 2] = f32(FF_PATH_HALF); u[U_GRASS2 + 3] = shown.x;
+  // you part the grass where you stand
+  u[U_SUN + 3] = u[U_SUN + 3];
+  paths(u);
+  blooms(s, u);
+  n := hud(s, out, u, move_on, ox, oy, pad_x, pad_y, shown);
+  u[5] = f32(s[0].plate_n);
+  u[7] = shown.z;
+  return n;
+}
+
+fairy_draws :: (s: [] Fairy) -> int #export_c { return DRAWS; }
+fairy_store_cap :: (k: int) -> int #export_c {
+  if k == 0 { return FF_GROUND_POINTS * 4; }
+  return OBJECTS * OBJECT_FLOATS * 4;
+}
+
+// ---- checks
+
+#test "the uniforms and the shape slots line up with fairy.wgsl's" {
+  #assert UNIFORM_FLOATS % 4 == 0;
+  #assert U_SHADOW == 44 && U_PATH == 108 && U_PATH_INFO == 236 && U_BLOOM == 240 && U_BLOOM_INFO == 336 && U_PLATE == 340 && U_WATER == 468;
+  #assert SLOT_AT[4] + SLOTS[4] == OBJECTS;
+  for k: 2..<5 { #assert SLOT_AT[k] == SLOT_AT[k - 1] + SLOTS[k - 1]; }
+  #assert GRASS_BLADES * 3 <= 1024 && SHAPE_VERTICES[2] <= 1024;
+}
+
+#test "a frame lays the valley out within its slots and sees you" {
+  g: [1] Fairy;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  nv := 0;
+  n := fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0.7, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert n > 0 && n <= MAX_VERTICES;
+  #assert g[0].tree_n > 100;
+  for k: 1..<5 { #assert g[0].counts[k] < SLOTS[k]; }
+  #assert u[5] >= 2 && u[0] == 1280;
+  y := ground_at(g[..], f32(FF_SPAWN_X), f32(FF_SPAWN_Z));
+  p := project(u[..], v3(f32(FF_SPAWN_X), y + 1.2, f32(FF_SPAWN_Z)), 1280, 800);
+  #assert p.x > 0 && p.x < 1280 && p.y > 0 && p.y < 800;
+  // the triangles a frame draws stay inside a phone's budget
+  tris := CELLS * CELLS * 2;
+  for k: 1..<5 { tris += g[0].counts[k] * SHAPE_VERTICES[k] / 3; }
+  tris += GRASS_PATCHES_PHONE * GRASS_PATCHES_PHONE * GRASS_BLADES_PHONE;
+  #assert tris < 700000;
+}
+
+#test "E at the first flower blooms it; the hedgehog's three patches make it happy and wake a root" {
+  g: [1] Fairy;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  nv := 0;
+  nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert ff_patch_near(g[0].forest[..], g[0].feet.x, g[0].feet.z) == 0;
+  #assert fairy_key(g[..], 'e', 0);
+  nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].forest[0].bloomed[0] && u[U_BLOOM_INFO] == 1;
+  for i: 1..<4 {
+    pressed := fairy_key(g[..], 'e', 0);
+    for k: 0..<3 { nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, FF_PATCH[i * 4], 0, FF_PATCH[i * 4 + 1], 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  }
+  #assert ff_mood(g[0].forest[..], 0) == MOOD_HAPPY;
+  for k: 0..<30 { nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, -30, 0, -33, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert g[0].forest[0].awake[0] && g[0].near_creature == 0;
+  #assert ff_restored(g[0].forest[..], -30, -32, g[0].time) == 1;
+}
+
+#test "a phone taps BLOOM; a tap elsewhere is the sticks'" {
+  g: [1] Fairy;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  nv := 0;
+  g[0].touch = true;
+  nv = fairy_frame(g[..], out[..], u[..], 1170, 2532, 3, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  b := g[0].button;
+  #assert b.x1 > b.x0 && b.x1 <= 1170 && b.x0 >= 0;
+  #assert !fairy_pointer(g[..], 20, 400, 0, 1, 3);
+  #assert fairy_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1, 4);
+  #assert fairy_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1, 4);
+  nv = fairy_frame(g[..], out[..], u[..], 1170, 2532, 3, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].forest[0].bloomed[0];
+}
+
+#test "trees keep off the trails, the stream and the glades" {
+  g: [1] Fairy;
+  fairy_start(g[..]);
+  nodes := FF_NODE_XZ; links := FF_LINK_AB;
+  for t: 0..<g[0].tree_n {
+    x := g[0].trees[t * TREE_FLOATS]; z := g[0].trees[t * TREE_FLOATS + 1];
+    #assert verse_path_nearest(nodes[..], links[..], x, z).d > f32(FF_PATH_HALF) + 2;
+    st := ff_stream_near(x, z);
+    #assert st.d > st.half + 2;
+  }
+  // the stream's bed is under its level, the trails over it
+  #assert ground_at(g[..], f32(FF_POND_X), f32(FF_POND_Z)) < f32(FF_LEVEL) - 1;
+  #assert ground_at(g[..], f32(FF_SPAWN_X), f32(FF_SPAWN_Z)) > f32(FF_LEVEL) + 0.2;
+}

@@ -1,0 +1,419 @@
+// Fairy Forest's stream and pond on the water system (docs/verse/water.md):
+// one verse/water.coax river body along the course the page gives (a
+// Catmull-Rom spline through its control points, wide where the pond is),
+// at one level, drawn by fairy.wgsl from the baked nodes in the painted
+// water preset (art-styles.md section 12). It is its own library, as
+// verse/everglade/river.coax is (this file started as a copy of it): the
+// realm's face (apps/openagents-web/fairy-face.c) passes values between it,
+// the page and the controller. The page carves the bed; this file bakes the
+// nodes over it, says what water you are in, floats lily pads on the pond
+// and writes the water's uniform block.
+//
+// What it keeps of river.coax: the medium (ground, wading, swimming,
+// diving), the pace, the float line, the ripples you leave. What it drops:
+// breath and Exhaustion (a fairy in a stream is never in danger), the
+// current's flow grid (the stream is slow; the nodes carry its direction
+// for the shader's detail) and ducks.
+//   coax/bin/coax test --library verse/fairy-forest/stream.coax --steps 2000000000
+
+#load "../water-look.coax";
+
+STREAM_CONTROLS :: 16;    // the page's control points, at most
+STREAM_PER :: 4;          // spline points between two controls
+STREAM_POINTS :: (STREAM_CONTROLS - 1) * STREAM_PER + 1;
+STREAM_COLS :: 41;        // the baked nodes: 0.5 m across, 20 m in all (the pond's width)
+STREAM_ROWS :: 240;       // and 1 m along, at most
+STREAM_ACROSS :: 0.5;
+STREAM_ALONG :: 1.0;
+STREAM_PATCH_ROWS :: 4;   // a patch (an instance) is 4 m of stream
+STREAM_NODES :: STREAM_COLS * STREAM_ROWS * WATER_NODE;
+STREAM_SPEED :: 0.35;     // m/s, what the nodes say the water moves at
+STREAM_RIPPLES :: 24;
+
+WADE_DEPTH :: 0.4;
+SWIM_DEPTH :: 1.25;
+FLOAT_DEPTH :: 1.2;
+EYE_HEIGHT :: 1.6;
+STANDING :: 0.05;
+RISE_SPEED :: 0.6;
+SETTLE_RATE :: 6.0;
+DIVE_SPEED :: 1.5;
+MEDIUM_GROUND :: 0; MEDIUM_WADING :: 1; MEDIUM_SWIMMING :: 2; MEDIUM_DIVING :: 3;
+
+PADS :: 7;                // lily pads on the pond, round the page's pond centre
+FLOAT_STEP :: 1.0 / 120.0;
+
+Stream :: struct {
+  ready: bool;
+  n: int; cell: f32; west: f32; south: f32;
+  level: f64;
+  controls: [STREAM_CONTROLS] D2; control_widths: [STREAM_CONTROLS] f64;
+  points: [STREAM_POINTS] D2; widths: [STREAM_POINTS] f64; lengths: [STREAM_POINTS] f64;
+  profile: [STREAM_POINTS] D2;
+  bodies: [1] WaterBody;
+  starts: [257] int; entries: [256] int;
+  set: WaterSet;
+  preset: WaterPreset;
+  rows: int;
+  nodes: [STREAM_NODES] f32;                       // a store (fairy.wgsl water_nodes)
+  ripples: [STREAM_RIPPLES * 4] f32;
+  medium: int; feet: f32; afloat: bool;
+  wake_x: f32; wake_z: f32; wake_time: f32; splashed: bool;
+  home: [PADS * 2] f64;
+  floats: [PADS] RigidBody; colliders: [PADS] Collider; pushes: [PADS * 2] Push;
+  float_tick: u64; float_carry: f64;
+}
+
+Swim :: struct {
+  medium: int;
+  feet: f32;            // where your feet are, m: the bed, or afloat in the water
+  surface: f32;         // the water's height over you, or -1000 where there is none
+  pace: f32;            // your speed's share, 1 on land
+}
+
+lo_s :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+hi_s :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+clamp_s :: (a: f32, low: f32, high: f32) -> f32 { return lo_s(high, hi_s(low, a)); }
+
+// The ground's height at (x, z), as verse/terrain.coax reads it.
+stream_bed :: (r: [] Stream, heights: [] f32, x: f32, z: f32) -> f32 {
+  n := r[0].n;
+  if n < 1 || heights.count < (n + 1) * (n + 1) { return 0; }
+  gx := clamp_s((x - r[0].west) / r[0].cell, 0, f32(n) - 0.0001);
+  gz := clamp_s((z - r[0].south) / r[0].cell, 0, f32(n) - 0.0001);
+  if !(gx == gx) { gx = 0; }
+  if !(gz == gz) { gz = 0; }
+  i := cast(int) floor(gx); j := cast(int) floor(gz);
+  fx := gx - f32(i); fz := gz - f32(j);
+  w := n + 1;
+  h00 := heights[j * w + i]; h10 := heights[j * w + i + 1]; h01 := heights[(j + 1) * w + i]; h11 := heights[(j + 1) * w + i + 1];
+  if fx >= fz { return h00 + (h10 - h00) * fx + (h11 - h10) * fz; }
+  return h00 + (h11 - h01) * fx + (h01 - h00) * fz;
+}
+
+// Builds the stream from the page's course (x, z and full width a control),
+// at `level`, over the page's carved ground; pond is where the lily pads float.
+fairy_stream_start :: (r: [] Stream, heights: [] f32, course: [] f32, level: f32, pond_x: f32, pond_z: f32,
+                       n: int, cell: f32, west: f32, south: f32) #export_c {
+  r[0].n = n; r[0].cell = cell; r[0].west = west; r[0].south = south;
+  r[0].level = f64(level);
+  count := course.count / 3;
+  if count > STREAM_CONTROLS { count = STREAM_CONTROLS; }
+  if count < 2 { return; }
+  for i: 0..<count {
+    r[0].controls[i] = d2(f64(course[i * 3]), f64(course[i * 3 + 1]));
+    r[0].control_widths[i] = f64(course[i * 3 + 2]);
+  }
+  total := water_spline_points(count, STREAM_PER);
+  c := water_course_spline(r[0].controls[0..<count], r[0].control_widths[0..<count], STREAM_PER,
+                           r[0].points[0..<total], r[0].widths[0..<total], r[0].lengths[0..<total]);
+  for i: 0..<total { r[0].profile[i] = d2(r[0].lengths[i], f64(level)); }
+  body := water_river(1, c, r[0].profile[0..<total]);
+  sea := water_wind_sea(2.0, 2.0, 0.25, 4);
+  if sea.error == WaveError.none { calm := sea.set; calm.steepness = 0.25; body = water_with_waves(body, calm); }
+  r[0].bodies[0] = body;
+  r[0].set = water_set(r[0].bodies[..], 8.0, r[0].starts[..], r[0].entries[..]);
+  r[0].preset = water_preset(WATER_RIVER);
+  rows := cast(int) floor(water_course_length(c) / STREAM_ALONG) + 1;
+  rows = (rows / STREAM_PATCH_ROWS) * STREAM_PATCH_ROWS + 1;
+  if rows > STREAM_ROWS { rows = STREAM_ROWS; }
+  r[0].rows = rows;
+  stream_bake(r, heights);
+  r[0].medium = MEDIUM_GROUND;
+  for p: 0..<PADS {
+    a := f64(p) * 2.39996 + 0.4;
+    d := 2.0 + 4.5 * sqrt((f64(p) + 0.5) / f64(PADS));
+    r[0].home[p * 2] = f64(pond_x) + cos(a) * d; r[0].home[p * 2 + 1] = f64(pond_z) + sin(a) * d;
+  }
+  pads_start(r);
+  r[0].ready = true;
+}
+
+// The nodes: a row every metre along the course, STREAM_COLS across it,
+// each with its rest position at the level, the depth to the bed under it,
+// its distance to the shore and the way the water moves there.
+stream_bake :: (r: [] Stream, heights: [] f32) {
+  b := r[0].bodies[0];
+  wet: [STREAM_COLS * STREAM_ROWS] bool;
+  shore: [STREAM_COLS * STREAM_ROWS] f32;
+  rows := r[0].rows;
+  for j: 0..<rows {
+    along := f64(j) * STREAM_ALONG;
+    middle := water_point_at(b.course, along);
+    s := water_locate(b.course, middle);
+    normal := d2(-s.tangent.y, s.tangent.x);
+    for c: 0..<STREAM_COLS {
+      offset := (f64(c) - f64(STREAM_COLS - 1) * 0.5) * STREAM_ACROSS;
+      p := d2_add(middle, d2_scale(normal, offset));
+      k := (j * STREAM_COLS + c) * WATER_NODE;
+      depth := r[0].level - f64(stream_bed(r, heights, cast(f32) p.x, cast(f32) p.y));
+      r[0].nodes[k] = cast(f32) p.x; r[0].nodes[k + 1] = cast(f32) r[0].level; r[0].nodes[k + 2] = cast(f32) p.y;
+      r[0].nodes[k + 3] = cast(f32) depth;
+      r[0].nodes[k + 5] = cast(f32) (s.tangent.x * STREAM_SPEED); r[0].nodes[k + 6] = cast(f32) (s.tangent.y * STREAM_SPEED);
+      r[0].nodes[k + 7] = 0;
+      wet[j * STREAM_COLS + c] = depth > 0.0;
+    }
+  }
+  water_shore_distance(STREAM_COLS, rows, wet[0..<STREAM_COLS * rows], STREAM_ACROSS, STREAM_ALONG, shore[0..<STREAM_COLS * rows]);
+  for k: 0..<STREAM_COLS * rows { r[0].nodes[k * WATER_NODE + 4] = shore[k]; }
+}
+
+fairy_stream_node_bytes :: () -> int #export_c { return STREAM_NODES * 4; }
+
+// The water's uniform block (fairy.wgsl WaterU) for this frame at `time` s.
+fairy_stream_frame :: (r: [] Stream, u: [] f32, time: f64, phone: bool, ex: f32, ey: f32, ez: f32, pixel_angle: f32) #export_c {
+  if !r[0].ready || u.count < WATER_FLOATS { return; }
+  b := r[0].bodies[0];
+  inside := false;
+  s := water_sample(r[0].set, f64(ex), f64(ez), stream_tick(time));
+  if s.found && f64(ey) < s.height { inside = true; }
+  water_look_body(u, 0, b.waves, time, r[0].preset, 1, inside);
+  water_look_detail(u, 0, 2.0, 0.08, 2.0, 0.012);
+  water_look_control(u, 0, phone);
+  water_look_ripples(u, 0, r[0].ripples[..], cast(f32) u[W_PARAMS]);
+  u[W_REST + 1] = pixel_angle;
+  u[W_GRID] = f32(STREAM_COLS); u[W_GRID + 1] = f32(r[0].rows);
+  u[W_GRID + 2] = ifx phone then 10.0f32 else 20.0f32;
+  u[W_GRID + 3] = ifx phone then 2.0f32 else 4.0f32;
+  u[W_GRID2] = f32(STREAM_PATCH_ROWS); u[W_GRID2 + 1] = f32(fairy_stream_patches(r));
+  u[W_FRAME] = 0; u[W_FRAME + 1] = 0; u[W_FRAME + 2] = 0;
+  u[W_FRAME + 3] = f32(STREAM_ACROSS); u[W_REST + 3] = f32(STREAM_ALONG);
+}
+
+stream_tick :: (time: f64) -> u64 { return cast(u64) floor(fmax(time, 0.0) * 120.0); }
+
+// The draw: vertices a patch (quads across times along, 6 each), and patches.
+fairy_stream_vertices :: (phone: bool) -> int #export_c { return ifx phone then 10 * 2 * 6 else 20 * 4 * 6; }
+fairy_stream_patches :: (r: [] Stream) -> int #export_c { return ifx r[0].rows > 1 then (r[0].rows - 1) / STREAM_PATCH_ROWS else 0; }
+
+// The surface over (x, z) at `time`, or -1000 where there is none.
+fairy_stream_surface :: (r: [] Stream, x: f32, z: f32, time: f64) -> f32 #export_c {
+  if !r[0].ready { return -1000; }
+  s := water_sample(r[0].set, f64(x), f64(z), stream_tick(time));
+  if !s.found { return -1000; }
+  return cast(f32) s.height;
+}
+
+// ---- the swimmer (river.coax's, without breath)
+
+medium_of :: (surface: f32, bed: f32, feet: f32) -> int {
+  if surface <= -999 { return MEDIUM_GROUND; }
+  depth := surface - bed;
+  if depth <= f32(WADE_DEPTH) || feet > surface { return MEDIUM_GROUND; }
+  if feet + f32(EYE_HEIGHT) < surface { return MEDIUM_DIVING; }
+  if depth > f32(SWIM_DEPTH) || feet > bed + f32(STANDING) { return MEDIUM_SWIMMING; }
+  return MEDIUM_WADING;
+}
+
+swim_height :: (feet: f32, surface: f32, bed: f32, vertical: f32, dt: f32) -> f32 {
+  float := surface - f32(FLOAT_DEPTH);
+  floor_ := lo_s(bed, float);
+  top := hi_s(float, floor_);
+  if !(dt > 0) || !(feet == feet) { return clamp_s(feet, floor_, top); }
+  next := 0.0f32;
+  if vertical != 0 { next = feet + vertical * dt; }
+  else if feet < float - 0.05 { next = lo_s(feet + f32(RISE_SPEED) * dt, float); }
+  else { next = float + (feet - float) * exp(-f32(SETTLE_RATE) * dt); }
+  return clamp_s(next, floor_, top);
+}
+
+pace_of :: (medium: int) -> f32 { return ifx medium == MEDIUM_GROUND then 1.0f32 else 0.5f32; }
+
+// One frame of you at (x, z) over the carved ground; `air` is how high your
+// feet are over the ground (a fairy in flight is never in the water).
+fairy_stream_swim :: (r: [] Stream, heights: [] f32, x: f32, z: f32, air: f32, dive: bool, dt: f32, time: f64) -> Swim #export_c {
+  out: Swim;
+  out.surface = -1000; out.pace = 1; out.medium = MEDIUM_GROUND;
+  bed := stream_bed(r, heights, x, z);
+  out.feet = bed;
+  if !r[0].ready { return out; }
+  t := ifx dt == dt && dt > 0 then lo_s(dt, 0.25) else 0.0f32;
+  s := water_sample(r[0].set, f64(x), f64(z), stream_tick(time));
+  surface := ifx s.found then cast(f32) s.height else -1000.0f32;
+  if surface > -999 && bed + air > surface + 0.05 { r[0].afloat = false; r[0].medium = MEDIUM_GROUND; out.surface = surface; return out; }
+  feet := ifx r[0].afloat then r[0].feet else bed;
+  if surface > -999 && surface - bed > f32(SWIM_DEPTH) && !r[0].afloat { feet = hi_s(bed, surface - f32(FLOAT_DEPTH)); }
+  medium := medium_of(surface, bed, feet);
+  afloat := medium == MEDIUM_SWIMMING || medium == MEDIUM_DIVING;
+  if afloat {
+    feet = swim_height(feet, surface, bed, ifx dive then -f32(DIVE_SPEED) else 0.0f32, t);
+    medium = medium_of(surface, bed, feet);
+    afloat = medium == MEDIUM_SWIMMING || medium == MEDIUM_DIVING;
+    if afloat && feet <= bed + f32(STANDING) && surface - bed <= f32(SWIM_DEPTH) { afloat = false; medium = MEDIUM_WADING; }
+  }
+  if !afloat { feet = bed; }
+  r[0].medium = medium; r[0].feet = feet; r[0].afloat = afloat;
+  out.medium = medium; out.feet = feet; out.surface = surface;
+  out.pace = pace_of(medium);
+  stream_wake(r, x, z, medium, surface, time);
+  return out;
+}
+
+WAKE_EVERY :: 0.35;
+WAKE_STEP :: 0.25;
+
+stream_wake :: (r: [] Stream, x: f32, z: f32, medium: int, surface: f32, time: f64) {
+  t := cast(f32) (time - 3600.0 * floor(time / 3600.0));
+  wet := medium != MEDIUM_GROUND && surface > -999;
+  if !wet { r[0].splashed = false; return; }
+  if !r[0].splashed {
+    water_add_ripple(r[0].ripples[..], x, z, t, 0.03);
+    r[0].splashed = true; r[0].wake_x = x; r[0].wake_z = z; r[0].wake_time = t;
+    return;
+  }
+  dx := x - r[0].wake_x; dz := z - r[0].wake_z;
+  age := t - r[0].wake_time;
+  if age < 0 { r[0].wake_time = t; return; }
+  if age >= f32(WAKE_EVERY) && dx * dx + dz * dz >= f32(WAKE_STEP) * f32(WAKE_STEP) {
+    water_add_ripple(r[0].ripples[..], x, z, t, ifx medium == MEDIUM_WADING then 0.012f32 else 0.018f32);
+    r[0].wake_x = x; r[0].wake_z = z; r[0].wake_time = t;
+  }
+}
+
+// A ring on the water at (x, z), from the page (a bloom by the bank, a frog's leap).
+fairy_stream_ripple :: (r: [] Stream, x: f32, z: f32, time: f64, strength: f32) #export_c {
+  t := cast(f32) (time - 3600.0 * floor(time / 3600.0));
+  water_add_ripple(r[0].ripples[..], x, z, t, strength);
+}
+
+// ---- the lily pads: 0.5 x 0.03 x 0.5 m slabs of 2.6 kg on water_apply's buoyancy, held by their stems
+
+pads_start :: (r: [] Stream) {
+  for i: 0..<PADS {
+    x := r[0].home[i * 2]; z := r[0].home[i * 2 + 1];
+    s := water_sample(r[0].set, x, z, 0);
+    y := ifx s.found then s.height else r[0].level;
+    mass := 2.6;
+    r[0].floats[i] = rigid_body(mass, rigid_box_inertia(mass, d3(0.5, 0.03, 0.5)), d3(x, y + 0.02, z), dq_y(golden(i + 5) * TAU_D));
+    r[0].colliders[i] = Collider.{body = i, shape = shape_cuboid(d3(0.25, 0.015, 0.25))};
+  }
+  r[0].float_tick = 0; r[0].float_carry = 0.0;
+}
+
+// Steps the pads by dt; writes each one's x, y, z, its yaw, its tip and the
+// way it tips, 0 and 1 (a pad) into `out`, 8 numbers each.
+fairy_stream_floats :: (r: [] Stream, dt: f32, out: [] f32) -> int #export_c {
+  if !r[0].ready { return 0; }
+  if dt == dt && dt > 0 { r[0].float_carry += fmin(f64(dt), 0.25); }
+  steps := 0;
+  every: [1] bool;
+  gravity := d3(0.0, -9.81, 0.0);
+  while r[0].float_carry >= FLOAT_STEP && steps < 8 {
+    w := rigid_world(FLOAT_STEP, r[0].floats[..]);
+    w.tick = r[0].float_tick;
+    n := water_apply(w, r[0].colliders[..], r[0].set, w.tick, FLOAT_STEP, water_settings(), every[0..<0], r[0].pushes[..]);
+    for i: 0..<PADS {
+      b := r[0].floats[i];
+      fx := (r[0].home[i * 2] - b.pos.x) * 9.0 - b.vel.x * 1.5;
+      fz := (r[0].home[i * 2 + 1] - b.pos.z) * 9.0 - b.vel.z * 1.5;
+      r[0].floats[i].force = d3_add(b.force, d3(fx, 0.0, fz));
+    }
+    w = rigid_step(w, gravity);
+    r[0].float_tick = w.tick;
+    r[0].float_carry -= FLOAT_STEP;
+    steps += 1;
+  }
+  if r[0].float_carry >= FLOAT_STEP { r[0].float_carry = 0.0; }
+  count := 0;
+  for i: 0..<PADS {
+    if (count + 1) * 8 > out.count { break; }
+    b := r[0].floats[i];
+    k := count * 8;
+    out[k] = cast(f32) b.pos.x; out[k + 1] = cast(f32) b.pos.y; out[k + 2] = cast(f32) b.pos.z;
+    f := dq_rotate(b.orientation, D3_Z);
+    out[k + 3] = cast(f32) atan_d2(f.x, f.z);
+    up := dq_rotate(b.orientation, D3_Y);
+    out[k + 4] = cast(f32) acos_d(fclamp(up.y, -1.0, 1.0)); out[k + 5] = cast(f32) atan_d2(up.x, up.z); out[k + 6] = 0;
+    out[k + 7] = 1;
+    count += 1;
+  }
+  return count;
+}
+
+atan_d2 :: (x: f64, z: f64) -> f64 {
+  if z > 0.0 { return atan_d(x / z); }
+  if z < 0.0 { return atan_d(x / z) + ifx x >= 0.0 then PI_D else -PI_D; }
+  return ifx x >= 0.0 then PI_D * 0.5 else -PI_D * 0.5;
+}
+
+// ---- checks
+
+// A test valley: 80 cells of 2 m, ground at 1 m, a stream carved along x = 10
+// from north to south, 4 m wide, widening to a 16 m pond at z = 0.
+TEST_N :: 80;
+TEST_COURSE :: [15] f32.[10, 70, 4,  10, 20, 4,  10, 0, 16,  10, -20, 4,  10, -70, 4];
+test_ground :: (heights: [] f32) {
+  for j: 0..<TEST_N + 1 {
+    z := -80.0f32 + f32(j) * 2;
+    half := ifx abs(z) < 10 then 8.0f32 - abs(z) * 0.6 else 2.0f32;
+    if half < 2 { half = 2; }
+    for i: 0..<TEST_N + 1 {
+      x := -80.0f32 + f32(i) * 2;
+      d := abs(x - 10);
+      h := 1.0f32;
+      if d <= half { h = -0.6 - 1.8 * (1 - d / half); }
+      else if d < half + 2 { h = -0.6 + (d - half) * 0.8; }
+      heights[j * (TEST_N + 1) + i] = h;
+    }
+  }
+}
+
+#test "the medium follows the depth" {
+  #assert medium_of(-1000, 0, 0) == MEDIUM_GROUND;
+  #assert medium_of(0, -0.3, -0.3) == MEDIUM_GROUND;
+  #assert medium_of(0, -0.8, -0.8) == MEDIUM_WADING;
+  #assert medium_of(0, -2, -f32(FLOAT_DEPTH)) == MEDIUM_SWIMMING;
+  #assert medium_of(0, -3, -2.5) == MEDIUM_DIVING;
+}
+
+#test "the stream: a body along the course at its level, nodes over the bed, wide at the pond" {
+  heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
+  test_ground(heights[..]);
+  r: [1] Stream;
+  course := TEST_COURSE;
+  fairy_stream_start(r[..], heights[..], course[..], -0.2, 10, 0, TEST_N, 2, -80, -80);
+  #assert r[0].ready && r[0].rows > 100 && r[0].rows <= STREAM_ROWS;
+  s := water_sample(r[0].set, 10, -40, 0);
+  #assert s.found && abs(s.height + 0.2) < 0.1;
+  #assert water_sample(r[0].set, 15, 0, 0).found && !water_sample(r[0].set, 15, -40, 0).found;
+  #assert !water_sample(r[0].set, 30, 0, 0).found;
+  wet := 0;
+  for k: 0..<STREAM_COLS * r[0].rows { if r[0].nodes[k * WATER_NODE + 3] > 0 { wet += 1; } }
+  #assert wet > r[0].rows * 4;
+  #assert fairy_stream_patches(r[..]) * STREAM_PATCH_ROWS == r[0].rows - 1;
+  u: [WATER_FLOATS] f32;
+  fairy_stream_frame(r[..], u[..], 0, false, 10, 5, -40, 0.001);
+  #assert u[W_GRID] == f32(STREAM_COLS) && u[W_GRID + 1] == f32(r[0].rows);
+  #assert u[W_GRID + 2] * u[W_GRID + 3] * 6 == f32(fairy_stream_vertices(false));
+}
+
+#test "you wade in, swim in the pond, and fly over it dry" {
+  heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
+  test_ground(heights[..]);
+  r: [1] Stream;
+  course := TEST_COURSE;
+  fairy_stream_start(r[..], heights[..], course[..], -0.2, 10, 0, TEST_N, 2, -80, -80);
+  a := fairy_stream_swim(r[..], heights[..], 20, -40, 0, false, 1.0 / 60.0, 1.0);
+  #assert a.medium == MEDIUM_GROUND && a.pace == 1;
+  c := Swim.{};
+  for k: 0..<120 { c = fairy_stream_swim(r[..], heights[..], 10, 0, 0, false, 1.0 / 60.0, 1.2 + f64(k) / 60.0); }
+  #assert c.medium == MEDIUM_SWIMMING && c.pace == 0.5;
+  f := fairy_stream_swim(r[..], heights[..], 10, 0, 5, false, 1.0 / 60.0, 4.0);
+  #assert f.medium == MEDIUM_GROUND;
+}
+
+#test "lily pads float on the pond, held by their stems" {
+  heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
+  test_ground(heights[..]);
+  r: [1] Stream;
+  course := TEST_COURSE;
+  fairy_stream_start(r[..], heights[..], course[..], -0.2, 10, 0, TEST_N, 2, -80, -80);
+  out: [PADS * 8] f32;
+  n := 0;
+  for k: 0..<150 { n = fairy_stream_floats(r[..], 1.0 / 60.0, out[..]); }
+  #assert n == PADS;
+  for i: 0..<PADS {
+    s := water_sample(r[0].set, f64(out[i * 8]), f64(out[i * 8 + 2]), r[0].float_tick);
+    #assert s.found && abs(f64(out[i * 8 + 1]) - s.height) < 0.12;
+  }
+}
