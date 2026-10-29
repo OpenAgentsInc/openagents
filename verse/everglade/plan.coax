@@ -402,6 +402,10 @@ lo_i :: (a: int, b: int) -> int { if a < b { return a; } return b; }
 // to. Returns how many.
 everglade_reach :: (grid: [] u8, queue: [] u32) -> int {
   everglade_open(grid);
+  return everglade_fill(grid, queue);
+}
+// The fill over a grid already marked (everglade_open, and an admin's edits on it: edits.coax).
+everglade_fill :: (grid: [] u8, queue: [] u32) -> int {
   N := EG_REACH_N;
   start := reach_index(f32(EG_SPAWN_X), f32(EG_SPAWN_Z));
   if start < 0 || grid[start] != 1 || queue.count < N * N { return 0; }

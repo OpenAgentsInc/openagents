@@ -1,0 +1,374 @@
+// Everglade's edits (eg-edit): what an admin adds to the designed city in
+// edit mode, and the checks that hold it to the plan. The plan
+// (plan.coax) stays the city: its walls, buildings, streets, gates and
+// people don't move, so the quests and the characters can rely on them.
+// An admin places the kit's things on it (EG_EDIT_ITEMS), moves, turns,
+// resizes and removes them; the realm publishes the list to the server as
+// Everglade's world (POST /api/playtest/world/everglade, an admin's only)
+// and every visitor's page lays it over the plan.
+//
+// The list as text (eg_edits_text, eg_edits_read), a line each:
+//   eg-edit 1
+//   t KIND X Z YAW SIZE     an item: X and Z in centimetres, YAW in degrees, SIZE in percent
+//
+// A thing may not stand in a wall, a building, a prop, the woods or past
+// the world's edge (eg_edit_fault: the realm refuses the place or the move).
+// It may stand on a street, and may block a way: eg_edits_unreached walks
+// the city again, as plan.coax's reachability check does, with every
+// thing in the way, and names the first door, character, street, gate or
+// trail's end nobody can reach any more, so the realm warns the admin.
+//   coax/bin/coax test --library verse/everglade/edits.coax --steps 3000000000
+
+#load "people.coax";
+
+EG_EDIT_ITEMS :: 5;
+EG_EDIT_MAX :: 48;      // things an admin may add
+EG_EDIT_LABEL :: [5] string.["CRATE", "BARREL", "BENCH", "FENCE", "STALL"];
+// Each one's footprint at size 1 from the pack's bounds (verse/packs/everglade.json): half its
+// width across (its local x), half its depth (its local z), and its height, metres.
+EG_EDIT_HALF :: [15] f32.[0.42, 0.45, 0.93,   0.35, 0.35, 0.9,   1.39, 0.27, 0.53,   1.03, 0.06, 0.81,   0.92, 0.47, 2.63];
+EG_EDIT_SIZE_MIN :: 0.5; EG_EDIT_SIZE_MAX :: 3.0;
+EG_EDIT_HEAD :: "eg-edit 1\n";
+
+EgThing :: struct { kind: int; x: f32; z: f32; yaw: f32; size: f32; }
+EgEdits :: struct { n: int; things: [EG_EDIT_MAX] EgThing; }
+
+// Why a thing can't stand where it is.
+EG_FAULT_NONE :: 0; EG_FAULT_EDGE :: 1; EG_FAULT_WOODS :: 2; EG_FAULT_SOLID :: 3; EG_FAULT_THING :: 4;
+EG_FAULT_WORD :: [5] string.["", "PAST THE EDGE OF THE WORLD", "IN THE WOODS", "IN SOMETHING OF THE CITY", "IN ANOTHER THING"];
+
+eg_edit_kind :: (k: int) -> int { if k < 0 { return 0; } if k >= EG_EDIT_ITEMS { return EG_EDIT_ITEMS - 1; } return k; }
+
+// A thing's footprint on the ground: its box turned by its yaw, as the box round it.
+eg_edit_box :: (t: EgThing, out: [] f32) {
+  k := eg_edit_kind(t.kind) * 3;
+  hx := EG_EDIT_HALF[k] * t.size; hz := EG_EDIT_HALF[k + 1] * t.size;
+  c := abs(cos(t.yaw)); s := abs(sin(t.yaw));
+  ex := c * hx + s * hz; ez := s * hx + c * hz;
+  out[0] = t.x - ex; out[1] = t.z - ez; out[2] = t.x + ex; out[3] = t.z + ez;
+  out[4] = EG_EDIT_HALF[k + 2] * t.size;
+}
+
+// Whether thing i of the list may stand where it is.
+eg_edit_fault :: (e: EgEdits, i: int) -> int {
+  if i < 0 || i >= e.n { return EG_FAULT_NONE; }
+  t := e.things[i];
+  box: [EG_BOX] f32;
+  eg_edit_box(t, box[..]);
+  b := f32(EG_BOUND) - 1;
+  if box[0] < -b || box[2] > b || box[1] < -b || box[3] > b { return EG_FAULT_EDGE; }
+  if everglade_in_woods(t.x, t.z) || everglade_in_woods(box[0], box[1]) || everglade_in_woods(box[2], box[3]) ||
+     everglade_in_woods(box[0], box[3]) || everglade_in_woods(box[2], box[1]) { return EG_FAULT_WOODS; }
+  solids: [EG_SOLIDS * EG_BOX] f32;
+  n := everglade_solids(solids[..]);
+  for s: 0..<n - 4 { if boxes_gap(box[..], 0, solids[..], s) <= 0.05 { return EG_FAULT_SOLID; } }
+  // and not on the bridge's deck, where the trail crosses the river
+  br := EG_BRIDGE;
+  if boxes_gap(box[..], 0, br[..], 0) <= 0.05 { return EG_FAULT_SOLID; }
+  other: [EG_BOX] f32;
+  for j: 0..<e.n {
+    if j == i { continue; }
+    eg_edit_box(e.things[j], other[..]);
+    if boxes_gap(box[..], 0, other[..], 0) <= 0.02 { return EG_FAULT_THING; }
+  }
+  return EG_FAULT_NONE;
+}
+
+// Whether thing i stands on a street or a trail (allowed, but the realm says so).
+eg_edit_on_street :: (e: EgEdits, i: int) -> bool {
+  if i < 0 || i >= e.n { return false; }
+  box: [EG_BOX] f32;
+  eg_edit_box(e.things[i], box[..]);
+  for l: 0..<EG_LINKS {
+    if link_box_gap(EG_LINK_AB[l * 2], EG_LINK_AB[l * 2 + 1], box[..], 0) < f32(EG_PATH_HALF) { return true; }
+  }
+  return false;
+}
+
+// ---- walking the city again with the things in the way
+
+// Closes the cells the things stand on (widened as everglade_open widens a solid).
+eg_edits_block :: (grid: [] u8, e: EgEdits) {
+  pad := f32(EG_RADIUS) + f32(EG_REACH_CELL) * 0.71;
+  box: [EG_BOX] f32;
+  for t: 0..<e.n {
+    eg_edit_box(e.things[t], box[..]);
+    i0 := cast(int) floor((box[0] - pad - f32(EG_REACH_WEST)) / f32(EG_REACH_CELL));
+    i1 := cast(int) floor((box[2] + pad - f32(EG_REACH_WEST)) / f32(EG_REACH_CELL));
+    j0 := cast(int) floor((box[1] - pad - f32(EG_REACH_WEST)) / f32(EG_REACH_CELL));
+    j1 := cast(int) floor((box[3] + pad - f32(EG_REACH_WEST)) / f32(EG_REACH_CELL));
+    for j: hi_i(j0, 0)..<lo_i(j1 + 1, EG_REACH_N) {
+      for i: hi_i(i0, 0)..<lo_i(i1 + 1, EG_REACH_N) {
+        x := f32(EG_REACH_WEST) + (f32(i) + 0.5) * f32(EG_REACH_CELL);
+        z := f32(EG_REACH_WEST) + (f32(j) + 0.5) * f32(EG_REACH_CELL);
+        if box_gap(box[..], 0, x, z) < pad { grid[j * EG_REACH_N + i] = 0; }
+      }
+    }
+  }
+}
+
+// What must stay reachable on foot, as plan.coax checks it: every door,
+// every character, every street node, every gate, the quest board, the
+// stalls and each trail's end. Target k's place and name.
+EG_TARGETS :: EG_BUILDINGS + EG_SPOTS + EG_NODES + EG_GATES + 8;
+EG_TARGET_EXTRA :: [16] f32.[6.2, -6.4,  32, 3.5,  32, -3.5,  -88, 22,  22, 95,  66, 89.5,  96, -16,  0, -98];
+EG_TARGET_EXTRA_NAME :: [8] string.["THE QUEST BOARD", "THE NORTH STALLS", "THE SOUTH STALLS", "THE WAYSTONE", "THE RUINS", "THE CRYPT", "THE FAR BANK", "THE ROAD IN"];
+eg_target_x :: (k: int) -> f32 {
+  if k < EG_BUILDINGS { return EG_DOOR[k * 2]; }
+  s := k - EG_BUILDINGS;
+  if s < EG_SPOTS { return EG_SPOT[s * 3]; }
+  n := s - EG_SPOTS;
+  if n < EG_NODES { return EG_NODE_XZ[n * 2]; }
+  g := n - EG_NODES;
+  if g < EG_GATES { return EG_GATE[g * 4]; }
+  return EG_TARGET_EXTRA[(g - EG_GATES) * 2];
+}
+eg_target_z :: (k: int) -> f32 {
+  if k < EG_BUILDINGS { return EG_DOOR[k * 2 + 1]; }
+  s := k - EG_BUILDINGS;
+  if s < EG_SPOTS { return EG_SPOT[s * 3 + 1]; }
+  n := s - EG_SPOTS;
+  if n < EG_NODES { return EG_NODE_XZ[n * 2 + 1]; }
+  g := n - EG_NODES;
+  if g < EG_GATES { return EG_GATE[g * 4 + 1]; }
+  return EG_TARGET_EXTRA[(g - EG_GATES) * 2 + 1];
+}
+eg_target_name :: (k: int) -> string {
+  if k < 0 { return ""; }
+  if k < EG_BUILDINGS { return EG_BUILDING_NAME[k]; }
+  s := k - EG_BUILDINGS;
+  if s < EG_SPOTS { return EG_PERSON[s]; }
+  n := s - EG_SPOTS;
+  if n < EG_NODES { return "A STREET"; }
+  g := n - EG_NODES;
+  if g < EG_GATES { return EG_GATE_NAME[g]; }
+  return EG_TARGET_EXTRA_NAME[g - EG_GATES];
+}
+
+// Walks the city from the road in with the things in the way: the first
+// target nobody reaches any more, or -1 when every one still is. grid and
+// queue are EG_REACH_N squared each (the realm's face lends them).
+eg_edits_unreached :: (grid: [] u8, queue: [] u32, e: EgEdits) -> int {
+  if grid.count < EG_REACH_N * EG_REACH_N || queue.count < EG_REACH_N * EG_REACH_N { return -1; }
+  everglade_open(grid);
+  eg_edits_block(grid, e);
+  if everglade_fill(grid, queue) == 0 { return EG_TARGETS - 1; }
+  for k: 0..<EG_TARGETS {
+    if !reached(grid, eg_target_x(k), eg_target_z(k)) { return k; }
+  }
+  return -1;
+}
+
+// ---- the list as text
+
+eg_put_int :: (out: [] u8, at: int, v: int) -> int {
+  n := at;
+  if v < 0 { n = raw_put(out, n, "-"); }
+  a := ifx v < 0 then -v else v;
+  d: [12] u8; m := 0;
+  while m == 0 || a > 0 { d[m] = cast(u8) ('0' + a % 10); a = a / 10; m += 1; }
+  while m > 0 { m -= 1; if n < out.count { out[n] = d[m]; n += 1; } }
+  return n;
+}
+eg_round :: (v: f32) -> int { return cast(int) floor(v + 0.5); }
+
+// The list as text into out: its length, or 0 when it doesn't fit.
+eg_edits_text :: (e: EgEdits, out: [] u8) -> int {
+  n := raw_put(out, 0, EG_EDIT_HEAD);
+  for i: 0..<e.n {
+    t := e.things[i];
+    n = raw_put(out, n, "t ");
+    n = eg_put_int(out, n, eg_edit_kind(t.kind));
+    n = raw_put(out, n, " "); n = eg_put_int(out, n, eg_round(t.x * 100));
+    n = raw_put(out, n, " "); n = eg_put_int(out, n, eg_round(t.z * 100));
+    n = raw_put(out, n, " "); n = eg_put_int(out, n, eg_round(t.yaw * 180 / f32(PI)));
+    n = raw_put(out, n, " "); n = eg_put_int(out, n, eg_round(t.size * 100));
+    n = raw_put(out, n, "\n");
+  }
+  if n >= out.count { return 0; }
+  return n;
+}
+
+// A whole number at line[i] (an optional minus), and where it ends.
+EgNumber :: struct { v: int; end: int; ok: bool; }
+eg_number :: (line: string, from: int) -> EgNumber {
+  r: EgNumber;
+  i := from;
+  while i < line.count && line[i] == ' ' { i += 1; }
+  minus := i < line.count && line[i] == '-';
+  if minus { i += 1; }
+  v := 0; digits := 0;
+  while i < line.count && line[i] >= '0' && line[i] <= '9' && digits < 9 { v = v * 10 + cast(int) (line[i] - '0'); i += 1; digits += 1; }
+  r.ok = digits > 0 && (i == line.count || line[i] == ' ');
+  r.v = ifx minus then -v else v;
+  r.end = i;
+  return r;
+}
+
+// Reads a list into e: true when the text is one (its head, and every
+// line a whole thing); a thing that can't stand where it says is dropped.
+eg_edits_read :: (text: string, e: [] EgEdits) -> bool {
+  if text.count < EG_EDIT_HEAD.count || text[0..<EG_EDIT_HEAD.count] != EG_EDIT_HEAD { return false; }
+  got: EgEdits;
+  i := EG_EDIT_HEAD.count;
+  while i < text.count {
+    j := i; while j < text.count && text[j] != '\n' { j += 1; }
+    line := text[i..<j];
+    i = j + 1;
+    if line.count == 0 { continue; }
+    if line.count < 3 || line[0] != 't' || line[1] != ' ' { return false; }
+    kind := eg_number(line, 2); x := eg_number(line, kind.end); z := eg_number(line, x.end);
+    yaw := eg_number(line, z.end); size := eg_number(line, yaw.end);
+    if !kind.ok || !x.ok || !z.ok || !yaw.ok || !size.ok || size.end != line.count { return false; }
+    if kind.v < 0 || kind.v >= EG_EDIT_ITEMS || got.n >= EG_EDIT_MAX { continue; }
+    t: EgThing;
+    t.kind = kind.v; t.x = f32(x.v) / 100; t.z = f32(z.v) / 100;
+    t.yaw = f32(yaw.v) * f32(PI) / 180;
+    t.size = clamp(f32(size.v) / 100, f32(EG_EDIT_SIZE_MIN), f32(EG_EDIT_SIZE_MAX));
+    got.things[got.n] = t; got.n += 1;
+    if eg_edit_fault(got, got.n - 1) != EG_FAULT_NONE { got.n -= 1; }
+  }
+  e[0] = got;
+  return true;
+}
+
+// ---- the server's world (POST /api/playtest/world/everglade {doc, summary})
+
+// The publish's body: {"doc":{"everglade":1,"edits":"..."},"summary":"..."}; 0 when it doesn't fit.
+eg_edits_body :: (e: EgEdits, summary: string, out: [] u8) -> int {
+  text: [4096] u8;
+  tn := eg_edits_text(e, text[..]);
+  if tn == 0 { return 0; }
+  n := raw_put(out, 0, "{\"doc\":{\"everglade\":1,\"edits\":\"");
+  for i: 0..<tn {
+    if text[i] == '\n' { n = raw_put(out, n, "\\n"); } else if n < out.count { out[n] = text[i]; n += 1; }
+  }
+  n = raw_put(out, n, "\"},\"summary\":\"");
+  for i: 0..<summary.count {
+    c := summary[i];
+    if c == '"' || c == '\\' || c < 32 { continue; }
+    if n < out.count { out[n] = c; n += 1; }
+  }
+  n = raw_put(out, n, "\"}");
+  if n >= out.count { return 0; }
+  return n;
+}
+
+// Where a JSON key's value starts in text (after "key", spaces and the colon), or -1.
+eg_json_at :: (text: string, key: string) -> int {
+  if key.count + 2 > text.count { return -1; }
+  for i: 0..<text.count - key.count - 1 {
+    if text[i] != '"' || text[i + key.count + 1] != '"' || text[i + 1..<i + 1 + key.count] != key { continue; }
+    j := i + key.count + 2;
+    while j < text.count && text[j] == ' ' { j += 1; }
+    if j >= text.count || text[j] != ':' { continue; }
+    j += 1;
+    while j < text.count && text[j] == ' ' { j += 1; }
+    return j;
+  }
+  return -1;
+}
+
+// The server's answer to GET /api/playtest/world/everglade ("200\n" and its
+// JSON): the published list into e, and its version (0 none published, the
+// designed city; -1 no good answer).
+eg_edits_answer :: (answer: string, e: [] EgEdits) -> int {
+  if answer.count < 4 || answer[0..<4] != "200\n" { return -1; }
+  body := answer[4..<answer.count];
+  v := eg_json_at(body, "version");
+  if v < 0 { return -1; }
+  version := eg_number(body[v..<body.count], 0);
+  if version.v == 0 { e[0].n = 0; return 0; }
+  at := eg_json_at(body, "edits");
+  if at < 0 || body[at] != '"' { return -1; }
+  text: [4096] u8; n := 0;
+  i := at + 1;
+  while i < body.count && body[i] != '"' && n < 4096 {
+    c := body[i];
+    if c == '\\' && i + 1 < body.count {
+      i += 1;
+      c = ifx body[i] == 'n' then cast(u8) '\n' else body[i];
+    }
+    text[n] = c; n += 1; i += 1;
+  }
+  if !eg_edits_read(cast(string) text[0..<n], e) { return -1; }
+  return hi_i(version.v, 1);
+}
+
+// ---- checks
+
+eg_thing :: (kind: int, x: f32, z: f32, yaw: f32, size: f32) -> EgThing {
+  t: EgThing; t.kind = kind; t.x = x; t.z = z; t.yaw = yaw; t.size = size;
+  return t;
+}
+eg_one :: (t: EgThing) -> EgEdits { e: EgEdits; e.things[0] = t; e.n = 1; return e; }
+
+#test "a thing stands in the open: not in a building, the palisade, the woods, the river or past the edge" {
+  #assert eg_edit_fault(eg_one(eg_thing(0, 6, -12, 0, 1)), 0) == EG_FAULT_NONE;           // on the commons
+  #assert eg_edit_fault(eg_one(eg_thing(0, -27, 41, 0, 1)), 0) == EG_FAULT_SOLID;         // in the mages' tower
+  #assert eg_edit_fault(eg_one(eg_thing(0, -14, -37, 0, 1)), 0) == EG_FAULT_NONE;          // in the inn's room: it furnishes it
+  #assert eg_edit_fault(eg_one(eg_thing(1, 20, -56, 0, 1)), 0) == EG_FAULT_SOLID;         // in the south wall
+  #assert eg_edit_fault(eg_one(eg_thing(1, 1, 1, 0, 1)), 0) == EG_FAULT_SOLID;            // in the fountain
+  #assert eg_edit_fault(eg_one(eg_thing(1, -40, -75, 0, 1)), 0) == EG_FAULT_WOODS;        // in the woods
+  #assert eg_edit_fault(eg_one(eg_thing(1, 88, 40, 0, 1)), 0) != EG_FAULT_NONE;           // in the river
+  #assert eg_edit_fault(eg_one(eg_thing(1, 88, -11, 0, 1)), 0) == EG_FAULT_SOLID;         // on the bridge's deck
+  #assert eg_edit_fault(eg_one(eg_thing(4, 0, -99.4, 0, 1)), 0) == EG_FAULT_EDGE;         // past the edge
+  // a bench turned a quarter is long the other way; a big one reaches the wall a small one doesn't
+  #assert eg_edit_fault(eg_one(eg_thing(2, 6, -51.5, 0, 1)), 0) == EG_FAULT_NONE;
+  #assert eg_edit_fault(eg_one(eg_thing(2, 6, -51.5, f32(PI) / 2, 1)), 0) == EG_FAULT_NONE;
+  #assert eg_edit_fault(eg_one(eg_thing(2, 6, -51.5, f32(PI) / 2, 3)), 0) == EG_FAULT_SOLID;
+}
+
+#test "two things don't stand in each other" {
+  e: EgEdits;
+  e.things[0] = eg_thing(0, 6, -12, 0, 1); e.things[1] = eg_thing(0, 6.5, -12, 0, 1); e.n = 2;
+  #assert eg_edit_fault(e, 1) == EG_FAULT_THING && eg_edit_fault(e, 0) == EG_FAULT_THING;
+  e.things[1].x = 8;
+  #assert eg_edit_fault(e, 1) == EG_FAULT_NONE;
+}
+
+#test "a thing on a street is allowed, and said" {
+  #assert eg_edit_on_street(eg_one(eg_thing(0, 0, -34, 0, 1)), 0);
+  #assert !eg_edit_on_street(eg_one(eg_thing(0, 6, -12, 0, 1)), 0);
+  #assert !eg_edit_on_street(eg_one(eg_thing(0, 20, -6, 0, 1)), 0);
+}
+
+#test "the list round trips as text, and refuses what isn't one" {
+  e: EgEdits;
+  e.things[0] = eg_thing(1, 6, -12, f32(PI) / 4, 1.2); e.things[1] = eg_thing(4, -20.5, 3.25, 0, 1); e.n = 2;
+  out: [512] u8;
+  n := eg_edits_text(e, out[..]);
+  #assert cast(string) out[0..<n] == "eg-edit 1\nt 1 600 -1200 45 120\nt 4 -2050 325 0 100\n";
+  back: [1] EgEdits;
+  #assert eg_edits_read(cast(string) out[0..<n], back[..]);
+  #assert back[0].n == 2 && back[0].things[0].kind == 1 && abs(back[0].things[0].z + 12) < 0.001 && abs(back[0].things[0].yaw - f32(PI) / 4) < 0.001;
+  #assert abs(back[0].things[1].size - 1) < 0.001 && abs(back[0].things[1].x + 20.5) < 0.001;
+  #assert !eg_edits_read("eg-edit 2\n", back[..]) && !eg_edits_read("eg-edit 1\nt 1 2 3\n", back[..]) && !eg_edits_read("eg-edit 1\nx 1 2 3 4 5\n", back[..]);
+  // a thing that can't stand where it says is dropped; an unknown kind too; sizes are held to their range
+  #assert eg_edits_read("eg-edit 1\nt 0 -2700 4100 0 100\nt 9 600 -1200 0 100\nt 1 600 -1200 0 900\n", back[..]);
+  #assert back[0].n == 1 && back[0].things[0].kind == 1 && back[0].things[0].size == f32(EG_EDIT_SIZE_MAX);
+  #assert eg_edits_read("eg-edit 1\n", back[..]) && back[0].n == 0;
+}
+
+#test "the publish's body and the server's answer" {
+  e: EgEdits;
+  e.things[0] = eg_thing(1, 6, -12, 0, 1); e.n = 1;
+  out: [1024] u8;
+  n := eg_edits_body(e, "Placed a \"barrel\"", out[..]);
+  #assert cast(string) out[0..<n] == "{\"doc\":{\"everglade\":1,\"edits\":\"eg-edit 1\\nt 1 600 -1200 0 100\\n\"},\"summary\":\"Placed a barrel\"}";
+  got: [1] EgEdits;
+  #assert eg_edits_answer("200\n{\"doc\": {\"edits\": \"eg-edit 1\\nt 1 600 -1200 0 100\\n\", \"everglade\": 1}, \"version\": 3, \"publishedAt\": 1.5, \"publishedBy\": \"owner\"}", got[..]) == 3;
+  #assert got[0].n == 1 && got[0].things[0].kind == 1;
+  #assert eg_edits_answer("200\n{\"doc\": null, \"version\": 0}", got[..]) == 0 && got[0].n == 0;
+  #assert eg_edits_answer("500\n{}", got[..]) == -1 && eg_edits_answer("200\n{\"doc\": {\"edits\": \"nonsense\"}, \"version\": 2}", got[..]) == -1;
+}
+
+#test "walking the city again: a stall at the inn's door shuts it, a crate on the commons shuts nothing" {
+  grid: [EG_REACH_N * EG_REACH_N] u8;
+  queue: [EG_REACH_N * EG_REACH_N] u32;
+  #assert eg_edits_unreached(grid[..], queue[..], eg_one(eg_thing(0, 6, -12, 0, 1))) == -1;
+  door := eg_one(eg_thing(4, -4.5, -37, f32(PI) / 2, 1));
+  #assert eg_edit_fault(door, 0) == EG_FAULT_NONE;
+  k := eg_edits_unreached(grid[..], queue[..], door);
+  #assert k == EG_INN && eg_target_name(k) == "THE INN";
+}
