@@ -253,6 +253,21 @@ vf_max_bones :: () -> int #export_c { return MAX_PARTS; }
   #assert vf_motion_add(f[..], "motion spin; rig animal; seconds 1.6; once; at 0.8; neck 0 0 0; nose 10 0 0") < 0 && vf_error(f[..]).count > 0;
 }
 
+#test "what Gemini really wrote for \"she always spun twice before lying down\": round twice by the jump key plays, 360 is refused" {
+  f: [1] Figs;
+  vf_start(f[..]);
+  // gemini-3.8-flash, thinking LOW, 2026-10-29 (0035_villa_emote_thinking.sql)
+  numbers := [10] f32.[1, 1, 1, 1, 1, 1, 0.8, 1, 1, 1];
+  vf_set(f[..], 1, true, numbers[..], PATTERN_SOCKS, 0.6, 0.4, 0.2, 0.9, 0.9, 0.9);
+  k := vf_motion_add(f[..], "motion spin_and_lie_down; rig animal; seconds 5.0; hold; still; fade 0.6; at 0.8; pelvis 0 180 0; head 0 -20 0; tail -20 -30 0; at 0.801; pelvis 0 -180 0; at 1.8; pelvis 0 0 0; head 0 -15 0; tail -20 -20 0; at 2.6; pelvis 0 180 0; head 0 -20 0; tail -20 -30 0; at 2.601; pelvis 0 -180 0; at 3.5; pelvis 0 0 0; head 0 0 0; tail -40 0 0; at 5.0; pelvis -15 0 0; lift 0 -0.22 0; front_left_shoulder -80 0 0; front_right_shoulder -80 0 0; front_left_elbow 95 0 0; front_right_elbow 95 0 0; hind_left_hip -80 15 0; hind_right_hip -80 -15 0; hind_left_knee 110 0 0; hind_right_knee 110 0 0; hind_left_hock -90 0 0; hind_right_hock -90 0 0; neck -15 0 0; head 10 0 0; tail -60 10 0");
+  #assert k >= 0;
+  #assert vf_emote(f[..], 1, k);
+  vf_tick(f[..], 0.9); vf_step(f[..], 1, 0, 0.9);
+  #assert vf_still(f[..], 1);
+  // the same sentence under the old prompt ("pelvis any"): turned on past 180
+  #assert vf_motion_add(f[..], "motion circle_and_lie; rig animal; seconds 5.5; hold; still; fade 0.5; at 0.7; pelvis 0 180 0; spine 0 -15 0; neck 15 -10 0; head -10 0 0; tail -20 -15 0; at 1.4; pelvis 0 360 0; spine 0 -10 0; neck 10 -5 0; at 2.1; pelvis 0 540 0; spine 0 -15 0; neck 15 -10 0; tail -20 -15 0; at 2.8; pelvis 0 720 0; spine 0 0 0; neck 10 0 0; tail -30 0 0; at 3.8; pelvis -15 720 0; lift 0 -0.1 0; front_left_shoulder -30 0 0; front_right_shoulder -30 0 0; front_left_elbow 45 0 0; front_right_elbow 45 0 0; hind_left_hip -50 0 0; hind_right_hip -50 0 0; hind_left_knee 80 0 0; hind_right_knee 80 0 0; neck 20 0 0; head -10 0 0; at 5.0; pelvis -5 720 0; lift 0 -0.22 0; front_left_shoulder -85 0 0; front_right_shoulder -85 0 0; front_left_elbow 100 0 0; front_right_elbow 100 0 0; front_left_wrist 20 0 0; front_right_wrist 20 0 0; hind_left_hip -80 0 0; hind_right_hip -80 0 0; hind_left_knee 110 0 0; hind_right_knee 110 0 0; hind_left_hock -90 0 0; hind_right_hock -90 0 0; neck 25 0 0; head -15 0 0; tail 20 0 0") < 0 && vf_error(f[..]).count > 0;
+}
+
 #test "an agent's motion is added, named again it replaces, a bad one says why" {
   f: [1] Figs;
   vf_start(f[..]);
