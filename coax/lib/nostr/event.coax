@@ -3,9 +3,10 @@
 // needed. Unknown fields and original numeric/escape spellings stay there.
 // A parsed/hashed record is NOT verified authority. Only the complete verify
 // entry sets verified, and even that is not author/scope/freshness admission.
-#load "adapters/json-admission.coax";
+#load "../../tests/nostr/event_fast_checks.coax";
 #load "hex.coax";
 #load "../crypto/schnorr.coax";
+#load "adapters/json-admission.coax";
 #load "../../tests/nostr/event_checks.coax";
 #authority;
 
@@ -13,6 +14,8 @@ NE_OK :: 0; NE_JSON :: 1; NE_SHAPE :: 2; NE_LIMIT :: 3;
 NE_HEX :: 4; NE_OUTPUT :: 5; NE_ALIAS :: 6; NE_ID :: 7; NE_SIGNATURE :: 8;
 NE_MAX_INPUT :: 262144; NE_MAX_OUTPUT :: 262144;
 NE_MAX_TAGS :: 2000; NE_MAX_VALUES :: 16;
+NE_WRITE_FAILED :: -1; // The shared JSON writer's single failure sentinel.
+NeTagSpan :: struct {ok:bool;from:int;to:int;count:int;}
 NostrEvent :: struct {
   error:int=NE_SHAPE; admission:int; original:string;
   id:[32]u8; public_key:[32]u8; signature:[64]u8; computed_id:[32]u8;
@@ -27,82 +30,83 @@ ne_field :: (raw:string)->int {
 }
 ne_lower_hex :: (decoded:string,bytes:[]u8)->bool {
   if decoded.count!=bytes.count*2 {return false;}
-  // Generic decoding already rejects every non-hex byte. The additional
-  // domain rule only excludes the six uppercase digits it otherwise accepts.
-  for c:decoded {if c>='A' && c<='F' {return false;}}
+  // Every accepted lowercase hex digit has ASCII bit5 set; uppercase hex
+  // does not. The generic decoder rejects every other byte independently.
+  for c:decoded {if (c&32)==0 {return false;}}
   return hex_decode_checked(decoded,bytes,false).error==NC_OK;
 }
 // Empty inner arrays retain their exact position in the ID preimage. Tag
 // meaning/required values belong to consumers; no deduplication or sorting.
-ne_tags :: (j:[]Json,event:[]NostrEvent)->bool {
-  if j[0].tok!=JSON_ARRAY {return false;}
-  event[0].tags_from=j[0].from;
+ne_tags :: (j:[]Json)->NeTagSpan {
+  result:NeTagSpan;
+  if j[0].tok!=JSON_ARRAY {return result;}
+  result.from=j[0].from;
   t:=json_next(j);
   while t!=JSON_ARRAY_END {
-    if t!=JSON_ARRAY || event[0].tags>=NE_MAX_TAGS {return false;}
-    event[0].tags+=1;values:=0;
+    if t!=JSON_ARRAY || result.count>=NE_MAX_TAGS {return result;}
+    result.count+=1;values:=0;
     v:=json_next(j);
     while v!=JSON_ARRAY_END {
-      if v!=JSON_STRING || values>=NE_MAX_VALUES {return false;}
+      if v!=JSON_STRING || values>=NE_MAX_VALUES {return result;}
       values+=1;
       v=json_next(j);
     }
     t=json_next(j);
   }
-  event[0].tags_to=j[0].to;return true;
+  result.to=j[0].to;result.ok=true;return result;
 }
 ne_parse :: (text:string)->NostrEvent {
-  e:[1]NostrEvent;
+  e:NostrEvent;
   admission:=ja_admit(text,ja_policy(0),text.count,0);
-  if admission!=JA_OK {e[0].error=NE_JSON;e[0].admission=admission;return e[0];}
+  if admission!=JA_OK {e.error=NE_JSON;e.admission=admission;return e;}
   j:[1]Json;json_start(j[..],text);
-  if json_next(j[..])!=JSON_OBJECT {return e[0];}
+  if json_next(j[..])!=JSON_OBJECT {return e;}
   seen:u32=0;decoded:[65536]u8;
   while true {
     t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}
     // Admission has already established a complete object. At this point
     // its next token is necessarily a key, not a second competing policy.
     field:=ne_field(json_text(j[..]));t=json_next(j[..]);raw:=json_text(j[..]);
-    if field==0 {if !json_skip(j[..]) {return e[0];}continue;}
+    if field==0 {if !json_skip(j[..]) {return e;}continue;}
     seen|=cast(u32)1<<cast(u32)(field-1);
     if field==3 || field==4 {
       // The shared policy has already required safe integer tokens for
       // these decoded names. This consumer additionally excludes negatives.
-      value:=ja_integer(raw);if value.value<0 {return e[0];}
-      if field==3 {e[0].created_at=value.value;}
-      else {if value.value>65535 {return e[0];}e[0].kind=value.value;}
+      value:=ja_integer(raw);if value.value<0 {return e;}
+      if field==3 {e.created_at=value.value;}
+      else {if value.value>65535 {return e;}e.kind=value.value;}
     } else if field==5 {
-      if !ne_tags(j[..],e[..]) {return e[0];}
+      tags:=ne_tags(j[..]);if !tags.ok {return e;}
+      e.tags_from=tags.from;e.tags_to=tags.to;e.tags=tags.count;
     } else {
-      if t!=JSON_STRING {return e[0];}
-      n:=json_unescape(raw,decoded[..]);if n<0 {return e[0];}
-      if field==6 {e[0].content_from=j[0].from;e[0].content_to=j[0].to;}
+      if t!=JSON_STRING {return e;}
+      n:=json_unescape(raw,decoded[..]);if n<0 {return e;}
+      if field==6 {e.content_from=j[0].from;e.content_to=j[0].to;}
       else {
-        valid:=false;
-        if field==1 {valid=ne_lower_hex(cast(string)decoded[0..<n],e[0].id[..]);}
-        if field==2 {valid=ne_lower_hex(cast(string)decoded[0..<n],e[0].public_key[..]);}
-        if field==7 {valid=ne_lower_hex(cast(string)decoded[0..<n],e[0].signature[..]);}
-        if !valid {e[0].error=NE_HEX;return e[0];}
+        valid:=ifx field==1 then ne_lower_hex(cast(string)decoded[0..<n],e.id[..])
+          else ifx field==2 then ne_lower_hex(cast(string)decoded[0..<n],e.public_key[..])
+          else ne_lower_hex(cast(string)decoded[0..<n],e.signature[..]);
+        if !valid {e.error=NE_HEX;return e;}
       }
     }
   }
-  if seen!=127 || json_next(j[..])!=JSON_END {return e[0];}
-  e[0].error=NE_OK;e[0].original=text;return e[0];
+  if seen!=127 || json_next(j[..])!=JSON_END {return e;}
+  e.error=NE_OK;e.original=text;return e;
 }
 // Internal serializers consume only ne_parse's successful records. They are
 // not exported record-admission interfaces. Callers use the complete raw-JSON
 // entries below; a forged NostrEvent must never grant authority.
 ne_write_tags :: (text:string,out:[]u8,at:int,decoded:[]u8)->int {
   j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_ARRAY {return -1;}
-  n:=json_raw(out,at,"[");tags:=0;
+  n:=json_raw(out,at,"[");first_tag:=true;
   t:=json_next(j[..]);
   while t!=JSON_ARRAY_END {
     if t!=JSON_ARRAY {return -1;}
-    if tags>0 {n=json_raw(out,n,",");}tags+=1;n=json_raw(out,n,"[");values:=0;
+    if !first_tag {n=json_raw(out,n,",");}first_tag=false;n=json_raw(out,n,"[");first_value:=true;
     v:=json_next(j[..]);
     while v!=JSON_ARRAY_END {
       if v!=JSON_STRING {return -1;}
-      if values>0 {n=json_raw(out,n,",");}values+=1;
+      if !first_value {n=json_raw(out,n,",");}first_value=false;
       count:=json_unescape(json_text(j[..]),decoded);if count<0 {return -1;}
       n=json_write_string(out,n,cast(string)decoded[0..<count]);
       v=json_next(j[..]);
@@ -115,8 +119,7 @@ ne_write_tags :: (text:string,out:[]u8,at:int,decoded:[]u8)->int {
 ne_serialize :: (e:NostrEvent,out:[]u8)->int {
   decoded:[65536]u8;pub:[64]u8;key:=e.public_key;
   h:=hex_encode_checked(cast(string)key[..],pub[..],false);
-  if h.error!=NC_OK {return -cast(int)h.error;}
-  n:=json_raw(out,0,"[0,");n=json_write_string(out,n,cast(string)pub[..]);
+  n:=json_raw(out,ne_writer_start(h.error),"[0,");n=json_write_string(out,n,cast(string)pub[..]);
   n=json_raw(out,n,",");n=json_write_int(out,n,e.created_at);
   n=json_raw(out,n,",");n=json_write_int(out,n,e.kind);n=json_raw(out,n,",");
   n=ne_write_tags(e.original[e.tags_from..<e.tags_to],out,n,decoded[..]);
@@ -125,6 +128,15 @@ ne_serialize :: (e:NostrEvent,out:[]u8)->int {
   n=json_write_string(out,n,cast(string)decoded[0..<count]);return json_raw(out,n,"]");
 }
 ne_same_id :: (e:NostrEvent)->bool {for i:0..<32 {if e.id[i]!=e.computed_id[i] {return false;}}return true;}
+// Seed the shared writer's sticky error chain from an actual codec result.
+ne_writer_start :: (status:u32)->int {
+  if status!=NC_OK {return NE_WRITE_FAILED;}return 0;
+}
+// A real hash result is an observation, not verified authority. Hash failures
+// always refuse; only the complete entry produces and compares the ID bytes.
+ne_hashed :: (event:NostrEvent,status:u32)->NostrEvent {
+  e:=event;if status!=SHA_OK {e.error=NE_OUTPUT;}return e;
+}
 ne_io :: (input:int,output:int,overlap:bool)->int {
   if overlap {return NE_ALIAS;}
   if input<0 || input>NE_MAX_INPUT {return NE_LIMIT;}
@@ -138,9 +150,9 @@ nostr_event_read :: (text:string,out:[]u8,overlap:bool)->NostrEvent #export_c {
   e:NostrEvent;
   e.error=ne_io(text.count,out.count,overlap);if e.error!=NE_OK {return e;}
   e=ne_parse(text);if e.error!=NE_OK {return e;}
-  n:=ne_serialize(e,out);if n<0 {e.error=NE_OUTPUT;return e;}
+  n:=ne_serialize(e,out);if n==NE_WRITE_FAILED {e.error=NE_OUTPUT;return e;}
   status:=sha256_hash_checked(out[0..<n],e.computed_id[..],false);
-  e.error=ifx status==SHA_OK then NE_OK else NE_OUTPUT;if e.error!=NE_OK {return e;}
+  if status!=SHA_OK {return ne_hashed(e,status);}
   if !ne_same_id(e) {e.error=NE_ID;return e;}
   e.written=n;return e;
 }

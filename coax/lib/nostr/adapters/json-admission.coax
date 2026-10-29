@@ -92,7 +92,8 @@ ja_admit :: (text:string,p:JsonPolicy,frame_bytes:int,proto_bytes:int)->int #exp
   state:[1]JsonAdmission;state[0]=ja_start(text.count,p,frame_bytes,proto_bytes);
   j:[1]Json;json_start(j[..],text);decoded:[65536]u8;
   while !state[0].finished && state[0].error==JA_OK {
-    token:=json_next(j[..]);raw:=json_text(j[..]);n:=0;
+    // Only string tokens observe decoded length; other tokens use its default.
+    token:=json_next(j[..]);raw:=json_text(j[..]);n:int;
     if token==JSON_STRING {n=json_unescape(raw,decoded[..]);}
     ja_feed(state[..],token,j[0].depth,j[0].key,j[0].from,raw,decoded[..],n);
   }

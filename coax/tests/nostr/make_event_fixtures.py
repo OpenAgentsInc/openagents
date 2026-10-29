@@ -42,6 +42,8 @@ def generate():
     bad.extend([('[]','NE_SHAPE'),('{','NE_JSON'),(text+' false','NE_JSON')])
     lines.append('NE_BAD_EVENTS :: ['+str(len(bad))+']string.['+','.join(coax_literal(x) for x,_ in bad)+'];')
     lines.append('NE_BAD_ERRORS :: ['+str(len(bad))+']int.['+','.join(x for _,x in bad)+'];')
+    lines.append('NE_MANY_TAGS :: '+coax_literal(json.dumps([[]]*2000,separators=(',',':')))+';')
+    lines.append('NE_TOO_MANY_TAGS :: '+coax_literal(json.dumps([[]]*2001,separators=(',',':')))+';')
     return '\n'.join(lines)+'\n'
 if __name__=='__main__':
     (ROOT/'coax/tests/nostr/event_fixtures.coax').write_text(generate())

@@ -26,8 +26,17 @@ class Events(unittest.TestCase):
             p=Path(name);cls.report['sources'][str(p.relative_to(ROOT))]=sha(p)
         for p in [SOURCE,*Path(__file__).parent.glob('event*'),Path(__file__).parent/'make_event_fixtures.py']:
             if p.is_file():cls.report['sources'][str(p.relative_to(ROOT))]=sha(p)
-        for mode,args in [('checked',[]),('release',['--release'])]:
-            source=cls.dir/(mode+'.c');source.write_text(base.run(base.COMPILER,'c',SOURCE,'--library','--header',cls.dir/'event.h',*args).stdout)
+        variants=[('checked',SOURCE,[]),('release',SOURCE,['--release'])]
+        previous=os.environ.get('COAX_EVENT_PARITY_SOURCE')
+        if previous:
+            old=Path(previous).resolve();before=json.loads((ROOT/'coax/tests/nostr/data/event-initial-mutation-2026-10-28.json').read_text())
+            cls.assert_snapshot=before['focused']['sources']['coax/lib/nostr/event.coax']
+            if sha(old)!=cls.assert_snapshot:raise AssertionError('before-refactor source does not match retained initial snapshot')
+            variants.extend([('before_checked',old,[]),('before_release',old,['--release'])])
+            old_deps=json.loads(base.run(base.COMPILER,'deps',old).stdout);old_root=old.parents[3]
+            cls.report['before_after_parity']={'before_snapshot':'f5581bacd14ca501ab667e6bb25322e7c31bf837','before_source_sha256':sha(old),'before_sources':{str(Path(p).relative_to(old_root)):sha(p) for p in old_deps['sources']},'contract':'equal errors/admission/verified/written; successful parsed fields, original spans, canonical bytes and computed IDs; refusal partial metadata is not a contract','cases':0}
+        for mode,entry,args in variants:
+            source=cls.dir/(mode+'.c');source.write_text(base.run(base.COMPILER,'c',entry,'--library','--header',cls.dir/'event.h',*args).stdout)
             target=cls.dir/(mode+('.dylib' if platform.system()=='Darwin' else '.so'));base.run('cc','-std=c11','-O2','-shared','-fPIC',source,'-lm','-o',target)
             lib=C.CDLL(str(target))
             for name in ['nostr_event_read','nostr_event_verify_vartime']:
@@ -50,6 +59,7 @@ class Events(unittest.TestCase):
         e['sig']=sig.hex();return e
     def call(self,text,error=OK,*,verify=False,expected=None,capacity=262144,overlap=False,counts=None,wasm=True):
         if isinstance(text,str):text=text.encode()
+        reference=None
         for mode,lib in self.libs:
             a=base.array(b'\xa5'*8+text+b'\xa5'*8);storage=base.array(b'\xa5'*(262144+16));iv=base.View(C.cast(C.byref(a,8),C.POINTER(C.c_uint8)),len(text));ov=base.View(C.cast(C.byref(storage,8),C.POINTER(C.c_uint8)),capacity)
             if counts is not None:iv.count=counts
@@ -58,6 +68,11 @@ class Events(unittest.TestCase):
             limit=capacity if 0<=capacity<=262144 else 262144
             self.assertEqual(bytes(storage[:8]),b'\xa5'*8);self.assertEqual(bytes(storage[8+limit:]),b'\xa5'*(262152-limit))
             if error!=OK:self.assertEqual(e.written,0)
+            observable=(e.error,e.admission,e.written,bool(e.verified))
+            if error==OK:
+                observable+=(bytes(e.id),bytes(e.public_key),bytes(e.signature),bytes(e.computed_id),e.created_at,e.kind,e.tags_from,e.tags_to,e.tags,e.content_from,e.content_to,bytes(storage[8:8+e.written]),C.string_at(e.original.data,e.original.count))
+            if reference is None:reference=observable
+            else:self.assertEqual(observable,reference,('before/after public parity',mode))
             if expected is not None:
                 pre=canonical(expected);self.assertEqual(bytes(storage[8:8+e.written]),pre);self.assertEqual(e.written,len(pre));self.assertEqual(bytes(e.computed_id),hashlib.sha256(pre).digest());self.assertEqual(e.tags,len(expected['tags']));self.assertEqual(e.kind,expected['kind']);self.assertEqual(e.created_at,expected['created_at']);self.assertEqual(C.string_at(e.original.data,e.original.count),text)
                 raw=text[e.content_from:e.content_to];self.assertEqual(json.loads(b'"'+raw+b'"'),expected['content'])
@@ -66,12 +81,13 @@ class Events(unittest.TestCase):
             if counts is not None:row['input_count']=counts
             if expected is not None:row.update(preimage=canonical(expected).hex(),id=expected['id'])
             self.cases.append(row)
+        if 'before_after_parity' in self.report:self.report['before_after_parity']['cases']+=1
         return e
     def test_canonical_oracles_and_signed_public_events(self):
         rng=random.Random(2026102901);events=[]
         contents=['','"\\/\b\f\n\r\t\x00\x1f','é€😀𝄞\u2028\u2029',''.join(map(chr,range(32))),'a'*1024]
         for i in range(96):
-            e=fixture();e.update(created_at=[0,1,1761750000,2**53-1][i%4],kind=[0,1,65535][i%3],content=rng.choice(contents),tags=[[],['x','repeat'],['x',str(i),'é😀']]);e=self.signed(e,i+1);events.append(e)
+            e=fixture();e.update(created_at=[0,1,1761750000,2**53-1][i%4],kind=[0,1,65535][i%3],content=rng.choice(contents),tags=[[],['x','repeat'],['x',str(i),'é😀','']]);e=self.signed(e,i+1);events.append(e)
         path=self.dir/'reference.json';path.write_text(json.dumps(events,ensure_ascii=False))
         js=json.loads(base.run('node',ROOT/'coax/tests/nostr/event_reference.cjs',path).stdout)
         for i,(e,ref) in enumerate(zip(events,js)):

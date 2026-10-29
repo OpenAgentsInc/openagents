@@ -1,0 +1,254 @@
+{
+  "checks": {
+    "default_step_limit": 20000000,
+    "failed": 0,
+    "groups": 180,
+    "passed": 180
+  },
+  "compiler": {
+    "sha256": "867bf5549dc4d4b20f698415280e92a81491b29c2dc201eec911e9d7d3faeeb2",
+    "version": "coax0 0.17.0"
+  },
+  "focused": {
+    "asan_ubsan": true,
+    "before_after_parity": {
+      "before_snapshot": "f5581bacd14ca501ab667e6bb25322e7c31bf837",
+      "before_source_sha256": "45118f2a7a9b5dc19466099fd0553ab1529de6cf768e16ce70a59df27e88e4d2",
+      "before_sources": {
+        "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+        "coax/lib/crypto/schnorr.coax": "f90f2a3fca5f65bf0c32d22897b30c192e16946c3890a286e4a2922880ed1757",
+        "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+        "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+        "coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+        "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+        "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+        "coax/lib/nostr/adapters/json-admission.coax": "fc8ec59f41b9d6bf3dab4facaaadb20a477d8be4580fca522c809354ac0afaa2",
+        "coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+        "coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+        "coax/lib/nostr/event.coax": "45118f2a7a9b5dc19466099fd0553ab1529de6cf768e16ce70a59df27e88e4d2",
+        "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+        "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+        "coax/lib/nostr/hex.coax": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5",
+        "coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+        "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+        "coax/tests/nostr/event_checks.coax": "465af6cf85dac3bac00735528a165e1607678720f2931b225b05a06ce0868fb4",
+        "coax/tests/nostr/event_fixtures.coax": "47484453878778117a924f79f983ea187eed11aa077a8c13489d9ff76b64c188",
+        "coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+        "coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+        "coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756"
+      },
+      "cases": 156,
+      "contract": "equal errors/admission/verified/written; successful parsed fields, original spans, canonical bytes and computed IDs; refusal partial metadata is not a contract"
+    },
+    "cases_per_native_profile": 156,
+    "compiler": "coax0 0.17.0",
+    "compiler_sha256": "867bf5549dc4d4b20f698415280e92a81491b29c2dc201eec911e9d7d3faeeb2",
+    "dependency_graph": {
+      "descriptors": [],
+      "schema_version": 1,
+      "sources": [
+        "coax/lib/nostr/event.coax",
+        "coax/tests/nostr/event_fast_checks.coax",
+        "coax/tests/nostr/event_fixtures.coax",
+        "coax/lib/nostr/hex.coax",
+        "coax/lib/nostr/codecs-common.coax",
+        "coax/lib/crypto/schnorr.coax",
+        "coax/lib/crypto/secp_mult.coax",
+        "coax/lib/crypto/secp_group.coax",
+        "coax/lib/crypto/secp_field.coax",
+        "coax/lib/crypto/bytes.coax",
+        "coax/lib/crypto/secp_scalar.coax",
+        "coax/tests/nostr/scalar_fixtures.coax",
+        "coax/lib/crypto/sha256.coax",
+        "coax/lib/proto/fingerprint.coax",
+        "coax/tests/nostr/schnorr_checks.coax",
+        "coax/tests/nostr/schnorr_fixtures.coax",
+        "coax/lib/nostr/adapters/json-admission.coax",
+        "coax/lib/nostr/json.coax",
+        "coax/lib/nostr/fixtures/json_suite.coax",
+        "coax/lib/nostr/fixtures/coax_relay.coax",
+        "coax/lib/nostr/adapters/json-policy.coax",
+        "coax/tests/nostr/event_checks.coax"
+      ]
+    },
+    "elapsed_seconds": 40.812869834015146,
+    "independent_bigint_signature_checks": 8,
+    "independent_preimages": 96,
+    "native": [
+      {
+        "artifact_sha256": "8ee316fa2dd81d5e8b9521368dd43a5f5ca422ec2d979b1e01ec7d297be8694a",
+        "generated_c_sha256": "940ed64c5cae3916d8cf2cabbfc4600194bb0c81bf3f47bbdeaef05e651acbbf",
+        "mode": "checked"
+      },
+      {
+        "artifact_sha256": "25ad1d33e50b5c3948a9d410ec793dae1881164bba42a1ea3a627ef501d0c789",
+        "generated_c_sha256": "c4c3987f957258b32447c97fc3a301f8c3bed84b780c046cb4f148ed75b47f64",
+        "mode": "release"
+      },
+      {
+        "artifact_sha256": "d937a012ad19ef2339611bce1c125a50a722ef1295d4b3910becd49989f54744",
+        "generated_c_sha256": "2c3277acec56717b1e1962bb4fd52f365000f23bdbb30065e5fda170465fab71",
+        "mode": "before_checked"
+      },
+      {
+        "artifact_sha256": "6822d5afc37c5dcbb7a1f1c4c086ac89b3a4a20e2ff12c1bfa664b9d551f8454",
+        "generated_c_sha256": "d3847b944aa799acb1057e773b558304d7cc1ed531cdeff69210540666bd34ba",
+        "mode": "before_release"
+      }
+    ],
+    "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+    "native_target": "arm64-apple-darwin25.4.0",
+    "profile": {
+      "decoded_content": 65536,
+      "input": 262144,
+      "output": 262144,
+      "raw_string": 65536,
+      "safe_integer": 9007199254740991,
+      "tags": 2000,
+      "values_per_tag": 16
+    },
+    "schema": "coax.nostr-event.v1",
+    "scope": "bounded public NIP-01 read/hash/verify correctness; no author/scope/freshness admission, signing, production-key or physical-iOS claim",
+    "seeded_emitted_faults": [
+      {
+        "artifact_sha256": "9f9da3a5157d4ba0c19e11fffe38f536273b1e8f652c218ca916cc2372c7b060",
+        "correct_error": 7,
+        "detected": true,
+        "fault": "missing-id",
+        "mutated_c_sha256": "e2cee2bbea69f7c42820b4de912f969bd464a3ad940f6d0b368ed7fb91d3d05d",
+        "observed_error": 0
+      },
+      {
+        "artifact_sha256": "946b1148f748deae3cfe428dde9d7479b2769331ea7a2e5f90e3f8cdb81ce42c",
+        "correct_error": 8,
+        "detected": true,
+        "fault": "signature-bypass",
+        "mutated_c_sha256": "1c2280220ab80c9aac384cbed2ac89517238ec65ca04cd1c62ddaa7f9f8992eb",
+        "observed_error": 0
+      },
+      {
+        "artifact_sha256": "1112d43d697c6e3a84cfdb653321f0f6979da70d3931fca66521fc1c84d05e0e",
+        "correct_error": 0,
+        "detected": true,
+        "fault": "lost-content-field",
+        "mutated_c_sha256": "69c8894b0a816046e437be727f9268bfd8957d2dc3bb7734ce3852f5f8322c46",
+        "observed_error": 2
+      },
+      {
+        "artifact_sha256": "69ca46b9baa14393e13aee2a5224f486ae2e445e4e8cbf7c15cadee11c49edb9",
+        "correct_error": 0,
+        "detected": true,
+        "fault": "lost-tags",
+        "mutated_c_sha256": "800681f2742a8ce7ee4f5f753138ae3205d2e7a9a5e5a5712a39f9c189283eb5",
+        "observed_error": 7
+      }
+    ],
+    "sources": {
+      "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "coax/lib/crypto/schnorr.coax": "f90f2a3fca5f65bf0c32d22897b30c192e16946c3890a286e4a2922880ed1757",
+      "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+      "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+      "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+      "coax/lib/nostr/adapters/json-admission.coax": "7b520fb5a24b259d5daaa68064823f05c60ea8f1cb4d5c19418f12eccd487824",
+      "coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+      "coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+      "coax/lib/nostr/event.coax": "ee3b610f68ecfaf16458e296ed63d8ca50ce32f5b8eb1f6ad7215c369d7e94c3",
+      "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+      "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+      "coax/lib/nostr/hex.coax": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5",
+      "coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+      "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+      "coax/tests/nostr/event.py": "1ea7d8637876815cdcdfb4f17235ee1c3e4793953eca11e00d2b48bb57a19e6c",
+      "coax/tests/nostr/event_checks.coax": "b8663ffe4d5289ff62e43a02c302ce831aba6ea3383f1bc5f21721bfdffe9225",
+      "coax/tests/nostr/event_fast_checks.coax": "f3fdb0d59e3666987f3ceb0adeaad66fc576c20f92fd8c6cd85fb4a861e53ded",
+      "coax/tests/nostr/event_fixtures.coax": "fcc3347dc54dfe1fb1361ab23ab0b76b7641f9691e280dec71526c0bcec78a67",
+      "coax/tests/nostr/event_reference.cjs": "767c8b1025441d9394f746ea17df7e5415c0eeab2fbbecff2341cf2d44638401",
+      "coax/tests/nostr/event_wasm.c": "f427f1b0aacd0eac0eb69ce3a62824edc65e4aad227f028b4eae8c81a604b6b3",
+      "coax/tests/nostr/event_wasm.cjs": "e4cbb4c898965d331431dc9f4fb22bf885c7715f312892297641cc68c717742e",
+      "coax/tests/nostr/make_event_fixtures.py": "18c4245736d5d6b2879b44a357268e5f0313b4caae9925a19e686db722efb5d1",
+      "coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+      "coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+      "coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756"
+    },
+    "temporary_bytes": 5957374,
+    "wasm": [
+      {
+        "artifact_sha256": "3f327d7324fe7c18e719dae4239c5b2b61933cbe959bcac143a315be0e7c4d18",
+        "cases": 156,
+        "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+        "failures": 0,
+        "mode": "checked",
+        "target": "wasm32-wasip1"
+      },
+      {
+        "artifact_sha256": "acd5a343bcf552140e56a651d6b20af0c320089190a6b705da096642c1029307",
+        "cases": 156,
+        "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+        "failures": 0,
+        "mode": "release",
+        "target": "wasm32-wasip1"
+      },
+      {
+        "artifact_sha256": "0bf8a5ccd9301c26225429d7598b5cb03a4e49a07081aef1e5e3b5ca5a484a77",
+        "cases": 156,
+        "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+        "failures": 0,
+        "mode": "before_checked",
+        "target": "wasm32-wasip1"
+      },
+      {
+        "artifact_sha256": "1bec9e0c549d776babc6ecaa77635c8c78bf62fb9a186530b12f4b8b428b89ad",
+        "cases": 156,
+        "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+        "failures": 0,
+        "mode": "before_release",
+        "target": "wasm32-wasip1"
+      }
+    ],
+    "wasm_stack_bytes": 1048576
+  },
+  "frozen_coax_sources": {
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/schnorr.coax": "f90f2a3fca5f65bf0c32d22897b30c192e16946c3890a286e4a2922880ed1757",
+    "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+    "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+    "coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+    "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/nostr/adapters/json-admission.coax": "7b520fb5a24b259d5daaa68064823f05c60ea8f1cb4d5c19418f12eccd487824",
+    "coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+    "coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+    "coax/lib/nostr/event.coax": "ee3b610f68ecfaf16458e296ed63d8ca50ce32f5b8eb1f6ad7215c369d7e94c3",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/hex.coax": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5",
+    "coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "coax/tests/nostr/event_checks.coax": "b8663ffe4d5289ff62e43a02c302ce831aba6ea3383f1bc5f21721bfdffe9225",
+    "coax/tests/nostr/event_fast_checks.coax": "f3fdb0d59e3666987f3ceb0adeaad66fc576c20f92fd8c6cd85fb4a861e53ded",
+    "coax/tests/nostr/event_fixtures.coax": "fcc3347dc54dfe1fb1361ab23ab0b76b7641f9691e280dec71526c0bcec78a67",
+    "coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+    "coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+    "coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756"
+  },
+  "mutation": {
+    "equivalence_markers": false,
+    "filtered": false,
+    "followup": "Return the hash failure directly; avoid overwriting the successful event with an identity result when its fixed-size output guarantees SHA_OK.",
+    "killed": 3589,
+    "log_sha256": "84dd6a31e4d6844ef17230f37a79af47957f671b7f778c0bb7501b7fbfa82b50",
+    "survived": 1,
+    "survivor": {
+      "change": "the assignment was removed",
+      "column": 4,
+      "line": 155,
+      "path": "coax/lib/nostr/event.coax",
+      "source": "e=ne_hashed(e,status);if e.error!=NE_OK {return e;}"
+    },
+    "total": 3590
+  },
+  "schema": "coax.nostr-event.failed-mutation.v1",
+  "scope": "Failed intermediate gate retained without waiver; not production approval"
+}
