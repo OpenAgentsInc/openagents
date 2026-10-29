@@ -223,6 +223,7 @@ operator requirements, data studies and source-license qualifications.
 | XX. Inference across a mesh | 130–143 | Stage boundaries with whole-model parity → stage packages → peers, transport and Nostr discovery → placement → lifecycle and fencing → experts across machines and from disk → routing by saved work → exact activation compression → trust levels → re-execution checks and Bitcoin settlement → Mesh-LLM interoperation → DeepSeek V4.1 across stages → Mistral Large 3 → Le Chonk. |
 | XXI. A harness for Psionic models | 144–155 | The simplest agent loop → a session log that rebuilds every request → a byte-stable prefix for the server's cache → typed tools, sandbox and approvals → condensation → programs as tool calls → forks, subagents and jobs → plugins with owned lifecycles → MCP, ACP and Responses → harness benchmarks → consent before any sharing. |
 | XXII. Decisions in production | 156–164 | Fitted calibration with refusal of stale maps → thresholds from written costs → readings joined to outcomes and drift alerts → Pylon self-checks → measured honest-answer distance → a bounded ONNX reader → a millisecond encoder decision model → a distilled router → shadow promotion. |
+| XXIII. Programs compiled into weights | 165–177 | A trace-producing machine → attention as exact memory and ReLU arithmetic → a gate-graph compiler and its differential harness → interpreter or program in weights → logarithmic decode → softmax limits → exact replay as a verification class → learned and frozen-core executors → composable weight modules → a run that pays for verified work. |
 | Optional laboratories | A–D | SmolLM2-135M import; Mini/Bolt assistant architectures; higher-order derivatives/PINNs; activation and state inspection. |
 
 Several chapters need Coax compiler features that do not exist yet: GPU
@@ -239,7 +240,7 @@ immediately after autodiff, well before the large scientific checkpoints.
 
 ## Delivery branches and their gates
 
-This is a dependency map, not a requirement to execute the twenty-two parts
+This is a dependency map, not a requirement to execute the twenty-three parts
 serially. Library milestone labels M0–M9 retain their existing coverage meaning;
 the broader model studies extend that map without changing signed issue IDs.
 
@@ -270,6 +271,7 @@ the broader model studies extend that map without changing signed issue IDs.
 | Mesh inference | A qualified model, two-stage parity and network transport | Split-versus-whole parity on the machines that ran it, verified stage packages, readiness-gated routes with generation fencing, measured placement objectives, saved-work routing, exact activation compression, sensitivity routing that fails closed, sampled re-execution checks, Mesh-LLM interoperation, then DeepSeek V4.1 across stages and Mistral Large 3 and Le Chonk across machines. Chapters 130–143; joining public meshes and paying peers are owner decisions. |
 | Harness | The live API, constrained decoding and the prefix cache | A simplest-loop baseline; requests rebuilt byte for byte from the session log; measured prefix-cache hit rates across long sessions; tool, sandbox and approval tests; condensation cost measured; each addition kept only with a measured gain over the simplest loop; no session content shared without consent. Chapters 144–155. |
 | Decisions in production | Calibration and qualification (12–13), the live API and the Pylon mesh | Held-out calibration gates and refusal of mismatched maps; cost-derived thresholds checked by held-out cost per decision; outcome joins and drift alerts; Pylon self-checks before serving; honest-distance limits measured against substitutes; encoder decisions at millisecond latency; distilled routers and shadow promotion. Chapters 156–164. |
+| Programs compiled into weights | Chapters 1–3 and 6; training (75) for the learned chapters; the wallet and mesh for paid runs | Compiled weights reproducing a reference interpreter's trace digest bit for bit; a differential harness that catches planted compiler bugs; logarithmic decode equal to the linear scan; measured softmax limits; replay verdicts used by mesh and kernel checks; learned-executor results reported by first divergence and held-out length; composition that replays exactly; payments only for replay-verified work. CPU speed always stated beside model speed. Chapters 165–177. |
 
 Do not wait for a fast full-model CPU service before starting Metal compute.
 Likewise, choosing NVIDIA weights does not imply CUDA support or require CUDA

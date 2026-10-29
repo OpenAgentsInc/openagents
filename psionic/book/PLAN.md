@@ -535,6 +535,40 @@ A probability is never permission: the consumer of each answer owns its
 threshold, abstention and interpretation, and these chapters make those
 choices explicit, versioned and measured.
 
+## XXIII. Programs compiled into weights
+
+A transformer can execute a program exactly when its weights are compiled
+rather than trained: attention becomes an exact memory, ReLU gates become
+arithmetic and branches, and the model's own output is the program's trace,
+so the answer carries its proof and anyone can check it by replay. This part
+rebuilds that idea, which the pre-reset work reproduced from Percepta's
+published construction ([notes](../docs/exact-computation.md)). It needs only
+chapters 1–3 and 6 for 165 to 173; 174 to 176 also need chapter 75's training
+and chapter 150's programs as tool calls. A CPU runs these programs orders of
+magnitude faster, and every chapter says so beside its own numbers: the point
+is computation inside a model that can be verified, not a faster computer.
+
+| Chapter | What we build and check |
+| --- | --- |
+| 165. A machine whose state is a trace | A small integer stack machine (constants, locals, add, subtract, multiply, load, store, conditional branch, output, return), a CPU reference interpreter, and a trace format of a few tokens per instruction whose digest identifies the run; anything outside the machine's window is a typed refusal. |
+| 166. Attention as exact memory | Keys placed on a parabola and a hard-max read that returns exactly the matching entry, latest write winning, with cumulative sums from uniform keys; a near miss is a typed refusal, checked against a map oracle on generated read and write streams. |
+| 167. Arithmetic and branches from ReLU | Products, step-function conditionals and residual wiring that are exact inside a checked integer range (64-bit integers, then binary64 within 2^53) and refused outside it. |
+| 168. Compile a gate graph into a block | A small gate-graph language and its evaluator, a scheduler that packs gates into layers and reuses residual slots, and weights emitted for an ordinary transformer block; chapter 6's forward pass must reproduce the evaluator bit for bit. |
+| 169. A harness that catches the compiler | A seeded differential run over hundreds of generated graphs across the evaluator, the compiled weights and the interpreter, which must catch the two compiler bugs the pre-reset harness found (cumulative sums reordered across layers; same-step writes resolved in schedule order instead of program order) as planted mutants. |
+| 170. An interpreter in weights, or one program in weights | A universal interpreter compiled once, against a single program baked into weights (the first Futamura projection, growing with the program's length); sizes and steps per second for both, always beside the native interpreter's. |
+| 171. Decode in logarithmic time | A convex-hull lookup that replaces the linear scan over the trace, checked equal to it with comparison counts; wall-clock figures come only from running the weights, never from an interpreter standing in for them. |
+| 172. From hard-max to softmax | The analytic bound on how far softmax can stray from hard-max, then real softmax execution under chapter 27's attention profile, measuring the trace length and number format at which exactness breaks. |
+| 173. Exact replay as a verification class | Full replay and window spot checks that name the first divergent step, tamper fixtures for each digest, and a verdict (exact replay, failed, unverifiable) used by the mesh's re-execution checks (21, 139) and the GPU kernels' acceptance (29–30). |
+| 174. Can gradient descent learn exact execution? | Students trained on verified traces and scored by their first divergent token and by held-out program families at two, four and eight times the training length, never by loss alone; the pre-reset attempts all failed (0 of 2 exact at best), and the chapter reports whatever this one finds. |
+| 175. A frozen exact core with a learned interface | A compiled module behind fixed interface tokens, with a trained controller that prepares its inputs and reads its outputs, judged by replay acceptance on held-out programs: learning does the routing, the compiled core keeps the exactness. |
+| 176. Composable weight modules | Two digest-pinned compiled modules linked into one, with composition that must replay exactly, conformance cases, and a label for how a user can check a module: exact replay, deterministic tests, statistical evidence or none. |
+| 177. Pay for verified work | A run that pays its contributors for traces a validator has replayed: the worker's capability declared only after a digest-checked self-test, worker and validator on different devices and both paid, receipts before settlement, per-payout and daily caps under owner approval, settled in Bitcoin through the wallet outside Psionic; counts include only real, verified payments. |
+
+Every claim in this part names the path that produced it, reports partial
+exactness as partial, uses benchmarks that are what their names say, and ships
+the check that would falsify it. Verified traces are also training data whose
+labels are provably correct; chapter 174 tests how far that helps.
+
 ## Optional laboratories
 
 | Appendix | Scope and entry point |
@@ -544,7 +578,7 @@ choices explicit, versioned and measured.
 | C. Derivatives inside derivatives | Higher-order/input derivatives and a tiny PINN after 64–65; independent derivative and PDE-residual checks. |
 | D. Look inside a model | Bounded activation capture at named layers, logit lens over the residual stream, attention and recurrent-state inspection; doubles as the tool for localizing a reference mismatch in 10–11. |
 
-## Prerequisites, not a waiting list of 164 steps
+## Prerequisites, not a waiting list of 177 steps
 
 | Path | Prerequisites | First complete payoff |
 | --- | --- | --- |
@@ -573,6 +607,7 @@ choices explicit, versioned and measured.
 | Mesh inference | 130's two-stage parity, 22's measurements and network transport | Packages and placement 131–134 → experts and routing 135–137 → trust and verification 138–139 → Mesh-LLM interoperation 140 → DeepSeek V4.1 across stages 141 → Mistral Large 3 142 → Le Chonk 143. |
 | Harness | Part III's API; chapter 37's constrained decoding; chapter 119's prefix cache for the stable-prefix measurements | The simplest loop 144 → session log 145 → stable prefix 146 → tools, sandbox and condensation 147–149 → programs, forks and plugins 150–152 → protocols, measurement and consent 153–155. |
 | Decisions in production | 12 and 16–17 for calibration, thresholds and outcomes; 19–21 for Pylon checks; Part III for the encoder branch | Own calibration 156 → cost thresholds 157 → outcomes and drift 158; Pylon self-check 159 → honest-distance limits 160; ONNX 161 → millisecond encoder 162 → distilled router 163 → shadow promotion 164. |
+| Programs compiled into weights | 1–3 and 6; 75 and 150 for the learned chapters; the wallet and Pylon mesh for 177 | Trace machine 165 → exact memory and arithmetic 166–167 → compiler and harness 168–169 → interpreter or baked program, fast decode, softmax limits 170–172 → replay verification 173 → learned execution and a frozen core 174–175 → composable modules 176 → paid verified work 177. |
 
 ## Coax features each branch needs
 
