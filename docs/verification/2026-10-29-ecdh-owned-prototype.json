@@ -1,0 +1,111 @@
+{
+  "schema": "coax.ecdh-owned-prototype-evidence.v1",
+  "scope": "experimental bounded owner; legacy export safety, hidden-copy erasure, target timing and production approval remain open",
+  "sources_sha256": {
+    "coax/lib/crypto/ecdh_lifecycle.coax": "567b504931a37333f7933ca11f06904a94ac3fb929bdcaae0388e89364fa4eba",
+    "coax/lib/crypto/platform/ecdh_owned.c": "c9bfeba2695be35c6516858b8dcc299c9b15f3ecb2cb372a19029ebc185a6f80",
+    "coax/lib/crypto/platform/ecdh_owned.h": "662261d236dbdd577dd24742b6568b10e300db62a28dece7b18c5bfc2fafe053",
+    "coax/tests/nostr/ecdh_owned.py": "75c81bc042df0df1280a12ecba7239029b0ec77d31ae0ea4b296c9d2700607ca",
+    "coax/tests/nostr/ecdh_owned_fixture.c": "6e86a749557b48cb1b4c7266f390cc9dddda78c06bcf7e5608971b73165447a8",
+    "coax/tests/nostr/ecdh_owned_vectors.py": "a495c4123e532b012fad7baef02cba71119a61a7d86f63276d5abf2aad253ac5",
+    "coax/tests/nostr/ecdh_owned_wasm.c": "74804d0e3ce4931565f7f32aa898b48afbcf16055604bd672b3df4c2027b3a0a",
+    "coax/tests/nostr/ecdh_owned_wasm.cjs": "1a5fde18d987bf0a76f8789b9d764b8106d5326b58717f3091984f3b5dcdf40b"
+  },
+  "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+  "policy": {
+    "checks": 8,
+    "forall_cases": 378,
+    "mutants": 222,
+    "killed": 222,
+    "survived": 0,
+    "log_sha256": "fbb3d4c487414e833ea19b609531bd2d1bba71bc5166d4205c60e7132727ada4"
+  },
+  "host_fixtures": {
+    "checked_and_release": [
+      "native",
+      "asan_ubsan",
+      "wasm"
+    ],
+    "direct_log_sha256": "5c3fa7fc51e345e5ef2819b86af31f3953f8e57ba1bd6db15be65d81dd9a7480",
+    "injected_log_sha256": "55376c57cabff5b6b53a35ab11b42c7cb0975acf0b7008857d63ad37cd45421f",
+    "notes": "native injected fixture includes callback reentry and a competing thread; no threaded Wasm claim"
+  },
+  "oracle": {
+    "schema": "coax.ecdh-owned-oracle.v1",
+    "scope": "public correctness of an experimental owner; no target or production approval",
+    "counts": {
+      "nip44": 35,
+      "wycheproof_valid": 473,
+      "wycheproof_invalid_x": 13,
+      "wycheproof_excluded": 266,
+      "invalid_scalar": 4,
+      "invalid_peer": 1,
+      "random": 256,
+      "seeded_default_hash": 1
+    },
+    "modes": [
+      {
+        "mode": "checked",
+        "native_cases": 783,
+        "native_failures": 0,
+        "native_artifact_sha256": "e288dde1bd0cf635ca39ea6efb9a4a68e558e753fca39e59209e0d35f05f759f",
+        "wasm_artifact_sha256": "1c700a1c1920f5878c2b562205e2a41a145bd1db2400307edad00cfa7241fb96",
+        "wasm": {
+          "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+          "cases": 783,
+          "failures": 0
+        }
+      },
+      {
+        "mode": "release",
+        "native_cases": 783,
+        "native_failures": 0,
+        "native_artifact_sha256": "76755bbdcbee604c5339d9e2231f436aa5f79c743a50f111ce4b23b46196ce2e",
+        "wasm_artifact_sha256": "46086a06e08e54b376b551948d025ef114eb4fe310959746019579915bc934a7",
+        "wasm": {
+          "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+          "cases": 783,
+          "failures": 0
+        }
+      }
+    ],
+    "fixtures_sha256": "40bc18ddcb966e7d7975d0d758d12df5519c5a21acdda60c15cc026f93a95d65",
+    "inputs": {
+      "$REPO/coax/lib/crypto/ecdh.coax": "2f6509d0bb427fa811c274838ad19aa6d1a22550663b62720d2cd595e4d35c39",
+      "$REPO/coax/lib/crypto/zeroize.coax": "158c6a3eb2c8139a1ac6059201dc26aae052b358cab580121335f774235df16c",
+      "$REPO/coax/lib/crypto/ecdh_lifecycle.coax": "567b504931a37333f7933ca11f06904a94ac3fb929bdcaae0388e89364fa4eba",
+      "$REPO/coax/lib/crypto/platform/ecdh_owned.c": "c9bfeba2695be35c6516858b8dcc299c9b15f3ecb2cb372a19029ebc185a6f80",
+      "$REPO/coax/lib/crypto/platform/ecdh_owned.h": "bb9dea46351b80c80fb517e994cfa9dfba168f421e734c5eca3eb0bf57ceb9fe",
+      "$REPO/coax/lib/crypto/platform/zeroize.c": "7f1767b1bd35a577a43b0c076e561fb7737f2bbe31bc89e903064bd457b9081a",
+      "$REPO/coax/tests/nostr/ecdh_owned_vectors.py": "a495c4123e532b012fad7baef02cba71119a61a7d86f63276d5abf2aad253ac5",
+      "$REPO/coax/tests/nostr/ecdh_owned_wasm.c": "74804d0e3ce4931565f7f32aa898b48afbcf16055604bd672b3df4c2027b3a0a",
+      "$REPO/coax/tests/nostr/ecdh_owned_wasm.cjs": "1a5fde18d987bf0a76f8789b9d764b8106d5326b58717f3091984f3b5dcdf40b",
+      "$REPO/coax/tests/vectors/upstream/nip44/nip44.vectors.json": "269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040",
+      "$REPO/coax/tests/vectors/upstream/wycheproof/ecdh_secp256k1_test.json": "049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae",
+      "$REPO/tools/coax-nostr/fuzz/.cache/build/libsecp_oracle.dylib": "8c46f911b6821f9fc0de66a55d50b11325e364cf64afd95ca6ab0b7f2882201b",
+      "$REPO/coax/bin/coax": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+      "$REPO/coax/lib/crypto/secp_mult_const.coax": "948b31ef93663792305347ca5f65e22259c5777e783edf7b9502b09033de622b",
+      "$REPO/coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+      "$REPO/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "$REPO/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "$REPO/coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+      "$REPO/coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+      "$REPO/coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+      "$REPO/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+      "$REPO/coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915"
+    }
+  },
+  "limitations": [
+    "same-process loaded-instance bearer handle; no fork, reload or restart guarantee",
+    "truthful live exclusive private input/output and valid stable storage",
+    "synchronous whole-region wipe effect and no process crash",
+    "no hidden-copy erasure, target/JIT timing or production approval",
+    "legacy caller-owned host and exported raw arithmetic stage remain exposed"
+  ],
+  "post_test_header_change": {
+    "previous_sha256": "bb9dea46351b80c80fb517e994cfa9dfba168f421e734c5eca3eb0bf57ceb9fe",
+    "current_sha256": "662261d236dbdd577dd24742b6568b10e300db62a28dece7b18c5bfc2fafe053",
+    "scope": "comment-only correction; host code and executable tests are unchanged; oracle and host log input hashes record the earlier header"
+  }
+}

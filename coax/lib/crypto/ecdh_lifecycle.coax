@@ -1,0 +1,157 @@
+// Public state policy only: no buffer, pointer, lock or wipe effect is supplied
+// by this model. A host must establish and serialize the stated ownership.
+#authority;
+EL_FREE :: 0; EL_READY :: 1; EL_RUNNING :: 2; EL_CLEANING :: 3; EL_OUTPUT :: 4; EL_DONE :: 5;
+EL_OK :: 0; EL_INVALID :: 1; EL_INCOMPLETE :: 2; EL_EXHAUSTED :: 3;
+EL_WORK :: 1; EL_STAGE :: 2; EL_OUT :: 4;
+ElSlot :: struct {generation:u64;phase:u32;dirty:u32;reason:u32;}
+ElChange :: struct {slot:ElSlot;status:u32;}
+
+el_valid :: (s:ElSlot)->bool #export_c {
+ if s.dirty>7 || s.reason>1 {return false;}
+ if s.phase==EL_FREE {return s.dirty==0 && s.reason==0;}
+ if s.generation==0 {return false;}
+ if s.phase==EL_READY {return s.dirty==0 && s.reason==0;}
+ if s.phase==EL_DONE {return s.dirty==0;}
+ if s.phase==EL_RUNNING {return s.dirty==(EL_WORK|EL_STAGE) && s.reason==0;}
+ if s.phase==EL_CLEANING {
+  if s.reason==0 {return s.dirty==3 || s.dirty==6 || s.dirty==4;}
+  return s.dirty!=0;
+ }
+ return s.phase==EL_OUTPUT && s.dirty==EL_STAGE && s.reason==0;
+}
+el_open :: (s:ElSlot)->ElChange #export_c {
+ if !el_valid(s) || s.phase!=EL_FREE {return ElChange.{slot=s,status=EL_INVALID};}
+ if s.generation==cast(u64)18446744073709551615 {return ElChange.{slot=s,status=EL_EXHAUSTED};}
+ t:=s;t.generation+=1;t.phase=EL_READY;return ElChange.{slot=t};
+}
+el_begin :: (s:ElSlot,generation:u64)->ElChange #export_c {
+ if !el_valid(s) || generation==0 || generation!=s.generation || s.phase!=EL_READY {return ElChange.{slot=s,status=EL_INVALID};}
+ t:=s;t.phase=EL_RUNNING;t.dirty=EL_WORK|EL_STAGE;return ElChange.{slot=t};
+}
+el_stop :: (s:ElSlot,generation:u64,reason:u32)->ElChange #export_c {
+ if !el_valid(s) || generation!=s.generation || s.phase!=EL_RUNNING || reason>1 {return ElChange.{slot=s,status=EL_INVALID};}
+ t:=s;t.phase=EL_CLEANING;t.reason=reason;return ElChange.{slot=t,status=EL_INCOMPLETE};
+}
+el_cancel :: (s:ElSlot,generation:u64)->ElChange #export_c {
+ if !el_valid(s) || generation!=s.generation || (s.phase!=EL_RUNNING && s.phase!=EL_CLEANING && s.phase!=EL_OUTPUT) {return ElChange.{slot=s,status=EL_INVALID};}
+ t:=s;t.phase=EL_CLEANING;t.reason=1;return ElChange.{slot=t,status=EL_INCOMPLETE};
+}
+// The host calls this only after a verified wipe effect for exactly one region.
+// A failed effect discards success and remains incomplete until every dirty
+// region, including any already copied output, has been acknowledged.
+el_wipe :: (s:ElSlot,generation:u64,region:u32,success:bool)->ElChange #export_c {
+ if !el_valid(s) || generation!=s.generation || s.phase!=EL_CLEANING || (region!=EL_WORK && region!=EL_STAGE && region!=EL_OUT) || (s.dirty&region)==0 {return ElChange.{slot=s,status=EL_INVALID};}
+ if s.reason==0 && (region==EL_OUT || (region==EL_STAGE && (s.dirty&EL_OUT)==0)) {return ElChange.{slot=s,status=EL_INVALID};}
+ t:=s;if !success {t.reason=1;return ElChange.{slot=t,status=EL_INCOMPLETE};}
+ t.dirty=t.dirty^region;
+ if t.dirty==0 {t.phase=EL_DONE;return ElChange.{slot=t};}
+ if t.reason==0 && t.dirty==EL_STAGE {t.phase=EL_OUTPUT;}
+ return ElChange.{slot=t,status=EL_INCOMPLETE};
+}
+// Host validates and keeps output private before copying the staged result.
+el_copy :: (s:ElSlot,generation:u64)->ElChange #export_c {
+ if !el_valid(s) || generation!=s.generation || s.phase!=EL_OUTPUT {return ElChange.{slot=s,status=EL_INVALID};}
+ t:=s;t.phase=EL_CLEANING;t.dirty=EL_STAGE|EL_OUT;return ElChange.{slot=t,status=EL_INCOMPLETE};
+}
+// Release output only after the stage has been erased. This acknowledges a
+// transfer of ownership rather than an erasure of the caller's output.
+el_publish :: (s:ElSlot,generation:u64)->ElChange #export_c {
+ if !el_valid(s) || generation!=s.generation || s.phase!=EL_CLEANING || s.reason!=0 || s.dirty!=EL_OUT {return ElChange.{slot=s,status=EL_INVALID};}
+ t:=s;t.phase=EL_DONE;t.dirty=0;return ElChange.{slot=t};
+}
+el_close :: (s:ElSlot,generation:u64)->ElChange #export_c {
+ if !el_valid(s) || generation!=s.generation || (s.phase!=EL_READY && s.phase!=EL_DONE) {return ElChange.{slot=s,status=EL_INVALID};}
+ t:=s;t.phase=EL_FREE;t.reason=0;return ElChange.{slot=t};
+}
+#test "success requires both work and staged-result cleanup before publication" {
+ s:=el_open(ElSlot.{}).slot;#assert s.generation==1 && s.phase==EL_READY;
+ s=el_begin(s,1).slot;#assert s.phase==EL_RUNNING && s.dirty==3;
+ c:=el_stop(s,1,0);s=c.slot;#assert c.status==EL_INCOMPLETE && s.phase==EL_CLEANING;
+ #assert el_publish(s,1).status==EL_INVALID && el_close(s,1).status==EL_INVALID;
+ #assert el_wipe(s,1,EL_STAGE,true).status==EL_INVALID;
+ s=el_wipe(s,1,EL_WORK,true).slot;#assert s.phase==EL_OUTPUT;
+ s=el_copy(s,1).slot;#assert s.dirty==6 && s.phase==EL_CLEANING;
+ #assert el_publish(s,1).status==EL_INVALID;
+ s=el_wipe(s,1,EL_STAGE,true).slot;#assert s.dirty==EL_OUT;
+ #assert el_wipe(s,1,EL_OUT,true).status==EL_INVALID;
+ s=el_publish(s,1).slot;#assert s.phase==EL_DONE && s.reason==0;
+ s=el_close(s,1).slot;#assert s.phase==EL_FREE && s.generation==1;
+ #assert el_open(s).slot.generation==2;
+}
+#test "failed wipe quarantines all dirty regions until acknowledged" {
+ s:=el_begin(el_open(ElSlot.{}).slot,1).slot;s=el_stop(s,1,0).slot;
+ s=el_wipe(s,1,EL_WORK,true).slot;s=el_copy(s,1).slot;
+ c:=el_wipe(s,1,EL_STAGE,false);s=c.slot;#assert c.status==EL_INCOMPLETE && s.reason==1 && s.dirty==6;
+ #assert el_publish(s,1).status==EL_INVALID && el_close(s,1).status==EL_INVALID;
+ s=el_wipe(s,1,EL_STAGE,true).slot;#assert s.dirty==EL_OUT && s.phase==EL_CLEANING;
+ s=el_wipe(s,1,EL_OUT,true).slot;#assert s.phase==EL_DONE && s.reason==1;
+}
+#test "stale generation, wrong phase and exhausted generations refuse" {
+ s:=el_open(ElSlot.{}).slot;#assert el_begin(s,0).status==EL_INVALID && el_begin(s,2).status==EL_INVALID;
+ #assert el_wipe(s,1,EL_WORK,true).status==EL_INVALID && el_copy(s,1).status==EL_INVALID;
+ s=el_begin(s,1).slot;#assert el_stop(s,1,2).status==EL_INVALID;
+ s=el_stop(s,1,1).slot;#assert el_wipe(s,2,EL_WORK,true).status==EL_INVALID;
+ #assert el_wipe(s,1,0,true).status==EL_INVALID && el_wipe(s,1,3,true).status==EL_INVALID;
+ s=el_wipe(s,1,EL_WORK,true).slot;s=el_wipe(s,1,EL_STAGE,true).slot;
+ #assert s.phase==EL_DONE && s.reason==1;
+ full:=ElSlot.{generation=cast(u64)18446744073709551615};#assert el_open(full).status==EL_EXHAUSTED;
+ bad:=ElSlot.{phase=EL_CLEANING};#assert !el_valid(bad) && el_open(bad).status==EL_INVALID;
+ bad=ElSlot.{phase=EL_READY};#assert !el_valid(bad);
+}
+#test "cancellation stays incomplete through all dirty region wipes" {
+ s:=el_begin(el_open(ElSlot.{}).slot,1).slot;s=el_stop(s,1,0).slot;
+ s=el_wipe(s,1,EL_WORK,true).slot;#assert s.phase==EL_OUTPUT;
+ s=el_cancel(s,1).slot;#assert s.reason==1 && s.phase==EL_CLEANING;
+ s=el_wipe(s,1,EL_STAGE,true).slot;#assert s.phase==EL_DONE && s.reason==1;
+ s=el_begin(el_open(ElSlot.{}).slot,1).slot;s=el_stop(s,1,0).slot;
+ s=el_wipe(s,1,EL_WORK,true).slot;s=el_copy(s,1).slot;
+ s=el_cancel(s,1).slot;#assert s.reason==1 && s.dirty==6;
+ s=el_wipe(s,1,EL_OUT,true).slot;s=el_wipe(s,1,EL_STAGE,true).slot;
+ #assert s.phase==EL_DONE && s.reason==1;
+}
+#forall "valid slot states agree with an independent finite table" phase:0..<7,dirty:0..<9,reason:0..<3,generation:0..<2 {
+ s:=ElSlot.{generation=cast(u64)generation,phase=cast(u32)phase,dirty=cast(u32)dirty,reason=cast(u32)reason};
+ expected:=false;
+ if phase==0 {expected=dirty==0 && reason==0;}
+ if generation==1 {
+  if phase==1 {expected=dirty==0 && reason==0;}
+  if phase==2 {expected=dirty==3 && reason==0;}
+  if phase==3 {expected=(reason==0 && (dirty==3 || dirty==6 || dirty==4)) || (reason==1 && dirty>0 && dirty<8);}
+  if phase==4 {expected=dirty==2 && reason==0;}
+  if phase==5 {expected=dirty==0 && reason<2;}
+ }
+ #assert el_valid(s)==expected;
+}
+#test "closed error resets reason and cannot acknowledge unknown regions" {
+ s:=el_begin(el_open(ElSlot.{}).slot,1).slot;s=el_stop(s,1,1).slot;
+ #assert el_wipe(s,1,EL_OUT,true).status==EL_INVALID;
+ s=el_wipe(s,1,EL_WORK,true).slot;s=el_wipe(s,1,EL_STAGE,true).slot;
+ #assert s.reason==1;s=el_close(s,1).slot;#assert s.reason==0 && el_valid(s);
+}
+#test "invalid slots, handles and transition order never acknowledge completion" {
+ bad:=ElSlot.{generation=1,phase=EL_READY,dirty=1};
+ #assert el_open(bad).status==EL_INVALID && el_begin(bad,1).status==EL_INVALID;
+ #assert el_stop(bad,1,0).status==EL_INVALID && el_cancel(bad,1).status==EL_INVALID;
+ #assert el_wipe(bad,1,EL_WORK,true).status==EL_INVALID && el_copy(bad,1).status==EL_INVALID;
+ #assert el_publish(bad,1).status==EL_INVALID && el_close(bad,1).status==EL_INVALID;
+ bad=ElSlot.{generation=1,phase=EL_RUNNING};#assert el_stop(bad,1,0).status==EL_INVALID;
+ bad=ElSlot.{generation=1,phase=EL_OUTPUT};#assert el_copy(bad,1).status==EL_INVALID;
+ s:=el_open(ElSlot.{}).slot;#assert el_open(s).status==EL_INVALID && el_cancel(s,1).status==EL_INVALID;
+ #assert el_stop(s,1,0).status==EL_INVALID && el_close(s,1).status==EL_OK;
+ s=el_begin(s,1).slot;#assert el_cancel(s,2).status==EL_INVALID;
+ c:=el_cancel(s,1);#assert c.status==EL_INCOMPLETE && c.slot.reason==1;s=c.slot;
+ #assert el_publish(s,1).status==EL_INVALID && el_close(s,1).status==EL_INVALID && el_copy(s,1).status==EL_INVALID;
+ #assert el_stop(s,1,0).status==EL_INVALID;
+ c=el_wipe(s,1,EL_WORK,true);#assert c.status==EL_INCOMPLETE;s=c.slot;
+ s=el_wipe(s,1,EL_STAGE,true).slot;#assert el_cancel(s,1).status==EL_INVALID;
+ #assert el_close(s,2).status==EL_INVALID && el_close(s,1).status==EL_OK;
+}
+#test "copied output cannot publish under cancellation or stale handle" {
+ s:=el_begin(el_open(ElSlot.{}).slot,1).slot;s=el_stop(s,1,0).slot;
+ s=el_wipe(s,1,EL_WORK,true).slot;c:=el_copy(s,1);#assert c.status==EL_INCOMPLETE;s=c.slot;
+ #assert el_publish(s,2).status==EL_INVALID;
+ s=el_wipe(s,1,EL_STAGE,true).slot;
+ #assert el_publish(s,2).status==EL_INVALID;
+ s=el_cancel(s,1).slot;#assert el_publish(s,1).status==EL_INVALID;
+}
