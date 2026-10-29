@@ -172,10 +172,10 @@ build :: (c: [] Chars) {
   guest: Shape; guest.coat = fv(0.34, 0.12, 0.08); guest.marks = fv(0.2, 0.17, 0.14); guest.girth = 1.05;
   c[0].figs[2] = walker("A GUEST", guest, Place.{x = 0.8, z = -0.6, yaw = -0.4});
   dog: Shape; dog.rig = Rig.animal; dog.coat = fv(0.6, 0.36, 0.13); dog.marks = fv(0.92, 0.9, 0.86); dog.pattern = PATTERN_SOCKS; dog.ears = 0.85; dog.ear_size = 1.1;
-  c[0].figs[3] = walker("THE DOG", dog, Place.{x = 0.3, z = 1.2, yaw = 0.9});
+  c[0].figs[3] = walker("THE DOG", dog, Place.{x = 0.25, z = 0.75, yaw = 0.9});
   fox: Shape; fox.rig = Rig.animal; fox.size = 0.7; fox.legs = 0.85; fox.snout = 1.35; fox.ear_size = 1.5; fox.tail = 1.6; fox.fluff = 1.9;
   fox.coat = fv(0.66, 0.24, 0.06); fox.marks = fv(0.03, 0.028, 0.03); fox.pattern = PATTERN_POINTS;
-  c[0].figs[4] = walker("THE FOX", fox, Place.{x = -1.45, z = 0.2});
+  c[0].figs[4] = walker("THE FOX", fox, Place.{x = -1.68, z = 0.23});
   c[0].figs[4].gait = Gait.trot; c[0].figs[4].was = Gait.trot;
   c[0].fig_n = 5;
   for i: 0..<c[0].fig_n { c[0].figs[i].now = Play.{}; c[0].figs[i].last = Play.{}; }
@@ -287,6 +287,14 @@ playing :: (c: [] Chars, i: int, slot: int) -> bool {
   w := c[0].figs[i];
   return w.now.motion == slot && w.now.stop < 0;
 }
+// "1.5", "0.4" or "2": a setting's bound, to a tenth.
+put_tenths :: (buf: [] u8, at: int, v: f32) -> int {
+  t := cast(int) floor(abs(v) * 10 + 0.5);
+  n := ifx v < 0 && t > 0 then motion_put(buf, at, "-") else at;
+  n = motion_put_int(buf, n, t / 10);
+  if t % 10 != 0 { n = motion_put(buf, n, "."); n = motion_put_int(buf, n, t % 10); }
+  return n;
+}
 say :: (c: [] Chars, a: string, b: string, bad: bool) {
   n := motion_put(c[0].notice[..], 0, a); n = motion_put(c[0].notice[..], n, b);
   c[0].notice_n = n; c[0].notice_until = c[0].time + NOTICE; c[0].notice_bad = bad;
@@ -300,7 +308,12 @@ take_link :: (c: [] Chars, hash: string) {
     r := verse_figure_shape_read(c[0].figs[i].shape, hash[6..<hash.count]);
     if !r.ok {
       buf: [96] u8;
-      n := motion_put(buf[..], 0, "line "); n = motion_put_int(buf[..], n, r.line); n = motion_put(buf[..], n, ": "); n = motion_put(buf[..], n, r.why);
+      n := motion_put(buf[..], 0, "line "); n = motion_put_int(buf[..], n, r.line); n = motion_put(buf[..], n, ": ");
+      if r.at >= 0 {
+        range := shape_range(r.at);
+        n = motion_put(buf[..], n, SHAPE_NAMES[r.at]); n = motion_put(buf[..], n, " is outside ");
+        n = put_tenths(buf[..], n, range.x); n = motion_put(buf[..], n, ".."); n = put_tenths(buf[..], n, range.y);
+      } else { n = motion_put(buf[..], n, r.why); }
       say(c, "YOUR SHAPE WAS REFUSED · ", cast(string) buf[0..<n], true); return;
     }
     reshape(c, i, r.shape);
@@ -724,4 +737,26 @@ coaxial_chars_cursor :: (c: [] Chars) -> int #export_c { return ifx c[0].hover >
   for i: 0..<bad.count { c[0].inbox[i] = bad[i]; }
   coaxial_chars_hash(c, bad.count);
   #assert c[0].notice_bad && c[0].figs[3].shape.legs == 1;
+  #assert cast(string) c[0].notice[0..<c[0].notice_n] == "YOUR SHAPE WAS REFUSED · line 2: legs is outside 0.5..1.6";
+  big := "shape=fluff 3";
+  for i: 0..<big.count { c[0].inbox[i] = big[i]; }
+  coaxial_chars_hash(c, big.count);
+  #assert cast(string) c[0].notice[0..<c[0].notice_n] == "YOUR SHAPE WAS REFUSED · line 1: fluff is outside 0.5..2";
+  odd := "shape=wings 2";
+  for i: 0..<odd.count { c[0].inbox[i] = odd[i]; }
+  coaxial_chars_hash(c, odd.count);
+  #assert cast(string) c[0].notice[0..<c[0].notice_n] == "YOUR SHAPE WAS REFUSED · line 1: not a part of a shape";
+}
+#test "the fox's trotting ring keeps clear of every figure standing inside it" {
+  cs: [1] Chars; c := cs[..];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := coaxial_chars_frame(c, out[..], u[..], 1280, 800, 1, 0.016, false);
+  fox := c[0].figs[4];
+  #assert fox.gait == Gait.trot;
+  for i: 1..<4 {
+    w := c[0].figs[i];
+    d := abs(sqrt(w.at.x * w.at.x + w.at.z * w.at.z) - fox.radius);
+    #assert d > 0.45;
+  }
+  #assert RING - fox.radius > 0.45;
 }

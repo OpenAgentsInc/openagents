@@ -201,7 +201,7 @@ verse_figure_shape_fix :: (s: Shape) -> Shape #export_c {
 // look (lit, soft), or coat or marks and three colour numbers 0..1. Only
 // what it names changes; a number outside its range, an unknown name or a
 // colour outside 0..1 is refused and nothing changes.
-ShapeRead :: struct { ok: bool; shape: Shape; line: int; why: string; }
+ShapeRead :: struct { ok: bool; shape: Shape; line: int; why: string; at: int = -1; }   // at: the number refused for its range
 PATTERN_NAMES :: [5] string.["plain", "patches", "points", "stripes", "socks"];
 shape_word :: (text: string, from: int, to: int, n: int) -> string {
   i := from; k := 0;
@@ -257,7 +257,7 @@ verse_figure_shape_read :: (s: Shape, text: string) -> ShapeRead #export_c {
     for k: 0..<SHAPE_NUMBERS { if SHAPE_NAMES[k] == word { at = k; } }
     if at < 0 { return ShapeRead.{shape = s, line = line, why = "not a part of a shape"}; }
     v := shape_number(one); range := shape_range(at);
-    if !finite(v) || v < range.x || v > range.y { return ShapeRead.{shape = s, line = line, why = "outside its range"}; }
+    if !finite(v) || v < range.x || v > range.y { return ShapeRead.{shape = s, line = line, why = "outside its range", at = at}; }
     r.shape = verse_figure_shape_set(r.shape, at, v);
   }
   return r;
@@ -727,7 +727,8 @@ verse_figure_blend :: (a: Pose, b: Pose, t: f32) -> Pose #export_c {
   r := verse_figure_shape_read(s, "size 1.3; ears 1\npattern patches; coat 0.2 0.1 0.05; look soft");
   #assert r.ok && r.shape.size == 1.3 && r.shape.ears == 1 && r.shape.pattern == PATTERN_PATCHES && r.shape.coat.x == 0.2 && r.shape.look == LOOK_SOFT && r.shape.legs == 1;
   bad := verse_figure_shape_read(s, "size 1.3; legs 9");
-  #assert !bad.ok && bad.line == 2 && bad.shape.size == 1 && bad.why == "outside its range";
+  #assert !bad.ok && bad.line == 2 && bad.shape.size == 1 && bad.why == "outside its range" && SHAPE_NAMES[bad.at] == "legs";
+  #assert verse_figure_shape_read(s, "wings 2").at == -1;
   #assert !verse_figure_shape_read(s, "wings 2").ok && !verse_figure_shape_read(s, "pattern spots").ok;
   #assert !verse_figure_shape_read(s, "coat 1 2 0").ok && !verse_figure_shape_read(s, "size").ok && !verse_figure_shape_read(s, "size 1 2").ok;
   #assert verse_figure_shape_read(s, "").ok;
