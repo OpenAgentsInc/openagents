@@ -89,8 +89,8 @@ export function coax(list: World[]): string {
     `PLANET_LISTED :: ${col("bool", (w) => String(w.listed !== false))};`,
     `PLANET_PATH :: ${col("string", (w) => lit(w.realm ? `/realms/${w.realm.slug}` : ""))};`,
     "// Its art style (docs/verse/art-styles.md; a world without a realm is lowpoly) and its clock.",
-    "STYLE_LOWPOLY :: 0; STYLE_PAINTERLY :: 1; STYLE_PHOTOREAL :: 2;",
-    `PLANET_STYLE :: ${col("int", (w) => `STYLE_${(w.realm?.style ?? "lowpoly").toUpperCase()}`)};`,
+    "PLANET_LOWPOLY :: 0; PLANET_PAINTERLY :: 1; PLANET_PHOTOREAL :: 2;   // verse/style-preset.coax STYLE_*",
+    `PLANET_STYLE :: ${col("int", (w) => `PLANET_${(w.realm?.style ?? "lowpoly").toUpperCase()}`)};`,
     `PLANET_CLOCK :: ${col("string", (w) => lit(w.realm?.clock ?? ""))};`,
     "",
   ].join("\n")

@@ -4,10 +4,11 @@
 // them) and the strokes over all of it (the floor's rings, the lamp, the
 // words). Every place and size comes from fixture.coax.
 struct U {
-  size: vec2f, time: f32, fade: f32, still: f32, panels: f32, k: f32, pad0: f32,
+  size: vec2f, time: f32, fade: f32, still: f32, panels: f32, k: f32, painted: f32,
   r0: vec4f, r1: vec4f, r2: vec4f, r3: vec4f,  // the view: clip = rows · world
   lamp: vec4f,                                 // the lamp: where (metres), strength
   panel: array<vec4f, 32>,  // per plate (fixture.coax PLATES): x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
+  style: array<vec4f, 32>,  // the style's preset at the clock (verse/style-preset.coax SU_*: row = SU / 4), when painted
 }
 @group(0) @binding(0) var<uniform> u: U;
 // A plate (verse.wgsl's): a dark wood fill with one thin bronze line round
@@ -58,11 +59,226 @@ fn stars(p: vec2f) -> f32 {
 }
 @fragment fn bg_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let p = pos.xy;
+  if (u.painted > 0.5) { return vec4f(panels(p, paint(p)), 1.0); }
   let c = vec2f(0.5, 0.58) * u.size;
   let r = length((p - c) / max(u.size.y, 1.0));
   var sky = vec3f(0.012, 0.013, 0.02) + vec3f(0.035, 0.036, 0.045) * exp(-r * r * 6.0);
   sky += vec3f(stars(p)) * u.fade;
   return vec4f(panels(p, sky), 1.0);
+}
+// ---- the style fixture (fixture.coax, ?style=painterly): a fixed scene traced
+// here and shaded with the style's own functions (verse/style.coax, the
+// generated block below) and numbers (u.style). Everything in metres; the
+// ground is y = 0 and the eye looks down -z.
+const EYE = vec3f(0.0, 1.75, 8.0);
+const SPHERE = vec4f(-1.7, 0.85, 0.0, 0.85);
+const CUBE = vec4f(1.5, 0.6, 0.3, 0.6);              // centre, half size; turned 0.5 rad about y
+const TRUNK = vec4f(3.9, 0.0, -2.6, 0.18);           // base, radius; 1.9 m tall
+fn canopy(i: i32) -> vec4f {
+  var c = array<vec4f, 3>(vec4f(3.9, 2.7, -2.6, 1.15), vec4f(3.25, 2.3, -2.3, 0.8), vec4f(4.5, 2.35, -2.9, 0.85));
+  return c[i];
+}
+const CANOPY_C = vec3f(3.9, 2.5, -2.6);
+const BODY = vec4f(-0.3, 0.0, -1.8, 0.24);           // a figure: capsule from y 0.24 to 1.30, head above
+const HEAD = vec4f(-0.3, 1.62, -1.8, 0.17);
+const POND = vec4f(0.7, 0.0, 2.7, 1.5);              // centre x, -, z, radius; 1.9 m deep in the middle
+const GRASS = vec4f(-3.4, 0.0, 2.2, 1.6);
+const RIDGE_Z = vec3f(60.0, 140.0, 260.0);
+struct Hit { t: f32, n: vec3f, albedo: vec3f, kind: f32 }   // kind 0 none, 1 matte, 2 water, 3 character
+fn st(i: u32) -> vec4f { return u.style[i]; }
+fn sphere_t(o: vec3f, d: vec3f, s: vec4f) -> f32 {
+  let oc = o - s.xyz; let b = dot(oc, d); let c = dot(oc, oc) - s.w * s.w; let h = b * b - c;
+  if (h < 0.0) { return -1.0; }
+  let t = -b - sqrt(h);
+  return select(-1.0, t, t > 0.001);
+}
+fn turn(v: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); return vec3f(c * v.x - s * v.z, v.y, s * v.x + c * v.z); }
+fn cube_hit(o: vec3f, d: vec3f) -> vec4f {        // t and the normal
+  let lo = turn(o - CUBE.xyz, -0.5); let ld = turn(d, -0.5);
+  let inv = 1.0 / ld;
+  let a = (-vec3f(CUBE.w) - lo) * inv; let b = (vec3f(CUBE.w) - lo) * inv;
+  let t0 = min(a, b); let t1 = max(a, b);
+  let tn = max(max(t0.x, t0.y), t0.z); let tf = min(min(t1.x, t1.y), t1.z);
+  if (tn > tf || tn < 0.001) { return vec4f(-1.0); }
+  var n = vec3f(0.0);
+  if (tn == t0.x) { n = vec3f(-sign(ld.x), 0.0, 0.0); } else if (tn == t0.y) { n = vec3f(0.0, -sign(ld.y), 0.0); } else { n = vec3f(0.0, 0.0, -sign(ld.z)); }
+  return vec4f(tn, turn(n, 0.5));
+}
+fn cylinder_t(o: vec3f, d: vec3f, c: vec4f, top: f32) -> f32 {   // a vertical cylinder from c.y to top
+  let oc = o.xz - c.xz; let a = dot(d.xz, d.xz); let b = dot(oc, d.xz); let k = dot(oc, oc) - c.w * c.w;
+  let h = b * b - a * k;
+  if (h < 0.0 || a < 1e-6) { return -1.0; }
+  let t = (-b - sqrt(h)) / a; let y = o.y + d.y * t;
+  return select(-1.0, t, t > 0.001 && y >= c.y && y <= top);
+}
+fn capsule_t(o: vec3f, d: vec3f, a: vec3f, b: vec3f, r: f32) -> f32 {   // Inigo Quilez's
+  let ba = b - a; let oa = o - a;
+  let baba = dot(ba, ba); let bard = dot(ba, d); let baoa = dot(ba, oa); let rdoa = dot(d, oa); let oaoa = dot(oa, oa);
+  let qa = baba - bard * bard; let qb = baba * rdoa - baoa * bard; let qc = baba * oaoa - baoa * baoa - r * r * baba;
+  let h = qb * qb - qa * qc;
+  if (h >= 0.0) {
+    let t = (-qb - sqrt(h)) / qa; let y = baoa + t * bard;
+    if (y > 0.0 && y < baba && t > 0.001) { return t; }
+    let oc = select(o - b, oa, y <= 0.0);
+    let bb = dot(d, oc); let cc = dot(oc, oc) - r * r; let hh = bb * bb - cc;
+    if (hh > 0.0) { let t2 = -bb - sqrt(hh); if (t2 > 0.001) { return t2; } }
+  }
+  return -1.0;
+}
+fn capsule_n(p: vec3f, a: vec3f, b: vec3f) -> vec3f {
+  let ba = b - a; let h = clamp(dot(p - a, ba) / dot(ba, ba), 0.0, 1.0);
+  return normalize(p - (a + ba * h));
+}
+fn ridge_h(x: f32, i: i32) -> f32 {
+  let f = f32(i);
+  var bases = array<f32, 3>(9.0, 22.0, 44.0);
+  let base = bases[i];
+  let s = 12.0 * (1.0 + f * f);   // nearer ridges are narrower in metres, so all three read alike on screen
+  return base * (0.72 + 0.18 * sin(x / s + f * 1.7) + 0.08 * sin(x / (0.37 * s) + 0.6 + f));
+}
+fn ridge_slope(x: f32, i: i32) -> f32 { return (ridge_h(x + 0.5, i) - ridge_h(x - 0.5, i)); }
+fn ridge_albedo(i: i32) -> vec3f {
+  var a = array<vec3f, 3>(vec3f(0.09, 0.20, 0.06), vec3f(0.08, 0.18, 0.08), vec3f(0.08, 0.16, 0.10));
+  return a[i];
+}
+// The scene, nearest first. shadow: only whether anything is in the way, and how near the miss (soft edges).
+fn trace(o: vec3f, d: vec3f) -> Hit {
+  var h = Hit(1e9, vec3f(0.0, 1.0, 0.0), vec3f(0.0), 0.0);
+  var t = sphere_t(o, d, SPHERE);
+  if (t > 0.0 && t < h.t) { h = Hit(t, normalize(o + d * t - SPHERE.xyz), vec3f(0.46, 0.13, 0.08), 1.0); }
+  let c = cube_hit(o, d);
+  if (c.x > 0.0 && c.x < h.t) { h = Hit(c.x, c.yzw, vec3f(0.11, 0.19, 0.46), 1.0); }
+  t = cylinder_t(o, d, TRUNK, 1.9);
+  if (t > 0.0 && t < h.t) { let p = o + d * t; h = Hit(t, normalize(vec3f(p.x - TRUNK.x, 0.0, p.z - TRUNK.z)), vec3f(0.17, 0.10, 0.05), 1.0); }
+  for (var i = 0; i < 3; i++) {
+    t = sphere_t(o, d, canopy(i));
+    if (t > 0.0 && t < h.t) {
+      // a blob: the leaf mass shades as one soft shape round the canopy's centre (spec 7)
+      let p = o + d * t;
+      h = Hit(t, normalize(mix(normalize(p - canopy(i).xyz), normalize(p - CANOPY_C), 0.85)), vec3f(0.11, 0.27, 0.05), 1.0);
+    }
+  }
+  t = capsule_t(o, d, BODY.xyz + vec3f(0.0, 0.24, 0.0), BODY.xyz + vec3f(0.0, 1.30, 0.0), BODY.w);
+  if (t > 0.0 && t < h.t) { h = Hit(t, capsule_n(o + d * t, BODY.xyz + vec3f(0.0, 0.24, 0.0), BODY.xyz + vec3f(0.0, 1.30, 0.0)), vec3f(0.36, 0.24, 0.11), 3.0); }
+  t = sphere_t(o, d, HEAD);
+  if (t > 0.0 && t < h.t) { h = Hit(t, normalize(o + d * t - HEAD.xyz), vec3f(0.62, 0.38, 0.26), 3.0); }
+  // the ridges: painted flats standing across the view, each up to its silhouette
+  for (var i = 0; i < 3; i++) {
+    var zs = RIDGE_Z;
+    let tz = (-zs[i] - o.z) / d.z;
+    if (d.z < 0.0 && tz > 0.0 && tz < h.t) {
+      let p = o + d * tz;
+      if (p.y < ridge_h(p.x, i)) {
+        h = Hit(tz, normalize(vec3f(-ridge_slope(p.x, i), 0.7 + 0.3 * clamp(p.y / ridge_h(p.x, i), 0.0, 1.0), 0.5)), ridge_albedo(i), 1.0);
+      }
+    }
+  }
+  // the ground, with the pond and the grass in it
+  if (d.y < 0.0) {
+    let tg = -o.y / d.y;
+    if (tg > 0.0 && tg < h.t) {
+      let p = o + d * tg;
+      let pond = length(p.xz - POND.xz) / POND.w;
+      let grass = length(p.xz - GRASS.xz) / GRASS.w;
+      if (pond < 1.0) { h = Hit(tg, vec3f(0.0, 1.0, 0.0), vec3f(1.9 * (1.0 - pond * pond)), 2.0); }
+      else if (grass < 1.0) { h = Hit(tg, vec3f(0.0, 1.0, 0.0), vec3f(0.15, 0.33, 0.05), 1.0); }
+      else { h = Hit(tg, vec3f(0.0, 1.0, 0.0), mix(vec3f(0.21, 0.29, 0.08), vec3f(0.27, 0.22, 0.10), 0.5 + 0.5 * sin(p.x * 0.21 + p.z * 0.13)), 1.0); }
+    }
+  }
+  return h;
+}
+// How much of the key reaches p: 1 lit, 0 in shadow, soft over how near the ray passes a sphere.
+fn sphere_shade(o: vec3f, d: vec3f, s: vec4f) -> f32 {
+  let oc = s.xyz - o; let b = dot(oc, d);
+  if (b <= 0.0 || dot(oc, oc) < s.w * s.w) { return 1.0; }   // behind, or a proxy's own surface
+  let miss = sqrt(max(dot(oc, oc) - b * b, 0.0)) - s.w;
+  return clamp(miss / (0.08 * b + 0.02) + 0.5, 0.0, 1.0);
+}
+fn shadow(p: vec3f, l: vec3f) -> f32 {
+  var s = sphere_shade(p, l, SPHERE);
+  for (var i = 0; i < 3; i++) { s = min(s, sphere_shade(p, l, canopy(i))); }
+  s = min(s, sphere_shade(p, l, HEAD));
+  s = min(s, sphere_shade(p, l, vec4f(BODY.x, 0.55, BODY.z, BODY.w)));
+  s = min(s, sphere_shade(p, l, vec4f(BODY.x, 1.0, BODY.z, BODY.w)));
+  s = min(s, sphere_shade(p, l, vec4f(TRUNK.x, 0.6, TRUNK.z, TRUNK.w)));
+  s = min(s, sphere_shade(p, l, vec4f(TRUNK.x, 1.4, TRUNK.z, TRUNK.w)));
+  if (cube_hit(p, l).x > 0.0) { s = 0.0; }
+  return s;
+}
+fn sky(d: vec3f, l: vec3f) -> vec3f {
+  let up = d.y;
+  var c = mix(st(13u).xyz, st(12u).xyz, verse_style_sky_t(up));
+  c = mix(c, st(10u).xyz, verse_style_sky_band(up, st(12u).w));
+  let ct = dot(d, l);
+  let moon = st(1u).w > 0.5;
+  let disc = smoothstep(cos(st(14u).x * 1.15), cos(st(14u).x * 0.85), ct);
+  let halo = verse_style_halo(ct, st(14u).y) * 0.5 + verse_style_halo(ct, st(14u).z) * 0.25;
+  let glow = select(st(11u).xyz, st(0u).xyz, moon);
+  c += glow * halo * select(1.0, 0.5, moon);
+  c = mix(c, select(vec3f(1.0, 0.97, 0.88) * 4.0, vec3f(0.85, 0.88, 1.0) * 1.6, moon), disc);
+  return c;
+}
+fn shade(h: Hit, o: vec3f, d: vec3f) -> vec3f {
+  let p = o + d * h.t;
+  let l = st(1u).xyz;
+  let n = h.n;
+  let ndl = dot(n, l);
+  let lit = shadow(p + n * 0.01, l);
+  let character = h.kind > 2.5;
+  let w = verse_style_wrap(ndl) * lit;
+  let band = select(verse_style_bands(w, st(7u).x, st(7u).y, st(7u).z, st(7u).w), verse_style_bands2(w, st(8u).x, st(8u).y), character);
+  let key = st(0u).xyz * st(0u).w;
+  let amb = vec3f(verse_style_ambient(n.y, st(5u).x, st(6u).x, st(5u).w), verse_style_ambient(n.y, st(5u).y, st(6u).y, st(5u).w), verse_style_ambient(n.y, st(5u).z, st(6u).z, st(5u).w));
+  let dark = st(4u).xyz * amb;
+  let bright = key + amb;
+  var a = h.albedo;
+  var c = vec3f(0.0);
+  if (h.kind > 1.5 && h.kind < 2.5) {
+    // the pond: colour bands by depth (spec 12), the sky's colour in it by Fresnel
+    let depth = h.albedo.x;
+    let sh = st(27u); let md = st(28u); let dp = st(29u);
+    let s1 = smoothstep(sh.w - dp.w, sh.w + dp.w, depth); let s2 = smoothstep(md.w - dp.w, md.w + dp.w, depth);
+    a = mix(mix(sh.xyz, md.xyz, s1), dp.xyz, s2);
+    c = vec3f(verse_style_shade(a.x, dark.x, bright.x, band), verse_style_shade(a.y, dark.y, bright.y, band), verse_style_shade(a.z, dark.z, bright.z, band));
+    let r = reflect(d, n);
+    let f = 0.02 + 0.98 * pow(1.0 - max(dot(-d, n), 0.0), 5.0);
+    c = mix(c, sky(r, l), f);
+  } else {
+    c = vec3f(verse_style_shade(a.x, dark.x, bright.x, band), verse_style_shade(a.y, dark.y, bright.y, band), verse_style_shade(a.z, dark.z, bright.z, band));
+    let rs = select(st(2u).w, st(3u).x, character);
+    c += st(2u).xyz * verse_style_rim(dot(n, -d), ndl, st(3u).y, st(3u).z, rs);
+  }
+  // the haze, the same for everything (spec 4)
+  let hz = st(9u);
+  let f = verse_style_haze(h.t, p.y, 0.0, hz.x, hz.y, hz.z, hz.w);
+  let hc = mix(st(10u).xyz, st(11u).xyz, verse_style_haze_glow(dot(d, l)));
+  return vec3f(verse_style_fog(c.x, hc.x, f), verse_style_fog(c.y, hc.y, f), verse_style_fog(c.z, hc.z, f));
+}
+fn tone(c: vec3f) -> vec3f {
+  if (st(18u).w < 0.5) { return c; }
+  let e = st(18u).x;
+  var t = vec3f(verse_style_tone(c.x, e), verse_style_tone(c.y, e), verse_style_tone(c.z, e));
+  let y = verse_style_luma(t.x, t.y, t.z);
+  t = vec3f(verse_style_saturation(t.x, y, st(18u).y), verse_style_saturation(t.y, y, st(18u).y), verse_style_saturation(t.z, y, st(18u).y));
+  return vec3f(verse_style_lift(t.x, st(18u).z), verse_style_lift(t.y, st(18u).z), verse_style_lift(t.z, st(18u).z));
+}
+fn paint(p: vec2f) -> vec3f {
+  let aspect = u.size.x / max(u.size.y, 1.0);
+  let tv = max(0.36, 0.5 / aspect);        // a phone's tall canvas still holds the whole scene across
+  let q = vec2f((p.x / u.size.x * 2.0 - 1.0) * tv * aspect, (1.0 - p.y / u.size.y * 2.0) * tv);
+  let fwd = normalize(vec3f(0.0, -0.12, -1.0));
+  let right = normalize(cross(fwd, vec3f(0.0, 1.0, 0.0)));
+  let up = cross(right, fwd);
+  let d = normalize(fwd + right * q.x + up * q.y);
+  let h = trace(EYE, d);
+  var c = vec3f(0.0);
+  if (h.kind == 0.0) {
+    c = sky(d, st(1u).xyz);
+    c += vec3f(stars(p)) * st(14u).w * 0.6;
+  } else {
+    c = shade(h, EYE, d);
+  }
+  return pow(clamp(tone(c), vec3f(0.0), vec3f(1.0)), vec3f(1.0 / 2.2));
 }
 // ---- the pack's meshes: its vertices (pack_realm.py: the Haunted House's 48
 // bytes, position, normal, uv, colour with its layer in the top byte), a

@@ -12,18 +12,30 @@
 //
 // Plates and words are verse.coax's look; fixture.wgsl draws the plates and
 // the pack's meshes, lit by the lamp.
+//
+// The style fixture (docs/verse/art-styles.md, Judging "looks painterly"):
+// opened with ?style=painterly it draws a fixed test scene in that style's
+// preset instead, at the page's clock (?clock=T; noon without one): a sphere
+// and a cube, a blob tree, a patch of grass, a pond, a standing figure, and
+// three ridges stepping back at 60, 140 and 260 m, from a fixed camera.
+// fixture.wgsl's paint_fs traces it with verse/style.coax's shading, fed by
+// the preset's STYLE_FLOATS (verse/style-preset.coax). Every painterly engine
+// task shows its work here; its goldens are fixture-painterly-<clock>.png.
 
 #load "font.coax";
 #load "ui.coax";
+#load "../../verse/style-preset.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 24000;
 PLATES :: 16;
-// width, height, time, fade, still, plates, dpr, 0; the view's four rows; the
-// lamp (x, y, z, strength); then per plate x0, y0, x1, y1, scale, alpha, look, 0
+// width, height, time, fade, still, plates, dpr, painted (1: the style fixture); the view's four rows; the
+// lamp (x, y, z, strength); then per plate x0, y0, x1, y1, scale, alpha, look, 0; then the style's
+// STYLE_FLOATS at the clock (verse/style-preset.coax SU_*), read only when painted
 VIEW_AT :: 8; LAMP_AT :: 24;
 PANEL_AT :: 28;
-UNIFORM_FLOATS :: PANEL_AT + PLATES * 8;
+STYLE_AT :: PANEL_AT + PLATES * 8;
+UNIFORM_FLOATS :: STYLE_AT + STYLE_FLOATS;
 
 MODE_STROKE :: 0.0;
 MODE_LINK :: 1.0;
@@ -123,10 +135,12 @@ Fixture :: struct {
   draws: [MESHES * 4] u32; draw_n: int;
   objects: [MESHES * INSTANCE_FLOATS] f32;
   view: [16] f32;            // clip = rows · world
+  // the style fixture: ?style= in the page's URL (STYLE_*, -1 none) and its clock
+  paint: int; clock: f32;
 }
 
 fixture_reset :: (s: [] Fixture) {
-  s[0].started = true; s[0].press = -1; s[0].hover = -1; s[0].drag_id = -1; s[0].moved_at = -100;
+  s[0].started = true; s[0].paint = -1; s[0].clock = 0.5; s[0].press = -1; s[0].hover = -1; s[0].drag_id = -1; s[0].moved_at = -100;
 }
 
 // ---- the save: one line, "fixture-save 1 X Z VISITS", X and Z in thousandths
@@ -195,9 +209,42 @@ fixture_message :: (s: [] Fixture, kind: int, text: string) #export_c {
     return;
   }
   if kind != HOST_FACTS || s[0].counted { return; }
-  s[0].counted = true; s[0].visits += 1; s[0].dirty = true;
+  s[0].counted = true;
+  s[0].paint = style_query(fact_line(text, "url"));
+  s[0].clock = clock_of(fact_line(text, "clock"));
+  // the style fixture is a test view: it doesn't count as a visit or keep anything
+  if s[0].paint < 0 { s[0].visits += 1; s[0].dirty = true; }
   realm := fact_line(text, "realm"); slot := fact_line(text, "slot");
   s[0].realm_n = put(s[0].realm[..], 0, realm); s[0].slot_n = put(s[0].slot[..], 0, slot);
+}
+// The style a URL's query asks for (?style=painterly), STYLE_* or -1.
+style_query :: (url: string) -> int {
+  i := 0;
+  while i < url.count && url[i] != '?' { i += 1; }
+  while i < url.count && url[i] != '#' {
+    i += 1;
+    e := i; while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+    v := url[i..<e];
+    if v == "style=painterly" { return STYLE_PAINTERLY; }
+    if v == "style=lowpoly" { return STYLE_LOWPOLY; }
+    i = e;
+  }
+  return -1;
+}
+// The page's clock fact as a time of day: fixed:T is T; anything else (cycle, real, none) noon.
+clock_of :: (fact: string) -> f32 {
+  if fact.count < 7 || fact[0..<6] != "fixed:" { return 0.5; }
+  v := 0.0f32; scale := 1.0f32; seen_dot := false; digits := 0;
+  for i: 6..<fact.count {
+    c := fact[i];
+    if c == '.' && !seen_dot { seen_dot = true; continue; }
+    if c < '0' || c > '9' { return 0.5; }
+    d := cast(f32) cast(int) (c - '0');
+    if seen_dot { scale *= 0.1; v += d * scale; } else { v = v * 10 + d; }
+    digits += 1;
+  }
+  if digits == 0 || v > 1 { return 0.5; }
+  return v;
 }
 // A key=value line's value ("" none).
 fact_line :: (facts: string, key: string) -> string {
@@ -319,7 +366,7 @@ place :: (s: [] Fixture) {
   }
 }
 fixture_pack_failed :: (s: [] Fixture) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
-fixture_draw_count :: (s: [] Fixture) -> int #export_c { return ifx s[0].pack_ready then s[0].draw_n else 0; }
+fixture_draw_count :: (s: [] Fixture) -> int #export_c { return ifx s[0].pack_ready && s[0].paint < 0 then s[0].draw_n else 0; }
 
 // ---- the view: an eye above the floor's near edge, looking at its middle
 
@@ -562,6 +609,29 @@ draw_realm :: (s: [] Fixture, out: [] f32) -> int {
   return vertices;
 }
 
+// The style fixture's words over its scene: what it is and at what time of day.
+draw_paint :: (s: [] Fixture, out: [] f32) -> int {
+  k := s[0].dpr; w := s[0].width; d := k;
+  vertices := 0;
+  g := 16 * k;
+  title := ifx s[0].paint == STYLE_PAINTERLY then "STYLE FIXTURE · PAINTERLY" else "STYLE FIXTURE · LOWPOLY";
+  c := s[0].clock;
+  sub := ifx c < 0.125 || c >= 0.875 then "MIDNIGHT" else ifx c < 0.375 then "DAWN" else ifx c < 0.625 then "NOON" else "DUSK";
+  tw := hi(measure(title, GAP, SPACE, false) * 11 * k, measure(sub, GAP, SPACE, false) * 7.5 * k) + 32 * k;
+  tb := Box.{x0 = g, y0 = g, x1 = lo(g + tw, w - g), y1 = g + 54 * k};
+  plate(s, tb, 0.92, LOOK_PLAIN);
+  vertices = write(d, out, vertices, title, tb.x0 + 16 * k, tb.y0 + 24 * k, fit_cap(title, 11 * k, tb.x1 - tb.x0 - 32 * k), GAP, SPACE, white(k, 0.97), false, false);
+  vertices = write(d, out, vertices, sub, tb.x0 + 16 * k, tb.y0 + 42 * k, fit_cap(sub, 7.5 * k, tb.x1 - tb.x0 - 32 * k), GAP, SPACE, bronze(k, 0.9), false, false);
+  bw := 104 * k;
+  b := Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 34 * k};
+  if w < 640 * k { b = Box.{x0 = w - g - bw, y0 = tb.y1 + 10 * k, x1 = w - g, y1 = tb.y1 + 44 * k}; }
+  s[0].boxes[BTN_GALAXY] = b; s[0].shown[BTN_GALAXY] = true;
+  look: f32 = LOOK_LIT; if s[0].hover == BTN_GALAXY || s[0].press == BTN_GALAXY { look += LOOK_HOVER; }
+  plate(s, b, 0.92, look);
+  vertices = centred(d, out, vertices, "GALAXY", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
+  return vertices;
+}
+
 // ---- the frame
 
 // The light moves with the keys held, and is kept a moment after the last move.
@@ -573,7 +643,7 @@ fixture_step :: (s: [] Fixture, dt: f32) {
   if (s[0].held & HOLD_RIGHT) != 0 { dx += 1; }
   if (s[0].held & HOLD_UP) != 0 { dz -= 1; }
   if (s[0].held & HOLD_DOWN) != 0 { dz += 1; }
-  if dx != 0 || dz != 0 {
+  if (dx != 0 || dz != 0) && s[0].paint < 0 {
     s[0].x += dx * SPEED * step; s[0].z += dz * SPEED * step;
     keep_inside(s); s[0].dirty = true; s[0].moved_at = s[0].time;
   }
@@ -599,7 +669,12 @@ fixture_frame :: (s: [] Fixture, out: [] f32, uniforms: [] f32, width: f32, heig
   for i: 0..<16 { uniforms[VIEW_AT + i] = s[0].view[i]; }
   uniforms[LAMP_AT] = s[0].x * FLOOR; uniforms[LAMP_AT + 1] = LAMP_HEIGHT; uniforms[LAMP_AT + 2] = s[0].z * FLOOR;
   uniforms[LAMP_AT + 3] = ifx still then 1.0f32 else 0.9 + 0.1 * sin(s[0].time * 2.4);
-  n := draw_realm(s, out);
+  n := ifx s[0].paint >= 0 then draw_paint(s, out) else draw_realm(s, out);
+  if s[0].paint >= 0 {
+    // the preset for this canvas (a phone's tier under 600 css px wide), at the clock
+    tier := ifx width / s[0].dpr < 600 then STYLE_PHONE else STYLE_DESKTOP;
+    if verse_style_at(verse_style_preset(s[0].paint, tier), s[0].clock, uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]) { uniforms[7] = 1; }
+  }
   uniforms[5] = cast(f32) s[0].plate_n;
   for i: 0..<s[0].plate_n {
     o := PANEL_AT + i * 8; b := s[0].plates[i];
@@ -723,4 +798,39 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
   #assert fixture_action(s[..]) == ACT_NAVIGATE && outbox_is(s[..], "/verse/galaxy");
   t: [1] Fixture;
   #assert fixture_key(t[..], KEY_ESCAPE, true) && fixture_action(t[..]) == ACT_NAVIGATE;
+}
+
+#test "?style=painterly opens the style fixture at the page's clock, and keeps nothing" {
+  s: [1] Fixture;
+  fixture_message(s[..], HOST_FACTS, "realm=fixture\nslot=fixture\nurl=https://openagents.com/realms/fixture?style=painterly&clock=0.25\nclock=fixed:0.25");
+  #assert s[0].paint == STYLE_PAINTERLY && s[0].clock == 0.25 && s[0].visits == 0;
+  fixture_catalog(s[..], CATALOG);
+  #assert fixture_draw_count(s[..]) == 0;   // the pack's meshes stay out of the test scene
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  #assert fixture_frame(s[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
+  #assert u[7] == 1;
+  // the preset at dawn: the key is the dusk/dawn key, the clock rides along
+  #assert abs(u[STYLE_AT + SU_KEY + 1] - 0.72) < 0.001 && abs(u[STYLE_AT + SU_STYLE + 3] - 0.25) < 0.001;
+  #assert u[STYLE_AT + SU_SHADOW] == 2048;
+  press_key(s[..], 'd', true);
+  for i: 0..<10 { step_by(s[..], 0.05); }
+  #assert s[0].x == 0 && fixture_action(s[..]) == 0;
+}
+#test "a phone-width canvas takes the phone tier" {
+  s: [1] Fixture;
+  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?style=painterly\nclock=fixed:0.5");
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  #assert fixture_frame(s[..], out[..], u[..], 1170, 2532, 3, 0.016, true) > 0;
+  #assert u[STYLE_AT + SU_SHADOW] == 1024 && u[STYLE_AT + SU_STYLE + 2] == STYLE_PHONE;
+}
+#test "without the query the fixture is the fixture: no style block, the lamp moves" {
+  s: [1] Fixture;
+  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?clock=0.25\nclock=fixed:0.25");
+  #assert s[0].paint == -1 && s[0].visits == 1;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  #assert fixture_frame(s[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
+  #assert u[7] == 0 && u[STYLE_AT + SU_KEY] == 0;
+  #assert style_query("https://x/realms/fixture?a=1&style=painterly#top") == STYLE_PAINTERLY;
+  #assert style_query("https://x/realms/fixture#style=painterly") == -1;
+  #assert clock_of("fixed:0.75") == 0.75 && clock_of("fixed:1") == 1 && clock_of("cycle") == 0.5 && clock_of("fixed:2") == 0.5 && clock_of("fixed:") == 0.5;
 }

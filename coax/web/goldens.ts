@@ -76,6 +76,8 @@ const unlisted = new Set(open.filter((w) => w.listed === false).map((w) => w.rea
 const pendingDir = process.env.GOLDENS_PENDING || join(goldens, "pending")
 // Pages of their own the galaxy doesn't open (not in realms.json), walked by their address.
 const BY_ADDRESS: Record<string, Page> = { garden: { path: "/realms/garden", lit: 0.5, settle: 3000, blocks: 6 } }
+// The style fixture (docs/verse/art-styles.md): the fixture realm in the painterly preset at each clock key.
+for (const c of ["0", "0.25", "0.5", "0.75"]) BY_ADDRESS[`fixture-painterly-${c}`] = { path: `/realms/fixture?style=painterly&clock=${c}`, lit: 0.5, settle: 3000, blocks: 6 }
 for (const [name, page] of Object.entries(BY_ADDRESS)) PAGES[name] ??= page
 type Name = string
 
@@ -306,7 +308,7 @@ class Tab {
   }
   async reach(name: Name, cheap: boolean) {
     const page = PAGES[name], want = base + root + page.path
-    const there = await this.until(async () => (await this.evaluate("location.href")).split(/[?#]/)[0] === want, 15000)
+    const there = await this.until(async () => (await this.evaluate("location.href")).split(/[?#]/)[0] === want.split(/[?#]/)[0], 15000)
     this.check(there, `${name}: at ${want}`)
     if (!there) return null
     const ready = await this.until(async () => (await this.evaluate("globalThis.coaxial?.ready === true")) === true, 20000)

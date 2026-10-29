@@ -85,7 +85,7 @@ StylePreset :: struct {
   rim_world: f32; rim_char: f32; rim_start: f32; rim_full: f32;
   blob: f32;
   // light through the day
-  sun_azimuth: f32;           // rad about +y from +z
+  sun_azimuth: f32;           // rad about +y from +z, at noon
   sun_low: f32; sun_high: f32; // the sun's elevation at midnight and noon (rad)
   moon_below: f32;            // the moon is the key while the sun is below this (rad)
   // haze and sky
@@ -276,7 +276,9 @@ verse_style_at :: (p: StylePreset, clock: f32, out: [] f32) -> bool {
   e := verse_style_sun_elevation(p, clock);
   moon := e < p.moon_below;
   // the key's direction: the sun, or below moon_below the moon opposite it (a realm with a real moon puts its own)
-  sx := cos(e) * sin(p.sun_azimuth); sy := sin(e); sz := cos(e) * cos(p.sun_azimuth);
+  // its azimuth swings through the day: the preset's at noon, a quarter turn east at dawn and west at dusk
+  az := p.sun_azimuth + (clock - floor(clock) - 0.5) * 3.14159265;
+  sx := cos(e) * sin(az); sy := sin(e); sz := cos(e) * cos(az);
   if moon { sx = -sx; sy = -sy; sz = -sz; }
   put4(out, SU_KEY, k.key_r, k.key_g, k.key_b, k.key_strength);
   put4(out, SU_KEY_DIR, sx, sy, sz, ifx moon then 1.0 else 0.0);
@@ -319,7 +321,7 @@ STYLE_KEYED :: 24;
 STYLE_KEYED_AT :: [STYLE_KEYED] int.[SU_KEY, SU_KEY + 1, SU_KEY + 2, SU_KEY + 3, SU_RIM, SU_RIM + 1, SU_RIM + 2, SU_RIM + 3, SU_TINT, SU_TINT + 2,
   SU_SKY_AMB, SU_SKY_AMB + 3, SU_GROUND_AMB, SU_HAZE, SU_HAZE + 1, SU_HAZE + 2, SU_HAZE + 3, SU_HAZE_COLOUR,
   SU_HAZE_KEY + 1, SU_ZENITH, SU_HORIZON + 1, SU_CLOUD_TOP + 2, SU_TONE, SU_SHAFTS + 2];
-near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
+sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
 
 #test "the painterly preset holds the spec's shading numbers" {
   p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
@@ -331,7 +333,7 @@ near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert p.saturation == 1.10 && p.black_lift == 0.035 && p.outline_max == 0.35;
   #assert p.bloom_threshold == 0.85 && p.bloom_knee == 0.25 && p.bloom_mix == 0.30;
   #assert p.wind_amp == 0.30 && p.wind_wavelength == 12 && p.wind_speed == 3;
-  #assert near(p.wind_x * p.wind_x + p.wind_z * p.wind_z, 1);
+  #assert sp_near(p.wind_x * p.wind_x + p.wind_z * p.wind_z, 1);
 }
 #test "the phone tier: less in it, the same painting" {
   d := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
@@ -347,7 +349,7 @@ near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert d.band_e0 == f.band_e0 && d.band_e1 == f.band_e1 && d.rim_world == f.rim_world && d.saturation == f.saturation;
   a: [STYLE_FLOATS] f32; b: [STYLE_FLOATS] f32;
   #assert verse_style_at(d, 0.5, a[..]) && verse_style_at(f, 0.5, b[..]);
-  #assert near(b[SU_HAZE + 1], a[SU_HAZE + 1] * 1.25);
+  #assert sp_near(b[SU_HAZE + 1], a[SU_HAZE + 1] * 1.25);
   for i: 0..<4 { #assert a[SU_TINT + i] == b[SU_TINT + i]; #assert a[SU_TONE + i] == b[SU_TONE + i]; #assert a[SU_BANDS + i] == b[SU_BANDS + i]; }
 }
 #test "photoreal has no preset yet and refuses to evaluate" {
@@ -365,27 +367,29 @@ near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   o: [STYLE_FLOATS] f32;
   #assert verse_style_at(p, 0.5, o[..]);
-  #assert near(o[SU_KEY], 1.0) && near(o[SU_KEY + 1], 0.95) && near(o[SU_KEY + 2], 0.85) && near(o[SU_KEY + 3], 1.0);
-  #assert near(o[SU_TINT], 0.52) && near(o[SU_TINT + 1], 0.58) && near(o[SU_TINT + 2], 0.86);
-  #assert near(o[SU_HAZE], 20) && near(o[SU_HAZE + 1], 0.011) && near(o[SU_HAZE + 2], 0.88) && near(o[SU_HAZE + 3], 60);
-  #assert near(o[SU_HAZE_COLOUR], 0.56) && near(o[SU_HAZE_COLOUR + 1], 0.74) && near(o[SU_HAZE_COLOUR + 2], 0.90);
-  #assert near(o[SU_HORIZON], o[SU_HAZE_COLOUR]) && near(o[SU_HORIZON + 2], o[SU_HAZE_COLOUR + 2]);
-  #assert near(o[SU_ZENITH + 2], 0.86) && near(o[SU_TONE], 1.6) && near(o[SU_RIM + 3], 0.30) && near(o[SU_SHAFTS + 2], 0.22);
-  #assert o[SU_KEY_DIR + 3] == 0 && near(o[SU_KEY_DIR + 1], sin(60 * DEG)) && o[SU_SUN + 3] == 0;
+  #assert sp_near(o[SU_KEY], 1.0) && sp_near(o[SU_KEY + 1], 0.95) && sp_near(o[SU_KEY + 2], 0.85) && sp_near(o[SU_KEY + 3], 1.0);
+  #assert sp_near(o[SU_TINT], 0.52) && sp_near(o[SU_TINT + 1], 0.58) && sp_near(o[SU_TINT + 2], 0.86);
+  #assert sp_near(o[SU_HAZE], 20) && sp_near(o[SU_HAZE + 1], 0.011) && sp_near(o[SU_HAZE + 2], 0.88) && sp_near(o[SU_HAZE + 3], 60);
+  #assert sp_near(o[SU_HAZE_COLOUR], 0.56) && sp_near(o[SU_HAZE_COLOUR + 1], 0.74) && sp_near(o[SU_HAZE_COLOUR + 2], 0.90);
+  #assert sp_near(o[SU_HORIZON], o[SU_HAZE_COLOUR]) && sp_near(o[SU_HORIZON + 2], o[SU_HAZE_COLOUR + 2]);
+  #assert sp_near(o[SU_ZENITH + 2], 0.86) && sp_near(o[SU_TONE], 1.6) && sp_near(o[SU_RIM + 3], 0.30) && sp_near(o[SU_SHAFTS + 2], 0.22);
+  #assert o[SU_KEY_DIR + 3] == 0 && sp_near(o[SU_KEY_DIR + 1], sin(60 * DEG)) && o[SU_SUN + 3] == 0;
   #assert verse_style_at(p, 0.75, o[..]);
-  #assert near(o[SU_KEY + 1], 0.72) && near(o[SU_KEY + 3], 0.75) && near(o[SU_HAZE + 1], 0.013) && near(o[SU_HAZE + 3], 50);
-  #assert near(o[SU_TINT], 0.58) && near(o[SU_TINT + 1], 0.48) && near(o[SU_HORIZON], 0.95) && near(o[SU_RIM + 1], 0.70);
-  #assert near(o[SU_KEY_DIR + 1], sin(20 * DEG)) && o[SU_KEY_DIR + 3] == 0;
+  #assert sp_near(o[SU_KEY + 1], 0.72) && sp_near(o[SU_KEY + 3], 0.75) && sp_near(o[SU_HAZE + 1], 0.013) && sp_near(o[SU_HAZE + 3], 50);
+  #assert sp_near(o[SU_TINT], 0.58) && sp_near(o[SU_TINT + 1], 0.48) && sp_near(o[SU_HORIZON], 0.95) && sp_near(o[SU_RIM + 1], 0.70);
+  #assert sp_near(o[SU_KEY_DIR + 1], sin(20 * DEG)) && o[SU_KEY_DIR + 3] == 0;
+  dusk_x := o[SU_KEY_DIR];
   #assert verse_style_at(p, 0.25, o[..]);
-  #assert near(o[SU_KEY + 1], 0.72) && near(o[SU_HAZE_COLOUR], 0.78) && near(o[SU_HAZE_KEY + 1], 0.62);
+  #assert sp_near(o[SU_KEY + 1], 0.72) && sp_near(o[SU_HAZE_COLOUR], 0.78) && sp_near(o[SU_HAZE_KEY + 1], 0.62);
+  #assert abs(o[SU_KEY_DIR] - dusk_x) > 0.5;   // the sun rises on one side and sets on the other
   #assert verse_style_at(p, 0.0, o[..]);
-  #assert near(o[SU_KEY], 0.62) && near(o[SU_KEY + 2], 0.95) && near(o[SU_KEY + 3], 0.35);
-  #assert near(o[SU_HAZE], 12) && near(o[SU_HAZE + 1], 0.016) && near(o[SU_HAZE + 2], 0.85) && near(o[SU_HAZE + 3], 40);
-  #assert near(o[SU_HAZE_COLOUR + 2], 0.27) && near(o[SU_ZENITH + 2], 0.05) && near(o[SU_TONE], 2.4) && near(o[SU_SHAFTS + 2], 0.10);
-  #assert near(o[SU_RIM], 0.70) && near(o[SU_RIM + 3], 0.18) && near(o[SU_RIM2], 0.27);
+  #assert sp_near(o[SU_KEY], 0.62) && sp_near(o[SU_KEY + 2], 0.95) && sp_near(o[SU_KEY + 3], 0.35);
+  #assert sp_near(o[SU_HAZE], 12) && sp_near(o[SU_HAZE + 1], 0.016) && sp_near(o[SU_HAZE + 2], 0.85) && sp_near(o[SU_HAZE + 3], 40);
+  #assert sp_near(o[SU_HAZE_COLOUR + 2], 0.27) && sp_near(o[SU_ZENITH + 2], 0.05) && sp_near(o[SU_TONE], 2.4) && sp_near(o[SU_SHAFTS + 2], 0.10);
+  #assert sp_near(o[SU_RIM], 0.70) && sp_near(o[SU_RIM + 3], 0.18) && sp_near(o[SU_RIM2], 0.27);
   // the moon is the key at midnight, up in the sky, and the stars are out
   #assert o[SU_KEY_DIR + 3] == 1 && o[SU_KEY_DIR + 1] > 0 && o[SU_SUN + 3] == 1;
-  #assert verse_style_at(p, 1.0, o[..]) && near(o[SU_KEY], 0.62) && near(o[SU_STYLE + 3], 0);
+  #assert verse_style_at(p, 1.0, o[..]) && sp_near(o[SU_KEY], 0.62) && sp_near(o[SU_STYLE + 3], 0);
 }
 #test "halfway between keys is the mean of both" {
   p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
@@ -396,7 +400,7 @@ near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
     // every keyed number (key, rim, tint, ambient, haze, sky, clouds, exposure, shafts)
     for n: 0..<STYLE_KEYED {
       j := STYLE_KEYED_AT[n];
-      #assert near(m[j], 0.5 * (a[j] + b[j]));
+      #assert sp_near(m[j], 0.5 * (a[j] + b[j]));
     }
   }
 }
@@ -411,15 +415,15 @@ near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
 }
 #test "the sun runs -20 degrees at midnight to 60 at noon; the moon keys below -6" {
   p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
-  #assert near(verse_style_sun_elevation(p, 0), -20 * DEG) && near(verse_style_sun_elevation(p, 0.5), 60 * DEG);
-  #assert near(verse_style_sun_elevation(p, 0.25), 20 * DEG) && near(verse_style_sun_elevation(p, 0.75), 20 * DEG);
+  #assert sp_near(verse_style_sun_elevation(p, 0), -20 * DEG) && sp_near(verse_style_sun_elevation(p, 0.5), 60 * DEG);
+  #assert sp_near(verse_style_sun_elevation(p, 0.25), 20 * DEG) && sp_near(verse_style_sun_elevation(p, 0.75), 20 * DEG);
   o: [STYLE_FLOATS] f32;
   for i: 0..<48 {
     c := cast(f32) i / 48.0;
     #assert verse_style_at(p, c, o[..]);
     e := verse_style_sun_elevation(p, c);
     #assert (o[SU_KEY_DIR + 3] == 1) == (e < -6 * DEG);
-    #assert near(o[SU_KEY_DIR] * o[SU_KEY_DIR] + o[SU_KEY_DIR + 1] * o[SU_KEY_DIR + 1] + o[SU_KEY_DIR + 2] * o[SU_KEY_DIR + 2], 1);
+    #assert sp_near(o[SU_KEY_DIR] * o[SU_KEY_DIR] + o[SU_KEY_DIR + 1] * o[SU_KEY_DIR + 1] + o[SU_KEY_DIR + 2] * o[SU_KEY_DIR + 2], 1);
     #assert o[SU_KEY_DIR + 1] > -0.11;   // the key is never far below the horizon
   }
 }
@@ -443,5 +447,5 @@ near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert p.ok && verse_style_at(p, 0.3, o[..]);
   #assert o[SU_TONE + 3] == 0 && o[SU_BLOOM + 2] == 0 && o[SU_SHAFTS + 2] == 0 && o[SU_GRASS] == 0 && o[SU_CLOUDS] == 0;
   #assert o[SU_BANDS + 3] == 1 && o[SU_STYLE] == 1 && o[SU_STYLE + 1] == 0 && o[SU_STYLE + 2] == 1;
-  #assert near(o[SU_STYLE + 3], 0.3);
+  #assert sp_near(o[SU_STYLE + 3], 0.3);
 }
