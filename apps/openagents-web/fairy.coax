@@ -38,6 +38,7 @@
 #load "place-orbit.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "fairyroom.coax";
+#load "fairyquest.coax";   // lore and quests from edit mode's panes
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -163,6 +164,7 @@ Fairy :: struct {
   // the others in the forest, the chat room and the inbox (fairyroom.coax)
   room: [1] RoomState;
   social: [1] Social;
+  quest: [1] FfQuest;   // the quest you are on (fairyquest.coax)
 }
 
 // ---- small things
@@ -564,6 +566,7 @@ fairy_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, kind: int, id: int) -
   if redit_pointer(s[0].ed[..], x, y, phase, id) { return true; }
   if kind != 0 { s[0].touch = true; }
   if ffs_pointer(s, x, y, phase, id) { return true; }
+  if ffq_pointer(s, x, y, phase, id) { return true; }
   talking := s[0].talk > 0;
   if talking && talk_pointer(s, x, y, phase, id) { return true; }
   if kind != 0 {
@@ -684,7 +687,7 @@ send_typed :: (s: [] Fairy) {
   if s[0].talk <= 0 || s[0].waiting || s[0].typed_n == 0 { return; }
   lines: [TALK_LINES] FfLine;
   for k: 0..<s[0].line_n { lines[k] = FfLine.{npc = s[0].line_npc[k], text = line_of(s, k)}; }
-  n := ff_ask_body(s[0].ask[..], s[0].forest[..], s[0].talk - 1, lines[0..<s[0].line_n], typed_text(s), cast(string) s[0].visit[0..<s[0].visit_n]);
+  n := ff_ask_body(s[0].ask[..], s[0].forest[..], s[0].talk - 1, lines[0..<s[0].line_n], typed_text(s), cast(string) s[0].visit[0..<s[0].visit_n], redit_lore(s[0].ed[..], FF_CREATURE_KEYS[s[0].talk - 1]));
   if n == 0 { return; }
   s[0].ask_n = n;
   add_line(s, false, typed_text(s));
@@ -1822,6 +1825,8 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
     pb := s[0].ed[0].plate_box[i];
     plate(s, u, Box.{x0 = pb.x0, y0 = pb.y0, x1 = pb.x1, y1 = pb.y1}, s[0].ed[0].plate_alpha[i], s[0].ed[0].plate_look[i]);
   }
+  if redit_typing(s[0].ed[..]) { tb := redit_type_box(s[0].ed[..]); s[0].field[0] = tb.x0; s[0].field[1] = tb.y0; s[0].field[2] = tb.x1; s[0].field[3] = tb.y1; }
+  n = ffq_hud(s, out, u, n);
   if move_on {
     r := 46 * k;
     for i: 0..<32 {
@@ -1958,6 +1963,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   if finite(speed) { s[0].stride += speed * t / 1.6; }
   shown := add(v3(feet.x, 0, feet.z), v3(0, ground_at(s, feet.x, feet.z) + feet.y, 0));
   s[0].feet = shown;
+  ffq_step(s);
   play(s, shown);
   if s[0].waiting {
     s[0].waited += t;

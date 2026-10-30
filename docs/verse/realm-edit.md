@@ -37,6 +37,9 @@ All under `/api/playtest/realms/<slug>`, for a made or a hand-built realm:
 | `POST /settings {tools}` | the tools visitors get (only those the realm honours) |
 | `POST /place {thing, x, z, yaw}` | an owner's or admin's goes in; a visitor's becomes a card |
 | `GET /proposals`, `POST /proposals/<id>/accept\|decline` | the cards |
+| `GET /panes` | everyone: `lore WHO\|TEXT` and `quest GIVER\|ASK\|STEP\|STEP\|STEP\|REWARD`, a line each |
+| `POST /lore {who, text}` | a character's lore (400 characters; `""` forgets it) |
+| `POST /quest {giver, ask, steps, reward}` | the quest a character gives, one each (`""` ask takes it away) |
 
 A made realm keeps the rows switched off in `made_realms.off`, so they can come back on.
 Revisions are rows in `verse.realm_plans` (with its `slug`), under the builder's daily cap and its
@@ -62,6 +65,14 @@ EDIT opens one pane at a time (the panes rule, verse/fairy-forest/README.md "Mak
 panes"): THE BOARD (a checkbox a row; HOLD TO TALK on a page with a voice, TYPE IT everywhere),
 SETTINGS (what visitors get; a realm whose code honours no visitor tool says so), and N WAITING
 (the first card: who, what, where, the count before and after, ACCEPT and DECLINE).
+
+The panes for what you work on (ff-panes, migration 0055): a realm says, each frame, which of its
+characters you are by (`redit_near(ed, key, name)`). With EDIT open, coming to one brings up its
+LORE (written, SAVE, and it comes back the next time); QUEST turns that pane into the form (ASK,
+STEP 1-3, REWARD) and SAVE QUEST makes the quest. A realm that plays them calls
+`redit_read_panes_too(ed)` and reads `redit_lore(ed, key)`, `redit_quest(ed, key)` and
+`redit_quest_part(ed, q, part)`. Fairy Forest is the first (apps/openagents-web/fairyquest.coax):
+its creatures know their lore when you talk to them, and give their quests when you come near.
 
 ## What each realm can switch
 

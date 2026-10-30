@@ -1,0 +1,192 @@
+// Fairy Forest's lore and quests (ff-panes): what its owner and admins write in edit mode's panes
+// (verse/edit/edit.coax; coax/web/api/migrations/0055_realm_panes.sql), played. Each creature is
+// a character to the panes by its key; with EDIT open, coming to one brings up its lore. Its lore
+// goes into what it knows when you talk to it (talk.coax's ff_ask_body). A creature with a quest
+// gives it when you come near: the quest shows at the top left, what is asked and its steps; tap a
+// step when you have done it, and when every one is done it says what you get.
+//   coax/bin/coax test apps/openagents-web/fairy.coax
+
+FF_CREATURE_KEYS :: [5] string.["bramble", "pip", "clover", "burdock", "hollow"];
+FFQ_KEY :: 32; FFQ_DONE :: 12;
+FFQ_SHOW_DONE :: 8.0;   // seconds the finished quest stays up
+
+FfQuest :: struct {
+  giver: [FFQ_KEY] u8; giver_n: int;   // the quest you are on ("" none)
+  name: [FFQ_KEY] u8; name_n: int;
+  ticks: [4] bool;                     // its steps done (a quest with no steps: one DONE row)
+  done_at: f64;                        // when the last was ticked, 0 not yet
+  rows: [4] Box; row_on: [4] bool; row_finger: int; row_press: int;
+  plate: Box;
+  finished: [FFQ_DONE * FFQ_KEY] u8; finished_n: [FFQ_DONE] int; finished_count: int;   // this visit's
+}
+
+ffq_was_finished :: (q: [] FfQuest, giver: string) -> bool {
+  for i: 0..<q[0].finished_count { if cast(string) q[0].finished[i * FFQ_KEY..<i * FFQ_KEY + q[0].finished_n[i]] == giver { return true; } }
+  return false;
+}
+ffq_giver :: (q: [] FfQuest) -> string { return cast(string) q[0].giver[0..<q[0].giver_n]; }
+// The rows to tick: the steps written, or one DONE row for a quest with none.
+ffq_rows :: (e: [] RealmEdit, at: int) -> int {
+  n := 0;
+  for p: 1..<4 { if redit_quest_part(e, at, p).count > 0 { n += 1; } }
+  return n;
+}
+ffq_row_text :: (e: [] RealmEdit, at: int, row: int) -> string {
+  k := 0;
+  for p: 1..<4 {
+    t := redit_quest_part(e, at, p);
+    if t.count == 0 { continue; }
+    if k == row { return t; }
+    k += 1;
+  }
+  return "DONE";
+}
+ffq_take :: (q: [] FfQuest, key: string, name: string) {
+  q[0].giver_n = redit_copy(q[0].giver[..], key);
+  q[0].name_n = redit_copy(q[0].name[..], name);
+  for i: 0..<4 { q[0].ticks[i] = false; }
+  q[0].done_at = 0;
+}
+ffq_finish :: (q: [] FfQuest) {
+  if q[0].finished_count < FFQ_DONE {
+    i := q[0].finished_count;
+    q[0].finished_n[i] = redit_copy(q[0].finished[i * FFQ_KEY..<(i + 1) * FFQ_KEY], ffq_giver(q));
+    q[0].finished_count = i + 1;
+  }
+  q[0].giver_n = 0; q[0].done_at = 0;
+}
+
+// Each frame: tell the edit layer which creature you are by, and take a quest from it.
+ffq_step :: (s: [] Fairy) {
+  e := s[0].ed[..]; q := s[0].quest[..];
+  redit_read_panes_too(e);
+  by := -1; best := f32(FF_TALK_NEAR);
+  for c: 0..<FF_CREATURES {
+    dx := FF_CREATURE[c * 4] - s[0].feet.x; dz := FF_CREATURE[c * 4 + 1] - s[0].feet.z;
+    d := sqrt(dx * dx + dz * dz);
+    if d < best { best = d; by = c; }
+  }
+  name: [16] u8; nn := 0;
+  if by >= 0 { nn = ff_name(by, name[..]); }
+  redit_near(e, ifx by >= 0 then FF_CREATURE_KEYS[by] else "", cast(string) name[0..<nn]);
+  // the quest you are on: gone if its giver's was taken away, put away a while after it is done
+  if q[0].giver_n > 0 {
+    at := redit_quest(e, ffq_giver(q));
+    if at < 0 { q[0].giver_n = 0; }
+    else if q[0].done_at > 0 && s[0].time - q[0].done_at > f64(FFQ_SHOW_DONE) { ffq_finish(q); }
+  }
+  if q[0].giver_n == 0 && by >= 0 && redit_quest(e, FF_CREATURE_KEYS[by]) >= 0 && !ffq_was_finished(q, FF_CREATURE_KEYS[by]) {
+    ffq_take(q, FF_CREATURE_KEYS[by], cast(string) name[0..<nn]);
+  }
+}
+
+ffq_shown :: (s: [] Fairy) -> bool {
+  return s[0].quest[0].giver_n > 0 && !redit_open(s[0].ed[..]) && s[0].talk == 0 && !s[0].social[0].inbox_open && !(phone(s) && s[0].social[0].open);
+}
+
+// The quest at the top left, under the title (and on a phone under the chat's line).
+ffq_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
+  q := s[0].quest[..]; e := s[0].ed[..];
+  for i: 0..<4 { q[0].row_on[i] = false; }
+  q[0].plate = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  if !ffq_shown(s) { return at; }
+  qi := redit_quest(e, ffq_giver(q));
+  if qi < 0 { return at; }
+  k := hi(s[0].dpr, 0.5); w := s[0].width;
+  cap := 7.5 * k; pad := 12 * k; row := 24 * k;
+  x0 := 16 * k;
+  y0 := ifx phone(s) then 16 * k + 11 * k + 7.5 * k + 34 * k + 8 * k + 30 * k + 8 * k else 16 * k + 11 * k + 7.5 * k + 34 * k + 10 * k;
+  bw := lo(330 * k, w - 32 * k);
+  rows := ffq_rows(e, qi); shown_rows := ifx rows == 0 then 1 else rows;
+  done := q[0].done_at > 0;
+  ask := redit_quest_part(e, qi, 0);
+  ask_lines := ifx text_width(ask, cap) > bw - 2 * pad then 2 else 1;
+  bh := pad + 11 * k + 8 * k + f32(ask_lines) * cap * 1.7 + 6 * k + f32(shown_rows) * row + (ifx done then 22 * k else 0) + pad * 0.6;
+  b := Box.{x0 = x0, y0 = y0, x1 = x0 + bw, y1 = y0 + bh};
+  q[0].plate = b;
+  plate(s, u, b, 0.8, 0);
+  title: [48] u8;
+  m := redit_copy(title[..], cast(string) q[0].name[0..<q[0].name_n]);
+  m = redit_put(title[..], m, "'S QUEST");
+  n := draw_text(out, at, cast(string) title[0..<m], x0 + pad, y0 + pad + 9 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  y := y0 + pad + 11 * k + 8 * k;
+  n = redit_wrap(e, out, n, ask, x0 + pad, y - cap * 0.7, cap, bw - 2 * pad, ask_lines, redit_parch(k, 0.9));
+  y += f32(ask_lines) * cap * 1.7 + 6 * k;
+  size := 12 * k;
+  for r: 0..<shown_rows {
+    rb := Box.{x0 = x0 + pad * 0.5, y0 = y, x1 = b.x1 - pad * 0.5, y1 = y + row};
+    q[0].rows[r] = rb; q[0].row_on[r] = !done;
+    n = redit_check(out, n, x0 + pad, y + (row - size) / 2, size, q[0].ticks[r], k);
+    words := ffq_row_text(e, qi, r);
+    n = draw_text(out, n, words, x0 + pad + size + 10 * k, y + (row + cap) / 2, lo(cap, cap * (bw - 2 * pad - size - 10 * k) / hi(text_width(words, cap), 1)), GAP, SPACE,
+                  ink(k, ifx q[0].ticks[r] then 0.55f32 else 0.92f32, CREAM_R, CREAM_G, CREAM_B), false, false);
+    y += row;
+  }
+  if done {
+    reward := redit_quest_part(e, qi, 4);
+    line: [140] u8;
+    lm := redit_put(line[..], 0, ifx reward.count > 0 then "DONE. YOU GET: " else "DONE. THANK YOU!");
+    lm = redit_put(line[..], lm, reward);
+    t := cast(string) line[0..<lm];
+    n = draw_text(out, n, t, x0 + pad, y + 15 * k, lo(cap, cap * (bw - 2 * pad) / hi(text_width(t, cap), 1)), GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  }
+  return n;
+}
+
+// A tap on a step ticks it (or unticks it); the last one ticked finishes the quest.
+ffq_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, id: int) -> bool {
+  q := s[0].quest[..];
+  if q[0].giver_n == 0 || !ffq_shown(s) { q[0].row_press = -1; return false; }
+  if phase == 0 {
+    for r: 0..<4 { if q[0].row_on[r] && in_box(q[0].rows[r], x, y) { q[0].row_press = r; q[0].row_finger = id; return true; } }
+    q[0].row_press = -1;
+    return in_box(q[0].plate, x, y);
+  }
+  if q[0].row_press < 0 || id != q[0].row_finger { return false; }
+  if phase == 1 { return true; }
+  r := q[0].row_press; q[0].row_press = -1;
+  if phase == 2 && in_box(q[0].rows[r], x, y) {
+    q[0].ticks[r] = !q[0].ticks[r];
+    qi := redit_quest(s[0].ed[..], ffq_giver(q));
+    rows := ffq_rows(s[0].ed[..], qi); want := ifx rows == 0 then 1 else rows;
+    all := true;
+    for i: 0..<want { if !q[0].ticks[i] { all = false; } }
+    if all { q[0].done_at = s[0].time + 0.001; }
+  }
+  return true;
+}
+
+#test "a creature with a quest gives it when you come near; ticking its steps finishes it" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  e := s[0].ed[..];
+  redit_start(e, "fairy-forest");
+  redit_step(e, 0, 1280, 800, 1);
+  redit_requested(e, 1);
+  _ := redit_message(e, HTTP_KIND + 1, "200\nrealm fairy-forest\nrole visitor\nowner 0\n");
+  ffq_step(s[..]);
+  redit_step(e, 1, 1280, 800, 1);
+  #assert cast(string) e[0].req_url[0..<e[0].req_url_n] == "/api/playtest/realms/fairy-forest/panes";
+  redit_requested(e, 2);
+  _ = redit_message(e, HTTP_KIND + 2, "200\nlore bramble|Hoards acorns.\nquest bramble|Find acorns|Look by the oak||Fill the basket|A lucky acorn\n");
+  // by Bramble: his quest is taken
+  s[0].feet = v3(-30, 0, -33);
+  ffq_step(s[..]);
+  #assert ffq_giver(s[0].quest[..]) == "bramble" && cast(string) s[0].quest[0].name[0..<s[0].quest[0].name_n] == "Bramble";
+  #assert ffq_rows(e, 0) == 2 && ffq_row_text(e, 0, 1) == "Fill the basket";
+  out: [60000] f32; u: [UNIFORM_FLOATS] f32;
+  s[0].width = 1280; s[0].height = 800; s[0].dpr = 1;
+  _n := ffq_hud(s[..], out[..], u[..], 0);
+  #assert s[0].quest[0].row_on[0] && s[0].quest[0].row_on[1] && !s[0].quest[0].row_on[2];
+  for r: 0..<2 {
+    b := s[0].quest[0].rows[r];
+    #assert ffq_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1) && ffq_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1);
+  }
+  #assert s[0].quest[0].done_at > 0;
+  // a while after, it is put away and not given again this visit
+  s[0].quest[0].done_at = 1; s[0].time = 1 + FFQ_SHOW_DONE + 1;
+  ffq_step(s[..]);
+  #assert s[0].quest[0].giver_n == 0 && ffq_was_finished(s[0].quest[..], "bramble");
+  // the lore goes into what Bramble knows when you talk to him
+  #assert redit_lore(e, "bramble") == "Hoards acorns.";
+}

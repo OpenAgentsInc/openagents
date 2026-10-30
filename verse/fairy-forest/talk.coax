@@ -116,9 +116,10 @@ ff_knows :: (out: [] u8, at: int, f: [] Forest, c: int) -> int {
 FfLine :: struct { npc: bool; text: string; }
 
 // The body for /api/playtest/npc/ask: creature c, the talk so far (oldest
-// first), the question and this visit's stamp. The bytes written, or 0 when
-// it didn't fit.
-ff_ask_body :: (out: [] u8, f: [] Forest, c: int, lines: [] FfLine, question: string, visit: string) -> int {
+// first), the question, this visit's stamp and its lore (what the forest's
+// keeper wrote in edit mode's lore pane, "" none). The bytes written, or 0
+// when it didn't fit.
+ff_ask_body :: (out: [] u8, f: [] Forest, c: int, lines: [] FfLine, question: string, visit: string, lore: string) -> int {
   if c < 0 || c >= FF_CREATURES { return 0; }
   name: [16] u8;
   nn := ff_name(c, name[..]);
@@ -128,6 +129,7 @@ ff_ask_body :: (out: [] u8, f: [] Forest, c: int, lines: [] FfLine, question: st
   n = ff_field(out, n, "greet", ff_says(f, c), true);
   n = ff_raw(out, n, ",\"knowledge\":\"");
   n = ff_knows(out, n, f, c);
+  if lore.count > 0 { n = ff_json(out, n, " Your story, as the forest's keeper wrote it: "); n = ff_json(out, n, lore); }
   n = ff_raw(out, n, "\"}");
   n = ff_field(out, n, "world", FF_WORLD, true);
   n = ff_field(out, n, "controls", FF_TALK_CONTROLS, true);
@@ -196,20 +198,20 @@ ff_has :: (text: string, part: string) -> bool {
   f: [1] Forest; f[0].news = -1;
   out: [8192] u8;
   lines := [2] FfLine.[FfLine.{npc = true, text = "Hello."}, FfLine.{npc = false, text = "I'm \"Wren\"\nhi"}];
-  n := ff_ask_body(out[..], f[..], 0, lines[..], "What's wrong?", "1730000000000");
+  n := ff_ask_body(out[..], f[..], 0, lines[..], "What's wrong?", "1730000000000", "Hoards acorns.");
   body := cast(string) out[0..<n];
   #assert n > 0 && body[0] == '{' && body[n - 1] == '}';
   #assert ff_has(body, "{\"npc\":{\"name\":\"Bramble\",\"role\":\"a shy, fussy hedgehog");
-  #assert ff_has(body, "so far: 0 of 3.") && ff_has(body, "Ask the fairy for help");
+  #assert ff_has(body, "so far: 0 of 3.") && ff_has(body, "Ask the fairy for help") && ff_has(body, "as the forest's keeper wrote it: Hoards acorns.\"}");
   #assert ff_has(body, "\"world\":\"Fairy Forest\"") && ff_has(body, "{\"from\":\"player\",\"text\":\"I'm \\\"Wren\\\" hi\"}");
   #assert ff_has(body, "\"question\":\"What's wrong?\"}");
   // helped: it thanks you
   for i: 1..<4 { #assert ff_bloom(f[..], i, 1); }
-  n = ff_ask_body(out[..], f[..], 0, lines[0..<0], "Hi", "1");
+  n = ff_ask_body(out[..], f[..], 0, lines[0..<0], "Hi", "1", "");
   body = cast(string) out[0..<n];
   #assert ff_has(body, "so far: 3 of 3.") && ff_has(body, "Thank them warmly") && ff_has(body, "\"history\":[]");
   small: [64] u8;
-  #assert ff_ask_body(small[..], f[..], 0, lines[..], "x", "1") == 0 && ff_ask_body(out[..], f[..], FF_CREATURES, lines[..], "x", "1") == 0;
+  #assert ff_ask_body(small[..], f[..], 0, lines[..], "x", "1", "") == 0 && ff_ask_body(out[..], f[..], FF_CREATURES, lines[..], "x", "1", "") == 0;
   t: [64] u8;
   m := ff_answer_text("{\"text\":\"Oh, \\\"thank\\\" you!\\nTruly.\",\"model\":\"g\"}", t[..]);
   #assert cast(string) t[0..<m] == "Oh, \"thank\" you! Truly.";

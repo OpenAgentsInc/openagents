@@ -192,3 +192,59 @@ ANCHOR :: RBox.{x0 = 1300, y0 = 16, x1 = 1380, y1 = 54};
   #assert url_is(e[..], "/api/playtest/realms/everglade/place") && body_is(e[..], "{\"thing\":\"barrel\",\"x\":3.25,\"z\":-12.50,\"yaw\":1.50}");
   #assert answer(e[..], 2, "200\n{\"proposed\":4}") && e[0].note_n > 0;
 }
+
+#test "by a character, EDIT brings up its lore; the quest form's save makes the quest; everyone reads both" {
+  e: [1] RealmEdit;
+  out: [60000] f32;
+  opened(e[..], "fairy-forest", "200\nrealm fairy-forest\nrole admin\nowner 1\nwaiting 0\n");
+  redit_near(e[..], "bramble", "Bramble");
+  #assert e[0].pane == REDIT_SHUT;
+  // EDIT by Bramble: his lore, and the panes asked for
+  redit_toggle(e[..]);
+  #assert e[0].pane == REDIT_LORE_PANE && cast(string) e[0].focus_name[0..<e[0].focus_name_n] == "BRAMBLE";
+  redit_step(e[..], 2, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/fairy-forest/panes") && (e[0].req_flags & HTTP_POST) == 0;
+  #assert answer(e[..], 1, "200\nlore bramble|Hoards acorns.\nquest pip|Find my lily pad|Look by the reeds|||A song\n");
+  #assert redit_draft(e[..], RF_LORE) == "Hoards acorns." && redit_lore(e[..], "bramble") == "Hoards acorns." && !e[0].dirty;
+  #assert redit_quest(e[..], "pip") == 0 && redit_quest_part(e[..], 0, 1) == "Look by the reeds" && redit_quest_part(e[..], 0, 4) == "A song" && redit_quest(e[..], "bramble") < 0;
+  // tap the lore, type more, Enter, SAVE
+  _ := redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert e[0].fshown[RF_LORE] && !e[0].fshown[RF_ASK];
+  #assert tap(e[..], e[0].fbox[RF_LORE]) && redit_typing(e[..]) && e[0].field == RF_LORE + 1;
+  #assert redit_message(e[..], REDIT_MSG_TEXT, " Fears owls|.") && e[0].dirty;
+  #assert redit_key(e[..], REDIT_KEY_ENTER, true) == 1 && !redit_typing(e[..]);
+  _ = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert tap(e[..], e[0].boxes[RB_SAVE]);
+  redit_step(e[..], 3, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/fairy-forest/lore") && body_is(e[..], "{\"who\":\"bramble\",\"text\":\"Hoards acorns. Fears owls.\"}");
+  #assert answer(e[..], 2, "200\n{\"who\":\"bramble\",\"saved\":true}") && !e[0].dirty && e[0].panes_due;
+  // QUEST: the form, its fields, SAVE QUEST makes it
+  _ = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert tap(e[..], e[0].boxes[RB_SWAP]) && e[0].pane == REDIT_QUEST_PANE;
+  _ = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert e[0].fshown[RF_ASK] && e[0].fshown[RF_REWARD] && !e[0].fshown[RF_LORE];
+  #assert tap(e[..], e[0].fbox[RF_ASK]) && redit_message(e[..], REDIT_MSG_TEXT, "Find acorns") && redit_key(e[..], REDIT_KEY_ENTER, true) == 1;
+  #assert tap(e[..], e[0].fbox[RF_STEP + 1]) && redit_message(e[..], REDIT_MSG_TEXT, "Fill the basket");
+  #assert tap(e[..], e[0].fbox[RF_REWARD]) && e[0].field == RF_REWARD + 1 && redit_message(e[..], REDIT_MSG_TEXT, "A lucky acorn");
+  _ = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert tap(e[..], e[0].boxes[RB_SAVE]) && !redit_typing(e[..]);
+  redit_step(e[..], 4, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/fairy-forest/quest") && body_is(e[..], "{\"giver\":\"bramble\",\"ask\":\"Find acorns\",\"steps\":[\"\",\"Fill the basket\",\"\"],\"reward\":\"A lucky acorn\"}");
+  #assert answer(e[..], 3, "200\n{\"giver\":\"bramble\",\"saved\":true}");
+  redit_step(e[..], 5, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/fairy-forest/panes");
+  // walking to Pip with nothing being typed brings up Pip's lore
+  redit_near(e[..], "", "");
+  redit_near(e[..], "pip", "Pip");
+  #assert e[0].pane == REDIT_LORE_PANE && cast(string) e[0].focus[0..<e[0].focus_n] == "pip" && redit_draft(e[..], RF_ASK) == "Find my lily pad";
+  // a visitor gets no panes, but reads the quests
+  v: [1] RealmEdit;
+  opened(v[..], "fairy-forest", "200\nrealm fairy-forest\nrole visitor\nowner 0\n");
+  redit_read_panes_too(v[..]);
+  redit_near(v[..], "bramble", "Bramble");
+  redit_toggle(v[..]);
+  #assert v[0].pane == REDIT_SHUT;
+  redit_step(v[..], 2, 1440, 900, 1);
+  #assert url_is(v[..], "/api/playtest/realms/fairy-forest/panes") && answer(v[..], 1, "200\nquest bramble|Find acorns||Fill the basket||A lucky acorn\n");
+  #assert redit_quest(v[..], "bramble") == 0 && redit_quest_part(v[..], 0, 0) == "Find acorns" && redit_quest_part(v[..], 0, 1) == "";
+}

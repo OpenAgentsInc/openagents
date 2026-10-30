@@ -177,6 +177,14 @@ Verse, and Fairy Forest is where they are tried first.
   card: what changes, where, and what it looks like before and after, with
   ACCEPT and DECLINE. Nothing changes the world until the owner accepts.
 
+Built (ff-panes): in Fairy Forest's EDIT, the board is the shared edit
+layer's (verse/edit/edit.coax, docs/verse/realm-edit.md), as are the
+settings and the cards. Coming to a creature with EDIT open brings up its
+LORE; QUEST turns it into the form (ask, three steps, reward) and SAVE QUEST
+makes the quest. The creature knows its lore when you talk to it, and gives
+its quest when you come near: the quest shows at the top left and you tick
+its steps (apps/openagents-web/fairyquest.coax).
+
 ## Lore and wandering
 
 - **The Old Ring** holds the forest's history: stones that tell, when you
