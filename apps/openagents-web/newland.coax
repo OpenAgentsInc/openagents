@@ -440,6 +440,8 @@ edge :: (pl: Plot, s: f32, y: f32) -> Fv {
   return fv(pl.x - e, y, pl.z + e - 2 * e * f);
 }
 on_plot :: (s: [] LandState, x: f32, z: f32) -> bool {
+  // Shared Grid-only pages pass an empty view: no project plots are hot.
+  if s.count < 1 { return false; }
   for k: 0..<s[0].plots { if abs(x - s[0].plot[k].x) <= PLOT && abs(z - s[0].plot[k].z) <= PLOT { return true; } }
   return false;
 }
@@ -1345,7 +1347,7 @@ gal_click :: (s: [] LandState, x: f32, y: f32) -> bool {
   if inside(s[0].network_box,x,y) {if s[0].card==CARD_NETWORK {close_card(s);}else {open_card(s,CARD_NETWORK,-1);}return true;}
   if s[0].card==CARD_NETWORK {
     if inside(s[0].network_join,x,y) {network_copy(s);return true;}
-    if inside(s[0].network_guide,x,y) {go(s,"/pylon/index.md");return true;}
+    if inside(s[0].network_guide,x,y) {go(s,"/docs/connect-a-pylon");return true;}
     if inside(s[0].network_list,x,y) {for i:0..<s[0].pylons {if inside(s[0].network_rows[i],x,y) {open_card(s,CARD_PYLON,i);return true;}}}
   }
   if !inside(s[0].gal_box, x, y) { return false; }
@@ -1858,7 +1860,7 @@ click :: (s: [] LandState, x: f32, y: f32) -> bool {
   if inside(s[0].network_box,x,y) {if s[0].card==CARD_NETWORK {close_card(s);}else {open_card(s,CARD_NETWORK,-1);}return true;}
   if s[0].card==CARD_NETWORK {
     if inside(s[0].network_join,x,y) {network_copy(s);return true;}
-    if inside(s[0].network_guide,x,y) {go(s,"/pylon/index.md");return true;}
+    if inside(s[0].network_guide,x,y) {go(s,"/docs/connect-a-pylon");return true;}
     if inside(s[0].network_list,x,y) {for i:0..<s[0].pylons {if inside(s[0].network_rows[i],x,y) {open_card(s,CARD_PYLON,i);return true;}}}
   }
   if s[0].card != CARD_NONE {
@@ -2339,7 +2341,7 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
   #assert click(s[..],30,90) && s[0].action==ACT_COPY && cast(string)s[0].outbox[0..<s[0].out_n]==HOME_PYLON_JOIN;
   #assert s[0].out_n==96 && s[0].network_copied;
   coaxial_land_action_done(s[..]);s[0].network_guide=Box.{x0=190,y0=80,x1=300,y1=120};
-  #assert click(s[..],200,90) && s[0].action==ACT_NAVIGATE && cast(string)s[0].outbox[0..<s[0].out_n]=="/pylon/index.md";
+  #assert click(s[..],200,90) && s[0].action==ACT_NAVIGATE && cast(string)s[0].outbox[0..<s[0].out_n]=="/docs/connect-a-pylon";
 }
 #test "Pylon controls fit desktop phone and high density viewports" {
   widths:=[3]f32.[1440,390,780];heights:=[3]f32.[900,844,1688];ds:=[3]f32.[1,1,2];
@@ -2361,4 +2363,8 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
   coaxial_land_wheel(s[..],100);#assert s[0].network_scroll==200 && s[0].zoom_to==1;
   pressed=coaxial_land_pointer(s[..],30,100,POINTER_DOWN,1,2);
   released=coaxial_land_pointer(s[..],30,100,POINTER_CANCEL,1,2);#assert s[0].action==0;
+}
+
+#test "Grid-only pages have no hot project plots" {
+  s:[1]LandState;#assert !on_plot(s[0..<0],0,0);
 }

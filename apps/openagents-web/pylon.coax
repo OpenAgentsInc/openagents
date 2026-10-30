@@ -99,7 +99,7 @@ pl_pointer :: (p:[]Pylon,x:f32,y:f32,phase:int)->bool #export_c {
   if phase==POINTER_CANCEL {p[0].down=false;return false;}
   if phase==0 {p[0].down=true;p[0].down_y=y;p[0].drag_y=y;p[0].dragged=false;p[0].pressed= -1;for i:0..<2 {if inside(pl_button(p,i),x,y) {p[0].pressed=i;}}return true;}
   if phase==1 && p[0].down {if abs(y-p[0].down_y)>6*p[0].dpr {p[0].dragged=true;}if p[0].dragged {p[0].scroll=clamp(p[0].scroll+(p[0].drag_y-y)/p[0].dpr,0,p[0].scroll_max);}p[0].drag_y=y;return true;}
-  if phase==2 && p[0].down {p[0].down=false;if !p[0].dragged && p[0].pressed>=0 && inside(pl_button(p,p[0].pressed),x,y) {if p[0].pressed==0 {pl_route(p,PL_JOIN,2);p[0].copied=true;}else {pl_route(p,"/pylon/index.md",1);}}return true;}return false;
+  if phase==2 && p[0].down {p[0].down=false;if !p[0].dragged && p[0].pressed>=0 && inside(pl_button(p,p[0].pressed),x,y) {if p[0].pressed==0 {pl_route(p,PL_JOIN,2);p[0].copied=true;}else {pl_route(p,"/docs/connect-a-pylon",1);}}return true;}return false;
 }
 pl_wheel :: (p:[]Pylon,dy:f32) #export_c {p[0].scroll=clamp(p[0].scroll+dy,0,p[0].scroll_max);}
 pl_text :: (out:[]f32,v:int,text:string,x:f32,y:f32,width:f32,d:f32,k:Ink)->int {

@@ -1,0 +1,167 @@
+// Canonical Markdown is compiled into this Coax document. The live Grid,
+// text, buttons and HUD frame are the homepage/Metareal drawing primitives.
+#load "newland.coax";
+#load "connect-pylon-content.coax";
+
+#test "quickstart copy preserves every Markdown byte and the exact join command" {
+  s:[1]Cp;cp_copy(s[..],true);
+  #assert s[0].action==2 && s[0].out_n==CP_MARKDOWN.count;
+  #assert cast(string)s[0].outbox[0..<s[0].out_n]==CP_MARKDOWN;
+  cp_done(s[..]);#assert s[0].action==0 && s[0].out_n==0;
+  cp_copy(s[..],false);#assert s[0].action==2 && cast(string)s[0].outbox[0..<s[0].out_n]==HOME_PYLON_JOIN;
+}
+#test "quickstart controls and reading column fit phone desktop and high density" {
+  s:[1]Cp;
+  for i:0..<4 {s[0].w=ifx i%2==0 then 390.0f32 else 1440.0f32;s[0].h=844;s[0].dpr=ifx i<2 then 1.0f32 else 2.0f32;cp_layout(s[..]);
+    #assert s[0].body.x0>=16 && s[0].body.x1<=s[0].w-16;
+    #assert s[0].markdown.x1<s[0].command.x0 && s[0].home.y1<s[0].markdown.y0;
+    #assert s[0].body.y0>s[0].command.y1 && s[0].body.y1<=s[0].h-16;
+    #assert s[0].limit>0 && s[0].body.x1-s[0].body.x0<=800;
+  }
+}
+#test "quickstart wheel uses CSS pixels and clamps both ends" {
+  s:[1]Cp;s[0].w=390;s[0].h=844;s[0].dpr=2;cp_layout(s[..]);
+  cp_wheel(s[..],123);#assert s[0].scroll==123;
+  cp_wheel(s[..],100000);#assert s[0].scroll==s[0].limit;
+  cp_wheel(s[..],-100000);#assert s[0].scroll==0;
+}
+#test "quickstart touch drag and cancellation never copy or navigate" {
+  s:[1]Cp;s[0].w=390;s[0].h=844;s[0].dpr=2;cp_layout(s[..]);
+  x:=(s[0].markdown.x0+10)*2;y:=(s[0].markdown.y0+10)*2;
+  #assert cp_pointer(s[..],x,y,0,1,7);#assert cp_pointer(s[..],x,y+40,1,1,7);
+  #assert cp_pointer(s[..],x,y+40,2,1,7);#assert s[0].action==0;
+  #assert cp_pointer(s[..],x,y,0,1,7);#assert cp_pointer(s[..],x,y,3,1,7);#assert s[0].action==0;
+  #assert cp_pointer(s[..],x,y,0,1,7);#assert cp_pointer(s[..],x,y,0,1,8);#assert cp_pointer(s[..],x,y,2,1,7);#assert s[0].action==0;
+  #assert cp_pointer(s[..],x,y,0,1,7);#assert cp_pointer(s[..],x,y,2,1,7);#assert s[0].action==2;
+}
+#test "quickstart wrapped lines advance and respect hard newlines" {
+  p:=Pen.{d=1,fade=1,time=5,still=true};k:=ink(p,INK_WHITE);
+  #assert cp_line("first second",0,1000,11,k)==12;
+  #assert cp_line("first\nsecond",0,1000,11,k)==5;
+  #assert cp_line("first second",0,1,11,k)==1;
+  #assert cp_lines("first\nsecond",1000,11,k)==2;
+}
+#test "quickstart keyboard can scroll reach links and copy without a mouse" {
+  s:[1]Cp;s[0].w=390;s[0].h=844;cp_layout(s[..]);
+  #assert cp_key(s[..],-11) && s[0].scroll>0;
+  #assert cp_key(s[..],-9) && s[0].scroll==s[0].limit;
+  #assert cp_key(s[..],-8) && s[0].scroll==0;
+  #assert cp_key(s[..],-15) && s[0].focus==0;
+  #assert cp_key(s[..],-2) && s[0].action==2;
+  #assert !cp_key(s[..],42);
+}
+
+CP_MAX_VERTICES :: 120000;
+cp_revision :: ()->int #export_c {return CP_REVISION;}
+Cp :: struct {
+  ready:bool;w:f32;h:f32;dpr:f32;time:f32;scroll:f32;limit:f32;body:Box;markdown:Box;command:Box;home:Box;
+  tops:[CP_BLOCKS]f32;heights:[CP_BLOCKS]f32;links:[CP_BLOCKS]Box;
+  px:f32;py:f32;down:bool;id:int;down_x:f32;down_y:f32;start_scroll:f32;dragged:bool;pressed:int;focus:int=-1;copied:int;copy_age:f32;
+  action:int;outbox:[16384]u8;out_n:int;
+}
+cp_line :: (text:string,start:int,width:f32,cap:f32,k:Ink)->int {
+  at:=start;space:=-1;
+  while at<text.count {
+    if text[at]==10 {return at;}
+    n:=decode(text,at).len;if n<1 {n=1;}
+    if text_width(text[start..<at+n],cap,k)>width {if space>start {return space;}return hi_int(start+n,at);}
+    if text[at]==32 {space=at;}at+=n;
+  }return at;
+}
+cp_next :: (text:string,end:int)->int {
+  n:=end;while n<text.count && text[n]==32 {n+=1;}if n<text.count && text[n]==10 {n+=1;}return n;
+}
+cp_lines :: (text:string,width:f32,cap:f32,k:Ink)->int {
+  n:=0;from:=0;while from<text.count {end:=cp_line(text,from,width,cap,k);next:=cp_next(text,end);if next<=from {next=from+1;}from=next;n+=1;}return hi_int(1,n);
+}
+cp_cap :: (kind:int,phone:bool)->f32 {return ifx kind==1 then (ifx phone then 14.0f32 else 15.0f32) else ifx kind==3 then (ifx phone then 9.4f32 else 10.0f32) else 11.2f32;}
+cp_kind_ink :: (p:Pen,kind:int)->Ink {k:=ink(p,ifx kind==1 then INK_BRIGHT else ifx kind==4 then INK_BLUE else INK_WHITE);if kind!=1 {k.sans=true;k.scale=0;k.glow=1.1*p.d;k.core=0.45*p.d;}return k;}
+cp_layout :: (s:[]Cp) {
+  w:=hi(240,s[0].w);h:=hi(260,s[0].h);phone:=w<760;margin:=ifx phone then 16.0f32 else 32.0f32;
+  left:=hi(margin,(w-800)*0.5);right:=w-left;mid:=(left+right)*0.5;
+  s[0].home=Box.{x0=right-64,y0=22,x1=right,y1=58};
+  s[0].markdown=Box.{x0=left,y0=104,x1=mid-6,y1=146};
+  s[0].command=Box.{x0=mid+6,y0=104,x1=right,y1=146};
+  s[0].body=Box.{x0=left,y0=164,x1=right,y1=h-20};
+  width:=right-left-40;p:=Pen.{d=1,fade=1,time=5,still=true,phone=phone};y:f32=24;
+  for i:0..<CP_BLOCKS {kind:=CP_KINDS[i];cap:=cp_cap(kind,phone);k:=cp_kind_ink(p,kind);room:=width-(ifx kind==3 then 20.0f32 else 0.0f32);
+    lines:=cp_lines(CP_TEXT[i],room,cap,k);step:=cap*1.85;
+    if kind==1 {y+=12;}s[0].tops[i]=y;
+    s[0].heights[i]=cast(f32)lines*step+(ifx kind==3 then 20.0f32 else 0.0f32);
+    y+=s[0].heights[i]+(ifx kind==1 then 4.0f32 else 18.0f32);
+  }
+  s[0].limit=hi(0,y+12-(s[0].body.y1-s[0].body.y0));s[0].scroll=clamp(s[0].scroll,0,s[0].limit);
+}
+cp_copy :: (s:[]Cp,markdown:bool) {
+  text:=ifx markdown then CP_MARKDOWN else CP_JOIN;
+  if text.count>s[0].outbox.count {return;}
+  for i:0..<text.count {s[0].outbox[i]=text[i];}s[0].out_n=text.count;s[0].action=2;s[0].copied=ifx markdown then 1 else 2;s[0].copy_age=2.5;
+}
+cp_go :: (s:[]Cp,id:int) {
+  if id==0 {cp_copy(s,true);return;}if id==1 {cp_copy(s,false);return;}
+  text:="/";if id>=3 && id<CP_BLOCKS+3 {if CP_KINDS[id-3]!=4 {return;}text=CP_LINKS[id-3];}
+  if text.count>s[0].outbox.count {return;}for i:0..<text.count {s[0].outbox[i]=text[i];}s[0].out_n=text.count;s[0].action=1;
+}
+cp_done :: (s:[]Cp) #export_c {s[0].action=0;s[0].out_n=0;}
+cp_hit :: (s:[]Cp,x:f32,y:f32)->int #export_c {
+  if inside(s[0].markdown,x,y) {return 0;}if inside(s[0].command,x,y) {return 1;}if inside(s[0].home,x,y) {return 2;}
+  if inside(s[0].body,x,y) {for i:0..<CP_BLOCKS {if CP_KINDS[i]==4 && s[0].links[i].y1>s[0].links[i].y0 && inside(s[0].links[i],x,y) {return i+3;}}}return -1;
+}
+cp_wheel :: (s:[]Cp,dy:f32) #export_c {s[0].scroll=clamp(s[0].scroll+dy,0,s[0].limit);}
+cp_pointer :: (s:[]Cp,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c {
+  d:=hi(1,s[0].dpr);px:=x/d;py:=y/d;s[0].px=px;s[0].py=py;
+  if phase==0 {
+    if s[0].down {s[0].dragged=true;return true;}
+    s[0].down=true;s[0].id=id;s[0].down_x=px;s[0].down_y=py;s[0].start_scroll=s[0].scroll;s[0].dragged=false;s[0].pressed=cp_hit(s,px,py);return true;
+  }
+  if !s[0].down || s[0].id!=id {return false;}
+  if phase==1 {
+    if abs(px-s[0].down_x)>6 || abs(py-s[0].down_y)>6 {s[0].dragged=true;}
+    if inside(s[0].body,s[0].down_x,s[0].down_y) {s[0].scroll=clamp(s[0].start_scroll+s[0].down_y-py,0,s[0].limit);}return true;
+  }
+  if phase==2 || phase==3 {
+    s[0].down=false;if phase==2 && !s[0].dragged && abs(py-s[0].down_y)<=6 && abs(px-s[0].down_x)<=6 && s[0].pressed>=0 && cp_hit(s,px,py)==s[0].pressed {cp_go(s,s[0].pressed);}return true;
+  }return false;
+}
+cp_key :: (s:[]Cp,key:int)->bool #export_c {
+  if key==-7 || key==-11 {cp_wheel(s,ifx key==-7 then 36.0f32 else s[0].body.y1-s[0].body.y0-50);return true;}
+  if key==-6 || key==-10 {cp_wheel(s,ifx key==-6 then -36.0f32 else 50-(s[0].body.y1-s[0].body.y0));return true;}
+  if key==-8 {s[0].scroll=0;return true;}if key==-9 {s[0].scroll=s[0].limit;return true;}
+  if key==-15 {next:=s[0].focus+1;while next<CP_BLOCKS+3 && next>=3 && CP_KINDS[next-3]!=4 {next+=1;}if next>=CP_BLOCKS+3 {next=0;}s[0].focus=next;if next>=3 {s[0].scroll=clamp(s[0].tops[next-3]-30,0,s[0].limit);}return true;}
+  if key==-2 && s[0].focus>=0 {cp_go(s,s[0].focus);return true;}return false;
+}
+cp_box :: (b:Box,d:f32)->Box {return Box.{x0=b.x0*d,y0=b.y0*d,x1=b.x1*d,y1=b.y1*d};}
+cp_frame :: (s:[]Cp,world:[]LandState,out:[]f32,u:[]f32,width:f32,height:f32,dpr:f32,dt:f32,still:bool)->int #export_c {
+  if s.count<1 || u.count<UNIFORM_FLOATS || width<1 || height<1 {return 0;}
+  d:=hi(1,dpr);w:=width/d;h:=height/d;
+  if !s[0].ready {s[0].ready=true;s[0].focus=-1;}
+  if s[0].w!=w || s[0].h!=h {s[0].w=w;s[0].h=h;cp_layout(s);}
+  s[0].dpr=d;s[0].time+=clamp(dt,0,0.1);s[0].copy_age=hi(0,s[0].copy_age-clamp(dt,0,0.1));if s[0].copy_age<=0 {s[0].copied=0;}
+  p:=Pen.{d=d,fade=1,time=5+s[0].time,still=true,phone=w<760};
+  for i:0..<UNIFORM_FLOATS {u[i]=0;}u[0]=width;u[1]=height;u[2]=ifx still then 20.0f32 else 20+s[0].time;u[3]=1;u[4]=ifx still then 1.0f32 else 0.0f32;u[6]=0;
+  look:=fv(0,0,0);c:=cam(look,0.785,0.74,40,width*0.5,height*0.62,width,Box.{x0=0,y0=0,x1=width,y1=height},width,height);
+  v:=floor_grid(out,0,world,c,look,p);
+  b:=s[0].body;paper:=cp_box(b,d);
+  // Glass is a background pass; dim the actual shared Grid strokes beneath
+  // the reading column too, keeping the mesh visible around the document.
+  for i:0..<v {out[i*VERTEX_FLOATS+6]*=ifx inside(paper,out[i*VERTEX_FLOATS],out[i*VERTEX_FLOATS+1]) then 0.04f32 else 0.6f32;}
+  glass(u,0,paper,10*d,0.94,0);u[5]=1;
+  first:=v;left:=(b.x0+20)*d;room:=(b.x1-b.x0-40)*d;top:=b.y0*d;bottom:=b.y1*d;
+  for i:0..<CP_BLOCKS {
+    s[0].links[i]=Box.{};y:=b.y0+s[0].tops[i]-s[0].scroll;bh:=s[0].heights[i];if y+bh<b.y0 || y>b.y1 {continue;}
+    kind:=CP_KINDS[i];cap:=cp_cap(kind,p.phone)*d;k:=cp_kind_ink(p,kind);step:=cap*1.85;x:=left;line_room:=room;line_y:=(y+cp_cap(kind,p.phone))*d;
+    if kind==3 {cb:=Box.{x0=left,y0=y*d,x1=left+room,y1=(y+bh)*d};v=frame(out,v,cb,6*d,ink(p,INK_DIM),0.25,p);x+=10*d;line_room-=20*d;line_y+=10*d;}
+    if kind==4 {s[0].links[i]=Box.{x0=b.x0+20,y0=hi(b.y0,y),x1=b.x1-20,y1=lo(b.y1,y+bh)};if s[0].focus==i+3 || cp_hit(s,s[0].px,s[0].py)==i+3 {k=dimmed(k,1.3);}}
+    from:=0;text:=CP_TEXT[i];while from<text.count {end:=cp_line(text,from,line_room,cap,k);if line_y+step>top && line_y-cap<bottom {v=put(out,v,text[from..<end],x,line_y,cap,k);}next:=cp_next(text,end);if next<=from {next=from+1;}from=next;line_y+=step;}
+  }
+  for i:first..<v {if out[i*VERTEX_FLOATS+1]<top+6*d || out[i*VERTEX_FLOATS+1]>bottom-6*d {out[i*VERTEX_FLOATS+6]=0;}}
+  v=frame(out,v,cp_box(b,d),10*d,ink(p,INK_DIM),0.55,p);
+  if s[0].limit>0 {rail:=b.y1-b.y0-24;thumb:=hi(28,rail*rail/(rail+s[0].limit));sy:=b.y0+12+(rail-thumb)*s[0].scroll/s[0].limit;v=rule(out,v,(b.x1-6)*d,sy*d,(b.x1-6)*d,(sy+thumb)*d,ink(p,INK_DIM),0.8);}
+  white:=chrome(ink(p,INK_WHITE));dim:=ink(p,INK_DIM);
+  v=put(out,v,"OPENAGENTS / QUICKSTART",b.x0*d,39*d,6.8*d,dim);
+  v=put(out,v,"CONNECT A PYLON",b.x0*d,80*d,(ifx p.phone then 14.0f32 else 18.0f32)*d,white);
+  v=button(out,v,cp_box(s[0].home,d),"HOME",false,cp_hit(s,s[0].px,s[0].py)==2 || s[0].focus==2,false,p,1);
+  v=button(out,v,cp_box(s[0].markdown,d),ifx s[0].copied==1 then "COPIED" else "COPY MARKDOWN",false,cp_hit(s,s[0].px,s[0].py)==0 || s[0].focus==0,false,p,1);
+  v=button(out,v,cp_box(s[0].command,d),ifx s[0].copied==2 then "COPIED" else "COPY COMMAND",true,cp_hit(s,s[0].px,s[0].py)==1 || s[0].focus==1,false,p,1);
+  return v;
+}

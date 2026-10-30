@@ -189,8 +189,8 @@ try {
       return recording.clipboard?.matches === true && recording.clipboard.bytes === 96
     }, viewport.name + ' exact clipboard command')
     await click(2)
-    await until(async () => await evaluate('location.pathname') === '/pylon/index.md', viewport.name + ' guide navigation')
-    await until(async () => recording.document_responses.some((r:any) => new URL(r.url).pathname === '/pylon/index.md' && r.status === 200), viewport.name + ' guide HTTP response')
+    await until(async () => await evaluate('location.pathname') === '/docs/connect-a-pylon', viewport.name + ' guide navigation')
+    await until(async () => recording.document_responses.some((r:any) => new URL(r.url).pathname === '/docs/connect-a-pylon' && r.status === 200), viewport.name + ' guide HTTP response')
     recording.guide = await evaluate('location.href')
     recording.elapsed_ms = Date.now() - start
     if (!recording.sockets || !recording.sent_frames || !recording.received_frames) throw Error('homepage did not exchange real relay traffic')

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Connect a Pylon — OpenAgents</title>
+<meta name="description" content="Contribute a computer to the OpenAgents mesh, verify it online, and make a decision request.">
+<link rel="canonical" href="https://openagents.com/docs/connect-a-pylon">
+<link rel="alternate" type="text/markdown" href="/docs/connect-a-pylon/index.md">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script>if("gpu" in navigator)document.documentElement.classList.add("gpu")</script>
+<style>
+html,body{margin:0;min-height:100%;background:#000;color:#eee;font-family:ui-sans-serif,system-ui,sans-serif;line-height:1.6}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}canvas[data-cursor=pointer]{cursor:pointer}main{max-width:760px;margin:auto;padding:32px 20px}a{color:#b9e8e8}code{white-space:pre-wrap;overflow-wrap:anywhere}.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
+</style>
+</head>
+<body>
+<canvas id="coaxial" aria-hidden="true"></canvas>
+<main>
+<h1>Connect a Pylon</h1>
+<p><a href="/docs/connect-a-pylon/index.md">Read or copy the Markdown</a> · <a href="/">Live network</a></p>
+<p>A Pylon connects a model running on your computer to the OpenAgents network. Start with the free toy model, see your computer appear on the Grid, and send it a real decision request.</p>
+<h2>1. Prepare</h2>
+<p>Use macOS or Linux with an Internet connection that permits HTTPS and secure WebSockets. No inbound port or public IP is required.</p>
+<p>Install Git, Python 3 and a C/C++ compiler. On a Mac, install Apple's Command Line Tools:</p>
+<p><code>xcode-select --install</code></p>
+<p>On Linux, install Nix and GCC/G++; the script uses the pinned Nix OpenSSL dependency. You do not need Bun, a wallet, an API credential or a paid account to contribute a Pylon.</p>
+<h2>2. Connect</h2>
+<p>Download the script, inspect it, then run it:</p>
+<p><code>curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh
+bash /tmp/join-pylon.sh</code></p>
+<p>The script clones or updates the OpenAgents source, builds Coax and the native toy engine, creates a temporary demo identity, and connects to wss://relay.openagents.com. Keep the terminal open. A cold compiler build takes longer than a later start.</p>
+<p>Wait for pylon: online, waiting for jobs. The terminal prints your public npub and Pylon name.</p>
+<h2>3. Find your Pylon</h2>
+<p><a href="https://openagents.com/">Open the live Grid</a></p>
+<p>Choose Pylons on the homepage and find the name printed in your terminal. The board shows the advertised model identity, public key, status and free slots. New signed announcements appear without a reload.</p>
+<p>Give the computer a recognizable label and stable name:</p>
+<p><code>bash /tmp/join-pylon.sh --label &quot;My laptop&quot; --slug my-laptop</code></p>
+<p>The join command starts psionic-toy. It does not download or pretend to serve a larger model. Other advertised model identities may come from separate, configured model servers.</p>
+<h2>Stop or restart</h2>
+<p>Press Ctrl-C in the join terminal. From another terminal:</p>
+<p><code>bash /tmp/join-pylon.sh --stop</code></p>
+<p>Run the same join command to start again. Private state and logs live under ~/.openagents/pylon/state; set OPENAGENTS_PYLON_HOME to use a different directory. Do not publish that private state or its label file. A stopped Pylon can remain visible until its last beacon expires, at most five minutes.</p>
+<h2>Send a decision</h2>
+<p>The pooled production endpoint is POST https://openagents.com/api/v1/systemone. It accepts an authenticated OpenAgents session or a NIP-98 signed request. Anonymous requests are refused; model choices and free-demo usage are bounded by the service.</p>
+<p>A decision request uses this JSON shape:</p>
+<p><code>{&quot;model&quot;:&quot;elephant-1&quot;,&quot;state&quot;:&quot;Water is wet.&quot;,&quot;questions&quot;:{&quot;wet&quot;:{&quot;type&quot;:&quot;choice&quot;,&quot;instructions&quot;:&quot;Is the water wet?&quot;,&quot;criteria&quot;:{&quot;yes&quot;:null,&quot;no&quot;:null}}}}</code></p>
+<p>Use elephant-1 or mammoth-1 for the hosted demo. The returned service metadata identifies the selected model and provider. Unknown model names are refused; clients cannot choose a backend URL. Contributing compute and authenticating an API request are separate steps; you do not need an API credential to join.</p>
+<p><a href="https://openagents.com/login">Sign in to OpenAgents</a></p>
+<h2>For agents</h2>
+<p>Read this exact guide as Markdown:</p>
+<p><code>curl -fsSL https://openagents.com/docs/connect-a-pylon/index.md</code></p>
+<p>1. Check the prerequisites and run the join script with a unique --label and --slug. 2. Preserve its working directory and private state. Keep its foreground process alive while serving; use Ctrl-C or --stop when finished. 3. Confirm the online log line and locate the public Pylon on the homepage. Never infer successful contribution from a build exit alone. 4. Authenticate separately before calling the pooled API. NIP-98 signs the exact POST URL, method and request-body digest; do not put a private signing key in a URL, log, prompt or public artifact. 5. Inspect the response's model/provider metadata and handle refusal or unavailable capacity rather than silently substituting another model.</p>
+<h2>Troubleshooting</h2>
+<p>If the first build is still running, leave the terminal open and read its current build step. Later runs can reuse a matching checked compiler and native build.</p>
+<p>If it cannot connect, check outbound HTTPS and wss://relay.openagents.com, system time and certificate trust. A self-hosted relay can be selected with --relay; the public homepage watches the public OpenAgents relay.</p>
+<p>If the computer is missing, confirm the online log line, the printed name and its beacon expiry. Use a unique slug. Expired advertisements stop contributing available capacity.</p>
+<p>If a checkout has local edits, preserve them: deliberately use --no-update, use another OPENAGENTS_PYLON_HOME, or supply an existing checkout with --source DIR. Do not reset someone else's files. bash /tmp/join-pylon.sh --help is the executable option reference.</p>
+<h2>What is verified</h2>
+<p>The browser's shared Coax reader checks original Nostr event IDs and signatures, beacon content digests, provider binding and freshness. Hardware, model and capacity values remain provider advertisements, not hardware or model-execution attestation.</p>
+<p>Answers and statuses count signed provider events observed since this tab opened. Their contents stay encrypted. They are not complete historical job totals, proof of a successful answer or payments. Pylons serving a request can read that request; use synthetic prompts for the demo.</p>
+<p><a href="https://github.com/OpenAgentsInc/openagents/tree/main/psionic">Read the source and protocol</a></p>
+</main>
+<script type="module" src="/coaxial/host.js" data-app="connect-pylon"></script>
+</body>
+</html>

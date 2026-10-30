@@ -141,7 +141,7 @@ for (const viewport of [
   expect(h.outbox()).toBe('')
   h.click(2)
   expect(h.action()).toBe(1)
-  expect(h.outbox()).toBe('/pylon/index.md')
+  expect(h.outbox()).toBe('/docs/connect-a-pylon')
   h.clearAction()
   h.click(3)
   h.frame(0.3)

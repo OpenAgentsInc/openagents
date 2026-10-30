@@ -55,5 +55,5 @@ test("join control copies the full executable command and guide uses the existin
   expect(p.text(x.coaxial_outbox(state),x.coaxial_outbox_len(state))).toBe("curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh")
   x.coaxial_action_done(state);click(200)
   expect(x.coaxial_action(state)).toBe(1)
-  expect(p.text(x.coaxial_outbox(state),x.coaxial_outbox_len(state))).toBe("/pylon/index.md")
+  expect(p.text(x.coaxial_outbox(state),x.coaxial_outbox_len(state))).toBe("/docs/connect-a-pylon")
 })
