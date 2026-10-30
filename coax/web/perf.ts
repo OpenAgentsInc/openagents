@@ -1,5 +1,5 @@
 // Everglade's frame rate in headless Chrome: the check that keeps it at 60 FPS.
-//   bun coax/web/perf.ts [BASE_URL] [--dpr 1|2] [--seconds S] [--json]
+//   bun coax/web/perf.ts [BASE_URL] [--dpr 1|2] [--seconds S] [--json] [--home-only]
 // BASE_URL defaults to https://staging.openagents.com. For each device pixel
 // ratio (1 and 2, at 1440x900, two Chromes side by side) it opens
 // /realms/everglade at four places and times of day (the road at noon, the
@@ -8,6 +8,13 @@
 // casting a meteor every 6.7 s, and times every requestAnimationFrame. A case
 // fails when its 95th percentile frame is over 17.5 ms or any frame is over
 // 33 ms.
+//
+// The homepage's first seconds too (owner, 2026-10-30: "the homepage lags when I first open it"): it
+// is opened with the cache off, at 1440x900 in each Chrome and as a 390x844 dpr 3 phone in the
+// last, and every frame of its first 5 s is timed from the page's first script. That is when the
+// relay sends its catch-up, thousands of signed events the page checks in Coax; handled as they
+// arrived they held frames back to 100 ms for ~17 s while the steady-state walk above saw nothing.
+// The same limits and retries apply.
 //
 // Headless Chrome on a shared Mac sees other work on the GPU. A model
 // deciding on Metal (psionic-serve --elephant-metal) keeps the GPU busy for
@@ -32,6 +39,7 @@ const base = (args.find((a, i) => !a.startsWith("--") && !args[i - 1]?.startsWit
 const ROUND = 6710, rounds = Math.max(1, Math.round(Number(flag("--seconds") ?? 13) * 1000 / ROUND)), seconds = rounds * ROUND / 1000
 const dprs = flag("--dpr") ? [Number(flag("--dpr"))] : [1, 2]
 const asJson = args.includes("--json")
+const homeOnly = args.includes("--home-only")   // only the homepage's first seconds
 const W = 1440, H = 900, P95_MAX = 17.5, FRAME_MAX = 33, ATTEMPTS = 3, WAITS = 6
 const SCENES = [
   { name: "road, noon", path: "/realms/everglade?clock=0.5#road" },
@@ -127,14 +135,48 @@ class Browser {
   close() { try { this.ws.close() } catch {} this.proc?.kill(); rmSync(this.profile, { recursive: true, force: true }) }
 }
 
+// The homepage from a cold load: frames timed from the document's first script for HOME_MS.
+const HOME_MS = 5000
+const HOME_CASES = [
+  { name: "home, first 5 s", width: W, height: H, mobile: false },
+  { name: "home phone, 5 s", width: 390, height: 844, mobile: true, dpr: 3 },
+]
+const HOME_TIMER = `(() => { const d = []; globalThis.__perfHome = d; let last = 0, t0 = 0;
+  const f = (t) => { if (!t0) t0 = t; if (last) d.push(t - last); last = t; if (t - t0 < ${HOME_MS}) requestAnimationFrame(f); };
+  requestAnimationFrame(f); })()`
+async function homeCase(b: Browser, c: typeof HOME_CASES[number]): Promise<[Frames, Frames]> {
+  const dpr = c.dpr ?? b.dpr
+  await b.send("Emulation.setDeviceMetricsOverride", { width: c.width, height: c.height, deviceScaleFactor: dpr, mobile: c.mobile })
+  await b.send("Emulation.setTouchEmulationEnabled", { enabled: c.mobile, maxTouchPoints: c.mobile ? 5 : 0 })
+  await b.send("Page.enable"); await b.send("Network.enable"); await b.send("Network.setCacheDisabled", { cacheDisabled: true })
+  const script = await b.send("Page.addScriptToEvaluateOnNewDocument", { source: HOME_TIMER })
+  try {
+    await b.send("Page.navigate", { url: "about:blank" })
+    const control = controlBrowser.evaluate(TIMES(HOME_MS + 1500))
+    await b.send("Page.navigate", { url: base + "/" })
+    await Bun.sleep(HOME_MS + 1500)
+    const frames = await b.evaluate("globalThis.__perfHome || []")
+    return [stats(frames), stats(await control)]
+  } finally {
+    await b.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: script.result?.identifier })
+    await b.send("Network.setCacheDisabled", { cacheDisabled: false })
+    await b.send("Emulation.setTouchEmulationEnabled", { enabled: false })
+    await b.send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: b.dpr, mobile: false })
+  }
+}
+
 type Result = { dpr: number; scene: string; frames: Frames; attempts: number; busy: number; ok: boolean; why: string }
 async function run(dpr: number): Promise<Result[]> {
   const b = new Browser(dpr)
   const out: Result[] = []
   try {
     await b.start()
-    for (const s of SCENES) {
-      let [frames, control] = await b.scene(s.path), attempts = 1, busy = 0, why = ""
+    const cases = [
+      ...(homeOnly ? [] : SCENES).map((s) => ({ name: s.name, dpr, measure: () => b.scene(s.path) })),
+      ...HOME_CASES.filter((c) => !c.dpr || dpr === dprs[dprs.length - 1]).map((c) => ({ name: c.name, dpr: c.dpr ?? dpr, measure: () => homeCase(b, c) })),
+    ]
+    for (const s of cases) {
+      let [frames, control] = await s.measure(), attempts = 1, busy = 0, why = ""
       while (!passes(frames)) {
         if (!passes(control)) {
           // the GPU is busy with someone else's work: wait for it, then try again
@@ -146,17 +188,17 @@ async function run(dpr: number): Promise<Result[]> {
           if (attempts >= ATTEMPTS) break
           attempts++
         }
-        [frames, control] = await b.scene(s.path)
+        [frames, control] = await s.measure()
       }
       const ok = passes(frames)
-      out.push({ dpr, scene: s.name, frames, attempts, busy, ok, why: ok ? "" : why })
-      if (!asJson) console.log(`${ok ? "ok  " : "FAIL"} dpr ${dpr} ${s.name.padEnd(14)} ${show(frames)}${attempts > 1 || busy ? ` (attempt ${attempts}, ${busy} busy waits)` : ""}${ok ? "" : `\n     ${why}`}`)
+      out.push({ dpr: s.dpr, scene: s.name, frames, attempts, busy, ok, why: ok ? "" : why })
+      if (!asJson) console.log(`${ok ? "ok  " : "FAIL"} dpr ${s.dpr} ${s.name.padEnd(16)} ${show(frames)}${attempts > 1 || busy ? ` (attempt ${attempts}, ${busy} busy waits)` : ""}${ok ? "" : `\n     ${why}`}`)
     }
   } finally { b.close() }
   return out
 }
 
-if (!asJson) console.log(`perf: ${base}/realms/everglade, ${W}x${H}, dpr ${dprs.join(" and ")}, ${seconds} s a scene, p95 <= ${P95_MAX} ms and every frame <= ${FRAME_MAX} ms`)
+if (!asJson) console.log(`perf: ${base}/realms/everglade and the homepage's first ${HOME_MS / 1000} s, ${W}x${H}, dpr ${dprs.join(" and ")}, ${seconds} s a scene, p95 <= ${P95_MAX} ms and every frame <= ${FRAME_MAX} ms`)
 const controlBrowser = new Browser(1)
 let results: Result[]
 try {

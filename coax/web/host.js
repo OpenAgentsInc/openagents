@@ -329,6 +329,34 @@ const SOCKETS = 4, SOCKET_KIND = 256;
 const SOCKET_OPENED = 0, SOCKET_FRAME = 1, SOCKET_CLOSED = 2, SOCKET_ERROR = 3;
 const sockets = new Array(SOCKETS).fill(null);
 const utf8 = (ptr, len) => new TextDecoder().decode(new Uint8Array(memory.buffer, ptr, len).slice());
+// Socket events wait in arrival order and reach the app inside the frame, a few milliseconds a frame
+// (a relay catching up sends thousands of signed events at once, and the app checks each one's
+// signature: handled as they arrive they took half the main thread for the first ~17 s and Chrome
+// held frames back up to 100 ms). A hidden tab, which draws no frames, is drained on a timer.
+const SOCKET_BUDGET_MS = 12, socketQueue = [];
+let socketHead = 0, socketTimer = 0, socketDrained = 0;
+function socketQueued(ws, id, event, text = "") {
+  socketQueue.push([ws, id, event, text]);
+  if (!socketTimer) socketTimer = setTimeout(socketIdle, 100);
+}
+function socketIdle() {
+  socketTimer = 0;
+  if (performance.now() - socketDrained > 90) drainSockets();
+  if (socketHead < socketQueue.length) socketTimer = setTimeout(socketIdle, 100);
+}
+function drainSockets(budget = SOCKET_BUDGET_MS) {
+  const t0 = socketDrained = performance.now();
+  while (socketHead < socketQueue.length) {
+    const [ws, id, event, text] = socketQueue[socketHead];
+    socketQueue[socketHead++] = null;
+    if (sockets[id] !== ws) continue;   // the app closed it: what it sent after says nothing
+    if (event === SOCKET_CLOSED) sockets[id] = null;
+    try { socketEvent(id, event, text); } catch (e) { say(`${app} socket: ${e.message}`, true); }
+    if (performance.now() - t0 > budget) break;
+  }
+  if (socketHead === socketQueue.length) { socketQueue.length = 0; socketHead = 0; }
+  else if (socketHead > 4096) { socketQueue.splice(0, socketHead); socketHead = 0; }
+}
 // An event for socket id: its bytes go in the inbox, as typed text does.
 function socketEvent(id, event, text = "") {
   const x = engine?.exports;
@@ -347,10 +375,10 @@ const socketImports = {
     try { ws = new WebSocket(utf8(ptr, len)); } catch { return -1; }
     sockets[id] = ws;
     const mine = () => sockets[id] === ws;   // a closed socket says nothing more
-    ws.onopen = () => mine() && socketEvent(id, SOCKET_OPENED);
-    ws.onmessage = (m) => mine() && typeof m.data === "string" && socketEvent(id, SOCKET_FRAME, m.data);
-    ws.onerror = () => mine() && socketEvent(id, SOCKET_ERROR);
-    ws.onclose = () => { if (mine()) { sockets[id] = null; socketEvent(id, SOCKET_CLOSED); } };
+    ws.onopen = () => mine() && socketQueued(ws, id, SOCKET_OPENED);
+    ws.onmessage = (m) => mine() && typeof m.data === "string" && socketQueued(ws, id, SOCKET_FRAME, m.data);
+    ws.onerror = () => mine() && socketQueued(ws, id, SOCKET_ERROR);
+    ws.onclose = () => mine() && socketQueued(ws, id, SOCKET_CLOSED);   // the slot frees when the app hears it
     return id;
   },
   coaxial_socket_send(id, ptr, len) {
@@ -1274,6 +1302,12 @@ const scale = () => (canvas.width && canvas.clientWidth ? canvas.width / canvas.
 // ---- the frame
 function frame(now) {
   requestAnimationFrame(frame);
+  if (engine && socketHead < socketQueue.length) drainSockets(Math.max(2, SOCKET_BUDGET_MS - frameCost));
+  const t0 = performance.now();
+  try { draw(now); } finally { frameCost = 0.9 * frameCost + 0.1 * (performance.now() - t0); }
+}
+let frameCost = 0;   // ms of main thread the drawing itself takes, smoothed: socket events get what's left
+function draw(now) {
   if (!engine || !gpu?.bg) return;
   const dt = last ? (now - last) / 1000 : 0; last = now;
   const [dw, dh] = devicePixels || [Math.max(1, Math.round(canvas.clientWidth * devicePixelRatio)), Math.max(1, Math.round(canvas.clientHeight * devicePixelRatio))];
