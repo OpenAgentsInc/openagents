@@ -240,8 +240,17 @@ apps/openagents-ios/build.sh
   `--fmad=false` so float arithmetic rounds once per operation as in C. A
   kernel with `for lane: 0..<32` loops runs one 32-lane warp per item, keeps
   `lane*k+c`-indexed arrays per lane and can call the tensor-core primitive
-  `cu_mma_bf16_16x8x16` (`lib/compute/mma.coax`). There is no shared memory,
-  barrier or atomic yet; the host
+  `cu_mma_bf16_16x8x16` (`lib/compute/mma.coax`). A kernel with
+  `for thread: 0..<T` loops (T a multiple of 32, at most 1024) is a group
+  kernel: one block of T threads per item, each thread loop fenced by
+  `__syncthreads()` on both sides. A top-level array indexed in a thread loop
+  stays per-thread registers when every index there is `thread*k+c` into T*k
+  values, and is otherwise `__shared__` (at most 32 KiB per kernel). The race
+  rule is checked: a thread loop writes a shared array only at the elements
+  its thread owns (`thread*k+c`, 0 <= c < k, plus nonnegative multiples of
+  T*k), and code between thread loops reads shared arrays but never writes
+  them. On the CPU a thread loop is an ordinary loop, so the C build is the
+  oracle (`psionic/tests/run_group_kernels.sh`). There is no atomic; the host
   ([psionic/platform/cuda-host.c](../psionic/platform/cuda-host.c)) loads,
   binds, launches and waits.
 - `coax metal-compute FILE` emits the same compute subset as Metal Shading
@@ -261,7 +270,17 @@ apps/openagents-ios/build.sh
   than the primitive's fragments (E0702; a module without a kernel is E0703).
   Lane loops run one 32-lane simdgroup per item, and `cu_mma_bf16_16x8x16`
   keeps its PTX fragment layout: each lane gathers its rows and columns with
-  `simd_shuffle` and adds the 16 exact products in k order. Compile the output
+  `simd_shuffle` and adds the 16 exact products in k order. Group kernels
+  run one threadgroup of T threads per item with `threadgroup` arrays and
+  `threadgroup_barrier(mem_flags::mem_threadgroup)`; a launch whose
+  threadgroup is not T threads fails with `PM_CHECK`. Group kernels on Metal
+  may also call the Apple matrix primitives of `lib/compute/apple.coax`:
+  `am_sg_mma_64x32x32` and `am_sg_spill_64x32` (a 64x32 tile on four
+  `simdgroup_float8x8` simdgroups, group of 128, accumulator arrays only) and
+  `am_matmul_bf16` (a Metal 4 MetalPerformancePrimitives `matmul2d` tile of
+  BF16 weights times f32 activations into f32, `relaxed_precision` off;
+  needs Metal language 4.0). Their CPU meanings add each tile's products in
+  f64 and round once. They are E0702 in CUDA. Compile the output
   with `MTLMathModeSafe` and precise math functions (the generated pragmas also
   turn contraction off). `psionic/tests/run_metal_kernels.sh` runs the kernels
   against the C build on the GPU.

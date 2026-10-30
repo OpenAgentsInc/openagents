@@ -87,7 +87,7 @@ python3 tests/wrapping.py
 wrapping_rc=$?
 python3 tests/mul_wide.py
 mul_wide_rc=$?
-python3 tests/cuda.py && python3 tests/metal_compute.py && "$COAX" test lib/compute/mma.coax --lib && "$COAX" mutate lib/compute/mma.coax --lib
+python3 tests/cuda.py && python3 tests/metal_compute.py && "$COAX" test lib/compute/mma.coax --lib && "$COAX" mutate lib/compute/mma.coax --lib && "$COAX" test lib/compute/apple.coax --lib && "$COAX" mutate lib/compute/apple.coax --lib
 cuda_rc=$?
 tests/proto/check-cap.sh
 proto_cap_rc=$?

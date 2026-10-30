@@ -355,9 +355,27 @@ struct WarpInfo {
   std::map<const Expr *, int64_t> lane_index;  // index expression lane*k+c -> k
   std::set<const ProcDecl *> warp_kernels;
   std::set<const Expr *> mma_calls;
+  // Group kernels: thread loops and per-thread arrays by group size T,
+  // per-thread indexes thread*k+c -> k, each kernel's threadgroup arrays,
+  // matrix accumulators and the Apple matrix primitives' calls by kind.
+  std::map<const Stmt *, int64_t> thread_loops, thread_arrays;
+  std::map<const Expr *, int64_t> thread_index;
+  std::map<const ProcDecl *, int64_t> group_kernels;
+  std::map<const ProcDecl *, std::vector<const Stmt *>> shared_arrays;
+  std::set<const Stmt *> shared_decls, accumulators;
+  std::map<const Expr *, int> apple_calls;
 };
 WarpInfo g_warp;
 static bool is_mma_primitive(const ProcDecl *p) { return p && str_eq(p->name, "cu_mma_bf16_16x8x16"); }
+// Every device primitive: its Coax body is the CPU meaning; the device emitters lower calls to it.
+static bool is_device_primitive(const ProcDecl *p) {
+  return p && (is_mma_primitive(p) || str_eq(p->name, "am_sg_mma_64x32x32") || str_eq(p->name, "am_sg_spill_64x32") || str_eq(p->name, "am_matmul_bf16"));
+}
+// The integer value of a constant expression (a literal or a named constant).
+static int64_t constant_of_expr(const Expr *e) {
+  if (e && e->kind == ExprKind::ident && e->constant && e->constant->expr) e = e->constant->expr;
+  return e && e->kind == ExprKind::int_lit ? (int64_t)e->int_value : -1;
+}
 // Set while `coax metal-compute` emits: f64 is the float-float pair coax_ff.
 static bool g_metal_compute = false;
 
@@ -527,6 +545,10 @@ struct Emitter {
 
   // Device code: CUDA (coax cuda) or Metal (coax metal-compute).
   bool device() const { return opts.cuda || opts.metal_compute; }
+  std::string group_barrier() const {
+    return opts.metal_compute ? "threadgroup_barrier(mem_flags::mem_threadgroup | mem_flags::mem_device);" : "__syncthreads();";
+  }
+  bool apple_tensor = false;  // an am_matmul_bf16 call: the module needs Metal 4 tensor ops
   // The pointer type of a temporary holding the address of a place. Metal
   // pointers name their address space: a view's elements are device memory,
   // locals are thread memory.
@@ -782,6 +804,18 @@ struct Emitter {
           return "coax_mma_bf16_16x8x16(" + local_name(e->args[0]->lhs->text) + ", " + local_name(e->args[1]->lhs->text) + ", " +
                  local_name(e->args[2]->lhs->text) + ", coax_lane, coax_mc)";
         }
+        if (opts.metal_compute && g_warp.apple_calls.count(e)) {
+          int kind = g_warp.apple_calls.at(e);
+          auto whole = [&](int i) { return local_name(e->args[i]->lhs->text); };
+          if (kind == 1) return "coax_am_sg_mma(" + whole(0) + ", " + whole(1) + ".e, " + whole(2) + ".e, coax_lane)";
+          if (kind == 2) return "(" + group_barrier().substr(0, group_barrier().size() - 1) + ", coax_am_sg_spill(" + whole(0) + ", " + whole(1) + ".e, coax_lane), " +
+                                group_barrier().substr(0, group_barrier().size() - 1) + ")";
+          apple_tensor = true;
+          auto value = [&](int i) { return std::to_string(constant_of_expr(e->args[i])); };
+          std::string s = "coax_am_matmul<" + value(1) + ", " + value(2) + ", " + std::to_string(g_warp.group_kernels.at(current) / 32) + ">(";
+          for (int i = 3; i < 11; i++) s += ex(e->args[i]) + ", ";
+          return s + line + ", coax_err)";
+        }
         std::vector<Operand> ops;
         for (const Expr *a : e->args) ops.push_back({a, false});
         std::string name = e->intrinsic != Intrinsic::none ? math_name(e) : proc_name(e->proc);
@@ -811,6 +845,10 @@ struct Emitter {
         return "(" + ex(e->lhs) + ")." + to_std(e->text);
       case ExprKind::index: {
         if (device()) {
+          auto th = g_warp.thread_index.find(e);
+          // This thread's own element: index - thread*k, which folds to the offset.
+          if (th != g_warp.thread_index.end())
+            return local_name(e->lhs->text) + "[(" + ex(e->rhs) + ") - l_thread * " + std::to_string(th->second) + "]";
           auto at = g_warp.lane_index.find(e);
           // The element is this lane's own: index - lane*k, which folds to the offset.
           if (at != g_warp.lane_index.end())
@@ -1101,6 +1139,28 @@ struct Emitter {
           line(c_type(s->type->elem) + " " + local_name(s->name) + "[" + std::to_string(s->type->length / 32) + "] = {};");
           break;
         }
+        if (device() && g_warp.thread_arrays.count(s)) {
+          // Thread t keeps elements t*k .. t*k+k-1 in registers.
+          line(c_type(s->type->elem) + " " + local_name(s->name) + "[" + std::to_string(s->type->length / g_warp.thread_arrays.at(s)) + "] = {};");
+          break;
+        }
+        if (device() && g_warp.shared_decls.count(s)) {
+          // Threadgroup memory: the kernel entry owns it; zeroed by the whole group.
+          std::string n = local_name(s->name), c = c_type(s->type), T = std::to_string(g_warp.group_kernels.at(current));
+          if (opts.metal_compute) line("threadgroup " + c + " &" + n + " = *coax_tg_" + n + ";");
+          else { line("__shared__ " + c + " coax_tg_" + n + ";"); line(c + " &" + n + " = coax_tg_" + n + ";"); }
+          line("for (int64_t coax_z = " + std::string(opts.metal_compute ? "(int64_t)coax_lane" : "(int64_t)threadIdx.x") + "; coax_z < " +
+               std::to_string(s->type->length) + "; coax_z += " + T + ") " + n + ".e[coax_z] = 0;");
+          line(group_barrier());
+          break;
+        }
+        if (device() && g_warp.accumulators.count(s)) {
+          // A matrix accumulator: each simdgroup's 8x8 tiles of it, in its own registers.
+          std::string n = local_name(s->name);
+          line("simdgroup_float8x8 " + n + "[8];");
+          line("for (int coax_z = 0; coax_z < 8; coax_z++) " + n + "[coax_z] = make_filled_simdgroup_matrix<float, 8, 8>(0.0f);");
+          break;
+        }
         std::string decl = c_type(s->type) + " " + local_name(s->name);
         if (s->expr) decl += " = " + ex(s->expr);
         else if (!s->uninit) decl += " = " + zero_value(s->type);  // zero or defaults, unless `---`
@@ -1145,6 +1205,14 @@ struct Emitter {
         if (device() && g_warp.lane_loops.count(s)) {
           // Each lane runs the body once, as its own `lane`.
           loop(s->then_, {"const int64_t " + local_name(s->name) + (opts.metal_compute ? " = (int64_t)coax_lane;" : " = (int64_t)(threadIdx.x & 31u);")});
+          break;
+        }
+        if (device() && g_warp.thread_loops.count(s)) {
+          // A phase: every thread of the group runs the body as its own
+          // `thread`, between two barriers.
+          line(group_barrier());
+          block_body(s->then_, {"const int64_t " + local_name(s->name) + (opts.metal_compute ? " = (int64_t)coax_lane;" : " = (int64_t)threadIdx.x;")});
+          line(group_barrier());
           break;
         }
         std::string t = c_type(s->type), n = std::to_string(temp_count++);
@@ -1218,6 +1286,9 @@ struct Emitter {
     }
     // Metal: every procedure carries the simdgroup lane and the launch's error words.
     if (opts.metal_compute) s += std::string(p->params.count ? ", " : "") + "uint coax_lane, thread uint *coax_err";
+    // A group kernel's threadgroup arrays live in its entry, which passes them in.
+    if (opts.metal_compute && g_warp.shared_arrays.count(p))
+      for (const Stmt *d : g_warp.shared_arrays.at(p)) s += ", threadgroup " + c_type(d->type) + " *coax_tg_" + local_name(d->name);
     return s + ")";
   }
 
@@ -1471,7 +1542,7 @@ std::vector<const ProcDecl *> cuda_procs(const File *file) {
   std::function<void(const ProcDecl *)> visit_proc;
   std::function<void(const Expr *)> visit_expr = [&](const Expr *e) {
     if (!e) return;
-    if (e->kind == ExprKind::call && e->proc && !is_mma_primitive(e->proc)) visit_proc(e->proc);
+    if (e->kind == ExprKind::call && e->proc && !is_device_primitive(e->proc)) visit_proc(e->proc);
     visit_expr(e->lhs); visit_expr(e->rhs); visit_expr(e->third);
     for (const Expr *a : e->args) visit_expr(a);
     for (const FieldInit &f : e->fields) visit_expr(f.value);
@@ -1493,6 +1564,53 @@ std::vector<const ProcDecl *> cuda_procs(const File *file) {
     for (const ProcDecl *q : seen) if (q == p) { ordered.push_back(p); break; }
   return ordered;
 }
+
+// Apple matrix primitives (lib/compute/apple.coax) for `coax metal-compute`.
+// The simdgroup tile product: 4 simdgroups of a 128-thread group; simdgroup
+// g owns rows 32*(g%2) .. +31 and columns 16*(g/2) .. +15 of the 64x32
+// accumulator, as eight 8x8 matrices (rows 8i, columns 8j at 2i+j). a holds
+// 64 rows of 32 k, b 32 columns of 32 k; the hardware adds in its own order.
+static const char *METAL_SIMDGROUP_RUNTIME = R"COAXRT(
+COAX_DEV void coax_am_sg_mma(thread simdgroup_float8x8 *acc, threadgroup const float *a, threadgroup const float *b, uint tid) {
+  uint g = tid / 32u; int sr = (int)(g & 1u) * 32, sc = (int)(g >> 1) * 16;
+  for (int kk = 0; kk < 32; kk += 8) {
+    simdgroup_float8x8 A[4], B[2];
+    for (int i = 0; i < 4; i++) simdgroup_load(A[i], a + (sr + 8 * i) * 32 + kk, 32);
+    for (int j = 0; j < 2; j++) simdgroup_load(B[j], b + (sc + 8 * j) * 32 + kk, 32, ulong2(0, 0), true);
+    for (int i = 0; i < 4; i++)
+      for (int j = 0; j < 2; j++) simdgroup_multiply_accumulate(acc[2 * i + j], A[i], B[j], acc[2 * i + j]);
+  }
+}
+COAX_DEV void coax_am_sg_spill(thread simdgroup_float8x8 *acc, threadgroup float *dst, uint tid) {
+  uint g = tid / 32u; int sr = (int)(g & 1u) * 32, sc = (int)(g >> 1) * 16;
+  for (int i = 0; i < 4; i++)
+    for (int j = 0; j < 2; j++) simdgroup_store(acc[2 * i + j], dst + (sr + 8 * i) * 32 + sc + 8 * j, 32);
+}
+)COAXRT";
+// The Metal 4 tensor-op tile (MetalPerformancePrimitives matmul2d, BF16
+// weights times f32 activations into f32, relaxed precision off): out[t][r]
+// for TM tokens from t0 and TN rows from r0, clipped to tokens and rows. The
+// whole group calls it with the same values; a failed check voids the launch.
+static const char *METAL_TENSOR_RUNTIME = R"COAXRT(
+#include <metal_tensor>
+#include <MetalPerformancePrimitives/MetalPerformancePrimitives.h>
+template <int TM, int TN, int SG>
+COAX_DEV void coax_am_matmul(int64_t rows, int64_t cols, int64_t tokens, int64_t r0, int64_t t0, coax_v_u32 w, coax_v_f32 x, coax_v_f32 out, int32_t line, COAX_ERR) {
+  using namespace mpp::tensor_ops;
+  if (rows < 1 || cols < 2 || cols % 2 != 0 || tokens < 1 || r0 < 0 || r0 >= rows || t0 < 0 || t0 >= tokens || rows > 2147483647 / cols ||
+      tokens > 2147483647 / cols || tokens > 2147483647 / rows || w.count < rows * (cols / 2) || x.count < tokens * cols || out.count < tokens * rows) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  int c = (int)cols, nt = (int)min((int64_t)TM, tokens - t0), nr = (int)min((int64_t)TN, rows - r0);
+  auto X = tensor<device float, dextents<int32_t, 2>, tensor_inline>(x.data + t0 * cols, dextents<int32_t, 2>(c, nt), array<int32_t, 2>({1, c}));
+  auto W = tensor<device bfloat, dextents<int32_t, 2>, tensor_inline>((device bfloat *)w.data + r0 * cols, dextents<int32_t, 2>(c, nr), array<int32_t, 2>({1, c}));
+  auto C = tensor<device float, dextents<int32_t, 2>, tensor_inline>(out.data + t0 * rows + r0, dextents<int32_t, 2>(nr, nt), array<int32_t, 2>({1, (int)rows}));
+  constexpr auto d = matmul2d_descriptor(TM, TN, static_cast<int>(dynamic_extent), false, true, false);
+  matmul2d<d, execution_simdgroups<SG>> op;
+  op.run(X, W, C);
+}
+)COAXRT";
 
 static std::string emit_cuda(const File *file, const EmitOptions &opts) {
   Emitter em{file, opts};
@@ -1553,7 +1671,11 @@ static std::string emit_cuda(const File *file, const EmitOptions &opts) {
       w += ", " + c_type(p->params[i].type) + " " + em.local_name(p->params[i].name);
       call += ", " + em.local_name(p->params[i].name);
     }
-    if (g_warp.warp_kernels.count(p))  // one warp per work item; launch 32 threads per item
+    if (g_warp.group_kernels.count(p)) {  // one block of T threads per work item; launch with block = T
+      std::string T = std::to_string(g_warp.group_kernels.at(p));
+      s += w + ") {\n  if (blockDim.x != " + T + "u) __trap();\n  int64_t coax_item = (int64_t)blockIdx.x;\n"
+           "  if (coax_item >= coax_items) return;\n  " + call + ");\n}\n";
+    } else if (g_warp.warp_kernels.count(p))  // one warp per work item; launch 32 threads per item
       s += w + ") {\n  int64_t coax_item = ((int64_t)blockIdx.x * (int64_t)blockDim.x + (int64_t)threadIdx.x) >> 5;\n"
            "  if (coax_item >= coax_items) return;\n  " + call + ");\n}\n";
     else
@@ -1953,6 +2075,10 @@ std::string emit_metal_compute(const File *file, const EmitOptions &opts) {
   std::string s = "/* Generated by coax0 from " + file->src->path + " (coax metal-compute). Do not edit: change the .coax file. */\n";
   s += METAL_RUNTIME;
   s += "\n/* Types */\n" + types + helpers + "\n";
+  bool simdgroups = false;
+  for (const auto &[call, kind] : g_warp.apple_calls) simdgroups = simdgroups || kind != 3;
+  if (simdgroups) s += METAL_SIMDGROUP_RUNTIME;
+  if (em.apple_tensor) s += METAL_TENSOR_RUNTIME;
   for (const ProcDecl *p : procs) s += em.prototype(p) + ";\n";
   s += functions;
   s += "\n/* Kernels: one argument block at buffer(0) (the item count, then each parameter\n"
@@ -1971,16 +2097,29 @@ std::string emit_metal_compute(const File *file, const EmitOptions &opts) {
       call += ", coax_a." + field;
     }
     block += "};\n";
-    bool warp = g_warp.warp_kernels.count(p);
+    bool warp = g_warp.warp_kernels.count(p), group = g_warp.group_kernels.count(p);
     s += block;
     s += "kernel void " + name + "(constant coax_args_" + name + " &coax_a [[buffer(0)]], device atomic_uint *coax_errors [[buffer(1)]],\n"
-         "    uint coax_gid [[thread_position_in_grid]], uint coax_simd_lane [[thread_index_in_simdgroup]]) {\n";
-    if (warp)  // one simdgroup of 32 lanes per work item
+         "    uint coax_gid [[thread_position_in_grid]], uint coax_simd_lane [[thread_index_in_simdgroup]]" +
+         std::string(group ? ",\n    uint coax_tid [[thread_index_in_threadgroup]], uint coax_tpg [[threads_per_threadgroup]], uint coax_tgid [[threadgroup_position_in_grid]]" : "") + ") {\n";
+    std::string shared_args;
+    if (group) {  // one threadgroup of T threads per work item; the host launches T threads per group
+      std::string T = std::to_string(g_warp.group_kernels.at(p));
+      if (g_warp.shared_arrays.count(p))
+        for (const Stmt *d : g_warp.shared_arrays.at(p)) {
+          s += "  threadgroup " + c_type(d->type) + " coax_tg_" + em.local_name(d->name) + ";\n";
+          shared_args += ", &coax_tg_" + em.local_name(d->name);
+        }
+      s += "  if (coax_tpg != " + T + "u) {  /* launched with the wrong group size: the launch is void */\n"
+           "    if (coax_tid == 0) { atomic_fetch_add_explicit(&coax_errors[0], 1u, memory_order_relaxed); atomic_fetch_max_explicit(&coax_errors[1], " +
+           std::to_string(p->loc.line) + "u, memory_order_relaxed); }\n    return;\n  }\n";
+      s += "  int64_t coax_item = (int64_t)coax_tgid;\n  uint coax_lane = coax_tid;\n";
+    } else if (warp)  // one simdgroup of 32 lanes per work item
       s += "  int64_t coax_item = (int64_t)(coax_gid >> 5);\n  uint coax_lane = coax_simd_lane;\n";
     else
       s += "  int64_t coax_item = (int64_t)coax_gid;\n  uint coax_lane = coax_simd_lane;\n";
     s += "  if (coax_item >= coax_a.coax_items) return;\n  uint coax_err[2] = {0, 0};\n  " + call + (p->params.count > 1 ? ", " : ", ") +
-         "coax_lane, coax_err);\n"
+         "coax_lane, coax_err" + shared_args + ");\n"
          "  if (coax_err[0]) {\n"
          "    atomic_fetch_add_explicit(&coax_errors[0], coax_err[0], memory_order_relaxed);\n"
          "    atomic_fetch_max_explicit(&coax_errors[1], coax_err[1], memory_order_relaxed);\n  }\n}\n";

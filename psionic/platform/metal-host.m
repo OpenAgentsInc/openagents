@@ -57,7 +57,9 @@ PmStatus pm_compile(const char *source, size_t length, const char *name, PmModul
         /* IEEE arithmetic, one rounding per operation, precise math functions. */
         options.mathMode = MTLMathModeSafe; /* macOS 15 or later */
         options.mathFloatingPointFunctions = MTLMathFloatingPointFunctionsPrecise;
-        options.languageVersion = MTLLanguageVersion3_1;
+        /* Metal 4 (macOS 26) for the tensor ops of am_matmul_bf16; 3.1 otherwise. */
+        if (@available(macOS 26.0, *)) options.languageVersion = MTLLanguageVersion4_0;
+        else options.languageVersion = MTLLanguageVersion3_1;
         NSError *error = nil;
         id<MTLLibrary> library = [device newLibraryWithSource:text options:options error:&error];
         if (!library) { note("%s: %s", name, error.localizedDescription.UTF8String); return PM_COMPILE; }
@@ -147,7 +149,7 @@ PmStatus pm_begin(PmBatch *batch) {
 PmStatus pm_launch(PmBatch batch, PmKernel kernel, int64_t items, int lanes, int block, const PmArg *args, int count) {
     PmBatchObject *b = (__bridge PmBatchObject *)batch;
     id<MTLComputePipelineState> pipeline = (__bridge id<MTLComputePipelineState>)kernel;
-    if (items < 0 || (lanes != 1 && lanes != 32) || count < 0 || count > 16) { note("malformed launch"); return PM_ARGUMENT; }
+    if (items < 0 || (lanes != 1 && (lanes % 32 != 0 || lanes > 1024)) || count < 0 || count > 16) { note("malformed launch"); return PM_ARGUMENT; }
     if (items == 0) return PM_OK;
     uint8_t block_bytes[8 + 16 * 16];
     size_t at = 0;
@@ -178,13 +180,19 @@ PmStatus pm_launch(PmBatch batch, PmKernel kernel, int64_t items, int lanes, int
         at += size;
     }
     NSUInteger threads = (NSUInteger)items * (NSUInteger)lanes;
-    NSUInteger group = block > 0 ? (NSUInteger)block : 128;
     NSUInteger limit = pipeline.maxTotalThreadsPerThreadgroup;
+    [b.encoder setComputePipelineState:pipeline];
+    [b.encoder setBytes:block_bytes length:at atIndex:0];
+    if (lanes > 32) {
+        /* A group kernel: one threadgroup of exactly `lanes` threads per item. */
+        if ((NSUInteger)lanes > limit) { note("the pipeline allows %lu threads per group; the group kernel needs %d", (unsigned long)limit, lanes); return PM_ARGUMENT; }
+        [b.encoder dispatchThreadgroups:MTLSizeMake((NSUInteger)items, 1, 1) threadsPerThreadgroup:MTLSizeMake((NSUInteger)lanes, 1, 1)];
+        return PM_OK;
+    }
+    NSUInteger group = block > 0 ? (NSUInteger)block : 128;
     if (group > limit) group = limit;
     group = group / 32 * 32;
     if (group == 0) { note("pipeline allows fewer than 32 threads per group"); return PM_ARGUMENT; }
-    [b.encoder setComputePipelineState:pipeline];
-    [b.encoder setBytes:block_bytes length:at atIndex:0];
     [b.encoder dispatchThreads:MTLSizeMake(threads, 1, 1) threadsPerThreadgroup:MTLSizeMake(group, 1, 1)];
     return PM_OK;
 }

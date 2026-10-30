@@ -49,6 +49,7 @@ REFUSALS=[
 ]
 
 MMA=str((ROOT/'lib/compute/mma.coax').resolve())
+APPLE=str((ROOT/'lib/compute/apple.coax').resolve())
 WARP='#load "'+MMA+'";\n'+'''
 tile :: (item:int,a:[]u32,b:[]u32,c:[]f32,d:[]f32) #export_c {
     fa:[128]u32;fb:[64]u32;fc:[128]f32;
@@ -76,6 +77,42 @@ WARP_REFUSALS=[
     ('a device primitive inside a lane loop',warp('for lane:0..<32 {fc[lane*4]=1;cu_mma_bf16_16x8x16(fa[..],fb[..],fc[..]);}')),
 ]
 
+# Group kernels: thread loops, threadgroup and per-thread arrays, barriers.
+GROUP='''
+tile :: (item:int,n:int,x:[]f32,out:[]f32) #export_c {
+    shared:[256]f32;own:[256]f32;
+    for thread:0..<128 {
+        for i:0..<2 {shared[thread+128*i]=x[item*256+thread+128*i];}
+        own[thread*2]=1;own[thread*2+1]=2;
+    }
+    total:f32=0;
+    for i:0..<256 {total+=shared[i];}
+    for thread:0..<128 {
+        out[item*128+thread]=shared[255-thread]+own[thread*2+1]+total;
+    }
+}
+'''
+def group(body,arrays='t:[256]f32;'):
+    return 'group_kernel :: (item:int,out:[]f32) #export_c {'+arrays+body+'}'
+GROUP_REFUSALS=[
+    ('a thread loop that is not for thread: 0..<T in a kernel, with T a multiple of 32 from 32 to 1024',group('for thread:0..<48 {out[item]=1;}','')),
+    ('a thread loop that is not for thread: 0..<T in a kernel, with T a multiple of 32 from 32 to 1024',group('for thread:0..<2048 {out[item]=1;}','')),
+    ('a thread loop that is not for thread: 0..<T in a kernel, with T a multiple of 32 from 32 to 1024','f :: (out:[]f32) {for thread:0..<64 {out[thread]=1;}}\nk :: (item:int,out:[]f32) #export_c {f(out);}'),
+    ('a thread loop inside a lane loop or another thread loop',group('for lane:0..<32 {for thread:0..<64 {out[thread]=1;}}','')),
+    ('a group kernel whose thread loops and group primitives disagree on its size, or that has lane loops or the MMA primitive',group('for thread:0..<64 {out[thread]=1;}for thread:0..<128 {out[thread]=2;}','')),
+    ('threadgroup arrays of more than 32768 bytes in one kernel',group('for thread:0..<128 {a[thread]=1;b[thread]=1;c[thread]=1;}for thread:0..<128 {out[thread]=a[4095-thread]+b[4095-thread]+c[4095-thread];}','a:[4096]f32;b:[4096]f32;c:[4096]f32;')),
+    ('a threadgroup array declared inside a loop or branch, or used other than by indexing',group('for s:0..<2 {u:[256]f32;for thread:0..<128 {u[thread]=1;}for thread:0..<128 {out[thread]=u[255-thread];}}','')),
+    ('a threadgroup array declared inside a loop or branch, or used other than by indexing','f :: (v:[256]f32)->f32 {return v[0];}\n'+group('for thread:0..<128 {t[thread]=1;}for thread:0..<128 {out[thread]=t[255-thread];}out[item]=f(t);')),
+    ('a thread loop that writes a threadgroup array and touches elements another thread owns',group('for thread:0..<128 {t[thread]=1;out[thread]=t[(thread+1)%128];}')),
+    ('a thread loop that writes a threadgroup array and touches elements another thread owns',group('for thread:0..<128 {t[thread*2+2]=1;}for thread:0..<128 {out[thread]=t[255-thread];}')),
+    ('a thread loop that writes a threadgroup array and touches elements another thread owns',group('for thread:0..<128 {for i:0..<2 {t[thread+64*i]=1;}}for thread:0..<128 {out[thread]=t[255-thread];}')),
+    ('a threadgroup array written outside thread loops',group('t[0]=1;for thread:0..<128 {out[thread]=t[255-thread];}')),
+    ('a thread loop assigning a value the group shares',group('x:f32=0;for thread:0..<128 {x=1;}','')),
+    ('break, continue or return directly in a thread loop',group('for thread:0..<128 {if thread==3 {break;}out[thread]=1;}','')),
+    ('break, continue or return directly in a thread loop',group('for thread:0..<128 {if thread==3 {return;}out[thread]=1;}','')),
+    ('a view written in a group kernel\'s shared code',group('for thread:0..<128 {out[thread]=1;}out[item]=2;','')),
+    ('a view written in a group kernel\'s shared code','g :: (out:[]f32) {out[0]=1;}\n'+group('for thread:0..<128 {out[thread]=1;}g(out);','')),
+]
 def nvrtc():
     candidates=[os.environ.get('PSIONIC_NVRTC',''),os.path.join(os.environ.get('CUDA_HOME',''),'lib/libnvrtc.so.13'),
                 os.path.expanduser('~/cuda-13.2/lib/libnvrtc.so.13'),'libnvrtc.so.13']
@@ -104,6 +141,25 @@ class Cuda(unittest.TestCase):
                 r=self.run_cuda(source)
                 self.assertNotEqual(r.returncode,0)
                 self.assertIn(reason+' is outside the CUDA compute subset',r.stderr)
+    def test_group_kernel_refusals(self):
+        for reason,source in GROUP_REFUSALS:
+            with self.subTest(reason=reason,source=source):
+                r=self.run_cuda(source)
+                self.assertNotEqual(r.returncode,0)
+                self.assertIn(reason+' is outside the CUDA compute subset',r.stderr)
+    def test_group_kernels_use_shared_memory_and_barriers(self):
+        r=self.run_cuda(GROUP,'--release');self.assertEqual(r.returncode,0,r.stderr)
+        out=r.stdout
+        self.assertIn('__shared__ coax_a256_f32 coax_tg_l_shared;',out);self.assertIn('coax_a256_f32 &l_shared = coax_tg_l_shared;',out)
+        self.assertIn('float l_own[2] = {};',out);self.assertIn(') - l_thread * 2] =',out)
+        self.assertNotIn('coax_tg_l_own',out)
+        self.assertIn('const int64_t l_thread = (int64_t)threadIdx.x;',out)
+        self.assertGreaterEqual(out.count('__syncthreads();'),5)  # zeroing, then both sides of each thread loop
+        self.assertIn('if (blockDim.x != 128u) __trap();\n  int64_t coax_item = (int64_t)blockIdx.x;',out)
+    def test_apple_matrix_primitives_are_refused(self):
+        r=self.run_cuda('#load "'+APPLE+'";\nk :: (item:int,w:[]u32,x:[]f32,out:[]f32) #export_c {am_matmul_bf16(128,16,64,64,32,16,0,0,w,x,out);}')
+        self.assertNotEqual(r.returncode,0)
+        self.assertIn('an Apple matrix primitive in a CUDA kernel is outside the CUDA compute subset',r.stderr)
     def test_warp_kernels_keep_per_lane_values_and_emit_one_mma(self):
         r=self.run_cuda(WARP,'--release');self.assertEqual(r.returncode,0,r.stderr)
         out=r.stdout
@@ -148,7 +204,7 @@ class Cuda(unittest.TestCase):
     def test_generated_cuda_compiles_with_nvrtc(self):
         lib=nvrtc()
         if lib is None:self.skipTest('NVRTC is not installed')
-        for source,flags in ((KERNEL,[]),(KERNEL,['--release']),(WARP,['--release'])):
+        for source,flags in ((KERNEL,[]),(KERNEL,['--release']),(WARP,['--release']),(GROUP,[]),(GROUP,['--release'])):
             r=self.run_cuda(source,*flags);self.assertEqual(r.returncode,0,r.stderr)
             prog=C.c_void_p()
             self.assertEqual(lib.nvrtcCreateProgram(C.byref(prog),r.stdout.encode(),b'k.cu',0,None,None),0)

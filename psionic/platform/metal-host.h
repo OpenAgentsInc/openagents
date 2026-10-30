@@ -70,9 +70,12 @@ void *pm_contents(PmBuffer buffer);
    writes. pm_wait commits, waits and reports the first failure: the command
    buffer's error, or the Coax checks that failed inside it. */
 PmStatus pm_begin(PmBatch *batch);
-/* items work items; lanes is 1, or 32 for a warp kernel (one simdgroup per
-   item); block threads per threadgroup (a multiple of 32, lowered to what the
-   pipeline allows). */
+/* items work items; lanes is 1, 32 for a warp kernel (one simdgroup per
+   item; block threads per threadgroup, a multiple of 32 lowered to what the
+   pipeline allows), or a group kernel's size T (a multiple of 32 above 32,
+   up to 1024: one threadgroup of exactly T threads per item; block is
+   ignored). A group kernel of 32 threads is launched with lanes 32 and block
+   32. */
 PmStatus pm_launch(PmBatch batch, PmKernel kernel, int64_t items, int lanes, int block, const PmArg *args, int count);
 PmStatus pm_wait(PmBatch batch, double *gpu_seconds);
 

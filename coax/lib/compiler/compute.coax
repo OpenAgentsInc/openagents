@@ -35,11 +35,24 @@ CU_number :: (code:u32)->bool #export_c {return code>=2 && code<=11;}
  #assert CU_reason_text(25)=="a lane loop assigning a value the warp shares" && CU_reason_text(26)=="break or continue directly in a lane loop";
  #assert CU_reason_text(27)=="a device primitive with the wrong arguments" && CU_reason_text(28)=="a device primitive inside a lane loop";
  #assert CU_reason_text(29)=="an f64 bit pattern" && CU_reason_text(30)=="a view of a register array" && CU_reason_text(31)=="this f64 operation";
- #assert CU_reason_text(32)=="this reason" && CU_reason_text(4000000000)=="this reason";
+ #assert CU_reason_text(32)=="a thread loop that is not for thread: 0..<T in a kernel, with T a multiple of 32 from 32 to 1024";
+ #assert CU_reason_text(33)=="a thread loop inside a lane loop or another thread loop";
+ #assert CU_reason_text(34)=="a group kernel whose thread loops and group primitives disagree on its size, or that has lane loops or the MMA primitive";
+ #assert CU_reason_text(35)=="threadgroup arrays of more than 32768 bytes in one kernel";
+ #assert CU_reason_text(36)=="a threadgroup array declared inside a loop or branch, or used other than by indexing";
+ #assert CU_reason_text(37)=="a thread loop that writes a threadgroup array and touches elements another thread owns";
+ #assert CU_reason_text(38)=="a threadgroup array written outside thread loops";
+ #assert CU_reason_text(39)=="a thread loop assigning a value the group shares";
+ #assert CU_reason_text(40)=="break, continue or return directly in a thread loop";
+ #assert CU_reason_text(41)=="an Apple matrix primitive with the wrong arguments or outside a group kernel's shared code";
+ #assert CU_reason_text(42)=="an Apple matrix primitive in a CUDA kernel";
+ #assert CU_reason_text(43)=="a matrix accumulator used other than by Apple matrix primitives";
+ #assert CU_reason_text(44)=="a view written in a group kernel's shared code";
+ #assert CU_reason_text(45)=="this reason" && CU_reason_text(4000000000)=="this reason";
  #assert CU_fix()=="coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break/continue and acyclic calls; every #export_c procedure is a kernel with an int work item first and no result";
 }
 CU_reason_text :: (reason:u32)->string #export_c {
- texts:=[32] string.["","a string value","a struct value","an enum value","an array that is not a fixed array of at most 4096 scalars",
+ texts:=[45] string.["","a string value","a struct value","an enum value","an array that is not a fixed array of at most 4096 scalars",
   "a view of something other than numbers","a value of this type","a while loop","defer","#assert","print","a #foreign call",
   "a recursive call","this storage intrinsic","a compile-time aggregate","a kernel that returns a value",
   "a kernel whose first parameter is not its int work item","a call chain deeper than 64","a returned value that is not a scalar",
@@ -48,8 +61,19 @@ CU_reason_text :: (reason:u32)->string #export_c {
   "a per-lane index that is not lane*k+c into a [32*k] array","a per-lane array outside lane loops and device primitives",
   "a lane loop assigning a value the warp shares","break or continue directly in a lane loop",
   "a device primitive with the wrong arguments","a device primitive inside a lane loop",
-  "an f64 bit pattern","a view of a register array","this f64 operation"];
- if reason>=32 {return "this reason";}
+  "an f64 bit pattern","a view of a register array","this f64 operation",
+  "a thread loop that is not for thread: 0..<T in a kernel, with T a multiple of 32 from 32 to 1024",
+  "a thread loop inside a lane loop or another thread loop",
+  "a group kernel whose thread loops and group primitives disagree on its size, or that has lane loops or the MMA primitive",
+  "threadgroup arrays of more than 32768 bytes in one kernel",
+  "a threadgroup array declared inside a loop or branch, or used other than by indexing",
+  "a thread loop that writes a threadgroup array and touches elements another thread owns",
+  "a threadgroup array written outside thread loops","a thread loop assigning a value the group shares",
+  "break, continue or return directly in a thread loop",
+  "an Apple matrix primitive with the wrong arguments or outside a group kernel's shared code",
+  "an Apple matrix primitive in a CUDA kernel","a matrix accumulator used other than by Apple matrix primitives",
+  "a view written in a group kernel's shared code"];
+ if reason>=45 {return "this reason";}
  return texts[cast(int)reason];
 }
 CU_fix :: ()->string #export_c {
@@ -218,6 +242,151 @@ CU_primitive_mma :: (a:int,b:int,c:int,a_code:u32,b_code:u32,c_code:u32)->u32 #e
  if a!=128 || b!=64 || c!=128 || a_code!=10 || b_code!=10 || c_code!=2 {return 27;}
  return 0;
 }
+
+// Group kernels. A kernel that contains `for thread: 0..<T` loops, T a
+// constant multiple of 32 from 32 to 1024, runs as one threadgroup (a CUDA
+// block) of T threads per work item; the host launches it with T threads per
+// group. Code outside thread loops is the group's shared control flow and
+// runs identically in every thread; each thread loop is a phase in which
+// thread t runs the body as its own `thread`, fenced by a barrier on both
+// sides (Metal threadgroup_barrier, CUDA __syncthreads). Fixed arrays declared
+// at the kernel body's top level and indexed inside thread loops are
+// per-thread registers when every such index is thread*k+c into T*k values
+// (as lane arrays), and threadgroup memory otherwise. A phase that writes a
+// threadgroup array touches only the elements the thread owns, at
+// thread*k + c (0 <= c < k) plus nonnegative multiples of T*k; shared code
+// reads threadgroup arrays and never writes them. On the CPU a thread loop
+// is an ordinary loop, so the same source compiled to C is the oracle.
+CU_GROUP_WARPS :: 32; // a group is at most 32 warps (1024 threads)
+CU_SHARED_LIMIT :: 32768; // bytes of threadgroup arrays per kernel: Apple GPUs allow 32 KiB
+#forall "thread loops are 0..<T, T a multiple of 32 up to 1024, in a kernel, not nested" kernel:bool, constant:bool, lo:-1..<2, hi:0..<1100, nested:bool {
+ expected:u32=0;
+ if nested {expected=33;} else if !kernel || !constant || lo!=0 || hi<32 || hi>1024 || hi%32!=0 {expected=32;}
+ #assert CU_thread_loop(kernel,constant,lo,hi,nested)==expected;
+}
+CU_thread_loop :: (kernel:bool,constant:bool,lo:int,hi:int,nested:bool)->u32 #export_c {
+ if nested {return 33;}
+ if !kernel || !constant || lo!=0 || hi<32 || hi%32!=0 || hi/32>CU_GROUP_WARPS {return 32;}
+ return 0;
+}
+// A kernel's group size: every thread loop and group primitive names the
+// same T; lane loops and the warp MMA primitive belong to warp kernels.
+#forall "a group kernel has one size and no warp constructs" size:0..<70, other:0..<70, lane:bool, mma:bool {
+ expected:u32=0;
+ if lane || mma || (other!=0 && other!=size) {expected=34;}
+ #assert CU_group_size(size,other,lane,mma)==expected;
+}
+CU_group_size :: (size:int,other:int,lane:bool,mma:bool)->u32 #export_c {
+ if lane || mma || (other!=0 && other!=size) {return 34;}
+ return 0;
+}
+// Arrays of a group kernel indexed in thread loops: 1 per-thread registers
+// (every index there is thread*k+c into T*k values and nothing else uses
+// the array), 2 threadgroup memory; 0 for an array no thread loop indexes.
+#forall "per-thread arrays are those every thread loop indexes as its own" in_thread:bool, own:bool, elsewhere:bool {
+ expected:u32=0;
+ if in_thread {expected=ifx own && !elsewhere then 1 else 2;}
+ #assert CU_group_array(in_thread,own,elsewhere)==expected;
+}
+CU_group_array :: (in_thread:bool,own:bool,elsewhere:bool)->u32 #export_c {
+ if !in_thread {return 0;}
+ if own && !elsewhere {return 1;}
+ return 2;
+}
+#forall "threadgroup arrays fit 32 KiB" bytes:0..<40000 {
+ #assert CU_shared_bytes(bytes)==cast(u32)(ifx bytes>32768 then 35 else 0);
+}
+CU_shared_bytes :: (bytes:int)->u32 #export_c {if bytes>CU_SHARED_LIMIT {return 35;}return 0;}
+#forall "threadgroup arrays are declared at the top and only indexed" top:bool, indexed:bool {
+ #assert CU_shared_use(top,indexed)==cast(u32)(ifx top && indexed then 0 else 36);
+}
+CU_shared_use :: (top:bool,indexed:bool)->u32 #export_c {if top && indexed {return 0;}return 36;}
+// An index thread*k + c + (multiples of T*k) is the thread's own: k >= 1,
+// c within [0, k) over its whole range, and every other term a nonnegative
+// multiple of T*k (stride). Distinct threads then never meet.
+#forall "an owned index is thread*k+c with c in [0,k) plus whole strides" form:bool, k:-1..<6, lo:-1..<7, hi:-1..<7, stride:bool {
+ expected:=form && k>=1 && lo>=0 && hi<k && lo<=hi && stride;
+ #assert CU_owned_index(form,k,lo,hi,stride)==expected;
+}
+CU_owned_index :: (form:bool,k:int,lo:int,hi:int,stride:bool)->bool #export_c {
+ return form && k>=1 && lo>=0 && lo<=hi && hi<k && stride;
+}
+#forall "a phase that writes a threadgroup array touches only owned elements" writes:bool, owned:bool {
+ #assert CU_shared_access(writes,owned)==cast(u32)(ifx writes && !owned then 37 else 0);
+}
+CU_shared_access :: (writes:bool,owned:bool)->u32 #export_c {if writes && !owned {return 37;}return 0;}
+#forall "threadgroup arrays are written in thread loops only" in_thread:bool {
+ #assert CU_shared_store(in_thread)==cast(u32)(ifx in_thread then 0 else 38);
+}
+CU_shared_store :: (in_thread:bool)->u32 #export_c {if in_thread {return 0;}return 38;}
+#forall "a thread loop writes its own locals and arrays only" outer:bool, array:bool {
+ #assert CU_thread_assign(outer,array)==cast(u32)(ifx outer && !array then 39 else 0);
+}
+CU_thread_assign :: (outer:bool,array:bool)->u32 #export_c {if outer && !array {return 39;}return 0;}
+// Shared code runs in every thread of the group at once, so a store through
+// a view there (directly or in a procedure it calls) would race with itself;
+// thread loops and the matrix primitives write device memory instead.
+#forall "views are written in thread loops only" view:bool, in_thread:bool {
+ #assert CU_group_store(view,in_thread)==cast(u32)(ifx view && !in_thread then 44 else 0);
+}
+CU_group_store :: (view:bool,in_thread:bool)->u32 #export_c {if view && !in_thread {return 44;}return 0;}
+#forall "break, continue and return may not leave a thread loop" direct:bool {
+ #assert CU_thread_jump(direct)==cast(u32)(ifx direct then 40 else 0);
+}
+CU_thread_jump :: (direct:bool)->u32 #export_c {if direct {return 40;}return 0;}
+
+// Apple matrix primitives (lib/compute/apple.coax), Metal only, called in a
+// group kernel's shared code by every thread of the group. Kinds: 1
+// am_sg_mma_64x32x32 (simdgroup matrices: acc [2048]f32 += a [2048]f32
+// times b [1024]f32 transposed, both threadgroup arrays, in a group of 128),
+// 2 am_sg_spill_64x32 (acc into a [2048]f32 threadgroup array), 3
+// am_matmul_bf16 (Metal 4 tensor ops on device views: a tile of BF16 weights
+// times f32 activations). acc is a matrix accumulator: the simdgroups' own
+// registers on the device, so nothing else may use it.
+#forall "Apple matrix primitives: Metal, shared code, the right arrays" kind:0..<5, metal:bool, shared_code:bool, ti:0..<6, ai:0..<3, a_tg:bool, b_tg:bool {
+ sizes:=[6] int.[0,64,127,128,256,512];threads:=sizes[ti];
+ // ai 0: the sizes the simdgroup primitives take; 1 and 2: one off in acc, a or b.
+ acc:=2048;a:=2048;b:=1024;
+ if ai==1 {acc=2047;b=1025;} else if ai==2 {a=1024;}
+ expected:u32=0;
+ if !metal {expected=42;}
+ else if kind<1 || kind>3 || !shared_code {expected=41;}
+ else if kind==1 && (threads!=128 || ai!=0 || !a_tg || !b_tg) {expected=41;}
+ else if kind==2 && (threads!=128 || ai!=0 || !a_tg) {expected=41;}
+ else if kind==3 && threads!=64 && threads!=128 && threads!=256 {expected=41;}
+ #assert CU_apple_primitive(cast(u32)kind,metal,shared_code,threads,acc,a,b,a_tg,b_tg)==expected;
+}
+#test "each simdgroup primitive checks every size it reads" {
+ #assert CU_apple_primitive(1,true,true,128,2048,2048,1024,true,true)==0 && CU_apple_primitive(1,true,true,128,2048,2048,1023,true,true)==41;
+ #assert CU_apple_primitive(1,true,true,128,2049,2048,1024,true,true)==41 && CU_apple_primitive(1,true,true,128,2048,2047,1024,true,true)==41;
+ #assert CU_apple_primitive(2,true,true,128,2048,2048,0,true,false)==0 && CU_apple_primitive(2,true,true,128,2047,2048,0,true,false)==41;
+ #assert CU_apple_primitive(2,true,true,128,2048,2049,0,true,false)==41 && CU_apple_primitive(3,true,true,64,0,0,0,false,false)==0;
+}
+CU_apple_primitive :: (kind:u32,metal:bool,shared_code:bool,threads:int,acc:int,a:int,b:int,a_tg:bool,b_tg:bool)->u32 #export_c {
+ if !metal {return 42;}
+ if kind<1 || kind>3 || !shared_code {return 41;}
+ if kind==1 && (threads!=128 || acc!=2048 || a!=2048 || b!=1024 || !a_tg || !b_tg) {return 41;}
+ if kind==2 && (threads!=128 || acc!=2048 || a!=2048 || !a_tg) {return 41;}
+ if kind==3 && threads!=64 && threads!=128 && threads!=256 {return 41;}
+ return 0;
+}
+// The tile of am_matmul_bf16: tm tokens by tn rows, constants the Metal 4
+// matrix descriptor accepts here.
+#forall "tensor-op tiles are 16, 32 or 64 tokens by 32, 64 or 128 rows" tm:0..<130, tn:0..<130, constant:bool {
+ expected:u32=41;
+ if constant && (tm==16 || tm==32 || tm==64) && (tn==32 || tn==64 || tn==128) {expected=0;}
+ #assert CU_apple_tile(tm,tn,constant)==expected;
+}
+CU_apple_tile :: (tm:int,tn:int,constant:bool)->u32 #export_c {
+ if !constant {return 41;}
+ if tm!=16 && tm!=32 && tm!=64 {return 41;}
+ if tn!=32 && tn!=64 && tn!=128 {return 41;}
+ return 0;
+}
+#forall "a matrix accumulator is used by Apple matrix primitives only" primitive:bool {
+ #assert CU_accumulator_use(primitive)==cast(u32)(ifx primitive then 0 else 43);
+}
+CU_accumulator_use :: (primitive:bool)->u32 #export_c {if primitive {return 0;}return 43;}
 
 // The Metal compute subset (`coax metal-compute`): the same admission as
 // CUDA, lowered to Metal Shading Language. Apple GPUs have no binary64, so an

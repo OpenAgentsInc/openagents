@@ -1,0 +1,147 @@
+// Apple matrix primitives of the Metal compute subset, with their CPU
+// meaning. `coax metal-compute` lowers each call in a group kernel's shared
+// code to Apple's matrix units; this body is what the call means everywhere
+// else (and what the CPU qualification compares against). The device adds
+// products in an order the hardware chooses, so a device result is compared
+// within a tolerance, never bit for bit. `coax cuda` refuses them.
+//
+// am_sg_mma_64x32x32 and am_sg_spill_64x32 run on simdgroup matrices in a
+// group of 128 threads. acc is a matrix accumulator: 64 rows by 32 columns,
+// acc[r*32+c], held by the four simdgroups as 8x8 tiles; only these
+// primitives may use it. a (64 rows of 32 k, a[r*32+k]) and b (32 columns
+// of 32 k, b[c*32+k]) are threadgroup arrays.
+//
+// am_matmul_bf16 runs on the Metal 4 tensor ops (MetalPerformancePrimitives
+// matmul2d), which use the GPU's neural accelerators where it has them:
+// a tile of tm tokens by tn rows of out = x w^T, read straight from device
+// views. w holds BF16 pairs (rows by cols/2 u32, low half first), x and out
+// are f32 (tokens by cols, tokens by rows).
+#authority;
+
+am_bf16 :: (word:u32,high:bool)->f32 {
+    if high {return f32_from_bits((word>>16)<<16);}
+    return f32_from_bits(word<<16);
+}
+
+// acc[r][c] += sum over k of a[r][k] b[c][k]: the 32 products add in f64 and
+// round once into acc.
+am_sg_mma_64x32x32 :: (acc:[]f32,a:[]f32,b:[]f32) {
+    for ar:0..<64 {
+        for ac:0..<32 {
+            sum:f64=0;
+            for ak:0..<32 {sum+=f64(a[ar*32+ak])*f64(b[ac*32+ak]);}
+            acc[ar*32+ac]=f32(f64(acc[ar*32+ac])+sum);
+        }
+    }
+}
+// dst = acc, elementwise (the device stores each simdgroup's tiles).
+am_sg_spill_64x32 :: (acc:[]f32,dst:[]f32) {
+    for ai:0..<2048 {dst[ai]=acc[ai];}
+}
+
+// out[t*rows+r] = sum over k of x[t*cols+k] W[r][k] for t0 <= t < min(t0+tm,
+// tokens) and r0 <= r < min(r0+tn, rows). Products of a BF16 weight and an
+// f32 activation add in f64 and round once. threads (64, 128 or 256) is the
+// group the device spreads the tile over.
+am_matmul_valid :: (rows:int,cols:int,tokens:int,r0:int,t0:int,w:int,x:int,out:int)->bool {
+    if rows<1 || cols<2 || cols%2!=0 || tokens<1 || r0<0 || r0>=rows || t0<0 || t0>=tokens {return false;}
+    if rows>2147483647/cols || tokens>2147483647/cols || tokens>2147483647/rows {return false;}
+    return w>=rows*(cols/2) && x>=tokens*cols && out>=tokens*rows;
+}
+// The tile shapes the device compiles: 64, 128 or 256 threads, 16, 32 or 64
+// tokens by 32, 64 or 128 rows (CU_apple_tile admits the same).
+am_tile_valid :: (threads:int,tm:int,tn:int)->bool {
+    return (threads==64 || threads==128 || threads==256) && (tm==16 || tm==32 || tm==64) && (tn==32 || tn==64 || tn==128);
+}
+am_matmul_bf16 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,t0:int,w:[]u32,x:[]f32,out:[]f32) {
+    #assert am_matmul_valid(rows,cols,tokens,r0,t0,w.count,x.count,out.count);
+    #assert am_tile_valid(threads,tm,tn);
+    half:=cols/2;
+    for at:t0..<t0+tm {
+        if at>=tokens {break;}
+        for ar:r0..<r0+tn {
+            if ar>=rows {break;}
+            sum:f64=0;
+            for ap:0..<half {
+                word:=w[ar*half+ap];
+                sum+=f64(x[at*cols+2*ap])*f64(am_bf16(word,false))+f64(x[at*cols+2*ap+1])*f64(am_bf16(word,true));
+            }
+            out[at*rows+ar]=f32(sum);
+        }
+    }
+}
+
+#test "BF16 halves decode exactly" {
+    #assert am_bf16(0x40003f80,false)==1 && am_bf16(0x40003f80,true)==2 && am_bf16(0xc0400000,true)==-3;
+}
+#test "the simdgroup tile adds a b^T into acc" {
+    acc:[2048]f32;a:[2048]f32;b:[1024]f32;out:[2048]f32;
+    for ar:0..<64 {for ak:0..<32 {a[ar*32+ak]=f32((ar+2*ak)%5-2);}}
+    for ac:0..<32 {for ak:0..<32 {b[ac*32+ak]=f32((3*ak+ac)%7-3);}}
+    for ai:0..<2048 {acc[ai]=f32(ai%3);}
+    am_sg_mma_64x32x32(acc[..],a[..],b[..]);
+    am_sg_mma_64x32x32(acc[..],a[..],b[..]);
+    am_sg_spill_64x32(acc[..],out[..]);
+    for ar:0..<64 {for ac:0..<32 {
+        sum:=0;for ak:0..<32 {sum+=((ar+2*ak)%5-2)*((3*ak+ac)%7-3);}
+        #assert out[ar*32+ac]==f32(2*sum+(ar*32+ac)%3) && acc[ar*32+ac]==out[ar*32+ac];
+    }}
+}
+#test "the 32 products are added before rounding into acc" {
+    acc:[2048]f32;a:[2048]f32;b:[1024]f32;
+    for ai:0..<2048 {acc[ai]=1;a[ai]=f32_from_bits(0x33800000);}
+    for ai:0..<1024 {b[ai]=1;}
+    am_sg_mma_64x32x32(acc[..],a[..],b[..]);
+    for ai:0..<2048 {#assert acc[ai]==1+32*f32_from_bits(0x33800000);}
+}
+#test "the tensor-op tile writes its tokens and rows, clipped to the matrix" {
+    // 3 rows by 4 columns, 5 tokens: a 16 by 32 tile at (r0 1, t0 2), clipped.
+    w:[6]u32;x:[20]f32;out:[15]f32;
+    for ar:0..<3 {for ap:0..<2 {w[ar*2+ap]=(f32_bits(f32(ar+ap))>>16)|((f32_bits(f32(ar-ap))>>16)<<16);}}
+    for at:0..<5 {for ac:0..<4 {x[at*4+ac]=f32(at*ac+1);}}
+    for ai:0..<15 {out[ai]=-7;}
+    am_matmul_bf16(128,16,32,3,4,5,1,2,w[..],x[..],out[..]);
+    for at:0..<5 {for ar:0..<3 {
+        expected:f32=-7;
+        if at>=2 && ar>=1 {
+            sum:=0.0;for ap:0..<2 {sum+=f64(x[at*4+2*ap])*f64(ar+ap)+f64(x[at*4+2*ap+1])*f64(ar-ap);}
+            expected=f32(sum);
+        }
+        #assert out[at*3+ar]==expected;
+    }}
+}
+#test "the tensor-op tile rounds once" {
+    // 1, then sixteen times 2^-24: the sixteen ulps survive only if added first.
+    w:[9]u32;x:[18]f32;out:[1]f32;
+    for ap:0..<9 {w[ap]=0x3f803f80;}
+    for ac:2..<18 {x[ac]=f32_from_bits(0x33800000);}
+    x[0]=1;x[1]=0;
+    am_matmul_bf16(64,16,32,1,18,1,0,0,w[..],x[..],out[..]);
+    #assert out[0]==1+16*f32_from_bits(0x33800000);
+}
+#forall "the tensor-op tile checks its shape and views" rows:0..<3, cols:0..<4, tokens:0..<3, r0:-1..<3, t0:-1..<3 {
+    w:=rows*(cols/2);x:=tokens*cols;out:=tokens*rows;
+    expected:=rows>=1 && cols>=2 && cols%2==0 && tokens>=1 && r0>=0 && r0<rows && t0>=0 && t0<tokens;
+    #assert am_matmul_valid(rows,cols,tokens,r0,t0,w,x,out)==expected;
+    if expected {
+        #assert !am_matmul_valid(rows,cols,tokens,r0,t0,w-1,x,out) && !am_matmul_valid(rows,cols,tokens,r0,t0,w,x-1,out) && !am_matmul_valid(rows,cols,tokens,r0,t0,w,x,out-1);
+    }
+}
+#test "the tensor-op tile refuses shapes past 32-bit extents" {
+    #assert !am_matmul_valid(2147483647,2,1,0,0,2147483647,2,2147483647) && !am_matmul_valid(1,2,2147483647,0,0,1,4294967294,2147483647);
+    #assert !am_matmul_valid(65536,65536,1,0,0,2147483648,65536,65536) && am_matmul_valid(1,2,1,0,0,1,2,1);
+}
+#test "the tensor-op tile admits every extent up to 2^31-1 exactly" {
+    big:=4294967296;
+    // rows*cols, tokens*cols, tokens*rows each at the limit, then one past it.
+    #assert am_matmul_valid(1073741823,2,1,0,0,big,big,big) && !am_matmul_valid(1073741824,2,1,0,0,big,big,big);
+    #assert am_matmul_valid(1,2,1073741823,0,0,big,big,big) && !am_matmul_valid(1,2,1073741824,0,0,big,big,big);
+    #assert am_matmul_valid(4,2,536870911,0,0,big,big,big) && !am_matmul_valid(4,2,536870912,0,0,big,big,big);
+}
+#forall "tensor-op tiles are 64, 128 or 256 threads, 16, 32 or 64 tokens by 32, 64 or 128 rows" a:0..<9, b:0..<9, c:0..<9 {
+    near:=[9]int.[15,16,32,33,63,64,65,128,256];
+    threads:=near[a]+(a/8);tm:=near[b];tn:=near[c]; // a 8: 257
+    expected:=(threads==64 || threads==128 || threads==256) && (tm==16 || tm==32 || tm==64) && (tn==32 || tn==64 || tn==128);
+    #assert am_tile_valid(threads,tm,tn)==expected;
+    #assert am_tile_valid(256,64,128) && am_tile_valid(128,16,32) && !am_tile_valid(129,16,32) && !am_tile_valid(128,17,32) && !am_tile_valid(128,16,129);
+}

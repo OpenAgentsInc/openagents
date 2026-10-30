@@ -1563,3 +1563,23 @@ commit.
 
 Check: `coax/web/release.sh` (staging walk), `coax/web/api/test_health.py`
 (via `coax/web/api/test.sh`), which also checks the two lists agree.
+
+## Coax group kernels share memory only through owned writes and barriers
+
+`coax cuda` and `coax metal-compute` admit `for thread: 0..<T` loops (T a
+multiple of 32, at most 1024) as group kernels: one block or threadgroup of T
+threads per item, every thread loop fenced by a barrier on both sides
+(`__syncthreads()`, `threadgroup_barrier(mem_threadgroup)`). A thread loop
+writes a shared array only at elements its thread owns (`thread*k+c`,
+0 <= c < k, plus nonnegative multiples of T*k), code between thread loops
+reads shared arrays and never writes them or the views they feed, and a
+kernel's shared arrays fit in 32 KiB; anything else is E0700/E0702 with its
+own reason. A launch with the wrong group size traps (CUDA) or fails with
+`PM_CHECK` (Metal), never computes. The Apple matrix primitives
+(`coax/lib/compute/apple.coax`) are Metal-only, group-kernel-only, and keep
+the CPU meaning written next to them. On the CPU a thread loop is an
+ordinary loop, so the C build is the oracle the device must match bit for bit.
+
+Check: `coax/lib/compiler/compute.coax` (`coax test`, zero-survivor
+`coax mutate`), `coax/tests/cuda.py`, `coax/tests/metal_compute.py`,
+`psionic/tests/run_group_kernels.sh` (Metal locally, CUDA on `coderos-4080`).
