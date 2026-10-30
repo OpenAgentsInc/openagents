@@ -28,7 +28,10 @@
 //
 // Endpoint and key: PSIONIC_URL and PSIONIC_API_KEY from the environment,
 // else from ~/work/.secrets/psionic-responses.env (KEY=value lines, kept
-// chmod 600); the default endpoint is http://127.0.0.1:8080; PSIONIC_TOOLS=off
+// chmod 600); the default endpoint is http://127.0.0.1:8080 (the RTX 4080
+// through its tunnel). gpt-oss-20b on this Mac's GPU (psionic/serve-gptoss.sh
+// --metal, chapter 45g) is PSIONIC_URL=http://127.0.0.1:8794 with
+// PSIONIC_GPTOSS_HOST=local (gpu.coax: no tunnel, no switch); PSIONIC_TOOLS=off
 // leaves the tools out. The key goes
 // to curl through its environment only (never an argument, never logged).
 
@@ -187,6 +190,11 @@ ps_configure :: (p: [] PsEngine) {
   hv := cl_getenv("PSIONIC_HOST", hb[..]);
   if hv.count == 0 { hv = ps_env_value(text, "PSIONIC_HOST"); }
   if hv.count == 0 { hv = PS_GPU_HOST; }
+  // gpt-oss-20b on this Mac (PSIONIC_GPTOSS_HOST=local): the picker says This Mac before anything listens
+  gh: [64] u8;
+  gl := cl_getenv("PSIONIC_GPTOSS_HOST", gh[..]);
+  if gl.count == 0 { gl = ps_env_value(text, "PSIONIC_GPTOSS_HOST"); }
+  if gl == "local" || gl == "localhost" || gl == "mac" { hv = "local"; }
   p[0].host_cfg_n = e_set(p[0].host_cfg[..], 0, hv);
   gv := cl_getenv("PSIONIC_GPU", hb[..]);
   if gv.count == 0 { gv = ps_env_value(text, "PSIONIC_GPU"); }

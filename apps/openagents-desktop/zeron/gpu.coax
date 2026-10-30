@@ -24,6 +24,8 @@
 //   PSIONIC_SWITCH_URL      the switch through its tunnel (http://127.0.0.1:8792)
 //   PSIONIC_SYSTEMONE_HOST  where Elephant runs: local means this Mac (no tunnel, no swap)
 //   PSIONIC_SYSTEMONE_URL   Elephant's door (lab.coax), PSIONIC_URL gpt-oss's (psionic.coax)
+//   PSIONIC_GPTOSS_HOST     where gpt-oss-20b runs: local means this Mac (serve-gptoss.sh --metal,
+//                           with PSIONIC_URL=http://127.0.0.1:8794): no tunnel and no swap for it
 
 #load "psionic.coax";
 
@@ -56,6 +58,7 @@ GpuSwitch :: struct {
   configured: bool;
   host: [64] u8; host_n: int;   // 0: no tunnels and no switch
   elephant_local: bool;
+  gptoss_local: bool;
   url: [96] u8; url_n: int;     // the switch's base URL
   tunnel: [3] int;              // ssh children: the switch, Elephant, gpt-oss (-1 none)
   tunnel_age: f32;              // since the newest one started
@@ -133,9 +136,15 @@ gs_configure :: (g: [] GpuSwitch) {
   g[0].url_n = e_set(g[0].url[..], 0, u);
   eh := cl_getenv("PSIONIC_SYSTEMONE_HOST", vb[..]);
   if eh.count == 0 { eh = ps_env_value(text, "PSIONIC_SYSTEMONE_HOST"); }
-  g[0].elephant_local = eh == "local" || eh == "localhost" || eh == "mac";
+  g[0].elephant_local = gs_is_local(eh);
+  gh := cl_getenv("PSIONIC_GPTOSS_HOST", vb[..]);
+  if gh.count == 0 { gh = ps_env_value(text, "PSIONIC_GPTOSS_HOST"); }
+  g[0].gptoss_local = gs_is_local(gh);
   for k: 0..<file.count { file[k] = 0; }
 }
+
+// A *_HOST setting that names this Mac.
+gs_is_local :: (v: string) -> bool { return v == "local" || v == "localhost" || v == "mac"; }
 
 // The port of a URL on this Mac's loopback ("" when it is elsewhere).
 gs_local_port :: (url: string) -> string {
@@ -173,7 +182,7 @@ gs_tunnel :: (g: [] GpuSwitch, i: int, local: string, remote: int) {
 gs_tunnels :: (g: [] GpuSwitch, elephant_url: string, gptoss_url: string) {
   gs_tunnel(g, 0, gs_local_port(e_str(g[0].url[..], g[0].url_n)), GS_SWITCH_REMOTE);
   if !g[0].elephant_local { gs_tunnel(g, 1, gs_local_port(elephant_url), GS_REMOTE_PORTS[GS_ELEPHANT]); }
-  gs_tunnel(g, 2, gs_local_port(gptoss_url), GS_REMOTE_PORTS[GS_GPTOSS]);
+  if !g[0].gptoss_local { gs_tunnel(g, 2, gs_local_port(gptoss_url), GS_REMOTE_PORTS[GS_GPTOSS]); }
 }
 
 // ---------------------------------------------------------------- asking
@@ -185,6 +194,7 @@ gs_want :: (g: [] GpuSwitch, s: [] Session, model: int, after: int, elephant_url
   gs_configure(g);
   if g[0].host_n == 0 { return false; }
   if model == GS_ELEPHANT && g[0].elephant_local { return false; }
+  if model == GS_GPTOSS && g[0].gptoss_local { return false; }
   gs_tunnels(g, elephant_url, gptoss_url);
   gs_end_ask(g);
   g[0].model = model; g[0].after = after; g[0].secs = 0; g[0].part = -1; g[0].shown = -1; g[0].log_n = 0; g[0].why_n = 0;
@@ -359,6 +369,16 @@ gs_close :: (g: [] GpuSwitch) {
   #assert gs_on_line(g[..], ss[..], "ready gptoss 52.0") == GS_GO && ss[0].n == 2;
   #assert s_text_of(ss[..], 1) == "Loaded gpt-oss-20b on the RTX 4080 in 52 s" && ss[0].parts[1].resolved && !ss[0].parts[1].failed;
   #assert ss[0].parts[1].detail == "gpt-oss-20b · 52 s" && s_has(ss[0].parts[1].output, "loading gptoss 0.0\nloading elephant 1.0\nready gptoss 52.0");
+}
+
+#test "gpt-oss-20b on this Mac: its message goes at once, with no switch and no tunnel" {
+  pool: [16384] u8; ss: [1] Session; s_init(ss[..], pool[..]);
+  g: [1] GpuSwitch; gs_init(g[..]);
+  g[0].on = true; g[0].configured = true; g[0].gptoss_local = true;
+  g[0].url_n = e_set(g[0].url[..], 0, GS_SWITCH_URL); g[0].host_n = e_set(g[0].host[..], 0, GS_HOST);
+  #assert !gs_want(g[..], ss[..], GS_GPTOSS, GT_PSIONIC, SO_PSIONIC_URL, "http://127.0.0.1:8794");
+  #assert g[0].phase == GS_IDLE && g[0].tunnel[0] == -1 && g[0].tunnel[2] == -1 && ss[0].n == 0;
+  #assert gs_is_local("local") && gs_is_local("mac") && !gs_is_local("coderos-4080") && !gs_is_local("");
 }
 
 #test "a failed load is a failed chip with the switch's reason; STOP ends the wait" {

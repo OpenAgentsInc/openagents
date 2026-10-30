@@ -75,7 +75,12 @@ static void generate(Request *r){
 #ifdef PSIONIC_RESPONSES_FIXTURE
     r->fixture_count=rs_fixture(table,r->request,(coax_v_t_RsItem){r->input,r->request.items},(coax_v_t_RsTool){r->tools,r->request.tools},iv(r->fixture,1024));if(r->fixture_count<1){code=text("fixture_failed");goto failed;}
 #else
+#ifdef PSIONIC_METAL
+    /* Metal build (gptoss-metal.c): a failed command buffer poisons the session, which pg_reset reports. */
+    if(pg_reset(session)!=PC_OK){atomic_store(&healthy,0);code=text("device_failed");goto failed;}
+#else
     PcDeviceInfo info;if(pc_open(&info)!=PC_OK || pg_reset(session)!=PC_OK){atomic_store(&healthy,0);code=text("device_failed");goto failed;}
+#endif
 #endif
     if(r->request.stream){if(!send_headers(r,200,0,1))goto done;stream_started=1;if(!emit(r,0,text("")))goto done;}
 #ifndef PSIONIC_RESPONSES_FIXTURE
@@ -124,7 +129,7 @@ int main(int argc,char **argv){
 #ifdef PSIONIC_RESPONSES_FIXTURE
     if(argc!=3)fail("usage: responses-fixture HARMONY_TABLE PORT");const char *table_path=argv[1],*port_arg=argv[2];
 #else
-    if(argc!=5)fail("usage: responses-server ORIGINAL_CACHE HARMONY_TABLE GENERATED_CUDA PORT");const char *table_path=argv[2],*port_arg=argv[4];
+    if(argc!=5)fail("usage: responses-server ORIGINAL_CACHE HARMONY_TABLE GENERATED_KERNELS PORT (coax cuda, or coax metal-compute for a PSIONIC_METAL build)");const char *table_path=argv[2],*port_arg=argv[4];
 #endif
     api_key=getenv("PSIONIC_API_KEY");if(!api_key)fail("set PSIONIC_API_KEY");
     char *end=NULL;long port=strtol(port_arg,&end,10);if(!end || *end || !rs_settings(text(api_key),port))fail("invalid server settings: key needs 16..128 visible ASCII bytes; port needs 1024..65535");
