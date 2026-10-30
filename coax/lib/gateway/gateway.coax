@@ -12,7 +12,7 @@
 // A Gateway's translate and parse are chosen by its wire (gw_translate,
 // gw_parse, gw_parse_whole): Open Responses and the Gemini stream's parser
 // live here, Chat Completions in chat.coax, the Gemini request in
-// gemini.coax; Anthropic's Messages joins as its task lands.
+// gemini.coax, Anthropic's Messages in anthropic.coax.
 // GwCall runs one request through the streaming curl transport
 // (transport.coax) and the SSE reader (sse.coax) and hands back GwEvents as
 // they arrive, without blocking, for a frame loop or a plan to poll.
@@ -85,11 +85,16 @@ GW_FIN_STOP :: 1;
 GW_FIN_LENGTH :: 2;
 GW_FIN_TOOLS :: 3;
 GW_FIN_FILTER :: 4;
+GW_FIN_UNKNOWN :: 5;             // a finish this parser doesn't know
 
 GwParse :: struct {
   finish: int;
   usage: GwUsage;
   provider: [48] u8; np: int;    // OpenRouter's provider field, copied from the first chunk that has one
+  // Anthropic: usage comes in message_start and message_delta, apart
+  in_raw: int; in_ok: bool;      // input_tokens, without the cache
+  cache_read: int; cache_write: int;
+  out: int; out_ok: bool;        // (stop_reason goes in finish)
 }
 
 // A provider-reported cost in dollars as millionths, or -1 when absent.
@@ -144,6 +149,7 @@ gw_translate :: (g: Gateway, req: GwRequest, out: [] u8, why: [] string) -> stri
   if g.wire == GW_WIRE_RESPONSES { n = gw_responses_body(req, out); }
   else if g.wire == GW_WIRE_CHAT { n = gw_chat_body(req, g.flags, out); }
   else if g.wire == GW_WIRE_GEMINI { n = gw_gemini_body(req, g.flags, out); }
+  else if g.wire == GW_WIRE_ANTHROPIC { n = gw_anthropic_body(req, out); }
   else { why[0] = "this gateway's wire has no translator yet"; return ""; }
   if n < 0 { why[0] = "the request does not fit its buffer"; return ""; }
   return cast(string) out[0..<n];
@@ -198,6 +204,7 @@ gw_parse :: (wire: int, ps: [] GwParse, ar: [] ClArena, name: string, data: stri
   if wire == GW_WIRE_RESPONSES { return gw_parse_responses(ar, name, data, out); }
   if wire == GW_WIRE_GEMINI { return gw_parse_gemini(ar, data, out); }
   if wire == GW_WIRE_CHAT { return gw_chat_chunk(ps, ar, data, out); }
+  if wire == GW_WIRE_ANTHROPIC { return gw_anthropic_chunk(ps, ar, data, out); }
   return 0;
 }
 
@@ -215,6 +222,7 @@ gw_parse_whole :: (wire: int, ar: [] ClArena, body: string, out: [] GwEvent) -> 
   if wire == GW_WIRE_CHAT { return gw_chat_whole(ar, body, out); }
   if wire == GW_WIRE_GEMINI { return gw_parse_gemini(ar, body, out); }
   if wire == GW_WIRE_RESPONSES { return gw_responses_whole(ar, body, out); }
+  if wire == GW_WIRE_ANTHROPIC { return gw_anthropic_whole(ar, body, out); }
   return 0;
 }
 
@@ -498,6 +506,7 @@ gw_call_close :: (call: [] GwCall) { gw_close(call[0].st[..]); call[0].finished 
 
 #load "chat.coax";
 #load "gemini.coax";
+#load "anthropic.coax";
 #load "fixtures.coax";
 
 GwReplay :: struct {
@@ -643,8 +652,8 @@ gw_replay_provider :: (r: [] GwReplay) -> string { return cast(string) r[0].prov
   #assert gw_translate(g, bad, out[..], why[..]) == "" && why[0] == "the schema is not JSON";
   tiny: [16] u8;
   #assert gw_translate(g, req, tiny[..], why[..]) == "" && why[0] == "the request does not fit its buffer";
-  chat := g; chat.wire = GW_WIRE_ANTHROPIC;
-  #assert gw_translate(chat, req, out[..], why[..]) == "";
+  none := g; none.wire = 9;
+  #assert gw_translate(none, req, out[..], why[..]) == "" && why[0] == "this gateway's wire has no translator yet";
 }
 
 #test "the client carries the gateway's key variable and header, never a key" {

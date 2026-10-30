@@ -52,4 +52,18 @@ if [ "$want" = all ] || [ "$want" = vercel ]; then
   if [ -n "${AI_GATEWAY_API_KEY:-}" ]; then run vercel "$AI_GATEWAY_API_KEY"
   else echo "vercel: skipped (no AI_GATEWAY_API_KEY or $secrets/ai-gateway.env)"; fi
 fi
+if [ "$want" = all ] || [ "$want" = openai ]; then
+  if [ -z "${OPENAI_API_KEY:-}" ] && [ -f "$secrets/probe-openai.env" ]; then
+    set -a; . "$secrets/probe-openai.env"; set +a; export OPENAI_API_KEY="${PROBE_OPENAI_API_KEY:-}"
+  fi
+  if [ -n "${OPENAI_API_KEY:-}" ]; then run openai "$OPENAI_API_KEY"
+  else echo "openai: skipped (no OPENAI_API_KEY or $secrets/probe-openai.env)"; fi
+fi
+if [ "$want" = all ] || [ "$want" = anthropic ]; then
+  if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -f "$secrets/anthropic.env" ]; then
+    set -a; . "$secrets/anthropic.env"; set +a
+  fi
+  if [ -n "${ANTHROPIC_API_KEY:-}" ]; then run anthropic "$ANTHROPIC_API_KEY"
+  else echo "anthropic: skipped (no ANTHROPIC_API_KEY or $secrets/anthropic.env)"; fi
+fi
 [ "$failed" = 0 ] && echo "live: ok" || { echo "live: FAILED"; exit 1; }

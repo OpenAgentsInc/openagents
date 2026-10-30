@@ -6,8 +6,9 @@
 #load "vertex.coax";
 #load "openrouter.coax";
 #load "vercel.coax";
+#load "openai.coax";
 
-LiveRun :: struct { text: [8192] u8; nt: int; first_ms: int = -1; end_ms: int; done: bool; usage: GwUsage; why: string; status: int; }
+LiveRun :: struct { text: [8192] u8; nt: int; first_ms: int = -1; end_ms: int; done: bool; usage: GwUsage; why: string; status: int; quota: bool; }
 
 live_run :: (g: Gateway, req: GwRequest, r: [] LiveRun, headers: [] string) -> bool {
   b: [1] GwCallBuffers; call: [1] GwCall;
@@ -28,7 +29,13 @@ live_run :: (g: Gateway, req: GwRequest, r: [] LiveRun, headers: [] string) -> b
         for c: x.text { if r[0].nt < r[0].text.count { r[0].text[r[0].nt] = c; r[0].nt += 1; } }
       }
       if x.kind == GW_EV_DONE { r[0].done = true; r[0].usage = x.usage; if x.text.count > 0 { print("%: served by %\n", g.name, x.text); } }
-      if x.kind == GW_EV_REFUSED { print("%: refused % %\n", g.name, x.status, x.reason); r[0].status = x.status; }
+      if x.kind == GW_EV_REFUSED {
+        print("%: refused % %\n", g.name, x.status, x.reason); r[0].status = x.status;
+        for j: 0..<x.reason.count {
+          if j + 7 <= x.reason.count && x.reason[j..<j + 7] == "credits" { r[0].quota = true; }
+          if j + 5 <= x.reason.count && x.reason[j..<j + 5] == "quota" { r[0].quota = true; }
+        }
+      }
       if x.kind == GW_EV_DONE || x.kind == GW_EV_REFUSED { r[0].end_ms = cxproc_now_ms() - t0; }
     }
   }
@@ -89,6 +96,18 @@ main :: () {
     ok = live_count(gw_vercel(false), GW_VERCEL_FLASH, none[0..<0]);
     ok = live_schema(gw_vercel(false), GW_VERCEL_FLASH, none[0..<0]) && ok;
     ok = live_count(gw_vercel(true), "zai/glm-5.3-flash", none[0..<0]) && ok;
+  } else if name == "openai" || name == "anthropic" {
+    // an account out of credit (402, or OpenAI's 429 insufficient_quota) answers that to everything: say so, and skip
+    g := ifx name == "openai" then gw_openai() else gw_anthropic();
+    model := ifx name == "openai" then GW_OPENAI_MINI else GW_ANTHROPIC_HAIKU;
+    h := GW_ANTHROPIC_HEADERS;
+    hs := ifx name == "openai" then none[0..<0] else h[..];
+    msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "Say hi."};
+    probe: [1] LiveRun;
+    x := live_run(g, GwRequest.{model = model, messages = msgs[..], max_tokens = 16}, probe[..], hs);
+    if probe[0].status == 402 || (probe[0].status == 429 && probe[0].quota) { print("smoke: skipped (% %: the account has no credit)\n", name, probe[0].status); return; }
+    ok = live_count(g, model, hs);
+    ok = live_schema(g, model, hs) && ok;
   } else {
     print("GW_LIVE names no gateway this smoke knows: %\n", name);
   }

@@ -1,0 +1,32 @@
+// OpenAI direct (docs/coder/microcoder.md, row 8): Chat Completions through
+// chat.coax at api.openai.com, as the old crates/inference upstream/openai.rs
+// spoke it: the cap as max_completion_tokens, reasoning_effort, and a strict
+// json_schema response_format. Its usage carries no cost; the rates card
+// prices it. The key is OPENAI_API_KEY, read by curl from the environment.
+
+#load "gateway.coax";
+
+GW_OPENAI_URL :: "https://api.openai.com/v1/chat/completions";
+GW_OPENAI_KEY_ENV :: "OPENAI_API_KEY";
+GW_OPENAI_MINI :: "gpt-5.4-mini";
+
+gw_openai :: () -> Gateway {
+  return Gateway.{name = "openai", url = GW_OPENAI_URL, key_env = GW_OPENAI_KEY_ENV, wire = GW_WIRE_CHAT};
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "an OpenAI body: max_completion_tokens, reasoning_effort and a strict schema" {
+  out: [1024] u8; why: [1] string;
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "2+2?"};
+  req := GwRequest.{model = GW_OPENAI_MINI, system = "Be terse.", messages = msgs[..], max_tokens = 64, effort = "low", schema_name = "sum", schema = "{\"type\":\"object\"}"};
+  #assert gw_translate(gw_openai(), req, out[..], why[..]) == "{\"model\":\"gpt-5.4-mini\",\"messages\":[{\"role\":\"system\",\"content\":\"Be terse.\"},{\"role\":\"user\",\"content\":\"2+2?\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"sum\",\"schema\":{\"type\":\"object\"},\"strict\":true}},\"max_completion_tokens\":64,\"reasoning_effort\":\"low\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}";
+  g := gw_openai();
+  #assert g.key_env == "OPENAI_API_KEY" && g.key_header == "Authorization" && g.scheme == "Bearer";
+}
+
+#test "an account out of credit refuses with OpenAI's own message (recorded 2026-10-30)" {
+  arena: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arena[..]};
+  e := gw_refusal(ar[..], 429, "{\n    \"error\": {\n        \"message\": \"You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.\",\n        \"type\": \"insufficient_quota\",\n        \"param\": null,\n        \"code\": \"credit_balance_exhausted\"\n    }\n}");
+  #assert e.status == 429 && e.reason == "You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.";
+}

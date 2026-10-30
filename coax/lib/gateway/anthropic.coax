@@ -1,0 +1,246 @@
+// Anthropic Messages (docs/coder/microcoder.md, row 8), cut from the old
+// crates/inference upstream/anthropic.rs to what Microcoder and /chat send:
+//
+//   body     model, max_tokens (4096 when the request leaves it), stream,
+//            system, messages with string content. A schema goes as one
+//            forced tool (tools[0].input_schema, tool_choice {"type": "tool"}),
+//            and the tool's input is the answer: its input_json_delta pieces
+//            come out as text, so a structured caller reads JSON as it would
+//            from any other gateway. An effort turns on adaptive thinking
+//            with output_config.effort, except beside a schema: Anthropic
+//            can't combine thinking with a forced tool, so the effort is
+//            dropped there.
+//   headers  x-api-key (the gateway's key_header, no scheme) and
+//            anthropic-version: pass GW_ANTHROPIC_HEADERS to gw_call_start or
+//            gw_plan_add.
+//   stream   message_start (input usage), content_block_start/delta (text,
+//            thinking as reasoning, tool input as text), message_delta
+//            (stop_reason, output usage), message_stop (done, or refused for
+//            a refusal stop), error (refused). ping and signature_delta are
+//            skipped.
+//
+// Usage: input counts the cache reads and writes as Anthropic bills them
+// (input_tokens + cache_read + cache_creation), cached the reads; output
+// includes thinking, which Anthropic doesn't count apart.
+
+GW_ANTHROPIC_URL :: "https://api.anthropic.com/v1/messages";
+GW_ANTHROPIC_KEY_ENV :: "ANTHROPIC_API_KEY";
+GW_ANTHROPIC_HEADERS :: [1] string.["anthropic-version: 2023-06-01"];
+GW_ANTHROPIC_MAX_TOKENS :: 4096;
+GW_ANTHROPIC_HAIKU :: "claude-haiku-4-5";
+
+gw_anthropic :: () -> Gateway {
+  return Gateway.{name = "anthropic", url = GW_ANTHROPIC_URL, key_env = GW_ANTHROPIC_KEY_ENV, key_header = "x-api-key", scheme = "", wire = GW_WIRE_ANTHROPIC};
+}
+
+gw_anthropic_body :: (req: GwRequest, out: [] u8) -> int {
+  n := json_raw(out, 0, "{\"model\":");
+  n = json_write_string(out, n, req.model);
+  n = json_raw(out, n, ",\"max_tokens\":");
+  n = json_write_int(out, n, ifx req.max_tokens > 0 then req.max_tokens else GW_ANTHROPIC_MAX_TOKENS);
+  n = json_raw(out, n, ifx req.stream then ",\"stream\":true" else ",\"stream\":false");
+  if req.system.count > 0 { n = json_raw(out, n, ",\"system\":"); n = json_write_string(out, n, req.system); }
+  n = json_raw(out, n, ",\"messages\":[");
+  for m, i: req.messages {
+    if i > 0 { n = json_raw(out, n, ","); }
+    n = json_raw(out, n, ifx m.role == "assistant" then "{\"role\":\"assistant\",\"content\":" else "{\"role\":\"user\",\"content\":");
+    n = json_write_string(out, n, m.text);
+    n = json_raw(out, n, "}");
+  }
+  n = json_raw(out, n, "]");
+  if req.schema.count > 0 {
+    n = json_raw(out, n, ",\"tools\":[{\"name\":");
+    n = json_write_string(out, n, req.schema_name);
+    n = json_raw(out, n, ",\"description\":\"Give the answer in this shape.\",\"input_schema\":");
+    n = json_raw(out, n, req.schema);
+    n = json_raw(out, n, "}],\"tool_choice\":{\"type\":\"tool\",\"name\":");
+    n = json_write_string(out, n, req.schema_name);
+    n = json_raw(out, n, "}");
+  } else if req.effort.count > 0 {
+    e := ifx req.effort == "medium" then "medium" else ifx req.effort == "high" then "high" else "low";
+    n = json_raw(out, n, ",\"thinking\":{\"type\":\"adaptive\"},\"output_config\":{\"effort\":");
+    n = json_write_string(out, n, e);
+    n = json_raw(out, n, "}");
+  }
+  return json_raw(out, n, "}");
+}
+
+gw_anthropic_finish_of :: (s: string) -> int {
+  if s == "end_turn" || s == "stop_sequence" || s == "tool_use" || s == "pause_turn" { return GW_FIN_STOP; }
+  if s == "max_tokens" || s == "model_context_window_exceeded" { return GW_FIN_LENGTH; }
+  if s == "refusal" { return GW_FIN_FILTER; }
+  return GW_FIN_UNKNOWN;
+}
+
+// Takes what a usage object says into ps (message_start's, then message_delta's).
+gw_anthropic_take_usage :: (ps: [] GwParse, usage: string) {
+  if usage.count == 0 { return; }
+  i := cl_int(usage, "input_tokens");
+  if i.ok { ps[0].in_raw = i.value; ps[0].in_ok = true; }
+  r := cl_int(usage, "cache_read_input_tokens");
+  if r.ok { ps[0].cache_read = r.value; }
+  w := cl_int(usage, "cache_creation_input_tokens");
+  if w.ok { ps[0].cache_write = w.value; }
+  o := cl_int(usage, "output_tokens");
+  if o.ok { ps[0].out = o.value; ps[0].out_ok = true; }
+}
+
+gw_anthropic_usage :: (ps: [] GwParse) -> GwUsage {
+  u: GwUsage;
+  if !ps[0].in_ok || !ps[0].out_ok { return u; }
+  return GwUsage.{ok = true, input_tokens = ps[0].in_raw + ps[0].cache_read + ps[0].cache_write, cached_tokens = ps[0].cache_read, output_tokens = ps[0].out, cost_usd_micros = -1};
+}
+
+gw_anthropic_ended :: (finish: int, usage: GwUsage, out: [] GwEvent, n: int) -> int {
+  if finish == GW_FIN_NONE { return gw_put(out, n, GwEvent.{kind = GW_EV_REFUSED, reason = "the stream ended without a stop reason"}); }
+  if finish == GW_FIN_FILTER { return gw_put(out, n, GwEvent.{kind = GW_EV_REFUSED, reason = "refusal"}); }
+  if finish == GW_FIN_UNKNOWN { return gw_put(out, n, GwEvent.{kind = GW_EV_REFUSED, reason = "an unknown stop reason"}); }
+  return gw_put(out, n, GwEvent.{kind = GW_EV_DONE, usage = usage, reason = ifx finish == GW_FIN_LENGTH then "length" else "stop"});
+}
+
+// One streamed event's data (the type is in it, as in its event line).
+gw_anthropic_chunk :: (ps: [] GwParse, ar: [] ClArena, data: string, out: [] GwEvent) -> int {
+  ty := cl_str(ar, data, "type");
+  if ty == "message_start" { gw_anthropic_take_usage(ps, cl_raw(data, "message.usage")); return 0; }
+  if ty == "content_block_start" {
+    bt := cl_str(ar, data, "content_block.type");
+    if bt == "text" {
+      t := cl_str(ar, data, "content_block.text");
+      if t.count > 0 { return gw_put(out, 0, GwEvent.{kind = GW_EV_TEXT, text = t}); }
+    } else if bt == "thinking" {
+      t := cl_str(ar, data, "content_block.thinking");
+      if t.count > 0 { return gw_put(out, 0, GwEvent.{kind = GW_EV_REASONING, text = t}); }
+    } else if bt == "tool_use" {
+      // an input given whole at the start (not {}) is the answer
+      input := cl_raw(data, "content_block.input");
+      if input.count > 2 && cl_count(input) > 0 { return gw_put(out, 0, GwEvent.{kind = GW_EV_TEXT, text = input}); }
+    }
+    return 0;
+  }
+  if ty == "content_block_delta" {
+    dt := cl_str(ar, data, "delta.type");
+    t := "";
+    kind := GW_EV_TEXT;
+    if dt == "text_delta" { t = cl_str(ar, data, "delta.text"); }
+    else if dt == "input_json_delta" { t = cl_str(ar, data, "delta.partial_json"); }
+    else if dt == "thinking_delta" { t = cl_str(ar, data, "delta.thinking"); kind = GW_EV_REASONING; }
+    if t.count == 0 { return 0; }
+    return gw_put(out, 0, GwEvent.{kind = kind, text = t});
+  }
+  if ty == "message_delta" {
+    gw_anthropic_take_usage(ps, cl_raw(data, "usage"));
+    s := cl_str(ar, data, "delta.stop_reason");
+    if s.count > 0 { ps[0].finish = gw_anthropic_finish_of(s); }
+    return 0;
+  }
+  if ty == "message_stop" {
+    f := ps[0].finish;
+    ps[0].finish = GW_FIN_NONE;
+    return gw_anthropic_ended(f, gw_anthropic_usage(ps), out, 0);
+  }
+  if ty == "error" {
+    why := cl_str(ar, data, "error.message");
+    if why.count == 0 { why = cl_str(ar, data, "error.type"); }
+    if why.count == 0 { why = "the stream reported an error"; }
+    return gw_put(out, 0, GwEvent.{kind = GW_EV_REFUSED, reason = why});
+  }
+  return 0;
+}
+
+// A whole (unstreamed) message: its text, tool input and thinking in order,
+// then done or refused.
+gw_anthropic_whole :: (ar: [] ClArena, body: string, out: [] GwEvent) -> int {
+  if cl_str(ar, body, "type") == "error" {
+    why := cl_str(ar, body, "error.message");
+    return gw_put(out, 0, GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = ifx why.count > 0 then why else "the response reported an error"});
+  }
+  n := 0;
+  blocks := cl_raw(body, "content");
+  for i: 0..<cl_count(blocks) {
+    b := cl_json(blocks, cl_item(blocks, i));
+    bt := cl_str(ar, b, "type");
+    if bt == "text" { t := cl_str(ar, b, "text"); if t.count > 0 { n = gw_put(out, n, GwEvent.{kind = GW_EV_TEXT, text = t}); } }
+    else if bt == "thinking" { t := cl_str(ar, b, "thinking"); if t.count > 0 { n = gw_put(out, n, GwEvent.{kind = GW_EV_REASONING, text = t}); } }
+    else if bt == "tool_use" { t := cl_raw(b, "input"); if t.count > 0 { n = gw_put(out, n, GwEvent.{kind = GW_EV_TEXT, text = t}); } }
+  }
+  ps: [1] GwParse;
+  gw_anthropic_take_usage(ps[..], cl_raw(body, "usage"));
+  return gw_anthropic_ended(gw_anthropic_finish_of(cl_str(ar, body, "stop_reason")), gw_anthropic_usage(ps[..]), out, n);
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "an Anthropic body: max_tokens by default, system apart, thinking with an effort" {
+  out: [2048] u8; why: [1] string;
+  msgs: [2] GwMessage;
+  msgs[0] = GwMessage.{role = "user", text = "Count to five."};
+  msgs[1] = GwMessage.{role = "assistant", text = "One"};
+  req := GwRequest.{model = "claude-x", system = "Be terse.", messages = msgs[..], effort = "medium"};
+  #assert gw_translate(gw_anthropic(), req, out[..], why[..]) == "{\"model\":\"claude-x\",\"max_tokens\":4096,\"stream\":true,\"system\":\"Be terse.\",\"messages\":[{\"role\":\"user\",\"content\":\"Count to five.\"},{\"role\":\"assistant\",\"content\":\"One\"}],\"thinking\":{\"type\":\"adaptive\"},\"output_config\":{\"effort\":\"medium\"}}";
+  plain := req; plain.effort = ""; plain.system = ""; plain.max_tokens = 100; plain.stream = false;
+  #assert gw_translate(gw_anthropic(), plain, out[..], why[..]) == "{\"model\":\"claude-x\",\"max_tokens\":100,\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":\"Count to five.\"},{\"role\":\"assistant\",\"content\":\"One\"}]}";
+  g := gw_anthropic();
+  #assert g.key_env == "ANTHROPIC_API_KEY" && g.key_header == "x-api-key" && g.scheme == "";
+  h := GW_ANTHROPIC_HEADERS;
+  #assert h[0] == "anthropic-version: 2023-06-01";
+}
+
+#test "a schema goes as one forced tool, and the effort is dropped beside it" {
+  out: [2048] u8; why: [1] string;
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "2+2?"};
+  req := GwRequest.{model = "claude-x", messages = msgs[..], effort = "high", schema_name = "sum", schema = "{\"type\":\"object\",\"properties\":{\"answer\":{\"type\":\"string\"}},\"required\":[\"answer\"]}"};
+  body := gw_translate(gw_anthropic(), req, out[..], why[..]);
+  #assert body == "{\"model\":\"claude-x\",\"max_tokens\":4096,\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"2+2?\"}],\"tools\":[{\"name\":\"sum\",\"description\":\"Give the answer in this shape.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"answer\":{\"type\":\"string\"}},\"required\":[\"answer\"]}}],\"tool_choice\":{\"type\":\"tool\",\"name\":\"sum\"}}";
+  #assert json_valid(body);
+}
+
+#test "an Anthropic stream: thinking is reasoning, text is text, usage adds the cache" {
+  fx := GW_FX_ANTHROPIC_TEXT;
+  r: [1] GwReplay;
+  gw_replay(GW_WIRE_ANTHROPIC, fx[..], r[..]);
+  #assert gw_replay_text(r[..]) == "One\nTwo\nThree\nFour\nFive";
+  #assert r[0].thoughts == 1 && r[0].done == 1 && r[0].refused == 0 && r[0].done_at_end && r[0].reason == "stop";
+  #assert r[0].usage.ok && r[0].usage.input_tokens == 25 + 100 + 10 && r[0].usage.cached_tokens == 100 && r[0].usage.output_tokens == 15;
+}
+
+#test "a forced tool's input streams out as the answer's JSON" {
+  fx := GW_FX_ANTHROPIC_TOOL;
+  r: [1] GwReplay;
+  gw_replay(GW_WIRE_ANTHROPIC, fx[..], r[..]);
+  #assert gw_replay_text(r[..]) == "{\"answer\": \"4\"}";
+  #assert r[0].deltas == 3 && r[0].done == 1 && r[0].reason == "stop" && r[0].usage.output_tokens == 12;
+}
+
+#test "Anthropic's endings: max_tokens is length, refusal and error refuse, no stop reason refuses" {
+  ps: [1] GwParse; ev: [4] GwEvent;
+  arena: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arena[..]};
+  n := gw_parse(GW_WIRE_ANTHROPIC, ps[..], ar[..], "message_start", "{\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}", ev[..]);
+  #assert n == 0;
+  n = gw_parse(GW_WIRE_ANTHROPIC, ps[..], ar[..], "message_delta", "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"max_tokens\"},\"usage\":{\"output_tokens\":64}}", ev[..]);
+  n = gw_parse(GW_WIRE_ANTHROPIC, ps[..], ar[..], "message_stop", "{\"type\":\"message_stop\"}", ev[..]);
+  #assert n == 1 && ev[0].kind == GW_EV_DONE && ev[0].reason == "length" && ev[0].usage.output_tokens == 64 && ev[0].usage.input_tokens == 3;
+  ps[0] = GwParse.{};
+  n = gw_parse(GW_WIRE_ANTHROPIC, ps[..], ar[..], "message_delta", "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"refusal\"},\"usage\":{\"output_tokens\":2}}", ev[..]);
+  n = gw_parse(GW_WIRE_ANTHROPIC, ps[..], ar[..], "message_stop", "{\"type\":\"message_stop\"}", ev[..]);
+  #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].reason == "refusal";
+  ps[0] = GwParse.{};
+  n = gw_parse(GW_WIRE_ANTHROPIC, ps[..], ar[..], "message_stop", "{\"type\":\"message_stop\"}", ev[..]);
+  #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].reason == "the stream ended without a stop reason";
+  n = gw_parse(GW_WIRE_ANTHROPIC, ps[..], ar[..], "error", "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}", ev[..]);
+  #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].reason == "Overloaded";
+  n = gw_parse(GW_WIRE_ANTHROPIC, ps[..], ar[..], "ping", "{\"type\":\"ping\"}", ev[..]);
+  #assert n == 0;
+  // a non-200 body names its error the way OpenAI's does
+  e := gw_refusal(ar[..], 401, "{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"}}");
+  #assert e.status == 401 && e.reason == "invalid x-api-key";
+}
+
+#test "a whole Anthropic message: thinking, the tool's input, usage and its stop" {
+  arena: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arena[..]};
+  ev: [8] GwEvent;
+  n := gw_parse_whole(GW_WIRE_ANTHROPIC, ar[..], "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"add\",\"signature\":\"x\"},{\"type\":\"tool_use\",\"id\":\"t\",\"name\":\"sum\",\"input\":{\"answer\":\"4\"}}],\"stop_reason\":\"tool_use\",\"usage\":{\"input_tokens\":9,\"cache_read_input_tokens\":0,\"output_tokens\":20}}", ev[..]);
+  #assert n == 3 && ev[0].kind == GW_EV_REASONING && ev[1].kind == GW_EV_TEXT && ev[1].text == "{\"answer\":\"4\"}";
+  #assert ev[2].kind == GW_EV_DONE && ev[2].reason == "stop" && ev[2].usage.input_tokens == 9 && ev[2].usage.output_tokens == 20;
+  n = gw_parse_whole(GW_WIRE_ANTHROPIC, ar[..], "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}", ev[..]);
+  #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].reason == "Overloaded";
+}
