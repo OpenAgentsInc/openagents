@@ -1,0 +1,155 @@
+{
+  "tested_at_utc": "2026-10-30T15:18:22Z",
+  "relay": "wss://relay.openagents.com",
+  "source_commit": "50a71915b4ee4f3aa72afa16f2fece239e0b6bb8",
+  "binary_sha256": "6b7049b1e469cb6930f3ea166e02e55138380bcb4064e90b2ba22c6f17d29e54",
+  "host_source": "/tmp/codex-oct30-fleethost/psionic/platform/fleet-host.c",
+  "sources_sha256": {
+    "psionic/lib/fleet/policy.coax": "9ecc4efd742fe6d03dbbcf32c7b79ffe9d6e33134e135d158baa4b1cdfbea5e3",
+    "psionic/lib/fleet/protocol.coax": "29bb7ae16b0cf0a89649cc9deb6dbe40b59ea52b508c7a5c0fe04dd6a7581f91",
+    "psionic/lib/fleet/service.coax": "4ef30543a54520aae5c0516f1cdecea2743ebf42798d58dacb32a93236e77a5f",
+    "psionic/lib/fleet/run.coax": "6358e013019c1589d76371c96f2eeac10372c2aabe9043e5c5217b2aeddc75a7",
+    "psionic/platform/fleet-host.c": "74814b4a1d64137f78247afeff600b9fbf2278f5951124c7c53dcb2cac0d8f37"
+  },
+  "expected_providers": {
+    "f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124": "oct30-mac-demo",
+    "d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f": "oct30-coderos-demo"
+  },
+  "cases": [
+    {
+      "case": "remote",
+      "argv": [
+        "/tmp/oct30-fleet-public/psionic-fleet",
+        "--identity",
+        "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+        "--port",
+        "53613",
+        "--timeout-ms",
+        "8000",
+        "--attempt-ms",
+        "2000",
+        "--discover-ms",
+        "750"
+      ],
+      "status": 200,
+      "http_elapsed_ms": 1201.978,
+      "startup_and_request_ms": 2028.856,
+      "response": {
+        "answers": {
+          "wet": {
+            "type": "choice",
+            "choice": "no",
+            "confidence": 0.562371685,
+            "probabilities": {
+              "yes": 0.437628315,
+              "no": 0.562371685
+            }
+          }
+        },
+        "latency_ms": 112,
+        "model": "psionic-toy",
+        "service": {
+          "door": "pylon:oct30-mac-demo",
+          "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+          "provider": "f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124",
+          "version": "psionic-pylon-v1"
+        },
+        "usage": null
+      }
+    },
+    {
+      "case": "fallback",
+      "argv": [
+        "/tmp/oct30-fleet-public/psionic-fleet",
+        "--identity",
+        "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+        "--port",
+        "53628",
+        "--timeout-ms",
+        "3000",
+        "--attempt-ms",
+        "1000",
+        "--discover-ms",
+        "0",
+        "--fallback",
+        "http://127.0.0.1:63826"
+      ],
+      "status": 200,
+      "http_elapsed_ms": 532.68,
+      "startup_and_request_ms": 613.888,
+      "response": {
+        "model": "psionic-toy",
+        "answers": {
+          "wet": {
+            "type": "choice",
+            "choice": "no",
+            "confidence": 0.562371685,
+            "probabilities": {
+              "yes": 0.437628315,
+              "no": 0.562371685
+            }
+          }
+        },
+        "usage": null,
+        "service": {
+          "door": "psionic",
+          "version": "psionic-serve-v1",
+          "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573"
+        },
+        "latency_ms": 62
+      }
+    },
+    {
+      "case": "wrong-identity-fallback-refused",
+      "argv": [
+        "/tmp/oct30-fleet-public/psionic-fleet",
+        "--identity",
+        "psionic-toy@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "--port",
+        "53632",
+        "--timeout-ms",
+        "3000",
+        "--attempt-ms",
+        "1000",
+        "--discover-ms",
+        "0",
+        "--fallback",
+        "http://127.0.0.1:63826"
+      ],
+      "status": 503,
+      "http_elapsed_ms": 593.137,
+      "startup_and_request_ms": 722.871,
+      "response": {
+        "error": {
+          "code": "busy",
+          "message": "the server is answering another decision; retry later"
+        }
+      }
+    },
+    {
+      "case": "no-eligible-refused",
+      "argv": [
+        "/tmp/oct30-fleet-public/psionic-fleet",
+        "--identity",
+        "psionic-toy@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "--port",
+        "53642",
+        "--timeout-ms",
+        "3000",
+        "--attempt-ms",
+        "1000",
+        "--discover-ms",
+        "0"
+      ],
+      "status": 503,
+      "http_elapsed_ms": 519.652,
+      "startup_and_request_ms": 663.182,
+      "response": {
+        "error": {
+          "code": "busy",
+          "message": "the server is answering another decision; retry later"
+        }
+      }
+    }
+  ]
+}

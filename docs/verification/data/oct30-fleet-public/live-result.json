@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_ms": 1167.684,
+  "response": {
+    "answers": {
+      "wet": {
+        "type": "choice",
+        "choice": "no",
+        "confidence": 0.562371685,
+        "probabilities": {
+          "yes": 0.437628315,
+          "no": 0.562371685
+        }
+      }
+    },
+    "latency_ms": 36,
+    "model": "psionic-toy",
+    "service": {
+      "door": "pylon:oct30-coderos-demo",
+      "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+      "provider": "d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f",
+      "version": "psionic-pylon-v1"
+    },
+    "usage": null
+  },
+  "independent_shape_probability_and_known_provider_check": true
+}

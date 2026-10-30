@@ -1,0 +1,22 @@
+{
+  "pid": 2871,
+  "argv": [
+    "/tmp/oct30-fleet-live/psionic-fleet",
+    "--identity",
+    "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+    "--port",
+    "8798",
+    "--fallback",
+    "http://127.0.0.1:63826",
+    "--timeout-ms",
+    "8000",
+    "--attempt-ms",
+    "2000",
+    "--discover-ms",
+    "750"
+  ],
+  "endpoint": "http://127.0.0.1:8798/v1/systemone",
+  "logs": "/tmp/oct30-fleet-live/fleet.log",
+  "stop": "kill -TERM 2871",
+  "key": "fresh throwaway buyer key in memory only"
+}

@@ -193,8 +193,10 @@ and E. Then F. G about an hour before the talk.
   owner decision (Psionic PLAN, Part IV).
 - **Privacy.** A Pylon that serves a request reads it. NIP-44 hides jobs only
   from the relay and other observers.
-- **No routing yet.** `/v1/systemone` fanning out to Pylons is chapter 20,
-  not built. On stage, jobs come from the demo buyer (F).
+- **Routing.** Chapter 20 now has a native loopback `psionic-fleet` adapter
+  for `/v1/systemone` fan-out to discovered Pylons and explicitly configured
+  same-identity local fallback. The production cloud API is not wired to it.
+  The stage buyer (F) remains available independently.
 - **Ephemeral events.** Jobs and answers aren't stored by relays (NIP-DEC).
   A Pylon that's offline when a job is sent misses it.
 
@@ -321,3 +323,26 @@ and E. Then F. G about an hour before the talk.
   the coordinated build is ready. `coax/web/tests/pylon-live.ts` opens the
   real page first, prints READY for expected verified slugs, waits for real
   per-provider answer counts, and saves a screenshot plus JSON for G.
+
+- **Chapter 20 public HTTP rehearsal passed, 2026-10-30.** The frozen
+  ASan/UBSan native fleet binary `6b7049b1e469cb6930f3ea166e02e55138380bcb4064e90b2ba22c6f17d29e54`
+  completed four real HTTP cases: public-relay remote **200** from
+  `oct30-mac-demo` (**1,202 ms**); same-identity local engine fallback **200**
+  (**533 ms**); wrong-identity fallback **503**; and no eligible service
+  **503**. Native Coax verified and decrypted the remote answer; the harness
+  independently checked known provider/slug, exact model identity, requested
+  choice, confidence and probability consistency. Every invocation used a
+  fresh throwaway buyer key in memory, with clean shutdown and no sanitizer
+  diagnostics. Exact source hashes, frozen binary hash, commands, logs and
+  harness snapshot: [`data/oct30-fleet-public`](verification/data/oct30-fleet-public/).
+  A fifth HTTP call through the retained adapter returned **200** from the
+  real Linux `oct30-coderos-demo` in **1,168 ms**, so both demo machines
+  answered through the new HTTP path.
+
+  The adapter remains on **`http://127.0.0.1:8798/v1/systemone`**, PID **2871**,
+  binary `/tmp/oct30-fleet-live/psionic-fleet`; it uses the public relay, the
+  exact toy identity and fallback `http://127.0.0.1:63826`. Only loopback is
+  listening (recorded with `lsof`). Logs: `/tmp/oct30-fleet-live/fleet.log`.
+  Stop only the adapter with `kill -TERM 2871`; both Pylons were left running.
+  Launch/stop details are also `/tmp/oct30-fleet-live/run.json`. This runtime
+  state is as tested, not a persistent installed service.

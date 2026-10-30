@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+import argparse,hashlib,http.client,json,os,pathlib,signal,socket,subprocess,threading,time
+p=argparse.ArgumentParser();p.add_argument('--binary',required=True);p.add_argument('--out',required=True);p.add_argument('--source',required=True);p.add_argument('--host-source',default='/tmp/codex-oct30-fleethost/psionic/platform/fleet-host.c');a=p.parse_args()
+root=pathlib.Path(a.source);out=pathlib.Path(a.out);out.mkdir(parents=True,exist_ok=True)
+identity='psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573'
+providers={'f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124':'oct30-mac-demo','d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f':'oct30-coderos-demo'}
+body=json.dumps({'model':'psionic-toy','state':'Water is wet.','questions':{'wet':{'type':'choice','criteria':{'yes':None,'no':None}}}},separators=(',',':'))
+records=[]
+def one(name,target,local=False,remote=False):
+    s=socket.socket();s.bind(('127.0.0.1',0));port=s.getsockname()[1];s.close()
+    argv=[a.binary,'--identity',target,'--port',str(port),'--timeout-ms','8000' if remote else '3000','--attempt-ms','2000' if remote else '1000','--discover-ms','750' if remote else '0']
+    if local:argv+=['--fallback','http://127.0.0.1:63826']
+    log=out/(name+'.log');ready=threading.Event();auth=threading.Event();started=time.monotonic()
+    proc=subprocess.Popen(argv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+    def capture():
+      with log.open('w') as f:
+       for line in proc.stdout:
+        f.write(line);f.flush()
+        if 'fleet: ready on' in line:ready.set()
+        if 'fleet: relay AUTH accepted' in line:auth.set()
+    reader=threading.Thread(target=capture,daemon=True);reader.start()
+    try:
+      assert ready.wait(15), 'native fleet did not print HTTP readiness: '+log.read_text()
+      if remote:assert auth.wait(15),'public relay AUTH did not complete: '+log.read_text()
+      c=http.client.HTTPConnection('127.0.0.1',port,timeout=15);before=time.monotonic()
+      c.request('POST','/v1/systemone',body,{'Content-Type':'application/json'})
+      r=c.getresponse();raw=r.read();elapsed=(time.monotonic()-before)*1000;c.close();value=json.loads(raw)
+      record={'case':name,'argv':argv,'status':r.status,'http_elapsed_ms':round(elapsed,3),'startup_and_request_ms':round((time.monotonic()-started)*1000,3),'response':value}
+      if remote or (local and target==identity):
+        assert r.status==200,(r.status,value,log.read_text())
+        service=value['service'];assert value['model']=='psionic-toy' and service['identity']==identity,value
+        answer=value['answers']['wet'];probs=answer['probabilities'];assert set(probs)=={'yes','no'} and abs(sum(probs.values())-1)<=1e-6 and all(0<=v<=1 for v in probs.values()),answer
+        chosen=min(probs,key=lambda k:(-probs[k],k));assert answer['choice']==chosen and abs(answer['confidence']-probs[chosen])<=1e-6,answer
+        if remote:assert service['provider'] in providers and service['door']=='pylon:'+providers[service['provider']],service
+        else:assert service['door']=='psionic' and 'provider' not in service,service
+      else:
+        assert r.status==503 and value['error']['code']=='busy',(r.status,value,log.read_text())
+      records.append(record)
+    finally:
+      proc.send_signal(signal.SIGTERM)
+      try:record_exit=proc.wait(timeout=5)
+      except subprocess.TimeoutExpired:proc.kill();proc.wait();raise AssertionError('owned fleet failed to stop promptly')
+      reader.join(timeout=2)
+    assert record_exit==0,(name,record_exit,log.read_text())
+    if name=='fallback':assert 'fleet: local fallback' in log.read_text(),log.read_text()
+    if name=='remote':assert 'fleet: remote answer from' in log.read_text(),log.read_text()
+one('remote',identity,remote=True)
+one('fallback',identity,local=True)
+one('wrong-identity-fallback-refused','psionic-toy@sha256:'+'0'*64,local=True)
+one('no-eligible-refused','psionic-toy@sha256:'+'0'*64)
+files=['psionic/lib/fleet/policy.coax','psionic/lib/fleet/protocol.coax','psionic/lib/fleet/service.coax','psionic/lib/fleet/run.coax','psionic/platform/fleet-host.c']
+result={'tested_at_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'relay':'wss://relay.openagents.com','source_commit':subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip(),'binary_sha256':hashlib.sha256(pathlib.Path(a.binary).read_bytes()).hexdigest(),'host_source':a.host_source,'sources_sha256':{f:hashlib.sha256((pathlib.Path(a.host_source) if f=='psionic/platform/fleet-host.c' else root/f).read_bytes()).hexdigest() for f in files},'expected_providers':providers,'cases':records}
+(out/'result.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps({'passed':len(records),'out':str(out),'cases':[{k:v for k,v in r.items() if k in ['case','status','http_elapsed_ms']} for r in records]},indent=2))
