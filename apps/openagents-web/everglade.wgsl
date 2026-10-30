@@ -398,6 +398,9 @@ const LOOK_CANOPY = 7u;                            // a kit tree's leaves, lit a
 const PERSON_SPAN = 2.5;                           // a person's vertex box (verse/tools/people.py SPAN, LOW)
 const PERSON_LOW = vec3f(-1.25, -0.25, -1.25);
 const PERSON_JOINTS = 65u;                         // verse/everglade/people-rig.coax PEOPLE_JOINTS
+const BAND_FAR_MID = 0.6; const BAND_FAR_SHARE = 0.45; const BAND_FAR_FROM = 15.0; const BAND_FAR_TO = 60.0;
+const AUX_DISTANCE = 256.0;                          // aux.g: a painted pixel's distance from the eye over this
+const SOFT_FROM = 12.0; const SOFT_TO = 40.0;        // the far field's softening, from and to (m)
 const CHARACTER_LOD_BIAS = 2.0;                    // spec 11: a character's textures two mip levels coarser
 const LOOK_CHARACTER = 8u;                         // the Ranger: textured, two bands and the stronger rim (spec 11)
 const LOOK_ROCK = 10u;                             // a kit rock (everglade.coax LOOK_ROCK): darker, mottled, mossy on top
@@ -833,7 +836,10 @@ fn paint(dry: vec3f, n: vec3f, world: vec3f, lit: f32, character: bool, rim: boo
   let v = normalize(world - u.eye.xyz);
   let base = weather_wet_base(dry, n, character);   // rain darkens what it wets (W9)
   let w = verse_style_wrap(dot(n, l)) * lit;
-  let band = select(verse_style_bands(w, st(7u).x, st(7u).y, st(7u).z, st(7u).w), verse_style_bands2(w, st(8u).x, st(8u).y), character);
+  let band0 = select(verse_style_bands(w, st(7u).x, st(7u).y, st(7u).z, st(7u).w), verse_style_bands2(w, st(8u).x, st(8u).y), character);
+  // past the near ground the bands draw together (spec 15, fine detail): a crown, a roof, a wall at
+  // forty metres reads as one mass in its light, not a lace of lit and shadowed pieces
+  let band = mix(band0, BAND_FAR_MID, BAND_FAR_SHARE * smoothstep(BAND_FAR_FROM, BAND_FAR_TO, length(u.eye.xyz - world)));
   let key = st(0u).xyz * st(0u).w;
   let amb = vec3f(verse_style_ambient(n.y, st(5u).x, st(6u).x, st(5u).w), verse_style_ambient(n.y, st(5u).y, st(6u).y, st(5u).w), verse_style_ambient(n.y, st(5u).z, st(6u).z, st(5u).w));
   var c = banded(base, st(4u).xyz * amb, key + amb, band);
@@ -852,7 +858,7 @@ fn paint(dry: vec3f, n: vec3f, world: vec3f, lit: f32, character: bool, rim: boo
   c = weather_streaks(c, v, d);   // the rain between you and it (W9)
   c = water_under_view(c, world, v);   // diving: the underwater look (W7)
   let b = st(19u);
-  return Lit(vec4f(c, verse_style_bloom_share(verse_style_luma(c.x, c.y, c.z), b.x, b.y)), vec4f(verse_style_shaft_source(dot(v, l)) * fog, 0.0, 0.0, 0.0));
+  return Lit(vec4f(c, verse_style_bloom_share(verse_style_luma(c.x, c.y, c.z), b.x, b.y)), vec4f(verse_style_shaft_source(dot(v, l)) * fog, d / AUX_DISTANCE, 0.0, 0.0));
 }
 // The lamps' light at p (normal n): each pools within its reach, (1 - (d/reach)^2)^2, wrapped round
 // the surface a little so the ground under a lamp lights all round it; none by day.
@@ -2080,8 +2086,18 @@ fn tone(c: vec3f) -> vec3f {
   return vec3f(verse_style_lift(t.x, st(18u).z), verse_style_lift(t.y, st(18u).z), verse_style_lift(t.z, st(18u).z));
 }
 @fragment fn post_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
-  let light = textureLoad(post_light, vec2i(pos.xy), 0).rgb;
+  var light = textureLoad(post_light, vec2i(pos.xy), 0).rgb;
   let uv = pos.xy / u.size;
+  // the far field softened (spec 15, fine detail; the references' far forest is masses, not leaves): a
+  // pixel painted past SOFT_FROM (aux.g, its distance, from paint) takes the mean of four linear taps
+  // round it, all of it by SOFT_TO; the near ground and the sky stay as drawn
+  let far = smoothstep(SOFT_FROM, SOFT_TO, textureLoad(post_aux, vec2i(pos.xy), 0).g * AUX_DISTANCE);
+  if (far > 0.0) {
+    let t = 0.65 / u.size;
+    let soft = (textureSampleLevel(post_light, post_lin, uv + t, 0.0).rgb + textureSampleLevel(post_light, post_lin, uv - t, 0.0).rgb
+      + textureSampleLevel(post_light, post_lin, uv + vec2f(t.x, -t.y), 0.0).rgb + textureSampleLevel(post_light, post_lin, uv + vec2f(-t.x, t.y), 0.0).rgb) * 0.25;
+    light = mix(light, soft, far);
+  }
   let b = textureSampleLevel(post_quarter, post_lin, uv, 0.0).rgb * 0.55 + textureSampleLevel(post_eighth, post_lin, uv, 0.0).rgb * 0.45;
   let m = st(19u).z;
   var c = vec3f(verse_style_bloom_mix(light.x, b.x, m), verse_style_bloom_mix(light.y, b.y, m), verse_style_bloom_mix(light.z, b.z, m));

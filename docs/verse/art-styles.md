@@ -562,6 +562,19 @@ fine detail 0.024 to 0.044 (the grass blades push the day views over
 0.035), ink and near black in range, saturation 0.29 to 0.39; phones over on
 fine detail (0.039 to 0.057). `release.sh --style-check` runs it as a report.
 
+**Everglade under the limit** (October 29). The Breath of the Wild
+references measure 0.016 (the forest floor) and 0.019 (the vista) on the
+same scale. Everglade's excess was the middle and far field: the crowns'
+leaves and lit and shadowed lobes, the fences, the far grass. Two changes
+fix it, and the near ground stays as drawn. First, `paint` writes each
+pixel's distance into aux.g, and `post_fs` gives a pixel painted past 12 m
+the mean of four linear taps round it, all of it by 40 m (`SOFT_FROM`,
+`SOFT_TO`; the sky is not touched). Second, the bands draw 0.45 of the way
+toward 0.6 from 15 to 60 m (`BAND_FAR_*`), so a far crown reads as one mass
+in its light. All 18 views pass now: road, river and commons at noon, dusk
+and night, on desktop and phone. Fine detail is 0.014 to 0.034, with
+saturation 0.28 to 0.58. On a phone this costs about 0.4 ms of GPU a frame.
+
 The fixture's painterly scene is each engine task's demo, and its golden
 (one per clock key) is how an engine change shows up for review.
 
