@@ -1,0 +1,124 @@
+{
+  "steps": [
+    {
+      "step": "fetch",
+      "ms": 638,
+      "endpoint": "30203:eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0:ca928b0e77366c2ac81d77cd4d8f65925f4c48c4451041b70d99898d7792ed72",
+      "release": "28ac5b5295bd20af4b7649188dc70c6f05cfde3d85b4995148996cbdaf7a74ee"
+    },
+    {
+      "step": "chain",
+      "ms": 253,
+      "hwmodel": "GCP_INTEL_TDX",
+      "chain": [
+        "CN=Confidential Space Leaf Certificate,OU=Google Cloud,O=Google LLC,L=Mountain View,ST=California,C=US",
+        "CN=Confidential Space Intermediate CA,OU=Google Cloud,O=Google LLC,L=Mountain View,ST=California,C=US",
+        "CN=Confidential Space Root CA,OU=Google Cloud,O=Google LLC,L=Mountain View,ST=California,C=US"
+      ]
+    },
+    {
+      "step": "measure",
+      "ms": 0,
+      "measured": {
+        "expected": "sha256:896b90ac19e38c879782cbf39274c8d440925bfeb62a14f925faf204102f71d0",
+        "reported": "sha256:896b90ac19e38c879782cbf39274c8d440925bfeb62a14f925faf204102f71d0",
+        "hwmodel": "GCP_INTEL_TDX",
+        "support": [
+          "LATEST",
+          "STABLE",
+          "USABLE"
+        ],
+        "admitted": "listed in head generation 1791680264, notice 600 s, published 1791680264",
+        "gpu": null
+      }
+    },
+    {
+      "step": "bind",
+      "ms": 0,
+      "bound": {
+        "key": "eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0",
+        "binding": "508c0222ec3db94a0535a1ae400b8f32f080aa9c29284406eddd5cddcfb81368",
+        "nonces": [
+          "508c0222ec3db94a0535a1ae400b8f32f080aa9c29284406eddd5cddcfb81368"
+        ],
+        "level": "tee-cloud"
+      }
+    },
+    {
+      "step": "encrypt",
+      "ms": 4,
+      "request": "af9234085c567c7a0dadda5259df581c203a48f2bd972623568a83e72eda0296",
+      "ciphertext_bytes": 944
+    },
+    {
+      "step": "relay",
+      "ms": 59,
+      "round_ms": 8404,
+      "answers": 2
+    },
+    {
+      "step": "status",
+      "word": "processing",
+      "refusal": null
+    },
+    {
+      "step": "answer",
+      "response": {
+        "answers": {
+          "answer": {
+            "noul": 0.9733219061141002,
+            "type": "noul"
+          }
+        },
+        "attested": {
+          "endpoint": "30203:eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0:ca928b0e77366c2ac81d77cd4d8f65925f4c48c4451041b70d99898d7792ed72",
+          "level": "tee-cloud",
+          "measurement": "sha256:896b90ac19e38c879782cbf39274c8d440925bfeb62a14f925faf204102f71d0",
+          "model": "clef-flash",
+          "model_digest": "sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+          "release": "28ac5b5295bd20af4b7649188dc70c6f05cfde3d85b4995148996cbdaf7a74ee",
+          "request_ciphertext_digest": "663b188813db50ccc763a11c760b661da71422a17d1f4f3b40a297f5ab80697b"
+        },
+        "latency_ms": 7883,
+        "model": "clef-flash",
+        "psionic": {
+          "accumulate": "f32",
+          "artifact": "Clef-Flash-Q4_K_M.gguf",
+          "artifact_digest": "sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+          "backend": "cpu",
+          "execution_mode": "native",
+          "head_digest": "sha256:6e4699704c24e9f04f3e9270e7fe9c72fdb7c72086e30648d4ac4a39e5e6b041",
+          "head_source": "gguf",
+          "latency_ms": 7882,
+          "max_tokens": 16384,
+          "prefill_chunk": 256,
+          "prompt_tokens": 150,
+          "trained_length": 16384,
+          "truncated_state_tokens": 0
+        },
+        "service": {
+          "door": "pylon:att-tdx",
+          "identity": "clef-flash@sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+          "provider": "eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0",
+          "version": "pylon@0.1.0"
+        },
+        "usage": {
+          "cached_input_tokens": 0,
+          "input_tokens": 150,
+          "output_tokens": 0
+        }
+      }
+    },
+    {
+      "step": "receipt",
+      "checked": {
+        "receipt_digest": "sha256:a5e35b2cf00845c86f2669a2d2109352a86f6e5151887fffc7fefb45a81fe7e9",
+        "request_ciphertext_digest": "663b188813db50ccc763a11c760b661da71422a17d1f4f3b40a297f5ab80697b",
+        "measurement": "sha256:896b90ac19e38c879782cbf39274c8d440925bfeb62a14f925faf204102f71d0",
+        "model": "clef-flash",
+        "model_digest": "sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+        "level": "tee-cloud"
+      }
+    }
+  ]
+}

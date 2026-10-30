@@ -1,0 +1,24 @@
+{
+  "steps": [
+    {
+      "step": "fetch",
+      "ms": 677,
+      "endpoint": "30203:eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0:ca928b0e77366c2ac81d77cd4d8f65925f4c48c4451041b70d99898d7792ed72",
+      "release": "28ac5b5295bd20af4b7649188dc70c6f05cfde3d85b4995148996cbdaf7a74ee"
+    },
+    {
+      "step": "chain",
+      "ms": 73,
+      "hwmodel": "GCP_INTEL_TDX",
+      "chain": [
+        "CN=Confidential Space Leaf Certificate,OU=Google Cloud,O=Google LLC,L=Mountain View,ST=California,C=US",
+        "CN=Confidential Space Intermediate CA,OU=Google Cloud,O=Google LLC,L=Mountain View,ST=California,C=US",
+        "CN=Confidential Space Root CA,OU=Google Cloud,O=Google LLC,L=Mountain View,ST=California,C=US"
+      ]
+    }
+  ],
+  "refused": {
+    "step": "measure",
+    "reason": "the program's fingerprint sha256:896b90ac19e38c879782cbf39274c8d440925bfeb62a14f925faf204102f71d0 is not the logged release sha256:896b90ac19e38c879782cbf39274c8d440925bfeb62a14f925faf204102f71d1"
+  }
+}

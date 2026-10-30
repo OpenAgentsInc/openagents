@@ -4,7 +4,7 @@
 // all #authority. A complete toy decision exceeds the evaluator's budget, so
 // the success path is checked natively by psionic/tests/serve.c against
 // direct calls to the chapter-10 adapters.
-#load "serve-engine.coax";
+#load "serve-original.coax";
 #test "refusals come before any model work" {
     toy:[1]SvToy;e:=sv_test_toy(toy[..],64);storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);work:SvWork;p:[16320]f64;
     r:=sv_decode("{\"model\":\"other\",\"state\":\"go\",\"questions\":{\"q\":{\"type\":\"noul\"}}}",pools);
@@ -251,7 +251,8 @@ ls_health :: (life:LsLife,identity:string,build:string,probe:int,out:[]u8)->int 
 }
 ls_seed :: (model:string)->string #export_c {
     if model=="psionic-toy" {return "{\"model\":\"psionic-toy\",\"state\":\"Water is wet.\",\"questions\":{\"wet\":{\"type\":\"choice\",\"instructions\":\"Is the water wet?\",\"criteria\":{\"yes\":null,\"no\":null}}}}";}
-    if model=="elephant-1" {return "{\"model\":\"elephant-1\",\"state\":\"Water is wet.\",\"questions\":{\"wet\":{\"type\":\"choice\",\"instructions\":\"Is the water wet?\",\"criteria\":{\"yes\":null,\"no\":null}}}}";}return "";
+    if model=="elephant-1" {return "{\"model\":\"elephant-1\",\"state\":\"Water is wet.\",\"questions\":{\"wet\":{\"type\":\"choice\",\"instructions\":\"Is the water wet?\",\"criteria\":{\"yes\":null,\"no\":null}}}}";}
+    return sv_mammoth_seed(model);
 }
 
 #test "CPU prefix and suffix staging refuse before touching absent storage" {
@@ -264,11 +265,15 @@ ls_seed :: (model:string)->string #export_c {
     #assert ls_seed_valid("psionic-toy",0.437947251,0.562052749) && !ls_seed_valid("psionic-toy",0.5,0.5);
     #assert ls_seed_valid("elephant-1",0.757202773,0.242797227) && !ls_seed_valid("elephant-1",0.9,0.1);
     #assert !ls_seed_valid("other",0.5,0.5);
+    #assert ls_seed("mammoth-1").count>0;
+    #assert ls_seed_valid("mammoth-1",0.944611910,0.055388090) && ls_seed_valid("mammoth-1",0.944614404,0.055385596);
+    #assert !ls_seed_valid("mammoth-1",0.9,0.1) && !ls_seed_valid("mammoth-1",0.945111911,0.054888089);
 }
 ls_seed_valid :: (model:string,yes:f64,no:f64)->bool #export_c {
     if !sv_probability(yes) || !sv_probability(no) || abs(yes+no-1)>0.00000001 {return false;}
     if model=="psionic-toy" {return abs(yes-0.437947251)<0.00000001;}
-    if model=="elephant-1" {return abs(yes-0.757196285)<0.0005;}return false;
+    if model=="elephant-1" {return abs(yes-0.757196285)<0.0005;}
+    return sv_mammoth_seed_valid(model,yes,no);
 }
 
 #test "bounded host probes measure real Coax work without changing model arithmetic" {

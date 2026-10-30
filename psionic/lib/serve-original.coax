@@ -1,0 +1,64 @@
+// Pinned original model factories and warmup policy. Keep this small authority
+// root independently checked as new serving targets join the existing engine.
+#load "serve-engine.coax";
+#authority;
+// The frozen complete inventory pins both original Mammoth shards. A single
+// shard's digest is deliberately not advertised as the whole checkpoint.
+SV_MAMMOTH_SHA :: "4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019";
+SvOriginalStorage :: struct {ok:bool;tensors:int;layers:int;params:int;layer_work:int;norm:int;shards:int;}
+#test "Mammoth serving retains the two-shard inventory and rejects a different session" {
+    layers:[64]QeLayer;s:=PsSession.{target=PsKind.mammoth};s.model.vocab=248320;s.model.layers=layers[..];s.model.shape.state.capacity=512;
+    e:=sv_mammoth(s,128);#assert e.ok && !e.sealed && e.name=="mammoth-1" && e.alias=="baselabs/mammoth-1" && e.digest=="4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019" && e.capacity==128 && e.temperature==1 && e.options==255;
+    #assert !sv_mammoth(s,0).ok && !sv_mammoth(s,513).ok;
+    large:=s;large.model.shape.state.capacity=20000;#assert !sv_mammoth(large,16385).ok;
+    bad:=s;bad.target=PsKind.elephant;#assert !sv_mammoth(bad,128).ok;
+    bad=s;bad.status=PsOpenStatus.bundle;#assert !sv_mammoth(bad,128).ok;
+    bad=s;bad.model.vocab=248319;#assert !sv_mammoth(bad,128).ok;
+    bad=s;bad.model.layers=layers[0..<63];#assert !sv_mammoth(bad,128).ok;
+}
+#test "original serving storage follows the pinned target instead of host constants" {
+    a:=sv_original_storage(0,128);b:=sv_original_storage(1,512);
+    #assert a.ok && a.tensors==760 && a.layers==32 && a.params==1057280 && a.layer_work==49856 && a.norm==4096 && a.shards==1;
+    #assert b.ok && b.tensors==1184 && b.layers==64 && b.params==2640384 && b.layer_work==62176 && b.norm==5120 && b.shards==2;
+    #assert !sv_original_storage(2,128).ok && !sv_original_storage(0,0).ok && !sv_original_storage(1,16385).ok;
+}
+#test "Mammoth warmup has the frozen original CPU tolerance and exact request" {
+    #assert sv_mammoth_seed("other")=="" && sv_mammoth_seed("mammoth-1")!="";
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);r:=sv_decode(sv_mammoth_seed("mammoth-1"),pools);
+    #assert r.code==SvCode.none && r.model=="mammoth-1" && r.state.kind==PtEntryKind.text && r.state.value=="Water is wet." && r.questions==1;
+    #assert pools.questions[0].kind==PtQuestionKind.choice && pools.questions[0].instructions.kind==PtEntryKind.text && pools.questions[0].instructions.value=="Is the water wet?" && pools.questions[0].count==2;
+    #assert pools.options[0].name=="yes" && pools.options[1].name=="no";
+    #assert sv_mammoth_seed_valid("mammoth-1",0.944611910,0.055388090) && sv_mammoth_seed_valid("mammoth-1",0.944614404,0.055385596);
+    #assert !sv_mammoth_seed_valid("other",0.944611910,0.055388090) && !sv_mammoth_seed_valid("mammoth-1",0.9,0.1);
+    #assert !sv_mammoth_seed_valid("mammoth-1",0.945111911,0.054888089) && !sv_mammoth_seed_valid("mammoth-1",0.944111909,0.055888091);
+    #assert !sv_mammoth_seed_valid("mammoth-1",0.944611910,0.2) && !sv_mammoth_seed_valid("mammoth-1",0.944611910,-0.1);
+    #assert !sv_mammoth_seed_valid("mammoth-1",0.0/0.0,0.055388090) && !sv_mammoth_seed_valid("mammoth-1",1.1,-0.1);
+}
+#test "golden errors include the frozen limits and exclude the next larger value" {
+    #assert sv_original_error_ok(0,0) && sv_original_error_ok(0.0005,0.00000001);
+    #assert !sv_original_error_ok(0.000500000001,0) && !sv_original_error_ok(0,0.000000010000001);
+    #assert !sv_original_error_ok(-0.00000001,0) && !sv_original_error_ok(0,-0.00000001);
+    #assert !sv_original_error_ok(0.0/0.0,0) && !sv_original_error_ok(0,0.0/0.0);
+}
+sv_mammoth :: (session:PsSession,capacity:int)->SvEngine #export_c {
+    if session.status!=PsOpenStatus.ok || session.target!=PsKind.mammoth || session.model.vocab!=248320 || session.model.layers.count!=64 {return SvEngine.{};}
+    target:=ps_target(1,capacity);if target.status!=PsStatus.ok {return SvEngine.{};}
+    return sv_engine(session,"mammoth-1",target.origin,SV_MAMMOTH_SHA,1,capacity);
+}
+sv_original_storage :: (kind:u8,capacity:int)->SvOriginalStorage #export_c {
+    t:=ps_target(kind,capacity);if t.status!=PsStatus.ok {return SvOriginalStorage.{};}
+    linear:=pma_params(t.shape,false);full:=pma_params(t.shape,true);
+    return SvOriginalStorage.{ok=true,tensors=t.tensors,layers=t.shape.state.linear_layers+t.shape.state.full_layers,params=t.shape.state.linear_layers*linear+t.shape.state.full_layers*full,layer_work=linear+full,norm=t.shape.linear.width,shards=t.shards};
+}
+sv_mammoth_seed :: (model:string)->string {
+    if model=="mammoth-1" {return "{\"model\":\"mammoth-1\",\"state\":\"Water is wet.\",\"questions\":{\"wet\":{\"type\":\"choice\",\"instructions\":\"Is the water wet?\",\"criteria\":{\"yes\":null,\"no\":null}}}}";}return "";
+}
+sv_mammoth_seed_valid :: (model:string,yes:f64,no:f64)->bool {
+    if model!="mammoth-1" || !sv_probability(yes) || !sv_probability(no) {return false;}
+    return sv_original_error_ok(abs(yes-0.944611910),abs(yes+no-1));
+}
+// These are measured absolute errors. Testing this boundary directly avoids
+// relying on a subtraction near one to represent the tolerance exactly.
+sv_original_error_ok :: (probability:f64,normalization:f64)->bool {
+    return probability>=0 && probability<=0.0005 && normalization>=0 && normalization<=0.00000001;
+}

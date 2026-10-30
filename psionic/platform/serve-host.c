@@ -40,6 +40,7 @@
 #include "serve-notify.h"
 #include "serve-busy.h"
 #include "elephant-inventory.h"
+#include "../fixtures/models/mammoth/inventory.h"
 #if defined(PSIONIC_SERVE_METAL)
 #include "elephant-metal.h"
 #include <mach-o/dyld.h>
@@ -237,37 +238,47 @@ static void open_toy(Server *s, int64_t capacity) {
     s->engine = sv_seal(s->engine, overlaps(read_only, 4, s));
 }
 
-static void open_elephant(Server *s, const char *dir, const char *table_path, int64_t capacity, bool gpu, int64_t device_mib) {
+static void open_original(Server *s, uint8_t kind, const char *dir, const char *table_path, int64_t capacity, bool gpu, int64_t device_mib) {
     coax_v_u8 config = map_named(dir, "config.json"), tokenizer = map_named(dir, "tokenizer.json"), readout = map_named(dir, "readout.json");
     coax_v_u8 index = {NULL, 0}, table = map_file(table_path);
-    coax_t_PaFile *file = zalloc(1, sizeof *file);
-    char weights_path[4096]; snprintf(weights_path, sizeof weights_path, "%s/model.safetensors", dir);
-    VfEntry *verified = zalloc(1, sizeof *verified); if(vf_map_file(verified, weights_path, file)){fprintf(stderr,"psionic-serve: checkpoint mapping failed\n");exit(2);}
-    s->cached_pages=verified->cached_pages;s->total_pages=verified->total_pages;
-    size_t count = sizeof elephant_specs / sizeof *elephant_specs;
+    coax_t_SvOriginalStorage z = sv_original_storage(kind, capacity);
+    coax_t_PsTarget target = ps_target(kind, capacity);
+    if (!z.ok) { fprintf(stderr,"psionic-serve: original target refused\n"); exit(2); }
+    if (z.shards > 1) index = map_named(dir, "model.safetensors.index.json");
+    coax_t_PaFile *files = zalloc((size_t)z.shards, sizeof *files);
+    VfEntry *verified = zalloc((size_t)z.shards, sizeof *verified);
+    for (int64_t i = 0; i < z.shards; i++) {
+        char weights_path[4096];
+        int n = snprintf(weights_path, sizeof weights_path, "%s/%.*s", dir, (int)target.shard.e[i].name.count, target.shard.e[i].name.data);
+        if (n < 0 || (size_t)n >= sizeof weights_path || vf_map_file(verified+i, weights_path, files+i)) { fprintf(stderr,"psionic-serve: checkpoint mapping failed\n");exit(2); }
+        s->cached_pages += verified[i].cached_pages;s->total_pages += verified[i].total_pages;
+    }
+    size_t count = (size_t)z.tensors;
     coax_t_P5Spec *specs = zalloc(count, sizeof *specs);
     for (size_t i = 0; i < count; i++) {
-        specs[i].name = str(elephant_specs[i].name); specs[i].shape.rank = elephant_specs[i].rank;
-        for (int j = 0; j < 5; j++) specs[i].shape.dims.e[j] = elephant_specs[i].dims[j];
-        specs[i].dtype = COAX_PwDtype_bf16; specs[i].shard = 0;
+        specs[i].name = str(kind ? mammoth_specs[i].name : elephant_specs[i].name);
+        specs[i].shape.rank = kind ? mammoth_specs[i].rank : elephant_specs[i].rank;
+        for (int j = 0; j < 5; j++) specs[i].shape.dims.e[j] = kind ? mammoth_specs[i].dims[j] : elephant_specs[i].dims[j];
+        specs[i].dtype = COAX_PwDtype_bf16; specs[i].shard = kind ? mammoth_specs[i].shard : 0;
     }
     coax_t_PsWorkspace m = {{zalloc(count, sizeof(coax_t_P5Tensor)), (int64_t)count}, {zalloc(count, sizeof(coax_t_P5Tensor)), (int64_t)count},
-        {zalloc(32, sizeof(coax_t_QeLayer)), 32}, {zalloc(1057280, 4), 1057280}, {zalloc(1057280, 4), 1057280},
-        {zalloc(50000, 4), 50000}, {zalloc(4096, 4), 4096}, {zalloc(4096, 4), 4096}};
-    if (file->record.count) printf("psionic-serve: authenticating elephant-1 (a verified-file record names this checkpoint; its hash is skipped)\n");
-    else printf("psionic-serve: authenticating elephant-1 (hashes the 18.8 GB checkpoint once; later starts skip it)\n");
+        {zalloc((size_t)z.layers, sizeof(coax_t_QeLayer)), z.layers}, {zalloc((size_t)z.params, 4), z.params}, {zalloc((size_t)z.params, 4), z.params},
+        {zalloc((size_t)z.layer_work, 4), z.layer_work}, {zalloc((size_t)z.norm, 4), z.norm}, {zalloc((size_t)z.norm, 4), z.norm}};
+    printf("psionic-serve: authenticating %.*s (%lld pinned checkpoint shards)\n", (int)target.origin.count,target.origin.data,(long long)z.shards);
     fflush(stdout);
     int64_t t0 = now_ms(), auth_started=now_us();
-    coax_t_PsSession session = psionic_session_open(0, capacity, config, tokenizer, readout, index, (coax_v_t_PaFile){file, 1}, (coax_v_t_P5Spec){specs, (int64_t)count}, table, m);
-    if (session.status) { fprintf(stderr, "psionic-serve: elephant session refused: status %u cause %lld\n", session.status, (long long)session.cause); exit(1); }
+    coax_t_PsSession session = psionic_session_open(kind, capacity, config, tokenizer, readout, index, (coax_v_t_PaFile){files, z.shards}, (coax_v_t_P5Spec){specs, (int64_t)count}, table, m);
+    if (session.status) { fprintf(stderr, "psionic-serve: original session refused: status %u cause %lld\n", session.status, (long long)session.cause); exit(1); }
     s->auth_us=ls_elapsed(auth_started,now_us());
     printf("psionic-serve: authenticated in %lld ms\n", (long long)(now_ms() - t0));
-    int kept = vf_keep(verified, 0, capacity, 0);
-    if (kept == 1) printf("psionic-serve: kept a verified-file record at %s\n", verified->path);
-    if (kept < 0) printf("psionic-serve: no verified-file record kept; the next start hashes the checkpoint again\n");
+    for (int64_t i = 0; i < z.shards; i++) {
+        int kept = vf_keep(verified+i, kind, capacity, i);
+        if (kept == 1) printf("psionic-serve: kept a verified-file record at %s\n", verified[i].path);
+        if (kept < 0) printf("psionic-serve: no verified-file record kept; the next start hashes the checkpoint again\n");
+    }
     fflush(stdout);
-    s->engine = sv_elephant(session, capacity);
-    if (!s->engine.ok) { fprintf(stderr, "psionic-serve: elephant engine refused\n"); exit(1); }
+    s->engine = kind ? sv_mammoth(session, capacity) : sv_elephant(session, capacity);
+    if (!s->engine.ok) { fprintf(stderr, "psionic-serve: original engine refused\n"); exit(1); }
 #ifdef PSIONIC_SERVE_GPU
     if (gpu) {
         t0 = now_ms();
@@ -283,8 +294,8 @@ static void open_elephant(Server *s, const char *dir, const char *table_path, in
     (void)gpu;
 #endif
     allocate(s);
-    coax_v_u8 read_only[] = {config, tokenizer, readout, table, file->data};
-    s->engine = sv_seal(s->engine, overlaps(read_only, 5, s));
+    coax_v_u8 read_only[] = {config, tokenizer, readout, index, table, files[0].data, z.shards > 1 ? files[1].data : (coax_v_u8){NULL,0}};
+    s->engine = sv_seal(s->engine, overlaps(read_only, 7, s));
 }
 
 /* The response for an answered or refused request: a refusal is JSON; an
@@ -460,7 +471,7 @@ static long option(const char *v, long lo, long hi, const char *name) {
 }
 
 int main(int argc, char **argv) {
-    const char *elephant = NULL, *table = NULL, *device_flag = NULL, *metrics_path=NULL; bool reuse=true,bad_golden=false; bool toy = false, gpu = false;
+    const char *elephant = NULL, *table = NULL, *device_flag = NULL, *metrics_path=NULL; bool reuse=true,bad_golden=false; bool toy = false, gpu = false;uint8_t kind=0;
     long port = 8790, read_ms = 10000, deadline_ms = 30000, capacity = 0, delay = 0, device_mib = 0, host_mib=65536, warmup_ms=0;
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
@@ -468,9 +479,11 @@ int main(int argc, char **argv) {
         if(!strcmp(a,"--fixture-bad-golden")){bad_golden=true;continue;}
         if (!strcmp(a, "--toy")) { toy = true; continue; }
         if (!v) { fprintf(stderr, "psionic-serve: %s needs a value\n", a); return 2; }
-        if (!strcmp(a, "--elephant")) elephant = v;
-        else if (!strcmp(a, "--elephant-gpu")) { elephant = v; gpu = true; device_flag = a; }
-        else if (!strcmp(a, "--elephant-metal")) { elephant = v; gpu = true; device_flag = a; }
+        if (!strcmp(a, "--elephant")) { elephant = v; kind = 0; }
+        else if (!strcmp(a, "--elephant-gpu")) { elephant = v; kind = 0; gpu = true; device_flag = a; }
+        else if (!strcmp(a, "--elephant-metal")) { elephant = v; kind = 0; gpu = true; device_flag = a; }
+        else if (!strcmp(a, "--mammoth")) { elephant = v; kind = 1; }
+        else if (!strcmp(a, "--mammoth-gpu")) { elephant = v; kind = 1; gpu = true; device_flag = "--elephant-gpu"; }
         else if (!strcmp(a, "--table")) table = v;
         else if(!strcmp(a,"--metrics"))metrics_path=v;
         else if(!strcmp(a,"--warmup-ms"))warmup_ms=option(v,1,86400000,a);
@@ -481,7 +494,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--capacity")) capacity = option(v, 1, 16384, a);
         else if (!strcmp(a, "--device-mib")) device_mib = option(v, 1, 1048576, a);
         else if (!strcmp(a, "--fixture-delay-ms")) delay = option(v, 0, 600000, a);
-        else { fprintf(stderr, "usage: psionic-serve (--toy | --elephant DIR | --elephant-gpu DIR | --elephant-metal DIR) --table FILE [--port N] [--read-ms N] [--deadline-ms N] [--capacity N] [--device-mib N]\n"); return 2; }
+        else { fprintf(stderr, "usage: psionic-serve (--toy | --elephant DIR | --elephant-gpu DIR | --elephant-metal DIR | --mammoth DIR | --mammoth-gpu DIR) --table FILE [--port N] [--read-ms N] [--deadline-ms N] [--capacity N] [--device-mib N]\n"); return 2; }
         i++;
     }
 #ifndef PSIONIC_SERVE_GPU
@@ -493,7 +506,7 @@ int main(int argc, char **argv) {
     if (device_mib && !gpu) { fprintf(stderr, "psionic-serve: --device-mib needs a device engine\n"); return 2; }
     if (gpu && capacity > 512) { fprintf(stderr, "psionic-serve: the device plan takes at most 512 tokens\n"); return 2; }
     if (toy == (elephant != NULL) || (elephant && !table) || ((delay || bad_golden) && !toy)) {
-        fprintf(stderr, "usage: psionic-serve (--toy | --elephant DIR | --elephant-gpu DIR | --elephant-metal DIR) --table FILE [--port N] [--read-ms N] [--deadline-ms N] [--capacity N] [--device-mib N]\n"); return 2;
+        fprintf(stderr, "usage: psionic-serve (--toy | --elephant DIR | --elephant-gpu DIR | --elephant-metal DIR | --mammoth DIR | --mammoth-gpu DIR) --table FILE [--port N] [--read-ms N] [--deadline-ms N] [--capacity N] [--device-mib N]\n"); return 2;
     }
     signal(SIGPIPE, SIG_IGN); signal(SIGTERM, on_signal); signal(SIGINT, on_signal);
     Server s = {0};s.metrics_fd=-1;s.reuse=reuse;s.host_budget=host_mib*INT64_C(1048576);s.warmup_ms=warmup_ms?warmup_ms:ls_warm_budget();
@@ -506,7 +519,7 @@ int main(int argc, char **argv) {
     s.listener=-1;psionic_busy_init(&s.busy);
     if (gpu) open_gpu(&s);
 #endif
-    if (toy) open_toy(&s, capacity ? capacity : 2048); else open_elephant(&s, elephant, table, capacity ? capacity : gpu ? 128 : 512, gpu, device_mib);
+    if (toy) open_toy(&s, capacity ? capacity : 2048); else open_original(&s, kind, elephant, table, capacity ? capacity : gpu ? 128 : 512, gpu, device_mib);
     if (!s.engine.sealed) { fprintf(stderr, "psionic-serve: buffers overlap; refusing to serve\n"); return 1; }
     warm(&s,bad_golden);
     *s.sample=(coax_t_LsSample){.auth=s.auth_us,.place=s.place_us,.kind=1,.compile=s.compile_us,.cached_pages=s.cached_pages,.total_pages=s.total_pages,.execution_bytes=s.execution_bytes,.cpu_execution_bytes=s.cpu_execution_bytes};

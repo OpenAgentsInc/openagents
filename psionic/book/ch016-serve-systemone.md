@@ -397,3 +397,41 @@ slowly holds the slot until the read deadline. `Idempotency-Key` and
 [chapter 17](PLAN.md). See the
 [verification record](../../docs/verification/psionic-ch16-2026-10-29.md) for
 the measured results.
+
+## Serving the original Mammoth checkpoint
+
+The same server now accepts `--mammoth` and `--mammoth-gpu`. The launcher
+selects CUDA for the latter and supplies the pinned Qwen tokenizer table:
+
+```sh
+psionic/platform/serve.sh --mammoth-gpu ~/models/mammoth-1-61cec44c \
+  --capacity 512 --device-mib 90000
+```
+
+The directory contains the original configuration, tokenizer, readout,
+index and both safetensors shards from chapter 11. Session admission still
+authenticates every file and both shards. The model's served identity is
+`mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019`:
+the digest of its complete pinned inventory, which includes both shard
+digests. It does not pass off the first shard's digest as the whole model.
+
+[`serve-original.coax`](../lib/serve-original.coax) owns the model factory,
+exact allocation counts and the frozen warmup rule as a small independent
+authority root. The C host maps one or two files, allocates those counts,
+places the same checked model on the device, and seals the spans. A checked
+generated inventory header avoids adding another build-time generator;
+[`mammoth-serving.test.ts`](../tests/mammoth-serving.test.ts) checks every
+row against the original manifest and its frozen SHA-256.
+
+Warmup uses chapter 11's original wet/no-wet decision. Its maximum absolute
+probability error remains `0.0005`; normalization must be within `1e-8`.
+The error predicate is checked exactly on either boundary as well as just
+outside it. The new authority root kills all **38** of its mutants.
+
+```sh
+coax/bin/coax mutate psionic/lib/serve-original.coax --root-only
+bun test psionic/tests/mammoth-serving.test.ts
+```
+
+For the authenticated public edge and its private native fleet services,
+continue with [chapter 21a](ch021a-a-public-mesh.md).
