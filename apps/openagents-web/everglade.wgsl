@@ -31,6 +31,7 @@ struct U {
   // size; kind, alpha, age's share)
   fx: array<vec4f, 149>,
   tide: array<vec4f, 2>,   // the water the spells hold back (everglade-tide.coax td_uniforms): Part Water's trench (ax, az, bx, bz; half width), the whirlpool's eye (x, z, radius)
+  marks: array<vec4f, 49>,  // the spells' marks on the ground (everglade-marks.coax sp_marks): a count, then two rows each (ground_mark)
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -62,16 +63,20 @@ fn hud_rect(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
   let t = max(s.w, 1.0);
   let look = s.y;
   if (look < 3.5) {
-    // the tray: a dark rim, a bronze line, a lighter bevel, the dark well (insets 0, 1, 2, 4 units)
-    if (e < t) { return mix(under, vec3f(0.313, 0.293, 0.272), 0.96); }
-    if (e < 2.0 * t) { return vec3f(0.708, 0.658, 0.527); }
-    if (e < 4.0 * t) { return vec3f(0.473, 0.449, 0.396); }
-    return mix(under, vec3f(0.206, 0.190, 0.172), 0.96);
+    // the tray (the owner, October 30: as the HUD's other plates, chamfered, grey, no bronze): a
+    // dark see-through well, a thin grey line, its corners cut at 45 degrees
+    let dx = min(p.x - r.x, r.z - p.x);
+    let dy = min(p.y - r.y, r.w - p.y);
+    let cut = 5.0 * t;
+    if (dx + dy < cut) { return under; }
+    let rim = min(e, (dx + dy - cut) * 0.7071);
+    if (rim < t) { return mix(under, vec3f(0.46, 0.48, 0.5), 0.9); }
+    return mix(under, vec3f(0.045, 0.05, 0.058), 0.82);
   }
   if (look < 5.5) {
-    // a slot's frame, bronze, or gold while its spell is picked or casting; inside it, what lies under
+    // a slot's frame: a dark grey line, or the HUD's blue while its spell is picked or casting
     if (e >= t) { return under; }
-    return select(vec3f(0.767, 0.701, 0.566), vec3f(0.991, 0.916, 0.650), look > 4.5);
+    return select(vec3f(0.26, 0.28, 0.3), vec3f(0.48, 0.72, 1.0), look > 4.5);
   }
   if (look < 6.5) {
     // a meter: a bronze line round a dark well
@@ -748,6 +753,71 @@ fn noise(p: vec2f) -> f32 {
   let s = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2f(1.0, 0.0)), s.x), mix(hash(i + vec2f(0.0, 1.0)), hash(i + vec2f(1.0, 1.0)), s.x), s.y);
 }
+// The spells' marks on the ground (everglade-marks.coax): frost, ice, scorch, dust, moonlight, creepers,
+// ooze, thorns, wet, each painted into the ground's colour and the blades over it, an edge broken by
+// broad noise and feathered (the owner, October 30: never a flat slab with the grass poking through).
+// q: where on the ground; tip: 0 the ground or a blade's root, 1 a blade's tip (frost settles on top).
+// tint is sRGB, its cover 0 to 1; glow linear light to add; short how much of a blade is burnt away;
+// ice the share of glossy ice there.
+struct Mark { tint: vec3f, cover: f32, glow: vec3f, short: f32, ice: f32 }
+fn ground_mark(q: vec2f, tip: f32) -> Mark {
+  var m: Mark;
+  m.tint = vec3f(0.0); m.cover = 0.0; m.glow = vec3f(0.0); m.short = 0.0; m.ice = 0.0;
+  let n = i32(u.marks[0].x);
+  for (var k = 0; k < 24; k++) {
+    if (k >= n) { break; }
+    let a = u.marks[1 + 2 * k];
+    let b = u.marks[2 + 2 * k];
+    let rel = q - a.xy;
+    let r = max(a.z, 0.1);
+    let d = select(length(rel), max(abs(rel.x), abs(rel.y)), b.z > 0.5);
+    if (d > r * 1.35 + 0.3) { continue; }
+    let broad = noise(q * (1.6 / max(r, 0.8)) + vec2f(b.y, b.y * 0.7));
+    let fine = noise(q * 1.3 + vec2f(b.y * 1.7, 3.1));
+    let edge = d / r + (broad - 0.5) * 0.5 + (fine - 0.5) * 0.14;
+    let inside = (1.0 - smoothstep(0.55, 1.02, edge)) * b.x;
+    if (inside <= 0.002) { continue; }
+    let kind = i32(a.w + 0.5);
+    var c = vec3f(0.0);
+    var w = 0.0;
+    if (kind == 1) {
+      // frost: a rime dusting, thicker on the blades' tops; pale glossy ice in a few patches of it
+      let dust = (0.6 + 0.4 * noise(q * 2.7 + vec2f(b.y))) * (0.72 + 0.28 * noise(q * 8.3 - vec2f(b.y)));
+      w = inside * dust * mix(0.4, 0.92, tip);
+      c = vec3f(0.83, 0.87, 0.9);
+      // ice: pale and glassy, never a flat blue sheet; broken by a streaky grain, its edge soft
+      let pool = noise(q * 0.9 + vec2f(b.y * 3.1, 1.3)) * 0.75 + noise(q * 3.7 + vec2f(1.7, b.y)) * 0.25;
+      let ice = smoothstep(1.0 - b.w, 1.22 - b.w, pool) * inside * (1.0 - tip);
+      let grain = 0.85 + 0.15 * noise(vec2f(q.x * 9.0 + q.y * 3.0, q.y * 1.5));
+      c = mix(c, vec3f(0.66, 0.71, 0.74) * grain, ice);
+      w = max(w, ice * 0.6);
+      m.ice = max(m.ice, ice);
+    } else if (kind == 2) {
+      // a scorch: black at its heart, a brown singe at its edge; the grass burnt short
+      c = mix(vec3f(0.24, 0.17, 0.1), vec3f(0.055, 0.048, 0.042), smoothstep(0.95, 0.45, edge));
+      w = inside * 0.92;
+      m.short = max(m.short, inside * 0.8);
+    } else if (kind == 3) {
+      c = vec3f(0.55, 0.47, 0.35); w = inside * 0.6 * mix(1.0, 0.7, tip);
+    } else if (kind == 4) {
+      m.glow += vec3f(0.42, 0.5, 0.7) * inside * (0.75 + 0.25 * fine);
+      continue;
+    } else if (kind == 5) {
+      c = vec3f(0.14, 0.22, 0.09); w = inside * 0.55;
+    } else if (kind == 6) {
+      c = vec3f(0.075, 0.055, 0.085); w = inside * mix(0.85, 0.5, tip);
+    } else if (kind == 7) {
+      c = vec3f(0.4, 0.33, 0.2); w = inside * 0.42 * (0.7 + 0.3 * fine);
+    } else {
+      c = vec3f(0.2, 0.19, 0.16); w = inside * 0.45;
+    }
+    // over what is already there
+    let total = 1.0 - (1.0 - m.cover) * (1.0 - w);
+    m.tint = (m.tint * m.cover * (1.0 - w) + c * w) / max(total, 0.0001);
+    m.cover = total;
+  }
+  return m;
+}
 fn path_distance(p: vec2f) -> f32 {
   var d = 1000.0;
   let count = i32(u.path_info.x);
@@ -829,6 +899,8 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
   var n = normalize(s.normal);
   var base = s.tint;
   var shadow = 1.0;
+  var mark_ice = 0.0;
+  var mark_glow = vec3f(0.0);
   if (s.look == 5u || s.look == LOOK_CANOPY || s.look == LOOK_CHARACTER || s.look == LOOK_ROCK || s.look == LOOK_WINDOW) {
     // A kit mesh: its texture, cut out where the leaves' layer is clear; both sides of a leaf lit
     // (a canopy's blob normal already faces out, so it keeps it).
@@ -880,6 +952,10 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
     let mud = mix(vec3f(0.28, 0.23, 0.155), vec3f(0.34, 0.28, 0.19), noise(xz * 0.24));
     let wet = smoothstep(-0.02, 0.25, under);
     base = mix(base, mud * (1.0 - 0.45 * smoothstep(0.3, 2.0, under)), wet);
+    // the spells' marks: frost, scorch and the rest painted into it
+    let mk = ground_mark(xz, 0.0);
+    base = mix(base, mk.tint, mk.cover);
+    mark_ice = mk.ice; mark_glow = mk.glow;
     shadow = shade_shadows_at(xz, s.world.y, true);
   } else if (s.look == 1u) {
     base *= 0.8 + 0.35 * noise(s.world.xy * 3.1 + s.world.zx * 2.3);
@@ -905,6 +981,13 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
   paint_leaf_far = s.look == LOOK_CANOPY && st(31u).z > 0.5 && length(u.eye.xyz - s.world) > LEAF_FAR;
   let lit = verse_style_contact(map_lit(s.world, n), 1.0 - shadow, st(4u).w);
   var res = paint(base, n, s.world, lit, s.look == LOOK_CHARACTER || s.look == 3u, s.look != 99u);
+  if (mark_ice > 0.0 || mark_glow.x > 0.0) {
+    // ice: a soft sheen of the sky at a glancing look, lit as the sun lights it; moonlight added
+    let v = normalize(s.world - u.eye.xyz);
+    let fres = pow(1.0 - max(dot(-v, n), 0.0), 4.0);
+    let key = st(0u).xyz * st(0u).w;
+    res.light = vec4f(res.light.rgb + mark_ice * (0.03 + 0.22 * fres) * vec3f(0.78, 0.86, 0.95) * (0.35 + 0.65 * min(key, vec3f(1.5))) + mark_glow * 0.18, res.light.a);
+  }
   let figure = s.look == LOOK_CHARACTER || s.look == 3u;
   if (figure || s.look == 5u || s.look == LOOK_PLANKS || s.look == LOOK_WOOD) {
     // the night's fill (the owner, October 29: at night the Ranger and the stalls read as black
@@ -2616,10 +2699,11 @@ struct G {
   @location(0) world: vec3f,
   @location(1) n: vec3f,
   @location(2) albedo: vec3f,
+  @location(3) glow: vec3f,
 }
 @vertex fn grass_vs(@builtin(vertex_index) v: u32, @builtin(instance_index) i: u32) -> G {
   var o: G;
-  o.pos = vec4f(0.0, 0.0, -1.0, 1.0); o.world = vec3f(0.0); o.n = vec3f(0.0, 1.0, 0.0); o.albedo = vec3f(0.0);
+  o.pos = vec4f(0.0, 0.0, -1.0, 1.0); o.world = vec3f(0.0); o.n = vec3f(0.0, 1.0, 0.0); o.albedo = vec3f(0.0); o.glow = vec3f(0.0);
   let g = st(22u); let g2 = st(23u); let w = st(24u); let w2 = st(25u);
   let per = max(u32(g.x), 1u); let r = g.y; let side = u32(2.0 * r);
   // past the far field's blades the near ring's (verse_style_near_*): a square 2 reach across, hashed
@@ -2639,7 +2723,9 @@ struct G {
   // behind the eye nothing: the clip test on the root
   let root_clip = clip(vec3f(q.x, ground_y(q), q.y));
   if (root_clip.w < -1.0 || abs(root_clip.x) > root_clip.w * 1.2 + 1.0) { return o; }
-  let tall = verse_style_blade_height(hash(k + vec2f(3.3, 41.9)), g.w, g2.x) * verse_style_grass_fade(dist, r, g.z) * grass_mask(q);
+  // the spells' marks on the blades (ground_mark): frost on their tops, scorch burning them short
+  let mk = ground_mark(q, select(0.0, 1.0, v == 2u));
+  let tall = verse_style_blade_height(hash(k + vec2f(3.3, 41.9)), g.w, g2.x) * verse_style_grass_fade(dist, r, g.z) * grass_mask(q) * (1.0 - mk.short);
   if (tall < 0.02) { return o; }
   let t = select(u.time, 0.0, u.still > 0.5);
   let wd = vec2f(w2.x, w2.y);
@@ -2664,6 +2750,8 @@ struct G {
     world += vec3f(lean.x, sqrt(max(tall * tall - dot(lean, lean), tall * tall * 0.15)), lean.y);
     o.albedo = vec3f(verse_style_tip(a.x, 0.0, g2.z), verse_style_tip(a.y, 1.0, g2.z), verse_style_tip(a.z, 2.0, g2.z));
   }
+  o.albedo = mix(o.albedo, pow(mk.tint, vec3f(2.2)), mk.cover);
+  o.glow = mk.glow;
   let l = st(1u).xyz;
   let lx = normalize(vec2f(l.x, l.z) + vec2f(0.0001));
   let tilt = verse_style_grass_tilt(theta, w.x, w2.z);
@@ -2673,7 +2761,9 @@ struct G {
   return o;
 }
 @fragment fn grass_fs(g: G) -> Lit {
-  return paint(g.albedo, normalize(g.n), g.world, map_lit(g.world, vec3f(0.0, 1.0, 0.0)), false, false);
+  var res = paint(g.albedo, normalize(g.n), g.world, map_lit(g.world, vec3f(0.0, 1.0, 0.0)), false, false);
+  res.light = vec4f(res.light.rgb + g.glow * 0.18, res.light.a);
+  return res;
 }
 
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.

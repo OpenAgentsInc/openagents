@@ -538,8 +538,10 @@ fr_sleet_frame :: (s: [] Everglade, dt: f32) {
   while f[0].sleet_puff > 0.25 {
     f[0].sleet_puff -= 0.25;
     a := f32(TAU) * sp_rand(s); r := R * sqrt(sp_rand(s)) * 0.9;
-    at := v3(c.x + cos(a) * r, c.y + 0.6 + 3.5 * sp_rand(s), c.z + sin(a) * r);
-    sp_add_smoke(s, at, v3((sp_rand(s) - 0.5) * 0.6, -0.2, (sp_rand(s) - 0.5) * 0.6), 2.2 + 1.2 * sp_rand(s), 4.0, 0.72, 0, 0.42, 0);
+    at := v3(c.x + cos(a) * r, c.y + 0.5 + 2.5 * sp_rand(s), c.z + sin(a) * r);
+    // none starts by the eye: a grey puff there is a smear over the view
+    if length(sub(at, s[0].sp.shot.eye)) < 6 { continue; }
+    sp_add_smoke(s, at, v3((sp_rand(s) - 0.5) * 0.6, -0.15, (sp_rand(s) - 0.5) * 0.6), 2.6 + 1.2 * sp_rand(s), 4.0, 0.7, 0, 0.16, 0);
   }
 }
 // Whether the sight line from p to q runs through the sleet (Heavily Obscured), the inside of its
@@ -741,14 +743,7 @@ fr_draw :: (s: [] Everglade) {
       }
       continue;
     }
-    // on the ground: a glaze that fades as it thaws (a storm's hail lies over it as its stones)
-    thaw := ifx p.kind == FR_KNIFE then 3.0f32 else ifx p.kind == FR_STORM then 6.0f32 else 10.0f32;
-    end := ifx p.kind == FR_KNIFE then 9.0f32 else ifx p.kind == FR_STORM then 30.0f32 else p.held + 10;
-    left := clamp((end - p.t) / thaw, 0, 1);
-    if left <= 0 { continue; }
-    r := p.r * grow * (0.75 + 0.25 * left);
-    g := ground_at(s, p.x, p.z);
-    sp_shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(p.x, g + 0.015, p.z), v3(r * 2, 0, 0), v3(0, 0.02, 0), v3(0, 0, r * 2), mix(v3(0.5, 0.52, 0.5), FR_FROST_RGB, left));
+    // on the ground: frost and ice painted into the ground and the grass (everglade-marks.coax)
   }
   // the knife in flight: a long shard of ice, turning, a cold glint at its point
   if f[0].knife.live {
@@ -770,19 +765,25 @@ fr_draw :: (s: [] Everglade) {
       a := f32(TAU) * h0; r := R * sqrt(h1);
       fall := f[0].storm_t * 15 + h2 * H; fall = fall - H * floor(fall / H);
       at := v3(c.x + cos(a) * r, c.y + H - fall, c.z + sin(a) * r);
-      ab_line(s, at, add(at, v3(0, 1.4, 0)), times(v3(0.85, 0.92, 1.0), 0.35));
+      k := fr_fall_seen(at, eye);
+      if k > 0.01 { ab_line(s, at, add(at, v3(0, 0.7, 0)), times(v3(0.85, 0.92, 1.0), 0.3 * k)); }
     }
   }
-  // the sleet: grey streaks slanting down through its cylinder
+  // the sleet: short slanted streaks and pellets falling through its cylinder, thinning near the eye
+  // (no streak smeared across the view) and into the distance
   if f[0].sleet_on {
     c := f[0].sleet_at; R := f32(FR_SLEET_R); H := f32(FR_SLEET_H);
     on := clamp(f[0].sleet_t / 0.8, 0, 1);
-    for q: 0..<(ifx phone(s) then 30 else 60) {
+    slant := v3(0.09, 0.22, 0.05);
+    for q: 0..<(ifx phone(s) then 70 else 150) {
       h0 := ab_h(71.0, q, 0); h1 := ab_h(71.0, q, 1); h2 := ab_h(71.0, q, 2); h3 := ab_h(71.0, q, 3);
       a := f32(TAU) * h0; r := R * sqrt(h1);
       fall := f[0].sleet_t * (7 + 3 * h3) + h2 * H; fall = fall - H * floor(fall / H);
-      at := v3(c.x + cos(a) * r, c.y + H - fall, c.z + sin(a) * r);
-      ab_line(s, at, add(at, v3(0.35, 1.1, 0.2)), times(v3(0.78, 0.82, 0.88), 0.3 * on));
+      at := v3(c.x + cos(a) * r - slant.x * fall / slant.y * 0.3, c.y + H - fall, c.z + sin(a) * r - slant.z * fall / slant.y * 0.3);
+      k := fr_fall_seen(at, eye) * on;
+      if k <= 0.01 { continue; }
+      if q % 2 == 0 { sp_glow(s, at, 0.045, times(v3(0.8, 0.84, 0.9), 0.8 * k)); }
+      else { ab_line(s, at, add(at, times(slant, 0.7 + 0.6 * h3)), times(v3(0.74, 0.78, 0.84), 0.45 * k)); }
     }
   }
   // the shards: clear splinters of ice and white hailstones, tumbling as they fly, shrinking as they melt
@@ -801,6 +802,13 @@ fr_draw :: (s: [] Everglade) {
     if b.hail { sp_shape(s, SHAPE_BOX, LOOK_STONE, b.at, times(ax, size), times(ay, size * 0.9), times(az, size * 0.85), v3(0.93, 0.95, 0.97)); }
     else { sp_shape(s, SHAPE_BOX, LOOK_ORB, b.at, times(ax, size * 2.6), times(ay, size * 0.7), times(az, size * 0.7), v3(0.72, 0.88, 1.0)); }
   }
+}
+
+// How much of a falling streak at `at` shows from `eye`: none within 4 m (a streak that close smears
+// across the view), all from 8 m, thinning out past 35 m into the haze.
+fr_fall_seen :: (at: Point, eye: Point) -> f32 {
+  d := length(sub(at, eye));
+  return clamp((d - 4) / 4, 0, 1) * clamp((55 - d) / 20, 0, 1);
 }
 
 // ---- checks

@@ -985,10 +985,7 @@ ab_bt_draw :: (s: [] Everglade) {
       sp_shape(s, SHAPE_CONE, LOOK_SKIN, add(p0, times(along, 0.5)), times(side, rad), along, times(fwd, rad), times(AB_BT_RGB, tone));
     }
   }
-  h := f32(AB_BT_SIDE) * 0.5;
-  c := a[0].bt_at;
-  on := clamp(a[0].bt_t / 0.6, 0, 1) * clamp((f32(AB_BT_LIFE) - a[0].bt_t) / 1.0, 0, 1);
-  ab_square(s, c, h, times(v3(0.42, 0.25, 0.55), 0.35 * on));
+  // (its square of dark ooze is painted into the ground: everglade-marks.coax)
 }
 // A square's edge lying on the ground round c, half side h, as the old guide lines.
 ab_square :: (s: [] Everglade, c: Point, h: f32, colour: Point) {

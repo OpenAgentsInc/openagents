@@ -54,6 +54,7 @@
 #load "everglade-grove.coax";
 #load "everglade-wild.coax";
 #load "everglade-circle.coax";
+#load "everglade-marks.coax";
 #load "everglade-storm.coax";
 #load "everglade-polar.coax";
 
@@ -1474,12 +1475,8 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     if sc.t > f32(SP_SCORCH_LIFE) { s[0].sp.scorches[i].live = false; continue; }
     left := clamp((f32(SP_SCORCH_LIFE) - sc.t) / 3, 0, 1);
     r := sc.radius * 2 * (0.4 + 0.6 * left);
-    if sc.wet {
-      // a wet patch: the ground darkened where the orb burst, drying from its edge
-      sp_shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(sc.at, v3(0, 0.01, 0)), v3(r * 1.3, 0, 0), v3(0, 0.02, 0), v3(0, 0, r * 1.3), v3(0.09, 0.11, 0.12));
-      continue;
-    }
-    sp_shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(sc.at, v3(0, 0.01, 0)), v3(r, 0, 0), v3(0, 0.02, 0), v3(0, 0, r), v3(0.03, 0.025, 0.022));
+    // the mark itself is painted into the ground (everglade-marks.coax); a wet one has no embers
+    if sc.wet { continue; }
     if sc.t < 4 { k := 1 - sc.t / 4; sp_glow(s, add(sc.at, v3(0, 0.15, 0)), r * 0.45, times(v3(0.45, 0.13, 0.02), k * k * (0.8 + 0.2 * sin(f32(s[0].time) * 7 + f32(i))))); }
   }
   // smoke and dust: drifting, slowed by the air, climbing as it is warm, billowing out as it thins
@@ -1838,11 +1835,25 @@ sp_bar_bottom :: (s: [] Everglade) -> f32 { return ifx phone(s) then f32(HB_PHON
 // the bar stands over the sticks), device pixels.
 spells_reserve :: (s: [] Everglade) -> f32 {
   if !sp_on(s) || s[0].above || s[0].ev.editing || phone(s) { return 0; }
+  d := sp_desk(s);
+  return f32(HB_MARGIN) * sp_unit(s) + d.tray_h + f32(HB_RESERVE) * hi(s[0].dpr, 0.5);
+}
+// A wide screen's bar (the owner, October 30: four rows of big slots took the screen's bottom third,
+// their keys over the icons): small slots in one tight block, MMO fashion, the plain keys' row and
+// Shift's on the left, Ctrl's and Alt's on the right, each block its two rows, the plain and Ctrl rows
+// at the bottom; a screen too narrow for the two side by side stacks the four in one. In units.
+HB_DESK_ICON :: 26.0; HB_DESK_STEP :: 29.0; HB_DESK_PAD :: 4.0; HB_DESK_SPLIT :: 12.0;
+SpDesk :: struct { pair: bool; per: int; cols: int; block_w: f32; tray_h: f32; }
+sp_desk :: (s: [] Everglade) -> SpDesk {
   un := sp_unit(s);
-  rows := 0;
-  for r: 0..<HB_ROWS { if sp_row_used(s, r) > 0 { rows += 1; } }
+  rows := 0; cols := 1;
+  for r: 0..<HB_ROWS { u := sp_row_used(s, r); if u > 0 { rows += 1; cols = hi_int(cols, u); } }
   rows = hi_int(rows, 1);
-  return (f32(HB_MARGIN) + f32(rows) * f32(HB_ICON + 2 * HB_PAD) + f32(rows - 1) * f32(HB_GAP)) * un + f32(HB_RESERVE) * hi(s[0].dpr, 0.5);
+  block_w := (2 * f32(HB_DESK_PAD) + f32(HB_DESK_STEP) * f32(cols - 1) + f32(HB_DESK_ICON)) * un;
+  pair := rows > 2 && 2 * block_w + f32(HB_DESK_SPLIT) * un <= s[0].width * 0.94;
+  per := ifx pair then (rows + 1) / 2 else rows;
+  tray_h := (2 * f32(HB_DESK_PAD) + f32(HB_DESK_ICON) + f32(HB_DESK_STEP) * f32(per - 1)) * un;
+  return SpDesk.{pair = pair, per = per, cols = cols, block_w = block_w, tray_h = tray_h};
 }
 HB_GAP :: 4.0;             // units between a wide screen's stacked rows (the old Grove's GAP)
 HB_PHONE_ROW :: 6;         // slots in a row of the tray on a phone
@@ -1915,6 +1926,7 @@ sp_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
   if compact { shown[0] = row; shown_n = 1; cols = used[row] + 1; }
   else { for r: 0..<HB_ROWS { if used[r] > 0 { shown[shown_n] = r; shown_n += 1; } } }
   if shown_n == 0 { shown[0] = 0; shown_n = 1; }
+  if !compact { return sp_bar_desk(s, u, at, shown[..], shown_n); }
   per := ifx compact then lo_int(cols, HB_PHONE_ROW) else cols;
   lines := (cols + per - 1) / per;
   width := (2 * f32(HB_PAD) + f32(HB_STEP) * f32(per - 1) + f32(HB_ICON)) * un;
@@ -1945,7 +1957,47 @@ sp_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
       sp_media(s, "image", HB_NAME[b], size, Box.{x0 = x + inset, y0 = y + inset, x1 = x + icon - inset, y1 = y + icon - inset});
     }
   }
-  // the card: the slot a finger has held long enough, or the one the mouse rests on
+  return sp_bar_card(s, at, top);
+}
+// A wide screen's bar (sp_desk): its blocks, their slots and pictures, the card shown.
+sp_bar_desk :: (s: [] Everglade, u: [] f32, at: int, shown: [] int, shown_n: int) -> SpBarTop {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  un := sp_unit(s);
+  d := sp_desk(s);
+  blocks := ifx d.pair then 2 else 1;
+  split := sp_round(f32(HB_DESK_SPLIT) * un);
+  bw := sp_round(d.block_w); th := sp_round(d.tray_h);
+  left0 := sp_round((w - f32(blocks) * bw - f32(blocks - 1) * split) / 2);
+  bottom := sp_round(h - f32(HB_MARGIN) * un);
+  top := bottom - th;
+  icon := sp_round(f32(HB_DESK_ICON) * un);
+  size := sp_icon_size(icon);
+  edge := sp_round(k);
+  for b: 0..<blocks { sp_plate(s, u, Box.{x0 = left0 + f32(b) * (bw + split), y0 = top, x1 = left0 + f32(b) * (bw + split) + bw, y1 = bottom}, PLATE_TRAY, edge); }
+  for q: 0..<shown_n {
+    blk := ifx d.pair then q / d.per else 0;
+    line := q - blk * d.per;
+    r := shown[q];
+    bx := left0 + f32(blk) * (bw + split);
+    y := sp_round(bottom - (f32(HB_DESK_PAD) + f32(HB_DESK_ICON) + f32(HB_DESK_STEP) * f32(line)) * un);
+    for c: 0..<d.cols {
+      sl := sp_at_place(s, r * HB_COLS + c);
+      if sl < 0 { continue; }
+      x := sp_round(bx + (f32(HB_DESK_PAD) + f32(HB_DESK_STEP) * f32(c)) * un);
+      s[0].sp.boxes[sl] = Box.{x0 = x, y0 = y, x1 = x + icon, y1 = y + icon};
+      on := s[0].sp.armed == sl || (sl < SP_SLOTS && s[0].sp.casting == sl) || (sl >= SP_SLOTS && sl < SP_REBUILD && ab_active(s, sl - SP_SLOTS));
+      sp_plate(s, u, Box.{x0 = x - edge, y0 = y - edge, x1 = x + icon + edge, y1 = y + icon + edge}, ifx on then PLATE_SLOT_ON else PLATE_SLOT, ifx on then 2 * edge else edge);
+      inset := ifx on then edge else 0.0f32;
+      sp_media(s, "image", HB_NAME[sl], size, Box.{x0 = x + inset, y0 = y + inset, x1 = x + icon - inset, y1 = y + icon - inset});
+    }
+  }
+  return sp_bar_card(s, at, top);
+}
+// The card over the bar: the slot a finger has held long enough, or the one the mouse rests on.
+sp_bar_card :: (s: [] Everglade, at: int, top: f32) -> SpBarTop {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width;
   tip := -1;
   if s[0].sp.slot_held >= 0 {
     if s[0].time - s[0].sp.slot_t >= f64(HB_LONG) { tip = s[0].sp.slot_held; }
@@ -2409,7 +2461,7 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
   for i: 0..<w[0].n { p := w[0].pieces[i]; if sp_object(p.mesh).size == SIZE_LARGE { #assert p.state == DP_STANDING && p.hp == p.max_hp; } }
 }
 
-#test "spells: the bar is the old engine's tray: 36-unit icons 42 apart, 8 over the bottom, each slot's picture; a held finger shows its card and doesn't cast" {
+#test "spells: the bar is a compact tray: 26-unit icons 29 apart, 8 over the bottom, each slot's picture; a held finger shows its card and doesn't cast" {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -2419,9 +2471,9 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
   _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   un := 800.0f32 / 768;
   b0 := g[0].sp.boxes[0]; b1 := g[0].sp.boxes[1];
-  #assert abs(b0.x1 - b0.x0 - 36 * un) < 1 && abs(b1.x0 - b0.x0 - 42 * un) < 1;
-  #assert abs(800 - b0.y1 - (8 + 8) * un) < 1.5;               // the slot's padding and the tray's margin
-  #assert abs((b0.x0 + g[0].sp.boxes[SP_SLOTS + AB_WALLFIRE].x1) / 2 - 640) < 2;   // centred: its columns from 1 to Wall of Fire's Ctrl+=
+  #assert abs(b0.x1 - b0.x0 - 26 * un) < 1 && abs(b1.x0 - b0.x0 - 29 * un) < 1;
+  #assert abs(800 - b0.y1 - (4 + 8) * un) < 1.5;               // the slot's padding and the tray's margin
+  #assert abs((b0.x0 + g[0].sp.boxes[SP_SLOTS + AB_WALLFIRE].x1) / 2 - 640) < 2;   // centred: from 1 on the left block to Wall of Fire's Ctrl+= on the right
   media := cast(string) g[0].sp.media[0..<g[0].sp.media_n];
   #assert contains(media, "image /realms/everglade/hotbar/meteor-swarm-48.jpg ") && contains(media, "water-orb-48.jpg") && contains(media, "rebuild-48.jpg") && !contains(media, "over ");   // Rebuild and Long Rest always there
   // the mouse resting on Thunderbolt's slot shows its card after 0.35 s
@@ -2453,7 +2505,7 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
   #assert on;
 }
 
-#test "spells: the bar's rows, as the old Grove's: Shift reaches the second, stacked over the first on a wide screen; a phone shows one row and a switcher" {
+#test "spells: the bar's rows: Shift reaches the second, over the first on a wide screen, Ctrl's beside them; a phone shows one row and a switcher" {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -2463,7 +2515,12 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
   _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   stone := g[0].sp.boxes[SP_SLOTS + AB_STONE]; meteor := g[0].sp.boxes[SP_METEOR];
   un := 800.0f32 / 768;
-  #assert abs(stone.x0 - meteor.x0) < 1 && abs(meteor.y0 - stone.y0 - (36 + 16 + 4) * un) < 1.5 && g[0].sp.boxes[SP_SWITCH].x1 == 0;
+  #assert abs(stone.x0 - meteor.x0) < 1 && abs(meteor.y0 - stone.y0 - 29 * un) < 1.5 && g[0].sp.boxes[SP_SWITCH].x1 == 0;
+  // Ctrl's row on the right of the plain keys' row, level with it; a narrow window stacks all four
+  flame := g[0].sp.boxes[SP_SLOTS + AB_FLAME];
+  #assert abs(flame.y0 - meteor.y0) < 1 && flame.x0 > meteor.x0 + 12 * 29 * un;
+  _ = everglade_frame(g[..], out[..], u[..], 760, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert abs(g[0].sp.boxes[SP_SLOTS + AB_FLAME].x0 - g[0].sp.boxes[SP_METEOR].x0) < 1 && g[0].sp.boxes[SP_SLOTS + AB_FLAME].y0 < g[0].sp.boxes[SP_SLOTS + AB_STONE].y0;
   // - and = hold nothing on the first row: they still zoom
   #assert !spells_key(g[..], '-', 0);
   // Shift+1 casts the second row's first; its key up, Shift let go first, is still its column's

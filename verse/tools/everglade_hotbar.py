@@ -286,11 +286,19 @@ def icon(name, svg, tint, key, size):
         for x in range(size):
             c = cv[x, y] / 255
             px[x, y] = tuple(byte(b * (1 - c) + t * c) for t, b in zip(tint, BACKGROUND))
-    # the key at the top right, 14 CSS px on a 36-unit slot (hotbar.rs draw_of)
+    # the key small in the top left corner on a dark tab (the owner, October 30: big keys over the
+    # top right of the icons collided with the art and could not be read)
     s = size / 36
-    font, advance, _, ascent = metrics(round(FONT_PX * s))
+    font, advance, _, ascent = metrics(max(7, round(8.5 * s)))
+    w = advance * len(key) + round(3 * s)
+    h = ascent + round(2.2 * s)
+    tab = Image.new("L", (size, size), 0)
+    td = ImageDraw.Draw(tab)
+    cut = round(2.5 * s)
+    td.polygon([(0, 0), (w, 0), (w, h - cut), (w - cut, h), (0, h)], fill=round(255 * 0.82))
+    image = Image.composite(Image.new("RGB", (size, size), tuple(byte(c) for c in (0.03, 0.035, 0.045))), image, tab)
     draw = ImageDraw.Draw(image)
-    text(draw, font, ascent, size - 3 * s - advance * len(key), 1 * s, key, KEY_INK)
+    text(draw, font, ascent, round(1.5 * s), round(1.0 * s), key, KEY_INK)
     return image
 
 

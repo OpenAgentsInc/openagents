@@ -648,14 +648,7 @@ gv_draw :: (s: [] Everglade) {
       ab_line(s, p0, p1, times(GV_GROWTH_RGB, 0.55 * pulse));
     }
   }
-  // Elementalism's shroud of dust, settling and fading
-  for q: 0..<GV_DUSTS {
-    d := v[0].dusts[q];
-    if !d.live { continue; }
-    left := clamp((f32(GV_DUST_LIFE) - d.t) / 10, 0, 1);
-    r := f32(GV_EL_CUBE) * (0.6 + 0.4 * left);
-    sp_shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(d.at, v3(0, 0.012, 0)), v3(r, 0, 0), v3(0, 0.015, 0), v3(0, 0, r), mix(v3(0.2, 0.18, 0.14), v3(0.5, 0.43, 0.31), left));
-  }
+  // (Elementalism's shroud of dust settles into the ground's colour: everglade-marks.coax)
   gv_en_draw(s, few);
   wd_draw(s);
   // picked: Entangle's square where the pointer points
@@ -717,7 +710,6 @@ gv_en_draw :: (s: [] Everglade, few: bool) {
     gv_vine(s, add(a, v3(0, 0.03, 0)), m, 0.025, times(GV_VINE_RGB, 0.9));
     gv_vine(s, m, add(b, v3(0, 0.03, 0)), 0.025, times(GV_VINE_RGB, 0.9));
   }
-  ab_square(s, v[0].en_at, f32(GV_EN_SIDE) * 0.5, times(v3(0.3, 0.55, 0.18), 0.35 * grow));
 }
 gv_mb_draw :: (s: [] Everglade) {
   v := gv_of(s);
@@ -726,10 +718,11 @@ gv_mb_draw :: (s: [] Everglade) {
   on := clamp(v[0].mb_t / 0.5, 0, 1) * clamp((f32(GV_MB_LIFE) - v[0].mb_t) / 0.5, 0, 1);
   r := f32(GV_MB_R) * (0.96 + 0.04 * sin(v[0].mb_t * 3));
   H := f32(GV_MB_H);
-  // the beam: a pale shaft, brighter at its heart, and its pool of light on the ground
-  sp_shape(s, SHAPE_CYLINDER, LOOK_ORB, v3(c.x, c.y + H * 0.5, c.z), v3(r * 2, 0, 0), v3(0, H, 0), v3(0, 0, r * 2), times(GV_MOON_RGB, 0.55 * on));
-  sp_shape(s, SHAPE_CYLINDER, LOOK_GLOW, v3(c.x, c.y + H * 0.5, c.z), v3(r * 0.5, 0, 0), v3(0, H, 0), v3(0, 0, r * 0.5), times(GV_MOON_RGB, 0.5 * on));
-  sp_shape(s, SHAPE_CYLINDER, LOOK_GLOW, v3(c.x, c.y + 0.02, c.z), v3(r * 2.2, 0, 0), v3(0, 0.01, 0), v3(0, 0, r * 2.2), times(GV_MOON_RGB, 0.35 * on));
+  // the beam: a soft shaft of pale light, brighter at its heart, fading up into the sky (never a
+  // glass tube); its pool of light lies in the ground (everglade-marks.coax)
+  mid := v3(c.x, c.y + H * 0.5, c.z);
+  sp_fx(s, FX_GLOW, mid, r * 0.9, times(GV_MOON_RGB, 0.16 * on), 0, v3(0, H * 0.5, 0), 0.31);
+  sp_fx(s, FX_GLOW, mid, r * 0.3, times(GV_MOON_RGB, 0.3 * on), 0, v3(0, H * 0.5, 0), 0.67);
   sp_glow(s, v3(c.x, c.y + 0.4, c.z), 2.4 * on, times(GV_MOON_RGB, 0.25));
   // motes drifting up through it
   few := phone(s);

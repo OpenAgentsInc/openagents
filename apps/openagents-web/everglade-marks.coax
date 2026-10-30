@@ -1,0 +1,104 @@
+// The spells' marks on the ground (everglade.wgsl ground_mark): what a spell leaves lying on the meadow
+// and the path is painted into the ground's own colour and the grass blades over it, never a flat
+// slab laid on top (the owner, October 30: Sleet Storm's patch "looks like shit": a white sheet with
+// the grass poking through, a blue polygon, an outline). Each mark is a disc or a square with an edge
+// broken by broad noise and feathered over a third of its radius: frost settles on the blades' tops,
+// ice is a few pale glossy patches in it, a scorch blackens the ground and burns the grass down.
+// Two rows a mark (everglade.coax U_MARKS; everglade.wgsl u.marks): x, z, radius (a square's half
+// side), kind; how much of it is there (0 to 1), a seed, 1 for a square, the share of it that is ice.
+MK_FROST :: 1; MK_SCORCH :: 2; MK_DUST :: 3; MK_MOON :: 4; MK_VINES :: 5; MK_OOZE :: 6; MK_THORNS :: 7; MK_WET :: 8;
+MARKS :: 24;
+MK_FLOATS :: 4 + MARKS * 8;   // a count row, then the marks
+
+mk_put :: (u: [] f32, at: int, kind: int, x: f32, z: f32, r: f32, amount: f32, seed: f32, square: bool, ice: f32) {
+  n := cast(int) u[at];
+  if n >= MARKS || amount <= 0.01 || r <= 0.05 { return; }
+  o := at + 4 + n * 8;
+  u[o] = x; u[o + 1] = z; u[o + 2] = r; u[o + 3] = f32(kind);
+  u[o + 4] = clamp(amount, 0, 1); u[o + 5] = seed; u[o + 6] = ifx square then 1.0f32 else 0.0f32; u[o + 7] = ice;
+  u[at] = f32(n + 1);
+}
+
+sp_marks :: (s: [] Everglade, u: [] f32, at: int) {
+  if !sp_on(s) || at + MK_FLOATS > u.count { return; }
+  u[at] = 0;
+  // the frost and ice the cold spells leave on dry ground, thawing from their edge
+  f := fr_of(s);
+  for k: 0..<FR_PATCHES {
+    p := f[0].patches[k];
+    if !p.live || fr_wet(s, p.x, p.z) { continue; }
+    thaw := ifx p.kind == FR_KNIFE then 3.0f32 else ifx p.kind == FR_STORM then 6.0f32 else 10.0f32;
+    end := ifx p.kind == FR_KNIFE then 9.0f32 else ifx p.kind == FR_STORM then 30.0f32 else p.held + 10;
+    left := clamp((end - p.t) / thaw, 0, 1);
+    grow := clamp(p.t / (ifx p.kind == FR_SLEET then 2.5f32 else 0.4f32), 0, 1);
+    ice := ifx p.kind == FR_KNIFE then 0.25f32 else ifx p.kind == FR_STORM then 0.3f32 else 0.4f32;
+    mk_put(u, at, MK_FROST, p.x, p.z, p.r * (0.8 + 0.2 * left), grow * left, p.seed * 17 + f32(k), false, ice);
+  }
+  g := gv_of(s);
+  // Moonbeam's pool of pale light where it stands
+  if g[0].mb_on {
+    on := clamp(g[0].mb_t / 0.5, 0, 1) * clamp((f32(GV_MB_LIFE) - g[0].mb_t) / 0.5, 0, 1);
+    mk_put(u, at, MK_MOON, g[0].mb_at.x, g[0].mb_at.z, f32(GV_MB_R) * 1.35, on, 3.1, false, 0);
+  }
+  // Entangle's ground matted with creepers
+  if g[0].en_on {
+    on := clamp(g[0].en_t / 0.8, 0, 1) * clamp((f32(GV_EN_LIFE) - g[0].en_t) / 1.0, 0, 1);
+    mk_put(u, at, MK_VINES, g[0].en_at.x, g[0].en_at.z, f32(GV_EN_SIDE) * 0.5, on, 5.7, true, 0);
+  }
+  // Black Tentacles' square of dark ooze
+  a := ab_of(s);
+  if a[0].bt_on {
+    on := clamp(a[0].bt_t / 0.6, 0, 1) * clamp((f32(AB_BT_LIFE) - a[0].bt_t) / 1.0, 0, 1);
+    mk_put(u, at, MK_OOZE, a[0].bt_at.x, a[0].bt_at.z, f32(AB_BT_SIDE) * 0.5, on, 8.3, true, 0);
+  }
+  // Spike Growth: the grass gone brown and wiry over its ground (camouflaged, so faint)
+  w := wd_of(s);
+  if w[0].sg_on {
+    on := clamp(w[0].sg_t / 0.6, 0, 1) * clamp((f32(WD_SG_LIFE) - w[0].sg_t) / 1.0, 0, 1);
+    mk_put(u, at, MK_THORNS, w[0].sg_at.x, w[0].sg_at.z, f32(WD_SG_R), on, 2.3, false, 0);
+  }
+  // Elementalism's shroud of dust settling
+  for q: 0..<GV_DUSTS {
+    d := g[0].dusts[q];
+    if !d.live { continue; }
+    left := clamp((f32(GV_DUST_LIFE) - d.t) / 10, 0, 1);
+    mk_put(u, at, MK_DUST, d.at.x, d.at.z, f32(GV_EL_CUBE) * 0.5 * (0.6 + 0.4 * left), left, f32(q) * 1.7, false, 0);
+  }
+  // the blasts' scorch marks (a water orb's: the ground darkened wet)
+  for i: 0..<SP_SCORCHES {
+    sc := s[0].sp.scorches[i];
+    if !sc.live { continue; }
+    left := clamp((f32(SP_SCORCH_LIFE) - sc.t) / 3, 0, 1);
+    r := sc.radius * (0.4 + 0.6 * left);
+    mk_put(u, at, ifx sc.wet then MK_WET else MK_SCORCH, sc.at.x, sc.at.z, ifx sc.wet then r * 0.65 else r * 0.6, left, f32(i) * 2.9, false, 0);
+  }
+  // the burnt grass, nearest the eye first while there is room
+  eye := s[0].sp.shot.eye;
+  m := lo_i(w[0].burnt_n, WD_BURNT);
+  for pass: 0..<3 {
+    reach := ifx pass == 0 then 15.0f32 else ifx pass == 1 then 35.0f32 else 70.0f32;
+    from := ifx pass == 0 then -1.0f32 else ifx pass == 1 then 15.0f32 else 35.0f32;
+    for q: 0..<m {
+      b := w[0].burnt[q];
+      d := length(v3(b.x - eye.x, 0, b.z - eye.z));
+      if d <= from || d > reach { continue; }
+      if cast(int) u[at] >= MARKS { return; }
+      mk_put(u, at, MK_SCORCH, b.x, b.z, 0.85 + 0.2 * ab_h(61.0, q, 0), 0.85, f32(q) * 0.77, false, 0);
+    }
+  }
+}
+
+#test "marks: a Sleet Storm's patch is a frost mark in the ground's uniforms, not a slab" {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  f := fr_of(g[..]);
+  k := fr_add_patch(g[..], FR_SLEET, 0, -30, f32(FR_SLEET_R));
+  f[0].patches[k].t = 5;
+  u: [MK_FLOATS] f32;
+  sp_marks(g[..], u[..], 0);
+  #assert u[0] == 1 && u[4] == 0 && u[5] == -30 && u[7] == f32(MK_FROST) && u[8] > 0.99 && u[11] > 0;
+  before := g[0].counts[SHAPE_CYLINDER];
+  fr_draw(g[..]);
+  #assert g[0].counts[SHAPE_CYLINDER] == before;
+}

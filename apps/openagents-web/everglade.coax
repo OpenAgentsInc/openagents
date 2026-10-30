@@ -114,7 +114,9 @@ U_FX :: U_PONDS + EG_PONDS * 4;
 // Then the water the spells hold back (everglade-tide.coax td_uniforms; everglade.wgsl u.tide): Part
 // Water's trench (ax, az, bx, bz; its half width), the whirlpool's eye (x, z, radius).
 U_TIDE :: U_FX + FX_ROWS * 4;
-UNIFORM_FLOATS :: U_TIDE + TD_U_FLOATS;
+// Then the spells' marks on the ground (everglade-marks.coax sp_marks; everglade.wgsl u.marks).
+U_MARKS :: U_TIDE + TD_U_FLOATS;
+UNIFORM_FLOATS :: U_MARKS + MK_FLOATS;
 
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4; SHAPE_MESH :: 5; SHAPE_SKINNED :: 6;
 SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
@@ -3313,6 +3315,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   s[0].shadow_n = 0; s[0].plate_n = 0; s[0].sp.media_n = 0;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   td_uniforms(s, u, U_TIDE);
+  sp_marks(s, u, U_MARKS);
   view(shot, width, height, u, U_VIEW);
   // in a rowboat you sit on its thwart: your legs go down under it, out of sight
   figure(s, u, ifx s[0].water == WATER_BOAT then sub(shown, v3(0, 0.42, 0)) else shown, face, speed, act == 3, t, still);
@@ -3475,7 +3478,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
 
 #test "the uniforms and shape slots line up with everglade.wgsl's" {
   #assert UNIFORM_FLOATS % 4 == 0;
-  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 760 && STYLE_AT == 1084 && U_SOLID == 1212 && U_LIGHT_INFO == 1340 && U_LIGHTS == 1344 && U_WEATHER == 1472 && U_PONDS == 1484 && U_FX == 1500 && U_TIDE == 1500 + 149 * 4 && UNIFORM_FLOATS == U_TIDE + 8;
+  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 760 && STYLE_AT == 1084 && U_SOLID == 1212 && U_LIGHT_INFO == 1340 && U_LIGHTS == 1344 && U_WEATHER == 1472 && U_PONDS == 1484 && U_FX == 1500 && U_TIDE == 1500 + 149 * 4 && U_MARKS == U_TIDE + 8 && UNIFORM_FLOATS == U_MARKS + MK_FLOATS;
   #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
   total := 0;
   for g: 0..<KIT_GROUPS - KIT_FOREST { total += TOWN_CAP[g]; }

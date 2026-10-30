@@ -624,12 +624,7 @@ wd_draw :: (s: [] Everglade) {
     }
     if cast(int) (f.t * 1.5) != cast(int) ((f.t - 1.0 / 60) * 1.5) { sp_add_smoke(s, add(f.at, v3(0, 0.6, 0)), v3(0, 0.5, 0), 0.45, 2.6, 0.2, 0.5, 0.45, 0.25); }
   }
-  m := lo_i(v[0].burnt_n, WD_BURNT);
-  for q: 0..<m {
-    b := v[0].burnt[q];
-    r := 0.62 + 0.15 * ab_h(61.0, q, 0);
-    sp_shape(s, SHAPE_CONE, LOOK_MATTE, add(b, v3(0, 0.03, 0)), v3(r * 2, 0, 0), v3(0, 0.03, 0), v3(0, 0, r * 2), v3(0.035, 0.03, 0.025));
-  }
+  // (where it burnt: blackened ground and grass burnt short, everglade-marks.coax)
   // Faerie Fire: the outlined ringed in motes of light
   if v[0].ff_on {
     hue := wd_ff_rgb(v[0].ff_hue);
