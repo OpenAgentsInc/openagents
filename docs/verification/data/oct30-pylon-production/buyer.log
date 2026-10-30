@@ -1,0 +1,9 @@
+relay: AUTH challenge received
+relay: AUTH accepted
+PYLON christohersmbp2 "Mac M5 Max (network lane)" online 2/2 model-mismatch: qwen3.5-0.8b-q8_0,clef-flash@gguf-tensors:sha256:2e417b2214d9a0b8736d850a1d80ffa4709be32056673b2f201f59cf8e6d07a3 npub1rqplkvjtja2g0w7fn36jsxq97dqhpy9wf76v7qspe9r9hkvvr95qm99mt5
+PYLON oct30-coderos-demo "CoderOS (demo)" online 4/4 psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 npub16wak2l2d5784sgn8v96p9umz8cj78vs3t3czgjpfhca3ra4r5uls056yhx
+PYLON oct30-mac-demo "Mac (demo)" online 4/4 psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 npub17kf9p8g4xvp3q9vcfzwxyk46e77q96c4vr8kkzaq7q90rja9wyjq9gwsws
+relay: 25910 job accepted
+ANSWERED oct30-coderos-demo no 311ms psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573
+relay: 25910 job accepted
+ANSWERED oct30-mac-demo no 358ms psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573

@@ -1,0 +1,24 @@
+{
+  "join.sh": {
+    "url": "https://openagents.com/pylon/join.sh",
+    "bytes": 10561,
+    "sha256": "020f51b5777e43a70026f38d72395c6f4ee3530ffb00d7d5ae4efe487ba0981f",
+    "headers": {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-cache",
+      "ETag": "\"7da65f2b7cc3eb3b5bfcdfd4c89abbb0\""
+    }
+  },
+  "index.md": {
+    "url": "https://openagents.com/pylon/index.md",
+    "bytes": 7435,
+    "sha256": "099ccc08d34be0a379ba0dfa141c3de4e4c75eed77d2422e4457a308b8e003a5",
+    "headers": {
+      "Content-Type": "text/markdown; charset=utf-8",
+      "Cache-Control": "no-cache",
+      "ETag": "\"dcbbb5ec51e0c45054f00dac6f48000e\""
+    }
+  },
+  "verified_at": "2026-10-30T15:17:44.976617+00:00",
+  "release_commit": "c624dc241c"
+}

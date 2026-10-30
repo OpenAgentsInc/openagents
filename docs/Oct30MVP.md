@@ -346,3 +346,18 @@ and E. Then F. G about an hour before the talk.
   Stop only the adapter with `kill -TERM 2871`; both Pylons were left running.
   Launch/stop details are also `/tmp/oct30-fleet-live/run.json`. This runtime
   state is as tested, not a persistent installed service.
+
+- **G passed in production, 2026-10-30 15:17:52 UTC (10:17 CDT).**
+  `https://openagents.com/pylon` opened first with zero live answers,
+  admitted both script-started Mac/Linux beacons, then observed one new
+  signed answer from each (2 total). The independent buyer authenticated,
+  verified and decrypted the matching answers: Linux311ms, Mac358ms,
+  exact toy checkpoint identity on both. The page had no refused events.
+  Source `c624dc241c` passed staging HTTP/goldens, desktop/phone Pylon,
+  all8 required60FPS performance cases, production starts and HTTP smoke;
+  the same staged bytes were promoted in release `20261030T151612Z`.
+  The public join script's bytes matched its tested source. Both nodes
+  were left online. Full evidence and screenshot:
+  [`data/oct30-pylon-production`](verification/data/oct30-pylon-production/).
+  The display-only full model-identity follow-up is recorded separately,
+  without repeating passing unchanged-page/performance checks.

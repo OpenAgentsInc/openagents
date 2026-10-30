@@ -1,0 +1,22 @@
+  ok    /pylon/index.md (200, text/markdown; charset=utf-8)
+  ok    /pylon/join.sh (200, text/plain; charset=utf-8)
+  ok    pylon-phone: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  ok    pylon: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+goldens https://staging.openagents.com: passed in 214.7 s (4 tabs)
+perf: https://staging.openagents.com/realms/everglade, 1440x900, dpr 1 and 2, 13.42 s a scene, p95 <= 17.5 ms and every frame <= 33 ms
+ok   dpr 1 road, noon     60 FPS, p50 16.7 ms, p95 16.7 ms, max 16.8 ms, 0/806 over 20 ms
+ok   dpr 2 road, noon     60 FPS, p50 16.7 ms, p95 16.7 ms, max 16.8 ms, 0/806 over 20 ms
+ok   dpr 1 commons, dusk  60 FPS, p50 16.7 ms, p95 16.8 ms, max 16.8 ms, 0/807 over 20 ms
+ok   dpr 2 commons, dusk  60 FPS, p50 16.7 ms, p95 16.8 ms, max 16.8 ms, 0/807 over 20 ms
+ok   dpr 2 river, night   60 FPS, p50 16.7 ms, p95 16.7 ms, max 16.8 ms, 0/807 over 20 ms
+ok   dpr 1 river, night   60 FPS, p50 16.7 ms, p95 16.8 ms, max 16.8 ms, 0/807 over 20 ms (attempt 2, 0 busy waits)
+ok   dpr 2 market, dusk   60 FPS, p50 16.7 ms, p95 16.7 ms, max 16.8 ms, 0/806 over 20 ms
+ok   dpr 1 market, dusk   60 FPS, p50 16.7 ms, p95 16.7 ms, max 16.8 ms, 0/807 over 20 ms (attempt 3, 0 busy waits)
+perf: every case held 60 FPS
+Copying gs://openagentsgemini-openagents-web-staging/pylon/join.sh to gs://openagentsgemini-openagents-web/pylon/join.sh
+Copying gs://openagentsgemini-openagents-web-staging/pylon/index.html to gs://openagentsgemini-openagents-web/pylon/index.html
+Copying gs://openagentsgemini-openagents-web-staging/pylon/index.md to gs://openagentsgemini-openagents-web/pylon/index.md
+goldens https://openagents.com: passed in 18.6 s (4 tabs)
+  ok    /pylon/index.md (200, text/markdown; charset=utf-8)
+  ok    /pylon/join.sh (200, text/plain; charset=utf-8)
+release c624dc241c: live on openagents.com in 655.5 s (rollback: coax/web/rollback.sh 20261030T151612Z)

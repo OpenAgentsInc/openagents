@@ -1,0 +1,38 @@
+{
+  "url": "https://openagents.com/pylon",
+  "at": "2026-10-30T15:17:52.538Z",
+  "expected": [
+    "oct30-mac-demo",
+    "oct30-coderos-demo"
+  ],
+  "minimum_answers": 2,
+  "per_provider": 1,
+  "ready": true,
+  "count": 3,
+  "slugs": [
+    "oct30-mac-demo",
+    "oct30-coderos-demo",
+    "christohersmbp2"
+  ],
+  "rows": [
+    {
+      "slug": "oct30-mac-demo",
+      "answers": 1,
+      "statuses": 0
+    },
+    {
+      "slug": "oct30-coderos-demo",
+      "answers": 1,
+      "statuses": 0
+    },
+    {
+      "slug": "christohersmbp2",
+      "answers": 0,
+      "statuses": 0
+    }
+  ],
+  "answers": 2,
+  "statuses": 0,
+  "refused": 0,
+  "screenshot": "/tmp/oct30-production-pylon.png"
+}

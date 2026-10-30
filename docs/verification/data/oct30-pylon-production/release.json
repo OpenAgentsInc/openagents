@@ -1,0 +1,11 @@
+{
+  "release_commit": "c624dc241c",
+  "release_stamp": "20261030T151612Z",
+  "elapsed_seconds": 655.5,
+  "full_release_log_sha256": "be2a2dcdd24e62b909961167a13a7ae18d286bad7fba2a5b64da6e194b9fb4e8",
+  "staging": "HTTP smoke, all page/golden checks, desktop/phone Pylon passed",
+  "performance": "all8 Everglade cases held60FPS under existing gate",
+  "production": "all page starts and HTTP smoke passed; same staged artifacts promoted",
+  "rehearsal": "page opened before jobs; verified expected two rows and one live answer per provider; independent buyer authenticated, verified signatures and decrypted both answers",
+  "scope": "This is the initial c624 deployment. The full-model display follow-up has a separate source-driven artifact promotion record."
+}
