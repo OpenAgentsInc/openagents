@@ -77,7 +77,10 @@
           "storage:/realms/the-grid/assets/grid.vertices",
           "storage:/realms/the-grid/assets/grid.lines",
           "storage:/realms/the-grid/assets/grid.bones",
-          "index:/realms/the-grid/assets/grid.indices"
+          "index:/realms/the-grid/assets/grid.indices",
+          "data:/realms/the-grid/assets/cast/Cast.bin",
+          "storage:/realms/the-grid/assets/cast/Cast.bin",
+          "layers:/realms/the-grid/assets/cast/cast-layer5.jpg|/realms/the-grid/assets/cast/cast-layer9.jpg|/realms/the-grid/assets/cast/cast-layer10.jpg|/realms/the-grid/assets/cast/cast-layer11.jpg|/realms/the-grid/assets/cast/cast-layer12.jpg|/realms/the-grid/assets/cast/cast-layer16.jpg"
         ]
       } },
     { "id": "everglade", "name": "EVERGLADE", "kind": "open", "orbit": { "r": 0.34, "a": 4.2, "size": 0.032 },
