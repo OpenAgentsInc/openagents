@@ -12,7 +12,7 @@ FFP_DROP :: 0.9;          // m: how far under the stream the low pond stands
 FFP_FILL :: 7.0;          // seconds it takes to fill
 FFP_NEAR :: 10.5;         // metres from the pond's middle where E fills it
 FFP_STEP :: 0.03;         // the drop changes in steps this size (each one rebakes the water)
-FFP_FALL_X :: 45.4; FFP_FALL_Z :: -15.0;   // the waterfall's lip, on the pond's east bank
+FFP_FALL_X :: -6.0; FFP_FALL_Z :: 490.9;   // the waterfall's lip, on the pond's north bank
 FFP_FALL_TOP :: 3.3;      // its lip over the stream's level
 
 // How full the pond is: 0 low, 1 full.

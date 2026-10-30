@@ -21,7 +21,11 @@
 
 // rim_from and rim shape the bowl's edge: a city wider than a garden
 // moves it out and eases it (verse/everglade/plan.coax).
-Ground :: struct { n: int = 64; cell: f32 = 1.5; west: f32 = -48; south: f32 = -48; rim_from: f32 = 32; rim: f32 = 0.022; }
+// rows, when set, makes the ground a rectangle: n cells west to east and
+// rows south to north ((n + 1) * (rows + 1) heights, still by rows from the
+// south); 0 keeps it square.
+Ground :: struct { n: int = 64; cell: f32 = 1.5; west: f32 = -48; south: f32 = -48; rim_from: f32 = 32; rim: f32 = 0.022; rows: int = 0; }
+ground_rows :: (g: Ground) -> int { return ifx g.rows > 0 then g.rows else g.n; }
 
 HILL :: 1.6;           // metres: the rolling hills' height
 RIM_FROM :: 32.0;      // metres from the middle where the ground starts rising
@@ -43,7 +47,7 @@ FOLLOW_TURN :: 9.0;    // per second: turning to face its way
 FOLLOW_BLOCK :: 6;     // numbers per block of scenery: min x, y, z, max x, y, z
 RAY_STEP :: 0.35;      // metres between the ray's samples
 
-ground_points :: (g: Ground) -> int { return (g.n + 1) * (g.n + 1); }
+ground_points :: (g: Ground) -> int { return (g.n + 1) * (ground_rows(g) + 1); }
 
 // The hills the ground would have with no paths or flats: rolling, and
 // rising toward the edge so a realm sits in a shallow bowl.
@@ -143,7 +147,7 @@ verse_terrain_build :: (g: Ground, heights: [] f32, nodes: [] f32, links: [] int
   if g.n < 1 || heights.count < ground_points(g) || links.count / LINK > TERRAIN_LINKS { return false; }
   reach := half + 0.2 + f32(PATH_BLEND);
   close: [TERRAIN_LINKS] int;
-  for j: 0..<g.n + 1 {
+  for j: 0..<ground_rows(g) + 1 {
     z := g.south + f32(j) * g.cell;
     cn := 0;
     for i: 0..<links.count / LINK {
@@ -161,7 +165,8 @@ verse_terrain_build :: (g: Ground, heights: [] f32, nodes: [] f32, links: [] int
 
 ground_point :: (g: Ground, heights: [] f32, i: int, j: int) -> f32 {
   ci := ifx i < 0 then 0 else ifx i > g.n then g.n else i;
-  cj := ifx j < 0 then 0 else ifx j > g.n then g.n else j;
+  rows := ground_rows(g);
+  cj := ifx j < 0 then 0 else ifx j > rows then rows else j;
   k := cj * (g.n + 1) + ci;
   if k < 0 || k >= heights.count { return 0; }
   return heights[k];
@@ -172,7 +177,7 @@ Spot :: struct { i: int; j: int; fx: f32; fz: f32; }
 ground_spot :: (g: Ground, x: f32, z: f32) -> Spot {
   s: Spot;
   gx := clamp((x - g.west) / g.cell, 0, f32(g.n) - 0.0001);
-  gz := clamp((z - g.south) / g.cell, 0, f32(g.n) - 0.0001);
+  gz := clamp((z - g.south) / g.cell, 0, f32(ground_rows(g)) - 0.0001);
   if !finite(gx) { gx = 0; }
   if !finite(gz) { gz = 0; }
   s.i = cast(int) floor(gx); s.j = cast(int) floor(gz);
@@ -638,4 +643,15 @@ built :: (heights: [] f32) -> bool {
   }
   #assert flat_gap(f.pos, to) < 1.7;
   #assert off < 8;
+}
+
+#test "a rectangular ground: rows south to north, the height exact at its far corner" {
+  g := tg(); g.rows = TG * 3;
+  heights: [(TG + 1) * (TG * 3 + 1)] f32;
+  #assert ground_points(g) == heights.count;
+  nodes := TEST_NODES; links := TEST_LINKS; flats := TEST_FLATS;
+  #assert verse_terrain_build(g, heights[..], nodes[..], links[..], 1.0, flats[..]);
+  far_z := g.south + f32(g.rows) * g.cell;
+  #assert near(verse_terrain_height(g, heights[..], g.west, far_z), heights[g.rows * (TG + 1)], 0.01);
+  #assert near(verse_terrain_height(g, heights[..], g.west + 4, g.south + 4 * 40), heights[40 * (TG + 1) + 1], 0.0001);
 }

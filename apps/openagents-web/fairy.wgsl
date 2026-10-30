@@ -22,12 +22,12 @@ struct U {
   r0: vec4f, r1: vec4f, r2: vec4f, r3: vec4f,
   eye: vec4f,       // the eye, the haze's density
   sun: vec4f,       // toward the sun, phone
-  ground: vec4f,    // cells a side, cell size, west and south edge
+  ground: vec4f,    // cells west to east, cell size, west and south edge
   grass: vec4f,     // the first patch's x, z, patches a side, blades a patch
   grass2: vec4f,    // the grass's reach (m), the water's level, a trail's half width, your x
   shadow: array<vec4f, 16>,
-  path: array<vec4f, 32>,
-  path_info: vec4f,
+  path: array<vec4f, 32>,   // the fade's circles (x, z, radius, edge; forest.coax FF_FADE): the paths are in the ground's planes now
+  path_info: vec4f,         // 0, a footpath's half width, the ground's rows south to north, its points (a plane's length)
   bloom: array<vec4f, 24>,
   bloom_info: vec4f,
   plate: array<vec4f, 32>,
@@ -94,9 +94,16 @@ fn sky_colour(d: vec3f) -> vec3f {
 
 // How much colour is back at xz (forest.coax ff_restored), and the glow of a young front there.
 fn restored(xz: vec2f) -> vec2f {
-  var best = 0.0;
   var front = 0.0;
   let count = i32(u.bloom_info.x);
+  // outside the fade's circles (forest.coax FF_FADE) the park keeps its colour
+  var faded = 0.0;
+  for (var i = 0; i < 8; i++) {
+    if (i >= i32(u.bloom_info.y)) { break; }
+    let z = u.path[i];
+    faded = max(faded, 1.0 - clamp((distance(xz, z.xy) - (z.z - z.w)) / max(z.w, 0.001), 0.0, 1.0));
+  }
+  var best = 1.0 - faded;
   for (var i = 0; i < 24; i++) {
     if (i >= count) { break; }
     let b = u.bloom[i];
@@ -180,13 +187,19 @@ fn quad(v: u32) -> vec2f {
 fn height(x: i32, z: i32) -> f32 {
   let n = i32(u.ground.x);
   let cx = clamp(x, 0, n);
-  let cz = clamp(z, 0, n);
+  let cz = clamp(z, 0, i32(u.path_info.z));
   return heights[u32(cz * (n + 1) + cx)];
+}
+// How far a ground point is past a footpath's edge (x) and a drive's or the street's (y): the heights' second and third planes (fairy.coax path_planes).
+fn path_planes(x: i32, z: i32) -> vec2f {
+  let i = u32(z * (i32(u.ground.x) + 1) + x);
+  let p = u32(u.path_info.w);
+  return vec2f(heights[p + i], heights[2u * p + i]);
 }
 // The ground's height at xz, the same two triangles a cell as it is drawn (terrain.coax).
 fn ground_h(xz: vec2f) -> f32 {
   let n = u.ground.x;
-  let g = clamp((xz - u.ground.zw) / u.ground.y, vec2f(0.0), vec2f(n - 0.0001));
+  let g = clamp((xz - u.ground.zw) / u.ground.y, vec2f(0.0), vec2f(n, u.path_info.z) - vec2f(0.0001));
   let i = i32(floor(g.x)); let j = i32(floor(g.y));
   let f = g - vec2f(f32(i), f32(j));
   let h00 = height(i, j); let h10 = height(i + 1, j); let h01 = height(i, j + 1); let h11 = height(i + 1, j + 1);
@@ -308,7 +321,8 @@ fn wind_bend(xz: vec2f) -> f32 {
 @vertex fn scene_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> S {
   var o: S;
   let n = u32(u.ground.x);
-  if (instance < n * n) {
+  let cells = n * u32(u.path_info.z);
+  if (instance < cells) {
     let c = quad(id % 6u);
     let gx = i32(instance % n) + i32(c.x);
     let gz = i32(instance / n) + i32(c.y);
@@ -318,15 +332,15 @@ fn wind_bend(xz: vec2f) -> f32 {
     o.pos = clip(w);
     o.world = w;
     o.normal = normal;
-    o.tint = vec3f(0.0);
+    o.tint = vec3f(path_planes(gx, gz), 0.0);
     o.look = 99u;
     o.local = vec3f(0.0);
     o.size = vec2f(0.0);
     return o;
   }
   let objects_n = arrayLength(&objects);
-  if (instance >= n * n + objects_n) { return grass_vertex(id, instance - n * n - objects_n); }
-  let m = objects[instance - n * n];
+  if (instance >= cells + objects_n) { return grass_vertex(id, instance - cells - objects_n); }
+  let m = objects[instance - cells];
   let kind = u32(m.colour.w) % 8u;
   var v: Vert;
   switch kind {
@@ -409,12 +423,14 @@ fn grass_vertex(id: u32, cell: u32) -> S {
   return o;
 }
 
-// The ground's colour at xz: broad flat fills of lime and olive, the trails a flat tan band.
-fn ground_colour(xz: vec2f, aa: f32) -> vec3f {
+// The ground's colour at xz: broad flat fills of lime and olive, the footpaths a flat tan band,
+// the drives and avenues the same tan greyed. paths: how far past a footpath's and a drive's
+// edge (the ground's planes, fairy.coax path_planes).
+fn ground_colour(xz: vec2f, aa: f32, paths: vec2f) -> vec3f {
   var base = mix(pal(P_GROUND), pal(P_GROUND2), step(0.58, noise(xz * 0.035)));
-  let d = path_distance(xz);
-  let half = u.path_info.y;
-  base = mix(base, pal(P_PATH), 1.0 - smoothstep(half - aa, half + aa, d));
+  base = mix(base, pal(P_PATH), 1.0 - smoothstep(-aa, aa, paths.x));
+  let grey = vec3f(dot(pal(P_PATH), vec3f(0.3, 0.55, 0.15))) * 0.78;
+  base = mix(base, grey, 1.0 - smoothstep(-aa, aa, paths.y));
   return base;
 }
 
@@ -464,13 +480,13 @@ fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> ve
     }
   }
   if (look == 99u) {
-    base = ground_colour(xz, ground_aa);
+    base = ground_colour(xz, ground_aa, s.tint.xy);
     // the banks: a flat tan where the ground dips to the water
     base = mix(base, pal(P_PATH), step(s.world.y, u.grass2.y + 0.2));
     shadow = blob_shadows(xz);
   } else if (look == 98u) {
     // a tuft: one flat step darker than the ground it grows from
-    base = ground_colour(xz, ground_aa) * 0.86;
+    base = ground_colour(xz, ground_aa, vec2f(9.0)) * 0.86;
     shadow = blob_shadows(xz);
   } else if (look == 3u || look == 6u) {
     character = true; keep = true;

@@ -8,7 +8,7 @@
 
 FFM_CHIPS :: 64;
 // The mirror pool: in your home's hollow (fairyhome.coax).
-FFM_POOL_X :: -44.4; FFM_POOL_Z :: -42.6; FFM_POOL_R :: 1.0;
+FFM_POOL_X :: 28.6; FFM_POOL_Z :: -299.6; FFM_POOL_R :: 1.0;
 FFM_POOL_NEAR :: 2.0;
 
 Maker :: struct {

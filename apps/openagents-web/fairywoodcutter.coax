@@ -6,7 +6,7 @@
 // teaches CRAFT. Before, it rests on his shoulder; after, he splits a log.
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
 
-FFW_X :: -34.0; FFW_Z :: -49.2;   // where he stands, by the stump (FFK_AXE_X, FFK_AXE_Z)
+FFW_X :: 39.0; FFW_Z :: -306.2;   // where he stands, by the stump (FFK_AXE_X, FFK_AXE_Z)
 FFW_NEAR :: 2.6;                  // metres: near enough to talk to him
 
 ffw_near :: (you: Point) -> bool { return ffk_at(you, f32(FFW_X), f32(FFW_Z), f32(FFW_NEAR)); }

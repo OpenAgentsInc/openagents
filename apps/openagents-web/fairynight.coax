@@ -142,7 +142,7 @@ ffn_carried :: (s: [] Fairy, lantern: Point) {
   ffn_frame(s[..], 0.016);
   #assert s[0].night == 0;
   // the hollow and its stones keep off the trails, the stream, the patches and the creatures, and in bounds
-  #assert sqrt(f32(FFN_HOLLOW_X) * f32(FFN_HOLLOW_X) + f32(FFN_HOLLOW_Z) * f32(FFN_HOLLOW_Z)) < f32(FF_BOUND) - 2;
+  #assert fairy_place_open(s[..], f32(FFN_HOLLOW_X), f32(FFN_HOLLOW_Z));   // inside the park's wall, on open ground
   for i: 0..<FF_PATCHES { #assert !ffn_near(FF_PATCH[i * 4], FF_PATCH[i * 4 + 1], f32(FFN_HOLLOW_X), f32(FFN_HOLLOW_Z), 6); }
   for c: 0..<FF_CREATURES { #assert !ffn_near(FF_CREATURE[c * 4], FF_CREATURE[c * 4 + 1], f32(FFN_HOLLOW_X), f32(FFN_HOLLOW_Z), f32(FF_TALK_NEAR) + 3); }
   for i: 0..<s[0].tree_n { #assert !ffn_near(s[0].trees[i * TREE_FLOATS], s[0].trees[i * TREE_FLOATS + 1], f32(FFN_HOLLOW_X), f32(FFN_HOLLOW_Z), f32(FFN_HOLLOW_CLEAR)); }

@@ -1,12 +1,12 @@
 # Fairy Forest
 
 Status: first crack live and unlisted, October 29, 2026, at
-https://openagents.com/realms/fairy-forest (task ff-first-crack): the valley,
+https://openagents.com/realms/fairy-forest (task ff-first-crack): the park,
 the fairy with flight and a glide, Bloom, three creatures and three of the
 heart tree's roots. Since then (ff-roots): Thornfall (brambles round a fallen
 giant tree, with Burdock the badger) and the Old Ring (nine standing stones,
 with Hollow the owl), so all five roots can be woken; then the heart tree
-blooms, colour comes back to the whole valley, and the forest stays open to
+blooms, colour comes back to the whole park, and the forest stays open to
 wander. What you restored is saved in this browser and, with an account, on
 the server. Since then too (ff-talk): the creatures talk, typed, through the character chat Everglade's people use: each knows its trouble and how far you have helped, says things as you pass, thanks you once its glade is green and remembers you (verse/fairy-forest/talk.coax). The
 designer's notes on panes, chat and messages were added the same day. It is drawn
@@ -31,10 +31,21 @@ it.
 
 ## The forest
 
-- **Size:** a valley of about 300 × 300 m, walkable end to end in a couple of
-  minutes. Five glades round a central heart tree, joined by trails, with a
-  stream running through and a pond under a waterfall (the engine's water:
-  [water.md](../../docs/verse/water.md)).
+- **Size:** Central Park at a quarter of its size (ff-park,
+  `verse/fairy-forest/park.coax`, `apps/openagents-web/fairypark.coax`):
+  1025 m from 59th Street (south) to 110th (north) and 208 m from Central
+  Park West to Fifth Avenue, the real park's 5:1, so a run end to end takes
+  about two and a half minutes. Its lakes, rocky outcrops, lawns, drives,
+  footpaths and landmarks stand where they do in the real park, as simple
+  low-poly shapes, with the avenues' blocks round it; each landmark's name
+  shows over it as you come near. No grass or ferns: simple trees and
+  bushes only. The heart tree stands in the Ramble (the origin); Mossbank
+  by the Pond and Hallett, where you wake and your home grows; The Reeds at
+  the Pool, where the Loch (the stream) runs through a pond under a
+  waterfall on its way to Harlem Meer; Lanternwood in the North Woods;
+  Thornfall at the north edge; the Old Ring by Cleopatra's Needle. Only the
+  glades and the heart tree are faded; the rest of the park keeps its
+  colour. A place kept from the old valley opens at the spawn.
 - **The glades:** each has its own character and its own trouble.
   - **Mossbank:** soft hills and mushrooms; where you wake and where your home
     grows.
@@ -163,7 +174,7 @@ you told them and what you did for them).
 - **Build** with the edit tools the Haunted House and the Sandbox already
   have: place, move, turn, size, undo, by hand or in one sentence.
 - Built (ff-home, `apps/openagents-web/fairyhome.coax`): the hollow sits
-  under a great root in Mossbank's west (about -46, -44), with a bed of
+  under a great root in Mossbank's west (about 27, -301, by the Pond), with a bed of
   moss, a lamp and the mirror pool. Each root you wake opens one more room:
   the garden, the table room (a table and stool), the shelves, the green.
   E (BUILD) in your home puts a bar along the bottom: eight pieces (bed,

@@ -94,15 +94,15 @@ ffn_step :: (c: [] FfClock, dt: f32) {
 ffn_resting :: (c: [] FfClock) -> bool { return c[0].rest > 0; }
 
 // ---- Lanternwood by night
-FFN_GLADE_X :: -27.0; FFN_GLADE_Z :: 33.0;
+FFN_GLADE_X :: -65.0; FFN_GLADE_Z :: 560.0;
 // The moon hollow, north of the lantern flower: a ring of glowcaps round a little moon pool, only in the dark with LIGHT,
 // and the stones that lead to it from the flower.
-FFN_HOLLOW_X :: -31.5; FFN_HOLLOW_Z :: 49.5;
+FFN_HOLLOW_X :: -69.5; FFN_HOLLOW_Z :: 576.5;
 FFN_HOLLOW_CLEAR :: 4.5;     // no tree this near it
 FFN_HOLLOW_FIND :: 2.2;      // stand this near its middle to find it
 FFN_STONES :: 6;
 ffn_stone :: (k: int) -> Point {
-  a := v3(-28.2, 0, 44.4); b := v3(f32(FFN_HOLLOW_X) + 1.2, 0, f32(FFN_HOLLOW_Z) - 2.6);
+  a := v3(-66.2, 0, 571.4); b := v3(f32(FFN_HOLLOW_X) + 1.2, 0, f32(FFN_HOLLOW_Z) - 2.6);
   f := (f32(k) + 0.5) / f32(FFN_STONES);
   side := sin(f * 3.1416) * 0.9;
   return v3(a.x + (b.x - a.x) * f + side, 0, a.z + (b.z - a.z) * f + side * 0.4);

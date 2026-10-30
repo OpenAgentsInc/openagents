@@ -11,7 +11,7 @@
 
 FF_WORLD :: "Fairy Forest";
 FF_TALK_CONTROLS :: "W A S D or the arrows walk, Shift runs, drag the mouse to look, the wheel zooms. Space flaps the wings up, holding it climbs, letting go glides down, and Shift in the air dives. On a phone the left thumb walks, the right looks, and a tap on the right side flaps. E, or the BLOOM button, at a grey patch of flowers blooms it; at the Old Ring's dark stones it lights them. E near a creature, or a click or tap on it, talks to it; type and press Enter to say something, and Esc or BYE ends the talk. Bloom every patch in a glade and one of the heart tree's five roots wakes; all five and the heart tree blooms.";
-FF_VALLEY :: "Fairy Forest is a valley round the heart tree, which has fallen asleep, and since then the forest has faded to grey. Five glades lie round it: Mossbank, soft hills and mushrooms, where the fairy woke; the Reeds, the marsh by the pond under the stream; Lanternwood, tall trees whose fruit glows; Thornfall to the north, brambles round a fallen giant tree; and the Old Ring to the south, nine standing stones that hold the forest's lore. The one talking to you is a small fairy, newly woken, who can bloom faded flowers back to colour.";
+FF_VALLEY :: "Fairy Forest is a park laid out like Central Park in New York, a long rectangle of rolling lawns, rocks, lakes, paths and landmarks such as Bethesda Terrace, Bow Bridge and Belvedere Castle, with the city's towers round it. The heart tree in the Ramble has fallen asleep, and since then its glades have faded to grey. Five glades lie round it: Mossbank by the Pond in the south, where the fairy woke; the Reeds at the Pool, the marsh by the pond under the stream; Lanternwood in the North Woods, tall trees whose fruit glows; Thornfall at the north edge, brambles round a fallen giant tree; and the Old Ring by Cleopatra's Needle, nine standing stones that hold the forest's lore. The one talking to you is a small fairy, newly woken, who can bloom faded flowers back to colour.";
 FF_REMARK_NEAR :: 12.0;    // metres: near enough to hear a creature's passing remark
 
 // Rowan the woodcutter (ff-woodcutter, apps/openagents-web/fairywoodcutter.coax)
@@ -138,7 +138,7 @@ ff_knows :: (out: [] u8, at: int, f: [] Forest, c: int) -> int {
   n = ff_json(out, n, " now.");
   n = ff_json(out, n, " Roots of the heart tree awake: ");
   n = ff_digit(out, n, ff_roots_awake(f)); n = ff_json(out, n, " of 5.");
-  if f[0].heart { n = ff_json(out, n, " The heart tree has bloomed and colour is back in the whole valley: the fairy saved the forest."); }
+  if f[0].heart { n = ff_json(out, n, " The heart tree has bloomed and colour is back in the whole park: the fairy saved the forest."); }
   n = ff_json(out, n, " Speak as a small forest creature: one or two short sentences, simple words, never more than about thirty words.");
   return n;
 }

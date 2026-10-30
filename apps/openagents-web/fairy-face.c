@@ -106,7 +106,7 @@ static void start(uint32_t state) {
     int64_t n = fairy_course((coax_v_f32){course, 48});
     coax_t_Fairy *f = fairy(state);
     fairy_stream_start(sv(), (coax_v_f32){f->heights.e, fairy_heights(at(state))}, (coax_v_f32){course, n}, fairy_level(),
-                       fairy_pond_x(), fairy_pond_z(), 80, 2, -80, -80);
+                       fairy_pond_x(), fairy_pond_z(), fairy_ground_cells(), fairy_ground_rows(), fairy_ground_cell(), fairy_ground_west(), fairy_ground_south());
     stream_built = true;
     swim.pace = 1;
   }

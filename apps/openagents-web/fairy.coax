@@ -34,6 +34,7 @@
 #load "../../verse/camera.coax";
 #load "../../verse/terrain.coax";
 #load "../../verse/fairy-forest/forest.coax";
+#load "../../verse/fairy-forest/park.coax";   // the park: Central Park at a quarter of its size
 #load "../../verse/fairy-forest/talk.coax";
 #load "place-orbit.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
@@ -52,6 +53,7 @@
 #load "fairywoodcutter.coax";   // Rowan, who gives you his axe
 #load "fairymend.coax";    // broken things mended
 #load "fairytools.coax";   // tools made with CRAFT
+#load "fairypark.coax";    // the park drawn: lakes, trees, landmarks, signs
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -73,9 +75,9 @@ UNIFORM_FLOATS :: U_NIGHT + 4;
 CELLS :: FF_CELLS;
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4;
 SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
-SLOTS :: [5] int.[0, 60, 1200, 560, 200];
-SLOT_AT :: [5] int.[0, 0, 60, 1260, 1820];
-OBJECTS :: 2020;
+SLOTS :: [5] int.[0, 1200, 1200, 560, 2400];
+SLOT_AT :: [5] int.[0, 0, 1200, 2400, 2960];
+OBJECTS :: 5360;
 OBJECT_FLOATS :: 16;
 // Looks (fairy.wgsl): how a surface takes the light and the fade.
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_GLOW :: 4; LOOK_WING :: 5;
@@ -90,12 +92,12 @@ GRASS_BLADES_PHONE :: 32;  // and on a phone (8)
 GRASS_PATCHES :: 32;       // patches a side on a computer: out to 32 m
 GRASS_PATCHES_PHONE :: 18; // on a phone: out to 18 m
 
-WALLS :: 500;
+WALLS :: 2900;
 // Thornfall's fallen giant: a trunk lying east-west, its root plate at the west end.
-LOG_X0 :: -8.0; LOG_X1 :: 7.0; LOG_Z :: 54.0; LOG_R :: 1.3;               // a trunk and a crown a tree, the heart tree's, its roots, the stones, the valley's edge
+LOG_X0 :: -35.0; LOG_X1 :: -20.0; LOG_Z :: 621.0; LOG_R :: 1.3;               // a trunk and a crown a tree, the heart tree's, its roots, the stones, the valley's edge
 SPHERES :: 64;
 BOXES :: 120;
-TREES :: 190;              // x, z, height, canopy radius, hue
+TREES :: 2400;             // x, z, height, canopy radius, hue (under 0.25 a pine)
 TREE_FLOATS :: 5;
 RIDGES :: 30;
 FERNS :: 70;               // x, z, yaw, size
@@ -142,7 +144,7 @@ Fairy :: struct {
   feet: Point; face: f32; act: int; stride: f32; air: f32; flap: f32; flying: bool; water: int;
   forest: [1] Forest;
   // the scene
-  heights: [FF_GROUND_POINTS] f32;
+  heights: [FF_GROUND_POINTS * 3] f32;   // the ground's heights, then how far each point is from a footpath's edge, then from a drive's or the street's
   objects: [OBJECTS * OBJECT_FLOATS] f32;
   counts: [5] int;
   draws: [DRAWS * 4] u32;
@@ -150,6 +152,8 @@ Fairy :: struct {
   spheres: [SPHERES * 4] f32; sphere_n: int;
   boxes: [BOXES * 6] f32; box_n: int;
   trees: [TREES * TREE_FLOATS] f32; tree_n: int;
+  bushes: [FFPK_BUSHES * 4] f32; bush_n: int;
+  blocks: [FFP_BLOCKS * 6] f32; block_n: int;   // the skyline
   ferns: [FERNS * 4] f32; fern_n: int;
   shadow_n: int;
   plate_n: int;
@@ -231,8 +235,8 @@ fairy_water_at :: () -> int #export_c { return U_WATER; }
 fairy_eye_at :: () -> int #export_c { return U_EYE; }
 
 ground :: () -> Ground {
-  g: Ground; g.n = CELLS; g.cell = f32(FF_CELL); g.west = f32(FF_EDGE); g.south = f32(FF_EDGE);
-  g.rim_from = 46; g.rim = 0.03;
+  g: Ground; g.n = CELLS; g.rows = FF_ROWS; g.cell = f32(FF_CELL); g.west = f32(FF_WEST); g.south = f32(FF_SOUTH);
+  g.rim_from = 100000; g.rim = 0;   // no bowl: the park is flat land between the avenues
   return g;
 }
 ground_at :: (s: [] Fairy, x: f32, z: f32) -> f32 { return verse_terrain_height(ground(), s[0].heights[..], x, z); }
@@ -245,16 +249,74 @@ fairy_start :: (s: [] Fairy) {
   ff_stream_line(s[0].stream[..]);
   nodes := FF_NODE_XZ; links := FF_LINK_AB; flats := FF_FLATS;
   shaped_ok := verse_terrain_build(ground(), s[0].heights[..], nodes[..], links[..], f32(FF_PATH_HALF), flats[..]);
+  park_ground(s);
   carve(s);
+  path_planes(s);
   s[0].feet = v3(f32(FF_SPAWN_X), ground_at(s, f32(FF_SPAWN_X), f32(FF_SPAWN_Z)), f32(FF_SPAWN_Z));
   s[0].face = f32(FF_SPAWN_FACE);
   s[0].orbit = verse_orbit_start(s[0].feet, f32(FF_SPAWN_FACE));
   s[0].button_finger = -1;
   s[0].near_creature = -1;
   s[0].forest[0].news = -1;
-  plant_trees(s);
-  plant_ferns(s);
+  ffpk_plant(s);
+  s[0].block_n = ffp_skyline(s[0].blocks[..]);
   build_scenery(s);
+}
+
+// The park's ground over the built hills: never under the water's level
+// but in the lakes and the stream (carved after), the rocky outcrops raised,
+// and the streets round the park flat.
+park_ground :: (s: [] Fairy) {
+  w := CELLS + 1;
+  for j: 0..<FF_ROWS + 1 {
+    z := f32(FF_SOUTH) + f32(j) * f32(FF_CELL);
+    for i: 0..<w {
+      x := f32(FF_WEST) + f32(i) * f32(FF_CELL);
+      k := j * w + i;
+      h := hi(s[0].heights[k], f32(FF_LEVEL) + 0.35) + ffp_rock_lift(x, z);
+      out := hi(hi(f32(FF_PARK_W) - x, x - f32(FF_PARK_E)), hi(f32(FF_PARK_S) - z, z - f32(FF_PARK_N)));
+      if out > -3 { h = lerp(h, 0.25, clamp01((out + 3) / 3)); }
+      s[0].heights[k] = h;
+    }
+  }
+}
+
+// The paths painted on the ground: for every point, how far it is past a
+// footpath's edge (the second plane) and past a drive's or the street's
+// (the third), clamped; fairy.wgsl draws the edges where they cross 0.
+PLANE_FAR :: 6.0;
+path_planes :: (s: [] Fairy) {
+  w := CELLS + 1;
+  pn := FF_GROUND_POINTS;
+  close: [FF_LINKS] int;
+  for j: 0..<FF_ROWS + 1 {
+    z := f32(FF_SOUTH) + f32(j) * f32(FF_CELL);
+    nn := 0;
+    for l: 0..<FF_LINKS {
+      az := FF_NODE_XZ[FF_LINK_AB[l * 2] * 2 + 1]; bz := FF_NODE_XZ[FF_LINK_AB[l * 2 + 1] * 2 + 1];
+      if z >= lo(az, bz) - 10 && z <= hi(az, bz) + 10 { close[nn] = l; nn += 1; }
+    }
+    for i: 0..<w {
+      x := f32(FF_WEST) + f32(i) * f32(FF_CELL);
+      foot := f32(PLANE_FAR); drive := f32(PLANE_FAR);
+      for m: 0..<nn {
+        l := close[m];
+        a := FF_LINK_AB[l * 2]; b := FF_LINK_AB[l * 2 + 1];
+        ax := FF_NODE_XZ[a * 2]; az := FF_NODE_XZ[a * 2 + 1]; bx := FF_NODE_XZ[b * 2]; bz := FF_NODE_XZ[b * 2 + 1];
+        if x < lo(ax, bx) - 10 || x > hi(ax, bx) + 10 { continue; }
+        dx := bx - ax; dz := bz - az;
+        t := clamp01(((x - ax) * dx + (z - az) * dz) / hi(dx * dx + dz * dz, 0.0001));
+        px := ax + dx * t - x; pz := az + dz * t - z;
+        d := sqrt(px * px + pz * pz) - FF_KIND_HALF[FF_LINK_KIND[l]];
+        if FF_LINK_KIND[l] == 1 { drive = lo(drive, d); } else { foot = lo(foot, d); }
+      }
+      // outside the park's wall: the avenues
+      out := hi(hi(f32(FF_PARK_W) - x, x - f32(FF_PARK_E)), hi(f32(FF_PARK_S) - z, z - f32(FF_PARK_N)));
+      drive = lo(drive, -out);
+      s[0].heights[pn + j * w + i] = clamp(foot, -3, f32(PLANE_FAR));
+      s[0].heights[pn * 2 + j * w + i] = clamp(drive, -3, f32(PLANE_FAR));
+    }
+  }
 }
 
 // The stream's bed and banks, cut into the built ground.
@@ -264,12 +326,25 @@ fairy_start :: (s: [] Fairy) {
 carve :: (s: [] Fairy) {
   w := CELLS + 1;
   line := s[0].stream[..];
+  // the lakes first (park.coax), then the stream's bed and banks
+  // (a row measures only the lakes that come within 12 m of it)
+  for j: 0..<FF_ROWS + 1 {
+    z := f32(FF_SOUTH) + f32(j) * f32(FF_CELL);
+    close := false;
+    for b: 0..<FFP_BLOBS { if FFP_BLOB[b * 4 + 2] > 0 && abs(z - FFP_BLOB[b * 4 + 1]) < FFP_BLOB[b * 4 + 3] + 12 { close = true; } }
+    if !close { continue; }
+    for i: 0..<w {
+      x := f32(FF_WEST) + f32(i) * f32(FF_CELL);
+      ln := ffp_lake_near(x, z);
+      if ln.out < 12 { s[0].heights[j * w + i] = ffp_lake_carve(s[0].heights[j * w + i], ln); }
+    }
+  }
   wide := 0.0f32;
   for k: 0..<FF_LINE_N { wide = hi(wide, line[k * 3 + 1]); }
   reach := wide * 0.5 + 14;
   ks: [FF_LINE_N] int;
-  for j: 0..<w {
-    z := f32(FF_EDGE) + f32(j) * f32(FF_CELL);
+  for j: 0..<FF_ROWS + 1 {
+    z := f32(FF_SOUTH) + f32(j) * f32(FF_CELL);
     n := 0;
     for k: 1..<FF_LINE_N {
       az := line[k * 3 - 1]; bz := line[k * 3 + 2];
@@ -279,7 +354,7 @@ carve :: (s: [] Fairy) {
     x0 := 1000000.0f32; x1 := -1000000.0f32;
     for m: 0..<n { k := ks[m]; x0 = lo(x0, lo(line[k * 3 - 3], line[k * 3])); x1 = hi(x1, hi(line[k * 3 - 3], line[k * 3])); }
     for i: 0..<w {
-      x := f32(FF_EDGE) + f32(i) * f32(FF_CELL);
+      x := f32(FF_WEST) + f32(i) * f32(FF_CELL);
       if x < x0 - reach || x > x1 + reach { continue; }
       near_s := ff_stream_near_some(line, ks[0..<n], x, z);
       if near_s.d < near_s.half + 14 { s[0].heights[j * w + i] = ff_carve(s[0].heights[j * w + i], near_s); }
@@ -295,6 +370,11 @@ fairy_course :: (out: [] f32) -> int #export_c {
   return n;
 }
 fairy_level :: () -> f32 #export_c { return f32(FF_LEVEL); }
+fairy_ground_cells :: () -> int #export_c { return CELLS; }
+fairy_ground_rows :: () -> int #export_c { return FF_ROWS; }
+fairy_ground_cell :: () -> f32 #export_c { return f32(FF_CELL); }
+fairy_ground_west :: () -> f32 #export_c { return f32(FF_WEST); }
+fairy_ground_south :: () -> f32 #export_c { return f32(FF_SOUTH); }
 fairy_pond_x :: () -> f32 #export_c { return f32(FF_POND_X); }
 fairy_pond_z :: () -> f32 #export_c { return f32(FF_POND_Z); }
 
@@ -315,79 +395,12 @@ open_ground :: (line: [] f32, x: f32, z: f32, room: f32) -> bool {
   return true;
 }
 
-// The forest: a jittered grid, kept off the open ground; out to the rim's slopes.
-plant_trees :: (s: [] Fairy) {
-  n := 0;
-  line := s[0].stream[..];
-  step := 7.0f32;
-  for a: 0..<22 {
-    for b: 0..<22 {
-      if n >= TREES { break; }
-      x := -74 + f32(a) * step + (hash1(f32(a), f32(b)) - 0.5) * 4.5;
-      z := -74 + f32(b) * step + (hash1(f32(b) + 7.3, f32(a)) - 0.5) * 4.5;
-      if !open_ground(line, x, z, 1.5) { continue; }
-      // the valley floor near the trails is lighter wood: skip some
-      if sqrt(x * x + z * z) < 45 && hash1(x, z) < 0.35 { continue; }
-      k := n * TREE_FLOATS;
-      s[0].trees[k] = x; s[0].trees[k + 1] = z;
-      s[0].trees[k + 2] = 2.6 + hash1(z, x) * 2.6;
-      s[0].trees[k + 3] = 2.0 + hash1(x + 1, z) * 1.4;
-      s[0].trees[k + 4] = hash1(x + 3, z + 5);
-      n += 1;
-    }
-  }
-  s[0].tree_n = n;
-}
-
-// Ferns round each glade's edge and by the trails near where you wake, off the trails and the water.
-plant_ferns :: (s: [] Fairy) {
-  n := 0;
-  line := s[0].stream[..];
-  nodes := FF_NODE_XZ; links := FF_LINK_AB;
-  for g: 0..<FF_GLADES {
-    for k: 0..<14 {
-      if n >= FERNS { break; }
-      a := f32(k) * 2.399 + f32(g);
-      d := FF_GLADE[g * 3 + 2] * (0.75 + 0.5 * hash1(f32(k), f32(g) + 3));
-      x := FF_GLADE[g * 3] + cos(a) * d; z := FF_GLADE[g * 3 + 1] + sin(a) * d;
-      if verse_path_nearest(nodes[..], links[..], x, z).d < f32(FF_PATH_HALF) + 0.8 { continue; }
-      st := ff_stream_near_line(line, x, z);
-      if st.d < st.half + 1.5 { continue; }
-      if ff_patch_near_xz(x, z, 1.8) { continue; }
-      k4 := n * 4;
-      s[0].ferns[k4] = x; s[0].ferns[k4 + 1] = z; s[0].ferns[k4 + 2] = a * 3; s[0].ferns[k4 + 3] = 0.7 + 0.5 * hash1(x, z);
-      n += 1;
-    }
-  }
-  s[0].fern_n = n;
-}
 ff_patch_near_xz :: (x: f32, z: f32, r: f32) -> bool {
   for i: 0..<FF_PATCHES {
     dx := x - FF_PATCH[i * 4]; dz := z - FF_PATCH[i * 4 + 1];
     if dx * dx + dz * dz < (r + 1.4) * (r + 1.4) { return true; }
   }
   return false;
-}
-
-// A fern: five fronds arching out from its heart, the nearest ones first while the spheres last.
-ferns :: (s: [] Fairy, eye: Point) {
-  t := effect_time(s);
-  for f: 0..<s[0].fern_n {
-    k := f * 4;
-    x := s[0].ferns[k]; z := s[0].ferns[k + 1]; yaw := s[0].ferns[k + 2]; size := s[0].ferns[k + 3];
-    dx := x - eye.x; dz := z - eye.z;
-    if dx * dx + dz * dz > 1600 { continue; }
-    if s[0].counts[SHAPE_SPHERE] > SLOTS[SHAPE_SPHERE] - 8 { return; }
-    g := ground_at(s, x, z);
-    for i: 0..<5 {
-      a := yaw + f32(i) * 1.2566;
-      sway := sin(t * 1.4 + f32(f) + f32(i)) * 0.05;
-      out := v3(sin(a), 0, cos(a));
-      c := add(v3(x, g + 0.32 * size, z), times(out, 0.42 * size));
-      shade := 0.85 + 0.3 * hash1(f32(f), f32(i));
-      shape(s, SHAPE_SPHERE, LOOK_LEAVES, c, a, 1.0 + sway, 0.2 * size, 0.95 * size, 0.04, 0.2 * shade, 0.5 * shade, 0.08 * shade);
-    }
-  }
 }
 
 put6 :: (out: [] f32, i: int, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
@@ -410,15 +423,14 @@ build_scenery :: (s: [] Fairy) {
   wl := s[0].walls[..];
   for t: 0..<s[0].tree_n {
     k := t * TREE_FLOATS;
-    x := s[0].trees[k]; z := s[0].trees[k + 1]; h := s[0].trees[k + 2]; r := s[0].trees[k + 3];
+    x := s[0].trees[k]; z := s[0].trees[k + 1]; h := s[0].trees[k + 2];
     g := ground_at(s, x, z);
-    if w < WALLS { put6(wl, w, x - 0.35, 0, z - 0.35, x + 0.35, h + r * 0.2, z + 0.35); w += 1; }
-    c := r * 0.78;
-    if w < WALLS { put6(wl, w, x - c, h + r * 0.2, z - c, x + c, h + r * 1.42, z + c); w += 1; }
-    if sqrt(x * x + z * z) < 58 {
+    if w < WALLS { put6(wl, w, x - 0.3, 0, z - 0.3, x + 0.3, h + 2, z + 0.3); w += 1; }
+    if sqrt(x * x + z * z) < 40 {
       if bx < BOXES { put6(s[0].boxes[..], bx, x - 0.3, g - 1, z - 0.3, x + 0.3, g + h, z + 0.3); bx += 1; }
     }
   }
+  w = ffpk_walls(s, w);
   // the heart tree (heart(): its trunk to 14.5 m, the canopy's blobs, the roots), over the ground at its foot
   hg := ground_at(s, 0, 0);
   if w < WALLS { put6(wl, w, -2.1, 0, -2.1, 2.1, 15 - hg, 2.1); w += 1; }
@@ -455,10 +467,11 @@ build_scenery :: (s: [] Fairy) {
   if w < WALLS { put6(wl, w, f32(FFP_FALL_X) + 0.2, 0, f32(FFP_FALL_Z) - 3.4, f32(FFP_FALL_X) + 4.6, 2.6, f32(FFP_FALL_Z) + 3.4); w += 1; }
   rc := v3(FF_GLADE[FF_OLD_RING * 3], 0, FF_GLADE[FF_OLD_RING * 3 + 1]);
   if w < WALLS { put6(wl, w, rc.x - 0.75, 0, rc.z - 0.75, rc.x + 0.75, 0.85, rc.z + 0.75); w += 1; }
-  b := f32(FF_BOUND);
+  // the park's wall: Central Park West, Fifth Avenue, 59th and 110th Streets
+  pw := f32(FF_PARK_W); pe := f32(FF_PARK_E); ps := f32(FF_PARK_S); pn := f32(FF_PARK_N);
   if w + 4 <= WALLS {
-    put6(wl, w, -b - 2, 0, -b - 2, b + 2, 80, -b); put6(wl, w + 1, -b - 2, 0, b, b + 2, 80, b + 2);
-    put6(wl, w + 2, -b - 2, 0, -b, -b, 80, b); put6(wl, w + 3, b, 0, -b, b + 2, 80, b);
+    put6(wl, w, pw - 2, 0, ps - 2, pe + 2, 80, ps); put6(wl, w + 1, pw - 2, 0, pn, pe + 2, 80, pn + 2);
+    put6(wl, w + 2, pw - 2, 0, ps, pw, 80, pn); put6(wl, w + 3, pe, 0, ps, pe + 2, 80, pn);
     w += 4;
   }
   s[0].wall_n = w; s[0].box_n = bx;
@@ -533,15 +546,15 @@ fairy_life_ready :: (s: [] Fairy) #export_c { if !s[0].started { fairy_start(s);
 // Open ground: inside the valley's bound, out of the stream's water and clear of the trunks.
 fairy_place_open :: (s: [] Fairy, x: f32, z: f32) -> bool #export_c {
   if !s[0].started { fairy_start(s); }
-  b := f32(FF_BOUND) - 1;
-  if !finite(x) || !finite(z) || x < -b || x > b || z < -b || z > b { return false; }
+  if !finite(x) || !finite(z) || x < f32(FF_PARK_W) + 1 || x > f32(FF_PARK_E) - 1 || z < f32(FF_PARK_S) + 1 || z > f32(FF_PARK_N) - 1 { return false; }
   if ground_at(s, x, z) < f32(FF_LEVEL) + 0.1 { return false; }
   return verse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
 }
 // A kept place made good: itself when open, else the nearest open spot, else the spawn.
 fairy_place_fix :: (s: [] Fairy, p: Place) -> Place #export_c {
-  q := p; q.y = 0; q.room = -1;
+  q := p; q.y = 0; q.room = FF_LAYOUT;
   for i: 0..<PLACE_TRIES {
+    if p.room != FF_LAYOUT { break; }   // kept in the old valley: its places aren't the park's
     t := verse_place_try(p.x, p.z, i);
     if fairy_place_open(s, t.x, t.z) { q.x = t.x; q.z = t.z; return q; }
   }
@@ -554,7 +567,7 @@ fairy_place_camera :: (s: [] Fairy, p: Place) #export_c {
   s[0].feet = v3(p.x, ground_at(s, p.x, p.z), p.z); s[0].face = p.face;
   s[0].orbit = verse_place_orbit(p, s[0].feet);
 }
-fairy_place_of :: (s: [] Fairy, x: f32, y: f32, z: f32, face: f32) -> Place #export_c { return verse_place_of(x, y, z, face, s[0].orbit, -1); }
+fairy_place_of :: (s: [] Fairy, x: f32, y: f32, z: f32, face: f32) -> Place #export_c { return verse_place_of(x, y, z, face, s[0].orbit, FF_LAYOUT); }
 
 // ---- the controls
 
@@ -884,41 +897,6 @@ shadow :: (s: [] Fairy, u: [] f32, x: f32, z: f32, radius: f32, strength: f32) {
 effect_time :: (s: [] Fairy) -> f32 { return ifx s[0].golden then f32(GOLDEN_TIME) else f32(s[0].time); }
 
 // The forest's trees: a warm trunk and a canopy of three clumps, rich mid-greens, one lighter and one darker.
-trees :: (s: [] Fairy, u: [] f32, eye: Point) {
-  for t: 0..<s[0].tree_n {
-    k := t * TREE_FLOATS;
-    x := s[0].trees[k]; z := s[0].trees[k + 1]; h := s[0].trees[k + 2]; r := s[0].trees[k + 3]; hue := s[0].trees[k + 4];
-    g := ground_at(s, x, z);
-    shape(s, SHAPE_CYLINDER, LOOK_BARK, v3(x, g + h * 0.5 - 0.3, z), 0, 0, 0.5, h + 0.6, 0.5, 0.44, 0.38, 0.24);
-    // a flared foot of roots on the near trees, while the cones last
-    dx0 := x - eye.x; dz0 := z - eye.z;
-    if dx0 * dx0 + dz0 * dz0 < 1600 && s[0].counts[SHAPE_CONE] < SLOTS[SHAPE_CONE] - 24 {
-      shape(s, SHAPE_CONE, LOOK_BARK, v3(x, g + 0.3, z), hue * 4, 0, 1.25, 1.0, 1.15, 0.4, 0.36, 0.22);
-    }
-    gr := 0.12 + hue * 0.12; gg := 0.42 + hue * 0.12; gb := 0.05 + hue * 0.03;
-    if hue > 0.86 { gr = 0.62; gg = 0.5; gb = 0.1; }   // a few autumn-gold crowns
-    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x, g + h + r * 0.55, z), hue * 6, 0, r * 2.2, r * 1.9, r * 2.2, gr, gg, gb);
-    // far off, the one clump is enough (the haze has it)
-    if dx0 * dx0 + dz0 * dz0 > 70 * 70 { continue; }
-    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x + r * 0.55, g + h + r * 0.05, z - r * 0.35), 0, 0, r * 1.4, r * 1.2, r * 1.4, gr * 1.35, gg * 1.22, gb * 1.1);
-    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x - r * 0.45, g + h + r * 0.15, z + r * 0.4), 0, 0, r * 1.3, r * 1.15, r * 1.3, gr * 0.7, gg * 0.78, gb * 1.2);
-    dx := x - eye.x; dz := z - eye.z;
-    if dx * dx + dz * dz < 900 { shadow(s, u, x, z, r * 1.4, 0.5); }
-  }
-}
-
-// Ridges past the rim: broad soft hills stepping back into the haze, like painted flats.
-ridges :: (s: [] Fairy) {
-  for i: 0..<RIDGES {
-    ring := i % 3;
-    a := f32(i) * 2.399 + f32(ring) * 0.5;
-    d := 105 + f32(ring) * 55 + hash1(f32(i), 2) * 20;
-    w := 70 + f32(ring) * 40 + hash1(f32(i), 5) * 30;
-    hgt := 28 + f32(ring) * 18 + hash1(f32(i), 9) * 20;
-    shape(s, SHAPE_SPHERE, LOOK_RIDGE, v3(cos(a) * d, -hgt * 0.15, sin(a) * d), a, 0, w, hgt * 2, w * 0.8, 0.2, 0.42, 0.18);
-  }
-}
-
 // The heart tree: a great trunk, its canopy, and its five roots, grey until they wake.
 heart :: (s: [] Fairy, u: [] f32) {
   f := s[0].forest[..];
@@ -988,22 +966,10 @@ patches :: (s: [] Fairy) {
   }
 }
 
-// Mossbank's mushrooms, the pond's reeds, Lanternwood's glowing fruit and the stones round the heart.
+// The pond's reeds, Lanternwood's glowing fruit and the stones round the heart.
 props :: (s: [] Fairy) {
   f := s[0].forest[..];
   t := effect_time(s);
-  for k: 0..<14 {
-    a := f32(k) * 2.1 + 0.3;
-    d := 4 + hash1(f32(k), 4) * 6;
-    x := FF_GLADE[0] + cos(a) * d; z := FF_GLADE[1] + sin(a) * d;
-    if ff_patch_near(f, x, z) >= 0 && false { continue; }
-    g := ground_at(s, x, z);
-    h := 0.35 + hash1(f32(k), 8) * 0.6;
-    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + h * 0.5, z), 0, 0, 0.16 + h * 0.1, h, 0.16 + h * 0.1, 0.9, 0.86, 0.74);
-    cap := 0.5 + h * 0.7;
-    pink := ifx k % 3 == 0 then 1.0f32 else 0.0f32;
-    shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(x, g + h, z), 0, 0, cap, cap * 0.55, cap, lerp(0.86, 0.95, pink), lerp(0.36, 0.6, pink), lerp(0.3, 0.7, pink));
-  }
   for k: 0..<36 {
     a := f32(k) * 0.52;
     rr := 8.2 + hash1(f32(k), 1) * 1.2;
@@ -1801,16 +1767,16 @@ camera_frame :: (s: [] Fairy, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
   return verse_orbit_shot(o);
 }
 
+// The ground's rows and its planes (fairy.wgsl reads the paths from them,
+// path_planes), and the fade's circles (forest.coax FF_FADE) where the
+// trails' segments once were.
 paths :: (u: [] f32) {
-  n := 0;
-  for i: 0..<FF_LINKS {
-    if n >= PATHS { break; }
-    a := FF_LINK_AB[i * 2]; b := FF_LINK_AB[i * 2 + 1];
-    k := U_PATH + n * 4;
-    u[k] = FF_NODE_XZ[a * 2]; u[k + 1] = FF_NODE_XZ[a * 2 + 1]; u[k + 2] = FF_NODE_XZ[b * 2]; u[k + 3] = FF_NODE_XZ[b * 2 + 1];
-    n += 1;
+  for i: 0..<FF_FADES {
+    k := U_PATH + i * 4;
+    u[k] = FF_FADE[i * 3]; u[k + 1] = FF_FADE[i * 3 + 1]; u[k + 2] = FF_FADE[i * 3 + 2]; u[k + 3] = f32(FF_FADE_EDGE);
   }
-  u[U_PATH_INFO] = f32(n); u[U_PATH_INFO + 1] = f32(FF_PATH_HALF);
+  u[U_PATH_INFO] = 0; u[U_PATH_INFO + 1] = f32(FF_PATH_HALF); u[U_PATH_INFO + 2] = f32(FF_ROWS); u[U_PATH_INFO + 3] = f32(FF_GROUND_POINTS);
+  u[U_BLOOM_INFO + 1] = f32(FF_FADES);
 }
 
 blooms :: (s: [] Fairy, u: [] f32) {
@@ -1980,6 +1946,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
     n = ffm_chip(s, out, u, n, chip_x, ifx s[0].race[0].chip.x1 > 0 then mid + 3 * k else gutter, chip_y1, course_w);
   }
   n = ffc_pane(s, out, u, n, gutter + cap + small + 42 * k + (ifx phone(s) then 38 * k else 0.0f32));   // on a phone, under the chat's line
+  if !s[0].maker[0].open { n = ffpk_signs(s, out, u, n, you); }   // (not over the maker's pane)
   // the mood glyphs over the creatures in view
   for c: 0..<FF_CREATURES {
     s[0].seen_on[c] = false;
@@ -2254,29 +2221,31 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   thornfall(s, shot.eye);
   old_ring(s, u, shot.eye);
   heart_bloom(s);
-  trees(s, u, shot.eye);
-  if redit_row_on(s[0].ed[..], "ridges") { ridges(s); }
-  ferns(s, shot.eye);
+  ffpk_lakes(s);
+  ffpk_rocks(s);
+  ffpk_marks(s, shot.eye);
+  ffpk_city(s);
   ffc_draw(s, shot.eye);
   ffk_draw(s, shot.eye);
   ffn_draw(s, shot.eye);
   ffp_draw(s, shot.eye);
   ffw_draw(s, u, shown, shot.eye);
   ffx_draw(s, shot.eye);
-  ffs_others(s, u, shown);   // last: if the shapes run out, they go first
+  ffs_others(s, u, shown);
+  ffpk_trees(s, u, shot.eye);   // last: the trees go as far as the slots allow
   ph := phone(s);
   for kind: 0..<5 {
     d := kind * 4;
     s[0].draws[d] = 0;
     s[0].draws[d + 1] = cast(u32) SHAPE_VERTICES[kind];
-    s[0].draws[d + 2] = cast(u32) (ifx kind == 0 then 0 else CELLS * CELLS + SLOT_AT[kind]);
-    s[0].draws[d + 3] = cast(u32) (ifx kind == 0 then CELLS * CELLS else s[0].counts[kind]);
+    s[0].draws[d + 2] = cast(u32) (ifx kind == 0 then 0 else CELLS * FF_ROWS + SLOT_AT[kind]);
+    s[0].draws[d + 3] = cast(u32) (ifx kind == 0 then CELLS * FF_ROWS else s[0].counts[kind]);
   }
   side := ifx ph then GRASS_PATCHES_PHONE else GRASS_PATCHES;
   blades := ifx ph then GRASS_BLADES_PHONE else GRASS_BLADES;
   g := GRASS_DRAW * 4;
   s[0].draws[g] = 0; s[0].draws[g + 1] = cast(u32) (blades * 3);
-  s[0].draws[g + 2] = cast(u32) (CELLS * CELLS + OBJECTS); s[0].draws[g + 3] = cast(u32) (side * side);
+  s[0].draws[g + 2] = cast(u32) (CELLS * FF_ROWS + OBJECTS); s[0].draws[g + 3] = 0;   // no grass in the park
   wd := WATER_DRAW * 4;
   s[0].draws[wd] = 0; s[0].draws[wd + 1] = cast(u32) s[0].water_vertices; s[0].draws[wd + 2] = 0; s[0].draws[wd + 3] = cast(u32) s[0].water_patches;
 
@@ -2287,7 +2256,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   u[U_EYE + 3] = ifx ph then 0.006f32 * 1.25f32 else 0.006f32;   // the far haze's density (fairy.wgsl hazed: none nearer than 48 m)
   sun := ffn_key_dir(s);
   u[U_SUN] = sun.x; u[U_SUN + 1] = sun.y; u[U_SUN + 2] = sun.z; u[U_SUN + 3] = ifx ph then 1.0f32 else 0.0f32;
-  u[U_GROUND] = f32(CELLS); u[U_GROUND + 1] = f32(FF_CELL); u[U_GROUND + 2] = f32(FF_EDGE); u[U_GROUND + 3] = f32(FF_EDGE);
+  u[U_GROUND] = f32(CELLS); u[U_GROUND + 1] = f32(FF_CELL); u[U_GROUND + 2] = f32(FF_WEST); u[U_GROUND + 3] = f32(FF_SOUTH);
   // the grass round the camera's ground point, patch-snapped so it doesn't swim
   // the grass round your feet (the camera's look point is up in the air when you fly), and none once the eye is 30 m up
   gx := floor(shown.x / 2) * 2 - f32(side); gz := floor(shown.z / 2) * 2 - f32(side);
@@ -2307,7 +2276,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
 
 fairy_draws :: (s: [] Fairy) -> int #export_c { return DRAWS; }
 fairy_store_cap :: (k: int) -> int #export_c {
-  if k == 0 { return FF_GROUND_POINTS * 4; }
+  if k == 0 { return FF_GROUND_POINTS * 3 * 4; }
   return OBJECTS * OBJECT_FLOATS * 4;
 }
 
@@ -2335,10 +2304,9 @@ fairy_store_cap :: (k: int) -> int #export_c {
   p := project(u[..], v3(f32(FF_SPAWN_X), y + 1.2, f32(FF_SPAWN_Z)), 1280, 800);
   #assert p.x > 0 && p.x < 1280 && p.y > 0 && p.y < 800;
   // the triangles a frame draws stay inside a phone's budget
-  tris := CELLS * CELLS * 2;
+  tris := CELLS * FF_ROWS * 2;
   for k: 1..<5 { tris += g[0].counts[k] * SHAPE_VERTICES[k] / 3; }
-  tris += GRASS_PATCHES_PHONE * GRASS_PATCHES_PHONE * GRASS_BLADES_PHONE;
-  #assert tris < 700000;
+  #assert tris < 700000 && g[0].draws[GRASS_DRAW * 4 + 3] == 0;
 }
 
 #test "E at the first flower blooms it; the hedgehog's three patches make it happy and wake a root" {
@@ -2356,9 +2324,9 @@ fairy_store_cap :: (k: int) -> int #export_c {
     for k: 0..<3 { nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, FF_PATCH[i * 4], 0, FF_PATCH[i * 4 + 1], 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0); }
   }
   #assert ff_mood(g[0].forest[..], 0) == MOOD_HAPPY;
-  for k: 0..<30 { nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, -30, 0, -33, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  for k: 0..<30 { nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, FF_CREATURE[0], 0, FF_CREATURE[1] - 1.5, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0); }
   #assert g[0].forest[0].awake[0] && g[0].near_creature == 0;
-  #assert ff_restored(g[0].forest[..], -30, -32, g[0].time) == 1;
+  #assert ff_restored(g[0].forest[..], FF_CREATURE[0], FF_CREATURE[1], g[0].time) == 1;
 }
 
 #test "a phone taps BLOOM; a tap elsewhere is the sticks'" {
@@ -2452,18 +2420,17 @@ top_under :: (g: [] Fairy, x: f32, z: f32, feet: f32) -> f32 {
   }
   return out;
 }
-#test "trunks are solid and crowns are floors; the heart tree's canopy and the stones too" {
+#test "trunks are solid; the heart tree's canopy and the stones are floors" {
   g: [1] Fairy;
   fairy_start(g[..]);
-  #assert g[0].wall_n > g[0].tree_n * 2 + 20 && g[0].wall_n <= WALLS;
+  #assert g[0].wall_n > g[0].tree_n + 20 && g[0].wall_n <= WALLS;
   for t: 0..<g[0].tree_n {
+    if t % 9 != 0 { continue; }   // (a ninth of them: each is measured against every wall)
     k := t * TREE_FLOATS;
-    x := g[0].trees[k]; z := g[0].trees[k + 1]; h := g[0].trees[k + 2]; r := g[0].trees[k + 3];
-    // over its crown you stand on its top, which is inside the drawn blob (its top at h + 1.5 r)
-    #assert top_under(g[..], x + r * 0.5, z - r * 0.5, h + r * 1.42) >= h + r * 1.42 - 0.001;   // (or a neighbour's crown just over it)
-    #assert h + r * 1.42 < h + r * 0.55 + r * 0.95;
-    // under it, on the ground, nothing holds you up but the ground
-    #assert top_under(g[..], x + r * 0.5, z - r * 0.5, 0) == 0 || abs(x) < 20;
+    x := g[0].trees[k]; z := g[0].trees[k + 1]; h := g[0].trees[k + 2];
+    // its trunk is a wall to the top of its crown, not a step
+    #assert top_under(g[..], x, z, 0.2) == 0 || abs(x) < 20;
+    #assert top_under(g[..], x, z, h + 3) >= h + 2 - 0.001;
   }
   #assert top_under(g[..], 0, 0, 30) > 20;      // the heart tree's canopy
   #assert top_under(g[..], 0, 0, 1) == 0;       // its trunk is a wall, not a step
@@ -2476,13 +2443,20 @@ top_under :: (g: [] Fairy, x: f32, z: f32, feet: f32) -> f32 {
   fairy_start(g[..]);
   sx := f32(FF_SPAWN_X); sz := f32(FF_SPAWN_Z);
   #assert fairy_place_open(g[..], sx, sz);
-  q := fairy_place_fix(g[..], verse_place(sx + 1, 0, sz + 1, 1, 1.5, 0.4, 6, 0, -1, 1000));
+  q := fairy_place_fix(g[..], verse_place(sx + 1, 0, sz + 1, 1, 1.5, 0.4, 6, 0, FF_LAYOUT, 1000));
   #assert q.x == sx + 1 && q.z == sz + 1;
   t := g[0].trees[0..<2];
-  m := fairy_place_fix(g[..], verse_place(t[0], 0, t[1], 0, 0, 0.3, 5, 0, -1, 1000));
+  m := fairy_place_fix(g[..], verse_place(t[0], 0, t[1], 0, 0, 0.3, 5, 0, FF_LAYOUT, 1000));
   #assert fairy_place_open(g[..], m.x, m.z) && (m.x != t[0] || m.z != t[1]);
-  w := fairy_place_fix(g[..], verse_place(f32(FF_POND_X), 0, f32(FF_POND_Z), 0, 0, 0.3, 5, 0, -1, 1000));
+  w := fairy_place_fix(g[..], verse_place(f32(FF_POND_X), 0, f32(FF_POND_Z), 0, 0, 0.3, 5, 0, FF_LAYOUT, 1000));
   #assert fairy_place_open(g[..], w.x, w.z);
+  // the middle of the Reservoir is water: you come out on its shore
+  r := fairy_place_fix(g[..], verse_place(0, 0, 280, 0, 0, 0.3, 5, 0, FF_LAYOUT, 1000));
+  #assert r.x == 0 && r.z == 280 || fairy_place_open(g[..], r.x, r.z);
+  // a place kept in the old valley (outdoors, room -1), even open ground in the park: back to the spawn
+  o := fairy_place_fix(g[..], verse_place(-33, 0, -37, 0.4, 1.5, 0.4, 6, 0, -1, 1000));
+  #assert o.x == sx && o.z == sz && o.room == FF_LAYOUT;
+  #assert fairy_place_of(g[..], 1, 0, 2, 0).room == FF_LAYOUT;
   fairy_place_camera(g[..], q);
   #assert g[0].orbit.yaw == 1.5;
 }
@@ -2545,7 +2519,7 @@ dist2 :: (a: Point, b: Point) -> f32 { dx := a.x - b.x; dy := a.y - b.y; return 
   for t: 0..<g[0].tree_n {
     x := g[0].trees[t * TREE_FLOATS]; z := g[0].trees[t * TREE_FLOATS + 1];
     #assert verse_path_nearest(nodes[..], links[..], x, z).d > f32(FF_PATH_HALF) + 2;
-    st := ff_stream_near(x, z);
+    st := ff_stream_near_line(g[0].stream[..], x, z);
     #assert st.d > st.half + 2;
   }
   // the stream's bed is under its level, the trails over it
@@ -2577,18 +2551,19 @@ dist2 :: (a: Point, b: Point) -> f32 { dx := a.x - b.x; dy := a.y - b.y; return 
   for k: 1..<5 { #assert g[0].counts[k] < SLOTS[k]; }
 }
 
-#test "EDIT for its owner and admins only; the board switches the grass and the ridges off, SETTINGS flight" {
+#test "EDIT for its owner and admins only; the board switches the skyline off (its ridges row), SETTINGS flight" {
   g: [1] Fairy;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
   n := fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0.7, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].ed[0].req_ready && cast(string) g[0].ed[0].req_url[0..<g[0].ed[0].req_url_n] == "/api/playtest/realms/fairy-forest";
   spheres := g[0].counts[SHAPE_SPHERE];
-  #assert g[0].draws[GRASS_DRAW * 4 + 3] > 0 && fairy_may_fly(g[..]);
+  boxes := g[0].counts[SHAPE_BOX];
+  #assert g[0].draws[GRASS_DRAW * 4 + 3] == 0 && fairy_may_fly(g[..]);
   redit_requested(g[0].ed[..], 5);
   used := redit_message(g[0].ed[..], HTTP_KIND + 5, "200\nrealm fairy-forest\nrole visitor\nowner 0\ntool fly 0\nrow sparkles 1 Sparkles\nrow grass 0 Grass\nrow ridges 0 Ridges\n");
   n = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0.7, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  #assert g[0].draws[GRASS_DRAW * 4 + 3] == 0 && g[0].counts[SHAPE_SPHERE] == spheres - RIDGES;
+  #assert g[0].counts[SHAPE_BOX] == boxes - g[0].block_n && g[0].counts[SHAPE_SPHERE] == spheres;   // the skyline off
   #assert !fairy_may_fly(g[..]) && !g[0].ed[0].shown[RB_EDIT];   // a visitor: no flight, no EDIT
   a: [1] Fairy;
   n = fairy_frame(a[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0.7, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);

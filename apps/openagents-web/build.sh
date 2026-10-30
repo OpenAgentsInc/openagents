@@ -54,7 +54,7 @@ garden=$!
 "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/everglade-face.c" "$here/build/everglade.wasm" \
   "$m/player.coax" "$m/grid.coax" "$m/everglade/river.coax" &
 everglade=$!
-# /realms/fairy-forest: the painterly valley (verse/fairy-forest/forest.coax), with the player, thumbs and its stream (verse/fairy-forest/stream.coax).
+# /realms/fairy-forest: the park (verse/fairy-forest/forest.coax), with the player, thumbs and its stream (verse/fairy-forest/stream.coax).
 "$here/../../coax/web/wasm.sh" "$here/fairy.coax" "$here/fairy-face.c" "$here/build/fairy.wasm" \
   "$m/player.coax" "$m/grid.coax" "$m/fairy-forest/stream.coax" &
 fairy=$!

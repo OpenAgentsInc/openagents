@@ -11,7 +11,7 @@
 FFX_THINGS :: 3;
 FFX_FENCE :: 0; FFX_BRIDGE :: 1; FFX_BIRDHOUSE :: 2;
 // x, z, yaw, reach (metres from its middle where E mends it)
-FFX_THING :: [12] f32.[-15.0, -24.0, 0.785, 3.0,   22.0, 30.0, -0.38, 3.6,   9.0, -14.0, 0.4, 2.0];
+FFX_THING :: [12] f32.[58.0, -281.0, 0.785, 3.0,   -51.0, 467.5, -1.95, 3.6,   9.0, -14.0, 0.4, 2.0];
 FFX_NAMES :: [3] string.["THE OLD FENCE", "THE FOOTBRIDGE", "THE BIRDHOUSE"];
 FFX_NEWS :: 300;          // k_news for a thing mended: 300 + which
 FFX_SHIMMER :: 2.5;       // seconds it shimmers once mended

@@ -1,0 +1,467 @@
+// Fairy Forest's park drawn (verse/fairy-forest/park.coax has the layout):
+// the lakes' water, the rocky outcrops, simple low-poly trees and bushes,
+// the landmarks of Central Park as plain shapes, the low stone wall round
+// it, the avenues' skyline, and each landmark's name floating over it as
+// you come near. Trees are planted once at the start and drawn from the
+// nearest out, as far as the camera sees and the shape slots allow.
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
+
+FFPK_TREE_FAR :: 190.0;        // m: trees drawn out to this on a computer
+FFPK_TREE_FAR_PHONE :: 120.0;  // and on a phone
+FFPK_BUSHES :: 700;
+STONE_R :: 0.66; STONE_G :: 0.64; STONE_B :: 0.6;
+
+// The nearest path edge to (x, z) over every kind, in metres past it (under 0 on a path).
+ffpk_path_gap :: (x: f32, z: f32) -> f32 {
+  best := 1000000.0f32;
+  for i: 0..<FF_LINKS {
+    a := FF_LINK_AB[i * 2]; b := FF_LINK_AB[i * 2 + 1];
+    ax := FF_NODE_XZ[a * 2]; az := FF_NODE_XZ[a * 2 + 1]; bx := FF_NODE_XZ[b * 2]; bz := FF_NODE_XZ[b * 2 + 1];
+    if z < lo(az, bz) - 12 || z > hi(az, bz) + 12 || x < lo(ax, bx) - 12 || x > hi(ax, bx) + 12 { continue; }
+    dx := bx - ax; dz := bz - az;
+    t := clamp01(((x - ax) * dx + (z - az) * dz) / hi(dx * dx + dz * dz, 0.0001));
+    px := ax + dx * t - x; pz := az + dz * t - z;
+    best = lo(best, sqrt(px * px + pz * pz) - FF_KIND_HALF[FF_LINK_KIND[i]]);
+  }
+  return best;
+}
+
+// Room for a tree or a bush at (x, z): inside the park's wall, off the paths,
+// the water, the lawns, the landmarks, and the forest's own places.
+ffpk_open :: (s: [] Fairy, x: f32, z: f32, room: f32) -> bool {
+  if x < f32(FF_PARK_W) + 5 || x > f32(FF_PARK_E) - 5 || z < f32(FF_PARK_S) + 5 || z > f32(FF_PARK_N) - 5 { return false; }
+  if ffp_on_lawn(x, z, room) { return false; }
+  if ffp_in_lake(x, z, 3 + room) { return false; }
+  for i: 0..<FFP_MARKS {
+    dx := x - FFP_MARK[i * 4]; dz := z - FFP_MARK[i * 4 + 1]; r := FFP_MARK[i * 4 + 2];
+    if r > 0 && dx * dx + dz * dz < (r + room) * (r + room) { return false; }
+  }
+  for i: 0..<FFP_ROCKS {
+    dx := x - FFP_ROCK[i * 4]; dz := z - FFP_ROCK[i * 4 + 1];
+    if dx * dx + dz * dz < FFP_ROCK[i * 4 + 2] * FFP_ROCK[i * 4 + 2] * 0.5 { return false; }
+  }
+  if ffpk_path_gap(x, z) < 2 + room { return false; }
+  // open_ground's other places (its paths are measured above, every kind)
+  if z > 440 && z < 600 { st := ff_stream_near_line(s[0].stream[..], x, z); if st.d < st.half + 2.5 + room { return false; } }
+  if x * x + z * z < (17 + room) * (17 + room) { return false; }
+  if ffh_near(x, z, f32(FFH_CLEAR) + room) { return false; }
+  if ffn_near(x, z, f32(FFN_HOLLOW_X), f32(FFN_HOLLOW_Z), f32(FFN_HOLLOW_CLEAR) + room) { return false; }
+  if x > f32(LOG_X0) - 4 - room && x < f32(LOG_X1) + 3 + room && abs(z - f32(LOG_Z)) < 3.5 + room { return false; }
+  for g: 0..<FF_GLADES {
+    dx := x - FF_GLADE[g * 3]; dz := z - FF_GLADE[g * 3 + 1];
+    if dx * dx + dz * dz < (FF_GLADE[g * 3 + 2] + room) * (FF_GLADE[g * 3 + 2] + room) { return false; }
+  }
+  return true;
+}
+
+// The trees (x, z, trunk height, crown radius, hue: under 0.25 a pine) and
+// the bushes (x, z, size, hue): a jittered grid, thick in the woods, open
+// groves elsewhere, and the Mall's two rows of elms.
+ffpk_plant :: (s: [] Fairy) {
+  n := 0; nb := 0;
+  // the Literary Walk's elms, either side of the Mall
+  for i: 0..<FF_LINKS {
+    if FF_LINK_KIND[i] != 2 { continue; }
+    a := FF_LINK_AB[i * 2]; b := FF_LINK_AB[i * 2 + 1];
+    ax := FF_NODE_XZ[a * 2]; az := FF_NODE_XZ[a * 2 + 1]; bx := FF_NODE_XZ[b * 2]; bz := FF_NODE_XZ[b * 2 + 1];
+    l := sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+    ux := (bx - ax) / l; uz := (bz - az) / l;
+    steps := cast(int) floor(l / 7);
+    for k: 1..<steps {
+      for side: 0..<2 {
+        if n >= TREES { break; }
+        sg := ifx side == 0 then -1.0f32 else 1.0f32;
+        f := f32(k) * 7;
+        x := ax + ux * f + uz * sg * 5.4; z := az + uz * f - ux * sg * 5.4;
+        if !ffpk_open(s, x, z, -1.2) { continue; }
+        put_tree(s, n, x, z, 5.4, 3.0, 0.5 + 0.3 * hash1(x, z));
+        n += 1;
+      }
+    }
+  }
+  step := 7.0f32;
+  cols := cast(int) floor((f32(FF_PARK_E) - f32(FF_PARK_W)) / step);
+  rows := cast(int) floor((f32(FF_PARK_N) - f32(FF_PARK_S)) / step);
+  for b: 0..<rows {
+    for a: 0..<cols {
+      x := f32(FF_PARK_W) + (f32(a) + 0.5) * step + (hash1(f32(a), f32(b)) - 0.5) * 5;
+      z := f32(FF_PARK_S) + (f32(b) + 0.5) * step + (hash1(f32(b) + 7.3, f32(a)) - 0.5) * 5;
+      woods := ffp_woods(x, z);
+      roll := hash1(x * 0.7, z * 1.3);
+      if roll < (ifx woods then 0.86f32 else 0.34f32) {
+        if n < TREES && ffpk_open(s, x, z, 1.5) {
+          hue := hash1(x + 3, z + 5);
+          put_tree(s, n, x, z, 2.4 + hash1(z, x) * 2.8, 2.0 + hash1(x + 1, z) * 1.6, hue);
+          n += 1;
+        }
+      } else if roll > 0.9 && nb < FFPK_BUSHES && ffpk_open(s, x, z, 0.5) {
+        k := nb * 4;
+        s[0].bushes[k] = x; s[0].bushes[k + 1] = z; s[0].bushes[k + 2] = 0.9 + 0.8 * hash1(z, x + 2); s[0].bushes[k + 3] = hash1(x, z + 9);
+        nb += 1;
+      }
+    }
+  }
+  s[0].tree_n = n; s[0].bush_n = nb;
+}
+put_tree :: (s: [] Fairy, n: int, x: f32, z: f32, h: f32, r: f32, hue: f32) {
+  k := n * TREE_FLOATS;
+  s[0].trees[k] = x; s[0].trees[k + 1] = z; s[0].trees[k + 2] = h; s[0].trees[k + 3] = r; s[0].trees[k + 4] = hue;
+}
+
+// A tree: a trunk and a crown, a pine's two stacked cones, a broadleaf's one
+// round ball; drawn nearest first out to the far reach (further when
+// the camera is high), while the slots last.
+ffpk_trees :: (s: [] Fairy, u: [] f32, eye: Point) {
+  far := ifx phone(s) then f32(FFPK_TREE_FAR_PHONE) else f32(FFPK_TREE_FAR);
+  up := eye.y - ground_at(s, eye.x, eye.z);
+  if up > 30 { far *= clamp(up / 30, 1, 3); }
+  for pass: 0..<3 {
+    r0 := far * f32(pass) / 3; r1 := far * f32(pass + 1) / 3;
+    for t: 0..<s[0].tree_n {
+      if s[0].counts[SHAPE_CONE] > SLOTS[SHAPE_CONE] - 40 || s[0].counts[SHAPE_BOX] > SLOTS[SHAPE_BOX] - 120 { return; }
+      k := t * TREE_FLOATS;
+      x := s[0].trees[k]; z := s[0].trees[k + 1];
+      dx := x - eye.x; dz := z - eye.z; d2 := dx * dx + dz * dz;
+      if d2 < r0 * r0 || d2 >= r1 * r1 { continue; }
+      h := s[0].trees[k + 2]; r := s[0].trees[k + 3]; hue := s[0].trees[k + 4];
+      if hue >= 0.25 && s[0].counts[SHAPE_SPHERE] > SLOTS[SHAPE_SPHERE] - 60 { continue; }
+      g := ground_at(s, x, z);
+      shape(s, SHAPE_BOX, LOOK_BARK, v3(x, g + h * 0.5 - 0.2, z), hue * 5, 0, 0.42, h + 0.4, 0.42, 0.42, 0.33, 0.22);
+      gr := 0.16 + hue * 0.12; gg := 0.42 + hue * 0.14; gb := 0.07 + hue * 0.04;
+      if hue > 0.9 { gr = 0.6; gg = 0.52; gb = 0.14; }   // a few gold crowns
+      y0 := g + h;
+      if hue < 0.25 {
+        shape(s, SHAPE_CONE, LOOK_LEAVES, v3(x, y0 + r * 0.7, z), hue * 9, 0, r * 2.1, r * 1.8, r * 2.1, gr * 0.7, gg * 0.85, gb * 1.2);
+        shape(s, SHAPE_CONE, LOOK_LEAVES, v3(x, y0 + r * 1.8, z), hue * 9 + 0.4, 0, r * 1.4, r * 1.5, r * 1.4, gr * 0.75, gg * 0.9, gb * 1.2);
+      } else {
+        shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x, y0 + r * 0.8, z), hue * 7, 0, r * 2.4, r * 2.0, r * 2.3, gr, gg, gb);
+      }
+      if d2 < 900 { shadow(s, u, x, z, r * 1.4, 0.5); }
+    }
+  }
+  for b: 0..<s[0].bush_n {
+    if s[0].counts[SHAPE_CONE] > SLOTS[SHAPE_CONE] - 20 { return; }
+    k := b * 4;
+    x := s[0].bushes[k]; z := s[0].bushes[k + 1];
+    dx := x - eye.x; dz := z - eye.z;
+    if dx * dx + dz * dz > far * far * 0.36 { continue; }
+    sz := s[0].bushes[k + 2]; hue := s[0].bushes[k + 3];
+    g := ground_at(s, x, z);
+    shape(s, SHAPE_CONE, LOOK_LEAVES, v3(x, g + sz * 0.4, z), hue * 6, 0, sz * 2.2, sz * 1.1, sz * 2.0, 0.2 + hue * 0.1, 0.46 + hue * 0.1, 0.1);
+  }
+}
+
+// The lakes' water: a flat sheet at the water's level over each ellipse; the
+// ground stands over it everywhere but in the carved beds, so its shore is
+// the ground's.
+ffpk_lakes :: (s: [] Fairy) {
+  level := f32(FF_LEVEL);
+  for i: 0..<FFP_BLOBS {
+    rx := FFP_BLOB[i * 4 + 2]; rz := FFP_BLOB[i * 4 + 3];
+    if rx <= 0 { continue; }
+    shape(s, SHAPE_BOX, LOOK_MATTE, v3(FFP_BLOB[i * 4], level - 0.6, FFP_BLOB[i * 4 + 1]), 0, 0, rx * 2 + 1, 1.2, rz * 2 + 1, 0.26, 0.5, 0.6);
+  }
+}
+
+ffpk_rocks :: (s: [] Fairy) {
+  for i: 0..<FFP_ROCKS {
+    x := FFP_ROCK[i * 4]; z := FFP_ROCK[i * 4 + 1]; r := FFP_ROCK[i * 4 + 2]; h := FFP_ROCK[i * 4 + 3];
+    g := ground_at(s, x, z) - h;
+    for k: 0..<3 {
+      a := f32(k) * 2.1 + f32(i);
+      d := r * 0.32 * f32(k);
+      shade := 0.92 + 0.08 * f32(k);
+      shape(s, SHAPE_SPHERE, LOOK_STONE, v3(x + cos(a) * d, g + h * (0.86 - 0.12 * f32(k)), z + sin(a) * d), a, 0,
+            r * (1.5 - 0.3 * f32(k)), h * (1.3 - 0.2 * f32(k)), r * (1.2 - 0.25 * f32(k)), STONE_R * shade, STONE_G * shade, STONE_B * shade);
+    }
+  }
+}
+
+mark_xz :: (i: int) -> Point { return v3(FFP_MARK[i * 4], 0, FFP_MARK[i * 4 + 1]); }
+// A box at (x, z) over the ground there, by its base.
+ffpk_box :: (s: [] Fairy, x: f32, z: f32, y: f32, yaw: f32, sx: f32, sy: f32, sz: f32, r: f32, g: f32, b: f32) {
+  shape(s, SHAPE_BOX, LOOK_STONE, v3(x, y + sy * 0.5, z), yaw, 0, sx, sy, sz, r, g, b);
+}
+ffpk_cyl :: (s: [] Fairy, look: int, x: f32, z: f32, y: f32, rad: f32, sy: f32, r: f32, g: f32, b: f32) {
+  shape(s, SHAPE_CYLINDER, look, v3(x, y + sy * 0.5, z), 0, 0, rad * 2, sy, rad * 2, r, g, b);
+}
+// (x, z) turned yaw about a landmark's middle: its local across (ax) and along (az).
+at_turn :: (c: Point, yaw: f32, ax: f32, az: f32) -> Point { return v3(c.x + cos(yaw) * ax + sin(yaw) * az, 0, c.z - sin(yaw) * ax + cos(yaw) * az); }
+
+// A bridge from a to b over water: a deck, its parapets, and piers.
+ffpk_bridge :: (s: [] Fairy, a: Point, b: Point, deck: f32, wide: f32, r: f32, g: f32, bl: f32, iron: bool) {
+  yaw := yaw_of(b.x - a.x, b.z - a.z);
+  l := sqrt((b.x - a.x) * (b.x - a.x) + (b.z - a.z) * (b.z - a.z));
+  m := mix(a, b, 0.5);
+  for half: 0..<2 {
+    sg := ifx half == 0 then -1.0f32 else 1.0f32;
+    c := at_turn(m, yaw, 0, sg * l * 0.25);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(c.x, deck + 0.25, c.z), yaw, -sg * 0.08, wide, 0.4, l * 0.52, r, g, bl);
+    for side: 0..<2 {
+      ss := ifx side == 0 then -1.0f32 else 1.0f32;
+      p := at_turn(m, yaw, ss * wide * 0.46, sg * l * 0.25);
+      shape(s, SHAPE_BOX, LOOK_STONE, v3(p.x, deck + 0.85, p.z), yaw, -sg * 0.08, 0.18, ifx iron then 0.5f32 else 0.8f32, l * 0.52, r * 0.95, g * 0.95, bl * 0.95);
+    }
+  }
+  for k: 0..<3 {
+    p := at_turn(m, yaw, 0, (f32(k) - 1) * l * 0.36);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(p.x, deck - 0.8, p.z), yaw, 0, wide * 0.8, 2.0, 0.8, r * 0.85, g * 0.85, bl * 0.85);
+  }
+}
+
+// The landmarks, near ones in detail; past FAR only the tall ones.
+FFPK_MARK_FAR :: 320.0;
+ffpk_marks :: (s: [] Fairy, eye: Point) {
+  level := f32(FF_LEVEL);
+  t := effect_time(s);
+  for i: 0..<FFP_MARKS {
+    c := mark_xz(i);
+    dx := c.x - eye.x; dz := c.z - eye.z;
+    far := dx * dx + dz * dz > f32(FFPK_MARK_FAR * FFPK_MARK_FAR);
+    if far && i != FFP_BELVEDERE && i != FFP_NEEDLE { continue; }
+    if s[0].counts[SHAPE_BOX] > SLOTS[SHAPE_BOX] - 60 { return; }
+    g := ground_at(s, c.x, c.z);
+    if i == FFP_GAPSTOW {
+      a := v3(FF_NODE_XZ[ffpk_node(54, -318) * 2], 0, FF_NODE_XZ[ffpk_node(54, -318) * 2 + 1]);
+      b := v3(FF_NODE_XZ[ffpk_node(64, -342) * 2], 0, FF_NODE_XZ[ffpk_node(64, -342) * 2 + 1]);
+      ffpk_bridge(s, a, b, level + 1.2, 3.4, 0.62, 0.56, 0.48, false);
+    } else if i == FFP_WOLLMAN {
+      shape(s, SHAPE_BOX, LOOK_MATTE, v3(c.x, g + 0.06, c.z), 0, 0, 30, 0.16, 18, 0.86, 0.92, 0.96);
+      for side: 0..<4 {
+        xs := ifx side < 2 then (ifx side == 0 then -15.0f32 else 15.0f32) else 0.0f32;
+        zs := ifx side >= 2 then (ifx side == 2 then -9.0f32 else 9.0f32) else 0.0f32;
+        shape(s, SHAPE_BOX, LOOK_MATTE, v3(c.x + xs, g + 0.4, c.z + zs), 0, 0, ifx side < 2 then 0.25f32 else 30.0f32, 0.8, ifx side < 2 then 18.0f32 else 0.25f32, 0.9, 0.9, 0.88);
+      }
+    } else if i == FFP_CAROUSEL {
+      ffpk_cyl(s, LOOK_STONE, c.x, c.z, g, 5.4, 0.7, 0.72, 0.62, 0.5);
+      for k: 0..<8 {
+        a := f32(k) * 0.785 + t * 0.3;
+        shape(s, SHAPE_BOX, LOOK_MATTE, v3(c.x + cos(a) * 4.6, g + 2.2, c.z + sin(a) * 4.6), a, 0, 0.18, 3.0, 0.18, 0.92, 0.8, 0.4);
+        shape(s, SHAPE_BOX, LOOK_MATTE, v3(c.x + cos(a + 0.4) * 3.6, g + 1.4 + 0.25 * sin(t * 2 + f32(k)), c.z + sin(a + 0.4) * 3.6), -a, 0, 0.4, 0.7, 1.2, 0.96, 0.94, 0.9);
+      }
+      ffpk_cyl(s, LOOK_MATTE, c.x, c.z, g + 3.6, 6.0, 0.5, 0.86, 0.28, 0.24);
+      shape(s, SHAPE_CONE, LOOK_MATTE, v3(c.x, g + 5.3, c.z), 0, 0, 12, 3.0, 12, 0.92, 0.88, 0.8);
+    } else if i == FFP_DAIRY {
+      ffpk_box(s, c.x, c.z, g - 0.5, 0.2, 9, 4.4, 5, 0.86, 0.78, 0.64);
+      for side: 0..<2 {
+        sg := ifx side == 0 then -1.0f32 else 1.0f32;
+        p := at_turn(c, 0.2, 0, sg * 1.4);
+        shape(s, SHAPE_BOX, LOOK_MATTE, v3(p.x, g + 4.6, p.z), 0.2, sg * 0.75, 9.6, 0.3, 3.8, 0.6, 0.3, 0.24);
+      }
+      shape(s, SHAPE_CONE, LOOK_MATTE, v3(c.x + 3.2, g + 7.4, c.z + 0.6), 0, 0, 1.6, 4.0, 1.6, 0.6, 0.3, 0.24);
+    } else if i == FFP_MALL {
+      // the Literary Walk's statues along the Mall
+      for k: 0..<4 {
+        f := 0.15 + f32(k) * 0.18;
+        x := lerp(10, 16, f * 2) + 3.6; z := lerp(-215, -160, f * 2);
+        y := ground_at(s, x, z);
+        ffpk_box(s, x, z, y - 0.2, 0, 1.0, 1.6, 1.0, 0.7, 0.68, 0.64);
+        ffpk_cyl(s, LOOK_STONE, x, z, y + 1.4, 0.3, 1.3, 0.36, 0.3, 0.22);
+        shape(s, SHAPE_SPHERE, LOOK_STONE, v3(x, y + 2.9, z), 0, 0, 0.42, 0.46, 0.42, 0.36, 0.3, 0.22);
+      }
+    } else if i == FFP_BANDSHELL {
+      ffpk_box(s, c.x, c.z, g - 0.3, 0, 7, 1.2, 10, 0.86, 0.84, 0.78);
+      shape(s, SHAPE_CONE, LOOK_STONE, v3(c.x + 1.0, g + 4.5, c.z), 1.5708, 1.5708, 10, 6, 9, 0.92, 0.9, 0.84);
+      ffpk_box(s, c.x + 3.8, c.z, g - 0.3, 0, 1.0, 8.5, 11, 0.88, 0.86, 0.8);
+    } else if i == FFP_BETHESDA {
+      // the terrace: its upper plaza by the drive, the stairs, the lower plaza and the Angel of the Waters
+      ffpk_box(s, c.x, c.z - 14, g - 0.4, 0, 22, 1.8, 6, 0.78, 0.66, 0.5);
+      ffpk_box(s, c.x, c.z - 13.5, g - 0.4, 0, 9, 1.2, 7.5, 0.4, 0.32, 0.26);   // the arcade's mouth
+      for k: 0..<3 { ffpk_box(s, c.x - 7.5, c.z - 10 + f32(k) * 1.3, g - 0.4, 0, 4, 1.5 - f32(k) * 0.5, 1.3, 0.78, 0.66, 0.5); ffpk_box(s, c.x + 7.5, c.z - 10 + f32(k) * 1.3, g - 0.4, 0, 4, 1.5 - f32(k) * 0.5, 1.3, 0.78, 0.66, 0.5); }
+      ffpk_box(s, c.x, c.z + 2, g - 0.45, 0, 26, 0.55, 16, 0.84, 0.74, 0.58);
+      fx := 18.0f32; fz := -92.0f32;
+      ffpk_cyl(s, LOOK_STONE, fx, fz, g, 4.6, 0.7, 0.74, 0.68, 0.58);
+      ffpk_cyl(s, LOOK_MATTE, fx, fz, g + 0.55, 4.2, 0.1, 0.3, 0.55, 0.62);
+      ffpk_cyl(s, LOOK_STONE, fx, fz, g, 0.7, 3.2, 0.7, 0.64, 0.54);
+      ffpk_cyl(s, LOOK_STONE, fx, fz, g + 2.6, 1.8, 0.35, 0.72, 0.66, 0.56);
+      // the angel: bronze, wings spread
+      shape(s, SHAPE_CONE, LOOK_STONE, v3(fx, g + 3.9, fz), 0, 0, 0.9, 1.6, 0.9, 0.4, 0.5, 0.34);
+      shape(s, SHAPE_SPHERE, LOOK_STONE, v3(fx, g + 5.0, fz), 0, 0, 0.42, 0.46, 0.42, 0.4, 0.5, 0.34);
+      for side: 0..<2 {
+        sg := ifx side == 0 then -1.0f32 else 1.0f32;
+        shape(s, SHAPE_BOX, LOOK_STONE, v3(fx + sg * 0.8, g + 5.0, fz - 0.15), 0, 0, 1.4, 1.2, 0.08, 0.4, 0.5, 0.34);
+      }
+      // falling water round the basin's lip
+      for k: 0..<8 {
+        a := f32(k) * 0.785;
+        shape(s, SHAPE_BOX, LOOK_FALL, v3(fx + cos(a) * 1.75, g + 1.6, fz + sin(a) * 1.75), -a, 0, 0.5, 2.0, 0.05, 0.62, 0.84, 0.9);
+      }
+    } else if i == FFP_BOW {
+      ffpk_bridge(s, v3(-8, 0, -73), v3(-8, 0, -51), level + 1.0, 3.0, 0.92, 0.9, 0.84, true);
+    } else if i == FFP_BOATHOUSE {
+      ffpk_box(s, c.x, c.z, g - 0.4, 0.3, 14, 3.6, 6, 0.8, 0.74, 0.62);
+      ffpk_box(s, c.x, c.z, g + 3.1, 0.3, 15, 0.7, 7, 0.34, 0.5, 0.4);
+      for k: 0..<3 {
+        a := f32(k) * 1.4 + 0.5;
+        shape(s, SHAPE_BOX, LOOK_MATTE, v3(c.x - 14 + f32(k) * 3.5, level + 0.1, c.z - 5 - f32(k) * 2), a, 0, 0.9, 0.3, 2.6, 0.72, 0.5, 0.3);
+      }
+    } else if i == FFP_IMAGINE {
+      ffpk_cyl(s, LOOK_STONE, c.x, c.z, g - 0.1, 3.2, 0.16, 0.25, 0.25, 0.26);
+      ffpk_cyl(s, LOOK_STONE, c.x, c.z, g - 0.08, 2.6, 0.16, 0.9, 0.9, 0.88);
+      for k: 0..<8 {
+        a := f32(k) * 0.785;
+        shape(s, SHAPE_BOX, LOOK_STONE, v3(c.x + cos(a) * 1.4, g + 0.1, c.z + sin(a) * 1.4), -a, 0, 1.9, 0.04, 0.22, 0.24, 0.24, 0.26);
+      }
+      ffpk_cyl(s, LOOK_STONE, c.x, c.z, g - 0.06, 0.5, 0.18, 0.24, 0.24, 0.26);
+    } else if i == FFP_ALICE {
+      ffpk_cyl(s, LOOK_STONE, c.x, c.z, g - 0.2, 0.6, 1.6, 0.42, 0.38, 0.26);
+      shape(s, SHAPE_SPHERE, LOOK_STONE, v3(c.x, g + 1.6, c.z), 0, 0, 4.0, 1.0, 4.0, 0.5, 0.44, 0.28);
+      shape(s, SHAPE_CONE, LOOK_STONE, v3(c.x, g + 2.6, c.z), 0, 0, 0.9, 1.3, 0.9, 0.56, 0.48, 0.3);
+      shape(s, SHAPE_SPHERE, LOOK_STONE, v3(c.x, g + 3.5, c.z), 0, 0, 0.5, 0.55, 0.5, 0.56, 0.48, 0.3);
+      shape(s, SHAPE_SPHERE, LOOK_STONE, v3(c.x + 1.3, g + 2.2, c.z + 0.6), 0, 0, 0.6, 0.6, 0.6, 0.5, 0.44, 0.28);   // the Cheshire Cat's perch
+    } else if i == FFP_BELVEDERE {
+      // the castle on Vista Rock: its hall, the square tower with crenels, a turret
+      ffpk_box(s, c.x - 2, c.z, g - 0.5, 0, 9, 5.5, 6, 0.6, 0.6, 0.58);
+      ffpk_box(s, c.x + 3, c.z + 1, g - 0.5, 0, 4, 11, 4, 0.58, 0.58, 0.56);
+      for k: 0..<4 {
+        sx := ifx k % 2 == 0 then -1.5f32 else 1.5f32; sz := ifx k < 2 then -1.5f32 else 1.5f32;
+        ffpk_box(s, c.x + 3 + sx, c.z + 1 + sz, g + 10.5, 0, 0.9, 1.0, 0.9, 0.56, 0.56, 0.54);
+      }
+      shape(s, SHAPE_BOX, LOOK_MATTE, v3(c.x + 3, g + 12.6, c.z + 1), 0, 0, 0.08, 2.4, 0.08, 0.3, 0.3, 0.3);
+      shape(s, SHAPE_BOX, LOOK_CLOTH, v3(c.x + 3.6, g + 13.3, c.z + 1), 0, 0, 1.1, 0.7, 0.04, 0.2, 0.36, 0.7);
+      ffpk_cyl(s, LOOK_STONE, c.x - 6, c.z - 2.5, g - 0.5, 1.4, 7.5, 0.6, 0.6, 0.58);
+      shape(s, SHAPE_CONE, LOOK_MATTE, v3(c.x - 6, g + 8.3, c.z - 2.5), 0, 0, 3.2, 2.6, 3.2, 0.36, 0.42, 0.46);
+      for k: 0..<5 { ffpk_box(s, c.x - 6 + f32(k) * 2.2, c.z - 3.2, g + 5.0, 0, 0.8, 0.8, 0.5, 0.58, 0.58, 0.56); }
+    } else if i == FFP_DELACORTE {
+      ffpk_cyl(s, LOOK_STONE, c.x, c.z, g - 0.3, 9.0, 1.4, 0.44, 0.4, 0.38);
+      ffpk_cyl(s, LOOK_STONE, c.x, c.z, g - 0.3, 7.4, 2.0, 0.5, 0.46, 0.42);
+      ffpk_cyl(s, LOOK_STONE, c.x + 1.5, c.z, g - 0.2, 5.0, 2.3, 0.64, 0.52, 0.38);
+      ffpk_box(s, c.x + 7, c.z, g - 0.3, 0, 3, 3.2, 14, 0.34, 0.3, 0.28);
+    } else if i == FFP_NEEDLE {
+      ffpk_box(s, c.x, c.z, g - 0.6, 0, 3.2, 1.6, 3.2, 0.66, 0.62, 0.56);
+      shape(s, SHAPE_BOX, LOOK_STONE, v3(c.x, g + 5.6, c.z), 0, 0, 1.5, 9.0, 1.5, 0.74, 0.62, 0.46);
+      shape(s, SHAPE_CONE, LOOK_STONE, v3(c.x, g + 10.6, c.z), 0.785, 0, 1.6, 1.0, 1.6, 0.74, 0.62, 0.46);
+    } else if i == FFP_GARDEN {
+      // the Conservatory Garden: clipped hedges round a fountain lawn, and the Vanderbilt Gate on Fifth Avenue
+      for side: 0..<2 {
+        sg := ifx side == 0 then -1.0f32 else 1.0f32;
+        shape(s, SHAPE_BOX, LOOK_LEAVES, v3(c.x, g + 0.6, c.z + sg * 9), 0, 0, 26, 1.2, 1.2, 0.18, 0.4, 0.14);
+        shape(s, SHAPE_BOX, LOOK_LEAVES, v3(c.x - 13 * sg, g + 0.6, c.z), 0, 0, 1.2, 1.2, 18, 0.18, 0.4, 0.14);
+      }
+      ffpk_cyl(s, LOOK_STONE, c.x, c.z, g - 0.2, 2.6, 0.7, 0.74, 0.7, 0.62);
+      ffpk_cyl(s, LOOK_MATTE, c.x, c.z, g + 0.4, 2.3, 0.1, 0.3, 0.55, 0.62);
+      gx := f32(FF_PARK_E) - 0.3;
+      for side: 0..<2 {
+        sg := ifx side == 0 then -1.0f32 else 1.0f32;
+        ffpk_box(s, gx, c.z + sg * 3, g - 0.3, 0, 0.8, 4.5, 0.8, 0.6, 0.58, 0.54);
+      }
+      shape(s, SHAPE_BOX, LOOK_MATTE, v3(gx, g + 2.0, c.z), 0, 0, 0.12, 3.4, 5.2, 0.12, 0.14, 0.12);
+      shape(s, SHAPE_BOX, LOOK_GLOW, v3(gx, g + 3.9, c.z), 0, 0, 0.14, 0.3, 5.4, 0.8, 0.66, 0.3);
+    }
+  }
+}
+// The node nearest (x, z): landmarks find their paths' ends by where they are.
+ffpk_node :: (x: f32, z: f32) -> int {
+  best := 0; bd := 1000000.0f32;
+  for i: 0..<FF_NODES {
+    dx := FF_NODE_XZ[i * 2] - x; dz := FF_NODE_XZ[i * 2 + 1] - z;
+    if dx * dx + dz * dz < bd { bd = dx * dx + dz * dz; best = i; }
+  }
+  return best;
+}
+
+// The low stone wall round the park, in 40 m lengths, and the avenues' blocks beyond it.
+ffpk_city :: (s: [] Fairy) {
+  w := f32(FF_PARK_W); e := f32(FF_PARK_E); so := f32(FF_PARK_S); no := f32(FF_PARK_N);
+  z := so;
+  while z < no {
+    l := lo(40.0, no - z);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(w - 0.4, 0.45, z + l * 0.5), 0, 0, 0.6, 1.3, l, STONE_R, STONE_G, STONE_B);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(e + 0.4, 0.45, z + l * 0.5), 0, 0, 0.6, 1.3, l, STONE_R, STONE_G, STONE_B);
+    z += 40;
+  }
+  x := w;
+  while x < e {
+    l := lo(40.0, e - x);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(x + l * 0.5, 0.45, so - 0.4), 0, 0, l, 1.3, 0.6, STONE_R, STONE_G, STONE_B);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(x + l * 0.5, 0.45, no + 0.4), 0, 0, l, 1.3, 0.6, STONE_R, STONE_G, STONE_B);
+    x += 40;
+  }
+  if !redit_row_on(s[0].ed[..], "ridges") { return; }
+  for i: 0..<s[0].block_n {
+    k := i * 6;
+    b := s[0].blocks[k..<k + 6];
+    shade := b[5];
+    red := lerp(0.74, 0.62, shade); green := lerp(0.68, 0.46, shade); blue := lerp(0.6, 0.38, shade);
+    if shade > 0.75 { red = 0.82; green = 0.8; blue = 0.76; }
+    shape(s, SHAPE_BOX, LOOK_STONE, v3((b[0] + b[2]) / 2, b[4] / 2 - 1, (b[1] + b[3]) / 2), 0, 0, b[2] - b[0], b[4] + 2, b[3] - b[1], red, green, blue);
+  }
+}
+
+// The names over the landmarks and glades you come near, the nearest brightest.
+ffpk_signs :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, you: Point) -> int {
+  k := hi(s[0].dpr, 0.5);
+  n := at;
+  cap := 8.5 * k;
+  reach := f32(FFP_SIGN_NEAR);
+  for i: 0..<FFP_MARKS + FF_GLADES {
+    x := 0.0f32; z := 0.0f32; up := 4.0f32; name := "";
+    if i < FFP_MARKS { x = FFP_MARK[i * 4]; z = FFP_MARK[i * 4 + 1]; up = FFP_MARK[i * 4 + 3]; name = FFP_MARK_NAMES[i]; }
+    else { g := i - FFP_MARKS; x = FF_GLADE[g * 3]; z = FF_GLADE[g * 3 + 1]; up = 5; name = FF_GLADE_NAMES[g]; }
+    dx := x - you.x; dz := z - you.z;
+    d := sqrt(dx * dx + dz * dz);
+    big := ifx i < FFP_MARKS && FFP_MARK[i * 4 + 2] == 0 then 2.0f32 else 1.0f32;   // a lake or a lawn: its name from further off
+    if d > reach * big { continue; }
+    p := project(u, v3(x, hi(ground_at(s, x, z), f32(FF_LEVEL)) + up, z), s[0].width, s[0].height);
+    if p.x < -1000 { continue; }
+    a := clamp01((reach * big - d) / 12) * 0.95;
+    n = draw_text(out, n, name, p.x - text_width(name, cap) / 2, p.y, cap, GAP, SPACE, ink(k, a, CREAM_R, CREAM_G, CREAM_B), false, false);
+  }
+  return n;
+}
+
+#test "the park's trees: many, inside its wall, off its paths and lakes; the Mall has its rows of elms" {
+  g: [1] Fairy;
+  fairy_start(g[..]);
+  #assert g[0].tree_n > 900 && g[0].bush_n > 100;
+  elms := 0;
+  for t: 0..<g[0].tree_n {
+    x := g[0].trees[t * TREE_FLOATS]; z := g[0].trees[t * TREE_FLOATS + 1];
+    #assert x > f32(FF_PARK_W) && x < f32(FF_PARK_E) && z > f32(FF_PARK_S) && z < f32(FF_PARK_N);
+    #assert ffpk_path_gap(x, z) > 0.5 && !ffp_in_lake(x, z, 2);
+    if abs(x - 13) < 9 && z > -215 && z < -122 { elms += 1; }
+  }
+  #assert elms > 16;
+  // the lakes are carved under the water's level, the paths stand over it
+  for i: 0..<FFP_BLOBS {
+    if FFP_BLOB[i * 4 + 2] <= 0 { continue; }
+    #assert ground_at(g[..], FFP_BLOB[i * 4], FFP_BLOB[i * 4 + 1]) < f32(FF_LEVEL) - 0.3;
+  }
+  for i: 0..<FF_NODES { #assert ground_at(g[..], FF_NODE_XZ[i * 2], FF_NODE_XZ[i * 2 + 1]) > f32(FF_LEVEL) + 0.1; }
+  // Vista Rock stands up under Belvedere Castle
+  #assert ground_at(g[..], 0, 40) > ground_at(g[..], 0, 20) + 3;
+}
+
+#test "a landmark's name floats over it as you come near, and not from across the park" {
+  g: [1] Fairy;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  c := mark_xz(FFP_BELVEDERE);
+  n0 := fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, c.x, 0, c.z - 30, 3.1, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  m := ffpk_signs(g[..], out[..], u[..], 0, v3(c.x, 0, c.z - 30));
+  #assert m > 0;
+  #assert ffpk_signs(g[..], out[..], u[..], 0, v3(-95, 0, 440)) == 0;
+  _ := n0;
+}
+
+// The landmarks you can't walk through (over the ground where they stand):
+// the castle, the Dairy, the boathouse, the bandshell's back, the carousel
+// and the Needle.
+ffpk_walls :: (s: [] Fairy, at: int) -> int {
+  w := at;
+  wl := s[0].walls[..];
+  // x0, z0, x1, z1, height
+  boxes := [30] f32.[
+    -6.5, 39, 2.5, 45, 5,   1, 41, 5, 45, 11,   -7.4, 38.1, -4.6, 40.9, 8,
+    -10.5, -252.5, -1.5, -247.5, 4,   33, -65, 47, -59, 3.2,   39, -147.5, 41, -136.5, 8
+  ];
+  for i: 0..<6 {
+    b := boxes[i * 5..<i * 5 + 5];
+    if w < WALLS { put6(wl, w, b[0], 0, b[1], b[2], b[4], b[3]); w += 1; }
+  }
+  c := mark_xz(FFP_CAROUSEL);
+  if w < WALLS { put6(wl, w, c.x - 4.6, 0, c.z - 4.6, c.x + 4.6, 5, c.z + 4.6); w += 1; }
+  c = mark_xz(FFP_NEEDLE);
+  if w < WALLS { put6(wl, w, c.x - 1.6, 0, c.z - 1.6, c.x + 1.6, 10, c.z + 1.6); w += 1; }
+  return w;
+}

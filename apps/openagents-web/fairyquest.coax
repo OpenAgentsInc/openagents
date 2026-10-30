@@ -170,7 +170,7 @@ ffq_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, id: int) -> bool {
   redit_requested(e, 2);
   _ = redit_message(e, HTTP_KIND + 2, "200\nlore bramble|Hoards acorns.\nquest bramble|Find acorns|Look by the oak||Fill the basket|A lucky acorn\n");
   // by Bramble: his quest is taken
-  s[0].feet = v3(-30, 0, -33);
+  s[0].feet = v3(FF_CREATURE[0], 0, FF_CREATURE[1] - 1.5);
   ffq_step(s[..]);
   #assert ffq_giver(s[0].quest[..]) == "bramble" && cast(string) s[0].quest[0].name[0..<s[0].quest[0].name_n] == "Bramble";
   #assert ffq_rows(e, 0) == 2 && ffq_row_text(e, 0, 1) == "Fill the basket";

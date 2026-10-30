@@ -46,6 +46,7 @@ FLOAT_STEP :: 1.0 / 120.0;
 Stream :: struct {
   ready: bool;
   n: int; cell: f32; west: f32; south: f32;
+  grid_rows: int;   // the ground's rows south to north (n when it is square)
   level: f64;
   count: int;     // the course's controls
   drop: f32;      // how far the pond stands under the stream's level (a low pond, fairy.coax ff-pond), 0 full
@@ -80,9 +81,10 @@ clamp_s :: (a: f32, low: f32, high: f32) -> f32 { return lo_s(high, hi_s(low, a)
 // The ground's height at (x, z), as verse/terrain.coax reads it.
 stream_bed :: (r: [] Stream, heights: [] f32, x: f32, z: f32) -> f32 {
   n := r[0].n;
-  if n < 1 || heights.count < (n + 1) * (n + 1) { return 0; }
+  m := ifx r[0].grid_rows > 0 then r[0].grid_rows else n;
+  if n < 1 || heights.count < (n + 1) * (m + 1) { return 0; }
   gx := clamp_s((x - r[0].west) / r[0].cell, 0, f32(n) - 0.0001);
-  gz := clamp_s((z - r[0].south) / r[0].cell, 0, f32(n) - 0.0001);
+  gz := clamp_s((z - r[0].south) / r[0].cell, 0, f32(m) - 0.0001);
   if !(gx == gx) { gx = 0; }
   if !(gz == gz) { gz = 0; }
   i := cast(int) floor(gx); j := cast(int) floor(gz);
@@ -96,8 +98,8 @@ stream_bed :: (r: [] Stream, heights: [] f32, x: f32, z: f32) -> f32 {
 // Builds the stream from the page's course (x, z and full width a control),
 // at `level`, over the page's carved ground; pond is where the lily pads float.
 fairy_stream_start :: (r: [] Stream, heights: [] f32, course: [] f32, level: f32, pond_x: f32, pond_z: f32,
-                       n: int, cell: f32, west: f32, south: f32) #export_c {
-  r[0].n = n; r[0].cell = cell; r[0].west = west; r[0].south = south;
+                       n: int, rows: int, cell: f32, west: f32, south: f32) #export_c {
+  r[0].n = n; r[0].grid_rows = rows; r[0].cell = cell; r[0].west = west; r[0].south = south;
   r[0].level = f64(level);
   count := course.count / 3;
   if count > STREAM_CONTROLS { count = STREAM_CONTROLS; }
@@ -395,7 +397,7 @@ test_ground :: (heights: [] f32) {
   test_ground(heights[..]);
   r: [1] Stream;
   course := TEST_COURSE;
-  fairy_stream_start(r[..], heights[..], course[..], -0.2, 10, 0, TEST_N, 2, -80, -80);
+  fairy_stream_start(r[..], heights[..], course[..], -0.2, 10, 0, TEST_N, 0, 2, -80, -80);
   #assert r[0].ready && r[0].rows > 100 && r[0].rows <= STREAM_ROWS;
   s := water_sample(r[0].set, 10, -40, 0);
   #assert s.found && abs(s.height + 0.2) < 0.1;
@@ -416,7 +418,7 @@ test_ground :: (heights: [] f32) {
   test_ground(heights[..]);
   r: [1] Stream;
   course := TEST_COURSE;
-  fairy_stream_start(r[..], heights[..], course[..], -0.2, 10, 0, TEST_N, 2, -80, -80);
+  fairy_stream_start(r[..], heights[..], course[..], -0.2, 10, 0, TEST_N, 0, 2, -80, -80);
   fairy_stream_drop(r[..], heights[..], 0.8);
   #assert fairy_stream_dropped(r[..]) == 0.8;
   pond := water_sample(r[0].set, 10, 0, 0); far := water_sample(r[0].set, 10, -50, 0);
@@ -434,7 +436,7 @@ test_ground :: (heights: [] f32) {
   test_ground(heights[..]);
   r: [1] Stream;
   course := TEST_COURSE;
-  fairy_stream_start(r[..], heights[..], course[..], -0.2, 10, 0, TEST_N, 2, -80, -80);
+  fairy_stream_start(r[..], heights[..], course[..], -0.2, 10, 0, TEST_N, 0, 2, -80, -80);
   a := fairy_stream_swim(r[..], heights[..], 20, -40, 0, false, 1.0 / 60.0, 1.0);
   #assert a.medium == MEDIUM_GROUND && a.pace == 1;
   c := Swim.{};
@@ -449,7 +451,7 @@ test_ground :: (heights: [] f32) {
   test_ground(heights[..]);
   r: [1] Stream;
   course := TEST_COURSE;
-  fairy_stream_start(r[..], heights[..], course[..], -0.2, 10, 0, TEST_N, 2, -80, -80);
+  fairy_stream_start(r[..], heights[..], course[..], -0.2, 10, 0, TEST_N, 0, 2, -80, -80);
   out: [PADS * 8] f32;
   n := 0;
   for k: 0..<150 { n = fairy_stream_floats(r[..], 1.0 / 60.0, out[..]); }

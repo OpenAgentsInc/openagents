@@ -1,71 +1,100 @@
-// Fairy Forest's valley (verse/fairy-forest/README.md, the first crack): its
-// layout in metres, the trails, the stream's course, where the trees stand,
-// the faded flower patches, the creatures and their troubles, and the fade:
-// colour comes back in circles that spread out from what you bloom. The page
-// (apps/openagents-web/fairy.coax) loads this file, draws it and runs it;
-// fairy.wgsl reads the circles (Bloom) to drain or restore colour.
+// Fairy Forest's park (verse/fairy-forest/README.md): its layout in metres,
+// the paths, the stream's course, the glades, the faded flower patches, the
+// creatures and their troubles, and the fade: colour comes back in circles
+// that spread out from what you bloom. The page (apps/openagents-web/fairy.coax)
+// loads this file, draws it and runs it; fairy.wgsl reads the circles (Bloom)
+// to drain or restore colour.
 //
-// +z is north and the heart tree is the origin. The valley is 160 m across
-// (80 cells of 2 m); you may walk 124 m of it, and its rim rises into
-// wooded ridges. Five glades: Mossbank (where you wake), The Reeds (by the
-// pond), Lanternwood, Thornfall (brambles and a fallen giant tree, to the
-// north) and the Old Ring (standing stones, to the south). Each glade's
-// creature has one trouble: its glade has faded (in Thornfall, brambles have
-// grown over the badger's way home; in the Old Ring the stones have gone
-// dark). Bloom its patches and it is happy again, and one of the heart
-// tree's five roots wakes. All five, and the heart tree blooms: the ending.
-// The forest stays open after it.
+// The land is Central Park at a quarter of its size: 1025 m from 59th
+// Street (south, -z) to 110th (north, +z) and 208 m from Central Park West
+// (-x) to Fifth Avenue (+x), with its lakes, drives, footpaths and
+// landmarks where they are in the real park (verse/fairy-forest/park.coax).
+// The heart tree is the origin, in the Ramble. Five glades: Mossbank (where
+// you wake, by the Pond), The Reeds (at the Pool), Lanternwood (the North
+// Woods), Thornfall (brambles and a fallen giant tree, at the north edge)
+// and the Old Ring (standing stones, by Cleopatra's Needle). The fade is
+// only round them and the heart tree (FF_FADE); the rest of the park keeps
+// its colour. Each glade's creature has one trouble: its glade has faded.
+// Bloom its patches and it is happy again, and one of the heart tree's five
+// roots wakes. All five, and the heart tree blooms: the ending. The park
+// stays open after it.
 //   coax/bin/coax test apps/openagents-web/fairy.coax   (this file's checks run with the page's)
 
+// The ground: a rectangle 80 cells of 3 m west to east and 354 south to
+// north, the park (verse/fairy-forest/park.coax) and the streets round it.
 FF_CELLS :: 80;
-FF_CELL :: 2.0;
-FF_EDGE :: -80.0;
-FF_BOUND :: 62.0;          // metres from the heart you may walk
-FF_PATH_HALF :: 1.1;
-FF_GROUND_POINTS :: (FF_CELLS + 1) * (FF_CELLS + 1);
-FF_LEVEL :: -0.3;          // the stream's and the pond's surface
+FF_ROWS :: 354;
+FF_CELL :: 3.0;
+FF_WEST :: -120.0;
+FF_SOUTH :: -380.0;
+FF_EDGE :: FF_WEST;
+// The park's walls, where you may walk to: Central Park West, Fifth Avenue,
+// Central Park South (59th Street) and Central Park North (110th Street).
+FF_PARK_W :: -104.0; FF_PARK_E :: 104.0; FF_PARK_S :: -362.0; FF_PARK_N :: 663.0;
+FF_PATH_HALF :: 1.4;       // a footpath's half width
+FF_GROUND_POINTS :: (FF_CELLS + 1) * (FF_ROWS + 1);
+FF_LEVEL :: -0.3;          // the water's surface: the stream, the pond and the lakes
+FF_LAYOUT :: 2;            // the layout a kept place belongs to (the park); a place kept in the old valley goes back to the spawn
 
-// The trails: the ring round the heart tree and a trail out to each glade.
-FF_NODES :: 22;
-FF_NODE_XZ :: [44] f32.[
-  0, 10,  10, 0,  0, -10,  -10, 0,                 // 0-3 the ring round the heart
-  -16, -18,  -26, -28,  -33, -35,                  // 4-6 to Mossbank (6: where you wake)
-  12, -6,  20, -13,                                // 7-8 to the Reeds
-  -10, 18,  -20, 28,  -27, 33,                     // 9-11 to Lanternwood
-  -40, -44,  -24, -42,                             // 12-13 round Mossbank
-  -34, 40,  -18, 38,                               // 14-15 round Lanternwood
-  6, 22,  4, 38,                                   // 16-17 north toward Thornfall
-  2, 47,                                           // 18 Thornfall
-  1, -24,  0, -36,  0, -43                         // 19-21 south into the Old Ring, through its gap
+// The paths: the heart tree's ring, the park's drives (kind 1), the Mall
+// (kind 2) and footpaths (kind 0) out to every glade and landmark.
+FF_NODES :: 89;
+FF_NODE_XZ :: [178] f32.[
+  0, 10,   10, 0,   0, -10,   -10, 0,   -100, -362,   -80, -300,   -82, -200,   -80, -100,
+  -84, 20,   -86, 160,   -92, 300,   -86, 440,   0, 446,   86, 440,   92, 300,   88, 160,
+  82, 40,   60, -60,   66, -200,   86, -300,   98, -362,   -40, -362,   -25, -300,   -15, -235,
+  -30, -112,   40, -120,   62, -125,   57, -275,   47, -285,   40, -292,   33, -301,   49, -299,
+  54, -318,   64, -342,   78, -358,   30, -262,   8, -240,   -10, -262,   -40, -250,   -58, -232,
+  10, -215,   16, -160,   20, -122,   -92, -96,   46, -50,   25, -25,   -15, -88,   -8, -74,
+  -8, -50,   -5, -25,   0, 26,   -40, 10,   -30, 48,   -25, 78,   -47, 125,   -5, 172,
+  37, 125,   -5, 80,   -35, 94,   -35, 158,   25, 158,   25, 94,   50, 100,   72, 130,
+  55, 158,   55, 144,   -82, 280,   -58, 351,   0, 381,   58, 351,   82, 280,   58, 209,
+  0, 179,   -58, 209,   -15, 457.5,   -8, 465.5,   -52, 452,   -50, 484,   -48, 545,   -58, 555,
+  -65, 560,   -72, 567,   -56, 565,   -21, 589,   -23, 605,   -25, 614,   80, 520,   80, 572,
+  78, -48
 ];
-FF_LINKS :: 23;
-FF_LINK_AB :: [46] int.[
-  0, 1,  1, 2,  2, 3,  3, 0,
-  2, 4,  4, 5,  5, 6,  6, 12,  6, 13,  13, 5,
-  1, 7,  7, 8,
-  0, 9,  9, 10,  10, 11,  11, 14,  11, 15,
-  0, 16,  16, 17,  17, 18,
-  2, 19,  19, 20,  20, 21
+FF_LINKS :: 102;
+FF_LINK_AB :: [204] int.[
+  0, 1,  1, 2,  2, 3,  3, 0,  4, 5,  5, 6,  6, 7,  7, 8,  8, 9,  9, 10,  10, 11,  11, 12,
+  12, 13,  13, 14,  14, 15,  15, 16,  16, 17,  17, 26,  26, 18,  18, 19,  19, 20,  21, 22,  22, 23,  23, 18,
+  7, 24,  24, 25,  25, 26,  40, 41,  41, 42,  27, 28,  28, 29,  29, 30,  29, 31,  31, 28,  27, 19,  27, 35,
+  35, 36,  36, 40,  35, 37,  37, 38,  38, 39,  39, 6,  31, 32,  32, 33,  33, 34,  34, 20,  7, 43,  42, 46,
+  46, 47,  47, 48,  48, 49,  49, 2,  42, 44,  44, 45,  45, 1,  0, 50,  3, 51,  51, 8,  51, 52,  52, 53,
+  53, 57,  57, 58,  58, 54,  54, 59,  59, 55,  55, 60,  60, 56,  56, 61,  61, 57,  61, 62,  62, 63,  63, 64,
+  60, 64,  64, 65,  62, 16,  66, 67,  67, 68,  68, 69,  69, 70,  70, 71,  71, 72,  72, 73,  73, 66,  72, 55,
+  66, 10,  70, 14,  68, 12,  12, 74,  74, 75,  11, 76,  76, 77,  77, 78,  78, 79,  79, 80,  80, 81,  80, 82,
+  82, 83,  83, 84,  84, 85,  13, 86,  86, 87,  17, 88
 ];
+FF_LINK_KIND :: [102] int.[
+  0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+];
+FF_KIND_HALF :: [3] f32.[1.4, 3.0, 3.4];
 // Flat ground: the heart's clearing and the glades.
-FF_FLATS :: [24] f32.[0, 0, 14, 0.2,   -33, -35, 9, 0.3,   21, -15, 6, 0.1,   -27, 33, 9, 0.4,   1, 49, 12, 0.5,   0, -47, 9, 0.3];
+FF_FLATS :: [24] f32.[0, 0, 14, 0.2,   40, -292, 9, 0.3,   -6, 466.5, 6, 0.1,   -65, 560, 9, 0.4,   -26, 616, 12, 0.5,   55, 140, 9, 0.3];
 
-// The stream: control points (x, z, full width), north to south, wide at the pond.
+// The stream, the Loch: from the park's west wall into the Pool (wide: the
+// pond), out past the Ravine and into Harlem Meer. Control points (x, z,
+// full width), upstream first.
 FF_COURSE_N :: 10;
 FF_COURSE :: [30] f32.[
-  22, 82, 3.5,   26, 58, 3.5,   18, 40, 4,   26, 20, 4,   32, 2, 5,
-  36, -12, 17,   37, -20, 15,   31, -36, 4,   37, -56, 4,   30, -84, 3.5
+  -103, 467.5, 3.5,   -79, 471.5, 3.5,   -61, 463.5, 4,   -41, 471.5, 4,   -23, 477.5, 5,
+  -9, 481.5, 17,   -1, 482.5, 15,   15, 490, 4,   33, 522, 4,   52, 585, 3.5
 ];
-FF_POND_X :: 36.5; FF_POND_Z :: -16.0;
+FF_POND_X :: -5.0; FF_POND_Z :: 482.0;
 
-// The glades: x, z, radius.
+// The glades: x, z, radius. Mossbank by the Pond at the south end, the
+// Reeds at the Pool, Lanternwood in the North Woods, Thornfall at the
+// park's wild north edge, the Old Ring by Cleopatra's Needle; the heart
+// tree stands in the Ramble, the origin.
 FF_GLADES :: 5;
-FF_GLADE :: [15] f32.[-33, -35, 11,   21, -15, 8,   -27, 33, 11,   2, 48, 11,   0, -47, 10];
+FF_GLADE :: [15] f32.[40, -292, 11,   -6, 466.5, 8,   -65, 560, 11,   -25, 615, 11,   55, 140, 10];
 FF_GLADE_NAMES :: [5] string.["MOSSBANK", "THE REEDS", "LANTERNWOOD", "THORNFALL", "THE OLD RING"];
 FF_THORNFALL :: 3; FF_OLD_RING :: 4;
 FF_RING_STONES :: 9;       // the Old Ring's standing stones, round its middle
 FF_RING_R :: 7.0;
-FF_SPAWN_X :: -33.0; FF_SPAWN_Z :: -37.0; FF_SPAWN_FACE :: 0.7;
+FF_SPAWN_X :: 40.0; FF_SPAWN_Z :: -294.0; FF_SPAWN_FACE :: 2.67;   // toward the Pond, Gapstow Bridge and 59th Street
 
 // The faded patches to bloom: x, z, how far colour spreads, glade (-1 the first flower).
 // (New patches are added at the end, so a save made with fewer still opens.)
@@ -73,12 +102,12 @@ FF_SPAWN_X :: -33.0; FF_SPAWN_Z :: -37.0; FF_SPAWN_FACE :: 0.7;
 // Ring's are three of its stones (ff_ring_stone 0, 3 and 6), whose carvings light.
 FF_PATCHES :: 15;
 FF_PATCH :: [60] f32.[
-  -31.5, -34.8, 7, -1,
-  -37, -30, 13, 0,   -27, -39, 13, 0,   -38, -40, 12, 0,
-  17.5, -18, 13, 1,   24, -10.5, 13, 1,
-  -31, 28, 13, 2,   -22, 37, 13, 2,   -33, 39, 12, 2,
-  -6, 46, 13, 3,   9, 49.5, 13, 3,   7, 42.5, 12, 3,
-  -1.92, -41.74, 13, 4,   -3.6, -51.29, 13, 4,   5.52, -47.97, 13, 4
+  41.5, -291.8, 7, -1,
+  36, -287, 13, 0,   46, -296, 13, 0,   35, -297, 12, 0,
+  -3, 463, 13, 1,   -10.5, 469.5, 13, 1,
+  -69, 555, 13, 2,   -60, 564, 13, 2,   -71, 566, 12, 2,
+  -33, 613, 13, 3,   -18, 616.5, 13, 3,   -20, 609.5, 12, 3,
+  53.08, 145.26, 13, 4,   51.4, 135.71, 13, 4,   60.52, 139.03, 13, 4
 ];
 FF_BLOOM_NEAR :: 2.8;      // metres: near enough to bloom a patch
 FF_SPREAD :: 2.6;          // seconds a bloom takes to spread to its full reach
@@ -86,7 +115,7 @@ FF_SPREAD :: 2.6;          // seconds a bloom takes to spread to its full reach
 // The creatures: x, z, the glade whose trouble is theirs, kind (0 hedgehog, 1 frog, 2 rabbit).
 // (3 a badger; 4 an owl, who sits on the low stone in the Old Ring's middle)
 FF_CREATURES :: 5;
-FF_CREATURE :: [20] f32.[-30, -31.5, 0, 0,   20, -14, 1, 1,   -24.5, 31, 2, 2,   1, 44, 3, 3,   0, -47, 4, 4];
+FF_CREATURE :: [20] f32.[43, -288.5, 0, 0,   -7, 465.5, 1, 1,   -62.5, 558, 2, 2,   -26, 611, 3, 3,   55, 140, 4, 4];
 FF_CREATURE_NAMES :: [5] string.["BRAMBLE", "PIP", "CLOVER", "BURDOCK", "HOLLOW"];
 FF_TALK_NEAR :: 6.0;
 // What each says: worried, partly helped, happy.
@@ -121,7 +150,7 @@ FF_TROUBLE_FEEL :: [5] int.[FEEL_HUNGRY, FEEL_TIRED, FEEL_WORRIED, FEEL_LOST, FE
 FF_ROOTS :: 5;
 FF_ROOT :: [15] f32.[-9, -9, 0,   10, -6, 1,   -8, 9, 2,   4, 12, 3,   1, -12.5, 4];
 FF_HEART_WAIT :: 3.0;      // seconds after the last root wakes before the heart tree blooms
-FF_HEART_SPREAD :: 140.0;  // its bloom: colour back over the whole valley
+FF_HEART_SPREAD :: 1200.0; // its bloom: colour back over the whole park
 FF_ROOT_SPREAD :: 22.0;
 
 // A circle of restored colour: where, how far it reaches, when it began, and whether it is in use.
@@ -152,6 +181,24 @@ ff_ring_stone :: (k: int) -> RingStone {
 
 // ---- the fade
 
+// Where the forest has faded: round each glade and the heart tree (x, z,
+// radius); outside them the park keeps its colour. fairy.wgsl's restored()
+// reads the same circles.
+FF_FADES :: 6;
+FF_FADE :: [18] f32.[0, 0, 36,   40, -292, 34,   -6, 470, 30,   -65, 562, 34,   -25, 615, 30,   55, 140, 30];
+FF_FADE_EDGE :: 10.0;
+// How faded (x, z) is at most: 1 inside a circle, easing to 0 over its edge.
+ff_fade_at :: (x: f32, z: f32) -> f32 {
+  most := 0.0f32;
+  for i: 0..<FF_FADES {
+    dx := x - FF_FADE[i * 3]; dz := z - FF_FADE[i * 3 + 1];
+    r := FF_FADE[i * 3 + 2];
+    d := sqrt(dx * dx + dz * dz);
+    most = hi(most, 1 - clamp01((d - (r - f32(FF_FADE_EDGE))) / f32(FF_FADE_EDGE)));
+  }
+  return most;
+}
+
 ff_bloom_add :: (f: [] Forest, x: f32, z: f32, reach: f32, now: f64) {
   if f[0].bloom_n >= FF_BLOOMS { return; }
   f[0].blooms[f[0].bloom_n] = Bloom.{x = x, z = z, reach = reach, began = now, on = true};
@@ -169,7 +216,7 @@ ff_bloom_radius :: (b: Bloom, now: f64) -> f32 {
 // How much colour is back at (x, z), 0 faded to 1 restored: the shader's
 // restored() over the same circles, with the same soft 5 m edge.
 ff_restored :: (f: [] Forest, x: f32, z: f32, now: f64) -> f32 {
-  best := 0.0f32;
+  best := 1 - ff_fade_at(x, z);
   for i: 0..<f[0].bloom_n {
     b := f[0].blooms[i];
     r := ff_bloom_radius(b, now);

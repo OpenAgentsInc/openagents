@@ -60,7 +60,7 @@ FairyLook :: struct {
 // ---- your home (ff-home): a hollow under a great root in Mossbank's west,
 // its rooms opening one by one as the heart tree's roots wake, and the
 // pieces you place in them.
-FFH_X :: -46.0; FFH_Z :: -44.0;   // the hollow's middle
+FFH_X :: 27.0; FFH_Z :: -301.0;   // the hollow's middle
 FFH_CLEAR :: 10.0;                 // trees keep this far off
 FFH_ROOMS :: 5;
 FFH_ROOM_NAMES :: [5] string.["THE HOLLOW", "THE GARDEN", "THE TABLE ROOM", "THE SHELVES", "THE GREEN"];
@@ -148,16 +148,16 @@ FFK_LETS :: [7] string.["MAKE PLANTS GROW AND FLOWER", "TALK WITH ANIMALS", "HEA
 FFK_FINDS :: 9;
 FFK_FIND_KINDS :: 3;
 FFK_FIND_WORDS :: [3] string.["BERRY", "ACORN", "SEED"];
-FFK_FIND :: [27] f32.[-30.0, -46.0, 0,   -43.0, -33.0, 1,   -21.0, -35.0, 2,
-                      14.0, -23.0, 0,   28.0, -5.0, 1,   -36.0, 30.0, 2,
-                      -16.0, 36.0, 0,   12.0, 40.0, 1,   -9.0, -43.0, 2];
+FFK_FIND :: [27] f32.[43.0, -303.0, 0,   30.0, -290.0, 1,   52.0, -292.0, 2,
+                      14.0, -23.0, 0,   -16.0, 473.5, 1,   -74.0, 557.0, 2,
+                      -54.0, 563.0, 0,   -15.0, 607.0, 1,   46.0, 144.0, 2];
 // The deadwood Craft cuts: x, z, yaw.
 FFK_LOGS :: 4;
-FFK_LOG :: [12] f32.[-22.0, -26.0, 0.4,   -39.5, -24.5, 1.9,   -21.0, -45.5, 2.6,   -29.0, -51.0, 0.9];
-FFK_BIRD_X :: -35.5; FFK_BIRD_Z :: -44.5;      // the hurt bird, in Mossbank
-FFK_AXE_X :: -36.5; FFK_AXE_Z :: -47.0;        // the woodcutter's axe, in a stump east of your home
-FFK_LANTERN_X :: -27.5; FFK_LANTERN_Z :: 43.0; // the lantern flower, in Lanternwood
-FFK_DAM_X :: 29.0; FFK_DAM_Z :: 11.0;          // sticks across the stream, above the pond
+FFK_LOG :: [12] f32.[51.0, -283.0, 0.4,   33.5, -281.5, 1.9,   52.0, -302.5, 2.6,   44.0, -308.0, 0.9];
+FFK_BIRD_X :: 37.5; FFK_BIRD_Z :: -301.5;      // the hurt bird, in Mossbank
+FFK_AXE_X :: 36.5; FFK_AXE_Z :: -304.0;        // the woodcutter's axe, in a stump east of your home
+FFK_LANTERN_X :: -65.5; FFK_LANTERN_Z :: 570.0; // the lantern flower, in Lanternwood
+FFK_DAM_X :: -32.0; FFK_DAM_Z :: 474.5;          // sticks across the stream, above the pond
 FFK_NEAR :: 1.8;
 
 Skills :: struct {

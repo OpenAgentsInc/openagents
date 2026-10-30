@@ -1,0 +1,191 @@
+// Fairy Forest's park: Central Park at a quarter of its size
+// (verse/fairy-forest/README.md "The park"). 4.1 km by 0.83 km becomes
+// 1025 m by 208 m, a 5:1 rectangle with 59th Street at the south (-z) and
+// 110th at the north (+z); the heart tree in the Ramble is the origin, so a
+// real street s lies at about z = -362 + (s - 59) * 20.1. The lakes, the
+// rocky outcrops, the lawns and the landmarks below stand where they do in
+// the real park; the paths and drives are forest.coax's. The page
+// (apps/openagents-web/fairy.coax) carves the lakes and raises the rocks in
+// its ground, and apps/openagents-web/fairypark.coax draws the rest in
+// simple low-poly shapes.
+//   coax/bin/coax test apps/openagents-web/fairy.coax   (this file's checks run with the page's)
+
+// The lakes: ellipses (x, z, half width, half length) and which lake each is.
+FFP_LAKES :: 6;
+FFP_LAKE_NAMES :: [6] string.["THE POND", "THE LAKE", "TURTLE POND", "THE RESERVOIR", "HARLEM MEER", "CONSERVATORY WATER"];
+FFP_BLOBS :: 15;
+FFP_BLOB :: [60] f32.[
+  42, -340, 14, 13,   58, -329, 7, 6,   74, -318, 12, 11,                                   // the Pond (0)
+  18, -70, 15, 13,   -8, -62, 13, 8,   -33, -70, 16, 12,   -56, -52, 12, 11,   -62, -28, 9, 12,   // the Lake (1)
+  -12, 62, 9, 7,   4, 64, 8, 6,                                                              // Turtle Pond (2)
+  0, 280, 76, 95,                                                                            // the Reservoir (3)
+  52, 612, 38, 28,   84, 600, 16, 18,                                                        // Harlem Meer (4)
+  88, -70, 8, 10,                                                                            // Conservatory Water (5)
+  0, 0, 0, 0
+];
+FFP_BLOB_LAKE :: [15] int.[0, 0, 0,   1, 1, 1, 1, 1,   2, 2,   3,   4, 4,   5,   -1];
+FFP_BED :: 0.5;            // m: a lake's bed under the water, so you wade
+
+// How far into the nearest lake (x, z) is: under 1 inside an ellipse (0 at
+// its middle), and the metres past its shore, roughly, outside.
+LakeNear :: struct { q: f32; out: f32; lake: int; }
+ffp_lake_near :: (x: f32, z: f32) -> LakeNear {
+  best := LakeNear.{q = 1000000, out = 1000000, lake = -1};
+  for i: 0..<FFP_BLOBS {
+    rx := FFP_BLOB[i * 4 + 2]; rz := FFP_BLOB[i * 4 + 3];
+    if rx <= 0 { continue; }
+    dx := (x - FFP_BLOB[i * 4]) / rx; dz := (z - FFP_BLOB[i * 4 + 1]) / rz;
+    q := sqrt(dx * dx + dz * dz);
+    out := (q - 1) * lo(rx, rz);
+    if q < best.q { best.q = q; best.lake = FFP_BLOB_LAKE[i]; }
+    if out < best.out { best.out = out; }
+  }
+  return best;
+}
+ffp_in_lake :: (x: f32, z: f32, room: f32) -> bool { return ffp_lake_near(x, z).out < room; }
+
+// The ground under and round a lake: its bed FFP_BED under the water, the
+// shore at the ellipse, banks easing up beside it.
+ffp_lake_carve :: (h: f32, n: LakeNear) -> f32 {
+  level := f32(FF_LEVEL);
+  if n.q < 1 {
+    k := clamp01((1 - n.q) / 0.25);
+    return lo(h, level - f32(FFP_BED) * k * k * (3 - 2 * k));
+  }
+  return lo(h, level + n.out * 0.45);
+}
+
+// The rocky outcrops (x, z, radius, height): Umpire Rock, Rat Rock, Vista
+// Rock (Belvedere Castle stands on it), Summit Rock, Greywacke Knoll
+// (Cleopatra's Needle's) and a glacial boulder in the North Woods.
+FFP_ROCKS :: 6;
+FFP_ROCK :: [24] f32.[-38, -305, 9, 3.2,   -60, -275, 6, 2.2,   0, 40, 13, 6.0,   -62, 112, 8, 3.4,   54, 96, 9, 2.0,   -88, 600, 7, 2.8];
+ffp_rock_lift :: (x: f32, z: f32) -> f32 {
+  up := 0.0f32;
+  for i: 0..<FFP_ROCKS {
+    dx := x - FFP_ROCK[i * 4]; dz := z - FFP_ROCK[i * 4 + 1]; r := FFP_ROCK[i * 4 + 2];
+    q := (dx * dx + dz * dz) / (r * r);
+    if q >= 1 { continue; }
+    k := 1 - q;
+    rough := 0.85 + 0.15 * sin(dx * 1.7 + dz * 0.9) * cos(dz * 1.3 - dx * 0.4);
+    up = hi(up, FFP_ROCK[i * 4 + 3] * k * sqrt(k) * rough);
+  }
+  return up;
+}
+
+// The lawns (x, z, half width, half length): Heckscher Ballfields, Sheep
+// Meadow, the Great Lawn and the North Meadow, open grass with no trees.
+FFP_LAWNS :: 4;
+FFP_LAWN :: [16] f32.[-50, -332, 22, 14,   -40, -190, 30, 26,   -5, 125, 36, 40,   10, 412, 45, 22];
+ffp_on_lawn :: (x: f32, z: f32, room: f32) -> bool {
+  for i: 0..<FFP_LAWNS {
+    dx := (x - FFP_LAWN[i * 4]) / (FFP_LAWN[i * 4 + 2] + room); dz := (z - FFP_LAWN[i * 4 + 1]) / (FFP_LAWN[i * 4 + 3] + room);
+    if dx * dx + dz * dz < 1 { return true; }
+  }
+  return false;
+}
+
+// The landmarks: x, z, the clear ground they keep (no tree nearer), and how
+// high their name floats. Their shapes are fairypark.coax's.
+FFP_MARKS :: 26;
+FFP_GAPSTOW :: 1; FFP_WOLLMAN :: 2; FFP_CAROUSEL :: 4; FFP_DAIRY :: 5; FFP_MALL :: 7; FFP_BANDSHELL :: 8; FFP_BETHESDA :: 9;
+FFP_BOW :: 11; FFP_BOATHOUSE :: 12; FFP_IMAGINE :: 13; FFP_ALICE :: 15; FFP_BELVEDERE :: 17; FFP_DELACORTE :: 19;
+FFP_NEEDLE :: 21; FFP_GARDEN :: 25;
+FFP_MARK_NAMES :: [26] string.[
+  "THE POND", "GAPSTOW BRIDGE", "WOLLMAN RINK", "UMPIRE ROCK", "THE CAROUSEL", "THE DAIRY", "SHEEP MEADOW",
+  "THE MALL", "NAUMBURG BANDSHELL", "BETHESDA TERRACE", "THE LAKE", "BOW BRIDGE", "LOEB BOATHOUSE", "STRAWBERRY FIELDS",
+  "CONSERVATORY WATER", "ALICE IN WONDERLAND", "THE RAMBLE", "BELVEDERE CASTLE", "TURTLE POND", "DELACORTE THEATER",
+  "THE GREAT LAWN", "CLEOPATRA'S NEEDLE", "THE RESERVOIR", "NORTH MEADOW", "HARLEM MEER", "CONSERVATORY GARDEN"
+];
+FFP_MARK :: [104] f32.[
+  42, -340, 0, 3,      58, -329, 9, 6,      -10, -282, 18, 4,    -38, -305, 0, 6,
+  -25, -238, 9, 7,     -6, -250, 8, 8,      -40, -190, 0, 3,     13, -188, 0, 6,
+  36, -142, 12, 9,     20, -102, 12, 7,     -30, -70, 0, 3,      -8, -62, 8, 6,
+  40, -62, 9, 8,       -92, -104, 6, 3,     88, -70, 0, 3,       90, -54, 6, 5,
+  10, -32, 0, 4,       0, 42, 10, 21,       -3, 63, 0, 3,        -36, 64, 12, 8,
+  -5, 125, 0, 3,       58, 92, 5, 21,       0, 280, 0, 3,        10, 412, 0, 3,
+  60, 612, 0, 3,       84, 553, 16, 6
+];
+// how near you come before a name shows over its landmark
+FFP_SIGN_NEAR :: 45.0;
+
+// The skyline: blocks along the avenues round the park (x0, z0, x1, z1,
+// height, shade), made once. Fifth Avenue and Central Park West are lower;
+// Central Park South has the towers.
+FFP_BLOCKS :: 150;
+ffp_skyline :: (out: [] f32) -> int {
+  n := 0;
+  // Central Park West and Fifth Avenue, block by block
+  z := f32(FF_PARK_S) - 10;
+  k := 0;
+  while z < f32(FF_PARK_N) + 6 && n + 2 <= FFP_BLOCKS {
+    w := 16 + 10 * ffp_hash(f32(k), 1);
+    for side: 0..<2 {
+      sg := ifx side == 0 then -1.0f32 else 1.0f32;
+      x0 := sg * 126; x1 := sg * (146 + 8 * ffp_hash(f32(k), 3 + f32(side)));
+      h := 14 + 26 * ffp_hash(f32(k), 5 + f32(side));
+      if ffp_hash(f32(k), 9 + f32(side)) > 0.85 { h += 25; }
+      b := n * 6;
+      out[b] = lo(x0, x1); out[b + 1] = z; out[b + 2] = hi(x0, x1); out[b + 3] = z + w - 3; out[b + 4] = h; out[b + 5] = ffp_hash(f32(k), 7 + f32(side));
+      n += 1;
+    }
+    z += w; k += 1;
+  }
+  // 59th Street's towers and 110th Street's lower row
+  x := -150.0f32;
+  while x < 150 && n + 2 <= FFP_BLOCKS {
+    w := 14 + 10 * ffp_hash(x, 11);
+    b := n * 6;
+    tall := 30 + 50 * ffp_hash(x, 13);
+    if ffp_hash(x, 17) > 0.6 { tall += 45; }
+    out[b] = x; out[b + 1] = f32(FF_PARK_S) - 40; out[b + 2] = x + w - 3; out[b + 3] = f32(FF_PARK_S) - 22; out[b + 4] = tall; out[b + 5] = ffp_hash(x, 19);
+    n += 1;
+    b = n * 6;
+    out[b] = x; out[b + 1] = f32(FF_PARK_N) + 22; out[b + 2] = x + w - 3; out[b + 3] = f32(FF_PARK_N) + 40; out[b + 4] = 12 + 14 * ffp_hash(x, 23); out[b + 5] = ffp_hash(x, 29);
+    n += 1;
+    x += w;
+  }
+  return n;
+}
+ffp_hash :: (a: f32, b: f32) -> f32 { v := sin(a * 127.1 + b * 311.7) * 43758.5453; return v - floor(v); }
+
+// Where the woods are thick: the Ramble round the heart tree, Hallett by
+// the Pond, and the North Woods; elsewhere the trees stand in open groves.
+ffp_woods :: (x: f32, z: f32) -> bool {
+  if x * x + (z + 10) * (z + 10) < 75 * 75 { return true; }
+  if (x - 50) * (x - 50) + (z + 300) * (z + 300) < 26 * 26 { return true; }
+  if x < -10 && z > 520 { return true; }
+  if z > 455 && z < 520 && x < 30 { return true; }
+  return false;
+}
+
+#test "the park keeps Central Park's shape: a 5:1 rectangle, the Reservoir mid-north, the Pond south-east, Harlem Meer north-east" {
+  w := f32(FF_PARK_E) - f32(FF_PARK_W); l := f32(FF_PARK_N) - f32(FF_PARK_S);
+  #assert l / w > 4.8 && l / w < 5.2;
+  blobs := FFP_BLOB;
+  pond := blobs[0..<4]; res := blobs[40..<44]; meer := blobs[44..<48];
+  #assert pond[0] > 0 && pond[1] < f32(FF_PARK_S) + 40;
+  #assert res[1] > 0 && res[2] > 60 && meer[0] > 0 && meer[1] > f32(FF_PARK_N) - 60;
+  for i: 0..<FFP_BLOBS {
+    if FFP_BLOB[i * 4 + 2] <= 0 { continue; }
+    #assert FFP_BLOB[i * 4] - FFP_BLOB[i * 4 + 2] > f32(FF_PARK_W) && FFP_BLOB[i * 4] + FFP_BLOB[i * 4 + 2] < f32(FF_PARK_E);
+  }
+}
+
+#test "the paths keep out of the lakes, except over the bridges; the glades, the creatures and the heart tree are dry" {
+  for i: 0..<FF_NODES { #assert !ffp_in_lake(FF_NODE_XZ[i * 2], FF_NODE_XZ[i * 2 + 1], 2); }
+  for g: 0..<FF_GLADES { #assert !ffp_in_lake(FF_GLADE[g * 3], FF_GLADE[g * 3 + 1], FF_GLADE[g * 3 + 2] + 2); }
+  for c: 0..<FF_CREATURES { #assert !ffp_in_lake(FF_CREATURE[c * 4], FF_CREATURE[c * 4 + 1], 4); }
+  #assert !ffp_in_lake(0, 0, 25);
+  #assert ffp_in_lake(FFP_MARK[FFP_BOW * 4], FFP_MARK[FFP_BOW * 4 + 1], 0) && ffp_in_lake(FFP_MARK[FFP_GAPSTOW * 4], FFP_MARK[FFP_GAPSTOW * 4 + 1], 0);
+}
+
+#test "the skyline stands outside the park's walls" {
+  b: [FFP_BLOCKS * 6] f32;
+  n := ffp_skyline(b[..]);
+  #assert n > 60 && n <= FFP_BLOCKS;
+  for i: 0..<n {
+    inside := b[i * 6 + 2] > f32(FF_PARK_W) && b[i * 6] < f32(FF_PARK_E) && b[i * 6 + 3] > f32(FF_PARK_S) && b[i * 6 + 1] < f32(FF_PARK_N);
+    #assert !inside;
+  }
+}

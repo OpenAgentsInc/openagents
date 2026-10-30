@@ -2,13 +2,15 @@
 
 A Verse realm, drawn flat, you walk in the browser at https://openagents.com/realms/fairy-forest. It is a first version, unlisted: the galaxy shows it only with `?realms=all`. The plan for the whole realm is in `verse/fairy-forest/README.md`.
 
-## The valley
+## The park
 
-A valley about 160 metres across, ringed by soft hills, with the heart tree in the middle. Trails run from the heart tree to five glades: Mossbank in the south-west, where you wake; The Reeds by the pond in the east; Lanternwood in the north-west; Thornfall in the north, brambles round a fallen giant tree; and the Old Ring in the south, nine standing stones. A stream winds down the valley into the pond. The valley starts faded, grey and pale, and colour spreads outward from everything you restore.
+Central Park at a quarter of its size: a long rectangle about 1 km from 59th Street in the south to 110th Street in the north and 208 m across, between Central Park West and Fifth Avenue, with low blocks of the avenues round it. Gentle rolling ground with Umpire Rock, Vista Rock and other outcrops; the Pond with Gapstow Bridge, the Lake with Bow Bridge and the Loeb Boathouse, Turtle Pond, the Reservoir, Harlem Meer and Conservatory Water; the drives' loop, footpaths and the Mall's Literary Walk to Bethesda Terrace and the Angel of the Waters. Simple low-poly trees and bushes, and as plain shapes the Carousel, the Dairy, Wollman Rink, the Bandshell, Strawberry Fields' Imagine circle, Alice in Wonderland, Belvedere Castle, the Delacorte Theater, Cleopatra's Needle and the Conservatory Garden's gate. Each landmark's name shows over it as you come near.
+
+The heart tree stands in the Ramble. Five glades: Mossbank by the Pond, where you wake; The Reeds at the Pool, where the Loch runs into a pond on its way to Harlem Meer; Lanternwood in the North Woods; Thornfall at the north edge, brambles round a fallen giant tree; and the Old Ring by Cleopatra's Needle, nine standing stones. The glades and the heart tree start faded, grey and pale, and colour spreads outward from everything you restore.
 
 ## You
 
-You are a fairy with glowing wings that beat slowly when you stand and quickly when you fly. Move with WASD (on a phone, your left thumb); you run unless you hold Shift. Turn the camera with a mouse drag, the arrow keys or your right thumb. Every Space press is a wing beat up, with no limit; hold Space to keep climbing, let go to glide down, and hold Shift in the air to dive. On a phone, tap the right side to flap and hold it to climb. You can stand on the tree crowns.
+You are a fairy with glowing wings that beat slowly when you stand and quickly when you fly. Move with WASD (on a phone, your left thumb); you run unless you hold Shift. Turn the camera with a mouse drag, the arrow keys or your right thumb. Every Space press is a wing beat up, with no limit; hold Space to keep climbing, let go to glide down, and hold Shift in the air to dive. On a phone, tap the right side to flap and hold it to climb. 
 
 ## Bloom
 
@@ -16,7 +18,7 @@ Faded patches of flowers lie along the trails and in the glades. Stand by one an
 
 ## The creatures
 
-Each glade has a creature with a trouble: Bramble the hedgehog in Mossbank, Pip the frog in The Reeds, Clover the rabbit in Lanternwood, Burdock the badger in Thornfall and Hollow the owl in the Old Ring. A glyph over each shows its mood, it says something as you pass, and when you come near it tells you what is wrong. Bloom the patches of its glade and its mood turns happy. A moment later one of the heart tree's roots wakes, glows, and floods the valley round it with colour. Wake all five and the heart tree blooms: colour comes back to the whole valley, and the forest stays open to wander.
+Each glade has a creature with a trouble: Bramble the hedgehog in Mossbank, Pip the frog in The Reeds, Clover the rabbit in Lanternwood, Burdock the badger in Thornfall and Hollow the owl in the Old Ring. A glyph over each shows its mood, it says something as you pass, and when you come near it tells you what is wrong. Bloom the patches of its glade and its mood turns happy. A moment later one of the heart tree's roots wakes, glows, and floods the ground round it with colour. Wake all five and the heart tree blooms: colour comes back to the whole park, and the forest stays open to wander.
 
 ## Talking
 
@@ -24,7 +26,7 @@ Press E by a creature, or click or tap it (TALK on a phone), to talk to it. Type
 
 ## The look
 
-The flat style (`docs/verse/art-styles.md`, Flat): flat-shaded low poly in a cosy pastel palette of olive and lime, cattail orange, pale mint, lavender and cream, three flat tones of light a shape, flat translucent shadows, a flat sky over a soft horizon band, a few short tufts of grass and the water in flat bands with a cream shore line. The shading functions and the palette are `verse/style.coax`; the valley's layout, creatures and the restore loop are `verse/fairy-forest/forest.coax`, and the stream and pond are `verse/fairy-forest/stream.coax`.
+The flat style (`docs/verse/art-styles.md`, Flat): flat-shaded low poly in a cosy pastel palette of olive and lime, cattail orange, pale mint, lavender and cream, three flat tones of light a shape, flat translucent shadows, a flat sky over a soft horizon band, a few short tufts of grass and the water in flat bands with a cream shore line. The shading functions and the palette are `verse/style.coax`; the layout, creatures and the restore loop are `verse/fairy-forest/forest.coax` and `verse/fairy-forest/park.coax`, and the stream and pond are `verse/fairy-forest/stream.coax`.
 
 ## Saving
 
