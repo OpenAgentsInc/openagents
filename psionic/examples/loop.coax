@@ -1,0 +1,78 @@
+#import "Basic";
+#load "../lib/loop.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+r1 :: (v:f64)->f64 {return floor(v*10+0.5)/10;}
+NAME :: [4]string.["proposer","reflector","grader","student"];
+VERDICT :: [3]string.["improving","flat","worse"];
+KEEP :: [3]string.["earns its place","within noise, remove it","harms, remove it"];
+STATUS :: [4]string.["ok","shape","budget","moved"];
+SEEDS :: 8;
+CYCLES :: 8;
+print_digest :: (d:[32]u8) {
+    digits:="0123456789abcdef";text:[8]u8;
+    for i:0..<4 {text[2*i]=digits[cast(int)(d[i]>>4)];text[2*i+1]=digits[cast(int)(d[i]&15)];}
+    print("%",cast(string)text[..]);
+}
+replicates :: (fixed:[]f64,grading:[]f64,world:LpWorld,l:LpLoop,budget:LpBudget,runs:[]LpRun,cycles:[]LpCycle) {
+    for i:0..<SEEDS {
+        runs[i]=lp_run(cast(u64)(i+1),fixed,grading,world,l,budget,cycles[i*(CYCLES+1)..<(i+1)*(CYCLES+1)]);
+        #assert runs[i].status==LpStatus.ok;
+    }
+}
+
+// book:begin example
+main :: () {
+    fixed:[64]f64;grading:[24]f64;
+    #assert lp_tasks(187,fixed[..])==LpStatus.ok && lp_tasks(1187,grading[..])==LpStatus.ok;
+    rich:=LpWorld.{low=-0.6,width=1.0};barren:=LpWorld.{low=-0.6,width=0.6};
+    full:=LpLoop.{proposer=true,reflector=true,grader=true,candidates=4,items=24,threshold=2,cycles=CYCLES};
+    budget:=LpBudget.{proposer=64,reflector=32,grader=1536,student=1152};
+    runs:[SEEDS]LpRun;cycles:[SEEDS*(CYCLES+1)]LpCycle;
+    replicates(fixed[..],grading[..],rich,full,budget,runs[..],cycles[..]);
+    print("fixed set: % tasks, digest ",fixed.count);print_digest(runs[0].set);
+    print("; grading: % items; % cycles, % replicate seeds\n",grading.count,CYCLES,SEEDS);
+    print("replicate 1, cost per accepted result by cycle:");
+    for c:0..<CYCLES+1 {print(" %",r4(cycles[c].cost));}
+    print("\n  adopted:");for c:1..<CYCLES+1 {t:=cycles[c].took;if t<0 {print(" -");} else {print(" #%",t);}}
+    print("\nmean over % replicates by cycle:",SEEDS);
+    for c:0..<CYCLES+1 {t:=0.0;for i:0..<SEEDS {t+=cycles[i*(CYCLES+1)+c].cost;}print(" %",r4(t/SEEDS));}
+    s:=lp_improvement(runs[..]);
+    print("\nis the loop improving? first less last % per accepted result, standard error % -> %\n",r4(s.mean),r4(s.se),VERDICT[cast(int)lp_verdict(s)]);
+    student:=0.0;for r:runs {student+=r.spent.student;}
+    loop:=runs[0].spent.proposer+runs[0].spent.reflector+runs[0].spent.grader;
+    print("spent per run: proposer % of %, reflector % of %, grader % of %, student % of % (mean)\n",
+        r1(runs[0].spent.proposer),budget.proposer,r1(runs[0].spent.reflector),budget.reflector,
+        r1(runs[0].spent.grader),budget.grader,r1(student/SEEDS),budget.student);
+    print("break-even: the loop's % units are paid back after % accepted results at the lower cost\n",loop,cast(int)-floor(-loop/s.mean));
+
+    print("ablations, same seeds:\n");
+    ablated:[SEEDS]LpRun;spare:[SEEDS*(CYCLES+1)]LpCycle;
+    settings:=[3]int.[1,1,2];kept:=0;total:=0;dropped:=0.0;
+    for k:0..<3 {
+        l:=full;
+        if k==0 {l.proposer=false;} else if k==1 {l.reflector=false;} else {l.grader=false;}
+        replicates(fixed[..],grading[..],rich,l,budget,ablated[..],spare[..]);
+        e:=lp_entry(cast(LpComponent)k,settings[k],runs[..],ablated[..]);#assert e.status==LpStatus.ok;
+        print("  %: % setting%, spends % a run; removing it costs % +- % per accepted result -> %\n",NAME[k],e.settings,
+            ifx e.settings==1 then "" else "s",r1(e.spend),r4(e.gain.mean),r4(e.gain.se),KEEP[cast(int)e.verdict]);
+        total+=e.settings;
+        if e.verdict==LpVerdict.improving {kept+=e.settings;} else {dropped+=e.spend;}
+    }
+    print("complexity ledger: % of % settings earn their place; % of % units a run go to components that do not\n",kept,total,dropped,loop);
+
+    replicates(fixed[..],grading[..],barren,full,budget,ablated[..],spare[..]);
+    b:=lp_improvement(ablated[..]);adopted:=0;
+    for c:spare {if c.took>=0 {adopted+=1;}}
+    print("barren world, proposals in [-0.6, 0): first less last % +- %, % adopted -> %; % units a run bought nothing\n",
+        r4(b.mean),r4(b.se),adopted,VERDICT[cast(int)lp_verdict(b)],loop);
+
+    tight:=budget;tight.grader=1500;
+    t:=lp_run(1,fixed[..],grading[..],rich,full,tight,spare[0..<CYCLES+1]);
+    print("grader's share cut to %: % stop before cycle %, the % share short\n",tight.grader,STATUS[cast(int)t.status],t.cycles+1,NAME[cast(int)t.stopped]);
+    other:[64]f64;#assert lp_tasks(188,other[..])==LpStatus.ok;
+    replicates(other[..],grading[..],rich,full,budget,ablated[..],spare[..]);
+    m:=lp_entry(LpComponent.grader,2,runs[..],ablated[..]);
+    print("comparing against runs on another fixed set: %\n",STATUS[cast(int)m.status]);
+}
+// book:end example

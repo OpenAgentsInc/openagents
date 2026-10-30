@@ -1,0 +1,369 @@
+// Chapter 187: is the loop improving? A loop of proposer, reflector, grader
+// and student is run for a fixed number of cycles on a fixed set, its cost
+// per accepted result measured every cycle; each component is removed in
+// turn under the same seeds, and a component stays only when its removal
+// costs more than twice the standard error. Every component draws on its own
+// share of one budget, and a loop that does not improve is reported as such.
+// Profile cpu-f64-loop-v1: binary64, plain sums in a fixed order, up to 64
+// fixed tasks, 32 grading items, 8 candidates, 16 cycles and 32 replicates.
+#load "suite.coax";
+#load "tabular.coax";
+#authority;
+
+LpStatus :: enum u8 {ok;shape;budget;moved;}
+LpComponent :: enum u8 {proposer;reflector;grader;student;}
+LpVerdict :: enum u8 {improving;flat;worse;}
+// What a proposal does to the student's skill: uniform on [low, low+width).
+LpWorld :: struct {low:f64;width:f64;}
+LpLoop :: struct {proposer:bool;reflector:bool;grader:bool;candidates:int;items:int;threshold:int;cycles:int;}
+LpBudget :: struct {proposer:f64;reflector:f64;grader:f64;student:f64;}
+// One cycle's measurement on the fixed set; took is the candidate adopted, or -1.
+LpCycle :: struct {skill:f64;took:int;attempts:int;accepted:int;cost:f64;}
+LpRun :: struct {status:LpStatus;stopped:LpComponent;cycles:int;spent:LpBudget;set:[32]u8;seed:u64;first:f64;last:f64;}
+LpStat :: struct {status:LpStatus;mean:f64;se:f64;}
+LpEntry :: struct {status:LpStatus;component:LpComponent;settings:int;spend:f64;gain:LpStat;verdict:LpVerdict;}
+
+LP_TASKS_MAX :: 64;
+LP_ITEMS_MAX :: 32;
+LP_CANDIDATES_MAX :: 8;
+LP_CYCLES_MAX :: 16;
+LP_RUNS_MAX :: 32;
+LP_ATTEMPTS :: 2;
+// Prices per unit of work, written down: a proposal 2, a rewrite 1, a graded
+// answer 1, a student attempt 1. The reflector moves a proposal's effect by
+// up to 0.05 either way.
+LP_PROPOSE :: 2.0;
+LP_REWRITE :: 1.0;
+LP_GRADE :: 1.0;
+LP_ANSWER :: 1.0;
+LP_NUDGE :: 0.1;
+LP_BIG :: 1.0e300;
+
+// Checks precede the implementation. Pinned values come from
+// psionic/tests/loop_oracle.py --tests; the rest are worked by hand.
+LP_ENOUGH :: LpBudget.{proposer=1e9,reflector=1e9,grader=1e9,student=1e9};
+LP_RICH :: LpWorld.{low=-0.6,width=1.0};
+LP_SMALL :: LpLoop.{proposer=true,reflector=true,grader=true,candidates=4,items=24,threshold=2,cycles=3};
+lp_budget_is :: (b:LpBudget,proposer:f64,reflector:f64,grader:f64,student:f64)->bool {
+    return b.proposer==proposer && b.reflector==reflector && b.grader==grader && b.student==student;
+}
+lp_cycle_is :: (c:LpCycle,took:int,cost:f64,skill:f64,attempts:int,accepted:int)->bool {
+    return c.took==took && c.cost==cost && c.skill==skill && c.attempts==attempts && c.accepted==accepted;
+}
+LpSets :: struct {fixed:[64]f64;grading:[24]f64;}
+lp_sets :: ()->LpSets {
+    s:LpSets;
+    #assert lp_tasks(187,s.fixed[..])==LpStatus.ok && lp_tasks(1187,s.grading[..])==LpStatus.ok;
+    return s;
+}
+lp_small_run :: (seed:u64,l:LpLoop,budget:LpBudget,out:[]LpCycle)->LpRun {
+    s:=lp_sets();
+    return lp_run(seed,s.fixed[0..<8],s.grading[..],LP_RICH,l,budget,out);
+}
+
+#test "the check helpers see every field" {
+    b:=LpBudget.{proposer=1,reflector=2,grader=3,student=4};#assert lp_budget_is(b,1,2,3,4);
+    #assert !lp_budget_is(b,0,2,3,4) && !lp_budget_is(b,1,0,3,4) && !lp_budget_is(b,1,2,0,4) && !lp_budget_is(b,1,2,3,0);
+    c:=LpCycle.{took=1,cost=2,skill=3,attempts=4,accepted=5};#assert lp_cycle_is(c,1,2,3,4,5);
+    #assert !lp_cycle_is(c,0,2,3,4,5) && !lp_cycle_is(c,1,0,3,4,5) && !lp_cycle_is(c,1,2,0,4,5) && !lp_cycle_is(c,1,2,3,0,5) && !lp_cycle_is(c,1,2,3,4,0);
+}
+
+#test "a set of tasks and its digest" {
+    sets:=lp_sets();fixed:=sets.fixed;grading:=sets.grading;
+    #assert fixed[0]==0.01611552750159495 && fixed[1]==0.031574876645666716 && fixed[2]==0.8697958364860336;
+    #assert grading[0]==-1.7406225012658019;
+    #assert su_hex(su_values(fixed[..]),"755c6ead2106ad660abcca639967e7d8742d1fcb426f2da47a941cbf4b74bb71");
+    big:[65]f64;#assert lp_tasks(1,big[..])==LpStatus.shape && lp_tasks(1,big[0..<0])==LpStatus.shape;
+    #assert lp_tasks(1,big[0..<64])==LpStatus.ok && lp_tasks(1,big[0..<1])==LpStatus.ok;
+}
+
+#test "the chance of a solve" {
+    // z = 0.75: 0.5 + 0.75/3.5; z = -1: 0.5 - 1/4.
+    #assert lp_chance(0.5,-0.25)==0.7142857142857143 && lp_chance(0,1)==0.25 && lp_chance(1,1)==0.5;
+}
+
+#test "measuring the student on the fixed set" {
+    sets:=lp_sets();fixed:=sets.fixed;grading:=sets.grading;
+    #assert lp_cycle_is(lp_measure(1,fixed[..],0),-1,2.3902439024390243,0,98,41);
+    #assert lp_cycle_is(lp_measure(1,fixed[..],1),-1,1.5454545454545454,1,85,55);
+    #assert lp_cycle_is(lp_measure(3,fixed[0..<4],0),-1,8,0,8,1);
+    #assert lp_cycle_is(lp_measure(10,fixed[0..<1],0),-1,2,0,2,1);
+    // Nothing solved: two attempts each and no cost per accepted result.
+    #assert lp_cycle_is(lp_measure(3,fixed[0..<4],-1e9),-1,LP_BIG,-1e9,8,0);
+}
+
+#test "a cycle adopts the first largest gain that reaches the threshold" {
+    sets:=lp_sets();l:=LP_SMALL;l.threshold=1;
+    // Seed 1, cycle 1: gains -2, 0, 1, 1 on the 24 items.
+    r:=lp_improve(1,sets.grading[..],LP_RICH,l,1,0,LpBudget.{student=5});
+    #assert r.took==2 && r.effect==0.08181530397071062 && lp_budget_is(r.spent,8,4,192,5);
+    l.threshold=2;r=lp_improve(1,sets.grading[..],LP_RICH,l,1,0,LpBudget.{});#assert r.took==-1 && r.effect==0;
+    // Seed 3, cycle 1: gains 2, 0, 0, 0; the threshold is reached, not passed.
+    r=lp_improve(3,sets.grading[..],LP_RICH,l,1,0,LpBudget.{});#assert r.took==0 && r.effect==0.2916378601919289;
+    l.threshold=3;r=lp_improve(3,sets.grading[..],LP_RICH,l,1,0,LpBudget.{});#assert r.took==-1;
+    l.grader=false;r=lp_improve(3,sets.grading[..],LP_RICH,l,1,0,LpBudget.{});
+    #assert r.took==0 && r.effect==0.2916378601919289 && lp_budget_is(r.spent,8,4,0,0);
+    l.proposer=false;r=lp_improve(3,sets.grading[..],LP_RICH,l,1,0,LpBudget.{grader=7});
+    #assert r.took==-1 && r.effect==0 && lp_budget_is(r.spent,0,0,7,0);
+}
+
+#test "a full loop, three cycles" {
+    out:[4]LpCycle;r:=lp_small_run(2,LP_SMALL,LP_ENOUGH,out[..]);
+    #assert r.status==LpStatus.ok && r.cycles==3 && r.seed==2 && lp_budget_is(r.spent,24,12,576,48);
+    #assert lp_cycle_is(out[0],-1,2.4,0,12,5) && lp_cycle_is(out[1],-1,2.4,0,12,5);
+    #assert lp_cycle_is(out[2],2,2.4,0.32851473310521806,12,5) && lp_cycle_is(out[3],-1,2.4,0.32851473310521806,12,5);
+    #assert r.first==2.4 && r.last==2.4;
+    sets:=lp_sets();fixed:=sets.fixed;grading:=sets.grading;#assert su_same(r.set,su_values(fixed[0..<8]));
+}
+
+#test "a loop with a component removed" {
+    out:[4]LpCycle;l:=LP_SMALL;l.reflector=false;r:=lp_small_run(2,l,LP_ENOUGH,out[..]);
+    #assert lp_budget_is(r.spent,24,0,576,48) && lp_cycle_is(out[2],2,2.4,0.3090887980901571,12,5);
+    l=LP_SMALL;l.grader=false;r=lp_small_run(2,l,LP_ENOUGH,out[..]);
+    #assert lp_budget_is(r.spent,24,12,0,49) && lp_cycle_is(out[1],0,4.333333333333333,-0.21874049433775025,13,3);
+    #assert lp_cycle_is(out[2],0,3,-0.19370203908377848,12,4) && lp_cycle_is(out[3],0,2.4,0.13917796768470547,12,5);
+    l=LP_SMALL;l.proposer=false;r=lp_small_run(2,l,LP_ENOUGH,out[..]);
+    #assert r.status==LpStatus.ok && lp_budget_is(r.spent,0,0,0,48) && lp_cycle_is(out[3],-1,2.4,0,12,5);
+}
+
+#test "each share stops the loop when it cannot pay a cycle" {
+    out:[4]LpCycle;
+    exact:=LpBudget.{proposer=24,reflector=12,grader=576,student=52};
+    #assert lp_small_run(2,LP_SMALL,exact,out[..]).status==LpStatus.ok;
+    for k:0..<4 {
+        b:=LP_ENOUGH;
+        if k==0 {b.proposer=23;} else if k==1 {b.reflector=11;} else if k==2 {b.grader=575;} else {b.student=51;}
+        r:=lp_small_run(2,LP_SMALL,b,out[..]);
+        #assert r.status==LpStatus.budget && cast(int)r.stopped==k && r.cycles==2 && lp_budget_is(r.spent,16,8,384,36);
+    }
+    b:=LP_ENOUGH;b.student=15;r:=lp_small_run(2,LP_SMALL,b,out[..]);
+    #assert r.status==LpStatus.budget && r.stopped==LpComponent.student && r.cycles==-1 && lp_budget_is(r.spent,0,0,0,0);
+    // Cycle 0 only measures, so a proposer with no share still sees it.
+    b=LP_ENOUGH;b.proposer=0;r=lp_small_run(2,LP_SMALL,b,out[..]);
+    #assert r.status==LpStatus.budget && r.stopped==LpComponent.proposer && r.cycles==0 && lp_budget_is(r.spent,0,0,0,12);
+}
+
+lp_ok :: (r:LpRun)->bool {return r.status==LpStatus.ok;}
+lp_shape :: (r:LpRun)->bool {return r.status==LpStatus.shape && r.cycles==-1;}
+lp_try :: (fixed:[]f64,grading:[]f64,world:LpWorld,l:LpLoop,out:[]LpCycle)->LpRun {return lp_run(1,fixed,grading,world,l,LP_ENOUGH,out);}
+#test "a run refuses a loop it cannot run" {
+    sets:=lp_sets();fixed:=sets.fixed;grading:=sets.grading;out:[17]LpCycle;
+    one:=lp_try(fixed[0..<1],grading[0..<1],LP_RICH,LpLoop.{proposer=true,candidates=1,items=1,threshold=1,cycles=1},out[0..<2]);
+    #assert lp_ok(one) && one.seed==1 && !lp_ok(LpRun.{status=LpStatus.budget});
+    #assert !lp_shape(LpRun.{status=LpStatus.shape}) && !lp_shape(LpRun.{cycles=-1});
+    l:=LP_SMALL;
+    #assert lp_shape(lp_try(fixed[0..<0],grading[..],LP_RICH,l,out[..]));
+    big:[65]f64;#assert lp_shape(lp_try(big[..],grading[..],LP_RICH,l,out[..]));
+    items:[33]f64;l.items=33;#assert lp_shape(lp_try(fixed[..],items[..],LP_RICH,l,out[..]));
+    l=LP_SMALL;l.cycles=16;#assert lp_ok(lp_try(fixed[..],grading[..],LP_RICH,l,out[..]));
+    long:[18]LpCycle;l.cycles=17;#assert lp_shape(lp_try(fixed[..],grading[..],LP_RICH,l,long[..]));
+    l=LP_SMALL;l.items=32;#assert lp_ok(lp_try(fixed[..],items[0..<32],LP_RICH,l,out[..]));
+    l.cycles=0;#assert lp_shape(lp_try(fixed[..],grading[..],LP_RICH,l,out[..]));
+    l=LP_SMALL;#assert lp_shape(lp_try(fixed[..],grading[..],LP_RICH,l,out[0..<3]));
+    #assert lp_ok(lp_try(fixed[..],grading[..],LP_RICH,l,out[0..<4]));
+    l.candidates=8;#assert lp_ok(lp_try(fixed[..],grading[..],LP_RICH,l,out[..]));
+    l.candidates=9;#assert lp_shape(lp_try(fixed[..],grading[..],LP_RICH,l,out[..]));
+    l.candidates=0;#assert lp_shape(lp_try(fixed[..],grading[..],LP_RICH,l,out[..]));
+    l=LP_SMALL;l.items=0;#assert lp_shape(lp_try(fixed[..],grading[..],LP_RICH,l,out[..]));
+    l.items=25;#assert lp_shape(lp_try(fixed[..],grading[..],LP_RICH,l,out[..]));
+    l=LP_SMALL;l.threshold=0;#assert lp_shape(lp_try(fixed[..],grading[..],LP_RICH,l,out[..]));
+    l.threshold=24;#assert lp_ok(lp_try(fixed[..],grading[..],LP_RICH,l,out[..]));
+    l.threshold=25;#assert lp_shape(lp_try(fixed[..],grading[..],LP_RICH,l,out[..]));
+    l=LP_SMALL;
+    #assert lp_shape(lp_try(fixed[..],grading[..],LpWorld.{low=0,width=0},l,out[..]));
+    #assert lp_shape(lp_try(fixed[..],grading[..],LpWorld.{low=0,width=LP_BIG},l,out[..]));
+    #assert lp_shape(lp_try(fixed[..],grading[..],LpWorld.{low=-LP_BIG,width=1},l,out[..]));
+    #assert lp_shape(lp_try(fixed[..],grading[..],LpWorld.{low=LP_BIG,width=1},l,out[..]));
+}
+
+#test "paired differences and their verdict" {
+    a:=[3]f64.[3,5,4];b:=[3]f64.[1,2,2];s:=lp_paired(a[..],b[..]);
+    #assert s.status==LpStatus.ok && s.mean==2.3333333333333335 && s.se==0.33333333333333337;
+    #assert lp_paired(a[0..<1],b[0..<1]).status==LpStatus.shape && lp_paired(a[0..<2],b[0..<1]).status==LpStatus.shape;
+    many:[33]f64;#assert lp_paired(many[..],many[..]).status==LpStatus.shape && lp_paired(many[0..<32],many[0..<32]).status==LpStatus.ok;
+    #assert lp_paired(a[0..<2],b[0..<2]).status==LpStatus.ok;
+    #assert lp_verdict(LpStat.{mean=2.1,se=1})==LpVerdict.improving && lp_verdict(LpStat.{mean=2,se=1})==LpVerdict.flat;
+    #assert lp_verdict(LpStat.{mean=-2,se=1})==LpVerdict.flat && lp_verdict(LpStat.{mean=-2.1,se=1})==LpVerdict.worse;
+    #assert lp_verdict(LpStat.{})==LpVerdict.flat;
+}
+
+#test "improvement and the ledger compare like with like" {
+    full:[3]LpRun;blind:[3]LpRun;out:[4]LpCycle;
+    l:=LP_SMALL;l.grader=false;
+    for i:0..<3 {full[i]=lp_small_run(cast(u64)(i+2),LP_SMALL,LP_ENOUGH,out[..]);blind[i]=lp_small_run(cast(u64)(i+2),l,LP_ENOUGH,out[..]);}
+    #assert full[0].last==2.4 && full[1].last==3 && full[2].last==3.25;
+    #assert full[0].first==2.4 && full[1].first==5.333333333333333 && full[2].first==3.25;
+    s:=lp_improvement(full[..]);#assert s.status==LpStatus.ok && s.mean==0.7777777777777777 && s.se==0.7777777777777777;
+    e:=lp_entry(LpComponent.grader,2,full[..],blind[..]);
+    #assert e.status==LpStatus.ok && e.component==LpComponent.grader && e.settings==2 && e.spend==576 && e.verdict==LpVerdict.flat;
+    #assert e.gain.mean==1.1388888888888886 && e.gain.se==0.6741478388617553;
+    #assert lp_entry(LpComponent.grader,2,blind[..],full[..]).verdict==LpVerdict.flat;
+    #assert lp_entry(LpComponent.proposer,1,full[..],blind[..]).spend==24 && lp_entry(LpComponent.reflector,1,full[..],blind[..]).spend==12;
+    #assert lp_entry(LpComponent.student,0,full[..],blind[..]).status==LpStatus.shape;
+    #assert lp_entry(LpComponent.grader,2,full[0..<1],blind[0..<1]).status==LpStatus.shape;
+    // Any difference in set, seed, cycles or status refuses the comparison.
+    #assert lp_paired_runs(full[..],blind[..]) && !lp_paired_runs(full[..],blind[0..<2]);
+    other:=blind;other[1].set[5]^=1;#assert !lp_paired_runs(full[..],other[..]) && lp_entry(LpComponent.grader,2,full[..],other[..]).status==LpStatus.moved;
+    other=blind;other[2].seed=9;#assert !lp_paired_runs(full[..],other[..]);
+    other=blind;other[0].cycles=2;#assert !lp_paired_runs(full[..],other[..]);
+    other=blind;other[1].status=LpStatus.budget;#assert !lp_paired_runs(full[..],other[..]) && !lp_paired_runs(other[..],full[..]);
+    other=full;other[2].status=LpStatus.budget;#assert lp_improvement(other[..]).status==LpStatus.moved;
+}
+
+// book:begin world
+// loop-sim-v1. A set of tasks draws difficulties in [-2, 2]. The student
+// solves a task of difficulty d with skill s at 0.5+z/(2(1+|z|)), z = s-d.
+lp_tasks :: (seed:u64,out:[]f64)->LpStatus #export_c {
+    if out.count<1 || out.count>LP_TASKS_MAX {return LpStatus.shape;}
+    for i:0..<out.count {out[i]=4*tb_uniform(seed,cast(u64)i)-2;}
+    return LpStatus.ok;
+}
+lp_chance :: (skill:f64,d:f64)->f64 {z:=skill-d;return 0.5+z/(2*(1+abs(z)));}
+// Draws come from four streams of one seed. The student's draws on the fixed
+// set depend on the task and the attempt but not the cycle, so a cycle that
+// changes nothing measures exactly what the one before it did.
+lp_draw :: (seed:u64,stream:int,index:int)->f64 {return tb_uniform(seed,cast(u64)(index*4+stream));}
+// A draw u solves at chance p when u+p reaches 1.
+lp_solves :: (u:f64,p:f64)->bool {return cast(int)(u+p)>0;}
+// book:end world
+
+// book:begin cycle
+// The student answers every fixed task, retrying once when the check fails.
+lp_measure :: (seed:u64,fixed:[]f64,skill:f64)->LpCycle {
+    c:=LpCycle.{skill=skill,took=-1};
+    for d,i:fixed {
+        p:=lp_chance(skill,d);
+        for a:0..<LP_ATTEMPTS {
+            c.attempts+=1;
+            if lp_solves(lp_draw(seed,0,i*LP_ATTEMPTS+a),p) {c.accepted+=1;break;}
+        }
+    }
+    c.cost=ifx c.accepted>0 then LP_ANSWER*f64(c.attempts)/f64(c.accepted) else LP_BIG;
+    return c;
+}
+// One cycle's improvement: proposals, rewritten when the reflector is on;
+// each graded on the grading items against the current skill on the same
+// draws, the first largest gain adopted when it reaches the threshold; with no
+// grader the first proposal is adopted blindly.
+LpStep :: struct {took:int;effect:f64;spent:LpBudget;}
+lp_improve :: (seed:u64,grading:[]f64,world:LpWorld,l:LpLoop,cycle:int,skill:f64,spent:LpBudget)->LpStep {
+    r:=LpStep.{took=-1,spent=spent};
+    if !l.proposer {return r;}
+    effect:[LP_CANDIDATES_MAX]f64;
+    for j:0..<l.candidates {
+        at:=cycle*LP_CANDIDATES_MAX+j;
+        effect[j]=world.low+world.width*lp_draw(seed,1,at);r.spent.proposer+=LP_PROPOSE;
+        if l.reflector {effect[j]+=LP_NUDGE*(lp_draw(seed,2,at)-0.5);r.spent.reflector+=LP_REWRITE;}
+    }
+    if !l.grader {r.took=0;r.effect=effect[0];return r;}
+    best:=l.threshold-1;
+    for j:0..<l.candidates {
+        gain:=0;
+        for k:0..<l.items {
+            u:=lp_draw(seed,3,(cycle*LP_CANDIDATES_MAX+j)*LP_ITEMS_MAX+k);
+            if lp_solves(u,lp_chance(skill+effect[j],grading[k])) {gain+=1;}
+            if lp_solves(u,lp_chance(skill,grading[k])) {gain-=1;}
+            r.spent.grader+=2*LP_GRADE;
+        }
+        if gain>best {best=gain;r.took=j;}
+    }
+    if r.took>=0 {r.effect=effect[r.took];}
+    return r;
+}
+// book:end cycle
+
+// book:begin run
+// Each component's worst case for one cycle; a cycle starts only when every
+// share still covers it, and otherwise the run stops and names the component.
+lp_need :: (l:LpLoop,fixed:int,improve:bool)->LpBudget {
+    n:=LpBudget.{student=LP_ANSWER*f64(LP_ATTEMPTS*fixed)};
+    if improve && l.proposer {
+        n.proposer=LP_PROPOSE*f64(l.candidates);
+        if l.reflector {n.reflector=LP_REWRITE*f64(l.candidates);}
+        if l.grader {n.grader=2*LP_GRADE*f64(l.candidates*l.items);}
+    }
+    return n;
+}
+lp_short :: (budget:LpBudget,spent:LpBudget,need:LpBudget)->int {
+    if spent.proposer+need.proposer>budget.proposer {return 0;}
+    if spent.reflector+need.reflector>budget.reflector {return 1;}
+    if spent.grader+need.grader>budget.grader {return 2;}
+    if spent.student+need.student>budget.student {return 3;}
+    return -1;
+}
+lp_loop_ok :: (l:LpLoop,grading:int)->bool {
+    return l.cycles>=1 && l.cycles<=LP_CYCLES_MAX && l.candidates>=1 && l.candidates<=LP_CANDIDATES_MAX &&
+        l.items>=1 && l.items<=grading && l.threshold>=1 && l.threshold<=l.items;
+}
+// Cycle 0 measures the student as it is; cycles 1 to l.cycles each improve,
+// then measure. out[c] holds cycle c.
+lp_run :: (seed:u64,fixed:[]f64,grading:[]f64,world:LpWorld,l:LpLoop,budget:LpBudget,out:[]LpCycle)->LpRun #export_c {
+    r:=LpRun.{seed=seed,cycles=-1};
+    if fixed.count<1 || fixed.count>LP_TASKS_MAX || grading.count>LP_ITEMS_MAX || !lp_loop_ok(l,grading.count) ||
+        out.count<=l.cycles || !(world.width>0 && world.width<LP_BIG && abs(world.low)<LP_BIG) {r.status=LpStatus.shape;return r;}
+    r.set=su_values(fixed);skill:=0.0;
+    for c:0..<l.cycles+1 {
+        short:=lp_short(budget,r.spent,lp_need(l,fixed.count,c>0));
+        if short>=0 {r.status=LpStatus.budget;r.stopped=cast(LpComponent)short;return r;}
+        step:=LpStep.{took=-1,spent=r.spent};
+        if c>0 {step=lp_improve(seed,grading,world,l,c,skill,r.spent);}
+        r.spent=step.spent;skill+=step.effect;
+        out[c]=lp_measure(seed,fixed,skill);out[c].took=step.took;
+        r.spent.student+=LP_ANSWER*f64(out[c].attempts);
+        r.cycles=c;
+    }
+    r.first=out[0].cost;r.last=out[l.cycles].cost;
+    return r;
+}
+// book:end run
+
+// book:begin judge
+// The mean and standard error of a[i]-b[i] over paired runs.
+lp_paired :: (a:[]f64,b:[]f64)->LpStat {
+    if a.count<2 || a.count>LP_RUNS_MAX || b.count!=a.count {return LpStat.{status=LpStatus.shape};}
+    n:=f64(a.count);total:=0.0;
+    for x,i:a {total+=x-b[i];}
+    mean:=total/n;squares:=0.0;
+    for x,i:a {d:=x-b[i]-mean;squares+=d*d;}
+    return LpStat.{mean=mean,se=sqrt(squares/(n-1)/n)};
+}
+// A difference counts when it is more than twice its standard error.
+lp_verdict :: (s:LpStat)->LpVerdict {
+    if s.mean>2*s.se {return LpVerdict.improving;}
+    if s.mean< -2*s.se {return LpVerdict.worse;}
+    return LpVerdict.flat;
+}
+// Runs compare only on the same fixed set, seed and number of cycles.
+lp_paired_runs :: (a:[]LpRun,b:[]LpRun)->bool {
+    if a.count!=b.count {return false;}
+    for x,i:a {
+        y:=b[i];
+        if x.status!=LpStatus.ok || y.status!=LpStatus.ok || !su_same(x.set,y.set) || x.seed!=y.seed || x.cycles!=y.cycles {return false;}
+    }
+    return true;
+}
+// Is the loop improving? The first cycle's cost per accepted result less the
+// last's, over replicate runs.
+lp_improvement :: (runs:[]LpRun)->LpStat #export_c {
+    if !lp_paired_runs(runs,runs) {return LpStat.{status=LpStatus.moved};}
+    first:[LP_RUNS_MAX]f64;last:[LP_RUNS_MAX]f64;
+    for r,i:runs {first[i]=r.first;last[i]=r.last;}
+    return lp_paired(first[0..<runs.count],last[0..<runs.count]);
+}
+// A component's ledger entry: what removing it does to the last cycle's cost
+// per accepted result (ablated less full, so a positive gain means the
+// component earns its place), its settings, and the mean it spent.
+lp_entry :: (component:LpComponent,settings:int,full:[]LpRun,ablated:[]LpRun)->LpEntry #export_c {
+    e:=LpEntry.{component=component,settings=settings};
+    if component==LpComponent.student {e.status=LpStatus.shape;return e;}
+    if !lp_paired_runs(full,ablated) {e.status=LpStatus.moved;return e;}
+    a:[LP_RUNS_MAX]f64;b:[LP_RUNS_MAX]f64;
+    for r,i:full {
+        a[i]=ablated[i].last;b[i]=r.last;
+        e.spend+=ifx component==LpComponent.proposer then r.spent.proposer else ifx component==LpComponent.reflector then r.spent.reflector else r.spent.grader;
+    }
+    e.gain=lp_paired(a[0..<full.count],b[0..<full.count]);e.status=e.gain.status;
+    e.spend/=f64(full.count);e.verdict=lp_verdict(e.gain);
+    return e;
+}
+// book:end judge

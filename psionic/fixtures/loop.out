@@ -1,0 +1,15 @@
+fixed set: 64 tasks, digest 755c6ead; grading: 24 items; 8 cycles, 8 replicate seeds
+replicate 1, cost per accepted result by cycle: 2.3902 2.3902 2.3902 2.2326 2.2326 2.2326 2.2326 1.84 1.84
+  adopted: - - #0 - - - #1 -
+mean over 8 replicates by cycle: 2.2349 2.1637 2.0392 2.0014 1.9561 1.9394 1.9394 1.8384 1.8131
+is the loop improving? first less last 0.4218 per accepted result, standard error 0.0682 -> improving
+spent per run: proposer 64.0 of 64.0, reflector 32.0 of 32.0, grader 1536.0 of 1536.0, student 834.5 of 1152.0 (mean)
+break-even: the loop's 1632.0 units are paid back after 3870 accepted results at the lower cost
+ablations, same seeds:
+  proposer: 1 setting, spends 64.0 a run; removing it costs 0.4218 +- 0.0682 per accepted result -> earns its place
+  reflector: 1 setting, spends 32.0 a run; removing it costs 0.0658 +- 0.0495 per accepted result -> within noise, remove it
+  grader: 2 settings, spends 1536.0 a run; removing it costs 1.3592 +- 0.5673 per accepted result -> earns its place
+complexity ledger: 3 of 4 settings earn their place; 32.0 of 1632.0 units a run go to components that do not
+barren world, proposals in [-0.6, 0): first less last 0.0 +- 0.0, 0 adopted -> flat; 1632.0 units a run bought nothing
+grader's share cut to 1500.0: budget stop before cycle 8, the grader share short
+comparing against runs on another fixed set: moved

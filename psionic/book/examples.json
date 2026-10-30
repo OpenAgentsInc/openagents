@@ -802,6 +802,16 @@
       ]
     },
     {
+      "source": "psionic/examples/loop.coax",
+      "chapter": "psionic/book/ch187-is-the-loop-improving.md",
+      "stdout": "psionic/fixtures/loop.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/interpreter-weights.coax",
       "chapter": "psionic/book/ch170-an-interpreter-in-weights-or-one-program-in-weights.md",
       "stdout": "psionic/fixtures/interpreter-weights.out",
