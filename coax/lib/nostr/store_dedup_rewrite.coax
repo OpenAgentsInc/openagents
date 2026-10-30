@@ -1,0 +1,89 @@
+// Private framing transformation, not verification or store admission. The
+// caller must derive every match flag from previously verified, immutable
+// originals and an independently verified candidate. Arbitrary flags or
+// frames carry no authority; output is unpublished scratch.
+#load "store_snapshot.coax";
+#load "store_dedup_policy.coax";
+#authority;
+NsDedupFrame :: struct {ok:bool;count:int;bytes:int;written:int;duplicates:int;}
+
+#test "a new candidate appends to an empty frame" {
+ old:=[16]u8.[78,83,76,71,0,0,0,1,0,0,0,0,0,0,0,0];matches:[1]bool;out:[21]u8;
+ r:=ns_dedup_rewrite(old[..],"a",matches[0..<0],out[..],false);
+ #assert r.ok && r.count==1 && r.bytes==1 && r.written==21 && r.duplicates==0;
+ spans:[2]int;#assert ns_snapshot_scan(out[..],spans[..],false).ok && spans[0]==20 && out[20]=='a';
+}
+#test "all matching copies collapse and unrelated bytes keep their order" {
+ bytes:=[7]u8.['z','z','x','y','a','b','c'];index:=[6]int.[0,2,2,2,4,3];old:[35]u8;
+ #assert ns_snapshot_write(bytes[..],index[..],old[..],false).ok;
+ flags:=[3]bool.[true,false,true];out:[35]u8;
+ r:=ns_dedup_rewrite(old[..],"a",flags[..],out[..],false);
+ #assert r.ok && r.count==2 && r.bytes==3 && r.written==27 && r.duplicates==2;
+ spans:[4]int;#assert ns_snapshot_scan(out[0..<r.written],spans[..],false).ok;
+ #assert cast(string)out[spans[0]..<spans[0]+spans[1]]=="a";
+ #assert cast(string)out[spans[2]..<spans[2]+spans[3]]=="xy";
+}
+#test "a shorter old representation wins and a new ID appends" {
+ old:=[21]u8.[78,83,76,71,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,'a'];flags:=[1]bool.[true];out:[26]u8;
+ a:=ns_dedup_rewrite(old[..],"zz",flags[..],out[..],false);
+ #assert a.ok && a.count==1 && a.bytes==1 && a.written==21 && a.duplicates==1 && out[20]=='a';
+ flags[0]=false;b:=ns_dedup_rewrite(old[..],"b",flags[..],out[..],false);
+ #assert b.ok && b.count==2 && b.bytes==2 && b.written==26 && b.duplicates==0 && out[20]=='a' && out[25]=='b';
+}
+#test "every refusal leaves the final output untouched" {
+ old:=[21]u8.[78,83,76,71,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,'z'];flags:=[1]bool.[true];out:[22]u8;out[0]=77;
+ #assert !ns_dedup_rewrite(old[..],"a",flags[..],out[..],true).ok && out[0]==77;
+ #assert !ns_dedup_rewrite(old[0..<15],"a",flags[..],out[..],false).ok && out[0]==77;
+ #assert !ns_dedup_rewrite(old[..],"a",flags[0..<0],out[..],false).ok && out[0]==77;
+ #assert !ns_dedup_rewrite(old[..],"",flags[..],out[..],false).ok && out[0]==77;
+ #assert !ns_dedup_rewrite(old[..],"aa",flags[..],out[0..<21],false).ok && out[0]==77;
+ old[0]=0;#assert !ns_dedup_rewrite(old[..],"a",flags[..],out[..],false).ok && out[0]==77;
+}
+#test "index count refuses invalid values and covers the exact maximum" {
+ #assert ns_dedup_index_words(0)==0 && ns_dedup_index_words(1)==2 && ns_dedup_index_words(512)==1024;
+ #assert ns_dedup_index_words(-1)==-1 && ns_dedup_index_words(513)==-1;
+ old:=[16]u8.[78,83,76,71,0,0,0,1,0,0,2,1,0,0,0,0];flags:[1]bool;out:[21]u8;out[0]=77;
+ #assert !ns_dedup_rewrite(old[..],"a",flags[0..<0],out[..],false).ok && out[0]==77;
+}
+#test "512 matching records compact before the count limit" {
+ bytes:[512]u8;indexes:[1024]int;flags:[512]bool;
+ for i:0..<512 {bytes[i]='z';indexes[i*2]=i;indexes[i*2+1]=1;flags[i]=true;}
+ old:[2576]u8;#assert ns_snapshot_write(bytes[..],indexes[..],old[..],false).ok;
+ out:[21]u8;r:=ns_dedup_rewrite(old[..],"a",flags[..],out[..],false);
+ #assert r.ok && r.count==1 && r.bytes==1 && r.written==21 && r.duplicates==512 && out[20]=='a';
+}
+
+ns_dedup_index_words :: (count:int)->int {if count<0 || count>NS_LOG_MAX_EVENTS {return -1;}return count*2;}
+
+// All views are live and physically disjoint; overlap truthfully covers them.
+// The caller supplies match flags for this exact old frame. The candidate and
+// old bytes must stay immutable throughout the call. No output is written
+// until the entire frame, workspace, lengths and quotas have been checked.
+ns_dedup_rewrite :: (old:[]u8,text:string,matches:[]bool,out:[]u8,overlap:bool)->NsDedupFrame {
+ if overlap || !ns_input_size(old.count) {return NsDedupFrame.{};}
+ raw_count:=ns_u32(old,8);words:=ns_dedup_index_words(raw_count);if words<0 {return NsDedupFrame.{};}
+ spans:[1024]int;scan:=ns_snapshot_scan(old,spans[0..<words],false);if !scan.ok {return NsDedupFrame.{};}
+ if matches.count!=scan.count || !ns_payload_valid(text.count,0,text.count) {return NsDedupFrame.{};}
+ duplicates:=0;bytes:=scan.bytes;winner:=text;
+ for i:0..<scan.count {
+  if matches[i] {
+   at:=spans[i*2];length:=spans[i*2+1];raw:=cast(string)old[at..<at+length];
+   duplicates+=1;bytes-=length;
+   if ns_original_before(raw,winner) {winner=raw;}
+  }
+ }
+ count:=scan.count-duplicates+1;bytes+=winner.count;
+ layout:=ns_log_layout(count,bytes,count*2,out.count,false);if !layout.ok {return NsDedupFrame.{};}
+ out[0]=78;out[1]=83;out[2]=76;out[3]=71;ns_put_u32(out,4,1);ns_put_u32(out,8,count);ns_put_u32(out,12,bytes);
+ at:=16;written_winner:=false;
+ for i:0..<scan.count {
+  if matches[i] {
+   if !written_winner {ns_put_u32(out,at,winner.count);at+=4;for c:winner {out[at]=c;at+=1;}written_winner=true;}
+  } else {
+   start:=spans[i*2];length:=spans[i*2+1];ns_put_u32(out,at,length);at+=4;
+   for j:0..<length {out[at]=old[start+j];at+=1;}
+  }
+ }
+ if !written_winner {ns_put_u32(out,at,winner.count);at+=4;for c:winner {out[at]=c;at+=1;}}
+ return NsDedupFrame.{ok=true,count=count,bytes=bytes,written=at,duplicates=duplicates};
+}

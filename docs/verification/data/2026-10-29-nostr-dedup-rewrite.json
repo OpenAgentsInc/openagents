@@ -1,0 +1,44 @@
+{
+  "fixture_sha256": "85251370815e52947c39629c2fa3e1f40e828ae5752c1a714490aa0ea722e7e7",
+  "inputs": {
+    "coax/lib/nostr/store_dedup_policy.coax": "15e69711556f63bfcd19f797ef912279732a097f8c27e6c730bd3c60be6ac86b",
+    "coax/lib/nostr/store_dedup_rewrite.coax": "31db25170a296ff4f6556b4512ecc7508245b60686958d757ac0e57edc14f43e",
+    "coax/lib/nostr/store_layout.coax": "e4811a5af38b25d444c3e9c7470385e737050f87575b936e8b80e05e19aab534",
+    "coax/lib/nostr/store_snapshot.coax": "47b774840065b82f5377bc9959bdb2a378dd43a5098b4fcea1751465612ce5e7",
+    "coax/tests/nostr/store_dedup_rewrite_adapter.coax": "1730c3ea530aafa6520aa1f1b95e4b377f8d507b155fda973f26c2b1b1233d96",
+    "coax/tests/nostr/store_dedup_rewrite_native.py": "b12e7772ab755d9356586b01cfe4aa421520f009b49c939f820af913f62c3fa5",
+    "coax/tests/nostr/store_dedup_rewrite_wasm.c": "0c9492adf7d193220dcb0820b4e40dff26e4ca080f4cccfee2bf5bfadcefa8a0",
+    "coax/tests/nostr/store_dedup_rewrite_wasm.cjs": "4f79acebb75204aa0a39ce353aecbc9bb553b16ec04c69a50a6243df489f28d2",
+    "test-tool/coax": "fc4789f997b25fdc560fdc11f657397624784f82d5acec0fbaba20616b053bd8"
+  },
+  "modes": [
+    {
+      "generated_c_sha256": "972dc07950a2083fb7fc591ba47b025a6f4b601207f92773af18cd09ec56220e",
+      "mode": "checked",
+      "native_cases": 13,
+      "native_failures": 0,
+      "sanitized": "passed",
+      "wasm": {
+        "cases": 13,
+        "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+        "failures": 0
+      },
+      "wasm_sha256": "cfd04100f078f466a30dabbbeb4b87a85233bc6b7843153f63f7986770241092"
+    },
+    {
+      "generated_c_sha256": "cc8b75cde4144e4a92121884b7c9c819193cbd34e69520578d7e74a51542a10f",
+      "mode": "release",
+      "native_cases": 13,
+      "native_failures": 0,
+      "sanitized": "passed",
+      "wasm": {
+        "cases": 13,
+        "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+        "failures": 0
+      },
+      "wasm_sha256": "3dcbebf15c0461d094c9cc327c1d23d8bf1a5766401c1af925e490fae6bf65e2"
+    }
+  ],
+  "schema": "coax.nostr-store-dedup-rewrite.v1",
+  "scope": "unverified private framing transformation only; caller-supplied match flags carry no authority"
+}
