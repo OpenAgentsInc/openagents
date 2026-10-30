@@ -28,8 +28,8 @@ Everglade. The tasks are in the Verse project under "Port the realms"
      per-system timing), `arena.coax` (the deck's boxes, swept spheres,
      sliding walks, the walking grid and its flow fields) and `rules.coax`
      (every system and every check of the demo's `dead-gears-test.cpp`).
-     `coax/bin/coax test --library verse/deadgears/rules.coax --steps 4000000000`
-     runs them; `verse/deadgears/bench.sh` builds them to WebAssembly and
+     `verse/deadgears/test.sh` runs them and the page's checks, both at
+     `--steps 4000000000` (a full game is ~2.8e9 steps, over the 2e9 other realms use); `verse/deadgears/bench.sh` builds them to WebAssembly and
      holds 200 mutants to 2 ms a frame.
 4. **Everglade**, the forest city.
    - The demo only had it as a plan, and the old Rust repo had a glade with
