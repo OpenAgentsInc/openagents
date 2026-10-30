@@ -68,6 +68,19 @@ relay, the Pylon and the toy engine, starts them, and runs `buyer.ts`.
   relay restart, 53/53 over wss://, and 45/45 with Elephant on the L4.
 - **Relay used:** only our own Coax relay on 127.0.0.1. **The Pylon has never
   been run against a public relay.**
+- **Read-only probe of `wss://relay.openagents.com`** (`openagents-1a`,
+  2026-10-30):
+  - the WebSocket upgrades, and the relay's first frame is
+    `["AUTH","<64 hex>"]`, so the Pylon's AUTH-first path should work. The
+    NIP-42 relay URL is exactly `wss://relay.openagents.com`.
+  - NIP-11: `auth_required: false`, `restricted_writes: true`, NIPs 1, 9,
+    11, 17, 29, 40, 42, 45, 50, 59, 65, 67, 70, 77, 94, 98.
+  - The Rust relay (`0b401561a0^:crates/nostr-relay/src/store`) admits a kind
+    when its `relay_allowed_kind` list is empty or contains that kind;
+    `relay_allowed_pubkey` works the same way. Both are set through the
+    NIP-86 management API, and the deployed values can't be seen from
+    outside. Test A settles it: look for `OK false "blocked:"` or
+    `"restricted:"`.
 - **The exact Pylon command it uses,** a template for the join script:
 
 ```sh
@@ -86,9 +99,33 @@ pylon --relay "$RELAY" --engine "http://127.0.0.1:$EPORT" --model psionic-toy \
 - checks the answers.
 
 Its environment: `RELAY`, `CONNECT` (defaults to `RELAY`), `SLUG`, `MODEL`,
-`STOP_FILE`, `CANCEL`, and `NODE_PATH` pointing at `@noble/curves`. **It is
+`STOP_FILE`, `CANCEL=0`, and `NODE_PATH` holding `@noble/curves` and
+`nostr-effect`; `pylon_e2e.py` uses `coax/web/project/node_modules`. **It is
 the test's scripted buyer** (jobs r-1 to r-8, cancellation, restart
 handling), not a general demo client.
+
+### A page-side reader already exists
+
+`coax/web/project/pylons.ts` reads Pylons from the relay. It counts 26910
+answers and 27010 statuses.
+
+**Gotcha:** 25910, 26910 and 27010 are ephemeral (20000–29999), so relays
+deliver them live and never store them. Counted from history, they come out
+as zero. A live view has to subscribe and count from the moment it opens.
+Kinds 30200 (beacons) and 10002 are stored.
+
+### Not available for the demo
+
+- **The Elephant L4** binds `127.0.0.1:8797` on a spot VM, and its tunnel is
+  closed. It isn't public, so don't route joiners there. Real Elephant needs
+  about 15 GB of device memory plus 14.5 GiB of pinned RAM, so it isn't for
+  laptops.
+- **The Coax relay (`coax/relay`) isn't ready for public exposure.** It is
+  the tailnet R1. Server TLS, a flood test and the Rust differential are
+  still in progress, and it has no rate limits. Use relay.openagents.com.
+  `openagents-1a`'s relay agents work only on the local Coax relay.
+- **No Pylon desktop app exists** (`docs/desktop/coax-desktop.md` is a
+  different app).
 
 ### Docs
 
@@ -114,10 +151,10 @@ handling), not a general demo client.
 
 | # | Item | Details | Owner |
 | --- | --- | --- | --- |
-| **A** | **Prove the public relay** (do first; everything depends on it) | Build `pylon` and `psionic-serve` and run them against `wss://relay.openagents.com` for 2 minutes with the toy engine and a random `--test-key-label`. Check these, and record the results below: <br>• the log reaches `pylon: online, waiting for jobs`; <br>• the relay sends NIP-42 AUTH and accepts the AUTH event; <br>• the relay accepts the 10002 and 30200 events, and `REQ {kinds:[30200]}` from a second client returns the beacon; <br>• a 25910 job sent to the Pylon's pubkey gets a 26910 back through the relay. <br>The deployed relay is the old Rust `nostr-relay`. Its NIP-11 advertises NIPs 1, 9, 11, 17, 29, 40, 42, 45, 50, 59, 65 and others (`coax/nostr.md` §17). Nobody has checked whether its policy admits kinds 25910, 26910, 27010 and 30200 from arbitrary pubkeys, or how it rate-limits. **If it refuses them:** the fallback is to expose the Coax relay (`coax/relay/`) publicly for the day. That has NIP-42 and the R1 routing (`docs/verification/2026-10-29-coax-relay-r1.md`), but not the Rust relay's limits. It needs a public host and TLS, and **owner approval**, because it is a production-facing service. | |
-| **B** | **One-command join script** | Put it at `scripts/join-pylon.sh` (or similar) on main and serve it from openagents.com. It should: <br>• check prerequisites: git; a C/C++ compiler (gcc/g++ on Linux, Xcode CLT on macOS); Nix on Linux for OpenSSL; bun only for the buyer; <br>• clone or update the repo into `~/.openagents/pylon`; <br>• build: `coax/build.sh` (about 3 min on a fast machine, about 8 min on a loaded one), then `pylon-build.sh OUT plain` and `serve-build.sh OUT release plain`; <br>• generate `SECRET_LABEL="$(head -c 32 /dev/urandom \| xxd -p -c 64)"`, store it in a `0600` file, and never print it; <br>• pick `SLUG=pylon-$(hostname -s)-<4 random hex>` and `LABEL="<hostname> (demo)"`; <br>• start `psionic-serve --toy --port <free port>`, wait for the port, then start `pylon` with the command template in §1, pointed at the relay chosen in A; <br>• print the Pylon's pubkey (npub) and slug, and say how to stop it (Ctrl-C or the stop file). <br>**Known build problems to fix or work around:** <br>• On coderos-4080 (gcc 15), `serve-build.sh` fails: `-Werror=misleading-indentation` at `psionic/platform/serve-supervisor.c:18`. Fix the indentation, or don't use `-Werror` for joiners. <br>• `cc` on PATH may not be a C compiler (on coderos-4080 it is the Claude CLI). The build scripts honour `COAX_CC`/`CC`; set `COAX_CC=gcc`. <br>• The Wasm toolchain isn't needed for a Pylon. <br>Test on a clean Linux machine and a clean macOS machine. | (`openagents-1a` was asked) |
+| **A** | **Prove the public relay** (do first; everything depends on it) | Build `pylon` and `psionic-serve` and run them against `wss://relay.openagents.com` for 2 minutes with the toy engine and a random `--test-key-label`. Check these, and record the results below: <br>• the log reaches `pylon: online, waiting for jobs`; <br>• the relay sends NIP-42 AUTH and accepts the AUTH event; <br>• the relay accepts the 10002 and 30200 events, and `REQ {kinds:[30200]}` from a second client returns the beacon; <br>• a 25910 job sent to the Pylon's pubkey gets a 26910 back through the relay. <br>The deployed relay is the old Rust `nostr-relay`. Its NIP-11 advertises NIPs 1, 9, 11, 17, 29, 40, 42, 45, 50, 59, 65 and others (`coax/nostr.md` §17). Nobody has checked whether its policy admits kinds 25910, 26910, 27010 and 30200 from arbitrary pubkeys, or how it rate-limits. **If it refuses them:** the owner has to allow the kinds (and pubkeys) through the relay's NIP-86 management API. The Coax relay isn't a safe fallback (see §1). | |
+| **B** | **One-command join script** | Put it at `scripts/join-pylon.sh` (or similar) on main and serve it from openagents.com. It should: <br>• check prerequisites: git; a C/C++ compiler (gcc/g++ on Linux, Xcode CLT on macOS); Nix on Linux for OpenSSL; bun only for the buyer; <br>• clone or update the repo into `~/.openagents/pylon`; <br>• build: `coax/build.sh` (about 3 min on a fast machine, about 8 min on a loaded one; nobody has a laptop number yet), then `pylon-build.sh OUT plain` and `serve-build.sh OUT release plain`. **Don't pass `--test-trust`**: it trusts only `CXTLS_TEST_CA`. The plain build uses the system trust store. Build at or after `753e949fc6`, the signer's message-binding fix; <br>• generate `SECRET_LABEL="$(head -c 32 /dev/urandom \| xxd -p -c 64)"`, store it in a `0600` file in the joiner's state directory, and never print it. **Caveat:** today the Pylon only takes the label as `--test-key-label` on the command line, which other users on the machine can see in `ps`. A small change is needed: `--test-key-label-file PATH`, reading the label from the file. Or accept the risk on single-user machines for the demo; <br>• pick `SLUG=pylon-$(hostname -s)-<4 random hex>` and `LABEL="<hostname> (demo)"`; <br>• start `psionic-serve --toy --port <free port>`, wait for the port, then start `pylon` with the command template in §1, pointed at the relay chosen in A; <br>• print the Pylon's pubkey (npub) and slug, and say how to stop it (Ctrl-C or the stop file). <br>**Known build problems to fix or work around:** <br>• On coderos-4080 (gcc 15), `serve-build.sh` fails: `-Werror=misleading-indentation` at `psionic/platform/serve-supervisor.c:18`. The script adds `-Wno-misleading-indentation` only for `cuda-host.c`. Add it to that compile line too, or fix the indentation. `COAX_CC` can't carry flags. <br>• **TLS trust on non-NixOS Linux:** Nix OpenSSL's default verify paths may not find the CA bundle. Set `SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt` (Debian and Ubuntu) or `/etc/ssl/cert.pem`, or the wss:// handshake fails as untrusted. On macOS the Pylon uses Apple TLS (`docs/verification/data/apple-tls-2026-10-30`). <br>• `cc` on PATH may not be a C compiler (on coderos-4080 it is the Claude CLI). The build scripts honour `COAX_CC`/`CC`; set `COAX_CC=gcc`. <br>• The Wasm toolchain isn't needed for a Pylon. <br>Test on a clean Linux machine and a clean macOS machine. | open (`openagents-1a` offered and is free for any item) |
 | **C** | **Prebuilt binaries** (optional, speeds up joining) | Build `pylon` and `psionic-serve` for linux-x86_64 and macos-arm64. Host them on openagents.com with SHA-256 sums printed by the script and on the page. Drop this if time is short; building from source is fine. | |
-| **D** | **`openagents.com/pylon` page** | The page should show: <br>• what a Pylon is, in one paragraph; <br>• the join command (`curl -fsSL https://openagents.com/pylon/join.sh \| bash`, or `git clone` plus the script); <br>• a **live list of Pylons**: a `REQ {kinds:[30200]}` subscription on the relay showing each beacon's label, model identity, free slots, last-seen time and npub; <br>• the limits (§3). <br>Implement it as a Coaxial page (`apps/openagents-web/pylon/`). The project pages already subscribe to relays in Coax (`project-live.coax`, `socket.coax`), and the verifier library is in `nip01-verify.coax`. Deploy with `coax/web/release.sh`, from the Mac. If a Coaxial page can't be ready in time, a plain-text `index.md` plus a static listing is the floor. | |
+| **D** | **`openagents.com/pylon` page** | The page should show: <br>• what a Pylon is, in one paragraph; <br>• the join command (`curl -fsSL https://openagents.com/pylon/join.sh \| bash`, or `git clone` plus the script); <br>• a **live list of Pylons**: a `REQ {kinds:[30200]}` subscription on the relay showing each beacon's label, model identity, free slots, last-seen time and npub; <br>• the limits (§3). <br>Implement it as a Coaxial page (`apps/openagents-web/pylon/`). The project pages already subscribe to relays in Coax (`project-live.coax`, `socket.coax`), the verifier library is in `nip01-verify.coax`, and `coax/web/project/pylons.ts` already reads Pylons. Count answers live (see §1). Deploy with `coax/web/release.sh`, from the Mac. If a Coaxial page can't be ready in time, a plain-text `index.md` plus a static listing is the floor. | |
 | **E** | **Agent-readable docs** | `apps/openagents-web/pylon/index.md`: the same content written as numbered steps an agent can follow: prerequisites, the command, how to tell it's online, how to stop it, troubleshooting. Link it from the page and from `/llms.txt` or the docs index if there is one. | |
 | **F** | **Stage demo buyer** | A small script, `psionic/tests/pylon/demo-buyer.ts` or similar, built on `buyer.ts`'s code. It lists the live beacons on the relay, sends one decision job (25910, NIP-44 to the Pylon) to each, or to a chosen one, and prints each answer (26910) with the answering identity and latency. The jobs have to be valid `openagents.systemone.v1` requests for the toy model (see `buyer.ts` and NIP-DEC). Optionally, a button on the page that does the same in the browser. | |
 | **G** | **Rehearsal** | Two machines (e.g. the Mac and coderos-4080) join through the script against the public relay. The page lists both, and the demo buyer gets answers from both. Write the result in §4. | |
