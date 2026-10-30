@@ -359,12 +359,13 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  #assert AG_public_arm(f.nodes[..],values[..],f.roots[..],f.types[0..<1],8,env[..],memory[..],state[..],14).returned;
  state[0]=ScAudit.{};discard:=AG_public_arm(f.nodes[..],values[..],f.roots[..],f.types[0..<1],8,env[..],memory[..],state[..],15);#assert state[0].error==SC_LIMIT;
 }
-#test "public arm protects prior bindings but admits region writes at their boundaries" {
+#test "writes to prior bindings and regions are analyzed inside arms" {
  f:=SC_fixture();values:[32]u64;memory:[1]AgMemory;state:[1]ScAudit;env:[1]AgEnv;
  env[0].count=1;env[0].bindings[0]=AgBinding.{name="x",value=AgValue.{type=-1,known=true,lo=1,hi=1}};
- env[0].binding_floor=1;AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==SC_UNSUPPORTED;
- // A direct write to a prior binding refuses even when its value has a region.
- state[0]=ScAudit.{};env[0].bindings[0].value.region=2;AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==SC_UNSUPPORTED;
+ // Prior bindings may change inside arms now; the arm's caller joins them.
+ env[0].binding_floor=1;AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==0 && env[0].bindings[0].value.lo==2;
+ env[0].bindings[0].value.lo=1;env[0].bindings[0].value.hi=1;
+ state[0]=ScAudit.{};env[0].bindings[0].value.region=2;
  state[0]=ScAudit.{};env[0].binding_floor=0;memory[0].protected_regions=2;
  AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==0 && env[0].bindings[0].value.lo==2;
  env[0].bindings[0].value.lo=1;env[0].bindings[0].value.hi=1;
@@ -389,11 +390,12 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  n[5].c=6;n[5].d=7;#assert !AG_readonly_block(n[..],4,s[..],14);
  s[0]=ScAudit.{visits=262143};#assert !AG_readonly_block(n[..],4,s[..],0) && s[0].error==SC_LIMIT;
 }
-#test "public arm isolates prior bindings and restores fresh local scope" {
+#test "public arm restores fresh local scope and leaves prior bindings to the join" {
  f:=SC_fixture();values:[32]u64;env:[1]AgEnv;memory:[1]AgMemory;state:[1]ScAudit;
  env[0].procedure=2;env[0].count=1;env[0].bindings[0]=AgBinding.{name="x",value=AG_number(1)};
  f.nodes[8]=ScNode.{kind=40,head=9};f.nodes[9]=ScNode.{kind=43,a=10,c=7,op=23,next=11};f.nodes[10]=ScNode.{kind=16};f.nodes[11]=ScNode.{kind=44,a=10};
- fail:=AG_public_arm(f.nodes[..],values[..],f.roots[..],f.types[0..<1],8,env[..],memory[..],state[..],0);#assert state[0].error==SC_UNSUPPORTED && !fail.returned;
+ // The arm may assign the prior x; its caller joins the result with the other arm.
+ wrote:=AG_public_arm(f.nodes[..],values[..],f.roots[..],f.types[0..<1],8,env[..],memory[..],state[..],0);#assert state[0].error==0 && wrote.returned && env[0].count==1 && env[0].bindings[0].value.lo==0;
  state[0]=ScAudit.{};f.nodes[9]=ScNode.{kind=42,name="y",line=1,a=10,next=11};f.types[1]=ScType.{procedure="candidate",procedure_line=1,name="y",line=1,role="local",type="u64"};
  env[0].binding_floor=0;memory[0].used=2;memory[0].protected_regions=0;
  pass:=AG_public_arm(f.nodes[..],values[..],f.roots[..],f.types[0..<2],8,env[..],memory[..],state[..],0);
@@ -411,8 +413,8 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  f.nodes[23]=ScNode.{kind=44,a=24};f.nodes[24]=ScNode.{kind=16};f.types[1]=ScType.{procedure="candidate",procedure_line=1,name="i",role="loop",type="int"};
  r:=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<2],4,env[..],memory[..],state[..],0);
  #assert state[0].error==0 && r.returned && r.possible && r.value.known && r.value.lo==0 && r.value.hi==1;
- // Loops directly in an arm refuse; an active arm elsewhere does not matter.
- env[0].count=1;env[0].binding_floor=1;state[0]=ScAudit.{};r=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<2],4,env[..],memory[..],state[..],0);#assert state[0].error==SC_UNSUPPORTED;
+ // Loops are analyzed inside arms as anywhere else.
+ env[0].count=1;env[0].binding_floor=1;state[0]=ScAudit.{};r=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<2],4,env[..],memory[..],state[..],0);#assert state[0].error==0 && r.returned;
  env[0].count=1;env[0].binding_floor=0;memory[0].branch_active=1;state[0]=ScAudit.{};r=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<2],4,env[..],memory[..],state[..],0);#assert state[0].error==0 && r.returned;
 }
 #test "one public arm return leaves the other continuation reachable" {
@@ -731,10 +733,8 @@ AG_write :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,rhs:A
  if (op==32 || op==33) && mask!=0 {SC_fail(state,SC_SHIFT,id);}
  if op>=24 && op<=28 && (mask|AG_origin(target,memory))!=0 {SC_fail(state,SC_UNSUPPORTED,id);}
  root:=AG_target_root(nodes,id,state);slot:=AG_slot(env,nodes[root].name);if slot<0 {SC_fail(state,SC_CALL,id);return;}if env[0].bindings[slot].induction {SC_fail(state,ifx mask!=0 then SC_BRANCH else SC_UNSUPPORTED,id);return;}
- // Inside an unresolved public arm a pre-existing binding may not change (it
- // has no join), but writes through it into a region may: taint only grows,
- // and the write is treated as made whichever arm runs.
- if slot<env[0].binding_floor && (target.region==0 || nodes[id].kind==20) {SC_fail(state,SC_UNSUPPORTED,id);return;}
+ // Inside an unresolved public arm, region writes are treated as made whichever
+ // arm runs (taint only grows) and scalar bindings are joined after the arms.
  if nodes[id].kind==20 && target.view {SC_fail(state,SC_UNSUPPORTED,id);return;}
  if nodes[id].kind==20 && AG_primitive_name(target.type)!="" {r:=rhs;r.mask=mask;r.region=0;r.literal=0;if op!=23 {r=AG_binary(target,rhs,op+10,memory,state,id);}
   r.type=target.type;env[0].bindings[slot].value=r;return;}
@@ -776,11 +776,15 @@ AG_accumulate :: (base:AgBlock,part:AgBlock,memory:[]AgMemory)->AgBlock {
 }
 // Unknown public arms may create and mutate fresh locals only. Pre-existing
 // bindings and regions, including aliases through calls, remain protected.
+// Scalar bindings that existed before an unresolved arm take the join of the
+// values the two arms left; aggregate and view bindings cannot be rebound.
+AG_join_bindings :: (env:[]AgEnv,other:[]AgBinding,memory:[]AgMemory) {
+ for i:0..<env[0].count {if AG_primitive_name(env[0].bindings[i].value.type)!="" {env[0].bindings[i].value=AG_union(env[0].bindings[i].value,other[i].value,memory);}}
+}
 AG_public_arm :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit,depth:int)->AgBlock {
- if id==0 {return AgBlock.{};}saved:=env[0].count;old_binding:=env[0].binding_floor;
- env[0].binding_floor=saved;
+ if id==0 {return AgBlock.{};}saved:=env[0].count;
  part:=AG_block(nodes,values,roots,types,id,env,memory,state,depth+1);
- env[0].binding_floor=old_binding;env[0].count=saved;return part;
+ env[0].count=saved;return part;
 }
 AG_block :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit,depth:int)->AgBlock {
  if depth>=16 || !AG_tick(state,id) {SC_fail(state,SC_LIMIT,id);return AgBlock.{};}if nodes[id].kind!=40 {SC_fail(state,SC_UNSUPPORTED,id);return AgBlock.{};}
@@ -795,13 +799,14 @@ AG_block :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[
   else if n.kind==45 {condition:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);if AG_origin(condition,memory)!=0 {SC_fail(state,SC_BRANCH,at);break;}
    if !condition.known || condition.lo!=condition.hi {
     if !memory[0].classified {SC_fail(state,SC_UNSUPPORTED,at);break;}
-    yes:=AG_public_arm(nodes,values,roots,types,n.c,env,memory,state,depth);no:=AG_public_arm(nodes,values,roots,types,n.d,env,memory,state,depth);
+    // Both arms start from the same bindings; afterwards each scalar binding
+    // is the join of its two outcomes (or of one outcome and its prior value).
+    before:=env[0].bindings;yes:=AG_public_arm(nodes,values,roots,types,n.c,env,memory,state,depth);after:=env[0].bindings;env[0].bindings=before;
+    no:=AG_public_arm(nodes,values,roots,types,n.d,env,memory,state,depth);AG_join_bindings(env,after[..],memory);
     joined:=AG_accumulate(yes,no,memory);joined.returned=yes.returned && no.returned;result=AG_accumulate(result,joined,memory);
    }else {branch:=ifx condition.lo!=0 then n.c else n.d;if branch!=0 {saved:=env[0].count;if nodes[branch].kind!=40 {SC_fail(state,SC_UNSUPPORTED,branch);break;}part:=AG_block(nodes,values,roots,types,branch,env,memory,state,depth+1);env[0].count=saved;result=AG_accumulate(result,part,memory);}}}
   else if n.kind==46 {condition:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);SC_fail(state,ifx AG_origin(condition,memory)!=0 then SC_BRANCH else SC_UNSUPPORTED,at);}
-  // Loops directly in an unresolved arm would mark the arm's outer bindings;
-  // loops in procedures it calls run in their own environment.
-  else if n.kind==47 {if env[0].binding_floor!=0 {SC_fail(state,SC_UNSUPPORTED,at);break;}start:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);end:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,0);
+  else if n.kind==47 {start:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);end:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,0);
    if (AG_origin(start,memory)|AG_origin(end,memory))!=0 {SC_fail(state,SC_BRANCH,at);break;}
    if !start.known || !end.known || !AG_interval(start.lo,end.hi) {SC_fail(state,SC_LIMIT,at);break;}
    // The body is analyzed once; it cannot represent the unchanged state of a
@@ -812,7 +817,7 @@ AG_block :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[
   // for item:view over a fixed public extent of primitives: the item is any
   // element, carrying the view's taint. An index variable is not carried
   // into the graph, so any use of one fails to resolve.
-  else if n.kind==48 {if env[0].binding_floor!=0 {SC_fail(state,SC_UNSUPPORTED,at);break;}
+  else if n.kind==48 {
    items:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);element:=AG_element(nodes,roots,items.type,state);if state[0].error!=0 {break;}
    if items.extent<1 || AG_primitive_name(element)=="" {SC_fail(state,SC_UNSUPPORTED,at);break;}
    part:=AG_loop_run(nodes,values,roots,types,n,AgValue.{mask=AG_origin(items,memory)},element,env,memory,state,depth,at);if part.possible {result=AG_accumulate(result,part,memory);}

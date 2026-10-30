@@ -18,15 +18,23 @@
   ],
   [
    "#test \"public arm protects prior scalar and aggregate bindings at their boundaries\" {\n",
-   "#test \"public arm protects prior bindings but admits region writes at their boundaries\" {\n"
+   "#test \"writes to prior bindings and regions are analyzed inside arms\" {\n"
   ],
   [
-   " state[0]=ScAudit.{};env[0].binding_floor=0;env[0].bindings[0].value.region=2;memory[0].protected_regions=2;\n AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==SC_UNSUPPORTED;\n",
-   " // A direct write to a prior binding refuses even when its value has a region.\n state[0]=ScAudit.{};env[0].bindings[0].value.region=2;AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==SC_UNSUPPORTED;\n state[0]=ScAudit.{};env[0].binding_floor=0;memory[0].protected_regions=2;\n AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==0 && env[0].bindings[0].value.lo==2;\n env[0].bindings[0].value.lo=1;env[0].bindings[0].value.hi=1;\n"
+   " env[0].binding_floor=1;AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==SC_UNSUPPORTED;\n state[0]=ScAudit.{};env[0].binding_floor=0;env[0].bindings[0].value.region=2;memory[0].protected_regions=2;\n AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==SC_UNSUPPORTED;\n",
+   " // Prior bindings may change inside arms now; the arm's caller joins them.\n env[0].binding_floor=1;AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==0 && env[0].bindings[0].value.lo==2;\n env[0].bindings[0].value.lo=1;env[0].bindings[0].value.hi=1;\n state[0]=ScAudit.{};env[0].bindings[0].value.region=2;\n state[0]=ScAudit.{};env[0].binding_floor=0;memory[0].protected_regions=2;\n AG_write(f.nodes[..],values[..],f.roots[..],f.types[0..<1],7,AG_number(2),23,env[..],memory[..],state[..]);#assert state[0].error==0 && env[0].bindings[0].value.lo==2;\n env[0].bindings[0].value.lo=1;env[0].bindings[0].value.hi=1;\n"
+  ],
+  [
+   "#test \"public arm isolates prior bindings and restores fresh local scope\" {\n",
+   "#test \"public arm restores fresh local scope and leaves prior bindings to the join\" {\n"
+  ],
+  [
+   " fail:=AG_public_arm(f.nodes[..],values[..],f.roots[..],f.types[0..<1],8,env[..],memory[..],state[..],0);#assert state[0].error==SC_UNSUPPORTED && !fail.returned;\n",
+   " // The arm may assign the prior x; its caller joins the result with the other arm.\n wrote:=AG_public_arm(f.nodes[..],values[..],f.roots[..],f.types[0..<1],8,env[..],memory[..],state[..],0);#assert state[0].error==0 && wrote.returned && env[0].count==1 && env[0].bindings[0].value.lo==0;\n"
   ],
   [
    " env[0].count=1;memory[0].branch_active=1;state[0]=ScAudit.{};r=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<2],4,env[..],memory[..],state[..],0);#assert state[0].error==SC_UNSUPPORTED;\n",
-   " // Loops directly in an arm refuse; an active arm elsewhere does not matter.\n env[0].count=1;env[0].binding_floor=1;state[0]=ScAudit.{};r=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<2],4,env[..],memory[..],state[..],0);#assert state[0].error==SC_UNSUPPORTED;\n env[0].count=1;env[0].binding_floor=0;memory[0].branch_active=1;state[0]=ScAudit.{};r=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<2],4,env[..],memory[..],state[..],0);#assert state[0].error==0 && r.returned;\n"
+   " // Loops are analyzed inside arms as anywhere else.\n env[0].count=1;env[0].binding_floor=1;state[0]=ScAudit.{};r=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<2],4,env[..],memory[..],state[..],0);#assert state[0].error==0 && r.returned;\n env[0].count=1;env[0].binding_floor=0;memory[0].branch_active=1;state[0]=ScAudit.{};r=AG_block(f.nodes[..],values[..],f.roots[..],f.types[0..<2],4,env[..],memory[..],state[..],0);#assert state[0].error==0 && r.returned;\n"
   ],
   [
    "#test \"public arms reject a fresh view that aliases a prior region\" {\n",
@@ -130,7 +138,7 @@
   ],
   [
    " if slot<env[0].binding_floor || (target.region!=0 && target.region<=memory[0].protected_regions) {SC_fail(state,SC_UNSUPPORTED,id);return;}\n",
-   " // Inside an unresolved public arm a pre-existing binding may not change (it\n // has no join), but writes through it into a region may: taint only grows,\n // and the write is treated as made whichever arm runs.\n if slot<env[0].binding_floor && (target.region==0 || nodes[id].kind==20) {SC_fail(state,SC_UNSUPPORTED,id);return;}\n"
+   " // Inside an unresolved public arm, region writes are treated as made whichever\n // arm runs (taint only grows) and scalar bindings are joined after the arms.\n"
   ],
   [
    " memory[0].taint[target.region]|=mask;memory[0].dirty[target.region]=true;\n",
@@ -141,12 +149,16 @@
    " // A view with public fields keeps its taint in its region, which the loop\n // has already tainted; its shadows reach their fixed point in AG_loop_body.\n if n.kind==43 {root:=AG_target_root(nodes,n.c,state);slot:=AG_slot(env,nodes[root].name);if slot>=0 {if !AG_sensitive(memory,env[0].bindings[slot].value.region) {env[0].bindings[slot].value.mask|=mask;}env[0].bindings[slot].value.known=false;env[0].bindings[slot].value=AG_unranged(env[0].bindings[slot].value);}}\n"
   ],
   [
+   "// bindings and regions, including aliases through calls, remain protected.\n",
+   "// bindings and regions, including aliases through calls, remain protected.\n// Scalar bindings that existed before an unresolved arm take the join of the\n// values the two arms left; aggregate and view bindings cannot be rebound.\nAG_join_bindings :: (env:[]AgEnv,other:[]AgBinding,memory:[]AgMemory) {\n for i:0..<env[0].count {if AG_primitive_name(env[0].bindings[i].value.type)!=\"\" {env[0].bindings[i].value=AG_union(env[0].bindings[i].value,other[i].value,memory);}}\n}\n"
+  ],
+  [
    " if id==0 {return AgBlock.{};}saved:=env[0].count;old_binding:=env[0].binding_floor;old_region:=memory[0].protected_regions;\n env[0].binding_floor=saved;memory[0].protected_regions=memory[0].used;memory[0].branch_active+=1;\n",
-   " if id==0 {return AgBlock.{};}saved:=env[0].count;old_binding:=env[0].binding_floor;\n env[0].binding_floor=saved;\n"
+   " if id==0 {return AgBlock.{};}saved:=env[0].count;\n"
   ],
   [
    " memory[0].branch_active-=1;memory[0].protected_regions=old_region;env[0].binding_floor=old_binding;env[0].count=saved;return part;\n",
-   " env[0].binding_floor=old_binding;env[0].count=saved;return part;\n"
+   " env[0].count=saved;return part;\n"
   ],
   [
    "  if n.kind==42 {if n.flag {SC_fail(state,SC_UNSUPPORTED,at);break;}type:=AG_resolved(nodes,values,roots,types,nodes[env[0].procedure],n,\"local\",state);r:=AG_number(0);if n.a!=0 {r=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);}r=AG_new(nodes,values,roots,r,type,memory,state);AG_bind(env,n.name,r,state,at);}\n",
@@ -157,12 +169,16 @@
    "  // A call statement discards its value; \"return;\" occurs only in procedures without a result.\n  else if n.kind==41 {if nodes[n.a].kind!=21 {SC_fail(state,SC_UNSUPPORTED,at);break;}ignored:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);}\n  else if n.kind==44 {value:=AgValue.{};if n.a!=0 {value=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);}part:=AgBlock.{value=value,returned=true,possible=true};result=AG_accumulate(result,part,memory);}\n"
   ],
   [
+   "    yes:=AG_public_arm(nodes,values,roots,types,n.c,env,memory,state,depth);no:=AG_public_arm(nodes,values,roots,types,n.d,env,memory,state,depth);\n",
+   "    // Both arms start from the same bindings; afterwards each scalar binding\n    // is the join of its two outcomes (or of one outcome and its prior value).\n    before:=env[0].bindings;yes:=AG_public_arm(nodes,values,roots,types,n.c,env,memory,state,depth);after:=env[0].bindings;env[0].bindings=before;\n    no:=AG_public_arm(nodes,values,roots,types,n.d,env,memory,state,depth);AG_join_bindings(env,after[..],memory);\n"
+  ],
+  [
    "  else if n.kind==47 {if memory[0].branch_active!=0 {SC_fail(state,SC_UNSUPPORTED,at);break;}start:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);end:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,0);\n",
-   "  // Loops directly in an unresolved arm would mark the arm's outer bindings;\n  // loops in procedures it calls run in their own environment.\n  else if n.kind==47 {if env[0].binding_floor!=0 {SC_fail(state,SC_UNSUPPORTED,at);break;}start:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);end:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,0);\n"
+   "  else if n.kind==47 {start:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);end:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,0);\n"
   ],
   [
    "   readonly:=false;if memory[0].classified {readonly=AG_readonly_block(nodes,n.c,state,0);}\n   incoming:=cast(u64)0;for i:0..<env[0].count {incoming|=AG_origin(env[0].bindings[i].value,memory);}\n   if !readonly {for i:0..<env[0].count {region:=env[0].bindings[i].value.region;if region!=0 {memory[0].taint[region]|=incoming;memory[0].dirty[region]=true;}}}\n   AG_loop_marks(nodes,n.c,env,memory,state,incoming,0);saved:=env[0].count;\n   loop_type:=AG_resolved(nodes,values,roots,types,nodes[env[0].procedure],n,\"loop\",state);if loop_type!=-4 {SC_fail(state,SC_TYPE,at);break;}\n   loop:=AgValue.{type=loop_type,lo=start.lo,hi=end.hi-1,known=true};AG_bind(env,n.name,loop,state,at);if env[0].count>saved {env[0].bindings[saved].induction=true;}\n   part:=AG_block(nodes,values,roots,types,n.c,env,memory,state,depth+1);env[0].count=saved;if part.possible {if !readonly {SC_fail(state,SC_UNSUPPORTED,at);}else {part.returned=false;result=AG_accumulate(result,part,memory);}}\n",
-   "   part:=AG_loop_run(nodes,values,roots,types,n,AgValue.{lo=start.lo,hi=end.hi-1,known=true},-4,env,memory,state,depth,at);if part.possible {result=AG_accumulate(result,part,memory);}\n  }\n  // for item:view over a fixed public extent of primitives: the item is any\n  // element, carrying the view's taint. An index variable is not carried\n  // into the graph, so any use of one fails to resolve.\n  else if n.kind==48 {if env[0].binding_floor!=0 {SC_fail(state,SC_UNSUPPORTED,at);break;}\n   items:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);element:=AG_element(nodes,roots,items.type,state);if state[0].error!=0 {break;}\n   if items.extent<1 || AG_primitive_name(element)==\"\" {SC_fail(state,SC_UNSUPPORTED,at);break;}\n   part:=AG_loop_run(nodes,values,roots,types,n,AgValue.{mask=AG_origin(items,memory)},element,env,memory,state,depth,at);if part.possible {result=AG_accumulate(result,part,memory);}\n"
+   "   part:=AG_loop_run(nodes,values,roots,types,n,AgValue.{lo=start.lo,hi=end.hi-1,known=true},-4,env,memory,state,depth,at);if part.possible {result=AG_accumulate(result,part,memory);}\n  }\n  // for item:view over a fixed public extent of primitives: the item is any\n  // element, carrying the view's taint. An index variable is not carried\n  // into the graph, so any use of one fails to resolve.\n  else if n.kind==48 {\n   items:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);element:=AG_element(nodes,roots,items.type,state);if state[0].error!=0 {break;}\n   if items.extent<1 || AG_primitive_name(element)==\"\" {SC_fail(state,SC_UNSUPPORTED,at);break;}\n   part:=AG_loop_run(nodes,values,roots,types,n,AgValue.{mask=AG_origin(items,memory)},element,env,memory,state,depth,at);if part.possible {result=AG_accumulate(result,part,memory);}\n"
   ],
   [
    " return a.mask==b.mask && a.type==b.type && a.literal==b.literal && a.lo==b.lo && a.hi==b.hi && a.known==b.known && a.extent==b.extent;\n",

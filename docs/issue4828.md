@@ -78,18 +78,22 @@ remain, and the control is flagged.
 
 ### `openagents-20` (the audit owner)
 
-These are the source-audit side, in order:
+Done and pushed:
 
-1. Raise the profile's 64-procedure cap (owner-approved; `sw_nonce` needs more than 64).
-2. An analyzable `_public` challenge instead of `sv_challenge_vartime` (owner-approved).
-3. `_declassify` edits in `sw_key` and `sw_nonce` of `coax/lib/crypto/schnorr_sign.coax`, rebased onto `753e949fc6`. The signer's stages 3–5 stay untouched.
-4. Pending patch to `coax/lib/crypto/sha256_workspace.coax` and `coax/lib/crypto/schnorr_nonce_point.coax`:
-   - index masks `&63`;
-   - the schedule loop split at 16;
-   - `so_compress_clear`;
-   - `snp_reduce` returning true.
+- `5693ac4fa0`: the procedure table grows to 256. The large profile's cap is 256; legacy and public-view keep 64. Mutation after the push: secret-check 2,803/2,803, public-view 2,864/2,864, large 3,689/3,691 (two `AG_bit` mutants, fixed in `37df0fbb7c`).
+- `37df0fbb7c`: the signer's `_declassify` points (key validity, public key, R) and `sw_challenge_public`; the SHA-256 and nonce source patch is applied.
+- `934852b008`: `sw_message_digest` (the `so_*` workspace), parities passed as `odd&1`, a 512 KiB source budget, and loops no longer pre-taint read-only views.
+- (this push) Scalar bindings are joined after unresolved branches, so `if status==OK {status=...}` chains and loops inside branches are analyzed. Large aggregate: 229/229 checks, mutation 3,677/3,677.
 
-Estimate: a few hours. It pushes once fast checks pass. Full gates follow the push (the owner's rule as of 2026-10-30: no hour-long checks before a push).
+Next:
+
+1. `sw_check` and `sw_publish` (37 procedures so far). They need the self-verifier changes sent to `openagents-d7`:
+   - inline `sv_lengths_vartime` (line 206);
+   - rename a duplicate `for i` index (line 258);
+   - use the `so_*` SHA workspace in `ssv_challenge`;
+   - take a public R view instead of `candidate[0..<32]`, which shares `SignWork.sig` with the secret s.
+2. The whole `schnorr_sign_step` / `nostr_sign_step` entry.
+3. The record and an independent review of the profile.
 
 ### `openagents-d7` (this session)
 
