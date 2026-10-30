@@ -862,6 +862,16 @@
       ]
     },
     {
+      "source": "psionic/examples/kernel-search.coax",
+      "chapter": "psionic/book/ch188-an-agent-optimizes-a-psionic-kernel.md",
+      "stdout": "psionic/fixtures/kernel-search.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/interpreter-weights.coax",
       "chapter": "psionic/book/ch170-an-interpreter-in-weights-or-one-program-in-weights.md",
       "stdout": "psionic/fixtures/interpreter-weights.out",

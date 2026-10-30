@@ -1,0 +1,196 @@
+// Chapter 188: the offset RMS norm as a family of coax cuda kernels with
+// tunable knobs, and chapter 30's two norm kernels behind the same contract.
+//
+// Every implementation the search compares (these two and each agent
+// candidate, with its own prefix P) exports the same four kernels:
+//   P_knobs(item, knobs)  item 0 writes the knob values to try, then -1;
+//   P_plan(item, rows, width, knob, plan)  item 0 writes the work items of
+//     pass 0 and pass 1 (0 skips a pass) and the f64 scratch it needs;
+//   P_pass0 and P_pass1(item, rows, width, knob, epsilon, x, scale, work, out).
+// The host runs P_knobs and P_plan on the CPU, then launches pass 0 and pass
+// 1 in order over every item. out[r*width+i] must be
+// x / sqrt(mean of the row's x^2 + epsilon) * (1 + scale[i]), computed as
+// DEVICE-F32-CHUNKED-v1 does: squares added in f64 in any order, the rest in
+// f64, rounded once to f32.
+#authority;
+#load "layer.coax";
+
+// book:begin knobs
+// A knob is chunks*100 + vector*10 + strided. Chunks is how many items add
+// one row's squares (0: one item does the whole row, both passes fused);
+// strided items read columns j, j+chunks, ... instead of one contiguous
+// run; vector is how many outputs one pass-1 item writes.
+nt_knobs :: (item:int,knobs:[]int) #export_c {
+    if item!=0 {return;}
+    knobs[0]=0;n:=1;
+    // Chunks 1 to 128 and vectors 1 to 4, in powers of two. (Constant arrays
+    // are not yet emitted for the device, so these are loops.)
+    for c:0..<8 {for v:0..<3 {for s:0..<2 {knobs[n]=(1<<c)*100+(1<<v)*10+s;n+=1;}}}
+    knobs[n]=-1;
+}
+nt_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
+    if item!=0 {return;}
+    c:=knob/100;v:=(knob/10)%10;
+    if c==0 {plan[0]=rows;plan[1]=0;plan[2]=rows;return;}
+    plan[0]=rows*c;plan[1]=rows*((width+v-1)/v);plan[2]=rows*c;
+}
+// book:end knobs
+
+// book:begin passes
+nt_divisor :: (squares:f64,width:int,epsilon:f32)->f64 {return sqrt(squares/f64(width)+f64(epsilon));}
+nt_write :: (at:int,i:int,divisor:f64,x:[]f32,scale:[]f32,out:[]f32) {
+    out[at+i]=f32(f64(x[at+i])/divisor*(1+f64(scale[i])));
+}
+// Pass 0: item r*chunks+j adds the squares of its share of row r. Fused,
+// item r adds the whole row and writes it.
+nt_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+    c:=knob/100;s:=knob%10;sum:f64=0;
+    if c==0 {
+        at:=item*width;
+        for i:0..<width {v:=f64(x[at+i]);sum+=v*v;}
+        divisor:=nt_divisor(sum,width,epsilon);
+        for i:0..<width {nt_write(at,i,divisor,x,scale,out);}
+        work[item]=sum;return;
+    }
+    at:=(item/c)*width;j:=item%c;
+    if s==1 {
+        for k:0..<(width-j+c-1)/c {v:=f64(x[at+j+k*c]);sum+=v*v;}
+    } else {
+        // A test per column here costs 3 us on the L4; the run is clamped once.
+        // (hi>width and hi>=width both leave hi at width: an equivalent mutant.)
+        per:=(width+c-1)/c;lo:=j*per;hi:=lo+per;
+        if hi>width {hi=width;}
+        for i:lo..<hi {v:=f64(x[at+i]);sum+=v*v;}
+    }
+    work[item]=sum;
+}
+// Pass 1: item r*ceil(width/vector)+k adds row r's partial sums in order and
+// writes outputs k*vector up to the row's end.
+nt_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+    c:=knob/100;v:=(knob/10)%10;m:=(width+v-1)/v;r:=item/m;k:=item%m;sum:f64=0;
+    for j:0..<c {sum+=work[r*c+j];}
+    divisor:=nt_divisor(sum,width,epsilon);
+    for i:k*v..<k*v+v {if i<width {nt_write(r*width,i,divisor,x,scale,out);}}
+}
+// book:end passes
+
+// book:begin baseline
+// Chapter 30's kernels: 16 items per row, each adding a contiguous sixteenth
+// of width/16 columns, then one item per output. Its declared shapes have a
+// width that is a multiple of 16.
+n30_knobs :: (item:int,knobs:[]int) #export_c {if item==0 {knobs[0]=0;knobs[1]=-1;}}
+n30_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
+    if item!=0 {return;}
+    plan[0]=rows*DL_CHUNKS;plan[1]=rows*width;plan[2]=rows*DL_CHUNKS;
+}
+n30_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+    dl_squares(item,width,x,work);
+}
+n30_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+    dl_scale(item,width,epsilon,x,scale,work,out);
+}
+// book:end baseline
+
+// Test helpers: run one implementation's plan over every item, in order.
+NtImpl :: enum u8 {tuned;ch30;}
+nt_t_run :: (impl:NtImpl,knob:int,rows:int,width:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) {
+    plan:[3]int;
+    if impl==NtImpl.tuned {nt_plan(0,rows,width,knob,plan[..]);} else {n30_plan(0,rows,width,knob,plan[..]);}
+    for i:0..<plan[0] {
+        if impl==NtImpl.tuned {nt_pass0(i,rows,width,knob,epsilon,x,scale,work,out);}
+        else {n30_pass0(i,rows,width,knob,epsilon,x,scale,work,out);}
+    }
+    for i:0..<plan[1] {
+        if impl==NtImpl.tuned {nt_pass1(i,rows,width,knob,epsilon,x,scale,work,out);}
+        else {n30_pass1(i,rows,width,knob,epsilon,x,scale,work,out);}
+    }
+}
+// The norm written directly: squares in column order.
+nt_t_norm :: (rows:int,width:int,epsilon:f32,x:[]f32,scale:[]f32,out:[]f32) {
+    for r:0..<rows {
+        sum:f64=0;
+        for i:0..<width {v:=f64(x[r*width+i]);sum+=v*v;}
+        d:=sqrt(sum/f64(width)+f64(epsilon));
+        for i:0..<width {out[r*width+i]=f32(f64(x[r*width+i])/d*(1+f64(scale[i])));}
+    }
+}
+// Distinct small integers, so a wrong column, row or scale shows.
+nt_t_fill :: (rows:int,width:int,x:[]f32,scale:[]f32) {
+    for i:0..<rows*width {x[i]=f32((i*7)%23-11);}
+    for i:0..<width {scale[i]=f32(i%5)/4-0.5;}
+}
+
+#test "the tuned knobs list fused, then every chunks, vector and layout" {
+    k:[64]int;for i:0..<64 {k[i]=-2;}
+    nt_knobs(0,k[..]);
+    #assert k[0]==0 && k[1]==110 && k[2]==111 && k[3]==120 && k[6]==141 && k[7]==210 && k[48]==12841 && k[49]==-1 && k[50]==-2;
+    n:[4]int;for i:0..<4 {n[i]=-2;}
+    n30_knobs(1,n[..]);nt_knobs(1,n[..]);#assert n[0]==-2;
+    n30_knobs(0,n[..]);#assert n[0]==0 && n[1]==-1 && n[2]==-2;
+}
+#test "plans give each pass its items and the scratch it uses" {
+    // Only item 0 writes a plan.
+    p:=[3]int.[-1,-1,-1];
+    nt_plan(1,3,10,0,p[..]);n30_plan(1,3,32,0,p[..]);#assert p[0]==-1 && p[1]==-1 && p[2]==-1;
+    nt_plan(0,3,10,0,p[..]);#assert p[0]==3 && p[1]==0 && p[2]==3;
+    nt_plan(0,3,10,421,p[..]);#assert p[0]==12 && p[1]==15 && p[2]==12;
+    nt_plan(0,3,10,1611,p[..]);#assert p[0]==48 && p[1]==30 && p[2]==48;
+    nt_plan(0,3,10,141,p[..]);#assert p[0]==3 && p[1]==9;
+    n30_plan(0,3,32,0,p[..]);#assert p[0]==48 && p[1]==96 && p[2]==48;
+}
+#test "the test data: distinct values in every row and column" {
+    x:[111]f32;s:[37]f32;nt_t_fill(3,37,x[..],s[..]);
+    #assert x[0]==-11 && x[5]==1 && x[109]==-7 && s[0]==-0.5 && s[3]==0.25 && s[4]==0.5 && s[7]==0;
+}
+#test "every tuned knob writes the norm, on a width no knob divides" {
+    rows:=3;width:=37;x:[111]f32;scale:[37]f32;nt_t_fill(rows,width,x[..],scale[..]);
+    want:[111]f32;nt_t_norm(rows,width,0.25,x[..],scale[..],want[..]);
+    k:[64]int;nt_knobs(0,k[..]);
+    for knob:k {
+        if knob<0 {break;}
+        out:[111]f32;work:[400]f64;for i:0..<111 {out[i]=-99;}
+        nt_t_run(NtImpl.tuned,knob,rows,width,0.25,x[..],scale[..],work[..],out[..]);
+        for i:0..<111 {#assert abs(f64(out[i])-f64(want[i]))<=abs(f64(want[i]))*1e-6;}
+    }
+}
+#test "partial sums: contiguous runs, strided columns and the fused row" {
+    rows:=2;width:=10;x:[20]f32;scale:[10]f32;
+    for i:0..<20 {x[i]=f32(i+1);}
+    out:[20]f32;work:[8]f64;
+    // Chunks 4: runs of 3 columns, the last one 1 column.
+    nt_t_run(NtImpl.tuned,410,rows,width,0,x[..],scale[..],work[..],out[..]);
+    #assert work[0]==1+4+9 && work[1]==16+25+36 && work[2]==49+64+81 && work[3]==100 && work[4]==121+144+169;
+    // Strided: columns 0, 4, 8, then 1, 5, 9, then 2, 6, then 3, 7.
+    nt_t_run(NtImpl.tuned,411,rows,width,0,x[..],scale[..],work[..],out[..]);
+    #assert work[0]==1+25+81 && work[1]==4+36+100 && work[2]==9+49 && work[3]==16+64 && work[7]==14*14+18*18;
+    // Chunks 2: two runs of 5.
+    nt_t_run(NtImpl.tuned,210,rows,width,0,x[..],scale[..],work[..],out[..]);
+    #assert work[0]==55 && work[1]==330 && work[2]==855 && work[3]==1630;
+    nt_t_run(NtImpl.tuned,0,rows,width,0,x[..],scale[..],work[..],out[..]);
+    #assert work[0]==385 && work[1]==2485;
+    #assert out[0]==f32(1/sqrt(38.5f64)) && out[19]==f32(20/sqrt(248.5f64));
+}
+#test "pass 1 writes vector outputs per item and stops at the row's end" {
+    rows:=2;width:=5;x:[10]f32;scale:[5]f32;nt_t_fill(rows,width,x[..],scale[..]);
+    work:=[2]f64.[16,36];out:[10]f32;for i:0..<10 {out[i]=-99;}
+    // Vector 4: two items a row; item 2 writes row 1's columns 0 to 3.
+    nt_pass1(2,rows,width,140,0,x[..],scale[..],work[..],out[..]);
+    for i:0..<5 {#assert out[i]==-99;}
+    #assert out[5]==f32(f64(x[5])/sqrt(36.0f64/5)*(1+f64(scale[0]))) && out[8]==f32(f64(x[8])/sqrt(36.0f64/5)*(1+f64(scale[3])));
+    #assert out[9]==-99;
+    // Item 1 writes row 0's column 4 alone.
+    nt_pass1(1,rows,width,140,0,x[..],scale[..],work[..],out[..]);
+    #assert out[4]==f32(f64(x[4])/sqrt(16.0f64/5)*(1+f64(scale[4]))) && out[3]==-99 && out[9]==-99;
+}
+#test "chapter 30's kernels behind the contract, exact only when 16 divides the width" {
+    rows:=2;width:=32;x:[64]f32;scale:[32]f32;nt_t_fill(rows,width,x[..],scale[..]);
+    want:[64]f32;nt_t_norm(rows,width,1e-6,x[..],scale[..],want[..]);
+    out:[64]f32;work:[32]f64;
+    nt_t_run(NtImpl.ch30,0,rows,width,1e-6,x[..],scale[..],work[..],out[..]);
+    for i:0..<64 {#assert abs(f64(out[i])-f64(want[i]))<=abs(f64(want[i]))*1e-6;}
+    // Width 20: each sixteenth is one column, so columns 16 to 19 are never added.
+    y:[40]f32;s2:[20]f32;nt_t_fill(2,20,y[..],s2[..]);w2:[40]f32;nt_t_norm(2,20,1e-6,y[..],s2[..],w2[..]);
+    o2:[40]f32;nt_t_run(NtImpl.ch30,0,2,20,1e-6,y[..],s2[..],work[..],o2[..]);
+    #assert work[0]+work[1]+work[2]+work[3]+work[4]+work[5]+work[6]+work[7]+work[8]+work[9]+work[10]+work[11]+work[12]+work[13]+work[14]+work[15]==723;
+    #assert work[16]==f64(y[20])*f64(y[20]) && o2[0]!=w2[0];
+}

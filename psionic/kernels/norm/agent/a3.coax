@@ -1,0 +1,77 @@
+// Agent candidate a3: offset RMS norm, DEVICE-F32-CHUNKED-v1.
+// Knob = c*10000 + m*10 + R. Pass 0 (as a2): c items per row, item j adds
+// the squares of columns j, j+c, ... in f64. Pass 1: item (row group g,
+// k) covers rows g*R .. g*R+R-1 and columns k, k+m, ...; for each of its
+// rows it re-adds the c partials in order and forms inv = 1/sqrt(mean+eps)
+// in f64 once; per column it forms 1+f64(scale) once and writes each row's
+// f32(f64(x)*inv*(1+scale)). Sharing the column factor across R rows and
+// using fewer items per row cut the f64 operations, which bound both passes.
+
+a3_min :: (a:int,b:int)->int {if a<b {return a;}return b;}
+a3_c :: (knob:int,width:int)->int {return a3_min(knob/10000,width);}
+a3_m :: (knob:int,width:int)->int {return a3_min((knob/10)%1000,width);}
+a3_r :: (knob:int)->int {return knob%10;}
+
+a3_knobs :: (item:int,knobs:[]int) #export_c {
+    n:=0;
+    for mi:0..<3 {for ri:0..<3 {knobs[n]=1280000+(32<<mi)*10+(1<<ri);n+=1;}}
+    knobs[n]=2560322;n+=1;
+    knobs[n]=640642;n+=1;
+    knobs[n]=-1;
+}
+a3_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
+    c:=a3_c(knob,width);m:=a3_m(knob,width);R:=a3_r(knob);
+    plan[0]=rows*c;plan[1]=((rows+R-1)/R)*m;plan[2]=rows*c;
+}
+a3_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+    c:=a3_c(knob,width);r:=item/c;j:=item-r*c;at:=r*width+j;
+    sum:f64=0;
+    for k:0..<(width-j+c-1)/c {v:=f64(x[at+k*c]);sum+=v*v;}
+    work[item]=sum;
+}
+a3_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+    c:=a3_c(knob,width);m:=a3_m(knob,width);R:=a3_r(knob);
+    g:=item/m;k:=item-g*m;r0:=g*R;nr:=a3_min(R,rows-r0);
+    inv:[4]f64;
+    for rr:0..<4 {
+        if rr<nr {
+            sum:f64=0;
+            for j:0..<c {sum+=work[(r0+rr)*c+j];}
+            inv[rr]=1/sqrt(sum/f64(width)+f64(epsilon));
+        }
+    }
+    for t:0..<(width-k+m-1)/m {
+        i:=k+t*m;s1:=1+f64(scale[i]);
+        for rr:0..<4 {
+            if rr<nr {at:=(r0+rr)*width+i;out[at]=f32(f64(x[at])*inv[rr]*s1);}
+        }
+    }
+}
+
+a3_t_run :: (knob:int,rows:int,width:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) {
+    plan:[3]int;a3_plan(0,rows,width,knob,plan[..]);
+    for i:0..<plan[0] {a3_pass0(plan[0]-1-i,rows,width,knob,epsilon,x,scale,work,out);}
+    for i:0..<plan[1] {a3_pass1(plan[1]-1-i,rows,width,knob,epsilon,x,scale,work,out);}
+}
+#test "every knob writes every output within one f32 step of the f64 norm" {
+    for width:1..<120 {
+        if width>5 && width!=37 && width!=111 {continue;}
+        rows:=5;x:[1000]f32;scale:[300]f32;
+        for i:0..<rows*width {x[i]=f32((i*7)%23-11)*0.37;}
+        for i:0..<width {scale[i]=f32(i%5)/4-0.5;}
+        k:[64]int;a3_knobs(0,k[..]);
+        for knob:k {
+            if knob<0 {break;}
+            out:[1000]f32;work:[3072]f64;for i:0..<1000 {out[i]=-99;}
+            a3_t_run(knob,rows,width,0.000001,x[..],scale[..],work[..],out[..]);
+            for r:0..<rows {
+                s:f64=0;for i:0..<width {v:=f64(x[r*width+i]);s+=v*v;}
+                d:=sqrt(s/f64(width)+f64(f32(0.000001)));
+                for i:0..<width {
+                    ref:=f64(x[r*width+i])/d*(1+f64(scale[i]));
+                    #assert abs(f64(out[r*width+i])-ref)<=abs(ref)*0.00000012+1e-40;
+                }
+            }
+        }
+    }
+}

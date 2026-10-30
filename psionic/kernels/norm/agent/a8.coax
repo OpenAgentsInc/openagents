@@ -1,0 +1,112 @@
+// Agent candidate a8: offset RMS norm, DEVICE-F32-CHUNKED-v1.
+// Knob = c*1000 + m. Pass 0: c items per row, item j adding the squares of
+// one contiguous run of ceil(width/c) columns in f64 (two accumulators), so
+// after the first miss an item's reads hit its own cached lines (a7's
+// strided items miss on every step); it also stores 1+f64(scale) per column
+// when the scratch allows. Pass 1 as a7: m items per row read four partials
+// per step, form inv = 1/sqrt(mean+eps) once and write two strided outputs
+// per step, rounding f64->f32 to nearest even by integer bit moves (the same
+// bits as the cast).
+
+a8_min :: (a:int,b:int)->int {if a<b {return a;}return b;}
+a8_c :: (knob:int,width:int)->int {return a8_min(knob/1000,width);}
+a8_m :: (knob:int,width:int)->int {return a8_min(knob%1000,width);}
+a8_pre :: (rows:int,width:int,c:int)->bool {return rows*c+width<=rows*1024;}
+
+a8_narrow :: (y:f64)->f32 {
+    B:=f64_bits(y);E:=(B>>52)&0x7ff;
+    if E<897 || E>1149 {return f32(y);}
+    M:=B&0xfffffffffffff;rest:=M&0x1fffffff;
+    w:=((E-896)<<23)|(M>>29);
+    if rest>0x10000000 || (rest==0x10000000 && (w&1)==1) {w+=1;}
+    return f32_from_bits(cast,trunc(u32)(((B>>63)<<31)|w));
+}
+
+a8_knobs :: (item:int,knobs:[]int) #export_c {
+    knobs[0]=32128;knobs[1]=32160;knobs[2]=64128;knobs[3]=64160;
+    knobs[4]=128128;knobs[5]=128160;knobs[6]=48160;knobs[7]=96128;knobs[8]=-1;
+}
+a8_plan :: (item:int,rows:int,width:int,knob:int,plan:[]int) #export_c {
+    c:=a8_c(knob,width);m:=a8_m(knob,width);
+    plan[0]=rows*c;plan[1]=rows*m;plan[2]=rows*c;
+    if a8_pre(rows,width,c) {plan[2]=rows*c+width;}
+}
+a8_pass0 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+    c:=a8_c(knob,width);r:=item/c;j:=item-r*c;
+    per:=(width+c-1)/c;lo:=a8_min(j*per,width);n:=a8_min(per,width-lo);p:=r*width+lo;
+    s0:f64=0;s1:f64=0;
+    for k:0..<n/2 {v0:=f64(x[p]);v1:=f64(x[p+1]);s0+=v0*v0;s1+=v1*v1;p+=2;}
+    if n%2==1 {v:=f64(x[p]);s0+=v*v;}
+    work[item]=s0+s1;
+    if a8_pre(rows,width,c) {
+        G:=rows*c;
+        for t:0..<(width-item+G-1)/G {i:=item+t*G;work[G+i]=1+f64(scale[i]);}
+    }
+}
+a8_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) #export_c {
+    c:=a8_c(knob,width);m:=a8_m(knob,width);r:=item/m;k:=item-r*m;
+    s0:f64=0;s1:f64=0;w:=r*c;
+    for j:0..<c/4 {a:=work[w];b:=work[w+1];d:=work[w+2];e:=work[w+3];s0+=a;s1+=b;s0+=d;s1+=e;w+=4;}
+    for j:0..<c%4 {s0+=work[w];w+=1;}
+    inv:=1/sqrt((s0+s1)/f64(width)+f64(epsilon));
+    at:=r*width+k;n:=(width-k+m-1)/m;
+    if !a8_pre(rows,width,c) {
+        i:=k;
+        for t:0..<n {out[at]=a8_narrow(f64(x[at])*inv*(1+f64(scale[i])));at+=m;i+=m;}
+        return;
+    }
+    q:=rows*c+k;
+    for t:0..<n/2 {
+        xa:=x[at];xb:=x[at+m];ga:=work[q];gb:=work[q+m];
+        out[at]=a8_narrow(f64(xa)*inv*ga);out[at+m]=a8_narrow(f64(xb)*inv*gb);
+        at+=2*m;q+=2*m;
+    }
+    if n%2==1 {out[at]=a8_narrow(f64(x[at])*inv*work[q]);}
+}
+
+a8_t_run :: (knob:int,rows:int,width:int,epsilon:f32,x:[]f32,scale:[]f32,work:[]f64,out:[]f32) {
+    plan:[3]int;a8_plan(0,rows,width,knob,plan[..]);
+    for i:0..<plan[0] {a8_pass0(plan[0]-1-i,rows,width,knob,epsilon,x,scale,work,out);}
+    for i:0..<plan[1] {a8_pass1(plan[1]-1-i,rows,width,knob,epsilon,x,scale,work,out);}
+}
+#test "bit narrowing equals the cast, ties and range edges included" {
+    for i:0..<3000 {
+        b:=((cast(u64)((i*7919)%2047))<<52)|(cast(u64)((i*1000003+12345)*7349)%0x10000000000000);y:=f64_from_bits(b);
+        if y!=y || abs(y)>3.0e38 {continue;}
+        #assert f32_bits(a8_narrow(y))==f32_bits(f32(y));
+        // Exact ties and near ties around a random f32.
+        f:=f64(f32(y));if f!=f || abs(f)>1e38 || abs(f)<1e-37 {continue;}
+        fb:=f64_bits(f);
+        for d:0..<5 {
+            z:=f64_from_bits(fb+cast(u64)d*0x8000000-0x10000000+0x10000000);
+            #assert f32_bits(a8_narrow(z))==f32_bits(f32(z));
+            z2:=f64_from_bits(fb+0x10000000);#assert f32_bits(a8_narrow(z2))==f32_bits(f32(z2));
+            z3:=f64_from_bits(fb+0x30000000);#assert f32_bits(a8_narrow(z3))==f32_bits(f32(z3));
+        }
+    }
+    edge:=[8]f64.[3.4028234663852886e38,3.4028234e38,3.0e38,1.1754942807573643e-38,1.1754943508222875e-38,1.1754942e-38,-3.4028235e38,0];
+    for y:edge {#assert f32_bits(a8_narrow(y))==f32_bits(f32(y));}
+}
+#test "every knob writes every output within one f32 step of the f64 norm" {
+    for width:1..<120 {
+        if width>9 && width!=37 && width!=111 {continue;}
+        rows:=3;x:[1000]f32;scale:[300]f32;
+        for i:0..<rows*width {x[i]=f32((i*7)%23-11)*0.37;}
+        x[1]=0;x[2]=3.0e38;x[rows*width-1]=1.0e-44;
+        for i:0..<width {scale[i]=f32(i%5)/4-0.5;}
+        k:[64]int;a8_knobs(0,k[..]);
+        for knob:k {
+            if knob<0 {break;}
+            out:[1000]f32;work:[3500]f64;for i:0..<1000 {out[i]=-99;}
+            a8_t_run(knob,rows,width,0.000001,x[..],scale[..],work[..],out[..]);
+            for r:0..<rows {
+                s:f64=0;for i:0..<width {v:=f64(x[r*width+i]);s+=v*v;}
+                d:=sqrt(s/f64(width)+f64(f32(0.000001)));
+                for i:0..<width {
+                    ref:=f64(x[r*width+i])/d*(1+f64(scale[i]));
+                    #assert abs(f64(out[r*width+i])-ref)<=abs(ref)*0.00000012+1e-45;
+                }
+            }
+        }
+    }
+}

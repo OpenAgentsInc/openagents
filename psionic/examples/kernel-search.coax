@@ -1,0 +1,169 @@
+#load "../lib/kernel-search.coax";
+#load "../lib/device/norm-search.coax";
+#load "../kernels/norm/agent/a8.coax";
+#load "../fixtures/kernel-search-l4.coax";
+
+BLOCKS :: [6]int.[32,64,128,256,512,1024];
+TRIALS :: 11;
+CASE_NAMES :: [10]string.["the workload","a decode row","Mammoth's width 5120","width 1000","width 4097","width 1",
+    "width 17","extreme values","zero rows","one huge value among tiny ones"];
+r2 :: (v:f64)->f64 {return floor(v*100+0.5)/100;}
+us :: (seconds:f64)->f64 {return r2(seconds*1e6);}
+
+// book:begin live
+// One implementation over every case on this CPU: pass 0's items, then pass
+// 1's, in order, then chapter 188's contract.
+Impl :: enum u8 {ch30;tuned;winner;}
+Live :: struct {passed:int;failed:[10]bool;}
+live :: (impl:Impl,knob:int,x:[]f32,scale:[]f32,out:[]f32,work:[]f64)->Live {
+    l:Live;
+    for c:0..<KS_CASES {
+        sh:=ks_shape(c);n:=sh.rows*sh.width;
+        ks_fill(c,x[0..<n],scale[0..<sh.width]);
+        for i:0..<n {out[i]=f32_from_bits(KS_UNWRITTEN);}
+        plan:[3]int;
+        if impl==Impl.ch30 {n30_plan(0,sh.rows,sh.width,knob,plan[..]);}
+        else if impl==Impl.tuned {nt_plan(0,sh.rows,sh.width,knob,plan[..]);}
+        else {a8_plan(0,sh.rows,sh.width,knob,plan[..]);}
+        xv:=x[0..<n];sv:=scale[0..<sh.width];ov:=out[0..<n];wv:=work[0..<plan[2]];
+        for p:0..<2 {
+            for i:0..<plan[p] {
+                if impl==Impl.ch30 {
+                    if p==0 {n30_pass0(i,sh.rows,sh.width,knob,KS_EPSILON,xv,sv,wv,ov);} else {n30_pass1(i,sh.rows,sh.width,knob,KS_EPSILON,xv,sv,wv,ov);}
+                } else if impl==Impl.tuned {
+                    if p==0 {nt_pass0(i,sh.rows,sh.width,knob,KS_EPSILON,xv,sv,wv,ov);} else {nt_pass1(i,sh.rows,sh.width,knob,KS_EPSILON,xv,sv,wv,ov);}
+                } else {
+                    if p==0 {a8_pass0(i,sh.rows,sh.width,knob,KS_EPSILON,xv,sv,wv,ov);} else {a8_pass1(i,sh.rows,sh.width,knob,KS_EPSILON,xv,sv,wv,ov);}
+                }
+            }
+        }
+        k:=ks_check(c,xv,sv,ov);
+        if k.wrong==0 && k.unwritten==0 {l.passed+=1;} else {l.failed[c]=true;}
+    }
+    return l;
+}
+// book:end live
+
+// book:begin ledger
+// A knob passed when every case was ok on the CPU and on the L4. Chapter
+// 30's kernels are held only to their own declared widths, multiples of 16.
+passed :: (kk:int,declared:bool)->bool {
+    for c:0..<KS_CASES {
+        if declared && ks_shape(c).width%16!=0 {continue;}
+        if KK_CPU[kk*KS_CASES+c]!=1 || KK_DEVICE[kk*KS_CASES+c]!=1 {return false;}
+    }
+    return true;
+}
+timing :: (kk:int,b:int)->KsTiming {
+    t:[TRIALS]f64;at:=(kk*BLOCKS.count+b)*TRIALS;
+    if KK_TRIALS[at]==0 {return KsTiming.{};}
+    for j:0..<TRIALS {t[j]=KK_TRIALS[at+j];}
+    return ks_timing(t[..]);
+}
+// Every configuration an evaluation measured, as the tuner sees them.
+Measured :: struct {configs:[KS_TRIALS_MAX*6]KsConfig;kk:[KS_TRIALS_MAX*6]int;count:int;knobs:int;passing:int;}
+measured :: (run:int,declared:bool)->Measured {
+    m:Measured;
+    for kk:0..<KK_COUNT {
+        if KK_RUN[kk]!=run {continue;}
+        m.knobs+=1;ok:=passed(kk,declared);
+        if ok {m.passing+=1;}
+        for b:0..<BLOCKS.count {
+            t:=timing(kk,b);
+            if t.count==0 {continue;}
+            m.configs[m.count]=KsConfig.{knob=KK_KNOB[kk],block=BLOCKS[b],passed=ok,timing=t};m.kk[m.count]=kk;m.count+=1;
+        }
+    }
+    return m;
+}
+AGENT_DIR :: "psionic/kernels/norm/agent/";
+agent_file :: (s:string)->bool {
+    if s.count<AGENT_DIR.count {return false;}
+    for i:0..<AGENT_DIR.count {if byte_at(s,i)!=byte_at(AGENT_DIR,i) {return false;}}
+    return true;
+}
+latest :: (prefix:string)->int {
+    last:=-1;
+    for r:0..<KR_COUNT {if KR_PREFIX[r]==prefix {last=r;}}
+    return last;
+}
+// book:end ledger
+
+show :: (what:string,c:KsConfig) {
+    print("%: knob %, block %: % us (% to % over % trials)",what,c.knob,c.block,us(c.timing.median),us(c.timing.low),us(c.timing.high),c.timing.count);
+}
+// The tuner's knobs in words.
+describe :: (knob:int) {
+    if knob==0 {print(" (one item a row, both passes fused)");return;}
+    print(" (% % chunks, % outputs an item)",knob/100,ifx knob%10==1 then "strided" else "contiguous",(knob/10)%10);
+}
+pass_split :: (m:Measured,i:int) {
+    kk:=m.kk[i];print("; pass 0 % us, pass 1 % us at block %\n",us(KK_PASS[kk*3+1]),us(KK_PASS[kk*3+2]),cast(int)KK_PASS[kk*3]);
+}
+
+// book:begin example
+main :: () {
+    print("workload: Elephant's offset RMS norm over chapter 10's 86-token sample, 86 x 4096, epsilon 1e-6\n");
+    print("contract: squares added in f64 in any order, the rest in f64, one rounding to f32;\n");
+    print("  each output must be one of the two f32 values next to the f64 norm\n");
+    print("held out from the agent:");
+    for c:1..<KS_CASES {print("%",ifx c==1 then " " else ", ");print("%",CASE_NAMES[c]);}
+    print("\n\non this CPU, now, every case:\n");
+    x:[352256]f32;scale:[5120]f32;out:[352256]f32;work:[88064]f64;
+    impls:=[3]Impl.[Impl.ch30,Impl.tuned,Impl.winner];knobs:=[3]int.[0,3240,64160];
+    names:=[3]string.["chapter 30 (n30)","the tuner's choice (nt 3240)","the agent's winner (a8 64160)"];
+    for i:0..<3 {
+        l:=live(impls[i],knobs[i],x[..],scale[..],out[..],work[..]);
+        print("  %: % of % cases",names[i],l.passed,KS_CASES);
+        first:=true;
+        for c:0..<KS_CASES {if l.failed[c] {print("%",ifx first then "; wrong on " else ", ");print("%",CASE_NAMES[c]);first=false;}}
+        print("\n");
+    }
+
+    base:=latest("n30");tuner:=latest("nt");
+    print("\non the L4 (%), from the ledger of % evaluations:\n",KR_GPU[base],KR_COUNT);
+    b:=measured(base,true);bi:=ks_best(b.configs[0..<b.count]);
+    print("  chapter 30, evaluation %, on its declared widths: ",base+1);show("best",b.configs[bi]);pass_split(b,bi);
+    t:=measured(tuner,false);ti:=ks_best(t.configs[0..<t.count]);best:=t.configs[ti];
+    print("  the tuner, evaluation %: % knobs x % blocks = % configurations, % knobs passing every case on both\n",
+        tuner+1,t.knobs,BLOCKS.count,t.count,t.passing);
+    print("    ");show("best",best);describe(best.knob);print(", % x chapter 30",r2(b.configs[bi].timing.median/best.timing.median));pass_split(t,ti);
+    slow:=0;
+    for c,i:t.configs {if c.timing.median>t.configs[slow].timing.median {slow=i;}}
+    print("    ");show("slowest",t.configs[slow]);describe(t.configs[slow].knob);print("\n");
+
+    budgeted:=0;
+    for r:0..<KR_COUNT {if agent_file(KR_FILE[r]) && !KR_CONFIRM[r] {budgeted+=1;}}
+    print("  the agent: % budgeted evaluations, failures included\n",budgeted);
+    winner:=-1;wbest:KsConfig;
+    for r:0..<KR_COUNT {
+        if !agent_file(KR_FILE[r]) || KR_CONFIRM[r] {continue;}
+        m:=measured(r,false);print("    %, evaluation %: % knobs",KR_PREFIX[r],r+1,m.knobs);
+        if KR_NOTE[r].count>0 {
+            last:=0;
+            for c:m.configs[0..<m.count] {if c.knob==m.configs[0].knob {last+=1;}}
+            print(", stopped at block %: %\n",BLOCKS[last],KR_NOTE[r]);continue;
+        }
+        i:=ks_best(m.configs[0..<m.count]);c:=m.configs[i];
+        print(", % passing; ",m.passing);show("best",c);
+        print(", % than the tuner\n",ifx ks_faster(c.timing,best.timing) then "faster" else "not faster");
+        if ks_faster(c.timing,best.timing) && (winner<0 || c.timing.median<wbest.timing.median) {winner=r;wbest=c;}
+    }
+    confirm:=latest(KR_PREFIX[winner]);
+    m:=measured(confirm,false);ci:=-1;
+    for c,i:m.configs[0..<m.count] {if c.knob==wbest.knob && c.block==wbest.block {ci=i;}}
+    c:=m.configs[ci];
+    print("  winner: %, re-measured in evaluation %, beside evaluations % and %:\n",KR_PREFIX[winner],confirm+1,tuner+1,base+1);
+    print("    ");show("same",c);print(", % x the tuner, % x chapter 30",r2(best.timing.median/c.timing.median),r2(b.configs[bi].timing.median/c.timing.median));
+    pass_split(m,ci);
+    print("    % GB/s effective for the 4.23 MB a call must move (x read twice, out written)\n",
+        cast(int)floor(3*352256*4/c.timing.median/1e9+0.5));
+    print("    source %\n    sha256 %, at commit %\n",KR_FILE[confirm],KR_SHA[confirm],KR_COMMIT[confirm]);
+    total:=0;agent:=0;
+    for r:0..<KR_COUNT {
+        total+=KR_SECONDS[r];
+        if agent_file(KR_FILE[r]) && !KR_CONFIRM[r] {agent+=KR_SECONDS[r];}
+    }
+    print("  evaluator time, admission to last trial: % s in all, % s of it the agent's %\n",total,agent,budgeted);
+}
+// book:end example
