@@ -1,0 +1,199 @@
+// Fixed local backend recovery. Readiness is an observation, never model admission.
+#load "fleet-watch.coax";
+#load "../../../coax/lib/nostr/json.coax";
+#authority;
+BwState :: struct {present:bool;unit:int;boot:string;invocation:string;started:int;seen:int;last:int;failures:int;}
+BwObs :: struct {unit:int;now:int;mono:int;start:int;end:int;boot:string;invocation:string;started:int;loaded:string;health:int;}
+BwDecision :: struct {valid:bool;restart:bool;reason:int;state:BwState;}
+BwField :: struct {ok:bool;kind:int;value:string;}
+BW_BOOT :: "11111111-2222-3333-4444-555555555555";
+BW_INV :: "0123456789abcdef0123456789abcdef";
+#test "only the three exact backend units and loopback ports are described" {
+ #assert bw_unit(0)=="psionic-elephant-rtx.service" && bw_port(0)==8796;
+ #assert bw_unit(1)=="psionic-mammoth.service" && bw_port(1)==8797;
+ #assert bw_unit(2)=="psionic-gptoss20b.service" && bw_port(2)==8795;
+ for bad:[3]int.[-1,3,100] {#assert bw_unit(bad)=="" && bw_port(bad)==0;}
+}
+#test "readiness follows actual schemas and known busy is not a failure" {
+ for unit:0..<2 {
+  #assert bw_health(unit,"200","{\"schema\":\"psionic-health-v1\",\"ready\":true}")==1;
+  #assert bw_health(unit,"503","{\"schema\":\"psionic-health-v1\",\"ready\":false}")==0;
+  #assert bw_health(unit,"200","{\"schema\":\"wrong\",\"ready\":true}")==3;
+  #assert bw_health(unit,"200","{\"schema\":\"psionic-health-v1\",\"ready\":true,\"ready\":false}")==3;
+ }
+ #assert bw_health(2,"200","{\"status\":\"ok\"}")==1;
+ #assert bw_health(2,"503","{\"status\":\"unavailable\"}")==0;
+ #assert bw_health(2,"200","{\"status\":true}")==3;
+ for unit:0..<3 {#assert bw_health(unit,"429","{}")==2;#assert bw_health(unit,"000","")==0;#assert bw_health(unit,"401","{}")==3;#assert bw_health(unit,"404","{}")==3;#assert bw_health(unit,"200","{}")==3;}
+ #assert bw_health(3,"200","{\"status\":\"ok\"}")==3;
+}
+#test "three failures spaced two minutes after fifteen minutes may restart once" {
+ o:=BwObs.{unit=0,now=100,mono=1000,start=100,end=21700,boot=BW_BOOT,invocation=BW_INV,started=100000000,loaded="loaded",health=0};
+ a:=bw_step(o,BwState.{});#assert a.valid && !a.restart && a.reason==4 && a.state.failures==1 && a.state.last==1000 && a.state.seen==1000 && a.state.present && a.state.unit==0 && a.state.boot==BW_BOOT && a.state.invocation==BW_INV && a.state.started==100000000;
+ o.mono=1119;b:=bw_step(o,a.state);#assert b.valid && !b.restart && b.reason==3 && b.state.failures==1 && b.state.last==1000;
+ o.mono=1120;b=bw_step(o,a.state);#assert b.valid && !b.restart && b.state.failures==2 && b.state.last==1120;
+ o.mono=1240;c:=bw_step(o,b.state);#assert c.valid && c.restart && c.reason==5 && c.state.failures==0 && c.state.last==1240;
+ o.mono=1241;d:=bw_step(o,c.state);#assert !d.restart && d.state.failures==0 && d.state.last==1240;
+}
+#test "healthy busy and unknown observations break a failure streak even before spacing" {
+ o:=BwObs.{unit=2,now=100,mono=1000,start=100,end=21700,boot=BW_BOOT,invocation=BW_INV,started=100000000,loaded="loaded",health=0};
+ s:=bw_step(o,BwState.{}).state;o.mono=1120;s=bw_step(o,s).state;
+ for health:1..<4 {o.health=health;o.mono=1121;r:=bw_step(o,s);#assert r.valid && !r.restart && r.state.failures==0 && r.state.last==1121 && r.reason==health-1;}
+}
+#test "warmup and process or boot changes never inherit a previous failure streak" {
+ o:=BwObs.{unit=1,now=100,mono=999,start=100,end=21700,boot=BW_BOOT,invocation=BW_INV,started=100000000,loaded="loaded",health=0};
+ a:=bw_step(o,BwState.{});#assert a.valid && !a.restart && a.reason==2 && a.state.failures==0;
+ o.mono=1000;s:=bw_step(o,BwState.{}).state;o.mono=1120;s=bw_step(o,s).state;
+ o.invocation="ffffffffffffffffffffffffffffffff";o.started=1120000000;r:=bw_step(o,s);#assert r.valid && !r.restart && r.state.failures==0 && r.state.seen==1120;
+ o.invocation=BW_INV;o.started=100000000;o.boot="ffffffff-ffff-ffff-ffff-ffffffffffff";o.mono=110;r=bw_step(o,s);#assert r.valid && !r.restart && r.state.failures==0 && r.state.seen==110;
+ o.boot=BW_BOOT;o.invocation="";o.started=0;o.mono=1;a=bw_step(o,BwState.{});#assert a.valid && a.reason==2;o.mono=900;a=bw_step(o,a.state);#assert a.reason==2;o.mono=901;r=bw_step(o,a.state);#assert r.reason==3;
+}
+#test "time windows target metadata and corrupt held state fail closed" {
+ o:=BwObs.{unit=0,now=100,mono=1000,start=100,end=21700,boot=BW_BOOT,invocation=BW_INV,started=100000000,loaded="loaded",health=0};
+ for bad:[3]int.[99,21700,21701] {o.now=bad;#assert !bw_step(o,BwState.{}).valid;}o.now=100;
+ o.end=21699;#assert !bw_step(o,BwState.{}).valid;o.end=21700;
+ o.unit=3;#assert !bw_step(o,BwState.{}).valid;o.unit=-1;#assert !bw_step(o,BwState.{}).valid;o.unit=0;
+ o.loaded="not-found";#assert !bw_step(o,BwState.{}).valid;o.loaded="loaded";
+ o.mono=-1;#assert !bw_step(o,BwState.{}).valid;o.mono=1000;
+ o.started=-1;#assert !bw_step(o,BwState.{}).valid;o.started=1001000000;#assert !bw_step(o,BwState.{}).valid;o.started=100000000;
+ o.health=-1;#assert !bw_step(o,BwState.{}).valid;o.health=4;#assert !bw_step(o,BwState.{}).valid;o.health=0;
+ s:=bw_step(o,BwState.{}).state;s.unit=1;#assert !bw_step(o,s).valid;s.unit=0;s.failures=3;#assert !bw_step(o,s).valid;s.failures=-1;#assert !bw_step(o,s).valid;s.failures=0;s.seen=-1;#assert !bw_step(o,s).valid;s.seen=1001;#assert !bw_step(o,s).valid;s.seen=1000;s.last=1001;#assert !bw_step(o,s).valid;s.last=-1;#assert !bw_step(o,s).valid;
+}
+#test "process and boot marks have exact formats" {
+ #assert bw_mark(BW_BOOT,true) && bw_mark(BW_INV,false);
+ for bad:[8]string.["","x","g123456789abcdef0123456789abcdef","/123456789abcdef0123456789abcdef",":123456789abcdef0123456789abcdef","`123456789abcdef0123456789abcdef","0123456789abcdef0123456789abcde","0123456789abcdef0123456789abcdef0"] {#assert !bw_mark(bad,false);}
+ #assert !bw_mark("11111111_2222-3333-4444-555555555555",true);
+}
+bw_unit :: (unit:int)->string #export_c {
+ if unit==0 {return "psionic-elephant-rtx.service";}if unit==1 {return "psionic-mammoth.service";}if unit==2 {return "psionic-gptoss20b.service";}return "";
+}
+bw_port :: (unit:int)->int #export_c {if unit==0 {return 8796;}if unit==1 {return 8797;}if unit==2 {return 8795;}return 0;}
+bw_mark :: (s:string,uuid:bool)->bool {
+ if s.count!=(ifx uuid then 36 else 32) {return false;}
+ for i:0..<s.count {c:=s[i];if uuid && (i==8 || i==13 || i==18 || i==23) {if c!='-' {return false;}}else if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+ return true;
+}
+// 0 explicit unready/unreachable, 1 ready, 2 busy, 3 indeterminate.
+bw_health :: (unit:int,http:string,body:string)->int #export_c {
+ if unit<0 || unit>2 {return 3;}if http=="429" {return 2;}if http=="000" || http=="503" {return 0;}if http!="200" || body.count>4096 {return 3;}
+ if unit==2 {f:=bw_field(body,"status");return ifx f.kind==JSON_STRING && json_is(f.value,"ok") then 1 else 3;}
+ schema:=bw_field(body,"schema");ready:=bw_field(body,"ready");
+ return ifx schema.kind==JSON_STRING && json_is(schema.value,"psionic-health-v1") && ready.kind==JSON_TRUE then 1 else 3;
+}
+bw_field :: (text:string,name:string)->BwField {
+ if text.count>8192 || !json_valid(text) {return BwField.{};}
+ j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return BwField.{};}f:BwField;
+ while true {t:=json_next(j[..]);if t==JSON_OBJECT_END {return f;}
+  match:=json_is(json_text(j[..]),name);t=json_next(j[..]);from:=j[0].from;to:=j[0].to;ignored:=json_skip(j[..]);
+  if match {if f.ok {return BwField.{};}f=BwField.{ok=true,kind=t,value=ifx t==JSON_STRING then text[from..<to] else text[from..<j[0].at]};}
+ }
+ return BwField.{};
+}
+bw_step :: (o:BwObs,s:BwState)->BwDecision {
+ bad:=BwDecision.{};
+ if o.unit<0 || o.unit>2 || fw_window(o.now,o.start,o.end)!=0 || o.mono<0 || o.started<0 || o.started/1000000>o.mono || o.loaded!="loaded" || o.health<0 || o.health>3 || !bw_mark(o.boot,true) || (o.invocation!="" && !bw_mark(o.invocation,false)) {return bad;}
+ if s.present && (s.unit!=o.unit || !bw_mark(s.boot,true) || (s.invocation!="" && !bw_mark(s.invocation,false)) || s.started<0 || s.seen<0 || s.last<0 || s.seen>s.last || s.failures<0 || s.failures>2) {return bad;}
+ changed:= !s.present || s.boot!=o.boot || s.invocation!=o.invocation || s.started!=o.started;
+ if !changed && o.mono<s.last {return bad;}
+ n:=s;if changed {n=BwState.{present=true,unit=o.unit,boot=o.boot,invocation=o.invocation,started=o.started,seen=o.mono};}n.last=o.mono;
+ r:=BwDecision.{valid=true,state=n};
+ if o.health>0 {r.state.failures=0;r.reason=o.health-1;return r;}
+ age:=ifx o.started>0 then o.mono-o.started/1000000 else o.mono-n.seen;
+ if age<900 {r.state.failures=0;r.reason=2;return r;}
+ if !changed && o.mono-s.last<120 {r.state=s;r.reason=3;return r;}
+ r.state.failures+=1;r.reason=4;
+ if r.state.failures>=3 {r.restart=true;r.state.failures=0;r.reason=5;}
+ return r;
+}
+#test "flat health and state fields refuse duplicates and preserve nested skips" {
+ #assert !bw_field("[]","x").ok && !bw_field("{bad}","x").ok;
+ #assert !bw_field("{\"x\":1,\"x\":2}","x").ok;
+ #assert bw_field("{\"other\":[{}],\"x\":1}","x").value=="1";
+ #assert bw_field("{\"other\":[{}],\"\\u0078\":true}","x").kind==JSON_TRUE;
+ #assert bw_field("{\"x\":{\"n\":2}}","x").value=="{\"n\":2}";
+}
+#test "window strings and state codec are explicit and bounded" {
+ #assert bw_window_raw("100","100","21700") && !bw_window_raw("99","100","21700") && !bw_window_raw("21700","100","21700");
+ #assert !bw_window_raw("x","100","21700") && !bw_window_raw("100","x","21700") && !bw_window_raw("100","100","x");
+ out:[4096]u8;#assert bw_describe("0",out[..])>0 && bw_describe("1",out[..])>0 && bw_describe("2",out[..])>0;
+ #assert bw_describe("3",out[..])==-1 && bw_describe("x",out[..])==-1 && bw_describe("0",out[0..<1])==-1;
+ s:=BwState.{present=true,unit=2,boot=BW_BOOT,invocation=BW_INV,started=100000000,seen=1000,last=1120,failures=2};
+ n:=bw_state_write(s,out[..]);#assert n>0 && json_valid(cast(string)out[0..<n]);
+ held:[1]BwState;#assert bw_read_state(cast(string)out[0..<n],held[..]);
+ #assert held[0].present && held[0].unit==2 && held[0].boot==BW_BOOT && held[0].invocation==BW_INV && held[0].started==100000000 && held[0].seen==1000 && held[0].last==1120 && held[0].failures==2;
+ #assert bw_state_write(s,out[0..<1])==-1 && !bw_read_state("{}",held[..]) && !bw_read_state("null",held[..]);
+ #assert bw_read_state("",held[..]) && !held[0].present;
+}
+bw_window_raw :: (now:string,start:string,end:string)->bool #export_c {
+ a:=json_int(now);b:=json_int(start);c:=json_int(end);return fw_window(a.value,b.value,c.value)==0;
+}
+bw_describe :: (raw:string,out:[]u8)->int #export_c {
+ u:=json_int(raw);if !u.ok || bw_unit(u.value)=="" {return -1;}
+ n:=json_raw(out,0,"{\"unit\":");n=json_write_string(out,n,bw_unit(u.value));n=json_raw(out,n,",\"port\":");n=json_write_int(out,n,bw_port(u.value));return json_raw(out,n,"}");
+}
+bw_num :: (text:string,name:string)->JsonInt {f:=bw_field(text,name);if f.kind!=JSON_NUMBER {return JsonInt.{};}return json_int(f.value);}
+bw_read_state :: (text:string,out:[]BwState)->bool {
+ if out.count<1 {return false;}out[0]=BwState.{};if text=="" {return true;}
+ v:=bw_num(text,"v");u:=bw_num(text,"unit");a:=bw_num(text,"started");b:=bw_num(text,"seen");c:=bw_num(text,"last");d:=bw_num(text,"failures");boot:=bw_field(text,"boot");inv:=bw_field(text,"invocation");
+ if v.value!=1 || !u.ok || !a.ok || !b.ok || !c.ok || !d.ok || boot.kind!=JSON_STRING || inv.kind!=JSON_STRING {return false;}
+ out[0]=BwState.{present=true,unit=u.value,boot=boot.value,invocation=inv.value,started=a.value,seen=b.value,last=c.value,failures=d.value};return true;
+}
+bw_state_write :: (s:BwState,out:[]u8)->int {
+ n:=json_raw(out,0,"{\"v\":1,\"unit\":");n=json_write_int(out,n,s.unit);n=json_raw(out,n,",\"boot\":");n=json_write_string(out,n,s.boot);
+ n=json_raw(out,n,",\"invocation\":");n=json_write_string(out,n,s.invocation);n=json_raw(out,n,",\"started\":");n=json_write_int(out,n,s.started);
+ n=json_raw(out,n,",\"seen\":");n=json_write_int(out,n,s.seen);n=json_raw(out,n,",\"last\":");n=json_write_int(out,n,s.last);n=json_raw(out,n,",\"failures\":");n=json_write_int(out,n,s.failures);return json_raw(out,n,"}");
+}
+// args: unit, wall seconds, monotonic seconds, start, end, boot ID,
+// invocation ID, process start monotonic microseconds, LoadState, HTTP status.
+bw_run :: (args:[]string,body:string,prior:string,out:[]u8)->int #export_c {
+ if args.count!=10 {return -1;}unit:=json_int(args[0]);wall:=json_int(args[1]);mono:=json_int(args[2]);start:=json_int(args[3]);end:=json_int(args[4]);started:=json_int(args[7]);
+ if !unit.ok || !wall.ok || !mono.ok || !start.ok || !end.ok || !started.ok {return -1;}
+ held:[1]BwState;if !bw_read_state(prior,held[..]) {return -1;}
+ o:=BwObs.{unit=unit.value,now=wall.value,mono=mono.value,start=start.value,end=end.value,boot=args[5],invocation=args[6],started=started.value,loaded=args[8],health=bw_health(unit.value,args[9],body)};
+ r:=bw_step(o,held[0]);state:[4096]u8;size:=bw_state_write(r.state,state[..]); // Fixed marks plus eight bounded scalars fit this 4 KiB scratch span.
+ n:=json_raw(out,0,"{\"valid\":");n=json_raw(out,n,ifx r.valid then "true" else "false");n=json_raw(out,n,",\"restart\":");n=json_raw(out,n,ifx r.restart then "true" else "false");
+ n=json_raw(out,n,",\"unit\":");n=json_write_string(out,n,bw_unit(o.unit));n=json_raw(out,n,",\"reason\":");n=json_write_int(out,n,r.reason);n=json_raw(out,n,",\"state\":");n=json_raw(out,n,cast(string)state[0..<size]);return json_raw(out,n,"}");
+}
+#test "the native boundary decodes complete observations and refuses malformed storage" {
+ args:=[10]string.["0","100","1000","100","21700",BW_BOOT,BW_INV,"100000000","loaded","503"];
+ out:[8192]u8;n:=bw_run(args[..],"{}","",out[..]);#assert n>0 && json_valid(cast(string)out[0..<n]);
+ text:=cast(string)out[0..<n];#assert bw_field(text,"valid").kind==JSON_TRUE && bw_field(text,"restart").kind==JSON_FALSE && bw_field(text,"unit").value=="psionic-elephant-rtx.service" && bw_num(text,"reason").value==4;
+ state:=bw_field(text,"state").value;second:[8192]u8;args[2]="1120";n=bw_run(args[..],"{}",state,second[..]);#assert n>0;
+ held:=bw_field(cast(string)second[0..<n],"state").value;args[2]="1240";third:[8192]u8;n=bw_run(args[..],"{}",held,third[..]);#assert n>0 && bw_field(cast(string)third[0..<n],"restart").kind==JSON_TRUE;
+ #assert bw_run(args[0..<9],"{}","",out[..])==-1 && bw_run(args[..],"{}","{}",out[..])==-1 && bw_run(args[..],"{}","",out[0..<1])==-1;
+ for i:[6]int.[0,1,2,3,4,7] {old:=args[i];args[i]="x";#assert bw_run(args[..],"{}","",out[..])==-1;args[i]=old;}
+ args[0]="3";n=bw_run(args[..],"{}","",out[..]);#assert n>0 && bw_field(cast(string)out[0..<n],"valid").kind==JSON_FALSE;
+ held_state:[1]BwState;#assert !bw_read_state("",held_state[0..<0]);
+}
+#test "large input and malformed persistent fields never become a restart" {
+ big:[8193]u8;for i:0..<big.count {big[i]=32;}n:=json_raw(big[..],0,"{\"schema\":\"psionic-health-v1\",\"ready\":true}");#assert n>0;
+ #assert bw_health(0,"200",cast(string)big[0..<4096])==1 && bw_health(0,"200",cast(string)big[0..<4097])==3;
+ #assert bw_field(cast(string)big[0..<8192],"ready").ok && !bw_field(cast(string)big[..],"ready").ok;
+ o:=BwObs.{unit=0,now=100,mono=1000,start=100,end=21700,boot=BW_BOOT,invocation=BW_INV,started=100000000,loaded="loaded",health=0};
+ o.boot="";#assert !bw_step(o,BwState.{}).valid;o.boot=BW_BOOT;o.invocation="bad";#assert !bw_step(o,BwState.{}).valid;o.invocation=BW_INV;
+ s:=bw_step(o,BwState.{}).state;s.boot="";#assert !bw_step(o,s).valid;s.boot=BW_BOOT;s.invocation="bad";#assert !bw_step(o,s).valid;s.invocation=BW_INV;s.started=-1;#assert !bw_step(o,s).valid;s.started=100000000;
+ s.seen=999;s.last=998;#assert !bw_step(o,s).valid;s.seen=1000;s.last=1120;s.failures=2;
+ o.boot="ffffffff-ffff-ffff-ffff-ffffffffffff";r:=bw_step(o,s);#assert r.valid && r.state.boot==o.boot && r.state.failures==1 && r.state.last==1000;
+ held:[1]BwState;
+ for malformed:[9]string.["{\"v\":2}","{\"v\":\"1\"}","{\"v\":1,\"unit\":\"0\"}","{\"v\":1,\"unit\":0,\"started\":\"1\"}","{\"v\":1,\"unit\":0,\"started\":1,\"seen\":\"1\"}","{\"v\":1,\"unit\":0,\"started\":1,\"seen\":1,\"last\":\"1\"}","{\"v\":1,\"unit\":0,\"started\":1,\"seen\":1,\"last\":1,\"failures\":\"1\"}","{\"v\":1,\"unit\":0,\"started\":1,\"seen\":1,\"last\":1,\"failures\":1,\"boot\":true,\"invocation\":\"\"}","{\"v\":1,\"unit\":0,\"started\":1,\"seen\":1,\"last\":1,\"failures\":1,\"boot\":\"\",\"invocation\":true}"] {#assert !bw_read_state(malformed,held[..]);}
+}
+#test "zero monotonic values repeated samples and a one-microsecond birth are valid" {
+ o:=BwObs.{unit=0,now=100,mono=0,start=100,end=21700,boot=BW_BOOT,invocation="",started=0,loaded="loaded",health=0};
+ r:=bw_step(o,BwState.{});#assert r.valid && r.state.seen==0 && r.state.last==0 && r.state.failures==0;
+ r=bw_step(o,r.state);#assert r.valid && r.reason==2;
+ o.invocation=BW_INV;o.mono=900;o.started=1;r=bw_step(o,BwState.{});#assert r.valid && r.state.failures==1 && r.reason==4;
+ r=bw_step(o,r.state);#assert r.valid && r.reason==3 && r.state.failures==1;
+ o.mono=999;o.started=100000000;s:=BwState.{present=true,unit=0,boot=BW_BOOT,invocation=BW_INV,started=100000000,seen=500,last=500,failures=2};r=bw_step(o,s);#assert r.valid && r.state.failures==0 && r.reason==2;
+}
+#test "registry JSON and each persistent field have independent contracts" {
+ out:[4096]u8;
+ for i:0..<3 {raw:[2]u8;n:=json_write_int(raw[..],0,i);z:=bw_describe(cast(string)raw[0..<n],out[..]);#assert z>0 && json_valid(cast(string)out[0..<z]);#assert bw_field(cast(string)out[0..<z],"unit").value==bw_unit(i) && bw_num(cast(string)out[0..<z],"port").value==bw_port(i);}
+ #assert bw_health(-1,"429","{}")==3 && bw_health(3,"429","{}")==3;
+ #assert bw_health(2,"200","{\"status\":\"unavailable\"}")==3 && bw_health(0,"200","{\"schema\":\"psionic-health-v1\",\"ready\":false}")==3;
+ s:=BwState.{present=true,unit=0,boot=BW_BOOT,invocation=BW_INV,started=100000000,seen=1000,last=1120,failures=2};n:=bw_state_write(s,out[..]);source:=cast(string)out[0..<n];
+ from:=[9]string.["\"v\":1","\"v\":1","\"unit\":0","\"started\":100000000","\"seen\":1000","\"last\":1120","\"failures\":2","\"boot\":\"11111111-2222-3333-4444-555555555555\"","\"invocation\":\"0123456789abcdef0123456789abcdef\""];
+ to:=[9]string.["\"v\":2","\"v\":\"1\"","\"unit\":\"0\"","\"started\":\"1\"","\"seen\":\"1\"","\"last\":\"1\"","\"failures\":\"1\"","\"boot\":true","\"invocation\":true"];
+ for i:0..<from.count {at:= -1;for j:0..<source.count {if j+from[i].count<=source.count && source[j..<j+from[i].count]==from[i] {at=j;break;}}#assert at>=0;
+  changed:[4096]u8;z:=json_raw(changed[..],0,source[0..<at]);z=json_raw(changed[..],z,to[i]);z=json_raw(changed[..],z,source[at+from[i].count..<source.count]);held:[1]BwState;#assert z>0 && !bw_read_state(cast(string)changed[0..<z],held[..]);
+ }
+}

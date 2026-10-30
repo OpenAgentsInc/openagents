@@ -1,0 +1,12 @@
+# OpenAgents fixed local backend readiness watch
+[Unit]
+Description=Check only the three OpenAgents local backends every two minutes
+
+[Timer]
+OnBootSec=60s
+OnUnitActiveSec=120s
+AccuracySec=1s
+Unit=openagents-backend-watch.service
+
+[Install]
+WantedBy=timers.target

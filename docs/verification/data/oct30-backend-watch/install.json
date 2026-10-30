@@ -1,0 +1,23 @@
+{
+  "checked_at": "2026-10-30T21:20:49Z",
+  "vm": "psionic-rtx6000-pylon",
+  "zone": "us-central1-b",
+  "start": 1793394583,
+  "end": 1793416183,
+  "timer_active": "active",
+  "timer_enabled": "enabled",
+  "next": "3h 5min 23.512120s",
+  "exec_status": "0",
+  "binary_sha256": "242fb74107170ba01fc6abbf2e01dd2776a0556420b700f01fd3395718605fc9",
+  "before": {
+    "elephant": "9d81075230434ad5915ee8f42f4928b8",
+    "mammoth": "ff7c765c70dc42fbaeefded436e94a0b",
+    "gptoss": "9f9298ade5224e15a4ae23a2d87afa93"
+  },
+  "after": {
+    "elephant": "9d81075230434ad5915ee8f42f4928b8",
+    "mammoth": "ff7c765c70dc42fbaeefded436e94a0b",
+    "gptoss": "9f9298ade5224e15a4ae23a2d87afa93"
+  },
+  "healthy_backends_unchanged": true
+}

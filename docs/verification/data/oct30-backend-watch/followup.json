@@ -1,0 +1,135 @@
+{
+  "checked_at": "2026-10-30T21:25:37Z",
+  "timer_active": "active",
+  "timer_enabled": "enabled",
+  "last_trigger": "Fri 2026-10-30 21:24:50 UTC",
+  "next": "3h 9min 24.855166s",
+  "current_backend_invocations": {
+    "elephant": "9d81075230434ad5915ee8f42f4928b8",
+    "mammoth": "ff7c765c70dc42fbaeefded436e94a0b",
+    "gptoss": "9f9298ade5224e15a4ae23a2d87afa93"
+  },
+  "unchanged_since_install": true,
+  "automatic_observations": [
+    {
+      "time": "1793395369599972",
+      "watch_invocation": "3432a8bd242149abab411d5efb354360",
+      "observation": {
+        "valid": true,
+        "restart": false,
+        "unit": "psionic-elephant-rtx.service",
+        "reason": 0,
+        "state": {
+          "v": 1,
+          "unit": 0,
+          "boot": "4db51349-a3d7-4ed1-b76c-df4ad9de6503",
+          "invocation": "9d81075230434ad5915ee8f42f4928b8",
+          "started": 310766040,
+          "seen": 11003,
+          "last": 11123,
+          "failures": 0
+        }
+      }
+    },
+    {
+      "time": "1793395369628977",
+      "watch_invocation": "3432a8bd242149abab411d5efb354360",
+      "observation": {
+        "valid": true,
+        "restart": false,
+        "unit": "psionic-mammoth.service",
+        "reason": 0,
+        "state": {
+          "v": 1,
+          "unit": 1,
+          "boot": "4db51349-a3d7-4ed1-b76c-df4ad9de6503",
+          "invocation": "ff7c765c70dc42fbaeefded436e94a0b",
+          "started": 596926041,
+          "seen": 11003,
+          "last": 11123,
+          "failures": 0
+        }
+      }
+    },
+    {
+      "time": "1793395369657730",
+      "watch_invocation": "3432a8bd242149abab411d5efb354360",
+      "observation": {
+        "valid": true,
+        "restart": false,
+        "unit": "psionic-gptoss20b.service",
+        "reason": 0,
+        "state": {
+          "v": 1,
+          "unit": 2,
+          "boot": "4db51349-a3d7-4ed1-b76c-df4ad9de6503",
+          "invocation": "9f9298ade5224e15a4ae23a2d87afa93",
+          "started": 8771738093,
+          "seen": 11003,
+          "last": 11123,
+          "failures": 0
+        }
+      }
+    },
+    {
+      "time": "1793395490598933",
+      "watch_invocation": "13faeb7d54f7476a85b7772397d284ef",
+      "observation": {
+        "valid": true,
+        "restart": false,
+        "unit": "psionic-elephant-rtx.service",
+        "reason": 0,
+        "state": {
+          "v": 1,
+          "unit": 0,
+          "boot": "4db51349-a3d7-4ed1-b76c-df4ad9de6503",
+          "invocation": "9d81075230434ad5915ee8f42f4928b8",
+          "started": 310766040,
+          "seen": 11003,
+          "last": 11244,
+          "failures": 0
+        }
+      }
+    },
+    {
+      "time": "1793395490628697",
+      "watch_invocation": "13faeb7d54f7476a85b7772397d284ef",
+      "observation": {
+        "valid": true,
+        "restart": false,
+        "unit": "psionic-mammoth.service",
+        "reason": 0,
+        "state": {
+          "v": 1,
+          "unit": 1,
+          "boot": "4db51349-a3d7-4ed1-b76c-df4ad9de6503",
+          "invocation": "ff7c765c70dc42fbaeefded436e94a0b",
+          "started": 596926041,
+          "seen": 11003,
+          "last": 11244,
+          "failures": 0
+        }
+      }
+    },
+    {
+      "time": "1793395490659313",
+      "watch_invocation": "13faeb7d54f7476a85b7772397d284ef",
+      "observation": {
+        "valid": true,
+        "restart": false,
+        "unit": "psionic-gptoss20b.service",
+        "reason": 0,
+        "state": {
+          "v": 1,
+          "unit": 2,
+          "boot": "4db51349-a3d7-4ed1-b76c-df4ad9de6503",
+          "invocation": "9f9298ade5224e15a4ae23a2d87afa93",
+          "started": 8771738093,
+          "seen": 11003,
+          "last": 11244,
+          "failures": 0
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+# OpenAgents fixed local backend readiness watch
+[Unit]
+Description=OpenAgents bounded backend readiness recovery
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/etc/openagents-backend-watch.env
+Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/opt/openagents-backend-watch/backend-watch-once.sh
+StateDirectory=openagents-backend-watch
+StateDirectoryMode=0700
+TimeoutStartSec=90
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
