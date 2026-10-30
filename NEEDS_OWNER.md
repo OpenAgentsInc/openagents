@@ -42,3 +42,23 @@ blocked if not.
 about Psionic chapters 165 and 166 (exact memory by attention, and traces as
 receipts). Read it and approve, edit or reject it. Publishing it needs a blog
 route on openagents.com; the steps are in `docs/blog/README.md`.
+
+## Psionic chapter 19: the Pylon's key, relays and TLS (2026-10-29)
+
+Chapter 19 runs a Pylon that answers Elephant decisions over Nostr
+(psionic/book/PLAN.md, "Before chapter 19"). The code is being built now;
+these four choices are yours:
+
+1. **Where the Pylon key lives on the Linux machine.** There is no Keychain.
+   Options: a 0600 file under `~/work/.secrets/`, the desktop secret service,
+   or a hardware key. The key is generated once and never printed.
+2. **Your `auth` signature.** The beacon carries your key's signature over the
+   Pylon key (`["auth", <owner key>, "kind=30200", <signature>]`). You sign
+   that once per Pylon key.
+3. **Which relays** the Pylon publishes to and lists in its NIP-65 record.
+4. **TLS for `wss://`.** Coax has no TLS. Either the C host links a TLS
+   library (a toolchain exception to AGENTS.md, like CUDA), or the Pylon
+   reaches a `ws://` relay over the tailnet only.
+
+Signing with a real key also waits on the #4828 secret audit and the review
+gate in coax/nostr.md.

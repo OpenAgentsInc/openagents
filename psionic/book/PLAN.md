@@ -154,12 +154,38 @@ Part XX.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 19. A Pylon answers decisions | A Coax Pylon with its own key: a beacon (kind `30200`) advertising a decision service and the served model identity, free slots and a declared deadline; decision jobs received encrypted over relays (NIP-44) and answered by the resident model of Part III, with the answer naming the same identity. Built on the Nostr event code in `coax/lib/nostr`. |
+| 19. A Pylon answers decisions — prerequisites [below](#before-chapter-19-the-nostr-prerequisites) | A Coax Pylon with its own key: a beacon (kind `30200`) advertising a decision service and the served model identity, free slots and a declared deadline; decision jobs received encrypted over relays (NIP-44) and answered by the resident model of Part III, with the answer naming the same identity. Built on the Nostr event code in `coax/lib/nostr`. |
 | 20. The API fans out | `/v1/systemone` reads fresh beacons, chooses a Pylon with a free slot that serves the exact model identity, sends the job, checks that the answer's identity matches the beacon, and falls back to the local model or refuses when none answers in time. Beacon expiry, generation counters and draining keep stale machines out of the route. |
 | 21. Check the mesh | Buyers' signed receipts (kind `3201`) for completed jobs, a checker that re-runs a sampled fraction of decisions on a trusted node and publishes its verdict, and pool totals any reader can recompute. Decision work starts free; paying Pylons in Bitcoin is a later owner decision. |
 
 Nothing here makes a peer's answer private: a Pylon that serves a request
 reads it. Part XX adds trust levels, attested machines and model splits.
+
+### Before chapter 19: the Nostr prerequisites
+
+Chapter 19 needs a Pylon that signs, encrypts and holds a relay connection.
+The decision side is done: chapter 16 serves Elephant on `/v1/systemone`
+(on the GPU beside gpt-oss, chapters 30a and 48c), and NIP-DEC's job body is
+the same `openagents.systemone.v1` shape. As of 2026-10-29 the crypto and
+codecs exist (BIP-340 verification, secp256k1, ECDH, ChaCha20, HMAC, HKDF,
+XChaCha20-Poly1305, entropy, JSON, filters, NIP-19) and these remain, in
+order. Board aliases are on the [signed queue](../../coax/web/project/QUEUE.md).
+
+| # | Prerequisite | Who | State |
+| --- | --- | --- | --- |
+| 1 | Complete BIP-340 signer (`coax/lib/crypto/schnorr_sign.coax`) and a fixed-work self-check (`schnorr_self_verify.coax`) | openagents-d7 Fork A, claude-sigcheck (#51f4, #89db) | in progress; test keys only until the #4828 secret audit and review gate |
+| 2 | NIP-01 event builder: fields, id, sign, serialize (`coax/lib/nostr/event_sign.coax`) | openagents-d7 Fork A (#bab4) | in progress |
+| 3 | NIP-44 v2 (`coax/lib/nostr/nip44.coax`): padding, message keys, MAC before plaintext, every official vector | claude-nip44 (#4878); x-only ECDH from codex-nostr-profiles (#71e7) | in progress; the conversation key waits on #71e7 |
+| 4a | Relay messages: EVENT/OK/EOSE/CLOSED/NOTICE readers, EVENT/REQ/CLOSE writers (`coax/lib/nostr/message.coax`) | openagents-d7 Fork B (#6015) | mutation gate running |
+| 4b | Native relay client: RFC 6455 WebSocket in Coax, the C socket effect, the relay state machine with reconnect and catch-up, an end-to-end local relay test | claude-relay (#7de9) | in progress; `ws://` over the tailnet first |
+| 4c | NIP-42 AUTH | free (#f426), after 1 and 2 | waiting |
+| 5 | Beacon (kind `30200`) template, checker and lifecycle (`psionic/lib/pylon/`) | claude-pylon | in progress |
+| 6 | Decision jobs: `25910` plaintext to the server's request, the answer to `26910`, `27010` status, cancel onto the server's deadline | claude-pylon | in progress |
+| 7 | NIP-65 relay list (kind `10002`) | claude-pylon | in progress |
+
+Owner decisions are in `NEEDS_OWNER.md`: where the Pylon key lives on Linux,
+the owner's `auth` signature over it, which relays, and whether the C host
+may link a TLS library for `wss://`.
 
 ## V. Make execution measurable, parallel and portable
 
