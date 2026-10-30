@@ -1,0 +1,37 @@
+release 14d53d5e20 (docs: record deployed Pylon demo and live two-machine rehearsal)
+  ok    /pylon/index.md (200, text/markdown; charset=utf-8)
+  ok    /pylon/join.sh (200, text/plain; charset=utf-8)
+lane pylon (5.6 s)
+  ok    pylon: at https://staging.openagents.com/pylon
+  ok    pylon: the engine started
+  ok    pylon: no errors
+  ok    pylon: draws (1.0% lit, at least 0.4%)
+  ok    pylon: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  pylon: 5.3 s
+lane pylon-phone (5.6 s)
+  ok    pylon-phone: at https://staging.openagents.com/pylon
+  ok    pylon-phone: the engine started
+  ok    pylon-phone: no errors
+  ok    pylon-phone: draws (3.2% lit, at least 0.4%)
+  ok    pylon-phone: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  pylon-phone: 5.4 s
+goldens: compared in full: nip-70 (its HTML changed); nip-49-phone (its HTML changed); nip-50 (its HTML changed); nip-59 (its HTML changed); nip-65 (its HTML changed); nip-94 (its HTML changed); nip-98 (its HTML changed); nip-01-phone (its HTML changed); fixture-painterly-phone-0.75 (its HTML changed); nip-09 (its HTML changed); fixture-painterly-phone-0.25 (its HTML changed); fixture-painterly-0.25 (its HTML changed); nip-77 (its HTML changed); nip-40 (its HTML changed); nip-42 (its HTML changed); nip-index (its HTML changed); nip-index-phone (its HTML changed); nip-67 (its HTML changed); realms-new (its HTML changed); fixture-painterly-0.5 (its HTML changed); fixture-painterly-0.75 (its HTML changed); nip-44-phone (its HTML changed); ice-cream-man (its HTML changed); dead-gears (its HTML changed); fixture-painterly-0 (its HTML changed); fixture-painterly-shafts (its HTML changed); nip-17 (its HTML changed); fixture-painterly-phone-0.5 (its HTML changed); pylon-phone (its HTML changed); haunted-house (its HTML changed); nip-01 (its HTML changed); waterlab (its HTML changed); nip-19 (its HTML changed); fixture (its HTML changed); sandbox (its HTML changed); nip-29 (its HTML changed); built (its HTML changed); nip-11 (its HTML changed); nip-10 (its HTML changed); nip-34 (its HTML changed); drop (its HTML changed); fixture-painterly-phone-0 (its HTML changed); garden (its HTML changed); fairy-forest (its HTML changed); everglade (its HTML changed); hecates-cemetery (its HTML changed); nip-45 (its HTML changed); galaxy (its HTML changed); nip-22 (its HTML changed); nip-49 (its HTML changed); the-grid (its HTML changed); landing (its HTML changed); pylon (its HTML changed); nip-44 (its HTML changed)
+HELD BACK everglade: it doesn't match its golden; production keeps its current page, everything else ships
+perf: every case held 60 FPS
+Copying gs://openagentsgemini-openagents-web-staging/build/pylon.f398000b00d9.wasm to gs://openagentsgemini-openagents-web/build/pylon.f398000b00d9.wasm
+Copying gs://openagentsgemini-openagents-web-staging/pylon to gs://openagentsgemini-openagents-web/pylon
+Copying gs://openagentsgemini-openagents-web-staging/pylon/index.html to gs://openagentsgemini-openagents-web/pylon/index.html
+Copying gs://openagentsgemini-openagents-web-staging/pylon/index.md to gs://openagentsgemini-openagents-web/pylon/index.md
+lane pylon-phone (0.3 s)
+  ok    pylon-phone: https://openagents.com/pylon answers (200)
+  ok    pylon-phone: the engine started
+  ok    pylon-phone: no errors
+lane pylon (1.5 s)
+  ok    pylon: https://openagents.com/pylon answers (200)
+  ok    pylon: the engine started
+  ok    pylon: no errors
+goldens https://openagents.com: passed in 10.4 s (4 tabs)
+  ok    /pylon/index.md (200, text/markdown; charset=utf-8)
+  ok    /pylon/join.sh (200, text/plain; charset=utf-8)
+smoke https://openagents.com: passed
+release 14d53d5e20: live on openagents.com in 621.5 s (rollback: coax/web/rollback.sh 20261030T153755Z); held back: everglade

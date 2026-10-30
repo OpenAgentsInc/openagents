@@ -1,0 +1,10 @@
+{
+  "source_commit": "14d53d5e201e420ab35f46c9f9e60131304f1883",
+  "product_fix_commit": "a42c6137e1",
+  "release_stamp": "20261030T153755Z",
+  "wasm_url": "/build/pylon.f398000b00d9.wasm",
+  "html_sha256": "49eb05331f3294644347b916c2cd5bfa8ac5db8412047ddf2285631af42e3461",
+  "scope": "The already-running normal release included the full-identity fix. Root verified only the changed display requirement in the actual production Wasm. No separate manual promotion was performed; initial preflight attempts stopped before writes (busy release lock / older staging route404). Prior two-provider answer/counter proof is preserved under oct30-pylon-production.",
+  "other_pages": "Everglade was held at its prior production page by that release; no unrelated golden was approved by this work.",
+  "wasm_sha256": "f398000b00d9461d56675073e32ba39505dd115e40e821c76857eccf42aed30e"
+}

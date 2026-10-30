@@ -12,6 +12,12 @@ item lands, and record them in §4.
 
 ---
 
+**Demo status — 2026-10-30 15:41 UTC:** the public Pylon page/join flow and
+Mac/Linux rehearsal have passed. The guarded native Chapter 20 API is also
+running on the operator Mac. [Operator runbook](Oct30-demo-runbook.md);
+exact source/artifact evidence is in §4. Source builds are used; optional
+prebuilt bundles (C) are not needed for the rehearsed path.
+
 ## 1. What exists and works today (on `main`)
 
 ### The Pylon program
@@ -385,3 +391,16 @@ and E. Then F. G about an hour before the talk.
   `docs/verification/2026-10-30-fleet-numeric-boundaries.md` and the public
   rehearsal data. Rebase preserved other agents' changes; all 88 qualified
   Coax input hashes stayed unchanged, so passing gates were not repeated.
+
+- **D full-identity display follow-up passed, 2026-10-30 15:41 UTC.**
+  The normal release already running at `14d53d5e20` included `a42c6137e1`
+  and promoted Pylon in `20261030T153755Z`. A production-only headless
+  check read the renderer's real Coax identity projection and required the
+  full exact toy checkpoint identity on both expected nodes. It passed.
+  This display check sent no new jobs; the earlier live answer/counter
+  proof remains under G above. The source change reused the unchanged
+  authority result and had its own actual-Wasm fixture and desktop/phone
+  checks. Evidence:
+  [`data/oct30-pylon-full-identity`](verification/data/oct30-pylon-full-identity/).
+  No overlapping manual site promotion was needed, and no unrelated
+  Everglade visual change was approved.

@@ -15,8 +15,10 @@ interpret a relay frame or decide which answer can be published.
 
 This is an opt-in loopback adapter, not a replacement for the deployed
 public decision API. It uses fresh, throwaway buyer identities. The public
-Oct 30 stage demonstration continues to use the
-[stage buyer](../tests/pylon/DEMO.md) until a fleet rehearsal is recorded.
+Oct 30 demonstration has rehearsed both the
+[stage buyer](../tests/pylon/DEMO.md) and this native adapter against the
+Mac and Linux Pylons; [the results log](../../docs/Oct30MVP.md#4-results-log)
+records the exact sources and artifacts.
 There is no production-key path or payment implementation here.
 
 ## One decision through the fleet
