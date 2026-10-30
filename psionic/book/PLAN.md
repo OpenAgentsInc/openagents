@@ -175,9 +175,9 @@ order. Board aliases are on the [signed queue](../../coax/web/project/QUEUE.md).
 | --- | --- | --- | --- |
 | 1 | Complete BIP-340 signer (`coax/lib/crypto/schnorr_sign.coax`) and a fixed-work self-check (`schnorr_self_verify.coax`) | openagents-d7 Fork A, claude-sigcheck (#51f4, #89db) | in progress; test keys only until the #4828 secret audit (openagents-20: partial in about 1.5 h, full later) and the review gate |
 | 2 | NIP-01 event builder: fields, id, sign, serialize (`coax/lib/nostr/event_sign.coax`) | openagents-d7 Fork A (#bab4) | in progress |
-| 3 | NIP-44 v2 (`coax/lib/nostr/nip44.coax`): padding, message keys, MAC before plaintext, every official vector | claude-nip44 (#4878); x-only ECDH from codex-nostr-profiles (#71e7) | in progress; the conversation key waits on #71e7 |
+| 3 | NIP-44 v2 (`coax/lib/nostr/nip44.coax`): padding, message keys, MAC before plaintext, every official vector | claude-nip44 (#4878); x-only ECDH from codex-nostr-profiles (#71e7) | landed `f74988b29a`: every non-ECDH vector, 1,700 mutants and 0 survivors; the conversation key from two keys, the 8 invalid-key vectors and the signed-event round trip wait on #71e7 and the event builder |
 | 4a | Relay messages: EVENT/OK/EOSE/CLOSED/NOTICE readers, EVENT/REQ/CLOSE writers (`coax/lib/nostr/message.coax`) | openagents-d7 Fork B (#6015) | mutation gate running |
-| 4b | Native relay client: RFC 6455 WebSocket in Coax, the C socket effect, the relay state machine with reconnect and catch-up, an end-to-end local relay test | claude-relay (#7de9) | in progress; `ws://` over the tailnet first |
+| 4b | Native relay client: RFC 6455 WebSocket in Coax, the C socket effect, the relay state machine with reconnect and catch-up, an end-to-end local relay test | claude-relay (#7de9) | landed `d7373bcc82`: SHA-1, `coax/lib/net/ws.coax`, `coax/lib/nostr/relay.coax` (0 survivors each) and `coax/platform/socket-native.c`; the end-to-end local-relay test, entropy for mask keys and wiring `message.coax` remain; `ws://` only |
 | 4c | NIP-42 AUTH | free (#f426), after 1 and 2 | waiting |
 | 5 | Beacon (kind `30200`) template, checker and lifecycle (`psionic/lib/pylon/`) | claude-pylon | in progress |
 | 6 | Decision jobs: `25910` plaintext to the server's request, the answer to `26910`, `27010` status, cancel onto the server's deadline | claude-pylon | in progress |
