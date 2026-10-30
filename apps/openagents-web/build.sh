@@ -126,7 +126,7 @@ bun "$tools/baked.ts"
 "$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm" "$here/project-names.coax"
 wait "$list"
 # /nip/01: NIP-01 in Coax, its verifier its own library; the splash's passes.
-{ echo "// /nip/01: the splash's passes (splash.wgsl, copied by build.sh), as nip01.coax draws only words, strokes and HUD bars."; cat "$here/splash.wgsl"; } > "$here/nip01.wgsl"
+python3 "$here/../../coax/web/nip-shader.py" "$here/splash.wgsl" "$here/nip01.wgsl"
 "$here/../../coax/web/wasm.sh" "$here/nip01.coax" "$here/nip01-face.c" "$here/build/nip01.wasm" "$here/nip01-verify.coax" &
 nip01=$!
 cp "$here/nip01.wgsl" "$here/nip-guide.wgsl"

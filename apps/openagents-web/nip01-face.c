@@ -24,6 +24,7 @@ EXPORT("coaxial_frame") uint32_t frame(uint32_t p, uint32_t vertices, uint32_t u
   return nip_frame(at(p), (coax_v_f32){(float *)(uintptr_t)vertices, 50400 * 16}, (coax_v_f32){(float *)(uintptr_t)uniforms, 16}, w, h, d, dt, still != 0 || golden_mode != 0);
 }
 EXPORT("coaxial_key") uint32_t key(uint32_t p, int32_t k, int32_t mods) { (void)mods; return nip_key(at(p), k); }
+EXPORT("coaxial_wheel") void wheel(uint32_t p,float dy) {nip_wheel(at(p),dy);}
 EXPORT("coaxial_pointer") uint32_t pointer(uint32_t p, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   (void)kind; (void)id; return nip_pointer(at(p), x, y, phase);
 }
@@ -32,6 +33,8 @@ EXPORT("coaxial_nip_mode") int64_t mode(uint32_t p) { return state_at(p)->mode; 
 EXPORT("coaxial_nip_error") int64_t error(uint32_t p) { return state_at(p)->error; }
 EXPORT("coaxial_nip_verified") int32_t verified(uint32_t p) { return state_at(p)->verified; }
 EXPORT("coaxial_nip_view") int64_t view(uint32_t p) { return state_at(p)->view; }
+EXPORT("coaxial_nip_scroll") float scroll(uint32_t p) {return state_at(p)->scroll;}
+EXPORT("coaxial_nip_scroll_max") float scroll_max(uint32_t p) {return state_at(p)->scroll_max;}
 EXPORT("coaxial_action") int32_t action(uint32_t p) {return (int32_t)state_at(p)->action;}
 EXPORT("coaxial_outbox") uint32_t outbox(uint32_t p) {(void)p;static const char route[]="/nip";return (uint32_t)(uintptr_t)route;}
 EXPORT("coaxial_outbox_len") uint32_t outbox_len(uint32_t p) {(void)p;return 4;}

@@ -68,6 +68,17 @@ nip_frame_check :: (w: f32, h: f32, dpr: f32) -> bool {
 #test "a frame without its uniforms draws nothing" {
   p: [1] Nip; out: [600] f32; u: [8] f32; #assert nip_frame(p[..], out[..], u[..], 100, 100, 1, 0, false) == 0;
 }
+#test "long NIP content scrolls by wheel, keyboard and drag without changing the case" {
+  p:[1]Nip;p[0].width=390;p[0].height=844;p[0].dpr=1;p[0].scroll_max=300;
+  nip_wheel(p[..],1000);#assert p[0].scroll==300;
+  nip_wheel(p[..],-1000);#assert p[0].scroll==0;
+  #assert nip_key(p[..],-11) && p[0].scroll>0;
+  y:=nip_body_top(p[..])+20;
+  #assert nip_pointer(p[..],50,y,POINTER_DOWN);
+  #assert nip_pointer(p[..],50,y-80,POINTER_MOVE) && p[0].scroll>80;
+  _:=nip_pointer(p[..],50,y-80,POINTER_UP);#assert p[0].mode==0;
+  #assert nip_select(p[..],1) && p[0].scroll==0;
+}
 
 
 OBSERVED :: 68;          // nip01-verify.coax NV_OBSERVED
@@ -116,6 +127,7 @@ Nip :: struct {
   width: f32; height: f32; dpr: f32 = 1; time: f32; ran_at: f32;
   down: int = -1; frames: int;
   action:int;
+  scroll:f32;scroll_max:f32;body_end:f32;drag_y:f32;drag_scroll:f32;
 }
 
 nip_mode :: (mode: int) -> bool { return mode >= 0 && mode < CASES; }
@@ -138,7 +150,7 @@ nip_why :: (error: int) -> string {
 
 nip_select :: (p: [] Nip, mode: int) -> bool #export_c {
   if p.count != 1 || !nip_mode(mode) { return false; }
-  p[0].mode = mode; p[0].pending = true; p[0].view = VIEW_PIPELINE; return true;
+  p[0].mode = mode; p[0].scroll=0; p[0].pending = true; p[0].view = VIEW_PIPELINE; return true;
 }
 nip_requested :: (p: [] Nip) -> int #export_c {
   if p.count != 1 || !nip_mode(p[0].mode) { return -1; }
@@ -160,19 +172,28 @@ nip_slot :: (width: f32, height: f32, d: f32, index: int) -> Box {
 }
 nip_pick :: (p: [] Nip, slot: int) -> bool {
   if slot == CASES+1 {p[0].action=1;return true;}
-  if slot == CASES { p[0].view = VIEW_PARTS; return true; }
+  if slot == CASES { p[0].view = VIEW_PARTS; p[0].scroll=0; return true; }
   return nip_select(p, slot);
 }
 nip_pointer :: (p: [] Nip, x: f32, y: f32, phase: int) -> bool #export_c {
   if p.count != 1 || p[0].width < 1 || p[0].height < 1 || p[0].dpr < 0.5 { return false; }
   hit := -1; for i: 0..<CASES + 1 { if inside(nip_slot(p[0].width, p[0].height, p[0].dpr, i), x, y) { hit = i; } }
   if inside(nip_index_box(p),x,y) {hit=CASES+1;}
-  if phase == POINTER_DOWN { p[0].down = hit; return hit >= 0; }
+  if phase == POINTER_DOWN {
+    p[0].down=hit;
+    if hit<0 && y>=nip_body_top(p) && y<p[0].height-82*p[0].dpr {p[0].down= -2;p[0].drag_y=y;p[0].drag_scroll=p[0].scroll;return true;}
+    return hit>=0;
+  }
+  if phase==POINTER_MOVE && p[0].down== -2 {p[0].scroll=clamp(p[0].drag_scroll+(p[0].drag_y-y)/p[0].dpr,0,p[0].scroll_max);return true;}
   if phase == POINTER_CANCEL { p[0].down = -1; return false; }
   if phase == POINTER_UP { down := p[0].down; p[0].down = -1; if hit >= 0 && hit == down { return nip_pick(p, hit); } }
   return hit >= 0;
 }
 nip_key :: (p: [] Nip, key: int) -> bool #export_c {
+  if p.count==1 && (key== -6 || key== -7 || key== -10 || key== -11 || key== -8 || key== -9) {
+    if key== -8 {p[0].scroll=0;}else if key== -9 {p[0].scroll=p[0].scroll_max;}
+    else {nip_wheel(p,ifx key== -6 || key== -10 then -120.0f32 else 120.0f32);}return true;
+  }
   if p.count==1 && key== -1 {p[0].action=1;return true;}
   if p.count != 1 || key < 49 || key > 49 + CASES { return false; }
   return nip_pick(p, key - 49);
@@ -192,138 +213,123 @@ BAD :: [3] f32.[1.0, 0.48, 0.42];
 NEXT :: [3] f32.[1.0, 0.72, 0.3];
 UNLIT :: [3] f32.[0.95, 0.95, 0.95];
 
-nip_stage_box :: (width: f32, top: f32, d: f32, i: int, row: bool) -> Box {
-  left := 32 * d; room := width - 2 * left;
-  if row {
-    gap := 18 * d; w := (room - gap * cast(f32) (STAGES - 1)) / cast(f32) STAGES;
-    x := left + cast(f32) i * (w + gap);
-    return Box.{x0 = x, y0 = top, x1 = x + w, y1 = top + 74 * d};
+// Body copy uses the shared sans atlas at about 15 CSS px; it wraps instead
+// of shrinking. Titles and controls keep Filament. Scroll only the body.
+NIP_CAVEAT :: "Libraries on main. Production keys and verified live project adoption have separate gates.";
+nip_body_ink :: (d:f32)->Ink {k:=ink(0.55*d,0.95,2*d,0.82,0.84,0.86);k.sans=true;k.scale=d;return k;}
+nip_lines :: (text:string,room:f32,d:f32)->int {
+  from:=0;n:=0;next:[1]int;k:=nip_body_ink(d);
+  while from<text.count {end:=wrap_ink(text,from,room,8*d,0.2,0.6,k,next[..]);if next[0]<=from {break;}from=next[0];n+=1;}return n;
+}
+nip_text :: (out:[]f32,at:int,text:string,x:f32,y:f32,room:f32,d:f32,k:Ink)->int {
+  v:=at;from:=0;n:=0;next:[1]int;
+  while from<text.count {end:=wrap_ink(text,from,room,8*d,0.2,0.6,k,next[..]);v=write(d,out,v,text[from..<end],x,y+cast(f32)n*18*d,8*d,0.2,0.6,k,false,false);if next[0]<=from {break;}from=next[0];n+=1;}return v;
+}
+nip_body_top :: (p:[]Nip)->f32 {d:=p[0].dpr;return (166+18*cast(f32)nip_lines(NIP_CAVEAT,p[0].width-48*d,d))*d;}
+nip_wheel :: (p:[]Nip,dy:f32) #export_c {if p.count==1 {p[0].scroll=clamp(p[0].scroll+dy,0,p[0].scroll_max);}}
+// Hide complete glyph/stroke quads crossing the fixed header or hotbar.
+nip_clip :: (out:[]f32,from:int,to:int,top:f32,bottom:f32) {
+  q:=from;while q+6<=to {
+    visible:=true;for i:q..<q+6 {if out[i*16+1]<top || out[i*16+1]>bottom {visible=false;}}
+    if !visible {for i:q..<q+6 {
+      if out[i*16+11]>3.5 && out[i*16+5]>0 {out[i*16+7]=0;}else {out[i*16+6]=0;}
+    }}q+=6;
   }
-  y := top + cast(f32) i * 52 * d;
-  return Box.{x0 = left, y0 = y, x1 = width - left, y1 = y + 40 * d};
+}
+nip_stage_box :: (width:f32,top:f32,d:f32,i:int,row:bool)->Box {
+  left:=24*d;room:=width-2*left;
+  if row {gap:=12*d;w:=(room-gap*cast(f32)(STAGES-1))/cast(f32)STAGES;x:=left+cast(f32)i*(w+gap);return Box.{x0=x,y0=top,x1=x+w,y1=top+128*d};}
+  y:=top+cast(f32)i*88*d;return Box.{x0=left,y0=y,x1=width-left,y1=y+76*d};
 }
 
-nip_pipeline :: (p: [] Nip, out: [] f32, at: int, top: f32) -> int {
-  d := p[0].dpr; width := p[0].width; v := at;
-  row := width / d >= 760;
-  left := 32 * d; right := width - left;
-  white := ink(0.6 * d, 0.9, 5 * d, 0.95, 0.95, 0.95);
-  muted := ink(0.5 * d, 0.6, 3 * d, 0.65, 0.65, 0.65);
-  v = write(d, out, v, SLOTS[p[0].mode], left, top, 7 * d, 0.3, 0.7, white, false, false);
-  v = draw_fit(d, out, v, SLOT_SAYS[p[0].mode], left + 70 * d, top, 5 * d, 0.25, 0.7, muted, right - left - 70 * d);
-  stop := nip_stop(p[0].error, p[0].verified);
-  shown := (p[0].time - p[0].ran_at) / 0.28;   // one stage lights every 0.28 s
-  y0 := top + 26 * d;
-  for i: 0..<STAGES {
-    b := nip_stage_box(width, y0, d, i, row);
-    reached := p[0].initialized && cast(f32) i < shown;
-    c := UNLIT; light := 0.28f32;
-    if reached && i < stop { c = GOOD; light = 0.9; }
-    if reached && i == stop { c = BAD; light = 1.0; }
-    v = hud(out, v, b, d, 0, ifx reached && i == stop then 0.6f32 else 0.0f32, light, c[0], c[1], c[2]);
-    name := ink(0.6 * d, ifx reached then 0.95f32 else 0.5f32, 4 * d, c[0], c[1], c[2]);
-    pad := 10 * d;
-    if row {
-      v = write(d, out, v, STAGE_NAMES[i], b.x0 + pad, b.y0 + 22 * d, 6 * d, 0.25, 0.7, name, false, false);
-      v = draw_fit(d, out, v, STAGE_SAYS[i], b.x0 + pad, b.y0 + 42 * d, 3.6 * d, 0.2, 0.6, muted, (b.x1 - b.x0) - 2 * pad);
-      if i < STAGES - 1 {
-        c2 := ifx reached && i < stop then GOOD else UNLIT;
-        _ := lit(out, v, b.x1 + 3 * d, (b.y0 + b.y1) * 0.5, b.x1 + 15 * d, (b.y0 + b.y1) * 0.5, 0.6 * d, ifx reached then 0.8f32 else 0.25f32, 3 * d, c2[0], c2[1], c2[2], MODE_STROKE);
-        v += 6;
+nip_pipeline :: (p:[]Nip,out:[]f32,at:int,top:f32)->int {
+  d:=p[0].dpr;width:=p[0].width;v:=at;row:=width/d>=760;left:=24*d;right:=width-left;
+  white:=ink(0.6*d,0.95,4*d,0.95,0.95,0.95);muted:=nip_body_ink(d);
+  v=write(d,out,v,SLOTS[p[0].mode],left,top+12*d,10*d,0.3,0.7,white,false,false);
+  v=nip_text(out,v,SLOT_SAYS[p[0].mode],left,top+38*d,right-left,d,muted);
+  stop:=nip_stop(p[0].error,p[0].verified);shown:=(p[0].time-p[0].ran_at)/0.28;
+  y0:=top+(54+18*cast(f32)nip_lines(SLOT_SAYS[p[0].mode],right-left,d))*d;
+  for i:0..<STAGES {
+    b:=nip_stage_box(width,y0,d,i,row);reached:=p[0].initialized && cast(f32)i<shown;
+    c:=UNLIT;light:=0.28f32;if reached && i<stop {c=GOOD;light=0.9;}if reached && i==stop {c=BAD;light=1.0;}
+    v=hud(out,v,b,d,0,ifx reached && i==stop then 0.6f32 else 0.0f32,light,c[0],c[1],c[2]);
+    name:=ink(0.6*d,ifx reached then 0.95f32 else 0.65f32,3*d,c[0],c[1],c[2]);
+    v=write(d,out,v,STAGE_NAMES[i],b.x0+12*d,b.y0+24*d,9*d,0.25,0.7,name,false,false);
+    v=nip_text(out,v,STAGE_SAYS[i],b.x0+12*d,b.y0+46*d,b.x1-b.x0-24*d,d,muted);
+  }
+  last:=nip_stage_box(width,y0,d,STAGES-1,row);y:=last.y1+54*d;
+  if p[0].initialized && shown>=cast(f32)(stop+1)-0.01 {
+    c:=ifx stop==STAGES then GOOD else BAD;big:=ink(0.8*d,1,7*d,c[0],c[1],c[2]);cap:=lo(26*d,(right-left)/7);
+    if y<=p[0].height-112*d && y-32*d>=nip_body_top(p) {v=write(d,out,v,nip_label(p[0].error,p[0].verified),left,y,cap,0.2,0.6,big,false,false);}
+    v=nip_text(out,v,nip_why(p[0].error),left,y+30*d,right-left,d,muted);
+  }
+  end:=y+66*d;
+  if p[0].initialized && (stop>=3 || p[0].error==7) {
+    hexa:[64]u8;hexb:[64]u8;_:=nip_hex(p[0].claimed[..],hexa[..]);_=nip_hex(p[0].computed[..],hexb[..]);
+    per:=ifx row then 64 else 32;lines:=64/per;size:=10*d;
+    step:=measure("0",0.2,0.6,false)*size+0.2*size;
+    for which:0..<2 {
+      hy:=end+cast(f32)which*(38+20*cast(f32)lines)*d;
+      v=write(d,out,v,ifx which==0 then "CLAIMED ID" else "COMPUTED ID",left,hy,8*d,0.2,0.6,muted,false,false);
+      for k:0..<64 {
+        same:=hexa[k]==hexb[k];c:=ifx same then GOOD else BAD;digit:=ink(0.55*d,0.95,2*d,c[0],c[1],c[2]);
+        value:=ifx which==0 then cast(string)hexa[k..<k+1] else cast(string)hexb[k..<k+1];
+        v=write(d,out,v,value,left+cast(f32)(k%per)*step,hy+(24+20*cast(f32)(k/per))*d,size,0.2,0.6,digit,false,false);
       }
-    } else {
-      v = write(d, out, v, STAGE_NAMES[i], b.x0 + pad, b.y0 + 25 * d, 5.5 * d, 0.25, 0.7, name, false, false);
-      v = draw_fit(d, out, v, STAGE_SAYS[i], b.x0 + 96 * d, b.y0 + 24 * d, 3.6 * d, 0.2, 0.6, muted, (b.x1 - b.x0) - 106 * d);
-    }
+    }end+=(76+40*cast(f32)lines)*d;
   }
-  last := nip_stage_box(width, y0, d, STAGES - 1, row);
-  y := last.y1 + 54 * d;
-  if p[0].initialized && shown >= cast(f32) (stop + 1) - 0.01 {
-    c := ifx stop == STAGES then GOOD else BAD;
-    big := ink(0.8 * d, 1.0, 8 * d, c[0], c[1], c[2]);
-    cap := lo(26 * d, (right - left) / 7);
-    v = write(d, out, v, nip_label(p[0].error, p[0].verified), left, y, cap, 0.2, 0.6, big, false, false);
-    v = draw_fit(d, out, v, nip_why(p[0].error), left, y + 24 * d, 5 * d, 0.25, 0.7, muted, right - left);
-  }
-  // The id the event claims, and the hash Coax computed, digit by digit.
-  if p[0].initialized && stop >= 3 || (p[0].initialized && p[0].error == 7) {
-    hy := y + 56 * d;
-    hexa: [64] u8; hexb: [64] u8;
-    _ := nip_hex(p[0].claimed[..], hexa[..]); _ = nip_hex(p[0].computed[..], hexb[..]);
-    size := lo(4.4 * d, (right - left - 90 * d) / 64 / 0.62);
-    v = write(d, out, v, "CLAIMED ID", left, hy, 3.8 * d, 0.25, 0.7, muted, false, false);
-    v = write(d, out, v, "COMPUTED", left, hy + 18 * d, 3.8 * d, 0.25, 0.7, muted, false, false);
-    step := measure("0", 0.2, 0.6, false) * size + 0.2 * size;
-    for k: 0..<64 {
-      same := hexa[k] == hexb[k];
-      c := ifx same then GOOD else BAD;
-      digit := ink(0.5 * d, ifx same then 0.7f32 else 1.0f32, 3 * d, c[0], c[1], c[2]);
-      x := left + 90 * d + cast(f32) k * step;
-      v = write(d, out, v, cast(string) hexa[k..<k + 1], x, hy, size, 0.2, 0.6, digit, false, false);
-      v = write(d, out, v, cast(string) hexb[k..<k + 1], x, hy + 18 * d, size, 0.2, 0.6, digit, false, false);
-    }
-  }
-  return v;
+  p[0].body_end=end;return v;
 }
 
-nip_parts :: (p: [] Nip, out: [] f32, at: int, top: f32) -> int {
-  d := p[0].dpr; width := p[0].width; v := at;
-  left := 32 * d; right := width - left;
-  muted := ink(0.5 * d, 0.6, 3 * d, 0.65, 0.65, 0.65);
-  wide := width / d >= 760;
-  line := ifx wide then 30 * d else 38 * d;
-  words := [3] string.["COAX", "HOST", "NEXT"];
-  for i: 0..<PARTS {
-    y := top + cast(f32) i * line;
-    s := PART_STATE[i];
-    c := ifx s == PART_COAX then GOOD else ifx s == PART_HOST then UNLIT else NEXT;
-    chip := ink(0.6 * d, 0.95, 4 * d, c[0], c[1], c[2]);
-    name := ink(0.6 * d, 0.9, 4 * d, 0.95, 0.95, 0.95);
-    v = write(d, out, v, words[s], left, y, 5 * d, 0.25, 0.7, chip, false, false);
+nip_parts :: (p:[]Nip,out:[]f32,at:int,top:f32)->int {
+  d:=p[0].dpr;width:=p[0].width;v:=at;left:=24*d;right:=width-left;muted:=nip_body_ink(d);name:=muted;name.light=1;
+  wide:=width/d>=760;words:=[3]string.["COAX","HOST","NEXT"];y:=top+24*d;
+  for i:0..<PARTS {
+    state:=PART_STATE[i];c:=ifx state==PART_COAX then GOOD else ifx state==PART_HOST then UNLIT else NEXT;
+    chip:=ink(0.6*d,0.95,3*d,c[0],c[1],c[2]);v=write(d,out,v,words[state],left,y,8*d,0.25,0.7,chip,false,false);
+    x:=left+62*d;room:=right-x;
     if wide {
-      v = draw_fit(d, out, v, PART_NAMES[i], left + 60 * d, y, 5.5 * d, 0.25, 0.7, name, (right - left) * 0.45);
-      v = draw_fit(d, out, v, PART_WHERE[i], left + 60 * d + (right - left) * 0.5, y, 4.4 * d, 0.2, 0.6, muted, (right - left) * 0.5 - 60 * d);
+      half:=room*0.47;v=nip_text(out,v,PART_NAMES[i],x,y,half-16*d,d,name);
+      v=nip_text(out,v,PART_WHERE[i],x+half,y,room-half,d,muted);
+      a:=nip_lines(PART_NAMES[i],half-16*d,d);b:=nip_lines(PART_WHERE[i],room-half,d);y+=(18*cast(f32)(ifx a>b then a else b)+18)*d;
     } else {
-      v = draw_fit(d, out, v, PART_NAMES[i], left + 52 * d, y, 5 * d, 0.25, 0.7, name, right - left - 52 * d);
-      v = draw_fit(d, out, v, PART_WHERE[i], left + 52 * d, y + 14 * d, 3.8 * d, 0.2, 0.6, muted, right - left - 52 * d);
+      v=nip_text(out,v,PART_NAMES[i],x,y,room,d,name);n:=nip_lines(PART_NAMES[i],room,d);
+      y+=cast(f32)n*18*d;v=nip_text(out,v,PART_WHERE[i],x,y,room,d,muted);
+      y+=(18*cast(f32)nip_lines(PART_WHERE[i],room,d)+20)*d;
     }
-  }
-  return v;
+  }p[0].body_end=y;return v;
 }
 
-// still: the visitor asked for less motion; every stage shows at once.
-nip_frame :: (p: [] Nip, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
-  if p.count != 1 || u.count < 16 || width < 1 || height < 1 || dpr < 0.5 || dpr > 4 { return 0; }
-  p[0].width = width; p[0].height = height; p[0].dpr = dpr; p[0].frames += 1;
-  p[0].time += clamp(dt, 0, 0.1);
-  if still { p[0].ran_at = p[0].time - 10; }
-  for i: 0..<16 { u[i] = 0; }
-  u[0] = width; u[1] = height; u[3] = 1; u[4] = 1;
-  d := dpr; left := 32 * d; right := width - left; v := 0;
-  white := ink(0.6 * d, 0.9, 5 * d, 0.95, 0.95, 0.95);
-  muted := ink(0.5 * d, 0.6, 3 * d, 0.65, 0.65, 0.65);
-  v = write(d, out, v, "NIP-01", left, 56 * d, 14 * d, 0.4, 0.8, white, false, false);
+// The fixed title/controls remain reachable while long explanations scroll.
+nip_frame :: (p:[]Nip,out:[]f32,u:[]f32,width:f32,height:f32,dpr:f32,dt:f32,still:bool)->int #export_c {
+  if p.count!=1 || u.count<16 || width<1 || height<1 || dpr<0.5 || dpr>4 {return 0;}
+  p[0].width=width;p[0].height=height;p[0].dpr=dpr;p[0].frames+=1;p[0].time+=clamp(dt,0,0.1);
+  if still {p[0].ran_at=p[0].time-10;}
+  for i:0..<16 {u[i]=0;}u[0]=width;u[1]=height;u[3]=1;u[4]=1;
+  d:=dpr;left:=24*d;right:=width-left;v:=0;white:=ink(0.6*d,0.95,4*d,0.95,0.95,0.95);muted:=nip_body_ink(d);
+  v=write(d,out,v,"NIP-01",left,56*d,20*d,0.4,0.8,white,false,false);
   index_box:=nip_index_box(p);v=hud(out,v,index_box,d,0,0,0.7,0.95,0.65,0.22);
-  v=write(d,out,v,"ALL NIPS",index_box.x0+12*d,index_box.y0+23*d,5.5*d,0.2,0.6,white,false,false);
-  v = draw_fit(d, out, v, "Nostr's basic protocol, run in Coax", left, 82 * d, 5.5 * d, 0.25, 0.7, muted, right - left);
-  v = draw_fit(d,out,v,"LIBRARIES ON MAIN. PRODUCTION KEYS AND VERIFIED LIVE PROJECT ADOPTION STILL NEED THEIR GATES.",left,128*d,4.6*d,0.2,0.6,muted,right-left);
-  // The tally: one mark a part, lit by where it runs.
-  for i: 0..<PARTS {
-    s := PART_STATE[i]; c := ifx s == PART_COAX then GOOD else ifx s == PART_HOST then UNLIT else NEXT;
-    x := left + cast(f32) i * 14 * d;
-    _ := lit(out, v, x, 104 * d, x + 8 * d, 104 * d, 1.4 * d, ifx s == PART_COAX then 0.95f32 else 0.4f32, 3 * d, c[0], c[1], c[2], MODE_STROKE);
-    v += 6;
+  v=write(d,out,v,"ALL NIPS",index_box.x0+12*d,index_box.y0+25*d,8*d,0.2,0.6,white,false,false);
+  v=nip_text(out,v,"Nostr's basic protocol, run in Coax",left,86*d,right-left,d,muted);
+  for i:0..<PARTS {
+    state:=PART_STATE[i];c:=ifx state==PART_COAX then GOOD else ifx state==PART_HOST then UNLIT else NEXT;x:=left+cast(f32)i*14*d;
+    _:=lit(out,v,x,110*d,x+8*d,110*d,1.4*d,ifx state==PART_COAX then 0.95f32 else 0.4f32,3*d,c[0],c[1],c[2],MODE_STROKE);v+=6;
   }
-  tally: [64] u8; n := put_int(tally[..], 0, nip_count(PART_COAX)); n = put(tally[..], n, " OF "); n = put_int(tally[..], n, PARTS); n = put(tally[..], n, " PARTS IN COAX");
-  v = write(d, out, v, cast(string) tally[0..<n], left + cast(f32) PARTS * 14 * d + 10 * d, 107 * d, 4.4 * d, 0.25, 0.7, muted, false, false);
-  top := 150 * d;
-  if p[0].view == VIEW_PARTS { v = nip_parts(p, out, v, top); } else { v = nip_pipeline(p, out, v, top); }
-  for i: 0..<CASES + 1 {
-    b := nip_slot(width, height, d, i);
-    active := ifx i == CASES then p[0].view == VIEW_PARTS else p[0].view == VIEW_PIPELINE && i == p[0].mode;
-    v = hud(out, v, b, d, ifx active then 0.65f32 else 0.0f32, 0, ifx active then 1.0f32 else 0.45f32, 0.95, 0.95, 0.95);
-    text := SLOTS[i]; size := 5.5 * d; w := measure(text, 0.1, 0.5, false) * size;
-    v = write(d, out, v, text, (b.x0 + b.x1 - w) * 0.5, (b.y0 + b.y1 + size) * 0.5, size, 0.1, 0.5, white, false, false);
+  tally:[64]u8;n:=put_int(tally[..],0,nip_count(PART_COAX));n=put(tally[..],n," of ");n=put_int(tally[..],n,PARTS);n=put(tally[..],n," parts in Coax");
+  v=write(d,out,v,cast(string)tally[0..<n],left,136*d,8*d,0.25,0.7,muted,false,false);
+  v=nip_text(out,v,NIP_CAVEAT,left,158*d,right-left,d,muted);
+  top:=nip_body_top(p);bottom:=height-104*d;first:=v;p[0].scroll=clamp(p[0].scroll,0,p[0].scroll_max);
+  if p[0].view==VIEW_PARTS {v=nip_parts(p,out,v,top-p[0].scroll*d);}else {v=nip_pipeline(p,out,v,top-p[0].scroll*d);}
+  p[0].scroll_max=hi(0,(p[0].body_end+p[0].scroll*d-bottom+12*d)/d);nip_clip(out,first,v,top,bottom);
+  if p[0].scroll_max>0 {
+    v=write(d,out,v,ifx p[0].scroll<p[0].scroll_max-1 then "Scroll for more" else "End of example",left,height-86*d,8*d,0.2,0.6,muted,false,false);
+    span:=hi(1,bottom-top);thumb:=hi(24*d,span*span/(span+p[0].scroll_max*d));start:=top+(span-thumb)*p[0].scroll/p[0].scroll_max;
+    _:=lit(out,v,width-12*d,start,width-12*d,start+thumb,1*d,0.65,2*d,GOOD[0],GOOD[1],GOOD[2],MODE_STROKE);v+=6;
   }
-  return v;
+  for i:0..<CASES+1 {
+    b:=nip_slot(width,height,d,i);active:=ifx i==CASES then p[0].view==VIEW_PARTS else p[0].view==VIEW_PIPELINE && i==p[0].mode;
+    v=hud(out,v,b,d,ifx active then 0.65f32 else 0.0f32,0,ifx active then 1.0f32 else 0.45f32,0.95,0.95,0.95);
+    text:=SLOTS[i];size:=8*d;w:=measure(text,0.1,0.5,false)*size;
+    v=write(d,out,v,text,(b.x0+b.x1-w)*0.5,(b.y0+b.y1+size)*0.5,size,0.1,0.5,white,false,false);
+  }return v;
 }

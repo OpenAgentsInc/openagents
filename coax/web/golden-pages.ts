@@ -57,6 +57,7 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
       const number = String(nip.number).padStart(2, "0")
       byAddress[`nip-${number}`] = { path: `/nip/${number}`, lit: 0.004, settle: nip.number === 1 ? 2200 : 1200, blocks: 4, module: nip.number === 1 ? "nip01" : "nip-guide" }
     }
+    byAddress["nip-01-phone"] = {path:"/nip/01",lit:0.004,settle:2200,blocks:4,module:"nip01",size:[390,844]}
     for (const [name, path] of [["nip-index-phone", "/nip"], ["nip-44-phone", "/nip/44"], ["nip-49-phone", "/nip/49"]])
       byAddress[name] = { path, lit: 0.004, settle: 1500, blocks: 4, module: "nip-guide", size: [390, 844] }
   }

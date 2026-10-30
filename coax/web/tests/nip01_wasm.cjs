@@ -26,10 +26,18 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   let clicks=0;
   for(const[w,h,d]of[[1280,800,1],[390,844,1],[780,1688,2]]){
     frame(w,h,d);const first=(w/d-294)/2+22,y=h-34*d;
+    if(w/d<760){
+      assert(x.coaxial_nip_scroll_max(p)>0,'long explanations scroll on phones');
+      x.coaxial_wheel(p,100000);frame(w,h,d);assert(x.coaxial_nip_scroll(p)>0,'wheel reaches lower content');
+      assert.equal(x.coaxial_key(p,-8,0),1);frame(w,h,d);assert.equal(x.coaxial_nip_scroll(p),0);
+    }
     for(let i=0;i<6;i++){
       assert.equal(x.coaxial_pointer(p,(first+50*i)*d,y,0,0,1),1);
       assert.equal(x.coaxial_pointer(p,(first+50*i)*d,y,2,0,1),1);frame(w,h,d);clicks++;
-      if(i<5){assert.equal(Number(x.coaxial_nip_view(p)),0);assert.equal(Number(x.coaxial_nip_mode(p)),i);}else assert.equal(Number(x.coaxial_nip_view(p)),1);
+      if(i<5){assert.equal(Number(x.coaxial_nip_view(p)),0);assert.equal(Number(x.coaxial_nip_mode(p)),i);}else {
+        assert.equal(Number(x.coaxial_nip_view(p)),1);
+        if(w/d<760){x.coaxial_wheel(p,100000);frame(w,h,d);assert(x.coaxial_nip_scroll(p)>0,'parts remain reachable');}
+      }
     }
     x.coaxial_key(p,49,0);frame(w,h,d);
     x.coaxial_pointer(p,(first+50)*d,y,0,0,1);x.coaxial_pointer(p,(first+50)*d,y,3,0,1);x.coaxial_pointer(p,(first+50)*d,y,2,0,1);frame(w,h,d);assert.equal(Number(x.coaxial_nip_mode(p)),0);

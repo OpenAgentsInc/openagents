@@ -21,6 +21,7 @@
 #load "projects/baked.coax";   // every project with a page (coax/web/project/baked.ts)
 #load "project-live.coax";
 #load "analytics.coax";
+#load "project-intro.coax";
 
 // page 0 is a real page (/projects/SLUG), 1 the demo (/projects/coax/demo).
 // The rest is the page's input: the pointer, the task open in the detail
@@ -969,12 +970,36 @@ scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool, waiting
 
 // ---------------------------------------------------------------- the layout
 
+#test "Coax's introduction fits a small phone and its book link navigates" {
+  wk:[1]Work;s:[1]ProjectState;
+  wk[0].slug="coax";wk[0].key=COAX_PROJECT_KEY;
+  #assert project_intro(wk[..]);
+  sizes:=[6]f32.[320,568,390,844,1440,900];
+  for k:0..<3 {
+    width:=sizes[k*2];height:=sizes[k*2+1];
+    l:=project_layout(width,height,1,wk[..]);
+    #assert fits_in(l.header,width,height) && fits_in(l.scene,width,height) && fits_in(l.queue,width,height) && fits_in(l.agents,width,height);
+    #assert apart(l.header,l.scene) && apart(l.scene,l.queue) && apart(l.queue,l.agents);
+    book:=coax_book_box(l.header,1);#assert inside(l.header,mid_x(book),mid_y(book)) && box_h(book)>=44;
+    s[0].width=width;s[0].height=height;s[0].dpr=1;
+    #assert click(s[..],wk[..],mid_x(book),mid_y(book));
+    #assert same(cast(string)s[0].outbox[0..<s[0].out_n],COAX_BOOK_URL);
+  }
+  wk[0].key="other";#assert !project_intro(wk[..]);
+}
+
 Layout :: struct { wide: bool; columns: bool; header: Box; scene: Box; queue: Box; activity: Box; agents: Box; activity_on: bool; }
 
 WIDE :: 1080.0;   // CSS pixels: three columns from here
 TWO :: 700.0;     // CSS pixels: below this, one column
 
 layout :: (width: f32, height: f32, d: f32) -> Layout {
+  return layout_height(width,height,d,0);
+}
+project_layout :: (width:f32,height:f32,d:f32,w:[]Work)->Layout {
+  return layout_height(width,height,d,ifx project_intro(w) then coax_head_height(width/d) else 0.0f32);
+}
+layout_height :: (width:f32,height:f32,d:f32,intro:f32)->Layout {
   w := width / d; h := height / d;
   m := ifx w < TWO then 12.0f32 else 24.0f32;
   g := ifx w < TWO then 8.0f32 else 16.0f32;
@@ -982,7 +1007,7 @@ layout :: (width: f32, height: f32, d: f32) -> Layout {
   l.wide = w >= WIDE;
   l.columns = w >= TWO;
   if l.wide {
-    head := 112.0f32;
+    head := ifx intro>0 then intro else 112.0f32;
     l.header = Box.{x0 = m, y0 = m, x1 = w - m, y1 = m + head};
     top := m + head + g;
     left := 390.0f32; right := 360.0f32;
@@ -993,11 +1018,11 @@ layout :: (width: f32, height: f32, d: f32) -> Layout {
     l.agents = Box.{x0 = w - m - right, y0 = split + g * 0.5, x1 = w - m, y1 = h - m};
     l.scene = Box.{x0 = m + left + g, y0 = top, x1 = w - m - right - g, y1 = h - m};
   } else {
-    head := ifx l.columns then 112.0f32 else 146.0f32;
+    head := ifx intro>0 then intro else ifx l.columns then 112.0f32 else 146.0f32;
     l.header = Box.{x0 = m, y0 = m, x1 = w - m, y1 = m + head};
     top := m + head + g;
     rest := h - m - top;
-    sh := clamp(rest * 0.4, 150, 420);
+    sh := clamp(rest * 0.4, ifx intro>0 then 80.0f32 else 150.0f32, 420);
     l.scene = Box.{x0 = m, y0 = top, x1 = w - m, y1 = top + sh};
     below := top + sh + g;
     l.activity_on = false;
@@ -1006,7 +1031,7 @@ layout :: (width: f32, height: f32, d: f32) -> Layout {
       l.queue = Box.{x0 = m, y0 = below, x1 = mid - g * 0.5, y1 = h - m};
       l.agents = Box.{x0 = mid + g * 0.5, y0 = below, x1 = w - m, y1 = h - m};
     } else {
-      agents_h := clamp((h - m - below) * 0.4, 92, 150);
+      agents_h := clamp((h - m - below) * 0.4, ifx intro>0 then 60.0f32 else 92.0f32, 150);
       l.queue = Box.{x0 = m, y0 = below, x1 = w - m, y1 = h - m - agents_h - g};
       l.agents = Box.{x0 = m, y0 = h - m - agents_h, x1 = w - m, y1 = h - m};
     }
@@ -1028,6 +1053,7 @@ glass :: (uniforms: [] f32, k: int, b: Box, cut: f32, alpha: f32, tint: f32) {
 // ---------------------------------------------------------------- the panels
 
 header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, w: [] Work) -> int {
+  if !p.demo && project_intro(w) {return coax_header(out,at,b,p,w);}
   d := p.d; v := at;
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
   white.sans = false; dim.sans = false;   // the top bar is Filament
@@ -2203,6 +2229,10 @@ set_add :: (w: [] Work, slug: string, key: string) {
 }
 
 click :: (s: [] ProjectState, w: [] Work, x: f32, y: f32) -> bool {
+  if s[0].page==0 && project_intro(w) {
+    d:=hi(s[0].dpr,1);book:=coax_book_box(project_layout(s[0].width,s[0].height,d,w).header,d);
+    if inside(book,x,y) {s[0].action=ACT_NAVIGATE;s[0].out_n=put_text(s[0].outbox[..],0,COAX_BOOK_URL);return true;}
+  }
   rb := realm_box(w, layout(s[0].width, s[0].height, hi(s[0].dpr, 1)).header, hi(s[0].dpr, 1));
   if rb.x1 > rb.x0 && inside(rb, x, y) { s[0].action = ACT_NAVIGATE; s[0].out_n = put_text(s[0].outbox[..], 0, w[0].realm); return true; }
   ab := add_box(w, layout(s[0].width, s[0].height, hi(s[0].dpr, 1)).header, hi(s[0].dpr, 1));
@@ -2297,6 +2327,10 @@ coaxial_project_wheel :: (s: [] ProjectState, dy: f32) #export_c {
 coaxial_project_cursor :: (s: [] ProjectState, w: [] Work) -> int #export_c {
   if s.count < 1 || w.count < 1 || s[0].page != 0 || s[0].touch || !s[0].pointed { return 0; }
   x := s[0].px; y := s[0].py;
+  if project_intro(w) {
+    d:=hi(s[0].dpr,1);
+    if inside(coax_book_box(project_layout(s[0].width,s[0].height,d,w).header,d),x,y) {return 1;}
+  }
   if crumb_at(s, x, y).count > 0 { return 1; }
   rb := realm_box(w, layout(s[0].width, s[0].height, hi(s[0].dpr, 1)).header, hi(s[0].dpr, 1));
   if rb.x1 > rb.x0 && inside(rb, x, y) { return 1; }
@@ -2351,7 +2385,7 @@ coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Liv
   }
   fade := ifx still then 1.0f32 else ease(time / 1.1);
   p := Pen.{d = d, fade = fade, time = time, demo = s[0].page == 1};
-  l := layout(width, height, d);
+  l := ifx p.demo then layout(width,height,d) else project_layout(width,height,d,w);
   // the open task: over the scene on a wide screen, the whole screen otherwise
   open := !p.demo && s[0].open > 0 && s[0].open <= w[0].n;
   full := open && !l.wide;
@@ -2778,7 +2812,7 @@ within :: (out: [] f32, from: int, to: int, b: Box, d: f32) -> bool {
     w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
     g: [1] Page;
     _ := draw_page(g[..], out[..], w, h);
-    l := layout(w, h, 2);
+    l := project_layout(w, h, 2, g[0].w[..]);
     vw := g[0].w[0].view;
     #assert vw.hit_n >= ifx k == 0 then 3 else 1;
     for i: 0..<vw.hit_n {
@@ -2897,7 +2931,7 @@ within :: (out: [] f32, from: int, to: int, b: Box, d: f32) -> bool {
   r := vw.hit_row[0];
   #assert tap(g[..], mid_x(vw.hit_box[0]), mid_y(vw.hit_box[0]), 0) && g[0].s[0].open == r + 1;
   _ = draw_page(g[..], out[..], w, h);
-  l := layout(w, h, 2);
+  l := project_layout(w, h, 2, g[0].w[..]);
   // wide: over the scene's column, the queue still there beside it
   #assert same_box(g[0].s[0].panel, l.scene) && g[0].w[0].view.hit_n > 0;
   // a click inside the panel keeps it; CLOSE closes it and clears the hash
@@ -2919,7 +2953,7 @@ within :: (out: [] f32, from: int, to: int, b: Box, d: f32) -> bool {
   g: [1] Page;
   _ := draw_page(g[..], out[..], w, h);
   vw := g[0].w[0].view;
-  l := layout(w, h, 2);
+  l := project_layout(w, h, 2, g[0].w[..]);
   // a click on the second row, then closed: the keys start there
   #assert tap(g[..], mid_x(vw.hit_box[1]), mid_y(vw.hit_box[1]), 0);
   #assert coaxial_project_key(g[0].s[..], g[0].w[..], KEY_ESCAPE, 0) && g[0].s[0].open == 0;
@@ -2978,7 +3012,7 @@ detail_fits :: (size_w: f32, size_h: f32, most: int) -> bool {
   w := size_w * 2; h := size_h * 2;
   g: [1] Page;
   _ := draw_page(g[..], out[..], w, h);
-  l := layout(w, h, 2);
+  l := project_layout(w, h, 2, g[0].w[..]);
   db := detail_box(l, w, h, 2);
   pick: [3] int;
   for i: 0..<lo_int(most, samples(g[0].w[..], pick[..])) {

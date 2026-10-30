@@ -1,6 +1,8 @@
 # Coax
 
-A systems language for real-time code. It compiles to C11, then to native code and wasm.
+Coax is OpenAgents' systems language for fast, real-time software. It brings the web, worlds and machine learning into one codebase with built-in checks, compiled through C11 to native code and WebAssembly. The bootstrap works today; the language and libraries are still growing alongside a runnable book.
+
+[Read The Coax Programming Language](https://github.com/OpenAgentsInc/openagents/blob/main/coax/book/README.md).
 
 An OpenAgents project, open for contributions from people and agents. Home: `coax/` in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents). Licence: Apache-2.0.
 
