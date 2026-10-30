@@ -340,6 +340,7 @@ Everglade :: struct {
   ranger_first: int; ranger_count: int; ranger_word: int;   // its indices and its first vertex's word
   pack_loaded: int; pack_total: int;
   kit_used: [KIT_GROUPS] int;
+  kit_tint: [3] f32;        // the tint the next kit pieces take (0: none): a house's own plaster or roof
   group_at: [KIT_GROUPS] int; group_cap: [KIT_GROUPS] int;
   kit_triangles: int;       // the kit triangles the last frame drew
   forest_triangles: int;    // of which the forest's
@@ -1588,6 +1589,15 @@ side_of :: (x0: f32, z0: f32, x1: f32, z1: f32, w: int) -> Side {
 // ground a door where the plan's is (open on a walk-in building) and
 // windows between plain walls, above them windows and timber; a post at
 // each corner; then its roof.
+// Each house's own paint (the previous Everglade's layout::paint, verse/everglade/previous/everglade.md):
+// a plaster and a roof colour from short palettes, picked by the house's number, so a street varies.
+// Multipliers on the kit's own colours, kept gentle so the painting holds together.
+PLASTER_TINTS :: [15] f32.[1.0, 1.0, 1.0,  1.0, 0.94, 0.84,  1.0, 0.9, 0.86,  0.93, 0.96, 1.0,  0.98, 0.97, 0.88];
+ROOF_TINTS :: [15] f32.[1.0, 1.0, 1.0,  0.82, 0.74, 0.7,  1.0, 0.84, 0.7,  0.76, 0.8, 0.88,  0.9, 0.9, 0.78];
+house_tint :: (s: [] Everglade, table: [15] f32, b: int, salt: int) {
+  k := ((b * 7 + salt * 3) % 5) * 3;
+  for c: 0..<3 { s[0].kit_tint[c] = table[k + c]; }
+}
 building :: (s: [] Everglade, b: int) {
   k := b * EG_BOX;
   x0 := EG_BUILDING[k]; z0 := EG_BUILDING[k + 1]; x1 := EG_BUILDING[k + 2]; z1 := EG_BUILDING[k + 3];
@@ -1614,7 +1624,10 @@ building :: (s: [] Everglade, b: int) {
         else if window { m = ifx stone then M_BRICK_WINDOW else M_PLASTER_WINDOW; }
         else if f > 0 && !stone { m = M_PLASTER_GRID; }
         else { m = ifx stone then M_BRICK else M_PLASTER; }
+        plaster := m == M_PLASTER || m == M_PLASTER_GRID || m == M_PLASTER_WINDOW || m == M_PLASTER_DOOR;
+        if plaster { house_tint(s, PLASTER_TINTS, b, 0); }
         piece(s, m, cx, y, cz, q.yaw, 1, 1, 1);
+        s[0].kit_tint[0] = 0;
         if window { piece(s, M_WINDOW, cx, y, cz, q.yaw, 1, 1, 1); }
         if is_door {
           // The leaf hangs on the doorway's left post: shut, or swung in on a walk-in building.
@@ -1640,7 +1653,9 @@ building :: (s: [] Everglade, b: int) {
   span := ifx long_z then w else d;
   run := ifx long_z then d else w;
   sx := (span + 0.8) / 8.24; sz := (run + 0.8) / 9.68; sy := sx * 0.85;
+  house_tint(s, ROOF_TINTS, b, 1);
   piece(s, M_ROOF, (x0 + x1) / 2, top + 0.78 * sy, (z0 + z1) / 2, ifx long_z then 0.0f32 else f32(PI) / 2, sx, sy, sz);
+  s[0].kit_tint[0] = 0;
   // The gables: the kit's brick-and-plaster fronts closing each end under the ridge.
   gx := span / 6.7; gy := 5.4 * sy / 4.38;
   for e: 0..<2 {
@@ -1923,7 +1938,8 @@ kit_rows :: (s: [] Everglade, group: int, rows: [] f32) {
   s[0].kit_used[group] = n + 1;
   o := (s[0].group_at[group] + n) * OBJECT_FLOATS;
   for i: 0..<12 { s[0].objects[o + i] = rows[i]; }
-  s[0].objects[o + 12] = 1; s[0].objects[o + 13] = 1; s[0].objects[o + 14] = 1;
+  tinted := s[0].kit_tint[0] > 0;
+  for c: 0..<3 { s[0].objects[o + 12 + c] = ifx tinted then s[0].kit_tint[c] else 1.0f32; }
   rock := group == group_of(10) || group == group_of(11);
   look := ifx rock then LOOK_ROCK else ifx group == group_of(M_WINDOW) then LOOK_WINDOW else LOOK_KIT;
   s[0].objects[o + 15] = f32(SHAPE_MESH + 8 * look);
@@ -3663,6 +3679,13 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert everglade_key(g[..], KEY_ESCAPE, 0) && !everglade_busy(g[..]);
 }
 
+#test "each house takes a plaster and a roof from the palettes, and the kit after it none" {
+  g: [1] Everglade;
+  house_tint(g[..], PLASTER_TINTS, 1, 0);
+  a := g[0].kit_tint[1];
+  house_tint(g[..], PLASTER_TINTS, 2, 0);
+  #assert a != g[0].kit_tint[1] && g[0].kit_tint[0] > 0.9;
+}
 #test "a hash names a place: you start on the street nearest it, facing it" {
   g: [1] Everglade;
   everglade_hash(g[..], "market");

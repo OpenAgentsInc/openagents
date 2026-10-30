@@ -702,6 +702,91 @@
         "verse-water-w10"
       ],
       "blocks": []
+    },
+    {
+      "slug": "verse-eg-house-paint",
+      "parent": "engine-everglade-parity",
+      "title": "Everglade: each house its own plaster and roof colour",
+      "size": "S",
+      "labels": [
+        "engine",
+        "everglade"
+      ],
+      "body": "The previous Everglade gave every house a plaster and a roof colour from short palettes (layout::paint, verse/everglade/previous/everglade.md, Rendering), so its streets varied; ours draws every house in the kit's one cream and one terracotta. Each house picks a gentle multiplier for its plaster pieces and its roof from two five-colour palettes by its number.",
+      "files": [
+        "apps/openagents-web/everglade.coax"
+      ],
+      "acceptance": [
+        "coax test passes on everglade.coax",
+        "Neighbouring houses on the road in and round the commons show different plaster and roof colours at noon on production",
+        "The style check still passes for Everglade"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-eg-chimney-smoke",
+      "parent": "engine-everglade-parity",
+      "title": "Everglade: wood smoke from the chimneys, the bakehouse and the smithy",
+      "size": "M",
+      "labels": [
+        "engine",
+        "everglade"
+      ],
+      "body": "The previous Everglade's wood smoke rose from the bakehouse's stack, the smithy's forge and the houses' chimneys (verse/everglade/previous/everglade.md, Layout). Ours has hearths indoors but no chimney on a roof and nothing rising. Chimneys on the roofs that have a hearth, and soft painterly smoke from them on the particle system, drifting with the wind; none on a phone's far houses.",
+      "files": [
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade-fx.wgsl"
+      ],
+      "acceptance": [
+        "coax test passes on everglade.coax",
+        "Smoke rises from the chimneys at /realms/everglade#commons at noon and dusk, desktop and phone",
+        "Perf in the release walk holds 60 FPS"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-eg-wildlife",
+      "parent": "engine-everglade-parity",
+      "title": "Everglade: songbirds, butterflies and frogs",
+      "size": "M",
+      "labels": [
+        "engine",
+        "everglade"
+      ],
+      "body": "The previous Everglade had pairs of songbirds circling, a frog hopping round each pond's bank, rats along Main Street and butterflies over the flower drifts (verse/everglade/previous/everglade.md, Layout). Ours has ducks, sitting cats and the companion flock. Butterflies over the flowers by day, songbirds in pairs over the town, a frog at each pond.",
+      "files": [
+        "apps/openagents-web/everglade.coax"
+      ],
+      "acceptance": [
+        "coax test passes on everglade.coax",
+        "Butterflies over the flowers and birds over the commons at noon on production, desktop and phone",
+        "Perf in the release walk holds 60 FPS"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-eg-street-dressing",
+      "parent": "engine-everglade-parity",
+      "title": "Everglade: bunting, window boxes, signposts and ivy",
+      "size": "M",
+      "labels": [
+        "engine",
+        "everglade"
+      ],
+      "body": "The previous Everglade dressed its streets: bunting across Main Street, flower boxes under windows, signposts at the crossings, ivy on the old walls, painted shop signs and benches round the ponds (verse/everglade/previous/everglade.md, Layout). Ours has lamps on posts and nothing else on its streets.",
+      "files": [
+        "apps/openagents-web/everglade.coax"
+      ],
+      "acceptance": [
+        "coax test passes on everglade.coax",
+        "Bunting, window boxes and signposts show on /realms/everglade#road and #commons on production",
+        "Inside the phone triangle budget"
+      ],
+      "blocked_by": [],
+      "blocks": []
     }
   ]
 }
