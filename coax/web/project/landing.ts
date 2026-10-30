@@ -25,6 +25,39 @@ const PLACES: [string, number, number, number][] = [
 const clean = (s: string) => s.replace(/[|\n\\"]/g, " ").replace(/[^\x20-\x7e]/g, "").trim()
 const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 3).trimEnd() + "..." : s)
 
+// Which project a changed file belongs to, by the folders each owns (most specific first); "" for none.
+// Commits are never matched by their message.
+const WORLDS = ["everglade", "fairy-forest", "icecream", "deadgears", "haunt"]
+const REALM_PAGES = /^apps\/openagents-web\/(realm|realms\/|everglade|fairy|icecream|deadgears|garden|thegrid|waterlab|characters|fixture|droprealm|myrealm|builder|verse|room|world|place|save|socket|textkeys)/
+function owner(file: string): string {
+  if (file.startsWith("verse/planetary-villa/") || /^apps\/openagents-web\/villa/.test(file)) return "planetary-villa"
+  if (/^coax\/web\/goldens\/(hecate|villa)/.test(file)) return "planetary-villa"
+  // the realms' goldens and docs are the worlds', though they sit in coax/web and docs/
+  if (WORLDS.some((w) => file.startsWith(`verse/${w}/`)) || REALM_PAGES.test(file) || file.startsWith("coax/web/goldens/") || file.startsWith("docs/verse/")) return "verse"
+  if (file.startsWith("coax/") || file.startsWith("verse/")) return "coax"   // the language and the Verse engine
+  if (file.startsWith("psionic/") || file.startsWith("crates/psionic/") || file.startsWith("docs/psionic/")) return "psionic"
+  if (file.startsWith("apps/openagents-desktop/")) return "openagents-desktop"
+  if (file.startsWith("docs/coder/")) return "coder"
+  return ""
+}
+// Each recent commit goes to the project owning most of its files.
+const owned = new Map<string, string[]>()   // slug -> "hash|unix|author|subject", newest first
+const byHash = new Map<string, string>()     // full hash -> its row
+{
+  const out = Bun.spawnSync(["git", "-C", ROOT, "log", "-n", "3000", "--name-only", "--format=@@%H|%at|%an|%s"]).stdout.toString()
+  for (const block of out.split("@@").filter(Boolean)) {
+    const [head, ...files] = block.trim().split("\n")
+    const count = new Map<string, number>()
+    for (const f of files) { const o = owner(f.trim()); if (o) count.set(o, (count.get(o) ?? 0) + 1) }
+    const [h, ...rest] = head.split("|")
+    const row = `${h.slice(0, 10)}|${rest.join("|")}`
+    byHash.set(h, row)
+    const best = [...count.entries()].sort((a, b) => b[1] - a[1])[0]
+    if (best) { if (!owned.has(best[0])) owned.set(best[0], []); owned.get(best[0])!.push(row) }
+  }
+}
+const recorded = new Map<string, string>()   // short hash -> the project whose task recorded it (done --commit)
+const taskRows: string[][] = [], rows0: [string, string][] = []
 const projects: string[] = [], working: string[] = [], feed: [number, string][] = [], commits: string[] = []
 for (const [k, [slug, cluster, x, z]] of PLACES.entries()) {
   const dir = join(ROOT, "apps/openagents-web/projects", slug)
@@ -61,19 +94,34 @@ for (const [k, [slug, cluster, x, z]] of PLACES.entries()) {
   }
   for (const t of tasks.filter((t) => fin(t.status)).sort((a, b) => b.status_at - a.status_at).slice(0, 3))
     feed.push([t.status_at, `${k}|DONE||${cut(clean(t.title), 60)}`])
-  // recent commits to the project's folder, oldest first
-  const path = (config as any).path || "."
-  const log = Bun.spawnSync(["git", "-C", ROOT, "log", "-n", "48", "--format=%h|%at|%an|%s", "--", path]).stdout.toString().trim().split("\n").filter(Boolean).reverse()
+  // its commits: the ones its tasks recorded when they were done, then the ones touching what it owns
+  const mine: string[] = []
+  for (const t of tasks) {
+    if (!t.commit) continue
+    const full = [...byHash.keys()].find((h) => h.startsWith(t.commit.slice(0, 10)))
+    if (full) { mine.push(byHash.get(full)!); recorded.set(full.slice(0, 10), slug) }
+  }
+  taskRows.push(mine)
+  rows0.push([slug, `${slug}|${clean(config.name)}|${clean((config as any).owner ?? "")}|${cluster}|${x}|${z}|${done}|${tasks.length}|${cut(mname, 48)}|${mdone}|${mtotal}|${on.length}`])
+  console.error(`landing: ${slug} ${done}/${tasks.length} done, ${on.length} working`)
+}
+// With every project's recorded commits known, each project's history: its
+// recorded ones, then the ones its folders own that no other project recorded.
+for (const [k, [slug, row]] of rows0.entries()) {
+  const mine = [...taskRows[k]]
+  for (const r of owned.get(slug) ?? []) if (!mine.includes(r)) mine.push(r)
+  const log = mine.filter((r) => { const o = recorded.get(r.split("|")[0]); return !o || o === slug })
+    .sort((a, b) => Number(b.split("|")[1]) - Number(a.split("|")[1])).slice(0, 48).reverse()
   for (const line of log) {
-    const [h, at, an, ...s] = line.split("|")
+    const [h, , an, ...s] = line.split("|")
     commits.push(`${k}|${h}|${clean(an)}|${cut(clean(s.join(" ")), 64)}`)
   }
   for (const line of log.slice(-2)) {
     const [h, at, , ...s] = line.split("|")
     feed.push([Number(at), `${k}|COMMIT|${h}|${cut(clean(s.join(" ")), 60)}`])
   }
-  projects.push(`${slug}|${clean(config.name)}|${clean((config as any).owner ?? "")}|${cluster}|${x}|${z}|${done}|${tasks.length}|${cut(mname, 48)}|${mdone}|${mtotal}|${on.length}|${log.length}`)
-  console.error(`landing: ${slug} ${done}/${tasks.length} done, ${on.length} working, ${log.length} commits`)
+  projects.push(`${row}|${log.length}`)
+  console.error(`landing: ${slug} ${log.length} commits (${taskRows[k].length} recorded by its tasks)`)
 }
 feed.sort((a, b) => b[0] - a[0])
 // The people are simulated: made-up names, each with a key made from its name, shown short.
