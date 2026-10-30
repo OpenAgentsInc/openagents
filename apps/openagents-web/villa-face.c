@@ -239,6 +239,15 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   player = verse_player_advance_among(player, dt, (coax_v_f32){0, 0}, (coax_v_f32){v->walls.e, walls * 6});
   coax_t_Vec3 feet = verse_player_feet(player);
   villa_step(at(state), dt, feet.x, feet.y, feet.z, verse_player_face(player), verse_player_act(player), player.vel.x, player.vel.z);
+  {   // metres walked and each 20 m square of the cemetery visited once (analytics.coax track_walk, track_area)
+    static float last_x, last_z; static bool placed;
+    if (placed) { float dx = feet.x - last_x, dz = feet.z - last_z; track_walk(tr(), __builtin_sqrt((double)(dx * dx + dz * dz))); }
+    placed = true; last_x = feet.x; last_z = feet.z;
+    char sq[8]; int cx = (int)((feet.x + 2000.0f) / 20.0f), cz = (int)((feet.z + 2000.0f) / 20.0f);   /* 100 is 0 m */
+    sq[0] = 'x'; sq[1] = (char)('0' + cx / 100 % 10); sq[2] = (char)('0' + cx / 10 % 10); sq[3] = (char)('0' + cx % 10);
+    sq[4] = 'z'; sq[5] = (char)('0' + cz / 100 % 10); sq[6] = (char)('0' + cz / 10 % 10); sq[7] = (char)('0' + cz % 10);
+    track_area(tr(), (coax_string){sq, 8});
+  }
   pet_look(state);
   pose(state, dt);
   pet_requests(state);

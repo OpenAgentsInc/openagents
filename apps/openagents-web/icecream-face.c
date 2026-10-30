@@ -86,7 +86,33 @@ static void track_run(uint32_t seed) {
     track_bool(tr(), track_cstr("best"), facts[37] > 0);
     track_end(tr());
   }
+  // what people do (analytics.coax): hits and melted minions counted, a tool picked, hurt, hidden, scared, the settings
+  if (!fresh) {
+    if (facts[39] > seen[39]) track_tally_n(tr(), track_cstr("hit"), track_cstr(""), (int64_t)(facts[39] - seen[39]));
+    if (facts[41] > seen[41]) track_tally_n(tr(), track_cstr("kill"), track_cstr("minion"), (int64_t)(facts[41] - seen[41]));
+    if (facts[22] > 0 && seen[22] <= 0) track_tally(tr(), track_cstr("hurt"), track_cstr(""));
+    if (facts[23] > 0 && seen[23] <= 0) track_tally(tr(), track_cstr("hide"), track_cstr("closet"));
+    if (facts[31] >= 0 && seen[31] < 0) track_tally(tr(), track_cstr("scare"), track_cstr(""));
+    if (facts[7] != seen[7] && facts[7] >= 0) track_act_n(tr(), track_cstr("tool"), track_cstr(""), (int64_t)facts[7]);
+    if ((facts[48] > 0) != (seen[48] > 0)) track_setting(tr(), track_cstr("first-person"), facts[48] > 0);
+    if ((facts[44] > 0) != (seen[44] > 0)) track_setting(tr(), track_cstr("timer"), facts[44] > 0);
+    if ((facts[45] > 0) != (seen[45] > 0)) track_setting(tr(), track_cstr("jumpscares"), facts[45] > 0);
+    if (facts[43] != seen[43]) track_act(tr(), track_cstr("difficulty"), track_cstr(DIFFICULTIES[(int)facts[43] % 3]));
+  }
   for (int i = 0; i < 64; i++) seen[i] = facts[i];
+}
+// Where you walk: metres (track_walk) and each room entered once (track_area).
+static void track_moves(uint32_t state) {
+  static float last_x, last_z; static bool placed;
+  coax_t_Game *g = &state_at(state)->scene.games.e[0];
+  float x = g->player.pos.x, z = g->player.pos.z;
+  if (placed) { float dx = x - last_x, dz = z - last_z; track_walk(tr(), __builtin_sqrt((double)(dx * dx + dz * dz))); }
+  placed = true; last_x = x; last_z = z;
+  if (g->house.cols > 0 && x >= 0 && z >= 0) {
+    char room[16]; int r = (int)(z / 10.0f) * (int)g->house.cols + (int)(x / 10.0f), n = 0;
+    room[n++] = 'r'; if (r >= 100) room[n++] = (char)('0' + r / 100 % 10); if (r >= 10) room[n++] = (char)('0' + r / 10 % 10); room[n++] = (char)('0' + r % 10); room[n] = 0;
+    track_area(tr(), track_cstr(room));
+  }
 }
 
 static void acts(uint32_t state) {
@@ -113,6 +139,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   track_start();
   icecream_facts(scene, (coax_v_f32){facts, 64});
   track_run((uint32_t)icecream_seed(scene));
+  track_moves(state);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_ice_max_vertices() * coaxial_ice_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, floats};
   int64_t n = ice_frame(at(state), out, u, width, height, dpr, dt, still != 0, (coax_v_f32){facts, 64}, icecream_seed(scene));

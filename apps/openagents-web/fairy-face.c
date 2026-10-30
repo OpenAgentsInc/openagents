@@ -85,6 +85,7 @@ static int32_t ask_id = -1, mint_id = -1;
 static bool facts_seen, has_player, mint_tried;
 static char player_out[1024];
 static void ask_out(uint32_t state);
+static void track_acts(uint32_t state, float x, float z, bool beat, bool in_water);
 static void social_frame(uint32_t state, float dt);
 static uint32_t player_n;          // the minted player's record while the host is to keep it (action 5)
 
@@ -274,6 +275,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     float fy = aspect * 1.25f; fy = fy < 0.95f ? 0.95f : fy > 1.9f ? 1.9f : fy;
     fairy_stream_frame(sv(), (coax_v_f32){u.data + at_water, u.count - at_water}, golden ? 2.0 : now, small, eye[0], eye[1], eye[2], 2.0f / (fy * (h > 1 ? h : 1)));
   }
+  track_acts(state, feet.x, feet.z, beat, swim.medium >= 2);
   ask_out(state);
   social_frame(state, dt);
   place_frame(state);
@@ -299,6 +301,41 @@ static bool need_player(void) {
 }
 
 // The page's question, once the browser has a player key (or minting one failed).
+// What people do here (analytics.coax): metres walked, each 40 m square of the park visited once,
+// wing beats and swims counted, a creature talked to, the map and the maker opened, a quest's
+// steps and its end, a skill learned or a find.
+static void track_acts(uint32_t state, float x, float z, bool beat, bool in_water) {
+  static float last_x, last_z; static bool placed, water_was, map_was, maker_was;
+  static int64_t talk_was, finished_was; static double news_at_was; static bool ticks_was[4];
+  coax_t_Fairy *g = fairy(state);
+  if (placed) { float dx = x - last_x, dz = z - last_z; track_walk(tr(), __builtin_sqrt((double)(dx * dx + dz * dz))); }
+  placed = true; last_x = x; last_z = z;
+  char sq[16]; int n = 0, cx = (int)((x + 4000.0f) / 40.0f), cz = (int)((z + 4000.0f) / 40.0f);   /* 100 is 0 m */
+  sq[n++] = 'x'; sq[n++] = (char)('0' + cx / 100 % 10); sq[n++] = (char)('0' + cx / 10 % 10); sq[n++] = (char)('0' + cx % 10);
+  sq[n++] = 'z'; sq[n++] = (char)('0' + cz / 100 % 10); sq[n++] = (char)('0' + cz / 10 % 10); sq[n++] = (char)('0' + cz % 10);
+  track_area(tr(), (coax_string){sq, n});
+  if (beat) track_tally(tr(), track_cstr("flap"), track_cstr(""));
+  if (in_water && !water_was) track_tally(tr(), track_cstr("swim"), track_cstr(""));
+  water_was = in_water;
+  if (g->talk > 0 && talk_was == 0) track_act_n(tr(), track_cstr("talk"), track_cstr("creature"), g->talk - 1);
+  talk_was = g->talk;
+  if (g->map.e[0].on && !map_was) track_act(tr(), track_cstr("map"), track_cstr("open"));
+  map_was = g->map.e[0].on;
+  if (g->maker.e[0].open && !maker_was) track_act(tr(), track_cstr("maker"), track_cstr("open"));
+  maker_was = g->maker.e[0].open;
+  coax_t_FfQuest *q = &g->quest.e[0];
+  for (int i = 0; i < 4; i++) {
+    if (q->ticks.e[i] && !ticks_was[i] && q->giver_n > 0) track_act_n(tr(), track_cstr("quest-step"), (coax_string){(const char *)q->giver.e, q->giver_n}, i + 1);
+    ticks_was[i] = q->ticks.e[i];
+  }
+  if (q->finished_count > finished_was && q->finished_count > 0) {
+    int64_t keys = (int64_t)(sizeof q->finished_n.e / sizeof q->finished_n.e[0]), key_n = (int64_t)sizeof q->finished.e / keys, last = q->finished_count - 1;
+    track_act(tr(), track_cstr("quest-done"), (coax_string){(const char *)q->finished.e + last * key_n, q->finished_n.e[last]});
+  }
+  finished_was = q->finished_count;
+  if (g->k_news_at != news_at_was && g->k_news > 0) track_act_n(tr(), track_cstr("skill"), track_cstr(g->k_news >= 100 ? "find" : "learn"), g->k_news);
+  news_at_was = g->k_news_at;
+}
 static void ask_out(uint32_t state) {
   int64_t n = fairy_ask(at(state));
   if (n <= 0 || ask_id >= 0 || !facts_seen) return;

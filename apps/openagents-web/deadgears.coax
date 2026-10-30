@@ -376,11 +376,24 @@ act :: (s: [] DeadGears, button: int) -> bool {
   else if button == BTN_LIFT { done = dg_lift(g); }
   else if button == BTN_STUN { done = dg_stun(g); }
   heard(s, g.ev[0] - 1);
+  if done && button == BTN_RELOAD { track_tally(s[0].track[..], "reload", ""); }
+  if done && button == BTN_COVER { track_tally(s[0].track[..], "cover", ""); }
+  if done && button == BTN_MODE { track_tally(s[0].track[..], "mode", ""); }
   return done;
+}
+
+// What the fight's events say people did, counted (analytics.coax track_tally, sent every 30 s).
+DG_TALLY :: [16] string.["", "shot", "hurt", "kill", "", "", "", "", "repair", "lift", "throw", "stun", "", "", "", ""];
+dg_tally :: (s: [] DeadGears, kind: int, flag: bool) {
+  if kind == EV_SHOT && flag { track_tally(s[0].track[..], "hit", ""); }
+  if kind < 0 || kind >= 16 { return; }
+  names := DG_TALLY;
+  if names[kind].count > 0 { track_tally(s[0].track[..], names[kind], ""); }
 }
 
 set_paused :: (s: [] DeadGears, on: bool) {
   if over(s) { return; }
+  if s[0].paused != on { track_setting(s[0].track[..], "paused", on); }
   s[0].paused = on;
   s[0].held = 0;
   release_fingers(s);
@@ -553,6 +566,7 @@ walk :: (s: [] DeadGears, dt: f32) {
   if finite3(to) { s[0].feet = v3(clamp(to.x, -15.5, 15.5), 0, clamp(to.z, -23.5, 13.5)); }
   moved := flat(from, s[0].feet);
   s[0].walking = ifx dt > 0 then moved / dt else 0.0f32;
+  track_walk(s[0].track[..], cast(f64) moved);
   g.pos[me_slot(g)] = s[0].feet;
   g.yaw[me_slot(g)] = s[0].yaw + f32(PI);
 }
@@ -581,6 +595,7 @@ heard :: (s: [] DeadGears, from: int) {
   first := ifx from < 0 then 0 else from;
   for i: first..<g.ev[0] {
     e := g.events[i];
+    dg_tally(s, e.kind, e.flag);
     if e.kind == EV_SHOT {
       s[0].shots += 1; s[0].fire_flash = 0.1;
       if e.flag { s[0].hits += 1; s[0].hit_flash = 0.18; effect(s, FX_SPARK, e.to, e.at, 0.28, 1); }
