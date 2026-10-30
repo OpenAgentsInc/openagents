@@ -1,0 +1,17 @@
+{
+  "pylons": 5,
+  "results": [
+    {
+      "slug": "oct30-gcloud-mammoth",
+      "provider": "npub16flvuprwwc3r2lers4j4lckp6lwtvd99rmk35mnf4v34gl36aq5s6884gu",
+      "identity": "mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019",
+      "status": "answered",
+      "choice": "yes",
+      "probabilities": {
+        "yes": 0.944614404,
+        "no": 0.055385596
+      },
+      "latency_ms": 374
+    }
+  ]
+}

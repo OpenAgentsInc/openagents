@@ -1,0 +1,14 @@
+{
+  "schema": "openagents.cloud-pylon.build.v1",
+  "source": "991b370452a04c16f10d7e646c6c53eacd97acd3",
+  "compiler_source": "81ad04b7877f29c0f424154fb27589c1b1839ef1d05ed28d724c488fc72f28c5",
+  "compiler_sha256": "f0f088f04c992655a1c119ba229240288ccf67f755c78b065017c1441e825eca",
+  "generated_pylon_c_sha256": "996ea2032eff7d6afdf1a28dfe17d210c9fb6777860cc26e16d0a5c1d7bbca78",
+  "native_target": "x86_64-linux",
+  "native_compiler": "Ubuntu GCC13.3.0",
+  "tls": "Nix OpenSSL3.6.3",
+  "build_test_trust": false,
+  "binary_sha256": "dc17b0930bdc059602ddbc7bc87aed5dbfd57d37631169e5a9c7d0775a3cf48f",
+  "nix_runtime_archive_sha256": "101c316b9b13f3ff815db6d926da2092e43534b89561c3e75eb4f731f592acb7",
+  "native_libc": "Nix glibc2.42-84"
+}

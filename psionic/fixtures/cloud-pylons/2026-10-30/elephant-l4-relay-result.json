@@ -1,0 +1,17 @@
+{
+  "pylons": 4,
+  "results": [
+    {
+      "slug": "oct30-gcloud-elephant",
+      "provider": "npub1xdwachet8sd0x09d7palmezrqjt7emapvxe56ku5c9pydduhk66qpqvgvz",
+      "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+      "status": "answered",
+      "choice": "yes",
+      "probabilities": {
+        "yes": 0.757202773,
+        "no": 0.242797227
+      },
+      "latency_ms": 615
+    }
+  ]
+}

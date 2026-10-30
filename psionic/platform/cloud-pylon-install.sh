@@ -26,7 +26,9 @@ if ! id openagents-pylon >/dev/null 2>&1; then
 fi
 # The deployment builder supplies only the Nix store paths listed in its
 # source record. Do not install a package manager or grant the service a shell.
-tar -xzf "$artifacts/nix-runtime.tgz" -C /
+# Store objects are immutable. Never truncate a shared library already mapped
+# by a running Pylon while installing an update of the executable.
+tar --skip-old-files -xzf "$artifacts/nix-runtime.tgz" -C /
 install -d -m 0755 "$prefix"
 install -m 0755 "$artifacts/pylon" "$prefix/pylon.next"
 mv -f "$prefix/pylon.next" "$prefix/pylon"

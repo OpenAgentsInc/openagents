@@ -1,0 +1,17 @@
+{
+  "pylons": 4,
+  "results": [
+    {
+      "slug": "oct30-gcloud-elephant-rtx",
+      "provider": "npub1t8jy8hhskht3s8adtp4jlz9p26yap8y3l5l5f4rtnrt63yx0nmnstucj6u",
+      "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+      "status": "answered",
+      "choice": "yes",
+      "probabilities": {
+        "yes": 0.757197863,
+        "no": 0.242802137
+      },
+      "latency_ms": 269
+    }
+  ]
+}

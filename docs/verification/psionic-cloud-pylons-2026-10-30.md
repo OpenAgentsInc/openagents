@@ -1,10 +1,14 @@
 # Native cloud Pylons, 2026-10-30
 
-The existing Google Cloud Elephant backend now serves a native Coax Pylon
-through `wss://relay.openagents.com`. Its model HTTP listener remains on
-`127.0.0.1:8797`. Nothing routes inference through an outside model service.
+Two learned-model Coax Pylons are live through `wss://relay.openagents.com`:
+Elephant and Mammoth, colocated on one Google Cloud RTX PRO 6000. Their
+model HTTP listeners remain loopback only. Nothing routes inference through
+an outside model service. The original L4 proof below is retained as history;
+that VM was preempted twice and stays stopped.
 
-## Running Elephant
+Current operator instructions: [cloud Pylon runbook](../../psionic/docs/serving/cloud-pylons.md).
+
+## Initial L4 qualification (retired after preemption)
 
 | Item | Value |
 | --- | --- |
@@ -16,6 +20,12 @@ through `wss://relay.openagents.com`. Its model HTTP listener remains on
 | Public key | `335ddc5f2b3c1af33cadf07bfde4430497ecefa161b34d5b94c14246b797b6b4` |
 | Service | `openagents-pylon-oct30-gcloud-elephant.service` |
 | Backend | Existing `psionic-elephant.service`, not replaced or restarted |
+
+This describes the first proof at 17:56–17:57 UTC. Google Cloud preempted
+this VM at 18:03:18 UTC (stopped 18:03:33), and again at 18:17:55 (stopped
+18:18:05) after recovery. The adaptive `g2-standard-8` STANDARD attempt also
+hit stockout. Its original disk and identity remain; it is not an active
+provider in the final rollout.
 
 The six cases in `psionic/fixtures/pylon/elephant-1.selfcheck` passed in
 2,767 ms, with zero billionths error against their frozen GPU answers.
@@ -33,14 +43,18 @@ identity. Answer: `yes`, probabilities `yes=0.757202773`, `no=0.242797227`,
 615 ms from publishing to result. This proves the learned-model Pylon path;
 the separately deployed authenticated HTTP gateway has its own checks.
 
-## Mammoth rollout
+## Final colocated Elephant and Mammoth
 
 One additional VM, `psionic-rtx6000-pylon` in `us-central1-b`, was created
 for Mammoth: `g4-standard-48` SPOT, one NVIDIA RTX PRO 6000 Blackwell Server
 Edition (97,887 MiB), 176 GiB host RAM and a 200 GB `hyperdisk-balanced`
 boot disk. It has no service account or OAuth scopes. No autoscaling or
-additional GPU fleet was provisioned. The existing L4 and this one RTX PRO
-VM incur their normal compute/disk charges while retained; SPOT can preempt.
+additional active GPU fleet was provisioned. STANDARD capacity was unavailable
+for the RTX PRO and both tested L4 machine sizes. The final rollout retains
+one running RTX PRO SPOT VM and the stopped L4 disk. SPOT can preempt;
+bounded recovery does not guarantee reserved capacity. The Hyperdisk is
+provisioned to 12,000 IOPS / 750 MiB/s. Compute and storage incur their normal
+charges while retained.
 
 This reuses the machine/model combination already qualified in
 [the RTX PRO record](psionic-rtx6000-mammoth-2026-10-30.md). Its exact
@@ -53,9 +67,46 @@ both original shard hashes, rather than only the index filename.
 `psionic/fixtures/pylon/mammoth-1.selfcheck` adds the existing chapter-11
 CPU wet-question golden in billionths, at the same frozen 0.0005 tolerance.
 The independent selfcheck parser admits it. This is one pre-existing golden,
-not a newly claimed six-case Mammoth qualification. Live service admission
-and inference evidence will be appended after the native Mammoth serving
-adapter is integrated.
+not a newly claimed six-case Mammoth qualification.
+
+| Final provider | Elephant | Mammoth |
+| --- | --- | --- |
+| Slug | `oct30-gcloud-elephant-rtx` | `oct30-gcloud-mammoth` |
+| Public key | `59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7` | `d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829` |
+| Loopback backend | `127.0.0.1:8796` | `127.0.0.1:8797` |
+| Doctor | 6 cases, 744 ms | 1 frozen CPU case, 266 ms |
+| Largest error, billionths | 4,910 | 2,494 |
+| Allowed error, billionths | 500,000 | 500,000 |
+| Independent relay task | 269 ms | 374 ms |
+| `yes` / `no` | `0.757197863` / `0.242802137` | `0.944614404` / `0.055385596` |
+| First durable epoch | 2 | 2 |
+
+Both passed NIP-42, advertised free online beacons and answered fresh
+kind-25910 jobs with independently verified/decrypted kind-26910 results.
+Captured results are `elephant-rtx-relay-result.json` and
+`mammoth-relay-result.json` under `psionic/fixtures/cloud-pylons/2026-10-30/`.
+No fallback or toy model answered either request. The colocated processes
+use 66,590 of 97,887 MiB device memory: two logical providers on one card.
+
+The real Mammoth rollout caught an adapter defect after original checkpoint
+authentication: the host used Elephant's default kind-0 device placement.
+Commit `730705ed80` selects `eg_place_kind` with the authenticated model kind.
+The actual failure was the red check; its doctor and encrypted task above
+are the green checks. Generated Coax/CUDA arithmetic did not change. The two
+verified-file records let the corrected process authenticate in 148 ms;
+it placed 47.73 GiB fully resident, with zero streaming, in 2,463 ms.
+
+Patched native Linux Mammoth executable SHA-256:
+`c9fae481f38a30dc410731c166e579b4cf2d9265bb4b3c515ff709fc11e30959`.
+Its build ID is
+`b610ee3bea2f1b30a9a9bdb8d5348d214505ea16e2ddbd7b0e27e40d3ba759c3`;
+the full source/tool receipt is `mammoth-linux-serve-build.json` in that fixture
+directory. GCC is Ubuntu 13.3.0; the emitter is the qualified Mac Coax binary,
+hashed as metadata and never executed on Linux. The existing healthy Elephant
+process retains its pre-fix kind-0 executable inode
+`d46eb50cda522e851c235ed2e18448dd6b3e15249727f874fd0336f3684ee717`
+(build `17293c1b35aae34215ae28a5aab0245839c023f0008975819d26237d723fa6c8`).
+The shared executable path was replaced atomically; Elephant was not restarted.
 
 ## Deployment and provenance
 
@@ -74,6 +125,17 @@ OpenSSL 3.6.3, using the flags in `pylon-build.sh` without `--test-trust`.
 The same Nix closure is unpacked on the Ubuntu model host; installing a
 package manager there is unnecessary. The machine/build fingerprints are in
 `psionic/fixtures/cloud-pylons/2026-10-30/pylon-build.json`.
+
+The active Pylons use the generation-safe source `991b370452`, emitted on
+the same qualified Mac compiler, compiled with Ubuntu GCC 13.3 and Nix
+OpenSSL 3.6.3/glibc 2.42. Native binary SHA-256:
+`dc17b0930bdc059602ddbc7bc87aed5dbfd57d37631169e5a9c7d0775a3cf48f`.
+Its full receipt is `pylon-generation-build.json` beside the first receipt.
+Both state directories are under `/var/lib/openagents-pylon/<slug>`; the
+private `demo-label` and public `identity.generation` are mode 0600 and owned
+by `openagents-pylon`. The epoch is reserved before any beacon, and survives
+restart without relying on the wall clock. The installer skips existing
+immutable Nix store files instead of truncating mapped shared libraries.
 
 The new RTX VM uses Ubuntu image
 `ubuntu-accelerator-2404-amd64-with-nvidia-595-v20261021`, driver 595 and
