@@ -455,7 +455,8 @@ watch_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int
       }
     }
   }
-  // the shouts
+  // the shouts: one that would cross a shout already drawn goes above it, so none overlap
+  placed: [WATCH_ACTORS] Box; placed_n := 0;
   for i: 0..<WATCH_ACTORS {
     a := w[0].actors[i];
     if a.shout < 0 || !s[0].wv.head_on[i] { continue; }
@@ -464,11 +465,29 @@ watch_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int
     if !sc.ok { continue; }
     cap := 8 * k;
     tw := text_width(line, cap);
+    sb := shout_box(placed[0..<placed_n], sc.x - tw / 2, sc.y, tw, cap);
+    placed[placed_n] = sb; placed_n += 1;
     fade := clamp01((f32(SHOUT_FOR) - a.shout_t) / 0.4);
-    n = draw_text(out, n, line, sc.x - tw / 2, sc.y, cap, GAP, SPACE, ink(k, 0.95 * fade, 1, 0.92, 0.82), false, false);
+    n = draw_text(out, n, line, sb.x0, shout_baseline(sb, cap), cap, GAP, SPACE, ink(k, 0.95 * fade, 1, 0.92, 0.82), false, false);
   }
   return n;
 }
+
+// A shout's box for a line tw wide whose baseline is at y, raised over every box
+// already placed that it would cross (a little air between them).
+shout_box :: (placed: [] Box, x: f32, y: f32, tw: f32, cap: f32) -> Box {
+  b := Box.{x0 = x - cap * 0.3, y0 = y - cap * 1.5, x1 = x + tw + cap * 0.3, y1 = y + cap * 0.5};
+  for tries: 0..<placed.count + 1 {
+    crossed := false;
+    for j: 0..<placed.count {
+      o := placed[j];
+      if b.x0 < o.x1 && o.x0 < b.x1 && b.y0 < o.y1 && o.y0 < b.y1 { h := b.y1 - b.y0; b.y1 = o.y0; b.y0 = b.y1 - h; crossed = true; }
+    }
+    if !crossed { return b; }
+  }
+  return b;
+}
+shout_baseline :: (b: Box, cap: f32) -> f32 { return b.y1 - cap * 0.5; }
 
 // Over everything: your fall's dark and YOU DIED.
 watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
@@ -491,6 +510,20 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
 }
 
 // ---- checks
+
+#test "two shouts at one spot never overlap: the second goes above the first" {
+  placed: [3] Box;
+  a := shout_box(placed[0..<0], 100, 200, 80, 8);
+  #assert shout_baseline(a, 8) == 200;
+  placed[0] = a;
+  b := shout_box(placed[0..<1], 110, 202, 80, 8);
+  #assert b.y1 <= a.y0 && !(b.x0 < a.x1 && a.x0 < b.x1 && b.y0 < a.y1 && a.y0 < b.y1);
+  placed[1] = b;
+  c := shout_box(placed[0..<2], 95, 199, 80, 8);
+  for j: 0..<2 { o := placed[j]; #assert !(c.x0 < o.x1 && o.x0 < c.x1 && c.y0 < o.y1 && o.y0 < c.y1); }
+  far := shout_box(placed[0..<2], 600, 200, 80, 8);
+  #assert shout_baseline(far, 8) == 200;   // apart from the rest: where it was
+}
 
 #test "watch: a meteor on the inn is a crime the watch hear and hunt you for; R stands the fallen up" {
   g: [1] Everglade;
