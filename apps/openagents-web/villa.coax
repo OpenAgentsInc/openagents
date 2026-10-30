@@ -545,8 +545,9 @@ villa_flight :: (s: [] Villa, active: bool, flying_now: bool, take: int, t: f32,
   shot := Shot.{eye = v3(ex, ey, ez), at = v3(ax, ay, az)};
   if finite3(shot.eye) && finite3(shot.at) { s[0].shot = shot; }
 }
-// The face asks: whether to fly at all (reduced motion and the release walk don't), and a skip.
-villa_fly_wanted :: (s: [] Villa) -> bool #export_c { return !s[0].still && !s[0].golden; }
+// The face asks: whether to fly at all (reduced motion, the release walk and a visit after the
+// flight has played don't), and a skip.
+villa_fly_wanted :: (s: [] Villa) -> bool #export_c { return !s[0].still && !s[0].golden && !s[0].tips[0].been; }
 villa_take_skip :: (s: [] Villa) -> bool #export_c { a := s[0].skip_ask; s[0].skip_ask = false; return a; }
 villa_live :: (s: [] Villa) -> Shot #export_c { return s[0].live; }
 
@@ -580,6 +581,8 @@ villa_step :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: 
   s[0].shot = verse_flight_shot(f, now, s[0].live);
   s[0].fl_active = verse_flight_active(f, now); s[0].fl_flying = verse_flight_flying(f, now);
   s[0].fl_take = verse_flight_take(f, now); s[0].fl_t = f32(now - f.start);
+  // it has played (or was skipped): the browser keeps that with the tips (villatips.coax)
+  if !s[0].golden && !s[0].fl_flying && !s[0].tips[0].flown { s[0].tips[0].flown = true; }
   // the dog keeps by you, going round the scenery; it stays put while it sits or digs
   if !s[0].pet_still && !s[0].play[0].stay {
     nodes := NODE_XZ; links := LINK_AB;

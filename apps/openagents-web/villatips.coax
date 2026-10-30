@@ -4,7 +4,8 @@
 // you've done it (NEXT skips one, SKIP TIPS all of them); a light shows the
 // way to the field gate and to your pet's tombstone. How far you got is kept
 // in this browser (the host's keep, action 4: "tips=N"), so a second visit
-// starts where you left off.
+// starts where you left off; "tips=Nf" also keeps that the flight in has
+// played (or was skipped), so later visits start at the gate (qa-villa-flight-once).
 
 TIP_WALK :: 0; TIP_PET :: 1; TIP_FETCH :: 2; TIP_FIELD :: 3; TIP_VASE :: 4; TIP_LEAVE :: 5; TIP_END :: 6; TIPS_DONE :: 7;
 DO_TIP_NEXT :: 9; DO_TIPS_SKIP :: 10;
@@ -15,6 +16,8 @@ Tips :: struct {
   from_x: f32; from_z: f32; placed: bool;   // where you were when it began
   end_t: f32;
   kept: int;                                // the step last kept in the browser
+  been: bool;                               // the browser kept that the flight in played on an earlier visit
+  flown: bool; kept_flown: bool;            // it has played (or was skipped) by now, and whether the browser has that
   bottom: f32;                              // the plate's lower edge last frame (0: not shown), so a toast goes under it
 }
 
@@ -57,6 +60,7 @@ villa_kept :: (s: [] Villa, t: string) #export_c {
   q := s[0].tips[..];
   if n > q[0].step { q[0].step = n; }
   q[0].kept = n;
+  if t.count > 6 && t[6] == 'f' { q[0].been = true; q[0].flown = true; q[0].kept_flown = true; }
 }
 
 // Once a frame: what you've done moves the tips on.
@@ -77,11 +81,12 @@ tips_step :: (s: [] Villa, dt: f32) {
   if st == TIP_LEAVE && tips_saw(p, EV_VASE) { tips_go(s, TIP_END); }
   if q[0].step == TIP_END { q[0].end_t += dt; if q[0].end_t > f32(TIP_END_SECONDS) { tips_go(s, TIPS_DONE); } }
   // kept in the browser when it moves on (the pet's action slot, when it's free)
-  if q[0].kept != q[0].step && p[0].action == 0 {
+  if (q[0].kept != q[0].step || q[0].kept_flown != q[0].flown) && p[0].action == 0 {
     n := pet_put(p[0].outbox[..], 0, "tips=");
-    p[0].outbox[n] = cast(u8) (48 + q[0].step);
-    p[0].out_n = n + 1; p[0].action = 4;
-    q[0].kept = q[0].step;
+    p[0].outbox[n] = cast(u8) (48 + q[0].step); n += 1;
+    if q[0].flown { p[0].outbox[n] = 'f'; n += 1; }
+    p[0].out_n = n; p[0].action = 4;
+    q[0].kept = q[0].step; q[0].kept_flown = q[0].flown;
   }
 }
 
@@ -160,6 +165,25 @@ tips_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   #assert t[0].tips[0].step == TIP_VASE && t[0].tips[0].kept == 4;
   villa_kept(t[..], "tips=x");
   #assert t[0].tips[0].step == TIP_VASE;
+}
+
+#test "the flight in plays on a first visit only: once it has played the browser keeps it, and the next visit starts at the gate" {
+  s: [1] Villa;
+  villa_start(s[..]);
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  #assert villa_fly_wanted(s[..]) && s[0].fl_flying && !s[0].tips[0].flown && s[0].pet[0].action == 0;
+  s[0].skip_ask = true;
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  for i: 0..<30 { villa_step(s[..], 0.1, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0); }
+  #assert s[0].tips[0].flown && s[0].pet[0].action == 4 && cast(string) s[0].pet[0].outbox[0..<s[0].pet[0].out_n] == "tips=0f";
+  t: [1] Villa;
+  villa_kept(t[..], "tips=0f");
+  #assert t[0].tips[0].been && !villa_fly_wanted(t[..]);
+  villa_step(t[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  #assert !t[0].fl_flying && !verse_flight_active(t[0].flight, t[0].time) && t[0].pet[0].action == 0;
+  r: [1] Villa;
+  villa_kept(r[..], "tips=3");
+  #assert !r[0].tips[0].been && villa_fly_wanted(r[..]) && r[0].tips[0].step == TIP_FIELD;
 }
 
 #test "a toast goes under the tip's plate, never over its buttons" {
