@@ -10,20 +10,22 @@ supervision record. Setup time does not replace the requested live window.
 | --- | --- | --- |
 | Elephant | `psionic-rtx6000-pylon`, `us-central1-b` | `59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7` |
 | Mammoth | same RTX host | `d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829` |
-| GPT-OSS 20B | same RTX host, integration in progress | Exact model `gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed`; truthful NIP-90 text lane, no decision-model substitution |
+| GPT-OSS 20B | same RTX host | `23a62947ce9913e8d61d166fa72a2e4d2e11b153f9c47c5ee37e583ec702f599`; exact `gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed`, signed public `nip90-5050` text lane |
 | Confidential Clef | `oct30-att-tdx-clef`, `us-central1-a` | Endpoint `eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0`; fresh vendor attestation and sealed receipt required |
 
-The two learned decision providers share one physical GPU. The public site
+The two learned decision providers and GPT-OSS share one physical GPU. The public site
 currently also includes Mac providers; those do not count toward GCloud's
 minimum. All four roles above must be satisfied; three existing providers
-alone do not prove the missing GPT-OSS integration.
+alone did not prove GPT-OSS; its real text round and website row are now verified.
 
 ## Window
 
 - Goal creation: `2026-10-30T19:00:42Z`.
-- Complete-fleet ready time: **pending GPT-OSS end-to-end verification**.
-- Six-hour deadline: ready time plus exactly 21,600 seconds, recorded once
-  in the immutable window receipt after the full lineup is verified.
+- Complete-model lineup verified: `2026-10-30T21:04:21Z`.
+- Independent managed supervision ready time: **pending actual Scheduler probe cycle**.
+- Six-hour deadline: supervision activation time plus exactly 21,600 seconds,
+  recorded once in the immutable window receipt. The full lineup and managed
+  probe/recovery path must be verified before that clock starts.
 - Existing providers remain running and are probed during setup.
 - Do not claim six hours merely because a timer was configured. Preserve
   timestamped observations, failures, recovery requests and subsequent real
@@ -31,10 +33,17 @@ alone do not prove the missing GPT-OSS integration.
 
 ## Current verified state
 
-At `2026-10-30T20:19:18Z`, actual production Coax state showed five live
-providers, including exactly the three GCloud providers above across two VMs.
-Elephant and Mammoth beacons were 24 seconds old; confidential Clef was 26
-seconds old and renewed during observation. GPT-OSS was not yet advertised.
+At `2026-10-30T21:04:21Z`, actual production Coax state showed six live
+providers, including exactly the four required GCloud providers across two
+VMs. GPT-OSS, Mammoth, Elephant and Clef beacons were respectively 38, 3, 8
+and 17 seconds old. The other two rows were Mac advertisements and do not
+count toward GCloud's requirement. The website needed no code change.
+
+GPT-OSS's first real provider-pinned NIP-90 round passed at `21:03:33Z`:
+signed 5050 request, real native Responses generation, signed/correlated
+6050 result, exact original checkpoint and `PONG` final text in 907 ms.
+Both GPT-OSS units are enabled/active; total GPU use was 80,783 of 97,887 MiB.
+This lane is public signed text, not encrypted input or paid work.
 
 Fresh authenticated production calls returned the pinned Elephant and Mammoth
 providers with real `yes` answers in 218 ms and 393 ms respectively. The
@@ -43,6 +52,19 @@ immutable image and nonce-bound endpoint, then a unique public-state sealed
 round: 10,086 ms inference / 10,976 ms relay round. Repeating the old fixed
 weather prompt hit its result cache, so subsequent probes must vary public
 state to establish new inference.
+
+Fresh unique-state endpoint probes at `20:56:57Z` also passed for Elephant
+and Mammoth (130 ms and 471 ms). Operational probes are new observations;
+unchanged compiler, model-reference and arithmetic gates are not repeated.
+
+The managed watcher image is
+`us-central1-docker.pkg.dev/openagentsgemini/openagents/pylon-fleet-watch@sha256:40c566373f3a74c2f34daab5ff3cf76de14bab977db8327cf741ebe1b803c736`.
+Cloud Build `cbadc10b-6599-4654-876b-02867b323656` passed. Recovery policy killed
+69/69 mutants; typed probe adapter killed 5/5. Native ASan/UBSan checks passed,
+and six effect tests cover expiry, narrow recovery, dry mode, wrong-provider
+HTTP200 and refusal to credit only three roles. The embedded GPT-OSS client
+and confidential oracle were built from their qualified pinned components.
+Actual IAM/Scheduler activation is still pending; an image is not a live watch.
 
 ## Recovery and probe ownership
 
