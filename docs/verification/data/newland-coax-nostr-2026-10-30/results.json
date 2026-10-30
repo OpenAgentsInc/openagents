@@ -1,0 +1,80 @@
+{
+  "baseline": "aca6a4ccfdd29f285cfbd103176addc8faba62ab",
+  "source_sha256": {
+    "apps/openagents-web/build.sh": "c28691a25e0eafd31f949aca9c3eeda64e4a9eb657ef383ba67dd281498866de",
+    "apps/openagents-web/new-land/index.html": "ae8cae937f782ccd2757f685d63d7f2d3b622f007bd8461bbd1ecaf5cf260942",
+    "apps/openagents-web/new-land/README.md": "ff45c99c1dab39bcc454b5cadd198dad1700830c2d8e3a39c9950af865c0a64b",
+    "apps/openagents-web/newland-data.coax": "826db7c94c5cb36a379711afd0a49f678defde8839b8611f99951125d89d5b52",
+    "apps/openagents-web/newland-face.c": "eb8be8f822b3b06c8e2359900afa5b485e3fd27571caef4e745ed5d42465315c",
+    "apps/openagents-web/newland.coax": "e85fa4cb43fb6f6ff71b4a9243809adbd0a706ebd16f6b48e139daa842442559",
+    "coax/nostr.md": "82a14335af5fb6f6f289a815589d3b6d34562c1f8bf33a15b461a926565317cc",
+    "coax/web/project/landing.ts": "e64bf5ef8fd4a7bf78dd179a15a06d78335ddd1adb7604f9674317583546b5fb",
+    "coax/web/project/pylons.ts": "eadc59a7c3434be0ee8f19d89b3507897a37c1b1ffa57da6718fd3a3df74e57a",
+    "coax/web/project/landing-nostr.coax": "00bfc92443748ebe73a1fa1f7b2978b7e4610a80712bd18c38e24e1c8f68c5bd",
+    "coax/web/project/landing-fold.coax": "b1542b227818a2ae07945cb32e759dfb6605158c05fce4c22b96cdda15401958",
+    "coax/web/project/landing-reader.ts": "52c5651decb183698a21791a0b872faba5bc7d63e8c5518a8a5ea2d721eaef11",
+    "coax/web/project/landing-reader-face.c": "029232c50395570214569df94a0aaa4f55237cad121c23a6f1439a2635686877",
+    "coax/web/project/landing-fold-face.c": "cac7375d8de949f3bc0ebf6e8649f773869ffbfd3796f3d6ed142ee97d040f35",
+    "coax/web/project/build-reader.sh": "ab9be2b78aba14aaa63d3574a510897db654f2c0c7b4eb1262b9abacd43b937d",
+    "coax/web/tests/newland_reader.test.ts": "202ae036f5257071562f73b3d613140b4490a4a1d100c2762bbd5de2c6f2a8b9",
+    "coax/web/tests/newland_fixtures.py": "b97210603ebb11163c903758454b314420bfb1af03151aecf927a2f4f15ae399",
+    "coax/web/tests/newland_wasm.cjs": "e6e203dfe969489e4198d2922ce0e3dbf3f5f197d3d449e54b6458ac53b890df"
+  },
+  "compiler_sha256": "df4d78ef4ddc8f788cb4a87da31d538a2ecf174af14085a5f34ab1d868a80fb0",
+  "artifact_sha256": {
+    "apps/openagents-web/build/landing-reader.wasm": "254b6be9cd67bd291bd2ac6eb343cd53ae282371aec53b7fedb7db3d05f3ad8a",
+    "apps/openagents-web/build/newland.wasm": "71c08d4e64716ac2fd90d1d11062b1045be9d6c620f35971465a933670389180"
+  },
+  "reader_build_cache": {
+    "source": "7eebced90823bdfffff26c52ce6da5885bf27fb60c02a7deb9de79c641144735",
+    "wasm": "254b6be9cd67bd291bd2ac6eb343cd53ae282371aec53b7fedb7db3d05f3ad8a"
+  },
+  "checks": {
+    "reader_coax": "292 / 292",
+    "reader_wasm": "7 tests, 579 assertions",
+    "renderer_coax": "30 / 30",
+    "fold_interpreter": "22 / 23; inherited project-fold.coax:1124 aggregate storage limit"
+  },
+  "renderer": {
+    "frames": 9,
+    "viewports": 3,
+    "peak_vertices": 50718,
+    "max_vertices": 200000,
+    "clock_and_pause_expiry": true,
+    "finite_geometry": true,
+    "guard_bytes": true
+  },
+  "capture_log": [
+    "landing: coax 87/187 done, 17 working",
+    "landing: psionic 1/38 done, 0 working",
+    "landing: openagents-desktop 13/24 done, 0 working",
+    "landing: coder 17/18 done, 0 working",
+    "landing: verse 191/203 done, 4 working",
+    "landing: planetary-villa 37/39 done, 0 working",
+    "landing: coax 48 commits (96 recorded by its tasks)",
+    "landing: psionic 48 commits (0 recorded by its tasks)",
+    "landing: openagents-desktop 28 commits (13 recorded by its tasks)",
+    "landing: coder 29 commits (17 recorded by its tasks)",
+    "landing: verse 48 commits (189 recorded by its tasks)",
+    "landing: planetary-villa 38 commits (30 recorded by its tasks)",
+    "landing: 1 pylons (0 demo)",
+    "landing: wrote verified capture /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/apps/openagents-web/newland-data.coax"
+  ],
+  "headless_chrome": {
+    "viewports": [
+      "1440x900",
+      "390x844"
+    ],
+    "ready": true,
+    "reviewed": [
+      "capture age and simulation labels",
+      "expired Pylon card",
+      "unknown reply delay"
+    ],
+    "screenshots_sha256": {
+      "newland-phone-push.png": "7f89e59cf96724ba819bc101a50f993d684a645d21392b59bafa4f48942a03b3",
+      "newland-desktop-push.png": "79c08ec4a4f7ebbc70849e898d0deb52767206566804cf387e2dc3d3687fdf62"
+    }
+  },
+  "mutations": "Not run per owner instruction; not a full release gate"
+}

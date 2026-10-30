@@ -8,12 +8,21 @@
 
 static coax_t_LandState *state_at(uint32_t state) { return (coax_t_LandState *)(uintptr_t)state; }
 static coax_v_t_LandState view(uint32_t state) { return (coax_v_t_LandState){state_at(state), 1}; }
+static unsigned char inbox[4096];
+EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) {(void)state;return (uint32_t)(uintptr_t)inbox;}
+EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) {return sizeof inbox;}
+EXPORT("coaxial_message") void coaxial_message(uint32_t state,int32_t kind,int32_t n) {
+  if(n>=0 && n<=(int32_t)sizeof inbox)coaxial_land_message(view(state),kind,(coax_string){(const char *)inbox,n});
+}
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_LandState) * 1000003u + _Alignof(coax_t_LandState) * 31u
                     + offsetof(coax_t_LandState, plot) * 7u + offsetof(coax_t_LandState, login) * 13u + 0x4c414eu);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_LandState); }
+EXPORT("coaxial_land_captured") int64_t captured(void) {return coaxial_land_captured();}
+EXPORT("coaxial_land_pylons") uint32_t pylons(uint32_t state) {return (uint32_t)state_at(state)->pylons;}
+EXPORT("coaxial_land_pylon_status") int32_t pylon_status(uint32_t state,uint32_t i) {return i<(uint32_t)state_at(state)->pylons?(int32_t)state_at(state)->pyl.e[i].status:-1;}
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_land_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_land_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_land_uniform_floats(); }

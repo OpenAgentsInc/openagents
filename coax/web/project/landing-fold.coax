@@ -1,0 +1,74 @@
+// The existing Coax project fold, compiled apart from crypto because coax0
+// has a flat procedure namespace. The linked Coax verifier receives the
+// same immutable original before any field enters this owned store.
+#load "../../../apps/openagents-web/project-fold.coax";
+LF_TEST_KEY :: "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575";
+
+#test "landing fold identities have explicit key and slug bounds" {
+  #assert lf_identity(LF_TEST_KEY,"coax");
+  #assert !lf_identity("bad","coax") && !lf_identity(LF_TEST_KEY,"");
+}
+LfState :: struct {store:[1]Store; folded:[1]Fold;key:[64]u8;slug:[64]u8;slug_n:int;active:bool;failed:bool;expected:[FOLD_ISSUES*64]u8;expected_n:int;}
+lf_identity :: (key:string,slug:string)->bool {return key.count==64 && hex_lower(key) && slug.count>=1 && slug.count<=64;}
+lf_begin :: (s:[]LfState,key:string,slug:string,known:string)->bool #export_c {
+  if s.count!=1 || !lf_identity(key,slug) || !json_valid(known) {return false;}
+  s[0].expected_n=0;j:[1]Json;json_start(j[..],known);if json_next(j[..])!=JSON_ARRAY {return false;}
+  while true {
+    t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}
+    id:=json_text(j[..]);if t!=JSON_STRING || id.count!=64 || !hex_lower(id) || s[0].expected_n>=FOLD_ISSUES {return false;}
+    for i:0..<64 {s[0].expected[s[0].expected_n*64+i]=id[i];}s[0].expected_n+=1;
+  }
+  store_clear(s[0].store[..]);s[0].failed=false;s[0].active=true;s[0].slug_n=slug.count;
+  for i:0..<64 {s[0].key[i]=key[i];}for i:0..<slug.count {s[0].slug[i]=slug[i];}return true;
+}
+// The private C bridge calls lr_verify_public on this same immutable span
+// immediately before this function; no public export accepts a verified bit.
+lf_feed :: (s:[]LfState,text:string,verified:bool)->bool #export_c {
+  if !s[0].active || s[0].failed {return false;}
+  if !json_valid(text) {s[0].failed=true;return false;}
+  if !verified {s[0].failed=true;return false;}
+  j:[1]Json;json_start(j[..],text);
+  if json_next(j[..])!=JSON_OBJECT {s[0].failed=true;return false;}
+  previous:=s[0].store[0].dropped;
+  e:=store_event(s[0].store[..],j[..],cast(string)s[0].key[..]);
+  if s[0].store[0].overflow || s[0].store[0].dropped!=previous {s[0].failed=true;return false;}
+  return true;
+}
+lf_tag :: (s:[]Store,e:int,name:string)->string {v:=tag_value(s,e,name);return ifx v.ok then str(s,v.ref) else "";}
+lf_field :: (out:[]u8,at:int,name:string,value:string)->int {
+  display:[4096]u8;size:=cell_into(display[..],0,value);if size<0 {return -1;}
+  n:=json_raw(out,at,",");n=json_write_string(out,n,name);n=json_raw(out,n,":");return json_write_string(out,n,cast(string)display[0..<size]);
+}
+lf_int :: (out:[]u8,at:int,name:string,value:int)->int {
+  n:=json_raw(out,at,",");n=json_write_string(out,n,name);n=json_raw(out,n,":");return json_write_int(out,n,value);
+}
+lf_result :: (s:[]LfState,out:[]u8)->int #export_c {
+  if !s[0].active || s[0].failed || s[0].store[0].overflow {return -1;}
+  scoped:=0;
+  for e:0..<s[0].store[0].n {if s[0].store[0].kind[e]==KIND_ISSUE {scoped+=1;}}
+  if scoped>FOLD_ISSUES {return -1;}
+  fold(s[0].store[..],s[0].folded[..],cast(string)s[0].slug[0..<s[0].slug_n]);
+  if s[0].folded[0].project<0 {return -1;}
+  for k:0..<s[0].expected_n {
+    id:=cast(string)s[0].expected[k*64..<k*64+64];
+    if fold_issue_of(s[0].store[..],s[0].folded[..],id)<0 {return -1;}
+  }
+  return lf_rows(s[0].store[..],s[0].folded[..],out);
+}
+lf_rows :: (s:[]Store,f:[]Fold,out:[]u8)->int {
+  n:=json_raw(out,0,"{\"issues\":[");
+  for r:0..<f[0].n {
+    if r>0 {n=json_raw(out,n,",");}
+    n=json_raw(out,n,"{\"id\":");n=json_write_string(out,n,event_id(s,f[0].root[r]));
+    n=lf_field(out,n,"kind",KIND_NAMES[f[0].kind[r]]);n=lf_field(out,n,"status",STATUS_NAME[f[0].status[r]]);
+    n=lf_field(out,n,"title",lf_tag(s,f[0].fields[r],"subject"));n=lf_field(out,n,"parent",lf_tag(s,f[0].fields[r],"parent"));
+    n=lf_field(out,n,"rank",ifx f[0].rank[r].len>0 then str(s,f[0].rank[r]) else "~");
+    n=lf_field(out,n,"claimed_by",str(s,f[0].claimed[r]));n=lf_int(out,n,"claimed_at",f[0].claimed_at[r]);
+    n=lf_field(out,n,"commit",str(s,f[0].commit[r]));n=lf_int(out,n,"status_at",f[0].status_at[r]);
+    n=json_raw(out,n,"}");if n<0 {return -1;}
+  }return json_raw(out,n,"]}");
+}
+#test "landing row fields keep JSON escaping and integers" {
+  out:[128]u8;n:=lf_field(out[..],0,"title","line\n\"");
+  n=lf_int(out[..],n,"at",12);#assert n>0;
+}

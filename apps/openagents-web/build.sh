@@ -96,6 +96,9 @@ characters=$!
 # a release build skips it and deploy.sh leaves new-land/ out (new-land/DEV-ONLY).
 newland=""
 if [[ "${COAXIAL_MODE:-dev}" != release ]]; then
+  # The reader and protocol decisions are shared Coax; Bun moves public
+  # socket/file/git bytes. A failed capture leaves the last complete one.
+  bun "$here/../../coax/web/project/landing.ts" || echo "new-land: keeping its last complete verified capture" >&2
   "$here/../../coax/web/wasm.sh" "$here/newland.coax" "$here/newland-face.c" "$here/build/newland.wasm" &
   newland=$!
 fi

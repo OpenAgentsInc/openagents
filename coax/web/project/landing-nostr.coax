@@ -1,0 +1,256 @@
+// Public, read-only Nostr for new-land. The host moves bytes; this unit
+// admits original signed events, matches filters and bounds pagination.
+#load "../../lib/nostr/event.coax";
+#load "../../lib/crypto/schnorr_fast.coax";
+#load "../../lib/nostr/message.coax";
+#load "../../lib/nostr/filter_read.coax";
+#load "../../lib/nostr/nip19-core.coax";
+#load "../../../psionic/lib/pylon/beacon.coax";
+#authority;
+
+#test "history refuses ambiguous cohorts and exhausted budgets" {
+  #assert lr_page_end(-1,10,1,false,1,1)==10;
+  #assert lr_page_end(10,10,2,false,2,2)== -2;
+  #assert lr_page_end(10,10,1,false,2,2)==9;
+  #assert lr_page_end(10,10,1,false,2,1)== -2;
+  #assert lr_page_end(0,0,1,false,2,2)== -1;
+  #assert lr_page_end(10,11,1,false,2,2)== -2;
+  #assert lr_page_end(-1,0,0,false,2,2)== -1;
+  #assert lr_page_end(-1,10,200,true,1,200)== -1;
+  #assert lr_page_end(-1,10,1,false,100,2)== -2;
+}
+#test "only a newer generation or a newer observation replaces a beacon" {
+  #assert lr_newer(2,100,1,200);
+  #assert lr_newer(2,101,2,100);
+  #assert !lr_newer(1,200,2,100) && !lr_newer(2,100,2,100);
+}
+#test "public entry rejects malformed events and keys" {
+  out:[128]u8;
+  #assert !lr_verify_public("{}");
+  #assert lr_npub("no key",out[..])== -1;
+  #assert lr_npub(PB_KEY,out[..])==63;
+  #assert lr_capture_budget(8192,8388608) && !lr_capture_budget(8193,0) && !lr_capture_budget(1,8388609);
+}
+#test "EOSE finish is a parsed hint, not a substring" {
+  #assert lr_finish("[\"EOSE\",\"n\",[\"finish\"]]");
+  #assert !lr_finish("[\"EOSE\",\"n\",[\"unfinished\"]]");
+  #assert !lr_finish("[\"EOSE\",\"finish\"]");
+}
+#test "landing filters validate identities and never query empty id lists" {
+  out:[8192]u8;
+  #assert lr_filter(0,PB_KEY,"openagents",out[..])>0;
+  #assert lr_filter(1,PB_KEY,"coax",out[..])>0;
+  #assert lr_filter(2,PB_KEY,"coax",out[..])>0;
+  #assert lr_filter(3,PB_KEY,"[]",out[..])== -1;
+  #assert lr_filter(4,PB_KEY,"[\"bad\"]",out[..])== -1;
+  #assert lr_filter(5,"","",out[..])>0;
+  #assert lr_filter(6,PB_KEY,"100000",out[..])>0;
+  #assert lr_filter(7,"","[]",out[..])== -1;
+  #assert lr_filter(99,PB_KEY,"",out[..])== -1;
+  #assert lr_stats("[]","[]",PB_KEY,1000,out[..])>0;
+  #assert lr_stats("{}","[]",PB_KEY,1000,out[..])== -1;
+}
+#test "query lifecycle uses distinct subscriptions and refuses CLOSED" {
+  s:[1]LrQuery;out:[16384]u8;
+  #assert !lr_begin(s[..],"{\"search\":\"unsupported\"}");
+  #assert lr_begin(s[..],"{\"kinds\":[1]}");
+  n:=lr_request(s[..],out[..]);#assert n>0 && s[0].state==2 && s[0].serial==1;
+  #assert lr_frame(s[..],"[\"AUTH\",\"public\"]",out[..])==0;
+  #assert lr_frame(s[..],"[\"EOSE\",\"stale\"]",out[..])==0;
+  #assert lr_frame(s[..],"[\"EOSE\",\"land-1\"]",out[..])==2 && s[0].state==3;
+  #assert lr_close(s[..],out[..])>0 && lr_request(s[..],out[..])== -1;
+  #assert lr_frame(s[..],"[]",out[..])== -1;
+  #assert lr_begin(s[..],"{}");n=lr_request(s[..],out[..]);
+  #assert lr_frame(s[..],"[\"EOSE\",\"land-1\"]",out[..])==0;
+  #assert lr_frame(s[..],"[\"CLOSED\",\"land-2\",\"auth-required: key\"]",out[..])== -3;
+  #assert lr_beacon("{}",0,out[..])== -1;
+}
+
+LR_EVENTS :: 8192;
+lr_capture_budget :: (events:int,bytes:int)->bool #export_c {return events>=0 && events<=LR_EVENTS && bytes>=0 && bytes<=8388608;}
+LrQuery :: struct {
+  filter:[8192]u8;filter_n:int;serial:int;pages:int;until:int=-1;
+  count:int;oldest:int=-1;peak:int;state:int;seen:int;ids:[LR_EVENTS*32]u8;
+}
+lr_page_end :: (until:int,oldest:int,count:int,finished:bool,pages:int,peak:int)->int {
+  if finished || count==0 {return -1;}
+  if oldest<0 || (until>=0 && oldest>until) || pages>=100 {return -2;}
+  if oldest==until {if count>1 || peak<2 {return -2;}return ifx oldest==0 then -1 else oldest-1;}
+  return oldest;
+}
+lr_newer :: (generation:int,observed:int,held_generation:int,held_observed:int)->bool #export_c {
+  return generation>held_generation || (generation==held_generation && observed>held_observed);
+}
+lr_event :: (text:string,scratch:[]u8)->NostrEvent {
+  e:=nostr_event_read(text,scratch,false);
+  if e.error==NE_OK {
+    if nostr_fast_verify_vartime(e.id[..],e.public_key[..],e.signature[..]) {e.verified=true;}
+    else {e.error=NE_SIGNATURE;}
+  }return e;
+}
+lr_verify_public :: (text:string)->bool #export_c {
+  scratch:[NE_MAX_OUTPUT]u8;e:=lr_event(text,scratch[..]);return e.error==NE_OK && e.verified;
+}
+lr_npub :: (key:string,out:[]u8)->int #export_c {
+  if !nf_hex(key) {return -1;}bytes:[32]u8;
+  for i:0..<32 {bytes[i]=cast(u8)(lr_hex(key[2*i])*16+lr_hex(key[2*i+1]));}
+  r:=nip19_encode_checked(N19_NPUB,cast(string)bytes[..],out,false);
+  return ifx r.error==NC_OK then r.written else -1;
+}
+lr_hex :: (c:u8)->int {return ifx c<='9' then cast(int)c-48 else cast(int)c-87;}
+lr_parse_filter :: (text:string,f:[]NostrFilter,sp:[]FrSpace)->bool {
+  return text.count<=8192 && filter_read(text,f,sp)==FR_OK;
+}
+lr_begin :: (s:[]LrQuery,text:string)->bool #export_c {
+  strs:[1024]string;ints:[1024]int;tags:[64]NostrTagFilter;bytes:[8192]u8;
+  sp:=[1]FrSpace.[FrSpace.{strs=strs[..],ints=ints[..],tags=tags[..],bytes=bytes[..]}];f:[1]NostrFilter;
+  if !lr_parse_filter(text,f[..],sp[..]) {return false;}
+  serial:=s[0].serial;s[0]=LrQuery.{};s[0].serial=serial;
+  for i:0..<text.count {s[0].filter[i]=text[i];}s[0].filter_n=text.count;
+  s[0].until=ifx f[0].has_until then f[0].until else -1;s[0].state=1;return true;
+}
+lr_sub :: (s:[]LrQuery,out:[]u8)->int {n:=json_raw(out,0,"land-");return json_write_int(out,n,s[0].serial);}
+lr_request :: (s:[]LrQuery,out:[]u8)->int #export_c {
+  if s[0].state!=1 || s[0].pages>=100 || s[0].serial>=NF_SAFE {return -1;}
+  strs:[1024]string;ints:[1024]int;tags:[64]NostrTagFilter;bytes:[8192]u8;
+  sp:=[1]FrSpace.[FrSpace.{strs=strs[..],ints=ints[..],tags=tags[..],bytes=bytes[..]}];f:[1]NostrFilter;
+  if !lr_parse_filter(cast(string)s[0].filter[0..<s[0].filter_n],f[..],sp[..]) {return -1;}
+  f[0].has_limit=true;f[0].limit=200;
+  if s[0].until>=0 {f[0].has_until=true;f[0].until=s[0].until;}
+  s[0].serial+=1;s[0].pages+=1;s[0].count=0;s[0].oldest= -1;s[0].state=2;
+  sub:[64]u8;n:=lr_sub(s,sub[..]);return nostr_message_write_req(cast(string)sub[0..<n],f[..],out,false);
+}
+lr_close :: (s:[]LrQuery,out:[]u8)->int #export_c {sub:[64]u8;n:=lr_sub(s,sub[..]);return nostr_message_write_close(cast(string)sub[0..<n],out,false);}
+lr_finish :: (text:string)->bool {
+  j:[1]Json;json_start(j[..],text);
+  if json_next(j[..])!=JSON_ARRAY || json_next(j[..])!=JSON_STRING || !json_is(json_text(j[..]),"EOSE") || json_next(j[..])!=JSON_STRING || json_next(j[..])!=JSON_ARRAY {return false;}
+  found:=false;
+  while true {t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_STRING {return false;}if json_is(json_text(j[..]),"finish") {found=true;}}
+  return found;
+}
+lr_auth :: (text:string)->bool {
+  j:[1]Json;json_start(j[..],text);
+  return json_next(j[..])==JSON_ARRAY && json_next(j[..])==JSON_STRING && json_is(json_text(j[..]),"AUTH") && json_next(j[..])==JSON_STRING && json_text(j[..]).count<=256 && json_next(j[..])==JSON_ARRAY_END && json_next(j[..])==JSON_END;
+}
+// 0 ignored/duplicate, original byte count + 10 when copied, 2 page ended.
+// Negative refuses the capture. state 1 means next page; 3 means complete.
+lr_frame :: (s:[]LrQuery,text:string,out:[]u8)->int #export_c {
+  if s[0].state!=2 {return -1;}
+  m:=nostr_message_read(text);
+  if m.error!=NM_OK {return ifx lr_auth(text) then 0 else -2;}
+  if m.type==NM_NOTICE {return 0;}
+  sub:[64]u8;n:=lr_sub(s,sub[..]);
+  if !json_is(nm_text(m,m.sub),cast(string)sub[0..<n]) {return 0;}
+  if m.type==NM_CLOSED {s[0].state= -1;return -3;}
+  if m.type==NM_EOSE {
+    if s[0].count>s[0].peak {s[0].peak=s[0].count;}
+    until:=lr_page_end(s[0].until,s[0].oldest,s[0].count,lr_finish(text),s[0].pages,s[0].peak);
+    if until== -2 {s[0].state= -1;return -5;}
+    s[0].until=until;s[0].state=ifx until== -1 then 3 else 1;return 2;
+  }
+  if m.type!=NM_EVENT {return 0;}
+  original:=nm_text(m,m.event);scratch:[NE_MAX_OUTPUT]u8;e:=lr_event(original,scratch[..]);
+  if e.error!=NE_OK || !e.verified {s[0].state= -1;return -4;}
+  strs:[1024]string;ints:[1024]int;tags:[64]NostrTagFilter;bytes:[8192]u8;
+  sp:=[1]FrSpace.[FrSpace.{strs=strs[..],ints=ints[..],tags=tags[..],bytes=bytes[..]}];f:[1]NostrFilter;
+  if !lr_parse_filter(cast(string)s[0].filter[0..<s[0].filter_n],f[..],sp[..]) || !nf_match(f[0],e) || (s[0].until>=0 && e.created_at>s[0].until) {return -6;}
+  s[0].count+=1;if s[0].oldest<0 || e.created_at<s[0].oldest {s[0].oldest=e.created_at;}
+  for k:0..<s[0].seen {same:=true;for i:0..<32 {if s[0].ids[k*32+i]!=e.id[i] {same=false;break;}}if same {return 0;}}
+  if s[0].seen>=LR_EVENTS || original.count>out.count {return -7;}
+  for i:0..<32 {s[0].ids[s[0].seen*32+i]=e.id[i];}s[0].seen+=1;
+  for i:0..<original.count {out[i]=original[i];}return original.count+10;
+}
+// The supplied event is independently verified again at this projection
+// boundary. The content digest is calculated from its actual decoded bytes.
+lr_beacon :: (text:string,now:int,out:[]u8)->int #export_c {
+  scratch:[NE_MAX_OUTPUT]u8;e:=lr_event(text,scratch[..]);if e.error!=NE_OK || !e.verified {return -1;}
+  content:[NE_MAX_OUTPUT]u8;size:=json_unescape(e.original[e.content_from..<e.content_to],content[..]);if size<0 {return -1;}
+  hash:[32]u8;if sha256_hash_checked(content[0..<size],hash[..],false)!=SHA_OK {return -1;}
+  digest:[64]u8;key:[64]u8;hex:="0123456789abcdef";
+  for i:0..<32 {digest[2*i]=hex[hash[i]>>4];digest[2*i+1]=hex[hash[i]&15];key[2*i]=hex[e.public_key[i]>>4];key[2*i+1]=hex[e.public_key[i]&15];}
+  r:=pb_read(e.kind,cast(string)key[..],e.original[e.tags_from..<e.tags_to],cast(string)content[0..<size],cast(string)digest[..]);
+  if r.code!=PbCode.ok || pb_fresh(r,now,PbHeld.{})!=PbFresh.fresh || now>=r.valid_until {return -1;}
+  // Return the original admitted content; the host only transports its UI
+  // fields. This does not verify an optional owner's auth signature.
+  return json_raw(out,0,cast(string)content[0..<size]);
+}
+
+lr_ids :: (text:string,ids:[]string)->int {
+  if !json_valid(text) {return -1;}j:[1]Json;json_start(j[..],text);
+  if json_next(j[..])!=JSON_ARRAY {return -1;}n:=0;
+  while true {t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}
+    if t!=JSON_STRING || n>=ids.count || !nf_hex(json_text(j[..])) {return -1;}
+    ids[n]=json_text(j[..]);n+=1;
+  }return ifx n>0 && json_next(j[..])==JSON_END then n else -1;
+}
+// A single filter, written by the shared Nostr writer. mode 6 receives
+// receipt time; future activity is excluded. mode 7 is exact public ids.
+lr_filter :: (mode:int,key:string,value:string,out:[]u8)->int #export_c {
+  if mode<0 || mode>7 || (mode!=5 && mode!=7 && !nf_hex(key)) {return -1;}
+  f:NostrFilter;authors:=[1]string.[key];kinds:[4]int;values:[50]string;tag:[1]NostrTagFilter;coord:[160]u8;
+  if mode!=5 && mode!=7 {f.has_authors=true;f.authors=authors[..];}
+  if mode<=2 {
+    if value.count<1 || value.count>64 {return -1;}f.has_kinds=true;
+    if mode==0 {kinds[0]=30617;values[0]=value;tag[0]=NostrTagFilter.{name='d',values=values[0..<1]};}
+    if mode==1 {kinds[0]=30621;kinds[1]=30623;values[0]=value;tag[0]=NostrTagFilter.{name='d',values=values[0..<1]};}
+    if mode==2 {kinds[0]=1621;n:=json_raw(coord[..],0,"30621:");n=json_raw(coord[..],n,key);n=json_raw(coord[..],n,":");n=json_raw(coord[..],n,value);values[0]=cast(string)coord[0..<n];tag[0]=NostrTagFilter.{name='a',values=values[0..<1]};}
+    f.kinds=kinds[0..<(ifx mode==1 then 2 else 1)];f.tags=tag[..];
+  }
+  if mode==3 || mode==4 || mode==7 {
+    count:=lr_ids(value,values[..]);if count<1 {return -1;}
+    if mode==7 {f.has_ids=true;f.ids=values[0..<count];}
+    else {
+      f.has_kinds=true;kinds[0]=1111;
+      if mode==4 {for i:0..<4 {kinds[i]=1630+i;}}
+      f.kinds=kinds[0..<(ifx mode==3 then 1 else 4)];tag[0]=NostrTagFilter.{name=ifx mode==3 then 'E' else 'e',values=values[0..<count]};f.tags=tag[..];
+    }
+  }
+  if mode==5 {kinds[0]=PB_KIND;f.has_kinds=true;f.kinds=kinds[0..<1];values[0]=PB_MARKER;tag[0]=NostrTagFilter.{name='t',values=values[0..<1]};f.tags=tag[..];}
+  if mode==6 {now:=json_int(value);if !now.ok || now.value<0 || now.value>NF_SAFE {return -1;}
+    kinds[0]=26910;kinds[1]=27010;f.has_kinds=true;f.kinds=kinds[0..<2];f.has_since=true;f.since=ifx now.value>86400 then now.value-86400 else 0;f.has_until=true;f.until=now.value;
+  }return nf_write(f,out,false);
+}
+
+LR_ACTIVITY :: 512;
+LrAnswer :: struct {id:[32]u8;at:int;request:string;}
+lr_public_key :: (e:NostrEvent,key:string)->bool {
+  if !nf_hex(key) {return false;}for i:0..<32 {if e.public_key[i]!=cast(u8)(lr_hex(key[2*i])*16+lr_hex(key[2*i+1])) {return false;}}return true;
+}
+lr_equal_id :: (a:[]u8,b:[]u8)->bool {if a.count!=32 || b.count!=32 {return false;}for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+// Signed public answer/status counts are provider-wide, not per-machine
+// failures. 27010 includes progress and encrypted statuses. Reply delay
+// uses only a verified kind-25910 request explicitly addressed to provider.
+lr_stats :: (work:string,requests:string,provider:string,now:int,out:[]u8)->int #export_c {
+  if !nf_hex(provider) || now<0 || !json_valid(work) || !json_valid(requests) {return -1;}
+  answers:[LR_ACTIVITY]LrAnswer;seen:[LR_ACTIVITY*32]u8;sn:=0;an:=0;statuses:=0;latest:=0;
+  scratch:[NE_MAX_OUTPUT]u8;j:[1]Json;json_start(j[..],work);if json_next(j[..])!=JSON_ARRAY {return -1;}
+  while true {
+    t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_OBJECT {return -1;}
+    text:=pt_raw(j[..],t);e:=lr_event(text,scratch[..]);
+    if e.error!=NE_OK || !e.verified || !lr_public_key(e,provider) || (e.kind!=26910 && e.kind!=27010) || e.created_at>now || e.created_at<(ifx now>86400 then now-86400 else 0) {return -1;}
+    duplicate:=false;for k:0..<sn {if lr_equal_id(seen[k*32..<k*32+32],e.id[..]) {duplicate=true;}}
+    if duplicate {continue;}if sn>=LR_ACTIVITY {return -1;}for i:0..<32 {seen[sn*32+i]=e.id[i];}sn+=1;
+    if e.kind==27010 {statuses+=1;continue;}
+    tags:=e.original[e.tags_from..<e.tags_to];request:=pt_tag(tags,"e");
+    if !request.ok || request.count!=1 || request.size<2 || !nf_hex(request.v[1]) {return -1;}
+    answers[an]=LrAnswer.{id=e.id,at=e.created_at,request=request.v[1]};an+=1;if e.created_at>latest {latest=e.created_at;}
+  }
+  // Missing request bodies leave delay unknown, never a fabricated zero.
+  total:=0;timed:=0;matched:[LR_ACTIVITY]bool;rn:=0;json_start(j[..],requests);if json_next(j[..])!=JSON_ARRAY {return -1;}
+  while true {
+    t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_OBJECT || rn>=LR_ACTIVITY {return -1;}rn+=1;
+    text:=pt_raw(j[..],t);e:=lr_event(text,scratch[..]);if e.error!=NE_OK || !e.verified || e.kind!=25910 {return -1;}
+    target:=pt_tag(e.original[e.tags_from..<e.tags_to],"p");
+    if !target.ok || target.count!=1 || target.size<2 || target.v[1]!=provider {return -1;}
+    idhex:[64]u8;hex:="0123456789abcdef";for i:0..<32 {idhex[2*i]=hex[e.id[i]>>4];idhex[2*i+1]=hex[e.id[i]&15];}
+    for k:0..<an {if !matched[k] && answers[k].request==cast(string)idhex[..] && e.created_at<=answers[k].at {matched[k]=true;total+=answers[k].at-e.created_at;timed+=1;}}
+  }
+  n:=json_raw(out,0,"{\"answers\":");n=json_write_int(out,n,an);n=json_raw(out,n,",\"statuses\":");n=json_write_int(out,n,statuses);
+  n=json_raw(out,n,",\"last\":");n=json_write_int(out,n,latest);n=json_raw(out,n,",\"timed\":");n=json_write_int(out,n,timed);
+  n=json_raw(out,n,",\"average\":");n=json_write_int(out,n,ifx timed==0 then -1 else (total+timed/2)/timed);return json_raw(out,n,"}");
+}
+#test "activity helper checks exact provider and full ids" {
+  e:NostrEvent;e.public_key[0]=0;
+  #assert !lr_public_key(e,"bad");
+  a:[32]u8;b:[32]u8;#assert lr_equal_id(a[..],b[..]);b[31]=1;#assert !lr_equal_id(a[..],b[..]);
+}

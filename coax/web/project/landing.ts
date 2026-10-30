@@ -1,18 +1,22 @@
-// The /new-land mock-up's data: each project's tasks from its relay (verified
-// and folded as snapshot.ts does) and its recent commits from git, written as
+// The /new-land development capture: shared Coax Nostr verifies and folds each project's tasks from its relay and its recent commits from git, written as
 // Coax tables into apps/openagents-web/newland-data.coax. A fixture: the page
 // draws what this captured until it reads the relay itself.
 //
 //   bun landing.ts
-import { readFileSync, writeFileSync } from "node:fs"
+import { readFileSync, writeFileSync, renameSync } from "node:fs"
 import { join } from "node:path"
-import { npubEncode } from "nostr-effect/nip19"
 import { createHash } from "node:crypto"
-import { Relay } from "./relay"
-import { filters, fold, followups, KIND_ISSUE, type Folded, type ProjectConfig } from "./model"
+import { PublicRelay, reader, projectFilters, followupFilters } from "./landing-reader"
 import { pylons, pylonNow, pylonRows, PYLON_COLUMNS } from "./pylons"
 
 const ROOT = join(import.meta.dir, "../../..")
+const args=process.argv.slice(2)
+const flag=(name:string)=>{const at=args.indexOf(name);return at<0?null:args[at+1]}
+const output=flag("--out")??join(ROOT,"apps/openagents-web/newland-data.coax")
+const relayOverride=flag("--relay")
+const known:Record<string,{key:string;ids:string[]}>= {}
+let previous:typeof known={}
+try { const old=readFileSync(output,"utf8").match(/^LAND_KNOWN_ISSUES :: (".*");$/m);if(old)previous=JSON.parse(JSON.parse(old[1])) } catch(e) {if((e as any).code!=="ENOENT")throw e}
 // The places on the grid, by cluster: one owner's stack together, the worlds together.
 const PLACES: [string, number, number, number][] = [
   // slug, cluster, x, z (grid units): the stack to the left, the worlds to the right, as seen from the south-east
@@ -62,15 +66,20 @@ const taskRows: string[][] = [], rows0: [string, string][] = []
 const projects: string[] = [], working: string[] = [], feed: [number, string][] = [], commits: string[] = []
 for (const [k, [slug, cluster, x, z]] of PLACES.entries()) {
   const dir = join(ROOT, "apps/openagents-web/projects", slug)
-  const config: ProjectConfig = JSON.parse(readFileSync(join(dir, "project.json"), "utf8"))
+  const config = JSON.parse(readFileSync(join(dir, "project.json"), "utf8"))
   const pubkey: string = (config as any).pubkey
-  const relay = await Relay.open(config.relay, null)
-  const first = await relay.all(filters(pubkey, config))
-  const ids = first.filter((e) => e.kind === KIND_ISSUE).map((e) => e.id)
+  const relay = await PublicRelay.open(relayOverride??config.relay)
+  const first = await relay.all(projectFilters(pubkey, config))
+  if(previous[slug] && previous[slug].key!==pubkey)throw Error(`landing: ${slug} changed identity; explicit capture migration is required`)
+  const seenRoots=new Set(first.map(e=>e.id))
+  const missing=(previous[slug]?.ids??[]).filter(id=>!seenRoots.has(id))
+  for(let i=0;i<missing.length;i+=50)first.push(...await relay.all([reader.filter(7,"",JSON.stringify(missing.slice(i,i+50)))]))
+  const ids = first.filter((e) => e.kind === 1621).map((e) => e.id)
   const more = []
-  for (let i = 0; i < ids.length; i += 50) more.push(...await relay.all(followups(pubkey, ids.slice(i, i + 50))))
+  for (let i = 0; i < ids.length; i += 50) more.push(...await relay.all(followupFilters(pubkey, ids.slice(i, i + 50))))
   relay.close()
-  const f: Folded = fold(pubkey, config, [...first, ...more])
+  const f = reader.fold([...first, ...more], pubkey, config.slug,previous[slug]?.ids??[])
+  known[slug]={key:pubkey,ids:f.issues.map(i=>i.id)}
   const fin = (s: string) => s === "resolved" || s === "closed"
   const tasks = f.issues.filter((i) => i.kind === "task")
   const done = tasks.filter((i) => fin(i.status)).length
@@ -128,19 +137,22 @@ feed.sort((a, b) => b[0] - a[0])
 // The people are simulated: made-up names, each with a key made from its name, shown short.
 const NAMES = ["ada", "rui", "noor", "theo", "lena", "sam", "ivo", "zuri", "kai", "mira", "otto", "bea", "finn", "yuki"]
 const people = NAMES.map((n) => {
-  const npub = npubEncode(createHash("sha256").update(`new-land person ${n}`).digest("hex"))
+  const npub = reader.npub(createHash("sha256").update(`new-land person ${n}`).digest("hex"))
   return `${n}|${npub.slice(0, 9)}...${npub.slice(-4)}`
 })
 // The Pylons: the real beacons on the relay (pylons.ts PYLON_SOURCE; "demo" for the made-up machines).
 const places = new Map(PLACES.map(([slug, , x, z], k) => [slug, [k, x, z] as [number, number, number]]))
-const pylonList = await pylons("wss://relay.openagents.com", (url) => Relay.open(url, null))
+const pylonList = await pylons(relayOverride??"wss://relay.openagents.com", (url) => PublicRelay.open(url))
 const pylonTable = pylonRows(pylonList, places, pylonNow(pylonList))
 console.error(`landing: ${pylonTable.length} pylons (${pylonList.filter((p) => p.demo).length} demo)`)
 const lit = (rows: string[]) => JSON.stringify(rows.map((r) => r + "\n").join(""))
-const out = join(ROOT, "apps/openagents-web/newland-data.coax")
-writeFileSync(out, [
+const out = output
+const temporary = out + `.${process.pid}`
+writeFileSync(temporary, [
   "// Generated by coax/web/project/landing.ts: do not edit; run it.",
   `// Captured ${new Date().toISOString().slice(0, 16)}Z from each project's relay and git.`,
+  `LAND_CAPTURED :: ${Math.floor(Date.now() / 1000)};`,
+  `LAND_KNOWN_ISSUES :: ${JSON.stringify(JSON.stringify(known))};`,
   "// LAND_PROJECTS: slug|name|owner|cluster|x|z|done|tasks|milestone|milestone done|milestone tasks|working|commits",
   `LAND_PROJECTS :: ${lit(projects)};`,
   "// LAND_WORKING: agent|project|task",
@@ -155,5 +167,6 @@ writeFileSync(out, [
   `LAND_PYLONS :: ${lit(pylonTable)};`,
   "",
 ].join("\n"))
-console.error(`landing: wrote ${out}`)
+renameSync(temporary, out)
+console.error(`landing: wrote verified capture ${out}`)
 process.exit(0)

@@ -60,10 +60,42 @@ inside :: (b: Box, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y 
 // A Pylon as the last frame drew it: its LAND_PYLONS row, where it stands,
 // what it is and how busy, and where it was on screen.
 FAM_UNIFIED :: 0; FAM_GPU :: 1; FAM_CPU :: 2;
-ST_ONLINE :: 0; ST_DRAINING :: 1; ST_OFFLINE :: 2;
+ST_ONLINE :: 0; ST_DRAINING :: 1; ST_OFFLINE :: 2; ST_STALE :: 3;
+#test "captured beacons expire, and missing clocks never imply live capacity" {
+  #assert land_beacon_state(ST_ONLINE,false,300,299,true)==ST_ONLINE;
+  #assert land_beacon_state(ST_ONLINE,false,300,300,true)==ST_STALE;
+  #assert land_beacon_state(ST_DRAINING,false,300,0,false)==ST_STALE;
+  #assert land_beacon_state(ST_ONLINE,true,-1,10000,false)==ST_ONLINE;
+  #assert pylon_active(ST_ONLINE) && pylon_active(ST_DRAINING) && !pylon_active(ST_STALE);
+  s:[1]LandState;coaxial_land_message(s[..],600,"now=1700000000000\n");#assert s[0].wall==1700000000;
+  #assert land_capture_age(s[..])>=0;
+  #assert coaxial_land_captured()>0;
+}
+coaxial_land_captured :: ()->int #export_c {return LAND_CAPTURED;}
+pylon_active :: (status:int)->bool {return status==ST_ONLINE || status==ST_DRAINING;}
+land_beacon_state :: (status:int,demo:bool,valid_for:int,age:int,clock:bool)->int {
+  return ifx !demo && (!clock || valid_for<0 || age>=valid_for) then ST_STALE else status;
+}
+land_capture_age :: (s:[]LandState)->int {
+  elapsed:=cast(int)(s[0].data_age-s[0].wall_age);
+  return hi_int(0,s[0].wall-LAND_CAPTURED)+hi_int(0,elapsed);
+}
+// PAGE facts carry the browser's wall clock as a generic host effect.
+coaxial_land_message :: (s:[]LandState,kind:int,text:string) #export_c {
+  if s.count!=1 || kind!=600 || text.count>4096 {return;}
+  from:=0;
+  while from<text.count {
+    end:=from;while end<text.count && text[end]!=10 {end+=1;}
+    if end-from>=5 && text[from..<from+4]=="now=" {
+      n:=0;ok:=end-from<=20;
+      for i:from+4..<end {if text[i]<'0' || text[i]>'9' || n>900719925474 {ok=false;break;}n=n*10+cast(int)text[i]-48;}
+      if ok && n>0 {s[0].wall=n/1000;s[0].wall_age=s[0].data_age;}return;
+    }from=end+1;
+  }
+}
 Pyl :: struct {
   row: int; plot: int; x: f32; z: f32;
-  family: int; status: int; total: int; free: int; jobs: int; demo: bool;
+  family: int; status: int; captured_status: int; valid_for: int; total: int; free: int; jobs: int; demo: bool;
   ok: bool; sx: f32; sy: f32;   // the machine's middle on screen
 }
 
@@ -77,7 +109,7 @@ Plot :: struct {
 }
 
 LandState :: struct {
-  time: f32; frames: int;
+  time: f32; frames: int; data_age: f64; wall: int; wall_age: f64;
   width: f32; height: f32; dpr: f32;
   px: f32; py: f32; pointed: bool; touch: bool;
   down: bool; down_x: f32; down_y: f32; moved: bool;
@@ -203,6 +235,7 @@ read_tables :: (s: [] LandState) {
     q.family = ifx same(fam, "gpu") then FAM_GPU else ifx same(fam, "cpu") then FAM_CPU else FAM_UNIFIED;
     st := cell(LAND_PYLONS, at, 7);
     q.status = ifx same(st, "online") then ST_ONLINE else ifx same(st, "draining") then ST_DRAINING else ST_OFFLINE;
+    q.captured_status = q.status; q.valid_for = parse_int(cell(LAND_PYLONS, at, 24));
     q.total = parse_int(cell(LAND_PYLONS, at, 11)); q.free = parse_int(cell(LAND_PYLONS, at, 12));
     q.jobs = parse_int(cell(LAND_PYLONS, at, 20));
     if q.plot >= 0 && q.plot < n { s[0].pyl[s[0].pylons] = q; s[0].pylons += 1; }
@@ -797,7 +830,7 @@ machine_top :: (q: Pyl) -> f32 {
 }
 // A Pylon's beam: its height over the machine and its light, from its load.
 beam_height :: (q: Pyl) -> f32 {
-  if q.status == ST_OFFLINE { return 0; }
+  if !pylon_active(q.status) { return 0; }
   busy := q.total - q.free;
   if busy <= 0 || q.total <= 0 { return 0.55; }
   return 1.0 + 2.6 * cast(f32) busy / cast(f32) q.total;
@@ -809,7 +842,7 @@ machine :: (out: [] f32, at: int, s: [] LandState, c: Cam, i: int, p: Pen, t: f3
   q := s[0].pyl[i];
   v := at;
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_BRIGHT); cool := ink(p, INK_COOL);
-  off := q.status == ST_OFFLINE;
+  off := !pylon_active(q.status);
   busy := q.total - q.free;
   body: f32 = (ifx off then 0.28f32 else 0.72f32) * seen;
   // details light up while it works
@@ -907,7 +940,7 @@ machine :: (out: [] f32, at: int, s: [] LandState, c: Cam, i: int, p: Pen, t: f3
     }
   }
   // a receipt: a ring across the floor (the demo's come at its rate)
-  if q.demo && q.jobs > 0 && q.status != ST_OFFLINE && busy > 0 {
+  if q.demo && q.jobs > 0 && pylon_active(q.status) && busy > 0 {
     f := fract(t / receipt_every(q) + cast(f32) i * 0.21);
     if f < 0.6 {
       g := f / 0.6;
@@ -951,7 +984,7 @@ pylon_labels :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen) -> int {
       q := s[0].pyl[i];
       if q.plot != k { continue; }
       n += 1; sx += q.x; sz += q.z;
-      if q.status != ST_OFFLINE { online += 1; slots += q.total; busy += q.total - q.free; }
+      if pylon_active(q.status) { online += 1; slots += q.total; busy += q.total - q.free; }
       back = lo(back, q.x + q.z);
     }
     if n == 0 { continue; }
@@ -1035,12 +1068,12 @@ pylon_card :: (out: [] f32, at: int, s: [] LandState, i: int, x: f32, right: f32
   q := s[0].pyl[i]; r := q.row;
   w := right - x;
   white := chrome(ink(p, INK_WHITE)); dim := ink(p, INK_DIM); pale := ink(p, INK_PALE);
-  clock := cast(int) floor(s[0].time);
+  clock := land_capture_age(s);
   v = put_fit(out, v, cell(LAND_PYLONS, r, 5), x, y, 11 * d, white, w - 50 * d);
   y += 18 * d;
   // its state and its key
   tone := ifx q.status == ST_ONLINE then INK_COOL else ifx q.status == ST_DRAINING then INK_PALE else INK_DIM;
-  word: string = ifx q.status == ST_ONLINE then "Online" else ifx q.status == ST_DRAINING then "Draining" else "Offline";
+  word: string = ifx q.status == ST_ONLINE then "Online" else ifx q.status == ST_DRAINING then "Draining" else ifx q.status == ST_STALE then "Expired beacon" else "Offline";
   v = diamond(out, v, x + 3 * d, y - 3.4 * d, 2.6 * d, ink(p, ifx q.status == ST_ONLINE then INK_BLUE else tone), 1);
   v = put(out, v, word, x + 11 * d, y, 7 * d, ink(p, tone));
   v = put(out, v, cell(LAND_PYLONS, r, 6), x + 11 * d + text_width(word, 7 * d, ink(p, tone)) + 12 * d, y, 7 * d, dim);
@@ -1066,31 +1099,30 @@ pylon_card :: (out: [] f32, at: int, s: [] LandState, i: int, x: f32, right: f32
   v = kv(out, v, "Hardware", cast(string) hw[0..<m], x, right, y, p); y += 18 * d;
   v = kv(out, v, "Models", cell(LAND_PYLONS, r, 13), x, right, y, p); y += 18 * d;
   v = kv(out, v, "Takes", cell(LAND_PYLONS, r, 14), x, right, y, p); y += 24 * d;
-  v = section(out, v, "WORK, LAST 24 H", x, y, right, p);
+  v = section(out, v, "PROVIDER ACTIVITY AT CAPTURE", x, y, right, p);
   y += 20 * d;
-  jb: [64] u8; jn := app_int(jb[..], 0, q.jobs); jn = app(jb[..], jn, " done, ");
-  jn = app_int(jb[..], jn, parse_int(cell(LAND_PYLONS, r, 21))); jn = app(jb[..], jn, " not");
-  v = kv(out, v, "Jobs", cast(string) jb[0..<jn], x, right, y, p); y += 18 * d;
+  jb: [64] u8; jn := app_int(jb[..], 0, q.jobs); jn = app(jb[..], jn, " answers, ");
+  jn = app_int(jb[..], jn, parse_int(cell(LAND_PYLONS, r, 21))); jn = app(jb[..], jn, " statuses");
+  v = kv(out, v, "Signed events", cast(string) jb[0..<jn], x, right, y, p); y += 18 * d;
   avg := parse_int(cell(LAND_PYLONS, r, 22));
-  ab: [32] u8; an := ifx avg > 0 then say_span(ab[..], 0, avg) else app(ab[..], 0, "None yet");
-  v = kv(out, v, "Average job time", cast(string) ab[0..<an], x, right, y, p); y += 18 * d;
+  ab: [32] u8; an := ifx avg >= 0 then say_span(ab[..], 0, avg) else app(ab[..], 0, "Unknown");
+  v = kv(out, v, "Mean reply delay", cast(string) ab[0..<an], x, right, y, p); y += 18 * d;
   last := parse_int(cell(LAND_PYLONS, r, 23));
-  if q.demo && q.jobs > 0 && busy > 0 && q.status != ST_OFFLINE {
+  if q.demo && q.jobs > 0 && busy > 0 && pylon_active(q.status) {
     every := receipt_every(q);
     last = cast(int) floor(every * fract(s[0].time / every + cast(f32) i * 0.21));
   } else if last >= 0 { last += clock; }
   lb: [32] u8; ln := ifx last >= 0 then app(lb[..], say_span(lb[..], 0, last), " ago") else app(lb[..], 0, "None yet");
-  v = kv(out, v, "Last job", cast(string) lb[0..<ln], x, right, y, p); y += 24 * d;
+  v = kv(out, v, "Last answer", cast(string) lb[0..<ln], x, right, y, p); y += 24 * d;
   v = section(out, v, "BEACON", x, y, right, p);
   y += 20 * d;
   ob: [32] u8; on := say_span(ob[..], 0, parse_int(cell(LAND_PYLONS, r, 18)) + clock);
-  if q.status == ST_OFFLINE { on = app(ob[..], 0, "Offline"); }
+  if !pylon_active(q.status) { on = app(ob[..], 0, ifx q.status==ST_STALE then "Unknown (expired)" else "Offline"); }
   v = kv(out, v, "Online for", cast(string) ob[0..<on], x, right, y, p); y += 18 * d;
   // a live beacon comes again within the minute; an offline one's age just grows
   heard := parse_int(cell(LAND_PYLONS, r, 19)) + clock;
-  if q.status != ST_OFFLINE { heard = heard % 60; }
   hb: [32] u8; hn := app(hb[..], say_span(hb[..], 0, heard), " ago");
-  v = kv(out, v, "Last heard from", cast(string) hb[0..<hn], x, right, y, p); y += 18 * d;
+  v = kv(out, v, "Observed in capture", cast(string) hb[0..<hn], x, right, y, p); y += 18 * d;
   pools := cell(LAND_PYLONS, r, 16);
   if pools.count > 0 { v = kv(out, v, "Pools", pools, x, right, y, p); y += 18 * d; }
   price := parse_int(cell(LAND_PYLONS, r, 17));
@@ -1519,7 +1551,7 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
     y += 18 * d;
     v = put(out, v, field(LAND_PEOPLE, i, 1), x, y, 7 * d, dim);
     y += 24 * d;
-    v = section(out, v, "NOW", x, y, right, p);
+    v = section(out, v, "SIMULATED PERSON", x, y, right, p);
     y += 18 * d;
     w0 := walker(s, i, t);
     // the place nearest them
@@ -1730,6 +1762,9 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   if !s[0].ready { read_tables(s); s[0].card_k = -1; }
   step := clamp(dt, 0, 0.1);
   s[0].time += step; s[0].frames += 1;
+  if dt > 0 { s[0].data_age += cast(f64) lo(dt, 86400); }
+  age := land_capture_age(s);
+  for i:0..<s[0].pylons { s[0].pyl[i].status = land_beacon_state(s[0].pyl[i].captured_status,s[0].pyl[i].demo,s[0].pyl[i].valid_for,age,s[0].wall>=LAND_CAPTURED); }
   s[0].width = width; s[0].height = height; s[0].dpr = dpr;
   d := hi(dpr, 1);
   t := s[0].time;
@@ -1758,6 +1793,18 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   hover := !s[0].touch && s[0].pointed;
   sheet := l.phone && s[0].card != CARD_NONE;
   v = wordmark(out, v, l, p);
+  capture: [128] u8; cn := app(capture[..],0,"Verified capture ");
+  if s[0].wall>=LAND_CAPTURED { cn = say_span(capture[..],cn,land_capture_age(s)); cn = app(capture[..],cn," old"); }
+  else { cn = app(capture[..],cn,"/ time unavailable"); }
+  if !sheet {
+    if l.phone {
+      v = put_fit(out,v,cast(string)capture[0..<cn],16*d,68*d,7*d,ink(p,INK_PALE),width-32*d);
+      v = put(out,v,"People simulated",16*d,82*d,7*d,ink(p,INK_DIM));
+    } else {
+      cn = app(capture[..],cn," / people simulated");
+      v = put_fit(out,v,cast(string)capture[0..<cn],16*d,height-14*d,7*d,ink(p,INK_PALE),width-32*d);
+    }
+  }
   v = button(out, v, l.login, "LOG IN", false, hover && inside(l.login, s[0].px, s[0].py), false, p, hud);
   feed_on := ifx still then 1.0f32 else ease((t - 2.8) / 1.0);
   if !sheet {
