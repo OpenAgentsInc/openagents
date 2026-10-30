@@ -143,10 +143,55 @@ fn sky(d: vec3f, l: vec3f) -> vec3f {
   }
   return c + vec3f(stars(d)) * st(14u).w * 0.6;
 }
+// ---- the far ridges (eg-paint-distance; art-styles.md: "hills behind it step back in paler, bluer
+// layers, like painted flats on a stage"): past the forest wall, three rings of hills round the town
+// at 160, 260 and 420 m, painted into the sky where no geometry stands. Each is a silhouette over the
+// horizon by its bearing, the nearest crowned with trees, and each takes the haze its distance gives,
+// so they stack paler and bluer; the key lights the face toward it. Nothing is drawn or reachable
+// there, and a phone pays a few noise taps in the sky's pixels.
+const RIDGES = 3u;
+fn ridge_ring(i: u32) -> vec4f {   // radius (m), top above the town (m), bearing scale, crown (tree) height (m)
+  var r = array(vec4f(160.0, 26.0, 3.0, 7.0), vec4f(260.0, 72.0, 2.0, 0.0), vec4f(420.0, 140.0, 1.3, 0.0));
+  return r[i];
+}
+fn ridges(d: vec3f, sky_c: vec3f) -> vec3f {
+  let flat = length(d.xz);
+  if (flat < 0.001) { return sky_c; }
+  let dir = d.xz / flat;
+  let e = u.eye.xz;
+  let a = atan2(dir.y, dir.x);
+  for (var i = 0u; i < RIDGES; i++) {
+    let r = ridge_ring(i);
+    // how far along the ray (on the ground plane) it meets the ring
+    let b = dot(e, dir); let c = dot(e, e) - r.x * r.x;
+    let t = -b + sqrt(max(b * b - c, 0.0));
+    // the silhouette: two octaves round the ring (seamless: sampled on a circle), then tree crowns
+    let ring = vec2f(cos(a), sin(a)) * r.z;
+    let k = f32(i) * 17.0;
+    let shape = 0.62 * noise(ring + vec2f(k, 3.0)) + 0.38 * noise(ring * 2.7 + vec2f(5.0, k));
+    var top = r.y * (0.35 + 0.65 * shape);
+    if (r.w > 0.0) {   // pointed crowns, a tree every 0.8 degree, some missing, each its own height
+      let cell = a * 70.0; let f = fract(cell); let h = hash2(vec2f(floor(cell), k));
+      top += r.w * (0.4 + 0.6 * h) * pow(max(1.0 - abs(2.0 * f - 1.0), 0.0), 0.6) * step(0.2, h);
+    }
+    if (d.y * t / flat > top - u.eye.y) { continue; }
+    // its colour: the forest's green (the nearest), going to a slate blue-green with the distance,
+    // the side the key faces brighter, then the haze for its layer
+    let lean = noise(ring * 1.7 + vec2f(9.0, k)) - 0.5;
+    let face = 0.75 + 0.5 * clamp(dot(vec3f(-dir.x, 0.0, -dir.y), st(1u).xyz) * 0.5 + lean, 0.0, 1.0);
+    let land = mix(vec3f(0.05, 0.15, 0.05), vec3f(0.06, 0.12, 0.17), f32(i) * 0.5);
+    let amb = vec3f(verse_style_ambient(1.0, st(5u).x, st(6u).x, st(5u).w), verse_style_ambient(1.0, st(5u).y, st(6u).y, st(5u).w), verse_style_ambient(1.0, st(5u).z, st(6u).z, st(5u).w));
+    let lit = land * (st(0u).xyz * st(0u).w * face + amb);
+    // a fixed step of the haze cap a layer (0.15, 0.4, 0.65), so each stays apart and the nearest stays green
+    let fog = st(9u).z * (0.15 + 0.25 * f32(i));
+    return mix(lit, haze_colour(fog, d), fog);
+  }
+  return sky_c;
+}
 @fragment fn bg_fs(@builtin(position) pos: vec4f) -> Lit {
   let d = pixel_ray(pos.xy);
   let l = st(1u).xyz;
-  let c = water_under_view(weather_streaks(weather_sky(sky(d, l), d), d, 1000.0), u.eye.xyz + d * 1000.0, d);   // the weather (W9); diving, the underwater look (W7)
+  let c = water_under_view(weather_streaks(weather_sky(ridges(d, sky(d, l)), d), d, 1000.0), u.eye.xyz + d * 1000.0, d);   // the far ridges; the weather (W9); diving, the underwater look (W7)
   let b = st(19u);
   return Lit(vec4f(c, verse_style_bloom_share(verse_style_luma(c.x, c.y, c.z), b.x, b.y)), vec4f(verse_style_shaft_source(dot(d, l)), 0.0, 0.0, 0.0));
 }

@@ -220,6 +220,17 @@ at the eye. A realm with a short view (a walled city) still gets the same
 curve. Its far trees and hills are what show the layers, so it needs
 something beyond 80 m in most views.
 
+Everglade paints that something into its sky (`everglade.wgsl` `ridges`,
+eg-paint-distance, October 29): three rings of hills round the town at 160,
+260 and 420 m, rising up to 33, 72 and 140 m. Each is a silhouette by its
+bearing (two octaves of noise sampled round a circle, so it never seams), the
+nearest crowned with pointed trees. Each takes a fixed step of the haze cap,
+0.15, 0.4 and 0.65 of it, instead of the haze its distance gives: by distance
+all three sit at the cap and merge into one milky band, while the steps keep
+the nearest green and part the three. The key lights the side facing it.
+Nothing is drawn or reachable there; it is a few noise taps in the sky's
+pixels (a phone at the South Gate stays at 2.9 ms of GPU a frame, p50).
+
 Haze applies identically to every surface, the water, the grass and the
 particles. The sky's horizon colour equals `haze_colour`, so the world meets
 the sky without a seam.
