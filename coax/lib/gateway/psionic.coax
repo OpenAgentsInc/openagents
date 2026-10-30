@@ -1,0 +1,64 @@
+// psionic on this machine (docs/coder/microcoder.md, row 12): Chat
+// Completions on localhost, for a model the user runs themselves (the route
+// "local", chosen by the user). Keyless: nothing leaves the machine, it
+// costs nothing, and the rates card has no row for it. From the old
+// crates/inference upstream/psionic.rs: the base URL from PSIONIC_BASE_URL
+// (http://127.0.0.1:8080 by default), the model from the caller or
+// PSIONIC_MODEL. A local server makes no promise to hold a strict JSON
+// schema, so the gateway carries GW_NO_STRICT_SCHEMA and a structured caller
+// reads its answer from text (Microcoder's text_action). A server that
+// doesn't stream answers whole; GwCall reads that too.
+//
+// gw_psionic_up asks GET /v1/models with a one-second limit, so a caller
+// can leave the gateway out of a plan when no server is up.
+
+#load "rates.coax";
+
+GW_PSIONIC_DEFAULT_BASE :: "http://127.0.0.1:8080";
+GW_PSIONIC_PATH :: "/v1/chat/completions";
+
+// The base URL: PSIONIC_BASE_URL, or the default; no trailing slash.
+gw_psionic_base :: (out: [] u8) -> string {
+  b := gw_env("PSIONIC_BASE_URL", out);
+  if b.count == 0 { return GW_PSIONIC_DEFAULT_BASE; }
+  while b.count > 0 && b[b.count - 1] == '/' { b = cast(string) b[0..<b.count - 1]; }
+  return b;
+}
+
+// base + path into out ("" when it doesn't fit).
+gw_psionic_url :: (base: string, path: string, out: [] u8) -> string {
+  n := json_raw(out, 0, base);
+  n = json_raw(out, n, path);
+  if n < 0 { return ""; }
+  return cast(string) out[0..<n];
+}
+
+// The gateway at base (gw_psionic_base); url_buf holds its URL.
+gw_psionic :: (base: string, url_buf: [] u8) -> Gateway {
+  return Gateway.{name = "psionic", url = gw_psionic_url(base, GW_PSIONIC_PATH, url_buf), key_env = "", scheme = "", wire = GW_WIRE_CHAT, flags = GW_NO_STRICT_SCHEMA};
+}
+
+// Whether a server answers GET base/v1/models with 200 within a second.
+gw_psionic_up :: (base: string) -> bool {
+  ub: [512] u8;
+  url := gw_psionic_url(base, "/v1/models", ub[..]);
+  if url.count == 0 { return false; }
+  args := [8] string.["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "1"];
+  all: [9] string;
+  for a, i: args { all[i] = a; }
+  all[8] = url;
+  out: [16] u8;
+  return gw_run_line(all[..], out[..], 3000) == "200";
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a psionic body: Chat Completions with no schema, the hint in the system prompt; keyless" {
+  out: [1024] u8; why: [1] string; ub: [128] u8;
+  g := gw_psionic(GW_PSIONIC_DEFAULT_BASE, ub[..]);
+  #assert g.url == "http://127.0.0.1:8080/v1/chat/completions" && g.key_env == "" && g.key_value == "" && g.name == "psionic";
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "hi"};
+  req := GwRequest.{model = "qwen3.5-4b", messages = msgs[..], schema = "{\"type\":\"object\"}", schema_hint = "Reply in JSON."};
+  #assert gw_translate(g, req, out[..], why[..]) == "{\"model\":\"qwen3.5-4b\",\"messages\":[{\"role\":\"system\",\"content\":\"Reply in JSON.\"},{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true}}";
+  #assert gw_rate("psionic", "qwen3.5-4b").ok == false;
+}

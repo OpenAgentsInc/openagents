@@ -66,4 +66,7 @@ if [ "$want" = all ] || [ "$want" = anthropic ]; then
   if [ -n "${ANTHROPIC_API_KEY:-}" ]; then run anthropic "$ANTHROPIC_API_KEY"
   else echo "anthropic: skipped (no ANTHROPIC_API_KEY or $secrets/anthropic.env)"; fi
 fi
+if [ "$want" = all ] || [ "$want" = psionic ]; then
+  run psionic   # keyless; skipped unless a server answers at PSIONIC_BASE_URL (http://127.0.0.1:8080)
+fi
 [ "$failed" = 0 ] && echo "live: ok" || { echo "live: FAILED"; exit 1; }

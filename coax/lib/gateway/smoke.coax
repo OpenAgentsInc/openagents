@@ -5,6 +5,7 @@
 
 #import "Basic";
 #load "plan.coax";
+#load "psionic.coax";
 
 KEY_ENV :: "GW_SMOKE_KEY";
 
@@ -145,6 +146,33 @@ smoke_plans :: (base: string, refuse: string, cut: string) -> bool {
   return ok && ok2 && ok3;
 }
 
+// psionic: up at the stand-in (base without the trailing slash), down on port 9; a keyless answer.
+smoke_psionic :: (base: string) -> bool {
+  up := gw_psionic_up(base);
+  down := !gw_psionic_up("http://127.0.0.1:9");
+  ub: [512] u8;
+  g := gw_psionic(base, ub[..]);
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "2+2?"};
+  body: [2048] u8; why: [1] string;
+  text := gw_translate(g, GwRequest.{model = "local-test", messages = msgs[..], schema = "{\"type\":\"object\"}", schema_hint = "Reply in JSON."}, body[..], why[..]);
+  b: [1] GwCallBuffers; call: [1] GwCall;
+  gw_call_init(call[..], b[..]);
+  none: [1] string;
+  e := gw_call_start(call[..], g, text, none[0..<0]);
+  got: [64] u8; ng := 0; done := false;
+  ev: [8] GwEvent;
+  while e.count == 0 && !call[0].finished {
+    n := gw_call_poll(call[..], ev[..]);
+    for i: 0..<n {
+      if ev[i].kind == GW_EV_TEXT { for c: ev[i].text { if ng < got.count { got[ng] = c; ng += 1; } } }
+      if ev[i].kind == GW_EV_DONE { done = ev[i].usage.input_tokens == 9; }
+    }
+  }
+  ok := up && down && done && cast(string) got[0..<ng] == "Four";
+  print("psionic: up %, down when no server %, keyless whole answer % (%)\n", up, down, done, cast(string) got[0..<ng]);
+  return ok;
+}
+
 main :: () {
   for ch: "GW_SMOKE_URL" { k := cxproc_getenv_push(cast(int) ch); }
   n := cxproc_getenv();
@@ -166,5 +194,6 @@ main :: () {
   for i: 0..<n { cu[i] = url[i]; }
   for c, i: "cut" { cu[n + i] = c; }
   ok = smoke_plans(base, cast(string) ru[0..<n + 6], cast(string) cu[0..<n + 3]) && ok;
+  ok = smoke_psionic(cast(string) url[0..<n - 1]) && ok;
   print("smoke: %\n", ifx ok then "ok" else "FAILED");
 }

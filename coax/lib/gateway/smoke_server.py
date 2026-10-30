@@ -2,7 +2,10 @@
 # Responses answer in three deltas a gap apart, then response.completed;
 # POST /refuse answers 401; POST /whole answers one chat.completion
 # after OpenRouter's keep-alive whitespace; POST /cut sends one delta and
-# closes the stream. Each request checks the key header curl sent
+# closes the stream; GET /v1/models lists one model and POST
+# /v1/chat/completions answers whole, as a local psionic server would (with
+# "key_sent" in place of the answer when any Authorization header came).
+# Each request checks the key header curl sent
 # against GW_SMOKE_EXPECT and, while curl is still running, that no
 # process's arguments hold the key. Prints its port, then serves forever.
 import http.server, os, subprocess, sys, time
@@ -18,12 +21,27 @@ def leaked():
 class H(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
     def log_message(self, *a): pass
+    def do_GET(self):
+        if self.path == "/v1/models":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"object":"list","data":[{"id":"local-test","object":"model"}]}')
+            return
+        self.send_response(404); self.end_headers()
     def do_POST(self):
         n = int(self.headers.get("Content-Length", "0") or 0)
         body = self.rfile.read(n) if n else b""
         auth = self.headers.get("Authorization", "")
         ok_key = auth == "Bearer " + EXPECT
         in_args = leaked()
+        if self.path == "/v1/chat/completions":
+            word = "key_sent" if self.headers.get("Authorization") else ("Four" if b'"model":"local-test"' in body and b'response_format' not in body else "body_bad")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(('{"choices":[{"message":{"role":"assistant","content":"%s"},"finish_reason":"stop"}],"usage":{"prompt_tokens":9,"completion_tokens":1}}' % word).encode())
+            return
         if self.path == "/whole":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

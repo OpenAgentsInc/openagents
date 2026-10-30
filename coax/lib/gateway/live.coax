@@ -7,6 +7,7 @@
 #load "openrouter.coax";
 #load "vercel.coax";
 #load "openai.coax";
+#load "psionic.coax";
 
 LiveRun :: struct { text: [8192] u8; nt: int; first_ms: int = -1; end_ms: int; done: bool; usage: GwUsage; why: string; status: int; quota: bool; }
 
@@ -108,6 +109,13 @@ main :: () {
     if probe[0].status == 402 || (probe[0].status == 429 && probe[0].quota) { print("smoke: skipped (% %: the account has no credit)\n", name, probe[0].status); return; }
     ok = live_count(g, model, hs);
     ok = live_schema(g, model, hs) && ok;
+  } else if name == "psionic" {
+    bb: [512] u8; ub: [512] u8; mb: [256] u8;
+    base := gw_psionic_base(bb[..]);
+    if !gw_psionic_up(base) { print("smoke: skipped (no psionic server answers at %)\n", base); return; }
+    model := gw_env("PSIONIC_MODEL", mb[..]);
+    if model.count == 0 { model = "local"; }
+    ok = live_count(gw_psionic(base, ub[..]), model, none[0..<0]);
   } else {
     print("GW_LIVE names no gateway this smoke knows: %\n", name);
   }
