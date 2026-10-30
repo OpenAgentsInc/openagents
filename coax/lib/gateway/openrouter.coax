@@ -1,0 +1,50 @@
+// OpenRouter (docs/coder/microcoder.md, row 5): Chat Completions through
+// chat.coax at openrouter.ai, with OpenRouter's own fields: the provider
+// routing it is asked for (data_collection deny by default, zdr on
+// request), the usage it reports with the cost it charged
+// (GwUsage.cost_usd_micros), and which provider served the answer (the done
+// event's text). From the old crates/openrouter and upstream/openrouter.rs
+// (privacy_fields, the X-Title and HTTP-Referer headers).
+
+#load "gateway.coax";
+
+GW_OPENROUTER_URL :: "https://openrouter.ai/api/v1/chat/completions";
+GW_OPENROUTER_KEY_ENV :: "OPENROUTER_API_KEY";
+GW_OPENROUTER_FLASH :: "google/gemini-3.8-flash";
+
+// The headers OpenRouter attributes a request by; pass to gw_call_start.
+GW_OPENROUTER_HEADERS :: [2] string.["X-Title: OpenAgents", "HTTP-Referer: https://openagents.com"];
+
+// zdr: only zero-retention endpoints (the old Privacy beyond Standard).
+gw_openrouter :: (zdr: bool) -> Gateway {
+  return Gateway.{name = "openrouter", url = GW_OPENROUTER_URL, key_env = GW_OPENROUTER_KEY_ENV, wire = GW_WIRE_CHAT,
+                  flags = ifx zdr then GW_CHAT_NO_DATA_COLLECTION | GW_CHAT_ZDR else GW_CHAT_NO_DATA_COLLECTION};
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "an OpenRouter body is Chat Completions with its provider routing" {
+  out: [1024] u8; why: [1] string;
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "hi"};
+  req := GwRequest.{model = GW_OPENROUTER_FLASH, messages = msgs[..]};
+  #assert gw_translate(gw_openrouter(false), req, out[..], why[..]) == "{\"model\":\"google/gemini-3.8-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true},\"provider\":{\"data_collection\":\"deny\"}}";
+  #assert gw_translate(gw_openrouter(true), req, out[..], why[..]) == "{\"model\":\"google/gemini-3.8-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true},\"provider\":{\"data_collection\":\"deny\",\"zdr\":true}}";
+  g := gw_openrouter(false);
+  #assert g.key_env == "OPENROUTER_API_KEY" && g.scheme == "Bearer" && g.key_value == "";
+  h := GW_OPENROUTER_HEADERS;
+  #assert h[0] == "X-Title: OpenAgents";
+}
+
+#test "the recorded OpenRouter streams parse with their cost and provider: Chat Completions, whole, and Responses" {
+  r: [1] GwReplay; fx := GW_FX_OPENROUTER_CHAT_GEMINI_3_8_FLASH;
+  gw_replay(GW_WIRE_CHAT, fx[..], r[..]);
+  #assert gw_replay_text(r[..]) == "One\nTwo\nThree\nFour\nFive" && r[0].done == 1;
+  #assert r[0].usage.cost_usd_micros == 540 && gw_replay_provider(r[..]) == "Google";
+  arena: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arena[..]};
+  ev: [8] GwEvent;
+  n := gw_parse_whole(GW_WIRE_CHAT, ar[..], GW_FX_OPENROUTER_CHAT_GEMINI_3_8_FLASH_JSON, ev[..]);
+  #assert n == 2 && ev[1].usage.cost_usd_micros == 53 && ev[1].text == "Google";
+  o: [1] GwReplay; ox := GW_FX_OPENROUTER_GEMINI_3_8_FLASH;
+  gw_replay(GW_WIRE_RESPONSES, ox[..], o[..]);
+  #assert o[0].usage.cost_usd_micros == 506 && o[0].done == 1;
+}

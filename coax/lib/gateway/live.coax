@@ -4,18 +4,18 @@
 
 #import "Basic";
 #load "vertex.coax";
+#load "openrouter.coax";
 
 LiveRun :: struct { text: [8192] u8; nt: int; first_ms: int = -1; end_ms: int; done: bool; usage: GwUsage; why: string; }
 
-live_run :: (g: Gateway, req: GwRequest, r: [] LiveRun) -> bool {
+live_run :: (g: Gateway, req: GwRequest, r: [] LiveRun, headers: [] string) -> bool {
   b: [1] GwCallBuffers; call: [1] GwCall;
   gw_call_init(call[..], b[..]);
   body: [8192] u8; why: [1] string;
   text := gw_translate(g, req, body[..], why[..]);
   if text.count == 0 { print("%: %\n", g.name, why[0]); return false; }
-  none: [1] string;
   t0 := cxproc_now_ms();
-  e := gw_call_start(call[..], g, text, none[0..<0]);
+  e := gw_call_start(call[..], g, text, headers);
   if e.count > 0 { print("%: %\n", g.name, e); return false; }
   ev: [8] GwEvent;
   while !call[0].finished {
@@ -26,7 +26,7 @@ live_run :: (g: Gateway, req: GwRequest, r: [] LiveRun) -> bool {
         if r[0].first_ms < 0 { r[0].first_ms = cxproc_now_ms() - t0; }
         for c: x.text { if r[0].nt < r[0].text.count { r[0].text[r[0].nt] = c; r[0].nt += 1; } }
       }
-      if x.kind == GW_EV_DONE { r[0].done = true; r[0].usage = x.usage; }
+      if x.kind == GW_EV_DONE { r[0].done = true; r[0].usage = x.usage; if x.text.count > 0 { print("%: served by %\n", g.name, x.text); } }
       if x.kind == GW_EV_REFUSED { print("%: refused % %\n", g.name, x.status, x.reason); }
       if x.kind == GW_EV_DONE || x.kind == GW_EV_REFUSED { r[0].end_ms = cxproc_now_ms() - t0; }
     }
@@ -34,21 +34,21 @@ live_run :: (g: Gateway, req: GwRequest, r: [] LiveRun) -> bool {
   return r[0].done;
 }
 
-live_count :: (g: Gateway, model: string) -> bool {
+live_count :: (g: Gateway, model: string, headers: [] string) -> bool {
   msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "Count from one to five, one word per line."};
   r: [1] LiveRun;
-  ok := live_run(g, GwRequest.{model = model, system = "You are terse. Answer with the words asked for and nothing else.", messages = msgs[..], effort = "low"}, r[..]);
+  ok := live_run(g, GwRequest.{model = model, system = "You are terse. Answer with the words asked for and nothing else.", messages = msgs[..], effort = "low"}, r[..], headers);
   got := cast(string) r[0].text[0..<r[0].nt];
-  print("% %: stream first text %ms, done %ms, tokens %/% (reasoning %): %\n", g.name, model, r[0].first_ms, r[0].end_ms, r[0].usage.input_tokens, r[0].usage.output_tokens, r[0].usage.reasoning_tokens, got);
+  print("% %: stream first text %ms, done %ms, tokens %/% (reasoning %), provider cost % micro-USD: %\n", g.name, model, r[0].first_ms, r[0].end_ms, r[0].usage.input_tokens, r[0].usage.output_tokens, r[0].usage.reasoning_tokens, r[0].usage.cost_usd_micros, got);
   five := false;
   for i: 0..<got.count { if i + 4 <= got.count && (got[i..<i + 4] == "five" || got[i..<i + 4] == "Five") { five = true; } }
   return ok && five && r[0].usage.ok;
 }
 
-live_schema :: (g: Gateway, model: string) -> bool {
+live_schema :: (g: Gateway, model: string, headers: [] string) -> bool {
   msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "What is 2+2? Put the number in answer."};
   r: [1] LiveRun;
-  ok := live_run(g, GwRequest.{model = model, messages = msgs[..], effort = "low", schema_name = "sum", schema = "{\"type\":\"object\",\"properties\":{\"answer\":{\"type\":\"string\"}},\"required\":[\"answer\"],\"additionalProperties\":false}"}, r[..]);
+  ok := live_run(g, GwRequest.{model = model, messages = msgs[..], effort = "low", schema_name = "sum", schema = "{\"type\":\"object\",\"properties\":{\"answer\":{\"type\":\"string\"}},\"required\":[\"answer\"],\"additionalProperties\":false}"}, r[..], headers);
   got := cast(string) r[0].text[0..<r[0].nt];
   ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   answer := ifx json_valid(got) then cl_str(ar[..], got, "answer") else "";
@@ -60,20 +60,25 @@ main :: () {
   which: [32] u8;
   name := gw_env("GW_LIVE", which[..]);
   ok := false;
+  none: [1] string;
   if name == "vertex" {
     v: [1] GwVertex;
     why := gw_vertex_token(v[..]);
     if why.count > 0 { print("vertex: %\n", why); print("smoke: FAILED\n"); return; }
     print("vertex: token from %\n", v[0].source);
     g := gw_vertex(v[..]);
-    ok = live_count(g, GW_VERTEX_FLASH);
-    ok = live_schema(g, GW_VERTEX_FLASH) && ok;
+    ok = live_count(g, GW_VERTEX_FLASH, none[0..<0]);
+    ok = live_schema(g, GW_VERTEX_FLASH, none[0..<0]) && ok;
     native := gw_vertex_native(v[..], GW_VERTEX_FLASH);
-    ok = live_count(native, GW_VERTEX_FLASH) && ok;
+    ok = live_count(native, GW_VERTEX_FLASH, none[0..<0]) && ok;
   } else if name == "gemini" {
     ub: [512] u8; ub2: [512] u8;
-    ok = live_count(gw_gemini(GW_GEMINI_FLASH, true, ub[..]), GW_GEMINI_FLASH);
-    ok = live_schema(gw_gemini(GW_GEMINI_FLASH, false, ub2[..]), GW_GEMINI_FLASH) && ok;
+    ok = live_count(gw_gemini(GW_GEMINI_FLASH, true, ub[..]), GW_GEMINI_FLASH, none[0..<0]);
+    ok = live_schema(gw_gemini(GW_GEMINI_FLASH, false, ub2[..]), GW_GEMINI_FLASH, none[0..<0]) && ok;
+  } else if name == "openrouter" {
+    h := GW_OPENROUTER_HEADERS;
+    ok = live_count(gw_openrouter(false), GW_OPENROUTER_FLASH, h[..]);
+    ok = live_schema(gw_openrouter(false), GW_OPENROUTER_FLASH, h[..]) && ok;
   } else {
     print("GW_LIVE names no gateway this smoke knows: %\n", name);
   }

@@ -40,11 +40,12 @@ GwUsage :: struct {
   cached_tokens: int;
   reasoning_tokens: int;
   cost_msats: int;               // from the rates card (rates.coax); 0 until then
+  cost_usd_micros: int = -1;     // what the provider itself says it charged (OpenRouter's usage.cost), -1 when it says nothing
 }
 
 GwEvent :: struct {
   kind: int;
-  text: string;
+  text: string;                  // a delta's text; on done, the upstream provider that served it when the gateway names one
   usage: GwUsage;
   status: int;
   reason: string;
@@ -88,6 +89,14 @@ GW_FIN_FILTER :: 4;
 GwParse :: struct {
   finish: int;
   usage: GwUsage;
+  provider: [48] u8; np: int;    // OpenRouter's provider field, copied from the first chunk that has one
+}
+
+// A provider-reported cost in dollars as millionths, or -1 when absent.
+gw_cost_micros :: (obj: string, path: string) -> int {
+  c := cl_num(obj, path);
+  if !c.ok || c.value < 0.0 { return -1; }
+  return cast(int) (c.value * 1000000.0 + 0.5);
 }
 
 gw_client :: (g: Gateway) -> GwClient {
@@ -262,7 +271,7 @@ gw_responses_usage_of :: (usage: string) -> GwUsage {
   i := cl_int(usage, "input_tokens");
   o := cl_int(usage, "output_tokens");
   if !i.ok || !o.ok { return u; }
-  u = GwUsage.{ok = true, input_tokens = i.value, output_tokens = o.value};
+  u = GwUsage.{ok = true, input_tokens = i.value, output_tokens = o.value, cost_usd_micros = gw_cost_micros(usage, "cost")};
   c := cl_int(usage, "input_tokens_details.cached_tokens");
   if c.ok { u.cached_tokens = c.value; }
   r := cl_int(usage, "output_tokens_details.reasoning_tokens");
@@ -336,7 +345,7 @@ gw_gemini_usage :: (data: string) -> GwUsage {
   i := cl_int(data, "usageMetadata.promptTokenCount");
   o := cl_int(data, "usageMetadata.candidatesTokenCount");
   if !i.ok { return u; }
-  u = GwUsage.{ok = true, input_tokens = i.value, output_tokens = ifx o.ok then o.value else 0};
+  u = GwUsage.{ok = true, input_tokens = i.value, output_tokens = ifx o.ok then o.value else 0, cost_usd_micros = -1};
   t := cl_int(data, "usageMetadata.thoughtsTokenCount");
   if t.ok { u.reasoning_tokens = t.value; u.output_tokens += t.value; }
   c := cl_int(data, "usageMetadata.cachedContentTokenCount");
@@ -499,6 +508,7 @@ GwReplay :: struct {
   done_at_end: bool;             // done was the last event
   usage: GwUsage;
   reason: string;
+  provider: [48] u8; npr: int;
 }
 
 // Recorded lines through the SSE reader and the wire's parser, as a call would.
@@ -526,12 +536,16 @@ gw_replay_take :: (r: [] GwReplay, ev: [] GwEvent, n: int) {
       r[0].done_at_end = false;
       if x.kind == GW_EV_TEXT { r[0].deltas += 1; for c: x.text { r[0].text[r[0].nt] = c; r[0].nt += 1; } }
       if x.kind == GW_EV_REASONING { r[0].thoughts += 1; for c: x.text { r[0].reasoning[r[0].nr] = c; r[0].nr += 1; } }
-      if x.kind == GW_EV_DONE { r[0].done += 1; r[0].usage = x.usage; r[0].reason = x.reason; r[0].done_at_end = true; }
+      if x.kind == GW_EV_DONE {
+        r[0].done += 1; r[0].usage = x.usage; r[0].reason = x.reason; r[0].done_at_end = true;
+        r[0].npr = 0; for c: x.text { if r[0].npr < r[0].provider.count { r[0].provider[r[0].npr] = c; r[0].npr += 1; } }
+      }
       if x.kind == GW_EV_REFUSED { r[0].refused += 1; r[0].reason = x.reason; }
     }
 }
 
 gw_replay_text :: (r: [] GwReplay) -> string { return cast(string) r[0].text[0..<r[0].nt]; }
+gw_replay_provider :: (r: [] GwReplay) -> string { return cast(string) r[0].provider[0..<r[0].npr]; }
 
 #test "the recorded Vercel AI Gateway stream for google/gemini-3.8-flash replays into text deltas and one done" {
   r: [1] GwReplay; fx := GW_FX_GOOGLE_GEMINI_3_8_FLASH;
@@ -552,6 +566,7 @@ gw_replay_text :: (r: [] GwReplay) -> string { return cast(string) r[0].text[0..
   #assert gw_replay_text(r[..]) == "One\nTwo\nThree\nFour\nFive";
   #assert r[0].deltas == 2 && r[0].done == 1 && r[0].refused == 0 && r[0].done_at_end;
   #assert r[0].usage.ok && r[0].usage.input_tokens == 25 && r[0].usage.output_tokens == 130 && r[0].usage.reasoning_tokens == 121;
+  #assert r[0].usage.cost_usd_micros == 506;     // usage.cost 0.00050625 dollars
 }
 
 #test "the recorded Z.ai glm-5.3-flash stream: 34 reasoning deltas, none of them in the answer" {

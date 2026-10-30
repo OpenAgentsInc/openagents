@@ -38,4 +38,11 @@ if [ "$want" = all ] || [ "$want" = gemini ]; then
   if [ -n "${GEMINI_API_KEY:-}" ]; then run gemini "$GEMINI_API_KEY"
   else echo "gemini: skipped (no GEMINI_API_KEY or $secrets/openagents-gemini-provider.env)"; fi
 fi
+if [ "$want" = all ] || [ "$want" = openrouter ]; then
+  if [ -z "${OPENROUTER_API_KEY:-}" ] && [ -f "$secrets/openrouter.env" ]; then
+    set -a; . "$secrets/openrouter.env"; set +a
+  fi
+  if [ -n "${OPENROUTER_API_KEY:-}" ]; then run openrouter "$OPENROUTER_API_KEY"
+  else echo "openrouter: skipped (no OPENROUTER_API_KEY or $secrets/openrouter.env)"; fi
+fi
 [ "$failed" = 0 ] && echo "live: ok" || { echo "live: FAILED"; exit 1; }
