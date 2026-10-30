@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "license": "CC0-1.0",
+  "provenance": "Synthetic prose authored by GPT-6 for the Psionic byte-language-model chapter on 2026-10-30 and dedicated to the public domain under CC0-1.0. No downloaded corpus or external teacher annotations.",
+  "join": "One LF between documents and one final LF; transitions include those explicit separators. No transition crosses a partition.",
+  "documents": [
+    {
+      "id": "train-garden",
+      "split": "train",
+      "text": "The gardener opened the gate before sunrise. Small birds waited near the path. She carried water to the young trees and checked the leaves. The soil was cool and the air was still. After the work she closed the gate and walked home."
+    },
+    {
+      "id": "train-workshop",
+      "split": "train",
+      "text": "A wooden box stood on the bench. Inside were a hammer, a ruler, and a folded plan. The builder measured each board twice before making a cut. Fine dust covered the floor. By evening the shelf was level and every tool was back in its place."
+    },
+    {
+      "id": "train-station",
+      "split": "train",
+      "text": "At the station a clock marked the hour. People read their tickets and waited for the train. A child counted the windows as the cars came into view. The doors opened with a soft sound. Everyone stepped aboard, and the train moved slowly out of town."
+    },
+    {
+      "id": "train-kitchen",
+      "split": "train",
+      "text": "The cook set a pot on the stove and sliced an onion. A spoon rested beside a clean bowl. Soon the room smelled of warm bread and herbs. Friends arrived with apples from the market. They shared the meal and washed the dishes together."
+    },
+    {
+      "id": "train-library",
+      "split": "train",
+      "text": "In the quiet library a reader found a map between two pages. The map showed a river, a bridge, and a road through the hills. Notes in the margin named the nearby villages. The reader copied the names carefully and returned the book before closing time."
+    },
+    {
+      "id": "validation-shore",
+      "split": "validation",
+      "text": "Waves reached the shore under a grey sky. A fisher repaired a net while a small boat rested on the sand. The wind turned and the clouds began to break. Far away a light appeared on the water."
+    },
+    {
+      "id": "validation-museum",
+      "split": "validation",
+      "text": "The museum opened a new room for old clocks. Each label told where a clock was made and how it worked. Visitors watched a brass wheel turn. A guide answered questions and pointed to the smallest spring."
+    },
+    {
+      "id": "test-observatory",
+      "split": "test",
+      "text": "A telescope waited beneath the open dome. The observer wrote the time in a notebook and adjusted the lens. Stars became visible as the last light faded. One bright point moved across the field and vanished beyond the edge."
+    },
+    {
+      "id": "test-cyclist",
+      "split": "test",
+      "text": "The cyclist stopped beside a stone wall to mend a loose chain. Rain had left small pools along the road. After checking both wheels, the cyclist packed the tools and continued toward the next village."
+    }
+  ]
+}

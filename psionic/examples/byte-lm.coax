@@ -1,0 +1,19 @@
+#import "Basic";
+#load "../lib/byte-lm.coax";
+#load "../fixtures/byte-lm/dataset.coax";
+// book:begin example
+main :: () {
+    train:[4096]u8;validation_bytes:[4096]u8;test_bytes:[4096]u8;
+    for i:0..<BG_TRAIN.count {train[i]=BG_TRAIN[i];}for i:0..<BG_VALIDATION.count {validation_bytes[i]=BG_VALIDATION[i];}for i:0..<BG_TEST.count {test_bytes[i]=BG_TEST[i];}
+    weights:[65536]f64;stage:[65536]f64;trace:[65]f64;
+    fit:=bg_fit(train[0..<BG_TRAIN.count],64,32,weights[..],stage[..],trace[..],false);#assert fit.status==BgStatus.ok;
+    validation:=bg_evaluate(weights[..],validation_bytes[0..<BG_VALIDATION.count]);test:=bg_evaluate(weights[..],test_bytes[0..<BG_TEST.count]);
+    #assert validation.status==BgStatus.ok && test.status==BgStatus.ok;
+    print("byte vocabulary: 256; parameters: 65536; updates: %\n",fit.updates);
+    print("train nats: % -> %\n",fit.initial,fit.final);
+    print("held out bits/byte: validation %, test %\n",validation.bits,test.bits);
+    bytes:[128]u8;generated:=bg_generate(weights[..],CrSeed.{seed=7,counter=11},32,128,bytes[..],false);#assert generated.status==BgStatus.ok;
+    print("splitmix64-top53-v1: seed 7, counter 11 -> %\n",generated.next.counter);
+    print("first eight sampled bytes: % % % % % % % %\n",bytes[0],bytes[1],bytes[2],bytes[3],bytes[4],bytes[5],bytes[6],bytes[7]);
+}
+// book:end example

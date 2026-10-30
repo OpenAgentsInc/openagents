@@ -1929,3 +1929,21 @@ branches. Value results own their storage; errors return zero written payload.
 Check: `psionic/tests/check_tokenizer_families.sh --mutate --jobs 8`: CPU-only,
 290 full original-vocabulary vectors, 12 independent Jinja outputs including
 TinyLlama's actual template, debug/release and native ASan/UBSan.
+
+## The byte bigram trains and generates under an explicit bounded CPU profile
+
+`psionic/lib/byte-lm.coax` admits 2–4096 bytes, 1–64 full-batch SGD updates,
+rate (0,64], complete 256x256 f64 tables and disjoint public/scratch/trace spans.
+It trains from zero using only the training partition, normalizes gradients by
+all transitions, and publishes only the completed table and loss trace.
+Evaluation uses the full 256-byte softmax and finite logits in [-4096,4096].
+Generation uses `splitmix64-top53-v1`, one seed/counter draw per byte, ascending
+strict CDF buckets and a final residual bucket. Length and counter exhaustion
+are checked before output writes. Licensed synthetic whole-document splits
+are fixed and disjoint; their likelihood does not claim general language quality.
+C observes spans only; Coax owns arithmetic and admission. Valid pointer/view
+lifetimes and exclusive synchronous output access remain caller duties.
+
+Check: `psionic/tests/check_byte_lm.sh --mutate --jobs 8` (CPU only): independent
+full-table SGD/likelihood/sample capture, finite differences, real aliases,
+debug/release, native plain/ASan/UBSan and exact book output.

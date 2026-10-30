@@ -1,0 +1,16 @@
+// splitmix64-top53-v1: same counter mapping as the existing gpt-oss sampler.
+#authority;
+CrSeed :: struct {seed:u64;counter:u64;}
+CrDraw :: struct {ok:bool;value:f64;next:CrSeed;}
+#test "counter RNG has published words and advances exactly once" {
+ #assert cr_bits(0,0)==(cast(u64)0xe220a8397b1dcdaf) && cr_bits(0,1)==(cast(u64)0x6e789e6aa1b965f4);
+ #assert cr_bits(1,0)==(cast(u64)0x910a2dec89025cc1);
+ d:=cr_draw(CrSeed.{seed=0,counter=0});#assert d.ok && d.value==0.8833108082136426 && d.next.counter==1 && d.next.seed==0;
+ d=cr_draw(CrSeed.{seed=7,counter=18446744073709551614});#assert d.ok && d.next.counter==(cast(u64)18446744073709551615) && d.next.seed==7;
+ d=cr_draw(CrSeed.{seed=7,counter=18446744073709551615});#assert !d.ok && d.next.seed==0 && d.next.counter==0 && d.value==0;
+}
+cr_bits :: (seed:u64,counter:u64)->u64 {
+ z:=add_wrap(seed,mul_wrap((cast(u64)0x9e3779b97f4a7c15),add_wrap(counter,(cast(u64)1))));
+ z=mul_wrap(z^(z>>30),(cast(u64)0xbf58476d1ce4e5b9));z=mul_wrap(z^(z>>27),(cast(u64)0x94d049bb133111eb));return z^(z>>31);
+}
+cr_draw :: (state:CrSeed)->CrDraw {if state.counter==(cast(u64)18446744073709551615) {return CrDraw.{};}return CrDraw.{ok=true,value=f64(cr_bits(state.seed,state.counter)>>11)/9007199254740992.0,next=CrSeed.{seed=state.seed,counter=state.counter+1}};}

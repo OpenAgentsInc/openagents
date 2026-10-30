@@ -1,0 +1,5 @@
+byte vocabulary: 256; parameters: 65536; updates: 64
+train nats: 5.545177444479545 -> 2.344855584009939
+held out bits/byte: validation 3.9888647166837496, test 3.965397803268061
+splitmix64-top53-v1: seed 7, counter 11 -> 139
+first eight sampled bytes: 153 235 223 221 140 225 83 153

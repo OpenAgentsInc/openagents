@@ -740,6 +740,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/byte-lm.coax",
+      "chapter": "psionic/book/ch073-bytes-and-a-small-language-model.md",
+      "stdout": "psionic/fixtures/byte-lm.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

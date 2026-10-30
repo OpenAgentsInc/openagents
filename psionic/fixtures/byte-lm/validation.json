@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "base": "6ac5f09b43",
+  "cpu_only": true,
+  "checks_per_mode": 7,
+  "mutants": {
+    "total": 190,
+    "killed": 190,
+    "survived": 0
+  },
+  "inputs": {
+    "coax/bin/coax": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+    "psionic/examples/byte-lm.coax": "f20c63bd65c9f36adf85556ead49df9f82bc3487b3c785b5935a0a5b6fec5915",
+    "psionic/fixtures/byte-lm.out": "9bca6dd5d0923b349868c378e40ec580f04eb65d4147c14a01b087c793af9b21",
+    "psionic/fixtures/byte-lm/dataset.coax": "1f94f4f85cdcd79c4b0d2498ba6603ea6331c362519078495622e73a757496d7",
+    "psionic/fixtures/byte-lm/dataset.json": "45e2cfa7d70194bdb9c444f26e8ab7add81b927319ab3482ea150fb342a7a1ec",
+    "psionic/fixtures/byte-lm/reference.json": "5277b3deca7a733c797d40efb68b0da3e4dd7d26544b4b7cd7c64c78509afd8f",
+    "psionic/lib/byte-lm-math.coax": "feac86858c29f8cb66e13010bdcd8bc5dc7318341fb10c7de80f391c247babd9",
+    "psionic/lib/byte-lm.coax": "e2078db5df199f7f8cd9218fe895b909a898435e547b3505365f16a3bd9ef832",
+    "psionic/lib/counter-rng.coax": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49",
+    "psionic/platform/byte-lm-memory.c": "8d3490bb628c9bca3694d98872ab48497410bba098d76e3085740fabdba6018c",
+    "psionic/platform/byte-lm-memory.h": "031257c3c83ad16c5e5bf4a4436811723ce757dc3f35e62376dc5b445603ae93",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/tests/byte_lm_native.c": "89dcd0741fecec96fcee4386033760bbd5f8035c6df57e0edf3ccfca5cbc125f",
+    "psionic/tests/byte_lm_oracle.py": "9ba0b079fe014590f78113e6b4ece0e0a09c34b5013076c39fd67b9d80f3b199",
+    "psionic/tests/check_byte_lm.sh": "105c7c09b642f63c1990623804efb6cab3afa8b75fdf9572be2e04aa460580cf"
+  },
+  "logs": {
+    "psionic-ch73-unit3.log": {
+      "sha256": "5ee382368406ca4f1cab0547a88430762af8e5b58716c1fe6f801cbd8cb6501c",
+      "last_line": "7 checks, 7 passed, 0 failed"
+    },
+    "psionic-ch73-release.log": {
+      "sha256": "5ee382368406ca4f1cab0547a88430762af8e5b58716c1fe6f801cbd8cb6501c",
+      "last_line": "7 checks, 7 passed, 0 failed"
+    },
+    "psionic-ch73-mutate2.log": {
+      "sha256": "dd267340e80b1ea18e0c6b94fe15e546b7967a926d51a69d2e2e2086f2d49c9f",
+      "last_line": "190 mutants, 190 killed, 0 survived"
+    },
+    "psionic-ch73-native-release-plain.log": {
+      "sha256": "f6820bca0f81061a0d6cfbbe8d10a59946e5917de2514dc292697c7c00719e2b",
+      "last_line": "byte LM: all 65536 weights, 65 losses, held-out metrics and 128 sampled bytes agree; max parameter error 1.87e-14"
+    },
+    "psionic-ch73-native-debug-sanitized.log": {
+      "sha256": "f6820bca0f81061a0d6cfbbe8d10a59946e5917de2514dc292697c7c00719e2b",
+      "last_line": "byte LM: all 65536 weights, 65 losses, held-out metrics and 128 sampled bytes agree; max parameter error 1.87e-14"
+    },
+    "psionic-ch73-native-release-sanitized.log": {
+      "sha256": "f6820bca0f81061a0d6cfbbe8d10a59946e5917de2514dc292697c7c00719e2b",
+      "last_line": "byte LM: all 65536 weights, 65 losses, held-out metrics and 128 sampled bytes agree; max parameter error 1.87e-14"
+    },
+    "psionic-ch73-native-debug.log": {
+      "sha256": "f6820bca0f81061a0d6cfbbe8d10a59946e5917de2514dc292697c7c00719e2b",
+      "last_line": "byte LM: all 65536 weights, 65 losses, held-out metrics and 128 sampled bytes agree; max parameter error 1.87e-14"
+    }
+  }
+}

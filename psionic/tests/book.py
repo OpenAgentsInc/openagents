@@ -42,7 +42,7 @@ def check():
         for line in text.splitlines():
             if line.startswith("```"):
                 if not in_block:
-                    assert line in ("```jai", "```shell"), f"book fence must be jai or shell: {doc}: {line}"
+                    assert line in ("```jai", "```shell", "```text"), f"book fence must be jai, shell or text: {doc}: {line}"
                 else:
                     assert line == "```", f"bad closing fence: {doc}: {line}"
                 in_block = not in_block
