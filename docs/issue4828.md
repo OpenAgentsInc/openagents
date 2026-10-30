@@ -52,6 +52,23 @@ secrets. That's measured by the memcheck probes below.
 
 ## In flight
 
+**The audit record is on main** (`7876e3db27`,
+`docs/verification/2026-10-30-signer-source-audit.md`, by `openagents-20`):
+- `nostr_sign_step` reduces to guard obligations: 135 procedures, and
+  `test_signer_entry.py` reruns it in about 2.5 minutes.
+- Mutation: large profile 3,701/3,701, legacy 2,805/2,805, public-view
+  2,866/2,866, inventory 840/840.
+- The limits it states (checked builds rest on the source-level proof, the
+  target probes cover release, production approval is separate) are limits,
+  not open work.
+
+**Left before #4828 is marked done:** the final re-gate of `schnorr_sign`,
+`schnorr_self_verify` and `event_sign` on `6c6dab1054`. It is running now in
+short shards on both machines; the 4 earlier survivors were in a check-only
+helper, now fixed and confirmed by hand. After that, `openagents-20` marks
+the task done.
+
+
 **Combined post-push gates on `d017c8f902`: done.**
 
 | Unit | Result |
