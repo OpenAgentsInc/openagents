@@ -266,6 +266,20 @@
         "card": "/realms/hecates-cemetery/card.jpg",
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
         "assets": ["index:/realms/hecates-cemetery/assets/Villa.indices", "particles:/particles.wgsl"]
+      } },
+    { "id": "stair", "name": "HOLD THE STAIR", "kind": "open", "listed": true, "orbit": { "r": 0.22, "a": 1.2, "size": 0.026 },
+      "realm": {
+        "slug": "hold-the-stair",
+        "style": "lowpoly",
+        "clock": "fixed:0.0",
+        "ruleset": "srd5",
+        "title": "Hold the Stair",
+        "description": "Hold the Stair, a Verse realm in the browser: a popping tower defense on the SRD 5e rules. Bubble-beasts climb a wizard's tower and pop into the layers inside; place fighters, wizards and clerics beside the stair, and every attack rolls a real d20.",
+        "alt": "Hold the Stair: bubble-beasts climb the tower stair past a party of adventurers",
+        "module": "stair",
+        "slot": "hold-the-stair",
+        "golden": { "lit": 0.02, "settle": 3000, "blocks": 6 },
+        "assets": []
       } }
   ]
 }

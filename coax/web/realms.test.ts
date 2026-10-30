@@ -90,10 +90,11 @@ test("refuses a painterly realm with a lowpoly pack, and a pack of another style
   writeFileSync(join(packs, "everglade.json"), JSON.stringify({ pack: "everglade", style: "lowpoly" }))
   expect(check(() => {}, { styleBlock: false, packs })).toThrow(/its pack everglade is lowpoly/)
 })
-test("Everglade plays by the SRD 5e ruleset and its page says so; no other realm has one", () => {
+test("Everglade and Hold the Stair play by the SRD 5e ruleset and their pages say so; no other realm has one", () => {
   const all = worlds().filter((w) => w.realm)
-  for (const w of all) expect(w.realm!.ruleset).toBe(w.id === "everglade" ? "srd5" : undefined)
+  const srd = ["everglade", "stair"]
+  for (const w of all) expect(w.realm!.ruleset).toBe(srd.includes(w.id) ? "srd5" : undefined)
   expect(page(all.find((w) => w.id === "everglade")!.realm!)).toContain(`data-ruleset="srd5"`)
-  expect(page(all.find((w) => w.id === "haunted")?.realm ?? all.find((w) => w.id !== "everglade")!.realm!)).not.toContain("data-ruleset")
+  expect(page(all.find((w) => w.id === "haunted")?.realm ?? all.find((w) => !srd.includes(w.id))!.realm!)).not.toContain("data-ruleset")
 })
 test("refuses an unknown ruleset", () => expect(check((r) => (r.ruleset = "pathfinder"))).toThrow(/ruleset is one of/))

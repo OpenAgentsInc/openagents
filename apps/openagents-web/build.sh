@@ -91,6 +91,9 @@ icecream=$!
 # /realms/dead-gears: the ship survival game (verse/deadgears/rules.coax, loaded by the page).
 "$here/../../coax/web/wasm.sh" "$here/deadgears.coax" "$here/deadgears-face.c" "$here/build/deadgears.wasm" &
 deadgears=$!
+# /realms/hold-the-stair: the popping tower defense on the SRD 5e rules (verse/rules/srd5-combat.coax).
+"$here/../../coax/web/wasm.sh" "$here/stair.coax" "$here/stair-face.c" "$here/build/stair.wasm" &
+stair=$!
 # /realms/characters: the engine's figures (verse/figure.coax).
 "$here/../../coax/web/wasm.sh" "$here/characters.coax" "$here/characters-face.c" "$here/build/characters.wasm" &
 characters=$!
@@ -171,6 +174,7 @@ wait "$builder"
 wait "$myrealm"
 wait "$icecream"
 wait "$deadgears"
+wait "$stair"
 wait "$everglade"
 wait "$fairy"
 wait "$thegrid"
