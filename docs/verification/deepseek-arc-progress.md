@@ -20,6 +20,7 @@ rows stay planned until their full acceptance gates have evidence.
 | 66 | Exact FP8/FP4 cache grids, reference bit checks, separately bounded chunk step buffers | Implemented CPU BF16 source-equation codec; every BF16 pattern in three group forms and all code/scale pairs qualify against an independent oracle, with pinned ownership/work budgets; [record](psionic-ch66-2026-10-29.md). Original device capture and attention integration remain in 60/67/68. |
 | 67 | Recorded device decode, device expert IDs/sampling, one-step-ahead host scheduling and lifetime checks | Planned. |
 | 68 | Complete original V4.1 Flash on one machine, frozen reference qualification, TTFT/tokens/s/memory | Planned; current host has 16 GiB GPU memory and about 189 GiB free disk at initial inspection, less than the 510.3 GB original artifact set. |
+| 68a | Consumer-q V4.1 Flash, importance-weighted GPTQ, exact prompt-layer skip and calibrated one-card residency | Planned in the latest main plan. Separate approximate profile; never qualified or mixed into a qualified group. RTX PRO 6000 reference and measured RTX 4080 fit/refusal remain unimplemented. |
 | 69 | Original draft heads, fixed then confidence-driven variable verification, exact acceptance, measured committed tokens/time | Planned. |
 | 141 | Full stage-boundary state in BF16, fencing/recovery, every split matches chapter 68 and measured per-hop latency | Planned. |
 
