@@ -26,6 +26,8 @@ EXPORT("nl_beacon") int32_t beacon(int32_t n,int64_t now) {nl_output_count=lr_be
 EXPORT("nl_newer") int32_t newer(int64_t g,int64_t t,int64_t hg,int64_t ht) {return lr_newer(g,t,hg,ht);}
 EXPORT("nl_budget") int32_t budget(int64_t events,int64_t bytes) {return lr_capture_budget(events,bytes);}
 EXPORT("nl_filter") int32_t filter(int32_t mode,int32_t key_n,int32_t value_n) {nl_output_count=lr_filter(mode,in(0,key_n),in(1,value_n),out());return nl_output_count>=0;}
+EXPORT("nl_cache_entry") int32_t cache_entry(int32_t n,int32_t k) {nl_output_count=hc_entry(in(0,n),k,out());return nl_output_count>=0;}
 EXPORT("nl_stats") int32_t stats(int32_t work_n,int32_t requests_n,int32_t key_n,int64_t now) {nl_output_count=lr_stats(in(0,work_n),in(1,requests_n),in(2,key_n),now,out());return nl_output_count>=0;}
 int64_t home_watch_request(int64_t mode,int64_t keys_n,int64_t now) {nl_output_count=lb_begin((coax_v_t_LbSeen){&activity_seen,1},mode,in(1,(int)keys_n),now,out());return nl_output_count;}
 int64_t home_watch_message(int64_t text_n,int64_t keys_n,int64_t now) {coax_t_LbMessage r=lb_message((coax_v_t_LbSeen){&activity_seen,1},in(0,(int)text_n),in(1,(int)keys_n),now,out());nl_output_count=r.written;return r.code;}
+coax_v_t_LrQuery home_query(void) {return q();}

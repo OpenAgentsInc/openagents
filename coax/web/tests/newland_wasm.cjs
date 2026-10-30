@@ -6,7 +6,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
  const pylons=JSON.parse(source.match(/^LAND_PYLONS :: (".*");$/m)[1]).trim().split('\n').filter(Boolean).map(row=>row.split('|'));
  const memory=new WebAssembly.Memory({initial:1024,maximum:1024});
  const wasi={clock_time_get:(_clock,_precision,pointer)=>{new DataView(memory.buffer).setBigUint64(pointer,0n,true);return 0},fd_close:()=>52,fd_fdstat_get:()=>52,fd_seek:()=>52,fd_write:()=>{throw Error('unexpected renderer diagnostic')}};
- const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[2]),{env:{memory,coaxial_now_seconds:()=>0n,coaxial_http:()=>0,coaxial_socket_open:()=>-1,coaxial_socket_send:()=>{},coaxial_socket_close:()=>{}},wasi_snapshot_preview1:wasi});
+ const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[2]),{env:{memory,coaxial_now_seconds:()=>0n,coaxial_http:(u,n,b,bn,flags)=>flags&4?-1:0,coaxial_storage_get:()=>2,coaxial_storage_put:()=>2,coaxial_socket_open:()=>-1,coaxial_socket_send:()=>{},coaxial_socket_close:()=>{}},wasi_snapshot_preview1:wasi});
  const x=instance.exports;x._initialize();const align=n=>(n+15)&~15;
  assert.equal(x.coaxial_land_captured(),BigInt(captured),'module uses the checked capture');
  const p=align(Number(x.__heap_base.value)+1024),size=x.coaxial_state_size(),max=x.coaxial_max_vertices(),floats=x.coaxial_vertex_floats(),uf=x.coaxial_uniform_floats();

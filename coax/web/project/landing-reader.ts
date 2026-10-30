@@ -59,6 +59,8 @@ export class LandingReader {
     for(const event of events)this.require(this.x.nl_fold_feed(this.input(0,original(event))),"project event")
     return JSON.parse(this.require(this.x.nl_fold_result(),"complete project fold"))
   }
+  // One admitted event as the page's cache entry (landing-cache.coax), for the build's seed.
+  cacheEntry(event:PublicEvent,project:number){return this.require(this.x.nl_cache_entry(this.input(0,original(event)),project),"seed entry")}
   begin(filter:string){this.require(this.x.nl_begin(this.input(0,filter)),"query")}
   request(){return this.require(this.x.nl_request(),"page request")}
   close(){return this.require(this.x.nl_close(),"subscription close")}

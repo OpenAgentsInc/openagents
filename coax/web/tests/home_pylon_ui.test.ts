@@ -39,7 +39,8 @@ async function homepage(viewport:Viewport) {
   let nextSocket = 0, now = fixture.now, x:any, state = 0
   const env = {
     memory,
-    coaxial_http:() => 0,
+    coaxial_http:(_u: number, _n: number, _b: number, _bn: number, flags: number) => flags & 4 ? -1 : 0,
+    coaxial_storage_get: () => 2, coaxial_storage_put: () => 2,
     coaxial_now_seconds:() => BigInt(now),
     coaxial_socket_open:(at:number, n:number) => {
       expect(decode(at, n)).toBe('wss://relay.openagents.com')

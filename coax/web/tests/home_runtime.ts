@@ -8,7 +8,7 @@ export async function homeRuntime(path:string, options:{relay?:string,clock?:()=
   const bytes=new TextEncoder().encode(text);if(bytes.length>x.coaxial_inbox_cap())throw Error('fixture frame cap')
   new Uint8Array(memory.buffer,x.coaxial_inbox(p),bytes.length).set(bytes);try{x.coaxial_message(p,256+4*id+kind,bytes.length)}catch(e){failure=e}
  }
- const env={memory,coaxial_http:()=>0,coaxial_now_seconds:()=>BigInt(clock()),
+ const env={memory,coaxial_http:(_u:number,_n:number,_b:number,_bn:number,flags:number)=>flags&4?-1:0,coaxial_storage_get:()=>2,coaxial_storage_put:()=>2,coaxial_now_seconds:()=>BigInt(clock()),
   coaxial_socket_open(at:number,n:number){const url=decode(at,n);if(url!=='wss://relay.openagents.com')throw Error('unexpected relay');const id=sockets.indexOf(null);if(id<0)return -1
    const ws=new WebSocket(options.relay??url);sockets[id]=ws;opening++
    ws.onopen=()=>{if(sockets[id]===ws)deliver(id,0)}

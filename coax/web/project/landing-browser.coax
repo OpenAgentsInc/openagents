@@ -2,6 +2,8 @@
 // decisions stay in Coax; the browser moves socket bytes only.
 #load "landing-nostr.coax";
 #load "landing-xp.coax";
+#load "landing-cache.coax";
+#load "../../lib/nostr/fixtures/nip42_events.coax";
 #authority;
 LbMessage :: struct {code:int;written:int;}
 LbSeen :: struct {n:int;start:int;started:bool;ids:[LR_EVENTS*32]u8;}
@@ -68,4 +70,45 @@ lb_message :: (seen:[]LbSeen,text:string,keys:string,now:int,out:[]u8)->LbMessag
   key:[64]u8;hex:="0123456789abcdef";for i:0..<32 {key[2*i]=hex[e.public_key[i]>>4];key[2*i+1]=hex[e.public_key[i]&15];}
   n:=json_raw(out,0,"{\"provider\":");n=json_write_string(out,n,cast(string)key[..]);n=json_raw(out,n,",\"kind\":");n=json_write_int(out,n,e.kind);
   n=json_raw(out,n,",\"at\":");n=json_write_int(out,n,e.created_at);n=json_raw(out,n,"}");return LbMessage.{code=2,written=n};
+}
+#test "the page's catch-up never checks a kept event again and keeps its own copy" {
+  q:[1]LrQuery;c:[1]HcCache;r:[1]HcRoom;hc_test(c[..],r[..]);out:[8192]u8;
+  #assert lr_begin(q[..],"{\"kinds\":[22242]}") && lr_request(q[..],out[..])>0;
+  scratch:[4096]u8;e:=nostr_event_read(N42_FX_SPEC,scratch[..],false);#assert e.error==NE_OK;
+  id:=e.id;#assert hc_append(c[..],3,id[..],e.created_at,e.kind,0,N42_FX_SPEC)==1;
+  frame:[4096]u8;n:=json_raw(frame[..],0,"[\"EVENT\",\"land-1\",");n=json_raw(frame[..],n,N42_FX_SPEC);n=json_raw(frame[..],n,"]");
+  bad:=frame;bad[n-4]='1';#assert lb_frame(q[..],c[..],3,cast(string)bad[0..<n])==0 && c[0].n==1 && q[0].count==1 && hc_json(c[..],0)==N42_FX_SPEC;
+  odd:=frame;odd[60]='f';#assert lb_frame(q[..],c[..],3,cast(string)odd[0..<n])== -4;
+  #assert hc_entry("{}",1,out[..])== -1;
+}
+// lr_frame for the page's catch-up, into its cache: an event already there
+// was admitted before (the same id is the same bytes, hashed here again), so
+// its signature isn't checked twice and its copy here stays the one kept.
+// 0 ignored or known, 1 a new admitted event kept, 2 page ended; negative
+// refuses, as lr_frame.
+lb_frame :: (s:[]LrQuery,c:[]HcCache,k:int,text:string)->int #export_c {
+  if s[0].state!=2 {return -1;}
+  m:=nostr_message_read(text);
+  if m.error!=NM_OK {return ifx lr_auth(text) then 0 else -2;}
+  if m.type==NM_NOTICE {return 0;}
+  sub:[64]u8;n:=lr_sub(s,sub[..]);
+  if !json_is(nm_text(m,m.sub),cast(string)sub[0..<n]) {return 0;}
+  if m.type==NM_CLOSED {s[0].state= -1;return -3;}
+  if m.type==NM_EOSE {
+    if s[0].count>s[0].peak {s[0].peak=s[0].count;}
+    until:=lr_page_end(s[0].until,s[0].oldest,s[0].count,lr_finish(text),s[0].pages,s[0].peak);
+    if until== -2 {s[0].state= -1;return -5;}
+    s[0].until=until;s[0].state=ifx until== -1 then 3 else 1;return 2;
+  }
+  if m.type!=NM_EVENT {return 0;}
+  original:=nm_text(m,m.event);scratch:[NE_MAX_OUTPUT]u8;e:=nostr_event_read(original,scratch[..],false);
+  if e.error!=NE_OK {s[0].state= -1;return -4;}
+  known:=hc_find(c,e.id[..])>=0;
+  if !known {if !nostr_fast_verify_vartime(e.id[..],e.public_key[..],e.signature[..]) {s[0].state= -1;return -4;}e.verified=true;}
+  strs:[1024]string;ints:[1024]int;tags:[64]NostrTagFilter;bytes:[8192]u8;
+  sp:=[1]FrSpace.[FrSpace.{strs=strs[..],ints=ints[..],tags=tags[..],bytes=bytes[..]}];f:[1]NostrFilter;
+  if !lr_parse_filter(cast(string)s[0].filter[0..<s[0].filter_n],f[..],sp[..]) || !nf_match(f[0],e) || (s[0].until>=0 && e.created_at>s[0].until) {return -6;}
+  s[0].count+=1;if s[0].oldest<0 || e.created_at<s[0].oldest {s[0].oldest=e.created_at;}
+  if known {return 0;}
+  r:=hc_add(c,k,e);if r<0 {s[0].state= -1;return -7;}return r;
 }

@@ -46,6 +46,7 @@
   #assert lr_filter(5,"","",out[..])>0;
   #assert lr_filter(6,PB_KEY,"100000",out[..])>0;
   #assert lr_filter(7,"","[]",out[..])== -1;
+  #assert lr_filter(8,PB_KEY,"1793374251",out[..])>0 && lr_filter(8,PB_KEY,"x",out[..])== -1;
   #assert lr_filter(99,PB_KEY,"",out[..])== -1;
   #assert lr_stats("[]","[]",PB_KEY,1000,out[..])>0;
   #assert lr_stats("{}","[]",PB_KEY,1000,out[..])== -1;
@@ -185,8 +186,10 @@ lr_ids :: (text:string,ids:[]string)->int {
 }
 // A single filter, written by the shared Nostr writer. mode 6 receives
 // receipt time; future activity is excluded. mode 7 is exact public ids.
+// mode 8 is everything a project's key signs that the fold reads, since a
+// time (a page that already holds what came before: landing-cache.coax).
 lr_filter :: (mode:int,key:string,value:string,out:[]u8)->int #export_c {
-  if mode<0 || mode>7 || (mode!=5 && mode!=7 && !nf_hex(key)) {return -1;}
+  if mode<0 || mode>8 || (mode!=5 && mode!=7 && !nf_hex(key)) {return -1;}
   f:NostrFilter;authors:=[1]string.[key];kinds:[4]int;values:[50]string;tag:[1]NostrTagFilter;coord:[160]u8;
   if mode!=5 && mode!=7 {f.has_authors=true;f.authors=authors[..];}
   if mode<=2 {
@@ -208,7 +211,10 @@ lr_filter :: (mode:int,key:string,value:string,out:[]u8)->int #export_c {
   if mode==5 {kinds[0]=PB_KIND;f.has_kinds=true;f.kinds=kinds[0..<1];values[0]=PB_MARKER;tag[0]=NostrTagFilter.{name='t',values=values[0..<1]};f.tags=tag[..];}
   if mode==6 {now:=json_int(value);if !now.ok || now.value<0 || now.value>NF_SAFE {return -1;}
     kinds[0]=26910;kinds[1]=27010;f.has_kinds=true;f.kinds=kinds[0..<2];f.has_since=true;f.since=ifx now.value>86400 then now.value-86400 else 0;f.has_until=true;f.until=now.value;
-  }return nf_write(f,out,false);
+  }
+  all:=[9]int.[30617,30621,30623,1621,1111,1630,1631,1632,1633];
+  if mode==8 {since:=json_int(value);if !since.ok || since.value<0 || since.value>NF_SAFE {return -1;}f.has_kinds=true;f.kinds=all[..];f.has_since=true;f.since=since.value;}
+  return nf_write(f,out,false);
 }
 
 LR_ACTIVITY :: 512;

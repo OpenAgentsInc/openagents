@@ -13,7 +13,7 @@ for unit in newland landing-browser landing-fold; do
   "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable -c "$work/$unit.c" -o "$work/$unit.o"
   objects+=("$work/$unit.o")
 done
-for unit in newland landing-reader landing-fold; do
+for unit in newland landing-reader landing-fold landing-cache; do
   directory="$here"; [[ "$unit" != newland ]] || directory="$repo/apps/openagents-web"
   "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 -O2 -I"$work" -c "$directory/$unit-face.c" -o "$work/$unit-face.o"
   objects+=("$work/$unit-face.o")

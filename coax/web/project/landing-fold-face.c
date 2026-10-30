@@ -16,3 +16,6 @@ EXPORT("nl_fold_feed") int32_t fold_feed(int32_t n) {coax_string original=in(0,n
 EXPORT("nl_fold_result") int32_t fold_result(void) {nl_output_count=lf_result(p(),(coax_v_u8){nl_output_bytes,OUTPUT_CAP});return nl_output_count>=0;}
 int64_t home_fold_ids(int64_t offset) {nl_output_count=lf_home_ids(p(),offset,(coax_v_u8){nl_output_bytes,OUTPUT_CAP});return nl_output_count;}
 int64_t home_fold_known(void) {nl_output_count=lf_home_known(p(),(coax_v_u8){nl_output_bytes,OUTPUT_CAP});return nl_output_count;}
+/* Only for bytes from the page's own cache (landing-cache-face.c), each an
+   event Coax admitted before it was kept: never exported. */
+int64_t home_fold_admitted(coax_string text) {return lf_feed(p(),text,1);}

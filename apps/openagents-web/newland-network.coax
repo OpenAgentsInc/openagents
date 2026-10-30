@@ -12,10 +12,16 @@ home_call :: (op:int,a:int,b:int,now:int)->int #foreign;
 home_wall :: ()->int #foreign;
 HOME_ROW :: 2048;
 HOME_KNOWN :: 32768;
+HOME_FEED_BYTES :: 131072;   // a frame's share of a project's kept events into its fold
+HOME_SINCE_SLACK :: 300;     // a refresh asks again for this much before what it holds
 HomeNet :: struct {
   pipe:[1]Pipe;started:bool;beacon_ended:bool;watch:int;socket:int;watch_state:int;query_state:int;
   watch_at:f64;query_at:f64;retry_watch:f64;retry_query:f64;now:f64;due:f64;
   busy:bool;stalled:bool;project:int;stage:int;batch:int;initial:int;dirty:int;ready:int;refused:int;refreshes:int;events:int;bytes:int;
+  // what the page already holds (landing-cache.coax): its storage, then the build's seed
+  local:int;local_at:f64;local_i:int;local_n:int;token:int;load_token:int;http:int;store:int;
+  persist:int;persist_i:int;persist_n:int;persist_gen:int;persist_token:int;persist_due:f64;
+  since:int;fresh:int;folded:int;feed:int;admitted:int;
 }
 HomeIssue :: struct {id:string;kind:string;status:string;title:string;parent:string;rank:string;worker:string;claimed:int;at:int;commit:string;}
 #test "live projections preserve counts, sort claims and refuse malformed input before publication" {
@@ -195,28 +201,135 @@ hn_known_json :: (s:[]LandState,k:int,offset:int,limit:int,out:[]u8)->int {
   for i:offset..<lo_int(s[0].known_n[k],offset+limit) {if count>0 {n=json_raw(out,n,",");}n=json_write_string(out,n,cast(string)s[0].known[k][i*65..<i*65+64]);count+=1;}
   return ifx count==0 then 0 else json_raw(out,n,"]");
 }
+// A project's refresh: what is newer than what the page holds (stage 10),
+// or, holding nothing complete, its whole history (stages 0-2, 4, 5); the
+// known roots it lacks (3); then its fold from what it holds (7, a frame at
+// a time), only when something came in or it hasn't been folded yet.
 hn_advance :: (s:[]LandState)->bool {
   n:=s[0].net[..];k:=n[0].project;
-  while n[0].stage<=5 {
+  while true {
+    if n[0].stage==10 {at:[24]u8;z:=json_write_int(at[..],0,n[0].since);return hn_filter(s,8,cast(string)at[0..<z]);}
     if n[0].stage<=2 {return hn_filter(s,n[0].stage,ifx n[0].stage==0 then HOME_REPOS[k] else HOME_SLUGS[k]);}
-    if n[0].stage==3 {ids:[8192]u8;size:=hn_known_json(s,k,n[0].batch,50,ids[..]);if size>0 {return hn_filter(s,7,cast(string)ids[0..<size]);}n[0].stage=4;n[0].batch=0;}
+    if n[0].stage==3 {
+      while n[0].batch<s[0].known_n[k] {
+        if !hn_put(0,cast(string)s[0].known[k][0..<s[0].known_n[k]*65]) {return false;}size:=home_call(17,n[0].batch,0,0);if size<0 {return false;}
+        if size>0 {ids:[8192]u8;z:=hn_output(ids[..]);if z<=0 {return false;}return hn_filter(s,7,cast(string)ids[0..<z]);}
+        n[0].batch+=50;
+      }
+      n[0].stage=ifx n[0].since>=0 then 6 else 4;n[0].batch=0;
+    }
     if n[0].stage==4 || n[0].stage==5 {
-      size:=home_call(9,n[0].batch,0,0);if size<0 {return false;}
+      size:=home_call(16,k,n[0].batch,0);if size<0 {return false;}
       if size==0 {n[0].stage+=1;n[0].batch=0;continue;}
       if home_copy_output(1)!=1 || !hn_put(0,HOME_KEYS[k]) || home_call(0,ifx n[0].stage==4 then 3 else 4,0,0)!=1 {return false;}return hn_start_filter(s);
     }
+    if n[0].stage==6 {
+      // nothing came in: folded already, or a fold kept from exactly what it holds (by this page, or the build's seed)
+      if n[0].fresh==0 && (n[0].folded&(1<<k))!=0 {hn_ready(s,k);return true;}
+      if n[0].fresh==0 && home_call(32,k,0,0)>0 {
+        projection:[262144]u8;size:=hn_output(projection[..]);
+        if size>0 && hn_project(s,k,cast(string)projection[0..<size],land_now(s)) && hn_known_from(s,k,cast(string)projection[0..<size]) {n[0].folded|=1<<k;hn_ready(s,k);return true;}
+      }
+      expected:[32768]u8;size:=hn_known_json(s,k,0,512,expected[..]);text:=ifx size>0 then cast(string)expected[0..<size] else "[]";
+      if !hn_put(0,HOME_KEYS[k]) || !hn_put(1,HOME_SLUGS[k]) || !hn_put(2,text) || home_call(6,0,0,0)!=1 {return false;}
+      n[0].stage=7;n[0].feed=0;n[0].busy=true;n[0].query_at=n[0].now;return true;
+    }
+    return n[0].stage==7;
   }
-  if home_call(8,0,0,0)!=1 {return false;}projection:[262144]u8;size:=hn_output(projection[..]);if size<0 {return false;}
-  if !hn_project(s,k,cast(string)projection[0..<size],land_now(s)) {return false;}
-  size=home_call(10,0,0,0);if size<0 || size>HOME_KNOWN {return false;}for i:0..<size {s[0].known[k][i]=cast(u8)home_output_byte(i);}s[0].known_n[k]=size/65;
-  n[0].ready|=1<<k;n[0].refreshes+=1;n[0].busy=false;n[0].stalled=false;
-  if n[0].initial<HOME_PROJECTS {n[0].initial+=1;n[0].project=n[0].initial%HOME_PROJECTS;n[0].due=n[0].now;}else {n[0].due=n[0].now+30;}
-  return true;
+  return false;
+}
+hn_ready :: (s:[]LandState,k:int) {
+  n:=s[0].net[..];n[0].ready|=1<<k;n[0].refreshes+=1;n[0].busy=false;n[0].stalled=false;
+  if n[0].initial<HOME_PROJECTS {n[0].initial+=1;n[0].project=n[0].initial%HOME_PROJECTS;n[0].due=n[0].now;
+    if n[0].initial==HOME_PROJECTS {n[0].persist_due=n[0].now+6;}   // kept a few seconds on: never in a page's first moments
+  }else {n[0].due=n[0].now+30;}
+}
+// What the fold refused, or a projection it couldn't make, is not kept: the
+// project's entries go, and its next refresh reads its whole history again.
+hn_fold_fail :: (s:[]LandState) {ignored:=home_call(21,s[0].net[0].project,0,0);hn_fail(s);}
+hn_fold_step :: (s:[]LandState) {
+  n:=s[0].net[..];k:=n[0].project;r:=home_call(19,k,n[0].feed,HOME_FEED_BYTES);n[0].query_at=n[0].now;
+  if r== -2 {hn_fold_fail(s);return;}if r>=0 {n[0].feed=r;return;}
+  if home_call(8,0,0,0)!=1 {hn_fold_fail(s);return;}ignored:=home_call(33,k,0,0);projection:[262144]u8;size:=hn_output(projection[..]);
+  if size<0 || !hn_project(s,k,cast(string)projection[0..<size],land_now(s)) {hn_fold_fail(s);return;}
+  size=home_call(10,0,0,0);if size<0 || size>HOME_KNOWN {hn_fold_fail(s);return;}for i:0..<size {s[0].known[k][i]=cast(u8)home_output_byte(i);}s[0].known_n[k]=size/65;
+  ignored=home_call(20,k,0,0);n[0].folded|=1<<k;hn_ready(s,k);
+}
+// The roots a kept fold names, as the fold's own list (lf_home_known) would.
+hn_known_from :: (s:[]LandState,k:int,text:string)->bool {
+  arr:=hn_field(text,"issues");j:[1]Json;json_start(j[..],arr);if json_next(j[..])!=JSON_ARRAY {return false;}n:=0;
+  while true {t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_OBJECT {return false;}id:=hn_string(hn_raw(j[..],t),"id");
+    if id.count!=64 || n+65>HOME_KNOWN {return false;}for i:0..<64 {s[0].known[k][n+i]=id[i];}s[0].known[k][n+64]=10;n+=65;}
+  s[0].known_n[k]=n/65;return true;
 }
 hn_begin_project :: (s:[]LandState,k:int)->bool {
-  n:=s[0].net[..];n[0].project=k;n[0].stage=0;n[0].batch=0;n[0].events=0;n[0].bytes=0;n[0].dirty&=63-(1<<k);
-  expected:[32768]u8;size:=hn_known_json(s,k,0,512,expected[..]);text:=ifx size>0 then cast(string)expected[0..<size] else "[]";
-  if !hn_put(0,HOME_KEYS[k]) || !hn_put(1,HOME_SLUGS[k]) || !hn_put(2,text) || home_call(6,0,0,0)!=1 {return false;}return hn_advance(s);
+  n:=s[0].net[..];n[0].project=k;n[0].stage=0;n[0].batch=0;n[0].events=0;n[0].bytes=0;n[0].fresh=0;n[0].dirty&=63-(1<<k);
+  synced:=home_call(18,k,0,0);n[0].since=ifx synced>0 then hi_int(0,synced-HOME_SINCE_SLACK) else -1;
+  if n[0].since>=0 {n[0].stage=10;}
+  return hn_advance(s);
+}
+// --- what the page already holds: its IndexedDB records, else the build's seed
+hn_u32 :: (text:string,at:int)->int {if at+4>text.count {return -1;}return cast(int)text[at]+cast(int)text[at+1]*256+cast(int)text[at+2]*65536+cast(int)text[at+3]*16777216;}
+hn_all_synced :: ()->bool {for k:0..<HOME_PROJECTS {if home_call(18,k,0,0)<=0 {return false;}}return true;}
+hn_seed_next :: (s:[]LandState) {
+  n:=s[0].net[..];id:=home_call(28,n[0].local_i,LAND_CAPTURED,0);
+  if id<0 {ignored:=home_call(23,0,0,0);n[0].local=4;return;}n[0].http=id+1;
+}
+hn_seed :: (s:[]LandState) {
+  n:=s[0].net[..];if LAND_SEED_PARTS<=0 || hn_all_synced() {n[0].local=4;return;}
+  n[0].local=3;n[0].local_i=0;n[0].local_at=n[0].now+10;hn_seed_next(s);
+}
+hn_get :: (s:[]LandState,chunk:int)->bool {
+  n:=s[0].net[..];n[0].token+=1;n[0].load_token=n[0].token;return home_call(27,chunk,n[0].token,0)==0;
+}
+hn_local :: (s:[]LandState) {
+  n:=s[0].net[..];
+  if n[0].local==0 {n[0].local_at=n[0].now+3;if hn_get(s,-1) {n[0].local=1;}else {n[0].store= -1;hn_seed(s);}return;}
+  if (n[0].local==1 || n[0].local==2) && n[0].now>n[0].local_at {ignored:=home_call(23,0,0,0);n[0].store= -1;hn_seed(s);}
+  if n[0].local==3 && n[0].now>n[0].local_at {ignored:=home_call(23,0,0,0);n[0].http=0;n[0].local=4;}
+}
+hn_stored :: (s:[]LandState,text:string) {
+  n:=s[0].net[..];if hn_u32(text,0)!=n[0].load_token || (n[0].local!=1 && n[0].local!=2) {return;}
+  status:=hn_u32(text,4);size:=hn_u32(text,8);
+  if status!=0 || size<0 || 16+size>text.count {ignored:=home_call(23,0,0,0);if n[0].local==1 {n[0].store=ifx status==1 then 1 else -1;}hn_seed(s);return;}
+  if home_call(22,16,size,0)<0 {ignored:=home_call(23,0,0,0);hn_seed(s);return;}
+  if n[0].local==1 {n[0].store=1;n[0].local_n=home_call(31,0,0,0);n[0].local_i=0;if n[0].local_n<=0 {ignored:=home_call(23,0,0,0);hn_seed(s);return;}n[0].local=2;}
+  else {n[0].local_i+=1;}
+  if n[0].local_i<n[0].local_n {n[0].local_at=n[0].now+3;if !hn_get(s,n[0].local_i) {ignored:=home_call(23,0,0,0);hn_seed(s);}return;}
+  ignored:=home_call(23,1,0,0);hn_seed(s);
+}
+hn_seeded :: (s:[]LandState,text:string) {
+  n:=s[0].net[..];n[0].http=0;if n[0].local!=3 {return;}
+  status:=0;at:=0;while at<text.count && text[at]!=10 {status=status*10+cast(int)text[at]-48;at+=1;}
+  if status!=200 || at>=text.count || home_call(22,at+1,text.count-at-1,1)<0 {ignored:=home_call(23,0,0,0);n[0].local=4;return;}
+  n[0].local_i+=1;if n[0].local_i<LAND_SEED_PARTS {n[0].local_at=n[0].now+10;hn_seed_next(s);return;}
+  ignored:=home_call(23,1,0,0);n[0].local=4;
+}
+// --- keeping what it holds: chunks that changed, then the head that names them
+hn_persist_put :: (s:[]LandState)->bool {
+  n:=s[0].net[..];n[0].token+=1;n[0].persist_token=n[0].token;
+  chunk:=ifx n[0].persist_i<0 || n[0].persist_i>=n[0].persist_n then -1 else n[0].persist_i;
+  chunks:=ifx n[0].persist_i<0 then 0 else n[0].persist_n;
+  return home_call(26,chunk,n[0].token,chunks)==0;
+}
+hn_persist :: (s:[]LandState) {
+  n:=s[0].net[..];
+  if n[0].persist==0 {
+    if n[0].local!=4 || n[0].store!=1 || n[0].initial<HOME_PROJECTS || n[0].now<n[0].persist_due {return;}
+    first:=home_call(24,0,0,0);if first<0 {n[0].persist_due=n[0].now+5;return;}
+    n[0].persist_gen=home_call(29,0,0,0);n[0].persist_n=home_call(25,0,0,0);
+    // after a compaction the head goes first, naming nothing, so no record ever names chunks it didn't write
+    n[0].persist_i=ifx home_call(30,0,0,0)==1 then -1 else first;n[0].persist=1;
+    if !hn_persist_put(s) {n[0].persist= -1;}
+  }
+}
+hn_persisted :: (s:[]LandState,text:string) {
+  n:=s[0].net[..];if n[0].persist!=1 || hn_u32(text,0)!=n[0].persist_token {return;}
+  if hn_u32(text,4)!=0 {n[0].persist= -1;return;}
+  if n[0].persist_i==n[0].persist_n {n[0].persist=0;n[0].persist_due=n[0].now+15;return;}
+  n[0].persist_i=ifx n[0].persist_i<0 then 0 else n[0].persist_i+1;
+  if home_call(29,0,0,0)!=n[0].persist_gen {n[0].persist=0;n[0].persist_due=n[0].now+1;return;}
+  if !hn_persist_put(s) {n[0].persist= -1;}
 }
 hn_seed_known :: (s:[]LandState) {
   for k:0..<HOME_PROJECTS {object:=hn_field(LAND_KNOWN_ISSUES,HOME_SLUGS[k]);if hn_string(object,"key")!=HOME_KEYS[k] {continue;}j:[1]Json;json_start(j[..],hn_field(object,"ids"));if json_next(j[..])!=JSON_ARRAY {continue;}
@@ -231,6 +344,8 @@ coaxial_land_network_tick :: (s:[]LandState) #export_c {
   wall:=home_wall();if wall>0 {s[0].wall=wall;s[0].wall_age=s[0].data_age;}
   n:=s[0].net[..];n[0].now=s[0].data_age;if s[0].wall<=0 {return;}
   if !n[0].started {hn_seed_known(s);n[0].started=true;}
+  hn_local(s);hn_persist(s);
+  if n[0].busy && n[0].stage==7 {hn_fold_step(s);}
   if n[0].watch_state==0 && n[0].now>=n[0].retry_watch {if pipe_put(n[0].pipe[..],PIPE_OPEN,0,HOME_RELAY) {n[0].watch_state=1;n[0].watch_at=n[0].now;}}
   if n[0].query_state==0 && n[0].now>=n[0].retry_query {if pipe_put(n[0].pipe[..],PIPE_OPEN,1,HOME_RELAY) {n[0].query_state=1;n[0].query_at=n[0].now;}}
   if n[0].watch_state==1 && n[0].now-n[0].watch_at>10 {if n[0].watch>0 {ignored:=pipe_close(n[0].pipe[..],n[0].watch-1);}n[0].watch=0;n[0].watch_state=0;n[0].beacon_ended=false;n[0].retry_watch=n[0].now+3;}
@@ -239,7 +354,7 @@ coaxial_land_network_tick :: (s:[]LandState) #export_c {
   if n[0].watch_state==2 && !s[0].xp[0].asked && (n[0].ready==63 || n[0].now-n[0].watch_at>=8) {
     s[0].xp[0].asked=true;for mode:3..<6 {if !hn_put(1,HOME_KEY_JSON) || home_call(11,mode,0,land_now(s))<0 || !hn_send_output(s,n[0].watch) {s[0].xp[0].asked=false;}}
   }
-  if n[0].query_state==2 && !n[0].busy {
+  if n[0].query_state==2 && !n[0].busy && n[0].local==4 {
     k:=n[0].project;
     if n[0].initial>=HOME_PROJECTS {k=(k+1)%HOME_PROJECTS;for i:0..<HOME_PROJECTS {candidate:=(n[0].project+1+i)%HOME_PROJECTS;if (n[0].dirty&(1<<candidate))!=0 {k=candidate;break;}}}
     if n[0].now>=n[0].due || n[0].dirty!=0 {if !hn_begin_project(s,k) {hn_fail(s);}}
@@ -247,7 +362,10 @@ coaxial_land_network_tick :: (s:[]LandState) #export_c {
 }
 coaxial_land_network_message :: (s:[]LandState,kind:int,text:string) #export_c {
   wall:=home_wall();if wall>0 {s[0].wall=wall;s[0].wall_age=s[0].data_age;}
-  e:=socket_event(kind);if e.id<0 {return;}n:=s[0].net[..];n[0].now=s[0].data_age;
+  n:=s[0].net[..];n[0].now=s[0].data_age;
+  if kind==768 {hn_stored(s,text);return;}if kind==769 {hn_persisted(s,text);return;}
+  if n[0].http>0 && kind==512+n[0].http-1 {hn_seeded(s,text);return;}
+  e:=socket_event(kind);if e.id<0 {return;}
   if e.id+1==n[0].watch {
     if e.event==SOCKET_OPENED {n[0].watch_state=2;
       s[0].xp[0].asked=false;
@@ -265,13 +383,13 @@ coaxial_land_network_message :: (s:[]LandState,kind:int,text:string) #export_c {
     if e.event==SOCKET_OPENED {n[0].query_state=2;n[0].due=n[0].now;}
     else if e.event==SOCKET_CLOSED || e.event==SOCKET_ERROR {hn_fail(s);}
     else if e.event==SOCKET_FRAME && n[0].busy {
-      if !hn_put(0,text) {hn_fail(s);return;}result:=home_call(4,0,0,0);
+      result:=home_call(15,n[0].project,text.count,0);
       if result<0 {hn_fail(s);return;}
-      if result==1 {n[0].events+=1;n[0].bytes+=home_output_size();if home_call(13,n[0].events,n[0].bytes,0)!=1 || home_copy_output(0)!=1 || home_call(7,0,0,0)!=1 {hn_fail(s);return;}}
+      if result==1 {n[0].events+=1;n[0].fresh+=1;n[0].admitted+=1;n[0].bytes+=text.count;if home_call(13,n[0].events,n[0].bytes,0)!=1 {hn_fail(s);return;}}
       if result==2 {
         state:=home_call(5,0,0,0);if home_call(3,0,0,0)!=1 || !hn_send_output(s,n[0].socket) {hn_fail(s);return;}
         if state==1 {if !hn_request(s) {hn_fail(s);}}
-        else {if n[0].stage<3 {n[0].stage+=1;n[0].batch=0;}else {n[0].batch+=50;}if !hn_advance(s) {hn_fail(s);}}
+        else {if n[0].stage==10 {n[0].stage=3;n[0].batch=0;}else if n[0].stage<3 {n[0].stage+=1;n[0].batch=0;}else {n[0].batch+=50;}if !hn_advance(s) {hn_fail(s);}}
       }
     }
   }
