@@ -24,7 +24,17 @@
 typedef struct { coax_t_IceRealm hud; coax_t_IceScene scene; } Realm;
 static Realm *state_at(uint32_t state) { return (Realm *)(uintptr_t)state; }
 static coax_v_t_IceRealm at(uint32_t state) { return (coax_v_t_IceRealm){&state_at(state)->hud, 1}; }
-static coax_v_t_IceScene scene_at(uint32_t state) { return (coax_v_t_IceScene){&state_at(state)->scene, 1}; }
+// The scene's vertex store (store 0) and the round's trace live here, outside the state
+// (verse/icecream/scene.coax icecream_attach): attached before the scene is first used.
+#define SCENE_STORE_WORDS (600000 * 6)   // scene.coax MAX_SCENE * SCENE_WORDS
+#define TRACE_BYTES 3000000              // play.coax TRACE_CAP
+static uint32_t scene_store[SCENE_STORE_WORDS];
+static uint8_t trace_store[TRACE_BYTES];
+static coax_v_t_IceScene scene_at(uint32_t state) {
+  coax_v_t_IceScene s = {&state_at(state)->scene, 1};
+  if (!s.data[0].verts.data) icecream_attach(s, (coax_v_u32){scene_store, SCENE_STORE_WORDS}, (coax_v_u8){trace_store, TRACE_BYTES});
+  return s;
+}
 static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){state_at(state)->hud.ed.e, 1}; }
 // The board's rows are the run's options: minions and weapons change the house being played at
 // once, backrooms the next house (verse/icecream/play.coax board_now).
@@ -177,7 +187,7 @@ EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) {
 }
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) {
   if (tracing[0] == 2) return (uint32_t)(uintptr_t)state_at(state)->scene.plays.e[0].save.e;
-  if (tracing[0]) return (uint32_t)(uintptr_t)state_at(state)->scene.plays.e[0].trace.e;
+  if (tracing[0]) return (uint32_t)(uintptr_t)scene_at(state).data[0].plays.e[0].trace.data;
   return (uint32_t)(uintptr_t)state_at(state)->hud.outbox.e;
 }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) {
@@ -192,7 +202,7 @@ EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { retur
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 2u; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return (uint32_t)icecream_scene_store_cap(k); }
 EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
-  coax_t_IceScene *s = &state_at(state)->scene;
-  return k == 1 ? (uint32_t)(uintptr_t)s->objs.e : (uint32_t)(uintptr_t)s->verts.e;
+  coax_t_IceScene *s = scene_at(state).data;
+  return k == 1 ? (uint32_t)(uintptr_t)s->objs.e : (uint32_t)(uintptr_t)s->verts.data;
 }
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { return (uint32_t)icecream_scene_store_bytes(scene_at(state), k); }

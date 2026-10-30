@@ -20,7 +20,10 @@
 
 SCENE_WORDS :: 6;
 CHUNK :: 1020;
-MAX_SCENE :: 600000;      // the biggest house (64 rooms, ~450k) and the models (~60k)
+MAX_SCENE :: 600000;      // the biggest house (64 rooms, ~450k) and the models (~60k): the face's store
+TEST_SCENE :: 2040;       // a check's store when it stores no house it reads (two chunks)
+EASY_SCENE :: 130560;     // a check's store for an Easy house and the models (125460 vertices), under the compile-time storage cap
+SCENE_TRACE :: 4096;      // a check's trace: one frame's lines
 SCRATCH :: 9000;          // the most one room or model writes
 LIT_FLAT :: 128;
 OBJ_BASE :: 8388608;
@@ -50,7 +53,7 @@ IceScene :: struct {
   games: [1] Game;
   plays: [1] Play;
   scratch: [SCRATCH] Vtx;
-  verts: [MAX_SCENE * SCENE_WORDS] u32;
+  verts: [] u32;                 // store 0: attached by the face (MAX_SCENE vertices) or a check (EASY_SCENE, TEST_SCENE)
   vert_n: int;
   house_chunks: int;
   model_first: [MODELS] int;     // its first chunk
@@ -61,13 +64,19 @@ IceScene :: struct {
   draw_n: int;
 }
 
+// The vertices the attached store holds.
+scene_cap :: (s: [] IceScene) -> int { return lo_int(MAX_SCENE, s[0].verts.count / SCENE_WORDS); }
+lo_int :: (a: int, b: int) -> int { if a < b { return a; } return b; }
+// The face's buffers: the vertex store and the round's trace (play.coax), kept outside the state.
+icecream_attach :: (s: [] IceScene, verts: [] u32, trace: [] u8) #export_c { s[0].verts = verts; s[0].plays[0].trace = trace; }
+
 snorm8 :: (x: f32) -> u32 { return cast(u32) cast,trunc(u8) cast(s32) roundf(clampf(x, -1, 1) * 127); }
 pack_snorm :: (v: V3, w: f32) -> u32 { return snorm8(v.x) | (snorm8(v.y) << 8) | (snorm8(v.z) << 16) | (snorm8(w) << 24); }
 
 // Packs n built vertices (in scratch) at the scene's end, placed by xf.
 pack :: (s: [] IceScene, n: int, xf: Xf, lit: int, shine: f32) {
   for i: 0..<n {
-    if s[0].vert_n >= MAX_SCENE { return; }
+    if s[0].vert_n >= scene_cap(s) { return; }
     x := s[0].scratch[i];
     p := xf_apply(xf, x.p);
     o := s[0].vert_n * SCENE_WORDS;
@@ -79,7 +88,7 @@ pack :: (s: [] IceScene, n: int, xf: Xf, lit: int, shine: f32) {
   }
 }
 align_chunk :: (s: [] IceScene) {
-  while s[0].vert_n % CHUNK != 0 && s[0].vert_n < MAX_SCENE {
+  while s[0].vert_n % CHUNK != 0 && s[0].vert_n < scene_cap(s) {
     o := s[0].vert_n * SCENE_WORDS;
     for k: 0..<SCENE_WORDS { s[0].verts[o + k] = 0; }
     s[0].vert_n += 1;
@@ -491,10 +500,14 @@ icecream_facts :: (s: [] IceScene, out: [] f32) #export_c { ice_play_facts(s[0].
 
 // ---- checks
 
+// The default (Normal) house and the models are over the compile-time storage cap: this check
+// stores an Easy house; scene-check.c (test.sh) runs the same checks on the default one natively.
 #test "the house and every model are stored once, chunk by chunk" {
   s: [1] IceScene;
+  vs: [EASY_SCENE * SCENE_WORDS] u32; tb: [SCENE_TRACE] u8; icecream_attach(s[..], vs[..], tb[..]);
+  icecream_hash(s[..], "easy");
   icecream_frame(s[..], 1600, 1000, 1, 0.016);
-  #assert s[0].built && s[0].vert_n % CHUNK == 0 && s[0].vert_n < MAX_SCENE && s[0].house_chunks * CHUNK > 60000;
+  #assert s[0].built && s[0].vert_n % CHUNK == 0 && s[0].vert_n < MAX_SCENE && s[0].vert_n < scene_cap(s[..]) && s[0].house_chunks * CHUNK > 60000;
   for m: 0..<MODELS { #assert s[0].model_count[m] > 0 && s[0].model_first[m] >= s[0].house_chunks; }
   #assert (s[0].verts[4] >> 24) == 0;
   #assert icecream_scene_store_bytes(s[..], 0) == s[0].vert_n * SCENE_WORDS * 4;
@@ -504,6 +517,7 @@ icecream_facts :: (s: [] IceScene, out: [] f32) #export_c { ice_play_facts(s[0].
 
 #test "the kid and the keys are drawn, each with its outline" {
   s: [1] IceScene;
+  vs: [TEST_SCENE * SCENE_WORDS] u32; tb: [SCENE_TRACE] u8; icecream_attach(s[..], vs[..], tb[..]);
   icecream_frame(s[..], 1600, 1000, 1, 0.016);
   #assert s[0].draws[3] == cast(u32) s[0].house_chunks;
   // keys (3, each with a sparkle), fridges' sparkles, the man (7 parts), the kid (7 parts)
@@ -517,6 +531,7 @@ icecream_facts :: (s: [] IceScene, out: [] f32) #export_c { ice_play_facts(s[0].
 
 #test "the view puts the kid's head mid-screen, in front of the eye" {
   s: [1] IceScene;
+  vs: [TEST_SCENE * SCENE_WORDS] u32; tb: [SCENE_TRACE] u8; icecream_attach(s[..], vs[..], tb[..]);
   icecream_frame(s[..], 1600, 1000, 1, 0.016);
   u: [SCENE_AT + SCENE_FLOATS] f32;
   icecream_scene_uniforms(s[..], u[..], 1600, 1000, true);

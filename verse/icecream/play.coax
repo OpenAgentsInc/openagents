@@ -27,7 +27,8 @@ ENDING :: 1.8f32;
 SCARE :: 1.2f32;
 SCARE_HIT :: 0.42f32;
 MAX_PARTICLES :: 120;
-TRACE_CAP :: 3000000;
+TRACE_CAP :: 3000000;   // the page's trace buffer (icecream-face.c), attached as Play.trace
+TEST_TRACE :: 65536;    // a check's: a Play the checks build stays under the compile-time storage cap
 STEP :: 0.0333333333f32;
 
 Phase :: enum u8 { title; playing; menu; ending; over; }
@@ -93,7 +94,8 @@ Play :: struct {
   acc: f32;
   stepped: u64;
   bots: [1] Bot;
-  trace: [TRACE_CAP] u8; trace_n: int; trace_full: bool; trace_sent: bool; trace_want: bool;
+  // the round's trace: attached by the face (TRACE_CAP bytes) or a check (TEST_TRACE)
+  trace: [] u8; trace_n: int; trace_full: bool; trace_sent: bool; trace_want: bool;
   seen_tour: bool; save_want: bool; save: [SAVE_CAP] u8; save_n: int;
   // the house's own tuning, before the board; the board's minions and weapons it was played with;
   // whether the board eased this run at any point (then it doesn't count for the best time)
@@ -156,8 +158,8 @@ put_u64 :: (out: [] u8, at: int, v: u64) -> int {
   return at + n;
 }
 trace_put :: (p: [] Play, s: string) {
-  if p[0].trace_n + s.count + 1 > TRACE_CAP { p[0].trace_full = true; return; }
-  p[0].trace_n = put_text(p[0].trace[..], p[0].trace_n, s);
+  if p[0].trace_n + s.count + 1 > p[0].trace.count { p[0].trace_full = true; return; }
+  p[0].trace_n = put_text(p[0].trace, p[0].trace_n, s);
 }
 DIFFICULTY_IDS :: [3] string.["easy", "normal", "hard"];
 trace_begin :: (p: [] Play, g: [] Game) {
@@ -944,6 +946,7 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   plays: [1] Play;
   games: [1] Game;
   p := plays[..]; g := games[..];
+  tb: [TEST_TRACE] u8; p[0].trace = tb[..];
   ice_play_hash(p, g, "seed=3"); ice_play_act(p, g, A_TOUR_END, 0);
   #assert p[0].seed == 3 && p[0].phase == Phase.playing && p[0].toast != Toast.none;
   start := g[0].player.pos;
@@ -964,6 +967,7 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   plays: [1] Play;
   games: [1] Game;
   p := plays[..]; g := games[..];
+  tb: [TEST_TRACE] u8; p[0].trace = tb[..];
   ice_play_hash(p, g, "seed=5&trace=40");
   #assert ice_play_key(p, g, 'd', true, 0);
   #assert ice_play_key(p, g, ' ', true, 0);
@@ -982,6 +986,7 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   plays: [1] Play;
   games: [1] Game;
   p := plays[..]; g := games[..];
+  tb: [TEST_TRACE] u8; p[0].trace = tb[..];
   ice_play_hash(p, g, "seed=3&calm"); ice_play_act(p, g, A_TOUR_END, 0);
   ice_play_frame(p, g, 1440, 900, 1, 0.016);
   yaw := p[0].camera.yaw;
@@ -1006,6 +1011,7 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   plays: [1] Play;
   games: [1] Game;
   p := plays[..]; g := games[..];
+  tb: [TEST_TRACE] u8; p[0].trace = tb[..];
   ice_play_hash(p, g, "seed=3&calm"); ice_play_act(p, g, A_TOUR_END, 0);
   ice_play_frame(p, g, 1170, 2532, 3, 0.016);
   ice_play_pointer(p, g, 300, 1900, 0, 1, 7, ZONE_STICK, 300, 2000);
@@ -1025,6 +1031,7 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   plays: [1] Play;
   games: [1] Game;
   p := plays[..]; g := games[..];
+  tb: [TEST_TRACE] u8; p[0].trace = tb[..];
   ice_play_hash(p, g, "seed=1&bot&calm&trace");
   start := g[0].player.pos;
   for i: 0..<20 { ice_play_frame(p, g, 800, 600, 1, 0.0333334); }
@@ -1040,6 +1047,7 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
 
 #test "the save keeps the settings, the tour and the best times, and refuses a stranger's" {
   pp: [1] Play; gg: [1] Game; p := pp[..]; g := gg[..];
+  tb: [TEST_TRACE] u8; p[0].trace = tb[..];
   ice_play_hash(p, g, "seed=3");
   #assert p[0].tour == 0 && p[0].timer_on && p[0].jumpscares;
   ice_play_act(p, g, A_TOUR_END, 0);
@@ -1051,6 +1059,7 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   #assert n > 0 && !ice_play_save_ready(p);
   text := cast(string) p[0].save[0..<n];
   qq: [1] Play; hh: [1] Game; q := qq[..]; h := hh[..];
+  tc: [TEST_TRACE] u8; q[0].trace = tc[..];
   ice_play_hash(q, h, "seed=3");
   ice_play_load(q, h, "someone else's\ntimer=0");
   #assert q[0].timer_on && q[0].tour == 0;

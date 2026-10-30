@@ -1006,25 +1006,29 @@ part_of :: (kind: s32, index: s32, v: [] Vtx) -> int {
   }
 }
 
-#test "house: the demo's rooms and lights for a set of seeds" {
+// The oracle's houses, two to a check: the compile-time traversal budget is per check.
+house_matches_oracle :: (k: int) {
   games: [1] Game;
   g := games[..];
   v: [9000] Vtx;
-  for k: 0..<ORACLE_HOUSES.count {
-    o := ORACLE_HOUSES[k];
-    house_of(g, o.seed, icecream_tuning(o.difficulty));
-    #assert g[0].house.room_n == o.rooms;
-    s: Sums;
-    for i: 0..<o.rooms {
-      n := tn_room(g, i, o.yellow, v[..], 0);
-      #assert n <= v.count;
-      if i == 0 { #assert n == o.first_room; }
-      s = fold(s, v[..], n);
-    }
-    for i: 0..<o.rooms { s = fold(s, v[..], tn_lights(g, i, o.yellow, v[..], 0)); }
-    #assert s.count == o.count && s.hash == o.hash && near3(s.lo, o.lo) && near3(s.hi, o.hi);
+  o := ORACLE_HOUSES[k];
+  house_of(g, o.seed, icecream_tuning(o.difficulty));
+  #assert g[0].house.room_n == o.rooms;
+  s: Sums;
+  for i: 0..<o.rooms {
+    n := tn_room(g, i, o.yellow, v[..], 0);
+    #assert n <= v.count;
+    if i == 0 { #assert n == o.first_room; }
+    s = fold(s, v[..], n);
   }
+  for i: 0..<o.rooms { s = fold(s, v[..], tn_lights(g, i, o.yellow, v[..], 0)); }
+  #assert s.count == o.count && s.hash == o.hash && near3(s.lo, o.lo) && near3(s.hi, o.hi);
 }
+#test "house: the demo's rooms and lights for a set of seeds" { #assert ORACLE_HOUSES.count == 10; house_matches_oracle(0); house_matches_oracle(1); }
+#test "house: the demo's rooms and lights, seeds 3 and 4 of the set" { house_matches_oracle(2); house_matches_oracle(3); }
+#test "house: the demo's rooms and lights, seeds 5 and 6 of the set" { house_matches_oracle(4); house_matches_oracle(5); }
+#test "house: the demo's rooms and lights, seeds 7 and 8 of the set" { house_matches_oracle(6); house_matches_oracle(7); }
+#test "house: the demo's rooms and lights, seeds 9 and 10 of the set" { house_matches_oracle(8); house_matches_oracle(9); }
 
 #test "house: the same seed builds the same geometry, another seed another" {
   games: [3] Game;
@@ -1035,20 +1039,21 @@ part_of :: (kind: s32, index: s32, v: [] Vtx) -> int {
   house_of(a, 9, t);
   house_of(b, 9, t);
   house_of(c, 10, t);
-  va: [9000] Vtx;
-  vb: [9000] Vtx;
+  // one buffer (the compile-time storage cap holds one of 9000): each room is folded as it is built
+  v: [9000] Vtx;
   same := true;
   differ := false;
   for i: 0..<6 {
-    na := tn_room(a, i, 0, va[..], 0);
-    nb := tn_room(b, i, 0, vb[..], 0);
-    #assert na == nb;
+    na := tn_room(a, i, 0, v[..], 0);
     sa: Sums;
+    ha := fold(sa, v[..], na).hash;
+    nb := tn_room(b, i, 0, v[..], 0);
+    #assert na == nb;
     sb: Sums;
-    if fold(sa, va[..], na).hash != fold(sb, vb[..], nb).hash { same = false; }
-    nc := tn_room(c, i, 0, vb[..], 0);
+    if fold(sb, v[..], nb).hash != ha { same = false; }
+    nc := tn_room(c, i, 0, v[..], 0);
     sc: Sums;
-    if nc != na || fold(sc, vb[..], nc).hash != fold(sa, va[..], na).hash { differ = true; }
+    if nc != na || fold(sc, v[..], nc).hash != ha { differ = true; }
   }
   #assert same && differ;
 }
