@@ -1150,6 +1150,31 @@
         "psionic-metal-compute"
       ],
       "blocks": []
+    },
+    {
+      "slug": "home-nip-xp",
+      "title": "NIP-XP on the homepage: the XP ledger and Pylon work, live on the Grid",
+      "parent": "psionic-integration",
+      "size": "M",
+      "labels": [
+        "xp",
+        "pylon",
+        "homepage"
+      ],
+      "body": "The homepage reads NIP-XP live: the OpenAgents referee's quests, awards and revocations, and the NIP-PYLON receipts and checker rerun labels a pylon-check quest pays from. Coax verifies every event's signature; the page derives a reader's ledger (no revoked, conflicting or quest-less awards) and draws it: an XP panel, receipts flying from Pylons to their project, checks ringing the Pylon, awards rising over the project they were earned on, and XP and receipt rows in NOW ON THE GRID.",
+      "files": [
+        "coax/web/project/landing-xp.coax",
+        "coax/web/project/landing-browser.coax",
+        "apps/openagents-web/newland-xp.coax",
+        "apps/openagents-web/newland.coax",
+        "apps/openagents-web/newland-network.coax"
+      ],
+      "acceptance": [
+        "XP totals equal the ledger NIP-XP derives from the referee's signed awards; receipts and checks are never counted as XP.",
+        "Live records pulse on the Grid; the homepage holds 60 FPS including its first 5 s.",
+        "Desktop and phone screenshots reviewed."
+      ],
+      "blocked_by": []
     }
   ]
 }

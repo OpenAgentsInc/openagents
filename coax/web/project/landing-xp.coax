@@ -1,0 +1,110 @@
+// Homepage NIP-XP watch: the trusted referee's quests, awards and
+// revocations, and the NIP-PYLON receipts and check labels a pylon-check
+// quest pays from. Every event is signature-verified here (lr_event) before
+// a compact record reaches the renderer. XP comes only from REFEREE.
+#authority;
+LX_REFEREE :: "650a2a22df20b1567b07b7ee069e7c4a7f5569b187844ff394870c424a75b5c7";
+LX_SUB :: "home-xp"; LX_WORK_SUB :: "home-xp-work"; LX_CHECK_SUB :: "home-xp-checks";
+#test "the XP watch asks for the referee's records, receipts and check labels" {
+  out:[4096]u8;n:=lx_request(0,out[..]);#assert n>0 && lx_has(cast(string)out[0..<n],LX_REFEREE);
+  n=lx_request(1,out[..]);#assert n>0 && lx_has(cast(string)out[0..<n],"oa:pylon-receipt:v2");
+  n=lx_request(2,out[..]);#assert n>0 && lx_has(cast(string)out[0..<n],"openagents.pylon");#assert lx_request(3,out[..])<0;
+}
+#test "XP bodies are read field by field and refuse what doesn't fit" {
+  body:="{\"v\":1,\"requires\":[],\"type\":\"award\",\"quest\":{\"id\":\"q\",\"pubkey\":\"r\",\"kind\":30193},\"key\":\"k\",\"accepted_at\":5,\"awardees\":[{\"role\":\"checker\",\"pubkey\":\"aa\",\"xp\":50}]}";
+  #assert lx_string(body,"type")=="award" && lx_number(body,"accepted_at")==5;
+  #assert lx_string(lx_field(body,"quest"),"pubkey")=="r";
+  #assert lx_field(body,"missing")=="";
+  b:[32]u8;out:[8]u8;#assert lx_hex32(b,out[..])==0;
+}
+// Four real public events read from wss://relay.openagents.com on 2026-10-30.
+LX_FIX_QUEST :: "{\"id\":\"68df39f6d3fe9b3219aa9137c7d047a65f17c45f850f174394269943e56ea486\",\"pubkey\":\"650a2a22df20b1567b07b7ee069e7c4a7f5569b187844ff394870c424a75b5c7\",\"created_at\":1790706061,\"kind\":30193,\"tags\":[[\"d\",\"ext-eval.adopt@1\"],[\"t\",\"oa:xp:quest:v1\"],[\"t\",\"oa:xp:season:ext-eval-2026-q4\"],[\"t\",\"oa:xp:rule:eval-adopt\"]],\"content\":\"{\\\"id\\\":\\\"ext-eval.adopt\\\",\\\"version\\\":1,\\\"season\\\":{\\\"id\\\":\\\"ext-eval-2026-q4\\\",\\\"opens_at\\\":1790553600,\\\"closes_at\\\":1798761600},\\\"title\\\":\\\"Get a tool into Coder\\\",\\\"objective\\\":\\\"Make a tool whose result is Better and confirmed by other trainers' checks, so an OpenAgents operator adopts it into Coder's defaults. Adoption earns XP for the tool's author, the test set's author, and the trainer of each confirmed result.\\\",\\\"acceptance\\\":{\\\"rule\\\":\\\"eval-adopt\\\",\\\"defaults\\\":\\\"51428dd2352a6008e0741e894238a5cbab34beff61e32463b9b70b2ad3ae0715:coder-defaults\\\",\\\"subject\\\":{\\\"id\\\":\\\"7af8bd08bbff4440c2b038ffc45f422b67371daddfb9664750a768ee7175dbf4\\\",\\\"pubkey\\\":\\\"a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0\\\",\\\"kind\\\":3184}},\\\"reference\\\":null,\\\"award\\\":{\\\"extension-author\\\":200,\\\"suite-author\\\":100,\\\"evaluator\\\":50},\\\"v\\\":1,\\\"requires\\\":[],\\\"type\\\":\\\"quest\\\",\\\"completions\\\":\\\"first\\\"}\",\"sig\":\"940c32597bf8eea80b656ec8645e968fc4ff54185f2fac02a4f832c90db5cdc80ef026db25a6a573f2972758cd1089606393797f3d57e8816527b7401d9f1e70\"}";
+LX_FIX_AWARD :: "{\"id\":\"4abeafd1efe09839060343298ea44164e917743f0ba14c5100af2ca0ba543b2a\",\"pubkey\":\"650a2a22df20b1567b07b7ee069e7c4a7f5569b187844ff394870c424a75b5c7\",\"created_at\":1790706061,\"kind\":3193,\"tags\":[[\"t\",\"oa:xp:award:v1\"],[\"a\",\"30193:650a2a22df20b1567b07b7ee069e7c4a7f5569b187844ff394870c424a75b5c7:ext-eval.adopt@1\"],[\"e\",\"68df39f6d3fe9b3219aa9137c7d047a65f17c45f850f174394269943e56ea486\"],[\"e\",\"680720dd100f96b906a2fdf622e0c363a88539916103291b84e3ec23a8954261\"],[\"e\",\"9048973d47bb64383cf0de507f3ac8d5782ebd76532c5489cf5b52771a2f50d8\"],[\"e\",\"1b009944357e246753215088664cbe9fa79ba224bd7c449bb07abdabff084804\"],[\"p\",\"ebb5acbc244c419e7c2925de2da1be598c1801ed53d901bab89d6e04487995c3\"]],\"content\":\"{\\\"v\\\":1,\\\"requires\\\":[],\\\"type\\\":\\\"award\\\",\\\"quest\\\":{\\\"id\\\":\\\"68df39f6d3fe9b3219aa9137c7d047a65f17c45f850f174394269943e56ea486\\\",\\\"pubkey\\\":\\\"650a2a22df20b1567b07b7ee069e7c4a7f5569b187844ff394870c424a75b5c7\\\",\\\"kind\\\":30193,\\\"coordinate\\\":\\\"30193:650a2a22df20b1567b07b7ee069e7c4a7f5569b187844ff394870c424a75b5c7:ext-eval.adopt@1\\\"},\\\"key\\\":\\\"eval-adopt:7af8bd08bbff4440c2b038ffc45f422b67371daddfb9664750a768ee7175dbf4:evaluator:ebb5acbc244c419e7c2925de2da1be598c1801ed53d901bab89d6e04487995c3\\\",\\\"accepted_at\\\":1790706061,\\\"evidence\\\":[{\\\"id\\\":\\\"680720dd100f96b906a2fdf622e0c363a88539916103291b84e3ec23a8954261\\\",\\\"pubkey\\\":\\\"51428dd2352a6008e0741e894238a5cbab34beff61e32463b9b70b2ad3ae0715\\\",\\\"kind\\\":3184},{\\\"id\\\":\\\"9048973d47bb64383cf0de507f3ac8d5782ebd76532c5489cf5b52771a2f50d8\\\",\\\"pubkey\\\":\\\"a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0\\\",\\\"kind\\\":3189},{\\\"id\\\":\\\"1b009944357e246753215088664cbe9fa79ba224bd7c449bb07abdabff084804\\\",\\\"pubkey\\\":\\\"a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0\\\",\\\"kind\\\":3189}],\\\"awardees\\\":[{\\\"role\\\":\\\"evaluator\\\",\\\"pubkey\\\":\\\"ebb5acbc244c419e7c2925de2da1be598c1801ed53d901bab89d6e04487995c3\\\",\\\"xp\\\":50}]}\",\"sig\":\"142e50c4793a9557c66ba4f23dc78d53639af2a85cdd46570fa937c345e46e951c5401211735bae5fedbdc16150129bbf3809b4a866ae0e657a8c9c7e8733ca3\"}";
+LX_FIX_RECEIPT :: "{\"id\":\"daa84165c9995ccc2be2463bbd3cd8c000b7db5d139673cfa2f9f50dbef91b92\",\"pubkey\":\"f68cb9acf6e4bded2c2c67a645195104953763c552779a5f9e1b4edbd4a2a1a6\",\"created_at\":1793378460,\"kind\":3201,\"tags\":[[\"p\",\"d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f\"],[\"a\",\"30200:d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f:oct30-coderos-demo\"],[\"t\",\"oa:pylon-receipt:v2\"],[\"x\",\"30a789fa18721c833e23f8e3496c7d52f29194a18d1facc949e72e3d522a6797\"]],\"content\":\"{\\\"buyer\\\":\\\"f68cb9acf6e4bded2c2c67a645195104953763c552779a5f9e1b4edbd4a2a1a6\\\",\\\"capability\\\":\\\"d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f:pylon/decision\\\",\\\"finished_at\\\":1793378460,\\\"lane\\\":\\\"cj-decision\\\",\\\"outcome\\\":\\\"accepted\\\",\\\"payment\\\":null,\\\"provider\\\":\\\"d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f\\\",\\\"pylon\\\":\\\"oct30-coderos-demo\\\",\\\"request\\\":\\\"0bbf070e39d6755a3baebbc0eb9ef91f8a6a7947d225a4715141b279f7024274\\\",\\\"request_digest\\\":\\\"6745598c61af0a9984453ae4217a36c2f3edc0ef3125060465b76f97c6246286\\\",\\\"requires\\\":[],\\\"result_digest\\\":\\\"d7a1169f4b5ffaf35839d6dfb7a6f7a817b1532a39ec43509234b014b14c11e8\\\",\\\"started_at\\\":1793378459,\\\"units\\\":{\\\"count\\\":1,\\\"kind\\\":\\\"jobs\\\"},\\\"v\\\":\\\"openagents.pylon-receipt.v2\\\"}\",\"sig\":\"bde3388761f1d60e62bcb299cc13d9edf9a11ef32b338e471f2c2b29bfc7b38eddd71cfb92cc7114c1ddf3e9bab0ec37cbe02dedabec274b14f2b0b1555eeaf3\"}";
+LX_FIX_LABEL :: "{\"id\":\"7e5395c1076ded462909d5818250d0b031f8dd25ad4cb495f713052b1f797051\",\"pubkey\":\"b0b735b6cf585bd85b6cf61897579fbb551c8ace0d32eb50c54208760026737b\",\"created_at\":1793378462,\"kind\":1985,\"tags\":[[\"L\",\"openagents.pylon\"],[\"l\",\"check-pass\",\"openagents.pylon\"],[\"e\",\"daa84165c9995ccc2be2463bbd3cd8c000b7db5d139673cfa2f9f50dbef91b92\"],[\"p\",\"d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f\"],[\"x\",\"fbb3bda21d348ea94298aa1869df4206098a3396b28dcf469d2131190ee065f7\"]],\"content\":\"psionic-free-mesh-v1;profile=centred-log-f64-max8-v1;limit_ppb=0;reason=0;reference=nip-dec-result\",\"sig\":\"b6a607613a26b5d0a6087e9ee52a9ca9db3ac1443718a6f00be71eab67c625fcf65c2c0eafeec2d38ab3bc919ed422b78c1c323d5d48e0612858a26bb9bc63c5\"}";
+#test "real signed records from the relay become compact records; a changed byte is refused" {
+  out:[8192]u8;scratch:[NE_MAX_OUTPUT]u8;
+  fixtures:=[4]string.[LX_FIX_QUEST,LX_FIX_AWARD,LX_FIX_RECEIPT,LX_FIX_LABEL];marks:=[4]string.["\"t\":\"q\"","\"t\":\"a\"","\"t\":\"r\"","\"t\":\"c\""];
+  // lx_record runs after lr_event's signature check (a Schnorr verify is past a test's step budget)
+  for i:0..<4 {e:=nostr_event_read(fixtures[i],scratch[..],false);#assert e.error==NE_OK;n:=lx_record(e,out[..]);#assert n>0 && lx_has(cast(string)out[0..<n],marks[i]);}
+  e:=nostr_event_read(LX_FIX_AWARD,scratch[..],false);n:=lx_record(e,out[..]);text:=cast(string)out[0..<n];
+  #assert lx_has(text,"ebb5acbc244c419e7c2925de2da1be598c1801ed53d901bab89d6e04487995c3") && lx_has(text,"\"xp\":50");
+  e=nostr_event_read(LX_FIX_RECEIPT,scratch[..],false);n=lx_record(e,out[..]);#assert lx_has(cast(string)out[0..<n],"\"ok\":1") && lx_has(cast(string)out[0..<n],"oct30-coderos-demo");
+  bad:[4096]u8;for i:0..<LX_FIX_LABEL.count {bad[i]=LX_FIX_LABEL[i];}
+  at:=0;for i:0..<LX_FIX_LABEL.count-10 {if LX_FIX_LABEL[i..<i+10]=="check-pass" {at=i;break;}}bad[at+6]='f';bad[at+7]='a';bad[at+8]='i';bad[at+9]='l';
+  #assert !lr_verify_public(cast(string)bad[0..<LX_FIX_LABEL.count]);
+}
+lx_has :: (text:string,part:string)->bool {
+  if part.count==0 || part.count>text.count {return false;}
+  for i:0..<text.count-part.count+1 {if text[i..<i+part.count]==part {return true;}}return false;
+}
+lx_raw :: (j:[]Json,t:int)->string {
+  if t==JSON_STRING {return j[0].text[j[0].from-1..<j[0].to+1];}
+  if t==JSON_OBJECT || t==JSON_ARRAY {from:=j[0].from;if !json_skip(j) {return "";}return j[0].text[from..<j[0].at];}return json_text(j);
+}
+lx_field :: (text:string,name:string)->string {
+  j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return "";}
+  while true {t:=json_next(j[..]);if t==JSON_OBJECT_END || t==JSON_ERROR || t==JSON_END {break;}if t!=JSON_STRING || !j[0].key {return "";}key:=json_text(j[..]);t=json_next(j[..]);value:=lx_raw(j[..],t);if key==name {return value;}}
+  return "";
+}
+lx_string :: (text:string,name:string)->string {v:=lx_field(text,name);return ifx v.count>=2 && v[0]=='"' then v[1..<v.count-1] else "";}
+lx_number :: (text:string,name:string)->int {v:=json_int(lx_field(text,name));return ifx v.ok then v.value else -1;}
+lx_hex32 :: (bytes:[32]u8,out:[]u8)->int {
+  if out.count<64 {return 0;}hex:="0123456789abcdef";
+  for i:0..<32 {out[2*i]=hex[bytes[i]>>4];out[2*i+1]=hex[bytes[i]&15];}return 64;
+}
+lx_hex64 :: (s:string)->bool {if s.count!=64 {return false;}for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
+// Three REQs, since a relay caps one REQ's total: the referee's XP records,
+// receipts, check labels.
+lx_request :: (which:int,out:[]u8)->int {
+  referee:=[1]string.[LX_REFEREE];
+  xk:=[3]int.[30193,3193,3194];rk:=[1]int.[3201];ck:=[1]int.[1985];
+  rv:=[1]string.["oa:pylon-receipt:v2"];cv:=[1]string.["openagents.pylon"];
+  rt:=[1]NostrTagFilter.[NostrTagFilter.{name='t',values=rv[..]}];ct:=[1]NostrTagFilter.[NostrTagFilter.{name='L',values=cv[..]}];
+  f:[1]NostrFilter;f[0].has_kinds=true;f[0].has_limit=true;
+  if which==0 {f[0].kinds=xk[..];f[0].has_authors=true;f[0].authors=referee[..];f[0].limit=96;return nostr_message_write_req(LX_SUB,f[..],out,false);}
+  if which==1 {f[0].kinds=rk[..];f[0].tags=rt[..];f[0].limit=128;return nostr_message_write_req(LX_WORK_SUB,f[..],out,false);}
+  if which==2 {f[0].kinds=ck[..];f[0].tags=ct[..];f[0].limit=48;return nostr_message_write_req(LX_CHECK_SUB,f[..],out,false);}
+  return -1;
+}
+// A verified event to its record. 4: a record was written; 0: not ours.
+lx_record :: (e:NostrEvent,out:[]u8)->int {
+  content:[16384]u8;size:=json_unescape(e.original[e.content_from..<e.content_to],content[..]);if size<0 {return 0;}
+  body:=cast(string)content[0..<size];signer:[64]u8;sn:=lx_hex32(e.public_key,signer[..]);key:=cast(string)signer[..];
+  id:[64]u8;idn:=lx_hex32(e.id,id[..]);if sn!=64 || idn!=64 {return 0;}tags:=e.original[e.tags_from..<e.tags_to];
+  n:=json_raw(out,0,"{\"id\":\"");n=json_raw(out,n,cast(string)id[..]);n=json_raw(out,n,"\",\"at\":");n=json_write_int(out,n,e.created_at);
+  if e.kind==30193 || e.kind==3193 || e.kind==3194 {
+    if key!=LX_REFEREE || lx_number(body,"v")!=1 {return 0;}
+    if e.kind==30193 {
+      if lx_string(body,"type")!="quest" {return 0;}title:[512]u8;tn:=json_unescape(lx_string(body,"title"),title[..]);if tn<1 {return 0;}
+      acceptance:=lx_field(body,"acceptance");
+      n=json_raw(out,n,",\"t\":\"q\",\"rule\":");n=json_write_string(out,n,lx_string(acceptance,"rule"));n=json_raw(out,n,",\"title\":");n=json_write_string(out,n,cast(string)title[0..<(ifx tn<140 then tn else 140)]);
+    }else if e.kind==3193 {
+      quest:=lx_field(body,"quest");awardees:=lx_field(body,"awardees");ukey:=lx_string(body,"key");
+      if lx_string(body,"type")!="award" || lx_string(quest,"pubkey")!=LX_REFEREE || !lx_hex64(lx_string(quest,"id")) || ukey.count<1 || ukey.count>256 {return 0;}
+      n=json_raw(out,n,",\"t\":\"a\",\"quest\":\"");n=json_raw(out,n,lx_string(quest,"id"));n=json_raw(out,n,"\",\"key\":");n=json_write_string(out,n,ukey);n=json_raw(out,n,",\"aw\":[");
+      j:[1]Json;json_start(j[..],awardees);if json_next(j[..])!=JSON_ARRAY {return 0;}count:=0;
+      while true {t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_OBJECT || count>=4 {return 0;}raw:=lx_raw(j[..],t);
+        pk:=lx_string(raw,"pubkey");xp:=lx_number(raw,"xp");role:=lx_string(raw,"role");
+        if !lx_hex64(pk) || xp<0 || xp>1000 || role.count<1 || role.count>32 {return 0;}
+        if count>0 {n=json_raw(out,n,",");}n=json_raw(out,n,"{\"pubkey\":\"");n=json_raw(out,n,pk);n=json_raw(out,n,"\",\"role\":");n=json_write_string(out,n,role);n=json_raw(out,n,",\"xp\":");n=json_write_int(out,n,xp);n=json_raw(out,n,"}");count+=1;
+      }
+      if count<1 {return 0;}n=json_raw(out,n,"]");
+    }else {
+      award:=lx_field(body,"award");if lx_string(body,"type")!="revocation" || lx_string(award,"pubkey")!=LX_REFEREE || !lx_hex64(lx_string(award,"id")) {return 0;}
+      n=json_raw(out,n,",\"t\":\"v\",\"award\":\"");n=json_raw(out,n,lx_string(award,"id"));n=json_raw(out,n,"\"");
+    }
+  }else if e.kind==3201 {
+    // Signed by the buyer; a Pylon's own receipt for itself never counts.
+    p:=pt_tag(tags,"p");provider:=lx_string(body,"provider");outcome:=lx_string(body,"outcome");slug:=lx_string(body,"pylon");
+    if !p.ok || p.count!=1 || p.size<2 || p.v[1]!=provider || !lx_hex64(provider) || provider==key || lx_string(body,"buyer")!=key || slug.count<1 || slug.count>64 || lx_has(slug,"\\") {return 0;}
+    if outcome!="accepted" && outcome!="failed" && outcome!="timeout" {return 0;}
+    n=json_raw(out,n,",\"t\":\"r\",\"provider\":\"");n=json_raw(out,n,provider);n=json_raw(out,n,"\",\"pylon\":\"");n=json_raw(out,n,slug);n=json_raw(out,n,"\",\"ok\":");n=json_write_int(out,n,ifx outcome=="accepted" then 1 else 0);
+  }else if e.kind==1985 {
+    l:=pt_tag(tags,"l");r:=pt_tag(tags,"e");p:=pt_tag(tags,"p");
+    if !l.ok || l.size<3 || l.v[2]!="openagents.pylon" || r.count!=1 || p.count!=1 || r.size<2 || p.size<2 || !lx_hex64(r.v[1]) || !lx_hex64(p.v[1]) || p.v[1]==key {return 0;}
+    if l.v[1]!="check-pass" && l.v[1]!="check-fail" {return 0;}
+    n=json_raw(out,n,",\"t\":\"c\",\"receipt\":\"");n=json_raw(out,n,r.v[1]);n=json_raw(out,n,"\",\"provider\":\"");n=json_raw(out,n,p.v[1]);n=json_raw(out,n,"\",\"pass\":");n=json_write_int(out,n,ifx l.v[1]=="check-pass" then 1 else 0);
+  }else {return 0;}
+  n=json_raw(out,n,"}");return ifx n>0 then n else 0;
+}

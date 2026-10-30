@@ -15,6 +15,7 @@
 #load "../../verse/figure.coax";
 #load "../../verse/hud/frame.coax";
 #load "newland-network.coax";
+#load "newland-xp.coax";
 #load "analytics.coax";
 
 VERTEX_FLOATS :: 12;      // x, y, along, across, length, core, light, glow, red, green, blue, mode
@@ -102,7 +103,7 @@ Plot :: struct {
 }
 
 LandState :: struct {
-  golden:bool;net:[1]HomeNet;live_data:bool;live_beacons:bool;beacons_received:int;
+  golden:bool;net:[1]HomeNet;xp:[1]HomeXp;live_data:bool;live_beacons:bool;beacons_received:int;
   known:[HOME_PROJECTS][HOME_KNOWN]u8;known_n:[HOME_PROJECTS]int;
   work_cache:[HOME_PROJECTS][4096]u8;work_cache_n:[HOME_PROJECTS]int;
   feed_cache:[HOME_PROJECTS][4096]u8;feed_cache_n:[HOME_PROJECTS]int;
@@ -1125,6 +1126,7 @@ pylon_card :: (out: [] f32, at: int, s: [] LandState, i: int, x: f32, right: f32
   } else if last >= 0 && !q.live { last += clock; }
   lb: [32] u8; ln := ifx last >= 0 then app(lb[..], say_span(lb[..], 0, last), " ago") else app(lb[..], 0, "None yet");
   v = kv(out, v, "Last answer", cast(string) lb[0..<ln], x, right, y, p); y += 24 * d;
+  yy := [1] f32.[y]; v = xp_pylon_rows(out, v, s, q, x, right, p, yy[..]); y = yy[0];
   v = section(out, v, "BEACON", x, y, right, p);
   y += 20 * d;
   ob: [32] u8; on := say_span(ob[..], 0, parse_int(pylon_value(s,q,18)) + clock);
@@ -1254,7 +1256,7 @@ feed :: (out: [] f32, at: int, s:[]LandState, l: Layout, p: Pen, t: f32, light: 
   beat := 0.55 + 0.45 * sin(p.time * 2.4);
   v = diamond(out, v, b.x1 - 18 * d, ty - cap * 0.5, 2.6 * d, ink(p, INK_BLUE), beat * light);
   v = rule(out, v, b.x0 + 12 * d, ty + 8 * d, b.x1 - 12 * d, ty + 8 * d, ink(p, INK_DIM), 0.12 * light);
-  n := rows(land_feed(s));
+  nb := rows(land_feed(s)); nx := xp_feed_rows(s); n := nb + nx;
   if n == 0 { return v; }
   row_h := (ifx l.phone then 30.0f32 else 40.0f32) * d;
   top := ty + 16 * d; bottom := b.y1 - 8 * d;
@@ -1269,11 +1271,12 @@ feed :: (out: [] f32, at: int, s:[]LandState, l: Layout, p: Pen, t: f32, light: 
     // rows fade in at the bottom and out at the top
     shade := clamp((y - top) / (row_h * 0.8), 0, 1) * clamp((bottom - y + row_h * 0.3) / (row_h * 0.6), 0, 1) * light;
     if shade <= 0.01 { continue; }
-    at_row := row_start(land_feed(s), r);
-    pk := parse_int(cell(land_feed(s), at_row, 0));
-    kind := cell(land_feed(s), at_row, 1);
-    who := cell(land_feed(s), at_row, 2);
-    text := cell(land_feed(s), at_row, 3);
+    which: [1] int; src := xp_feed_row(s, nb, nx, r, which[..]);
+    at_row := row_start(src, which[0]);
+    pk := parse_int(cell(src, at_row, 0));
+    kind := cell(src, at_row, 1);
+    who := cell(src, at_row, 2);
+    text := cell(src, at_row, 3);
     name := field(land_projects(s[..]), pk, 1);
     x := b.x0 + 16 * d;
     small := 6.4 * d;
@@ -1281,8 +1284,8 @@ feed :: (out: [] f32, at: int, s:[]LandState, l: Layout, p: Pen, t: f32, light: 
     pname := dimmed(ink(p, INK_BRIGHT), shade);
     v = put(out, v, name, x, line1, small, pname);
     x2 := x + text_width(name, small, pname) + 8 * d;
-    mark: string = ifx same(kind, "WORKING") then "working" else ifx same(kind, "DONE") then "done" else "commit";
-    tone := ifx same(kind, "DONE") then INK_PALE else ifx same(kind, "WORKING") then INK_COOL else INK_DIM;
+    mark: string = ifx same(kind, "WORKING") then "working" else ifx same(kind, "DONE") then "done" else ifx same(kind, "XP") then "xp" else ifx same(kind, "RECEIPT") then "receipt" else "commit";
+    tone := ifx same(kind, "DONE") || same(kind, "RECEIPT") then INK_PALE else ifx same(kind, "WORKING") then INK_COOL else ifx same(kind, "XP") then INK_BLUE else INK_DIM;
     v = put(out, v, mark, x2, line1, small, dimmed(ink(p, tone), shade));
     if who.count > 0 {
       x3 := x2 + text_width(mark, small, ink(p, tone)) + 6 * d;
@@ -2024,6 +2027,7 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   v = roads(out, v, s, c, p);
   for k: 0..<s[0].plots { v = place(out, v, s, c, k, p); }
   v = pylon_bay(out, v, s, c, p, t);
+  v = xp_scene(out, v, s, c, p, t);
   v = people(out, v, s, c, p, motion);
   v = agents(out, v, s, c, p, motion);
   for k: 0..<s[0].plots { v = place_label(out, v, s, c, k, p); }
@@ -2046,6 +2050,7 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
       v=put_fit(out,v,"Live Pylons and project claims / git history at deploy",16*d,82*d,6.5*d,ink(p,INK_DIM),width-32*d);
     }else {v=put_fit(out,v,cast(string)capture[0..<cn],16*d,height-14*d,7*d,ink(p,INK_PALE),width-32*d);}
   }
+  if !sheet && l.phone {v=xp_panel(out,v,s,l,p,width,height,hud);}
   feed_on := ifx still then 1.0f32 else ease((t - 2.8) / 1.0);
   if !sheet {
     v = button(out, v, l.playtest, "PLAYTEST", true, hover && inside(l.playtest, s[0].px, s[0].py), false, p, hud);
@@ -2062,6 +2067,19 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
     // the small galaxy, in the glass the card uses while it's up
     v = galaxy_panel(out, v, s, l, p, t, feed_on);
     glass(uniforms, 3, l.galaxy, 8 * d, 0.92 * feed_on, 0);
+    // the XP ledger under the wordmark, the Grid quiet behind it
+    if !l.phone && xp_has(s) {
+      xb := xp_box(l, d, height); before := v;
+      v = xp_panel(out, v, s, l, p, width, height, feed_on);
+      if v > before {
+        for q: 0..<scene_end / 6 {
+          o := q * 6 * VERTEX_FLOATS;
+          x := (out[o] + out[o + 2 * VERTEX_FLOATS]) * 0.5;
+          y := (out[o + 1] + out[o + 2 * VERTEX_FLOATS + 1]) * 0.5;
+          if inside(xb, x, y) { for k: 0..<6 { out[o + k * VERTEX_FLOATS + 6] *= 1 - 0.8 * feed_on; } }
+        }
+      }
+    }
     // the Grid goes quiet behind it, so the planets read
     g := l.galaxy;
     for q: 0..<scene_end / 6 {

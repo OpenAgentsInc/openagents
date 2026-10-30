@@ -235,6 +235,10 @@ coaxial_land_network_tick :: (s:[]LandState) #export_c {
   if n[0].query_state==0 && n[0].now>=n[0].retry_query {if pipe_put(n[0].pipe[..],PIPE_OPEN,1,HOME_RELAY) {n[0].query_state=1;n[0].query_at=n[0].now;}}
   if n[0].watch_state==1 && n[0].now-n[0].watch_at>10 {if n[0].watch>0 {ignored:=pipe_close(n[0].pipe[..],n[0].watch-1);}n[0].watch=0;n[0].watch_state=0;n[0].beacon_ended=false;n[0].retry_watch=n[0].now+3;}
   if (n[0].query_state==1 || n[0].busy) && n[0].now-n[0].query_at>15 {hn_fail(s);}
+  // XP and Pylon work are asked for once the projects are in (or 8 s on), so they never slow the first view.
+  if n[0].watch_state==2 && !s[0].xp[0].asked && (n[0].ready==63 || n[0].now-n[0].watch_at>=8) {
+    s[0].xp[0].asked=true;for mode:3..<6 {if !hn_put(1,HOME_KEY_JSON) || home_call(11,mode,0,land_now(s))<0 || !hn_send_output(s,n[0].watch) {s[0].xp[0].asked=false;}}
+  }
   if n[0].query_state==2 && !n[0].busy {
     k:=n[0].project;
     if n[0].initial>=HOME_PROJECTS {k=(k+1)%HOME_PROJECTS;for i:0..<HOME_PROJECTS {candidate:=(n[0].project+1+i)%HOME_PROJECTS;if (n[0].dirty&(1<<candidate))!=0 {k=candidate;break;}}}
@@ -246,11 +250,13 @@ coaxial_land_network_message :: (s:[]LandState,kind:int,text:string) #export_c {
   e:=socket_event(kind);if e.id<0 {return;}n:=s[0].net[..];n[0].now=s[0].data_age;
   if e.id+1==n[0].watch {
     if e.event==SOCKET_OPENED {n[0].watch_state=2;
+      s[0].xp[0].asked=false;
       for mode:0..<3 {if !hn_put(1,HOME_KEY_JSON) || home_call(11,mode,0,land_now(s))<0 || !hn_send_output(s,n[0].watch) {n[0].watch_state=0;}}
     }else if e.event==SOCKET_CLOSED || e.event==SOCKET_ERROR {n[0].watch=0;n[0].watch_state=0;n[0].beacon_ended=false;n[0].retry_watch=n[0].now+3;}
     else if e.event==SOCKET_FRAME && n[0].watch_state==2 {
       if !hn_put(0,text) || !hn_put(1,HOME_KEY_JSON) {return;}result:=home_call(12,0,0,land_now(s));
-      if result==1 || result==2 {body:[16384]u8;size:=hn_output(body[..]);if size>0 {if result==1 {hn_beacon(s,cast(string)body[0..<size],land_now(s));}else {hn_activity(s,cast(string)body[0..<size]);}}}
+      if result==1 || result==2 || result==4 {body:[16384]u8;size:=hn_output(body[..]);if size>0 {if result==1 {hn_beacon(s,cast(string)body[0..<size],land_now(s));}else if result==4 {xp_record(s,cast(string)body[0..<size]);}else {hn_activity(s,cast(string)body[0..<size]);}}}
+      else if result>=5 && result<=7 {xp_history(s,result);}
       else if result==3 {n[0].beacon_ended=true;}
       else if result>=10 && result<10+HOME_PROJECTS {n[0].dirty|=1<<(result-10);}
       else if result== -3 {ignored:=pipe_close(n[0].pipe[..],n[0].watch-1);n[0].watch=0;n[0].watch_state=0;n[0].beacon_ended=false;n[0].retry_watch=n[0].now+3;}

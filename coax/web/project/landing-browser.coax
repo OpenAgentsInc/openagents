@@ -1,13 +1,14 @@
 // Public homepage watches. All event, signature, beacon and subscription
 // decisions stay in Coax; the browser moves socket bytes only.
 #load "landing-nostr.coax";
+#load "landing-xp.coax";
 #authority;
 LbMessage :: struct {code:int;written:int;}
 LbSeen :: struct {n:int;start:int;started:bool;ids:[LR_EVENTS*32]u8;}
 #test "homepage watches are scoped and activity ids do not count twice" {
   keys:="[\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]";
   out:[8192]u8;
-  for mode:0..<3 {#assert lb_request(mode,keys,2000000000,out[..])>0;}
+  for mode:0..<6 {#assert lb_request(mode,keys,2000000000,out[..])>0;}
   #assert lb_request(1,"[]",0,out[..])<0;
   held:[1]LbSeen;id:[32]u8;
   #assert lb_begin(held[..],2,keys,2000000000,out[..])>0 && held[0].start==2000000000;
@@ -15,6 +16,8 @@ LbSeen :: struct {n:int;start:int;started:bool;ids:[LR_EVENTS*32]u8;}
   #assert lb_message(held[..],"[]",keys,0,out[..]).code==0;
   #assert lb_message(held[..],"[\"EOSE\",\"home-beacons\"]",keys,0,out[..]).code==3;
   #assert lb_message(held[..],"[\"CLOSED\",\"home-beacons\",\"restricted: no\"]",keys,0,out[..]).code== -3;
+  #assert lb_message(held[..],"[\"EOSE\",\"home-xp\"]",keys,0,out[..]).code==5;
+  #assert lb_message(held[..],"[\"CLOSED\",\"home-xp\",\"restricted: no\"]",keys,0,out[..]).code==0;
 }
 lb_once :: (s:[]LbSeen,id:[]u8)->bool {
   for k:0..<s[0].n {if lr_equal_id(s[0].ids[k*32..<k*32+32],id) {return false;}}
@@ -25,6 +28,7 @@ lb_begin :: (s:[]LbSeen,mode:int,keys:string,now:int,out:[]u8)->int #export_c {
   n:=lb_request(mode,keys,now,out);if n>0 && mode==2 && !s[0].started {s[0].start=now;s[0].started=true;}return n;
 }
 lb_request :: (mode:int,keys:string,now:int,out:[]u8)->int #export_c {
+  if mode>=3 && mode<=5 {return ifx now<0 || now>NF_SAFE then -1 else lx_request(mode-3,out);}
   if mode<0 || mode>2 || now<0 || now>NF_SAFE {return -1;}
   authors:[8]string;count:=lr_ids(keys,authors[..]);if count<1 {return -1;}
   f:NostrFilter;kinds:[9]int;values:=[1]string.[PB_MARKER];tags:=[1]NostrTagFilter.[NostrTagFilter.{name='t',values=values[..]}];
@@ -38,6 +42,13 @@ lb_request :: (mode:int,keys:string,now:int,out:[]u8)->int #export_c {
 lb_message :: (seen:[]LbSeen,text:string,keys:string,now:int,out:[]u8)->LbMessage #export_c {
   m:=nostr_message_read(text);if m.error!=NM_OK {return LbMessage.{};}
   sub:=nm_text(m,m.sub);
+  if sub==LX_SUB || sub==LX_WORK_SUB || sub==LX_CHECK_SUB {
+    // A refused XP watch never takes the Pylon and project watches down with it.
+    if m.type==NM_EOSE {return LbMessage.{code=ifx sub==LX_SUB then 5 else ifx sub==LX_WORK_SUB then 6 else 7};}if m.type!=NM_EVENT {return LbMessage.{};}
+    xe:=nm_text(m,m.event);xs:[NE_MAX_OUTPUT]u8;x:=lr_event(xe,xs[..]);
+    if x.error!=NE_OK || !x.verified || now<0 || x.created_at>now+30 {return LbMessage.{code= -4};}
+    w:=lx_record(x,out);return ifx w>0 then LbMessage.{code=4,written=w} else LbMessage.{};
+  }
   if sub!="home-beacons" && sub!="home-projects" && sub!="home-work" {return LbMessage.{};}
   if m.type==NM_CLOSED {return LbMessage.{code= -3};}
   if m.type==NM_EOSE && sub=="home-beacons" {return LbMessage.{code=3};}
