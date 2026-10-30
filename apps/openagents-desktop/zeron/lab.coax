@@ -5,9 +5,14 @@
 // how much reasoning, which Claude model, whether it needs this Mac), with
 // the agents this app can run as the choices: Claude Code, Psionic
 // (gpt-oss-20b) and Codex when it is installed. The request goes through the
-// Coax System One client (coax/lib/systemone) to the keyless door at
-// 127.0.0.1:8790 (an SSH tunnel to the GPU worker; PSIONIC_SYSTEMONE_URL
-// names another), polled from the frame loop like the Claude engine. The
+// Coax System One client (coax/lib/systemone) to the keyless door of
+// psionic-serve --elephant-metal on this Mac's GPU, 127.0.0.1:8793 (psionic/
+// book/ch031-elephant-on-metal.md; a launchd agent keeps it up), so gpt-oss-20b
+// stays loaded on the RTX 4080 and nothing swaps. When nothing answers there,
+// the same message goes to Elephant on the RTX 4080 through its tunnel,
+// 127.0.0.1:8790, with the GPU switch (gpu.coax) swapping it in.
+// PSIONIC_SYSTEMONE_URL names another door, and then only that one is asked.
+// The request is polled from the frame loop like the Claude engine. The
 // decision becomes a group in the transcript, "Routed to Claude Code ·
 // Sonnet 5.5 · High", opening onto every distribution, the latency and the
 // usage; a refusal, a busy or late server, or no server at all is an error
@@ -16,8 +21,7 @@
 // Claude Code runs what Elephant routes to it with the chosen model and
 // effort; Psionic runs gpt-oss-20b through its Responses engine
 // (psionic.coax) with the effort mapped to its three. When Psionic gives
-// no answer (its server down: on coderos-4080 it cannot share the RTX 4080
-// with Elephant), Claude Code answers after Psionic's chip. Codex is not an
+// no answer (its server down), Claude Code answers after Psionic's chip. Codex is not an
 // engine in this build: its messages run on Claude Code, and the decision
 // says so.
 
@@ -27,7 +31,9 @@
 LAB_TUNNEL :: "ssh -N -L 8790:127.0.0.1:8790 coderos-4080";
 LAB_START :: "systemctl --user start psionic-gpu-switch";   // the GPU switch (gpu.coax) starts Elephant
 LAB_MESSAGE_MAX :: 1200;        // bytes of the message Elephant reads (a question holds 512 tokens)
-LAB_TIMEOUT_S :: 30;
+LAB_TIMEOUT_S :: 120;           // Elephant on this Mac takes several seconds for the five questions
+LAB_LOCAL_URL :: "http://127.0.0.1:8793/v1/systemone";   // psionic-serve --elephant-metal (chapter 31)
+LAB_LOCAL_START :: "launchctl kickstart gui/$(id -u)/com.openagents.psionic-elephant-metal";
 
 LAB_IDLE :: 0; LAB_ASKING :: 1; LAB_LOADING :: 2;   // loading: Elephant is loading on the GPU (gpu.coax)
 
@@ -59,12 +65,14 @@ Lab :: struct {
   secs: f32;                      // since it was sent
   codex: bool;                    // Codex is installed: offered as a choice
   url: [512] u8; url_n: int;
+  local: bool;                    // the door is this Mac's (no PSIONIC_SYSTEMONE_URL)
+  remote: bool;                   // this message went on to the RTX 4080: nothing answered on this Mac
   body: [] u8; out: [] u8; err: [] u8;   // the host's (lab_attach)
 }
 LAB_BODY :: 24576; LAB_OUT :: 65536; LAB_ERR :: 4096;
 lab_attach :: (l: [] Lab, body: [] u8, out: [] u8, err: [] u8) { l[0].body = body; l[0].out = out; l[0].err = err; }
 
-// The door: PSIONIC_SYSTEMONE_URL when set, else our tunnel's (read once, when the host is attached).
+// The door: PSIONIC_SYSTEMONE_URL when set, else this Mac's (read once, when the host is attached).
 lab_door :: (l: [] Lab) {
   if l[0].url_n > 0 { return; }
   v := cl_getenv(SO_PSIONIC_URL_ENV, l[0].url[..]);
@@ -75,7 +83,8 @@ lab_door :: (l: [] Lab) {
   nf := 0;
   if h.count > 0 { np := e_set(path[..], e_set(path[..], 0, h), PS_SECRETS); nf = ps_read_file(e_str(path[..], np), file[..]); }
   u := ps_env_value(cast(string) file[0..<nf], SO_PSIONIC_URL_ENV);
-  l[0].url_n = e_set(l[0].url[..], 0, ifx u.count > 0 then u else SO_PSIONIC_URL);
+  l[0].local = u.count == 0;
+  l[0].url_n = e_set(l[0].url[..], 0, ifx u.count > 0 then u else LAB_LOCAL_URL);
   for k: 0..<file.count { file[k] = 0; }
 }
 lab_url :: (l: [] Lab) -> string { return ifx l[0].url_n > 0 then e_str(l[0].url[..], l[0].url_n) else SO_PSIONIC_URL; }
@@ -244,6 +253,8 @@ lab_send :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Ses
   if !e[0].on { return; }       // the checks: no process
   if l[0].body.count == 0 { lab_fail(s, "The Lab has no room for its request."); return; }
   lab_door(l);
+  // Elephant on this Mac first: no switch, no tunnel (lab_pump falls back to the RTX 4080)
+  if l[0].local { l[0].remote = false; l[0].url_n = e_set(l[0].url[..], 0, LAB_LOCAL_URL); if g[0].on { gs_configure(g); } g[0].elephant_local = true; }
   // Elephant must be on the GPU first (the switch may be holding gpt-oss-20b there)
   if p[0].on { ps_configure(p); }
   if gs_want(g, s, GS_ELEPHANT, GT_LAB, lab_url(l), ps_url(p)) { l[0].phase = LAB_LOADING; return; }
@@ -326,6 +337,14 @@ lab_stop :: (l: [] Lab, s: [] Session) -> bool {
   return true;
 }
 
+// Nothing answered at this Mac's door: once per message, the door becomes
+// Elephant's on the RTX 4080 (its tunnel, and the switch loads it there).
+lab_fall_back :: (l: [] Lab, g: [] GpuSwitch, problem: string) -> bool {
+  if problem != "the server is unreachable" || !l[0].local || l[0].remote { return false; }
+  l[0].remote = true; l[0].url_n = e_set(l[0].url[..], 0, SO_PSIONIC_URL); g[0].elephant_local = false;
+  return true;
+}
+
 // Each frame: what curl wrote; once done, the decision or the error chip.
 lab_pump :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Session, dt: f32) {
   // Psionic gave no answer: Claude Code takes the message (Sonnet, medium), after Psionic's chip
@@ -342,7 +361,20 @@ lab_pump :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Ses
   r := l[0].call[0].r;
   round_ms := cast(int) (l[0].secs * 1000.0);
   if r.problem.count == 0 { r.problem = so_check(l[0].q[..], r.body); }
-  if r.problem.count > 0 { pb: [1024] u8; lab_fail(s, lab_problem(pb[..], r, lab_url(l))); return; }
+  // nothing on this Mac: the same message goes to Elephant on the RTX 4080
+  if lab_fall_back(l, g, r.problem) {
+    if gs_want(g, s, GS_ELEPHANT, GT_LAB, lab_url(l), ps_url(p)) { l[0].phase = LAB_LOADING; return; }
+    lab_ask(l, s);
+    return;
+  }
+  if r.problem.count > 0 {
+    pb: [1024] u8; why := lab_problem(pb[..], r, lab_url(l));
+    if l[0].remote && r.problem == "the server is unreachable" {   // both doors were tried
+      wb: [1400] u8; k := e_set(wb[..], 0, "Elephant isn't running on this Mac (start it: "); k = e_set(wb[..], k, LAB_LOCAL_START);
+      k = e_set(wb[..], k, "), and on the RTX 4080: "); k = e_set(wb[..], k, why); why = e_str(wb[..], k);
+    }
+    lab_fail(s, why); return;
+  }
   lab_route(l, e, p, g, s, r.body, round_ms);
 }
 
@@ -465,6 +497,18 @@ LAB_TEST_ANSWER :: "{\"model\":\"elephant-1\",\"answers\":{\"harness\":{\"type\"
 }
 
 LAB_TEST_PSIONIC :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\"psionic\",\"confidence\":0.91,\"probabilities\":{\"claude_code\":0.09,\"psionic\":0.91}},\"difficulty\":{\"type\":\"score\",\"score\":0.1,\"confidence\":0.9,\"probabilities\":{\"0\":0.9,\"1\":0.08,\"2\":0.01,\"3\":0.005,\"4\":0.005}},\"effort\":{\"type\":\"choice\",\"choice\":\"high\",\"confidence\":0.9,\"probabilities\":{\"low\":0.05,\"medium\":0.05,\"high\":0.9,\"xhigh\":0.0,\"max\":0.0}},\"claude_model\":{\"type\":\"choice\",\"choice\":\"claude-haiku-5-5\",\"confidence\":0.9,\"probabilities\":{\"claude-opus-5-5\":0.05,\"claude-sonnet-5-5\":0.05,\"claude-haiku-5-5\":0.9}},\"local_work\":{\"type\":\"noul\",\"noul\":0.01}},\"latency_ms\":1700}";
+
+#test "Elephant on this Mac first; when nothing answers there, the message goes to the RTX 4080 once" {
+  l: [1] Lab; g: [1] GpuSwitch; gs_init(g[..]);
+  l[0].local = true; l[0].url_n = e_set(l[0].url[..], 0, LAB_LOCAL_URL); g[0].elephant_local = true;
+  #assert lab_url(l[..]) == "http://127.0.0.1:8793/v1/systemone";
+  #assert !lab_fall_back(l[..], g[..], "the request timed out") && lab_url(l[..]) == LAB_LOCAL_URL;
+  #assert lab_fall_back(l[..], g[..], "the server is unreachable") && lab_url(l[..]) == SO_PSIONIC_URL && !g[0].elephant_local;
+  #assert !lab_fall_back(l[..], g[..], "the server is unreachable");   // the RTX 4080's door failed too: the chip says so
+  // a door named by PSIONIC_SYSTEMONE_URL is the only one asked
+  n: [1] Lab; n[0].url_n = e_set(n[0].url[..], 0, "http://10.0.0.5:8790/v1/systemone");
+  #assert !lab_fall_back(n[..], g[..], "the server is unreachable") && lab_url(n[..]) == "http://10.0.0.5:8790/v1/systemone";
+}
 
 #test "routed to Psionic, gpt-oss-20b runs it; with no answer from Psionic, Claude Code takes it after Psionic's chip" {
   pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
