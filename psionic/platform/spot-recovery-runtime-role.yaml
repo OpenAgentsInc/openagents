@@ -1,0 +1,6 @@
+title: OpenAgents Pylon Spot recovery start only
+description: OpenAgents fixed Mammoth VM lifecycle; get and start only.
+stage: GA
+includedPermissions:
+- compute.instances.get
+- compute.instances.start

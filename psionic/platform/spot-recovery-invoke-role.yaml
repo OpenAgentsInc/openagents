@@ -1,0 +1,5 @@
+title: OpenAgents Pylon Spot recovery invoke only
+description: OpenAgents Scheduler may run only its bound recovery job.
+stage: GA
+includedPermissions:
+- run.jobs.run

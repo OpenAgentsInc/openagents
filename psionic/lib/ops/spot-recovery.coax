@@ -1,0 +1,32 @@
+// Infrastructure lifecycle admission. Fixed existing resource only; no
+// provider, model, GPU creation, key custody or user-controlled target.
+#authority;
+#test "only the one existing Mammoth VM is eligible" {
+  #assert spot_recovery_action("openagentsgemini","us-central1-b","psionic-rtx6000-pylon","TERMINATED","0")==3;
+  #assert spot_recovery_action("other","us-central1-b","psionic-rtx6000-pylon","TERMINATED","0")==-1;
+  #assert spot_recovery_action("openagentsgemini","us-central1-a","psionic-rtx6000-pylon","TERMINATED","0")==-1;
+  #assert spot_recovery_action("openagentsgemini","us-central1-b","psionic-l4-elephant","TERMINATED","0")==-1;
+  #assert spot_recovery_action("openagentsgemini","us-central1-b","psionic-rtx6000-pylon-2","TERMINATED","0")==-1;
+}
+#test "running is always a no-op and dry mode never starts" {
+  #assert spot_recovery_action("openagentsgemini","us-central1-b","psionic-rtx6000-pylon","RUNNING","0")==0;
+  #assert spot_recovery_action("openagentsgemini","us-central1-b","psionic-rtx6000-pylon","RUNNING","1")==0;
+  #assert spot_recovery_action("openagentsgemini","us-central1-b","psionic-rtx6000-pylon","TERMINATED","1")==2;
+}
+#test "transitions never start and malformed observations fail closed" {
+  states:=[6]string.["PROVISIONING","STAGING","STOPPING","SUSPENDING","SUSPENDED","REPAIRING"];
+  for state:states {#assert spot_recovery_action("openagentsgemini","us-central1-b","psionic-rtx6000-pylon",state,"0")==1;}
+  #assert spot_recovery_action("openagentsgemini","us-central1-b","psionic-rtx6000-pylon","","0")==-1;
+  #assert spot_recovery_action("openagentsgemini","us-central1-b","psionic-rtx6000-pylon","UNKNOWN","0")==-1;
+  #assert spot_recovery_action("openagentsgemini","us-central1-b","psionic-rtx6000-pylon","running","0")==-1;
+  #assert spot_recovery_action("openagentsgemini","us-central1-b","psionic-rtx6000-pylon","TERMINATED","true")==-1;
+  #assert spot_recovery_action("openagentsgemini","us-central1-b","psionic-rtx6000-pylon","RUNNING","")==-1;
+}
+spot_recovery_action :: (project:string,zone:string,vm:string,status:string,dry:string)->int #export_c {
+  if project!="openagentsgemini" || zone!="us-central1-b" || vm!="psionic-rtx6000-pylon" {return -1;}
+  if dry!="0" && dry!="1" {return -1;}
+  if status=="RUNNING" {return 0;}
+  if status=="TERMINATED" {return ifx dry=="1" then 2 else 3;}
+  if status=="PROVISIONING" || status=="STAGING" || status=="STOPPING" || status=="SUSPENDING" || status=="SUSPENDED" || status=="REPAIRING" {return 1;}
+  return -1;
+}

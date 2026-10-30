@@ -1,0 +1,59 @@
+{
+  "recorded_at": "2026-10-30T18:52:31.952079+00:00",
+  "target": {
+    "project": "openagentsgemini",
+    "zone": "us-central1-b",
+    "instance": "psionic-rtx6000-pylon"
+  },
+  "schedule": {
+    "httpTarget": {
+      "oauthToken": {
+        "serviceAccountEmail": "pylon-spot-scheduler@openagentsgemini.iam.gserviceaccount.com"
+      }
+    },
+    "name": "projects/openagentsgemini/locations/us-central1/jobs/pylon-spot-recovery",
+    "schedule": "*/5 * * * *",
+    "state": "ENABLED"
+  },
+  "dry": {
+    "execution": "pylon-spot-recovery-kjr2x",
+    "creator": "pylon-spot-scheduler@openagentsgemini.iam.gserviceaccount.com",
+    "runtime": "pylon-spot-runtime@openagentsgemini.iam.gserviceaccount.com",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/pylon-spot-recovery@sha256:6d21aef8218ecf4ea5533431c30b3418d8ec8dc88b1069d3432b840540464a19",
+    "dry_run": true,
+    "succeeded_tasks": 1,
+    "completed_at": "2026-10-30T18:45:20.877711Z",
+    "observation": {
+      "action": "noop",
+      "status": "RUNNING",
+      "vm": "psionic-rtx6000-pylon"
+    },
+    "observation_at": "2026-10-30T18:45:15.665613Z"
+  },
+  "active": {
+    "execution": "pylon-spot-recovery-57fms",
+    "creator": "pylon-spot-scheduler@openagentsgemini.iam.gserviceaccount.com",
+    "runtime": "pylon-spot-runtime@openagentsgemini.iam.gserviceaccount.com",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/pylon-spot-recovery@sha256:6d21aef8218ecf4ea5533431c30b3418d8ec8dc88b1069d3432b840540464a19",
+    "dry_run": false,
+    "succeeded_tasks": 1,
+    "completed_at": "2026-10-30T18:50:14.170526Z",
+    "observation": {
+      "action": "noop",
+      "status": "RUNNING",
+      "vm": "psionic-rtx6000-pylon"
+    },
+    "observation_at": "2026-10-30T18:50:09.763284Z"
+  },
+  "policy": {
+    "source": "psionic/lib/ops/spot-recovery.coax",
+    "checks_passed": 3,
+    "mutants_killed": 20,
+    "mutants_survived": 0
+  },
+  "maintenance": {
+    "pause_dry_and_quiescent_drain_tested": true,
+    "healthy_vm_stopped": false
+  },
+  "scope": "VM lifecycle/no-op observed; actual preemption/start not forced; no model-health or guaranteed-capacity claim"
+}
