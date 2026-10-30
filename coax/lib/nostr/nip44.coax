@@ -11,8 +11,8 @@
 //                  65,536 and beyond, bounded so nonce||ciphertext stays
 //                  within the local 1 MiB HMAC/ChaCha20/base64 ceilings.
 //
-// get_conversation_key's ECDH is not here: the caller supplies the raw,
-// unhashed 32-byte shared x (task #71e7 crypto-ecdh-xonly). Work buffers hold
+// The conversation key here takes the raw, unhashed 32-byte shared x; from two
+// keys through ecdh.coax it is nip44-key.coax's. Work buffers hold
 // secret material after return; erasing them is the caller's platform
 // contract (zeroize.coax). No side-channel or erasure guarantee is implied.
 #load "../crypto/hkdf.coax";

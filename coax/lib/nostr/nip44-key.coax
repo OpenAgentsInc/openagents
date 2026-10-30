@@ -1,0 +1,92 @@
+// NIP-44 v2 get_conversation_key from two keys: HKDF-extract(salt "nip44-v2",
+// IKM = the raw unhashed 32-byte shared x) with the x from ecdh.coax's
+// validated x-only ECDH. Pinned spec: nips/official/44.md.
+//
+// A separate unit so the checks here stay few: the 35 valid and 8 invalid
+// upstream get_conversation_key rows and the encrypt/decrypt rows run end to
+// end from the two keys in coax/tests/nostr/nip44_key_vectors.coax.
+//
+// The caller owns `work` (exactly one EcdhScratch, disjoint from the other
+// views). Once the public lengths and the alias fact are admitted, every
+// return (success, invalid peer, invalid secret) leaves all of work zero, and
+// out is written only on success. These are plain stores: erasure the target
+// compiler cannot drop is the host's platform contract (zeroize.coax), as in
+// nip44.coax and ecdh.coax. No side-channel or erasure guarantee is implied.
+#load "nip44.coax";
+#load "../crypto/ecdh.coax";
+#authority;
+
+// These extend nip44.coax's codes (NIP44_OK..NIP44_INTERNAL is 0..12).
+NIP44_PEER :: cast(u32)13;   // public key x is not a curve point (no square root, or not below p)
+NIP44_SECRET :: cast(u32)14; // secret key is 0 or not below the group order n
+
+NIP44_KEY_GENERATOR_X :: [32]u8.[0x79,0xbe,0x66,0x7e,0xf9,0xdc,0xbb,0xac,0x55,0xa0,0x62,0x95,0xce,0x87,0x0b,0x07,0x02,0x9b,0xfc,0xdb,0x2d,0xce,0x28,0xd9,0x59,0xf2,0x81,0x5b,0x16,0xf8,0x17,0x98];
+
+#test "metadata refusals: lengths, work count, short out and alias touch neither work nor out" {
+  sec:[33]u8;sec[31]=1;pub:=NIP44_KEY_GENERATOR_X;wide:[33]u8;
+  out:[33]u8;for i:0..<33 {out[i]=165;}
+  work:[1]EcdhScratch;for i:0..<8 {work[0].scalar.limbs[i]=165;} for i:0..<10 {work[0].shared.x.limb[i]=165;work[0].shared.y.limb[i]=165;work[0].shared.z.limb[i]=165;work[0].affine.x.limb[i]=165;work[0].affine.y.limb[i]=165;} work[0].affine.infinity=165;for i:0..<32 {work[0].staged[i]=165;}two:[2]EcdhScratch;
+  #assert nip44_conversation_key_from_keys_checked(sec[0..<31],pub[..],work[..],out[..],false)==NIP44_KEY;
+  #assert nip44_conversation_key_from_keys_checked(sec[0..<33],pub[..],work[..],out[..],false)==NIP44_KEY;
+  #assert nip44_conversation_key_from_keys_checked(sec[0..<32],pub[0..<31],work[..],out[..],false)==NIP44_KEY;
+  #assert nip44_conversation_key_from_keys_checked(sec[0..<32],wide[0..<33],work[..],out[..],false)==NIP44_KEY;
+  #assert nip44_conversation_key_from_keys_checked(sec[0..<32],pub[..],work[0..<0],out[..],false)==NIP44_OUTPUT;
+  #assert nip44_conversation_key_from_keys_checked(sec[0..<32],pub[..],two[..],out[..],false)==NIP44_OUTPUT;
+  #assert nip44_conversation_key_from_keys_checked(sec[0..<32],pub[..],work[..],out[0..<31],false)==NIP44_OUTPUT;
+  #assert nip44_conversation_key_from_keys_checked(sec[0..<32],pub[..],work[..],out[..],true)==NIP44_ALIAS;
+  for b:out {#assert b==165;}
+  for i:0..<8 {#assert work[0].scalar.limbs[i]==165;} for i:0..<10 {#assert work[0].shared.z.limb[i]==165 && work[0].affine.y.limb[i]==165;} #assert work[0].affine.infinity==165;for i:0..<32 {#assert work[0].staged[i]==165;}
+}
+#test "invalid peers refuse as NIP44_PEER; out untouched, work wiped" {
+  sec:[32]u8;sec[31]=1;out:[33]u8;for i:0..<33 {out[i]=165;}
+  pub:[32]u8;for i:0..<32 {pub[i]=255;}
+  work:[1]EcdhScratch;for i:0..<8 {work[0].scalar.limbs[i]=165;} for i:0..<10 {work[0].shared.x.limb[i]=165;work[0].shared.y.limb[i]=165;work[0].shared.z.limb[i]=165;work[0].affine.x.limb[i]=165;work[0].affine.y.limb[i]=165;} work[0].affine.infinity=165;for i:0..<32 {work[0].staged[i]=165;}
+  #assert nip44_conversation_key_from_keys_checked(sec[..],pub[..],work[..],out[..],false)==NIP44_PEER;
+  for b:out {#assert b==165;}
+  for i:0..<8 {#assert work[0].scalar.limbs[i]==0;} for i:0..<10 {#assert work[0].shared.x.limb[i]==0 && work[0].shared.y.limb[i]==0 && work[0].shared.z.limb[i]==0 && work[0].affine.x.limb[i]==0 && work[0].affine.y.limb[i]==0;} #assert work[0].affine.infinity==0;for i:0..<32 {#assert work[0].staged[i]==0;}
+  // x = 0 is the twist's order-3 point: no square root of 7.
+  zero:[32]u8;for i:0..<8 {work[0].scalar.limbs[i]=165;} for i:0..<10 {work[0].shared.x.limb[i]=165;work[0].shared.y.limb[i]=165;work[0].shared.z.limb[i]=165;work[0].affine.x.limb[i]=165;work[0].affine.y.limb[i]=165;} work[0].affine.infinity=165;for i:0..<32 {work[0].staged[i]=165;}
+  #assert nip44_conversation_key_from_keys_checked(sec[..],zero[..],work[..],out[..],false)==NIP44_PEER;
+  for b:out {#assert b==165;}
+  for i:0..<8 {#assert work[0].scalar.limbs[i]==0;} for i:0..<10 {#assert work[0].shared.x.limb[i]==0 && work[0].shared.y.limb[i]==0 && work[0].shared.z.limb[i]==0 && work[0].affine.x.limb[i]==0 && work[0].affine.y.limb[i]==0;} #assert work[0].affine.infinity==0;for i:0..<32 {#assert work[0].staged[i]==0;}
+}
+#test "secret 0 refuses as NIP44_SECRET against a valid peer; out untouched, work wiped" {
+  pub:=NIP44_KEY_GENERATOR_X;out:[33]u8;for i:0..<33 {out[i]=165;}
+  zero:[32]u8;work:[1]EcdhScratch;for i:0..<8 {work[0].scalar.limbs[i]=165;} for i:0..<10 {work[0].shared.x.limb[i]=165;work[0].shared.y.limb[i]=165;work[0].shared.z.limb[i]=165;work[0].affine.x.limb[i]=165;work[0].affine.y.limb[i]=165;} work[0].affine.infinity=165;for i:0..<32 {work[0].staged[i]=165;}
+  #assert nip44_conversation_key_from_keys_checked(zero[..],pub[..],work[..],out[..],false)==NIP44_SECRET;
+  for b:out {#assert b==165;}
+  for i:0..<8 {#assert work[0].scalar.limbs[i]==0;} for i:0..<10 {#assert work[0].shared.x.limb[i]==0 && work[0].shared.y.limb[i]==0 && work[0].shared.z.limb[i]==0 && work[0].affine.x.limb[i]==0 && work[0].affine.y.limb[i]==0;} #assert work[0].affine.infinity==0;for i:0..<32 {#assert work[0].staged[i]==0;}
+}
+#test "secret n refuses as NIP44_SECRET against a valid peer; out untouched, work wiped" {
+  pub:=NIP44_KEY_GENERATOR_X;out:[33]u8;for i:0..<33 {out[i]=165;}work:[1]EcdhScratch;
+  n:[32]u8;for i:0..<8 {stored:=cb_store_be32(n[..],i*4,SC_N.limbs[7-i]);}for i:0..<8 {work[0].scalar.limbs[i]=165;} for i:0..<10 {work[0].shared.x.limb[i]=165;work[0].shared.y.limb[i]=165;work[0].shared.z.limb[i]=165;work[0].affine.x.limb[i]=165;work[0].affine.y.limb[i]=165;} work[0].affine.infinity=165;for i:0..<32 {work[0].staged[i]=165;}
+  #assert nip44_conversation_key_from_keys_checked(n[..],pub[..],work[..],out[..],false)==NIP44_SECRET;
+  for b:out {#assert b==165;}
+  for i:0..<8 {#assert work[0].scalar.limbs[i]==0;} for i:0..<10 {#assert work[0].shared.x.limb[i]==0 && work[0].shared.y.limb[i]==0 && work[0].shared.z.limb[i]==0 && work[0].affine.x.limb[i]==0 && work[0].affine.y.limb[i]==0;} #assert work[0].affine.infinity==0;for i:0..<32 {#assert work[0].staged[i]==0;}
+}
+#test "upstream get_conversation_key row 0 from the two keys into an exactly 32-byte out; work wiped" {
+  sec:=[32]u8.[0x31,0x5e,0x59,0xff,0x51,0xcb,0x92,0x09,0x76,0x8c,0xf7,0xda,0x80,0x79,0x1d,0xdc,0xaa,0xe5,0x6a,0xc9,0x77,0x5e,0xb2,0x5b,0x6d,0xee,0x12,0x34,0xbc,0x5d,0x22,0x68];
+  pub:=[32]u8.[0xc2,0xf9,0xd9,0x94,0x8d,0xc8,0xc7,0xc3,0x83,0x21,0xe4,0xb8,0x5c,0x85,0x58,0x87,0x2e,0xaf,0xa0,0x64,0x1c,0xd2,0x69,0xdb,0x76,0x84,0x8a,0x60,0x73,0xe6,0x91,0x33];
+  want:=[32]u8.[0x3d,0xfe,0xf0,0xce,0x2a,0x4d,0x80,0xa2,0x5e,0x7a,0x32,0x8a,0xcc,0xf7,0x34,0x48,0xef,0x67,0x09,0x6f,0x65,0xf7,0x95,0x88,0xe3,0x58,0xd9,0xa0,0xeb,0x90,0x13,0xf1];
+  out:[33]u8;for i:0..<33 {out[i]=165;}work:[1]EcdhScratch;for i:0..<8 {work[0].scalar.limbs[i]=165;} for i:0..<10 {work[0].shared.x.limb[i]=165;work[0].shared.y.limb[i]=165;work[0].shared.z.limb[i]=165;work[0].affine.x.limb[i]=165;work[0].affine.y.limb[i]=165;} work[0].affine.infinity=165;for i:0..<32 {work[0].staged[i]=165;}
+  #assert nip44_conversation_key_from_keys_checked(sec[..],pub[..],work[..],out[0..<32],false)==NIP44_OK;
+  for i:0..<32 {#assert out[i]==want[i];} #assert out[32]==165;
+  for i:0..<8 {#assert work[0].scalar.limbs[i]==0;} for i:0..<10 {#assert work[0].shared.x.limb[i]==0 && work[0].shared.y.limb[i]==0 && work[0].shared.z.limb[i]==0 && work[0].affine.x.limb[i]==0 && work[0].affine.y.limb[i]==0;} #assert work[0].affine.infinity==0;for i:0..<32 {#assert work[0].staged[i]==0;}
+}
+
+// `overlap` is the truthful fact that any two of secret, public_key_x, work
+// and out share memory. Refusal order: NIP44_KEY (secret or public key not 32
+// bytes), NIP44_OUTPUT (work not exactly one scratch, out below 32 bytes),
+// NIP44_ALIAS, then NIP44_PEER before NIP44_SECRET, as ecdh_stage checks them.
+nip44_conversation_key_from_keys_checked :: (secret:[]u8,public_key_x:[]u8,work:[]EcdhScratch,out:[]u8,overlap:bool)->u32 {
+  if secret.count!=32 || public_key_x.count!=32 {return NIP44_KEY;}
+  if work.count!=1 || out.count<32 {return NIP44_OUTPUT;}
+  if overlap {return NIP44_ALIAS;}
+  ec:=ecdh_stage(secret,public_key_x,work);
+  status:=NIP44_INTERNAL;
+  if ec==EC_PEER {status=NIP44_PEER;}
+  if ec==EC_SCALAR {status=NIP44_SECRET;}
+  if ec==EC_OK {status=nip44_conversation_key_checked(work[0].staged[..],out,false);}
+  work[0]=EcdhScratch.{};
+  return status;
+}
