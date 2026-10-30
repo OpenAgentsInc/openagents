@@ -154,7 +154,7 @@ fm_answer_event :: (f:[]Fm,e:NostrEvent,provider:string,tags:string,content:stri
 }
 fm_frame :: (f:[]Fm,text:string) {
     m:=nostr_message_read(text);
-    if m.error!=NM_OK {if nip42_input(f[0].r[..],f[0].n42[..],f[0].gen,text)==RL_AUTH {if !fm_auth(f) {fm_drop(f);}}return;}
+    if m.error!=NM_OK {auth_decision:=nip42_input(f[0].r[..],f[0].n42[..],f[0].gen,text);if auth_decision==RL_AUTH {if !fm_auth(f) {fm_drop(f);}}else if f[0].observe_sub.count>0 {f[0].observe_failed=true;}return;}
     if m.type==NM_ACCEPT {
         d:=rl_input(f[0].r[..],f[0].gen,RlIn.{kind=RL_IN_OK,id=m.id,accepted=m.accepted});
         if d==RL_AUTH {if m.accepted {if !f[0].quiet {print("fleet: relay AUTH accepted\n");}}else {fm_drop(f);return;}}
