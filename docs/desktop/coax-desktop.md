@@ -248,8 +248,14 @@ How it works:
   Psionic while gpt-oss-20b is loaded therefore waits about 87 s for
   Elephant, 1.8 s for the decision and 52 s for gpt-oss-20b; gpt-oss-20b
   then stays until the next Lab message, so Psionic follow-ups are
-  immediate. The app starts its own tunnels (`ssh -N -L` children it
-  kills at quit): the switch on 8792, Elephant on 8790 and gpt-oss on
+  immediate. A clean checkout's gpt-oss server build is cached
+  (`psionic/serve-gptoss.sh`, keyed by the commit's tree, the coax binary
+  and the compiler; `--build-only` warms it), so a reload of a built
+  commit skips the compile. The switch logs every request that changes
+  the card (`asked stop (was ready gptoss)`) and every `/use` for the
+  model already loaded (`asked gptoss: ready`, answered at once). The
+  app starts its own tunnels (`ssh -N -L` children it kills at quit):
+  the switch on 8792, Elephant on 8790 and gpt-oss on
   `PSIONIC_URL`'s port (8089 here). `PSIONIC_HOST` (default coderos-4080,
   `none` for no tunnels and no switch), `PSIONIC_SWITCH_URL`,
   `PSIONIC_SYSTEMONE_URL` and `PSIONIC_SYSTEMONE_HOST=local` (Elephant on

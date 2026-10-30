@@ -17,7 +17,8 @@ Each answers one line of text, "STATE MODEL SECONDS [REASON]":
     failed gptoss 3.1 REASON     the load failed, and why
     stopped - 0                  nothing is loaded
 
-A /use for the model already loaded or loading changes nothing. A /use for
+A /use for the model already loaded or loading changes nothing (it answers
+"ready" at once when loaded). A /use for
 the other one stops the running server (SIGTERM to its process group, then
 SIGKILL after 30 s), waits for its port to close, starts the requested one
 and reports ready once its port accepts connections (both servers bind only
@@ -28,6 +29,13 @@ which process holds it. The last requested model is kept in
 (after a reboot or a crash: it runs as the systemd user unit
 psionic-gpu-switch.service, Restart=always, linger on). Listens on
 127.0.0.1:8791 only; the Mac reaches it through an SSH tunnel.
+
+POST /stop then /use/gptoss restarts gpt-oss-20b (to serve a new build),
+and every app user's next Psionic turn waits the whole load, which is what
+cost a Lab capture 103 s on 2026-10-29. Build first
+(psionic/serve-gptoss.sh --build-only in ~/psionic-responses, so the load
+is only the weights) and restart when no one is mid-turn. Restarting this
+unit restarts the loaded server too.
 """
 import http.server
 import os
@@ -198,9 +206,15 @@ def status_line():
 
 
 def ask(model):
+    """A /use or /stop. Every one that changes something is logged first, as
+    "asked MODEL (was STATE MODEL)", so the log says why a model was stopped
+    or loaded; a /use for the model already ready logs "asked MODEL: ready",
+    and repeated asks while it loads (the app polls) log nothing."""
     global want
     with lock:
+        name = model or "stop"
         if model != want or state == "failed":
+            log(f"asked {name} (was {state} {have or want or '-'})")
             want = model
             if state == "failed" and have == model:
                 globals()["have"] = None   # a retry of the same model starts over
@@ -211,6 +225,8 @@ def ask(model):
             except OSError:
                 pass
             lock.notify_all()
+        elif state == "ready" and model is not None:
+            log(f"asked {name}: ready")
     time.sleep(0.05)
     return status_line()
 
