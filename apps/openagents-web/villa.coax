@@ -42,7 +42,7 @@
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
-MAX_VERTICES :: 16000;
+MAX_VERTICES :: 48000;   // the HUD and an open pet panel with a full memorial reach ~16K at 1440 px
 PLATES :: 16;
 // The uniforms (villa.wgsl U): width, height, time, fade; still, plates,
 // dpr, horizon; the view's four rows; the eye and how much of space shows;
@@ -1380,4 +1380,37 @@ villa_my_emote_text :: (s: [] Villa, i: int) -> string #export_c {
   #assert villa_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 0, 0, 1) && villa_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 2, 0, 1);
   #assert a[0].ed[0].pane == REDIT_BOARD;
   #assert e.x1 < 1280 - 16 - text_width("BRING YOUR PET", 9) - 36 && e.x0 > 600;   // left of the pet's button
+}
+
+#test "a placed pet's panel draws to its last button at desktop and phone, and its tabs switch" {
+  s: [1] Villa;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  redit_requested(s[0].ed[..], 3);
+  #assert redit_message(s[0].ed[..], HTTP_KIND + 3, "200\nrealm hecates-cemetery\nrole visitor\nowner 0\nrow flight 0 The flight in from space\nrow tips 1 First-visit tips\n");
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  fly(s[..], 10);
+  #assert !villa_busy(s[..]);
+  p := s[0].pet[..];
+  pet_take(p, "{\"id\": \"q-af2fc263ec5b49d8\", \"born\": \"2015\", \"died\": \"2026\", \"line\": \"A good dog who waited by the door every evening\", \"name\": \"Biscuit the Second\", \"plot\": 1, \"slug\": \"24973dbd\", \"agent\": \"ready\", \"files\": [], \"media\": [], \"story\": \"A small brown terrier with floppy ears who loved tennis balls, naps in the sun, the beach in winter and barking at the mail every single morning without fail.\", \"avatar\": {\"body\": 0.9, \"coat\": [0.36, 0.22, 0.12], \"ears\": 0.9, \"head\": 0.95, \"legs\": 0.85, \"size\": 0.68, \"tail\": 0.9, \"fluff\": 1.0, \"girth\": 0.85, \"marks\": [0.28, 0.16, 0.08], \"snout\": 0.9, \"skills\": [\"digging\", \"fetch\", \"obedience\"], \"pattern\": \"plain\", \"ear_size\": 0.95}, \"emotes\": [], \"status\": \"placed\", \"traits\": \"curious, gentle, stubborn about walks, loyal to the end\", \"choices\": [{\"why\": \"We gave your pup a petite, compact frame to match their small terrier stature.\", \"part\": \"size\"}, {\"why\": \"We shaped sweet, soft floppy ears that gently rest against their head.\", \"part\": \"ears\"}], \"agent_note\": \"\", \"achievements\": \"\"}", true);
+  #assert p[0].placed && p[0].agent == AGENT_READY;
+  sizes := [3] f32.[1440, 390, 1280];
+  highs := [3] f32.[900, 844, 800];
+  dprs := [3] f32.[1, 3, 2];
+  for c: 0..<3 {
+    p[0].view = PV_PET; p[0].tab = 0;
+    n := villa_draw(s[..], out[..], u[..], sizes[c] * dprs[c], highs[c] * dprs[c], dprs[c], false, 0, 0, 0, 0);
+    #assert n < MAX_VERTICES - 600;   // room to spare: nothing past the budget is dropped
+    last := -1; tab := -1;
+    for b: 0..<p[0].buttons { if p[0].button_kind[b] == B_MEMORIAL { last = b; } if p[0].button_kind[b] == B_TAB && p[0].button_arg[b] == 1 { tab = b; } }
+    #assert p[0].buttons < BUTTONS;
+    #assert tab >= 0;
+    #assert last >= 0;
+    t := p[0].button[tab];
+    #assert villa_pointer(s[..], (t.x0 + t.x1) / 2, (t.y0 + t.y1) / 2, 0, 0, 1) && p[0].tab == 1;
+    #assert villa_pointer(s[..], (t.x0 + t.x1) / 2, (t.y0 + t.y1) / 2, 2, 0, 1);
+    n = villa_draw(s[..], out[..], u[..], sizes[c] * dprs[c], highs[c] * dprs[c], dprs[c], false, 0, 0, 0, 0);
+    #assert n < MAX_VERTICES - 600 && p[0].tab == 1;
+  }
 }

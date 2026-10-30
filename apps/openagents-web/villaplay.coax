@@ -227,6 +227,8 @@ play_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
       t := cast(string) line[0..<ln];
       tw := text_width(t, cap);
       yb := y1 - bh - 18 * k;
+      // on its own plate, so it reads over the glowing dog
+      plate(s, u, Box.{x0 = (w - tw) / 2 - 10 * k, y0 = yb - cap - 7 * k, x1 = (w + tw) / 2 + 10 * k, y1 = yb + 5 * k}, 0.6, 0);
       m = pt_dim(out, m, t, (w - tw) / 2, yb, cap, k);
     }
   }
