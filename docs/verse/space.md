@@ -42,5 +42,46 @@ and drives along a wall.
 
 ## Orbits, large scales and the sky
 
-Belt 2200's section: `verse/orbit.coax` (Kepler, patched conics,
-transfers), the floating origin and large-scale camera, and the starfield.
+Belt 2200's first playable built these (October 30).
+
+| Module | What it gives | Loads |
+| --- | --- | --- |
+| `verse/orbit.coax` | Two-body Kepler motion in f64: `Orbit` (a, e, i, node, periapsis, mean anomaly at epoch, mu) and `State` (r, v); `orbit_state` and `orbit_from_state` both ways; Kepler's equation for ellipses (`kepler_elliptic`) and hyperbolas (`kepler_hyperbolic`); `orbit_propagate`. The solar system from J2000 mean elements (`orbit_body`, `orbit_body_state`: the Sun, Mercury to Saturn, the Moon about the Earth, Ceres and Vesta; DE440 GM and radii; `ORBIT_2200` is 1 January 2200). Spheres of influence (`orbit_soi_radius`, `orbit_body_soi`) and the patched-conic handoff (`orbit_relative`, `orbit_absolute`, `orbit_dominant`). Transfers: Lambert's problem by universal variables (`orbit_lambert`), Hohmann (`orbit_hohmann`), one transfer to a target orbit (`orbit_transfer`: both burns, their delta-v, the coast) and the planner (`orbit_plan`: the cheapest over a range of flight times, or the quickest under a delta-v budget). The rocket: `orbit_delta_v`, `orbit_propellant`, `orbit_propellant_from`, `orbit_burn_time`, and a finite burn under gravity with the mass flowing (`orbit_burn_step`, RK4) | rigid |
+| `verse/spacecam.coax` | The floating origin: every position stays f64 metres and the camera subtracts its own centre before scaling, so only small numbers reach f32. `spacecam_screen` and `spacecam_world` (pixel to the ecliptic), `spacecam_zoom_at` (the point under the cursor stays put), `spacecam_pan`, `spacecam_look`, `spacecam_follow` (the origin rides a ship), `spacecam_ease` (log-space zoom); twelve decades of zoom, from the outer system on a phone to 20 pixels a metre; a tilt for height | rigid |
+| `verse/stars.coax` | The sky, scalar f32 for a background pass (`coax/web/wgsl.py verse/stars.coax verse_starfield verse_sun_disc verse_sun_corona --into APP.wgsl`): three layers of hashed stars that drift with the camera, the Sun's disc with a soft limb, and its corona and halo, which keep a far Sun a glowing point | |
+
+What the checks hold them to: Kepler's equation to 1e-12 over eccentricities
+0 to 0.9 and four hyperbolas; elements to a state and back to 1e-9 (an
+ellipse and a hyperbola); an orbit keeps its energy and angular momentum to
+1e-9 and closes after its period (Mars's is 687 days); the Earth is at 1 AU
+with a 365.25-day year in 2200, the Moon 384,400 km from it, the Earth's
+sphere of influence 925,000 km and Jupiter's 48 million; a ship 100,000 km
+from the Earth is in its sphere and 50,000 km from the Moon in the Moon's;
+Lambert's arc cut from a known orbit gives back its velocities to a
+millimetre a second; Earth to Mars by Hohmann is 2.94 + 2.65 km/s in 259
+days, and the planner finds it within 60 m/s, and a quicker, dearer
+transfer under a bigger budget; a finite burn gives the rocket equation's
+delta-v to 1e-7 (Lagrange 2's tug: 120 kN at Isp 330 s); a hull 5 AU out
+draws to a millionth of a pixel through the floating origin, where f32
+positions would lose tens of kilometres; zooming keeps the point under the
+cursor; stars are sparse and the Sun's light falls away.
+
+### How a space game uses them
+
+1. Keep every position in f64 metres about the Sun (`D3`): the bodies from
+   `orbit_body_state(k, t)`, your own things as `Orbit`s (coasting) or
+   `State`s (under thrust, `orbit_burn_step`).
+2. To send a ship: `orbit_plan(from, target_orbit, now, GM_SUN, tof_min,
+   tof_max, samples, fast, dv_budget)` (a scale for the times is
+   `orbit_hohmann_time`); its `dv1`, `dv2` and `tof` are the burns and the
+   time, `orbit_propellant_from` the propellant. Coast on
+   `orbit_from_state(tr.depart, GM_SUN, now)`.
+3. Near a world, hand the state over with `orbit_dominant` and
+   `orbit_relative`, and propagate about its GM.
+4. Draw through a `SpaceCam`: `spacecam_screen(cam, p, w, h)` gives pixels
+   in f64; convert to f32 only then. Follow a ship by making it the origin.
+5. The background pass calls `verse_starfield` and the Sun's two functions
+   with the Sun's pixel and radius from the camera (bring a far-off Sun
+   within a million pixels along its direction, its radius scaled alike).
+
+Belt 2200 (`apps/openagents-web/belt.coax`) is the worked example.

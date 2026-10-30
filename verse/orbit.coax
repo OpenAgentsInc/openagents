@@ -1,0 +1,529 @@
+// Orbits in f64, the engine's space primitive (docs/verse/space.md): two-body
+// Kepler motion (elements to and from state vectors, Kepler's equation for
+// elliptic and hyperbolic orbits), an ephemeris of the solar system's bodies
+// from J2000 mean elements, spheres of influence for patched conics, a
+// transfer planner (Lambert's problem by universal variables, and Hohmann),
+// and finite burns integrated with the rocket equation.
+//
+// Units are metres, seconds, kilograms and radians. The frame is the
+// ecliptic of J2000: +X toward the vernal equinox, +Z the ecliptic's north.
+// Time is seconds since J2000 (TDB); ORBIT_2200 is 1 January 2200.
+// Ported in spirit from Lagrange 2's `verse-lagrange` orbit crate
+// (`git show 0b401561a0^:docs/verse/lagrange-2.md`): DE440 GM values and
+// the same rocket equation.
+//   coax/bin/coax test verse/orbit.coax --steps 2000000000
+
+#load "rigid.coax";
+
+AU :: 149597870700.0;               // m
+GM_SUN :: 132712440018000000000.0;  // m^3/s^2 (DE440)
+G0 :: 9.80665;                      // m/s^2: Isp in seconds to exhaust speed
+DAY :: 86400.0;
+YEAR :: 31557600.0;                 // Julian year, s
+ORBIT_2200 :: 6311433600.0;         // 2200-01-01 12:00 TDB: 73049 days after J2000
+DEG :: 0.017453292519943295;
+
+// An orbit about a body of gravity mu: semi-major axis a (negative for a
+// hyperbola), eccentricity e, inclination i, the ascending node's longitude
+// node, the argument of periapsis peri, and the mean anomaly m0 at epoch.
+Orbit :: struct { mu: f64; a: f64; e: f64; i: f64; node: f64; peri: f64; m0: f64; epoch: f64; }
+State :: struct { r: D3; v: D3; }
+
+orbit_state_of :: (r: D3, v: D3) -> State { return State.{r = r, v = v}; }
+
+// atan2 over atan_d (verse/rigid.coax): there is no atan intrinsic.
+atan2_d :: (y: f64, x: f64) -> f64 {
+  if x > 0.0 { return atan_d(y / x); }
+  if x < 0.0 {
+    if y >= 0.0 { return atan_d(y / x) + PI_D; }
+    return atan_d(y / x) - PI_D;
+  }
+  if y > 0.0 { return PI_D / 2.0; }
+  if y < 0.0 { return -PI_D / 2.0; }
+  return 0.0;
+}
+sinh_d :: (x: f64) -> f64 { return (exp(x) - exp(-x)) / 2.0; }
+cosh_d :: (x: f64) -> f64 { return (exp(x) + exp(-x)) / 2.0; }
+asinh_d :: (x: f64) -> f64 {
+  if x < 0.0 { return -asinh_d(-x); }
+  return log(x + sqrt(x * x + 1.0));
+}
+// An angle into (-PI, PI].
+wrap_pi :: (a: f64) -> f64 {
+  x := a - TAU_D * floor((a + PI_D) / TAU_D);
+  if x <= -PI_D { return x + TAU_D; }
+  return x;
+}
+// An angle into [0, TAU).
+wrap_tau :: (a: f64) -> f64 { return a - TAU_D * floor(a / TAU_D); }
+
+// ---- Kepler's equation
+
+// E with M = E - e sin E, for e < 1, by Newton's method to 1e-15.
+kepler_elliptic :: (mean: f64, e: f64) -> f64 {
+  m := wrap_pi(mean);
+  x := ifx e > 0.8 then (ifx m < 0.0 then -PI_D else PI_D) else m + e * sin(m);
+  for k: 0..<60 {
+    f := x - e * sin(x) - m;
+    d := f / (1.0 - e * cos(x));
+    x -= d;
+    if abs(d) < 0.000000000000001 { break; }
+  }
+  return x;
+}
+
+// H with M = e sinh H - H, for e > 1.
+kepler_hyperbolic :: (mean: f64, e: f64) -> f64 {
+  x := asinh_d(mean / e);
+  for k: 0..<100 {
+    f := e * sinh_d(x) - x - mean;
+    d := f / (e * cosh_d(x) - 1.0);
+    x -= d;
+    if abs(d) < 0.000000000000001 * fmax(1.0, abs(x)) { break; }
+  }
+  return x;
+}
+
+// The mean motion, rad/s.
+orbit_mean_motion :: (o: Orbit) -> f64 { return sqrt(o.mu / abs(o.a * o.a * o.a)); }
+// The period of an ellipse, s (0 for a hyperbola).
+orbit_period :: (o: Orbit) -> f64 {
+  if o.a <= 0.0 { return 0.0; }
+  return TAU_D / orbit_mean_motion(o);
+}
+
+// The perifocal frame (x toward periapsis, z along the angular momentum) into the reference frame.
+perifocal :: (o: Orbit, p: D3) -> D3 {
+  cn := cos(o.node); sn := sin(o.node);
+  ci := cos(o.i); si := sin(o.i);
+  cw := cos(o.peri); sw := sin(o.peri);
+  x := (cn * cw - sn * sw * ci) * p.x + (-cn * sw - sn * cw * ci) * p.y;
+  y := (sn * cw + cn * sw * ci) * p.x + (-sn * sw + cn * cw * ci) * p.y;
+  z := (sw * si) * p.x + (cw * si) * p.y;
+  return d3(x, y, z);
+}
+
+// Where the orbit's body is, and how fast, at time t.
+orbit_state :: (o: Orbit, t: f64) -> State {
+  n := orbit_mean_motion(o);
+  mean := o.m0 + n * (t - o.epoch);
+  if o.e < 1.0 {
+    ea := kepler_elliptic(mean, o.e);
+    b := sqrt(1.0 - o.e * o.e);
+    c := cos(ea); s := sin(ea);
+    k := n * o.a / (1.0 - o.e * c);
+    r := perifocal(o, d3(o.a * (c - o.e), o.a * b * s, 0.0));
+    v := perifocal(o, d3(-s * k, b * c * k, 0.0));
+    return orbit_state_of(r, v);
+  }
+  h := kepler_hyperbolic(mean, o.e);
+  aa := -o.a;
+  b := sqrt(o.e * o.e - 1.0);
+  ch := cosh_d(h); sh := sinh_d(h);
+  q := sqrt(o.mu / aa) / (o.e * ch - 1.0);
+  r := perifocal(o, d3(aa * (o.e - ch), aa * b * sh, 0.0));
+  v := perifocal(o, d3(-sh * q, b * ch * q, 0.0));
+  return orbit_state_of(r, v);
+}
+orbit_position :: (o: Orbit, t: f64) -> D3 { return orbit_state(o, t).r; }
+
+// The orbit through a state at time t about gravity mu (not for a parabola,
+// e exactly 1). A circular orbit puts periapsis at the node; an equatorial
+// one puts the node on +X.
+orbit_from_state :: (st: State, mu: f64, t: f64) -> Orbit {
+  r := st.r; v := st.v;
+  rl := d3_len(r);
+  h := d3_cross(r, v);
+  hl := d3_len(h);
+  nv := d3(-h.y, h.x, 0.0);
+  nl := d3_len(nv);
+  ev := d3_scale(d3_sub(d3_scale(r, d3_len2(v) - mu / rl), d3_scale(v, d3_dot(r, v))), 1.0 / mu);
+  e := d3_len(ev);
+  energy := d3_len2(v) / 2.0 - mu / rl;
+  o: Orbit;
+  o.mu = mu; o.epoch = t; o.e = e;
+  o.a = -mu / (2.0 * energy);
+  o.i = acos_d(h.z / hl);
+  hu := d3_scale(h, 1.0 / hl);
+  nu_ := ifx nl > 0.000000001 * hl then d3_scale(nv, 1.0 / nl) else D3_X;
+  o.node = ifx nl > 0.000000001 * hl then wrap_tau(atan2_d(nv.y, nv.x)) else 0.0;
+  pu := ifx e > 0.00000000001 then d3_scale(ev, 1.0 / e) else nu_;
+  // periapsis from the node, in the orbit's plane, signed by the angular momentum
+  o.peri = wrap_tau(atan2_d(d3_dot(hu, d3_cross(nu_, pu)), d3_dot(nu_, pu)));
+  nu := atan2_d(d3_dot(hu, d3_cross(pu, r)), d3_dot(pu, r));
+  if e < 1.0 {
+    ea := atan2_d(sqrt(1.0 - e * e) * sin(nu), e + cos(nu));
+    o.m0 = ea - e * sin(ea);
+  } else {
+    // tanh(H/2) = sqrt((e-1)/(e+1)) tan(nu/2)
+    q := sqrt((e - 1.0) / (e + 1.0)) * tan(nu / 2.0);
+    hh := log((1.0 + q) / (1.0 - q));
+    o.m0 = e * sinh_d(hh) - hh;
+  }
+  return o;
+}
+
+// From a state at t0 to time t, on the two-body orbit through it.
+orbit_propagate :: (st: State, mu: f64, t0: f64, t: f64) -> State {
+  return orbit_state(orbit_from_state(st, mu, t0), t);
+}
+
+// ---- the solar system (J2000 mean elements: Standish's table for the
+// planets, 1800 to 2050, held fixed; the Moon about the Earth; Ceres and
+// Vesta from their osculating elements, rounded)
+
+BODY_SUN :: 0; BODY_MERCURY :: 1; BODY_VENUS :: 2; BODY_EARTH :: 3; BODY_MOON :: 4;
+BODY_MARS :: 5; BODY_CERES :: 6; BODY_VESTA :: 7; BODY_JUPITER :: 8; BODY_SATURN :: 9;
+BODIES :: 10;
+BODY_NAMES :: [10] string.["SUN", "MERCURY", "VENUS", "EARTH", "MOON", "MARS", "CERES", "VESTA", "JUPITER", "SATURN"];
+BODY_PARENT :: [10] int.[-1, 0, 0, 0, 3, 0, 0, 0, 0, 0];
+// GM, m^3/s^2 (DE440), and mean radius, m
+BODY_GM :: [10] f64.[132712440018000000000.0, 22031868551000.0, 324858592000000.0, 398600435507000.0, 4902800118000.0,
+                     42828375816000.0, 62628400000.0, 17288000000.0, 126712764100000000.0, 37940584841800000.0];
+BODY_RADIUS :: [10] f64.[695700000.0, 2439700.0, 6051800.0, 6371000.0, 1737400.0, 3389500.0, 469700.0, 262700.0, 69911000.0, 58232000.0];
+// a (AU; the Moon's in metres), e, i, the node's longitude, the longitude of periapsis and the mean longitude (degrees)
+BODY_A :: [10] f64.[0.0, 0.38709927, 0.72333566, 1.00000261, 384400000.0, 1.52371034, 2.7675, 2.3615, 5.20288700, 9.53667594];
+BODY_E :: [10] f64.[0.0, 0.20563593, 0.00677672, 0.01671123, 0.0549, 0.09339410, 0.0758, 0.0887, 0.04838624, 0.05386179];
+BODY_I :: [10] f64.[0.0, 7.00497902, 3.39467605, 0.0, 5.145, 1.84969142, 10.59, 7.14, 1.30439695, 2.48599187];
+BODY_NODE :: [10] f64.[0.0, 48.33076593, 76.67984255, 0.0, 125.08, 49.55953891, 80.33, 103.85, 100.47390909, 113.66242448];
+BODY_LPERI :: [10] f64.[0.0, 77.45779628, 131.60246718, 102.93768193, 83.23, 336.05637041, 153.83, 254.75, 14.72847983, 92.59887831];
+BODY_LMEAN :: [10] f64.[0.0, 252.25032350, 181.97909950, 100.46457166, 218.32, 355.44656795, 108.0, 275.0, 34.39644051, 49.95424423];
+
+// The body's orbit about its parent.
+orbit_body :: (k: int) -> Orbit {
+  o: Orbit;
+  if k <= 0 || k >= BODIES { o.mu = GM_SUN; o.a = 1.0; return o; }
+  p := BODY_PARENT[k];
+  o.mu = BODY_GM[p] + BODY_GM[k];
+  o.a = ifx p == BODY_SUN then BODY_A[k] * AU else BODY_A[k];
+  o.e = BODY_E[k];
+  o.i = BODY_I[k] * DEG;
+  o.node = BODY_NODE[k] * DEG;
+  o.peri = wrap_tau((BODY_LPERI[k] - BODY_NODE[k]) * DEG);
+  o.m0 = wrap_tau((BODY_LMEAN[k] - BODY_LPERI[k]) * DEG);
+  o.epoch = 0.0;
+  return o;
+}
+
+// Where a body is about the Sun at t (the Moon's parent added).
+orbit_body_state :: (k: int, t: f64) -> State {
+  if k <= 0 || k >= BODIES { return orbit_state_of(D3_ZERO, D3_ZERO); }
+  s := orbit_state(orbit_body(k), t);
+  p := BODY_PARENT[k];
+  if p > 0 {
+    ps := orbit_body_state(p, t);
+    return orbit_state_of(d3_add(s.r, ps.r), d3_add(s.v, ps.v));
+  }
+  return s;
+}
+orbit_body_position :: (k: int, t: f64) -> D3 { return orbit_body_state(k, t).r; }
+
+// The sphere of influence (Laplace): a (m/M)^(2/5).
+orbit_soi_radius :: (a: f64, gm_body: f64, gm_parent: f64) -> f64 { return a * pow(gm_body / gm_parent, 0.4); }
+orbit_body_soi :: (k: int) -> f64 {
+  if k <= 0 || k >= BODIES { return 1000000000000000.0; }
+  o := orbit_body(k);
+  return orbit_soi_radius(o.a, BODY_GM[k], BODY_GM[BODY_PARENT[k]]);
+}
+
+// ---- patched conics: a state handed between a body's sphere and its parent's
+
+// The ship's state relative to a body, and its orbit there.
+orbit_relative :: (ship: State, body: State) -> State { return orbit_state_of(d3_sub(ship.r, body.r), d3_sub(ship.v, body.v)); }
+orbit_absolute :: (rel: State, body: State) -> State { return orbit_state_of(d3_add(rel.r, body.r), d3_add(rel.v, body.v)); }
+orbit_in_soi :: (ship: State, body: State, soi: f64) -> bool { return d3_dist(ship.r, body.r) < soi; }
+// The body whose sphere holds a heliocentric state at t: the deepest one, or the Sun.
+orbit_dominant :: (ship: State, t: f64) -> int {
+  best := BODY_SUN;
+  for k: 1..<BODIES {
+    if BODY_PARENT[k] != BODY_SUN { continue; }
+    if orbit_in_soi(ship, orbit_body_state(k, t), orbit_body_soi(k)) { best = k; }
+  }
+  if best != BODY_SUN {
+    for k: 1..<BODIES {
+      if BODY_PARENT[k] == best && orbit_in_soi(ship, orbit_body_state(k, t), orbit_body_soi(k)) { best = k; }
+    }
+  }
+  return best;
+}
+
+// ---- transfers
+
+// Stumpff's functions.
+stumpff_c :: (z: f64) -> f64 {
+  if z > 0.000001 { return (1.0 - cos(sqrt(z))) / z; }
+  if z < -0.000001 { return (cosh_d(sqrt(-z)) - 1.0) / -z; }
+  return 0.5 - z / 24.0 + z * z / 720.0;
+}
+stumpff_s :: (z: f64) -> f64 {
+  if z > 0.000001 { q := sqrt(z); return (q - sin(q)) / (q * q * q); }
+  if z < -0.000001 { q := sqrt(-z); return (sinh_d(q) - q) / (q * q * q); }
+  return 1.0 / 6.0 - z / 120.0 + z * z / 5040.0;
+}
+
+Lambert :: struct { ok: bool; v1: D3; v2: D3; }
+
+// Lambert's problem by universal variables (Bate, Mueller and White), one
+// revolution or less: the velocities at r1 and r2 of the orbit about mu that
+// joins them in time tof, going the prograde way round (counterclockwise
+// seen from +Z) when prograde.
+orbit_lambert :: (r1: D3, r2: D3, tof: f64, mu: f64, prograde: bool) -> Lambert {
+  out: Lambert;
+  l1 := d3_len(r1); l2 := d3_len(r2);
+  if !(tof > 0.0) || l1 <= 0.0 || l2 <= 0.0 { return out; }
+  c := fclamp(d3_dot(r1, r2) / (l1 * l2), -1.0, 1.0);
+  dnu := acos_d(c);
+  cz := d3_cross(r1, r2).z;
+  if (prograde && cz < 0.0) || (!prograde && cz >= 0.0) { dnu = TAU_D - dnu; }
+  a := sin(dnu) * sqrt(l1 * l2 / (1.0 - c));
+  if !is_finite(a) || abs(a) < 0.000001 { return out; }
+  low := -4.0 * PI_D * PI_D * 4.0; high := 4.0 * PI_D * PI_D - 0.000001;
+  z := 0.0; y := 0.0;
+  sm := sqrt(mu);
+  for k: 0..<200 {
+    z = (low + high) / 2.0;
+    cc := stumpff_c(z); ss := stumpff_s(z);
+    y = l1 + l2 + a * (z * ss - 1.0) / sqrt(cc);
+    if y < 0.0 { low = z; continue; }
+    chi := sqrt(y / cc);
+    t := (chi * chi * chi * ss + a * sqrt(y)) / sm;
+    if t <= tof { low = z; } else { high = z; }
+    if high - low < 0.0000000000001 { break; }
+  }
+  if !(y > 0.0) { return out; }
+  f := 1.0 - y / l1;
+  g := a * sqrt(y / mu);
+  gd := 1.0 - y / l2;
+  out.v1 = d3_scale(d3_sub(r2, d3_scale(r1, f)), 1.0 / g);
+  out.v2 = d3_scale(d3_sub(d3_scale(r2, gd), r1), 1.0 / g);
+  out.ok = d3_finite(out.v1) && d3_finite(out.v2);
+  return out;
+}
+
+// A Hohmann transfer between circular coplanar orbits of radii r1 and r2.
+Hohmann :: struct { dv1: f64; dv2: f64; tof: f64; }
+orbit_hohmann :: (r1: f64, r2: f64, mu: f64) -> Hohmann {
+  at := (r1 + r2) / 2.0;
+  h: Hohmann;
+  h.dv1 = abs(sqrt(mu / r1) * (sqrt(2.0 * r2 / (r1 + r2)) - 1.0));
+  h.dv2 = abs(sqrt(mu / r2) * (1.0 - sqrt(2.0 * r1 / (r1 + r2))));
+  h.tof = PI_D * sqrt(at * at * at / mu);
+  return h;
+}
+
+// A planned transfer: leave now from a state, meet a target orbit tof later.
+Transfer :: struct {
+  ok: bool;
+  t0: f64; tof: f64;
+  dv1: D3; dv2: D3;      // the departure and arrival burns
+  dv: f64;               // their sum, m/s
+  depart: State;         // just after the first burn
+  arrive: State;         // the target, at arrival
+}
+
+orbit_transfer :: (from: State, target: Orbit, t0: f64, tof: f64, mu: f64) -> Transfer {
+  tr: Transfer;
+  tr.t0 = t0; tr.tof = tof;
+  goal := orbit_state(target, t0 + tof);
+  l := orbit_lambert(from.r, goal.r, tof, mu, true);
+  if !l.ok { return tr; }
+  tr.dv1 = d3_sub(l.v1, from.v);
+  tr.dv2 = d3_sub(goal.v, l.v2);
+  tr.dv = d3_len(tr.dv1) + d3_len(tr.dv2);
+  tr.depart = orbit_state_of(from.r, l.v1);
+  tr.arrive = goal;
+  tr.ok = is_finite(tr.dv);
+  return tr;
+}
+
+// The planner: of `samples` times of flight from tof_min to tof_max, the
+// cheapest transfer (fast false) or the quickest whose dv is under dv_max
+// (fast true; the cheapest when none is).
+orbit_plan :: (from: State, target: Orbit, t0: f64, mu: f64, tof_min: f64, tof_max: f64, samples: int, fast: bool, dv_max: f64) -> Transfer {
+  best: Transfer;
+  quick: Transfer;
+  n := ifx samples < 2 then 2 else samples;
+  for k: 0..<n {
+    tof := tof_min + (tof_max - tof_min) * f64(k) / f64(n - 1);
+    tr := orbit_transfer(from, target, t0, tof, mu);
+    if !tr.ok { continue; }
+    if !best.ok || tr.dv < best.dv { best = tr; }
+    if tr.dv <= dv_max && (!quick.ok || tr.tof < quick.tof) { quick = tr; }
+  }
+  if fast && quick.ok { return quick; }
+  return best;
+}
+
+// The Hohmann time between two orbits' semi-major axes, a scale for the planner's times.
+orbit_hohmann_time :: (a1: f64, a2: f64, mu: f64) -> f64 { return orbit_hohmann(abs(a1), abs(a2), mu).tof; }
+
+// ---- the rocket
+
+// Delta-v from a mass ratio: Isp g0 ln(m0 / m1).
+orbit_delta_v :: (isp: f64, m0: f64, m1: f64) -> f64 { return isp * G0 * log(m0 / m1); }
+// Propellant to give dv to a ship whose mass after the burn is m1.
+orbit_propellant :: (isp: f64, m1: f64, dv: f64) -> f64 { return m1 * (exp(dv / (isp * G0)) - 1.0); }
+// Propellant to give dv to a ship of mass m0 before the burn.
+orbit_propellant_from :: (isp: f64, m0: f64, dv: f64) -> f64 { return m0 * (1.0 - exp(-dv / (isp * G0))); }
+// How long a burn of dv takes at thrust (N) from mass m0.
+orbit_burn_time :: (isp: f64, m0: f64, thrust: f64, dv: f64) -> f64 {
+  return orbit_propellant_from(isp, m0, dv) * isp * G0 / thrust;
+}
+
+// A finite burn: position, velocity and mass under gravity mu and thrust
+// along dir, one RK4 step of dt. Mass flows at thrust / (Isp g0).
+Burn :: struct { r: D3; v: D3; m: f64; }
+burn_accel :: (r: D3, v: D3, m: f64, mu: f64, thrust: f64, dir: D3) -> D3 {
+  a := d3_scale(dir, thrust / m);
+  rl := d3_len(r);
+  if mu > 0.0 && rl > 0.0 { a = d3_add(a, d3_scale(r, -mu / (rl * rl * rl))); }
+  return a;
+}
+orbit_burn_step :: (b: Burn, mu: f64, thrust: f64, isp: f64, dir: D3, dt: f64) -> Burn {
+  md := -thrust / (isp * G0);
+  k1r := b.v; k1v := burn_accel(b.r, b.v, b.m, mu, thrust, dir);
+  r2 := d3_add(b.r, d3_scale(k1r, dt / 2.0)); v2 := d3_add(b.v, d3_scale(k1v, dt / 2.0)); m2 := b.m + md * dt / 2.0;
+  k2r := v2; k2v := burn_accel(r2, v2, m2, mu, thrust, dir);
+  r3 := d3_add(b.r, d3_scale(k2r, dt / 2.0)); v3 := d3_add(b.v, d3_scale(k2v, dt / 2.0));
+  k3r := v3; k3v := burn_accel(r3, v3, m2, mu, thrust, dir);
+  r4 := d3_add(b.r, d3_scale(k3r, dt)); v4 := d3_add(b.v, d3_scale(k3v, dt)); m4 := b.m + md * dt;
+  k4r := v4; k4v := burn_accel(r4, v4, m4, mu, thrust, dir);
+  out: Burn;
+  out.r = d3_add(b.r, d3_scale(d3_add(d3_add(k1r, d3_scale(k2r, 2.0)), d3_add(d3_scale(k3r, 2.0), k4r)), dt / 6.0));
+  out.v = d3_add(b.v, d3_scale(d3_add(d3_add(k1v, d3_scale(k2v, 2.0)), d3_add(d3_scale(k3v, 2.0), k4v)), dt / 6.0));
+  out.m = m4;
+  return out;
+}
+
+// ---- checks
+
+rel_near :: (a: f64, b: f64, tolerance: f64) -> bool { return abs(a - b) <= tolerance * fmax(abs(a), abs(b)); }
+
+#test "Kepler's equation holds for ellipses and hyperbolas" {
+  for k: 0..<9 {
+    e := f64(k) * 0.11;
+    for j: 0..<7 {
+      m := -3.0 + f64(j);
+      ea := kepler_elliptic(m, e);
+      #assert abs(wrap_pi(ea - e * sin(ea) - m)) < 0.000000000001;
+    }
+  }
+  for k: 1..<5 {
+    e := 1.0 + f64(k) * 0.7;
+    for j: 0..<5 {
+      m := -20.0 + 10.0 * f64(j);
+      h := kepler_hyperbolic(m, e);
+      #assert abs(e * sinh_d(h) - h - m) < 0.000000001 * fmax(1.0, abs(m));
+    }
+  }
+}
+
+#test "elements to a state and back" {
+  o: Orbit;
+  o.mu = GM_SUN; o.a = 2.1 * AU; o.e = 0.31; o.i = 0.4; o.node = 1.2; o.peri = 2.5; o.m0 = 0.7; o.epoch = 1000.0;
+  st := orbit_state(o, 5000000.0);
+  back := orbit_from_state(st, GM_SUN, 5000000.0);
+  #assert rel_near(back.a, o.a, 0.000000001) && abs(back.e - o.e) < 0.000000001;
+  #assert abs(back.i - o.i) < 0.000000001 && abs(wrap_pi(back.node - o.node)) < 0.000000001 && abs(wrap_pi(back.peri - o.peri)) < 0.00000001;
+  again := orbit_state(back, 90000000.0);
+  want := orbit_state(o, 90000000.0);
+  #assert d3_dist(again.r, want.r) < 10.0 && d3_dist(again.v, want.v) < 0.000001;
+  // A hyperbola, too.
+  hy: Orbit;
+  hy.mu = 398600435507000.0; hy.a = -20000000.0; hy.e = 1.6; hy.i = 0.2; hy.node = 0.3; hy.peri = 0.9; hy.m0 = -2.0;
+  hs := orbit_state(hy, 3000.0);
+  hb := orbit_from_state(hs, hy.mu, 3000.0);
+  #assert rel_near(hb.a, hy.a, 0.000000001) && abs(hb.e - hy.e) < 0.000000001;
+  #assert d3_dist(orbit_state(hb, 9000.0).r, orbit_state(hy, 9000.0).r) < 0.01;
+}
+
+#test "a two-body orbit keeps its energy and angular momentum and closes after a period" {
+  o := orbit_body(BODY_MARS);
+  s0 := orbit_state(o, 0.0);
+  p := orbit_period(o);
+  #assert abs(p / DAY - 687.0) < 1.0;
+  e0 := d3_len2(s0.v) / 2.0 - o.mu / d3_len(s0.r);
+  h0 := d3_len(d3_cross(s0.r, s0.v));
+  for k: 1..<8 {
+    s := orbit_state(o, p * f64(k) / 8.0);
+    #assert rel_near(d3_len2(s.v) / 2.0 - o.mu / d3_len(s.r), e0, 0.000000001);
+    #assert rel_near(d3_len(d3_cross(s.r, s.v)), h0, 0.000000001);
+  }
+  #assert d3_dist(orbit_state(o, p).r, s0.r) < 1000.0;
+}
+
+#test "the ephemeris: the Earth at 1 AU in a year, the Moon at 384,400 km, Jupiter's sphere" {
+  e := orbit_body(BODY_EARTH);
+  #assert abs(orbit_period(e) / DAY - 365.25) < 0.1;
+  r := d3_len(orbit_body_position(BODY_EARTH, ORBIT_2200));
+  #assert r > 0.98 * AU && r < 1.02 * AU;
+  m := d3_dist(orbit_body_position(BODY_MOON, ORBIT_2200), orbit_body_position(BODY_EARTH, ORBIT_2200));
+  #assert m > 360000000.0 && m < 410000000.0;
+  // The Earth's sphere of influence is about 925,000 km; Jupiter's about 48 million.
+  #assert abs(orbit_body_soi(BODY_EARTH) - 925000000.0) < 10000000.0;
+  #assert abs(orbit_body_soi(BODY_JUPITER) - 48200000000.0) < 1000000000.0;
+  // A ship 100,000 km from the Earth is in its sphere; 50,000 km from the Moon, in the Moon's.
+  ship := orbit_body_state(BODY_EARTH, ORBIT_2200);
+  ship.r = d3_add(ship.r, d3(100000000.0, 0.0, 0.0));
+  #assert orbit_dominant(ship, ORBIT_2200) == BODY_EARTH;
+  near := orbit_body_state(BODY_MOON, ORBIT_2200);
+  near.r = d3_add(near.r, d3(0.0, 50000000.0, 0.0));
+  #assert orbit_dominant(near, ORBIT_2200) == BODY_MOON;
+  far := orbit_state_of(d3(3.0 * AU, 0.0, 0.0), D3_ZERO);
+  #assert orbit_dominant(far, ORBIT_2200) == BODY_SUN;
+}
+
+#test "Lambert's arc meets the orbit it was cut from, and a Hohmann transfer is its cheapest" {
+  o: Orbit;
+  o.mu = GM_SUN; o.a = 1.7 * AU; o.e = 0.2; o.i = 0.05; o.node = 0.4; o.peri = 1.0; o.m0 = 0.3;
+  a := orbit_state(o, 0.0);
+  b := orbit_state(o, 150.0 * DAY);
+  l := orbit_lambert(a.r, b.r, 150.0 * DAY, GM_SUN, true);
+  #assert l.ok;
+  #assert d3_dist(l.v1, a.v) < 0.001 && d3_dist(l.v2, b.v) < 0.001;
+  // Earth to Mars: a Hohmann from 1 AU to 1.524 AU is 2.94 + 2.65 km/s in 259 days.
+  h := orbit_hohmann(AU, 1.5237 * AU, GM_SUN);
+  #assert abs(h.dv1 - 2945.0) < 15.0 && abs(h.dv2 - 2649.0) < 15.0 && abs(h.tof / DAY - 259.0) < 1.0;
+  // Circular coplanar orbits: the planner's cheapest transfer is near the Hohmann's cost.
+  c1: Orbit; c1.mu = GM_SUN; c1.a = AU;
+  c2: Orbit; c2.mu = GM_SUN; c2.a = 1.5237 * AU;
+  // Mars placed so that it is opposite the departure after a Hohmann time.
+  n2 := orbit_mean_motion(c2);
+  c2.m0 = PI_D - n2 * h.tof;
+  from := orbit_state(c1, 0.0);
+  tr := orbit_plan(from, c2, 0.0, GM_SUN, 0.6 * h.tof, 1.4 * h.tof, 41, false, 0.0);
+  #assert tr.ok && abs(tr.dv - (h.dv1 + h.dv2)) < 60.0 && abs(tr.tof - h.tof) < 0.03 * h.tof;
+  // The quickest under a bigger budget is faster and costs more.
+  quick := orbit_plan(from, c2, 0.0, GM_SUN, 0.3 * h.tof, 1.4 * h.tof, 41, true, 2.0 * tr.dv);
+  #assert quick.ok && quick.tof < tr.tof && quick.dv > tr.dv && quick.dv <= 2.0 * tr.dv;
+  // The coast arc arrives where the target is.
+  coast := orbit_propagate(tr.depart, GM_SUN, 0.0, tr.tof);
+  #assert d3_dist(coast.r, tr.arrive.r) < 1000000.0;
+}
+
+#test "a finite burn gives the rocket equation's delta-v" {
+  b := Burn.{r = d3(0.0, 0.0, 0.0), v = D3_ZERO, m = 98400.0};
+  // Lagrange 2's tug: 120 kN at Isp 330 s, burning 20 t of its 49 t of propellant.
+  isp := 330.0; thrust := 120000.0;
+  dt := 1.0;
+  t := 0.0;
+  while b.m > 78400.0 + 0.001 {
+    piece := fmin(dt, (b.m - 78400.0) * isp * G0 / thrust);
+    b = orbit_burn_step(b, 0.0, thrust, isp, D3_X, piece);
+    t += piece;
+  }
+  want := orbit_delta_v(isp, 98400.0, 78400.0);
+  #assert rel_near(b.v.x, want, 0.0000001);
+  #assert rel_near(orbit_propellant(isp, 78400.0, want), 20000.0, 0.0000000001);
+  #assert rel_near(orbit_propellant_from(isp, 98400.0, want), 20000.0, 0.0000000001);
+  #assert rel_near(orbit_burn_time(isp, 98400.0, thrust, want), t, 0.0000001);
+  // Under gravity, a short prograde burn in a circular orbit raises its energy by about v dv.
+  mu := 398600435507000.0;
+  r0 := 7000000.0; v0 := sqrt(mu / r0);
+  g := Burn.{r = d3(r0, 0.0, 0.0), v = d3(0.0, v0, 0.0), m = 1000.0};
+  e0 := v0 * v0 / 2.0 - mu / r0;
+  for k: 0..<10 { g = orbit_burn_step(g, mu, 1000.0, 300.0, d3_unit(g.v), 1.0); }
+  dv := orbit_delta_v(300.0, 1000.0, g.m);
+  e1 := d3_len2(g.v) / 2.0 - mu / d3_len(g.r);
+  #assert rel_near(e1 - e0, v0 * dv, 0.01);
+}

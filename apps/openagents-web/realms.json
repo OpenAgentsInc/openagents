@@ -142,6 +142,19 @@
         "golden": { "lit": 0.05, "settle": 3000, "blocks": 6 },
         "assets": ["index:/realms/dead-gears/assets/DeadGears.indices"]
       } },
+    { "id": "belt2200", "name": "BELT 2200", "kind": "open", "orbit": { "r": 0.44, "a": 1.4, "size": 0.032 },
+      "realm": {
+        "slug": "belt-2200",
+        "style": "lowpoly",
+        "clock": "fixed:0.5",
+        "title": "Belt 2200",
+        "description": "Belt 2200, a hard sci-fi strategy game in the browser: the solar system in the year 2200 on real orbits. Run the Free Belt's Hearth Station at Ceres, plan burns and coasts with their delta-v, propellant and time, and mine ice while the Mars Union and the Terran Compact fly their own routes.",
+        "alt": "Enter the Verse: the solar system in 2200 in Belt 2200",
+        "module": "belt",
+        "slot": "belt-2200",
+        "golden": { "lit": 0.004, "settle": 2500, "blocks": 8 },
+        "assets": []
+      } },
     { "id": "fixture", "name": "FIXTURE REALM", "kind": "open", "listed": false, "orbit": { "r": 0.26, "a": 1.9, "size": 0.026 },
       "realm": {
         "slug": "fixture",

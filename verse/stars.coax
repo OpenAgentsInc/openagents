@@ -1,0 +1,85 @@
+// The sky behind space (docs/verse/space.md): a starfield and the Sun, as
+// light per pixel, for any space realm's background pass. Scalar f32 only,
+// so coax/web/wgsl.py turns these into WGSL and Metal (as verse/light.coax):
+//   python3 coax/web/wgsl.py verse/stars.coax verse_starfield verse_sun_disc verse_sun_corona --into APP.wgsl
+// The stars sit in screen cells (a hash picks which cell has one, where in
+// it and how bright); a drift moves the field slowly as the camera pans, so
+// it reads as far away. The Sun is a disc, a corona falling off with
+// distance, and a wide halo that keeps it bright when it is a point.
+//   coax/bin/coax test --library verse/stars.coax
+
+stars_fract :: (x:f32)->f32 { return x-floor(x); }
+stars_hash :: (x:f32,y:f32)->f32 { return stars_fract(sin(x*127.1f32+y*311.7f32)*43758.5453f32); }
+stars_max :: (a:f32,b:f32)->f32 { if a>b { return a; } return b; }
+stars_min :: (a:f32,b:f32)->f32 { if a<b { return a; } return b; }
+
+// One layer: cells `cell` pixels wide, a star in a share `density` of them,
+// each `size` pixels across, twinkling with time t.
+verse_star_layer :: (x:f32,y:f32,cell:f32,density:f32,size:f32,t:f32,seed:f32)->f32 #export_c {
+  cx:=floor(x/cell); cy:=floor(y/cell);
+  pick:=stars_hash(cx+seed,cy-seed*0.37f32);
+  if pick<1.0f32-density { return 0.0f32; }
+  ox:=(0.2f32+0.6f32*stars_hash(cx*1.7f32+seed,cy+3.1f32))*cell;
+  oy:=(0.2f32+0.6f32*stars_hash(cx-2.3f32,cy*1.3f32+seed))*cell;
+  dx:=x-(cx*cell+ox); dy:=y-(cy*cell+oy);
+  d2:=(dx*dx+dy*dy)/(size*size);
+  bright:=0.35f32+0.65f32*stars_hash(cx+11.0f32,cy+seed*2.0f32);
+  twinkle:=0.8f32+0.2f32*sin(t*(0.7f32+2.0f32*pick)+pick*40.0f32);
+  return exp(-d2)*bright*twinkle;
+}
+
+// The starfield at pixel x, y with the camera's drift (pixels) and time.
+verse_starfield :: (x:f32,y:f32,drift_x:f32,drift_y:f32,t:f32,dpr:f32)->f32 #export_c {
+  k:=stars_max(dpr,0.5f32);
+  far:=verse_star_layer(x+drift_x*0.02f32,y+drift_y*0.02f32,9.0f32*k,0.12f32,0.55f32*k,t,1.0f32)*0.55f32;
+  mid:=verse_star_layer(x+drift_x*0.05f32,y+drift_y*0.05f32,23.0f32*k,0.10f32,0.8f32*k,t,7.0f32)*0.85f32;
+  near:=verse_star_layer(x+drift_x*0.1f32,y+drift_y*0.1f32,61.0f32*k,0.08f32,1.1f32*k,t,13.0f32)*1.2f32;
+  return far+mid+near;
+}
+
+// The Sun's disc, d pixels from its centre, of radius r pixels: 1 inside, soft at the limb.
+verse_sun_disc :: (d:f32,r:f32)->f32 #export_c {
+  rr:=stars_max(r,0.75f32);
+  x:=(d-rr)/stars_max(rr*0.08f32,0.75f32);
+  if x<=-1.0f32 { return 1.0f32; }
+  if x>=1.0f32 { return 0.0f32; }
+  return 0.5f32-0.5f32*x;
+}
+// Its corona and halo outside the disc: bright near the limb, wide and faint
+// far out, never zero, so a distant Sun is still a star that lights the view.
+verse_sun_corona :: (d:f32,r:f32,dpr:f32)->f32 #export_c {
+  k:=stars_max(dpr,0.5f32);
+  rr:=stars_max(r,0.75f32);
+  out:=stars_max(d-rr,0.0f32);
+  corona:=exp(-out/(rr*0.6f32+3.0f32*k))*0.9f32;
+  halo:=exp(-out/(rr*3.0f32+40.0f32*k))*0.22f32;
+  glare:=0.06f32/(1.0f32+out/(120.0f32*k));
+  return stars_min(corona+halo+glare,1.5f32);
+}
+
+#test "stars are sparse points, brighter in their middles, and fixed while the camera holds still" {
+  lit:=0; total:=0;
+  for y: 0..<60 {
+    for x: 0..<60 {
+      v:=verse_starfield(f32(x)*3.0f32,f32(y)*3.0f32,0.0f32,0.0f32,0.0f32,1.0f32);
+      #assert v>=0.0f32 && v<3.0f32;
+      if v>0.05f32 { lit+=1; }
+      total+=1;
+    }
+  }
+  // a few percent of the sky is lit, never most of it
+  #assert lit>0 && lit*10<total;
+  #assert verse_starfield(31.0f32,77.0f32,0.0f32,0.0f32,0.0f32,1.0f32)==verse_starfield(31.0f32,77.0f32,0.0f32,0.0f32,0.0f32,1.0f32);
+}
+
+#test "the Sun is a disc with a soft limb and a corona that falls away" {
+  #assert verse_sun_disc(0.0f32,20.0f32)==1.0f32;
+  #assert verse_sun_disc(40.0f32,20.0f32)==0.0f32;
+  limb:=verse_sun_disc(20.0f32,20.0f32);
+  #assert limb>0.4f32 && limb<0.6f32;
+  #assert verse_sun_corona(21.0f32,20.0f32,1.0f32)>verse_sun_corona(60.0f32,20.0f32,1.0f32);
+  #assert verse_sun_corona(60.0f32,20.0f32,1.0f32)>verse_sun_corona(400.0f32,20.0f32,1.0f32);
+  // a Sun under a pixel still glows
+  #assert verse_sun_corona(10.0f32,0.2f32,1.0f32)>0.2f32;
+  #assert verse_sun_corona(2000.0f32,0.2f32,1.0f32)>0.0f32;
+}

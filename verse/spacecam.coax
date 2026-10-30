@@ -1,0 +1,140 @@
+// A camera for space (docs/verse/space.md): a floating origin in f64, so a
+// ship a hundred metres long and the orbit of Jupiter are drawn by the same
+// camera without jitter. Every position stays in f64 metres; the camera
+// subtracts its own centre in f64 first and only then scales to pixels, so
+// what reaches f32 (the GPU) is small. Zoom runs over twelve decades, from
+// the outer system to a hull plate, eased in log space.
+//
+// The view looks down on the ecliptic (+X right, +Y up the screen), tipped
+// by `tilt` radians about the screen's horizontal so +Z shows as height.
+//   coax/bin/coax test --library verse/spacecam.coax
+
+#load "rigid.coax";
+
+SPACECAM_MIN_SCALE :: 0.0000000000001;   // pixels per metre: the outer system on a phone
+SPACECAM_MAX_SCALE :: 20.0;              // a metre is 20 pixels
+SPACECAM_EASE :: 9.0;                    // 1/s: how fast the view closes on its goal
+
+SpaceCam :: struct {
+  center: D3;            // the floating origin: the world point at the screen's middle, m
+  scale: f64 = 0.000000001;   // pixels per metre now
+  goal_center: D3;
+  goal_scale: f64 = 0.000000001;
+  tilt: f64;
+  following: bool;       // the goal centre is set every frame by the caller (a ship)
+}
+
+spacecam_clamp_scale :: (s: f64) -> f64 { return fclamp(s, SPACECAM_MIN_SCALE, SPACECAM_MAX_SCALE); }
+
+// A world point relative to the floating origin, in f64 metres. This is
+// the only place a far position meets the camera.
+spacecam_relative :: (c: SpaceCam, p: D3) -> D3 { return d3_sub(p, c.center); }
+
+// Where a world point lands on a w by h screen, pixels (y down).
+spacecam_screen :: (c: SpaceCam, p: D3, w: f64, h: f64) -> D2 {
+  q := spacecam_relative(c, p);
+  up := q.y * cos(c.tilt) + q.z * sin(c.tilt);
+  return d2(w / 2.0 + q.x * c.scale, h / 2.0 - up * c.scale);
+}
+// The point on the ecliptic (z 0) under a screen pixel.
+spacecam_world :: (c: SpaceCam, sx: f64, sy: f64, w: f64, h: f64) -> D3 {
+  ct := fmax(cos(c.tilt), 0.05);
+  return d3(c.center.x + (sx - w / 2.0) / c.scale, c.center.y + (h / 2.0 - sy) / c.scale / ct, 0.0);
+}
+// A length in metres as pixels.
+spacecam_pixels :: (c: SpaceCam, metres: f64) -> f64 { return metres * c.scale; }
+
+// Zoom by factor about a screen pixel: the world point under it stays put.
+spacecam_zoom_at :: (c: SpaceCam, factor: f64, sx: f64, sy: f64, w: f64, h: f64) -> SpaceCam {
+  out := c;
+  ns := spacecam_clamp_scale(c.goal_scale * factor);
+  g := c;
+  g.center = c.goal_center; g.scale = c.goal_scale;
+  p := spacecam_world(g, sx, sy, w, h);
+  k := c.goal_scale / ns;
+  out.goal_center = d3(p.x + (c.goal_center.x - p.x) * k, p.y + (c.goal_center.y - p.y) * k, c.goal_center.z);
+  out.goal_scale = ns;
+  if c.following { out.goal_center = c.goal_center; }
+  return out;
+}
+// Pan by a drag of dx, dy pixels (the world moves with the finger).
+spacecam_pan :: (c: SpaceCam, dx: f64, dy: f64) -> SpaceCam {
+  out := c;
+  ct := fmax(cos(c.tilt), 0.05);
+  out.goal_center = d3(c.goal_center.x - dx / c.scale, c.goal_center.y + dy / c.scale / ct, c.goal_center.z);
+  out.center = d3(c.center.x - dx / c.scale, c.center.y + dy / c.scale / ct, c.center.z);
+  out.following = false;
+  return out;
+}
+// Fly to a point at a scale.
+spacecam_look :: (c: SpaceCam, at: D3, scale: f64) -> SpaceCam {
+  out := c;
+  out.goal_center = at; out.goal_scale = spacecam_clamp_scale(scale);
+  return out;
+}
+// Close on the goal over dt seconds: the scale in log space; the centre so
+// that the screen distance to the goal shrinks at the same rate, whatever
+// the zoom.
+spacecam_ease :: (c: SpaceCam, dt: f64) -> SpaceCam {
+  out := c;
+  k := 1.0 - exp(-SPACECAM_EASE * fclamp(dt, 0.0, 0.25));
+  ls := log(c.scale); lg := log(c.goal_scale);
+  out.scale = spacecam_clamp_scale(exp(ls + (lg - ls) * k));
+  out.center = d3_add(c.center, d3_scale(d3_sub(c.goal_center, c.center), k));
+  if abs(lg - ls) < 0.0001 { out.scale = c.goal_scale; }
+  return out;
+}
+// Jump to the goal (a reload, a golden).
+spacecam_settle :: (c: SpaceCam) -> SpaceCam {
+  out := c;
+  out.center = c.goal_center; out.scale = c.goal_scale;
+  return out;
+}
+// Follow a moving point: the goal is it, every frame, and the centre keeps
+// its offset closing as spacecam_ease does.
+spacecam_follow :: (c: SpaceCam, at: D3) -> SpaceCam {
+  out := c;
+  out.goal_center = at; out.following = true;
+  return out;
+}
+
+// ---- checks
+
+#test "a hull at 5 AU draws to the pixel: the floating origin keeps f64 until the camera subtracts" {
+  c: SpaceCam;
+  au := 149597870700.0;
+  ship := d3(5.2 * au + 0.37, -1.3 * au + 0.11, 1000.0);
+  c.center = ship; c.scale = 10.0;
+  bow := d3_add(ship, d3(60.0, 0.0, 0.0));
+  stern := d3_add(ship, d3(-60.0, 0.0, 0.0));
+  a := spacecam_screen(c, bow, 390.0, 844.0);
+  b := spacecam_screen(c, stern, 390.0, 844.0);
+  // 120 m at 10 px/m is 1200 px, to a millionth of a pixel, and centred.
+  #assert abs((a.x - b.x) - 1200.0) < 0.000001 && abs((a.x + b.x) / 2.0 - 195.0) < 0.000001;
+  // As f32 after the subtraction, still exact to the pixel; as f32 before it, metres are lost.
+  fa := f32(spacecam_relative(c, bow).x);
+  #assert abs(f64(fa) - 60.0) < 0.0001;
+  raw := f64(f32(bow.x)) - f64(f32(ship.x));
+  #assert abs(raw - 60.0) > 30.0;   // f32 holds 7.8e11 m only to 65,536 m
+}
+
+#test "zooming about a pixel keeps the world point under it, and easing reaches the goal" {
+  c: SpaceCam;
+  c.center = d3(1.0e11, 2.0e10, 0.0); c.scale = 0.000000002; c.goal_center = c.center; c.goal_scale = c.scale;
+  w := 1440.0; h := 900.0;
+  under := spacecam_world(c, 1000.0, 200.0, w, h);
+  z := spacecam_settle(spacecam_zoom_at(c, 1000.0, 1000.0, 200.0, w, h));
+  after := spacecam_screen(z, under, w, h);
+  #assert abs(after.x - 1000.0) < 0.001 && abs(after.y - 200.0) < 0.001;
+  #assert abs(z.scale - 0.000002) < 0.0000000001;
+  // The clamp: twelve decades, no further.
+  far := spacecam_zoom_at(c, 0.0000000001, 0.0, 0.0, w, h);
+  #assert far.goal_scale == SPACECAM_MIN_SCALE;
+  e := spacecam_look(c, d3(0.0, 0.0, 0.0), 1.0);
+  for k: 0..<240 { e = spacecam_ease(e, 1.0 / 60.0); }
+  #assert abs(log(e.scale)) < 0.000001 && d3_len(e.center) < 1.0;
+  // A pan moves the world with the finger.
+  p := spacecam_pan(z, 30.0, -10.0);
+  moved := spacecam_screen(p, under, w, h);
+  #assert abs(moved.x - 1030.0) < 0.001 && abs(moved.y - 190.0) < 0.001;
+}

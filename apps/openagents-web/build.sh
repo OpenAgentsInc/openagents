@@ -94,6 +94,10 @@ deadgears=$!
 # /realms/hold-the-stair: the popping tower defense on the SRD 5e rules (verse/rules/srd5-combat.coax).
 "$here/../../coax/web/wasm.sh" "$here/stair.coax" "$here/stair-face.c" "$here/build/stair.wasm" &
 stair=$!
+# /realms/belt-2200: the solar-system strategy game over the engine's orbits (verse/orbit.coax, verse/spacecam.coax; verse/stars.coax in belt.wgsl).
+(cd "$here/../.." && python3 coax/web/wgsl.py verse/stars.coax verse_starfield verse_sun_disc verse_sun_corona --into apps/openagents-web/belt.wgsl)
+"$here/../../coax/web/wasm.sh" "$here/belt.coax" "$here/belt-face.c" "$here/build/belt.wasm" &
+belt=$!
 # /realms/characters: the engine's figures (verse/figure.coax).
 "$here/../../coax/web/wasm.sh" "$here/characters.coax" "$here/characters-face.c" "$here/build/characters.wasm" &
 characters=$!
@@ -175,6 +179,7 @@ wait "$myrealm"
 wait "$icecream"
 wait "$deadgears"
 wait "$stair"
+wait "$belt"
 wait "$everglade"
 wait "$fairy"
 wait "$thegrid"
