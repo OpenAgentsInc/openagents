@@ -1367,6 +1367,34 @@
       "blocks": []
     },
     {
+      "slug": "eg-watch",
+      "parent": "eg",
+      "title": "Everglade watch: guards hunt you for spells on the town or its people",
+      "size": "M",
+      "labels": [
+        "realms",
+        "everglade"
+      ],
+      "body": "A town watch of 12 (the six patrols and six new guards on beats) in crimson with sword and shield. A spell on a building or a person is a crime: guards who see or hear it turn on you (WANTED), run you down and fight by the SRD (verse/rules/srd5-combat.coax). Townsfolk flee, cower or fight back, can be knocked down or killed; R and the dawn stand them up. You have SRD HP, can die (YOU DIED) and come back at the Road In. Per page, still in goldens. Docs: docs/verse/everglade.md, The watch.",
+      "files": [
+        "verse/everglade/watch.coax",
+        "verse/rules/srd5-combat.coax",
+        "apps/openagents-web/everglade-watch.coax",
+        "apps/openagents-web/everglade.coax"
+      ],
+      "acceptance": [
+        "A crime makes a guard who sees it hostile",
+        "A guard's blow resolves under the SRD",
+        "You die at 0 HP and respawn at the Road In",
+        "R restores the townsfolk",
+        "60 FPS with a meteor (release perf check)"
+      ],
+      "blocked_by": [
+        "eg-spells"
+      ],
+      "blocks": []
+    },
+    {
       "slug": "ff-moods",
       "parent": "ff-life",
       "title": "Fairy Forest: creature moods at a glance and passing remarks",
