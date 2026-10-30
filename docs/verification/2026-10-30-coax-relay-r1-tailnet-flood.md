@@ -217,3 +217,21 @@ The driver's own first-run failures were harness bugs, and each is fixed:
 - **wss://.** The flood and the tailnet Pylon run used ws://. Server-side
   TLS landed in parallel ([2026-10-30-coax-relay-r1-tls.md](2026-10-30-coax-relay-r1-tls.md)),
   and its sessions cover wss://.
+
+## Rerun on the final tree
+
+At `8bc425508a`, with every R1 change merged (server TLS, store recovery,
+the Rust-differential fix, the deadlines):
+
+| Check | Result |
+| --- | --- |
+| `relay_session.py` (ASan/UBSan, ws://) | ok |
+| `coax/tests/net/tls.sh` (client cases and `relay_session.py --tls --client`) | all local checks pass |
+| `relay_differential.py` (the relay.openagents.com recording) | ok |
+| `rust_relay_differential.sh` | 114 observations, 0 unexplained |
+| `relay_flood.py --listen 100.74.238.61` (release, 2100 events) | ok; VmRSS 29.7 MiB idle, 30.5 MiB peak |
+| `relay_flood.py --sanitize --listen 100.74.238.61 --events 300` | ok; 36.9 MiB idle, 80.8 MiB peak |
+
+The full 2100-event ASan flood exceeded the 15-minute command limit (about
+1.8 events/s under ASan) and was stopped at 1400 events with VmRSS flat at
+80.6 MiB; the 300-event run covers the same phases.
