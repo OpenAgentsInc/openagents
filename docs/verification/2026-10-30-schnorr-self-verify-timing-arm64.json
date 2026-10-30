@@ -1,0 +1,144 @@
+{
+  "binary_sha256": "c7f23aeef723f66d852b38455d75cc8030ff32eeb95edd2b383d312526620df6",
+  "cc": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "compiler": "coax0 0.24.0",
+  "compiler_sha256": "201753f5d5cd9bea8dca2dd350209eb74d47c68e8a1ce7632daa8388fe5d4fc5",
+  "flags": [
+    "-std=c11",
+    "-O2"
+  ],
+  "generated_c_sha256": "9efbc430969bddbbb46c3be6d5b5e6754bb3bef293de6e4c5962b968e90b93a4",
+  "runs": [
+    {
+      "coax": {
+        "acquisition_ns": 5514791,
+        "clock_resolution_ns": 42,
+        "degenerate": false,
+        "fixture": 2,
+        "mean0": 16.624166666666817,
+        "mean1": 139.9436666666658,
+        "minimum_clock_pair_ns": 0,
+        "n0": 30000,
+        "n1": 30000,
+        "status": 3,
+        "t": 0,
+        "variance0": 0,
+        "variance1": 0,
+        "warmup": 2000
+      },
+      "fixture": "branch-control",
+      "python": {
+        "median0": 0.0,
+        "median1": 208.0,
+        "n0": 30000,
+        "n1": 30000,
+        "p95_ns": 250,
+        "t": -78.83616839605435,
+        "t_trimmed_p95": -19.177449375295947
+      },
+      "raw_sha256": "d2b9d8b54e52634f3d590cc211f8e20724c4cae11806d4bbffad5e1696845e20",
+      "wall_s": 0.2
+    },
+    {
+      "coax": {
+        "acquisition_ns": 1584833,
+        "clock_resolution_ns": 42,
+        "degenerate": false,
+        "fixture": 1,
+        "mean0": 12.898566666666708,
+        "mean1": 12.92393333333333,
+        "minimum_clock_pair_ns": 0,
+        "n0": 30000,
+        "n1": 30000,
+        "status": 3,
+        "t": 0,
+        "variance0": 0,
+        "variance1": 0,
+        "warmup": 2000
+      },
+      "fixture": "fixed-control",
+      "python": {
+        "median0": 0.0,
+        "median1": 0.0,
+        "n0": 30000,
+        "n1": 30000,
+        "p95_ns": 42,
+        "t": -0.16025866837595892,
+        "t_trimmed_p95": 1.0176042407321089
+      },
+      "raw_sha256": "5cea4d638ab4cc7933e746c20b6371dc2d9cece895f94071d40f910655e9c14e",
+      "wall_s": 0.0
+    },
+    {
+      "coax": {
+        "acquisition_ns": 9992587833,
+        "clock_resolution_ns": 42,
+        "degenerate": false,
+        "fixture": 3,
+        "mean0": 166923.9160333338,
+        "mean1": 166125.97113333206,
+        "minimum_clock_pair_ns": 0,
+        "n0": 30000,
+        "n1": 30000,
+        "status": 3,
+        "t": 0,
+        "variance0": 0,
+        "variance1": 0,
+        "warmup": 2000
+      },
+      "fixture": "vartime-fast-verifier",
+      "python": {
+        "median0": 163709.0,
+        "median1": 163250.0,
+        "n0": 30000,
+        "n1": 30000,
+        "p95_ns": 178416,
+        "t": 3.9586390680512356,
+        "t_trimmed_p95": 26.855097661808145
+      },
+      "raw_sha256": "448f66e518210cceea01734304125746af2b8595317895e03679d8c74ae0b502",
+      "wall_s": 10.4
+    },
+    {
+      "coax": {
+        "acquisition_ns": 20136633375,
+        "clock_resolution_ns": 42,
+        "degenerate": false,
+        "fixture": 0,
+        "mean0": 335416.9353666676,
+        "mean1": 335760.5847000009,
+        "minimum_clock_pair_ns": 0,
+        "n0": 30000,
+        "n1": 30000,
+        "status": 3,
+        "t": 0,
+        "variance0": 0,
+        "variance1": 0,
+        "warmup": 2000
+      },
+      "fixture": "fixed-work-self-verifier",
+      "python": {
+        "median0": 323792.0,
+        "median1": 323750.0,
+        "n0": 30000,
+        "n1": 30000,
+        "p95_ns": 390667,
+        "t": -0.9570151602426217,
+        "t_trimmed_p95": 0.17354563958768496
+      },
+      "raw_sha256": "ac679cdc910b6e4ef1db485b3d5612749003ceb43fdb62a9c332f4b5bbac6e7c",
+      "wall_s": 20.8
+    }
+  ],
+  "samples_per_fixture": 60000,
+  "schema": "coax.ssv-timing.v1",
+  "scope": "first-order Welch observations, fixed valid candidate versus seeded random candidates, this native target on a shared loaded machine; no object/JIT audit, no address probe beyond the source schedule, not production-secret approval",
+  "sources": {
+    "coax/lib/crypto/schnorr_self_verify.coax": "756f6f1c5dd7720039bce446df463d3ca71527c438257cfa3b5afa0864ff9697",
+    "coax/tests/nostr/schnorr_self_verify_timing.c": "8b78bbc79faaf20e2f75c52b4c927d15e6f4d50903d32dc5316eb9dd416bc92d",
+    "coax/tests/nostr/schnorr_self_verify_timing.coax": "dc451d69496fbc8029da5a39e3def3431b206ad4fc48fbc51c5dc87dd8094269",
+    "coax/tests/nostr/schnorr_self_verify_timing.py": "90c191dca5439db25ba5d016fc1fe2c40534ad98cdeef6806409586a3e7b520a"
+  },
+  "target": "arm64 Darwin 25.4.0",
+  "threshold_abs_t": 10
+}

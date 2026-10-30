@@ -202,9 +202,26 @@ memory address in the compiled code that depends on the candidate.
 - **iOS:** the checked and release builds both run in the iOS Simulator
   (arm64) through `coax/tests/nostr/schnorr_sign.py` and agree with native.
 
+## arm64 timing (2026-10-30)
+
+`coax/tests/nostr/schnorr_self_verify_timing.py --samples 60000` on the Mac
+(arm64 Darwin 25.4, Apple clang 21, -O2, release generated C):
+[2026-10-30-schnorr-self-verify-timing-arm64.json](2026-10-30-schnorr-self-verify-timing-arm64.json).
+The classes, interleaved, are the valid vector-0 candidate against seeded
+random candidates. |t| > 10 counts as detected.
+
+- **Leaky branch control:** detected (t = -78.8).
+- **Fixed-work control:** t = -0.16.
+- **Fixed-work self-verifier:** t = -0.96, no detection.
+- **Variable-time verifier the signer used before:** t = 3.96, not detected.
+  As on x86_64, this first-order test is weak: it is evidence, not proof.
+
+There is no memcheck on macOS arm64, so arm64 has timing evidence only, no
+address trace.
+
 ## Open
 
-- Object-code timing and address probes on the other targets (arm64,
-  Wasm under a JIT), and checked-mode arithmetic that doesn't branch on
-  secrets (#4828). Production-secret approval remains a separate gate, as
+- An address trace on arm64 (needs an arm64 Linux host for Valgrind), timing
+  and address evidence for Wasm under a JIT, and checked-mode arithmetic that
+  doesn't branch on secrets (#4828). Production-secret approval remains a separate gate, as
   for `secp_mult_const.coax`.
