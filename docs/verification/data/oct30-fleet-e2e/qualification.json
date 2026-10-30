@@ -1,0 +1,322 @@
+{
+  "at": "2026-10-30T15:25:17.488786+00:00",
+  "scope": "37 unique black-box assertions passed across scoped runs against the same frozen sanitized fleet binary. No public relay or real identity.",
+  "fleet_sha256": "6b7049b1e469cb6930f3ea166e02e55138380bcb4064e90b2ba22c6f17d29e54",
+  "runtime_sources_sha256": {
+    "psionic/lib/fleet/run.coax": "6358e013019c1589d76371c96f2eeac10372c2aabe9043e5c5217b2aeddc75a7",
+    "psionic/lib/fleet/protocol.coax": "29bb7ae16b0cf0a89649cc9deb6dbe40b59ea52b508c7a5c0fe04dd6a7581f91",
+    "psionic/lib/fleet/service.coax": "4ef30543a54520aae5c0516f1cdecea2743ebf42798d58dacb32a93236e77a5f",
+    "psionic/lib/fleet/policy.coax": "9ecc4efd742fe6d03dbbcf32c7b79ffe9d6e33134e135d158baa4b1cdfbea5e3"
+  },
+  "profiles": {
+    "fleet": "ASan + UBSan",
+    "relay": "ASan + UBSan",
+    "pylon": "qualified native plain",
+    "serve": "qualified release plain, toy model"
+  },
+  "tooling": {
+    "bun": "1.4.0",
+    "platform": "darwin-arm64",
+    "oracle_lock_sha256": "bed6657ec64a60262dc5f401d91a66121e1b49ce5e027555da358ff0c61e2c19"
+  },
+  "runs": [
+    {
+      "record": "initial.json",
+      "passed": 25,
+      "total": 26
+    },
+    {
+      "record": "remaining.json",
+      "passed": 12,
+      "total": 12
+    },
+    {
+      "record": "closed-readiness.json",
+      "passed": 1,
+      "total": 1
+    }
+  ],
+  "startup_correction": "The first full pass reached25 successful cases before bad-question received HTTP503 without relay AUTH during an aggressive100ms discovery window. Listener readiness is not relay readiness. The harness now waits for AUTH + beacon/answer subscriptions outside the HTTP request budget, uses the default500ms discovery budget, and reran the failed/remaining12 cases only. The CLOSED refusal path was separately rechecked once under the new readiness helper. Product binary unchanged; original failed run preserved.",
+  "unique_passed": 37,
+  "sanitizer_errors": [],
+  "results": [
+    {
+      "name": "real HTTP -> compiled fleet -> Coax relay -> Coax Pylon -> toy engine",
+      "ok": true,
+      "ms": 2061,
+      "http": 200,
+      "door": "pylon:ch20-real",
+      "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573"
+    },
+    {
+      "name": "real delayed Pylon cannot answer after the fleet deadline",
+      "ok": true,
+      "ms": 688,
+      "http": 503,
+      "elapsed": 487
+    },
+    {
+      "name": "same-identity local Coax engine fallback after native Pylon stops",
+      "ok": true,
+      "ms": 2033,
+      "http": 200,
+      "door": "psionic",
+      "elapsed": 1822
+    },
+    {
+      "name": "independent relay: answer",
+      "ok": true,
+      "ms": 758,
+      "http": 200,
+      "jobs": 1,
+      "elapsed": 415
+    },
+    {
+      "name": "independent relay: early-answer",
+      "ok": true,
+      "ms": 574,
+      "http": 200,
+      "jobs": 1,
+      "elapsed": 315
+    },
+    {
+      "name": "independent relay: early-reject",
+      "ok": true,
+      "ms": 589,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 409
+    },
+    {
+      "name": "independent relay: late-answer",
+      "ok": true,
+      "ms": 1345,
+      "http": 200,
+      "jobs": 2,
+      "elapsed": 1122
+    },
+    {
+      "name": "independent relay: stale",
+      "ok": true,
+      "ms": 592,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 312
+    },
+    {
+      "name": "independent relay: draining",
+      "ok": true,
+      "ms": 326,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 135
+    },
+    {
+      "name": "independent relay: mismatch",
+      "ok": true,
+      "ms": 485,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 289
+    },
+    {
+      "name": "independent relay: full",
+      "ok": true,
+      "ms": 514,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 290
+    },
+    {
+      "name": "independent relay: superseded",
+      "ok": true,
+      "ms": 414,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 218
+    },
+    {
+      "name": "independent relay: blocked",
+      "ok": true,
+      "ms": 468,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 246
+    },
+    {
+      "name": "independent relay: closed",
+      "ok": true,
+      "ms": 1483,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 540
+    },
+    {
+      "name": "independent relay: silence",
+      "ok": true,
+      "ms": 1214,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 881
+    },
+    {
+      "name": "independent relay: retry",
+      "ok": true,
+      "ms": 564,
+      "http": 200,
+      "jobs": 2,
+      "elapsed": 327
+    },
+    {
+      "name": "independent relay: bad-signature",
+      "ok": true,
+      "ms": 1027,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 789
+    },
+    {
+      "name": "independent relay: bad-provider",
+      "ok": true,
+      "ms": 1082,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 888
+    },
+    {
+      "name": "independent relay: bad-job",
+      "ok": true,
+      "ms": 988,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 832
+    },
+    {
+      "name": "independent relay: bad-recipient",
+      "ok": true,
+      "ms": 1046,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 828
+    },
+    {
+      "name": "independent relay: bad-request",
+      "ok": true,
+      "ms": 1120,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 877
+    },
+    {
+      "name": "independent relay: bad-attempt",
+      "ok": true,
+      "ms": 1086,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 860
+    },
+    {
+      "name": "independent relay: bad-model",
+      "ok": true,
+      "ms": 1162,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 898
+    },
+    {
+      "name": "independent relay: bad-identity",
+      "ok": true,
+      "ms": 1088,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 869
+    },
+    {
+      "name": "independent relay: bad-door",
+      "ok": true,
+      "ms": 1060,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 790
+    },
+    {
+      "name": "independent relay: bad-question",
+      "ok": true,
+      "ms": 1677,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 1162
+    },
+    {
+      "name": "independent relay: bad-probability",
+      "ok": true,
+      "ms": 1518,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 1143
+    },
+    {
+      "name": "empty fleet uses same-identity local fallback",
+      "ok": true,
+      "ms": 910,
+      "http": 200,
+      "local_requests": 1
+    },
+    {
+      "name": "different-identity local fallback is refused",
+      "ok": true,
+      "ms": 915,
+      "http": 503,
+      "local_requests": 1
+    },
+    {
+      "name": "local HTTP framing refuses status-prefix",
+      "ok": true,
+      "ms": 981,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses duplicate-length",
+      "ok": true,
+      "ms": 914,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses transfer-encoding",
+      "ok": true,
+      "ms": 899,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses missing-length",
+      "ok": true,
+      "ms": 809,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses truncated",
+      "ok": true,
+      "ms": 938,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses trailing-body",
+      "ok": true,
+      "ms": 794,
+      "http": 503
+    },
+    {
+      "name": "request model mismatch dispatches neither remote nor local",
+      "ok": true,
+      "ms": 470,
+      "http": 403
+    },
+    {
+      "name": "slow fallback cannot extend the total request deadline",
+      "ok": true,
+      "ms": 1382,
+      "http": 524,
+      "elapsed": 1033
+    }
+  ]
+}

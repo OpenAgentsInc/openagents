@@ -1,0 +1,233 @@
+{
+  "binaries": {
+    "fleet": {
+      "path": "/tmp/oct30-fleet-e2e-artifacts/psionic-fleet-final",
+      "sha256": "6b7049b1e469cb6930f3ea166e02e55138380bcb4064e90b2ba22c6f17d29e54"
+    },
+    "relay": {
+      "path": "/tmp/oct30-fleet-e2e-artifacts/relay",
+      "sha256": "46b772b5be9522e1473052494c34a0e0cc77487e28e03b96b32006166eb13c04"
+    },
+    "pylon": {
+      "path": "/tmp/oct30-pylon-mac-live/build/pylon",
+      "sha256": "50ee43120f4b05ade56b584e66d68c258306e88875e1b2a054ef27c66a37f1cd"
+    },
+    "serve": {
+      "path": "/tmp/oct30-pylon-mac-live/build/psionic-serve",
+      "sha256": "8edef31672b37b874ef9a84c08e55b334af8b38494390895a8f396454f36db04"
+    }
+  },
+  "sanitizer_errors": [],
+  "source_commit": null,
+  "at": "2026-10-30T15:19:00.278Z",
+  "selection": "all",
+  "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+  "product": "compiled Coax fleet",
+  "scope": "loopback only; independent protocol peer and real Coax relay/Pylon/engine",
+  "results": [
+    {
+      "name": "real HTTP -> compiled fleet -> Coax relay -> Coax Pylon -> toy engine",
+      "ok": true,
+      "ms": 2061,
+      "http": 200,
+      "door": "pylon:ch20-real",
+      "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573"
+    },
+    {
+      "name": "real delayed Pylon cannot answer after the fleet deadline",
+      "ok": true,
+      "ms": 688,
+      "http": 503,
+      "elapsed": 487
+    },
+    {
+      "name": "same-identity local Coax engine fallback after native Pylon stops",
+      "ok": true,
+      "ms": 2033,
+      "http": 200,
+      "door": "psionic",
+      "elapsed": 1822
+    },
+    {
+      "name": "independent relay: answer",
+      "ok": true,
+      "ms": 758,
+      "http": 200,
+      "jobs": 1,
+      "elapsed": 415
+    },
+    {
+      "name": "independent relay: early-answer",
+      "ok": true,
+      "ms": 574,
+      "http": 200,
+      "jobs": 1,
+      "elapsed": 315
+    },
+    {
+      "name": "independent relay: early-reject",
+      "ok": true,
+      "ms": 589,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 409
+    },
+    {
+      "name": "independent relay: late-answer",
+      "ok": true,
+      "ms": 1345,
+      "http": 200,
+      "jobs": 2,
+      "elapsed": 1122
+    },
+    {
+      "name": "independent relay: stale",
+      "ok": true,
+      "ms": 592,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 312
+    },
+    {
+      "name": "independent relay: draining",
+      "ok": true,
+      "ms": 326,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 135
+    },
+    {
+      "name": "independent relay: mismatch",
+      "ok": true,
+      "ms": 485,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 289
+    },
+    {
+      "name": "independent relay: full",
+      "ok": true,
+      "ms": 514,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 290
+    },
+    {
+      "name": "independent relay: superseded",
+      "ok": true,
+      "ms": 414,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 218
+    },
+    {
+      "name": "independent relay: blocked",
+      "ok": true,
+      "ms": 468,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 246
+    },
+    {
+      "name": "independent relay: closed",
+      "ok": true,
+      "ms": 535,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 312
+    },
+    {
+      "name": "independent relay: silence",
+      "ok": true,
+      "ms": 1214,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 881
+    },
+    {
+      "name": "independent relay: retry",
+      "ok": true,
+      "ms": 564,
+      "http": 200,
+      "jobs": 2,
+      "elapsed": 327
+    },
+    {
+      "name": "independent relay: bad-signature",
+      "ok": true,
+      "ms": 1027,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 789
+    },
+    {
+      "name": "independent relay: bad-provider",
+      "ok": true,
+      "ms": 1082,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 888
+    },
+    {
+      "name": "independent relay: bad-job",
+      "ok": true,
+      "ms": 988,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 832
+    },
+    {
+      "name": "independent relay: bad-recipient",
+      "ok": true,
+      "ms": 1046,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 828
+    },
+    {
+      "name": "independent relay: bad-request",
+      "ok": true,
+      "ms": 1120,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 877
+    },
+    {
+      "name": "independent relay: bad-attempt",
+      "ok": true,
+      "ms": 1086,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 860
+    },
+    {
+      "name": "independent relay: bad-model",
+      "ok": true,
+      "ms": 1162,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 898
+    },
+    {
+      "name": "independent relay: bad-identity",
+      "ok": true,
+      "ms": 1088,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 869
+    },
+    {
+      "name": "independent relay: bad-door",
+      "ok": true,
+      "ms": 1060,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 790
+    },
+    {
+      "name": "independent relay: bad-question",
+      "ok": false,
+      "error": "Error: native buyer did not authenticate"
+    }
+  ]
+}

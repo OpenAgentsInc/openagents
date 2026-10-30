@@ -1,0 +1,27 @@
+{
+  "binaries": {
+    "fleet": {
+      "path": "/tmp/oct30-fleet-e2e-artifacts/psionic-fleet-final",
+      "sha256": "6b7049b1e469cb6930f3ea166e02e55138380bcb4064e90b2ba22c6f17d29e54"
+    }
+  },
+  "sanitizer_errors": [],
+  "source_commit": null,
+  "at": "2026-10-30T15:23:56.411Z",
+  "selection": "peers",
+  "from": null,
+  "only": "independent relay: closed",
+  "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+  "product": "compiled Coax fleet",
+  "scope": "loopback only; independent protocol peer and real Coax relay/Pylon/engine",
+  "results": [
+    {
+      "name": "independent relay: closed",
+      "ok": true,
+      "ms": 1483,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 540
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "binaries": {
+    "fleet": {
+      "path": "/tmp/oct30-fleet-e2e-artifacts/psionic-fleet-final",
+      "sha256": "6b7049b1e469cb6930f3ea166e02e55138380bcb4064e90b2ba22c6f17d29e54"
+    }
+  },
+  "sanitizer_errors": [],
+  "source_commit": null,
+  "at": "2026-10-30T15:20:51.016Z",
+  "selection": "peers",
+  "from": "independent relay: bad-question",
+  "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+  "product": "compiled Coax fleet",
+  "scope": "loopback only; independent protocol peer and real Coax relay/Pylon/engine",
+  "results": [
+    {
+      "name": "independent relay: bad-question",
+      "ok": true,
+      "ms": 1677,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 1162
+    },
+    {
+      "name": "independent relay: bad-probability",
+      "ok": true,
+      "ms": 1518,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 1143
+    },
+    {
+      "name": "empty fleet uses same-identity local fallback",
+      "ok": true,
+      "ms": 910,
+      "http": 200,
+      "local_requests": 1
+    },
+    {
+      "name": "different-identity local fallback is refused",
+      "ok": true,
+      "ms": 915,
+      "http": 503,
+      "local_requests": 1
+    },
+    {
+      "name": "local HTTP framing refuses status-prefix",
+      "ok": true,
+      "ms": 981,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses duplicate-length",
+      "ok": true,
+      "ms": 914,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses transfer-encoding",
+      "ok": true,
+      "ms": 899,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses missing-length",
+      "ok": true,
+      "ms": 809,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses truncated",
+      "ok": true,
+      "ms": 938,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses trailing-body",
+      "ok": true,
+      "ms": 794,
+      "http": 503
+    },
+    {
+      "name": "request model mismatch dispatches neither remote nor local",
+      "ok": true,
+      "ms": 470,
+      "http": 403
+    },
+    {
+      "name": "slow fallback cannot extend the total request deadline",
+      "ok": true,
+      "ms": 1382,
+      "http": 524,
+      "elapsed": 1033
+    }
+  ]
+}
