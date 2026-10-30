@@ -236,9 +236,9 @@ bool piece_route(const request *q) {
   return true;
 }
 
+// ---- an admin's spoken edit to a realm (eg-voice-edit): POST /api/playtest/realm/<realm>/edit
 //   {sentence}  a site admin (admin_who: admins.conf, by site login, the admin cookie or NIP-98), or the
 //               realm's owner or one of its admin accounts (X-Verse-Player; verse.edit_may)
-//   {sentence}  an admin only (admin_who: admins.conf, by site login or NIP-98)
 //   -> 200 {edit, item?, count?, model}; 400 no sentence or realm, 401/403, 422 nothing fits, 429, 502, 503
 // Gemini picks one edit from the realm's catalogue (migrations/0045_realm_voice_edit.sql) and SQL holds
 // the answer to it; the page does the edit and publishes the realm's world (an admin's write, checked there).
