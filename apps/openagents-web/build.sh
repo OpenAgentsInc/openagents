@@ -97,6 +97,9 @@ characters=$!
 bun "$here/../../coax/web/project/landing.ts" || echo "home: keeping its last complete verified warm start" >&2
 "$here/../../coax/web/project/build-home.sh" "$here/build/newland.wasm" &
 newland=$!
+# /docs/connect-a-pylon: the Pylon quickstart on the homepage's Grid (connect-pylon.coax loads newland.coax).
+"$here/../../coax/web/wasm.sh" "$here/connect-pylon.coax" "$here/connect-pylon-face.c" "$here/build/connect-pylon.wasm" &
+connectpylon=$!
 # /verse and /verse/galaxy: the playtest's landing and galaxy.
 "$here/../../coax/web/wasm.sh" "$here/verse.coax" "$here/verse-face.c" "$here/build/verse.wasm" &
 verse_app=$!
@@ -171,3 +174,4 @@ wait "$fairy"
 wait "$thegrid"
 wait "$villa"
 [[ -z "$newland" ]] || wait "$newland"
+wait "$connectpylon"
