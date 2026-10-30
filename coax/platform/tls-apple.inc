@@ -128,6 +128,28 @@ static void cxtls_drop(cxtls_slot *s) {
   free(s->out); s->out = NULL; s->out_count = s->in_count = 0;
 }
 
+/* Keep one chunk read ahead. The Coax caller can be computing while the
+   platform receives the next frame; a zero-time poll must not start every
+   receive from scratch and mistake already-arrived frames for an empty queue. */
+static void cxtls_receive_next(cxtls_slot *s, uint64_t generation) {
+  if (s->read_pending || s->read_done || s->eof || s->failure || !s->ready) return;
+  s->read_pending = true;
+  nw_connection_receive(s->connection, 1, CXTLS_MAX_IN, ^(dispatch_data_t data, nw_content_context_t context, bool complete, nw_error_t error) {
+    (void)context;
+    if (s->generation != generation) return;
+    s->received = 0;
+    if (data) dispatch_data_apply(data, ^bool(dispatch_data_t region, size_t offset, const void *buffer, size_t size) {
+      (void)region;
+      if (offset > CXTLS_MAX_IN || size > CXTLS_MAX_IN - offset) return false;
+      memcpy(s->receiving + offset, buffer, size); s->received += size; return true;
+    });
+    s->received_error = cxtls_error(error, false);
+    s->eof = complete && !error;
+    s->read_pending = false; s->read_done = true;
+    dispatch_semaphore_signal(s->changed);
+  });
+}
+
 int64_t cxtls_connect(int64_t port, int64_t timeout_ms) {
   cxtls_init();
   bool bad = cxtls_host_bad || cxtls_host_len == 0 || port < 1 || port > 65535 || timeout_ms < 0;
@@ -183,6 +205,7 @@ int64_t cxtls_connect(int64_t port, int64_t timeout_ms) {
       }
       if (s->version < 0x0303) s->failure = CXTLS_VERSION;
       else s->ready = true;
+      cxtls_receive_next(s, generation);
     } else if (state == nw_connection_state_failed || state == nw_connection_state_waiting) {
       s->failure = s->verify_failure ? s->verify_failure : cxtls_error(error, !s->ready);
       if (!s->failure) s->failure = CXTLS_HANDSHAKE;
@@ -238,23 +261,8 @@ int64_t cxtls_read(int64_t h, int64_t timeout_ms) {
   s->in_count = 0;
   uint64_t generation = s->generation;
   dispatch_sync(cxtls_queue, ^{
-    if (!s->read_pending && !s->read_done && !s->eof && !s->failure) {
-      s->read_pending = true;
-      nw_connection_receive(s->connection, 1, CXTLS_MAX_IN, ^(dispatch_data_t data, nw_content_context_t context, bool complete, nw_error_t error) {
-        (void)context;
-        if (s->generation != generation) return;
-        s->received = 0;
-        if (data) dispatch_data_apply(data, ^bool(dispatch_data_t region, size_t offset, const void *buffer, size_t size) {
-          (void)region;
-          if (offset > CXTLS_MAX_IN || size > CXTLS_MAX_IN - offset) return false;
-          memcpy(s->receiving + offset, buffer, size); s->received += size; return true;
-        });
-        s->received_error = cxtls_error(error, false);
-        s->eof = complete && !error;
-        s->read_pending = false; s->read_done = true;
-        dispatch_semaphore_signal(s->changed);
-      });
-    } else if (s->eof && !s->read_done) { s->read_done = true; s->received = 0; }
+    cxtls_receive_next(s, generation);
+    if (s->eof && !s->read_done) { s->read_done = true; s->received = 0; }
   });
   int64_t result = cxtls_wait(s, 1, timeout_ms); if (result) return result;
   __block int64_t n;
@@ -264,6 +272,7 @@ int64_t cxtls_read(int64_t h, int64_t timeout_ms) {
     else n = s->received_error ? s->received_error : s->eof ? CXTLS_END_UNVERIFIED : CXTLS_ERROR;
     if (s->received_error) s->failure = s->received_error;
     s->read_done = false; s->received = 0;
+    cxtls_receive_next(s, generation);
   });
   if (n > 0) s->in_count = n;
   return n;

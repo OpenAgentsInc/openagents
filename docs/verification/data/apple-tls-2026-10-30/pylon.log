@@ -1,0 +1,39 @@
+pylon: TEST-ONLY key and signing double; pubkey 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b
+pylon: engine psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 answered the probe in 2539 ms
+pylon: relay list of 2
+pylon: connection 1 open to wss://localhost:61269
+pylon: authenticated to wss://localhost:61269 as 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b (connection 1)
+pylon: beacon online generation 1 free 4 of 4 (connection 1)
+pylon: REQ s0.1 since 1793341612 (connection 1)
+pylon: caught up on s0.1 (connection 1)
+pylon: online, waiting for jobs
+pylon: event da5d3afeafc2 kind 25910 -> queue (none)
+pylon: job da5d3afeafc2 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2536 ms
+pylon: event f66d3769cabc kind 25910 -> refuse (unsupported_version)
+pylon: job f66d3769cabc -> 27010 error unsupported_version
+pylon: event d096b6b8871e kind 25910 -> queue (none)
+pylon: job d096b6b8871e -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2538 ms
+pylon: event e5dbe7c48ce4 kind 25910 -> queue (none)
+pylon: event a69e5b386e07 kind 25910 -> cancel (none)
+pylon: cancel a69e5b386e07 drops waiting job e5dbe7c48ce4
+pylon: job e5dbe7c48ce4 -> 27010 error cancelled
+pylon: event 719b3b64142d kind 25910 -> queue (none)
+pylon: job 719b3b64142d -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2538 ms
+pylon: connection 1 ended (failed); reconnecting in 519 ms
+pylon: connection 2 ended (no WebSocket); reconnecting in 1478 ms
+pylon: connection 3 open to wss://localhost:61269
+pylon: authenticated to wss://localhost:61269 as 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b (connection 3)
+pylon: beacon online generation 1 free 4 of 4 (connection 3)
+pylon: REQ s0.1 since 1793341738 (connection 3), resumed from the newest job delivered
+pylon: caught up on s0.1 (connection 3)
+pylon: event 37750c60a6ee kind 25910 -> queue (none)
+pylon: job 37750c60a6ee -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2548 ms
+pylon: job 719b3b64142d seen again; its answer aa054ae07977 goes again
+pylon: job 37750c60a6ee seen again; its answer e9d08690fc3a goes again
+pylon: event 554c1541b6a0 kind 25910 -> queue (none)
+pylon: job 554c1541b6a0 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2547 ms
+pylon: event 16b0b83ce806 kind 25910 -> queue (none)
+pylon: beacon draining generation 1 free 0 of 4 (connection 3)
+pylon: job 16b0b83ce806 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2554 ms
+pylon: beacon offline generation 1 free 0 of 4 (connection 3)
+pylon: offline. sent 15, accepted 14, refused 0, answered 6, refusals 2, cancelled 1, forged 0, duplicates 2, ignored 0, beacons 4, connections 3, drops 2, auths 2, catch-ups 2

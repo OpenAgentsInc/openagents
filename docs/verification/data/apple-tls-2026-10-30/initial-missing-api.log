@@ -1,0 +1,11 @@
+coax/tests/net/tls_stream.c:13:10: error: call to undeclared function 'cxtls_connect'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]
+   13 |   return cxtls_connect(port, timeout);
+      |          ^
+coax/tests/net/tls_stream.c:13:10: note: did you mean 'cxsock_connect'?
+coax/platform/socket-native.h:39:9: note: 'cxsock_connect' declared here
+   39 | int64_t cxsock_connect(int64_t port, int64_t timeout_ms);
+      |         ^
+coax/tests/net/tls_stream.c:35:10: error: call to undeclared function 'cxtls_connect'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]
+   35 |   assert(cxtls_connect(port, 100) == CXTLS_ERROR);
+      |          ^
+2 errors generated.

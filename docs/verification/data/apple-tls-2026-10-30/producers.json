@@ -1,0 +1,45 @@
+{
+  "schema": "coax-apple-tls-verification-v1",
+  "client_date": "2026-10-30",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "sdk": "26.5",
+  "native_cc": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "coax_sha256": "69f5cbac6cdce1b5c7c80e94bd453608eb876cb30daa31d778fbe8bb912ea4ba",
+  "linux_coax_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+  "source_snapshot_sha256": {
+    "coax/platform/tls-native.c": "b6600dd7a2226a84ff568e18c61fc4ce51ffb5b52d58df72a5b256a6e2f320a8",
+    "coax/platform/tls-apple.inc": "a8a728170c0472790266ed8ce22afc9eda7c2cebbc567eeb1a1894dc8909001e",
+    "coax/platform/tls-native.h": "17cafc12ee386973766b3a22e7ff0f0206c573f6ddd64fd24b20c1ed0553c573",
+    "coax/platform/socket-native.c": "847a8cbce466fe8a314c7af6e424daaa0e4c7ca60490ae87f8587a4b9ba003df",
+    "coax/platform/socket-native.h": "c8707acbdb43ccd7f9f583e2f92594148962d1334ae494edfe11a8b7227c54e0",
+    "coax/platform/tls-env.sh": "40383f6e414578c647ea58123811ce09393c511cdc53a4a7508334c3483699eb",
+    "coax/lib/net/relay_conn.coax": "e88461860d06b754a98314942fc948d595eb3357019e6a837fa2b1c40a7fbea0",
+    "coax/lib/net/relay_conn_rules.coax": "924b71b6f3201ac0a88aed3f4d4c3318ea1e3a3987be68344cd8c9c2ef4b7659",
+    "coax/tests/net/tls.sh": "902adadea7efb7e6f4b3d407e12c4cb180ce599dfe505162692db2e00ee2589d",
+    "coax/tests/net/tls_fixture.py": "cc263f099328d439ed9404cc610a19e956fa6284a76f5ef3eca09ca0e23726df",
+    "coax/tests/net/tls_stream.c": "33bb90203feafcfb3f9327d2de0355dc1a99188e95dc0fe9a64d0416d1b9a96a",
+    "coax/tests/net/tls_ws.coax": "74e85f833a77ab771e04c13af41c97af068794db210d5390e2e230888c8e185d",
+    "coax/tests/net/relay_e2e.coax": "b9e8d5c8fff81f7f4f8e633009c49ac16e267f5e8c293e383bee04fe196b98df",
+    "coax/tests/net/relay_e2e.py": "51a4545f7c123014e4ad015d8d08c5c84597ca6fea0f0b2dceed4fdc950e34c1",
+    "psionic/lib/pylon/run.coax": "565ed5ad85db584674fcadd5db927ce36177b4dbc335a1a8b8f46c9f29dd18a6",
+    "psionic/platform/pylon-build.sh": "64c5f6a0b3f79b1e2414eb89129513629ff484c7de8eb8084d5490c9298c848f",
+    "psionic/tests/pylon/pylon_e2e.py": "34d09cdd1e2b9535961bfe036862332a41a10027594922fb7e5db0cff1277dc4"
+  },
+  "executed_or_compile_only_artifact_sha256": {
+    "/tmp/coax-apple-tls/production-prefetch": "a8dd680f3122cf62289ae3506584d4d609fc894363989d13ae2525102951dce6",
+    "/tmp/coax-apple-tls/stream-prefetch-tsan": "48808d5d29cbe483f358d82bc988b90ab8c45875bcc01ed690d512f09e20f86f",
+    "/tmp/coax-apple-tls/tls_ws.c": "a333eb9ffda1d29a0ef0681be744240a826a0848be370caf3a8e3fff301bfa10",
+    "/tmp/coax-apple-tls/tls_ws.h": "20ecd851caa8480a627cac19217fd58b62acd19341d9eb0674e127aaca60ea3e",
+    "/tmp/coax-apple-tls/ios-arm64.o": "3aabab109ab165ec80e5985e60b4e5843f5ada3d172f573d12283176e561e44f",
+    "/tmp/coax-apple-tls/ios-simulator-arm64.o": "adbe569db2cbd63aaade478203bf742c3e7eb1242201524fae17bbe27ca2ee04",
+    "/tmp/coax-apple-tls/pylon-single-owner/pylon-build/pylon": "880cf85a25087692ededf2ea74508267e518fb44deea0d33430dc1e4636daeea",
+    "/tmp/coax-apple-tls/pylon-single-owner/relay": "2e5f9492e8132172a700c4022596f518881eb6c988ad3f984831c81d6d92af00"
+  },
+  "scope": [
+    "macOS runtime; Linux regression; iOS production compilation only",
+    "Sources at publication; annotation-only source/header edits followed the sanitizer runs.",
+    "No full mutation runs or unrelated model/library gates.",
+    "No production key or public event publication."
+  ],
+  "consumer": "Chapter-19 Pylon, 51 checks, test-key signer double, owned delayed toy, local TLS proxy and relay only"
+}

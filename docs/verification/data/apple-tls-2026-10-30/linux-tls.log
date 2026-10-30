@@ -1,0 +1,24 @@
+12 checks, 12 passed, 0 failed
+gcc (GCC) 15.2.0
+OpenSSL 3.6.3 9 Jun 2026 (Library: OpenSSL 3.6.3 9 Jun 2026)
+PASS connect wss://localhost:36185/: got 772, want 0x0304
+PASS echo wss://localhost:36185/echo?x=1: got 772, want 0x0304
+PASS echo wss://localhost:46461: got 771, want 0x0303
+PASS connect wss://localhost:44813/: got -10, want -10
+PASS connect wss://localhost:37075/: got -9, want -9
+PASS connect wss://localhost:43669/: got -9, want -9
+PASS connect wss://localhost:40571/: got -11, want -11
+PASS echo ws://localhost:36185/: got -3, want neg
+PASS connect https://localhost:36185/: got -20, want -20
+PASS control: openssl s_client completes TLS 1.1 with the old server
+PASS eose wss://localhost:36371: 3 events before EOSE, want 3
+RELAY ok: handshake mask req mask close
+PASS connect wss://localhost:36185/: got -9, want -9
+PASS connect wss://localhost:36185/: got -9, want -9
+PASS exact stream bytes, nonblocking/pending reads, bounds and slot reuse
+fixture eof: stream end -1
+PASS stream-end evidence is reported without inventing authenticated completion
+fixture truncate: stream end -3
+PASS stream-end evidence is reported without inventing authenticated completion
+PASS stalled handshakes time out and release all slots
+tls.sh: all local checks pass

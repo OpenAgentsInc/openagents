@@ -552,6 +552,11 @@ identity in the beacon and the answer is Elephant's own,
 refused reconnects (backoff 0.7, 1.0 and 2.5 s) before the fourth
 connection opened.
 
+The [Apple TLS extension](../../docs/verification/2026-10-30-apple-tls.md)
+now qualifies this Pylon over `wss://` on macOS, including relay restart,
+re-authentication, queued cancellation and encrypted answers. Native iOS
+compilation is checked; iOS runtime remains unqualified.
+
 ## What this does not do yet
 
 - **Real keys.** The key is a test key. Nothing here may be pointed at
@@ -564,8 +569,6 @@ connection opened.
   A relay that resent more than 64 older jobs at once could get a second
   answer for one of them; idempotency storage across restarts of the Pylon
   itself is not here either.
-- **`wss://` on Apple.** `tls-native.c`'s Apple branch is a stub, so
-  `wss://` works on Linux (OpenSSL) only.
 - **One decision at a time, no stop for a running one.** A running job is
   never cancelled mid-decision.
 - **The receipt.** The 26910 carries a receipt object with `attempt_id`,

@@ -33,6 +33,8 @@ extern "C" {
    cxtls_connect(port, timeout_ms) connects TCP + TLS within one deadline.
    It returns an opaque nonnegative handle, or a negative TLS/socket error.
    Failure releases every connection effect. Always use this on Apple.
+   Apple's deadline includes asynchronous DNS. Linux's system getaddrinfo
+   remains blocking, as documented in socket-native.h.
 
    Legacy Linux-only upgrade: cxsock_connect a TCP handle h, cxtls_host_push the host name's
    bytes (at most CXTLS_MAX_HOST), then cxtls_start(h, timeout_ms) runs the

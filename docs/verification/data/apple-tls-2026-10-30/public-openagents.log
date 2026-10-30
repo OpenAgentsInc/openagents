@@ -1,0 +1,1 @@
+PASS connect wss://relay.openagents.com: got 772, want 0x0304

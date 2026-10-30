@@ -1,0 +1,32 @@
+build 4.8 s
+--- ws://
+  relay ws://localhost:39431
+  ok   entropy: 16 bytes drawn, a request past the bridge's 64 refused by the policy
+  ok   connect, handshake, REQ, stored events, EOSE
+  ok   the three stored events delivered once each, the later one not yet
+  ok   the first REQ had no since; EOSE marked the subscription caught up
+  ok   publish A: OK true
+  ok   publish B: OK false (blocked: fixture policy)
+  ok   the relay's ping was answered with a pong (the relay checks its payload)
+  ok   ping sent to the relay
+  ok   the relay's pong
+  ok   the pong carried the ping's payload
+  ok   publish C: the relay dropped the connection without an OK
+  ok   C is still unacknowledged after the drop
+  ok   reconnect, resubscribe, EOSE, the outage's event, C resent and accepted
+  ok   three connects: the first, a refused handshake, the resumed one
+  backoff delays: 628 ms, then 1423 ms
+  ok   backoff: 500 ms then 1000 ms, each plus jitter below half
+  ok   resubscribed with since = the newest created_at delivered
+  ok   the boundary event came again and was dropped; the new one was delivered
+  ok   only the unacknowledged publish was resent
+  ok   unsubscribe
+  ok   CLOSE sent
+  ok   close frame 1000 sent
+  ok   the relay echoed close 1000
+  ok   then the relay closed the TCP connection
+  ok   no unscripted frames, refusals, forgeries or ack timeouts
+relay e2e: ok
+relay saw 3 handshakes, 10 masked frames (all mask keys distinct: True)
+ws run 2.3 s (ASan+UBSan)
+relay_e2e: ok

@@ -1,0 +1,85 @@
+{
+  "schema": "coax-apple-tls-observations-v1",
+  "files": {
+    "book.log": {
+      "sha256": "68f006637dea18934f206da6575eb817bf80d17149835aa85c229a79f267d18c",
+      "bytes": 74
+    },
+    "initial-missing-api.log": {
+      "sha256": "f635ef257bd3f96c3692faa5537af6de3b390056ee89094ce7e1a5d26a0f421f",
+      "bytes": 763
+    },
+    "initial-opaque-eof.log": {
+      "sha256": "9716d46f7ef011aea502ff6197ca10ec081fb657c8dca10ad95730cb3f06dfac",
+      "bytes": 121
+    },
+    "ios-compile.log": {
+      "sha256": "b9091bae76e4061cd502c07a535dad7c49ce1766b2991467597452352a4d2d3f",
+      "bytes": 76
+    },
+    "linux-plain.log": {
+      "sha256": "deae46da7d177abf19fd7120858877cfaa57d0b47274bcd94bc273ea9bcaeeb6",
+      "bytes": 1494
+    },
+    "linux-relay.log": {
+      "sha256": "8d2124920aaa91853a336a8a85f192bbf4726676de0872d761ab0b12adb84380",
+      "bytes": 3061
+    },
+    "linux-tls.log": {
+      "sha256": "382b097a05ba5c47939dd60a8afc62512a2c76ddcdf9416bdf064c2459c3e9fd",
+      "bytes": 1262
+    },
+    "mac-plain.log": {
+      "sha256": "0c47288f4b1d7a80195c4d7d35ecae3ee6003d5c58308ffb22eebaa737c9c97c",
+      "bytes": 1494
+    },
+    "mac-relay.log": {
+      "sha256": "08a516f1807576384c40a459d9b5839eb19e9daf30e9ab6811ae8f1dd6a8cce5",
+      "bytes": 3061
+    },
+    "mac-tls.log": {
+      "sha256": "da37b45dc36ce49931b81ab7b48feee52c515f5a04a3cc984ec74e81e0ba97df",
+      "bytes": 1297
+    },
+    "producers.json": {
+      "sha256": "ca4df4b9794402f35d9eb445e21c2274102fa5dcce6b4453fa246ab82dde4d3e",
+      "bytes": 3576
+    },
+    "public-nos-lol.log": {
+      "sha256": "6850a64a9883bcf063bb1ec197b02ae99d6137717a2580f71d873a9c1d39ac6c",
+      "bytes": 46
+    },
+    "public-openagents.log": {
+      "sha256": "cace142ff54a7905a35ba7ea0dcf47b22b71aa26c4787ea0525f6c1318c58656",
+      "bytes": 62
+    },
+    "pylon-buyer.log": {
+      "sha256": "c9a26cb5afb35fc70bc7e75d72d44b4549fdc805a3c70fa75d98b822ac9861b6",
+      "bytes": 2328
+    },
+    "pylon-wss.log": {
+      "sha256": "eb684364ca108ecce63cb62c8e05daaef11e7c663034e89511b5faae55924074",
+      "bytes": 6351
+    },
+    "pylon.err.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "pylon.log": {
+      "sha256": "dea44ce20c63a0bd1109f568542d718143bf3f772e0c04c04e91e8841c71a22b",
+      "bytes": 3060
+    },
+    "rules-debug.log": {
+      "sha256": "3f02d913a7fd9fe9c6dd2122921eb818d2fd2a43340856f4f6487e55704fd2bc",
+      "bytes": 2562
+    },
+    "rules-release.log": {
+      "sha256": "3f02d913a7fd9fe9c6dd2122921eb818d2fd2a43340856f4f6487e55704fd2bc",
+      "bytes": 2562
+    },
+    "thread-sanitizer.log": {
+      "sha256": "8c13171d24033afa3f196a23d99ae85dd4dad80f9dce6914c96fbfd1e0c57950",
+      "bytes": 74
+    }
+  }
+}

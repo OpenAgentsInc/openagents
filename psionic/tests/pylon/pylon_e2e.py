@@ -30,7 +30,7 @@ Environment:
   RESTART  0 skips the relay restart case (default 1)
   BUN, NOBLE  bun (the buyer), and a node_modules holding @noble and nostr-effect
 """
-import os, pathlib, shutil, socket, ssl, subprocess, sys, tempfile, threading, time
+import os, pathlib, select, shutil, socket, ssl, subprocess, sys, tempfile, threading, time
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 HERE = pathlib.Path(__file__).resolve().parent
@@ -149,22 +149,54 @@ class TlsProxy:
             up = socket.create_connection(('127.0.0.1', self.upstream), 2)
         except OSError:
             self.end(tls); return
-        up.settimeout(None)
-        done = threading.Event()
-
-        def pump(a, b):
-            try:
-                while True:
-                    data = a.recv(65536)
-                    if not data:
-                        break
-                    b.sendall(data)
-            except (OSError, ssl.SSLError):
-                pass
-            done.set()
-        threading.Thread(target=pump, args=(tls, up), daemon=True).start()
-        threading.Thread(target=pump, args=(up, tls), daemon=True).start()
-        done.wait()
+        # An SSL object must have one owner. Concurrent recv/send/unwrap from
+        # the old three-thread proxy could crash Python/OpenSSL at relay drop.
+        # This bounded nonblocking pump serializes every TLS operation.
+        tls.setblocking(False); up.setblocking(False)
+        to_tls, to_up = bytearray(), bytearray()
+        up_done = tls_done = read_wants_write = write_wants_read = False
+        cap = 1048576
+        try:
+            while not ((up_done and not to_tls) or (tls_done and not to_up)):
+                reads, writes = [], []
+                if (not tls_done and len(to_up) < cap) or write_wants_read:
+                    reads.append(tls)
+                if not up_done and len(to_tls) < cap:
+                    reads.append(up)
+                if (to_tls and not write_wants_read) or read_wants_write:
+                    writes.append(tls)
+                if to_up:
+                    writes.append(up)
+                pending = not tls_done and len(to_up) < cap and tls.pending() > 0
+                ready, writable, _ = select.select(reads, writes, [], 0 if pending else .1)
+                if pending and tls not in ready:
+                    ready.append(tls)
+                if (tls in ready and not tls_done and len(to_up) < cap) or (read_wants_write and tls in writable):
+                    try:
+                        data = tls.recv(min(65536, cap - len(to_up)))
+                        read_wants_write = False
+                        if data: to_up.extend(data)
+                        else: tls_done = True
+                    except ssl.SSLWantReadError: read_wants_write = False
+                    except ssl.SSLWantWriteError: read_wants_write = True
+                if up in ready:
+                    try:
+                        data = up.recv(min(65536, cap - len(to_tls)))
+                        if data: to_tls.extend(data)
+                        else: up_done = True
+                    except BlockingIOError: pass
+                if to_tls and ((tls in writable and not write_wants_read) or (write_wants_read and tls in ready)):
+                    try:
+                        sent = tls.send(to_tls)
+                        del to_tls[:sent]; write_wants_read = False
+                    except ssl.SSLWantReadError: write_wants_read = True
+                    except ssl.SSLWantWriteError: write_wants_read = False
+                if up in writable and to_up:
+                    try:
+                        sent = up.send(to_up); del to_up[:sent]
+                    except BlockingIOError: pass
+        except (OSError, ssl.SSLError):
+            pass
         try:
             up.close()
         except OSError:
@@ -174,6 +206,7 @@ class TlsProxy:
     @staticmethod
     def end(tls):
         try:
+            tls.settimeout(1)
             tls.unwrap().close()
         except (OSError, ValueError, ssl.SSLError):
             try:

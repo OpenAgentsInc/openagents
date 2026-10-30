@@ -45,11 +45,12 @@ int main(int argc, char **argv) {
   assert(cxtls_version(h) == 0x0304);
   assert(cxtls_read(h, 0) == CXTLS_TIMEOUT);
   assert(cxtls_byte(h, 0) == CXTLS_ERROR);
+  /* No bytes can arrive before we write: independent of host scheduling. */
+  assert(cxtls_read(h, 1) == CXTLS_TIMEOUT);
   enum { BYTES = 131071 };
   for (int i = 0; i < BYTES; i++) assert(cxtls_write(h, i % 251) == 0);
   assert(cxtls_flush(h, 3000) == 0);
   /* A timed-out pending receive must not lose or duplicate the later bytes. */
-  assert(cxtls_read(h, 1) == CXTLS_TIMEOUT);
   int received = 0;
   while (received < BYTES) {
     int64_t n = cxtls_read(h, 3000); assert(n > 0 && n <= CXTLS_MAX_IN);
