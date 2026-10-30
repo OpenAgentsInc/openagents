@@ -108,6 +108,7 @@ Player :: struct {
   // Your speed's share, set by the realm: 1 on land, 0.5 wading or swimming
   // (verse/everglade/river.coax pace_of). WALK and RUN themselves never change.
   pace: f32 = 1;
+  grip: f32 = 1;       // the share of your feet's grip on the ground (a realm's ice: everglade-frost.coax); less slides you
 }
 
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
@@ -459,7 +460,8 @@ step :: (w: World, p: Player, dt: f32) -> Player {
   dz := dir.z * speed - next.vel.z;
   diff := sqrt(dx * dx + dz * dz);
   if diff > 0 {
-    applied := lo(diff, f32(ACCEL) * dt);
+    grip := ifx finite(p.grip) && p.grip > 0 && p.grip < 1 && p.on_ground then p.grip else 1.0f32;
+    applied := lo(diff, f32(ACCEL) * grip * dt);
     next.vel.x += dx / diff * applied;
     next.vel.z += dz / diff * applied;
   }
@@ -648,6 +650,15 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player {
   // A held stick past the dead zone reaches the top speed.
   if ix * ix + iy * iy > 0 { #assert near(flat_speed(p), top, 0.001); }
   else { #assert flat_speed(p) == 0; }
+}
+
+#test "on ice (a grip under one) the same wish takes you up to speed slower, and you slide on" {
+  p := verse_player_place(0, 0, 0, 0);
+  p = verse_player_input(p, 0, 1, 0, 0, true, false, 0, 0);
+  dry := verse_player_advance(p, 0.0625);
+  p.grip = 0.1;
+  icy := verse_player_advance(p, 0.0625);
+  #assert flat_speed(icy) < flat_speed(dry) * 0.2 && flat_speed(icy) > 0;
 }
 
 #test "a pace under one slows you by its share, and the land speeds stay as they are" {

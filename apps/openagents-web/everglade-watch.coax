@@ -109,6 +109,7 @@ watch_end_effects :: (s: [] Everglade) {
   s[0].wv.knocked = false; s[0].wv.knock = v3(0, 0, 0);
   w := watch_w(s);
   w[0].you_body.on = false; w[0].you_body.settle = -1; w[0].you_fall = 0;
+  fr_you_reset(s);
 }
 // A blast's throw for your living body, taken once by the face (everglade-face.c adds it to your velocity).
 everglade_knock :: (s: [] Everglade) -> Point #export_c {

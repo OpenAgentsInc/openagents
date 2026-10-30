@@ -65,6 +65,7 @@ WIND = (0.6, 0.95, 0.9)
 STORM = (0.55, 0.75, 1.0)
 STONE = (0.82, 0.76, 0.66)
 ROT = (0.55, 0.9, 0.5)
+ICE = (0.65, 0.92, 1.0)
 
 FREE = ("No mana, no cooldown", MANA)
 RANGE = ("140 m range", RULE)   # everglade-spells.coax SP_RANGE
@@ -112,6 +113,15 @@ SLOTS = [
     ("black-tentacles", "delapouite/tentacles-barrier.svg", ROT, "S3", "Black Tentacles",
      "Writhing tentacles fill a 20-foot square of ground: townsfolk in it make a Strength save or take 3d6 bludgeoning and are held, and the tentacles seize the loose things in reach.",
      [("Shift+3", KEY), FREE, ("90 ft range", RULE), ("Concentration, up to 1 minute", TIME)]),
+    ("ice-knife", "lorc/ice-spear.svg", ICE, "S4", "Ice Knife",
+     "Throw a shard of ice at someone or a spot within 60 feet: a ranged spell attack for 1d10 piercing, then it bursts, and each creature within 5 feet makes a Dexterity save or takes 2d6 cold. It leaves slippery frost.",
+     [("Shift+4", KEY), FREE, ("60 ft range", RULE)]),
+    ("ice-storm", "lorc/ice-bolt.svg", ICE, "S5", "Ice Storm",
+     "Hail pounds a 20-foot-radius cylinder: 2d10 bludgeoning and 4d6 cold, half on a Dexterity save, and windows break. Its ground is rough, then icy; on water it freezes hard enough to walk on.",
+     [("Shift+5", KEY), FREE, ("300 ft range", RULE)]),
+    ("sleet-storm", "lorc/snowflake-2.svg", ICE, "S6", "Sleet Storm",
+     "Freezing sleet fills a 20-foot-radius cylinder: it hides what is behind it, puts out fires and ices the ground. Whoever is in it makes a Dexterity save each round or falls Prone and loses Concentration.",
+     [("Shift+6", KEY), FREE, ("150 ft range", RULE), ("Concentration, up to 1 minute", TIME)]),
     ("rebuild", "delapouite/house.svg", OIL, "R", "Rebuild",
      "Stands every broken building in the town back up whole.",
      [("Key R", KEY)]),

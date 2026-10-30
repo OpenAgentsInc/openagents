@@ -19,6 +19,9 @@ Icons made by Lorc (<http://lorcblog.blogspot.com>):
 - `lorc/wind-slap.svg` (Gust of Wind)
 - `lorc/sonic-boom.svg` (Thunderwave)
 - `lorc/juggler.svg` (Telekinesis)
+- `lorc/ice-spear.svg` (Ice Knife)
+- `lorc/ice-bolt.svg` (Ice Storm)
+- `lorc/snowflake-2.svg` (Sleet Storm)
 
 Icons made by Delapouite (<https://delapouite.com>):
 

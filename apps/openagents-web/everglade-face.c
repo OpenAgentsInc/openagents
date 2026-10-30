@@ -166,7 +166,14 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (busy) sticks = verse_sticks_reset();
   if (busy) player = verse_player_input(player, 0, 0, 0, 0, false, false, 0, 0);
   else player = verse_player_input(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y), (g->jump || sticks.jump) && !everglade_afloat(at(state)), 0, 0);
-  player.pace = swim.pace;
+  {
+    // the ice under you (everglade-frost.coax): Slippery Ice takes your grip, Difficult Terrain and
+    // slush your pace; Prone or caught in the ice you can't move
+    coax_t_FrFooting foot = everglade_footing(at(state), player.pos.x, player.pos.z, player.pos.y);
+    if (foot.still) player = verse_player_input(player, 0, 0, 0, 0, false, false, 0, 0);
+    player.pace = swim.pace * foot.pace;
+    player.grip = foot.grip;
+  }
   player.theta = everglade_player_theta(at(state));
   sticks = verse_sticks_used(sticks);
   // on the bridge's deck its rails are in your way; off it (in the river under it) its piles are
@@ -210,7 +217,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     swim = (coax_t_Swim){0}; swim.pace = 1; swim.breath = 1; swim.surface = -1000;
   } else {
     // your feet's height over the bed: over the water's surface (levitating, falling) you are not in it
-    swim = everglade_river_swim_over(rv(), heights, player.pos.x, player.pos.z, player.pos.y, g->dive && !busy, dt, now);
+    // on the ice over the water you stand on it (everglade-frost.coax)
+    swim = everglade_river_swim_over(rv(), heights, player.pos.x, player.pos.z, player.pos.y + everglade_ice_lift(at(state), player.pos.x, player.pos.z), g->dive && !busy, dt, now);
   }
   if (swim.defeated) {
     // the sixth level of Exhaustion: you come to on the nearer bank

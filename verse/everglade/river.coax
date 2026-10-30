@@ -1046,7 +1046,7 @@ everglade_river_fields :: (r: [] River, fields: [] f32, n: int) #export_c {
 // What the fields do to float i over h, besides gravity (as verse/demolish.coax demo_field_accel
 // moves the debris): in Reverse Gravity's cylinder it falls upward and hovers under the top; in a
 // Wind Wall a duck or a pad (2 kg at most) flies up its updraft held to its middle, a rowboat is
-// lightened by 3 m/s². The rowboat you sit in stays on the water.
+// lightened by 3 m/s². In ice (kind 6) it is held still. The rowboat you sit in stays on the water.
 float_field :: (r: [] River, b: RigidBody, i: int, h: f64) -> RigidBody {
   out := b;
   for k: 0..<r[0].field_n {
@@ -1062,6 +1062,15 @@ float_field :: (r: [] River, b: RigidBody, i: int, h: f64) -> RigidBody {
       out = rigid_wake(out);
       out.vel = d3_add(out.vel, d3(-0.3 * b.vel.x * h, (ay + 9.81) * h, -0.3 * b.vel.z * h));
       return out;
+    }
+    if kind == 6 {
+      // ice (the page's Ice Storm, an Ice Knife): what floats in its disc is frozen in, held where
+      // it is (a rowboat too)
+      dx := b.pos.x - f64(f[1]); dz := b.pos.z - f64(f[2]);
+      if dx * dx + dz * dz > f64(f[7] * f[7]) { continue; }
+      hold := fmin(h * 20.0, 1.0);
+      out.vel = d3_add(out.vel, d3(-b.vel.x * hold, 0.0, -b.vel.z * hold));
+      continue;
     }
     if kind == 5 {
       // a wall (Wall of Stone): what floats into it is put back out on the side it came from and

@@ -49,6 +49,7 @@
 #load "../../verse/water-spells.coax";
 #load "everglade-hotbar.coax";
 #load "everglade-abilities.coax";
+#load "everglade-frost.coax";
 
 SP_SLOTS :: 4;
 SP_MEDIA_BYTES :: 5600;
@@ -188,6 +189,7 @@ Spells :: struct {
   news: [120] u8; news_n: int; news_t: f32;
   boxes: [SP_BAR + 1] Box;   // and the row switcher's
   row: int;                  // the row a phone's bar shows
+  fr: [1] Frost;               // Ice Knife, Ice Storm, Sleet Storm and their ice (everglade-frost.coax)
   ab: [1] Abilities;           // Reverse Gravity and the Wind Walls (everglade-abilities.coax)
   lift: f32;                 // how much of the bottom the bar takes, for what sits over it
   regrow_t: f32;
@@ -746,6 +748,7 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
   demo_blast_end(w);
   s[0].sp.walls_dirty = true;
   kind := ifx slot == SP_ORB then 2 else ifx slot == SP_METEOR then 0 else 1;
+  if kind == 0 { fr_melt(s, at, radius); }   // fire melts the ice it reaches (everglade-frost.coax)
   if slot == SP_ORB {
     // the water puts out what burns where it splashes: a fireball still burning ends, a char steams
     for q: 0..<SP_BLASTS {

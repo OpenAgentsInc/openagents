@@ -1,0 +1,959 @@
+// Everglade's frost (eg-frost), loaded by everglade-spells.coax after everglade-abilities.coax: the
+// previous engine's ice spells (`0b401561a0^:crates/verse-zone-grove/src/zones/grove/kit.rs` and
+// `cast.rs` for the casts, `crates/verse-world/src/spells/water/ice.rs` for the freezing table and the
+// ice's hazards), on the bar's second row after Black Tentacles:
+//
+//  S4 ICE KNIFE    (SRD 5.2.1, level 1) Pick it, then click someone or the ground within 60 feet: a
+//                  shard of ice flies there. Against a person it is a ranged spell attack (+7 against
+//                  their AC: 1d10 piercing, two on a 20); hit or miss it bursts, and they and each
+//                  creature within 5 feet of it make a Dexterity save against DC 15 or take 2d6 cold.
+//                  The burst throws its splinters of ice out, and they fly, strike walls and roofs,
+//                  bounce, lie and melt; it leaves a 5-foot glaze of frost on the ground (slippery for
+//                  9 s) or thin ice on the water (6 s, then floes for 3 s).
+//  S5 ICE STORM    (level 4) Pick it, then click the ground within 300 feet: hail pounds a cylinder 20
+//                  feet in radius and 40 feet high. Each creature in it makes a Dexterity save: 2d10
+//                  bludgeoning and 4d6 cold, half on a success. The hail is the town's to bear too (its
+//                  2d10 bludgeoning on every piece in it: a window breaks); the hailstones fall from
+//                  the cloud as bodies of their own, bounce off roofs, roll off their slopes, lie on the
+//                  ground or float, and melt. The ground there is Difficult Terrain until the end of
+//                  your next turn (a round), then a glaze of Slippery Ice until 30 s; on water the old
+//                  table's walkable ice for 30 s (whoever swims there is caught in it), thin for 10 s
+//                  and floes for 10 s.
+//  S6 SLEET STORM  (level 3) Pick it, then click the ground within 150 feet: freezing sleet falls in a
+//                  cylinder 20 feet in radius and 40 feet high for a minute, or until Shift+6 again.
+//                  It is Heavily Obscured (a name is not seen through it), its ground is Difficult
+//                  Terrain and slippery, its water slush, and it puts out what burns in it. Whoever
+//                  comes into it, or is in it as a round begins, makes a Dexterity save against DC 15
+//                  or falls Prone and loses Concentration.
+//
+// Ice and you (SRD 5.2.1 Slippery Ice and Thin Ice; which spell leaves which ice, and for how long, is
+// the old table's): on Slippery Ice your feet keep a tenth of their grip, so you slide, and the first
+// time each round you move on it you make a DC 10 Dexterity (Acrobatics) check or fall Prone for 1.5 s
+// (your slide goes on). Walkable ice and floes bear you over the water; thin ice bears its 10-foot
+// square's rolled 3d10 x 10 lb, and you and your pack (90 kg) break most of it. Difficult Terrain
+// halves your pace. Every spell here reaches you as it reaches the town: the knife's burst, the hail,
+// the sleet's save. The townsfolk make the same saves and checks (a failure knocks them down), and the
+// watch hear it as a crime. Fire melts the ice it touches.
+
+FR_FOOT :: 0.3048;
+FR_DC :: 15;                          // the spells' save DC (everglade-spells.coax SP_DC)
+FR_ATTACK :: 7;                       // the spell attack: DC 15 = 8 + 7
+FR_DEX :: 3;                          // your Dexterity save and check (SRD_RANGER_5)
+FR_STR :: 4;                          // your Strength save: a Ranger is proficient (+3), Strength 12 (+1)
+FR_KNIFE_RANGE :: 18.288; FR_KNIFE_R :: 1.524; FR_KNIFE_SPEED :: 32.0; FR_HEAR_KNIFE :: 20.0;
+FR_STORM_RANGE :: 91.44; FR_STORM_R :: 6.096; FR_STORM_H :: 12.192; FR_HEAR_STORM :: 60.0;
+FR_HAIL_FOR :: 1.4;                   // s the hail falls
+FR_HAIL_HIT :: 0.75;                  // s from the cast its first stones reach the ground: the damage
+FR_HAIL_ROUGH :: 6.0;                 // s the hail is Difficult Terrain (until the end of your next turn)
+FR_SLEET_RANGE :: 45.72; FR_SLEET_R :: 6.096; FR_SLEET_H :: 12.192; FR_SLEET_LIFE :: 60.0; FR_HEAR_SLEET :: 30.0;
+FR_ROUND :: 6.0;
+FR_SLIP_DC :: 10;                     // Slippery Ice's Dexterity (Acrobatics) DC
+FR_PRONE :: 1.5;                      // s a fall leaves you Prone (the combat model's knockdown)
+FR_GRIP :: 0.1;                       // the share of your feet's grip on Slippery Ice
+FR_SLOW :: 0.5;                       // your pace on Difficult Terrain
+FR_YOU_KG :: 90.0;                    // you and your pack, on thin ice
+FR_FLOE_KG :: 140.0;                  // a floe bears one Medium creature
+FR_CELL :: 3.048;                     // thin ice's 10-foot square
+FR_POUND :: 0.45359237;
+FR_HEAR_SLIP :: 18.0;
+FR_PATCHES :: 16; FR_BROKEN :: 8; FR_SHARDS :: 180;
+FR_KNIFE :: 0; FR_STORM :: 1; FR_SLEET :: 2;   // what left a patch
+FR_NONE :: 0; FR_SLUSH :: 1; FR_FLOES :: 2; FR_THIN :: 3; FR_WALK :: 4;   // ice on water, weakest first
+FR_FOREVER :: 100000.0;
+FR_ICE_RGB :: Point.{x = 0.65, y = 0.92, z = 1.0};   // the old icons' ICE
+
+FrPatch :: struct {
+  live: bool; kind: int; x: f32; z: f32; r: f32; t: f32;
+  held: f32;                          // a Sleet Storm's: how long its first stage lasts (while it falls)
+  broken: [FR_BROKEN] int; nb: int;   // thin ice's 10-foot squares broken open
+  seed: f32;
+}
+FrShard :: struct { live: bool; at: Point; vel: Point; spin: Point; t: f32; life: f32; size: f32; rest: bool; hail: bool; wet: bool; }
+FrKnife :: struct { live: bool; from: Point; to: Point; t: f32; flight: f32; target: int; }
+Frost :: struct {
+  time: f32;
+  patches: [FR_PATCHES] FrPatch;
+  shards: [FR_SHARDS] FrShard;
+  knife: FrKnife;
+  storm_on: bool; storm_at: Point; storm_t: f32; storm_hit: bool; storm_n: int;
+  sleet_on: bool; sleet_at: Point; sleet_t: f32; sleet_patch: int; sleet_puff: f32;
+  // you: Prone (s left, and since when), caught in the ice (s, your next save), your next slip check
+  // and Sleet Storm save, whether you were in the sleet
+  prone: f32; prone_t: f32; held: bool; held_next: f32; slip_next: f32; sleet_next: f32; in_sleet: bool;
+  // the townsfolk: each one's next check, whether they were in the sleet
+  next: [WATCH_ACTORS] f32; sleet_in: [WATCH_ACTORS] bool;
+  splashes: int;                      // the shards' splashes this frame (a few at most)
+}
+
+fr_of :: (s: [] Everglade) -> [] Frost { return s[0].sp.fr[..]; }
+fr_start :: (s: [] Everglade) {
+  f := fr_of(s);
+  f[0].time = 0; f[0].knife.live = false; f[0].storm_on = false; f[0].sleet_on = false; f[0].sleet_patch = -1;
+  f[0].prone = 0; f[0].held = false; f[0].slip_next = 0; f[0].sleet_next = 0; f[0].in_sleet = false;
+  for k: 0..<FR_PATCHES { f[0].patches[k].live = false; }
+  for k: 0..<FR_SHARDS { f[0].shards[k].live = false; }
+  for i: 0..<WATCH_ACTORS { f[0].next[i] = 0; f[0].sleet_in[i] = false; }
+}
+// You stand again (watch_end_effects, a respawn): no longer Prone or caught.
+fr_you_reset :: (s: [] Everglade) { f := fr_of(s); f[0].prone = 0; f[0].held = false; }
+
+// ---- the ice: where it is and what it is
+
+fr_wet :: (s: [] Everglade, x: f32, z: f32) -> bool { return water_at(s, x, z) > f32(DEMO_DRY) + 1; }
+fr_in_disc :: (p: FrPatch, x: f32, z: f32) -> bool { dx := x - p.x; dz := z - p.z; return dx * dx + dz * dz <= p.r * p.r; }
+// A patch's ice on the water at its age (the old freezing table).
+fr_water_stage :: (p: FrPatch) -> int {
+  if p.kind == FR_KNIFE { return ifx p.t < 6 then FR_THIN else ifx p.t < 9 then FR_FLOES else FR_NONE; }
+  if p.kind == FR_STORM { return ifx p.t < 30 then FR_WALK else ifx p.t < 40 then FR_THIN else ifx p.t < 50 then FR_FLOES else FR_NONE; }
+  return ifx p.t < p.held + 20 then FR_SLUSH else FR_NONE;
+}
+// Its ground: slippery, rough (Difficult Terrain), both, or neither.
+fr_ground_slip :: (p: FrPatch) -> bool {
+  if p.kind == FR_KNIFE { return p.t < 9; }
+  if p.kind == FR_STORM { return p.t >= f32(FR_HAIL_ROUGH) && p.t < 30; }
+  return p.t < p.held + 10;
+}
+fr_ground_rough :: (p: FrPatch) -> bool {
+  if p.kind == FR_STORM { return p.t < f32(FR_HAIL_ROUGH); }
+  if p.kind == FR_SLEET { return p.t < p.held; }
+  return false;
+}
+fr_life :: (p: FrPatch) -> f32 { return ifx p.kind == FR_KNIFE then 9.0f32 else ifx p.kind == FR_STORM then 50.0f32 else p.held + 20; }
+// Thin ice's 10-foot square holding (x, z), as one number.
+fr_cell :: (x: f32, z: f32) -> int {
+  cx := cast(int) floor(x / f32(FR_CELL)); cz := cast(int) floor(z / f32(FR_CELL));
+  return (cx + 512) * 1024 + (cz + 512);
+}
+fr_broken :: (p: FrPatch, cell: int) -> bool { for k: 0..<p.nb { if p.broken[k] == cell { return true; } } return false; }
+// What a 10-foot square of thin ice bears, kg: 3d10 x 10 lb, rolled from the patch and the square so
+// it bears the same every time.
+fr_tolerance :: (p: FrPatch, cell: int) -> f32 {
+  dice := 0;
+  for k: 0..<3 { dice += 1 + clamp_i(cast(int) floor(sp_noise(p.seed * 31.7 + f32(cell % 9973) * 0.37, f32(k) * 5.1 + 0.7) * 10), 0, 9); }
+  return f32(dice) * 10 * f32(FR_POUND);
+}
+FrIce :: struct { state: int; patch: int; }
+// The strongest ice on the water at (x, z), and the patch it is of.
+fr_ice_at :: (s: [] Everglade, x: f32, z: f32) -> FrIce {
+  f := fr_of(s);
+  out := FrIce.{state = FR_NONE, patch = -1};
+  if !fr_wet(s, x, z) { return out; }
+  for k: 0..<FR_PATCHES {
+    p := f[0].patches[k];
+    if !p.live || !fr_in_disc(p, x, z) { continue; }
+    st := fr_water_stage(p);
+    if st == FR_THIN && fr_broken(p, fr_cell(x, z)) { continue; }
+    if st > out.state { out = FrIce.{state = st, patch = k}; }
+  }
+  return out;
+}
+// What you can stand on over the water at (x, z): the ice's top, else far down (walk_at takes the higher).
+fr_floor :: (s: [] Everglade, x: f32, z: f32) -> f32 {
+  if !sp_on(s) { return -1000; }
+  f := fr_of(s);
+  any := false;
+  for k: 0..<FR_PATCHES { p := f[0].patches[k]; if p.live && fr_water_stage(p) >= FR_FLOES && fr_in_disc(p, x, z) { any = true; } }
+  if !any { return -1000; }
+  if fr_ice_at(s, x, z).state >= FR_FLOES { return water_at(s, x, z) + 0.04; }
+  return -1000;
+}
+// How far the ice holds you over the ground under it there (everglade-face.c: your height over the
+// bed, for the river's swim).
+everglade_ice_lift :: (s: [] Everglade, x: f32, z: f32) -> f32 #export_c {
+  top := fr_floor(s, x, z);
+  if top < -999 { return 0; }
+  return hi(top - everglade_walk_height(s[0].heights[..], s[0].deck, x, z), 0);
+}
+FrFoot :: struct { slip: bool; rough: bool; slush: bool; }
+// The footing at (x, z): Slippery Ice, Difficult Terrain, slush to swim in.
+fr_foot :: (s: [] Everglade, x: f32, z: f32) -> FrFoot {
+  f := fr_of(s);
+  out: FrFoot;
+  if fr_wet(s, x, z) {
+    ice := fr_ice_at(s, x, z);
+    if ice.state >= FR_FLOES {
+      p := f[0].patches[ice.patch];
+      hail := p.kind == FR_STORM && p.t < f32(FR_HAIL_ROUGH);
+      out.slip = !hail; out.rough = hail;
+    }
+    out.slush = ice.state == FR_SLUSH;
+    return out;
+  }
+  for k: 0..<FR_PATCHES {
+    p := f[0].patches[k];
+    if !p.live || !fr_in_disc(p, x, z) { continue; }
+    if fr_ground_slip(p) { out.slip = true; }
+    if fr_ground_rough(p) { out.rough = true; }
+  }
+  return out;
+}
+
+// Your footing for the controller (everglade-face.c, before it steps you): the share of your feet's
+// grip, of your pace, and whether you can't move (Prone, or caught in the ice).
+FrFooting :: struct { grip: f32; pace: f32; still: bool; }
+everglade_footing :: (s: [] Everglade, x: f32, z: f32, y: f32) -> FrFooting #export_c {
+  out := FrFooting.{grip = 1, pace = 1, still = false};
+  if !sp_on(s) || !finite(x) || !finite(z) { return out; }
+  f := fr_of(s);
+  out.still = f[0].prone > 0 || f[0].held;
+  if !(y < 0.35) { return out; }   // off your feet: in the air the ice is nothing to you
+  ft := fr_foot(s, x, z);
+  if ft.slip { out.grip = f32(FR_GRIP); }
+  if ft.rough || (ft.slush && s[0].water >= WATER_SWIMMING) { out.pace = f32(FR_SLOW); }
+  return out;
+}
+
+// ---- patches
+
+fr_add_patch :: (s: [] Everglade, kind: int, x: f32, z: f32, r: f32) -> int {
+  f := fr_of(s);
+  k := 0;
+  for i: 0..<FR_PATCHES { if !f[0].patches[i].live { k = i; break; } if f[0].patches[i].t > f[0].patches[k].t && i != f[0].sleet_patch { k = i; } }
+  if k == f[0].sleet_patch && f[0].sleet_on { fr_sleet_end(s); }
+  f[0].patches[k] = FrPatch.{live = true, kind = kind, x = x, z = z, r = r, t = 0, held = ifx kind == FR_SLEET then f32(FR_FOREVER) else 0.0f32, nb = 0, seed = sp_rand(s)};
+  // who swims there as walkable ice forms is caught in it (ours, after the old table)
+  you := ab_you(s);
+  if kind == FR_STORM && s[0].water >= WATER_SWIMMING && fr_in_disc(f[0].patches[k], you.x, you.z) && fr_wet(s, you.x, you.z) {
+    f[0].held = true; f[0].held_next = f[0].time + f32(FR_ROUND);
+    sp_say(s, "YOU ARE CAUGHT IN THE ICE · A STRENGTH SAVE EACH ROUND", -1, "");
+  }
+  return k;
+}
+// Fire touching the ice at `at` within `radius` melts the patches it reaches (not a sleet that still
+// falls: its slush is falling sleet).
+fr_melt :: (s: [] Everglade, at: Point, radius: f32) {
+  if !sp_on(s) { return; }
+  f := fr_of(s);
+  for k: 0..<FR_PATCHES {
+    p := f[0].patches[k];
+    if !p.live || (p.kind == FR_SLEET && f[0].sleet_on && k == f[0].sleet_patch) { continue; }
+    if flat_gap(at, v3(p.x, 0, p.z)) > radius + p.r * 0.6 { continue; }
+    f[0].patches[k].live = false;
+    if fr_wet(s, p.x, p.z) { water_hit(s, p.x, p.z, SP_SPLASH_DEBRIS, p.r * 0.5); }
+  }
+  for k: 0..<FR_SHARDS {
+    if f[0].shards[k].live && length(sub(f[0].shards[k].at, at)) < radius + 1 { f[0].shards[k].live = false; }
+  }
+}
+
+// ---- you and the town on the ice
+
+// You fall Prone; in a Sleet Storm you lose Concentration too: Telekinesis lets go, Black Tentacles and
+// the sleet end.
+fr_you_prone :: (s: [] Everglade, concentration: bool) {
+  f := fr_of(s);
+  if f[0].prone <= 0 { f[0].prone_t = 0; }
+  f[0].prone = f32(FR_PRONE);
+  if !concentration { return; }
+  a := ab_of(s);
+  if a[0].tk_kind != AB_TK_NONE { ab_tk_release(s); }
+  if a[0].bt_on { ab_bt_end(s); }
+  if f[0].sleet_on { fr_sleet_end(s); }
+}
+// How far over you lie, Prone: 0 standing to -pi/2 on your back (everglade.coax figure tips you).
+fr_prone_pitch :: (s: [] Everglade) -> f32 {
+  if !sp_on(s) { return 0; }
+  f := fr_of(s);
+  if f[0].prone <= 0 { return 0; }
+  down := clamp01(f[0].prone_t / 0.35);
+  up := clamp01(f[0].prone / 0.4);
+  k := lo(down * down, up);
+  return -f32(PI) * 0.47 * k;
+}
+fr_in_cylinder :: (c: Point, r: f32, h: f32, p: Point, pad: f32) -> bool {
+  return flat_gap(c, p) <= r + pad && p.y + f32(BODY_TALL) >= c.y - 0.3 && p.y <= c.y + h;
+}
+// Your own spell on you (the shared hit: watch.coax watch_hurt_you_thrown): its damage, a Dexterity
+// save (half on a success, or none), and what it says. What you took, -1 out of reach or no watch.
+fr_hurt_you :: (s: [] Everglade, dmg: SrdDamage, on_save: int) -> int {
+  w := watch_w(s);
+  if !w[0].on || w[0].dead { return -1; }
+  took := srd_creature_takes(w[0].dice[..], SRD_RANGER_5, dmg, SAVE_DEX, on_save, SAVE_DC_W);
+  watch_hurt_you_thrown(w, took, ab_you(s), s[0].face, v3(0, 1.5, 0));
+  if took > 0 { sp_say(s, "YOU ARE CAUGHT IN IT", took, "DAMAGE"); }
+  return took;
+}
+// Each frame: your checks (the sleet's save, a slip, breaking free, thin ice under you) and the
+// townsfolk's.
+fr_people :: (s: [] Everglade) {
+  f := fr_of(s);
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  you := ab_you(s);
+  if !w[0].dead {
+    on_feet := s[0].feet.y < 0.35 && s[0].water < WATER_SWIMMING;
+    // the sleet: coming into it, and each round in it
+    inside := f[0].sleet_on && fr_in_cylinder(f[0].sleet_at, f32(FR_SLEET_R), f32(FR_SLEET_H), you, 0);
+    if inside && (!f[0].in_sleet || f[0].time >= f[0].sleet_next) {
+      f[0].sleet_next = f[0].time + f32(FR_ROUND);
+      if !srd_save(w[0].dice[..], FR_DEX, FR_DC).success && on_feet { fr_you_prone(s, true); sp_say(s, "YOU FALL IN THE SLEET · PRONE", -1, ""); }
+    }
+    f[0].in_sleet = inside;
+    // Slippery Ice: the first time each round you move on it
+    moving := s[0].act == 1 || s[0].act == 2;
+    if on_feet && moving && f[0].prone <= 0 && f[0].time >= f[0].slip_next && fr_foot(s, you.x, you.z).slip {
+      f[0].slip_next = f[0].time + f32(FR_ROUND);
+      if !srd_save(w[0].dice[..], FR_DEX, FR_SLIP_DC).success { fr_you_prone(s, false); sp_say(s, "YOU SLIP ON THE ICE · PRONE", -1, ""); }
+    }
+    // caught in the ice: a Strength save each round, and thawing frees you
+    if f[0].held {
+      ice := fr_ice_at(s, you.x, you.z);
+      if ice.state < FR_THIN { f[0].held = false; }
+      else if f[0].time >= f[0].held_next {
+        f[0].held_next = f[0].time + f32(FR_ROUND);
+        if srd_save(w[0].dice[..], FR_STR, FR_DC).success { f[0].held = false; sp_say(s, "YOU BREAK FREE OF THE ICE", -1, ""); }
+      }
+    }
+    // thin ice under you bears its square's tolerance, or breaks
+    if s[0].feet.y < 0.3 {
+      ice := fr_ice_at(s, you.x, you.z);
+      if ice.state == FR_THIN {
+        p := f[0].patches[ice.patch];
+        cell := fr_cell(you.x, you.z);
+        if f32(FR_YOU_KG) > fr_tolerance(p, cell) && p.nb < FR_BROKEN {
+          f[0].patches[ice.patch].broken[p.nb] = cell; f[0].patches[ice.patch].nb = p.nb + 1;
+          water_hit(s, you.x, you.z, SP_SPLASH_DEBRIS, 1.2);
+          sp_say(s, "THE THIN ICE GIVES WAY", -1, "");
+        }
+      }
+    }
+  }
+  // the townsfolk: the sleet's save coming in and each round; a slip on the ice, moving, once a round
+  fell := 0; at := you;
+  for i: 0..<WATCH_ACTORS {
+    if !ab_person_ok(s, i) || ab_tk_holds(ab_of(s), i) { f[0].sleet_in[i] = false; continue; }
+    act := w[0].actors[i];
+    pl := person_place(s, i);
+    feet := v3(pl.x, folk_feet(s, pl.x, pl.z), pl.z);
+    if ab_air(s, i) > 0.3 || act.body.on { continue; }
+    down := act.mode == WM_DOWN;
+    inside := f[0].sleet_on && fr_in_cylinder(f[0].sleet_at, f32(FR_SLEET_R), f32(FR_SLEET_H), feet, 0);
+    if inside && (!f[0].sleet_in[i] || f[0].time >= f[0].next[i]) {
+      f[0].next[i] = f[0].time + f32(FR_ROUND);
+      f[0].sleet_in[i] = true;
+      if !down && !srd_save(s[0].sp.dice[..], watch_block(i).dex, FR_DC).success { watch_harm(w, i, 0, you); fell += 1; at = feet; }
+      continue;
+    }
+    f[0].sleet_in[i] = inside;
+    moving := pl.walking || act.speed > 0.3 || act.mode == WM_CHASE || act.mode == WM_FLEE || act.mode == WM_FIGHT || act.mode == WM_BACK;
+    if down || !moving || f[0].time < f[0].next[i] || !fr_foot(s, pl.x, pl.z).slip { continue; }
+    f[0].next[i] = f[0].time + f32(FR_ROUND);
+    if !srd_save(s[0].sp.dice[..], watch_block(i).dex, FR_SLIP_DC).success { watch_harm(w, i, 0, you); fell += 1; at = feet; }
+  }
+  if fell > 0 { _ := watch_crime(w, at, f32(FR_HEAR_SLIP), you, s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
+}
+
+// ---- Ice Knife
+
+fr_knife_cast :: (s: [] Everglade) {
+  f := fr_of(s);
+  if !s[0].sp.aim_ok { sp_say(s, "POINT AT SOMEONE OR THE GROUND", -1, ""); return; }
+  from := ab_chest(s);
+  pick := ab_tk_pick(s);
+  target := ifx pick.kind == 2 then pick.idx else -1;
+  to := ifx target >= 0 then ab_person_at(s, target) else s[0].sp.aim;
+  if length(sub(to, from)) > f32(FR_KNIFE_RANGE) { sp_say(s, "TOO FAR · 60 FEET AT MOST", -1, ""); return; }
+  s[0].sp.armed = -1;
+  start := add(from, times(ab_forward(s), 0.4));
+  f[0].knife = FrKnife.{live = true, from = start, to = to, t = 0, flight = hi(length(sub(to, start)) / f32(FR_KNIFE_SPEED), 0.05), target = target};
+  sp_say(s, "ICE KNIFE", -1, "");
+}
+// The shard arrives: its attack on whom it was thrown at, and the burst.
+fr_knife_burst :: (s: [] Everglade) {
+  f := fr_of(s);
+  k := f[0].knife;
+  f[0].knife.live = false;
+  at := k.to;
+  d := s[0].sp.dice[..];
+  you := ab_you(s);
+  pierce := 0; hit := false; caught := 0;
+  cold := srd_sum(d, 2, 6);
+  if watch_on(s) {
+    w := watch_w(s);
+    if k.target >= 0 && ab_person_ok(s, k.target) {
+      roll := srd_roll(d, 20);
+      crit := roll == 20;
+      hit = roll != 1 && (crit || roll + FR_ATTACK >= watch_block(k.target).ac);
+      if hit { pierce = srd_sum(d, ifx crit then 2 else 1, 10); watch_harm(w, k.target, pierce, you); }
+    }
+    // the target and each creature within 5 feet of the burst: a Dexterity save or 2d6 cold
+    for i: 0..<WATCH_ACTORS {
+      if !ab_person_ok(s, i) { continue; }
+      if i != k.target && length(sub(ab_person_at(s, i), at)) > f32(FR_KNIFE_R) + f32(BLAST_PAD) + 0.5 { continue; }
+      if srd_save(d, watch_block(i).dex, FR_DC).success { continue; }
+      watch_harm(w, i, cold, you);
+      caught += 1;
+    }
+    if hit || caught > 0 { _ := watch_crime(w, at, f32(FR_HEAR_KNIFE), you, s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
+  }
+  if hit { sp_say(s, "ICE KNIFE · 1D10 PIERCING", pierce, ifx caught > 0 then "· AND 2D6 COLD" else ""); }
+  else if caught > 0 { sp_say(s, "ICE KNIFE · 2D6 COLD", cold, ifx k.target >= 0 then "· IT MISSES, THE BURST DOESN'T" else ""); }
+  else { sp_say(s, ifx k.target >= 0 then "ICE KNIFE · IT MISSES" else "ICE KNIFE", -1, ""); }
+  // and you, within 5 feet of it
+  if fr_near_you(s, at, f32(FR_KNIFE_R)) { _ := fr_hurt_you(s, SrdDamage.{amount = cold, kind = DMG_COLD, amount2 = 0, kind2 = DMG_NONE}, ON_SAVE_NONE); }
+  // the burst: splinters of ice thrown out of it, a frosty ring, a breath of mist
+  few := phone(s);
+  for q: 0..<(ifx few then 14 else 24) {
+    dir := sp_spray(s, 0.35);
+    fr_add_shard(s, add(at, times(dir, 0.15)), times(dir, 3 + 6 * sp_rand(s)), 0.04 + 0.06 * sp_rand(s), false);
+  }
+  sp_add_shock(s, at, 2.6, 0.35, FR_ICE_RGB);
+  for q: 0..<6 { sp_add_spark(s, at, times(sp_spray(s, 0.2), 4 + 4 * sp_rand(s)), 0.3 + 0.2 * sp_rand(s), 0.03, v3(0.85, 0.95, 1.0), 6); }
+  for q: 0..<3 { sp_add_puff(s, add(at, times(sp_spray(s, 0.2), 0.4)), times(sp_spray(s, 0.4), 0.6), 0.7, 1.8, 0.9); }
+  // the ice it leaves on what is under it
+  floor_y := sp_surface(s, at.x, at.z, at.y + 0.5);
+  if at.y - floor_y < 2.5 {
+    if fr_wet(s, at.x, at.z) { water_hit(s, at.x, at.z, SP_SPLASH_DEBRIS, f32(FR_KNIFE_R)); }
+    if floor_y <= hi(ground_at(s, at.x, at.z), water_at(s, at.x, at.z)) + 0.2 { _ := fr_add_patch(s, FR_KNIFE, at.x, at.z, f32(FR_KNIFE_R)); }
+  }
+}
+// Whether your body (feet to head) is within r of a point.
+fr_near_you :: (s: [] Everglade, at: Point, r: f32) -> bool {
+  you := ab_you(s);
+  up := hi(hi(at.y - (you.y + f32(BODY_TALL)), you.y - at.y), 0);
+  flat := flat_gap(you, at);
+  return sqrt(flat * flat + up * up) < r + f32(BLAST_PAD);
+}
+
+// ---- Ice Storm
+
+fr_storm_cast :: (s: [] Everglade) {
+  f := fr_of(s);
+  if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND", -1, ""); return; }
+  at := s[0].sp.aim;
+  if flat_gap(at, ab_you(s)) > f32(FR_STORM_RANGE) { sp_say(s, "TOO FAR · 300 FEET AT MOST", -1, ""); return; }
+  s[0].sp.armed = -1;
+  f[0].storm_on = true; f[0].storm_t = 0; f[0].storm_hit = false; f[0].storm_n = 0;
+  f[0].storm_at = v3(at.x, hi(ground_at(s, at.x, at.z), water_at(s, at.x, at.z)), at.z);
+  // the cloud gathering over it
+  c := f[0].storm_at;
+  for q: 0..<(ifx phone(s) then 5 else 9) {
+    a := f32(TAU) * sp_rand(s); r := f32(FR_STORM_R) * sqrt(sp_rand(s)) * 0.8;
+    sp_add_smoke(s, v3(c.x + cos(a) * r, c.y + f32(FR_STORM_H) + sp_rand(s), c.z + sin(a) * r), v3(cos(a) * 0.4, 0.1, sin(a) * 0.4), 2.6 + 1.4 * sp_rand(s), 3.2, 0.42, 0, 0.7, 0);
+  }
+  sp_say(s, "ICE STORM", -1, "");
+}
+// The hail strikes: each creature in the cylinder saves for half of 2d10 bludgeoning and 4d6 cold, the
+// town's pieces in it take the bludgeoning, and its ice is left.
+fr_storm_hit :: (s: [] Everglade) {
+  f := fr_of(s);
+  c := f[0].storm_at;
+  d := s[0].sp.dice[..];
+  dmg := SrdDamage.{amount = srd_sum(d, 2, 10), kind = DMG_BLUDGEONING, amount2 = srd_sum(d, 4, 6), kind2 = DMG_COLD};
+  you := ab_you(s);
+  caught := 0;
+  if watch_on(s) {
+    w := watch_w(s);
+    for i: 0..<WATCH_ACTORS {
+      if !ab_person_ok(s, i) { continue; }
+      pl := person_place(s, i);
+      feet := v3(pl.x, folk_feet(s, pl.x, pl.z) + ab_air(s, i), pl.z);
+      if !fr_in_cylinder(c, f32(FR_STORM_R), f32(FR_STORM_H), feet, f32(BLAST_PAD)) { continue; }
+      watch_harm(w, i, srd_creature_takes(d, watch_block(i), dmg, SAVE_DEX, ON_SAVE_HALF, FR_DC), you);
+      caught += 1;
+    }
+  }
+  // the town's pieces in it: the hail's bludgeoning (glass breaks under it)
+  wd := sp_dm(s);
+  broke := 0;
+  hail := SrdDamage.{amount = dmg.amount, kind = DMG_BLUDGEONING, amount2 = 0, kind2 = DMG_NONE};
+  for i: 0..<wd[0].n {
+    p := wd[0].pieces[i];
+    if p.state != DP_STANDING || p.y0 > c.y + f32(FR_STORM_H) { continue; }
+    cx := clamp(c.x, p.x0, p.x1); cz := clamp(c.z, p.z0, p.z1);
+    if flat_gap(c, v3(cx, 0, cz)) > f32(FR_STORM_R) { continue; }
+    if demo_damage(wd, i, srd_object_takes(sp_object(p.mesh), hail, 1), v3(p.cx, p.y1 + 1, p.cz), 3) { broke += 1; }
+  }
+  if broke > 0 { _ := demo_settle(wd); s[0].sp.walls_dirty = true; }
+  demo_rouse(wd, v3(c.x - f32(FR_STORM_R), c.y - 1, c.z - f32(FR_STORM_R)), v3(c.x + f32(FR_STORM_R), c.y + f32(FR_STORM_H), c.z + f32(FR_STORM_R)), 0);
+  if (caught > 0 || broke > 0) && watch_on(s) { _ := watch_crime(watch_w(s), c, f32(FR_HEAR_STORM), you, s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
+  total := dmg.amount + dmg.amount2;
+  if caught > 0 { sp_say(s, "ICE STORM · 2D10 BLUDGEONING + 4D6 COLD", total, ifx caught == 1 then "· 1 CAUGHT" else "· CAUGHT IN IT"); }
+  else if broke > 0 { sp_say(s, "ICE STORM", broke, "BROKEN"); }
+  else { sp_say(s, "ICE STORM", -1, ""); }
+  if fr_in_cylinder(c, f32(FR_STORM_R), f32(FR_STORM_H), you, f32(BLAST_PAD)) { _ := fr_hurt_you(s, dmg, ON_SAVE_HALF); }
+  _ := fr_add_patch(s, FR_STORM, c.x, c.z, f32(FR_STORM_R));
+  if fr_wet(s, c.x, c.z) { water_hit(s, c.x, c.z, SP_SPLASH_DEBRIS, f32(FR_STORM_R) * 0.6); }
+  s[0].sp.shake = lo(s[0].sp.shake + 0.25 * clamp(1 - length(sub(c, s[0].sp.shot.eye)) / 50, 0, 1), 1);
+}
+// Each frame of the storm: the stones let fall from the cloud, the hit when they reach the ground.
+fr_storm_frame :: (s: [] Everglade, dt: f32) {
+  f := fr_of(s);
+  if !f[0].storm_on { return; }
+  f[0].storm_t += dt;
+  c := f[0].storm_at;
+  count := ifx phone(s) then 70 else 130;
+  due := clamp_i(cast(int) (f[0].storm_t / f32(FR_HAIL_FOR) * f32(count)), 0, count);
+  while f[0].storm_n < due {
+    f[0].storm_n += 1;
+    a := f32(TAU) * sp_rand(s); r := f32(FR_STORM_R) * sqrt(sp_rand(s));
+    top := c.y + f32(FR_STORM_H) - 2 * sp_rand(s);
+    fr_add_shard(s, v3(c.x + cos(a) * r, top, c.z + sin(a) * r), v3((sp_rand(s) - 0.5) * 1.5, -12 - 5 * sp_rand(s), (sp_rand(s) - 0.5) * 1.5), 0.03 + 0.04 * sp_rand(s), true);
+  }
+  if !f[0].storm_hit && f[0].storm_t >= f32(FR_HAIL_HIT) { f[0].storm_hit = true; fr_storm_hit(s); }
+  if f[0].storm_t > f32(FR_HAIL_FOR) + 0.6 { f[0].storm_on = false; }
+}
+
+// ---- Sleet Storm
+
+fr_sleet_cast :: (s: [] Everglade) {
+  f := fr_of(s);
+  if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND", -1, ""); return; }
+  at := s[0].sp.aim;
+  if flat_gap(at, ab_you(s)) > f32(FR_SLEET_RANGE) { sp_say(s, "TOO FAR · 150 FEET AT MOST", -1, ""); return; }
+  if f[0].sleet_on { fr_sleet_end(s); }
+  s[0].sp.armed = -1;
+  f[0].sleet_on = true; f[0].sleet_t = 0; f[0].sleet_puff = 0;
+  f[0].sleet_at = v3(at.x, hi(ground_at(s, at.x, at.z), water_at(s, at.x, at.z)), at.z);
+  f[0].sleet_patch = fr_add_patch(s, FR_SLEET, at.x, at.z, f32(FR_SLEET_R));
+  for i: 0..<WATCH_ACTORS { f[0].sleet_in[i] = false; }
+  f[0].in_sleet = false;
+  sp_say(s, "SLEET STORM", -1, "");
+}
+// It ends: the sleet stops, its ice thaws from now.
+fr_sleet_end :: (s: [] Everglade) {
+  f := fr_of(s);
+  f[0].sleet_on = false;
+  k := f[0].sleet_patch;
+  if k >= 0 && k < FR_PATCHES && f[0].patches[k].live && f[0].patches[k].kind == FR_SLEET { f[0].patches[k].held = f[0].patches[k].t; }
+  f[0].sleet_patch = -1;
+}
+fr_sleet_frame :: (s: [] Everglade, dt: f32) {
+  f := fr_of(s);
+  if !f[0].sleet_on { return; }
+  f[0].sleet_t += dt;
+  if f[0].sleet_t >= f32(FR_SLEET_LIFE) { fr_sleet_end(s); sp_say(s, "SLEET STORM ENDS", -1, ""); return; }
+  c := f[0].sleet_at; R := f32(FR_SLEET_R);
+  // it puts out what burns in it
+  for q: 0..<SP_BLASTS { if s[0].sp.blasts[q].live && s[0].sp.blasts[q].kind == 0 && flat_gap(s[0].sp.blasts[q].at, c) < R { s[0].sp.blasts[q].live = false; } }
+  for q: 0..<SP_FLAMES { if s[0].sp.flames[q].live && flat_gap(s[0].sp.flames[q].at, c) < R && s[0].sp.flames[q].at.y < c.y + f32(FR_SLEET_H) { s[0].sp.flames[q].live = false; } }
+  w := sp_dm(s);
+  box: [1] DemoBox;
+  for b: 0..<DEMO_BODIES { if s[0].sp.burn[b] > 0 && demo_chunk_box(w, b, box[..]) && flat_gap(box[0].at, c) < R { s[0].sp.burn[b] = 0; } }
+  // the murk: grey mist through it, a puff every quarter second
+  f[0].sleet_puff += dt;
+  while f[0].sleet_puff > 0.25 {
+    f[0].sleet_puff -= 0.25;
+    a := f32(TAU) * sp_rand(s); r := R * sqrt(sp_rand(s)) * 0.9;
+    at := v3(c.x + cos(a) * r, c.y + 0.6 + 3.5 * sp_rand(s), c.z + sin(a) * r);
+    sp_add_smoke(s, at, v3((sp_rand(s) - 0.5) * 0.6, -0.2, (sp_rand(s) - 0.5) * 0.6), 2.2 + 1.2 * sp_rand(s), 4.0, 0.72, 0, 0.42, 0);
+  }
+}
+// Whether the sight line from p to q runs through the sleet (Heavily Obscured), the inside of its
+// cylinder by more than a metre.
+fr_hides :: (s: [] Everglade, p: Point, q: Point) -> bool {
+  if !sp_on(s) { return false; }
+  f := fr_of(s);
+  if !f[0].sleet_on { return false; }
+  c := f[0].sleet_at; R := f32(FR_SLEET_R);
+  inside := 0;
+  for k: 0..<16 {
+    u := (f32(k) + 0.5) / 16;
+    at := mix(p, q, u);
+    if fr_in_cylinder(c, R, f32(FR_SLEET_H), sub(at, v3(0, 1, 0)), 0) { inside += 1; }
+  }
+  return f32(inside) / 16 * length(sub(q, p)) > 1.0;
+}
+
+// ---- the splinters and hailstones: bodies of their own
+
+fr_add_shard :: (s: [] Everglade, at: Point, vel: Point, size: f32, hail: bool) {
+  f := fr_of(s);
+  k := 0;
+  for i: 0..<FR_SHARDS { if !f[0].shards[i].live { k = i; break; } if f[0].shards[i].t > f[0].shards[k].t { k = i; } }
+  life := ifx hail then 16 + 8 * sp_rand(s) else 6 + 4 * sp_rand(s);
+  f[0].shards[k] = FrShard.{live = true, at = at, vel = vel, spin = v3((sp_rand(s) - 0.5) * 18, (sp_rand(s) - 0.5) * 18, (sp_rand(s) - 0.5) * 18),
+                            t = 0, life = life, size = size, rest = false, hail = hail, wet = false};
+}
+// Shard k against the standing pieces round it (the debris's support grid): put out by the face it
+// went in by and bounced, or on a pitched roof up onto its slope and rolled down it.
+fr_shard_pieces :: (s: [] Everglade, k: int) {
+  f := fr_of(s);
+  w := sp_dm(s);
+  if !w[0].linked { return; }
+  b := f[0].shards[k];
+  c := demo_cell(b.at.z) * DEMO_GRID + demo_cell(b.at.x);
+  r := b.size * 0.5;
+  for e: 0..<w[0].cell_n[c] {
+    j := w[0].cell_list[w[0].cell_at[c] + e];
+    p := w[0].pieces[j];
+    if p.state != DP_STANDING { continue; }
+    if b.at.x < p.x0 - r || b.at.x > p.x1 + r || b.at.z < p.z0 - r || b.at.z > p.z1 + r || b.at.y < p.y0 - r || b.at.y > p.y1 + r { continue; }
+    if p.pitched {
+      // a roof's slope: up from its eaves to its ridge across its narrower side
+      across := ifx p.x1 - p.x0 < p.z1 - p.z0 then 0 else 1;
+      half := ifx across == 0 then (p.x1 - p.x0) * 0.5 else (p.z1 - p.z0) * 0.5;
+      off := ifx across == 0 then b.at.x - (p.x0 + p.x1) * 0.5 else b.at.z - (p.z0 + p.z1) * 0.5;
+      top := p.y0 + 0.12 * (p.y1 - p.y0) + 0.88 * (p.y1 - p.y0) * clamp(1 - abs(off) / hi(half, 0.1), 0, 1);
+      if b.at.y > top + r || b.at.y < top - 0.6 { continue; }
+      b.at.y = top + r;
+      down := ifx off >= 0 then 1.0f32 else -1.0f32;
+      slope := 0.88 * (p.y1 - p.y0) / hi(half, 0.1);
+      n := unit_or(ifx across == 0 then v3(down * slope, 1, 0) else v3(0, 1, down * slope), v3(0, 1, 0));
+      vn := dot(b.vel, n);
+      if vn < 0 { b.vel = sub(b.vel, times(n, 1.3 * vn)); }
+      // it runs off down the slope
+      b.vel = add(b.vel, times(ifx across == 0 then v3(down, 0, 0) else v3(0, 0, down), 0.08));
+      b.rest = false;
+      continue;
+    }
+    // a box: out by its shallowest face
+    dx0 := b.at.x - (p.x0 - r); dx1 := (p.x1 + r) - b.at.x;
+    dy0 := b.at.y - (p.y0 - r); dy1 := (p.y1 + r) - b.at.y;
+    dz0 := b.at.z - (p.z0 - r); dz1 := (p.z1 + r) - b.at.z;
+    m := lo(lo(lo(dx0, dx1), lo(dy0, dy1)), lo(dz0, dz1));
+    if m == dy1 {
+      b.at.y = p.y1 + r;
+      if b.vel.y < -1.2 { b.vel = v3(b.vel.x * 0.55, -b.vel.y * 0.3, b.vel.z * 0.55); } else { b.vel = v3(b.vel.x * 0.6, 0, b.vel.z * 0.6); if length(b.vel) < 0.2 { b.rest = true; b.vel = v3(0, 0, 0); } }
+    } else if m == dy0 { b.at.y = p.y0 - r; b.vel.y = -abs(b.vel.y) * 0.3; }
+    else if m == dx0 { b.at.x = p.x0 - r; b.vel.x = -abs(b.vel.x) * 0.35; }
+    else if m == dx1 { b.at.x = p.x1 + r; b.vel.x = abs(b.vel.x) * 0.35; }
+    else if m == dz0 { b.at.z = p.z0 - r; b.vel.z = -abs(b.vel.z) * 0.35; }
+    else { b.at.z = p.z1 + r; b.vel.z = abs(b.vel.z) * 0.35; }
+  }
+  f[0].shards[k] = b;
+}
+// Each frame: the shards fly under gravity, strike what stands, bounce on the ground and lie, float
+// on the water (ice floats), and melt away.
+fr_shards_step :: (s: [] Everglade, dt: f32) {
+  f := fr_of(s);
+  f[0].splashes = 0;
+  for k: 0..<FR_SHARDS {
+    if !f[0].shards[k].live { continue; }
+    f[0].shards[k].t += dt;
+    if f[0].shards[k].t > f[0].shards[k].life { f[0].shards[k].live = false; continue; }
+    if f[0].shards[k].rest && !f[0].shards[k].wet { continue; }
+    steps := clamp_i(cast(int) (length(f[0].shards[k].vel) * dt / 0.15) + 1, 1, 4);
+    h := dt / f32(steps);
+    for q: 0..<steps {
+      b := f[0].shards[k];
+      if b.wet {
+        // afloat: the surface holds it, drifting to rest
+        b.vel = times(b.vel, 1 - lo(h * 1.5, 0.5));
+        b.at = add(b.at, times(v3(b.vel.x, 0, b.vel.z), h));
+        lv := water_at(s, b.at.x, b.at.z);
+        if lv <= f32(DEMO_DRY) + 1 { b.wet = false; } else { b.at.y = lv - b.size * 0.15; }
+        f[0].shards[k] = b;
+        continue;
+      }
+      b.vel.y -= 9.81 * h;
+      b.vel = times(b.vel, 1 - lo(h * 0.15, 0.1));
+      b.at = add(b.at, times(b.vel, h));
+      f[0].shards[k] = b;
+      fr_shard_pieces(s, k);
+      b = f[0].shards[k];
+      g := ground_at(s, b.at.x, b.at.z);
+      lv := water_at(s, b.at.x, b.at.z);
+      if lv > g + 0.02 && lv > f32(DEMO_DRY) + 1 && b.at.y < lv {
+        // into the water: a little splash, and it floats
+        if b.vel.y < -4 && f[0].splashes < 3 { f[0].splashes += 1; water_hit(s, b.at.x, b.at.z, SP_SPLASH_DEBRIS, 0.25); }
+        b.wet = true; b.at.y = lv - b.size * 0.15; b.vel = v3(b.vel.x * 0.4, 0, b.vel.z * 0.4);
+      } else if b.at.y < g + b.size * 0.4 {
+        b.at.y = g + b.size * 0.4;
+        if b.vel.y < -1.2 { b.vel = v3(b.vel.x * 0.55, -b.vel.y * 0.3, b.vel.z * 0.55); b.spin = times(b.spin, 0.6); }
+        else { b.rest = true; b.vel = v3(0, 0, 0); }
+      }
+      f[0].shards[k] = b;
+      if b.rest { break; }
+    }
+  }
+}
+
+// ---- each frame, and drawing
+
+fr_frame :: (s: [] Everglade, dt: f32) {
+  f := fr_of(s);
+  f[0].time += dt;
+  if f[0].prone > 0 { f[0].prone = hi(f[0].prone - dt, 0); f[0].prone_t += dt; }
+  if f[0].knife.live { f[0].knife.t += dt; if f[0].knife.t >= f[0].knife.flight { fr_knife_burst(s); } }
+  fr_storm_frame(s, dt);
+  fr_sleet_frame(s, dt);
+  for k: 0..<FR_PATCHES {
+    if !f[0].patches[k].live { continue; }
+    f[0].patches[k].t += dt;
+    if f[0].patches[k].t >= fr_life(f[0].patches[k]) { f[0].patches[k].live = false; }
+  }
+  fr_people(s);
+  fr_shards_step(s, dt);
+}
+// The ice's fields for the river's floats (everglade_spell_fields): walkable and thin ice holds what
+// floats in it still (river.coax float_field, kind 6). How many it wrote at `n`.
+fr_fields :: (s: [] Everglade, out: [] f32, n: int, each: int) -> int {
+  f := fr_of(s);
+  m := n;
+  for k: 0..<FR_PATCHES {
+    p := f[0].patches[k];
+    if !p.live || (m + 1) * each > out.count { continue; }
+    st := fr_water_stage(p);
+    if st < FR_THIN { continue; }
+    o := m * each;
+    lv := water_at(s, p.x, p.z);
+    out[o] = 6; out[o + 1] = p.x; out[o + 2] = p.z; out[o + 3] = 0; out[o + 4] = 0;
+    out[o + 5] = lv - 1; out[o + 6] = lv + 0.5; out[o + 7] = p.r; out[o + 8] = 0; out[o + 9] = 0;
+    m += 1;
+  }
+  return m;
+}
+FR_FROST_RGB :: Point.{x = 0.86, y = 0.91, z = 0.95};
+FR_SHEET_RGB :: Point.{x = 0.72, y = 0.84, z = 0.92};
+FR_SLUSH_RGB :: Point.{x = 0.62, y = 0.68, z = 0.72};
+fr_draw :: (s: [] Everglade) {
+  f := fr_of(s);
+  eye := s[0].sp.shot.eye;
+  // each patch: a glaze of frost or hail on the ground, a sheet of ice, floes or slush on the water
+  for k: 0..<FR_PATCHES {
+    p := f[0].patches[k];
+    if !p.live { continue; }
+    wet := fr_wet(s, p.x, p.z);
+    life := fr_life(p);
+    grow := clamp(p.t / 0.3, 0, 1);
+    if wet {
+      st := fr_water_stage(p);
+      lv := water_at(s, p.x, p.z);
+      if st == FR_WALK || st == FR_THIN {
+        r := p.r * grow;
+        tone := ifx st == FR_WALK then FR_SHEET_RGB else times(FR_SHEET_RGB, 0.8);
+        if p.kind == FR_KNIFE && p.nb > 0 { continue; }
+        sp_shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(p.x, lv + 0.02, p.z), v3(r * 2, 0, 0), v3(0, 0.05, 0), v3(0, 0, r * 2), tone);
+        // the squares broken open: dark water through it
+        for q: 0..<p.nb {
+          cell := p.broken[q];
+          cx := (f32(cell / 1024 - 512) + 0.5) * f32(FR_CELL); cz := (f32(cell % 1024 - 512) + 0.5) * f32(FR_CELL);
+          sp_shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(cx, lv + 0.05, cz), v3(f32(FR_CELL) * 0.9, 0, 0), v3(0, 0.02, 0), v3(0, 0, f32(FR_CELL) * 0.9), v3(0.08, 0.16, 0.2));
+        }
+      } else if st == FR_FLOES {
+        // broken ice drifting: plates round the patch, thinning as they melt
+        left := clamp((life - p.t) / 3, 0, 1);
+        n := ifx p.kind == FR_KNIFE then 3 else 9;
+        for q: 0..<n {
+          a := f32(TAU) * (f32(q) + p.seed) / f32(n) + 0.1 * p.t;
+          rr := p.r * (0.25 + 0.6 * sp_noise(p.seed + f32(q), 3.1));
+          size := p.r * (0.22 + 0.12 * sp_noise(p.seed + f32(q), 7.7)) * left;
+          sp_shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(p.x + cos(a) * rr, lv + 0.02, p.z + sin(a) * rr), v3(size * 2, 0, 0), v3(0, 0.05, 0), v3(0, 0, size * 1.6), FR_SHEET_RGB);
+        }
+      } else if st == FR_SLUSH {
+        left := clamp((life - p.t) / 20, 0, 1);
+        r := p.r * grow;
+        sp_shape(s, SHAPE_CYLINDER, LOOK_ORB, v3(p.x, lv + 0.01, p.z), v3(r * 2, 0, 0), v3(0, 0.03, 0), v3(0, 0, r * 2), times(FR_SLUSH_RGB, 0.6 + 0.4 * left));
+      }
+      continue;
+    }
+    // on the ground: a glaze that fades as it thaws (a storm's hail lies over it as its stones)
+    thaw := ifx p.kind == FR_KNIFE then 3.0f32 else ifx p.kind == FR_STORM then 6.0f32 else 10.0f32;
+    end := ifx p.kind == FR_KNIFE then 9.0f32 else ifx p.kind == FR_STORM then 30.0f32 else p.held + 10;
+    left := clamp((end - p.t) / thaw, 0, 1);
+    if left <= 0 { continue; }
+    r := p.r * grow * (0.75 + 0.25 * left);
+    g := ground_at(s, p.x, p.z);
+    sp_shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(p.x, g + 0.015, p.z), v3(r * 2, 0, 0), v3(0, 0.02, 0), v3(0, 0, r * 2), mix(v3(0.5, 0.52, 0.5), FR_FROST_RGB, left));
+  }
+  // the knife in flight: a long shard of ice, turning, a cold glint at its point
+  if f[0].knife.live {
+    kn := f[0].knife;
+    u := clamp(kn.t / kn.flight, 0, 1);
+    at := mix(kn.from, kn.to, u);
+    dir := unit_or(sub(kn.to, kn.from), v3(0, 0, 1));
+    side := unit_or(cross(dir, v3(0, 1, 0)), v3(1, 0, 0)); up := cross(side, dir);
+    tw := kn.t * 20;
+    sx := add(times(side, cos(tw) * 0.06), times(up, sin(tw) * 0.06)); sy := add(times(side, -sin(tw) * 0.06), times(up, cos(tw) * 0.06));
+    sp_shape(s, SHAPE_CONE, LOOK_ORB, at, sx, times(dir, 0.55), sy, v3(0.7, 0.88, 1.0));
+    sp_glow(s, add(at, times(dir, 0.25)), 0.35, times(FR_ICE_RGB, 0.25));
+  }
+  // the hail falling: streaks under the cloud
+  if f[0].storm_on && f[0].storm_t < f32(FR_HAIL_FOR) + 0.3 {
+    c := f[0].storm_at; R := f32(FR_STORM_R); H := f32(FR_STORM_H);
+    for q: 0..<(ifx phone(s) then 18 else 36) {
+      h0 := ab_h(61.0, q, 0); h1 := ab_h(61.0, q, 1); h2 := ab_h(61.0, q, 2);
+      a := f32(TAU) * h0; r := R * sqrt(h1);
+      fall := f[0].storm_t * 15 + h2 * H; fall = fall - H * floor(fall / H);
+      at := v3(c.x + cos(a) * r, c.y + H - fall, c.z + sin(a) * r);
+      ab_line(s, at, add(at, v3(0, 1.4, 0)), times(v3(0.85, 0.92, 1.0), 0.35));
+    }
+  }
+  // the sleet: grey streaks slanting down through its cylinder
+  if f[0].sleet_on {
+    c := f[0].sleet_at; R := f32(FR_SLEET_R); H := f32(FR_SLEET_H);
+    on := clamp(f[0].sleet_t / 0.8, 0, 1);
+    for q: 0..<(ifx phone(s) then 30 else 60) {
+      h0 := ab_h(71.0, q, 0); h1 := ab_h(71.0, q, 1); h2 := ab_h(71.0, q, 2); h3 := ab_h(71.0, q, 3);
+      a := f32(TAU) * h0; r := R * sqrt(h1);
+      fall := f[0].sleet_t * (7 + 3 * h3) + h2 * H; fall = fall - H * floor(fall / H);
+      at := v3(c.x + cos(a) * r, c.y + H - fall, c.z + sin(a) * r);
+      ab_line(s, at, add(at, v3(0.35, 1.1, 0.2)), times(v3(0.78, 0.82, 0.88), 0.3 * on));
+    }
+  }
+  // the shards: clear splinters of ice and white hailstones, tumbling as they fly, shrinking as they melt
+  drawn := 0;
+  most := ifx phone(s) then 50 else 100;
+  for k: 0..<FR_SHARDS {
+    b := f[0].shards[k];
+    if !b.live || drawn >= most || length(sub(b.at, eye)) > 70 { continue; }
+    drawn += 1;
+    melt := clamp((b.life - b.t) / (b.life * 0.4), 0, 1);
+    size := b.size * (0.35 + 0.65 * melt);
+    a := ifx b.rest || b.wet then 0.0f32 else b.t;
+    ax := v3(cos(b.spin.y * a + b.spin.x), sin(b.spin.z * a) * 0.5, sin(b.spin.y * a + b.spin.x));
+    ax = unit_or(ax, v3(1, 0, 0));
+    ay := unit_or(cross(ax, v3(0, 0.001, 1)), v3(0, 1, 0)); az := cross(ax, ay);
+    if b.hail { sp_shape(s, SHAPE_BOX, LOOK_STONE, b.at, times(ax, size), times(ay, size * 0.9), times(az, size * 0.85), v3(0.93, 0.95, 0.97)); }
+    else { sp_shape(s, SHAPE_BOX, LOOK_ORB, b.at, times(ax, size * 2.6), times(ay, size * 0.7), times(az, size * 0.7), v3(0.72, 0.88, 1.0)); }
+  }
+}
+
+// ---- checks
+
+#test "frost: an Ice Knife bursts on the ground, throws its shards out to fall and lie, and leaves slippery frost that makes you slide" {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  g[0].feet = v3(0, 0, -30); g[0].face = 0;
+  f := fr_of(g[..]);
+  #assert spells_key(g[..], '$', 1) && g[0].sp.armed == SP_SLOTS + AB_KNIFE;
+  up0 := spells_key_up(g[..], '$', 1);
+  at := v3(0, ground_at(g[..], 0, -22), -22);
+  g[0].sp.aim = at; g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert f[0].knife.live && g[0].sp.armed == -1;
+  for k: 0..<30 { ab_frame(g[..], 1.0 / 30); }
+  #assert !f[0].knife.live;
+  flying := 0;
+  for k: 0..<FR_SHARDS { if f[0].shards[k].live { flying += 1; } }
+  #assert flying >= 14;
+  // they come down and lie on the ground, never under it
+  for k: 0..<120 { ab_frame(g[..], 1.0 / 30); }
+  lying := 0; live := 0;
+  for k: 0..<FR_SHARDS { b := f[0].shards[k]; if b.live { live += 1; if b.rest || b.wet { lying += 1; } #assert b.at.y >= ground_at(g[..], b.at.x, b.at.z) - 0.01; } }
+  #assert live > 0 && lying * 4 >= live * 3;
+  // the frost there is slippery: a tenth of your grip
+  foot := everglade_footing(g[..], at.x, at.z, 0);
+  #assert fr_foot(g[..], at.x, at.z).slip && near(foot.grip, f32(FR_GRIP), 0.001) && !foot.still;
+  #assert everglade_footing(g[..], at.x + 5, at.z, 0).grip == 1;
+  // it thaws in 9 s
+  for k: 0..<10 { ab_frame(g[..], 1.0); }
+  #assert !fr_foot(g[..], at.x, at.z).slip;
+}
+
+#test "frost: an Ice Storm hurts who stands in it (you too), leaves walkable ice on a pond that holds you over it, then thin ice that breaks" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  f := fr_of(g[..]);
+  w := watch_w(g[..]);
+  #assert w[0].on;
+  // on yourself: you take some of 2d10 + 4d6 (half on a save)
+  g[0].feet = v3(0, 0, -30);
+  you := ab_you(g[..]);
+  #assert spells_key(g[..], '%', 1) && g[0].sp.armed == SP_SLOTS + AB_STORM;
+  up0 := spells_key_up(g[..], '%', 1);
+  g[0].sp.aim = you; g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert f[0].storm_on;
+  for k: 0..<30 { ab_frame(g[..], 1.0 / 30); }
+  #assert f[0].storm_hit && w[0].hp < w[0].max;
+  hail := 0;
+  for k: 0..<FR_SHARDS { if f[0].shards[k].live && f[0].shards[k].hail { hail += 1; } }
+  #assert hail > 40;
+  // its ground is Difficult Terrain for a round, then slippery
+  #assert everglade_footing(g[..], you.x, you.z, 0).pace == f32(FR_SLOW);
+  for k: 0..<7 { ab_frame(g[..], 1.0); }
+  #assert everglade_footing(g[..], you.x, you.z, 0).grip == f32(FR_GRIP);
+  // on a pond: walkable ice you stand on over the water for 30 s, then thin, then gone
+  px := EG_POND[0]; pz := EG_POND[1];
+  #assert fr_wet(g[..], px, pz);
+  g[0].sp.aim = v3(px, water_at(g[..], px, pz), pz); g[0].sp.aim_ok = true;
+  g[0].feet = v3(px - 20, 0, pz);
+  w[0].hp = w[0].max;
+  #assert spells_key(g[..], '%', 1) && g[0].sp.armed == SP_SLOTS + AB_STORM;
+  sp_cast(g[..]);
+  #assert f[0].storm_on;
+  for k: 0..<30 { ab_frame(g[..], 1.0 / 30); }
+  #assert fr_ice_at(g[..], px, pz).state == FR_WALK;
+  #assert near(walk_at(g[..], px, pz), water_at(g[..], px, pz) + 0.04, 0.001) && everglade_ice_lift(g[..], px, pz) > 0;
+  for k: 0..<31 { ab_frame(g[..], 1.0); }
+  #assert fr_ice_at(g[..], px, pz).state == FR_THIN;
+  // you, 90 kg with your pack, on its thin ice: a square that bears less gives way under you
+  broke := false;
+  for q: 0..<9 {
+    x := px + (f32(q % 3) - 1) * f32(FR_CELL); z := pz + (f32(q / 3) - 1) * f32(FR_CELL);
+    if !fr_wet(g[..], x, z) || fr_ice_at(g[..], x, z).state != FR_THIN { continue; }
+    g[0].feet = v3(x, 0, z);
+    fr_people(g[..]);
+    if fr_ice_at(g[..], x, z).state != FR_THIN { broke = true; }
+  }
+  #assert broke;
+  for k: 0..<20 { ab_frame(g[..], 1.0); }
+  #assert fr_ice_at(g[..], px, pz).state == FR_NONE && walk_at(g[..], px, pz) < water_at(g[..], px, pz);
+}
+
+#test "frost: a Sleet Storm knocks down who fails its save, puts out a fire, hides what is behind it, and Shift+6 ends it" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  f := fr_of(g[..]);
+  who := -1;
+  for i: 0..<WATCH_ACTORS { if who < 0 && ab_person_ok(g[..], i) && !watch_is_guard(i) { who = i; } }
+  #assert who >= 0;
+  pl := person_place(g[..], who);
+  g[0].feet = v3(pl.x - 20, 0, pl.z);
+  g[0].sp.blasts[0] = SpBlast.{live = true, at = v3(pl.x + 1, ground_at(g[..], pl.x + 1, pl.z), pl.z), t = 0, radius = 2, kind = 0, seed = 0};
+  #assert spells_key(g[..], '^', 1) && g[0].sp.armed == SP_SLOTS + AB_SLEET;
+  up0 := spells_key_up(g[..], '^', 1);
+  g[0].sp.aim = v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert f[0].sleet_on && ab_active(g[..], AB_SLEET);
+  ab_frame(g[..], 1.0 / 30);
+  #assert !g[0].sp.blasts[0].live;
+  // a save each round: within a few rounds they fall (DC 15 against +0)
+  ww := watch_w(g[..]);
+  fell := false;
+  for k: 0..<40 {
+    ab_frame(g[..], 0.5);
+    if ww[0].actors[who].mode == WM_DOWN { fell = true; break; }
+  }
+  #assert fell && ww[0].crimes > 0;
+  // its ground slows you and takes your grip; a line through it is hidden
+  c := f[0].sleet_at;
+  foot := everglade_footing(g[..], c.x, c.z, 0);
+  #assert foot.pace == f32(FR_SLOW) && foot.grip == f32(FR_GRIP);
+  #assert fr_hides(g[..], v3(c.x - 10, c.y + 1.6, c.z), v3(c.x + 10, c.y + 1.6, c.z)) && !fr_hides(g[..], v3(c.x - 10, c.y + 1.6, c.z + 9), v3(c.x + 10, c.y + 1.6, c.z + 9));
+  // Shift+6 again ends it; its slush and glaze thaw after
+  #assert spells_key(g[..], '^', 1) && !f[0].sleet_on;
+  for k: 0..<12 { ab_frame(g[..], 1.0); }
+  #assert !fr_foot(g[..], c.x, c.z).slip;
+}
+
+#test "frost: you slip on the ice and lie Prone for a moment, unable to move; in the sleet a fall ends your Concentration" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  f := fr_of(g[..]);
+  k0 := fr_add_patch(g[..], FR_STORM, 0, -30, f32(FR_STORM_R));
+  f[0].patches[k0].t = 10;
+  g[0].feet = v3(0, 0, -30); g[0].act = 2;
+  slipped := false;
+  for k: 0..<60 {
+    fr_people(g[..]);
+    if f[0].prone > 0 { slipped = true; break; }
+    f[0].time += f32(FR_ROUND);
+  }
+  #assert slipped && everglade_footing(g[..], 0, -30, 0).still && fr_prone_pitch(g[..]) <= 0;
+  for k: 0..<20 { ab_frame(g[..], 0.1); }
+  #assert f[0].prone == 0 && !everglade_footing(g[..], 0, -30, 0).still;
+  // Prone in the sleet: the Black Tentacles you hold and the sleet end
+  ab_press(g[..], AB_TENTACLES);
+  g[0].sp.aim = v3(10, ground_at(g[..], 10, -30), -30); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert ab_of(g[..])[0].bt_on;
+  f[0].sleet_on = true; f[0].sleet_at = ab_you(g[..]);
+  fr_you_prone(g[..], true);
+  #assert !ab_of(g[..])[0].bt_on && !f[0].sleet_on;
+}

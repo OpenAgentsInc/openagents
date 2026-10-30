@@ -1,9 +1,9 @@
 // Everglade's spell bar pictures (realms/everglade/hotbar/), as the previous engine drew the bar:
 // written by verse/tools/everglade_hotbar.py, do not edit. Each slot's name, the icon sizes
 // (px a side), and each slot's card at 1x, 2x and 3x (device px, slot * 3 + scale - 1).
-HB_SLOTS :: 15;
-HB_NAME :: [15] string.["meteor-swarm", "thunderbolt", "mega-thunderbolt", "water-orb", "reverse-gravity", "wind-wall", "levitate", "feather-fall", "gust-of-wind", "thunderwave", "wall-of-stone", "telekinesis", "black-tentacles", "rebuild", "next-row"];
+HB_SLOTS :: 18;
+HB_NAME :: [18] string.["meteor-swarm", "thunderbolt", "mega-thunderbolt", "water-orb", "reverse-gravity", "wind-wall", "levitate", "feather-fall", "gust-of-wind", "thunderwave", "wall-of-stone", "telekinesis", "black-tentacles", "ice-knife", "ice-storm", "sleet-storm", "rebuild", "next-row"];
 HB_SIZES :: 4;
 HB_SIZE :: [4] int.[48, 72, 96, 128];
-HB_CARD_W :: [45] f32.[360, 716, 1042, 351, 716, 1068, 351, 665, 1016, 360, 716, 1068, 351, 716, 1068, 351, 699, 1068, 351, 699, 1068, 324, 716, 1068, 360, 716, 1068, 351, 699, 1068, 351, 699, 1068, 360, 699, 1068, 360, 716, 1068, 333, 716, 964, 333, 631, 964];
-HB_CARD_H :: [45] f32.[151, 302, 453, 151, 302, 453, 171, 342, 513, 151, 302, 453, 171, 302, 453, 131, 222, 333, 151, 262, 393, 171, 262, 393, 191, 342, 513, 151, 302, 453, 131, 262, 393, 191, 382, 573, 211, 382, 573, 91, 182, 273, 51, 102, 153];
+HB_CARD_W :: [54] f32.[360, 716, 1042, 351, 716, 1068, 351, 665, 1016, 360, 716, 1068, 351, 716, 1068, 351, 699, 1068, 351, 699, 1068, 324, 716, 1068, 360, 716, 1068, 351, 699, 1068, 351, 699, 1068, 360, 699, 1068, 360, 716, 1068, 342, 699, 1068, 360, 716, 1068, 351, 699, 1068, 333, 716, 964, 333, 631, 964];
+HB_CARD_H :: [54] f32.[151, 302, 453, 151, 302, 453, 171, 342, 513, 151, 302, 453, 171, 302, 453, 131, 222, 333, 151, 262, 393, 171, 262, 393, 191, 342, 513, 151, 302, 453, 131, 262, 393, 191, 382, 573, 211, 382, 573, 191, 382, 573, 191, 342, 513, 211, 422, 633, 91, 182, 273, 51, 102, 153];

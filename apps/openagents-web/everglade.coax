@@ -437,8 +437,8 @@ coaxial_everglade_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
 coaxial_everglade_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 
 ground_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return verse_terrain_height(everglade_ground(), s[0].heights[..], x, z); }
-// Where you stand: the ground, or the bridge's deck over the river.
-walk_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return everglade_walk_height(s[0].heights[..], s[0].deck, x, z); }
+// Where you stand: the ground, the bridge's deck over the river, or ice on the water (everglade-frost.coax).
+walk_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return hi(everglade_walk_height(s[0].heights[..], s[0].deck, x, z), fr_floor(s, x, z)); }
 
 // The face's river (verse/everglade/river.coax), each frame before
 // everglade_frame: your medium, your feet's height in the water, your
@@ -2461,6 +2461,13 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
       tr := tumble_rows(b, feet); rows = tr.r;
     } else {
       p := watch_you_fall(w);
+      cp := cos(p); sp := sin(p);
+      rows = [12] f32.[c, sn * sp, sn * cp, feet.x,   0, cp, -sp, feet.y + 0.12 * abs(sp),   -sn, c * sp, c * cp, feet.z];
+    }
+  } else {
+    // Prone on the ice (everglade-frost.coax): you go down on your back and get up again
+    p := fr_prone_pitch(s);
+    if p != 0 {
       cp := cos(p); sp := sin(p);
       rows = [12] f32.[c, sn * sp, sn * cp, feet.x,   0, cp, -sp, feet.y + 0.12 * abs(sp),   -sn, c * sp, c * cp, feet.z];
     }
