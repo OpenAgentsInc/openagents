@@ -32,6 +32,7 @@
 #load "analytics.coax";
 #load "world.coax";
 #load "realms.coax";
+#load "galaxy.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 40000;
@@ -514,23 +515,18 @@ guide_label :: (s: [] VerseState) -> string {
 
 // PLANETS and PLANET_* are realms.coax's; these two have tags of their own.
 HOUSE :: 1; CODING :: 4;
-ORBITS :: [6] f32.[0.15, 0.26, 0.3, 0.34, 0.42, 0.46];
-
-Seen :: struct { x: f32; y: f32; r: f32; depth: f32; }
+// The orbits and the projection are galaxy.coax's, shared with the landing's small galaxy.
 
 // Where planet p is on the screen now, in device pixels: the playtest's
 // projection (a tilted disc, nearer is bigger), the house turning on its own.
-project :: (s: [] VerseState, p: int) -> Seen {
+project :: (s: [] VerseState, p: int) -> GalaxySeen {
   w := s[0].width; h := s[0].height;
   m := lo(w, h) * 0.95; cx := w * 0.5; cy := h * 0.55;
   orbit := REALM_ORBIT; size := 0.024f32;
   a := 0.35f32 + cast(f32) (p - PLANETS) * 6.2831853 / cast(f32) REALMS;
   if p < PLANETS { a = PLANET_A[p]; orbit = PLANET_R[p]; size = PLANET_SIZE[p]; }
   if p == HOUSE { a = ifx s[0].still then 1.2f32 else s[0].time * 0.3; }
-  x := orbit * cos(a + s[0].rot); z := orbit * sin(a + s[0].rot);
-  depth := z * cos(s[0].tilt);
-  k := 1 / (1 + depth * 0.9);
-  return Seen.{x = cx + x * m * k, y = cy + z * sin(s[0].tilt) * m * k, r = size * m * k, depth = depth};
+  return galaxy_seen(cx, cy, m, a, orbit, size, s[0].rot, s[0].tilt);
 }
 
 // The galaxy's worlds and then players' realms (p from PLANETS).
@@ -1196,7 +1192,7 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
   // the orbits, then the worlds
   m := lo(w, h) * 0.95; cy := h * 0.55;
   for o: 0..<6 {
-    r := ORBITS[o] * m;
+    r := GALAXY_ORBITS[o] * m;
     vertices = ring(out, vertices, cx, cy, r, r * sin(s[0].tilt), 72, 0.5 * k, 0.13, 1 * k, 0.93, 0.93, 0.95);
   }
   pulse := ifx s[0].still then 0.35f32 else (s[0].time / 1.6) - floor(s[0].time / 1.6);

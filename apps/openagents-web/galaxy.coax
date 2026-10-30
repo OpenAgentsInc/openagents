@@ -1,0 +1,25 @@
+// The galaxy's geometry, shared by the Verse's galaxy (verse.coax, /verse/galaxy)
+// and the small galaxy on the new landing (newland.coax, /new-land): where a
+// world of realms.coax's table sits on the tilted disc, the orbits drawn
+// under them, and which worlds are public realms. Each page draws the result
+// in its own look; the projection is the same one everywhere. The page loads
+// realms.coax first (the table, written by coax/web/realms.ts).
+
+GALAXY_ORBITS :: [6] f32.[0.15, 0.26, 0.3, 0.34, 0.42, 0.46];
+
+GalaxySeen :: struct { x: f32; y: f32; r: f32; depth: f32; }
+
+// A world at angle a on an orbit of radius orbit (shares of m, the disc's
+// size in pixels) about (cx, cy), the disc turned by rot and tilted by tilt:
+// the playtest's projection, nearer is bigger.
+galaxy_seen :: (cx: f32, cy: f32, m: f32, a: f32, orbit: f32, size: f32, rot: f32, tilt: f32) -> GalaxySeen {
+  x := orbit * cos(a + rot); z := orbit * sin(a + rot);
+  depth := z * cos(tilt);
+  k := 1 / (1 + depth * 0.9);
+  return GalaxySeen.{x = cx + x * m * k, y = cy + z * sin(tilt) * m * k, r = size * m * k, depth = depth};
+}
+
+// A world anyone can walk into: open, listed in realms.json, with a realm page.
+galaxy_public :: (p: int) -> bool {
+  return p >= 0 && p < PLANETS && PLANET_KIND[p] == KIND_OPEN && PLANET_LISTED[p] && PLANET_PATH[p].count > 0;
+}

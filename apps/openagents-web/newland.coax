@@ -21,10 +21,17 @@
 // coax/web/project/pylons.ts (PYLON_SOURCE "relay"; with "demo" every row is
 // a made-up machine and its first field says demo).
 //
+// A small galaxy in a corner holds the public realms (realms.json's listed,
+// open worlds), drawn with the Verse galaxy's projection (galaxy.coax): a
+// pointer over a planet or the arrow keys select it and show its name; a
+// click, a second tap, OPEN or Enter opens https://openagents.com/realms/<slug>.
+//
 // Checks: coax/bin/coax test apps/openagents-web/newland.coax --steps 400000000
 
 #load "font.coax";
 #load "newland-data.coax";
+#load "realms.coax";
+#load "galaxy.coax";
 #load "../../verse/figure.coax";
 #load "../../verse/hud/frame.coax";
 
@@ -133,6 +140,11 @@ LandState :: struct {
   card_box: Box; close_box: Box; open_box: Box;
   head_ok: [PEOPLE] bool; head_x: [PEOPLE] f32; head_y: [PEOPLE] f32;
   agent_ok: [MAX_AGENTS] bool; agent_x: [MAX_AGENTS] f32; agent_y: [MAX_AGENTS] f32;
+  // the small galaxy: its panel, the planet under the pointer and the one
+  // selected (-1 none), its OPEN, whether a press began on it, and where
+  // each world was drawn last frame (gal_r 0: not shown)
+  gal_box: Box; gal_open: Box; gal_over: int; gal_sel: int; gal_down: bool;
+  gal_x: [PLANETS] f32; gal_y: [PLANETS] f32; gal_r: [PLANETS] f32;
 }
 CARD_NONE :: 0; CARD_PLACE :: 1; CARD_PERSON :: 2; CARD_AGENT :: 3; CARD_PYLON :: 4;
 
@@ -242,6 +254,7 @@ read_tables :: (s: [] LandState) {
     if q.plot >= 0 && q.plot < n { s[0].pyl[s[0].pylons] = q; s[0].pylons += 1; }
     at = next_row(LAND_PYLONS, at);
   }
+  s[0].gal_over = -1; s[0].gal_sel = -1;
   s[0].ready = true;
 }
 
@@ -1170,7 +1183,7 @@ floor_grid :: (out: [] f32, at: int, s: [] LandState, c: Cam, look: Fv, p: Pen) 
 
 // ---------------------------------------------------------------- the HUD
 
-Layout :: struct { phone: bool; title: Box; login: Box; make: Box; feed: Box; scene: Box; }
+Layout :: struct { phone: bool; title: Box; login: Box; make: Box; feed: Box; scene: Box; galaxy: Box; }
 layout :: (width: f32, height: f32, d: f32) -> Layout {
   w := width / d; h := height / d;
   l: Layout;
@@ -1182,6 +1195,7 @@ layout :: (width: f32, height: f32, d: f32) -> Layout {
     l.feed = Box.{x0 = m, y0 = h - m - 132, x1 = w - m, y1 = h - m};
     l.make = Box.{x0 = m, y0 = l.feed.y0 - 12 - 48, x1 = w - m, y1 = l.feed.y0 - 12};
     l.scene = Box.{x0 = 0, y0 = 0, x1 = w, y1 = h};
+    l.galaxy = Box.{x0 = w - m - 156, y0 = m + 82, x1 = w - m, y1 = m + 82 + 136};
   } else {
     l.title = Box.{x0 = m, y0 = m, x1 = w * 0.5, y1 = m + 70};
     l.make = Box.{x0 = w - m - 176, y0 = m, x1 = w - m, y1 = m + 40};
@@ -1189,7 +1203,9 @@ layout :: (width: f32, height: f32, d: f32) -> Layout {
     fw: f32 = 320;
     l.feed = Box.{x0 = w - m - fw, y0 = h - m - lo(330, h * 0.42), x1 = w - m, y1 = h - m};
     l.scene = Box.{x0 = 0, y0 = 0, x1 = w, y1 = h};
+    l.galaxy = Box.{x0 = m, y0 = h - 32 - 184, x1 = m + 248, y1 = h - 32};
   }
+  l.galaxy = scaled(l.galaxy, d);
   l.title = scaled(l.title, d); l.login = scaled(l.login, d); l.make = scaled(l.make, d);
   l.feed = scaled(l.feed, d); l.scene = scaled(l.scene, d);
   return l;
@@ -1280,6 +1296,126 @@ feed :: (out: [] f32, at: int, l: Layout, p: Pen, t: f32, light: f32) -> int {
       v = put_fit(out, v, shown_who, x3, line1, small, dimmed(ink(p, INK_DIM), shade), b.x1 - 16 * d - x3);
     }
     v = put_fit(out, v, text, x, y + (ifx l.phone then 6.0f32 else 7.0f32) * d, 6.8 * d, dimmed(ink(p, INK_WHITE), shade * 0.9), b.x1 - b.x0 - 32 * d);
+  }
+  return v;
+}
+
+// ---------------------------------------------------------------- the small galaxy
+
+GAL_TILT :: 0.6f32;    // a little more open than verse.coax's 0.42, to fill a small panel
+GAL_HEAD :: 22.0;   // CSS pixels: REALMS over the disc
+GAL_FOOT :: 24.0;   // the selected realm's name and OPEN under it
+
+// The disc's middle and size in the panel b, so its widest orbit fits.
+gal_disc :: (b: Box, d: f32) -> GalaxySeen {
+  top := b.y0 + GAL_HEAD * d; bottom := b.y1 - GAL_FOOT * d;
+  across := (b.x1 - b.x0 - 20 * d) / (2 * 0.46f32 * 1.12);
+  tall := (bottom - top - 12 * d) / (2 * 0.46 * sin(GAL_TILT) * 1.3);
+  return GalaxySeen.{x = (b.x0 + b.x1) * 0.5, y = (top + bottom) * 0.5, r = lo(across, tall), depth = 0};
+}
+// The world shown in the footer: the one under the pointer, else the selected one.
+gal_shown :: (s: [] LandState) -> int { return ifx s[0].gal_over >= 0 then s[0].gal_over else s[0].gal_sel; }
+
+// The public world nearest (x, y) of those in reach (-1 none), as verse.coax's planet_at.
+gal_at :: (s: [] LandState, x: f32, y: f32) -> int {
+  d := hi(s[0].dpr, 1);
+  best := -1; score := 1.0e9f32;
+  for p: 0..<PLANETS {
+    if s[0].gal_r[p] <= 0 { continue; }
+    reach := hi(s[0].gal_r[p] * 2.2, 16 * d);
+    dx := s[0].gal_x[p] - x; dy := s[0].gal_y[p] - y;
+    near := (dx * dx + dy * dy) / (reach * reach);
+    if near < 1 && near < score { best = p; score = near; }
+  }
+  return best;
+}
+gal_go :: (s: [] LandState, p: int) {
+  if !galaxy_public(p) { return; }
+  buf: [96] u8; n := 0;
+  pre := "https://openagents.com";
+  for i: 0..<pre.count { buf[n] = pre[i]; n += 1; }
+  path := PLANET_PATH[p];
+  for i: 0..<lo_int(path.count, 96 - n) { buf[n] = path[i]; n += 1; }
+  go(s, cast(string) buf[0..<n]);
+}
+// The arrow keys step the selection round the public worlds.
+gal_step :: (s: [] LandState, forward: bool) {
+  p := s[0].gal_sel;
+  if p < 0 { p = ifx forward then PLANETS - 1 else 0; }
+  for i: 0..<PLANETS {
+    p = ifx forward then (p + 1) % PLANETS else (p + PLANETS - 1) % PLANETS;
+    if galaxy_public(p) { s[0].gal_sel = p; s[0].gal_over = -1; return; }
+  }
+}
+// A click in the panel: a planet opens (a finger's first tap only selects it),
+// OPEN opens the selected one, and the rest of the panel is the panel's.
+gal_click :: (s: [] LandState, x: f32, y: f32) -> bool {
+  if !inside(s[0].gal_box, x, y) { return false; }
+  if s[0].gal_sel >= 0 && inside(s[0].gal_open, x, y) { gal_go(s, s[0].gal_sel); return true; }
+  p := gal_at(s, x, y);
+  if p >= 0 {
+    if s[0].touch && s[0].gal_sel != p { s[0].gal_sel = p; return true; }
+    s[0].gal_sel = p; gal_go(s, p); return true;
+  }
+  s[0].gal_sel = -1;
+  return true;
+}
+
+// An orbit: a ring of strokes round (cx, cy), rx across and ry tall.
+gal_orbit :: (out: [] f32, at: int, cx: f32, cy: f32, rx: f32, ry: f32, k: Ink, light: f32) -> int {
+  v := at; n := 40;
+  for i: 0..<n {
+    a0 := cast(f32) i * 2 * PI / cast(f32) n; a1 := cast(f32) (i + 1) * 2 * PI / cast(f32) n;
+    v = rule(out, v, cx + rx * cos(a0), cy + ry * sin(a0), cx + rx * cos(a1), cy + ry * sin(a1), k, light);
+  }
+  return v;
+}
+// A round light at (x, y): a stroke too short to see as one.
+gal_dot :: (out: [] f32, at: int, x: f32, y: f32, r: f32, glow: f32, k: Ink, light: f32) -> int {
+  if lit(out, at, x, y, x + 0.01, y, r, light, glow, k.red, k.green, k.blue, MODE_STROKE) { return at + 6; }
+  return at;
+}
+
+galaxy_panel :: (out: [] f32, at: int, s: [] LandState, l: Layout, p: Pen, t: f32, light: f32) -> int {
+  b := l.galaxy; d := p.d;
+  s[0].gal_box = b; s[0].gal_open = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  for q: 0..<PLANETS { s[0].gal_r[q] = 0; }
+  if light <= 0 { s[0].gal_box = s[0].gal_open; return at; }
+  v := frame(out, at, b, 8 * d, ink(p, INK_BRIGHT), 0.75 * light, p);
+  cap := 7.0 * d;
+  o := dimmed(ink(p, INK_BRIGHT), light);
+  v = put(out, v, "REALMS", b.x0 + 12 * d, b.y0 + 16 * d, cap, o);
+  disc := gal_disc(b, d);
+  m := disc.r;
+  rot := ifx p.still then 0.6f32 else 0.6 + t * 0.03;
+  orbit := ink(p, INK_DIM); orbit.glow = 1.6 * d; orbit.core = hi(0.4 * d, 0.6);
+  for i: 0..<6 {
+    r := GALAXY_ORBITS[i] * m;
+    v = gal_orbit(out, v, disc.x, disc.y, r, r * sin(GAL_TILT), orbit, 0.22 * light);
+  }
+  v = gal_dot(out, v, disc.x, disc.y, 1.2 * d, 7 * d, ink(p, INK_PALE), 0.55 * light);   // the middle, OpenAgents
+  shown := gal_shown(s);
+  for q: 0..<PLANETS {
+    if !galaxy_public(q) { continue; }
+    g := galaxy_seen(disc.x, disc.y, m, PLANET_A[q], PLANET_R[q], PLANET_SIZE[q], rot, GAL_TILT);
+    s[0].gal_x[q] = g.x; s[0].gal_y[q] = g.y; s[0].gal_r[q] = hi(g.r, 2 * d);
+    on := q == shown;
+    k := ink(p, ifx on then INK_BRIGHT else INK_WHITE);
+    v = gal_dot(out, v, g.x, g.y, hi(g.r * 0.55, 1.6 * d), g.r * 1.6 + 3 * d, k, (ifx on then 1.0f32 else 0.7f32) * light);
+    if on { v = ring(out, v, g.x, g.y, g.r + 5 * d, ink(p, INK_BLUE), 0.9 * light); }
+  }
+  // the footer: the realm's name, and OPEN for the selected one
+  if shown >= 0 {
+    fy := b.y1 - 10 * d;
+    v = put_fit(out, v, PLANET_NAME[shown], b.x0 + 12 * d, fy, cap, dimmed(ink(p, INK_BRIGHT), light), b.x1 - b.x0 - 76 * d);
+    if shown == s[0].gal_sel {
+      ob := Box.{x0 = b.x1 - 62 * d, y0 = b.y1 - 24 * d, x1 = b.x1 - 8 * d, y1 = b.y1 - 4 * d};
+      s[0].gal_open = ob;
+      hot := !s[0].touch && s[0].pointed && inside(ob, s[0].px, s[0].py);
+      ok := ink(p, ifx hot then INK_BLUE else INK_BRIGHT); ok.sans = false;
+      tw := measure("OPEN", 0.5, 1.2, false) * cap;
+      v = draw_text(out, v, "OPEN", ob.x1 - 6 * d - tw, fy, cap, 0.5, 1.2, dimmed(ok, light), false, false);
+    }
   }
   return v;
 }
@@ -1660,6 +1796,7 @@ click :: (s: [] LandState, x: f32, y: f32) -> bool {
   }
   if inside(s[0].login, x, y) { go(s, "https://openagents.com/login"); return true; }
   if inside(s[0].make, x, y) { go(s, "https://openagents.com/realms/new"); return true; }
+  if gal_click(s, x, y) { return true; }
   got := pick(s, x, y);
   if got.kind != CARD_NONE { open_card(s, got.kind, got.which); return true; }
   if s[0].card != CARD_NONE { close_card(s); return true; }
@@ -1680,7 +1817,7 @@ coaxial_land_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int,
     if k < 0 { return false; }
     s[0].tx[k] = x; s[0].ty[k] = y;
     s[0].vel_x = 0; s[0].vel_z = 0;
-    if s[0].touches == 1 { s[0].down = true; s[0].down_x = x; s[0].down_y = y; s[0].moved = false; }
+    if s[0].touches == 1 { s[0].down = true; s[0].down_x = x; s[0].down_y = y; s[0].moved = false; s[0].gal_down = inside(s[0].gal_box, x, y); }
     else {
       // two fingers: a pinch, never a click
       s[0].moved = true;
@@ -1692,8 +1829,15 @@ coaxial_land_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int,
     return true;
   }
   if phase == POINTER_MOVE {
-    if kind == 0 && s[0].touches == 0 { s[0].touch = false; }
+    if kind == 0 && s[0].touches == 0 {
+      s[0].touch = false;
+      s[0].gal_over = ifx inside(s[0].gal_box, x, y) then gal_at(s, x, y) else -1;
+    }
     if k < 0 { return false; }
+    if s[0].touches == 1 && s[0].gal_down {   // a press on the galaxy never pans the Grid
+      if abs(x - s[0].down_x) + abs(y - s[0].down_y) > CLICK * d { s[0].moved = true; }
+      return false;
+    }
     px := s[0].tx[k]; py := s[0].ty[k];
     s[0].tx[k] = x; s[0].ty[k] = y;
     if s[0].touches == 1 {
@@ -1740,10 +1884,14 @@ coaxial_land_wheel :: (s: [] LandState, dy: f32) #export_c {
   s[0].anchor_y = ifx s[0].pointed then s[0].py else s[0].height * 0.5;
   s[0].vel_x = 0; s[0].vel_z = 0;
 }
-KEY_ESCAPE :: -1;
+KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;   // host.js KEYS
 coaxial_land_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c {
   if s.count < 1 { return false; }
   if key == KEY_ESCAPE && s[0].card != CARD_NONE { close_card(s); return true; }
+  if s[0].card != CARD_NONE { return false; }
+  if key == KEY_LEFT || key == KEY_UP || key == KEY_RIGHT || key == KEY_DOWN { gal_step(s, key == KEY_RIGHT || key == KEY_DOWN); return true; }
+  if key == KEY_ENTER && s[0].gal_sel >= 0 { gal_go(s, s[0].gal_sel); return true; }
+  if key == KEY_ESCAPE && s[0].gal_sel >= 0 { s[0].gal_sel = -1; return true; }
   return false;
 }
 coaxial_land_cursor :: (s: [] LandState) -> int #export_c {
@@ -1753,6 +1901,7 @@ coaxial_land_cursor :: (s: [] LandState) -> int #export_c {
     if inside(s[0].close_box, x, y) || inside(s[0].open_box, x, y) { return 1; }
     if inside(s[0].card_box, x, y) { return 0; }
   }
+  if inside(s[0].gal_box, x, y) { return ifx gal_at(s, x, y) >= 0 || (s[0].gal_sel >= 0 && inside(s[0].gal_open, x, y)) then 1 else 0; }
   if inside(s[0].login, x, y) || inside(s[0].make, x, y) || pick(s, x, y).kind != CARD_NONE { return 1; }
   return 0;
 }
@@ -1820,6 +1969,21 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
     s[0].make = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   }
   glass(uniforms, 2, l.login, 7 * d, 0.8 * hud, 0);
+  if s[0].card == CARD_NONE {
+    // the small galaxy, in the glass the card uses while it's up
+    v = galaxy_panel(out, v, s, l, p, t, feed_on);
+    glass(uniforms, 3, l.galaxy, 8 * d, 0.92 * feed_on, 0);
+    // the Grid goes quiet behind it, so the planets read
+    g := l.galaxy;
+    for q: 0..<scene_end / 6 {
+      o := q * 6 * VERTEX_FLOATS;
+      x := (out[o] + out[o + 2 * VERTEX_FLOATS]) * 0.5;
+      y := (out[o + 1] + out[o + 2 * VERTEX_FLOATS + 1]) * 0.5;
+      if inside(g, x, y) { for k: 0..<6 { out[o + k * VERTEX_FLOATS + 6] *= 1 - 0.85 * feed_on; } }
+    }
+  } else {
+    s[0].gal_box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; s[0].gal_open = s[0].gal_box; s[0].gal_over = -1;
+  }
   if s[0].card != CARD_NONE {
     s[0].card_t += step;
     v = card(out, v, s, l, p, motion, width, height);
@@ -1897,6 +2061,22 @@ coaxial_land_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
   down = coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 1, 2);
   #assert coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 1, 2);
   #assert same(cast(string) s[0].outbox[0..<s[0].out_n], "https://openagents.com/realms/new");
+}
+
+#test "the small galaxy holds only the public realms, and opens them" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  s[0].time = 9;
+  drawn := coaxial_land_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
+  #assert drawn > 0 && s[0].gal_sel == -1;
+  for q: 0..<PLANETS { #assert (s[0].gal_r[q] > 0) == galaxy_public(q); }
+  #assert s[0].gal_r[6] > 0 && s[0].gal_r[15] == 0 && s[0].gal_r[7] == 0;   // Everglade shown; Planetary Villa and Fairy Forest not
+  down := coaxial_land_pointer(s[..], s[0].gal_x[6], s[0].gal_y[6], POINTER_DOWN, 0, 1);
+  #assert coaxial_land_pointer(s[..], s[0].gal_x[6], s[0].gal_y[6], POINTER_UP, 0, 1);
+  #assert same(cast(string) s[0].outbox[0..<s[0].out_n], "https://openagents.com/realms/everglade") && s[0].gal_sel == 6;
+  coaxial_land_action_done(s[..]);
+  #assert coaxial_land_key(s[..], KEY_RIGHT, 0) && s[0].gal_sel != 6 && galaxy_public(s[0].gal_sel);
+  #assert coaxial_land_key(s[..], KEY_ENTER, 0) && s[0].action == ACT_NAVIGATE;
 }
 
 #test "the people walk the same way on every visit" {
