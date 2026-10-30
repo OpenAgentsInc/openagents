@@ -1611,8 +1611,21 @@ GROUND_RGB :: [18] f32.[0.30, 0.42, 0.17,  0.16, 0.25, 0.11,  0.64, 0.51, 0.32, 
 // Painterly snow (art-styles.md, Made realms): the references' snow is never white paper but the sky's
 // blue in it, so the key's warm light and the haze still leave it a colour (white snow measured a
 // saturation of 0.08 to 0.10 at noon and dusk, under the style check's 0.22)
-PAINT_SNOW :: [12] f32.[0.5, 0.66, 1.0,  0.6, 0.62, 1.0,  0.6, 0.62, 1.0,  0.5, 0.66, 1.0];   // by time of day: day, dawn, dusk, night
-// (at dawn and dusk a periwinkle, so the warm low key turns it lavender, not grey)
+PAINT_SNOW :: [12] f32.[0.5, 0.66, 1.0,  0.5, 0.52, 1.0,  0.5, 0.52, 1.0,  0.5, 0.66, 1.0];   // by time of day: day, dawn, dusk, night
+// (at dawn and dusk a deeper periwinkle, so the warm low key turns it violet, not grey; as-snow-dusk)
+// Painterly snow at dawn and dusk (as-snow-dusk): the preset's low sun leaves a cream horizon and cream
+// clouds after the tone curve, and over a pale ground that is half the frame gone grey (saturation 0.20
+// on a desktop, 0.17 on a phone). A snowy realm takes the snow-light sky instead: a violet top, a rose
+// horizon, a rose-violet haze the far snow steps back into, and rose-lit clouds.
+SNOW_LOW :: [12] f32.[0.16, 0.10, 0.42,  0.72, 0.30, 0.44,  0.50, 0.30, 0.82,  1.0, 0.60, 0.52];   // zenith, horizon, haze, cloud top
+SNOW_LOW_CLOUDS :: 0.2;
+snow_low_sky :: (o: [] f32) {
+  for i: 0..<3 {
+    o[SU_ZENITH + i] = SNOW_LOW[i]; o[SU_HORIZON + i] = SNOW_LOW[3 + i];
+    o[SU_HAZE_COLOUR + i] = SNOW_LOW[6 + i]; o[SU_CLOUD_TOP + i] = SNOW_LOW[9 + i];
+  }
+  o[SU_CLOUDS] = SNOW_LOW_CLOUDS;   // fewer clouds: their teal undersides grey a rose sky
+}
 SKY_RGB :: [12] f32.[0.28, 0.50, 0.86,  0.33, 0.38, 0.62,  0.17, 0.15, 0.34,  0.008, 0.01, 0.025];
 HORIZON_RGB :: [12] f32.[0.72, 0.82, 0.92,  0.96, 0.64, 0.46,  0.86, 0.44, 0.30,  0.04, 0.05, 0.085];
 SUN :: [16] f32.[0.35, 0.85, 0.4, 1.0,  -0.85, 0.3, -0.4, 0.75,  0.9, 0.2, -0.3, 0.5,  0.3, 0.8, 0.5, 0.14];
@@ -1678,6 +1691,7 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
     tier := ifx width < 600 * s[0].dpr then STYLE_PHONE else STYLE_DESKTOP;
     p := ifx style == "flat" then verse_style_flat(FLAT_GARDEN, tier) else verse_style_preset(STYLE_PAINTERLY, tier);
     done := verse_style_at(p, TOD_CLOCK[tod], uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
+    if snow_paint && (tod == 1 || tod == 2) { snow_low_sky(uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]); }
   }
   uniforms[HORIZON_AT + 3] = STARS[tod];
   uniforms[GROUND_AT + 3] = LAMP_SHARE[tod];
@@ -1740,6 +1754,15 @@ tap_box :: (s: [] MyRealm, t: [] Track, b: Box) {
 }
 url_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_url[0..<s[0].req_url_n] == text; }
 body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_body[0..<s[0].req_body_n] == text; }
+
+#test "painterly snow at dawn and dusk takes the snow-light sky: violet top, rose horizon, fewer clouds" {
+  o: [STYLE_FLOATS] f32;
+  done := verse_style_at(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), 0.75, o[..]);
+  #assert o[SU_HORIZON + 1] > o[SU_HORIZON + 2];   // the preset's own dusk: peach
+  snow_low_sky(o[..]);
+  #assert o[SU_ZENITH + 2] > o[SU_ZENITH] && o[SU_HORIZON] > o[SU_HORIZON + 2] && o[SU_HORIZON + 2] > o[SU_HORIZON + 1];
+  #assert o[SU_HAZE_COLOUR + 2] > o[SU_HAZE_COLOUR] && o[SU_CLOUDS] == SNOW_LOW_CLOUDS;
+}
 
 #test "the realm asks for its spec by its slug and reads it" {
   s: [1] MyRealm; t: [1] Track;

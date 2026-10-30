@@ -154,13 +154,17 @@ stage (0.8; half for what glows and for her skin and clothes).
   along the shore) with slow broken ripple lines drifting across the open
   water (`apps/openagents-web/fairy.wgsl`, `LOOK_LAKE`).
 - **Painterly snow** in a made realm is `PAINT_SNOW`: sky blue (0.5, 0.66, 1.0)
-  by day and night, periwinkle (0.6, 0.62, 1.0) at dawn and dusk (the low warm key turns it
-  lavender), not the low-poly ground's near white: white snow measured a saturation of
+  by day and night, a deeper periwinkle (0.5, 0.52, 1.0) at dawn and dusk (the low warm key turns it
+  violet), not the low-poly ground's near white: white snow measured a saturation of
   0.08 at noon and 0.10 at dusk, under the style check's 0.22, and read as
-  paper rather than paint (`myrealm.coax`, October 30). Now 0.24 at noon on
-  a desktop; at dusk 0.20 (0.17 on a phone): the dusk sky's cream haze and
-  grey cloud are half the frame there, so the rest waits on the preset's
-  dusk sky (task as-snow-dusk).
+  paper rather than paint (`myrealm.coax`, October 30). At dawn and dusk a snowy realm also takes
+  its own low sky (`SNOW_LOW`, task as-snow-dusk): the preset's peach horizon and cream clouds come
+  out of the tone curve cream, and over a pale ground that was half the frame gone grey (0.20 on a
+  desktop, 0.17 on a phone). Instead the zenith is a violet (0.16, 0.10, 0.42), the horizon a rose
+  (0.72, 0.30, 0.44), the haze a rose-violet (0.50, 0.30, 0.82) the far snow steps back into, the
+  clouds' lit tops a rose (1.0, 0.60, 0.52), and cover 0.2 instead of 0.35, since their teal
+  undersides grey a rose sky. Now 0.27 on a desktop and 0.24 on a phone at dusk. Everglade, the
+  fixture and every other made realm keep the preset's sky.
 - **Made realms** (`/realms/new`, style flat) take `FLAT_GARDEN` at their
   own time of day: three hard tones on their shapes (by the realm's own
   colours, drawn toward the palette), the flat sky and disc, two water
