@@ -415,6 +415,10 @@ ice_play_key :: (p: [] Play, g: [] Game, key: int, down: bool, mods: int) -> boo
     if k == PK_SHIFT { p[0].held &= 0xFFFFFFFF ^ LETTERS; }
     return key_bit(k) != 0;
   }
+  // the tour's card: Esc ends it, Enter and the left and right arrows page it, and walking
+  // (W A S D, the up and down arrows) ends it and walks, as its first card says (qa-icm-tour-walk)
+  walks := k == 'w' || k == 'a' || k == 's' || k == 'd' || k == PK_UP || k == PK_DOWN;
+  if p[0].tour >= 0 && walks { ice_play_act(p, g, A_TOUR_END, 0); }
   if p[0].tour >= 0 {
     if k == PK_ESCAPE { ice_play_act(p, g, A_TOUR_END, 0); }
     else if k == PK_RIGHT || k == PK_ENTER { ice_play_act(p, g, A_TOUR_NEXT, 0); }
@@ -451,6 +455,7 @@ ice_play_pointer :: (p: [] Play, g: [] Game, x: f32, y: f32, phase: int, kind: i
     p[0].touch = true;
     if phase == 0 {
       if p[0].phase != Phase.playing { return; }
+      if zone == ZONE_STICK && p[0].tour >= 0 { ice_play_act(p, g, A_TOUR_END, 0); }   // the stick walks: the tour ends
       if zone == ZONE_STICK && !p[0].stick_on {
         dx := x - cx; dy := y - cy;
         s := cmin(reach / cmax(sqrt(dx * dx + dy * dy), 1), 1);
@@ -1043,6 +1048,22 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   #assert p[0].phase == Phase.over && p[0].daylight == 1;
   ice_play_act(p, g, A_NEW_HOUSE, 0);
   #assert p[0].phase == Phase.playing && p[0].seed == 2 && g[0].tick == 0;
+}
+
+#test "walking closes the tour's first card and walks; the arrows still page it (qa-icm-tour-walk)" {
+  pp: [1] Play; gg: [1] Game; p := pp[..]; g := gg[..];
+  tb: [TEST_TRACE] u8; p[0].trace = tb[..];
+  ice_play_hash(p, g, "seed=3");
+  #assert p[0].tour == 0 && !running(p);
+  #assert ice_play_key(p, g, PK_RIGHT, true, 0) && p[0].tour == 1;
+  #assert ice_play_key(p, g, PK_LEFT, true, 0) && p[0].tour == 0;
+  #assert ice_play_key(p, g, 'w', true, 0);
+  #assert p[0].tour == -1 && p[0].seen_tour && running(p) && holding(p, H_W);
+  qq: [1] Play; hh: [1] Game; q := qq[..]; h := hh[..];
+  tc: [TEST_TRACE] u8; q[0].trace = tc[..];
+  ice_play_hash(q, h, "seed=3");
+  ice_play_pointer(q, h, 80, 500, 0, 1, 2, ZONE_STICK, 90, 500);
+  #assert q[0].tour == -1 && q[0].stick_on && running(q);
 }
 
 #test "the save keeps the settings, the tour and the best times, and refuses a stranger's" {
