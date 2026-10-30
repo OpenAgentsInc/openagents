@@ -17,6 +17,8 @@ Both learned-model Pylons currently share **one RTX PRO 6000** on
 and remains stopped. These are two providers, not two independent GPUs.
 Current keys, persistent paths, units and stop commands are in the
 [cloud operator runbook](../psionic/docs/serving/cloud-pylons.md).
+Before intentionally stopping that VM, use its
+[managed recovery pause-and-drain procedure](../psionic/docs/serving/spot-recovery.md).
 The [public edge proof](verification/psionic-public-edge-production-2026-10-30.md)
 records actual responses, auth refusals and immutable deployment identities.
 

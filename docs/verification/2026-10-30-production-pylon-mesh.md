@@ -55,6 +55,27 @@ Mammoth inventory matches the frozen manifest. The generation fix killed
 fleet. The public-edge policy killed 194/194 mutants, with its native
 HTTP/DB and real network evidence recorded separately.
 
+## Managed recovery of the Spot host
+
+The private `pylon-spot-recovery` Cloud Run Job is now triggered every five
+minutes by Cloud Scheduler. Its checked Coax decision and keyless runtime
+inspect only the fixed RTX VM and request a start only when it is terminated.
+The retired L4 is excluded. The added runtime grant contains only instance
+get/start; the Scheduler grant invokes only this private job.
+
+[The managed deployment record](data/pylon-spot-recovery-2026-10-30/managed-job.json)
+captures actual Scheduler-created dry and active executions. Both observed
+the healthy VM and correctly returned `noop`; active execution
+`pylon-spot-recovery-57fms` completed successfully at 18:50:14 UTC.
+The policy killed 20/20 mutants; native effects and maintenance checks passed.
+No healthy GPU VM was stopped to test the controller.
+
+The [recovery runbook](../../psionic/docs/serving/spot-recovery.md) includes
+the tested pause/dry/cancel/quiescent-drain procedure required before an
+intentional VM stop. Recovery creates no additional VM or GPU and cannot
+guarantee Spot stock. An accepted asynchronous start is reported as a
+request, rather than prematurely marking the model healthy.
+
 ## Confidential execution is a separate lane
 
 The original immutable Clef worker is also running again, on production
