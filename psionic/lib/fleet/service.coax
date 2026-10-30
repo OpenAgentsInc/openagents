@@ -15,6 +15,11 @@
     #assert !mf_free_service(PB_CONTENT,PB_OWNER,PB_IDENTITY) && !mf_free_service("{}",PB_KEY,PB_IDENTITY);
     #assert mf_free_service(pd_swap(out[..],PB_CONTENT,"\"price_hint_msat\":null","\"price_hint_msat\":0"),PB_KEY,PB_IDENTITY);
 }
+#test "free prices require integer JSON numbers rather than numeric-looking text" {
+    out:[4096]u8;
+    #assert !mf_free_service(pd_swap(out[..],PB_CONTENT,"\"price_hint_msat\":null","\"price_hint_msat\":\"0\""),PB_KEY,PB_IDENTITY);
+    #assert !mf_free_service(pd_swap(out[..],PB_CONTENT,"\"price_hint_msat\":null","\"price_hint_msat\":0.0"),PB_KEY,PB_IDENTITY);
+}
 mf_contains :: (raw:string,value:string)->bool {
     if !json_valid(raw) {return false;}j:[1]Json;json_start(j[..],raw);if json_next(j[..])!=JSON_ARRAY {return false;}found:=false;
     t:=json_next(j[..]);while t!=JSON_ARRAY_END {if t!=JSON_STRING {return false;}if json_is(json_text(j[..]),value) {found=true;}t=json_next(j[..]);}return found;
@@ -40,13 +45,24 @@ mf_free_service :: (content:string,provider:string,identity:string)->bool #expor
     out:[512]u8;for i:0..<7 {#assert !mf_local_http(pd_swap(out[..],good,from[i],to[i])).ok;}
     #assert !mf_local_http("").ok && !mf_local_http("HTTP/1.1 200 ").ok;
 }
+#test "HTTP framing accepts empty reasons and bodies and refuses oversized headers" {
+    empty:="HTTP/1.1 200 \r\nContent-Length: 0\r\n\r\n";
+    #assert mf_local_http(empty).ok && mf_local_http(empty).response=="";
+    big:[9000]u8;n:=json_raw(big[..],0,"HTTP/1.1 200 OK\r\nLong: ");
+    for i:0..<8200 {big[n+i]='a';}n+=8200;
+    n=json_raw(big[..],n,"\r\nContent-Length: 2\r\n\r\n{}");
+    #assert n>0 && !mf_local_http(cast(string)big[0..<n]).ok;
+}
 // Reuse chapter16's checked header parser for framing: only the response's
 // fixed200 status line is replaced with that parser's known request line.
 // This does not turn response JSON into a request or select its identity.
 mf_local_http :: (text:string)->MfResult #export_c {
-    bad:MfResult;if text.count<13 || text[0..<13]!="HTTP/1.1 200 " {return bad;}
-    line:=pb_index(text,"\r\n");at:=pb_index(text,"\r\n\r\n");if line<13 || at<line {return bad;}
-    head:[8192]u8;n:=json_raw(head[..],0,"POST /v1/systemone HTTP/1.1\r\n");n=json_raw(head[..],n,text[line+2..<at+4]);if n<0 {return bad;}
+    bad:MfResult;if pb_index(text,"HTTP/1.1 200 ")!=0 {return bad;}
+    at:=pb_index(text,"\r\n\r\n");if at==-1 {return bad;}
+    // The double CRLF guarantees that a first CRLF exists at or before at.
+    line:=pb_index(text,"\r\n");
+    head:[8192]u8;n:=json_raw(head[..],0,"POST /v1/systemone HTTP/1.1\r\n");
+    n=json_raw(head[..],n,text[line+2..<at+2]);n=json_raw(head[..],n,"\r\n");if n==-1 {return bad;}
     h:=sv_head(cast(string)head[0..<n]);if h.status!=SvHeadStatus.ready || h.body!=text.count-at-4 {return bad;}
     return MfResult.{ok=true,response=text[at+4..<text.count]};
 }

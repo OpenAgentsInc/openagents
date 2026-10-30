@@ -84,10 +84,12 @@ not publishable.
 Every asked question must appear once with its own type. Choice and score
 probabilities name exactly the requested options, lie in `[0,1]`, and sum
 to one within one part per million. The selected choice and confidence
-match their probabilities, with lexical ties; the score matches the
-weighted level. Noul remains a probability in `[0,1]`. The supported numeric
+match their probabilities, with lexical ties. Confidence stays in `[0,1]`
+independently of that tolerance; the score matches the weighted level and
+stays between zero and the highest requested level. Noul remains a probability in `[0,1]`. The supported numeric
 profile is the one Coax's serializer emits: ordinary decimal numbers with
-up to nine fractional digits. Other encodings refuse rather than guess.
+up to nine fractional digits. Score requests admit two to ten levels, so
+the highest permitted value is nine. Other encodings refuse rather than guess.
 This validates the answer contract, not the truth of a model's decision.
 
 The chapter 19 executable uses its already deployed result envelope,

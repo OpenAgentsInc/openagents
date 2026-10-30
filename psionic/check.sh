@@ -351,7 +351,13 @@ done | run_parallel coax
 phase "Coax debug/release checks"
 # Mutation: one unit at a time, each using every job.
 for unit in "${selected_coax[@]+"${selected_coax[@]}"}"; do
-    "$coax" mutate "psionic/lib/$unit.coax" --jobs "$jobs"
+    # Fleet's imported JSON/crypto/server units retain their existing gates.
+    # All baseline checks run; mutate only the new file's physical source.
+    if [[ $unit == fleet/* ]]; then
+        "$coax" mutate "psionic/lib/$unit.coax" --root-only --jobs "$jobs"
+    else
+        "$coax" mutate "psionic/lib/$unit.coax" --jobs "$jobs"
+    fi
 done
 phase mutation
 

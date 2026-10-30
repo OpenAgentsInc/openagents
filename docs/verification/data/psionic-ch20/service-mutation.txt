@@ -1,0 +1,3 @@
+mutation-scheduling full checks=201 skipped=0 borrowed=1 strings=1 unstable=0
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+82 mutants, 82 killed, 0 survived

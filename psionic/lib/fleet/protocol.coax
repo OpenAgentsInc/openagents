@@ -81,7 +81,7 @@ mf_number :: (text:string)->MfNumber {
     for i:2..<text.count {c:=text[i];if c<'0' || c>'9' {return MfNumber.{};}value+=cast(int)(c-'0')*place;place/=10;}
     return MfNumber.{ok=true,units=value};
 }
-mf_less :: (a:string,b:string)->bool {for i:0..<a.count {if i>=b.count {return false;}if a[i]!=b[i] {return a[i]<b[i];}}return a.count<b.count;}
+mf_less :: (a:string,b:string)->bool {for i:0..<a.count {if i>=b.count {return false;}if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}return a.count<b.count;}
 mf_job :: (body:string,request:string,attempt:int,deadline:int,out:[]u8)->int #export_c {
     if !pd_id(request) || attempt<1 || deadline<1 {return -1;}
     model:=mf_get(body,"model");state:=mf_get(body,"state");questions:=mf_get(body,"questions");
@@ -96,7 +96,7 @@ mf_option :: (q:SvQuestion,index:int,pools:SvPools,out:[]u8)->string {
 }
 mf_distribution :: (raw:string,q:SvQuestion,pools:SvPools)->MfDistribution {
     bad:MfDistribution;j:[1]Json;json_start(j[..],raw);if json_next(j[..])!=JSON_OBJECT {return bad;}
-    seen:[255]bool;sum:=0;count:=0;best:=-1;maximum:=-1;score:=0;
+    seen:[255]bool;sum:=0;count:=0;best:int;maximum:int;score:=0;
     while true {
         t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}if t!=JSON_STRING {return bad;}key:=json_text(j[..]);index:=-1;
         for i:0..<q.count {name:[16]u8;if json_is(key,mf_option(q,i,pools,name[..])) {index=i;}}
@@ -113,18 +113,18 @@ mf_one :: (raw:string,q:SvQuestion,pools:SvPools)->bool {
     type:=mf_get(raw,"type");
     if q.kind==PtQuestionKind.noul {v:=mf_get(raw,"noul");n:=mf_number(v.text);return mf_string(type,"noul") && v.token==JSON_NUMBER && n.ok && n.units<=MF_UNIT;}
     d:=mf_get(raw,"probabilities");if !d.ok {return false;}p:=mf_distribution(d.raw,q,pools);if !p.ok {return false;}
-    confidence:=mf_get(raw,"confidence");c:=mf_number(confidence.text);if confidence.token!=JSON_NUMBER || !c.ok || abs(cast(f64)(c.units-p.maximum))>MF_TOL {return false;}
+    confidence:=mf_get(raw,"confidence");c:=mf_number(confidence.text);if confidence.token!=JSON_NUMBER || !c.ok || c.units>MF_UNIT || abs(cast(f64)(c.units-p.maximum))>MF_TOL {return false;}
     if q.kind==PtQuestionKind.choice {return mf_string(type,"choice") && mf_string(mf_get(raw,"choice"),pools.options[q.first+p.best].name);}
-    s:=mf_get(raw,"score");number:=mf_number(s.text);name:[16]u8;return mf_string(type,"score") && s.token==JSON_NUMBER && number.ok && abs(cast(f64)(number.units-p.score))<=MF_TOL && mf_string(mf_get(raw,"selected"),mf_option(q,p.best,pools,name[..]));
+    s:=mf_get(raw,"score");number:=mf_number(s.text);name:[16]u8;return mf_string(type,"score") && s.token==JSON_NUMBER && number.ok && number.units<=(q.count-1)*MF_UNIT && abs(cast(f64)(number.units-p.score))<=MF_TOL && mf_string(mf_get(raw,"selected"),mf_option(q,p.best,pools,name[..]));
 }
 mf_answer :: (body:string,r:SvRequest,pools:SvPools,identity:string,provider:string,slug:string)->bool #export_c {
     if !mf_string(mf_get(body,"model"),pb_identity_name(identity)) {return false;}
     service:=mf_get(body,"service");if !service.ok || !mf_string(mf_get(service.raw,"identity"),identity) {return false;}
-    if provider.count>0 {
+    if provider!="" {
         door:[80]u8;n:=json_raw(door[..],0,"pylon:");n=json_raw(door[..],n,slug);
         if !mf_string(mf_get(service.raw,"provider"),provider) || !mf_string(mf_get(service.raw,"door"),cast(string)door[0..<n]) {return false;}
     }else if !mf_string(mf_get(service.raw,"door"),"psionic") {return false;}
-    answers:=mf_get(body,"answers");if !answers.ok || answers.token!=JSON_OBJECT {return false;}
+    answers:=mf_get(body,"answers");if answers.token!=JSON_OBJECT {return false;}
     seen:[64]bool;count:=0;j:[1]Json;json_start(j[..],answers.raw);t:=json_next(j[..]);
     while true {
         t=json_next(j[..]);if t==JSON_OBJECT_END {break;}key:=json_text(j[..]);index:=-1;
@@ -139,4 +139,66 @@ mf_result :: (text:string,request:string,attempt:int)->MfResult #export_c {
     n:=json_int(a.text);
     if !mf_string(version,PD_VERSION) || !requires.ok || !mf_empty(requires.raw) || !mf_string(type,"result") || !mf_string(req,request) || a.token!=JSON_NUMBER || !n.ok || n.value!=attempt || !mf_string(outcome,"answered") || !response.ok || response.token!=JSON_OBJECT {return MfResult.{};}
     return MfResult.{ok=true,response=response.raw};
+}
+
+#test "field predicates enforce their typed observation and complete array" {
+    #assert !mf_string(MfField.{token=JSON_STRING,text="v"},"v");
+    #assert !mf_string(MfField.{ok=true,token=JSON_NUMBER,text="v"},"v");
+    #assert !mf_empty("0") && !mf_empty("[] x");
+    #assert !mf_number(":").ok && !mf_number("0.:").ok;
+    #assert mf_number("9.9").units==9900000000;
+}
+#test "job projection requires each field independently and admits deadline one" {
+    out:[2048]u8;#assert mf_job(MF_CALL,"r",1,1,out[..])>0;
+    #assert mf_job("{\"model\":\"m\",\"questions\":{}}","r",1,1,out[..])==-1;
+    #assert mf_job("{\"model\":\"m\",\"state\":\"s\"}","r",1,1,out[..])==-1;
+    #assert mf_job("{\"state\":\"s\",\"questions\":{}}","r",1,1,out[..])==-1;
+}
+#test "distribution boundaries and keyed duplicates are exact" {
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);r:=sv_decode(MF_CALL,pools);q:=pools.questions[0];
+    #assert mf_distribution("{\"yes\":0.700001,\"no\":0.3}",q,pools).ok;
+    #assert mf_distribution("{\"yes\":0.699999,\"no\":0.3}",q,pools).ok;
+    #assert !mf_distribution("{\"yes\":0.700001001,\"no\":0.3}",q,pools).ok;
+    #assert !mf_distribution("{\"yes\":1.000000001,\"no\":0}",q,pools).ok;
+    #assert mf_distribution("{\"yes\":0,\"no\":1}",q,pools).best==1;
+    #assert mf_distribution("{\"no\":0.5,\"yes\":0.5}",q,pools).best==1;
+    #assert !mf_distribution("{\"other\":0.7,\"no\":0.3}",q,pools).ok;
+    #assert !mf_distribution("{\"yes\":0.7,\"yes\":0.3}",q,pools).ok;
+    #assert !mf_distribution("{\"yes\":1e0,\"no\":1}",q,pools).ok;
+    score:=SvQuestion.{kind=PtQuestionKind.score,first=0,count=2};
+    d:=mf_distribution("{\"0\":0.3,\"1\":0.7}",score,pools);#assert d.ok && d.score==700000000 && d.maximum==700000000 && d.best==1;
+}
+#test "question numeric bounds are independent of normalization tolerance" {
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);r:=sv_decode(MF_CALL,pools);q:=pools.questions[0];
+    #assert !mf_one("{\"type\":\"choice\"}",q,pools);
+    #assert !mf_one("{\"type\":\"choice\",\"choice\":\"yes\",\"confidence\":\"0.7\",\"probabilities\":{\"yes\":0.7,\"no\":0.3}}",q,pools);
+    #assert mf_one("{\"type\":\"choice\",\"choice\":\"yes\",\"confidence\":0.700001,\"probabilities\":{\"yes\":0.7,\"no\":0.3}}",q,pools);
+    #assert mf_one("{\"type\":\"choice\",\"choice\":\"yes\",\"confidence\":1,\"probabilities\":{\"yes\":1,\"no\":0}}",q,pools);
+    #assert !mf_one("{\"type\":\"choice\",\"choice\":\"yes\",\"confidence\":1.000000001,\"probabilities\":{\"yes\":1,\"no\":0}}",q,pools);
+    n:=SvQuestion.{kind=PtQuestionKind.noul};
+    #assert mf_one("{\"type\":\"noul\",\"noul\":1}",n,pools);
+    #assert !mf_one("{\"type\":\"noul\",\"noul\":1.000000001}",n,pools);
+    #assert !mf_one("{\"type\":\"choice\",\"noul\":0.3}",n,pools);
+    #assert !mf_one("{\"type\":\"noul\",\"noul\":\"0.3\"}",n,pools);
+    #assert !mf_one("{\"type\":\"noul\",\"noul\":1e0}",n,pools);
+    s:=SvQuestion.{kind=PtQuestionKind.score,first=0,count=2};
+    #assert mf_one("{\"type\":\"score\",\"score\":0.700001,\"confidence\":0.7,\"selected\":\"1\",\"probabilities\":{\"0\":0.3,\"1\":0.7}}",s,pools);
+    #assert !mf_one("{\"type\":\"score\",\"score\":\"0.7\",\"confidence\":0.7,\"selected\":\"1\",\"probabilities\":{\"0\":0.3,\"1\":0.7}}",s,pools);
+    #assert !mf_one("{\"type\":\"choice\",\"score\":0.7,\"confidence\":0.7,\"selected\":\"1\",\"probabilities\":{\"0\":0.3,\"1\":0.7}}",s,pools);
+    #assert mf_one("{\"type\":\"score\",\"score\":1,\"confidence\":1,\"selected\":\"1\",\"probabilities\":{\"0\":0,\"1\":1}}",s,pools);
+    #assert !mf_one("{\"type\":\"score\",\"score\":1.000000001,\"confidence\":1,\"selected\":\"1\",\"probabilities\":{\"0\":0,\"1\":1}}",s,pools);
+    #assert !mf_one("{\"type\":\"score\",\"score\":1e0,\"confidence\":1,\"selected\":\"0\",\"probabilities\":{\"0\":1,\"1\":0}}",s,pools);
+}
+#test "same-kind duplicate answers cannot fill a missing question or spoof local door" {
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);r:=sv_decode("{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{\"a\":{\"type\":\"noul\"},\"b\":{\"type\":\"noul\"}}}",pools);
+    body:="{\"model\":\"psionic-toy\",\"answers\":{\"a\":{\"type\":\"noul\",\"noul\":0.3},\"b\":{\"type\":\"noul\",\"noul\":0.7}},\"service\":{\"door\":\"psionic\",\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\"}}";
+    #assert mf_answer(body,r,pools,MF_ID,"","");out:[2048]u8;
+    #assert !mf_answer(pd_swap(out[..],body,"\"b\":{","\"a\":{"),r,pools,MF_ID,"","");
+    #assert !mf_answer(pd_swap(out[..],body,"\"door\":\"psionic\"","\"door\":\"other\""),r,pools,MF_ID,"","");
+}
+#test "each result wrapper field has its own refusal" {
+    out:[4096]u8;n:=json_raw(out[..],0,"{\"v\":\"openagents.systemone.v1\",\"requires\":[],\"type\":\"result\",\"request\":\"r\",\"attempt\":1,\"outcome\":\"answered\",\"response\":");n=json_raw(out[..],n,MF_RESPONSE);n=json_raw(out[..],n,"}");text:=cast(string)out[0..<n];
+    from:=[8]string.["systemone.v1","\"requires\":[]","\"type\":\"result\"","\"attempt\":1","\"attempt\":1","\"outcome\":\"answered\"","\"response\":","\"requires\":[],"];
+    to:=[8]string.["systemone.v2","\"requires\":[\"unknown\"]","\"type\":\"status\"","\"attempt\":\"1\"","\"attempt\":1.0","\"outcome\":\"completed\"","\"extra\":",""];
+    bad:[4096]u8;for i:0..<8 {#assert !mf_result(pd_swap(bad[..],text,from[i],to[i]),"r",1).ok;}
 }
