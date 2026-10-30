@@ -400,13 +400,14 @@ static int check_device(int64_t capacity,int64_t device_mib) {
     budget=(int64_t)available-(INT64_C(256)<<20)-dp_fork_bytes_of(dp_model(0));
 #endif
     if(device_mib>0&&device_mib*1048576<budget)budget=device_mib*1048576;
-    _Bool *stream=zalloc(EG_STREAMABLE,sizeof *stream);
+    int64_t streamable=dp_streamable(dp_model(0));
+    _Bool *stream=zalloc((size_t)streamable,sizeof *stream);
     coax_t_DpOp *ops=zalloc(8192,sizeof *ops);
 #if defined(PSIONIC_SERVE_METAL)
-    coax_t_DpPlan plan=dp_plan_metal(capacity,0,budget,(coax_v_bool){stream,EG_STREAMABLE},(coax_v_t_DpOp){ops,8192});
+    coax_t_DpPlan plan=dp_plan_metal(capacity,0,budget,(coax_v_bool){stream,streamable},(coax_v_t_DpOp){ops,8192});
     bool fits=!plan.status&&!plan.streamed_tensors&&plan.resident<=(int64_t)probe.gpu->device.max_buffer_bytes&&plan.workspace<=(int64_t)probe.gpu->device.max_buffer_bytes;
 #else
-    coax_t_DpPlan plan=dp_plan_model(0,false,capacity,0,budget,(coax_v_bool){stream,EG_STREAMABLE},(coax_v_t_DpOp){ops,8192});
+    coax_t_DpPlan plan=dp_plan_model(0,false,capacity,0,budget,(coax_v_bool){stream,streamable},(coax_v_t_DpOp){ops,8192});
     bool fits=!plan.status;
 #endif
     free(ops);free(stream);

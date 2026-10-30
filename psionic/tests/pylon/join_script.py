@@ -50,13 +50,14 @@ class Join(unittest.TestCase):
      if p.poll() is None:p.send_signal(signal.SIGTERM);p.wait(timeout=10)
  def test_private_label_foreground_start_stop_and_no_secret_argv(self):
   with tempfile.TemporaryDirectory(prefix='join-script-') as t:
-   d=pathlib.Path(t);r=d/'source with spaces';home=d/'home';home.mkdir();state=d/'install with spaces'
+   d=pathlib.Path(t);r=d/'source with spaces';home=d/'home';home.mkdir();state=r
    for p in ['coax/bin','psionic/platform','psionic/fixtures/pylon','psionic/fixtures/models/mammoth','psionic/tests','coax/platform']:(r/p).mkdir(parents=True,exist_ok=True)
    (r/'psionic/fixtures/models/mammoth/inventory.h').write_text('')
    (r/'psionic/fixtures/pylon/psionic-toy.selfcheck').write_text('{}')
    (r/'psionic/tests/elephant_manifest.py').write_text('');(r/'psionic/tests/serve_build_id.py').write_text('')
    (r/'coax/provenance.sh').write_text('#!/bin/sh\nexit 0\n');(r/'coax/provenance.sh').chmod(0o755)
    (r/'coax/bin/coax').write_text('#!/usr/bin/env python3\nimport json\nprint(json.dumps({"sources":[]}))\n');(r/'coax/bin/coax').chmod(0o755)
+   subprocess.run(['git','init','--quiet',str(r)],check=True)
    for script,name,text in [('pylon-build.sh','pylon',PYLON),('serve-build.sh','psionic-serve',ENGINE)]:
     p=r/'psionic/platform'/script;p.write_text('#!/usr/bin/env python3\nimport pathlib,sys\np=pathlib.Path(sys.argv[1])/'+repr(name)+'\np.parent.mkdir(parents=True,exist_ok=True)\np.write_text('+repr(text)+')\np.chmod(0o755)\n');p.chmod(0o755)
    env={**os.environ,'HOME':str(home),'OPENAGENTS_PYLON_HOME':str(state),'COAX_CC':shutil.which('gcc') or shutil.which('cc'),'CXX':shutil.which('g++') or shutil.which('c++')}
@@ -71,7 +72,8 @@ class Join(unittest.TestCase):
     label=(state/'state/demo-label').read_text();self.assertEqual(len(label),64);self.assertNotIn(label,output.read_text()+err.read_text());self.assertEqual((state/'state/demo-label').stat().st_mode&0o777,0o600)
     stop=subprocess.run(['bash',str(ROOT/'scripts/join-pylon.sh'),'--stop'],env=env,capture_output=True,text=True);self.assertEqual(stop.returncode,0,stop.stderr)
     self.assertEqual(p.wait(timeout=10),0);self.assertFalse((state/'state/join.lock').exists())
-    with output.open('w') as o,err.open('w') as e:p=subprocess.Popen(['bash',str(ROOT/'scripts/join-pylon.sh'),'--source',str(r)],env=env,stdout=o,stderr=e)
+    self.assertNotIn('/state/',(r/'.git/info/exclude').read_text())
+    with output.open('w') as o,err.open('w') as e:p=subprocess.Popen(['bash',str(ROOT/'scripts/join-pylon.sh'),'--no-update'],env=env,stdout=o,stderr=e)
     deadline=time.time()+20
     while time.time()<deadline and 'Pylon online:' not in output.read_text():
      if p.poll() is not None:self.fail(output.read_text()+err.read_text())
@@ -79,6 +81,8 @@ class Join(unittest.TestCase):
     self.assertIn('Pylon online: fixture',output.read_text());self.assertEqual((state/'state/demo-label').read_text(),label)
     stop=subprocess.run(['bash',str(ROOT/'scripts/join-pylon.sh'),'--model','psionic-toy','--stop'],env=env,capture_output=True,text=True);self.assertEqual(stop.returncode,0,stop.stderr)
     self.assertEqual(p.wait(timeout=10),0);self.assertFalse((state/'state/join.lock').exists())
+    for path in ['state/demo-label','models/weights.bin','build/pylon']:
+     self.assertEqual(subprocess.run(['git','-C',str(r),'check-ignore','--quiet',path]).returncode,0,path)
    finally:
     if p.poll() is None:p.send_signal(signal.SIGTERM);p.wait(timeout=10)
  def test_failed_start_and_stop_never_follow_a_stop_symlink(self):

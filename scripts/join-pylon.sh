@@ -195,6 +195,7 @@ PY
   fi
 }
 cd "$root"
+printf 'pylon: checking the qualified Coax compiler cache\n'
 if ! "$root/coax/provenance.sh" verify "$root" "$root/coax/bin/coax" "$root/coax/bin/provenance-check" "$root/coax/bin/provenance.record" >/dev/null 2>&1; then
   fingerprint="$("$root/coax/provenance.sh" fingerprint "$root")"
   cache="$HOME/.cache/coax-release/$fingerprint"
@@ -210,6 +211,7 @@ out="$home_dir/build"
 [[ $model == psionic-toy ]] || out="$out/$model-$backend"
 mkdir -p "$out"
 # Hash only the loaded Coax graphs and the native build inputs, not unrelated commits.
+printf 'pylon: checking %s native inputs and build cache\n' "$model"
 identity="$(python3 - "$root" "$backend" <<'PY'
 import hashlib,json,os,pathlib,subprocess,sys
 r=pathlib.Path(sys.argv[1]);h=hashlib.sha256()
