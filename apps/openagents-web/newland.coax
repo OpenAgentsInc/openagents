@@ -1217,8 +1217,8 @@ click :: (s: [] LandState, x: f32, y: f32) -> bool {
     if k >= 0 && inside(s[0].open_box, x, y) { go_project(s, k); return true; }
     if inside(s[0].card_box, x, y) { return true; }
   }
-  if inside(s[0].login, x, y) { go(s, "/login"); return true; }
-  if inside(s[0].make, x, y) { go(s, "/realms/new"); return true; }
+  if inside(s[0].login, x, y) { go(s, "https://openagents.com/login"); return true; }
+  if inside(s[0].make, x, y) { go(s, "https://openagents.com/realms/new"); return true; }
   got := pick(s, x, y);
   if got.kind != CARD_NONE { open_card(s, got.kind, got.which); return true; }
   if s[0].card != CARD_NONE { close_card(s); return true; }
@@ -1433,12 +1433,12 @@ coaxial_land_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
   b := s[0].login;
   down := coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 0, 1);
   #assert coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 0, 1);
-  #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], "/login");
+  #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], "https://openagents.com/login");
   coaxial_land_action_done(s[..]);
   b = s[0].make;
   down = coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 1, 2);
   #assert coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 1, 2);
-  #assert same(cast(string) s[0].outbox[0..<s[0].out_n], "/realms/new");
+  #assert same(cast(string) s[0].outbox[0..<s[0].out_n], "https://openagents.com/realms/new");
 }
 
 #test "the people walk the same way on every visit" {
