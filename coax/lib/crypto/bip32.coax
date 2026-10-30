@@ -1,0 +1,107 @@
+// BIP-32 private derivation (hardened and normal children) on the shared
+// secp256k1 code, for NIP-06 (docs/web-log-in.md). Keys and chain codes are
+// caller-owned 32-byte views; locals holding secrets are zeroed before return.
+#load "sha512.coax";
+#load "secp_mult_const.coax";
+#authority;
+BIP32_HARDENED :: 2147483648;
+
+// The compressed public key (33 bytes) of a private key.
+bip32_public :: (key: [] u8, out: [] u8) -> bool #export_c {
+  if key.count != 32 || out.count < 33 { return false; }
+  k := sc_load(key);
+  if !k.ok || sc_is_zero(k.value) { return false; }
+  p := smc_multiply(k.value, sg_generator());
+  e := sg_encode_public(p.value);
+  if !p.ok || !e.ok || e.length != 33 { return false; }
+  for i: 0..<33 { out[i] = e.bytes[i]; }
+  return true;
+}
+// The master key and chain code of a seed (16 to 64 bytes).
+bip32_master :: (seed: [] u8, key: [] u8, chain: [] u8) -> bool #export_c {
+  if seed.count < 16 || seed.count > 64 || key.count != 32 || chain.count != 32 { return false; }
+  label := "Bitcoin seed"; lb: [12] u8; i: [64] u8;
+  for j: 0..<12 { lb[j] = label[j]; }
+  ok := hmac_sha512(lb[..], seed, i[..]);
+  if ok { k := sc_load(i[0..<32]); ok = k.ok && !sc_is_zero(k.value); }
+  if ok { for j: 0..<32 { key[j] = i[j]; chain[j] = i[32 + j]; } }
+  for j: 0..<64 { i[j] = 0; }
+  return ok;
+}
+// The child at index (0 .. 2^32-1; BIP32_HARDENED and up is hardened) of key and chain, into key_out and chain_out.
+bip32_child :: (key: [] u8, chain: [] u8, index: int, key_out: [] u8, chain_out: [] u8) -> bool #export_c {
+  if key.count != 32 || chain.count != 32 || key_out.count != 32 || chain_out.count != 32 || index < 0 || index > 4294967295 { return false; }
+  data: [37] u8; i: [64] u8;
+  if index >= BIP32_HARDENED { for j: 0..<32 { data[1 + j] = key[j]; } }
+  else if !bip32_public(key, data[0..<33]) { return false; }
+  for j: 0..<4 { data[33 + j] = cast(u8) ((index >> (8 * (3 - j))) & 255); }
+  ok := hmac_sha512(chain, data[..], i[..]);
+  parent := sc_load(key); tweak := sc_load(i[0..<32]);
+  ok = ok && parent.ok && tweak.ok;
+  child := sc_add(tweak.value, parent.value);
+  ok = ok && !sc_is_zero(child);
+  if ok { ok = sc_store(child, key_out); for j: 0..<32 { chain_out[j] = i[32 + j]; } }
+  for j: 0..<64 { i[j] = 0; }
+  for j: 0..<37 { data[j] = 0; }
+  return ok;
+}
+// A path of indexes from a seed's master, into key and chain.
+bip32_path :: (seed: [] u8, path: [] int, key: [] u8, chain: [] u8) -> bool #export_c {
+  if !bip32_master(seed, key, chain) { return false; }
+  k: [32] u8; c: [32] u8;
+  for step: path {
+    if !bip32_child(key, chain, step, k[..], c[..]) { for j: 0..<32 { key[j] = 0; chain[j] = 0; k[j] = 0; c[j] = 0; } return false; }
+    for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  }
+  for j: 0..<32 { k[j] = 0; c[j] = 0; }
+  return true;
+}
+bip32_hex :: (h: string, out: [] u8) -> [] u8 {
+  n := h.count / 2;
+  for i: 0..<n {
+    a := h[2 * i]; b := h[2 * i + 1];
+    hi := ifx a <= '9' then a - '0' else a - 'a' + 10; lo := ifx b <= '9' then b - '0' else b - 'a' + 10;
+    out[i] = hi * 16 + lo;
+  }
+  return out[0..<n];
+}
+#test "BIP-32 test vector 1: m/0H/1/2H/2/1000000000" {
+  sb: [64] u8; seed := bip32_hex("000102030405060708090a0b0c0d0e0f", sb[..]);
+  key: [32] u8; chain: [32] u8; k: [32] u8; c: [32] u8;
+  #assert bip32_master(seed, key[..], chain[..]) && sha512_hexeq(key[..], "e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35") && sha512_hexeq(chain[..], "873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508");
+  #assert bip32_child(key[..], chain[..], 2147483648, k[..], c[..]) && sha512_hexeq(k[..], "edb2e14f9ee77d26dd93b4ecede8d16ed408ce149b6cd80b0715a2d911a0afea") && sha512_hexeq(c[..], "47fdacbd0f1097043b78c63c20c34ef4ed9a111d980047ad16282c7ae6236141");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 1, k[..], c[..]) && sha512_hexeq(k[..], "3c6cb8d0f6a264c91ea8b5030fadaa8e538b020f0a387421a12de9319dc93368") && sha512_hexeq(c[..], "2a7857631386ba23dacac34180dd1983734e444fdbf774041578e9b6adb37c19");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 2147483650, k[..], c[..]) && sha512_hexeq(k[..], "cbce0d719ecf7431d88e6a89fa1483e02e35092af60c042b1df2ff59fa424dca") && sha512_hexeq(c[..], "04466b9cc8e161e966409ca52986c584f07e9dc81f735db683c3ff6ec7b1503f");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 2, k[..], c[..]) && sha512_hexeq(k[..], "0f479245fb19a38a1954c5c7c0ebab2f9bdfd96a17563ef28a6a4b1a2a764ef4") && sha512_hexeq(c[..], "cfb71883f01676f587d023cc53a35bc7f88f724b1f8c2892ac1275ac822a3edd");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 1000000000, k[..], c[..]) && sha512_hexeq(k[..], "471b76e389e528d6de6d816857e012c5455051cad6660850e58372a6c3e6e7c8") && sha512_hexeq(c[..], "c783e67b921d2beb8f6b389cc646d7263b4145701dadd2161548a8b078e65e9e");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+}
+#test "BIP-32 test vector 2: m/0/2147483647H/1/2147483646H/2" {
+  sb: [64] u8; seed := bip32_hex("fffcf9f6f3f0edeae7e4e1dedbd8d5d2cfccc9c6c3c0bdbab7b4b1aeaba8a5a29f9c999693908d8a8784817e7b7875726f6c696663605d5a5754514e4b484542", sb[..]);
+  key: [32] u8; chain: [32] u8; k: [32] u8; c: [32] u8;
+  #assert bip32_master(seed, key[..], chain[..]) && sha512_hexeq(key[..], "4b03d6fc340455b363f51020ad3ecca4f0850280cf436c70c727923f6db46c3e") && sha512_hexeq(chain[..], "60499f801b896d83179a4374aeb7822aaeaceaa0db1f85ee3e904c4defbd9689");
+  #assert bip32_child(key[..], chain[..], 0, k[..], c[..]) && sha512_hexeq(k[..], "abe74a98f6c7eabee0428f53798f0ab8aa1bd37873999041703c742f15ac7e1e") && sha512_hexeq(c[..], "f0909affaa7ee7abe5dd4e100598d4dc53cd709d5a5c2cac40e7412f232f7c9c");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 4294967295, k[..], c[..]) && sha512_hexeq(k[..], "877c779ad9687164e9c2f4f0f4ff0340814392330693ce95a58fe18fd52e6e93") && sha512_hexeq(c[..], "be17a268474a6bb9c61e1d720cf6215e2a88c5406c4aee7b38547f585c9a37d9");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 1, k[..], c[..]) && sha512_hexeq(k[..], "704addf544a06e5ee4bea37098463c23613da32020d604506da8c0518e1da4b7") && sha512_hexeq(c[..], "f366f48f1ea9f2d1d3fe958c95ca84ea18e4c4ddb9366c336c927eb246fb38cb");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 4294967294, k[..], c[..]) && sha512_hexeq(k[..], "f1c7c871a54a804afe328b4c83a1c33b8e5ff48f5087273f04efa83b247d6a2d") && sha512_hexeq(c[..], "637807030d55d01f9a0cb3a7839515d796bd07706386a6eddf06cc29a65a0e29");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 2, k[..], c[..]) && sha512_hexeq(k[..], "bb7d39bdb83ecf58f2fd82b6d918341cbef428661ef01ab97c28a4842125ac23") && sha512_hexeq(c[..], "9452b549be8cea3ecb7a84bec10dcfd94afe4d129ebfd3b3cb58eedf394ed271");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+}
+#test "BIP-32 refusals: short seeds, bad sizes, out-of-range indexes, a zero key" {
+  seed: [16] u8; key: [32] u8; chain: [32] u8; k: [32] u8; c: [32] u8; pub: [33] u8; zero: [32] u8;
+  #assert !bip32_master(seed[0..<15], key[..], chain[..]) && !bip32_master(seed[..], key[0..<31], chain[..]);
+  #assert bip32_master(seed[..], key[..], chain[..]);
+  #assert !bip32_child(key[..], chain[..], -1, k[..], c[..]) && !bip32_child(key[..], chain[..], 4294967296, k[..], c[..]);
+  #assert !bip32_public(zero[..], pub[..]) && !bip32_public(key[..], pub[0..<32]);
+  #assert bip32_public(key[..], pub[..]) && (pub[0] == 2 || pub[0] == 3);
+  p := [2] int.[BIP32_HARDENED, 1];
+  #assert bip32_path(seed[..], p[..], key[..], chain[..]) && !bip32_path(seed[0..<3], p[..], key[..], chain[..]);
+}
