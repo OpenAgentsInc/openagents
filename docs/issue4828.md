@@ -52,6 +52,23 @@ secrets. That's measured by the memcheck probes below.
 
 ## In flight
 
+**Final re-gate on `6c6dab1054`: clean.** Zero survivors, none marked
+equivalent, all `--run-steps 250000000` in short shards:
+
+| Unit | Result | Commit |
+| --- | --- | --- |
+| `schnorr_sign` | 3,740/3,740 | `6c6dab1054` |
+| `schnorr_self_verify` | 3,133/3,133 | `6c6dab1054` |
+| `event_sign` | 5,550/5,550 | `6c6dab1054` |
+| `schnorr_nonce_point` | 2,848/2,848 | `d017c8f902`, unchanged since |
+| `sha256_workspace` | 1,091/1,091 | `d017c8f902`, unchanged since |
+
+With the audit record (`7876e3db27`, `26d2e0d9c1`), nothing is open for
+#4828. `openagents-20` marks it done on the board. Real keys still need new
+key-file code and the owner's explicit sign-off in `NEEDS_OWNER.md`
+(`docs/Oct30MVP.md`, §3).
+
+
 **The audit record is on main** (`7876e3db27`,
 `docs/verification/2026-10-30-signer-source-audit.md`, by `openagents-20`):
 - `nostr_sign_step` reduces to guard obligations: 135 procedures, and
