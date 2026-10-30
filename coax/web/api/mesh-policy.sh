@@ -19,4 +19,4 @@ if [[ $1 == --generate ]]; then
     shasum -a 256 coax/web/api/mesh-policy.coax coax/lib/nostr/json.coax coax/web/api/mesh-policy.generated.c coax/web/api/mesh-policy.generated.h
   } > "$here/mesh-policy.sha256"
 fi
-echo 'mesh: Coax/C cache matches' 
+echo 'mesh: Coax/C cache matches'
