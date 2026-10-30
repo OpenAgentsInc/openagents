@@ -35,6 +35,11 @@ RsdRec :: struct {
 // query time seen, used to drop expired regular events at compaction.
 RsdStore :: struct { n: int; used: int; live: int; bytes: int; now: int; arena: [] u8; recs: [] RsdRec; }
 NsRoom :: struct { ok: bool; keep: int; }
+// An admission decided but not yet applied: the result, what it writes
+// (nothing, an append retiring record at when at >= 0, or an in-place
+// rewrite of record at).
+NS_W_NONE :: 0; NS_W_APPEND :: 1; NS_W_INPLACE :: 2;
+NsPlan :: struct { result: int; write: int; at: int = -1; }
 
 // ---- test helpers ------------------------------------------------------------
 nss_t_rec :: (id: u8, kind: int, created: int) -> RsdRec {
@@ -247,6 +252,25 @@ nss_t_rec :: (id: u8, kind: int, created: int) -> RsdRec {
   r.id[0] = 4; #assert ns_store_admit(s[..], r, "c", true) == NSS_ACCEPT;
   #assert !ns_store_visible(s[..], 1, 0) && ns_store_visible(s[..], 2, 9223372036854775807);
 }
+#test "a plan says what it will write and writes nothing itself" {
+  arena: [16] u8; recs: [4] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 1, 10);
+  p := ns_store_plan(s[..], c, "bb", true);
+  #assert p.result == NSS_ACCEPT && p.write == NS_W_APPEND && p.at == -1 && s[0].n == 0 && s[0].used == 0;
+  #assert ns_store_apply(s[..], p, c, "bb") == NSS_ACCEPT && s[0].n == 1;
+  p = ns_store_plan(s[..], c, "a", true); #assert p.result == NSS_DUP && p.write == NS_W_INPLACE && p.at == 0 && rsd_text(s[..], 0) == "bb";
+  p = ns_store_plan(s[..], c, "ab", true); #assert p.write == NS_W_INPLACE && p.at == 0;
+  p = ns_store_plan(s[..], c, "abc", true); #assert p.result == NSS_DUP && p.write == NS_W_APPEND && p.at == 0 && s[0].n == 1;
+  p = ns_store_plan(s[..], c, "bc", true); #assert p.result == NSS_DUP && p.write == NS_W_NONE;
+  p = ns_store_plan(s[..], c, "bb", false); #assert p.result == NSS_UNVERIFIED && p.write == NS_W_NONE;
+  p = ns_store_plan(s[..], c, "", true); #assert p.result == NSS_BAD && p.write == NS_W_NONE;
+  e := nss_t_rec(2, 20001, 1); p = ns_store_plan(s[..], e, "x", true); #assert p.result == NSS_ACCEPT && p.write == NS_W_NONE;
+  #assert ns_store_apply(s[..], p, e, "x") == NSS_ACCEPT && s[0].n == 1;
+  r := nss_t_rec(5, 0, 10); #assert ns_store_admit(s[..], r, "r", true) == NSS_ACCEPT;
+  r.id[0] = 4; p = ns_store_plan(s[..], r, "q", true); #assert p.result == NSS_ACCEPT && p.write == NS_W_APPEND && p.at == 1;
+  r.id[0] = 6; p = ns_store_plan(s[..], r, "q", true); #assert p.result == NSS_SUPERSEDED && p.write == NS_W_NONE;
+  #assert s[0].n == 2 && s[0].used == 3 && s[0].live == 2;
+}
 #test "query order: newest first, then lowest id, cut at the limit" {
   arena: [16] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
   c := nss_t_rec(3, 1, 10); #assert ns_store_admit(s[..], c, "a", true) == NSS_ACCEPT;
@@ -329,49 +353,60 @@ ns_store_retire :: (s: [] RsdStore, i: int) {
 // The same verified id again: keep the lowest exact original (#f539). A
 // lower one no longer than the stored one is written over it; a longer one
 // is appended (from c: the same id carries the same fields) and the old
-// record retired, or refused (the old one kept)
-// when it does not fit. Neither charges another record. Record i is live.
-// Always NSS_DUP.
-ns_store_duplicate :: (s: [] RsdStore, i: int, c: RsdRec, text: string) -> int {
-  if !ns_original_before(text, rsd_text(s, i)) { return NSS_DUP; }
-  r := s[0].recs[i];
-  if text.count <= r.to - r.from {
-    for k: 0..<text.count { s[0].arena[r.from + k] = text[k]; }
-    s[0].bytes -= r.to - r.from - text.count;
-    s[0].recs[i].to = r.from + text.count;
-    s[0].recs[i].tags_from = r.from + c.tags_from; s[0].recs[i].tags_to = r.from + c.tags_to;
-    return NSS_DUP;
-  }
+// record retired, or refused (the old one kept) when it does not fit.
+// Neither charges another record. Record i is live. Always NSS_DUP.
+ns_store_duplicate :: (s: [] RsdStore, i: int, text: string) -> NsPlan {
+  if !ns_original_before(text, rsd_text(s, i)) { return NsPlan.{result = NSS_DUP}; }
+  if text.count <= s[0].recs[i].to - s[0].recs[i].from { return NsPlan.{result = NSS_DUP, write = NS_W_INPLACE, at = i}; }
   room := ns_store_room(s, text.count, i);
-  if !room.ok || room.keep < 0 { return NSS_DUP; }
-  ns_store_append(s, c, text);
-  ns_store_retire(s, room.keep);
-  return NSS_DUP;
+  if !room.ok || room.keep < 0 { return NsPlan.{result = NSS_DUP}; }
+  return NsPlan.{result = NSS_DUP, write = NS_W_APPEND, at = room.keep};
 }
-// Admits one event. verified is the caller's signature check over this exact
-// text (id recomputed from it, signature checked against it); c holds the
-// fields read from it, with tags_from/tags_to relative to text. Ephemeral
-// kinds are accepted and not stored.
-ns_store_admit :: (s: [] RsdStore, c: RsdRec, text: string, verified: bool) -> int {
-  if !verified { return NSS_UNVERIFIED; }
-  if text.count < 1 || c.d_n < 0 || c.d_n > 256 || c.tags_from < 0 || c.tags_from > c.tags_to || c.tags_to > text.count { return NSS_BAD; }
+// Decides one event's admission without storing it. verified is the
+// caller's signature check over this exact text (id recomputed from it,
+// signature checked against it); c holds the fields read from it, with
+// tags_from/tags_to relative to text. Ephemeral kinds are accepted and not
+// stored. Deciding may compact s, which changes indexes but not what the
+// store holds. A plan that writes (write != NS_W_NONE) puts text in the
+// store when applied: that is what a durable log records, before applying.
+ns_store_plan :: (s: [] RsdStore, c: RsdRec, text: string, verified: bool) -> NsPlan {
+  if !verified { return NsPlan.{result = NSS_UNVERIFIED}; }
+  if text.count < 1 || c.d_n < 0 || c.d_n > 256 || c.tags_from < 0 || c.tags_from > c.tags_to || c.tags_to > text.count { return NsPlan.{result = NSS_BAD}; }
   class := ns_class(c.kind);
-  if class == NS_EPHEMERAL { return NSS_ACCEPT; }
+  if class == NS_EPHEMERAL { return NsPlan.{result = NSS_ACCEPT}; }
   known := false; head := -1;
   for i: 0..<s[0].n {
     if ns_equal32(s[0].recs[i].id, c.id) {
-      if s[0].recs[i].live { return ns_store_duplicate(s, i, c, text); }
+      if s[0].recs[i].live { return ns_store_duplicate(s, i, text); }
       known = true; continue;
     }
     if class != NS_ORDINARY && s[0].recs[i].live && ns_store_same_address(s[0].recs[i], c) { head = i; }
   }
-  if known { return NSS_DUP; }
-  if head >= 0 && !ns_store_newer(c, s[0].recs[head]) { return NSS_SUPERSEDED; }
+  if known { return NsPlan.{result = NSS_DUP}; }
+  if head >= 0 && !ns_store_newer(c, s[0].recs[head]) { return NsPlan.{result = NSS_SUPERSEDED}; }
   room := ns_store_room(s, text.count, head);
-  if !room.ok { return NSS_FULL; }
-  ns_store_append(s, c, text);
-  if room.keep >= 0 { ns_store_retire(s, room.keep); }
-  return NSS_ACCEPT;
+  if !room.ok { return NsPlan.{result = NSS_FULL}; }
+  return NsPlan.{result = NSS_ACCEPT, write = NS_W_APPEND, at = room.keep};
+}
+// Carries out p, the plan ns_store_plan just made for c and text on this
+// store (nothing may change the store in between): the result.
+ns_store_apply :: (s: [] RsdStore, p: NsPlan, c: RsdRec, text: string) -> int {
+  if p.write == NS_W_INPLACE {
+    r := s[0].recs[p.at];
+    for k: 0..<text.count { s[0].arena[r.from + k] = text[k]; }
+    s[0].bytes -= r.to - r.from - text.count;
+    s[0].recs[p.at].to = r.from + text.count;
+    s[0].recs[p.at].tags_from = r.from + c.tags_from; s[0].recs[p.at].tags_to = r.from + c.tags_to;
+  }
+  if p.write == NS_W_APPEND {
+    ns_store_append(s, c, text);
+    if p.at >= 0 { ns_store_retire(s, p.at); }
+  }
+  return p.result;
+}
+// Decides and applies one admission (an in-memory store with no log).
+ns_store_admit :: (s: [] RsdStore, c: RsdRec, text: string, verified: bool) -> int {
+  return ns_store_apply(s, ns_store_plan(s, c, text, verified), c, text);
 }
 // Puts record i into out[0..<n], kept newest first, then lowest id, and at
 // most limit long (and at most out.count): the new length.

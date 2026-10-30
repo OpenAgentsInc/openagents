@@ -1,0 +1,74 @@
+// The verified store's append-only file (nostr-event-store #8eb5): its
+// framing and its replay rules. The file holds every original the store
+// wrote, in order, each as a 4-byte big-endian length (1 to
+// NS_FRAME_MAX_ORIGINAL) and the exact bytes. Nothing in the file is
+// trusted: replay re-reads, re-verifies and re-admits each original, and
+// admission is order-independent (lowest original per id, newest version per
+// address), so replaying the whole file rebuilds the store. A crash can
+// leave a partial last frame; replay stops there and the host truncates the
+// file to the whole frames before it. This is not trusted recovery (#966b):
+// an older copy of the file replays as a valid, older store, and nothing
+// here can tell.
+#load "store_snapshot.coax";
+#authority;
+
+NSF_OK :: 0; NSF_END :: 1; NSF_TORN :: 2; NSF_BAD :: 3;
+NsFileFrame :: struct { status: int; from: int; to: int; }
+
+#test "a frame header is the big-endian length" {
+  out: [6] u8; out[5] = 9;
+  #assert ns_file_header(258, out[1..<5]) && out[1] == 0 && out[2] == 0 && out[3] == 1 && out[4] == 2 && out[5] == 9;
+  #assert ns_file_header(1, out[0..<4]) && ns_file_header(NS_FRAME_MAX_ORIGINAL, out[0..<4]);
+  out[0] = 7; #assert !ns_file_header(0, out[0..<4]) && !ns_file_header(NS_FRAME_MAX_ORIGINAL + 1, out[0..<4]) && out[0] == 7;
+  #assert !ns_file_header(1, out[0..<3]) && out[0] == 7;
+}
+#test "frames are read in order to the end" {
+  file := [9] u8.[0, 0, 0, 2, 'a', 'b', 0, 0, 0];
+  f := ns_file_next(file[0..<4], 0, 6); #assert f.status == NSF_OK && f.from == 4 && f.to == 6;
+  f = ns_file_next(file[6..<6], 6, 6); #assert f.status == NSF_END && f.from == 6 && f.to == 6;
+  f = ns_file_next(file[0..<4], 0, 5); #assert f.status == NSF_TORN && f.from == 0;
+  f = ns_file_next(file[6..<9], 6, 9); #assert f.status == NSF_TORN && f.from == 6;
+  f = ns_file_next(file[0..<2], 0, 2); #assert f.status == NSF_TORN;
+  big := [4] u8.[0, 4, 0, 1];
+  #assert ns_file_next(big[..], 0, 300000).status == NSF_BAD && ns_file_next(big[..], 0, 300000).from == 0;
+  big = [4] u8.[0, 4, 0, 0]; f = ns_file_next(big[..], 0, 300000); #assert f.status == NSF_OK && f.to == 4 + NS_FRAME_MAX_ORIGINAL;
+  zero := [4] u8.[0, 0, 0, 0]; #assert ns_file_next(zero[..], 8, 20).status == NSF_BAD && ns_file_next(zero[..], 8, 20).from == 8;
+  #assert ns_file_next(file[0..<4], 7, 6).status == NSF_BAD && ns_file_next(file[0..<4], -1, 6).status == NSF_BAD;
+  #assert ns_file_next(file[0..<4], 0, 6).from == 4 && ns_file_next(file[0..<3], 0, 6).status == NSF_TORN;
+  one := [4] u8.[0, 0, 0, 1]; f = ns_file_next(one[..], 3, 8); #assert f.status == NSF_OK && f.from == 7 && f.to == 8;
+  f = ns_file_next(one[..], 3, 7); #assert f.status == NSF_TORN && f.from == 3;
+}
+#test "replay keeps expired events and refuses everything else as admission does" {
+  #assert ns_file_replay_reason(NSF_RS_EXPIRED) == NSF_RS_ACCEPT && ns_file_replay_reason(NSF_RS_ACCEPT) == NSF_RS_ACCEPT;
+  #assert ns_file_replay_reason(8) == 8 && ns_file_replay_reason(10) == 10 && ns_file_replay_reason(5) == 5;
+}
+
+// The relay's RS_ACCEPT and RS_EXPIRED (store_saved.coax checks they agree).
+NSF_RS_ACCEPT :: 0; NSF_RS_EXPIRED :: 9;
+// Writes n's frame header into out (4 bytes): false, writing nothing, when n
+// is not a storable original length or out is short.
+ns_file_header :: (n: int, out: [] u8) -> bool {
+  if out.count < 4 || !ns_payload_valid(n, 0, n) { return false; }
+  ns_put_u32(out, 0, n);
+  return true;
+}
+// The frame at offset at of a file of total bytes, given head, the file's
+// next (up to) 4 bytes: fewer than 4 only at the file's end. NSF_END at the end; NSF_TORN when the file ends
+// inside the frame (a crash during an append: keep the file up to at);
+// NSF_BAD for a length no frame has (keep it up to at, too).
+ns_file_next :: (head: [] u8, at: int, total: int) -> NsFileFrame {
+  if at < 0 || at > total { return NsFileFrame.{status = NSF_BAD, from = at, to = at}; }
+  if at == total { return NsFileFrame.{status = NSF_END, from = at, to = at}; }
+  if head.count < 4 { return NsFileFrame.{status = NSF_TORN, from = at, to = at}; }
+  n := ns_u32(head, 0);
+  if n < 1 || n > NS_FRAME_MAX_ORIGINAL { return NsFileFrame.{status = NSF_BAD, from = at, to = at}; }
+  if n > total - at - 4 { return NsFileFrame.{status = NSF_TORN, from = at, to = at}; }
+  return NsFileFrame.{status = NSF_OK, from = at + 4, to = at + 4 + n};
+}
+// Replay admits what live admission would, except that an event which has
+// expired since it was stored is still admitted: the store keeps an expired
+// replaceable or addressable version so an older one cannot come back.
+ns_file_replay_reason :: (reason: int) -> int {
+  if reason == NSF_RS_EXPIRED { return NSF_RS_ACCEPT; }
+  return reason;
+}

@@ -7,7 +7,8 @@ drives it with a standard-library WebSocket client: NIP-11, publish and OK,
 REQ with stored events then EOSE then live events, CLOSE, duplicates, bad
 signatures, replaceable and addressable replacement with the same-second
 tie, the kinds and tag filters openagents.com uses, NIP-40 expiration,
-created_at limit, subscription/filter/frame limits, ping, a restart, and
+created_at limit, subscription/filter/frame limits, ping, a restart with
+--store (the same events come back) and one without (empty), and
 NIP-42: a challenge on every connection, AUTH answers (right, wrong
 challenge, relay, time, kind, tags, signature, id), writes refused until
 AUTH, kind 22242 never stored or delivered, and a new challenge after a
@@ -134,11 +135,14 @@ class Ws:
         self.s.close()
 
 
-def start(exe, log):
-    p = subprocess.Popen([str(exe), '--listen', '127.0.0.1', '--port', '0'], stdout=subprocess.PIPE, stderr=log, text=True,
+def start(exe, log, store=None):
+    args = [str(exe), '--listen', '127.0.0.1', '--port', '0'] + (['--store', str(store)] if store else [])
+    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=log, text=True,
                          env={**os.environ, 'ASAN_OPTIONS': 'abort_on_error=0:halt_on_error=1:detect_leaks=0',
                               'UBSAN_OPTIONS': 'print_stacktrace=1:halt_on_error=1'})
     line = p.stdout.readline()
+    if store and line.startswith('relay: replayed'):
+        line = p.stdout.readline()
     if 'listening on port' not in line:
         raise SystemExit('relay did not start: %r' % line)
     return p, int(line.split()[-1])
@@ -350,18 +354,33 @@ def main():
         subprocess.run([str(ROOT / 'coax/relay/build.sh'), str(exe), '--sanitize'], check=True, stdout=subprocess.DEVNULL)
         print('build %.1f s' % (time.monotonic() - t0))
         with open(d / 'relay.err', 'w') as log:
-            p, port = start(exe, log)
+            store = d / 'events.log'
+            p, port = start(exe, log, store)
             try:
                 nip11(port)
                 session(port, int(time.time()))
+                w = Ws(port)
+                w.send(['REQ', 'before', {}])
+                before, _ = w.until_eose('before')
+                w.close()
+            finally:
+                p.terminate(); p.wait(10)
+            p, port = start(exe, log, store)
+            try:
+                w = Ws(port)
+                w.send(['REQ', 'after', {}])
+                got, _ = w.until_eose('after')
+                check(len(before) > 0 and got == before,
+                      'restart with --store: the same %d events come back, in order' % len(before))
+                w.close()
             finally:
                 p.terminate(); p.wait(10)
             p, port = start(exe, log)
             try:
                 w = Ws(port)
-                w.send(['REQ', 'after', {}])
-                got, _ = w.until_eose('after')
-                print('  note restart: %d events after restart (the in-memory store is not durable yet)' % len(got))
+                w.send(['REQ', 'mem', {}])
+                got, _ = w.until_eose('mem')
+                check(got == [], 'without --store the store is in memory: a new relay starts empty')
                 w.close()
             finally:
                 p.terminate(); p.wait(10)

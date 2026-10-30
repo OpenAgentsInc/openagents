@@ -1,16 +1,20 @@
-# Nostr event store, R1 part: in-memory verified store for the Coax relay
+# Nostr event store, R1 part: the verified store and its file, for the Coax relay
 
 Tasks: nostr-event-store (#8eb5, R1 part) and nostr-store-verified-dedup
 (#f539, the store's verified-ID dedup). Worker: claude-store, 2026-10-29.
-**Not complete:** the store is in memory only. There is no durable file, no
-NIP-09 deletion or tombstones, and no trusted recovery (#966b). A restart
-forgets every event. Neither task is marked done.
+**Not complete:** there is no NIP-09 deletion or tombstone, and no trusted
+recovery (#966b). The relay keeps its events in an append-only file
+(`--store FILE`) that it replays on start, re-verifying every event. Without
+the flag it keeps them in memory only. Neither task is marked done.
+
+Two pushes. The first (`cb08b296af`) is the in-memory store. The second adds
+the plan/apply split, the file and the relay wiring (see "The durable file").
 
 ## What landed
 
 | File | What | Checks | Mutation |
 | --- | --- | --- | --- |
-| `coax/lib/nostr/store_core.coax` (`#authority`) | Every decision. It admits only when the caller's verification result says the signature over this exact text passed (`verified`). It keeps one record per event id and the lexicographically lowest exact original (`ns_original_before`, from `store_dedup_policy.coax`). A lower original no longer than the stored one is written in place. A longer one is appended and the old record retired, or refused (the old one kept) when it does not fit. A duplicate never takes another live record, and the byte count moves by the size difference. Replaceable kinds (0, 3, 10000–19999) are keyed by kind and author, addressable kinds (30000–39999) by kind, author and d tag. On replacement, the newer event wins, and on the same second the lowest id wins. NIP-40: an event is visible while `now` < expiration. Ephemeral kinds are accepted and not stored. Fixed bounds: a record table and a byte arena the caller sizes. When either is full, compaction drops replaced records and expired regular events. Expired replaceable and addressable heads stay so that older versions cannot come back. Then it refuses with "error: ..." (RS_FULL). Query order: newest first, then lowest id, cut at the limit and at the output's size. It loads neither `event.coax` nor the verifier | 46 (14 store, 32 from the loaded store_policy, dedup policy, snapshot and layout units) | **581/581 killed**, 0 survivors, no `// mutant: equivalent` |
+| `coax/lib/nostr/store_core.coax` (`#authority`) | Every decision. It admits only when the caller's verification result says the signature over this exact text passed (`verified`). It keeps one record per event id and the lexicographically lowest exact original (`ns_original_before`, from `store_dedup_policy.coax`). A lower original no longer than the stored one is written in place. A longer one is appended and the old record retired, or refused (the old one kept) when it does not fit. A duplicate never takes another live record, and the byte count moves by the size difference. Replaceable kinds (0, 3, 10000–19999) are keyed by kind and author, addressable kinds (30000–39999) by kind, author and d tag. On replacement, the newer event wins, and on the same second the lowest id wins. NIP-40: an event is visible while `now` < expiration. Ephemeral kinds are accepted and not stored. Fixed bounds: a record table and a byte arena the caller sizes. When either is full, compaction drops replaced records and expired regular events. Expired replaceable and addressable heads stay so that older versions cannot come back. Then it refuses with "error: ..." (RS_FULL). Query order: newest first, then lowest id, cut at the limit and at the output's size. It loads neither `event.coax` nor the verifier | 47 (15 store, 32 from the loaded store_policy, dedup policy, snapshot and layout units) | **590/590 killed** on the final file (after the plan/apply split; 581/581 before it), 0 survivors, no `// mutant: equivalent` |
 | `coax/lib/nostr/store.coax` | The relay face. It implements the relay double's interface (`RsdStore`, `RsdRec`, `RSD_MAX`, `RSD_ARENA`, `rsd_admit`, `rsd_query`, `rsd_text`) by copying fields. It turns an `RsAdmit` into a record, and its verified flag is `reason == RS_ACCEPT && e.error == NE_OK && e.verified && e.original == text`. It turns a record back into a `NostrEvent` for `filter.coax`'s `nf_match` (ids, authors, kinds, since, until, every tag filter, including `#a #d #e #E #p #q`), with `rs_limit` for the limit. It is **not** `#authority`: loading `relay_server.coax` would put the relay's 6,087-mutant graph under every mutation run. All of its decisions are calls into store_core | 303 in the graph (3 its own: reason codes agree, verified-only admission, field mapping, filters over stored originals, order and limits) | not mutated (see above) |
 | `coax/tests/nostr/store_verified_checks.coax` | Real BIP-340 verification. One signed event (`NS_VALID_TEST`) in three exact encodings: as signed, with the fields reordered, and with `h` escaped as `h`. All have the same id and signature. Every arrival order converges on the lowest original (the reordered one). A forged signature and a wrong signer never reach the store (`RS_BAD_SIG`, nothing written). The relay's own `nostr_event_verify_vartime` admits through the store, and the same verified result does not admit other bytes | 6 new (351 in the graph), with `--steps 400000000`: about 38M steps for each test with two fast verifies, and 79M for the relay verifier | n/a |
 
@@ -21,12 +25,14 @@ swaps stores by changing one line in `coax/relay/relay.coax`:
 #load "../tests/nostr/relay_store_double.coax";   ->   #load "../lib/nostr/store.coax";
 ```
 
-This change was not made here, because claude-relay-r1b owns `coax/relay/` and
-`relay_server.coax`.
+The coordinator made this swap in `c74e832a75` (relay_session 70/70 and
+relay_differential 13/13 under ASan/UBSan). The second push then moved the
+relay to `store_saved.coax`, as described below.
 
 ## Checks run (compiler coax0 0.23.0, `coax/bin/coax` SHA-256 `03498a6c…ab93`)
 
-- `coax test coax/lib/nostr/store_core.coax`: 46/46.
+- `coax test coax/lib/nostr/store_core.coax`: 46/46 in the first push and
+  47/47 after the split.
 - `coax mutate coax/lib/nostr/store_core.coax --jobs 3 --shard I/4`, then
   `--merge`: 581 mutants, 581 killed. The first full run (585 mutants) had 7
   survivors. Four of the tests started every record at arena offset 0, and
@@ -35,9 +41,14 @@ This change was not made here, because claude-relay-r1b owns `coax/relay/` and
   (SHA-256 `6a75b81d…c4d1`) killed every mutant. The shard records and the
   merge report are in
   [data/nostr-store-r1-2026-10-29/](data/nostr-store-r1-2026-10-29/).
-- `coax test coax/lib/nostr/store.coax`: 303/303.
+  After the plan/apply split, the final file (SHA-256 `eb0a489b…`) had 590
+  mutants and 590 killed (`core-plan.*.rec`, `core-plan-mutation.log`).
+  store_file.coax (SHA-256 `c4fefcd6…`) had 242 of 242 killed
+  (`file-mutation.log`).
+- `coax test coax/lib/nostr/store.coax`: 303/303, then 304/304 after the
+  refactor. `coax test coax/lib/nostr/store_saved.coax`: 310/310.
 - `coax test coax/tests/nostr/store_verified_checks.coax --steps 400000000`:
-  351/351.
+  351/351, then 352/352 after the fixtures moved to `store_fixtures.coax`.
 - Swap check: a scratch copy of `coax/relay/` was made with the one `#load`
   line changed to `store.coax`, and `coax/tests/nostr/relay_session.py` ran
   against its ASan+UBSan build (127.0.0.1). It printed `relay_session: ok`
@@ -45,6 +56,46 @@ This change was not made here, because claude-relay-r1b owns `coax/relay/` and
   and addressable ordering, NIP-40 expiry and serving, limits, CLOSE and
   closes, all through this store. The scratch copy was deleted and is not
   committed. As with the double, a restart serves 0 events.
+
+## The durable file
+
+| File | What | Checks | Mutation |
+| --- | --- | --- | --- |
+| `coax/lib/nostr/store_core.coax` | Admission split into `ns_store_plan` (decide: the result, and whether and where it writes) and `ns_store_apply`, so that a log can record a decision before it is applied. `ns_store_admit` is the plan applied | see above | 590/590 |
+| `coax/lib/nostr/store_file.coax` (`#authority`) | The file's framing and replay rules. Each frame is a 4-byte big-endian length (1 to 262144) followed by the exact original. `ns_file_next` returns OK, END, TORN (the file ends inside a frame) or BAD (no frame has that length). Replay admits what live admission does, except that an event that has expired since it was saved is still admitted. The store then keeps an expired replaceable or addressable head, so an older version cannot come back after a restart | 16 (4 its own) | **242/242 killed** (the first run, 246 mutants, had 4 survivors: a redundant bounds test and a span test at offset 0; fixed) |
+| `coax/lib/nostr/store_saved.coax` | Glue, not `#authority`, for the same reason as store.coax. `rsd_admit_saved` plans the admission. When the plan writes, it appends the frame and fsyncs first, and only then applies the plan. A failed write applies nothing and answers RS_FULL. `rsd_replay` reads the file and handles each frame as live admission does: `rs_admit_read`, then `nostr_event_verify_vartime`, then the replay rule, then `rsd_admit`. It cuts a torn or bad tail off the file | 310 in the graph (3 its own) | n/a |
+| `coax/platform/store-file-native.c`, `.h` | File effects only: open (mode 0600), an exclusive `flock` (one writer per file), read the whole file, buffered append with `pwrite` and `fsync`, cut back on a failed append, and truncate | via store_file.py | n/a |
+| `coax/tests/nostr/store_file.py`, `store_file_main.coax`, `store_file_host.c`, `store_fixtures.coax` | End to end under ASan+UBSan over one real file. The expected state and the file's exact bytes are computed independently in Python | **15/15** | n/a |
+| `coax/relay/relay.coax`, `relay-host.c`, `build.sh` | The relay takes `--store FILE`. With it, the relay replays FILE before it listens (printing what it replayed) and saves every stored original. Without it, the store is in memory, as before. **The flag is optional**, and the in-memory default stays | relay_session.py, relay_differential.py | n/a |
+
+store_file.py checks the following:
+
+- An empty file replays as an empty store.
+- Only stored originals are saved: the first original and the lower escaped
+  one. Duplicates that change nothing, a forged signature, a wrong signer
+  and an ephemeral event are not saved.
+- A restart brings back the lowest original, verified again.
+- A lower reordered original is saved and wins after the next restart.
+- A torn tail and a zero length are cut back to the whole frames.
+- A frame that is not an event is refused, and so is a signature forged
+  inside the file. The rest still replays.
+- The file is mode 0600.
+- A second writer cannot open a locked file.
+
+Relay, with the store wired in, under ASan+UBSan:
+
+- `python3 coax/tests/nostr/relay_session.py`: 72/72. These are the 70
+  existing checks plus two new ones. "restart with --store: the same 11
+  events come back, in order" replaces the old note that said 0 events after
+  a restart. "without --store the store is in memory: a new relay starts
+  empty" is the other.
+- `python3 coax/tests/nostr/relay_differential.py`: 13/13. It runs without
+  `--store`.
+
+The file grows with every stored original, including replaced ones, until
+it is compacted. Nothing compacts the file yet. Replay is bounded by the
+in-memory store (RSD_MAX records, RSD_ARENA bytes), which compacts as it
+replays.
 
 ## The prior handoff and the reindex gate
 
@@ -60,13 +111,14 @@ should reuse it.
 
 ## What is missing
 
-- **Trusted recovery (#966b).** Nothing here survives a restart. A durable
-  file replayed with re-verification would still let an older, individually
-  valid file resurrect deleted or replaced events, as the earlier prototype
-  showed. Restore stays incomplete until #966b supplies a trusted
-  monotonic checkpoint.
-- **Durable append-only file.** Decisions in Coax, file effects in C,
-  re-verification of every original on replay.
+- **Trusted recovery (#966b).** The file replays with re-verification. But
+  an older copy of it, made of individually valid events, replays as a
+  valid older store and brings back replaced events (and, once NIP-09
+  lands, deleted ones). Nothing here can detect that. Restore stays
+  incomplete until #966b supplies a trusted monotonic checkpoint.
+- **File compaction.** The file is append-only and never compacted. Also
+  missing: a file format version or migration, and a durability test that
+  kills the process mid-write (the torn tail is simulated by appending bytes).
 - **NIP-09 deletion and tombstones** (R2, and #f539's acceptance item on
   "later deletion ... preserve tombstones").
 - **#f539 acceptance not met in full:** checked and release native and Wasm
@@ -77,5 +129,5 @@ should reuse it.
   its arena (`RSD_ARENA`, 4 MiB), not `store_dedup_policy`'s 1 MiB log quota,
   so the core uses `ns_original_before` directly rather than
   `ns_duplicate_decide`.
-- `store.coax` is glue checked by tests, not by mutation, for the reason
-  above.
+- `store.coax` and `store_saved.coax` are glue checked by tests, not by
+  mutation, for the reason above.

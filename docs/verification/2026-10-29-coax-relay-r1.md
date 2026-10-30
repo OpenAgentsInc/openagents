@@ -239,3 +239,13 @@ and `server.rs`) and coax/nostr.md section 17 ("NIP-42 required for writes"):
 Durable storage (claude-store's swap), the client relay machine (#7de9) and
 the Pylon on the tailnet, a flood measurement, the sandboxed Rust
 differential, and TLS, as listed above.
+
+## Update: the verified store (claude-store, 2026-10-29)
+
+The double is no longer used. The relay loads `coax/lib/nostr/store_saved.coax`.
+`--store FILE` keeps events in an append-only file that is replayed with
+re-verification on start. relay_session.py passes 72/72, including a restart
+with `--store` that brings back the same events. relay_differential.py passes
+13/13. Both run under ASan/UBSan. Record:
+[2026-10-29-nostr-store-r1.md](2026-10-29-nostr-store-r1.md). Trusted
+recovery (#966b) is still missing.

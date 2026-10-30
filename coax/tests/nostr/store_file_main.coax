@@ -1,0 +1,53 @@
+// Native harness for the store's append-only file (store_saved.coax), driven
+// by store_file.py through store_file_host.c: each run is one phase over the
+// same file, and prints its observations with sfm_out for the driver to
+// compare with the expected state it computes itself.
+#load "../../lib/nostr/store_saved.coax";
+#load "store_fixtures.coax";
+
+sfm_phase :: () -> int #foreign;
+sfm_out :: (v: int) -> int #foreign;
+
+SFM_NOW :: 1000;
+sfm_put :: (v: int) { ok := sfm_out(v); }
+sfm_admit :: (s: [] RsdStore, text: string, scratch: [] u8) -> int {
+  r := rs_admit_read(text, SFM_NOW, false, false, scratch);
+  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(text, scratch, false)); }
+  if r.reason != RS_ACCEPT { return r.reason; }
+  return rsd_admit_saved(s, r, text);
+}
+// The live original of the one stored event: 1 reordered, 2 escaped, 3 as
+// signed, 0 none or several.
+sfm_which :: (s: [] RsdStore) -> int {
+  f: NostrFilter; idx: [4] int;
+  if rsd_query(s, f, SFM_NOW, idx[..]) != 1 { return 0; }
+  t := rsd_text(s, idx[0]);
+  if t == SVC_REORDERED { return 1; }
+  if t == SVC_ESCAPED { return 2; }
+  if t == NS_VALID_TEST { return 3; }
+  return 0;
+}
+
+main :: () {
+  arena: [65536] u8; recs: [64] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  text: [262144] u8; scratch: [262144] u8;
+  rp := rsd_replay(s[..], SFM_NOW, text[..], scratch[..]);
+  sfm_put(ifx rp.ok then 1 else 0); sfm_put(rp.frames); sfm_put(rp.stored); sfm_put(rp.kept); sfm_put(rp.refused); sfm_put(ifx rp.cut then 1 else 0);
+  sfm_put(sfm_which(s[..]));
+  phase := sfm_phase();
+  if phase == 1 {
+    sfm_put(sfm_admit(s[..], NS_VALID_TEST, scratch[..]));      // stored and saved
+    sfm_put(sfm_admit(s[..], SVC_ESCAPED, scratch[..]));        // lower: saved
+    forged: [1024] u8; for i: 0..<NS_VALID_TEST.count { forged[i] = NS_VALID_TEST[i]; } forged[NS_VALID_TEST.count - 3] = '0';
+    sfm_put(sfm_admit(s[..], cast(string) forged[0..<NS_VALID_TEST.count], scratch[..]));
+    sfm_put(sfm_admit(s[..], NS_WRONG_SIGNER_TEST, scratch[..]));
+    sfm_put(sfm_admit(s[..], SVC_ESCAPED, scratch[..]));        // the same: not saved
+    sfm_put(sfm_admit(s[..], NS_VALID_TEST, scratch[..]));      // higher: not saved
+    sfm_put(sfm_admit(s[..], NS_EPHEMERAL_TEST, scratch[..]));  // not stored, not saved
+    sfm_put(sfm_which(s[..]));
+  }
+  if phase == 2 {
+    sfm_put(sfm_admit(s[..], SVC_REORDERED, scratch[..]));      // lower again: saved
+    sfm_put(sfm_which(s[..]));
+  }
+}

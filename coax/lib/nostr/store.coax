@@ -77,13 +77,20 @@ rst_store_read :: (text: string, scratch: [] u8) -> RsAdmit {
   f.limit = 9; #assert rsd_query(s[..], f, 1000, idx[0..<3]) == 3;
 }
 
-// Stores r, an RS_ACCEPT result of rs_admit_verified over text.
-rsd_admit :: (s: [] RsdStore, r: RsAdmit, text: string) -> int {
+// The record r would be stored as, spans relative to its text.
+rsd_rec :: (r: RsAdmit) -> RsdRec {
   c: RsdRec;
   c.id = r.e.id; c.author = r.e.public_key; c.kind = r.e.kind; c.created = r.e.created_at;
   c.expiry = r.expiration; c.d = r.d; c.d_n = r.d_n; c.tags_from = r.e.tags_from; c.tags_to = r.e.tags_to;
-  verified := r.reason == RS_ACCEPT && r.e.error == NE_OK && r.e.verified && r.e.original == text;
-  return ns_store_admit(s, c, text, verified);
+  return c;
+}
+// Whether r is a verified, accepted result for exactly text.
+rsd_verified :: (r: RsAdmit, text: string) -> bool {
+  return r.reason == RS_ACCEPT && r.e.error == NE_OK && r.e.verified && r.e.original == text;
+}
+// Stores r, an RS_ACCEPT result of rs_admit_verified over text.
+rsd_admit :: (s: [] RsdStore, r: RsAdmit, text: string) -> int {
+  return ns_store_admit(s, rsd_rec(r), text, rsd_verified(r, text));
 }
 // Record i as the event it was admitted as.
 rsd_event :: (s: [] RsdStore, i: int) -> NostrEvent {

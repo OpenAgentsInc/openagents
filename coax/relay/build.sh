@@ -12,5 +12,5 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/coax-relay-build.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 "${COAX:-$root/coax/bin/coax}" c "$here/relay.coax" > "$work/relay.c"
 cc "${flags[@]}" -Dmain=coax_relay_main -c "$work/relay.c" -o "$work/relay.o"
-cc "${flags[@]}" -I"$root/coax/platform" "$here/relay-host.c" "$root/coax/platform/socket-server-native.c" "$work/relay.o" -lm -lpthread -o "$out"
+cc "${flags[@]}" -I"$root/coax/platform" "$here/relay-host.c" "$root/coax/platform/socket-server-native.c" "$root/coax/platform/store-file-native.c" "$work/relay.o" -lm -lpthread -o "$out"
 echo "built $out"

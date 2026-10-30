@@ -5,9 +5,11 @@
 // message_server.coax (NIP-01 frames) -> relay_server.coax (admission,
 // REQ rules, subscriptions, NIP-11, NIP-40, replacement) -> the store.
 //
-// STORE: the verified in-memory store (coax/lib/nostr/store.coax, #8eb5's R1
-// part). It is not durable yet: a restart forgets every event until the
-// durable file and trusted recovery (#966b) land. TLS: none here (ws:// only); put it
+// STORE: the verified store (coax/lib/nostr/store_saved.coax, #8eb5). With
+// --store FILE every stored original is appended to FILE and synced before
+// it is stored, and a restart replays FILE, verifying every event again.
+// Without --store the store is in memory only. Not trusted recovery (#966b):
+// an older copy of FILE replays as an older store. TLS: none here (ws:// only); put it
 // behind a TLS proxy or add tls-native's server mode later.
 //
 // Routing (which reply goes to which connection and subscription) is
@@ -19,7 +21,7 @@
 // (relay_route.coax states the policy). Names here are ry_ because
 // nip42.coax loads the client relay.coax, whose names are rl_.
 #import "Basic";
-#load "../lib/nostr/store.coax";
+#load "../lib/nostr/store_saved.coax";
 #load "../lib/nostr/nip42-event.coax";
 #load "../lib/nostr/relay_route.coax";
 
@@ -52,6 +54,7 @@ ry_host_url_byte :: (i: int) -> int #foreign;
 ry_host_address_count :: () -> int #foreign;
 ry_host_address_byte :: (i: int) -> int #foreign;
 ry_host_random :: () -> int #foreign;
+ry_host_store :: () -> int #foreign;
 
 RY_CONNS :: 16; RY_IN :: 147456; RY_OUT :: 140000; RY_IO_MS :: 2000;
 RY_SENT :: 2032;   // 16 filters x 127 events
@@ -122,7 +125,9 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RsdStore, text: 
   if r.reason == RS_BAD_EVENT { ok := ry_notice(c, w, RS_BAD_EVENT); return; }
   if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(event, w[0].scratch[..], false)); }
   reason := r.reason;
-  if reason == RS_ACCEPT { reason = rsd_admit(store, r, event); }
+  if reason == RS_ACCEPT {
+    if ry_host_store() == 1 { reason = rsd_admit_saved(store, r, event); } else { reason = rsd_admit(store, r, event); }
+  }
   id := r.e.id;
   ok := ry_text(c, w, ms_write_ok(id[..], rs_accepted(reason), rs_prefix(reason), rs_text(reason), w[0].body[..]));
   if rr_fanout(reason) { ry_fanout(conns, w, r.e); }
@@ -286,8 +291,14 @@ main :: () {
   if u < 0 || nip42_init(w[0].n42[..], cast(string) url[0..<u]) != N42_OK {
     print("relay: NIP-42 needs a ws:// or wss:// relay URL without brackets: pass --url\n"); return;
   }
-  print("relay: listening on port %\n", cxsrv_bound_port());
   arena: [RSD_ARENA] u8; recs: [RSD_MAX] RsdRec;
   store: [1] RsdStore; store[0].arena = arena[..]; store[0].recs = recs[..];
+  if ry_host_store() == 1 {
+    text: [NS_FRAME_MAX_ORIGINAL] u8;
+    rp := rsd_replay(store[..], cxsrv_now_s(), text[..], w[0].scratch[..]);
+    if !rp.ok { print("relay: cannot open, lock or read the --store file\n"); return; }
+    print("relay: replayed % saved events: % stored, % duplicates or replaced, % refused%\n", rp.frames, rp.stored, rp.kept, rp.refused, ifx rp.cut then ", torn tail cut" else "");
+  }
+  print("relay: listening on port %\n", cxsrv_bound_port());
   ry_serve(conns[..], w[..], store[..]);
 }
