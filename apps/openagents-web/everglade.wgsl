@@ -25,6 +25,11 @@ struct U {
   lights: array<vec4f, 32>,  // each lamp: x, y, z, reach; r, g, b, strength
   weather: array<vec4f, 3>,  // rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain (everglade.coax weather_frame)
   ponds: array<vec4f, 4>,   // the ponds: x, z, rim radius, level (everglade.coax U_PONDS; pond_vertex)
+  // W6 (verse/everglade/river.coax everglade_river_fx): the weir's sheet (west, east, z, on; the level
+  // above, below, the water's speed over the sill), the rowboats' hulls (x, z, yaw, on), the wakes'
+  // trails (2 movers, 8 points each: x, z, when, speed; the newest first), then 64 particles (x, y, z,
+  // size; kind, alpha, age's share)
+  fx: array<vec4f, 149>,
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -1574,9 +1579,124 @@ fn fountain_fall_shade(i: WaterOut, part: u32) -> WaterShade {
   return o;
 }
 
+// ---- W6: the weir's falling sheet and the water's particles (verse/everglade/river.coax)
+const WEIR_PART = 7u;
+const FX_PART = 8u;
+// The sheet over the weir's sill: across the water's width, falling as thrown water does from the level
+// above to under the level below. Quads across it and down its fall.
+fn weir_vertex(id: u32) -> WaterOut {
+  var o: WaterOut;
+  let qa = u32(u.water.grid.z);
+  let ql = u32(u.water.grid.w);
+  let quad_id = id / 6u;
+  let c = quad(id % 6u);
+  let w0 = u.fx[0];
+  let w1 = u.fx[1];
+  if (w0.w < 0.5 || quad_id >= qa * ql) { o.clip = vec4f(0.0, 0.0, 2.0, 1.0); return o; }
+  let a = (f32(quad_id % qa) + c.x) / f32(qa);
+  let v = (f32(quad_id / qa) + c.y) / f32(ql);
+  let rise = u.weather[2].x;
+  let top = w1.x + rise + 0.03;
+  let drop = max(w1.x - w1.y, 0.05) + 0.14;
+  let fall = sqrt(2.0 * drop / 9.81);
+  let speed = max(w1.z, 0.4);
+  let tt = v * fall;
+  let x = mix(w0.x, w0.y, a);
+  let world = vec3f(x, top - 4.905 * tt * tt, w0.z - speed * tt);
+  let along = normalize(vec3f(0.0, -9.81 * tt, -speed));
+  let n = vec3f(0.0, -along.z, along.y);
+  o.clip = clip(world);
+  o.world_depth = vec4f(world, 0.05);
+  o.rest_flow = vec4f(n, v);
+  o.look = vec4f(0.0);
+  o.extra = vec4f(f32(WEIR_PART), a, v, (w0.y - w0.x));
+  return o;
+}
+// The sheet: glassy teal at the lip with the sky in it, streaks running down it, breaking white toward
+// its foot, its sides torn.
+fn weir_shade(i: WaterOut) -> WaterShade {
+  var o: WaterShade;
+  let world = i.world_depth.xyz;
+  let n = normalize(i.rest_flow.xyz);
+  let v_along = i.rest_flow.w;
+  let a = i.extra.y;
+  let width = i.extra.w;
+  let to_eye = normalize(u.eye.xyz - world);
+  let t = u.water.params.x;
+  let light = water_host_light(world, normalize(n + vec3f(0.0, 0.5, 0.0)));
+  let facing = abs(dot(n, to_eye));
+  let fresnel = water_fresnel(max(facing, 0.05));
+  let sky = water_host_sky(reflect(-to_eye, n), 0.0);
+  let x = a * width;
+  var streak = water_noise(vec3f(x * 7.0, v_along * 3.0 - t * 4.5, 1.0));
+  streak = streak * 0.6 + 0.4 * water_noise(vec3f(x * 19.0, v_along * 8.0 - t * 8.0, 5.0));
+  let sides = smoothstep(0.0, 0.06, a) * smoothstep(0.0, 0.06, 1.0 - a);
+  let torn = smoothstep(0.15, 0.45, streak + 0.5 * sides - 0.3 * (1.0 - sides));
+  let white = clamp(0.3 + 0.6 * smoothstep(0.35, 0.95, v_along) + 0.45 * smoothstep(0.55, 0.85, streak), 0.0, 1.0);
+  let alpha = clamp((0.62 + 0.3 * v_along + 0.15 * streak) * torn * smoothstep(0.0, 0.08, v_along + 0.05), 0.0, 0.97);
+  // a bright line where it turns over the sill
+  let lip = exp(-v_along * v_along / 0.004) * 0.5;
+  let body = pow(W_SHALLOW, vec3f(2.2)) * (light * 0.9 + vec3f(0.05));
+  let foam = vec3f(0.95, 0.97, 0.96) * (light * 0.95 + vec3f(0.08));
+  let c = mix(body, foam, white) * (1.0 - fresnel * 0.5) + sky * fresnel * 0.5 + foam * lip;
+  o.emit = c * alpha;
+  o.transmit = vec3f(1.0 - alpha);
+  return o;
+}
+// The particles, a quad facing the eye each (6 vertices), as many to an instance as its vertices hold.
+fn fx_vertex(id: u32, f: u32) -> WaterOut {
+  var o: WaterOut;
+  if (f == 0u) { return weir_vertex(id); }
+  let per = u32(u.water.grid.z) * u32(u.water.grid.w);
+  let k = (f - 1u) * per + id / 6u;
+  if (id / 6u >= per || k >= 64u) { o.clip = vec4f(0.0, 0.0, 2.0, 1.0); return o; }
+  let p = u.fx[FX_PARTS + k * 2u];
+  let q = u.fx[FX_PARTS + k * 2u + 1u];
+  if (p.w <= 0.0 || q.y <= 0.002) { o.clip = vec4f(0.0, 0.0, 2.0, 1.0); return o; }
+  let c = quad(id % 6u) * 2.0 - vec2f(1.0);
+  let right = normalize(u.r0.xyz);
+  let up = normalize(u.r1.xyz);
+  // a droplet drawn a little longer along its fall
+  let world = p.xyz + right * c.x * p.w + up * c.y * p.w * select(1.0, 1.5, q.x < 0.5);
+  o.clip = clip(world);
+  o.world_depth = vec4f(world, p.w);
+  o.rest_flow = vec4f(c, 0.0, 0.0);
+  o.look = vec4f(0.0);
+  o.extra = vec4f(f32(FX_PART), q.x, q.y, q.z);
+  return o;
+}
+// A particle: spray and drips a bright bead, mist and steam a soft white puff, faded where it meets what
+// stands behind it (soft particles, from the scene's depth: W5) and close to the eye.
+fn fx_shade(i: WaterOut) -> WaterShade {
+  var o: WaterShade;
+  let kind = u32(i.extra.y + 0.5);
+  let world = i.world_depth.xyz;
+  let r = length(i.rest_flow.xy);
+  let light = water_host_light(world, vec3f(0.0, 1.0, 0.0));
+  let near = distance(u.eye.xyz, world);
+  var alpha = i.extra.z;
+  var c = vec3f(0.0);
+  if (kind == 0u || kind == 2u) {
+    alpha *= 1.0 - smoothstep(0.55, 1.0, r);
+    c = mix(pow(W_SHALLOW, vec3f(2.2)), vec3f(0.95, 0.97, 0.98), 0.7) * (light * 0.95 + vec3f(0.1));
+  } else {
+    let puff = water_noise(vec3f(i.rest_flow.xy * 1.6 + vec2f(i.extra.w * 2.0), i.extra.w * 3.0));
+    alpha *= (1.0 - smoothstep(0.2, 1.0, r)) * (0.6 + 0.6 * puff) * smoothstep(1.2, 3.5, near);
+    c = vec3f(0.92, 0.94, 0.95) * (light * 0.8 + vec3f(0.18));
+  }
+  // soft against the scene behind it
+  let w = max(dot(u.r3, vec4f(world, 1.0)), 1e-3);
+  alpha *= smoothstep(0.0, max(i.world_depth.w, 0.05), water_scene_w(vec2i(i.clip.xy)) - w);
+  alpha = clamp(alpha, 0.0, 1.0);
+  o.emit = c * alpha;
+  o.transmit = vec3f(1.0 - alpha);
+  return o;
+}
+
 @vertex fn water_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) piece: u32) -> WaterOut {
   var o: WaterOut;
   let patches = u32(u.water.grid2.y);
+  if (piece >= patches + 64u) { return fx_vertex(id, piece - patches - 64u); }
   if (piece >= patches + 32u) { return pond_vertex(id, piece - patches - 32u); }
   if (piece >= patches) { return fountain_vertex(id, piece - patches); }
   let qa = u32(u.water.grid.z);
@@ -1679,8 +1799,88 @@ fn water_flow_detail(p: vec2f, flow: vec2f, footprint: f32) -> vec3f {
 }
 
 // The ripples' slope at p: damped wave packets riding expanding rings.
-fn water_ripples(p: vec2f) -> vec2f {
+// ---- W6: wakes behind what moves through the water, and the hulls the water keeps out of
+const FX_HULLS = 2u;
+const FX_TRAILS = 5u;
+const FX_PARTS = 21u;
+const WAKE_TAN: f32 = 0.3536;    // tan 19.47 degrees: Kelvin's half-angle, at any speed
+// 1 inside a rowboat's hull: no water is drawn there (the old engine's hull masking).
+fn water_hull(p: vec2f) -> f32 {
+  for (var k = 0u; k < 3u; k++) {
+    let h = u.fx[FX_HULLS + k];
+    if (h.w < 0.5) { continue; }
+    let d = p - h.xy;
+    let ax = sin(h.z);
+    let az = cos(h.z);
+    if (abs(d.x * az - d.y * ax) < 0.5 && abs(d.x * ax + d.y * az) < 1.54) { return 1.0; }
+  }
+  return 0.0;
+}
+// The wakes at p: the slope (x, z) of Kelvin's wedge (its two arms at 19.47 degrees, feathered at the
+// wavelength the mover's speed makes, and the transverse waves between them) and the foam trail down
+// its middle, from the trail of points nearest p. Faded behind the mover and with age.
+var<private> wake_foam: f32 = 0.0;
+fn water_wake(p: vec2f) -> vec2f {
   var g = vec2f(0.0);
+  let t = u.water.params.x;
+  for (var m = 0u; m < 2u; m++) {
+    let base = FX_TRAILS + m * 8u;
+    let head = u.fx[base];
+    if (head.x == 0.0 && head.y == 0.0) { continue; }
+    // still and its trail faded (its newest point over 8 s old): no wake to draw
+    if (head.w < 0.05 && t - u.fx[base + 1u].z > 8.0) { continue; }
+    if (distance(p, head.xy) > 14.0) { continue; }
+    var behind = 0.0;
+    var best = 1e9;
+    var at = vec4f(0.0);       // along behind the head, lateral (signed), age, speed
+    var dir = vec2f(0.0);
+    for (var k = 0u; k < 7u; k++) {
+      let a = u.fx[base + k];
+      let b = u.fx[base + k + 1u];
+      if (b.x == 0.0 && b.y == 0.0) { break; }
+      let seg = b.xy - a.xy;
+      let len = length(seg);
+      if (len < 0.01) { continue; }
+      let d = seg / len;
+      let s = clamp(dot(p - a.xy, d), 0.0, len);
+      let off = p - (a.xy + d * s);
+      let lat = length(off);
+      if (lat < best) {
+        best = lat;
+        at = vec4f(behind + s, select(-lat, lat, d.x * off.y - d.y * off.x > 0.0), t - mix(a.z, b.z, s / len), max(a.w, b.w));
+        dir = d;
+      }
+      behind += len;
+    }
+    if (best > 20.0 || at.w < 0.05) { continue; }
+    let v = min(at.w, 2.5);
+    let age = max(at.z, 0.0);
+    let fade = exp(-at.x / 8.0) * exp(-age * 0.3) * smoothstep(0.05, 0.4, v);
+    if (fade < 0.01) { continue; }
+    let side = select(-1.0, 1.0, at.y > 0.0);
+    let across = vec2f(-dir.y, dir.x) * side;    // out from the trail, on p's side
+    let l = abs(at.y);
+    let wave = max(6.2831853 * v * v / 9.81, 0.3);
+    let feather = 0.65 + 0.35 * cos(6.2831853 * at.x / wave);
+    // the arms
+    let arm = 0.3 + WAKE_TAN * at.x;
+    let w = 0.16 + 0.05 * at.x;
+    let x = l - arm;
+    let amp = 0.09 * fade * min(v / 1.2, 1.4);
+    g += across * (-2.0 * x / (w * w)) * exp(-x * x / (w * w)) * amp * w * feather;
+    // the transverse waves between them, crossing the trail
+    let inside = 1.0 - smoothstep(arm * 0.7, arm, l);
+    g += dir * sin(6.2831853 * at.x / wave) * amp * 0.5 * inside;
+    // the foam trail, spreading and breaking up behind
+    let trail = 0.22 + 0.07 * at.x;
+    wake_foam = max(wake_foam, (1.0 - smoothstep(trail * 0.35, trail, l)) * fade * min(v * 1.2, 1.0) * exp(-age * 0.25));
+    wake_foam = max(wake_foam, exp(-x * x / (w * w * 0.25)) * fade * clamp(v - 0.6, 0.0, 1.0) * 0.6);
+  }
+  return g;
+}
+
+fn water_ripples(p: vec2f) -> vec2f {
+  var g = water_wake(p);
   let t = u.water.params.x;
   let count = i32(u.water.params.z);
   let k = 6.2831853 / 0.45;
@@ -1698,7 +1898,7 @@ fn water_ripples(p: vec2f) -> vec2f {
 }
 // Foam riding the rings of young ripples.
 fn water_ripple_foam(p: vec2f) -> f32 {
-  var foam = 0.0;
+  var foam = wake_foam;
   let t = u.water.params.x;
   let count = i32(u.water.params.z);
   for (var i = 0; i < 24; i++) {
@@ -1907,6 +2107,8 @@ fn water_painted_teal(world: vec3f, rest: vec2f, flow: vec2f, depth: f32, shore:
 
 fn water_fragment(i: WaterOut) -> WaterShade {
   let part = u32(i.extra.x + 0.5);
+  if (part == WEIR_PART) { return weir_shade(i); }
+  if (part == FX_PART) { return fx_shade(i); }
   if (!water_surface_part(part)) { return fountain_fall_shade(i, part); }
   let world = i.world_depth.xyz;
   let rest = i.rest_flow.xy;
@@ -2025,9 +2227,11 @@ fn water_ssr(p: vec3f, dir: vec3f) -> vec4f {
   return vec4f(0.0);
 }
 fn water_whole(i: WaterOut) -> vec3f {
-  let s = water_halves(i);
   let world = i.world_depth.xyz;
   let px = vec2i(i.clip.xy);
+  // inside a rowboat's hull the water isn't drawn
+  if (water_hull(world.xz) > 0.5) { return water_scene_at(px); }
+  let s = water_halves(i);
   let w = max(dot(u.r3, vec4f(world, 1.0)), 1e-3);
   let thick = water_thickness(px, world);
   // refraction: the bed seen a little aside, more through more water; never something in front of the surface

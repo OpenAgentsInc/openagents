@@ -260,7 +260,8 @@ than 6.5 m from the flock. Each bird keeps its last ten places (one every
   from the board, a character or the inn, and go out by the gates to the
   quest areas and back (eg-quests); earn the bird-flock companion
   (eg-companion); see the whole city from above (MAP); wade, swim and dive
-  in the river by the bridge; cast the spell bar's spells and break the
+  in the river by the bridge and the ponds; row the ponds' rowboats; cast
+  the spell bar's spells (on the water too) and break the
   town's buildings and props (see Spells and destruction); a broken
   building grows back.
 - **Can't:** keep anything broken, or break it for anyone else: what a
@@ -485,11 +486,17 @@ and W6's ripples), drawn by its shader and read by the swimmer:
   under a level 0.25 m below the ground round it. `#lantern-pond`,
   `#reed-pond`, `#thinking-pond` and `#fern-pond` start you on the bank.
   A duck paddles round each pond and three lily pads ride on it; a rowboat
-  is moored at the Lantern, Thinking and Fern ponds.
+  is moored at the Lantern, Thinking and Fern ponds. E boards one, W and S
+  row it, A and D turn it, E steps ashore; `#rowboat` starts you in the
+  Lantern Pond's. You and the ducks leave a wake.
 - **The weir:** 19 m below the bridge the river steps down 0.25 m over a
   sill of stones into a plunge pool 3.8 m deep at its middle, white where
-  it falls and churning in the pool. `#weir` starts you on the bank above
-  it.
+  it falls and churning in the pool, a thin sheet falling over its lip and
+  mist off it. `#weir` starts you on the bank above it.
+- **Spells on the water:** they strike its surface and raise a splash and
+  steam, not scorch; a bolt runs 6 m through the water to you unless you
+  are in a boat; what breaks over it falls in, wood floating off on the
+  current (docs/verse/water.md, W6 and W8).
 
 ## What's next
 

@@ -25,6 +25,12 @@
 //   place, and a loose piece past the cap breaks where it stands.
 // - Regrowth: every piece has a group (a building); restoring a group stands
 //   its pieces back up and clears their chunks.
+// - Water (W6 of verse/everglade/previous/water.md, "Spells and destruction"):
+//   given the water's surface and current on the ground's grid
+//   (demo_step_wet), a chunk or a loose piece that falls in floats or sinks by
+//   its matter (wood and cloth float at 600 kg/m3, the rest sink), is slowed
+//   and carried by the current, and lodges where it comes to rest or after
+//   DEMO_FLOAT_LIFE s; coming in fast it raises a splash event.
 //
 // The realm draws: demo_rows gives each piece's instance rows (its rest
 // rows standing, nothing broken, moved with its body loose), and the live
@@ -83,9 +89,10 @@ DemoBody :: struct {
   rest_time: f64;              // s in contact and nearly still
   tx: f64; ty: f64; tz: f64; tw: f64;   // a whole piece's turn from standing (its rest axes) to its body's
   radius: f64;                 // a chunk as a ball, for pushing
+  wet: bool;                   // in the water last step
 }
 
-DemoEvent :: struct { at: Point; size: f32; kind: int; }   // kind 1 a break, 2 a heavy landing
+DemoEvent :: struct { at: Point; size: f32; kind: int; }   // kind 1 a break, 2 a heavy landing, 3 a splash (DEMO_SPLASH)
 
 // A body's rigid.coax state, flat: mass, inertia 3, pos 3, vel 3, orientation 4,
 // omega 3, force 3, torque 3, sleeping, sleep_time, supported. (Flat, so a realm
@@ -573,8 +580,58 @@ demo_push :: (w: [] DemoWorld) {
   }
 }
 
+// ---- water
+
+DEMO_FLOAT_LIFE :: 90.0;   // s a chunk may drift before it lodges where it is
+DEMO_SPLASH :: 3;          // an event: a body coming into the water fast
+DEMO_DRY :: -1000.0;
+
+// The water over x, z on the ground's grid (3 numbers a point: the surface's height, DEMO_DRY where
+// there is none, and the current's x and z): the level, current x and z, bilinear over the wet corners.
+demo_water_at :: (g: Ground, water: [] f32, x: f32, z: f32) -> Point {
+  if g.n < 1 || water.count < (g.n + 1) * (g.n + 1) * 3 { return v3(DEMO_DRY, 0, 0); }
+  sp := ground_spot(g, x, z);
+  sum := v3(0, 0, 0); weight := 0.0f32;
+  for k: 0..<4 {
+    i := sp.i + (k & 1); j := sp.j + (k >> 1);
+    if i > g.n || j > g.n { continue; }
+    o := (j * (g.n + 1) + i) * 3;
+    if water[o] <= DEMO_DRY + 1 { continue; }
+    wx := ifx k & 1 == 1 then sp.fx else 1 - sp.fx;
+    wz := ifx k >> 1 == 1 then sp.fz else 1 - sp.fz;
+    sum = add(sum, times(v3(water[o], water[o + 1], water[o + 2]), wx * wz));
+    weight += wx * wz;
+  }
+  if weight < 0.001 { return v3(DEMO_DRY, 0, 0); }
+  return times(sum, 1 / weight);
+}
+
+// One step h of body b in the water at `level` with current (cx, cz): its buoyancy by the share of it
+// under (floating at 600 kg/m3 for wood and cloth, sinking otherwise), drag toward the current, its
+// spin damped. Returns the share under.
+demo_float :: (b: [] RigidBody, half: D3, floats: bool, level: f64, cx: f64, cz: f64, h: f64) -> f64 {
+  body := b[0];
+  tall := abs(dq_rotate(body.orientation, d3(half.x, 0.0, 0.0)).y) + abs(dq_rotate(body.orientation, d3(0.0, half.y, 0.0)).y) + abs(dq_rotate(body.orientation, d3(0.0, 0.0, half.z)).y);
+  tall = fmax(tall, 0.01);
+  under := fclamp((level - (body.pos.y - tall)) / (2.0 * tall), 0.0, 1.0);
+  if under <= 0.0 { return 0.0; }
+  density := ifx floats then 600.0 else 2400.0;
+  body.vel.y += 9.81 * (1000.0 / density) * under * h;
+  k := fmin(2.0 * under * h, 1.0);
+  body.vel.x += (cx - body.vel.x) * k; body.vel.z += (cz - body.vel.z) * k;
+  body.vel.y *= 1.0 - fmin(3.0 * under * h, 1.0);
+  body.omega = d3_scale(body.omega, 1.0 - fmin(1.5 * under * h, 1.0));
+  b[0] = body;
+  return under;
+}
+
 // Steps every body over dt (at a fixed 60 Hz) on the ground g, heights.
 demo_step :: (w: [] DemoWorld, g: Ground, heights: [] f32, dt: f32) {
+  none: [1] f32;
+  demo_step_wet(w, g, heights, none[0..<0], dt);
+}
+// The same with water: the surface and current on the ground's grid (demo_water_at; empty, none).
+demo_step_wet :: (w: [] DemoWorld, g: Ground, heights: [] f32, water: [] f32, dt: f32) {
   w[0].event_n = 0;
   w[0].carry += f64(clamp(dt, 0, 0.25));
   h := 1.0 / DEMO_HZ;
@@ -601,6 +658,22 @@ demo_step :: (w: [] DemoWorld, g: Ground, heights: [] f32, dt: f32) {
       one[0] = demo_body(w, b);
       at := one[0].pos;
       ground_y := f64(verse_terrain_height(g, heights, f32(at.x), f32(at.z)));
+      // in the water: it floats or sinks by its matter and the current carries it
+      wet := false;
+      if water.count > 0 {
+        sea := demo_water_at(g, water, f32(at.x), f32(at.z));
+        if f64(sea.x) > ground_y {
+          fall := one[0].vel.y;
+          pi := w[0].meta[b].piece;
+          matter := ifx pi >= 0 && pi < w[0].n then w[0].pieces[pi].material else 2;
+          // srd5.coax's matter: cloth (0) and wood (2) float
+          if demo_float(one[..], demo_half(w[0].meta[b]), matter == 0 || matter == 2, f64(sea.x), f64(sea.y), f64(sea.z), h) > 0.0 {
+            wet = true;
+            if !w[0].meta[b].wet && fall < -1.5 { demo_event(w, v3(f32(at.x), sea.x, f32(at.z)), f32(fmin(-fall * 0.25, 2.0)), DEMO_SPLASH); }
+          }
+        }
+      }
+      w[0].meta[b].wet = wet;
       impact := demo_ground(one[..], demo_half(w[0].meta[b]), ground_y);
       demo_put(w, b, one[0]);
       if kind == DEMO_WHOLE {
@@ -618,7 +691,7 @@ demo_step :: (w: [] DemoWorld, g: Ground, heights: [] f32, dt: f32) {
       body := one[0];
       slow := d3_len(body.vel) < 0.25 && d3_len(body.omega) < 0.6;
       w[0].meta[b].rest_time = ifx slow then w[0].meta[b].rest_time + h else 0.0;
-      if w[0].meta[b].rest_time > 0.6 || w[0].clock - w[0].meta[b].born > 12.0 {
+      if w[0].meta[b].rest_time > 0.6 || w[0].clock - w[0].meta[b].born > (ifx wet then DEMO_FLOAT_LIFE else 12.0) {
         body.vel = D3_ZERO; body.omega = D3_ZERO; body.sleeping = true;
         demo_put(w, b, body);
       }
@@ -818,4 +891,45 @@ demo_cottage :: (w: [] DemoWorld) {
   // its middle (bounds' middle at local y 1.56) is where its body is
   #assert abs(rows[1] * 1.56 + rows[3] - f32(demo_pos(w[..], b).x)) < 0.01;
   #assert abs(rows[5] * 1.56 + rows[7] - f32(demo_pos(w[..], b).y)) < 0.01 && rows[7] < 3.12;
+}
+
+#test "demolish: a wall broken over water splashes in, its wood floats off on the current, stone sinks" {
+  g := Ground.{n = 8, cell = 40, west = -160, south = -160};
+  heights: [81] f32;
+  // water a metre deep everywhere, running east at 0.4 m/s
+  water: [81 * 3] f32;
+  for k: 0..<81 { water[k * 3] = 1; water[k * 3 + 1] = 0.4; water[k * 3 + 2] = 0; }
+  #assert abs(demo_water_at(g, water[..], 3, -7).x - 1) < 0.0001;
+  dry: [81 * 3] f32;
+  for k: 0..<81 { dry[k * 3] = DEMO_DRY; }
+  #assert demo_water_at(g, dry[..], 3, -7).x == DEMO_DRY;
+  for matter: 0..<2 {
+    w: [1] DemoWorld;
+    demo_cottage(w[..]);
+    // the second pass is stone
+    if matter == 1 { for i: 0..<w[0].n { w[0].pieces[i].material = 1; } }
+    _ := demo_damage(w[..], 1, 99, v3(-1, 1, -8), 8);
+    splashed := 0;
+    was: [DEMO_BODIES] f64;
+    for k: 0..<600 {
+      demo_step_wet(w[..], g, heights[..], water[..], 1.0 / 60.0);
+      if k == 299 { for b: 0..<DEMO_BODIES { was[b] = demo_pos(w[..], b).x; } }
+      for e: 0..<w[0].event_n { if w[0].events[e].kind == DEMO_SPLASH { splashed += 1; } }
+    }
+    #assert splashed > 0;
+    n := 0;
+    for b: 0..<DEMO_BODIES {
+      if w[0].meta[b].kind != DEMO_CHUNK { continue; }
+      n += 1;
+      p := demo_pos(w[..], b);
+      if matter == 0 {
+        // afloat near the surface, still awake, carried east on the current (0.4 m/s: 2 m in 5 s)
+        #assert p.y > 0.6 && p.y < 1.4 && p.x - was[b] > 1.5 && !demo_asleep(w[..], b);
+      } else {
+        // on the bed
+        #assert p.y < 0.5;
+      }
+    }
+    #assert n > 0;
+  }
 }

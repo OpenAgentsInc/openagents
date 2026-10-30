@@ -61,6 +61,26 @@ static float river_levels[105 + 16];   // the river's levels, then the ponds' ro
 static float river_floats[28 * 8];
 static coax_t_Swim swim;
 static coax_v_t_River rv(void) { return (coax_v_t_River){&river, 1}; }
+// The walls' round bodies, then each rowboat's hull as a capsule along its keel (river.coax W6): so
+// you swim and wade round a hull, not through it. 7 numbers each, as the page's bodies.
+#define BOAT_BODIES 3
+static float hull_bodies[(16 + BOAT_BODIES) * 7];
+static int64_t with_hulls(coax_t_Everglade *g, int64_t bodies) {
+  int64_t n = bodies < 16 ? bodies : 16;
+  memcpy(hull_bodies, g->bodies.e, (size_t)n * 7 * sizeof(float));
+  if (river.aboard >= 0) return n;
+  for (int64_t i = 0; i < g->float_n && n < 16 + BOAT_BODIES; i++) {
+    const float *f = g->floats.e + i * 8;
+    if (f[7] < 1.5f) continue;
+    float ax = __builtin_sinf(f[3]), az = __builtin_cosf(f[3]), half = 1.6f - 0.55f;
+    float *b = hull_bodies + n * 7;
+    b[0] = f[0] - ax * half; b[1] = 0.3f; b[2] = f[2] - az * half;
+    b[3] = f[0] + ax * half; b[4] = 0.3f; b[5] = f[2] + az * half;
+    b[6] = 0.55f;
+    n++;
+  }
+  return n;
+}
 #include "place-face.h"
 static bool place_back;   // a kept place was put back: checked again when the published pieces come
 
@@ -139,11 +159,20 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   // on the bridge's deck its rails are in your way; off it (in the river under it) its piles are
   bool deck = everglade_on_bridge(at(state), player.pos.x, player.pos.z) && swim.medium < 2;
   int64_t walls = everglade_walls_on(at(state), deck);
-  int64_t bodies = everglade_bodies_on(at(state), deck);
+  int64_t bodies = with_hulls(g, everglade_bodies_on(at(state), deck));
   coax_t_Vec3 was = player.pos;
-  player = verse_player_advance_among(player, dt, (coax_v_f32){g->bodies.e, bodies * 7}, (coax_v_f32){g->walls.e, walls * 6});
+  if (river.aboard >= 0) {
+    // in a rowboat: W and S row, A and D turn (a thumb's stick too); you sit where it takes you
+    float ahead = g->key_y + sticks.pad_y, turn = g->key_x + sticks.pad_x;
+    everglade_river_row(rv(), busy ? 0 : ahead, busy ? 0 : turn);
+    coax_t_Seat seat = everglade_river_seat(rv());
+    player.pos.x = seat.x; player.pos.z = seat.z; player.prev_pos = player.pos;
+    player.vel.x = 0; player.vel.z = 0;
+    player.face = seat.yaw; player.prev_face = seat.yaw;
+  } else
+  player = verse_player_advance_among(player, dt, (coax_v_f32){hull_bodies, bodies * 7}, (coax_v_f32){g->walls.e, walls * 6});
   // afloat, the current carries you
-  if (swim.medium >= 2) { player.pos.x += swim.flow_x * dt; player.pos.z += swim.flow_z * dt; }
+  if (swim.medium == 2 || swim.medium == 3) { player.pos.x += swim.flow_x * dt; player.pos.z += swim.flow_z * dt; }
   coax_t_Point kept = everglade_hold(at(state), was.x, was.z, player.pos.x, player.pos.z);
   if (kept.x != player.pos.x || kept.z != player.pos.z) {
     if (kept.x != player.pos.x) player.vel.x = 0;
@@ -166,6 +195,18 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     swim.medium = 0; swim.pace = 1;
   }
   int64_t floats = everglade_river_floats(rv(), dt, (coax_v_f32){river_floats, 28 * 8});
+  // a rowboat near you to board, or E (the prompt) to board it or step ashore
+  everglade_boat_near(at(state), swim.medium == 3 || busy ? -1 : everglade_river_boat_near(rv(), player.pos.x, player.pos.z));
+  if (everglade_boat_start(at(state)) && river.aboard < 0) everglade_river_board(rv(), everglade_river_first_boat(rv()));
+  if (everglade_boat_take(at(state))) {
+    if (river.aboard >= 0) {
+      coax_t_Seat off = everglade_river_leave(rv(), heights, now);
+      if (off.on) player = verse_player_place(off.x, 0, off.z, off.yaw);
+      swim = everglade_river_swim(rv(), heights, player.pos.x, player.pos.z, false, 0, now);
+    } else if (everglade_river_board(rv(), everglade_river_boat_near(rv(), player.pos.x, player.pos.z))) {
+      swim = everglade_river_swim(rv(), heights, player.pos.x, player.pos.z, false, 0, now);
+    }
+  }
   bool small = everglade_phone(at(state));
   everglade_water(at(state), swim.medium, swim.feet, swim.breath, swim.levels,
                   everglade_river_vertices(small), everglade_river_patches(), (coax_v_f32){river_floats, 28 * 8}, floats);
@@ -182,6 +223,13 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     float aspect = w / (h > 1 ? h : 1);
     float fy = aspect * 1.25f; fy = fy < 0.95f ? 0.95f : fy > 1.9f ? 1.9f : fy;
     everglade_river_frame(rv(), (coax_v_f32){u.data + at_water, u.count - at_water}, now, small, eye[0], eye[1], eye[2], 2.0f / (fy * (h > 1 ? h : 1)));
+    // the wakes, the particles and the weir's sheet (W6)
+    int64_t at_fx = everglade_fx_at();
+    everglade_river_fx(rv(), (coax_v_f32){u.data + at_fx, u.count - at_fx}, golden ? 0 : dt, now, player.pos.x, player.pos.z, swim.medium, eye[0], eye[1], eye[2]);
+    // what struck the water this frame (spells, falling debris: W8) splashes, rings and shoves the floats
+    static float hits[32];
+    int64_t hn = everglade_water_hits(at(state), (coax_v_f32){hits, 32});
+    for (int64_t k = 0; k < hn; k++) everglade_river_splash(rv(), hits[k * 4], hits[k * 4 + 1], (int64_t)hits[k * 4 + 2], hits[k * 4 + 3], now);
   }
   ask_out(state);
   edit_out(state);

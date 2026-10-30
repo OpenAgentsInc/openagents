@@ -4,12 +4,12 @@ Water is being ported from the previous Rust engine to Coax in the phases
 of its specification, [verse/everglade/previous/water.md](../../verse/everglade/previous/water.md)
 (copied from `0b401561a0^`; see its phased plan). Done: W1 (the physics),
 W2 (the shader, on the Coax WebGPU renderer), W3 adapted to today's
-Everglade (its river, ponds, weir, rowboats, swimming and floats) and, from W6, the
-ripple field with your wake and splash, most of W5, W4 (the spectral sea,
-in the water lab), W7 (under the water), W9 (weather), W10 (ocean and
+Everglade (its river, ponds, weir, rowboats, swimming and floats), W6
+(ripples, rowing, wakes, spray, mist and the weir's falling sheet, debris
+that floats), most of W5, W4 (the spectral sea, in the water lab), W7
+(under the water), W8 (spells and water), W9 (weather), W10 (ocean and
 scale) and W11 (measurement), each below. The rest has a task each under
-`verse-water` (#c278): W3's rest (townsfolk swimming; the rowboats are
-in), the rest of W6 and W8 (spells and water).
+`verse-water` (#c278): W3's rest (townsfolk swimming).
 
 ## W1: the physics (done)
 
@@ -180,7 +180,7 @@ bridge, so W3 is that river (docs/verse/everglade.md, "The river"):
   W1 rigid body (a 3.2 x 0.4 x 1.1 m hull of 220 kg, riding 6 cm under)
   on a slack line back to its mooring that keeps its bow along the shore
   (`river.coax` `FLOAT_BOAT`); drawn from boxes (`everglade.coax`
-  `rowboat`). Boarding and rowing are W6's.
+  `rowboat`). You board and row them (W6, below).
 
 Not ported yet (task `verse-water-w3-rest`): townsfolk swimming. Everglade's
 people stand at their places and don't walk yet; when they do, they wade
@@ -219,8 +219,7 @@ keep the two halves.
 Measured headless on an Apple GPU (`frametime.ts`, `#river-wade`, the river
 filling the view): desktop 1440x900 11.4 ms a frame before and after (the
 surface now shades once, not in each half), a phone's canvas 3.2 to 3.8 ms.
-Not done yet: soft particles (Everglade's water has no particles yet; W6's
-spray will read the copy). `#river-wade` starts you in the river north of
+W6's particles are soft against the copied depth (below). `#river-wade` starts you in the river north of
 the bridge, facing its piles.
 
 ## The painted preset (art-styles.md 12, as-painted-water)
@@ -281,16 +280,91 @@ shader (everglade.coax `lathe`, everglade.wgsl `lathe_vertex`,
   On a phone the pools and streams take the phone's coarser quads; the
   fountain adds 1,536 water triangles there.
 
-## W6: ripples (done; the rest of W6 is not)
+## W6: ripples, boats, wakes and spray (done)
 
-`water_look_ripples` puts 24 expanding rings in the uniform block (the old
-`frame.rs` ripple field); the shader bends the normal by them and draws a
-foam rim on young ones. In Everglade you splash where you come into the
-water and leave a ring every 0.35 s you move through it, weaker diving.
-Rowboats, wakes from other bodies and the rest of W6 are not started.
+**Ripples.** `water_look_ripples` puts 24 expanding rings in the uniform
+block (the old `frame.rs` ripple field); the shader bends the normal by them
+and draws a foam rim on young ones. In Everglade you splash where you come
+into the water and leave a ring every 0.35 s you move through it, weaker
+diving.
+
+**Rowing** (`river.coax` `everglade_river_board`, `_row`, `_leave`). Within
+1.2 m of a rowboat's hull the prompt reads E · BOARD THE ROWBOAT (a phone's
+talk button does the same). Aboard you sit on its thwart (medium
+`MEDIUM_BOAT`: dry, breathing, out of the water's rules) and W and S row
+ahead and back, A and D turn. Each 1.25 s stroke pulls in its first 45%
+(420 N at its height, the keel's drag quadratic along and stiff across, your
+80 kg in the boat); turning rows one oar (480 N m). The oars sweep with the
+stroke, splash at the catch and drip as they lift. E · STEP ASHORE puts you
+on the nearest place round the hull no deeper than a wade, else in the water
+beside it, and ties the boat up there. A boat's hull is a pair of capsules
+you can't walk or swim through (`everglade-face.c` `with_hulls`), and the
+water isn't drawn inside it. `#rowboat` starts you in the Lantern Pond's.
+
+**Wakes** (`wake_follow`, `water_wake` in everglade.wgsl). You (or your
+boat) and the duck nearest the eye each lay a point behind every 0.3 s
+they move on the water (8 points, 2.4 s). The shader draws Kelvin's 19.5
+degree wedge from each segment, its diverging and transverse waves bending
+the normal, and a white trail of foam fading down it.
+
+**Spray, mist and drips** (`everglade_river_fx`). 64 particles, a fixed
+ring (a new one takes the oldest's place): spray thrown up and falling, mist
+drifting off the weir and its pool (3 a second, only within 80 m), drips off
+the oars, and W8's steam. They draw as camera-facing discs in the water's
+draw (one instance a kind, so no new pipeline), soft against the copied
+depth and faded right at the eye.
+
+**The weir's sheet.** The 0.25 m step reads now: a thin falling sheet from
+the sill's lip down to the pool on a ballistic curve, streaked, white at its
+foot, across the wet width only.
+
+**Debris** (`verse/demolish.coax` `demo_step_wet`). What a spell breaks over
+the water falls in with a splash (a ring and spray, no dust), and its
+chunks float or sink by their matter: wood and cloth at 600 kg/m3 ride the
+surface and the current carries them for up to 90 s before they lodge;
+stone, brick and iron sink to the bed. Everglade passes the river's levels
+and current and the ponds on its ground grid (`everglade.coax`
+`water_grid_build`).
+
+Measured headless on an Apple GPU (`frametime.ts`, GPU p50, the build
+before against after, back to back on a busy machine): `#weir` 11.2 to
+11.8 ms at 1440x900 at device pixel ratio 2 and 3.2 to 3.6 ms at 390x844
+on the phone tier (the sheet and the mist); `#lantern-pond` 12.3 to 13.2
+ms and 6.5 to 6.3 ms; `#river-wade` on a phone 5.9 to 4.9 ms (within the
+noise: a still swimmer's faded wake is skipped). `#rowboat` 13.9 ms and 5.5
+ms. No allocation a frame: the particles are a fixed ring in the River and
+the trails a fixed 66 floats.
 
 ```sh
 coax/bin/coax test --library verse/everglade/river.coax --steps 2000000000
+coax/bin/coax test --library verse/demolish.coax --steps 2000000000
+```
+
+## W8: spells and water (done)
+
+[`verse/water-spells.coax`](../../verse/water-spells.coax) holds the rules,
+as pure functions over `verse/rules/srd5.coax`; Everglade's bar casts on
+them (`everglade-spells.coax`):
+
+- **A spell aimed over water strikes its surface**, not the bed; its ring
+  lies on the water.
+- **Lightning in water** (the old plan's rule, ours): a creature wading,
+  swimming or diving in the same body within 6 m of a lightning spell's
+  contact point, and not in its blast, makes a Dexterity save against the
+  caster's DC and takes half the lightning on a failure. Sitting in a boat
+  insulates. In Everglade the save is yours (+3 against DC 15) and the line
+  over the bar adds THROUGH THE WATER: YOU SAVE, THROUGH THE WATER: 55 TO
+  YOU or THE BOAT KEEPS YOU OUT OF IT.
+- **Fire meets water** (the SRD): fully under water you have Resistance to
+  Fire (`water_fire_taken`), and a fire spell on water raises steam, not
+  scorch.
+- **Each spell's splash:** Meteor Swarm a crown of spray, two rings and
+  steam; a bolt a flash of steam and spray; the Water Orb a burst of spray
+  and rings; debris a small splash. Ducks, pads and boats within reach are
+  thrown back.
+
+```sh
+coax/bin/coax test --library verse/water-spells.coax
 ```
 
 ## W4: the spectral sea (done)

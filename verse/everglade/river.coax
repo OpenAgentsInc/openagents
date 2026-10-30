@@ -35,6 +35,17 @@
 //   the drop and in the plunge pool.
 //
 // - Rowboats moored at three ponds (FLOAT_BOAT): a hull on a slack line.
+//   You board one with the interact key from the bank or the water, sit at
+//   its middle thwart, and row it: strokes at 0.8 a second to about 1.5 m/s,
+//   turning by rowing one oar (the old W6 rowboat). Leaving puts you on the
+//   bank within 2.5 m, else in the water beside it, and ties it up there.
+//
+// - From W6: Kelvin wakes and foam trails behind you swimming or rowing and
+//   behind the ducks (a trail of points the shader draws the wedge from),
+//   and the water's particles (FX): spray where you splash in, at the weir's
+//   foot and off the oars, mist over the weir and its pool, drips, and the
+//   steam and crown splashes the spells raise (everglade_river_splash).
+//   A fixed pool of FX particles, the oldest replaced; nothing allocates.
 //
 // Not yet: townsfolk swimming, and the underwater combat rules.
 //   coax/bin/coax test --library verse/everglade/river.coax --steps 2000000000
@@ -60,8 +71,24 @@ RIVER_SPEED :: 0.45;      // m/s, the mean current
 RIVER_PILES :: 2;         // the bridge's piles, in the stream
 RIVER_PILE :: [6] f64.[87.0, -11.0, 0.5,   89.0, -11.0, 0.5];   // each holds five of the flow grid's nodes
 RIVER_RIPPLES :: 24;
+// W6: the wakes' movers (you, and the duck nearest you) and the points each trail keeps, laid every
+// WAKE_LAY s; the particles, FX_FLOATS numbers each (x, y, z, vx, vy, vz, age, life, size, kind).
+WAKE_MOVERS :: 2;
+WAKE_POINTS :: 8;
+WAKE_LAY :: 0.3;
+// (two spare, and the weir's two, so these arrays' C types are River's own beside everglade.h's)
+TRAIL_FLOATS :: WAKE_MOVERS * WAKE_POINTS * 4 + 2;
+FX :: 64;
+FX_FLOATS :: 10;
+FX_SPRAY :: 0; FX_MIST :: 1; FX_DRIP :: 2; FX_STEAM :: 3;
+// What the face writes for the shader (everglade.coax U_FX): the weir's sheet (2 rows: west, east, z, 1;
+// the level above, below, the water's speed over the sill, 0), the boats'
+// hulls (BOATS rows: x, z, yaw, 1 when drawn), the trails (WAKE_MOVERS * WAKE_POINTS rows), then
+// the particles (2 rows each: x, y, z, size; kind, alpha, 0, 0).
+FX_ROWS :: 2 + 3 + WAKE_MOVERS * WAKE_POINTS + FX * 2;
 PONDS :: 4;               // the plan's ponds (EG_PONDS): x, z, rim radius, level each after the river's levels
 POND_POINTS :: 24;        // each pond's outline, a polygon round its rim
+MEDIUM_BOAT :: 4;         // seated in a rowboat (Swim.medium; out of the water for lightning)
 
 // The swimmer (medium.rs).
 WADE_DEPTH :: 0.4;
@@ -131,6 +158,14 @@ River :: struct {
   floats: [FLOATS] RigidBody; colliders: [FLOATS] Collider; pushes: [FLOATS * 2] Push;
   homes: [FLOATS * 3] f64; kinds: [FLOATS] int; float_n: int;   // each one's home x, z and yaw
   float_tick: u64; float_carry: f64;
+  // the rowboat you sit in (a float's index, -1 none), the stroke's clock and what you ask of it
+  aboard: int; oar_t: f32; row_on: f32; row_ahead: f32; row_turn: f32; oar_wet: bool;
+  // the wakes: each mover's trail (x, z, when, speed; the newest first), and when it last laid a point
+  trail: [TRAIL_FLOATS] f32; trail_t: [WAKE_MOVERS] f32;
+  // the particles (FX_FLOATS each): spray, mist, drips, steam
+  fx: [FX * FX_FLOATS] f32; fx_next: int; fx_seed: u32; mist_carry: f32; foot_carry: f32;
+  weir: [6] f32;          // the weir's sheet: west and east edges of its water, the level above and below it (2 spare)
+  clock: f32;             // s on the water's clock, folded every hour (the ripples' and the FX's)
 }
 
 // What the face passes on to the controller and the page each frame.
@@ -230,6 +265,19 @@ everglade_river_start :: (r: [] River, heights: [] f32, all: [] f32, n: int, cel
   r[0].breath = hold_seconds(CON);
   r[0].medium = MEDIUM_GROUND;
   floats_start(r);
+  r[0].aboard = -1;
+  r[0].fx_seed = 0x2545f491;
+  // the weir's sheet: across the water's width at the sill, from the level above to the level below
+  wet_w := f64(RIVER_X); wet_e := f64(RIVER_X);
+  for c: 0..<RIVER_COLS {
+    cx := f64(RIVER_X) + (f64(c) - f64(RIVER_COLS - 1) * 0.5) * RIVER_ACROSS;
+    if f64(river_bed(r, heights, cast(f32) cx, cast(f32) (WEIR_Z + 0.3))) < level_at(body.level, body.height, body.profile, RIVER_NORTH - WEIR_Z - 0.3).height {
+      wet_w = fmin(wet_w, cx); wet_e = fmax(wet_e, cx);
+    }
+  }
+  r[0].weir[0] = cast(f32) (wet_w - 0.1); r[0].weir[1] = cast(f32) (wet_e + 0.1);
+  r[0].weir[2] = cast(f32) level_at(body.level, body.height, body.profile, RIVER_NORTH - WEIR_Z - 0.6).height;
+  r[0].weir[3] = cast(f32) level_at(body.level, body.height, body.profile, RIVER_NORTH - WEIR_Z + 1.0).height;
   r[0].ready = true;
 }
 
@@ -408,6 +456,15 @@ everglade_river_swim :: (r: [] River, heights: [] f32, x: f32, z: f32, dive: boo
   bed := river_bed(r, heights, x, z);
   out.feet = bed;
   if !r[0].ready { return out; }
+  // in a rowboat you are out of the water: you sit, and breathe
+  if r[0].aboard >= 0 {
+    seat := everglade_river_seat(r);
+    _ := breath_tick(r, f64(ifx dt == dt && dt > 0 then lo_f(dt, 0.25) else 0.0f32), false);
+    out.medium = MEDIUM_BOAT; out.feet = seat.y;
+    sb := water_sample(r[0].set, f64(seat.x), f64(seat.z), river_tick(time));
+    out.surface = ifx sb.found then cast(f32) sb.height + r[0].rise else -1000.0f32;
+    return out;
+  }
   t := ifx dt == dt && dt > 0 then lo_f(dt, 0.25) else 0.0f32;
   s := water_sample(r[0].set, f64(x), f64(z), river_tick(time));
   surface := ifx s.found then cast(f32) s.height + r[0].rise else -1000.0f32;
@@ -462,6 +519,7 @@ river_wake :: (r: [] River, x: f32, z: f32, medium: int, surface: f32, time: f64
   if !wet { r[0].splashed = false; return; }
   if !r[0].splashed {
     water_add_ripple(r[0].ripples[..], x, z, t, 0.03);
+    fx_spray(r, x, surface, z, 10, 3.2, 0.1);
     r[0].splashed = true; r[0].wake_x = x; r[0].wake_z = z; r[0].wake_time = t;
     return;
   }
@@ -472,6 +530,8 @@ river_wake :: (r: [] River, x: f32, z: f32, medium: int, surface: f32, time: f64
     strength := ifx medium == MEDIUM_WADING then 0.012f32 else 0.018f32;
     if medium == MEDIUM_DIVING { strength = 0.006; }
     water_add_ripple(r[0].ripples[..], x, z, t, strength);
+    // a stroke throws a little spray
+    if medium == MEDIUM_SWIMMING { fx_spray(r, x, surface, z, 2, 1.4, 0.06); }
     r[0].wake_x = x; r[0].wake_z = z; r[0].wake_time = t;
   }
 }
@@ -552,7 +612,10 @@ everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
     w := rigid_world(FLOAT_STEP, r[0].floats[0..<r[0].float_n]);
     w.tick = r[0].float_tick;
     n := water_apply(w, r[0].colliders[0..<r[0].float_n], r[0].set, w.tick, FLOAT_STEP, water_settings(), every[0..<0], r[0].pushes[..]);
-    for i: 0..<r[0].float_n { r[0].floats[i] = float_steer(r[0].floats[i], i, r[0].kinds[i], r[0].homes[i * 3], r[0].homes[i * 3 + 1], r[0].homes[i * 3 + 2], r[0].float_tick); }
+    for i: 0..<r[0].float_n {
+      if i == r[0].aboard { r[0].floats[i] = boat_row(r, r[0].floats[i], FLOAT_STEP); continue; }
+      r[0].floats[i] = float_steer(r[0].floats[i], i, r[0].kinds[i], r[0].homes[i * 3], r[0].homes[i * 3 + 1], r[0].homes[i * 3 + 2], r[0].float_tick);
+    }
     w = rigid_step(w, gravity);
     r[0].float_tick = w.tick;
     r[0].float_carry -= FLOAT_STEP;
@@ -569,6 +632,8 @@ everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
     // how far it tips (its up's lean), and which way, about the vertical
     up := dq_rotate(b.orientation, D3_Y);
     out[k + 4] = cast(f32) acos_d(fclamp(up.y, -1.0, 1.0)); out[k + 5] = cast(f32) atan_d2(up.x, up.z); out[k + 6] = 0;
+    // a rowboat's oars: the stroke's share while you row it (everglade.coax rowboat), -1 shipped
+    if r[0].kinds[i] == FLOAT_BOAT { out[k + 6] = ifx i == r[0].aboard then oar_phase(r[0].oar_t) else -1.0f32; }
     out[k + 7] = f32(r[0].kinds[i]);
     count += 1;
   }
@@ -622,6 +687,367 @@ turn_d :: (a: f64, b: f64) -> f64 { d := a - b + PI_D; d = d - TAU_D * floor(d /
 yaw_of_q :: (q: DQ) -> f64 {
   f := dq_rotate(q, D3_Z);
   return atan_d2(f.x, f.z);
+}
+
+
+// ---- rowing (the old W6 rowboat: verse/everglade/previous/water.md, "Rowboats")
+
+BOAT_REACH :: 1.2;          // m from the hull's side you may board from (the bank or the water)
+BOAT_STROKE :: 1.25;        // s a stroke: 0.8 a second
+BOAT_POWER :: 0.45;         // the share of a stroke the blades are in the water
+BOAT_THRUST :: 420.0;       // N at the height of a stroke, both oars: a mean of 120 N, about 1.5 m/s
+BOAT_DRAG :: 53.0;          // N per (m/s)^2 along the keel
+BOAT_SIDE_DRAG :: 600.0;    // N per m/s across it: the keel holds the line
+BOAT_TURN :: 480.0;         // N m at the height of a stroke rowing one oar
+BOAT_RIDER :: 80.0;         // kg: you, on the middle thwart
+BOAT_SEAT :: -0.55;         // your feet under the hull's middle, so you sit at the thwart
+BOAT_OARLOCK :: 0.6;        // m out from the keel to each oarlock
+BOAT_OAR :: 1.5;            // m from the oarlock to the blade
+BOAT_SWEEP :: 0.6;          // rad either side of square a blade sweeps
+
+// Where you sit (Swim's feet for the page) and which way the boat points.
+Seat :: struct { on: bool; boat: int; x: f32; y: f32; z: f32; yaw: f32; speed: f32; }
+
+// How far (x, z) lies outside a hull's footprint (0 inside it).
+boat_gap :: (b: RigidBody, x: f64, z: f64) -> f64 {
+  yaw := yaw_of_q(b.orientation);
+  ax := sin(yaw); az := cos(yaw);
+  dx := x - b.pos.x; dz := z - b.pos.z;
+  along := dx * ax + dz * az; across := dx * az - dz * ax;
+  ea := fmax(abs(along) - BOAT_HALF.z, 0.0); ec := fmax(abs(across) - BOAT_HALF.x, 0.0);
+  return sqrt(ea * ea + ec * ec);
+}
+
+// The rowboat you may board from (x, z): within BOAT_REACH of its hull; -1 none, or you are in one.
+everglade_river_boat_near :: (r: [] River, x: f32, z: f32) -> int #export_c {
+  if !r[0].ready || r[0].aboard >= 0 { return -1; }
+  best := -1; near := BOAT_REACH;
+  for i: 0..<r[0].float_n {
+    if r[0].kinds[i] != FLOAT_BOAT { continue; }
+    d := boat_gap(r[0].floats[i], f64(x), f64(z));
+    if d < near { near = d; best = i; }
+  }
+  return best;
+}
+
+// The first rowboat (the Lantern Pond's), -1 none.
+everglade_river_first_boat :: (r: [] River) -> int #export_c {
+  for i: 0..<r[0].float_n { if r[0].kinds[i] == FLOAT_BOAT { return i; } }
+  return -1;
+}
+// Into rowboat i: you sit at its middle thwart, out of the water.
+everglade_river_board :: (r: [] River, i: int) -> bool #export_c {
+  if !r[0].ready || i < 0 || i >= r[0].float_n || r[0].kinds[i] != FLOAT_BOAT { return false; }
+  r[0].aboard = i; r[0].oar_t = 0; r[0].row_ahead = 0; r[0].row_turn = 0; r[0].oar_wet = false;
+  r[0].afloat = false; r[0].medium = MEDIUM_BOAT; r[0].splashed = true; r[0].levels = 0; r[0].out = 0.0;
+  return true;
+}
+
+// Your seat in the boat you are in (on false: none).
+everglade_river_seat :: (r: [] River) -> Seat #export_c {
+  out: Seat; out.boat = -1;
+  i := r[0].aboard;
+  if !r[0].ready || i < 0 { return out; }
+  b := r[0].floats[i];
+  yaw := yaw_of_q(b.orientation);
+  out.on = true; out.boat = i;
+  out.x = cast(f32) b.pos.x; out.z = cast(f32) b.pos.z;
+  out.y = cast(f32) (b.pos.y + BOAT_SEAT);
+  out.yaw = cast(f32) yaw;
+  out.speed = cast(f32) sqrt(b.vel.x * b.vel.x + b.vel.z * b.vel.z);
+  return out;
+}
+
+// What you ask of the oars this frame: ahead (1 forward, -1 back) and turn (1 to starboard).
+everglade_river_row :: (r: [] River, ahead: f32, turn: f32) #export_c {
+  r[0].row_ahead = ifx ahead == ahead then clamp_f(ahead, -1, 1) else 0.0f32;
+  r[0].row_turn = ifx turn == turn then clamp_f(turn, -1, 1) else 0.0f32;
+}
+
+// Out of the boat: onto the bank or the shallows within 2.5 m of its hull, else into the water beside
+// it (swimming). The boat is tied up where it is. Returns where your feet go.
+everglade_river_leave :: (r: [] River, heights: [] f32, time: f64) -> Seat #export_c {
+  out: Seat; out.boat = -1;
+  i := r[0].aboard;
+  if !r[0].ready || i < 0 { return out; }
+  b := r[0].floats[i];
+  yaw := yaw_of_q(b.orientation);
+  ax := sin(yaw); az := cos(yaw);
+  best := 1000.0;
+  // beside the hull to starboard, if nothing better
+  bx := b.pos.x + az * (BOAT_HALF.x + 0.7); bz := b.pos.z - ax * (BOAT_HALF.x + 0.7);
+  for k: 0..<32 {
+    a := TAU_D * f64(k % 16) / 16.0;
+    reach := ifx k < 16 then 1.4 else 2.5;
+    // round the hull: its half-size stretched along its length
+    px := b.pos.x + ax * cos(a) * (BOAT_HALF.z + reach) + az * sin(a) * (BOAT_HALF.x + reach);
+    pz := b.pos.z + az * cos(a) * (BOAT_HALF.z + reach) - ax * sin(a) * (BOAT_HALF.x + reach);
+    bed := river_bed(r, heights, cast(f32) px, cast(f32) pz);
+    s := water_sample(r[0].set, px, pz, river_tick(time));
+    deep := ifx s.found then cast(f32) s.height + r[0].rise - bed else 0.0f32;
+    if deep > f32(WADE_DEPTH) { continue; }
+    d := (px - b.pos.x) * (px - b.pos.x) + (pz - b.pos.z) * (pz - b.pos.z);
+    if d < best { best = d; bx = px; bz = pz; }
+  }
+  r[0].homes[i * 3] = b.pos.x; r[0].homes[i * 3 + 1] = b.pos.z; r[0].homes[i * 3 + 2] = yaw;
+  r[0].aboard = -1; r[0].row_ahead = 0; r[0].row_turn = 0;
+  r[0].medium = MEDIUM_GROUND; r[0].afloat = false; r[0].splashed = false;
+  out.on = true; out.boat = i;
+  out.x = cast(f32) bx; out.z = cast(f32) bz; out.y = river_bed(r, heights, cast(f32) bx, cast(f32) bz);
+  out.yaw = cast(f32) yaw;
+  return out;
+}
+
+// The stroke's share now (0 to 1, the power stroke the first BOAT_POWER of it).
+oar_phase :: (t: f32) -> f32 { p := t / f32(BOAT_STROKE); return p - floor(p); }
+
+// One fixed step of the boat you row: the oars' thrust and turn through the power stroke, the keel's
+// drag along and across, your weight on the thwart.
+boat_row :: (r: [] River, b: RigidBody, h: f64) -> RigidBody {
+  next := rigid_wake(b);
+  asked := r[0].row_ahead != 0 || r[0].row_turn != 0;
+  was := oar_phase(r[0].oar_t);
+  // the stroke runs while you row, and finishes the one it is in when you stop
+  if asked || was > 0.001 { r[0].oar_t += cast(f32) h; }
+  phase := oar_phase(r[0].oar_t);
+  if !asked && phase < was { r[0].oar_t = 0; phase = 0; }
+  power := 0.0;
+  if (asked || was > 0.001) && phase < f32(BOAT_POWER) { power = sin(PI_D * f64(phase) / BOAT_POWER); }
+  yaw := yaw_of_q(b.orientation);
+  ax := sin(yaw); az := cos(yaw);
+  along := b.vel.x * ax + b.vel.z * az;
+  across := b.vel.x * az - b.vel.z * ax;
+  push := BOAT_THRUST * power * f64(r[0].row_ahead) - BOAT_DRAG * along * abs(along);
+  side := -BOAT_SIDE_DRAG * across;
+  next.force = d3_add(next.force, d3(ax * push + az * side, -BOAT_RIDER * 9.81, az * push - ax * side));
+  turn := BOAT_TURN * power * f64(r[0].row_turn) - b.omega.y * b.inertia.y * 1.2;
+  next.torque = d3_add(next.torque, d3(0.0, turn, 0.0));
+  return next;
+}
+
+// The blades' ends now, for spray and drips: side -1 port, 1 starboard; x, z on the water.
+oar_blade :: (b: RigidBody, side: f64, phase: f32) -> D2 {
+  yaw := yaw_of_q(b.orientation);
+  ax := sin(yaw); az := cos(yaw);
+  a := oar_sweep(phase);
+  out := BOAT_OARLOCK + BOAT_OAR * cos(a);
+  ahead := BOAT_OAR * sin(a);
+  return d2(b.pos.x + az * side * out + ax * ahead, b.pos.z - ax * side * out + az * ahead);
+}
+// A blade's sweep (rad from square, toward the bow +): forward to back through the power stroke,
+// back to forward over the recovery. everglade.coax rowboat draws the oars from the same numbers.
+oar_sweep :: (phase: f32) -> f64 {
+  p := f64(phase);
+  if p < BOAT_POWER { return BOAT_SWEEP - 2.0 * BOAT_SWEEP * p / BOAT_POWER; }
+  return -BOAT_SWEEP + 2.0 * BOAT_SWEEP * (p - BOAT_POWER) / (1.0 - BOAT_POWER);
+}
+
+// ---- the particles (W6: spray, mist, drips; W8's steam)
+
+fx_rand :: (r: [] River) -> f32 {
+  x := r[0].fx_seed;
+  x = x ^ (x << 13); x = x ^ (x >> 17); x = x ^ (x << 5);
+  r[0].fx_seed = x;
+  return f32(x % 1000000) / 1000000.0;
+}
+// One particle, in the oldest's place when every one is in use.
+fx_add :: (r: [] River, x: f32, y: f32, z: f32, vx: f32, vy: f32, vz: f32, life: f32, size: f32, kind: int) {
+  pick := -1; oldest := -1.0f32;
+  for i: 0..<FX {
+    k := i * FX_FLOATS;
+    if r[0].fx[k + 7] <= 0 || r[0].fx[k + 6] >= r[0].fx[k + 7] { pick = i; break; }
+    share := r[0].fx[k + 6] / r[0].fx[k + 7];
+    if share > oldest { oldest = share; pick = i; }
+  }
+  k := pick * FX_FLOATS;
+  r[0].fx[k] = x; r[0].fx[k + 1] = y; r[0].fx[k + 2] = z;
+  r[0].fx[k + 3] = vx; r[0].fx[k + 4] = vy; r[0].fx[k + 5] = vz;
+  r[0].fx[k + 6] = 0; r[0].fx[k + 7] = life; r[0].fx[k + 8] = size; r[0].fx[k + 9] = f32(kind);
+}
+// A burst of n droplets thrown up from (x, y, z), up to `speed` m/s up and half that out.
+fx_spray :: (r: [] River, x: f32, y: f32, z: f32, n: int, speed: f32, size: f32) {
+  for q: 0..<n {
+    a := fx_rand(r) * f32(TAU_D);
+    out := speed * (0.25 + 0.35 * fx_rand(r));
+    up := speed * (0.55 + 0.45 * fx_rand(r));
+    fx_add(r, x, y, z, cos(a) * out, up, sin(a) * out, 0.45 + 0.5 * fx_rand(r), size * (0.6 + 0.8 * fx_rand(r)), FX_SPRAY);
+  }
+}
+fx_live :: (r: [] River) -> int {
+  n := 0;
+  for i: 0..<FX { k := i * FX_FLOATS; if r[0].fx[k + 7] > 0 && r[0].fx[k + 6] < r[0].fx[k + 7] { n += 1; } }
+  return n;
+}
+
+// A spell's water where it strikes (W8: everglade-spells.coax): kind 0 a meteor's crown splash and its
+// steam, 1 a bolt's flash of steam and spray, 2 a water orb bursting, 3 debris falling in. Rings run
+// out from it and floats within reach are thrown back.
+SPLASH_CROWN :: 0; SPLASH_BOLT :: 1; SPLASH_ORB :: 2; SPLASH_DEBRIS :: 3;
+everglade_river_splash :: (r: [] River, x: f32, z: f32, kind: int, size: f32, time: f64) -> bool #export_c {
+  if !r[0].ready { return false; }
+  s := water_sample(r[0].set, f64(x), f64(z), river_tick(time));
+  if !s.found { return false; }
+  y := cast(f32) s.height + r[0].rise;
+  t := river_clock(time);
+  k := clamp_f(size, 0.2, 6);
+  if kind == SPLASH_CROWN {
+    fx_spray(r, x, y, z, 22, 7.0, 0.16);
+    for q: 0..<6 { fx_add(r, x + (fx_rand(r) - 0.5) * k, y + 0.2, z + (fx_rand(r) - 0.5) * k, (fx_rand(r) - 0.5) * 0.6, 1.4 + fx_rand(r), (fx_rand(r) - 0.5) * 0.6, 3.5, 1.2 + fx_rand(r), FX_STEAM); }
+    water_add_ripple(r[0].ripples[..], x, z, t, 0.06);
+    water_add_ripple(r[0].ripples[..], x, z, t - 0.35, 0.04);
+  } else if kind == SPLASH_BOLT {
+    fx_spray(r, x, y, z, 10, 4.0, 0.1);
+    for q: 0..<4 { fx_add(r, x + (fx_rand(r) - 0.5), y + 0.1, z + (fx_rand(r) - 0.5), 0, 1.0 + fx_rand(r), 0, 2.2, 0.8 + 0.5 * fx_rand(r), FX_STEAM); }
+    water_add_ripple(r[0].ripples[..], x, z, t, 0.04);
+  } else if kind == SPLASH_ORB {
+    fx_spray(r, x, y, z, 20, 5.0, 0.14);
+    water_add_ripple(r[0].ripples[..], x, z, t, 0.06);
+    water_add_ripple(r[0].ripples[..], x, z, t - 0.3, 0.035);
+  } else {
+    fx_spray(r, x, y, z, 6, 2.5, 0.09);
+    water_add_ripple(r[0].ripples[..], x, z, t, 0.02);
+  }
+  // floats within reach are thrown back from it (the orb's splash reaches 2 m and 2.2 its radius)
+  reach := ifx kind == SPLASH_DEBRIS then 1.0 else 2.0 + 0.6 * f64(k);
+  for i: 0..<r[0].float_n {
+    b := r[0].floats[i];
+    dx := b.pos.x - f64(x); dz := b.pos.z - f64(z);
+    d := sqrt(dx * dx + dz * dz);
+    if d >= reach { continue; }
+    shove := (1.0 - d / reach) * (ifx kind == SPLASH_DEBRIS then 0.5 else 3.0);
+    ux := ifx d > 0.01 then dx / d else 1.0; uz := ifx d > 0.01 then dz / d else 0.0;
+    r[0].floats[i] = rigid_wake(b);
+    r[0].floats[i].vel = d3_add(b.vel, d3(ux * shove, shove * 0.5, uz * shove));
+  }
+  return true;
+}
+
+// The water's clock folded on the hour, as the ripples keep it.
+river_clock :: (time: f64) -> f32 { return cast(f32) (time - 3600.0 * floor(time / 3600.0)); }
+
+// ---- the wakes (W6: Kelvin's wedge and a foam trail behind what moves through the water)
+
+// Mover m is at (x, z) at t (on the folded clock), in the water or not: its head follows it, and
+// every WAKE_LAY s it has moved a point is laid behind it. A jump of more than 4 m starts it over.
+wake_follow :: (r: [] River, m: int, x: f32, z: f32, t: f32, wet: bool) {
+  k := m * WAKE_POINTS * 4;
+  tr := r[0].trail[k..<k + WAKE_POINTS * 4];
+  dx := x - tr[4]; dz := z - tr[5];
+  since := t - r[0].trail_t[m];
+  if since < 0 || dx * dx + dz * dz > 16 || tr[6] > t {
+    for q: 0..<WAKE_POINTS * 4 { tr[q] = 0; }
+    r[0].trail_t[m] = t; since = 0;
+    tr[4] = x; tr[5] = z; tr[6] = t;
+  }
+  // the head: where it is now, how fast since the last point
+  gap := sqrt(dx * dx + dz * dz);
+  speed := ifx since > 0.02 then gap / since else tr[3];
+  tr[0] = x; tr[1] = z; tr[2] = t; tr[3] = ifx wet then lo_f(speed, 4) else 0.0f32;
+  if since >= f32(WAKE_LAY) && gap > 0.05 {
+    q := WAKE_POINTS - 1;
+    while q > 1 { for c: 0..<4 { tr[q * 4 + c] = tr[(q - 1) * 4 + c]; } q -= 1; }
+    tr[4] = x; tr[5] = z; tr[6] = t; tr[7] = tr[3];
+    r[0].trail_t[m] = t;
+  } else if since >= f32(WAKE_LAY) {
+    r[0].trail_t[m] = t;
+  }
+}
+
+// ---- each frame: the wakes and particles move on and are written for the shader
+
+// Steps the wakes and the particles by dt and writes FX_ROWS rows into out: you at (you_x, you_z) in
+// `medium` (or the boat you sit in), the eye at (ex, ey, ez).
+everglade_river_fx :: (r: [] River, out: [] f32, dt: f32, time: f64, you_x: f32, you_z: f32, medium: int, ex: f32, ey: f32, ez: f32) #export_c {
+  if !r[0].ready || out.count < FX_ROWS * 4 { return; }
+  h := ifx dt == dt && dt > 0 then lo_f(dt, 0.1) else 0.0f32;
+  t := river_clock(time);
+  r[0].clock = t;
+  // the movers: you (your boat), and the duck nearest the eye
+  wet := medium != MEDIUM_GROUND && medium != MEDIUM_DIVING;
+  wx := you_x; wz := you_z;
+  if r[0].aboard >= 0 { b := r[0].floats[r[0].aboard]; wx = cast(f32) b.pos.x; wz = cast(f32) b.pos.z; wet = true; }
+  wake_follow(r, 0, wx, wz, t, wet);
+  duck := -1; near := 1000000.0;
+  for i: 0..<r[0].float_n {
+    if r[0].kinds[i] != FLOAT_DUCK { continue; }
+    d := (r[0].floats[i].pos.x - f64(ex)) * (r[0].floats[i].pos.x - f64(ex)) + (r[0].floats[i].pos.z - f64(ez)) * (r[0].floats[i].pos.z - f64(ez));
+    if d < near { near = d; duck = i; }
+  }
+  if duck >= 0 { wake_follow(r, 1, cast(f32) r[0].floats[duck].pos.x, cast(f32) r[0].floats[duck].pos.z, t, true); }
+  // the weir: mist over it and its pool, spray where the sheet strikes (only near enough to see)
+  wd := (ex - f32(RIVER_X)) * (ex - f32(RIVER_X)) + (ez - f32(WEIR_Z)) * (ez - f32(WEIR_Z));
+  if wd < 80 * 80 && h > 0 {
+    r[0].mist_carry += h * 3.0;
+    while r[0].mist_carry >= 1 {
+      r[0].mist_carry -= 1;
+      inpool := fx_rand(r) < 0.45;
+      mx := ifx inpool then f32(POOL_X) + (fx_rand(r) - 0.5) * 3.0 else r[0].weir[0] + fx_rand(r) * (r[0].weir[1] - r[0].weir[0]);
+      mz := ifx inpool then f32(POOL_Z) + (fx_rand(r) - 0.5) * 2.5 else f32(WEIR_Z) - 0.4 - fx_rand(r) * 0.6;
+      fx_add(r, mx, r[0].weir[3] + 0.15, mz, (fx_rand(r) - 0.5) * 0.15, 0.12 + 0.12 * fx_rand(r), -0.18 - 0.1 * fx_rand(r), 3.0 + fx_rand(r), 0.9 + 0.7 * fx_rand(r), FX_MIST);
+    }
+    r[0].foot_carry += h * 7.0;
+    while r[0].foot_carry >= 1 {
+      r[0].foot_carry -= 1;
+      fx_add(r, r[0].weir[0] + 0.3 + fx_rand(r) * (r[0].weir[1] - r[0].weir[0] - 0.6), r[0].weir[3] + 0.02, f32(WEIR_Z) - 0.25 - 0.15 * fx_rand(r),
+             (fx_rand(r) - 0.5) * 0.4, 0.9 + 0.9 * fx_rand(r), -0.3 - 0.4 * fx_rand(r), 0.4 + 0.3 * fx_rand(r), 0.05 + 0.05 * fx_rand(r), FX_SPRAY);
+    }
+  }
+  // the oars: a splash at the catch, drips off the blades as they lift
+  if r[0].aboard >= 0 && h > 0 {
+    b := r[0].floats[r[0].aboard];
+    phase := oar_phase(r[0].oar_t);
+    wet_now := r[0].oar_t > 0 && phase < f32(BOAT_POWER);
+    level := cast(f32) b.pos.y - 0.14;
+    if wet_now != r[0].oar_wet {
+      for side: 0..<2 {
+        p := oar_blade(b, ifx side == 0 then -1.0 else 1.0, phase);
+        if wet_now { fx_spray(r, cast(f32) p.x, level, cast(f32) p.y, 3, 1.6, 0.07); water_add_ripple(r[0].ripples[..], cast(f32) p.x, cast(f32) p.y, t, 0.012); }
+        else { for q: 0..<3 { fx_add(r, cast(f32) p.x + (fx_rand(r) - 0.5) * 0.2, level + 0.25, cast(f32) p.y + (fx_rand(r) - 0.5) * 0.2, 0, -0.2, 0, 0.5 + 0.3 * fx_rand(r), 0.04, FX_DRIP); } }
+      }
+      r[0].oar_wet = wet_now;
+    }
+  }
+  // each particle on
+  for i: 0..<FX {
+    k := i * FX_FLOATS;
+    if r[0].fx[k + 7] <= 0 { continue; }
+    r[0].fx[k + 6] += h;
+    if r[0].fx[k + 6] >= r[0].fx[k + 7] { r[0].fx[k + 7] = 0; continue; }
+    kind := cast(int) r[0].fx[k + 9];
+    if kind == FX_SPRAY || kind == FX_DRIP { r[0].fx[k + 4] -= 9.81 * h; }
+    else if kind == FX_STEAM { r[0].fx[k + 4] *= 1.0 - 0.6 * h; r[0].fx[k + 8] += 0.5 * h; }
+    else { r[0].fx[k + 8] += 0.25 * h; }
+    for c: 0..<3 { r[0].fx[k + c] += r[0].fx[k + 3 + c] * h; }
+  }
+  // the rows: the weir, the hulls, the trails, the particles
+  out[0] = r[0].weir[0]; out[1] = r[0].weir[1]; out[2] = f32(WEIR_Z); out[3] = 1;
+  out[4] = r[0].weir[2] + r[0].rise; out[5] = r[0].weir[3] + r[0].rise; out[6] = f32(RIVER_SPEED) * (1 + r[0].flow_boost) * 1.8; out[7] = 0;
+  n := 0;
+  for i: 0..<r[0].float_n {
+    if r[0].kinds[i] != FLOAT_BOAT || n >= 3 { continue; }
+    b := r[0].floats[i];
+    k := (2 + n) * 4;
+    out[k] = cast(f32) b.pos.x; out[k + 1] = cast(f32) b.pos.z; out[k + 2] = cast(f32) yaw_of_q(b.orientation); out[k + 3] = 1;
+    n += 1;
+  }
+  while n < 3 { k := (2 + n) * 4; for c: 0..<4 { out[k + c] = 0; } n += 1; }
+  for q: 0..<WAKE_MOVERS * WAKE_POINTS * 4 { out[20 + q] = r[0].trail[q]; }
+  at := 20 + WAKE_MOVERS * WAKE_POINTS * 4;
+  for i: 0..<FX {
+    k := i * FX_FLOATS;
+    o := at + i * 8;
+    life := r[0].fx[k + 7];
+    if life <= 0 { for c: 0..<8 { out[o + c] = 0; } continue; }
+    f := r[0].fx[k + 6] / life;
+    kind := cast(int) r[0].fx[k + 9];
+    alpha := 0.0f32;
+    if kind == FX_SPRAY { alpha = 0.85 * (1 - f * f); }
+    else if kind == FX_DRIP { alpha = 0.8; }
+    else if kind == FX_MIST { alpha = 0.16 * clamp_f(f * 4, 0, 1) * (1 - f); }
+    else { alpha = 0.4 * clamp_f(f * 5, 0, 1) * (1 - f) * (1 - f); }
+    out[o] = r[0].fx[k]; out[o + 1] = r[0].fx[k + 1]; out[o + 2] = r[0].fx[k + 2]; out[o + 3] = r[0].fx[k + 8];
+    out[o + 4] = f32(kind); out[o + 5] = alpha; out[o + 6] = f; out[o + 7] = 0;
+  }
 }
 
 // ---- checks
@@ -850,4 +1276,95 @@ test_ground :: (heights: [] f32, levels: [] f32) {
       #assert abs(y - 0.75) < 0.12;
     }
   }
+}
+
+// The pond test's bowl: 3 m deep under a level of 0.75 at (-40, 20), rim 6 m.
+test_pond :: (heights: [] f32, all: [] f32) {
+  test_ground(heights, all);
+  for j: 0..<TEST_N + 1 {
+    for i: 0..<TEST_N + 1 {
+      x := -104.0f32 + f32(i) * 2; z := -104.0f32 + f32(j) * 2;
+      d := sqrt((x + 40) * (x + 40) + (z - 20) * (z - 20));
+      t := d / 6;
+      bed := ifx d < 6 then 0.75 + 0.25 - 3.25 * (1 - t * t) else 1.0 + (d - 6) * 0.7;
+      heights[j * (TEST_N + 1) + i] = lo_f(heights[j * (TEST_N + 1) + i], bed);
+    }
+  }
+  k := TEST_N + 1;
+  all[k] = -40; all[k + 1] = 20; all[k + 2] = 6; all[k + 3] = 0.75;
+}
+
+#test "you board the pond's rowboat, row it ahead and round, and step ashore on its bank" {
+  heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
+  all: [TEST_N + 1 + PONDS * 4] f32;
+  test_pond(heights[..], all[..]);
+  r: [1] River;
+  everglade_river_start(r[..], heights[..], all[..], TEST_N, 2, -104, -104);
+  out: [FLOATS * 8] f32;
+  for q: 0..<30 { fl := everglade_river_floats(r[..], 1.0 / 60.0, out[..]); }
+  boat := everglade_river_first_boat(r[..]);
+  #assert boat >= 0;
+  b0 := r[0].floats[boat];
+  // near its hull you may board it; far off not
+  #assert everglade_river_boat_near(r[..], cast(f32) b0.pos.x + 1.4, cast(f32) b0.pos.z) == boat || everglade_river_boat_near(r[..], cast(f32) b0.pos.x, cast(f32) b0.pos.z + 1.4) == boat;
+  #assert everglade_river_boat_near(r[..], cast(f32) b0.pos.x + 9, cast(f32) b0.pos.z + 9) == -1;
+  #assert everglade_river_board(r[..], boat) && r[0].aboard == boat;
+  #assert everglade_river_boat_near(r[..], cast(f32) b0.pos.x, cast(f32) b0.pos.z) == -1;
+  // seated: the boat's medium, your feet at its thwart, breath full
+  sw := everglade_river_swim(r[..], heights[..], cast(f32) b0.pos.x, cast(f32) b0.pos.z, true, 1.0 / 60.0, 1);
+  #assert sw.medium == MEDIUM_BOAT && sw.breath == 1;
+  seat := everglade_river_seat(r[..]);
+  #assert seat.on && seat.boat == boat && abs(seat.y - cast(f32) (b0.pos.y + BOAT_SEAT)) < 0.01;
+  // two seconds rowing ahead: it moves along its bow at a walking pace, the oars swing
+  yaw0 := yaw_of_q(b0.orientation);
+  everglade_river_row(r[..], 1, 0);
+  oars := false;
+  for q: 0..<120 { fl := everglade_river_floats(r[..], 1.0 / 60.0, out[..]); if out[boat * 8 + 6] > 0.1 { oars = true; } }
+  b1 := r[0].floats[boat];
+  ahead := (b1.pos.x - b0.pos.x) * sin(yaw0) + (b1.pos.z - b0.pos.z) * cos(yaw0);
+  speed := everglade_river_seat(r[..]).speed;
+  #assert oars && ahead > 0.4 && speed > 0.2 && speed < 2.5;
+  // rowing round turns it, and it stays afloat in the pond
+  everglade_river_row(r[..], 0, 1);
+  for q: 0..<90 { fl := everglade_river_floats(r[..], 1.0 / 60.0, out[..]); }
+  b2 := r[0].floats[boat];
+  #assert abs(turn_d(yaw_of_q(b2.orientation), yaw_of_q(b1.orientation))) > 0.2;
+  #assert sqrt((b2.pos.x + 40) * (b2.pos.x + 40) + (b2.pos.z - 20) * (b2.pos.z - 20)) < 6;
+  // ashore: within reach of the hull, no deeper than a wade; the boat stays tied up there
+  off := everglade_river_leave(r[..], heights[..], 10);
+  #assert off.on && r[0].aboard == -1;
+  gx := f64(off.x) - b2.pos.x; gz := f64(off.z) - b2.pos.z;
+  #assert sqrt(gx * gx + gz * gz) < 5;
+  #assert abs(r[0].homes[boat * 3] - b2.pos.x) < 0.001 && everglade_river_boat_near(r[..], cast(f32) b2.pos.x + 9, cast(f32) b2.pos.z + 9) == -1;
+}
+
+#test "a wake trail lays behind what moves on the water, and the spray stays bounded" {
+  heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
+  levels: [TEST_N + 1] f32;
+  test_ground(heights[..], levels[..]);
+  r: [1] River;
+  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -104, -104);
+  u: [FX_ROWS * 4] f32;
+  // a swimmer heading south at 1 m/s for 3 s
+  for q: 0..<180 { everglade_river_fx(r[..], u[..], 1.0 / 60.0, 10 + f64(q) / 60.0, 88, -30 - f32(q) / 60.0, MEDIUM_SWIMMING, 88, 5, -40); }
+  laid := 0;
+  for p: 1..<WAKE_POINTS { if u[20 + p * 4 + 2] > 0 { laid += 1; } }
+  #assert laid >= 5 && abs(u[20 + 3] - 1) < 0.2;
+  // the trail's points run back up the swimmer's path, oldest farthest
+  #assert u[20 + 4 * 4 + 1] > u[20 + 1 * 4 + 1];
+  // out of the water: no wake
+  everglade_river_fx(r[..], u[..], 1.0 / 60.0, 13.1, 84, -33, MEDIUM_GROUND, 88, 5, -40);
+  #assert u[20 + 3] == 0;
+  // a hundred splashes and a minute by the weir: never more than FX particles, all of them finite
+  for q: 0..<100 { hit := everglade_river_splash(r[..], 88, -40, q % 4, 3, 14); }
+  for q: 0..<600 { everglade_river_fx(r[..], u[..], 0.1, 14 + f64(q) * 0.1, 84, -33, MEDIUM_GROUND, 88, 2, -36); }
+  live := 0;
+  at := 20 + WAKE_MOVERS * WAKE_POINTS * 4;
+  for i: 0..<FX {
+    o := at + i * 8;
+    if u[o + 5] > 0 { live += 1; #assert u[o] == u[o] && u[o + 1] > -10 && u[o + 1] < 20 && u[o + 6] <= 1; }
+  }
+  #assert live > 0 && live <= FX && r[0].weir[1] > r[0].weir[0] && r[0].weir[2] > r[0].weir[3];
+  // a splash off the water does nothing
+  #assert !everglade_river_splash(r[..], 0, 0, SPLASH_ORB, 3, 20);
 }

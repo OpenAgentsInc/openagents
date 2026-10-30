@@ -1,0 +1,111 @@
+// Spells and water (phase W8 of verse/everglade/previous/water.md, "Spells
+// and water"): the rules a realm's spells follow where they meet water, as
+// pure functions over verse/rules/srd5.coax's dice, spells and damage. The
+// realm finds the contact point and who stands in which water; these say
+// what happens. Everglade casts its bar on them (everglade-spells.coax).
+//
+// - Lightning in water (the old W8 rule, "Lightning in water"; ours, not
+//   the SRD's): a creature in the same body of water within 6 m of a
+//   lightning effect's contact point, wading, swimming or diving and not
+//   already in the spell's own area, makes the spell's save and takes half
+//   the lightning on a failure, none on a success. Sitting in a boat
+//   insulates. A spell attack never conducts (none on Everglade's bar).
+// - Fire meets water (the SRD's one rule for water): a creature fully under
+//   water has Resistance to Fire, so it takes half; and a fire spell's area
+//   on water raises steam, not ground fire (the realm draws that).
+// - The splash each spell raises where it meets water (the old table's
+//   crown splash and steam for Meteor Swarm, a steam puff and ring for a
+//   bolt, a burst of spray for the Water Orb): water_spell_splash.
+//
+//   coax/bin/coax test --library verse/water-spells.coax
+
+#load "rules/srd5.coax";
+
+WATER_CONDUCT :: 6.0;     // m: the 20 ft a bolt reaches through water
+// Where a creature is (verse/everglade/river.coax's media): out of the water, wading, swimming,
+// diving (fully under), seated in a boat.
+WS_OUT :: 0; WS_WADING :: 1; WS_SWIMMING :: 2; WS_DIVING :: 3; WS_BOAT :: 4;
+// What a conducted bolt did to a creature.
+WS_NONE :: 0;             // out of reach: not in the water, another body, too far, or in the blast itself
+WS_INSULATED :: 1;        // in a boat over the water it struck
+WS_SAVED :: 2;            // made its save: no damage
+WS_SHOCKED :: 3;          // failed it: half the lightning
+
+WaterShock :: struct { result: int; save: SrdSave; amount: int; }
+
+// Whether a spell's damage is lightning (either of its kinds), and the lightning's share of a roll.
+water_lightning :: (s: SrdSpell) -> bool { return s.kind == DMG_LIGHTNING || s.kind2 == DMG_LIGHTNING; }
+water_lightning_amount :: (s: SrdSpell, d: SrdDamage) -> int {
+  n := 0;
+  if d.kind == DMG_LIGHTNING { n += d.amount; }
+  if d.kind2 == DMG_LIGHTNING { n += d.amount2; }
+  return n;
+}
+
+// A lightning spell striking water at a contact point: a creature `medium` (WS_*) in the same body
+// (`same_body`) `distance` m from it, `in_area` when the blast itself reaches it; its save modifier
+// against the caster's DC. Rolls the save only when it is reached.
+water_conduct :: (d: [] SrdDice, s: SrdSpell, dmg: SrdDamage, medium: int, same_body: bool, distance: f32,
+                  in_area: bool, modifier: int, dc: int) -> WaterShock {
+  out: WaterShock;
+  if !water_lightning(s) || !same_body || !(distance <= f32(WATER_CONDUCT)) || in_area { return out; }
+  if medium == WS_BOAT { out.result = WS_INSULATED; return out; }
+  if medium < WS_WADING || medium > WS_DIVING { return out; }
+  out.save = srd_save(d, modifier, dc);
+  if out.save.success { out.result = WS_SAVED; return out; }
+  out.result = WS_SHOCKED;
+  out.amount = water_lightning_amount(s, dmg) / 2;
+  return out;
+}
+
+// Fire damage to a creature in `medium`: halved fully under water (Resistance, rounded down).
+water_fire_taken :: (amount: int, medium: int) -> int { return ifx medium == WS_DIVING then amount / 2 else amount; }
+
+// The splash a spell raises where it meets water (river.coax everglade_river_splash's kinds):
+// fire a crown splash and steam, lightning a puff of steam and spray, anything else a burst of spray.
+WS_SPLASH_CROWN :: 0; WS_SPLASH_BOLT :: 1; WS_SPLASH_BURST :: 2;
+water_spell_splash :: (s: SrdSpell) -> int {
+  if s.kind == DMG_FIRE || s.kind2 == DMG_FIRE { return WS_SPLASH_CROWN; }
+  if water_lightning(s) { return WS_SPLASH_BOLT; }
+  return WS_SPLASH_BURST;
+}
+
+// ---- checks
+
+#test "a bolt conducts to a swimmer 5 m off and not 7 m off, nor across to another body or into a boat" {
+  d := [1] SrdDice.[srd_dice(7)];
+  bolt := srd_spell(SPELL_THUNDERBOLT);
+  dmg := SrdDamage.{amount = 110, kind = DMG_LIGHTNING, amount2 = 0, kind2 = DMG_NONE};
+  // the rule reaches 6 m: 5 m rolls a save, 7 m doesn't
+  close := water_conduct(d[..], bolt, dmg, WS_SWIMMING, true, 5, false, 3, 15);
+  #assert close.result == WS_SAVED || close.result == WS_SHOCKED;
+  #assert close.save.total == close.save.roll + 3 && close.save.dc == 15;
+  #assert close.result == WS_SAVED || close.amount == 55;
+  #assert water_conduct(d[..], bolt, dmg, WS_SWIMMING, true, 7, false, 3, 15).result == WS_NONE;
+  #assert water_conduct(d[..], bolt, dmg, WS_SWIMMING, false, 2, false, 3, 15).result == WS_NONE;
+  #assert water_conduct(d[..], bolt, dmg, WS_BOAT, true, 2, false, 3, 15).result == WS_INSULATED;
+  #assert water_conduct(d[..], bolt, dmg, WS_OUT, true, 2, false, 3, 15).result == WS_NONE;
+  // in the blast's own area: the direct hit, never both
+  #assert water_conduct(d[..], bolt, dmg, WS_WADING, true, 2, true, 3, 15).result == WS_NONE;
+  // a failed save takes half, a success none: over many casts both happen, half each time
+  shocked := 0; saved := 0;
+  for k: 0..<200 {
+    w := water_conduct(d[..], bolt, dmg, WS_DIVING, true, 4, false, 0, 15);
+    if w.result == WS_SHOCKED { shocked += 1; #assert w.amount == 55 && !w.save.success; }
+    if w.result == WS_SAVED { saved += 1; #assert w.amount == 0 && w.save.success; }
+  }
+  // d20 + 0 against 15 succeeds on 15 to 20: 30 percent
+  #assert shocked + saved == 200 && saved > 35 && saved < 85;
+}
+
+#test "fire under water is halved, other spells don't conduct, and each spell has its splash" {
+  #assert water_fire_taken(71, WS_DIVING) == 35 && water_fire_taken(71, WS_SWIMMING) == 71;
+  d := [1] SrdDice.[srd_dice(3)];
+  meteor := srd_spell(SPELL_METEOR_SWARM);
+  dmg := SrdDamage.{amount = 70, kind = DMG_FIRE, amount2 = 66, kind2 = DMG_BLUDGEONING};
+  #assert water_conduct(d[..], meteor, dmg, WS_SWIMMING, true, 1, false, 3, 15).result == WS_NONE;
+  #assert water_spell_splash(meteor) == WS_SPLASH_CROWN;
+  #assert water_spell_splash(srd_spell(SPELL_MEGA_THUNDERBOLT)) == WS_SPLASH_BOLT;
+  #assert water_spell_splash(srd_spell(SPELL_WATER_ORB)) == WS_SPLASH_BURST;
+  #assert water_lightning_amount(srd_spell(SPELL_THUNDERBOLT), SrdDamage.{amount = 40, kind = DMG_LIGHTNING}) == 40;
+}

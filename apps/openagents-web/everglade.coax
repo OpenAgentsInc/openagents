@@ -104,7 +104,12 @@ U_LIGHTS :: U_LIGHT_INFO + 4;
 U_WEATHER :: U_LIGHTS + LIGHTS * 8;   // 3 rows: rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain, 0, 0 (weather_frame)
 // The ponds (plan.coax EG_POND): x, z, rim radius and level each (everglade.wgsl pond_vertex).
 U_PONDS :: U_WEATHER + 12;
-UNIFORM_FLOATS :: U_PONDS + EG_PONDS * 4;
+// The water's wakes, particles and the weir's sheet (W6, verse/everglade/river.coax everglade_river_fx
+// writes them after the frame): the weir (2 rows), the rowboats' hulls (3), the wakes' trails (16) and
+// the particles (64, 2 rows each); river.coax FX_ROWS. everglade.wgsl U.fx.
+FX_ROWS :: 149;
+U_FX :: U_PONDS + EG_PONDS * 4;
+UNIFORM_FLOATS :: U_FX + FX_ROWS * 4;
 
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4; SHAPE_MESH :: 5; SHAPE_SKINNED :: 6;
 SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
@@ -213,6 +218,12 @@ FLOATS :: 28;
 FLOAT_FLOATS :: 8;
 // Your medium in the water (river.coax): ground, wading, swimming, diving.
 WATER_GROUND :: 0; WATER_WADING :: 1; WATER_SWIMMING :: 2; WATER_DIVING :: 3;
+WATER_BOAT :: 4;          // seated in a rowboat (river.coax MEDIUM_BOAT)
+// The water draw's instances after the river's patches: the fountain's, the ponds', the weir's sheet,
+// then the particles (everglade.wgsl water_vs), FX_INSTANCES of them, so a phone's 144 vertices an
+// instance still hold the 64 (6 vertices each).
+FX_INSTANCES :: 3;
+WATER_HITS :: 8;
 RANGER_NAME :: "player/male-ranger";   // its catalog line (C) in the pack
 MSG_PACK :: 605;          // the host's pack progress: "LOADED TOTAL"
 MSG_FACTS :: 600;         // the host's page facts, a line each (now=, player=)
@@ -316,6 +327,15 @@ Everglade :: struct {
   plate_n: int;
   // talking: who is near, who you talk to, what was said and what you type
   near: int; talk: int;
+  near_boat: int;           // the rowboat you may board (river.coax everglade_river_boat_near), -1 none
+  boat_ask: bool;           // E (or the prompt) pressed to board it or step ashore (the face takes it)
+  boat_start: bool;         // #rowboat: start in the Lantern Pond's rowboat
+  // The water on the ground's grid for the debris (verse/demolish.coax demo_step_wet) and the spells
+  // (W6, W8): the surface's height (DEMO_DRY none), the current's x and z, 3 numbers a ground point.
+  water_grid: [EG_GROUND_POINTS * 3] f32;
+  // where the spells and the debris struck the water this frame (x, z, kind, size), for the face to
+  // splash on the river (river.coax everglade_river_splash)
+  water_hits: [WATER_HITS * 4] f32; hit_n: int;
   line_npc: [TALK_LINES] bool; line_len: [TALK_LINES] int; line_text: [TALK_LINES * LINE_BYTES] u8; line_n: int;
   typed: [TYPED] u8; typed_n: int;
   waiting: bool; waited: f32;
@@ -407,7 +427,7 @@ walk_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return everglade_walk_heig
 // a patch and patches, none until it is built) and its floats.
 everglade_water :: (s: [] Everglade, medium: int, feet: f32, breath: f32, gasps: int, vertices: int, patches: int, floats: [] f32, float_n: int) #export_c {
   if !s[0].started { everglade_start(s); }
-  s[0].water = ifx medium >= WATER_GROUND && medium <= WATER_DIVING then medium else WATER_GROUND;
+  s[0].water = ifx medium >= WATER_GROUND && medium <= WATER_BOAT then medium else WATER_GROUND;
   s[0].swim_feet = ifx finite(feet) then feet else 0.0f32;
   s[0].breath = ifx finite(breath) then clamp(breath, 0, 1) else 1.0f32;
   s[0].gasps = hi_i(gasps, 0);
@@ -431,6 +451,70 @@ everglade_on_bridge :: (s: [] Everglade, x: f32, z: f32) -> bool #export_c {
 }
 // Where the river's uniform block and the eye are in the uniforms.
 everglade_water_at :: () -> int #export_c { return U_WATER; }
+everglade_fx_at :: () -> int #export_c { return U_FX; }
+// The water on the ground's grid (W6, W8): the river's level along its channel (and its current
+// south at its mean speed), each pond's still level out to 2 m past its rim; the rest dry.
+water_grid_build :: (s: [] Everglade) {
+  w := EG_CELLS + 1;
+  levels: [EG_CELLS + 1] f32;
+  everglade_river_levels(s[0].heights[..], levels[..]);
+  ponds: [EG_PONDS * 4] f32;
+  everglade_pond_rows(s[0].heights[..], ponds[..]);
+  for j: 0..<w {
+    for i: 0..<w {
+      x := f32(EG_EDGE) + f32(i) * f32(EG_CELL); z := f32(EG_EDGE) + f32(j) * f32(EG_CELL);
+      o := (j * w + i) * 3;
+      s[0].water_grid[o] = f32(DEMO_DRY); s[0].water_grid[o + 1] = 0; s[0].water_grid[o + 2] = 0;
+      if abs(x - f32(EG_RIVER_X)) <= 6 { s[0].water_grid[o] = levels[j]; s[0].water_grid[o + 2] = -0.45; continue; }
+      for p: 0..<EG_PONDS {
+        dx := x - ponds[p * 4]; dz := z - ponds[p * 4 + 1];
+        if ponds[p * 4 + 2] > 0 && dx * dx + dz * dz < (ponds[p * 4 + 2] + 2) * (ponds[p * 4 + 2] + 2) { s[0].water_grid[o] = ponds[p * 4 + 3]; }
+      }
+    }
+  }
+}
+// The water's surface over (x, z) (the rain's rise on it), or DEMO_DRY where the ground is above it.
+water_at :: (s: [] Everglade, x: f32, z: f32) -> f32 {
+  sea := demo_water_at(everglade_ground(), s[0].water_grid[..], x, z);
+  if sea.x <= f32(DEMO_DRY) + 1 || sea.x <= ground_at(s, x, z) + 0.02 { return f32(DEMO_DRY); }
+  return sea.x + s[0].rise;
+}
+// Which body of water (x, z) is in: 0 the river, 1 to 4 a pond, -1 none (for lightning's reach).
+water_body_of :: (x: f32, z: f32) -> int {
+  if abs(x - f32(EG_RIVER_X)) <= 6 { return 0; }
+  for p: 0..<EG_PONDS {
+    dx := x - EG_POND[p * 4]; dz := z - EG_POND[p * 4 + 1];
+    if dx * dx + dz * dz < (EG_POND[p * 4 + 2] + 2) * (EG_POND[p * 4 + 2] + 2) { return 1 + p; }
+  }
+  return -1;
+}
+// A splash for the face to raise on the river (river.coax SPLASH_* kinds), the oldest dropped when full.
+water_hit :: (s: [] Everglade, x: f32, z: f32, kind: int, size: f32) {
+  if s[0].hit_n >= WATER_HITS {
+    for k: 0..<(WATER_HITS - 1) * 4 { s[0].water_hits[k] = s[0].water_hits[k + 4]; }
+    s[0].hit_n = WATER_HITS - 1;
+  }
+  k := s[0].hit_n * 4;
+  s[0].water_hits[k] = x; s[0].water_hits[k + 1] = z; s[0].water_hits[k + 2] = f32(kind); s[0].water_hits[k + 3] = size;
+  s[0].hit_n += 1;
+}
+// The splashes since the face last asked (x, z, kind, size each), and none after.
+everglade_water_hits :: (s: [] Everglade, out: [] f32) -> int #export_c {
+  n := lo_int(s[0].hit_n, out.count / 4);
+  for k: 0..<n * 4 { out[k] = s[0].water_hits[k]; }
+  s[0].hit_n = 0;
+  return n;
+}
+// The rowboat you may board this frame (-1 none), from the face.
+everglade_boat_near :: (s: [] Everglade, i: int) #export_c { s[0].near_boat = i; }
+// True once when a #rowboat hash asked to start you in a boat.
+everglade_boat_start :: (s: [] Everglade) -> bool #export_c { a := s[0].boat_start; s[0].boat_start = false; return a; }
+// True once when E (or the prompt) asked to board the boat near you or step ashore from yours.
+everglade_boat_take :: (s: [] Everglade) -> bool #export_c { a := s[0].boat_ask; s[0].boat_ask = false; return a; }
+// Whether a boat prompt shows: one near, or you sit in one, and no one else to talk to.
+boat_prompt_on :: (s: [] Everglade) -> bool {
+  return !s[0].above && s[0].talk < 0 && !s[0].board && s[0].near < 0 && !s[0].near_board && (s[0].near_boat >= 0 || s[0].water == WATER_BOAT);
+}
 everglade_eye_at :: () -> int #export_c { return U_EYE; }
 // Whether this frame draws for a phone: the river's mesh is coarser there.
 everglade_phone :: (s: [] Everglade) -> bool #export_c { return phone(s); }
@@ -442,13 +526,14 @@ everglade_start :: (s: [] Everglade) {
   s[0].clock = 0.5; s[0].day.mode = STYLE_CLOCK_FIXED; s[0].day.at = 0.5; s[0].day_from = 0;   // noon until the page says
   ok := everglade_build_ground(s[0].heights[..]);
   s[0].deck = everglade_deck(s[0].heights[..]);
+  water_grid_build(s);
   s[0].breath = 1;
   s[0].spawn = v3(f32(EG_SPAWN_X), 0, f32(EG_SPAWN_Z));
   s[0].spawn_face = 0;
   s[0].feet = v3(s[0].spawn.x, ground_at(s, s[0].spawn.x, s[0].spawn.z), s[0].spawn.z);
   s[0].orbit = verse_orbit_start(s[0].feet, 0);
   s[0].map_finger = -1;
-  s[0].near = -1; s[0].talk = -1; s[0].talk_finger = -1;
+  s[0].near = -1; s[0].talk = -1; s[0].talk_finger = -1; s[0].near_boat = -1;
   s[0].focus = -1; s[0].pick = 0; s[0].thanks = -1; s[0].board_finger = -1; s[0].news = -1; s[0].talk_quest = -1;
   ranger_load(s[0].rig[..]);
   s[0].skin[0] = Skin.{};
@@ -696,9 +781,11 @@ everglade_warp :: (s: [] Everglade) -> bool #export_c { w := s[0].warp; s[0].war
 everglade_hash :: (s: [] Everglade, hash: string) #export_c {
   if !s[0].started { everglade_start(s); }
   if hash == "above" || hash == "map" { s[0].above = true; s[0].lift = 1; return; }
-  // a pond's bank on its trail's side, facing the water
+  // a pond's bank on its trail's side, facing the water; #rowboat: in the Lantern Pond's boat
+  boat := hash == "rowboat";
   for p: 0..<EG_PONDS {
-    if hash != EG_POND_ID[p] { continue; }
+    if hash != EG_POND_ID[p] && !(boat && p == 0) { continue; }
+    s[0].boat_start = boat;
     px := EG_POND[p * 4]; pz := EG_POND[p * 4 + 1];
     nodes := EG_NODE_XZ; links := EG_LINK_AB;
     by := verse_path_nearest(nodes[..], links[..], px, pz);
@@ -820,6 +907,7 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if spells_key(s, key) { return true; }
   if (key == 'e' || key == 'E') && s[0].near_board && !s[0].above { open_board(s); return true; }
   if (key == 'e' || key == 'E') && s[0].near >= 0 && !s[0].above { talk_to(s, s[0].near); return true; }
+  if (key == 'e' || key == 'E') && boat_prompt_on(s) { s[0].boat_ask = true; return true; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
   if key == 'm' || key == 'M' { s[0].above = !s[0].above; return true; }
@@ -1135,6 +1223,7 @@ talk_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
     if s[0].talk >= 0 && in_box(s[0].bye_button, x, y) { end_talk(s); }
     else if s[0].talk < 0 && s[0].near_board && in_box(s[0].talk_button, x, y) { open_board(s); }
     else if s[0].talk < 0 && s[0].near >= 0 && in_box(s[0].talk_button, x, y) { talk_to(s, s[0].near); }
+    else if boat_prompt_on(s) && in_box(s[0].talk_button, x, y) { s[0].boat_ask = true; }
   }
   if phase >= 2 { s[0].talk_finger = -1; }
   return true;
@@ -1339,7 +1428,7 @@ river_floats :: (s: [] Everglade) {
     k := i * FLOAT_FLOATS;
     p := v3(s[0].floats[k], s[0].floats[k + 1], s[0].floats[k + 2]);
     yaw := s[0].floats[k + 3];
-    if s[0].floats[k + 7] > 1.5 { rowboat(s, p, yaw); continue; }
+    if s[0].floats[k + 7] > 1.5 { rowboat(s, p, yaw, s[0].floats[k + 6]); continue; }
     if s[0].floats[k + 7] < 0.5 {
       shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(p.x, p.y + 0.02, p.z), yaw, 0, 0.3, 0.2, 0.42, 0.42, 0.3, 0.18);
       hx := p.x + sin(yaw) * 0.16; hz := p.z + cos(yaw) * 0.16;
@@ -1357,23 +1446,55 @@ boat_part :: (s: [] Everglade, p: Point, ax: f32, az: f32, rx: f32, rz: f32, yaw
   shape(s, SHAPE_BOX, look, v3(p.x + rx * x + ax * z, p.y + y, p.z + rz * x + az * z), yaw, 0, sx, sy, sz, r, g, b);
 }
 
-// A moored rowboat (river.coax FLOAT_BOAT) about its hull's middle p, its bow
-// along yaw: a plank bottom, two sides, the ends, two thwarts and its oars
-// shipped inside, 3.2 m long and 1.1 m across.
-rowboat :: (s: [] Everglade, p: Point, yaw: f32) {
+// A rowboat (river.coax FLOAT_BOAT) about its hull's middle p, its bow
+// along yaw: a plank bottom, two sides, the ends, two thwarts and its oars:
+// shipped inside (oar < 0), or out through their oarlocks at the stroke's
+// share `oar` while you row it (river.coax oar_sweep: the same numbers),
+// dipped through the power stroke and lifted over the recovery.
+// 3.2 m long and 1.1 m across.
+ROW_OARLOCK :: 0.6; ROW_OAR :: 1.5; ROW_SWEEP :: 0.6; ROW_POWER :: 0.45;
+rowboat :: (s: [] Everglade, p: Point, yaw: f32, oar: f32) {
   ax := sin(yaw); az := cos(yaw);       // along, to the bow
   rx := az; rz := -ax;                  // across, to starboard
   boat_part(s, p, ax, az, rx, rz, yaw, 0, -0.17, 0, 0.94, 0.06, 2.96, LOOK_PLANKS, 0.5, 0.34, 0.2);
   for side: 0..<2 {
     x := ifx side == 0 then -0.51f32 else 0.51f32;
     boat_part(s, p, ax, az, rx, rz, yaw, x, 0, 0, 0.08, 0.4, 3.2, LOOK_WOOD, 0.44, 0.3, 0.18);
-    boat_part(s, p, ax, az, rx, rz, yaw, x * 0.7, 0.04, -0.2, 0.06, 0.04, 2.4, LOOK_WOOD, 0.66, 0.52, 0.34);
+    if oar < 0 { boat_part(s, p, ax, az, rx, rz, yaw, x * 0.7, 0.04, -0.2, 0.06, 0.04, 2.4, LOOK_WOOD, 0.66, 0.52, 0.34); continue; }
+    // out through its oarlock, swept by the stroke
+    sd := ifx side == 0 then -1.0f32 else 1.0f32;
+    a := ifx oar < f32(ROW_POWER) then f32(ROW_SWEEP) - 2 * f32(ROW_SWEEP) * oar / f32(ROW_POWER)
+         else -f32(ROW_SWEEP) + 2 * f32(ROW_SWEEP) * (oar - f32(ROW_POWER)) / (1 - f32(ROW_POWER));
+    dip := ifx oar < f32(ROW_POWER) then -0.36f32 * sin(f32(PI) * oar / f32(ROW_POWER)) - 0.06 else 0.08f32;
+    lock := v3(p.x + rx * sd * f32(ROW_OARLOCK), p.y + 0.22, p.z + rz * sd * f32(ROW_OARLOCK));
+    dir := v3(rx * sd * cos(a) + ax * sin(a), 0, rz * sd * cos(a) + az * sin(a));
+    blade := v3(lock.x + dir.x * f32(ROW_OAR), p.y + 0.2 + dip, lock.z + dir.z * f32(ROW_OAR));
+    grip := v3(lock.x - dir.x * 0.5, lock.y + 0.08 - dip * 0.3, lock.z - dir.z * 0.5);
+    boat_oar_rod(s, grip, blade, 0.045, v3(0.66, 0.52, 0.34));
+    tip := sub(blade, lock); tip.y = 0;
+    boat_oar_blade(s, blade, unit_or(tip, dir));
   }
   for end: 0..<2 {
     z := ifx end == 0 then -1.56f32 else 1.56f32;
     boat_part(s, p, ax, az, rx, rz, yaw, 0, 0, z, 1.1, 0.4, 0.08, LOOK_WOOD, 0.44, 0.3, 0.18);
     boat_part(s, p, ax, az, rx, rz, yaw, 0, 0.02, z * 0.45, 0.94, 0.05, 0.3, LOOK_PLANKS, 0.56, 0.4, 0.25);
   }
+}
+
+// An oar's loom from a to b, `thick` across: a box along it.
+boat_oar_rod :: (s: [] Everglade, a: Point, b: Point, thick: f32, colour: Point) {
+  d := sub(b, a);
+  l := length(d);
+  if l < 0.01 { return; }
+  y := times(d, 1 / l);
+  x := unit_or(cross(y, v3(0, 1, 0)), v3(1, 0, 0));
+  z := cross(x, y);
+  sp_shape(s, SHAPE_BOX, LOOK_WOOD, mix(a, b, 0.5), times(x, thick), times(y, l), times(z, thick), colour);
+}
+// A blade at the oar's end, flat, along `out`.
+boat_oar_blade :: (s: [] Everglade, at: Point, out: Point) {
+  side := unit_or(cross(out, v3(0, 1, 0)), v3(1, 0, 0));
+  sp_shape(s, SHAPE_BOX, LOOK_WOOD, sub(at, times(out, 0.18)), times(side, 0.16), v3(0, 0.025, 0), times(out, 0.42), v3(0.6, 0.46, 0.3));
 }
 
 // ---- the town, laid once from the plan out of the Medieval Village and
@@ -2258,6 +2379,7 @@ hint :: (s: [] Everglade) -> string {
   }
   if s[0].ev.editing { return edit_hint(s); }
   if s[0].news_time > 0 && s[0].news >= 0 { return news_line(s); }
+  if s[0].water == WATER_BOAT { return ifx phone(s) then "ROWING · LEFT THUMB ROWS AND TURNS" else "ROWING · W AND S ROW · A AND D TURN"; }
   if s[0].water == WATER_WADING { return "WADING · HALF SPEED IN THE WATER"; }
   if s[0].water == WATER_SWIMMING { return ifx phone(s) then "SWIMMING · HALF SPEED" else "SWIMMING · HOLD C TO DIVE"; }
   if s[0].water == WATER_DIVING { return ifx phone(s) then "UNDER WATER" else "UNDER WATER · LET GO OF C TO COME UP"; }
@@ -2362,6 +2484,10 @@ join_into :: (out: [] u8, a: string, b: string) -> int {
 }
 talk_prompt :: (s: [] Everglade) -> string {
   if s[0].near_board { return ifx phone(s) then "READ THE QUEST BOARD" else "E · READ THE QUEST BOARD"; }
+  if s[0].near < 0 && boat_prompt_on(s) {
+    if s[0].water == WATER_BOAT { return ifx phone(s) then "STEP ASHORE" else "E · STEP ASHORE"; }
+    return ifx phone(s) then "BOARD THE ROWBOAT" else "E · BOARD THE ROWBOAT";
+  }
   if s[0].near < 0 { return ""; }
   s[0].prompt_n = join_into(s[0].prompt[..], ifx phone(s) then "TALK TO " else "E · TALK TO ", EG_PERSON[s[0].near]);
   return cast(string) s[0].prompt[0..<s[0].prompt_n];
@@ -2626,7 +2752,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   lift := 0.0f32;
   if s[0].ev.admin { n = everglade_voice_hud(s, out, u, n, y1 - hs - 28 * k); lift = ifx voice_on(s) then 100 * k else 0.0f32; }
   // Someone near: E (or TALK, on a phone) talks to them.
-  if (s[0].near >= 0 || s[0].near_board) && !s[0].above && !s[0].ev.editing {
+  if (s[0].near >= 0 || s[0].near_board || boat_prompt_on(s)) && !s[0].above && !s[0].ev.editing {
     ask := talk_prompt(s);
     ts := 9 * k;
     aw := text_width(ask, ts) + 32 * k;
@@ -2673,7 +2799,8 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   s[0].shadow_n = 0; s[0].plate_n = 0;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   view(shot, width, height, u, U_VIEW);
-  figure(s, u, shown, face, speed, act == 3, t, still);
+  // in a rowboat you sit on its thwart: your legs go down under it, out of sight
+  figure(s, u, ifx s[0].water == WATER_BOAT then sub(shown, v3(0, 0.42, 0)) else shown, face, speed, act == 3, t, still);
   if s[0].flock && redit_row_on(s[0].ev.ed[..], "flock") { flock_frame(s[0].birds[..], shown, face, t); birds(s); }
   people(s, u, shown, t);
   s[0].answered += t;
@@ -2725,7 +2852,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   // the water: the river a patch an instance, then the fountain's, drawn after everything (host.js
   // coaxial_water_draws)
   d = WATER_DRAW * 4;
-  waters := ifx s[0].water_vertices > 0 then s[0].water_patches + FOUNTAIN_INSTANCES + POND_INSTANCES else 0;
+  waters := ifx s[0].water_vertices > 0 then s[0].water_patches + FOUNTAIN_INSTANCES + POND_INSTANCES + 1 + FX_INSTANCES else 0;
   s[0].draws[d] = first;
   s[0].draws[d + 1] = cast(u32) s[0].water_vertices;
   s[0].draws[d + 2] = 0;
@@ -2817,7 +2944,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
 
 #test "the uniforms and shape slots line up with everglade.wgsl's" {
   #assert UNIFORM_FLOATS % 4 == 0;
-  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 504 && STYLE_AT == 828 && U_SOLID == 956 && U_LIGHT_INFO == 1084 && U_LIGHTS == 1088 && U_WEATHER == 1216 && U_PONDS == 1228 && UNIFORM_FLOATS == 1244;
+  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 504 && STYLE_AT == 828 && U_SOLID == 956 && U_LIGHT_INFO == 1084 && U_LIGHTS == 1088 && U_WEATHER == 1216 && U_PONDS == 1228 && U_FX == 1244 && UNIFORM_FLOATS == 1244 + 149 * 4;
   #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
   total := 0;
   for g: 0..<KIT_GROUPS - KIT_FOREST { total += TOWN_CAP[g]; }
@@ -3088,8 +3215,9 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   // The forest's kit share of a phone's frame stays under 700,000 triangles, and so
   // does the whole frame's kit: the forest, the town and you (the Ranger's 31,396).
   #assert most > 0 && most < 700000 && whole >= most + RANGER_TRIANGLES && whole < 700000;
-  // and with the water's 5,568 triangles drawn too (the river's 2,496, the fountain's and the four ponds' 1,536)
-  #assert g[0].water_triangles == 5568 && whole + g[0].water_triangles < 700000;
+  // and with the water's 5,760 triangles drawn too (the river's 2,496, the fountain's and the four ponds' 1,536,
+  // the weir's sheet and the spray's three instances 192)
+  #assert g[0].water_triangles == 5760 && whole + g[0].water_triangles < 700000;
 }
 
 #test "the camera stays out of the woods: at a clearing's edge it pulls in before the trees" {
