@@ -1,0 +1,59 @@
+diff --git a/coax/lib/crypto/schnorr_nonce_point.coax b/coax/lib/crypto/schnorr_nonce_point.coax
+index e11532e67a..b24d09b6fb 100644
+--- a/coax/lib/crypto/schnorr_nonce_point.coax
++++ b/coax/lib/crypto/schnorr_nonce_point.coax
+@@ -39,7 +39,9 @@ snp_finish :: (work:[]SignNoncePoint)->bool {work[0].valid=work[0].nonce_valid &
+ snp_reduce :: (hash:[]u8,work:[]SignNoncePoint)->bool {
+   if work.count!=1 || hash.count!=32 {return false;}
+   loaded:=sc_reduce_bytes(hash);bits:u32;for i:0..<8 {bits|=loaded.value.limbs[i];}
+-  work[0].valid=0;work[0].nonce_valid=sc_zero_bit(bits)^1;work[0].safe=sc_select(work[0].nonce_valid,loaded.value,sc_small(1));return loaded.ok;
++  // sc_reduce_bytes succeeds exactly for the 32 bytes checked above; returning
++  // that public fact avoids reading ok out of a struct that also holds secrets.
++  work[0].valid=0;work[0].nonce_valid=sc_zero_bit(bits)^1;work[0].safe=sc_select(work[0].nonce_valid,loaded.value,sc_small(1));return true;
+ }
+ // The caller supplies parity-normalized key bytes and matching public x. Views
+ // are valid/stable/disjoint, and the entire work region requires a host wipe.
+diff --git a/coax/lib/crypto/sha256_workspace.coax b/coax/lib/crypto/sha256_workspace.coax
+index 5146f550e0..58c952c7eb 100644
+--- a/coax/lib/crypto/sha256_workspace.coax
++++ b/coax/lib/crypto/sha256_workspace.coax
+@@ -54,11 +54,11 @@ so_compress :: (work:[]ShaOwned) {
+     0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+     0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+     0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+-  for i:0..<64 {
+-    if i<16 {work[0].schedule[i]=cb_load_be32(work[0].block[..],i*4).value;}
+-    else {x:=work[0].schedule[i-15];y:=work[0].schedule[i-2];
+-      s0:=S_rotr(x,7)^S_rotr(x,18)^(x>>3);s1:=S_rotr(y,17)^S_rotr(y,19)^(y>>10);
+-      work[0].schedule[i]=S_sum4(work[0].schedule[i-16],s0,work[0].schedule[i-7],s1);}
++  for i:0..<16 {work[0].schedule[i]=cb_load_be32(work[0].block[..],i*4).value;}
++  for i:16..<64 {
++    x:=work[0].schedule[i-15];y:=work[0].schedule[i-2];
++    s0:=S_rotr(x,7)^S_rotr(x,18)^(x>>3);s1:=S_rotr(y,17)^S_rotr(y,19)^(y>>10);
++    work[0].schedule[i]=S_sum4(work[0].schedule[i-16],s0,work[0].schedule[i-7],s1);
+   }
+   a:=work[0].h[0];b:=work[0].h[1];c:=work[0].h[2];d:=work[0].h[3];e:=work[0].h[4];f:=work[0].h[5];g:=work[0].h[6];z:=work[0].h[7];
+   for i:0..<64 {
+@@ -78,15 +78,19 @@ so_init :: (work:[]ShaOwned)->bool #export_c {
+ so_update :: (work:[]ShaOwned,input:[]u8,overlap:bool)->bool #export_c {
+   if work.count!=1 || work[0].phase!=SHA_ACTIVE || !sha256_input_ok(input.count) || (input.count>0 && overlap) {return false;}
+   if work[0].used<0 || sha256_update_limit(work[0].total,input.count)!=SHA_OK || cast(u64)work[0].used!=work[0].total%64 {return false;}
+-  for byte:input {work[0].block[work[0].used]=byte;work[0].used+=1;
++  // used is below 64 here (checked above, reset at 64); &63 keeps its value
++  // and states that bound for the block index.
++  for byte:input {work[0].block[work[0].used&63]=byte;work[0].used+=1;
+     if work[0].used==64 {so_compress(work);work[0].used=0;}}
+   work[0].total+=cast(u64)input.count;return true;
+ }
++// Compresses a full block and clears it for the length block that follows.
++so_compress_clear :: (work:[]ShaOwned) {so_compress(work);for i:0..<64 {work[0].block[i]=0;}}
+ so_finish :: (work:[]ShaOwned,out:[]u8,overlap:bool)->bool #export_c {
+   if work.count!=1 || work[0].phase!=SHA_ACTIVE || overlap || !cb_span(out.count,0,32) {return false;}
+   if work[0].used<0 || work[0].total>SHA_MAX_TOTAL || cast(u64)work[0].used!=work[0].total%64 {return false;}
+-  work[0].block[work[0].used]=128;for i:work[0].used+1..<64 {work[0].block[i]=0;}
+-  if work[0].used>=56 {so_compress(work);for i:0..<64 {work[0].block[i]=0;}}
++  work[0].block[work[0].used&63]=128;for i:0..<64 {if i>work[0].used {work[0].block[i]=0;}}
++  if work[0].used>=56 {so_compress_clear(work);}
+   bits:=work[0].total*8;for i:0..<8 {work[0].block[56+i]=cast(u8)((bits>>((7-i)*8))&255);}
+   so_compress(work);work[0].used=0;work[0].phase=SHA_FINAL;
+   return sha256_emit(work[0].h[..],out)==SHA_OK;
