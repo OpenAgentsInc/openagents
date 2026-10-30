@@ -92,11 +92,11 @@ gw_gemini_budget_of :: (effort: string) -> int {
 
 // The Gemini API gateway for model on the key in GEMINI_API_KEY (or key_env):
 // streamGenerateContent?alt=sse, or generateContent when stream is false.
-gw_gemini :: (model: string, stream: bool, url_buf: [] u8) -> Gateway {
+gw_gemini :: (model: string, streamed: bool, url_buf: [] u8) -> Gateway {
   n := json_raw(url_buf, 0, GW_GEMINI_HOST);
   n = json_raw(url_buf, n, "/v1beta/models/");
   n = json_raw(url_buf, n, gw_gemini_model(model));
-  n = json_raw(url_buf, n, ifx stream then ":streamGenerateContent?alt=sse" else ":generateContent");
+  n = json_raw(url_buf, n, ifx streamed then ":streamGenerateContent?alt=sse" else ":generateContent");
   url := ifx n < 0 then "" else cast(string) url_buf[0..<n];
   return Gateway.{name = "gemini", url = url, key_env = GW_GEMINI_KEY_ENV, key_header = "x-goog-api-key", scheme = "", wire = GW_WIRE_GEMINI};
 }

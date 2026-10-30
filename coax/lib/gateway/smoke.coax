@@ -4,11 +4,11 @@
 // else, and a 401 must come back as one refused event.
 
 #import "Basic";
-#load "gateway.coax";
+#load "plan.coax";
 
 KEY_ENV :: "GW_SMOKE_KEY";
 
-stream :: (url: string) -> bool {
+smoke_stream :: (url: string) -> bool {
   b: [1] GwCallBuffers; call: [1] GwCall;
   gw_call_init(call[..], b[..]);
   g := Gateway.{name = "local", url = url, key_env = KEY_ENV, wire = GW_WIRE_RESPONSES};
@@ -40,7 +40,7 @@ stream :: (url: string) -> bool {
   return ok;
 }
 
-refuse :: (url: string) -> bool {
+smoke_refuse :: (url: string) -> bool {
   b: [1] GwCallBuffers; call: [1] GwCall;
   gw_call_init(call[..], b[..]);
   g := Gateway.{name = "local", url = url, key_env = KEY_ENV, wire = GW_WIRE_RESPONSES};
@@ -56,7 +56,7 @@ refuse :: (url: string) -> bool {
   return count == 1 && got.kind == GW_EV_REFUSED && got.status == 401 && got.reason == "bad key" && !call[0].first;
 }
 
-whole_call :: (url: string) -> bool {
+smoke_whole :: (url: string) -> bool {
   b: [1] GwCallBuffers; call: [1] GwCall;
   gw_call_init(call[..], b[..]);
   g := Gateway.{name = "local", url = url, key_env = KEY_ENV, wire = GW_WIRE_CHAT};
@@ -76,7 +76,7 @@ whole_call :: (url: string) -> bool {
   return text == "Four" && done;
 }
 
-unreachable :: () -> bool {
+smoke_unreachable :: () -> bool {
   b: [1] GwCallBuffers; call: [1] GwCall;
   gw_call_init(call[..], b[..]);
   g := Gateway.{name = "nowhere", url = "http://127.0.0.1:9/v1/responses", key_env = KEY_ENV, wire = GW_WIRE_RESPONSES};
@@ -92,6 +92,54 @@ unreachable :: () -> bool {
   return got.kind == GW_EV_REFUSED && got.status == 0 && got.reason == "the server is unreachable";
 }
 
+PROMPT :: "zebra-prompt-text-that-must-never-be-logged";
+
+plan_run :: (p: [] GwPlan, bench: [] GwBench, text: [] u8, nt: [] int) -> GwEvent {
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = PROMPT};
+  gw_plan_start(p, bench, GwRequest.{model = "unset", messages = msgs[..]});
+  ev: [8] GwEvent; last: GwEvent;
+  while !p[0].over {
+    n := gw_plan_poll(p, bench, ev[..]);
+    for i: 0..<n {
+      if ev[i].kind == GW_EV_TEXT { for c: ev[i].text { if nt[0] < text.count { text[nt[0]] = c; nt[0] += 1; } } }
+      else { last = ev[i]; }
+    }
+  }
+  lb: [512] u8;
+  for i: 0..<p[0].nlog { print("plan log: %\n", gw_attempt_line(p[0].log[i], lb[..])); }
+  return last;
+}
+
+smoke_plans :: (base: string, refuse: string, cut: string) -> bool {
+  none: [1] string;
+  bench: [1] GwBench;
+  b: [1] GwPlanBuffers; p: [1] GwPlan;
+  gw_plan_init(p[..], b[..]);
+  x := gw_plan_add(p[..], Gateway.{name = "first", url = refuse, key_env = KEY_ENV, wire = GW_WIRE_RESPONSES}, "m1", none[0..<0]);
+  x = gw_plan_add(p[..], Gateway.{name = "second", url = base, key_env = KEY_ENV, wire = GW_WIRE_RESPONSES}, "m2", none[0..<0]);
+  text: [256] u8; nt: [1] int;
+  last := plan_run(p[..], bench[..], text[..], nt[..]);
+  ok := last.kind == GW_EV_DONE && p[0].nlog == 2 && p[0].log[0].outcome == GW_OUT_BENCHED && p[0].log[0].status == 401 && p[0].log[1].outcome == GW_OUT_DONE;
+  ok = ok && gw_benched(bench[..], "first") && nt[0] > 0;
+  print("plan: refused first attempt fell through: %\n", ok);
+  // again: the benched gateway is skipped
+  nt[0] = 0;
+  last = plan_run(p[..], bench[..], text[..], nt[..]);
+  ok2 := last.kind == GW_EV_DONE && p[0].log[0].outcome == GW_OUT_SKIPPED && p[0].log[1].outcome == GW_OUT_DONE;
+  print("plan: benched gateway skipped: %\n", ok2);
+  // a failure after the first token ends the call: no retry
+  c: [1] GwPlan; cb: [1] GwPlanBuffers; fresh: [1] GwBench;
+  gw_plan_init(c[..], cb[..]);
+  x = gw_plan_add(c[..], Gateway.{name = "cutter", url = cut, key_env = KEY_ENV, wire = GW_WIRE_RESPONSES}, "m1", none[0..<0]);
+  x = gw_plan_add(c[..], Gateway.{name = "second", url = base, key_env = KEY_ENV, wire = GW_WIRE_RESPONSES}, "m2", none[0..<0]);
+  nt[0] = 0;
+  last = plan_run(c[..], fresh[..], text[..], nt[..]);
+  got := cast(string) text[0..<nt[0]];
+  ok3 := last.kind == GW_EV_REFUSED && got == "Half" && c[0].nlog == 1 && c[0].log[0].outcome == GW_OUT_CUT;
+  print("plan: cut after the first token, no retry: % (%)\n", ok3, got);
+  return ok && ok2 && ok3;
+}
+
 main :: () {
   for ch: "GW_SMOKE_URL" { k := cxproc_getenv_push(cast(int) ch); }
   n := cxproc_getenv();
@@ -99,15 +147,19 @@ main :: () {
   if n <= 0 || n > url.count { print("set GW_SMOKE_URL\n"); return; }
   for i: 0..<n { url[i] = cast(u8) cxproc_getenv_byte(i); }
   base := cast(string) url[0..<n];
-  ok := stream(base);
+  ok := smoke_stream(base);
   ru: [300] u8;
   for i: 0..<n { ru[i] = url[i]; }
   for c, i: "refuse" { ru[n + i] = c; }
-  ok = refuse(cast(string) ru[0..<n + 6]) && ok;
+  ok = smoke_refuse(cast(string) ru[0..<n + 6]) && ok;
   wu: [300] u8;
   for i: 0..<n { wu[i] = url[i]; }
   for c, i: "whole" { wu[n + i] = c; }
-  ok = whole_call(cast(string) wu[0..<n + 5]) && ok;
-  ok = unreachable() && ok;
+  ok = smoke_whole(cast(string) wu[0..<n + 5]) && ok;
+  ok = smoke_unreachable() && ok;
+  cu: [300] u8;
+  for i: 0..<n { cu[i] = url[i]; }
+  for c, i: "cut" { cu[n + i] = c; }
+  ok = smoke_plans(base, cast(string) ru[0..<n + 6], cast(string) cu[0..<n + 3]) && ok;
   print("smoke: %\n", ifx ok then "ok" else "FAILED");
 }

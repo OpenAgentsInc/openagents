@@ -2,7 +2,9 @@
 # The gateway transport against a local stand-in provider (smoke_server.py):
 # deltas must arrive before the response ends, the key must reach the
 # server's header only (never curl's arguments, the output or a refusal),
-# a 401 must refuse once, and an unreachable server must refuse once. No
+# a 401 must refuse once, an unreachable server must refuse once, and a
+# plan must fall through a refused attempt, bench a 401, and end (no retry)
+# when a stream fails after its first token, logging no prompt. No
 # network and no real key: the key is a random sentinel.
 #
 #   coax/lib/gateway/smoke.sh
@@ -21,4 +23,5 @@ port="$(head -1 "$work/port")"
 GW_SMOKE_KEY="$key" GW_SMOKE_URL="http://127.0.0.1:$port/" "$work/smoke" > "$work/out" 2>&1 || true
 cat "$work/out"
 if grep -q "$key" "$work/out"; then echo "smoke: the key appeared in the output"; exit 1; fi
+if grep "^plan log:" "$work/out" | grep -q "zebra-prompt"; then echo "smoke: the prompt appeared in the attempt log"; exit 1; fi
 tail -1 "$work/out" | grep -q '^smoke: ok$'

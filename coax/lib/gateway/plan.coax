@@ -1,0 +1,247 @@
+// Plans (docs/coder/microcoder.md, row 9): up to three (gateway, model)
+// attempts for one request. A refusal or a failure before the first token
+// moves to the next attempt; after the first token nothing retries, so the
+// user never sees two half answers. A 401 or 402 benches that gateway for
+// the session (GwBench, kept by the caller across requests). Every attempt
+// is logged by gateway, model, status, latency and tokens, never the
+// prompt. From the old crates/inference router.rs (MAX_ATTEMPTS, Bench,
+// fall_back) and microcoder-loop failover.rs and capacity.rs.
+//
+// The old router did not fall back on a 400 (one shared request, so the
+// next upstream would refuse it too); here each gateway translates the
+// request its own way, so a 400 falls through like any refusal.
+//
+// gw_plan_decide is the rule, pure, for tests; GwPlan runs it over GwCall.
+
+#load "gateway.coax";
+
+GW_PLAN_MAX :: 3;
+GW_BENCH_MAX :: 16;
+
+GwAttempt :: struct {
+  gateway: Gateway;
+  model: string;
+  headers: [] string;
+}
+
+// Gateways benched for the session (by name), after a 401 or 402.
+GwBench :: struct {
+  names: [GW_BENCH_MAX] string;  // the Gateway names, which are static
+  n: int;
+}
+
+gw_benched :: (b: [] GwBench, name: string) -> bool {
+  for i: 0..<b[0].n { if b[0].names[i] == name { return true; } }
+  return false;
+}
+gw_bench :: (b: [] GwBench, name: string) {
+  if gw_benched(b, name) || b[0].n >= GW_BENCH_MAX { return; }
+  b[0].names[b[0].n] = name; b[0].n += 1;
+}
+
+// How an attempt ended.
+GW_OUT_DONE :: 1;                // answered
+GW_OUT_FELL_THROUGH :: 2;        // refused or failed before the first token; the next attempt went
+GW_OUT_BENCHED :: 3;             // 401 or 402: benched, and the next attempt went
+GW_OUT_CUT :: 4;                 // failed after the first token: the call ended there
+GW_OUT_LAST :: 5;                // refused before the first token with no attempt left
+GW_OUT_SKIPPED :: 6;             // not tried: its gateway was benched
+GW_OUT_STOPPED :: 7;             // the caller stopped it
+
+// One attempt in the log. No field can hold the prompt or the answer.
+GwAttemptLog :: struct {
+  gateway: string;
+  model: string;
+  outcome: int;
+  status: int;                   // HTTP status, 0 when no response came
+  first_ms: int;                 // to the first token, -1 when none came
+  latency_ms: int;               // to the end of the attempt
+  input_tokens: int;
+  output_tokens: int;
+  cost_usd_micros: int;
+}
+
+gw_outcome_name :: (o: int) -> string {
+  if o == GW_OUT_DONE { return "done"; }
+  if o == GW_OUT_FELL_THROUGH { return "fell_through"; }
+  if o == GW_OUT_BENCHED { return "benched"; }
+  if o == GW_OUT_CUT { return "cut"; }
+  if o == GW_OUT_LAST { return "refused"; }
+  if o == GW_OUT_SKIPPED { return "skipped"; }
+  if o == GW_OUT_STOPPED { return "stopped"; }
+  return "";
+}
+
+// One log entry as a line: gateway=vertex model=... outcome=done status=200 first_ms=... ms=... in=... out=... cost=...
+gw_attempt_line :: (e: GwAttemptLog, out: [] u8) -> string {
+  n := json_raw(out, 0, "gateway="); n = json_raw(out, n, e.gateway);
+  n = json_raw(out, n, " model="); n = json_raw(out, n, e.model);
+  n = json_raw(out, n, " outcome="); n = json_raw(out, n, gw_outcome_name(e.outcome));
+  n = json_raw(out, n, " status="); n = json_write_int(out, n, e.status);
+  n = json_raw(out, n, " first_ms="); n = json_write_int(out, n, e.first_ms);
+  n = json_raw(out, n, " ms="); n = json_write_int(out, n, e.latency_ms);
+  n = json_raw(out, n, " in="); n = json_write_int(out, n, e.input_tokens);
+  n = json_raw(out, n, " out="); n = json_write_int(out, n, e.output_tokens);
+  n = json_raw(out, n, " cost_usd_micros="); n = json_write_int(out, n, e.cost_usd_micros);
+  if n < 0 { return ""; }
+  return cast(string) out[0..<n];
+}
+
+// What the plan does with an event from the current attempt.
+GW_PASS :: 1;                    // hand it to the caller
+GW_NEXT :: 2;                    // drop it and start the next attempt
+GW_END_PASS :: 3;                // hand it to the caller; the plan is over
+
+// The rule. first: the attempt has handed a token back; left: attempts after this one.
+gw_plan_decide :: (ev: GwEvent, first: bool, left: int) -> int {
+  if ev.kind == GW_EV_TEXT || ev.kind == GW_EV_REASONING { return GW_PASS; }
+  if ev.kind == GW_EV_DONE { return GW_END_PASS; }
+  if first || left <= 0 { return GW_END_PASS; }
+  return GW_NEXT;
+}
+
+gw_bench_status :: (status: int) -> bool { return status == 401 || status == 402; }
+
+GwPlan :: struct {
+  attempts: [GW_PLAN_MAX] GwAttempt; n: int;
+  at: int;                       // the attempt running, or n when none is
+  log: [GW_PLAN_MAX] GwAttemptLog; nlog: int;
+  call: [1] GwCall;
+  req: GwRequest;
+  body: [] u8;
+  started_ms: int;
+  first_ms: int;
+  over: bool;
+  why: string;                   // when every attempt refused: the last reason
+}
+
+GwPlanBuffers :: struct {
+  call: [1] GwCallBuffers;
+  body: [262144] u8;
+}
+
+gw_plan_init :: (p: [] GwPlan, b: [] GwPlanBuffers) {
+  p[0] = GwPlan.{body = b[0].body[..]};
+  gw_call_init(p[0].call[..], b[0].call[..]);
+}
+
+gw_plan_add :: (p: [] GwPlan, g: Gateway, model: string, headers: [] string) -> bool {
+  if p[0].n >= GW_PLAN_MAX { return false; }
+  p[0].attempts[p[0].n] = GwAttempt.{gateway = g, model = model, headers = headers};
+  p[0].n += 1;
+  return true;
+}
+
+gw_plan_log :: (p: [] GwPlan, i: int, outcome: int, status: int, usage: GwUsage) {
+  if p[0].nlog >= GW_PLAN_MAX { return; }
+  a := p[0].attempts[i];
+  now := cxproc_now_ms();
+  e := GwAttemptLog.{gateway = a.gateway.name, model = a.model, outcome = outcome, status = status, first_ms = -1, latency_ms = ifx outcome == GW_OUT_SKIPPED then 0 else now - p[0].started_ms, cost_usd_micros = usage.cost_usd_micros};
+  if outcome != GW_OUT_SKIPPED && p[0].first_ms >= 0 { e.first_ms = p[0].first_ms - p[0].started_ms; }
+  if usage.ok { e.input_tokens = usage.input_tokens; e.output_tokens = usage.output_tokens; }
+  p[0].log[p[0].nlog] = e; p[0].nlog += 1;
+}
+
+// Starts attempts from p.at until one is under way; false when none could
+// start (p.over, with a refused event to hand back).
+gw_plan_launch :: (p: [] GwPlan, bench: [] GwBench) -> bool {
+  none: GwUsage;
+  while p[0].at < p[0].n {
+    a := p[0].attempts[p[0].at];
+    if gw_benched(bench, a.gateway.name) { gw_plan_log(p, p[0].at, GW_OUT_SKIPPED, 0, none); p[0].at += 1; continue; }
+    req := p[0].req; req.model = a.model;
+    why: [1] string;
+    body := gw_translate(a.gateway, req, p[0].body, why[..]);
+    p[0].started_ms = cxproc_now_ms(); p[0].first_ms = -1;
+    if body.count == 0 { p[0].why = why[0]; gw_plan_log(p, p[0].at, GW_OUT_FELL_THROUGH, 0, none); p[0].at += 1; continue; }
+    e := gw_call_start(p[0].call[..], a.gateway, body, a.headers);
+    if e.count > 0 { p[0].why = e; gw_plan_log(p, p[0].at, GW_OUT_FELL_THROUGH, 0, none); p[0].at += 1; continue; }
+    return true;
+  }
+  return false;
+}
+
+// Starts the plan for req (its model is replaced by each attempt's). Poll it next.
+gw_plan_start :: (p: [] GwPlan, bench: [] GwBench, req: GwRequest) {
+  p[0].req = req; p[0].at = 0; p[0].nlog = 0; p[0].over = false; p[0].why = "";
+  if p[0].n == 0 { p[0].why = "the plan has no attempts"; }
+  x := gw_plan_launch(p, bench);
+}
+
+gw_plan_no_capacity :: (p: [] GwPlan, out: [] GwEvent, status: int) -> int {
+  p[0].over = true;
+  why := ifx p[0].why.count > 0 then p[0].why else "every gateway in the plan refused";
+  return gw_put(out, 0, GwEvent.{kind = GW_EV_REFUSED, status = status, reason = why});
+}
+
+// What has arrived from the running attempt, as the caller should see it:
+// deltas, then one done or refused (no_capacity when every attempt
+// refused before its first token). 0 when nothing new has.
+gw_plan_poll :: (p: [] GwPlan, bench: [] GwBench, out: [] GwEvent) -> int {
+  if p[0].over { return 0; }
+  if p[0].at >= p[0].n { return gw_plan_no_capacity(p, out, 0); }
+  ev: [8] GwEvent;
+  n := gw_call_poll(p[0].call[..], ev[..]);
+  k := 0;
+  for i: 0..<n {
+    x := ev[i];
+    first := p[0].call[0].first;
+    if (x.kind == GW_EV_TEXT || x.kind == GW_EV_REASONING) && p[0].first_ms < 0 { p[0].first_ms = cxproc_now_ms(); }
+    left := p[0].n - p[0].at - 1;
+    d := gw_plan_decide(x, first, left);
+    if d == GW_PASS { k = gw_put(out, k, x); continue; }
+    if d == GW_END_PASS {
+      outcome := ifx x.kind == GW_EV_DONE then GW_OUT_DONE else ifx first then GW_OUT_CUT else GW_OUT_LAST;
+      if x.kind == GW_EV_REFUSED && gw_bench_status(x.status) { gw_bench(bench, p[0].attempts[p[0].at].gateway.name); }
+      gw_plan_log(p, p[0].at, outcome, ifx x.kind == GW_EV_DONE then 200 else x.status, x.usage);
+      p[0].over = true; p[0].at = p[0].n;
+      if x.kind == GW_EV_REFUSED && !first { p[0].why = x.reason; return k + gw_plan_no_capacity(p, out[k..<out.count], x.status); }
+      return gw_put(out, k, x);
+    }
+    // GW_NEXT: this attempt refused before its first token
+    benched := gw_bench_status(x.status);
+    if benched { gw_bench(bench, p[0].attempts[p[0].at].gateway.name); }
+    gw_plan_log(p, p[0].at, ifx benched then GW_OUT_BENCHED else GW_OUT_FELL_THROUGH, x.status, x.usage);
+    p[0].why = x.reason;
+    p[0].at += 1;
+    if !gw_plan_launch(p, bench) { return k + gw_plan_no_capacity(p, out[k..<out.count], x.status); }
+    return k;
+  }
+  return k;
+}
+
+// The caller stopped: the running attempt's curl goes; the log says so.
+gw_plan_stop :: (p: [] GwPlan) {
+  if p[0].over { return; }
+  gw_call_close(p[0].call[..]);
+  none: GwUsage;
+  if p[0].at < p[0].n { gw_plan_log(p, p[0].at, GW_OUT_STOPPED, 0, none); }
+  p[0].over = true; p[0].at = p[0].n;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "the rule: deltas pass; done ends; a refusal before the first token moves on while attempts are left, never after a token" {
+  t := GwEvent.{kind = GW_EV_TEXT, text = "a"};
+  r := GwEvent.{kind = GW_EV_REFUSED, status = 503, reason = "busy"};
+  d := GwEvent.{kind = GW_EV_DONE};
+  #assert gw_plan_decide(t, false, 2) == GW_PASS && gw_plan_decide(d, true, 2) == GW_END_PASS;
+  #assert gw_plan_decide(r, false, 2) == GW_NEXT && gw_plan_decide(r, false, 1) == GW_NEXT;
+  #assert gw_plan_decide(r, false, 0) == GW_END_PASS;      // the last attempt: no_capacity
+  #assert gw_plan_decide(r, true, 2) == GW_END_PASS;       // after the first token: cut, no retry
+  #assert gw_bench_status(401) && gw_bench_status(402) && !gw_bench_status(429) && !gw_bench_status(0);
+}
+
+#test "the bench holds gateway names for the session" {
+  b: [1] GwBench;
+  #assert !gw_benched(b[..], "vertex");
+  gw_bench(b[..], "vertex"); gw_bench(b[..], "vertex");
+  #assert gw_benched(b[..], "vertex") && !gw_benched(b[..], "openrouter") && b[0].n == 1;
+}
+
+#test "an attempt's log line names the gateway, model, outcome and numbers, and has nowhere to put the prompt" {
+  buf: [512] u8;
+  e := GwAttemptLog.{gateway = "vertex", model = "google/gemini-3.8-flash", outcome = GW_OUT_BENCHED, status = 401, first_ms = -1, latency_ms = 120, cost_usd_micros = -1};
+  line := gw_attempt_line(e, buf[..]);
+  #assert line == "gateway=vertex model=google/gemini-3.8-flash outcome=benched status=401 first_ms=-1 ms=120 in=0 out=0 cost_usd_micros=-1";
+}
