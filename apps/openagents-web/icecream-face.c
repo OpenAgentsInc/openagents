@@ -21,18 +21,18 @@
 #define ACT_KEEP 4
 #define MSG_KEPT 4
 
-typedef struct { coax_t_IceRealm hud; coax_t_IceScene scene; } Realm;
-static Realm *state_at(uint32_t state) { return (Realm *)(uintptr_t)state; }
-static coax_v_t_IceRealm at(uint32_t state) { return (coax_v_t_IceRealm){&state_at(state)->hud, 1}; }
-// The scene's vertex store (store 0) and the round's trace live here, outside the state
-// (verse/icecream/scene.coax icecream_attach): attached before the scene is first used.
+// The scene's vertex store (store 0) and the round's trace live in the state beside the scene, which
+// holds them as slices (verse/icecream/scene.coax icecream_attach): the host sizes and zeroes the state.
 #define SCENE_STORE_WORDS (600000 * 6)   // scene.coax MAX_SCENE * SCENE_WORDS
 #define TRACE_BYTES 3000000              // play.coax TRACE_CAP
-static uint32_t scene_store[SCENE_STORE_WORDS];
-static uint8_t trace_store[TRACE_BYTES];
+typedef struct { coax_t_IceRealm hud; coax_t_IceScene scene; uint32_t scene_store[SCENE_STORE_WORDS]; uint8_t trace_store[TRACE_BYTES]; } Realm;
+static Realm *state_at(uint32_t state) { return (Realm *)(uintptr_t)state; }
+static coax_v_t_IceRealm at(uint32_t state) { return (coax_v_t_IceRealm){&state_at(state)->hud, 1}; }
+// Attached before the scene is first used.
 static coax_v_t_IceScene scene_at(uint32_t state) {
-  coax_v_t_IceScene s = {&state_at(state)->scene, 1};
-  if (!s.data[0].verts.data) icecream_attach(s, (coax_v_u32){scene_store, SCENE_STORE_WORDS}, (coax_v_u8){trace_store, TRACE_BYTES});
+  Realm *r = state_at(state);
+  coax_v_t_IceScene s = {&r->scene, 1};
+  if (!r->scene.verts.data) icecream_attach(s, (coax_v_u32){r->scene_store, SCENE_STORE_WORDS}, (coax_v_u8){r->trace_store, TRACE_BYTES});
   return s;
 }
 static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){state_at(state)->hud.ed.e, 1}; }
