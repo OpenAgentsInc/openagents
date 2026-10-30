@@ -1,0 +1,10 @@
+#ifndef PSIONIC_DEEPSEEK_EXPERT_MEMORY_H
+#define PSIONIC_DEEPSEEK_EXPERT_MEMORY_H
+#include "deepseek-expert.h"
+coax_t_DeResult psionic_de_decode(coax_t_DeMatrix,coax_v_f64,coax_v_f64);
+coax_t_DeResult psionic_de_quantize(coax_v_f32,coax_v_f64,coax_v_f64);
+coax_t_DeResult psionic_de_project(coax_t_DeMatrix,coax_v_f32,coax_v_f32,coax_v_f64,coax_v_f32);
+coax_t_DeResult psionic_de_activate(coax_v_f32,coax_v_f32,float,float,coax_v_f32,coax_v_f32);
+coax_t_DeResult psionic_de_expert(coax_t_DeExpert,coax_v_f32,float,float,coax_v_f32,coax_t_DeWork);
+coax_t_DeResult psionic_de_mixture(coax_v_t_DeExpert,coax_t_DeExpert,coax_v_f32,coax_v_s64,coax_v_f32,float,coax_v_f32,coax_t_DeWork,coax_v_t_PsionicAccumulator);
+#endif

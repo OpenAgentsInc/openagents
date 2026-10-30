@@ -14,7 +14,7 @@ rows stay planned until their full acceptance gates have evidence.
 | 60 | Window/compressed attention, both compressors, sink, source-layer sharing, candidate reuse, chunk/whole state parity | Planned. |
 | 61 | Four residual streams, pre/post and 20-iteration Sinkhorn mixing, previous-mix collapse across boundaries | Implemented CPU wide component equations; all seven handoffs and final collapse in an independent six-sub-block chain, original-width projections and zero-survivor mutation; [record](psionic-ch61-2026-10-29.md). Complete V4.1/BF16 stage execution remains in 68/141. |
 | 62 | Exact normalized/compressed n-gram history, reference prime layouts/multipliers, mapped/disk lookup without eager tables | Planned. |
-| 63 | All FP4 E2M1/UE8M0 codes/scales, layout, NaN rejection, clamped SwiGLU and pre-down route weights | Planned. |
+| 63 | All FP4 E2M1/UE8M0 codes/scales, layout, NaN rejection, clamped SwiGLU and pre-down route weights | Implemented exact original FP4/FP8 formats, grids, FFNs and 384/6 plus shared mixture; original layer-0 MoE qualifies against an independent reference; [record](psionic-ch63-2026-10-29.md). Shared FP8 and low-first packing reconcile the pinned source/header. Whole-model/device/BF16 parity remains in 68. |
 | 64 | Exact cache residency/heat/swap, host/mapped miss lane, between-step copies and next-layer prefetch | Planned. |
 | 65 | Layer-major expert reuse, grouped block-scaled products, time-budget chunks and no silent disablement | Planned. |
 | 66 | Exact FP8/FP4 cache grids, reference bit checks, separately bounded chunk step buffers | Planned. |

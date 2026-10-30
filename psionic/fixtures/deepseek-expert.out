@@ -1,0 +1,4 @@
+selected FP4 experts 2, 0; route weights enter before down projection
+one shared FP8 expert is included after the routed sum
+clamped gate lanes 9; clamped up lanes 21
+FP4: low nibble first, row/32 scales; FP8: 32 x 32 scales

@@ -43,9 +43,11 @@ Width is 5,120 and the vocabulary is 129,280.
   compressed vocabulary. Each table is about 101 GB. A decode token reads 24
   rows (6,336 bytes). The bucket multipliers come from NumPy's random number
   generator and must be reproduced exactly.
-- **Weights.** Dense weights are FP8 E4M3 with UE8M0 scales per 32×32 block.
-  Experts are FP4 E2M1 with a UE8M0 scale per 32 along K. This is not MXFP4:
-  the nibble order differs and a 0xFF scale is NaN.
+- **Weights.** Most dense weights and the shared expert are FP8 E4M3 with
+  UE8M0 scales per 32×32 block. Routed experts are packed FP4 E2M1, low
+  nibble first at even K, with separate UE8M0 scales per row and 32 K values.
+  A 0xFF scale is NaN. The raw header and converter confirm these layouts;
+  chapter 63 retains exact code/scale vectors and original MoE qualification.
 - **Memory.** Experts take 288.8 GB, Engram 202.8 GB and everything else
   18.7 GB. About 13 GB of weights are read per token.
 

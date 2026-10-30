@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "profile": "deepseek-expert-cpu-wide-v1",
+  "frozen_before_original_candidate": true,
+  "coefficient_decode": "exact binary64 bits for all codes and scales; NaN refuses",
+  "activation_grid": "exact codes, scale bytes and binary64 dequantized values",
+  "intermediate_and_output": {"atol": 0.00002, "rtol": 0.000001},
+  "clamp_counts": "exact",
+  "scope": "one completely authenticated original shard; layer 0 routed expert 0 and shared expert; original FP4/FP8 coefficients and CPU-wide quantized equations; original device/BF16 reduction parity is separate"
+}

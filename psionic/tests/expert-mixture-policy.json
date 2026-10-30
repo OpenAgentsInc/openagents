@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "profile": "deepseek-expert-cpu-wide-v1",
+  "frozen_before_original_candidate": true,
+  "input": "same owned 5120-value vector as the individual expert qualification",
+  "gate": "original BF16 gate coefficients, original F32 text correction bias, chapter 59 CPU-wide sqrt-softplus router, top six of 384, route scale 1.5",
+  "selected_ids": "exact ordered IDs",
+  "route_weights": {"atol": 0.000002, "rtol": 0.00002},
+  "router_scores": {"atol": 0.000000000001, "rtol": 0.000000000001},
+  "intermediate_and_output": {"atol": 0.00002, "rtol": 0.000001},
+  "clamp_counts": "exact",
+  "scope": "complete original layer-0 MoE on one owned input; full-shard SHA admission; all expert metadata, selected-only numeric execution and shared FP8 branch; whole-model/device/BF16 reduction parity remains separate"
+}

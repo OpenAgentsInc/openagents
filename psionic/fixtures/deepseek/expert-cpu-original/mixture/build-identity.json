@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "head": "5db755201d06712dda259aaf108f755569136e06",
+  "dirty": true,
+  "flags": "Coax release C; -std=c11 -O3 -g -ffp-contract=off -fno-fast-math",
+  "files": {
+    "psionic/lib/deepseek/expert.coax": "86988f1543724287d091ee5dbea1ba7ec710c20d11963a3f65bead82d50a44ed",
+    "psionic/lib/deepseek/expert-types.coax": "39215d2264d4ad03644916cbf248598529e754e4c4d1c7c1b52b88c24947ca67",
+    "psionic/lib/deepseek/router.coax": "15f140310b242b0bca7a3ff841ad02e1ef20d00637fa7c186772d143e16ceb16",
+    "psionic/lib/deepseek/math.coax": "46c5191d9d0222b9a7283c6acef89c62995cbd27e6aadb04e67493ce14b0005d",
+    "psionic/lib/qwen-matvec.coax": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae",
+    "psionic/tests/deepseek-expert-runtime.coax": "a8ecf760a6a73784c9b6e3b874777df60b9e00d7e6448bff80ab20698d7179d9",
+    "psionic/tests/deepseek_expert_original.c": "52a4df7cc9532e87cc03c9db7999121c812b581f22b010edccc5af00e9791a8d",
+    "psionic/tests/expert-mixture-policy.json": "5cdb04d3095c857d5804504aef37e8ad7a5be324e3ece6f793495084f716bfdd",
+    "psionic/tests/deepseek_expert_reference.py": "22c778781d29e4b7d3f2eace68900720b3551d401a771e91f35d7d63e9344b30",
+    "psionic/tests/deepseek_expert_oracle.py": "29c104dd59e61995959bc446619b8704a9b9263b7ff56b96f2556df716bbf88e",
+    "psionic/platform/deepseek-expert-memory.c": "4422f2a36c4333587e9fbdbb7fe86f5370e92cc65f72f21e09e69c9afeb57423",
+    "psionic/platform/deepseek-expert-memory.h": "8c260bc8ff2fc54f59496cf9fd1cd332ede8bfe537dc6e2ae798f4c21b722ebe",
+    "coax/bin/coax": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+    "/tmp/psionic-expert-mixture/deepseek-expert.c": "f75a140a8057e53f2daad8543b203e4e5ec1304bb35828a79ddde2f20952e39c",
+    "/tmp/psionic-expert-mixture/deepseek-expert.h": "25df3e90b6b24aaffea2584b12106405696b8f03c44101056059b5cd9b99cdd7",
+    "/tmp/psionic-expert-mixture/original": "858968c08d5f1d49da74faa21cf0dcc73d1d533e107412be973336929b0f25d7"
+  }
+}

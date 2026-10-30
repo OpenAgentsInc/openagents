@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "head": "5db755201d06712dda259aaf108f755569136e06",
+  "dirty": true,
+  "compiler": "gcc (GCC) 15.2.0",
+  "flags": "Coax release C; -std=c11 -O3 -g -ffp-contract=off -fno-fast-math",
+  "files": {
+    "psionic/lib/deepseek/expert.coax": "86988f1543724287d091ee5dbea1ba7ec710c20d11963a3f65bead82d50a44ed",
+    "psionic/lib/deepseek/expert-types.coax": "39215d2264d4ad03644916cbf248598529e754e4c4d1c7c1b52b88c24947ca67",
+    "psionic/tests/deepseek-expert-runtime.coax": "b84fc91a9499bcbb95806ebef6291cc71d71a93f3398be61aeeabe1a35d69f1c",
+    "psionic/tests/deepseek_expert_original.c": "7c468d74c796d4b830ddb91c0a2332f8a3ba7b1eba94b67ef5333a745ddf1306",
+    "psionic/tests/expert-qualification-policy.json": "ec4591fc13eaa47767fe4babe814eadd52a184516e6f2df8ac3beb6ae9177c6c",
+    "psionic/platform/deepseek-expert-memory.c": "4422f2a36c4333587e9fbdbb7fe86f5370e92cc65f72f21e09e69c9afeb57423",
+    "psionic/platform/deepseek-expert-memory.h": "8c260bc8ff2fc54f59496cf9fd1cd332ede8bfe537dc6e2ae798f4c21b722ebe",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/lib/model-io/identity.coax": "e05ecb80ef8b95c96b69b7a4aa13052ec486204caa60c9616f4c2f5f11a79f6d",
+    "coax/bin/coax": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+    "/tmp/psionic-expert-original/deepseek-expert.c": "810f3b3197a024708061e10a9cd32cf8471bc78a5c67e31c0d784e149c63824d",
+    "/tmp/psionic-expert-original/deepseek-expert.h": "f29a39d1570d18d0032df7c1129df85e9867cd5ceaf9a0b7cf98429f97c59726",
+    "/tmp/psionic-expert-original/original": "7d351277c5e4535feff1bb42bcea099b32b0fc88f0a23310834c0b838f82c52a"
+  }
+}

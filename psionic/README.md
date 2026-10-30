@@ -41,6 +41,9 @@ comparison records used by chapter 58’s complete V2-Lite decoder.
 [Chapter 61](book/ch061-many-residual-streams.md) adds V4.1's four residual
 streams, fixed Sinkhorn mixing and the previous pre-mix carried between
 sub-blocks and into final readout.
+[Chapter 63](book/ch063-v41s-expert-weights.md) adds exact FP4/FP8 expert
+formats, activation grids and pre-down route weighting, including an
+independently qualified original 384/6 MoE component.
 
 [Chapters 45a–45c](book/ch045a-original-weights-stay-on-the-gpu.md) add resident
 original 20b CUDA execution, complete greedy Harmony generation and batched

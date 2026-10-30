@@ -1,0 +1,14 @@
+#load "types.coax";
+// Original DeepSeek FP4 row/32-K scales and FP8 shared/dense 32x32 scales.
+DeKind :: enum u8 {fp4;fp8;}
+DeMatrix :: struct {kind:DeKind;rows:int;columns:int;data:[]u8;scales:[]u8;}
+DeExpert :: struct {gate:DeMatrix;up:DeMatrix;down:DeMatrix;}
+DeScalar :: struct {status:DsStatus;value:f64;}
+DeCode :: struct {status:DsStatus;code:u8;}
+DeLayout :: struct {status:DsStatus;values:int;bytes:int;scales:int;}
+DePlan :: struct {status:DsStatus;width:int;hidden:int;floats:int;wide:int;begin:[6]int;}
+DeWork :: struct {floats:[]f32;wide:[]f64;}
+DeResult :: struct {status:DsStatus;written:int;gate_clamped:int;up_clamped:int;}
+DeLane :: struct {status:DsStatus;value:f32;gate_clamped:int;up_clamped:int;}
+DeViews :: struct {gate:[]f32;up:[]f32;activation:[]f32;stage:[]f32;pending:[]f32;}
+DeCombineViews :: struct {one:[]f32;combined:[]f32;}

@@ -1,0 +1,241 @@
+#load "expert-types.coax";
+#authority;
+#load "../../fixtures/deepseek/expert-goldens.coax";
+
+#test "all FP4 codes and UE8M0 scales preserve exact wide values and signed zero" {
+    for scale:0..<256 {for code:0..<16 {
+        r:=de_fp4(cast(u8)code,cast(u8)scale);
+        if scale==255 {#assert r.status==DsStatus.number;}else {#assert r.status==DsStatus.ok && f64_bits(r.value)==DEG_FP4_BITS[scale*16+code];}
+    }}
+    #assert de_fp4(16,127).status==DsStatus.format;
+}
+#test "all FP8 scalar codes and nearest-even midpoints match independent bit vectors" {
+    for code:0..<256 {r:=de_fp8(cast(u8)code,127);
+        if code%128==127 {#assert r.status==DsStatus.number;}else {#assert r.status==DsStatus.ok && f64_bits(r.value)==DEG_FP8_UNIT_BITS[code];}}
+    for i:0..<DEG_ROUND_INPUT.count {r:=de_fp8_round(f32_from_bits(DEG_ROUND_INPUT[i]));#assert r.status==DsStatus.ok && r.code==DEG_ROUND_CODES[i];}
+    #assert de_fp8(0,255).status==DsStatus.number;
+    for code:0..<127 {#assert de_fp8_floor(de_fp8(cast(u8)code,127).value)==code;}
+    for i:0..<DEG_SCALE_INPUT.count {x:[32]f32;x[0]=f32_from_bits(DEG_SCALE_INPUT[i]);r:=de_scale(x[..]);#assert r.status==DsStatus.ok && r.code==DEG_SCALE_CODE[i];}
+}
+#test "original matrix layouts have exact independent endpoints and safe products" {
+    p:=de_layout(cast(u8)DeKind.fp4,2304,5120);#assert p.status==DsStatus.ok && p.values==11796480 && p.bytes==5898240 && p.scales==368640;
+    p=de_layout(cast(u8)DeKind.fp8,2304,5120);#assert p.status==DsStatus.ok && p.bytes==11796480 && p.scales==11520;
+    p=de_layout(cast(u8)DeKind.fp8,33,64);#assert p.status==DsStatus.ok && p.bytes==2112 && p.scales==4;
+    #assert de_layout(cast(u8)DeKind.fp4,1,32).status==DsStatus.ok && de_layout(cast(u8)DeKind.fp4,8192,8192).status==DsStatus.ok;
+    #assert de_layout(2,1,32).status==DsStatus.shape;
+    #assert de_layout(cast(u8)DeKind.fp4,0,32).status==DsStatus.shape && de_layout(cast(u8)DeKind.fp4,8193,32).status==DsStatus.shape;
+    #assert de_layout(cast(u8)DeKind.fp4,1,0).status==DsStatus.shape && de_layout(cast(u8)DeKind.fp4,1,31).status==DsStatus.shape && de_layout(cast(u8)DeKind.fp4,1,33).status==DsStatus.shape && de_layout(cast(u8)DeKind.fp4,1,8224).status==DsStatus.shape;
+}
+#test "packed FP4 is low-first and FP8 scales span 32 rows and 32 columns" {
+    bytes:[32]u8;scales:=[2]u8.[127,128];for i:0..<32 {bytes[i]=0x21;}
+    m:=DeMatrix.{rows=1,columns=64,data=bytes[..],scales=scales[..]};out:[65]f64;stage:[64]f64;out[64]=7;
+    r:=de_decode(m,out[0..<64],stage[..],false);#assert r.status==DsStatus.ok && r.written==64 && out[0]==0.5 && out[1]==1 && out[32]==1 && out[33]==2 && out[64]==7;
+    scales[1]=255;#assert de_decode(m,out[..],stage[..],false).status==DsStatus.number && out[0]==0.5 && out[64]==7;
+}
+#test "expert plans and every private view retain unequal original matrix roles" {
+    bytes:[8192]u8;e:=de_fixture_0(bytes[..]);p:=de_plan(e);#assert p.status==DsStatus.ok && p.width==64 && p.hidden==32 && p.floats==224 && p.wide==64;
+    work:[512]f32;for i:0..<512 {work[i]=f32(i);}views:=de_views(work[..],p);spans:=[5][]f32.[views.gate,views.up,views.activation,views.stage,views.pending];
+    expected:=[6]int.[0,32,64,96,160,224];for i:0..<6 {#assert p.begin[i]==expected[i];}
+    for i:0..<5 {#assert spans[i].count==expected[i+1]-expected[i] && spans[i][0]==f32(expected[i]) && spans[i][spans[i].count-1]==f32(expected[i+1]-1);}
+    c:=de_combine_views(work[..],p);#assert c.one.count==64 && c.one[0]==224 && c.one[63]==287 && c.combined.count==64 && c.combined[0]==288 && c.combined[63]==351;
+    e=de_fixture_4(bytes[..]);p=de_plan(e);#assert p.status==DsStatus.ok && p.width==32 && p.hidden==64 && p.floats==288 && p.wide==64;
+    e.up.rows=32;e.up.data=e.up.data[0..<512];e.up.scales=e.up.scales[0..<32];#assert de_plan(e).status==DsStatus.shape;
+}
+#test "clamped SwiGLU keeps the gate lower side open and rounds before route weighting" {
+    r:=de_activation(-1000,20,1,10);#assert r.status==DsStatus.ok && r.value==0 && r.gate_clamped==0 && r.up_clamped==1;
+    r=de_activation(20,-20,0.5,10);#assert r.status==DsStatus.ok && r.gate_clamped==1 && r.up_clamped==1 && abs(r.value+49.99773f32)<0.00001f32;
+    r=de_activation(10,10,1,10);#assert r.status==DsStatus.ok && r.gate_clamped==0 && r.up_clamped==0;
+    r=de_activation(10,-10,1,10);#assert r.status==DsStatus.ok && r.up_clamped==0;
+    r=de_activation(1,2,1,0);#assert r.status==DsStatus.ok && abs(r.value-1.4621172f32)<0.0000002f32;
+    #assert de_control(0) && de_control(65536) && !de_control(-1) && !de_control(65537);
+    #assert de_activation(1,1,-1,10).status==DsStatus.number && de_activation(1,1,1,-1).status==DsStatus.number;
+    #assert de_activation(3.4028234663852886e38f32,2,1,0).status==DsStatus.arithmetic;
+    #assert de_activation(3.4028234663852886e38f32,1,2,0).status==DsStatus.arithmetic;
+    gate:=[2]f32.[1,20];up:=[2]f32.[2,20];out:[2]f32;stage:[2]f32;
+    result:=de_activate(gate[..],up[..],1,10,out[..],stage[..],false);#assert result.status==DsStatus.ok && result.written==2 && result.gate_clamped==1 && result.up_clamped==1;
+}
+#test "all scalar matrix quantizer and activation refusal extents are independent" {
+    data:[32]u8;scales:[3]u8;scales[0]=127;scales[1]=127;m:=DeMatrix.{rows=1,columns=64,data=data[..],scales=scales[0..<2]};out:[65]f64;stage:[64]f64;for i:0..<65 {out[i]=7;}
+    #assert de_decode(m,out[0..<63],stage[..],false).status==DsStatus.capacity && de_decode(m,out[..],stage[0..<63],false).status==DsStatus.capacity;
+    #assert de_decode(m,out[..],stage[..],true).status==DsStatus.alias;m.data=data[0..<31];#assert de_decode(m,out[..],stage[..],false).status==DsStatus.capacity;m.data=data[..];
+    m.scales=scales[..];#assert de_decode(m,out[..],stage[..],false).status==DsStatus.capacity;m.scales=scales[0..<1];#assert de_decode(m,out[..],stage[..],false).status==DsStatus.capacity;m.scales=scales[0..<2];m.rows=0;#assert de_decode(m,out[..],stage[..],false).status==DsStatus.shape;
+    x:[8224]f32;#assert de_quantize(x[0..<0],out[..],stage[..],false).status==DsStatus.shape && de_quantize(x[0..<31],out[..],stage[..],false).status==DsStatus.shape && de_quantize(x[0..<33],out[..],stage[..],false).status==DsStatus.shape && de_quantize(x[..],out[..],stage[..],false).status==DsStatus.shape;
+    #assert de_quantize(x[0..<32],out[0..<31],stage[..],false).status==DsStatus.capacity && de_quantize(x[0..<32],out[..],stage[0..<31],false).status==DsStatus.capacity && de_quantize(x[0..<32],out[..],stage[..],true).status==DsStatus.alias;
+    #assert de_scale(x[0..<31]).status==DsStatus.shape && de_scale(x[0..<33]).status==DsStatus.shape;
+    gate:[8193]f32;up:[2]f32;a:[2]f32;scratch:[2]f32;
+    #assert de_activate(gate[0..<0],up[..],1,10,a[..],scratch[..],false).status==DsStatus.shape && de_activate(gate[..],up[..],1,10,a[..],scratch[..],false).status==DsStatus.shape;
+    #assert de_activate(gate[0..<2],up[0..<1],1,10,a[..],scratch[..],false).status==DsStatus.capacity && de_activate(gate[0..<2],up[..],1,10,a[0..<1],scratch[..],false).status==DsStatus.capacity && de_activate(gate[0..<2],up[..],1,10,a[..],scratch[0..<1],false).status==DsStatus.capacity && de_activate(gate[0..<2],up[..],1,10,a[..],scratch[..],true).status==DsStatus.alias;
+    for v:out {#assert v==7;}
+}
+#test "matrix projection and complete expert workspaces reject each short span" {
+    bytes:[8192]u8;e:=de_fixture_0(bytes[..]);saved:=e;x:=DEG_INPUT;out:[65]f32;stage:[64]f32;quant:[64]f64;work:[352]f32;p:=de_plan(e);
+    for field:0..<5 {input:=x[..];o:=out[..];q:=quant[..];s:=stage[..];alias:=false;
+        if field==0 {input=x[0..<63];}else if field==1 {o=out[0..<31];}else if field==2 {q=quant[0..<63];}else if field==3 {s=stage[0..<31];}else {alias=true;}
+        r:=de_project(e.gate,input,o,q,s,alias);#assert r.status==(ifx field==4 then DsStatus.alias else DsStatus.capacity);
+    }
+    for field:0..<5 {input:=x[..];o:=out[..];w:=DeWork.{floats=work[0..<p.floats],wide=quant[..]};alias:=false;
+        if field==0 {input=x[0..<63];}else if field==1 {o=out[0..<63];}else if field==2 {w.floats=work[0..<p.floats-1];}else if field==3 {w.wide=quant[0..<63];}else {alias=true;}
+        r:=de_expert(e,input,1,10,o,w,alias);#assert r.status==(ifx field==4 then DsStatus.alias else DsStatus.capacity);
+    }
+    e.gate.data=bytes[0..<1];#assert de_project(e.gate,x[..],out[..],quant[..],stage[..],false).status==DsStatus.capacity && de_expert(e,x[..],1,10,out[..],DeWork.{floats=work[..],wide=quant[..]},false).status==DsStatus.capacity;e=saved;
+    for field:0..<6 {bad:=saved;m:=ifx field<2 || field==4 then bad.up else bad.down;
+        if field==0 {m.rows+=32;}else if field==1 {m.columns+=32;}else if field==2 {m.rows+=32;}else if field==3 {m.columns+=32;}else {m.kind=DeKind.fp8;}
+        layout:=de_layout(cast(u8)m.kind,m.rows,m.columns);m.data=bytes[0..<layout.bytes];m.scales=bytes[0..<layout.scales];
+        if field<2 || field==4 {bad.up=m;}else {bad.down=m;}#assert de_plan(bad).status==DsStatus.shape;
+    }
+}
+#test "route policies distinguish count weights IDs and duplicate selections" {
+    ids:=[2]int.[0,1];weights:=[2]f32.[0,65536];#assert de_routes(2,ids[..],weights[..])==DsStatus.ok && de_routes(384,ids[..],weights[..])==DsStatus.ok;
+    #assert de_routes(1,ids[0..<1],weights[0..<1])==DsStatus.ok;
+    #assert de_routes(0,ids[..],weights[..])==DsStatus.shape && de_routes(385,ids[..],weights[..])==DsStatus.shape;
+    #assert de_routes(1,ids[..],weights[..])==DsStatus.shape && de_routes(2,ids[0..<0],weights[0..<0])==DsStatus.shape && de_routes(2,ids[..],weights[0..<1])==DsStatus.shape;
+    many:=[9]int.[0,1,2,3,4,5,6,7,8];ws:[9]f32;#assert de_routes(9,many[..],ws[..])==DsStatus.shape && de_routes(8,many[0..<8],ws[0..<8])==DsStatus.ok;
+    ids[0]=-1;#assert de_routes(2,ids[..],weights[..])==DsStatus.token;ids[0]=2;#assert de_routes(2,ids[..],weights[..])==DsStatus.token;ids[0]=1;#assert de_routes(2,ids[..],weights[..])==DsStatus.token;
+    ids[0]=0;weights[1]=-1;#assert de_routes(2,ids[..],weights[..])==DsStatus.number;
+}
+#test "quantizer and activation count policies expose their exact maximum and minimum" {
+    #assert de_quant_count(32) && de_quant_count(8192) && !de_quant_count(0) && !de_quant_count(31) && !de_quant_count(33) && !de_quant_count(8224);
+    #assert de_activation_count(1) && de_activation_count(8192) && !de_activation_count(0) && !de_activation_count(8193);
+    #assert de_pair_finite(0,0x3f800000) && !de_pair_finite(0x7fc00000,0) && !de_pair_finite(0,0x7f800000) && !de_pair_finite(0xff800000,0x7fc00000);
+}
+#test "mixture validates every independent public workspace and unselected expert shape" {
+    b:[8192]u8;bs:[8192]u8;e:=de_fixture_0(b[..]);shared:=de_fixture_3(bs[..]);experts:=[2]DeExpert.[e,e];ids:=[1]int.[0];weights:=[1]f32.[1];x:=DEG_INPUT;out:[64]f32;floats:[352]f32;wide:[64]f64;acc:[64]PsionicAccumulator;
+    for field:0..<6 {input:=x[..];o:=out[..];w:=DeWork.{floats=floats[..],wide=wide[..]};a:=acc[..];alias:=false;
+        if field==0 {input=x[0..<63];}else if field==1 {o=out[0..<63];}else if field==2 {w.floats=floats[0..<351];}else if field==3 {w.wide=wide[0..<63];}else if field==4 {a=acc[0..<63];}else {alias=true;}
+        r:=de_mixture(experts[..],shared,input,ids[..],weights[..],10,o,w,a,alias);#assert r.status==(ifx field==5 then DsStatus.alias else DsStatus.capacity);
+    }
+    for field:0..<3 {candidate:=e;
+        if field==0 {candidate=shared;}else {d:=64;h:=32;if field==1 {d=32;}else {h=64;}ms:=[3]DeMatrix.[e.gate,e.up,e.down];
+            for j:0..<3 {ms[j].rows=ifx j==2 then d else h;ms[j].columns=ifx j==2 then h else d;layout:=de_layout(0,ms[j].rows,ms[j].columns);ms[j].data=b[0..<layout.bytes];ms[j].scales=b[0..<layout.scales];}
+            candidate=DeExpert.{gate=ms[0],up=ms[1],down=ms[2]};}
+        experts[1]=candidate;#assert de_mixture(experts[..],shared,x[..],ids[..],weights[..],10,out[..],DeWork.{floats=floats[..],wide=wide[..]},acc[..],false).status==DsStatus.shape;
+    }
+    experts[1]=e;experts[0].gate.data=b[0..<1];#assert de_mixture(experts[..],shared,x[..],ids[..],weights[..],10,out[..],DeWork.{floats=floats[..],wide=wide[..]},acc[..],false).status==DsStatus.capacity;
+    experts[0]=e;#assert de_mixture(experts[..],e,x[..],ids[..],weights[..],10,out[..],DeWork.{floats=floats[..],wide=wide[..]},acc[..],false).status==DsStatus.shape;
+    invalid:=shared;invalid.gate.rows=0;#assert de_mixture(experts[..],invalid,x[..],ids[..],weights[..],10,out[..],DeWork.{floats=floats[..],wide=wide[..]},acc[..],false).status==DsStatus.shape;
+    ids[0]=2;#assert de_mixture(experts[..],shared,x[..],ids[..],weights[..],10,out[..],DeWork.{floats=floats[..],wide=wide[..]},acc[..],false).status==DsStatus.token;
+}
+
+de_power :: (scale:u8)->f64 {return f64_from_bits((u64(scale)+896)<<52);}
+de_fp4 :: (code:u8,scale:u8)->DeScalar #export_c {
+    if code>=16 {return DeScalar.{status=DsStatus.format};}if scale==255 {return DeScalar.{status=DsStatus.number};}
+    values:=[8]f64.[0,0.5,1,1.5,2,3,4,6];magnitude:=values[cast(int)(code&7)]*de_power(scale);
+    return DeScalar.{value=f64_from_bits(f64_bits(magnitude)|((u64(code)&8)<<60))};
+}
+de_fp8 :: (code:u8,scale:u8)->DeScalar #export_c {
+    if (code&127)==127 || scale==255 {return DeScalar.{status=DsStatus.number};}
+    exponent:=(code>>3)&15;fraction:=code&7;magnitude:=f64(fraction)/512;
+    if exponent!=0 {magnitude=(1+f64(fraction)/8)*f64_from_bits((u64(exponent)+1016)<<52);}
+    magnitude*=de_power(scale);return DeScalar.{value=f64_from_bits(f64_bits(magnitude)|((u64(code)&128)<<56))};
+}
+de_fp8_floor :: (magnitude:f64)->int {
+    low:=0;high:=127;while low+1<high {middle:=(low+high)/2;v:=de_fp8(cast(u8)middle,127).value;if v<=magnitude {low=middle;}else {high=middle;}}
+    return low;
+}
+de_fp8_round :: (x:f32)->DeCode #export_c {
+    if !psionic_tensor_finite_bits(f32_bits(x)) {return DeCode.{status=DsStatus.number};}
+    magnitude:=abs(f64(x));sign:=cast(u8)(f32_bits(x)>>24)&128;low:=de_fp8_floor(magnitude);high:=low+1;
+    if high<127 {a:=magnitude-de_fp8(cast(u8)low,127).value;b:=de_fp8(cast(u8)high,127).value-magnitude;if b<a || (b==a && low%2!=0) {low=high;}}
+    return DeCode.{code=cast(u8)low|sign};
+}
+de_scale :: (x:[]f32)->DeCode #export_c {
+    if x.count!=32 {return DeCode.{status=DsStatus.shape};}maximum:=0.0001f32;
+    for v:x {if !psionic_tensor_finite_bits(f32_bits(v)) {return DeCode.{status=DsStatus.number};}value:=abs(f64(v));maximum=f32((f64(maximum)+value+abs(f64(maximum)-value))/2);}
+    product:=f32(f64(maximum)*f64(1.0f32/448.0f32));bits:=f32_bits(product);exponent:=(bits>>23)&255;
+    if (bits&0x7fffff)!=0 {exponent+=1;}return DeCode.{code=cast(u8)exponent};
+}
+de_layout :: (kind:u8,rows:int,columns:int)->DeLayout #export_c {
+    if (kind!=cast(u8)DeKind.fp4 && kind!=cast(u8)DeKind.fp8) || rows<1 || rows>8192 || columns<32 || columns/32>256 || columns%32!=0 {return DeLayout.{status=DsStatus.shape};}
+    return DeLayout.{values=rows*columns,bytes=ifx kind==cast(u8)DeKind.fp4 then rows*columns/2 else rows*columns,scales=(ifx kind==cast(u8)DeKind.fp4 then rows else (rows+31)/32)*(columns/32)};
+}
+de_storage :: (m:DeMatrix)->DsStatus {
+    p:=de_layout(cast(u8)m.kind,m.rows,m.columns);if p.status!=DsStatus.ok {return p.status;}
+    if m.data.count!=p.bytes || m.scales.count!=p.scales {return DsStatus.capacity;}return DsStatus.ok;
+}
+// Internal: matrix layout/storage and value index were checked by the caller.
+de_value :: (m:DeMatrix,i:int)->DeScalar {
+    if m.kind==DeKind.fp4 {return de_fp4((m.data[i/2]>>cast(u8)(4*(i%2)))&15,m.scales[i/32]);}
+    scale:=((i/m.columns)/32)*(m.columns/32)+(i%m.columns)/32;return de_fp8(m.data[i],m.scales[scale]);
+}
+de_decode :: (m:DeMatrix,out:[]f64,stage:[]f64,overlap:bool)->DeResult #export_c {
+    status:=de_storage(m);if status!=DsStatus.ok {return DeResult.{status=status};}n:=m.rows*m.columns;
+    if out.count<n || stage.count<n {return DeResult.{status=DsStatus.capacity};}if overlap {return DeResult.{status=DsStatus.alias};}
+    for i:0..<n {r:=de_value(m,i);if r.status!=DsStatus.ok {return DeResult.{status=r.status};}stage[i]=r.value;}
+    for i:0..<n {out[i]=stage[i];}return DeResult.{written=n};
+}
+// Internal: complete 32-element groups and sufficient private output storage.
+de_quant_values :: (x:[]f32,out:[]f64)->DsStatus {
+    for block:0..<x.count/32 {scale:=de_scale(x[block*32..<(block+1)*32]);if scale.status!=DsStatus.ok {return scale.status;}
+        for j:0..<32 {i:=32*block+j;normalized:=f32(f64(x[i])/de_power(scale.code));code:=de_fp8_round(normalized);if code.status!=DsStatus.ok {return code.status;}out[i]=de_fp8(code.code,scale.code).value;}}
+    return DsStatus.ok;
+}
+de_quantize :: (x:[]f32,out:[]f64,stage:[]f64,overlap:bool)->DeResult #export_c {
+    if !de_quant_count(x.count) {return DeResult.{status=DsStatus.shape};}
+    if out.count<x.count || stage.count<x.count {return DeResult.{status=DsStatus.capacity};}if overlap {return DeResult.{status=DsStatus.alias};}
+    status:=de_quant_values(x,stage);if status!=DsStatus.ok {return DeResult.{status=status};}for i:0..<x.count {out[i]=stage[i];}return DeResult.{written=x.count};
+}
+de_project :: (m:DeMatrix,x:[]f32,out:[]f32,quant:[]f64,stage:[]f32,overlap:bool)->DeResult #export_c {
+    status:=de_storage(m);if status!=DsStatus.ok {return DeResult.{status=status};}
+    if x.count!=m.columns || out.count<m.rows || quant.count<m.columns || stage.count<m.rows {return DeResult.{status=DsStatus.capacity};}if overlap {return DeResult.{status=DsStatus.alias};}
+    status=de_quant_values(x,quant);if status!=DsStatus.ok {return DeResult.{status=status};}
+    for row:0..<m.rows {acc:PsionicAccumulator;for col:0..<m.columns {v:=de_value(m,row*m.columns+col);if v.status!=DsStatus.ok {return DeResult.{status=v.status};}acc=psionic_ops_accumulate(acc,v.value*quant[col]);}
+        value:=psionic_ops_total(acc);if !psionic_ops_fits_f32(value) {return DeResult.{status=DsStatus.arithmetic};}stage[row]=f32(value);}
+    for row:0..<m.rows {out[row]=stage[row];}return DeResult.{written=m.rows};
+}
+de_plan :: (e:DeExpert)->DePlan #export_c {
+    for m:[3]DeMatrix.[e.gate,e.up,e.down] {status:=de_storage(m);if status!=DsStatus.ok {return DePlan.{status=status};}}
+    d:=e.gate.columns;h:=e.gate.rows;
+    if e.up.rows!=h || e.up.columns!=d || e.down.rows!=d || e.down.columns!=h || e.up.kind!=e.gate.kind || e.down.kind!=e.gate.kind {return DePlan.{status=DsStatus.shape};}
+    maximum:=(d+h+cast(int)abs(f64(d-h)))/2;lengths:=[5]int.[h,h,h,maximum,d];p:=DePlan.{width=d,hidden=h,wide=maximum};
+    for i:0..<5 {p.begin[i+1]=p.begin[i]+lengths[i];}p.floats=p.begin[5];return p;
+}
+de_views :: (work:[]f32,p:DePlan)->DeViews {b:=p.begin;return DeViews.{gate=work[b[0]..<b[1]],up=work[b[1]..<b[2]],activation=work[b[2]..<b[3]],stage=work[b[3]..<b[4]],pending=work[b[4]..<b[5]]};}
+de_combine_views :: (work:[]f32,p:DePlan)->DeCombineViews {return DeCombineViews.{one=work[p.floats..<p.floats+p.width],combined=work[p.floats+p.width..<p.floats+2*p.width]};}
+de_control :: (value:f32)->bool {return psionic_tensor_finite_bits(f32_bits(value)) && value>=0 && value<=65536;}
+de_quant_count :: (n:int)->bool {return n>=32 && n/32<=256 && n%32==0;}
+de_activation_count :: (n:int)->bool {return n>=1 && n<=8192;}
+de_pair_finite :: (a:u32,b:u32)->bool {return psionic_tensor_finite_bits(a) && psionic_tensor_finite_bits(b);}
+de_activation :: (gate:f32,up:f32,route:f32,limit:f32)->DeLane #export_c {
+    if !de_pair_finite(f32_bits(gate),f32_bits(up)) || !de_control(route) || !de_control(limit) {return DeLane.{status=DsStatus.number};}
+    g:=gate;u:=up;r:DeLane;if limit>0 {if g>limit {g=limit;r.gate_clamped=1;}if u>limit {u=limit;r.up_clamped=1;}else if u< -limit {u= -limit;r.up_clamped=1;}}
+    ex:=exp(-abs(f64(g)));negative:=cast(int)(f32_bits(g)>>31);sigmoid:=(f64(negative)*ex+f64(1-negative))/(1+ex);raw:=f64(g)*sigmoid*f64(u);
+    if !psionic_ops_fits_f32(raw) {return DeLane.{status=DsStatus.arithmetic};}value:=f64(f32(raw))*f64(route);
+    if !psionic_ops_fits_f32(value) {return DeLane.{status=DsStatus.arithmetic};}r.value=f32(value);return r;
+}
+de_activate :: (gate:[]f32,up:[]f32,route:f32,limit:f32,out:[]f32,stage:[]f32,overlap:bool)->DeResult #export_c {
+    if !de_activation_count(gate.count) {return DeResult.{status=DsStatus.shape};}
+    if up.count!=gate.count || out.count<gate.count || stage.count<gate.count {return DeResult.{status=DsStatus.capacity};}if overlap {return DeResult.{status=DsStatus.alias};}
+    r:DeResult;for i:0..<gate.count {lane:=de_activation(gate[i],up[i],route,limit);if lane.status!=DsStatus.ok {return DeResult.{status=lane.status};}stage[i]=lane.value;r.gate_clamped+=lane.gate_clamped;r.up_clamped+=lane.up_clamped;}
+    for i:0..<gate.count {out[i]=stage[i];}r.written=gate.count;return r;
+}
+// book:begin expert
+de_expert :: (e:DeExpert,x:[]f32,route:f32,limit:f32,out:[]f32,work:DeWork,overlap:bool)->DeResult #export_c {
+    p:=de_plan(e);if p.status!=DsStatus.ok {return DeResult.{status=p.status};}
+    if x.count!=p.width || out.count<p.width || work.floats.count<p.floats || work.wide.count<p.wide {return DeResult.{status=DsStatus.capacity};}if overlap {return DeResult.{status=DsStatus.alias};}
+    v:=de_views(work.floats,p);r:=de_project(e.gate,x,v.gate,work.wide,v.stage,false);if r.status!=DsStatus.ok {return r;}
+    r=de_project(e.up,x,v.up,work.wide,v.stage,false);if r.status!=DsStatus.ok {return r;}
+    activated:=de_activate(v.gate,v.up,route,limit,v.activation,v.stage,false);if activated.status!=DsStatus.ok {return activated;}
+    r=de_project(e.down,v.activation,v.pending,work.wide,v.stage,false);if r.status!=DsStatus.ok {return r;}
+    for j:0..<p.width {out[j]=v.pending[j];}return DeResult.{written=p.width,gate_clamped=activated.gate_clamped,up_clamped=activated.up_clamped};
+}
+// book:end expert
+de_routes :: (experts:int,ids:[]int,weights:[]f32)->DsStatus {
+    if experts<1 || experts>384 || ids.count<1 || ids.count>8 || ids.count>experts || weights.count!=ids.count {return DsStatus.shape;}
+    for i:0..<ids.count {if ids[i]<0 || ids[i]>=experts {return DsStatus.token;}if !de_control(weights[i]) {return DsStatus.number;}for j:0..<i {if ids[i]==ids[j] {return DsStatus.token;}}}return DsStatus.ok;
+}
+// book:begin mixture
+de_mixture :: (experts:[]DeExpert,shared:DeExpert,x:[]f32,ids:[]int,weights:[]f32,limit:f32,out:[]f32,work:DeWork,acc:[]PsionicAccumulator,overlap:bool)->DeResult #export_c {
+    status:=de_routes(experts.count,ids,weights);if status!=DsStatus.ok {return DeResult.{status=status};}p:=de_plan(shared);if p.status!=DsStatus.ok {return DeResult.{status=p.status};}
+    if shared.gate.kind!=DeKind.fp8 {return DeResult.{status=DsStatus.shape};}
+    for e:experts {q:=de_plan(e);if q.status!=DsStatus.ok {return DeResult.{status=q.status};}if e.gate.kind!=DeKind.fp4 || q.width!=p.width || q.hidden!=p.hidden {return DeResult.{status=DsStatus.shape};}}
+    if x.count!=p.width || out.count<p.width || work.floats.count<p.floats+2*p.width || work.wide.count<p.wide || acc.count<p.width {return DeResult.{status=DsStatus.capacity};}if overlap {return DeResult.{status=DsStatus.alias};}
+    v:=de_combine_views(work.floats,p);private:=DeWork.{floats=work.floats[0..<p.floats],wide=work.wide};result:DeResult;
+    for j:0..<p.width {acc[j]=PsionicAccumulator.{};}
+    for i:0..<ids.count {r:=de_expert(experts[ids[i]],x,weights[i],limit,v.one,private,false);if r.status!=DsStatus.ok {return r;}
+        result.gate_clamped+=r.gate_clamped;result.up_clamped+=r.up_clamped;for j:0..<p.width {acc[j]=psionic_ops_accumulate(acc[j],f64(v.one[j]));}}
+    for j:0..<p.width {value:=psionic_ops_total(acc[j]);if !psionic_ops_fits_f32(value) {return DeResult.{status=DsStatus.arithmetic};}v.combined[j]=f32(value);}
+    r:=de_expert(shared,x,1,limit,v.one,private,false);if r.status!=DsStatus.ok {return r;}result.gate_clamped+=r.gate_clamped;result.up_clamped+=r.up_clamped;
+    for j:0..<p.width {value:=f64(v.combined[j])+f64(v.one[j]);if !psionic_ops_fits_f32(value) {return DeResult.{status=DsStatus.arithmetic};}v.combined[j]=f32(value);}
+    for j:0..<p.width {out[j]=v.combined[j];}result.written=p.width;return result;
+}
+// book:end mixture

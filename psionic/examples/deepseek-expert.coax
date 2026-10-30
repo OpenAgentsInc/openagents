@@ -1,0 +1,18 @@
+#import "Basic";
+#load "../lib/deepseek/expert.coax";
+#load "../lib/deepseek/router.coax";
+// book:begin example
+main :: () {
+    b0:[8192]u8;b1:[8192]u8;b2:[8192]u8;bs:[8192]u8;
+    experts:=[3]DeExpert.[de_fixture_0(b0[..]),de_fixture_1(b1[..]),de_fixture_2(b2[..])];shared:=de_fixture_3(bs[..]);
+    logits:=[3]f32.[0,-2,3];bias:[3]f32;raw:[3]f64;ranked:[3]f64;
+    route:=dr_route(DrConfig.{profile=DrProfile.v41,k=2,scale=1.5},logits[..],bias[..],raw[..],ranked[..],false);#assert route.status==DrStatus.ok;
+    ids:[2]int;weights:[2]f32;for i:0..<2 {ids[i]=route.ids[i];weights[i]=f32(route.weights[i]);}
+    x:=DEG_INPUT;out:[64]f32;floats:[352]f32;wide:[64]f64;acc:[64]PsionicAccumulator;
+    r:=de_mixture(experts[..],shared,x[..],ids[..],weights[..],10,out[..],DeWork.{floats=floats[..],wide=wide[..]},acc[..],false);#assert r.status==DsStatus.ok && r.written==64;
+    print("selected FP4 experts %, %; route weights enter before down projection\n",ids[0],ids[1]);
+    print("one shared FP8 expert is included after the routed sum\n");
+    print("clamped gate lanes %; clamped up lanes %\n",r.gate_clamped,r.up_clamped);
+    print("FP4: low nibble first, row/32 scales; FP8: 32 x 32 scales\n");
+}
+// book:end example

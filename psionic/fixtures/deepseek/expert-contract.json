@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "profile": "deepseek-expert-cpu-wide-v1",
+  "sources": {
+    "model.py": {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/model.py",
+      "sha256": "e5decd76fe70fd56ef2f10124d245c6f64fb6a0003cc9068a1d3182a168b8d2d"
+    },
+    "kernel.py": {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/kernel.py",
+      "sha256": "1236c3507019ed176f5dba5e04bcea58867cf654818c6cf138ed4845398c2455"
+    },
+    "convert.py": {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/convert.py",
+      "sha256": "035028340479145594a81d6084a8424e57363adf83c0d5983914783d95614d76"
+    },
+    "config.json": {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/config.json",
+      "sha256": "2e84f45cf1dac8c7fcbb200e96667d4b913275690668ed496f24c7747207a809"
+    }
+  },
+  "original": {
+    "width": 5120,
+    "hidden": 2304,
+    "routed_experts": 384,
+    "selected": 6,
+    "shared_experts": 1,
+    "routed_weights": "I8 packed FP4 E2M1, low nibble first at even K",
+    "routed_scale": "separate F8_E8M0 [N,K/32]",
+    "shared_weights": "F8_E4M3 [N,K]",
+    "shared_scale": "separate F8_E8M0 [ceil(N/32),K/32]",
+    "nan_scales": [
+      255
+    ],
+    "nan_fp8_codes": [
+      127,
+      255
+    ],
+    "activation_grid": "FP8 E4M3, per 32 inputs, UE8M0 scale from ceil log2 of the F32 amax/448 product, amax floor 1e-4",
+    "swiglu_limit": 10,
+    "gate_clamp": "upper only",
+    "up_clamp": "both sides",
+    "route_order": "F32 SiLU/up result; F32 route multiply; next activation quantization; down projection"
+  },
+  "numeric": {
+    "storage": "F32 input, projection and activation values; original encoded coefficients",
+    "decoded_coefficients_and_activation_grid": "exact binary64 values, including finite encoded values beyond F32 range",
+    "products_and_reductions": "compensated binary64, checked F32 output narrowing",
+    "scope": "CPU equation reference and original MoE component qualification; original device/BF16 reductions and whole-model execution remain separate"
+  }
+}

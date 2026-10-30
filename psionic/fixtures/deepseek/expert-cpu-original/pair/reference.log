@@ -1,0 +1,70 @@
+{
+  "routed": {
+    "gate": {
+      "values": 2304,
+      "max_abs": 0.0,
+      "max_bound_ratio": 0.0,
+      "bit_identical": true,
+      "passed": true
+    },
+    "up": {
+      "values": 2304,
+      "max_abs": 0.0,
+      "max_bound_ratio": 0.0,
+      "bit_identical": true,
+      "passed": true
+    },
+    "activation": {
+      "values": 2304,
+      "max_abs": 0.0,
+      "max_bound_ratio": 0.0,
+      "bit_identical": true,
+      "passed": true
+    },
+    "output": {
+      "values": 5120,
+      "max_abs": 0.0,
+      "max_bound_ratio": 0.0,
+      "bit_identical": true,
+      "passed": true
+    },
+    "down_grid_exact": true,
+    "clamp_counts_exact": true,
+    "reference_seconds": 0.36725267907604575,
+    "passed": true
+  },
+  "shared": {
+    "gate": {
+      "values": 2304,
+      "max_abs": 0.0,
+      "max_bound_ratio": 0.0,
+      "bit_identical": true,
+      "passed": true
+    },
+    "up": {
+      "values": 2304,
+      "max_abs": 0.0,
+      "max_bound_ratio": 0.0,
+      "bit_identical": true,
+      "passed": true
+    },
+    "activation": {
+      "values": 2304,
+      "max_abs": 0.0,
+      "max_bound_ratio": 0.0,
+      "bit_identical": true,
+      "passed": true
+    },
+    "output": {
+      "values": 5120,
+      "max_abs": 0.0,
+      "max_bound_ratio": 0.0,
+      "bit_identical": true,
+      "passed": true
+    },
+    "down_grid_exact": true,
+    "clamp_counts_exact": true,
+    "reference_seconds": 0.3461248129606247,
+    "passed": true
+  }
+}

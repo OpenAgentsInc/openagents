@@ -1,0 +1,41 @@
+{
+  "ordered_ids_exact": true,
+  "clamp_counts_exact": true,
+  "reference_margin": 0.2767852924823114,
+  "margin_abs_error": 7.216449660063518e-16,
+  "reference_excluded": 350,
+  "excluded_exact": true,
+  "gate-logits": {
+    "max_abs": 0.0,
+    "max_bound_ratio": 0.0,
+    "bit_identical": true,
+    "passed": true
+  },
+  "scores": {
+    "max_abs": 4.440892098500626e-16,
+    "max_bound_ratio": 0.00014310813534778273,
+    "bit_identical": false,
+    "passed": true
+  },
+  "ranked": {
+    "max_abs": 1.7763568394002505e-15,
+    "max_bound_ratio": 0.00015855924606130822,
+    "bit_identical": false,
+    "passed": true
+  },
+  "weights": {
+    "max_abs": 0.0,
+    "max_bound_ratio": 0.0,
+    "bit_identical": true,
+    "passed": true
+  },
+  "output": {
+    "max_abs": 0.0,
+    "max_bound_ratio": 0.0,
+    "bit_identical": true,
+    "passed": true
+  },
+  "reference_seconds": 2.306106923148036,
+  "policy_sha256": "5cdb04d3095c857d5804504aef37e8ad7a5be324e3ece6f793495084f716bfdd",
+  "passed": true
+}

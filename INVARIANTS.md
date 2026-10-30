@@ -1,5 +1,35 @@
 # Invariants
 
+## Psionic V4.1 expert formats retain separate scales and pre-down route weights
+
+`psionic/lib/deepseek/expert*.coax` owns `deepseek-expert-cpu-wide-v1`:
+original low-first FP4 E2M1 routed bytes with UE8M0 scales per row/32 K,
+and shared FP8 E4M3 bytes with UE8M0 scales per 32x32 block. All finite
+code/scale pairs decode exactly to binary64, including signed zero and values
+above F32 range. Scale 255 and FP8 codes 127/255 refuse. Activations round
+to the original per-32 FP8 grid with nearest-even ties and exponent-rounded
+UE8M0 scales. Stored projections/activations are F32; products/reductions use
+compensated binary64 with checked output narrowing.
+
+Up clamps both sides and gate only from above. The F32 SiLU/up result is
+multiplied by the F32 route weight before down-input quantization/projection.
+Mixture evaluates selected FP4 experts and adds one shared FP8 expert once.
+Every expert's metadata is checked; unselected coefficient values are not
+evaluated. Complete output and spare tail preserve their previous values on
+any failure, including a late down/shared failure; private work may change.
+
+Caller duties include trustworthy tensor/route identity, consistent shapes,
+immutable borrowed bytes, valid typed extents/allocations and exclusive
+disjoint writable storage. C observes native addresses and performs effects.
+The library owns all format, validation, numerical and publication decisions.
+
+Check: `psionic/tests/check_deepseek_expert.sh` assembles exact bit/grid and
+independent FFN fixtures, native debug/release plain/ASan/UBSan, original
+expert/6-of-384 MoE evidence replay and book output. The original configuration
+selects six of 384; the component admits up to eight unique routed IDs.
+`psionic/check.sh --only deepseek/expert --jobs 8` adds zero-survivor mutation.
+Actual checks and original component scope: [chapter 63 record](docs/verification/psionic-ch63-2026-10-29.md).
+
 ## Psionic hyper-connections carry the previous pre-mix with all four streams
 
 `psionic/lib/deepseek/hyper*.coax` owns `deepseek-hyper-cpu-wide-v1`:

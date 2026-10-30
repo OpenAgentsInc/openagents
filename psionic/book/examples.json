@@ -440,6 +440,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/deepseek-expert.coax",
+      "chapter": "psionic/book/ch063-v41s-expert-weights.md",
+      "stdout": "psionic/fixtures/deepseek-expert.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
