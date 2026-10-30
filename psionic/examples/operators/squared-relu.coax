@@ -1,0 +1,29 @@
+// A consumer-owned operator module. The registry core does not name these ops.
+#load "../../lib/tensor-ir-kernels.coax";
+#authority;
+#test "the custom activation and input VJP have independent exact values" {
+    m:[64]int;m[3]=1;m[4]=3;m[10]=1;m[11]=3;m[15]=1;m[19]=0;m[20]=3;m[21]=1;m[22]=3;m[26]=1;
+    x:=[6]f32.[-2,0,3,1,2,-0.5];work:[3]f32;stage:[3]f32;flags:[3]u8;
+    for i:0..<3 {registered_squared(i,m[..],2,x[..],work[..],stage[..],flags[..]);}#assert work[0]==0 && work[1]==0 && work[2]==18;
+    m[48]=1;for i:0..<3 {registered_squared(i,m[..],2,x[..],work[..],stage[..],flags[..]);}#assert work[2]== -6;
+    registered_squared_reference(2,m[..],2,x[..],work[..],stage[..],flags[..]);#assert work[2]== -6;
+    registered_linear(2,m[..],2,x[..],work[..],stage[..],flags[..]);#assert work[2]== -1;
+    registered_linear_reference(2,m[..],2,x[..],work[..],stage[..],flags[..]);#assert work[2]== -1;
+}
+// book:begin custom
+registered_squared :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {
+    c:[4]int;for axis:0..<4 {if axis<m[3] {c[axis]=tik_coord(m,item,axis);}}
+    x:=tik_read(m,8,c[0],c[1],c[2],c[3],input,work);positive:f32=0;if x>0 {positive=x;}
+    value:=gain*(positive*positive);
+    if m[48]==1 {dy:=tik_read(m,19,c[0],c[1],c[2],c[3],input,work);value=(2.0f32*gain*positive)*dy;}
+    flag:=0;if !tik_finite(x) || !tik_finite(value) {flag=2;value=0;}work[m[1]+item]=value;flags[m[2]+item]=cast(u8)flag;
+}
+// book:end custom
+registered_squared_reference :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {
+    c:[4]int;for axis:0..<4 {if axis<m[3] {c[axis]=tik_coord(m,item,axis);}}x:=tik_read(m,8,c[0],c[1],c[2],c[3],input,work);p:f64=0;if x>0 {p=f64(x);}value:=f64(gain)*p*p;
+    if m[48]==1 {value=2*f64(gain)*p*f64(tik_read(m,19,c[0],c[1],c[2],c[3],input,work));}flag:=0;if value>f64(f32_from_bits(0x7f7fffff)) || value< -f64(f32_from_bits(0x7f7fffff)) {flag=2;value=0;}work[m[1]+item]=f32(value);flags[m[2]+item]=cast(u8)flag;
+}
+registered_linear :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {
+    c:[4]int;for axis:0..<4 {if axis<m[3] {c[axis]=tik_coord(m,item,axis);}}at:=8;if m[48]==1 {at=19;}value:=gain*tik_read(m,at,c[0],c[1],c[2],c[3],input,work);flag:=0;if !tik_finite(value) {flag=2;value=0;}work[m[1]+item]=value;flags[m[2]+item]=cast(u8)flag;
+}
+registered_linear_reference :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {registered_linear(item,m,gain,input,work,out,flags);}

@@ -1,0 +1,10 @@
+#load "operator-registry.coax";
+#load "../examples/operators/squared-relu.coax";
+#authority;
+#test "training loss and scalar update have independent first-step values" {
+    predictions:=[4]f32.[0.015625,0.0625,0.140625,0.25];dy:[4]f32;loss:=or_loss(predictions[..],dy[..]);#assert loss==4.8614501953125;
+    dx:=[4]f32.[-0.029296875,-0.234375,-0.791015625,-1.875];#assert or_update(0.5,dx[..])>0.55 && or_update(0.5,dx[..])<0.56;z:[4]f32;or_training_input(0.5,z[..]);#assert z[0]==0.125 && z[3]==0.5;
+}
+or_loss :: (predictions:[]f32,dy:[]f32)->f64 #export_c {#assert predictions.count==4 && dy.count==4;loss:f64=0;for i:0..<4 {x:=f64(i+1)/4;target:=4*x*x;error:=f64(predictions[i])-target;dy[i]=f32(error/2);loss+=error*error/4;}return loss;}
+or_update :: (weight:f32,dx:[]f32)->f32 #export_c {#assert dx.count==4;gradient:f64=0;for i:0..<4 {gradient+=f64(dx[i])*f64(i+1)/4;}return f32(f64(weight)-0.02*gradient);}
+or_training_input :: (weight:f32,z:[]f32) #export_c {#assert z.count>=4;for i:0..<4 {z[i]=weight*f32(i+1)/4.0f32;}}

@@ -1,0 +1,52 @@
+#load "tensor-ir-host.coax";
+#authority;
+// book:begin registry
+OrSchema :: struct {name:[48]u8;name_count:int;entry:[48]u8;entry_count:int;version:int=1;rank_limit:int=4;dtype:TdDtype;backward:bool=true;batching:bool=true;write_alias:bool;}
+OrRegistry :: struct {count:int;schemas:[8]OrSchema;code:[8][4]u64;compiler:[4]u64;life:TiLife;}
+OrSpec :: struct {status:TiStatus;schema:OrSchema;}
+OrUpdate :: struct {status:TiStatus;id:int;registry:OrRegistry;}
+OrBatch :: struct {status:TiStatus;shape:TvShape;}
+// book:end registry
+#test "registration validates schemas duplicates and immutable compiled leases" {
+    s:=or_schema("squared-relu","registered_squared");#assert s.status==TiStatus.ok;
+    r:=or_empty([4]u64.[1,0,0,0]);a:=or_register(r,s.schema,[4]u64.[2,0,0,0]);#assert a.status==TiStatus.ok && a.id==0 && a.registry.count==1;
+    #assert or_register(a.registry,s.schema,[4]u64.[3,0,0,0]).status==TiStatus.identity;
+    a.registry.life=ti_module_borrow(a.registry.life).state;s.schema.version=2;#assert or_register(a.registry,s.schema,[4]u64.[3,0,0,0]).status==TiStatus.state;
+    #assert or_schema("bad/name","entry").status==TiStatus.identity;
+}
+#test "registered shapes aliases dtypes and backward capability are explicit" {
+    r:=or_register(or_empty([4]u64.[1,0,0,0]),or_schema("squared-relu","registered_squared").schema,[4]u64.[2,0,0,0]).registry;
+    p:TiProgram;p.count=2;p.output=1;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[3,0,0,0]},0);p.nodes[1]=or_node(0,0,0,false,1);plan:=ti_compile(p,TiTarget.{},true);#assert or_admit(r,plan)==TiStatus.ok;
+    p.nodes[1].axis=1;#assert or_admit(r,ti_compile(p,TiTarget.{},true))==TiStatus.index;
+    p.nodes[1].axis=0;p.nodes[1].index_count=1;r.schemas[0].backward=false;#assert or_admit(r,ti_compile(p,TiTarget.{},true))==TiStatus.operation;
+    batch:=or_batch(r.schemas[0],TvShape.{rank=1,dims=[4]int.[3,0,0,0]},2);#assert batch.status==TiStatus.ok && batch.shape.rank==2 && batch.shape.dims[0]==2;
+    r.schemas[0].batching=false;#assert or_batch(r.schemas[0],batch.shape,2).status==TiStatus.operation;
+}
+#test "registry code identities participate in cache fingerprints" {
+    r:=or_register(or_empty([4]u64.[1,0,0,0]),or_schema("square","registered_squared").schema,[4]u64.[2,0,0,0]).registry;before:=or_fingerprint(r);r.code[0][0]=3;after:=or_fingerprint(r);#assert before[0]!=after[0];
+}
+or_empty :: (compiler:[4]u64)->OrRegistry #export_c {return OrRegistry.{compiler=compiler,life=ti_initial_life()};}
+or_name :: (s:[48]u8,count:int,entry:bool)->bool {if count<1 || count>=48 {return false;}for i:0..<count {c:=s[i];if !((c>=97 && c<=122)||(c>=65 && c<=90)||(c>=48 && c<=57)||c==95||(!entry && (c==45||c==46))) {return false;}if entry && i==0 && c>=48 && c<=57 {return false;}}return true;}
+or_schema :: (name:string,entry:string)->OrSpec #export_c {if name.count<1 || name.count>=48 || entry.count<1 || entry.count>=48 {return OrSpec.{status=TiStatus.identity};}s:=OrSchema.{name_count=name.count,entry_count=entry.count};for i:0..<name.count {s.name[i]=name[i];}for i:0..<entry.count {s.entry[i]=entry[i];}if !or_schema_valid(s) {return OrSpec.{status=TiStatus.identity};}return OrSpec.{schema=s};}
+or_schema_valid :: (s:OrSchema)->bool {if s.name_count<1 || s.name_count>=48 || s.entry_count<1 || s.entry_count>=48 || s.version<1 || s.rank_limit<0 || s.rank_limit>4 || s.dtype!=TdDtype.f32 || s.write_alias {return false;}return or_name(s.name,s.name_count,false) && or_name(s.entry,s.entry_count,true);}
+or_register :: (r:OrRegistry,s:OrSchema,code:[4]u64)->OrUpdate #export_c {
+    if r.count<0 || r.count>=8 || !ti_cache_ready(r.life) || r.life.modules!=0 {return OrUpdate.{status=TiStatus.state};}if !or_schema_valid(s) {return OrUpdate.{status=TiStatus.identity};}
+    for i:0..<r.count {old:=r.schemas[i];same:=old.version==s.version && old.name_count==s.name_count;for j:0..<s.name_count {if old.name[j]!=s.name[j] {same=false;}}if same {return OrUpdate.{status=TiStatus.identity};}}
+    next:=r;next.schemas[r.count]=s;next.code[r.count]=code;next.count+=1;return OrUpdate.{id=r.count,registry=next};
+}
+or_node :: (id:int,a:int,b:int,backward:bool,parameter:f32)->TiNode #export_c {mode:=0;if backward {mode=1;}return TiNode.{op=TiOp.registered,a=a,b=b,axis=id,index_count=mode,epsilon=parameter};}
+or_admit :: (r:OrRegistry,p:TiPlan)->TiStatus #export_c {if p.status!=TiStatus.ok {return p.status;}if r.count<0 || r.count>8 || !ti_cache_ready(r.life) {return TiStatus.state;}for i:0..<p.program.count {n:=p.program.nodes[i];if n.op==TiOp.registered {if n.axis<0 || n.axis>=r.count {return TiStatus.index;}s:=r.schemas[n.axis];if !or_schema_valid(s) || p.values[i].view.shape.rank>s.rank_limit {return TiStatus.shape;}if n.index_count==1 && !s.backward {return TiStatus.operation;}}}return TiStatus.ok;}
+or_batch :: (s:OrSchema,shape:TvShape,batch:int)->OrBatch #export_c {if !s.batching {return OrBatch.{status=TiStatus.operation};}if !or_schema_valid(s) || tv_elements(shape).status!=TvStatus.ok || shape.rank>=s.rank_limit || batch<0 || batch>TV_LIMIT {return OrBatch.{status=TiStatus.shape};}out:=TvShape.{rank=shape.rank+1};out.dims[0]=batch;for i:0..<shape.rank {out.dims[i+1]=shape.dims[i];}if tv_elements(out).status!=TvStatus.ok {return OrBatch.{status=TiStatus.limit};}return OrBatch.{shape=out};}
+or_fingerprint :: (r:OrRegistry)->[4]u64 #export_c {bytes:[2048]u8;at:=0;for i:0..<4 {for j:0..<8 {bytes[at]=cast,trunc(u8)(r.compiler[i]>>u64(8*j));at+=1;}}
+    for i:0..<r.count {s:=r.schemas[i];for j:0..<48 {bytes[at]=s.name[j];at+=1;bytes[at]=s.entry[j];at+=1;}fields:=[8]int.[s.version,s.rank_limit,int(cast(u8)s.dtype),0,0,0,s.name_count,s.entry_count];if s.backward {fields[3]=1;}if s.batching {fields[4]=1;}if s.write_alias {fields[5]=1;}for value:fields {for j:0..<8 {bytes[at]=cast,trunc(u8)(cast(u64)value>>u64(8*j));at+=1;}}for value:r.code[i] {for j:0..<8 {bytes[at]=cast,trunc(u8)(value>>u64(8*j));at+=1;}}}
+    return ti_identity_words(bytes[0..<at]);
+}
+#test "registration targets and executable source identities are admitted explicitly" {
+    #assert or_open_admit([4]u64.[1,0,0,0],TdDevice.cuda)==TiStatus.ok;
+    #assert or_open_admit([4]u64.[0,0,0,0],TdDevice.cpu)==TiStatus.identity;
+    #assert or_device(TdDevice.cpu,TdDevice.metal)==TiStatus.device && or_device(TdDevice.cpu,TdDevice.cpu)==TiStatus.ok;
+    #assert or_source(1,true,true)==TiStatus.ok && or_source(0,false,true)==TiStatus.capacity;
+}
+or_open_admit :: (compiler:[4]u64,device:TdDevice)->TiStatus #export_c {if !td_device_known(cast(u8)device) {return TiStatus.device;}for word:compiler {if word!=0 {return TiStatus.ok;}}return TiStatus.identity;}
+or_device :: (expected:TdDevice,actual:TdDevice)->TiStatus #export_c {if !td_device_known(cast(u8)actual) || actual!=expected {return TiStatus.device;}return TiStatus.ok;}
+or_source :: (bytes:int,present:bool,callbacks:bool)->TiStatus #export_c {if bytes<1 || bytes>4194304 || !present || !callbacks {return TiStatus.capacity;}return TiStatus.ok;}

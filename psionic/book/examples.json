@@ -550,6 +550,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/registered-operator.coax",
+      "chapter": "psionic/book/ch026c-add-your-own-operator.md",
+      "stdout": "psionic/fixtures/registered-operator.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

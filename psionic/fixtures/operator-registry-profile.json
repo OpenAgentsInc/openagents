@@ -1,0 +1,13 @@
+{
+  "profile": "registered-unary-f32-v1",
+  "ir_tag": 11,
+  "schema": "read-only unary input, same-shaped fresh output, one finite scalar configuration",
+  "devices": ["cpu", "cuda", "metal"],
+  "dtypes": ["f32"],
+  "backward": "optional input VJP with equal-shaped upstream gradient",
+  "batching": "optional pointwise prepend-axis rule",
+  "identity": "compiler, schema and supplied module/source SHA256; copied into IR target operators digest",
+  "limits": {"registrations": 8, "compiled_leases": 32, "rank": 4},
+  "examples": ["squared-relu", "linear-gain"],
+  "not_implemented": ["configuration parameter gradients", "arbitrary arity", "mixed dtypes", "untrusted-code sandbox", "general autodiff", "device-resident optimizer"]
+}

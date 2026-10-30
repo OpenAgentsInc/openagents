@@ -478,6 +478,27 @@ Coax checks, zero-survivor mutation, independent scalar bit fixtures and
 native debug/release plus sanitizer checks. See the
 [chapter 34 record](docs/verification/psionic-ch34-2026-10-29.md).
 
+## Psionic registered operators retain typed IR semantics and code leases
+
+`psionic/lib/operator-registry.coax` admits bounded unary same-shape f32
+schemas, disjoint writes, versioned names, optional input VJPs and pointwise
+batching. Registered IR tag 11 requires an attached admitted registry; absent
+hooks or unknown IDs refuse before execution. Coax checks shapes, colocated
+operands, backward capability and code/schema identities. Native hooks bind
+trusted Coax CPU callbacks and generated GPU entries inside the existing
+command stream; no operator-specific formula lives in core C dispatch.
+
+Registry fingerprints include name/entry lengths and bytes, versions,
+properties, compiler and supplied source/module digests. They are part of
+`TiTarget.operators`. Compiled plans freeze registration tables through Coax
+leases; derived plans inherit independent registry/module leases, and owners
+cannot close early. Operator authors retain their declared memory/numerical
+contract obligations; callback provenance is trusted producer metadata, not
+sandboxing or attestation. See the focused `operator-registry` gate and
+[chapter 26c evidence](docs/verification/psionic-ch26c-2026-10-29.md) for actual
+CPU/CUDA/Metal inference, finite-difference VJPs, compiled MLP, batching and
+scalar training. Full mutation runs are omitted under owner instruction.
+
 ## Psionic symbolic templates share code and specialize guarded plans
 
 `psionic/lib/tensor-template.coax` resolves up to four guarded integer symbols,

@@ -63,7 +63,7 @@ Other dtype annotations return `dtype`, rather than silently converting.
 
 <!-- source: psionic/lib/tensor-ir.coax types -->
 ```jai
-TiOp :: enum u8 {input;matmul;add;multiply;relu;sum;layernorm;view;reshape;gather;}
+TiOp :: enum u8 {input;matmul;add;multiply;relu;sum;layernorm;view;reshape;gather;registered=11;}
 TiStatus :: enum u8 {ok;operation;dependency;shape;dtype;device;layout;index;limit;capacity;alias;number;arithmetic;identity;budget;driver;absent;state;}
 TiPlacement :: enum u8 {target;cpu;cuda;metal;}
 TiNode :: struct {
@@ -73,7 +73,7 @@ TiNode :: struct {
     axis:int;epsilon:f32=0.00001f32;index_count:int;indices:[16]int;
 }
 TiProgram :: struct {count:int;output:int;nodes:[32]TiNode;}
-TiTarget :: struct {device:TdDevice;compiler:[4]u64;backend:[4]u64;kernel:[4]u64;budget:int=67108864;}
+TiTarget :: struct {device:TdDevice;compiler:[4]u64;backend:[4]u64;kernel:[4]u64;operators:[4]u64;budget:int=67108864;}
 ```
 
 Node indices are value IDs. Every operand must precede its consumer, making

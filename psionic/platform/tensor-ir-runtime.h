@@ -10,6 +10,15 @@
 typedef struct Pti Pti;
 /* Tracks this object's five owned payload buffers; driver scratch is separate. */
 typedef struct {uint64_t allocations,runs,module_compiles;int64_t buffer_bytes,workspace_bytes;} PtiStats;
+typedef struct {
+    void *context;uint64_t digest[4];
+    coax_t_TiStatus (*admit)(void*,coax_t_TiPlan);
+    coax_t_TiStatus (*acquire)(void*);
+    void (*release)(void*);
+    void (*cpu)(void*,const coax_t_TiLaunch*,bool,coax_v_f32,coax_v_f32,coax_v_f32,coax_v_u8);
+    void *(*kernel)(void*,int64_t);
+} PtiExtensions;
+coax_t_TiStatus pti_attach(Pti *program,const PtiExtensions *extensions);
 coax_t_TiStatus pti_open(coax_t_TiProgram program,coax_t_TiTarget target,bool reference,const char *module,size_t bytes,Pti **out);
 /* Specializations share immutable code; closing its owner is refused until
    every derived handle has closed. Each derived plan owns independent buffers. */

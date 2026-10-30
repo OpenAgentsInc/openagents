@@ -19,7 +19,7 @@ struct Pti {
 #ifdef __APPLE__
     PmModule metal;PmKernel mk;
 #endif
-    PtiStats stats;struct Pti *module_owner;
+    PtiStats stats;struct Pti *module_owner;PtiExtensions extensions;bool attached;
 };
 static coax_v_u8 ti_bytes(const void *p,int64_t n){return(coax_v_u8){(uint8_t*)p,n};}
 static coax_v_f32 ti_floats(const void *p,int64_t n){return(coax_v_f32){(float*)p,n};}
@@ -50,6 +50,7 @@ static void ti_dispose(Pti *p){if(!p)return;ti_free(p,p->input);ti_free(p,p->wor
 #ifdef __APPLE__
     if(p->plan.target.device==DEVICE(metal)){if(!p->module_owner){if(p->mk)pm_kernel_free(p->mk);if(p->metal)pm_unload(p->metal);}}
 #endif
+    if(p->attached)p->extensions.release(p->extensions.context);
     if(p->module_owner){coax_t_TiLifeResult returned=ti_module_return(p->module_owner->life);if(!returned.status)p->module_owner->life=returned.state;}
     free(p->readback);free(p->host_flags);free(p->metadata);free(p->launches);free(p);
 }
@@ -87,6 +88,13 @@ coax_t_TiStatus pti_open(coax_t_TiProgram graph,coax_t_TiTarget target,bool refe
     z=ti_allocate_plan(p);if(z){ti_dispose(p);return z;}
     *out=p;return TI(ok);
 }
+coax_t_TiStatus pti_attach(Pti *p,const PtiExtensions *e){
+    if(!p)return TI(state);
+    bool present=e&&e->admit&&e->acquire&&e->release&&e->cpu&&e->kernel;
+    coax_t_TiStatus z=ti_attach_admit(p->life,p->attached,present);if(z)return z;
+    z=e->admit(e->context,p->plan);if(z)return z;z=e->acquire(e->context);if(z)return z;
+    p->extensions=*e;p->attached=true;memcpy(p->plan.target.operators.e,e->digest,sizeof e->digest);return TI(ok);
+}
 coax_t_TiStatus pti_derive(Pti *parent,coax_t_TiProgram graph,Pti **out){
     if(!parent || !out || *out)return TI(state);
     if(!ti_cache_ready(parent->life))return TI(state);
@@ -97,6 +105,7 @@ coax_t_TiStatus pti_derive(Pti *parent,coax_t_TiProgram graph,Pti **out){
 #ifdef __APPLE__
     p->metal=owner->metal;p->mk=owner->mk;
 #endif
+    if(owner->attached){coax_t_TiStatus attached=pti_attach(p,&owner->extensions);if(attached){ti_dispose(p);return attached;}}
     if(plan.target.device==DEVICE(cuda) && pc_stream(&p->stream)!=PC_OK){ti_dispose(p);return TI(driver);}
     coax_t_TiStatus z=ti_allocate_plan(p);if(z){ti_dispose(p);return z;}*out=p;return TI(ok);
 }
@@ -120,10 +129,10 @@ static coax_t_TiStatus ti_gpu_run(Pti *p,const float *input){
     for(int64_t i=0;i<p->plan.launches;i++){
         coax_t_TiLaunch launch=p->launches[i];if(!launch.items)continue;
         if(cuda){PcArg args[]={{.kind=PC_ARG_VIEW,.data=p->meta+(uint64_t)i*64*8,.count=64},{.kind=PC_ARG_F32,.f=launch.epsilon},{.kind=PC_ARG_VIEW,.data=p->input,.count=p->plan.input_elements},{.kind=PC_ARG_VIEW,.data=p->workspace,.count=p->plan.workspace},{.kind=PC_ARG_VIEW,.data=p->stage,.count=p->plan.output_elements},{.kind=PC_ARG_VIEW,.data=p->flags,.count=p->plan.flag_elements}};
-            if(pc_launch(p->kernel,launch.items,256,args,6,p->stream)!=PC_OK){z=TI(driver);break;}}
+            if(pc_launch(launch.meta.e[0]==11?p->extensions.kernel(p->extensions.context,launch.meta.e[31]):p->kernel,launch.items,256,args,6,p->stream)!=PC_OK){z=TI(driver);break;}}
 #ifdef __APPLE__
         else {PmArg args[]={{.kind=PM_ARG_VIEW,.buffer=(PmBuffer)(uintptr_t)p->meta,.offset=i*64*8,.count=64},{.kind=PM_ARG_F32,.f=launch.epsilon},{.kind=PM_ARG_VIEW,.buffer=(PmBuffer)(uintptr_t)p->input,.count=p->plan.input_elements},{.kind=PM_ARG_VIEW,.buffer=(PmBuffer)(uintptr_t)p->workspace,.count=p->plan.workspace},{.kind=PM_ARG_VIEW,.buffer=(PmBuffer)(uintptr_t)p->stage,.count=p->plan.output_elements},{.kind=PM_ARG_VIEW,.buffer=(PmBuffer)(uintptr_t)p->flags,.count=p->plan.flag_elements}};
-            if(pm_launch(batch,p->mk,launch.items,1,256,args,6)!=PM_OK){z=TI(driver);break;}}
+            if(pm_launch(batch,launch.meta.e[0]==11?p->extensions.kernel(p->extensions.context,launch.meta.e[31]):p->mk,launch.items,1,256,args,6)!=PM_OK){z=TI(driver);break;}}
 #endif
     }
     if(cuda){if(pc_sync_stream(p->stream)!=PC_OK)z=TI(driver);if(!z){if(p->plan.output_elements && pc_download(p->readback,p->stage,(size_t)p->plan.output_elements*4,p->stream)!=PC_OK)z=TI(driver);if(!z && p->plan.flag_elements && pc_download(p->host_flags,p->flags,(size_t)p->plan.flag_elements,p->stream)!=PC_OK)z=TI(driver);if(pc_sync_stream(p->stream)!=PC_OK)z=TI(driver);}}
@@ -134,14 +143,17 @@ static coax_t_TiStatus ti_gpu_run(Pti *p,const float *input){
 }
 coax_t_TiStatus pti_run(Pti *p,const float *input,int64_t count,float *out,int64_t capacity){
     if(!p)return TI(state);
+    coax_t_TiStatus extension=ti_extension_admit(p->plan,p->attached);if(extension)return extension;
     coax_t_TiStatus z=ti_inputs(p->plan,ti_floats(input,count),capacity,ti_overlap(p,input,count,out,capacity));if(z)return z;
     coax_t_TiLifeResult begin=ti_begin(p->life);if(begin.status)return begin.status;p->life=begin.state;
     if(p->plan.target.device==DEVICE(cpu)){
-        if(!p->plan.reuse){coax_t_TiResult r=ti_cpu_checked(p->plan.program,false,ti_floats(input,count),ti_floats(ti_pointer(p,p->workspace),p->plan.workspace),ti_floats(ti_pointer(p,p->stage),p->plan.output_elements),ti_floats(out,capacity),ti_bytes(ti_pointer(p,p->flags),p->plan.flag_elements),false);z=r.status;}
-        else {
-            for(int64_t command=0;command<p->plan.launches;command++){coax_t_TiLaunch *launch=&p->launches[command];for(int64_t i=0;i<launch->items;i++)tik_run(i,(coax_v_s64){launch->meta.e,64},launch->epsilon,ti_floats(input,count),ti_floats(ti_pointer(p,p->workspace),p->plan.workspace),ti_floats(ti_pointer(p,p->stage),p->plan.output_elements),ti_bytes(ti_pointer(p,p->flags),p->plan.flag_elements));}
-            z=ti_publish(ti_bytes(ti_pointer(p,p->flags),p->plan.flag_elements),ti_floats(ti_pointer(p,p->stage),p->plan.output_elements),ti_floats(out,capacity));
+        for(int64_t command=0;command<p->plan.launches;command++){
+            coax_t_TiLaunch *launch=&p->launches[command];
+            if(launch->meta.e[0]==11)p->extensions.cpu(p->extensions.context,launch,!p->plan.reuse,ti_floats(input,count),ti_floats(ti_pointer(p,p->workspace),p->plan.workspace),ti_floats(ti_pointer(p,p->stage),p->plan.output_elements),ti_bytes(ti_pointer(p,p->flags),p->plan.flag_elements));
+            else if(!p->plan.reuse){z=ti_reference_command(p->plan,command,false,ti_floats(input,count),ti_floats(ti_pointer(p,p->workspace),p->plan.workspace),ti_floats(ti_pointer(p,p->stage),p->plan.output_elements),ti_bytes(ti_pointer(p,p->flags),p->plan.flag_elements));if(z)break;}
+            else for(int64_t i=0;i<launch->items;i++)tik_run(i,(coax_v_s64){launch->meta.e,64},launch->epsilon,ti_floats(input,count),ti_floats(ti_pointer(p,p->workspace),p->plan.workspace),ti_floats(ti_pointer(p,p->stage),p->plan.output_elements),ti_bytes(ti_pointer(p,p->flags),p->plan.flag_elements));
         }
+        if(!z)z=ti_publish(ti_bytes(ti_pointer(p,p->flags),p->plan.flag_elements),ti_floats(ti_pointer(p,p->stage),p->plan.output_elements),ti_floats(out,capacity));
     }else {z=ti_gpu_run(p,input);if(!z)z=ti_publish(ti_bytes(p->host_flags,p->plan.flag_elements),ti_floats(p->readback,p->plan.output_elements),ti_floats(out,capacity));}
     p->life=ti_end(p->life,z);p->stats.runs++;return z;
 }

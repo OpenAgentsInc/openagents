@@ -6,6 +6,11 @@
 TiBuffers :: struct {input:int;workspace:int;stage:int;flags:int;metadata:int;total:int;}
 TiLife :: struct {live:bool=true;running:bool;poisoned:bool;modules:int;}
 TiLifeResult :: struct {status:TiStatus;state:TiLife;}
+#test "registered IR nodes require an admitted extension and same-shaped operands" {
+    p:=ti_fixture();p.nodes[7]=TiNode.{op=TiOp.registered,a=6,b=6,axis=0,epsilon=1};plan:=ti_compile(p,TiTarget.{},true);
+    #assert plan.status==TiStatus.ok && ti_extension_admit(plan,false)==TiStatus.operation && ti_extension_admit(plan,true)==TiStatus.ok;
+    #assert ti_attach_admit(ti_initial_life(),false,true)==TiStatus.ok && ti_attach_admit(ti_initial_life(),true,true)==TiStatus.state;
+}
 #test "a shared module cannot close while any specialization holds its lease" {
     a:=ti_module_borrow(ti_initial_life());#assert a.status==TiStatus.ok && a.state.modules==1 && ti_close_admit(a.state)==TiStatus.state;
     b:=ti_module_return(a.state);#assert b.status==TiStatus.ok && b.state.modules==0 && ti_close_admit(b.state)==TiStatus.ok;
@@ -51,10 +56,8 @@ ti_ref_item :: (p:TiPlan,id:int,item:int,input:[]f32,work:[]f32)->ToValue {
 ti_cpu_checked :: (program:TiProgram,reuse:bool,input:[]f32,work:[]f32,stage:[]f32,out:[]f32,flags:[]u8,overlap:bool)->TiResult #export_c {
     p:=ti_compile(program,TiTarget.{},reuse);status:=ti_inputs(p,input,out.count,overlap);if status!=TiStatus.ok {return TiResult.{status=status};}
     if work.count<p.workspace || stage.count<p.output_elements || flags.count<p.flag_elements {return TiResult.{status=TiStatus.capacity};}
-    for command:0..<p.launches {launch:=ti_lower(p,command);
-        if reuse || command==p.launches-1 {for i:0..<launch.items {tik_run(i,launch.meta[..],launch.epsilon,input,work,stage,flags);}}
-        else {id:=p.commands[command];for i:0..<launch.items {value:=ti_ref_item(p,id,i,input,work);if value.status!=ToStatus.ok || !to_fits(value.value) {return TiResult.{status=TiStatus.arithmetic};}work[p.values[id].base+i]=f32(value.value);flags[launch.meta[2]+i]=0;}}
-    }
+    if ti_extension_admit(p,false)!=TiStatus.ok {return TiResult.{status=TiStatus.operation};}
+    for command:0..<p.launches {status=ti_reference_command(p,command,reuse,input,work,stage,flags);if status!=TiStatus.ok {return TiResult.{status=status};}}
     status=ti_publish(flags[0..<p.flag_elements],stage[0..<p.output_elements],out);if status!=TiStatus.ok {return TiResult.{status=status};}return TiResult.{written=p.output_elements,workspace=p.workspace};
 }
 // book:end cpu
@@ -74,3 +77,12 @@ ti_close_admit :: (s:TiLife)->TiStatus #export_c {if !s.live || s.running || s.m
 
 ti_module_borrow :: (s:TiLife)->TiLifeResult #export_c {if !ti_cache_ready(s) || s.modules<0 || s.modules>=32 {return TiLifeResult.{status=TiStatus.state};}next:=s;next.modules+=1;return TiLifeResult.{state=next};}
 ti_module_return :: (s:TiLife)->TiLifeResult #export_c {if !s.live || s.running || s.modules<1 {return TiLifeResult.{status=TiStatus.state};}next:=s;next.modules-=1;return TiLifeResult.{state=next};}
+
+ti_reference_command :: (p:TiPlan,command:int,planned:bool,input:[]f32,work:[]f32,stage:[]f32,flags:[]u8)->TiStatus #export_c {
+    launch:=ti_lower(p,command);if launch.status!=TiStatus.ok {return launch.status;}
+    if planned || command==p.launches-1 {for i:0..<launch.items {tik_run(i,launch.meta[..],launch.epsilon,input,work,stage,flags);}}
+    else {id:=p.commands[command];if p.program.nodes[id].op==TiOp.registered {return TiStatus.operation;}for i:0..<launch.items {value:=ti_ref_item(p,id,i,input,work);if value.status!=ToStatus.ok || !to_fits(value.value) {return TiStatus.arithmetic;}work[p.values[id].base+i]=f32(value.value);flags[launch.meta[2]+i]=0;}}
+    return TiStatus.ok;
+}
+ti_extension_admit :: (p:TiPlan,present:bool)->TiStatus #export_c {if p.status!=TiStatus.ok {return p.status;}for i:0..<p.program.count {if p.program.nodes[i].op==TiOp.registered && !present {return TiStatus.operation;}}return TiStatus.ok;}
+ti_attach_admit :: (s:TiLife,attached:bool,present:bool)->TiStatus #export_c {if !ti_cache_ready(s) || s.modules!=0 || attached || !present {return TiStatus.state;}return TiStatus.ok;}

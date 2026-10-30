@@ -1,0 +1,18 @@
+#load "../lib/operator-training.coax";
+#import "Basic";
+// book:begin example
+main :: () {
+    schema:=or_schema("squared-relu","registered_squared").schema;
+    registry:=or_register(or_empty([4]u64.[1,0,0,0]),schema,[4]u64.[2,0,0,0]).registry;
+    p:TiProgram;p.count=2;p.output=1;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[4,0,0,0]},0);
+    p.nodes[1]=or_node(0,0,0,false,1);plan:=ti_compile(p,TiTarget.{},true);#assert or_admit(registry,plan)==TiStatus.ok;
+    x:=[4]f32.[-1,0,0.25,2];work:[4]f32;out:[4]f32;flags:[8]u8;
+    call:=ti_lower(plan,0);for i:0..<4 {registered_squared(i,call.meta[..],call.epsilon,x[..],work[..],out[..],flags[..]);}
+    copy:=ti_lower(plan,1);for i:0..<4 {tik_run(i,copy.meta[..],copy.epsilon,x[..],work[..],out[..],flags[..]);}
+    #assert ti_publish(flags[..],out[..],work[..])==TiStatus.ok;
+    print("Registered squared-ReLU: %, %, %, %\n",out[0],out[1],out[2],out[3]);
+    shape:=or_batch(schema,p.nodes[0].shape,2).shape;
+    print("Batch rule: [%, %]; registered backward rule: %\n",shape.dims[0],shape.dims[1],schema.backward);
+    print("Compiled model identity includes operator source and schema.\n");
+}
+// book:end example

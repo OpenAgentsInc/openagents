@@ -4,7 +4,7 @@
 #authority;
 TI_NODES :: 32;
 // book:begin types
-TiOp :: enum u8 {input;matmul;add;multiply;relu;sum;layernorm;view;reshape;gather;}
+TiOp :: enum u8 {input;matmul;add;multiply;relu;sum;layernorm;view;reshape;gather;registered=11;}
 TiStatus :: enum u8 {ok;operation;dependency;shape;dtype;device;layout;index;limit;capacity;alias;number;arithmetic;identity;budget;driver;absent;state;}
 TiPlacement :: enum u8 {target;cpu;cuda;metal;}
 TiNode :: struct {
@@ -14,7 +14,7 @@ TiNode :: struct {
     axis:int;epsilon:f32=0.00001f32;index_count:int;indices:[16]int;
 }
 TiProgram :: struct {count:int;output:int;nodes:[32]TiNode;}
-TiTarget :: struct {device:TdDevice;compiler:[4]u64;backend:[4]u64;kernel:[4]u64;budget:int=67108864;}
+TiTarget :: struct {device:TdDevice;compiler:[4]u64;backend:[4]u64;kernel:[4]u64;operators:[4]u64;budget:int=67108864;}
 // book:end types
 TiValue :: struct {view:TvView;root:int;storage:int;base:int;external:bool;}
 TiSlot :: struct {base:int;capacity:int;until:int;}
@@ -79,7 +79,7 @@ ti_fixture :: ()->TiProgram #export_c {
 }
 // book:end fixture
 ti_material :: (op:TiOp)->bool {return op!=TiOp.input && op!=TiOp.view && op!=TiOp.reshape;}
-ti_binary :: (op:TiOp)->bool {return op==TiOp.matmul || op==TiOp.add || op==TiOp.multiply;}
+ti_binary :: (op:TiOp)->bool {return op==TiOp.matmul || op==TiOp.add || op==TiOp.multiply || op==TiOp.registered;}
 ti_shape_equal :: (a:TvShape,b:TvShape)->bool {if a.rank!=b.rank {return false;}for i:0..<4 {if a.dims[i]!=b.dims[i] {return false;}}return true;}
 ti_request :: (n:TiNode)->ToRequest {op:=ToOp.relu;if n.op==TiOp.matmul {op=ToOp.matmul;}else if n.op==TiOp.add {op=ToOp.add;}else if n.op==TiOp.multiply {op=ToOp.multiply;}else if n.op==TiOp.sum {op=ToOp.sum;}else if n.op==TiOp.gather {op=ToOp.take;}return ToRequest.{op=op,axis=n.axis};}
 ti_compile :: (p:TiProgram,t:TiTarget,reuse:bool)->TiPlan #export_c {
@@ -87,7 +87,7 @@ ti_compile :: (p:TiProgram,t:TiTarget,reuse:bool)->TiPlan #export_c {
     if !td_device_known(cast(u8)t.device) {return TiPlan.{status=TiStatus.device};}if t.budget<0 || t.budget>1073741824 {return TiPlan.{status=TiStatus.budget};}
     plan:=TiPlan.{program=p,target=t,reuse=reuse};
     for i:0..<p.count {
-        n:=p.nodes[i];if cast(u8)n.op>9 {return TiPlan.{status=TiStatus.operation};}
+        n:=p.nodes[i];if cast(u8)n.op>11 || cast(u8)n.op==10 {return TiPlan.{status=TiStatus.operation};}
         if n.dtype!=TdDtype.f32 {return TiPlan.{status=TiStatus.dtype};}if cast(u8)n.placement>3 {return TiPlan.{status=TiStatus.device};}
         if n.placement!=TiPlacement.target && int(cast(u8)n.placement)-1!=int(cast(u8)t.device) {return TiPlan.{status=TiStatus.device};}
         v:TiValue;
@@ -106,7 +106,8 @@ ti_compile :: (p:TiProgram,t:TiTarget,reuse:bool)->TiPlan #export_c {
                 if tv_layout(tv_owner(a.root+1,1,a.storage).storage,v.view).status!=TvStatus.ok {return TiPlan.{status=TiStatus.layout};}
             }else {
                 inner:=1;
-                if n.op==TiOp.layernorm {if shape.rank<1 || shape.dims[shape.rank-1]<1 || !tv_finite(n.epsilon) || n.epsilon<=0 {return TiPlan.{status=TiStatus.shape};}inner=shape.dims[shape.rank-1]*2+1;}
+                if n.op==TiOp.registered {if n.axis<0 || n.axis>=32 || n.index_count<0 || n.index_count>1 || !tv_finite(n.epsilon) || !ti_shape_equal(shape,plan.values[n.b].view.shape) {return TiPlan.{status=TiStatus.shape};}}
+                else if n.op==TiOp.layernorm {if shape.rank<1 || shape.dims[shape.rank-1]<1 || !tv_finite(n.epsilon) || n.epsilon<=0 {return TiPlan.{status=TiStatus.shape};}inner=shape.dims[shape.rank-1]*2+1;}
                 else {b:=TvShape.{rank=1};if ti_binary(n.op) {b=plan.values[n.b].view.shape;}index_count:=0;if n.op==TiOp.gather {index_count=n.index_count;if index_count<0 || index_count>16 {return TiPlan.{status=TiStatus.index};}}
                     inferred:=to_plan(ti_request(n),shape,b,index_count);if inferred.status!=ToStatus.ok {return TiPlan.{status=TiStatus.shape};}shape=inferred.shape;inner=inferred.inner;
                     if n.op==TiOp.gather {bound:=a.view.shape.dims[n.axis];for j:0..<n.index_count {if n.indices[j]<0 || n.indices[j]>=bound {return TiPlan.{status=TiStatus.index};}}}
@@ -141,12 +142,12 @@ ti_lower :: (plan:TiPlan,command:int)->TiLaunch #export_c {
     if command==plan.launches-1 {v:=plan.values[plan.program.output];result.items=plan.output_elements;result.meta[0]=10;result.meta[2]=plan.naive;ti_lower_value(v,8,result.meta[..]);result.meta[3]=v.view.shape.rank;for j:0..<4 {result.meta[4+j]=v.view.shape.dims[j];}return result;}
     id:=plan.commands[command];n:=plan.program.nodes[id];v:=plan.values[id];result.items=v.storage;result.epsilon=n.epsilon;result.meta[0]=int(cast(u8)n.op);result.meta[1]=v.base;result.meta[2]=flag;result.meta[3]=v.view.shape.rank;
     for j:0..<4 {result.meta[4+j]=v.view.shape.dims[j];}a:=plan.values[n.a];ti_lower_value(a,8,result.meta[..]);if ti_binary(n.op) {ti_lower_value(plan.values[n.b],19,result.meta[..]);}
-    result.meta[31]=n.axis;if n.op==TiOp.matmul {result.meta[30]=a.view.shape.dims[1];}else if n.op==TiOp.sum {result.meta[30]=a.view.shape.dims[n.axis];}else if n.op==TiOp.layernorm {result.meta[30]=a.view.shape.dims[a.view.shape.rank-1];}
+    result.meta[31]=n.axis;result.meta[48]=n.index_count;if n.op==TiOp.matmul {result.meta[30]=a.view.shape.dims[1];}else if n.op==TiOp.sum {result.meta[30]=a.view.shape.dims[n.axis];}else if n.op==TiOp.layernorm {result.meta[30]=a.view.shape.dims[a.view.shape.rank-1];}
     for j:0..<16 {result.meta[32+j]=n.indices[j];}return result;
 }
 ti_node_equal :: (a:TiNode,b:TiNode)->bool {if a.op!=b.op || a.a!=b.a || a.b!=b.b || !ti_shape_equal(a.shape,b.shape) || a.offset!=b.offset || a.storage!=b.storage || a.input_base!=b.input_base || a.dtype!=b.dtype || a.placement!=b.placement || a.axis!=b.axis || f32_bits(a.epsilon)!=f32_bits(b.epsilon) || a.index_count!=b.index_count {return false;}for i:0..<4 {if a.strides[i]!=b.strides[i] {return false;}}for i:0..<16 {if a.indices[i]!=b.indices[i] {return false;}}return true;}
 ti_cache_matches :: (plan:TiPlan,p:TiProgram,t:TiTarget)->bool #export_c {
     if plan.status!=TiStatus.ok || p.count!=plan.program.count || p.output!=plan.program.output || p.count<1 || p.count>32 || t.device!=plan.target.device || t.budget!=plan.target.budget {return false;}
-    for i:0..<4 {if t.compiler[i]!=plan.target.compiler[i] || t.backend[i]!=plan.target.backend[i] || t.kernel[i]!=plan.target.kernel[i] {return false;}}
+    for i:0..<4 {if t.compiler[i]!=plan.target.compiler[i] || t.backend[i]!=plan.target.backend[i] || t.kernel[i]!=plan.target.kernel[i] || t.operators[i]!=plan.target.operators[i] {return false;}}
     for i:0..<p.count {if !ti_node_equal(p.nodes[i],plan.program.nodes[i]) {return false;}}return true;
 }
