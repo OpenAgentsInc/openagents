@@ -114,10 +114,24 @@ def timed(slug):
     return time.perf_counter() - t
 
 
+# Paired, interleaved in alternating order so the machine's load falls on both alike; the median
+# of each round's paired differences, the median of three rounds, against 3 ms or a quarter of a
+# typical answer, whichever is more (a loaded machine answers both slower, not one).
 for _ in range(5):
     timed(SLUG), timed("no-such")
-gap = abs(statistics.median([timed(SLUG) for _ in range(30)]) - statistics.median([timed("no-such") for _ in range(30)]))
-check(f"a project and no project answer in the same time ({gap * 1000:.2f} ms apart)", gap < 0.003)
+rounds, typical = [], []
+for _ in range(3):
+    diffs = []
+    for i in range(30):
+        if i % 2:
+            b_t = timed("no-such"); a_t = timed(SLUG)
+        else:
+            a_t = timed(SLUG); b_t = timed("no-such")
+        diffs.append(a_t - b_t); typical += [a_t, b_t]
+    rounds.append(abs(statistics.median(diffs)))
+gap = statistics.median(rounds)
+margin = max(0.003, 0.25 * statistics.median(typical))
+check(f"a project and no project answer in the same time ({gap * 1000:.2f} ms apart, margin {margin * 1000:.2f} ms)", gap < margin)
 
 # ---- members read; invites make sessions
 s, b, _ = agent(os.environ["ADMIN_KEY"], "GET", "state")

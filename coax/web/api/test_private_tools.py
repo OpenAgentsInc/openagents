@@ -7,12 +7,17 @@
 
 s, b, _ = page("POST", f"/projects/{ASLUG}/api/ask", {"text": "Use every document tool"}, cookie=ada, xff="10.1.0.2")
 tt = json.loads(b)["turn"]
-for _ in range(100):
+# Wait for the turn itself to come up (not a number of tries): a loaded machine may take seconds.
+deadline = time.monotonic() + 30
+while True:
     s, nx, _ = run("next", {})
     if nx.get("turn") and nx["turn"]["id"] == tt:
         break
-    if nx.get("turn"):   # a turn left by an earlier file: end it
+    if nx.get("turn"):   # a turn left by an earlier file: end it, and ask again at once
         run("end", {"turn": nx["turn"]["id"], "status": "done"})
+        continue
+    if time.monotonic() > deadline:
+        break
     time.sleep(0.05)
 check("the tools' turn runs", nx.get("turn", {}).get("id") == tt, nx)
 s, st, _ = run("state", method="GET")
