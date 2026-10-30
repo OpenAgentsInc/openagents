@@ -1045,7 +1045,8 @@ garden_frame :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f32, 
   scenery(s, u);
   play(s, shown, face, vx, vz, t);
   vase(s);
-  if !(s[0].vase.blend > 0.6 && flat_length(v3(shown.x, 0, shown.z)) < 1.3) {
+  // nor zoomed into your head (first person, verse/camera.coax)
+  if !(s[0].vase.blend > 0.6 && flat_length(v3(shown.x, 0, shown.z)) < 1.3) && !(verse_orbit_inside(s[0].orbit) && s[0].vase.blend < 0.5) {
     figure(s, u, shown, face, s[0].stride, act, s[0].fetch.ball.held == 0);
   }
   pup := s[0].fetch.dog;

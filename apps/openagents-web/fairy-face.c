@@ -242,6 +242,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   bool diving = g->run && !player.on_ground && !afloat && !beat;
   if (diving && player.vel.y > DIVE) player.vel.y = DIVE;
   jump_was = jump;
+  if (sticks.zoom != 0) fairy_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   int64_t walls = fairy_walls(at(state));
   player = verse_player_advance_among(player, dt, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6});

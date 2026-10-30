@@ -233,6 +233,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (busy) sticks = verse_sticks_reset();
   player = verse_player_input(player, v->key_x, v->key_y, sticks.pad_x, sticks.pad_y, verse_runs(v->run, sticks.run, sticks.pad_x, sticks.pad_y), v->jump || sticks.jump, 0, 0);
   player.theta = villa_player_theta(at(state));
+  if (sticks.zoom != 0) villa_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   int64_t walls = villa_walls(at(state));
   player = verse_player_advance_among(player, dt, (coax_v_f32){0, 0}, (coax_v_f32){v->walls.e, walls * 6});

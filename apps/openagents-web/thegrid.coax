@@ -970,9 +970,12 @@ thegrid_frame :: (s: [] TheGrid, out: [] f32, u: [] f32, width: f32, height: f32
     if redit_row_on(s[0].ed[..], "robots") { r = walk_patrols(s, clock); }   // the board can switch them off
     pose(s, r, f32(FOREMAN_X), f32(FOREMAN_Z), f32(FOREMAN_YAW), f32(FOREMAN_SCALE), CLIP_IDLE, ifx s[0].golden then 0.0f32 else f32(s[0].time));
     r += 1;
-    pose(s, r, feet.x, feet.z, face, 1, ifx walking then CLIP_WALK else CLIP_IDLE, ifx walking then s[0].walk_time else s[0].idle_time);
-    s[0].robots[r * ROBOT_FLOATS + 1] = feet.y;
-    r += 1;
+    // you, unless zoomed into your head (first person, verse/camera.coax)
+    if !verse_orbit_inside(s[0].orbit) {
+      pose(s, r, feet.x, feet.z, face, 1, ifx walking then CLIP_WALK else CLIP_IDLE, ifx walking then s[0].walk_time else s[0].idle_time);
+      s[0].robots[r * ROBOT_FLOATS + 1] = feet.y;
+      r += 1;
+    }
   }
   s[0].robot_n = r - 1;
   robots := cast(u32) s[0].robot_n;

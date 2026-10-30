@@ -853,6 +853,7 @@ figures :: (s: [] Villa, u: [] f32) {
     n := s[0].bone_n[f];
     if n <= 0 { continue; }
     if f == 0 && in_space(s) { continue; }
+    if f == 0 && verse_orbit_inside(s[0].orbit) { continue; }   // zoomed into your head (first person, verse/camera.coax)
     glowing := f == 1;
     for i: 0..<n {
       o := (f * FIG_BONES + i) * BONE_FLOATS;

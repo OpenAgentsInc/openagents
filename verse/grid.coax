@@ -43,6 +43,7 @@ RUN_PAST :: 0.8;        // pushed this far toward the ring (a full push), you ru
 LOOK :: 0.006;          // radians per point dragged, as aethyr's drag look
 TAP_TIME :: 0.3;        // seconds: a touch shorter than this, that
 TAP_TRAVEL :: 10.0;     // moved less than this many points, is a tap
+PINCH_WHEEL :: 6.0;     // a pinch: wheel pixels per point the two fingers spread or close
 SLOT :: 46.0;           // a hotbar slot's size in points, as aethyr's on a phone
 SLOT_EDGE :: 16.0;      // from the screen's left edge
 SLOT_GAP :: 16.0;       // above the move stick's ring
@@ -360,7 +361,17 @@ Sticks :: struct {
   slot_over: bool;
   dance: bool;
   danced_at: f64 = -100;
+  // A second finger on the look side while one is down: a pinch, its slot,
+  // where it was last, and the zoom it asked for since the last frame, in
+  // wheel pixels (positive out, as the wheel's), for the host's wheel.
+  pinch_on: bool;
+  pinch_slot: int;
+  px: f32;
+  py: f32;
+  zoom: f32;
 }
+
+gap :: (ax: f32, ay: f32, bx: f32, by: f32) -> f32 { return sqrt((ax - bx) * (ax - bx) + (ay - by) * (ay - by)); }
 
 // Where the move stick rests: its centre, before a thumb is down.
 stick_rest_y :: (height: f32, k: f32) -> f32 { return height - hi(f32(STICK) * k * 2.4, height * 0.18); }
@@ -395,7 +406,17 @@ sticks_touch :: (s: Sticks, slot: int, phase: int, x: f32, y: f32, width: f32, h
       next.look_on = true; next.look_slot = slot;
       next.lx = x; next.ly = y; next.sx = x; next.sy = y;
       next.since = now; next.travelled = false;
+    } else if !s.pinch_on {
+      next.pinch_on = true; next.pinch_slot = slot; next.px = x; next.py = y;
+      next.travelled = true;   // two fingers are no tap
     }
+    return next;
+  }
+  if s.pinch_on && slot == s.pinch_slot {
+    if phase == 1 {
+      next.zoom -= (gap(x, y, s.lx, s.ly) - gap(s.px, s.py, s.lx, s.ly)) / k * f32(PINCH_WHEEL);
+      next.px = x; next.py = y;
+    } else { next.pinch_on = false; }
     return next;
   }
   if s.slot_on && slot == s.slot_finger {
@@ -418,6 +439,16 @@ sticks_touch :: (s: Sticks, slot: int, phase: int, x: f32, y: f32, width: f32, h
     }
     return next;
   }
+  if s.look_on && slot == s.look_slot && s.pinch_on {
+    // pinching: the spread zooms and nothing turns; lifted, the other finger looks on
+    if phase == 1 {
+      next.zoom -= (gap(x, y, s.px, s.py) - gap(s.lx, s.ly, s.px, s.py)) / k * f32(PINCH_WHEEL);
+      next.lx = x; next.ly = y;
+    } else {
+      next.pinch_on = false; next.look_slot = s.pinch_slot; next.lx = s.px; next.ly = s.py;
+    }
+    return next;
+  }
   if s.look_on && slot == s.look_slot {
     if phase == 1 {
       next.dyaw -= (x - s.lx) / k * f32(LOOK);
@@ -437,7 +468,7 @@ sticks_touch :: (s: Sticks, slot: int, phase: int, x: f32, y: f32, width: f32, h
 // are spent; the stick stays held.
 verse_sticks_used :: (s: Sticks) -> Sticks #export_c {
   next := s;
-  next.dyaw = 0; next.dpitch = 0; next.jump = false; next.dance = false;
+  next.dyaw = 0; next.dpitch = 0; next.jump = false; next.dance = false; next.zoom = 0;
   return next;
 }
 
@@ -892,3 +923,22 @@ verse_grid_controls :: (h:int,s:Sticks,width:f32,height:f32,scale:f32) #export_c
 
 verse_sticks_touch :: (s:Sticks,slot:int,phase:int,x:f32,y:f32,width:f32,height:f32,scale:f32,now:f64)->Sticks #export_c {return sticks_touch(s,slot,phase,x,y,width,height,scale,now,true);}
 verse_sticks_world_touch :: (s:Sticks,slot:int,phase:int,x:f32,y:f32,width:f32,height:f32,scale:f32,now:f64)->Sticks #export_c {return sticks_touch(s,slot,phase,x,y,width,height,scale,now,false);}
+
+#test "two fingers on the look side pinch: spreading zooms in, closing out, and nothing turns" {
+  s := press(verse_sticks_reset(), 1, 700, 1000, 0);
+  s = press(s, 2, 800, 1000, 0.1);
+  #assert s.pinch_on && s.look_on;
+  s = drag(s, 2, 900, 1000, 0.2);    // 100 pixels apart more: 50 points at scale 2
+  #assert near(s.zoom, -50 * f32(PINCH_WHEEL), 0.001) && s.dyaw == 0 && s.dpitch == 0;
+  s = verse_sticks_used(s);
+  #assert s.zoom == 0;
+  s = drag(s, 1, 800, 1000, 0.3);    // the first finger closes in
+  #assert near(s.zoom, 50 * f32(PINCH_WHEEL), 0.001) && s.dyaw == 0;
+  // One lifts, no tap: the other looks on.
+  s = lift(s, 1, 800, 1000, 0.35);
+  #assert !s.pinch_on && s.look_on && !s.jump && s.look_slot == 2;
+  s = drag(verse_sticks_used(s), 2, 910, 1000, 0.4);
+  #assert s.dyaw < 0 && s.zoom == 0;
+  s = lift(s, 2, 910, 1000, 0.5);
+  #assert !s.look_on && !s.jump;
+}

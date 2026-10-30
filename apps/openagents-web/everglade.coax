@@ -1047,6 +1047,10 @@ everglade_controls :: (s: [] Everglade, dt: f32, dyaw: f32, dpitch: f32) #export
   s[0].look_yaw = 0; s[0].look_pitch = 0;
 }
 
+// First person (zoomed in past the closest): the eye is in your head, so your body isn't drawn;
+// the map's lift takes the eye out again.
+you_inside :: (s: [] Everglade) -> bool { return verse_orbit_inside(s[0].orbit) && s[0].lift < 0.5; }
+
 everglade_player_theta :: (s: [] Everglade) -> f32 #export_c { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
 
 // ---- talking (eg-people)
@@ -3401,7 +3405,8 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   s[0].draws[d] = cast(u32) s[0].ranger_first;
   s[0].draws[d + 1] = cast(u32) s[0].ranger_count;
   s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + RANGER_AT);
-  s[0].draws[d + 3] = cast(u32) (ifx s[0].ranger_count > 0 && ci_you_shown(s) then 1 else 0);   // not in a beast's shape (everglade-circle.coax)
+  // not in a beast's shape (everglade-circle.coax), nor zoomed into your head (first person, verse/camera.coax)
+  s[0].draws[d + 3] = cast(u32) (ifx s[0].ranger_count > 0 && ci_you_shown(s) && !you_inside(s) then 1 else 0);
   s[0].kit_triangles += s[0].ranger_count / 3;
   d = LATHE_DRAW * 4;
   s[0].draws[d] = first;

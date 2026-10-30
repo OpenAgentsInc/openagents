@@ -177,6 +177,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     player.grip = foot.grip;
   }
   player.theta = everglade_player_theta(at(state));
+  if (sticks.zoom != 0) everglade_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   // on the bridge's deck its rails are in your way; off it (in the river under it) its piles are
   bool deck = everglade_on_bridge(at(state), player.pos.x, player.pos.z) && swim.medium < 2;

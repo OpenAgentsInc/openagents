@@ -2220,7 +2220,8 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   body := ffl_part(s[0].life[..], FFL_BODY);
   ups := FFL_BODY_UP; acrosses := FFL_BODY_ACROSS;
   s[0].fig_on = true; s[0].fig_at = shown; s[0].fig_up = ups[body]; s[0].fig_across = acrosses[body];
-  fairy_figure(s, u, shown, face, s[0].stride, act, s[0].air, flap);
+  // zoomed into your head (first person, verse/camera.coax) you aren't drawn, unless the map lifts the eye out
+  if !verse_orbit_inside(s[0].orbit) || s[0].map[0].lift > 0.5 { fairy_figure(s, u, shown, face, s[0].stride, act, s[0].air, flap); }
   s[0].fig_on = false;
   ffk_carried(s, shown, face);
   s[0].mine = false;

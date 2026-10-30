@@ -8,7 +8,9 @@
 // - the free orbit (Orbit), the third-person camera of an open world: it
 //   circles your character at your shoulder, turns with a mouse drag, the
 //   arrow keys or a thumb, zooms, swings gently behind you as you walk,
-//   and pulls in where scenery is in the way.
+//   and pulls in where scenery is in the way. Zoomed in past its closest,
+//   it goes on into your head: first person, looking out of your eyes,
+//   free to look straight up or down; zooming out again comes back out.
 //
 // The host keeps a Dolly or an Orbit value and passes it back each frame.
 //   coax/bin/coax test verse/camera.coax
@@ -134,6 +136,11 @@ FREE_OUT :: 2.5;             // per second: backing out once scenery lets go
 FREE_CLEAR :: 0.25;          // how far the eye keeps from scenery
 FREE_MIN_ROOM :: 0.3;        // the closest scenery pushes it to the pivot
 FREE_KEY_TURN :: 2.2;        // radians a second for a held arrow key
+FREE_PUSH :: 0.6;            // metres of zoom past FREE_NEAR that take it into your head
+FREE_EYE :: 1.62;            // first person: your eyes, above your feet
+FREE_FACE :: 0.12;           // and this far in front of the pivot, clear of your face
+FREE_INSIDE :: 0.6;          // past this share of the way in your body is out of the shot
+FREE_FIRST_PITCH :: 1.45;    // first person: radians up or down it can look
 SPHERE :: 4;                 // numbers per sphere: centre x, y, z, radius
 BOX :: 6;                    // numbers per box: min x, y, z, max x, y, z
 
@@ -145,6 +152,7 @@ Orbit :: struct {
   shown: f32 = FREE_DIST;    // how far along the ray the eye is drawn
   pivot: Point;
   idle: f32 = FREE_RECENTRE_AFTER;   // seconds since the last look
+  push: f32;                 // zoom asked for past FREE_NEAR, toward going in
 }
 
 // The line the eye sits on: from the pivot, toward where it wants to be,
@@ -166,13 +174,27 @@ verse_orbit_forward :: (o: Orbit) -> Point #export_c {
 }
 verse_orbit_right :: (o: Orbit) -> Point #export_c { return v3(-cos(o.yaw), 0, sin(o.yaw)); }
 
+// How far into first person it is: 0 out at FREE_NEAR or further, 1 with
+// the eye in your head. It follows the eased zoom, so it changes smoothly.
+verse_orbit_first :: (o: Orbit) -> f32 #export_c {
+  if !finite(o.zoom) { return 0; }
+  return clamp01(1 - o.zoom / f32(FREE_NEAR));
+}
+
+// The eye is in your head (or nearly): the host leaves your body out.
+verse_orbit_inside :: (o: Orbit) -> bool #export_c { return verse_orbit_first(o) >= f32(FREE_INSIDE); }
+
+// How far up and down it may look, widening in first person.
+pitch_low :: (o: Orbit) -> f32 { return lerp(f32(FREE_PITCH_MIN), -f32(FREE_FIRST_PITCH), verse_orbit_first(o)); }
+pitch_high :: (o: Orbit) -> f32 { return lerp(f32(FREE_PITCH_MAX), f32(FREE_FIRST_PITCH), verse_orbit_first(o)); }
+
 // A drag or a thumb: positive dyaw turns left, positive dpitch looks up,
 // in radians.
 verse_orbit_look :: (o: Orbit, dyaw: f32, dpitch: f32) -> Orbit #export_c {
   next := o;
   moved := false;
   if finite(dyaw) && dyaw != 0 { next.yaw = wrap_angle(o.yaw + dyaw); moved = true; }
-  if finite(dpitch) && dpitch != 0 { next.pitch = clamp(o.pitch - dpitch, f32(FREE_PITCH_MIN), f32(FREE_PITCH_MAX)); moved = true; }
+  if finite(dpitch) && dpitch != 0 { next.pitch = clamp(o.pitch - dpitch, pitch_low(o), pitch_high(o)); moved = true; }
   if moved { next.idle = 0; }
   return next;
 }
@@ -184,10 +206,20 @@ verse_orbit_keys :: (o: Orbit, turn: f32, tilt: f32, dt: f32) -> Orbit #export_c
   return verse_orbit_look(o, clamp(turn, -1, 1) * f32(FREE_KEY_TURN) * t, clamp(tilt, -1, 1) * f32(FREE_KEY_TURN) * 0.6 * t);
 }
 
-// The wheel or a pinch: positive is further out.
+// The wheel or a pinch: positive is further out. Coming in, it stops at
+// FREE_NEAR; FREE_PUSH more goes into your head (want 0, first person). Out
+// of your head, any zoom out comes back to FREE_NEAR.
 verse_orbit_zoom :: (o: Orbit, delta: f32) -> Orbit #export_c {
   next := o;
-  if finite(delta) { next.want = clamp(o.want + delta, f32(FREE_NEAR), f32(FREE_FAR)); }
+  if !finite(delta) || delta == 0 { return next; }
+  if o.want < f32(FREE_NEAR) {
+    if delta > 0 { next.want = f32(FREE_NEAR); next.push = 0; }
+    return next;
+  }
+  if delta > 0 { next.want = clamp(o.want + delta, f32(FREE_NEAR), f32(FREE_FAR)); next.push = 0; return next; }
+  if o.want > f32(FREE_NEAR) + 0.001 { next.want = clamp(o.want + delta, f32(FREE_NEAR), f32(FREE_FAR)); next.push = 0; return next; }
+  next.push = o.push - delta;
+  if next.push >= f32(FREE_PUSH) { next.want = 0; next.push = 0; }
   return next;
 }
 
@@ -202,8 +234,10 @@ verse_orbit_follow :: (o: Orbit, feet: Point, heading: f32, moving: bool, dt: f3
   if !finite3(o.pivot) || length(sub(dest, o.pivot)) > f32(FREE_JUMP) { next.pivot = dest; }
   else { next.pivot = mix(o.pivot, dest, settle(f32(FREE_FOLLOW), t)); }
   next.idle = lo(o.idle + t, 1000);
-  if moving && finite(heading) && next.idle >= f32(FREE_RECENTRE_AFTER) {
-    ramp := clamp01((next.idle - f32(FREE_RECENTRE_AFTER)) / 0.6);
+  // Looking out of your eyes it never swings: you walk where you look.
+  outside := 1 - verse_orbit_first(o);
+  if moving && finite(heading) && next.idle >= f32(FREE_RECENTRE_AFTER) && outside > 0.001 {
+    ramp := clamp01((next.idle - f32(FREE_RECENTRE_AFTER)) / 0.6) * outside;
     d := wrap_angle(heading - o.yaw);
     if abs(d) < f32(FREE_TOWARD) {
       next.yaw = wrap_angle(o.yaw + d * settle(f32(FREE_RECENTRE), t) * ramp);
@@ -211,14 +245,24 @@ verse_orbit_follow :: (o: Orbit, feet: Point, heading: f32, moving: bool, dt: f3
     next.pitch = lerp(o.pitch, f32(FREE_PITCH), settle(f32(FREE_RECENTRE), t) * ramp);
   }
   next.zoom = lerp(o.zoom, o.want, settle(f32(FREE_ZOOM), t));
+  // Coming back out, a look straight up or down eases into the third
+  // person's range as it narrows.
+  if finite(next.pitch) {
+    kept := clamp(next.pitch, pitch_low(next), pitch_high(next));
+    next.pitch = lerp(next.pitch, kept, settle(f32(FREE_ZOOM), t));
+  }
   return next;
 }
 
+// Going in, the shoulder offset closes and the line's start rises from the
+// pivot to your eyes, a little in front of your face.
 verse_orbit_ray :: (o: Orbit) -> OrbitRay #export_c {
+  k := verse_orbit_first(o);
   back := times(verse_orbit_forward(o), -o.zoom);
-  want := add(back, times(verse_orbit_right(o), f32(FREE_SHOULDER)));
+  want := add(back, times(verse_orbit_right(o), f32(FREE_SHOULDER) * (1 - k)));
+  ahead := v3(sin(o.yaw), 0, cos(o.yaw));
   r: OrbitRay;
-  r.from = o.pivot;
+  r.from = add(o.pivot, times(add(v3(0, f32(FREE_EYE - FREE_HEIGHT), 0), times(ahead, f32(FREE_FACE))), k));
   r.far = length(want);
   r.dir = unit_or(want, v3(0, 0, -1));
   return r;
@@ -271,7 +315,7 @@ verse_orbit_room :: (o: Orbit, spheres: [] f32, boxes: [] f32) -> f32 #export_c 
 verse_orbit_limit :: (o: Orbit, room: f32, dt: f32) -> Orbit #export_c {
   next := o;
   far := verse_orbit_ray(o).far;
-  free := ifx finite(room) then clamp(room, f32(FREE_MIN_ROOM), far) else far;
+  free := ifx finite(room) then clamp(room, lo(f32(FREE_MIN_ROOM), far), far) else far;
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
   if free < o.shown || !finite(o.shown) { next.shown = free; }
   else { next.shown = lerp(o.shown, free, settle(f32(FREE_OUT), t)); }
@@ -295,7 +339,7 @@ verse_orbit_toward :: (o: Orbit, s: Shot) -> Orbit #export_c {
   if !finite3(d) || length(d) < 0.0001 { return o; }
   next := o;
   next.yaw = yaw_of(d.x, d.z);
-  next.pitch = clamp(atan2(-d.y, flat_length(d)), f32(FREE_PITCH_MIN), f32(FREE_PITCH_MAX));
+  next.pitch = clamp(atan2(-d.y, flat_length(d)), pitch_low(o), pitch_high(o));
   next.idle = 0;
   return next;
 }
@@ -585,4 +629,51 @@ settled :: (o: Orbit) -> Orbit {
   f := v3(0, 0, 1); rr := unit_or(cross(f, v3(0, 1, 0)), v3(1, 0, 0)); up := cross(rr, f);
   d := dot(f, sub(p, s.eye));
   #assert near(dot(rr, sub(p, s.eye)) * 1.2 / d, 1, 0.0001) && near(dot(up, sub(p, s.eye)) * 1.5 / d, 1, 0.0001);
+}
+
+#test "zooming in past the closest goes on into your head" {
+  o := verse_orbit_zoom(verse_orbit_start(v3(4, 0, 2), 0), -100);
+  #assert o.want == f32(FREE_NEAR) && o.push == 0;
+  // At the closest, a little more isn't enough; FREE_PUSH in all is.
+  a := verse_orbit_zoom(o, -f32(FREE_PUSH) * 0.5);
+  #assert a.want == f32(FREE_NEAR) && near(a.push, f32(FREE_PUSH) * 0.5, 0.0001);
+  #assert verse_orbit_zoom(a, 0.01).push == 0;
+  b := verse_orbit_zoom(a, -f32(FREE_PUSH) * 0.5);
+  #assert b.want == 0 && b.push == 0 && verse_orbit_first(b) == 0;
+  // Settled: your eyes, a little in front of your face, looking your way.
+  s := settled(b);
+  #assert verse_orbit_first(s) > 0.999 && verse_orbit_inside(s);
+  eye := verse_orbit_shot(s).eye;
+  #assert same(eye, v3(4, f32(FREE_EYE), 2 + f32(FREE_FACE)), 0.01);
+  #assert same(unit_or(sub(verse_orbit_shot(s).at, eye), v3(0, 0, 0)), verse_orbit_forward(s), 0.0001);
+  // It looks nearly straight up and down; the third person can't.
+  #assert near(verse_orbit_look(s, 0, 99).pitch, -f32(FREE_FIRST_PITCH), 0.0001);
+  #assert near(verse_orbit_look(s, 0, -99).pitch, f32(FREE_FIRST_PITCH), 0.0001);
+  #assert !verse_orbit_inside(settled(o));
+}
+
+#test "zooming out of your head comes back to the closest, smoothly" {
+  start := settled(verse_orbit_zoom(verse_orbit_start(v3(0, 0, 0), 0), -100));
+  inside := settled(verse_orbit_zoom(verse_orbit_zoom(start, -1), -1));
+  #assert verse_orbit_inside(inside);
+  // Looking straight up in first person, then out again.
+  up := verse_orbit_look(inside, 0, 99);
+  out := verse_orbit_zoom(up, 0.05);
+  #assert out.want == f32(FREE_NEAR);
+  // Each frame of the way out, the eye moves only a little.
+  o := out;
+  for i: 0..<240 {
+    was := verse_orbit_shot(o).eye;
+    o = verse_orbit_limit(verse_orbit_follow(o, v3(0, 0, 0), 0, false, 1.0 / 60.0), 1000, 1.0 / 60.0);
+    #assert length(sub(verse_orbit_shot(o).eye, was)) < 0.3;
+  }
+  #assert verse_orbit_first(o) < 0.001 && !verse_orbit_inside(o);
+  #assert o.pitch >= f32(FREE_PITCH_MIN) - 0.001;
+  // Back where it was at the closest, but for the look.
+  same_look := settled(verse_orbit_look(start, 0, start.pitch - o.pitch));
+  #assert same(verse_orbit_shot(o).eye, verse_orbit_shot(same_look).eye, 0.02);
+  // In your head, walking doesn't swing the view.
+  w := inside;
+  for i: 0..<300 { w = verse_orbit_follow(w, v3(0, 0, 0), f32(PI) / 2, true, 1.0 / 60.0); }
+  #assert near(w.yaw, inside.yaw, 0.00001);
 }
