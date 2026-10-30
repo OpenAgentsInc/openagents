@@ -1,0 +1,22 @@
+syntax = "proto3";
+package openagents.psionic.mesh.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+// PRIVATE, memory-only, bounded pipe carriage. Never a public Nostr body,
+// stdout dump, regular file, private signing key, or reusable conversation key.
+message PrivateReplayWitness {
+  option (openagents.options.v1alpha1.contract)="openagents.psionic.mesh-witness.v1";
+  option (openagents.options.v1alpha1.data_class)=DATA_CLASS_EVIDENCE;
+  option (openagents.options.v1alpha1.max_message_bytes)=262144;
+  optional bytes receipt_event_json=1 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=16384];
+  optional bytes request_event_json=2 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=98304];
+  optional bytes result_event_json=3 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=98304];
+  optional bytes request_plaintext=4 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=32768];
+  optional bytes result_plaintext=5 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=98304];
+  optional bytes request_message_keys=6 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.exact_bytes)=76];
+  optional bytes result_message_keys=7 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.exact_bytes)=76];
+  optional string model_identity=8 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=256];
+  optional uint32 sample_byte=9 [(openagents.options.v1alpha1.required_value)=true]; optional uint32 sample_threshold=10 [(openagents.options.v1alpha1.required_value)=true];
+  optional string comparison_profile=11 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=64];
+  optional uint32 maximum_distance_ppb=12 [(openagents.options.v1alpha1.required_value)=true];
+  optional string version=13 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=64];
+}

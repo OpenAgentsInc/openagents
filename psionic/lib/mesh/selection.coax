@@ -1,0 +1,14 @@
+// A sample is chosen using a fresh entropy byte only after an admitted answer.
+// This pure unit specifies selection/admission, not entropy provenance.
+#authority;
+#test "sample boundaries include none and all without integer rounding" {
+    #assert !ms_selected(0,0) && !ms_selected(255,0);
+    #assert ms_selected(0,1) && !ms_selected(1,1) && ms_selected(63,64) && !ms_selected(64,64);
+    #assert ms_selected(0,256) && ms_selected(255,256);
+    #assert !ms_selected(-1,64) && !ms_selected(256,256) && !ms_selected(0,-1) && !ms_selected(0,257);
+}
+#forall "only private pipe descriptors may carry the witness" kind:-1..<6 {
+    #assert ms_private_input(kind)==(kind==1 || kind==2);
+}
+ms_selected :: (draw:int,threshold:int)->bool #export_c {return draw>=0 && threshold<=256 && draw<threshold;}
+ms_private_input :: (kind:int)->bool #export_c {return kind==1 || kind==2;}

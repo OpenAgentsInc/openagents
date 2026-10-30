@@ -567,7 +567,10 @@ A reader refuses:
   from 1 to 3,600, or with another feature beside it; and a response
   naming the feature without `deadline_secs`, or a result naming it whose
   `finish` isn't `stop`.
-- Any event whose `x` tag does not match its content.
+- A beacon, receipt, nested payment acknowledgment or aggregate whose `x`
+  tag does not match its exact JCS content. The kind `1985` check label is
+  the explicit exception: its `x` commits the checker's own result plaintext,
+  as defined under Check verdicts, rather than the inert method text.
 
 ## Abuse
 
@@ -692,3 +695,60 @@ refusal a long model sends an ordinary request, and each malformed body.
 Advertise `nip-pylon-v2` in NIP-11 `supported_extensions` only for a relay
 that stores `30200`, `30201`, and `3201` and applies the beacon rate limit.
 Keep this draft name out of numeric `supported_nips`.
+
+## Coax free mesh implementation profile
+
+`psionic-free-mesh-v1` preserves the published `3201` receipt.v2, `1985` check
+labels and `30201` pool.v2. It produces only free, accepted, remote
+`cj-decision` jobs (`units={kind:"jobs",count:1}`, `payment:null`). Local
+fallback, refusal, timeout and cancellation produce no credited remote
+receipt in this profile. Receipt publication is explicit opt-in.
+
+Digest bytes are exact UTF-8 bytes of the complete decrypted NIP-DEC
+request/result envelopes, before parsing or reserialization. Public content
+`x` is SHA-256 of exact event-content UTF-8 bytes; pool input digests hash
+sorted lowercase IDs joined with newline and no trailing newline. The NIP-32
+check's `x` is the existing exception: its own replay-result plaintext digest,
+not a hash of inert method text. With no admitted replay result, it hashes an exact JCS checker-owned
+`openagents.psionic.mesh-inconclusive.v1` observation (receipt ID, profile,
+reason and null reference), and the method identifies that schema/reason.
+It must not present that observation as a model result. The observation has
+exactly these JCS fields (reason is the checker profile's integer reason code):
+
+```json
+{"profile":"centred-log-f64-max8-v1","reason":8,"receipt":"<receipt event ID>","reference":null,"v":"openagents.psionic.mesh-inconclusive.v1"}
+```
+
+Its protobuf projection is `CheckerObservation` in
+`proto/openagents/psionic/mesh/v1alpha1/observations.proto`.
+
+A private replay witness binds original signed request/result events, exact
+plaintexts, receipt and pinned model identity. It moves only through a bounded
+non-TTY private pipe/Unix socket, never a regular file or stdout. Its 76-byte
+opening keys are scoped to each message nonce; no reusable conversation key
+or signing key is retained. Checkers authenticate each signed ciphertext and
+its opening before trusting the plaintext or receipt digests. Digests alone
+prove neither completion nor execution of the claimed model. Low-entropy
+plaintext may still be guessed against a public digest.
+
+Sampling uses fresh entropy drawn only after the verified answer arrives.
+The checker is a separate fresh identity and replays on an explicitly pinned
+trusted provider/model with a named numerical profile and configured limits;
+it never derives that trust from a beacon. Unsupported comparison shapes/backends or unavailable/mismatched replay
+results are inconclusive. Invalid, unopenable or misbound original witnesses
+publish no verdict. Comparisons exclude
+request IDs, timing, usage and route/provider metadata. A passing comparison
+is evidence under configured trust and limits, not hardware attestation or
+proof of independent demand.
+
+The bounded reader admits 32 beacons, 64 receipts and 128 labels and refuses
+overflow. Its explicit provider/buyer/checker lists are empty by default.
+For a closed whole-minute window `[from,to)`, receipts use finished_at;
+beacons have observed_at<=to and valid_until>=to, newest generation then
+observation then event ID, including tombstones. First receipt means earliest
+(created_at,event ID) per (buyer,request), independent of delivery order. A
+trusted check is not from that receipt's buyer/provider, is not older than
+the receipt, and has created_at<to. Latest (created_at,event ID) per
+(checker,receipt) wins. Missing checks imply nothing. Totals label accepted
+jobs as buyer-reported; trusted check observations remain separate. Paid
+buckets are zero; this profile authorizes no payment or credit.

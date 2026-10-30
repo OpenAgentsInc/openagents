@@ -1,0 +1,21 @@
+// Native storage-observation adapter around generated typed setters.
+// The caller admits MwData with checked mw_shape; generated codecs report
+// actual alias/capacity errors. Native/protoc integration tests cover effects.
+#load "witness.coax";
+mw_encode :: (d:MwData,out:[]u8,work:[]u8)->Mw_PrivateReplayWitness {
+    w:=Mw_PrivateReplayWitness_new();
+    w=Mw_PrivateReplayWitness_set_receipt_event_json(w,d.receipt,out);
+    w=Mw_PrivateReplayWitness_set_request_event_json(w,d.request_event,work);
+    w=Mw_PrivateReplayWitness_set_result_event_json(w,d.result_event,out);
+    w=Mw_PrivateReplayWitness_set_request_plaintext(w,d.request_plain,work);
+    w=Mw_PrivateReplayWitness_set_result_plaintext(w,d.result,out);
+    w=Mw_PrivateReplayWitness_set_request_message_keys(w,d.request_keys,work);
+    w=Mw_PrivateReplayWitness_set_result_message_keys(w,d.result_keys,out);
+    w=Mw_PrivateReplayWitness_set_model_identity(w,d.identity,work);
+    w=Mw_PrivateReplayWitness_set_sample_byte(w,cast(u32)d.draw,out);
+    w=Mw_PrivateReplayWitness_set_sample_threshold(w,cast(u32)d.threshold,work);
+    w=Mw_PrivateReplayWitness_set_comparison_profile(w,d.profile,out);
+    w=Mw_PrivateReplayWitness_set_maximum_distance_ppb(w,cast(u32)d.distance,work);
+    w=Mw_PrivateReplayWitness_set_version(w,MW_VERSION,out);
+    return w;
+}

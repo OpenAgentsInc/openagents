@@ -1,0 +1,54 @@
+syntax = "proto3";
+package openagents.pylon.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "openagents/common/v1/refs.proto";
+// Alpha projections of published NIP-PYLON JSON/carriers. Original signed JSON
+// remains authoritative; projections never confer verification or trust.
+enum Null { NULL_VALUE = 0; }
+enum ReceiptOutcome { RECEIPT_OUTCOME_UNSPECIFIED=0; RECEIPT_OUTCOME_ACCEPTED=1; RECEIPT_OUTCOME_REJECTED=2; RECEIPT_OUTCOME_FAILED=3; RECEIPT_OUTCOME_TIMEOUT=4; }
+enum CheckVerdict { CHECK_VERDICT_UNSPECIFIED=0; CHECK_VERDICT_PASS=1; CHECK_VERDICT_FAIL=2; CHECK_VERDICT_INCONCLUSIVE=3; }
+message Units { optional string kind=1; optional uint64 count=2; }
+message ReceiptPayment {
+  optional string profile=1; optional string network=2; optional uint64 amount_msat=3;
+  optional bytes settlement=4 [(openagents.options.v1alpha1.exact_bytes)=32];
+  openagents.common.v1.SignedEvent acknowledgment=5;
+}
+message ServiceReceipt {
+  option (openagents.options.v1alpha1.contract)="openagents.pylon-receipt.v2";
+  option (openagents.options.v1alpha1.data_class)=DATA_CLASS_RECEIPT;
+  optional bytes buyer=1 [(openagents.options.v1alpha1.exact_bytes)=32];
+  optional bytes provider=2 [(openagents.options.v1alpha1.exact_bytes)=32];
+  optional string pylon=3 [(openagents.options.v1alpha1.max_bytes)=64];
+  optional string lane=4; optional string capability=5;
+  optional bytes request=6 [(openagents.options.v1alpha1.exact_bytes)=32];
+  optional bytes request_digest=7 [(openagents.options.v1alpha1.exact_bytes)=32];
+  optional bytes result_digest=8 [(openagents.options.v1alpha1.exact_bytes)=32];
+  optional int64 started_at=9; optional int64 finished_at=10; Units units=11; ReceiptOutcome outcome=12;
+  oneof payment_state { Null payment_null=13; ReceiptPayment payment=14; }
+}
+// NIP-32 kind1985 tag projection, not a new JSON body/version. x is the
+// checker's own result-plaintext digest, not a digest of inert method text.
+message CheckLabel {
+  optional bytes checker=1 [(openagents.options.v1alpha1.exact_bytes)=32];
+  optional bytes receipt=2 [(openagents.options.v1alpha1.exact_bytes)=32];
+  optional bytes provider=3 [(openagents.options.v1alpha1.exact_bytes)=32];
+  optional bytes result_digest=4 [(openagents.options.v1alpha1.exact_bytes)=32];
+  CheckVerdict verdict=5; optional string method=6 [(openagents.options.v1alpha1.max_bytes)=512];
+}
+message InputSet { optional uint32 count=1; optional bytes digest=2 [(openagents.options.v1alpha1.exact_bytes)=32]; }
+message Window { optional int64 from=1; optional int64 to=2; }
+message PoolInputs { InputSet beacons=1; InputSet receipts=2; InputSet checks=3; }
+message JobTotals { optional uint64 accepted=1; optional uint64 rejected=2; optional uint64 failed=3; optional uint64 timeout=4; }
+message UnitTotals { optional uint64 tokens=1; optional uint64 seconds=2; optional uint64 jobs=3; }
+message CheckTotals { optional uint64 pass=1; optional uint64 fail=2; optional uint64 inconclusive=3; }
+message FamilyTotals { optional uint64 unified_memory=1; optional uint64 gpu=2; optional uint64 cpu=3; }
+message PaidTotals { optional uint64 bitcoin=1; optional uint64 testnet=2; optional uint64 signet=3; optional uint64 regtest=4; }
+message PoolTotals { optional uint64 pylons_online=1; optional uint64 slots_total=2; optional uint64 slots_free=3; FamilyTotals by_family=4; JobTotals jobs=5; UnitTotals units=6; PaidTotals paid_msat=7; CheckTotals checks=8; }
+message PoolAggregate {
+  option (openagents.options.v1alpha1.contract)="openagents.pylon-pool.v2";
+  optional bytes aggregator=1 [(openagents.options.v1alpha1.exact_bytes)=32];
+  optional string pool=2; optional bytes policy=3 [(openagents.options.v1alpha1.exact_bytes)=32];
+  Window window=4; PoolInputs inputs=5; PoolTotals totals=6;
+  repeated uint64 rate=7 [(openagents.options.v1alpha1.max_count)=60];
+  optional int64 generated_at=8; optional int64 valid_until=9;
+}

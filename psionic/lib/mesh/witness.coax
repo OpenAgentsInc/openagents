@@ -1,0 +1,31 @@
+// Generated protobuf carriage; no witness is a public record or proof by itself.
+#load "types.coax";
+#load "selection.coax";
+#load "../fleet/protocol.coax";
+#authority;
+MW_VERSION :: "openagents.psionic.mesh-witness.v1";
+MW_PROFILE :: "centred-log-f64-max8-v1";
+MwData :: struct {ok:bool;receipt:[]u8;request_event:[]u8;result_event:[]u8;request_plain:[]u8;result:[]u8;request_keys:[]u8;result_keys:[]u8;identity:string;profile:string;draw:int;threshold:int;distance:int;}
+#load "../../tests/mesh21/witness_vectors.coax";
+#test "generated decoder preserves required fields and explicit zero" {
+    a0:=MWF_GOOD;a1:=MWF_EDGE;a2:=MWF_EMPTY_RECEIPT_EVENT_JSON;a3:=MWF_EMPTY_REQUEST_EVENT_JSON;a4:=MWF_EMPTY_RESULT_EVENT_JSON;a5:=MWF_EMPTY_REQUEST_PLAINTEXT;a6:=MWF_EMPTY_RESULT_PLAINTEXT;a7:=MWF_BAD_IDENTITY;a8:=MWF_BAD_PROFILE;a9:=MWF_BAD_SAMPLE;a10:=MWF_BAD_LIMIT;a11:=MWF_BAD_VERSION;a12:=MWF_MISSING;a13:=MWF_UNKNOWN;
+    r:=mw_decode(a0[..]);#assert r.ok && r.receipt[0]==114 && r.request_event[0]==113 && r.result_event[0]==115 && r.request_plain[0]==106 && r.result[0]==112;
+    #assert r.request_keys.count==76 && r.request_keys[75]==7 && r.result_keys[75]==7 && r.identity==MF_ID && r.profile==MW_PROFILE && r.draw==0 && r.threshold==1 && r.distance==0;
+    #assert mw_decode(a1[..]).ok && !mw_decode(a0[0..<0]).ok;
+    bad:=[12][]u8.[a2[..],a3[..],a4[..],a5[..],a6[..],a7[..],a8[..],a9[..],a10[..],a11[..],a12[..],a13[..]];
+    for b:bad {#assert !mw_decode(b).ok;}
+    d:=r;d.distance=-1;#assert !mw_shape(d);
+}
+
+mw_shape :: (d:MwData)->bool {
+    return d.receipt.count>0 && d.request_event.count>0 && d.result_event.count>0 && d.request_plain.count>0 && d.result.count>0 && pb_identity(d.identity) && d.profile==MW_PROFILE && ms_selected(d.draw,d.threshold) && d.distance>=0 && d.distance<=1000000000;
+}
+
+mw_decode :: (wire:[]u8)->MwData #export_c {
+    bad:MwData;w:=Mw_PrivateReplayWitness_decode_minimal(wire);if w.error!=0 {return bad;}
+    if !Mw_PrivateReplayWitness_unknown(w,0).done || Mw_PrivateReplayWitness_get_version(w).value!=MW_VERSION {return bad;}
+    r:=MwData.{receipt=Mw_PrivateReplayWitness_get_receipt_event_json(w).value,request_event=Mw_PrivateReplayWitness_get_request_event_json(w).value,result_event=Mw_PrivateReplayWitness_get_result_event_json(w).value,
+        request_plain=Mw_PrivateReplayWitness_get_request_plaintext(w).value,result=Mw_PrivateReplayWitness_get_result_plaintext(w).value,request_keys=Mw_PrivateReplayWitness_get_request_message_keys(w).value,result_keys=Mw_PrivateReplayWitness_get_result_message_keys(w).value,
+        identity=Mw_PrivateReplayWitness_get_model_identity(w).value,profile=Mw_PrivateReplayWitness_get_comparison_profile(w).value,draw=cast(int)Mw_PrivateReplayWitness_get_sample_byte(w).value,threshold=cast(int)Mw_PrivateReplayWitness_get_sample_threshold(w).value,distance=cast(int)Mw_PrivateReplayWitness_get_maximum_distance_ppb(w).value};
+    r.ok=mw_shape(r);return r;
+}

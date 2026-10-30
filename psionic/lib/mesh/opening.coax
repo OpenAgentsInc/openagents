@@ -1,0 +1,54 @@
+// Nonce-specific NIP44 opening capability. No conversation/signing key is
+// disclosed. Reuses checked MAC/ChaCha/padding primitives; never signs events.
+#load "../../../coax/lib/nostr/nip44.coax";
+#authority;
+
+#test "message capabilities authenticate only their own signed ciphertext bytes" {
+    key:[32]u8;nonce:[32]u8;nonce[0]=7;plain:=[4]u8.[116,101,115,116];
+    work:[256]u8;payload:[256]u8;keys:[76]u8;
+    r:=nip44_encrypt_checked(NIP44_COMPAT,key[..],nonce[..],plain[..],work[..],payload[..],false);#assert r.error==NIP44_OK;
+    text:=cast(string)payload[0..<r.written];#assert mo_keys(key[..],text,keys[..]);
+    #assert mo_authenticate(keys[..],text,plain[..]);
+    wrong:=keys;wrong[0]^=1;#assert !mo_authenticate(wrong[..],text,plain[..]);
+    wrong=keys;wrong[75]^=1;#assert !mo_authenticate(wrong[..],text,plain[..]);
+    changed:=plain;changed[0]^=1;#assert !mo_authenticate(keys[..],text,changed[..]);
+    #assert !mo_authenticate(keys[0..<75],text,plain[..]) && !mo_authenticate(keys[..],"",plain[..]);
+    #assert !mo_authenticate(keys[..],"Ag==",plain[..]) && !mo_authenticate(keys[..],"not base64",plain[..]) && !mo_authenticate(keys[..],text,plain[0..<3]);
+    for index:0..<2 {bad:=payload;bad[index]=ifx index==0 then 'B' else '!';#assert !mo_authenticate(keys[..],cast(string)bad[0..<r.written],plain[..]);}
+    nonce[0]=8;other:[256]u8;r2:=nip44_encrypt_checked(NIP44_COMPAT,key[..],nonce[..],plain[..],work[..],other[..],false);
+    #assert r2.error==NIP44_OK && !mo_authenticate(keys[..],cast(string)other[0..<r2.written],plain[..]);
+    #assert !mo_keys(key[0..<31],text,keys[..]) && !mo_keys(key[..],text,keys[0..<75]) && !mo_keys(key[..],"!",keys[..]) && !mo_keys(key[..],"Ag==",keys[..]);
+}
+#test "authentication refuses insufficient scratch and authentic invalid padding" {
+    key:[32]u8;nonce:[32]u8;nonce[0]=7;keys:[76]u8;#assert nip44_message_keys_checked(key[..],nonce[..],keys[..],false)==NIP44_OK;
+    work:[256]u8;payload:[256]u8;plain:=[1]u8.[65];r:=nip44_encrypt_checked(NIP44_COMPAT,key[..],nonce[..],plain[..],work[..],payload[..],false);
+    small:[1]u8;#assert !mo_authenticate_work(keys[..],cast(string)payload[0..<r.written],plain[..],small[..]);
+    raw:[99]u8;raw[0]=2;for i:0..<32 {raw[1+i]=nonce[i];}invalid:[34]u8;
+    #assert chacha20_xor_checked(keys[0..<32],keys[32..<44],0,invalid[..],raw[33..<67],false).error==CC_OK;
+    #assert nip44_mac(keys[44..<76],nonce[..],raw[33..<67],raw[67..<99])==NIP44_OK;
+    encoded:[256]u8;e:=base64_encode_checked(cast(string)raw[..],encoded[..],false);
+    #assert e.error==NC_OK && !mo_authenticate(keys[..],cast(string)encoded[0..<e.written],plain[0..<0]);
+}
+
+mo_keys :: (conversation:[]u8,payload:string,out:[]u8)->bool #export_c {
+    raw:[98304]u8;r:=base64_decode_checked(payload,raw[..],false);
+    if r.error!=NC_OK || r.written<99 || raw[0]!=2 {return false;}
+    return nip44_message_keys_checked(conversation,raw[1..<33],out,false)==NIP44_OK;
+}
+// Only COMPAT payloads up to65535 plaintext bytes. Output never escapes;
+// the supplied private plaintext is compared only after MAC and padding.
+mo_authenticate :: (keys:[]u8,payload:string,plaintext:[]u8)->bool #export_c {
+    padded:[65538]u8;return mo_authenticate_work(keys,payload,plaintext,padded[..]);
+}
+// Internal helper: caller scratch must be exclusively owned and disjoint from
+// keys, payload and expected plaintext. Public wrapper supplies fresh storage.
+mo_authenticate_work :: (keys:[]u8,payload:string,plaintext:[]u8,padded:[]u8)->bool {
+    if keys.count!=76 {return false;}
+    raw:[98304]u8;r:=base64_decode_checked(payload,raw[..],false);
+    if r.error!=NC_OK || r.written<99 || raw[0]!=2 {return false;}
+    end:=r.written-32;ciphertext:=raw[33..<end];mac:[32]u8;
+    if nip44_mac(keys[44..<76],raw[1..<33],ciphertext,mac[..])!=NIP44_OK || cb_ct_equal(mac[..],raw[end..<r.written])!=CB_MAX64 {return false;}
+    if chacha20_xor_checked(keys[0..<32],keys[32..<44],0,ciphertext,padded,false).error!=CC_OK {return false;}
+    span:=nip44_unpad_span(padded[0..<ciphertext.count]);if span.error!=NIP44_OK || span.count!=plaintext.count {return false;}
+    return cb_ct_equal(padded[span.at..<span.at+span.count],plaintext)==CB_MAX64;
+}

@@ -1,0 +1,37 @@
+// Typed observations from cryptographically verified events and opened private
+// plaintext. No untrusted wire bit is allowed to assert this precondition.
+#load "receipt.coax";
+#authority;
+MbEvidence :: struct {request_kind:int;result_kind:int;request_id:string;request_author:string;request_recipient:string;result_author:string;result_recipient:string;result_request:string;request_nonce:string;result_nonce:string;request_attempt:int;result_attempt:int;request_digest:string;result_digest:string;}
+#test "receipt and both opened envelopes must name the same exact job" {
+    r:=MrReceipt.{ok=true,buyer=PB_KEY,provider=PB_OWNER,request=PD_EVENT,request_digest=PB_X,result_digest=PB_X};
+    e:=MbEvidence.{request_kind=25910,result_kind=26910,request_id=PD_EVENT,request_author=PB_KEY,request_recipient=PB_OWNER,result_author=PB_OWNER,result_recipient=PB_KEY,result_request=PD_EVENT,request_nonce="n",result_nonce="n",request_attempt=1,result_attempt=1,request_digest=PB_X,result_digest=PB_X};
+    #assert mb_bind(r,e);
+    invalid:=r;invalid.ok=false;#assert !mb_bind(invalid,e);
+    for i:0..<14 {
+        b:=e;if i==0 {b.request_kind=26910;}if i==1 {b.result_kind=25910;}if i==2 {b.request_id=PB_X;}if i==3 {b.request_author=PB_OWNER;}if i==4 {b.request_recipient=PB_KEY;}if i==5 {b.result_author=PB_KEY;}if i==6 {b.result_recipient=PB_OWNER;}if i==7 {b.result_request=PB_X;}if i==8 {b.request_nonce="other";}if i==9 {b.request_nonce="";b.result_nonce="";}if i==10 {b.request_attempt=0;b.result_attempt=0;}if i==11 {b.result_attempt=2;}if i==12 {b.request_digest="other";}if i==13 {b.result_digest="other";}
+        #assert !mb_bind(r,b);
+    }
+}
+mb_bind :: (r:MrReceipt,e:MbEvidence)->bool #export_c {
+    return r.ok && e.request_kind==25910 && e.result_kind==26910 && e.request_id==r.request && e.request_author==r.buyer && e.request_recipient==r.provider && e.result_author==r.provider && e.result_recipient==r.buyer && e.result_request==r.request && e.request_nonce.count>0 && e.request_nonce==e.result_nonce && e.request_attempt>=1 && e.request_attempt==e.result_attempt && e.request_digest==r.request_digest && e.result_digest==r.result_digest;
+}
+
+#test "pinned comparison context cannot be replaced by witness claims" {
+    #assert mb_context("a","a","p","p",0,0);
+    #assert !mb_context("a","b","p","p",0,0) && !mb_context("a","a","p","q",0,0) && !mb_context("a","a","p","p",0,1);
+}
+mb_context :: (identity:string,pinned_identity:string,profile:string,pinned_profile:string,distance:int,pinned_distance:int)->bool #export_c {
+    return identity==pinned_identity && profile==pinned_profile && distance==pinned_distance;
+}
+#test "checker identity is separate from buyer and original provider" {
+    #assert mb_checker("c","b","p") && !mb_checker("b","b","p") && !mb_checker("p","b","p");
+}
+mb_checker :: (checker:string,buyer:string,provider:string)->bool #export_c {return checker!=buyer && checker!=provider;}
+#test "original signed timestamps stay inside the committed work interval and skew" {
+    #assert mb_times(100,102,95,132) && mb_times(100,102,132,95);
+    #assert !mb_times(100,102,94,100) && !mb_times(100,102,133,100) && !mb_times(100,102,100,94) && !mb_times(100,102,100,133);
+}
+mb_times :: (started:int,finished:int,request_created:int,result_created:int)->bool #export_c {
+    return request_created>=started-5 && request_created<=finished+30 && result_created>=started-5 && result_created<=finished+30;
+}

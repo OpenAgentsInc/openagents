@@ -1,0 +1,14 @@
+syntax = "proto3";
+package openagents.psionic.mesh.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+// PUBLIC replayable pool inputs. The consumer independently checks every
+// original signature/kind/body and recomputes; this wrapper grants no trust.
+// Allowed input event kinds are30200,3201,1985; aggregate is30201 only.
+message PublicPoolInputs {
+  option (openagents.options.v1alpha1.contract)="openagents.psionic.mesh-public-inputs.v1";
+  option (openagents.options.v1alpha1.max_message_bytes)=2097152;
+  optional string version=1 [(openagents.options.v1alpha1.required_value)=true,(openagents.options.v1alpha1.max_bytes)=64];
+  optional bytes policy_json=2 [(openagents.options.v1alpha1.required_value)=true,(openagents.options.v1alpha1.max_bytes)=32768];
+  optional bytes aggregate_event_json=3 [(openagents.options.v1alpha1.required_value)=true,(openagents.options.v1alpha1.max_bytes)=16384];
+  repeated bytes event_json=4 [(openagents.options.v1alpha1.max_count)=224,(openagents.options.v1alpha1.max_bytes)=16384];
+}

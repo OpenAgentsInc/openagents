@@ -4117,6 +4117,20 @@ recompute a pool's totals and digests, and a pool whose inputs do not
 reproduce it is refused. Per window: ≤4,096 beacons, ≤65,536 receipts or
 labels.
 
+The Coax `psionic-free-mesh-v1` implementation profile preserves these public
+versions and carriers. Its alpha schemas are `proto/openagents/pylon/v1alpha1/mesh.proto`.
+Only accepted free remote decisions produce receipts. Public digests commit
+exact decrypted request/result envelope bytes, never re-canonicalized semantic
+projections. The bounded private protobuf witness
+`openagents.psionic.mesh-witness.v1` moves only through a private pipe/Unix
+socket and discloses nonce-specific opening keys, never signing/conversation
+keys. Public replayable pool inputs have their own distinct
+`openagents.psionic.mesh-public-inputs.v1` projection and contain only original
+signed public records and public JCS policy, never the private witness.
+Comparison, trust, window, deduplication and inconclusive-observation semantics
+are specified in NIP-PYLON's Coax free mesh profile; these are configured
+observations and buyer claims, not hardware or completion attestations.
+
 ### 27.2 `openagents.attest.v1`
 
 **Purpose.** Attested workload releases, independent rebuilds,

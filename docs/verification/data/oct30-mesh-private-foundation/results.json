@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-30",
+  "compiler_sha256": "1cf5c9a31ef3bcf6d88a718c5ed7ff71f9dbc87ae04f57788f3ee59bfc2641e8",
+  "scope": "entry source mutation sites; all imported baseline checks retained",
+  "units": [
+    {
+      "source": "psionic/lib/mesh/selection.coax",
+      "sha256": "db94910a7d323bceecc33eaa1b2356d7c1e7ba5b3e59fae508ebf9ab7d296b69",
+      "mutants": 12,
+      "killed": 12,
+      "survivors": 0,
+      "command": "/tmp/coax-root-only-tools/coax mutate psionic/lib/mesh/selection.coax --library --root-only --jobs 4"
+    },
+    {
+      "source": "psionic/lib/mesh/opening.coax",
+      "sha256": "a7a342d48e62b8dc8a82e5d963ae7bb16ba4838983c66003189f4dab71739403",
+      "mutants": 61,
+      "killed": 61,
+      "survivors": 0,
+      "command": "/tmp/coax-root-only-tools/coax mutate psionic/lib/mesh/opening.coax --library --root-only --jobs 4"
+    },
+    {
+      "source": "psionic/lib/mesh/witness.coax",
+      "sha256": "fcbbcf36a386d79a08c61ce3d1afe942b850dd775a24971cbee38090447d8ccb",
+      "mutants": 30,
+      "killed": 30,
+      "survivors": 0,
+      "command": "/tmp/coax-root-only-tools/coax mutate psionic/lib/mesh/witness.coax --library --root-only --jobs 4"
+    },
+    {
+      "source": "psionic/lib/mesh/binding.coax",
+      "sha256": "0026c7b3903e8cf56cd08457b68082c06c8bcb73b92a255512a2b4c38b178969",
+      "mutants": 42,
+      "killed": 42,
+      "survivors": 0,
+      "command": "/tmp/coax-root-only-tools/coax mutate psionic/lib/mesh/binding.coax --library --root-only --jobs 4"
+    }
+  ],
+  "native_integration": "pending separate qualification",
+  "proto": "owned and four changed profiles compiled and namespace-checked with pinned protoc29.3"
+}

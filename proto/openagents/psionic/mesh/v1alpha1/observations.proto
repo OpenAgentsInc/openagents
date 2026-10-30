@@ -1,0 +1,14 @@
+syntax = "proto3";
+package openagents.psionic.mesh.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+// Private checker-owned observation when no authenticated replay result exists.
+// It is not a model result. Only its exact JCS digest goes in the public label.
+message CheckerObservation {
+  option (openagents.options.v1alpha1.contract)="openagents.psionic.mesh-inconclusive.v1";
+  enum Null { NULL_VALUE=0; }
+  optional string version=1 [(openagents.options.v1alpha1.required_value)=true,(openagents.options.v1alpha1.max_bytes)=64];
+  optional bytes receipt_event_id=2 [(openagents.options.v1alpha1.required_value)=true,(openagents.options.v1alpha1.exact_bytes)=32];
+  optional string comparison_profile=3 [(openagents.options.v1alpha1.required_value)=true,(openagents.options.v1alpha1.max_bytes)=64];
+  optional uint32 reason=4 [(openagents.options.v1alpha1.required_value)=true];
+  optional Null reference_null=5 [(openagents.options.v1alpha1.required_value)=true];
+}

@@ -1,0 +1,3 @@
+// Private pipe carriage only; this unmarked module holds generated codecs so
+// authority belongs to the authored admission layer, never unused accessors.
+#import_proto "../../../proto/descriptors/mesh-witness.pb" as Mw;

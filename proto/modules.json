@@ -129,6 +129,18 @@
     ],
     "nostr-event-v1alpha2": [
       "nostr/event/v1alpha2/event.proto"
+    ],
+    "pylon-mesh": [
+      "openagents/pylon/v1alpha1/mesh.proto"
+    ],
+    "mesh-witness": [
+      "openagents/psionic/mesh/v1alpha1/witness.proto"
+    ],
+    "mesh-pool-inputs": [
+      "openagents/psionic/mesh/v1alpha1/pool-inputs.proto"
+    ],
+    "mesh-observation": [
+      "openagents/psionic/mesh/v1alpha1/observations.proto"
     ]
   },
   "profile_namespaces": {
@@ -207,6 +219,23 @@
     "nostr-event-v1alpha2": [
       "nostr.event.",
       "openagents.options."
+    ],
+    "pylon-mesh": [
+      "openagents.pylon.v1alpha1",
+      "openagents.common.v1",
+      "openagents.options.v1alpha1"
+    ],
+    "mesh-witness": [
+      "openagents.psionic.mesh.v1alpha1",
+      "openagents.options.v1alpha1"
+    ],
+    "mesh-pool-inputs": [
+      "openagents.psionic.mesh.v1alpha1",
+      "openagents.options.v1alpha1"
+    ],
+    "mesh-observation": [
+      "openagents.psionic.mesh.v1alpha1",
+      "openagents.options.v1alpha1"
     ]
   }
 }
