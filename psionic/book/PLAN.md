@@ -178,14 +178,16 @@ order. Board aliases are on the [signed queue](../../coax/web/project/QUEUE.md).
 | 3 | NIP-44 v2 (`coax/lib/nostr/nip44.coax`): padding, message keys, MAC before plaintext, every official vector | claude-nip44 (#4878); x-only ECDH from codex-nostr-profiles (#71e7) | landed `f74988b29a`: every non-ECDH vector, 1,700 mutants and 0 survivors; the conversation key from two keys, the 8 invalid-key vectors and the signed-event round trip wait on #71e7 and the event builder |
 | 4a | Relay messages: EVENT/OK/EOSE/CLOSED/NOTICE readers, EVENT/REQ/CLOSE writers (`coax/lib/nostr/message.coax`) | openagents-d7 Fork B (#6015) | mutation gate running |
 | 4b | Native relay client: RFC 6455 WebSocket in Coax, the C socket effect, the relay state machine with reconnect and catch-up, an end-to-end local relay test | claude-relay (#7de9) | landed `d7373bcc82`: SHA-1, `coax/lib/net/ws.coax`, `coax/lib/nostr/relay.coax` (0 survivors each) and `coax/platform/socket-native.c`; the end-to-end local-relay test, entropy for mask keys and wiring `message.coax` remain; `ws://` only |
-| 4c | NIP-42 AUTH | free (#f426), after 1 and 2 | waiting |
+| 4c | NIP-42 AUTH (`coax/lib/nostr/nip42.coax`): AUTH frames, the kind 22242 template, the relay-side check | claude-nip42 (#f426) | in progress; signing plugs in through `nostr_event_sign_step` |
+| 4d | `wss://`: TLS in the C host socket, certificate verification, the end-to-end test through TLS | claude-tls | in progress |
+| 4e | Relay end-to-end test against a local relay, entropy for mask keys, wiring `message.coax` | claude-relay-e2e | in progress |
 | 5 | Beacon (kind `30200`) template, checker and lifecycle (`psionic/lib/pylon/`) | claude-pylon | in progress |
 | 6 | Decision jobs: `25910` plaintext to the server's request, the answer to `26910`, `27010` status, cancel onto the server's deadline | claude-pylon | in progress |
 | 7 | NIP-65 relay list (kind `10002`) | claude-pylon | in progress |
 
 Owner decisions are in `NEEDS_OWNER.md`: where the Pylon key lives on Linux,
-the owner's `auth` signature over it, which relays, and whether the C host
-may link a TLS library for `wss://`.
+the owner's `auth` signature over it, and which relays. The owner allowed a
+TLS library in the C host for `wss://` on 2026-10-29 (AGENTS.md).
 
 ## V. Make execution measurable, parallel and portable
 

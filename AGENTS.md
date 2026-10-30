@@ -32,6 +32,11 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
   writes the arithmetic; no hand-written kernels, and no cuBLAS or cuDNN in
   anything served or shipped. cuBLAS may appear only in opt-in benchmark and
   parity harnesses that measure Psionic's own kernels against it.
+  Exception, owner-approved 2026-10-29: the C host may link one TLS library
+  (OpenSSL through Nix on Linux, the platform's TLS on Apple) to encrypt
+  sockets, so native clients reach `wss://` relays. It does the TLS handshake,
+  certificate verification and record encryption only; every protocol
+  decision above the socket (WebSocket, Nostr, NIP-42, NIP-44) stays in Coax.
 - **Check first.** Write `#test`/`#forall` checks before the code. Use
   `#authority;` for any file that decides money, admission or policy, and
   run `coax mutate` on it with zero survivors. Don't mark mutants equivalent

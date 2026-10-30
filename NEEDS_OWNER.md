@@ -56,9 +56,8 @@ these four choices are yours:
    Pylon key (`["auth", <owner key>, "kind=30200", <signature>]`). You sign
    that once per Pylon key.
 3. **Which relays** the Pylon publishes to and lists in its NIP-65 record.
-4. **TLS for `wss://`.** Coax has no TLS. Either the C host links a TLS
-   library (a toolchain exception to AGENTS.md, like CUDA), or the Pylon
-   reaches a `ws://` relay over the tailnet only.
+4. ~~**TLS for `wss://`.**~~ Decided 2026-10-29: the C host may link a TLS
+   library (AGENTS.md, Rules). Being built.
 
 Signing with a real key also waits on the #4828 secret audit and the review
 gate in coax/nostr.md.
