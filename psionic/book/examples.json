@@ -720,6 +720,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/tokenizer-families.coax",
+      "chapter": "psionic/book/ch036-tokenizers-and-chat-templates.md",
+      "stdout": "psionic/fixtures/tokenizer-families.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

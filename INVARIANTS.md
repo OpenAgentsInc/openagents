@@ -1912,3 +1912,20 @@ spans only. Reading structure does not authenticate or execute tensor bytes.
 
 Check: `psionic/tests/check_gguf.sh --mutate --jobs 8` (CPU only, independent
 struct oracle, pinned original headers, debug/release and ASan/UBSan).
+
+## Tokenizer families and bounded Jinja retain their named profiles
+
+`psionic/lib/tokenizer-families.coax` owns bounded ASCII BERT WordPiece and
+T5 SentencePiece-style Unigram wrappers, plus normalized UTF-8 Unigram.
+Immutable unique sorted pieces have explicit count/byte/ID/finite-score limits.
+WordPiece rolls a failed word back to one unknown; Unigram maximizes score,
+retains first-encountered ties and fuses adjacent unknown IDs. Original ASCII
+normalization DATA is pinned; full Unicode BERT/T5 normalization and added-token
+recognition are separate work. `chat-template.coax` admits its entire bounded
+Jinja subset before rendering, never interprets message content, bounds loops,
+condition depth and output, and refuses unsupported syntax even in inactive
+branches. Value results own their storage; errors return zero written payload.
+
+Check: `psionic/tests/check_tokenizer_families.sh --mutate --jobs 8`: CPU-only,
+290 full original-vocabulary vectors, 12 independent Jinja outputs including
+TinyLlama's actual template, debug/release and native ASan/UBSan.

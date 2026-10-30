@@ -1,0 +1,16 @@
+#import "Basic";
+#load "../lib/chat-template.coax";
+// book:begin example
+main :: () {
+    words:=[3]TfPiece.[TfPiece.{text="##ing",id=2},TfPiece.{text="play",id=1},TfPiece.{text="playing",id=3}];
+    w:=tf_wordpiece(words[..],"PLAYING",0);#assert w.status==TfStatus.ok;
+    print("WordPiece: longest piece ID %\n",w.ids[0]);
+    pieces:=[4]TfPiece.[TfPiece.{text="a",id=1,score=-1},TfPiece.{text="ab",id=2,score=-10},TfPiece.{text="b",id=3,score=-1},TfPiece.{text="▁",id=4,score=-1}];
+    u:=tf_sentencepiece(pieces[..]," ab ",0);#assert u.status==TfStatus.ok;
+    print("SentencePiece Unigram: % % %; best score %\n",u.ids[0],u.ids[1],u.ids[2],u.score);
+    messages:=[1]JtMessage.[JtMessage.{role="user",content="{{ stays text }}"}];
+    template:="{% for message in messages %}{{ message['role'] + ': ' + message['content'] + eos_token }}{% endfor %}{% if add_generation_prompt %}{{ 'assistant:' }}{% endif %}";
+    chat:=jt_render(template,messages[..],true,"","</s>");#assert chat.status==TfStatus.ok;
+    print("%\n",cast(string)chat.bytes[0..<chat.written]);
+}
+// book:end example

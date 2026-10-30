@@ -1,0 +1,130 @@
+#load "tokenizer-families.coax";
+#authority;
+JtMessage :: struct {role:string;content:string;}
+JtOp :: struct {kind:int;arg:string;target:int;}
+JtProgram :: struct {status:TfStatus;count:int;ops:[257]JtOp;}
+JtResult :: struct {status:TfStatus;written:int;bytes:[8192]u8;}
+#test "bounded Jinja concatenation loop conditions and generation preserve message bytes" {
+ m:=[2]JtMessage.[JtMessage.{role="user",content="{{evil}}"},JtMessage.{role="assistant",content="yes"}];
+ t:="{{ bos_token }}{% for message in messages %}{% if message['role'] == 'user' %}{{ 'U:' + message['content'] }}{% elif message['role'] == 'assistant' %}{{ 'A:' + message['content'] }}{% else %}x{% endif %}{{ eos_token }}{% if loop.last and add_generation_prompt %}{{ '\\nG' }}{% endif %}{% endfor %}";
+ r:=jt_render(t,m[..],true,"<b>","<e>");#assert r.status==TfStatus.ok && cast(string)r.bytes[0..<r.written]=="<b>U:{{evil}}<e>A:yes<e>\nG";
+ r=jt_render(t,m[..],false,"","");#assert r.status==TfStatus.ok && cast(string)r.bytes[0..<r.written]=="U:{{evil}}A:yes";
+ #assert jt_render("{% for message in messages %}{{ message['role'] }}{% endfor %}",m[0..<0],false,"","").written==0;
+}
+#test "unsupported templates fail even when hidden in an inactive branch" {
+ m:[1]JtMessage;
+ bad:=[12]string.["{{ range(4) }}","{% if add_generation_prompt %}{{ x }}{% endif %}","{% for message in messages %}","{% endfor %}","{% endif %}","{% else %}","{{ 'x' + }}","{{ 'x' | upper }}","{{ 'x }}","{% if nope %}x{% endif %}","{% for message in messages %}{% for message in messages %}{% endfor %}{% endfor %}","{{ message['content'] }}"];
+ for t:bad {r:=jt_render(t,m[..],false,"","");#assert r.status==TfStatus.unsupported && r.written==0 && r.bytes[0]==0;}
+}
+jt_starts :: (s:string,at:int,word:string)->bool {if word.count>s.count-at {return false;}for i:0..<word.count {if s[at+i]!=word[i] {return false;}}return true;}
+jt_trim :: (s:string)->string {a:=0;b:=s.count;while a<b && tf_space(s[a]) {a+=1;}while b>a && tf_space(s[b-1]) {b-=1;}return s[a..<b];}
+jt_condition :: (s:string)->int {
+ if s=="message['role'] == 'user'" {return 1;}if s=="message['role'] == 'system'" {return 2;}if s=="message['role'] == 'assistant'" {return 3;}
+ if s=="add_generation_prompt" {return 4;}if s=="loop.last and add_generation_prompt" {return 5;}return 0;
+}
+jt_push :: (p:JtProgram,kind:int,arg:string,target:int)->JtProgram {q:=p;if q.count==256 {return JtProgram.{status=TfStatus.size};}q.ops[q.count]=JtOp.{kind=kind,arg=arg,target=target};q.count+=1;return q;}
+// Atoms: quoted strings (n/r/t/quote/backslash escapes), content, role, BOS, EOS.
+jt_expression :: (p:JtProgram,s:string,in_loop:bool)->JtProgram {
+ q:=p;at:=0;
+ while true {while at<s.count && tf_space(s[at]) {at+=1;}if at==s.count {return JtProgram.{status=TfStatus.unsupported};}begin:=at;
+  if s[at]=='\'' || s[at]=='"' {quote:=s[at];at+=1;closed:=false;while at<s.count {c:=s[at];at+=1;if c==quote {closed=true;break;}if c=='\\' {if at==s.count {return JtProgram.{status=TfStatus.unsupported};}e:=s[at];if e!='n' && e!='r' && e!='t' && e!='\\' && e!='\'' && e!='"' {return JtProgram.{status=TfStatus.unsupported};}at+=1;}}if !closed {return JtProgram.{status=TfStatus.unsupported};}q=jt_push(q,0,s[begin+1..<at-1],1);
+  }else {while at<s.count && s[at]!='+' && !tf_space(s[at]) {at+=1;}atom:=s[begin..<at];kind:=0;if atom=="message['content']" && in_loop {kind=1;}if atom=="message['role']" && in_loop {kind=2;}if atom=="bos_token" {kind=3;}if atom=="eos_token" {kind=4;}if kind==0 {return JtProgram.{status=TfStatus.unsupported};}q=jt_push(q,kind,"",0);}
+  if q.status!=TfStatus.ok {return q;}while at<s.count && tf_space(s[at]) {at+=1;}if at==s.count {return q;}if s[at]!='+' {return JtProgram.{status=TfStatus.unsupported};}at+=1;if at==s.count {return JtProgram.{status=TfStatus.unsupported};}
+ }
+ return JtProgram.{status=TfStatus.unsupported};
+}
+// book:begin compile
+jt_compile :: (s:string)->JtProgram {
+ if s.count>4096 {return JtProgram.{status=TfStatus.size};}p:=JtProgram.{};at:=0;loop:=-1;depth:=0;otherwise:[8]bool;
+ while at<s.count {
+  if jt_starts(s,at,"{{") || jt_starts(s,at,"{%") {expression:=s[at+1]=='{';close:=ifx expression then "}}" else "%}";begin:=at+2;end:=begin;while end<s.count && !jt_starts(s,end,close) {end+=1;}if end==s.count {return JtProgram.{status=TfStatus.unsupported};}body:=jt_trim(s[begin..<end]);at=end+2;
+   if expression {p=jt_expression(p,body,loop>=0);}else {
+    if body=="for message in messages" {if loop>=0 || depth!=0 {return JtProgram.{status=TfStatus.unsupported};}loop=p.count;p=jt_push(p,5,"",p.count);}
+    else if body=="endfor" {if loop<0 || depth!=0 {return JtProgram.{status=TfStatus.unsupported};}p.ops[loop].target=p.count+1;p=jt_push(p,6,"",loop+1);loop=-1;}
+    else if jt_starts(body,0,"if ") {condition:=jt_condition(jt_trim(body[3..<body.count]));if condition==0 || (condition!=4 && loop<0) {return JtProgram.{status=TfStatus.unsupported};}if depth==8 {return JtProgram.{status=TfStatus.size};}otherwise[depth]=false;depth+=1;p=jt_push(p,7,"",condition);}
+    else if jt_starts(body,0,"elif ") {condition:=jt_condition(jt_trim(body[5..<body.count]));if depth==0 || condition==0 || (condition!=4 && loop<0) {return JtProgram.{status=TfStatus.unsupported};}if otherwise[depth-1] {return JtProgram.{status=TfStatus.unsupported};}p=jt_push(p,8,"",condition);}
+    else if body=="else" {if depth==0 {return JtProgram.{status=TfStatus.unsupported};}if otherwise[depth-1] {return JtProgram.{status=TfStatus.unsupported};}otherwise[depth-1]=true;p=jt_push(p,9,"",0);}
+    else if body=="endif" {if depth==0 {return JtProgram.{status=TfStatus.unsupported};}depth-=1;p=jt_push(p,10,"",0);}
+    else {return JtProgram.{status=TfStatus.unsupported};}
+    if jt_starts(s,at,"\r\n") {at+=2;}else if jt_starts(s,at,"\n") {at+=1;}
+   }
+  }else {begin:=at;while at<s.count && !jt_starts(s,at,"{{") && !jt_starts(s,at,"{%") {at+=1;}p=jt_push(p,0,jt_raw(s,begin,at,jt_starts(s,at,"{%")),0);}
+  if p.status!=TfStatus.ok {return p;}
+ }
+ if loop>=0 || depth!=0 {return JtProgram.{status=TfStatus.unsupported};}p.ops[p.count].kind=11;return p;
+}
+// book:end compile
+jt_truth :: (condition:int,role:string,last:bool,generation:bool)->bool {if condition==1 {return role=="user";}if condition==2 {return role=="system";}if condition==3 {return role=="assistant";}if condition==4 {return generation;}if condition==5 {return last && generation;}return false;}
+jt_append :: (r:JtResult,s:string,escapes:bool)->JtResult {q:=r;at:=0;while at<s.count {c:=s[at];at+=1;if escapes && c=='\\' {c=s[at];at+=1;if c=='n' {c=10;}else if c=='r' {c=13;}else if c=='t' {c=9;}}if q.written==8192 {return JtResult.{status=TfStatus.size};}q.bytes[q.written]=c;q.written+=1;}return q;}
+jt_render :: (template:string,messages:[]JtMessage,generation:bool,bos:string,eos:string)->JtResult #export_c {
+ if messages.count>16 || bos.count>64 || eos.count>64 {return JtResult.{status=TfStatus.size};}if !tf_utf8(template) || !tf_utf8(bos) || !tf_utf8(eos) {return JtResult.{status=TfStatus.unsupported};}for m:messages {if m.role.count>16 || m.content.count>1024 {return JtResult.{status=TfStatus.size};}if !tf_utf8(m.role) || !tf_utf8(m.content) {return JtResult.{status=TfStatus.unsupported};}}
+ p:=jt_compile(template);if p.status!=TfStatus.ok {return JtResult.{status=p.status};}r:=JtResult.{};pc:=0;index:int;depth:=0;active:[8]bool;taken:[8]bool;
+ while true {op:=p.ops[pc];if op.kind==11 {return r;}pc+=1;role:="";content:="";if index<messages.count {role=messages[index].role;content=messages[index].content;}
+  if op.kind==5 {index=0;if messages.count==0 {pc=op.target;}}
+  else if op.kind==6 {index+=1;if index<messages.count {pc=op.target;}}
+  else if op.kind==7 {parent:=depth==0 || active[depth-1];yes:=jt_truth(op.target,role,index==messages.count-1,generation);active[depth]=parent && yes;taken[depth]=yes;depth+=1;}
+  else if op.kind==8 {parent:=depth==1 || active[depth-2];yes:=jt_truth(op.target,role,index==messages.count-1,generation);active[depth-1]=parent && !taken[depth-1] && yes;taken[depth-1]=taken[depth-1] || yes;}
+  else if op.kind==9 {parent:=depth==1 || active[depth-2];active[depth-1]=parent && !taken[depth-1];}
+  else if op.kind==10 {depth-=1;}
+  else if depth==0 || active[depth-1] {s:=op.arg;if op.kind==1 {s=content;}else if op.kind==2 {s=role;}else if op.kind==3 {s=bos;}else if op.kind==4 {s=eos;}r=jt_append(r,s,op.target==1);if r.status!=TfStatus.ok {return r;}}
+ }
+ return JtResult.{status=TfStatus.size};
+}
+#test "compiled operations expose exact literal flags operands and balanced control targets" {
+ p:=jt_compile("{% for message in messages %}{{ message['role'] + message['content'] + bos_token + eos_token }}{% endfor %}");#assert p.status==TfStatus.ok && p.count==6 && p.ops[0].kind==5 && p.ops[0].target==6 && p.ops[5].kind==6 && p.ops[5].target==1;
+ #assert p.ops[1].kind==2 && p.ops[2].kind==1 && p.ops[3].kind==3 && p.ops[4].kind==4;
+ for i:0..<6 {#assert p.ops[i].arg=="";}for i:1..<5 {#assert p.ops[i].target==0;}
+ p=jt_compile("{% if add_generation_prompt %}a{% elif add_generation_prompt %}b{% else %}c{% endif %}");#assert p.count==7 && p.ops[0].kind==7 && p.ops[0].target==4 && p.ops[2].kind==8 && p.ops[2].target==4 && p.ops[4].kind==9 && p.ops[4].target==0 && p.ops[6].kind==10 && p.ops[6].target==0;
+ #assert p.ops[1].kind==0 && p.ops[1].arg=="a" && p.ops[1].target==0;
+ p=jt_compile("{{ 'x' }}");#assert p.count==1 && p.ops[0].kind==0 && p.ops[0].target==1 && p.ops[0].arg=="x";
+ #assert jt_condition("message['role'] == 'system'")==2 && jt_condition("add_generation_prompt")==4 && jt_condition("loop.last and add_generation_prompt")==5 && jt_condition("none")==0;
+ #assert !jt_truth(0,"user",true,true) && !jt_truth(6,"user",true,true);
+ #assert jt_starts("abc",0,"abc") && jt_starts("abc",1,"bc") && !jt_starts("abc",2,"bc") && jt_starts("abc",3,"");
+ #assert jt_trim("")=="" && jt_trim("   ")=="" && jt_trim(" x \t")=="x";
+}
+#test "template whitespace nested conditions roles escapes and separate loops match Jinja" {
+ m:=[3]JtMessage.[JtMessage.{role="system",content="s"},JtMessage.{role="user",content="u"},JtMessage.{role="other",content="o"}];
+ t:="{% for message in messages %}\n{% if message['role'] == 'user' %}\nU{% elif message['role'] == 'system' %}\nS{% else %}\nO{% endif %}\n{% endfor %}\n{% for message in messages %}{{message['role']}}{% endfor %}";
+ r:=jt_render(t,m[..],false,"","");#assert r.status==TfStatus.ok && cast(string)r.bytes[0..<r.written]=="SUOsystemuserother";
+ t="{% if add_generation_prompt %}{% if add_generation_prompt %}a{% elif add_generation_prompt %}x{% else %}y{% endif %}{% else %}{% if add_generation_prompt %}b{% elif add_generation_prompt %}z{% else %}c{% endif %}{% endif %}";
+ r=jt_render(t,m[..],true,"","");#assert cast(string)r.bytes[0..<r.written]=="a";r=jt_render(t,m[..],false,"","");#assert cast(string)r.bytes[0..<r.written]=="c";
+ t="{{ \"a\\r\\t\\\\\\'\\\"\" + 'z' }}";r=jt_render(t,m[..],false,"","");#assert r.status==TfStatus.ok && cast(string)r.bytes[0..<r.written]=="a\r\t\\'\"z";
+}
+#test "malformed nested blocks and empty expressions refuse before render" {
+ m:[1]JtMessage;
+ bad:=[15]string.["{{ }}","{{ 'x' +   }}","{{ '\\q' }}","{{ '\\' }}","{%","{","{% elif add_generation_prompt %}","{% if add_generation_prompt %}{% else %}{% else %}{% endif %}","{% if add_generation_prompt %}{% else %}{% elif add_generation_prompt %}{% endif %}","{% for message in messages %}{% if add_generation_prompt %}{% endfor %}{% endif %}","{% if add_generation_prompt %}{% for message in messages %}{% endfor %}{% endif %}","{% if message['role'] == 'user' %}x{% endif %}","{% if add_generation_prompt %}{% elif message['role'] == 'user' %}x{% endif %}","{% for message in messages %}{% elif none %}{% endfor %}","{% for message in messages %}{% if none %}{% endif %}{% endfor %}"];
+ for i:0..<bad.count {r:=jt_render(bad[i],m[..],false,"","");if i==5 {#assert r.status==TfStatus.ok && r.written==1;}else {#assert r.status==TfStatus.unsupported && r.written==0;}}
+ #assert jt_expression(JtProgram.{},"  ",false).status==TfStatus.unsupported;
+ #assert jt_expression(JtProgram.{},"",false).status==TfStatus.unsupported;
+}
+#test "template and output budgets have observable inclusive endpoints" {
+ bytes:[8193]u8;for i:0..<8193 {bytes[i]='x';}
+ #assert jt_compile(cast(string)bytes[0..<4096]).status==TfStatus.ok && jt_compile(cast(string)bytes[0..<4097]).status==TfStatus.size;
+ p:=JtProgram.{count=255};p=jt_push(p,2,"a",3);#assert p.status==TfStatus.ok && p.count==256 && p.ops[255].kind==2 && p.ops[255].arg=="a" && p.ops[255].target==3;#assert jt_push(p,2,"a",3).status==TfStatus.size;
+ r:=jt_append(JtResult.{written=8191},"xy",false);#assert r.status==TfStatus.size && r.written==0 && r.bytes[0]==0;r=jt_append(JtResult.{written=8191},"x",false);#assert r.status==TfStatus.ok && r.written==8192 && r.bytes[8191]=='x';
+ m:[17]JtMessage;#assert jt_render("",m[0..<16],false,"","").status==TfStatus.ok && jt_render("",m[..],false,"","").status==TfStatus.size;
+ #assert jt_render("",m[0..<0],false,cast(string)bytes[0..<64],cast(string)bytes[0..<64]).status==TfStatus.ok;
+ #assert jt_render("",m[0..<0],false,cast(string)bytes[0..<65],"").status==TfStatus.size && jt_render("",m[0..<0],false,"",cast(string)bytes[0..<65]).status==TfStatus.size;
+ m[0].role=cast(string)bytes[0..<16];m[0].content=cast(string)bytes[0..<1024];#assert jt_render("",m[0..<1],false,"","").status==TfStatus.ok;m[0].role=cast(string)bytes[0..<17];#assert jt_render("",m[0..<1],false,"","").status==TfStatus.size;m[0].role="";m[0].content=cast(string)bytes[0..<1025];#assert jt_render("",m[0..<1],false,"","").status==TfStatus.size;
+ bad:=[1]u8.[255];s:=cast(string)bad[..];m[0].content="";#assert jt_render(s,m[0..<1],false,"","").status==TfStatus.unsupported && jt_render("",m[0..<1],false,s,"").status==TfStatus.unsupported && jt_render("",m[0..<1],false,"",s).status==TfStatus.unsupported;m[0].role=s;#assert jt_render("",m[0..<1],false,"","").status==TfStatus.unsupported;m[0].role="";m[0].content=s;#assert jt_render("",m[0..<1],false,"","").status==TfStatus.unsupported;
+}
+#test "empty loops compact expressions and nested elif retain structural meaning" {
+ m:=[3]JtMessage.[JtMessage.{role="system"},JtMessage.{role="user"},JtMessage.{role="other"}];
+ #assert jt_render("{% for message in messages %}literal{% endfor %}",m[0..<0],false,"","").written==0;
+ r:=jt_render("{{bos_token+eos_token}}",m[..],false,"a","b");#assert r.status==TfStatus.ok && cast(string)r.bytes[0..<r.written]=="ab";
+ t:="{% for message in messages %}{% if add_generation_prompt %}{% if message['role'] == 'user' %}u{% elif message['role'] == 'system' %}s{% elif loop.last and add_generation_prompt %}o{% endif %}{% endif %}{% endfor %}";
+ r=jt_render(t,m[..],true,"","");#assert r.status==TfStatus.ok && cast(string)r.bytes[0..<r.written]=="suo";#assert jt_render(t,m[..],false,"","").written==0;
+ #assert jt_compile("{% for message in messages %}{% for message in messages %}{% endfor %}").status==TfStatus.unsupported;
+ #assert jt_compile("{% for message in messages %}{% if add_generation_prompt %}{% elif none %}{% endif %}{% endfor %}").status==TfStatus.unsupported;
+ #assert !jt_starts("abc",2,"c\0");
+ for levels:8..<10 {bytes:[1024]u8;n:=0;open:="{% if add_generation_prompt %}";close:="{% endif %}";for i:0..<levels {for c:open {bytes[n]=c;n+=1;}}for i:0..<levels {for c:close {bytes[n]=c;n+=1;}}p:=jt_compile(cast(string)bytes[0..<n]);if levels==8 {#assert p.status==TfStatus.ok && p.ops[p.count].kind==11;}else {#assert p.status==TfStatus.size;}}
+}
+
+jt_raw :: (s:string,begin:int,end:int,statement:bool)->string {
+ if !statement {return s[begin..<end];}line:=end;while line>0 && s[line-1]!=10 {line-=1;}if line<begin {return s[begin..<end];}for i:line..<end {if s[i]!=32 && s[i]!=9 {return s[begin..<end];}}return s[begin..<line];
+}
+#test "Jinja strips line-leading block indentation and CRLF but keeps inline spaces" {
+ m:[1]JtMessage;t:="a\n  {% if add_generation_prompt %}\r\ny\n\t{% endif %}\r\nz";r:=jt_render(t,m[..],true,"","");#assert r.status==TfStatus.ok && cast(string)r.bytes[0..<r.written]=="a\ny\nz";
+ r=jt_render("a {{ 'b' }}  {% if add_generation_prompt %}x{% endif %}",m[..],true,"","");#assert cast(string)r.bytes[0..<r.written]=="a b  x";
+ #assert jt_raw("abc",1,3,true)=="bc" && jt_raw("abc",0,3,false)=="abc" && jt_raw(" ",0,1,true)=="";
+}

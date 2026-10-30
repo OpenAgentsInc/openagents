@@ -1,0 +1,77 @@
+{
+  "bert": {
+    "repo": "google-bert/bert-base-uncased",
+    "revision": "86b5e0934494bd15c9632b12f734a8a67f723594",
+    "files": {
+      "tokenizer.json": {
+        "url": "https://huggingface.co/google-bert/bert-base-uncased/resolve/86b5e0934494bd15c9632b12f734a8a67f723594/tokenizer.json",
+        "bytes": 466062,
+        "sha256": "ce64fce797c24f68df90b40a3f74f579b336a493db14bd583fd520ea0d8c9a98"
+      }
+    },
+    "declared_license": "apache-2.0",
+    "license_url": "https://huggingface.co/google-bert/bert-base-uncased/resolve/86b5e0934494bd15c9632b12f734a8a67f723594/LICENSE"
+  },
+  "t5": {
+    "repo": "google-t5/t5-small",
+    "revision": "df1b051c49625cf57a3d0d8d3863ed4d13564fe4",
+    "files": {
+      "tokenizer.json": {
+        "url": "https://huggingface.co/google-t5/t5-small/resolve/df1b051c49625cf57a3d0d8d3863ed4d13564fe4/tokenizer.json",
+        "bytes": 1389353,
+        "sha256": "d2acde0d8d71dd30a711834b07781b9c89feaac33fd332f60507699282740066"
+      }
+    },
+    "declared_license": "apache-2.0"
+  },
+  "tinyllama": {
+    "repo": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "revision": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+    "files": {
+      "tokenizer_config.json": {
+        "url": "https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer_config.json",
+        "bytes": 1289,
+        "sha256": "7b41ba7d0eb91e77914ca3dafde559ea3e19878769b7e68409e89bed5222e77a"
+      }
+    },
+    "declared_license": "apache-2.0"
+  },
+  "oracle": {
+    "tokenizers": "0.22.2",
+    "jinja2": "3.1.6"
+  },
+  "artifacts": {
+    "t5-vectors.json": {
+      "bytes": 13950,
+      "sha256": "8c65ebc3eefe71f731ead50635d094dc82e8387180fa53cb98904f54819027e4"
+    },
+    "ascii.coax": {
+      "bytes": 900,
+      "sha256": "9b837723d3bc3c8fd96a3d82aaa58429beb6261a6019f011045ba7e1f8f56833"
+    },
+    "t5-tokenizer.json.gz": {
+      "bytes": 563202,
+      "sha256": "c76fb7f3d59f85a1c92af0faf0bf12d86f4b1c8d9c4f1184244ceb27c1ed8b71"
+    },
+    "chat-vectors.json": {
+      "bytes": 7587,
+      "sha256": "3ce812a5581644801e8e83b432f32969904f3660acfa80ed527c7a40f347a9a5"
+    },
+    "bert-tokenizer.json.gz": {
+      "bytes": 190756,
+      "sha256": "bc99a8c584b83a2eb219485177d4cdc1421a621b237fbebd6d4fe8e475bbc749"
+    },
+    "bert-vectors.json": {
+      "bytes": 12001,
+      "sha256": "f94a9429f22e3d27f6aeca24076a054c132f02d3ec48ce779c104215398b8e24"
+    },
+    "tinyllama-tokenizer_config.json": {
+      "bytes": 1289,
+      "sha256": "7b41ba7d0eb91e77914ca3dafde559ea3e19878769b7e68409e89bed5222e77a"
+    },
+    "bert-LICENSE": {
+      "bytes": 11356,
+      "sha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1"
+    }
+  }
+}

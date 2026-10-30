@@ -1,0 +1,132 @@
+#load "../../coax/lib/nostr/json.coax";
+#load "../fixtures/tokenizer-families/ascii.coax";
+#authority;
+TfStatus :: enum u8 {ok;size;vocabulary;unsupported;}
+TfPiece :: struct {text:string;id:int;score:f64;}
+TfResult :: struct {status:TfStatus;written:int;score:f64;ids:[1024]int;}
+#test "WordPiece uses longest matches and rolls an entire failed word back to unknown" {
+ v:=[5]TfPiece.[TfPiece.{text="!",id=9},TfPiece.{text="##a",id=7},TfPiece.{text="##b",id=8},TfPiece.{text="a",id=1},TfPiece.{text="ab",id=2}];
+ r:=tf_wordpiece(v[..],"ABa! aax",100);#assert r.status==TfStatus.ok && r.written==4 && r.ids[0]==2 && r.ids[1]==7 && r.ids[2]==9 && r.ids[3]==100;
+ #assert tf_wordpiece(v[..],"",100).written==0;
+ #assert tf_wordpiece(v[..],"é",100).status==TfStatus.unsupported;
+}
+#test "Unigram maximizes whole path score rather than taking the longest token" {
+ v:=[4]TfPiece.[TfPiece.{text="a",id=1,score=-1},TfPiece.{text="ab",id=2,score=-10},TfPiece.{text="b",id=3,score=-1},TfPiece.{text="▁",id=4,score=-1}];
+ r:=tf_unigram(v[..],"abzz",0);#assert r.status==TfStatus.ok && r.written==3 && r.ids[0]==1 && r.ids[1]==3 && r.ids[2]==0;
+ r=tf_sentencepiece(v[..],"  a\t b \n",0);#assert r.status==TfStatus.ok && r.written==4 && r.ids[0]==4 && r.ids[1]==1 && r.ids[2]==4 && r.ids[3]==3;
+ v[1].score=-2;r=tf_unigram(v[..],"ab",0);#assert r.written==1 && r.ids[0]==2;
+ #assert tf_sentencepiece(v[..],"é",0).status==TfStatus.unsupported;
+}
+#test "vocabulary ordering scores identifiers and input limits are admitted before use" {
+ v:=[2]TfPiece.[TfPiece.{text="a",id=0},TfPiece.{text="b",id=65535,score=1000}];#assert tf_vocab(v[..]);
+ #assert !tf_vocab(v[0..<0]);v[1].text="a";#assert !tf_vocab(v[..]);v[1].text="b";v[1].score=1001;#assert !tf_vocab(v[..]);v[1].score=-1001;#assert !tf_vocab(v[..]);v[1].score=0;v[1].id=65536;#assert !tf_vocab(v[..]);v[1].id=-1;#assert !tf_vocab(v[..]);v[1].id=1;v[0].text="";#assert !tf_vocab(v[..]);
+ #assert tf_unigram(v[..],"a",0).status==TfStatus.vocabulary && tf_wordpiece(v[..],"a",0).status==TfStatus.vocabulary;
+ v[0].text="a";long:[257]u8;for i:0..<257 {long[i]='a';}#assert tf_wordpiece(v[..],cast(string)long[..],0).status==TfStatus.size && tf_sentencepiece(v[..],cast(string)long[..],0).status==TfStatus.size;
+ r:=tf_wordpiece(v[..],cast(string)long[0..<256],0);#assert r.written==1 && r.ids[0]==0;
+ #assert tf_unigram(v[..],"a",-1).status==TfStatus.vocabulary && tf_wordpiece(v[..],"a",65536).status==TfStatus.vocabulary;
+ #assert tf_unigram(v[..],"a",0).written==1;
+}
+tf_compare :: (a:string,b:string)->int {i:=0;while i<a.count && i<b.count {if a[i]<b[i] {return -1;}if a[i]>b[i] {return 1;}i+=1;}if a.count<b.count {return -1;}if a.count>b.count {return 1;}return 0;}
+tf_vocab_count :: (n:int)->bool {return n>=1 && n<=65536;}
+tf_vocab_bytes :: (n:int)->bool {return n<=2097152;}
+tf_bytes :: (v:[]TfPiece)->int {n:=0;for p:v {n+=p.text.count;}return n;}
+tf_ascii_size :: (n:int)->bool {return n<=256;}
+tf_text_size :: (n:int)->bool {return n<=1024;}
+tf_vocab :: (v:[]TfPiece)->bool {
+ if !tf_vocab_count(v.count) {return false;}
+ for i:0..<v.count {p:=v[i];if p.text.count<1 || p.text.count>256 || !tf_utf8(p.text) || p.id<0 || p.id>65535 || !(p.score>=-1000 && p.score<=1000) {return false;}if i>0 && tf_compare(v[i-1].text,p.text)>=0 {return false;}}
+ return tf_vocab_bytes(tf_bytes(v));
+}
+tf_pivot :: (lo:int,hi:int)->int {return lo+(hi-lo)/2;}
+tf_minimum :: (v:[]TfPiece)->int {at:=0;for i:1..<v.count {if v[i].score<v[at].score {at=i;}}return at;}
+tf_find :: (v:[]TfPiece,s:string)->int {lo:=0;hi:=v.count;while lo<hi {mid:=tf_pivot(lo,hi);c:=tf_compare(v[mid].text,s);if c<0 {lo=mid+1;}else {hi=mid;}}if lo<v.count && v[lo].text==s {return lo;}return -1;}
+tf_space :: (c:u8)->bool {return c==32 || (c>=9 && c<=13);}
+tf_punct :: (c:u8)->bool {return (c>=33 && c<=47)||(c>=58 && c<=64)||(c>=91 && c<=96)||(c>=123 && c<=126);}
+// book:begin wordpiece
+tf_wordpiece :: (v:[]TfPiece,input:string,unknown:int)->TfResult #export_c {
+ if !tf_ascii_size(input.count) {return TfResult.{status=TfStatus.size};}if !tf_vocab(v) || unknown<0 || unknown>65535 {return TfResult.{status=TfStatus.vocabulary};}
+ clean:[256]u8;n:=0;for c:input {if c>=128 {return TfResult.{status=TfStatus.unsupported};}mapped:=TF_BERT_ASCII[c];if mapped==-1 {continue;}clean[n]=cast(u8)mapped;n+=1;}
+ r:=TfResult.{};at:=0;
+ while at<n {if tf_space(clean[at]) {at+=1;continue;}end:=at+1;if !tf_punct(clean[at]) {while end<n && !tf_space(clean[end]) && !tf_punct(clean[end]) {end+=1;}}
+  start:=r.written;pos:=at;failed:=end-at>100;
+  while pos<end && !failed {candidate:=end;found:int;for back:0..<end-pos {candidate=end-back;query:[258]u8;k:=0;if pos>at {query[0]='#';query[1]='#';k=2;}for j:pos..<candidate {query[k]=clean[j];k+=1;}found=tf_find(v,cast(string)query[0..<k]);if found>=0 {break;}}
+   if found<0 {failed=true;}else {r.ids[r.written]=v[found].id;r.written+=1;pos=candidate;}
+  }
+  if failed {r.written=start;r.ids[r.written]=unknown;r.written+=1;}at=end;
+ }
+ return r;
+}
+// book:end wordpiece
+// Normalized UTF-8 bytes; unknown runs fuse. Ties keep the first end/start path.
+// book:begin unigram
+tf_unigram :: (v:[]TfPiece,input:string,unknown:int)->TfResult #export_c {
+ if !tf_text_size(input.count) {return TfResult.{status=TfStatus.size};}if !tf_utf8(input) {return TfResult.{status=TfStatus.unsupported};}if !tf_vocab(v) || unknown<0 || unknown>65535 {return TfResult.{status=TfStatus.vocabulary};}
+ scores:[1025]f64;previous:[1025]int;tokens:[1025]int;seen:[1025]bool;seen[0]=true;minimum:=v[tf_minimum(v)].score;
+ for at:0..<input.count {if !seen[at] {continue;}
+  for end:at+1..<input.count+1 {found:=tf_find(v,input[at..<end]);if found>=0 {score:=scores[at]+v[found].score;if !seen[end] || score>scores[end] {seen[end]=true;scores[end]=score;previous[end]=at;tokens[end]=v[found].id;}}}
+  {end:=at+1;while end<input.count && (input[end]&192)==128 {end+=1;}score:=scores[at]+minimum-10;if !seen[end] || score>scores[end] {seen[end]=true;scores[end]=score;previous[end]=at;tokens[end]=unknown;}}
+ }
+ reverse:[1024]int;n:=0;at:=input.count;while at>0 {id:=tokens[at];if n==0 || id!=unknown || reverse[n-1]!=unknown {reverse[n]=id;n+=1;}at=previous[at];}
+ r:=TfResult.{written=n,score=scores[input.count]};for i:0..<n {r.ids[i]=reverse[n-1-i];}return r;
+}
+// book:end unigram
+// ASCII domain of the pinned T5 SentencePiece normalization: collapse whitespace,
+// strip ends and insert U+2581 before each word. Non-ASCII needs its charsmap.
+tf_sentencepiece :: (v:[]TfPiece,input:string,unknown:int)->TfResult #export_c {
+ if !tf_ascii_size(input.count) {return TfResult.{status=TfStatus.size};}normal:[1024]u8;n:=0;space:=true;
+ for c:input {if c>=128 {return TfResult.{status=TfStatus.unsupported};}mapped:=TF_T5_ASCII[c];if mapped==-1 {continue;}if mapped==32 {space=true;continue;}if space {normal[n]=226;normal[n+1]=150;normal[n+2]=129;n+=3;space=false;}normal[n]=cast(u8)mapped;n+=1;}
+ return tf_unigram(v,cast(string)normal[0..<n],unknown);
+}
+
+tf_utf8 :: (s:string)->bool {at:=0;while at<s.count {next:=json_utf8(s,at);if next==0 {return false;}at+=next;}return true;}
+#forall "ASCII whitespace punctuation and lowercasing boundaries" byte:0..<256 {
+ c:=cast(u8)byte;#assert tf_space(c)==(byte==32 || byte==9 || byte==10 || byte==11 || byte==12 || byte==13);
+ expected:=(byte>32 && byte<48)||(byte>57 && byte<65)||(byte>90 && byte<97)||(byte>122 && byte<127);#assert tf_punct(c)==expected;
+}
+#test "vocabulary and balanced lookup query contracts include exact budgets" {
+ #assert tf_vocab_count(1) && tf_vocab_count(65536) && !tf_vocab_count(0) && !tf_vocab_count(65537);
+ #assert tf_vocab_bytes(2097152) && !tf_vocab_bytes(2097153);
+ #assert tf_ascii_size(256) && !tf_ascii_size(257) && tf_text_size(1024) && !tf_text_size(1025);
+ #assert tf_compare("a","b")==-1 && tf_compare("b","a")==1 && tf_compare("a","aa")==-1 && tf_compare("aa","a")==1 && tf_compare("a","a")==0;
+ #assert tf_pivot(0,8)==4 && tf_pivot(4,8)==6 && tf_pivot(5,6)==5;
+ v:=[3]TfPiece.[TfPiece.{text="a",id=1,score=2},TfPiece.{text="b",id=2,score=-5},TfPiece.{text="c",id=3,score=-5}];#assert tf_minimum(v[..])==1 && tf_bytes(v[..])==3 && tf_bytes(v[0..<0])==0 && tf_vocab(v[0..<1]);v[0].score=-1000;#assert tf_vocab(v[..]) && tf_minimum(v[..])==0;
+ long:[257]u8;for i:0..<257 {long[i]='a';}v[0].text=cast(string)long[0..<256];v[1].text="b";#assert tf_vocab(v[..]);v[0].text=cast(string)long[..];#assert !tf_vocab(v[..]);
+ invalid:=[1]u8.[128];#assert !tf_utf8(cast(string)invalid[..]);v[0].text=cast(string)invalid[..];#assert !tf_vocab(v[..]);
+ v[0].text="a";#assert tf_wordpiece(v[..],"a",65535).ids[0]==1 && tf_unigram(v[..],"a",65535).ids[0]==1;
+ #assert tf_unigram(v[..],"a",65536).status==TfStatus.vocabulary;
+
+}
+#test "WordPiece clean-text ASCII domain and exactly one hundred characters" {
+ v:=[5]TfPiece.[TfPiece.{text="!",id=5},TfPiece.{text="##a",id=2},TfPiece.{text="[",id=4},TfPiece.{text="a",id=1},TfPiece.{text="z",id=3}];
+ wire:=[12]u8.[65,0,1,127,32,90,13,13,91,33,32,65];r:=tf_wordpiece(v[..],cast(string)wire[..],0);#assert r.written==5 && r.ids[0]==1 && r.ids[1]==3 && r.ids[2]==4 && r.ids[3]==5 && r.ids[4]==1;
+ bad:=[1]u8.[128];#assert tf_wordpiece(v[..],cast(string)bad[..],0).status==TfStatus.unsupported && tf_sentencepiece(v[..],cast(string)bad[..],0).status==TfStatus.unsupported;
+ a:[256]u8;for i:0..<256 {a[i]='a';}r=tf_wordpiece(v[..],cast(string)a[0..<100],0);#assert r.written==100 && r.ids[99]==2;
+ r=tf_wordpiece(v[..],cast(string)a[0..<101],0);#assert r.written==1 && r.ids[0]==0;
+ a[0]=' ';a[101]=' ';r=tf_wordpiece(v[..],cast(string)a[0..<102],0);#assert r.written==100;
+}
+#test "Unigram unknown scalar runs and separated unknown runs retain known pieces" {
+ v:=[4]TfPiece.[TfPiece.{text="a",id=1,score=-1},TfPiece.{text="ab",id=4,score=-9},TfPiece.{text="b",id=2,score=-2},TfPiece.{text="▁",id=3,score=-1}];
+ r:=tf_unigram(v[..],"😀😁a😀b",0);#assert r.written==4 && r.ids[0]==0 && r.ids[1]==1 && r.ids[2]==0 && r.ids[3]==2 && r.score==-60;
+ r=tf_sentencepiece(v[..],"ab ab",0);#assert r.written==6 && r.ids[0]==3 && r.ids[1]==1 && r.ids[2]==2 && r.ids[3]==3 && r.ids[4]==1 && r.ids[5]==2;
+ r=tf_sentencepiece(v[..],"",0);#assert r.status==TfStatus.ok && r.written==0;
+ bad:=[1]u8.[255];#assert tf_unigram(v[..],cast(string)bad[..],0).status==TfStatus.unsupported;
+}
+
+#test "Unigram ties include unknown edges and the published score retains their cost" {
+ v:=[2]TfPiece.[TfPiece.{text="a",id=1,score=10},TfPiece.{text="a?",id=2,score=0}];r:=tf_unigram(v[..],"a?",0);#assert r.written==1 && r.ids[0]==2 && r.score==0;
+ r=tf_unigram(v[..],"?",0);#assert r.written==1 && r.ids[0]==0 && r.score==-10;
+}
+#test "lookup finds the first sorted entry at a continuation and compares every byte" {
+ #assert tf_compare("aa","ab")==-1 && tf_compare("ab","aa")==1;
+ v:=[3]TfPiece.[TfPiece.{text="##a",id=5},TfPiece.{text="a",id=1},TfPiece.{text="b",id=2}];r:=tf_wordpiece(v[..],"aaa",0);#assert r.written==3 && r.ids[0]==1 && r.ids[1]==5 && r.ids[2]==5;
+ v[0].text="!";v[0].id=3;r=tf_wordpiece(v[..],"a!",0);#assert r.written==2 && r.ids[0]==1 && r.ids[1]==3;
+ r=tf_unigram(v[..],"zaz",5);#assert r.written==3 && r.ids[0]==5 && r.ids[1]==1 && r.ids[2]==5;
+ bad:=[1]u8.[128];#assert tf_sentencepiece(v[..],cast(string)bad[..],0).status==TfStatus.unsupported;
+}
+
+#test "long first-entry continuation and empty continuation spelling preserve progress" {
+ v:=[3]TfPiece.[TfPiece.{text="##aa",id=5},TfPiece.{text="a",id=1},TfPiece.{text="b",id=2}];r:=tf_wordpiece(v[..],"aaa",0);#assert r.written==2 && r.ids[0]==1 && r.ids[1]==5;
+ v[0].text="##";r=tf_wordpiece(v[..],"aa",0);#assert r.written==1 && r.ids[0]==0;
+ v[0].text="a";v[0].id=1;v[1].text="b";v[1].id=2;v[2].text="▁";v[2].id=3;r=tf_sentencepiece(v[..],"a\0b",0);#assert r.written==4 && r.ids[0]==3 && r.ids[1]==1 && r.ids[2]==0 && r.ids[3]==2;
+ control:=[3]u8.[97,1,98];r=tf_sentencepiece(v[..],cast(string)control[..],0);#assert r.written==3 && r.ids[0]==3 && r.ids[1]==1 && r.ids[2]==2;
+}

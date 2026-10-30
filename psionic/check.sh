@@ -42,6 +42,9 @@ if [[ ${#only[@]} -eq 1 ]]; then
     if [[ $chapter == gguf || $chapter == gguf-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_gguf.sh --mutate --jobs "$jobs"
     fi
+    if [[ $chapter == tokenizer-families || $chapter == tokenizer-families-* ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_tokenizer_families.sh --mutate --jobs "$jobs"
+    fi
     if [[ $chapter == interchange || $chapter == interchange-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_interchange.sh
     fi
@@ -268,10 +271,11 @@ picks_native() {
     done
     return 1
 }
-selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; live_decision=0; interchange=0; gguf=0; operator_registry=0; tensor_template=0
+selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; live_decision=0; interchange=0; tokenizer_families=0; gguf=0; operator_registry=0; tensor_template=0
 picks_tensor_template() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-template || $n == tensor-template-* ]]; }
 picks_operator_registry() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == operator-registry || $n == operator-registry-* ]]; }
 picks_gguf() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gguf || $n == gguf-* ]]; }
+picks_tokenizer_families() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tokenizer-families || $n == tokenizer-families-* ]]; }
 picks_interchange() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == interchange || $n == interchange-* ]]; }
 picks_tensor_ir() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-ir || $n == tensor-ir-* ]]; }
 picks_tensor_device() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-device || $n == tensor-placement || $n == tensor-device-* ]]; }
@@ -281,6 +285,7 @@ picks_gptoss() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gptoss || $n 
 if [[ ${#only[@]} -eq 0 ]]; then
     live_decision=1
     interchange=1
+    tokenizer_families=1
     gguf=1
     operator_registry=1
     tensor_template=1
@@ -291,6 +296,7 @@ else
     for n in "${only[@]}"; do
         hit=0
         if picks_gguf "$n"; then hit=1; gguf=1; fi
+        if picks_tokenizer_families "$n"; then hit=1; tokenizer_families=1; fi
         if picks_interchange "$n"; then hit=1; interchange=1; fi
         if picks_operator_registry "$n"; then hit=1; operator_registry=1; fi
         if picks_tensor_template "$n"; then hit=1; tensor_template=1; fi
@@ -397,6 +403,10 @@ fi
 if [[ $gguf == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_gguf.sh --mutate --jobs "$jobs"
     phase "GGUF structural reader"
+fi
+if [[ $tokenizer_families == 1 ]]; then
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_tokenizer_families.sh --mutate --jobs "$jobs"
+    phase "chapter 36: tokenizer-families"
 fi
 if [[ $interchange == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_interchange.sh

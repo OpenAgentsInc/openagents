@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "base": "8d2b41e0fc",
+  "cpu_only": true,
+  "checks_per_mode": 38,
+  "mutants": {
+    "total": 1819,
+    "killed": 1819,
+    "survived": 0
+  },
+  "inputs": {
+    "coax/bin/coax": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+    "psionic/examples/tokenizer-families.coax": "e2cae8d2a7b9e1cefca6e68413e95473d79ae92a410b1397c13c77ae82db980b",
+    "psionic/fixtures/tokenizer-families.out": "b3cd3d7f7b6305737909deb97afef2c98a9ba95eb394cd82c51c8379bd59b303",
+    "psionic/fixtures/tokenizer-families/ascii.coax": "9b837723d3bc3c8fd96a3d82aaa58429beb6261a6019f011045ba7e1f8f56833",
+    "psionic/lib/chat-template.coax": "305395e44bb63acbcc94f960b0c18f6656f997edc6c59b35ebda36694590b537",
+    "psionic/lib/tokenizer-families.coax": "d0245d7ef06ae6cb9d30db7ba1c26a08a045bb86c725e3a70bdfee9c8f1efd48",
+    "psionic/tests/check_tokenizer_families.sh": "579f18e27fc8a033f5812e4815b00b8ea5aa8fcb13d394d7da0601e6667585ed",
+    "psionic/tests/tokenizer_families_capture.py": "b15d52ae7b7c92e06e8dd0375c1c888e214508d3d1dc5afeb5926540f025d94f",
+    "psionic/tests/tokenizer_families_native.c": "8e19b8653f360681b00a25deb6eec81d86502d73cad9788ae62abfcd9f1f895b",
+    "psionic/tests/tokenizer_families_oracle.py": "399337cbedfe32bf86c1d2ea03cc39cc511327b4a3c109787102b68262d97d03"
+  },
+  "logs": {
+    "psionic-ch36-chat7.log": {
+      "sha256": "ec96b872c1c76adcfebb30aba61a2e2e8a37e860eb35ec67a524395615b2ee91",
+      "last_line": "38 checks, 38 passed, 0 failed"
+    },
+    "psionic-ch36-release-final.log": {
+      "sha256": "ec96b872c1c76adcfebb30aba61a2e2e8a37e860eb35ec67a524395615b2ee91",
+      "last_line": "38 checks, 38 passed, 0 failed"
+    },
+    "psionic-ch36-mutate3.log": {
+      "sha256": "4608845bf1c478f81ee775276164288aa13288b07db8ba67c2921f7891725bbe",
+      "last_line": "1819 mutants, 1819 killed, 0 survived"
+    },
+    "psionic-ch36-final-native-debug-plain.log": {
+      "sha256": "da4568f4a56d30e068cec9e849ef5d31c9395b993ff4e89e6a90b9b4e16b5a7f",
+      "last_line": "BERT/T5: 290 original-vocabulary ID vectors; bounded Jinja: 12 upstream-rendered vectors pass"
+    },
+    "psionic-ch36-final-native-debug-sanitized.log": {
+      "sha256": "da4568f4a56d30e068cec9e849ef5d31c9395b993ff4e89e6a90b9b4e16b5a7f",
+      "last_line": "BERT/T5: 290 original-vocabulary ID vectors; bounded Jinja: 12 upstream-rendered vectors pass"
+    },
+    "psionic-ch36-final-native-release-sanitized.log": {
+      "sha256": "da4568f4a56d30e068cec9e849ef5d31c9395b993ff4e89e6a90b9b4e16b5a7f",
+      "last_line": "BERT/T5: 290 original-vocabulary ID vectors; bounded Jinja: 12 upstream-rendered vectors pass"
+    },
+    "psionic-ch36-final-native-release-plain.log": {
+      "sha256": "da4568f4a56d30e068cec9e849ef5d31c9395b993ff4e89e6a90b9b4e16b5a7f",
+      "last_line": "BERT/T5: 290 original-vocabulary ID vectors; bounded Jinja: 12 upstream-rendered vectors pass"
+    }
+  }
+}
