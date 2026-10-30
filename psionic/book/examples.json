@@ -800,6 +800,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/interpreter-weights.coax",
+      "chapter": "psionic/book/ch170-an-interpreter-in-weights-or-one-program-in-weights.md",
+      "stdout": "psionic/fixtures/interpreter-weights.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

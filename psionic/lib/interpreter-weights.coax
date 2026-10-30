@@ -1,0 +1,634 @@
+// Chapter 170: an interpreter in weights, or one program in weights. A tiny
+// register machine has an accumulator, a second register and up to five
+// instructions. Its interpreter is one step written as a gate graph, which
+// chapter 168 compiles into weights once, for every program: the program is
+// part of the input. A partial evaluator over gate graphs then folds a
+// program's instructions into the interpreter (the first Futamura
+// projection), leaving one block per program whose inputs are only the state.
+// Profile iw-v1: chapter 168's blocks in binary64; machine values within
+// 2^24, so every value inside a step stays within chapter 167's 2^26.
+#load "gate-graph.coax";
+#authority;
+
+IwOp :: enum u8 {addi;addr;jnz;halt;}
+// addi: acc += arg. addr: r += acc. jnz: jump to arg unless acc is 0. halt:
+// stay at this instruction. A step that leaves the ip where it was halts the
+// machine: a halt, or a jnz to itself, which changes nothing and would repeat
+// forever.
+IwIns :: struct {op:IwOp;arg:int;}
+IwState :: struct {ip:int;acc:int;r:int;}
+IwStatus :: enum u8 {ok;shape;target;halt;range;budget;graph;}
+IwNext :: struct {status:IwStatus;state:IwState;halted:bool;}
+IwRun :: struct {status:IwStatus;state:IwState;steps:int;}
+IwSpec :: struct {status:GgStatus;node:int;count:int;inputs:int;}
+
+IW_SLOTS :: 5;
+IW_INPUTS :: 13;  // ip, acc, r, then each slot's op and arg
+IW_VALUE_MAX :: 16777216;  // 2^24
+
+// book:begin machine
+// A program has 1 to 5 instructions and ends with halt; every jump lands
+// inside it, so the instruction pointer never leaves the program.
+iw_admit :: (p:[]IwIns)->IwStatus {
+    if p.count<1 || p.count>IW_SLOTS {return IwStatus.shape;}
+    for i:0..<p.count {
+        if p[i].arg< -IW_VALUE_MAX || p[i].arg>IW_VALUE_MAX {return IwStatus.range;}
+        if p[i].op==IwOp.jnz && (p[i].arg<0 || p[i].arg>=p.count) {return IwStatus.target;}
+    }
+    if p[p.count-1].op!=IwOp.halt {return IwStatus.halt;}
+    return IwStatus.ok;
+}
+iw_in_range :: (s:IwState)->bool {
+    return s.acc>= -IW_VALUE_MAX && s.acc<=IW_VALUE_MAX && s.r>= -IW_VALUE_MAX && s.r<=IW_VALUE_MAX;
+}
+// The native interpreter: one step of an admitted program.
+iw_step :: (p:[]IwIns,s:IwState)->IwNext {
+    x:=IwNext.{state=s};ins:=p[s.ip];x.state.ip=s.ip+1;
+    if ins.op==IwOp.addi {x.state.acc=s.acc+ins.arg;}
+    if ins.op==IwOp.addr {x.state.r=s.r+s.acc;}
+    if ins.op==IwOp.jnz && s.acc!=0 {x.state.ip=ins.arg;}
+    if ins.op==IwOp.halt {x.state.ip=s.ip;}
+    x.halted=x.state.ip==s.ip;
+    if !iw_in_range(x.state) {x.status=IwStatus.range;}
+    return x;
+}
+iw_run :: (p:[]IwIns,s:IwState,budget:int)->IwRun {
+    r:=IwRun.{state=s};
+    a:=iw_admit(p);if a!=IwStatus.ok {r.status=a;return r;}
+    if !iw_in_range(s) || s.ip<0 || s.ip>=p.count {r.status=IwStatus.shape;return r;}
+    for i:0..<budget {
+        x:=iw_step(p,r.state);
+        if x.status!=IwStatus.ok {r.status=x.status;return r;}
+        if x.halted {return r;}
+        r.state=x.state;r.steps+=1;
+    }
+    r.status=IwStatus.budget;return r;
+}
+// book:end machine
+
+// book:begin universal
+iw_put :: (g:[]GgNode,n:int,e:GgNode)->int {g[n]=e;return n+1;}
+// One step for any program of up to `slots` instructions (1 to 5). Inputs:
+// ip, acc, r, then each slot's op and arg. Each slot computes its own
+// instruction's effect, so a slot whose instruction is known folds to just
+// that effect; the slot the ip names is then chosen. Within a slot the ip is
+// known, so the next ip is a constant or the jump target. An op is 0 to 3,
+// so halt needs no comparison of its own. Outputs: ip, acc, r.
+iw_universal :: (g:[]GgNode,outs:[]int,slots:int)->int {
+    n:=0;IN:=GgOp.input;SUB:=GgOp.sub;ADD:=GgOp.add;EQ:=GgOp.eq0;SEL:=GgOp.select;
+    for k:0..<3+2*slots {n=iw_put(g,n,GgNode.{op=IN,k=k});}
+    // Constants 0 to 5: the ops compared against and every slot's next ip.
+    C:=n;for j:0..<IW_SLOTS+1 {n=iw_put(g,n,GgNode.{op=GgOp.constant,k=j});}
+    z:=n;n=iw_put(g,n,GgNode.{op=EQ,a=1});
+    at:[IW_SLOTS]int;acc:[IW_SLOTS]int;reg:[IW_SLOTS]int;ip:[IW_SLOTS]int;
+    // The last slot is chosen when no other is.
+    for i:0..<slots-1 {d:=n;n=iw_put(g,n,GgNode.{op=SUB,b=C+i});at[i]=n;n=iw_put(g,n,GgNode.{op=EQ,a=d});}
+    for i:0..<slots {
+        op:=3+2*i;arg:=4+2*i;is:[3]int;
+        for k:0..<3 {d:=n;n=iw_put(g,n,GgNode.{op=SUB,a=op,b=C+k});is[k]=n;n=iw_put(g,n,GgNode.{op=EQ,a=d});}
+        v:=n;n=iw_put(g,n,GgNode.{op=SEL,a=arg,b=C,c=is[0]});acc[i]=n;n=iw_put(g,n,GgNode.{op=ADD,a=1,b=v});
+        v=n;n=iw_put(g,n,GgNode.{op=SEL,a=1,b=C,c=is[1]});reg[i]=n;n=iw_put(g,n,GgNode.{op=ADD,a=2,b=v});
+        jump:=n;n=iw_put(g,n,GgNode.{op=SEL,a=C+i+1,b=arg,c=z});
+        // addi and addr move on, halt stays: i plus their two bits. A jnz
+        // takes jump instead.
+        v=n;n=iw_put(g,n,GgNode.{op=ADD,a=is[0],b=is[1]});
+        stay:=n;n=iw_put(g,n,GgNode.{op=ADD,a=C+i,b=v});
+        ip[i]=n;n=iw_put(g,n,GgNode.{op=SEL,a=jump,b=stay,c=is[2]});
+    }
+    chosen:=[3]int.[ip[slots-1],acc[slots-1],reg[slots-1]];
+    for j:0..<slots-1 {
+        i:=slots-2-j;
+        v:=n;n=iw_put(g,n,GgNode.{op=SEL,a=ip[i],b=chosen[0],c=at[i]});chosen[0]=v;
+        v=n;n=iw_put(g,n,GgNode.{op=SEL,a=acc[i],b=chosen[1],c=at[i]});chosen[1]=v;
+        v=n;n=iw_put(g,n,GgNode.{op=SEL,a=reg[i],b=chosen[2],c=at[i]});chosen[2]=v;
+    }
+    for k:0..<3 {outs[k]=chosen[k];}
+    return n;
+}
+// The universal block's inputs for a state and a program, padded with halts.
+iw_inputs :: (p:[]IwIns,s:IwState,inputs:[]int) {
+    inputs[0]=s.ip;inputs[1]=s.acc;inputs[2]=s.r;
+    for i:0..<IW_SLOTS {
+        inputs[3+2*i]=cast(int)IwOp.halt;inputs[4+2*i]=0;
+        if i<p.count {inputs[3+2*i]=cast(int)p[i].op;inputs[4+2*i]=p[i].arg;}
+    }
+}
+// book:end universal
+
+// book:begin specialize
+// A partial evaluator over gate graphs. Inputs with known[k] take value[k];
+// every node whose operands are all known becomes a constant, a select with
+// a known condition becomes the operand it picks, and adding zero or scaling
+// by one disappears. The remaining inputs keep their order. Nodes no output
+// reads are then removed, except inputs, so the block's interface is fixed
+// by which inputs were left unknown.
+IwFold :: struct {known:bool;value:int;node:int;}
+iw_const :: (t:[]GgNode,n:int,v:int)->int {
+    for i:0..<n {if t[i].op==GgOp.constant && t[i].k==v {return i;}}
+    return -1;
+}
+iw_ref :: (t:[]GgNode,n:int,f:IwFold)->int {
+    if !f.known {return f.node;}
+    return iw_const(t,n,f.value);
+}
+iw_specialize :: (g:[]GgNode,outs:[]int,known:[]bool,value:[]int,r:[]GgNode,routs:[]int)->IwSpec {
+    s:IwSpec;a:=gg_admit(g,outs);
+    if a.status!=GgStatus.ok {s.status=a.status;s.node=a.node;return s;}
+    t:[256]GgNode;n:=0;f:[128]IwFold;
+    for i:0..<g.count {
+        e:=g[i];x:=f[e.a];y:=f[e.b];c:=f[e.c];v:=IwFold.{known=true};emit:=false;
+        if e.op==GgOp.input {
+            if e.k>=known.count || e.k>=value.count {s.status=GgStatus.capacity;return s;}
+            v.known=known[e.k];v.value=value[e.k];
+            if !v.known {v.node=n;t[n]=GgNode.{op=GgOp.input,k=s.inputs};n+=1;s.inputs+=1;}
+        }
+        if e.op==GgOp.constant {v.value=e.k;}
+        if e.op==GgOp.add {
+            if x.known && y.known {v.value=x.value+y.value;}
+            else if x.known && x.value==0 {v=y;}
+            else if y.known && y.value==0 {v=x;}
+            else {emit=true;}
+        }
+        if e.op==GgOp.sub {
+            if x.known && y.known {v.value=x.value-y.value;}
+            else if y.known && y.value==0 {v=x;}
+            else {emit=true;}
+        }
+        if e.op==GgOp.scale {
+            if x.known {v.value=x.value*e.k;}
+            else if e.k==1 {v=x;}
+            else {emit=true;}
+        }
+        if e.op==GgOp.mul {
+            if x.known && y.known {v.value=x.value*y.value;}
+            else if x.known || y.known {
+                k:=ifx x.known then x.value else y.value;o:=ifx x.known then y else x;
+                // Times zero is the default: known, 0.
+                if k==1 {v=o;} else if k!=0 {e=GgNode.{op=GgOp.scale,k=k};x=o;emit=true;}
+            }
+            else {emit=true;}
+        }
+        if e.op==GgOp.relu || e.op==GgOp.step || e.op==GgOp.eq0 {
+            if x.known {
+                if e.op==GgOp.relu && x.value>=1 {v.value=x.value;}
+                if e.op==GgOp.step && x.value>=1 {v.value=1;}
+                if e.op==GgOp.eq0 && x.value==0 {v.value=1;}
+            }
+            else {emit=true;}
+        }
+        if e.op==GgOp.select {
+            if c.known {v=ifx c.value==1 then x else y;}
+            else if x.known && y.known && x.value==y.value {v=x;}
+            else {emit=true;}
+        }
+        if v.known && (v.value< -RA_VALUE_MAX || v.value>RA_VALUE_MAX) {s.status=GgStatus.range;s.node=i;return s;}
+        if emit {
+            // Known operands become constants; each is placed once, before its first reader.
+            ops:=[3]IwFold.[x,y,c];refs:[3]int;
+            for j:0..<gg_arity(e.op) {
+                refs[j]=iw_ref(t[..],n,ops[j]);
+                if refs[j]<0 {refs[j]=n;t[n]=GgNode.{op=GgOp.constant,k=ops[j].value};n+=1;}
+            }
+            t[n]=GgNode.{op=e.op,a=refs[0],b=refs[1],c=refs[2],k=e.k};v=IwFold.{node=n};n+=1;
+        }
+        f[i]=v;
+    }
+    // The outputs, then the nodes they read.
+    o:[16]int;
+    for j:0..<outs.count {
+        o[j]=iw_ref(t[..],n,f[outs[j]]);
+        if o[j]<0 {o[j]=n;t[n]=GgNode.{op=GgOp.constant,k=f[outs[j]].value};n+=1;}
+    }
+    live:[256]bool;
+    for j:0..<outs.count {live[o[j]]=true;}
+    for q:0..<n {
+        i:=n-1-q;
+        if t[i].op==GgOp.input {live[i]=true;}
+        if live[i] {
+            k:=gg_arity(t[i].op);
+            if k>=1 {live[t[i].a]=true;}
+            if k>=2 {live[t[i].b]=true;}
+            if k>=3 {live[t[i].c]=true;}
+        }
+    }
+    at:[256]int;
+    for i:0..<n {
+        if !live[i] {continue;}
+        if s.count==r.count {s.status=GgStatus.capacity;return s;}
+        e:=t[i];e.a=at[e.a];e.b=at[e.b];e.c=at[e.c];r[s.count]=e;at[i]=s.count;s.count+=1;
+    }
+    for j:0..<outs.count {routs[j]=at[o[j]];}
+    return s;
+}
+// book:end specialize
+
+// book:begin weights
+// One step through compiled weights: the block's outputs are the next state.
+// The machine's range is checked here, as the native step checks it.
+iw_weights_step :: (plan:GgPlan,w:[]f64,inputs:[]int,s:IwState)->IwNext {
+    x:=IwNext.{state=s};out:[3]f64;
+    if gg_run(plan,w,inputs,out[..],false,false)!=GgStatus.ok {x.status=IwStatus.graph;return x;}
+    x.state=IwState.{ip=cast(int)out[0],acc=cast(int)out[1],r=cast(int)out[2]};
+    x.halted=x.state.ip==s.ip;
+    if !iw_in_range(x.state) {x.status=IwStatus.range;}
+    return x;
+}
+// Runs a program through the universal block (specialized false) or its own
+// block, until it halts or the budget runs out.
+iw_weights_run :: (plan:GgPlan,w:[]f64,p:[]IwIns,s:IwState,budget:int,specialized:bool)->IwRun {
+    r:=IwRun.{state=s};
+    a:=iw_admit(p);if a!=IwStatus.ok {r.status=a;return r;}
+    if !iw_in_range(s) || s.ip<0 || s.ip>=p.count {r.status=IwStatus.shape;return r;}
+    inputs:[IW_INPUTS]int;
+    for i:0..<budget {
+        iw_inputs(p,r.state,inputs[..]);n:=ifx specialized then 3 else IW_INPUTS;
+        x:=iw_weights_step(plan,w,inputs[0..<n],r.state);
+        if x.status!=IwStatus.ok {r.status=x.status;return r;}
+        if x.halted {return r;}
+        r.state=x.state;r.steps+=1;
+    }
+    r.status=IwStatus.budget;return r;
+}
+// book:end weights
+
+// The program's block: the interpreter for exactly its length, with every
+// op and arg known. An admitted program's folds stay small, so only its
+// residual graph's compilation can refuse it.
+IwBlock :: struct {spec:IwSpec;plan:GgPlan;}
+iw_program_block :: (p:[]IwIns,nodes:[]GgNode,w:[]f64)->IwBlock {
+    b:IwBlock;g:[128]GgNode;outs:[3]int;n:=iw_universal(g[..],outs[..],p.count);m:=3+2*p.count;
+    known:[IW_INPUTS]bool;value:[IW_INPUTS]int;s:IwState;iw_inputs(p,s,value[..]);
+    for k:3..<m {known[k]=true;}
+    routs:[3]int;b.spec=iw_specialize(g[0..<n],outs[..],known[0..<m],value[0..<m],nodes,routs[..]);
+    b.plan=gg_compile(nodes[0..<b.spec.count],routs[..],w);
+    return b;
+}
+// Sums 1..n into r: [addr, addi -1, jnz 0, halt] from acc = n.
+iw_triangle :: ()->[4]IwIns {
+    return [4]IwIns.[IwIns.{op=IwOp.addr},IwIns.{op=IwOp.addi,arg=-1},IwIns.{op=IwOp.jnz,arg=0},IwIns.{op=IwOp.halt}];
+}
+
+// Prefixes of [addr, addi -1, addr, jnz 0], each ending in halt: programs
+// of 1 to 5 instructions, for the size table.
+iw_family :: (n:int)->[5]IwIns {
+    p:=[5]IwIns.[IwIns.{op=IwOp.addr},IwIns.{op=IwOp.addi,arg=-1},IwIns.{op=IwOp.addr},IwIns.{op=IwOp.jnz,arg=0},IwIns.{op=IwOp.halt}];
+    p[n-1]=IwIns.{op=IwOp.halt};
+    return p;
+}
+
+// Tests.
+iw_ins :: (op:IwOp,arg:int)->IwIns {return IwIns.{op=op,arg=arg};}
+iw_says :: (x:IwNext,status:IwStatus,ip:int,acc:int,r:int,halted:bool)->bool {
+    return x.status==status && x.state.ip==ip && x.state.acc==acc && x.state.r==r && x.halted==halted;
+}
+#test "a program is admitted only if it fits, ends in halt and jumps inside itself" {
+    p:=iw_triangle();
+    #assert iw_admit(p[..])==IwStatus.ok && iw_admit(p[3..<4])==IwStatus.ok;
+    #assert iw_admit(p[0..<0])==IwStatus.shape && iw_admit(p[0..<3])==IwStatus.halt;
+    six:[6]IwIns;for i:0..<6 {six[i]=iw_ins(IwOp.halt,0);}
+    #assert iw_admit(six[..])==IwStatus.shape && iw_admit(six[0..<5])==IwStatus.ok;
+    q:=p;q[2].arg=3;#assert iw_admit(q[..])==IwStatus.ok;
+    q[2].arg=4;#assert iw_admit(q[..])==IwStatus.target;
+    q[2].arg=-1;#assert iw_admit(q[..])==IwStatus.target;
+    q=p;q[1].arg=IW_VALUE_MAX;#assert iw_admit(q[..])==IwStatus.ok;
+    q[1].arg=IW_VALUE_MAX+1;#assert iw_admit(q[..])==IwStatus.range;
+    q[1].arg=-IW_VALUE_MAX;#assert iw_admit(q[..])==IwStatus.ok;
+    q[1].arg=-IW_VALUE_MAX-1;#assert iw_admit(q[..])==IwStatus.range;
+    q=p;q[3].arg=9;#assert iw_admit(q[..])==IwStatus.ok;
+}
+#test "each instruction, natively" {
+    p:=[5]IwIns.[iw_ins(IwOp.addi,-7),iw_ins(IwOp.addr,5),iw_ins(IwOp.jnz,4),iw_ins(IwOp.halt,3),iw_ins(IwOp.halt,0)];
+    #assert iw_says(iw_step(p[..],IwState.{ip=0,acc=3,r=2}),IwStatus.ok,1,-4,2,false);
+    #assert iw_says(iw_step(p[..],IwState.{ip=1,acc=3,r=2}),IwStatus.ok,2,3,5,false);
+    #assert iw_says(iw_step(p[..],IwState.{ip=2,acc=3,r=2}),IwStatus.ok,4,3,2,false);
+    #assert iw_says(iw_step(p[..],IwState.{ip=2,acc=0,r=2}),IwStatus.ok,3,0,2,false);
+    #assert iw_says(iw_step(p[..],IwState.{ip=3,acc=3,r=2}),IwStatus.ok,3,3,2,true);
+    // The range is checked on both registers, in both directions.
+    m:=IW_VALUE_MAX;q:=[2]IwIns.[iw_ins(IwOp.addi,1),iw_ins(IwOp.addr,0)];
+    #assert iw_says(iw_step(q[..],IwState.{acc=m-1}),IwStatus.ok,1,m,0,false);
+    #assert iw_step(q[..],IwState.{acc=m}).status==IwStatus.range;
+    q[0].arg=-1;#assert iw_step(q[..],IwState.{acc=-m}).status==IwStatus.range;
+    #assert iw_step(q[..],IwState.{acc=1-m}).status==IwStatus.ok;
+    #assert iw_says(iw_step(q[..],IwState.{ip=1,acc=1,r=m-1}),IwStatus.ok,2,1,m,false);
+    #assert iw_step(q[..],IwState.{ip=1,acc=1,r=m}).status==IwStatus.range;
+    #assert iw_step(q[..],IwState.{ip=1,acc=-1,r=-m}).status==IwStatus.range;
+    #assert iw_step(q[..],IwState.{ip=1,acc=-1,r=1-m}).status==IwStatus.ok;
+}
+#test "a native run stops at halt, at its budget or at a bad start" {
+    p:=iw_triangle();
+    r:=iw_run(p[..],IwState.{acc=4},100);#assert r.status==IwStatus.ok && r.steps==12 && r.state.r==10 && r.state.acc==0 && r.state.ip==3;
+    r=iw_run(p[..],IwState.{acc=4},12);#assert r.status==IwStatus.budget && r.steps==12 && r.state.ip==3;
+    r=iw_run(p[..],IwState.{acc=4},13);#assert r.status==IwStatus.ok && r.steps==12;
+    #assert iw_run(p[0..<3],IwState.{acc=4},100).status==IwStatus.halt;
+    #assert iw_run(p[..],IwState.{ip=-1},100).status==IwStatus.shape;
+    #assert iw_run(p[..],IwState.{ip=4},100).status==IwStatus.shape;
+    #assert iw_run(p[..],IwState.{ip=3},100).status==IwStatus.ok;
+    #assert iw_run(p[..],IwState.{acc=IW_VALUE_MAX+1},100).status==IwStatus.shape;
+    #assert iw_run(p[..],IwState.{r=-IW_VALUE_MAX-1},100).status==IwStatus.shape;
+    r=iw_run(p[..],IwState.{acc=IW_VALUE_MAX},100);#assert r.status==IwStatus.range && r.steps==3 && r.state.r==IW_VALUE_MAX;
+}
+// The universal graph's step, evaluated, against the native step.
+iw_eval_step :: (g:[]GgNode,outs:[]int,p:[]IwIns,s:IwState)->IwNext {
+    inputs:[IW_INPUTS]int;iw_inputs(p,s,inputs[..]);v:[3]int;x:=IwNext.{state=s};
+    if gg_eval(g,inputs[..],outs,v[..]).status!=GgStatus.ok {x.status=IwStatus.graph;return x;}
+    x.state=IwState.{ip=v[0],acc=v[1],r=v[2]};x.halted=x.state.ip==s.ip;
+    if !iw_in_range(x.state) {x.status=IwStatus.range;}
+    return x;
+}
+iw_agrees :: (a:IwNext,b:IwNext)->bool {
+    return a.status==b.status && a.state.ip==b.state.ip && a.state.acc==b.state.acc && a.state.r==b.state.r && a.halted==b.halted;
+}
+#test "the universal step equals the native step for every op in every slot" {
+    g:[128]GgNode;outs:[3]int;n:=iw_universal(g[..],outs[..],IW_SLOTS);
+    #assert n==110 && gg_admit(g[0..<n],outs[..]).status==GgStatus.ok;
+    ops:=[4]IwOp.[IwOp.addi,IwOp.addr,IwOp.jnz,IwOp.halt];accs:=[3]int.[0,6,-2];checked:=0;
+    for i:0..<IW_SLOTS {for k:0..<4 {for a:accs {
+        p:[5]IwIns;for j:0..<5 {p[j]=iw_ins(ops[(j+k+1)%4],j+1);}
+        p[i]=iw_ins(ops[k],3);
+        s:=IwState.{ip=i,acc=a,r=11};
+        #assert iw_agrees(iw_eval_step(g[0..<n],outs[..],p[..],s),iw_step(p[..],s));checked+=1;
+    }}}
+    #assert checked==60;
+    // Short programs are padded with halts.
+    t:=iw_triangle();inputs:[IW_INPUTS]int;iw_inputs(t[0..<2],IwState.{ip=1,acc=2,r=3},inputs[..]);
+    #assert inputs[0]==1 && inputs[1]==2 && inputs[2]==3 && inputs[3]==1 && inputs[4]==0 && inputs[5]==0 && inputs[6]==-1;
+    #assert inputs[7]==3 && inputs[8]==0 && inputs[11]==3 && inputs[12]==0;
+}
+// A small specialization: g's input 0 known as kv when known is set.
+IwSmall :: struct {spec:IwSpec;nodes:[16]GgNode;outs:[2]int;}
+iw_small :: (g:[]GgNode,outs:[]int,known0:bool,v0:int)->IwSmall {
+    x:IwSmall;known:=[2]bool.[known0,false];value:[2]int;value[0]=v0;
+    x.spec=iw_specialize(g,outs,known[..],value[..],x.nodes[..],x.outs[0..<outs.count]);
+    return x;
+}
+iw_n :: (op:GgOp,a:int,b:int,c:int,k:int)->GgNode {return GgNode.{op=op,a=a,b=b,c=c,k=k};}
+iw_is :: (e:GgNode,op:GgOp,a:int,b:int,c:int,k:int)->bool {return e.op==op && e.a==a && e.b==b && e.c==c && e.k==k;}
+I0 :: GgNode.{op=GgOp.input,k=0};
+I1 :: GgNode.{op=GgOp.input,k=1};
+#test "the partial evaluator folds each operation with known operands" {
+    // x = input 0 (known 5 or unknown), y = input 1; out = op(x, y).
+    ops:=[3]GgOp.[GgOp.add,GgOp.sub,GgOp.mul];
+    for op:ops {
+        g:=[3]GgNode.[I0,I1,iw_n(op,0,1,0,0)];outs:=[1]int.[2];
+        x:=iw_small(g[..],outs[..],true,5);
+        #assert x.spec.status==GgStatus.ok && x.spec.inputs==1 && iw_is(x.nodes[0],GgOp.input,0,0,0,0);
+        if op==GgOp.mul {#assert x.spec.count==2 && iw_is(x.nodes[1],GgOp.scale,0,0,0,5) && x.outs[0]==1;}
+        else {
+            #assert x.spec.count==3 && iw_is(x.nodes[1],GgOp.constant,0,0,0,5);
+            #assert iw_is(x.nodes[2],op,1,0,0,0) && x.outs[0]==2;
+        }
+        g[2]=iw_n(op,1,0,0,0);x=iw_small(g[..],outs[..],true,5);
+        if op==GgOp.mul {#assert x.spec.count==2 && iw_is(x.nodes[1],GgOp.scale,0,0,0,5);}
+        else {#assert x.spec.count==3 && iw_is(x.nodes[2],op,0,1,0,0);}
+        g[2]=iw_n(op,0,1,0,0);
+        // Unknown, it is copied as it is.
+        y:=iw_small(g[..],outs[..],false,5);
+        #assert y.spec.count==3 && y.spec.inputs==2 && iw_is(y.nodes[2],op,0,1,0,0);
+    }
+    // Both known: a constant.
+    g:=[4]GgNode.[I0,iw_n(GgOp.constant,0,0,0,3),iw_n(GgOp.sub,0,1,0,0),iw_n(GgOp.mul,2,1,0,0)];outs:=[2]int.[2,3];
+    x:=iw_small(g[..],outs[..],true,-4);
+    #assert x.spec.count==2 && x.spec.inputs==0 && iw_is(x.nodes[0],GgOp.constant,0,0,0,-7) && iw_is(x.nodes[1],GgOp.constant,0,0,0,-21);
+    #assert x.outs[0]==0 && x.outs[1]==1;
+    g[2].op=GgOp.add;g[3].op=GgOp.scale;g[3].k=-2;
+    x=iw_small(g[..],outs[..],true,-4);#assert x.spec.count==2 && x.nodes[0].k==-1 && x.nodes[1].k==2;
+}
+#test "adding zero, scaling or multiplying by one, and multiplying by zero disappear" {
+    z:=iw_n(GgOp.constant,0,0,0,0);one:=iw_n(GgOp.constant,0,0,0,1);
+    g:=[9]GgNode.[I0,z,one,iw_n(GgOp.add,0,1,0,0),iw_n(GgOp.add,1,3,0,0),iw_n(GgOp.sub,4,1,0,0),
+        iw_n(GgOp.scale,5,0,0,1),iw_n(GgOp.mul,2,6,0,0),iw_n(GgOp.mul,7,2,0,0)];
+    outs:=[1]int.[8];x:=iw_small(g[..],outs[..],false,0);
+    #assert x.spec.status==GgStatus.ok && x.spec.count==1 && x.outs[0]==0;
+    g[8].a=1;x=iw_small(g[..],outs[..],false,0);
+    #assert x.spec.count==2 && iw_is(x.nodes[1],GgOp.constant,0,0,0,0) && x.outs[0]==1;
+    g[8]=iw_n(GgOp.mul,7,1,0,0);x=iw_small(g[..],outs[..],false,0);
+    #assert x.spec.count==2 && iw_is(x.nodes[1],GgOp.constant,0,0,0,0);
+    // Scaling by another number stays, and so does subtracting from zero.
+    g[6].k=3;g[8]=iw_n(GgOp.sub,1,7,0,0);x=iw_small(g[..],outs[..],false,0);
+    #assert x.spec.count==4 && iw_is(x.nodes[1],GgOp.scale,0,0,0,3) && iw_is(x.nodes[2],GgOp.constant,0,0,0,0);
+    #assert iw_is(x.nodes[3],GgOp.sub,2,1,0,0) && x.outs[0]==3;
+}
+#test "gates fold when their operand is known" {
+    for v:-1..<3 {
+        g:=[4]GgNode.[I0,iw_n(GgOp.relu,0,0,0,0),iw_n(GgOp.step,0,0,0,0),iw_n(GgOp.eq0,0,0,0,0)];outs:=[2]int.[1,2];
+        x:=iw_small(g[..],outs[..],true,v);
+        r:=0;if v>=1 {r=v;}
+        st:=0;if v>=1 {st=1;}
+        count:=2;if r==st {count=1;}
+        #assert x.spec.status==GgStatus.ok && x.spec.count==count;
+        #assert x.nodes[x.outs[0]].k==r && x.nodes[x.outs[1]].k==st;
+        outs[1]=3;x=iw_small(g[..],outs[..],true,v);
+        e:=0;if v==0 {e=1;}
+        #assert x.nodes[x.outs[1]].k==e;
+        y:=iw_small(g[..],outs[..],false,v);
+        #assert y.spec.count==3 && iw_is(y.nodes[1],GgOp.relu,0,0,0,0) && iw_is(y.nodes[2],GgOp.eq0,0,0,0,0);
+    }
+}
+#test "a select with a known condition is the operand it picks" {
+    // c = eq0(input 0); out = select(c, input 1, input 1 + 1).
+    g:=[6]GgNode.[I0,I1,iw_n(GgOp.eq0,0,0,0,0),iw_n(GgOp.constant,0,0,0,1),iw_n(GgOp.add,1,3,0,0),iw_n(GgOp.select,1,4,2,0)];
+    outs:=[1]int.[5];
+    x:=iw_small(g[..],outs[..],true,0);#assert x.spec.count==1 && x.spec.inputs==1 && x.outs[0]==0;
+    x=iw_small(g[..],outs[..],true,2);
+    #assert x.spec.count==3 && iw_is(x.nodes[2],GgOp.add,0,1,0,0) && x.outs[0]==2;
+    x=iw_small(g[..],outs[..],false,0);
+    #assert x.spec.count==6 && iw_is(x.nodes[5],GgOp.select,1,4,2,0);
+    // Two equal known operands need no condition; two different ones do.
+    h:=[5]GgNode.[I0,iw_n(GgOp.eq0,0,0,0,0),iw_n(GgOp.constant,0,0,0,4),iw_n(GgOp.constant,0,0,0,4),iw_n(GgOp.select,2,3,1,0)];
+    x=iw_small(h[..],outs[0..<0],false,0);#assert x.spec.status==GgStatus.shape;
+    o:=[1]int.[4];x=iw_small(h[..],o[..],false,0);#assert x.spec.count==2 && iw_is(x.nodes[1],GgOp.constant,0,0,0,4);
+    h[3].k=5;x=iw_small(h[..],o[..],false,0);
+    #assert x.spec.count==5 && iw_is(x.nodes[4],GgOp.select,2,3,1,0) && x.nodes[2].k==4 && x.nodes[3].k==5;
+}
+#test "a fold out of range, a bad graph or no room is refused" {
+    g:=[3]GgNode.[I0,iw_n(GgOp.constant,0,0,0,RA_VALUE_MAX),iw_n(GgOp.add,0,1,0,0)];outs:=[1]int.[2];
+    x:=iw_small(g[..],outs[..],true,1);#assert x.spec.status==GgStatus.range && x.spec.node==2;
+    x=iw_small(g[..],outs[..],true,0);#assert x.spec.status==GgStatus.ok;
+    x=iw_small(g[..],outs[..],true,-RA_VALUE_MAX);#assert x.spec.status==GgStatus.ok && x.nodes[0].k==0;
+    x=iw_small(g[..],outs[..],true,-RA_VALUE_MAX-1);#assert x.spec.status==GgStatus.range && x.spec.node==0;
+    g[2].op=GgOp.sub;x=iw_small(g[..],outs[..],true,-1);#assert x.spec.status==GgStatus.range && x.spec.node==2;
+    g[2]=iw_n(GgOp.add,0,3,0,0);x=iw_small(g[..],outs[..],true,1);#assert x.spec.status==GgStatus.operand && x.spec.node==2;
+    g[2]=iw_n(GgOp.add,0,1,0,0);
+    known:=[1]bool.[true];value:[1]int;out:[4]GgNode;ro:[1]int;v1:=[1]int.[0];
+    #assert iw_specialize(g[..],outs[..],known[..],value[0..<0],out[..],ro[..]).status==GgStatus.capacity;
+    #assert iw_specialize(g[..],outs[..],known[0..<0],v1[..],out[..],ro[..]).status==GgStatus.capacity;
+    #assert iw_specialize(g[..],outs[..],known[..],v1[..],out[0..<0],ro[..]).status==GgStatus.capacity;
+    s:=iw_specialize(g[..],outs[..],known[..],v1[..],out[0..<1],ro[..]);
+    #assert s.status==GgStatus.ok && s.count==1 && iw_is(out[0],GgOp.constant,0,0,0,RA_VALUE_MAX) && ro[0]==0;
+}
+#test "dead nodes go, inputs stay, and constants are placed once" {
+    // out = input 1 + 7 + 7; input 0 and relu(input 0) are unread.
+    g:=[7]GgNode.[I0,I1,iw_n(GgOp.relu,0,0,0,0),iw_n(GgOp.constant,0,0,0,7),iw_n(GgOp.eq0,1,0,0,0),
+        iw_n(GgOp.add,1,3,0,0),iw_n(GgOp.add,5,3,0,0)];
+    outs:=[1]int.[6];x:=iw_small(g[..],outs[..],false,0);
+    #assert x.spec.count==5 && x.spec.inputs==2 && iw_is(x.nodes[0],GgOp.input,0,0,0,0) && iw_is(x.nodes[1],GgOp.input,0,0,0,1);
+    #assert iw_is(x.nodes[2],GgOp.constant,0,0,0,7) && iw_is(x.nodes[3],GgOp.add,1,2,0,0) && iw_is(x.nodes[4],GgOp.add,3,2,0,0);
+    // A known input becomes one shared constant for both readers.
+    h:=[4]GgNode.[I0,I1,iw_n(GgOp.mul,1,0,0,0),iw_n(GgOp.sub,2,0,0,0)];
+    o:=[2]int.[3,2];x=iw_small(h[..],o[..],true,6);
+    #assert x.spec.count==4 && iw_is(x.nodes[1],GgOp.scale,0,0,0,6) && iw_is(x.nodes[2],GgOp.constant,0,0,0,6);
+    #assert iw_is(x.nodes[3],GgOp.sub,1,2,0,0) && x.outs[0]==3 && x.outs[1]==1;
+}
+// A seeded program of n instructions ending in halt, and a seeded state.
+iw_next :: (x:int)->int {return (x*1103515245+12345)%2147483648;}
+iw_random :: (seed:int,n:int)->[5]IwIns {
+    p:[5]IwIns;x:=seed;
+    for i:0..<n-1 {
+        x=iw_next(x);op:=cast(IwOp)((x>>8)%3);x=iw_next(x);arg:=(x>>8)%7-3;
+        if op==IwOp.jnz {arg=(x>>8)%n;}
+        p[i]=iw_ins(op,arg);
+    }
+    p[n-1]=iw_ins(IwOp.halt,(seed>>4)%5);
+    return p;
+}
+#test "the interpreter for each length equals the native step on seeded programs" {
+    checked:=0;
+    for slots:1..<IW_SLOTS+1 {
+        g:[128]GgNode;outs:[3]int;n:=iw_universal(g[..],outs[..],slots);
+        #assert n==3+2*slots+6+1+2*(slots-1)+14*slots+3*(slots-1);
+        for seed:0..<6 {
+            p:=iw_random(seed*7+slots,slots);#assert iw_admit(p[0..<slots])==IwStatus.ok;
+            s:=IwState.{ip=seed%slots,acc=seed%3-1,r=seed};inputs:[IW_INPUTS]int;
+            iw_inputs(p[0..<slots],s,inputs[..]);v:[3]int;
+            #assert gg_eval(g[0..<n],inputs[0..<3+2*slots],outs[..],v[..]).status==GgStatus.ok;
+            x:=iw_step(p[0..<slots],s);
+            #assert v[0]==x.state.ip && v[1]==x.state.acc && v[2]==x.state.r;checked+=1;
+        }
+    }
+    #assert checked==30;
+}
+#test "the universal block, compiled once, runs any program" {
+    g:[128]GgNode;outs:[3]int;n:=iw_universal(g[..],outs[..],IW_SLOTS);
+    w:[32768]f64;plan:=gg_compile(g[0..<n],outs[..],w[..]);
+    #assert plan.status==GgStatus.ok && plan.layers==7 && plan.width==37 && plan.weights==25086 && plan.inputs==IW_INPUTS;
+    t:=iw_triangle();
+    r:=iw_weights_run(plan,w[..],t[..],IwState.{acc=2},100,false);
+    #assert r.status==IwStatus.ok && r.steps==6 && r.state.r==3 && r.state.acc==0 && r.state.ip==3;
+    f:=iw_family(3);
+    r=iw_weights_run(plan,w[..],f[0..<3],IwState.{acc=5,r=1},100,false);
+    #assert r.status==IwStatus.ok && r.steps==2 && r.state.r==6 && r.state.acc==4 && r.state.ip==2;
+}
+iw_block_is :: (b:IwBlock,count:int,layers:int,width:int,weights:int)->bool {
+    return b.spec.status==GgStatus.ok && b.spec.inputs==3 && b.spec.count==count && b.plan.status==GgStatus.ok &&
+        b.plan.layers==layers && b.plan.width==width && b.plan.weights==weights;
+}
+#test "a program's own block grows with its length" {
+    counts:=[5]int.[4,8,16,23,33];layers:=[5]int.[0,2,3,4,6];widths:=[5]int.[4,4,7,8,10];weights:=[5]int.[0,156,567,1008,2070];
+    for k:1..<6 {
+        p:=iw_family(k);nodes:[128]GgNode;w:[4096]f64;b:=iw_program_block(p[0..<k],nodes[..],w[..]);
+        #assert iw_block_is(b,counts[k-1],layers[k-1],widths[k-1],weights[k-1]);
+    }
+    t:=iw_triangle();nodes:[128]GgNode;w:[4096]f64;
+    #assert iw_block_is(iw_program_block(t[..],nodes[..],w[..]),26,5,9,1458);
+}
+#test "the program's block equals the interpreter on every state it is given" {
+    t:=iw_triangle();g:[128]GgNode;outs:[3]int;n:=iw_universal(g[..],outs[..],4);
+    nodes:[128]GgNode;w:[4096]f64;b:=iw_program_block(t[..],nodes[..],w[..]);
+    routs:[3]int;known:[IW_INPUTS]bool;value:[IW_INPUTS]int;iw_inputs(t[..],IwState.{},value[..]);
+    for k:3..<11 {known[k]=true;}
+    s:=iw_specialize(g[0..<n],outs[..],known[0..<11],value[0..<11],nodes[..],routs[..]);#assert s.count==26;
+    checked:=0;
+    for ip:0..<4 {for acc:-2..<3 {
+        st:=IwState.{ip=ip,acc=acc,r=7};inputs:[IW_INPUTS]int;iw_inputs(t[..],st,inputs[..]);
+        u:[3]int;v:[3]int;got:[3]f64;
+        #assert gg_eval(g[0..<n],inputs[0..<11],outs[..],u[..]).status==GgStatus.ok;
+        #assert gg_eval(nodes[0..<s.count],inputs[0..<3],routs[..],v[..]).status==GgStatus.ok;
+        #assert gg_run(b.plan,w[..],inputs[0..<3],got[..],false,false)==GgStatus.ok;
+        for j:0..<3 {#assert u[j]==v[j] && got[j]==f64(u[j]);}
+        checked+=1;
+    }}
+    #assert checked==20;
+}
+#test "a run through weights stops where the native run stops" {
+    t:=iw_triangle();nodes:[128]GgNode;w:[4096]f64;b:=iw_program_block(t[..],nodes[..],w[..]);
+    r:=iw_weights_run(b.plan,w[..],t[..],IwState.{acc=4},100,true);
+    #assert r.status==IwStatus.ok && r.steps==12 && r.state.r==10 && r.state.ip==3;
+    r=iw_weights_run(b.plan,w[..],t[..],IwState.{acc=4},12,true);#assert r.status==IwStatus.budget && r.steps==12;
+    r=iw_weights_run(b.plan,w[..],t[..],IwState.{acc=4},13,true);#assert r.status==IwStatus.ok && r.steps==12;
+    r=iw_weights_run(b.plan,w[..],t[..],IwState.{acc=IW_VALUE_MAX},100,true);
+    #assert r.status==IwStatus.range && r.steps==3 && r.state.r==IW_VALUE_MAX;
+    #assert iw_weights_run(b.plan,w[..],t[0..<3],IwState.{},100,true).status==IwStatus.halt;
+    #assert iw_weights_run(b.plan,w[..],t[..],IwState.{ip=4},100,true).status==IwStatus.shape;
+    #assert iw_weights_run(b.plan,w[..],t[..],IwState.{ip=-1},100,true).status==IwStatus.shape;
+    #assert iw_weights_run(b.plan,w[..],t[..],IwState.{acc=-IW_VALUE_MAX-1},100,true).status==IwStatus.shape;
+    #assert iw_weights_run(b.plan,w[..],t[..],IwState.{r=IW_VALUE_MAX+1},100,true).status==IwStatus.shape;
+    // The program's block given the universal inputs is refused by the block.
+    r=iw_weights_run(b.plan,w[..],t[..],IwState.{acc=4},100,false);#assert r.status==IwStatus.graph && r.steps==0;
+    // A jump to itself halts, as natively.
+    j:=[2]IwIns.[iw_ins(IwOp.jnz,0),iw_ins(IwOp.halt,0)];c:=iw_program_block(j[..],nodes[..],w[..]);
+    r=iw_weights_run(c.plan,w[..],j[..],IwState.{acc=1},100,true);#assert r.status==IwStatus.ok && r.steps==0 && r.state.ip==0;
+    #assert iw_run(j[..],IwState.{acc=1},100).steps==0;
+    r=iw_weights_run(c.plan,w[..],j[..],IwState.{acc=0},100,true);#assert r.status==IwStatus.ok && r.steps==1 && r.state.ip==1;
+}
+iw_program_is :: (p:[5]IwIns,ops:[5]int,args:[5]int)->bool {
+    for i:0..<5 {if cast(int)p[i].op!=ops[i] || p[i].arg!=args[i] {return false;}}
+    return true;
+}
+#test "the seeded programs match an independent generator" {
+    #assert iw_program_is(iw_random(0,5),[5]int.[0,1,0,0,3],[5]int.[1,-1,1,-2,0]);
+    #assert iw_program_is(iw_random(7,5),[5]int.[2,1,2,0,3],[5]int.[0,3,2,3,0]);
+    #assert iw_program_is(iw_random(12,5),[5]int.[2,1,1,1,3],[5]int.[1,1,-3,-1,0]);
+    #assert !iw_program_is(iw_random(12,5),[5]int.[2,1,1,1,3],[5]int.[1,1,-3,-1,1]);
+    #assert !iw_program_is(iw_random(12,5),[5]int.[2,1,1,1,2],[5]int.[1,1,-3,-1,0]);
+    #assert !iw_program_is(iw_random(12,5),[5]int.[3,1,1,1,3],[5]int.[1,1,-3,-1,0]);
+    #assert iw_random(80,1)[0].arg==0 && iw_random(48,1)[0].arg==3;
+    // Each size the block check reads is checked.
+    t:=iw_triangle();nodes:[128]GgNode;w:[4096]f64;b:=iw_program_block(t[..],nodes[..],w[..]);
+    #assert iw_block_is(b,26,5,9,1458) && !iw_block_is(b,25,5,9,1458) && !iw_block_is(b,26,4,9,1458);
+    #assert !iw_block_is(b,26,5,8,1458) && !iw_block_is(b,26,5,9,1457);
+    c:=b;c.spec.inputs=2;#assert !iw_block_is(c,26,5,9,1458);
+    c=b;c.spec.status=GgStatus.range;#assert !iw_block_is(c,26,5,9,1458);
+    c=b;c.plan.status=GgStatus.range;#assert !iw_block_is(c,26,5,9,1458);
+}
+#test "the first instruction is checked like the rest" {
+    p:=[2]IwIns.[iw_ins(IwOp.jnz,2),iw_ins(IwOp.halt,0)];#assert iw_admit(p[..])==IwStatus.target;
+    p[0]=iw_ins(IwOp.addi,IW_VALUE_MAX+1);#assert iw_admit(p[..])==IwStatus.range;
+    p[0]=iw_ins(IwOp.jnz,1);#assert iw_admit(p[..])==IwStatus.ok;
+    // Padding overwrites whatever the input buffer held.
+    inputs:[IW_INPUTS]int;for k:0..<IW_INPUTS {inputs[k]=99;}
+    iw_inputs(p[..],IwState.{ip=1,acc=2,r=3},inputs[..]);
+    #assert inputs[3]==2 && inputs[4]==1 && inputs[5]==3 && inputs[6]==0 && inputs[7]==3 && inputs[8]==0;
+    #assert inputs[9]==3 && inputs[10]==0 && inputs[11]==3 && inputs[12]==0;
+}
+#test "a select between a known operand and an unknown one stays" {
+    g:=[4]GgNode.[I0,iw_n(GgOp.constant,0,0,0,0),iw_n(GgOp.eq0,0,0,0,0),iw_n(GgOp.select,1,0,2,0)];outs:=[1]int.[3];
+    x:=iw_small(g[..],outs[..],false,0);#assert x.spec.count==4 && iw_is(x.nodes[3],GgOp.select,2,0,1,0);
+    g[3]=iw_n(GgOp.select,0,1,2,0);x=iw_small(g[..],outs[..],false,0);
+    #assert x.spec.count==4 && iw_is(x.nodes[3],GgOp.select,0,2,1,0);
+}
+#test "the weights stay exact at the edge of the machine's range" {
+    p:=[3]IwIns.[iw_ins(IwOp.addi,-1),iw_ins(IwOp.addr,0),iw_ins(IwOp.halt,0)];
+    nodes:[128]GgNode;w:[4096]f64;b:=iw_program_block(p[..],nodes[..],w[..]);
+    s:=IwState.{acc=IW_VALUE_MAX-1,r=3-IW_VALUE_MAX};
+    a:=iw_run(p[..],s,10);r:=iw_weights_run(b.plan,w[..],p[..],s,10,true);
+    #assert a.status==IwStatus.ok && a.steps==2 && a.state.acc==IW_VALUE_MAX-2 && a.state.r==1;
+    #assert r.status==IwStatus.ok && r.steps==2 && r.state.acc==a.state.acc && r.state.r==1;
+    s=IwState.{acc=IW_VALUE_MAX-1,r=IW_VALUE_MAX-3};
+    #assert iw_weights_run(b.plan,w[..],p[..],s,10,true).status==IwStatus.range;
+    // binary32 rounds here (to 16777212); binary64 does not.
+    g:[128]GgNode;outs:[3]int;n:=iw_universal(g[..],outs[..],IW_SLOTS);
+    uw:[32768]f64;plan:=gg_compile(g[0..<n],outs[..],uw[..]);
+    q:=iw_random(22,3);s=IwState.{ip=1,acc=16777212,r=16777177};inputs:[IW_INPUTS]int;iw_inputs(q[0..<3],s,inputs[..]);
+    x:=iw_weights_step(plan,uw[..],inputs[..],s);
+    #assert iw_agrees(x,iw_step(q[0..<3],s)) && x.state.acc==16777213;
+}
+#test "the test helpers each read every field" {
+    x:=IwNext.{state=IwState.{ip=1,acc=2,r=3},halted=true};
+    #assert iw_says(x,IwStatus.ok,1,2,3,true) && iw_agrees(x,x);
+    #assert !iw_says(x,IwStatus.range,1,2,3,true) && !iw_says(x,IwStatus.ok,0,2,3,true) && !iw_says(x,IwStatus.ok,1,0,3,true);
+    #assert !iw_says(x,IwStatus.ok,1,2,0,true) && !iw_says(x,IwStatus.ok,1,2,3,false);
+    y:=x;y.status=IwStatus.range;#assert !iw_agrees(x,y);
+    y=x;y.state.ip=0;#assert !iw_agrees(x,y);
+    y=x;y.state.acc=0;#assert !iw_agrees(x,y);
+    y=x;y.state.r=0;#assert !iw_agrees(x,y);
+    y=x;y.halted=false;#assert !iw_agrees(x,y);
+    e:=iw_n(GgOp.add,1,2,3,4);
+    #assert iw_is(e,GgOp.add,1,2,3,4) && !iw_is(e,GgOp.sub,1,2,3,4) && !iw_is(e,GgOp.add,0,2,3,4);
+    #assert !iw_is(e,GgOp.add,1,0,3,4) && !iw_is(e,GgOp.add,1,2,0,4) && !iw_is(e,GgOp.add,1,2,3,0);
+    // The evaluated step refuses as the native step does.
+    g:[128]GgNode;outs:[3]int;n:=iw_universal(g[..],outs[..],IW_SLOTS);
+    h:=[1]IwIns.[iw_ins(IwOp.halt,0)];
+    #assert iw_eval_step(g[0..<n],outs[..],h[..],IwState.{acc=RA_VALUE_MAX+1}).status==IwStatus.graph;
+    #assert iw_eval_step(g[0..<n],outs[..],h[..],IwState.{acc=IW_VALUE_MAX+1}).status==IwStatus.range;
+    #assert iw_eval_step(g[0..<n],outs[..],h[..],IwState.{acc=IW_VALUE_MAX}).status==IwStatus.ok;
+}

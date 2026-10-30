@@ -1,0 +1,41 @@
+#import "Basic";
+#load "../lib/interpreter-weights.coax";
+
+// book:begin example
+main :: () {
+    g:[128]GgNode;outs:[3]int;n:=iw_universal(g[..],outs[..],IW_SLOTS);
+    w:[32768]f64;plan:=gg_compile(g[0..<n],outs[..],w[..]);
+    print("universal interpreter, any program of 1 to 5 instructions: ");show(n,plan);
+    blocks:[5]IwBlock;nodes:[5][128]GgNode;bw:[5][4096]f64;
+    for k:1..<6 {
+        p:=iw_family(k);blocks[k-1]=iw_program_block(p[0..<k],nodes[k-1][..],bw[k-1][..]);
+        print("one program of % instructions: ",k);show(blocks[k-1].spec.count,blocks[k-1].plan);
+    }
+    t:=iw_triangle();tn:[128]GgNode;tw:[4096]f64;tb:=iw_program_block(t[..],tn[..],tw[..]);
+    print("the triangle program, [addr, addi -1, jnz 0, halt]: ");show(tb.spec.count,tb.plan);
+    s:=IwState.{acc=100};
+    a:=iw_run(t[..],s,1000);u:=iw_weights_run(plan,w[..],t[..],s,1000,false);v:=iw_weights_run(tb.plan,tw[..],t[..],s,1000,true);
+    print("triangle from 100: native % steps, r %; universal block % steps, r %; own block % steps, r %\n",
+        a.steps,a.state.r,u.steps,u.state.r,v.steps,v.state.r);
+    // Seeded programs of every length, each run three ways.
+    runs:=0;steps:=0;halted:=0;budget:=0;sum:=0;pn:[128]GgNode;pw:[4096]f64;
+    for seed:0..<200 {
+        k:=1+seed%5;p:=iw_random(seed,k);q:=p[0..<k];
+        st:=IwState.{acc=(seed*7)%9-4,r=seed%11};
+        b:=iw_program_block(q,pn[..],pw[..]);
+        x:=iw_run(q,st,40);y:=iw_weights_run(plan,w[..],q,st,40,false);z:=iw_weights_run(b.plan,pw[..],q,st,40,true);
+        #assert agree(x,y) && agree(x,z);
+        runs+=1;steps+=x.steps;
+        if x.status==IwStatus.ok {halted+=1;}
+        if x.status==IwStatus.budget {budget+=1;}
+        sum=((sum*31+x.steps*1000003+x.state.ip*101+x.state.acc*7+x.state.r)%1000000007+1000000007)%1000000007;
+    }
+    print("% seeded programs agree three ways: % steps, % halted, % out of budget; checksum %\n",runs,steps,halted,budget,sum);
+}
+show :: (count:int,p:GgPlan) {
+    print("% nodes, % layers, width %, % weights\n",count,p.layers,p.width,p.weights);
+}
+agree :: (a:IwRun,b:IwRun)->bool {
+    return a.status==b.status && a.steps==b.steps && a.state.ip==b.state.ip && a.state.acc==b.state.acc && a.state.r==b.state.r;
+}
+// book:end example

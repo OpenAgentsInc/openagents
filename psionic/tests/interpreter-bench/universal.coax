@@ -1,0 +1,18 @@
+// Chapter 170's timing driver: the triangle program from 5000 (15,000 steps),
+// run 4 times through the universal path. Build with --release and time the
+// binary; steps per second is 15,000 times 4 over the time.
+#import "Basic";
+#load "../../lib/interpreter-weights.coax";
+main :: () {
+    g:[128]GgNode;outs:[3]int;n:=iw_universal(g[..],outs[..],IW_SLOTS);
+    w:[32768]f64;plan:=gg_compile(g[0..<n],outs[..],w[..]);
+    t:=iw_triangle();tn:[128]GgNode;tw:[4096]f64;tb:=iw_program_block(t[..],tn[..],tw[..]);
+    steps:=0;sum:=0;
+    for i:0..<4 {
+        s:=IwState.{acc=5000-i%2};
+        r:=iw_weights_run(plan,w[..],t[..],s,100000,false);
+        #assert r.status==IwStatus.ok;
+        steps+=r.steps;sum+=r.state.r;
+    }
+    print("universal: % runs, % steps, sum %\n",4,steps,sum);
+}
