@@ -1,0 +1,103 @@
+// The pond and its waterfall (ff-pond, verse/fairy-forest/README.md "Your
+// skills": WATER). The pond starts low, its water drawn back into the
+// middle of its bed and sand round it; the waterfall on its east bank is a
+// trickle down dry rocks until the sticks dammed across the stream above it
+// are cleared (E: CLEAR, which teaches WATER), and then it runs. With WATER,
+// E by the low pond (FILL THE POND) fills it over a few seconds; full, it is
+// kept in the save. The water itself is verse/fairy-forest/stream.coax's:
+// the face lowers the pond's reach by fairy_pond_drop each frame.
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
+
+FFP_DROP :: 0.9;          // m: how far under the stream the low pond stands
+FFP_FILL :: 7.0;          // seconds it takes to fill
+FFP_NEAR :: 10.5;         // metres from the pond's middle where E fills it
+FFP_STEP :: 0.03;         // the drop changes in steps this size (each one rebakes the water)
+FFP_FALL_X :: 45.4; FFP_FALL_Z :: -15.0;   // the waterfall's lip, on the pond's east bank
+FFP_FALL_TOP :: 3.3;      // its lip over the stream's level
+
+// How full the pond is: 0 low, 1 full.
+ffp_full :: (s: [] Fairy) -> f32 {
+  if !s[0].life[0].deeds.pond { return 0; }
+  if s[0].pond_at <= 0 { return 1; }
+  return clamp(f32((s[0].time - s[0].pond_at) / f64(FFP_FILL)), 0, 1);
+}
+// How far under the stream the pond stands now (stepped), for the face.
+fairy_pond_drop :: (s: [] Fairy) -> f32 #export_c {
+  f := ffp_full(s);
+  f = f * f * (3 - 2 * f);
+  d := f32(FFP_DROP) * (1 - f);
+  return floor(d / f32(FFP_STEP) + 0.5) * f32(FFP_STEP);
+}
+ffp_can_fill :: (s: [] Fairy, you: Point) -> bool {
+  return ffk_knows(s[0].life[..], FFK_WATER) && !s[0].life[0].deeds.pond && ffk_at(you, f32(FF_POND_X), f32(FF_POND_Z), f32(FFP_NEAR));
+}
+ffp_fill :: (s: [] Fairy) {
+  s[0].life[0].deeds.pond = true; s[0].life[0].changes += 1;
+  s[0].pond_at = ifx s[0].time > 0.001 then s[0].time else 0.001;
+}
+
+// The waterfall: boulders stepping up the bank, a lip, and the water falling
+// from it to the pond (fairy.wgsl LOOK_FALL), a spray of foam where it lands.
+ffp_draw :: (s: [] Fairy, eye: Point) {
+  fx := f32(FFP_FALL_X); fz := f32(FFP_FALL_Z);
+  if !ffk_at(eye, fx, fz, 80) || s[0].counts[SHAPE_SPHERE] > SLOTS[SHAPE_SPHERE] - 60 { return; }   // the forest first
+  t := effect_time(s);
+  level := f32(FF_LEVEL);
+  top := level + f32(FFP_FALL_TOP);
+  // the rocks: grey-brown boulders, a mossy cap
+  shape(s, SHAPE_SPHERE, LOOK_STONE, v3(fx + 2.4, level + 1.2, fz), 0.3, 0, 4.6, 5.4, 4.2, 0.56, 0.54, 0.5);
+  shape(s, SHAPE_SPHERE, LOOK_STONE, v3(fx + 1.4, level + 0.6, fz + 2.6), 1.1, 0, 3.4, 3.6, 3.0, 0.6, 0.57, 0.52);
+  shape(s, SHAPE_SPHERE, LOOK_STONE, v3(fx + 1.5, level + 0.5, fz - 2.7), 2.0, 0, 3.2, 3.2, 3.0, 0.54, 0.52, 0.48);
+  shape(s, SHAPE_SPHERE, LOOK_STONE, v3(fx + 0.4, level - 0.1, fz + 1.6), 0.7, 0, 1.6, 1.2, 1.4, 0.58, 0.56, 0.52);
+  shape(s, SHAPE_SPHERE, LOOK_STONE, v3(fx + 0.5, level - 0.2, fz - 1.9), 2.4, 0, 1.4, 1.0, 1.5, 0.55, 0.53, 0.49);
+  shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(fx + 2.6, top + 0.5, fz + 0.4), 0.5, 0, 3.6, 0.9, 3.2, 0.3, 0.5, 0.22);
+  shape(s, SHAPE_BOX, LOOK_STONE, v3(fx + 0.5, top - 0.05, fz), 0, 0, 1.4, 0.3, 2.0, 0.5, 0.48, 0.44);   // the lip
+  runs := s[0].life[0].skills.dam;
+  full := ffp_full(s);
+  // where it lands: the pond's water, lower while the pond is low
+  foot := level - f32(FFP_DROP) * (1 - full);
+  wide := ifx runs then 1.8f32 else 0.22f32;
+  // the sheet, leaning out from the lip as it falls
+  a := v3(fx - 0.1, top, fz); b := v3(fx - 0.9, foot, fz);
+  d := sub(a, b);
+  oriented(s, SHAPE_BOX, LOOK_FALL, mix(a, b, 0.5), v3(0, 0, wide), d, v3(-0.25, 0.04, 0), 0.62, 0.84, 0.9);
+  if !runs { return; }
+  // the curl over the lip, and foam where it lands
+  shape(s, SHAPE_CYLINDER, LOOK_FALL, v3(fx + 0.05, top + 0.02, fz), 0, 1.5708, 0.32, wide, 0.32, 0.7, 0.88, 0.92);
+  for k: 0..<6 {
+    ph := t * 1.7 + f32(k) * 1.05;
+    up := (ph - floor(ph)) * 0.55;
+    sz := 0.55 + 0.3 * sin(f32(k) * 2.3) - up * 0.4;
+    p := v3(fx - 1.0 - 0.3 * sin(f32(k) * 1.9), foot + 0.05 + up, fz + (f32(k) - 2.5) * 0.36);
+    shape(s, SHAPE_SPHERE, LOOK_GLOW, p, 0, 0, sz, sz * 0.6, sz, 0.86, 0.92, 0.95);
+  }
+}
+
+#test "the pond: low until filled with WATER, which takes a few seconds and is kept; the waterfall runs once the dam is cleared" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  l := s[0].life[..];
+  bank := v3(f32(FF_POND_X) - 9, 0, f32(FF_POND_Z));
+  #assert fairy_pond_drop(s[..]) == f32(FFP_DROP) && !ffp_can_fill(s[..], bank);   // low, and WATER not yet known
+  dam := v3(f32(FFK_DAM_X) + 1, 0, f32(FFK_DAM_Z));
+  #assert ffk_use(s[..], dam) && ffk_knows(l, FFK_WATER) && l[0].skills.dam;
+  #assert ffp_can_fill(s[..], bank) && ffk_verb(s[..], bank) == FFK_V_FILL && FFK_VERB_WORDS[FFK_V_FILL] == "FILL THE POND";
+  #assert ffk_use(s[..], bank) && l[0].deeds.pond && !ffp_can_fill(s[..], bank);
+  #assert fairy_pond_drop(s[..]) > 0.8;   // it fills over a while
+  s[0].time += f64(FFP_FILL) * 0.5;
+  d := fairy_pond_drop(s[..]);
+  #assert d > 0.2 && d < 0.7;
+  s[0].time += f64(FFP_FILL);
+  #assert fairy_pond_drop(s[..]) == 0;
+  // kept: a save opened again has it full at once
+  b: [FFL_BYTES] u8;
+  n := ffl_save(l, b[..]);
+  c: [1] Fairy;
+  fairy_start(c[..]);
+  #assert ffl_open(c[0].life[..], b[0..<n]) && c[0].life[0].deeds.pond && fairy_pond_drop(c[..]) == 0;
+  // the waterfall's rocks stand clear of the patches, the creatures and the finds
+  for i: 0..<FF_PATCHES { #assert !ffk_at(v3(FF_PATCH[i * 4], 0, FF_PATCH[i * 4 + 1]), f32(FFP_FALL_X), f32(FFP_FALL_Z), 8); }
+  for k: 0..<FF_CREATURES { #assert !ffk_at(v3(FF_CREATURE[k * 4], 0, FF_CREATURE[k * 4 + 1]), f32(FFP_FALL_X), f32(FFP_FALL_Z), 10); }
+  // and the pond's E is clear of a creature's talk
+  for k: 0..<FF_CREATURES { #assert !ffk_at(v3(FF_CREATURE[k * 4], 0, FF_CREATURE[k * 4 + 1]), f32(FF_POND_X), f32(FF_POND_Z), f32(FFP_NEAR) + f32(FF_TALK_NEAR)); }
+}

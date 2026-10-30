@@ -48,6 +48,7 @@
 #load "fairyskills.coax";  // what you learn, each from a moment
 #load "../../verse/fairy-forest/night.coax";
 #load "fairynight.coax";   // day and night, Lanternwood by night
+#load "fairypond.coax";    // the pond filled, the waterfall
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -75,7 +76,7 @@ OBJECTS :: 2020;
 OBJECT_FLOATS :: 16;
 // Looks (fairy.wgsl): how a surface takes the light and the fade.
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_GLOW :: 4; LOOK_WING :: 5;
-LOOK_CLOTH :: 6; LOOK_RIDGE :: 7; LOOK_BARK :: 8; LOOK_SPARK :: 9;   // her own light: glows, and the fade never dims it
+LOOK_CLOTH :: 6; LOOK_RIDGE :: 7; LOOK_BARK :: 8; LOOK_SPARK :: 9; LOOK_FALL :: 10;   // LOOK_FALL: falling water (fairypond.coax)   // her own light: glows, and the fade never dims it
 MINE :: 128;   // added to a shape's code when it is hers: what is near the lens fades, but never she
 // The draws: the ground and four shapes, the grass, then the water (last: the host draws it after the rest).
 DRAWS :: 7;
@@ -183,6 +184,7 @@ Fairy :: struct {
   bird_flew: f64;                // when the hurt bird was mended (it flies off)
   now_min: f64;         // the wall clock, minutes since 1970 (the face's; 0 not yet)
   fig_on: bool; fig_at: Point; fig_up: f32; fig_across: f32;   // her body's size, while she is laid out
+  pond_at: f64;                                                 // when you filled the pond this visit (0: before it, or it was full)
   clock: [1] FfClock; tod: f32; night: f32; dusk: f32;          // the time of day (verse/fairy-forest/night.coax), how dark, dusk's warmth
 }
 
@@ -446,6 +448,8 @@ build_scenery :: (s: [] Fairy) {
     st := ff_ring_stone(k);
     if w < WALLS { put6(wl, w, st.x - 0.5, 0, st.z - 0.5, st.x + 0.5, 3.1, st.z + 0.5); w += 1; }
   }
+  // the waterfall's rocks (fairypond.coax)
+  if w < WALLS { put6(wl, w, f32(FFP_FALL_X) + 0.2, 0, f32(FFP_FALL_Z) - 3.4, f32(FFP_FALL_X) + 4.6, 2.6, f32(FFP_FALL_Z) + 3.4); w += 1; }
   rc := v3(FF_GLADE[FF_OLD_RING * 3], 0, FF_GLADE[FF_OLD_RING * 3 + 1]);
   if w < WALLS { put6(wl, w, rc.x - 0.75, 0, rc.z - 0.75, rc.x + 0.75, 0.85, rc.z + 0.75); w += 1; }
   b := f32(FF_BOUND);
@@ -2237,6 +2241,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   ffc_draw(s, shot.eye);
   ffk_draw(s, shot.eye);
   ffn_draw(s, shot.eye);
+  ffp_draw(s, shot.eye);
   ffs_others(s, u, shown);   // last: if the shapes run out, they go first
   ph := phone(s);
   for kind: 0..<5 {

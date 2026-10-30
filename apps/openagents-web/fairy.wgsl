@@ -461,7 +461,7 @@ fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> ve
   if (character) { shade = mix(shade, key_c() * 0.8, 0.5); }
   var light = c * mix(shade, key_c() + ambient, band);
   let strength = select(0.30, 0.45, character);
-  light += rim_c() * verse_paint_rim(abs(dot(n, v)), ndl, strength) * mix(vec3f(0.6), c * 1.6, 0.4);
+  light += rim_c() * verse_paint_rim(abs(dot(n, v)), ndl, strength) * mix(vec3f(0.6), c * 1.6, 0.4) * (1.0 - 0.6 * u.night.x);
   // by night, the light she carries (LIGHT): a warm pool round her
   if (u.night.z > 0.0) {
     let to = vec3f(u.grass2.w, u.night.w, u.you_z) - world;
@@ -538,6 +538,17 @@ fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> ve
     base = mix(base * 0.8, mix(base, vec3f(1.0), 0.3), solid);
     base += vec3f(1.0, 0.92, 0.75) * rim * 0.7;
     glow = 0.8; keep = true;
+  } else if (look == 10u) {
+    // falling water (fairypond.coax): streaks running down it, whiter toward
+    // its foot, and between them thin water the light comes through
+    let q = s.local;
+    let bands = noise(vec2f(q.x * 14.0 + q.z * 6.0, q.y * 4.0 + u.time * 2.4));
+    let streak = noise(vec2f(q.x * 31.0, q.y * 9.0 + u.time * 4.0));
+    let white = clamp(smoothstep(0.5, 0.85, bands) * 0.8 + smoothstep(0.6, 0.9, streak) * 0.5 + smoothstep(-0.15, -0.5, q.y) * 0.7, 0.0, 1.0);
+    let cell = vec2u(s.pos.xy) % 2u;
+    if (white < 0.25 && (cell.x + cell.y) % 2u == 0u) { discard; }
+    base = mix(base, vec3f(0.96, 0.99, 1.0), white);
+    glow = 0.0;
   } else if (look == 7u) {
     keep = true;
   } else if (look == 8u) {

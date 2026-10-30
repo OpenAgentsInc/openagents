@@ -106,10 +106,12 @@ LIGHT the lantern flower at Lanternwood's north edge, which opens only at
 night (E: LIGHT; by day E: REST TILL NIGHT), and then you carry a little
 light, a warm pool round you in the dark; WATER the sticks dammed across the stream above the
 pond (E: CLEAR), and then WATER at one bed waters your whole garden. Each one
-learned puts a gem on her upper wings. Kept in the save's tail. Not yet: a
-woodcutter as the moment, making tools, mending
-broken things, moving water or filling
-the pond.
+learned puts a gem on her upper wings. Kept in the save's tail. The pond (ff-pond, `apps/openagents-web/fairypond.coax`) starts low,
+its water drawn back into the middle of its bed with sand round it; the
+waterfall on its east bank is a trickle down dry rocks until the dam is
+cleared, and then it runs. With WATER, E by the low pond (FILL THE POND)
+fills it over a few seconds, kept in the save. Not yet: a woodcutter as the
+moment, making tools, mending broken things.
 
 ## The core: helping people
 

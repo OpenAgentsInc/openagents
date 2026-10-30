@@ -47,6 +47,8 @@ Stream :: struct {
   ready: bool;
   n: int; cell: f32; west: f32; south: f32;
   level: f64;
+  count: int;     // the course's controls
+  drop: f32;      // how far the pond stands under the stream's level (a low pond, fairy.coax ff-pond), 0 full
   controls: [STREAM_CONTROLS] D2; control_widths: [STREAM_CONTROLS] f64;
   points: [STREAM_POINTS] D2; widths: [STREAM_POINTS] f64; lengths: [STREAM_POINTS] f64;
   profile: [STREAM_POINTS] D2;
@@ -104,10 +106,30 @@ fairy_stream_start :: (r: [] Stream, heights: [] f32, course: [] f32, level: f32
     r[0].controls[i] = d2(f64(course[i * 3]), f64(course[i * 3 + 1]));
     r[0].control_widths[i] = f64(course[i * 3 + 2]);
   }
+  r[0].count = count;
+  stream_body(r, heights);
+  r[0].medium = MEDIUM_GROUND;
+  for p: 0..<PADS {
+    a := f64(p) * 2.39996 + 0.4;
+    d := 2.0 + 4.5 * sqrt((f64(p) + 0.5) / f64(PADS));
+    r[0].home[p * 2] = f64(pond_x) + cos(a) * d; r[0].home[p * 2 + 1] = f64(pond_z) + sin(a) * d;
+  }
+  pads_start(r);
+  r[0].ready = true;
+}
+
+// The body along the course at the level, the pond's reach (where it is
+// wider than POND_FROM m) drop m under it; then the nodes over the bed.
+POND_FROM :: 6.0; POND_FULL :: 11.0;
+stream_body :: (r: [] Stream, heights: [] f32) {
+  count := r[0].count;
   total := water_spline_points(count, STREAM_PER);
   c := water_course_spline(r[0].controls[0..<count], r[0].control_widths[0..<count], STREAM_PER,
                            r[0].points[0..<total], r[0].widths[0..<total], r[0].lengths[0..<total]);
-  for i: 0..<total { r[0].profile[i] = d2(r[0].lengths[i], f64(level)); }
+  for i: 0..<total {
+    k := clamp_s((cast(f32) r[0].widths[i] - f32(POND_FROM)) / f32(POND_FULL - POND_FROM), 0, 1);
+    r[0].profile[i] = d2(r[0].lengths[i], r[0].level - f64(r[0].drop * k * k * (3 - 2 * k)));
+  }
   body := water_river(1, c, r[0].profile[0..<total]);
   sea := water_wind_sea(2.0, 2.0, 0.25, 4);
   if sea.error == WaveError.none { calm := sea.set; calm.steepness = 0.25; body = water_with_waves(body, calm); }
@@ -119,15 +141,16 @@ fairy_stream_start :: (r: [] Stream, heights: [] f32, course: [] f32, level: f32
   if rows > STREAM_ROWS { rows = STREAM_ROWS; }
   r[0].rows = rows;
   stream_bake(r, heights);
-  r[0].medium = MEDIUM_GROUND;
-  for p: 0..<PADS {
-    a := f64(p) * 2.39996 + 0.4;
-    d := 2.0 + 4.5 * sqrt((f64(p) + 0.5) / f64(PADS));
-    r[0].home[p * 2] = f64(pond_x) + cos(a) * d; r[0].home[p * 2 + 1] = f64(pond_z) + sin(a) * d;
-  }
-  pads_start(r);
-  r[0].ready = true;
 }
+// The pond to stand drop m under the stream (0: full): the body and the nodes again.
+fairy_stream_drop :: (r: [] Stream, heights: [] f32, drop: f32) #export_c {
+  if !r[0].ready || r[0].count < 2 || !(drop == drop) { return; }
+  d := clamp_s(drop, 0, 2);
+  if abs(d - r[0].drop) < 0.001 { return; }
+  r[0].drop = d;
+  stream_body(r, heights);
+}
+fairy_stream_dropped :: (r: [] Stream) -> f32 #export_c { return r[0].drop; }
 
 // The nodes: a row every metre along the course, STREAM_COLS across it,
 // each with its rest position at the level, the depth to the bed under it,
@@ -141,13 +164,14 @@ stream_bake :: (r: [] Stream, heights: [] f32) {
     along := f64(j) * STREAM_ALONG;
     middle := water_point_at(b.course, along);
     s := water_locate(b.course, middle);
+    level := level_at(LevelKind.profile, 0.0, b.profile, along).height;
     normal := d2(-s.tangent.y, s.tangent.x);
     for c: 0..<STREAM_COLS {
       offset := (f64(c) - f64(STREAM_COLS - 1) * 0.5) * STREAM_ACROSS;
       p := d2_add(middle, d2_scale(normal, offset));
       k := (j * STREAM_COLS + c) * WATER_NODE;
-      depth := r[0].level - f64(stream_bed(r, heights, cast(f32) p.x, cast(f32) p.y));
-      r[0].nodes[k] = cast(f32) p.x; r[0].nodes[k + 1] = cast(f32) r[0].level; r[0].nodes[k + 2] = cast(f32) p.y;
+      depth := level - f64(stream_bed(r, heights, cast(f32) p.x, cast(f32) p.y));
+      r[0].nodes[k] = cast(f32) p.x; r[0].nodes[k + 1] = cast(f32) level; r[0].nodes[k + 2] = cast(f32) p.y;
       r[0].nodes[k + 3] = cast(f32) depth;
       r[0].nodes[k + 5] = cast(f32) (s.tangent.x * STREAM_SPEED); r[0].nodes[k + 6] = cast(f32) (s.tangent.y * STREAM_SPEED);
       r[0].nodes[k + 7] = 0;
@@ -385,6 +409,24 @@ test_ground :: (heights: [] f32) {
   fairy_stream_frame(r[..], u[..], 0, false, 10, 5, -40, 0.001);
   #assert u[W_GRID] == f32(STREAM_COLS) && u[W_GRID + 1] == f32(r[0].rows);
   #assert u[W_GRID + 2] * u[W_GRID + 3] * 6 == f32(fairy_stream_vertices(false));
+}
+
+#test "a low pond: the pond stands under the stream, which runs down into it; filled, it is level again" {
+  heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
+  test_ground(heights[..]);
+  r: [1] Stream;
+  course := TEST_COURSE;
+  fairy_stream_start(r[..], heights[..], course[..], -0.2, 10, 0, TEST_N, 2, -80, -80);
+  fairy_stream_drop(r[..], heights[..], 0.8);
+  #assert fairy_stream_dropped(r[..]) == 0.8;
+  pond := water_sample(r[0].set, 10, 0, 0); far := water_sample(r[0].set, 10, -50, 0);
+  #assert pond.found && abs(pond.height + 1.0) < 0.12 && far.found && abs(far.height + 0.2) < 0.12;
+  // the nodes follow the surface
+  low := 1000.0f32;
+  for k: 0..<STREAM_COLS * r[0].rows { low = lo_s(low, r[0].nodes[k * WATER_NODE + 1]); }
+  #assert low < -0.9;
+  fairy_stream_drop(r[..], heights[..], 0);
+  #assert abs(water_sample(r[0].set, 10, 0, 0).height + 0.2) < 0.12;
 }
 
 #test "you wade in, swim in the pond, and fly over it dry" {

@@ -198,6 +198,7 @@ ffk_gather :: (l: [] Life, i: int, now_min: f64) -> int {
 // so a shorter one from before still opens.
 Deeds :: struct {
   hollow: bool;      // the moon hollow found, in the dark with LIGHT (ff-night)
+  pond: bool;        // the pond filled with WATER (ff-pond)
 }
 FFD_BYTES :: 1;
 
@@ -480,11 +481,11 @@ ffl_save :: (l: [] Life, out: [] u8) -> int {
   out[n] = cast(u8) bits; out[n + 1] = cast(u8) moments; out[n + 2] = cast(u8) logs; n += 3;
   for q: 0..<FFK_FIND_KINDS { v := ffl_lo(sk.finds[q], 65535); out[n] = cast(u8) (v & 255); out[n + 1] = cast(u8) ((v >> 8) & 255); n += 2; }
   for q: 0..<FFK_FINDS { v := ffl_lo(sk.found_day[q], 65535); out[n] = cast(u8) (v & 255); out[n + 1] = cast(u8) ((v >> 8) & 255); n += 2; }
-  // the deeds: a bit each
+  // the deeds: a bit each (the moon hollow, the pond)
   if n + 2 + FFD_BYTES > out.count { return n; }
   dd := l[0].deeds;
   out[n] = cast(u8) FFL_TAG_DEEDS; out[n + 1] = cast(u8) FFD_BYTES; n += 2;
-  out[n] = cast(u8) (ifx dd.hollow then 1 else 0); n += 1;
+  out[n] = cast(u8) ((ifx dd.hollow then 1 else 0) | (ifx dd.pond then 2 else 0)); n += 1;
   // the course: its id, its best, then each hoop (x, y, z in cm, yaw)
   co := l[0].course;
   csize := 1 + co.id_n + 4 + 1 + co.n * 7;
@@ -556,7 +557,7 @@ ffl_open :: (l: [] Life, b: [] u8) -> bool {
       for q: 0..<FFK_FINDS { l[0].skills.found_day[q] = cast(int) b[i + 9 + q * 2] + cast(int) b[i + 10 + q * 2] * 256; }
     }
     if tag == FFL_TAG_DEEDS && size >= 1 {
-      l[0].deeds.hollow = b[i] & 1 != 0;
+      l[0].deeds.hollow = b[i] & 1 != 0; l[0].deeds.pond = b[i] & 2 != 0;
     }
     if tag == FFL_TAG_COURSE && size >= 6 {
       idn := cast(int) b[i];
