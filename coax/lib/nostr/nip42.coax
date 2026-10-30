@@ -1,0 +1,534 @@
+// NIP-42 relay authentication (board #f426): the relay's AUTH challenge
+// frame, the client's kind-22242 event template and AUTH frame, the check a
+// relay applies to an AUTH event, and the adapter to relay.coax's AUTH hook.
+// Pure: no I/O, no clock, no randomness. The caller passes the time in
+// seconds, the connection generation (relay.coax's rl_start result) and, on
+// the relay side, a fresh challenge drawn from host entropy.
+//
+// One Nip42 record belongs to one connection. It holds the canonical URL of
+// the relay (nip42_init), and the current challenge and the generation it
+// belongs to. A new challenge replaces the old one (NIP-42: a challenge is
+// valid until another is sent or the connection ends), so an answer to an
+// old challenge, for another relay, or from another generation is refused.
+//
+// Proof of possession is all this decides. An admitted AUTH event says the
+// connection holds that key; it grants no channel, host-operation or other
+// authority by itself.
+//
+// Relay URL rule (nip42_url): the scheme is ws:// or wss://, in any case.
+// The host is a name or dotted IPv4 address of [A-Za-z0-9.-], lowercased; IP
+// literals in brackets and user info are refused. A port is 1 to 5 digits
+// with a value 1 to 65535, compared as a number, and dropped when it is the
+// default (443 for wss, 80 for ws). The path is printable ASCII
+// (0x21..0x7e) without ? or #, kept as written (case and percent escapes
+// unchanged) except that trailing slashes are removed, so "/" is no path.
+// Queries and fragments are refused. At most 256 bytes in. A relay tag
+// matches when its canonical form equals the relay's.
+//
+// The relay-side check (nip42_judge): kind 22242; created_at within 600 s of
+// now either way (inclusive); exactly one ["relay", url] and exactly one
+// ["challenge", c] tag, each with exactly one value; the relay tag matches;
+// the challenge equals the current one byte for byte after unescaping. Other
+// tags and the content are not looked at. The id and signature are checked
+// first by nostr_event_verify_vartime (nip42-event.coax, nip42_admit).
+//
+// Signing is d7's nostr_event_sign_step (coax/lib/nostr/event_sign.coax,
+// #51f4/#bab4, not on main yet). nip42_template gives exactly its inputs, so
+// the client's whole AUTH answer is one loop:
+//   t := nip42_template(n, gen, now_s, tags_buf[..]);
+//   work: [1] NostrSignWork;                       // zeroed
+//   k := EVENT_MORE;
+//   while t.error == N42_OK && k == EVENT_MORE {
+//     k = nostr_event_sign_step(key, aux, t.created_at, t.kind, t.tags, t.content, work[..], scratch, signed, false);
+//   }
+//   f := nip42_send(r, n, gen, now_s, cast(string) signed[0..<k], scratch, frame[..], false);   // k > 0
+//   // f.error == N42_OK: write frame[0..<f.written]; relay.coax now waits for the OK.
+// The host routes a relay frame whose first element is "AUTH" (message.coax
+// reports it as NM_TYPE) to nip42_input, which records the challenge and
+// tells relay.coax, so rl_next asks for the AUTH answer.
+#load "json.coax";
+#load "relay.coax";
+#authority;
+
+N42_AUTH_KIND :: 22242;
+N42_WINDOW :: 600;                     // seconds either side of now
+N42_MAX_CHALLENGE :: 256;              // bytes, after unescaping
+N42_MAX_URL :: 256;                    // bytes, in and canonical
+N42_MAX_FRAME :: 4096;                 // a challenge frame, whitespace included
+N42_MAX_TIME :: 9007199254740991;      // 2^53 - 1, event_sign's created_at bound
+
+// Results.
+N42_OK :: 0; N42_FRAME :: 1; N42_URL :: 2; N42_STALE :: 3; N42_NO_CHALLENGE :: 4; N42_EVENT :: 5;
+N42_KIND :: 6; N42_TIME :: 7; N42_TAGS :: 8; N42_RELAY :: 9; N42_CHALLENGE :: 10; N42_OUTPUT :: 11; N42_MACHINE :: 12;
+// nip42_url's results.
+N42U_OK :: 0; N42U_OUTPUT :: 1; N42U_LIMIT :: 2; N42U_SCHEME :: 3; N42U_HOST :: 4; N42U_PORT :: 5; N42U_PATH :: 6;
+
+Nip42 :: struct {
+  gen: int;
+  url: [N42_MAX_URL] u8; url_count: int;
+  challenge: [N42_MAX_CHALLENGE] u8; challenge_count: int;
+}
+Nip42Url :: struct { error: int; count: int; }
+// event_sign's inputs: created_at, kind, tags (the raw JSON array of arrays)
+// and content. tags is a view into the caller's buffer.
+Nip42Template :: struct { error: int; created_at: int; kind: int; tags: string; content: string; }
+Nip42Frame :: struct { error: int; written: int; }
+Nip42Admit :: struct { error: int; public_key: [32] u8; }
+
+// ---- check helpers --------------------------------------------------------
+n42_url_error :: (url: string) -> int { out: [N42_MAX_URL] u8; return nip42_url(url, out[..]).error; }
+// Fills buf with c. Take cast(string) views after the last write: a string
+// cast copies.
+n42_fill :: (buf: [] u8, c: u8) -> string { for i: 0..<buf.count { buf[i] = c; } return cast(string) buf; }
+// A connection on generation gen with the spec example's relay and challenge.
+n42_spec :: (n: [] Nip42, gen: int) {
+  ok := nip42_init(n, "wss://relay.example.com/") == N42_OK && nip42_challenge(n, gen, "[\"AUTH\",\"challengestringhere\"]") == N42_OK;
+  #assert ok;
+}
+N42_SPEC_TAGS :: "[[\"relay\",\"wss://relay.example.com/\"],[\"challenge\",\"challengestringhere\"]]";
+N42_T :: 1793214821;
+
+N42_URLS :: [24]string.[
+  "wss://relay.example.com", "wss://relay.example.com/", "WSS://Relay.Example.COM:443", "wSs://RELAY.example.com:0443//",
+  "ws://relay.example.com:80/", "ws://relay.example.com:443", "wss://relay.example.com:80", "wss://h:65535/a/B/",
+  "ws://h:1", "wss://my-relay.az09.AZ/nostr/!~%2F", "Ws://10.0.0.1:8080/", "wss://relay.example.com/nostr//",
+  "wss://h:12", "ws://h:000080", "wss://h:00443", "wss://zz:2", "wss://a.b-c", "WS://A", "wss://h/a/b/c",
+  "wss://h:9", "wss://h:99999", "wss://h:65536", "wss://h:0", "ws://Z"];
+N42_CANON :: [24]string.[
+  "wss://relay.example.com", "wss://relay.example.com", "wss://relay.example.com", "wss://relay.example.com",
+  "ws://relay.example.com", "ws://relay.example.com:443", "wss://relay.example.com:80", "wss://h:65535/a/B",
+  "ws://h:1", "wss://my-relay.az09.az/nostr/!~%2F", "ws://10.0.0.1:8080", "wss://relay.example.com/nostr",
+  "wss://h:12", "", "wss://h", "wss://zz:2", "wss://a.b-c", "ws://a", "wss://h/a/b/c",
+  "wss://h:9", "", "", "", "ws://z"];
+N42_URL_ERRORS :: [24]int.[
+  N42U_OK, N42U_OK, N42U_OK, N42U_OK, N42U_OK, N42U_OK, N42U_OK, N42U_OK, N42U_OK, N42U_OK, N42U_OK, N42U_OK,
+  N42U_OK, N42U_PORT, N42U_OK, N42U_OK, N42U_OK, N42U_OK, N42U_OK, N42U_OK, N42U_PORT, N42U_PORT, N42U_PORT, N42U_OK];
+
+#forall "relay URLs normalize to the stated canonical form, which is a fixed point" i: 0..<N42_URLS.count {
+  out: [N42_MAX_URL] u8; u := nip42_url(N42_URLS[i], out[..]);
+  #assert u.error == N42_URL_ERRORS[i];
+  if u.error == N42U_OK {
+    #assert cast(string) out[0..<u.count] == N42_CANON[i];
+    again: [N42_MAX_URL] u8; v := nip42_url(cast(string) out[0..<u.count], again[..]);
+    #assert v.error == N42U_OK && cast(string) again[0..<v.count] == N42_CANON[i];
+  }
+}
+#test "relay URLs: schemes, hosts, ports and paths that are refused" {
+  #assert n42_url_error("") == N42U_SCHEME && n42_url_error("http://h") == N42U_SCHEME && n42_url_error("wsx://h") == N42U_SCHEME;
+  #assert n42_url_error("ws:/") == N42U_SCHEME && n42_url_error("ws:/h") == N42U_SCHEME && n42_url_error("wss:/h") == N42U_SCHEME;
+  #assert n42_url_error("wss://") == N42U_HOST && n42_url_error("ws://") == N42U_HOST && n42_url_error("wss://:443") == N42U_HOST;
+  #assert n42_url_error("w s://h") == N42U_SCHEME && n42_url_error("xss://h") == N42U_SCHEME && n42_url_error("wsS:/x") == N42U_SCHEME;
+  #assert n42_url_error("wss://a[") == N42U_HOST && n42_url_error("wss://a{") == N42U_HOST && n42_url_error("wss://a`") == N42U_HOST;
+  #assert n42_url_error("wss://a@b") == N42U_HOST && n42_url_error("wss://h?x") == N42U_HOST && n42_url_error("wss://[::1]") == N42U_HOST;
+  #assert n42_url_error("wss://a_b") == N42U_HOST && n42_url_error("wss://a,b") == N42U_HOST && n42_url_error("wss://a/b") == N42U_OK;
+  #assert n42_url_error("ws://h:") == N42U_PORT && n42_url_error("ws://h:/") == N42U_PORT && n42_url_error("ws://h:x") == N42U_PORT;
+  #assert n42_url_error("ws://h:123456") == N42U_PORT && n42_url_error("ws://h:12345") == N42U_OK && n42_url_error("ws://h:1a") == N42U_HOST;
+  #assert n42_url_error("wss://h/a?b") == N42U_PATH && n42_url_error("wss://h/#") == N42U_PATH && n42_url_error("wss://h/ ") == N42U_PATH;
+  del: [9] u8; d := n42_fill(del[..], 0x7f); del[0] = 'w'; del[1] = 'S'; del[2] = 's'; del[3] = ':'; del[4] = '/'; del[5] = '/'; del[6] = 'h'; del[7] = '/';
+  #assert n42_url_error(cast(string) del[..]) == N42U_PATH && n42_url_error("wss://h/@$") == N42U_OK && n42_url_error("wss://h/\"") == N42U_OK;
+  #assert n42_url_error("wss://h/a\nb") == N42U_PATH;
+}
+#test "relay URLs: the length limit and a short output" {
+  buf: [N42_MAX_URL + 1] u8; long := n42_fill(buf[..], 'a');
+  buf[0] = 'w'; buf[1] = 's'; buf[2] = 's'; buf[3] = ':'; buf[4] = '/'; buf[5] = '/';
+  #assert n42_url_error(long) == N42U_LIMIT;
+  out: [N42_MAX_URL] u8; u := nip42_url(cast(string) buf[0..<N42_MAX_URL], out[..]);
+  #assert u.error == N42U_OK && u.count == N42_MAX_URL;
+  small: [6] u8;
+  #assert nip42_url("wss://h", small[..]).error == N42U_OUTPUT && nip42_url("ws://h", small[..]).error == N42U_OK;
+  #assert nip42_url("ws://h:81", small[..]).error == N42U_OUTPUT && nip42_url("ws://h/a", small[..]).error == N42U_OUTPUT;
+}
+#test "init stores the canonical URL and refuses a bad one without changing it" {
+  n: [1] Nip42;
+  #assert nip42_init(n[..], "WSS://Relay.Example.com:443/") == N42_OK && nip42_url_text(n[..]) == "wss://relay.example.com";
+  #assert nip42_init(n[..], "http://other") == N42_URL && nip42_url_text(n[..]) == "wss://relay.example.com";
+  #assert nip42_init(n[..], "ws://ab/x") == N42_OK && nip42_url_text(n[..]) == "ws://ab/x" && n[0].url_count == 9;
+}
+
+#test "the relay's AUTH frame: the spec shape and a real relay's challenge" {
+  n: [1] Nip42;
+  #assert nip42_challenge(n[..], 3, "[\"AUTH\",\"challengestringhere\"]") == N42_OK;
+  #assert n[0].gen == 3 && nip42_challenge_text(n[..]) == "challengestringhere" && n[0].challenge_count == 19;
+  // the first frame relay.openagents.com sent (fixtures/coax_relay.coax)
+  #assert COAX_RELAY[75] == '\n' && nip42_challenge(n[..], 4, COAX_RELAY[0..<75]) == N42_OK;
+  #assert nip42_challenge_text(n[..]) == "edea324d841c5ed2b4c32dfe40acc6eae68e3875ed31fdc13b549aac17d31528" && n[0].gen == 4;
+  // whitespace, escapes in the name and the challenge, a one-byte challenge
+  #assert nip42_challenge(n[..], 5, " [ \"\\u0041UTH\" , \"a\\\"b\\\\c\\n\\u00e9\" ] \n") == N42_OK;
+  #assert nip42_challenge_text(n[..]) == "a\"b\\c\né" && n[0].gen == 5;
+  #assert nip42_challenge(n[..], 6, "[\"AUTH\",\"x\"]") == N42_OK && nip42_challenge_text(n[..]) == "x" && n[0].challenge_count == 1;
+}
+#test "frames that are not an AUTH challenge change nothing" {
+  n: [1] Nip42;
+  #assert nip42_challenge(n[..], 1, "[\"AUTH\",\"keep\"]") == N42_OK;
+  bad := [14]string.["", "{}", "[]", "[\"AUTH\"]", "[\"AUTH\",\"\"]", "[\"AUTH\",5]", "[5,\"x\"]", "[\"EVENT\",\"x\"]",
+    "[\"auth\",\"x\"]", "[\"AUTH\",\"x\",\"y\"]", "[\"AUTH\",\"x\"] x", "[\"AUTH\",{\"id\":\"x\"}]", "[\"AUTH\",\"\\ud800\"]", "[\"AUTH\",\"x\""];
+  for i: 0..<bad.count { #assert nip42_challenge(n[..], 2, bad[i]) == N42_FRAME; }
+  #assert n[0].gen == 1 && nip42_challenge_text(n[..]) == "keep";
+}
+#test "challenge and frame bounds" {
+  n: [1] Nip42; frame: [N42_MAX_FRAME + 1] u8;
+  // a challenge of exactly 256 bytes, then 257
+  f := n42_fill(frame[0..<N42_MAX_CHALLENGE + 11], 'c');
+  frame[0] = '['; frame[1] = '"'; frame[2] = 'A'; frame[3] = 'U'; frame[4] = 'T'; frame[5] = 'H'; frame[6] = '"'; frame[7] = ','; frame[8] = '"';
+  frame[N42_MAX_CHALLENGE + 9] = '"'; frame[N42_MAX_CHALLENGE + 10] = ']';
+  #assert nip42_challenge(n[..], 1, cast(string) frame[0..<N42_MAX_CHALLENGE + 11]) == N42_OK && n[0].challenge_count == N42_MAX_CHALLENGE;
+  g := n42_fill(frame[0..<N42_MAX_CHALLENGE + 12], 'c');
+  frame[0] = '['; frame[1] = '"'; frame[2] = 'A'; frame[3] = 'U'; frame[4] = 'T'; frame[5] = 'H'; frame[6] = '"'; frame[7] = ','; frame[8] = '"';
+  frame[N42_MAX_CHALLENGE + 10] = '"'; frame[N42_MAX_CHALLENGE + 11] = ']';
+  #assert nip42_challenge(n[..], 2, cast(string) frame[0..<N42_MAX_CHALLENGE + 12]) == N42_FRAME && n[0].gen == 1;
+  // a frame padded with spaces to exactly 4096 bytes, then 4097
+  p := n42_fill(frame[0..<N42_MAX_FRAME], ' ');
+  s := "[\"AUTH\",\"x\"]"; for i: 0..<s.count { frame[i] = s[i]; }
+  #assert nip42_challenge(n[..], 3, cast(string) frame[0..<N42_MAX_FRAME]) == N42_OK;
+  frame[N42_MAX_FRAME] = ' ';
+  #assert nip42_challenge(n[..], 4, cast(string) frame[..]) == N42_FRAME && n[0].gen == 3;
+}
+#test "the relay writes its challenge frame and records it" {
+  n: [1] Nip42; out: [64] u8; ff: [1] u8;
+  f := nip42_issue(n[..], 7, "a\"b", out[..]);
+  #assert f.error == N42_OK && cast(string) out[0..<f.written] == "[\"AUTH\",\"a\\\"b\"]" && n[0].gen == 7 && nip42_challenge_text(n[..]) == "a\"b";
+  #assert nip42_issue(n[..], 8, "", out[..]).error == N42_FRAME && nip42_issue(n[..], 8, n42_fill(ff[..], 0xff), out[..]).error == N42_FRAME;
+  #assert nip42_issue(n[..], 8, "x", out[0..<11]).error == N42_OUTPUT && nip42_issue(n[..], 8, "x", out[0..<12]).error == N42_OK;
+  #assert n[0].gen == 8 && nip42_challenge_text(n[..]) == "x";
+}
+
+#test "the kind 22242 template is event_sign's input for the current challenge" {
+  n: [1] Nip42; out: [512] u8;
+  t := nip42_template(n[..], 0, N42_T, out[..]);
+  #assert t.error == N42_NO_CHALLENGE;
+  #assert nip42_challenge(n[..], 1, "[\"AUTH\",\"challengestringhere\"]") == N42_OK && nip42_template(n[..], 1, N42_T, out[..]).error == N42_URL;
+  #assert nip42_init(n[..], "wss://relay.example.com/") == N42_OK;
+  t = nip42_template(n[..], 1, N42_T, out[..]);
+  #assert t.error == N42_OK && t.kind == 22242 && t.created_at == N42_T && t.content == "";
+  #assert t.tags == "[[\"relay\",\"wss://relay.example.com\"],[\"challenge\",\"challengestringhere\"]]" && json_valid(t.tags);
+  // the template's own tags pass the relay-side check
+  #assert nip42_judge(n[..], 1, N42_T, t.kind, t.created_at, t.tags) == N42_OK;
+  // escapes are written the way NIP-01 serializes them
+  #assert nip42_challenge(n[..], 1, "[\"AUTH\",\"a\\\"b\\\\c\\n\\u0001\"]") == N42_OK;
+  t = nip42_template(n[..], 1, 0, out[..]);
+  #assert t.error == N42_OK && t.created_at == 0 && t.tags == "[[\"relay\",\"wss://relay.example.com\"],[\"challenge\",\"a\\\"b\\\\c\\n\\u0001\"]]";
+  #assert nip42_template(n[..], 1, N42_MAX_TIME, out[..]).error == N42_OK;
+  #assert nip42_template(n[..], 1, N42_MAX_TIME + 1, out[..]).error == N42_TIME && nip42_template(n[..], 1, -1, out[..]).error == N42_TIME;
+  // another generation, and a buffer one byte short
+  #assert nip42_template(n[..], 2, N42_T, out[..]).error == N42_STALE && nip42_template(n[..], 0, N42_T, out[..]).error == N42_STALE;
+  #assert nip42_template(n[..], 1, N42_T, out[0..<68]).error == N42_OUTPUT && nip42_template(n[..], 1, N42_T, out[0..<69]).error == N42_OK;
+}
+
+#test "the relay-side check admits the spec example and refuses each wrong field" {
+  n: [1] Nip42; n42_spec(n[..], 9);
+  #assert nip42_judge(n[..], 9, N42_T, 22242, N42_T, N42_SPEC_TAGS) == N42_OK;
+  #assert nip42_judge(n[..], 8, N42_T, 22242, N42_T, N42_SPEC_TAGS) == N42_STALE;
+  #assert nip42_judge(n[..], 10, N42_T, 22242, N42_T, N42_SPEC_TAGS) == N42_STALE;
+  #assert nip42_judge(n[..], 9, N42_T, 22243, N42_T, N42_SPEC_TAGS) == N42_KIND && nip42_judge(n[..], 9, N42_T, 1, N42_T, N42_SPEC_TAGS) == N42_KIND;
+  // the window is 600 s either way, inclusive
+  #assert nip42_judge(n[..], 9, N42_T, 22242, N42_T - 600, N42_SPEC_TAGS) == N42_OK && nip42_judge(n[..], 9, N42_T, 22242, N42_T + 600, N42_SPEC_TAGS) == N42_OK;
+  #assert nip42_judge(n[..], 9, N42_T, 22242, N42_T - 601, N42_SPEC_TAGS) == N42_TIME && nip42_judge(n[..], 9, N42_T, 22242, N42_T + 601, N42_SPEC_TAGS) == N42_TIME;
+  // another relay, another challenge, the right ones spelled differently
+  #assert nip42_judge(n[..], 9, N42_T, 22242, N42_T, "[[\"relay\",\"wss://relay.example.org/\"],[\"challenge\",\"challengestringhere\"]]") == N42_RELAY;
+  #assert nip42_judge(n[..], 9, N42_T, 22242, N42_T, "[[\"relay\",\"ws://relay.example.com/\"],[\"challenge\",\"challengestringhere\"]]") == N42_RELAY;
+  #assert nip42_judge(n[..], 9, N42_T, 22242, N42_T, "[[\"relay\",\"relay.example.com\"],[\"challenge\",\"challengestringhere\"]]") == N42_RELAY;
+  #assert nip42_judge(n[..], 9, N42_T, 22242, N42_T, "[[\"relay\",\"wss://relay.example.com/\"],[\"challenge\",\"challengestringherf\"]]") == N42_CHALLENGE;
+  #assert nip42_judge(n[..], 9, N42_T, 22242, N42_T, "[[\"relay\",\"wss://relay.example.com/\"],[\"challenge\",\"challengestringher\"]]") == N42_CHALLENGE;
+  #assert nip42_judge(n[..], 9, N42_T, 22242, N42_T, "[[\"challenge\",\"\\u0063hallengestringhere\"],[\"t\",\"x\"],[],[\"relay\",\"WSS://Relay.Example.COM:443\"]]") == N42_OK;
+  #assert nip42_judge(n[..], 9, N42_T, 22242, N42_T, "[[\"t\",\"relay\"],[\"x\",\"challenge\",\"y\"],[\"relay\",\"wss://relay.example.com\"],[\"challenge\",\"challengestringhere\"],[\"z\"]]") == N42_OK;
+}
+#test "the relay-side check refuses missing, repeated and malformed tags" {
+  n: [1] Nip42; n42_spec(n[..], 1);
+  bad := [16]string.[
+    "[[\"challenge\",\"challengestringhere\"]]",
+    "[[\"relay\",\"wss://relay.example.com/\"]]",
+    "[[\"relay\",\"wss://relay.example.com/\"],[\"relay\",\"wss://relay.example.com/\"],[\"challenge\",\"challengestringhere\"]]",
+    "[[\"relay\",\"wss://relay.example.com/\"],[\"challenge\",\"challengestringhere\"],[\"challenge\",\"challengestringhere\"]]",
+    "[[\"relay\"],[\"challenge\",\"challengestringhere\"]]",
+    "[[\"relay\",\"wss://relay.example.com/\",\"x\"],[\"challenge\",\"challengestringhere\"]]",
+    "[[\"relay\",\"wss://relay.example.com/\"],[\"challenge\"]]",
+    "[[\"relay\",\"wss://relay.example.com/\"],[\"challenge\",\"challengestringhere\",\"x\"]]",
+    "[[\"relay\",\"wss://relay.example.com/\"],[\"challenge\",\"challengestringhere\"]] x",
+    "[[\"relay\",\"wss://relay.example.com/\"],[\"challenge\",\"challengestringhere\"],[5]]",
+    "[[\"relay\",\"wss://relay.example.com/\"],[\"challenge\",\"challengestringhere\"],\"x\"]",
+    "{}", "", "[[\"relay\",\"wss://relay.example.com/\"],[\"challenge\",\"challengestringhere\"],[[]]]",
+    "[[\"relay\",\"wss://relay.example.com/\"],[\"challenge\",\"challengestringhere\"]",
+    "[[\"relay\",5],[\"challenge\",\"challengestringhere\"]]"];
+  for i: 0..<bad.count { #assert nip42_judge(n[..], 1, N42_T, 22242, N42_T, bad[i]) == N42_TAGS; }
+  #assert nip42_judge(n[..], 1, N42_T, 22242, N42_T, "[[\"relay\",\"wss://relay.example.com/\"],[\"challenge\",\"\\ud800\"]]") == N42_CHALLENGE;
+  #assert nip42_judge(n[..], 1, N42_T, 22242, N42_T, "[[\"relay\",\"\\ud800\"],[\"challenge\",\"challengestringhere\"]]") == N42_RELAY;
+  // over-long relay and challenge values are refused, not truncated
+  long: [N42_MAX_URL + 64] u8; tags := n42_fill(long[..], 'a');
+  head := "[[\"challenge\",\"challengestringhere\"],[\"relay\",\"wss://"; for i: 0..<head.count { long[i] = head[i]; }
+  long[long.count - 3] = '"'; long[long.count - 2] = ']'; long[long.count - 1] = ']';
+  #assert nip42_judge(n[..], 1, N42_T, 22242, N42_T, cast(string) long[..]) == N42_RELAY;
+  long2: [N42_MAX_CHALLENGE + 64] u8; tags2 := n42_fill(long2[..], 'c');
+  head2 := "[[\"relay\",\"wss://relay.example.com/\"],[\"challenge\",\""; for i: 0..<head2.count { long2[i] = head2[i]; }
+  long2[long2.count - 3] = '"'; long2[long2.count - 2] = ']'; long2[long2.count - 1] = ']';
+  #assert nip42_judge(n[..], 1, N42_T, 22242, N42_T, cast(string) long2[..]) == N42_CHALLENGE;
+}
+#test "an old challenge, another relay's record and a fresh record are refused" {
+  n: [1] Nip42; n42_spec(n[..], 1);
+  #assert nip42_challenge(n[..], 1, "[\"AUTH\",\"second\"]") == N42_OK;
+  #assert nip42_judge(n[..], 1, N42_T, 22242, N42_T, N42_SPEC_TAGS) == N42_CHALLENGE;
+  m: [1] Nip42; #assert nip42_init(m[..], "wss://other.example.com") == N42_OK && nip42_challenge(m[..], 1, "[\"AUTH\",\"challengestringhere\"]") == N42_OK;
+  #assert nip42_judge(m[..], 1, N42_T, 22242, N42_T, N42_SPEC_TAGS) == N42_RELAY;
+  fresh: [1] Nip42;
+  #assert nip42_judge(fresh[..], 0, N42_T, 22242, N42_T, N42_SPEC_TAGS) == N42_NO_CHALLENGE;
+  #assert nip42_init(fresh[..], "wss://relay.example.com") == N42_OK && nip42_judge(fresh[..], 0, N42_T, 22242, N42_T, N42_SPEC_TAGS) == N42_NO_CHALLENGE;
+  nourl: [1] Nip42; #assert nip42_challenge(nourl[..], 1, "[\"AUTH\",\"challengestringhere\"]") == N42_OK;
+  #assert nip42_judge(nourl[..], 1, N42_T, 22242, N42_T, N42_SPEC_TAGS) == N42_URL;
+}
+#test "admission needs a verified event and returns its key only when admitted" {
+  n: [1] Nip42; n42_spec(n[..], 1); key: [32] u8; for i: 0..<32 { key[i] = cast(u8) (i + 1); }
+  a := nip42_admit_fields(n[..], 1, N42_T, true, 22242, N42_T, N42_SPEC_TAGS, key[..]);
+  #assert a.error == N42_OK && a.public_key[0] == 1 && a.public_key[31] == 32;
+  a = nip42_admit_fields(n[..], 1, N42_T, false, 22242, N42_T, N42_SPEC_TAGS, key[..]);
+  #assert a.error == N42_EVENT && a.public_key[0] == 0 && a.public_key[31] == 0;
+  a = nip42_admit_fields(n[..], 1, N42_T, true, 22243, N42_T, N42_SPEC_TAGS, key[..]);
+  #assert a.error == N42_KIND && a.public_key[0] == 0 && a.public_key[31] == 0;
+  #assert nip42_admit_fields(n[..], 1, N42_T, true, 22242, N42_T, N42_SPEC_TAGS, key[0..<31]).error == N42_EVENT;
+}
+
+#test "relay.coax adapter: challenge in, AUTH out, accepted OK retries the subscription" {
+  r: [1] Relay; n: [1] Nip42; buf: [24] u8; out: [256] u8; id: [32] u8; id[0] = 77; id[31] = 1;
+  #assert nip42_init(n[..], "wss://relay.example.com") == N42_OK;
+  s := rl_subscribe(r[..]); g := rl_start(r[..], 0); ok := rl_opened(r[..], g, 0); o := rl_next(r[..], 0);
+  sid := rl_sub_text(s, 1, buf[..]);
+  // a frame that isn't a challenge changes neither machine
+  #assert nip42_input(r[..], n[..], g, "[\"AUTH\",\"\"]") == -1 && r[0].auth == RA_NONE && n[0].challenge_count == 0;
+  #assert nip42_input(r[..], n[..], g, "[\"AUTH\",\"challengestringhere\"]") == RL_AUTH && r[0].auth == RA_CHALLENGED && n[0].gen == g;
+  #assert rl_next(r[..], 0).kind == RL_OUT_AUTH;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_CLOSED, sub = sid, auth_required = true}) == RL_CLOSED;
+  signed := "{\"kind\":22242}";
+  f := nip42_send_fields(r[..], n[..], g, N42_T, true, 22242, N42_T, N42_SPEC_TAGS, id[..], signed, out[..]);
+  #assert f.error == N42_OK && cast(string) out[0..<f.written] == "[\"AUTH\",{\"kind\":22242}]" && r[0].auth == RA_SENT;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = id, accepted = true}) == RL_AUTH && r[0].subs[0].state == RS_WANT;
+  // a second answer has no challenge to answer in relay.coax
+  f = nip42_send_fields(r[..], n[..], g, N42_T, true, 22242, N42_T, N42_SPEC_TAGS, id[..], signed, out[..]);
+  #assert f.error == N42_MACHINE && f.written == 0;
+}
+#test "relay.coax adapter refuses unread, stale, mismatched and oversized answers" {
+  r: [1] Relay; n: [1] Nip42; out: [256] u8; id: [32] u8; id[0] = 5;
+  #assert nip42_init(n[..], "wss://relay.example.com") == N42_OK;
+  g := rl_start(r[..], 0); ok := rl_opened(r[..], g, 0);
+  #assert nip42_input(r[..], n[..], g + 1, "[\"AUTH\",\"challengestringhere\"]") == RL_STALE && n[0].challenge_count == 0;
+  #assert nip42_input(r[..], n[..], g, "[\"AUTH\",\"challengestringhere\"]") == RL_AUTH;
+  signed := "{}";
+  #assert nip42_send_fields(r[..], n[..], g, N42_T, false, 22242, N42_T, N42_SPEC_TAGS, id[..], signed, out[..]).error == N42_EVENT;
+  #assert nip42_send_fields(r[..], n[..], g, N42_T, true, 22243, N42_T, N42_SPEC_TAGS, id[..], signed, out[..]).error == N42_KIND;
+  #assert nip42_send_fields(r[..], n[..], g, N42_T + 601, true, 22242, N42_T, N42_SPEC_TAGS, id[..], signed, out[..]).error == N42_TIME;
+  f := nip42_send_fields(r[..], n[..], g, N42_T, true, 22242, N42_T, N42_SPEC_TAGS, id[..], signed, out[0..<10]);
+  #assert f.error == N42_OUTPUT && f.written == 0 && r[0].auth == RA_CHALLENGED;
+  #assert nip42_send_fields(r[..], n[..], g, N42_T, true, 22242, N42_T, N42_SPEC_TAGS, id[0..<31], signed, out[..]).error == N42_MACHINE;
+  #assert nip42_send_fields(r[..], n[..], g, N42_T, true, 22242, N42_T, N42_SPEC_TAGS, id[..], signed, out[0..<11]).error == N42_OK;
+  // after a reconnect the old generation's answer is stale for both machines
+  #assert rl_dropped(r[..], g, 0, 0); h := rl_start(r[..], 600); ok = rl_opened(r[..], h, 600);
+  #assert nip42_send_fields(r[..], n[..], g, N42_T, true, 22242, N42_T, N42_SPEC_TAGS, id[..], signed, out[..]).error == N42_STALE;
+  #assert nip42_send_fields(r[..], n[..], h, N42_T, true, 22242, N42_T, N42_SPEC_TAGS, id[..], signed, out[..]).error == N42_STALE;
+  #assert nip42_template(n[..], h, N42_T, out[..]).error == N42_STALE;
+}
+
+// ---- relay URLs -------------------------------------------------------------
+
+// Whether s starts with p, each byte as in lower or upper (same length).
+nip42_starts :: (s: string, lower: string, upper: string) -> bool {
+  if s.count < lower.count { return false; }
+  for i: 0..<lower.count { if s[i] != lower[i] && s[i] != upper[i] { return false; } }
+  return true;
+}
+// A host byte lowercased, or -1 when it can't be in a host.
+nip42_host_byte :: (c: u8) -> int {
+  if c >= 'A' && c <= 'Z' { return cast(int) c + 32; }
+  if (c >= 'a' && c <= 'z') || json_digit(c) || c == '.' || c == '-' { return cast(int) c; }
+  return -1;
+}
+// The canonical form of a relay URL into out (the rule is at the top).
+nip42_url :: (url: string, out: [] u8) -> Nip42Url {
+  if url.count > N42_MAX_URL { return Nip42Url.{error = N42U_LIMIT}; }
+  secure := nip42_starts(url, "wss://", "WSS://");
+  if !secure && !nip42_starts(url, "ws://", "WS://") { return Nip42Url.{error = N42U_SCHEME}; }
+  at := ifx secure then 6 else 5;
+  host: [N42_MAX_URL] u8; h := 0;
+  while at < url.count {
+    b := nip42_host_byte(url[at]);
+    if b == -1 { break; }
+    host[h] = cast(u8) b; h += 1; at += 1;
+  }
+  if h == 0 { return Nip42Url.{error = N42U_HOST}; }
+  k := json_raw(out, 0, ifx secure then "wss://" else "ws://");
+  k = json_raw(out, k, cast(string) host[0..<h]);
+  if at < url.count && url[at] == ':' {
+    at += 1; port := 0; digits := 0;
+    while at < url.count && json_digit(url[at]) {
+      if digits == 5 { return Nip42Url.{error = N42U_PORT}; }
+      port = port * 10 + cast(int) (url[at] - '0'); digits += 1; at += 1;
+    }
+    if digits == 0 || port == 0 || port > 65535 { return Nip42Url.{error = N42U_PORT}; }
+    default := ifx secure then 443 else 80;
+    if port != default { k = json_raw(out, k, ":"); k = json_write_int(out, k, port); }
+  }
+  if at < url.count && url[at] != '/' { return Nip42Url.{error = N42U_HOST}; }
+  path := url[at..<url.count];
+  for c: path {
+    if c < 0x21 || c > 0x7e || c == '?' || c == '#' { return Nip42Url.{error = N42U_PATH}; }
+  }
+  end := path.count;
+  while end > 0 && path[end - 1] == '/' { end -= 1; }
+  k = json_raw(out, k, path[0..<end]);
+  if k == -1 { return Nip42Url.{error = N42U_OUTPUT}; }
+  return Nip42Url.{error = N42U_OK, count = k};
+}
+
+// ---- the record -------------------------------------------------------------
+
+nip42_url_text :: (n: [] Nip42) -> string { return cast(string) n[0].url[0..<n[0].url_count]; }
+nip42_challenge_text :: (n: [] Nip42) -> string { return cast(string) n[0].challenge[0..<n[0].challenge_count]; }
+// Sets the relay's URL (the one the client connected to, or the relay's own).
+nip42_init :: (n: [] Nip42, url: string) -> int {
+  tmp: [N42_MAX_URL] u8; u := nip42_url(url, tmp[..]);
+  if u.error != N42U_OK { return N42_URL; }
+  n[0].url = tmp; n[0].url_count = u.count;
+  return N42_OK;
+}
+// Reads the relay's ["AUTH", "<challenge>"] and makes it the current
+// challenge of generation gen. Anything else is N42_FRAME, and changes nothing.
+nip42_challenge :: (n: [] Nip42, gen: int, frame: string) -> int {
+  if frame.count > N42_MAX_FRAME { return N42_FRAME; }
+  j: [1] Json; json_start(j[..], frame);
+  if json_next(j[..]) != JSON_ARRAY { return N42_FRAME; }
+  if json_next(j[..]) != JSON_STRING || !json_is(json_text(j[..]), "AUTH") { return N42_FRAME; }
+  if json_next(j[..]) != JSON_STRING { return N42_FRAME; }
+  raw := json_text(j[..]);
+  if json_next(j[..]) != JSON_ARRAY_END || json_next(j[..]) != JSON_END { return N42_FRAME; }
+  tmp: [N42_MAX_CHALLENGE] u8; k := json_unescape(raw, tmp[..]);
+  if k < 1 { return N42_FRAME; }
+  n[0].gen = gen; n[0].challenge = tmp; n[0].challenge_count = k;
+  return N42_OK;
+}
+// The relay side: writes ["AUTH", challenge] into out and makes challenge
+// the current one for generation gen. The challenge comes from host entropy
+// (32 random bytes as hex, say), 1 to 256 bytes of UTF-8.
+nip42_issue :: (n: [] Nip42, gen: int, challenge: string, out: [] u8) -> Nip42Frame {
+  k := json_raw(out, 0, "[\"AUTH\",");
+  k = json_write_string(out, k, challenge);
+  k = json_raw(out, k, "]");
+  if k == -1 { return Nip42Frame.{error = N42_OUTPUT}; }
+  e := nip42_challenge(n, gen, cast(string) out[0..<k]);
+  if e != N42_OK { return Nip42Frame.{error = e}; }
+  return Nip42Frame.{error = N42_OK, written = k};
+}
+nip42_ready :: (n: [] Nip42, gen: int) -> int {
+  if gen != n[0].gen { return N42_STALE; }
+  if n[0].challenge_count == 0 { return N42_NO_CHALLENGE; }
+  if n[0].url_count == 0 { return N42_URL; }
+  return N42_OK;
+}
+
+// ---- the client's event and frame ------------------------------------------
+
+// The unsigned kind 22242 event for generation gen's challenge, created now
+// (seconds): event_sign's created_at, kind, tags and content. The tags are
+// written into out as [["relay",<canonical url>],["challenge",<challenge>]].
+nip42_template :: (n: [] Nip42, gen: int, now: int, out: [] u8) -> Nip42Template {
+  t: Nip42Template; t.error = nip42_ready(n, gen);
+  if t.error != N42_OK { return t; }
+  t.error = N42_TIME;
+  if now < 0 || now > N42_MAX_TIME { return t; }
+  k := json_raw(out, 0, "[[\"relay\",");
+  k = json_write_string(out, k, nip42_url_text(n));
+  k = json_raw(out, k, "],[\"challenge\",");
+  k = json_write_string(out, k, nip42_challenge_text(n));
+  k = json_raw(out, k, "]]");
+  t.error = N42_OUTPUT;
+  if k == -1 { return t; }
+  return Nip42Template.{error = N42_OK, created_at = now, kind = N42_AUTH_KIND, tags = cast(string) out[0..<k], content = ""};
+}
+
+// ---- the relay's check ------------------------------------------------------
+
+nip42_relay_is :: (n: [] Nip42, raw: string) -> bool {
+  dec: [N42_MAX_URL] u8; k := json_unescape(raw, dec[..]);
+  if k == -1 { return false; }
+  canon: [N42_MAX_URL] u8; u := nip42_url(cast(string) dec[0..<k], canon[..]);
+  return u.error == N42U_OK && cast(string) canon[0..<u.count] == nip42_url_text(n);
+}
+nip42_challenge_is :: (n: [] Nip42, raw: string) -> bool {
+  dec: [N42_MAX_CHALLENGE] u8; k := json_unescape(raw, dec[..]);
+  return k != -1 && cast(string) dec[0..<k] == nip42_challenge_text(n);
+}
+// Whether an AUTH event's fields answer generation gen's current challenge
+// for this relay at time now (seconds). tags is the event's raw tags array.
+// N42_OK is not admission by itself: the id and signature come first
+// (nip42_admit_fields, nip42_admit).
+nip42_judge :: (n: [] Nip42, gen: int, now: int, kind: int, created_at: int, tags: string) -> int {
+  ready := nip42_ready(n, gen);
+  if ready != N42_OK { return ready; }
+  if kind != N42_AUTH_KIND { return N42_KIND; }
+  if created_at < now - N42_WINDOW || created_at > now + N42_WINDOW { return N42_TIME; }
+  j: [1] Json; json_start(j[..], tags);
+  if json_next(j[..]) != JSON_ARRAY { return N42_TAGS; }
+  relays := 0; challenges := 0; relay_raw := ""; challenge_raw := "";
+  t := json_next(j[..]);
+  while t != JSON_ARRAY_END {
+    if t != JSON_ARRAY { return N42_TAGS; }
+    field := 0; values := 0; value := "";
+    v := json_next(j[..]);
+    while v != JSON_ARRAY_END {
+      if v != JSON_STRING { return N42_TAGS; }
+      raw := json_text(j[..]);
+      if values == 0 { field = ifx json_is(raw, "relay") then 1 else ifx json_is(raw, "challenge") then 2 else 0; }
+      if values == 1 { value = raw; }
+      values += 1;
+      v = json_next(j[..]);
+    }
+    if field != 0 && values != 2 { return N42_TAGS; }
+    if field == 1 { relays += 1; relay_raw = value; }
+    if field == 2 { challenges += 1; challenge_raw = value; }
+    t = json_next(j[..]);
+  }
+  if json_next(j[..]) != JSON_END || relays != 1 || challenges != 1 { return N42_TAGS; }
+  if !nip42_relay_is(n, relay_raw) { return N42_RELAY; }
+  if !nip42_challenge_is(n, challenge_raw) { return N42_CHALLENGE; }
+  return N42_OK;
+}
+// The relay side's decision on an event whose id and signature were checked
+// (verified is nostr_event_verify_vartime's verdict; nip42_admit passes it).
+// The public key is returned only when admitted.
+nip42_admit_fields :: (n: [] Nip42, gen: int, now: int, verified: bool, kind: int, created_at: int, tags: string, public_key: [] u8) -> Nip42Admit {
+  a: Nip42Admit; a.error = N42_EVENT;
+  if !verified || public_key.count != 32 { return a; }
+  a.error = nip42_judge(n, gen, now, kind, created_at, tags);
+  if a.error == N42_OK { for i: 0..<32 { a.public_key[i] = public_key[i]; } }
+  return a;
+}
+
+// ---- the relay.coax adapter -------------------------------------------------
+
+// A relay frame whose first element is "AUTH": records the challenge for
+// generation gen and reports it to relay.coax. relay.coax's decision
+// (RL_AUTH when it now asks for an answer), or -1 when the frame isn't a
+// challenge. Nothing changes unless relay.coax took it.
+nip42_input :: (r: [] Relay, n: [] Nip42, gen: int, frame: string) -> int {
+  t: [1] Nip42; t[0] = n[0];
+  if nip42_challenge(t[..], gen, frame) != N42_OK { return -1; }
+  d := rl_input(r, gen, RlIn.{kind = RL_IN_AUTH});
+  if d == RL_AUTH { n[0] = t[0]; }
+  return d;
+}
+// Answers RL_OUT_AUTH with a signed event (read is nostr_event_read's
+// verdict on it, id its id; nip42_send passes them): checks the event
+// answers the current challenge for this relay and generation, writes
+// ["AUTH",<signed>] into out and tells relay.coax (rl_auth_sent) to wait for
+// the OK with that id.
+nip42_send_fields :: (r: [] Relay, n: [] Nip42, gen: int, now: int, read: bool, kind: int, created_at: int, tags: string, id: [] u8, signed: string, out: [] u8) -> Nip42Frame {
+  f: Nip42Frame; f.error = N42_EVENT;
+  if !read { return f; }
+  f.error = N42_STALE;
+  if r[0].gen != gen { return f; }
+  f.error = nip42_judge(n, gen, now, kind, created_at, tags);
+  if f.error != N42_OK { return f; }
+  k := json_raw(out, 0, "[\"AUTH\",");
+  k = json_raw(out, k, signed);
+  k = json_raw(out, k, "]");
+  f.error = N42_OUTPUT;
+  if k == -1 { return f; }
+  f.error = N42_MACHINE;
+  if !rl_auth_sent(r, id) { return f; }
+  return Nip42Frame.{error = N42_OK, written = k};
+}
