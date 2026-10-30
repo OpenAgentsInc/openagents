@@ -109,7 +109,7 @@ bun "$tools/list.ts" ${fresh[@]+"${fresh[@]}"}
 list=$!
 for pid in "${snaps[@]}"; do wait "$pid"; done
 bun "$tools/baked.ts"
-"$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm"
+"$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm" "$here/project-names.coax"
 wait "$list"
 # /nip/01: NIP-01 in Coax, its verifier its own library; the splash's passes.
 { echo "// /nip/01: the splash's passes (splash.wgsl, copied by build.sh), as nip01.coax draws only words, strokes and HUD bars."; cat "$here/splash.wgsl"; } > "$here/nip01.wgsl"

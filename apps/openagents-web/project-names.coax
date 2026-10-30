@@ -1,0 +1,119 @@
+// The project page's NIP-19 names: a key, an event or an address as NIP-19
+// spells it (npub, nevent, naddr), encoded by coax/lib/nostr/nip19-core.coax
+// with the TLV entries in nostr-tools' order: the special (id or d), the relay
+// hint, the author, the kind. Each writes into out and returns the bytes
+// written, or 0 when the hex isn't 64 lowercase digits, a field is over 255
+// bytes or out is too small. A unit of its own so
+// coax/web/project/nip19.test.ts builds just this and checks it against
+// nostr-tools for every key, event and coordinate of the captured relay
+// transcript (coax/lib/nostr/fixtures/coax_relay.jsonl).
+// It is its own Wasm library (wasm.sh's LIBRARY argument), never #loaded by
+// project.coax: its #authority codecs would make every compile of the page run
+// all of the page's checks. project-names-face.h calls it from the face and
+// puts the names in the page's buffers before each frame.
+#load "../../coax/lib/nostr/nip19-core.coax";
+#load "../../coax/lib/nostr/hex.coax";
+KIND_ISSUE_EVENT :: 1621; KIND_PROJECT_EVENT :: 30621;
+NAME_ROOM :: 320;
+NAME_RELAY :: "wss://relay.openagents.com";   // the relay hint the tests use
+name_tlv :: (buf: [] u8, at: int, tag: u8, value: string) -> int {
+  if at < 0 || value.count > 255 || at + 2 + value.count > buf.count { return -1; }
+  buf[at] = tag; buf[at + 1] = cast(u8) value.count;
+  for i: 0..<value.count { buf[at + 2 + i] = value[i]; }
+  return at + 2 + value.count;
+}
+name_hex :: (buf: [] u8, at: int, tag: u8, hex: string) -> int {
+  if at < 0 || hex.count != 64 || at + 34 > buf.count { return -1; }
+  for i: 0..<64 { c := hex[i]; if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return -1; } }
+  if hex_decode_checked(hex, buf[at + 2..<at + 34], false).error != NC_OK { return -1; }
+  buf[at] = tag; buf[at + 1] = 32;
+  return at + 34;
+}
+name_kind :: (buf: [] u8, at: int, kind: int) -> int {
+  if at < 0 || kind < 0 || kind > 4294967295 || at + 6 > buf.count { return -1; }
+  buf[at] = 3; buf[at + 1] = 4;
+  for i: 0..<4 { buf[at + 2 + i] = cast(u8)((kind >> (24 - 8 * i)) & 255); }
+  return at + 6;
+}
+name_done :: (type: u32, buf: [] u8, n: int, out: [] u8) -> int {
+  if n < 0 { return 0; }
+  r := nip19_encode_checked(type, cast(string) buf[0..<n], out, false);
+  if r.error != NC_OK { return 0; }
+  return r.written;
+}
+// npub: the 32 bytes of the key, no TLV.
+name_npub :: (pubkey: string, out: [] u8) -> int #export_c {
+  buf: [34] u8;
+  n := name_hex(buf[..], 0, 0, pubkey);
+  if n < 0 { return 0; }
+  return name_done(N19_NPUB, buf[2..<34], 32, out);
+}
+// nevent: the id, then the relay hint, the author and the kind when given
+// ("" and -1 leave them out).
+name_nevent :: (id: string, relay: string, author: string, kind: int, out: [] u8) -> int #export_c {
+  buf: [NAME_ROOM] u8;
+  n := name_hex(buf[..], 0, 0, id);
+  if relay.count > 0 { n = name_tlv(buf[..], n, 1, relay); }
+  if author.count > 0 { n = name_hex(buf[..], n, 2, author); }
+  if kind >= 0 { n = name_kind(buf[..], n, kind); }
+  return name_done(N19_EVENT, buf[..], n, out);
+}
+// naddr: the d tag, the relay hint when given, the author, the kind.
+name_naddr :: (kind: int, author: string, d: string, relay: string, out: [] u8) -> int #export_c {
+  buf: [NAME_ROOM * 2] u8;
+  n := name_tlv(buf[..], 0, 0, d);
+  if relay.count > 0 { n = name_tlv(buf[..], n, 1, relay); }
+  n = name_hex(buf[..], n, 2, author);
+  n = name_kind(buf[..], n, kind);
+  return name_done(N19_ADDR, buf[..], n, out);
+}
+// An "a" tag's coordinate, kind:pubkey:d, as its naddr.
+name_coord :: (coord: string, relay: string, out: [] u8) -> int #export_c {
+  kind := 0; i := 0;
+  while i < coord.count && coord[i] >= '0' && coord[i] <= '9' && i < 10 { kind = kind * 10 + cast(int)(coord[i] - '0'); i += 1; }
+  if i == 0 || i + 66 > coord.count || coord[i] != ':' || coord[i + 65] != ':' { return 0; }
+  return name_naddr(kind, coord[i + 1..<i + 65], coord[i + 66..<coord.count], relay, out);
+}
+
+#test "the page names keys, events and addresses as nostr-tools does (pinned from the captured transcript)" {
+  pk := "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575";
+  id := "0c13c6ed2696572356537f5a6b8340b3431a779cae2f96ae1bbb5df6f6f3f414";
+  out: [NAME_ROOM] u8;
+  n := name_npub(pk, out[..]);
+  #assert cast(string) out[0..<n] == "npub1nmujudqmg04u2ct6wh8hajn79cc04eq7pzsxzj35fkz3mxrnz46sta70aa";
+  n = name_naddr(KIND_PROJECT_EVENT, pk, "coax", NAME_RELAY, out[..]);
+  #assert cast(string) out[0..<n] == "naddr1qqzxxmmp0qq35amnwvaz7tmjv4kxz7fwdacx2mnpvajkuarn9e3k7mgzyz00jt35rdp7h3tp0f6u7lk20chrp7hyrcy2qc22x3xc28vcwv2h2qcyqqq808g9xe7n4";
+  n = name_coord("30617:9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575:openagents", "", out[..]);
+  #assert cast(string) out[0..<n] == "naddr1qq9x7ur9deskwetww3esygy7lyhrgx6ra0zkz7n4ealv5l3wxrawg8sg5ps55dzds5wesuc4w5psgqqqw7vstv6pje";
+  n = name_nevent(id, NAME_RELAY, pk, KIND_ISSUE_EVENT, out[..]);
+  #assert cast(string) out[0..<n] == "nevent1qqsqcy7xa5nfv4er2efh7kntsdqtxsc6w7w2utuk4cdmkh0k7melg9qprfmhxue69uhhyetvv9ujummsv4hxzem9de68xtnrdaksygy7lyhrgx6ra0zkz7n4ealv5l3wxrawg8sg5ps55dzds5wesuc4w5psgqqqqe2s009xdu";
+  n = name_nevent(id, "", "", -1, out[..]);
+  #assert cast(string) out[0..<n] == "nevent1qqsqcy7xa5nfv4er2efh7kntsdqtxsc6w7w2utuk4cdmkh0k7melg9qaa8upz";
+}
+
+#test "a name refuses what isn't a key, an event or a coordinate, and what doesn't fit" {
+  pk := "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575";
+  out: [NAME_ROOM] u8; small: [62] u8; room63: [63] u8;
+  #assert name_npub("", out[..]) == 0 && name_npub(pk[0..<63], out[..]) == 0;
+  #assert name_npub("9EF92E341B43EBC5617A75CF7ECA7E2E30FAE41E08A0614A344D851D98731575", out[..]) == 0;
+  #assert name_npub("9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d9873157g", out[..]) == 0;
+  #assert name_npub(pk, small[..]) == 0 && name_npub(pk, room63[..]) == 63;
+  #assert name_nevent("x", NAME_RELAY, pk, 1, out[..]) == 0;
+  #assert name_nevent(pk, NAME_RELAY, "x", 1, out[..]) == 0;
+  #assert name_nevent(pk, "", "", 4294967296, out[..]) == 0;
+  #assert name_nevent(pk, "", "", 4294967295, out[..]) > 0 && name_nevent(pk, "", "", 0, out[..]) > 0;
+  long: [256] u8; for i: 0..<256 { long[i] = 'a'; }
+  #assert name_naddr(1, pk, cast(string) long[0..<256], "", out[..]) == 0;
+  big: [600] u8;
+  #assert name_naddr(1, pk, cast(string) long[0..<255], "", big[..]) > 0;
+  #assert name_naddr(1, pk, "", "", out[..]) > 0;   // an empty d is an address
+  #assert name_naddr(-1, pk, "d", "", out[..]) == 0 && name_naddr(1, "", "d", "", out[..]) == 0;
+  #assert name_coord("", "", out[..]) == 0 && name_coord(":", "", out[..]) == 0;
+  #assert name_coord("30617;9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575:d", "", out[..]) == 0;
+  #assert name_coord("30617:9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575;d", "", out[..]) == 0;
+  #assert name_coord("30617:9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575", "", out[..]) == 0;
+  #assert name_coord("12345678901:9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575:d", "", out[..]) == 0;
+  n := name_coord("30617:9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575:", "", out[..]);
+  m := name_naddr(30617, pk, "", "", big[..]);
+  #assert n > 0 && n == m && cast(string) out[0..<n] == cast(string) big[0..<m];
+}

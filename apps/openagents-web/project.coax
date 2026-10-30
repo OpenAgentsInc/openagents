@@ -44,7 +44,9 @@ ProjectState :: struct {
   body: [DETAIL_BODY] u8; body_n: int;
   checks: [DETAIL_LIST] u8; checks_n: int;
   notes: [DETAIL_BODY] u8; notes_n: int;
-  event: [64] u8; event_n: int;
+  event: [64] u8; event_n: int;          // its id, hex
+  nevent: [NAME_ROOM] u8; nevent_n: int;  // and its NIP-19 name with the relay hint (the face writes it)
+  nevent_for: int;                        // the open task nevent names (open), 0 for none yet
   claimed: [24] u8; claimed_n: int;
   // the location's hash: the task a link asks for (in), the task open now (outbox out)
   want: [16] u8; want_n: int; wanted: bool;
@@ -75,6 +77,9 @@ baked_index :: (slug: string) -> int {
   return -1;
 }
 DEFAULT_RELAY :: "wss://relay.openagents.com";
+// Room for a NIP-19 name the face writes (project-names-face.h, encoded by
+// project-names.coax, its own library): an naddr or nevent with a relay hint.
+NAME_ROOM :: 320;
 
 VERTEX_FLOATS :: 12;   // x, y, along, across, length, core, light, glow, red, green, blue, mode
 MAX_VERTICES :: 240000;  // the page is ~120K at 1440 px; an open detail adds up to ~70K
@@ -399,7 +404,12 @@ Work :: struct {
   view: QueueView;            // what the queue drew last, for the pointer
   log: string;                // WORK_LOG: time (Chicago) | what, newest first
   steps: string;              // WORK_STEPS: how to take a task
-  naddr: string;
+  naddr: string;              // the project's address as baked (snapshot.ts), or ""
+  key: string; relay: string; // the project's key and relay (set_names)
+  // the address and the key as NIP-19 names them, encoded in Coax and
+  // written by the face (project-names-face.h) once key is set; named says so
+  naddr_buf: [NAME_ROOM] u8; naddr_n: int;
+  npub_buf: [64] u8; npub_n: int; named: bool;
   // the header: from the project's 30621 event and its repository's 30617
   slug: string; name: string; description: string; license: string; path: string; repo: string;
   owner: string;              // who owns it (project.json owner), the header says
@@ -1621,7 +1631,12 @@ real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool, with_activi
   }
   if !compact && y + 24 * d < b.y1 - 10 * d {
     v = put(out, v, "PROJECT", x, y, cap, dim);
-    v = put_fit(out, v, w[0].naddr, x + lead, y, 5.5 * d, dim, right - x - lead);
+    v = put_fit(out, v, project_naddr(w), x + lead, y, 5.5 * d, dim, right - x - lead);
+    y += step;
+  }
+  if !compact && w[0].npub_n > 0 && y + 24 * d < b.y1 - 10 * d {
+    v = put(out, v, "KEY", x, y, cap, dim);
+    v = put_fit(out, v, cast(string) w[0].npub_buf[0..<w[0].npub_n], x + lead, y, 5.5 * d, dim, right - x - lead);
     y += step;
   }
   if with_activity && y + 50 * d < b.y1 - 10 * d { v = activity_rows(out, v, x, y + 10 * d, right, b.y1 - 12 * d, p, w); }
@@ -1725,7 +1740,7 @@ detail_of :: (w: [] Work, r: int) -> int { if r < 0 || r >= w[0].n { return -1; 
 open_task :: (s: [] ProjectState, w: [] Work, r: int) {
   if r < 0 || r >= w[0].n { return; }
   s[0].open = r + 1; s[0].pick = r + 1; s[0].scroll = 0; s[0].scroll_max = 0; s[0].link_n = 0;
-  s[0].body_n = 0; s[0].checks_n = 0; s[0].notes_n = 0; s[0].event_n = 0; s[0].claimed_n = 0;
+  s[0].body_n = 0; s[0].checks_n = 0; s[0].notes_n = 0; s[0].event_n = 0; s[0].nevent_n = 0; s[0].nevent_for = 0; s[0].claimed_n = 0;
   alias := item(w, w[0].text, r, 0);
   dt := w[0].details;
   k := detail_of(w, r);
@@ -2098,6 +2113,10 @@ detail :: (out: [] f32, at: int, b: Box, p: Pen, s: [] ProjectState, w: [] Work)
   // the event the task is
   v = section(out, v, "NOSTR EVENT", x, y, right, top, bottom, p);
   y += 18 * d;
+  if s[0].nevent_n > 0 {
+    f := flow(out, v, cast(string) s[0].nevent[0..<s[0].nevent_n], x, y, 5.5 * d, dim, tw, 11 * d, top, bottom);
+    v = f.v; y = f.y + 4 * d;
+  }
   f := flow(out, v, cast(string) s[0].event[0..<s[0].event_n], x, y, 5.5 * d, dim, tw, 11 * d, top, bottom);
   v = f.v; y = f.y;
   // how far it scrolls, and where it is
@@ -2401,13 +2420,25 @@ choose :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Live) {
     if s[0].page == 0 && !seed_known(lv, w) { live_incomplete(lv, 5); }
     w[0].slug = b.slug; w[0].name = b.name; w[0].description = b.description; w[0].license = b.license;
     w[0].path = b.path; w[0].repo = b.repo; w[0].owner = b.owner;
+    set_names(w, b.pubkey, b.relay);
     grow(t, b.history);
   } else {
     w[0].links = ""; read_work(w, "");
     w[0].slug = live_slug(lv); w[0].name = live_slug(lv);
+    set_names(w, live_key(lv), DEFAULT_RELAY);
     grow(t, "");
   }
   if s[0].page == 0 { set_add(w, w[0].slug, live_key(lv)); }
+}
+// The project's key and relay, for the face to name it by (its address,
+// kind 30621 with d its slug, and its key) and each task's event.
+set_names :: (w: [] Work, key: string, relay: string) {
+  w[0].key = key; w[0].relay = relay; w[0].named = false; w[0].naddr_n = 0; w[0].npub_n = 0;
+}
+// The address the PROJECT row shows: the face's Coax naddr, else the baked one.
+project_naddr :: (w: [] Work) -> string {
+  if w[0].naddr_n > 0 { return cast(string) w[0].naddr_buf[0..<w[0].naddr_n]; }
+  return w[0].naddr;
 }
 live_project_of :: (lv: [] Live, b: Baked) -> bool {
   buf: [160] u8;

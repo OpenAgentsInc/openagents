@@ -7,6 +7,7 @@
 #include "project.h"
 #include <stddef.h>
 #include "analytics-face.h"
+#include "project-names-face.h"   // npub, nevent, naddr from project-names.coax
 
 #define EXPORT(name) __attribute__((export_name(name)))
 #define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
@@ -68,6 +69,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms,
   coax_v_t_Live l = live_of(st);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_project_max_vertices() * coaxial_project_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_project_uniform_floats()};
+  project_names(&st->page, &st->work);
   int64_t n = coaxial_project_frame(s, t, w, l, out, u, width, height, dpr, dt, still != 0);
   drain(st);
   if (!track_state.page_n) track_init(tr(), track_cstr("project"));

@@ -130,7 +130,7 @@ static coax_string probe_table(uint32_t p,int k){State*s=state_at(p);switch(k){c
 EXPORT("probe_text") uint32_t probe_text(uint32_t p,int k){return(uint32_t)(uintptr_t)probe_table(p,k).data;}
 EXPORT("probe_len") uint32_t probe_len(uint32_t p,int k){return probe_table(p,k).count;}
 `)
-  run(['bash',join(root,'coax/web/wasm.sh'),join(app,'project.coax'),face,wasm])
+  run(['bash',join(root,'coax/web/wasm.sh'),join(app,'project.coax'),face,wasm,join(app,'project-names.coax')])
   const sockets=new Set<any>(), queries:any[]=[]
   let fixtureRows=[...events]
   const server=Bun.serve({port:0,fetch(request,server){
