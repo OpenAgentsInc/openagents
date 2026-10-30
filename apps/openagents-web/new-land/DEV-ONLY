@@ -1,0 +1,4 @@
+A first mock-up of the new landing page (newland.coax), for development only.
+coax/web/deploy.sh leaves out every page directory holding a DEV-ONLY file,
+and build.sh builds build/newland.wasm only when COAXIAL_MODE is not release,
+so a release never ships /new-land.

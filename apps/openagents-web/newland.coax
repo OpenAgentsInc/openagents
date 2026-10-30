@@ -1,0 +1,1042 @@
+// The new openagents.com landing, a first mock-up at /new-land (dev only:
+// deploy.sh leaves new-land/ out of every release, and build.sh builds it in
+// development only). The home page's look, the black fading up into a slow
+// nebula and glowing strokes, over the project pages' Grid seen from a high
+// 45° view: every project is a place on the Grid, its commits a tree that
+// spirals up, its tasks ticks around its edge, with how much is done. Related
+// projects sit together, joined by roads. People walk between the places,
+// named, with their npub; agents stand at the project whose task they're on.
+// A feed on the side runs the work and the commits; LOG IN and MAKE YOUR OWN.
+//
+// Real (captured by coax/web/project/landing.ts into newland-data.coax): the
+// projects, their tasks and milestones from their relays, the agents on
+// tasks, the commits from git. Simulated: the people, their names and keys,
+// and where they walk (a function of the clock, so every visit is the same).
+//
+// Checks: coax/bin/coax test apps/openagents-web/newland.coax --steps 300000000
+
+#load "font.coax";
+#load "newland-data.coax";
+#load "../../verse/figure.coax";
+
+VERTEX_FLOATS :: 12;      // x, y, along, across, length, core, light, glow, red, green, blue, mode
+MAX_VERTICES :: 200000;
+TEST_VERTICES :: 90000;   // what the checks give a frame: a page draws well under it
+PANELS :: 4;
+UNIFORM_FLOATS :: 8 + PANELS * 8;   // width, height, time, fade, still, panels, vignette, 0, then the panels
+
+MODE_STROKE :: 0.0;
+MODE_LINK :: 1.0;
+MODE_PULSE :: 2.0;
+
+GAP :: 0.34; SPACE :: 0.95;           // small text
+TITLE_GAP :: 0.72; TITLE_SPACE :: 1.5; // the wordmark, spaced as the splash's words
+
+MAX_PLOTS :: 8;
+MAX_COMMITS :: 48;
+PEOPLE :: 14;
+MAX_AGENTS :: 12;
+PLOT :: 2.4;      // a place's half size, grid units
+GRID :: 34;       // grid lines each way from the view's centre
+FIG :: 0.5;       // a figure's scale: metres to grid units
+WALK :: 1.05;     // grid units a second
+RUN :: 2.6;
+
+POINTER_DOWN :: 0; POINTER_MOVE :: 1; POINTER_UP :: 2; POINTER_CANCEL :: 3;
+ACT_NAVIGATE :: 1;
+
+Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+inside :: (b: Box, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+
+// A place as the last frame drew it, and what it holds.
+Plot :: struct {
+  x: f32; z: f32; cluster: int;
+  done: int; tasks: int; mdone: int; mtotal: int; working: int;
+  commits: int; commit_row: [MAX_COMMITS] int;   // LAND_COMMITS byte offsets, oldest first
+  hit: Box;                                       // where a tap opens its page
+  tag: Box;                                       // where its name is drawn
+}
+
+LandState :: struct {
+  time: f32; frames: int;
+  width: f32; height: f32; dpr: f32;
+  px: f32; py: f32; pointed: bool; touch: bool;
+  down: bool; down_x: f32; down_y: f32; moved: bool;
+  ready: bool;
+  plots: int; plot: [MAX_PLOTS] Plot;
+  agents: int; agent_row: [MAX_AGENTS] int; agent_plot: [MAX_AGENTS] int;
+  login: Box; make: Box;
+  action: int; outbox: [96] u8; out_n: int;
+}
+
+ease :: (x: f32) -> f32 { return smooth01(x); }
+hash01 :: (a: f32) -> f32 { return fract(sin(a * 12.9898 + 4.1414) * 43758.5453); }
+lo_int :: (a: int, b: int) -> int { if a < b { return a; } return b; }
+
+// ---------------------------------------------------------------- tables
+
+row_start :: (text: string, row: int) -> int {
+  r := 0; i := 0;
+  while r < row && i < text.count { if text[i] == '\n' { r += 1; } i += 1; }
+  return i;
+}
+// Field col of the row that starts at byte i.
+cell :: (text: string, i0: int, col: int) -> string {
+  i := i0; c := 0;
+  while c < col && i < text.count && text[i] != '\n' { if text[i] == '|' { c += 1; } i += 1; }
+  j := i;
+  while j < text.count && text[j] != '|' && text[j] != '\n' { j += 1; }
+  return text[i..<j];
+}
+field :: (text: string, row: int, col: int) -> string { return cell(text, row_start(text, row), col); }
+next_row :: (text: string, i: int) -> int {
+  j := i;
+  while j < text.count && text[j] != '\n' { j += 1; }
+  return j + 1;
+}
+rows :: (text: string) -> int {
+  n := 0;
+  for i: 0..<text.count { if text[i] == '\n' { n += 1; } }
+  return n;
+}
+parse_int :: (s: string) -> int {
+  n := 0; neg := false;
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '-' { neg = true; } else if c >= '0' && c <= '9' { n = n * 10 + cast(int) (c - '0'); }
+  }
+  return ifx neg then -n else n;
+}
+parse_f :: (s: string) -> f32 {
+  whole := 0.0f32; part := 0.0f32; scale := 1.0f32; neg := false; dot := false;
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '-' { neg = true; }
+    else if c == '.' { dot = true; }
+    else if c >= '0' && c <= '9' {
+      if dot { scale = scale * 0.1; part += cast(f32) (c - '0') * scale; } else { whole = whole * 10 + cast(f32) (c - '0'); }
+    }
+  }
+  v := whole + part;
+  return ifx neg then -v else v;
+}
+same :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+
+// The tables into the state, once.
+read_tables :: (s: [] LandState) {
+  n := lo_int(rows(LAND_PROJECTS), MAX_PLOTS);
+  s[0].plots = n;
+  at := 0;
+  for k: 0..<n {
+    p: Plot;
+    p.x = parse_f(cell(LAND_PROJECTS, at, 4)); p.z = parse_f(cell(LAND_PROJECTS, at, 5));
+    p.cluster = parse_int(cell(LAND_PROJECTS, at, 3));
+    p.done = parse_int(cell(LAND_PROJECTS, at, 6)); p.tasks = parse_int(cell(LAND_PROJECTS, at, 7));
+    p.mdone = parse_int(cell(LAND_PROJECTS, at, 9)); p.mtotal = parse_int(cell(LAND_PROJECTS, at, 10));
+    p.working = parse_int(cell(LAND_PROJECTS, at, 11));
+    p.commits = 0;
+    s[0].plot[k] = p;
+    at = next_row(LAND_PROJECTS, at);
+  }
+  at = 0;
+  while at < LAND_COMMITS.count {
+    k := parse_int(cell(LAND_COMMITS, at, 0));
+    if k >= 0 && k < n && s[0].plot[k].commits < MAX_COMMITS {
+      s[0].plot[k].commit_row[s[0].plot[k].commits] = at;
+      s[0].plot[k].commits += 1;
+    }
+    at = next_row(LAND_COMMITS, at);
+  }
+  s[0].agents = 0; at = 0;
+  while at < LAND_WORKING.count && s[0].agents < MAX_AGENTS {
+    s[0].agent_row[s[0].agents] = at;
+    s[0].agent_plot[s[0].agents] = parse_int(cell(LAND_WORKING, at, 1));
+    s[0].agents += 1;
+    at = next_row(LAND_WORKING, at);
+  }
+  s[0].ready = true;
+}
+
+// ---------------------------------------------------------------- strokes
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0.003 { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v];
+    out[o + 3] = c[v];
+    out[o + 4] = length;
+    out[o + 5] = core;
+    out[o + 6] = light;
+    out[o + 7] = glow;
+    out[o + 8] = red;
+    out[o + 9] = green;
+    out[o + 10] = blue;
+    out[o + 11] = mode;
+  }
+  return true;
+}
+
+Pen :: struct { d: f32; fade: f32; time: f32; still: bool; phone: bool; }
+INK_WHITE :: 0; INK_DIM :: 1; INK_ORANGE :: 2; INK_PALE :: 3; INK_FAINT :: 4; INK_COOL :: 5;
+ink :: (p: Pen, kind: int) -> Ink {
+  k := Ink.{core = 0.5 * p.d, light = 0.9, glow = 3.2 * p.d, red = 0.93, green = 0.93, blue = 0.95, mode = MODE_STROKE, scale = p.d};
+  if kind == INK_DIM { k.light = 0.5; k.red = 0.82; k.green = 0.84; k.blue = 0.9; }
+  if kind == INK_FAINT { k.light = 0.3; k.red = 0.8; k.green = 0.82; k.blue = 0.88; }
+  if kind == INK_ORANGE { k.light = 1.0; k.red = 1.0; k.green = 0.55; k.blue = 0.12; k.glow = 4.5 * p.d; }
+  if kind == INK_PALE { k.light = 0.95; k.red = 1.0; k.green = 0.8; k.blue = 0.58; }
+  if kind == INK_COOL { k.light = 0.85; k.red = 0.72; k.green = 0.86; k.blue = 1.0; }
+  k.sans = kind != INK_ORANGE;
+  return k;
+}
+dimmed :: (k: Ink, f: f32) -> Ink { r := k; r.light = k.light * f; return r; }
+chrome :: (k: Ink) -> Ink { r := k; r.sans = false; return r; }
+
+text_width :: (text: string, cap: f32, k: Ink) -> f32 { return ink_width(text, cap, GAP, SPACE, k); }
+put :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) -> int {
+  return draw_text(out, at, text, x, y, cap, GAP, SPACE, k, false, false);
+}
+put_centred :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) -> int {
+  return put(out, at, text, x - text_width(text, cap, k) * 0.5, y, cap, k);
+}
+// Text cut to width, with "..." when it was cut.
+put_fit :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, width: f32) -> int {
+  if text_width(text, cap, k) <= width { return put(out, at, text, x, y, cap, k); }
+  n := 0; i := 0;
+  dots := text_width("...", cap, k);
+  while i < text.count {
+    d := decode(text, i);
+    if text_width(text[0..<i + d.len], cap, k) > width - dots { break; }
+    i += d.len; n = i;
+  }
+  v := put(out, at, text[0..<n], x, y, cap, k);
+  return put(out, v, "...", x + text_width(text[0..<n], cap, k), y, cap, k);
+}
+number :: (n: int, buf: [] u8) -> int {
+  v := n; digits: [24] u8; c := 0;
+  if v <= 0 { digits[0] = '0'; c = 1; }
+  while v > 0 && c < 23 { digits[c] = cast(u8) ('0' + v % 10); v = v / 10; c += 1; }
+  w := 0;
+  for i: 0..<c { if w < buf.count { buf[w] = digits[c - 1 - i]; w += 1; } }
+  return w;
+}
+
+rule :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: Ink, light: f32) -> int {
+  if lit(out, at, ax, ay, bx, by, k.core, light, k.glow, k.red, k.green, k.blue, k.mode) { return at + 6; }
+  return at;
+}
+diamond :: (out: [] f32, at: int, x: f32, y: f32, r: f32, k: Ink, light: f32) -> int {
+  v := rule(out, at, x, y - r, x + r, y, k, light);
+  v = rule(out, v, x + r, y, x, y + r, k, light);
+  v = rule(out, v, x, y + r, x - r, y, k, light);
+  return rule(out, v, x - r, y, x, y - r, k, light);
+}
+ring :: (out: [] f32, at: int, x: f32, y: f32, r: f32, k: Ink, light: f32) -> int {
+  v := at; n := 8;
+  for i: 0..<n {
+    a0 := cast(f32) i * 2 * PI / cast(f32) n; a1 := cast(f32) (i + 1) * 2 * PI / cast(f32) n;
+    v = rule(out, v, x + r * cos(a0), y + r * sin(a0), x + r * cos(a1), y + r * sin(a1), k, light);
+  }
+  return v;
+}
+// A HUD frame: faint outline with 45° cuts on the plain corners, bright L
+// brackets on the others (the project pages' panels).
+frame :: (out: [] f32, at: int, b: Box, cut: f32, k: Ink, light: f32, p: Pen) -> int {
+  v := at;
+  xs := [7] f32.[b.x0, b.x1 - cut, b.x1, b.x1, b.x0 + cut, b.x0, b.x0];
+  ys := [7] f32.[b.y0, b.y0, b.y0 + cut, b.y1, b.y1, b.y1 - cut, b.y0];
+  for i: 0..<6 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, 0.3 * light); }
+  arm := lo(22 * p.d, (b.x1 - b.x0) * 0.25);
+  v = rule(out, v, b.x0, b.y0 + arm * 0.6, b.x0, b.y0, k, light);
+  v = rule(out, v, b.x0, b.y0, b.x0 + arm, b.y0, k, light);
+  v = rule(out, v, b.x1, b.y1 - arm * 0.6, b.x1, b.y1, k, light);
+  return rule(out, v, b.x1, b.y1, b.x1 - arm, b.y1, k, light);
+}
+glass :: (uniforms: [] f32, k: int, b: Box, cut: f32, alpha: f32, tint: f32) {
+  if k >= PANELS { return; }
+  o := 8 + k * 8;
+  uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
+  uniforms[o + 4] = cut; uniforms[o + 5] = alpha; uniforms[o + 6] = tint; uniforms[o + 7] = 0;
+}
+
+// ---------------------------------------------------------------- the camera
+
+dot3 :: (a: Fv, b: Fv) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
+cross3 :: (a: Fv, b: Fv) -> Fv { return fv(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
+unit3 :: (a: Fv) -> Fv { l := sqrt(dot3(a, a)); if l <= 0 { return a; } return fv_times(a, 1 / l); }
+
+Cam :: struct { eye: Fv; right: Fv; up: Fv; ahead: Fv; cx: f32; cy: f32; focal: f32; clip: Box; vx: f32; vy: f32; vr: f32; }
+Spot :: struct { x: f32; y: f32; z: f32; ok: bool; }
+
+// A high view from the south-east at about 45°, far away and long-lensed so
+// the Grid reads nearly isometric; reach is the grid units that fit across.
+cam :: (look: Fv, yaw: f32, pitch: f32, reach: f32, cx: f32, cy: f32, across: f32, clip: Box, w: f32, h: f32) -> Cam {
+  dist: f32 = 90;
+  eye := fv_add(look, fv(dist * cos(pitch) * sin(yaw), dist * sin(pitch), dist * cos(pitch) * cos(yaw)));
+  ahead := unit3(fv_sub(look, eye));
+  right := unit3(cross3(ahead, fv(0, 1, 0)));
+  up := cross3(right, ahead);
+  return Cam.{eye = eye, right = right, up = up, ahead = ahead, cx = cx, cy = cy, focal = across / reach * dist, clip = clip,
+              vx = w * 0.5, vy = h * 0.5, vr = sqrt(w * w + h * h) * 0.5};
+}
+spot :: (c: Cam, p: Fv) -> Spot {
+  v := fv_sub(p, c.eye);
+  z := dot3(v, c.ahead);
+  if z < 1 { return Spot.{x = 0, y = 0, z = z, ok = false}; }
+  return Spot.{x = c.cx + dot3(v, c.right) / z * c.focal, y = c.cy - dot3(v, c.up) / z * c.focal, z = z, ok = true};
+}
+// The vignette: light falls off toward the corners.
+vignette :: (c: Cam, x: f32, y: f32) -> f32 {
+  dx := (x - c.vx) / c.vr; dy := (y - c.vy) / c.vr;
+  r := sqrt(dx * dx + dy * dy * 1.3);
+  return clamp(1.18 - 1.25 * r * r, 0.06, 1);
+}
+seg :: (out: [] f32, at: int, c: Cam, a: Fv, b: Fv, k: Ink, light: f32) -> int {
+  if light <= 0.003 { return at; }
+  p := spot(c, a); q := spot(c, b);
+  if !p.ok || !q.ok { return at; }
+  t0 := 0.0f32; t1 := 1.0f32;
+  dx := q.x - p.x; dy := q.y - p.y;
+  ps := [4] f32.[-dx, dx, -dy, dy];
+  qs := [4] f32.[p.x - c.clip.x0, c.clip.x1 - p.x, p.y - c.clip.y0, c.clip.y1 - p.y];
+  for i: 0..<4 {
+    if ps[i] == 0 { if qs[i] < 0 { return at; } continue; }
+    r := qs[i] / ps[i];
+    if ps[i] < 0 { if r > t1 { return at; } if r > t0 { t0 = r; } }
+    else { if r < t0 { return at; } if r < t1 { t1 = r; } }
+  }
+  ax := p.x + dx * t0; ay := p.y + dy * t0; bx := p.x + dx * t1; by := p.y + dy * t1;
+  return rule(out, at, ax, ay, bx, by, k, light * vignette(c, (ax + bx) * 0.5, (ay + by) * 0.5));
+}
+
+// ---------------------------------------------------------------- the places
+
+// A point on a place's edge, s from 0 to 1 round it (from the back corner).
+edge :: (pl: Plot, s: f32, y: f32) -> Fv {
+  e: f32 = PLOT; q := fract(s) * 4; side := cast(int) floor(q); f := q - floor(q);
+  if side == 0 { return fv(pl.x - e + 2 * e * f, y, pl.z - e); }
+  if side == 1 { return fv(pl.x + e, y, pl.z - e + 2 * e * f); }
+  if side == 2 { return fv(pl.x + e - 2 * e * f, y, pl.z + e); }
+  return fv(pl.x - e, y, pl.z + e - 2 * e * f);
+}
+on_plot :: (s: [] LandState, x: f32, z: f32) -> bool {
+  for k: 0..<s[0].plots { if abs(x - s[0].plot[k].x) <= PLOT && abs(z - s[0].plot[k].z) <= PLOT { return true; } }
+  return false;
+}
+tree_height :: (pl: Plot) -> f32 { return 1.2 + 3.2 * clamp(cast(f32) pl.commits / 40, 0, 1); }
+// Commit i of n on the spiral: up the trunk, round and in as it climbs.
+node :: (pl: Plot, i: int, k: int) -> Fv {
+  n := pl.commits;
+  f: f32 = ifx n > 1 then cast(f32) i / cast(f32) (n - 1) else 0.0f32;
+  h := 0.3 + tree_height(pl) * f;
+  r := (0.35 + 1.45 * (1 - f)) * (0.55 + 0.45 * clamp(cast(f32) n / 24, 0, 1));
+  a := cast(f32) i * 0.62 + cast(f32) k * 1.3;
+  return fv(pl.x + r * cos(a), h, pl.z + r * sin(a));
+}
+grown :: (p: Pen, k: int) -> f32 { return ifx p.still then 1.0f32 else ease((p.time - 1.3 - 0.22 * cast(f32) k) / 2.8); }
+
+place :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -> int {
+  pl := s[0].plot[k];
+  v := at;
+  g := grown(p, k);
+  if g <= 0 { return v; }
+  orange := ink(p, INK_ORANGE); white := ink(p, INK_WHITE); dim := ink(p, INK_DIM);
+  // its edge: the done share of it bright, the rest faint
+  share: f32 = ifx pl.tasks > 0 then cast(f32) pl.done / cast(f32) pl.tasks else 0.0f32;
+  pieces := 48;
+  for i: 0..<pieces {
+    s0 := cast(f32) i / cast(f32) pieces; s1 := cast(f32) (i + 1) / cast(f32) pieces;
+    if s0 > g { break; }
+    bright := s1 <= share * g + 0.0001;
+    v = seg(out, v, c, edge(pl, s0, 0.02), edge(pl, s1, 0.02), ifx bright then orange else dim, (ifx bright then 0.95f32 else 0.3f32) * g);
+  }
+  // a tick per task round the edge: done ones tall and orange
+  for i: 0..<lo_int(pl.tasks, 220) {
+    sf := (cast(f32) i + 0.5) / cast(f32) pl.tasks;
+    if sf > g { break; }
+    done := i < pl.done;
+    h: f32 = ifx done then 0.32f32 else 0.12f32;
+    base := edge(pl, sf, 0.02);
+    v = seg(out, v, c, base, fv(base.x, h, base.z), ifx done then orange else dim, (ifx done then 0.75f32 else 0.4f32) * g);
+  }
+  // corner posts
+  for q: 0..<4 {
+    cp := edge(pl, cast(f32) q * 0.25, 0);
+    v = seg(out, v, c, cp, fv(cp.x, 0.9, cp.z), orange, 0.55 * g);
+  }
+  // the tree: the trunk, the spiral through the commits, a twig to each
+  n := pl.commits;
+  shown := ifx p.still then n else cast(int) (cast(f32) n * g);
+  if shown <= 0 { return v; }
+  bark := white; bark.core = 1.2 * p.d; bark.glow = 5 * p.d;
+  top := node(pl, shown - 1, k);
+  v = seg(out, v, c, fv(pl.x, 0, pl.z), fv(pl.x, top.y + 0.25, pl.z), bark, 0.5);
+  twig := white; twig.core = 0.6 * p.d;
+  for i: 0..<shown {
+    a := node(pl, i, k);
+    recent := i >= n - 3;
+    if i > 0 { v = seg(out, v, c, node(pl, i - 1, k), a, ifx recent then orange else twig, ifx recent then 0.85f32 else 0.42f32); }
+    if i % 3 == 0 || recent { v = seg(out, v, c, fv(pl.x, a.y, pl.z), a, twig, 0.18); }
+  }
+  for i: 0..<shown {
+    q := spot(c, node(pl, i, k));
+    if !q.ok || !inside(c.clip, q.x, q.y) { continue; }
+    recent := i >= n - 3;
+    vig := vignette(c, q.x, q.y);
+    if recent {
+      pulse := 0.6 + 0.4 * sin(p.time * 3.0 + cast(f32) i);
+      v = diamond(out, v, q.x, q.y, 3.0 * p.d, orange, pulse * vig);
+    } else {
+      v = diamond(out, v, q.x, q.y, 1.9 * p.d, white, 0.55 * vig);
+    }
+    if i == n - 1 {
+      r := 5 * p.d + 6 * p.d * fract(p.time * 0.6);
+      v = diamond(out, v, q.x, q.y, r, orange, 0.55 * (1 - fract(p.time * 0.6)) * vig);
+    }
+  }
+  return v;
+}
+
+// Roads between related places: a dashed line from each to its cluster's first.
+roads :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen) -> int {
+  v := at;
+  road := ink(p, INK_ORANGE); road.core = 0.45 * p.d; road.glow = 2.4 * p.d;
+  for k: 1..<s[0].plots {
+    hub := -1;
+    for j: 0..<k { if hub < 0 && s[0].plot[j].cluster == s[0].plot[k].cluster { hub = j; } }
+    if hub < 0 { continue; }
+    a := s[0].plot[hub]; b := s[0].plot[k];
+    dx := b.x - a.x; dz := b.z - a.z; d := sqrt(dx * dx + dz * dz);
+    if d < 2 * PLOT + 0.5 { continue; }
+    g := grown(p, k);
+    dashes := cast(int) ((d - 2 * PLOT - 0.6) / 0.7);
+    for i: 0..<dashes {
+      f0 := (PLOT + 0.3 + cast(f32) i * 0.7) / d; f1 := f0 + 0.35 / d;
+      if cast(f32) i / cast(f32) dashes > g { break; }
+      flow := 0.55 + 0.45 * sin(cast(f32) i * 0.9 - p.time * 2.4);
+      v = seg(out, v, c, fv(a.x + dx * f0, 0.02, a.z + dz * f0), fv(a.x + dx * f1, 0.02, a.z + dz * f1), road, 0.5 * flow * g);
+    }
+  }
+  return v;
+}
+
+// A place's name, how much is done and the milestone in hand, over its tree.
+place_label :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -> int {
+  pl := s[0].plot[k];
+  was := pl.hit;
+  s[0].plot[k].hit = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  s[0].plot[k].tag = s[0].plot[k].hit;
+  g := grown(p, k);
+  shown := ease((g - 0.55) / 0.45);
+  if shown <= 0 { return at; }
+  q := spot(c, fv(pl.x, 0.5 + tree_height(pl) + 1.0, pl.z));
+  if !q.ok || !inside(c.clip, q.x, q.y) { return at; }   // a place off screen keeps its name off too
+  base := spot(c, fv(pl.x, 0, pl.z));
+  v := at; d := p.d;
+  name := field(LAND_PROJECTS, k, 1);
+  white := chrome(dimmed(ink(p, INK_WHITE), shown)); orange := dimmed(ink(p, INK_ORANGE), shown);
+  dim := dimmed(ink(p, INK_DIM), shown);
+  hover := !s[0].touch && s[0].pointed && inside(was, s[0].px, s[0].py);
+  cap := (ifx p.phone then 7.0f32 else 8.5f32) * d;
+  big := (ifx p.phone then 10.0f32 else 13.0f32) * d;
+  buf: [16] u8;
+  pct := ifx pl.tasks > 0 then (pl.done * 100 + pl.tasks / 2) / pl.tasks else 0;
+  m := number(pct, buf[..]); buf[m] = '%'; m += 1;
+  pcts := cast(string) buf[0..<m];
+  nw := text_width(name, cap, white); pw := text_width(pcts, big, orange);
+  wide := nw + 10 * d + pw;
+  // kept on screen, its lead still pointing at the tree
+  x0 := clamp(q.x - wide * 0.5, c.clip.x0 + 10 * d, c.clip.x1 - 10 * d - wide); y := q.y;
+  mid := x0 + wide * 0.5;
+  v = put(out, v, name, x0, y, cap, ifx hover then chrome(ink(p, INK_PALE)) else white);
+  v = put(out, v, pcts, x0 + nw + 10 * d, y + (big - cap) * 0.15, big, orange);
+  // the bar
+  bw := hi(wide, 70 * d); bx := mid - bw * 0.5; by := y + 7 * d;
+  v = rule(out, v, bx, by, bx + bw, by, dim, 0.35 * shown);
+  share: f32 = ifx pl.tasks > 0 then cast(f32) pl.done / cast(f32) pl.tasks else 0.0f32;
+  if share > 0 { v = rule(out, v, bx, by, bx + bw * share, by, orange, 0.95 * shown); }
+  y1 := by;
+  if !p.phone {
+    ms := field(LAND_PROJECTS, k, 8);
+    if ms.count > 0 {
+      mb: [16] u8; mn := number(pl.mdone, mb[..]); mb[mn] = '/'; mn += 1;
+      tb: [8] u8; tn := number(pl.mtotal, tb[..]);
+      for i: 0..<tn { mb[mn] = tb[i]; mn += 1; }
+      small := 6.2 * d;
+      mw := lo(text_width(ms, small, dim), 210 * d);
+      fw := text_width(cast(string) mb[0..<mn], small, dim);
+      mx := clamp(mid - (mw + 6 * d + fw) * 0.5, c.clip.x0 + 10 * d, c.clip.x1 - 10 * d - mw - 6 * d - fw);
+      v = put_fit(out, v, ms, mx, by + 13 * d, small, dim, 210 * d);
+      v = put(out, v, cast(string) mb[0..<mn], mx + mw + 6 * d, by + 13 * d, small, dimmed(ink(p, INK_PALE), shown));
+      y1 = by + 15 * d;
+    }
+  }
+  // a thin lead down to the tree's top
+  lead := dim; lead.mode = MODE_LINK;
+  top := spot(c, fv(pl.x, 0.4 + tree_height(pl), pl.z));
+  if top.ok { v = rule(out, v, mid, y1 + 6 * d, top.x, top.y - 4 * d, lead, 0.3 * shown); }
+  s[0].plot[k].tag = Box.{x0 = mid - hi(wide, bw) * 0.5 - 12 * d, y0 = y - big - 8 * d, x1 = mid + hi(wide, bw) * 0.5 + 12 * d, y1 = y1 + 8 * d};
+  s[0].plot[k].hit = Box.{x0 = mid - hi(wide, bw) * 0.5 - 8 * d, y0 = y - big - 4 * d, x1 = mid + hi(wide, bw) * 0.5 + 8 * d,
+                y1 = ifx base.ok then hi(base.y + 30 * d, y1 + 10 * d) else y1 + 10 * d};
+  return v;
+}
+
+// ---------------------------------------------------------------- the people
+
+Walker :: struct { x: f32; z: f32; yaw: f32; gait: Gait; phase: f32; talking: bool; }
+
+// Where person i stands between walk s and s + 1: by a place, chosen from
+// the clock. Pairs (0 and 1, 2 and 3, 4 and 5) go round together.
+stop :: (s: [] LandState, i: int, step: int) -> Fv {
+  lead := ifx i < 6 then i - i % 2 else i;
+  h := hash01(cast(f32) lead * 7.31 + cast(f32) step * 1.17);
+  cluster := ifx hash01(cast(f32) lead * 3.7 + cast(f32) step * 0.53) < 0.18 then 1 - lead % 2 else lead % 2;
+  // the places in that cluster
+  n := 0; pick := 0;
+  for k: 0..<s[0].plots { if s[0].plot[k].cluster == cluster { n += 1; } }
+  want := cast(int) floor(h * cast(f32) hi(1, cast(f32) n));
+  for k: 0..<s[0].plots { if s[0].plot[k].cluster == cluster { if want == 0 { pick = k; } want -= 1; } }
+  pl := s[0].plot[pick];
+  a := hash01(cast(f32) lead * 5.1 + cast(f32) step * 2.9) * 2 * PI;
+  r := PLOT + 0.7 + 1.3 * hash01(cast(f32) lead * 1.9 + cast(f32) step * 4.3);
+  at := fv(pl.x + r * cos(a), 0, pl.z + r * sin(a));
+  if lead != i { at = fv_add(at, fv(0.75 * cos(a + 1.7), 0, 0.75 * sin(a + 1.7))); }
+  return at;
+}
+PERIOD :: 15.0;
+walker :: (s: [] LandState, i: int, t: f32) -> Walker {
+  lead := ifx i < 6 then i - i % 2 else i;
+  local := t + 37 * hash01(cast(f32) lead * 9.7) + 4;
+  step := cast(int) floor(local / PERIOD);
+  f := local / PERIOD - floor(local / PERIOD);
+  a := stop(s, i, step); b := stop(s, i, step + 1);
+  dx := b.x - a.x; dz := b.z - a.z; d := sqrt(dx * dx + dz * dz);
+  fast := d > WALK * PERIOD * 0.7;
+  speed: f32 = ifx fast then RUN else WALK;
+  moving := clamp(d / speed / PERIOD, 0.05, 0.9);
+  w: Walker;
+  if f < moving {
+    m := f / moving;
+    w.x = a.x + dx * m; w.z = a.z + dz * m;
+    w.yaw = angle_of(dx, dz);
+    w.gait = ifx fast then Gait.run else Gait.walk;
+    stride: f32 = (ifx fast then 2.6f32 else 1.45f32) * FIG;
+    w.phase = fract(d * m / stride);
+  } else {
+    w.x = b.x; w.z = b.z; w.gait = Gait.stand; w.phase = 0;
+    // stopped: face the partner, or the place
+    w.yaw = angle_of(dx, dz) + 0.6 * sin(t * 0.2 + cast(f32) i);
+  }
+  return w;
+}
+
+// A figure from the engine's person rig, posed and placed, drawn as glowing
+// bones with a ring for a head. Returns the vertex count; top gets where its
+// head is on screen.
+figure :: (out: [] f32, at: int, c: Cam, k: Skeleton, pose: Pose, x: f32, z: f32, yaw: f32, tint: Ink, light: f32, p: Pen, top: [] Spot) -> int {
+  joints: [MAX_JOINTS] Fv;
+  if !verse_figure_joints_at(k, pose, Place.{x = 0, y = 0, z = 0, yaw = yaw}, joints[..]) { return at; }
+  v := at;
+  bone := tint; bone.core = 0.8 * p.d; bone.glow = 2.6 * p.d;
+  w := fv(x, 0, z);
+  for i: 0..<k.parts {
+    q := k.part[i];
+    if q.a == q.b || q.b == P_CROWN { continue; }
+    v = seg(out, v, c, fv_add(w, fv_times(joints[q.a], FIG)), fv_add(w, fv_times(joints[q.b], FIG)), bone, light);
+  }
+  head := fv_add(w, fv_times(fv_mix(joints[P_HEAD], joints[P_CROWN], 0.5), FIG));
+  h := spot(c, head);
+  if h.ok {
+    r := 0.12 * FIG * c.focal / h.z;
+    v = ring(out, v, h.x, h.y, hi(r, 1.6 * p.d), bone, light * vignette(c, h.x, h.y));
+  }
+  // a soft shadow on the floor
+  sh := ink(p, INK_FAINT); sh.mode = MODE_LINK;
+  v = seg(out, v, c, fv(x - 0.22, 0.01, z), fv(x + 0.22, 0.01, z), sh, 0.25 * light);
+  if top.count > 0 { top[0] = spot(c, fv_add(w, fv(0, 1.95 * FIG + 0.15, 0))); }
+  return v;
+}
+
+person_shape :: (i: int) -> Shape {
+  sh: Shape;
+  sh.size = 0.9 + 0.2 * hash01(cast(f32) i * 2.3);
+  sh.legs = 0.92 + 0.16 * hash01(cast(f32) i * 4.1);
+  sh.girth = 0.85 + 0.35 * hash01(cast(f32) i * 6.7);
+  return sh;
+}
+
+people :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int {
+  v := at;
+  seen := ease((p.time - 2.6) / 1.6);
+  if p.still { seen = 1; }
+  if seen <= 0 { return v; }
+  cool := ink(p, INK_COOL); white := ink(p, INK_WHITE); dim := ink(p, INK_DIM);
+  n := lo_int(rows(LAND_PEOPLE), PEOPLE);
+  spots: [PEOPLE] Walker;
+  for i: 0..<n { spots[i] = walker(s, i, t); }
+  // two standing close are talking
+  for i: 0..<n {
+    for j: i + 1..<n {
+      a := spots[i]; b := spots[j];
+      if a.gait != Gait.stand || b.gait != Gait.stand { continue; }
+      dx := b.x - a.x; dz := b.z - a.z;
+      if dx * dx + dz * dz > 1.6 * 1.6 { continue; }
+      spots[i].talking = true; spots[j].talking = true;
+      spots[i].yaw = angle_of(dx, dz); spots[j].yaw = angle_of(-dx, -dz);
+      // what passes between them: a few dots, back and forth
+      for d: 0..<3 {
+        f := fract(t * 0.5 + cast(f32) d / 3);
+        dir := ifx (cast(int) floor(t * 0.25 + cast(f32) i)) % 2 == 0 then f else 1 - f;
+        q := spot(c, fv(a.x + dx * dir, 1.0 * FIG * 1.8 + 0.25 * sin(dir * PI), a.z + dz * dir));
+        if q.ok { v = diamond(out, v, q.x, q.y, 1.3 * p.d, cool, 0.7 * sin(dir * PI) * seen * vignette(c, q.x, q.y)); }
+      }
+    }
+  }
+  for i: 0..<n {
+    w := spots[i];
+    sh := person_shape(i);
+    k := verse_figure_skeleton(sh);
+    pose := verse_figure_gait(Rig.person, w.gait, w.phase, t + cast(f32) i * 1.3);
+    top: [1] Spot;
+    v = figure(out, v, c, k, pose, w.x, w.z, w.yaw, cool, 0.9 * seen, p, top[..]);
+    // the name, and the key, above the head
+    // (not under a place's name: that one reads first)
+    if top[0].ok && inside(c.clip, top[0].x, top[0].y) && (!p.phone || i % 2 == 0 || w.talking)
+       && !under_tag(s, top[0].x, top[0].y - 8 * p.d) && !under_tag(s, top[0].x, top[0].y) {
+      vig := vignette(c, top[0].x, top[0].y);
+      cap := (ifx p.phone then 5.6f32 else 6.6f32) * p.d;
+      v = put_centred(out, v, field(LAND_PEOPLE, i, 0), top[0].x, top[0].y - cap * 1.25, cap, dimmed(white, seen * vig));
+      if !p.phone || w.talking {
+        v = put_centred(out, v, field(LAND_PEOPLE, i, 1), top[0].x, top[0].y, cap * 0.85, dimmed(dim, seen * vig));
+      }
+    }
+  }
+  return v;
+}
+
+// The agents on a task stand at its place, working at its tree.
+agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int {
+  v := at;
+  seen := ease((p.time - 3.2) / 1.4);
+  if p.still { seen = 1; }
+  if seen <= 0 { return v; }
+  pale := ink(p, INK_PALE); orange := ink(p, INK_ORANGE); dim := ink(p, INK_DIM);
+  sh: Shape; sh.size = 0.95;
+  k := verse_figure_skeleton(sh);
+  slot: [MAX_PLOTS] int;
+  for a: 0..<s[0].agents {
+    pk := s[0].agent_plot[a];
+    if pk < 0 || pk >= s[0].plots { continue; }
+    j := slot[pk]; slot[pk] += 1;
+    pl := s[0].plot[pk];
+    ang := 0.4 + cast(f32) j * 0.78 + cast(f32) pk;
+    r := 1.25 + 0.35 * cast(f32) (j % 2);
+    x := pl.x + r * cos(ang); z := pl.z + r * sin(ang);
+    yaw := angle_of(pl.x - x, pl.z - z);
+    pose := verse_figure_gait(Rig.person, Gait.stand, 0, t * 1.4 + cast(f32) a);
+    // at work: a hand to the tree
+    pose.turn[P_R_SHOULDER] = fv(-1.1 - 0.15 * sin(t * 3.1 + cast(f32) a), 0, -0.2);
+    pose.turn[P_R_ELBOW] = fv(-0.5, 0, 0);
+    top: [1] Spot;
+    v = figure(out, v, c, k, pose, x, z, yaw, pale, seen, p, top[..]);
+    // work in flight: a pulse from the agent to one of the newest commits
+    target := node(pl, hi_int(0, pl.commits - 1 - j % 3), pk);
+    from := spot(c, fv(x, 1.2 * FIG, z)); to := spot(c, target);
+    if from.ok && to.ok && pl.commits > 0 {
+      beam := orange; beam.mode = MODE_LINK; beam.core = 0.45 * p.d;
+      vig := vignette(c, from.x, from.y);
+      v = rule(out, v, from.x, from.y, to.x, to.y, beam, 0.32 * seen * vig);
+      f := fract(t * 0.9 + cast(f32) a * 0.37);
+      hx := from.x + (to.x - from.x) * f; hy := from.y + (to.y - from.y) * f;
+      if lit(out, v, hx - (to.x - from.x) * 0.07, hy - (to.y - from.y) * 0.07, hx, hy, 1.1 * p.d, 0.85 * seen * vig, 4.5 * p.d, 1.0, 0.55, 0.12, MODE_PULSE) { v += 6; }
+    }
+    // the first two at each place are named, with their task
+    if top[0].ok && j == 0 && inside(c.clip, top[0].x, top[0].y) && !under_tag(s, top[0].x, top[0].y - 8 * p.d) {
+      vig := vignette(c, top[0].x, top[0].y) * seen;
+      cap := (ifx p.phone then 5.4f32 else 6.2f32) * p.d;
+      side: f32 = ifx j % 2 == 0 then 1.0f32 else -1.0f32;
+      x0 := top[0].x + side * 10 * p.d;
+      name := cell(LAND_WORKING, s[0].agent_row[a], 0);
+      task := cell(LAND_WORKING, s[0].agent_row[a], 2);
+      room := (ifx p.phone then 120.0f32 else 180.0f32) * p.d;
+      if side > 0 {
+        v = put(out, v, name, x0, top[0].y - cap, cap, dimmed(pale, vig));
+        if !p.phone { v = put_fit(out, v, task, x0, top[0].y + cap * 0.6, cap * 0.85, dimmed(dim, vig), room); }
+      } else {
+        nw := text_width(name, cap, pale);
+        v = put(out, v, name, x0 - nw, top[0].y - cap, cap, dimmed(pale, vig));
+        if !p.phone {
+          tw := lo(text_width(task, cap * 0.85, dim), room);
+          v = put_fit(out, v, task, x0 - tw, top[0].y + cap * 0.6, cap * 0.85, dimmed(dim, vig), room);
+        }
+      }
+    }
+  }
+  return v;
+}
+hi_int :: (a: int, b: int) -> int { if a > b { return a; } return b; }
+
+// ---------------------------------------------------------------- the floor
+
+floor_grid :: (out: [] f32, at: int, s: [] LandState, c: Cam, look: Fv, p: Pen) -> int {
+  v := at;
+  grid := ink(p, INK_DIM); grid.glow = 2.0 * p.d; grid.core = hi(0.42 * p.d, 0.7);
+  warm := ink(p, INK_ORANGE); warm.glow = 2.2 * p.d; warm.core = grid.core;
+  ox := floor(look.x); oz := floor(look.z);
+  // the floor spreads out from the middle as the page fades up
+  reach: f32 = ifx p.still then 99.0f32 else 2 + 44 * ease((p.time - 0.4) / 4.2);
+  for i: -GRID..<GRID + 1 {
+    for j: -GRID..<GRID {
+      x := ox + cast(f32) i; z := oz + cast(f32) j;
+      // along z, then along x
+      for axis: 0..<2 {
+        ax := ifx axis == 0 then x else z + 0.5;
+        az := ifx axis == 0 then z + 0.5 else x;
+        far := sqrt((ax - look.x) * (ax - look.x) + (az - look.z) * (az - look.z));
+        light := 0.36 * clamp(1.12 - far / cast(f32) GRID, 0, 1) * clamp((reach - far) / 3, 0, 1);
+        if light <= 0.004 { continue; }
+        hot := on_plot(s, ax, az);
+        a := ifx axis == 0 then fv(x, 0, z) else fv(z, 0, x);
+        b := ifx axis == 0 then fv(x, 0, z + 1) else fv(z + 1, 0, x);
+        v = seg(out, v, c, a, b, ifx hot then warm else grid, ifx hot then light * 0.75 else light);
+      }
+    }
+  }
+  return v;
+}
+
+// ---------------------------------------------------------------- the HUD
+
+Layout :: struct { phone: bool; title: Box; login: Box; make: Box; feed: Box; scene: Box; }
+layout :: (width: f32, height: f32, d: f32) -> Layout {
+  w := width / d; h := height / d;
+  l: Layout;
+  l.phone = w < 760;
+  m: f32 = ifx l.phone then 16.0f32 else 28.0f32;
+  if l.phone {
+    l.title = Box.{x0 = m, y0 = m, x1 = w - m, y1 = m + 54};
+    l.login = Box.{x0 = w - m - 74, y0 = m + 2, x1 = w - m, y1 = m + 34};
+    l.feed = Box.{x0 = m, y0 = h - m - 132, x1 = w - m, y1 = h - m};
+    l.make = Box.{x0 = m, y0 = l.feed.y0 - 12 - 48, x1 = w - m, y1 = l.feed.y0 - 12};
+    l.scene = Box.{x0 = 0, y0 = 0, x1 = w, y1 = h};
+  } else {
+    l.title = Box.{x0 = m, y0 = m, x1 = w * 0.5, y1 = m + 70};
+    l.make = Box.{x0 = w - m - 176, y0 = m, x1 = w - m, y1 = m + 40};
+    l.login = Box.{x0 = l.make.x0 - 12 - 92, y0 = m, x1 = l.make.x0 - 12, y1 = m + 40};
+    fw: f32 = 320;
+    l.feed = Box.{x0 = w - m - fw, y0 = h - m - lo(330, h * 0.42), x1 = w - m, y1 = h - m};
+    l.scene = Box.{x0 = 0, y0 = 0, x1 = w, y1 = h};
+  }
+  l.title = scaled(l.title, d); l.login = scaled(l.login, d); l.make = scaled(l.make, d);
+  l.feed = scaled(l.feed, d); l.scene = scaled(l.scene, d);
+  return l;
+}
+scaled :: (b: Box, d: f32) -> Box { return Box.{x0 = b.x0 * d, y0 = b.y0 * d, x1 = b.x1 * d, y1 = b.y1 * d}; }
+
+// OPENAGENTS, written on letter by letter as the splash's words are.
+wordmark :: (out: [] f32, at: int, l: Layout, p: Pen) -> int {
+  d := p.d;
+  cap := (ifx l.phone then 10.0f32 else 12.0f32) * d;
+  word := "OPENAGENTS";
+  x := l.title.x0; y := l.title.y0 + cap + (ifx l.phone then 9.0f32 else 6.0f32) * d;
+  v := at;
+  k := ink(p, INK_WHITE); k.sans = false; k.core = 0.62 * d; k.glow = 7 * d;
+  for i: 0..<word.count {
+    f := ifx p.still then 1.0f32 else ease((p.time - 0.6 - 0.07 * cast(f32) i) / 0.5);
+    if f > 0 {
+      shimmer := ifx p.still then 0.0f32 else 0.1 * sin(p.time * 1.1 - x / (40 * d));
+      v = draw_text(out, v, word[i..<i + 1], x, y, cap, TITLE_GAP, TITLE_SPACE, dimmed(k, f * (0.9 + shimmer)), false, false);
+    }
+    x += (measure(word[i..<i + 1], TITLE_GAP, TITLE_SPACE, false) + TITLE_GAP) * cap;
+  }
+  tag := ease((p.time - 1.6) / 1.0);
+  if p.still { tag = 1; }
+  small := (ifx l.phone then 6.6f32 else 7.4f32) * d;
+  k2 := dimmed(ink(p, INK_DIM), tag * 1.3);
+  if l.phone {
+    v = put(out, v, "Projects you can walk into.", l.title.x0, y + 19 * d, small, k2);
+    v = put(out, v, "People and agents building them.", l.title.x0, y + 33 * d, small, k2);
+  } else {
+    v = put(out, v, "Projects you can walk into. People and agents building them.", l.title.x0, y + 20 * d, small, k2);
+  }
+  return v;
+}
+
+button :: (out: [] f32, at: int, b: Box, text: string, main: bool, hover: bool, p: Pen, light: f32) -> int {
+  if light <= 0 { return at; }
+  d := p.d;
+  k := ink(p, ifx main then INK_ORANGE else INK_WHITE); k.sans = false;
+  glow: f32 = ifx hover then 1.0f32 else 0.72f32;
+  v := frame(out, at, b, 7 * d, ink(p, INK_ORANGE), light * glow, p);
+  cap := 7.6 * d;
+  tw := measure(text, 0.5, 1.2, false) * cap;
+  v = draw_text(out, v, text, (b.x0 + b.x1 - tw) * 0.5, (b.y0 + b.y1 + cap) * 0.5, cap, 0.5, 1.2, dimmed(k, light * (ifx hover then 1.15f32 else 0.95f32)), false, false);
+  return v;
+}
+
+// The feed: what agents are on and what landed, sliding up a row at a time.
+FEED_STEP :: 3.4;   // seconds a row holds
+feed :: (out: [] f32, at: int, l: Layout, p: Pen, t: f32, light: f32) -> int {
+  if light <= 0 { return at; }
+  d := p.d; b := l.feed;
+  v := frame(out, at, b, 10 * d, ink(p, INK_ORANGE), 0.8 * light, p);
+  o := dimmed(ink(p, INK_ORANGE), light);
+  cap := 7.6 * d;
+  ty := b.y0 + 20 * d;
+  v = rule(out, v, b.x0 + 12 * d, ty - cap * 0.5, b.x0 + 18 * d, ty - cap * 0.5, o, light);
+  v = put(out, v, "NOW ON THE GRID", b.x0 + 24 * d, ty, cap, o);
+  // a live dot
+  beat := 0.55 + 0.45 * sin(p.time * 2.4);
+  v = diamond(out, v, b.x1 - 18 * d, ty - cap * 0.5, 2.6 * d, o, beat * light);
+  v = rule(out, v, b.x0 + 12 * d, ty + 8 * d, b.x1 - 12 * d, ty + 8 * d, ink(p, INK_DIM), 0.12 * light);
+  n := rows(LAND_FEED);
+  if n == 0 { return v; }
+  row_h := (ifx l.phone then 30.0f32 else 40.0f32) * d;
+  top := ty + 16 * d; bottom := b.y1 - 8 * d;
+  shown := cast(int) floor((bottom - top) / row_h) + 1;
+  clock := ifx p.still then 0.0f32 else hi(0, t - 4) / FEED_STEP;
+  first := cast(int) floor(clock);
+  slide := ease((clock - floor(clock)) / 0.18);
+  for j: 0..<shown + 1 {
+    r := (first + j) % n;
+    y := top + (cast(f32) j + 1 - slide) * row_h - row_h * 0.35;
+    if y < top + 4 * d || y > bottom + row_h * 0.2 { continue; }
+    // rows fade in at the bottom and out at the top
+    shade := clamp((y - top) / (row_h * 0.8), 0, 1) * clamp((bottom - y + row_h * 0.3) / (row_h * 0.6), 0, 1) * light;
+    if shade <= 0.01 { continue; }
+    at_row := row_start(LAND_FEED, r);
+    pk := parse_int(cell(LAND_FEED, at_row, 0));
+    kind := cell(LAND_FEED, at_row, 1);
+    who := cell(LAND_FEED, at_row, 2);
+    text := cell(LAND_FEED, at_row, 3);
+    name := field(LAND_PROJECTS, pk, 1);
+    x := b.x0 + 16 * d;
+    small := 6.4 * d;
+    line1 := y - (ifx l.phone then 7.0f32 else 9.0f32) * d;
+    pname := dimmed(ink(p, INK_ORANGE), shade);
+    v = put(out, v, name, x, line1, small, pname);
+    x2 := x + text_width(name, small, pname) + 8 * d;
+    mark: string = ifx same(kind, "WORKING") then "working" else ifx same(kind, "DONE") then "done" else "commit";
+    tone := ifx same(kind, "DONE") then INK_PALE else ifx same(kind, "WORKING") then INK_COOL else INK_DIM;
+    v = put(out, v, mark, x2, line1, small, dimmed(ink(p, tone), shade));
+    if who.count > 0 {
+      x3 := x2 + text_width(mark, small, ink(p, tone)) + 6 * d;
+      shown_who := ifx same(kind, "COMMIT") then who[0..<lo_int(who.count, 7)] else who;
+      v = put_fit(out, v, shown_who, x3, line1, small, dimmed(ink(p, INK_DIM), shade), b.x1 - 16 * d - x3);
+    }
+    v = put_fit(out, v, text, x, y + (ifx l.phone then 6.0f32 else 7.0f32) * d, 6.8 * d, dimmed(ink(p, INK_WHITE), shade * 0.9), b.x1 - b.x0 - 32 * d);
+  }
+  return v;
+}
+
+// ---------------------------------------------------------------- input
+
+under_tag :: (s: [] LandState, x: f32, y: f32) -> bool {
+  for k: 0..<s[0].plots { b := s[0].plot[k].tag; if b.x1 > b.x0 && inside(b, x, y) { return true; } }
+  return false;
+}
+hit_slug :: (s: [] LandState, x: f32, y: f32) -> int {
+  for k: 0..<s[0].plots { b := s[0].plot[k].hit; if b.x1 > b.x0 && inside(b, x, y) { return k; } }
+  return -1;
+}
+go :: (s: [] LandState, url: string) {
+  n := lo_int(url.count, 95);
+  for i: 0..<n { s[0].outbox[i] = url[i]; }
+  s[0].out_n = n; s[0].action = ACT_NAVIGATE;
+}
+click :: (s: [] LandState, x: f32, y: f32) -> bool {
+  if inside(s[0].login, x, y) { go(s, "/login"); return true; }
+  if inside(s[0].make, x, y) { go(s, "/realms/new"); return true; }
+  k := hit_slug(s, x, y);
+  if k >= 0 {
+    buf: [80] u8; n := 0;
+    pre := "/projects/";
+    for i: 0..<pre.count { buf[n] = pre[i]; n += 1; }
+    slug := field(LAND_PROJECTS, k, 0);
+    for i: 0..<lo_int(slug.count, 60) { buf[n] = slug[i]; n += 1; }
+    go(s, cast(string) buf[0..<n]);
+    return true;
+  }
+  return false;
+}
+coaxial_land_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  d := hi(s[0].dpr, 1);
+  s[0].px = x; s[0].py = y; s[0].pointed = true;
+  if phase == POINTER_DOWN { s[0].down = true; s[0].down_x = x; s[0].down_y = y; s[0].moved = false; s[0].touch = kind != 0; return false; }
+  if phase == POINTER_MOVE {
+    if kind == 0 && !s[0].down { s[0].touch = false; }
+    if s[0].down && abs(x - s[0].down_x) + abs(y - s[0].down_y) > 10 * d { s[0].moved = true; }
+    return false;
+  }
+  if phase == POINTER_CANCEL || !s[0].down { s[0].down = false; return false; }
+  s[0].down = false;
+  if s[0].moved { return false; }
+  return click(s, x, y);
+}
+coaxial_land_cursor :: (s: [] LandState) -> int #export_c {
+  if s.count < 1 || s[0].touch || !s[0].pointed { return 0; }
+  x := s[0].px; y := s[0].py;
+  if inside(s[0].login, x, y) || inside(s[0].make, x, y) || hit_slug(s, x, y) >= 0 { return 1; }
+  return 0;
+}
+coaxial_land_action :: (s: [] LandState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_land_action_done :: (s: [] LandState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+
+// ---------------------------------------------------------------- the frame
+
+// The middle of a cluster's places (-1: of them all), as the view sees them:
+// halfway across and halfway back, measured along the screen's diagonals.
+centre :: (s: [] LandState, cluster: int) -> Fv {
+  u0 := 1.0e9f32; u1 := -1.0e9f32; w0 := 1.0e9f32; w1 := -1.0e9f32; n := 0;
+  for k: 0..<s[0].plots {
+    if cluster >= 0 && s[0].plot[k].cluster != cluster { continue; }
+    u := s[0].plot[k].x - s[0].plot[k].z; w := s[0].plot[k].x + s[0].plot[k].z;
+    u0 = lo(u0, u); u1 = hi(u1, u); w0 = lo(w0, w); w1 = hi(w1, w); n += 1;
+  }
+  if n == 0 { return fv(0, 0, 0); }
+  u := (u0 + u1) * 0.5; w := (w0 + w1) * 0.5;
+  return fv((u + w) * 0.5, 0, (w - u) * 0.5);
+}
+
+coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !s[0].ready { read_tables(s); }
+  step := clamp(dt, 0, 0.1);
+  s[0].time += step; s[0].frames += 1;
+  s[0].width = width; s[0].height = height; s[0].dpr = dpr;
+  d := hi(dpr, 1);
+  t := s[0].time;
+  l := layout(width, height, d);
+  p := Pen.{d = d, fade = 1, time = t, still = still, phone = l.phone};
+  motion := ifx still then 40.0f32 else t + 40;   // the people's clock: already out walking
+  for i: 0..<UNIFORM_FLOATS { uniforms[i] = 0; }
+  uniforms[0] = width; uniforms[1] = height;
+  uniforms[2] = ifx still then 20.0f32 else 20 + t;
+  uniforms[3] = ifx still then 1.0f32 else ease((t - 0.15) / 3.0);   // up from black
+  uniforms[4] = ifx still then 1.0f32 else 0.0f32;
+  uniforms[6] = 1;
+  // the view: the whole Grid on a wide screen, beside the feed; on a phone,
+  // one cluster at a time, drifting between them
+  yaw := 0.785398 + (ifx still then 0.0f32 else 0.05 * sin(t * 0.05));
+  pitch: f32 = ifx l.phone then 0.86f32 else 0.72f32;
+  look := centre(s, -1);
+  reach: f32 = 37;
+  cx := width * 0.5; cy := height * 0.54;
+  if !l.phone {
+    cx = width * 0.46; cy = height * 0.56;
+    reach = clamp(40 * 1440 / (width / d), 36, 50);
+  } else {
+    reach = 22.5;
+    sway := ifx still then 0.0f32 else ease(0.5 - 0.5 * cos(t * 0.07));
+    // from the stack's middle to the worlds'
+    look = fv_mix(centre(s, 0), centre(s, 1), sway);
+    cy = height * 0.5;
+  }
+  // and a slow pull back as it fades up
+  if !still { reach = reach * (0.84 + 0.16 * ease(t / 5.0)); }
+  across := width;
+  c := cam(look, yaw, pitch, reach, cx, cy, across, l.scene, width, height);
+  v := floor_grid(out, 0, s, c, look, p);
+  v = roads(out, v, s, c, p);
+  for k: 0..<s[0].plots { v = place(out, v, s, c, k, p); }
+  v = people(out, v, s, c, p, motion);
+  v = agents(out, v, s, c, p, motion);
+  for k: 0..<s[0].plots { v = place_label(out, v, s, c, k, p); }
+  // the HUD over it
+  hud := ifx still then 1.0f32 else ease((t - 2.0) / 1.0);
+  s[0].login = l.login; s[0].make = l.make;
+  hover := !s[0].touch && s[0].pointed;
+  v = wordmark(out, v, l, p);
+  v = button(out, v, l.login, "LOG IN", false, hover && inside(l.login, s[0].px, s[0].py), p, hud);
+  v = button(out, v, l.make, "MAKE YOUR OWN", true, hover && inside(l.make, s[0].px, s[0].py), p, hud);
+  v = feed(out, v, l, p, t, ifx still then 1.0f32 else ease((t - 2.8) / 1.0));
+  glass(uniforms, 0, l.feed, 10 * d, 0.92 * (ifx still then 1.0f32 else ease((t - 2.8) / 1.0)), 0);
+  glass(uniforms, 1, l.make, 7 * d, 0.95 * hud, 1);
+  glass(uniforms, 2, l.login, 7 * d, 0.8 * hud, 0);
+  uniforms[5] = 3;
+  return v;
+}
+
+coaxial_land_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_land_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_land_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---------------------------------------------------------------- checks
+
+#test "the tables read: every place, its commits and its agents" {
+  s: [1] LandState;
+  read_tables(s[..]);
+  #assert s[0].plots == rows(LAND_PROJECTS) && s[0].plots > 3;
+  for k: 0..<s[0].plots {
+    #assert s[0].plot[k].tasks >= s[0].plot[k].done;
+    #assert s[0].plot[k].commits > 0 && s[0].plot[k].commits <= MAX_COMMITS;
+  }
+  #assert s[0].agents > 0;
+  #assert rows(LAND_PEOPLE) >= PEOPLE;
+}
+
+#test "places sit apart, and related ones together" {
+  s: [1] LandState;
+  read_tables(s[..]);
+  for a: 0..<s[0].plots {
+    for b: a + 1..<s[0].plots {
+      pa := s[0].plot[a]; pb := s[0].plot[b];
+      #assert abs(pa.x - pb.x) > 2 * PLOT + 1 || abs(pa.z - pb.z) > 2 * PLOT + 1;
+    }
+  }
+}
+
+#test "a frame draws, on a laptop and on a phone, within the vertex budget" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  s[0].time = 9;
+  n := coaxial_land_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
+  #assert n > 1000 && n < TEST_VERTICES && n % 6 == 0 && u[3] == 1;
+  s2: [1] LandState;
+  s2[0].time = 9;
+  m := coaxial_land_frame(s2[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, false);
+  #assert m > 1000 && m < TEST_VERTICES;
+}
+
+#test "LOG IN goes to /login and MAKE YOUR OWN to /realms/new" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  s[0].time = 9;
+  drawn := coaxial_land_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
+  #assert drawn > 0;
+  b := s[0].login;
+  down := coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 0);
+  #assert coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 0);
+  #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], "/login");
+  coaxial_land_action_done(s[..]);
+  b = s[0].make;
+  down = coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 1);
+  #assert coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 1);
+  #assert same(cast(string) s[0].outbox[0..<s[0].out_n], "/realms/new");
+}
+
+#test "the people walk the same way on every visit" {
+  s: [1] LandState;
+  read_tables(s[..]);
+  a := walker(s[..], 3, 52.5); b := walker(s[..], 3, 52.5);
+  #assert a.x == b.x && a.z == b.z;
+  // and they keep moving
+  c := walker(s[..], 7, 10); e := walker(s[..], 7, 40);
+  #assert c.x != e.x || c.z != e.z;
+}

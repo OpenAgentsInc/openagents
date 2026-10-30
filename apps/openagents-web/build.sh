@@ -88,6 +88,13 @@ deadgears=$!
 # /realms/characters: the engine's figures (verse/figure.coax).
 "$here/../../coax/web/wasm.sh" "$here/characters.coax" "$here/characters-face.c" "$here/build/characters.wasm" &
 characters=$!
+# /new-land: the new landing's first mock-up (newland.coax), development only:
+# a release build skips it and deploy.sh leaves new-land/ out (new-land/DEV-ONLY).
+newland=""
+if [[ "${COAXIAL_MODE:-dev}" != release ]]; then
+  "$here/../../coax/web/wasm.sh" "$here/newland.coax" "$here/newland-face.c" "$here/build/newland.wasm" &
+  newland=$!
+fi
 # /verse and /verse/galaxy: the playtest's landing and galaxy.
 "$here/../../coax/web/wasm.sh" "$here/verse.coax" "$here/verse-face.c" "$here/build/verse.wasm" &
 verse_app=$!
@@ -150,3 +157,4 @@ wait "$everglade"
 wait "$fairy"
 wait "$thegrid"
 wait "$villa"
+[[ -z "$newland" ]] || wait "$newland"
