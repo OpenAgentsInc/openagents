@@ -133,3 +133,20 @@ spending budget, domain, TLS ingress and access policy. This work grants no
 public listener, DNS cutover or billing. The existing GPT-OSS service was left
 running; idle Elephant instances were stopped only under the owner's earlier
 authorization. Evidence: [Part III verification](docs/verification/psionic-partIII-2026-10-29.md).
+
+## Real Pylon keys: your sign-off (2026-10-30)
+
+The Coax signer has passed the #4828 secret-source audit:
+- `docs/verification/2026-10-30-signer-source-audit.md`;
+- `docs/issue4828.md`;
+- final mutation gates clean at `6c6dab1054`.
+
+Passing the audit is **not** approval for production keys. The Pylon refuses `--key-file` (`psionic/lib/pylon/run.coax:167-168`) until you approve here. Two things are needed:
+
+1. **Your decision:** may the Coax signer hold real Pylon keys? The stated limits:
+   - the audit covers the signer's source, not host copies of the key or memory wiping;
+   - target probes cover release builds only, and checked builds rely on the source proof;
+   - there is no hardware timing evidence and no iOS run.
+2. **After a yes:** new code that reads a key file safely (an owned buffer, wiped after use, never logged). Then the real Pylon key is created in a `0600` file in `~/work/.secrets/` on your Mac, and your `auth` signature is made over it (already decided above).
+
+Until then, demo Pylons use fresh random throwaway keys (`docs/Oct30MVP.md`, §3).
