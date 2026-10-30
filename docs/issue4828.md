@@ -52,6 +52,23 @@ secrets. That's measured by the memcheck probes below.
 
 ## In flight
 
+**Combined post-push gates for `e0876e40b7`** (the final signer and
+self-verifier code, rebased on `485db78ae0`), all `--run-steps 250000000`, in
+shards of a few minutes:
+
+| Unit | Mutants | Shards | Where |
+| --- | --- | --- | --- |
+| `schnorr_sign` | 3,742 | 80 | coderos-4080 |
+| `schnorr_self_verify` | 3,133 | 72 | coderos-4080 |
+| `schnorr_nonce_point` | 2,848 | 60 | coderos-4080 |
+| `sha256_workspace` | 1,091 | 24 | coderos-4080 |
+| `event_sign` | about 5,600 | 180 | the Mac |
+
+`openagents-20` reports large aggregate mutation of 3,685/3,685 at
+`e0876e40b7`. It has also fixed 3 false accepts and an over-broad declassify
+that an independent review found in the audit profile, with regression cases.
+
+
 **Self-verifier changes for the audit (`openagents-d7`, this push).** These
 are `openagents-20`'s four findings in `schnorr_self_verify.coax`:
 1. `ssv_views` inlines the length checks instead of calling `sv_lengths_vartime`.
