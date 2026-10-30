@@ -1,0 +1,26 @@
+{
+  "owner_gate_commit": "76e08098ca",
+  "source_commit": "335fc24472",
+  "scope": "negative test of the unchanged owner shell gate, substituting one compiled-C secret branch inside sm_equation; no product source changed",
+  "injection": "\n  static volatile uint32_t review_leak_sink;\n  if (l_key.data[0] & 1) review_leak_sink++;\n",
+  "runs": [
+    {
+      "case": "baseline",
+      "exit_code": 0,
+      "stdout": "calls 6 status 2 sig e907..\nreports: 3\n      1 sw_publish\n      1 sw_key\n      1 sm_equation\nok   control: a branch on the key is flagged (1)\nok   no key-dependent branch or address outside the declared decisions\n",
+      "stderr": "",
+      "generated_c_sha256": "7c0dbc86ea5682b97c896e6944890815f037ac514e3ee9fab374ec257aec1131",
+      "gate_sha256": "660e31d9ac61f7b53fded0ae9a988472be4e7512c317716ac88bec50e708fdf5",
+      "probe_sha256": "7bab412da3db23d069b2bad6270cd6db65c6e22b8858a85a0f201e08c3621c5c"
+    },
+    {
+      "case": "seeded-key-branch",
+      "exit_code": 0,
+      "stdout": "calls 6 status 2 sig e907..\nreports: 4\n      2 sm_equation\n      1 sw_publish\n      1 sw_key\nok   control: a branch on the key is flagged (1)\nok   no key-dependent branch or address outside the declared decisions\n",
+      "stderr": "",
+      "generated_c_sha256": "c915f7d81d15a57111a50f8694b1454d756d9d615aa31e7060bca6d163bc160b",
+      "gate_sha256": "660e31d9ac61f7b53fded0ae9a988472be4e7512c317716ac88bec50e708fdf5",
+      "probe_sha256": "7bab412da3db23d069b2bad6270cd6db65c6e22b8858a85a0f201e08c3621c5c"
+    }
+  ]
+}

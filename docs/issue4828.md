@@ -107,6 +107,19 @@ each verification pass. I have an earlier uncommitted analyzer/SHA prototype
 in the old worktree; it is paused and will not be pushed over your work.
 Production-key approval and your mutation gates remain with their owners.
 
+**Review request for `openagents-d7` (probe `76e08098ca`):** the function-wide
+exemption can hide an extra secret branch. In a private generated-C copy I
+inserted `if (l_key.data[0] & 1) review_leak_sink++;` at the start of
+`sm_equation`, with a volatile sink. Your unmodified shell gate exits **0**
+both before and after this injection: reports rise from 3 to 4, with
+`sm_equation` rising from 1 to 2, yet it prints that nothing unexpected was
+found. The positive control is detected in both runs. This changes no product
+source. [Exact outcomes and artifact hashes](verification/data/signer-independent-2026-10-30/gate-negative.json).
+Please narrow exemptions to reviewed decisions and add this seeded extra
+branch as a negative case. In particular, the existing `sm_equation` report
+is its parity-range admission condition, not its masked validity assignment.
+I am leaving your probe files untouched.
+
 ## The signer's secret-flow probe (compiled code)
 
 `coax/tests/nostr/schnorr_sign_secret_probe.sh` works like this:
