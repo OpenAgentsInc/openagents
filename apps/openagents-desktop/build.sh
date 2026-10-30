@@ -27,8 +27,9 @@ xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*
   -framework AppKit -framework Metal -framework MetalKit -framework CoreText -o "$app/Contents/MacOS/OpenAgents"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
 rm -rf "$app/Contents/Resources/fonts" "$app/Contents/Resources/icons"
-cp -R "$here/fonts" "$here/icons" "$app/Contents/Resources/"
-cp "$here/zeron/NOTICE" "$app/Contents/Resources/NOTICE"
+# Geist, its OFL, Zeron's icons and the NOTICE live beside the shared components (apps/shared/zeron/).
+cp -R "$repo/apps/shared/zeron/fonts" "$repo/apps/shared/zeron/icons" "$app/Contents/Resources/"
+cp "$repo/apps/shared/zeron/NOTICE" "$app/Contents/Resources/NOTICE"
 codesign --force --sign - "$app" >/dev/null
 echo "built $app"
 [[ "${1:-}" == --open ]] && open "$app"

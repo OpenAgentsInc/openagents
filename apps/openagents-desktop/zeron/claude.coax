@@ -28,9 +28,9 @@
 // and /usr/local/bin added when missing), BROWSER=true (the SDK's), and an
 // install line when claude is missing. Based on Zeron by Wing, MIT.
 
-#load "transcript.coax";
-#load "picker.coax";
-#load "attachments.coax";
+#load "../../shared/zeron/transcript.coax";
+#load "../../shared/zeron/picker.coax";
+#load "../../shared/zeron/attachments.coax";
 #load "claude_fixture.coax";
 #load "../../../coax/lib/agent/claude/claude.coax";
 
