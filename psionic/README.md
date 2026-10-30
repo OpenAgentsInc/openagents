@@ -50,6 +50,9 @@ independently qualified original 384/6 MoE component.
 [Chapter 66](book/ch066-pack-the-cache-exactly.md) retains the original KV/index
 grids as packed codes/scales, reconstructs their BF16 bits and admits persistent
 cache payload and chunk codec work against separate limits.
+[Chapter 60](book/ch060-compressed-and-shared-attention.md) combines projected
+compression, causal window/sparse attention, pinned cross-layer sharing and
+candidate reuse, with independent prefix and chunk-state checks.
 
 [Chapter 26a](book/ch026a-a-tensor-program-becomes-an-execution-plan.md) adds a
 typed tensor IR, root-lifetime planning, reusable workspace and one feed-forward

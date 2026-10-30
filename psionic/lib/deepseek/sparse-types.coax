@@ -1,0 +1,15 @@
+#load "cache-types.coax";
+DaLinks :: struct {status:DkStatus;layer:int;ratio:int;kv:int;index:int;candidate:int;produce_kv:bool;produce_index:bool;produce_candidates:bool;}
+DaStamp :: struct {layer:int;next:int;}
+DaWindow :: struct {status:DkStatus;count:int;slot:int;oldest:int;first:int;next:int;}
+DaSelection :: struct {status:DkStatus;count:int;}
+DaResult :: struct {status:DkStatus;written:int;next:int;first:int;ready:bool;}
+DaPoolPlan :: struct {status:DkStatus;floats:int;bits:int;begin:[4]int;}
+DaPoolWork :: struct {floats:[]f32;bits:[]u16;}
+DaPoolViews :: struct {input:[]u16;normalized:[]u16;scratch:[]u16;}
+DaAttention :: struct {heads:int;width:int;window:int;capacity:int;ratio:int;}
+DaAttentionPlan :: struct {status:DkStatus;values:int;scores:int;visible:int;}
+DaAttentionWork :: struct {scores:[]f64;bits:[]u16;}
+DaRowViews :: struct {pending:DkPacked;scratch:[]u8;}
+DaChunkPlan :: struct {status:DkStatus;rows:int;values:int;floats:int;bits:int;}
+DaChunkViews :: struct {a:[]f32;ag:[]f32;b:[]f32;bg:[]f32;pool:[]f32;batch:[]u16;one:[]u16;temp:[]u16;}

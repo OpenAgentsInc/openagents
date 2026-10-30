@@ -1,0 +1,39 @@
+#import "Basic";
+#load "../lib/deepseek/sparse-chunk.coax";
+// book:begin example
+main :: () {
+    kv:[288]f32;gate:[288]f32;norm:[32]u16;old:[32]f32;old_gate:[32]f32;
+    for i:0..<288 {kv[i]=f32((i*7)%19-9)/8;gate[i]=f32((i*11)%23-11)/4;}for i:0..<32 {norm[i]=0x3f80;}
+    latent:[288]u16;tail:[32]f32;tail_gate:[32]f32;floats:[192]f32;bits:[416]u16;
+    for ratio:1..<3 {
+        r:=da_pool_chunk(ratio,0,9,32,kv[..],gate[..],old[..],old_gate[..],norm[..],latent[..],tail[..],tail_gate[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false);
+        #assert r.status==DkStatus.ok && r.next==9;
+        print("ratio %: % complete rows, % pending token\n",ratio,r.written/32,9%ratio);
+    }
+    compressed_bytes:[64]u8;compressed_scales:[8]u8;window_bytes:[96]u8;window_scales:[3]u8;pack:[66]u8;
+    compressed:=DkPacked.{data=compressed_bytes[..],scales=compressed_scales[..]};window:=DkPacked.{data=window_bytes[..],scales=window_scales[..]};
+    rotated:[64]u16;stage:[64]u16;
+    for row:0..<4 {
+        r:=da_rotate(true,2*row,1,32,8,false,latent[row*32..<row*32+32],rotated[..],stage[..],false);#assert r.status==DkStatus.ok;
+        r=da_store(1,4,32,row,rotated[0..<32],compressed,pack[..],false);#assert r.status==DkStatus.ok;
+    }
+    input:[32]u16;normalized:[32]u16;
+    for pos:6..<9 {
+        for j:0..<32 {input[j]=dk_bf16(f32((pos+j*3)%17-8)/8).bits;}
+        r:=da_norm(input[..],norm[..],normalized[..],stage[..],false);#assert r.status==DkStatus.ok;
+        r=da_rotate(true,pos,1,32,8,false,normalized[..],rotated[..],stage[..],false);#assert r.status==DkStatus.ok;
+        r=da_store(0,3,32,pos%3,rotated[0..<32],window,pack[..],false);#assert r.status==DkStatus.ok;
+    }
+    scores:=[4]f32.[0.5,8,2,-1];mask:[4]u8;mask_stage:[4]u8;blocks:[2]f32;heap:[2]int;ids:[2]int;
+    selection:=da_candidates(scores[..],4,2,1,mask[..],mask_stage[..],blocks[..],heap[..],false);#assert selection.status==DkStatus.ok;
+    selection=da_select(scores[..],4,mask[..],2,ids[..],heap[..],false);#assert selection.status==DkStatus.ok && selection.count==2;
+    query:[64]u16;for j:0..<64 {query[j]=dk_bf16(f32(j%13-6)/8).bits;}
+    r:=da_rotate(true,8,2,32,8,false,query[..],rotated[..],stage[..],false);#assert r.status==DkStatus.ok;
+    sink:=[2]f32.[0,0];answer:[64]u16;work_scores:[5]f64;work_bits:[64]u16;
+    r=da_attend(DaAttention.{heads=2,width=32,window=3,capacity=9,ratio=2},8,rotated[..],window,4,compressed,ids[..],sink[..],answer[..],DaAttentionWork.{scores=work_scores[..],bits=work_bits[..]},false);#assert r.status==DkStatus.ok && r.written==64;
+    link:=da_flash_links(24);
+    print("layer 24: KV owner %, index owner %, candidate owner %\n",link.kv,link.index,link.candidate);
+    print("newest candidate block stays; selected positions %, %\n",ids[0],ids[1]);
+    print("two heads attend over three window rows, two compressed rows and sink mass\n");
+}
+// book:end example

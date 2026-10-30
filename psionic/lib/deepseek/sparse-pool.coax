@@ -1,0 +1,99 @@
+#load "sparse-policy.coax";
+#load "cache.coax";
+#load "../ops.coax";
+#authority;
+
+#test "pool and norm extents have original widths and exact private intervals" {
+    p:=da_pool_plan(1,32);#assert p.status==DkStatus.ok && p.floats==64 && p.bits==96;
+    #assert da_pool_plan(2,512).status==DkStatus.ok && da_pool_plan(2,512).floats==1024 && da_pool_plan(2,512).bits==1536;
+    #assert da_pool_plan(0,32).status==DkStatus.shape && da_pool_plan(3,32).status==DkStatus.shape && da_pool_plan(1,0).status==DkStatus.shape && da_pool_plan(1,31).status==DkStatus.shape && da_pool_plan(1,33).status==DkStatus.shape && da_pool_plan(1,544).status==DkStatus.shape;
+    #assert da_norm_width(1) && da_norm_width(8192) && !da_norm_width(0) && !da_norm_width(8193);
+    bits:[96]u16;for i:0..<96 {bits[i]=cast(u16)i;}v:=da_pool_views(bits[..],p);
+    #assert v.input.count==32 && v.input[0]==0 && v.input[31]==31 && v.normalized.count==32 && v.normalized[0]==32 && v.normalized[31]==63 && v.scratch.count==32 && v.scratch[0]==64 && v.scratch[31]==95;
+    #assert da_gate_max(3,-2)==3 && da_gate_max(-2,3)==3 && da_gate_max(-3,-7)==-3 && da_gate_max(0,0)==0;
+    #assert da_pair_finite(0,0) && !da_pair_finite(0x7f800000,0) && !da_pair_finite(0,0x7fc00000) && !da_pair_finite(0x7f800000,0x7fc00000);
+}
+#test "ratio two carries one projected tail and publishes the completed group's first position" {
+    x:[32]f32;gate:[32]f32;old:[32]f32;score:[32]f32;norm:[32]u16;out:[33]u16;tail:[33]f32;next_score:[33]f32;floats:[64]f32;bits:[96]u16;
+    for i:0..<32 {x[i]=1;norm[i]=0x3f80;out[i]=77;floats[i]=19;floats[32+i]=23;}out[32]=88;tail[32]=99;next_score[32]=101;
+    r:=da_pool(2,0,x[..],gate[..],old[..],score[..],norm[..],out[..],tail[..],next_score[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false);
+    #assert r.status==DkStatus.ok && !r.ready && r.written==0 && r.next==1 && r.first==0;
+    for i:0..<32 {#assert out[i]==77 && tail[i]==1 && next_score[i]==0;old[i]=tail[i];score[i]=next_score[i];x[i]=3;}
+    r=da_pool(2,1,x[..],gate[..],old[..],score[..],norm[..],out[..],tail[..],next_score[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false);
+    #assert r.status==DkStatus.ok && r.ready && r.written==32 && r.next==2 && r.first==0;
+    for i:0..<32 {#assert out[i]==0x3f80 && tail[i]==0 && next_score[i]==0;}
+    #assert out[32]==88 && tail[32]==99 && next_score[32]==101;
+    r=da_pool(1,7,x[..],gate[..],old[..],score[..],norm[..],out[..],tail[..],next_score[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false);
+    #assert r.status==DkStatus.ok && r.ready && r.first==7 && r.next==8;
+    r=da_pool(2,1048575,x[..],gate[..],old[..],score[..],norm[..],out[..],tail[..],next_score[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false);
+    #assert r.status==DkStatus.ok && r.first==1048574 && r.next==1048576;
+}
+#test "both compressor ratios match independent full-prefix Decimal equations through odd tails" {
+    k1:=DAS_POOL_1_KV;k2:=DAS_POOL_2_KV;g1:=DAS_POOL_1_GATE;g2:=DAS_POOL_2_GATE;n1:=DAS_POOL_1_NORM;n2:=DAS_POOL_2_NORM;y1:=DAS_POOL_1_OUTPUT;y2:=DAS_POOL_2_OUTPUT;
+    kvs:=[2][]f32.[k1[..],k2[..]];gates:=[2][]f32.[g1[..],g2[..]];norms:=[2][]u16.[n1[..],n2[..]];ys:=[2][]u16.[y1[..],y2[..]];
+    for ratio:1..<3 {old:[32]f32;old_gate:[32]f32;next:[33]f32;next_gate:[33]f32;out:[33]u16;floats:[64]f32;bits:[96]u16;out[32]=88;next[32]=99;next_gate[32]=101;
+        for pos:0..<9 {r:=da_pool(ratio,pos,kvs[ratio-1][pos*32..<pos*32+32],gates[ratio-1][pos*32..<pos*32+32],old[..],old_gate[..],norms[ratio-1],out[..],next[..],next_gate[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false);
+            #assert r.status==DkStatus.ok && r.ready==((pos+1)%ratio==0) && r.next==pos+1 && r.first==(ifx (pos+1)%ratio==0 then pos+1-ratio else 0);
+            for j:0..<32 {if r.ready {#assert out[j]==ys[ratio-1][pos*32+j] && next[j]==0 && next_gate[j]==0;}else {#assert next[j]==kvs[ratio-1][pos*32+j] && next_gate[j]==gates[ratio-1][pos*32+j];}old[j]=next[j];old_gate[j]=next_gate[j];}
+            #assert out[32]==88 && next[32]==99 && next_gate[32]==101;
+        }
+    }
+}
+#test "norm uses BF16 weights wide squared reductions and epsilon inside the root" {
+    x:=[2]u16.[0xbf80,0x3f80];norm:=[2]u16.[0x4000,0x3f00];out:[3]u16;stage:[2]u16;out[2]=77;
+    r:=da_norm(x[..],norm[..],out[..],stage[..],false);#assert r.status==DkStatus.ok && out[0]==0xc000 && out[1]==0x3f00 && out[2]==77;
+    x[0]=0;x[1]=0;#assert da_norm(x[..],norm[..],out[..],stage[..],false).status==DkStatus.ok && out[0]==0 && out[1]==0;
+    x[1]=0x7fc0;#assert da_norm(x[..],norm[..],out[..],stage[..],false).status==DkStatus.number && out[0]==0;
+    x[1]=0x7f80;#assert da_norm(x[..],norm[..],out[..],stage[..],false).status==DkStatus.number;
+    x[1]=0x3f80;norm[1]=0x7f80;#assert da_norm(x[..],norm[..],out[..],stage[..],false).status==DkStatus.number;
+    norm[1]=0x7f7f;#assert da_norm(x[..],norm[..],out[..],stage[..],false).status==DkStatus.arithmetic;
+}
+#test "every pool and norm span refuses independently without changing public values" {
+    x:[32]f32;gate:[32]f32;old:[32]f32;score:[32]f32;norm:[32]u16;out:[32]u16;tail:[32]f32;next_score:[32]f32;floats:[64]f32;bits:[96]u16;
+    for field:0..<11 {a:=x[..];g:=gate[..];o:=old[..];s:=score[..];n:=norm[..];y:=out[..];t:=tail[..];z:=next_score[..];w:=DaPoolWork.{floats=floats[..],bits=bits[..]};alias:=false;
+        if field==0 {a=x[0..<31];}else if field==1 {g=gate[0..<31];}else if field==2 {o=old[0..<31];}else if field==3 {s=score[0..<31];}else if field==4 {n=norm[0..<31];}else if field==5 {y=out[0..<31];}else if field==6 {t=tail[0..<31];}else if field==7 {z=next_score[0..<31];}else if field==8 {w.floats=floats[0..<63];}else if field==9 {w.bits=bits[0..<95];}else {alias=true;}
+        r:=da_pool(2,1,a,g,o,s,n,y,t,z,w,alias);#assert r.status==(ifx field==0 then DkStatus.shape else (ifx field==10 then DkStatus.alias else DkStatus.capacity));
+    }
+    #assert da_pool(0,0,x[..],gate[..],old[..],score[..],norm[..],out[..],tail[..],next_score[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false).status==DkStatus.shape;
+    for pos:[2]int.[-1,1048576] {#assert da_pool(2,pos,x[..],gate[..],old[..],score[..],norm[..],out[..],tail[..],next_score[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false).status==DkStatus.format;}
+    x[31]=f32_from_bits(0x7f7fffff);#assert da_pool(1,0,x[..],gate[..],old[..],score[..],norm[..],out[..],tail[..],next_score[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false).status==DkStatus.arithmetic;
+    for field:0..<5 {a:=norm[..];b:=norm[..];o:=out[..];s:=bits[0..<32];alias:=false;
+        if field==0 {a=norm[0..<0];}else if field==1 {b=norm[0..<31];}else if field==2 {o=out[0..<31];}else if field==3 {s=bits[0..<31];}else {alias=true;}
+        r:=da_norm(a,b,o,s,alias);#assert r.status==(ifx field==0 then DkStatus.shape else (ifx field==4 then DkStatus.alias else DkStatus.capacity));
+    }
+}
+
+da_norm_width :: (width:int)->bool {return width>=1 && width<=8192;}
+da_norm :: (x:[]u16,weight:[]u16,out:[]u16,stage:[]u16,overlap:bool)->DkResult #export_c {
+    n:=x.count;if !da_norm_width(n) {return DkResult.{status=DkStatus.shape};}
+    if weight.count!=n || out.count<n || stage.count<n {return DkResult.{status=DkStatus.capacity};}if overlap {return DkResult.{status=DkStatus.alias};}
+    sum:PsionicAccumulator;for b:x {if (b&0x7fff)>=0x7f80 {return DkResult.{status=DkStatus.number};}v:=f64(f32_from_bits(u32(b)<<16));sum=psionic_ops_accumulate(sum,v*v);}
+    inverse:=1/sqrt(psionic_ops_total(sum)/f64(n)+1e-20);
+    for i:0..<n {if (weight[i]&0x7fff)>=0x7f80 {return DkResult.{status=DkStatus.number};}
+        normalized:=f32(f64(f32_from_bits(u32(x[i])<<16))*inverse);value:=f64(normalized)*f64(f32_from_bits(u32(weight[i])<<16));
+        if !psionic_ops_fits_f32(value) {return DkResult.{status=DkStatus.arithmetic};}r:=dk_bf16(f32(value));if r.status!=DkStatus.ok {return DkResult.{status=r.status};}stage[i]=r.bits;}
+    for i:0..<n {out[i]=stage[i];}return DkResult.{written=n};
+}
+da_pool_plan :: (ratio:int,width:int)->DaPoolPlan #export_c {
+    if ratio<1 || ratio>2 || width<32 || width/32>16 || width%32!=0 {return DaPoolPlan.{status=DkStatus.shape};}
+    return DaPoolPlan.{floats=2*width,bits=3*width,begin=[4]int.[0,width,2*width,3*width]};
+}
+da_pool_views :: (work:[]u16,p:DaPoolPlan)->DaPoolViews {return DaPoolViews.{input=work[p.begin[0]..<p.begin[1]],normalized=work[p.begin[1]..<p.begin[2]],scratch=work[p.begin[2]..<p.begin[3]]};}
+da_gate_max :: (a:f32,b:f32)->f64 {return (f64(a)+f64(b)+abs(f64(a)-f64(b)))/2;}
+da_pair_finite :: (a:u32,b:u32)->bool {return da_score_finite(a) && da_score_finite(b);}
+da_pool :: (ratio:int,position:int,kv:[]f32,gate:[]f32,old_kv:[]f32,old_gate:[]f32,norm:[]u16,latent:[]u16,next_kv:[]f32,next_gate:[]f32,work:DaPoolWork,overlap:bool)->DaResult #export_c {
+    n:=kv.count;p:=da_pool_plan(ratio,n);if p.status!=DkStatus.ok {return DaResult.{status=p.status};}if position<0 || position>=1048576 {return DaResult.{status=DkStatus.format};}
+    if gate.count!=n || old_kv.count!=n || old_gate.count!=n || norm.count!=n || latent.count<n || next_kv.count<n || next_gate.count<n || work.floats.count<p.floats || work.bits.count<p.bits {return DaResult.{status=DkStatus.capacity};}if overlap {return DaResult.{status=DkStatus.alias};}
+    ready:=ratio==1 || position%2==1;views:=da_pool_views(work.bits,p);
+    for i:0..<n {if !da_score_finite(f32_bits(kv[i])) {return DaResult.{status=DkStatus.number};}work.floats[i]=0;work.floats[n+i]=0;value:=f64(kv[i]);
+        if ratio==2 {if !da_score_finite(f32_bits(gate[i])) {return DaResult.{status=DkStatus.number};}
+            if !ready {work.floats[i]=kv[i];work.floats[n+i]=gate[i];}else {
+                if !da_pair_finite(f32_bits(old_kv[i]),f32_bits(old_gate[i])) {return DaResult.{status=DkStatus.number};}
+                maximum:=da_gate_max(gate[i],old_gate[i]);
+                a:=exp(f64(old_gate[i])-maximum);b:=exp(f64(gate[i])-maximum);value=(f64(old_kv[i])*a+f64(kv[i])*b)/(a+b);}}
+        if ready {if !psionic_ops_fits_f32(value) {return DaResult.{status=DkStatus.arithmetic};}r:=dk_bf16(f32(value));if r.status!=DkStatus.ok {return DaResult.{status=r.status};}work.bits[i]=r.bits;}
+    }
+    if ready {r:=da_norm(views.input,norm,views.normalized,views.scratch,false);if r.status!=DkStatus.ok {return DaResult.{status=r.status};}}
+    for i:0..<n {next_kv[i]=work.floats[i];next_gate[i]=work.floats[n+i];if ready {latent[i]=work.bits[n+i];}}
+    return DaResult.{written=ifx ready then n else 0,next=position+1,first=ifx ready then position+1-ratio else 0,ready=ready};
+}

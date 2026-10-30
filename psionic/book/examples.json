@@ -540,6 +540,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/deepseek-sparse.coax",
+      "chapter": "psionic/book/ch060-compressed-and-shared-attention.md",
+      "stdout": "psionic/fixtures/deepseek-sparse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -1,5 +1,44 @@
 # Invariants
 
+## Psionic compressed attention keeps source ownership and causal prefixes explicit
+
+`psionic/lib/deepseek/sparse-*.coax` owns `deepseek-sparse-cpu-wide-v1` at
+projected-input boundaries: BF16 query/window vectors, F32 compressor KV/gate
+projections and BF16 norm/index weights. Ratio 2 pools per channel and carries
+one unfinished F32 pair; ratio 1 is ungated. Completed rows normalize before
+rotary placement. Index keys derive from the pre-RoPE latent; compressed KV
+and index keys use their distinct chapter 66 grids. V4 keeps adjacent complex
+pairs, with pure-window and compressed YaRN profiles and inverse output RoPE.
+
+The pinned 43-layer map distinguishes four KV/index-key owners, eight indexer
+sources and candidate source 20. KV receipts may cover a later prefix, but
+selected-position/candidate receipts must name this query. Declared receipts
+do not authenticate model identity. Visible lengths exclude unfinished groups,
+future rows and unfilled ring slots. Unselected compressed values are not read.
+Candidate selection pins the newest partial block. CPU score ties use lowest
+positions, with selected IDs returned in position order.
+
+The CPU attention profile uses compensated wide reductions and an ideal stable
+softmax with sink denominator mass. It does not reproduce the GPU kernel's
+FP32/online/BF16 probability-tile rounding. BF16 index operation boundaries,
+cache grids and final BF16 publication are explicit. Learned projection
+binding, original-device distributions and full-model execution remain in 68.
+
+Every public primitive stages its complete result before publication. Chunk
+compression also stages all latents and both canonical tails together; a late
+failure preserves them and spare tails. Private work may change. Callers own
+valid immutable allocations/extents, matching model/history/projection state,
+correct unmodified successful metadata and exclusive disjoint writes. Row
+stores are individually atomic; larger cache/model commits need private shadows.
+C observes actual span addresses only. The library allocates nothing.
+
+Check: `psionic/tests/check_deepseek_sparse.sh` covers independent prefix
+equations, all 43 pinned layer positions, packed caches/candidates/selected
+positions, real whole/split compressor chunks, original 32x128 index and
+64x512/128-window shapes, native debug/release plain/ASan/UBSan and late
+failures. `psionic/check.sh --only deepseek/sparse --jobs 8` adds zero-survivor
+authority mutation. Actual scope: [chapter 60 record](docs/verification/psionic-ch60-2026-10-29.md).
+
 ## Psionic packed V4.1 caches reconstruct the reference's BF16 grids
 
 `psionic/lib/deepseek/cache*.coax` owns `deepseek-cache-bf16-grid-v1`:

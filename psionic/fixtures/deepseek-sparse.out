@@ -1,0 +1,5 @@
+ratio 1: 9 complete rows, 0 pending token
+ratio 2: 4 complete rows, 1 pending token
+layer 24: KV owner 20, index owner 24, candidate owner 20
+newest candidate block stays; selected positions 2, 3
+two heads attend over three window rows, two compressed rows and sink mass

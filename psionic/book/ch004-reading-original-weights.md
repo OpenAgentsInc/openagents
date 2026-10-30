@@ -176,7 +176,9 @@ trusted model selection path.
 <!-- source: psionic/lib/model-io/bundle.coax manifest -->
 ```jai
 PwIdentity :: struct { origin:string; revision:string; config_sha:string; tokenizer_sha:string; index_sha:string; }
-PwShard :: struct { name:string; data:[]u8; size:int; sha:string; }
+// verified: the host holds a verified-file record for these exact bytes
+// (model-io/access.coax), so the full hash may be skipped.
+PwShard :: struct { name:string; data:[]u8; size:int; sha:string; verified:bool; }
 PwSpec :: struct { name:string; shape:PsionicShape; dtype:PwDtype; shard:int; }
 ```
 
@@ -186,9 +188,13 @@ not authenticate whoever supplied the hashes, establish redistribution rights,
 or interpret the config/tokenizer. Actual model qualification must pin the
 upstream repository revision, license and original files separately.
 
-The gate hashes every sidecar and every shard using the existing
+The gate hashes every sidecar and each shard without a trusted verified-file
+record using the existing
 [checked Coax SHA-256 implementation](../../coax/lib/crypto/sha256.coax), checks
-exact shard sizes, and scans all shards. It then matches the complete expected
+exact shard sizes, and scans all shards. The host may set `verified` only for
+immutable bytes covered by a matching trusted
+[verified-file record](../lib/model-io/access.coax); a caller-supplied flag
+by itself does not establish that trust. It then matches the complete expected
 tensor inventory by name, dtype, canonical shape and shard. Header order is
 irrelevant. Publication uses the caller's manifest order. Missing, extra or
 duplicate tensors refuse the entire bundle.

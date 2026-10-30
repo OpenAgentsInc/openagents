@@ -1,0 +1,65 @@
+#load "sparse-math.coax";
+#authority;
+
+#test "chunk plans keep temporary work separate and count groups crossing the incoming tail" {
+    p:=da_chunk_plan(2,1,3,32);#assert p.status==DkStatus.ok && p.rows==2 && p.values==64 && p.floats==192 && p.bits==192;
+    p=da_chunk_plan(2,0,1,32);#assert p.status==DkStatus.ok && p.rows==0 && p.values==0 && p.bits==128;
+    #assert da_chunk_plan(1,0,1048576,512).status==DkStatus.ok && da_chunk_plan(2,1048575,1,32).status==DkStatus.ok;
+    #assert da_chunk_plan(0,0,1,32).status==DkStatus.shape && da_chunk_plan(1,0,0,32).status==DkStatus.shape && da_chunk_plan(1,0,1048577,32).status==DkStatus.shape;
+    #assert da_chunk_plan(1,-1,1,32).status==DkStatus.format && da_chunk_plan(1,1048576,1,32).status==DkStatus.format && da_chunk_plan(1,1048575,2,32).status==DkStatus.format;
+    #assert da_chunk_position(0) && da_chunk_position(1048575) && !da_chunk_position(-1) && !da_chunk_position(1048576);
+    #assert da_chunk_plan(2,3,3,32).rows==2;
+    f:[192]f32;bits:[192]u16;for j:0..<192 {f[j]=f32(j);bits[j]=cast(u16)j;}p=da_chunk_plan(2,1,3,32);v:=da_chunk_views(DaPoolWork.{floats=f[..],bits=bits[..]},p,32);
+    fs:=[5][]f32.[v.a,v.ag,v.b,v.bg,v.pool];starts:=[5]int.[0,32,64,96,128];sizes:=[5]int.[32,32,32,32,64];
+    for j:0..<5 {#assert fs[j].count==sizes[j] && fs[j][0]==f32(starts[j]) && fs[j][sizes[j]-1]==f32(starts[j]+sizes[j]-1);}
+    #assert v.batch.count==64 && v.batch[0]==0 && v.batch[63]==63 && v.one.count==32 && v.one[0]==64 && v.one[31]==95 && v.temp.count==96 && v.temp[0]==96 && v.temp[95]==191;
+}
+#test "whole and split chunks match full-prefix compressor outputs and canonical tail state" {
+    x:=DAS_POOL_2_KV;g:=DAS_POOL_2_GATE;n:=DAS_POOL_2_NORM;old:[32]f32;og:[32]f32;next:[32]f32;ng:[32]f32;out:[129]u16;floats:[192]f32;bits:[256]u16;out[128]=77;
+    r:=da_pool_chunk(2,0,9,32,x[..],g[..],old[..],og[..],n[..],out[..],next[..],ng[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false);
+    #assert r.status==DkStatus.ok && r.ready && r.written==128 && r.next==9 && r.first==0;
+    for group:0..<4 {for j:0..<32 {#assert out[group*32+j]==DAS_POOL_2_OUTPUT[(2*group+1)*32+j];}}#assert out[128]==77;
+    for j:0..<32 {#assert next[j]==x[256+j] && ng[j]==g[256+j];}
+    partial:[32]u16;first:[32]f32;fg:[32]f32;
+    r=da_pool_chunk(2,0,1,32,x[0..<32],g[0..<32],old[..],og[..],n[..],partial[..],first[..],fg[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false);#assert r.status==DkStatus.ok && !r.ready && r.first==0 && r.written==0;
+    r=da_pool_chunk(2,1,8,32,x[32..<288],g[32..<288],first[..],fg[..],n[..],out[0..<128],next[..],ng[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false);#assert r.status==DkStatus.ok && r.first==0 && r.next==9;
+    for group:0..<4 {for j:0..<32 {#assert out[group*32+j]==DAS_POOL_2_OUTPUT[(2*group+1)*32+j];}}
+    r=da_pool_chunk(2,2,1,32,x[64..<96],g[64..<96],old[..],og[..],n[..],partial[..],first[..],fg[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false);#assert r.status==DkStatus.ok && !r.ready && r.first==0;
+    r=da_pool_chunk(2,3,1,32,x[96..<128],g[96..<128],first[..],fg[..],n[..],partial[..],next[..],ng[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false);#assert r.status==DkStatus.ok && r.ready && r.first==2 && r.written==32;
+    for j:0..<32 {#assert partial[j]==DAS_POOL_2_OUTPUT[96+j];}
+}
+#test "chunk refusal retains every public latent and tail even on a late arithmetic failure" {
+    x:=DAS_POOL_1_KV;g:=DAS_POOL_1_GATE;n:=DAS_POOL_1_NORM;old:[32]f32;og:[32]f32;next:[33]f32;ng:[33]f32;out:[289]u16;floats:[192]f32;bits:[416]u16;
+    for j:0..<289 {out[j]=77;}for j:0..<33 {next[j]=99;ng[j]=101;}
+    for field:0..<11 {a:=x[..];gate:=g[..];o:=old[..];s:=og[..];norm:=n[..];latent:=out[..];nk:=next[..];ns:=ng[..];w:=DaPoolWork.{floats=floats[..],bits=bits[..]};alias:=false;
+        if field==0 {a=x[0..<287];}else if field==1 {gate=g[0..<287];}else if field==2 {o=old[0..<31];}else if field==3 {s=og[0..<31];}else if field==4 {norm=n[0..<31];}else if field==5 {latent=out[0..<287];}else if field==6 {nk=next[0..<31];}else if field==7 {ns=ng[0..<31];}else if field==8 {w.floats=floats[0..<191];}else if field==9 {w.bits=bits[0..<415];}else {alias=true;}
+        r:=da_pool_chunk(1,0,9,32,a,gate,o,s,norm,latent,nk,ns,w,alias);#assert r.status==(ifx field==10 then DkStatus.alias else DkStatus.capacity);
+    }
+    x[287]=f32_from_bits(0x7f7fffff);#assert da_pool_chunk(1,0,9,32,x[..],g[..],old[..],og[..],n[..],out[..],next[..],ng[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false).status==DkStatus.arithmetic;
+    for v:out {#assert v==77;}for v:next {#assert v==99;}for v:ng {#assert v==101;}
+    #assert da_pool_chunk(0,0,9,32,x[..],g[..],old[..],og[..],n[..],out[..],next[..],ng[..],DaPoolWork.{floats=floats[..],bits=bits[..]},false).status==DkStatus.shape;
+}
+
+da_chunk_position :: (position:int)->bool {return position>=0 && position<1048576;}
+da_chunk_plan :: (ratio:int,position:int,chunk:int,width:int)->DaChunkPlan #export_c {
+    p:=da_pool_plan(ratio,width);if p.status!=DkStatus.ok || chunk<1 || chunk>1048576 {return DaChunkPlan.{status=DkStatus.shape};}
+    if !da_chunk_position(position) || position+chunk>1048576 {return DaChunkPlan.{status=DkStatus.format};}
+    rows:=(position+chunk)/ratio-position/ratio;
+    return DaChunkPlan.{rows=rows,values=rows*width,floats=6*width,bits=(rows+4)*width};
+}
+da_chunk_views :: (work:DaPoolWork,p:DaChunkPlan,width:int)->DaChunkViews {
+    return DaChunkViews.{a=work.floats[0..<width],ag=work.floats[width..<2*width],b=work.floats[2*width..<3*width],bg=work.floats[3*width..<4*width],pool=work.floats[4*width..<6*width],batch=work.bits[0..<p.values],one=work.bits[p.values..<p.values+width],temp=work.bits[p.values+width..<p.bits]};
+}
+// book:begin pool-chunk
+da_pool_chunk :: (ratio:int,position:int,chunk:int,width:int,kv:[]f32,gate:[]f32,old_kv:[]f32,old_gate:[]f32,norm:[]u16,latent:[]u16,next_kv:[]f32,next_gate:[]f32,work:DaPoolWork,overlap:bool)->DaResult #export_c {
+    p:=da_chunk_plan(ratio,position,chunk,width);if p.status!=DkStatus.ok {return DaResult.{status=p.status};}
+    if kv.count!=chunk*width || gate.count!=chunk*width || old_kv.count!=width || old_gate.count!=width || norm.count!=width || latent.count<p.values || next_kv.count<width || next_gate.count<width || work.floats.count<p.floats || work.bits.count<p.bits {return DaResult.{status=DkStatus.capacity};}if overlap {return DaResult.{status=DkStatus.alias};}
+    v:=da_chunk_views(work,p,width);for j:0..<width {v.a[j]=old_kv[j];v.ag[j]=old_gate[j];}count:=0;
+    for t:0..<chunk {a:=ifx t%2==0 then v.a else v.b;ag:=ifx t%2==0 then v.ag else v.bg;b:=ifx t%2==0 then v.b else v.a;bg:=ifx t%2==0 then v.bg else v.ag;
+        r:=da_pool(ratio,position+t,kv[t*width..<(t+1)*width],gate[t*width..<(t+1)*width],a,ag,norm,v.one,b,bg,DaPoolWork.{floats=v.pool,bits=v.temp},false);if r.status!=DkStatus.ok {return r;}
+        if r.ready {for j:0..<width {v.batch[count*width+j]=v.one[j];}count+=1;}}
+    a:=ifx chunk%2==0 then v.a else v.b;ag:=ifx chunk%2==0 then v.ag else v.bg;
+    for j:0..<p.values {latent[j]=v.batch[j];}for j:0..<width {next_kv[j]=a[j];next_gate[j]=ag[j];}
+    return DaResult.{written=p.values,next=position+chunk,first=ifx p.rows>0 then position-position%ratio else 0,ready=p.rows>0};
+}
+// book:end pool-chunk

@@ -1,0 +1,149 @@
+#load "sparse-rope.coax";
+#authority;
+
+#test "optional row layouts and exact packing scratch intervals keep cache kinds distinct" {
+    p:=da_rows(1,0,512);#assert p.status==DkStatus.ok && p.values==0 && p.bytes==0 && p.data==0 && p.scales==0;
+    p=da_rows(0,128,512);#assert p.status==DkStatus.ok && p.data==65536 && p.scales==2048;
+    #assert da_rows(2,-1,32).status==DkStatus.shape && da_rows(2,1048577,32).status==DkStatus.shape && da_rows(3,1,32).status==DkStatus.shape;
+    #assert da_rows(2,1048576,32).status==DkStatus.ok;
+    p=da_rows(0,1,32);stage:[66]u8;for j:0..<66 {stage[j]=cast(u8)j;}v:=da_row_views(stage[..],p);
+    #assert v.pending.data.count==32 && v.pending.data[0]==0 && v.pending.data[31]==31 && v.pending.scales.count==1 && v.pending.scales[0]==32 && v.scratch.count==33 && v.scratch[0]==33 && v.scratch[32]==65;
+    #assert da_wide_larger(3,2) && !da_wide_larger(2,3) && !da_wide_larger(2,2);
+}
+#test "index score applies BF16 dot relu scaled signed weights and head combination" {
+    q:[32]u8;qs:=[2]u8.[127,127];k:[48]u8;ks:=[3]u8.[127,127,127];weights:=[2]u16.[0x3f80,0xbe80];out:[4]f32;stage:[3]f32;
+    for j:0..<16 {q[j]=0x11;q[16+j]=0x22;k[j]=0x22;k[16+j]=0x44;k[32+j]=0xaa;}out[3]=77;
+    r:=da_index(2,32,3,3,DkPacked.{data=q[..],scales=qs[..]},DkPacked.{data=k[..],scales=ks[..]},weights[..],out[..],stage[..],false);
+    #assert r.status==DkStatus.ok && r.written==3 && out[0]==1 && out[1]==2 && out[2]==0 && out[3]==77;
+    #assert da_index_shape(1,32,1,0) && da_index_shape(32,128,1048576,1048576);
+    #assert !da_index_shape(0,32,1,0) && !da_index_shape(33,32,1,0) && !da_index_shape(1,0,1,0) && !da_index_shape(1,33,1,0) && !da_index_shape(1,160,1,0);
+    #assert !da_index_shape(1,32,0,0) && !da_index_shape(1,32,1048577,0) && !da_index_shape(1,32,1,-1) && !da_index_shape(1,32,1,2);
+}
+#test "sparse attention retains sink mass and adds selected compressed rows to the live window" {
+    x:[32]u16;for j:0..<32 {x[j]=0x3f80;}data:[64]u8;scales:[2]u8;comp:[32]u8;cs:[4]u8;stage:[66]u8;
+    window:=DkPacked.{data=data[..],scales=scales[..]};compressed:=DkPacked.{data=comp[..],scales=cs[..]};
+    #assert da_store(0,2,32,0,x[..],window,stage[..],false).status==DkStatus.ok;for j:0..<32 {x[j]=0x4000;}
+    #assert da_store(0,2,32,1,x[..],window,stage[..],false).status==DkStatus.ok;
+    for j:0..<32 {x[j]=0x4040;}
+    #assert da_store(1,2,32,0,x[..],compressed,stage[..],false).status==DkStatus.ok;
+    query:[32]u16;out:[33]u16;sink:=[1]f32.[0];ids:=[1]int.[0];scores:[3]f64;bits:[32]u16;out[32]=77;
+    r:=da_attend(DaAttention.{heads=1,width=32,window=2,capacity=8,ratio=1},1,query[..],window,2,compressed,ids[..],sink[..],out[..],DaAttentionWork.{scores=scores[..],bits=bits[..]},false);
+    #assert r.status==DkStatus.ok && r.written==32;for j:0..<32 {#assert out[j]==0x3fc0;}#assert out[32]==77;
+    // Two window values 1,2 plus one shared compressed value 3, and sink mass 1:
+    // zero query produces (1+2+3)/(1+1+1+1) = 1.5.
+}
+#test "mixed index heads and wrapped sparse attention match independent full-prefix values" {
+    q:=DAS_INDEX_Q;qs:=DAS_INDEX_QS;k:=DAS_INDEX_K;ks:=DAS_INDEX_KS;w:=DAS_INDEX_W;out:[8]f32;stage:[7]f32;out[7]=99;
+    r:=da_index(2,32,7,7,DkPacked.{data=q[..],scales=qs[..]},DkPacked.{data=k[..],scales=ks[..]},w[..],out[0..<7],stage[..],false);#assert r.status==DkStatus.ok && r.written==7;
+    for j:0..<7 {#assert f32_bits(out[j])==f32_bits(DAS_INDEX_Y[j]);}#assert out[7]==99;
+    aq:=DAS_ATT_Q;aw:=DAS_ATT_W;aws:=DAS_ATT_WS;ac:=DAS_ATT_C;acs:=DAS_ATT_CS;ids:=[3]int.[0,3,7];sink:=[2]f32.[-0.5,-0.25];answer:[65]u16;scores:[6]f64;bits:[64]u16;answer[64]=88;
+    r=da_attend(DaAttention.{heads=2,width=32,window=3,capacity=8,ratio=1},7,aq[..],DkPacked.{data=aw[..],scales=aws[..]},8,DkPacked.{data=ac[..],scales=acs[..]},ids[..],sink[..],answer[0..<64],DaAttentionWork.{scores=scores[..],bits=bits[..]},false);
+    #assert r.status==DkStatus.ok && r.written==64;for j:0..<64 {#assert answer[j]==DAS_ATT_Y[j];}#assert answer[64]==88;
+}
+#test "attention plans have original head bounds and independent compressed visibility" {
+    s:=DaAttention.{heads=64,width=512,window=128,capacity=1048576,ratio=2};p:=da_attention_plan(s,1023,1048576,512);
+    #assert p.status==DkStatus.ok && p.values==32768 && p.scores==640 && p.visible==512;
+    #assert da_attention_shape(DaAttention.{heads=1,width=32,window=1,capacity=1,ratio=0});
+    for field:0..<10 {b:=s;if field==0 {b.heads=0;}else if field==1 {b.heads=65;}else if field==2 {b.width=31;}else if field==3 {b.width=544;}else if field==4 {b.window=0;}else if field==5 {b.window=129;}else if field==6 {b.capacity=0;}else if field==7 {b.capacity=1048577;}else if field==8 {b.ratio=-1;}else {b.ratio=3;}#assert !da_attention_shape(b);}
+    #assert !da_attention_shape(DaAttention.{heads=1,width=33,window=1,capacity=1,ratio=0});
+    #assert da_attention_plan(s,-1,1,0).status==DkStatus.format && da_attention_plan(s,1048576,1,0).status==DkStatus.format;
+    #assert da_attention_plan(s,1048575,1048576,0).status==DkStatus.ok;
+    #assert da_attention_plan(s,0,-1,0).status==DkStatus.shape && da_attention_plan(s,0,1048577,0).status==DkStatus.shape;
+    #assert da_attention_plan(s,0,1,-1).status==DkStatus.shape && da_attention_plan(s,0,1,513).status==DkStatus.shape;
+    #assert da_attention_plan(s,3,1,0).status==DkStatus.capacity && da_attention_plan(s,0,0,1).status==DkStatus.capacity;
+    s.ratio=0;#assert da_attention_plan(s,0,0,0).status==DkStatus.ok && da_attention_plan(s,0,1,0).status==DkStatus.shape && da_attention_plan(s,0,0,1).status==DkStatus.shape;
+    s.heads=0;#assert da_attention_plan(s,0,0,0).status==DkStatus.shape;
+}
+#test "row stores and index scores check each independent extent and retain all public tails" {
+    x:[32]u16;data:[33]u8;scale:[3]u8;work:[66]u8;q:[16]u8;qs:[1]u8;weights:[1]u16;out:[3]f32;stage:[2]f32;
+    #assert da_store(3,1,32,0,x[..],DkPacked.{data=data[..],scales=scale[..]},work[..],false).status==DkStatus.shape;
+    for row:[2]int.[-1,1] {#assert da_store(0,1,32,row,x[..],DkPacked.{data=data[..],scales=scale[..]},work[..],false).status==DkStatus.format;}
+    for field:0..<5 {input:=x[..];d:=data[0..<32];s:=scale[0..<1];w:=work[..];alias:=false;
+        if field==0 {input=x[0..<31];}else if field==1 {d=data[0..<31];}else if field==2 {s=scale[0..<0];}else if field==3 {w=work[0..<65];}else {alias=true;}
+        r:=da_store(0,1,32,0,input,DkPacked.{data=d,scales=s},w,alias);#assert r.status==(ifx field==4 then DkStatus.alias else DkStatus.capacity);}
+    x[31]=0x7f80;#assert da_store(0,1,32,0,x[..],DkPacked.{data=data[..],scales=scale[..]},work[..],false).status==DkStatus.number;
+    qp:=DkPacked.{data=q[..],scales=qs[..]};kp:=DkPacked.{data=data[0..<16],scales=scale[0..<1]};
+    for field:0..<8 {a:=qp;b:=kp;w:=weights[..];o:=out[..];s:=stage[..];alias:=false;
+        if field==0 {a.data=q[0..<15];}else if field==1 {a.scales=qs[0..<0];}else if field==2 {b.data=data[0..<15];}else if field==3 {b.scales=scale[0..<0];}else if field==4 {w=weights[0..<0];}else if field==5 {o=out[0..<0];}else if field==6 {s=stage[0..<0];}else {alias=true;}
+        r:=da_index(1,32,1,1,a,b,w,o,s,alias);#assert r.status==(ifx field==7 then DkStatus.alias else DkStatus.capacity);}
+    #assert da_index(0,32,1,0,qp,kp,weights[..],out[..],stage[..],false).status==DkStatus.shape;
+    qs[0]=255;#assert da_index(1,32,1,0,qp,kp,weights[..],out[..],stage[..],false).status==DkStatus.ok;
+    qs[0]=127;weights[0]=0x7f80;#assert da_index(1,32,1,1,qp,kp,weights[..],out[..],stage[..],false).status==DkStatus.number;
+}
+#test "every attention output workspace source extent and selected ID refuses atomically" {
+    q:=DAS_ATT_Q;w:=DAS_ATT_W;ws:=DAS_ATT_WS;c:=DAS_ATT_C;cs:=DAS_ATT_CS;ids:=[3]int.[0,3,7];sink:=[2]f32.[0,0];out:[65]u16;scores:[6]f64;bits:[64]u16;
+    for j:0..<65 {out[j]=77;}wp:=DkPacked.{data=w[..],scales=ws[..]};cp:=DkPacked.{data=c[..],scales=cs[..]};cfg:=DaAttention.{heads=2,width=32,window=3,capacity=8,ratio=1};
+    for field:0..<10 {input:=q[..];a:=wp;b:=cp;z:=sink[..];o:=out[..];work:=DaAttentionWork.{scores=scores[..],bits=bits[..]};alias:=false;
+        if field==0 {input=q[0..<63];}else if field==1 {a.data=w[0..<95];}else if field==2 {a.scales=ws[0..<2];}else if field==3 {b.data=c[0..<127];}else if field==4 {b.scales=cs[0..<15];}else if field==5 {z=sink[0..<1];}else if field==6 {o=out[0..<63];}else if field==7 {work.bits=bits[0..<63];}else if field==8 {work.scores=scores[0..<5];}else {alias=true;}
+        r:=da_attend(cfg,7,input,a,8,b,ids[..],z,o,work,alias);#assert r.status==(ifx field==9 then DkStatus.alias else DkStatus.capacity);}
+    for field:0..<4 {bad:=ids;if field==0 {bad[0]=-1;}else if field==1 {bad[2]=8;}else if field==2 {bad[2]=3;}else {bad[2]=2;}
+        #assert da_attend(cfg,7,q[..],wp,8,cp,bad[..],sink[..],out[..],DaAttentionWork.{scores=scores[..],bits=bits[..]},false).status==DkStatus.format;}
+    bad:=[3]int.[0,0,7];#assert da_attend(cfg,7,q[..],wp,8,cp,bad[..],sink[..],out[..],DaAttentionWork.{scores=scores[..],bits=bits[..]},false).status==DkStatus.format;
+    q[63]=0x7f80;#assert da_attend(cfg,7,q[..],wp,8,cp,ids[..],sink[..],out[..],DaAttentionWork.{scores=scores[..],bits=bits[..]},false).status==DkStatus.number;for v:out {#assert v==77;}
+}
+#test "stable attention handles scores far beyond the exponential range" {
+    x:[32]u16;for j:0..<32 {x[j]=0x4300;}data:[32]u8;scale:[1]u8;stage:[66]u8;window:=DkPacked.{data=data[..],scales=scale[..]};
+    #assert da_store(0,1,32,0,x[..],window,stage[..],false).status==DkStatus.ok;
+    sink:=[1]f32.[0];ids:[1]int;out:[32]u16;scores:[1]f64;bits:[32]u16;
+    r:=da_attend(DaAttention.{heads=1,width=32,window=1,capacity=1,ratio=0},0,x[..],window,0,DkPacked.{data=data[0..<0],scales=scale[0..<0]},ids[0..<0],sink[..],out[..],DaAttentionWork.{scores=scores[..],bits=bits[..]},false);
+    #assert r.status==DkStatus.ok;for j:0..<32 {#assert out[j]==0x4300;}
+}
+
+da_rows :: (kind:u8,rows:int,width:int)->DkPlan #export_c {
+    if rows<0 || rows>1048576 {return DkPlan.{status=DkStatus.shape};}p:=dk_plan(kind,1,width);if p.status!=DkStatus.ok {return p;}
+    return DkPlan.{values=p.values*rows,group=p.group,data=p.data*rows,scales=p.scales*rows,bytes=p.bytes*rows};
+}
+da_row_views :: (stage:[]u8,p:DkPlan)->DaRowViews {return DaRowViews.{pending=DkPacked.{data=stage[0..<p.data],scales=stage[p.data..<p.bytes]},scratch=stage[p.bytes..<2*p.bytes]};}
+da_store :: (kind:u8,rows:int,width:int,row:int,x:[]u16,out:DkPacked,stage:[]u8,overlap:bool)->DkResult #export_c {
+    p:=dk_plan(kind,rows,width);if p.status!=DkStatus.ok {return DkResult.{status=p.status};}if row<0 || row>=rows {return DkResult.{status=DkStatus.format};}
+    one:=dk_plan(kind,1,width);if x.count!=width || out.data.count<p.data || out.scales.count<p.scales || stage.count<2*one.bytes {return DkResult.{status=DkStatus.capacity};}if overlap {return DkResult.{status=DkStatus.alias};}
+    v:=da_row_views(stage,one);r:=dk_pack(kind,1,width,x,v.pending,v.scratch,false);if r.status!=DkStatus.ok {return r;}
+    for j:0..<one.data {out.data[row*one.data+j]=v.pending.data[j];}for j:0..<one.scales {out.scales[row*one.scales+j]=v.pending.scales[j];}return DkResult.{written=width};
+}
+da_read :: (kind:u8,width:int,row:int,col:int,x:DkPacked)->DkScalar {
+    at:=row*width+col;code:=ifx kind==0 then x.data[at] else cast(u8)((x.data[at/2]>>cast(u8)((at%2)*4))&15);
+    return dk_lane(kind,code,x.scales[at/(ifx kind==1 then 16 else 32)]);
+}
+da_index_shape :: (heads:int,width:int,rows:int,visible:int)->bool {return heads>=1 && heads<=32 && width>=32 && width/32<=4 && width%32==0 && rows>=1 && rows<=1048576 && visible>=0 && visible<=rows;}
+da_index :: (heads:int,width:int,rows:int,visible:int,q:DkPacked,keys:DkPacked,weights:[]u16,out:[]f32,stage:[]f32,overlap:bool)->DkResult #export_c {
+    if !da_index_shape(heads,width,rows,visible) {return DkResult.{status=DkStatus.shape};}qp:=da_rows(2,heads,width);kp:=da_rows(2,rows,width);
+    if q.data.count!=qp.data || q.scales.count!=qp.scales || keys.data.count!=kp.data || keys.scales.count!=kp.scales || weights.count!=heads || out.count<visible || stage.count<visible {return DkResult.{status=DkStatus.capacity};}if overlap {return DkResult.{status=DkStatus.alias};}
+    if visible==0 {return DkResult.{};}query:[4096]u16;weighted:[32]u16;
+    for i:0..<qp.values {r:=da_read(2,width,i/width,i%width,q);if r.status!=DkStatus.ok {return DkResult.{status=r.status};}query[i]=r.bits;}
+    scale:=f32(1/sqrt(f64(width)*f64(heads)));
+    for h:0..<heads {if (weights[h]&0x7fff)>=0x7f80 {return DkResult.{status=DkStatus.number};}v:=f32_from_bits(u32(weights[h])<<16)*scale;b:=dk_bf16(v);if b.status!=DkStatus.ok {return DkResult.{status=b.status};}weighted[h]=b.bits;}
+    key:[128]u16;for row:0..<visible {for j:0..<width {b:=da_read(2,width,row,j,keys);if b.status!=DkStatus.ok {return DkResult.{status=b.status};}key[j]=b.bits;}
+        total:PsionicAccumulator;for h:0..<heads {sum:PsionicAccumulator;for j:0..<width {a:=f64(f32_from_bits(u32(query[h*width+j])<<16));b:=f64(f32_from_bits(u32(key[j])<<16));sum=psionic_ops_accumulate(sum,a*b);}
+            value:=psionic_ops_total(sum);if !psionic_ops_fits_f32(value) {return DkResult.{status=DkStatus.arithmetic};}b:=dk_bf16(f32(value));if b.status!=DkStatus.ok {return DkResult.{status=b.status};}
+            dot:=f64(f32_from_bits(u32(b.bits)<<16));positive:=(dot+abs(dot))/2;value=positive*f64(f32_from_bits(u32(weighted[h])<<16));
+            if !psionic_ops_fits_f32(value) {return DkResult.{status=DkStatus.arithmetic};}b=dk_bf16(f32(value));if b.status!=DkStatus.ok {return DkResult.{status=b.status};}total=psionic_ops_accumulate(total,f64(f32_from_bits(u32(b.bits)<<16)));}
+        value:=psionic_ops_total(total);if !psionic_ops_fits_f32(value) {return DkResult.{status=DkStatus.arithmetic};}b:=dk_bf16(f32(value));if b.status!=DkStatus.ok {return DkResult.{status=b.status};}stage[row]=f32_from_bits(u32(b.bits)<<16);}
+    for row:0..<visible {out[row]=stage[row];}return DkResult.{written=visible};
+}
+da_attention_shape :: (s:DaAttention)->bool {return s.heads>=1 && s.heads<=64 && s.width>=32 && s.width/32<=16 && s.width%32==0 && s.window>=1 && s.window<=128 && s.capacity>=1 && s.capacity<=1048576 && s.ratio>=0 && s.ratio<=2;}
+da_attention_plan :: (s:DaAttention,position:int,compressed_rows:int,selected:int)->DaAttentionPlan #export_c {
+    if !da_attention_shape(s) || compressed_rows<0 || compressed_rows>1048576 || selected<0 || selected>512 {return DaAttentionPlan.{status=DkStatus.shape};}
+    if position<0 || position>=s.capacity {return DaAttentionPlan.{status=DkStatus.format};}
+    visible:=0;if s.ratio>0 {visible=(position+1)/s.ratio;}else if compressed_rows!=0 || selected!=0 {return DaAttentionPlan.{status=DkStatus.shape};}
+    if visible>compressed_rows || selected>visible {return DaAttentionPlan.{status=DkStatus.capacity};}
+    return DaAttentionPlan.{values=s.heads*s.width,scores=s.window+selected,visible=visible};
+}
+da_wide_larger :: (a:f64,b:f64)->bool {return a>b;}
+da_attend :: (s:DaAttention,position:int,q:[]u16,window:DkPacked,compressed_rows:int,compressed:DkPacked,ids:[]int,sink:[]f32,out:[]u16,work:DaAttentionWork,overlap:bool)->DkResult #export_c {
+    p:=da_attention_plan(s,position,compressed_rows,ids.count);if p.status!=DkStatus.ok {return DkResult.{status=p.status};}wp:=da_rows(0,s.window,s.width);cp:=da_rows(1,compressed_rows,s.width);
+    if q.count!=p.values || window.data.count!=wp.data || window.scales.count!=wp.scales || compressed.data.count!=cp.data || compressed.scales.count!=cp.scales || sink.count!=s.heads || out.count<p.values || work.bits.count<p.values || work.scores.count<p.scores {return DkResult.{status=DkStatus.capacity};}if overlap {return DkResult.{status=DkStatus.alias};}
+    for i:0..<ids.count {if ids[i]<0 || ids[i]>=p.visible {return DkResult.{status=DkStatus.format};}if i>0 && ids[i]<=ids[i-1] {return DkResult.{status=DkStatus.format};}}
+    ring:=da_window(position,s.window,s.capacity);count:=ring.count+ids.count;
+    for h:0..<s.heads {if !da_score_finite(f32_bits(sink[h])) {return DkResult.{status=DkStatus.number};}maximum:=f64(sink[h]);
+        for i:0..<count {row:=ifx i<ring.count then (ring.oldest+i)%s.window else ids[i-ring.count];kind:=ifx i<ring.count then 0 else 1;source:=ifx i<ring.count then window else compressed;sum:PsionicAccumulator;
+            for j:0..<s.width {b:=q[h*s.width+j];if (b&0x7fff)>=0x7f80 {return DkResult.{status=DkStatus.number};}k:=da_read(cast(u8)kind,s.width,row,j,source);if k.status!=DkStatus.ok {return DkResult.{status=k.status};}
+                sum=psionic_ops_accumulate(sum,f64(f32_from_bits(u32(b)<<16))*f64(f32_from_bits(u32(k.bits)<<16)));}
+            value:=psionic_ops_total(sum)/sqrt(f64(s.width));work.scores[i]=value;if da_wide_larger(value,maximum) {maximum=value;}}
+        denom:=psionic_ops_accumulate(PsionicAccumulator.{},exp(f64(sink[h])-maximum));
+        for i:0..<count {work.scores[i]=exp(work.scores[i]-maximum);denom=psionic_ops_accumulate(denom,work.scores[i]);}
+        divisor:=psionic_ops_total(denom);
+        for j:0..<s.width {sum:PsionicAccumulator;for i:0..<count {row:=ifx i<ring.count then (ring.oldest+i)%s.window else ids[i-ring.count];kind:=ifx i<ring.count then 0 else 1;source:=ifx i<ring.count then window else compressed;
+                k:=da_read(cast(u8)kind,s.width,row,j,source);if k.status!=DkStatus.ok {return DkResult.{status=k.status};}sum=psionic_ops_accumulate(sum,work.scores[i]*f64(f32_from_bits(u32(k.bits)<<16)));}
+            b:=dk_bf16(f32(psionic_ops_total(sum)/divisor));if b.status!=DkStatus.ok {return DkResult.{status=b.status};}work.bits[h*s.width+j]=b.bits;}}
+    for j:0..<p.values {out[j]=work.bits[j];}return DkResult.{written=p.values};
+}

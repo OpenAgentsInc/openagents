@@ -1,0 +1,140 @@
+#load "sparse-types.coax";
+#authority;
+#load "../../fixtures/deepseek/sparse-goldens.coax";
+
+#test "pinned original layers preserve all KV index and candidate owners including draft windows" {
+    for layer:0..<43 {r:=da_flash_links(layer);#assert r.status==DkStatus.ok && r.layer==layer && r.ratio==DAS_RATIO[layer] && r.kv==DAS_KV[layer] && r.index==DAS_INDEX[layer] && r.candidate==DAS_CANDIDATE[layer];
+        #assert r.produce_kv==(r.kv==layer) && r.produce_index==(r.index==layer) && r.produce_candidates==(r.candidate==layer);
+    }
+    #assert da_flash_links(-1).status==DkStatus.shape && da_flash_links(43).status==DkStatus.shape;
+}
+#test "rings expose chronological positions through filling and repeated wraps" {
+    for win:[4]int.[1,3,8,128] {for pos:0..<389 {r:=da_window(pos,win,1048576);count:=ifx pos+1<win then pos+1 else win;
+        #assert r.status==DkStatus.ok && r.count==count && r.slot==pos%win && r.first==pos+1-count && r.oldest==r.first%win && r.next==pos+1;}}
+    #assert da_window(0,128,1).status==DkStatus.ok && da_window(1048575,128,1048576).status==DkStatus.ok;
+    #assert da_window(0,0,1).status==DkStatus.shape && da_window(0,129,1).status==DkStatus.shape && da_window(0,1,0).status==DkStatus.shape && da_window(0,1,1048577).status==DkStatus.shape;
+    #assert da_window(-1,1,1).status==DkStatus.format && da_window(1,1,1).status==DkStatus.format;
+}
+#test "every shared publication stamp must name the pinned owner and current token" {
+    for layer:0..<43 {r:=da_flash_links(layer);k:=DaStamp.{layer=r.kv,next=19};i:=DaStamp.{layer=r.index,next=19};c:=DaStamp.{layer=r.candidate,next=19};
+        #assert da_reuse(layer,18,k,i,c)==DkStatus.ok;
+        if r.ratio>0 {k.next=21;#assert da_reuse(layer,18,k,i,c)==DkStatus.ok;k.next=1048576;#assert da_reuse(layer,18,k,i,c)==DkStatus.ok;k.next=1048577;#assert da_reuse(layer,18,k,i,c)==DkStatus.format;k.next=18;#assert da_reuse(layer,18,k,i,c)==DkStatus.format;k.next=19;k.layer+=1;#assert da_reuse(layer,18,k,i,c)==DkStatus.format;k.layer=r.kv;
+            i.next=18;#assert da_reuse(layer,18,k,i,c)==DkStatus.format;i.next=19;i.layer+=1;#assert da_reuse(layer,18,k,i,c)==DkStatus.format;i.layer=r.index;}
+        if r.candidate>=0 {c.next=18;#assert da_reuse(layer,18,k,i,c)==DkStatus.format;c.next=19;c.layer+=1;#assert da_reuse(layer,18,k,i,c)==DkStatus.format;}
+    }
+    empty:DaStamp;#assert da_reuse(0,0,empty,empty,empty)==DkStatus.ok;#assert da_reuse(-1,0,empty,empty,empty)==DkStatus.shape && da_reuse(0,-1,empty,empty,empty)==DkStatus.format && da_reuse(0,1048576,empty,empty,empty)==DkStatus.format;
+}
+#test "heap selection keeps score priority then lowest IDs and publishes position order" {
+    scores:=[9]f32.[1,-2,5,5,3,7,0,7,4];mask:=[9]u8.[1,1,1,1,1,1,1,1,1];out:[6]int;heap:[5]int;out[5]=99;
+    r:=da_select(scores[..],9,mask[..],5,out[..],heap[..],false);#assert r.status==DkStatus.ok && r.count==5;
+    expected:=[5]int.[2,3,5,7,8];for j:0..<5 {#assert out[j]==expected[j];}#assert out[5]==99;
+    #assert da_better(3,1,3,2) && !da_better(3,2,3,1) && da_better(4,9,3,0) && !da_better(2,0,3,9);
+    #assert da_heap(scores[..],heap[..],0,0,0)==0;
+    #assert !da_better(3,1,3,1) && da_before(1,2) && !da_before(1,1) && !da_before(2,1);
+    small:=[4]f32.[0,3,2,4];three:=[3]int.[0,1,2];#assert da_heap(small[..],three[..],3,3,3)==3 && three[0]==2 && three[1]==1 && three[2]==3;
+    small[2]=3;three=[3]int.[0,1,2];#assert da_heap(small[..],three[..],3,3,3)==3 && three[0]==2 && three[1]==1 && three[2]==3;
+    three=[3]int.[0,2,1];#assert da_heap(small[..],three[..],3,3,3)==3 && three[0]==2 && three[1]==3 && three[2]==1;
+}
+#test "candidate selection pins the partial newest block and drops unreachable blocks" {
+    scores:=[9]f32.[8,7,6,5,4,3,2,1,-9];out:[10]u8;stage:[9]u8;block:[3]f32;heap:[3]int;out[9]=77;
+    r:=da_candidates(scores[..],9,3,2,out[..],stage[..],block[..],heap[..],false);#assert r.status==DkStatus.ok && r.count==2;
+    expected:=[9]u8.[1,1,1,0,0,0,1,1,1];for j:0..<9 {#assert out[j]==expected[j];}#assert out[9]==77;
+    r=da_candidates(scores[..],4,3,1,out[..],stage[..],block[..],heap[..],false);#assert r.status==DkStatus.ok && r.count==1;
+    for j:0..<9 {#assert out[j]==cast(u8)(ifx j>=3 && j<6 then 1 else 0);}
+    r=da_candidates(scores[..],0,3,3,out[..],stage[..],block[..],heap[..],false);#assert r.status==DkStatus.ok && r.count==0;for j:0..<9 {#assert out[j]==0;}
+}
+#test "every sort-oracle candidate mask and subsequent position choice agree" {
+    cases:=DAS_CASES;
+    for c:cases {input:=c.scores;out:[66]u8;stage:[65]u8;blocks:[65]f32;heap:[5]int;ids:[6]int;out[c.n]=88;ids[5]=99;for j:0..<65 {stage[j]=99;}
+        r:=da_candidates(input[0..<c.n],c.visible,c.block,c.keep,out[0..<c.n],stage[0..<c.n],blocks[..],heap[0..<c.keep],false);#assert r.status==DkStatus.ok;
+        for j:0..<c.n {#assert out[j]==c.mask[j];}#assert out[c.n]==88;
+        r=da_select(input[0..<c.n],c.visible,out[0..<c.n],5,ids[0..<5],heap[..],false);#assert r.status==DkStatus.ok && r.count==c.count;
+        for j:0..<c.count {#assert ids[j]==c.ids[j];}#assert ids[5]==99;
+    }
+}
+#test "every heap prefix has the independently ranked set and the worst selected item at its root" {
+    scores:[37]f32;for i:0..<37 {scores[i]=f32((i*17)%37);}
+    for keep:1..<17 {heap:[16]int;count:=0;for candidate:0..<37 {
+        count=da_heap(scores[..],heap[0..<keep],count,keep,candidate);expected:=ifx candidate+1<keep then candidate+1 else keep;#assert count==expected;
+        for i:0..<candidate+1 {rank:=0;for j:0..<candidate+1 {if scores[j]>scores[i] || (scores[j]==scores[i] && j<i) {rank+=1;}}found:=false;for j:0..<count {if heap[j]==i {found=true;}}#assert found==(rank<keep);}
+        for j:1..<count {#assert !da_better(scores[heap[(j-1)/2]],heap[(j-1)/2],scores[heap[j]],heap[j]);}
+    }}
+}
+#test "selection shape and each independent capacity refuse before publication" {
+    #assert da_select_shape(0,0,1,512) && da_select_shape(1048576,1048576,512,512);
+    #assert !da_select_shape(-1,0,1,512) && !da_select_shape(1048577,0,1,512) && !da_select_shape(1,-1,1,512) && !da_select_shape(1,2,1,512) && !da_select_shape(1,1,0,512) && !da_select_shape(1,1,513,512);
+    #assert da_block_width(1) && da_block_width(8) && !da_block_width(0) && !da_block_width(9);
+    for bits:[6]u32.[0,0x80000000,0x7f7fffff,0x7f800000,0xff800000,0x7fc00000] {#assert da_score_finite(bits)==(bits==0 || bits==0x80000000 || bits==0x7f7fffff);}
+    scores:[9]f32;mask:[10]u8;out:[513]int;heap:[2048]int;bytes:[10]u8;stage:[9]u8;blocks:[3]f32;
+    for i:0..<513 {out[i]=88;}for i:0..<10 {bytes[i]=77;mask[i]=1;}
+    for field:0..<4 {m:=mask[0..<9];o:=out[0..<2];h:=heap[0..<2];alias:=false;if field==0 {m=mask[..];}else if field==1 {o=out[0..<1];}else if field==2 {h=heap[0..<1];}else {alias=true;}
+        r:=da_select(scores[..],9,m,2,o,h,alias);#assert r.status==(ifx field==3 then DkStatus.alias else DkStatus.capacity);}
+    #assert da_select(scores[..],-1,mask[0..<9],1,out[..],heap[..],false).status==DkStatus.shape;
+    mask[0]=2;#assert da_select(scores[..],9,mask[0..<9],1,out[..],heap[..],false).status==DkStatus.format;mask[0]=1;
+    #assert da_select(scores[0..<0],0,mask[0..<0],512,out[..],heap[..],false).status==DkStatus.ok;
+    #assert da_select(scores[0..<0],0,mask[0..<0],513,out[..],heap[..],false).status==DkStatus.shape;
+    for field:0..<5 {o:=bytes[0..<9];s:=stage[..];b:=blocks[..];h:=heap[0..<3];alias:=false;
+        if field==0 {o=bytes[0..<8];}else if field==1 {s=stage[0..<8];}else if field==2 {b=blocks[0..<2];}else if field==3 {h=heap[0..<2];}else {alias=true;}
+        r:=da_candidates(scores[..],9,3,3,o,s,b,h,alias);#assert r.status==(ifx field==4 then DkStatus.alias else DkStatus.capacity);}
+    #assert da_candidates(scores[..],-1,3,3,bytes[..],stage[..],blocks[..],heap[..],false).status==DkStatus.shape;
+    #assert da_candidates(scores[..],1,0,3,bytes[..],stage[..],blocks[..],heap[..],false).status==DkStatus.shape;
+    #assert da_candidates(scores[0..<0],0,8,2048,bytes[0..<0],stage[0..<0],blocks[0..<0],heap[..],false).status==DkStatus.ok;
+    #assert da_candidates(scores[0..<0],0,8,2049,bytes[0..<0],stage[0..<0],blocks[0..<0],heap[..],false).status==DkStatus.shape;
+    #assert da_candidates(scores[0..<7],1,3,1,bytes[..],stage[..],blocks[0..<2],heap[..],false).status==DkStatus.capacity;
+    for v:out {#assert v==88;}for v:bytes {#assert v==77;}
+}
+
+da_flash_links :: (layer:int)->DaLinks #export_c {
+    if layer<0 || layer>=43 {return DaLinks.{status=DkStatus.shape};}
+    ratio:=ifx layer>=2 && layer<20 then 2 else (ifx layer>=20 && layer<40 then 1 else 0);kv:=-1;index:=-1;candidate:=-1;
+    if ratio>0 {for owner:[4]int.[2,8,14,20] {if owner<=layer {kv=owner;}}for owner:[8]int.[2,8,14,20,24,28,32,36] {if owner<=layer {index=owner;}}if layer>=20 {candidate=20;}}
+    return DaLinks.{layer=layer,ratio=ratio,kv=kv,index=index,candidate=candidate,produce_kv=kv==layer,produce_index=index==layer,produce_candidates=candidate==layer};
+}
+da_window :: (position:int,window:int,capacity:int)->DaWindow #export_c {
+    if window<1 || window>128 || capacity<1 || capacity>1048576 {return DaWindow.{status=DkStatus.shape};}
+    if position<0 || position>=capacity {return DaWindow.{status=DkStatus.format};}
+    count:=ifx da_before(position+1,window) then position+1 else window;first:=position+1-count;
+    return DaWindow.{count=count,slot=position%window,oldest=first%window,first=first,next=position+1};
+}
+da_reuse :: (layer:int,position:int,kv:DaStamp,index:DaStamp,candidate:DaStamp)->DkStatus #export_c {
+    link:=da_flash_links(layer);if link.status!=DkStatus.ok {return link.status;}if position<0 || position>=1048576 {return DkStatus.format;}
+    if link.ratio>0 {if kv.layer!=link.kv || kv.next<position+1 || kv.next>1048576 || index.layer!=link.index || index.next!=position+1 {return DkStatus.format;}}
+    if link.candidate==20 {if candidate.layer!=link.candidate || candidate.next!=position+1 {return DkStatus.format;}}return DkStatus.ok;
+}
+da_better :: (a:f32,ai:int,b:f32,bi:int)->bool {return a>b || (a==b && ai<bi);}
+da_heap :: (scores:[]f32,heap:[]int,count:int,capacity:int,candidate:int)->int {
+    if capacity==0 {return count;}n:=count;
+    if n<capacity {at:=n;heap[at]=candidate;n+=1;
+        while at>0 {parent:=(at+1)/2-1;if !da_better(scores[heap[parent]],heap[parent],scores[heap[at]],heap[at]) {break;}swap:=heap[parent];heap[parent]=heap[at];heap[at]=swap;at=parent;}return n;}
+    if !da_better(scores[candidate],candidate,scores[heap[0]],heap[0]) {return n;}heap[0]=candidate;at:=0;
+    while 2*at+1<n {child:=2*at+1;if child+1<n && da_better(scores[heap[child]],heap[child],scores[heap[child+1]],heap[child+1]) {child+=1;}
+        if !da_better(scores[heap[at]],heap[at],scores[heap[child]],heap[child]) {break;}swap:=heap[at];heap[at]=heap[child];heap[child]=swap;at=child;}
+    return n;
+}
+da_before :: (a:int,b:int)->bool {return a<b;}
+da_select_shape :: (n:int,visible:int,keep:int,limit:int)->bool {return n>=0 && n<=1048576 && visible>=0 && visible<=n && keep>=1 && keep<=limit;}
+da_block_width :: (block:int)->bool {return block>=1 && block<=8;}
+da_score_finite :: (bits:u32)->bool {return (bits&0x7fffffff)<0x7f800000;}
+da_position_order :: (heap:[]int,count:int) {for i:1..<count {v:=heap[i];j:=i;while j>0 && da_before(v,heap[j-1]) {heap[j]=heap[j-1];j-=1;}heap[j]=v;}}
+da_select :: (scores:[]f32,visible:int,mask:[]u8,keep:int,out:[]int,heap:[]int,overlap:bool)->DaSelection #export_c {
+    n:=scores.count;if !da_select_shape(n,visible,keep,512) {return DaSelection.{status=DkStatus.shape};}
+    if mask.count!=n || out.count<keep || heap.count<keep {return DaSelection.{status=DkStatus.capacity};}if overlap {return DaSelection.{status=DkStatus.alias};}
+    count:=0;for i:0..<visible {if mask[i]>1 {return DaSelection.{status=DkStatus.format};}if mask[i]==1 {
+        if !da_score_finite(f32_bits(scores[i])) {return DaSelection.{status=DkStatus.number};}count=da_heap(scores,heap,count,keep,i);}}
+    da_position_order(heap,count);for i:0..<count {out[i]=heap[i];}return DaSelection.{count=count};
+}
+da_candidates :: (scores:[]f32,visible:int,block_size:int,keep:int,out:[]u8,stage:[]u8,blocks:[]f32,heap:[]int,overlap:bool)->DaSelection #export_c {
+    n:=scores.count;if !da_select_shape(n,visible,keep,2048) || !da_block_width(block_size) {return DaSelection.{status=DkStatus.shape};}
+    total:=(n+block_size-1)/block_size;
+    if out.count<n || stage.count<n || blocks.count<total || heap.count<keep {return DaSelection.{status=DkStatus.capacity};}if overlap {return DaSelection.{status=DkStatus.alias};}
+    for i:0..<n {stage[i]=0;}count:=0;
+    if visible>0 {last:=(visible-1)/block_size;
+        for b:0..<last {start:=b*block_size;maximum:=scores[start];
+            if !da_score_finite(f32_bits(maximum)) {return DaSelection.{status=DkStatus.number};}
+            for i:start+1..<start+block_size {if !da_score_finite(f32_bits(scores[i])) {return DaSelection.{status=DkStatus.number};}maximum=f32((f64(maximum)+f64(scores[i])+abs(f64(maximum)-f64(scores[i])))/2);}blocks[b]=maximum;
+            count=da_heap(blocks,heap,count,keep-1,b);}
+        heap[count]=last;count+=1;for j:0..<count {b:=heap[j];start:=b*block_size;end:=ifx da_before(start+block_size,n) then start+block_size else n;for i:start..<end {
+            if da_before(i,visible) && !da_score_finite(f32_bits(scores[i])) {return DaSelection.{status=DkStatus.number};}stage[i]=1;}}
+    }
+    for i:0..<n {out[i]=stage[i];}return DaSelection.{count=count};
+}

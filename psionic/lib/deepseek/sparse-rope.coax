@@ -1,0 +1,69 @@
+#load "sparse-pool.coax";
+#authority;
+DaPair :: struct {status:DkStatus;a:u16;b:u16;}
+
+#test "V4 rotary coefficients have distinct pure-window and compressed YaRN profiles" {
+    cases:=DAS_ROPE;for c:cases {out:[65]f32;stage:[64]f32;out[64]=99;
+        r:=da_coeff(c.compressed,c.rope,c.position,out[..],stage[..],false);#assert r.status==DkStatus.ok && r.written==c.rope;
+        for j:0..<c.rope {#assert f32_bits(out[j])==c.coeff[j];}#assert out[64]==99;}
+    #assert da_rope_width(2) && da_rope_width(64) && !da_rope_width(0) && !da_rope_width(1) && !da_rope_width(3) && !da_rope_width(66);
+    #assert da_rope_shape(1,2,2) && da_rope_shape(64,8192,64) && !da_rope_shape(0,2,2) && !da_rope_shape(65,64,64) && !da_rope_shape(1,1,2) && !da_rope_shape(1,8193,64);
+    #assert da_unit(-1)==0 && da_unit(0)==0 && da_unit(0.5)==0.5 && da_unit(1)==1 && da_unit(2)==1;
+}
+#test "V4 keeps adjacent complex pairs in place and inverts the output rotation" {
+    x:=[6]u16.[0x4000,0x4040,0x3f80,0,0,0x3f80];out:[7]u16;stage:[6]u16;out[6]=77;
+    r:=da_rotate(false,0,1,6,4,false,x[..],out[0..<6],stage[..],false);#assert r.status==DkStatus.ok && r.written==6;for j:0..<6 {#assert out[j]==x[j];}#assert out[6]==77;
+    p:=da_rotate_pair(0x3f80,0x4000,0.5,0.5,false);#assert p.status==DkStatus.ok && p.a==0xbf00 && p.b==0x3fc0;
+    p=da_rotate_pair(0x3f80,0x4000,0.5,0.5,true);#assert p.status==DkStatus.ok && p.a==0x3fc0 && p.b==0x3f00;
+    #assert da_rotate_pair(0x7f7f,0x7f7f,1,1,false).status==DkStatus.arithmetic;
+    #assert da_rotate_pair(0x7f80,0,1,0,false).status==DkStatus.number && da_rotate_pair(0,0x7fc0,1,0,false).status==DkStatus.number;
+    #assert da_rotate_pair(0,0x7f80,1,0,false).status==DkStatus.number;
+}
+#test "nonzero adjacent rotations for two heads preserve prefixes and match independent paired values" {
+    a:=DAS_ROTATE_0_INPUT;b:=DAS_ROTATE_1_INPUT;c:=DAS_ROTATE_2_INPUT;d:=DAS_ROTATE_3_INPUT;
+    ay:=DAS_ROTATE_0_OUTPUT;by:=DAS_ROTATE_1_OUTPUT;cy:=DAS_ROTATE_2_OUTPUT;dy:=DAS_ROTATE_3_OUTPUT;
+    xs:=[4][]u16.[a[..],b[..],c[..],d[..]];ys:=[4][]u16.[ay[..],by[..],cy[..],dy[..]];
+    for i:0..<4 {out:[161]u16;stage:[160]u16;out[160]=77;r:=da_rotate(i>=2,731,2,80,64,i%2==1,xs[i],out[..],stage[..],false);#assert r.status==DkStatus.ok;
+        for j:0..<160 {#assert out[j]==ys[i][j];}#assert out[160]==77;}
+}
+#test "rotary shape position span aliases and non-finite prefixes refuse atomically" {
+    x:[66]u16;out:[67]u16;stage:[66]u16;coeff:[64]f32;scratch:[64]f32;for j:0..<67 {out[j]=77;}
+    for field:0..<7 {heads:=1;width:=66;rope:=64;position:=0;input:=x[..];o:=out[..];s:=stage[..];alias:=false;
+        if field==0 {heads=0;}else if field==1 {position=-1;}else if field==2 {position=1048576;}else if field==3 {input=x[0..<65];}else if field==4 {o=out[0..<65];}else if field==5 {s=stage[0..<65];}else {alias=true;}
+        r:=da_rotate(true,position,heads,width,rope,false,input,o,s,alias);#assert r.status==(ifx field==0 then DkStatus.shape else (ifx field<3 then DkStatus.format else (ifx field==6 then DkStatus.alias else DkStatus.capacity)));}
+    for field:0..<6 {rope:=64;pos:=0;o:=coeff[..];s:=scratch[..];alias:=false;
+        if field==0 {rope=3;}else if field==1 {pos=-1;}else if field==2 {pos=1048576;}else if field==3 {o=coeff[0..<63];}else if field==4 {s=scratch[0..<63];}else {alias=true;}
+        r:=da_coeff(true,rope,pos,o,s,alias);#assert r.status==(ifx field==0 then DkStatus.shape else (ifx field<3 then DkStatus.format else (ifx field==5 then DkStatus.alias else DkStatus.capacity)));}
+    x[0]=0x7f80;#assert da_rotate(true,1,1,66,64,false,x[..],out[..],stage[..],false).status==DkStatus.number;for v:out {#assert v==77;}
+}
+
+da_rope_width :: (rope:int)->bool {return rope>=2 && rope/2<=32 && rope%2==0;}
+da_rope_shape :: (heads:int,width:int,rope:int)->bool {return heads>=1 && heads<=64 && da_rope_width(rope) && width>=rope && width<=8192;}
+da_unit :: (x:f32)->f32 {return f32((abs(f64(x))-abs(f64(x)-1)+1)/2);}
+da_coeff :: (compressed:bool,rope:int,position:int,out:[]f32,stage:[]f32,overlap:bool)->DkResult #export_c {
+    if !da_rope_width(rope) {return DkResult.{status=DkStatus.shape};}if position<0 || position>=1048576 {return DkResult.{status=DkStatus.format};}
+    if out.count<rope || stage.count<rope {return DkResult.{status=DkStatus.capacity};}if overlap {return DkResult.{status=DkStatus.alias};}
+    base:=ifx compressed then 160000.0 else 10000.0;
+    low:=floor(f64(rope)*log(65536.0/(32*2*3.141592653589793))/(2*log(160000.0)));
+    high:=-floor(-f64(rope)*log(65536.0/(2*3.141592653589793))/(2*log(160000.0)));
+    for j:0..<rope/2 {exponent:=f32(2*j)/f32(rope);frequency:=f32(1.0f32/f32(pow(base,f64(exponent))));
+        if compressed {ramp:=da_unit(f32((f32(j)-f32(low))/f32(high-low)));smooth:=1.0f32-ramp;frequency=(frequency/16.0f32)*(1.0f32-smooth)+frequency*smooth;}
+        angle:=f32(position)*frequency;stage[2*j]=f32(cos(f64(angle)));stage[2*j+1]=f32(sin(f64(angle)));}
+    for j:0..<rope {out[j]=stage[j];}return DkResult.{written=rope};
+}
+da_rotate_pair :: (a:u16,b:u16,c:f32,s:f32,inverse:bool)->DaPair #export_c {
+    if (a&0x7fff)>=0x7f80 || (b&0x7fff)>=0x7f80 || !da_pair_finite(f32_bits(c),f32_bits(s)) {return DaPair.{status=DkStatus.number};}
+    av:=f64(f32_from_bits(u32(a)<<16));bv:=f64(f32_from_bits(u32(b)<<16));sv:=ifx inverse then -f64(s) else f64(s);
+    first:=av*f64(c)-bv*sv;second:=bv*f64(c)+av*sv;
+    if !psionic_ops_fits_f32(first) || !psionic_ops_fits_f32(second) {return DaPair.{status=DkStatus.arithmetic};}
+    ar:=dk_bf16(f32(first));if ar.status!=DkStatus.ok {return DaPair.{status=ar.status};}br:=dk_bf16(f32(second));if br.status!=DkStatus.ok {return DaPair.{status=br.status};}
+    return DaPair.{a=ar.bits,b=br.bits};
+}
+da_rotate :: (compressed:bool,position:int,heads:int,width:int,rope:int,inverse:bool,x:[]u16,out:[]u16,stage:[]u16,overlap:bool)->DkResult #export_c {
+    if !da_rope_shape(heads,width,rope) {return DkResult.{status=DkStatus.shape};}
+    n:=heads*width;if x.count!=n || out.count<n || stage.count<n {return DkResult.{status=DkStatus.capacity};}if overlap {return DkResult.{status=DkStatus.alias};}
+    coeff:[64]f32;temp:[64]f32;r:=da_coeff(compressed,rope,position,coeff[..],temp[..],false);if r.status!=DkStatus.ok {return r;}
+    for h:0..<heads {at:=h*width;prefix:=width-rope;for j:0..<prefix {if (x[at+j]&0x7fff)>=0x7f80 {return DkResult.{status=DkStatus.number};}stage[at+j]=x[at+j];}
+        for j:0..<rope/2 {pair:=da_rotate_pair(x[at+prefix+2*j],x[at+prefix+2*j+1],coeff[2*j],coeff[2*j+1],inverse);if pair.status!=DkStatus.ok {return DkResult.{status=pair.status};}stage[at+prefix+2*j]=pair.a;stage[at+prefix+2*j+1]=pair.b;}}
+    for j:0..<n {out[j]=stage[j];}return DkResult.{written=n};
+}
