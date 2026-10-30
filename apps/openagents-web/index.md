@@ -26,7 +26,8 @@ not independently authenticated identities. Optional beacon owner auth does
 not establish verified ownership here. The page never requests a signing key.
 
 Open **PYLONS** beside **PLAYTEST** for a live, scrollable board of online
-machines, free slots and current advertised capacity. Inspect a machine for
+providers, free slots and current advertised capacity. Multiple Pylons can
+share one physical host. Inspect a provider for
 its full npub, model identities and beacon details.
 
 Join a Pylon with the command below. **COPY COMMAND** on the board copies the
