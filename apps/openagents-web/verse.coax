@@ -1265,13 +1265,15 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
   }
   if s[0].setup { vertices = draw_setup(s, out, vertices); }
 
-  // what to do, at the bottom
-  hint := ifx s[0].spun then 0.45f32 else 0.7f32;
-  line1 := "DRAG TO TURN THE GALAXY";
-  line2 := ifx phone then "TAP THE ORANGE PLANET TO ENTER" else "CLICK THE ORANGE PLANET, THE HAUNTED HOUSE, TO ENTER";
-  hc := lo(fit_cap(line1, 7.5 * k, GAP, w - 32 * k), fit_cap(line2, 7.5 * k, GAP, w - 32 * k));
-  vertices = centred(d, out, vertices, line1, cx, h - 74 * k, hc, GAP, white(k, hint));
-  vertices = centred(d, out, vertices, line2, cx, h - 56 * k, hc, GAP, white(k, hint));
+  // what to do, at the bottom, while the planets show (the setup hides them)
+  if !s[0].setup {
+    hint := ifx s[0].spun then 0.45f32 else 0.7f32;
+    line1 := "DRAG TO TURN THE GALAXY";
+    line2 := ifx phone then "TAP THE ORANGE PLANET TO ENTER" else "CLICK THE ORANGE PLANET, THE HAUNTED HOUSE, TO ENTER";
+    hc := lo(fit_cap(line1, 7.5 * k, GAP, w - 32 * k), fit_cap(line2, 7.5 * k, GAP, w - 32 * k));
+    vertices = centred(d, out, vertices, line1, cx, h - 74 * k, hc, GAP, white(k, hint));
+    vertices = centred(d, out, vertices, line2, cx, h - 56 * k, hc, GAP, white(k, hint));
+  }
 
   // a world that doesn't open says so for a moment
   shown := 1 - ease((s[0].time - s[0].toast_at - TOAST_TIME) / 0.4);
