@@ -17,7 +17,10 @@
 //     there is an account, and put in force only when it is newer than what
 //     this browser gave back and you haven't moved since.
 // Precedence: a place the location's hash names (#commons, #in-inn ...) wins
-// over a kept one; golden mode (the release walk) keeps and restores nothing.
+// over a kept one, until you walk off it: then the face drops the hash
+// (place-face.h, action 3), so a reload keeps where you went rather than
+// sending you back to the link's place; golden mode (the release walk) keeps
+// and restores nothing.
 //
 // When: nothing is kept until you move (a page you only looked at never
 // overwrites a newer copy from another device); then this browser at most

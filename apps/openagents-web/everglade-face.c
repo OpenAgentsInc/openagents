@@ -114,8 +114,8 @@ static void start(uint32_t state) {
 static coax_t_Place place_here(uint32_t state) {
   coax_t_Everglade *g = city(state);
   if (!placed) return (coax_t_Place){0};
-  return verse_place_of(player.pos.x, player.pos.y, player.pos.z, verse_player_face(player), g->orbit,
-                        everglade_room_at(at(state), player.pos.x, player.pos.z));
+  return everglade_place_here(at(state), verse_place_of(player.pos.x, player.pos.y, player.pos.z, verse_player_face(player), g->orbit,
+                        everglade_room_at(at(state), player.pos.x, player.pos.z)));
 }
 // Put you at a kept place, on open ground near it if it no longer is.
 static void place_put(uint32_t state, coax_t_Place p) {

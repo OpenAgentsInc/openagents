@@ -165,7 +165,11 @@ and Hecate's Cemetery.
   while you move or look, the server every ten seconds, and both at once
   when the page is hidden or left.
 - A place the hash names (`#commons`, `#in-inn`, `#above` ...) wins over a
-  kept one. Golden mode (the release walk) keeps and restores nothing, so
+  kept one until you walk off it; then the page drops the hash, so a reload
+  keeps where you went, not the link's place. In Everglade deep water (a
+  rowboat, swimming) is never put back: you come back on the nearest bank or
+  the bridge's deck; while WANTED or dead the place kept is the Road In,
+  where the watch's respawn puts you. Golden mode (the release walk) keeps and restores nothing, so
   goldens never depend on a saved place.
 - Dead Gears and Ice Cream Man keep their own rules: a run starts where the
   game starts it.

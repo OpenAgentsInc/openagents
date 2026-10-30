@@ -3,9 +3,16 @@
 // (place.coax keeps it; everglade-face.c and place-face.h carry it). A kept
 // place inside a piece placed since, in the woods, past the edge or in
 // another room than it says is moved to the nearest open ground round it,
-// and to the spawn when there is none within about 20 m. Under water you
-// come back with your breath: a reload gives it back.
+// and to the spawn when there is none within about 20 m. Water you would
+// swim in (the river, a pond; a rowboat sits on it) is not open ground:
+// in a boat, swimming or diving you come back on the nearest bank or the
+// bridge's deck, with your breath. Off the ground (Levitate, a jump) you
+// come back standing on it. While the watch hunt you (WANTED) or you lie
+// dead, the place kept is the Road In, where the watch's respawn puts you:
+// a reload never gets you out of either.
 #load "place-orbit.coax";
+
+EG_PLACE_DEEP :: 1.0;   // m of water over the ground: deeper and you would swim (verse/water-wade.coax SWIM_DEPTH 1.25)
 
 // The walk-in building (eg-buildings) whose floor (x, z) is on, or -1 outdoors.
 everglade_room_at :: (s: [] Everglade, x: f32, z: f32) -> int #export_c {
@@ -24,6 +31,7 @@ everglade_place_open :: (s: [] Everglade, x: f32, z: f32, room: int) -> bool #ex
   if !s[0].started { everglade_start(s); }
   if !finite(x) || !finite(z) || x < -99 || x > 99 || z < -99 || z > 99 { return false; }
   if everglade_in_woods(x, z) { return false; }
+  if !everglade_on_bridge(s, x, z) && water_at(s, x, z) - ground_at(s, x, z) > f32(EG_PLACE_DEEP) { return false; }
   if room >= 0 && everglade_room_at(s, x, z) != room { return false; }
   return verse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
 }
@@ -40,6 +48,15 @@ everglade_place_fix :: (s: [] Everglade, p: Place) -> Place #export_c {
   }
   q.x = s[0].spawn.x; q.z = s[0].spawn.z; q.face = s[0].spawn_face; q.yaw = s[0].spawn_face; q.room = -1;
   return q;
+}
+
+// Where you are, as the place to keep: the watch's respawn wins while they
+// hunt you or you lie dead (the Road In, facing up the road, the camera as it is).
+everglade_place_here :: (s: [] Everglade, here: Place) -> Place #export_c {
+  if !here.ok || !s[0].wv.started || !s[0].wt[0].on || !(s[0].wt[0].wanted || s[0].wt[0].dead) { return here; }
+  p := here;
+  p.x = f32(EG_SPAWN_X); p.y = 0; p.z = f32(EG_SPAWN_Z); p.face = 0; p.yaw = 0; p.room = -1;
+  return p;
 }
 
 // You are put at a kept place: the feet the page draws and the camera behind them as kept.
@@ -80,6 +97,33 @@ everglade_place_camera :: (s: [] Everglade, p: Place) #export_c {
   // far out past everything: the spawn
   f := everglade_place_fix(g[..], verse_place(500, 0, 500, 0, 0, 0.3, 6, 0, -1, 1000));
   #assert f.x == g[0].spawn.x && f.z == g[0].spawn.z && f.room == -1;
+  // the river: never back in water you would swim in (a boat, swimming), but on the nearest bank or the bridge's deck
+  deep_x := 0.0f32; deep_z := 0.0f32; found := false;
+  for j: 0..<200 {
+    z := -30.0f32 + f32(j) * 0.5;   // the river past the town, off the bridge
+    if !everglade_on_bridge(g[..], f32(EG_RIVER_X), z) && water_at(g[..], f32(EG_RIVER_X), z) - ground_at(g[..], f32(EG_RIVER_X), z) > f32(EG_PLACE_DEEP) { deep_x = f32(EG_RIVER_X); deep_z = z; found = true; break; }
+  }
+  #assert found && !everglade_place_open(g[..], deep_x, deep_z, -1);
+  b := everglade_place_fix(g[..], verse_place(deep_x, 0, deep_z, 0.4, 0.4, 0.3, 6, 0, -1, 1000));
+  #assert everglade_place_open(g[..], b.x, b.z, -1) && (b.x - deep_x) * (b.x - deep_x) + (b.z - deep_z) * (b.z - deep_z) < 400;
+  #assert water_at(g[..], b.x, b.z) - ground_at(g[..], b.x, b.z) <= f32(EG_PLACE_DEEP) && b.yaw == 0.4;
+  // the bridge's deck over the river is open
+  bx := (EG_BRIDGE[0] + EG_BRIDGE[2]) / 2; bz := (EG_BRIDGE[1] + EG_BRIDGE[3]) / 2;
+  #assert everglade_on_bridge(g[..], bx, bz);
+  // levitating: kept off the ground, back standing on it
+  hi_p := everglade_place_fix(g[..], verse_place(sp.x + 1, 6.13, sp.z, 0.5, 1.25, 0.3, 6, 0, -1, 1000));
+  #assert hi_p.y == 0 && hi_p.x == sp.x + 1;
+  // WANTED or dead: the place kept is the Road In; otherwise where you are
+  here := verse_place(30, 0, 12, 1, 1, 0.3, 6, 0, -1, 1000);
+  #assert everglade_place_here(g[..], here).x == 30;
+  g[0].wv.started = true; g[0].wt[0].on = true;
+  #assert everglade_place_here(g[..], here).x == 30;
+  g[0].wt[0].wanted = true;
+  rw := everglade_place_here(g[..], here);
+  #assert rw.x == f32(EG_SPAWN_X) && rw.z == f32(EG_SPAWN_Z) && rw.zoom == 6 && rw.at == 1000;
+  g[0].wt[0].wanted = false; g[0].wt[0].dead = true;
+  #assert everglade_place_here(g[..], here).z == f32(EG_SPAWN_Z);
+  g[0].wt[0].dead = false; g[0].wv.started = false; g[0].wt[0].on = false;
   // the camera as kept, at those feet
   everglade_place_camera(g[..], q);
   #assert g[0].orbit.yaw == 1.25 && g[0].orbit.want == 6 && g[0].feet.x == q.x && !g[0].above;

@@ -16,7 +16,10 @@
 // and calls place_seen(state) once you are first placed, place_frame(state)
 // after each step, place_message(state, kind, inbox, length) at the top of
 // coaxial_message (true: it was the place's), and lets place_action() take
-// the outbox when the page has no action of its own.
+// the outbox when the page has no action of its own. A place the location's
+// hash named (verse_place_named) wins only until you walk off it: the first
+// step off it drops the hash too (action 3, empty), so a reload brings
+// you back where you were, not to the place the link named.
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -31,6 +34,9 @@ static coax_t_PlaceKeeper place_keeper;
 static uint8_t place_text_out[400];
 static uint32_t place_text_n;
 static bool place_out_now;          // the outbox the host reads is the place's
+static bool place_unhash;           // the hash named a place and you walked off it: the page drops it (action 3)
+static bool place_unhashed;         // ... once
+static int32_t place_out_code;      // the action the place's outbox is for
 static uint8_t place_url[128];
 static uint8_t place_body[1024];
 static int32_t place_ask_id = -1;
@@ -44,6 +50,7 @@ static void place_keep(uint32_t state, bool leaving) {
   coax_t_Place here = place_here(state);
   here.at = place_wall_ms();
   int64_t due = verse_place_due(place_k(), here, track_state.t, leaving);
+  if (place_keeper.moved && place_keeper.named && !place_unhashed) { place_unhash = true; place_unhashed = true; }
   if (!due) return;
   int64_t done = 0;
   if (due & 1) {
@@ -87,11 +94,15 @@ static bool place_message(uint32_t state, int32_t kind, const uint8_t *inbox, ui
   return false;
 }
 // The page has no action of its own: the place's text, when one is waiting.
+// The kept text first (a page being left gets one action), then the hash's drop.
 static int32_t place_action(void) {
-  if (!place_text_n) return 0;
-  place_out_now = true;
-  return PLACE_ACTION;
+  if (place_text_n) { place_out_now = true; place_out_code = PLACE_ACTION; return PLACE_ACTION; }
+  if (place_unhash) { place_out_now = true; place_out_code = 3; return 3; }
+  return 0;
 }
 static uint32_t place_outbox(void) { return (uint32_t)(uintptr_t)place_text_out; }
-static uint32_t place_outbox_len(void) { return place_text_n; }
-static void place_done(void) { place_out_now = false; place_text_n = 0; }
+static uint32_t place_outbox_len(void) { return place_out_code == 3 ? 0 : place_text_n; }
+static void place_done(void) {
+  if (place_out_code == 3) place_unhash = false; else place_text_n = 0;
+  place_out_now = false; place_out_code = 0;
+}
