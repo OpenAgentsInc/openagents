@@ -1,0 +1,27 @@
+// The Vercel AI Gateway (docs/coder/microcoder.md, row 7), a fallback only:
+// Chat Completions through chat.coax at ai-gateway.vercel.sh, models named
+// provider/model (google/gemini-3.8-flash, zai/glm-5.3-flash). On request it
+// asks for zero-data-retention routing, as the old crates/inference
+// upstream/vercel.rs privacy_fields did. Its usage carries no cost field
+// in Chat Completions; the rates card prices it.
+
+#load "gateway.coax";
+
+GW_VERCEL_URL :: "https://ai-gateway.vercel.sh/v1/chat/completions";
+GW_VERCEL_KEY_ENV :: "AI_GATEWAY_API_KEY";
+GW_VERCEL_FLASH :: "google/gemini-3.8-flash";
+
+gw_vercel :: (zdr: bool) -> Gateway {
+  return Gateway.{name = "vercel", url = GW_VERCEL_URL, key_env = GW_VERCEL_KEY_ENV, wire = GW_WIRE_CHAT, flags = ifx zdr then GW_CHAT_VERCEL_ZDR else 0};
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a Vercel body is plain Chat Completions, with zero-data-retention on request" {
+  out: [1024] u8; why: [1] string;
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "hi"};
+  req := GwRequest.{model = GW_VERCEL_FLASH, messages = msgs[..]};
+  #assert gw_translate(gw_vercel(false), req, out[..], why[..]) == "{\"model\":\"google/gemini-3.8-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true}}";
+  #assert gw_translate(gw_vercel(true), req, out[..], why[..]) == "{\"model\":\"google/gemini-3.8-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true},\"providerOptions\":{\"gateway\":{\"zeroDataRetention\":true}}}";
+  #assert gw_vercel(false).key_env == "AI_GATEWAY_API_KEY";
+}

@@ -5,8 +5,9 @@
 #import "Basic";
 #load "vertex.coax";
 #load "openrouter.coax";
+#load "vercel.coax";
 
-LiveRun :: struct { text: [8192] u8; nt: int; first_ms: int = -1; end_ms: int; done: bool; usage: GwUsage; why: string; }
+LiveRun :: struct { text: [8192] u8; nt: int; first_ms: int = -1; end_ms: int; done: bool; usage: GwUsage; why: string; status: int; }
 
 live_run :: (g: Gateway, req: GwRequest, r: [] LiveRun, headers: [] string) -> bool {
   b: [1] GwCallBuffers; call: [1] GwCall;
@@ -27,7 +28,7 @@ live_run :: (g: Gateway, req: GwRequest, r: [] LiveRun, headers: [] string) -> b
         for c: x.text { if r[0].nt < r[0].text.count { r[0].text[r[0].nt] = c; r[0].nt += 1; } }
       }
       if x.kind == GW_EV_DONE { r[0].done = true; r[0].usage = x.usage; if x.text.count > 0 { print("%: served by %\n", g.name, x.text); } }
-      if x.kind == GW_EV_REFUSED { print("%: refused % %\n", g.name, x.status, x.reason); }
+      if x.kind == GW_EV_REFUSED { print("%: refused % %\n", g.name, x.status, x.reason); r[0].status = x.status; }
       if x.kind == GW_EV_DONE || x.kind == GW_EV_REFUSED { r[0].end_ms = cxproc_now_ms() - t0; }
     }
   }
@@ -79,6 +80,15 @@ main :: () {
     h := GW_OPENROUTER_HEADERS;
     ok = live_count(gw_openrouter(false), GW_OPENROUTER_FLASH, h[..]);
     ok = live_schema(gw_openrouter(false), GW_OPENROUTER_FLASH, h[..]) && ok;
+  } else if name == "vercel" {
+    // an account without credit answers 402 to everything: say so, and skip
+    msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "Say hi."};
+    probe: [1] LiveRun;
+    x := live_run(gw_vercel(false), GwRequest.{model = GW_VERCEL_FLASH, messages = msgs[..], max_tokens = 16}, probe[..], none[0..<0]);
+    if probe[0].status == 402 { print("smoke: skipped (402: the AI Gateway account has no credit)\n"); return; }
+    ok = live_count(gw_vercel(false), GW_VERCEL_FLASH, none[0..<0]);
+    ok = live_schema(gw_vercel(false), GW_VERCEL_FLASH, none[0..<0]) && ok;
+    ok = live_count(gw_vercel(true), "zai/glm-5.3-flash", none[0..<0]) && ok;
   } else {
     print("GW_LIVE names no gateway this smoke knows: %\n", name);
   }

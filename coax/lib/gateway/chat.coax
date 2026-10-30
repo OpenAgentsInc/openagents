@@ -18,6 +18,7 @@ GW_CHAT_LEGACY_MAX_TOKENS :: 1;
 GW_CHAT_THINKING_ON :: 2;
 GW_CHAT_NO_DATA_COLLECTION :: 8; // OpenRouter: provider.data_collection "deny" (no training endpoints)
 GW_CHAT_ZDR :: 16;               // OpenRouter: provider.zdr, zero-retention endpoints only
+GW_CHAT_VERCEL_ZDR :: 64;        // the Vercel AI Gateway: providerOptions.gateway.zeroDataRetention
 GW_NO_STRICT_SCHEMA :: 32;       // Chat and Gemini wires: the provider has no strict schemas, so none is sent
                                  // (Microcoder then reads the action out of plain text: text_action)
 
@@ -63,6 +64,7 @@ gw_chat_body :: (req: GwRequest, flags: int, out: [] u8) -> int {
     if (flags & GW_CHAT_ZDR) != 0 { n = json_raw(out, n, ",\"zdr\":true"); }
     n = json_raw(out, n, "}");
   }
+  if (flags & GW_CHAT_VERCEL_ZDR) != 0 { n = json_raw(out, n, ",\"providerOptions\":{\"gateway\":{\"zeroDataRetention\":true}}"); }
   return json_raw(out, n, "}");
 }
 

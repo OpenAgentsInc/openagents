@@ -18,7 +18,7 @@ run() {   # name, then the secrets to scan the output for
   GW_LIVE="$name" "$work/live" > "$work/$name.out" 2>&1 || true
   cat "$work/$name.out"
   for s in "$@"; do [ -n "$s" ] && grep -qF -- "$s" "$work/$name.out" && { echo "$name: a secret appeared in the output"; failed=1; }; done
-  tail -1 "$work/$name.out" | grep -q '^smoke: ok$' || failed=1
+  tail -1 "$work/$name.out" | grep -q '^smoke: \(ok\|skipped\)' || failed=1
 }
 if [ "$want" = all ] || [ "$want" = vertex ]; then
   if [ -z "${VERTEX_ACCESS_TOKEN:-}" ] && [ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && [ -f "$secrets/vertex-sa-inference.json" ]; then
@@ -44,5 +44,12 @@ if [ "$want" = all ] || [ "$want" = openrouter ]; then
   fi
   if [ -n "${OPENROUTER_API_KEY:-}" ]; then run openrouter "$OPENROUTER_API_KEY"
   else echo "openrouter: skipped (no OPENROUTER_API_KEY or $secrets/openrouter.env)"; fi
+fi
+if [ "$want" = all ] || [ "$want" = vercel ]; then
+  if [ -z "${AI_GATEWAY_API_KEY:-}" ] && [ -f "$secrets/ai-gateway.env" ]; then
+    set -a; . "$secrets/ai-gateway.env"; set +a
+  fi
+  if [ -n "${AI_GATEWAY_API_KEY:-}" ]; then run vercel "$AI_GATEWAY_API_KEY"
+  else echo "vercel: skipped (no AI_GATEWAY_API_KEY or $secrets/ai-gateway.env)"; fi
 fi
 [ "$failed" = 0 ] && echo "live: ok" || { echo "live: FAILED"; exit 1; }
