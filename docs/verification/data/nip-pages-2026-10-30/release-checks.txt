@@ -1,0 +1,296 @@
+release 81c0bb61e1 (gw-ours #5302: serve the route at /api/v1/inference, where the load ba)
+  staging     52.7 s
+lane nip-index (5.3 s)
+  ok    nip-index: at https://staging.openagents.com/nip
+  ok    nip-index: the engine started
+  ok    nip-index: no errors
+  ok    nip-index: draws (7.4% lit, at least 0.4%)
+  ok    nip-index: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-index: 5.2 s
+lane nip-01 (6.2 s)
+  ok    nip-01: at https://staging.openagents.com/nip/01
+  ok    nip-01: the engine started
+  ok    nip-01: no errors
+  ok    nip-01: draws (2.1% lit, at least 0.4%)
+  ok    nip-01: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-01: 6.1 s
+lane nip-09 (5.0 s)
+  ok    nip-09: at https://staging.openagents.com/nip/09
+  ok    nip-09: the engine started
+  ok    nip-09: no errors
+  ok    nip-09: draws (2.2% lit, at least 0.4%)
+  ok    nip-09: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-09: 4.9 s
+lane nip-10 (4.9 s)
+  ok    nip-10: at https://staging.openagents.com/nip/10
+  ok    nip-10: the engine started
+  ok    nip-10: no errors
+  ok    nip-10: draws (2.0% lit, at least 0.4%)
+  ok    nip-10: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-10: 4.8 s
+lane nip-11 (5.0 s)
+  ok    nip-11: at https://staging.openagents.com/nip/11
+  ok    nip-11: the engine started
+  ok    nip-11: no errors
+  ok    nip-11: draws (2.1% lit, at least 0.4%)
+  ok    nip-11: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-11: 4.9 s
+lane nip-17 (5.1 s)
+  ok    nip-17: at https://staging.openagents.com/nip/17
+  ok    nip-17: the engine started
+  ok    nip-17: no errors
+  ok    nip-17: draws (2.1% lit, at least 0.4%)
+  ok    nip-17: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-17: 5.0 s
+lane nip-19 (5.2 s)
+  ok    nip-19: at https://staging.openagents.com/nip/19
+  ok    nip-19: the engine started
+  ok    nip-19: no errors
+  ok    nip-19: draws (2.2% lit, at least 0.4%)
+  ok    nip-19: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-19: 5.0 s
+lane nip-22 (5.1 s)
+  ok    nip-22: at https://staging.openagents.com/nip/22
+  ok    nip-22: the engine started
+  ok    nip-22: no errors
+  ok    nip-22: draws (2.2% lit, at least 0.4%)
+  ok    nip-22: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-22: 5.0 s
+lane nip-29 (4.9 s)
+  ok    nip-29: at https://staging.openagents.com/nip/29
+  ok    nip-29: the engine started
+  ok    nip-29: no errors
+  ok    nip-29: draws (2.2% lit, at least 0.4%)
+  ok    nip-29: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-29: 4.8 s
+lane nip-34 (4.9 s)
+  ok    nip-34: at https://staging.openagents.com/nip/34
+  ok    nip-34: the engine started
+  ok    nip-34: no errors
+  ok    nip-34: draws (2.4% lit, at least 0.4%)
+  ok    nip-34: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-34: 4.8 s
+lane nip-40 (4.9 s)
+  ok    nip-40: at https://staging.openagents.com/nip/40
+  ok    nip-40: the engine started
+  ok    nip-40: no errors
+  ok    nip-40: draws (2.1% lit, at least 0.4%)
+  ok    nip-40: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-40: 4.8 s
+lane nip-42 (5.0 s)
+  ok    nip-42: at https://staging.openagents.com/nip/42
+  ok    nip-42: the engine started
+  ok    nip-42: no errors
+  ok    nip-42: draws (2.3% lit, at least 0.4%)
+  ok    nip-42: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-42: 4.9 s
+lane nip-44 (4.9 s)
+  ok    nip-44: at https://staging.openagents.com/nip/44
+  ok    nip-44: the engine started
+  ok    nip-44: no errors
+  ok    nip-44: draws (2.2% lit, at least 0.4%)
+  ok    nip-44: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-44: 4.8 s
+lane nip-45 (5.0 s)
+  ok    nip-45: at https://staging.openagents.com/nip/45
+  ok    nip-45: the engine started
+  ok    nip-45: no errors
+  ok    nip-45: draws (2.1% lit, at least 0.4%)
+  ok    nip-45: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-45: 4.9 s
+lane nip-49 (5.0 s)
+  ok    nip-49: at https://staging.openagents.com/nip/49
+  ok    nip-49: the engine started
+  ok    nip-49: no errors
+  ok    nip-49: draws (2.5% lit, at least 0.4%)
+  ok    nip-49: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-49: 4.8 s
+lane nip-50 (5.0 s)
+  ok    nip-50: at https://staging.openagents.com/nip/50
+  ok    nip-50: the engine started
+  ok    nip-50: no errors
+  ok    nip-50: draws (2.1% lit, at least 0.4%)
+  ok    nip-50: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-50: 4.9 s
+lane nip-59 (5.0 s)
+  ok    nip-59: at https://staging.openagents.com/nip/59
+  ok    nip-59: the engine started
+  ok    nip-59: no errors
+  ok    nip-59: draws (2.1% lit, at least 0.4%)
+  ok    nip-59: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-59: 4.8 s
+lane nip-65 (4.9 s)
+  ok    nip-65: at https://staging.openagents.com/nip/65
+  ok    nip-65: the engine started
+  ok    nip-65: no errors
+  ok    nip-65: draws (2.2% lit, at least 0.4%)
+  ok    nip-65: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-65: 4.8 s
+lane nip-67 (4.9 s)
+  ok    nip-67: at https://staging.openagents.com/nip/67
+  ok    nip-67: the engine started
+  ok    nip-67: no errors
+  ok    nip-67: draws (2.3% lit, at least 0.4%)
+  ok    nip-67: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-67: 4.8 s
+lane nip-70 (4.9 s)
+  ok    nip-70: at https://staging.openagents.com/nip/70
+  ok    nip-70: the engine started
+  ok    nip-70: no errors
+  ok    nip-70: draws (2.2% lit, at least 0.4%)
+  ok    nip-70: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-70: 4.8 s
+lane nip-77 (4.8 s)
+  ok    nip-77: at https://staging.openagents.com/nip/77
+  ok    nip-77: the engine started
+  ok    nip-77: no errors
+  ok    nip-77: draws (2.3% lit, at least 0.4%)
+  ok    nip-77: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-77: 4.7 s
+lane nip-94 (4.9 s)
+  ok    nip-94: at https://staging.openagents.com/nip/94
+  ok    nip-94: the engine started
+  ok    nip-94: no errors
+  ok    nip-94: draws (2.1% lit, at least 0.4%)
+  ok    nip-94: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-94: 4.8 s
+lane nip-98 (4.8 s)
+  ok    nip-98: at https://staging.openagents.com/nip/98
+  ok    nip-98: the engine started
+  ok    nip-98: no errors
+  ok    nip-98: draws (2.3% lit, at least 0.4%)
+  ok    nip-98: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-98: 4.7 s
+lane nip-index-phone (5.1 s)
+  ok    nip-index-phone: at https://staging.openagents.com/nip
+  ok    nip-index-phone: the engine started
+  ok    nip-index-phone: no errors
+  ok    nip-index-phone: draws (9.7% lit, at least 0.4%)
+  ok    nip-index-phone: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-index-phone: 5.0 s
+lane nip-44-phone (5.1 s)
+  ok    nip-44-phone: at https://staging.openagents.com/nip/44
+  ok    nip-44-phone: the engine started
+  ok    nip-44-phone: no errors
+  ok    nip-44-phone: draws (5.6% lit, at least 0.4%)
+  ok    nip-44-phone: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-44-phone: 4.9 s
+lane nip-49-phone (5.1 s)
+  ok    nip-49-phone: at https://staging.openagents.com/nip/49
+  ok    nip-49-phone: the engine started
+  ok    nip-49-phone: no errors
+  ok    nip-49-phone: draws (6.5% lit, at least 0.4%)
+  ok    nip-49-phone: matches its golden (0 blocks changed, 4 allowed, 0 moving)
+  time  nip-49-phone: 4.9 s
+goldens https://staging.openagents.com: passed in 93.0 s (4 tabs)
+  goldens     93.7 s
+perf: every case held 60 FPS
+  perf       118.9 s
+  promote     16.2 s
+lane nip-index (0.4 s)
+  ok    nip-index: https://openagents.com/nip answers (200)
+  ok    nip-index: the engine started
+  ok    nip-index: no errors
+lane nip-01 (0.5 s)
+  ok    nip-01: https://openagents.com/nip/01 answers (200)
+  ok    nip-01: the engine started
+  ok    nip-01: no errors
+lane nip-09 (0.5 s)
+  ok    nip-09: https://openagents.com/nip/09 answers (200)
+  ok    nip-09: the engine started
+  ok    nip-09: no errors
+lane nip-17 (0.2 s)
+  ok    nip-17: https://openagents.com/nip/17 answers (200)
+  ok    nip-17: the engine started
+  ok    nip-17: no errors
+lane nip-10 (0.4 s)
+  ok    nip-10: https://openagents.com/nip/10 answers (200)
+  ok    nip-10: the engine started
+  ok    nip-10: no errors
+lane nip-11 (0.5 s)
+  ok    nip-11: https://openagents.com/nip/11 answers (200)
+  ok    nip-11: the engine started
+  ok    nip-11: no errors
+lane nip-22 (0.3 s)
+  ok    nip-22: https://openagents.com/nip/22 answers (200)
+  ok    nip-22: the engine started
+  ok    nip-22: no errors
+lane nip-19 (0.5 s)
+  ok    nip-19: https://openagents.com/nip/19 answers (200)
+  ok    nip-19: the engine started
+  ok    nip-19: no errors
+lane nip-29 (0.5 s)
+  ok    nip-29: https://openagents.com/nip/29 answers (200)
+  ok    nip-29: the engine started
+  ok    nip-29: no errors
+lane nip-40 (0.2 s)
+  ok    nip-40: https://openagents.com/nip/40 answers (200)
+  ok    nip-40: the engine started
+  ok    nip-40: no errors
+lane nip-34 (0.4 s)
+  ok    nip-34: https://openagents.com/nip/34 answers (200)
+  ok    nip-34: the engine started
+  ok    nip-34: no errors
+lane nip-44 (0.2 s)
+  ok    nip-44: https://openagents.com/nip/44 answers (200)
+  ok    nip-44: the engine started
+  ok    nip-44: no errors
+lane nip-45 (0.2 s)
+  ok    nip-45: https://openagents.com/nip/45 answers (200)
+  ok    nip-45: the engine started
+  ok    nip-45: no errors
+lane nip-42 (0.4 s)
+  ok    nip-42: https://openagents.com/nip/42 answers (200)
+  ok    nip-42: the engine started
+  ok    nip-42: no errors
+lane nip-50 (0.3 s)
+  ok    nip-50: https://openagents.com/nip/50 answers (200)
+  ok    nip-50: the engine started
+  ok    nip-50: no errors
+lane nip-49 (0.3 s)
+  ok    nip-49: https://openagents.com/nip/49 answers (200)
+  ok    nip-49: the engine started
+  ok    nip-49: no errors
+lane nip-59 (0.3 s)
+  ok    nip-59: https://openagents.com/nip/59 answers (200)
+  ok    nip-59: the engine started
+  ok    nip-59: no errors
+lane nip-70 (0.2 s)
+  ok    nip-70: https://openagents.com/nip/70 answers (200)
+  ok    nip-70: the engine started
+  ok    nip-70: no errors
+lane nip-65 (0.5 s)
+  ok    nip-65: https://openagents.com/nip/65 answers (200)
+  ok    nip-65: the engine started
+  ok    nip-65: no errors
+lane nip-77 (0.2 s)
+  ok    nip-77: https://openagents.com/nip/77 answers (200)
+  ok    nip-77: the engine started
+  ok    nip-77: no errors
+lane nip-67 (0.4 s)
+  ok    nip-67: https://openagents.com/nip/67 answers (200)
+  ok    nip-67: the engine started
+  ok    nip-67: no errors
+lane nip-98 (0.2 s)
+  ok    nip-98: https://openagents.com/nip/98 answers (200)
+  ok    nip-98: the engine started
+  ok    nip-98: no errors
+lane nip-index-phone (0.2 s)
+  ok    nip-index-phone: https://openagents.com/nip answers (200)
+  ok    nip-index-phone: the engine started
+  ok    nip-index-phone: no errors
+lane nip-94 (0.4 s)
+  ok    nip-94: https://openagents.com/nip/94 answers (200)
+  ok    nip-94: the engine started
+  ok    nip-94: no errors
+lane nip-44-phone (0.4 s)
+  ok    nip-44-phone: https://openagents.com/nip/44 answers (200)
+  ok    nip-44-phone: the engine started
+  ok    nip-44-phone: no errors
+lane nip-49-phone (0.4 s)
+  ok    nip-49-phone: https://openagents.com/nip/49 answers (200)
+  ok    nip-49-phone: the engine started
+  ok    nip-49-phone: no errors
+goldens https://openagents.com: passed in 6.5 s (4 tabs)
+  prod starts   8.6 s
+release 81c0bb61e1: live on openagents.com in 495.2 s (rollback: coax/web/rollback.sh 20261030T134010Z)

@@ -1,0 +1,57 @@
+{
+  "base": "https://staging.openagents.com",
+  "routes": [
+    "/nip",
+    "/nip/01",
+    "/nip/09",
+    "/nip/10",
+    "/nip/11",
+    "/nip/17",
+    "/nip/19",
+    "/nip/22",
+    "/nip/29",
+    "/nip/34",
+    "/nip/40",
+    "/nip/42",
+    "/nip/44",
+    "/nip/45",
+    "/nip/49",
+    "/nip/50",
+    "/nip/59",
+    "/nip/65",
+    "/nip/67",
+    "/nip/70",
+    "/nip/77",
+    "/nip/94",
+    "/nip/98"
+  ],
+  "html_checks": 46,
+  "markdown_checks": 23,
+  "assets": {
+    "/build/nip-guide.15ef33f3d69b.wgsl": {
+      "bytes": 7139,
+      "sha256": "4844512d3fc5071bc78d2fb509036f5f8178ab67c94a1069c8f1cfba041da62d",
+      "url_source_fingerprint": "15ef33f3d69b"
+    },
+    "/build/nip-guide.353018152db3.wasm": {
+      "bytes": 165263,
+      "sha256": "353018152db386c82decf93d36af5582114532f3714c4b5d1d9cf742a9cf5f22",
+      "url_source_fingerprint": "353018152db3"
+    },
+    "/build/nip01.15ef33f3d69b.wgsl": {
+      "bytes": 7139,
+      "sha256": "4844512d3fc5071bc78d2fb509036f5f8178ab67c94a1069c8f1cfba041da62d",
+      "url_source_fingerprint": "15ef33f3d69b"
+    },
+    "/build/nip01.fe3aaccb4dd9.wasm": {
+      "bytes": 109401,
+      "sha256": "fe3aaccb4dd9eb64c0560e0547d896dc0c4041a09bcd84a01143df1a87972467",
+      "url_source_fingerprint": "fe3aaccb4dd9"
+    },
+    "/coaxial/host.34e150fd24b4.js": {
+      "bytes": 98179,
+      "sha256": "beb17796d72f2501ca0caf9de4803e3659e0e351e303c6abbe61203cf13dae68",
+      "url_source_fingerprint": "34e150fd24b4"
+    }
+  }
+}
