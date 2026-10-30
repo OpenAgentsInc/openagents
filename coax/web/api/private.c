@@ -221,6 +221,7 @@ static void visitor(const request *q, char ip[128]) {
 //   POST poll       (this site's pages)   {poll}: waiting, then the oa_session cookie once, and the
 //                                         page's Verse player (X-Verse-Player) moved to the phone's key -> player
 //   GET  me         (oa_session)          the session's npub and projects, as lines; A|1 an admin's
+//   GET  viewer     (oa_session)          me, but nobody logged in is a 200 with an empty body (every page asks it)
 //   POST logout     (this site's pages)   ends the session
 //   POST key        (NIP-98, with payload, from this site's pages) {"kind":"login"}: the words account's
 //                                         key logs in (docs/web-log-in.md): the same oa_session cookie as the
@@ -230,8 +231,11 @@ static bool auth_route(const request *q) {
   const char *op = q->path + 10;
   bool post = !strcmp(q->method, "POST");
   bool known = (post && (!strcmp(op, "challenge") || !strcmp(op, "approve") || !strcmp(op, "poll") || !strcmp(op, "logout") || !strcmp(op, "key")))
-               || (!post && !strcmp(q->method, "GET") && !strcmp(op, "me"));
+               || (!post && !strcmp(q->method, "GET") && (!strcmp(op, "me") || !strcmp(op, "viewer")));
   if (!known) { no(q); return true; }
+  // viewer: me for every page's who-is-logged-in, with nobody a 200 and an empty body, not a 401
+  bool viewer = !strcmp(op, "viewer");
+  if (viewer) op = "me";
   char ip[128], auth[4096], from[256], site[65], pubkey[65] = "";
   visitor(q, ip);
   bool signed_req = api_header(q, "Authorization", auth, sizeof auth) && !strncmp(auth, "Nostr ", 6);
@@ -303,6 +307,7 @@ static bool auth_route(const request *q) {
   else if (!strcmp(op, "logout") && status == 200)
     snprintf(headers, sizeof headers, PRIVATE_HEADERS "Set-Cookie: " SITE_COOKIE "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n");
   else snprintf(headers, sizeof headers, PRIVATE_HEADERS);
+  if (viewer && status == 401) { api_respond(q->fd, 200, "text/plain; charset=utf-8", headers, "", 0); PQclear(r); return true; }
   bool lines = !strcmp(op, "me") && status == 200;
   // A|1: the session's key is an admin's (admins.conf), so a realm shows its edit mode (eg-edit).
   // The page only draws it; every write is checked again (player.c site_session).

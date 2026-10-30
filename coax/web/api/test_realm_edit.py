@@ -16,6 +16,10 @@ s, b, _ = call("GET", "/api/auth/me", headers={"Cookie": OTHER_SITE["Cookie"]})
 check("someone else logged in: no A|1", s == 200 and b"A|1" not in b and b"H|" + ("d" * 64).encode() in b, (s, b))
 s, b, _ = call("GET", "/api/auth/me")
 check("signed out: no viewer at all", s == 401 and b"A|1" not in b, (s, b))
+s, b, h = call("GET", "/api/auth/viewer")
+check("signed out, the pages' viewer: 200 and empty, not an error", s == 200 and b == b"", (s, b))
+s, b, _ = call("GET", "/api/auth/viewer", headers={"Cookie": ADMIN_SITE["Cookie"]})
+check("logged in, the viewer is me's lines", s == 200 and b"A|1" in b and b"H|" in b, (s, b))
 
 edits = {"everglade": 1, "edits": "eg-edit 1\nt 1 4.50 -10.00 0.79 1.00\n"}
 st, g = pt("POST", "player", {})
