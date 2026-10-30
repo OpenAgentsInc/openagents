@@ -1,0 +1,102 @@
+#import "Basic";
+#load "../lib/students.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+FAMILY :: [4]string.["count","sum","stride","squares"];
+KIND :: [3]string.["linear","gated","table"];
+CODE :: [11]string.["push","get","set","add","sub","mul","load","store","brif","out","ret"];
+FIELD :: [4]string.["ip","code","x","y"];
+REASON :: [11]string.["admitted","shape","capacity","order","unlabelled","summary","unverifiable","failed","crosses","reserved","duplicate"];
+TESTS :: [4]int.[4,8,16,32];
+// Times before 8 are train; from 8 on, held out.
+CUTS :: TrCuts.{calibration=8,development=8,heldout=8};
+
+hex6 :: (d:[32]u8) {
+    digits:="0123456789abcdef";
+    for i:0..<6 {line:=[2]u8.[digits[cast(int)(d[i]>>4)],digits[cast(int)(d[i]&15)]];print("%",cast(string)line[..]);}
+}
+// A trace offered for admission: the claimant runs the program and claims
+// its rows.
+Offer :: struct {program:[17]TmOp;count:int;claim:RxClaim;rows:[1400]int;}
+offer :: (family:EsFamily,n:int)->Offer {
+    o:Offer;o.count=es_program(family,n,o.program[..]);outs:[TM_OUTPUTS]int;
+    m:=rx_claim(o.program[0..<o.count],TM_STEPS_MAX,o.rows[..],outs[..]);#assert m.status==TmStatus.ok;
+    o.claim=m.claim;
+    return o;
+}
+admit :: (s:TrSet,o:Offer,group:int,time:int)->TrAdd {
+    x:=o;return tr_add_trace(s,x.program[0..<x.count],x.claim,x.rows[0..<x.claim.steps*TM_TOKENS],group,time,TM_STEPS_MAX);
+}
+
+// Trains one student and prints how its rollouts score.
+student :: (kind:EsKind,epochs:int,ex:[]EsExample,store:[]f64)->int {
+    w:=store[0..<ES_CODES*2*es_width(kind)];
+    f:=es_train(kind,ex,w,epochs);#assert f.status==EsStatus.ok;
+    print("%, % epochs: training loss %, % of % tokens right from true states\n",KIND[cast(int)kind],epochs,r4(f.loss),f.right,f.tokens);
+    exact:=0;rows:[1400]int;truth:[1400]int;outs:[TM_OUTPUTS]int;
+    for family:0..<4 {
+        print("  %:",FAMILY[family]);last:EsScore;step:=0;
+        for n,i:TESTS {
+            p:[17]TmOp;k:=es_program(cast(EsFamily)family,n,p[..]);
+            s:=es_score(kind,w,p[0..<k],rows[..],truth[..],outs[..]);#assert s.status==EsStatus.ok;
+            print("%",ifx i==0 then " " else ", ");
+            if s.exact {exact+=1;print("n=% exact",n);}
+            else {print("n=% token % of %",n,s.token,s.tokens);}
+            last=s;step=s.token/TM_TOKENS;
+        }
+        if !last.exact {
+            print("\n    first miss at n=32: step % (%) wrote % for %, where the machine has %",step,CODE[truth[step*TM_TOKENS+1]],
+                last.wrote,FIELD[last.token%TM_TOKENS],last.want);
+        }
+        print("\n");
+    }
+    return exact;
+}
+
+// book:begin example
+main :: () {
+    print("chapter 165's machine; four program families, each counting n down to 1 in local 0:\n");
+    print("  count prints n, ..., 1; sum prints 1 + ... + n; stride prints 2n, 2n-2, ..., 2; squares prints n*n, ..., 1\n");
+
+    // Training traces are admitted by chapter 186, which replays each one
+    // with chapter 173 and gives its group a role from the time cuts.
+    rows:[64]TrRow;entry:[64]TrEntry;s:=tr_open(17,CUTS,rows[..],entry[..],0);
+    ex:[400]EsExample;examples:=0;time:=0;
+    for family:0..<2 {
+        for n:1..<5 {
+            o:=offer(cast(EsFamily)family,n);a:=admit(s,o,family*1000+n,time);s=a.set;
+            #assert a.reason==TrReason.admitted && s.row[s.count-1].role==TrRole.train;
+            examples=es_examples(o.program[0..<o.count],o.rows[..],o.claim.steps,ex[..],examples);#assert examples>0;
+            time+=1;
+        }
+    }
+    print("training traces: count and sum at n = 1, 2, 3, 4, each replayed exactly and admitted as train rows\n");
+    print("  % rows of the machine, % tokens\n",examples,examples*TM_TOKENS);
+    bad:=offer(EsFamily.count,4);bad.rows[3*TM_TOKENS+2]+=1;
+    bad.claim.trace=rx_ints_digest(bad.rows[..],bad.claim.steps*TM_TOKENS);
+    print("  count 4 again with step 3's x changed and its digest redone: %\n",REASON[cast(int)admit(s,bad,1004,time-1).reason]);
+    held:=0;
+    for family:0..<4 {
+        for n:TESTS {
+            if family<2 && n==4 {continue;}
+            a:=admit(s,offer(cast(EsFamily)family,n),family*1000+n,8+held);s=a.set;
+            #assert a.reason==TrReason.admitted && s.row[s.count-1].role==TrRole.heldout;
+            held+=1;
+        }
+    }
+    c:=tr_counts(s);
+    print("held out: count and sum at n = 8, 16, 32, stride and squares at n = 4, 8, 16, 32: % heldout rows, never trained on\n",held);
+    print("  row set ");hex6(tr_digest(s));print(": % rows, % train, % heldout\n",s.count,c[1],c[4]);
+
+    print("students: one affine model per instruction and token, trained from zero by full-batch gradient descent;\n");
+    print("scored by rollout alone: the state is folded from the student's own rows, chapter 173 replays the run,\n");
+    print("and a miss is the first token that differs, of the machine's\n");
+    store:[ES_CODES*2*ES_TABLE]f64;w:=store[..];
+    tally:[4]int;
+    tally[0]=student(EsKind.linear,10000,ex[0..<examples],w);
+    tally[1]=student(EsKind.gated,10000,ex[0..<examples],w);
+    tally[2]=student(EsKind.gated,100000,ex[0..<examples],w);
+    tally[3]=student(EsKind.table,10000,ex[0..<examples],w);
+    print("exact runs of 16: linear %, gated after 10000 epochs %, after 100000 %, table %\n",tally[0],tally[1],tally[2],tally[3]);
+}
+// book:end example

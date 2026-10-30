@@ -1,0 +1,502 @@
+// Chapter 174: can gradient descent learn exact execution? A student is one
+// affine model per instruction code and per token, which writes a row's x
+// and y from features of the machine state; ip and code come from the
+// program at the student's own ip. It is trained by full-batch gradient
+// descent on the rows of traces that chapter 186 admitted, and judged only by
+// rolling it out: each step's state is chapter 173's fold of the student's
+// own earlier rows, and the finished run is a claim that chapter 173 replays,
+// naming the first token that differs from the machine's.
+// Profile students-v1: features [1, arg, top, second, the local named by
+// arg, depth, outputs, ip]. linear divides each by 16; gated adds each again
+// multiplied by [top != 0]; table is the constant 1 plus a one-hot weight per
+// value in [-64, 64] of the other seven. Weights start at zero; the rate for
+// each model is 1 over the mean squared norm of its feature vectors.
+#load "training-rows.coax";
+#authority;
+
+EsKind :: enum u8 {linear;gated;table;}
+EsFamily :: enum u8 {count;sum;stride;squares;}
+EsStatus :: enum u8 {ok;shape;capacity;}
+// The zero value is a run stopped by its budget.
+EsEnd :: enum u8 {budget;halted;broken;}
+EsExample :: struct {code:int;base:[ES_BASE]int;x:int;y:int;}
+EsFit :: struct {status:EsStatus;loss:f64;right:int;tokens:int;}
+EsRun :: struct {status:EsStatus;steps:int;outputs:int;end:EsEnd;}
+// token is the first token that differs from the machine's trace, -1 when
+// the run is exact; wrote and want are the student's and the machine's.
+EsScore :: struct {status:EsStatus;exact:bool;token:int;tokens:int;wrote:int;want:int;}
+
+ES_BASE :: 8;
+ES_SCALE :: 16.0;
+ES_SPAN :: 64;
+ES_CODES :: 11;
+ES_TABLE :: 1+7*(2*ES_SPAN+1);
+ES_N_MAX :: 1000;
+// A prediction too large to round is written as this token, which no row of
+// the machine holds.
+ES_FAR :: 2147483648;
+
+// Checks precede the implementation.
+es_t_outputs :: (family:EsFamily,n:int,want:[4]int,count:int)->bool {
+    p:[32]TmOp;k:=es_program(family,n,p[..]);trace:[4096]int;outs:[64]int;
+    r:=tm_run(p[0..<k],TM_STEPS_MAX,trace[..],outs[..],false);
+    if r.status!=TmStatus.ok || r.outputs!=count {return false;}
+    for i:0..<count {if outs[i]!=want[i] {return false;}}
+    return true;
+}
+es_t_steps :: (family:EsFamily,n:int)->int {
+    p:[32]TmOp;k:=es_program(family,n,p[..]);trace:[4096]int;outs:[64]int;
+    return tm_run(p[0..<k],TM_STEPS_MAX,trace[..],outs[..],false).steps;
+}
+// The rules of chapter 165's machine for every code but mul, load and store,
+// written by hand as gated weights: what gradient descent would have to find.
+es_t_rules :: ()->[ES_CODES*2*16]f64 {
+    w:[ES_CODES*2*16]f64;
+    es_t_set(w[..],TmCode.push,0,1,1);es_t_set(w[..],TmCode.push,1,0,1);es_t_set(w[..],TmCode.push,1,5,1);
+    es_t_set(w[..],TmCode.get,0,4,1);es_t_set(w[..],TmCode.get,1,1,1);
+    es_t_set(w[..],TmCode.set,0,2,1);es_t_set(w[..],TmCode.set,1,1,1);
+    es_t_set(w[..],TmCode.add,0,2,1);es_t_set(w[..],TmCode.add,0,3,1);
+    es_t_set(w[..],TmCode.sub,0,3,1);es_t_set(w[..],TmCode.sub,0,2,-1);
+    es_t_set(w[..],TmCode.brif,0,2,1);
+    // ip + 1, or arg when the top is not zero.
+    es_t_set(w[..],TmCode.brif,1,7,1);es_t_set(w[..],TmCode.brif,1,0,1);
+    es_t_set(w[..],TmCode.brif,1,9,1);es_t_set(w[..],TmCode.brif,1,15,-1);es_t_set(w[..],TmCode.brif,1,8,-1);
+    es_t_set(w[..],TmCode.out,0,2,1);es_t_set(w[..],TmCode.out,1,6,1);es_t_set(w[..],TmCode.out,1,0,1);
+    for c:[3]TmCode.[TmCode.add,TmCode.sub,TmCode.mul] {es_t_set(w[..],c,1,5,1);es_t_set(w[..],c,1,0,-1);}
+    return w;
+}
+es_t_set :: (w:[]f64,code:TmCode,target:int,feature:int,by:f64) {w[(cast(int)code*2+target)*16+feature]+=by*ES_SCALE;}
+es_t_trace :: (family:EsFamily,n:int,rows:[]int)->int {
+    p:[32]TmOp;k:=es_program(family,n,p[..]);outs:[64]int;
+    return rx_claim(p[0..<k],TM_STEPS_MAX,rows,outs[..]).claim.steps;
+}
+
+#test "the test helpers" {
+    w:=es_t_rules();
+    #assert w[(cast(int)TmCode.push*2+1)*16+5]==16 && w[(cast(int)TmCode.brif*2+1)*16+15]==-16;
+    #assert w[(cast(int)TmCode.mul*2+1)*16]==-16 && w[(cast(int)TmCode.mul*2)*16+2]==0;
+    #assert es_t_steps(EsFamily.count,1)==11 && es_t_outputs(EsFamily.count,1,[4]int.[1,0,0,0],1);
+    #assert !es_t_outputs(EsFamily.count,1,[4]int.[2,0,0,0],1) && !es_t_outputs(EsFamily.count,1,[4]int.[1,0,0,0],2);
+    #assert !es_t_outputs(EsFamily.count,0,[4]int.[1,0,0,0],1);
+    rows:[64]int;#assert es_t_trace(EsFamily.count,1,rows[..])==11 && rows[8]==2 && rows[9]==cast(int)TmCode.get;
+}
+#test "four program families, each a loop counting n down to one" {
+    #assert es_t_outputs(EsFamily.count,3,[4]int.[3,2,1,0],3) && es_t_steps(EsFamily.count,3)==27;
+    #assert es_t_outputs(EsFamily.sum,4,[4]int.[10,0,0,0],1) && es_t_steps(EsFamily.sum,4)==47;
+    #assert es_t_outputs(EsFamily.stride,3,[4]int.[6,4,2,0],3) && es_t_steps(EsFamily.stride,3)==27;
+    #assert es_t_outputs(EsFamily.squares,3,[4]int.[9,4,1,0],3) && es_t_steps(EsFamily.squares,3)==33;
+    p:[17]TmOp;
+    #assert es_program(EsFamily.count,2,p[..])==11 && es_program(EsFamily.sum,2,p[..])==17;
+    #assert es_program(EsFamily.stride,2,p[..])==11 && p[0].arg==4 && p[5].arg==2 && p[9].arg==2;
+    #assert es_program(EsFamily.squares,2,p[..])==13 && p[4].code==TmCode.mul && p[11].arg==2;
+    #assert es_program(EsFamily.sum,1,p[..])==17 && p[13].code==TmCode.brif && p[13].arg==4 && p[16].code==TmCode.ret;
+    #assert es_program(EsFamily.count,ES_N_MAX,p[..])==11 && p[0].arg==ES_N_MAX;
+    #assert es_program(EsFamily.count,ES_N_MAX+1,p[..])==0 && es_program(EsFamily.count,0,p[..])==0;
+    #assert es_program(EsFamily.sum,2,p[0..<16])==0 && es_program(EsFamily.count,2,p[0..<11])==11;
+    #assert es_program(EsFamily.count,2,p[0..<10])==0;
+}
+#test "only push, get, set and brif carry an argument" {
+    for family:0..<4 {
+        p:[17]TmOp;k:=es_program(cast(EsFamily)family,2,p[..]);
+        for i:0..<k {
+            c:=p[i].code;
+            if c!=TmCode.push && c!=TmCode.get && c!=TmCode.set && c!=TmCode.brif {#assert p[i].arg==0;}
+        }
+    }
+    p:[17]TmOp;#assert es_program(EsFamily.sum,2,p[..])==17 && p[2].arg==0 && p[3].code==TmCode.set && p[3].arg==1;
+}
+#test "the base features read the folded state" {
+    rows:[256]int;steps:=es_t_trace(EsFamily.sum,2,rows[..]);p:[17]TmOp;k:=es_program(EsFamily.sum,2,p[..]);
+    // Step 6 is the first add: the stack holds local 1 (0), then local 0 (2).
+    f:=rx_fold(p[0..<k],rows[0..<steps*TM_TOKENS],6);#assert f.ok && f.ip==6;
+    b:=es_base(p[0..<k],f);
+    #assert b[0]==1 && b[1]==0 && b[2]==2 && b[3]==0 && b[4]==2 && b[5]==2 && b[6]==0 && b[7]==6;
+    // Step 4 reads local 1 with an empty stack.
+    f=rx_fold(p[0..<k],rows[0..<steps*TM_TOKENS],4);b=es_base(p[0..<k],f);
+    #assert b[1]==1 && b[2]==0 && b[3]==0 && b[4]==0 && b[5]==0 && b[7]==4;
+    // Step 9 pushes 1 onto [2]: second is still 0, and local 1 holds 2.
+    f=rx_fold(p[0..<k],rows[0..<steps*TM_TOKENS],9);b=es_base(p[0..<k],f);
+    #assert p[9].code==TmCode.push && b[1]==1 && b[2]==2 && b[3]==0 && b[4]==2 && b[5]==1;
+    // The output count, and an argument that names no local.
+    f=rx_fold(p[0..<k],rows[0..<steps*TM_TOKENS],steps-1);b=es_base(p[0..<k],f);
+    #assert b[6]==1 && b[7]==16;
+    f=rx_fold(p[0..<k],rows[0..<steps*TM_TOKENS],0);b=es_base(p[0..<k],f);
+    #assert b[1]==2 && b[4]==0;
+    q:=p;q[0].arg=TM_LOCALS;q[1].arg=7;
+    f=rx_fold(p[0..<k],rows[0..<steps*TM_TOKENS],1);f.state.locals[7]=5;b=es_base(q[0..<k],f);
+    #assert b[1]==7 && b[4]==5 && b[2]==2;
+    f.state.locals[0]=9;f.ip=0;b=es_base(q[0..<k],f);#assert b[1]==TM_LOCALS && b[4]==0;
+    q[0].arg=-1;b=es_base(q[0..<k],f);#assert b[4]==0;
+}
+#test "features for each kind" {
+    b:=[ES_BASE]int.[1,3,-2,64,65,-64,-65,8];idx:[16]int;val:[16]f64;
+    #assert es_width(EsKind.linear)==8 && es_width(EsKind.gated)==16 && es_width(EsKind.table)==904;
+    #assert es_pairs(EsKind.linear,b,idx[..],val[..])==8;
+    for j:0..<8 {#assert idx[j]==j && val[j]==cast(f64)b[j]/16;}
+    #assert es_pairs(EsKind.gated,b,idx[..],val[..])==16;
+    for j:0..<8 {#assert idx[j]==j && idx[8+j]==8+j && val[8+j]==cast(f64)b[j]/16;}
+    c:=b;c[2]=0;#assert es_pairs(EsKind.gated,c,idx[..],val[..])==16 && val[1]==3.0/16;
+    for j:0..<8 {#assert idx[8+j]==8+j && val[8+j]==0;}
+    // The table: the constant, then each value in the span by its offset.
+    for j:0..<16 {idx[j]=-1;val[j]=-1;}
+    #assert es_pairs(EsKind.table,b,idx[..],val[..])==6;
+    #assert idx[0]==0 && idx[1]==1+3+64 && idx[2]==1+129-2+64 && idx[3]==1+2*129+128;
+    #assert idx[4]==1+4*129 && idx[5]==1+6*129+8+64;
+    for j:0..<6 {#assert val[j]==1;}
+}
+#test "a prediction and its token" {
+    w:[ES_CODES*2*8]f64;b:=[ES_BASE]int.[1,3,5,0,0,2,0,0];
+    w[(3*2+1)*8+2]=16;w[(3*2+1)*8+5]=-8;w[(3*2)*8+1]=1;
+    #assert es_predict(EsKind.linear,w[..],3,1,b)==4 && es_predict(EsKind.linear,w[..],3,0,b)==3.0/16;
+    #assert es_predict(EsKind.linear,w[..],2,1,b)==0 && es_predict(EsKind.linear,w[..],4,1,b)==0;
+    t:[ES_CODES*2*ES_TABLE]f64;t[(1*2+1)*ES_TABLE]=0.5;t[(1*2+1)*ES_TABLE+1+3+64]=2;
+    #assert es_predict(EsKind.table,t[..],1,1,b)==2.5;
+    #assert es_token(2.5)==3 && es_token(2.4999)==2 && es_token(-2.5)==-2 && es_token(-2.51)==-3 && es_token(0)==0;
+    #assert es_token(1e15)==ES_FAR && es_token(-1e15)==ES_FAR && es_token(1e300)==ES_FAR;
+    #assert es_token(999999999999999.0)==999999999999999 && es_token(-999999999999999.0)==-999999999999999;
+}
+#test "examples are the admitted rows with their folded state" {
+    rows:[256]int;steps:=es_t_trace(EsFamily.count,1,rows[..]);p:[17]TmOp;k:=es_program(EsFamily.count,1,p[..]);
+    ex:[24]EsExample;ex[11].x=-7;ex[12].x=-7;
+    #assert es_examples(p[0..<k],rows[0..<steps*TM_TOKENS],steps,ex[..],1)==12 && ex[12].x==-7;
+    #assert ex[1].code==cast(int)TmCode.push && ex[1].x==1 && ex[1].y==1 && ex[1].base[1]==1;
+    #assert ex[10].code==cast(int)TmCode.brif && ex[10].x==0 && ex[10].y==10 && ex[10].base[7]==9;
+    #assert ex[11].code==cast(int)TmCode.ret && ex[11].base[7]==10;
+    #assert es_examples(p[0..<k],rows[0..<steps*TM_TOKENS],steps,ex[..],13)==24;
+    #assert es_examples(p[0..<k],rows[0..<steps*TM_TOKENS],steps,ex[..],14)==-1;
+    #assert es_examples(p[0..<k],rows[0..<steps*TM_TOKENS-1],steps,ex[..],0)==-1;
+    #assert es_examples(p[0..<k],rows[0..<steps*TM_TOKENS],steps,ex[..],-1)==-1;
+    #assert es_examples(p[0..<k],rows[0..<steps*TM_TOKENS],0,ex[..],3)==3;
+    #assert es_examples(p[0..<k],rows[0..<steps*TM_TOKENS],steps,ex[..],0)==steps && ex[0].x==1;
+    #assert es_examples(p[0..<k],rows[0..<steps*TM_TOKENS],-1,ex[..],3)==-1;
+    rows[8]=5;#assert es_examples(p[0..<k],rows[0..<steps*TM_TOKENS],steps,ex[..],0)==-1;
+}
+// Two codes with a rule each: push writes arg and depth + 1; ret writes
+// zeros; nothing else is seen.
+es_t_examples :: ()->[6]EsExample {
+    e:[6]EsExample;
+    for i:0..<e.count {
+        e[i]=EsExample.{base=[ES_BASE]int.[1,i+1,0,0,0,i%2,0,0],x=i+1,y=i%2+1};
+        if i>=4 {e[i].code=cast(int)TmCode.ret;e[i].x=0;e[i].y=0;}
+    }
+    return e;
+}
+#test "gradient descent fits a rule the features can express" {
+    e:=es_t_examples();w:[ES_CODES*2*8]f64;for i:0..<w.count {w[i]=9;}
+    f:=es_train(EsKind.linear,e[..],w[..],400);
+    #assert f.status==EsStatus.ok && f.tokens==12 && f.right==12 && f.loss<1e-6;
+    #assert abs(w[1]-16)<1e-3 && abs(w[8+5]-16)<1e-3 && abs(w[8]-16)<1e-3 && w[2]==0 && w[20*8]==0;
+    for i:2*8..<20*8 {#assert w[i]==0;}
+    // Fewer epochs, less fit: the loss and the token counts say so.
+    g:=es_train(EsKind.linear,e[..],w[..],3);#assert g.loss>1e-3 && g.right<12;
+    h:=es_train(EsKind.linear,e[..],w[..],0);
+    #assert h.right==4 && h.loss==(1+4+9+16+1+4+1+4)/12.0;
+    for v:w {#assert v==0;}
+    // One epoch by hand: features 1/16, (i+1)/16, (i%2)/16; mean squared norm
+    // (4+1+4+9+16+2)/16/16/4, so the rate is 1/that.
+    k:=es_train(EsKind.linear,e[0..<4],w[..],1);
+    rate:=1.0/((4+1+4+9+16+2)/256.0/4);
+    #assert k.status==EsStatus.ok && abs(w[1]-rate*2*((1+4+9+16)/16.0)/4)<1e-9;
+    #assert abs(w[0]-rate*2*((1+2+3+4)/16.0)/4)<1e-9 && w[2]==0;
+}
+#test "the table fits seen values only" {
+    e:=es_t_examples();t:[ES_CODES*2*ES_TABLE]f64;
+    f:=es_train(EsKind.table,e[..],t[..],40);
+    #assert f.status==EsStatus.ok && f.right==12 && f.loss<0.002;
+    b:=[ES_BASE]int.[1,9,0,0,0,0,0,0];#assert es_token(es_predict(EsKind.table,t[..],0,0,b))!=9;
+    b[1]=3;#assert es_token(es_predict(EsKind.table,t[..],0,0,b))==3;
+}
+#test "the gated kind learns a branch the linear kind cannot" {
+    // brif's y, from rows of chapter 165's rule.
+    g:[8]EsExample;
+    for i:0..<8 {
+        top:=i%3;ip:=4+i;
+        g[i]=EsExample.{code=cast(int)TmCode.brif,base=[ES_BASE]int.[1,2,top,0,0,1,0,ip],x=top,y=ifx top!=0 then 2 else ip+1};
+    }
+    w:[ES_CODES*2*16]f64;fg:=es_train(EsKind.gated,g[..],w[..],500);
+    #assert fg.status==EsStatus.ok && fg.right==16;
+    l:[ES_CODES*2*8]f64;fl:=es_train(EsKind.linear,g[..],l[..],500);
+    #assert fl.status==EsStatus.ok && fl.right<16 && fl.loss>fg.loss;
+}
+#test "training refuses a bad shape" {
+    e:=es_t_examples();w:[ES_CODES*2*8]f64;
+    #assert es_train(EsKind.linear,e[..],w[0..<ES_CODES*2*8-1],1).status==EsStatus.shape;
+    #assert es_train(EsKind.gated,e[..],w[..],1).status==EsStatus.shape;
+    #assert es_train(EsKind.linear,e[..],w[..],-1).status==EsStatus.shape;
+    #assert es_train(EsKind.linear,e[0..<0],w[..],1).status==EsStatus.shape;
+    e[2].code=ES_CODES;#assert es_train(EsKind.linear,e[..],w[..],1).status==EsStatus.shape;
+    e[2].code=-1;#assert es_train(EsKind.linear,e[..],w[..],1).status==EsStatus.shape;
+    e[2].code=1;#assert es_train(EsKind.linear,e[..],w[..],1).status==EsStatus.ok;
+    #assert es_train(EsKind.linear,e[0..<1],w[..],1).status==EsStatus.ok;
+    e[2].code=ES_CODES-1;#assert es_train(EsKind.linear,e[..],w[..],1).status==EsStatus.ok;
+    e[2].code=0;e[0].code=ES_CODES;#assert es_train(EsKind.linear,e[..],w[..],1).status==EsStatus.shape;
+}
+#test "a rollout writes its own rows and decodes the state from them" {
+    w:=es_t_rules();p:[17]TmOp;k:=es_program(EsFamily.sum,3,p[..]);
+    rows:[512]int;outs:[TM_OUTPUTS]int;truth:[512]int;
+    steps:=es_t_trace(EsFamily.sum,3,truth[..]);
+    r:=es_rollout(EsKind.gated,w[..],p[0..<k],100,rows[..],outs[..]);
+    #assert r.status==EsStatus.ok && r.end==EsEnd.halted && r.steps==steps && r.outputs==1 && outs[0]==6;
+    for i:0..<steps*TM_TOKENS {#assert rows[i]==truth[i];}
+    // The budget stops it; a wrong branch target breaks it.
+    r=es_rollout(EsKind.gated,w[..],p[0..<k],10,rows[..],outs[..]);
+    #assert r.status==EsStatus.ok && r.end==EsEnd.budget && r.steps==10;
+    v:=w;v[(cast(int)TmCode.brif*2+1)*16+9]=0;
+    r=es_rollout(EsKind.gated,v[..],p[0..<k],100,rows[..],outs[..]);
+    #assert r.status==EsStatus.ok && r.end==EsEnd.broken && r.steps==14 && rows[13*4+3]==0;
+    // A branch to the other legal target is followed, not broken.
+    v=w;v[(cast(int)TmCode.brif*2+1)*16+9]=0;v[(cast(int)TmCode.brif*2+1)*16+15]=0;v[(cast(int)TmCode.brif*2+1)*16+8]=0;
+    r=es_rollout(EsKind.gated,v[..],p[0..<k],100,rows[..],outs[..]);
+    #assert r.end==EsEnd.halted && r.steps==17 && r.outputs==1 && outs[0]==3;
+    // Every out row's x is an output.
+    k=es_program(EsFamily.count,2,p[..]);
+    r=es_rollout(EsKind.gated,w[..],p[0..<k],100,rows[..],outs[..]);
+    #assert r.end==EsEnd.halted && r.outputs==2 && outs[0]==2 && outs[1]==1 && r.steps==19;
+    // An output is the out row's own x, here one more than the value under it.
+    v=w;v[(cast(int)TmCode.out*2)*16+5]=16;
+    r=es_rollout(EsKind.gated,v[..],p[0..<k],100,rows[..],outs[..]);
+    #assert r.end==EsEnd.halted && r.outputs==2 && outs[0]==3 && outs[1]==2;
+    // Arguments and stack slots the families never separate.
+    q:=[7]TmOp.[es_op(TmCode.push,9),es_op(TmCode.push,4),es_op(TmCode.sub,0),es_op(TmCode.push,3),
+        es_op(TmCode.add,0),es_op(TmCode.out,0),es_op(TmCode.ret,0)];
+    r=es_rollout(EsKind.gated,w[..],q[..],100,rows[..],outs[..]);
+    #assert r.end==EsEnd.halted && r.steps==7 && r.outputs==1 && outs[0]==8;
+    // The 65th output is not stored, and the fold then breaks the run.
+    k=es_program(EsFamily.count,TM_OUTPUTS+1,p[..]);big:[2400]int;
+    r=es_rollout(EsKind.gated,w[..],p[0..<k],600,big[..],outs[..]);
+    #assert r.end==EsEnd.broken && r.outputs==TM_OUTPUTS && outs[TM_OUTPUTS-1]==2 && r.steps==2+8*TM_OUTPUTS+2;
+    r=es_rollout(EsKind.gated,w[..],p[0..<k],1,big[..],outs[..]);
+    #assert r.status==EsStatus.ok && r.end==EsEnd.budget && r.steps==1 && big[2]==TM_OUTPUTS+1;
+}
+#test "a rollout refuses a bad shape" {
+    w:=es_t_rules();p:[17]TmOp;k:=es_program(EsFamily.count,2,p[..]);rows:[512]int;outs:[TM_OUTPUTS]int;
+    #assert es_rollout(EsKind.gated,w[..],p[0..<k],0,rows[..],outs[..]).status==EsStatus.shape;
+    #assert es_rollout(EsKind.gated,w[..],p[0..<k],128,rows[..],outs[..]).status==EsStatus.ok;
+    #assert es_rollout(EsKind.gated,w[..],p[0..<k],129,rows[..],outs[..]).status==EsStatus.shape;
+    #assert es_rollout(EsKind.gated,w[..],p[0..<k],1,rows[..],outs[0..<TM_OUTPUTS-1]).status==EsStatus.shape;
+    #assert es_rollout(EsKind.linear,w[..],p[0..<k],1,rows[..],outs[..]).status==EsStatus.shape;
+    #assert es_rollout(EsKind.gated,w[..],p[0..<0],1,rows[..],outs[..]).status==EsStatus.shape;
+    q:=p;q[9].arg=k;#assert es_rollout(EsKind.gated,w[..],q[0..<k],1,rows[..],outs[..]).status==EsStatus.shape;
+    // A program that runs off its end breaks the run there.
+    r:=es_rollout(EsKind.gated,w[..],p[0..<2],8,rows[..],outs[..]);
+    #assert r.status==EsStatus.ok && r.end==EsEnd.broken && r.steps==2;
+}
+#test "an exact student, and the first token a wrong one writes" {
+    w:=es_t_rules();p:[17]TmOp;rows:[2048]int;truth:[2048]int;outs:[TM_OUTPUTS]int;
+    k:=es_program(EsFamily.count,6,p[..]);
+    s:=es_score(EsKind.gated,w[..],p[0..<k],rows[..],truth[..],outs[..]);
+    #assert s.status==EsStatus.ok && s.exact && s.token==-1 && s.tokens==51*4;
+    z:[ES_CODES*2*16]f64;
+    s=es_score(EsKind.gated,z[..],p[0..<k],rows[..],truth[..],outs[..]);
+    #assert s.status==EsStatus.ok && !s.exact && s.token==2 && s.wrote==0 && s.want==6 && s.tokens==51*4;
+    // A wrong exit: the branch is taken when the top is zero.
+    v:=w;v[(cast(int)TmCode.brif*2+1)*16+15]=0;v[(cast(int)TmCode.brif*2+1)*16+8]=0;v[(cast(int)TmCode.brif*2+1)*16]=0;
+    v[(cast(int)TmCode.brif*2+1)*16+7]=0;v[(cast(int)TmCode.brif*2+1)*16+9]=0;v[(cast(int)TmCode.brif*2+1)*16+1]=16;
+    s=es_score(EsKind.gated,v[..],p[0..<k],rows[..],truth[..],outs[..]);
+    #assert !s.exact && s.token==(2+8*6-1)*4+3 && s.wrote==2 && s.want==10;
+    // The one out's x is off by its depth, one.
+    k=es_program(EsFamily.sum,2,p[..]);v=w;v[(cast(int)TmCode.out*2)*16+5]=16;
+    s=es_score(EsKind.gated,v[..],p[0..<k],rows[..],truth[..],outs[..]);
+    #assert s.status==EsStatus.ok && !s.exact && s.token==25*4+2 && s.wrote==4 && s.want==3 && s.tokens==27*4;
+}
+#test "scoring refuses what it cannot run" {
+    w:=es_t_rules();p:[17]TmOp;rows:[2048]int;truth:[2048]int;outs:[TM_OUTPUTS]int;
+    k:=es_program(EsFamily.count,6,p[..]);
+    #assert es_score(EsKind.gated,w[..],p[0..<k-1],rows[..],truth[..],outs[..]).status==EsStatus.shape;
+    #assert es_score(EsKind.gated,w[..],p[0..<k],rows[..],truth[0..<51*4-1],outs[..]).status==EsStatus.shape;
+    #assert es_score(EsKind.gated,w[..],p[0..<k],rows[0..<51*4-1],truth[..],outs[..]).status==EsStatus.shape;
+    #assert es_score(EsKind.gated,w[..],p[0..<k],rows[0..<51*4],truth[0..<51*4],outs[..]).status==EsStatus.ok;
+    #assert es_score(EsKind.linear,w[..],p[0..<k],rows[..],truth[..],outs[..]).status==EsStatus.shape;
+}
+
+// book:begin families
+es_op :: (code:TmCode,arg:int)->TmOp {return TmOp.{code=code,arg=arg};}
+// count prints n, n-1, ..., 1; stride prints 2n, 2n-2, ..., 2; squares
+// prints n*n, ..., 1; sum prints 1+2+...+n. Each keeps its counter in local
+// 0 and loops on a backward branch. Returns the program's length, or 0.
+es_program :: (family:EsFamily,n:int,out:[]TmOp)->int {
+    if n<1 || n>ES_N_MAX {return 0;}
+    p:[17]TmOp;k:int;
+    T:=TmCode.push;G:=TmCode.get;S:=TmCode.set;
+    p[0]=es_op(T,ifx family==EsFamily.stride then 2*n else n);p[1]=es_op(S,0);
+    if family==EsFamily.sum {
+        loop:=[15]TmOp.[es_op(T,0),es_op(S,1),es_op(G,1),es_op(G,0),es_op(TmCode.add,0),es_op(S,1),
+            es_op(G,0),es_op(T,1),es_op(TmCode.sub,0),es_op(S,0),es_op(G,0),es_op(TmCode.brif,4),
+            es_op(G,1),es_op(TmCode.out,0),es_op(TmCode.ret,0)];
+        for op,i:loop {p[2+i]=op;}k=17;
+    }
+    else if family==EsFamily.squares {
+        loop:=[11]TmOp.[es_op(G,0),es_op(G,0),es_op(TmCode.mul,0),es_op(TmCode.out,0),
+            es_op(G,0),es_op(T,1),es_op(TmCode.sub,0),es_op(S,0),es_op(G,0),es_op(TmCode.brif,2),es_op(TmCode.ret,0)];
+        for op,i:loop {p[2+i]=op;}k=13;
+    }
+    else {
+        loop:=[9]TmOp.[es_op(G,0),es_op(TmCode.out,0),es_op(G,0),es_op(T,ifx family==EsFamily.stride then 2 else 1),
+            es_op(TmCode.sub,0),es_op(S,0),es_op(G,0),es_op(TmCode.brif,2),es_op(TmCode.ret,0)];
+        for op,i:loop {p[2+i]=op;}k=11;
+    }
+    if out.count<k {return 0;}
+    for i:0..<k {out[i]=p[i];}
+    return k;
+}
+// book:end families
+
+// book:begin features
+// The state a row is written from: [1, arg, top, second, the local named by
+// arg, depth, outputs, ip], with 0 for what is not there.
+es_base :: (program:[]TmOp,f:RxFold)->[ES_BASE]int {
+    op:=program[f.ip];d:=f.state.depth;b:[ES_BASE]int;
+    b[0]=1;b[1]=op.arg;b[5]=d;b[6]=f.state.outputs;b[7]=f.ip;
+    if d>=1 {b[2]=f.state.stack[d-1];}
+    if d>=2 {b[3]=f.state.stack[d-2];}
+    if op.arg>=0 && op.arg<TM_LOCALS {b[4]=f.state.locals[op.arg];}
+    return b;
+}
+es_width :: (kind:EsKind)->int {
+    if kind==EsKind.table {return ES_TABLE;}
+    return ifx kind==EsKind.gated then 2*ES_BASE else ES_BASE;
+}
+// The nonzero features as (index, value) pairs; returns how many.
+es_pairs :: (kind:EsKind,b:[ES_BASE]int,idx:[]int,val:[]f64)->int {
+    if kind==EsKind.table {
+        idx[0]=0;val[0]=1;n:=1;
+        for j:1..<ES_BASE {
+            v:=b[j];
+            if v>=-ES_SPAN && v<=ES_SPAN {idx[n]=1+(j-1)*(2*ES_SPAN+1)+v+ES_SPAN;val[n]=1;n+=1;}
+        }
+        return n;
+    }
+    for j:0..<ES_BASE {idx[j]=j;val[j]=cast(f64)b[j]/ES_SCALE;}
+    if kind==EsKind.linear {return ES_BASE;}
+    z:=ifx b[2]!=0 then 1.0 else 0.0;
+    for j:0..<ES_BASE {idx[ES_BASE+j]=ES_BASE+j;val[ES_BASE+j]=val[j]*z;}
+    return 2*ES_BASE;
+}
+// Model (code, target) owns weights [at, at + width); target 0 is x, 1 is y.
+es_predict :: (kind:EsKind,w:[]f64,code:int,target:int,b:[ES_BASE]int)->f64 {
+    at:=(code*2+target)*es_width(kind);idx:[16]int;val:[16]f64;s:=0.0;
+    for i:0..<es_pairs(kind,b,idx[..],val[..]) {s+=w[at+idx[i]]*val[i];}
+    return s;
+}
+es_token :: (p:f64)->int {
+    if !(p>-1e15 && p<1e15) {return ES_FAR;}
+    return cast(int)floor(p+0.5);
+}
+// book:end features
+
+// book:begin examples
+// Appends one example per row of an admitted trace at ex[n..], each with
+// the state chapter 173's fold rebuilds from the rows before it. Returns the
+// new count, or -1.
+es_examples :: (program:[]TmOp,rows:[]int,steps:int,ex:[]EsExample,n:int)->int {
+    if n<0 || steps<0 || rows.count<steps*TM_TOKENS || n+steps>ex.count {return -1;}
+    for k:0..<steps {
+        f:=rx_fold(program,rows,k);
+        if !f.ok {return -1;}
+        o:=k*TM_TOKENS;
+        ex[n+k]=EsExample.{code=rows[o+1],base=es_base(program,f),x=rows[o+2],y=rows[o+3]};
+    }
+    return n+steps;
+}
+// book:end examples
+
+// book:begin train
+// Full-batch gradient descent on the mean squared error of each model, from
+// zero, for the given epochs. The loss and the tokens right are over all
+// examples with their true states: what training sees, not what a rollout
+// does.
+es_train :: (kind:EsKind,ex:[]EsExample,w:[]f64,epochs:int)->EsFit {
+    width:=es_width(kind);r:EsFit;
+    if w.count!=ES_CODES*2*width || epochs<0 || ex.count<1 {r.status=EsStatus.shape;return r;}
+    // Each example's code is counted once; one outside the codes is not.
+    counts:[ES_CODES]int;seen:=0;
+    for code:0..<ES_CODES {
+        for e:ex {if e.code==code {counts[code]+=1;}}
+        seen+=counts[code];
+    }
+    if seen!=ex.count {r.status=EsStatus.shape;return r;}
+    for i:0..<w.count {w[i]=0;}
+    idx:[16]int;val:[16]f64;g:[ES_TABLE]f64;
+    for code:0..<ES_CODES {
+        if counts[code]==0 {continue;}
+        // The rate is 1 over the mean squared norm; with the mean's 1/m in
+        // the gradient, each step is 2 g / (the sum of squared norms).
+        norm:=0.0;
+        for e:ex {
+            if e.code!=code {continue;}
+            for i:0..<es_pairs(kind,e.base,idx[..],val[..]) {norm+=val[i]*val[i];}
+        }
+        for target:0..<2 {
+            at:=(code*2+target)*width;
+            for epoch:0..<epochs {
+                for i:0..<width {g[i]=0;}
+                for e:ex {
+                    if e.code!=code {continue;}
+                    n:=es_pairs(kind,e.base,idx[..],val[..]);s:=0.0;
+                    for i:0..<n {s+=w[at+idx[i]]*val[i];}
+                    miss:=s-f64(ifx target==0 then e.x else e.y);
+                    for i:0..<n {g[idx[i]]+=miss*val[i];}
+                }
+                for i:0..<width {w[at+i]-=2*g[i]/norm;}
+            }
+        }
+    }
+    total:=0.0;
+    for e:ex {
+        for target:0..<2 {
+            want:=ifx target==0 then e.x else e.y;p:=es_predict(kind,w,e.code,target,e.base);
+            total+=(p-f64(want))*(p-f64(want));
+            if es_token(p)==want {r.right+=1;}
+        }
+    }
+    r.loss=total/f64(2*ex.count);r.tokens=2*ex.count;
+    return r;
+}
+// book:end train
+
+// book:begin rollout
+// The student runs the program alone for up to budget steps. Each row's ip
+// and code come from the program at the ip the student's own rows reached;
+// x and y are its rounded predictions. The state is chapter 173's fold of
+// the rows written so far, so a row the machine could not have written ends
+// the run as broken.
+es_rollout :: (kind:EsKind,w:[]f64,program:[]TmOp,budget:int,rows:[]int,outs:[]int)->EsRun {
+    r:EsRun;
+    if budget<1 || rows.count<budget*TM_TOKENS || outs.count<TM_OUTPUTS || w.count!=ES_CODES*2*es_width(kind) ||
+        tm_admit(program)!=TmStatus.ok {
+        r.status=EsStatus.shape;return r;
+    }
+    for step:0..<budget {
+        f:=rx_fold(program,rows,step);
+        if !f.ok || f.ip>=program.count {r.end=EsEnd.broken;r.steps=step;return r;}
+        op:=program[f.ip];code:=cast(int)op.code;b:=es_base(program,f);o:=step*TM_TOKENS;
+        rows[o]=f.ip;rows[o+1]=code;
+        rows[o+2]=es_token(es_predict(kind,w,code,0,b));rows[o+3]=es_token(es_predict(kind,w,code,1,b));
+        if op.code==TmCode.out && r.outputs<TM_OUTPUTS {outs[r.outputs]=rows[o+2];r.outputs+=1;}
+        if op.code==TmCode.ret {r.end=EsEnd.halted;r.steps=step+1;return r;}
+    }
+    r.steps=budget;
+    return r;
+}
+// book:end rollout
+
+// book:begin score
+// Rolls the student out for as many steps as the machine takes, then
+// claims its rows as chapter 173's claimants do and has chapter 173 replay
+// the claim: exact, or failed at the first token that differs.
+es_score :: (kind:EsKind,w:[]f64,program:[]TmOp,rows:[]int,truth:[]int,outs:[]int)->EsScore {
+    s:EsScore;
+    m:=rx_claim(program,TM_STEPS_MAX,truth,outs);
+    if m.status!=TmStatus.ok {s.status=EsStatus.shape;return s;}
+    run:=es_rollout(kind,w,program,m.claim.steps,rows,outs);
+    if run.status!=EsStatus.ok {s.status=run.status;return s;}
+    n:=run.steps*TM_TOKENS;
+    claim:=RxClaim.{program=m.claim.program,trace=rx_ints_digest(rows,n),outputs=rx_ints_digest(outs,run.outputs),steps=run.steps};
+    r:=rx_check(program,claim,rows[0..<n],0,run.steps,run.steps);
+    s.tokens=m.claim.steps*TM_TOKENS;s.token=-1;
+    if r.verdict==RxVerdict.exact {s.exact=true;return s;}
+    #assert r.reason==RxReason.row;
+    s.token=r.step*TM_TOKENS+cast(int)r.field-1;s.wrote=rows[s.token];s.want=truth[s.token];
+    return s;
+}
+// book:end score

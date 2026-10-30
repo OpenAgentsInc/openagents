@@ -842,6 +842,16 @@
       ]
     },
     {
+      "source": "psionic/examples/students.coax",
+      "chapter": "psionic/book/ch174-can-gradient-descent-learn-exact-execution.md",
+      "stdout": "psionic/fixtures/students.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/interpreter-weights.coax",
       "chapter": "psionic/book/ch170-an-interpreter-in-weights-or-one-program-in-weights.md",
       "stdout": "psionic/fixtures/interpreter-weights.out",
